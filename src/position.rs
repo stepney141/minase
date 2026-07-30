@@ -439,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn initial_position_matches_rules_article_7_on_every_square() {
+    fn initial_position_matches_rules_article_5_on_every_square() {
         use Color::{Black, White};
         use PieceKind::{
             Bishop, BlindTiger, CopperGeneral, DragonHorse, DragonKing, DrunkElephant,
@@ -575,7 +575,7 @@ mod tests {
                 assert_eq!(
                     initial.piece_at(sq(file as u8, internal_rank)),
                     expected_piece,
-                    "RULES.md 第7条の{}段目{}筋",
+                    "RULES.md 第5条の{}段目{}筋",
                     diagram_rank + 1,
                     file + 1,
                 );

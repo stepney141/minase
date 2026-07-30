@@ -313,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn article_16_1_promotion_entry_generates_both_choices() {
+    fn articles_18_1_and_18_5_promotion_entry_generates_both_choices() {
         let from = Square::new(4, 7).unwrap();
         let to = Square::new(4, 8).unwrap();
         let mut builder = PositionBuilder::new(Color::Black);

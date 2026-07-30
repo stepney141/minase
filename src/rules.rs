@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn article_25_7_rules_reject_conflicts_duplicates_and_unsupported_codes() {
+    fn article_33_7_conflicting_code_sets_are_invalid_and_other_inputs_are_validated() {
         assert_eq!(
             Rules::from_codes(&[RuleCode::L0, RuleCode::L1]),
             Err(RulesError::Conflicting {
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_24_and_25_rules_retain_empty_and_explicit_l0_codes() {
+    fn articles_28_and_33_rules_retain_empty_and_explicit_l0_codes() {
         let standard = Rules::from_codes(&[]).unwrap();
         let explicit_l0 = Rules::from_codes(&[RuleCode::L0]).unwrap();
 
@@ -444,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_14_7_and_15_2_tsukegui_exemption_requires_a_lion_mover() {
+    fn articles_15_8_and_16_1_tsukegui_exemption_requires_a_lion_mover() {
         let position = after_non_lion_capture(
             &[
                 (sq(0, 0), Color::Black, PieceKind::Bishop),
@@ -471,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn article_13_1_adjacent_lion_capture_is_unconditional() {
+    fn article_14_1_adjacent_lion_capture_is_unconditional() {
         let position = position(
             Color::Black,
             &[
@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn article_13_2_lion_cannot_capture_a_defended_lion_at_distance_two() {
+    fn article_14_2_lion_cannot_capture_a_defended_lion_at_distance_two() {
         let position = position(
             Color::Black,
             &[
@@ -509,7 +509,33 @@ mod tests {
     }
 
     #[test]
-    fn articles_12_2_and_13_4_hidden_sliding_defender_counts_as_a_foot() {
+    fn articles_13_5_and_14_2_attackable_defender_still_blocks_distance_two_lion_capture() {
+        let position = position(
+            Color::Black,
+            &[
+                (sq(2, 2), Color::Black, PieceKind::Lion),
+                (sq(0, 5), Color::Black, PieceKind::Rook),
+                (sq(4, 2), Color::White, PieceKind::Lion),
+                (sq(4, 5), Color::White, PieceKind::Rook),
+            ],
+        );
+        let capture_defender = Move::Step {
+            from: sq(0, 5),
+            to: sq(4, 5),
+            promote: false,
+        };
+        let capture_lion = Move::Jump {
+            from: sq(2, 2),
+            to: sq(4, 2),
+            promote: false,
+        };
+
+        assert!(is_generated(&position, capture_defender));
+        assert!(!is_generated(&position, capture_lion));
+    }
+
+    #[test]
+    fn articles_13_2_and_14_4_hidden_sliding_defender_counts_as_a_foot() {
         let position = position(
             Color::Black,
             &[
@@ -529,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn article_13_5_non_lion_can_capture_a_defended_lion() {
+    fn article_14_5_non_lion_can_capture_a_defended_lion() {
         let position = position(
             Color::Black,
             &[
@@ -548,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn article_13_3_undefended_lion_at_distance_two_can_be_captured() {
+    fn article_14_3_undefended_lion_at_distance_two_can_be_captured() {
         let position = position(
             Color::Black,
             &[
@@ -566,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn article_15_1_tsukegui_captures_a_defended_lion() {
+    fn articles_16_1_and_16_4_tsukegui_captures_a_defended_lion() {
         let position = position(
             Color::Black,
             &[
@@ -587,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_14_1_and_15_1_adjacent_double_capture_is_not_tsukegui() {
+    fn articles_15_1_and_16_1_adjacent_double_capture_is_not_tsukegui() {
         let position = after_non_lion_capture(
             &[
                 (sq(0, 0), Color::Black, PieceKind::Bishop),
@@ -615,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_12_5_and_15_8_9_restore_a_pawn_that_is_the_only_foot() {
+    fn articles_12_13_and_16_8_9_10_restore_a_pawn_that_is_the_only_foot() {
         let position = position(
             Color::Black,
             &[
@@ -636,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_12_4_13_2_and_15_8_pawn_removal_opens_sliding_foot() {
+    fn articles_13_4_14_2_and_16_8_pawn_removal_opens_sliding_foot() {
         let position = position(
             Color::Black,
             &[
@@ -663,7 +689,7 @@ mod tests {
     }
 
     #[test]
-    fn article_12_4_vacating_origin_opens_sliding_foot() {
+    fn article_13_4_vacating_origin_opens_sliding_foot() {
         let position = position(
             Color::Black,
             &[
@@ -684,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn article_15_3_pawn_between_lions_is_not_tsukegui() {
+    fn article_16_3_pawn_between_lions_is_not_tsukegui() {
         let position = position(
             Color::Black,
             &[
@@ -706,7 +732,7 @@ mod tests {
     }
 
     #[test]
-    fn article_14_1_senjishi_prevents_immediate_capture_of_a_defended_lion() {
+    fn article_15_1_senjishi_prevents_immediate_capture_of_a_defended_lion() {
         let position = after_non_lion_capture(
             &[
                 (sq(0, 0), Color::Black, PieceKind::Bishop),
@@ -731,7 +757,7 @@ mod tests {
     }
 
     #[test]
-    fn article_14_2_senjishi_allows_immediate_capture_of_an_undefended_lion() {
+    fn article_15_2_senjishi_allows_immediate_capture_of_an_undefended_lion() {
         let position = after_non_lion_capture(
             &[
                 (sq(1, 0), Color::Black, PieceKind::Pawn),
@@ -755,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_14_7_and_15_7_tsukegui_takes_priority_over_senjishi() {
+    fn articles_15_8_and_16_7_tsukegui_takes_priority_over_senjishi() {
         let position = after_non_lion_capture(
             &[
                 (sq(0, 0), Color::Black, PieceKind::Bishop),
@@ -782,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_14_7_and_15_7_tsukegui_exempts_the_whole_move_from_senjishi() {
+    fn articles_15_8_and_16_7_tsukegui_exempts_the_whole_move_from_senjishi() {
         let mut builder = PositionBuilder::new(Color::Black);
         for (square, piece) in [
             (sq(0, 0), PieceCode::new(Color::Black, PieceKind::Bishop)),
@@ -816,7 +842,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_14_5_and_15_6_lion_capture_does_not_trigger_senjishi() {
+    fn articles_15_6_and_16_6_lion_capture_does_not_trigger_senjishi() {
         let mut position = position(
             Color::Black,
             &[
@@ -842,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    fn article_16_1_double_with_only_mid_in_enemy_camp_cannot_promote() {
+    fn articles_18_1_and_18_6_double_with_only_mid_in_enemy_camp_cannot_promote() {
         let position = position(
             Color::Black,
             &[(sq(4, 7), Color::Black, PieceKind::DragonHorse)],
@@ -863,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    fn article_16_4_non_capture_inside_enemy_camp_has_no_promotion_option() {
+    fn article_18_3_non_capture_inside_enemy_camp_has_no_promotion_option() {
         let position = position(Color::Black, &[(sq(4, 8), Color::Black, PieceKind::Pawn)]);
         let non_promoting = Move::Step {
             from: sq(4, 8),
@@ -881,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn article_16_3_a_capture_inside_enemy_camp_can_promote() {
+    fn article_18_2_a_capture_inside_enemy_camp_can_promote() {
         let position = position(
             Color::Black,
             &[
@@ -899,7 +925,7 @@ mod tests {
     }
 
     #[test]
-    fn article_16_3_b_capture_leaving_enemy_camp_can_promote() {
+    fn article_18_2_b_capture_leaving_enemy_camp_can_promote() {
         let position = position(
             Color::Black,
             &[
@@ -917,7 +943,7 @@ mod tests {
     }
 
     #[test]
-    fn article_16_5_pawn_can_promote_on_a_non_capture_to_the_last_rank() {
+    fn article_19_1_pawn_can_promote_on_a_non_capture_to_the_last_rank() {
         let position = position(Color::Black, &[(sq(4, 10), Color::Black, PieceKind::Pawn)]);
         let promotion = Move::Step {
             from: sq(4, 10),
@@ -929,7 +955,7 @@ mod tests {
     }
 
     #[test]
-    fn article_16_13_try_make_move_rejects_unavailable_promotion() {
+    fn article_26_8_try_make_move_rejects_unavailable_promotion() {
         let mut position = position(Color::Black, &[(sq(4, 4), Color::Black, PieceKind::Pawn)]);
         let illegal = Move::Step {
             from: sq(4, 4),
@@ -944,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn article_23_1_try_make_move_error_preserves_entire_position() {
+    fn article_27_1_try_make_move_error_preserves_entire_position() {
         let mut position = after_non_lion_capture(
             &[
                 (sq(0, 0), Color::Black, PieceKind::Bishop),

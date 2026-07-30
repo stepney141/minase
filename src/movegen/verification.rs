@@ -1286,7 +1286,7 @@ fn seeded_random_playout_unmakes_to_initial_position() {
 }
 
 #[test]
-fn articles_2_12_and_8_9_move_leaving_king_capturable_is_generated() {
+fn articles_3_8_and_8_3_5_move_leaving_king_capturable_is_generated() {
     let position = position(
         Color::Black,
         &[
@@ -1307,7 +1307,7 @@ fn articles_2_12_and_8_9_move_leaving_king_capturable_is_generated() {
 }
 
 #[test]
-fn articles_11_and_28_igui_has_one_move_encoding() {
+fn article_12_8_igui_has_one_move_encoding() {
     let from = sq(5, 5);
     let mid = sq(5, 6);
     let position = position(
@@ -1341,7 +1341,7 @@ fn articles_11_and_28_igui_has_one_move_encoding() {
 }
 
 #[test]
-fn article_15_1_tsukegui_requires_the_first_capture_on_mid() {
+fn articles_16_1_and_16_11_tsukegui_requires_the_first_capture_on_mid() {
     let position = position(
         Color::Black,
         &[
@@ -1364,7 +1364,7 @@ fn article_15_1_tsukegui_requires_the_first_capture_on_mid() {
 }
 
 #[test]
-fn article_20_equivalent_positions_ignore_quiet_move_history() {
+fn article_24_equivalent_positions_ignore_quiet_move_history() {
     let initial = position(
         Color::Black,
         &[

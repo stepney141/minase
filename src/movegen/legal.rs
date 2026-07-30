@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn article_10_1_d_lion_like_direct_jumps_ignore_intermediate_occupancy() {
+    fn articles_11_1_d_and_11_2_lion_like_direct_jumps_ignore_intermediate_occupancy() {
         let generator = MoveGenerator::standard();
         for (kind, from, middle, target) in [
             (PieceKind::HornedFalcon, sq(5, 5), sq(5, 6), sq(5, 7)),
