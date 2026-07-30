@@ -16,11 +16,7 @@ pub(crate) fn captures_last_royal(position: &Position, mv: Move) -> bool {
     royal_count > 0 && captured_royal_count == royal_count as usize
 }
 
-pub(crate) fn can_capture_last_royal(position: &Position) -> bool {
-    can_capture_last_royal_with_generator(position, &MoveGenerator::standard())
-}
-
-fn can_capture_last_royal_with_generator(position: &Position, generator: &MoveGenerator) -> bool {
+pub(crate) fn can_capture_last_royal(position: &Position, generator: &MoveGenerator) -> bool {
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
     moves
@@ -51,8 +47,7 @@ pub(crate) fn is_mate(position: &mut Position, generator: &MoveGenerator) -> boo
         }
 
         let undo = position.make_move_unchecked(mv);
-        let opponent_can_capture_last_royal =
-            can_capture_last_royal_with_generator(position, generator);
+        let opponent_can_capture_last_royal = can_capture_last_royal(position, generator);
         position.unmake_move(undo);
 
         if !opponent_can_capture_last_royal {
@@ -132,8 +127,9 @@ mod tests {
         let threatened = position(Color::White, &pieces);
         let mut position = position(Color::Black, &pieces);
 
-        assert!(can_capture_last_royal(&threatened));
-        assert!(can_capture_last_royal(&position));
+        let generator = MoveGenerator::standard();
+        assert!(can_capture_last_royal(&threatened, &generator));
+        assert!(can_capture_last_royal(&position, &generator));
         assert!(!is_mate(&mut position, &MoveGenerator::standard()));
     }
 
@@ -203,7 +199,10 @@ mod tests {
 
         assert!(moves.contains(&double_capture));
         assert!(captures_last_royal(&position, double_capture));
-        assert!(can_capture_last_royal(&position));
+        assert!(can_capture_last_royal(
+            &position,
+            &MoveGenerator::standard()
+        ));
     }
 
     #[test]

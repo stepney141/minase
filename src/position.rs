@@ -320,6 +320,19 @@ impl Position {
         self.zobrist ^= zobrist_keys().side_to_move;
     }
 
+    /// Clones the position with the requested side to move.
+    ///
+    /// The sen-jishi trigger is deliberately retained unchanged. Game-level
+    /// attack probing adopts that interpretation because it changes only whose
+    /// legal moves are being queried, not the preceding move's temporary state.
+    pub(crate) fn clone_with_side_to_move(&self, side_to_move: Color) -> Self {
+        let mut position = self.clone();
+        if position.side_to_move != side_to_move {
+            position.flip_side_to_move();
+        }
+        position
+    }
+
     pub(crate) fn recompute_zobrist(&self) -> u64 {
         let keys = zobrist_keys();
         Square::all()

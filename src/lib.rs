@@ -1,13 +1,10 @@
 #![forbid(unsafe_code)]
 
-#[allow(
-    dead_code,
-    reason = "these primitives are consumed by the planned Game adjudication type"
-)]
 mod adjudication;
 mod attacks;
 pub mod bitboard;
 pub mod direction;
+mod game;
 pub mod movegen;
 pub mod mv;
 pub mod piece;
@@ -17,6 +14,7 @@ pub mod square;
 
 pub use bitboard::Bitboard;
 pub use direction::Direction;
+pub use game::{DrawReason, Game, GameError, GameResult, GameStatus, WinReason};
 pub use movegen::{IllegalMove, MoveGenerator};
 pub use mv::{CapturedPiece, Move, Undo};
 pub use piece::{Color, PieceCode, PieceKind};

@@ -79,6 +79,12 @@ impl Rules {
         Self { codes: 0 }
     }
 
+    pub const fn engine_default() -> Self {
+        Self {
+            codes: RuleCode::R1.bit() | RuleCode::E2.bit(),
+        }
+    }
+
     pub fn from_codes(codes: &[RuleCode]) -> Result<Self, RulesError> {
         let mut adopted = 0_u16;
         for &code in codes {
@@ -99,8 +105,16 @@ impl Rules {
         }
 
         for &code in codes {
-            if code != RuleCode::L0 {
-                return Err(RulesError::Unsupported(code));
+            match code {
+                RuleCode::L0 | RuleCode::R1 | RuleCode::E1 | RuleCode::E2 => {}
+                RuleCode::L1
+                | RuleCode::L2
+                | RuleCode::L3
+                | RuleCode::P1
+                | RuleCode::P2
+                | RuleCode::P3
+                | RuleCode::P4
+                | RuleCode::R2 => return Err(RulesError::Unsupported(code)),
             }
         }
 
@@ -109,6 +123,18 @@ impl Rules {
 
     pub const fn contains(self, code: RuleCode) -> bool {
         self.codes & code.bit() != 0
+    }
+
+    pub const fn repetition_is_r1(self) -> bool {
+        self.contains(RuleCode::R1)
+    }
+
+    pub const fn mate_adjudication_enabled(self) -> bool {
+        !self.contains(RuleCode::E1)
+    }
+
+    pub const fn piece_exhaustion_disabled(self) -> bool {
+        self.contains(RuleCode::E2)
     }
 
     pub(crate) fn promotion_choice(
@@ -393,14 +419,23 @@ mod tests {
             Rules::from_codes(&[RuleCode::L0, RuleCode::L0]),
             Err(RulesError::Duplicate(RuleCode::L0)),
         );
-        for code in RuleCode::ALL
-            .into_iter()
-            .filter(|&code| code != RuleCode::L0)
-        {
+        for code in [
+            RuleCode::L1,
+            RuleCode::L2,
+            RuleCode::L3,
+            RuleCode::P1,
+            RuleCode::P2,
+            RuleCode::P3,
+            RuleCode::P4,
+            RuleCode::R2,
+        ] {
             assert_eq!(
                 Rules::from_codes(&[code]),
                 Err(RulesError::Unsupported(code)),
             );
+        }
+        for code in [RuleCode::R1, RuleCode::E1, RuleCode::E2] {
+            assert!(Rules::from_codes(&[code]).is_ok());
         }
     }
 
@@ -411,6 +446,17 @@ mod tests {
 
         assert!(!standard.contains(RuleCode::L0));
         assert!(explicit_l0.contains(RuleCode::L0));
+    }
+
+    #[test]
+    fn article_33_6_engine_default_is_standard_plus_r1_and_e2() {
+        let rules = Rules::engine_default();
+
+        assert!(rules.repetition_is_r1());
+        assert!(rules.mate_adjudication_enabled());
+        assert!(rules.piece_exhaustion_disabled());
+        assert!(!rules.contains(RuleCode::L0));
+        assert!(!rules.contains(RuleCode::E1));
     }
 
     #[test]
