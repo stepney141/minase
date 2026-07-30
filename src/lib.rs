@@ -1,5 +1,10 @@
 #![forbid(unsafe_code)]
 
+#[allow(
+    dead_code,
+    reason = "these primitives are consumed by the planned Game adjudication type"
+)]
+mod adjudication;
 mod attacks;
 pub mod bitboard;
 pub mod direction;
