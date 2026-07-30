@@ -1,9 +1,75 @@
 use core::fmt;
+use std::sync::OnceLock;
 
 use crate::bitboard::Bitboard;
 use crate::mv::{CapturedPiece, Move, Undo};
 use crate::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
-use crate::square::{BOARD_FILES, BOARD_RANKS, RAW_SQUARE_COUNT, Square};
+use crate::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
+
+const ZOBRIST_PIECE_CODE_COUNT: usize = COLOR_COUNT * PIECE_KIND_COUNT * 2;
+const ZOBRIST_SEED: u64 = 0x4d49_4e41_5345_5a31;
+
+struct XorShift64 {
+    state: u64,
+}
+
+impl XorShift64 {
+    fn new(seed: u64) -> Self {
+        assert_ne!(seed, 0);
+        Self { state: seed }
+    }
+
+    fn next(&mut self) -> u64 {
+        let mut value = self.state;
+        value ^= value << 13;
+        value ^= value >> 7;
+        value ^= value << 17;
+        self.state = value;
+        value
+    }
+}
+
+struct ZobristKeys {
+    pieces: Box<[u64]>,
+    side_to_move: u64,
+}
+
+impl ZobristKeys {
+    fn build() -> Self {
+        let mut rng = XorShift64::new(ZOBRIST_SEED);
+        let pieces = (0..BOARD_SQUARE_COUNT * ZOBRIST_PIECE_CODE_COUNT)
+            .map(|_| rng.next())
+            .collect();
+        let side_to_move = rng.next();
+        Self {
+            pieces,
+            side_to_move,
+        }
+    }
+
+    #[inline]
+    fn piece(&self, square: Square, piece: PieceCode) -> u64 {
+        let color = piece.color().expect("piece key requires a colored piece");
+        let kind = piece.kind().expect("piece key requires a valid piece kind");
+        let piece_code = (color.index() * PIECE_KIND_COUNT + kind.index()) * 2
+            + usize::from(piece.is_promoted());
+        self.pieces[square.dense_index() * ZOBRIST_PIECE_CODE_COUNT + piece_code]
+    }
+
+    #[inline]
+    fn side(&self, side_to_move: Color) -> u64 {
+        match side_to_move {
+            Color::Black => 0,
+            Color::White => self.side_to_move,
+        }
+    }
+}
+
+static ZOBRIST_KEYS: OnceLock<ZobristKeys> = OnceLock::new();
+
+fn zobrist_keys() -> &'static ZobristKeys {
+    ZOBRIST_KEYS.get_or_init(ZobristKeys::build)
+}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Position {
@@ -13,6 +79,7 @@ pub struct Position {
     by_kind: [[Bitboard; PIECE_KIND_COUNT]; COLOR_COUNT],
     side_to_move: Color,
     lion_taken_by_non_lion: Option<Square>,
+    zobrist: u64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -78,6 +145,7 @@ impl Position {
             by_kind: [[Bitboard::EMPTY; PIECE_KIND_COUNT]; COLOR_COUNT],
             side_to_move,
             lion_taken_by_non_lion: None,
+            zobrist: zobrist_keys().side(side_to_move),
         }
     }
 
@@ -183,6 +251,15 @@ impl Position {
         self.side_to_move
     }
 
+    /// Returns the board-and-side Zobrist hash.
+    ///
+    /// This hash excludes `lion_taken_by_non_lion`. Callers must compose the
+    /// applicable sen-jishi projection themselves when building a position key.
+    #[inline]
+    pub const fn zobrist(&self) -> u64 {
+        self.zobrist
+    }
+
     pub fn royal_pieces(&self, color: Color) -> Bitboard {
         self.pieces_of_kind(color, PieceKind::King)
             | self.pieces_of_kind(color, PieceKind::CrownPrince)
@@ -219,6 +296,7 @@ impl Position {
         self.occupied.set(square);
         self.by_color[color.index()].set(square);
         self.by_kind[color.index()][kind.index()].set(square);
+        self.zobrist ^= zobrist_keys().piece(square, piece);
         Ok(())
     }
 
@@ -232,7 +310,21 @@ impl Position {
         self.occupied.clear(square);
         self.by_color[color.index()].clear(square);
         self.by_kind[color.index()][kind.index()].clear(square);
+        self.zobrist ^= zobrist_keys().piece(square, piece);
         piece
+    }
+
+    #[inline]
+    fn flip_side_to_move(&mut self) {
+        self.side_to_move = self.side_to_move.opposite();
+        self.zobrist ^= zobrist_keys().side_to_move;
+    }
+
+    pub(crate) fn recompute_zobrist(&self) -> u64 {
+        let keys = zobrist_keys();
+        Square::all()
+            .filter_map(|square| self.piece_at(square).map(|piece| keys.piece(square, piece)))
+            .fold(keys.side(self.side_to_move), |hash, key| hash ^ key)
     }
 
     pub fn validate(&self) -> Result<(), PositionError> {
@@ -312,6 +404,7 @@ impl Position {
     }
 
     pub(crate) fn make_move_unchecked(&mut self, mv: Move) -> Undo {
+        let previous_zobrist = self.zobrist;
         let previous_lion_taken = self.lion_taken_by_non_lion;
         let capture_squares = self.captured_squares(mv);
         let moved_piece_before = self.remove_piece(mv.origin());
@@ -335,7 +428,7 @@ impl Position {
         };
         self.put_piece(mv.destination(), moved_piece_after)
             .expect("generated move must end on an empty square");
-        self.side_to_move = self.side_to_move.opposite();
+        self.flip_side_to_move();
         self.lion_taken_by_non_lion = (moved_piece_before.kind() != Some(PieceKind::Lion))
             .then(|| {
                 captured
@@ -352,11 +445,12 @@ impl Position {
             moved_piece_before,
             captured,
             previous_lion_taken,
+            previous_zobrist,
         }
     }
 
     pub(crate) fn unmake_move(&mut self, undo: Undo) {
-        self.side_to_move = self.side_to_move.opposite();
+        self.flip_side_to_move();
         self.remove_piece(undo.mv.destination());
         self.put_piece(undo.mv.origin(), undo.moved_piece_before)
             .expect("move origin must be empty while unmaking");
@@ -365,6 +459,8 @@ impl Position {
                 .expect("capture square must be empty while unmaking");
         }
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
+        debug_assert_eq!(self.zobrist, undo.previous_zobrist);
+        self.zobrist = undo.previous_zobrist;
     }
 }
 
@@ -383,10 +479,11 @@ impl PositionBuilder {
         self.position.put_piece(square, piece)
     }
 
-    pub fn finish(self) -> Result<Position, PositionBuildError> {
+    pub fn finish(mut self) -> Result<Position, PositionBuildError> {
         self.position
             .validate()
             .map_err(PositionBuildError::InvalidPosition)?;
+        self.position.zobrist = self.position.recompute_zobrist();
         Ok(self.position)
     }
 }
@@ -394,9 +491,14 @@ impl PositionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MoveGenerator;
 
     fn sq(file: u8, rank: u8) -> Square {
         Square::new(file, rank).unwrap()
+    }
+
+    fn assert_zobrist_matches(position: &Position) {
+        assert_eq!(position.zobrist(), position.recompute_zobrist());
     }
 
     fn position_with_pieces(
@@ -430,9 +532,16 @@ mod tests {
 
     #[test]
     fn empty_and_initial_positions_validate() {
-        assert!(Position::empty(Color::Black).validate().is_ok());
+        let black_empty = Position::empty(Color::Black);
+        let white_empty = Position::empty(Color::White);
+        assert!(black_empty.validate().is_ok());
+        assert!(white_empty.validate().is_ok());
+        assert_zobrist_matches(&black_empty);
+        assert_zobrist_matches(&white_empty);
+
         let initial = Position::initial();
         assert!(initial.validate().is_ok());
+        assert_zobrist_matches(&initial);
         assert_eq!(initial.pieces_of(Color::Black).popcount(), 46);
         assert_eq!(initial.pieces_of(Color::White).popcount(), 46);
         assert_eq!(initial.occupied().popcount(), 92);
@@ -663,6 +772,79 @@ mod tests {
     }
 
     #[test]
+    fn zobrist_distinguishes_side_to_move() {
+        let pieces = [
+            (sq(4, 4), Color::Black, PieceKind::King),
+            (sq(7, 7), Color::White, PieceKind::King),
+        ];
+        let black = position_with_pieces(Color::Black, &pieces);
+        let white = position_with_pieces(Color::White, &pieces);
+
+        assert_ne!(black.zobrist(), white.zobrist());
+        assert_zobrist_matches(&black);
+        assert_zobrist_matches(&white);
+    }
+
+    #[test]
+    fn zobrist_ignores_lion_taken_by_non_lion() {
+        let (with_trigger, captured_lion) = position_after_non_lion_captures_lion();
+        let without_trigger = position_with_pieces(
+            Color::White,
+            &[
+                (captured_lion, Color::Black, PieceKind::Bishop),
+                (sq(10, 10), Color::White, PieceKind::Pawn),
+            ],
+        );
+
+        assert_eq!(with_trigger.lion_taken_by_non_lion(), Some(captured_lion));
+        assert_eq!(without_trigger.lion_taken_by_non_lion(), None);
+        assert_ne!(with_trigger, without_trigger);
+        assert_eq!(with_trigger.zobrist(), without_trigger.zobrist());
+        assert_zobrist_matches(&with_trigger);
+        assert_zobrist_matches(&without_trigger);
+    }
+
+    #[test]
+    fn seeded_random_playouts_preserve_incremental_zobrist() {
+        let generator = MoveGenerator::standard();
+        let mut rng = XorShift64::new(0x5a4f_4252_4953_5401);
+
+        for game in 0..8 {
+            let mut position = Position::initial();
+            let initial = position.clone();
+            let mut history = Vec::new();
+
+            for ply in 0..64 {
+                let mut moves = Vec::new();
+                generator.generate_moves(&position, &mut moves);
+                if moves.is_empty() {
+                    break;
+                }
+                let mv = moves[rng.next() as usize % moves.len()];
+                let previous_zobrist = position.zobrist();
+                let undo = position.make_move_unchecked(mv);
+                assert_eq!(undo.previous_zobrist, previous_zobrist);
+                assert_zobrist_matches(&position);
+                history.push((undo, previous_zobrist));
+                assert_eq!(position.validate(), Ok(()), "game={game}, ply={ply}");
+            }
+
+            while let Some((undo, previous_zobrist)) = history.pop() {
+                position.unmake_move(undo);
+                assert_eq!(position.zobrist(), previous_zobrist);
+                assert_zobrist_matches(&position);
+                assert_eq!(
+                    position.validate(),
+                    Ok(()),
+                    "game={game}, unmade ply={}",
+                    history.len()
+                );
+            }
+            assert_eq!(position, initial, "game={game}");
+        }
+    }
+
+    #[test]
     fn builder_rejects_double_placement() {
         let square = Square::new(4, 4).unwrap();
         let mut builder = PositionBuilder::new(Color::Black);
@@ -691,11 +873,13 @@ mod tests {
                 .put_piece(square, PieceCode::new(color, kind))
                 .unwrap();
             assert!(position.validate().is_ok());
+            assert_zobrist_matches(&position);
         }
 
         for square in Square::all().collect::<Vec<_>>().into_iter().rev() {
             position.remove_piece(square);
             assert!(position.validate().is_ok());
+            assert_zobrist_matches(&position);
         }
         assert_eq!(position, empty);
     }
@@ -721,12 +905,15 @@ mod tests {
                     Color::White
                 };
                 let kind = PieceKind::ALL[(state as usize / 2) % PIECE_KIND_COUNT];
-                position
-                    .put_piece(square, PieceCode::new(color, kind))
-                    .unwrap();
+                let piece = match PieceCode::new_promoted(color, kind) {
+                    Some(promoted) if state & 2 != 0 => promoted,
+                    _ => PieceCode::new(color, kind),
+                };
+                position.put_piece(square, piece).unwrap();
             }
             present[dense] = !present[dense];
             assert!(position.validate().is_ok());
+            assert_zobrist_matches(&position);
         }
     }
 }

@@ -72,4 +72,5 @@ pub struct Undo {
     pub(crate) moved_piece_before: PieceCode,
     pub(crate) captured: [Option<CapturedPiece>; 2],
     pub(crate) previous_lion_taken: Option<Square>,
+    pub(crate) previous_zobrist: u64,
 }
