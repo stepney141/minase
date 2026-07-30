@@ -347,7 +347,6 @@ impl Position {
             })
             .flatten();
 
-        debug_assert!(self.validate().is_ok());
         Undo {
             mv,
             moved_piece_before,
@@ -366,7 +365,6 @@ impl Position {
                 .expect("capture square must be empty while unmaking");
         }
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
-        debug_assert!(self.validate().is_ok());
     }
 }
 

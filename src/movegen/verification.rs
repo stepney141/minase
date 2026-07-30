@@ -193,6 +193,84 @@ fn shogiops_perft_composite_lion_rules() {
     );
 }
 
+#[test]
+fn self_generated_perft_initial_deeper_depths() {
+    let generator = MoveGenerator::standard();
+
+    // These are self-generated regression values, not external references.
+    assert_eq!(perft(&generator, Position::initial(), 3), 52_599);
+    assert_eq!(perft(&generator, Position::initial(), 4), 2_134_748);
+}
+
+#[test]
+fn self_generated_perft_single_lion_variants_depth_2() {
+    let generator = MoveGenerator::standard();
+
+    // These are self-generated regression values, not external references.
+    assert_eq!(
+        perft(
+            &generator,
+            parse_sfen("12/12/12/12/12/12/5N6/12/12/12/12/12 b"),
+            2,
+        ),
+        0
+    );
+    assert_eq!(
+        perft(
+            &generator,
+            parse_sfen("12/12/12/12/12/12/5+O6/12/12/12/12/12 b"),
+            2,
+        ),
+        0
+    );
+}
+
+#[test]
+fn self_generated_perft_single_lion_like_pieces_depth_2() {
+    let generator = MoveGenerator::standard();
+
+    // These are self-generated regression values, not external references.
+    assert_eq!(
+        perft(
+            &generator,
+            parse_sfen("12/12/12/12/12/12/5+H6/12/12/12/12/12 b"),
+            2,
+        ),
+        0
+    );
+    assert_eq!(
+        perft(
+            &generator,
+            parse_sfen("12/12/12/12/12/12/5+D6/12/12/12/12/12 b"),
+            2,
+        ),
+        0
+    );
+}
+
+#[test]
+fn self_generated_perft_composite_lion_rules_depth_2() {
+    let generator = MoveGenerator::standard();
+
+    // These are self-generated regression values, not external references.
+    assert_eq!(
+        perft(
+            &generator,
+            parse_sfen("12/12/12/12/7g4/6n5/5N6/12/12/12/12/12 b"),
+            2,
+        ),
+        6_380
+    );
+    assert_eq!(
+        perft(
+            &generator,
+            parse_sfen("12/12/12/12/4B2l4/4S7/5N6/7n4/12/12/12/12 b"),
+            2,
+        ),
+        8_632
+    );
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct ReferenceBoard {
     squares: [Option<PieceCode>; BOARD_SQUARE_COUNT],
@@ -900,6 +978,7 @@ fn random_senjishi_position(rng: &mut XorShift64) -> Position {
         to: sq(1, 1),
         promote: false,
     });
+    assert_eq!(position.validate(), Ok(()));
     assert!(position.lion_taken_by_non_lion().is_some());
     position
 }
@@ -1034,6 +1113,7 @@ fn lion_duel_position(
             to: sq(11, 11),
             promote: false,
         });
+        assert_eq!(position.validate(), Ok(()));
         assert_eq!(position.side_to_move(), Color::White);
         assert!(position.lion_taken_by_non_lion().is_some());
     }
@@ -1171,6 +1251,7 @@ fn seeded_random_moves_round_trip_validate_and_are_unique() {
             let undo = position.make_move_unchecked(mv);
             assert_eq!(position.validate(), Ok(()), "move={mv:?}");
             position.unmake_move(undo);
+            assert_eq!(position.validate(), Ok(()), "unmade move={mv:?}");
             assert_eq!(position, before, "move={mv:?}");
         }
     }
@@ -1194,6 +1275,12 @@ fn seeded_random_playout_unmakes_to_initial_position() {
     }
     while let Some(undo) = history.pop() {
         position.unmake_move(undo);
+        assert_eq!(
+            position.validate(),
+            Ok(()),
+            "invalid position while unmaking ply {}",
+            history.len()
+        );
     }
     assert_eq!(position, initial);
 }
