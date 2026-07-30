@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-pub mod attacks;
+mod attacks;
 pub mod bitboard;
 pub mod direction;
 pub mod movegen;
@@ -10,7 +10,6 @@ pub mod position;
 pub mod rules;
 pub mod square;
 
-pub use attacks::{AttackTables, attack_tables};
 pub use bitboard::Bitboard;
 pub use direction::Direction;
 pub use movegen::{IllegalMove, MoveGenerator};

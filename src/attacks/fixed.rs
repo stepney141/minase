@@ -2,28 +2,28 @@ use crate::direction::Direction;
 use crate::piece::{Color, PieceKind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MovementProfileId(u8);
+pub(crate) struct MovementProfileId(u8);
 
 impl MovementProfileId {
     #[inline]
-    pub const fn index(self) -> usize {
+    pub(crate) const fn index(self) -> usize {
         self.0 as usize
     }
 
-    pub(crate) const fn from_index(index: usize) -> Self {
+    const fn from_index(index: usize) -> Self {
         debug_assert!(index < MOVEMENT_PROFILE_COUNT);
         Self(index as u8)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct RelativeDelta {
-    pub file: i8,
-    pub rank: i8,
+pub(crate) struct RelativeDelta {
+    file: i8,
+    rank: i8,
 }
 
 impl RelativeDelta {
-    pub const fn for_color(self, color: Color) -> (i8, i8) {
+    pub(crate) const fn for_color(self, color: Color) -> (i8, i8) {
         match color {
             Color::Black => (self.file, self.rank),
             Color::White => (-self.file, -self.rank),
@@ -33,7 +33,7 @@ impl RelativeDelta {
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum RelativeDirection {
+pub(crate) enum RelativeDirection {
     Forward,
     Backward,
     Right,
@@ -45,7 +45,8 @@ pub enum RelativeDirection {
 }
 
 impl RelativeDirection {
-    pub const ALL: [Self; 8] = [
+    #[cfg(test)]
+    const ALL: [Self; 8] = [
         Self::Forward,
         Self::Backward,
         Self::Right,
@@ -56,7 +57,7 @@ impl RelativeDirection {
         Self::BackwardLeft,
     ];
 
-    pub const fn for_color(self, color: Color) -> Direction {
+    pub(crate) const fn for_color(self, color: Color) -> Direction {
         match (self, color) {
             (Self::Forward, Color::Black) | (Self::Backward, Color::White) => Direction::North,
             (Self::Backward, Color::Black) | (Self::Forward, Color::White) => Direction::South,
@@ -79,34 +80,28 @@ impl RelativeDirection {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct SlideSpec {
-    pub direction: RelativeDirection,
-    pub max_steps: Option<u8>,
+pub(crate) struct SlideSpec {
+    pub(crate) direction: RelativeDirection,
+    pub(crate) max_steps: Option<u8>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct LionLikeProfile {
-    pub directions: &'static [RelativeDirection],
+pub(crate) struct LionLikeProfile {
+    pub(crate) directions: &'static [RelativeDirection],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct JumpingGeneralProfile {
-    pub directions: &'static [RelativeDirection],
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum SpecialMovement {
+pub(crate) enum SpecialMovement {
     None,
     Lion,
     LionLike(LionLikeProfile),
-    JumpingGeneral(JumpingGeneralProfile),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct MovementProfile {
-    pub fixed_deltas: &'static [RelativeDelta],
-    pub slides: &'static [SlideSpec],
-    pub special: SpecialMovement,
+pub(crate) struct MovementProfile {
+    pub(crate) fixed_deltas: &'static [RelativeDelta],
+    pub(crate) slides: &'static [SlideSpec],
+    pub(crate) special: SpecialMovement,
 }
 
 const fn delta(file: i8, rank: i8) -> RelativeDelta {
@@ -301,7 +296,7 @@ const fn profile(
     }
 }
 
-pub const MOVEMENT_PROFILE_COUNT: usize = 28;
+pub(crate) const MOVEMENT_PROFILE_COUNT: usize = 28;
 
 const PROFILES: [MovementProfile; MOVEMENT_PROFILE_COUNT] = [
     profile(PAWN, EMPTY_SLIDES, SpecialMovement::None),
@@ -350,7 +345,7 @@ const PROFILES: [MovementProfile; MOVEMENT_PROFILE_COUNT] = [
     ),
 ];
 
-pub const fn movement_profile(kind: PieceKind) -> MovementProfileId {
+pub(crate) const fn movement_profile(kind: PieceKind) -> MovementProfileId {
     let index = match kind {
         PieceKind::Pawn => 0,
         PieceKind::GoBetween => 1,
@@ -385,11 +380,11 @@ pub const fn movement_profile(kind: PieceKind) -> MovementProfileId {
 }
 
 #[inline]
-pub const fn movement_profile_data(profile: MovementProfileId) -> &'static MovementProfile {
+pub(crate) const fn movement_profile_data(profile: MovementProfileId) -> &'static MovementProfile {
     &PROFILES[profile.index()]
 }
 
-pub fn all_profiles() -> impl ExactSizeIterator<Item = MovementProfileId> {
+pub(crate) fn all_profiles() -> impl ExactSizeIterator<Item = MovementProfileId> {
     (0..MOVEMENT_PROFILE_COUNT).map(MovementProfileId::from_index)
 }
 

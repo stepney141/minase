@@ -8,14 +8,14 @@ use crate::square::{BOARD_RANKS, RAW_SQUARE_COUNT, Square};
 use super::fixed::{
     MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile_data,
 };
-use super::sliding::{RayTable, build_ray_table, ray_control};
+use super::sliding::{RayTable, build_ray_table};
 
-pub type FixedAttackTable = Box<[Bitboard]>;
+type FixedAttackTable = Box<[Bitboard]>;
 
 const RANGE_COUNT: usize = BOARD_RANKS as usize;
-pub type RangeMaskTable = Box<[Bitboard]>;
+type RangeMaskTable = Box<[Bitboard]>;
 
-pub struct AttackTables {
+pub(crate) struct AttackTables {
     rays: Box<RayTable>,
     fixed: FixedAttackTable,
     range_masks: RangeMaskTable,
@@ -23,7 +23,7 @@ pub struct AttackTables {
 }
 
 impl AttackTables {
-    pub fn build() -> Self {
+    fn build() -> Self {
         let rays = Box::new(build_ray_table());
         let mut fixed =
             vec![Bitboard::EMPTY; COLOR_COUNT * MOVEMENT_PROFILE_COUNT * RAW_SQUARE_COUNT]
@@ -95,12 +95,12 @@ impl AttackTables {
     }
 
     #[inline]
-    pub fn fixed(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
+    pub(crate) fn fixed(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
         self.fixed[Self::fixed_index(color, profile, from)]
     }
 
     #[inline]
-    pub fn king_steps(&self, from: Square) -> Bitboard {
+    pub(crate) fn king_steps(&self, from: Square) -> Bitboard {
         self.fixed(
             Color::Black,
             super::fixed::movement_profile(crate::piece::PieceKind::King),
@@ -109,16 +109,16 @@ impl AttackTables {
     }
 
     #[inline]
-    pub fn lion_jumps(&self, from: Square) -> Bitboard {
+    pub(crate) fn lion_jumps(&self, from: Square) -> Bitboard {
         self.lion_jumps[from.raw_index()]
     }
 
     #[inline]
-    pub fn ray(&self, from: Square, direction: Direction) -> Bitboard {
+    fn ray(&self, from: Square, direction: Direction) -> Bitboard {
         self.rays[direction.index()][from.raw_index()]
     }
 
-    pub fn sliding_control(
+    pub(crate) fn sliding_control(
         &self,
         from: Square,
         direction: Direction,
@@ -145,35 +145,18 @@ impl AttackTables {
             Some(blocker) => candidates & !self.rays[direction.index()][blocker.raw_index()],
         }
     }
-
-    #[inline]
-    pub fn ray_control(&self, from: Square, direction: Direction, occupied: Bitboard) -> Bitboard {
-        ray_control(&self.rays, from, direction, occupied)
-    }
-
-    #[inline]
-    pub fn sliding_destinations(
-        &self,
-        from: Square,
-        direction: Direction,
-        max_steps: Option<u8>,
-        occupied: Bitboard,
-        own_pieces: Bitboard,
-    ) -> Bitboard {
-        self.sliding_control(from, direction, max_steps, occupied) & !own_pieces
-    }
 }
 
 static ATTACK_TABLES: OnceLock<AttackTables> = OnceLock::new();
 
-pub fn attack_tables() -> &'static AttackTables {
+pub(crate) fn attack_tables() -> &'static AttackTables {
     ATTACK_TABLES.get_or_init(AttackTables::build)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::attacks::{RelativeDelta, movement_profile};
+    use crate::attacks::movement_profile;
     use crate::piece::PieceKind;
 
     #[test]
@@ -208,7 +191,5 @@ mod tests {
             actual,
             Bitboard::from_squares([Square::new(4, 5).unwrap(), blocker,])
         );
-
-        let _ = RelativeDelta { file: 0, rank: 0 };
     }
 }

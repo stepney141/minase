@@ -49,7 +49,7 @@ pub(super) fn piece_control_with_occupancy(
     }
 
     match profile.special {
-        SpecialMovement::None | SpecialMovement::JumpingGeneral(_) => {}
+        SpecialMovement::None => {}
         SpecialMovement::Lion => {
             result |= tables.king_steps(from) | tables.lion_jumps(from);
         }
@@ -69,7 +69,7 @@ pub(super) fn piece_control_with_occupancy(
 }
 
 fn push_with_promotion(
-    generator: &MoveGenerator<'_>,
+    generator: &MoveGenerator,
     position: &Position,
     moving_kind: PieceKind,
     base: Move,
@@ -84,9 +84,6 @@ fn push_with_promotion(
         .promotion_choice(position, &base, moving_kind)
     {
         PromotionChoice::NoPromotion => output.push(base),
-        PromotionChoice::PromotionRequired => {
-            output.push(promoting_variant(base));
-        }
         PromotionChoice::PromotionOptional => {
             output.push(base);
             output.push(promoting_variant(base));
@@ -95,7 +92,7 @@ fn push_with_promotion(
 }
 
 pub(super) fn generate_moves(
-    generator: &MoveGenerator<'_>,
+    generator: &MoveGenerator,
     position: &Position,
     output: &mut Vec<Move>,
 ) {
@@ -119,7 +116,7 @@ pub(super) fn generate_moves(
             }
 
             match profile.special {
-                SpecialMovement::None | SpecialMovement::JumpingGeneral(_) => {}
+                SpecialMovement::None => {}
                 SpecialMovement::Lion => {
                     lion::generate_lion_double_and_jumps(
                         generator.tables(),
@@ -153,7 +150,7 @@ fn special_step_destinations(
     special: SpecialMovement,
 ) -> Bitboard {
     match special {
-        SpecialMovement::None | SpecialMovement::JumpingGeneral(_) => Bitboard::EMPTY,
+        SpecialMovement::None => Bitboard::EMPTY,
         SpecialMovement::Lion => tables.king_steps(from),
         SpecialMovement::LionLike(profile) => {
             let mut destinations = Bitboard::EMPTY;
@@ -192,7 +189,7 @@ fn piece_control_without_special(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::attacks::{RelativeDirection, SpecialMovement, attack_tables};
+    use crate::attacks::{SpecialMovement, attack_tables};
     use crate::direction::step_square;
     use crate::piece::PieceCode;
     use crate::position::PositionBuilder;
@@ -230,7 +227,7 @@ mod tests {
         }
 
         match profile.special {
-            SpecialMovement::None | SpecialMovement::JumpingGeneral(_) => {}
+            SpecialMovement::None => {}
             SpecialMovement::Lion => {
                 for file in -2_i8..=2 {
                     for rank in -2_i8..=2 {
@@ -335,8 +332,6 @@ mod tests {
             to,
             promote: true,
         }));
-
-        let _ = RelativeDirection::Forward;
     }
 
     #[test]

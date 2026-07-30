@@ -89,7 +89,7 @@ fn parse_sfen(sfen: &str) -> Position {
     builder.finish().unwrap()
 }
 
-fn perft(generator: &MoveGenerator<'_>, mut position: Position, depth: u32) -> u64 {
+fn perft(generator: &MoveGenerator, mut position: Position, depth: u32) -> u64 {
     generator.perft(&mut position, depth)
 }
 

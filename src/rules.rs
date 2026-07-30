@@ -188,7 +188,6 @@ impl Rules {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum PromotionChoice {
     NoPromotion,
-    PromotionRequired,
     PromotionOptional,
 }
 

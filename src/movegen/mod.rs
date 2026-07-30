@@ -16,27 +16,21 @@ use crate::square::Square;
 
 pub use legal::IllegalMove;
 
-pub struct MoveGenerator<'a> {
-    tables: &'a AttackTables,
+pub struct MoveGenerator {
+    tables: &'static AttackTables,
     rules: Rules,
 }
 
-impl MoveGenerator<'static> {
+impl MoveGenerator {
     pub fn standard() -> Self {
         Self::new(Rules::standard())
     }
-}
 
-impl<'a> MoveGenerator<'a> {
     pub fn new(rules: Rules) -> Self {
         Self {
             tables: attack_tables(),
             rules,
         }
-    }
-
-    pub fn with_tables(tables: &'a AttackTables, rules: Rules) -> Self {
-        Self { tables, rules }
     }
 
     pub fn generate_moves(&self, position: &Position, output: &mut Vec<Move>) {

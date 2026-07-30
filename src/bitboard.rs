@@ -1,11 +1,7 @@
 use core::iter::FusedIterator;
-use core::ops::{
-    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
-    ShrAssign,
-};
+use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
-use crate::direction::Direction;
-use crate::square::{BOARD_RANKS, RAW_SQUARE_COUNT, Square};
+use crate::square::Square;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
@@ -34,11 +30,6 @@ impl Bitboard {
     }
 
     #[inline]
-    pub const fn into_words(self) -> [u64; 3] {
-        self.0
-    }
-
-    #[inline]
     pub fn from_square(square: Square) -> Self {
         let raw = square.raw_index();
         let mut words = [0; 3];
@@ -60,20 +51,8 @@ impl Bitboard {
     }
 
     #[inline]
-    pub const fn any(self) -> bool {
-        !self.is_empty()
-    }
-
-    #[inline]
     pub const fn intersects(self, other: Self) -> bool {
         ((self.0[0] & other.0[0]) | (self.0[1] & other.0[1]) | (self.0[2] & other.0[2])) != 0
-    }
-
-    #[inline]
-    pub const fn is_subset_of(self, other: Self) -> bool {
-        (self.0[0] & !other.0[0]) == 0
-            && (self.0[1] & !other.0[1]) == 0
-            && (self.0[2] & !other.0[2]) == 0
     }
 
     #[inline]
@@ -92,12 +71,6 @@ impl Bitboard {
     pub fn clear(&mut self, square: Square) {
         let raw = square.raw_index();
         self.0[raw / 64] &= !(1_u64 << (raw % 64));
-    }
-
-    #[inline]
-    pub fn toggle(&mut self, square: Square) {
-        let raw = square.raw_index();
-        self.0[raw / 64] ^= 1_u64 << (raw % 64);
     }
 
     #[inline]
@@ -159,111 +132,6 @@ impl Bitboard {
     pub fn iter(self) -> SquareIter {
         SquareIter { remaining: self }
     }
-
-    #[inline]
-    pub fn rank_bits(self, rank: u8) -> Option<u16> {
-        if rank >= BOARD_RANKS {
-            return None;
-        }
-        let word = usize::from(rank / 4);
-        let shift = usize::from((rank % 4) * 16);
-        Some(((self.0[word] >> shift) & 0x0fff) as u16)
-    }
-
-    pub fn shift_left(self, bits: usize) -> Self {
-        if bits >= RAW_SQUARE_COUNT {
-            return Self::EMPTY;
-        }
-        let word_shift = bits / 64;
-        let bit_shift = bits % 64;
-        let mut result = [0; 3];
-
-        for (destination, result_word) in result.iter_mut().enumerate().skip(word_shift) {
-            let source = destination - word_shift;
-            *result_word |= self.0[source] << bit_shift;
-            if bit_shift != 0 && source > 0 {
-                *result_word |= self.0[source - 1] >> (64 - bit_shift);
-            }
-        }
-        Self::from_words(result)
-    }
-
-    pub fn shift_right(self, bits: usize) -> Self {
-        if bits >= RAW_SQUARE_COUNT {
-            return Self::EMPTY;
-        }
-        let word_shift = bits / 64;
-        let bit_shift = bits % 64;
-        let mut result = [0; 3];
-
-        for (destination, result_word) in result.iter_mut().enumerate().take(3 - word_shift) {
-            let source = destination + word_shift;
-            *result_word |= self.0[source] >> bit_shift;
-            if bit_shift != 0 && source + 1 < 3 {
-                *result_word |= self.0[source + 1] << (64 - bit_shift);
-            }
-        }
-        Self::from_words(result)
-    }
-
-    #[inline]
-    pub fn east(self) -> Self {
-        self.shift_left(1)
-    }
-
-    #[inline]
-    pub fn west(self) -> Self {
-        self.shift_right(1)
-    }
-
-    #[inline]
-    pub fn north(self) -> Self {
-        self.shift_left(16)
-    }
-
-    #[inline]
-    pub fn south(self) -> Self {
-        self.shift_right(16)
-    }
-
-    #[inline]
-    pub fn north_east(self) -> Self {
-        self.shift_left(17)
-    }
-
-    #[inline]
-    pub fn north_west(self) -> Self {
-        self.shift_left(15)
-    }
-
-    #[inline]
-    pub fn south_east(self) -> Self {
-        self.shift_right(15)
-    }
-
-    #[inline]
-    pub fn south_west(self) -> Self {
-        self.shift_right(17)
-    }
-
-    #[inline]
-    pub fn shift(self, direction: Direction) -> Self {
-        match direction {
-            Direction::East => self.east(),
-            Direction::West => self.west(),
-            Direction::North => self.north(),
-            Direction::South => self.south(),
-            Direction::NorthEast => self.north_east(),
-            Direction::NorthWest => self.north_west(),
-            Direction::SouthEast => self.south_east(),
-            Direction::SouthWest => self.south_west(),
-        }
-    }
-
-    #[inline]
-    pub fn without(self, other: Self) -> Self {
-        self & !other
-    }
 }
 
 impl BitAnd for Bitboard {
@@ -324,32 +192,6 @@ impl Not for Bitboard {
     }
 }
 
-impl Shl<usize> for Bitboard {
-    type Output = Self;
-    fn shl(self, rhs: usize) -> Self {
-        self.shift_left(rhs)
-    }
-}
-
-impl ShlAssign<usize> for Bitboard {
-    fn shl_assign(&mut self, rhs: usize) {
-        *self = self.shift_left(rhs);
-    }
-}
-
-impl Shr<usize> for Bitboard {
-    type Output = Self;
-    fn shr(self, rhs: usize) -> Self {
-        self.shift_right(rhs)
-    }
-}
-
-impl ShrAssign<usize> for Bitboard {
-    fn shr_assign(&mut self, rhs: usize) {
-        *self = self.shift_right(rhs);
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct SquareIter {
     remaining: Bitboard,
@@ -399,10 +241,6 @@ impl IntoIterator for &Bitboard {
 mod tests {
     use super::*;
 
-    fn sq(file: u8, rank: u8) -> Square {
-        Square::new(file, rank).unwrap()
-    }
-
     #[test]
     fn all_public_construction_masks_padding() {
         assert_eq!(core::mem::size_of::<Bitboard>(), 24);
@@ -418,7 +256,7 @@ mod tests {
             let mut board = Bitboard::EMPTY;
             board.set(square);
             assert!(board.contains(square));
-            board.toggle(square);
+            board ^= Bitboard::from_square(square);
             assert!(board.is_empty());
             board.set(square);
             board.clear(square);
@@ -427,47 +265,9 @@ mod tests {
     }
 
     #[test]
-    fn direction_shifts_cross_words_without_wrapping() {
-        for rank in [3, 7] {
-            assert_eq!(
-                Bitboard::from_square(sq(5, rank)).north(),
-                Bitboard::from_square(sq(5, rank + 1))
-            );
-        }
-
-        for rank in [4, 8] {
-            assert_eq!(
-                Bitboard::from_square(sq(5, rank)).south(),
-                Bitboard::from_square(sq(5, rank - 1))
-            );
-        }
-
-        for rank in 0..12 {
-            assert!(Bitboard::from_square(sq(11, rank)).east().is_empty());
-            assert!(Bitboard::from_square(sq(0, rank)).west().is_empty());
-        }
-    }
-
-    #[test]
     fn iteration_is_complete_and_ordered() {
         let squares: Vec<_> = Bitboard::FULL.iter().collect();
         assert_eq!(squares.len(), 144);
         assert!(squares.windows(2).all(|pair| pair[0] < pair[1]));
-    }
-
-    #[test]
-    fn every_direction_shift_matches_coordinate_offsets() {
-        for square in Square::all() {
-            for direction in Direction::ALL {
-                let expected = square
-                    .offset(direction.file_delta(), direction.rank_delta())
-                    .map_or(Bitboard::EMPTY, Bitboard::from_square);
-                assert_eq!(
-                    Bitboard::from_square(square).shift(direction),
-                    expected,
-                    "square={square:?}, direction={direction:?}",
-                );
-            }
-        }
     }
 }

@@ -20,7 +20,7 @@ impl Position {
     pub fn try_make_move(
         &mut self,
         mv: Move,
-        generator: &MoveGenerator<'_>,
+        generator: &MoveGenerator,
     ) -> Result<crate::Undo, IllegalMove> {
         let mut moves = Vec::new();
         generator.generate_moves(self, &mut moves);
