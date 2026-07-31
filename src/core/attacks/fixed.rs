@@ -1,5 +1,5 @@
-use crate::direction::Direction;
-use crate::piece::{Color, PieceKind};
+use crate::core::direction::Direction;
+use crate::core::piece::{Color, PieceKind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct MovementProfileId(u8);

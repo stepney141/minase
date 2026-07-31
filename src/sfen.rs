@@ -1,8 +1,8 @@
 use core::fmt;
 
-use crate::piece::{Color, PieceCode, PieceKind};
-use crate::position::{Position, PositionBuildError, PositionBuilder};
-use crate::square::{BOARD_FILES, BOARD_RANKS, Square};
+use crate::core::piece::{Color, PieceCode, PieceKind};
+use crate::core::position::{Position, PositionBuildError, PositionBuilder};
+use crate::core::square::{BOARD_FILES, BOARD_RANKS, Square};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SfenError {

@@ -1,4 +1,4 @@
-use crate::square::Square;
+use crate::core::square::Square;
 
 pub const DIRECTION_COUNT: usize = 8;
 

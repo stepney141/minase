@@ -1,6 +1,6 @@
-use crate::piece::{Color, PieceCode, PieceKind};
-use crate::position::{Position, PositionBuilder};
-use crate::square::Square;
+use crate::core::piece::{Color, PieceCode, PieceKind};
+use crate::core::position::{Position, PositionBuilder};
+use crate::core::square::Square;
 
 pub(crate) fn sq(file: u8, rank: u8) -> Square {
     Square::new(file, rank).unwrap()

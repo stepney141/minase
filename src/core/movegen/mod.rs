@@ -3,17 +3,17 @@ mod tests;
 
 use core::fmt;
 
-use crate::attacks::{
+use crate::core::attacks::{
     AttackTables, LionLikeProfile, SpecialMovement, attack_tables, movement_profile,
     movement_profile_data,
 };
-use crate::bitboard::Bitboard;
-use crate::direction::step_square;
-use crate::mv::Move;
-use crate::piece::{Color, PieceKind};
-use crate::position::Position;
-use crate::rules::{PromotionChoice, Rules};
-use crate::square::Square;
+use crate::core::bitboard::Bitboard;
+use crate::core::direction::step_square;
+use crate::core::mv::Move;
+use crate::core::piece::{Color, PieceKind};
+use crate::core::position::Position;
+use crate::core::rules::{PromotionChoice, Rules};
+use crate::core::square::Square;
 
 pub struct MoveGenerator {
     tables: &'static AttackTables,
@@ -88,9 +88,9 @@ fn piece_control_with_tables(
         SpecialMovement::LionLike(lion_like) => {
             for direction in lion_like.directions {
                 let direction = direction.for_color(color);
-                if let Some(first) = crate::direction::step_square(from, direction) {
+                if let Some(first) = crate::core::direction::step_square(from, direction) {
                     result.set(first);
-                    if let Some(second) = crate::direction::step_square(first, direction) {
+                    if let Some(second) = crate::core::direction::step_square(first, direction) {
                         result.set(second);
                     }
                 }
@@ -184,7 +184,8 @@ fn special_step_destinations(
         SpecialMovement::LionLike(profile) => {
             let mut destinations = Bitboard::EMPTY;
             for relative in profile.directions {
-                if let Some(first) = crate::direction::step_square(from, relative.for_color(color))
+                if let Some(first) =
+                    crate::core::direction::step_square(from, relative.for_color(color))
                 {
                     destinations.set(first);
                 }

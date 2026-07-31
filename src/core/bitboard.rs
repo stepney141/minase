@@ -1,7 +1,7 @@
 use core::iter::FusedIterator;
 use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
-use crate::square::Square;
+use crate::core::square::Square;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]

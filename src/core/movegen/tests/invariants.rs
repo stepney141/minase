@@ -3,14 +3,16 @@ use std::collections::HashSet;
 use super::super::{
     IllegalMove, MoveGenerator, generate_lion_double_and_jumps, piece_control_with_tables,
 };
-use crate::attacks::{SpecialMovement, attack_tables, movement_profile, movement_profile_data};
-use crate::bitboard::Bitboard;
-use crate::direction::step_square;
-use crate::mv::Move;
-use crate::piece::{Color, PieceCode, PieceKind};
-use crate::position::{Position, PositionBuilder};
-use crate::rules::Rules;
-use crate::square::{BOARD_SQUARE_COUNT, Square};
+use crate::core::attacks::{
+    SpecialMovement, attack_tables, movement_profile, movement_profile_data,
+};
+use crate::core::bitboard::Bitboard;
+use crate::core::direction::step_square;
+use crate::core::mv::Move;
+use crate::core::piece::{Color, PieceCode, PieceKind};
+use crate::core::position::{Position, PositionBuilder};
+use crate::core::rules::Rules;
+use crate::core::square::{BOARD_SQUARE_COUNT, Square};
 use crate::test_util::sq;
 
 struct XorShift64 {

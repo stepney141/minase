@@ -1,6 +1,6 @@
-use crate::bitboard::Bitboard;
-use crate::direction::{DIRECTION_COUNT, Direction, step_square};
-use crate::square::{RAW_SQUARE_COUNT, Square};
+use crate::core::bitboard::Bitboard;
+use crate::core::direction::{DIRECTION_COUNT, Direction, step_square};
+use crate::core::square::{RAW_SQUARE_COUNT, Square};
 
 pub(crate) type RayTable = [[Bitboard; RAW_SQUARE_COUNT]; DIRECTION_COUNT];
 

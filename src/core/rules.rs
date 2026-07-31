@@ -1,11 +1,11 @@
 use core::fmt;
 
-use crate::bitboard::Bitboard;
-use crate::movegen::piece_control_with_occupancy;
-use crate::mv::Move;
-use crate::piece::{Color, PieceKind};
-use crate::position::Position;
-use crate::square::{BOARD_RANKS, Square};
+use crate::core::bitboard::Bitboard;
+use crate::core::movegen::piece_control_with_occupancy;
+use crate::core::mv::Move;
+use crate::core::piece::{Color, PieceKind};
+use crate::core::position::Position;
+use crate::core::square::{BOARD_RANKS, Square};
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -365,9 +365,9 @@ fn square_is_controlled(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::movegen::MoveGenerator;
-    use crate::piece::PieceCode;
-    use crate::position::PositionBuilder;
+    use crate::core::movegen::MoveGenerator;
+    use crate::core::piece::PieceCode;
+    use crate::core::position::PositionBuilder;
     use crate::test_util::{position, sq};
 
     fn is_generated(position: &Position, expected: Move) -> bool {

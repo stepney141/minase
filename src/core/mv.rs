@@ -1,5 +1,5 @@
-use crate::piece::PieceCode;
-use crate::square::Square;
+use crate::core::piece::PieceCode;
+use crate::core::square::Square;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Move {

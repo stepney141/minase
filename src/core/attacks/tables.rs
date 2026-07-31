@@ -1,9 +1,9 @@
 use std::sync::OnceLock;
 
-use crate::bitboard::Bitboard;
-use crate::direction::{DIRECTION_COUNT, Direction, step_square};
-use crate::piece::{COLOR_COUNT, Color};
-use crate::square::{BOARD_RANKS, RAW_SQUARE_COUNT, Square};
+use crate::core::bitboard::Bitboard;
+use crate::core::direction::{DIRECTION_COUNT, Direction, step_square};
+use crate::core::piece::{COLOR_COUNT, Color};
+use crate::core::square::{BOARD_RANKS, RAW_SQUARE_COUNT, Square};
 
 use super::fixed::{
     MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile_data,
@@ -103,7 +103,7 @@ impl AttackTables {
     pub(crate) fn king_steps(&self, from: Square) -> Bitboard {
         self.fixed(
             Color::Black,
-            super::fixed::movement_profile(crate::piece::PieceKind::King),
+            super::fixed::movement_profile(crate::core::piece::PieceKind::King),
             from,
         )
     }
@@ -156,8 +156,8 @@ pub(crate) fn attack_tables() -> &'static AttackTables {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::attacks::movement_profile;
-    use crate::piece::PieceKind;
+    use crate::core::attacks::movement_profile;
+    use crate::core::piece::PieceKind;
 
     #[test]
     fn fixed_masks_rotate_for_white() {

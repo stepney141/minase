@@ -2,11 +2,11 @@
 //! RULES.md 第11〜16条および第18〜19条と PLAN.md 第2版4〜6節・10節の確定解釈を検証する。
 
 use super::super::MoveGenerator;
-use crate::mv::Move;
-use crate::piece::{Color, PieceCode, PieceKind};
-use crate::position::{Position, PositionBuilder};
-use crate::rules::Rules;
-use crate::square::Square;
+use crate::core::mv::Move;
+use crate::core::piece::{Color, PieceCode, PieceKind};
+use crate::core::position::{Position, PositionBuilder};
+use crate::core::rules::Rules;
+use crate::core::square::Square;
 use crate::test_util::{position, sq};
 
 fn generated(position: &Position) -> Vec<Move> {
@@ -763,7 +763,7 @@ fn note_articles_14_1_vs_15_1_adjacent_lion_recapture_during_senjishi() {
     assert!(!generated(&position).contains(&adjacent_recapture));
 
     // 対照: 先獅子トリガーがなければ隣接捕獲は無条件（第14条1項）。
-    let no_trigger = crate::position::PositionBuilder::new(Color::White);
+    let no_trigger = crate::core::position::PositionBuilder::new(Color::White);
     let mut builder = no_trigger;
     for (square, color, kind) in [
         (sq(4, 5), Color::Black, PieceKind::Lion),

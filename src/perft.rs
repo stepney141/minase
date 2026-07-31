@@ -1,5 +1,5 @@
-use crate::movegen::MoveGenerator;
-use crate::position::Position;
+use crate::core::movegen::MoveGenerator;
+use crate::core::position::Position;
 
 /// Counts legal-move paths to `depth` and restores `position` before returning.
 pub fn perft(generator: &MoveGenerator, position: &mut Position, depth: u32) -> u64 {

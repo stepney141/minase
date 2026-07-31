@@ -1,10 +1,10 @@
 use core::fmt;
 use std::sync::OnceLock;
 
-use crate::bitboard::Bitboard;
-use crate::mv::{CapturedPiece, Move, Undo};
-use crate::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
-use crate::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
+use crate::core::bitboard::Bitboard;
+use crate::core::mv::{CapturedPiece, Move, Undo};
+use crate::core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
+use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 
 const ZOBRIST_PIECE_CODE_COUNT: usize = COLOR_COUNT * PIECE_KIND_COUNT * 2;
 const ZOBRIST_SEED: u64 = 0x4d49_4e41_5345_5a31;
@@ -416,7 +416,15 @@ impl Position {
         Ok(())
     }
 
-    pub(crate) fn make_move_unchecked(&mut self, mv: Move) -> Undo {
+    /// Applies `mv` without checking legality and returns an [`Undo`] token.
+    ///
+    /// The caller must pass a move produced by
+    /// [`MoveGenerator::generate_moves`](crate::MoveGenerator::generate_moves)
+    /// for this exact position. Feeding any other move may panic or silently
+    /// corrupt the position, including its Zobrist hash and the sen-jishi
+    /// trigger. Legality-checked application is available via
+    /// [`Position::try_make_move`].
+    pub fn make_move_unchecked(&mut self, mv: Move) -> Undo {
         let previous_zobrist = self.zobrist;
         let previous_lion_taken = self.lion_taken_by_non_lion;
         let capture_squares = self.captured_squares(mv);
@@ -462,7 +470,12 @@ impl Position {
         }
     }
 
-    pub(crate) fn unmake_move(&mut self, undo: Undo) {
+    /// Reverts the move recorded in `undo`.
+    ///
+    /// The token must come from [`Position::make_move_unchecked`] on this
+    /// position, and moves must be unmade in reverse order of making.
+    /// Violating either assumption may panic or silently corrupt the position.
+    pub fn unmake_move(&mut self, undo: Undo) {
         self.flip_side_to_move();
         self.remove_piece(undo.mv.destination());
         self.put_piece(undo.mv.origin(), undo.moved_piece_before)

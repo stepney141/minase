@@ -2,11 +2,11 @@ use core::fmt;
 use std::collections::HashMap;
 
 use crate::adjudication::{has_no_legal_move, is_mate};
-use crate::movegen::{IllegalMove, MoveGenerator};
-use crate::mv::Move;
-use crate::piece::Color;
-use crate::position::Position;
-use crate::rules::Rules;
+use crate::core::movegen::{IllegalMove, MoveGenerator};
+use crate::core::mv::Move;
+use crate::core::piece::Color;
+use crate::core::position::Position;
+use crate::core::rules::Rules;
 
 const LION_TRIGGER_PROJECTION: u64 = 0x6e71_4f59_2d83_c0a5;
 
@@ -312,9 +312,9 @@ fn move_was_attacking(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::piece::{PieceCode, PieceKind};
-    use crate::rules::RuleCode;
-    use crate::square::Square;
+    use crate::core::piece::{PieceCode, PieceKind};
+    use crate::core::rules::RuleCode;
+    use crate::core::square::Square;
     use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {

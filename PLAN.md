@@ -15,7 +15,7 @@
 
 - `Square`、`Bitboard`（3×64ビット、段あたり16ビット）、`Direction` と方向シフトは変更しない。
 - `Color`、`PieceKind`、`PieceCode`、および `Position` の冗長表現（マス配列と駒種別ビットボード）は変更しない。
-- `attacks/` のレイ表、固定移動表、移動プロファイルは変更しない。ただし2026年7月31日の削減で、モジュールと内部表現型の可視性は `pub(crate)` 以下へ縮小した（12節）。
+- `core/attacks/` のレイ表、固定移動表、移動プロファイルは変更しない。ただし2026年7月31日の削減で、モジュールと内部表現型の可視性は `pub(crate)` 以下へ縮小した（12節）。
 
 これらの仕様は実装とテストを正とし、本書では再述しない。
 
@@ -236,8 +236,9 @@ R1 と R2（反復）および E1 と E2（終局）は次マイルストーン�
 
 ## 8. 着手生成の構成
 
-- `movegen/mod.rs` は実装の単一ファイルであり、`MoveGenerator`、1段階移動の生成、獅子・角鷹・飛鷲の2段階移動と直接跳びの生成（第2段階は `LocalOccupancy` による局所占有）、`IllegalMove` と `try_make_move` をこの順で収める。normal.rs、lion.rs、legal.rs の3ファイル分割は2026年7月31日の再編で廃止した（11節）。
-- テストは `movegen/tests/` に置き、条文対応（articles.rs）と不変量・乱数（invariants.rs）の内容種別で分ける。局面構築ヘルパはクレート共通の `test_util` モジュールに置く。
+- 合法手生成に関わるモジュール（square、bitboard、direction、piece、mv、position、rules、attacks、movegen）は `src/core/` 配下に置く。対局管理（game、adjudication）、SFEN入出力（sfen）、検証ツール（perft）はクレート直下に残す。
+- `core/movegen/mod.rs` は実装の単一ファイルであり、`MoveGenerator`、1段階移動の生成、獅子・角鷹・飛鷲の2段階移動と直接跳びの生成（第2段階は `LocalOccupancy` による局所占有）、`IllegalMove` と `try_make_move` をこの順で収める。normal.rs、lion.rs、legal.rs の3ファイル分割は2026年7月31日の再編で廃止した（11節）。
+- テストは `core/movegen/tests/` に置き、条文対応（articles.rs）と不変量・乱数（invariants.rs）の内容種別で分ける。局面構築ヘルパはクレート共通の `test_util` モジュールに置く。
 - 獅子規則の検査（6節）は生成中に適用する。足判定に使う `square_is_controlled` は規則層に置く。
 
 生成の手順は次のとおりである。

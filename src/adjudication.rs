@@ -1,6 +1,6 @@
-use crate::movegen::MoveGenerator;
-use crate::mv::Move;
-use crate::position::Position;
+use crate::core::movegen::MoveGenerator;
+use crate::core::mv::Move;
+use crate::core::position::Position;
 
 pub(crate) fn captures_last_royal(position: &Position, mv: Move) -> bool {
     let opponent = position.side_to_move().opposite();
@@ -61,7 +61,7 @@ pub(crate) fn is_mate(position: &mut Position, generator: &MoveGenerator) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::piece::{Color, PieceCode, PieceKind};
+    use crate::core::piece::{Color, PieceCode, PieceKind};
     use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
