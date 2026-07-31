@@ -190,14 +190,27 @@ pub fn parse_sfen(sfen: &str) -> Result<Position, SfenError> {
                 Color::White
             };
             let kind = match letter.to_ascii_uppercase() {
-                'N' => PieceKind::Lion,
-                'O' => PieceKind::Kirin,
-                'H' => PieceKind::DragonHorse,
-                'D' => PieceKind::DragonKing,
-                'B' => PieceKind::Bishop,
+                'K' => PieceKind::King,
+                'P' => PieceKind::Pawn,
+                'L' => PieceKind::Lance,
                 'S' => PieceKind::SilverGeneral,
                 'G' => PieceKind::GoldGeneral,
-                'L' => PieceKind::Lance,
+                'B' => PieceKind::Bishop,
+                'R' => PieceKind::Rook,
+                'F' => PieceKind::FerociousLeopard,
+                'C' => PieceKind::CopperGeneral,
+                'E' => PieceKind::DrunkElephant,
+                'A' => PieceKind::ReverseChariot,
+                'T' => PieceKind::BlindTiger,
+                'O' => PieceKind::Kirin,
+                'X' => PieceKind::Phoenix,
+                'M' => PieceKind::SideMover,
+                'V' => PieceKind::VerticalMover,
+                'H' => PieceKind::DragonHorse,
+                'D' => PieceKind::DragonKing,
+                'N' => PieceKind::Lion,
+                'Q' => PieceKind::FreeKing,
+                'I' => PieceKind::GoBetween,
                 _ => {
                     return Err(SfenError::UnsupportedPiece {
                         row: display_row,
@@ -240,6 +253,64 @@ mod tests {
     use super::*;
 
     const EMPTY_BOARD: &str = "12/12/12/12/12/12/12/12/12/12/12/12";
+
+    #[test]
+    fn lishogi_initial_position_matches_position_initial() {
+        let position = parse_sfen(
+            "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b",
+        )
+        .unwrap();
+
+        assert_eq!(position, Position::initial());
+    }
+
+    #[test]
+    fn parses_every_promoted_piece_and_rejects_unpromotable_pieces() {
+        let promoted_pieces = [
+            ('p', PieceKind::GoldGeneral),
+            ('l', PieceKind::WhiteHorse),
+            ('s', PieceKind::VerticalMover),
+            ('g', PieceKind::Rook),
+            ('b', PieceKind::DragonHorse),
+            ('r', PieceKind::DragonKing),
+            ('f', PieceKind::Bishop),
+            ('c', PieceKind::SideMover),
+            ('e', PieceKind::CrownPrince),
+            ('a', PieceKind::Whale),
+            ('t', PieceKind::FlyingStag),
+            ('o', PieceKind::Lion),
+            ('x', PieceKind::FreeKing),
+            ('m', PieceKind::FreeBoar),
+            ('v', PieceKind::FlyingOx),
+            ('h', PieceKind::HornedFalcon),
+            ('d', PieceKind::SoaringEagle),
+            ('i', PieceKind::DrunkElephant),
+        ];
+        for (letter, promoted_kind) in promoted_pieces {
+            let sfen = format!("11+{letter}/12/12/12/12/12/12/12/12/12/12/12 b");
+            let position = parse_sfen(&sfen).unwrap();
+
+            assert_eq!(
+                position.piece_at(Square::new(11, 11).unwrap()),
+                PieceCode::new_promoted(Color::White, promoted_kind),
+                "+{letter}"
+            );
+        }
+
+        for letter in ['k', 'n', 'q'] {
+            let sfen = format!("11+{letter}/12/12/12/12/12/12/12/12/12/12/12 b");
+
+            assert_eq!(
+                parse_sfen(&sfen),
+                Err(SfenError::UnpromotablePiece {
+                    row: 1,
+                    column: 12,
+                    letter,
+                }),
+                "+{letter}"
+            );
+        }
+    }
 
     #[test]
     fn parses_supported_pieces_promotions_coordinates_and_side() {
@@ -289,11 +360,11 @@ mod tests {
             Err(SfenError::WrongRowWidth { row: 1, found: 13 })
         );
         assert_eq!(
-            parse_sfen("11X/12/12/12/12/12/12/12/12/12/12/12 b"),
+            parse_sfen("11J/12/12/12/12/12/12/12/12/12/12/12 b"),
             Err(SfenError::UnsupportedPiece {
                 row: 1,
                 column: 12,
-                letter: 'X',
+                letter: 'J',
             })
         );
         assert_eq!(
