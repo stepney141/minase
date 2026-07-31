@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use super::super::lion::generate_lion_double_and_jumps;
-use super::super::normal::piece_control_with_occupancy;
-use super::super::{IllegalMove, MoveGenerator};
+use super::super::{
+    IllegalMove, MoveGenerator, generate_lion_double_and_jumps, piece_control_with_tables,
+};
 use crate::attacks::{SpecialMovement, attack_tables, movement_profile, movement_profile_data};
 use crate::bitboard::Bitboard;
 use crate::direction::step_square;
@@ -424,7 +424,7 @@ fn every_piece_control_matches_coordinate_reference() {
         for kind in PieceKind::ALL {
             for from in Square::all() {
                 assert_eq!(
-                    piece_control_with_occupancy(
+                    piece_control_with_tables(
                         attack_tables(),
                         position.occupied(),
                         color,
@@ -454,7 +454,7 @@ fn kirin_jump_ignores_intermediate_occupancy() {
     let position = builder.finish().unwrap();
 
     assert!(
-        piece_control_with_occupancy(
+        piece_control_with_tables(
             attack_tables(),
             position.occupied(),
             Color::Black,
