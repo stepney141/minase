@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
-mod adjudication;
 pub mod core;
 mod game;
+mod mate;
 mod perft;
 pub mod sfen;
 

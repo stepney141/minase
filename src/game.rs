@@ -1,12 +1,12 @@
 use core::fmt;
 use std::collections::HashMap;
 
-use crate::adjudication::{has_no_legal_move, is_mate};
 use crate::core::movegen::{IllegalMove, MoveGenerator};
 use crate::core::mv::Move;
 use crate::core::piece::Color;
 use crate::core::position::Position;
 use crate::core::rules::Rules;
+use crate::mate::{has_no_legal_move, is_mate};
 
 const LION_TRIGGER_PROJECTION: u64 = 0x6e71_4f59_2d83_c0a5;
 
