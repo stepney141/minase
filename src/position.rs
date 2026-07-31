@@ -535,8 +535,9 @@ mod tests {
                 (sq(10, 10), Color::White, PieceKind::Pawn),
             ],
         );
-        position.make_move_unchecked(Move::Step {
+        position.make_move_unchecked(Move {
             from: sq(0, 0),
+            mid: None,
             to: captured_lion,
             promote: false,
         });
@@ -721,8 +722,9 @@ mod tests {
                 (sq(5, 4), Color::White, PieceKind::Lion),
             ],
         );
-        position.make_move_unchecked(Move::Step {
+        position.make_move_unchecked(Move {
             from: sq(4, 4),
+            mid: None,
             to: sq(5, 4),
             promote: false,
         });
@@ -740,8 +742,9 @@ mod tests {
                 (captured_lion, Color::White, PieceKind::Lion),
             ],
         );
-        position.make_move_unchecked(Move::Step {
+        position.make_move_unchecked(Move {
             from: sq(4, 7),
+            mid: None,
             to: captured_lion,
             promote: true,
         });
@@ -758,8 +761,9 @@ mod tests {
         let (mut position, captured_lion) = position_after_non_lion_captures_lion();
         assert_eq!(position.lion_taken_by_non_lion(), Some(captured_lion));
 
-        position.make_move_unchecked(Move::Step {
+        position.make_move_unchecked(Move {
             from: sq(10, 10),
+            mid: None,
             to: sq(10, 9),
             promote: false,
         });
@@ -771,8 +775,9 @@ mod tests {
     fn unmake_move_restores_previous_capture_square() {
         let (mut position, captured_lion) = position_after_non_lion_captures_lion();
         let before_unrelated_move = position.clone();
-        let undo = position.make_move_unchecked(Move::Step {
+        let undo = position.make_move_unchecked(Move {
             from: sq(10, 10),
+            mid: None,
             to: sq(10, 9),
             promote: false,
         });

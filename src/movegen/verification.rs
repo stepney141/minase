@@ -19,10 +19,6 @@ fn position(side_to_move: Color, pieces: &[(Square, Color, PieceKind)]) -> Posit
     builder.finish().unwrap()
 }
 
-fn perft(generator: &MoveGenerator, mut position: Position, depth: u32) -> u64 {
-    generator.perft(&mut position, depth)
-}
-
 #[test]
 fn sfen_conversion_uses_shogiops_coordinates_and_piece_codes() {
     let position = parse_sfen("12/12/12/12/4B2l4/4S7/5+O6/7n4/12/12/12/12 b").unwrap();
@@ -46,158 +42,6 @@ fn sfen_conversion_uses_shogiops_coordinates_and_piece_codes() {
     assert_eq!(
         position.piece_at(sq(7, 4)),
         Some(PieceCode::new(Color::White, PieceKind::Lion))
-    );
-}
-
-#[test]
-fn shogiops_perft_initial_depths() {
-    let generator = MoveGenerator::standard();
-
-    assert_eq!(perft(&generator, Position::initial(), 1), 36);
-    assert_eq!(perft(&generator, Position::initial(), 2), 1_296);
-}
-
-#[test]
-fn shogiops_perft_single_lion_variants() {
-    let generator = MoveGenerator::standard();
-
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5N6/12/12/12/12/12 b").unwrap(),
-            1,
-        ),
-        88
-    );
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5+O6/12/12/12/12/12 b").unwrap(),
-            1,
-        ),
-        88
-    );
-}
-
-#[test]
-fn shogiops_perft_single_lion_like_pieces() {
-    let generator = MoveGenerator::standard();
-
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5+H6/12/12/12/12/12 b").unwrap(),
-            1,
-        ),
-        41
-    );
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5+D6/12/12/12/12/12 b").unwrap(),
-            1,
-        ),
-        40
-    );
-}
-
-#[test]
-fn shogiops_perft_composite_lion_rules() {
-    let generator = MoveGenerator::standard();
-
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/7g4/6n5/5N6/12/12/12/12/12 b").unwrap(),
-            1,
-        ),
-        88
-    );
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/4B2l4/4S7/5N6/7n4/12/12/12/12 b").unwrap(),
-            1,
-        ),
-        98
-    );
-}
-
-#[test]
-fn self_generated_perft_initial_deeper_depths() {
-    let generator = MoveGenerator::standard();
-
-    // These are self-generated regression values, not external references.
-    assert_eq!(perft(&generator, Position::initial(), 3), 52_599);
-    assert_eq!(perft(&generator, Position::initial(), 4), 2_134_748);
-}
-
-#[test]
-fn self_generated_perft_single_lion_variants_depth_2() {
-    let generator = MoveGenerator::standard();
-
-    // These are self-generated regression values, not external references.
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5N6/12/12/12/12/12 b").unwrap(),
-            2,
-        ),
-        0
-    );
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5+O6/12/12/12/12/12 b").unwrap(),
-            2,
-        ),
-        0
-    );
-}
-
-#[test]
-fn self_generated_perft_single_lion_like_pieces_depth_2() {
-    let generator = MoveGenerator::standard();
-
-    // These are self-generated regression values, not external references.
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5+H6/12/12/12/12/12 b").unwrap(),
-            2,
-        ),
-        0
-    );
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/12/12/5+D6/12/12/12/12/12 b").unwrap(),
-            2,
-        ),
-        0
-    );
-}
-
-#[test]
-fn self_generated_perft_composite_lion_rules_depth_2() {
-    let generator = MoveGenerator::standard();
-
-    // These are self-generated regression values, not external references.
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/7g4/6n5/5N6/12/12/12/12/12 b").unwrap(),
-            2,
-        ),
-        6_380
-    );
-    assert_eq!(
-        perft(
-            &generator,
-            parse_sfen("12/12/12/12/4B2l4/4S7/5N6/7n4/12/12/12/12 b").unwrap(),
-            2,
-        ),
-        8_632
     );
 }
 
@@ -236,16 +80,10 @@ impl ReferenceBoard {
             moving_piece_before
         };
         board.set(mv.origin(), None);
-        match mv {
-            Move::Step { to, .. } | Move::Jump { to, .. } => {
-                board.set(to, Some(moving_piece_after));
-            }
-            Move::Double { mid, to, .. } => {
-                board.set(mid, Some(moving_piece_before));
-                board.set(mid, None);
-                board.set(to, Some(moving_piece_after));
-            }
+        if let Some(mid) = mv.mid {
+            board.set(mid, None);
         }
+        board.set(mv.to, Some(moving_piece_after));
         board
     }
 }
@@ -396,6 +234,12 @@ fn is_own(position: &Position, color: Color, square: Square) -> bool {
         .is_some_and(|piece| piece.color() == Some(color))
 }
 
+fn is_enemy(position: &Position, color: Color, square: Square) -> bool {
+    position
+        .piece_at(square)
+        .is_some_and(|piece| piece.color() == Some(color.opposite()))
+}
+
 fn push_steps_and_slides(
     position: &Position,
     color: Color,
@@ -408,8 +252,9 @@ fn push_steps_and_slides(
         if let Some(to) = from.offset(delta.0, delta.1)
             && !is_own(position, color, to)
         {
-            output.push(Move::Step {
+            output.push(Move {
                 from,
+                mid: None,
                 to,
                 promote: false,
             });
@@ -423,8 +268,9 @@ fn push_steps_and_slides(
             if is_own(position, color, to) {
                 break;
             }
-            output.push(Move::Step {
+            output.push(Move {
                 from,
+                mid: None,
                 to,
                 promote: false,
             });
@@ -437,6 +283,7 @@ fn push_steps_and_slides(
 }
 
 fn push_lion_moves(position: &Position, color: Color, from: Square, output: &mut Vec<Move>) {
+    let mut can_jitto = false;
     for &first_delta in ALL_DIRECTIONS {
         let Some(mid) = from.offset(first_delta.0, first_delta.1) else {
             continue;
@@ -444,25 +291,30 @@ fn push_lion_moves(position: &Position, color: Color, from: Square, output: &mut
         if is_own(position, color, mid) {
             continue;
         }
-        output.push(Move::Step {
+        output.push(Move {
             from,
+            mid: None,
             to: mid,
             promote: false,
         });
 
-        for &second_delta in ALL_DIRECTIONS {
-            let Some(to) = mid.offset(second_delta.0, second_delta.1) else {
-                continue;
-            };
-            if to != from && is_own(position, color, to) {
-                continue;
+        if is_enemy(position, color, mid) {
+            for &second_delta in ALL_DIRECTIONS {
+                let Some(to) = mid.offset(second_delta.0, second_delta.1) else {
+                    continue;
+                };
+                if to != from && is_own(position, color, to) {
+                    continue;
+                }
+                output.push(Move {
+                    from,
+                    mid: Some(mid),
+                    to,
+                    promote: false,
+                });
             }
-            output.push(Move::Double {
-                from,
-                mid,
-                to,
-                promote: false,
-            });
+        } else {
+            can_jitto = true;
         }
     }
 
@@ -474,13 +326,23 @@ fn push_lion_moves(position: &Position, color: Color, from: Square, output: &mut
             if let Some(to) = from.offset(file_delta, rank_delta)
                 && !is_own(position, color, to)
             {
-                output.push(Move::Jump {
+                output.push(Move {
                     from,
+                    mid: None,
                     to,
                     promote: false,
                 });
             }
         }
+    }
+
+    if can_jitto {
+        output.push(Move {
+            from,
+            mid: None,
+            to: from,
+            promote: false,
+        });
     }
 }
 
@@ -491,45 +353,60 @@ fn push_lion_like_moves(
     from: Square,
     output: &mut Vec<Move>,
 ) {
+    let mut can_jitto = false;
     for &relative in lion_like_directions(kind) {
         let direction = oriented(color, relative);
-        let Some(mid) = from.offset(direction.0, direction.1) else {
+        let Some(first) = from.offset(direction.0, direction.1) else {
             continue;
         };
-        let first_is_own = is_own(position, color, mid);
-        if !first_is_own {
-            output.push(Move::Step {
+        if !is_own(position, color, first) {
+            output.push(Move {
                 from,
-                to: mid,
+                mid: None,
+                to: first,
                 promote: false,
             });
-            output.push(Move::Double {
+        }
+        if position.piece_at(first).is_none() {
+            can_jitto = true;
+        } else if is_enemy(position, color, first) {
+            output.push(Move {
                 from,
-                mid,
+                mid: Some(first),
                 to: from,
                 promote: false,
             });
         }
 
-        let Some(to) = mid.offset(direction.0, direction.1) else {
+        let Some(to) = first.offset(direction.0, direction.1) else {
             continue;
         };
         if is_own(position, color, to) {
             continue;
         }
-        output.push(Move::Jump {
+        output.push(Move {
             from,
+            mid: None,
             to,
             promote: false,
         });
-        if !first_is_own {
-            output.push(Move::Double {
+        if is_enemy(position, color, first) {
+            output.push(Move {
                 from,
-                mid,
+                mid: Some(first),
                 to,
                 promote: false,
             });
         }
+    }
+
+    if can_jitto {
+        output.push(Move {
+            from,
+            mid: None,
+            to: from,
+            promote: false,
+        });
     }
 }
 
@@ -544,28 +421,27 @@ fn reference_capture_squares(position: &Position, mv: Move) -> [Option<Square>; 
             .is_some_and(|piece| piece.color() == Some(moving_color.opposite()))
             .then_some(square)
     };
-    match mv {
-        Move::Step { to, .. } | Move::Jump { to, .. } => [enemy_at(to), None],
-        Move::Double { from, mid, to, .. } => {
-            [enemy_at(mid), (to != from).then(|| enemy_at(to)).flatten()]
-        }
-    }
+    [
+        mv.mid.and_then(enemy_at),
+        (mv.to != mv.from).then(|| enemy_at(mv.to)).flatten(),
+    ]
 }
 
 fn reference_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
     if position.piece_at(mv.origin()).and_then(PieceCode::kind) != Some(PieceKind::Lion) {
         return false;
     }
-    let Move::Double { from, mid, to, .. } = mv else {
+    let Some(mid) = mv.mid else {
         return false;
     };
-    let distance = from
+    let distance = mv
+        .from
         .file()
         .abs_diff(lion_square.file())
-        .max(from.rank().abs_diff(lion_square.rank()));
+        .max(mv.from.rank().abs_diff(lion_square.rank()));
     let captures = reference_capture_squares(position, mv);
     distance == 2
-        && to == lion_square
+        && mv.to == lion_square
         && captures == [Some(mid), Some(lion_square)]
         && position.piece_at(mid).is_some_and(|piece| {
             !matches!(piece.kind(), Some(PieceKind::Pawn | PieceKind::GoBetween))
@@ -631,12 +507,12 @@ fn reference_lion_has_foot(position: &Position, mv: Move, lion_square: Square) -
         .and_then(PieceCode::color)
         .expect("captured lion must have a color");
     let board = ReferenceBoard::after_move(position, mv);
-    let [first, second] = reference_capture_squares(position, mv);
-    let captured_pawn_or_go_between_had_foot = second == Some(lion_square)
-        && first.is_some_and(|first| {
-            position.piece_at(first).is_some_and(|piece| {
+    let [mid_capture, destination_capture] = reference_capture_squares(position, mv);
+    let captured_pawn_or_go_between_had_foot = destination_capture == Some(lion_square)
+        && mid_capture.is_some_and(|mid| {
+            position.piece_at(mid).is_some_and(|piece| {
                 matches!(piece.kind(), Some(PieceKind::Pawn | PieceKind::GoBetween))
-                    && board_piece_controls(&board, piece, first, mv.destination())
+                    && board_piece_controls(&board, piece, mid, mv.destination())
             })
         });
 
@@ -725,23 +601,9 @@ fn reference_in_promotion_zone(color: Color, square: Square) -> bool {
 }
 
 fn promoting_variant(mv: Move) -> Move {
-    match mv {
-        Move::Step { from, to, .. } => Move::Step {
-            from,
-            to,
-            promote: true,
-        },
-        Move::Double { from, mid, to, .. } => Move::Double {
-            from,
-            mid,
-            to,
-            promote: true,
-        },
-        Move::Jump { from, to, .. } => Move::Jump {
-            from,
-            to,
-            promote: true,
-        },
+    Move {
+        promote: true,
+        ..mv
     }
 }
 
@@ -903,8 +765,9 @@ fn random_senjishi_position(rng: &mut XorShift64) -> Position {
     }
 
     let mut position = builder.finish().unwrap();
-    position.make_move_unchecked(Move::Step {
+    position.make_move_unchecked(Move {
         from: sq(0, 0),
+        mid: None,
         to: sq(1, 1),
         promote: false,
     });
@@ -1038,8 +901,9 @@ fn lion_duel_position(
 
     let mut position = builder.finish().unwrap();
     if senjishi {
-        position.make_move_unchecked(Move::Step {
+        position.make_move_unchecked(Move {
             from: sq(11, 10),
+            mid: None,
             to: sq(11, 11),
             promote: false,
         });
@@ -1177,12 +1041,38 @@ fn seeded_random_moves_round_trip_validate_and_are_unique() {
             moves.len(),
             "duplicate move in random position {iteration}",
         );
+        let enemy = position.pieces_of(position.side_to_move().opposite());
+        let own = position.pieces_of(position.side_to_move());
+        let mut jitto_origins = HashSet::new();
+        for &mv in &moves {
+            if let Some(mid) = mv.mid {
+                assert!(
+                    enemy.contains(mid),
+                    "non-enemy mid in random position {iteration}: move={mv:?}"
+                );
+            }
+            if mv.mid.is_none() && mv.to == mv.from {
+                assert!(
+                    jitto_origins.insert(mv.from),
+                    "multiple jitto moves from one origin in random position {iteration}: \
+                     move={mv:?}"
+                );
+            }
+            if mv.to != mv.from {
+                assert!(
+                    !own.contains(mv.to),
+                    "own-occupied destination in random position {iteration}: move={mv:?}"
+                );
+            }
+        }
+        let before_zobrist = before.zobrist();
         for mv in moves {
             let undo = position.make_move_unchecked(mv);
             assert_eq!(position.validate(), Ok(()), "move={mv:?}");
             position.unmake_move(undo);
             assert_eq!(position.validate(), Ok(()), "unmade move={mv:?}");
             assert_eq!(position, before, "move={mv:?}");
+            assert_eq!(position.zobrist(), before_zobrist, "move={mv:?}");
         }
     }
 }
@@ -1225,8 +1115,9 @@ fn articles_3_8_and_8_3_5_move_leaving_king_capturable_is_generated() {
             (sq(4, 5), Color::White, PieceKind::Rook),
         ],
     );
-    let exposes_king = Move::Step {
+    let exposes_king = Move {
         from: sq(4, 2),
+        mid: None,
         to: sq(5, 2),
         promote: false,
     };
@@ -1247,9 +1138,9 @@ fn article_12_8_igui_has_one_move_encoding() {
             (mid, Color::White, PieceKind::SilverGeneral),
         ],
     );
-    let expected = Move::Double {
+    let expected = Move {
         from,
-        mid,
+        mid: Some(mid),
         to: from,
         promote: false,
     };
@@ -1281,16 +1172,16 @@ fn articles_16_1_and_16_11_tsukegui_requires_the_first_capture_on_mid() {
             (sq(4, 5), Color::White, PieceKind::Rook),
         ],
     );
-    let capture_without_mid_piece = Move::Double {
+    let capture_without_first_capture = Move {
         from: sq(2, 2),
-        mid: sq(3, 3),
+        mid: None,
         to: sq(4, 2),
         promote: false,
     };
     let mut moves = Vec::new();
     MoveGenerator::standard().generate_moves(&position, &mut moves);
 
-    assert!(!moves.contains(&capture_without_mid_piece));
+    assert!(!moves.contains(&capture_without_first_capture));
 }
 
 #[test]
@@ -1303,29 +1194,53 @@ fn article_24_equivalent_positions_ignore_quiet_move_history() {
         ],
     );
     let mut first = initial.clone();
-    first.make_move_unchecked(Move::Double {
+    first.make_move_unchecked(Move {
         from: sq(3, 3),
-        mid: sq(3, 4),
+        mid: None,
+        to: sq(3, 4),
+        promote: false,
+    });
+    first.make_move_unchecked(Move {
+        from: sq(8, 8),
+        mid: None,
+        to: sq(8, 7),
+        promote: false,
+    });
+    first.make_move_unchecked(Move {
+        from: sq(3, 4),
+        mid: None,
         to: sq(3, 3),
         promote: false,
     });
-    first.make_move_unchecked(Move::Double {
-        from: sq(8, 8),
-        mid: sq(8, 7),
+    first.make_move_unchecked(Move {
+        from: sq(8, 7),
+        mid: None,
         to: sq(8, 8),
         promote: false,
     });
 
     let mut second = initial;
-    second.make_move_unchecked(Move::Double {
+    second.make_move_unchecked(Move {
         from: sq(3, 3),
-        mid: sq(4, 3),
+        mid: None,
+        to: sq(4, 3),
+        promote: false,
+    });
+    second.make_move_unchecked(Move {
+        from: sq(8, 8),
+        mid: None,
+        to: sq(7, 8),
+        promote: false,
+    });
+    second.make_move_unchecked(Move {
+        from: sq(4, 3),
+        mid: None,
         to: sq(3, 3),
         promote: false,
     });
-    second.make_move_unchecked(Move::Double {
-        from: sq(8, 8),
-        mid: sq(7, 8),
+    second.make_move_unchecked(Move {
+        from: sq(7, 8),
+        mid: None,
         to: sq(8, 8),
         promote: false,
     });

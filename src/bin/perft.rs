@@ -60,33 +60,23 @@ fn square_text(square: Square) -> String {
 
 // Divide coordinates are zero-based `(file,rank)`: files increase from the
 // leftmost SFEN column and ranks increase from the bottom SFEN row. `+` marks
-// promotion, and the variant name distinguishes step, double, and jump moves.
+// promotion. A captured intermediate square is included for two-stage moves.
 fn move_text(mv: Move) -> String {
-    match mv {
-        Move::Step { from, to, promote } => format!(
-            "step {}->{}{}",
-            square_text(from),
-            square_text(to),
-            if promote { "+" } else { "" }
-        ),
-        Move::Double {
-            from,
-            mid,
-            to,
-            promote,
-        } => format!(
+    if let Some(mid) = mv.mid {
+        format!(
             "double {}->{}->{}{}",
-            square_text(from),
+            square_text(mv.from),
             square_text(mid),
-            square_text(to),
-            if promote { "+" } else { "" }
-        ),
-        Move::Jump { from, to, promote } => format!(
-            "jump {}->{}{}",
-            square_text(from),
-            square_text(to),
-            if promote { "+" } else { "" }
-        ),
+            square_text(mv.to),
+            if mv.promote { "+" } else { "" }
+        )
+    } else {
+        format!(
+            "move {}->{}{}",
+            square_text(mv.from),
+            square_text(mv.to),
+            if mv.promote { "+" } else { "" }
+        )
     }
 }
 

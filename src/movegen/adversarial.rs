@@ -25,15 +25,12 @@ fn generated(position: &Position) -> Vec<Move> {
     moves
 }
 
-/// じっと = Double で to == from かつ mid が空升。
-fn jitto_moves(position: &Position, moves: &[Move], origin: Square) -> Vec<Move> {
+/// じっと = `mid: None` で `to == from` の正準着手。
+fn jitto_moves(moves: &[Move], origin: Square) -> Vec<Move> {
     moves
         .iter()
         .copied()
-        .filter(|&mv| {
-            matches!(mv, Move::Double { from, mid, to, .. }
-                if from == origin && to == origin && position.piece_at(mid).is_none())
-        })
+        .filter(|mv| mv.from == origin && mv.mid.is_none() && mv.to == origin)
         .collect()
 }
 
@@ -61,15 +58,17 @@ fn case1_article_12_10_lion_surrounded_by_own_and_edge_has_no_jitto() {
         .collect();
 
     // じっとが1手も生成されない。
-    assert!(jitto_moves(&position, &moves, sq(0, 0)).is_empty());
-    // 第1段階が成立しないので Double 自体が存在しない。
-    assert!(
-        lion_moves
-            .iter()
-            .all(|mv| !matches!(mv, Move::Double { .. }))
-    );
+    assert!(jitto_moves(&moves, sq(0, 0)).is_empty());
+    // 第1段階の捕獲がないので mid を持つ着手は存在しない。
+    assert!(lion_moves.iter().all(|mv| mv.mid.is_none()));
     // 跳び（第12条5〜7項）は塞がれていても生成される（サニティ）。
-    assert!(lion_moves.iter().any(|mv| matches!(mv, Move::Jump { .. })));
+    assert!(lion_moves.iter().any(|mv| {
+        mv.from
+            .file()
+            .abs_diff(mv.to.file())
+            .max(mv.from.rank().abs_diff(mv.to.rank()))
+            == 2
+    }));
 }
 
 #[test]
@@ -86,11 +85,11 @@ fn case1_article_12_9_lion_surrounded_by_mixed_pieces_has_igui_but_no_jitto() {
     );
     let moves = generated(&position);
 
-    assert!(jitto_moves(&position, &moves, sq(0, 0)).is_empty());
+    assert!(jitto_moves(&moves, sq(0, 0)).is_empty());
     // 居喰い（mid が敵駒で to == from）は生成される。
-    assert!(moves.contains(&Move::Double {
+    assert!(moves.contains(&Move {
         from: sq(0, 0),
-        mid: sq(1, 0),
+        mid: Some(sq(1, 0)),
         to: sq(0, 0),
         promote: false,
     }));
@@ -109,12 +108,15 @@ fn case1_article_12_9_jitto_is_generated_when_a_neighbor_is_empty() {
     );
     let moves = generated(&position);
 
-    assert!(moves.contains(&Move::Double {
-        from: sq(0, 0),
-        mid: sq(1, 1),
-        to: sq(0, 0),
-        promote: false,
-    }));
+    assert_eq!(
+        jitto_moves(&moves, sq(0, 0)),
+        vec![Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(0, 0),
+            promote: false,
+        }]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +125,7 @@ fn case1_article_12_9_jitto_is_generated_when_a_neighbor_is_empty() {
 
 #[test]
 fn case2_article_11_7_falcon_blocked_forward_cannot_jitto() {
-    // 角鷹の前方隣接升が味方駒: じっとを含む Double が1手もない。
+    // 角鷹の前方隣接升が味方駒: じっとも経路捕獲もない。
     let position = position(
         Color::Black,
         &[
@@ -138,15 +140,12 @@ fn case2_article_11_7_falcon_blocked_forward_cannot_jitto() {
         .filter(|mv| mv.origin() == sq(5, 5))
         .collect();
 
-    assert!(jitto_moves(&position, &moves, sq(5, 5)).is_empty());
-    assert!(
-        falcon_moves
-            .iter()
-            .all(|mv| !matches!(mv, Move::Double { .. }))
-    );
+    assert!(jitto_moves(&moves, sq(5, 5)).is_empty());
+    assert!(falcon_moves.iter().all(|mv| mv.mid.is_none()));
     // 直接跳び（第11条1項d）は味方駒を跳び越して生成される（サニティ）。
-    assert!(falcon_moves.contains(&Move::Jump {
+    assert!(falcon_moves.contains(&Move {
         from: sq(5, 5),
+        mid: None,
         to: sq(5, 7),
         promote: false,
     }));
@@ -160,12 +159,15 @@ fn case2_article_11_7_falcon_with_empty_forward_can_jitto() {
     );
     let moves = generated(&position);
 
-    assert!(moves.contains(&Move::Double {
-        from: sq(5, 5),
-        mid: sq(5, 6),
-        to: sq(5, 5),
-        promote: false,
-    }));
+    assert_eq!(
+        jitto_moves(&moves, sq(5, 5)),
+        vec![Move {
+            from: sq(5, 5),
+            mid: None,
+            to: sq(5, 5),
+            promote: false,
+        }]
+    );
 }
 
 #[test]
@@ -180,9 +182,9 @@ fn case2_article_11_8_eagle_cannot_jitto_only_when_both_diagonals_are_blocked() 
         ],
     );
     let moves = generated(&both_blocked);
-    assert!(jitto_moves(&both_blocked, &moves, sq(5, 5)).is_empty());
+    assert!(jitto_moves(&moves, sq(5, 5)).is_empty());
 
-    // (b) 片側だけ塞がれた場合: 空いている側からのみじっとを生成する。
+    // (b) 片側だけ塞がれた場合: 空いている側があるため正準じっとを1手生成する。
     let one_blocked = position(
         Color::Black,
         &[
@@ -191,12 +193,12 @@ fn case2_article_11_8_eagle_cannot_jitto_only_when_both_diagonals_are_blocked() 
         ],
     );
     let moves = generated(&one_blocked);
-    let jitto = jitto_moves(&one_blocked, &moves, sq(5, 5));
+    let jitto = jitto_moves(&moves, sq(5, 5));
     assert_eq!(
         jitto,
-        vec![Move::Double {
+        vec![Move {
             from: sq(5, 5),
-            mid: sq(4, 6),
+            mid: None,
             to: sq(5, 5),
             promote: false,
         }]
@@ -212,10 +214,10 @@ fn case2_article_11_8_eagle_cannot_jitto_only_when_both_diagonals_are_blocked() 
         ],
     );
     let moves = generated(&enemy_side);
-    assert!(jitto_moves(&enemy_side, &moves, sq(5, 5)).is_empty());
-    assert!(moves.contains(&Move::Double {
+    assert!(jitto_moves(&moves, sq(5, 5)).is_empty());
+    assert!(moves.contains(&Move {
         from: sq(5, 5),
-        mid: sq(4, 6),
+        mid: Some(sq(4, 6)),
         to: sq(5, 5),
         promote: false,
     }));
@@ -262,8 +264,9 @@ fn case3_articles_13_6_and_14_2_king_as_only_foot_blocks_distance_two_lion_captu
             (sq(4, 0), Color::Black, PieceKind::Rook),
         ],
     );
-    assert!(generated(&without_king).contains(&Move::Jump {
+    assert!(generated(&without_king).contains(&Move {
         from: sq(2, 2),
+        mid: None,
         to: sq(4, 2),
         promote: false,
     }));
@@ -284,22 +287,25 @@ fn case3_articles_13_5_6_and_15_1_king_as_only_foot_enforces_senjishi() {
             (sq(4, 7), Color::White, PieceKind::Rook),
         ],
     );
-    with_king.make_move_unchecked(Move::Step {
+    with_king.make_move_unchecked(Move {
         from: sq(0, 0),
+        mid: None,
         to: sq(1, 1),
         promote: false,
     });
     assert!(with_king.lion_taken_by_non_lion().is_some());
     let moves = generated(&with_king);
-    let recapture = Move::Step {
+    let recapture = Move {
         from: sq(4, 7),
+        mid: None,
         to: sq(4, 5),
         promote: false,
     };
     assert!(!moves.contains(&recapture));
     // サニティ: 先獅子は他の白の着手を妨げない。
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(4, 7),
+        mid: None,
         to: sq(4, 6),
         promote: false,
     }));
@@ -315,8 +321,9 @@ fn case3_articles_13_5_6_and_15_1_king_as_only_foot_enforces_senjishi() {
             (sq(4, 7), Color::White, PieceKind::Rook),
         ],
     );
-    without_king.make_move_unchecked(Move::Step {
+    without_king.make_move_unchecked(Move {
         from: sq(0, 0),
+        mid: None,
         to: sq(1, 1),
         promote: false,
     });
@@ -341,15 +348,17 @@ fn case4_articles_15_4_and_15_5_senjishi_applies_for_one_move_and_then_expires()
             (sq(10, 10), Color::White, PieceKind::Pawn),
         ],
     );
-    let recapture = Move::Step {
+    let recapture = Move {
         from: sq(4, 6),
+        mid: None,
         to: sq(4, 4),
         promote: false,
     };
 
     // 1手目: 黒角が白獅子を取る。トリガーが立つ。
-    position.make_move_unchecked(Move::Step {
+    position.make_move_unchecked(Move {
         from: sq(0, 0),
+        mid: None,
         to: sq(1, 1),
         promote: false,
     });
@@ -358,16 +367,18 @@ fn case4_articles_15_4_and_15_5_senjishi_applies_for_one_move_and_then_expires()
     assert!(!generated(&position).contains(&recapture));
 
     // 2手目: 白が別の手を指すとトリガーが消える。
-    position.make_move_unchecked(Move::Step {
+    position.make_move_unchecked(Move {
         from: sq(10, 10),
+        mid: None,
         to: sq(10, 9),
         promote: false,
     });
     assert_eq!(position.lion_taken_by_non_lion(), None);
 
     // 3手目: 黒の手（捕獲なし）でもトリガーは立たない。
-    position.make_move_unchecked(Move::Step {
+    position.make_move_unchecked(Move {
         from: sq(0, 5),
+        mid: None,
         to: sq(0, 6),
         promote: false,
     });
@@ -394,9 +405,9 @@ fn case5_eagle_double_lion_capture_records_second_square_and_restricts_reply() {
             (sq(0, 9), Color::White, PieceKind::Rook),
         ],
     );
-    let double_capture = Move::Double {
+    let double_capture = Move {
         from: sq(4, 4),
-        mid: sq(5, 5),
+        mid: Some(sq(5, 5)),
         to: sq(6, 6),
         promote: false,
     };
@@ -408,16 +419,18 @@ fn case5_eagle_double_lion_capture_records_second_square_and_restricts_reply() {
     assert_eq!(position.lion_taken_by_non_lion(), Some(sq(6, 6)));
 
     // 直後の白の1手では、足（黒歩(9,8)）のある黒獅子(9,9)を取れない。
-    let recapture = Move::Step {
+    let recapture = Move {
         from: sq(0, 9),
+        mid: None,
         to: sq(9, 9),
         promote: false,
     };
     let moves = generated(&position);
     assert!(!moves.contains(&recapture));
     // サニティ: 同じ飛車の他の着手は生成される。
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(0, 9),
+        mid: None,
         to: sq(8, 9),
         promote: false,
     }));
@@ -436,15 +449,16 @@ fn case5_after_double_lion_capture_an_undefended_lion_may_be_taken() {
             (sq(0, 9), Color::White, PieceKind::Rook),
         ],
     );
-    position.make_move_unchecked(Move::Double {
+    position.make_move_unchecked(Move {
         from: sq(4, 4),
-        mid: sq(5, 5),
+        mid: Some(sq(5, 5)),
         to: sq(6, 6),
         promote: false,
     });
     assert_eq!(position.lion_taken_by_non_lion(), Some(sq(6, 6)));
-    assert!(generated(&position).contains(&Move::Step {
+    assert!(generated(&position).contains(&Move {
         from: sq(0, 9),
+        mid: None,
         to: sq(9, 9),
         promote: false,
     }));
@@ -497,14 +511,16 @@ fn case7_articles_18_2_a_and_18_5_pawn_capturing_inside_zone_may_promote() {
         ],
     );
     let moves = generated(&position);
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(4, 10),
+        mid: None,
         to: sq(4, 11),
         promote: true,
     }));
     // 不成も別手として生成される（第18条5項）。
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(4, 10),
+        mid: None,
         to: sq(4, 11),
         promote: false,
     }));
@@ -514,13 +530,15 @@ fn case7_articles_18_2_a_and_18_5_pawn_capturing_inside_zone_may_promote() {
 fn case7_article_18_3_quiet_move_inside_zone_cannot_promote() {
     let position = position(Color::Black, &[(sq(4, 8), Color::Black, PieceKind::Pawn)]);
     let moves = generated(&position);
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(4, 8),
+        mid: None,
         to: sq(4, 9),
         promote: false,
     }));
-    assert!(!moves.contains(&Move::Step {
+    assert!(!moves.contains(&Move {
         from: sq(4, 8),
+        mid: None,
         to: sq(4, 9),
         promote: true,
     }));
@@ -531,19 +549,22 @@ fn case7_articles_18_3_and_18_4_quiet_moves_inside_and_leaving_zone_cannot_promo
     let position = position(Color::Black, &[(sq(4, 8), Color::Black, PieceKind::Rook)]);
     let moves = generated(&position);
     // 敵陣(8段目)から敵陣外(7段目)への非捕獲移動。
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(4, 8),
+        mid: None,
         to: sq(4, 7),
         promote: false,
     }));
-    assert!(!moves.contains(&Move::Step {
+    assert!(!moves.contains(&Move {
         from: sq(4, 8),
+        mid: None,
         to: sq(4, 7),
         promote: true,
     }));
     // 敵陣内の非捕獲移動も成れない（第18条3項）。
-    assert!(!moves.contains(&Move::Step {
+    assert!(!moves.contains(&Move {
         from: sq(4, 8),
+        mid: None,
         to: sq(4, 9),
         promote: true,
     }));
@@ -567,22 +588,23 @@ fn case8_article_14_1_igui_capture_of_adjacent_defended_lion_is_legal() {
     let moves = generated(&position);
 
     // 居喰い（mid の獅子を取って元の升へ戻る）。
-    assert!(moves.contains(&Move::Double {
+    assert!(moves.contains(&Move {
         from: sq(2, 2),
-        mid: sq(3, 2),
+        mid: Some(sq(3, 2)),
         to: sq(2, 2),
         promote: false,
     }));
     // 通常の1段階捕獲も無条件で合法。
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(2, 2),
+        mid: None,
         to: sq(3, 2),
         promote: false,
     }));
     // 隣接捕獲後にさらに進む2段階移動も、捕獲時点の隣接性で合法。
-    assert!(moves.contains(&Move::Double {
+    assert!(moves.contains(&Move {
         from: sq(2, 2),
-        mid: sq(3, 2),
+        mid: Some(sq(3, 2)),
         to: sq(4, 2),
         promote: false,
     }));
@@ -603,16 +625,18 @@ fn case9_article_15_7_kirin_promoting_on_lion_capture_triggers_senjishi() {
             (sq(5, 11), Color::White, PieceKind::Rook),
         ],
     );
-    let promote_capture = Move::Step {
+    let promote_capture = Move {
         from: sq(5, 7),
+        mid: None,
         to: sq(5, 9),
         promote: true,
     };
     let moves = generated(&position);
     // 成り捕獲と不成捕獲の双方が生成される（第18条1項・5項）。
     assert!(moves.contains(&promote_capture));
-    assert!(moves.contains(&Move::Step {
+    assert!(moves.contains(&Move {
         from: sq(5, 7),
+        mid: None,
         to: sq(5, 9),
         promote: false,
     }));
@@ -626,15 +650,17 @@ fn case9_article_15_7_kirin_promoting_on_lion_capture_triggers_senjishi() {
     );
 
     // 成獅子(5,9)には足（黒金(5,8)）があるため、白は直後に取れない。
-    let recapture = Move::Step {
+    let recapture = Move {
         from: sq(5, 11),
+        mid: None,
         to: sq(5, 9),
         promote: false,
     };
     let white_moves = generated(&position);
     assert!(!white_moves.contains(&recapture));
-    assert!(white_moves.contains(&Move::Step {
+    assert!(white_moves.contains(&Move {
         from: sq(5, 11),
+        mid: None,
         to: sq(5, 10),
         promote: false,
     }));
@@ -651,14 +677,16 @@ fn case9_kirin_promotion_capture_of_undefended_new_lion_allows_reply() {
             (sq(5, 11), Color::White, PieceKind::Rook),
         ],
     );
-    position.make_move_unchecked(Move::Step {
+    position.make_move_unchecked(Move {
         from: sq(5, 7),
+        mid: None,
         to: sq(5, 9),
         promote: true,
     });
     assert_eq!(position.lion_taken_by_non_lion(), Some(sq(5, 9)));
-    assert!(generated(&position).contains(&Move::Step {
+    assert!(generated(&position).contains(&Move {
         from: sq(5, 11),
+        mid: None,
         to: sq(5, 9),
         promote: false,
     }));
@@ -687,8 +715,9 @@ fn extra_articles_13_4_14_2_and_16_8_pawn_restore_must_not_shield_a_sliding_foot
     let moves = generated(&position);
 
     // 跳び越し捕獲では歩が盤上に残り飛車の利きを遮るため、足がなく合法（準拠確認）。
-    assert!(moves.contains(&Move::Jump {
+    assert!(moves.contains(&Move {
         from: sq(3, 5),
+        mid: None,
         to: sq(5, 5),
         promote: false,
     }));
@@ -697,9 +726,9 @@ fn extra_articles_13_4_14_2_and_16_8_pawn_restore_must_not_shield_a_sliding_foot
     // 不成立のはず。実装が歩を無条件に復元すると、この足が遮蔽されて
     // 不正な捕獲手が生成される。
     assert!(
-        !moves.contains(&Move::Double {
+        !moves.contains(&Move {
             from: sq(3, 5),
-            mid: sq(4, 5),
+            mid: Some(sq(4, 5)),
             to: sq(5, 5),
             promote: false,
         }),
@@ -728,13 +757,15 @@ fn note_articles_14_1_vs_15_1_adjacent_lion_recapture_during_senjishi() {
             (sq(5, 6), Color::White, PieceKind::Lion),
         ],
     );
-    position.make_move_unchecked(Move::Step {
+    position.make_move_unchecked(Move {
         from: sq(0, 0),
+        mid: None,
         to: sq(1, 1),
         promote: false,
     });
-    let adjacent_recapture = Move::Step {
+    let adjacent_recapture = Move {
         from: sq(5, 6),
+        mid: None,
         to: sq(4, 5),
         promote: false,
     };

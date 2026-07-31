@@ -46,15 +46,16 @@ pub(super) fn generate_lion_double_and_jumps(
     output: &mut Vec<Move>,
 ) {
     let own = position.pieces_of(color);
+    let enemy = position.pieces_of(color.opposite());
     let adjacent = tables.king_steps(from);
 
-    for mid in adjacent & !own {
+    for mid in adjacent & enemy {
         let local = LocalOccupancy::new(position, color, from).move_to(mid);
         let second = tables.king_steps(mid) & !local.own;
         for to in second {
-            output.push(Move::Double {
+            output.push(Move {
                 from,
-                mid,
+                mid: Some(mid),
                 to,
                 promote: false,
             });
@@ -62,9 +63,19 @@ pub(super) fn generate_lion_double_and_jumps(
     }
 
     for to in tables.lion_jumps(from) & !own {
-        output.push(Move::Jump {
+        output.push(Move {
             from,
+            mid: None,
             to,
+            promote: false,
+        });
+    }
+
+    if !(adjacent & !position.occupied()).is_empty() {
+        output.push(Move {
+            from,
+            mid: None,
+            to: from,
             promote: false,
         });
     }
@@ -78,18 +89,20 @@ pub(super) fn generate_lion_like_double_and_jumps(
     output: &mut Vec<Move>,
 ) {
     let own = position.pieces_of(color);
+    let enemy = position.pieces_of(color.opposite());
+    let mut can_jitto = false;
 
     for relative in profile.directions {
         let direction = relative.for_color(color);
         let Some(first) = step_square(from, direction) else {
             continue;
         };
-        let first_is_own = own.contains(first);
-
-        if !first_is_own {
-            output.push(Move::Double {
+        if !position.occupied().contains(first) {
+            can_jitto = true;
+        } else if enemy.contains(first) {
+            output.push(Move {
                 from,
-                mid: first,
+                mid: Some(first),
                 to: from,
                 promote: false,
             });
@@ -101,19 +114,29 @@ pub(super) fn generate_lion_like_double_and_jumps(
         if own.contains(second) {
             continue;
         }
-        output.push(Move::Jump {
+        output.push(Move {
             from,
+            mid: None,
             to: second,
             promote: false,
         });
-        if !first_is_own {
-            output.push(Move::Double {
+        if enemy.contains(first) {
+            output.push(Move {
                 from,
-                mid: first,
+                mid: Some(first),
                 to: second,
                 promote: false,
             });
         }
+    }
+
+    if can_jitto {
+        output.push(Move {
+            from,
+            mid: None,
+            to: from,
+            promote: false,
+        });
     }
 }
 
@@ -150,15 +173,15 @@ mod tests {
             &mut moves,
         );
 
-        assert!(moves.contains(&Move::Double {
+        assert!(moves.contains(&Move {
             from: sq(5, 5),
-            mid: sq(5, 6),
+            mid: Some(sq(5, 6)),
             to: sq(6, 6),
             promote: false,
         }));
-        assert!(moves.contains(&Move::Double {
+        assert!(moves.contains(&Move {
             from: sq(5, 5),
-            mid: sq(5, 6),
+            mid: Some(sq(5, 6)),
             to: sq(5, 5),
             promote: false,
         }));

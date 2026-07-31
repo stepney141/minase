@@ -243,20 +243,21 @@ fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
     {
         return false;
     }
-    let Move::Double { from, mid, to, .. } = mv else {
+    let Some(mid) = mv.mid else {
         return false;
     };
-    let distance = from
+    let distance = mv
+        .from
         .file()
         .abs_diff(lion_square.file())
-        .max(from.rank().abs_diff(lion_square.rank()));
-    if to != lion_square || distance != 2 {
+        .max(mv.from.rank().abs_diff(lion_square.rank()));
+    if mv.to != lion_square || distance != 2 {
         return false;
     }
 
-    let [first, second] = position.captured_squares(mv);
-    first == Some(mid)
-        && second == Some(lion_square)
+    let [mid_capture, destination_capture] = position.captured_squares(mv);
+    mid_capture == Some(mid)
+        && destination_capture == Some(lion_square)
         && position.piece_at(mid).is_some_and(|piece| {
             !matches!(piece.kind(), Some(PieceKind::Pawn | PieceKind::GoBetween))
         })
@@ -298,9 +299,10 @@ impl VirtualBoard {
             current: mv.origin(),
         };
 
-        match mv {
-            Move::Step { to, .. } | Move::Jump { to, .. } => board.move_to(to),
-            Move::Double { mid, to, .. } => board.move_to(mid).move_to(to),
+        if let Some(mid) = mv.mid {
+            board.move_to(mid).move_to(mv.to)
+        } else {
+            board.move_to(mv.to)
         }
     }
 
@@ -325,14 +327,14 @@ fn lion_has_foot_after_capture(position: &Position, mv: Move, lion_square: Squar
         .expect("capture square must contain a lion");
     let board = VirtualBoard::after_move(position, mv);
 
-    let [first, second] = position.captured_squares(mv);
-    let captured_pawn_or_go_between_had_foot = second == Some(lion_square)
-        && first.is_some_and(|first| {
-            position.piece_at(first).is_some_and(|piece| {
+    let [mid_capture, destination_capture] = position.captured_squares(mv);
+    let captured_pawn_or_go_between_had_foot = destination_capture == Some(lion_square)
+        && mid_capture.is_some_and(|mid| {
+            position.piece_at(mid).is_some_and(|piece| {
                 let Some(kind @ (PieceKind::Pawn | PieceKind::GoBetween)) = piece.kind() else {
                     return false;
                 };
-                piece_control_with_occupancy(board.occupied, defending_color, kind, first)
+                piece_control_with_occupancy(board.occupied, defending_color, kind, mid)
                     .contains(mv.destination())
             })
         });
@@ -499,15 +501,16 @@ mod tests {
                 (sq(4, 4), Color::Black, PieceKind::Lion),
                 (sq(4, 1), Color::Black, PieceKind::Rook),
             ],
-            Move::Step {
+            Move {
                 from: sq(0, 0),
+                mid: None,
                 to: sq(1, 1),
                 promote: false,
             },
         );
-        let double_capture = Move::Double {
+        let double_capture = Move {
             from: sq(6, 6),
-            mid: sq(5, 5),
+            mid: Some(sq(5, 5)),
             to: sq(4, 4),
             promote: false,
         };
@@ -525,8 +528,9 @@ mod tests {
                 (sq(3, 5), Color::White, PieceKind::Rook),
             ],
         );
-        let capture = Move::Step {
+        let capture = Move {
             from: sq(2, 2),
+            mid: None,
             to: sq(3, 2),
             promote: false,
         };
@@ -544,8 +548,9 @@ mod tests {
                 (sq(4, 5), Color::White, PieceKind::Rook),
             ],
         );
-        let capture = Move::Jump {
+        let capture = Move {
             from: sq(2, 2),
+            mid: None,
             to: sq(4, 2),
             promote: false,
         };
@@ -564,13 +569,15 @@ mod tests {
                 (sq(4, 5), Color::White, PieceKind::Rook),
             ],
         );
-        let capture_defender = Move::Step {
+        let capture_defender = Move {
             from: sq(0, 5),
+            mid: None,
             to: sq(4, 5),
             promote: false,
         };
-        let capture_lion = Move::Jump {
+        let capture_lion = Move {
             from: sq(2, 2),
+            mid: None,
             to: sq(4, 2),
             promote: false,
         };
@@ -589,8 +596,9 @@ mod tests {
                 (sq(6, 2), Color::White, PieceKind::Rook),
             ],
         );
-        let capture = Move::Jump {
+        let capture = Move {
             from: sq(2, 2),
+            mid: None,
             to: sq(4, 2),
             promote: false,
         };
@@ -609,8 +617,9 @@ mod tests {
                 (sq(4, 5), Color::White, PieceKind::Rook),
             ],
         );
-        let capture = Move::Step {
+        let capture = Move {
             from: sq(4, 0),
+            mid: None,
             to: sq(4, 2),
             promote: false,
         };
@@ -627,8 +636,9 @@ mod tests {
                 (sq(4, 2), Color::White, PieceKind::Lion),
             ],
         );
-        let capture = Move::Jump {
+        let capture = Move {
             from: sq(2, 2),
+            mid: None,
             to: sq(4, 2),
             promote: false,
         };
@@ -647,9 +657,9 @@ mod tests {
                 (sq(4, 5), Color::White, PieceKind::Rook),
             ],
         );
-        let tsukegui = Move::Double {
+        let tsukegui = Move {
             from: sq(2, 2),
-            mid: sq(3, 2),
+            mid: Some(sq(3, 2)),
             to: sq(4, 2),
             promote: false,
         };
@@ -668,15 +678,16 @@ mod tests {
                 (sq(3, 2), Color::Black, PieceKind::Lion),
                 (sq(3, 5), Color::Black, PieceKind::Rook),
             ],
-            Move::Step {
+            Move {
                 from: sq(0, 0),
+                mid: None,
                 to: sq(1, 1),
                 promote: false,
             },
         );
-        let adjacent_double_capture = Move::Double {
+        let adjacent_double_capture = Move {
             from: sq(2, 2),
-            mid: sq(2, 3),
+            mid: Some(sq(2, 3)),
             to: sq(3, 2),
             promote: false,
         };
@@ -695,9 +706,9 @@ mod tests {
                 (sq(4, 4), Color::White, PieceKind::Lion),
             ],
         );
-        let capture = Move::Double {
+        let capture = Move {
             from: sq(4, 6),
-            mid: sq(4, 5),
+            mid: Some(sq(4, 5)),
             to: sq(4, 4),
             promote: false,
         };
@@ -717,14 +728,15 @@ mod tests {
                 (sq(0, 5), Color::White, PieceKind::Rook),
             ],
         );
-        let jump = Move::Jump {
+        let jump = Move {
             from: sq(3, 5),
+            mid: None,
             to: sq(5, 5),
             promote: false,
         };
-        let double = Move::Double {
+        let double = Move {
             from: sq(3, 5),
-            mid: sq(4, 5),
+            mid: Some(sq(4, 5)),
             to: sq(5, 5),
             promote: false,
         };
@@ -744,8 +756,9 @@ mod tests {
             ],
         );
         let before = position.clone();
-        let capture = Move::Jump {
+        let capture = Move {
             from: sq(6, 2),
+            mid: None,
             to: sq(4, 2),
             promote: false,
         };
@@ -765,9 +778,9 @@ mod tests {
                 (sq(4, 5), Color::White, PieceKind::Rook),
             ],
         );
-        let capture = Move::Double {
+        let capture = Move {
             from: sq(2, 2),
-            mid: sq(3, 2),
+            mid: Some(sq(3, 2)),
             to: sq(4, 2),
             promote: false,
         };
@@ -786,14 +799,16 @@ mod tests {
                 (sq(1, 1), Color::White, PieceKind::Lion),
                 (sq(4, 6), Color::White, PieceKind::Rook),
             ],
-            Move::Step {
+            Move {
                 from: sq(0, 0),
+                mid: None,
                 to: sq(1, 1),
                 promote: false,
             },
         );
-        let recapture = Move::Step {
+        let recapture = Move {
             from: sq(4, 6),
+            mid: None,
             to: sq(4, 4),
             promote: false,
         };
@@ -810,14 +825,16 @@ mod tests {
                 (sq(1, 1), Color::White, PieceKind::Lion),
                 (sq(4, 6), Color::White, PieceKind::Rook),
             ],
-            Move::Step {
+            Move {
                 from: sq(1, 0),
+                mid: None,
                 to: sq(1, 1),
                 promote: false,
             },
         );
-        let recapture = Move::Step {
+        let recapture = Move {
             from: sq(4, 6),
+            mid: None,
             to: sq(4, 4),
             promote: false,
         };
@@ -836,15 +853,16 @@ mod tests {
                 (sq(1, 1), Color::White, PieceKind::Lion),
                 (sq(4, 2), Color::White, PieceKind::Lion),
             ],
-            Move::Step {
+            Move {
                 from: sq(0, 0),
+                mid: None,
                 to: sq(1, 1),
                 promote: false,
             },
         );
-        let tsukegui = Move::Double {
+        let tsukegui = Move {
             from: sq(4, 2),
-            mid: sq(4, 3),
+            mid: Some(sq(4, 3)),
             to: sq(4, 4),
             promote: false,
         };
@@ -869,16 +887,17 @@ mod tests {
             builder.put(square, piece).unwrap();
         }
         let mut position = builder.finish().unwrap();
-        position.make_move_unchecked(Move::Step {
+        position.make_move_unchecked(Move {
             from: sq(0, 0),
+            mid: None,
             to: sq(1, 1),
             promote: false,
         });
         assert!(position.lion_taken_by_non_lion().is_some());
 
-        let tsukegui = Move::Double {
+        let tsukegui = Move {
             from: sq(2, 2),
-            mid: sq(3, 2),
+            mid: Some(sq(3, 2)),
             to: sq(4, 2),
             promote: false,
         };
@@ -897,15 +916,17 @@ mod tests {
                 (sq(2, 4), Color::White, PieceKind::Rook),
             ],
         );
-        position.make_move_unchecked(Move::Step {
+        position.make_move_unchecked(Move {
             from: sq(1, 1),
+            mid: None,
             to: sq(2, 1),
             promote: false,
         });
         assert_eq!(position.lion_taken_by_non_lion(), None);
 
-        let capture = Move::Step {
+        let capture = Move {
             from: sq(2, 4),
+            mid: None,
             to: sq(2, 1),
             promote: false,
         };
@@ -913,16 +934,19 @@ mod tests {
     }
 
     #[test]
-    fn articles_18_1_and_18_6_double_with_only_mid_in_enemy_camp_cannot_promote() {
+    fn articles_18_1_and_18_6_two_stage_move_with_only_mid_in_enemy_camp_cannot_promote() {
         let position = position(
             Color::Black,
-            &[(sq(4, 7), Color::Black, PieceKind::DragonHorse)],
+            &[
+                (sq(4, 7), Color::Black, PieceKind::DragonHorse),
+                (sq(4, 8), Color::White, PieceKind::Pawn),
+            ],
         );
-        // This is a synthetic/hypothetical non-yet-promoted DragonHorse Double that cannot be
-        // produced by the real move generator; it tests promotion_choice's isolated contract.
-        let mv = Move::Double {
+        // This synthetic two-stage DragonHorse capture cannot be produced by the move generator;
+        // it tests promotion_choice's isolated contract.
+        let mv = Move {
             from: sq(4, 7),
-            mid: sq(4, 8),
+            mid: Some(sq(4, 8)),
             to: sq(5, 7),
             promote: false,
         };
@@ -936,13 +960,15 @@ mod tests {
     #[test]
     fn article_18_3_non_capture_inside_enemy_camp_has_no_promotion_option() {
         let position = position(Color::Black, &[(sq(4, 8), Color::Black, PieceKind::Pawn)]);
-        let non_promoting = Move::Step {
+        let non_promoting = Move {
             from: sq(4, 8),
+            mid: None,
             to: sq(4, 9),
             promote: false,
         };
-        let promoting = Move::Step {
+        let promoting = Move {
             from: sq(4, 8),
+            mid: None,
             to: sq(4, 9),
             promote: true,
         };
@@ -960,8 +986,9 @@ mod tests {
                 (sq(4, 9), Color::White, PieceKind::GoBetween),
             ],
         );
-        let promotion = Move::Step {
+        let promotion = Move {
             from: sq(4, 8),
+            mid: None,
             to: sq(4, 9),
             promote: true,
         };
@@ -978,8 +1005,9 @@ mod tests {
                 (sq(4, 7), Color::White, PieceKind::Pawn),
             ],
         );
-        let promotion = Move::Step {
+        let promotion = Move {
             from: sq(4, 8),
+            mid: None,
             to: sq(4, 7),
             promote: true,
         };
@@ -990,8 +1018,9 @@ mod tests {
     #[test]
     fn article_19_1_pawn_can_promote_on_a_non_capture_to_the_last_rank() {
         let position = position(Color::Black, &[(sq(4, 10), Color::Black, PieceKind::Pawn)]);
-        let promotion = Move::Step {
+        let promotion = Move {
             from: sq(4, 10),
+            mid: None,
             to: sq(4, 11),
             promote: true,
         };
@@ -1002,8 +1031,9 @@ mod tests {
     #[test]
     fn article_26_8_try_make_move_rejects_unavailable_promotion() {
         let mut position = position(Color::Black, &[(sq(4, 4), Color::Black, PieceKind::Pawn)]);
-        let illegal = Move::Step {
+        let illegal = Move {
             from: sq(4, 4),
+            mid: None,
             to: sq(4, 5),
             promote: true,
         };
@@ -1023,16 +1053,18 @@ mod tests {
                 (sq(4, 4), Color::Black, PieceKind::Lion),
                 (sq(10, 10), Color::White, PieceKind::Pawn),
             ],
-            Move::Step {
+            Move {
                 from: sq(0, 0),
+                mid: None,
                 to: sq(1, 1),
                 promote: false,
             },
         );
         let before = position.clone();
         let side_to_move = position.side_to_move();
-        let illegal = Move::Step {
+        let illegal = Move {
             from: sq(11, 11),
+            mid: None,
             to: sq(11, 10),
             promote: false,
         };

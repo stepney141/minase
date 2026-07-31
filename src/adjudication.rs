@@ -156,8 +156,9 @@ mod tests {
         generator.generate_moves(&position, &mut moves);
         assert_eq!(moves.len(), 2);
 
-        let capture_one_royal = Move::Step {
+        let capture_one_royal = Move {
             from: sq(0, 9),
+            mid: None,
             to: sq(0, 11),
             promote: false,
         };
@@ -188,9 +189,9 @@ mod tests {
                 (sq(6, 6), prince(Color::White)),
             ],
         );
-        let double_capture = Move::Double {
+        let double_capture = Move {
             from: sq(5, 5),
-            mid: sq(5, 6),
+            mid: Some(sq(5, 6)),
             to: sq(6, 6),
             promote: false,
         };

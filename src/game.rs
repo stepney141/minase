@@ -346,8 +346,9 @@ mod tests {
     }
 
     fn step(from: Square, to: Square) -> Move {
-        Move::Step {
+        Move {
             from,
+            mid: None,
             to,
             promote: false,
         }
@@ -434,9 +435,9 @@ mod tests {
                 (sq(6, 6), prince(Color::White)),
             ],
         ));
-        let double_capture = Move::Double {
+        let double_capture = Move {
             from: sq(5, 5),
-            mid: sq(5, 6),
+            mid: Some(sq(5, 6)),
             to: sq(6, 6),
             promote: false,
         };

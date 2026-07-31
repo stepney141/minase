@@ -9,23 +9,9 @@ use crate::square::Square;
 use super::{MoveGenerator, lion};
 
 fn promoting_variant(mv: Move) -> Move {
-    match mv {
-        Move::Step { from, to, .. } => Move::Step {
-            from,
-            to,
-            promote: true,
-        },
-        Move::Double { from, mid, to, .. } => Move::Double {
-            from,
-            mid,
-            to,
-            promote: true,
-        },
-        Move::Jump { from, to, .. } => Move::Jump {
-            from,
-            to,
-            promote: true,
-        },
+    Move {
+        promote: true,
+        ..mv
     }
 }
 
@@ -108,8 +94,9 @@ pub(super) fn generate_moves(
                     | special_step_destinations(generator.tables(), color, from, profile.special))
                     & !own;
             for to in step_destinations {
-                base_moves.push(Move::Step {
+                base_moves.push(Move {
                     from,
+                    mid: None,
                     to,
                     promote: false,
                 });
@@ -322,13 +309,15 @@ mod tests {
         let mut moves = Vec::new();
         generator.generate_moves(&position, &mut moves);
 
-        assert!(moves.contains(&Move::Step {
+        assert!(moves.contains(&Move {
             from,
+            mid: None,
             to,
             promote: false,
         }));
-        assert!(moves.contains(&Move::Step {
+        assert!(moves.contains(&Move {
             from,
+            mid: None,
             to,
             promote: true,
         }));
@@ -350,13 +339,15 @@ mod tests {
         let mut moves = Vec::new();
         generator.generate_moves(&position, &mut moves);
 
-        assert!(moves.contains(&Move::Step {
+        assert!(moves.contains(&Move {
             from,
+            mid: None,
             to,
             promote: false,
         }));
-        assert!(!moves.contains(&Move::Step {
+        assert!(!moves.contains(&Move {
             from,
+            mid: None,
             to,
             promote: true,
         }));

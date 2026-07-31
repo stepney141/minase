@@ -97,9 +97,10 @@ mod tests {
         let before = position.clone();
         let mut moves = Vec::new();
         MoveGenerator::standard().generate_moves(&position, &mut moves);
+        let special_origins = [sq(5, 5), sq(1, 1), sq(9, 1)];
         let special: Vec<_> = moves
             .into_iter()
-            .filter(|mv| matches!(mv, Move::Double { .. } | Move::Jump { .. }))
+            .filter(|mv| special_origins.contains(&mv.from))
             .collect();
 
         assert_eq!(
@@ -107,11 +108,10 @@ mod tests {
             special.len(),
         );
         assert!(special.iter().any(|&mv| {
-            matches!(mv, Move::Double { from, to, .. } if from == to)
-                && position.captured_squares(mv)[0].is_some()
+            mv.from == mv.to && mv.mid.is_some() && position.captured_squares(mv)[0].is_some()
         }));
-        assert!(special.iter().any(|mv| matches!(mv, Move::Double { .. })));
-        assert!(special.iter().any(|mv| matches!(mv, Move::Jump { .. })));
+        assert!(special.iter().any(|mv| mv.mid.is_some()));
+        assert!(special.iter().any(|mv| mv.mid.is_none()));
         for mv in special {
             let undo = position.make_move_unchecked(mv);
             assert!(position.validate().is_ok());
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn lone_central_lion_generates_exactly_88_moves() {
+    fn lone_central_lion_generates_exactly_25_canonical_moves() {
         let from = sq(5, 5);
         let mut builder = PositionBuilder::new(Color::Black);
         builder
@@ -131,21 +131,10 @@ mod tests {
         let mut moves = Vec::new();
         MoveGenerator::standard().generate_moves(&position, &mut moves);
 
-        assert_eq!(moves.len(), 88);
-        assert_eq!(
-            moves
-                .iter()
-                .filter(|mv| matches!(mv, Move::Step { .. } | Move::Jump { .. }))
-                .count(),
-            24,
-        );
-        assert_eq!(
-            moves
-                .iter()
-                .filter(|mv| matches!(mv, Move::Double { .. }))
-                .count(),
-            64,
-        );
+        assert_eq!(moves.len(), 25);
+        assert_eq!(moves.iter().filter(|mv| mv.to != from).count(), 24,);
+        assert_eq!(moves.iter().filter(|mv| mv.to == from).count(), 1,);
+        assert!(moves.iter().all(|mv| mv.mid.is_none()));
     }
 
     #[test]
@@ -155,8 +144,9 @@ mod tests {
             (PieceKind::HornedFalcon, sq(5, 5), sq(5, 6), sq(5, 7)),
             (PieceKind::SoaringEagle, sq(5, 5), sq(6, 6), sq(7, 7)),
         ] {
-            let jump = Move::Jump {
+            let jump = Move {
                 from,
+                mid: None,
                 to: target,
                 promote: false,
             };
@@ -241,8 +231,9 @@ mod tests {
         }
         let mut position = builder.finish().unwrap();
         let generator = MoveGenerator::standard();
-        let legal = Move::Step {
+        let legal = Move {
             from: sq(4, 4),
+            mid: None,
             to: sq(4, 5),
             promote: false,
         };
@@ -258,8 +249,9 @@ mod tests {
             original.put(square, PieceCode::new(color, kind)).unwrap();
         }
         let mut original = original.finish().unwrap();
-        let illegal = Move::Step {
+        let illegal = Move {
             from: sq(4, 4),
+            mid: None,
             to: sq(5, 4),
             promote: false,
         };
