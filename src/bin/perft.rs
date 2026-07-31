@@ -1,57 +1,17 @@
-use std::env;
-use std::ffi::OsStr;
 use std::process;
 use std::time::{Duration, Instant};
 
+use clap::{CommandFactory, Parser, error::ErrorKind};
 use minase::{Move, MoveGenerator, Position, Square, parse_sfen, perft};
 
-const USAGE: &str = "Usage: perft <depth> [--sfen \"<sfen>\"] [--divide]";
-
+#[derive(Parser)]
+#[command(name = "perft")]
 struct Arguments {
     depth: u32,
+    #[arg(long)]
     sfen: Option<String>,
+    #[arg(long)]
     divide: bool,
-}
-
-fn parse_arguments() -> Result<Arguments, ()> {
-    let mut arguments = env::args_os().skip(1);
-    let depth = arguments
-        .next()
-        .and_then(|argument| argument.into_string().ok())
-        .and_then(|argument| argument.parse().ok())
-        .ok_or(())?;
-    let mut sfen = None;
-    let mut divide = false;
-
-    while let Some(argument) = arguments.next() {
-        if argument == OsStr::new("--sfen") {
-            if sfen.is_some() {
-                return Err(());
-            }
-            sfen = Some(
-                arguments
-                    .next()
-                    .and_then(|value| value.into_string().ok())
-                    .ok_or(())?,
-            );
-        } else if argument == OsStr::new("--divide") {
-            if divide {
-                return Err(());
-            }
-            divide = true;
-        } else {
-            return Err(());
-        }
-    }
-
-    if divide && depth == 0 {
-        return Err(());
-    }
-    Ok(Arguments {
-        depth,
-        sfen,
-        divide,
-    })
 }
 
 fn square_text(square: Square) -> String {
@@ -110,13 +70,15 @@ fn print_summary(total: u64, elapsed: Duration) {
 }
 
 fn main() {
-    let arguments = match parse_arguments() {
-        Ok(arguments) => arguments,
-        Err(()) => {
-            eprintln!("{USAGE}");
-            process::exit(2);
-        }
-    };
+    let arguments = Arguments::parse();
+    if arguments.divide && arguments.depth == 0 {
+        Arguments::command()
+            .error(
+                ErrorKind::ValueValidation,
+                "--divide requires <DEPTH> to be at least 1",
+            )
+            .exit();
+    }
     let mut position = match arguments.sfen {
         Some(sfen) => match parse_sfen(&sfen) {
             Ok(position) => position,
