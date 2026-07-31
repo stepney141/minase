@@ -4,8 +4,6 @@ mod legal;
 mod lion;
 mod normal;
 #[cfg(test)]
-mod oracle;
-#[cfg(test)]
 mod verification;
 
 use crate::attacks::{AttackTables, attack_tables};
