@@ -1,10 +1,8 @@
-#[cfg(test)]
-mod adversarial;
 mod legal;
 mod lion;
 mod normal;
 #[cfg(test)]
-mod verification;
+mod tests;
 
 use crate::attacks::{AttackTables, attack_tables};
 use crate::bitboard::Bitboard;

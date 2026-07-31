@@ -251,8 +251,35 @@ pub fn parse_sfen(sfen: &str) -> Result<Position, SfenError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::sq;
 
     const EMPTY_BOARD: &str = "12/12/12/12/12/12/12/12/12/12/12/12";
+
+    #[test]
+    fn sfen_conversion_uses_shogiops_coordinates_and_piece_codes() {
+        let position = parse_sfen("12/12/12/12/4B2l4/4S7/5+O6/7n4/12/12/12/12 b").unwrap();
+
+        assert_eq!(
+            position.piece_at(sq(4, 7)),
+            Some(PieceCode::new(Color::Black, PieceKind::Bishop))
+        );
+        assert_eq!(
+            position.piece_at(sq(7, 7)),
+            Some(PieceCode::new(Color::White, PieceKind::Lance))
+        );
+        assert_eq!(
+            position.piece_at(sq(4, 6)),
+            Some(PieceCode::new(Color::Black, PieceKind::SilverGeneral))
+        );
+        assert_eq!(
+            position.piece_at(sq(5, 5)),
+            PieceCode::new(Color::Black, PieceKind::Kirin).promote()
+        );
+        assert_eq!(
+            position.piece_at(sq(7, 4)),
+            Some(PieceCode::new(Color::White, PieceKind::Lion))
+        );
+    }
 
     #[test]
     fn lishogi_initial_position_matches_position_initial() {

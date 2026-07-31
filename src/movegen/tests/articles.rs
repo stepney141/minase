@@ -1,10 +1,11 @@
 //! 敵対的レビュー用の条文対応テスト。
 //! RULES.md 第11〜16条および第18〜19条と PLAN.md 第2版4〜6節・10節の確定解釈を検証する。
 
-use super::MoveGenerator;
+use super::super::MoveGenerator;
 use crate::mv::Move;
 use crate::piece::{Color, PieceCode, PieceKind};
-use crate::position::Position;
+use crate::position::{Position, PositionBuilder};
+use crate::rules::Rules;
 use crate::square::Square;
 use crate::test_util::{position, sq};
 
@@ -762,7 +763,7 @@ fn note_articles_14_1_vs_15_1_adjacent_lion_recapture_during_senjishi() {
     assert!(!generated(&position).contains(&adjacent_recapture));
 
     // 対照: 先獅子トリガーがなければ隣接捕獲は無条件（第14条1項）。
-    let no_trigger = super::super::position::PositionBuilder::new(Color::White);
+    let no_trigger = crate::position::PositionBuilder::new(Color::White);
     let mut builder = no_trigger;
     for (square, color, kind) in [
         (sq(4, 5), Color::Black, PieceKind::Lion),
@@ -773,4 +774,223 @@ fn note_articles_14_1_vs_15_1_adjacent_lion_recapture_during_senjishi() {
     }
     let fresh = builder.finish().unwrap();
     assert!(generated(&fresh).contains(&adjacent_recapture));
+}
+
+#[test]
+fn articles_3_8_and_8_3_5_move_leaving_king_capturable_is_generated() {
+    let position = position(
+        Color::Black,
+        &[
+            (sq(4, 0), Color::Black, PieceKind::King),
+            (sq(4, 2), Color::Black, PieceKind::SideMover),
+            (sq(4, 5), Color::White, PieceKind::Rook),
+        ],
+    );
+    let exposes_king = Move {
+        from: sq(4, 2),
+        mid: None,
+        to: sq(5, 2),
+        promote: false,
+    };
+    let mut moves = Vec::new();
+    MoveGenerator::standard().generate_moves(&position, &mut moves);
+
+    assert!(moves.contains(&exposes_king));
+}
+
+#[test]
+fn article_12_8_igui_has_one_move_encoding() {
+    let from = sq(5, 5);
+    let mid = sq(5, 6);
+    let position = position(
+        Color::Black,
+        &[
+            (from, Color::Black, PieceKind::Lion),
+            (mid, Color::White, PieceKind::SilverGeneral),
+        ],
+    );
+    let expected = Move {
+        from,
+        mid: Some(mid),
+        to: from,
+        promote: false,
+    };
+    let mut moves = Vec::new();
+    MoveGenerator::standard().generate_moves(&position, &mut moves);
+
+    assert_eq!(moves.iter().filter(|&&mv| mv == expected).count(), 1);
+    assert_eq!(
+        moves
+            .iter()
+            .filter(|&&mv| {
+                mv.origin() == from
+                    && mv.destination() == from
+                    && position.captured_squares(mv) == [Some(mid), None]
+            })
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn articles_16_1_and_16_11_tsukegui_requires_the_first_capture_on_mid() {
+    let position = position(
+        Color::Black,
+        &[
+            (sq(2, 2), Color::Black, PieceKind::Lion),
+            (sq(3, 2), Color::White, PieceKind::SilverGeneral),
+            (sq(4, 2), Color::White, PieceKind::Lion),
+            (sq(4, 5), Color::White, PieceKind::Rook),
+        ],
+    );
+    let capture_without_first_capture = Move {
+        from: sq(2, 2),
+        mid: None,
+        to: sq(4, 2),
+        promote: false,
+    };
+    let mut moves = Vec::new();
+    MoveGenerator::standard().generate_moves(&position, &mut moves);
+
+    assert!(!moves.contains(&capture_without_first_capture));
+}
+
+#[test]
+fn article_24_equivalent_positions_ignore_quiet_move_history() {
+    let initial = position(
+        Color::Black,
+        &[
+            (sq(3, 3), Color::Black, PieceKind::Lion),
+            (sq(8, 8), Color::White, PieceKind::Lion),
+        ],
+    );
+    let mut first = initial.clone();
+    first.make_move_unchecked(Move {
+        from: sq(3, 3),
+        mid: None,
+        to: sq(3, 4),
+        promote: false,
+    });
+    first.make_move_unchecked(Move {
+        from: sq(8, 8),
+        mid: None,
+        to: sq(8, 7),
+        promote: false,
+    });
+    first.make_move_unchecked(Move {
+        from: sq(3, 4),
+        mid: None,
+        to: sq(3, 3),
+        promote: false,
+    });
+    first.make_move_unchecked(Move {
+        from: sq(8, 7),
+        mid: None,
+        to: sq(8, 8),
+        promote: false,
+    });
+
+    let mut second = initial;
+    second.make_move_unchecked(Move {
+        from: sq(3, 3),
+        mid: None,
+        to: sq(4, 3),
+        promote: false,
+    });
+    second.make_move_unchecked(Move {
+        from: sq(8, 8),
+        mid: None,
+        to: sq(7, 8),
+        promote: false,
+    });
+    second.make_move_unchecked(Move {
+        from: sq(4, 3),
+        mid: None,
+        to: sq(3, 3),
+        promote: false,
+    });
+    second.make_move_unchecked(Move {
+        from: sq(7, 8),
+        mid: None,
+        to: sq(8, 8),
+        promote: false,
+    });
+
+    assert_eq!(first, second);
+}
+
+#[test]
+fn articles_11_1_d_and_11_2_lion_like_direct_jumps_ignore_intermediate_occupancy() {
+    let generator = MoveGenerator::standard();
+    for (kind, from, middle, target) in [
+        (PieceKind::HornedFalcon, sq(5, 5), sq(5, 6), sq(5, 7)),
+        (PieceKind::SoaringEagle, sq(5, 5), sq(6, 6), sq(7, 7)),
+    ] {
+        let jump = Move {
+            from,
+            mid: None,
+            to: target,
+            promote: false,
+        };
+        for middle_color in [None, Some(Color::White), Some(Color::Black)] {
+            let mut builder = PositionBuilder::new(Color::Black);
+            builder
+                .put(from, PieceCode::new_promoted(Color::Black, kind).unwrap())
+                .unwrap();
+            if let Some(color) = middle_color {
+                builder
+                    .put(middle, PieceCode::new(color, PieceKind::Pawn))
+                    .unwrap();
+            }
+            let position = builder.finish().unwrap();
+            let mut moves = Vec::new();
+            generator.generate_moves(&position, &mut moves);
+
+            assert!(
+                moves.contains(&jump),
+                "kind={kind:?}, middle_color={middle_color:?}",
+            );
+            assert_eq!(position.captured_squares(jump), [None, None]);
+        }
+
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(from, PieceCode::new_promoted(Color::Black, kind).unwrap())
+            .unwrap();
+        builder
+            .put(target, PieceCode::new(Color::Black, PieceKind::Pawn))
+            .unwrap();
+        let position = builder.finish().unwrap();
+        let mut moves = Vec::new();
+        generator.generate_moves(&position, &mut moves);
+
+        assert!(!moves.contains(&jump), "kind={kind:?}");
+    }
+}
+
+#[test]
+fn articles_18_1_and_18_5_promotion_entry_generates_both_choices() {
+    let from = Square::new(4, 7).unwrap();
+    let to = Square::new(4, 8).unwrap();
+    let mut builder = PositionBuilder::new(Color::Black);
+    builder
+        .put(from, PieceCode::new(Color::Black, PieceKind::Pawn))
+        .unwrap();
+    let position = builder.finish().unwrap();
+    let generator = MoveGenerator::new(Rules::standard());
+    let mut moves = Vec::new();
+    generator.generate_moves(&position, &mut moves);
+
+    assert!(moves.contains(&Move {
+        from,
+        mid: None,
+        to,
+        promote: false,
+    }));
+    assert!(moves.contains(&Move {
+        from,
+        mid: None,
+        to,
+        promote: true,
+    }));
 }
