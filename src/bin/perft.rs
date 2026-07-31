@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::process;
 use std::time::{Duration, Instant};
 
-use minase::{Move, MoveGenerator, Position, Square, parse_sfen};
+use minase::{Move, MoveGenerator, Position, Square, parse_sfen, perft};
 
 const USAGE: &str = "Usage: perft <depth> [--sfen \"<sfen>\"] [--divide]";
 
@@ -92,7 +92,7 @@ fn run_divide(
     for mv in moves {
         let mut child = position.clone();
         child.try_make_move(mv, generator)?;
-        let nodes = generator.perft(&mut child, depth - 1);
+        let nodes = perft(generator, &mut child, depth - 1);
         println!("{}: {nodes}", move_text(mv));
         total += nodes;
     }
@@ -138,7 +138,7 @@ fn main() {
             }
         }
     } else {
-        generator.perft(&mut position, arguments.depth)
+        perft(&generator, &mut position, arguments.depth)
     };
     print_summary(total, start.elapsed());
 }
