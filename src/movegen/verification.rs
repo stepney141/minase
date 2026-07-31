@@ -6,18 +6,7 @@ use crate::piece::{Color, PieceCode, PieceKind};
 use crate::position::{Position, PositionBuilder};
 use crate::sfen::parse_sfen;
 use crate::square::{BOARD_SQUARE_COUNT, Square};
-
-fn sq(file: u8, rank: u8) -> Square {
-    Square::new(file, rank).unwrap()
-}
-
-fn position(side_to_move: Color, pieces: &[(Square, Color, PieceKind)]) -> Position {
-    let mut builder = PositionBuilder::new(side_to_move);
-    for &(square, color, kind) in pieces {
-        builder.put(square, PieceCode::new(color, kind)).unwrap();
-    }
-    builder.finish().unwrap()
-}
+use crate::test_util::{position, sq};
 
 #[test]
 fn sfen_conversion_uses_shogiops_coordinates_and_piece_codes() {

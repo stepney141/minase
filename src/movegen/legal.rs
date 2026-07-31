@@ -40,11 +40,7 @@ mod tests {
     use crate::MoveGenerator;
     use crate::piece::{Color, PieceCode, PieceKind};
     use crate::position::PositionBuilder;
-    use crate::square::Square;
-
-    fn sq(file: u8, rank: u8) -> Square {
-        Square::new(file, rank).unwrap()
-    }
+    use crate::test_util::sq;
 
     #[test]
     fn every_initial_generated_move_round_trips_exactly() {

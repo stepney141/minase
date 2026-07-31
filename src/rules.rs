@@ -368,18 +368,7 @@ mod tests {
     use crate::movegen::MoveGenerator;
     use crate::piece::PieceCode;
     use crate::position::PositionBuilder;
-
-    fn sq(file: u8, rank: u8) -> Square {
-        Square::new(file, rank).unwrap()
-    }
-
-    fn position(side_to_move: Color, pieces: &[(Square, Color, PieceKind)]) -> Position {
-        let mut builder = PositionBuilder::new(side_to_move);
-        for &(square, color, kind) in pieces {
-            builder.put(square, PieceCode::new(color, kind)).unwrap();
-        }
-        builder.finish().unwrap()
-    }
+    use crate::test_util::{position, sq};
 
     fn is_generated(position: &Position, expected: Move) -> bool {
         let mut moves = Vec::new();

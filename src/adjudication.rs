@@ -62,12 +62,7 @@ pub(crate) fn is_mate(position: &mut Position, generator: &MoveGenerator) -> boo
 mod tests {
     use super::*;
     use crate::piece::{Color, PieceCode, PieceKind};
-    use crate::position::PositionBuilder;
-    use crate::square::Square;
-
-    fn sq(file: u8, rank: u8) -> Square {
-        Square::new(file, rank).unwrap()
-    }
+    use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
         PieceCode::new(color, kind)
@@ -75,14 +70,6 @@ mod tests {
 
     fn prince(color: Color) -> PieceCode {
         PieceCode::new_promoted(color, PieceKind::CrownPrince).unwrap()
-    }
-
-    fn position(side_to_move: Color, pieces: &[(Square, PieceCode)]) -> Position {
-        let mut builder = PositionBuilder::new(side_to_move);
-        for &(square, piece) in pieces {
-            builder.put(square, piece).unwrap();
-        }
-        builder.finish().unwrap()
     }
 
     #[test]

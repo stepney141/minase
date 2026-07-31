@@ -505,10 +505,7 @@ impl PositionBuilder {
 mod tests {
     use super::*;
     use crate::MoveGenerator;
-
-    fn sq(file: u8, rank: u8) -> Square {
-        Square::new(file, rank).unwrap()
-    }
+    use crate::test_util::sq;
 
     fn assert_zobrist_matches(position: &Position) {
         assert_eq!(position.zobrist(), position.recompute_zobrist());

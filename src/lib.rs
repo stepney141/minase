@@ -12,6 +12,8 @@ pub mod position;
 pub mod rules;
 pub mod sfen;
 pub mod square;
+#[cfg(test)]
+mod test_util;
 
 pub use bitboard::Bitboard;
 pub use direction::Direction;

@@ -146,10 +146,7 @@ mod tests {
     use crate::attacks::attack_tables;
     use crate::piece::{PieceCode, PieceKind};
     use crate::position::PositionBuilder;
-
-    fn sq(file: u8, rank: u8) -> Square {
-        Square::new(file, rank).unwrap()
-    }
+    use crate::test_util::sq;
 
     #[test]
     fn second_lion_stage_uses_updated_occupancy() {

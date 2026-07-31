@@ -4,20 +4,9 @@
 use super::MoveGenerator;
 use crate::mv::Move;
 use crate::piece::{Color, PieceCode, PieceKind};
-use crate::position::{Position, PositionBuilder};
+use crate::position::Position;
 use crate::square::Square;
-
-fn sq(file: u8, rank: u8) -> Square {
-    Square::new(file, rank).unwrap()
-}
-
-fn position(side_to_move: Color, pieces: &[(Square, Color, PieceKind)]) -> Position {
-    let mut builder = PositionBuilder::new(side_to_move);
-    for &(square, color, kind) in pieces {
-        builder.put(square, PieceCode::new(color, kind)).unwrap();
-    }
-    builder.finish().unwrap()
-}
+use crate::test_util::{position, sq};
 
 fn generated(position: &Position) -> Vec<Move> {
     let mut moves = Vec::new();
