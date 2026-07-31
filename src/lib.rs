@@ -3,7 +3,6 @@
 pub mod core;
 mod game;
 mod mate;
-mod perft;
 pub mod sfen;
 
 #[cfg(test)]
@@ -20,5 +19,4 @@ pub use crate::core::square::{
     BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square,
 };
 pub use game::{DrawReason, Game, GameError, GameResult, GameStatus, WinReason};
-pub use perft::perft;
 pub use sfen::{SfenError, parse_sfen};
