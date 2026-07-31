@@ -4,7 +4,8 @@ use super::MoveGenerator;
 use crate::mv::Move;
 use crate::piece::{Color, PieceCode, PieceKind};
 use crate::position::{Position, PositionBuilder};
-use crate::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, Square};
+use crate::sfen::parse_sfen;
+use crate::square::{BOARD_RANKS, BOARD_SQUARE_COUNT, Square};
 
 fn sq(file: u8, rank: u8) -> Square {
     Square::new(file, rank).unwrap()
@@ -18,84 +19,13 @@ fn position(side_to_move: Color, pieces: &[(Square, Color, PieceKind)]) -> Posit
     builder.finish().unwrap()
 }
 
-fn parse_sfen(sfen: &str) -> Position {
-    let mut fields = sfen.split_whitespace();
-    let board = fields.next().expect("SFEN must contain a board");
-    let side_to_move = match fields.next().expect("SFEN must contain a side to move") {
-        "b" => Color::Black,
-        "w" => Color::White,
-        side => panic!("unsupported SFEN side to move: {side}"),
-    };
-    assert!(fields.next().is_none(), "unexpected extra SFEN fields");
-
-    let rows: Vec<_> = board.split('/').collect();
-    assert_eq!(rows.len(), BOARD_RANKS as usize);
-    let mut builder = PositionBuilder::new(side_to_move);
-    for (row_index, row) in rows.into_iter().enumerate() {
-        let rank = BOARD_RANKS - 1 - row_index as u8;
-        let mut file = 0_u8;
-        let mut chars = row.chars().peekable();
-        while let Some(character) = chars.next() {
-            if character.is_ascii_digit() {
-                let mut empty = character.to_digit(10).unwrap() as u8;
-                while chars.peek().is_some_and(char::is_ascii_digit) {
-                    empty = empty * 10 + chars.next().unwrap().to_digit(10).unwrap() as u8;
-                }
-                file += empty;
-                continue;
-            }
-
-            let (promote, letter) = if character == '+' {
-                (
-                    true,
-                    chars.next().expect("promoted SFEN piece needs a letter"),
-                )
-            } else {
-                (false, character)
-            };
-            let color = if letter.is_ascii_uppercase() {
-                Color::Black
-            } else {
-                Color::White
-            };
-            let kind = match letter.to_ascii_uppercase() {
-                'N' => PieceKind::Lion,
-                'O' => PieceKind::Kirin,
-                'H' => PieceKind::DragonHorse,
-                'D' => PieceKind::DragonKing,
-                'B' => PieceKind::Bishop,
-                'S' => PieceKind::SilverGeneral,
-                'G' => PieceKind::GoldGeneral,
-                'L' => PieceKind::Lance,
-                unsupported => panic!("unsupported SFEN piece letter: {unsupported}"),
-            };
-            let piece = if promote {
-                PieceCode::new(color, kind)
-                    .promote()
-                    .expect("SFEN piece must have a promoted form")
-            } else {
-                PieceCode::new(color, kind)
-            };
-            builder.put(sq(file, rank), piece).unwrap();
-            file += 1;
-        }
-        assert_eq!(
-            file,
-            BOARD_FILES,
-            "SFEN row {} has wrong width",
-            row_index + 1
-        );
-    }
-    builder.finish().unwrap()
-}
-
 fn perft(generator: &MoveGenerator, mut position: Position, depth: u32) -> u64 {
     generator.perft(&mut position, depth)
 }
 
 #[test]
 fn sfen_conversion_uses_shogiops_coordinates_and_piece_codes() {
-    let position = parse_sfen("12/12/12/12/4B2l4/4S7/5+O6/7n4/12/12/12/12 b");
+    let position = parse_sfen("12/12/12/12/4B2l4/4S7/5+O6/7n4/12/12/12/12 b").unwrap();
 
     assert_eq!(
         position.piece_at(sq(4, 7)),
@@ -134,7 +64,7 @@ fn shogiops_perft_single_lion_variants() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5N6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5N6/12/12/12/12/12 b").unwrap(),
             1,
         ),
         88
@@ -142,7 +72,7 @@ fn shogiops_perft_single_lion_variants() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5+O6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5+O6/12/12/12/12/12 b").unwrap(),
             1,
         ),
         88
@@ -156,7 +86,7 @@ fn shogiops_perft_single_lion_like_pieces() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5+H6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5+H6/12/12/12/12/12 b").unwrap(),
             1,
         ),
         41
@@ -164,7 +94,7 @@ fn shogiops_perft_single_lion_like_pieces() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5+D6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5+D6/12/12/12/12/12 b").unwrap(),
             1,
         ),
         40
@@ -178,7 +108,7 @@ fn shogiops_perft_composite_lion_rules() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/7g4/6n5/5N6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/7g4/6n5/5N6/12/12/12/12/12 b").unwrap(),
             1,
         ),
         88
@@ -186,7 +116,7 @@ fn shogiops_perft_composite_lion_rules() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/4B2l4/4S7/5N6/7n4/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/4B2l4/4S7/5N6/7n4/12/12/12/12 b").unwrap(),
             1,
         ),
         98
@@ -210,7 +140,7 @@ fn self_generated_perft_single_lion_variants_depth_2() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5N6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5N6/12/12/12/12/12 b").unwrap(),
             2,
         ),
         0
@@ -218,7 +148,7 @@ fn self_generated_perft_single_lion_variants_depth_2() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5+O6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5+O6/12/12/12/12/12 b").unwrap(),
             2,
         ),
         0
@@ -233,7 +163,7 @@ fn self_generated_perft_single_lion_like_pieces_depth_2() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5+H6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5+H6/12/12/12/12/12 b").unwrap(),
             2,
         ),
         0
@@ -241,7 +171,7 @@ fn self_generated_perft_single_lion_like_pieces_depth_2() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/12/12/5+D6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/12/12/5+D6/12/12/12/12/12 b").unwrap(),
             2,
         ),
         0
@@ -256,7 +186,7 @@ fn self_generated_perft_composite_lion_rules_depth_2() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/7g4/6n5/5N6/12/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/7g4/6n5/5N6/12/12/12/12/12 b").unwrap(),
             2,
         ),
         6_380
@@ -264,7 +194,7 @@ fn self_generated_perft_composite_lion_rules_depth_2() {
     assert_eq!(
         perft(
             &generator,
-            parse_sfen("12/12/12/12/4B2l4/4S7/5N6/7n4/12/12/12/12 b"),
+            parse_sfen("12/12/12/12/4B2l4/4S7/5N6/7n4/12/12/12/12 b").unwrap(),
             2,
         ),
         8_632
