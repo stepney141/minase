@@ -149,6 +149,7 @@ impl Rules {
         for &code in codes {
             match code {
                 RuleCode::L0
+                | RuleCode::L1
                 | RuleCode::L2
                 | RuleCode::L3
                 | RuleCode::P3
@@ -158,7 +159,7 @@ impl Rules {
                 | RuleCode::R2
                 | RuleCode::E1
                 | RuleCode::E2 => {}
-                RuleCode::L1 | RuleCode::P1 | RuleCode::P2 => {
+                RuleCode::P1 | RuleCode::P2 => {
                     return Err(RulesError::Unsupported(code));
                 }
             }
@@ -268,7 +269,9 @@ impl Rules {
                 let l2_exemption = self.contains(RuleCode::L2)
                     && trigger.by_kirin_promotion
                     && position.piece_at(lion).is_some_and(PieceCode::is_promoted);
-                !l2_exemption && lion_has_foot_after_capture(self, position, mv, lion)
+                !l2_exemption
+                    && (self.contains(RuleCode::L1)
+                        || lion_has_foot_after_capture(self, position, mv, lion))
             })
         {
             return false;
@@ -529,13 +532,14 @@ mod tests {
             Rules::from_codes(&[RuleCode::R0, RuleCode::R0]),
             Err(RulesError::Duplicate(RuleCode::R0)),
         );
-        for code in [RuleCode::L1, RuleCode::P1, RuleCode::P2] {
+        for code in [RuleCode::P1, RuleCode::P2] {
             assert_eq!(
                 Rules::from_codes(&[code]),
                 Err(RulesError::Unsupported(code)),
             );
         }
         for code in [
+            RuleCode::L1,
             RuleCode::L2,
             RuleCode::L3,
             RuleCode::P3,
@@ -926,6 +930,91 @@ mod tests {
             &position,
             capture_existing_lion
         ));
+    }
+
+    #[test]
+    fn article_29_l1_prevents_immediate_capture_of_an_undefended_lion() {
+        let position = after_non_lion_capture(
+            &[
+                (sq(1, 0), Color::Black, PieceKind::Pawn),
+                (sq(4, 4), Color::Black, PieceKind::Lion),
+                (sq(1, 1), Color::White, PieceKind::Lion),
+                (sq(4, 6), Color::White, PieceKind::Rook),
+            ],
+            Move {
+                from: sq(1, 0),
+                mid: None,
+                to: sq(1, 1),
+                promote: false,
+            },
+        );
+        let recapture = Move {
+            from: sq(4, 6),
+            mid: None,
+            to: sq(4, 4),
+            promote: false,
+        };
+        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
+
+        assert!(is_generated(&position, recapture));
+        assert!(!is_generated_with_rules(l1, &position, recapture));
+    }
+
+    #[test]
+    fn articles_16_7_and_29_l1_allow_tsukegui() {
+        let position = after_non_lion_capture(
+            &[
+                (sq(0, 0), Color::Black, PieceKind::Bishop),
+                (sq(4, 4), Color::Black, PieceKind::Lion),
+                (sq(4, 3), Color::Black, PieceKind::SilverGeneral),
+                (sq(1, 1), Color::White, PieceKind::Lion),
+                (sq(4, 2), Color::White, PieceKind::Lion),
+            ],
+            Move {
+                from: sq(0, 0),
+                mid: None,
+                to: sq(1, 1),
+                promote: false,
+            },
+        );
+        let tsukegui = Move {
+            from: sq(4, 2),
+            mid: Some(sq(4, 3)),
+            to: sq(4, 4),
+            promote: false,
+        };
+        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
+
+        assert!(is_generated_with_rules(l1, &position, tsukegui));
+    }
+
+    #[test]
+    fn article_29_l2_exempts_a_new_promoted_lion_under_l1() {
+        let position = after_non_lion_capture(
+            &[
+                (sq(5, 9), Color::Black, PieceKind::Kirin),
+                (sq(5, 11), Color::White, PieceKind::Lion),
+                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
+                (sq(5, 4), Color::White, PieceKind::Rook),
+            ],
+            Move {
+                from: sq(5, 9),
+                mid: None,
+                to: sq(5, 11),
+                promote: true,
+            },
+        );
+        let recapture = Move {
+            from: sq(5, 4),
+            mid: None,
+            to: sq(5, 11),
+            promote: false,
+        };
+        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
+        let l1_l2 = Rules::from_codes(&[RuleCode::L1, RuleCode::L2]).unwrap();
+
+        assert!(!is_generated_with_rules(l1, &position, recapture));
+        assert!(is_generated_with_rules(l1_l2, &position, recapture));
     }
 
     #[test]
