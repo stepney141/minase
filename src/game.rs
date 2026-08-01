@@ -848,6 +848,57 @@ mod tests {
         }
     }
 
+    #[test]
+    fn articles_22_3_22_4_and_30_p3_p4_keep_piece_exhaustion_conditions() {
+        let mut p3_game = game_with_codes(
+            position(
+                Color::White,
+                &[
+                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                    (sq(4, 11), piece(Color::Black, PieceKind::Lance)),
+                    (sq(11, 11), piece(Color::White, PieceKind::King)),
+                ],
+            ),
+            &[RuleCode::P3, RuleCode::R1],
+        );
+        // 第30条P3は成る機会だけを追加する。最奥段で不成を選んだ香車は、
+        // P3採用後も第22条4項の移動不能な余分の駒であり、勝利を成立させない。
+        assert_eq!(
+            p3_game.play(step(sq(11, 11), sq(10, 11))),
+            Ok(GameStatus::Ongoing)
+        );
+
+        let mut p4_game = game_with_codes(
+            position(
+                Color::White,
+                &[
+                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                    (sq(4, 10), piece(Color::Black, PieceKind::GoBetween)),
+                    (sq(3, 10), piece(Color::White, PieceKind::King)),
+                ],
+            ),
+            &[RuleCode::P4, RuleCode::R1],
+        );
+        assert_eq!(
+            p4_game.play(step(sq(3, 10), sq(3, 11))),
+            Ok(GameStatus::Ongoing)
+        );
+        assert_eq!(
+            p4_game.play(Move {
+                from: sq(4, 10),
+                mid: None,
+                to: sq(4, 11),
+                promote: true,
+            }),
+            Ok(GameStatus::Finished(GameResult::Win {
+                winner: Color::Black,
+                reason: WinReason::PieceExhaustion,
+            }))
+        );
+        // 第30条P4は仲人が醉象へ成る経路を増やすが、勝利条件自体は第22条3項のまま。
+        // 成った時点で成立するため、白王が次手で(4,11)を取れる配置でも猶予を与えない。
+    }
+
     fn article_22_grace_predecessor() -> (Position, Move) {
         (
             position(
