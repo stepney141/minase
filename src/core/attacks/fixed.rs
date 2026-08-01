@@ -1,28 +1,37 @@
+//! 駒種ごとの動き(固定利き・走り・特殊移動)の定義テーブル。
+
 use crate::core::direction::Direction;
 use crate::core::piece::{Color, PieceKind};
 
+/// 動きプロファイルの識別子。王将と太子のように動きが同じ駒種は1つのプロファイルを共有する。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct MovementProfileId(u8);
 
 impl MovementProfileId {
+    /// 配列添字用の番号を返す。
     #[inline]
     pub(crate) const fn index(self) -> usize {
         self.0 as usize
     }
 
+    /// 番号から識別子を作る。
     const fn from_index(index: usize) -> Self {
         debug_assert!(index < MOVEMENT_PROFILE_COUNT);
         Self(index as u8)
     }
 }
 
+/// 駒の所有者から見た1歩分の相対移動量。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct RelativeDelta {
+    /// 筋の増分(所有者から見て右が正)。
     file: i8,
+    /// 段の増分(所有者から見て前が正)。
     rank: i8,
 }
 
 impl RelativeDelta {
+    /// 所有者に応じた絶対座標の増分へ変換して返す。後手は180度回転する。
     pub(crate) const fn for_color(self, color: Color) -> (i8, i8) {
         match color {
             Color::Black => (self.file, self.rank),
@@ -31,16 +40,25 @@ impl RelativeDelta {
     }
 }
 
+/// 駒の所有者から見た相対8方向。
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) enum RelativeDirection {
+    /// 前。
     Forward,
+    /// 後。
     Backward,
+    /// 右。
     Right,
+    /// 左。
     Left,
+    /// 右前。
     ForwardRight,
+    /// 左前。
     ForwardLeft,
+    /// 右後。
     BackwardRight,
+    /// 左後。
     BackwardLeft,
 }
 
@@ -57,6 +75,7 @@ impl RelativeDirection {
         Self::BackwardLeft,
     ];
 
+    /// 所有者に応じた絶対方向へ変換して返す。後手は180度回転する。
     pub(crate) const fn for_color(self, color: Color) -> Direction {
         match (self, color) {
             (Self::Forward, Color::Black) | (Self::Backward, Color::White) => Direction::North,
@@ -79,35 +98,50 @@ impl RelativeDirection {
     }
 }
 
+/// 走り1本分の指定。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct SlideSpec {
+    /// 走る方向。
     pub(crate) direction: RelativeDirection,
+    /// 進める最大升数。`None`は盤端まで無制限。
     pub(crate) max_steps: Option<u8>,
 }
 
+/// 角鷹・飛鷲が2段階移動(第11条)を行える方向の集合。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct LionLikeProfile {
+    /// 2段階移動できる相対方向。
     pub(crate) directions: &'static [RelativeDirection],
 }
 
+/// 固定利きと走りだけでは表せない特殊な動き。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) enum SpecialMovement {
+    /// 特殊な動きなし。
     None,
+    /// 獅子の2段階移動と跳び(第12条)。
     Lion,
+    /// 角鷹・飛鷲の限定方向の2段階移動(第11条)。
     LionLike(LionLikeProfile),
 }
 
+/// 1駒種分の動きの定義。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct MovementProfile {
+    /// 1升移動と跳びの移動量。
     pub(crate) fixed_deltas: &'static [RelativeDelta],
+    /// 走りの指定。
     pub(crate) slides: &'static [SlideSpec],
+    /// 特殊な動き。
     pub(crate) special: SpecialMovement,
 }
 
+/// [`RelativeDelta`]を作る。
 const fn delta(file: i8, rank: i8) -> RelativeDelta {
     RelativeDelta { file, rank }
 }
 
+/// 盤端まで無制限の走り指定を作る。
 const fn slide(direction: RelativeDirection) -> SlideSpec {
     SlideSpec {
         direction,
@@ -115,12 +149,19 @@ const fn slide(direction: RelativeDirection) -> SlideSpec {
     }
 }
 
+/// 固定利きなし。
 const EMPTY_DELTAS: &[RelativeDelta] = &[];
+/// 走りなし。
 const EMPTY_SLIDES: &[SlideSpec] = &[];
+/// 歩兵: 前へ1升。
 const PAWN: &[RelativeDelta] = &[delta(0, 1)];
+/// 仲人: 前後へ1升。
 const GO_BETWEEN: &[RelativeDelta] = &[delta(0, 1), delta(0, -1)];
+/// 縦横4方向へ1升。
 const ORTHOGONAL_STEPS: &[RelativeDelta] = &[delta(0, 1), delta(1, 0), delta(-1, 0), delta(0, -1)];
+/// 斜め4方向へ1升。
 const DIAGONAL_STEPS: &[RelativeDelta] = &[delta(1, 1), delta(-1, 1), delta(1, -1), delta(-1, -1)];
+/// 王将・玉将: 周囲8方向へ1升。
 const KING_STEPS: &[RelativeDelta] = &[
     delta(0, 1),
     delta(1, 1),
@@ -131,6 +172,7 @@ const KING_STEPS: &[RelativeDelta] = &[
     delta(1, -1),
     delta(-1, -1),
 ];
+/// 醉象: 後以外の7方向へ1升。
 const DRUNK_ELEPHANT: &[RelativeDelta] = &[
     delta(0, 1),
     delta(1, 1),
@@ -140,6 +182,7 @@ const DRUNK_ELEPHANT: &[RelativeDelta] = &[
     delta(1, -1),
     delta(-1, -1),
 ];
+/// 猛豹: 前後および斜め4方向へ1升。
 const FEROCIOUS_LEOPARD: &[RelativeDelta] = &[
     delta(0, 1),
     delta(1, 1),
@@ -148,6 +191,7 @@ const FEROCIOUS_LEOPARD: &[RelativeDelta] = &[
     delta(1, -1),
     delta(-1, -1),
 ];
+/// 盲虎: 前以外の7方向へ1升。
 const BLIND_TIGER: &[RelativeDelta] = &[
     delta(1, 1),
     delta(-1, 1),
@@ -157,7 +201,9 @@ const BLIND_TIGER: &[RelativeDelta] = &[
     delta(1, -1),
     delta(-1, -1),
 ];
+/// 銅将: 前、前斜めおよび後へ1升。
 const COPPER_GENERAL: &[RelativeDelta] = &[delta(0, 1), delta(1, 1), delta(-1, 1), delta(0, -1)];
+/// 銀将: 前および斜め4方向へ1升。
 const SILVER_GENERAL: &[RelativeDelta] = &[
     delta(0, 1),
     delta(1, 1),
@@ -165,6 +211,7 @@ const SILVER_GENERAL: &[RelativeDelta] = &[
     delta(1, -1),
     delta(-1, -1),
 ];
+/// 金将: 前、前斜め、左右および後へ1升。
 const GOLD_GENERAL: &[RelativeDelta] = &[
     delta(0, 1),
     delta(1, 1),
@@ -173,6 +220,7 @@ const GOLD_GENERAL: &[RelativeDelta] = &[
     delta(-1, 0),
     delta(0, -1),
 ];
+/// 麒麟: 斜めへ1升、縦横へ2升跳ぶ。
 const KIRIN: &[RelativeDelta] = &[
     delta(1, 1),
     delta(-1, 1),
@@ -183,6 +231,7 @@ const KIRIN: &[RelativeDelta] = &[
     delta(-2, 0),
     delta(0, -2),
 ];
+/// 鳳凰: 縦横へ1升、斜めへ2升跳ぶ。
 const PHOENIX: &[RelativeDelta] = &[
     delta(0, 1),
     delta(1, 0),
@@ -193,6 +242,7 @@ const PHOENIX: &[RelativeDelta] = &[
     delta(2, -2),
     delta(-2, -2),
 ];
+/// 飛鹿の1升移動部分: 左右および斜め4方向。前後の走りは別に定義する。
 const FLYING_STAG_STEPS: &[RelativeDelta] = &[
     delta(1, 1),
     delta(-1, 1),
@@ -202,27 +252,33 @@ const FLYING_STAG_STEPS: &[RelativeDelta] = &[
     delta(-1, -1),
 ];
 
+/// 前への走り(香車)。
 const FORWARD: &[SlideSpec] = &[slide(RelativeDirection::Forward)];
+/// 前後への走り(反車ほか)。
 const VERTICAL: &[SlideSpec] = &[
     slide(RelativeDirection::Forward),
     slide(RelativeDirection::Backward),
 ];
+/// 左右への走り(横行ほか)。
 const HORIZONTAL: &[SlideSpec] = &[
     slide(RelativeDirection::Right),
     slide(RelativeDirection::Left),
 ];
+/// 斜め4方向への走り(角行ほか)。
 const DIAGONAL: &[SlideSpec] = &[
     slide(RelativeDirection::ForwardRight),
     slide(RelativeDirection::ForwardLeft),
     slide(RelativeDirection::BackwardRight),
     slide(RelativeDirection::BackwardLeft),
 ];
+/// 縦横4方向への走り(飛車ほか)。
 const ORTHOGONAL: &[SlideSpec] = &[
     slide(RelativeDirection::Forward),
     slide(RelativeDirection::Backward),
     slide(RelativeDirection::Right),
     slide(RelativeDirection::Left),
 ];
+/// 8方向への走り(奔王)。
 const ALL_DIRECTIONS: &[SlideSpec] = &[
     slide(RelativeDirection::Forward),
     slide(RelativeDirection::Backward),
@@ -233,18 +289,21 @@ const ALL_DIRECTIONS: &[SlideSpec] = &[
     slide(RelativeDirection::BackwardRight),
     slide(RelativeDirection::BackwardLeft),
 ];
+/// 白駒: 前、前斜めおよび後への走り。
 const WHITE_HORSE: &[SlideSpec] = &[
     slide(RelativeDirection::Forward),
     slide(RelativeDirection::ForwardRight),
     slide(RelativeDirection::ForwardLeft),
     slide(RelativeDirection::Backward),
 ];
+/// 鯨鯢: 前、後および後斜めへの走り。
 const WHALE: &[SlideSpec] = &[
     slide(RelativeDirection::Forward),
     slide(RelativeDirection::Backward),
     slide(RelativeDirection::BackwardRight),
     slide(RelativeDirection::BackwardLeft),
 ];
+/// 飛牛: 前後および斜め4方向への走り。
 const FLYING_OX: &[SlideSpec] = &[
     slide(RelativeDirection::Forward),
     slide(RelativeDirection::Backward),
@@ -253,6 +312,7 @@ const FLYING_OX: &[SlideSpec] = &[
     slide(RelativeDirection::BackwardRight),
     slide(RelativeDirection::BackwardLeft),
 ];
+/// 奔猪: 左右および斜め4方向への走り。
 const FREE_BOAR: &[SlideSpec] = &[
     slide(RelativeDirection::Right),
     slide(RelativeDirection::Left),
@@ -261,6 +321,7 @@ const FREE_BOAR: &[SlideSpec] = &[
     slide(RelativeDirection::BackwardRight),
     slide(RelativeDirection::BackwardLeft),
 ];
+/// 角鷹の走り: 前以外の7方向。前方は2段階移動で扱う。
 const HORNED_FALCON_SLIDES: &[SlideSpec] = &[
     slide(RelativeDirection::Backward),
     slide(RelativeDirection::Right),
@@ -270,6 +331,7 @@ const HORNED_FALCON_SLIDES: &[SlideSpec] = &[
     slide(RelativeDirection::BackwardRight),
     slide(RelativeDirection::BackwardLeft),
 ];
+/// 飛鷲の走り: 前斜め以外の6方向。前斜めは2段階移動で扱う。
 const SOARING_EAGLE_SLIDES: &[SlideSpec] = &[
     slide(RelativeDirection::Forward),
     slide(RelativeDirection::Backward),
@@ -278,12 +340,15 @@ const SOARING_EAGLE_SLIDES: &[SlideSpec] = &[
     slide(RelativeDirection::BackwardRight),
     slide(RelativeDirection::BackwardLeft),
 ];
+/// 角鷹が2段階移動できる方向(前方、第11条第1項)。
 const HORNED_FALCON_LION: &[RelativeDirection] = &[RelativeDirection::Forward];
+/// 飛鷲が2段階移動できる方向(左右の前斜め、第11条第2項)。
 const SOARING_EAGLE_LION: &[RelativeDirection] = &[
     RelativeDirection::ForwardRight,
     RelativeDirection::ForwardLeft,
 ];
 
+/// [`MovementProfile`]を作る。
 const fn profile(
     fixed_deltas: &'static [RelativeDelta],
     slides: &'static [SlideSpec],
@@ -296,8 +361,10 @@ const fn profile(
     }
 }
 
+/// プロファイルの総数。王将と太子が1つを共有するため、駒種数29より1少ない。
 pub(crate) const MOVEMENT_PROFILE_COUNT: usize = 28;
 
+/// 全プロファイルの実体。並び順は[`movement_profile`]が返す番号と一致する。
 const PROFILES: [MovementProfile; MOVEMENT_PROFILE_COUNT] = [
     profile(PAWN, EMPTY_SLIDES, SpecialMovement::None),
     profile(GO_BETWEEN, EMPTY_SLIDES, SpecialMovement::None),
@@ -345,6 +412,7 @@ const PROFILES: [MovementProfile; MOVEMENT_PROFILE_COUNT] = [
     ),
 ];
 
+/// 駒種に対応するプロファイル識別子を返す。
 pub(crate) const fn movement_profile(kind: PieceKind) -> MovementProfileId {
     let index = match kind {
         PieceKind::Pawn => 0,
@@ -379,11 +447,13 @@ pub(crate) const fn movement_profile(kind: PieceKind) -> MovementProfileId {
     MovementProfileId(index)
 }
 
+/// 識別子からプロファイル定義を返す。
 #[inline]
 pub(crate) const fn movement_profile_data(profile: MovementProfileId) -> &'static MovementProfile {
     &PROFILES[profile.index()]
 }
 
+/// 全プロファイル識別子を走査するイテレータを返す。
 pub(crate) fn all_profiles() -> impl ExactSizeIterator<Item = MovementProfileId> {
     (0..MOVEMENT_PROFILE_COUNT).map(MovementProfileId::from_index)
 }

@@ -1,3 +1,5 @@
+//! 合法手の生成。
+
 #[cfg(test)]
 mod tests;
 
@@ -15,16 +17,21 @@ use crate::core::position::Position;
 use crate::core::rules::{PromotionChoice, Rules};
 use crate::core::square::Square;
 
+/// 採用ルールの下で合法手を列挙する生成器。
 pub struct MoveGenerator {
+    /// 利きの前計算テーブル。
     tables: &'static AttackTables,
+    /// 採用しているローカルルールの集合。
     rules: Rules,
 }
 
 impl MoveGenerator {
+    /// 標準規則の生成器を作る。
     pub fn standard() -> Self {
         Self::new(Rules::standard())
     }
 
+    /// 指定ルールの生成器を作る。
     pub fn new(rules: Rules) -> Self {
         Self {
             tables: attack_tables(),
@@ -32,19 +39,23 @@ impl MoveGenerator {
         }
     }
 
+    /// `position`の手番側の全合法手を`output`へ追加する。
     pub fn generate_moves(&self, position: &Position, output: &mut Vec<Move>) {
         generate_moves(self, position, output);
     }
 
+    /// 利きの前計算テーブルを返す。
     pub(crate) const fn tables(&self) -> &AttackTables {
         self.tables
     }
 
+    /// 採用しているルールの集合を返す。
     pub(crate) const fn rules(&self) -> Rules {
         self.rules
     }
 }
 
+/// 指定した占有状態での駒の利きを返す。着手適用後の仮想盤面に対する足の判定に使う。
 pub(crate) fn piece_control_with_occupancy(
     occupied: Bitboard,
     color: Color,
@@ -54,6 +65,7 @@ pub(crate) fn piece_control_with_occupancy(
     piece_control_with_tables(attack_tables(), occupied, color, kind, from)
 }
 
+/// 同じ着手の成りを選んだ変種を返す。
 fn promoting_variant(mv: Move) -> Move {
     Move {
         promote: true,
@@ -61,6 +73,7 @@ fn promoting_variant(mv: Move) -> Move {
     }
 }
 
+/// 駒の利き(固定利き・走り・特殊移動の到達範囲)を計算して返す。
 fn piece_control_with_tables(
     tables: &AttackTables,
     occupied: Bitboard,
@@ -100,6 +113,7 @@ fn piece_control_with_tables(
     result
 }
 
+/// 獅子の捕獲制限を検査し、成りの選択肢(第18条)を展開して着手を追加する。
 fn push_with_promotion(
     generator: &MoveGenerator,
     position: &Position,
@@ -123,6 +137,7 @@ fn push_with_promotion(
     }
 }
 
+/// 手番側の全駒について合法手を生成する。
 fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut Vec<Move>) {
     let color = position.side_to_move();
     let own = position.pieces_of(color);
@@ -172,6 +187,7 @@ fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut V
     }
 }
 
+/// 特殊移動の第1段階だけで停止する場合の到達升を返す。
 fn special_step_destinations(
     tables: &AttackTables,
     color: Color,
@@ -195,6 +211,7 @@ fn special_step_destinations(
     }
 }
 
+/// 特殊移動を除いた駒の利き(固定利きと走りのみ)を返す。
 fn piece_control_without_special(
     tables: &AttackTables,
     position: &Position,
@@ -216,15 +233,21 @@ fn piece_control_without_special(
     result
 }
 
+/// 2段階移動の途中局面の占有状態を差分で表す。
 #[derive(Clone, Copy)]
 struct LocalOccupancy {
+    /// 駒がある升の集合。
     occupied: Bitboard,
+    /// 動かす側の駒の集合。
     own: Bitboard,
+    /// 相手側の駒の集合。
     enemy: Bitboard,
+    /// 動かしている駒の現在升。
     current: Square,
 }
 
 impl LocalOccupancy {
+    /// 現局面から占有状態を作る。
     fn new(position: &Position, color: Color, current: Square) -> Self {
         Self {
             occupied: position.occupied(),
@@ -234,6 +257,7 @@ impl LocalOccupancy {
         }
     }
 
+    /// 駒を1段階動かした後の状態を返す。到達升にある相手駒は取り除く。
     fn move_to(mut self, to: Square) -> Self {
         self.occupied.clear(self.current);
         self.own.clear(self.current);
@@ -248,6 +272,8 @@ impl LocalOccupancy {
     }
 }
 
+/// 獅子の2段階移動・跳び・じっと(第12条)を生成する。1升移動で停止する着手は
+/// 通常経路で生成済みのため含めない。
 fn generate_lion_double_and_jumps(
     tables: &AttackTables,
     position: &Position,
@@ -291,6 +317,8 @@ fn generate_lion_double_and_jumps(
     }
 }
 
+/// 角鷹・飛鷲の2段階移動・居喰い・じっと(第11条)を生成する。1升移動で停止する
+/// 着手は通常経路で生成済みのため含めない。
 fn generate_lion_like_double_and_jumps(
     position: &Position,
     color: Color,
@@ -350,6 +378,7 @@ fn generate_lion_like_double_and_jumps(
     }
 }
 
+/// 合法手でない着手を渡されたことを表すエラー。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct IllegalMove(pub Move);
 
@@ -362,6 +391,8 @@ impl fmt::Display for IllegalMove {
 impl std::error::Error for IllegalMove {}
 
 impl Position {
+    /// 着手が合法手に含まれるか検査してから適用する。不合法なら[`IllegalMove`]を返し、
+    /// 局面は変更しない(第27条第1項)。
     pub fn try_make_move(
         &mut self,
         mv: Move,

@@ -1,3 +1,5 @@
+//! 局面の表現と、着手の適用・巻き戻し。
+
 use core::fmt;
 use std::sync::OnceLock;
 
@@ -6,19 +8,25 @@ use crate::core::mv::{CapturedPiece, Move, Undo};
 use crate::core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 
+/// 1升あたりのzobrist駒キー数(色×駒種×成否)。
 const ZOBRIST_PIECE_CODE_COUNT: usize = COLOR_COUNT * PIECE_KIND_COUNT * 2;
+/// zobristキー生成に使う乱数列のシード。
 const ZOBRIST_SEED: u64 = 0x4d49_4e41_5345_5a31;
 
+/// zobristキー生成用のxorshift64乱数生成器。
 struct XorShift64 {
+    /// 乱数列の内部状態。
     state: u64,
 }
 
 impl XorShift64 {
+    /// シードから生成器を作る。シードは0以外でなければならない。
     fn new(seed: u64) -> Self {
         assert_ne!(seed, 0);
         Self { state: seed }
     }
 
+    /// 次の乱数を返す。
     fn next(&mut self) -> u64 {
         let mut value = self.state;
         value ^= value << 13;
@@ -29,13 +37,18 @@ impl XorShift64 {
     }
 }
 
+/// zobristハッシュの基底乱数表。
 struct ZobristKeys {
+    /// 升×駒コードごとのキー。
     pieces: Box<[u64]>,
+    /// 手番が後手のとき加えるキー。
     side_to_move: u64,
+    /// 先獅子トリガーがあるとき加えるキー。
     lion_trigger: u64,
 }
 
 impl ZobristKeys {
+    /// 乱数表を構築する。
     fn build() -> Self {
         let mut rng = XorShift64::new(ZOBRIST_SEED);
         let pieces = (0..BOARD_SQUARE_COUNT * ZOBRIST_PIECE_CODE_COUNT)
@@ -50,6 +63,7 @@ impl ZobristKeys {
         }
     }
 
+    /// 指定した升・駒のキーを返す。
     #[inline]
     fn piece(&self, square: Square, piece: PieceCode) -> u64 {
         let color = piece.color().expect("piece key requires a colored piece");
@@ -59,6 +73,7 @@ impl ZobristKeys {
         self.pieces[square.dense_index() * ZOBRIST_PIECE_CODE_COUNT + piece_code]
     }
 
+    /// 手番のキーを返す。先手番は0とする。
     #[inline]
     fn side(&self, side_to_move: Color) -> u64 {
         match side_to_move {
@@ -70,44 +85,52 @@ impl ZobristKeys {
 
 static ZOBRIST_KEYS: OnceLock<ZobristKeys> = OnceLock::new();
 
+/// プロセス全体で共有する乱数表を返す。初回呼び出し時に構築する。
 fn zobrist_keys() -> &'static ZobristKeys {
     ZOBRIST_KEYS.get_or_init(ZobristKeys::build)
 }
 
+/// 中将棋の局面。盤面・手番・先獅子トリガー・zobristハッシュを保持する。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Position {
+    /// 各升の駒コード。番兵込みの生インデックスで引く。
     board: [PieceCode; RAW_SQUARE_COUNT],
+    /// 駒がある升の集合。
     occupied: Bitboard,
+    /// 対局者別の駒の集合。
     by_color: [Bitboard; COLOR_COUNT],
+    /// 対局者別・駒種別の駒の集合。
     by_kind: [[Bitboard; PIECE_KIND_COUNT]; COLOR_COUNT],
+    /// 手番側。
     side_to_move: Color,
+    /// 直前の着手で獅子以外の駒に取られた獅子の升。先獅子(第15条)の判定に使う。
     lion_taken_by_non_lion: Option<Square>,
+    /// 現局面のzobristハッシュ。着手のたびに増分更新する。
     zobrist: u64,
 }
 
+/// [`Position::validate`]が検出する内部不変条件の違反。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PositionError {
-    PaddingIsNotWall {
-        raw: u8,
-    },
-    ValidSquareIsWall {
-        square: Square,
-    },
-    InvalidPieceCode {
-        square: Square,
-    },
-    OccupancyMismatch {
-        square: Square,
-    },
+    /// 番兵位置に番兵コード以外が置かれている。
+    PaddingIsNotWall { raw: u8 },
+    /// 有効升に番兵コードが置かれている。
+    ValidSquareIsWall { square: Square },
+    /// 駒コードから色または駒種を復元できない。
+    InvalidPieceCode { square: Square },
+    /// 盤面配列と占有集合が食い違っている。
+    OccupancyMismatch { square: Square },
+    /// 両対局者の駒集合が重なっている。
     ColorOverlap,
-    ColorAggregateMismatch {
-        color: Color,
-    },
+    /// 対局者別集合の集計が合わない。
+    ColorAggregateMismatch { color: Color },
+    /// 駒種別集合が盤面配列と合わない。
     KindMismatch {
         square: Square,
         color: Color,
         kind: PieceKind,
     },
+    /// いずれかのビットボードで番兵ビットが立っている。
     PaddingBitSet,
 }
 
@@ -119,10 +142,14 @@ impl fmt::Display for PositionError {
 
 impl std::error::Error for PositionError {}
 
+/// [`PositionBuilder`]による局面構築のエラー。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PositionBuildError {
+    /// 既に駒がある升へ配置しようとした。
     SquareOccupied { square: Square },
+    /// 空升または番兵のコードを駒として配置しようとした。
     EmptyOrWallPiece,
+    /// 完成した局面が不変条件を満たさない。
     InvalidPosition(PositionError),
 }
 
@@ -135,6 +162,7 @@ impl fmt::Display for PositionBuildError {
 impl std::error::Error for PositionBuildError {}
 
 impl Position {
+    /// 指定手番で駒のない局面を作る。
     pub fn empty(side_to_move: Color) -> Self {
         let mut board = [PieceCode::WALL; RAW_SQUARE_COUNT];
         for square in Square::all() {
@@ -152,6 +180,7 @@ impl Position {
         }
     }
 
+    /// 初期配置(第5条)の局面を作る。
     pub fn initial() -> Self {
         let mut builder = PositionBuilder::new(Color::Black);
         let back_rank = [
@@ -228,51 +257,59 @@ impl Position {
         builder.finish().unwrap()
     }
 
+    /// 指定升の駒を返す。空升なら`None`を返す。
     #[inline]
     pub fn piece_at(&self, square: Square) -> Option<PieceCode> {
         let piece = self.board[square.raw_index()];
         (!piece.is_empty()).then_some(piece)
     }
 
+    /// 駒がある升の集合を返す。
     #[inline]
     pub const fn occupied(&self) -> Bitboard {
         self.occupied
     }
 
+    /// 指定した対局者の駒の集合を返す。
     #[inline]
     pub const fn pieces_of(&self, color: Color) -> Bitboard {
         self.by_color[color.index()]
     }
 
+    /// 指定した対局者・駒種の駒の集合を返す。
     #[inline]
     pub const fn pieces_of_kind(&self, color: Color, kind: PieceKind) -> Bitboard {
         self.by_kind[color.index()][kind.index()]
     }
 
+    /// 手番側を返す。
     #[inline]
     pub const fn side_to_move(&self) -> Color {
         self.side_to_move
     }
 
-    /// Returns the board, side-to-move, and sen-jishi-trigger Zobrist hash.
+    /// 盤面・手番・先獅子トリガーを含むzobristハッシュを返す。
     ///
-    /// The sen-jishi trigger is represented by its presence as 1 bit. This is
-    /// sufficient for the standard rule (L0) under Article 24. Supporting local
-    /// rule L1 in the future will require including the capture square as well.
+    /// 先獅子トリガーは有無の1ビットとして表現する。これは第24条の下で
+    /// 標準規則(L0)には十分だが、将来ローカルルールL1へ対応する際は
+    /// 捕獲升も含める必要がある。
     #[inline]
     pub const fn zobrist(&self) -> u64 {
         self.zobrist
     }
 
+    /// 王駒(王将・玉将・太子、第3条)の集合を返す。
     pub fn royal_pieces(&self, color: Color) -> Bitboard {
         self.pieces_of_kind(color, PieceKind::King)
             | self.pieces_of_kind(color, PieceKind::CrownPrince)
     }
 
+    /// 直前の着手で獅子以外の駒に取られた獅子の升を返す。先獅子(第15条)の判定に使う。
     pub(crate) const fn lion_taken_by_non_lion(&self) -> Option<Square> {
         self.lion_taken_by_non_lion
     }
 
+    /// 着手で実際に相手駒を取る升を返す。捕獲候補のうち相手駒がある升だけを残す。
     pub(crate) fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
         let moving_color = self
             .piece_at(mv.origin())
@@ -286,6 +323,7 @@ impl Position {
         })
     }
 
+    /// 駒を置き、占有集合とzobristハッシュを増分更新する。
     fn put_piece(&mut self, square: Square, piece: PieceCode) -> Result<(), PositionBuildError> {
         if piece.is_empty() || piece.is_wall() {
             return Err(PositionBuildError::EmptyOrWallPiece);
@@ -304,6 +342,7 @@ impl Position {
         Ok(())
     }
 
+    /// 駒を取り除き、占有集合とzobristハッシュを増分更新して駒を返す。
     fn remove_piece(&mut self, square: Square) -> PieceCode {
         let piece = self.board[square.raw_index()];
         debug_assert!(!piece.is_empty() && !piece.is_wall());
@@ -318,17 +357,18 @@ impl Position {
         piece
     }
 
+    /// 手番を反転し、zobristハッシュを更新する。
     #[inline]
     fn flip_side_to_move(&mut self) {
         self.side_to_move = self.side_to_move.opposite();
         self.zobrist ^= zobrist_keys().side_to_move;
     }
 
-    /// Clones the position with the requested side to move.
+    /// 手番を指定した複製を返す。
     ///
-    /// The sen-jishi trigger is deliberately retained unchanged. Game-level
-    /// attack probing adopts that interpretation because it changes only whose
-    /// legal moves are being queried, not the preceding move's temporary state.
+    /// 先獅子トリガーは意図的にそのまま保持する。対局管理層の利き調査は、
+    /// どちらの合法手を問うかが変わるだけで、直前の着手による一時状態は
+    /// 変わらないという解釈を採るためである。
     pub(crate) fn clone_with_side_to_move(&self, side_to_move: Color) -> Self {
         let mut position = self.clone();
         if position.side_to_move != side_to_move {
@@ -337,6 +377,7 @@ impl Position {
         position
     }
 
+    /// 盤面全体からzobristハッシュを計算し直して返す。増分更新の検証に使う。
     pub(crate) fn recompute_zobrist(&self) -> u64 {
         let keys = zobrist_keys();
         let hash = Square::all()
@@ -349,6 +390,7 @@ impl Position {
         }
     }
 
+    /// 盤面配列とビットボード集計の整合など、内部不変条件を検査する。
     pub fn validate(&self) -> Result<(), PositionError> {
         let union = self.by_color[0] | self.by_color[1];
         if union != self.occupied {
@@ -425,14 +467,14 @@ impl Position {
         Ok(())
     }
 
-    /// Applies `mv` without checking legality and returns an [`Undo`] token.
+    /// 合法性を検査せずに`mv`を適用し、[`Undo`]トークンを返す。
     ///
-    /// The caller must pass a move produced by
+    /// 呼び出し側は、まさにこの局面に対して
     /// [`MoveGenerator::generate_moves`](crate::MoveGenerator::generate_moves)
-    /// for this exact position. Feeding any other move may panic or silently
-    /// corrupt the position, including its Zobrist hash and the sen-jishi
-    /// trigger. Legality-checked application is available via
-    /// [`Position::try_make_move`].
+    /// が生成した着手だけを渡さなければならない。それ以外の着手を渡すと、
+    /// panicするか、zobristハッシュや先獅子トリガーを含めて局面を静かに
+    /// 壊すことがある。合法性検査付きの適用には
+    /// [`Position::try_make_move`]を使う。
     pub fn make_move_unchecked(&mut self, mv: Move) -> Undo {
         let previous_zobrist = self.zobrist;
         let previous_lion_taken = self.lion_taken_by_non_lion;
@@ -482,11 +524,11 @@ impl Position {
         }
     }
 
-    /// Reverts the move recorded in `undo`.
+    /// `undo`に記録された着手を巻き戻す。
     ///
-    /// The token must come from [`Position::make_move_unchecked`] on this
-    /// position, and moves must be unmade in reverse order of making.
-    /// Violating either assumption may panic or silently corrupt the position.
+    /// トークンはこの局面に対する[`Position::make_move_unchecked`]が返した
+    /// ものでなければならず、着手は適用と逆の順序で巻き戻す必要がある。
+    /// どちらかの前提を破ると、panicするか局面を静かに壊すことがある。
     pub fn unmake_move(&mut self, undo: Undo) {
         self.flip_side_to_move();
         self.remove_piece(undo.mv.destination());
@@ -507,21 +549,26 @@ impl Position {
     }
 }
 
+/// 駒を1枚ずつ置いて局面を組み立てるビルダー。
 pub struct PositionBuilder {
+    /// 構築中の局面。
     position: Position,
 }
 
 impl PositionBuilder {
+    /// 指定手番の空局面から構築を始める。
     pub fn new(side_to_move: Color) -> Self {
         Self {
             position: Position::empty(side_to_move),
         }
     }
 
+    /// 指定升へ駒を置く。
     pub fn put(&mut self, square: Square, piece: PieceCode) -> Result<(), PositionBuildError> {
         self.position.put_piece(square, piece)
     }
 
+    /// 不変条件を検査し、zobristハッシュを計算し直して局面を返す。
     pub fn finish(mut self) -> Result<Position, PositionBuildError> {
         self.position
             .validate()

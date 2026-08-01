@@ -1,7 +1,11 @@
+//! 盤座標系での絶対8方向。
+
 use crate::core::square::Square;
 
+/// 方向の総数(8)。
 pub const DIRECTION_COUNT: usize = 8;
 
+/// 盤座標系での絶対方向。`North`は段が増える向き、すなわち先手の前方を指す。
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Direction {
@@ -16,6 +20,7 @@ pub enum Direction {
 }
 
 impl Direction {
+    /// 全8方向。
     pub const ALL: [Self; DIRECTION_COUNT] = [
         Self::East,
         Self::West,
@@ -27,11 +32,13 @@ impl Direction {
         Self::SouthWest,
     ];
 
+    /// 配列添字用の番号を返す。
     #[inline]
     pub const fn index(self) -> usize {
         self as usize
     }
 
+    /// この方向へ1升進むときの筋の増分を返す。
     #[inline]
     pub const fn file_delta(self) -> i8 {
         match self {
@@ -41,6 +48,7 @@ impl Direction {
         }
     }
 
+    /// この方向へ1升進むときの段の増分を返す。
     #[inline]
     pub const fn rank_delta(self) -> i8 {
         match self {
@@ -50,16 +58,19 @@ impl Direction {
         }
     }
 
+    /// [`Square`]の生値(16升幅)での増分を返す。
     #[inline]
     pub const fn raw_delta(self) -> i16 {
         self.rank_delta() as i16 * 16 + self.file_delta() as i16
     }
 
+    /// 生値が増える方向かどうかを返す。走査の先頭ビットをlsbとmsbのどちらに取るかの判定に使う。
     #[inline]
     pub const fn increases_raw_index(self) -> bool {
         self.raw_delta() > 0
     }
 
+    /// 逆方向を返す。
     #[inline]
     pub const fn opposite(self) -> Self {
         match self {
@@ -75,6 +86,7 @@ impl Direction {
     }
 }
 
+/// 升を指定方向へ1升進めた升を返す。盤外なら`None`を返す。
 #[inline]
 pub const fn step_square(square: Square, direction: Direction) -> Option<Square> {
     square.offset(direction.file_delta(), direction.rank_delta())

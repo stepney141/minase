@@ -1,3 +1,5 @@
+//! 中将棋の局面表現と合法手生成を担う中核モジュール。
+
 mod attacks;
 pub mod bitboard;
 pub mod direction;

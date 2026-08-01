@@ -1,3 +1,5 @@
+//! 利き前計算テーブルの構築と参照。
+
 use std::sync::OnceLock;
 
 use crate::core::bitboard::Bitboard;
@@ -10,19 +12,28 @@ use super::fixed::{
 };
 use super::sliding::{RayTable, build_ray_table};
 
+/// 色×プロファイル×升ごとの固定利きテーブル。
 type FixedAttackTable = Box<[Bitboard]>;
 
+/// 走りの距離制限の段階数(盤の段数と同じ12)。
 const RANGE_COUNT: usize = BOARD_RANKS as usize;
+/// 方向×升×距離ごとの範囲マスクテーブル。
 type RangeMaskTable = Box<[Bitboard]>;
 
+/// 全駒種の利き計算に使う前計算テーブル一式。
 pub(crate) struct AttackTables {
+    /// 方向×升ごとの盤端までの利き線。
     rays: Box<RayTable>,
+    /// 色×プロファイル×升ごとの固定利き。
     fixed: FixedAttackTable,
+    /// 距離制限付き走りに使う範囲マスク。
     range_masks: RangeMaskTable,
+    /// 各升から獅子が直接跳べる2升先の集合(第12条第5項・第6項)。
     lion_jumps: [Bitboard; RAW_SQUARE_COUNT],
 }
 
 impl AttackTables {
+    /// 全テーブルを構築する。
     fn build() -> Self {
         let rays = Box::new(build_ray_table());
         let mut fixed =
@@ -83,22 +94,26 @@ impl AttackTables {
         }
     }
 
+    /// 固定利きテーブルの添字を計算して返す。
     #[inline]
     const fn fixed_index(color: Color, profile: MovementProfileId, from: Square) -> usize {
         (color.index() * MOVEMENT_PROFILE_COUNT + profile.index()) * RAW_SQUARE_COUNT
             + from.raw_index()
     }
 
+    /// 範囲マスクテーブルの添字を計算して返す。
     #[inline]
     const fn range_index(direction: Direction, from: Square, distance_index: usize) -> usize {
         (direction.index() * RAW_SQUARE_COUNT + from.raw_index()) * RANGE_COUNT + distance_index
     }
 
+    /// 指定した色・プロファイル・升の固定利きを返す。
     #[inline]
     pub(crate) fn fixed(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
         self.fixed[Self::fixed_index(color, profile, from)]
     }
 
+    /// 周囲8升(王将の1升移動の範囲)を返す。獅子の第1段階の判定にも使う。
     #[inline]
     pub(crate) fn king_steps(&self, from: Square) -> Bitboard {
         self.fixed(
@@ -108,16 +123,20 @@ impl AttackTables {
         )
     }
 
+    /// 獅子が直接跳べる2升先の集合を返す。
     #[inline]
     pub(crate) fn lion_jumps(&self, from: Square) -> Bitboard {
         self.lion_jumps[from.raw_index()]
     }
 
+    /// 指定方向の盤端までの利き線を返す。
     #[inline]
     fn ray(&self, from: Square, direction: Direction) -> Bitboard {
         self.rays[direction.index()][from.raw_index()]
     }
 
+    /// 距離制限と遮る駒を考慮した走りの利きを返す。進行方向の最初の駒がある升までを含む
+    /// (第7条第4項・第5項)。
     pub(crate) fn sliding_control(
         &self,
         from: Square,
@@ -149,6 +168,7 @@ impl AttackTables {
 
 static ATTACK_TABLES: OnceLock<AttackTables> = OnceLock::new();
 
+/// プロセス全体で共有する利きテーブルを返す。初回呼び出し時に構築する。
 pub(crate) fn attack_tables() -> &'static AttackTables {
     ATTACK_TABLES.get_or_init(AttackTables::build)
 }

@@ -1,8 +1,12 @@
+//! 144升の集合を3個の`u64`で表すビットボード。
+
 use core::iter::FusedIterator;
 use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
 use crate::core::square::Square;
 
+/// 盤上の升の集合。ビット位置は[`Square`]の生値に対応し、各`u64`が4段分(16ビット×4)を受け持つ。
+/// 筋12〜15にあたる番兵ビットは常に0とする。
 #[repr(transparent)]
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
 #[must_use]
@@ -11,10 +15,14 @@ pub struct Bitboard([u64; 3]);
 const _: [(); 24] = [(); core::mem::size_of::<Bitboard>()];
 
 impl Bitboard {
+    /// 1ワード中の有効升(各段の筋0〜11)を示すマスク。
     pub const VALID_WORD: u64 = 0x0fff_0fff_0fff_0fff;
+    /// 空集合。
     pub const EMPTY: Self = Self([0; 3]);
+    /// 全144升を含む集合。
     pub const FULL: Self = Self([Self::VALID_WORD; 3]);
 
+    /// 生ワードから集合を作る。番兵ビットは取り除く。
     #[inline]
     pub const fn from_words(words: [u64; 3]) -> Self {
         Self([
@@ -24,11 +32,13 @@ impl Bitboard {
         ])
     }
 
+    /// 内部の生ワードへの参照を返す。
     #[inline]
     pub const fn words(&self) -> &[u64; 3] {
         &self.0
     }
 
+    /// 指定した1升だけを含む集合を作る。
     #[inline]
     pub fn from_square(square: Square) -> Self {
         let raw = square.raw_index();
@@ -37,6 +47,7 @@ impl Bitboard {
         Self(words)
     }
 
+    /// 複数の升から集合を作る。
     pub fn from_squares(squares: impl IntoIterator<Item = Square>) -> Self {
         let mut result = Self::EMPTY;
         for square in squares {
@@ -45,39 +56,46 @@ impl Bitboard {
         result
     }
 
+    /// 空集合かどうかを返す。
     #[inline]
     pub const fn is_empty(self) -> bool {
         (self.0[0] | self.0[1] | self.0[2]) == 0
     }
 
+    /// `other`と共通の升を持つかどうかを返す。
     #[inline]
     pub const fn intersects(self, other: Self) -> bool {
         ((self.0[0] & other.0[0]) | (self.0[1] & other.0[1]) | (self.0[2] & other.0[2])) != 0
     }
 
+    /// 指定升を含むかどうかを返す。
     #[inline]
     pub fn contains(self, square: Square) -> bool {
         let raw = square.raw_index();
         self.0[raw / 64] & (1_u64 << (raw % 64)) != 0
     }
 
+    /// 指定升を集合へ加える。
     #[inline]
     pub fn set(&mut self, square: Square) {
         let raw = square.raw_index();
         self.0[raw / 64] |= 1_u64 << (raw % 64);
     }
 
+    /// 指定升を集合から除く。
     #[inline]
     pub fn clear(&mut self, square: Square) {
         let raw = square.raw_index();
         self.0[raw / 64] &= !(1_u64 << (raw % 64));
     }
 
+    /// 含まれる升の数を返す。
     #[inline]
     pub const fn popcount(self) -> u32 {
         self.0[0].count_ones() + self.0[1].count_ones() + self.0[2].count_ones()
     }
 
+    /// 生値が最小の升を返す。空集合なら`None`を返す。
     #[inline]
     pub fn lsb(self) -> Option<Square> {
         for word_index in 0..3 {
@@ -90,6 +108,7 @@ impl Bitboard {
         None
     }
 
+    /// 生値が最大の升を返す。空集合なら`None`を返す。
     #[inline]
     pub fn msb(self) -> Option<Square> {
         for word_index in (0..3).rev() {
@@ -102,6 +121,7 @@ impl Bitboard {
         None
     }
 
+    /// 生値が最小の升を集合から取り除いて返す。空集合なら`None`を返す。
     #[inline]
     pub fn pop_lsb(&mut self) -> Option<Square> {
         for word_index in 0..3 {
@@ -115,6 +135,7 @@ impl Bitboard {
         None
     }
 
+    /// 生値が最大の升を集合から取り除いて返す。空集合なら`None`を返す。
     #[inline]
     pub fn pop_msb(&mut self) -> Option<Square> {
         for word_index in (0..3).rev() {
@@ -128,6 +149,7 @@ impl Bitboard {
         None
     }
 
+    /// 含まれる升を生値の昇順に走査するイテレータを返す。
     #[inline]
     pub fn iter(self) -> SquareIter {
         SquareIter { remaining: self }
@@ -192,8 +214,10 @@ impl Not for Bitboard {
     }
 }
 
+/// [`Bitboard`]内の升を生値の昇順に返すイテレータ。
 #[derive(Clone, Debug)]
 pub struct SquareIter {
+    /// まだ走査していない升の集合。
     remaining: Bitboard,
 }
 

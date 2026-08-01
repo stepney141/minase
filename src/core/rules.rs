@@ -1,3 +1,5 @@
+//! ローカルルールの管理と、成り・獅子の捕獲制限の判定。
+
 use core::fmt;
 
 use crate::core::bitboard::Bitboard;
@@ -7,25 +9,40 @@ use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
 use crate::core::square::{BOARD_RANKS, Square};
 
+/// 第10章のローカルルールコード。
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum RuleCode {
+    /// 岡崎式の足条件付き先獅子(第29条)。標準規則と同内容。
     L0,
+    /// 足条件なしの先獅子(第29条)。
     L1,
+    /// 麒麟成獅子の同一升例外(第29条)。
     L2,
+    /// 段階別の足判定(第29条)。
     L3,
+    /// Hodges式の成り権回復(第30条)。
     P1,
+    /// 旧英語版Wikipedia式の成り(第30条)。
     P2,
+    /// 香車の最奥段救済(第30条)。
     P3,
+    /// 仲人の最奥段救済(第30条)。
     P4,
+    /// 日本中将棋連盟式千日手(第31条)。標準規則の反復規則。
     R0,
+    /// Lishogi式の4回反復裁定(第31条)。
     R1,
+    /// 既出局面の再現禁止(第31条)。
     R2,
+    /// 王駒実捕獲による終局(第32条)。
     E1,
+    /// 駒枯れ不採用(第32条)。
     E2,
 }
 
 impl RuleCode {
+    /// 全ローカルルールコード。
     pub const ALL: [Self; 13] = [
         Self::L0,
         Self::L1,
@@ -42,22 +59,31 @@ impl RuleCode {
         Self::E2,
     ];
 
+    /// ビット集合表現でこのコードが占めるビットを返す。
     const fn bit(self) -> u16 {
         1 << self as u8
     }
 }
 
+/// 採用する反復規則(第25条)。R0・R1・R2は排他で、常にいずれか1つを採用する。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum RepetitionRule {
+    /// 日本中将棋連盟式千日手。
     R0,
+    /// Lishogi式の4回反復裁定。
     R1,
+    /// 既出局面の再現禁止。
     R2,
 }
 
+/// ルールコード集合の検証エラー。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RulesError {
+    /// 併用できないコードの組合せ(第33条第9項)。
     Conflicting { first: RuleCode, second: RuleCode },
+    /// 同じコードの重複指定。
     Duplicate(RuleCode),
+    /// 未実装のコード。
     Unsupported(RuleCode),
 }
 
@@ -78,22 +104,27 @@ impl fmt::Display for RulesError {
 
 impl std::error::Error for RulesError {}
 
+/// 対局で採用するローカルルールの集合。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rules {
+    /// 採用コードのビット集合。R0は標準規則そのものなので保持せず、常に0ビットとする。
     codes: u16,
 }
 
 impl Rules {
+    /// 標準規則(ローカルルール指定なし)を返す。
     pub const fn standard() -> Self {
         Self { codes: 0 }
     }
 
+    /// エンジン既定の「標準規則−R0+R1」を返す。
     pub const fn engine_default() -> Self {
         Self {
             codes: RuleCode::R1.bit(),
         }
     }
 
+    /// コード列から集合を作る。重複・矛盾・未実装のコードを検査する。
     pub fn from_codes(codes: &[RuleCode]) -> Result<Self, RulesError> {
         let mut adopted = 0_u16;
         for &code in codes {
@@ -137,10 +168,12 @@ impl Rules {
         Ok(Self { codes: adopted })
     }
 
+    /// 指定コードを採用しているかどうかを返す。
     pub const fn contains(self, code: RuleCode) -> bool {
         self.codes & code.bit() != 0
     }
 
+    /// 採用している反復規則を返す。指定がなければR0とする(第25条第3項)。
     pub const fn repetition_rule(self) -> RepetitionRule {
         if self.contains(RuleCode::R1) {
             RepetitionRule::R1
@@ -151,14 +184,17 @@ impl Rules {
         }
     }
 
+    /// 詰みによる終局判定(第21条第2項)を行うかどうかを返す。E1採用時は行わない。
     pub const fn mate_adjudication_enabled(self) -> bool {
         !self.contains(RuleCode::E1)
     }
 
+    /// 駒枯れ(第22条)を適用しないかどうかを返す。E2採用時に適用しない。
     pub const fn piece_exhaustion_disabled(self) -> bool {
         self.contains(RuleCode::E2)
     }
 
+    /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条)。
     pub(crate) fn promotion_choice(
         self,
         position: &Position,
@@ -197,6 +233,8 @@ impl Rules {
         }
     }
 
+    /// 着手が獅子の捕獲制限(第13条〜第16条)をすべて満たすかどうかを返す。
+    /// 獅子を取らない着手は常に満たす。
     pub(crate) fn special_move_is_legal(self, position: &Position, mv: Move) -> bool {
         let captured_lions = captured_lions(position, mv);
         if captured_lions.into_iter().all(|lion| lion.is_none()) {
@@ -233,12 +271,16 @@ impl Rules {
     }
 }
 
+/// 着手に対する成りの選択肢。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum PromotionChoice {
+    /// この着手では成れない。
     NoPromotion,
+    /// 成るか成らないかを選択できる(第18条第5項)。
     PromotionOptional,
 }
 
+/// 指定升が指定対局者の敵陣(相手側の最奥4段、第3条)にあるかどうかを返す。
 #[inline]
 pub const fn in_promotion_zone(color: Color, square: Square) -> bool {
     match color {
@@ -247,6 +289,7 @@ pub const fn in_promotion_zone(color: Color, square: Square) -> bool {
     }
 }
 
+/// 着手で取られる相手獅子の升を返す。
 fn captured_lions(position: &Position, mv: Move) -> [Option<Square>; 2] {
     position.captured_squares(mv).map(|capture| {
         capture.filter(|&square| {
@@ -257,6 +300,8 @@ fn captured_lions(position: &Position, mv: Move) -> [Option<Square>; 2] {
     })
 }
 
+/// 着手が付け喰い(第16条)にあたるかどうかを返す。付け喰いとは、獅子が第1段階で
+/// 価値ある駒(歩兵・仲人以外)を取り、第2段階で隣接していない相手獅子を取る着手をいう。
 fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
     if position
         .piece_at(mv.origin())
@@ -285,6 +330,8 @@ fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
         })
 }
 
+/// 獅子による相手獅子の捕獲が第14条・第16条を満たすかどうかを返す。隣接していれば
+/// 無条件に取れる。距離2では、付け喰いが成立するか、取られる獅子に足がない場合に限る。
 fn lion_capture_is_legal(position: &Position, mv: Move, lion_square: Square) -> bool {
     let distance = mv
         .origin()
@@ -300,15 +347,22 @@ fn lion_capture_is_legal(position: &Position, mv: Move, lion_square: Square) -> 
     }
 }
 
+/// 着手適用後の占有状態だけを差分で表す仮想盤面。獅子が取られた直後の仮想的な盤面
+/// (第13条第4項)での足の判定に使う。
 #[derive(Clone, Copy)]
 struct VirtualBoard {
+    /// 駒がある升の集合。
     occupied: Bitboard,
+    /// 着手側の駒の集合。
     own: Bitboard,
+    /// 相手側の駒の集合。
     enemy: Bitboard,
+    /// 動かしている駒の現在升。
     current: Square,
 }
 
 impl VirtualBoard {
+    /// 着手を2段階とも適用した後の仮想盤面を作る。
     fn after_move(position: &Position, mv: Move) -> Self {
         let color = position
             .piece_at(mv.origin())
@@ -328,6 +382,7 @@ impl VirtualBoard {
         }
     }
 
+    /// 駒を1段階動かした後の状態を返す。到達升にある相手駒は取り除く。
     fn move_to(mut self, to: Square) -> Self {
         self.occupied.clear(self.current);
         self.own.clear(self.current);
@@ -342,6 +397,8 @@ impl VirtualBoard {
     }
 }
 
+/// 相手獅子を取った直後に取り返される足(第13条)があるかどうかを返す。歩兵または仲人が
+/// 唯一の足である場合は、第1段階でその駒を取っても足が消滅したとは扱わない(第16条第8項)。
 fn lion_has_foot_after_capture(position: &Position, mv: Move, lion_square: Square) -> bool {
     let defending_color = position
         .piece_at(lion_square)
@@ -367,6 +424,7 @@ fn lion_has_foot_after_capture(position: &Position, mv: Move, lion_square: Squar
         || square_is_controlled(position, board, defending_color, mv.destination())
 }
 
+/// 仮想盤面上で、指定した対局者のいずれかの駒が対象升に利きを持つかどうかを返す。
 fn square_is_controlled(
     position: &Position,
     board: VirtualBoard,

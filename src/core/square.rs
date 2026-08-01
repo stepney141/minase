@@ -1,15 +1,25 @@
+//! 12×12盤の升の座標表現。
+//!
+//! 段0は先手側の最下段であり、段が増える向きが先手の前方にあたる。
+
 use core::iter::FusedIterator;
 
+/// 盤の筋数(12)。
 pub const BOARD_FILES: u8 = 12;
+/// 盤の段数(12)。
 pub const BOARD_RANKS: u8 = 12;
+/// 有効な升の総数(144)(第4条)。
 pub const BOARD_SQUARE_COUNT: usize = 144;
+/// 番兵を含む生インデックス空間の大きさ(16升幅×12段=192)。
 pub const RAW_SQUARE_COUNT: usize = 192;
 
+/// 盤上の升。内部表現は `rank << 4 | file` の生値で、16升幅の番兵付き盤に対応する。
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Square(u8);
 
 impl Square {
+    /// 筋と段から升を作る。盤外なら`None`を返す。
     #[inline]
     pub const fn new(file: u8, rank: u8) -> Option<Self> {
         if file < BOARD_FILES && rank < BOARD_RANKS {
@@ -19,11 +29,13 @@ impl Square {
         }
     }
 
+    /// 生値(`rank << 4 | file`)から升を作る。番兵位置なら`None`を返す。
     #[inline]
     pub const fn from_raw(raw: u8) -> Option<Self> {
         Self::new(raw & 0x0f, raw >> 4)
     }
 
+    /// 密インデックス(0..144)から升を作る。範囲外なら`None`を返す。
     #[inline]
     pub const fn from_dense(index: usize) -> Option<Self> {
         if index < BOARD_SQUARE_COUNT {
@@ -36,36 +48,43 @@ impl Square {
         }
     }
 
+    /// 範囲検査なしで筋と段から升を作る。
     #[inline]
     pub(crate) const fn new_unchecked(file: u8, rank: u8) -> Self {
         Self((rank << 4) | file)
     }
 
+    /// 筋(0始まり)を返す。
     #[inline]
     pub const fn file(self) -> u8 {
         self.0 & 0x0f
     }
 
+    /// 段(0始まり)を返す。
     #[inline]
     pub const fn rank(self) -> u8 {
         self.0 >> 4
     }
 
+    /// 生値を返す。
     #[inline]
     pub const fn raw(self) -> u8 {
         self.0
     }
 
+    /// 生値を`usize`で返す。番兵込み配列の添字に使う。
     #[inline]
     pub const fn raw_index(self) -> usize {
         self.0 as usize
     }
 
+    /// 密インデックス(0..144)を返す。番兵を除いた配列の添字に使う。
     #[inline]
     pub const fn dense_index(self) -> usize {
         self.rank() as usize * BOARD_FILES as usize + self.file() as usize
     }
 
+    /// 筋と段の差分だけ移動した升を返す。盤外なら`None`を返す。
     #[inline]
     pub const fn offset(self, file_delta: i8, rank_delta: i8) -> Option<Self> {
         let file = self.file() as i16 + file_delta as i16;
@@ -78,14 +97,17 @@ impl Square {
         }
     }
 
+    /// 全144升を密インデックス順に走査するイテレータを返す。
     #[inline]
     pub const fn all() -> SquareRange {
         SquareRange { next_dense: 0 }
     }
 }
 
+/// 全升を密インデックス順に走査するイテレータ。
 #[derive(Clone, Debug)]
 pub struct SquareRange {
+    /// 次に返す升の密インデックス。
     next_dense: usize,
 }
 
