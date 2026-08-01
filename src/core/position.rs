@@ -32,6 +32,7 @@ impl XorShift64 {
 struct ZobristKeys {
     pieces: Box<[u64]>,
     side_to_move: u64,
+    lion_trigger: u64,
 }
 
 impl ZobristKeys {
@@ -41,9 +42,11 @@ impl ZobristKeys {
             .map(|_| rng.next())
             .collect();
         let side_to_move = rng.next();
+        let lion_trigger = rng.next();
         Self {
             pieces,
             side_to_move,
+            lion_trigger,
         }
     }
 
@@ -251,10 +254,11 @@ impl Position {
         self.side_to_move
     }
 
-    /// Returns the board-and-side Zobrist hash.
+    /// Returns the board, side-to-move, and sen-jishi-trigger Zobrist hash.
     ///
-    /// This hash excludes `lion_taken_by_non_lion`. Callers must compose the
-    /// applicable sen-jishi projection themselves when building a position key.
+    /// The sen-jishi trigger is represented by its presence as 1 bit. This is
+    /// sufficient for the standard rule (L0) under Article 24. Supporting local
+    /// rule L1 in the future will require including the capture square as well.
     #[inline]
     pub const fn zobrist(&self) -> u64 {
         self.zobrist
@@ -335,9 +339,14 @@ impl Position {
 
     pub(crate) fn recompute_zobrist(&self) -> u64 {
         let keys = zobrist_keys();
-        Square::all()
+        let hash = Square::all()
             .filter_map(|square| self.piece_at(square).map(|piece| keys.piece(square, piece)))
-            .fold(keys.side(self.side_to_move), |hash, key| hash ^ key)
+            .fold(keys.side(self.side_to_move), |hash, key| hash ^ key);
+        if self.lion_taken_by_non_lion.is_some() {
+            hash ^ keys.lion_trigger
+        } else {
+            hash
+        }
     }
 
     pub fn validate(&self) -> Result<(), PositionError> {
@@ -460,6 +469,9 @@ impl Position {
                     .next_back()
             })
             .flatten();
+        if previous_lion_taken.is_some() != self.lion_taken_by_non_lion.is_some() {
+            self.zobrist ^= zobrist_keys().lion_trigger;
+        }
 
         Undo {
             mv,
@@ -484,7 +496,12 @@ impl Position {
             self.put_piece(captured.square, captured.piece)
                 .expect("capture square must be empty while unmaking");
         }
+        let lion_trigger_changed =
+            self.lion_taken_by_non_lion.is_some() != undo.previous_lion_taken.is_some();
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
+        if lion_trigger_changed {
+            self.zobrist ^= zobrist_keys().lion_trigger;
+        }
         debug_assert_eq!(self.zobrist, undo.previous_zobrist);
         self.zobrist = undo.previous_zobrist;
     }
@@ -814,7 +831,7 @@ mod tests {
     }
 
     #[test]
-    fn zobrist_ignores_lion_taken_by_non_lion() {
+    fn article_24_1_c_zobrist_includes_senjishi_trigger() {
         let (with_trigger, captured_lion) = position_after_non_lion_captures_lion();
         let without_trigger = position_with_pieces(
             Color::White,
@@ -827,7 +844,7 @@ mod tests {
         assert_eq!(with_trigger.lion_taken_by_non_lion(), Some(captured_lion));
         assert_eq!(without_trigger.lion_taken_by_non_lion(), None);
         assert_ne!(with_trigger, without_trigger);
-        assert_eq!(with_trigger.zobrist(), without_trigger.zobrist());
+        assert_ne!(with_trigger.zobrist(), without_trigger.zobrist());
         assert_zobrist_matches(&with_trigger);
         assert_zobrist_matches(&without_trigger);
     }

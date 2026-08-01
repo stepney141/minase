@@ -28,25 +28,42 @@ pub(crate) fn can_capture_last_royal(position: &Position, generator: &MoveGenera
 ///
 /// Having no legal move is a loss distinct from mate; [`is_mate`] returns
 /// `false` for the same position.
-pub(crate) fn has_no_legal_move(position: &Position, generator: &MoveGenerator) -> bool {
+pub(crate) fn has_no_legal_move(
+    position: &mut Position,
+    generator: &MoveGenerator,
+    forbidden_position: Option<&dyn Fn(u64) -> bool>,
+) -> bool {
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
     moves.is_empty()
+        || moves
+            .into_iter()
+            .all(|mv| move_reaches_forbidden_position(position, mv, forbidden_position))
 }
 
-pub(crate) fn is_mate(position: &mut Position, generator: &MoveGenerator) -> bool {
+pub(crate) fn is_mate(
+    position: &mut Position,
+    generator: &MoveGenerator,
+    forbidden_position: Option<&dyn Fn(u64) -> bool>,
+) -> bool {
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
     if moves.is_empty() {
         return false;
     }
 
+    let mut has_legal_move = false;
     for mv in moves {
         if captures_last_royal(position, mv) {
             return false;
         }
 
         let undo = position.make_move_unchecked(mv);
+        if forbidden_position.is_some_and(|is_forbidden| is_forbidden(position.zobrist())) {
+            position.unmake_move(undo);
+            continue;
+        }
+        has_legal_move = true;
         let opponent_can_capture_last_royal = can_capture_last_royal(position, generator);
         position.unmake_move(undo);
 
@@ -55,7 +72,22 @@ pub(crate) fn is_mate(position: &mut Position, generator: &MoveGenerator) -> boo
         }
     }
 
-    true
+    has_legal_move
+}
+
+fn move_reaches_forbidden_position(
+    position: &mut Position,
+    mv: Move,
+    forbidden_position: Option<&dyn Fn(u64) -> bool>,
+) -> bool {
+    let Some(is_forbidden) = forbidden_position else {
+        return false;
+    };
+
+    let undo = position.make_move_unchecked(mv);
+    let forbidden = is_forbidden(position.zobrist());
+    position.unmake_move(undo);
+    forbidden
 }
 
 #[cfg(test)]
@@ -86,7 +118,7 @@ mod tests {
         );
         let original = position.clone();
 
-        assert!(is_mate(&mut position, &MoveGenerator::standard()));
+        assert!(is_mate(&mut position, &MoveGenerator::standard(), None));
         assert_eq!(position, original);
     }
 
@@ -102,7 +134,7 @@ mod tests {
             ],
         );
 
-        assert!(!is_mate(&mut position, &MoveGenerator::standard()));
+        assert!(!is_mate(&mut position, &MoveGenerator::standard(), None));
     }
 
     #[test]
@@ -117,7 +149,7 @@ mod tests {
         let generator = MoveGenerator::standard();
         assert!(can_capture_last_royal(&threatened, &generator));
         assert!(can_capture_last_royal(&position, &generator));
-        assert!(!is_mate(&mut position, &MoveGenerator::standard()));
+        assert!(!is_mate(&mut position, &MoveGenerator::standard(), None));
     }
 
     #[test]
@@ -162,7 +194,7 @@ mod tests {
             position.unmake_move(undo);
         }
 
-        assert!(!is_mate(&mut position, &generator));
+        assert!(!is_mate(&mut position, &generator, None));
     }
 
     #[test]
@@ -205,7 +237,7 @@ mod tests {
         );
         let generator = MoveGenerator::standard();
 
-        assert!(has_no_legal_move(&position, &generator));
-        assert!(!is_mate(&mut position, &generator));
+        assert!(has_no_legal_move(&mut position, &generator, None));
+        assert!(!is_mate(&mut position, &generator, None));
     }
 }

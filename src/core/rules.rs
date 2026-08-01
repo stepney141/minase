@@ -18,6 +18,7 @@ pub enum RuleCode {
     P2,
     P3,
     P4,
+    R0,
     R1,
     R2,
     E1,
@@ -25,7 +26,7 @@ pub enum RuleCode {
 }
 
 impl RuleCode {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::L0,
         Self::L1,
         Self::L2,
@@ -34,6 +35,7 @@ impl RuleCode {
         Self::P2,
         Self::P3,
         Self::P4,
+        Self::R0,
         Self::R1,
         Self::R2,
         Self::E1,
@@ -43,6 +45,13 @@ impl RuleCode {
     const fn bit(self) -> u16 {
         1 << self as u8
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum RepetitionRule {
+    R0,
+    R1,
+    R2,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -81,7 +90,7 @@ impl Rules {
 
     pub const fn engine_default() -> Self {
         Self {
-            codes: RuleCode::R1.bit() | RuleCode::E2.bit(),
+            codes: RuleCode::R1.bit(),
         }
     }
 
@@ -97,6 +106,8 @@ impl Rules {
         for (first, second) in [
             (RuleCode::L0, RuleCode::L1),
             (RuleCode::P1, RuleCode::P2),
+            (RuleCode::R0, RuleCode::R1),
+            (RuleCode::R0, RuleCode::R2),
             (RuleCode::R1, RuleCode::R2),
         ] {
             if adopted & first.bit() != 0 && adopted & second.bit() != 0 {
@@ -106,18 +117,23 @@ impl Rules {
 
         for &code in codes {
             match code {
-                RuleCode::L0 | RuleCode::R1 | RuleCode::E1 | RuleCode::E2 => {}
+                RuleCode::L0
+                | RuleCode::R0
+                | RuleCode::R1
+                | RuleCode::R2
+                | RuleCode::E1
+                | RuleCode::E2 => {}
                 RuleCode::L1
                 | RuleCode::L2
                 | RuleCode::L3
                 | RuleCode::P1
                 | RuleCode::P2
                 | RuleCode::P3
-                | RuleCode::P4
-                | RuleCode::R2 => return Err(RulesError::Unsupported(code)),
+                | RuleCode::P4 => return Err(RulesError::Unsupported(code)),
             }
         }
 
+        adopted &= !RuleCode::R0.bit();
         Ok(Self { codes: adopted })
     }
 
@@ -125,8 +141,14 @@ impl Rules {
         self.codes & code.bit() != 0
     }
 
-    pub const fn repetition_is_r1(self) -> bool {
-        self.contains(RuleCode::R1)
+    pub const fn repetition_rule(self) -> RepetitionRule {
+        if self.contains(RuleCode::R1) {
+            RepetitionRule::R1
+        } else if self.contains(RuleCode::R2) {
+            RepetitionRule::R2
+        } else {
+            RepetitionRule::R0
+        }
     }
 
     pub const fn mate_adjudication_enabled(self) -> bool {
@@ -384,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn article_33_7_conflicting_code_sets_are_invalid_and_other_inputs_are_validated() {
+    fn article_33_9_conflicting_code_sets_are_invalid_and_other_inputs_are_validated() {
         assert_eq!(
             Rules::from_codes(&[RuleCode::L0, RuleCode::L1]),
             Err(RulesError::Conflicting {
@@ -400,6 +422,20 @@ mod tests {
             }),
         );
         assert_eq!(
+            Rules::from_codes(&[RuleCode::R0, RuleCode::R1]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::R0,
+                second: RuleCode::R1,
+            }),
+        );
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::R0, RuleCode::R2]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::R0,
+                second: RuleCode::R2,
+            }),
+        );
+        assert_eq!(
             Rules::from_codes(&[RuleCode::R1, RuleCode::R2]),
             Err(RulesError::Conflicting {
                 first: RuleCode::R1,
@@ -410,6 +446,10 @@ mod tests {
             Rules::from_codes(&[RuleCode::L0, RuleCode::L0]),
             Err(RulesError::Duplicate(RuleCode::L0)),
         );
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::R0, RuleCode::R0]),
+            Err(RulesError::Duplicate(RuleCode::R0)),
+        );
         for code in [
             RuleCode::L1,
             RuleCode::L2,
@@ -418,14 +458,19 @@ mod tests {
             RuleCode::P2,
             RuleCode::P3,
             RuleCode::P4,
-            RuleCode::R2,
         ] {
             assert_eq!(
                 Rules::from_codes(&[code]),
                 Err(RulesError::Unsupported(code)),
             );
         }
-        for code in [RuleCode::R1, RuleCode::E1, RuleCode::E2] {
+        for code in [
+            RuleCode::R0,
+            RuleCode::R1,
+            RuleCode::R2,
+            RuleCode::E1,
+            RuleCode::E2,
+        ] {
             assert!(Rules::from_codes(&[code]).is_ok());
         }
     }
@@ -440,14 +485,23 @@ mod tests {
     }
 
     #[test]
-    fn article_33_6_engine_default_is_standard_plus_r1_and_e2() {
+    fn article_31_r2_is_supported() {
+        let rules = Rules::from_codes(&[RuleCode::R2]).unwrap();
+
+        assert_eq!(rules.repetition_rule(), RepetitionRule::R2);
+        assert!(rules.contains(RuleCode::R2));
+    }
+
+    #[test]
+    fn article_33_5_engine_default_is_standard_minus_r0_plus_r1() {
         let rules = Rules::engine_default();
 
-        assert!(rules.repetition_is_r1());
+        assert_eq!(rules.repetition_rule(), RepetitionRule::R1);
         assert!(rules.mate_adjudication_enabled());
-        assert!(rules.piece_exhaustion_disabled());
+        assert!(!rules.piece_exhaustion_disabled());
         assert!(!rules.contains(RuleCode::L0));
         assert!(!rules.contains(RuleCode::E1));
+        assert!(!rules.contains(RuleCode::E2));
     }
 
     #[test]
