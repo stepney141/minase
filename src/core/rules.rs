@@ -5,7 +5,7 @@ use core::fmt;
 use crate::core::bitboard::Bitboard;
 use crate::core::movegen::piece_control_with_occupancy;
 use crate::core::mv::Move;
-use crate::core::piece::{Color, PieceKind};
+use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::square::{BOARD_RANKS, Square};
 
@@ -149,6 +149,7 @@ impl Rules {
         for &code in codes {
             match code {
                 RuleCode::L0
+                | RuleCode::L2
                 | RuleCode::L3
                 | RuleCode::P3
                 | RuleCode::P4
@@ -157,7 +158,7 @@ impl Rules {
                 | RuleCode::R2
                 | RuleCode::E1
                 | RuleCode::E2 => {}
-                RuleCode::L1 | RuleCode::L2 | RuleCode::P1 | RuleCode::P2 => {
+                RuleCode::L1 | RuleCode::P1 | RuleCode::P2 => {
                     return Err(RulesError::Unsupported(code));
                 }
             }
@@ -261,12 +262,14 @@ impl Rules {
             .into_iter()
             .flatten()
             .any(|lion| is_tsukegui(position, mv, lion));
-        if position.lion_taken_by_non_lion().is_some()
-            && !move_is_tsukegui
-            && captured_lions
-                .into_iter()
-                .flatten()
-                .any(|lion| lion_has_foot_after_capture(self, position, mv, lion))
+        if !move_is_tsukegui
+            && let Some(trigger) = position.lion_taken_by_non_lion()
+            && captured_lions.into_iter().flatten().any(|lion| {
+                let l2_exemption = self.contains(RuleCode::L2)
+                    && trigger.by_kirin_promotion
+                    && position.piece_at(lion).is_some_and(PieceCode::is_promoted);
+                !l2_exemption && lion_has_foot_after_capture(self, position, mv, lion)
+            })
         {
             return false;
         }
@@ -461,7 +464,6 @@ fn square_is_controlled(
 mod tests {
     use super::*;
     use crate::core::movegen::MoveGenerator;
-    use crate::core::piece::PieceCode;
     use crate::core::position::PositionBuilder;
     use crate::test_util::{position, sq};
 
@@ -527,13 +529,14 @@ mod tests {
             Rules::from_codes(&[RuleCode::R0, RuleCode::R0]),
             Err(RulesError::Duplicate(RuleCode::R0)),
         );
-        for code in [RuleCode::L1, RuleCode::L2, RuleCode::P1, RuleCode::P2] {
+        for code in [RuleCode::L1, RuleCode::P1, RuleCode::P2] {
             assert_eq!(
                 Rules::from_codes(&[code]),
                 Err(RulesError::Unsupported(code)),
             );
         }
         for code in [
+            RuleCode::L2,
             RuleCode::L3,
             RuleCode::P3,
             RuleCode::P4,
@@ -850,6 +853,79 @@ mod tests {
             sq(4, 4),
         ));
         assert!(!is_generated(&position, capture));
+    }
+
+    #[test]
+    fn article_29_l2_allows_immediate_capture_of_the_new_promoted_lion() {
+        let position = after_non_lion_capture(
+            &[
+                (sq(5, 9), Color::Black, PieceKind::Kirin),
+                (sq(5, 11), Color::White, PieceKind::Lion),
+                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
+                (sq(5, 4), Color::White, PieceKind::Rook),
+            ],
+            Move {
+                from: sq(5, 9),
+                mid: None,
+                to: sq(5, 11),
+                promote: true,
+            },
+        );
+        let trigger = position.lion_taken_by_non_lion().unwrap();
+        assert_eq!(trigger.square, sq(5, 11));
+        assert!(trigger.by_kirin_promotion);
+
+        let recapture = Move {
+            from: sq(5, 4),
+            mid: None,
+            to: sq(5, 11),
+            promote: false,
+        };
+        let l2 = Rules::from_codes(&[RuleCode::L2]).unwrap();
+
+        assert!(!is_generated(&position, recapture));
+        assert!(is_generated_with_rules(l2, &position, recapture));
+    }
+
+    #[test]
+    fn article_29_l2_does_not_exempt_an_existing_unpromoted_lion() {
+        let position = after_non_lion_capture(
+            &[
+                (sq(5, 9), Color::Black, PieceKind::Kirin),
+                (sq(5, 11), Color::White, PieceKind::Lion),
+                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
+                (sq(5, 4), Color::White, PieceKind::Rook),
+                (sq(8, 7), Color::Black, PieceKind::Lion),
+                (sq(7, 7), Color::Black, PieceKind::GoldGeneral),
+                (sq(8, 4), Color::White, PieceKind::Rook),
+            ],
+            Move {
+                from: sq(5, 9),
+                mid: None,
+                to: sq(5, 11),
+                promote: true,
+            },
+        );
+        let l2 = Rules::from_codes(&[RuleCode::L2]).unwrap();
+        let recapture_new_lion = Move {
+            from: sq(5, 4),
+            mid: None,
+            to: sq(5, 11),
+            promote: false,
+        };
+        let capture_existing_lion = Move {
+            from: sq(8, 4),
+            mid: None,
+            to: sq(8, 7),
+            promote: false,
+        };
+
+        assert!(is_generated_with_rules(l2, &position, recapture_new_lion));
+        assert!(!is_generated_with_rules(
+            l2,
+            &position,
+            capture_existing_lion
+        ));
     }
 
     #[test]

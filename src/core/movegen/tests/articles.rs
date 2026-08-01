@@ -352,7 +352,12 @@ fn case4_articles_15_4_and_15_5_senjishi_applies_for_one_move_and_then_expires()
         to: sq(1, 1),
         promote: false,
     });
-    assert_eq!(position.lion_taken_by_non_lion(), Some(sq(1, 1)));
+    assert_eq!(
+        position
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square),
+        Some(sq(1, 1))
+    );
     // 直後の白の1手では、足のある黒獅子(4,4)を取れない。
     assert!(!generated(&position).contains(&recapture));
 
@@ -406,7 +411,12 @@ fn case5_eagle_double_lion_capture_records_second_square_and_restricts_reply() {
 
     position.make_move_unchecked(double_capture);
     // 第2捕獲の升(6,6)がトリガーとして記録される。
-    assert_eq!(position.lion_taken_by_non_lion(), Some(sq(6, 6)));
+    assert_eq!(
+        position
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square),
+        Some(sq(6, 6))
+    );
 
     // 直後の白の1手では、足（黒歩(9,8)）のある黒獅子(9,9)を取れない。
     let recapture = Move {
@@ -445,7 +455,12 @@ fn case5_after_double_lion_capture_an_undefended_lion_may_be_taken() {
         to: sq(6, 6),
         promote: false,
     });
-    assert_eq!(position.lion_taken_by_non_lion(), Some(sq(6, 6)));
+    assert_eq!(
+        position
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square),
+        Some(sq(6, 6))
+    );
     assert!(generated(&position).contains(&Move {
         from: sq(0, 9),
         mid: None,
@@ -633,7 +648,12 @@ fn case9_article_15_7_kirin_promoting_on_lion_capture_triggers_senjishi() {
 
     position.make_move_unchecked(promote_capture);
     // 麒麟（非獅子）による捕獲なので先獅子トリガーが立つ（第15条7項）。
-    assert_eq!(position.lion_taken_by_non_lion(), Some(sq(5, 9)));
+    assert_eq!(
+        position
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square),
+        Some(sq(5, 9))
+    );
     assert_eq!(
         position.piece_at(sq(5, 9)),
         PieceCode::new_promoted(Color::Black, PieceKind::Lion),
@@ -673,7 +693,12 @@ fn case9_kirin_promotion_capture_of_undefended_new_lion_allows_reply() {
         to: sq(5, 9),
         promote: true,
     });
-    assert_eq!(position.lion_taken_by_non_lion(), Some(sq(5, 9)));
+    assert_eq!(
+        position
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square),
+        Some(sq(5, 9))
+    );
     assert!(generated(&position).contains(&Move {
         from: sq(5, 11),
         mid: None,

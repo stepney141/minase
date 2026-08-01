@@ -1,6 +1,7 @@
 //! 着手の表現と、その巻き戻しに必要な記録。
 
 use crate::core::piece::PieceCode;
+use crate::core::position::LionTrigger;
 use crate::core::square::Square;
 
 /// 1回の着手(第3条)。獅子・角鷹・飛鷲の2段階移動(第11条・第12条)も1つの値で表す。
@@ -66,8 +67,8 @@ pub struct Undo {
     pub(crate) moved_piece_before: PieceCode,
     /// 取られた駒の記録(最大2枚)。
     pub(crate) captured: [Option<CapturedPiece>; 2],
-    /// 着手前の先獅子トリガー(非獅子駒に取られた獅子の升)。
-    pub(crate) previous_lion_taken: Option<Square>,
+    /// 着手前の先獅子トリガー(獅子捕獲升と麒麟成りフラグ)。
+    pub(crate) previous_lion_taken: Option<LionTrigger>,
     /// 着手前のzobristハッシュ。
     pub(crate) previous_zobrist: u64,
 }

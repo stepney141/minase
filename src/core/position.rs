@@ -45,6 +45,8 @@ struct ZobristKeys {
     side_to_move: u64,
     /// 先獅子トリガーがあるとき加えるキー。
     lion_trigger: u64,
+    /// 先獅子トリガーが麒麟成りによるとき加えるキー。
+    lion_trigger_kirin: u64,
 }
 
 impl ZobristKeys {
@@ -56,10 +58,12 @@ impl ZobristKeys {
             .collect();
         let side_to_move = rng.next();
         let lion_trigger = rng.next();
+        let lion_trigger_kirin = rng.next();
         Self {
             pieces,
             side_to_move,
             lion_trigger,
+            lion_trigger_kirin,
         }
     }
 
@@ -81,6 +85,19 @@ impl ZobristKeys {
             Color::White => self.side_to_move,
         }
     }
+
+    /// 先獅子トリガー状態の寄与を返す。
+    #[inline]
+    fn lion_trigger_state(&self, trigger: Option<LionTrigger>) -> u64 {
+        trigger.map_or(0, |trigger| {
+            self.lion_trigger
+                ^ if trigger.by_kirin_promotion {
+                    self.lion_trigger_kirin
+                } else {
+                    0
+                }
+        })
+    }
 }
 
 static ZOBRIST_KEYS: OnceLock<ZobristKeys> = OnceLock::new();
@@ -88,6 +105,15 @@ static ZOBRIST_KEYS: OnceLock<ZobristKeys> = OnceLock::new();
 /// プロセス全体で共有する乱数表を返す。初回呼び出し時に構築する。
 fn zobrist_keys() -> &'static ZobristKeys {
     ZOBRIST_KEYS.get_or_init(ZobristKeys::build)
+}
+
+/// 先獅子の発動原因となった直前の獅子捕獲。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct LionTrigger {
+    /// 獅子が取られた升。
+    pub(crate) square: Square,
+    /// 獅子を取った麒麟が同じ着手で成ったかどうか。
+    pub(crate) by_kirin_promotion: bool,
 }
 
 /// 中将棋の局面。盤面・手番・先獅子トリガー・zobristハッシュを保持する。
@@ -103,8 +129,8 @@ pub struct Position {
     by_kind: [[Bitboard; PIECE_KIND_COUNT]; COLOR_COUNT],
     /// 手番側。
     side_to_move: Color,
-    /// 直前の着手で獅子以外の駒に取られた獅子の升。先獅子(第15条)の判定に使う。
-    lion_taken_by_non_lion: Option<Square>,
+    /// 直前の着手で獅子以外の駒に取られた獅子の情報。先獅子(第15条)の判定に使う。
+    lion_taken_by_non_lion: Option<LionTrigger>,
     /// 現局面のzobristハッシュ。着手のたびに増分更新する。
     zobrist: u64,
 }
@@ -290,9 +316,9 @@ impl Position {
 
     /// 盤面・手番・先獅子トリガーを含むzobristハッシュを返す。
     ///
-    /// 先獅子トリガーは有無の1ビットとして表現する。これは第24条の下で
-    /// 標準規則(L0)には十分だが、将来ローカルルールL1へ対応する際は
-    /// 捕獲升も含める必要がある。
+    /// 先獅子トリガーは有無の1ビットに加え、麒麟成りフラグの
+    /// 1ビットを含む。将来ローカルルールL1へ対応する際は、捕獲升も
+    /// 含める必要がある。
     #[inline]
     pub const fn zobrist(&self) -> u64 {
         self.zobrist
@@ -304,8 +330,8 @@ impl Position {
             | self.pieces_of_kind(color, PieceKind::CrownPrince)
     }
 
-    /// 直前の着手で獅子以外の駒に取られた獅子の升を返す。先獅子(第15条)の判定に使う。
-    pub(crate) const fn lion_taken_by_non_lion(&self) -> Option<Square> {
+    /// 直前の着手で獅子以外の駒に取られた獅子の情報を返す。先獅子(第15条)の判定に使う。
+    pub(crate) const fn lion_taken_by_non_lion(&self) -> Option<LionTrigger> {
         self.lion_taken_by_non_lion
     }
 
@@ -383,11 +409,7 @@ impl Position {
         let hash = Square::all()
             .filter_map(|square| self.piece_at(square).map(|piece| keys.piece(square, piece)))
             .fold(keys.side(self.side_to_move), |hash, key| hash ^ key);
-        if self.lion_taken_by_non_lion.is_some() {
-            hash ^ keys.lion_trigger
-        } else {
-            hash
-        }
+        hash ^ keys.lion_trigger_state(self.lion_taken_by_non_lion)
     }
 
     /// 盤面配列とビットボード集計の整合など、内部不変条件を検査する。
@@ -501,19 +523,24 @@ impl Position {
         self.put_piece(mv.destination(), moved_piece_after)
             .expect("generated move must end on an empty square");
         self.flip_side_to_move();
+        let by_kirin_promotion =
+            moved_piece_before.kind() == Some(PieceKind::Kirin) && mv.is_promoting();
         self.lion_taken_by_non_lion = (moved_piece_before.kind() != Some(PieceKind::Lion))
             .then(|| {
                 captured
                     .into_iter()
                     .flatten()
                     .filter(|captured| captured.piece.kind() == Some(PieceKind::Lion))
-                    .map(|captured| captured.square)
+                    .map(|captured| LionTrigger {
+                        square: captured.square,
+                        by_kirin_promotion,
+                    })
                     .next_back()
             })
             .flatten();
-        if previous_lion_taken.is_some() != self.lion_taken_by_non_lion.is_some() {
-            self.zobrist ^= zobrist_keys().lion_trigger;
-        }
+        let keys = zobrist_keys();
+        self.zobrist ^= keys.lion_trigger_state(previous_lion_taken)
+            ^ keys.lion_trigger_state(self.lion_taken_by_non_lion);
 
         Undo {
             mv,
@@ -538,12 +565,10 @@ impl Position {
             self.put_piece(captured.square, captured.piece)
                 .expect("capture square must be empty while unmaking");
         }
-        let lion_trigger_changed =
-            self.lion_taken_by_non_lion.is_some() != undo.previous_lion_taken.is_some();
+        let keys = zobrist_keys();
+        self.zobrist ^= keys.lion_trigger_state(self.lion_taken_by_non_lion)
+            ^ keys.lion_trigger_state(undo.previous_lion_taken);
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
-        if lion_trigger_changed {
-            self.zobrist ^= zobrist_keys().lion_trigger;
-        }
         debug_assert_eq!(self.zobrist, undo.previous_zobrist);
         self.zobrist = undo.previous_zobrist;
     }
@@ -784,7 +809,13 @@ mod tests {
     fn non_lion_capture_of_lion_sets_capture_square() {
         let (position, captured_lion) = position_after_non_lion_captures_lion();
 
-        assert_eq!(position.lion_taken_by_non_lion(), Some(captured_lion));
+        assert_eq!(
+            position.lion_taken_by_non_lion(),
+            Some(LionTrigger {
+                square: captured_lion,
+                by_kirin_promotion: false,
+            })
+        );
     }
 
     #[test]
@@ -823,7 +854,13 @@ mod tests {
             promote: true,
         });
 
-        assert_eq!(position.lion_taken_by_non_lion(), Some(captured_lion));
+        assert_eq!(
+            position.lion_taken_by_non_lion(),
+            Some(LionTrigger {
+                square: captured_lion,
+                by_kirin_promotion: true,
+            })
+        );
         assert_eq!(
             position.piece_at(captured_lion),
             PieceCode::new_promoted(Color::Black, PieceKind::Lion),
@@ -831,9 +868,48 @@ mod tests {
     }
 
     #[test]
+    fn article_24_1_c_kirin_promotion_trigger_zobrist_round_trip() {
+        let mut position = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(5, 9), Color::Black, PieceKind::Kirin),
+                (sq(5, 11), Color::White, PieceKind::Lion),
+                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
+                (sq(5, 4), Color::White, PieceKind::Rook),
+            ],
+        );
+        let before = position.clone();
+        let previous_zobrist = position.zobrist();
+
+        let undo = position.make_move_unchecked(Move {
+            from: sq(5, 9),
+            mid: None,
+            to: sq(5, 11),
+            promote: true,
+        });
+        assert!(
+            position
+                .lion_taken_by_non_lion()
+                .is_some_and(|trigger| trigger.by_kirin_promotion)
+        );
+        assert_zobrist_matches(&position);
+
+        position.unmake_move(undo);
+
+        assert_eq!(position.zobrist(), previous_zobrist);
+        assert_eq!(position, before);
+        assert_zobrist_matches(&position);
+    }
+
+    #[test]
     fn unrelated_next_move_clears_capture_square() {
         let (mut position, captured_lion) = position_after_non_lion_captures_lion();
-        assert_eq!(position.lion_taken_by_non_lion(), Some(captured_lion));
+        assert_eq!(
+            position
+                .lion_taken_by_non_lion()
+                .map(|trigger| trigger.square),
+            Some(captured_lion)
+        );
 
         position.make_move_unchecked(Move {
             from: sq(10, 10),
@@ -859,7 +935,12 @@ mod tests {
 
         position.unmake_move(undo);
 
-        assert_eq!(position.lion_taken_by_non_lion(), Some(captured_lion));
+        assert_eq!(
+            position
+                .lion_taken_by_non_lion()
+                .map(|trigger| trigger.square),
+            Some(captured_lion)
+        );
         assert_eq!(position, before_unrelated_move);
     }
 
@@ -888,7 +969,12 @@ mod tests {
             ],
         );
 
-        assert_eq!(with_trigger.lion_taken_by_non_lion(), Some(captured_lion));
+        assert_eq!(
+            with_trigger
+                .lion_taken_by_non_lion()
+                .map(|trigger| trigger.square),
+            Some(captured_lion)
+        );
         assert_eq!(without_trigger.lion_taken_by_non_lion(), None);
         assert_ne!(with_trigger, without_trigger);
         assert_ne!(with_trigger.zobrist(), without_trigger.zobrist());
