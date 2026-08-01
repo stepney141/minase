@@ -149,18 +149,17 @@ impl Rules {
         for &code in codes {
             match code {
                 RuleCode::L0
+                | RuleCode::L3
+                | RuleCode::P3
+                | RuleCode::P4
                 | RuleCode::R0
                 | RuleCode::R1
                 | RuleCode::R2
                 | RuleCode::E1
                 | RuleCode::E2 => {}
-                RuleCode::L1
-                | RuleCode::L2
-                | RuleCode::L3
-                | RuleCode::P1
-                | RuleCode::P2
-                | RuleCode::P3
-                | RuleCode::P4 => return Err(RulesError::Unsupported(code)),
+                RuleCode::L1 | RuleCode::L2 | RuleCode::P1 | RuleCode::P2 => {
+                    return Err(RulesError::Unsupported(code));
+                }
             }
         }
 
@@ -194,7 +193,7 @@ impl Rules {
         self.contains(RuleCode::E2)
     }
 
-    /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条)。
+    /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条・第30条P3・P4)。
     pub(crate) fn promotion_choice(
         self,
         position: &Position,
@@ -219,14 +218,19 @@ impl Rules {
             .any(|capture| capture.is_some());
         let enters_zone = !from_in_zone && to_in_zone;
         let capture_in_or_from_zone = has_capture && (from_in_zone || to_in_zone);
-        let pawn_reaches_last_rank_without_capture = moving_kind == PieceKind::Pawn
-            && !has_capture
+        let piece_reaches_last_rank_without_capture = !has_capture
             && match color {
                 Color::Black => mv.destination().rank() == BOARD_RANKS - 1,
                 Color::White => mv.destination().rank() == 0,
+            }
+            && match moving_kind {
+                PieceKind::Pawn => true,
+                PieceKind::Lance => self.contains(RuleCode::P3),
+                PieceKind::GoBetween => self.contains(RuleCode::P4),
+                _ => false,
             };
 
-        if enters_zone || capture_in_or_from_zone || pawn_reaches_last_rank_without_capture {
+        if enters_zone || capture_in_or_from_zone || piece_reaches_last_rank_without_capture {
             PromotionChoice::PromotionOptional
         } else {
             PromotionChoice::NoPromotion
@@ -248,7 +252,7 @@ impl Rules {
             && captured_lions
                 .into_iter()
                 .flatten()
-                .any(|lion| !lion_capture_is_legal(position, mv, lion))
+                .any(|lion| !lion_capture_is_legal(self, position, mv, lion))
         {
             return false;
         }
@@ -262,7 +266,7 @@ impl Rules {
             && captured_lions
                 .into_iter()
                 .flatten()
-                .any(|lion| lion_has_foot_after_capture(position, mv, lion))
+                .any(|lion| lion_has_foot_after_capture(self, position, mv, lion))
         {
             return false;
         }
@@ -332,7 +336,7 @@ fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
 
 /// 獅子による相手獅子の捕獲が第14条・第16条を満たすかどうかを返す。隣接していれば
 /// 無条件に取れる。距離2では、付け喰いが成立するか、取られる獅子に足がない場合に限る。
-fn lion_capture_is_legal(position: &Position, mv: Move, lion_square: Square) -> bool {
+fn lion_capture_is_legal(rules: Rules, position: &Position, mv: Move, lion_square: Square) -> bool {
     let distance = mv
         .origin()
         .file()
@@ -342,7 +346,7 @@ fn lion_capture_is_legal(position: &Position, mv: Move, lion_square: Square) -> 
     match distance {
         1 => true,
         2 if is_tsukegui(position, mv, lion_square) => true,
-        2 => !lion_has_foot_after_capture(position, mv, lion_square),
+        2 => !lion_has_foot_after_capture(rules, position, mv, lion_square),
         _ => false,
     }
 }
@@ -397,26 +401,37 @@ impl VirtualBoard {
     }
 }
 
-/// 相手獅子を取った直後に取り返される足(第13条)があるかどうかを返す。歩兵または仲人が
-/// 唯一の足である場合は、第1段階でその駒を取っても足が消滅したとは扱わない(第16条第8項)。
-fn lion_has_foot_after_capture(position: &Position, mv: Move, lion_square: Square) -> bool {
+/// 相手獅子を取った直後に取り返される足(第13条)があるかどうかを返す。標準規則では、
+/// 歩兵または仲人が唯一の足である場合、第1段階でその駒を取っても足が消滅したとは扱わない
+/// (第16条第8項から第10項)。L3採用時は、これらの規定を適用せず、着手適用後の
+/// 仮想盤面だけで足を判定する(第29条L3)。
+fn lion_has_foot_after_capture(
+    rules: Rules,
+    position: &Position,
+    mv: Move,
+    lion_square: Square,
+) -> bool {
     let defending_color = position
         .piece_at(lion_square)
         .and_then(|piece| piece.color())
         .expect("capture square must contain a lion");
     let board = VirtualBoard::after_move(position, mv);
 
-    let [mid_capture, destination_capture] = position.captured_squares(mv);
-    let captured_pawn_or_go_between_had_foot = destination_capture == Some(lion_square)
-        && mid_capture.is_some_and(|mid| {
-            position.piece_at(mid).is_some_and(|piece| {
-                let Some(kind @ (PieceKind::Pawn | PieceKind::GoBetween)) = piece.kind() else {
-                    return false;
-                };
-                piece_control_with_occupancy(board.occupied, defending_color, kind, mid)
-                    .contains(mv.destination())
+    let captured_pawn_or_go_between_had_foot = if rules.contains(RuleCode::L3) {
+        false
+    } else {
+        let [mid_capture, destination_capture] = position.captured_squares(mv);
+        destination_capture == Some(lion_square)
+            && mid_capture.is_some_and(|mid| {
+                position.piece_at(mid).is_some_and(|piece| {
+                    let Some(kind @ (PieceKind::Pawn | PieceKind::GoBetween)) = piece.kind() else {
+                        return false;
+                    };
+                    piece_control_with_occupancy(board.occupied, defending_color, kind, mid)
+                        .contains(mv.destination())
+                })
             })
-        });
+    };
 
     debug_assert!(board.own.contains(mv.destination()));
     debug_assert!(!board.enemy.contains(mv.destination()));
@@ -450,10 +465,14 @@ mod tests {
     use crate::core::position::PositionBuilder;
     use crate::test_util::{position, sq};
 
-    fn is_generated(position: &Position, expected: Move) -> bool {
+    fn is_generated_with_rules(rules: Rules, position: &Position, expected: Move) -> bool {
         let mut moves = Vec::new();
-        MoveGenerator::standard().generate_moves(position, &mut moves);
+        MoveGenerator::new(rules).generate_moves(position, &mut moves);
         moves.contains(&expected)
+    }
+
+    fn is_generated(position: &Position, expected: Move) -> bool {
+        is_generated_with_rules(Rules::standard(), position, expected)
     }
 
     fn after_non_lion_capture(pieces: &[(Square, Color, PieceKind)], capture: Move) -> Position {
@@ -508,21 +527,16 @@ mod tests {
             Rules::from_codes(&[RuleCode::R0, RuleCode::R0]),
             Err(RulesError::Duplicate(RuleCode::R0)),
         );
-        for code in [
-            RuleCode::L1,
-            RuleCode::L2,
-            RuleCode::L3,
-            RuleCode::P1,
-            RuleCode::P2,
-            RuleCode::P3,
-            RuleCode::P4,
-        ] {
+        for code in [RuleCode::L1, RuleCode::L2, RuleCode::P1, RuleCode::P2] {
             assert_eq!(
                 Rules::from_codes(&[code]),
                 Err(RulesError::Unsupported(code)),
             );
         }
         for code in [
+            RuleCode::L3,
+            RuleCode::P3,
+            RuleCode::P4,
             RuleCode::R0,
             RuleCode::R1,
             RuleCode::R2,
@@ -531,6 +545,16 @@ mod tests {
         ] {
             assert!(Rules::from_codes(&[code]).is_ok());
         }
+        assert!(
+            Rules::from_codes(&[
+                RuleCode::L3,
+                RuleCode::P3,
+                RuleCode::P4,
+                RuleCode::R1,
+                RuleCode::E1,
+            ])
+            .is_ok()
+        );
     }
 
     #[test]
@@ -704,7 +728,12 @@ mod tests {
             promote: false,
         };
 
-        assert!(lion_has_foot_after_capture(&position, capture, sq(4, 2)));
+        assert!(lion_has_foot_after_capture(
+            Rules::standard(),
+            &position,
+            capture,
+            sq(4, 2),
+        ));
         assert!(!is_generated(&position, capture));
     }
 
@@ -814,8 +843,47 @@ mod tests {
             promote: false,
         };
 
-        assert!(lion_has_foot_after_capture(&position, capture, sq(4, 4)));
+        assert!(lion_has_foot_after_capture(
+            Rules::standard(),
+            &position,
+            capture,
+            sq(4, 4),
+        ));
         assert!(!is_generated(&position, capture));
+    }
+
+    #[test]
+    fn article_29_l3_removes_a_captured_pawn_foot_between_lion_steps() {
+        let position = position(
+            Color::Black,
+            &[
+                (sq(5, 6), Color::Black, PieceKind::Lion),
+                (sq(5, 5), Color::White, PieceKind::Pawn),
+                (sq(5, 4), Color::White, PieceKind::Lion),
+            ],
+        );
+        let capture = Move {
+            from: sq(5, 6),
+            mid: Some(sq(5, 5)),
+            to: sq(5, 4),
+            promote: false,
+        };
+        let l3 = Rules::from_codes(&[RuleCode::L3]).unwrap();
+
+        assert!(lion_has_foot_after_capture(
+            Rules::standard(),
+            &position,
+            capture,
+            sq(5, 4),
+        ));
+        assert!(!lion_has_foot_after_capture(
+            l3,
+            &position,
+            capture,
+            sq(5, 4),
+        ));
+        assert!(!is_generated(&position, capture));
+        assert!(is_generated_with_rules(l3, &position, capture));
     }
 
     #[test]
@@ -1127,6 +1195,49 @@ mod tests {
         };
 
         assert!(is_generated(&position, promotion));
+    }
+
+    #[test]
+    fn article_30_p3_lance_can_promote_on_a_non_capture_to_the_last_rank() {
+        let position = position(Color::Black, &[(sq(4, 10), Color::Black, PieceKind::Lance)]);
+        let non_promoting = Move {
+            from: sq(4, 10),
+            mid: None,
+            to: sq(4, 11),
+            promote: false,
+        };
+        let promoting = Move {
+            promote: true,
+            ..non_promoting
+        };
+        let p3 = Rules::from_codes(&[RuleCode::P3]).unwrap();
+
+        assert!(is_generated(&position, non_promoting));
+        assert!(!is_generated(&position, promoting));
+        assert!(is_generated_with_rules(p3, &position, promoting));
+    }
+
+    #[test]
+    fn article_30_p4_go_between_can_promote_on_a_non_capture_to_the_last_rank() {
+        let position = position(
+            Color::Black,
+            &[(sq(4, 10), Color::Black, PieceKind::GoBetween)],
+        );
+        let non_promoting = Move {
+            from: sq(4, 10),
+            mid: None,
+            to: sq(4, 11),
+            promote: false,
+        };
+        let promoting = Move {
+            promote: true,
+            ..non_promoting
+        };
+        let p4 = Rules::from_codes(&[RuleCode::P4]).unwrap();
+
+        assert!(is_generated(&position, non_promoting));
+        assert!(!is_generated(&position, promoting));
+        assert!(is_generated_with_rules(p4, &position, promoting));
     }
 
     #[test]
