@@ -11,7 +11,7 @@ use crate::core::direction::step_square;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuilder};
-use crate::core::rules::Rules;
+use crate::core::rules::{RuleCode, Rules};
 use crate::core::square::{BOARD_SQUARE_COUNT, Square};
 use crate::test_util::sq;
 
@@ -81,6 +81,161 @@ fn random_position(rng: &mut XorShift64, focus_kind: PieceKind) -> Position {
         builder.put(square, random_piece(rng, color, kind)).unwrap();
     }
     builder.finish().unwrap()
+}
+
+fn assert_playout_position_invariants(
+    position: &Position,
+    rule_set_name: &str,
+    phase: &str,
+    ply: usize,
+) {
+    assert_eq!(
+        position.validate(),
+        Ok(()),
+        "rule_set={rule_set_name}, phase={phase}, ply={ply}"
+    );
+    assert_eq!(
+        position.zobrist(),
+        position.recompute_zobrist(),
+        "zobrist mismatch: rule_set={rule_set_name}, phase={phase}, ply={ply}"
+    );
+    assert_eq!(
+        position.rights_zobrist(),
+        position.recompute_rights_zobrist(),
+        "rights zobrist mismatch: rule_set={rule_set_name}, phase={phase}, ply={ply}"
+    );
+}
+
+fn generated_unique_moves(
+    generator: &MoveGenerator,
+    position: &Position,
+    rule_set_name: &str,
+    ply: usize,
+) -> Vec<Move> {
+    let mut moves = Vec::new();
+    generator.generate_moves(position, &mut moves);
+    assert_eq!(
+        moves.iter().copied().collect::<HashSet<_>>().len(),
+        moves.len(),
+        "duplicate move: rule_set={rule_set_name}, ply={ply}"
+    );
+    moves
+}
+
+#[test]
+fn representative_rule_set_playouts_preserve_all_position_invariants() {
+    const PLY_LIMIT: usize = 96;
+    const RULE_SETS: [(&str, &[RuleCode], u64); 5] = [
+        (
+            "L1+L2+P3+R1+E1",
+            &[
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+            ],
+            0x5255_4c45_5345_5401,
+        ),
+        (
+            "L3+P4+R1",
+            &[RuleCode::L3, RuleCode::P4, RuleCode::R1],
+            0x5255_4c45_5345_5402,
+        ),
+        (
+            "P1+R1",
+            &[RuleCode::P1, RuleCode::R1],
+            0x5255_4c45_5345_5403,
+        ),
+        (
+            "P2+R1",
+            &[RuleCode::P2, RuleCode::R1],
+            0x5255_4c45_5345_5404,
+        ),
+        (
+            "L1+L2+L3+P1+P3+P4+R2+E1+E2",
+            &[
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::L3,
+                RuleCode::P1,
+                RuleCode::P3,
+                RuleCode::P4,
+                RuleCode::R2,
+                RuleCode::E1,
+                RuleCode::E2,
+            ],
+            0x5255_4c45_5345_5405,
+        ),
+    ];
+
+    for (rule_set_name, codes, seed) in RULE_SETS {
+        let rules = Rules::from_codes(codes).unwrap();
+        let generator = MoveGenerator::new(rules);
+        let mut rng = XorShift64::new(seed);
+        let mut position = Position::initial();
+        let initial = position.clone();
+        let mut history = Vec::new();
+        let mut saw_promotion_deferred = false;
+
+        for ply in 0..PLY_LIMIT {
+            assert_playout_position_invariants(&position, rule_set_name, "forward", ply);
+            let moves = generated_unique_moves(&generator, &position, rule_set_name, ply);
+            if moves.is_empty() {
+                break;
+            }
+
+            let mv = moves[rng.index(moves.len())];
+            let before = position.clone();
+            let undo = position.make_move_unchecked(mv, rules);
+            history.push((undo, before));
+            saw_promotion_deferred |= !position.promotion_deferred().is_empty();
+            assert_playout_position_invariants(&position, rule_set_name, "forward", ply + 1);
+        }
+
+        assert_playout_position_invariants(
+            &position,
+            rule_set_name,
+            "forward-final",
+            history.len(),
+        );
+        let _ = generated_unique_moves(&generator, &position, rule_set_name, history.len());
+
+        while let Some((undo, before)) = history.pop() {
+            position.unmake_move(undo);
+            assert_playout_position_invariants(&position, rule_set_name, "backward", history.len());
+            assert_eq!(
+                position,
+                before,
+                "round-trip mismatch: rule_set={rule_set_name}, ply={}",
+                history.len()
+            );
+        }
+
+        assert_eq!(position.zobrist(), initial.zobrist(), "{rule_set_name}");
+        assert_eq!(
+            position.rights_zobrist(),
+            initial.rights_zobrist(),
+            "{rule_set_name}"
+        );
+        assert_eq!(
+            position.promotion_deferred(),
+            initial.promotion_deferred(),
+            "{rule_set_name}"
+        );
+        assert_eq!(
+            position.lion_taken_by_non_lion(),
+            initial.lion_taken_by_non_lion(),
+            "{rule_set_name}"
+        );
+        assert_eq!(position, initial, "{rule_set_name}");
+        if rules.contains(RuleCode::P1) {
+            assert!(
+                saw_promotion_deferred,
+                "P1 promotion deferral did not occur: rule_set={rule_set_name}, seed={seed:#x}"
+            );
+        }
+    }
 }
 
 #[test]

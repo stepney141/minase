@@ -438,6 +438,8 @@ fn move_was_attacking(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::core::piece::{PieceCode, PieceKind};
     use crate::core::position::PositionBuilder;
@@ -1251,12 +1253,38 @@ mod tests {
         }
     }
 
-    fn play_random_r2_move(game: &mut Game, rng: &mut XorShift64) -> GameStatus {
+    fn assert_random_game_position_invariants(game: &Game, rule_set_name: &str) {
+        assert_eq!(
+            game.position().validate(),
+            Ok(()),
+            "rule_set={rule_set_name}, ply={}",
+            game.ply_count()
+        );
+        assert_eq!(
+            game.position().zobrist(),
+            game.position().recompute_zobrist(),
+            "rule_set={rule_set_name}, ply={}",
+            game.ply_count()
+        );
+        assert_eq!(
+            game.position().rights_zobrist(),
+            game.position().recompute_rights_zobrist(),
+            "rule_set={rule_set_name}, ply={}",
+            game.ply_count()
+        );
+    }
+
+    fn play_random_move(game: &mut Game, rng: &mut XorShift64) -> GameStatus {
         let mut moves = Vec::new();
         game.generator.generate_moves(game.position(), &mut moves);
         assert!(
             !moves.is_empty(),
             "an ongoing game must have a generated move"
+        );
+        assert_eq!(
+            moves.iter().copied().collect::<HashSet<_>>().len(),
+            moves.len(),
+            "an ongoing game must not have duplicate generated moves"
         );
 
         let start = (rng.next() as usize) % moves.len();
@@ -1264,7 +1292,9 @@ mod tests {
             let selected = moves[(start + offset) % moves.len()];
             match game.play(selected) {
                 Ok(status) => return status,
-                Err(GameError::IllegalMove(IllegalMove(rejected))) => {
+                Err(GameError::IllegalMove(IllegalMove(rejected)))
+                    if game.repetition_rule == RepetitionRule::R2 =>
+                {
                     assert_eq!(rejected, selected);
                 }
                 Err(error) => panic!("unexpected self-play error: {error}"),
@@ -1290,7 +1320,7 @@ mod tests {
                 let mut terminated = false;
 
                 for _ in 0..PLY_CAP {
-                    if let GameStatus::Finished(result) = play_random_r2_move(&mut game, &mut rng) {
+                    if let GameStatus::Finished(result) = play_random_move(&mut game, &mut rng) {
                         assert!(!matches!(
                             result,
                             GameResult::Win {
@@ -1316,6 +1346,74 @@ mod tests {
                         .all(|state| state.occurrences == 1)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn representative_rule_sets_random_self_play_returns_no_unexpected_errors() {
+        const PLY_CAP: u32 = 1_500;
+        const RULE_SETS: [(&str, &[RuleCode], u64); 5] = [
+            (
+                "L1+L2+P3+R1+E1",
+                &[
+                    RuleCode::L1,
+                    RuleCode::L2,
+                    RuleCode::P3,
+                    RuleCode::R1,
+                    RuleCode::E1,
+                ],
+                0x5255_4c45_4741_4d01,
+            ),
+            (
+                "L3+P4+R1",
+                &[RuleCode::L3, RuleCode::P4, RuleCode::R1],
+                0x5255_4c45_4741_4d02,
+            ),
+            (
+                "P1+R1",
+                &[RuleCode::P1, RuleCode::R1],
+                0x5255_4c45_4741_4d03,
+            ),
+            (
+                "P2+R1",
+                &[RuleCode::P2, RuleCode::R1],
+                0x5255_4c45_4741_4d04,
+            ),
+            (
+                "L1+L2+L3+P1+P3+P4+R2+E1+E2",
+                &[
+                    RuleCode::L1,
+                    RuleCode::L2,
+                    RuleCode::L3,
+                    RuleCode::P1,
+                    RuleCode::P3,
+                    RuleCode::P4,
+                    RuleCode::R2,
+                    RuleCode::E1,
+                    RuleCode::E2,
+                ],
+                0x5255_4c45_4741_4d05,
+            ),
+        ];
+
+        for (rule_set_name, codes, seed) in RULE_SETS {
+            let mut rng = XorShift64::new(seed);
+            let mut game = Game::new(Rules::from_codes(codes).unwrap()).unwrap();
+
+            for _ in 0..PLY_CAP {
+                assert_random_game_position_invariants(&game, rule_set_name);
+                if let GameStatus::Finished(_) = play_random_move(&mut game, &mut rng) {
+                    break;
+                }
+            }
+
+            assert_random_game_position_invariants(&game, rule_set_name);
+            assert!(
+                matches!(game.status(), GameStatus::Finished(_)) || game.ply_count() == PLY_CAP,
+                "random game ended before reaching a terminal result or the ply cap: \
+                 rule_set={rule_set_name}, ply={}",
+                game.ply_count()
+            );
         }
     }
 
