@@ -401,7 +401,7 @@ impl Position {
         let mut moves = Vec::new();
         generator.generate_moves(self, &mut moves);
         if moves.contains(&mv) {
-            Ok(self.make_move_unchecked(mv))
+            Ok(self.make_move_unchecked(mv, generator.rules()))
         } else {
             Err(IllegalMove(mv))
         }

@@ -277,12 +277,15 @@ fn case3_articles_13_5_6_and_15_1_king_as_only_foot_enforces_senjishi() {
             (sq(4, 7), Color::White, PieceKind::Rook),
         ],
     );
-    with_king.make_move_unchecked(Move {
-        from: sq(0, 0),
-        mid: None,
-        to: sq(1, 1),
-        promote: false,
-    });
+    with_king.make_move_unchecked(
+        Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(1, 1),
+            promote: false,
+        },
+        Rules::standard(),
+    );
     assert!(with_king.lion_taken_by_non_lion().is_some());
     let moves = generated(&with_king);
     let recapture = Move {
@@ -311,12 +314,15 @@ fn case3_articles_13_5_6_and_15_1_king_as_only_foot_enforces_senjishi() {
             (sq(4, 7), Color::White, PieceKind::Rook),
         ],
     );
-    without_king.make_move_unchecked(Move {
-        from: sq(0, 0),
-        mid: None,
-        to: sq(1, 1),
-        promote: false,
-    });
+    without_king.make_move_unchecked(
+        Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(1, 1),
+            promote: false,
+        },
+        Rules::standard(),
+    );
     assert!(generated(&without_king).contains(&recapture));
 }
 
@@ -346,12 +352,15 @@ fn case4_articles_15_4_and_15_5_senjishi_applies_for_one_move_and_then_expires()
     };
 
     // 1手目: 黒角が白獅子を取る。トリガーが立つ。
-    position.make_move_unchecked(Move {
-        from: sq(0, 0),
-        mid: None,
-        to: sq(1, 1),
-        promote: false,
-    });
+    position.make_move_unchecked(
+        Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(1, 1),
+            promote: false,
+        },
+        Rules::standard(),
+    );
     assert_eq!(
         position
             .lion_taken_by_non_lion()
@@ -362,21 +371,27 @@ fn case4_articles_15_4_and_15_5_senjishi_applies_for_one_move_and_then_expires()
     assert!(!generated(&position).contains(&recapture));
 
     // 2手目: 白が別の手を指すとトリガーが消える。
-    position.make_move_unchecked(Move {
-        from: sq(10, 10),
-        mid: None,
-        to: sq(10, 9),
-        promote: false,
-    });
+    position.make_move_unchecked(
+        Move {
+            from: sq(10, 10),
+            mid: None,
+            to: sq(10, 9),
+            promote: false,
+        },
+        Rules::standard(),
+    );
     assert_eq!(position.lion_taken_by_non_lion(), None);
 
     // 3手目: 黒の手（捕獲なし）でもトリガーは立たない。
-    position.make_move_unchecked(Move {
-        from: sq(0, 5),
-        mid: None,
-        to: sq(0, 6),
-        promote: false,
-    });
+    position.make_move_unchecked(
+        Move {
+            from: sq(0, 5),
+            mid: None,
+            to: sq(0, 6),
+            promote: false,
+        },
+        Rules::standard(),
+    );
     assert_eq!(position.lion_taken_by_non_lion(), None);
 
     // 4手目: 同じ捕獲が、足が残っていても合法になっている。
@@ -409,7 +424,7 @@ fn case5_eagle_double_lion_capture_records_second_square_and_restricts_reply() {
     // 非獅子は足の有無にかかわらず獅子を取れる（第14条5項）ので生成される。
     assert!(generated(&position).contains(&double_capture));
 
-    position.make_move_unchecked(double_capture);
+    position.make_move_unchecked(double_capture, Rules::standard());
     // 第2捕獲の升(6,6)がトリガーとして記録される。
     assert_eq!(
         position
@@ -449,12 +464,15 @@ fn case5_after_double_lion_capture_an_undefended_lion_may_be_taken() {
             (sq(0, 9), Color::White, PieceKind::Rook),
         ],
     );
-    position.make_move_unchecked(Move {
-        from: sq(4, 4),
-        mid: Some(sq(5, 5)),
-        to: sq(6, 6),
-        promote: false,
-    });
+    position.make_move_unchecked(
+        Move {
+            from: sq(4, 4),
+            mid: Some(sq(5, 5)),
+            to: sq(6, 6),
+            promote: false,
+        },
+        Rules::standard(),
+    );
     assert_eq!(
         position
             .lion_taken_by_non_lion()
@@ -646,7 +664,7 @@ fn case9_article_15_7_kirin_promoting_on_lion_capture_triggers_senjishi() {
         promote: false,
     }));
 
-    position.make_move_unchecked(promote_capture);
+    position.make_move_unchecked(promote_capture, Rules::standard());
     // 麒麟（非獅子）による捕獲なので先獅子トリガーが立つ（第15条7項）。
     assert_eq!(
         position
@@ -687,12 +705,15 @@ fn case9_kirin_promotion_capture_of_undefended_new_lion_allows_reply() {
             (sq(5, 11), Color::White, PieceKind::Rook),
         ],
     );
-    position.make_move_unchecked(Move {
-        from: sq(5, 7),
-        mid: None,
-        to: sq(5, 9),
-        promote: true,
-    });
+    position.make_move_unchecked(
+        Move {
+            from: sq(5, 7),
+            mid: None,
+            to: sq(5, 9),
+            promote: true,
+        },
+        Rules::standard(),
+    );
     assert_eq!(
         position
             .lion_taken_by_non_lion()
@@ -772,12 +793,15 @@ fn note_articles_14_1_vs_15_1_adjacent_lion_recapture_during_senjishi() {
             (sq(5, 6), Color::White, PieceKind::Lion),
         ],
     );
-    position.make_move_unchecked(Move {
-        from: sq(0, 0),
-        mid: None,
-        to: sq(1, 1),
-        promote: false,
-    });
+    position.make_move_unchecked(
+        Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(1, 1),
+            promote: false,
+        },
+        Rules::standard(),
+    );
     let adjacent_recapture = Move {
         from: sq(5, 6),
         mid: None,
@@ -890,56 +914,80 @@ fn article_24_equivalent_positions_ignore_quiet_move_history() {
         ],
     );
     let mut first = initial.clone();
-    first.make_move_unchecked(Move {
-        from: sq(3, 3),
-        mid: None,
-        to: sq(3, 4),
-        promote: false,
-    });
-    first.make_move_unchecked(Move {
-        from: sq(8, 8),
-        mid: None,
-        to: sq(8, 7),
-        promote: false,
-    });
-    first.make_move_unchecked(Move {
-        from: sq(3, 4),
-        mid: None,
-        to: sq(3, 3),
-        promote: false,
-    });
-    first.make_move_unchecked(Move {
-        from: sq(8, 7),
-        mid: None,
-        to: sq(8, 8),
-        promote: false,
-    });
+    first.make_move_unchecked(
+        Move {
+            from: sq(3, 3),
+            mid: None,
+            to: sq(3, 4),
+            promote: false,
+        },
+        Rules::standard(),
+    );
+    first.make_move_unchecked(
+        Move {
+            from: sq(8, 8),
+            mid: None,
+            to: sq(8, 7),
+            promote: false,
+        },
+        Rules::standard(),
+    );
+    first.make_move_unchecked(
+        Move {
+            from: sq(3, 4),
+            mid: None,
+            to: sq(3, 3),
+            promote: false,
+        },
+        Rules::standard(),
+    );
+    first.make_move_unchecked(
+        Move {
+            from: sq(8, 7),
+            mid: None,
+            to: sq(8, 8),
+            promote: false,
+        },
+        Rules::standard(),
+    );
 
     let mut second = initial;
-    second.make_move_unchecked(Move {
-        from: sq(3, 3),
-        mid: None,
-        to: sq(4, 3),
-        promote: false,
-    });
-    second.make_move_unchecked(Move {
-        from: sq(8, 8),
-        mid: None,
-        to: sq(7, 8),
-        promote: false,
-    });
-    second.make_move_unchecked(Move {
-        from: sq(4, 3),
-        mid: None,
-        to: sq(3, 3),
-        promote: false,
-    });
-    second.make_move_unchecked(Move {
-        from: sq(7, 8),
-        mid: None,
-        to: sq(8, 8),
-        promote: false,
-    });
+    second.make_move_unchecked(
+        Move {
+            from: sq(3, 3),
+            mid: None,
+            to: sq(4, 3),
+            promote: false,
+        },
+        Rules::standard(),
+    );
+    second.make_move_unchecked(
+        Move {
+            from: sq(8, 8),
+            mid: None,
+            to: sq(7, 8),
+            promote: false,
+        },
+        Rules::standard(),
+    );
+    second.make_move_unchecked(
+        Move {
+            from: sq(4, 3),
+            mid: None,
+            to: sq(3, 3),
+            promote: false,
+        },
+        Rules::standard(),
+    );
+    second.make_move_unchecked(
+        Move {
+            from: sq(7, 8),
+            mid: None,
+            to: sq(8, 8),
+            promote: false,
+        },
+        Rules::standard(),
+    );
 
     assert_eq!(first, second);
 }

@@ -110,7 +110,7 @@ impl Game {
 
         let mover = self.position.side_to_move();
         let undo = self.position.try_make_move(mv, &self.generator)?;
-        let position_key = self.position.zobrist();
+        let position_key = repetition_key(&self.position, self.repetition_rule);
         if self.repetition_rule == RepetitionRule::R2
             && self.repetitions.contains_key(&position_key)
         {
@@ -220,7 +220,8 @@ impl Game {
     }
 
     fn from_position(rules: Rules, position: Position) -> Self {
-        let key = position.zobrist();
+        let repetition_rule = rules.repetition_rule();
+        let key = repetition_key(&position, repetition_rule);
         Self {
             position,
             generator: MoveGenerator::new(rules),
@@ -234,7 +235,7 @@ impl Game {
             )]),
             consecutive_attacking_moves: [0; 2],
             ply: 0,
-            repetition_rule: rules.repetition_rule(),
+            repetition_rule,
             mate_adjudication_enabled: rules.mate_adjudication_enabled(),
             piece_exhaustion_disabled: rules.piece_exhaustion_disabled(),
             piece_exhaustion_grace: false,
@@ -267,7 +268,7 @@ impl Game {
     }
 
     fn repetition_result(&mut self) -> Option<GameResult> {
-        let key = self.position.zobrist();
+        let key = repetition_key(&self.position, self.repetition_rule);
         let first_ply = {
             let state = self.repetitions.entry(key).or_insert(RepetitionState {
                 occurrences: 0,
@@ -390,6 +391,14 @@ impl Game {
     }
 }
 
+/// 反復規則ごとの同一局面キーを返す。R2では一時的な権利を比較しない。
+fn repetition_key(position: &Position, repetition_rule: RepetitionRule) -> u64 {
+    match repetition_rule {
+        RepetitionRule::R0 | RepetitionRule::R1 => position.zobrist() ^ position.rights_zobrist(),
+        RepetitionRule::R2 => position.zobrist(),
+    }
+}
+
 fn is_last_rank(color: Color, square: Square) -> bool {
     match color {
         Color::Black => square.rank() == BOARD_RANKS - 1,
@@ -431,6 +440,7 @@ fn move_was_attacking(
 mod tests {
     use super::*;
     use crate::core::piece::{PieceCode, PieceKind};
+    use crate::core::position::PositionBuilder;
     use crate::core::rules::{RuleCode, RulesError};
     use crate::core::square::Square;
     use crate::test_util::{position_from_codes as position, sq};
@@ -530,6 +540,37 @@ mod tests {
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.position(), &Position::initial());
         assert_eq!(game.ply_count(), 0);
+    }
+
+    #[test]
+    fn articles_24_1_d_and_31_r2_choose_the_correct_repetition_key() {
+        let deferred = sq(4, 9);
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(
+                deferred,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        builder.mark_promotion_deferred(deferred).unwrap();
+        let position = builder.finish().unwrap();
+        let r1_key = position.zobrist() ^ position.rights_zobrist();
+        let r2_key = position.zobrist();
+        assert_ne!(r1_key, r2_key);
+
+        let r1 = Game::from_position(
+            Rules::from_codes(&[RuleCode::P1, RuleCode::R1, RuleCode::E2]).unwrap(),
+            position.clone(),
+        );
+        let r2 = Game::from_position(
+            Rules::from_codes(&[RuleCode::P1, RuleCode::R2, RuleCode::E2]).unwrap(),
+            position,
+        );
+
+        assert_eq!(r1.repetitions.len(), 1);
+        assert!(r1.repetitions.contains_key(&r1_key));
+        assert_eq!(r2.repetitions.len(), 1);
+        assert!(r2.repetitions.contains_key(&r2_key));
     }
 
     #[test]

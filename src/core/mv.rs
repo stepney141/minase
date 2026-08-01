@@ -1,5 +1,6 @@
 //! 着手の表現と、その巻き戻しに必要な記録。
 
+use crate::core::bitboard::Bitboard;
 use crate::core::piece::PieceCode;
 use crate::core::position::LionTrigger;
 use crate::core::square::Square;
@@ -71,4 +72,8 @@ pub struct Undo {
     pub(crate) previous_lion_taken: Option<LionTrigger>,
     /// 着手前のzobristハッシュ。
     pub(crate) previous_zobrist: u64,
+    /// 着手前の成り権保留中の駒の集合。
+    pub(crate) previous_promotion_deferred: Bitboard,
+    /// 着手前のP1成り権保留状態のzobristハッシュ。
+    pub(crate) previous_rights_zobrist: u64,
 }

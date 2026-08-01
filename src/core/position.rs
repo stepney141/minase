@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 use crate::core::bitboard::Bitboard;
 use crate::core::mv::{CapturedPiece, Move, Undo};
 use crate::core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
+use crate::core::rules::{PromotionChoice, RuleCode, Rules, in_promotion_zone};
 use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 
 /// 1升あたりのzobrist駒キー数(色×駒種×成否)。
@@ -47,6 +48,8 @@ struct ZobristKeys {
     lion_trigger: u64,
     /// 先獅子トリガーが麒麟成りによるとき加えるキー。
     lion_trigger_kirin: u64,
+    /// 升ごとの成り権保留キー。
+    promotion_deferred: Box<[u64]>,
 }
 
 impl ZobristKeys {
@@ -59,11 +62,13 @@ impl ZobristKeys {
         let side_to_move = rng.next();
         let lion_trigger = rng.next();
         let lion_trigger_kirin = rng.next();
+        let promotion_deferred = (0..BOARD_SQUARE_COUNT).map(|_| rng.next()).collect();
         Self {
             pieces,
             side_to_move,
             lion_trigger,
             lion_trigger_kirin,
+            promotion_deferred,
         }
     }
 
@@ -98,6 +103,12 @@ impl ZobristKeys {
                 }
         })
     }
+
+    /// 指定升の成り権保留キーを返す。
+    #[inline]
+    fn promotion_deferred(&self, square: Square) -> u64 {
+        self.promotion_deferred[square.dense_index()]
+    }
 }
 
 static ZOBRIST_KEYS: OnceLock<ZobristKeys> = OnceLock::new();
@@ -116,7 +127,7 @@ pub(crate) struct LionTrigger {
     pub(crate) by_kirin_promotion: bool,
 }
 
-/// 中将棋の局面。盤面・手番・先獅子トリガー・zobristハッシュを保持する。
+/// 中将棋の局面。盤面・手番・次の合法手に影響する一時状態を保持する。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Position {
     /// 各升の駒コード。番兵込みの生インデックスで引く。
@@ -133,6 +144,10 @@ pub struct Position {
     lion_taken_by_non_lion: Option<LionTrigger>,
     /// 現局面のzobristハッシュ。着手のたびに増分更新する。
     zobrist: u64,
+    /// P1で成り権を保留中の駒がある升の集合。
+    promotion_deferred: Bitboard,
+    /// P1成り権保留状態のzobristハッシュ。
+    rights_zobrist: u64,
 }
 
 /// [`Position::validate`]が検出する内部不変条件の違反。
@@ -158,6 +173,8 @@ pub enum PositionError {
     },
     /// いずれかのビットボードで番兵ビットが立っている。
     PaddingBitSet,
+    /// 成り権保留ビットの升に適格な駒がない。
+    InvalidPromotionDeferred { square: Square },
 }
 
 impl fmt::Display for PositionError {
@@ -203,6 +220,8 @@ impl Position {
             side_to_move,
             lion_taken_by_non_lion: None,
             zobrist: zobrist_keys().side(side_to_move),
+            promotion_deferred: Bitboard::EMPTY,
+            rights_zobrist: 0,
         }
     }
 
@@ -324,6 +343,18 @@ impl Position {
         self.zobrist
     }
 
+    /// P1成り権保留状態のzobristハッシュを返す。
+    #[inline]
+    pub const fn rights_zobrist(&self) -> u64 {
+        self.rights_zobrist
+    }
+
+    /// P1で成り権を保留中の駒がある升の集合を返す。
+    #[inline]
+    pub(crate) const fn promotion_deferred(&self) -> Bitboard {
+        self.promotion_deferred
+    }
+
     /// 王駒(王将・玉将・太子、第3条)の集合を返す。
     pub fn royal_pieces(&self, color: Color) -> Bitboard {
         self.pieces_of_kind(color, PieceKind::King)
@@ -412,6 +443,43 @@ impl Position {
         hash ^ keys.lion_trigger_state(self.lion_taken_by_non_lion)
     }
 
+    /// P1成り権保留状態からzobristハッシュを計算し直して返す。
+    pub(crate) fn recompute_rights_zobrist(&self) -> u64 {
+        let keys = zobrist_keys();
+        self.promotion_deferred
+            .into_iter()
+            .map(|square| keys.promotion_deferred(square))
+            .fold(0, |hash, key| hash ^ key)
+    }
+
+    /// P1の成り権保留ビットを立て、権利ハッシュを更新する。
+    fn set_promotion_deferred(&mut self, square: Square) {
+        if !self.promotion_deferred.contains(square) {
+            self.promotion_deferred.set(square);
+            self.rights_zobrist ^= zobrist_keys().promotion_deferred(square);
+        }
+    }
+
+    /// P1の成り権保留ビットを消し、権利ハッシュを更新する。
+    fn clear_promotion_deferred(&mut self, square: Square) {
+        if self.promotion_deferred.contains(square) {
+            self.promotion_deferred.clear(square);
+            self.rights_zobrist ^= zobrist_keys().promotion_deferred(square);
+        }
+    }
+
+    /// 指定升の駒がP1の成り権保留状態を持てるかどうかを返す。
+    fn promotion_deferred_is_valid(&self, square: Square) -> bool {
+        self.piece_at(square).is_some_and(|piece| {
+            let Some(color) = piece.color() else {
+                return false;
+            };
+            !piece.is_promoted()
+                && piece.kind().is_some_and(PieceKind::can_promote)
+                && in_promotion_zone(color, square)
+        })
+    }
+
     /// 盤面配列とビットボード集計の整合など、内部不変条件を検査する。
     pub fn validate(&self) -> Result<(), PositionError> {
         let union = self.by_color[0] | self.by_color[1];
@@ -483,24 +551,44 @@ impl Position {
         if has_padding(self.occupied)
             || self.by_color.into_iter().any(has_padding)
             || self.by_kind.into_iter().flatten().any(has_padding)
+            || has_padding(self.promotion_deferred)
         {
             return Err(PositionError::PaddingBitSet);
+        }
+        for square in self.promotion_deferred {
+            if !self.promotion_deferred_is_valid(square) {
+                return Err(PositionError::InvalidPromotionDeferred { square });
+            }
         }
         Ok(())
     }
 
     /// 合法性を検査せずに`mv`を適用し、[`Undo`]トークンを返す。
     ///
-    /// 呼び出し側は、まさにこの局面に対して
+    /// 呼び出し側は、まさにこの局面に対して、`rules`と同じ規則の
     /// [`MoveGenerator::generate_moves`](crate::MoveGenerator::generate_moves)
     /// が生成した着手だけを渡さなければならない。それ以外の着手を渡すと、
     /// panicするか、zobristハッシュや先獅子トリガーを含めて局面を静かに
     /// 壊すことがある。合法性検査付きの適用には
     /// [`Position::try_make_move`]を使う。
-    pub fn make_move_unchecked(&mut self, mv: Move) -> Undo {
+    pub fn make_move_unchecked(&mut self, mv: Move, rules: Rules) -> Undo {
         let previous_zobrist = self.zobrist;
+        let previous_promotion_deferred = self.promotion_deferred;
+        let previous_rights_zobrist = self.rights_zobrist;
         let previous_lion_taken = self.lion_taken_by_non_lion;
         let capture_squares = self.captured_squares(mv);
+        let moving_kind = self
+            .piece_at(mv.origin())
+            .and_then(PieceCode::kind)
+            .expect("move origin must contain a valid piece");
+        let had_promotion_option =
+            rules.promotion_choice(self, &mv, moving_kind) == PromotionChoice::PromotionOptional;
+        if rules.contains(RuleCode::P1) {
+            self.clear_promotion_deferred(mv.origin());
+            for square in capture_squares.into_iter().flatten() {
+                self.clear_promotion_deferred(square);
+            }
+        }
         let moved_piece_before = self.remove_piece(mv.origin());
         debug_assert_eq!(moved_piece_before.color(), Some(self.side_to_move));
 
@@ -522,6 +610,18 @@ impl Position {
         };
         self.put_piece(mv.destination(), moved_piece_after)
             .expect("generated move must end on an empty square");
+        if rules.contains(RuleCode::P1)
+            && had_promotion_option
+            && !mv.is_promoting()
+            && in_promotion_zone(
+                moved_piece_before
+                    .color()
+                    .expect("moving piece must have an owner"),
+                mv.destination(),
+            )
+        {
+            self.set_promotion_deferred(mv.destination());
+        }
         self.flip_side_to_move();
         let by_kirin_promotion =
             moved_piece_before.kind() == Some(PieceKind::Kirin) && mv.is_promoting();
@@ -548,6 +648,8 @@ impl Position {
             captured,
             previous_lion_taken,
             previous_zobrist,
+            previous_promotion_deferred,
+            previous_rights_zobrist,
         }
     }
 
@@ -571,6 +673,13 @@ impl Position {
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
         debug_assert_eq!(self.zobrist, undo.previous_zobrist);
         self.zobrist = undo.previous_zobrist;
+        debug_assert_eq!(self.rights_zobrist, self.recompute_rights_zobrist());
+        self.promotion_deferred = undo.previous_promotion_deferred;
+        debug_assert_eq!(
+            undo.previous_rights_zobrist,
+            self.recompute_rights_zobrist()
+        );
+        self.rights_zobrist = undo.previous_rights_zobrist;
     }
 }
 
@@ -593,12 +702,24 @@ impl PositionBuilder {
         self.position.put_piece(square, piece)
     }
 
+    /// 指定升の駒をP1の成り権保留中として記録する。
+    pub fn mark_promotion_deferred(&mut self, square: Square) -> Result<(), PositionBuildError> {
+        if !self.position.promotion_deferred_is_valid(square) {
+            return Err(PositionBuildError::InvalidPosition(
+                PositionError::InvalidPromotionDeferred { square },
+            ));
+        }
+        self.position.set_promotion_deferred(square);
+        Ok(())
+    }
+
     /// 不変条件を検査し、zobristハッシュを計算し直して局面を返す。
     pub fn finish(mut self) -> Result<Position, PositionBuildError> {
         self.position
             .validate()
             .map_err(PositionBuildError::InvalidPosition)?;
         self.position.zobrist = self.position.recompute_zobrist();
+        self.position.rights_zobrist = self.position.recompute_rights_zobrist();
         Ok(self.position)
     }
 }
@@ -611,6 +732,13 @@ mod tests {
 
     fn assert_zobrist_matches(position: &Position) {
         assert_eq!(position.zobrist(), position.recompute_zobrist());
+    }
+
+    fn assert_rights_zobrist_matches(position: &Position) {
+        assert_eq!(
+            position.rights_zobrist(),
+            position.recompute_rights_zobrist()
+        );
     }
 
     fn position_with_pieces(
@@ -634,12 +762,15 @@ mod tests {
                 (sq(10, 10), Color::White, PieceKind::Pawn),
             ],
         );
-        position.make_move_unchecked(Move {
-            from: sq(0, 0),
-            mid: None,
-            to: captured_lion,
-            promote: false,
-        });
+        position.make_move_unchecked(
+            Move {
+                from: sq(0, 0),
+                mid: None,
+                to: captured_lion,
+                promote: false,
+            },
+            Rules::standard(),
+        );
         (position, captured_lion)
     }
 
@@ -651,10 +782,13 @@ mod tests {
         assert!(white_empty.validate().is_ok());
         assert_zobrist_matches(&black_empty);
         assert_zobrist_matches(&white_empty);
+        assert_rights_zobrist_matches(&black_empty);
+        assert_rights_zobrist_matches(&white_empty);
 
         let initial = Position::initial();
         assert!(initial.validate().is_ok());
         assert_zobrist_matches(&initial);
+        assert_rights_zobrist_matches(&initial);
         assert_eq!(initial.pieces_of(Color::Black).popcount(), 46);
         assert_eq!(initial.pieces_of(Color::White).popcount(), 46);
         assert_eq!(initial.occupied().popcount(), 92);
@@ -827,12 +961,15 @@ mod tests {
                 (sq(5, 4), Color::White, PieceKind::Lion),
             ],
         );
-        position.make_move_unchecked(Move {
-            from: sq(4, 4),
-            mid: None,
-            to: sq(5, 4),
-            promote: false,
-        });
+        position.make_move_unchecked(
+            Move {
+                from: sq(4, 4),
+                mid: None,
+                to: sq(5, 4),
+                promote: false,
+            },
+            Rules::standard(),
+        );
 
         assert_eq!(position.lion_taken_by_non_lion(), None);
     }
@@ -847,12 +984,15 @@ mod tests {
                 (captured_lion, Color::White, PieceKind::Lion),
             ],
         );
-        position.make_move_unchecked(Move {
-            from: sq(4, 7),
-            mid: None,
-            to: captured_lion,
-            promote: true,
-        });
+        position.make_move_unchecked(
+            Move {
+                from: sq(4, 7),
+                mid: None,
+                to: captured_lion,
+                promote: true,
+            },
+            Rules::standard(),
+        );
 
         assert_eq!(
             position.lion_taken_by_non_lion(),
@@ -881,12 +1021,15 @@ mod tests {
         let before = position.clone();
         let previous_zobrist = position.zobrist();
 
-        let undo = position.make_move_unchecked(Move {
-            from: sq(5, 9),
-            mid: None,
-            to: sq(5, 11),
-            promote: true,
-        });
+        let undo = position.make_move_unchecked(
+            Move {
+                from: sq(5, 9),
+                mid: None,
+                to: sq(5, 11),
+                promote: true,
+            },
+            Rules::standard(),
+        );
         assert!(
             position
                 .lion_taken_by_non_lion()
@@ -911,12 +1054,15 @@ mod tests {
             Some(captured_lion)
         );
 
-        position.make_move_unchecked(Move {
-            from: sq(10, 10),
-            mid: None,
-            to: sq(10, 9),
-            promote: false,
-        });
+        position.make_move_unchecked(
+            Move {
+                from: sq(10, 10),
+                mid: None,
+                to: sq(10, 9),
+                promote: false,
+            },
+            Rules::standard(),
+        );
 
         assert_eq!(position.lion_taken_by_non_lion(), None);
     }
@@ -925,12 +1071,15 @@ mod tests {
     fn unmake_move_restores_previous_capture_square() {
         let (mut position, captured_lion) = position_after_non_lion_captures_lion();
         let before_unrelated_move = position.clone();
-        let undo = position.make_move_unchecked(Move {
-            from: sq(10, 10),
-            mid: None,
-            to: sq(10, 9),
-            promote: false,
-        });
+        let undo = position.make_move_unchecked(
+            Move {
+                from: sq(10, 10),
+                mid: None,
+                to: sq(10, 9),
+                promote: false,
+            },
+            Rules::standard(),
+        );
         assert_eq!(position.lion_taken_by_non_lion(), None);
 
         position.unmake_move(undo);
@@ -983,6 +1132,161 @@ mod tests {
     }
 
     #[test]
+    fn article_24_1_d_p1_rights_zobrist_round_trip() {
+        let mut position = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(4, 7), Color::Black, PieceKind::SilverGeneral),
+                (sq(10, 10), Color::White, PieceKind::GoldGeneral),
+            ],
+        );
+        let before = position.clone();
+        let previous_zobrist = position.zobrist();
+        let previous_promotion_deferred = position.promotion_deferred();
+        let previous_rights_zobrist = position.rights_zobrist();
+        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
+        let moves = [
+            Move {
+                from: sq(4, 7),
+                mid: None,
+                to: sq(4, 8),
+                promote: false,
+            },
+            Move {
+                from: sq(10, 10),
+                mid: None,
+                to: sq(10, 9),
+                promote: false,
+            },
+            Move {
+                from: sq(4, 8),
+                mid: None,
+                to: sq(4, 9),
+                promote: false,
+            },
+            Move {
+                from: sq(10, 9),
+                mid: None,
+                to: sq(10, 10),
+                promote: false,
+            },
+            Move {
+                from: sq(4, 9),
+                mid: None,
+                to: sq(4, 10),
+                promote: false,
+            },
+            Move {
+                from: sq(10, 10),
+                mid: None,
+                to: sq(10, 9),
+                promote: false,
+            },
+        ];
+        let mut history = Vec::new();
+
+        for mv in moves {
+            history.push(position.make_move_unchecked(mv, p1));
+            assert_eq!(position.validate(), Ok(()));
+            assert_zobrist_matches(&position);
+            assert_rights_zobrist_matches(&position);
+        }
+        while let Some(undo) = history.pop() {
+            position.unmake_move(undo);
+            assert_eq!(position.validate(), Ok(()));
+            assert_zobrist_matches(&position);
+            assert_rights_zobrist_matches(&position);
+        }
+
+        assert_eq!(position, before);
+        assert_eq!(position.zobrist(), previous_zobrist);
+        assert_eq!(position.promotion_deferred(), previous_promotion_deferred);
+        assert_eq!(position.rights_zobrist(), previous_rights_zobrist);
+    }
+
+    #[test]
+    fn article_24_1_d_promotion_rights_use_a_separate_zobrist() {
+        let deferred = sq(4, 9);
+        let piece = PieceCode::new(Color::Black, PieceKind::SilverGeneral);
+        let mut plain_builder = PositionBuilder::new(Color::Black);
+        plain_builder.put(deferred, piece).unwrap();
+        let plain = plain_builder.finish().unwrap();
+        let mut deferred_builder = PositionBuilder::new(Color::Black);
+        deferred_builder.put(deferred, piece).unwrap();
+        deferred_builder.mark_promotion_deferred(deferred).unwrap();
+        let with_deferred_right = deferred_builder.finish().unwrap();
+
+        assert_eq!(plain.zobrist(), with_deferred_right.zobrist());
+        assert_ne!(plain.rights_zobrist(), with_deferred_right.rights_zobrist());
+        assert!(plain.promotion_deferred().is_empty());
+        assert_eq!(
+            with_deferred_right.promotion_deferred(),
+            Bitboard::from_square(deferred)
+        );
+        assert_rights_zobrist_matches(&plain);
+        assert_rights_zobrist_matches(&with_deferred_right);
+    }
+
+    #[test]
+    fn article_24_1_d_builder_rejects_invalid_promotion_deferred_marks() {
+        let invalid = |square| {
+            Err(PositionBuildError::InvalidPosition(
+                PositionError::InvalidPromotionDeferred { square },
+            ))
+        };
+
+        let empty = sq(4, 9);
+        let mut empty_builder = PositionBuilder::new(Color::Black);
+        assert_eq!(empty_builder.mark_promotion_deferred(empty), invalid(empty));
+
+        let king = sq(5, 9);
+        let mut king_builder = PositionBuilder::new(Color::Black);
+        king_builder
+            .put(king, PieceCode::new(Color::Black, PieceKind::King))
+            .unwrap();
+        assert_eq!(king_builder.mark_promotion_deferred(king), invalid(king));
+
+        let outside_enemy_camp = sq(4, 7);
+        let mut outside_builder = PositionBuilder::new(Color::Black);
+        outside_builder
+            .put(
+                outside_enemy_camp,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        assert_eq!(
+            outside_builder.mark_promotion_deferred(outside_enemy_camp),
+            invalid(outside_enemy_camp)
+        );
+
+        let promoted = sq(6, 9);
+        let mut promoted_builder = PositionBuilder::new(Color::Black);
+        promoted_builder
+            .put(
+                promoted,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral)
+                    .promote()
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            promoted_builder.mark_promotion_deferred(promoted),
+            invalid(promoted)
+        );
+
+        let valid = sq(7, 9);
+        let mut valid_builder = PositionBuilder::new(Color::Black);
+        valid_builder
+            .put(
+                valid,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        assert_eq!(valid_builder.mark_promotion_deferred(valid), Ok(()));
+        assert_eq!(valid_builder.finish().unwrap().validate(), Ok(()));
+    }
+
+    #[test]
     fn seeded_random_playouts_preserve_incremental_zobrist() {
         let generator = MoveGenerator::standard();
         let mut rng = XorShift64::new(0x5a4f_4252_4953_5401);
@@ -1000,7 +1304,7 @@ mod tests {
                 }
                 let mv = moves[rng.next() as usize % moves.len()];
                 let previous_zobrist = position.zobrist();
-                let undo = position.make_move_unchecked(mv);
+                let undo = position.make_move_unchecked(mv, Rules::standard());
                 assert_eq!(undo.previous_zobrist, previous_zobrist);
                 assert_zobrist_matches(&position);
                 history.push((undo, previous_zobrist));

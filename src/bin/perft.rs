@@ -2,7 +2,7 @@ use std::process;
 use std::time::{Duration, Instant};
 
 use clap::{CommandFactory, Parser, error::ErrorKind};
-use minase::{Move, MoveGenerator, Position, Square, parse_sfen};
+use minase::{Move, MoveGenerator, Position, Rules, Square, parse_sfen};
 
 #[derive(Parser)]
 #[command(name = "perft")]
@@ -100,7 +100,7 @@ fn perft(generator: &MoveGenerator, position: &mut Position, counts: &mut [u64])
     }
 
     for mv in moves {
-        let undo = position.make_move_unchecked(mv);
+        let undo = position.make_move_unchecked(mv, Rules::standard());
         perft(generator, position, deeper);
         position.unmake_move(undo);
     }

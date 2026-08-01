@@ -83,8 +83,6 @@ pub enum RulesError {
     Conflicting { first: RuleCode, second: RuleCode },
     /// 同じコードの重複指定。
     Duplicate(RuleCode),
-    /// 未実装のコード。
-    Unsupported(RuleCode),
 }
 
 impl fmt::Display for RulesError {
@@ -97,7 +95,6 @@ impl fmt::Display for RulesError {
                 )
             }
             Self::Duplicate(code) => write!(formatter, "duplicate rule code: {code:?}"),
-            Self::Unsupported(code) => write!(formatter, "unsupported rule code: {code:?}"),
         }
     }
 }
@@ -124,7 +121,7 @@ impl Rules {
         }
     }
 
-    /// コード列から集合を作る。重複・矛盾・未実装のコードを検査する。
+    /// コード列から集合を作る。重複・矛盾を検査する。
     pub fn from_codes(codes: &[RuleCode]) -> Result<Self, RulesError> {
         let mut adopted = 0_u16;
         for &code in codes {
@@ -143,25 +140,6 @@ impl Rules {
         ] {
             if adopted & first.bit() != 0 && adopted & second.bit() != 0 {
                 return Err(RulesError::Conflicting { first, second });
-            }
-        }
-
-        for &code in codes {
-            match code {
-                RuleCode::L0
-                | RuleCode::L1
-                | RuleCode::L2
-                | RuleCode::L3
-                | RuleCode::P3
-                | RuleCode::P4
-                | RuleCode::R0
-                | RuleCode::R1
-                | RuleCode::R2
-                | RuleCode::E1
-                | RuleCode::E2 => {}
-                RuleCode::P1 | RuleCode::P2 => {
-                    return Err(RulesError::Unsupported(code));
-                }
             }
         }
 
@@ -195,7 +173,7 @@ impl Rules {
         self.contains(RuleCode::E2)
     }
 
-    /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条・第30条P3・P4)。
+    /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条・第30条)。
     pub(crate) fn promotion_choice(
         self,
         position: &Position,
@@ -231,8 +209,20 @@ impl Rules {
                 PieceKind::GoBetween => self.contains(RuleCode::P4),
                 _ => false,
             };
+        let p2_waiting_promotion =
+            self.contains(RuleCode::P2) && from_in_zone && to_in_zone && !has_capture;
+        let p1_recovered_promotion = self.contains(RuleCode::P1)
+            && from_in_zone
+            && to_in_zone
+            && !has_capture
+            && !position.promotion_deferred().contains(mv.origin());
 
-        if enters_zone || capture_in_or_from_zone || piece_reaches_last_rank_without_capture {
+        if enters_zone
+            || capture_in_or_from_zone
+            || piece_reaches_last_rank_without_capture
+            || p2_waiting_promotion
+            || p1_recovered_promotion
+        {
             PromotionChoice::PromotionOptional
         } else {
             PromotionChoice::NoPromotion
@@ -482,7 +472,7 @@ mod tests {
 
     fn after_non_lion_capture(pieces: &[(Square, Color, PieceKind)], capture: Move) -> Position {
         let mut position = position(Color::Black, pieces);
-        position.make_move_unchecked(capture);
+        position.make_move_unchecked(capture, Rules::standard());
         assert!(position.lion_taken_by_non_lion().is_some());
         position
     }
@@ -532,24 +522,7 @@ mod tests {
             Rules::from_codes(&[RuleCode::R0, RuleCode::R0]),
             Err(RulesError::Duplicate(RuleCode::R0)),
         );
-        for code in [RuleCode::P1, RuleCode::P2] {
-            assert_eq!(
-                Rules::from_codes(&[code]),
-                Err(RulesError::Unsupported(code)),
-            );
-        }
-        for code in [
-            RuleCode::L1,
-            RuleCode::L2,
-            RuleCode::L3,
-            RuleCode::P3,
-            RuleCode::P4,
-            RuleCode::R0,
-            RuleCode::R1,
-            RuleCode::R2,
-            RuleCode::E1,
-            RuleCode::E2,
-        ] {
+        for code in RuleCode::ALL {
             assert!(Rules::from_codes(&[code]).is_ok());
         }
         assert!(
@@ -1221,12 +1194,15 @@ mod tests {
             builder.put(square, piece).unwrap();
         }
         let mut position = builder.finish().unwrap();
-        position.make_move_unchecked(Move {
-            from: sq(0, 0),
-            mid: None,
-            to: sq(1, 1),
-            promote: false,
-        });
+        position.make_move_unchecked(
+            Move {
+                from: sq(0, 0),
+                mid: None,
+                to: sq(1, 1),
+                promote: false,
+            },
+            Rules::standard(),
+        );
         assert!(position.lion_taken_by_non_lion().is_some());
 
         let tsukegui = Move {
@@ -1250,12 +1226,15 @@ mod tests {
                 (sq(2, 4), Color::White, PieceKind::Rook),
             ],
         );
-        position.make_move_unchecked(Move {
-            from: sq(1, 1),
-            mid: None,
-            to: sq(2, 1),
-            promote: false,
-        });
+        position.make_move_unchecked(
+            Move {
+                from: sq(1, 1),
+                mid: None,
+                to: sq(2, 1),
+                promote: false,
+            },
+            Rules::standard(),
+        );
         assert_eq!(position.lion_taken_by_non_lion(), None);
 
         let capture = Move {
@@ -1403,6 +1382,269 @@ mod tests {
         assert!(is_generated(&position, non_promoting));
         assert!(!is_generated(&position, promoting));
         assert!(is_generated_with_rules(p4, &position, promoting));
+    }
+
+    #[test]
+    fn article_30_p2_quiet_move_inside_enemy_camp_can_promote() {
+        let mut position = position(
+            Color::Black,
+            &[(sq(4, 9), Color::Black, PieceKind::SilverGeneral)],
+        );
+        let non_promoting = Move {
+            from: sq(4, 9),
+            mid: None,
+            to: sq(4, 10),
+            promote: false,
+        };
+        let promoting = Move {
+            promote: true,
+            ..non_promoting
+        };
+        let p2 = Rules::from_codes(&[RuleCode::P2]).unwrap();
+
+        assert!(is_generated(&position, non_promoting));
+        assert!(!is_generated(&position, promoting));
+        assert!(is_generated_with_rules(p2, &position, non_promoting));
+        assert!(is_generated_with_rules(p2, &position, promoting));
+
+        position.make_move_unchecked(non_promoting, p2);
+        assert!(position.promotion_deferred().is_empty());
+        assert_eq!(position.rights_zobrist(), 0);
+    }
+
+    #[test]
+    fn article_30_p2_does_not_add_promotion_to_captures_or_enemy_camp_exit() {
+        let capture_position = position(
+            Color::Black,
+            &[
+                (sq(4, 9), Color::Black, PieceKind::SilverGeneral),
+                (sq(4, 10), Color::White, PieceKind::Pawn),
+            ],
+        );
+        let capture = Move {
+            from: sq(4, 9),
+            mid: None,
+            to: sq(4, 10),
+            promote: false,
+        };
+        let capture_promotion = Move {
+            promote: true,
+            ..capture
+        };
+        let p2 = Rules::from_codes(&[RuleCode::P2]).unwrap();
+        let mut standard_capture_variants = Vec::new();
+        MoveGenerator::standard().generate_moves(&capture_position, &mut standard_capture_variants);
+        standard_capture_variants.retain(|mv| {
+            mv.origin() == capture.origin() && mv.destination() == capture.destination()
+        });
+        let mut p2_capture_variants = Vec::new();
+        MoveGenerator::new(p2).generate_moves(&capture_position, &mut p2_capture_variants);
+        p2_capture_variants.retain(|mv| {
+            mv.origin() == capture.origin() && mv.destination() == capture.destination()
+        });
+
+        assert_eq!(standard_capture_variants.len(), 2);
+        assert!(standard_capture_variants.contains(&capture));
+        assert!(standard_capture_variants.contains(&capture_promotion));
+        assert_eq!(p2_capture_variants, standard_capture_variants);
+
+        let exit_position = position(
+            Color::Black,
+            &[(sq(4, 8), Color::Black, PieceKind::SilverGeneral)],
+        );
+        let exit = Move {
+            from: sq(4, 8),
+            mid: None,
+            to: sq(3, 7),
+            promote: false,
+        };
+        let exit_promotion = Move {
+            promote: true,
+            ..exit
+        };
+        assert!(is_generated_with_rules(p2, &exit_position, exit));
+        assert!(!is_generated_with_rules(p2, &exit_position, exit_promotion));
+    }
+
+    #[test]
+    fn article_30_p1_deferred_promotion_toggles_after_one_piece_move() {
+        let mut position = position(
+            Color::Black,
+            &[
+                (sq(4, 7), Color::Black, PieceKind::SilverGeneral),
+                (sq(10, 10), Color::White, PieceKind::GoldGeneral),
+            ],
+        );
+        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
+        let enter = Move {
+            from: sq(4, 7),
+            mid: None,
+            to: sq(4, 8),
+            promote: false,
+        };
+        let white_forward = Move {
+            from: sq(10, 10),
+            mid: None,
+            to: sq(10, 9),
+            promote: false,
+        };
+        let recover = Move {
+            from: sq(4, 8),
+            mid: None,
+            to: sq(4, 9),
+            promote: false,
+        };
+        let white_back = Move {
+            from: sq(10, 9),
+            mid: None,
+            to: sq(10, 10),
+            promote: false,
+        };
+        let use_recovered_right = Move {
+            from: sq(4, 9),
+            mid: None,
+            to: sq(4, 10),
+            promote: false,
+        };
+        let deferred_again = Move {
+            from: sq(4, 10),
+            mid: None,
+            to: sq(4, 11),
+            promote: false,
+        };
+
+        assert!(is_generated_with_rules(p1, &position, enter));
+        assert!(is_generated_with_rules(
+            p1,
+            &position,
+            Move {
+                promote: true,
+                ..enter
+            }
+        ));
+        position.make_move_unchecked(enter, p1);
+        assert_eq!(
+            position.promotion_deferred(),
+            Bitboard::from_square(sq(4, 8))
+        );
+
+        position.make_move_unchecked(white_forward, p1);
+        assert!(is_generated_with_rules(p1, &position, recover));
+        assert!(!is_generated_with_rules(
+            p1,
+            &position,
+            Move {
+                promote: true,
+                ..recover
+            }
+        ));
+        position.make_move_unchecked(recover, p1);
+        assert!(position.promotion_deferred().is_empty());
+
+        position.make_move_unchecked(white_back, p1);
+        assert!(is_generated_with_rules(p1, &position, use_recovered_right));
+        assert!(is_generated_with_rules(
+            p1,
+            &position,
+            Move {
+                promote: true,
+                ..use_recovered_right
+            }
+        ));
+        position.make_move_unchecked(use_recovered_right, p1);
+        assert_eq!(
+            position.promotion_deferred(),
+            Bitboard::from_square(sq(4, 10))
+        );
+
+        position.make_move_unchecked(white_forward, p1);
+        assert!(is_generated_with_rules(p1, &position, deferred_again));
+        assert!(!is_generated_with_rules(
+            p1,
+            &position,
+            Move {
+                promote: true,
+                ..deferred_again
+            }
+        ));
+    }
+
+    #[test]
+    fn article_30_p1_deferred_state_is_normalized_after_capture_exit_or_promotion() {
+        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
+
+        let deferred = sq(4, 9);
+        let mut captured_builder = PositionBuilder::new(Color::White);
+        captured_builder
+            .put(
+                deferred,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        captured_builder
+            .put(
+                sq(4, 11),
+                PieceCode::new(Color::White, PieceKind::ReverseChariot),
+            )
+            .unwrap();
+        captured_builder.mark_promotion_deferred(deferred).unwrap();
+        let mut captured = captured_builder.finish().unwrap();
+        captured.make_move_unchecked(
+            Move {
+                from: sq(4, 11),
+                mid: None,
+                to: deferred,
+                promote: false,
+            },
+            p1,
+        );
+        assert!(captured.promotion_deferred().is_empty());
+        assert_eq!(captured.rights_zobrist(), 0);
+
+        let mut exit_builder = PositionBuilder::new(Color::Black);
+        exit_builder
+            .put(
+                sq(4, 8),
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        exit_builder.mark_promotion_deferred(sq(4, 8)).unwrap();
+        let mut exit = exit_builder.finish().unwrap();
+        exit.make_move_unchecked(
+            Move {
+                from: sq(4, 8),
+                mid: None,
+                to: sq(3, 7),
+                promote: false,
+            },
+            p1,
+        );
+        assert!(exit.promotion_deferred().is_empty());
+        assert_eq!(exit.rights_zobrist(), 0);
+
+        let mut promotion_builder = PositionBuilder::new(Color::Black);
+        promotion_builder
+            .put(
+                deferred,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        promotion_builder
+            .put(sq(4, 10), PieceCode::new(Color::White, PieceKind::Pawn))
+            .unwrap();
+        promotion_builder.mark_promotion_deferred(deferred).unwrap();
+        let mut promotion = promotion_builder.finish().unwrap();
+        promotion.make_move_unchecked(
+            Move {
+                from: deferred,
+                mid: None,
+                to: sq(4, 10),
+                promote: true,
+            },
+            p1,
+        );
+        assert!(promotion.promotion_deferred().is_empty());
+        assert_eq!(promotion.rights_zobrist(), 0);
     }
 
     #[test]

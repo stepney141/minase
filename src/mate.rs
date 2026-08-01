@@ -38,7 +38,7 @@ pub(crate) fn has_no_legal_move(
     moves.is_empty()
         || moves
             .into_iter()
-            .all(|mv| move_reaches_forbidden_position(position, mv, forbidden_position))
+            .all(|mv| move_reaches_forbidden_position(position, generator, mv, forbidden_position))
 }
 
 pub(crate) fn is_mate(
@@ -58,7 +58,7 @@ pub(crate) fn is_mate(
             return false;
         }
 
-        let undo = position.make_move_unchecked(mv);
+        let undo = position.make_move_unchecked(mv, generator.rules());
         if forbidden_position.is_some_and(|is_forbidden| is_forbidden(position.zobrist())) {
             position.unmake_move(undo);
             continue;
@@ -77,6 +77,7 @@ pub(crate) fn is_mate(
 
 fn move_reaches_forbidden_position(
     position: &mut Position,
+    generator: &MoveGenerator,
     mv: Move,
     forbidden_position: Option<&dyn Fn(u64) -> bool>,
 ) -> bool {
@@ -84,7 +85,7 @@ fn move_reaches_forbidden_position(
         return false;
     };
 
-    let undo = position.make_move_unchecked(mv);
+    let undo = position.make_move_unchecked(mv, generator.rules());
     let forbidden = is_forbidden(position.zobrist());
     position.unmake_move(undo);
     forbidden
@@ -182,13 +183,13 @@ mod tests {
             promote: false,
         };
         for mv in moves {
-            let undo = position.make_move_unchecked(mv);
+            let undo = position.make_move_unchecked(mv, generator.rules());
             let mut replies = Vec::new();
             generator.generate_moves(&position, &mut replies);
             assert!(replies.contains(&capture_one_royal));
             assert!(!captures_last_royal(&position, capture_one_royal));
 
-            let reply_undo = position.make_move_unchecked(capture_one_royal);
+            let reply_undo = position.make_move_unchecked(capture_one_royal, generator.rules());
             assert_eq!(position.royal_pieces(Color::Black).popcount(), 1);
             position.unmake_move(reply_undo);
             position.unmake_move(undo);

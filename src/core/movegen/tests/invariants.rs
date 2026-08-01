@@ -125,7 +125,7 @@ fn seeded_random_moves_round_trip_validate_and_are_unique() {
         }
         let before_zobrist = before.zobrist();
         for mv in moves {
-            let undo = position.make_move_unchecked(mv);
+            let undo = position.make_move_unchecked(mv, Rules::standard());
             assert_eq!(position.validate(), Ok(()), "move={mv:?}");
             position.unmake_move(undo);
             assert_eq!(position.validate(), Ok(()), "unmade move={mv:?}");
@@ -148,7 +148,7 @@ fn seeded_random_playout_unmakes_to_initial_position() {
         generator.generate_moves(&position, &mut moves);
         assert!(!moves.is_empty(), "no move at ply {ply}");
         let mv = moves[rng.index(moves.len())];
-        history.push(position.make_move_unchecked(mv));
+        history.push(position.make_move_unchecked(mv, Rules::standard()));
         assert_eq!(position.validate(), Ok(()), "ply={ply}, move={mv:?}");
     }
     while let Some(undo) = history.pop() {
@@ -177,7 +177,7 @@ fn every_initial_generated_move_round_trips_exactly() {
         moves.len(),
     );
     for mv in moves {
-        let undo = position.make_move_unchecked(mv);
+        let undo = position.make_move_unchecked(mv, Rules::standard());
         assert!(position.validate().is_ok());
         position.unmake_move(undo);
         assert_eq!(position, before);
@@ -230,7 +230,7 @@ fn all_generated_special_moves_round_trip() {
     assert!(special.iter().any(|mv| mv.mid.is_some()));
     assert!(special.iter().any(|mv| mv.mid.is_none()));
     for mv in special {
-        let undo = position.make_move_unchecked(mv);
+        let undo = position.make_move_unchecked(mv, Rules::standard());
         assert!(position.validate().is_ok());
         position.unmake_move(undo);
         assert_eq!(position, before);
@@ -348,7 +348,7 @@ fn a_move_sequence_can_be_unmade_in_reverse() {
                     .all(|capture| capture.is_none())
             })
             .expect("initial sequence must have a quiet continuation");
-        let undo = position.make_move_unchecked(mv);
+        let undo = position.make_move_unchecked(mv, Rules::standard());
         history.push(undo);
     }
 
