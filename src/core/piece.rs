@@ -223,12 +223,6 @@ impl PieceKind {
     pub const fn can_promote(self) -> bool {
         self.promoted().is_some()
     }
-
-    /// 王駒(王将・玉将・太子)かどうかを返す(第3条)。
-    #[inline]
-    pub const fn is_royal(self) -> bool {
-        matches!(self, Self::King | Self::CrownPrince)
-    }
 }
 
 /// 盤の1升に格納する駒コード。下位5ビットが駒種番号+1、`0x20`が成りフラグ、

@@ -121,13 +121,13 @@ impl Game {
         // 22-2/22-3 win: with a capture, the exhaustion condition did not hold
         // before the move, so the fresh condition takes the Article 22-5 grace
         // path instead.
-        let promoted_waiting_piece = (mv.is_promoting()
+        let promoted_waiting_piece = (mv.promote
             && undo.captured.iter().all(Option::is_none)
             && matches!(
                 undo.moved_piece_before.kind(),
                 Some(PieceKind::Pawn | PieceKind::GoBetween)
             ))
-        .then_some(mv.destination());
+        .then_some(mv.to);
         self.ply = self
             .ply
             .checked_add(1)
@@ -421,7 +421,7 @@ fn move_was_attacking(
 ) -> bool {
     let probe = position.clone_with_side_to_move(mover);
     let opponent_royals = probe.royal_pieces(mover.opposite());
-    let destination = played.destination();
+    let destination = played.to;
     let mut moves = Vec::new();
     generator.generate_moves(&probe, &mut moves);
 
@@ -431,7 +431,7 @@ fn move_was_attacking(
             .into_iter()
             .flatten()
             .any(|square| opponent_royals.contains(square))
-            || (candidate.origin() == destination
+            || (candidate.from == destination
                 && captures.into_iter().any(|capture| capture.is_some()))
     })
 }

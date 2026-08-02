@@ -44,7 +44,7 @@ fn case1_article_12_10_lion_surrounded_by_own_and_edge_has_no_jitto() {
     let lion_moves: Vec<_> = moves
         .iter()
         .copied()
-        .filter(|mv| mv.origin() == sq(0, 0))
+        .filter(|mv| mv.from == sq(0, 0))
         .collect();
 
     // じっとが1手も生成されない。
@@ -127,7 +127,7 @@ fn case2_article_11_7_falcon_blocked_forward_cannot_jitto() {
     let falcon_moves: Vec<_> = moves
         .iter()
         .copied()
-        .filter(|mv| mv.origin() == sq(5, 5))
+        .filter(|mv| mv.from == sq(5, 5))
         .collect();
 
     assert!(jitto_moves(&moves, sq(5, 5)).is_empty());
@@ -232,18 +232,13 @@ fn case3_articles_13_6_and_14_2_king_as_only_foot_blocks_distance_two_lion_captu
     );
     let moves = generated(&with_king);
     // 黒獅子からの着手で白獅子(4,2)を取るものは、経路を問わず1手もない。
-    assert!(
-        moves
-            .iter()
-            .filter(|mv| mv.origin() == sq(2, 2))
-            .all(|&mv| {
-                !with_king
-                    .captured_squares(mv)
-                    .into_iter()
-                    .flatten()
-                    .any(|square| square == sq(4, 2))
-            })
-    );
+    assert!(moves.iter().filter(|mv| mv.from == sq(2, 2)).all(|&mv| {
+        !with_king
+            .captured_squares(mv)
+            .into_iter()
+            .flatten()
+            .any(|square| square == sq(4, 2))
+    }));
 
     // 対照: 王将を外すと足が消え、跳びによる捕獲が生成される。
     let without_king = position(
@@ -502,8 +497,8 @@ fn case6_articles_19_2_and_19_3_unpromoted_pawn_and_lance_on_last_rank_are_dead(
         ],
     );
     let moves = generated(&black);
-    assert!(moves.iter().all(|mv| mv.origin() != sq(4, 11)));
-    assert!(moves.iter().all(|mv| mv.origin() != sq(0, 11)));
+    assert!(moves.iter().all(|mv| mv.from != sq(4, 11)));
+    assert!(moves.iter().all(|mv| mv.from != sq(0, 11)));
     assert!(!moves.is_empty());
 
     let white = position(
@@ -515,8 +510,8 @@ fn case6_articles_19_2_and_19_3_unpromoted_pawn_and_lance_on_last_rank_are_dead(
         ],
     );
     let moves = generated(&white);
-    assert!(moves.iter().all(|mv| mv.origin() != sq(7, 0)));
-    assert!(moves.iter().all(|mv| mv.origin() != sq(11, 0)));
+    assert!(moves.iter().all(|mv| mv.from != sq(7, 0)));
+    assert!(moves.iter().all(|mv| mv.from != sq(11, 0)));
     assert!(!moves.is_empty());
 }
 
@@ -872,8 +867,8 @@ fn article_12_8_igui_has_one_move_encoding() {
         moves
             .iter()
             .filter(|&&mv| {
-                mv.origin() == from
-                    && mv.destination() == from
+                mv.from == from
+                    && mv.to == from
                     && position.captured_squares(mv) == [Some(mid), None]
             })
             .count(),

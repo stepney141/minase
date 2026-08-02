@@ -2,8 +2,7 @@
 
 use core::fmt;
 
-use crate::core::bitboard::Bitboard;
-use crate::core::movegen::piece_control_with_occupancy;
+use crate::core::movegen::{VirtualBoard, piece_control_with_occupancy};
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
@@ -104,7 +103,7 @@ impl std::error::Error for RulesError {}
 /// 対局で採用するローカルルールの集合。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rules {
-    /// 採用コードのビット集合。R0は標準規則そのものなので保持せず、常に0ビットとする。
+    /// 採用コードのビット集合。R0とL0は標準規則そのものなので保持せず、常に0ビットとする。
     codes: u16,
 }
 
@@ -143,7 +142,7 @@ impl Rules {
             }
         }
 
-        adopted &= !RuleCode::R0.bit();
+        adopted &= !(RuleCode::R0.bit() | RuleCode::L0.bit());
         Ok(Self { codes: adopted })
     }
 
@@ -180,7 +179,7 @@ impl Rules {
         mv: &Move,
         moving_kind: PieceKind,
     ) -> PromotionChoice {
-        let Some(piece) = position.piece_at(mv.origin()) else {
+        let Some(piece) = position.piece_at(mv.from) else {
             return PromotionChoice::NoPromotion;
         };
         let Some(color) = piece.color() else {
@@ -190,8 +189,8 @@ impl Rules {
             return PromotionChoice::NoPromotion;
         }
 
-        let from_in_zone = in_promotion_zone(color, mv.origin());
-        let to_in_zone = in_promotion_zone(color, mv.destination());
+        let from_in_zone = in_promotion_zone(color, mv.from);
+        let to_in_zone = in_promotion_zone(color, mv.to);
         let has_capture = position
             .captured_squares(*mv)
             .into_iter()
@@ -200,8 +199,8 @@ impl Rules {
         let capture_in_or_from_zone = has_capture && (from_in_zone || to_in_zone);
         let piece_reaches_last_rank_without_capture = !has_capture
             && match color {
-                Color::Black => mv.destination().rank() == BOARD_RANKS - 1,
-                Color::White => mv.destination().rank() == 0,
+                Color::Black => mv.to.rank() == BOARD_RANKS - 1,
+                Color::White => mv.to.rank() == 0,
             }
             && match moving_kind {
                 PieceKind::Pawn => true,
@@ -215,7 +214,7 @@ impl Rules {
             && from_in_zone
             && to_in_zone
             && !has_capture
-            && !position.promotion_deferred().contains(mv.origin());
+            && !position.promotion_deferred().contains(mv.from);
 
         if enters_zone
             || capture_in_or_from_zone
@@ -237,9 +236,7 @@ impl Rules {
             return true;
         }
 
-        let moving_kind = position
-            .piece_at(mv.origin())
-            .and_then(|piece| piece.kind());
+        let moving_kind = position.piece_at(mv.from).and_then(|piece| piece.kind());
         if moving_kind == Some(PieceKind::Lion)
             && captured_lions
                 .into_iter()
@@ -306,11 +303,7 @@ fn captured_lions(position: &Position, mv: Move) -> [Option<Square>; 2] {
 /// 着手が付け喰い(第16条)にあたるかどうかを返す。付け喰いとは、獅子が第1段階で
 /// 価値ある駒(歩兵・仲人以外)を取り、第2段階で隣接していない相手獅子を取る着手をいう。
 fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
-    if position
-        .piece_at(mv.origin())
-        .and_then(|piece| piece.kind())
-        != Some(PieceKind::Lion)
-    {
+    if position.piece_at(mv.from).and_then(|piece| piece.kind()) != Some(PieceKind::Lion) {
         return false;
     }
     let Some(mid) = mv.mid else {
@@ -337,66 +330,16 @@ fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
 /// 無条件に取れる。距離2では、付け喰いが成立するか、取られる獅子に足がない場合に限る。
 fn lion_capture_is_legal(rules: Rules, position: &Position, mv: Move, lion_square: Square) -> bool {
     let distance = mv
-        .origin()
+        .from
         .file()
         .abs_diff(lion_square.file())
-        .max(mv.origin().rank().abs_diff(lion_square.rank()));
+        .max(mv.from.rank().abs_diff(lion_square.rank()));
 
     match distance {
         1 => true,
         2 if is_tsukegui(position, mv, lion_square) => true,
         2 => !lion_has_foot_after_capture(rules, position, mv, lion_square),
         _ => false,
-    }
-}
-
-/// 着手適用後の占有状態だけを差分で表す仮想盤面。獅子が取られた直後の仮想的な盤面
-/// (第13条第4項)での足の判定に使う。
-#[derive(Clone, Copy)]
-struct VirtualBoard {
-    /// 駒がある升の集合。
-    occupied: Bitboard,
-    /// 着手側の駒の集合。
-    own: Bitboard,
-    /// 相手側の駒の集合。
-    enemy: Bitboard,
-    /// 動かしている駒の現在升。
-    current: Square,
-}
-
-impl VirtualBoard {
-    /// 着手を2段階とも適用した後の仮想盤面を作る。
-    fn after_move(position: &Position, mv: Move) -> Self {
-        let color = position
-            .piece_at(mv.origin())
-            .and_then(|piece| piece.color())
-            .expect("move origin must contain a piece");
-        let board = Self {
-            occupied: position.occupied(),
-            own: position.pieces_of(color),
-            enemy: position.pieces_of(color.opposite()),
-            current: mv.origin(),
-        };
-
-        if let Some(mid) = mv.mid {
-            board.move_to(mid).move_to(mv.to)
-        } else {
-            board.move_to(mv.to)
-        }
-    }
-
-    /// 駒を1段階動かした後の状態を返す。到達升にある相手駒は取り除く。
-    fn move_to(mut self, to: Square) -> Self {
-        self.occupied.clear(self.current);
-        self.own.clear(self.current);
-        if self.enemy.contains(to) {
-            self.occupied.clear(to);
-            self.enemy.clear(to);
-        }
-        self.occupied.set(to);
-        self.own.set(to);
-        self.current = to;
-        self
     }
 }
 
@@ -427,15 +370,15 @@ fn lion_has_foot_after_capture(
                         return false;
                     };
                     piece_control_with_occupancy(board.occupied, defending_color, kind, mid)
-                        .contains(mv.destination())
+                        .contains(mv.to)
                 })
             })
     };
 
-    debug_assert!(board.own.contains(mv.destination()));
-    debug_assert!(!board.enemy.contains(mv.destination()));
+    debug_assert!(board.own.contains(mv.to));
+    debug_assert!(!board.enemy.contains(mv.to));
     captured_pawn_or_go_between_had_foot
-        || square_is_controlled(position, board, defending_color, mv.destination())
+        || square_is_controlled(position, board, defending_color, mv.to)
 }
 
 /// 仮想盤面上で、指定した対局者のいずれかの駒が対象升に利きを持つかどうかを返す。
@@ -459,6 +402,7 @@ fn square_is_controlled(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::bitboard::Bitboard;
     use crate::core::movegen::MoveGenerator;
     use crate::core::position::PositionBuilder;
     use crate::test_util::{position, sq};
@@ -541,12 +485,11 @@ mod tests {
     }
 
     #[test]
-    fn articles_28_and_33_rules_retain_empty_and_explicit_l0_codes() {
-        let standard = Rules::from_codes(&[]).unwrap();
+    fn article_33_1_explicit_l0_normalizes_to_standard() {
         let explicit_l0 = Rules::from_codes(&[RuleCode::L0]).unwrap();
 
-        assert!(!standard.contains(RuleCode::L0));
-        assert!(explicit_l0.contains(RuleCode::L0));
+        assert_eq!(explicit_l0, Rules::standard());
+        assert!(!explicit_l0.contains(RuleCode::L0));
     }
 
     #[test]
@@ -1728,14 +1671,10 @@ mod tests {
         let p2 = Rules::from_codes(&[RuleCode::P2]).unwrap();
         let mut standard_capture_variants = Vec::new();
         MoveGenerator::standard().generate_moves(&capture_position, &mut standard_capture_variants);
-        standard_capture_variants.retain(|mv| {
-            mv.origin() == capture.origin() && mv.destination() == capture.destination()
-        });
+        standard_capture_variants.retain(|mv| mv.from == capture.from && mv.to == capture.to);
         let mut p2_capture_variants = Vec::new();
         MoveGenerator::new(p2).generate_moves(&capture_position, &mut p2_capture_variants);
-        p2_capture_variants.retain(|mv| {
-            mv.origin() == capture.origin() && mv.destination() == capture.destination()
-        });
+        p2_capture_variants.retain(|mv| mv.from == capture.from && mv.to == capture.to);
 
         assert_eq!(standard_capture_variants.len(), 2);
         assert!(standard_capture_variants.contains(&capture));
@@ -1786,7 +1725,7 @@ mod tests {
             };
             let mut variants = Vec::new();
             MoveGenerator::new(rules).generate_moves(&position, &mut variants);
-            variants.retain(|mv| mv.origin() == from && mv.destination() == to);
+            variants.retain(|mv| mv.from == from && mv.to == to);
 
             // 第19条1・4項と第30条P2/P3/P4の条件が重なっても、成り選択肢は
             // PromotionOptionalの1組だけであり、不成・成を重複生成しない。
@@ -1804,7 +1743,7 @@ mod tests {
             let position = position(Color::Black, &[(sq(4, 10), Color::Black, kind)]);
             let mut variants = Vec::new();
             MoveGenerator::new(p2).generate_moves(&position, &mut variants);
-            variants.retain(|mv| mv.origin() == sq(4, 10) && mv.destination() == sq(4, 11));
+            variants.retain(|mv| mv.from == sq(4, 10) && mv.to == sq(4, 11));
             assert_eq!(variants.len(), 2, "{kind:?}");
         }
     }

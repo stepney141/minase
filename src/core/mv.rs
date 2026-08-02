@@ -19,24 +19,6 @@ pub struct Move {
 }
 
 impl Move {
-    /// 移動元の升を返す。
-    #[inline]
-    pub(crate) const fn origin(self) -> Square {
-        self.from
-    }
-
-    /// 着手終了時の到達升を返す。
-    #[inline]
-    pub(crate) const fn destination(self) -> Square {
-        self.to
-    }
-
-    /// 成る着手かどうかを返す。
-    #[inline]
-    pub(crate) const fn is_promoting(self) -> bool {
-        self.promote
-    }
-
     /// 捕獲が起こりうる升(経由升と到達升)を返す。移動元へ戻る着手では到達升を候補から除く。
     pub(crate) const fn capture_candidates(self) -> [Option<Square>; 2] {
         [

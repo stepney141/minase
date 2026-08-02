@@ -83,15 +83,7 @@ fn piece_control_with_tables(
 ) -> Bitboard {
     let profile_id = movement_profile(kind);
     let profile = movement_profile_data(profile_id);
-    let mut result = tables.fixed(color, profile_id, from);
-    for slide in profile.slides {
-        result |= tables.sliding_control(
-            from,
-            slide.direction.for_color(color),
-            slide.max_steps,
-            occupied,
-        );
-    }
+    let mut result = piece_control_without_special(tables, occupied, color, kind, from);
 
     match profile.special {
         SpecialMovement::None => {}
@@ -147,8 +139,13 @@ fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut V
         for from in position.pieces_of_kind(color, kind) {
             let mut base_moves = Vec::new();
             let step_destinations =
-                (piece_control_without_special(generator.tables(), position, color, kind, from)
-                    | special_step_destinations(generator.tables(), color, from, profile.special))
+                (piece_control_without_special(
+                    generator.tables(),
+                    position.occupied(),
+                    color,
+                    kind,
+                    from,
+                ) | special_step_destinations(generator.tables(), color, from, profile.special))
                     & !own;
             for to in step_destinations {
                 base_moves.push(Move {
@@ -214,7 +211,7 @@ fn special_step_destinations(
 /// 特殊移動を除いた駒の利き(固定利きと走りのみ)を返す。
 fn piece_control_without_special(
     tables: &AttackTables,
-    position: &Position,
+    occupied: Bitboard,
     color: Color,
     kind: PieceKind,
     from: Square,
@@ -227,33 +224,50 @@ fn piece_control_without_special(
             from,
             slide.direction.for_color(color),
             slide.max_steps,
-            position.occupied(),
+            occupied,
         );
     }
     result
 }
 
-/// 2段階移動の途中局面の占有状態を差分で表す。
+/// 現局面に対する着手途中または着手後の占有状態を差分で表す仮想盤面。
+/// 獅子などの2段階移動の生成と、相手獅子を取った直後の仮想的な盤面
+/// (第13条第4項)での足の判定に使う。
 #[derive(Clone, Copy)]
-struct LocalOccupancy {
+pub(crate) struct VirtualBoard {
     /// 駒がある升の集合。
-    occupied: Bitboard,
+    pub(crate) occupied: Bitboard,
     /// 動かす側の駒の集合。
-    own: Bitboard,
+    pub(crate) own: Bitboard,
     /// 相手側の駒の集合。
-    enemy: Bitboard,
+    pub(crate) enemy: Bitboard,
     /// 動かしている駒の現在升。
     current: Square,
 }
 
-impl LocalOccupancy {
+impl VirtualBoard {
     /// 現局面から占有状態を作る。
-    fn new(position: &Position, color: Color, current: Square) -> Self {
+    pub(crate) fn new(position: &Position, color: Color, current: Square) -> Self {
         Self {
             occupied: position.occupied(),
             own: position.pieces_of(color),
             enemy: position.pieces_of(color.opposite()),
             current,
+        }
+    }
+
+    /// 着手を2段階とも適用した後の仮想盤面を作る。
+    pub(crate) fn after_move(position: &Position, mv: Move) -> Self {
+        let color = position
+            .piece_at(mv.from)
+            .and_then(|piece| piece.color())
+            .expect("move origin must contain a piece");
+        let board = Self::new(position, color, mv.from);
+
+        if let Some(mid) = mv.mid {
+            board.move_to(mid).move_to(mv.to)
+        } else {
+            board.move_to(mv.to)
         }
     }
 
@@ -286,7 +300,7 @@ fn generate_lion_double_and_jumps(
     let adjacent = tables.king_steps(from);
 
     for mid in adjacent & enemy {
-        let local = LocalOccupancy::new(position, color, from).move_to(mid);
+        let local = VirtualBoard::new(position, color, from).move_to(mid);
         let second = tables.king_steps(mid) & !local.own;
         for to in second {
             output.push(Move {

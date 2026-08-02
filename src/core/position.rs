@@ -369,7 +369,7 @@ impl Position {
     /// 着手で実際に相手駒を取る升を返す。捕獲候補のうち相手駒がある升だけを残す。
     pub(crate) fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
         let moving_color = self
-            .piece_at(mv.origin())
+            .piece_at(mv.from)
             .and_then(PieceCode::color)
             .expect("move origin must contain a piece");
         mv.capture_candidates().map(|candidate| {
@@ -578,18 +578,18 @@ impl Position {
         let previous_lion_taken = self.lion_taken_by_non_lion;
         let capture_squares = self.captured_squares(mv);
         let moving_kind = self
-            .piece_at(mv.origin())
+            .piece_at(mv.from)
             .and_then(PieceCode::kind)
             .expect("move origin must contain a valid piece");
         let had_promotion_option =
             rules.promotion_choice(self, &mv, moving_kind) == PromotionChoice::PromotionOptional;
         if rules.contains(RuleCode::P1) {
-            self.clear_promotion_deferred(mv.origin());
+            self.clear_promotion_deferred(mv.from);
             for square in capture_squares.into_iter().flatten() {
                 self.clear_promotion_deferred(square);
             }
         }
-        let moved_piece_before = self.remove_piece(mv.origin());
+        let moved_piece_before = self.remove_piece(mv.from);
         debug_assert_eq!(moved_piece_before.color(), Some(self.side_to_move));
 
         let mut captured = [None; 2];
@@ -601,30 +601,29 @@ impl Position {
             }
         }
 
-        let moved_piece_after = if mv.is_promoting() {
+        let moved_piece_after = if mv.promote {
             moved_piece_before
                 .promote()
                 .expect("promoting move must have a promotable piece")
         } else {
             moved_piece_before
         };
-        self.put_piece(mv.destination(), moved_piece_after)
+        self.put_piece(mv.to, moved_piece_after)
             .expect("generated move must end on an empty square");
         if rules.contains(RuleCode::P1)
             && had_promotion_option
-            && !mv.is_promoting()
+            && !mv.promote
             && in_promotion_zone(
                 moved_piece_before
                     .color()
                     .expect("moving piece must have an owner"),
-                mv.destination(),
+                mv.to,
             )
         {
-            self.set_promotion_deferred(mv.destination());
+            self.set_promotion_deferred(mv.to);
         }
         self.flip_side_to_move();
-        let by_kirin_promotion =
-            moved_piece_before.kind() == Some(PieceKind::Kirin) && mv.is_promoting();
+        let by_kirin_promotion = moved_piece_before.kind() == Some(PieceKind::Kirin) && mv.promote;
         self.lion_taken_by_non_lion = (moved_piece_before.kind() != Some(PieceKind::Lion))
             .then(|| {
                 captured
@@ -660,8 +659,8 @@ impl Position {
     /// どちらかの前提を破ると、panicするか局面を静かに壊すことがある。
     pub fn unmake_move(&mut self, undo: Undo) {
         self.flip_side_to_move();
-        self.remove_piece(undo.mv.destination());
-        self.put_piece(undo.mv.origin(), undo.moved_piece_before)
+        self.remove_piece(undo.mv.to);
+        self.put_piece(undo.mv.from, undo.moved_piece_before)
             .expect("move origin must be empty while unmaking");
         for captured in undo.captured.into_iter().flatten() {
             self.put_piece(captured.square, captured.piece)
