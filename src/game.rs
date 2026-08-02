@@ -2,7 +2,7 @@ use core::fmt;
 use std::collections::HashMap;
 
 use crate::core::movegen::{IllegalMove, MoveGenerator};
-use crate::core::mv::Move;
+use crate::core::mv::{Move, Undo};
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::{RepetitionRule, Rules};
@@ -77,6 +77,14 @@ struct RepetitionState {
     first_ply: u32,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PieceExhaustionOutcome {
+    ConditionNotMet,
+    Draw,
+    Win(Color),
+    GraceStart,
+}
+
 pub struct Game {
     position: Position,
     generator: MoveGenerator,
@@ -117,17 +125,7 @@ impl Game {
             self.position.unmake_move(undo);
             return Err(GameError::IllegalMove(IllegalMove(mv)));
         }
-        // Only a non-capturing promotion qualifies for the immediate Article
-        // 22-2/22-3 win: with a capture, the exhaustion condition did not hold
-        // before the move, so the fresh condition takes the Article 22-5 grace
-        // path instead.
-        let promoted_waiting_piece = (mv.promote
-            && undo.captured.iter().all(Option::is_none)
-            && matches!(
-                undo.moved_piece_before.kind(),
-                Some(PieceKind::Pawn | PieceKind::GoBetween)
-            ))
-        .then_some(mv.to);
+        let promoted_waiting_piece = promoted_waiting_square(mv, &undo);
         self.ply = self
             .ply
             .checked_add(1)
@@ -169,8 +167,52 @@ impl Game {
             }));
         }
 
+        let repetition_rule = self.repetition_rule;
+        let consecutive_attacking_moves = self.consecutive_attacking_moves;
+        let ply = self.ply;
+        let piece_exhaustion_disabled = self.piece_exhaustion_disabled;
+        let piece_exhaustion_grace = self.piece_exhaustion_grace;
+        let generator = &self.generator;
+        let immediate_win = |position: &Position, candidate: Move, undo: &Undo| {
+            if repetition_rule == RepetitionRule::R1 {
+                let key = position.zobrist() ^ position.rights_zobrist();
+                if let Some(state) = repetitions.get(&key)
+                    && u16::from(state.occurrences) + 1 >= 4
+                {
+                    let candidate_ply = ply
+                        .checked_add(1)
+                        .expect("a game cannot exceed u32::MAX plies");
+                    let mut counters = consecutive_attacking_moves;
+                    if move_was_attacking(position, generator, side_to_move, candidate) {
+                        counters[side_to_move.index()] = counters[side_to_move.index()]
+                            .checked_add(1)
+                            .expect("an attack sequence cannot exceed u32::MAX plies");
+                    }
+                    return matches!(
+                        r1_repetition_result(candidate_ply, state.first_ply, counters),
+                        GameResult::Win { winner, .. } if winner == side_to_move
+                    );
+                }
+            }
+
+            !piece_exhaustion_disabled
+                && matches!(
+                    piece_exhaustion_outcome(
+                        position,
+                        generator,
+                        promoted_waiting_square(candidate, undo),
+                        piece_exhaustion_grace,
+                    ),
+                    PieceExhaustionOutcome::Win(winner) if winner == side_to_move
+                )
+        };
         if self.mate_adjudication_enabled
-            && is_mate(&mut self.position, &self.generator, history_filter)
+            && is_mate(
+                &mut self.position,
+                generator,
+                history_filter,
+                Some(&immediate_win),
+            )
         {
             return Ok(self.finish(GameResult::Win {
                 winner: side_to_move.opposite(),
@@ -281,25 +323,11 @@ impl Game {
             state.first_ply
         };
 
-        let attackers = Color::ALL.map(|color| {
-            let distance =
-                moves_by_color_through(self.ply, color) - moves_by_color_through(first_ply, color);
-            self.consecutive_attacking_moves[color.index()] >= distance
-        });
-
-        match attackers {
-            [true, false] => Some(GameResult::Win {
-                winner: Color::White,
-                reason: WinReason::Repetition,
-            }),
-            [false, true] => Some(GameResult::Win {
-                winner: Color::Black,
-                reason: WinReason::Repetition,
-            }),
-            [false, false] | [true, true] => Some(GameResult::Draw {
-                reason: DrawReason::Repetition,
-            }),
-        }
+        Some(r1_repetition_result(
+            self.ply,
+            first_ply,
+            self.consecutive_attacking_moves,
+        ))
     }
 
     fn record_position(&mut self, key: u64) {
@@ -321,74 +349,130 @@ impl Game {
             return None;
         }
         let grace_pending = core::mem::take(&mut self.piece_exhaustion_grace);
-
-        let royals = Color::ALL.map(|color| self.position.royal_pieces(color));
-        let non_royals = self.position.occupied() & !(royals[0] | royals[1]);
-        if non_royals.is_empty() {
-            return Some(GameResult::Draw {
+        match piece_exhaustion_outcome(
+            &self.position,
+            &self.generator,
+            promoted_waiting_piece,
+            grace_pending,
+        ) {
+            PieceExhaustionOutcome::ConditionNotMet => None,
+            PieceExhaustionOutcome::Draw => Some(GameResult::Draw {
                 reason: DrawReason::PieceExhaustion,
-            });
-        }
-        if royals.into_iter().any(|royal| royal.popcount() != 1) || non_royals.popcount() != 1 {
-            return None;
-        }
-
-        let extra_square = non_royals
-            .lsb()
-            .expect("one non-royal piece must have a square");
-        let extra_piece = self
-            .position
-            .piece_at(extra_square)
-            .expect("the non-royal square must contain a piece");
-        let extra_color = extra_piece
-            .color()
-            .expect("the extra piece must have an owner");
-        let extra_kind = extra_piece
-            .kind()
-            .expect("the extra piece must have a kind");
-
-        if !extra_piece.is_promoted()
-            && matches!(extra_kind, PieceKind::Pawn | PieceKind::Lance)
-            && is_last_rank(extra_color, extra_square)
-        {
-            return None;
-        }
-        if !extra_piece.is_promoted()
-            && matches!(extra_kind, PieceKind::Pawn | PieceKind::GoBetween)
-        {
-            return None;
-        }
-
-        let win = GameResult::Win {
-            winner: extra_color,
-            reason: WinReason::PieceExhaustion,
-        };
-        if promoted_waiting_piece == Some(extra_square) {
-            return Some(win);
-        }
-        if grace_pending {
-            return Some(win);
-        }
-        if self.position.side_to_move() == extra_color {
-            return Some(win);
-        }
-
-        let mut moves = Vec::new();
-        self.generator.generate_moves(&self.position, &mut moves);
-        let extra_piece_can_be_captured = moves.into_iter().any(|candidate| {
-            self.position
-                .captured_squares(candidate)
-                .into_iter()
-                .flatten()
-                .any(|capture| capture == extra_square)
-        });
-        if extra_piece_can_be_captured {
-            self.piece_exhaustion_grace = true;
-            None
-        } else {
-            Some(win)
+            }),
+            PieceExhaustionOutcome::Win(winner) => Some(GameResult::Win {
+                winner,
+                reason: WinReason::PieceExhaustion,
+            }),
+            PieceExhaustionOutcome::GraceStart => {
+                self.piece_exhaustion_grace = true;
+                None
+            }
         }
     }
+}
+
+fn piece_exhaustion_outcome(
+    position: &Position,
+    generator: &MoveGenerator,
+    promoted_waiting_piece: Option<Square>,
+    grace_pending: bool,
+) -> PieceExhaustionOutcome {
+    let royals = Color::ALL.map(|color| position.royal_pieces(color));
+    let non_royals = position.occupied() & !(royals[0] | royals[1]);
+    if non_royals.is_empty() {
+        // 第22条第8項の自動引き分けは、双方が相手の最後の王駒を
+        // 詰められない王駒1枚対1枚の場合に限る。
+        return if royals.into_iter().all(|royal| royal.popcount() == 1) {
+            PieceExhaustionOutcome::Draw
+        } else {
+            PieceExhaustionOutcome::ConditionNotMet
+        };
+    }
+    if royals.into_iter().any(|royal| royal.popcount() != 1) || non_royals.popcount() != 1 {
+        return PieceExhaustionOutcome::ConditionNotMet;
+    }
+
+    let extra_square = non_royals
+        .lsb()
+        .expect("one non-royal piece must have a square");
+    let extra_piece = position
+        .piece_at(extra_square)
+        .expect("the non-royal square must contain a piece");
+    let extra_color = extra_piece
+        .color()
+        .expect("the extra piece must have an owner");
+    let extra_kind = extra_piece
+        .kind()
+        .expect("the extra piece must have a kind");
+
+    if !extra_piece.is_promoted()
+        && matches!(extra_kind, PieceKind::Pawn | PieceKind::Lance)
+        && is_last_rank(extra_color, extra_square)
+    {
+        return PieceExhaustionOutcome::ConditionNotMet;
+    }
+    if !extra_piece.is_promoted() && matches!(extra_kind, PieceKind::Pawn | PieceKind::GoBetween) {
+        return PieceExhaustionOutcome::ConditionNotMet;
+    }
+
+    if promoted_waiting_piece == Some(extra_square)
+        || grace_pending
+        || position.side_to_move() == extra_color
+    {
+        return PieceExhaustionOutcome::Win(extra_color);
+    }
+
+    let mut moves = Vec::new();
+    generator.generate_moves(position, &mut moves);
+    if moves.into_iter().any(|candidate| {
+        position
+            .captured_squares(candidate)
+            .into_iter()
+            .flatten()
+            .any(|capture| capture == extra_square)
+    }) {
+        PieceExhaustionOutcome::GraceStart
+    } else {
+        PieceExhaustionOutcome::Win(extra_color)
+    }
+}
+
+fn r1_repetition_result(
+    ply: u32,
+    first_ply: u32,
+    consecutive_attacking_moves: [u32; 2],
+) -> GameResult {
+    let attackers = Color::ALL.map(|color| {
+        let distance =
+            moves_by_color_through(ply, color) - moves_by_color_through(first_ply, color);
+        consecutive_attacking_moves[color.index()] >= distance
+    });
+
+    match attackers {
+        [true, false] => GameResult::Win {
+            winner: Color::White,
+            reason: WinReason::Repetition,
+        },
+        [false, true] => GameResult::Win {
+            winner: Color::Black,
+            reason: WinReason::Repetition,
+        },
+        [false, false] | [true, true] => GameResult::Draw {
+            reason: DrawReason::Repetition,
+        },
+    }
+}
+
+// Only a non-capturing promotion qualifies for the immediate Article
+// 22-2/22-3 win. A capturing move starts the Article 22-5 grace path instead.
+fn promoted_waiting_square(mv: Move, undo: &Undo) -> Option<Square> {
+    (mv.promote
+        && undo.captured.iter().all(Option::is_none)
+        && matches!(
+            undo.moved_piece_before.kind(),
+            Some(PieceKind::Pawn | PieceKind::GoBetween)
+        ))
+    .then_some(mv.to)
 }
 
 /// 反復規則ごとの同一局面キーを返す。R2では一時的な権利を比較しない。
@@ -685,6 +769,67 @@ mod tests {
     }
 
     #[test]
+    fn article_21_3_c_piece_exhaustion_win_prevents_mate() {
+        let mut game = game_with_codes(
+            position(
+                Color::White,
+                &[
+                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                    (sq(1, 0), piece(Color::Black, PieceKind::Lance)),
+                    (sq(0, 2), piece(Color::White, PieceKind::King)),
+                    (sq(5, 1), piece(Color::White, PieceKind::Rook)),
+                ],
+            ),
+            &[RuleCode::R1],
+        );
+
+        assert_eq!(game.play(step(sq(5, 1), sq(0, 1))), Ok(GameStatus::Ongoing));
+        assert!(!game.piece_exhaustion_grace);
+        assert_eq!(
+            game.play(step(sq(0, 0), sq(0, 1))),
+            Ok(GameStatus::Finished(GameResult::Win {
+                winner: Color::Black,
+                reason: WinReason::PieceExhaustion,
+            }))
+        );
+    }
+
+    #[test]
+    fn article_21_3_c_repetition_win_prevents_mate() {
+        let (position, mv) = mate_predecessor();
+        let reply = step(sq(0, 0), sq(0, 1));
+        let rules = Rules::from_codes(&[RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut repeated_position = position.clone();
+        repeated_position.make_move_unchecked(mv, rules);
+        repeated_position.make_move_unchecked(reply, rules);
+        let repeated_key = repeated_position.zobrist() ^ repeated_position.rights_zobrist();
+        let mut game = Game::from_position(rules, position);
+
+        // This synthetic history makes Black's reply create the fourth occurrence.
+        assert_eq!(
+            game.repetitions.insert(
+                repeated_key,
+                RepetitionState {
+                    occurrences: 3,
+                    first_ply: 0,
+                },
+            ),
+            None
+        );
+        assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        assert_eq!(game.consecutive_attacking_moves, [0, 1]);
+        assert_eq!(game.repetitions[&repeated_key].occurrences, 3);
+        assert_eq!(
+            game.play(reply),
+            Ok(GameStatus::Finished(GameResult::Win {
+                winner: Color::Black,
+                reason: WinReason::Repetition,
+            }))
+        );
+        assert_eq!(game.repetitions[&repeated_key].occurrences, 4);
+    }
+
+    #[test]
     fn article_22_1_extra_piece_side_to_move_wins_immediately() {
         let mut game = piece_exhaustion_game(position(
             Color::Black,
@@ -957,7 +1102,10 @@ mod tests {
             ],
         ));
         assert_eq!(kings.play(step(sq(0, 0), sq(0, 1))), expected);
+    }
 
+    #[test]
+    fn article_22_8_asymmetric_royals_continue_the_game() {
         let mut prince_and_kings = piece_exhaustion_game(position(
             Color::Black,
             &[
@@ -966,7 +1114,10 @@ mod tests {
                 (sq(11, 11), piece(Color::White, PieceKind::King)),
             ],
         ));
-        assert_eq!(prince_and_kings.play(step(sq(0, 0), sq(0, 1))), expected);
+        assert_eq!(
+            prince_and_kings.play(step(sq(0, 0), sq(0, 1))),
+            Ok(GameStatus::Ongoing)
+        );
     }
 
     #[test]

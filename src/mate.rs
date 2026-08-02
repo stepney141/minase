@@ -1,5 +1,5 @@
 use crate::core::movegen::MoveGenerator;
-use crate::core::mv::Move;
+use crate::core::mv::{Move, Undo};
 use crate::core::position::Position;
 
 pub(crate) fn captures_last_royal(position: &Position, mv: Move) -> bool {
@@ -41,10 +41,12 @@ pub(crate) fn has_no_legal_move(
             .all(|mv| move_reaches_forbidden_position(position, generator, mv, forbidden_position))
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn is_mate(
     position: &mut Position,
     generator: &MoveGenerator,
     forbidden_position: Option<&dyn Fn(u64) -> bool>,
+    immediate_win: Option<&dyn Fn(&Position, Move, &Undo) -> bool>,
 ) -> bool {
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
@@ -64,6 +66,10 @@ pub(crate) fn is_mate(
             continue;
         }
         has_legal_move = true;
+        if immediate_win.is_some_and(|wins| wins(position, mv, &undo)) {
+            position.unmake_move(undo);
+            return false;
+        }
         let opponent_can_capture_last_royal = can_capture_last_royal(position, generator);
         position.unmake_move(undo);
 
@@ -119,7 +125,44 @@ mod tests {
         );
         let original = position.clone();
 
-        assert!(is_mate(&mut position, &MoveGenerator::standard(), None));
+        assert!(is_mate(
+            &mut position,
+            &MoveGenerator::standard(),
+            None,
+            None
+        ));
+        assert_eq!(position, original);
+    }
+
+    #[test]
+    fn article_21_3_c_immediate_win_prevents_mate() {
+        let mut position = position(
+            Color::Black,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(0, 11), piece(Color::White, PieceKind::Rook)),
+                (sq(11, 0), piece(Color::White, PieceKind::Rook)),
+                (sq(11, 11), piece(Color::White, PieceKind::Bishop)),
+                (sq(10, 9), piece(Color::White, PieceKind::King)),
+            ],
+        );
+        let original = position.clone();
+        let winning_move = Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(0, 1),
+            promote: false,
+        };
+        let generator = MoveGenerator::standard();
+        let immediate_win = |_: &Position, mv: Move, _: &Undo| mv == winning_move;
+
+        assert!(is_mate(&mut position, &generator, None, None));
+        assert!(!is_mate(
+            &mut position,
+            &generator,
+            None,
+            Some(&immediate_win)
+        ));
         assert_eq!(position, original);
     }
 
@@ -135,7 +178,12 @@ mod tests {
             ],
         );
 
-        assert!(!is_mate(&mut position, &MoveGenerator::standard(), None));
+        assert!(!is_mate(
+            &mut position,
+            &MoveGenerator::standard(),
+            None,
+            None
+        ));
     }
 
     #[test]
@@ -150,7 +198,12 @@ mod tests {
         let generator = MoveGenerator::standard();
         assert!(can_capture_last_royal(&threatened, &generator));
         assert!(can_capture_last_royal(&position, &generator));
-        assert!(!is_mate(&mut position, &MoveGenerator::standard(), None));
+        assert!(!is_mate(
+            &mut position,
+            &MoveGenerator::standard(),
+            None,
+            None
+        ));
     }
 
     #[test]
@@ -195,7 +248,7 @@ mod tests {
             position.unmake_move(undo);
         }
 
-        assert!(!is_mate(&mut position, &generator, None));
+        assert!(!is_mate(&mut position, &generator, None, None));
     }
 
     #[test]
@@ -239,6 +292,6 @@ mod tests {
         let generator = MoveGenerator::standard();
 
         assert!(has_no_legal_move(&mut position, &generator, None));
-        assert!(!is_mate(&mut position, &generator, None));
+        assert!(!is_mate(&mut position, &generator, None, None));
     }
 }
