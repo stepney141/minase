@@ -15,7 +15,7 @@ use crate::core::square::{BOARD_RANKS, Square};
 pub enum RuleCode {
     /// 岡崎式の足条件付き先獅子(第29条)。標準規則と同内容。
     L0,
-    /// 足条件なしの先獅子(第29条)。
+    /// 非獅子による取り返しを足条件なしで禁じる先獅子(第29条)。
     L1,
     /// 麒麟成獅子の同一升例外(第29条)。
     L2,
@@ -260,8 +260,11 @@ impl Rules {
                     && trigger.by_kirin_promotion
                     && position.piece_at(lion).is_some_and(PieceCode::is_promoted);
                 !l2_exemption
-                    && (self.contains(RuleCode::L1)
-                        || lion_has_foot_after_capture(self, position, mv, lion))
+                    && if self.contains(RuleCode::L1) {
+                        moving_kind != Some(PieceKind::Lion)
+                    } else {
+                        lion_has_foot_after_capture(self, position, mv, lion)
+                    }
             })
         {
             return false;
@@ -949,30 +952,37 @@ mod tests {
             &after_kirin_promotion(false),
             capture_both_lions
         ));
-        // L1併用時は足のない不成獅子も免除されず、同じ2枚取りを禁止する。
-        assert!(!is_generated_with_rules(
+        // L1併用時は捕獲主体が獅子なので、第29条L1ではなく第14条だけに従う。
+        // 両方の相手獅子が隣接しているため、第14条1項により足の有無を問わず取れる。
+        assert!(is_generated_with_rules(
             l1_l2,
-            &after_kirin_promotion(false),
+            &after_kirin_promotion(true),
             capture_both_lions
         ));
     }
 
     #[test]
-    fn article_29_l1_prevents_immediate_capture_of_an_undefended_lion() {
-        let position = after_non_lion_capture(
-            &[
+    fn article_29_l1_prevents_immediate_non_lion_capture_regardless_of_foot() {
+        let after_capture = |with_foot| {
+            let mut pieces = vec![
                 (sq(1, 0), Color::Black, PieceKind::Pawn),
                 (sq(4, 4), Color::Black, PieceKind::Lion),
                 (sq(1, 1), Color::White, PieceKind::Lion),
                 (sq(4, 6), Color::White, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(1, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
+            ];
+            if with_foot {
+                pieces.push((sq(4, 0), Color::Black, PieceKind::Rook));
+            }
+            after_non_lion_capture(
+                &pieces,
+                Move {
+                    from: sq(1, 0),
+                    mid: None,
+                    to: sq(1, 1),
+                    promote: false,
+                },
+            )
+        };
         let recapture = Move {
             from: sq(4, 6),
             mid: None,
@@ -981,12 +991,24 @@ mod tests {
         };
         let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
 
-        assert!(is_generated(&position, recapture));
-        assert!(!is_generated_with_rules(l1, &position, recapture));
+        // 標準規則では第15条1・2項により足の有無で結果が分かれる。
+        assert!(!is_generated(&after_capture(true), recapture));
+        assert!(is_generated(&after_capture(false), recapture));
+        // 第29条L1では、非獅子による直後の取り返しを足の有無にかかわらず禁じる。
+        assert!(!is_generated_with_rules(
+            l1,
+            &after_capture(true),
+            recapture
+        ));
+        assert!(!is_generated_with_rules(
+            l1,
+            &after_capture(false),
+            recapture
+        ));
     }
 
     #[test]
-    fn articles_11_1_11_2_14_5_16_7_and_29_l1_block_lion_like_double_captures() {
+    fn articles_11_1_11_2_14_5_and_29_l1_block_non_lion_double_captures() {
         let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
         let cases = [
             (PieceKind::HornedFalcon, sq(5, 5), sq(5, 4), sq(5, 3)),
@@ -1016,8 +1038,8 @@ mod tests {
                 promote: false,
             };
 
-            // 第14条5項により標準規則では非獅子の2枚取りを許すが、角鷹・飛鷲は
-            // 第16条の付け喰い主体ではないため、L1の先獅子禁止を免れない。
+            // 第14条5項により標準規則では非獅子の2枚取りを許す。一方、L1では
+            // 角鷹・飛鷲による取り返しを非獅子の駒による捕獲として禁止する。
             assert!(is_generated(&position, capture_both_lions), "{kind:?}");
             assert!(
                 !is_generated_with_rules(l1, &position, capture_both_lions),
@@ -1027,7 +1049,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_14_2_14_3_and_29_l1_keep_distance_two_foot_without_a_trigger() {
+    fn articles_14_2_14_3_and_29_l1_govern_distance_two_lion_recapture_with_a_trigger() {
         let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
         let capture = Move {
             from: sq(2, 2),
@@ -1035,30 +1057,76 @@ mod tests {
             to: sq(4, 2),
             promote: false,
         };
-        let defended = position(
-            Color::Black,
+        let defended = after_non_lion_capture(
             &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Rook),
+                (sq(0, 0), Color::Black, PieceKind::Pawn),
+                (sq(0, 1), Color::White, PieceKind::Lion),
+                (sq(2, 2), Color::White, PieceKind::Lion),
+                (sq(4, 2), Color::Black, PieceKind::Lion),
+                (sq(4, 5), Color::Black, PieceKind::Rook),
             ],
+            Move {
+                from: sq(0, 0),
+                mid: None,
+                to: sq(0, 1),
+                promote: false,
+            },
         );
-        let undefended = position(
-            Color::Black,
+        let undefended = after_non_lion_capture(
             &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
+                (sq(0, 0), Color::Black, PieceKind::Pawn),
+                (sq(0, 1), Color::White, PieceKind::Lion),
+                (sq(2, 2), Color::White, PieceKind::Lion),
+                (sq(4, 2), Color::Black, PieceKind::Lion),
             ],
+            Move {
+                from: sq(0, 0),
+                mid: None,
+                to: sq(0, 1),
+                promote: false,
+            },
         );
 
-        // 第29条L1が置き換えるのは第15条だけである。先獅子トリガーがない局面では、
-        // 第14条2・3項の距離2の足条件が標準規則と同じまま残る。
+        // 第29条L1でも獅子による取り返しは第14条だけに従う。距離2では、
+        // 第13条の足があれば第14条2項により禁止され、なければ第3項により許される。
         assert!(!is_generated_with_rules(l1, &defended, capture));
         assert!(is_generated_with_rules(l1, &undefended, capture));
     }
 
     #[test]
-    fn articles_16_7_and_29_l1_allow_tsukegui() {
+    fn articles_14_1_and_29_l1_allow_adjacent_lion_recapture_with_a_trigger() {
+        let position = after_non_lion_capture(
+            &[
+                (sq(0, 0), Color::Black, PieceKind::Bishop),
+                (sq(1, 1), Color::White, PieceKind::Lion),
+                (sq(4, 5), Color::Black, PieceKind::Lion),
+                (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
+                (sq(5, 6), Color::White, PieceKind::Lion),
+            ],
+            Move {
+                from: sq(0, 0),
+                mid: None,
+                to: sq(1, 1),
+                promote: false,
+            },
+        );
+        let adjacent_recapture = Move {
+            from: sq(5, 6),
+            mid: None,
+            to: sq(4, 5),
+            promote: false,
+        };
+        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
+
+        // 標準規則では足のある獅子への取り返しを第15条1項が禁じる。
+        assert!(!is_generated(&position, adjacent_recapture));
+        // 第29条L1では獅子による捕獲を第15条の足判定から外し、隣接捕獲を
+        // 足の有無にかかわらず許す第14条1項だけを適用する。
+        assert!(is_generated_with_rules(l1, &position, adjacent_recapture));
+    }
+
+    #[test]
+    fn articles_14_2_16_1_16_4_and_29_l1_allow_lion_tsukegui() {
         let position = after_non_lion_capture(
             &[
                 (sq(0, 0), Color::Black, PieceKind::Bishop),
@@ -1082,6 +1150,8 @@ mod tests {
         };
         let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
 
+        // L1は獅子による捕獲を制限せず、付け喰いは第16条1・4項により
+        // 距離2で足のある獅子を取れる第14条2項の例外となる。
         assert!(is_generated_with_rules(l1, &position, tsukegui));
     }
 
@@ -1110,6 +1180,8 @@ mod tests {
         let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
         let l1_l2 = Rules::from_codes(&[RuleCode::L1, RuleCode::L2]).unwrap();
 
+        // 麒麟は捕獲時点では非獅子なので、L1だけなら新しい成獅子への
+        // 非獅子による直後の取り返しを禁じ、L2併用時だけ同一升例外を適用する。
         assert!(!is_generated_with_rules(l1, &position, recapture));
         assert!(is_generated_with_rules(l1_l2, &position, recapture));
     }
@@ -1149,7 +1221,7 @@ mod tests {
     }
 
     #[test]
-    fn articles_16_3_16_7_and_29_l1_l3_pawn_capture_is_not_tsukegui() {
+    fn articles_14_2_16_3_and_29_l1_l3_allow_lion_capture_after_foot_disappears() {
         let position = after_non_lion_capture(
             &[
                 (sq(0, 0), Color::Black, PieceKind::Pawn),
@@ -1174,10 +1246,10 @@ mod tests {
         let l3 = Rules::from_codes(&[RuleCode::L3]).unwrap();
         let l1_l3 = Rules::from_codes(&[RuleCode::L1, RuleCode::L3]).unwrap();
 
-        // 第29条L3は第16条8〜10項の足消滅判定だけを変える。第16条3項により、
-        // 歩兵を第1段階で取る手は付け喰いにならず、第16条7項の先獅子免除も得ない。
+        // 第16条3項により付け喰いではないが、L3では歩兵の足が第1段階で消滅する。
+        // そのため第14条2・3項により捕獲でき、L1併用時も獅子の捕獲なので結果は同じ。
         assert!(is_generated_with_rules(l3, &position, capture));
-        assert!(!is_generated_with_rules(l1_l3, &position, capture));
+        assert!(is_generated_with_rules(l1_l3, &position, capture));
     }
 
     #[test]
