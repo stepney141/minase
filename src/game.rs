@@ -278,6 +278,39 @@ impl Game {
         &self.position
     }
 
+    /// Returns all moves that may legally be played in the current game state.
+    ///
+    /// Under R2, moves that recreate a previously seen position are excluded,
+    /// because Article 27(4) treats them as illegal under Article 26(11). After
+    /// the game has ended, this returns an empty vector because Article 26(12)
+    /// prohibits further moves.
+    pub fn legal_moves(&self) -> Vec<Move> {
+        if self.result.is_some() {
+            return Vec::new();
+        }
+
+        let mut moves = Vec::new();
+        self.generator.generate_moves(&self.position, &mut moves);
+        if self.repetition_rule == RepetitionRule::R2 {
+            let mut position = self.position.clone();
+            moves.retain(|candidate| {
+                let undo = position.make_move_unchecked(*candidate, self.generator.rules());
+                let allowed = !self
+                    .repetitions
+                    .contains_key(&repetition_key(&position, self.repetition_rule));
+                position.unmake_move(undo);
+                allowed
+            });
+        }
+        moves
+    }
+
+    /// Returns the rules adopted by this game.
+    #[inline]
+    pub fn rules(&self) -> Rules {
+        self.generator.rules()
+    }
+
     #[inline]
     pub const fn ply_count(&self) -> u32 {
         self.ply
@@ -299,7 +332,14 @@ impl Game {
         self.repetition_detection
     }
 
-    fn from_position(rules: Rules, position: Position) -> Self {
+    /// Starts a game from an arbitrary position, such as one obtained from
+    /// [`parse_sfen`](crate::parse_sfen).
+    ///
+    /// This does not validate rule-level legality, including the existence of
+    /// king pieces or per-piece-type count upper bounds. As with `parse_sfen`,
+    /// the caller is responsible for those checks. The supplied position is
+    /// recorded as the first occurrence for repetition detection.
+    pub fn from_position(rules: Rules, position: Position) -> Self {
         let repetition_rule = rules.repetition_rule();
         let key = repetition_key(&position, repetition_rule);
         Self {
@@ -568,6 +608,7 @@ mod tests {
     use crate::core::position::PositionBuilder;
     use crate::core::rules::{RuleCode, RulesError};
     use crate::core::square::Square;
+    use crate::sfen::parse_sfen;
     use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
@@ -726,6 +767,37 @@ mod tests {
         assert_eq!(game.position(), &Position::initial());
         assert_eq!(game.ply_count(), 0);
         assert_eq!(game.repetition_detection(), None);
+    }
+
+    #[test]
+    fn articles_26_11_and_26_12_legal_moves_match_generator_and_stop_after_game_end() {
+        let mut game = Game::new(Rules::engine_default());
+        let mut generated = Vec::new();
+        game.generator
+            .generate_moves(game.position(), &mut generated);
+
+        assert_eq!(
+            game.legal_moves().into_iter().collect::<HashSet<_>>(),
+            generated.into_iter().collect::<HashSet<_>>()
+        );
+
+        assert!(matches!(
+            game.agree_draw(),
+            Ok(GameStatus::Finished(GameResult::Draw {
+                reason: DrawReason::Agreement,
+            }))
+        ));
+        assert!(game.legal_moves().is_empty());
+    }
+
+    #[test]
+    fn from_position_accepts_parsed_sfen_and_rules_returns_adopted_rules() {
+        let position = parse_sfen("12/12/12/8k3/12/12/12/12/3K8/12/12/12 b").unwrap();
+        let rules = Rules::from_codes(&[RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut game = Game::from_position(rules, position);
+
+        assert_eq!(game.rules(), rules);
+        assert_eq!(game.play(step(sq(3, 3), sq(3, 4))), Ok(GameStatus::Ongoing));
     }
 
     #[test]
@@ -1374,6 +1446,36 @@ mod tests {
         assert_eq!(game.play(step(sq(8, 7), sq(9, 7))), Ok(GameStatus::Ongoing));
         assert_eq!(game.ply_count(), 4);
         assert_eq!(game.consecutive_attacking_moves, [0, 0]);
+    }
+
+    #[test]
+    fn articles_26_11_and_27_4_legal_moves_exclude_r2_repeated_positions() {
+        let mut game = r2_game(position(
+            Color::Black,
+            &[
+                (sq(3, 3), piece(Color::Black, PieceKind::King)),
+                (sq(8, 8), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+        for mv in [
+            step(sq(3, 3), sq(3, 4)),
+            step(sq(8, 8), sq(8, 7)),
+            step(sq(3, 4), sq(3, 3)),
+        ] {
+            assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        }
+
+        let repeated = step(sq(8, 7), sq(8, 8));
+        let accepted = step(sq(8, 7), sq(9, 7));
+        let legal = game.legal_moves();
+        let mut generated = Vec::new();
+        game.generator
+            .generate_moves(game.position(), &mut generated);
+
+        assert!(!legal.contains(&repeated));
+        assert!(generated.contains(&repeated));
+        assert!(legal.contains(&accepted));
+        assert_eq!(game.play(accepted), Ok(GameStatus::Ongoing));
     }
 
     #[test]

@@ -119,6 +119,11 @@ impl From<PositionBuildError> for SfenError {
 /// 0 to file 11. The supported piece letters are `N`, `O`, `H`, `D`, `B`, `S`,
 /// `G`, and `L`, with lowercase letters for White and `+` for promotion. Hands,
 /// move counters, and lion-capture state are unsupported.
+///
+/// This function validates syntax only. It does not check rule-level position
+/// validity, such as the existence of king pieces, per-piece-type count upper
+/// bounds, or mutually inconsistent placements. The caller is responsible for
+/// those checks, which are intended to occur at the protocol layer.
 pub fn parse_sfen(sfen: &str) -> Result<Position, SfenError> {
     let mut fields = sfen.split_whitespace();
     let board = fields.next().ok_or(SfenError::MissingBoard)?;
