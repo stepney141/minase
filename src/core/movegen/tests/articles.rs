@@ -1,5 +1,5 @@
 //! 敵対的レビュー用の条文対応テスト。
-//! RULES.md 第11〜16条および第18〜19条と PLAN.md 第2版4〜6節・10節の確定解釈を検証する。
+//! RULES.md 第11〜16条および第18〜19条と docs/plans/movegen.md（旧PLAN.md）第2版4〜6節・10節の確定解釈を検証する。
 
 use super::super::MoveGenerator;
 use crate::core::mv::Move;
