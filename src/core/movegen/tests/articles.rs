@@ -1,5 +1,7 @@
 //! 敵対的レビュー用の条文対応テスト。
-//! RULES.md 第11〜16条および第18〜19条と docs/plans/movegen.md（旧PLAN.md）第2版4〜6節・10節の確定解釈を検証する。
+//! RULES.md 第10〜19条と docs/plans/movegen.md（旧PLAN.md）第2版4〜6節・10節の確定解釈を検証する。
+
+use std::collections::BTreeSet;
 
 use super::super::MoveGenerator;
 use crate::core::mv::Move;
@@ -15,6 +17,55 @@ fn generated(position: &Position) -> Vec<Move> {
     moves
 }
 
+fn promoted_piece_position(color: Color, kind: PieceKind, origin: Square) -> Position {
+    let mut builder = PositionBuilder::new(color);
+    builder
+        .put(origin, PieceCode::new_promoted(color, kind).unwrap())
+        .unwrap();
+    builder.finish().unwrap()
+}
+
+fn direct_destinations(position: &Position, origin: Square) -> BTreeSet<Square> {
+    generated(position)
+        .into_iter()
+        .filter(|mv| mv.from == origin && mv.mid.is_none() && mv.to != origin)
+        .map(|mv| mv.to)
+        .collect()
+}
+
+fn ray_destinations(origin: Square, directions: &[(i8, i8)]) -> BTreeSet<Square> {
+    let mut destinations = BTreeSet::new();
+    for &(file_delta, rank_delta) in directions {
+        let mut file = origin.file() as i8 + file_delta;
+        let mut rank = origin.rank() as i8 + rank_delta;
+        while (0..12).contains(&file) && (0..12).contains(&rank) {
+            destinations.insert(sq(file as u8, rank as u8));
+            file += file_delta;
+            rank += rank_delta;
+        }
+    }
+    destinations
+}
+
+fn assert_white_spot(kind: PieceKind, included: &[Square], excluded: &[Square]) {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::White, kind, origin);
+    let destinations = direct_destinations(&position, origin);
+
+    for &square in included {
+        assert!(
+            destinations.contains(&square),
+            "kind={kind:?}, square={square:?}"
+        );
+    }
+    for &square in excluded {
+        assert!(
+            !destinations.contains(&square),
+            "kind={kind:?}, square={square:?}",
+        );
+    }
+}
+
 /// じっと = `mid: None` で `to == from` の正準着手。
 fn jitto_moves(moves: &[Move], origin: Square) -> Vec<Move> {
     moves
@@ -22,6 +73,149 @@ fn jitto_moves(moves: &[Move], origin: Square) -> Vec<Move> {
         .copied()
         .filter(|mv| mv.from == origin && mv.mid.is_none() && mv.to == origin)
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// 第10条: 成駒としてのみ現れる駒
+// ---------------------------------------------------------------------------
+
+#[test]
+fn article_10_1_white_horse_moves_forward_forward_diagonally_and_backward() {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::Black, PieceKind::WhiteHorse, origin);
+    let expected = ray_destinations(origin, &[(0, 1), (-1, 1), (1, 1), (0, -1)]);
+
+    assert_eq!(direct_destinations(&position, origin), expected);
+    assert_white_spot(
+        PieceKind::WhiteHorse,
+        &[sq(5, 0), sq(0, 0), sq(5, 11)],
+        &[sq(6, 6)],
+    );
+}
+
+#[test]
+fn article_10_2_whale_moves_forward_backward_and_backward_diagonally() {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::Black, PieceKind::Whale, origin);
+    let expected = ray_destinations(origin, &[(0, 1), (0, -1), (-1, -1), (1, -1)]);
+
+    assert_eq!(direct_destinations(&position, origin), expected);
+    assert_white_spot(
+        PieceKind::Whale,
+        &[sq(5, 0), sq(5, 11), sq(11, 11)],
+        &[sq(6, 4)],
+    );
+}
+
+#[test]
+fn article_10_3_flying_stag_slides_vertically_and_steps_in_six_other_directions() {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::Black, PieceKind::FlyingStag, origin);
+    let mut expected = ray_destinations(origin, &[(0, 1), (0, -1)]);
+    expected.extend([sq(4, 4), sq(4, 5), sq(4, 6), sq(6, 4), sq(6, 5), sq(6, 6)]);
+
+    assert_eq!(direct_destinations(&position, origin), expected);
+    assert_white_spot(
+        PieceKind::FlyingStag,
+        &[sq(5, 0), sq(5, 11), sq(6, 4)],
+        &[sq(7, 5)],
+    );
+}
+
+#[test]
+fn article_10_4_free_boar_slides_horizontally_and_diagonally() {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::Black, PieceKind::FreeBoar, origin);
+    let expected = ray_destinations(
+        origin,
+        &[(-1, 0), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)],
+    );
+
+    assert_eq!(direct_destinations(&position, origin), expected);
+    assert_white_spot(
+        PieceKind::FreeBoar,
+        &[sq(0, 5), sq(11, 5), sq(11, 11)],
+        &[sq(5, 6)],
+    );
+}
+
+#[test]
+fn article_10_5_flying_ox_slides_vertically_and_diagonally() {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::Black, PieceKind::FlyingOx, origin);
+    let expected = ray_destinations(
+        origin,
+        &[(0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)],
+    );
+
+    assert_eq!(direct_destinations(&position, origin), expected);
+    assert_white_spot(
+        PieceKind::FlyingOx,
+        &[sq(5, 0), sq(5, 11), sq(11, 11)],
+        &[sq(6, 5)],
+    );
+}
+
+#[test]
+fn article_10_7_horned_falcon_slides_in_seven_directions_and_reaches_two_forward() {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::Black, PieceKind::HornedFalcon, origin);
+    let mut expected = ray_destinations(
+        origin,
+        &[(-1, -1), (-1, 0), (-1, 1), (0, -1), (1, -1), (1, 0), (1, 1)],
+    );
+    expected.extend([sq(5, 6), sq(5, 7)]);
+
+    assert_eq!(direct_destinations(&position, origin), expected);
+    assert_white_spot(
+        PieceKind::HornedFalcon,
+        &[sq(5, 4), sq(5, 3), sq(5, 11)],
+        &[sq(5, 2)],
+    );
+}
+
+#[test]
+fn article_10_8_soaring_eagle_slides_in_six_directions_and_reaches_two_forward_diagonally() {
+    let origin = sq(5, 5);
+    let position = promoted_piece_position(Color::Black, PieceKind::SoaringEagle, origin);
+    let mut expected = ray_destinations(
+        origin,
+        &[(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1)],
+    );
+    expected.extend([sq(4, 6), sq(3, 7), sq(6, 6), sq(7, 7)]);
+
+    assert_eq!(direct_destinations(&position, origin), expected);
+    assert_white_spot(
+        PieceKind::SoaringEagle,
+        &[sq(4, 4), sq(3, 3), sq(11, 11)],
+        &[sq(2, 2)],
+    );
+}
+
+#[test]
+fn article_17_1_king_lion_and_free_king_never_promote() {
+    let origins = [sq(1, 7), sq(5, 7), sq(10, 7)];
+    let position = position(
+        Color::Black,
+        &[
+            (origins[0], Color::Black, PieceKind::King),
+            (origins[1], Color::Black, PieceKind::Lion),
+            (origins[2], Color::Black, PieceKind::FreeKing),
+        ],
+    );
+    let moves = generated(&position);
+
+    for origin in origins {
+        let enemy_camp_moves: Vec<_> = moves
+            .iter()
+            .filter(|mv| mv.from == origin && mv.to.rank() >= 8)
+            .collect();
+        assert!(!enemy_camp_moves.is_empty(), "origin={origin:?}");
+        assert!(
+            enemy_camp_moves.iter().all(|mv| !mv.promote),
+            "origin={origin:?}",
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

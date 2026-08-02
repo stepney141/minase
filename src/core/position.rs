@@ -794,6 +794,15 @@ mod tests {
     }
 
     #[test]
+    fn articles_5_6_1_and_20_1_initial_position_has_black_to_move_and_one_royal_each() {
+        let initial = Position::initial();
+
+        assert_eq!(initial.side_to_move(), Color::Black);
+        assert_eq!(initial.royal_pieces(Color::Black).popcount(), 1);
+        assert_eq!(initial.royal_pieces(Color::White).popcount(), 1);
+    }
+
+    #[test]
     fn initial_position_matches_rules_article_5_on_every_square() {
         use Color::{Black, White};
         use PieceKind::{

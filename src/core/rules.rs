@@ -664,6 +664,52 @@ mod tests {
     }
 
     #[test]
+    fn article_13_7_lion_foot_is_judged_without_recursion() {
+        fn captures_target_lion(position: &Position) -> Vec<Move> {
+            let mut moves = Vec::new();
+            MoveGenerator::standard().generate_moves(position, &mut moves);
+            moves
+                .into_iter()
+                .filter(|&mv| {
+                    mv.from == sq(2, 2)
+                        && position
+                            .captured_squares(mv)
+                            .into_iter()
+                            .flatten()
+                            .any(|square| square == sq(4, 2))
+                })
+                .collect()
+        }
+
+        let with_lion_foot = position(
+            Color::Black,
+            &[
+                (sq(2, 2), Color::Black, PieceKind::Lion),
+                (sq(4, 2), Color::White, PieceKind::Lion),
+                (sq(6, 2), Color::White, PieceKind::Lion),
+            ],
+        );
+
+        // 足となる白獅子の取り返しには第13〜16条を再帰適用せず、
+        // 捕獲直後の盤面で(4,2)へ到達できることだけを判定する。
+        assert!(captures_target_lion(&with_lion_foot).is_empty());
+
+        let without_lion_foot = position(
+            Color::Black,
+            &[
+                (sq(2, 2), Color::Black, PieceKind::Lion),
+                (sq(4, 2), Color::White, PieceKind::Lion),
+            ],
+        );
+        assert!(captures_target_lion(&without_lion_foot).contains(&Move {
+            from: sq(2, 2),
+            mid: None,
+            to: sq(4, 2),
+            promote: false,
+        }));
+    }
+
+    #[test]
     fn article_14_5_non_lion_can_capture_a_defended_lion() {
         let position = position(
             Color::Black,
@@ -1252,6 +1298,36 @@ mod tests {
 
         assert!(is_generated(&position, jump));
         assert!(!is_generated(&position, double));
+    }
+
+    #[test]
+    fn articles_13_4_16_3_and_16_4_tsukegui_with_hidden_foot_opened_by_mid_capture() {
+        let position = position(
+            Color::Black,
+            &[
+                (sq(3, 5), Color::Black, PieceKind::Lion),
+                (sq(4, 5), Color::White, PieceKind::SilverGeneral),
+                (sq(5, 5), Color::White, PieceKind::Lion),
+                (sq(0, 5), Color::White, PieceKind::Rook),
+            ],
+        );
+        let jump = Move {
+            from: sq(3, 5),
+            mid: None,
+            to: sq(5, 5),
+            promote: false,
+        };
+        let tsukegui = Move {
+            from: sq(3, 5),
+            mid: Some(sq(4, 5)),
+            to: sq(5, 5),
+            promote: false,
+        };
+
+        // 歩兵なら第16条3項により付け喰いが成立せず、銀の除去で開く裏足により不合法となる。
+        // 銀は価値ある駒なので、同じ裏足が開いても第16条4項により付け喰いが優先される。
+        assert!(is_generated(&position, tsukegui));
+        assert!(is_generated(&position, jump));
     }
 
     #[test]
