@@ -2,7 +2,7 @@
 
 ## 本文書の位置づけ
 
-本文書は、プロトコル層マイルストーン（plans/protocol-layer.md）フェーズ1の調査成果物であり、USI原典仕様とlishogi系の中将棋表記を一次資料で確認した結果を記録する。ランダム対局検証ハーネス（plans/random-play.md）のフェーズ2は、`to_sfen`の表記規範として本文書を参照する。つまり、第4章に記す座標系、駒種文字およびSFEN盤面部の構文が、`to_sfen`と`parse_sfen`の正である。
+本文書は、プロトコル層マイルストーン（../plans/protocol-layer.md）フェーズ1の調査成果物であり、USI原典仕様とlishogi系の中将棋表記を一次資料で確認した結果を記録する。ランダム対局検証ハーネス（../plans/random-play.md）のフェーズ2は、`to_sfen`の表記規範として本文書を参照する。つまり、「lishogi系の中将棋表記」の章に記す座標系、駒種文字およびSFEN盤面部の構文が、`to_sfen`と`parse_sfen`の正である。
 
 調査対象のソースコードは、shogiops（lishogiのTypeScript規則ライブラリ）、scalashogi（lishogiサーバのScala規則ライブラリ）およびLishogi-Bot（USIエンジンをlishogiへ接続するブリッジ）である。設計書はshogiopsとscalashogiのリポジトリを`lishogi`組織配下として言及するが、実際の所在はどちらも`WandererXII`アカウント配下であった。各記述の末尾に典拠コードを付し、一次資料で確認できなかった事項は「未確認」と明記する。参照日と対象コミットは末尾の典拠一覧に示す。
 
@@ -33,7 +33,7 @@ USI（Universal Shogi Interface）は、Tord Romstadがチェスの UCI プロ�
 | `gameover [win \| lose \| draw]` | 対局終了と結果の通知。 |
 | `quit` | エンジンの終了要求。 |
 
-`position`の`startpos`が標準将棋の初期局面（`lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1`）を指すと仕様に明記されているため、中将棋では`startpos`を使えず、`position sfen ...`形式が必要になる［U1］。
+`position`の`startpos`が標準将棋の初期局面（`lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1`）を指すと仕様に明記されているため、中将棋では`startpos`を使えず、`position sfen ...`形式が必要になる［U1］。ただし、`USI_Variant`で変種が通知された後の`startpos`を当該変種の初期局面として読み替えるかどうかは原典に規定がなく、lishogi-botが`startpos`を送る可能性（後述）への対応と合わせてプロトコル層フェーズ2で確定する。
 
 ### エンジンからGUIへのコマンド
 
@@ -133,10 +133,10 @@ lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPP
 
 1. 盤面部は、段aから段lへ向かって12段を`/`で区切り、各段は12筋から1筋へ向かって走査する。空升の連続は10進数で圧縮し、中将棋では`12`までの2桁が現れる。数字の解析は桁を累積する方式であり、`1`の直後の`2`は12と解釈される［S1: src/sfen.ts `parseBoardSfen`、`makeBoardSfen`］［S2: Sfen.scala `boardToString`］。
 2. 手番部は`b`が先手、`w`が後手である［S1: src/sfen.ts `parseColorLetter`、src/util.ts `toBW`］。
-3. 獅子捕獲升部は、直前の着手で獅子以外の駒が相手の獅子（麒麟が成った獅子を含む）を取った場合に、その捕獲が起きた升の名前（たとえば`7f`）を書き、それ以外は`-`を書く［S1: src/sfen.ts `lastLionCapture`、src/types.ts `Setup.lastLionCapture`］。scalashogiは着手適用時に「動かした駒が獅子でなく、かつ到達升に相手獅子がいた」場合だけこの状態を記録する［S2: src/main/scala/Situation.scala `finalizeAfterUsi`、History.scala `lastLionCapture`］。この欄はRULES.mdのL1（足条件なし先獅子）に対応する一時状態であり、合法手生成では「非獅子駒はこの升にいる獅子だけを取り返せる」制限（麒麟成獅子の同一升例外、RULES.mdのL2に相当）として使われる［S1: src/position/rules/chushogi.ts `moveDests`のコメント「can't recapture lion on another square (allow capturing lion on the same square from kirin promotion)」］。
+3. 獅子捕獲升部は、直前の着手で獅子以外の駒が相手の獅子（麒麟が成った獅子を含む）を取った場合に、その捕獲が起きた升の名前（たとえば`7f`）を書き、それ以外は`-`を書く［S1: src/sfen.ts `lastLionCapture`、src/types.ts `Setup.lastLionCapture`］。scalashogiは着手適用時に、動かした駒が獅子でない場合、移動元を除く経由升と到達升を最終升側から調べ、相手獅子が捕獲された升を記録する［S2: src/main/scala/Situation.scala 133〜152行］。shogiopsも中間升と到達升の双方を獅子捕獲升として扱う［S1: src/position/position.ts 350〜374行］。したがって、角鷹または飛鷲が2段階移動の第1段階（経由升）で獅子を取った場合も第3欄に記録される。到達升だけを検査する実装ではこの局面で先獅子状態が失われるため、拡張SFENの設計ではこの条件を正とする（独立監査 ../protocols-audit-2026-08-10.md による訂正）。この欄はRULES.mdのL1（足条件なし先獅子）に対応する一時状態であり、合法手生成では「非獅子駒はこの升にいる獅子だけを取り返せる」制限（麒麟成獅子の同一升例外、RULES.mdのL2に相当）として使われる［S1: src/position/rules/chushogi.ts `moveDests`のコメント「can't recapture lion on another square (allow capturing lion on the same square from kirin promotion)」］。
 4. 手数部は次の着手が第何手目かを表す整数であり、初期局面は1である。shogiopsは書き出し時に、scalashogiは解析時に、それぞれ値を1以上9999以下へ丸める［S1: src/sfen.ts `makeSfen`］［S2: Sfen.scala `toSituationPlus`］。
 
-解析側の寛容性は実装で異なる。shogiopsの`parseSfen`は区切りとして空白と`_`の両方を受理し、`startpos`という文字列も初期局面として受理し、手番以降の欄の省略を許す（手番省略時は先手番）［S1: src/sfen.ts `parseSfen`］。scalashogiは欄を位置で取り出すため省略に寛容だが、`_`区切りと`startpos`は受理しない［S2: Sfen.scala］。書き出しはどちらも常に4欄である。
+解析側の寛容性は実装で異なる。shogiopsの`parseSfen`は区切りとして空白と`_`の両方を受理し、`startpos`という文字列も初期局面として受理し、手番以降の欄の省略を許す（手番省略時は先手番）［S1: src/sfen.ts `parseSfen`］。scalashogiは欄を位置で取り出すため省略に寛容である。直接の解析は`_`区切りと`startpos`を受理しないが、公開の正規化関数`Sfen.clean`は`_`を空白へ変換する［S2: Sfen.scala 193行］。実運用の入口が常に`clean`を通るかは未確認である。書き出しはどちらも常に4欄である。
 
 ### 成りの可否判定
 
@@ -154,7 +154,7 @@ lishogiはlichess由来のBot APIを備え、USIエンジンはブリッジプ�
 
 ブリッジ経由のオプション設定には2つの経路がある。第一に、ブリッジの設定ファイル`config.yml`の`usi_options`節に書いた各項目が、起動時のハンドシェイク後に`setoption name <key> value <value>`として送信される［B1: config.yml.default、engine_ctrl/usi.py `setoption`］。したがって、minaseが規則セットをUSIオプションとして公開すれば、bot運用者は`config.yml`から規則を指定できる。lishogiサーバ自身がエンジンへ`setoption`を送る経路はない。
 
-第二に、ブリッジは対局ごとに変種名を`setoption name USI_Variant value <variant>`で通知する。変種名はlishogiのAPI上のキーを小文字化したものであり、中将棋は`chushogi`である。エンジン名に`fairy-stockfish`を含む場合だけ`UCI_Variant`が使われ、標準将棋は例外的に`shogi`という値になる［B1: engine_ctrl/usi.py `set_variant_options`］。`USI_Variant`はUSI原典にない事実上の拡張であるため、minaseがlishogi-bot接続を想定するなら、この名前のオプションを宣言して受理する必要がある。
+第二に、ブリッジは対局ごとに変種名を`setoption name USI_Variant value <variant>`で通知する。変種名はlishogiのAPI上のキーを小文字化したものであり、中将棋は`chushogi`である。エンジン名に`fairy-stockfish`を含む場合だけ`UCI_Variant`が使われ、標準将棋は例外的に`shogi`という値になる［B1: engine_ctrl/usi.py `set_variant_options`］。`USI_Variant`はUSI原典にない事実上の拡張である。参照したLishogi-Botはエンジンの`option`宣言を保存も検証もせず、宣言の有無にかかわらず`USI_Variant`を送信する［B1: engine_ctrl/usi.py 82〜99行］。したがって接続の成立に宣言は必須ではないが、受信した`setoption`の受理は必要であり、GUI互換性のため宣言も行うのが安全である。
 
 `go`の時間引数（`btime`、`wtime`、`byoyomi`など）はブリッジが対局条件から生成し、`config.yml`の`go_commands`節で`nodes`、`depth`、`movetime`の上書きもできる［B1: config.yml.default］。
 
@@ -177,12 +177,12 @@ lishogiはlichess由来のBot APIを備え、USIエンジンはブリッジプ�
 
 1. 現行`parse_sfen`は「盤面部 手番部」の2欄だけを受理し、3欄目以降を`UnexpectedFields`エラーにする。lishogiの正準SFENは4欄であり、初期局面の`... b - 1`すら受理できない。獅子捕獲升部（第3欄）と手数部（第4欄）の解析が欠けている。
 2. 獅子捕獲状態を`Position`へ反映する経路がない。第3欄が`-`以外の局面は、lishogi実装ではL1とL2の裁定に影響し、minase側では直前の非獅子による獅子捕獲を条件とするL0（標準規則第15条の先獅子）の裁定にも影響するため、切り捨てると合法手が変わる。拡張SFEN設計（プロトコル層フェーズ2）での対応が必要である。
-3. shogiopsが受理する`startpos`キーワード、`_`区切り、欄の省略（手番省略時は先手番）に対応していない。これらはshogiops固有の寛容性であり、scalashogiも`startpos`と`_`区切りは受理しないため、採否はminaseの方針判断でよい。
-4. 手数部がないため、対局再現時の手数照合ができない。書き出し側（`to_sfen`）を2欄のままにするか、`- 1`を補った4欄にするかは、random-playフェーズ2の設計で確定する必要がある。lishogiとの互換を厳密にするなら書き出しは常に4欄が正準である。
+3. shogiopsが受理する`startpos`キーワード、`_`区切り、欄の省略（手番省略時は先手番）に対応していない。これらは解析側の寛容性であり（scalashogiも直接の解析では受理しないが、正規化関数`Sfen.clean`は`_`区切りに対応する）、採否はminaseの方針判断でよい。
+4. 手数部がないため、対局再現時の手数照合ができない。書き出しの欄数は、random-playフェーズ2の着手時に2欄基本形と決定した（「to_sfenへの要求事項」の節参照）。lishogiとの互換を厳密にする4欄正準形は、プロトコル層の拡張SFEN設計で扱う。
 
 ### to_sfenへの要求事項
 
-以上から、`to_sfen`の表記規範を次のとおり確定する。盤面部は段a（内部rank 11）から段l（内部rank 0）へ、各段は12筋（内部file 0）から1筋（内部file 11）へ走査し、空升連続を10進数で圧縮し、先手を大文字で書く。手番部は先手`b`、後手`w`とする。駒種文字は本文書第4章の表に従い、成駒は出自の駒の文字に`+`を前置する。
+以上から、`to_sfen`の表記規範を次のとおり確定する。盤面部は段a（内部rank 11）から段l（内部rank 0）へ、各段は12筋（内部file 0）から1筋（内部file 11）へ走査し、空升連続を10進数で圧縮し、先手を大文字で書く。手番部は先手`b`、後手`w`とする。駒種文字は本文書「駒種の文字表記」の節の表に従い、成駒は出自の駒の文字に`+`を前置する。
 
 欄数の扱いは、random-playフェーズ2の着手時（2026年8月10日）に次のとおり決定した。`to_sfen`は盤面部と手番部の2欄だけを出力するminaseの基本形式とし、`parse_sfen`も2欄受理のまま維持する。この2欄形式はshogiopsの正準SFEN（常に4欄）そのものではない。獅子捕獲升部は合法手に影響する状態を運ぶため、「`-`だけを受理して無視する」形の部分対応は行わず、4欄完全形との相互変換は獅子捕獲状態を`Position`へ反映する経路とともにプロトコル層の拡張SFEN設計で扱う。
 
