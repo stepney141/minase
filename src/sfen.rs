@@ -113,6 +113,92 @@ impl From<PositionBuildError> for SfenError {
     }
 }
 
+/// 局面の盤面と手番を2欄基本形のSFENへ書き出す。
+///
+/// 獅子捕獲升と手数を含む拡張形式はプロトコル層で扱う。
+pub fn to_sfen(position: &Position) -> String {
+    let mut sfen = String::new();
+
+    for rank in (0..BOARD_RANKS).rev() {
+        if rank != BOARD_RANKS - 1 {
+            sfen.push('/');
+        }
+
+        let mut empty_count = 0;
+        for file in 0..BOARD_FILES {
+            let square = Square::new(file, rank).expect("board coordinates must be valid");
+            let Some(piece) = position.piece_at(square) else {
+                empty_count += 1;
+                continue;
+            };
+
+            if empty_count != 0 {
+                sfen.push_str(&empty_count.to_string());
+                empty_count = 0;
+            }
+            if piece.is_promoted() {
+                sfen.push('+');
+            }
+
+            let kind = piece.kind().expect("a board piece must have a kind");
+            let base_kind = if piece.is_promoted() {
+                kind.unpromoted()
+                    .expect("a promoted piece must have an unpromoted kind")
+            } else {
+                kind
+            };
+            let mut letter = match base_kind {
+                PieceKind::King => 'K',
+                PieceKind::Pawn => 'P',
+                PieceKind::Lance => 'L',
+                PieceKind::SilverGeneral => 'S',
+                PieceKind::GoldGeneral => 'G',
+                PieceKind::Bishop => 'B',
+                PieceKind::Rook => 'R',
+                PieceKind::FerociousLeopard => 'F',
+                PieceKind::CopperGeneral => 'C',
+                PieceKind::DrunkElephant => 'E',
+                PieceKind::ReverseChariot => 'A',
+                PieceKind::BlindTiger => 'T',
+                PieceKind::Kirin => 'O',
+                PieceKind::Phoenix => 'X',
+                PieceKind::SideMover => 'M',
+                PieceKind::VerticalMover => 'V',
+                PieceKind::DragonHorse => 'H',
+                PieceKind::DragonKing => 'D',
+                PieceKind::Lion => 'N',
+                PieceKind::FreeKing => 'Q',
+                PieceKind::GoBetween => 'I',
+                PieceKind::CrownPrince
+                | PieceKind::WhiteHorse
+                | PieceKind::Whale
+                | PieceKind::FlyingOx
+                | PieceKind::FreeBoar
+                | PieceKind::FlyingStag
+                | PieceKind::HornedFalcon
+                | PieceKind::SoaringEagle => {
+                    unreachable!("an unpromoted piece must have an SFEN letter")
+                }
+            };
+            if piece.color() == Some(Color::White) {
+                letter = letter.to_ascii_lowercase();
+            }
+            sfen.push(letter);
+        }
+
+        if empty_count != 0 {
+            sfen.push_str(&empty_count.to_string());
+        }
+    }
+
+    sfen.push(' ');
+    sfen.push(match position.side_to_move() {
+        Color::Black => 'b',
+        Color::White => 'w',
+    });
+    sfen
+}
+
 /// Parses the supported shogiops-compatible SFEN board and side-to-move fields.
 ///
 /// Rows run from internal rank 11 to rank 0, and columns run from internal file
@@ -259,6 +345,48 @@ mod tests {
     use crate::test_util::sq;
 
     const EMPTY_BOARD: &str = "12/12/12/12/12/12/12/12/12/12/12/12";
+
+    #[test]
+    fn initial_position_round_trips_and_matches_lishogi_sfen() {
+        let position = Position::initial();
+        let sfen = to_sfen(&position);
+
+        assert_eq!(
+            sfen,
+            "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b"
+        );
+        assert_eq!(parse_sfen(&sfen).unwrap(), position);
+    }
+
+    #[test]
+    fn promoted_position_round_trips() {
+        let position = parse_sfen("12/12/12/12/4+f2l4/4S7/5+O6/7n4/12/12/12/12 w").unwrap();
+        let sfen = to_sfen(&position);
+
+        assert_eq!(parse_sfen(&sfen).unwrap(), position);
+    }
+
+    #[test]
+    fn promotion_deferred_position_preserves_board_and_side() {
+        let deferred = sq(7, 9);
+        let mut builder = PositionBuilder::new(Color::White);
+        builder
+            .put(
+                deferred,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        builder.mark_promotion_deferred(deferred).unwrap();
+        let position = builder.finish().unwrap();
+        let sfen = to_sfen(&position);
+        let restored = parse_sfen(&sfen).unwrap();
+
+        assert!(!position.promotion_deferred().is_empty());
+        assert!(restored.promotion_deferred().is_empty());
+        assert_eq!(to_sfen(&restored), sfen);
+        assert_eq!(restored.side_to_move(), position.side_to_move());
+        assert!(Square::all().all(|square| restored.piece_at(square) == position.piece_at(square)));
+    }
 
     #[test]
     fn sfen_conversion_uses_shogiops_coordinates_and_piece_codes() {
