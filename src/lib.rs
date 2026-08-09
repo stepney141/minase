@@ -18,5 +18,5 @@ pub use crate::core::rules::{PromotionChoice, RuleCode, Rules, RulesError};
 pub use crate::core::square::{
     BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square,
 };
-pub use game::{DrawReason, Game, GameError, GameResult, GameStatus, WinReason};
+pub use game::{DrawReason, Game, GameBuildError, GameError, GameResult, GameStatus, WinReason};
 pub use sfen::{SfenError, parse_sfen};

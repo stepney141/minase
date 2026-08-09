@@ -68,16 +68,22 @@ impl From<IllegalMove> for GameError {
     }
 }
 
-/// Reports the latest fourth-or-later occurrence detected under R0.
+/// 対局の構築エラー。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct RepetitionDetection {
-    /// The ply at which the identical position first appeared.
-    pub first_ply: u32,
-    /// The ply at which the latest fourth-or-later occurrence was detected.
-    pub latest_ply: u32,
-    /// The number of times the position has appeared.
-    pub occurrences: u8,
+pub enum GameBuildError {
+    /// 実行可能な反復規則が指定されていない。
+    MissingRepetitionRule,
 }
+
+impl fmt::Display for GameBuildError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingRepetitionRule => formatter.write_str("missing repetition rule"),
+        }
+    }
+}
+
+impl std::error::Error for GameBuildError {}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct RepetitionState {
@@ -98,7 +104,6 @@ pub struct Game {
     generator: MoveGenerator,
     result: Option<GameResult>,
     repetitions: HashMap<u64, RepetitionState>,
-    repetition_detection: Option<RepetitionDetection>,
     consecutive_attacking_moves: [u32; 2],
     ply: u32,
     repetition_rule: RepetitionRule,
@@ -108,12 +113,20 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(rules: Rules) -> Self {
+    /// 指定した規則で初期局面から対局を構築する。
+    ///
+    /// # エラー
+    ///
+    /// R1、R2またはR3が指定されていなければ
+    /// [`GameBuildError::MissingRepetitionRule`]を返す。
+    pub fn new(rules: Rules) -> Result<Self, GameBuildError> {
         Self::from_position(rules, Position::initial())
     }
 
+    /// エンジン既定規則で初期局面から対局を構築する。
     pub fn with_default_rules() -> Self {
         Self::new(Rules::engine_default())
+            .expect("engine default rules must contain a repetition rule")
     }
 
     /// Validates and applies one move, then adjudicates royal capture,
@@ -124,9 +137,7 @@ impl Game {
         let mover = self.position.side_to_move();
         let undo = self.position.try_make_move(mv, &self.generator)?;
         let position_key = repetition_key(&self.position, self.repetition_rule);
-        if self.repetition_rule == RepetitionRule::R2
-            && self.repetitions.contains_key(&position_key)
-        {
+        if repetition_is_forbidden(self.repetition_rule, &self.repetitions, position_key) {
             self.position.unmake_move(undo);
             return Err(GameError::IllegalMove(IllegalMove(mv)));
         }
@@ -156,25 +167,7 @@ impl Game {
                     return Ok(self.finish(result));
                 }
             }
-            RepetitionRule::R2 => self.record_position(position_key),
-            RepetitionRule::R0 => {
-                let state = self
-                    .repetitions
-                    .entry(position_key)
-                    .or_insert(RepetitionState {
-                        occurrences: 0,
-                        first_ply: self.ply,
-                    });
-                state.occurrences = state.occurrences.saturating_add(1);
-                if state.occurrences >= 4 {
-                    self.repetition_detection = Some(RepetitionDetection {
-                        first_ply: state.first_ply,
-                        latest_ply: self.ply,
-                        occurrences: state.occurrences,
-                    });
-                }
-                // R0 detection alone does not immediately establish victory, so immediate_win needs no R0 branch.
-            }
+            RepetitionRule::R2 | RepetitionRule::R3 => self.record_position(position_key),
         }
 
         if let Some(result) = self.piece_exhaustion_result(promoted_waiting_piece) {
@@ -183,8 +176,9 @@ impl Game {
 
         let side_to_move = self.position.side_to_move();
         let repetitions = &self.repetitions;
-        let forbidden_position = |key| repetitions.contains_key(&key);
-        let history_filter = (self.repetition_rule == RepetitionRule::R2)
+        let repetition_rule = self.repetition_rule;
+        let forbidden_position = |key| repetition_is_forbidden(repetition_rule, repetitions, key);
+        let history_filter = matches!(repetition_rule, RepetitionRule::R2 | RepetitionRule::R3)
             .then_some(&forbidden_position as &dyn Fn(u64) -> bool);
         if has_no_legal_move(&mut self.position, &self.generator, history_filter) {
             return Ok(self.finish(GameResult::Win {
@@ -193,7 +187,6 @@ impl Game {
             }));
         }
 
-        let repetition_rule = self.repetition_rule;
         let consecutive_attacking_moves = self.consecutive_attacking_moves;
         let ply = self.ply;
         let piece_exhaustion_disabled = self.piece_exhaustion_disabled;
@@ -281,12 +274,10 @@ impl Game {
         &self.position
     }
 
-    /// Returns all moves that may legally be played in the current game state.
+    /// 現在の対局状態で合法な着手をすべて返す。
     ///
-    /// Under R2, moves that recreate a previously seen position are excluded,
-    /// because Article 27(4) treats them as illegal under Article 26(11). After
-    /// the game has ended, this returns an empty vector because Article 26(12)
-    /// prohibits further moves.
+    /// R2またはR3で禁止される反復着手は除外する(第31条)。終局後は空の
+    /// ベクタを返す。
     pub fn legal_moves(&self) -> Vec<Move> {
         if self.result.is_some() {
             return Vec::new();
@@ -294,13 +285,16 @@ impl Game {
 
         let mut moves = Vec::new();
         self.generator.generate_moves(&self.position, &mut moves);
-        if self.repetition_rule == RepetitionRule::R2 {
+        if matches!(
+            self.repetition_rule,
+            RepetitionRule::R2 | RepetitionRule::R3
+        ) {
             let mut position = self.position.clone();
             moves.retain(|candidate| {
                 let undo = position.make_move_unchecked(*candidate, self.generator.rules());
-                let allowed = !self
-                    .repetitions
-                    .contains_key(&repetition_key(&position, self.repetition_rule));
+                let key = repetition_key(&position, self.repetition_rule);
+                let allowed =
+                    !repetition_is_forbidden(self.repetition_rule, &self.repetitions, key);
                 position.unmake_move(undo);
                 allowed
             });
@@ -319,33 +313,21 @@ impl Game {
         self.ply
     }
 
-    /// Returns the latest repetition detection reported under R0.
+    /// [`parse_sfen`](crate::parse_sfen)などで得た任意局面から対局を構築する。
     ///
-    /// This is set only when R0 is the adopted repetition rule. Detection does
-    /// not terminate the game, and play continues. Determining the instigator
-    /// under R0 Article 31(2) and applying the loss ruling in Article 31(3) are
-    /// the caller's responsibility and are not performed by this library.
+    /// 王駒の存在や駒種ごとの枚数上限など、規則上の局面合法性は検証しない。
+    /// 渡された局面は反復履歴上の第1回として記録する。
     ///
-    /// The latest detection is retained after the repetition cycle is broken.
-    /// Under R1 and R2 this is always `None`: R1 adjudicates and terminates the
-    /// game at the fourth occurrence, while R2 makes recurrence itself illegal
-    /// and therefore never reaches a fourth occurrence.
-    #[inline]
-    pub const fn repetition_detection(&self) -> Option<RepetitionDetection> {
-        self.repetition_detection
-    }
-
-    /// Starts a game from an arbitrary position, such as one obtained from
-    /// [`parse_sfen`](crate::parse_sfen).
+    /// # エラー
     ///
-    /// This does not validate rule-level legality, including the existence of
-    /// king pieces or per-piece-type count upper bounds. As with `parse_sfen`,
-    /// the caller is responsible for those checks. The supplied position is
-    /// recorded as the first occurrence for repetition detection.
-    pub fn from_position(rules: Rules, position: Position) -> Self {
-        let repetition_rule = rules.repetition_rule();
+    /// R1、R2またはR3が指定されていなければ
+    /// [`GameBuildError::MissingRepetitionRule`]を返す。
+    pub fn from_position(rules: Rules, position: Position) -> Result<Self, GameBuildError> {
+        let repetition_rule = rules
+            .repetition_rule()
+            .ok_or(GameBuildError::MissingRepetitionRule)?;
         let key = repetition_key(&position, repetition_rule);
-        Self {
+        Ok(Self {
             position,
             generator: MoveGenerator::new(rules),
             result: None,
@@ -356,14 +338,13 @@ impl Game {
                     first_ply: 0,
                 },
             )]),
-            repetition_detection: None,
             consecutive_attacking_moves: [0; 2],
             ply: 0,
             repetition_rule,
             mate_adjudication_enabled: rules.mate_adjudication_enabled(),
             piece_exhaustion_disabled: rules.piece_exhaustion_disabled(),
             piece_exhaustion_grace: false,
-        }
+        })
     }
 
     fn ensure_ongoing(&self) -> Result<(), GameError> {
@@ -402,14 +383,18 @@ impl Game {
     }
 
     fn record_position(&mut self, key: u64) {
-        let previous = self.repetitions.insert(
-            key,
-            RepetitionState {
-                occurrences: 1,
-                first_ply: self.ply,
-            },
+        let state = self.repetitions.entry(key).or_insert(RepetitionState {
+            occurrences: 0,
+            first_ply: self.ply,
+        });
+        state.occurrences = state
+            .occurrences
+            .checked_add(1)
+            .expect("a position cannot occur more than u8::MAX times");
+        debug_assert!(
+            self.repetition_rule != RepetitionRule::R2 || state.occurrences == 1,
+            "R2 must reject repeated positions"
         );
-        debug_assert!(previous.is_none(), "R2 must reject repeated positions");
     }
 
     fn piece_exhaustion_result(
@@ -546,11 +531,26 @@ fn promoted_waiting_square(mv: Move, undo: &Undo) -> Option<Square> {
     .then_some(mv.to)
 }
 
-/// 反復規則ごとの同一局面キーを返す。R2では一時的な権利を比較しない。
+/// 反復規則ごとの同一局面キーを返す。R2とR3では一時的な権利を比較しない。
 fn repetition_key(position: &Position, repetition_rule: RepetitionRule) -> u64 {
     match repetition_rule {
-        RepetitionRule::R0 | RepetitionRule::R1 => position.zobrist() ^ position.rights_zobrist(),
-        RepetitionRule::R2 => position.zobrist(),
+        RepetitionRule::R1 => position.zobrist() ^ position.rights_zobrist(),
+        RepetitionRule::R2 | RepetitionRule::R3 => position.zobrist(),
+    }
+}
+
+/// 着手後の局面キーが採用中の反復規則で禁止されるかを返す。
+fn repetition_is_forbidden(
+    repetition_rule: RepetitionRule,
+    repetitions: &HashMap<u64, RepetitionState>,
+    key: u64,
+) -> bool {
+    match repetition_rule {
+        RepetitionRule::R1 => false,
+        RepetitionRule::R2 => repetitions.contains_key(&key),
+        RepetitionRule::R3 => repetitions
+            .get(&key)
+            .is_some_and(|state| state.occurrences >= 3),
     }
 }
 
@@ -614,7 +614,7 @@ mod tests {
     use super::*;
     use crate::core::piece::{PieceCode, PieceKind};
     use crate::core::position::PositionBuilder;
-    use crate::core::rules::{RuleCode, RulesError};
+    use crate::core::rules::RuleCode;
     use crate::core::square::Square;
     use crate::sfen::parse_sfen;
     use crate::test_util::{position_from_codes as position, sq};
@@ -628,11 +628,11 @@ mod tests {
     }
 
     fn game(position: Position) -> Game {
-        Game::from_position(Rules::engine_default(), position)
+        Game::from_position(Rules::engine_default(), position).unwrap()
     }
 
     fn game_with_codes(position: Position, codes: &[RuleCode]) -> Game {
-        Game::from_position(Rules::from_codes(codes).unwrap(), position)
+        Game::from_position(Rules::from_codes(codes).unwrap(), position).unwrap()
     }
 
     fn piece_exhaustion_game(position: Position) -> Game {
@@ -641,6 +641,10 @@ mod tests {
 
     fn r2_game(position: Position) -> Game {
         game_with_codes(position, &[RuleCode::R2, RuleCode::E2])
+    }
+
+    fn r3_game(position: Position) -> Game {
+        game_with_codes(position, &[RuleCode::R3, RuleCode::E2])
     }
 
     fn step(from: Square, to: Square) -> Move {
@@ -670,50 +674,24 @@ mod tests {
     }
 
     #[test]
-    fn article_25_3_explicit_r0_normalizes_to_standard() {
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R0]).unwrap(),
-            Rules::standard()
-        );
-    }
-
-    #[test]
-    fn article_31_r0_and_r1_are_conflicting() {
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R0, RuleCode::R1]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::R0,
-                second: RuleCode::R1,
-            })
-        );
-    }
-
-    #[test]
-    fn article_31_r0_explicit_rule_allows_game_construction() {
-        let rules = Rules::from_codes(&[RuleCode::R0]).unwrap();
-        let game = Game::new(rules);
-
-        assert_eq!(rules.repetition_rule(), RepetitionRule::R0);
-        assert_eq!(game.status(), GameStatus::Ongoing);
-        assert_eq!(game.position(), &Position::initial());
-        assert_eq!(game.ply_count(), 0);
-        assert_eq!(game.repetition_detection(), None);
-    }
-
-    #[test]
-    fn articles_25_3_and_31_r0_standard_rules_allow_game_construction() {
-        let game = Game::new(Rules::standard());
-
-        assert_eq!(game.repetition_rule, RepetitionRule::R0);
-        assert_eq!(game.status(), GameStatus::Ongoing);
-        assert_eq!(game.position(), &Position::initial());
-        assert_eq!(game.ply_count(), 0);
-        assert_eq!(game.repetition_detection(), None);
+    fn game_construction_requires_a_repetition_rule() {
+        assert!(matches!(
+            Game::new(Rules::standard()),
+            Err(GameBuildError::MissingRepetitionRule)
+        ));
+        assert!(matches!(
+            Game::from_position(Rules::standard(), Position::initial()),
+            Err(GameBuildError::MissingRepetitionRule)
+        ));
+        assert!(matches!(
+            Game::new(Rules::from_codes(&[RuleCode::E2]).unwrap()),
+            Err(GameBuildError::MissingRepetitionRule)
+        ));
     }
 
     #[test]
     fn articles_22_and_32_r1_without_e2_allows_game_construction() {
-        let game = Game::new(Rules::from_codes(&[RuleCode::R1]).unwrap());
+        let game = Game::new(Rules::from_codes(&[RuleCode::R1]).unwrap()).unwrap();
 
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.position(), &Position::initial());
@@ -723,16 +701,16 @@ mod tests {
     #[test]
     fn articles_25_and_31_r2_allows_game_construction() {
         let rules = Rules::from_codes(&[RuleCode::R2]).unwrap();
-        let game = Game::new(rules);
+        let game = Game::new(rules).unwrap();
 
-        assert_eq!(rules.repetition_rule(), RepetitionRule::R2);
+        assert_eq!(rules.repetition_rule(), Some(RepetitionRule::R2));
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.position(), &Position::initial());
         assert_eq!(game.ply_count(), 0);
     }
 
     #[test]
-    fn articles_24_1_d_and_31_r2_choose_the_correct_repetition_key() {
+    fn articles_24_1_d_and_31_r2_r3_choose_the_correct_repetition_key() {
         let deferred = sq(4, 9);
         let mut builder = PositionBuilder::new(Color::Black);
         builder
@@ -750,36 +728,39 @@ mod tests {
         let r1 = Game::from_position(
             Rules::from_codes(&[RuleCode::P1, RuleCode::R1, RuleCode::E2]).unwrap(),
             position.clone(),
-        );
+        )
+        .unwrap();
         let r2 = Game::from_position(
             Rules::from_codes(&[RuleCode::P1, RuleCode::R2, RuleCode::E2]).unwrap(),
+            position.clone(),
+        )
+        .unwrap();
+        let r3 = Game::from_position(
+            Rules::from_codes(&[RuleCode::P1, RuleCode::R3, RuleCode::E2]).unwrap(),
             position,
-        );
+        )
+        .unwrap();
 
         assert_eq!(r1.repetitions.len(), 1);
         assert!(r1.repetitions.contains_key(&r1_key));
         assert_eq!(r2.repetitions.len(), 1);
         assert!(r2.repetitions.contains_key(&r2_key));
+        assert_eq!(r3.repetitions.len(), 1);
+        assert!(r3.repetitions.contains_key(&r2_key));
     }
 
     #[test]
-    fn articles_25_3_and_31_default_rules_allow_game_construction() {
-        let standard_with_e2 = Game::new(Rules::from_codes(&[RuleCode::E2]).unwrap());
-        assert_eq!(standard_with_e2.repetition_rule, RepetitionRule::R0);
-        assert_eq!(standard_with_e2.status(), GameStatus::Ongoing);
-        assert_eq!(standard_with_e2.repetition_detection(), None);
-
-        let game = Game::new(Rules::engine_default());
+    fn engine_default_rules_allow_game_construction() {
+        let game = Game::new(Rules::engine_default()).unwrap();
         assert_eq!(game.repetition_rule, RepetitionRule::R1);
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.position(), &Position::initial());
         assert_eq!(game.ply_count(), 0);
-        assert_eq!(game.repetition_detection(), None);
     }
 
     #[test]
     fn articles_26_11_and_26_12_legal_moves_match_generator_and_stop_after_game_end() {
-        let mut game = Game::new(Rules::engine_default());
+        let mut game = Game::new(Rules::engine_default()).unwrap();
         let mut generated = Vec::new();
         game.generator
             .generate_moves(game.position(), &mut generated);
@@ -802,7 +783,7 @@ mod tests {
     fn from_position_accepts_parsed_sfen_and_rules_returns_adopted_rules() {
         let position = parse_sfen("12/12/12/8k3/12/12/12/12/3K8/12/12/12 b").unwrap();
         let rules = Rules::from_codes(&[RuleCode::R1, RuleCode::E2]).unwrap();
-        let mut game = Game::from_position(rules, position);
+        let mut game = Game::from_position(rules, position).unwrap();
 
         assert_eq!(game.rules(), rules);
         assert_eq!(game.play(step(sq(3, 3), sq(3, 4))), Ok(GameStatus::Ongoing));
@@ -939,7 +920,7 @@ mod tests {
         repeated_position.make_move_unchecked(mv, rules);
         repeated_position.make_move_unchecked(reply, rules);
         let repeated_key = repeated_position.zobrist() ^ repeated_position.rights_zobrist();
-        let mut game = Game::from_position(rules, position);
+        let mut game = Game::from_position(rules, position).unwrap();
 
         // This synthetic history makes Black's reply create the fourth occurrence.
         assert_eq!(
@@ -974,7 +955,7 @@ mod tests {
         repeated_position.make_move_unchecked(mv, rules);
         repeated_position.make_move_unchecked(reply, rules);
         let repeated_key = repeated_position.zobrist() ^ repeated_position.rights_zobrist();
-        let mut game = Game::from_position(rules, position);
+        let mut game = Game::from_position(rules, position).unwrap();
 
         assert!(!move_was_attacking(
             &repeated_position,
@@ -1338,59 +1319,6 @@ mod tests {
     }
 
     #[test]
-    fn article_31_r0_fourth_repetition_is_detected_without_ending_game() {
-        let mut game = Game::from_position(
-            Rules::standard(),
-            position(
-                Color::Black,
-                &[
-                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                    (sq(3, 3), piece(Color::Black, PieceKind::GoldGeneral)),
-                    (sq(11, 11), piece(Color::White, PieceKind::King)),
-                    (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
-                ],
-            ),
-        );
-        let cycle = [
-            step(sq(3, 3), sq(3, 4)),
-            step(sq(8, 8), sq(8, 7)),
-            step(sq(3, 4), sq(3, 3)),
-            step(sq(8, 7), sq(8, 8)),
-        ];
-
-        assert_eq!(
-            piece_exhaustion_outcome(game.position(), &game.generator, None, false),
-            PieceExhaustionOutcome::ConditionNotMet
-        );
-        for ply in 1..=12 {
-            assert_eq!(
-                game.play(cycle[(ply - 1) % cycle.len()]),
-                Ok(GameStatus::Ongoing),
-                "ended at ply {ply}"
-            );
-        }
-        assert_eq!(
-            game.repetition_detection(),
-            Some(RepetitionDetection {
-                first_ply: 0,
-                latest_ply: 12,
-                occurrences: 4,
-            })
-        );
-
-        assert_eq!(game.play(cycle[0]), Ok(GameStatus::Ongoing));
-        let latest_detection = Some(RepetitionDetection {
-            first_ply: 1,
-            latest_ply: 13,
-            occurrences: 4,
-        });
-        assert_eq!(game.repetition_detection(), latest_detection);
-
-        assert_eq!(game.play(step(sq(8, 8), sq(9, 8))), Ok(GameStatus::Ongoing));
-        assert_eq!(game.repetition_detection(), latest_detection);
-    }
-
-    #[test]
     fn article_31_r1_fourth_repetition_is_a_draw_at_ply_12() {
         let mut game = game(position(
             Color::Black,
@@ -1497,6 +1425,64 @@ mod tests {
         assert_eq!(game.play(step(sq(8, 7), sq(9, 7))), Ok(GameStatus::Ongoing));
         assert_eq!(game.ply_count(), 4);
         assert_eq!(game.consecutive_attacking_moves, [0, 0]);
+    }
+
+    #[test]
+    fn article_31_r3_allows_second_and_third_occurrences_but_rejects_fourth_without_changing_state()
+    {
+        let initial = position(
+            Color::Black,
+            &[
+                (sq(3, 3), piece(Color::Black, PieceKind::King)),
+                (sq(8, 8), piece(Color::White, PieceKind::King)),
+            ],
+        );
+        let initial_key = initial.zobrist();
+        let mut game = r3_game(initial.clone());
+        let cycle = [
+            step(sq(3, 3), sq(3, 4)),
+            step(sq(8, 8), sq(8, 7)),
+            step(sq(3, 4), sq(3, 3)),
+            step(sq(8, 7), sq(8, 8)),
+        ];
+
+        for ply in 1..=11 {
+            assert_eq!(
+                game.play(cycle[(ply - 1) % cycle.len()]),
+                Ok(GameStatus::Ongoing),
+                "ended at ply {ply}"
+            );
+            if ply == 4 || ply == 8 {
+                assert_eq!(game.position(), &initial);
+                assert_eq!(
+                    game.repetitions[&initial_key].occurrences,
+                    (ply / 4 + 1) as u8
+                );
+            }
+        }
+
+        let fourth_occurrence = cycle[3];
+        let mut generated = Vec::new();
+        game.generator
+            .generate_moves(game.position(), &mut generated);
+        assert!(generated.contains(&fourth_occurrence));
+        assert!(!game.legal_moves().contains(&fourth_occurrence));
+
+        game.piece_exhaustion_grace = true;
+        let position_before = game.position().clone();
+        let repetitions_before = game.repetitions.clone();
+        let ply_before = game.ply_count();
+        let exhaustion_grace_before = game.piece_exhaustion_grace;
+        assert_eq!(
+            game.play(fourth_occurrence),
+            Err(GameError::IllegalMove(IllegalMove(fourth_occurrence)))
+        );
+        assert_eq!(game.position(), &position_before);
+        assert_eq!(game.repetitions, repetitions_before);
+        assert_eq!(game.ply_count(), ply_before);
+        assert_eq!(game.piece_exhaustion_grace, exhaustion_grace_before);
+        assert_eq!(game.status(), GameStatus::Ongoing);
+        assert_eq!(game.repetitions[&initial_key].occurrences, 3);
     }
 
     #[test]
@@ -1780,7 +1766,7 @@ mod tests {
             &[RuleCode::R2, RuleCode::E1, RuleCode::E2][..],
         ] {
             for game_index in 0..GAMES_PER_RULE_SET {
-                let mut game = Game::new(Rules::from_codes(codes).unwrap());
+                let mut game = Game::new(Rules::from_codes(codes).unwrap()).unwrap();
                 let mut terminated = false;
 
                 for _ in 0..PLY_CAP {
@@ -1862,7 +1848,7 @@ mod tests {
 
         for (rule_set_name, codes, seed) in RULE_SETS {
             let mut rng = XorShift64::new(seed);
-            let mut game = Game::new(Rules::from_codes(codes).unwrap());
+            let mut game = Game::new(Rules::from_codes(codes).unwrap()).unwrap();
 
             for _ in 0..PLY_CAP {
                 assert_random_game_position_invariants(&game, rule_set_name);

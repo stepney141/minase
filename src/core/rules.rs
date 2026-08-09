@@ -28,12 +28,12 @@ pub enum RuleCode {
     P3,
     /// 仲人の最奥段救済(第30条)。
     P4,
-    /// 日本中将棋連盟式千日手(第31条)。標準規則の反復規則。
-    R0,
     /// Lishogi式の4回反復裁定(第31条)。
     R1,
     /// 既出局面の再現禁止(第31条)。
     R2,
+    /// 既出局面の4回目の出現を生じさせる着手の禁止(第31条)。
+    R3,
     /// 王駒実捕獲による終局(第32条)。
     E1,
     /// 駒枯れ不採用(第32条)。
@@ -51,9 +51,9 @@ impl RuleCode {
         Self::P2,
         Self::P3,
         Self::P4,
-        Self::R0,
         Self::R1,
         Self::R2,
+        Self::R3,
         Self::E1,
         Self::E2,
     ];
@@ -64,15 +64,15 @@ impl RuleCode {
     }
 }
 
-/// 採用する反復規則(第25条)。R0・R1・R2は排他で、常にいずれか1つを採用する。
+/// 採用する反復規則。R1、R2およびR3は相互に排他である(第31条)。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum RepetitionRule {
-    /// 日本中将棋連盟式千日手。
-    R0,
     /// Lishogi式の4回反復裁定。
     R1,
     /// 既出局面の再現禁止。
     R2,
+    /// 既出局面の4回目の出現を生じさせる着手の禁止。
+    R3,
 }
 
 /// ルールコード集合の検証エラー。
@@ -103,17 +103,19 @@ impl std::error::Error for RulesError {}
 /// 対局で採用するローカルルールの集合。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rules {
-    /// 採用コードのビット集合。R0とL0は標準規則そのものなので保持せず、常に0ビットとする。
+    /// 採用コードのビット集合。L0は標準規則そのものなので保持せず、常に0ビットとする。
     codes: u16,
 }
 
 impl Rules {
-    /// 標準規則(ローカルルール指定なし)を返す。
+    /// ローカル差分のない規則集合を返す。
+    ///
+    /// 実行可能な反復規則は含まないため、この値だけでは対局を構築できない。
     pub const fn standard() -> Self {
         Self { codes: 0 }
     }
 
-    /// エンジン既定の「標準規則−R0+R1」を返す。
+    /// 反復規則にR1を採用したエンジン既定規則を返す。
     pub const fn engine_default() -> Self {
         Self {
             codes: RuleCode::R1.bit(),
@@ -133,16 +135,16 @@ impl Rules {
         for (first, second) in [
             (RuleCode::L0, RuleCode::L1),
             (RuleCode::P1, RuleCode::P2),
-            (RuleCode::R0, RuleCode::R1),
-            (RuleCode::R0, RuleCode::R2),
             (RuleCode::R1, RuleCode::R2),
+            (RuleCode::R1, RuleCode::R3),
+            (RuleCode::R2, RuleCode::R3),
         ] {
             if adopted & first.bit() != 0 && adopted & second.bit() != 0 {
                 return Err(RulesError::Conflicting { first, second });
             }
         }
 
-        adopted &= !(RuleCode::R0.bit() | RuleCode::L0.bit());
+        adopted &= !RuleCode::L0.bit();
         Ok(Self { codes: adopted })
     }
 
@@ -151,14 +153,16 @@ impl Rules {
         self.codes & code.bit() != 0
     }
 
-    /// 採用している反復規則を返す。指定がなければR0とする(第25条第3項)。
-    pub const fn repetition_rule(self) -> RepetitionRule {
+    /// 採用している反復規則を返す。指定がなければ`None`を返す。
+    pub const fn repetition_rule(self) -> Option<RepetitionRule> {
         if self.contains(RuleCode::R1) {
-            RepetitionRule::R1
+            Some(RepetitionRule::R1)
         } else if self.contains(RuleCode::R2) {
-            RepetitionRule::R2
+            Some(RepetitionRule::R2)
+        } else if self.contains(RuleCode::R3) {
+            Some(RepetitionRule::R3)
         } else {
-            RepetitionRule::R0
+            None
         }
     }
 
@@ -442,21 +446,28 @@ mod tests {
             }),
         );
         assert_eq!(
-            Rules::from_codes(&[RuleCode::R0, RuleCode::R1]),
+            Rules::from_codes(&[RuleCode::R1, RuleCode::R2]),
             Err(RulesError::Conflicting {
-                first: RuleCode::R0,
-                second: RuleCode::R1,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R0, RuleCode::R2]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::R0,
+                first: RuleCode::R1,
                 second: RuleCode::R2,
             }),
         );
         assert_eq!(
-            Rules::from_codes(&[RuleCode::R1, RuleCode::R2]),
+            Rules::from_codes(&[RuleCode::R1, RuleCode::R3]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::R1,
+                second: RuleCode::R3,
+            }),
+        );
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::R2, RuleCode::R3]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::R2,
+                second: RuleCode::R3,
+            }),
+        );
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::R1, RuleCode::R2, RuleCode::R3]),
             Err(RulesError::Conflicting {
                 first: RuleCode::R1,
                 second: RuleCode::R2,
@@ -465,10 +476,6 @@ mod tests {
         assert_eq!(
             Rules::from_codes(&[RuleCode::L0, RuleCode::L0]),
             Err(RulesError::Duplicate(RuleCode::L0)),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R0, RuleCode::R0]),
-            Err(RulesError::Duplicate(RuleCode::R0)),
         );
         for code in RuleCode::ALL {
             assert!(Rules::from_codes(&[code]).is_ok());
@@ -497,15 +504,28 @@ mod tests {
     fn article_31_r2_is_supported() {
         let rules = Rules::from_codes(&[RuleCode::R2]).unwrap();
 
-        assert_eq!(rules.repetition_rule(), RepetitionRule::R2);
+        assert_eq!(rules.repetition_rule(), Some(RepetitionRule::R2));
         assert!(rules.contains(RuleCode::R2));
     }
 
     #[test]
-    fn article_33_5_engine_default_is_standard_minus_r0_plus_r1() {
+    fn article_31_r3_is_supported() {
+        let rules = Rules::from_codes(&[RuleCode::R3]).unwrap();
+
+        assert_eq!(rules.repetition_rule(), Some(RepetitionRule::R3));
+        assert!(rules.contains(RuleCode::R3));
+    }
+
+    #[test]
+    fn standard_rules_do_not_select_a_repetition_rule() {
+        assert_eq!(Rules::standard().repetition_rule(), None);
+    }
+
+    #[test]
+    fn article_33_5_engine_default_selects_r1() {
         let rules = Rules::engine_default();
 
-        assert_eq!(rules.repetition_rule(), RepetitionRule::R1);
+        assert_eq!(rules.repetition_rule(), Some(RepetitionRule::R1));
         assert!(rules.mate_adjudication_enabled());
         assert!(!rules.piece_exhaustion_disabled());
         assert!(!rules.contains(RuleCode::L0));
