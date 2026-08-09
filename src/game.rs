@@ -88,6 +88,7 @@ impl fmt::Display for GameBuildError {
 
 impl std::error::Error for GameBuildError {}
 
+#[derive(Clone)]
 pub struct Game {
     position: Position,
     generator: MoveGenerator,
@@ -426,6 +427,24 @@ mod tests {
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.position(), &Position::initial());
         assert_eq!(game.ply_count(), 0);
+    }
+
+    #[test]
+    fn cloned_games_can_be_played_independently() {
+        let mut original = Game::with_default_rules();
+        let moves = original.legal_moves();
+        let original_move = moves[0];
+        let clone_move = moves[1];
+        let initial = original.position().clone();
+        let mut cloned = original.clone();
+
+        assert_eq!(cloned.play(clone_move), Ok(GameStatus::Ongoing));
+        assert_eq!(original.position(), &initial);
+
+        let cloned_position = cloned.position().clone();
+        assert_eq!(original.play(original_move), Ok(GameStatus::Ongoing));
+        assert_eq!(cloned.position(), &cloned_position);
+        assert_ne!(original.position(), cloned.position());
     }
 
     #[test]

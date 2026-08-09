@@ -18,6 +18,7 @@ use crate::core::rules::{PromotionChoice, Rules};
 use crate::core::square::Square;
 
 /// 採用ルールの下で合法手を列挙する生成器。
+#[derive(Clone)]
 pub struct MoveGenerator {
     /// 利きの前計算テーブル。
     tables: &'static AttackTables,
