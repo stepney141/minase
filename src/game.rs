@@ -1,12 +1,13 @@
 use core::fmt;
 
+use crate::adjudication::{
+    AdjudicationContext, AdjudicationState, adjudicate_after_move, promoted_waiting_square,
+};
 use crate::core::movegen::{IllegalMove, MoveGenerator};
-use crate::core::mv::{Move, Undo};
-use crate::core::piece::{Color, PieceKind};
+use crate::core::mv::Move;
+use crate::core::piece::Color;
 use crate::core::position::Position;
 use crate::core::rules::Rules;
-use crate::core::square::{BOARD_RANKS, Square};
-use crate::mate::{has_no_legal_move, is_mate};
 use crate::repetition::{
     RepetitionHistory, repetition_is_forbidden, retain_repetition_allowed_moves,
 };
@@ -87,23 +88,11 @@ impl fmt::Display for GameBuildError {
 
 impl std::error::Error for GameBuildError {}
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum PieceExhaustionOutcome {
-    ConditionNotMet,
-    Draw,
-    Win(Color),
-    GraceStart,
-}
-
 pub struct Game {
     position: Position,
     generator: MoveGenerator,
+    adjudication: AdjudicationState,
     result: Option<GameResult>,
-    repetition: RepetitionHistory,
-    ply: u32,
-    mate_adjudication_enabled: bool,
-    piece_exhaustion_disabled: bool,
-    piece_exhaustion_grace: bool,
 }
 
 impl Game {
@@ -123,105 +112,34 @@ impl Game {
             .expect("engine default rules must contain a repetition rule")
     }
 
-    /// Validates and applies one move, then adjudicates royal capture,
-    /// repetition, piece exhaustion, stalemate, and mate in that order.
+    /// 着手を検証して適用し、王駒捕獲、反復、駒枯れ、合法手なし、詰みの順で裁定する。
     pub fn play(&mut self, mv: Move) -> Result<GameStatus, GameError> {
         self.ensure_ongoing()?;
 
         let mover = self.position.side_to_move();
         let undo = self.position.try_make_move(mv, &self.generator)?;
-        if repetition_is_forbidden(&self.repetition, &self.position) {
+        if repetition_is_forbidden(self.adjudication.repetition(), &self.position) {
             self.position.unmake_move(undo);
             return Err(GameError::IllegalMove(IllegalMove(mv)));
         }
         let promoted_waiting_piece = promoted_waiting_square(mv, &undo);
-        self.ply = self
-            .ply
-            .checked_add(1)
-            .expect("a game cannot exceed u32::MAX plies");
+        let repetition_result =
+            self.adjudication
+                .record_move(&self.position, &self.generator, mover, mv);
+        let adjudication = adjudicate_after_move(
+            &mut self.position,
+            AdjudicationContext::new(&self.adjudication, &self.generator),
+            mover,
+            promoted_waiting_piece,
+            repetition_result,
+        );
+        self.adjudication
+            .set_piece_exhaustion_grace(adjudication.piece_exhaustion_grace());
 
-        // Adjudication order is fixed as royal capture, repetition,
-        // piece exhaustion, stalemate, then mate.
-        if self.position.royal_pieces(mover.opposite()).is_empty() {
-            return Ok(self.finish(GameResult::Win {
-                winner: mover,
-                reason: WinReason::RoyalCapture,
-            }));
-        }
-
-        match &mut self.repetition {
-            RepetitionHistory::R1(history) => {
-                if let Some(result) = history.record_move(
-                    &self.position,
-                    self.ply,
-                    mover,
-                    move_was_attacking(&self.position, &self.generator, mover, mv),
-                ) {
-                    return Ok(self.finish(result));
-                }
-            }
-            RepetitionHistory::R2(history) => history.record(&self.position),
-            RepetitionHistory::R3(history) => history.record(&self.position),
-        }
-
-        if let Some(result) = self.piece_exhaustion_result(promoted_waiting_piece) {
-            return Ok(self.finish(result));
-        }
-
-        let side_to_move = self.position.side_to_move();
-        let repetition = &self.repetition;
-        if has_no_legal_move(&mut self.position, &self.generator, repetition) {
-            return Ok(self.finish(GameResult::Win {
-                winner: side_to_move.opposite(),
-                reason: WinReason::Stalemate,
-            }));
-        }
-
-        let ply = self.ply;
-        let piece_exhaustion_disabled = self.piece_exhaustion_disabled;
-        let piece_exhaustion_grace = self.piece_exhaustion_grace;
-        let generator = &self.generator;
-        let immediate_win = |position: &Position, candidate: Move, undo: &Undo| {
-            if let RepetitionHistory::R1(history) = repetition
-                && let Some(result) = history.candidate_result(
-                    position,
-                    ply,
-                    side_to_move,
-                    move_was_attacking(position, generator, side_to_move, candidate),
-                )
-            {
-                return matches!(
-                    result,
-                    GameResult::Win { winner, .. } if winner == side_to_move
-                );
-            }
-
-            !piece_exhaustion_disabled
-                && matches!(
-                    piece_exhaustion_outcome(
-                        position,
-                        generator,
-                        promoted_waiting_square(candidate, undo),
-                        piece_exhaustion_grace,
-                    ),
-                    PieceExhaustionOutcome::Win(winner) if winner == side_to_move
-                )
-        };
-        if self.mate_adjudication_enabled
-            && is_mate(
-                &mut self.position,
-                generator,
-                repetition,
-                Some(&immediate_win),
-            )
-        {
-            return Ok(self.finish(GameResult::Win {
-                winner: side_to_move.opposite(),
-                reason: WinReason::Mate,
-            }));
-        }
-
-        Ok(GameStatus::Ongoing)
+        Ok(match adjudication.result() {
+            Some(result) => self.finish(result),
+            None => GameStatus::Ongoing,
+        })
     }
 
     pub fn resign(&mut self, color: Color) -> Result<GameStatus, GameError> {
@@ -269,21 +187,21 @@ impl Game {
         let mut moves = Vec::new();
         self.generator.generate_moves(&self.position, &mut moves);
         if matches!(
-            self.repetition,
+            self.adjudication.repetition(),
             RepetitionHistory::R2(_) | RepetitionHistory::R3(_)
         ) {
             let mut position = self.position.clone();
             retain_repetition_allowed_moves(
                 &mut position,
                 &self.generator,
-                &self.repetition,
+                self.adjudication.repetition(),
                 &mut moves,
             );
         }
         moves
     }
 
-    /// Returns the rules adopted by this game.
+    /// 対局で採用している規則を返す。
     #[inline]
     pub fn rules(&self) -> Rules {
         self.generator.rules()
@@ -291,7 +209,7 @@ impl Game {
 
     #[inline]
     pub const fn ply_count(&self) -> u32 {
-        self.ply
+        self.adjudication.ply()
     }
 
     /// [`parse_sfen`](crate::parse_sfen)などで得た任意局面から対局を構築する。
@@ -307,16 +225,12 @@ impl Game {
         let repetition_rule = rules
             .repetition_rule()
             .ok_or(GameBuildError::MissingRepetitionRule)?;
-        let repetition = RepetitionHistory::new(repetition_rule, &position);
+        let adjudication = AdjudicationState::new(repetition_rule, &position);
         Ok(Self {
             position,
             generator: MoveGenerator::new(rules),
+            adjudication,
             result: None,
-            repetition,
-            ply: 0,
-            mate_adjudication_enabled: rules.mate_adjudication_enabled(),
-            piece_exhaustion_disabled: rules.piece_exhaustion_disabled(),
-            piece_exhaustion_grace: false,
         })
     }
 
@@ -333,143 +247,6 @@ impl Game {
         self.result = Some(result);
         GameStatus::Finished(result)
     }
-
-    fn piece_exhaustion_result(
-        &mut self,
-        promoted_waiting_piece: Option<Square>,
-    ) -> Option<GameResult> {
-        if self.piece_exhaustion_disabled {
-            return None;
-        }
-        let grace_pending = core::mem::take(&mut self.piece_exhaustion_grace);
-        match piece_exhaustion_outcome(
-            &self.position,
-            &self.generator,
-            promoted_waiting_piece,
-            grace_pending,
-        ) {
-            PieceExhaustionOutcome::ConditionNotMet => None,
-            PieceExhaustionOutcome::Draw => Some(GameResult::Draw {
-                reason: DrawReason::PieceExhaustion,
-            }),
-            PieceExhaustionOutcome::Win(winner) => Some(GameResult::Win {
-                winner,
-                reason: WinReason::PieceExhaustion,
-            }),
-            PieceExhaustionOutcome::GraceStart => {
-                self.piece_exhaustion_grace = true;
-                None
-            }
-        }
-    }
-}
-
-fn piece_exhaustion_outcome(
-    position: &Position,
-    generator: &MoveGenerator,
-    promoted_waiting_piece: Option<Square>,
-    grace_pending: bool,
-) -> PieceExhaustionOutcome {
-    let royals = Color::ALL.map(|color| position.royal_pieces(color));
-    let non_royals = position.occupied() & !(royals[0] | royals[1]);
-    if non_royals.is_empty() {
-        // 第22条第8項の自動引き分けは、双方が相手の最後の王駒を
-        // 詰められない王駒1枚対1枚の場合に限る。
-        return if royals.into_iter().all(|royal| royal.popcount() == 1) {
-            PieceExhaustionOutcome::Draw
-        } else {
-            PieceExhaustionOutcome::ConditionNotMet
-        };
-    }
-    if royals.into_iter().any(|royal| royal.popcount() != 1) || non_royals.popcount() != 1 {
-        return PieceExhaustionOutcome::ConditionNotMet;
-    }
-
-    let extra_square = non_royals
-        .lsb()
-        .expect("one non-royal piece must have a square");
-    let extra_piece = position
-        .piece_at(extra_square)
-        .expect("the non-royal square must contain a piece");
-    let extra_color = extra_piece
-        .color()
-        .expect("the extra piece must have an owner");
-    let extra_kind = extra_piece
-        .kind()
-        .expect("the extra piece must have a kind");
-
-    if !extra_piece.is_promoted()
-        && matches!(extra_kind, PieceKind::Pawn | PieceKind::Lance)
-        && is_last_rank(extra_color, extra_square)
-    {
-        return PieceExhaustionOutcome::ConditionNotMet;
-    }
-    if !extra_piece.is_promoted() && matches!(extra_kind, PieceKind::Pawn | PieceKind::GoBetween) {
-        return PieceExhaustionOutcome::ConditionNotMet;
-    }
-
-    if promoted_waiting_piece == Some(extra_square)
-        || grace_pending
-        || position.side_to_move() == extra_color
-    {
-        return PieceExhaustionOutcome::Win(extra_color);
-    }
-
-    let mut moves = Vec::new();
-    generator.generate_moves(position, &mut moves);
-    if moves.into_iter().any(|candidate| {
-        position
-            .captured_squares(candidate)
-            .into_iter()
-            .flatten()
-            .any(|capture| capture == extra_square)
-    }) {
-        PieceExhaustionOutcome::GraceStart
-    } else {
-        PieceExhaustionOutcome::Win(extra_color)
-    }
-}
-
-// Only a non-capturing promotion qualifies for the immediate Article
-// 22-2/22-3 win. A capturing move starts the Article 22-5 grace path instead.
-fn promoted_waiting_square(mv: Move, undo: &Undo) -> Option<Square> {
-    (mv.promote
-        && undo.captured.iter().all(Option::is_none)
-        && matches!(
-            undo.moved_piece_before.kind(),
-            Some(PieceKind::Pawn | PieceKind::GoBetween)
-        ))
-    .then_some(mv.to)
-}
-
-fn is_last_rank(color: Color, square: Square) -> bool {
-    match color {
-        Color::Black => square.rank() == BOARD_RANKS - 1,
-        Color::White => square.rank() == 0,
-    }
-}
-
-fn move_was_attacking(
-    position: &Position,
-    generator: &MoveGenerator,
-    mover: Color,
-    played: Move,
-) -> bool {
-    let probe = position.clone_with_side_to_move(mover);
-    let opponent_royals = probe.royal_pieces(mover.opposite());
-    let destination = played.to;
-    let mut moves = Vec::new();
-    generator.generate_moves(&probe, &mut moves);
-
-    moves.into_iter().any(|candidate| {
-        let captures = probe.captured_squares(candidate);
-        captures
-            .into_iter()
-            .flatten()
-            .any(|square| opponent_royals.contains(square))
-            || (candidate.from == destination
-                && captures.into_iter().any(|capture| capture.is_some()))
-    })
 }
 
 #[cfg(test)]
@@ -477,6 +254,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
+    use crate::adjudication::move_was_attacking;
     use crate::core::piece::{PieceCode, PieceKind};
     use crate::core::position::PositionBuilder;
     use crate::core::rules::{RepetitionRule, RuleCode};
@@ -514,28 +292,28 @@ mod tests {
     }
 
     fn r1_history(game: &Game) -> &R1History {
-        let RepetitionHistory::R1(history) = &game.repetition else {
+        let RepetitionHistory::R1(history) = game.adjudication.repetition() else {
             panic!("game must use R1 history");
         };
         history
     }
 
     fn r1_history_mut(game: &mut Game) -> &mut R1History {
-        let RepetitionHistory::R1(history) = &mut game.repetition else {
+        let RepetitionHistory::R1(history) = game.adjudication.repetition_mut() else {
             panic!("game must use R1 history");
         };
         history
     }
 
     fn r2_history(game: &Game) -> &R2History {
-        let RepetitionHistory::R2(history) = &game.repetition else {
+        let RepetitionHistory::R2(history) = game.adjudication.repetition() else {
             panic!("game must use R2 history");
         };
         history
     }
 
     fn r3_history(game: &Game) -> &R3History {
-        let RepetitionHistory::R3(history) = &game.repetition else {
+        let RepetitionHistory::R3(history) = game.adjudication.repetition() else {
             panic!("game must use R3 history");
         };
         history
@@ -640,7 +418,10 @@ mod tests {
     #[test]
     fn engine_default_rules_allow_game_construction() {
         let game = Game::new(Rules::engine_default()).unwrap();
-        assert!(matches!(game.repetition, RepetitionHistory::R1(_)));
+        assert!(matches!(
+            game.adjudication.repetition(),
+            RepetitionHistory::R1(_)
+        ));
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.position(), &Position::initial());
         assert_eq!(game.ply_count(), 0);
@@ -774,6 +555,166 @@ mod tests {
     }
 
     #[test]
+    fn shared_adjudication_matches_game_play_for_the_same_position_and_history() {
+        let (position, mv) = mate_predecessor();
+        let rules = Rules::from_codes(&[RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut shared = Game::from_position(rules, position.clone()).unwrap();
+        let mut through_play = Game::from_position(rules, position).unwrap();
+
+        let mover = shared.position.side_to_move();
+        let undo = shared
+            .position
+            .try_make_move(mv, &shared.generator)
+            .unwrap();
+        assert!(!repetition_is_forbidden(
+            shared.adjudication.repetition(),
+            &shared.position
+        ));
+        let promoted_waiting_piece = promoted_waiting_square(mv, &undo);
+        let repetition_result =
+            shared
+                .adjudication
+                .record_move(&shared.position, &shared.generator, mover, mv);
+        let outcome = adjudicate_after_move(
+            &mut shared.position,
+            AdjudicationContext::new(&shared.adjudication, &shared.generator),
+            mover,
+            promoted_waiting_piece,
+            repetition_result,
+        );
+        shared
+            .adjudication
+            .set_piece_exhaustion_grace(outcome.piece_exhaustion_grace());
+
+        let status = through_play.play(mv).unwrap();
+        assert_eq!(status, GameStatus::Finished(outcome.result().unwrap()));
+        assert_eq!(shared.position, through_play.position);
+        assert_eq!(shared.adjudication, through_play.adjudication);
+    }
+
+    #[test]
+    fn all_repetition_and_exception_combinations_preserve_adjudication_results() {
+        for repetition in [RuleCode::R1, RuleCode::R2, RuleCode::R3] {
+            for e1 in [false, true] {
+                for e2 in [false, true] {
+                    let mut codes = vec![repetition];
+                    if e1 {
+                        codes.push(RuleCode::E1);
+                    }
+                    if e2 {
+                        codes.push(RuleCode::E2);
+                    }
+
+                    let mut capture = game_with_codes(
+                        position(
+                            Color::Black,
+                            &[
+                                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                                (sq(5, 5), piece(Color::Black, PieceKind::Rook)),
+                                (sq(5, 8), piece(Color::White, PieceKind::King)),
+                            ],
+                        ),
+                        &codes,
+                    );
+                    assert_eq!(
+                        capture.play(step(sq(5, 5), sq(5, 8))),
+                        Ok(GameStatus::Finished(GameResult::Win {
+                            winner: Color::Black,
+                            reason: WinReason::RoyalCapture,
+                        })),
+                        "codes={codes:?}"
+                    );
+
+                    let (mate_position, mate_move) = mate_predecessor();
+                    let mut mate = game_with_codes(mate_position, &codes);
+                    let expected_mate = if e1 {
+                        GameStatus::Ongoing
+                    } else {
+                        GameStatus::Finished(GameResult::Win {
+                            winner: Color::White,
+                            reason: WinReason::Mate,
+                        })
+                    };
+                    assert_eq!(mate.play(mate_move), Ok(expected_mate), "codes={codes:?}");
+
+                    let mut exhaustion = game_with_codes(
+                        position(
+                            Color::Black,
+                            &[
+                                (sq(4, 4), piece(Color::Black, PieceKind::King)),
+                                (sq(4, 5), piece(Color::White, PieceKind::Pawn)),
+                                (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
+                                (sq(11, 11), piece(Color::White, PieceKind::King)),
+                            ],
+                        ),
+                        &codes,
+                    );
+                    let expected_exhaustion = if e2 {
+                        GameStatus::Ongoing
+                    } else {
+                        GameStatus::Finished(GameResult::Win {
+                            winner: Color::White,
+                            reason: WinReason::PieceExhaustion,
+                        })
+                    };
+                    assert_eq!(
+                        exhaustion.play(step(sq(4, 4), sq(4, 5))),
+                        Ok(expected_exhaustion),
+                        "codes={codes:?}"
+                    );
+
+                    let mut repeated = game_with_codes(
+                        position(
+                            Color::Black,
+                            &[
+                                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                                (sq(3, 3), piece(Color::Black, PieceKind::GoldGeneral)),
+                                (sq(11, 11), piece(Color::White, PieceKind::King)),
+                                (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
+                            ],
+                        ),
+                        &codes,
+                    );
+                    let cycle = [
+                        step(sq(3, 3), sq(3, 4)),
+                        step(sq(8, 8), sq(8, 7)),
+                        step(sq(3, 4), sq(3, 3)),
+                        step(sq(8, 7), sq(8, 8)),
+                    ];
+                    let accepted_plies = match repetition {
+                        RuleCode::R1 | RuleCode::R3 => 11,
+                        RuleCode::R2 => 3,
+                        _ => unreachable!(),
+                    };
+                    for ply in 0..accepted_plies {
+                        assert_eq!(
+                            repeated.play(cycle[ply % cycle.len()]),
+                            Ok(GameStatus::Ongoing),
+                            "codes={codes:?}, ply={} ",
+                            ply + 1
+                        );
+                    }
+                    let terminal_move = cycle[accepted_plies % cycle.len()];
+                    let expected_repetition = match repetition {
+                        RuleCode::R1 => Ok(GameStatus::Finished(GameResult::Draw {
+                            reason: DrawReason::Repetition,
+                        })),
+                        RuleCode::R2 | RuleCode::R3 => {
+                            Err(GameError::IllegalMove(IllegalMove(terminal_move)))
+                        }
+                        _ => unreachable!(),
+                    };
+                    assert_eq!(
+                        repeated.play(terminal_move),
+                        expected_repetition,
+                        "codes={codes:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn article_21_3_c_piece_exhaustion_win_prevents_mate() {
         let mut game = game_with_codes(
             position(
@@ -789,7 +730,7 @@ mod tests {
         );
 
         assert_eq!(game.play(step(sq(5, 1), sq(0, 1))), Ok(GameStatus::Ongoing));
-        assert!(!game.piece_exhaustion_grace);
+        assert!(!game.adjudication.piece_exhaustion_grace());
         assert_eq!(
             game.play(step(sq(0, 0), sq(0, 1))),
             Ok(GameStatus::Finished(GameResult::Win {
@@ -982,7 +923,7 @@ mod tests {
                 ],
             ));
             assert_eq!(game.play(capturing_promotion), Ok(GameStatus::Ongoing));
-            assert!(game.piece_exhaustion_grace);
+            assert!(game.adjudication.piece_exhaustion_grace());
             game.play(first_reply)
         };
 
@@ -1099,7 +1040,7 @@ mod tests {
                 reason: DrawReason::PieceExhaustion,
             }))
         );
-        assert!(!game.piece_exhaustion_grace);
+        assert!(!game.adjudication.piece_exhaustion_grace());
     }
 
     #[test]
@@ -1170,7 +1111,7 @@ mod tests {
             condition_c.play(establishes_condition),
             Ok(GameStatus::Ongoing)
         );
-        assert!(!condition_c.piece_exhaustion_grace);
+        assert!(!condition_c.adjudication.piece_exhaustion_grace());
 
         let mut immediate_win = e2_game(position(
             Color::Black,
@@ -1276,8 +1217,7 @@ mod tests {
 
         let repeated = step(sq(8, 7), sq(8, 8));
         let position_before = game.position().clone();
-        let repetition_before = game.repetition.clone();
-        let exhaustion_grace_before = game.piece_exhaustion_grace;
+        let adjudication_before = game.adjudication.clone();
         assert_eq!(
             game.play(repeated),
             Err(GameError::IllegalMove(IllegalMove(repeated)))
@@ -1285,12 +1225,14 @@ mod tests {
         assert_eq!(game.position(), &position_before);
         assert_eq!(game.ply_count(), 3);
         assert_eq!(game.status(), GameStatus::Ongoing);
-        assert_eq!(game.repetition, repetition_before);
-        assert_eq!(game.piece_exhaustion_grace, exhaustion_grace_before);
+        assert_eq!(game.adjudication, adjudication_before);
 
         assert_eq!(game.play(step(sq(8, 7), sq(9, 7))), Ok(GameStatus::Ongoing));
         assert_eq!(game.ply_count(), 4);
-        assert!(matches!(game.repetition, RepetitionHistory::R2(_)));
+        assert!(matches!(
+            game.adjudication.repetition(),
+            RepetitionHistory::R2(_)
+        ));
     }
 
     #[test]
@@ -1333,19 +1275,17 @@ mod tests {
         assert!(generated.contains(&fourth_occurrence));
         assert!(!game.legal_moves().contains(&fourth_occurrence));
 
-        game.piece_exhaustion_grace = true;
+        game.adjudication.set_piece_exhaustion_grace(true);
         let position_before = game.position().clone();
-        let repetition_before = game.repetition.clone();
+        let adjudication_before = game.adjudication.clone();
         let ply_before = game.ply_count();
-        let exhaustion_grace_before = game.piece_exhaustion_grace;
         assert_eq!(
             game.play(fourth_occurrence),
             Err(GameError::IllegalMove(IllegalMove(fourth_occurrence)))
         );
         assert_eq!(game.position(), &position_before);
-        assert_eq!(game.repetition, repetition_before);
+        assert_eq!(game.adjudication, adjudication_before);
         assert_eq!(game.ply_count(), ply_before);
-        assert_eq!(game.piece_exhaustion_grace, exhaustion_grace_before);
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(r3_history(&game).occurrences(&initial), Some(3));
     }
@@ -1380,7 +1320,7 @@ mod tests {
             retain_repetition_allowed_moves(
                 &mut probe,
                 &game.generator,
-                &game.repetition,
+                game.adjudication.repetition(),
                 &mut filtered,
             );
 
@@ -1652,7 +1592,10 @@ mod tests {
             match game.play(selected) {
                 Ok(status) => return status,
                 Err(GameError::IllegalMove(IllegalMove(rejected)))
-                    if matches!(game.repetition, RepetitionHistory::R2(_)) =>
+                    if matches!(
+                        game.adjudication.repetition(),
+                        RepetitionHistory::R2(_) | RepetitionHistory::R3(_)
+                    ) =>
                 {
                     assert_eq!(rejected, selected);
                 }
@@ -1660,7 +1603,7 @@ mod tests {
             }
         }
 
-        panic!("Article 23 must finish a game before every generated move is R2-forbidden");
+        panic!("Article 23 must finish a game before every generated move is repetition-forbidden");
     }
 
     #[test]
@@ -1698,7 +1641,10 @@ mod tests {
                     terminated,
                     "R2 random game {game_index} with {codes:?} exceeded the {PLY_CAP}-ply cap"
                 );
-                assert!(matches!(game.repetition, RepetitionHistory::R2(_)));
+                assert!(matches!(
+                    game.adjudication.repetition(),
+                    RepetitionHistory::R2(_)
+                ));
             }
         }
     }
@@ -1706,7 +1652,7 @@ mod tests {
     #[test]
     fn representative_rule_sets_random_self_play_returns_no_unexpected_errors() {
         const PLY_CAP: u32 = 1_500;
-        const RULE_SETS: [(&str, &[RuleCode], u64); 5] = [
+        const RULE_SETS: [(&str, &[RuleCode], u64); 6] = [
             (
                 "L1+L2+P3+R1+E1",
                 &[
@@ -1747,6 +1693,21 @@ mod tests {
                     RuleCode::E2,
                 ],
                 0x5255_4c45_4741_4d05,
+            ),
+            (
+                "L1+L2+L3+P1+P3+P4+R3+E1+E2",
+                &[
+                    RuleCode::L1,
+                    RuleCode::L2,
+                    RuleCode::L3,
+                    RuleCode::P1,
+                    RuleCode::P3,
+                    RuleCode::P4,
+                    RuleCode::R3,
+                    RuleCode::E1,
+                    RuleCode::E2,
+                ],
+                0x5255_4c45_4741_4d06,
             ),
         ];
 
