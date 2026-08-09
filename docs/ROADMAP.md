@@ -13,20 +13,19 @@
 | ローカルルール13コードの実装 | [plans/local-rules.md](plans/local-rules.md) | 完了 | 2026年8月2日 |
 | 合法手生成器の総仕上げ | [plans/movegen-hardening.md](plans/movegen-hardening.md) | 完了 | 2026年8月3日 |
 | 審判ロジック再編とR0撤去 | [plans/adjudication-refactor.md](plans/adjudication-refactor.md) | 完了 | 2026年8月9日 |
-| ランダム対局検証ハーネス | [plans/random-play.md](plans/random-play.md) | 進行中 | ― |
+| ランダム対局検証ハーネス | [plans/random-play.md](plans/random-play.md) | 完了 | 2026年8月10日 |
 | プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 進行中 | ― |
 
 プロトコル層の完了後に、探索部と評価関数の実装へ進む。
 
 ## 現在地
 
-審判ロジック再編とR0撤去は2026年8月9日に完了した。
-探索着手前監査で確認したL2とR1の不具合を回帰テストとともに修正し、R0のコード表現を撤去して実行可能な反復規則をR1、R2および新設のR3に限定し、`RULES.md`を第9版へ改版した。
-反復層は`repetition`モジュール、王駒捕獲・駒枯れ・合法手なし・詰みの裁定は`adjudication`モジュールへ分離し、`Game`と将来の探索部が共有できる形になった。
-テストは196件全緑であり、実施記録は設計書 plans/adjudication-refactor.md にある。
-現在は、ランダム対局検証ハーネス（設計書 plans/random-play.md、2026年8月9日起案）とプロトコル層（設計書 plans/protocol-layer.md、2026年8月10日起案）が並行して進行中である。
-プロトコル層のフェーズ1（仕様調査）はコードに触れないためハーネスの実装と並行でき、ハーネスのフェーズ2（`to_sfen`）はusi-lishogi調査の完了を、プロトコル層の実装フェーズはハーネスの完了を、それぞれ前提とする。
-依存関係の詳細は両設計書に記載した。
+ランダム対局検証ハーネスは2026年8月10日に完了した。
+乱数モジュールの分離、`to_sfen`の2欄基本形、`Game`の複製、`random_play`バイナリの4フェーズを実装し、代表9規則セット×300局の計2,700局が異常なし・打ち切り0局で完走した。
+テストは200件全緑であり、実施記録は設計書 plans/random-play.md にある。
+プロトコル層は、フェーズ1（仕様調査）を同2026年8月10日に完了し、docs/protocols/ に典拠付きの調査3文書と索引を収めた。
+同日のcodex設計レビューと別エージェントの独立監査（docs/protocols-audit-2026-08-10.md）の指摘は文書へ反映済みであり、設計変更級の論点はフェーズ2の確定事項として設計書に登録した。
+次の作業はプロトコル層のフェーズ2（拡張SFEN・指し手表記2形式・コマンドenumとtraitの設計確定）である。
 
 ## 次期マイルストーン：探索部と評価関数
 
