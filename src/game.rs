@@ -147,7 +147,11 @@ impl Game {
 
         match self.repetition_rule {
             RepetitionRule::R1 => {
-                self.update_attacking_counter(mover, mv);
+                self.consecutive_attacking_moves = updated_attacking_counters(
+                    self.consecutive_attacking_moves,
+                    mover,
+                    move_was_attacking(&self.position, &self.generator, mover, mv),
+                );
                 if let Some(result) = self.repetition_result() {
                     return Ok(self.finish(result));
                 }
@@ -204,12 +208,11 @@ impl Game {
                     let candidate_ply = ply
                         .checked_add(1)
                         .expect("a game cannot exceed u32::MAX plies");
-                    let mut counters = consecutive_attacking_moves;
-                    if move_was_attacking(position, generator, side_to_move, candidate) {
-                        counters[side_to_move.index()] = counters[side_to_move.index()]
-                            .checked_add(1)
-                            .expect("an attack sequence cannot exceed u32::MAX plies");
-                    }
+                    let counters = updated_attacking_counters(
+                        consecutive_attacking_moves,
+                        side_to_move,
+                        move_was_attacking(position, generator, side_to_move, candidate),
+                    );
                     return matches!(
                         r1_repetition_result(candidate_ply, state.first_ply, counters),
                         GameResult::Win { winner, .. } if winner == side_to_move
@@ -375,17 +378,6 @@ impl Game {
         debug_assert!(self.result.is_none());
         self.result = Some(result);
         GameStatus::Finished(result)
-    }
-
-    fn update_attacking_counter(&mut self, mover: Color, mv: Move) {
-        let counter = &mut self.consecutive_attacking_moves[mover.index()];
-        if move_was_attacking(&self.position, &self.generator, mover, mv) {
-            *counter = counter
-                .checked_add(1)
-                .expect("an attack sequence cannot exceed u32::MAX plies");
-        } else {
-            *counter = 0;
-        }
     }
 
     fn repetition_result(&mut self) -> Option<GameResult> {
@@ -574,6 +566,22 @@ fn moves_by_color_through(ply: u32, color: Color) -> u32 {
         Color::Black => ply / 2 + ply % 2,
         Color::White => ply / 2,
     }
+}
+
+fn updated_attacking_counters(
+    mut counters: [u32; 2],
+    mover: Color,
+    is_attacking: bool,
+) -> [u32; 2] {
+    let counter = &mut counters[mover.index()];
+    if is_attacking {
+        *counter = counter
+            .checked_add(1)
+            .expect("an attack sequence cannot exceed u32::MAX plies");
+    } else {
+        *counter = 0;
+    }
+    counters
 }
 
 fn move_was_attacking(
@@ -954,6 +962,49 @@ mod tests {
                 reason: WinReason::Repetition,
             }))
         );
+        assert_eq!(game.repetitions[&repeated_key].occurrences, 4);
+    }
+
+    #[test]
+    fn article_21_3_c_non_attacking_repetition_reply_resets_counter_and_prevents_mate() {
+        let (position, mv) = mate_predecessor();
+        let reply = step(sq(0, 0), sq(0, 1));
+        let rules = Rules::from_codes(&[RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut repeated_position = position.clone();
+        repeated_position.make_move_unchecked(mv, rules);
+        repeated_position.make_move_unchecked(reply, rules);
+        let repeated_key = repeated_position.zobrist() ^ repeated_position.rights_zobrist();
+        let mut game = Game::from_position(rules, position);
+
+        assert!(!move_was_attacking(
+            &repeated_position,
+            &game.generator,
+            Color::Black,
+            reply
+        ));
+        assert_eq!(
+            game.repetitions.insert(
+                repeated_key,
+                RepetitionState {
+                    occurrences: 3,
+                    first_ply: 0,
+                },
+            ),
+            None
+        );
+        game.consecutive_attacking_moves = [1, 0];
+
+        assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        assert_eq!(game.consecutive_attacking_moves, [1, 1]);
+        assert_eq!(game.repetitions[&repeated_key].occurrences, 3);
+        assert_eq!(
+            game.play(reply),
+            Ok(GameStatus::Finished(GameResult::Win {
+                winner: Color::Black,
+                reason: WinReason::Repetition,
+            }))
+        );
+        assert_eq!(game.consecutive_attacking_moves, [0, 1]);
         assert_eq!(game.repetitions[&repeated_key].occurrences, 4);
     }
 

@@ -255,6 +255,7 @@ impl Rules {
             && captured_lions.into_iter().flatten().any(|lion| {
                 let l2_exemption = self.contains(RuleCode::L2)
                     && trigger.by_kirin_promotion
+                    && lion == trigger.square
                     && position.piece_at(lion).is_some_and(PieceCode::is_promoted);
                 !l2_exemption
                     && if self.contains(RuleCode::L1) {
@@ -405,7 +406,7 @@ mod tests {
     use crate::core::bitboard::Bitboard;
     use crate::core::movegen::MoveGenerator;
     use crate::core::position::PositionBuilder;
-    use crate::test_util::{position, sq};
+    use crate::test_util::{position, position_from_codes, sq};
 
     fn is_generated_with_rules(rules: Rules, position: &Position, expected: Move) -> bool {
         let mut moves = Vec::new();
@@ -894,6 +895,72 @@ mod tests {
             l2,
             &position,
             capture_existing_lion
+        ));
+    }
+
+    #[test]
+    fn article_29_l2_exempts_only_the_new_promoted_lion() {
+        let mut position = position_from_codes(
+            Color::Black,
+            &[
+                (sq(5, 9), PieceCode::new(Color::Black, PieceKind::Kirin)),
+                (sq(5, 11), PieceCode::new(Color::White, PieceKind::Lion)),
+                (
+                    sq(8, 7),
+                    PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap(),
+                ),
+                (sq(6, 7), PieceCode::new(Color::Black, PieceKind::Lion)),
+                (
+                    sq(4, 11),
+                    PieceCode::new(Color::Black, PieceKind::GoldGeneral),
+                ),
+                (
+                    sq(7, 7),
+                    PieceCode::new(Color::Black, PieceKind::GoldGeneral),
+                ),
+                (sq(5, 4), PieceCode::new(Color::White, PieceKind::Rook)),
+                (sq(8, 4), PieceCode::new(Color::White, PieceKind::Rook)),
+                (sq(6, 4), PieceCode::new(Color::White, PieceKind::Rook)),
+            ],
+        );
+        position.make_move_unchecked(
+            Move {
+                from: sq(5, 9),
+                mid: None,
+                to: sq(5, 11),
+                promote: true,
+            },
+            Rules::standard(),
+        );
+        assert_eq!(
+            position
+                .lion_taken_by_non_lion()
+                .map(|trigger| trigger.square),
+            Some(sq(5, 11))
+        );
+
+        let l2 = Rules::from_codes(&[RuleCode::L2]).unwrap();
+        let capture = |from, to| Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        };
+
+        assert!(is_generated_with_rules(
+            l2,
+            &position,
+            capture(sq(5, 4), sq(5, 11))
+        ));
+        assert!(!is_generated_with_rules(
+            l2,
+            &position,
+            capture(sq(8, 4), sq(8, 7))
+        ));
+        assert!(!is_generated_with_rules(
+            l2,
+            &position,
+            capture(sq(6, 4), sq(6, 7))
         ));
     }
 

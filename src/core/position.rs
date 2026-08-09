@@ -50,6 +50,8 @@ struct ZobristKeys {
     lion_trigger_kirin: u64,
     /// 升ごとの成り権保留キー。
     promotion_deferred: Box<[u64]>,
+    /// 先獅子トリガーの対象升ごとのキー。
+    lion_trigger_square: Box<[u64]>,
 }
 
 impl ZobristKeys {
@@ -63,12 +65,14 @@ impl ZobristKeys {
         let lion_trigger = rng.next();
         let lion_trigger_kirin = rng.next();
         let promotion_deferred = (0..BOARD_SQUARE_COUNT).map(|_| rng.next()).collect();
+        let lion_trigger_square = (0..BOARD_SQUARE_COUNT).map(|_| rng.next()).collect();
         Self {
             pieces,
             side_to_move,
             lion_trigger,
             lion_trigger_kirin,
             promotion_deferred,
+            lion_trigger_square,
         }
     }
 
@@ -96,6 +100,7 @@ impl ZobristKeys {
     fn lion_trigger_state(&self, trigger: Option<LionTrigger>) -> u64 {
         trigger.map_or(0, |trigger| {
             self.lion_trigger
+                ^ self.lion_trigger_square[trigger.square.dense_index()]
                 ^ if trigger.by_kirin_promotion {
                     self.lion_trigger_kirin
                 } else {
@@ -335,9 +340,9 @@ impl Position {
 
     /// 盤面・手番・先獅子トリガーを含むzobristハッシュを返す。
     ///
-    /// 先獅子トリガーの有無1ビットと麒麟成りフラグ1ビットを含む。
-    /// 採用可能な全ローカルルール(L1・L2を含む)の下で、次の合法手は
-    /// この2成分と盤面・手番だけで決まるため、捕獲升はハッシュへ含めない。
+    /// 先獅子トリガーの有無、対象升および麒麟成りフラグを区別する。
+    /// これらは、採用可能な全ローカルルール(L1・L2を含む)の下で
+    /// 次の合法手を区別する局面要素である(第24条第1項c)。
     #[inline]
     pub const fn zobrist(&self) -> u64 {
         self.zobrist
@@ -1050,6 +1055,88 @@ mod tests {
         assert_eq!(position.zobrist(), previous_zobrist);
         assert_eq!(position, before);
         assert_zobrist_matches(&position);
+    }
+
+    #[test]
+    fn article_24_1_c_zobrist_distinguishes_senjishi_target_squares() {
+        let origin = sq(5, 9);
+        let left_target = sq(5, 11);
+        let right_target = sq(7, 9);
+        let promoted_lion = PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap();
+        let mut left_builder = PositionBuilder::new(Color::Black);
+        for (square, piece) in [
+            (origin, PieceCode::new(Color::Black, PieceKind::Kirin)),
+            (left_target, PieceCode::new(Color::White, PieceKind::Lion)),
+            (right_target, promoted_lion),
+        ] {
+            left_builder.put(square, piece).unwrap();
+        }
+        let mut left = left_builder.finish().unwrap();
+        let mut right_builder = PositionBuilder::new(Color::Black);
+        for (square, piece) in [
+            (origin, PieceCode::new(Color::Black, PieceKind::Kirin)),
+            (left_target, promoted_lion),
+            (right_target, PieceCode::new(Color::White, PieceKind::Lion)),
+        ] {
+            right_builder.put(square, piece).unwrap();
+        }
+        let mut right = right_builder.finish().unwrap();
+        let left_before = left.clone();
+        let right_before = right.clone();
+        let generator = MoveGenerator::standard();
+        let left_undo = left
+            .try_make_move(
+                Move {
+                    from: origin,
+                    mid: None,
+                    to: left_target,
+                    promote: true,
+                },
+                &generator,
+            )
+            .unwrap();
+        let right_undo = right
+            .try_make_move(
+                Move {
+                    from: origin,
+                    mid: None,
+                    to: right_target,
+                    promote: true,
+                },
+                &generator,
+            )
+            .unwrap();
+
+        assert_eq!(left.side_to_move(), right.side_to_move());
+        assert!(Square::all().all(|square| left.piece_at(square) == right.piece_at(square)));
+        assert!(
+            left.lion_taken_by_non_lion()
+                .is_some_and(|trigger| trigger.by_kirin_promotion)
+        );
+        assert!(
+            right
+                .lion_taken_by_non_lion()
+                .is_some_and(|trigger| trigger.by_kirin_promotion)
+        );
+        assert_eq!(
+            left.lion_taken_by_non_lion().map(|trigger| trigger.square),
+            Some(left_target)
+        );
+        assert_eq!(
+            right.lion_taken_by_non_lion().map(|trigger| trigger.square),
+            Some(right_target)
+        );
+        assert_ne!(left.zobrist(), right.zobrist());
+        assert_zobrist_matches(&left);
+        assert_zobrist_matches(&right);
+
+        left.unmake_move(left_undo);
+        right.unmake_move(right_undo);
+
+        assert_eq!(left, left_before);
+        assert_eq!(right, right_before);
+        assert_zobrist_matches(&left);
+        assert_zobrist_matches(&right);
     }
 
     #[test]
