@@ -1,6 +1,7 @@
 use crate::core::movegen::MoveGenerator;
 use crate::core::mv::{Move, Undo};
 use crate::core::position::Position;
+use crate::repetition::{RepetitionHistory, retain_repetition_allowed_moves};
 
 pub(crate) fn captures_last_royal(position: &Position, mv: Move) -> bool {
     let opponent = position.side_to_move().opposite();
@@ -31,25 +32,24 @@ pub(crate) fn can_capture_last_royal(position: &Position, generator: &MoveGenera
 pub(crate) fn has_no_legal_move(
     position: &mut Position,
     generator: &MoveGenerator,
-    forbidden_position: Option<&dyn Fn(u64) -> bool>,
+    repetition: &RepetitionHistory,
 ) -> bool {
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
+    retain_repetition_allowed_moves(position, generator, repetition, &mut moves);
     moves.is_empty()
-        || moves
-            .into_iter()
-            .all(|mv| move_reaches_forbidden_position(position, generator, mv, forbidden_position))
 }
 
 #[allow(clippy::type_complexity)]
 pub(crate) fn is_mate(
     position: &mut Position,
     generator: &MoveGenerator,
-    forbidden_position: Option<&dyn Fn(u64) -> bool>,
+    repetition: &RepetitionHistory,
     immediate_win: Option<&dyn Fn(&Position, Move, &Undo) -> bool>,
 ) -> bool {
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
+    retain_repetition_allowed_moves(position, generator, repetition, &mut moves);
     if moves.is_empty() {
         return false;
     }
@@ -61,10 +61,6 @@ pub(crate) fn is_mate(
         }
 
         let undo = position.make_move_unchecked(mv, generator.rules());
-        if forbidden_position.is_some_and(|is_forbidden| is_forbidden(position.zobrist())) {
-            position.unmake_move(undo);
-            continue;
-        }
         has_legal_move = true;
         if immediate_win.is_some_and(|wins| wins(position, mv, &undo)) {
             position.unmake_move(undo);
@@ -81,26 +77,11 @@ pub(crate) fn is_mate(
     has_legal_move
 }
 
-fn move_reaches_forbidden_position(
-    position: &mut Position,
-    generator: &MoveGenerator,
-    mv: Move,
-    forbidden_position: Option<&dyn Fn(u64) -> bool>,
-) -> bool {
-    let Some(is_forbidden) = forbidden_position else {
-        return false;
-    };
-
-    let undo = position.make_move_unchecked(mv, generator.rules());
-    let forbidden = is_forbidden(position.zobrist());
-    position.unmake_move(undo);
-    forbidden
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::piece::{Color, PieceCode, PieceKind};
+    use crate::core::rules::RepetitionRule;
     use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
@@ -109,6 +90,10 @@ mod tests {
 
     fn prince(color: Color) -> PieceCode {
         PieceCode::new_promoted(color, PieceKind::CrownPrince).unwrap()
+    }
+
+    fn repetition(position: &Position) -> RepetitionHistory {
+        RepetitionHistory::new(RepetitionRule::R1, position)
     }
 
     #[test]
@@ -124,11 +109,12 @@ mod tests {
             ],
         );
         let original = position.clone();
+        let repetition = repetition(&position);
 
         assert!(is_mate(
             &mut position,
             &MoveGenerator::standard(),
-            None,
+            &repetition,
             None
         ));
         assert_eq!(position, original);
@@ -155,12 +141,13 @@ mod tests {
         };
         let generator = MoveGenerator::standard();
         let immediate_win = |_: &Position, mv: Move, _: &Undo| mv == winning_move;
+        let repetition = repetition(&position);
 
-        assert!(is_mate(&mut position, &generator, None, None));
+        assert!(is_mate(&mut position, &generator, &repetition, None));
         assert!(!is_mate(
             &mut position,
             &generator,
-            None,
+            &repetition,
             Some(&immediate_win)
         ));
         assert_eq!(position, original);
@@ -177,11 +164,12 @@ mod tests {
                 (sq(10, 9), piece(Color::White, PieceKind::King)),
             ],
         );
+        let repetition = repetition(&position);
 
         assert!(!is_mate(
             &mut position,
             &MoveGenerator::standard(),
-            None,
+            &repetition,
             None
         ));
     }
@@ -196,12 +184,13 @@ mod tests {
         let mut position = position(Color::Black, &pieces);
 
         let generator = MoveGenerator::standard();
+        let repetition = repetition(&position);
         assert!(can_capture_last_royal(&threatened, &generator));
         assert!(can_capture_last_royal(&position, &generator));
         assert!(!is_mate(
             &mut position,
             &MoveGenerator::standard(),
-            None,
+            &repetition,
             None
         ));
     }
@@ -225,6 +214,7 @@ mod tests {
             ],
         );
         let generator = MoveGenerator::standard();
+        let repetition = repetition(&position);
         let mut moves = Vec::new();
         generator.generate_moves(&position, &mut moves);
         assert_eq!(moves.len(), 2);
@@ -248,7 +238,7 @@ mod tests {
             position.unmake_move(undo);
         }
 
-        assert!(!is_mate(&mut position, &generator, None, None));
+        assert!(!is_mate(&mut position, &generator, &repetition, None));
     }
 
     #[test]
@@ -290,8 +280,9 @@ mod tests {
             ],
         );
         let generator = MoveGenerator::standard();
+        let repetition = repetition(&position);
 
-        assert!(has_no_legal_move(&mut position, &generator, None));
-        assert!(!is_mate(&mut position, &generator, None, None));
+        assert!(has_no_legal_move(&mut position, &generator, &repetition));
+        assert!(!is_mate(&mut position, &generator, &repetition, None));
     }
 }

@@ -3,6 +3,7 @@
 pub mod core;
 mod game;
 mod mate;
+mod repetition;
 pub mod sfen;
 
 #[cfg(test)]
