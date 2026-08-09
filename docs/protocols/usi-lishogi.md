@@ -148,7 +148,7 @@ lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPP
 
 lishogiはlichess由来のBot APIを備え、USIエンジンはブリッジプログラムを介して接続する。調査時点で参照できた実装はTheYoBots/Lishogi-Bot（Python製、lichess-botの移植）である［B1: README.md］。ブリッジはlishogiのAPIから対局イベントを受け取り、ローカルのUSIエンジンプロセスと標準入出力で通信する。対応プロトコルは`usi`のみである［B1: config.yml.default］。
 
-局面は毎手`position <初期局面> moves <着手列>`で送られる。初期局面はAPIの`initialSfen`フィールドから取り、`startpos`でなければ`sfen `を前置する［B1: engine_ctrl/usi.py `position`、model.py］。中将棋の対局で`initialSfen`が常に完全なSFEN文字列になるかどうかはAPIの実測を行っておらず未確認だが、エンジン側は`startpos`と`sfen`両形式への対応が安全である。
+Lishogi-Botは`usinewgame`を送信しない（engine_ctrl/usi.pyに当該コマンドの送信箇所が存在しないことを確認した）。局面は毎手`position <初期局面> moves <着手列>`で送られ、思考要求は`position`直後の`go`である。初期局面はAPIの`initialSfen`フィールドから取り、`startpos`でなければ`sfen `を前置する［B1: engine_ctrl/usi.py `position`、model.py］。中将棋の対局で`initialSfen`が常に完全なSFEN文字列になるかどうかはAPIの実測を行っておらず未確認だが、エンジン側は`startpos`と`sfen`両形式への対応が安全である。
 
 ### 接続経路からのオプション設定
 
