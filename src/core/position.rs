@@ -8,35 +8,12 @@ use crate::core::mv::{CapturedPiece, Move, Undo};
 use crate::core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use crate::core::rules::{PromotionChoice, RuleCode, Rules, in_promotion_zone};
 use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
+use crate::rng::XorShift64;
 
 /// 1升あたりのzobrist駒キー数(色×駒種×成否)。
 const ZOBRIST_PIECE_CODE_COUNT: usize = COLOR_COUNT * PIECE_KIND_COUNT * 2;
 /// zobristキー生成に使う乱数列のシード。
 const ZOBRIST_SEED: u64 = 0x4d49_4e41_5345_5a31;
-
-/// zobristキー生成用のxorshift64乱数生成器。
-struct XorShift64 {
-    /// 乱数列の内部状態。
-    state: u64,
-}
-
-impl XorShift64 {
-    /// シードから生成器を作る。シードは0以外でなければならない。
-    fn new(seed: u64) -> Self {
-        assert_ne!(seed, 0);
-        Self { state: seed }
-    }
-
-    /// 次の乱数を返す。
-    fn next(&mut self) -> u64 {
-        let mut value = self.state;
-        value ^= value << 13;
-        value ^= value >> 7;
-        value ^= value << 17;
-        self.state = value;
-        value
-    }
-}
 
 /// zobristハッシュの基底乱数表。
 struct ZobristKeys {

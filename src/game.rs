@@ -260,6 +260,7 @@ mod tests {
     use crate::core::rules::{RepetitionRule, RuleCode};
     use crate::core::square::Square;
     use crate::repetition::{R1History, R2History, R3History};
+    use crate::rng::XorShift64;
     use crate::sfen::parse_sfen;
     use crate::test_util::{position_from_codes as position, sq};
 
@@ -1530,26 +1531,6 @@ mod tests {
         assert_eq!(game.play(legal), Err(GameError::GameAlreadyOver));
         assert_eq!(game.ply_count(), 0);
         assert_eq!(game.position(), &Position::initial());
-    }
-
-    struct XorShift64 {
-        state: u64,
-    }
-
-    impl XorShift64 {
-        fn new(seed: u64) -> Self {
-            assert_ne!(seed, 0);
-            Self { state: seed }
-        }
-
-        fn next(&mut self) -> u64 {
-            let mut value = self.state;
-            value ^= value << 13;
-            value ^= value >> 7;
-            value ^= value << 17;
-            self.state = value;
-            value
-        }
     }
 
     fn assert_random_game_position_invariants(game: &Game, rule_set_name: &str) {

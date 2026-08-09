@@ -13,31 +13,8 @@ use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuilder};
 use crate::core::rules::{RuleCode, Rules};
 use crate::core::square::{BOARD_SQUARE_COUNT, Square};
+use crate::rng::XorShift64;
 use crate::test_util::sq;
-
-struct XorShift64 {
-    state: u64,
-}
-
-impl XorShift64 {
-    fn new(seed: u64) -> Self {
-        assert_ne!(seed, 0);
-        Self { state: seed }
-    }
-
-    fn next(&mut self) -> u64 {
-        let mut value = self.state;
-        value ^= value << 13;
-        value ^= value >> 7;
-        value ^= value << 17;
-        self.state = value;
-        value
-    }
-
-    fn index(&mut self, length: usize) -> usize {
-        self.next() as usize % length
-    }
-}
 
 fn random_piece(rng: &mut XorShift64, color: Color, kind: PieceKind) -> PieceCode {
     if rng.next() & 1 != 0

@@ -4,6 +4,8 @@ mod adjudication;
 pub mod core;
 mod game;
 mod repetition;
+#[doc(hidden)]
+pub mod rng;
 pub mod sfen;
 
 #[cfg(test)]
