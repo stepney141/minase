@@ -3,10 +3,10 @@
 mod adjudication;
 pub mod core;
 mod game;
+pub mod notation;
 mod repetition;
 #[doc(hidden)]
 pub mod rng;
-pub mod sfen;
 
 #[cfg(test)]
 mod test_util;
@@ -21,5 +21,8 @@ pub use crate::core::rules::{PromotionChoice, RuleCode, Rules, RulesError};
 pub use crate::core::square::{
     BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square,
 };
-pub use game::{DrawReason, Game, GameBuildError, GameError, GameResult, GameStatus, WinReason};
-pub use sfen::{SfenError, parse_sfen, to_sfen};
+pub use game::{
+    DrawReason, Game, GameBuildError, GameError, GameResult, GameStatus, IllegalMoveCause,
+    WinReason,
+};
+pub use notation::sfen::{SfenError, parse_sfen, to_sfen};

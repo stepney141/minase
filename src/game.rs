@@ -41,17 +41,44 @@ pub enum GameStatus {
     Finished(GameResult),
 }
 
+/// 対局管理層が着手を拒否した原因。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum IllegalMoveCause {
+    /// 駒の動きまたは獅子の捕獲制限に反する着手。
+    Movement,
+    /// R2またはR3が禁止する反復着手(第31条)。
+    Repetition,
+}
+
+impl fmt::Display for IllegalMoveCause {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Movement => formatter.write_str("illegal movement"),
+            Self::Repetition => formatter.write_str("forbidden repetition"),
+        }
+    }
+}
+
+impl std::error::Error for IllegalMoveCause {}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameError {
     GameAlreadyOver,
-    IllegalMove(IllegalMove),
+    IllegalMove { mv: Move, cause: IllegalMoveCause },
 }
 
 impl fmt::Display for GameError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::GameAlreadyOver => formatter.write_str("the game is already over"),
-            Self::IllegalMove(error) => error.fmt(formatter),
+            Self::IllegalMove {
+                mv,
+                cause: IllegalMoveCause::Movement,
+            } => IllegalMove(*mv).fmt(formatter),
+            Self::IllegalMove {
+                mv,
+                cause: IllegalMoveCause::Repetition,
+            } => write!(formatter, "the move is forbidden by repetition: {mv:?}"),
         }
     }
 }
@@ -59,15 +86,18 @@ impl fmt::Display for GameError {
 impl std::error::Error for GameError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::IllegalMove(error) => Some(error),
+            Self::IllegalMove { cause, .. } => Some(cause),
             Self::GameAlreadyOver => None,
         }
     }
 }
 
 impl From<IllegalMove> for GameError {
-    fn from(error: IllegalMove) -> Self {
-        Self::IllegalMove(error)
+    fn from(IllegalMove(mv): IllegalMove) -> Self {
+        Self::IllegalMove {
+            mv,
+            cause: IllegalMoveCause::Movement,
+        }
     }
 }
 
@@ -121,7 +151,10 @@ impl Game {
         let undo = self.position.try_make_move(mv, &self.generator)?;
         if repetition_is_forbidden(self.adjudication.repetition(), &self.position) {
             self.position.unmake_move(undo);
-            return Err(GameError::IllegalMove(IllegalMove(mv)));
+            return Err(GameError::IllegalMove {
+                mv,
+                cause: IllegalMoveCause::Repetition,
+            });
         }
         let promoted_waiting_piece = promoted_waiting_square(mv, &undo);
         let repetition_result =
@@ -260,9 +293,9 @@ mod tests {
     use crate::core::position::PositionBuilder;
     use crate::core::rules::{RepetitionRule, RuleCode};
     use crate::core::square::Square;
+    use crate::parse_sfen;
     use crate::repetition::{R1History, R2History, R3History};
     use crate::rng::XorShift64;
-    use crate::sfen::parse_sfen;
     use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
@@ -328,6 +361,36 @@ mod tests {
             to,
             promote: false,
         }
+    }
+
+    #[test]
+    fn illegal_move_error_classifies_movement_and_preserves_cause_chain() {
+        let illegal = step(sq(5, 5), sq(5, 6));
+        let mut game = Game::with_default_rules();
+        let error = game.play(illegal).unwrap_err();
+
+        assert_eq!(
+            error,
+            GameError::IllegalMove {
+                mv: illegal,
+                cause: IllegalMoveCause::Movement,
+            }
+        );
+        assert_eq!(error.to_string(), IllegalMove(illegal).to_string());
+        assert_eq!(
+            std::error::Error::source(&error).map(ToString::to_string),
+            Some(IllegalMoveCause::Movement.to_string())
+        );
+
+        let repetition = GameError::IllegalMove {
+            mv: illegal,
+            cause: IllegalMoveCause::Repetition,
+        };
+        assert!(repetition.to_string().contains("repetition"));
+        assert_eq!(
+            std::error::Error::source(&repetition).map(ToString::to_string),
+            Some(IllegalMoveCause::Repetition.to_string())
+        );
     }
 
     fn mate_predecessor() -> (Position, Move) {
@@ -719,9 +782,10 @@ mod tests {
                         RuleCode::R1 => Ok(GameStatus::Finished(GameResult::Draw {
                             reason: DrawReason::Repetition,
                         })),
-                        RuleCode::R2 | RuleCode::R3 => {
-                            Err(GameError::IllegalMove(IllegalMove(terminal_move)))
-                        }
+                        RuleCode::R2 | RuleCode::R3 => Err(GameError::IllegalMove {
+                            mv: terminal_move,
+                            cause: IllegalMoveCause::Repetition,
+                        }),
                         _ => unreachable!(),
                     };
                     assert_eq!(
@@ -1240,7 +1304,10 @@ mod tests {
         let adjudication_before = game.adjudication.clone();
         assert_eq!(
             game.play(repeated),
-            Err(GameError::IllegalMove(IllegalMove(repeated)))
+            Err(GameError::IllegalMove {
+                mv: repeated,
+                cause: IllegalMoveCause::Repetition,
+            })
         );
         assert_eq!(game.position(), &position_before);
         assert_eq!(game.ply_count(), 3);
@@ -1301,7 +1368,10 @@ mod tests {
         let ply_before = game.ply_count();
         assert_eq!(
             game.play(fourth_occurrence),
-            Err(GameError::IllegalMove(IllegalMove(fourth_occurrence)))
+            Err(GameError::IllegalMove {
+                mv: fourth_occurrence,
+                cause: IllegalMoveCause::Repetition,
+            })
         );
         assert_eq!(game.position(), &position_before);
         assert_eq!(game.adjudication, adjudication_before);
@@ -1460,7 +1530,10 @@ mod tests {
         let forbidden_noncapture = step(sq(0, 0), sq(0, 1));
         assert_eq!(
             game.play(forbidden_noncapture),
-            Err(GameError::IllegalMove(IllegalMove(forbidden_noncapture)))
+            Err(GameError::IllegalMove {
+                mv: forbidden_noncapture,
+                cause: IllegalMoveCause::Repetition,
+            })
         );
         assert_eq!(
             game.play(step(sq(0, 0), sq(1, 0))),
@@ -1496,7 +1569,10 @@ mod tests {
         let forbidden_escape = step(sq(0, 0), sq(0, 1));
         assert_eq!(
             game.play(forbidden_escape),
-            Err(GameError::IllegalMove(IllegalMove(forbidden_escape)))
+            Err(GameError::IllegalMove {
+                mv: forbidden_escape,
+                cause: IllegalMoveCause::Repetition,
+            })
         );
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.ply_count(), 3);
@@ -1591,12 +1667,10 @@ mod tests {
             let selected = moves[(start + offset) % moves.len()];
             match game.play(selected) {
                 Ok(status) => return status,
-                Err(GameError::IllegalMove(IllegalMove(rejected)))
-                    if matches!(
-                        game.adjudication.repetition(),
-                        RepetitionHistory::R2(_) | RepetitionHistory::R3(_)
-                    ) =>
-                {
+                Err(GameError::IllegalMove {
+                    mv: rejected,
+                    cause: IllegalMoveCause::Repetition,
+                }) => {
                     assert_eq!(rejected, selected);
                 }
                 Err(error) => panic!("unexpected self-play error: {error}"),

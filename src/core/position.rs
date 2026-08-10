@@ -132,9 +132,11 @@ pub struct Position {
     rights_zobrist: u64,
 }
 
-/// [`Position::validate`]が検出する内部不変条件の違反。
+/// [`Position`]の操作または[`Position::validate`]が検出する不正な状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PositionError {
+    /// 先獅子の獅子捕獲升に手番側の駒がある。
+    InvalidLionCapture { square: Square },
     /// 番兵位置に番兵コード以外が置かれている。
     PaddingIsNotWall { raw: u8 },
     /// 有効升に番兵コードが置かれている。
@@ -161,7 +163,13 @@ pub enum PositionError {
 
 impl fmt::Display for PositionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "position invariant failed: {self:?}")
+        match self {
+            Self::InvalidLionCapture { square } => write!(
+                formatter,
+                "invalid lion-capture square occupied by the side to move: {square:?}"
+            ),
+            _ => write!(formatter, "position invariant failed: {self:?}"),
+        }
     }
 }
 
@@ -313,6 +321,42 @@ impl Position {
     #[inline]
     pub const fn side_to_move(&self) -> Color {
         self.side_to_move
+    }
+
+    /// 拡張SFENの獅子捕獲升から先獅子状態を設定する。
+    ///
+    /// 空升は、角鷹または飛鷲が経由升で獅子を取った状態として受理する。
+    /// 非手番側の麒麟由来の成獅子が指定升にあれば、同一升での取り返しに
+    /// 必要な原因も復元する(第15条・第29条L2)。
+    ///
+    /// # エラー
+    ///
+    /// 指定升に手番側の駒がある場合は
+    /// [`PositionError::InvalidLionCapture`]を返し、局面を変更しない。
+    pub fn set_lion_capture(&mut self, lion_capture: Option<Square>) -> Result<(), PositionError> {
+        let trigger = match lion_capture {
+            None => None,
+            Some(square) => {
+                let piece = self.piece_at(square);
+                if piece.is_some_and(|piece| piece.color() == Some(self.side_to_move)) {
+                    return Err(PositionError::InvalidLionCapture { square });
+                }
+                Some(LionTrigger {
+                    square,
+                    by_kirin_promotion: piece.is_some_and(|piece| {
+                        piece.color() == Some(self.side_to_move.opposite())
+                            && piece.kind() == Some(PieceKind::Lion)
+                            && piece.is_promoted()
+                    }),
+                })
+            }
+        };
+
+        let keys = zobrist_keys();
+        self.zobrist ^=
+            keys.lion_trigger_state(self.lion_taken_by_non_lion) ^ keys.lion_trigger_state(trigger);
+        self.lion_taken_by_non_lion = trigger;
+        Ok(())
     }
 
     /// 盤面・手番・先獅子トリガーを含むzobristハッシュを返す。
@@ -997,6 +1041,54 @@ mod tests {
             position.piece_at(captured_lion),
             PieceCode::new_promoted(Color::Black, PieceKind::Lion),
         );
+    }
+
+    #[test]
+    fn extended_sfen_lion_capture_injection_validates_occupant_and_updates_zobrist() {
+        let own = sq(1, 1);
+        let empty = sq(2, 2);
+        let opponent = sq(3, 3);
+        let promoted_lion = sq(4, 4);
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(own, PieceCode::new(Color::Black, PieceKind::Pawn))
+            .unwrap();
+        builder
+            .put(opponent, PieceCode::new(Color::White, PieceKind::Rook))
+            .unwrap();
+        builder
+            .put(
+                promoted_lion,
+                PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
+            )
+            .unwrap();
+        let mut position = builder.finish().unwrap();
+
+        let before_rejection = position.clone();
+        assert_eq!(
+            position.set_lion_capture(Some(own)),
+            Err(PositionError::InvalidLionCapture { square: own })
+        );
+        assert_eq!(position, before_rejection);
+
+        for (square, by_kirin_promotion) in
+            [(empty, false), (opponent, false), (promoted_lion, true)]
+        {
+            assert_eq!(position.set_lion_capture(Some(square)), Ok(()));
+            assert_eq!(
+                position.lion_taken_by_non_lion(),
+                Some(LionTrigger {
+                    square,
+                    by_kirin_promotion,
+                })
+            );
+            assert_zobrist_matches(&position);
+            assert_eq!(position.validate(), Ok(()));
+        }
+
+        assert_eq!(position.set_lion_capture(None), Ok(()));
+        assert_eq!(position.lion_taken_by_non_lion(), None);
+        assert_zobrist_matches(&position);
     }
 
     #[test]

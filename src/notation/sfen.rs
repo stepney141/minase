@@ -2,14 +2,48 @@ use core::fmt;
 
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuildError, PositionBuilder};
+use crate::core::rules::{RuleCode, Rules};
 use crate::core::square::{BOARD_FILES, BOARD_RANKS, Square};
 
+/// 拡張SFENが表す対局開始局面。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SetupPosition {
+    /// 盤面、手番およびP1成り権保留状態。
+    pub position: Position,
+    /// 直前の非獅子による獅子捕獲升。先獅子(第15条)の復元に使う。
+    pub lion_capture: Option<Square>,
+    /// 次の着手の手数。表記だけに保持し、裁定には使わない。
+    pub next_move_number: u32,
+}
+
+/// SFENの構文または局面構築のエラー。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SfenError {
     MissingBoard,
     MissingSideToMove,
     InvalidSideToMove,
     UnexpectedFields,
+    /// 拡張SFENの欄数が4または5ではない。
+    InvalidExtendedFieldCount {
+        found: usize,
+    },
+    /// 獅子捕獲升の表記が盤上の升を表さない。
+    InvalidLionCaptureSquare,
+    /// 獅子捕獲升に手番側の駒があるため、直前着手後の状態として成立しない。
+    LionCaptureOccupiedBySideToMove {
+        square: Square,
+    },
+    /// 手数が1以上9999以下の整数ではない。
+    InvalidMoveNumber,
+    /// P1成り権保留升の表記が盤上の升を表さない。
+    InvalidPromotionDeferredSquare,
+    /// P1成り権保留升が内部密番号の狭義昇順ではない。
+    PromotionDeferredNotStrictlyAscending {
+        previous: Square,
+        current: Square,
+    },
+    /// P1を採用していない規則で成り権保留升が指定された(第30条P1)。
+    PromotionDeferredRequiresP1,
     WrongRowCount {
         found: usize,
     },
@@ -49,6 +83,29 @@ impl fmt::Display for SfenError {
             }
             Self::UnexpectedFields => {
                 formatter.write_str("unexpected SFEN field after the side to move")
+            }
+            Self::InvalidExtendedFieldCount { found } => write!(
+                formatter,
+                "extended SFEN has {found} fields; expected 4 or 5"
+            ),
+            Self::InvalidLionCaptureSquare => {
+                formatter.write_str("invalid extended SFEN lion-capture square")
+            }
+            Self::LionCaptureOccupiedBySideToMove { square } => write!(
+                formatter,
+                "extended SFEN lion-capture square {square:?} is occupied by the side to move"
+            ),
+            Self::InvalidMoveNumber => formatter
+                .write_str("invalid extended SFEN move number; expected an integer from 1 to 9999"),
+            Self::InvalidPromotionDeferredSquare => {
+                formatter.write_str("invalid extended SFEN promotion-deferred square")
+            }
+            Self::PromotionDeferredNotStrictlyAscending { previous, current } => write!(
+                formatter,
+                "extended SFEN promotion-deferred squares are not strictly ascending: {previous:?}, {current:?}"
+            ),
+            Self::PromotionDeferredRequiresP1 => {
+                formatter.write_str("extended SFEN promotion-deferred squares require rule P1")
             }
             Self::WrongRowCount { found } => write!(
                 formatter,
@@ -97,6 +154,13 @@ impl std::error::Error for SfenError {
             | Self::MissingSideToMove
             | Self::InvalidSideToMove
             | Self::UnexpectedFields
+            | Self::InvalidExtendedFieldCount { .. }
+            | Self::InvalidLionCaptureSquare
+            | Self::LionCaptureOccupiedBySideToMove { .. }
+            | Self::InvalidMoveNumber
+            | Self::InvalidPromotionDeferredSquare
+            | Self::PromotionDeferredNotStrictlyAscending { .. }
+            | Self::PromotionDeferredRequiresP1
             | Self::WrongRowCount { .. }
             | Self::InvalidEmptyCount { .. }
             | Self::WrongRowWidth { .. }
@@ -199,29 +263,156 @@ pub fn to_sfen(position: &Position) -> String {
     sfen
 }
 
-/// Parses the supported shogiops-compatible SFEN board and side-to-move fields.
+/// 対局開始局面を先獅子とP1成り権保留を含む5欄の拡張SFENへ書き出す。
+pub fn to_extended_sfen(setup: &SetupPosition) -> String {
+    let lion_capture = setup
+        .lion_capture
+        .map_or_else(|| "-".to_owned(), square_to_text);
+    let promotion_deferred = Square::all()
+        .filter(|&square| setup.position.promotion_deferred().contains(square))
+        .map(square_to_text)
+        .collect::<Vec<_>>();
+    let promotion_deferred = if promotion_deferred.is_empty() {
+        "-".to_owned()
+    } else {
+        promotion_deferred.join(",")
+    };
+
+    format!(
+        "{} {lion_capture} {} {promotion_deferred}",
+        to_sfen(&setup.position),
+        setup.next_move_number
+    )
+}
+
+/// 4欄または5欄の拡張SFENを解析する。
 ///
-/// Rows run from internal rank 11 to rank 0, and columns run from internal file
-/// 0 to file 11. The supported piece letters are `N`, `O`, `H`, `D`, `B`, `S`,
-/// `G`, and `L`, with lowercase letters for White and `+` for promotion. Hands,
-/// move counters, and lion-capture state are unsupported.
+/// 4欄入力ではP1成り権保留欄を`-`とみなす。獅子捕獲升は検証して
+/// [`SetupPosition::lion_capture`]へ保持し、先獅子状態(第15条)の
+/// [`Position`]への注入は対局管理層へ委ねる。
+pub fn parse_extended_sfen(sfen: &str, rules: Rules) -> Result<SetupPosition, SfenError> {
+    let fields: Vec<_> = sfen.split_whitespace().collect();
+    if !matches!(fields.len(), 4 | 5) {
+        return Err(SfenError::InvalidExtendedFieldCount {
+            found: fields.len(),
+        });
+    }
+
+    let side_to_move = parse_side_to_move(fields[1])?;
+    let lion_capture = if fields[2] == "-" {
+        None
+    } else {
+        Some(parse_square(fields[2]).ok_or(SfenError::InvalidLionCaptureSquare)?)
+    };
+    let next_move_number = fields[3]
+        .parse::<u32>()
+        .ok()
+        .filter(|number| (1..=9999).contains(number))
+        .ok_or(SfenError::InvalidMoveNumber)?;
+    let promotion_deferred =
+        parse_promotion_deferred(fields.get(4).copied().unwrap_or("-"), rules)?;
+    let position = parse_position(fields[0], side_to_move, &promotion_deferred)?;
+
+    if let Some(square) = lion_capture
+        && position
+            .piece_at(square)
+            .is_some_and(|piece| piece.color() == Some(side_to_move))
+    {
+        return Err(SfenError::LionCaptureOccupiedBySideToMove { square });
+    }
+
+    Ok(SetupPosition {
+        position,
+        lion_capture,
+        next_move_number,
+    })
+}
+
+fn square_to_text(square: Square) -> String {
+    let file = BOARD_FILES - square.file();
+    let rank = char::from(b'a' + (BOARD_RANKS - 1 - square.rank()));
+    format!("{file}{rank}")
+}
+
+fn parse_square(text: &str) -> Option<Square> {
+    if !text.is_ascii() || !(2..=3).contains(&text.len()) {
+        return None;
+    }
+    let (file_text, rank_text) = text.split_at(text.len() - 1);
+    if file_text.starts_with('0') || !file_text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let file_name = file_text.parse::<u8>().ok()?;
+    if !(1..=BOARD_FILES).contains(&file_name) {
+        return None;
+    }
+    let rank_name = rank_text.as_bytes()[0];
+    if !(b'a'..b'a' + BOARD_RANKS).contains(&rank_name) {
+        return None;
+    }
+
+    Square::new(
+        BOARD_FILES - file_name,
+        BOARD_RANKS - 1 - (rank_name - b'a'),
+    )
+}
+
+fn parse_side_to_move(field: &str) -> Result<Color, SfenError> {
+    match field {
+        "b" => Ok(Color::Black),
+        "w" => Ok(Color::White),
+        _ => Err(SfenError::InvalidSideToMove),
+    }
+}
+
+fn parse_promotion_deferred(field: &str, rules: Rules) -> Result<Vec<Square>, SfenError> {
+    if field == "-" {
+        return Ok(Vec::new());
+    }
+    if !rules.contains(RuleCode::P1) {
+        return Err(SfenError::PromotionDeferredRequiresP1);
+    }
+
+    let mut squares: Vec<Square> = Vec::new();
+    for text in field.split(',') {
+        let square = parse_square(text).ok_or(SfenError::InvalidPromotionDeferredSquare)?;
+        if let Some(&previous) = squares.last()
+            && previous.dense_index() >= square.dense_index()
+        {
+            return Err(SfenError::PromotionDeferredNotStrictlyAscending {
+                previous,
+                current: square,
+            });
+        }
+        squares.push(square);
+    }
+    Ok(squares)
+}
+
+/// shogiops互換の盤面と手番を2欄基本形のSFENから解析する。
 ///
-/// This function validates syntax only. It does not check rule-level position
-/// validity, such as the existence of king pieces, per-piece-type count upper
-/// bounds, or mutually inconsistent placements. The caller is responsible for
-/// those checks, which are intended to occur at the protocol layer.
+/// 段は内部rank 11から0へ、筋は内部file 0から11へ進む。全21種の
+/// 駒文字を受理し、後手は小文字、成駒は接頭辞`+`で表す。獅子捕獲升、
+/// 手数およびP1成り権保留は拡張SFENで扱う。
+///
+/// 構文と[`PositionBuilder`]の不変条件だけを検証する。王駒の存在や
+/// 駒種ごとの枚数上限など、規則上の局面合法性は呼出し側が検証する。
 pub fn parse_sfen(sfen: &str) -> Result<Position, SfenError> {
     let mut fields = sfen.split_whitespace();
     let board = fields.next().ok_or(SfenError::MissingBoard)?;
-    let side_to_move = match fields.next().ok_or(SfenError::MissingSideToMove)? {
-        "b" => Color::Black,
-        "w" => Color::White,
-        _ => return Err(SfenError::InvalidSideToMove),
-    };
+    let side_to_move = parse_side_to_move(fields.next().ok_or(SfenError::MissingSideToMove)?)?;
     if fields.next().is_some() {
         return Err(SfenError::UnexpectedFields);
     }
 
+    parse_position(board, side_to_move, &[])
+}
+
+fn parse_position(
+    board: &str,
+    side_to_move: Color,
+    promotion_deferred: &[Square],
+) -> Result<Position, SfenError> {
     let rows: Vec<_> = board.split('/').collect();
     if rows.len() != BOARD_RANKS as usize {
         return Err(SfenError::WrongRowCount { found: rows.len() });
@@ -336,12 +527,16 @@ pub fn parse_sfen(sfen: &str) -> Result<Position, SfenError> {
         }
     }
 
+    for &square in promotion_deferred {
+        builder.mark_promotion_deferred(square)?;
+    }
     builder.finish().map_err(SfenError::from)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PositionError;
     use crate::test_util::sq;
 
     const EMPTY_BOARD: &str = "12/12/12/12/12/12/12/12/12/12/12/12";
@@ -356,6 +551,241 @@ mod tests {
             "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b"
         );
         assert_eq!(parse_sfen(&sfen).unwrap(), position);
+    }
+
+    #[test]
+    fn extended_sfen_initial_position_round_trips_and_four_fields_default_to_no_deferred_rights() {
+        let setup = SetupPosition {
+            position: Position::initial(),
+            lion_capture: None,
+            next_move_number: 1,
+        };
+        let extended = to_extended_sfen(&setup);
+
+        assert_eq!(extended, format!("{} - 1 -", to_sfen(&setup.position)));
+        assert_eq!(
+            parse_extended_sfen(&extended, Rules::engine_default()).unwrap(),
+            setup
+        );
+
+        let four_fields = format!("{} - 1", to_sfen(&setup.position));
+        let parsed = parse_extended_sfen(&four_fields, Rules::engine_default()).unwrap();
+        assert_eq!(parsed, setup);
+        assert_eq!(to_extended_sfen(&parsed), extended);
+    }
+
+    #[test]
+    fn extended_sfen_round_trips_occupied_and_empty_lion_capture_squares() {
+        let occupied = sq(4, 4);
+        let mut builder = PositionBuilder::new(Color::White);
+        builder
+            .put(
+                occupied,
+                PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap(),
+            )
+            .unwrap();
+        let occupied_setup = SetupPosition {
+            position: builder.finish().unwrap(),
+            lion_capture: Some(occupied),
+            next_move_number: 42,
+        };
+        let occupied_text = to_extended_sfen(&occupied_setup);
+        let parsed_occupied = parse_extended_sfen(&occupied_text, Rules::engine_default()).unwrap();
+        assert_eq!(parsed_occupied, occupied_setup);
+        assert_eq!(
+            parsed_occupied.position.lion_taken_by_non_lion(),
+            None,
+            "解析は獅子捕獲升をPositionへ注入しない"
+        );
+
+        let empty = sq(6, 6);
+        let empty_setup = SetupPosition {
+            position: Position::empty(Color::Black),
+            lion_capture: Some(empty),
+            next_move_number: 9999,
+        };
+        let empty_text = to_extended_sfen(&empty_setup);
+        assert_eq!(
+            parse_extended_sfen(&empty_text, Rules::engine_default()).unwrap(),
+            empty_setup
+        );
+    }
+
+    #[test]
+    fn extended_sfen_round_trips_p1_deferred_squares_in_dense_order() {
+        let first = sq(4, 2);
+        let second = sq(7, 9);
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(
+                first,
+                PieceCode::new(Color::White, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        builder
+            .put(
+                second,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        builder.mark_promotion_deferred(second).unwrap();
+        builder.mark_promotion_deferred(first).unwrap();
+        let setup = SetupPosition {
+            position: builder.finish().unwrap(),
+            lion_capture: None,
+            next_move_number: 17,
+        };
+        let rules = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        let extended = to_extended_sfen(&setup);
+
+        assert!(extended.ends_with(" - 17 8j,5c"));
+        assert_eq!(parse_extended_sfen(&extended, rules).unwrap(), setup);
+    }
+
+    #[test]
+    fn extended_sfen_rejects_invalid_lion_capture_fields_and_side_to_move_occupancy() {
+        let own = sq(11, 11);
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(own, PieceCode::new(Color::Black, PieceKind::Pawn))
+            .unwrap();
+        let board = to_sfen(&builder.finish().unwrap());
+
+        for invalid in ["0a", "13a", "1m", "01a", "a1"] {
+            assert_eq!(
+                parse_extended_sfen(
+                    &format!("{EMPTY_BOARD} b {invalid} 1 -"),
+                    Rules::engine_default()
+                ),
+                Err(SfenError::InvalidLionCaptureSquare),
+                "{invalid}"
+            );
+        }
+        assert_eq!(
+            parse_extended_sfen(&format!("{board} 1a 1 -"), Rules::engine_default()),
+            Err(SfenError::LionCaptureOccupiedBySideToMove { square: own })
+        );
+        assert_eq!(
+            parse_extended_sfen(&format!("{EMPTY_BOARD} b 7f 1 -"), Rules::engine_default())
+                .unwrap()
+                .lion_capture,
+            Some(sq(5, 6))
+        );
+    }
+
+    #[test]
+    fn extended_sfen_accepts_only_move_numbers_from_one_through_9999() {
+        for valid in [1, 9999] {
+            assert_eq!(
+                parse_extended_sfen(
+                    &format!("{EMPTY_BOARD} b - {valid} -"),
+                    Rules::engine_default()
+                )
+                .unwrap()
+                .next_move_number,
+                valid
+            );
+        }
+        for invalid in ["0", "10000", "-1", "1.0", "x"] {
+            assert_eq!(
+                parse_extended_sfen(
+                    &format!("{EMPTY_BOARD} b - {invalid} -"),
+                    Rules::engine_default()
+                ),
+                Err(SfenError::InvalidMoveNumber),
+                "{invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn extended_sfen_rejects_invalid_deferred_lists_and_requires_p1() {
+        let first = sq(4, 9);
+        let second = sq(5, 10);
+        let mut builder = PositionBuilder::new(Color::Black);
+        for square in [first, second] {
+            builder
+                .put(
+                    square,
+                    PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+                )
+                .unwrap();
+        }
+        let board = to_sfen(&builder.finish().unwrap());
+        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+
+        assert_eq!(
+            parse_extended_sfen(&format!("{board} - 1 8c"), Rules::engine_default()),
+            Err(SfenError::PromotionDeferredRequiresP1)
+        );
+        assert!(matches!(
+            parse_extended_sfen(&format!("{board} - 1 8c,8c"), p1),
+            Err(SfenError::PromotionDeferredNotStrictlyAscending { .. })
+        ));
+        assert!(matches!(
+            parse_extended_sfen(&format!("{board} - 1 7b,8c"), p1),
+            Err(SfenError::PromotionDeferredNotStrictlyAscending { .. })
+        ));
+        for invalid in ["13a", "8c,"] {
+            assert_eq!(
+                parse_extended_sfen(&format!("{board} - 1 {invalid}"), p1),
+                Err(SfenError::InvalidPromotionDeferredSquare),
+                "{invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn extended_sfen_applies_position_builder_invariants_to_deferred_squares() {
+        let empty = sq(0, 9);
+        let king = sq(1, 9);
+        let promoted = sq(2, 9);
+        let outside_zone = sq(3, 7);
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(king, PieceCode::new(Color::Black, PieceKind::King))
+            .unwrap();
+        builder
+            .put(
+                promoted,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral)
+                    .promote()
+                    .unwrap(),
+            )
+            .unwrap();
+        builder
+            .put(
+                outside_zone,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        let board = to_sfen(&builder.finish().unwrap());
+        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+
+        for square in [empty, king, promoted, outside_zone] {
+            let text = square_to_text(square);
+            assert!(matches!(
+                parse_extended_sfen(&format!("{board} - 1 {text}"), p1),
+                Err(SfenError::PositionBuild(
+                    PositionBuildError::InvalidPosition(
+                        PositionError::InvalidPromotionDeferred { square: rejected }
+                    )
+                )) if rejected == square
+            ));
+        }
+    }
+
+    #[test]
+    fn extended_sfen_rejects_field_counts_other_than_four_or_five() {
+        for input in [
+            format!("{EMPTY_BOARD} b -"),
+            format!("{EMPTY_BOARD} b - 1 - extra"),
+        ] {
+            assert!(matches!(
+                parse_extended_sfen(&input, Rules::engine_default()),
+                Err(SfenError::InvalidExtendedFieldCount { .. })
+            ));
+        }
     }
 
     #[test]
