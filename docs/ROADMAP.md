@@ -14,7 +14,7 @@
 | 合法手生成器の総仕上げ | [plans/movegen-hardening.md](plans/movegen-hardening.md) | 完了 | 2026年8月3日 |
 | 審判ロジック再編とR0撤去 | [plans/adjudication-refactor.md](plans/adjudication-refactor.md) | 完了 | 2026年8月9日 |
 | ランダム対局検証ハーネス | [plans/random-play.md](plans/random-play.md) | 完了 | 2026年8月10日 |
-| プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 進行中 | ― |
+| プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 完了 | 2026年8月10日 |
 | 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
 
 直前局面生成器は設計済みだが、プロトコル層の完了まで実装を開始しない。
@@ -30,10 +30,11 @@
 リプレイ照合の過程でUSI解析の3升連結正規化の漏れ1件を修正し、lishogiの裸玉裁定と第22条の駒枯れの規則差1件を特定した。
 規則差はRULES.mdの第10版改定で解消し、第32条へ新設したローカルルールE3（Lishogi式裸玉即時裁定）の実装により、リプレイ照合はL1+L2+P3+R1+E1+E3で10局・全2,462手が終局裁定まで一致した。
 また、検証済みの規則セットを名前で指定できるプリセット`lishogi`を導入し（RULES.md第11版・第33条6項）、`--rules`とRuleSetオプションの双方で受理する。HaChu互換セットのプリセット化はフェーズ5の実測検証後に判断する。
-フェーズ5のCECP実装も同2026年8月10日に完了した。
-着手前条件のXBoard内蔵VariantChu駒文字表とHaChu表の照合（21文字完全一致）を経て、CECP複数レグ指し手表記`src/notation/cecp.rs`とCECPプロトコルモジュール`src/protocol/cecp.rs`を実装し、エンジン本体の変更なしで2つ目のプロトコルを追加できることを確認した。
+プロトコル層は同2026年8月10日に完了した。
+フェーズ5では、XBoard内蔵VariantChu駒文字表とHaChu表の照合（21文字完全一致）を経て、CECP複数レグ指し手表記`src/notation/cecp.rs`とCECPプロトコルモジュール`src/protocol/cecp.rs`を実装し、エンジン本体の変更なしで2つ目のプロトコルを追加できることを確認した。
+HaChu互換規則セットの実対局照合は、HaChu 0.23が基本移動規則に反する手を自発出力するため不成立と判定し、プリセットは導入しなかった（詳細は docs/protocols/hachu.md 第11章）。
 テストは271件全緑であり、経緯は設計書 plans/protocol-layer.md にある。
-次の作業はプロトコル層フェーズ5の残作業（HaChu互換規則セットの実対局照合とプリセット化判断）である。
+次の作業は直前局面生成器であり、一時状態表現の統合から着手して状態表を進行中へ変更する。
 直前局面生成器は2026年8月10日に設計書を確定した。
 実装は未着手であり、進行中のプロトコル層へ変更を加えないため、その完了まで待機する。
 
