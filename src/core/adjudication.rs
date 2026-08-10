@@ -1,12 +1,12 @@
 use crate::core::bitboard::Bitboard;
+use crate::core::game::{DrawReason, GameResult, WinReason};
 use crate::core::movegen::MoveGenerator;
 use crate::core::mv::{Move, Undo};
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
+use crate::core::repetition::{RepetitionHistory, retain_repetition_allowed_moves};
 use crate::core::rules::{RepetitionRule, Rules};
 use crate::core::square::{BOARD_RANKS, Square};
-use crate::game::{DrawReason, GameResult, WinReason};
-use crate::repetition::{RepetitionHistory, retain_repetition_allowed_moves};
 
 /// 対局裁定に必要な履歴依存状態。
 #[derive(Clone, PartialEq, Eq, Debug)]

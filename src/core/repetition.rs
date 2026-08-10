@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::core::game::{DrawReason, GameResult, WinReason};
 use crate::core::movegen::MoveGenerator;
 use crate::core::mv::Move;
 use crate::core::piece::Color;
 use crate::core::position::Position;
 use crate::core::rules::RepetitionRule;
-use crate::game::{DrawReason, GameResult, WinReason};
 
 /// R1で同一局面を判定するキー。
 ///

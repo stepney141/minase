@@ -2,9 +2,9 @@
 
 use core::fmt;
 
+use crate::core::game::{Game, GameError, GameResult, GameStatus, IllegalMoveCause};
 use crate::core::mv::Move;
 use crate::core::rules::{RuleCode, Rules};
-use crate::game::{Game, GameError, GameResult, GameStatus, IllegalMoveCause};
 use crate::notation::sfen::SetupPosition;
 
 /// 対局セッションのライフサイクル。

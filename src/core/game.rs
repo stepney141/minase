@@ -1,16 +1,16 @@
 use core::fmt;
 
-use crate::adjudication::{
+use crate::core::adjudication::{
     AdjudicationContext, AdjudicationState, adjudicate_after_move, promoted_waiting_square,
 };
 use crate::core::movegen::{IllegalMove, MoveGenerator};
 use crate::core::mv::Move;
 use crate::core::piece::Color;
 use crate::core::position::Position;
-use crate::core::rules::Rules;
-use crate::repetition::{
+use crate::core::repetition::{
     RepetitionHistory, repetition_is_forbidden, retain_repetition_allowed_moves,
 };
+use crate::core::rules::Rules;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum WinReason {
@@ -288,13 +288,13 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::adjudication::move_was_attacking;
+    use crate::core::adjudication::move_was_attacking;
     use crate::core::piece::{PieceCode, PieceKind};
     use crate::core::position::PositionBuilder;
+    use crate::core::repetition::{R1History, R2History, R3History};
     use crate::core::rules::{RepetitionRule, RuleCode};
     use crate::core::square::Square;
     use crate::parse_sfen;
-    use crate::repetition::{R1History, R2History, R3History};
     use crate::rng::XorShift64;
     use crate::test_util::{position_from_codes as position, sq};
 

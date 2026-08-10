@@ -2,10 +2,10 @@
 
 use std::io::{self, BufRead, Write};
 
+use crate::core::game::{DrawReason, GameResult, IllegalMoveCause, WinReason};
 use crate::core::piece::Color;
 use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
-use crate::game::{DrawReason, GameResult, IllegalMoveCause, WinReason};
 use crate::notation::cecp;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen};
 

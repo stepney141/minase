@@ -2,10 +2,10 @@
 
 use std::io::{self, BufRead, Write};
 
+use crate::core::game::Game;
 use crate::core::mv::Move;
 use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
-use crate::game::Game;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen};
 use crate::notation::usi;
 
