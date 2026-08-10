@@ -2,9 +2,11 @@
 
 use std::io::{self, BufRead, Write};
 
+pub mod cecp;
 pub mod engine;
 pub mod usi;
 
+pub use cecp::CecpProtocol;
 pub use engine::{Engine, EngineCommand, EngineLifecycle, EngineReply, RejectReason};
 pub use usi::UsiProtocol;
 

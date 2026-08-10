@@ -5,7 +5,7 @@ use std::process;
 use clap::{Parser, ValueEnum};
 use minase::RuleCode;
 use minase::core::rules::parse_rule_set;
-use minase::protocol::{Engine, Protocol, UsiProtocol};
+use minase::protocol::{CecpProtocol, Engine, Protocol, UsiProtocol};
 
 /// 中将棋エンジンのプロトコル入口。
 #[derive(Parser)]
@@ -52,7 +52,13 @@ fn run() -> Result<(), Box<dyn Error>> {
             protocol.run(&mut engine, &mut stdin.lock(), &mut stdout.lock())?;
             Ok(())
         }
-        ProtocolKind::Cecp => Err("CECP protocol is not implemented (planned for phase 5)".into()),
+        ProtocolKind::Cecp => {
+            let mut protocol = CecpProtocol::new(&engine);
+            let stdin = io::stdin();
+            let stdout = io::stdout();
+            protocol.run(&mut engine, &mut stdin.lock(), &mut stdout.lock())?;
+            Ok(())
+        }
     }
 }
 
