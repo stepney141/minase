@@ -68,8 +68,9 @@ pub fn text(position: &Position, mv: Move) -> String {
 
 /// lishogi系拡張USI形式を指し手へ変換する。
 ///
-/// 3升連結で移動元と移動先が等しく、中間升に相手駒がなければ、
-/// 正準じっとの`mid: None`へ正規化する(第11条・第12条)。
+/// 3升連結で中間升に相手駒がなければ、終点にかかわらず`mid: None`へ
+/// 正規化する。移動元と移動先が等しい着手は正準じっと、異なる着手は
+/// 直接の二段移動になる(第11条・第12条)。
 /// 着手そのものの合法性は検査しない。
 pub fn parse(position: &Position, input: &str) -> Result<Move, UsiError> {
     let (body, promote) = split_suffix(input)?;
@@ -89,13 +90,11 @@ pub fn parse(position: &Position, input: &str) -> Result<Move, UsiError> {
     if mid.is_none() && to == from {
         return Err(UsiError::InvalidJittoForm);
     }
-    let is_jitto = to == from
-        && mid.is_some_and(|square| {
-            !position
-                .piece_at(square)
-                .is_some_and(|piece| piece.color() == Some(position.side_to_move().opposite()))
-        });
-    let mid = if is_jitto { None } else { mid };
+    let mid = mid.filter(|&square| {
+        position
+            .piece_at(square)
+            .is_some_and(|piece| piece.color() == Some(position.side_to_move().opposite()))
+    });
 
     Ok(Move {
         from,
@@ -482,5 +481,64 @@ mod tests {
             .unwrap();
         let occupied_mid = occupied_mid_builder.finish().unwrap();
         assert_eq!(parse(&occupied_mid, "6f6g6f"), Ok(jitto));
+    }
+
+    #[test]
+    fn three_square_direct_move_with_empty_intermediate_normalizes_to_no_mid() {
+        let position = single_piece_position(Color::Black, PieceKind::Lion, sq(6, 6));
+
+        assert_eq!(
+            parse(&position, "6f5e6d"),
+            Ok(Move {
+                from: sq(6, 6),
+                mid: None,
+                to: sq(6, 8),
+                promote: false,
+            })
+        );
+    }
+
+    #[test]
+    fn three_square_move_capturing_enemy_on_intermediate_keeps_mid() {
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(sq(6, 6), PieceCode::new(Color::Black, PieceKind::Lion))
+            .unwrap();
+        builder
+            .put(sq(7, 7), PieceCode::new(Color::White, PieceKind::Pawn))
+            .unwrap();
+        let position = builder.finish().unwrap();
+
+        assert_eq!(
+            parse(&position, "6f5e6d"),
+            Ok(Move {
+                from: sq(6, 6),
+                mid: Some(sq(7, 7)),
+                to: sq(6, 8),
+                promote: false,
+            })
+        );
+    }
+
+    #[test]
+    fn three_square_direct_move_with_friendly_intermediate_normalizes_to_no_mid() {
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(sq(6, 6), PieceCode::new(Color::Black, PieceKind::Lion))
+            .unwrap();
+        builder
+            .put(sq(7, 7), PieceCode::new(Color::Black, PieceKind::Pawn))
+            .unwrap();
+        let position = builder.finish().unwrap();
+
+        assert_eq!(
+            parse(&position, "6f5e6d"),
+            Ok(Move {
+                from: sq(6, 6),
+                mid: None,
+                to: sq(6, 8),
+                promote: false,
+            })
+        );
     }
 }
