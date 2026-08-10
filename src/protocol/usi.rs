@@ -1,11 +1,10 @@
 //! Universal Shogi Interfaceの同期アダプター。
 
 use std::io::{self, BufRead, Write};
-use std::str::FromStr;
 
 use crate::core::mv::Move;
 use crate::core::position::Position;
-use crate::core::rules::RuleCode;
+use crate::core::rules::parse_rule_set;
 use crate::game::Game;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen};
 use crate::notation::usi;
@@ -95,7 +94,7 @@ impl UsiProtocol {
             let Some(value) = value else {
                 return write_error(output, "RuleSet requires a value");
             };
-            let codes = match value.split(',').map(RuleCode::from_str).collect() {
+            let codes = match parse_rule_set(value) {
                 Ok(codes) => codes,
                 Err(error) => return write_error(output, &error),
             };
@@ -271,6 +270,7 @@ mod tests {
 
     use super::*;
     use crate::core::piece::Color;
+    use crate::core::rules::RuleCode;
     use crate::protocol::engine::EngineLifecycle;
     use crate::{GameResult, GameStatus, Rules, WinReason};
 
@@ -332,6 +332,35 @@ mod tests {
         assert_eq!(
             engine.pending_rule_codes(),
             &[RuleCode::P3, RuleCode::R2, RuleCode::E2]
+        );
+        assert_eq!(engine.active_rule_codes(), &[RuleCode::R1]);
+    }
+
+    #[test]
+    fn ruleset_preset_is_accepted_and_combination_error_preserves_pending() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let input = concat!(
+            "setoption name RuleSet value lishogi\n",
+            "setoption name RuleSet value lishogi,P1\n",
+            "quit\n",
+        );
+
+        assert_eq!(
+            run(&mut protocol, &mut engine, input),
+            "info string error: rule set preset 'lishogi' must be specified alone\n"
+        );
+        assert_eq!(
+            engine.pending_rule_codes(),
+            &[
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3,
+            ]
         );
         assert_eq!(engine.active_rule_codes(), &[RuleCode::R1]);
     }

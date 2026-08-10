@@ -104,6 +104,49 @@ impl FromStr for RuleCode {
     }
 }
 
+/// 規則セット名と、名前が表す規則コード列の対応表。
+///
+/// `lishogi`の組合せはRULES.md第33条第6項に基づく。名前と組合せの一致は
+/// `tests/lishogi_replay.rs`の棋譜リプレイ照合が検証する。
+const RULE_SET_PRESETS: &[(&str, &[RuleCode])] = &[(
+    "lishogi",
+    &[
+        RuleCode::L1,
+        RuleCode::L2,
+        RuleCode::P3,
+        RuleCode::R1,
+        RuleCode::E1,
+        RuleCode::E3,
+    ],
+)];
+
+/// 規則セット値を、プリセット名またはコンマ区切りの規則コード列として解析する。
+///
+/// プリセット名は単独で指定し、規則コードとの併記は認めない(第33条第6項)。
+/// 重複および排他制約の検証は`Rules::from_codes`が担う。
+pub fn parse_rule_set(input: &str) -> Result<Vec<RuleCode>, String> {
+    if let Some((_, codes)) = RULE_SET_PRESETS
+        .iter()
+        .find(|(name, _)| input.eq_ignore_ascii_case(name))
+    {
+        return Ok(codes.to_vec());
+    }
+
+    input
+        .split(',')
+        .map(|element| {
+            if let Some((name, _)) = RULE_SET_PRESETS
+                .iter()
+                .find(|(name, _)| element.eq_ignore_ascii_case(name))
+            {
+                Err(format!("rule set preset '{name}' must be specified alone"))
+            } else {
+                element.parse()
+            }
+        })
+        .collect()
+}
+
 /// 採用する反復規則。R1、R2およびR3は相互に排他である(第31条)。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum RepetitionRule {
@@ -485,6 +528,48 @@ mod tests {
         assert_eq!(
             "R4".parse::<RuleCode>(),
             Err("unknown rule code 'R4'".to_owned())
+        );
+    }
+
+    #[test]
+    fn article_33_6_lishogi_preset_is_case_insensitive() {
+        let expected = vec![
+            RuleCode::L1,
+            RuleCode::L2,
+            RuleCode::P3,
+            RuleCode::R1,
+            RuleCode::E1,
+            RuleCode::E3,
+        ];
+
+        assert_eq!(parse_rule_set("lishogi"), Ok(expected.clone()));
+        assert_eq!(parse_rule_set("LISHOGI"), Ok(expected));
+    }
+
+    #[test]
+    fn article_33_6_lishogi_preset_must_be_specified_alone() {
+        let error = parse_rule_set("lishogi,P1").unwrap_err();
+
+        assert!(error.contains("preset 'lishogi' must be specified alone"));
+    }
+
+    #[test]
+    fn unknown_rule_set_names_and_codes_are_rejected() {
+        assert_eq!(
+            parse_rule_set("hachu"),
+            Err("unknown rule code 'hachu'".to_owned())
+        );
+        assert_eq!(
+            parse_rule_set("L1,ZZ"),
+            Err("unknown rule code 'ZZ'".to_owned())
+        );
+    }
+
+    #[test]
+    fn explicit_lishogi_code_list_matches_the_preset() {
+        assert_eq!(
+            parse_rule_set("L1,L2,P3,R1,E1,E3"),
+            parse_rule_set("lishogi")
         );
     }
 

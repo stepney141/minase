@@ -4,6 +4,7 @@ use std::process;
 
 use clap::{Parser, ValueEnum};
 use minase::RuleCode;
+use minase::core::rules::parse_rule_set;
 use minase::protocol::{Engine, Protocol, UsiProtocol};
 
 /// 中将棋エンジンのプロトコル入口。
@@ -14,8 +15,15 @@ struct Arguments {
     #[arg(long, value_enum, required = true)]
     protocol: ProtocolKind,
     /// 採用するローカルルールコード列。
-    #[arg(long, value_delimiter = ',', required = true)]
-    rules: Vec<RuleCode>,
+    #[arg(long, required = true, value_parser = parse_rule_set_argument)]
+    rules: RuleSetArgument,
+}
+
+#[derive(Clone)]
+struct RuleSetArgument(Vec<RuleCode>);
+
+fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
+    parse_rule_set(input).map(RuleSetArgument)
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -33,7 +41,7 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
-    let mut engine = Engine::new(arguments.rules.clone())
+    let mut engine = Engine::new(arguments.rules.0)
         .map_err(|reason| format!("invalid --rules value: {reason}"))?;
 
     match arguments.protocol {
@@ -45,5 +53,42 @@ fn run() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         ProtocolKind::Cecp => Err("CECP protocol is not implemented (planned for phase 5)".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rules_argument_accepts_preset_and_codes_but_rejects_their_combination() {
+        let preset =
+            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "lishogi"])
+                .unwrap();
+        let codes = Arguments::try_parse_from([
+            "minase",
+            "--protocol",
+            "usi",
+            "--rules",
+            "L1,L2,P3,R1,E1,E3",
+        ])
+        .unwrap();
+        let error = match Arguments::try_parse_from([
+            "minase",
+            "--protocol",
+            "usi",
+            "--rules",
+            "lishogi,P1",
+        ]) {
+            Ok(_) => panic!("a preset combined with a rule code must be rejected"),
+            Err(error) => error,
+        };
+
+        assert_eq!(preset.rules.0, codes.rules.0);
+        assert!(
+            error
+                .to_string()
+                .contains("preset 'lishogi' must be specified alone")
+        );
     }
 }

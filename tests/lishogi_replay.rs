@@ -1,10 +1,9 @@
 use std::io::{BufRead, BufReader};
 
 use flate2::read::GzDecoder;
+use minase::core::rules::parse_rule_set;
 use minase::notation::{sfen::parse_extended_sfen, usi};
-use minase::{
-    Color, DrawReason, Game, GameResult, GameStatus, Position, RuleCode, Rules, WinReason,
-};
+use minase::{Color, DrawReason, Game, GameResult, GameStatus, Position, Rules, WinReason};
 use serde_json::Value;
 
 const REPLAYS: &[u8] = include_bytes!("fixtures/lishogi_replays.ndjson.gz");
@@ -48,15 +47,8 @@ fn replay_game(replay: &Value) -> Result<(), String> {
     let moves = string_field(replay, "moves")?;
     let status = string_field(replay, "status")?;
     let winner = winner_field(replay, id)?;
-    let rules = Rules::from_codes(&[
-        RuleCode::L1,
-        RuleCode::L2,
-        RuleCode::P3,
-        RuleCode::R1,
-        RuleCode::E1,
-        RuleCode::E3,
-    ])
-    .expect("the lishogi replay rule set must be valid");
+    let rule_codes = parse_rule_set("lishogi").expect("the lishogi preset must resolve");
+    let rules = Rules::from_codes(&rule_codes).expect("the lishogi replay rule set must be valid");
 
     let setup = parse_extended_sfen(initial_sfen, rules)
         .map_err(|error| format!("game {id}: failed to parse initial_sfen: {error}"))?;
