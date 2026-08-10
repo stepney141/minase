@@ -1,6 +1,7 @@
 //! ローカルルールの管理と、成り・獅子の捕獲制限の判定。
 
 use core::fmt;
+use core::str::FromStr;
 
 use crate::core::movegen::{VirtualBoard, piece_control_with_occupancy};
 use crate::core::mv::Move;
@@ -61,6 +62,41 @@ impl RuleCode {
     /// ビット集合表現でこのコードが占めるビットを返す。
     const fn bit(self) -> u16 {
         1 << self as u8
+    }
+
+    const fn text(self) -> &'static str {
+        match self {
+            Self::L0 => "L0",
+            Self::L1 => "L1",
+            Self::L2 => "L2",
+            Self::L3 => "L3",
+            Self::P1 => "P1",
+            Self::P2 => "P2",
+            Self::P3 => "P3",
+            Self::P4 => "P4",
+            Self::R1 => "R1",
+            Self::R2 => "R2",
+            Self::R3 => "R3",
+            Self::E1 => "E1",
+            Self::E2 => "E2",
+        }
+    }
+}
+
+impl fmt::Display for RuleCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.text())
+    }
+}
+
+impl FromStr for RuleCode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|code| input.eq_ignore_ascii_case(code.text()))
+            .ok_or_else(|| format!("unknown rule code '{input}'"))
     }
 }
 
@@ -427,6 +463,19 @@ mod tests {
         position.make_move_unchecked(capture, Rules::standard());
         assert!(position.lion_taken_by_non_lion().is_some());
         position
+    }
+
+    #[test]
+    fn rule_codes_parse_case_insensitively_and_display_canonically() {
+        for code in RuleCode::ALL {
+            let canonical = code.to_string();
+            assert_eq!(canonical.parse::<RuleCode>(), Ok(code));
+            assert_eq!(canonical.to_ascii_lowercase().parse::<RuleCode>(), Ok(code));
+        }
+        assert_eq!(
+            "R4".parse::<RuleCode>(),
+            Err("unknown rule code 'R4'".to_owned())
+        );
     }
 
     #[test]

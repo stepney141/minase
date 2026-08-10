@@ -4,6 +4,7 @@ mod adjudication;
 pub mod core;
 mod game;
 pub mod notation;
+pub mod protocol;
 mod repetition;
 #[doc(hidden)]
 pub mod rng;
