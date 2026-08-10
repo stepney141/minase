@@ -54,6 +54,7 @@ fn replay_game(replay: &Value) -> Result<(), String> {
         RuleCode::P3,
         RuleCode::R1,
         RuleCode::E1,
+        RuleCode::E3,
     ])
     .expect("the lishogi replay rule set must be valid");
 
@@ -105,15 +106,16 @@ fn replay_game(replay: &Value) -> Result<(), String> {
                 reason: WinReason::RoyalCapture,
             }),
         ),
-        // lishogiの裸玉裁定(bareKing)は、一方が王駒1枚だけになった時点で
-        // 即時に裁定する規則であり、第22条の駒枯れ(王駒以外の駒が一方に
-        // 1枚だけ)より広い条件を持つ。L1+L2+P3+R1+E1のminaseは第22条が
-        // 成立しない限り対局を継続するため、既知の規則差として継続を期待
-        // 値に固定する(docs/plans/protocol-layer.md フェーズ4の記録)。
-        "bareKing" => {
-            required_winner(id, winner)?;
-            expect_final_status(id, moves.len(), final_status, GameStatus::Ongoing)
-        }
+        // 第32条E3を採用し、lishogiの裸玉裁定と照合する。
+        "bareKing" => expect_final_status(
+            id,
+            moves.len(),
+            final_status,
+            GameStatus::Finished(GameResult::Win {
+                winner: required_winner(id, winner)?,
+                reason: WinReason::PieceExhaustion,
+            }),
+        ),
         "repetition" => {
             if winner.is_some() {
                 return Err(format!(

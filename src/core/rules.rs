@@ -39,11 +39,13 @@ pub enum RuleCode {
     E1,
     /// 駒枯れ不採用(第32条)。
     E2,
+    /// Lishogi式裸玉即時裁定(第32条)。
+    E3,
 }
 
 impl RuleCode {
     /// 全ローカルルールコード。
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::L0,
         Self::L1,
         Self::L2,
@@ -57,6 +59,7 @@ impl RuleCode {
         Self::R3,
         Self::E1,
         Self::E2,
+        Self::E3,
     ];
 
     /// ビット集合表現でこのコードが占めるビットを返す。
@@ -79,6 +82,7 @@ impl RuleCode {
             Self::R3 => "R3",
             Self::E1 => "E1",
             Self::E2 => "E2",
+            Self::E3 => "E3",
         }
     }
 }
@@ -174,6 +178,7 @@ impl Rules {
             (RuleCode::R1, RuleCode::R2),
             (RuleCode::R1, RuleCode::R3),
             (RuleCode::R2, RuleCode::R3),
+            (RuleCode::E2, RuleCode::E3),
         ] {
             if adopted & first.bit() != 0 && adopted & second.bit() != 0 {
                 return Err(RulesError::Conflicting { first, second });
@@ -210,6 +215,11 @@ impl Rules {
     /// 駒枯れ(第22条)を適用しないかどうかを返す。E2採用時に適用しない。
     pub const fn piece_exhaustion_disabled(self) -> bool {
         self.contains(RuleCode::E2)
+    }
+
+    /// 裸玉即時裁定(第32条E3)を適用するかどうかを返す。E3採用時に適用する。
+    pub const fn bare_king_adjudication(self) -> bool {
+        self.contains(RuleCode::E3)
     }
 
     /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条・第30条)。
@@ -513,6 +523,13 @@ mod tests {
             Err(RulesError::Conflicting {
                 first: RuleCode::R2,
                 second: RuleCode::R3,
+            }),
+        );
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::E2, RuleCode::E3]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::E2,
+                second: RuleCode::E3,
             }),
         );
         assert_eq!(

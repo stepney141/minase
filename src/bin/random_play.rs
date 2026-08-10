@@ -194,6 +194,7 @@ fn parse_rule_code(text: &str) -> Result<RuleCode, String> {
         "R3" => Ok(RuleCode::R3),
         "E1" => Ok(RuleCode::E1),
         "E2" => Ok(RuleCode::E2),
+        "E3" => Ok(RuleCode::E3),
         _ => Err(format!("unknown rule code '{text}'")),
     }
 }
@@ -214,6 +215,7 @@ const fn rule_code_text(code: RuleCode) -> &'static str {
         RuleCode::R3 => "R3",
         RuleCode::E1 => "E1",
         RuleCode::E2 => "E2",
+        RuleCode::E3 => "E3",
     }
 }
 

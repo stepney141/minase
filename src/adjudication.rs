@@ -1,3 +1,4 @@
+use crate::core::bitboard::Bitboard;
 use crate::core::movegen::MoveGenerator;
 use crate::core::mv::{Move, Undo};
 use crate::core::piece::{Color, PieceKind};
@@ -121,16 +122,23 @@ impl<'a> AdjudicationContext<'a> {
             return matches!(result, GameResult::Win { winner, .. } if winner == mover);
         }
 
-        !self.rules.piece_exhaustion_disabled()
-            && matches!(
-                piece_exhaustion_outcome(
-                    position,
-                    self.generator,
-                    promoted_waiting_square(candidate, undo),
-                    self.piece_exhaustion_grace,
-                ),
-                PieceExhaustionOutcome::Win(winner) if winner == mover
+        if self.rules.bare_king_adjudication() {
+            matches!(
+                bare_king_result(position, self.generator),
+                Some(GameResult::Win { winner, .. }) if winner == mover
             )
+        } else {
+            !self.rules.piece_exhaustion_disabled()
+                && matches!(
+                    piece_exhaustion_outcome(
+                        position,
+                        self.generator,
+                        promoted_waiting_square(candidate, undo),
+                        self.piece_exhaustion_grace,
+                    ),
+                    PieceExhaustionOutcome::Win(winner) if winner == mover
+                )
+        }
     }
 }
 
@@ -190,13 +198,20 @@ pub(crate) fn adjudicate_after_move(
         };
     }
 
-    let exhaustion = piece_exhaustion_transition(
-        position,
-        context.generator,
-        promoted_waiting_piece,
-        current_grace,
-        context.rules.piece_exhaustion_disabled(),
-    );
+    let exhaustion = if context.rules.bare_king_adjudication() {
+        PieceExhaustionTransition {
+            result: bare_king_result(position, context.generator),
+            next_grace: false,
+        }
+    } else {
+        piece_exhaustion_transition(
+            position,
+            context.generator,
+            promoted_waiting_piece,
+            current_grace,
+            context.rules.piece_exhaustion_disabled(),
+        )
+    };
     if exhaustion.result.is_some() {
         return PostMoveAdjudication {
             result: exhaustion.result,
@@ -315,6 +330,94 @@ pub(crate) fn is_mate(position: &mut Position, context: &AdjudicationContext<'_>
     }
 
     has_legal_move
+}
+
+/// 裸玉即時裁定(第32条E3)の結果を現在局面から返す。
+fn bare_king_result(position: &Position, generator: &MoveGenerator) -> Option<GameResult> {
+    let bare_kings = Color::ALL.map(|color| bare_king_square(position, color));
+
+    for bare_color in Color::ALL {
+        let Some(bare_king) = bare_kings[bare_color.index()] else {
+            continue;
+        };
+        let opponent = bare_color.opposite();
+        let effective_pieces = effective_pieces(position, opponent);
+        if !position.royal_pieces(opponent).is_empty()
+            && effective_pieces.popcount() >= 2
+            && !pieces_give_check(position, generator, bare_color)
+            && (effective_pieces.popcount() >= 3
+                || effective_pieces
+                    .into_iter()
+                    .all(|square| !squares_are_adjacent(bare_king, square)))
+        {
+            return Some(GameResult::Win {
+                winner: opponent,
+                reason: WinReason::PieceExhaustion,
+            });
+        }
+    }
+
+    if bare_kings.into_iter().all(|king| king.is_some())
+        && Color::ALL
+            .into_iter()
+            .all(|color| !pieces_give_check(position, generator, color))
+    {
+        Some(GameResult::Draw {
+            reason: DrawReason::PieceExhaustion,
+        })
+    } else {
+        None
+    }
+}
+
+/// 死に駒を除く自駒が王駒1枚だけなら、その升を返す。
+fn bare_king_square(position: &Position, color: Color) -> Option<Square> {
+    let remaining = position.pieces_of(color) & !dead_pieces(position, color);
+    (remaining.popcount() == 1)
+        .then(|| remaining.lsb())
+        .flatten()
+        .filter(|&square| position.royal_pieces(color).contains(square))
+}
+
+/// 歩兵・仲人と死んだ香車を除く価値ある駒の集合を返す。
+fn effective_pieces(position: &Position, color: Color) -> Bitboard {
+    position.pieces_of(color)
+        & !position.pieces_of_kind(color, PieceKind::Pawn)
+        & !position.pieces_of_kind(color, PieceKind::GoBetween)
+        & !dead_pieces(position, color)
+}
+
+/// 最奥段で移動不能となった歩兵・香車の集合を返す。
+fn dead_pieces(position: &Position, color: Color) -> Bitboard {
+    Bitboard::from_squares(
+        (position.pieces_of_kind(color, PieceKind::Pawn)
+            | position.pieces_of_kind(color, PieceKind::Lance))
+        .into_iter()
+        .filter(|&square| is_last_rank(color, square)),
+    )
+}
+
+/// 指定側の駒が相手のいずれかの王駒へ王手をかけているかを返す。
+fn pieces_give_check(position: &Position, generator: &MoveGenerator, attacker: Color) -> bool {
+    let probe = position.clone_with_side_to_move(attacker);
+    let opponent_royals = probe.royal_pieces(attacker.opposite());
+    let mut moves = Vec::new();
+    generator.generate_moves(&probe, &mut moves);
+
+    moves.into_iter().any(|candidate| {
+        probe
+            .captured_squares(candidate)
+            .into_iter()
+            .flatten()
+            .any(|square| opponent_royals.contains(square))
+    })
+}
+
+/// 2升がチェビシェフ距離1で隣接するかを返す。
+fn squares_are_adjacent(first: Square, second: Square) -> bool {
+    first.file().abs_diff(second.file()) <= 1
+        && first.rank().abs_diff(second.rank()) <= 1
+        && first != second
 }
 
 /// 駒枯れ条件と1手猶予の適用結果を返す。

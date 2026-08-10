@@ -318,6 +318,10 @@ mod tests {
         game_with_codes(position, &[RuleCode::R1])
     }
 
+    fn bare_king_game(position: Position) -> Game {
+        game_with_codes(position, &[RuleCode::R1, RuleCode::E1, RuleCode::E3])
+    }
+
     fn r2_game(position: Position) -> Game {
         game_with_codes(position, &[RuleCode::R2, RuleCode::E2])
     }
@@ -1212,6 +1216,165 @@ mod tests {
     }
 
     #[test]
+    fn article_32_e3_bare_king_loses_when_all_conditions_hold() {
+        let mut game = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(9, 9), piece(Color::White, PieceKind::Rook)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+
+        assert_eq!(
+            game.play(step(sq(5, 4), sq(5, 5))),
+            Ok(GameStatus::Finished(GameResult::Win {
+                winner: Color::White,
+                reason: WinReason::PieceExhaustion,
+            }))
+        );
+    }
+
+    #[test]
+    fn article_32_e3_king_and_pawn_are_not_enough_effective_material() {
+        let mut game = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(8, 8), piece(Color::White, PieceKind::Pawn)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+
+        assert_eq!(game.play(step(sq(5, 4), sq(5, 5))), Ok(GameStatus::Ongoing));
+    }
+
+    #[test]
+    fn article_32_e3_bare_king_check_defers_the_loss() {
+        let mut game = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(0, 10), piece(Color::White, PieceKind::Rook)),
+                (sq(6, 6), piece(Color::White, PieceKind::King)),
+                (sq(10, 0), piece(Color::White, PieceKind::Rook)),
+            ],
+        ));
+
+        assert_eq!(game.play(step(sq(5, 4), sq(5, 5))), Ok(GameStatus::Ongoing));
+    }
+
+    #[test]
+    fn article_32_e3_adjacency_defers_two_effective_pieces_but_not_three() {
+        let pieces = [
+            (sq(5, 4), piece(Color::Black, PieceKind::King)),
+            (sq(6, 5), piece(Color::White, PieceKind::GoldGeneral)),
+            (sq(11, 11), piece(Color::White, PieceKind::King)),
+        ];
+        let mut two_effective_pieces = bare_king_game(position(Color::Black, &pieces));
+        assert_eq!(
+            two_effective_pieces.play(step(sq(5, 4), sq(5, 5))),
+            Ok(GameStatus::Ongoing)
+        );
+
+        let mut pieces = pieces.to_vec();
+        pieces.push((sq(9, 0), piece(Color::White, PieceKind::Bishop)));
+        let mut three_effective_pieces = bare_king_game(position(Color::Black, &pieces));
+        assert_eq!(
+            three_effective_pieces.play(step(sq(5, 4), sq(5, 5))),
+            Ok(GameStatus::Finished(GameResult::Win {
+                winner: Color::White,
+                reason: WinReason::PieceExhaustion,
+            }))
+        );
+    }
+
+    #[test]
+    fn article_32_e3_two_unchecked_bare_kings_draw() {
+        let mut game = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+
+        assert_eq!(
+            game.play(step(sq(5, 4), sq(5, 5))),
+            Ok(GameStatus::Finished(GameResult::Draw {
+                reason: DrawReason::PieceExhaustion,
+            }))
+        );
+    }
+
+    #[test]
+    fn article_32_e3_checked_bare_kings_continue() {
+        let mut game = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(6, 6), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+
+        assert_eq!(game.play(step(sq(5, 4), sq(5, 5))), Ok(GameStatus::Ongoing));
+    }
+
+    #[test]
+    fn article_32_e3_dead_pawns_and_lances_are_excluded_from_counts() {
+        let mut bare_side_dead_pieces = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(3, 11), piece(Color::Black, PieceKind::Pawn)),
+                (sq(4, 11), piece(Color::Black, PieceKind::Lance)),
+                (sq(9, 9), piece(Color::White, PieceKind::Rook)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+        assert_eq!(
+            bare_side_dead_pieces.play(step(sq(5, 4), sq(5, 5))),
+            Ok(GameStatus::Finished(GameResult::Win {
+                winner: Color::White,
+                reason: WinReason::PieceExhaustion,
+            }))
+        );
+
+        let mut opponent_dead_pieces = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(3, 0), piece(Color::White, PieceKind::Pawn)),
+                (sq(4, 0), piece(Color::White, PieceKind::Lance)),
+                (sq(6, 5), piece(Color::White, PieceKind::Rook)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+        assert_eq!(
+            opponent_dead_pieces.play(step(sq(5, 4), sq(5, 5))),
+            Ok(GameStatus::Ongoing)
+        );
+
+        let mut both_sides_dead_pieces = bare_king_game(position(
+            Color::Black,
+            &[
+                (sq(5, 4), piece(Color::Black, PieceKind::King)),
+                (sq(3, 11), piece(Color::Black, PieceKind::Pawn)),
+                (sq(4, 11), piece(Color::Black, PieceKind::Lance)),
+                (sq(3, 0), piece(Color::White, PieceKind::Pawn)),
+                (sq(4, 0), piece(Color::White, PieceKind::Lance)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ));
+        assert_eq!(
+            both_sides_dead_pieces.play(step(sq(5, 4), sq(5, 5))),
+            Ok(GameStatus::Finished(GameResult::Draw {
+                reason: DrawReason::PieceExhaustion,
+            }))
+        );
+    }
+
+    #[test]
     fn article_31_r1_fourth_repetition_is_a_draw_at_ply_12() {
         let mut game = game(position(
             Color::Black,
@@ -1726,7 +1889,7 @@ mod tests {
     #[test]
     fn representative_rule_sets_random_self_play_returns_no_unexpected_errors() {
         const PLY_CAP: u32 = 1_500;
-        const RULE_SETS: [(&str, &[RuleCode], u64); 6] = [
+        const RULE_SETS: [(&str, &[RuleCode], u64); 7] = [
             (
                 "L1+L2+P3+R1+E1",
                 &[
@@ -1782,6 +1945,18 @@ mod tests {
                     RuleCode::E2,
                 ],
                 0x5255_4c45_4741_4d06,
+            ),
+            (
+                "L1+L2+P3+R1+E1+E3",
+                &[
+                    RuleCode::L1,
+                    RuleCode::L2,
+                    RuleCode::P3,
+                    RuleCode::R1,
+                    RuleCode::E1,
+                    RuleCode::E3,
+                ],
+                0x5255_4c45_4741_4d07,
             ),
         ];
 
