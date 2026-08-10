@@ -328,13 +328,13 @@ pub fn parse_extended_sfen(sfen: &str, rules: Rules) -> Result<SetupPosition, Sf
     })
 }
 
-fn square_to_text(square: Square) -> String {
+pub(super) fn square_to_text(square: Square) -> String {
     let file = BOARD_FILES - square.file();
     let rank = char::from(b'a' + (BOARD_RANKS - 1 - square.rank()));
     format!("{file}{rank}")
 }
 
-fn parse_square(text: &str) -> Option<Square> {
+pub(super) fn parse_square(text: &str) -> Option<Square> {
     if !text.is_ascii() || !(2..=3).contains(&text.len()) {
         return None;
     }
