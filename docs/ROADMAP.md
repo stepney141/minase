@@ -15,6 +15,7 @@
 | 審判ロジック再編とR0撤去 | [plans/adjudication-refactor.md](plans/adjudication-refactor.md) | 完了 | 2026年8月9日 |
 | ランダム対局検証ハーネス | [plans/random-play.md](plans/random-play.md) | 完了 | 2026年8月10日 |
 | プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 完了 | 2026年8月10日 |
+| ブラウザGUI向けUSI照会 | [plans/browser-gui.md](plans/browser-gui.md) | 未着手 | ― |
 | 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
 | 探索部 | [plans/search.md](plans/search.md) | 進行中 | ― |
 
@@ -34,13 +35,17 @@
 フェーズ5では、XBoard内蔵VariantChu駒文字表とHaChu表の照合（21文字完全一致）を経て、CECP複数レグ指し手表記`src/notation/cecp.rs`とCECPプロトコルモジュール`src/protocol/cecp.rs`を実装し、エンジン本体の変更なしで2つ目のプロトコルを追加できることを確認した。
 HaChu互換規則セットの実対局照合は、HaChu 0.23が基本移動規則に反する手を自発出力するため不成立と判定し、プリセットは導入しなかった（詳細は docs/protocols/hachu.md 第11章）。
 テストは271件全緑であり、経緯は設計書 plans/protocol-layer.md にある。
-次の作業は探索部であり、2026年8月10日に設計書 plans/search.md を起案した。
-直前局面生成器は2026年8月10日に設計書を確定済みだが、利用者決定により探索部を先行させ、実装は待機のままとする。
+探索部は2026年8月10日に設計書 plans/search.md を起案し、設計確定済みである。
+2026年8月11日にブラウザGUI向けUSI照会の設計書 plans/browser-gui.md を起案し、利用者決定により探索部の実装より先にこのマイルストーンを完結させる。
+直前局面生成器は2026年8月10日に設計書を確定済みだが、利用者決定により実装は待機のままとする。
 
-## 次期マイルストーン：探索部
+## 次期マイルストーン：ブラウザGUI向けUSI照会
 
-探索部の設計書は plans/search.md にあり、自己対局ハーネスとSPRTを最初に作り、評価関数v0、探索骨格、置換表、静止探索、時間管理と対局接続、第2層の逐次採否の順で進める。
-実GUI接続による端到端検証は、プロトコル層で意図的に先送りしたものであり、時間管理と対局接続のフェーズで実施する。
+設計書は plans/browser-gui.md にあり、裁定理由enumのBareKing分割を第1段階、USI拡張movesとstateの追加を第2段階として進める。
+別リポジトリに置くGUIとランチャーの計画は plans/minase-gui.md へ分離しており、minaseのマイルストーン状態表には含めない。
+
+探索部の実装は本マイルストーンの完了後に着手し、自己対局ハーネスとSPRTを最初に作り、評価関数v0、探索骨格、置換表、静止探索、時間管理と対局接続、第2層の逐次採否の順で進める。
+実GUI接続による端到端検証は、プロトコル層で意図的に先送りしたものであり、探索部の時間管理と対局接続のフェーズで実施する。
 評価関数の本格化は探索部の完了後に別マイルストーンとして起案する。
 
 ## 横断的な記録済みの決定
