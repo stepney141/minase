@@ -2,6 +2,9 @@
 
 #[cfg(test)]
 mod tests;
+mod tt;
+
+pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable};
 
 use core::cmp::Ordering;
 
@@ -11,6 +14,8 @@ use crate::core::piece::PieceKind;
 use crate::core::position::Position;
 use crate::core::rules::Rules;
 use crate::eval::{evaluate, piece_value};
+
+use tt::Bound;
 
 /// 詰みを表す評価値。
 pub const MATE: i32 = 30_000;
@@ -64,6 +69,7 @@ pub fn search(
     root_moves: &[Move],
     history_keys: &[u64],
     config: &SearchConfig,
+    tt: &mut TranspositionTable,
 ) -> SearchResult {
     assert!(!root_moves.is_empty(), "root move list must not be empty");
     assert!(config.depth > 0, "search depth must be at least one");
@@ -72,6 +78,7 @@ pub fn search(
         "search depth must not exceed {MAX_PLY}"
     );
 
+    tt.new_search();
     let mut searcher = Searcher {
         rules,
         generator: MoveGenerator::new(rules),
@@ -79,6 +86,7 @@ pub fn search(
         path_keys: vec![search_key(position)],
         nodes: 0,
         node_limit: config.nodes,
+        tt,
     };
     let mut result = SearchResult {
         best_move: root_moves[0],
@@ -106,6 +114,7 @@ struct Searcher<'a> {
     path_keys: Vec<u64>,
     nodes: u64,
     node_limit: Option<u64>,
+    tt: &'a mut TranspositionTable,
 }
 
 impl Searcher<'_> {
@@ -121,7 +130,9 @@ impl Searcher<'_> {
 
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
-        order_moves(&position, &mut moves);
+        let key = search_key(&position);
+        let tt_move = self.tt.probe(key, 0).map(|hit| hit.best_move);
+        order_moves(&position, &mut moves, tt_move);
         let mut alpha = -INFINITY;
         let beta = INFINITY;
         let mut best_move = moves[0];
@@ -135,6 +146,8 @@ impl Searcher<'_> {
             }
             alpha = alpha.max(score);
         }
+        self.tt
+            .store(key, depth, best_score, Bound::Exact, best_move, 0);
         Some((best_move, best_score))
     }
 
@@ -153,22 +166,55 @@ impl Searcher<'_> {
         if depth == 0 {
             return Some(evaluate(position));
         }
+
+        let key = search_key(position);
+        let original_alpha = alpha;
+        let mut tt_move = None;
+        // 深さが足りるヒットは即時カットオフだけに使い、探索窓は狭めない。
+        // 窓を狭めると、格納時のバウンド分類が実際に探索した窓と食い違う。
+        if let Some(hit) = self.tt.probe(key, ply) {
+            tt_move = Some(hit.best_move);
+            if u32::from(hit.depth) >= depth {
+                let cutoff = match hit.bound {
+                    Bound::Exact => true,
+                    Bound::Lower => hit.score >= beta,
+                    Bound::Upper => hit.score <= alpha,
+                };
+                if cutoff {
+                    return Some(hit.score);
+                }
+            }
+        }
         let mut moves = Vec::new();
         self.generator.generate_moves(position, &mut moves);
         if moves.is_empty() {
             return Some(-MATE + ply as i32);
         }
 
-        order_moves(position, &mut moves);
+        order_moves(position, &mut moves, tt_move);
+        let mut best_move = moves[0];
         let mut best_score = -INFINITY;
+        let mut beta_cutoff = false;
         for (index, mv) in moves.into_iter().enumerate() {
             let score = self.search_move(position, mv, depth, alpha, beta, ply, index == 0)?;
-            best_score = best_score.max(score);
+            if score > best_score {
+                best_score = score;
+                best_move = mv;
+            }
             alpha = alpha.max(score);
             if alpha >= beta {
+                beta_cutoff = true;
                 break;
             }
         }
+        let bound = if best_score <= original_alpha {
+            Bound::Upper
+        } else if beta_cutoff {
+            Bound::Lower
+        } else {
+            Bound::Exact
+        };
+        self.tt.store(key, depth, best_score, bound, best_move, ply);
         Some(best_score)
     }
 
@@ -241,8 +287,11 @@ fn captures_last_royal(position: &Position, mv: Move) -> bool {
             == royal_count as usize
 }
 
-fn order_moves(position: &Position, moves: &mut [Move]) {
+fn order_moves(position: &Position, moves: &mut [Move], tt_move: Option<Move>) {
     moves.sort_by(|left, right| compare_moves(position, *left, *right));
+    if let Some(index) = tt_move.and_then(|tt_move| moves.iter().position(|&mv| mv == tt_move)) {
+        moves.swap(0, index);
+    }
 }
 
 fn compare_moves(position: &Position, left: Move, right: Move) -> Ordering {

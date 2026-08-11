@@ -9,7 +9,7 @@ use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_sfen};
 use crate::notation::usi;
-use crate::search::{self, SearchConfig};
+use crate::search::{self, SearchConfig, TranspositionTable};
 
 use super::Protocol;
 use super::engine::{
@@ -19,6 +19,7 @@ use super::engine::{
 /// lishogi系拡張を含むUSIプロトコル。
 pub struct UsiProtocol {
     startup_rules_text: String,
+    transposition_table: Option<TranspositionTable>,
 }
 
 impl UsiProtocol {
@@ -29,6 +30,7 @@ impl UsiProtocol {
     pub fn new(engine: &Engine) -> Self {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
+            transposition_table: None,
         }
     }
 
@@ -67,7 +69,7 @@ impl UsiProtocol {
     }
 
     fn handle_go(
-        &self,
+        &mut self,
         engine: &Engine,
         tokens: &[&str],
         output: &mut dyn Write,
@@ -84,12 +86,16 @@ impl UsiProtocol {
         if root_moves.is_empty() {
             return write_error(output, "go requires at least one legal move");
         }
+        let transposition_table = self
+            .transposition_table
+            .get_or_insert_with(TranspositionTable::default);
         let result = search::search(
             game.position(),
             engine.active_rules(),
             &root_moves,
             game.search_key_history(),
             &config,
+            transposition_table,
         );
         writeln!(
             output,
@@ -114,7 +120,7 @@ impl UsiProtocol {
     }
 
     fn handle_setoption(
-        &self,
+        &mut self,
         engine: &mut Engine,
         tokens: &[&str],
         output: &mut dyn Write,
@@ -222,13 +228,24 @@ impl UsiProtocol {
     }
 
     fn apply_silent(
-        &self,
+        &mut self,
         engine: &mut Engine,
         command: EngineCommand,
         output: &mut dyn Write,
     ) -> io::Result<()> {
+        let clears_transposition_table = matches!(
+            &command,
+            EngineCommand::NewGame | EngineCommand::SetRules(_)
+        );
         match engine.handle(command) {
-            EngineReply::Accepted { .. } => Ok(()),
+            EngineReply::Accepted { .. } => {
+                if clears_transposition_table
+                    && let Some(transposition_table) = &mut self.transposition_table
+                {
+                    transposition_table.clear();
+                }
+                Ok(())
+            }
             EngineReply::Rejected(reason) => write_error(output, &reason.to_string()),
         }
     }

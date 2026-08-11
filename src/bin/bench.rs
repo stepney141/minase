@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use minase::core::rules::parse_rule_set;
-use minase::search::{MAX_PLY, SearchConfig, search};
+use minase::search::{MAX_PLY, SearchConfig, TranspositionTable, search};
 use minase::{Game, Rules, parse_sfen};
 
 const DEFAULT_DEPTH: u32 = 3;
@@ -122,8 +122,12 @@ fn main() {
         depth: arguments.depth,
         nodes: None,
     };
-    let start = Instant::now();
+    // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
+    // 置換表は1個を使い回して局面ごとに計測外でクリアし(クリア後は
+    // 新品と同一状態)、NPSは各局面の探索時間の合計から計算する。
+    let mut transposition_table = TranspositionTable::default();
     let mut total_nodes = 0_u64;
+    let mut total_elapsed = 0.0_f64;
 
     for bench_position in BENCH_POSITIONS {
         let position = parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
@@ -134,6 +138,7 @@ fn main() {
             !legal_moves.is_empty(),
             "bench position must have legal moves"
         );
+        transposition_table.clear();
         let position_start = Instant::now();
         let result = search(
             game.position(),
@@ -141,8 +146,10 @@ fn main() {
             &legal_moves,
             game.search_key_history(),
             &config,
+            &mut transposition_table,
         );
         let elapsed = position_start.elapsed();
+        total_elapsed += elapsed.as_secs_f64();
         total_nodes = total_nodes
             .checked_add(result.nodes)
             .expect("total node count overflow");
@@ -155,14 +162,13 @@ fn main() {
         );
     }
 
-    let elapsed = start.elapsed();
-    let nps = total_nodes as f64 / elapsed.as_secs_f64();
+    let nps = total_nodes as f64 / total_elapsed;
     println!(
         "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
         BENCH_POSITIONS.len(),
         arguments.depth,
         total_nodes,
-        elapsed.as_secs_f64(),
+        total_elapsed,
         nps
     );
 }
