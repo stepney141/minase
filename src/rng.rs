@@ -1,5 +1,25 @@
 //! 決定的な擬似乱数生成器。
 
+const SPLITMIX_GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
+const SPLITMIX_MIX1: u64 = 0xBF58_476D_1CE4_E5B9;
+const SPLITMIX_MIX2: u64 = 0x94D0_49BB_1331_11EB;
+
+/// 指定値をsplitmix64の有限混合で変換する。
+pub fn splitmix64(value: u64) -> u64 {
+    let mut mixed = value.wrapping_add(SPLITMIX_GAMMA);
+    mixed = (mixed ^ (mixed >> 30)).wrapping_mul(SPLITMIX_MIX1);
+    mixed = (mixed ^ (mixed >> 27)).wrapping_mul(SPLITMIX_MIX2);
+    mixed ^ (mixed >> 31)
+}
+
+/// 基本シードと系列番号から0でないシードを派生する。
+pub fn derive_seed(base_seed: u64, number: u64) -> u64 {
+    match splitmix64(base_seed.wrapping_add(number)) {
+        0 => SPLITMIX_GAMMA,
+        seed => seed,
+    }
+}
+
 /// xorshift64擬似乱数生成器。
 pub struct XorShift64 {
     /// 乱数列の内部状態。

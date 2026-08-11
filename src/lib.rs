@@ -5,6 +5,8 @@ pub mod notation;
 pub mod protocol;
 #[doc(hidden)]
 pub mod rng;
+#[doc(hidden)]
+pub mod stats;
 
 #[cfg(test)]
 mod test_util;
