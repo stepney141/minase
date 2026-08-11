@@ -352,7 +352,7 @@ fn bare_king_result(position: &Position, generator: &MoveGenerator) -> Option<Ga
         {
             return Some(GameResult::Win {
                 winner: opponent,
-                reason: WinReason::PieceExhaustion,
+                reason: WinReason::BareKing,
             });
         }
     }
@@ -363,7 +363,7 @@ fn bare_king_result(position: &Position, generator: &MoveGenerator) -> Option<Ga
             .all(|color| !pieces_give_check(position, generator, color))
     {
         Some(GameResult::Draw {
-            reason: DrawReason::PieceExhaustion,
+            reason: DrawReason::BareKing,
         })
     } else {
         None

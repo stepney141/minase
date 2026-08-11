@@ -12,17 +12,19 @@ const DEFAULT_MAX_PLY: u32 = 4096;
 const SPLITMIX_GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
 const SPLITMIX_MIX1: u64 = 0xBF58_476D_1CE4_E5B9;
 const SPLITMIX_MIX2: u64 = 0x94D0_49BB_1331_11EB;
-const WIN_REASONS: [WinReason; 6] = [
+const WIN_REASONS: [WinReason; 7] = [
     WinReason::RoyalCapture,
     WinReason::Repetition,
     WinReason::PieceExhaustion,
+    WinReason::BareKing,
     WinReason::Stalemate,
     WinReason::Mate,
     WinReason::Resignation,
 ];
-const DRAW_REASONS: [DrawReason; 3] = [
+const DRAW_REASONS: [DrawReason; 4] = [
     DrawReason::Repetition,
     DrawReason::PieceExhaustion,
+    DrawReason::BareKing,
     DrawReason::Agreement,
 ];
 
@@ -304,9 +306,10 @@ const fn win_reason_index(reason: WinReason) -> usize {
         WinReason::RoyalCapture => 0,
         WinReason::Repetition => 1,
         WinReason::PieceExhaustion => 2,
-        WinReason::Stalemate => 3,
-        WinReason::Mate => 4,
-        WinReason::Resignation => 5,
+        WinReason::BareKing => 3,
+        WinReason::Stalemate => 4,
+        WinReason::Mate => 5,
+        WinReason::Resignation => 6,
     }
 }
 
@@ -315,7 +318,8 @@ const fn draw_reason_index(reason: DrawReason) -> usize {
     match reason {
         DrawReason::Repetition => 0,
         DrawReason::PieceExhaustion => 1,
-        DrawReason::Agreement => 2,
+        DrawReason::BareKing => 2,
+        DrawReason::Agreement => 3,
     }
 }
 

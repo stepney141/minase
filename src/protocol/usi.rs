@@ -2,15 +2,18 @@
 
 use std::io::{self, BufRead, Write};
 
-use crate::core::game::Game;
+use crate::core::game::{DrawReason, Game, GameResult, GameStatus, WinReason};
 use crate::core::mv::Move;
+use crate::core::piece::Color;
 use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
-use crate::notation::sfen::{SetupPosition, parse_extended_sfen};
+use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_sfen};
 use crate::notation::usi;
 
 use super::Protocol;
-use super::engine::{Engine, EngineCommand, EngineReply, RejectReason, canonical_rules_text};
+use super::engine::{
+    Engine, EngineCommand, EngineLifecycle, EngineReply, RejectReason, canonical_rules_text,
+};
 
 /// lishogi系拡張を含むUSIプロトコル。
 pub struct UsiProtocol {
@@ -46,6 +49,8 @@ impl UsiProtocol {
             "usinewgame" => self.apply_silent(engine, EngineCommand::NewGame, output)?,
             "position" => self.handle_position(engine, &tokens[1..], output)?,
             "gameover" => self.apply_silent(engine, EngineCommand::EndGame, output)?,
+            "moves" => self.handle_moves(engine, output)?,
+            "state" => self.handle_state(engine, output)?,
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
             }
@@ -156,6 +161,36 @@ impl UsiProtocol {
         }
     }
 
+    fn handle_moves(&self, engine: &Engine, output: &mut dyn Write) -> io::Result<()> {
+        if engine.lifecycle() != EngineLifecycle::InGame {
+            return write_error(output, "moves requires an active game");
+        }
+
+        let game = engine.game();
+        write!(output, "moves")?;
+        for mv in game.legal_moves() {
+            write!(output, " {}", usi::text(game.position(), mv))?;
+        }
+        writeln!(output)
+    }
+
+    fn handle_state(&self, engine: &Engine, output: &mut dyn Write) -> io::Result<()> {
+        if engine.lifecycle() == EngineLifecycle::AwaitingStart {
+            return write_error(output, "state requires an active or finished game");
+        }
+
+        let status = match state_status_text(engine.status()) {
+            Ok(status) => status,
+            Err(error) => return write_error(output, error),
+        };
+        writeln!(
+            output,
+            "state rules {} board {} status {status}",
+            canonical_rules_text(engine.active_rule_codes()),
+            to_sfen(engine.game().position()),
+        )
+    }
+
     fn apply_silent(
         &self,
         engine: &mut Engine,
@@ -260,12 +295,44 @@ fn position_reject_reason_text(reason: &RejectReason, rejected_text: Option<&str
     }
 }
 
+fn state_status_text(status: GameStatus) -> Result<String, &'static str> {
+    match status {
+        GameStatus::Ongoing => Ok("ongoing".to_owned()),
+        GameStatus::Finished(GameResult::Win { winner, reason }) => {
+            let winner = match winner {
+                Color::Black => "black",
+                Color::White => "white",
+            };
+            let reason = match reason {
+                WinReason::RoyalCapture => "royal-capture",
+                WinReason::Repetition => "repetition",
+                WinReason::PieceExhaustion => "piece-exhaustion",
+                WinReason::BareKing => "bare-king",
+                WinReason::Stalemate => "stalemate",
+                WinReason::Mate => "mate",
+                WinReason::Resignation => return Err("state cannot represent resignation"),
+            };
+            Ok(format!("win {winner} {reason}"))
+        }
+        GameStatus::Finished(GameResult::Draw { reason }) => {
+            let reason = match reason {
+                DrawReason::Repetition => "repetition",
+                DrawReason::PieceExhaustion => "piece-exhaustion",
+                DrawReason::BareKing => "bare-king",
+                DrawReason::Agreement => return Err("state cannot represent agreement"),
+            };
+            Ok(format!("draw {reason}"))
+        }
+    }
+}
+
 fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
     writeln!(output, "info string error: {message}")
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::io::Cursor;
 
     use super::*;
@@ -404,6 +471,144 @@ mod tests {
         assert_eq!(engine.lifecycle(), EngineLifecycle::InGame);
         assert_eq!(engine.game().ply_count(), 36);
         assert_eq!(engine.status(), GameStatus::Ongoing);
+    }
+
+    #[test]
+    fn moves_matches_the_legal_move_notation_set() {
+        let startup = [RuleCode::R1, RuleCode::E2];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        let output = run(&mut protocol, &mut engine, "position startpos\nmoves\n");
+        let mut fields = output.split_whitespace();
+        assert_eq!(fields.next(), Some("moves"));
+        let actual: HashSet<_> = fields.map(str::to_owned).collect();
+        let expected: HashSet<_> = engine
+            .game()
+            .legal_moves()
+            .into_iter()
+            .map(|mv| usi::text(engine.game().position(), mv))
+            .collect();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn queries_report_explicit_errors_before_the_game_starts() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        assert_eq!(
+            run(&mut protocol, &mut engine, "moves\nstate\nquit\n"),
+            concat!(
+                "info string error: moves requires an active game\n",
+                "info string error: state requires an active or finished game\n",
+            )
+        );
+    }
+
+    #[test]
+    fn state_reports_exact_ongoing_and_finished_lines() {
+        let startup = [RuleCode::E2, RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        assert_eq!(
+            run(&mut protocol, &mut engine, "position startpos\nstate\n"),
+            concat!(
+                "state rules R1,E2 board ",
+                "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/",
+                "3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/",
+                "A1B1TOXT1B1A/LFCSGKEGSCFL b status ongoing\n",
+            )
+        );
+
+        let finished = concat!(
+            "position sfen 12/12/12/5k6/12/12/5R6/12/12/12/12/K11 b - 1 ",
+            "moves 7g7d\nstate\n",
+        );
+        assert_eq!(
+            run(&mut protocol, &mut engine, finished),
+            concat!(
+                "state rules R1,E2 board ",
+                "12/12/12/5R6/12/12/12/12/12/12/12/K11 w ",
+                "status win black royal-capture\n",
+            )
+        );
+    }
+
+    #[test]
+    fn state_uses_the_next_games_active_rules_after_gameover() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let input = concat!(
+            "position startpos\n",
+            "gameover draw\n",
+            "state\n",
+            "setoption name RuleSet value E2,R2,L1\n",
+            "position startpos\n",
+            "state\n",
+        );
+
+        assert_eq!(
+            run(&mut protocol, &mut engine, input),
+            concat!(
+                "info string error: state requires an active or finished game\n",
+                "state rules L1,R2,E2 board ",
+                "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/",
+                "3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/",
+                "A1B1TOXT1B1A/LFCSGKEGSCFL b status ongoing\n",
+            )
+        );
+    }
+
+    #[test]
+    fn state_status_uses_the_contract_vocabulary() {
+        let win_reasons = [
+            (WinReason::RoyalCapture, "royal-capture"),
+            (WinReason::Repetition, "repetition"),
+            (WinReason::PieceExhaustion, "piece-exhaustion"),
+            (WinReason::BareKing, "bare-king"),
+            (WinReason::Stalemate, "stalemate"),
+            (WinReason::Mate, "mate"),
+        ];
+        for (reason, text) in win_reasons {
+            assert_eq!(
+                state_status_text(GameStatus::Finished(GameResult::Win {
+                    winner: Color::White,
+                    reason,
+                })),
+                Ok(format!("win white {text}"))
+            );
+        }
+
+        let draw_reasons = [
+            (DrawReason::Repetition, "repetition"),
+            (DrawReason::PieceExhaustion, "piece-exhaustion"),
+            (DrawReason::BareKing, "bare-king"),
+        ];
+        for (reason, text) in draw_reasons {
+            assert_eq!(
+                state_status_text(GameStatus::Finished(GameResult::Draw { reason })),
+                Ok(format!("draw {text}"))
+            );
+        }
+
+        assert_eq!(
+            state_status_text(GameStatus::Finished(GameResult::Win {
+                winner: Color::Black,
+                reason: WinReason::Resignation,
+            })),
+            Err("state cannot represent resignation")
+        );
+        assert_eq!(
+            state_status_text(GameStatus::Finished(GameResult::Draw {
+                reason: DrawReason::Agreement,
+            })),
+            Err("state cannot represent agreement")
+        );
     }
 
     #[test]

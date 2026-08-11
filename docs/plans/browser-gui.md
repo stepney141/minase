@@ -5,7 +5,15 @@
 2026年8月11日に本設計書を起案した。
 同日のレビューで裁定理由enumの分割を第1段階として編入し、終局語彙とライフサイクル契約を確定した。
 利用者決定により、本マイルストーンは探索部の実装より先に完結させる。
-実装は未着手である。
+
+同2026年8月11日に両段階の実装を完了した。
+第1段階では`WinReason`と`DrawReason`へ`BareKing`を新設し、`src/core/adjudication.rs`の`bare_king_result`だけがこれを返すよう分割した。
+CECPの終局文字列はenumとの1対1写像へ単純化し、`PieceExhaustion`へ"piece exhaustion"、`BareKing`へ"bare king"/"bare kings"を当てた。
+E3経路の既存テスト5件とlishogi棋譜リプレイの期待値、`random_play`の理由集計を`BareKing`へ追従させた。
+第2段階では`src/protocol/usi.rs`へ`moves`と`state`を追加し、テスト方針の全ケース（集合比較、単一行完全一致、開始前エラー、`gameover`後の規則切替）をインラインテストとして実装した。
+`resignation`と`agreement`は設計どおりstatusを出力せず`info string error: ...`で通知する。
+検証は`cargo test`276件全緑、`cargo clippy --all-targets`警告なし、`cargo fmt --all -- --check`および`git diff --check`の通過を確認した。
+`docs/protocols/usi-lishogi.md`へ「minase固有のUSI拡張」の節を追加し、2コマンドの契約を記録した。
 
 本設計書はminase側のマイルストーンだけを扱う。
 別リポジトリへ置くGUIとランチャーの計画は、本設計書の規範に含めない。

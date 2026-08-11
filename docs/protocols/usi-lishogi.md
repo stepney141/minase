@@ -186,6 +186,41 @@ Lishogi-Botは`usinewgame`を送信しない（engine_ctrl/usi.pyに当該コマ
 
 欄数の扱いは、random-playフェーズ2の着手時（2026年8月10日）に次のとおり決定した。`to_sfen`は盤面部と手番部の2欄だけを出力するminaseの基本形式とし、`parse_sfen`も2欄受理のまま維持する。この2欄形式はshogiopsの正準SFEN（常に4欄）そのものではない。獅子捕獲升部は合法手に影響する状態を運ぶため、「`-`だけを受理して無視する」形の部分対応は行わず、4欄完全形との相互変換は獅子捕獲状態を`Position`へ反映する経路とともにプロトコル層の拡張SFEN設計で扱う。
 
+## minase固有のUSI拡張
+
+### 拡張の位置づけ
+
+minaseは、USI原典にもlishogi系実装にもない2つの照会コマンド`moves`と`state`を実装する（ブラウザGUI向けUSI照会マイルストーン、../plans/browser-gui.md）。どちらも読み取り専用の照会であり、開発用GUIが規則を再実装せずに対局を進めるための拡張である。USIにはエンジンからGUIへ終局裁定を通知する標準経路がないため、自作GUIはminaseを審判として使うときに`state`を用いる。Lishogi-Bot経路とCECP経路はこの2コマンドを使わない。未知コマンドを無視するUSIの一般規則により、この拡張を知らないGUIとの互換性は損なわれない。
+
+### movesコマンド
+
+GUIは`position`の適用後で対局が進行中のとき、1行`moves`を送る。minaseは`Game::legal_moves()`の全要素を本文書「指し手の文字列表記」の節と同じlishogi系USI表記へ変換し、1行`moves <move1> <move2> ...`を返す。2段階移動、居喰い、じっと、成りの表記も既存のUSI表記と同一である。指し手の順序は契約に含めず、受信側は集合として扱う。
+
+エンジンが`AwaitingStart`または`Finished`のときは、`info string error: moves requires an active game`を返す。空の合法手集合を進行中の正常状態として表す形式は設けず、終局後は`state`で裁定を照会する。
+
+### stateコマンド
+
+GUIは`position`が成功した後、1行`state`を送る。minaseは次の1行を返す。
+
+```text
+state rules <rules> board <board-sfen> <side> status <status>
+```
+
+`<rules>`は現局へ適用中の規則コードを正準順のコンマ区切りで表す。`<board-sfen> <side>`は`to_sfen`が返す2欄SFENであり、盤面表示と手番確認だけに使う。2欄SFENは先獅子状態、成り権保留、反復履歴を運ばないため、GUIは`board`欄から対局状態を復元せず、対局開始からのUSI着手列を保持して`position startpos moves ...`を再送する。
+
+`<status>`は次のいずれかとする。
+
+```text
+ongoing
+win black royal-capture|repetition|piece-exhaustion|bare-king|stalemate|mate
+win white royal-capture|repetition|piece-exhaustion|bare-king|stalemate|mate
+draw repetition|piece-exhaustion|bare-king
+```
+
+`piece-exhaustion`はRULES.md第22条の駒枯れ、`bare-king`はローカルルールE3の裸玉裁定を表し、採用規則により排他である。現行USIから`Game`へ投了または引き分け合意を適用する経路はないため、`resignation`と`agreement`は文法に含めず、実装がこれらの裁定に遭遇した場合はstatusを出力せず既存形式の`info string error: ...`で通知する。
+
+`state`は`InGame`と`Finished`で応答する。起動直後と`gameover`受信後の`AwaitingStart`では`info string error: state requires an active or finished game`を返す。`moves`が`InGame`だけで応答するのに対し`state`は`Finished`でも応答するという非対称は、終局裁定の確認を`state`が担うための意図的な契約である。
+
 ## 典拠一覧
 
 以下のウェブ資料およびソースコードは、2026年8月10日に参照した。

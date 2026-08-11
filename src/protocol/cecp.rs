@@ -288,7 +288,8 @@ const fn win_reason_text(reason: WinReason) -> &'static str {
         WinReason::Mate => "checkmate",
         WinReason::Stalemate => "no legal moves",
         WinReason::Repetition => "repetition",
-        WinReason::PieceExhaustion => "bare king",
+        WinReason::PieceExhaustion => "piece exhaustion",
+        WinReason::BareKing => "bare king",
         WinReason::Resignation => "resignation",
     }
 }
@@ -296,7 +297,8 @@ const fn win_reason_text(reason: WinReason) -> &'static str {
 const fn draw_reason_text(reason: DrawReason) -> &'static str {
     match reason {
         DrawReason::Repetition => "repetition",
-        DrawReason::PieceExhaustion => "bare kings",
+        DrawReason::PieceExhaustion => "piece exhaustion",
+        DrawReason::BareKing => "bare kings",
         DrawReason::Agreement => "agreement",
     }
 }

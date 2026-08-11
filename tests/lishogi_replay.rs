@@ -105,7 +105,7 @@ fn replay_game(replay: &Value) -> Result<(), String> {
             final_status,
             GameStatus::Finished(GameResult::Win {
                 winner: required_winner(id, winner)?,
-                reason: WinReason::PieceExhaustion,
+                reason: WinReason::BareKing,
             }),
         ),
         "repetition" => {

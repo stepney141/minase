@@ -17,6 +17,8 @@ pub enum WinReason {
     RoyalCapture,
     Repetition,
     PieceExhaustion,
+    /// 裸玉による勝利(第32条E3)。
+    BareKing,
     Stalemate,
     Mate,
     Resignation,
@@ -26,6 +28,8 @@ pub enum WinReason {
 pub enum DrawReason {
     Repetition,
     PieceExhaustion,
+    /// 裸玉による引き分け(第32条E3)。
+    BareKing,
     Agreement,
 }
 
@@ -1230,7 +1234,7 @@ mod tests {
             game.play(step(sq(5, 4), sq(5, 5))),
             Ok(GameStatus::Finished(GameResult::Win {
                 winner: Color::White,
-                reason: WinReason::PieceExhaustion,
+                reason: WinReason::BareKing,
             }))
         );
     }
@@ -1284,7 +1288,7 @@ mod tests {
             three_effective_pieces.play(step(sq(5, 4), sq(5, 5))),
             Ok(GameStatus::Finished(GameResult::Win {
                 winner: Color::White,
-                reason: WinReason::PieceExhaustion,
+                reason: WinReason::BareKing,
             }))
         );
     }
@@ -1302,7 +1306,7 @@ mod tests {
         assert_eq!(
             game.play(step(sq(5, 4), sq(5, 5))),
             Ok(GameStatus::Finished(GameResult::Draw {
-                reason: DrawReason::PieceExhaustion,
+                reason: DrawReason::BareKing,
             }))
         );
     }
@@ -1336,7 +1340,7 @@ mod tests {
             bare_side_dead_pieces.play(step(sq(5, 4), sq(5, 5))),
             Ok(GameStatus::Finished(GameResult::Win {
                 winner: Color::White,
-                reason: WinReason::PieceExhaustion,
+                reason: WinReason::BareKing,
             }))
         );
 
@@ -1369,7 +1373,7 @@ mod tests {
         assert_eq!(
             both_sides_dead_pieces.play(step(sq(5, 4), sq(5, 5))),
             Ok(GameStatus::Finished(GameResult::Draw {
-                reason: DrawReason::PieceExhaustion,
+                reason: DrawReason::BareKing,
             }))
         );
     }
@@ -2036,6 +2040,13 @@ mod tests {
                         GameResult::Draw {
                             reason: DrawReason::PieceExhaustion,
                         } => exhaustion_draw += 1,
+                        GameResult::Win {
+                            reason: WinReason::BareKing,
+                            ..
+                        }
+                        | GameResult::Draw {
+                            reason: DrawReason::BareKing,
+                        } => panic!("default rules cannot produce an E3 bare-king result"),
                         GameResult::Win {
                             reason: WinReason::Resignation,
                             ..
