@@ -25,6 +25,7 @@
 HaChu互換検証は同2026年8月10日に実施し、不成立と判定した。ハーネス実装（HaChuのクラッシュ診断、自己対局生成 scripts/hachu_selfplay.py、リプレイ照合 scripts/hachu_replay.py）はOpus 5のサブエージェントへ委任し、Claudeが成果物のレビューと結果の独立再現（第0局7手の再実行と指し手列からの盤面再構成、リプレイ照合の再実行）を行った。HaChu 0.23（コミット649ef114）は`memory`未受信時の`go`で異常終了するほか、正常終局7局のすべてで基本移動規則（自駒升への移動、走り駒の経路遮断、手番）に反する手を自発出力し、規則セットR2+E1とL1+R2+E1のどちらでも全手合法の局は0局であった。先獅子・反復・成りの規則差の照合には到達していない。設計書の規定「検証が成立しない場合、HaChuプリセットは導入しない」に従いプリセットは見送り、欠陥の詳細と再検討条件は docs/protocols/hachu.md 第11章（追補）に記録した。ハーネス2本はコミットし、生成棋譜は壊れた実装の産物であるため同梱しない。
 
 以上をもって本マイルストーンの完了条件はすべて満たされ、プロトコル層は2026年8月10日に完了した。
+本マイルストーンで保留した思考開始指示と実対局接続は、2026年8月11日に[外部対局接続](engine-connectivity.md)として独立した設計書へ分離した。
 
 ## 目的
 
@@ -44,7 +45,7 @@ HaChu互換検証は同2026年8月10日に実施し、不成立と判定した�
 - USIおよびCECPのプロトコル本体の実装と台本テスト。規則セットをプロトコル内オプションとして公開する機能を含む。
 - lishogi棋譜のリプレイ照合の導入。
 
-探索部、評価関数、思考開始指示への着手応答、CUI対局管理マネージャ、実GUI接続による端到端検証は対象外とする。実GUI接続の検証は、着手決定器が入る探索部マイルストーン以降で行う。
+探索部、評価関数、思考開始指示への着手応答、CUI対局管理マネージャ、実GUI接続による端到端検証は対象外とする。思考開始指示と実GUI接続の検証は、着手決定器の完成後に外部対局接続マイルストーンで行う。
 
 ## 設計判断
 
@@ -55,7 +56,7 @@ HaChu互換検証は同2026年8月10日に実施し、不成立と判定した�
 | プロトコル選択 | `--protocol usi\|cecp`の明示指定を必須とし、既定値と自動判別は設けない。 |
 | 規則指定 | `--rules`起動フラグでの明示指定を必須とし、既定値を設けない。加えて、同一の規則セットをUSI `setoption`とCECP `feature option`のオプションとして公開し、GUIがエンジンを再起動せずに変更できるようにする。変更は次の対局開始時に反映するlatch方式とし、不正なコード列は受信時点でエラー応答する。この構成により、エンジンは起動時点から常に規則確定状態を保ち、「未確定のまま対局開始」という状態が存在しない。 |
 | 拡張SFEN | shogiopsの中将棋SFENを基底形式として採用し、lishogiが表現できない状態だけを追加フィールドで拡張する。 |
-| 思考開始指示 | USIの`go`相当は未対応とし、エラー応答を返す。着手決定器は探索部マイルストーンで導入する。 |
+| 思考開始指示 | USIの`go`相当は未対応とし、エラー応答を返す。着手決定器は探索部、プロトコルへの接続は外部対局接続で導入する。 |
 | 実装順序 | USIを先行し、CECPを後続とする。拡張SFENの基底がlishogi互換であり、リプレイ照合との相乗効果を先に得るためである。 |
 | 完了判定 | 台本テスト（セッショントランスクリプト照合）とlishogi棋譜リプレイ照合で行う。 |
 | モジュール配置 | 表記変換層を`src/notation/`、通信層を`src/protocol/`に置く2層分離とする。`sfen.rs`は`src/notation/`へ移設し、指し手文字列表記2形式も同層に実装する。依存は`protocol`から`notation`への一方向とし、通信を経由しないperftやrandom_playは`notation`だけに依存する。移設はrandom-playフェーズ2との編集衝突を避けるため、フェーズ3の冒頭で行う。 |
@@ -167,7 +168,7 @@ latchはactive（対局に適用中）とpending（次局から適用）の2状�
 
 ### 思考開始指示と終局裁定の通知
 
-思考開始指示（USIの`go`各種、CECPの`go`と`analyze`）は本マイルストーンの接続可能機能から除外する。USI原典は通常の`go`に必ず`bestmove`を要求するため、独自エラー行では契約を満たせず、`bestmove resign`は投了を意味するため代用できない（codexレビュー指摘）。ただし`go mate`には原典が未実装応答`checkmate notimplemented`を定めるため、これを返す。その他の`go`は着手も`bestmove`も返さず、USIは`info string error: go is not supported (search is not implemented)`、CECPは`Error (command not supported): go`を出力するだけとする。この挙動では思考を求めるGUIと正常な対局にならないことを完了条件に明記し、実対局の接続は探索部マイルストーンで扱う。CECPは`feature analyze=0`を宣言する。
+思考開始指示（USIの`go`各種、CECPの`go`と`analyze`）は本マイルストーンの接続可能機能から除外する。USI原典は通常の`go`に必ず`bestmove`を要求するため、独自エラー行では契約を満たせず、`bestmove resign`は投了を意味するため代用できない（codexレビュー指摘）。ただし`go mate`には原典が未実装応答`checkmate notimplemented`を定めるため、これを返す。その他の`go`は着手も`bestmove`も返さず、USIは`info string error: go is not supported (search is not implemented)`、CECPは`Error (command not supported): go`を出力するだけとする。この挙動では思考を求めるGUIと正常な対局にならないことを完了条件に明記し、実対局の接続は外部対局接続マイルストーンで扱う。CECPは`feature analyze=0`を宣言する。
 
 終局裁定はエンジン内部で`GameStatus::Finished(GameResult)`に一元化する。CECPは、`EngineReply`の`newly_finished`が値を持つ場合に限り`RESULT {comment}`行へ変換して通知する。既にFinishedの対局に対する後続コマンドの応答からは`RESULT`を再生成しない。結果コードは先手勝ちが`1-0`、後手勝ちが`0-1`、引き分けが`1/2-1/2`であり、理由文字列は次の対応表で固定する。
 
@@ -189,7 +190,7 @@ USIにはエンジン発の裁定通知手段がないため出力せず、USI�
 
 ### CECPのfeature宣言
 
-起動時のfeature宣言は`myname`、`variants="chu"`、`setboard=1`、`usermove=1`、`ping=1`、`colors=0`、`sigint=0`、`sigterm=0`、`analyze=0`、`time=0`、`draw=0`、`option`（RuleSet）、`done=1`の最小セットとする。`time=0`と`draw=0`は、既定値1のまま届く`time`・`otim`・引き分け提案に対する処理を持たないための抑止である（codexレビュー指摘）。`debug`は`#`出力を行わないため宣言しない。featureの拒否への対応は前述のとおり、必須3種（`setboard`、`usermove`、`ping`）の拒否で終了し、他は記録にとどめる。`highlight`は宣言せず、対話入力の支援は実GUI接続を扱う探索部以降のマイルストーンへ明示的に先送りする（hachu.mdの調査どおり、highlightは人間の対話入力に必要であり、台本テストとエンジン間対局には不要である）。XBoard内蔵のVariantChu駒文字表とHaChu表の一致確認は未実施であり、フェーズ5の着手前条件とする。
+起動時のfeature宣言は`myname`、`variants="chu"`、`setboard=1`、`usermove=1`、`ping=1`、`colors=0`、`sigint=0`、`sigterm=0`、`analyze=0`、`time=0`、`draw=0`、`option`（RuleSet）、`done=1`の最小セットとする。`time=0`と`draw=0`は、既定値1のまま届く`time`・`otim`・引き分け提案に対する処理を持たないための抑止である（codexレビュー指摘）。`debug`は`#`出力を行わないため宣言しない。featureの拒否への対応は前述のとおり、必須3種（`setboard`、`usermove`、`ping`）の拒否で終了し、他は記録にとどめる。`highlight`は宣言せず、人間の対話入力支援として外部対局接続マイルストーンの対象外に置く（hachu.mdの調査どおり、highlightは人間の対話入力に必要であり、台本テストとエンジン間対局には不要である）。XBoard内蔵のVariantChu駒文字表とHaChu表の一致確認は未実施であり、フェーズ5の着手前条件とする。
 
 ### モジュールと名称
 

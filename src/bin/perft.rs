@@ -4,6 +4,9 @@ use std::time::{Duration, Instant};
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use minase::{Move, MoveGenerator, Position, Rules, Square, parse_sfen};
 
+// #[global_allocator]
+// static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(Parser)]
 #[command(name = "perft")]
 struct Arguments {

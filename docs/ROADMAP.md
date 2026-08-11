@@ -17,7 +17,8 @@
 | プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 完了 | 2026年8月10日 |
 | ブラウザGUI向けUSI照会 | [plans/browser-gui.md](plans/browser-gui.md) | 未着手 | ― |
 | 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
-| 探索部 | [plans/search.md](plans/search.md) | 進行中 | ― |
+| 探索部 | [plans/search.md](plans/search.md) | 未着手 | ― |
+| 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 未着手 | ― |
 
 直前局面生成器は設計済みだが、2026年8月10日の利用者決定により探索部を先行させ、待機中のままとする。
 順方向の探索部と評価関数は直前局面生成器の完了を前提とせず、いつ再開しても手戻りがない。
@@ -37,15 +38,20 @@ HaChu互換規則セットの実対局照合は、HaChu 0.23が基本移動規�
 テストは271件全緑であり、経緯は設計書 plans/protocol-layer.md にある。
 探索部は2026年8月10日に設計書 plans/search.md を起案し、設計確定済みである。
 2026年8月11日にブラウザGUI向けUSI照会の設計書 plans/browser-gui.md を起案し、利用者決定により探索部の実装より先にこのマイルストーンを完結させる。
+同2026年8月11日に、探索部からUSI・CECPのセッション制御と実環境接続を分離し、外部対局接続の設計書 plans/engine-connectivity.md を起案した。
+外部対局接続は探索部の探索呼び出し境界（`SearchSnapshot`、`SearchLimits`、停止機構）を前提とし、USI・CECPの対局進行と外部環境との端到端検証を所有する。
 直前局面生成器は2026年8月10日に設計書を確定済みだが、利用者決定により実装は待機のままとする。
 
 ## 次期マイルストーン：ブラウザGUI向けUSI照会
 
 設計書は plans/browser-gui.md にあり、裁定理由enumのBareKing分割を第1段階、USI拡張movesとstateの追加を第2段階として進める。
-別リポジトリに置くGUIとランチャーの計画は plans/minase-gui.md へ分離しており、minaseのマイルストーン状態表には含めない。
+別リポジトリに置くGUIとランチャーはminaseのマイルストーン状態表に含めず、本マイルストーンはminase側のUSI拡張だけで完了する。
 
-探索部の実装は本マイルストーンの完了後に着手し、自己対局ハーネスとSPRTを最初に作り、評価関数v0、探索骨格、置換表、静止探索、時間管理と対局接続、第2層の逐次採否の順で進める。
-実GUI接続による端到端検証は、プロトコル層で意図的に先送りしたものであり、探索部の時間管理と対局接続のフェーズで実施する。
+探索部の実装は本マイルストーンの完了後に着手し、自己対局ハーネスとSPRTを最初に作り、評価関数v0、探索骨格、置換表、静止探索、時間管理と探索呼び出し境界、第2層の逐次採否の順で進める。
+外部対局接続は、探索部の時間管理と探索呼び出し境界のフェーズ完了後に着手でき、第2層の逐次採否とは並行できる。
+USIのLishogi-Bot経路、CECPの対局状態機械、外部環境による端到端検証の順で進める。
+完了時には、Lishogi-Bot経由の非レート対局1局とXBoard仲介のMinase対Minase対局1局を完走し、HaChuとは接続と指し手授受を確認する（詳細は plans/engine-connectivity.md）。
+この分離により、探索の棋力検証と外部セッションの正しさを別々の完了条件で判定する。
 評価関数の本格化は探索部の完了後に別マイルストーンとして起案する。
 
 ## 横断的な記録済みの決定
