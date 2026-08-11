@@ -477,6 +477,23 @@ mod tests {
     }
 
     #[test]
+    fn engine_default_preset_sets_r1_as_pending_rules() {
+        let mut engine = engine(&[RuleCode::R2]);
+        let mut protocol = CecpProtocol::new(&engine);
+
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "option RuleSet=engine-default\nquit\n",
+            ),
+            ""
+        );
+        assert_eq!(engine.active_rule_codes(), &[RuleCode::R2]);
+        assert_eq!(engine.pending_rule_codes(), &[RuleCode::R1]);
+    }
+
+    #[test]
     fn multileg_capture_and_igui_are_applied() {
         let two_stage_position = position_with(&[
             (sq(0, 0), Color::Black, PieceKind::King),

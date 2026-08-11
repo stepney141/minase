@@ -68,6 +68,9 @@ mod tests {
 
     #[test]
     fn rules_argument_accepts_preset_and_codes_but_rejects_their_combination() {
+        let engine_default =
+            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "engine-default"])
+                .unwrap();
         let preset =
             Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "lishogi"])
                 .unwrap();
@@ -90,6 +93,7 @@ mod tests {
             Err(error) => error,
         };
 
+        assert_eq!(engine_default.rules.0, [RuleCode::R1]);
         assert_eq!(preset.rules.0, codes.rules.0);
         assert!(
             error

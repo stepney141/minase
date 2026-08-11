@@ -453,6 +453,24 @@ mod tests {
     }
 
     #[test]
+    fn engine_default_preset_sets_r1_as_pending_rules() {
+        let startup = [RuleCode::R2];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name RuleSet value engine-default\nquit\n",
+            ),
+            ""
+        );
+        assert_eq!(engine.active_rule_codes(), &[RuleCode::R2]);
+        assert_eq!(engine.pending_rule_codes(), &[RuleCode::R1]);
+    }
+
+    #[test]
     fn startpos_script_applies_two_stage_jitto_promotion_and_igui_moves() {
         let startup = [RuleCode::R1, RuleCode::E2];
         let mut engine = engine(&startup);

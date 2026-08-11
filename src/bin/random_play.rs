@@ -2,6 +2,7 @@ use std::process;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use clap::{CommandFactory, Parser, error::ErrorKind};
+use minase::core::rules::parse_rule_set;
 use minase::rng::XorShift64;
 use minase::{
     Color, DrawReason, Game, GameError, GameResult, GameStatus, Move, RuleCode, Rules, Square,
@@ -46,9 +47,9 @@ struct Arguments {
     /// 単独で再現する1起算の局番号。
     #[arg(long, value_parser = parse_positive_u64)]
     game: Option<u64>,
-    /// 採用するローカルルールコード列。
-    #[arg(long, required = true, value_delimiter = ',', value_parser = parse_rule_code)]
-    rules: Vec<RuleCode>,
+    /// 採用するローカルルールコード列または規則セット名。
+    #[arg(long, required = true, value_parser = parse_rule_set_argument)]
+    rules: RuleSetArgument,
     /// 1局を打ち切る手数上限。
     #[arg(long, default_value_t = DEFAULT_MAX_PLY, value_parser = parse_positive_u32)]
     max_ply: u32,
@@ -58,6 +59,13 @@ struct Arguments {
     /// 各局の全手順を表示する。
     #[arg(long)]
     verbose: bool,
+}
+
+#[derive(Clone)]
+struct RuleSetArgument(Vec<RuleCode>);
+
+fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
+    parse_rule_set(input).map(RuleSetArgument)
 }
 
 /// 正常に終了した1局の結果。
@@ -178,27 +186,6 @@ fn parse_positive_u32(text: &str) -> Result<u32, String> {
         return Err("value must be at least 1".to_owned());
     }
     Ok(value)
-}
-
-/// ローカルルールコードを解析する。
-fn parse_rule_code(text: &str) -> Result<RuleCode, String> {
-    match text {
-        "L0" => Ok(RuleCode::L0),
-        "L1" => Ok(RuleCode::L1),
-        "L2" => Ok(RuleCode::L2),
-        "L3" => Ok(RuleCode::L3),
-        "P1" => Ok(RuleCode::P1),
-        "P2" => Ok(RuleCode::P2),
-        "P3" => Ok(RuleCode::P3),
-        "P4" => Ok(RuleCode::P4),
-        "R1" => Ok(RuleCode::R1),
-        "R2" => Ok(RuleCode::R2),
-        "R3" => Ok(RuleCode::R3),
-        "E1" => Ok(RuleCode::E1),
-        "E2" => Ok(RuleCode::E2),
-        "E3" => Ok(RuleCode::E3),
-        _ => Err(format!("unknown rule code '{text}'")),
-    }
 }
 
 /// ルールコードの表示文字列を返す。
@@ -482,7 +469,7 @@ fn report_game(game_number: u64, completed: CompletedGame, verbose: bool, summar
 
 fn main() {
     let arguments = Arguments::parse();
-    let rules = match Rules::from_codes(&arguments.rules) {
+    let rules = match Rules::from_codes(&arguments.rules.0) {
         Ok(rules) => rules,
         Err(error) => Arguments::command()
             .error(ErrorKind::ValueValidation, error.to_string())
@@ -504,7 +491,7 @@ fn main() {
             }
         },
     };
-    let rules_text = rules_text(&arguments.rules);
+    let rules_text = rules_text(&arguments.rules.0);
     println!("rules: {rules_text}");
     println!("seed: {base_seed}");
 
@@ -531,4 +518,43 @@ fn main() {
         }
     }
     summary.print(start.elapsed());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rules_argument_accepts_preset_and_codes_but_rejects_their_combination() {
+        let engine_default =
+            Arguments::try_parse_from(["random_play", "--rules", "engine-default"])
+                .expect("the engine-default preset must be accepted");
+        let preset = Arguments::try_parse_from(["random_play", "--rules", "lishogi"])
+            .expect("the lishogi preset must be accepted");
+        let codes = Arguments::try_parse_from(["random_play", "--rules", "L1,L2,P3,R1,E1,E3"])
+            .expect("an explicit rule code list must be accepted");
+        assert_eq!(engine_default.rules.0, [RuleCode::R1]);
+        assert_eq!(
+            preset.rules.0,
+            [
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3,
+            ]
+        );
+        assert_eq!(preset.rules.0, codes.rules.0);
+
+        let error = match Arguments::try_parse_from(["random_play", "--rules", "lishogi,P1"]) {
+            Ok(_) => panic!("a preset combined with a rule code must be rejected"),
+            Err(error) => error,
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("preset 'lishogi' must be specified alone")
+        );
+    }
 }

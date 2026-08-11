@@ -106,23 +106,27 @@ impl FromStr for RuleCode {
 
 /// 規則セット名と、名前が表す規則コード列の対応表。
 ///
-/// `lishogi`の組合せはRULES.md第33条第6項に基づく。名前と組合せの一致は
+/// `engine-default`は[`Rules::engine_default`]と同じR1を表す。
+/// `lishogi`の組合せはRULES.md第33条第6項に基づき、名前と組合せの一致は
 /// `tests/lishogi_replay.rs`の棋譜リプレイ照合が検証する。
-const RULE_SET_PRESETS: &[(&str, &[RuleCode])] = &[(
-    "lishogi",
-    &[
-        RuleCode::L1,
-        RuleCode::L2,
-        RuleCode::P3,
-        RuleCode::R1,
-        RuleCode::E1,
-        RuleCode::E3,
-    ],
-)];
+const RULE_SET_PRESETS: &[(&str, &[RuleCode])] = &[
+    ("engine-default", &[RuleCode::R1]),
+    (
+        "lishogi",
+        &[
+            RuleCode::L1,
+            RuleCode::L2,
+            RuleCode::P3,
+            RuleCode::R1,
+            RuleCode::E1,
+            RuleCode::E3,
+        ],
+    ),
+];
 
 /// 規則セット値を、プリセット名またはコンマ区切りの規則コード列として解析する。
 ///
-/// プリセット名は単独で指定し、規則コードとの併記は認めない(第33条第6項)。
+/// プリセット名は単独で指定し、規則コードとの併記は認めない(第33条第5項・第6項)。
 /// 重複および排他制約の検証は`Rules::from_codes`が担う。
 pub fn parse_rule_set(input: &str) -> Result<Vec<RuleCode>, String> {
     if let Some((_, codes)) = RULE_SET_PRESETS
@@ -547,6 +551,15 @@ mod tests {
     }
 
     #[test]
+    fn article_33_5_engine_default_preset_matches_engine_default() {
+        let expected = vec![RuleCode::R1];
+
+        assert_eq!(parse_rule_set("engine-default"), Ok(expected.clone()));
+        assert_eq!(parse_rule_set("ENGINE-DEFAULT"), Ok(expected.clone()));
+        assert_eq!(Rules::from_codes(&expected), Ok(Rules::engine_default()));
+    }
+
+    #[test]
     fn article_33_6_lishogi_preset_must_be_specified_alone() {
         let error = parse_rule_set("lishogi,P1").unwrap_err();
 
@@ -554,7 +567,18 @@ mod tests {
     }
 
     #[test]
+    fn article_33_5_engine_default_preset_must_be_specified_alone() {
+        let error = parse_rule_set("engine-default,R2").unwrap_err();
+
+        assert!(error.contains("preset 'engine-default' must be specified alone"));
+    }
+
+    #[test]
     fn unknown_rule_set_names_and_codes_are_rejected() {
+        assert_eq!(
+            parse_rule_set("standard"),
+            Err("unknown rule code 'standard'".to_owned())
+        );
         assert_eq!(
             parse_rule_set("hachu"),
             Err("unknown rule code 'hachu'".to_owned())
