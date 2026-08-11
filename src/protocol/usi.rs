@@ -9,6 +9,7 @@ use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_sfen};
 use crate::notation::usi;
+use crate::search::{self, SearchConfig};
 
 use super::Protocol;
 use super::engine::{
@@ -54,10 +55,7 @@ impl UsiProtocol {
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
             }
-            "go" => writeln!(
-                output,
-                "info string error: go is not supported (search is not implemented)"
-            )?,
+            "go" => self.handle_go(engine, &tokens[1..], output)?,
             "quit" => {
                 let _ = engine.handle(EngineCommand::Quit);
                 return Ok(false);
@@ -66,6 +64,38 @@ impl UsiProtocol {
         }
         output.flush()?;
         Ok(true)
+    }
+
+    fn handle_go(
+        &self,
+        engine: &Engine,
+        tokens: &[&str],
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        if engine.lifecycle() != EngineLifecycle::InGame {
+            return write_error(output, "go requires an active game");
+        }
+        let config = match parse_go_config(tokens) {
+            Ok(config) => config,
+            Err(error) => return write_error(output, &error),
+        };
+        let game = engine.game();
+        let root_moves = game.legal_moves();
+        if root_moves.is_empty() {
+            return write_error(output, "go requires at least one legal move");
+        }
+        let result = search::search(
+            game.position(),
+            engine.active_rules(),
+            &root_moves,
+            game.search_key_history(),
+            &config,
+        );
+        writeln!(
+            output,
+            "bestmove {}",
+            usi::text(game.position(), result.best_move)
+        )
     }
 
     fn write_handshake(&self, output: &mut dyn Write) -> io::Result<()> {
@@ -202,6 +232,53 @@ impl UsiProtocol {
             EngineReply::Rejected(reason) => write_error(output, &reason.to_string()),
         }
     }
+}
+
+fn parse_go_config(tokens: &[&str]) -> Result<SearchConfig, String> {
+    if tokens.is_empty() {
+        return Err("go requires depth or nodes".to_owned());
+    }
+
+    let mut depth = None;
+    let mut nodes = None;
+    let mut index = 0;
+    while index < tokens.len() {
+        let name = tokens[index];
+        let value = tokens.get(index + 1).copied();
+        match name {
+            "depth" => {
+                if depth.is_some() {
+                    return Err("go depth must be specified once".to_owned());
+                }
+                let parsed = value
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .filter(|&value| value > 0)
+                    .ok_or_else(|| "go depth must be a positive integer".to_owned())?;
+                if parsed > search::MAX_PLY {
+                    return Err(format!("go depth must not exceed {}", search::MAX_PLY));
+                }
+                depth = Some(parsed);
+            }
+            "nodes" => {
+                if nodes.is_some() {
+                    return Err("go nodes must be specified once".to_owned());
+                }
+                nodes = Some(
+                    value
+                        .and_then(|value| value.parse::<u64>().ok())
+                        .filter(|&value| value > 0)
+                        .ok_or_else(|| "go nodes must be a positive integer".to_owned())?,
+                );
+            }
+            unsupported => return Err(format!("unsupported go argument '{unsupported}'")),
+        }
+        index += 2;
+    }
+
+    Ok(SearchConfig {
+        depth: depth.unwrap_or(search::MAX_PLY),
+        nodes,
+    })
 }
 
 fn parse_sfen_fields(
@@ -696,22 +773,102 @@ mod tests {
     }
 
     #[test]
-    fn go_and_go_mate_match_the_complete_transcript() {
+    fn go_depth_one_returns_a_legal_move_without_applying_it() {
         let startup = [RuleCode::R1];
         let mut engine = engine(&startup);
         let mut protocol = UsiProtocol::new(&engine);
+        let position_before = engine.game().position().clone();
+
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos\ngo depth 1\nquit\n",
+        );
+        let move_text = output
+            .strip_prefix("bestmove ")
+            .and_then(|text| text.strip_suffix('\n'))
+            .expect("go must return exactly one bestmove line");
+        let best_move = usi::parse(engine.game().position(), move_text).unwrap();
+
+        assert!(engine.game().legal_moves().contains(&best_move));
+        assert_eq!(engine.game().position(), &position_before);
+        assert_eq!(engine.game().ply_count(), 0);
+    }
+
+    #[test]
+    fn go_rejects_inactive_and_finished_games_without_bestmove() {
+        let startup = [RuleCode::R1, RuleCode::E2];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let input = concat!(
+            "go depth 1\n",
+            "position sfen 12/12/12/12/12/12/12/12/12/12/12/12 b - 1\n",
+            "go depth 1\n",
+            "position sfen 12/12/12/5k6/12/12/5R6/12/12/12/12/K11 b - 1 ",
+            "moves 7g7d\n",
+            "go nodes 1\n",
+            "quit\n",
+        );
 
         assert_eq!(
-            run(
-                &mut protocol,
-                &mut engine,
-                "go depth 1\ngo ignored mate 1000\nquit\n"
-            ),
+            run(&mut protocol, &mut engine, input),
             concat!(
-                "info string error: go is not supported (search is not implemented)\n",
-                "checkmate notimplemented\n",
+                "info string error: go requires an active game\n",
+                "info string error: go requires at least one legal move\n",
+                "info string error: go requires an active game\n",
             )
         );
+    }
+
+    #[test]
+    fn go_rejects_missing_unsupported_and_invalid_limits() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let input = concat!(
+            "position startpos\n",
+            "go\n",
+            "go movetime 1000\n",
+            "go depth 0\n",
+            "go nodes nope\n",
+            "go depth 257\n",
+            "quit\n",
+        );
+
+        assert_eq!(
+            run(&mut protocol, &mut engine, input),
+            concat!(
+                "info string error: go requires depth or nodes\n",
+                "info string error: unsupported go argument 'movetime'\n",
+                "info string error: go depth must be a positive integer\n",
+                "info string error: go nodes must be a positive integer\n",
+                "info string error: go depth must not exceed 256\n",
+            )
+        );
+    }
+
+    #[test]
+    fn go_accepts_nodes_and_combined_limits_and_keeps_go_mate_behavior() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            concat!(
+                "position startpos\n",
+                "go nodes 1\n",
+                "go depth 1 nodes 1\n",
+                "go ignored mate 1000\n",
+                "quit\n",
+            ),
+        );
+        let lines: Vec<_> = output.lines().collect();
+
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].starts_with("bestmove "));
+        assert!(lines[1].starts_with("bestmove "));
+        assert_eq!(lines[2], "checkmate notimplemented");
     }
 
     #[test]
