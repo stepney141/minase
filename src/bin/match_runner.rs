@@ -18,7 +18,7 @@ use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
 use minase::{Color, Game, GameResult, GameStatus, Move, RuleCode, Rules, Square};
 
 const DEFAULT_MAX_PLY: u32 = 4096;
-const DEFAULT_MAX_PAIRS: u64 = 1000;
+const DEFAULT_MAX_PAIRS: u64 = 100_000;
 const DEFAULT_RESPONSE_TIMEOUT_SECONDS: u64 = 120;
 
 /// バイナリ対戦ハーネスのコマンドライン引数。
