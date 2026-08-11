@@ -9,7 +9,7 @@ use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_sfen};
 use crate::notation::usi;
-use crate::search::{self, SearchConfig, TranspositionTable};
+use crate::search::{self, SearchLimits, TranspositionTable};
 
 use super::Protocol;
 use super::engine::{
@@ -251,7 +251,7 @@ impl UsiProtocol {
     }
 }
 
-fn parse_go_config(tokens: &[&str]) -> Result<SearchConfig, String> {
+fn parse_go_config(tokens: &[&str]) -> Result<SearchLimits, String> {
     if tokens.is_empty() {
         return Err("go requires depth or nodes".to_owned());
     }
@@ -292,9 +292,12 @@ fn parse_go_config(tokens: &[&str]) -> Result<SearchConfig, String> {
         index += 2;
     }
 
-    Ok(SearchConfig {
-        depth: depth.unwrap_or(search::MAX_PLY),
+    Ok(SearchLimits {
+        depth,
         nodes,
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
     })
 }
 

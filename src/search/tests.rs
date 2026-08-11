@@ -14,8 +14,14 @@ fn root_moves(position: &Position) -> Vec<Move> {
     moves
 }
 
-fn depth(depth: u32) -> SearchConfig {
-    SearchConfig { depth, nodes: None }
+fn depth(depth: u32) -> SearchLimits {
+    SearchLimits {
+        depth: Some(depth),
+        nodes: None,
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
+    }
 }
 
 fn tt() -> TranspositionTable {
@@ -28,6 +34,28 @@ fn mv(from: (u8, u8), to: (u8, u8)) -> Move {
         mid: None,
         to: sq(to.0, to.1),
         promote: false,
+    }
+}
+
+fn snapshot() -> SearchSnapshot {
+    let position = Position::initial();
+    SearchSnapshot {
+        root_moves: root_moves(&position),
+        history_keys: vec![search_key(&position)],
+        position,
+        rules: engine_rules(),
+    }
+}
+
+fn receive_finished(handle: &SearchHandle) -> SearchEvent {
+    loop {
+        let event = handle
+            .events()
+            .recv_timeout(Duration::from_secs(2))
+            .expect("search must finish within two seconds");
+        if matches!(event, SearchEvent::Finished { .. }) {
+            return event;
+        }
     }
 }
 
@@ -161,16 +189,271 @@ fn same_input_produces_the_same_result() {
 fn node_limit_before_depth_one_returns_first_root_move() {
     let position = Position::initial();
     let moves = root_moves(&position);
-    let config = SearchConfig {
-        depth: 2,
+    let limits = SearchLimits {
+        depth: Some(2),
         nodes: Some(0),
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
     };
 
-    let result = search(&position, engine_rules(), &moves, &[], &config, &mut tt());
+    let result = search(&position, engine_rules(), &moves, &[], &limits, &mut tt());
 
     assert_eq!(result.best_move, moves[0]);
     assert_eq!(result.depth, 0);
     assert_eq!(result.nodes, 0);
+}
+
+#[test]
+fn limits_reject_an_unconstrained_search() {
+    let limits = SearchLimits {
+        depth: None,
+        nodes: None,
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
+    };
+
+    assert_eq!(
+        limits.validate(),
+        Err("search limits must contain at least one constraint")
+    );
+    assert!(
+        SearchLimits {
+            infinite: true,
+            ..limits
+        }
+        .validate()
+        .is_ok()
+    );
+}
+
+#[test]
+fn clock_budget_uses_integer_coefficients_and_safety_bounds() {
+    let ordinary = clock_budget(ClockLimits {
+        remaining_ms: 10_000,
+        increment_ms: 1_000,
+        byoyomi_ms: 500,
+    });
+    assert_eq!(ordinary.soft, Duration::from_millis(1_300));
+    assert_eq!(ordinary.hard, Duration::from_millis(2_900));
+
+    let safety_margin = clock_budget(ClockLimits {
+        remaining_ms: 0,
+        increment_ms: 0,
+        byoyomi_ms: 100,
+    });
+    assert_eq!(safety_margin.soft, Duration::from_millis(80));
+    assert_eq!(safety_margin.hard, Duration::from_millis(70));
+
+    let minimum = clock_budget(ClockLimits {
+        remaining_ms: 0,
+        increment_ms: 0,
+        byoyomi_ms: 0,
+    });
+    assert_eq!(minimum.soft, Duration::ZERO);
+    assert_eq!(minimum.hard, Duration::from_millis(1));
+}
+
+#[test]
+fn movetime_is_the_soft_and_hard_budget() {
+    let limits = SearchLimits {
+        depth: None,
+        nodes: None,
+        movetime_ms: Some(123),
+        clock: None,
+        infinite: false,
+    };
+
+    assert_eq!(
+        time_budget(&limits),
+        Some(TimeBudget {
+            soft: Duration::from_millis(123),
+            hard: Duration::from_millis(123),
+        })
+    );
+
+    let clock = ClockLimits {
+        remaining_ms: 10_000,
+        increment_ms: 1_000,
+        byoyomi_ms: 500,
+    };
+    assert_eq!(
+        time_budget(&SearchLimits {
+            clock: Some(clock),
+            ..limits
+        }),
+        time_budget(&limits)
+    );
+    assert_eq!(
+        time_budget(&SearchLimits {
+            movetime_ms: Some(5_000),
+            clock: Some(clock),
+            ..limits
+        }),
+        Some(clock_budget(clock))
+    );
+}
+
+#[test]
+fn movetime_search_stops_near_the_fixed_budget() {
+    let limits = SearchLimits {
+        depth: None,
+        nodes: None,
+        movetime_ms: Some(100),
+        clock: None,
+        infinite: false,
+    };
+    let started = Instant::now();
+    let handle = start_search(snapshot(), limits, 7, tt());
+    let event = receive_finished(&handle);
+    let wall_elapsed = started.elapsed();
+
+    let SearchEvent::Finished {
+        elapsed,
+        stop_reason,
+        ..
+    } = event
+    else {
+        unreachable!();
+    };
+    assert!(elapsed >= Duration::from_millis(90));
+    assert!(wall_elapsed < Duration::from_secs(2));
+    assert!(matches!(
+        stop_reason,
+        StopReason::SoftLimit | StopReason::HardLimit
+    ));
+    handle.join().expect("search thread must not panic");
+}
+
+#[test]
+fn infinite_search_stops_only_after_an_external_request() {
+    let limits = SearchLimits {
+        depth: Some(1),
+        nodes: Some(0),
+        movetime_ms: Some(0),
+        clock: Some(ClockLimits {
+            remaining_ms: 0,
+            increment_ms: 0,
+            byoyomi_ms: 0,
+        }),
+        infinite: true,
+    };
+    let handle = start_search(snapshot(), limits, 8, tt());
+    handle.request_stop();
+    let event = receive_finished(&handle);
+
+    assert!(matches!(
+        event,
+        SearchEvent::Finished {
+            search_id: 8,
+            stop_reason: StopReason::ExternalStop,
+            ..
+        }
+    ));
+    handle.join().expect("search thread must not panic");
+}
+
+#[test]
+fn stop_before_depth_one_returns_the_first_legal_move() {
+    let snapshot = snapshot();
+    let first_move = snapshot.root_moves[0];
+    let limits = SearchLimits {
+        depth: Some(2),
+        nodes: Some(0),
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
+    };
+    let handle = start_search(snapshot, limits, 9, tt());
+    let event = receive_finished(&handle);
+
+    assert!(matches!(
+        event,
+        SearchEvent::Finished {
+            best_move,
+            depth: 0,
+            nodes: 0,
+            stop_reason: StopReason::NodeLimit,
+            ..
+        } if best_move == first_move
+    ));
+    handle.join().expect("search thread must not panic");
+}
+
+#[test]
+fn caller_discards_a_delayed_event_with_a_different_search_id() {
+    let limits = SearchLimits {
+        depth: None,
+        nodes: Some(0),
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
+    };
+    let stale_handle = start_search(snapshot(), limits, 10, tt());
+    let stale = receive_finished(&stale_handle);
+    let current_handle = start_search(snapshot(), limits, 11, tt());
+    let current = receive_finished(&current_handle);
+
+    let accepted: Vec<_> = [stale, current]
+        .into_iter()
+        .filter(|event| event.search_id() == 11)
+        .collect();
+    assert_eq!(accepted.len(), 1);
+    assert_eq!(accepted[0].search_id(), 11);
+    stale_handle.join().expect("search thread must not panic");
+    current_handle.join().expect("search thread must not panic");
+}
+
+#[test]
+fn progress_depths_increase_and_join_returns_a_reusable_table() {
+    let limits = depth(3);
+    let handle = start_search(snapshot(), limits, 12, tt());
+    let mut progress_depths = Vec::new();
+    let mut progress_elapsed = Vec::new();
+    loop {
+        match handle
+            .events()
+            .recv_timeout(Duration::from_secs(2))
+            .expect("search must finish within two seconds")
+        {
+            SearchEvent::Progress {
+                search_id,
+                depth,
+                elapsed,
+                pv,
+                ..
+            } => {
+                assert_eq!(search_id, 12);
+                assert!(!pv.is_empty());
+                progress_depths.push(depth);
+                progress_elapsed.push(elapsed);
+            }
+            SearchEvent::Finished {
+                search_id,
+                stop_reason,
+                ..
+            } => {
+                assert_eq!(search_id, 12);
+                assert_eq!(stop_reason, StopReason::DepthCompleted);
+                break;
+            }
+        }
+    }
+    assert_eq!(progress_depths, vec![1, 2, 3]);
+    assert!(progress_elapsed.windows(2).all(|pair| pair[0] <= pair[1]));
+
+    let mut returned_tt = handle.join().expect("search thread must not panic");
+    let snapshot = snapshot();
+    let result = search(
+        &snapshot.position,
+        snapshot.rules,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &depth(1),
+        &mut returned_tt,
+    );
+    assert_eq!(result.depth, 1);
 }
 
 #[test]

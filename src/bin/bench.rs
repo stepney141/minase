@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use minase::core::rules::parse_rule_set;
-use minase::search::{MAX_PLY, SearchConfig, TranspositionTable, search};
+use minase::search::{MAX_PLY, SearchLimits, TranspositionTable, search};
 use minase::{Game, Rules, parse_sfen};
 
 const DEFAULT_DEPTH: u32 = 3;
@@ -118,9 +118,12 @@ fn main() {
     let arguments = Arguments::parse();
     let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
     let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
-    let config = SearchConfig {
-        depth: arguments.depth,
+    let limits = SearchLimits {
+        depth: Some(arguments.depth),
         nodes: None,
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
     };
     // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
     // 置換表は1個を使い回して局面ごとに計測外でクリアし(クリア後は
@@ -145,7 +148,7 @@ fn main() {
             rules,
             &legal_moves,
             game.search_key_history(),
-            &config,
+            &limits,
             &mut transposition_table,
         );
         let elapsed = position_start.elapsed();

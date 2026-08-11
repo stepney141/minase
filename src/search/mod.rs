@@ -7,6 +7,10 @@ mod tt;
 pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable};
 
 use core::cmp::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::{Arc, mpsc};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::MoveGenerator;
 use crate::core::mv::Move;
@@ -27,14 +31,158 @@ pub const MATE_THRESHOLD: i32 = MATE - MAX_PLY as i32;
 pub const DRAW_SCORE: i32 = 0;
 
 const INFINITY: i32 = MATE + 1;
+const STOP_CHECK_INTERVAL: u64 = 4096;
 
 /// 1回の探索に適用する制限。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SearchConfig {
-    /// 反復深化で完了を目指す最大深さ。
-    pub depth: u32,
+pub struct SearchLimits {
+    /// 反復深化で完了を目指す最大深さ。`None`なら深さで制限しない。
+    pub depth: Option<u32>,
     /// 探索するノード数の上限。`None`なら上限を設けない。
     pub nodes: Option<u64>,
+    /// 1手に使う固定時間(ms)。
+    pub movetime_ms: Option<u64>,
+    /// 持ち時間、加算時間、秒読みによる制限。
+    pub clock: Option<ClockLimits>,
+    /// 外部停止要求だけを停止条件とするか。
+    pub infinite: bool,
+}
+
+impl SearchLimits {
+    /// 制限が探索可能な組合せか検査する。
+    ///
+    /// # Errors
+    ///
+    /// 制約が1つもない場合、または深さが1未満か[`MAX_PLY`]を超える場合は
+    /// エラーメッセージを返す。
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !self.infinite
+            && self.depth.is_none()
+            && self.nodes.is_none()
+            && self.movetime_ms.is_none()
+            && self.clock.is_none()
+        {
+            return Err("search limits must contain at least one constraint");
+        }
+        if self
+            .depth
+            .is_some_and(|depth| depth == 0 || depth > MAX_PLY)
+        {
+            return Err("search depth must be between one and MAX_PLY");
+        }
+        Ok(())
+    }
+}
+
+/// 持ち時間から1手の予算を求めるための制限。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ClockLimits {
+    /// 手番開始時の残り時間(ms)。
+    pub remaining_ms: u64,
+    /// 1手ごとの加算時間(ms)。
+    pub increment_ms: u64,
+    /// 1手ごとの秒読み時間(ms)。
+    pub byoyomi_ms: u64,
+}
+
+/// 探索スレッドへ渡す不変の入力。
+#[derive(Clone)]
+pub struct SearchSnapshot {
+    /// 探索を開始する局面。
+    pub position: Position,
+    /// 探索内で着手へ適用する規則。
+    pub rules: Rules,
+    /// 対局開始から現局面までの探索局面キー。
+    pub history_keys: Vec<u64>,
+    /// 対局管理層が確定したルート合法手。
+    pub root_moves: Vec<Move>,
+}
+
+/// 探索を停止した条件。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StopReason {
+    /// 指定深さを完了した。
+    DepthCompleted,
+    /// 指定ノード数へ達した。
+    NodeLimit,
+    /// 完了イテレーションの境界でsoft limitへ達した。
+    SoftLimit,
+    /// 探索中にhard limitへ達した。
+    HardLimit,
+    /// 呼び出し側から停止を要求された。
+    ExternalStop,
+}
+
+/// 探索スレッドから届く進捗または完了通知。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum SearchEvent {
+    /// 反復深化の1イテレーションが完了した。
+    Progress {
+        /// 通知元の探索ID。
+        search_id: u64,
+        /// 完了した深さ。
+        depth: u32,
+        /// その深さでの評価値。
+        score: i32,
+        /// 探索開始から訪問したノード数。
+        nodes: u64,
+        /// 探索開始からの経過時間。
+        elapsed: Duration,
+        /// その深さでの主変化。
+        pv: Vec<Move>,
+    },
+    /// 探索が停止した。
+    Finished {
+        /// 通知元の探索ID。
+        search_id: u64,
+        /// 選んだ着手。
+        best_move: Move,
+        /// 最後まで完了した深さの評価値。
+        score: i32,
+        /// 最後まで完了した深さ。
+        depth: u32,
+        /// 探索開始から訪問したノード数。
+        nodes: u64,
+        /// 探索開始からの経過時間。
+        elapsed: Duration,
+        /// 最後まで完了した深さの主変化。
+        pv: Vec<Move>,
+        /// 探索を停止した条件。
+        stop_reason: StopReason,
+    },
+}
+
+impl SearchEvent {
+    /// 通知元の探索IDを返す。
+    pub fn search_id(&self) -> u64 {
+        match self {
+            Self::Progress { search_id, .. } | Self::Finished { search_id, .. } => *search_id,
+        }
+    }
+}
+
+/// 実行中の探索スレッドを操作するハンドル。
+pub struct SearchHandle {
+    events: mpsc::Receiver<SearchEvent>,
+    stop: Arc<AtomicBool>,
+    thread: thread::JoinHandle<TranspositionTable>,
+}
+
+impl SearchHandle {
+    /// 探索イベントの受信端を返す。
+    pub fn events(&self) -> &mpsc::Receiver<SearchEvent> {
+        &self.events
+    }
+
+    /// 探索スレッドへ停止を要求する。
+    pub fn request_stop(&self) {
+        self.stop.store(true, AtomicOrdering::Relaxed);
+    }
+
+    /// 探索スレッドの終了を待ち、所有していた置換表を返す。
+    pub fn join(self) -> thread::Result<TranspositionTable> {
+        self.thread.join()
+    }
 }
 
 /// 完了した探索の結果。
@@ -50,7 +198,53 @@ pub struct SearchResult {
     pub nodes: u64,
 }
 
-/// 指定局面を反復深化で探索する。
+/// 所有権を移した入力と置換表を使い、別スレッドで探索を開始する。
+///
+/// # Panics
+///
+/// `snapshot.root_moves`が空、または`limits`が不正な場合はpanicする。
+pub fn start_search(
+    snapshot: SearchSnapshot,
+    limits: SearchLimits,
+    search_id: u64,
+    mut tt: TranspositionTable,
+) -> SearchHandle {
+    validate_input(&snapshot.root_moves, &limits);
+    let (sender, events) = mpsc::channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = Arc::clone(&stop);
+    let thread = thread::spawn(move || {
+        let outcome = run_search(
+            &snapshot.position,
+            snapshot.rules,
+            &snapshot.root_moves,
+            &snapshot.history_keys,
+            &limits,
+            &thread_stop,
+            &mut tt,
+            Some((&sender, search_id)),
+        );
+        let result = outcome.result;
+        let _ = sender.send(SearchEvent::Finished {
+            search_id,
+            best_move: result.best_move,
+            score: result.score,
+            depth: result.depth,
+            nodes: result.nodes,
+            elapsed: outcome.elapsed,
+            pv: outcome.pv,
+            stop_reason: outcome.stop_reason,
+        });
+        tt
+    });
+    SearchHandle {
+        events,
+        stop,
+        thread,
+    }
+}
+
+/// 指定局面を呼び出しスレッド上で反復深化探索する。
 ///
 /// `root_moves`には、対局管理層がR2・R3を含めて検査したルート合法手を
 /// 渡す。`history_keys`の各要素は、対局開始から現局面までの
@@ -61,22 +255,66 @@ pub struct SearchResult {
 ///
 /// # Panics
 ///
-/// `root_moves`が空、`config.depth`が0、または`config.depth`が
-/// [`MAX_PLY`]を超える場合はpanicする。
+/// `root_moves`が空、`limits`が不正、または外部停止手段を持たない同期版へ
+/// `infinite`を指定した場合はpanicする。
 pub fn search(
     position: &Position,
     rules: Rules,
     root_moves: &[Move],
     history_keys: &[u64],
-    config: &SearchConfig,
+    limits: &SearchLimits,
     tt: &mut TranspositionTable,
 ) -> SearchResult {
-    assert!(!root_moves.is_empty(), "root move list must not be empty");
-    assert!(config.depth > 0, "search depth must be at least one");
+    validate_input(root_moves, limits);
     assert!(
-        config.depth <= MAX_PLY,
-        "search depth must not exceed {MAX_PLY}"
+        !limits.infinite,
+        "synchronous search cannot use an infinite limit"
     );
+    let stop = AtomicBool::new(false);
+    run_search(
+        position,
+        rules,
+        root_moves,
+        history_keys,
+        limits,
+        &stop,
+        tt,
+        None,
+    )
+    .result
+}
+
+fn validate_input(root_moves: &[Move], limits: &SearchLimits) {
+    assert!(!root_moves.is_empty(), "root move list must not be empty");
+    assert!(limits.validate().is_ok(), "invalid search limits");
+}
+
+struct SearchOutcome {
+    result: SearchResult,
+    elapsed: Duration,
+    pv: Vec<Move>,
+    stop_reason: StopReason,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_search(
+    position: &Position,
+    rules: Rules,
+    root_moves: &[Move],
+    history_keys: &[u64],
+    limits: &SearchLimits,
+    stop: &AtomicBool,
+    tt: &mut TranspositionTable,
+    events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
+) -> SearchOutcome {
+    let started = Instant::now();
+    let time_budget = time_budget(limits);
+    let depth_limit = if limits.infinite {
+        MAX_PLY
+    } else {
+        limits.depth.unwrap_or(MAX_PLY)
+    };
+    let node_limit = (!limits.infinite).then_some(limits.nodes).flatten();
 
     tt.new_search();
     let mut searcher = Searcher {
@@ -85,7 +323,14 @@ pub fn search(
         history_keys,
         path_keys: vec![search_key(position)],
         nodes: 0,
-        node_limit: config.nodes,
+        node_limit,
+        started,
+        hard_limit: time_budget.map(|budget| budget.hard),
+        stop,
+        stop_reason: None,
+        pv: (0..=MAX_PLY)
+            .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
+            .collect(),
         tt,
     };
     let mut result = SearchResult {
@@ -94,17 +339,47 @@ pub fn search(
         depth: 0,
         nodes: 0,
     };
+    let mut completed_pv = vec![root_moves[0]];
+    let mut stop_reason = StopReason::DepthCompleted;
 
-    for depth in 1..=config.depth {
+    for depth in 1..=depth_limit {
         let Some((best_move, score)) = searcher.search_root(position, root_moves, depth) else {
+            stop_reason = searcher
+                .stop_reason
+                .expect("interrupted search must record a stop reason");
             break;
         };
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
+        completed_pv.clone_from(&searcher.pv[0]);
+        let elapsed = started.elapsed();
+        if let Some((sender, search_id)) = events {
+            let _ = sender.send(SearchEvent::Progress {
+                search_id,
+                depth,
+                score,
+                nodes: searcher.nodes,
+                elapsed,
+                pv: completed_pv.clone(),
+            });
+        }
+        if node_limit.is_some_and(|limit| searcher.nodes >= limit) {
+            stop_reason = StopReason::NodeLimit;
+            break;
+        }
+        if time_budget.is_some_and(|budget| elapsed >= budget.soft) {
+            stop_reason = StopReason::SoftLimit;
+            break;
+        }
     }
     result.nodes = searcher.nodes;
-    result
+    SearchOutcome {
+        result,
+        elapsed: started.elapsed(),
+        pv: completed_pv,
+        stop_reason,
+    }
 }
 
 struct Searcher<'a> {
@@ -114,6 +389,11 @@ struct Searcher<'a> {
     path_keys: Vec<u64>,
     nodes: u64,
     node_limit: Option<u64>,
+    started: Instant,
+    hard_limit: Option<Duration>,
+    stop: &'a AtomicBool,
+    stop_reason: Option<StopReason>,
+    pv: Vec<Vec<Move>>,
     tt: &'a mut TranspositionTable,
 }
 
@@ -127,6 +407,7 @@ impl Searcher<'_> {
         if !self.enter_node() {
             return None;
         }
+        self.pv[0].clear();
 
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
@@ -143,6 +424,7 @@ impl Searcher<'_> {
             if score > best_score {
                 best_score = score;
                 best_move = mv;
+                self.update_pv(0, mv);
             }
             alpha = alpha.max(score);
         }
@@ -162,6 +444,7 @@ impl Searcher<'_> {
         if !self.enter_node() {
             return None;
         }
+        self.pv[ply as usize].clear();
 
         if depth == 0 {
             return Some(evaluate(position));
@@ -200,6 +483,7 @@ impl Searcher<'_> {
             if score > best_score {
                 best_score = score;
                 best_move = mv;
+                self.update_pv(ply, mv);
             }
             alpha = alpha.max(score);
             if alpha >= beta {
@@ -229,6 +513,7 @@ impl Searcher<'_> {
         ply: u32,
         first: bool,
     ) -> Option<i32> {
+        self.pv[(ply + 1) as usize].clear();
         if captures_last_royal(position, mv) {
             return self.enter_node().then_some(MATE - ply as i32);
         }
@@ -262,11 +547,84 @@ impl Searcher<'_> {
 
     fn enter_node(&mut self) -> bool {
         if self.node_limit.is_some_and(|limit| self.nodes >= limit) {
+            self.stop_reason = Some(StopReason::NodeLimit);
             return false;
+        }
+        if self.nodes.is_multiple_of(STOP_CHECK_INTERVAL) {
+            if self.stop.load(AtomicOrdering::Relaxed) {
+                self.stop_reason = Some(StopReason::ExternalStop);
+                return false;
+            }
+            if self
+                .hard_limit
+                .is_some_and(|limit| self.started.elapsed() >= limit)
+            {
+                self.stop_reason = Some(StopReason::HardLimit);
+                return false;
+            }
         }
         self.nodes += 1;
         true
     }
+
+    fn update_pv(&mut self, ply: u32, mv: Move) {
+        let index = ply as usize;
+        let (rows, child_rows) = self.pv.split_at_mut(index + 1);
+        let row = &mut rows[index];
+        row.clear();
+        row.push(mv);
+        if let Some(child) = child_rows.first() {
+            row.extend_from_slice(child);
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct TimeBudget {
+    soft: Duration,
+    hard: Duration,
+}
+
+/// 持ち時間制の初期予算式を1箇所に集約する。
+///
+/// softは`remaining / 50 + increment * 0.7 + byoyomi * 0.8`、hardは
+/// `min(soft * 4, remaining / 4 + byoyomi * 0.8)`とする。hardは1ms以上とし、
+/// 時計合計が30ms以下の場合を除いて`remaining + byoyomi - 30ms`を超えない。
+/// 係数を変更する場合は自己対局で採否を判定する。
+fn clock_budget(clock: ClockLimits) -> TimeBudget {
+    let remaining = u128::from(clock.remaining_ms);
+    let increment = u128::from(clock.increment_ms);
+    let byoyomi = u128::from(clock.byoyomi_ms);
+    let byoyomi_share = byoyomi * 8 / 10;
+    let soft = remaining / 50 + increment * 7 / 10 + byoyomi_share;
+    let raw_hard = (soft * 4).min(remaining / 4 + byoyomi_share);
+    let safe_hard = remaining.saturating_add(byoyomi).saturating_sub(30).max(1);
+    TimeBudget {
+        soft: Duration::from_millis(to_u64_ms(soft)),
+        hard: Duration::from_millis(to_u64_ms(raw_hard.max(1).min(safe_hard))),
+    }
+}
+
+fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
+    if limits.infinite {
+        return None;
+    }
+    let movetime = limits.movetime_ms.map(|milliseconds| TimeBudget {
+        soft: Duration::from_millis(milliseconds),
+        hard: Duration::from_millis(milliseconds),
+    });
+    match (movetime, limits.clock.map(clock_budget)) {
+        (Some(fixed), Some(clock)) => Some(TimeBudget {
+            soft: fixed.soft.min(clock.soft),
+            hard: fixed.hard.min(clock.hard),
+        }),
+        (Some(budget), None) | (None, Some(budget)) => Some(budget),
+        (None, None) => None,
+    }
+}
+
+fn to_u64_ms(milliseconds: u128) -> u64 {
+    milliseconds.min(u128::from(u64::MAX)) as u64
 }
 
 fn search_key(position: &Position) -> u64 {
