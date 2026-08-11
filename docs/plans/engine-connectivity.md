@@ -16,6 +16,17 @@ wire上の`go depth|nodes`→`bestmove`の契約は前倒し実装から変更�
 2026年8月12日、実lishogiサーバへの接続をフェーズ3と完了条件から除外した。
 未完成のエンジンを公開サーバへ出さないという運用判断によるものであり、Lishogi-Bot経路の検証は実送信系列の台本テストまでとする（「適用範囲」の対象外の項を参照）。
 
+2026年8月12日にフェーズ1（USI対局進行）を完了した。
+着手条件である探索部フェーズ5（時間管理と探索呼び出し境界）は、同日の順序入替（search.mdの実施状況を参照）により先行実装済みである。
+実装はcodexへ委任し、Claudeが設計整合のレビューと検証を行った。
+`go`は`btime`・`wtime`・`binc`・`winc`・`byoyomi`・`movetime`・`depth`・`nodes`・`infinite`を受理してミリ秒の`SearchLimits`へ正規化し、残り時間と加算は現局面の手番側から選ぶ。
+裸の`go`と未知引数は従来どおりエラーとし、`go depth|nodes`→`bestmove`のwire契約は不変でmatch_runnerは無改修のまま動作する。
+探索は`SearchSnapshot`の複製上で行い、`bestmove`は`Engine.game`へ適用しない。
+実バイナリはstdin専用readerスレッドとチャネル駆動の`run_channel`で入力と探索イベントを並行処理し、台本テスト用の逐次`run`も維持した。
+`stop`・`gameover`・`quit`・重複`go`・`go ponder`・`ponderhit`の探索中契約、`go infinite`の`bestmove`保留、`position`検証失敗後の同期失敗状態と正当な`position`による回復、`USI_Hash`（既定256MB、探索中でないときのリサイズ）、`info depth <d> score <cp|mate> <v> nodes <n> nps <n> pv ...`行を実装した。
+テストは342件全緑（Lishogi-Bot実送信系列、時間引数の先手後手別正規化、同期回復系列、USI_Hash等を追加）、clippy警告なし、fmt通過で、CECP台本13件とlishogiリプレイ照合10局は変化しなかった。
+実バイナリの煙試験で、時計引数つき`go`のinfo行と`stop`によるbestmove送出、`go infinite`→`stop`の単一bestmove、探索中`quit`の結果破棄を確認した。
+
 ## 目的
 
 本マイルストーンは、探索部が実装する着手決定器を外部の対局環境へ接続し、minaseをUSIとCECPの両経路で自律対局できるエンジンにする。

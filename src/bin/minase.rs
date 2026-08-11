@@ -1,6 +1,8 @@
 use std::error::Error;
-use std::io;
+use std::io::{self, BufRead};
 use std::process;
+use std::sync::mpsc;
+use std::thread;
 
 use clap::{Parser, ValueEnum};
 use minase::RuleCode;
@@ -47,9 +49,29 @@ fn run() -> Result<(), Box<dyn Error>> {
     match arguments.protocol {
         ProtocolKind::Usi => {
             let mut protocol = UsiProtocol::new(&engine);
-            let stdin = io::stdin();
+            let (sender, receiver) = mpsc::channel();
+            thread::spawn(move || {
+                let stdin = io::stdin();
+                let mut input = stdin.lock();
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match input.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            if sender.send(Ok(line.trim_end().to_owned())).is_err() {
+                                break;
+                            }
+                        }
+                        Err(error) => {
+                            let _ = sender.send(Err(error));
+                            break;
+                        }
+                    }
+                }
+            });
             let stdout = io::stdout();
-            protocol.run(&mut engine, &mut stdin.lock(), &mut stdout.lock())?;
+            protocol.run_channel(&mut engine, &receiver, &mut stdout.lock())?;
             Ok(())
         }
         ProtocolKind::Cecp => {

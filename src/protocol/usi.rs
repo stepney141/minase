@@ -1,6 +1,9 @@
-//! Universal Shogi Interfaceの同期アダプター。
+//! Universal Shogi Interfaceのアダプター。
 
+use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
+use std::time::Duration;
 
 use crate::core::game::{DrawReason, Game, GameResult, GameStatus, WinReason};
 use crate::core::mv::Move;
@@ -9,7 +12,9 @@ use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_sfen};
 use crate::notation::usi;
-use crate::search::{self, SearchLimits, TranspositionTable};
+use crate::search::{
+    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, TranspositionTable,
+};
 
 use super::Protocol;
 use super::engine::{
@@ -20,6 +25,32 @@ use super::engine::{
 pub struct UsiProtocol {
     startup_rules_text: String,
     transposition_table: Option<TranspositionTable>,
+    position_synchronized: bool,
+    next_search_id: u64,
+}
+
+struct SearchContext {
+    id: u64,
+    position: Position,
+    rules: crate::Rules,
+    infinite: bool,
+}
+
+enum ActiveSearch {
+    Running {
+        context: SearchContext,
+        handle: SearchHandle,
+    },
+    AwaitingStop {
+        context: SearchContext,
+        best_move: Move,
+    },
+}
+
+enum LineAction {
+    Continue,
+    Start(Box<ActiveSearch>),
+    Quit,
 }
 
 impl UsiProtocol {
@@ -31,77 +62,367 @@ impl UsiProtocol {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
             transposition_table: None,
+            position_synchronized: false,
+            next_search_id: 1,
         }
     }
 
-    fn handle_line(
+    fn handle_idle_line(
         &mut self,
         engine: &mut Engine,
         line: &str,
         output: &mut dyn Write,
-    ) -> io::Result<bool> {
+    ) -> io::Result<LineAction> {
         let tokens: Vec<_> = line.split_whitespace().collect();
         let Some(command) = tokens.first().copied() else {
-            return Ok(true);
+            return Ok(LineAction::Continue);
         };
 
         match command {
             "usi" => self.write_handshake(output)?,
             "isready" => writeln!(output, "readyok")?,
             "setoption" => self.handle_setoption(engine, &tokens[1..], output)?,
-            "usinewgame" => self.apply_silent(engine, EngineCommand::NewGame, output)?,
+            "usinewgame" => {
+                self.position_synchronized = false;
+                self.apply_silent(engine, EngineCommand::NewGame, output)?;
+            }
             "position" => self.handle_position(engine, &tokens[1..], output)?,
-            "gameover" => self.apply_silent(engine, EngineCommand::EndGame, output)?,
+            "gameover" => {
+                self.position_synchronized = false;
+                self.apply_silent(engine, EngineCommand::EndGame, output)?;
+            }
             "moves" => self.handle_moves(engine, output)?,
             "state" => self.handle_state(engine, output)?,
+            "ponderhit" => write_error(output, "ponderhit is not supported")?,
+            "go" if tokens[1..].contains(&"ponder") => {
+                write_error(output, "go ponder is not supported")?;
+            }
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
             }
-            "go" => self.handle_go(engine, &tokens[1..], output)?,
+            "go" => {
+                let Some(search) = self.start_go(engine, &tokens[1..], output)? else {
+                    output.flush()?;
+                    return Ok(LineAction::Continue);
+                };
+                output.flush()?;
+                return Ok(LineAction::Start(Box::new(search)));
+            }
             "quit" => {
                 let _ = engine.handle(EngineCommand::Quit);
-                return Ok(false);
+                return Ok(LineAction::Quit);
             }
             _ => {}
         }
         output.flush()?;
-        Ok(true)
+        Ok(LineAction::Continue)
     }
 
-    fn handle_go(
+    fn start_go(
         &mut self,
         engine: &Engine,
         tokens: &[&str],
         output: &mut dyn Write,
-    ) -> io::Result<()> {
+    ) -> io::Result<Option<ActiveSearch>> {
         if engine.lifecycle() != EngineLifecycle::InGame {
-            return write_error(output, "go requires an active game");
+            write_error(output, "go requires an active game")?;
+            return Ok(None);
         }
-        let config = match parse_go_config(tokens) {
-            Ok(config) => config,
-            Err(error) => return write_error(output, &error),
-        };
+        if !self.position_synchronized {
+            write_error(output, "go requires a synchronized position")?;
+            return Ok(None);
+        }
         let game = engine.game();
+        let config = match parse_go_config(tokens, game.position().side_to_move()) {
+            Ok(config) => config,
+            Err(error) => {
+                write_error(output, &error)?;
+                return Ok(None);
+            }
+        };
         let root_moves = game.legal_moves();
         if root_moves.is_empty() {
-            return write_error(output, "go requires at least one legal move");
+            write_error(output, "go requires at least one legal move")?;
+            return Ok(None);
         }
-        let transposition_table = self
-            .transposition_table
-            .get_or_insert_with(TranspositionTable::default);
-        let result = search::search(
-            game.position(),
-            engine.active_rules(),
-            &root_moves,
-            game.search_key_history(),
-            &config,
-            transposition_table,
-        );
-        writeln!(
-            output,
-            "bestmove {}",
-            usi::text(game.position(), result.best_move)
-        )
+        let position = game.position().clone();
+        let rules = engine.active_rules();
+        let snapshot = SearchSnapshot {
+            position: position.clone(),
+            rules,
+            history_keys: game.search_key_history().to_vec(),
+            root_moves,
+        };
+        let search_id = self.next_search_id;
+        self.next_search_id = self.next_search_id.wrapping_add(1);
+        let transposition_table = self.transposition_table.take().unwrap_or_default();
+        let infinite = config.infinite;
+        let handle = search::start_search(snapshot, config, search_id, transposition_table);
+        Ok(Some(ActiveSearch::Running {
+            context: SearchContext {
+                id: search_id,
+                position,
+                rules,
+                infinite,
+            },
+            handle,
+        }))
+    }
+
+    /// reader threadが送るUSI入力と探索イベントを並行して処理する。
+    ///
+    /// 各入力要素は改行を除いた1コマンドとする。送信側がdropされた
+    /// 場合は、有限探索の完了を待ってからセッションを終了する。
+    pub fn run_channel(
+        &mut self,
+        engine: &mut Engine,
+        input: &Receiver<io::Result<String>>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        let mut active = None;
+        let mut pending = VecDeque::new();
+        let mut input_open = true;
+
+        loop {
+            if active.is_none() {
+                let line = if let Some(line) = pending.pop_front() {
+                    line
+                } else if input_open {
+                    match input.recv() {
+                        Ok(Ok(line)) => line,
+                        Ok(Err(error)) => return Err(error),
+                        Err(_) => break,
+                    }
+                } else {
+                    break;
+                };
+                match self.handle_idle_line(engine, line.trim_end(), output)? {
+                    LineAction::Continue => {}
+                    LineAction::Start(search) => active = Some(*search),
+                    LineAction::Quit => break,
+                }
+                continue;
+            }
+
+            if input_open {
+                match input.try_recv() {
+                    Ok(Ok(line)) => {
+                        self.handle_searching_line(
+                            &mut active,
+                            &mut pending,
+                            line.trim_end(),
+                            output,
+                        )?;
+                        continue;
+                    }
+                    Ok(Err(error)) => {
+                        self.discard_search(&mut active)?;
+                        return Err(error);
+                    }
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => input_open = false,
+                }
+            }
+
+            self.poll_search(&mut active, output)?;
+            if active.is_none() {
+                continue;
+            }
+
+            if input_open {
+                match input.recv_timeout(Duration::from_millis(10)) {
+                    Ok(Ok(line)) => self.handle_searching_line(
+                        &mut active,
+                        &mut pending,
+                        line.trim_end(),
+                        output,
+                    )?,
+                    Ok(Err(error)) => {
+                        self.discard_search(&mut active)?;
+                        return Err(error);
+                    }
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => input_open = false,
+                }
+            } else if active.as_ref().is_some_and(ActiveSearch::is_infinite) {
+                self.discard_search(&mut active)?;
+            } else {
+                self.wait_search_event(&mut active, output)?;
+            }
+        }
+
+        if active.is_some() {
+            self.discard_search(&mut active)?;
+        }
+        Ok(())
+    }
+
+    fn handle_searching_line(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        pending: &mut VecDeque<String>,
+        line: &str,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        let command = line.split_whitespace().next();
+        match command {
+            Some("stop") => self.stop_search(active, output)?,
+            Some("gameover" | "quit") => {
+                pending.push_back(line.to_owned());
+                self.discard_search(active)?;
+            }
+            Some("go") => write_error(output, "go is already running")?,
+            Some("ponderhit") => write_error(output, "ponderhit is not supported")?,
+            _ => pending.push_back(line.to_owned()),
+        }
+        output.flush()
+    }
+
+    fn poll_search(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        loop {
+            let event = match active.as_ref() {
+                Some(ActiveSearch::Running { handle, .. }) => match handle.events().try_recv() {
+                    Ok(event) => event,
+                    Err(TryRecvError::Empty) => return Ok(()),
+                    Err(TryRecvError::Disconnected) => {
+                        return self.handle_search_disconnect(active);
+                    }
+                },
+                Some(ActiveSearch::AwaitingStop { .. }) | None => return Ok(()),
+            };
+            self.handle_search_event(active, event, output)?;
+        }
+    }
+
+    fn wait_search_event(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        match active.as_ref() {
+            Some(ActiveSearch::Running { handle, .. }) => {
+                match handle.events().recv_timeout(Duration::from_millis(50)) {
+                    Ok(event) => self.handle_search_event(active, event, output)?,
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => {
+                        self.handle_search_disconnect(active)?;
+                    }
+                }
+            }
+            Some(ActiveSearch::AwaitingStop { .. }) | None => {}
+        }
+        Ok(())
+    }
+
+    fn handle_search_disconnect(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
+        let Some(ActiveSearch::Running { handle, .. }) = active.take() else {
+            return Ok(());
+        };
+        self.transposition_table = Some(join_search(handle)?);
+        Err(io::Error::other("search ended without a finished event"))
+    }
+
+    fn handle_search_event(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        event: SearchEvent,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        let Some(ActiveSearch::Running { context, .. }) = active.as_ref() else {
+            return Ok(());
+        };
+        if event.search_id() != context.id {
+            return Ok(());
+        }
+
+        match event {
+            SearchEvent::Progress {
+                depth,
+                score,
+                nodes,
+                elapsed,
+                pv,
+                ..
+            } => write_info(output, context, depth, score, nodes, elapsed, &pv),
+            SearchEvent::Finished { best_move, .. } => {
+                let Some(ActiveSearch::Running { context, handle }) = active.take() else {
+                    unreachable!();
+                };
+                self.transposition_table = Some(join_search(handle)?);
+                if context.infinite {
+                    *active = Some(ActiveSearch::AwaitingStop { context, best_move });
+                    Ok(())
+                } else {
+                    write_bestmove(output, &context.position, best_move)
+                }
+            }
+        }
+    }
+
+    fn stop_search(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        self.finish_search(active, output, true)
+    }
+
+    fn finish_search(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+        request_stop: bool,
+    ) -> io::Result<()> {
+        let Some(search) = active.take() else {
+            return Ok(());
+        };
+        match search {
+            ActiveSearch::AwaitingStop { context, best_move } => {
+                write_bestmove(output, &context.position, best_move)
+            }
+            ActiveSearch::Running { context, handle } => {
+                if request_stop {
+                    handle.request_stop();
+                }
+                let best_move = loop {
+                    let event = handle
+                        .events()
+                        .recv()
+                        .map_err(|_| io::Error::other("search ended without a finished event"))?;
+                    if event.search_id() != context.id {
+                        continue;
+                    }
+                    match event {
+                        SearchEvent::Progress {
+                            depth,
+                            score,
+                            nodes,
+                            elapsed,
+                            pv,
+                            ..
+                        } => write_info(output, &context, depth, score, nodes, elapsed, &pv)?,
+                        SearchEvent::Finished { best_move, .. } => break best_move,
+                    }
+                };
+                self.transposition_table = Some(join_search(handle)?);
+                write_bestmove(output, &context.position, best_move)
+            }
+        }
+    }
+
+    fn discard_search(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
+        let Some(search) = active.take() else {
+            return Ok(());
+        };
+        if let ActiveSearch::Running { handle, .. } = search {
+            handle.request_stop();
+            self.transposition_table = Some(join_search(handle)?);
+        }
+        Ok(())
     }
 
     fn write_handshake(&self, output: &mut dyn Write) -> io::Result<()> {
@@ -115,6 +436,11 @@ impl UsiProtocol {
         writeln!(
             output,
             "option name USI_Variant type string default chushogi"
+        )?;
+        writeln!(
+            output,
+            "option name USI_Hash type spin default {}",
+            search::DEFAULT_TT_SIZE_MB
         )?;
         writeln!(output, "usiok")
     }
@@ -148,17 +474,30 @@ impl UsiProtocol {
                 }
                 None => write_error(output, "USI_Variant requires a value"),
             }
+        } else if name.eq_ignore_ascii_case("USI_Hash") {
+            let Some(value) = value else {
+                return write_error(output, "USI_Hash requires a value");
+            };
+            let Some(size_mb) = value.parse::<usize>().ok().filter(|&size| size > 0) else {
+                return write_error(output, "USI_Hash must be a positive integer");
+            };
+            match &mut self.transposition_table {
+                Some(transposition_table) => transposition_table.resize(size_mb),
+                None => self.transposition_table = Some(TranspositionTable::new(size_mb)),
+            }
+            Ok(())
         } else {
             Ok(())
         }
     }
 
     fn handle_position(
-        &self,
+        &mut self,
         engine: &mut Engine,
         tokens: &[&str],
         output: &mut dyn Write,
     ) -> io::Result<()> {
+        self.position_synchronized = false;
         let Some(kind) = tokens.first().copied() else {
             return write_error(output, "position requires startpos or sfen");
         };
@@ -189,7 +528,10 @@ impl UsiProtocol {
             setup,
             moves: parsed.moves,
         }) {
-            EngineReply::Accepted { .. } => Ok(()),
+            EngineReply::Accepted { .. } => {
+                self.position_synchronized = true;
+                Ok(())
+            }
             EngineReply::Rejected(reason) => write_error(
                 output,
                 &position_reject_reason_text(&reason, parsed.first_rejected_text.as_deref()),
@@ -251,13 +593,20 @@ impl UsiProtocol {
     }
 }
 
-fn parse_go_config(tokens: &[&str]) -> Result<SearchLimits, String> {
+fn parse_go_config(tokens: &[&str], side_to_move: Color) -> Result<SearchLimits, String> {
     if tokens.is_empty() {
         return Err("go requires depth or nodes".to_owned());
     }
 
     let mut depth = None;
     let mut nodes = None;
+    let mut movetime_ms = None;
+    let mut btime = None;
+    let mut wtime = None;
+    let mut binc = None;
+    let mut winc = None;
+    let mut byoyomi = None;
+    let mut infinite = false;
     let mut index = 0;
     while index < tokens.len() {
         let name = tokens[index];
@@ -287,18 +636,63 @@ fn parse_go_config(tokens: &[&str]) -> Result<SearchLimits, String> {
                         .ok_or_else(|| "go nodes must be a positive integer".to_owned())?,
                 );
             }
+            "movetime" => {
+                movetime_ms = Some(parse_go_milliseconds(name, value, movetime_ms)?);
+            }
+            "btime" => btime = Some(parse_go_milliseconds(name, value, btime)?),
+            "wtime" => wtime = Some(parse_go_milliseconds(name, value, wtime)?),
+            "binc" => binc = Some(parse_go_milliseconds(name, value, binc)?),
+            "winc" => winc = Some(parse_go_milliseconds(name, value, winc)?),
+            "byoyomi" => {
+                byoyomi = Some(parse_go_milliseconds(name, value, byoyomi)?);
+            }
+            "infinite" => {
+                if infinite {
+                    return Err("go infinite must be specified once".to_owned());
+                }
+                infinite = true;
+                index += 1;
+                continue;
+            }
             unsupported => return Err(format!("unsupported go argument '{unsupported}'")),
         }
         index += 2;
     }
 
+    let clock_specified =
+        btime.is_some() || wtime.is_some() || binc.is_some() || winc.is_some() || byoyomi.is_some();
+    let clock = clock_specified.then(|| {
+        let (remaining_ms, increment_ms) = match side_to_move {
+            Color::Black => (btime.unwrap_or(0), binc.unwrap_or(0)),
+            Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0)),
+        };
+        ClockLimits {
+            remaining_ms,
+            increment_ms,
+            byoyomi_ms: byoyomi.unwrap_or(0),
+        }
+    });
+
     Ok(SearchLimits {
         depth,
         nodes,
-        movetime_ms: None,
-        clock: None,
-        infinite: false,
+        movetime_ms,
+        clock,
+        infinite,
     })
+}
+
+fn parse_go_milliseconds(
+    name: &str,
+    value: Option<&str>,
+    previous: Option<u64>,
+) -> Result<u64, String> {
+    if previous.is_some() {
+        return Err(format!("go {name} must be specified once"));
+    }
+    value
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(|| format!("go {name} must be a non-negative integer"))
 }
 
 fn parse_sfen_fields(
@@ -330,18 +724,102 @@ impl Protocol for UsiProtocol {
         input: &mut dyn BufRead,
         output: &mut dyn Write,
     ) -> io::Result<()> {
+        let mut active = None;
+        let mut pending = VecDeque::new();
         let mut line = String::new();
         loop {
-            line.clear();
-            if input.read_line(&mut line)? == 0 {
-                break;
+            let command = if active.is_none()
+                && let Some(command) = pending.pop_front()
+            {
+                command
+            } else {
+                line.clear();
+                if input.read_line(&mut line)? == 0 {
+                    break;
+                }
+                line.trim_end().to_owned()
+            };
+
+            if active.is_some() {
+                self.handle_searching_line(&mut active, &mut pending, &command, output)?;
+                self.poll_search(&mut active, output)?;
+                continue;
             }
-            if !self.handle_line(engine, line.trim_end(), output)? {
-                break;
+
+            match self.handle_idle_line(engine, &command, output)? {
+                LineAction::Continue => {}
+                LineAction::Start(search) => {
+                    active = Some(*search);
+                    if !active.as_ref().is_some_and(ActiveSearch::is_infinite) {
+                        self.finish_search(&mut active, output, false)?;
+                    }
+                }
+                LineAction::Quit => return Ok(()),
             }
         }
-        Ok(())
+        self.discard_search(&mut active)
     }
+}
+
+impl ActiveSearch {
+    fn is_infinite(&self) -> bool {
+        match self {
+            Self::Running { context, .. } | Self::AwaitingStop { context, .. } => context.infinite,
+        }
+    }
+}
+
+fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
+    handle
+        .join()
+        .map_err(|_| io::Error::other("search thread panicked"))
+}
+
+fn write_bestmove(output: &mut dyn Write, position: &Position, mv: Move) -> io::Result<()> {
+    writeln!(output, "bestmove {}", usi::text(position, mv))?;
+    output.flush()
+}
+
+fn write_info(
+    output: &mut dyn Write,
+    context: &SearchContext,
+    depth: u32,
+    score: i32,
+    nodes: u64,
+    elapsed: Duration,
+    pv: &[Move],
+) -> io::Result<()> {
+    let (score_kind, score_value) = score_text(score);
+    write!(
+        output,
+        "info depth {depth} score {score_kind} {score_value} nodes {nodes} nps {} pv",
+        nodes_per_second(nodes, elapsed)
+    )?;
+    let mut position = context.position.clone();
+    for &mv in pv {
+        write!(output, " {}", usi::text(&position, mv))?;
+        let _ = position.make_move_unchecked(mv, context.rules);
+    }
+    writeln!(output)?;
+    output.flush()
+}
+
+fn score_text(score: i32) -> (&'static str, i32) {
+    if score >= search::MATE_THRESHOLD {
+        ("mate", search::MATE - score)
+    } else if score <= -search::MATE_THRESHOLD {
+        ("mate", -(search::MATE + score))
+    } else {
+        ("cp", score)
+    }
+}
+
+fn nodes_per_second(nodes: u64, elapsed: Duration) -> u64 {
+    let nanoseconds = elapsed.as_nanos();
+    if nanoseconds == 0 {
+        return 0;
+    }
+    (u128::from(nodes) * 1_000_000_000 / nanoseconds).min(u128::from(u64::MAX)) as u64
 }
 
 fn token_after<'a>(tokens: &'a [&str], key: &str) -> Option<&'a str> {
@@ -430,7 +908,6 @@ fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::io::Cursor;
 
     use super::*;
     use crate::core::piece::Color;
@@ -445,10 +922,40 @@ mod tests {
     }
 
     fn run(protocol: &mut UsiProtocol, engine: &mut Engine, input: &str) -> String {
-        let mut input = Cursor::new(input.as_bytes());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        for line in input.lines() {
+            sender.send(Ok(line.to_owned())).unwrap();
+        }
+        drop(sender);
         let mut output = Vec::new();
-        protocol.run(engine, &mut input, &mut output).unwrap();
+        protocol
+            .run_channel(engine, &receiver, &mut output)
+            .unwrap();
         String::from_utf8(output).unwrap()
+    }
+
+    struct LineWriter {
+        sender: std::sync::mpsc::Sender<String>,
+        bytes: Vec<u8>,
+    }
+
+    impl std::io::Write for LineWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            while let Some(newline) = self.bytes.iter().position(|&byte| byte == b'\n') {
+                let line: Vec<_> = self.bytes.drain(..=newline).collect();
+                let line = String::from_utf8(line)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                self.sender
+                    .send(line)
+                    .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "reader closed"))?;
+            }
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 
     #[test]
@@ -466,6 +973,7 @@ mod tests {
                 "id author stepney141\n",
                 "option name RuleSet type string default L1,R1,E2\n",
                 "option name USI_Variant type string default chushogi\n",
+                "option name USI_Hash type spin default 256\n",
                 "usiok\n",
                 "readyok\n",
             )
@@ -802,12 +1310,13 @@ mod tests {
         let output = run(
             &mut protocol,
             &mut engine,
-            "position startpos\ngo depth 1\nquit\n",
+            "position startpos\ngo depth 1\n",
         );
-        let move_text = output
+        let lines: Vec<_> = output.lines().collect();
+        assert!(lines[0].starts_with("info depth 1 score "));
+        let move_text = lines[1]
             .strip_prefix("bestmove ")
-            .and_then(|text| text.strip_suffix('\n'))
-            .expect("go must return exactly one bestmove line");
+            .expect("go must finish with a bestmove line");
         let best_move = usi::parse(engine.game().position(), move_text).unwrap();
 
         assert!(engine.game().legal_moves().contains(&best_move));
@@ -848,7 +1357,6 @@ mod tests {
         let input = concat!(
             "position startpos\n",
             "go\n",
-            "go movetime 1000\n",
             "go depth 0\n",
             "go nodes nope\n",
             "go depth 257\n",
@@ -859,7 +1367,6 @@ mod tests {
             run(&mut protocol, &mut engine, input),
             concat!(
                 "info string error: go requires depth or nodes\n",
-                "info string error: unsupported go argument 'movetime'\n",
                 "info string error: go depth must be a positive integer\n",
                 "info string error: go nodes must be a positive integer\n",
                 "info string error: go depth must not exceed 256\n",
@@ -872,23 +1379,326 @@ mod tests {
         let startup = [RuleCode::R1];
         let mut engine = engine(&startup);
         let mut protocol = UsiProtocol::new(&engine);
+        let nodes = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos\ngo nodes 1\n",
+        );
+        let combined = run(&mut protocol, &mut engine, "go depth 1 nodes 1\n");
+        let mate = run(&mut protocol, &mut engine, "go ignored mate 1000\n");
+
+        assert!(nodes.starts_with("bestmove "));
+        assert!(combined.starts_with("bestmove "));
+        assert_eq!(mate, "checkmate notimplemented\n");
+    }
+
+    #[test]
+    fn go_time_arguments_are_normalized_for_the_side_to_move() {
+        let tokens = [
+            "btime", "1000", "wtime", "2000", "binc", "30", "winc", "40", "byoyomi", "500",
+            "movetime", "600", "depth", "7", "nodes", "800", "infinite",
+        ];
+
+        assert_eq!(
+            parse_go_config(&tokens, Color::Black),
+            Ok(SearchLimits {
+                depth: Some(7),
+                nodes: Some(800),
+                movetime_ms: Some(600),
+                clock: Some(ClockLimits {
+                    remaining_ms: 1000,
+                    increment_ms: 30,
+                    byoyomi_ms: 500,
+                }),
+                infinite: true,
+            })
+        );
+        assert_eq!(
+            parse_go_config(&tokens, Color::White),
+            Ok(SearchLimits {
+                depth: Some(7),
+                nodes: Some(800),
+                movetime_ms: Some(600),
+                clock: Some(ClockLimits {
+                    remaining_ms: 2000,
+                    increment_ms: 40,
+                    byoyomi_ms: 500,
+                }),
+                infinite: true,
+            })
+        );
+    }
+
+    #[test]
+    fn go_time_arguments_reject_duplicates_and_invalid_values() {
+        assert_eq!(
+            parse_go_config(&["movetime", "1", "movetime", "2"], Color::Black),
+            Err("go movetime must be specified once".to_owned())
+        );
+        assert_eq!(
+            parse_go_config(&["btime", "-1"], Color::Black),
+            Err("go btime must be a non-negative integer".to_owned())
+        );
+        assert_eq!(
+            parse_go_config(&["infinite", "infinite"], Color::Black),
+            Err("go infinite must be specified once".to_owned())
+        );
+    }
+
+    #[test]
+    fn lishogi_bot_series_rebuilds_the_full_history_without_usinewgame() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        let first = run(
+            &mut protocol,
+            &mut engine,
+            concat!(
+                "setoption name RuleSet value lishogi\n",
+                "position startpos\n",
+                "go btime 60000 wtime 60000 byoyomi 10000 nodes 1\n",
+            ),
+        );
+        assert!(first.starts_with("bestmove "));
+        assert_eq!(engine.game().ply_count(), 0);
+
+        let first_text = first
+            .trim_end()
+            .strip_prefix("bestmove ")
+            .expect("the fixed-node search must return one bestmove");
+        let mut server_game = engine.game().clone();
+        let first_move = usi::parse(server_game.position(), first_text).unwrap();
+        server_game.play(first_move).unwrap();
+        let reply_move = server_game.legal_moves()[0];
+        let reply_text = usi::text(server_game.position(), reply_move);
+
+        let second = run(
+            &mut protocol,
+            &mut engine,
+            &format!(
+                "position startpos moves {first_text} {reply_text}\ngo btime 59900 wtime 59800 byoyomi 10000 nodes 1\n"
+            ),
+        );
+        assert!(second.starts_with("bestmove "));
+        assert_eq!(engine.game().ply_count(), 2);
+        assert_eq!(
+            engine.active_rule_codes(),
+            &[
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3,
+            ]
+        );
+    }
+
+    #[test]
+    fn failed_position_blocks_go_until_a_valid_position_recovers_sync() {
+        let startup = [RuleCode::R1, RuleCode::E2];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
         let output = run(
             &mut protocol,
             &mut engine,
             concat!(
                 "position startpos\n",
+                "position startpos moves 1a1b\n",
                 "go nodes 1\n",
-                "go depth 1 nodes 1\n",
-                "go ignored mate 1000\n",
-                "quit\n",
+                "position startpos moves 6i6h\n",
+                "go nodes 1\n",
             ),
         );
         let lines: Vec<_> = output.lines().collect();
 
-        assert_eq!(lines.len(), 3);
-        assert!(lines[0].starts_with("bestmove "));
-        assert!(lines[1].starts_with("bestmove "));
-        assert_eq!(lines[2], "checkmate notimplemented");
+        assert_eq!(
+            lines[0],
+            "info string error: illegal move '1a1b': illegal movement"
+        );
+        assert_eq!(
+            lines[1],
+            "info string error: go requires a synchronized position"
+        );
+        assert!(lines[2].starts_with("bestmove "));
+        assert_eq!(engine.game().ply_count(), 1);
+    }
+
+    #[test]
+    fn ponder_commands_return_only_error_information() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "position startpos\ngo ponder btime 1 wtime 1\nponderhit\n",
+            ),
+            concat!(
+                "info string error: go ponder is not supported\n",
+                "info string error: ponderhit is not supported\n",
+            )
+        );
+    }
+
+    #[test]
+    fn duplicate_go_is_rejected_and_infinite_search_stops_with_one_bestmove() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos\ngo infinite\ngo depth 1\nstop\n",
+        );
+        let lines: Vec<_> = output.lines().collect();
+
+        assert!(lines.contains(&"info string error: go is already running"));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line.starts_with("bestmove "))
+                .count(),
+            1
+        );
+        assert!(lines.iter().all(|line| {
+            line.starts_with("info depth ")
+                || line.starts_with("info string error: ")
+                || line.starts_with("bestmove ")
+        }));
+    }
+
+    #[test]
+    fn open_command_channel_reports_progress_and_accepts_stop() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let (command_sender, command_receiver) = std::sync::mpsc::channel();
+        let (line_sender, line_receiver) = std::sync::mpsc::channel();
+
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(move || {
+                let mut output = LineWriter {
+                    sender: line_sender,
+                    bytes: Vec::new(),
+                };
+                protocol.run_channel(&mut engine, &command_receiver, &mut output)
+            });
+            command_sender
+                .send(Ok("position startpos".to_owned()))
+                .unwrap();
+            command_sender.send(Ok("go infinite".to_owned())).unwrap();
+
+            loop {
+                let line = line_receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+                assert!(!line.starts_with("bestmove "));
+                if line.starts_with("info depth ") {
+                    break;
+                }
+            }
+
+            command_sender.send(Ok("stop".to_owned())).unwrap();
+            loop {
+                let line = line_receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+                if line.starts_with("bestmove ") {
+                    break;
+                }
+            }
+            drop(command_sender);
+            worker.join().unwrap().unwrap();
+        });
+    }
+
+    #[test]
+    fn sequential_protocol_defers_position_without_blocking_later_stop() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let mut input = std::io::Cursor::new(
+            b"position startpos\ngo infinite\nposition startpos moves 6i6h\nstop\n",
+        );
+        let mut output = Vec::new();
+
+        protocol.run(&mut engine, &mut input, &mut output).unwrap();
+
+        assert!(String::from_utf8(output).unwrap().contains("bestmove "));
+        assert_eq!(engine.game().ply_count(), 1);
+    }
+
+    #[test]
+    fn gameover_and_quit_discard_running_search_results() {
+        let startup = [RuleCode::R1];
+        let mut gameover_engine = engine(&startup);
+        let mut gameover_protocol = UsiProtocol::new(&gameover_engine);
+        let gameover_output = run(
+            &mut gameover_protocol,
+            &mut gameover_engine,
+            "position startpos\ngo infinite\ngameover draw\n",
+        );
+        assert!(!gameover_output.contains("bestmove "));
+        assert_eq!(gameover_engine.lifecycle(), EngineLifecycle::AwaitingStart);
+
+        let mut quit_engine = engine(&startup);
+        let mut quit_protocol = UsiProtocol::new(&quit_engine);
+        let quit_output = run(
+            &mut quit_protocol,
+            &mut quit_engine,
+            "position startpos\ngo infinite\nquit\n",
+        );
+        assert!(!quit_output.contains("bestmove "));
+    }
+
+    #[test]
+    fn commands_queued_during_search_apply_after_bestmove() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos\ngo depth 1\nposition startpos moves 6i6h\nisready\n",
+        );
+        let lines: Vec<_> = output.lines().collect();
+        let bestmove_index = lines
+            .iter()
+            .position(|line| line.starts_with("bestmove "))
+            .unwrap();
+        let ready_index = lines.iter().position(|line| *line == "readyok").unwrap();
+
+        assert!(bestmove_index < ready_index);
+        assert_eq!(engine.game().ply_count(), 1);
+    }
+
+    #[test]
+    fn usi_hash_accepts_positive_megabyte_values() {
+        let startup = [RuleCode::R1];
+        let mut engine = engine(&startup);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                concat!(
+                    "setoption name USI_Hash value 1\n",
+                    "setoption name USI_Hash value 2\n",
+                    "setoption name USI_Hash value 0\n",
+                ),
+            ),
+            "info string error: USI_Hash must be a positive integer\n"
+        );
+    }
+
+    #[test]
+    fn score_and_nps_formatting_use_search_contract_units() {
+        assert_eq!(score_text(42), ("cp", 42));
+        assert_eq!(score_text(search::MATE - 3), ("mate", 3));
+        assert_eq!(score_text(-search::MATE + 4), ("mate", -4));
+        assert_eq!(nodes_per_second(500, Duration::from_millis(250)), 2000);
+        assert_eq!(nodes_per_second(500, Duration::ZERO), 0);
     }
 
     #[test]
