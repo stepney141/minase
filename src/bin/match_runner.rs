@@ -109,30 +109,184 @@ enum PlayerKind {
 
 /// USIの`go`へ渡す思考制限。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct SearchLimit {
-    depth: Option<u32>,
-    nodes: Option<u64>,
+enum SearchLimit {
+    Fixed {
+        depth: Option<u32>,
+        nodes: Option<u64>,
+    },
+    Time(TimeControl),
+}
+
+/// ミリ秒単位の持ち時間、加算時間、秒読み。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct TimeControl {
+    base_ms: u64,
+    increment_ms: u64,
+    byoyomi_ms: u64,
 }
 
 impl SearchLimit {
     /// CLI表示用の制限文字列を返す。
     fn cli_text(self) -> String {
-        match (self.depth, self.nodes) {
-            (Some(depth), Some(nodes)) => format!("depth={depth},nodes={nodes}"),
-            (Some(depth), None) => format!("depth={depth}"),
-            (None, Some(nodes)) => format!("nodes={nodes}"),
-            (None, None) => unreachable!("a validated limit contains depth or nodes"),
+        match self {
+            Self::Fixed {
+                depth: Some(depth),
+                nodes: Some(nodes),
+            } => format!("depth={depth},nodes={nodes}"),
+            Self::Fixed {
+                depth: Some(depth),
+                nodes: None,
+            } => format!("depth={depth}"),
+            Self::Fixed {
+                depth: None,
+                nodes: Some(nodes),
+            } => format!("nodes={nodes}"),
+            Self::Fixed {
+                depth: None,
+                nodes: None,
+            } => unreachable!("a validated fixed limit contains depth or nodes"),
+            Self::Time(time) if time.byoyomi_ms == 0 => {
+                format!("time={}+{}", time.base_ms, time.increment_ms)
+            }
+            Self::Time(time) => format!(
+                "time={}+{},byoyomi={}",
+                time.base_ms, time.increment_ms, time.byoyomi_ms
+            ),
         }
     }
 
-    /// USIの`go`引数を返す。
-    fn go_text(self) -> String {
-        match (self.depth, self.nodes) {
-            (Some(depth), Some(nodes)) => format!("depth {depth} nodes {nodes}"),
-            (Some(depth), None) => format!("depth {depth}"),
-            (None, Some(nodes)) => format!("nodes {nodes}"),
-            (None, None) => unreachable!("a validated limit contains depth or nodes"),
+    /// 固定制限のUSI `go`引数を返す。
+    fn fixed_go_text(self) -> Option<String> {
+        match self {
+            Self::Fixed {
+                depth: Some(depth),
+                nodes: Some(nodes),
+            } => Some(format!("depth {depth} nodes {nodes}")),
+            Self::Fixed {
+                depth: Some(depth),
+                nodes: None,
+            } => Some(format!("depth {depth}")),
+            Self::Fixed {
+                depth: None,
+                nodes: Some(nodes),
+            } => Some(format!("nodes {nodes}")),
+            Self::Fixed {
+                depth: None,
+                nodes: None,
+            } => unreachable!("a validated fixed limit contains depth or nodes"),
+            Self::Time(_) => None,
         }
+    }
+
+    /// 時間制御なら時計の初期状態を返す。
+    fn clock(self) -> Option<Clock> {
+        match self {
+            Self::Fixed { .. } => None,
+            Self::Time(time) => Some(Clock::new(time)),
+        }
+    }
+}
+
+/// 1エンジンの現在の時計。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Clock {
+    remaining: Duration,
+    increment: Duration,
+    byoyomi: Duration,
+}
+
+impl Clock {
+    /// 時間制御から時計を初期化する。
+    fn new(time: TimeControl) -> Self {
+        Self {
+            remaining: Duration::from_millis(time.base_ms),
+            increment: Duration::from_millis(time.increment_ms),
+            byoyomi: Duration::from_millis(time.byoyomi_ms),
+        }
+    }
+
+    /// 実測思考時間を反映し、時間切れかどうかを返す。
+    fn update(&mut self, elapsed: Duration) -> Result<(), EngineFailure> {
+        if elapsed > self.remaining + self.byoyomi {
+            return Err(EngineFailure::TimeForfeit);
+        }
+        self.remaining = self.remaining.saturating_sub(elapsed) + self.increment;
+        Ok(())
+    }
+
+    /// USIへ送るミリ秒単位の残り時間を返す。
+    fn remaining_ms(self) -> u128 {
+        self.remaining.as_millis()
+    }
+
+    /// USIへ送るミリ秒単位の加算時間を返す。
+    fn increment_ms(self) -> u128 {
+        self.increment.as_millis()
+    }
+
+    /// USIへ送るミリ秒単位の秒読みを返す。
+    fn byoyomi_ms(self) -> u128 {
+        self.byoyomi.as_millis()
+    }
+}
+
+/// 1局で両色に割り当てた時計。
+struct GameClocks {
+    black: Option<Clock>,
+    white: Option<Clock>,
+}
+
+impl GameClocks {
+    /// プレイヤーAとBの制限を対局時の色へ割り当てる。
+    fn new(player_a_color: Color, player_a: SearchLimit, player_b: SearchLimit) -> Self {
+        let (black, white) = if player_a_color == Color::Black {
+            (player_a.clock(), player_b.clock())
+        } else {
+            (player_b.clock(), player_a.clock())
+        };
+        Self { black, white }
+    }
+
+    /// 指定色の時計を返す。
+    fn get(&self, color: Color) -> Option<Clock> {
+        match color {
+            Color::Black => self.black,
+            Color::White => self.white,
+        }
+    }
+
+    /// 指定色の時計を可変参照で返す。
+    fn get_mut(&mut self, color: Color) -> Option<&mut Clock> {
+        match color {
+            Color::Black => self.black.as_mut(),
+            Color::White => self.white.as_mut(),
+        }
+    }
+
+    /// 現在の両時計から時間制御用のUSI `go`引数を返す。
+    fn go_text(&self, side_to_move: Color) -> String {
+        let black = self.black.unwrap_or_else(zero_clock);
+        let white = self.white.unwrap_or_else(zero_clock);
+        let byoyomi = self
+            .get(side_to_move)
+            .expect("a time-controlled player must have a clock");
+        format!(
+            "btime {} wtime {} binc {} winc {} byoyomi {}",
+            black.remaining_ms(),
+            white.remaining_ms(),
+            black.increment_ms(),
+            white.increment_ms(),
+            byoyomi.byoyomi_ms()
+        )
+    }
+}
+
+/// 時間制御を使わない側をUSI時間引数へ表す0値の時計を返す。
+fn zero_clock() -> Clock {
+    Clock {
+        remaining: Duration::ZERO,
+        increment: Duration::ZERO,
+        byoyomi: Duration::ZERO,
     }
 }
 
@@ -158,6 +312,7 @@ enum EngineFailure {
     IllegalMove,
     Crash,
     Timeout,
+    TimeForfeit,
 }
 
 /// 異常理由別の発生件数。
@@ -166,6 +321,7 @@ struct FailureCounts {
     illegal_moves: u64,
     crashes: u64,
     timeouts: u64,
+    time_forfeits: u64,
 }
 
 impl FailureCounts {
@@ -175,6 +331,7 @@ impl FailureCounts {
             EngineFailure::IllegalMove => self.illegal_moves += 1,
             EngineFailure::Crash => self.crashes += 1,
             EngineFailure::Timeout => self.timeouts += 1,
+            EngineFailure::TimeForfeit => self.time_forfeits += 1,
         }
     }
 
@@ -183,6 +340,7 @@ impl FailureCounts {
         self.illegal_moves += other.illegal_moves;
         self.crashes += other.crashes;
         self.timeouts += other.timeouts;
+        self.time_forfeits += other.time_forfeits;
     }
 }
 
@@ -265,24 +423,28 @@ impl EngineProcess {
             .map(|_| ())
     }
 
-    /// 現局面を送り、`bestmove`の着手文字列を受け取る。
+    /// 現局面と`go`を送り、`bestmove`と実測思考時間を受け取る。
     fn bestmove(
         &mut self,
         history: &[String],
-        limit: SearchLimit,
-    ) -> Result<String, EngineFailure> {
+        go_text: &str,
+    ) -> Result<(String, Duration), EngineFailure> {
         if history.is_empty() {
             self.send("position startpos")?;
         } else {
             self.send(&format!("position startpos moves {}", history.join(" ")))?;
         }
-        self.send(&format!("go {}", limit.go_text()))?;
+        let start = Instant::now();
+        self.send(&format!("go {go_text}"))?;
         self.receive_until(|line| line.split_whitespace().next() == Some("bestmove"))
             .map(|line| {
-                line.split_whitespace()
-                    .nth(1)
-                    .unwrap_or_default()
-                    .to_owned()
+                (
+                    line.split_whitespace()
+                        .nth(1)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    start.elapsed(),
+                )
             })
     }
 
@@ -520,6 +682,35 @@ fn resolve_commit(revision: &str) -> io::Result<PathBuf> {
 fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
     let mut fields = input.split(',');
     let first = fields.next().expect("split always returns one field");
+    if let Some(value) = first.strip_prefix("time=") {
+        let (base_ms, increment_ms) = value
+            .split_once('+')
+            .ok_or_else(|| "time limit must be 'time=<base_ms>+<inc_ms>'".to_owned())?;
+        if increment_ms.contains('+') {
+            return Err("time limit must contain exactly one '+'".to_owned());
+        }
+        let base_ms = parse_nonnegative_u64(base_ms)?;
+        let increment_ms = parse_nonnegative_u64(increment_ms)?;
+        let byoyomi_ms = fields
+            .next()
+            .map(|field| {
+                field
+                    .strip_prefix("byoyomi=")
+                    .ok_or_else(|| "time limit may only be followed by 'byoyomi=<ms>'".to_owned())
+                    .and_then(parse_nonnegative_u64)
+            })
+            .transpose()?
+            .unwrap_or(0);
+        if fields.next().is_some() {
+            return Err("limit has too many comma-separated fields".to_owned());
+        }
+        return Ok(SearchLimit::Time(TimeControl {
+            base_ms,
+            increment_ms,
+            byoyomi_ms,
+        }));
+    }
+
     let (depth, nodes) = if let Some(value) = first.strip_prefix("depth=") {
         let depth = parse_search_depth(value)?;
         let nodes = fields
@@ -535,12 +726,20 @@ fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
     } else if let Some(value) = first.strip_prefix("nodes=") {
         (None, Some(parse_positive_u64(value)?))
     } else {
-        return Err("limit must be 'depth=N', 'nodes=M', or 'depth=N,nodes=M'".to_owned());
+        return Err(
+            "limit must be 'depth=N', 'nodes=M', 'depth=N,nodes=M', or 'time=B+I'".to_owned(),
+        );
     };
     if fields.next().is_some() {
         return Err("limit has too many comma-separated fields".to_owned());
     }
-    Ok(SearchLimit { depth, nodes })
+    Ok(SearchLimit::Fixed { depth, nodes })
+}
+
+/// 0以上の`u64`を解析する。
+fn parse_nonnegative_u64(text: &str) -> Result<u64, String> {
+    text.parse::<u64>()
+        .map_err(|error| format!("invalid nonnegative integer '{text}': {error}"))
 }
 
 /// 0より大きい`u64`を解析する。
@@ -709,6 +908,7 @@ fn play_game(
                 return forfeit(game.ply_count(), player_a_color.opposite(), reason);
             }
         };
+    let mut clocks = GameClocks::new(player_a_color, player_a.limit, player_b.limit);
 
     loop {
         if game.ply_count() >= max_ply {
@@ -723,10 +923,19 @@ fn play_game(
         } else {
             (&mut player_b_process, player_b.limit)
         };
-        let response = match process.bestmove(&history, limit) {
+        let go_text = match limit.fixed_go_text() {
+            Some(go_text) => go_text,
+            None => clocks.go_text(side_to_move),
+        };
+        let (response, elapsed) = match process.bestmove(&history, &go_text) {
             Ok(response) => response,
             Err(reason) => return forfeit(game.ply_count(), side_to_move, reason),
         };
+        if let Some(clock) = clocks.get_mut(side_to_move)
+            && let Err(reason) = clock.update(elapsed)
+        {
+            return forfeit(game.ply_count(), side_to_move, reason);
+        }
         let selected = match validate_bestmove(&game, &response) {
             Ok(selected) => selected,
             Err(reason) => return forfeit(game.ply_count(), side_to_move, reason),
@@ -942,8 +1151,8 @@ fn elo_text(elo: f64) -> String {
 /// 異常理由別の件数を表示する。
 fn print_failure_summary(failures: FailureCounts) {
     println!(
-        "engine_failures: illegal_moves={} crashes={} timeouts={}",
-        failures.illegal_moves, failures.crashes, failures.timeouts
+        "engine_failures: illegal_moves={} crashes={} timeouts={} time_forfeits={}",
+        failures.illegal_moves, failures.crashes, failures.timeouts, failures.time_forfeits
     );
 }
 
@@ -1208,7 +1417,7 @@ mod tests {
         assert_eq!(gsprt.baseline.kind, PlayerKind::Random);
         assert_eq!(
             gsprt.each,
-            SearchLimit {
+            SearchLimit::Fixed {
                 depth: Some(1),
                 nodes: None
             }
@@ -1250,14 +1459,14 @@ mod tests {
         );
         assert_eq!(
             elo.each,
-            SearchLimit {
+            SearchLimit::Fixed {
                 depth: Some(2),
                 nodes: Some(1000)
             }
         );
         assert_eq!(
             elo.baseline_limit,
-            Some(SearchLimit {
+            Some(SearchLimit::Fixed {
                 depth: None,
                 nodes: Some(25)
             })
@@ -1324,21 +1533,21 @@ mod tests {
     fn search_limits_accept_only_supported_forms() {
         assert_eq!(
             parse_search_limit("depth=3"),
-            Ok(SearchLimit {
+            Ok(SearchLimit::Fixed {
                 depth: Some(3),
                 nodes: None
             })
         );
         assert_eq!(
             parse_search_limit("nodes=400"),
-            Ok(SearchLimit {
+            Ok(SearchLimit::Fixed {
                 depth: None,
                 nodes: Some(400)
             })
         );
         assert_eq!(
             parse_search_limit("depth=3,nodes=400"),
-            Ok(SearchLimit {
+            Ok(SearchLimit::Fixed {
                 depth: Some(3),
                 nodes: Some(400)
             })
@@ -1356,6 +1565,98 @@ mod tests {
                 "invalid limit {limit:?} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn search_limits_accept_time_and_optional_byoyomi() {
+        assert_eq!(
+            parse_search_limit("time=10000+100"),
+            Ok(SearchLimit::Time(TimeControl {
+                base_ms: 10_000,
+                increment_ms: 100,
+                byoyomi_ms: 0,
+            }))
+        );
+        assert_eq!(
+            parse_search_limit("time=0+0,byoyomi=1000"),
+            Ok(SearchLimit::Time(TimeControl {
+                base_ms: 0,
+                increment_ms: 0,
+                byoyomi_ms: 1_000,
+            }))
+        );
+    }
+
+    #[test]
+    fn search_limits_reject_time_mixed_with_fixed_limits() {
+        for limit in [
+            "time=1000+10,depth=1",
+            "time=1000+10,nodes=100",
+            "depth=1,time=1000+10",
+            "nodes=100,time=1000+10",
+            "byoyomi=1000",
+        ] {
+            assert!(
+                parse_search_limit(limit).is_err(),
+                "mixed or incomplete limit {limit:?} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn clocks_update_remaining_time_and_detect_time_forfeits() {
+        let mut clock = Clock::new(TimeControl {
+            base_ms: 1_000,
+            increment_ms: 100,
+            byoyomi_ms: 0,
+        });
+        assert_eq!(clock.update(Duration::from_millis(250)), Ok(()));
+        assert_eq!(clock.remaining, Duration::from_millis(850));
+        assert_eq!(
+            clock.update(Duration::from_millis(851)),
+            Err(EngineFailure::TimeForfeit)
+        );
+        assert_eq!(clock.remaining, Duration::from_millis(850));
+
+        let mut byoyomi_clock = Clock::new(TimeControl {
+            base_ms: 100,
+            increment_ms: 20,
+            byoyomi_ms: 50,
+        });
+        assert_eq!(byoyomi_clock.update(Duration::from_millis(150)), Ok(()));
+        assert_eq!(byoyomi_clock.remaining, Duration::from_millis(20));
+        assert_eq!(
+            byoyomi_clock.update(Duration::from_millis(71)),
+            Err(EngineFailure::TimeForfeit)
+        );
+        assert_eq!(byoyomi_clock.remaining, Duration::from_millis(20));
+    }
+
+    #[test]
+    fn time_go_text_uses_current_clocks_for_both_colors() {
+        let player_a = SearchLimit::Time(TimeControl {
+            base_ms: 10_000,
+            increment_ms: 100,
+            byoyomi_ms: 1_000,
+        });
+        let player_b = SearchLimit::Time(TimeControl {
+            base_ms: 20_000,
+            increment_ms: 200,
+            byoyomi_ms: 2_000,
+        });
+        let clocks = GameClocks::new(Color::White, player_a, player_b);
+        assert_eq!(
+            clocks.go_text(Color::Black),
+            "btime 20000 wtime 10000 binc 200 winc 100 byoyomi 2000"
+        );
+        assert_eq!(
+            SearchLimit::Fixed {
+                depth: Some(3),
+                nodes: Some(400),
+            }
+            .fixed_go_text(),
+            Some("depth 3 nodes 400".to_owned())
+        );
     }
 
     #[test]
@@ -1394,12 +1695,14 @@ mod tests {
         counts.record(EngineFailure::IllegalMove);
         counts.record(EngineFailure::Crash);
         counts.record(EngineFailure::Timeout);
+        counts.record(EngineFailure::TimeForfeit);
         assert_eq!(
             counts,
             FailureCounts {
                 illegal_moves: 1,
                 crashes: 1,
-                timeouts: 1
+                timeouts: 1,
+                time_forfeits: 1
             }
         );
     }
@@ -1417,6 +1720,21 @@ mod tests {
         assert_eq!(
             receive_until(&lines, Duration::from_millis(1), |_| false),
             Err(EngineFailure::Timeout)
+        );
+    }
+
+    #[test]
+    fn response_channel_ignores_info_before_bestmove() {
+        let (sender, lines) = mpsc::channel();
+        sender
+            .send(Ok("info depth 1 score cp 0".to_owned()))
+            .unwrap();
+        sender.send(Ok("bestmove 1a1b".to_owned())).unwrap();
+        assert_eq!(
+            receive_until(&lines, Duration::from_secs(1), |line| {
+                line.split_whitespace().next() == Some("bestmove")
+            }),
+            Ok("bestmove 1a1b".to_owned())
         );
     }
 

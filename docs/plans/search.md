@@ -68,6 +68,14 @@ usi.rsとbenchは`SearchLimits`への機械的置換のみでwire挙動は不変
 テストは330件全緑（時間管理と非同期境界の8件を追加）、clippy警告なし、fmt通過で、benchの総ノード数はdepth=3で217,305と変更前後で完全一致した。
 match_runnerの時間制御拡張と時間制御つき自己対局の完走確認は、wireの時間引数を実装する外部対局接続フェーズ1の完了後に実施する。wire解析を二重実装しないための実行順の調整であり、フェーズ5の完了条件自体は変更しない。
 
+同2026年8月12日、外部対局接続フェーズ1（コミット43c26f8）の完了を受けて、match_runnerへ時間制御の思考制限`time=<base_ms>+<inc_ms>[,byoyomi=<ms>]`を追加した。
+ハーネスが両対局者の時計を管理して毎手`go btime`・`wtime`・`binc`・`winc`・`byoyomi`を現在値で送り、着手時間の実測が`remaining + byoyomi`を超えた場合は当該局の反則負けとして`engine_failures:`の`time_forfeits`へ算入する。
+完全再現契約が`depth`・`nodes`制限に限られることはdocs/sprt.mdへ追記した。
+完了条件の時間制御つき自己対局は`match_runner --seed 20260814 --candidate commit:43c26f8 --baseline commit:43c26f8 --each time=10000+100,byoyomi=200 --concurrency 8 elo --pairs 10`で実施し、10ペア20局が破棄0・engine_failures全0（time_forfeits=0）で完走した。
+結果はペンタノミアル[1, 0, 9, 0, 0]、Elo −34.9、95%信頼区間[−102.2, +29.9]で0を含み、同一コミット同士の対局と整合する（経過304秒）。
+テストは347件全緑、clippy警告なし、fmt通過である。
+以上をもって、フェーズ5の完了条件（単体試験、benchノード数の不変、時間制御つき自己対局の時間切れなし完走）をすべて満たし、フェーズ5を完了とする。
+
 直前局面生成器（待機中）より本マイルストーンを先行させる。
 ROADMAPの記載どおり探索部は直前局面生成器の完了を前提とせず、探索部の実測によってmimalloc採否と合法手生成器のVec割当という保留中の性能判断を決着できるためである。
 
