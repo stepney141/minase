@@ -18,6 +18,12 @@ benchの総ノード数241,231がフェーズ2完了時点（93b4bd4）と一致
 テストは316件全緑である。
 なお最初のcodex委任は実装せずに終了する事象（幽霊再委譲）があり、再委任で解決した。委任プロンプトへの再委譲禁止の明記と、完了通知後の`git status`確認を運用に加えた。
 
+フェーズ3（コミット指定と並列実行）も同2026年8月11日に完了し、本マイルストーンの全フェーズが終了した。
+`commit:<hash>`はrev-parseによる正規化、git worktreeでの展開、`cargo build --release`、完全ハッシュをキーとするキャッシュ（`target/match-cache/`）で解決し、minase本体の起動引数`--protocol usi --rules`を自動付与する。
+`--concurrency N`はペア単位のワーカープールで並列対局し、出力とLLR取り込みをペア番号順に整列するため、判定は並列度に依存しない（並列度1と4の出力一致を統合テストで固定）。
+完了条件の実演として、`--candidate commit:f7a228d --candidate-limit depth=2 --baseline commit:0045833 --baseline-limit depth=1 --concurrency 8 gsprt`が、2コミットのビルドから207ペア・LLR 2.9576のH1採用まで9.0秒で完走し、逐次実行・in-process時代と同一のペンタノミアル度数とLLR値を得た。
+テストは319件全緑である。
+
 ## 動機
 
 探索部フェーズ2で導入したselfplayのエンジン指定（`--candidate depth=N`と機能フラグ）は、比較対象の機能構成をハーネスが知る設計であり、新機能を追加するたびにspec語彙を広げる必要があった。

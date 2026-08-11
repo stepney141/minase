@@ -16,7 +16,7 @@
 | ランダム対局検証ハーネス | [plans/random-play.md](plans/random-play.md) | 完了 | 2026年8月10日 |
 | プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 完了 | 2026年8月10日 |
 | ブラウザGUI向けUSI照会 | [plans/browser-gui.md](plans/browser-gui.md) | 完了 | 2026年8月11日 |
-| 対局ハーネスのバイナリ対戦化 | [plans/match-harness.md](plans/match-harness.md) | 設計済み | ― |
+| 対局ハーネスのバイナリ対戦化 | [plans/match-harness.md](plans/match-harness.md) | 完了 | 2026年8月11日 |
 | 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
 | 探索部 | [plans/search.md](plans/search.md) | 未着手 | ― |
 | 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 未着手 | ― |
@@ -45,7 +45,8 @@ HaChu互換規則セットの実対局照合は、HaChu 0.23が基本移動規�
 深さ1エンジンはランダム着手に100ペア200局で全勝し、テストは303件全緑である。
 同2026年8月11日の利用者レビューで、selfplayのプレイヤー供給方式（機能構成をハーネスが知るin-process方式）が棄却され、fishtest型のバイナリ対戦方式へ置き換える独立マイルストーン「対局ハーネスのバイナリ対戦化」を plans/match-harness.md として起案した。
 統計層と対局進行層は保持し、プレイヤー供給層をUSIプロセス方式（パスまたはコミットハッシュでエンジンを指定）へ差し替える。凍結ベースラインもコミットハッシュ基準へ再定義する。
-探索部フェーズ3（置換表）の機能採否SPRTはこのハーネスで行うため、対局ハーネスのバイナリ対戦化を先に実施する。
+対局ハーネスのバイナリ対戦化は、同2026年8月11日に3フェーズ（同期版USI goとランダムUSIエンジン、プロセス供給層への差し替え、コミット指定と並列実行）すべてを完了した。
+移行検証2件はin-process時代と同一のペンタノミアル度数・LLR値で再現し、コミットハッシュ2つの指定によるGSPRT判定が並列度8・9秒で完走する。テストは319件全緑であり、実施記録は設計書 plans/match-harness.md にある。
 2026年8月11日に、探索部からUSI・CECPのセッション制御と実環境接続を分離し、外部対局接続の設計書 plans/engine-connectivity.md を起案した。
 外部対局接続は探索部の探索呼び出し境界（`SearchSnapshot`、`SearchLimits`、停止機構）を前提とし、USI・CECPの対局進行と外部環境との端到端検証を所有する。
 直前局面生成器は2026年8月10日に設計書を確定済みだが、利用者決定により実装は待機のままとする。
@@ -53,12 +54,14 @@ HaChu互換規則セットの実対局照合は、HaChu 0.23が基本移動規�
 第1段階で`WinReason`と`DrawReason`へ`BareKing`を分割新設してE3の裸玉裁定を第22条の駒枯れと区別し、第2段階でUSI拡張`moves`と`state`を`src/protocol/usi.rs`へ追加した。
 テストは276件全緑であり、2コマンドの契約は docs/protocols/usi-lishogi.md の「minase固有のUSI拡張」の節に、実施記録は設計書 plans/browser-gui.md にある。
 
-## 次期マイルストーン：対局ハーネスのバイナリ対戦化、続けて探索部の残フェーズ
+## 次期マイルストーン：探索部の残フェーズ
 
-対局ハーネスのバイナリ対戦化（plans/match-harness.md）を探索部フェーズ3の前に実施する。
-同期版USI goとランダムUSIエンジン、プロセス供給層への差し替え、コミット指定と並列実行の3フェーズからなり、完了すると2つのコミットハッシュの指定だけでGSPRT判定が得られる。
+対局ハーネスのバイナリ対戦化は2026年8月11日に完了した。
+`match_runner`は2つのコミットハッシュの指定だけでビルド・キャッシュからGSPRT判定までを実行でき、機能採否の測定はエンジンの差分内容をハーネスに知らせずに行える。
+凍結ベースラインはコミット0045833のdepth=1である。
 
 探索部の設計書は plans/search.md にあり、自己対局ハーネスとSPRT、評価関数v0と探索骨格までを完了済みである。残りは置換表、静止探索、時間管理と探索呼び出し境界、第2層の逐次採否の順で進める。
+各機能の採否は、機能実装コミット対直前コミットの対等条件GSPRTで判定する。
 外部対局接続は、探索部の時間管理と探索呼び出し境界のフェーズ完了後に着手でき、第2層の逐次採否とは並行できる。
 USIのLishogi-Bot経路、CECPの対局状態機械、外部環境による端到端検証の順で進める。
 完了時には、Lishogi-Bot経由の非レート対局1局とXBoard仲介のMinase対Minase対局1局を完走し、HaChuとは接続と指し手授受を確認する（詳細は plans/engine-connectivity.md）。

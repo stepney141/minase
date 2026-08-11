@@ -1,7 +1,11 @@
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{self, Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -56,6 +60,9 @@ struct Arguments {
         value_parser = parse_positive_u64
     )]
     response_timeout: u64,
+    /// 同時に実行するペア数。
+    #[arg(long, default_value_t = 1, value_parser = parse_positive_usize)]
+    concurrency: usize,
     /// 実行する統計モード。
     #[command(subcommand)]
     mode: Mode,
@@ -96,6 +103,7 @@ struct PlayerSpec {
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum PlayerKind {
     Random,
+    Commit(String),
     Command { program: PathBuf, args: Vec<String> },
 }
 
@@ -347,6 +355,13 @@ struct PairResult {
     failures: FailureCounts,
 }
 
+/// 1ペアの番号、表示内容、集計結果。
+struct CompletedPair {
+    number: u64,
+    output: String,
+    result: PairResult,
+}
+
 /// 外部エンジン指定を解析する。空白区切りの2語目以降は起動引数として渡す。
 fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
     if input == "random" {
@@ -362,8 +377,17 @@ fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
     if program.starts_with("depth=") {
         return Err("the legacy depth=N player spec is not supported; use --each".to_owned());
     }
-    if program.starts_with("commit:") {
-        return Err("commit: engine specs are not supported in phase 2".to_owned());
+    if let Some(revision) = program.strip_prefix("commit:") {
+        if revision.is_empty() {
+            return Err("commit: engine spec requires a revision".to_owned());
+        }
+        if tokens.next().is_some() {
+            return Err("commit: engine spec does not accept startup arguments".to_owned());
+        }
+        return Ok(PlayerSpec {
+            text: input.to_owned(),
+            kind: PlayerKind::Commit(revision.to_owned()),
+        });
     }
     Ok(PlayerSpec {
         text: input.to_owned(),
@@ -375,13 +399,27 @@ fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
 }
 
 /// specを起動コマンドと実効制限へ解決する。
-fn resolve_player(spec: PlayerSpec, limit: SearchLimit) -> io::Result<PlayerConfig> {
+fn resolve_player(
+    spec: PlayerSpec,
+    limit: SearchLimit,
+    rules_text: &str,
+) -> io::Result<PlayerConfig> {
     let (path, args, is_random) = match spec.kind {
         PlayerKind::Random => {
             let current = std::env::current_exe()?;
             let filename = format!("usi_random{}", std::env::consts::EXE_SUFFIX);
             (current.with_file_name(filename), Vec::new(), true)
         }
+        PlayerKind::Commit(revision) => (
+            resolve_commit(&revision)?,
+            vec![
+                "--protocol".to_owned(),
+                "usi".to_owned(),
+                "--rules".to_owned(),
+                rules_text.to_owned(),
+            ],
+            false,
+        ),
         PlayerKind::Command { program, args } => (program, args, false),
     };
     Ok(PlayerConfig {
@@ -391,6 +429,91 @@ fn resolve_player(spec: PlayerSpec, limit: SearchLimit) -> io::Result<PlayerConf
         is_random,
         limit,
     })
+}
+
+/// Gitコマンドの失敗内容を標準出力と標準エラーを含めて返す。
+fn command_error(action: &str, output: &process::Output) -> io::Error {
+    let mut message = format!("{action} failed with {}", output.status);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stdout.trim().is_empty() {
+        write!(message, "\nstdout:\n{}", stdout.trim_end()).expect("writing to String cannot fail");
+    }
+    if !stderr.trim().is_empty() {
+        write!(message, "\nstderr:\n{}", stderr.trim_end()).expect("writing to String cannot fail");
+    }
+    io::Error::other(message)
+}
+
+/// リビジョンをコミットの完全ハッシュへ正規化する。
+fn normalize_commit(repository: &Path, revision: &str) -> io::Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", &format!("{revision}^{{commit}}")])
+        .current_dir(repository)
+        .output()?;
+    if !output.status.success() {
+        return Err(command_error("git rev-parse --verify", &output));
+    }
+    let hash = String::from_utf8(output.stdout)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    Ok(hash.trim().to_owned())
+}
+
+/// コミットをビルドし、完全ハッシュ単位のキャッシュへ解決する。
+fn resolve_commit(revision: &str) -> io::Result<PathBuf> {
+    let repository = std::env::current_dir()?;
+    println!("resolving commit {revision}...");
+    let hash = normalize_commit(&repository, revision)?;
+    let cache_root = repository.join("target/match-cache");
+    let binary_name = format!("minase{}", std::env::consts::EXE_SUFFIX);
+    let cache_path = cache_root.join(&hash).join(&binary_name);
+    if cache_path.exists() {
+        println!("cached: {}", cache_path.display());
+        return Ok(cache_path);
+    }
+
+    println!("building commit {hash}...");
+    fs::create_dir_all(&cache_root)?;
+    let worktree = cache_root.join(format!("worktree-{hash}"));
+    let add_output = Command::new("git")
+        .args(["worktree", "add"])
+        .arg(&worktree)
+        .arg(&hash)
+        .current_dir(&repository)
+        .output()?;
+    if !add_output.status.success() {
+        return Err(command_error("git worktree add", &add_output));
+    }
+
+    let build_result = (|| {
+        let output = Command::new("cargo")
+            .args(["build", "--release", "--bin", "minase"])
+            .current_dir(&worktree)
+            .output()?;
+        if !output.status.success() {
+            return Err(command_error("cargo build --release --bin minase", &output));
+        }
+        fs::create_dir_all(cache_path.parent().expect("cache path has a parent"))?;
+        fs::copy(
+            worktree.join("target/release").join(&binary_name),
+            &cache_path,
+        )?;
+        Ok(())
+    })();
+    let remove_output = Command::new("git")
+        .args(["worktree", "remove", "--force"])
+        .arg(&worktree)
+        .current_dir(&repository)
+        .output()?;
+    let remove_result = if remove_output.status.success() {
+        Ok(())
+    } else {
+        Err(command_error("git worktree remove --force", &remove_output))
+    };
+    build_result?;
+    remove_result?;
+    println!("cached: {}", cache_path.display());
+    Ok(cache_path)
 }
 
 /// 思考制限を解析する。
@@ -424,6 +547,17 @@ fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
 fn parse_positive_u64(text: &str) -> Result<u64, String> {
     let value = text
         .parse::<u64>()
+        .map_err(|error| format!("invalid positive integer '{text}': {error}"))?;
+    if value == 0 {
+        return Err("value must be at least 1".to_owned());
+    }
+    Ok(value)
+}
+
+/// 0より大きい`usize`を解析する。
+fn parse_positive_usize(text: &str) -> Result<usize, String> {
+    let value = text
+        .parse::<usize>()
         .map_err(|error| format!("invalid positive integer '{text}': {error}"))?;
     if value == 0 {
         return Err("value must be at least 1".to_owned());
@@ -654,7 +788,7 @@ fn record_game_failure(game: PlayedGame, counts: &mut FailureCounts) {
     }
 }
 
-/// 1ペアを実行し、完走時はペンタノミアル分類の添字を返す。
+/// 1ペアを実行し、表示内容とペンタノミアル分類を返す。
 #[allow(clippy::too_many_arguments)]
 fn run_pair(
     rules: Rules,
@@ -665,7 +799,7 @@ fn run_pair(
     candidate: &PlayerConfig,
     baseline: &PlayerConfig,
     timeout: Duration,
-) -> PairResult {
+) -> CompletedPair {
     let pair_seed = derive_seed(base_seed, pair_number);
     let opening = generate_opening(rules, pair_seed);
     let game1_a_seed = derive_seed(pair_seed, 1);
@@ -673,20 +807,31 @@ fn run_pair(
     let game2_a_seed = derive_seed(pair_seed, 3);
     let game2_b_seed = derive_seed(pair_seed, 4);
 
-    println!(
+    let mut output = String::new();
+    writeln!(
+        output,
         "pair {pair_number}: pair_seed={pair_seed} opening_seed={} player_a={} player_b={} rules={rules_text} max_ply={max_ply}",
         opening.seed,
         candidate.name(),
         baseline.name()
-    );
-    println!("pair {pair_number} opening: plies={}", opening.moves.len());
+    )
+    .expect("writing to String cannot fail");
+    writeln!(
+        output,
+        "pair {pair_number} opening: plies={}",
+        opening.moves.len()
+    )
+    .expect("writing to String cannot fail");
     for (index, &mv) in opening.moves.iter().enumerate() {
-        println!("  {}: {}", index + 1, move_text(mv));
+        writeln!(output, "  {}: {}", index + 1, move_text(mv))
+            .expect("writing to String cannot fail");
     }
 
-    println!(
+    writeln!(
+        output,
         "pair {pair_number} game 1 settings: A=Black seed_a={game1_a_seed} B=White seed_b={game1_b_seed}"
-    );
+    )
+    .expect("writing to String cannot fail");
     let game1 = play_game(
         opening.game.clone(),
         opening.usi_moves.clone(),
@@ -699,11 +844,18 @@ fn run_pair(
         rules_text,
         timeout,
     );
-    println!("pair {pair_number} game 1: {}", played_game_text(game1));
+    writeln!(
+        output,
+        "pair {pair_number} game 1: {}",
+        played_game_text(game1)
+    )
+    .expect("writing to String cannot fail");
 
-    println!(
+    writeln!(
+        output,
         "pair {pair_number} game 2 settings: B=Black seed_b={game2_b_seed} A=White seed_a={game2_a_seed}"
-    );
+    )
+    .expect("writing to String cannot fail");
     let game2 = play_game(
         opening.game,
         opening.usi_moves,
@@ -716,7 +868,12 @@ fn run_pair(
         rules_text,
         timeout,
     );
-    println!("pair {pair_number} game 2: {}", played_game_text(game2));
+    writeln!(
+        output,
+        "pair {pair_number} game 2: {}",
+        played_game_text(game2)
+    )
+    .expect("writing to String cannot fail");
 
     let mut failures = FailureCounts::default();
     record_game_failure(game1, &mut failures);
@@ -732,22 +889,33 @@ fn run_pair(
         },
     ) = (game1, game2)
     else {
-        println!("pair {pair_number} result: discarded");
-        return PairResult {
-            category: None,
-            failures,
+        writeln!(output, "pair {pair_number} result: discarded")
+            .expect("writing to String cannot fail");
+        return CompletedPair {
+            number: pair_number,
+            output,
+            result: PairResult {
+                category: None,
+                failures,
+            },
         };
     };
     let category = usize::from(
         half_points(game1_outcome, Color::Black) + half_points(game2_outcome, Color::White),
     );
-    println!(
+    writeln!(
+        output,
         "pair {pair_number} result: score_a={:.1} category={category}",
         category as f64 / 2.0
-    );
-    PairResult {
-        category: Some(category),
-        failures,
+    )
+    .expect("writing to String cannot fail");
+    CompletedPair {
+        number: pair_number,
+        output,
+        result: PairResult {
+            category: Some(category),
+            failures,
+        },
     }
 }
 
@@ -852,21 +1020,21 @@ fn main() {
     };
     let candidate_limit = arguments.candidate_limit.unwrap_or(arguments.each);
     let baseline_limit = arguments.baseline_limit.unwrap_or(arguments.each);
-    let candidate = match resolve_player(arguments.candidate, candidate_limit) {
+    let rules_text = rules_text(&arguments.rules.0);
+    let candidate = match resolve_player(arguments.candidate, candidate_limit, &rules_text) {
         Ok(player) => player,
         Err(error) => {
             eprintln!("failed to resolve candidate engine: {error}");
             process::exit(1);
         }
     };
-    let baseline = match resolve_player(arguments.baseline, baseline_limit) {
+    let baseline = match resolve_player(arguments.baseline, baseline_limit, &rules_text) {
         Ok(player) => player,
         Err(error) => {
             eprintln!("failed to resolve baseline engine: {error}");
             process::exit(1);
         }
     };
-    let rules_text = rules_text(&arguments.rules.0);
     let response_timeout = Duration::from_secs(arguments.response_timeout);
     println!("rules: {rules_text}");
     println!("seed: {base_seed}");
@@ -884,37 +1052,133 @@ fn main() {
     let mut valid_pairs = 0;
     let mut discarded_pairs = 0;
     let mut failures = FailureCounts::default();
-    let mut pair_number = 0_u64;
     let mut decision = GsprtDecision::Continue;
+    let worker_count = arguments
+        .concurrency
+        .min(usize::try_from(target_pairs).unwrap_or(usize::MAX));
+    let pool_result = thread::scope(|scope| {
+        let (job_sender, job_receiver) = mpsc::channel::<u64>();
+        let job_receiver = Arc::new(Mutex::new(job_receiver));
+        let (result_sender, result_receiver) = mpsc::channel::<Result<CompletedPair, ()>>();
+        let mut workers = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            let result_sender = result_sender.clone();
+            let job_receiver = Arc::clone(&job_receiver);
+            let candidate = &candidate;
+            let baseline = &baseline;
+            let rules_text = &rules_text;
+            workers.push(scope.spawn(move || {
+                let worker_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    loop {
+                        let job = job_receiver
+                            .lock()
+                            .expect("the job receiver mutex must not be poisoned")
+                            .recv();
+                        let Ok(pair_number) = job else {
+                            break;
+                        };
+                        let pair = run_pair(
+                            rules,
+                            rules_text,
+                            base_seed,
+                            pair_number,
+                            arguments.max_ply,
+                            candidate,
+                            baseline,
+                            response_timeout,
+                        );
+                        if result_sender.send(Ok(pair)).is_err() {
+                            break;
+                        }
+                    }
+                }));
+                if worker_result.is_err() {
+                    let _ = result_sender.send(Err(()));
+                }
+            }));
+        }
+        drop(result_sender);
 
-    while pair_number < target_pairs && (!use_gsprt || decision == GsprtDecision::Continue) {
-        pair_number = pair_number.checked_add(1).expect("pair number overflow");
-        let pair = run_pair(
-            rules,
-            &rules_text,
-            base_seed,
-            pair_number,
-            arguments.max_ply,
-            &candidate,
-            &baseline,
-            response_timeout,
-        );
-        failures.add(pair.failures);
-        match pair.category {
-            Some(category) => {
-                results[category] += 1;
-                valid_pairs += 1;
-                if use_gsprt {
-                    let llr = gsprt_llr(&results);
-                    decision = gsprt_decision(llr);
-                    println!(
-                        "statistics: valid_pairs={valid_pairs} pentanomial={results:?} llr={llr:.10} decision={}",
-                        decision_text(decision)
-                    );
+        let initial_jobs = u64::try_from(worker_count).expect("worker count must fit in u64");
+        for pair_number in 1..=initial_jobs {
+            job_sender
+                .send(pair_number)
+                .expect("workers must be waiting for initial jobs");
+        }
+        let mut next_pair = initial_jobs.checked_add(1).expect("pair number overflow");
+        let mut next_to_integrate = 1_u64;
+        let mut completed = BTreeMap::new();
+        let mut pool_error = None;
+
+        while next_to_integrate <= target_pairs
+            && (!use_gsprt || decision == GsprtDecision::Continue)
+        {
+            let pair = match result_receiver.recv() {
+                Ok(Ok(pair)) => pair,
+                Ok(Err(())) => {
+                    pool_error = Some("a match worker panicked".to_owned());
+                    break;
+                }
+                Err(error) => {
+                    pool_error = Some(format!("worker result channel disconnected: {error}"));
+                    break;
+                }
+            };
+            completed.insert(pair.number, pair);
+            while let Some(pair) = completed.remove(&next_to_integrate) {
+                print!("{}", pair.output);
+                failures.add(pair.result.failures);
+                match pair.result.category {
+                    Some(category) => {
+                        results[category] += 1;
+                        valid_pairs += 1;
+                        if use_gsprt {
+                            let llr = gsprt_llr(&results);
+                            decision = gsprt_decision(llr);
+                            println!(
+                                "statistics: valid_pairs={valid_pairs} pentanomial={results:?} llr={llr:.10} decision={}",
+                                decision_text(decision)
+                            );
+                        }
+                    }
+                    None => discarded_pairs += 1,
+                }
+                next_to_integrate = next_to_integrate
+                    .checked_add(1)
+                    .expect("pair number overflow");
+                if use_gsprt && decision != GsprtDecision::Continue {
+                    break;
+                }
+                if next_pair <= target_pairs {
+                    if let Err(error) = job_sender.send(next_pair) {
+                        pool_error = Some(format!("worker job channel disconnected: {error}"));
+                        break;
+                    }
+                    next_pair = next_pair.checked_add(1).expect("pair number overflow");
                 }
             }
-            None => discarded_pairs += 1,
+            if pool_error.is_some() {
+                break;
+            }
         }
+
+        drop(job_sender);
+        let mut worker_panicked = false;
+        for worker in workers {
+            worker_panicked |= worker.join().is_err();
+        }
+        worker_panicked |= result_receiver.try_iter().any(|result| result.is_err());
+        if worker_panicked {
+            Err("a match worker panicked".to_owned())
+        } else if let Some(error) = pool_error {
+            Err(error)
+        } else {
+            Ok(())
+        }
+    });
+    if let Err(error) = pool_result {
+        eprintln!("match execution failed: {error}");
+        process::exit(1);
     }
 
     if use_gsprt {
@@ -950,6 +1214,7 @@ mod tests {
             }
         );
         assert_eq!(gsprt.response_timeout, DEFAULT_RESPONSE_TIMEOUT_SECONDS);
+        assert_eq!(gsprt.concurrency, 1);
         assert!(matches!(
             gsprt.mode,
             Mode::Gsprt {
@@ -969,6 +1234,8 @@ mod tests {
             "nodes=25",
             "--response-timeout",
             "9",
+            "--concurrency",
+            "4",
             "elo",
             "--pairs",
             "20",
@@ -996,7 +1263,15 @@ mod tests {
             })
         );
         assert_eq!(elo.response_timeout, 9);
+        assert_eq!(elo.concurrency, 4);
         assert!(matches!(elo.mode, Mode::Elo { pairs: 20 }));
+    }
+
+    #[test]
+    fn player_spec_accepts_commit_revision() {
+        let spec = parse_player_spec("commit:0045833")
+            .expect("a commit engine spec must be accepted without resolving it");
+        assert_eq!(spec.kind, PlayerKind::Commit("0045833".to_owned()));
     }
 
     #[test]
@@ -1018,8 +1293,8 @@ mod tests {
     }
 
     #[test]
-    fn arguments_reject_legacy_and_future_player_specs() {
-        for spec in ["depth=1", "depth=2,nodes=1000", "commit:0045833"] {
+    fn arguments_reject_legacy_player_specs() {
+        for spec in ["depth=1", "depth=2,nodes=1000"] {
             assert!(
                 Arguments::try_parse_from([
                     "match_runner",
@@ -1033,6 +1308,16 @@ mod tests {
                 "unsupported spec {spec:?} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn invalid_commit_revision_fails_before_match_execution() {
+        let error = normalize_commit(
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+            "definitely-not-a-minase-commit",
+        )
+        .expect_err("an unknown revision must fail normalization");
+        assert!(error.to_string().contains("git rev-parse --verify"));
     }
 
     #[test]
