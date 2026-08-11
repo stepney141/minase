@@ -127,6 +127,8 @@ pub struct Game {
     position: Position,
     generator: MoveGenerator,
     adjudication: AdjudicationState,
+    /// 対局開始から現在までの探索局面キー。
+    search_key_history: Vec<u64>,
     result: Option<GameResult>,
 }
 
@@ -173,6 +175,8 @@ impl Game {
         );
         self.adjudication
             .set_piece_exhaustion_grace(adjudication.piece_exhaustion_grace());
+        self.search_key_history
+            .push(self.position.zobrist() ^ self.position.rights_zobrist());
 
         Ok(match adjudication.result() {
             Some(result) => self.finish(result),
@@ -211,6 +215,16 @@ impl Game {
     #[inline]
     pub const fn position(&self) -> &Position {
         &self.position
+    }
+
+    /// 対局開始から現局面までの探索局面キーを返す。
+    ///
+    /// 探索局面キーは、盤面・手番・先獅子状態のzobristハッシュと
+    /// P1成り権保留状態のzobristハッシュをXORで合成した値である
+    /// (第24条第1項)。
+    #[inline]
+    pub fn search_key_history(&self) -> &[u64] {
+        &self.search_key_history
     }
 
     /// 現在の対局状態で合法な着手をすべて返す。
@@ -264,10 +278,12 @@ impl Game {
             .repetition_rule()
             .ok_or(GameBuildError::MissingRepetitionRule)?;
         let adjudication = AdjudicationState::new(repetition_rule, &position);
+        let search_key = position.zobrist() ^ position.rights_zobrist();
         Ok(Self {
             position,
             generator: MoveGenerator::new(rules),
             adjudication,
+            search_key_history: vec![search_key],
             result: None,
         })
     }
@@ -486,6 +502,12 @@ mod tests {
         assert_eq!(r1_history(&r1).occurrences(&position), Some(1));
         assert!(r2_history(&r2).contains(&position));
         assert_eq!(r3_history(&r3).occurrences(&position), Some(1));
+
+        let search_key = position.zobrist() ^ position.rights_zobrist();
+        assert_ne!(position.rights_zobrist(), 0);
+        assert_eq!(r1.search_key_history(), &[search_key]);
+        assert_eq!(r2.search_key_history(), &[search_key]);
+        assert_eq!(r3.search_key_history(), &[search_key]);
     }
 
     #[test]
@@ -498,6 +520,22 @@ mod tests {
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.position(), &Position::initial());
         assert_eq!(game.ply_count(), 0);
+    }
+
+    #[test]
+    fn search_key_history_contains_the_start_and_each_accepted_move() {
+        let mut game = Game::with_default_rules();
+        let initial_key = game.position().zobrist() ^ game.position().rights_zobrist();
+        assert_eq!(game.search_key_history(), &[initial_key]);
+
+        let illegal = step(sq(5, 5), sq(5, 6));
+        assert!(game.play(illegal).is_err());
+        assert_eq!(game.search_key_history(), &[initial_key]);
+
+        let mv = game.legal_moves()[0];
+        assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        let current_key = game.position().zobrist() ^ game.position().rights_zobrist();
+        assert_eq!(game.search_key_history(), &[initial_key, current_key]);
     }
 
     #[test]

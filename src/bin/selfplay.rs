@@ -4,6 +4,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use clap::{CommandFactory, Parser, Subcommand, error::ErrorKind};
 use minase::core::rules::parse_rule_set;
 use minase::rng::{XorShift64, derive_seed};
+use minase::search::{MAX_PLY, SearchConfig, search};
 use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
 use minase::{Color, Game, GameResult, GameStatus, Move, RuleCode, Rules, Square};
 
@@ -27,6 +28,12 @@ struct Arguments {
     /// 1局を打ち切る手数上限。
     #[arg(long, default_value_t = DEFAULT_MAX_PLY, value_parser = parse_positive_u32)]
     max_ply: u32,
+    /// 候補側の設定。`random`または`depth=N[,nodes=M]`を指定する。
+    #[arg(long, default_value = "random", value_parser = parse_player_spec)]
+    candidate: PlayerSpec,
+    /// 基準側の設定。`random`または`depth=N[,nodes=M]`を指定する。
+    #[arg(long, default_value = "random", value_parser = parse_player_spec)]
+    baseline: PlayerSpec,
     /// 実行する統計モード。
     #[command(subcommand)]
     mode: Mode,
@@ -56,6 +63,56 @@ fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
     parse_rule_set(input).map(RuleSetArgument)
 }
 
+/// 自己対局プレイヤーの設定。
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct PlayerSpec {
+    text: String,
+    kind: PlayerKind,
+}
+
+/// ランダム着手または固定制限の探索を表す。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PlayerKind {
+    Random,
+    Search { depth: u32, nodes: Option<u64> },
+}
+
+/// プレイヤー設定を解析する。
+fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
+    if input == "random" {
+        return Ok(PlayerSpec {
+            text: input.to_owned(),
+            kind: PlayerKind::Random,
+        });
+    }
+
+    let mut fields = input.split(',');
+    let depth_field = fields
+        .next()
+        .expect("split always returns at least one field");
+    let depth = depth_field
+        .strip_prefix("depth=")
+        .ok_or_else(|| "player spec must be 'random' or 'depth=N[,nodes=M]'".to_owned())
+        .and_then(parse_search_depth)?;
+    let nodes = fields
+        .next()
+        .map(|field| {
+            field
+                .strip_prefix("nodes=")
+                .ok_or_else(|| "the second player-spec field must be 'nodes=M'".to_owned())
+                .and_then(parse_positive_u64)
+        })
+        .transpose()?;
+    if fields.next().is_some() {
+        return Err("player spec has too many comma-separated fields".to_owned());
+    }
+
+    Ok(PlayerSpec {
+        text: input.to_owned(),
+        kind: PlayerKind::Search { depth, nodes },
+    })
+}
+
 /// 自己対局で着手を選ぶプレイヤー。
 trait Player {
     /// 設定名を返す。
@@ -67,13 +124,13 @@ trait Player {
 
 /// 合法手を一様ランダムに選ぶプレイヤー。
 struct RandomPlayer {
-    name: &'static str,
+    name: String,
     rng: XorShift64,
 }
 
 impl RandomPlayer {
     /// 設定名とシードからプレイヤーを作る。
-    fn new(name: &'static str, seed: u64) -> Self {
+    fn new(name: String, seed: u64) -> Self {
         Self {
             name,
             rng: XorShift64::new(seed),
@@ -81,9 +138,43 @@ impl RandomPlayer {
     }
 }
 
+/// 固定深さと任意のノード上限で探索するプレイヤー。
+struct EnginePlayer {
+    name: String,
+    config: SearchConfig,
+}
+
+impl Player for EnginePlayer {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn choose_move(&mut self, game: &Game, legal_moves: &[Move]) -> Move {
+        search(
+            game.position(),
+            game.rules(),
+            legal_moves,
+            game.search_key_history(),
+            &self.config,
+        )
+        .best_move
+    }
+}
+
+/// 設定と当該局のシードからプレイヤーを作る。
+fn make_player(spec: &PlayerSpec, seed: u64) -> Box<dyn Player> {
+    match spec.kind {
+        PlayerKind::Random => Box::new(RandomPlayer::new(spec.text.clone(), seed)),
+        PlayerKind::Search { depth, nodes } => Box::new(EnginePlayer {
+            name: spec.text.clone(),
+            config: SearchConfig { depth, nodes },
+        }),
+    }
+}
+
 impl Player for RandomPlayer {
     fn name(&self) -> &str {
-        self.name
+        &self.name
     }
 
     fn choose_move(&mut self, _game: &Game, legal_moves: &[Move]) -> Move {
@@ -125,6 +216,15 @@ fn parse_positive_u32(text: &str) -> Result<u32, String> {
         return Err("value must be at least 1".to_owned());
     }
     Ok(value)
+}
+
+/// 探索が扱える範囲の深さを解析する。
+fn parse_search_depth(text: &str) -> Result<u32, String> {
+    let depth = parse_positive_u32(text)?;
+    if depth > MAX_PLY {
+        return Err(format!("search depth must not exceed {MAX_PLY}"));
+    }
+    Ok(depth)
 }
 
 /// 現在時刻から基本シードを生成する。
@@ -273,6 +373,8 @@ fn run_pair(
     base_seed: u64,
     pair_number: u64,
     max_ply: u32,
+    candidate: &PlayerSpec,
+    baseline: &PlayerSpec,
 ) -> Option<usize> {
     let pair_seed = derive_seed(base_seed, pair_number);
     let opening = generate_opening(rules, pair_seed);
@@ -280,10 +382,10 @@ fn run_pair(
     let game1_b_seed = derive_seed(pair_seed, 2);
     let game2_a_seed = derive_seed(pair_seed, 3);
     let game2_b_seed = derive_seed(pair_seed, 4);
-    let mut game1_a = RandomPlayer::new("random-a", game1_a_seed);
-    let mut game1_b = RandomPlayer::new("random-b", game1_b_seed);
-    let mut game2_a = RandomPlayer::new("random-a", game2_a_seed);
-    let mut game2_b = RandomPlayer::new("random-b", game2_b_seed);
+    let mut game1_a = make_player(candidate, game1_a_seed);
+    let mut game1_b = make_player(baseline, game1_b_seed);
+    let mut game2_a = make_player(candidate, game2_a_seed);
+    let mut game2_b = make_player(baseline, game2_b_seed);
 
     println!(
         "pair {pair_number}: pair_seed={pair_seed} opening_seed={} player_a={} player_b={} rules={rules_text} max_ply={max_ply}",
@@ -303,8 +405,8 @@ fn run_pair(
         opening.game.clone(),
         max_ply,
         Color::Black,
-        &mut game1_a,
-        &mut game1_b,
+        game1_a.as_mut(),
+        game1_b.as_mut(),
     );
     println!("pair {pair_number} game 1: {}", played_game_text(game1));
 
@@ -315,8 +417,8 @@ fn run_pair(
         opening.game,
         max_ply,
         Color::White,
-        &mut game2_a,
-        &mut game2_b,
+        game2_a.as_mut(),
+        game2_b.as_mut(),
     );
     println!("pair {pair_number} game 2: {}", played_game_text(game2));
 
@@ -431,6 +533,8 @@ fn main() {
     println!("rules: {rules_text}");
     println!("seed: {base_seed}");
     println!("max_ply: {}", arguments.max_ply);
+    println!("candidate: {}", arguments.candidate.text);
+    println!("baseline: {}", arguments.baseline.text);
 
     let (target_pairs, use_gsprt) = match arguments.mode {
         Mode::Gsprt { max_pairs } => (max_pairs, true),
@@ -451,6 +555,8 @@ fn main() {
             base_seed,
             pair_number,
             arguments.max_ply,
+            &arguments.candidate,
+            &arguments.baseline,
         ) {
             Some(category) => {
                 results[category] += 1;
@@ -485,6 +591,8 @@ mod tests {
         let gsprt = Arguments::try_parse_from(["selfplay", "gsprt"])
             .expect("the GSPRT mode must be accepted");
         assert_eq!(gsprt.rules.0, [RuleCode::R1]);
+        assert_eq!(gsprt.candidate.kind, PlayerKind::Random);
+        assert_eq!(gsprt.baseline.kind, PlayerKind::Random);
         assert!(matches!(
             gsprt.mode,
             Mode::Gsprt {
@@ -495,6 +603,52 @@ mod tests {
         let elo = Arguments::try_parse_from(["selfplay", "elo", "--pairs", "20"])
             .expect("the Elo mode must be accepted");
         assert!(matches!(elo.mode, Mode::Elo { pairs: 20 }));
+    }
+
+    #[test]
+    fn arguments_accept_search_player_specs() {
+        let arguments = Arguments::try_parse_from([
+            "selfplay",
+            "--candidate",
+            "depth=2,nodes=1000",
+            "--baseline",
+            "depth=1",
+            "elo",
+            "--pairs",
+            "1",
+        ])
+        .expect("search player specs must be accepted");
+        assert_eq!(
+            arguments.candidate.kind,
+            PlayerKind::Search {
+                depth: 2,
+                nodes: Some(1000)
+            }
+        );
+        assert_eq!(
+            arguments.baseline.kind,
+            PlayerKind::Search {
+                depth: 1,
+                nodes: None
+            }
+        );
+    }
+
+    #[test]
+    fn arguments_reject_invalid_player_specs() {
+        for spec in [
+            "depth=0",
+            "depth=257",
+            "nodes=1",
+            "depth=1,foo=2",
+            "depth=1,nodes=2,x=3",
+        ] {
+            assert!(
+                Arguments::try_parse_from(["selfplay", "--candidate", spec, "elo", "--pairs", "1"])
+                    .is_err(),
+                "invalid spec {spec:?} must be rejected"
+            );
+        }
     }
 
     #[test]

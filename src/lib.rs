@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
 pub mod core;
+pub mod eval;
 pub mod notation;
 pub mod protocol;
 #[doc(hidden)]
 pub mod rng;
+pub mod search;
 #[doc(hidden)]
 pub mod stats;
 

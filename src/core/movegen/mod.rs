@@ -51,7 +51,7 @@ impl MoveGenerator {
     }
 
     /// 採用しているルールの集合を返す。
-    pub(crate) const fn rules(&self) -> Rules {
+    pub const fn rules(&self) -> Rules {
         self.rules
     }
 }

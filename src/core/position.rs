@@ -394,8 +394,12 @@ impl Position {
         self.lion_taken_by_non_lion
     }
 
-    /// 着手で実際に相手駒を取る升を返す。捕獲候補のうち相手駒がある升だけを残す。
-    pub(crate) fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
+    /// 捕獲升を最大2升返す。
+    ///
+    /// 捕獲升とは、着手で実際に相手駒を取る升をいう。獅子、角鷹および
+    /// 飛鷲の2段階移動では、1手で最大2升の相手駒を取る(第11条第3項・
+    /// 第12条第4項)。
+    pub fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
         let moving_color = self
             .piece_at(mv.from)
             .and_then(PieceCode::color)
