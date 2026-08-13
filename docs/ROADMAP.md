@@ -18,25 +18,29 @@
 | ブラウザGUI向けUSI照会 | [plans/browser-gui.md](plans/browser-gui.md) | 完了 | 2026年8月11日 |
 | 対局ハーネスのバイナリ対戦化 | [plans/match-harness.md](plans/match-harness.md) | 完了 | 2026年8月11日 |
 | 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
-| 探索部 | [plans/search.md](plans/search.md) | 未着手 | ― |
-| 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 未着手 | ― |
+| 探索部 | [plans/search.md](plans/search.md) | 進行中 | ― |
+| 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 進行中 | ― |
+| Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 未着手 | ― |
 
 直前局面生成器は設計済みだが、2026年8月10日の利用者決定により探索部を先行させ、待機中のままとする。
 順方向の探索部と評価関数は直前局面生成器の完了を前提とせず、いつ再開しても手戻りがない。
 
-## 次期マイルストーン：探索部の残フェーズ
+## 現在地：探索部と外部対局接続
 
 対局ハーネスのバイナリ対戦化は2026年8月11日に完了した。
 `match_runner`は2つのコミットハッシュの指定だけでビルド・キャッシュからGSPRT判定までを実行でき、機能採否の測定はエンジンの差分内容をハーネスに知らせずに行える。
 凍結ベースラインはコミット0045833のdepth=1である。
 
-探索部の設計書は plans/search.md にあり、自己対局ハーネスとSPRT、評価関数v0と探索骨格、置換表（2026年8月12日、GSPRTでH1採用）までを完了済みである。残りは時間管理と探索呼び出し境界、静止探索、第2層の逐次採否の順で進める（2026年8月12日にフェーズ4と5の順序を入れ替え、外部対局接続のUSIフェーズ1を時間管理の直後に着手する）。
+探索部の設計書は plans/search.md にあり、自己対局ハーネスとSPRT、評価関数v0と探索骨格、置換表（2026年8月12日、GSPRTでH1採用）、時間管理と探索呼び出し境界を完了済みである。
+残りは静止探索と第2層の逐次採否である。
 各機能の採否は、機能実装コミット対直前コミットの対等条件GSPRTで判定する。
-外部対局接続は、探索部の時間管理と探索呼び出し境界のフェーズ完了後に着手でき、第2層の逐次採否とは並行できる。
-USIのLishogi-Bot経路、CECPの対局状態機械、外部環境による端到端検証の順で進める。
+外部対局接続はUSIのLishogi-Bot経路を完了済みであり、探索部の残フェーズと並行してCECPの対局状態機械、外部環境による端到端検証の順で進める。
 完了時には、XBoard仲介のMinase対Minase対局1局を完走し、HaChuとは接続と指し手授受を確認する。Lishogi-Bot経路は実送信系列の台本テストまでとし、実lishogiサーバへの接続は未完成のエンジンを公開の場へ出さない方針から本マイルストーンに含めない（詳細は plans/engine-connectivity.md）。
 この分離により、探索の棋力検証と外部セッションの正しさを別々の完了条件で判定する。
-評価関数の本格化は探索部の完了後に別マイルストーンとして起案する。
+
+Lazy SMPは plans/lazy-smp.md に設計済みであり、単一ワーカー探索の完成と外部対局接続のCECP対局進行を着手条件とする。
+共有置換表、探索チーム、共通の停止とノード予算、USIの`Threads`、CECPの`cores`を5フェーズで実装し、時間制御のコミット対コミットGSPRTで`Threads=2`対1を採否判定する。
+評価関数の本格化はLazy SMPの採否完了後に別マイルストーンとして起案する。
 
 ## 横断的な記録済みの決定
 
