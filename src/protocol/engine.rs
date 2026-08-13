@@ -82,17 +82,24 @@ impl fmt::Display for RejectReason {
 
 impl std::error::Error for RejectReason {}
 
+/// 検証済みの規則コード列と、それが表す規則集合の組。
 #[derive(Clone)]
 struct RuleSelection {
+    /// 正準順の規則コード列。option宣言などの表示に使う。
     codes: Vec<RuleCode>,
+    /// コード列が表す規則集合。
     rules: Rules,
 }
 
 /// `Game`と次局用規則を所有するプロトコル非依存の状態機械。
 pub struct Engine {
+    /// 現在保持している対局。
     game: Game,
+    /// 現局に適用中の規則。
     active: RuleSelection,
+    /// 次局の開始時に適用する規則。
     pending: RuleSelection,
+    /// 対局のライフサイクル。
     lifecycle: EngineLifecycle,
 }
 
@@ -189,6 +196,7 @@ impl Engine {
         }
     }
 
+    /// pending規則をcommitして初期局面の対局を作り、開始待ちへ戻る。
     fn new_game(&mut self) -> EngineReply {
         let Ok(game) = Game::new(self.pending.rules) else {
             return EngineReply::Rejected(RejectReason::InvalidRules(
@@ -201,6 +209,9 @@ impl Engine {
         self.accepted(None)
     }
 
+    /// 開始局面と指し手列から対局を再構成する。
+    ///
+    /// 指し手列の途中で拒否された場合は保持中の対局を変更しない。
     fn set_position(&mut self, setup: SetupPosition, moves: &[Move]) -> EngineReply {
         if self.lifecycle == EngineLifecycle::Finished {
             return EngineReply::Rejected(RejectReason::GameAlreadyOver);
@@ -246,6 +257,7 @@ impl Engine {
         }
     }
 
+    /// 対局中の1手を適用し、終局すればライフサイクルを進める。
     fn apply_move(&mut self, mv: Move) -> EngineReply {
         match self.lifecycle {
             EngineLifecycle::AwaitingStart => {
@@ -277,6 +289,7 @@ impl Engine {
         }
     }
 
+    /// 現在の裁定状態を添えた受理応答を作る。
     fn accepted(&self, newly_finished: Option<GameResult>) -> EngineReply {
         EngineReply::Accepted {
             status: self.game.status(),
@@ -302,6 +315,7 @@ pub(crate) fn canonical_rules_text(codes: &[RuleCode]) -> String {
         .join(",")
 }
 
+/// 規則コード列の重複・矛盾と実行可能な反復規則の存在を検証する。
 fn validate_rules(codes: Vec<RuleCode>) -> Result<RuleSelection, RejectReason> {
     let rules =
         Rules::from_codes(&codes).map_err(|error| RejectReason::InvalidRules(error.to_string()))?;
@@ -312,6 +326,7 @@ fn validate_rules(codes: Vec<RuleCode>) -> Result<RuleSelection, RejectReason> {
     })
 }
 
+/// 対局管理層のエラーを拒否理由へ写す。
 fn reject_game_error(error: GameError) -> RejectReason {
     match error {
         GameError::GameAlreadyOver => RejectReason::GameAlreadyOver,

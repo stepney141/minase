@@ -23,33 +23,53 @@ use super::engine::{
 
 /// lishogi系拡張を含むUSIプロトコル。
 pub struct UsiProtocol {
+    /// `option`宣言のdefault値に使う起動時規則の正準表記。
     startup_rules_text: String,
+    /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出している間は`None`。
     transposition_table: Option<TranspositionTable>,
+    /// 最後の`position`コマンドが受理され、局面が同期済みかどうか。
     position_synchronized: bool,
+    /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
 }
 
+/// 実行中の探索に対応する局面と設定。
 struct SearchContext {
+    /// 探索イベントの照合に使う探索識別子。
     id: u64,
+    /// 探索開始時の局面。`bestmove`と`info`の指し手表記に使う。
     position: Position,
+    /// 探索開始時の採用規則。
     rules: crate::Rules,
+    /// `go infinite`による探索かどうか。
     infinite: bool,
 }
 
+/// 探索の進行状態。
 enum ActiveSearch {
+    /// 探索スレッドが実行中。
     Running {
+        /// 探索の局面と設定。
         context: SearchContext,
+        /// 探索スレッドへのハンドル。
         handle: SearchHandle,
     },
+    /// `go infinite`の探索が完了し、`stop`を待って`bestmove`を返す状態。
     AwaitingStop {
+        /// 探索の局面と設定。
         context: SearchContext,
+        /// `stop`受信時に返す最善手。
         best_move: Move,
     },
 }
 
+/// 待機状態での1行の処理結果。
 enum LineAction {
+    /// 待機状態を継続する。
     Continue,
+    /// 探索を開始する。
     Start(Box<ActiveSearch>),
+    /// セッションを終了する。
     Quit,
 }
 
@@ -67,6 +87,7 @@ impl UsiProtocol {
         }
     }
 
+    /// 探索していない待機状態で1コマンドを処理する。
     fn handle_idle_line(
         &mut self,
         engine: &mut Engine,
@@ -118,6 +139,9 @@ impl UsiProtocol {
         Ok(LineAction::Continue)
     }
 
+    /// `go`の引数を検証し、非同期探索を開始する。
+    ///
+    /// 前提条件を満たさない場合はエラーを出力して`None`を返す。
     fn start_go(
         &mut self,
         engine: &Engine,
@@ -204,6 +228,7 @@ impl UsiProtocol {
                 continue;
             }
 
+            // 探索中は入力を優先して処理し、なければ探索イベントを刈り取る。
             if input_open {
                 match input.try_recv() {
                     Ok(Ok(line)) => {
@@ -229,6 +254,7 @@ impl UsiProtocol {
                 continue;
             }
 
+            // 入力もイベントもない間は、短い待ちで両者を交互に見張る。
             if input_open {
                 match input.recv_timeout(Duration::from_millis(10)) {
                     Ok(Ok(line)) => self.handle_searching_line(
@@ -245,6 +271,7 @@ impl UsiProtocol {
                     Err(RecvTimeoutError::Disconnected) => input_open = false,
                 }
             } else if active.as_ref().is_some_and(ActiveSearch::is_infinite) {
+                // 入力が閉じると`stop`は届かないため、無限探索は破棄する。
                 self.discard_search(&mut active)?;
             } else {
                 self.wait_search_event(&mut active, output)?;
@@ -257,6 +284,10 @@ impl UsiProtocol {
         Ok(())
     }
 
+    /// 探索中に届いた1コマンドを処理する。
+    ///
+    /// `stop`と`gameover`・`quit`は探索を終わらせ、探索と無関係な
+    /// コマンドは探索終了後に処理するため`pending`へ積む。
     fn handle_searching_line(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -278,6 +309,7 @@ impl UsiProtocol {
         output.flush()
     }
 
+    /// 溜まっている探索イベントをブロックせずにすべて処理する。
     fn poll_search(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -298,6 +330,7 @@ impl UsiProtocol {
         }
     }
 
+    /// 探索イベントを短時間だけ待って処理する。入力が閉じた後の待機に使う。
     fn wait_search_event(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -318,6 +351,7 @@ impl UsiProtocol {
         Ok(())
     }
 
+    /// 完了イベントなしで探索チャネルが切断された異常を処理する。
     fn handle_search_disconnect(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
         let Some(ActiveSearch::Running { handle, .. }) = active.take() else {
             return Ok(());
@@ -326,6 +360,10 @@ impl UsiProtocol {
         Err(io::Error::other("search ended without a finished event"))
     }
 
+    /// 探索イベントを`info`行または`bestmove`行へ変換する。
+    ///
+    /// `go infinite`の完了は、USIの規定どおり`stop`を受けるまで
+    /// `bestmove`を保留する。
     fn handle_search_event(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -363,6 +401,7 @@ impl UsiProtocol {
         }
     }
 
+    /// `stop`に応じて探索を打ち切り、`bestmove`を返す。
     fn stop_search(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -371,6 +410,9 @@ impl UsiProtocol {
         self.finish_search(active, output, true)
     }
 
+    /// 探索の完了を待ち切って`bestmove`を出力する。
+    ///
+    /// 完了までの進捗イベントも順に`info`行として出力する。
     fn finish_search(
         &mut self,
         active: &mut Option<ActiveSearch>,
@@ -414,6 +456,7 @@ impl UsiProtocol {
         }
     }
 
+    /// `bestmove`を出力せずに探索を破棄する。`gameover`・`quit`と入力断で使う。
     fn discard_search(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
         let Some(search) = active.take() else {
             return Ok(());
@@ -425,6 +468,7 @@ impl UsiProtocol {
         Ok(())
     }
 
+    /// `usi`への応答としてエンジン名とoption宣言を出力する。
     fn write_handshake(&self, output: &mut dyn Write) -> io::Result<()> {
         writeln!(output, "id name minase {}", env!("CARGO_PKG_VERSION"))?;
         writeln!(output, "id author stepney141")?;
@@ -445,6 +489,8 @@ impl UsiProtocol {
         writeln!(output, "usiok")
     }
 
+    /// `setoption`を処理する。RuleSet・USI_Variant・USI_Hashを受理し、
+    /// 未知のoption名はUSIの慣例に従って黙って無視する。
     fn handle_setoption(
         &mut self,
         engine: &mut Engine,
@@ -491,6 +537,7 @@ impl UsiProtocol {
         }
     }
 
+    /// `position`を処理し、受理できた場合だけ局面を同期済みにする。
     fn handle_position(
         &mut self,
         engine: &mut Engine,
@@ -539,6 +586,7 @@ impl UsiProtocol {
         }
     }
 
+    /// 独自拡張`moves`への応答として現局面の全合法手を出力する。
     fn handle_moves(&self, engine: &Engine, output: &mut dyn Write) -> io::Result<()> {
         if engine.lifecycle() != EngineLifecycle::InGame {
             return write_error(output, "moves requires an active game");
@@ -552,6 +600,7 @@ impl UsiProtocol {
         writeln!(output)
     }
 
+    /// 独自拡張`state`への応答として規則・盤面・対局状態を出力する。
     fn handle_state(&self, engine: &Engine, output: &mut dyn Write) -> io::Result<()> {
         if engine.lifecycle() == EngineLifecycle::AwaitingStart {
             return write_error(output, "state requires an active or finished game");
@@ -569,12 +618,14 @@ impl UsiProtocol {
         )
     }
 
+    /// 受理時に何も出力しないコマンドを状態機械へ渡す。
     fn apply_silent(
         &mut self,
         engine: &mut Engine,
         command: EngineCommand,
         output: &mut dyn Write,
     ) -> io::Result<()> {
+        // 新規対局と規則変更で置換表を空にし、前対局・別規則の評価を持ち越さない。
         let clears_transposition_table = matches!(
             &command,
             EngineCommand::NewGame | EngineCommand::SetRules(_)
@@ -593,6 +644,10 @@ impl UsiProtocol {
     }
 }
 
+/// `go`の引数列を探索制限へ変換する。
+///
+/// `depth`・`nodes`・`movetime`・時計引数(`btime`等)・`infinite`を受理し、
+/// 時計引数からは手番側の残り時間だけを取り出す。
 fn parse_go_config(tokens: &[&str], side_to_move: Color) -> Result<SearchLimits, String> {
     if tokens.is_empty() {
         return Err("go requires depth or nodes".to_owned());
@@ -682,6 +737,7 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color) -> Result<SearchLimits,
     })
 }
 
+/// `go`の時間引数1個をミリ秒として解析する。重複指定は拒否する。
 fn parse_go_milliseconds(
     name: &str,
     value: Option<&str>,
@@ -695,6 +751,11 @@ fn parse_go_milliseconds(
         .ok_or_else(|| format!("go {name} must be a non-negative integer"))
 }
 
+/// `position sfen`の欄列を4欄または5欄の拡張SFENとして解析する。
+///
+/// 第5欄はP1成り権保留欄にも`moves`なしで続く余分な語にもなり得るため、
+/// 5欄解析が失敗した場合は、第5欄が成り権保留欄の形をしているときだけ
+/// そのエラーを報告し、そうでなければ4欄解析の結果を採用する。
 fn parse_sfen_fields(
     fields: &[&str],
     rules: crate::Rules,
@@ -713,6 +774,7 @@ fn parse_sfen_fields(
     }
 }
 
+/// 欄がP1成り権保留欄の形(`-`、コンマ区切り、または数字始まり)かを返す。
 fn looks_like_promotion_deferred(field: &str) -> bool {
     field == "-" || field.contains(',') || field.as_bytes().first().is_some_and(u8::is_ascii_digit)
 }
@@ -762,6 +824,7 @@ impl Protocol for UsiProtocol {
 }
 
 impl ActiveSearch {
+    /// `go infinite`による探索かどうかを返す。
     fn is_infinite(&self) -> bool {
         match self {
             Self::Running { context, .. } | Self::AwaitingStop { context, .. } => context.infinite,
@@ -769,17 +832,20 @@ impl ActiveSearch {
     }
 }
 
+/// 探索スレッドの終了を待ち、貸し出していた置換表を回収する。
 fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
     handle
         .join()
         .map_err(|_| io::Error::other("search thread panicked"))
 }
 
+/// `bestmove`行を出力する。
 fn write_bestmove(output: &mut dyn Write, position: &Position, mv: Move) -> io::Result<()> {
     writeln!(output, "bestmove {}", usi::text(position, mv))?;
     output.flush()
 }
 
+/// 探索進捗の`info`行を出力する。読み筋は局面を進めながら表記する。
 fn write_info(
     output: &mut dyn Write,
     context: &SearchContext,
@@ -804,6 +870,7 @@ fn write_info(
     output.flush()
 }
 
+/// 評価値を`info score`の種別(`cp`または`mate`)と値へ変換する。
 fn score_text(score: i32) -> (&'static str, i32) {
     if score >= search::MATE_THRESHOLD {
         ("mate", search::MATE - score)
@@ -814,6 +881,7 @@ fn score_text(score: i32) -> (&'static str, i32) {
     }
 }
 
+/// 1秒あたりの探索ノード数を計算する。経過0では0を返す。
 fn nodes_per_second(nodes: u64, elapsed: Duration) -> u64 {
     let nanoseconds = elapsed.as_nanos();
     if nanoseconds == 0 {
@@ -822,6 +890,7 @@ fn nodes_per_second(nodes: u64, elapsed: Duration) -> u64 {
     (u128::from(nodes) * 1_000_000_000 / nanoseconds).min(u128::from(u64::MAX)) as u64
 }
 
+/// 指定キーの直後のトークンを返す。
 fn token_after<'a>(tokens: &'a [&str], key: &str) -> Option<&'a str> {
     tokens
         .iter()
@@ -829,6 +898,10 @@ fn token_after<'a>(tokens: &'a [&str], key: &str) -> Option<&'a str> {
         .and_then(|index| tokens.get(index + 1).copied())
 }
 
+/// `moves`以降の指し手列を解析し、局面を進めながら検証する。
+///
+/// 不合法な指し手が現れても解析済みの列は返し、拒否理由の報告用に
+/// その表記を保持する。合否の最終判定は状態機械側の再適用が行う。
 fn parse_moves(
     setup: &SetupPosition,
     rules: crate::Rules,
@@ -857,11 +930,15 @@ fn parse_moves(
     })
 }
 
+/// `position`の指し手列の解析結果。
 struct ParsedMoves {
+    /// 解析できた指し手列。
     moves: Vec<Move>,
+    /// 最初に拒否された指し手の入力表記。
     first_rejected_text: Option<String>,
 }
 
+/// `position`拒否の理由文を、拒否された指し手の表記を添えて作る。
 fn position_reject_reason_text(reason: &RejectReason, rejected_text: Option<&str>) -> String {
     if let (RejectReason::IllegalMove { cause, .. }, Some(text)) = (reason, rejected_text) {
         format!("illegal move '{text}': {cause}")
@@ -870,6 +947,9 @@ fn position_reject_reason_text(reason: &RejectReason, rejected_text: Option<&str
     }
 }
 
+/// 対局状態を`state`行のstatus欄表記へ変換する。
+///
+/// 投了と合意引き分けはプロトコル外の操作で成立するため表現しない。
 fn state_status_text(status: GameStatus) -> Result<String, &'static str> {
     match status {
         GameStatus::Ongoing => Ok("ongoing".to_owned()),
@@ -901,6 +981,7 @@ fn state_status_text(status: GameStatus) -> Result<String, &'static str> {
     }
 }
 
+/// エラーを`info string`行として出力する。
 fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
     writeln!(output, "info string error: {message}")
 }

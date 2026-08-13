@@ -12,9 +12,10 @@ pub use usi::UsiProtocol;
 
 /// 同期入出力でプロトコルセッションを処理する。
 ///
-/// 探索機能がない段階では、スレッドとチャネルを設けず、各入力行を受信順に
-/// 完了させる。探索導入時には`stop`を含む境界を改めて設計する。
+/// 各入力行を受信順に完了させる。reader threadと並行して探索イベントを
+/// 扱う非同期実行は、[`UsiProtocol::run_channel`]が別に提供する。
 pub trait Protocol {
+    /// 入力の終端または終了コマンドまでセッションを処理する。
     fn run(
         &mut self,
         engine: &mut Engine,

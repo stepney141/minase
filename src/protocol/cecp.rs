@@ -14,6 +14,7 @@ use super::engine::{Engine, EngineCommand, EngineReply, RejectReason, canonical_
 
 /// 中将棋用のCECPアダプター。
 pub struct CecpProtocol {
+    /// feature宣言のRuleSet既定値に使う起動時規則の正準表記。
     startup_rules_text: String,
 }
 
@@ -25,6 +26,7 @@ impl CecpProtocol {
         }
     }
 
+    /// 1コマンドを処理し、セッションを続けるかどうかを返す。
     fn handle_line(
         &self,
         engine: &mut Engine,
@@ -83,6 +85,10 @@ impl CecpProtocol {
         Ok(true)
     }
 
+    /// `protover`への応答としてfeature宣言を出力する。
+    ///
+    /// setboard・usermove・pingは動作の前提であり、拒否された場合は
+    /// セッションを継続しない(handle_lineの`rejected`分岐)。
     fn write_features(&self, output: &mut dyn Write) -> io::Result<()> {
         writeln!(
             output,
@@ -107,6 +113,7 @@ impl CecpProtocol {
         writeln!(output, "feature done=1")
     }
 
+    /// `new`を処理し、初期局面から対局を開始する。
     fn handle_new(&self, engine: &mut Engine, output: &mut dyn Write) -> io::Result<()> {
         if !matches!(
             engine.handle(EngineCommand::NewGame),
@@ -133,6 +140,7 @@ impl CecpProtocol {
         }
     }
 
+    /// `setboard`のFEN風局面を解析して対局を設定する。
     fn handle_setboard(
         &self,
         engine: &mut Engine,
@@ -142,6 +150,7 @@ impl CecpProtocol {
         let (Some(board), Some(side)) = (fields.first(), fields.get(1)) else {
             return writeln!(output, "tellusererror Illegal position");
         };
+        // CECPの手番記号は白=先手でSFENと逆のため、読み替えて委譲する。
         let sfen_side = match *side {
             "w" => "b",
             "b" => "w",
@@ -165,6 +174,7 @@ impl CecpProtocol {
         }
     }
 
+    /// `usermove`の指し手を適用し、終局すれば結果行を出力する。
     fn handle_usermove(
         &self,
         engine: &mut Engine,
@@ -206,6 +216,7 @@ impl CecpProtocol {
         }
     }
 
+    /// `option`のRuleSet設定を処理する。他のoption名は黙って無視する。
     fn handle_option(
         &self,
         engine: &mut Engine,
@@ -259,6 +270,7 @@ impl Protocol for CecpProtocol {
     }
 }
 
+/// `@@@@`入力へ割り当てる正準じっとを、移動元の内部密番号が最小の合法手から選ぶ。
 fn representative_jitto(engine: &Engine) -> Option<crate::Move> {
     engine
         .game()
@@ -268,6 +280,7 @@ fn representative_jitto(engine: &Engine) -> Option<crate::Move> {
         .min_by_key(|mv| mv.from.dense_index())
 }
 
+/// 対局結果をCECPの結果行(`1-0 {reason}`など)として出力する。
 fn write_result(output: &mut dyn Write, result: GameResult) -> io::Result<()> {
     let (code, reason) = match result {
         GameResult::Win { winner, reason } => {
@@ -282,6 +295,7 @@ fn write_result(output: &mut dyn Write, result: GameResult) -> io::Result<()> {
     writeln!(output, "{code} {{{reason}}}")
 }
 
+/// 勝利理由を結果行の注記へ変換する。
 const fn win_reason_text(reason: WinReason) -> &'static str {
     match reason {
         WinReason::RoyalCapture => "royal capture",
@@ -294,6 +308,7 @@ const fn win_reason_text(reason: WinReason) -> &'static str {
     }
 }
 
+/// 引き分け理由を結果行の注記へ変換する。
 const fn draw_reason_text(reason: DrawReason) -> &'static str {
     match reason {
         DrawReason::Repetition => "repetition",
