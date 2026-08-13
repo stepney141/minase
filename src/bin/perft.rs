@@ -1,3 +1,5 @@
+//! 合法手生成の検証用perftコマンド。深さごとの経路数を数える。
+
 use std::process;
 use std::time::{Duration, Instant};
 
@@ -7,23 +9,29 @@ use minase::{Move, MoveGenerator, Position, Rules, Square, parse_sfen};
 // #[global_allocator]
 // static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+/// perftコマンドの引数。
 #[derive(Parser)]
 #[command(name = "perft")]
 struct Arguments {
+    /// 数える最大深さ。
     depth: u32,
+    /// 開始局面のSFEN。省略時は初期局面。
     #[arg(long)]
     sfen: Option<String>,
+    /// ルート合法手ごとの内訳を出力するかどうか。
     #[arg(long)]
     divide: bool,
 }
 
+/// 升を0始まりの`(筋,段)`表記へ変換する。
 fn square_text(square: Square) -> String {
     format!("({},{})", square.file(), square.rank())
 }
 
-// Divide coordinates are zero-based `(file,rank)`: files increase from the
-// leftmost SFEN column and ranks increase from the bottom SFEN row. `+` marks
-// promotion. A captured intermediate square is included for two-stage moves.
+/// divide出力用に指し手を文字列へ変換する。
+///
+/// 座標は0始まりの`(筋,段)`で、筋はSFENの左端列から、段はSFENの最下段から
+/// 増える。`+`は成りを表し、2段階移動では捕獲した中間升も含める。
 fn move_text(mv: Move) -> String {
     if let Some(mid) = mv.mid {
         format!(
@@ -43,6 +51,7 @@ fn move_text(mv: Move) -> String {
     }
 }
 
+/// ルート合法手ごとの末端ノード数を出力しながら深さ別合計を数える。
 fn run_divide(
     generator: &MoveGenerator,
     position: &Position,
@@ -68,12 +77,14 @@ fn run_divide(
     Ok(counts)
 }
 
+/// 深さごとの経路数を出力する。
 fn print_counts(counts: &[u64]) {
     for (index, count) in counts.iter().enumerate() {
         println!("perft({}): {count}", index + 1);
     }
 }
 
+/// 総ノード数・経過時間・秒間ノード数を出力する。
 fn print_summary(total: u64, elapsed: Duration) {
     let seconds = elapsed.as_secs_f64();
     let nodes_per_second = total as f64 / seconds;
@@ -87,9 +98,9 @@ fn print_summary(total: u64, elapsed: Duration) {
     println!("nodes/second: {nodes_per_second:.0}");
 }
 
-/// Counts legal-move paths at every depth from 1 to `counts.len()`, adding the
-/// depth-`k` result to `counts[k - 1]`, and restores `position` before
-/// returning.
+/// 深さ1から`counts.len()`までの合法手経路数を数える。
+///
+/// 深さkの結果を`counts[k - 1]`へ加算し、返る前に`position`を復元する。
 fn perft(generator: &MoveGenerator, position: &mut Position, counts: &mut [u64]) {
     let Some((current, deeper)) = counts.split_first_mut() else {
         return;
@@ -109,6 +120,7 @@ fn perft(generator: &MoveGenerator, position: &mut Position, counts: &mut [u64])
     }
 }
 
+/// 引数を検証し、perftまたはdivideを実行して集計を出力する。
 fn main() {
     let arguments = Arguments::parse();
     if arguments.divide && arguments.depth == 0 {

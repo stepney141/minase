@@ -1,3 +1,5 @@
+//! ランダム対局の検証ハーネス。合法手適用の不変条件を長時間対局で検査する。
+
 use std::process;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -9,10 +11,15 @@ use minase::{
     WinReason, to_sfen,
 };
 
+/// 1局を打ち切る手数上限の既定値。
 const DEFAULT_MAX_PLY: u32 = 4096;
+/// splitmix64の增分定数(黄金比の64ビット表現)。
 const SPLITMIX_GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
+/// splitmix64の第1混合乗数。
 const SPLITMIX_MIX1: u64 = 0xBF58_476D_1CE4_E5B9;
+/// splitmix64の第2混合乗数。
 const SPLITMIX_MIX2: u64 = 0x94D0_49BB_1331_11EB;
+/// 集計に使う勝利理由の一覧。
 const WIN_REASONS: [WinReason; 7] = [
     WinReason::RoyalCapture,
     WinReason::Repetition,
@@ -22,6 +29,7 @@ const WIN_REASONS: [WinReason; 7] = [
     WinReason::Mate,
     WinReason::Resignation,
 ];
+/// 集計に使う引き分け理由の一覧。
 const DRAW_REASONS: [DrawReason; 4] = [
     DrawReason::Repetition,
     DrawReason::PieceExhaustion,
@@ -61,50 +69,74 @@ struct Arguments {
     verbose: bool,
 }
 
+/// 解析済みの`--rules`引数。
 #[derive(Clone)]
 struct RuleSetArgument(Vec<RuleCode>);
 
+/// `--rules`の値を規則セット名またはコード列として解析する。
 fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
     parse_rule_set(input).map(RuleSetArgument)
 }
 
 /// 正常に終了した1局の結果。
 struct CompletedGame {
+    /// 終了時点の手数。
     plies: u32,
+    /// 終局結果または打ち切り。
     outcome: Outcome,
+    /// 実際に適用した全手順。
     moves: Vec<Move>,
 }
 
 /// 終局または手数上限による打ち切りを表す。
 #[derive(Clone, Copy)]
 enum Outcome {
+    /// 裁定による終局。
     Finished(GameResult),
+    /// 手数上限による打ち切り。
     Cutoff,
 }
 
 /// 異常時に再現に必要な情報を保持する。
 struct Failure<'a> {
+    /// 検出した不変条件違反の説明。
     issue: String,
+    /// 採用ルールの表示文字列。
     rules: &'a str,
+    /// 全局共通の基本シード。
     base_seed: u64,
+    /// 1起算の局番号。
     game_number: u64,
+    /// 違反を検出した手数。
     ply: u32,
+    /// 違反に関与した着手。
     problem_move: Option<Move>,
+    /// 違反直前の局面のSFEN。
     previous_sfen: String,
+    /// 違反までに適用した全手順。
     moves: &'a [Move],
 }
 
 /// 全局の結果と手数を集計する。
 #[derive(Default)]
 struct Summary {
+    /// 集計した局数。
     games: u64,
+    /// 対局者ごとの勝利数。
     wins: [u64; 2],
+    /// 引き分け数。
     draws: u64,
+    /// 勝利理由ごとの件数。
     win_reasons: [u64; WIN_REASONS.len()],
+    /// 引き分け理由ごとの件数。
     draw_reasons: [u64; DRAW_REASONS.len()],
+    /// 手数上限による打ち切り数。
     cutoffs: u64,
+    /// 全局の手数合計。
     total_plies: u64,
+    /// 最短の手数。
     min_plies: Option<u32>,
+    /// 最長の手数。
     max_plies: u32,
 }
 
@@ -467,6 +499,7 @@ fn report_game(game_number: u64, completed: CompletedGame, verbose: bool, summar
     summary.record(&completed);
 }
 
+/// 引数を検証し、指定局数のランダム対局を実行して集計を出力する。
 fn main() {
     let arguments = Arguments::parse();
     let rules = match Rules::from_codes(&arguments.rules.0) {

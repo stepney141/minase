@@ -1,3 +1,8 @@
+//! コミット対コミットの自己対局測定ハーネス。
+//!
+//! ペア対局のペンタノミアルGSPRTと固定局数Eloを提供する。運用規約と
+//! 統計的契約はdocs/sprt.mdを参照。
+
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
@@ -17,8 +22,11 @@ use minase::search::MAX_PLY;
 use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
 use minase::{Color, Game, GameResult, GameStatus, Move, RuleCode, Rules, Square};
 
+/// 1局を打ち切る手数上限の既定値。
 const DEFAULT_MAX_PLY: u32 = 4096;
+/// GSPRTの暴走保険となる実行ペア数上限の既定値。
 const DEFAULT_MAX_PAIRS: u64 = 100_000;
+/// 1回のエンジン応答を待つ秒数の既定値。
 const DEFAULT_RESPONSE_TIMEOUT_SECONDS: u64 = 120;
 
 /// バイナリ対戦ハーネスのコマンドライン引数。
@@ -85,9 +93,11 @@ enum Mode {
     },
 }
 
+/// 解析済みの`--rules`引数。
 #[derive(Clone)]
 struct RuleSetArgument(Vec<RuleCode>);
 
+/// `--rules`の値を規則セット名またはコード列として解析する。
 fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
     parse_rule_set(input).map(RuleSetArgument)
 }
@@ -95,33 +105,50 @@ fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
 /// 外部エンジンの指定。
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct PlayerSpec {
+    /// 入力された指定の原文。表示に使う。
     text: String,
+    /// 指定の解釈結果。
     kind: PlayerKind,
 }
 
 /// ランダムエンジンまたは実行ファイルの起動コマンドを表す。
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum PlayerKind {
+    /// 同梱の校正用ランダムエンジン。
     Random,
+    /// ビルドして使うgitリビジョン。
     Commit(String),
-    Command { program: PathBuf, args: Vec<String> },
+    /// 任意のUSIエンジンの起動コマンド。
+    Command {
+        /// 実行ファイルのパス。
+        program: PathBuf,
+        /// 起動引数。
+        args: Vec<String>,
+    },
 }
 
 /// USIの`go`へ渡す思考制限。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SearchLimit {
+    /// 深さまたはノード数による固定制限。
     Fixed {
+        /// 探索深さの上限。
         depth: Option<u32>,
+        /// 探索ノード数の上限。
         nodes: Option<u64>,
     },
+    /// 持ち時間による時間制御。
     Time(TimeControl),
 }
 
 /// ミリ秒単位の持ち時間、加算時間、秒読み。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct TimeControl {
+    /// 持ち時間(ms)。
     base_ms: u64,
+    /// 1手ごとの加算時間(ms)。
     increment_ms: u64,
+    /// 1手ごとの秒読み(ms)。
     byoyomi_ms: u64,
 }
 
@@ -190,8 +217,11 @@ impl SearchLimit {
 /// 1エンジンの現在の時計。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct Clock {
+    /// 残り時間。
     remaining: Duration,
+    /// 1手ごとの加算時間。
     increment: Duration,
+    /// 1手ごとの秒読み。
     byoyomi: Duration,
 }
 
@@ -232,7 +262,9 @@ impl Clock {
 
 /// 1局で両色に割り当てた時計。
 struct GameClocks {
+    /// 先手の時計。固定制限の側は`None`。
     black: Option<Clock>,
+    /// 後手の時計。固定制限の側は`None`。
     white: Option<Clock>,
 }
 
@@ -292,10 +324,15 @@ fn zero_clock() -> Clock {
 
 /// 起動に必要な解決済みプレイヤー設定。
 struct PlayerConfig {
+    /// 入力された指定の原文。表示に使う。
     text: String,
+    /// 実行ファイルのパス。
     path: PathBuf,
+    /// 起動引数。
     args: Vec<String>,
+    /// 校正用ランダムエンジンかどうか。真ならシードを設定する。
     is_random: bool,
+    /// このプレイヤーに適用する思考制限。
     limit: SearchLimit,
 }
 
@@ -309,18 +346,26 @@ impl PlayerConfig {
 /// USIセッションの異常分類。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum EngineFailure {
+    /// `bestmove`が審判層の合法手にない。
     IllegalMove,
+    /// プロセス終了またはパイプ切断。
     Crash,
+    /// 応答期限までに応答がない。
     Timeout,
+    /// 時間制御対局での時間切れ。
     TimeForfeit,
 }
 
 /// 異常理由別の発生件数。
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 struct FailureCounts {
+    /// 不正着手の件数。
     illegal_moves: u64,
+    /// クラッシュの件数。
     crashes: u64,
+    /// 応答タイムアウトの件数。
     timeouts: u64,
+    /// 時間切れの件数。
     time_forfeits: u64,
 }
 
@@ -346,10 +391,15 @@ impl FailureCounts {
 
 /// 読み取りスレッドからUSI出力を受け取る外部エンジン。
 struct EngineProcess {
+    /// エンジンの子プロセス。
     child: Child,
+    /// エンジンの標準入力。
     input: ChildStdin,
+    /// 読み取りスレッドが送るUSI出力行。
     lines: Receiver<io::Result<String>>,
+    /// 読み取りスレッドのハンドル。dropで回収する。
     reader: Option<JoinHandle<()>>,
+    /// 1回の応答を待つ期限。
     timeout: Duration,
 }
 
@@ -488,18 +538,26 @@ impl Drop for EngineProcess {
 
 /// ペア対局で共有する開始状態。
 struct Opening {
+    /// 開始手順を適用済みの対局。
     game: Game,
+    /// 開始手順の生成に使ったシード。
     seed: u64,
+    /// 開始手順の指し手列。
     moves: Vec<Move>,
+    /// 開始手順のUSI表記列。エンジンへの`position`送信に使う。
     usi_moves: Vec<String>,
 }
 
 /// 審判裁定またはエンジン反則による終局結果。
 #[derive(Clone, Copy)]
 enum GameOutcome {
+    /// 審判層の裁定による終局。
     Adjudicated(GameResult),
+    /// エンジンの反則による負け。
     Forfeit {
+        /// 反則をしなかった側。
         winner: Color,
+        /// 反則の分類。
         reason: EngineFailure,
     },
 }
@@ -507,20 +565,35 @@ enum GameOutcome {
 /// 1局の完走または手数上限による打ち切り。
 #[derive(Clone, Copy)]
 enum PlayedGame {
-    Finished { plies: u32, outcome: GameOutcome },
-    Cutoff { plies: u32 },
+    /// 終局した1局。
+    Finished {
+        /// 終了時点の手数。
+        plies: u32,
+        /// 終局結果。
+        outcome: GameOutcome,
+    },
+    /// 手数上限による打ち切り。
+    Cutoff {
+        /// 打ち切り時点の手数。
+        plies: u32,
+    },
 }
 
 /// 1ペアの集計結果。
 struct PairResult {
+    /// 候補側ペア得点のペンタノミアル分類(0〜4)。打ち切りを含むペアは`None`。
     category: Option<usize>,
+    /// このペアで発生した異常の件数。
     failures: FailureCounts,
 }
 
 /// 1ペアの番号、表示内容、集計結果。
 struct CompletedPair {
+    /// 1起算のペア番号。
     number: u64,
+    /// ペア番号順に出力する表示内容。
     output: String,
+    /// 集計へ取り込む結果。
     result: PairResult,
 }
 
@@ -1204,6 +1277,7 @@ fn print_elo_summary(
     println!("elapsed: {:.6} s", elapsed.as_secs_f64());
 }
 
+/// 引数を検証し、ワーカープールでペア対局を実行して集計を出力する。
 fn main() {
     let arguments = Arguments::parse();
     let rules = match Rules::from_codes(&arguments.rules.0) {
@@ -1333,6 +1407,8 @@ fn main() {
                     break;
                 }
             };
+            // 完了ペアを一旦バッファし、ペア番号順に出力とLLR取り込みを行う。
+            // これにより判定と出力は並列度に依存しない(docs/sprt.mdの再現契約)。
             completed.insert(pair.number, pair);
             while let Some(pair) = completed.remove(&next_to_integrate) {
                 print!("{}", pair.output);

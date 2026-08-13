@@ -1,7 +1,10 @@
 //! 決定的な擬似乱数生成器。
 
+/// splitmix64の增分定数(黄金比の64ビット表現)。
 const SPLITMIX_GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
+/// splitmix64の第1混合乗数。
 const SPLITMIX_MIX1: u64 = 0xBF58_476D_1CE4_E5B9;
+/// splitmix64の第2混合乗数。
 const SPLITMIX_MIX2: u64 = 0x94D0_49BB_1331_11EB;
 
 /// 指定値をsplitmix64の有限混合で変換する。

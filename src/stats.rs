@@ -1,8 +1,16 @@
 //! 自己対局結果の統計処理。
+//!
+//! LLRの計算はfishtestの`LLR_logistic`(statistic="expectation"のMLE法)と
+//! 同一アルゴリズムであり、fishtest本家の参照値5件との一致を単体テストで
+//! 固定している。統計的契約の全体はdocs/sprt.mdを参照。
 
+/// 度数0の分類へ与える擬似度数。
 const REGULARIZATION: f64 = 1e-3;
+/// 永年方程式の探索区間を特異点から離す余白。
 const SECULAR_MARGIN: f64 = 1e-9;
+/// 永年方程式の二分法の停止幅。
 const SECULAR_TOLERANCE: f64 = 1e-14;
+/// ペンタノミアル5分類の正規化ペア得点。
 const SCORES: [f64; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
 
 /// GSPRTの下側判定境界。
@@ -10,6 +18,7 @@ pub const GSPRT_LOWER_BOUND: f64 = -2.944_438_979_166_440_3;
 /// GSPRTの上側判定境界。
 pub const GSPRT_UPPER_BOUND: f64 = 2.944_438_979_166_440_3;
 
+/// (正規化ペア得点, 確率)の5分類分布。
 type Pdf = [(f64, f64); 5];
 
 /// GSPRTの判定。

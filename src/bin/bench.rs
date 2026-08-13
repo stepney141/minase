@@ -1,3 +1,5 @@
+//! 固定局面の探索ベンチ。ノード数の決定性検証とNPS計測に使う。
+
 use std::time::Instant;
 
 use clap::Parser;
@@ -5,6 +7,7 @@ use minase::core::rules::parse_rule_set;
 use minase::search::{MAX_PLY, SearchLimits, TranspositionTable, search};
 use minase::{Game, Rules, parse_sfen};
 
+/// 既定の探索深さ。
 const DEFAULT_DEPTH: u32 = 3;
 
 /// 固定局面探索ベンチのコマンドライン引数。
@@ -18,10 +21,13 @@ struct Arguments {
 
 /// ベンチ対象の名前と2欄SFEN。
 struct BenchPosition {
+    /// 出力に使う局面名。
     name: &'static str,
+    /// 局面の2欄基本形SFEN。
     sfen: &'static str,
 }
 
+/// ベンチ対象の局面集。初期局面と、ランダム対局から採った中盤・終盤局面。
 const BENCH_POSITIONS: &[BenchPosition] = &[
     BenchPosition {
         name: "initial",

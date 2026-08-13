@@ -1,3 +1,5 @@
+//! 校正用のランダム着手USIエンジン。真のelo差0の対戦カードを提供する。
+
 use std::io::{self, BufRead, Cursor, Write};
 
 use minase::core::rules::parse_rule_set;
@@ -5,13 +7,18 @@ use minase::notation::usi;
 use minase::protocol::{Engine, EngineLifecycle, Protocol, UsiProtocol};
 use minase::rng::XorShift64;
 
+/// 既定の規則セット。
 const DEFAULT_RULE_SET: &str = "R1";
+/// 既定の乱数シード。
 const DEFAULT_SEED: u64 = 1;
 
 /// 合法手から一様ランダムに選ぶ最小のUSIエンジン。
 struct RandomUsi {
+    /// 局面と規則を管理する状態機械。
     engine: Engine,
+    /// `position`等の解釈を委譲するUSIアダプター。
     protocol: UsiProtocol,
+    /// 着手選択に使う擬似乱数生成器。
     rng: XorShift64,
 }
 
@@ -44,6 +51,7 @@ impl RandomUsi {
         Ok(())
     }
 
+    /// 1コマンドを処理し、セッションを続けるかどうかを返す。
     fn handle_line(&mut self, line: &str, output: &mut dyn Write) -> io::Result<bool> {
         let tokens: Vec<_> = line.split_whitespace().collect();
         let Some(command) = tokens.first().copied() else {
@@ -78,11 +86,13 @@ impl RandomUsi {
         Ok(keep_running)
     }
 
+    /// 1行をUSIアダプターへそのまま委譲する。
     fn handle_standard_line(&mut self, line: &str, output: &mut dyn Write) -> io::Result<()> {
         let mut input = Cursor::new(line.as_bytes());
         self.protocol.run(&mut self.engine, &mut input, output)
     }
 
+    /// `usi`への応答としてエンジン名とoption宣言を出力する。
     fn write_handshake(&self, output: &mut dyn Write) -> io::Result<()> {
         writeln!(output, "id name minase-usi-random")?;
         writeln!(output, "id author stepney141")?;
@@ -97,6 +107,8 @@ impl RandomUsi {
         writeln!(output, "usiok")
     }
 
+    /// `setoption`を処理する。RuleSetはUSIアダプターへ委譲し、Seedは
+    /// 乱数生成器を作り直す。
     fn handle_setoption(
         &mut self,
         line: &str,
@@ -127,6 +139,8 @@ impl RandomUsi {
         Ok(())
     }
 
+    /// `go`への応答として合法手から一様ランダムに1手選んで返す。
+    /// 探索制限の引数は無視する。
     fn handle_go(&mut self, output: &mut dyn Write) -> io::Result<()> {
         if self.engine.lifecycle() != EngineLifecycle::InGame {
             return write_error(output, "go requires an active game");
@@ -142,6 +156,7 @@ impl RandomUsi {
     }
 }
 
+/// 指定キーの直後のトークンを返す。
 fn token_after<'a>(tokens: &'a [&str], key: &str) -> Option<&'a str> {
     tokens
         .iter()
@@ -149,10 +164,12 @@ fn token_after<'a>(tokens: &'a [&str], key: &str) -> Option<&'a str> {
         .and_then(|index| tokens.get(index + 1).copied())
 }
 
+/// エラーを`info string`行として出力する。
 fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
     writeln!(output, "info string error: {message}")
 }
 
+/// 標準入出力でランダムエンジンのセッションを実行する。
 fn main() -> io::Result<()> {
     let mut engine = RandomUsi::new();
     let stdin = io::stdin();

@@ -1,3 +1,5 @@
+//! 中将棋エンジン本体の実行ファイル。プロトコルと規則を指定して起動する。
+
 use std::error::Error;
 use std::io::{self, BufRead};
 use std::process;
@@ -21,19 +23,25 @@ struct Arguments {
     rules: RuleSetArgument,
 }
 
+/// 解析済みの`--rules`引数。
 #[derive(Clone)]
 struct RuleSetArgument(Vec<RuleCode>);
 
+/// `--rules`の値を規則セット名またはコード列として解析する。
 fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
     parse_rule_set(input).map(RuleSetArgument)
 }
 
+/// 対応する通信プロトコル。
 #[derive(Clone, Copy, ValueEnum)]
 enum ProtocolKind {
+    /// lishogi系拡張を含むUSI。
     Usi,
+    /// CECP(XBoard)。
     Cecp,
 }
 
+/// エラーを標準エラーへ報告して終了コード1で終わる入口。
 fn main() {
     if let Err(error) = run() {
         eprintln!("error: {error}");
@@ -41,6 +49,10 @@ fn main() {
     }
 }
 
+/// 指定プロトコルでセッションを実行する。
+///
+/// USIは探索中もコマンドを受けるため、標準入力をreader threadで読んで
+/// チャネル経由で処理する。CECPは同期入出力で実行する。
 fn run() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
     let mut engine = Engine::new(arguments.rules.0)

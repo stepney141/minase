@@ -1,3 +1,10 @@
+//! 中将棋の合法手生成ライブラリと対局エンジンMinase。
+//!
+//! 準拠する競技規則とローカルルールはRULES.mdが定める。`core`は
+//! RULES.mdだけから正しさを検証できる盤・駒・合法手・裁定を提供し、
+//! 表記(`notation`)、プロトコル(`protocol`)、探索(`search`)、
+//! 評価(`eval`)はその外に置く。
+
 #![forbid(unsafe_code)]
 
 pub mod core;
