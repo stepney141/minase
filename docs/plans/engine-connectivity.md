@@ -36,6 +36,27 @@ USIと同型のstdin専用readerスレッド＋チャネル駆動`run_channel`�
 実装判断として、`level`第1引数（区切り手数）は構文検証のみ行い予算へは渡さない（`SearchLimits`に残り手数欄がないため）。探索制限が一つも設定されていない`go`は、暗黙の既定値でフォールバックせず`tellusererror`を返す。
 テストは357件全緑（`new`→`go`、自動応手、force、move→RESULT順序、`RESULT`後の`go`拒否、move now、探索中`result`/`new`の破棄、`ping`順序、時間正規化、`memory`の11本を追加）、clippy警告なし、fmt通過、既存のCECP台本13件・lishogiリプレイ照合は不変である。
 
+2026年8月14日にフェーズ3（端到端検証）を完了し、本マイルストーンの完了条件をすべて満たした。
+検証はxboard 4.9.1を仮想Xディスプレイ（Xvfb）上で実行し、コミット3e375c6のリリースビルドを用いた。
+
+Minase対Minaseの時間制御対局は、次のコマンドで1局を完走した。
+
+```console
+xboard -variant chu \
+  -fcp "target/release/minase --protocol cecp --rules engine-default" \
+  -scp "target/release/minase --protocol cecp --rules engine-default" \
+  -tc 1 -inc 1 -mg 1 -autoCallFlag true -testLegality false \
+  -saveGameFile mm.pgn -debugMode true -nameOfDebugFile mm.debug
+```
+
+結果は0-1（193手目、後手勝ち）、終局理由はcheckmateである。
+時間切れ0件、`Illegal move`0件で、両エンジンが送出した`RESULT`行は`0-1 {checkmate}`で完全に一致し、xboardのPGN（`[Result "0-1"]`、`[TimeControl "60+1"]`）とも一致した（裁定不一致なし）。
+なお、xboardの`-autoflag`は値を取らないArgTrue型オプションであり、`-autoflag true`と書くと余った`true`が位置引数（ICSホスト名）として解釈されてエンジンなしモードに落ちる。時間切れ検出を有効にする場合はArgBoolean型の`-autoCallFlag true`を使うこと（xboard 4.9.1のargs.hで確認）。
+
+HaChu 0.23との接続試験は、同条件で先手minase・後手HaChu（`-scp ~/board-games/hachu/hachu`）として実施した。
+握手は成立し（HaChuのfeature群を受信、variant chuで対局開始）、序盤6手の指し手授受を双方向に確認した（minase: c4c5・f3g5・f4f5、HaChu: e9e8・h9h8・d9d8）。
+HaChuの4手目`d9d8`は自駒の仲人がある升への移動であり、minaseが`Illegal move: d9d8`で拒否した。これはdocs/protocols/hachu.md第11章の既知欠陥どおりの挙動で、本試験では正常系である。その後HaChuは進行不能となりxboardが時間切れで裁定したが、接続試験の目的（握手の成立と指し手授受の相互運用確認）は達成済みである。規則互換性の照合と対局完走は完了条件に含めない（プロトコル層の決定を維持）。
+
 ## 目的
 
 本マイルストーンは、探索部が実装する着手決定器を外部の対局環境へ接続し、minaseをUSIとCECPの両経路で自律対局できるエンジンにする。
