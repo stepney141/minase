@@ -167,7 +167,12 @@ pub enum RepetitionRule {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RulesError {
     /// 併用できないコードの組合せ(第33条第9項)。
-    Conflicting { first: RuleCode, second: RuleCode },
+    Conflicting {
+        /// 矛盾する組の一方。
+        first: RuleCode,
+        /// 矛盾する組のもう一方。
+        second: RuleCode,
+    },
     /// 同じコードの重複指定。
     Duplicate(RuleCode),
 }

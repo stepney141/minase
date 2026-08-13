@@ -63,7 +63,12 @@ pub enum RejectReason {
     /// 開始局面またはライフサイクルが着手適用に適さない。
     InvalidPosition(String),
     /// 駒の動きまたは反復禁止規則により着手を適用できない。
-    IllegalMove { mv: Move, cause: IllegalMoveCause },
+    IllegalMove {
+        /// 拒否された着手。
+        mv: Move,
+        /// 拒否の原因。
+        cause: IllegalMoveCause,
+    },
     /// 終局済みの対局へ着手または局面設定が送られた。
     GameAlreadyOver,
 }

@@ -14,9 +14,15 @@ use super::sfen::{parse_square, square_to_text};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UsiError {
     /// 指定欄が盤上の升名ではない。
-    InvalidSquare { field: usize },
+    InvalidSquare {
+        /// 問題の1起算の升名欄位置。
+        field: usize,
+    },
     /// 升名欄が2個または3個ではない。
-    InvalidFieldCount { found: usize },
+    InvalidFieldCount {
+        /// 入力にあった升名欄の数。
+        found: usize,
+    },
     /// 末尾が成りまたは不成の接尾辞ではない。
     InvalidSuffix,
     /// 移動元と移動先が等しい着手が2升連結で表されている。

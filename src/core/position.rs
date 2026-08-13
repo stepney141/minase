@@ -136,29 +136,53 @@ pub struct Position {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PositionError {
     /// 先獅子の獅子捕獲升に手番側の駒がある。
-    InvalidLionCapture { square: Square },
+    InvalidLionCapture {
+        /// 問題の獅子捕獲升。
+        square: Square,
+    },
     /// 番兵位置に番兵コード以外が置かれている。
-    PaddingIsNotWall { raw: u8 },
+    PaddingIsNotWall {
+        /// 検出した生の駒コード値。
+        raw: u8,
+    },
     /// 有効升に番兵コードが置かれている。
-    ValidSquareIsWall { square: Square },
+    ValidSquareIsWall {
+        /// 問題の升。
+        square: Square,
+    },
     /// 駒コードから色または駒種を復元できない。
-    InvalidPieceCode { square: Square },
+    InvalidPieceCode {
+        /// 問題の升。
+        square: Square,
+    },
     /// 盤面配列と占有集合が食い違っている。
-    OccupancyMismatch { square: Square },
+    OccupancyMismatch {
+        /// 問題の升。
+        square: Square,
+    },
     /// 両対局者の駒集合が重なっている。
     ColorOverlap,
     /// 対局者別集合の集計が合わない。
-    ColorAggregateMismatch { color: Color },
+    ColorAggregateMismatch {
+        /// 問題の対局者。
+        color: Color,
+    },
     /// 駒種別集合が盤面配列と合わない。
     KindMismatch {
+        /// 問題の升。
         square: Square,
+        /// 問題の対局者。
         color: Color,
+        /// 問題の駒種。
         kind: PieceKind,
     },
     /// いずれかのビットボードで番兵ビットが立っている。
     PaddingBitSet,
     /// 成り権保留ビットの升に適格な駒がない。
-    InvalidPromotionDeferred { square: Square },
+    InvalidPromotionDeferred {
+        /// 問題の升。
+        square: Square,
+    },
 }
 
 impl fmt::Display for PositionError {
@@ -179,7 +203,10 @@ impl std::error::Error for PositionError {}
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PositionBuildError {
     /// 既に駒がある升へ配置しようとした。
-    SquareOccupied { square: Square },
+    SquareOccupied {
+        /// 問題の升。
+        square: Square,
+    },
     /// 空升または番兵のコードを駒として配置しようとした。
     EmptyOrWallPiece,
     /// 完成した局面が不変条件を満たさない。

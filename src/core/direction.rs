@@ -9,13 +9,21 @@ pub const DIRECTION_COUNT: usize = 8;
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Direction {
+    /// 東(筋が減る向き)。
     East = 0,
+    /// 西(筋が増える向き)。
     West = 1,
+    /// 北(段が増える向き、先手の前方)。
     North = 2,
+    /// 南(段が減る向き、後手の前方)。
     South = 3,
+    /// 北東。
     NorthEast = 4,
+    /// 北西。
     NorthWest = 5,
+    /// 南東。
     SouthEast = 6,
+    /// 南西。
     SouthWest = 7,
 }
 

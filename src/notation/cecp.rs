@@ -12,11 +12,22 @@ use crate::core::square::Square;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CecpError {
     /// CECP升名の不正。盤は12×12升である(第4条)。
-    InvalidSquare { leg: usize, field: usize },
+    InvalidSquare {
+        /// 問題の升名がある1起算のレグ番号。
+        leg: usize,
+        /// レグ内の1起算の升名位置。
+        field: usize,
+    },
     /// CECP着手のレグ数不正。2段階移動も1手である(第3条・第11条・第12条)。
-    InvalidLegCount { found: usize },
+    InvalidLegCount {
+        /// 入力にあったレグ数。
+        found: usize,
+    },
     /// CECPレグの構文不正。2段階移動は連続する2段階である(第11条・第12条)。
-    MalformedLeg { leg: usize },
+    MalformedLeg {
+        /// 問題の1起算のレグ番号。
+        leg: usize,
+    },
     /// CECPレグ間の不連続。第2段階は第1段階の到達升から始まる(第11条・第12条)。
     LegDiscontinuity,
     /// CECP接尾辞の不正。成りは着手終了時に行う(第18条)。

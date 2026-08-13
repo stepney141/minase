@@ -6,6 +6,7 @@
 //! 評価(`eval`)はその外に置く。
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 pub mod core;
 pub mod eval;

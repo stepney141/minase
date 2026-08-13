@@ -30,37 +30,70 @@ pub enum SfenError {
     /// 基本形の手番欄の後に余分な欄がある。
     UnexpectedFields,
     /// 拡張SFENの欄数が4または5ではない。
-    InvalidExtendedFieldCount { found: usize },
+    InvalidExtendedFieldCount {
+        /// 入力にあった欄数。
+        found: usize,
+    },
     /// 獅子捕獲升の表記が盤上の升を表さない。
     InvalidLionCaptureSquare,
     /// 獅子捕獲升に手番側の駒があるため、直前着手後の状態として成立しない。
-    LionCaptureOccupiedBySideToMove { square: Square },
+    LionCaptureOccupiedBySideToMove {
+        /// 問題の獅子捕獲升。
+        square: Square,
+    },
     /// 手数が1以上9999以下の整数ではない。
     InvalidMoveNumber,
     /// P1成り権保留升の表記が盤上の升を表さない。
     InvalidPromotionDeferredSquare,
     /// P1成り権保留升が内部密番号の狭義昇順ではない。
-    PromotionDeferredNotStrictlyAscending { previous: Square, current: Square },
+    PromotionDeferredNotStrictlyAscending {
+        /// 直前に読んだ升。
+        previous: Square,
+        /// 順序に反した升。
+        current: Square,
+    },
     /// P1を採用していない規則で成り権保留升が指定された(第30条P1)。
     PromotionDeferredRequiresP1,
     /// 盤面の段数が12ではない。
-    WrongRowCount { found: usize },
+    WrongRowCount {
+        /// 入力にあった段数。
+        found: usize,
+    },
     /// 空升数の表記が0または桁あふれである。
-    InvalidEmptyCount { row: usize },
+    InvalidEmptyCount {
+        /// 問題の1起算の段番号。
+        row: usize,
+    },
     /// 段の升数が12ではない。
-    WrongRowWidth { row: usize, found: usize },
+    WrongRowWidth {
+        /// 問題の1起算の段番号。
+        row: usize,
+        /// その段にあった升数。
+        found: usize,
+    },
     /// 成り接頭辞`+`の後に駒文字がない。
-    MissingPromotedPiece { row: usize, column: usize },
+    MissingPromotedPiece {
+        /// 問題の1起算の段番号。
+        row: usize,
+        /// 問題の1起算の列番号。
+        column: usize,
+    },
     /// 駒文字がSFENの駒文字表にない。
     UnsupportedPiece {
+        /// 問題の1起算の段番号。
         row: usize,
+        /// 問題の1起算の列番号。
         column: usize,
+        /// 問題の駒文字。
         letter: char,
     },
     /// 成らない駒に成り接頭辞が付いている。
     UnpromotablePiece {
+        /// 問題の1起算の段番号。
         row: usize,
+        /// 問題の1起算の列番号。
         column: usize,
+        /// 問題の駒文字。
         letter: char,
     },
     /// 局面構築の不変条件に反した。
