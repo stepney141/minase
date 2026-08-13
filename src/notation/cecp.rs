@@ -117,6 +117,9 @@ pub fn legs(mv: Move) -> Vec<String> {
     }
 }
 
+/// 末尾の接尾辞を切り離し、レグ本文と成りの選択を返す。
+///
+/// `+`は成り、`=`は不成を表す。接尾辞が末尾以外に現れる入力は拒否する。
 fn split_suffix(input: &str) -> Result<(&str, bool), CecpError> {
     let Some(last) = input.as_bytes().last().copied() else {
         return Ok((input, false));
@@ -133,6 +136,7 @@ fn split_suffix(input: &str) -> Result<(&str, bool), CecpError> {
     }
 }
 
+/// 1レグ(始点升と終点升の連結)を解析する。
 fn parse_leg(input: &str, leg: usize) -> Result<(Square, Square), CecpError> {
     let (from, remaining) = parse_square_prefix(input, leg, 1)?;
     let (to, remaining) = parse_square_prefix(remaining, leg, 2)?;
@@ -142,6 +146,7 @@ fn parse_leg(input: &str, leg: usize) -> Result<(Square, Square), CecpError> {
     Ok((from, to))
 }
 
+/// 入力の先頭からCECP升名(筋英字1文字と段数字1〜2桁)を1個読み取り、残りを返す。
 fn parse_square_prefix(input: &str, leg: usize, field: usize) -> Result<(Square, &str), CecpError> {
     let invalid = CecpError::InvalidSquare { leg, field };
     let bytes = input.as_bytes();
@@ -168,6 +173,7 @@ fn parse_square_prefix(input: &str, leg: usize, field: usize) -> Result<(Square,
     Ok((square, &input[digit_count + 1..]))
 }
 
+/// 升をCECP升名(例: `f6`)へ変換する。
 fn square_to_text(square: Square) -> String {
     let mut output = String::with_capacity(3);
     output.push(char::from(b'a' + square.file()));

@@ -1,3 +1,5 @@
+//! shogiops互換SFENと、先獅子・手数・P1成り権保留を加えた拡張SFENの読み書き。
+
 use core::fmt;
 
 use crate::core::piece::{Color, PieceCode, PieceKind};
@@ -19,55 +21,49 @@ pub struct SetupPosition {
 /// SFENの構文または局面構築のエラー。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SfenError {
+    /// 盤面欄がない。
     MissingBoard,
+    /// 手番欄がない。
     MissingSideToMove,
+    /// 手番欄が`b`でも`w`でもない。
     InvalidSideToMove,
+    /// 基本形の手番欄の後に余分な欄がある。
     UnexpectedFields,
     /// 拡張SFENの欄数が4または5ではない。
-    InvalidExtendedFieldCount {
-        found: usize,
-    },
+    InvalidExtendedFieldCount { found: usize },
     /// 獅子捕獲升の表記が盤上の升を表さない。
     InvalidLionCaptureSquare,
     /// 獅子捕獲升に手番側の駒があるため、直前着手後の状態として成立しない。
-    LionCaptureOccupiedBySideToMove {
-        square: Square,
-    },
+    LionCaptureOccupiedBySideToMove { square: Square },
     /// 手数が1以上9999以下の整数ではない。
     InvalidMoveNumber,
     /// P1成り権保留升の表記が盤上の升を表さない。
     InvalidPromotionDeferredSquare,
     /// P1成り権保留升が内部密番号の狭義昇順ではない。
-    PromotionDeferredNotStrictlyAscending {
-        previous: Square,
-        current: Square,
-    },
+    PromotionDeferredNotStrictlyAscending { previous: Square, current: Square },
     /// P1を採用していない規則で成り権保留升が指定された(第30条P1)。
     PromotionDeferredRequiresP1,
-    WrongRowCount {
-        found: usize,
-    },
-    InvalidEmptyCount {
-        row: usize,
-    },
-    WrongRowWidth {
-        row: usize,
-        found: usize,
-    },
-    MissingPromotedPiece {
-        row: usize,
-        column: usize,
-    },
+    /// 盤面の段数が12ではない。
+    WrongRowCount { found: usize },
+    /// 空升数の表記が0または桁あふれである。
+    InvalidEmptyCount { row: usize },
+    /// 段の升数が12ではない。
+    WrongRowWidth { row: usize, found: usize },
+    /// 成り接頭辞`+`の後に駒文字がない。
+    MissingPromotedPiece { row: usize, column: usize },
+    /// 駒文字がSFENの駒文字表にない。
     UnsupportedPiece {
         row: usize,
         column: usize,
         letter: char,
     },
+    /// 成らない駒に成り接頭辞が付いている。
     UnpromotablePiece {
         row: usize,
         column: usize,
         letter: char,
     },
+    /// 局面構築の不変条件に反した。
     PositionBuild(PositionBuildError),
 }
 
@@ -328,12 +324,14 @@ pub fn parse_extended_sfen(sfen: &str, rules: Rules) -> Result<SetupPosition, Sf
     })
 }
 
+/// 升を筋数字と段英字の表記(例: `6f`)へ変換する。
 pub(super) fn square_to_text(square: Square) -> String {
     let file = BOARD_FILES - square.file();
     let rank = char::from(b'a' + (BOARD_RANKS - 1 - square.rank()));
     format!("{file}{rank}")
 }
 
+/// 筋数字と段英字の表記を升へ変換する。盤外や先行ゼロは`None`を返す。
 pub(super) fn parse_square(text: &str) -> Option<Square> {
     if !text.is_ascii() || !(2..=3).contains(&text.len()) {
         return None;
@@ -357,6 +355,7 @@ pub(super) fn parse_square(text: &str) -> Option<Square> {
     )
 }
 
+/// 手番欄(`b`または`w`)を解析する。
 fn parse_side_to_move(field: &str) -> Result<Color, SfenError> {
     match field {
         "b" => Ok(Color::Black),
@@ -365,6 +364,7 @@ fn parse_side_to_move(field: &str) -> Result<Color, SfenError> {
     }
 }
 
+/// P1成り権保留欄を解析する。`-`は空を表し、升は内部密番号の狭義昇順を要求する。
 fn parse_promotion_deferred(field: &str, rules: Rules) -> Result<Vec<Square>, SfenError> {
     if field == "-" {
         return Ok(Vec::new());
@@ -408,6 +408,7 @@ pub fn parse_sfen(sfen: &str) -> Result<Position, SfenError> {
     parse_position(board, side_to_move, &[])
 }
 
+/// 盤面欄を解析し、手番と成り権保留升とあわせて局面を構築する。
 fn parse_position(
     board: &str,
     side_to_move: Color,

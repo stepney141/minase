@@ -104,6 +104,9 @@ pub fn parse(position: &Position, input: &str) -> Result<Move, UsiError> {
     })
 }
 
+/// 末尾の接尾辞を切り離し、升名部分と成りの選択を返す。
+///
+/// `+`は成り、`=`と`?`は不成を表す。接尾辞が末尾以外に現れる入力は拒否する。
 fn split_suffix(input: &str) -> Result<(&str, bool), UsiError> {
     let Some(last) = input.as_bytes().last().copied() else {
         return Ok((input, false));
@@ -121,6 +124,9 @@ fn split_suffix(input: &str) -> Result<(&str, bool), UsiError> {
     }
 }
 
+/// 区切りなしで連結された升名列を先頭から順に解析する。
+///
+/// 各升名は筋の数字1〜2桁と段の英字1文字からなる。
 fn parse_squares(mut input: &str) -> Result<Vec<Square>, UsiError> {
     let mut squares = Vec::new();
     while !input.is_empty() {
@@ -156,6 +162,14 @@ fn parse_squares(mut input: &str) -> Result<Vec<Square>, UsiError> {
     Ok(squares)
 }
 
+/// 正準じっとの表記へ補う中間升を返す。
+///
+/// 駒種と手番に応じた第1段階の方向のうち、空升で内部密番号が最小の升を選ぶ。
+///
+/// # Panics
+///
+/// 移動元にじっとが可能な駒(獅子・角鷹・飛鷲)がない場合、または第1段階に
+/// 使える空升がない場合にパニックする。
 fn jitto_intermediate(position: &Position, from: Square) -> Square {
     let piece = position
         .piece_at(from)
