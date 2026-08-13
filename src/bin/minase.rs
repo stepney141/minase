@@ -9,7 +9,7 @@ use std::thread;
 use clap::{Parser, ValueEnum};
 use minase::RuleCode;
 use minase::core::rules::parse_rule_set;
-use minase::protocol::{CecpProtocol, Engine, Protocol, UsiProtocol};
+use minase::protocol::{CecpProtocol, Engine, UsiProtocol};
 
 /// 中将棋エンジンのプロトコル入口。
 #[derive(Parser)]
@@ -51,8 +51,8 @@ fn main() {
 
 /// 指定プロトコルでセッションを実行する。
 ///
-/// USIは探索中もコマンドを受けるため、標準入力をreader threadで読んで
-/// チャネル経由で処理する。CECPは同期入出力で実行する。
+/// USIとCECPは探索中もコマンドを受けるため、標準入力を
+/// reader threadで読んでチャネル経由で処理する。
 fn run() -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
     let mut engine = Engine::new(arguments.rules.0)
@@ -88,9 +88,29 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
         ProtocolKind::Cecp => {
             let mut protocol = CecpProtocol::new(&engine);
-            let stdin = io::stdin();
+            let (sender, receiver) = mpsc::channel();
+            thread::spawn(move || {
+                let stdin = io::stdin();
+                let mut input = stdin.lock();
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match input.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            if sender.send(Ok(line.trim_end().to_owned())).is_err() {
+                                break;
+                            }
+                        }
+                        Err(error) => {
+                            let _ = sender.send(Err(error));
+                            break;
+                        }
+                    }
+                }
+            });
             let stdout = io::stdout();
-            protocol.run(&mut engine, &mut stdin.lock(), &mut stdout.lock())?;
+            protocol.run_channel(&mut engine, &receiver, &mut stdout.lock())?;
             Ok(())
         }
     }

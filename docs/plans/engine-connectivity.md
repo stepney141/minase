@@ -27,6 +27,15 @@ wire上の`go depth|nodes`→`bestmove`の契約は前倒し実装から変更�
 テストは342件全緑（Lishogi-Bot実送信系列、時間引数の先手後手別正規化、同期回復系列、USI_Hash等を追加）、clippy警告なし、fmt通過で、CECP台本13件とlishogiリプレイ照合10局は変化しなかった。
 実バイナリの煙試験で、時計引数つき`go`のinfo行と`stop`によるbestmove送出、`go infinite`→`stop`の単一bestmove、探索中`quit`の結果破棄を確認した。
 
+2026年8月13日にフェーズ2（CECP対局進行）を完了した。
+実装はcodexへ委任し、Claudeが設計整合のレビューと検証を行った。
+CECPアダプターへ担当手番（`Option<Color>`）とforce状態を追加し、`new`（force解除・担当手番は後手）、`force`、`go`（`InGame`以外はエラー）、`usermove`後の自動応手、`result`（探索停止・結果破棄つき確定通知）、`?`（move now）の状態機械を実装した。
+エンジン着手は`ApplyMove`→`move`行（既存のレグ分割、じっとは`@@@@`）→`newly_finished`時のみ`RESULT`1回の順で送出し、拒否時は`tellusererror`を出してforce状態へ退避する。
+feature宣言を`time=1`・`memory=1`化し、`time`・`otim`（1/100秒）、`level`（分・`分:秒`・加算秒）、`st`（秒）、`sd`（深さ）をミリ秒へ正規化して`SearchLimits`へ写す。`memory <MB>`は探索中でないときの置換表リサイズとして受理する（既定256MB、探索間で再利用、`new`とRuleSet変更でクリア）。
+USIと同型のstdin専用readerスレッド＋チャネル駆動`run_channel`を実装して実バイナリのCECP分岐を切り替え、台本テスト用の逐次`run`も維持した。探索中のコマンドは停止を指示するもの（`?`・`force`・`result`・`new`・`quit`）を除きpendingキューへ積んで探索join後に適用し、探索中の`ping`への`pong`はmove行の後に返す順序契約を台本テストで固定した。停止済み探索の遅延結果は探索IDの不一致で破棄し、CECPでは探索`Progress`を出力しない。
+実装判断として、`level`第1引数（区切り手数）は構文検証のみ行い予算へは渡さない（`SearchLimits`に残り手数欄がないため）。探索制限が一つも設定されていない`go`は、暗黙の既定値でフォールバックせず`tellusererror`を返す。
+テストは357件全緑（`new`→`go`、自動応手、force、move→RESULT順序、`RESULT`後の`go`拒否、move now、探索中`result`/`new`の破棄、`ping`順序、時間正規化、`memory`の11本を追加）、clippy警告なし、fmt通過、既存のCECP台本13件・lishogiリプレイ照合は不変である。
+
 ## 目的
 
 本マイルストーンは、探索部が実装する着手決定器を外部の対局環境へ接続し、minaseをUSIとCECPの両経路で自律対局できるエンジンにする。
