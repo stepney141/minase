@@ -1,3 +1,5 @@
+//! 着手後の終局裁定。王駒捕獲、反復、駒枯れ、裸玉、合法手なし、詰みを判定する。
+
 use crate::core::bitboard::Bitboard;
 use crate::core::game::{DrawReason, GameResult, WinReason};
 use crate::core::movegen::MoveGenerator;
@@ -11,12 +13,16 @@ use crate::core::square::{BOARD_RANKS, Square};
 /// 対局裁定に必要な履歴依存状態。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct AdjudicationState {
+    /// 採用中の反復規則の局面出現履歴。
     repetition: RepetitionHistory,
+    /// 駒枯れの1手猶予(第22条第5項)が進行中かどうか。
     piece_exhaustion_grace: bool,
+    /// 対局開始からの手数。
     ply: u32,
 }
 
 impl AdjudicationState {
+    /// 開始局面を反復履歴の第1回として記録した初期状態を作る。
     pub(crate) fn new(repetition_rule: RepetitionRule, position: &Position) -> Self {
         Self {
             repetition: RepetitionHistory::new(repetition_rule, position),
@@ -25,23 +31,28 @@ impl AdjudicationState {
         }
     }
 
+    /// 反復履歴を返す。
     pub(crate) const fn repetition(&self) -> &RepetitionHistory {
         &self.repetition
     }
 
+    /// テスト用に反復履歴を可変で返す。
     #[cfg(test)]
     pub(crate) fn repetition_mut(&mut self) -> &mut RepetitionHistory {
         &mut self.repetition
     }
 
+    /// 駒枯れの1手猶予が進行中かどうかを返す。
     pub(crate) const fn piece_exhaustion_grace(&self) -> bool {
         self.piece_exhaustion_grace
     }
 
+    /// 駒枯れの1手猶予の状態を更新する。
     pub(crate) fn set_piece_exhaustion_grace(&mut self, grace: bool) {
         self.piece_exhaustion_grace = grace;
     }
 
+    /// 対局開始からの手数を返す。
     pub(crate) const fn ply(&self) -> u32 {
         self.ply
     }
@@ -83,13 +94,18 @@ impl AdjudicationState {
 /// 審判状態は反復履歴と手数を供給し、生成器は合法手と採用規則を供給する。
 /// 駒枯れ猶予は確定着手の純粋な次状態を仮想裁定へ渡すために保持する。
 pub(crate) struct AdjudicationContext<'a> {
+    /// 反復履歴と手数を供給する審判状態。
     state: &'a AdjudicationState,
+    /// 合法手と採用規則を供給する生成器。
     generator: &'a MoveGenerator,
+    /// 採用しているローカルルールの集合。
     rules: Rules,
+    /// 仮想裁定へ渡す駒枯れ猶予の状態。
     piece_exhaustion_grace: bool,
 }
 
 impl<'a> AdjudicationContext<'a> {
+    /// 審判状態と生成器から裁定文脈を作る。
     pub(crate) fn new(state: &'a AdjudicationState, generator: &'a MoveGenerator) -> Self {
         Self {
             state,
@@ -99,11 +115,15 @@ impl<'a> AdjudicationContext<'a> {
         }
     }
 
+    /// 駒枯れ猶予だけを差し替えた文脈を返す。
     fn with_piece_exhaustion_grace(mut self, grace: bool) -> Self {
         self.piece_exhaustion_grace = grace;
         self
     }
 
+    /// 仮想着手が着手側の即時勝利(第21条第3項c)を成立させるかを返す。
+    ///
+    /// R1の反復裁定と、裸玉または駒枯れによる勝利を即時勝利として調べる。
     fn candidate_is_immediate_win(
         &self,
         position: &Position,
@@ -145,30 +165,41 @@ impl<'a> AdjudicationContext<'a> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// 駒枯れ条件の判定結果。
 pub(crate) enum PieceExhaustionOutcome {
+    /// 駒枯れの条件(第22条第1項)が成立していない。
     ConditionNotMet,
+    /// 双方が王駒だけとなる引き分け(第22条第8項)。
     Draw,
+    /// 余分な駒を持つ側の勝ち(第22条第1項)。
     Win(Color),
+    /// 余分な駒を取れる側への1手猶予の開始(第22条第5項)。
     GraceStart,
 }
 
+/// 駒枯れ判定による裁定結果と猶予の次状態の組。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct PieceExhaustionTransition {
+    /// 裁定が確定すればその結果。
     result: Option<GameResult>,
+    /// 次の着手時点で猶予が進行中かどうか。
     next_grace: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// 確定着手後の裁定結果と駒枯れ猶予の次状態。
 pub(crate) struct PostMoveAdjudication {
+    /// 終局が確定すればその結果。
     result: Option<GameResult>,
+    /// 次の着手時点で駒枯れ猶予が進行中かどうか。
     piece_exhaustion_grace: bool,
 }
 
 impl PostMoveAdjudication {
+    /// 終局が確定していればその結果を返す。
     pub(crate) const fn result(self) -> Option<GameResult> {
         self.result
     }
 
+    /// 次の着手時点で駒枯れ猶予が進行中かどうかを返す。
     pub(crate) const fn piece_exhaustion_grace(self) -> bool {
         self.piece_exhaustion_grace
     }
@@ -342,6 +373,9 @@ fn bare_king_result(position: &Position, generator: &MoveGenerator) -> Option<Ga
         };
         let opponent = bare_color.opposite();
         let effective_pieces = effective_pieces(position, opponent);
+        // 条件(a): 相手が王駒を持ち、価値ある駒を2枚以上持つ。
+        // 条件(b): 裸玉側が相手王駒へ王手をかけていない。
+        // 条件(c): 価値ある駒が3枚以上か、いずれも裸玉に隣接していない。
         if !position.royal_pieces(opponent).is_empty()
             && effective_pieces.popcount() >= 2
             && !pieces_give_check(position, generator, bare_color)
@@ -357,6 +391,7 @@ fn bare_king_result(position: &Position, generator: &MoveGenerator) -> Option<Ga
         }
     }
 
+    // 双方が裸玉で、いずれの王駒にも王手がかかっていなければ引き分けとする。
     if bare_kings.into_iter().all(|king| king.is_some())
         && Color::ALL
             .into_iter()
@@ -427,6 +462,8 @@ pub(crate) fn piece_exhaustion_outcome(
     promoted_waiting_piece: Option<Square>,
     grace_pending: bool,
 ) -> PieceExhaustionOutcome {
+    // 第22条第8項: 双方に王駒以外の駒がなければ引き分け。ただし王駒が
+    // 1枚ずつでなければ(太子併存など)駒枯れの対象外として対局を続ける。
     let royals = Color::ALL.map(|color| position.royal_pieces(color));
     let non_royals = position.occupied() & !(royals[0] | royals[1]);
     if non_royals.is_empty() {
@@ -436,6 +473,7 @@ pub(crate) fn piece_exhaustion_outcome(
             PieceExhaustionOutcome::ConditionNotMet
         };
     }
+    // 第22条第1項: 双方に王駒が1枚ずつ残り、王駒以外の駒が一方に1枚だけ。
     if royals.into_iter().any(|royal| royal.popcount() != 1) || non_royals.popcount() != 1 {
         return PieceExhaustionOutcome::ConditionNotMet;
     }
@@ -453,16 +491,20 @@ pub(crate) fn piece_exhaustion_outcome(
         .kind()
         .expect("the extra piece must have a kind");
 
+    // 第22条第4項: 最奥段で移動不能となった歩兵・香車は余分な駒として数えない。
     if !extra_piece.is_promoted()
         && matches!(extra_kind, PieceKind::Pawn | PieceKind::Lance)
         && is_last_rank(extra_color, extra_square)
     {
         return PieceExhaustionOutcome::ConditionNotMet;
     }
+    // 第22条第2項・第3項: 余分な駒が不成の歩兵・仲人なら、成るまで勝利は成立しない。
     if !extra_piece.is_promoted() && matches!(extra_kind, PieceKind::Pawn | PieceKind::GoBetween) {
         return PieceExhaustionOutcome::ConditionNotMet;
     }
 
+    // 非捕獲で成った直後、猶予消化後、または余分な駒を持つ側の手番なら、
+    // 相手に取り返す機会はなく勝利が確定する(第22条第1項・第7項)。
     if promoted_waiting_piece == Some(extra_square)
         || grace_pending
         || position.side_to_move() == extra_color
@@ -470,6 +512,8 @@ pub(crate) fn piece_exhaustion_outcome(
         return PieceExhaustionOutcome::Win(extra_color);
     }
 
+    // 第22条第5項: 王駒だけとなった側が余分な駒を次の着手で取れる場合に限り、
+    // その着手のための猶予を与える。
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
     if moves.into_iter().any(|candidate| {
@@ -485,6 +529,7 @@ pub(crate) fn piece_exhaustion_outcome(
     }
 }
 
+/// 駒枯れ判定の結果を裁定結果と猶予の次状態へ写す。E2採用時は判定自体を行わない。
 fn piece_exhaustion_transition(
     position: &Position,
     generator: &MoveGenerator,
@@ -535,6 +580,7 @@ pub(crate) fn promoted_waiting_square(mv: Move, undo: &Undo) -> Option<Square> {
     .then_some(mv.to)
 }
 
+/// 指定升が指定対局者から見た相手側の最奥段にあるかを返す。
 fn is_last_rank(color: Color, square: Square) -> bool {
     match color {
         Color::Black => square.rank() == BOARD_RANKS - 1,

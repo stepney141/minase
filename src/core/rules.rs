@@ -67,6 +67,7 @@ impl RuleCode {
         1 << self as u8
     }
 
+    /// コードの表示名を返す。
     const fn text(self) -> &'static str {
         match self {
             Self::L0 => "L0",
@@ -333,6 +334,7 @@ impl Rules {
             return true;
         }
 
+        // 獅子による獅子の捕獲制限(第14条・第16条)。
         let moving_kind = position.piece_at(mv.from).and_then(|piece| piece.kind());
         if moving_kind == Some(PieceKind::Lion)
             && captured_lions
@@ -343,6 +345,8 @@ impl Rules {
             return false;
         }
 
+        // 先獅子による直後の捕獲禁止(第15条)。付け喰いは先獅子より優先する
+        // (第16条第7項)ため、付け喰いが成立する着手には適用しない。
         let move_is_tsukegui = captured_lions
             .into_iter()
             .flatten()
@@ -350,10 +354,13 @@ impl Rules {
         if !move_is_tsukegui
             && let Some(trigger) = position.lion_taken_by_non_lion()
             && captured_lions.into_iter().flatten().any(|lion| {
+                // L2採用時、麒麟が成った獅子への直後の取り返しは禁止しない(第29条L2)。
                 let l2_exemption = self.contains(RuleCode::L2)
                     && trigger.by_kirin_promotion
                     && lion == trigger.square
                     && position.piece_at(lion).is_some_and(PieceCode::is_promoted);
+                // L1は足の有無にかかわらず非獅子による取り返しを禁じ、
+                // 標準規則(L0)は取った側に残る獅子に足がある場合だけ禁じる(第29条)。
                 !l2_exemption
                     && if self.contains(RuleCode::L1) {
                         moving_kind != Some(PieceKind::Lion)
@@ -1830,8 +1837,8 @@ mod tests {
                 (sq(4, 8), Color::White, PieceKind::Pawn),
             ],
         );
-        // This synthetic two-stage DragonHorse capture cannot be produced by the move generator;
-        // it tests promotion_choice's isolated contract.
+        // この合成した龍馬の2段階捕獲は生成器からは生成されない。
+        // promotion_choice単体の契約を検査するための着手である。
         let mv = Move {
             from: sq(4, 7),
             mid: Some(sq(4, 8)),

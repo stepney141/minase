@@ -1,3 +1,5 @@
+//! 対局の進行管理。着手の受理と検証、終局裁定の呼出し、対局結果の保持を担う。
+
 use core::fmt;
 
 use crate::core::adjudication::{
@@ -12,36 +14,61 @@ use crate::core::repetition::{
 };
 use crate::core::rules::Rules;
 
+/// 勝利の成立理由。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum WinReason {
+    /// 相手の最後の王駒の捕獲(第21条第1項)。
     RoyalCapture,
+    /// 反復裁定による勝利(第31条R1)。
     Repetition,
+    /// 駒枯れによる勝利(第22条)。
     PieceExhaustion,
     /// 裸玉による勝利(第32条E3)。
     BareKing,
+    /// 相手に合法手がないことによる勝利(第23条)。
     Stalemate,
+    /// 相手の最後の王駒の詰み(第21条第2項)。
     Mate,
+    /// 相手の投了(第21条第6項)。
     Resignation,
 }
 
+/// 引き分けの成立理由。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum DrawReason {
+    /// 反復裁定による引き分け(第31条R1)。
     Repetition,
+    /// 駒枯れによる引き分け(第22条第8項)。
     PieceExhaustion,
     /// 裸玉による引き分け(第32条E3)。
     BareKing,
+    /// 双方の合意(第21条第7項)。
     Agreement,
 }
 
+/// 終局した対局の結果。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum GameResult {
-    Win { winner: Color, reason: WinReason },
-    Draw { reason: DrawReason },
+    /// 一方の勝利。
+    Win {
+        /// 勝者。
+        winner: Color,
+        /// 勝利の成立理由。
+        reason: WinReason,
+    },
+    /// 引き分け。
+    Draw {
+        /// 引き分けの成立理由。
+        reason: DrawReason,
+    },
 }
 
+/// 対局の進行状態。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum GameStatus {
+    /// 対局継続中。
     Ongoing,
+    /// 終局済み。
     Finished(GameResult),
 }
 
@@ -65,10 +92,18 @@ impl fmt::Display for IllegalMoveCause {
 
 impl std::error::Error for IllegalMoveCause {}
 
+/// 着手または対局操作が受理されなかった原因。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameError {
+    /// 対局が既に終了している(第26条第12項)。
     GameAlreadyOver,
-    IllegalMove { mv: Move, cause: IllegalMoveCause },
+    /// 不合法な着手(第26条)。
+    IllegalMove {
+        /// 拒否された着手。
+        mv: Move,
+        /// 拒否の原因。
+        cause: IllegalMoveCause,
+    },
 }
 
 impl fmt::Display for GameError {
@@ -122,13 +157,21 @@ impl fmt::Display for GameBuildError {
 
 impl std::error::Error for GameBuildError {}
 
+/// 1対局の進行を管理する対局管理層。
+///
+/// 着手の合法性検査、反復履歴の更新、終局裁定の呼出しをまとめ、
+/// 終局後の着手を拒否する。
 #[derive(Clone)]
 pub struct Game {
+    /// 現在の局面。
     position: Position,
+    /// 採用規則に基づく合法手生成器。
     generator: MoveGenerator,
+    /// 反復履歴・駒枯れ猶予・手数の裁定用状態。
     adjudication: AdjudicationState,
     /// 対局開始から現在までの探索局面キー。
     search_key_history: Vec<u64>,
+    /// 終局していれば対局結果。
     result: Option<GameResult>,
 }
 
@@ -184,6 +227,7 @@ impl Game {
         })
     }
 
+    /// 指定した対局者の投了(第21条第6項)で対局を終了する。
     pub fn resign(&mut self, color: Color) -> Result<GameStatus, GameError> {
         self.ensure_ongoing()?;
         Ok(self.finish(GameResult::Win {
@@ -192,6 +236,7 @@ impl Game {
         }))
     }
 
+    /// 双方の合意(第21条第7項)による引き分けで対局を終了する。
     pub fn agree_draw(&mut self) -> Result<GameStatus, GameError> {
         self.ensure_ongoing()?;
         Ok(self.finish(GameResult::Draw {
@@ -199,11 +244,13 @@ impl Game {
         }))
     }
 
+    /// 終局していれば対局結果を返す。
     #[inline]
     pub const fn result(&self) -> Option<GameResult> {
         self.result
     }
 
+    /// 対局の進行状態を返す。
     #[inline]
     pub const fn status(&self) -> GameStatus {
         match self.result {
@@ -212,6 +259,7 @@ impl Game {
         }
     }
 
+    /// 現在の局面を返す。
     #[inline]
     pub const fn position(&self) -> &Position {
         &self.position
@@ -259,6 +307,7 @@ impl Game {
         self.generator.rules()
     }
 
+    /// 対局開始からの手数を返す。
     #[inline]
     pub const fn ply_count(&self) -> u32 {
         self.adjudication.ply()
@@ -288,6 +337,7 @@ impl Game {
         })
     }
 
+    /// 対局が継続中であることを検査する(第26条第12項)。
     fn ensure_ongoing(&self) -> Result<(), GameError> {
         if self.result.is_some() {
             Err(GameError::GameAlreadyOver)
@@ -296,6 +346,7 @@ impl Game {
         }
     }
 
+    /// 対局結果を確定して終局状態を返す。
     fn finish(&mut self, result: GameResult) -> GameStatus {
         debug_assert!(self.result.is_none());
         self.result = Some(result);

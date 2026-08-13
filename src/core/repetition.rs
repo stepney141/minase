@@ -1,3 +1,5 @@
+//! 反復規則R1・R2・R3(第31条)の局面出現履歴と裁定。
+
 use std::collections::{HashMap, HashSet};
 
 use crate::core::game::{DrawReason, GameResult, WinReason};
@@ -13,11 +15,14 @@ use crate::core::rules::RepetitionRule;
 /// 各値の衝突は実用上無視できるものとし、完全な局面署名とは照合しない。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct R1Key {
+    /// 盤面・手番・先獅子状態のZobrist値。
     position_zobrist: u64,
+    /// P1成り権保留状態のZobrist値。
     rights_zobrist: u64,
 }
 
 impl R1Key {
+    /// 局面からR1の同一局面キーを作る。
     fn from_position(position: &Position) -> Self {
         Self {
             position_zobrist: position.zobrist(),
@@ -35,25 +40,32 @@ impl R1Key {
 struct R2R3Key(u64);
 
 impl R2R3Key {
+    /// 局面からR2・R3の同一局面キーを作る。
     fn from_position(position: &Position) -> Self {
         Self(position.zobrist())
     }
 }
 
+/// R1で追跡する1局面の出現状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct R1PositionState {
+    /// この局面の出現回数。
     occurrences: u8,
+    /// 最初に出現した時点の手数。
     first_ply: u32,
 }
 
 /// R1の局面出現履歴と双方の攻撃連続数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct R1History {
+    /// 出現済み局面ごとの出現状態。
     positions: HashMap<R1Key, R1PositionState>,
+    /// 対局者ごとの、直近まで連続した攻撃的着手の数。
     consecutive_attacking_moves: [u32; 2],
 }
 
 impl R1History {
+    /// 開始局面を第1回として記録した履歴を作る。
     fn new(position: &Position) -> Self {
         Self {
             positions: HashMap::from([(
@@ -67,6 +79,7 @@ impl R1History {
         }
     }
 
+    /// 着手後の局面を記録し、4回目の出現なら裁定結果を返す(第31条R1)。
     pub(crate) fn record_move(
         &mut self,
         position: &Position,
@@ -95,6 +108,9 @@ impl R1History {
         ))
     }
 
+    /// 仮想着手が4回目の出現を生じさせる場合の裁定結果を、履歴を変更せずに返す。
+    ///
+    /// 詰み判定(第21条第3項c)が回避手の即時勝利を調べるために使う。
     pub(crate) fn candidate_result(
         &self,
         position: &Position,
@@ -118,6 +134,7 @@ impl R1History {
         ))
     }
 
+    /// テスト用に指定局面の出現回数を返す。
     #[cfg(test)]
     pub(crate) fn occurrences(&self, position: &Position) -> Option<u8> {
         self.positions
@@ -125,11 +142,13 @@ impl R1History {
             .map(|state| state.occurrences)
     }
 
+    /// テスト用に双方の攻撃連続数を返す。
     #[cfg(test)]
     pub(crate) const fn consecutive_attacking_moves(&self) -> [u32; 2] {
         self.consecutive_attacking_moves
     }
 
+    /// テスト用に指定局面の出現状態を未登録の状態から設定する。
     #[cfg(test)]
     pub(crate) fn set_state(&mut self, position: &Position, occurrences: u8, first_ply: u32) {
         assert_eq!(
@@ -144,6 +163,7 @@ impl R1History {
         );
     }
 
+    /// テスト用に双方の攻撃連続数を設定する。
     #[cfg(test)]
     pub(crate) fn set_attacking_counters(&mut self, counters: [u32; 2]) {
         self.consecutive_attacking_moves = counters;
@@ -153,21 +173,25 @@ impl R1History {
 /// R2の既出局面集合。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct R2History {
+    /// 出現済み局面のキー集合。
     positions: HashSet<R2R3Key>,
 }
 
 impl R2History {
+    /// 開始局面を既出として記録した履歴を作る。
     fn new(position: &Position) -> Self {
         Self {
             positions: HashSet::from([R2R3Key::from_position(position)]),
         }
     }
 
+    /// 着手後の局面を既出集合へ記録する。
     pub(crate) fn record(&mut self, position: &Position) {
         let inserted = self.positions.insert(R2R3Key::from_position(position));
         debug_assert!(inserted, "R2 must reject repeated positions");
     }
 
+    /// テスト用に指定局面が既出かどうかを返す。
     #[cfg(test)]
     pub(crate) fn contains(&self, position: &Position) -> bool {
         self.positions.contains(&R2R3Key::from_position(position))
@@ -177,16 +201,19 @@ impl R2History {
 /// R3の局面出現回数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct R3History {
+    /// 出現済み局面ごとの出現回数。
     positions: HashMap<R2R3Key, u8>,
 }
 
 impl R3History {
+    /// 開始局面を第1回として記録した履歴を作る。
     fn new(position: &Position) -> Self {
         Self {
             positions: HashMap::from([(R2R3Key::from_position(position), 1)]),
         }
     }
 
+    /// 着手後の局面の出現回数を1増やす。
     pub(crate) fn record(&mut self, position: &Position) {
         let occurrences = self
             .positions
@@ -197,6 +224,7 @@ impl R3History {
             .expect("a position cannot occur more than u8::MAX times");
     }
 
+    /// テスト用に指定局面の出現回数を返す。
     #[cfg(test)]
     pub(crate) fn occurrences(&self, position: &Position) -> Option<u8> {
         self.positions
@@ -208,12 +236,16 @@ impl R3History {
 /// 採用中の反復規則に必要な履歴だけを保持する内部状態。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) enum RepetitionHistory {
+    /// R1の出現履歴。
     R1(R1History),
+    /// R2の既出集合。
     R2(R2History),
+    /// R3の出現回数。
     R3(R3History),
 }
 
 impl RepetitionHistory {
+    /// 採用規則に対応する履歴を、開始局面を第1回として作る。
     pub(crate) fn new(rule: RepetitionRule, position: &Position) -> Self {
         match rule {
             RepetitionRule::R1 => Self::R1(R1History::new(position)),
@@ -258,12 +290,17 @@ pub(crate) fn retain_repetition_allowed_moves(
     });
 }
 
+/// 4回目の同一局面出現に対するR1の裁定結果を返す(第31条R1)。
+///
+/// 最初の出現から4回目までの自分の全着手が攻撃的着手であった対局者が
+/// 一方だけならその側の負け、それ以外は引き分けとする。
 pub(crate) fn r1_repetition_result(
     ply: u32,
     first_ply: u32,
     consecutive_attacking_moves: [u32; 2],
 ) -> GameResult {
     let attackers = Color::ALL.map(|color| {
+        // 最初の出現以降にその対局者が指した手数を、攻撃連続数が覆うかで判定する。
         let distance =
             moves_by_color_through(ply, color) - moves_by_color_through(first_ply, color);
         consecutive_attacking_moves[color.index()] >= distance
@@ -284,6 +321,7 @@ pub(crate) fn r1_repetition_result(
     }
 }
 
+/// 着手側の攻撃連続数を、攻撃的着手なら1増やし、そうでなければ0へ戻す。
 pub(crate) fn updated_attacking_counters(
     mut counters: [u32; 2],
     mover: Color,
@@ -300,6 +338,7 @@ pub(crate) fn updated_attacking_counters(
     counters
 }
 
+/// 指定手数までに指定対局者が指した着手数を返す。先手が奇数手目を指す。
 fn moves_by_color_through(ply: u32, color: Color) -> u32 {
     match color {
         Color::Black => ply / 2 + ply % 2,
