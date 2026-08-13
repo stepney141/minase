@@ -30,7 +30,9 @@ pub const MATE_THRESHOLD: i32 = MATE - MAX_PLY as i32;
 /// 引き分けを表す評価値。
 pub const DRAW_SCORE: i32 = 0;
 
+/// 探索窓の初期値。全評価値より大きい。
 const INFINITY: i32 = MATE + 1;
+/// 停止要求と時間切れを検査するノード数間隔。
 const STOP_CHECK_INTERVAL: u64 = 4096;
 
 /// 1回の探索に適用する制限。
@@ -163,8 +165,11 @@ impl SearchEvent {
 
 /// 実行中の探索スレッドを操作するハンドル。
 pub struct SearchHandle {
+    /// 探索イベントの受信端。
     events: mpsc::Receiver<SearchEvent>,
+    /// 探索スレッドと共有する停止フラグ。
     stop: Arc<AtomicBool>,
+    /// 置換表を返して終了する探索スレッドのハンドル。
     thread: thread::JoinHandle<TranspositionTable>,
 }
 
@@ -284,18 +289,28 @@ pub fn search(
     .result
 }
 
+/// ルート合法手と制限の妥当性を検査する。
 fn validate_input(root_moves: &[Move], limits: &SearchLimits) {
     assert!(!root_moves.is_empty(), "root move list must not be empty");
     assert!(limits.validate().is_ok(), "invalid search limits");
 }
 
+/// 探索の内部実行が返す結果一式。
 struct SearchOutcome {
+    /// 完了した探索の結果。
     result: SearchResult,
+    /// 探索開始からの経過時間。
     elapsed: Duration,
+    /// 最後まで完了した深さの主変化。
     pv: Vec<Move>,
+    /// 探索を停止した条件。
     stop_reason: StopReason,
 }
 
+/// 反復深化のループを実行し、深さ完了ごとに進捗イベントを送る。
+///
+/// soft limitの判定は完了イテレーションの境界だけで行い、探索途中の
+/// 打ち切りはhard limitと停止要求が担う。
 #[allow(clippy::too_many_arguments)]
 fn run_search(
     position: &Position,
@@ -382,22 +397,38 @@ fn run_search(
     }
 }
 
+/// 1回の探索実行の可変状態。
 struct Searcher<'a> {
+    /// 探索内の着手適用に使う規則。
     rules: Rules,
+    /// 探索ノードでの合法手生成器。
     generator: MoveGenerator,
+    /// 対局開始から現局面までの探索局面キー。反復の検出に使う。
     history_keys: &'a [u64],
+    /// 探索経路上の局面キー。探索内の反復の検出に使う。
     path_keys: Vec<u64>,
+    /// 訪問したノード数。
     nodes: u64,
+    /// ノード数の上限。
     node_limit: Option<u64>,
+    /// 探索の開始時刻。
     started: Instant,
+    /// 探索途中でも打ち切る時間制限。
     hard_limit: Option<Duration>,
+    /// 外部からの停止要求フラグ。
     stop: &'a AtomicBool,
+    /// 中断時に記録する停止条件。
     stop_reason: Option<StopReason>,
+    /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pv: Vec<Vec<Move>>,
+    /// 置換表。
     tt: &'a mut TranspositionTable,
 }
 
 impl Searcher<'_> {
+    /// ルート局面を指定深さで探索し、最善手と評価値を返す。
+    ///
+    /// 中断された場合は`None`を返し、停止条件を記録する。
     fn search_root(
         &mut self,
         position: &Position,
@@ -433,6 +464,10 @@ impl Searcher<'_> {
         Some((best_move, best_score))
     }
 
+    /// ネガマックス形式のアルファベータ探索で局面を評価する。
+    ///
+    /// 合法手のない局面は詰みとして`-MATE + ply`を返す。中断された場合は
+    /// `None`を返す。
     fn negamax(
         &mut self,
         position: &mut Position,
@@ -502,6 +537,11 @@ impl Searcher<'_> {
         Some(best_score)
     }
 
+    /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。
+    ///
+    /// 王駒をすべて取る手は即詰みの値を返す。対局履歴または探索経路と
+    /// 同一の局面は引き分け値とする。2手目以降はnull windowで探索し、
+    /// 窓内に入った場合だけ全窓で再探索する(principal variation search)。
     #[allow(clippy::too_many_arguments)]
     fn search_move(
         &mut self,
@@ -545,6 +585,7 @@ impl Searcher<'_> {
         score
     }
 
+    /// ノードへ入る前に停止条件を検査し、続行可能ならノード数を数える。
     fn enter_node(&mut self) -> bool {
         if self.node_limit.is_some_and(|limit| self.nodes >= limit) {
             self.stop_reason = Some(StopReason::NodeLimit);
@@ -567,6 +608,7 @@ impl Searcher<'_> {
         true
     }
 
+    /// 指定plyの主変化を、この手と子plyの主変化の連結で置き換える。
     fn update_pv(&mut self, ply: u32, mv: Move) {
         let index = ply as usize;
         let (rows, child_rows) = self.pv.split_at_mut(index + 1);
@@ -579,9 +621,12 @@ impl Searcher<'_> {
     }
 }
 
+/// 1手に使う時間の予算。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct TimeBudget {
+    /// 完了イテレーションの境界で停止する目安時間。
     soft: Duration,
+    /// 探索途中でも打ち切る上限時間。
     hard: Duration,
 }
 
@@ -605,6 +650,7 @@ fn clock_budget(clock: ClockLimits) -> TimeBudget {
     }
 }
 
+/// 探索制限から時間予算を求める。`movetime`と時計の併用時は小さい方を採る。
 fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
     if limits.infinite {
         return None;
@@ -623,14 +669,17 @@ fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
     }
 }
 
+/// ミリ秒をu64へ飽和変換する。
 fn to_u64_ms(milliseconds: u128) -> u64 {
     milliseconds.min(u128::from(u64::MAX)) as u64
 }
 
+/// 反復検出に使う探索局面キー(第24条第1項)を計算する。
 fn search_key(position: &Position) -> u64 {
     position.zobrist() ^ position.rights_zobrist()
 }
 
+/// 着手が相手の残存王駒をすべて取るかを返す(第21条第1項)。
 fn captures_last_royal(position: &Position, mv: Move) -> bool {
     let opponent = position.side_to_move().opposite();
     let royals = position.royal_pieces(opponent);
@@ -645,6 +694,7 @@ fn captures_last_royal(position: &Position, mv: Move) -> bool {
             == royal_count as usize
 }
 
+/// 着手を捕獲手優先で整列し、置換表の最善手があれば先頭へ置く。
 fn order_moves(position: &Position, moves: &mut [Move], tt_move: Option<Move>) {
     moves.sort_by(|left, right| compare_moves(position, *left, *right));
     if let Some(index) = tt_move.and_then(|tt_move| moves.iter().position(|&mv| mv == tt_move)) {
@@ -652,6 +702,7 @@ fn order_moves(position: &Position, moves: &mut [Move], tt_move: Option<Move>) {
     }
 }
 
+/// MVV-LVA(高価な駒を安い駒で取る手を優先)の順序で2手を比較する。
 fn compare_moves(position: &Position, left: Move, right: Move) -> Ordering {
     let left_key = move_order_key(position, left);
     let right_key = move_order_key(position, right);
@@ -666,12 +717,16 @@ fn compare_moves(position: &Position, left: Move, right: Move) -> Ordering {
     }
 }
 
+/// 捕獲手の整列キー。
 #[derive(Clone, Copy)]
 struct MoveOrderKey {
+    /// 取る駒の駒価値の合計。
     captured_value: i32,
+    /// 動かす駒の駒価値。
     attacker_value: i32,
 }
 
+/// 捕獲手なら整列キーを返す。非捕獲手は`None`を返す。
 fn move_order_key(position: &Position, mv: Move) -> Option<MoveOrderKey> {
     let captured_value: i32 = position
         .captured_squares(mv)
@@ -685,6 +740,11 @@ fn move_order_key(position: &Position, mv: Move) -> Option<MoveOrderKey> {
     })
 }
 
+/// 指定升の駒種を返す。
+///
+/// # Panics
+///
+/// 升に駒がない場合にパニックする。
 fn piece_kind_at(position: &Position, square: crate::Square) -> PieceKind {
     position
         .piece_at(square)

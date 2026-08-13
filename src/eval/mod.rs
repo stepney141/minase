@@ -53,6 +53,7 @@ const ROYAL_PST: [i32; BOARD_SQUARE_COUNT] = build_royal_pst();
 /// 獅子と奔王の中央性を評価する先手用PST。
 const CENTRAL_PST: [i32; BOARD_SQUARE_COUNT] = build_central_pst();
 
+/// 前進PSTを作る。段が進むごとに1升あたり2の等差で加点する。
 const fn build_forward_pst() -> [i32; BOARD_SQUARE_COUNT] {
     let mut table = [0; BOARD_SQUARE_COUNT];
     let mut index = 0;
@@ -63,6 +64,7 @@ const fn build_forward_pst() -> [i32; BOARD_SQUARE_COUNT] {
     table
 }
 
+/// 王駒PSTを作る。最下段16、その1段前10、以遠は0を与える。
 const fn build_royal_pst() -> [i32; BOARD_SQUARE_COUNT] {
     let mut table = [0; BOARD_SQUARE_COUNT];
     let mut index = 0;
@@ -77,12 +79,14 @@ const fn build_royal_pst() -> [i32; BOARD_SQUARE_COUNT] {
     table
 }
 
+/// 中央性PSTを作る。盤中心へのチェビシェフ距離に応じて最大12を加点する。
 const fn build_central_pst() -> [i32; BOARD_SQUARE_COUNT] {
     let mut table = [0; BOARD_SQUARE_COUNT];
     let mut index = 0;
     while index < BOARD_SQUARE_COUNT {
         let file = index % BOARD_FILES as usize;
         let rank = index / BOARD_FILES as usize;
+        // 盤中心は升間にあるため、座標を2倍して中心11との距離を整数で測る。
         let file_distance = (file * 2).abs_diff(11);
         let rank_distance = (rank * 2).abs_diff(11);
         let distance = if file_distance > rank_distance {
@@ -133,6 +137,7 @@ pub fn evaluate(position: &Position) -> i32 {
     side_score.clamp(-EVALUATION_LIMIT, EVALUATION_LIMIT)
 }
 
+/// 駒種に応じたPSTの加点を、後手は盤を上下反転した先手視点で返す。
 fn positional_value(kind: PieceKind, color: Color, square: Square) -> i32 {
     let black_rank = match color {
         Color::Black => square.rank(),
