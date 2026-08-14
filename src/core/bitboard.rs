@@ -264,34 +264,155 @@ impl IntoIterator for &Bitboard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::square::BOARD_SQUARE_COUNT;
 
-    #[test]
-    fn all_public_construction_masks_padding() {
-        assert_eq!(core::mem::size_of::<Bitboard>(), 24);
-        assert_eq!(Bitboard::FULL.popcount(), 144);
-        assert_eq!(Bitboard::from_words([u64::MAX; 3]), Bitboard::FULL);
-        assert_eq!(!Bitboard::EMPTY, Bitboard::FULL);
-        assert_eq!(!Bitboard::FULL, Bitboard::EMPTY);
+    /// 決定的に構成した検査用の升集合標本を返す。空集合・全集合・単升・
+    /// 構造的な部分集合・擬似乱数集合を含む。
+    fn sample_sets() -> Vec<Bitboard> {
+        let corner_squares = [
+            Square::new(0, 0).unwrap(),
+            Square::new(11, 0).unwrap(),
+            Square::new(0, 11).unwrap(),
+            Square::new(11, 11).unwrap(),
+            Square::new(5, 6).unwrap(),
+        ];
+        let mut sets = vec![Bitboard::EMPTY, Bitboard::FULL];
+        sets.extend(corner_squares.map(Bitboard::from_square));
+        sets.push(Bitboard::from_squares(
+            Square::all().filter(|square| square.rank() == 0),
+        ));
+        sets.push(Bitboard::from_squares(
+            Square::all().filter(|square| square.file() == 11),
+        ));
+        sets.push(Bitboard::from_squares(
+            Square::all().filter(|square| square.dense_index() % 2 == 0),
+        ));
+        // 旧テスト資産のシード系列から派生した決定的な擬似乱数集合。
+        let mut state = 0x5a4f_4252_4953_5401_u64;
+        for _ in 0..3 {
+            let members = Square::all()
+                .filter(|_| {
+                    state = state
+                        .wrapping_mul(2_862_933_555_777_941_757)
+                        .wrapping_add(3_037_000_493);
+                    state & 1 == 0
+                })
+                .collect::<Vec<_>>();
+            sets.push(Bitboard::from_squares(members));
+        }
+        sets
     }
 
+    // 実装契約(D4-IMP-05・D4-IMP-01の基盤): ビットボードは升の集合として振る舞う。
+    // 追加・除去・所属・要素数・構築の各操作が集合の公理と一致し、内部語構成には依存しない。
     #[test]
-    fn every_square_can_be_set_toggled_and_cleared() {
+    fn bitboard_acts_as_the_set_of_its_squares() {
+        assert!(Bitboard::EMPTY.is_empty());
+        assert_eq!(Bitboard::EMPTY.popcount(), 0);
+        assert_eq!(Bitboard::FULL.popcount() as usize, BOARD_SQUARE_COUNT);
+        for square in Square::all() {
+            assert!(!Bitboard::EMPTY.contains(square));
+            assert!(Bitboard::FULL.contains(square));
+        }
+
         for square in Square::all() {
             let mut board = Bitboard::EMPTY;
             board.set(square);
             assert!(board.contains(square));
-            board ^= Bitboard::from_square(square);
-            assert!(board.is_empty());
+            assert_eq!(board.popcount(), 1);
+            assert_eq!(board, Bitboard::from_square(square));
+            // 追加は冪等、除去は逆操作、不在升の除去は無作用。
             board.set(square);
+            assert_eq!(board.popcount(), 1);
+            board.clear(square);
+            assert!(board.is_empty());
             board.clear(square);
             assert!(board.is_empty());
         }
+
+        for set in sample_sets() {
+            // from_squaresは列挙した升をちょうど含む集合を作る。
+            assert_eq!(Bitboard::from_squares(set.iter()), set);
+            // 生ワードの往復は恒等である(語の構成自体は仮定しない)。
+            assert_eq!(Bitboard::from_words(*set.words()), set);
+            // 要素数は所属する升の個数と一致する。
+            let member_count = Square::all().filter(|&square| set.contains(square)).count();
+            assert_eq!(set.popcount() as usize, member_count);
+        }
     }
 
+    // 実装契約: ビット演算は升ごとの集合演算(和・積・対称差・補)と一致し、
+    // 補集合は144升の宇宙に閉じる。intersectsは共通要素の存在と同値である。
     #[test]
-    fn iteration_is_complete_and_ordered() {
-        let squares: Vec<_> = Bitboard::FULL.iter().collect();
-        assert_eq!(squares.len(), 144);
-        assert!(squares.windows(2).all(|pair| pair[0] < pair[1]));
+    fn bitwise_operators_match_elementwise_set_operations() {
+        let sets = sample_sets();
+        for &a in &sets {
+            // 補集合: 全升で所属が反転し、宇宙の外に要素を作らない。
+            let complement = !a;
+            for square in Square::all() {
+                assert_eq!(complement.contains(square), !a.contains(square));
+            }
+            assert_eq!(
+                complement.popcount() + a.popcount(),
+                Bitboard::FULL.popcount()
+            );
+            assert_eq!(!complement, a, "二重補集合は恒等");
+
+            for &b in &sets {
+                for square in Square::all() {
+                    assert_eq!(
+                        (a | b).contains(square),
+                        a.contains(square) || b.contains(square)
+                    );
+                    assert_eq!(
+                        (a & b).contains(square),
+                        a.contains(square) && b.contains(square)
+                    );
+                    assert_eq!(
+                        (a ^ b).contains(square),
+                        a.contains(square) != b.contains(square)
+                    );
+                }
+                assert_eq!(a.intersects(b), !(a & b).is_empty());
+            }
+            assert_eq!(a ^ a, Bitboard::EMPTY);
+        }
+    }
+
+    // 実装契約: 走査は含まれる升をちょうど1回ずつ、Squareの全順序の昇順に返す。
+    // lsb/msbは走査の両端、pop_lsb/pop_msbによる取り尽くしも同じ列を返す。
+    #[test]
+    fn iteration_yields_each_contained_square_exactly_once_in_order() {
+        for set in sample_sets() {
+            let squares: Vec<_> = set.iter().collect();
+            assert_eq!(squares.len(), set.popcount() as usize);
+            assert!(squares.iter().all(|&square| set.contains(square)));
+            assert!(
+                squares.windows(2).all(|pair| pair[0] < pair[1]),
+                "昇順かつ重複なし"
+            );
+            assert_eq!(set.lsb(), squares.first().copied());
+            assert_eq!(set.msb(), squares.last().copied());
+
+            let mut ascending = set;
+            let mut popped = Vec::new();
+            while let Some(square) = ascending.pop_lsb() {
+                popped.push(square);
+            }
+            assert!(ascending.is_empty());
+            assert_eq!(popped, squares);
+
+            let mut descending = set;
+            let mut popped_back = Vec::new();
+            while let Some(square) = descending.pop_msb() {
+                popped_back.push(square);
+            }
+            popped_back.reverse();
+            assert_eq!(popped_back, squares);
+
+            let mut reversed: Vec<_> = set.iter().rev().collect();
+            reversed.reverse();
+            assert_eq!(reversed, squares);
+        }
     }
 }

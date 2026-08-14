@@ -196,62 +196,300 @@ fn square_to_text(square: Square) -> String {
 mod tests {
     use super::*;
     use crate::core::movegen::MoveGenerator;
-    use crate::core::piece::{Color, PieceCode, PieceKind};
-    use crate::core::position::PositionBuilder;
+    use crate::core::piece::{Color, PieceKind};
     use crate::notation::usi;
-    use crate::test_util::sq;
+    use crate::test_util::{position, sq};
 
-    fn generated(position: &Position) -> Vec<Move> {
+    fn generated(pos: &Position) -> Vec<Move> {
         let mut moves = Vec::new();
-        MoveGenerator::standard().generate_moves(position, &mut moves);
+        MoveGenerator::standard().generate_moves(pos, &mut moves);
         moves
     }
 
     fn single_piece_position(color: Color, kind: PieceKind, from: Square) -> Position {
-        let mut builder = PositionBuilder::new(color);
-        builder.put(from, PieceCode::new(color, kind)).unwrap();
-        builder.finish().unwrap()
+        position(color, &[(from, color, kind)])
     }
 
-    fn assert_all_moves_round_trip(position: &Position) {
-        let moves = generated(position);
-        assert!(!moves.is_empty());
-
-        for mv in moves {
-            let rendered = legs(mv);
-            if mv.mid.is_none() && mv.to == mv.from {
-                assert_eq!(rendered, ["@@@@"]);
-            } else {
-                let wire = rendered.concat();
-                assert_eq!(parse(position, &wire), Ok(mv), "text={wire}");
-            }
+    fn canonical_jitto(from: Square) -> Move {
+        Move {
+            from,
+            mid: None,
+            to: from,
+            promote: false,
         }
     }
 
+    // D5-CECP-01: CECP升名は筋英字a〜l＋段数字1〜12で、段1が先手側最下段
+    // （[CECP]第5章、[PL]「Move文字列表記2形式」）。10段盤の0始まり特例は12段の中将棋に
+    // 適用しない（[HACHU]第6節）。
     #[test]
-    fn every_legal_move_round_trips_in_representative_positions() {
-        let mut special_builder = PositionBuilder::new(Color::Black);
-        for (square, color, kind) in [
-            (sq(5, 5), Color::Black, PieceKind::Lion),
-            (sq(1, 1), Color::Black, PieceKind::HornedFalcon),
-            (sq(9, 1), Color::Black, PieceKind::SoaringEagle),
-            (sq(5, 6), Color::White, PieceKind::Pawn),
-            (sq(6, 6), Color::White, PieceKind::SilverGeneral),
-            (sq(1, 2), Color::White, PieceKind::Pawn),
-            (sq(8, 2), Color::White, PieceKind::Pawn),
-        ] {
-            special_builder
-                .put(square, PieceCode::new(color, kind))
-                .unwrap();
+    fn cecp_squares_cover_all_144_squares_and_correspond_to_usi_names() {
+        for square in Square::all() {
+            // 筋英字 = 'a' + 内部file、段番号 = 内部rank + 1。
+            let expected = format!("{}{}", char::from(b'a' + square.file()), square.rank() + 1);
+            assert_eq!(square_to_text(square), expected);
+            let (parsed, rest) = parse_square_prefix(&expected, 1, 1).unwrap();
+            assert_eq!(parsed, square);
+            assert!(rest.is_empty());
         }
-        let special = special_builder.finish().unwrap();
 
-        let mut promotion_builder = PositionBuilder::new(Color::Black);
-        promotion_builder
-            .put(sq(4, 7), PieceCode::new(Color::Black, PieceKind::Pawn))
-            .unwrap();
-        let promotion = promotion_builder.finish().unwrap();
+        // 引き継ぎ資産: USI 7g7d ＝ CECP f6f9（同一Moveの両表記。[CECP]第5章「筋aの左右の
+        // 向き」のHaChu内蔵FENとlishogi初期SFENの盤面文字列一致からの導出）。
+        let empty = Position::empty(Color::Black);
+        let mv = Move {
+            from: sq(5, 5),
+            mid: None,
+            to: sq(5, 8),
+            promote: false,
+        };
+        assert_eq!(usi::text(&empty, mv), "7g7d");
+        assert_eq!(legs(mv), ["f6f9"]);
+        assert_eq!(parse(&empty, "f6f9"), Ok(mv));
 
+        // 2桁段（a10〜l12）の解析。
+        assert_eq!(
+            parse(&empty, "a10a11"),
+            Ok(Move {
+                from: sq(0, 9),
+                mid: None,
+                to: sq(0, 10),
+                promote: false,
+            })
+        );
+        // 盤外の升名の拒否。
+        for invalid in ["a0b1", "a13b1", "m1a1", "e01d1"] {
+            assert!(
+                matches!(parse(&empty, invalid), Err(CecpError::InvalidSquare { .. })),
+                "{invalid}"
+            );
+        }
+    }
+
+    // D5-CECP-02: 受信はコンマ区切りの1レグまたは2レグで、第2レグは第1レグの終点から
+    // 始まる（[PL]「フェーズ5の確定設計」、[CECP]第5章「複数レグ指し手」）。
+    #[test]
+    fn comma_separated_legs_parse_with_continuity() {
+        // d6とg7に相手駒を置き、2段階捕獲と居喰いを実経路で受ける。
+        let board = position(
+            Color::Black,
+            &[
+                (sq(3, 5), Color::White, PieceKind::Pawn),
+                (sq(6, 6), Color::White, PieceKind::Pawn),
+            ],
+        );
+
+        // 1レグはmid: None相当。
+        assert_eq!(
+            parse(&board, "e6c6"),
+            Ok(Move {
+                from: sq(4, 5),
+                mid: None,
+                to: sq(2, 5),
+                promote: false,
+            })
+        );
+        // 2レグは第1レグ終点を経由する2段階移動。
+        assert_eq!(
+            parse(&board, "e6d6,d6c6"),
+            Ok(Move {
+                from: sq(4, 5),
+                mid: Some(sq(3, 5)),
+                to: sq(2, 5),
+                promote: false,
+            })
+        );
+        // 居喰いの2レグ表記（[HACHU]第7節の実例）。
+        assert_eq!(
+            parse(&board, "f6g7,g7f6"),
+            Ok(Move {
+                from: sq(5, 5),
+                mid: Some(sq(6, 6)),
+                to: sq(5, 5),
+                promote: false,
+            })
+        );
+
+        // レグ不連続の拒否。
+        assert_eq!(parse(&board, "e6d6,c6b6"), Err(CecpError::LegDiscontinuity));
+        // 3レグ以上の拒否。関数契約は1〜2レグの解析だけを定め、中将棋では2レグで足りる
+        // （[CECP]第5章）。明文の拒否規定はなく実装契約である（SU-5）。
+        assert_eq!(
+            parse(&board, "e6d6,d6c6,c6b6"),
+            Err(CecpError::InvalidLegCount { found: 3 })
+        );
+        // 空レグの拒否。
+        for invalid in ["e6d6,", ",d6e6"] {
+            assert!(parse(&board, invalid).is_err(), "{invalid}");
+        }
+    }
+
+    // D5-CECP-03: 送信はmid無しが1行、mid有りが2行（非最終レグ末尾コンマ）、正準じっとが
+    // `@@@@`の1行（[PL]「フェーズ5の確定設計」、[CECP]第5章、[HACHU]第8節。引き継ぎ資産）。
+    #[test]
+    fn legs_output_splits_two_stage_moves_and_writes_jitto_as_null_move() {
+        assert_eq!(
+            legs(Move {
+                from: sq(5, 5),
+                mid: None,
+                to: sq(5, 8),
+                promote: false,
+            }),
+            ["f6f9"]
+        );
+        // 2段階捕獲: 非最終レグだけが末尾コンマを持つ。
+        assert_eq!(
+            legs(Move {
+                from: sq(4, 5),
+                mid: Some(sq(3, 5)),
+                to: sq(2, 5),
+                promote: false,
+            }),
+            ["e6d6,", "d6c6"]
+        );
+        // 居喰い。
+        assert_eq!(
+            legs(Move {
+                from: sq(4, 5),
+                mid: Some(sq(3, 5)),
+                to: sq(4, 5),
+                promote: false,
+            }),
+            ["e6d6,", "d6e6"]
+        );
+        // 正準じっとは`@@@@`の1行であり、往復2レグ（e6f6,＋f6e6）にはならない
+        // （HaChuは往復2レグ表記を生成も受理もしない。[HACHU]第8節）。
+        assert_eq!(legs(canonical_jitto(sq(4, 5))), ["@@@@"]);
+    }
+
+    // D5-CECP-04: 成り接尾辞`+`は最終レグの末尾だけに認め、`=`は不成として受理する。
+    // 送信では不成は接尾辞なしで、`=`を出力しない（[PL]「フェーズ5の確定設計」、
+    // [CECP]第5章「将棋式の成りと不成」）。
+    #[test]
+    fn promotion_suffix_attaches_to_the_final_leg_only() {
+        let empty = Position::empty(Color::Black);
+        let plain = Move {
+            from: sq(2, 3),
+            mid: None,
+            to: sq(2, 4),
+            promote: false,
+        };
+        let promoted = Move {
+            promote: true,
+            ..plain
+        };
+
+        assert_eq!(parse(&empty, "c4c5+"), Ok(promoted));
+        assert_eq!(parse(&empty, "c4c5="), Ok(plain));
+        assert_eq!(parse(&empty, "c4c5"), Ok(plain));
+        assert_eq!(legs(promoted), ["c4c5+"]);
+        assert_eq!(legs(plain), ["c4c5"]);
+
+        // 2レグでは`+`が最終レグの末尾にだけ付く。
+        let two_leg = Move {
+            from: sq(4, 5),
+            mid: Some(sq(3, 5)),
+            to: sq(2, 5),
+            promote: true,
+        };
+        let board = position(Color::Black, &[(sq(3, 5), Color::White, PieceKind::Pawn)]);
+        assert_eq!(legs(two_leg), ["e6d6,", "d6c6+"]);
+        assert_eq!(parse(&board, "e6d6,d6c6+"), Ok(two_leg));
+
+        // 非最終レグへの`+`と、HaChu式の寛容判定（改行・`=`以外をすべて成り扱い）は
+        // 採用しない（[HACHU]第6節。`+`・`=`・無印以外の接尾辞は拒否する）。
+        for invalid in ["e6d6+,d6c6", "e6d6=,d6c6", "e6d6,d6c6++", "e6d6?", "e6d6q"] {
+            assert!(parse(&board, invalid).is_err(), "{invalid}");
+        }
+
+        // 送信文字列に`=`は現れない。
+        for leg in legs(plain).into_iter().chain(legs(two_leg)) {
+            assert!(!leg.contains('='));
+        }
+    }
+
+    // D5-CECP-05: 表記層は`@@@@`を拒否する。合法手リストという局面文脈を要する解決は
+    // CECPプロトコルモジュール（D6の対象）の分担である（[PL]「フェーズ5の確定設計」）。
+    #[test]
+    fn null_move_input_is_rejected_by_the_notation_layer() {
+        let empty = Position::empty(Color::Black);
+        assert_eq!(parse(&empty, "@@@@"), Err(CecpError::MalformedJittoInput));
+        assert!(parse(&empty, "@@@@,f6e6").is_err());
+        // じっとに単一レグの綴りはない（HaChuも`@@@@`で符号化する。[HACHU]第8節）。
+        assert_eq!(parse(&empty, "e6e6"), Err(CecpError::InvalidJittoForm));
+    }
+
+    // D5-CECP-06: 中間升の扱いはUSI形式と同一契約であり、相手駒がなければmid: Noneへ
+    // 正規化し、始点＝終点は正準じっとへ潰す（[PL]「フェーズ5の確定設計」）。
+    #[test]
+    fn intermediate_normalization_matches_the_usi_contract() {
+        let from = sq(5, 5);
+        let mid = sq(6, 6);
+        let to = sq(7, 7);
+        let direct = Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        };
+
+        // 空升・自駒の経由升はmid: Noneへ正規化する。
+        let empty = Position::empty(Color::Black);
+        assert_eq!(parse(&empty, "f6g7,g7h8"), Ok(direct));
+        let friendly = position(Color::Black, &[(mid, Color::Black, PieceKind::Pawn)]);
+        assert_eq!(parse(&friendly, "f6g7,g7h8"), Ok(direct));
+        // 相手駒の経由升はmid: Someのまま保持する。
+        let enemy = position(Color::Black, &[(mid, Color::White, PieceKind::Pawn)]);
+        assert_eq!(
+            parse(&enemy, "f6g7,g7h8"),
+            Ok(Move {
+                mid: Some(mid),
+                ..direct
+            })
+        );
+
+        // 空升経由の往復2レグは正準じっとへ潰れる。HaChuが受理しない綴りをminaseは
+        // 受理して正準化する（表記差の吸収。[HACHU]第8節・第10章）。
+        assert_eq!(parse(&empty, "f6g7,g7f6"), Ok(canonical_jitto(from)));
+        // 相手駒経由の往復2レグは居喰いのままで、正準じっとにならない。
+        assert_eq!(
+            parse(&enemy, "f6g7,g7f6"),
+            Ok(Move {
+                from,
+                mid: Some(mid),
+                to: from,
+                promote: false,
+            })
+        );
+
+        // USI形式と同じ実経路の入力は同じ正準Moveへ落ちる（D5-USI-05と同一の正規化規則）。
+        assert_eq!(
+            usi::parse(&enemy, "7g6f5e").unwrap(),
+            parse(&enemy, "f6g7,g7h8").unwrap()
+        );
+        assert_eq!(
+            usi::parse(&empty, "7g6f5e").unwrap(),
+            parse(&empty, "f6g7,g7h8").unwrap()
+        );
+    }
+
+    // D5-CECP-07, D5-PROP-01, D5-PROP-02: じっと以外の全合法手について、legsの出力を
+    // そのまま連結した文字列をparseへ渡すとMove単位で一致する（[PL]「フェーズ5の確定
+    // 設計」）。じっとは`@@@@`が移動元を運ばないため往復対象外とし、解決はD6が担う。
+    #[test]
+    fn all_legal_moves_round_trip_via_concatenated_legs() {
+        let special = position(
+            Color::Black,
+            &[
+                (sq(5, 5), Color::Black, PieceKind::Lion),
+                (sq(1, 1), Color::Black, PieceKind::HornedFalcon),
+                (sq(9, 1), Color::Black, PieceKind::SoaringEagle),
+                (sq(5, 6), Color::White, PieceKind::Pawn),
+                (sq(6, 6), Color::White, PieceKind::SilverGeneral),
+                (sq(1, 2), Color::White, PieceKind::Pawn),
+                (sq(8, 2), Color::White, PieceKind::Pawn),
+            ],
+        );
+        let promotion = position(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]);
         let positions = [
             Position::initial(),
             special,
@@ -263,10 +501,23 @@ mod tests {
             promotion,
         ];
 
-        for position in &positions {
-            assert_all_moves_round_trip(position);
+        for pos in &positions {
+            let moves = generated(pos);
+            assert!(!moves.is_empty());
+            for mv in moves {
+                let rendered = legs(mv);
+                if mv.mid.is_none() && mv.to == mv.from {
+                    assert_eq!(rendered, ["@@@@"]);
+                } else {
+                    // 非最終レグが末尾コンマを持つため、連結だけで受信形式になる。
+                    let wire = rendered.concat();
+                    assert_eq!(parse(pos, &wire), Ok(mv), "{wire}");
+                }
+            }
         }
 
+        // カバレッジ空振り防止（D5-PROP-02）。居喰い（to == from かつ mid: Some）が
+        // じっとではなく往復対象に含まれることを、実在の断定で保証する。
         let special_moves = generated(&positions[1]);
         for origin in [sq(5, 5), sq(1, 1), sq(9, 1)] {
             assert!(
@@ -274,171 +525,20 @@ mod tests {
                     .iter()
                     .any(|mv| mv.from == origin && mv.mid.is_some() && mv.to != origin)
             );
+            assert!(
+                special_moves
+                    .iter()
+                    .any(|mv| mv.from == origin && mv.mid.is_some() && mv.to == origin)
+            );
+        }
+        for pos in &positions[2..=6] {
+            assert!(
+                generated(pos)
+                    .iter()
+                    .any(|mv| mv.mid.is_none() && mv.to == mv.from && !mv.promote)
+            );
         }
         assert!(generated(&positions[7]).iter().any(|mv| mv.promote));
-    }
-
-    #[test]
-    fn concrete_multileg_jump_and_suffix_examples_match() {
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(sq(3, 5), PieceCode::new(Color::White, PieceKind::Pawn))
-            .unwrap();
-        builder
-            .put(sq(6, 6), PieceCode::new(Color::White, PieceKind::Pawn))
-            .unwrap();
-        let position = builder.finish().unwrap();
-
-        let two_stage = Move {
-            from: sq(4, 5),
-            mid: Some(sq(3, 5)),
-            to: sq(2, 5),
-            promote: false,
-        };
-        assert_eq!(parse(&position, "e6d6,d6c6"), Ok(two_stage));
-        assert_eq!(legs(two_stage), ["e6d6,", "d6c6"]);
-
-        let tsukegui = Move {
-            from: sq(5, 5),
-            mid: Some(sq(6, 6)),
-            to: sq(5, 5),
-            promote: false,
-        };
-        assert_eq!(parse(&position, "f6g7,g7f6"), Ok(tsukegui));
-        assert_eq!(legs(tsukegui), ["f6g7,", "g7f6"]);
-
-        let direct_jump = Move {
-            from: sq(4, 5),
-            mid: None,
-            to: sq(2, 5),
-            promote: false,
-        };
-        assert_eq!(parse(&position, "e6c6"), Ok(direct_jump));
-        assert_eq!(legs(direct_jump), ["e6c6"]);
-
-        assert_eq!(parse(&position, "e6c6="), Ok(direct_jump));
-        assert_eq!(parse(&position, "e6c6"), Ok(direct_jump));
-        let promoted = Move {
-            promote: true,
-            ..direct_jump
-        };
-        assert_eq!(parse(&position, "e6c6+"), Ok(promoted));
-        assert_eq!(legs(promoted), ["e6c6+"]);
-    }
-
-    #[test]
-    fn intermediate_square_normalization_matches_occupancy() {
-        let from = sq(5, 5);
-        let mid = sq(6, 6);
-        let to = sq(7, 7);
-        let expected_without_mid = Move {
-            from,
-            mid: None,
-            to,
-            promote: false,
-        };
-
-        let empty = Position::empty(Color::Black);
-        assert_eq!(parse(&empty, "f6g7,g7h8"), Ok(expected_without_mid));
-
-        let mut friendly_builder = PositionBuilder::new(Color::Black);
-        friendly_builder
-            .put(mid, PieceCode::new(Color::Black, PieceKind::Pawn))
-            .unwrap();
-        let friendly = friendly_builder.finish().unwrap();
-        assert_eq!(parse(&friendly, "f6g7,g7h8"), Ok(expected_without_mid));
-
-        let mut enemy_builder = PositionBuilder::new(Color::Black);
-        enemy_builder
-            .put(mid, PieceCode::new(Color::White, PieceKind::Pawn))
-            .unwrap();
-        let enemy = enemy_builder.finish().unwrap();
-        assert_eq!(
-            parse(&enemy, "f6g7,g7h8"),
-            Ok(Move {
-                mid: Some(mid),
-                ..expected_without_mid
-            })
-        );
-    }
-
-    #[test]
-    fn empty_intermediate_return_normalizes_to_canonical_jitto() {
-        let position = Position::empty(Color::Black);
-        let jitto = Move {
-            from: sq(5, 5),
-            mid: None,
-            to: sq(5, 5),
-            promote: false,
-        };
-
-        assert_eq!(parse(&position, "f6g7,g7f6"), Ok(jitto));
-        assert_eq!(legs(jitto), ["@@@@"]);
-    }
-
-    #[test]
-    fn discontinuous_and_excess_legs_are_rejected() {
-        let position = Position::empty(Color::Black);
-
-        assert_eq!(
-            parse(&position, "e6d6,c6b6"),
-            Err(CecpError::LegDiscontinuity)
-        );
-        assert_eq!(
-            parse(&position, "e6d6,d6c6,c6b6"),
-            Err(CecpError::InvalidLegCount { found: 3 })
-        );
-    }
-
-    #[test]
-    fn malformed_jitto_forms_are_rejected() {
-        let position = Position::empty(Color::Black);
-
-        assert_eq!(parse(&position, "e6e6"), Err(CecpError::InvalidJittoForm));
-        assert_eq!(
-            parse(&position, "@@@@"),
-            Err(CecpError::MalformedJittoInput)
-        );
-    }
-
-    #[test]
-    fn invalid_square_names_are_rejected() {
-        let position = Position::empty(Color::Black);
-
-        for invalid in ["m1a1", "a0b1", "a13b1", "e01d1", "A1b1"] {
-            assert!(matches!(
-                parse(&position, invalid),
-                Err(CecpError::InvalidSquare { .. })
-            ));
-        }
-    }
-
-    #[test]
-    fn invalid_suffixes_are_rejected() {
-        let position = Position::empty(Color::Black);
-
-        for invalid in [
-            "e6d6+,d6c6",
-            "e6d6=,d6c6",
-            "e6d6,d6c6++",
-            "e6d6,d6c6=+",
-            "e6d6?",
-        ] {
-            assert_eq!(parse(&position, invalid), Err(CecpError::InvalidSuffix));
-        }
-    }
-
-    #[test]
-    fn usi_and_cecp_coordinates_describe_the_same_move() {
-        let position = Position::empty(Color::Black);
-        let mv = Move {
-            from: sq(5, 5),
-            mid: None,
-            to: sq(5, 8),
-            promote: false,
-        };
-
-        assert_eq!(usi::text(&position, mv), "7g7d");
-        assert_eq!(legs(mv), ["f6f9"]);
+        assert!(generated(&positions[7]).iter().any(|mv| !mv.promote));
     }
 }

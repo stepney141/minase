@@ -786,30 +786,28 @@ impl PositionBuilder {
 mod tests {
     use super::*;
     use crate::MoveGenerator;
-    use crate::test_util::sq;
+    use crate::test_util::{position as position_with_pieces, position_from_codes, sq};
 
-    fn assert_zobrist_matches(position: &Position) {
-        assert_eq!(position.zobrist(), position.recompute_zobrist());
+    /// 180度回転写像σ(D4マトリクスの座標規約)。内部0始まり座標では(11−筋,11−段)にあたる。
+    fn sigma(square: Square) -> Square {
+        sq(
+            BOARD_FILES - 1 - square.file(),
+            BOARD_RANKS - 1 - square.rank(),
+        )
     }
 
-    fn assert_rights_zobrist_matches(position: &Position) {
-        assert_eq!(
-            position.rights_zobrist(),
-            position.recompute_rights_zobrist()
-        );
-    }
-
-    fn position_with_pieces(
-        side_to_move: Color,
-        pieces: &[(Square, Color, PieceKind)],
-    ) -> Position {
+    /// 既存局面と同じ盤面を、指定手番・先獅子状態なしで直接構築し直す。
+    fn rebuild_board_with_side(source: &Position, side_to_move: Color) -> Position {
         let mut builder = PositionBuilder::new(side_to_move);
-        for &(square, color, kind) in pieces {
-            builder.put(square, PieceCode::new(color, kind)).unwrap();
+        for square in Square::all() {
+            if let Some(piece) = source.piece_at(square) {
+                builder.put(square, piece).unwrap();
+            }
         }
         builder.finish().unwrap()
     }
 
+    /// 非獅子(角行)が相手獅子を取った直後の局面と、獅子が取られた升を返す(第15条1項の前提)。
     fn position_after_non_lion_captures_lion() -> (Position, Square) {
         let captured_lion = sq(1, 1);
         let mut position = position_with_pieces(
@@ -820,779 +818,1115 @@ mod tests {
                 (sq(10, 10), Color::White, PieceKind::Pawn),
             ],
         );
-        position.make_move_unchecked(
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: captured_lion,
-                promote: false,
-            },
-            Rules::standard(),
-        );
+        position
+            .try_make_move(
+                Move {
+                    from: sq(0, 0),
+                    mid: None,
+                    to: captured_lion,
+                    promote: false,
+                },
+                &MoveGenerator::standard(),
+            )
+            .unwrap();
         (position, captured_lion)
     }
 
-    #[test]
-    fn empty_and_initial_positions_validate() {
-        let black_empty = Position::empty(Color::Black);
-        let white_empty = Position::empty(Color::White);
-        assert!(black_empty.validate().is_ok());
-        assert!(white_empty.validate().is_ok());
-        assert_zobrist_matches(&black_empty);
-        assert_zobrist_matches(&white_empty);
-        assert_rights_zobrist_matches(&black_empty);
-        assert_rights_zobrist_matches(&white_empty);
-
-        let initial = Position::initial();
-        assert!(initial.validate().is_ok());
-        assert_zobrist_matches(&initial);
-        assert_rights_zobrist_matches(&initial);
-        assert_eq!(initial.pieces_of(Color::Black).popcount(), 46);
-        assert_eq!(initial.pieces_of(Color::White).popcount(), 46);
-        assert_eq!(initial.occupied().popcount(), 92);
-    }
-
-    #[test]
-    fn articles_5_6_1_and_20_1_initial_position_has_black_to_move_and_one_royal_each() {
-        let initial = Position::initial();
-
-        assert_eq!(initial.side_to_move(), Color::Black);
-        assert_eq!(initial.royal_pieces(Color::Black).popcount(), 1);
-        assert_eq!(initial.royal_pieces(Color::White).popcount(), 1);
-    }
-
-    #[test]
-    fn initial_position_matches_rules_article_5_on_every_square() {
-        use Color::{Black, White};
+    /// 第5条の配置図の機械可読な写し(D4-005-01の期待表)。
+    /// 行は段一〜十二、列は配置図の印字順(筋12→筋1)で、内部座標では
+    /// 筋f・段rの升が(file=12−f, rank=12−r)にあたる。
+    fn article_5_expected_table() -> [[Option<(Color, PieceKind)>; 12]; 12] {
         use PieceKind::{
             Bishop, BlindTiger, CopperGeneral, DragonHorse, DragonKing, DrunkElephant,
             FerociousLeopard, FreeKing, GoBetween, GoldGeneral, King, Kirin, Lance, Lion, Pawn,
             Phoenix, ReverseChariot, Rook, SideMover, SilverGeneral, VerticalMover,
         };
+        let b = |kind| Some((Color::Black, kind));
+        let w = |kind| Some((Color::White, kind));
+        let n = None;
+        [
+            // 一段目: 香 猛 銅 銀 金 醉 玉 金 銀 銅 猛 香
+            [
+                w(Lance),
+                w(FerociousLeopard),
+                w(CopperGeneral),
+                w(SilverGeneral),
+                w(GoldGeneral),
+                w(DrunkElephant),
+                w(King),
+                w(GoldGeneral),
+                w(SilverGeneral),
+                w(CopperGeneral),
+                w(FerociousLeopard),
+                w(Lance),
+            ],
+            // 二段目: 反 ・ 角 ・ 盲 鳳 麒 盲 ・ 角 ・ 反
+            [
+                w(ReverseChariot),
+                n,
+                w(Bishop),
+                n,
+                w(BlindTiger),
+                w(Phoenix),
+                w(Kirin),
+                w(BlindTiger),
+                n,
+                w(Bishop),
+                n,
+                w(ReverseChariot),
+            ],
+            // 三段目: 横 竪 飛 馬 龍 奔 獅 龍 馬 飛 竪 横
+            [
+                w(SideMover),
+                w(VerticalMover),
+                w(Rook),
+                w(DragonHorse),
+                w(DragonKing),
+                w(FreeKing),
+                w(Lion),
+                w(DragonKing),
+                w(DragonHorse),
+                w(Rook),
+                w(VerticalMover),
+                w(SideMover),
+            ],
+            // 四段目: 歩×12
+            [w(Pawn); 12],
+            // 五段目: ・ ・ ・ 仲 ・ ・ ・ ・ 仲 ・ ・ ・
+            [n, n, n, w(GoBetween), n, n, n, n, w(GoBetween), n, n, n],
+            // 六段目・七段目: 空
+            [n; 12],
+            [n; 12],
+            // 八段目: ・ ・ ・ 仲 ・ ・ ・ ・ 仲 ・ ・ ・
+            [n, n, n, b(GoBetween), n, n, n, n, b(GoBetween), n, n, n],
+            // 九段目: 歩×12
+            [b(Pawn); 12],
+            // 十段目: 横 竪 飛 馬 龍 獅 奔 龍 馬 飛 竪 横
+            [
+                b(SideMover),
+                b(VerticalMover),
+                b(Rook),
+                b(DragonHorse),
+                b(DragonKing),
+                b(Lion),
+                b(FreeKing),
+                b(DragonKing),
+                b(DragonHorse),
+                b(Rook),
+                b(VerticalMover),
+                b(SideMover),
+            ],
+            // 十一段: 反 ・ 角 ・ 盲 麒 鳳 盲 ・ 角 ・ 反
+            [
+                b(ReverseChariot),
+                n,
+                b(Bishop),
+                n,
+                b(BlindTiger),
+                b(Kirin),
+                b(Phoenix),
+                b(BlindTiger),
+                n,
+                b(Bishop),
+                n,
+                b(ReverseChariot),
+            ],
+            // 十二段: 香 猛 銅 銀 金 王 醉 金 銀 銅 猛 香
+            [
+                b(Lance),
+                b(FerociousLeopard),
+                b(CopperGeneral),
+                b(SilverGeneral),
+                b(GoldGeneral),
+                b(King),
+                b(DrunkElephant),
+                b(GoldGeneral),
+                b(SilverGeneral),
+                b(CopperGeneral),
+                b(FerociousLeopard),
+                b(Lance),
+            ],
+        ]
+    }
 
-        let black = |kind| Some(PieceCode::new(Black, kind));
-        let white = |kind| Some(PieceCode::new(White, kind));
-        let expected_from_white_side = [
-            [
-                white(Lance),
-                white(FerociousLeopard),
-                white(CopperGeneral),
-                white(SilverGeneral),
-                white(GoldGeneral),
-                white(DrunkElephant),
-                white(King),
-                white(GoldGeneral),
-                white(SilverGeneral),
-                white(CopperGeneral),
-                white(FerociousLeopard),
-                white(Lance),
-            ],
-            [
-                white(ReverseChariot),
-                None,
-                white(Bishop),
-                None,
-                white(BlindTiger),
-                white(Phoenix),
-                white(Kirin),
-                white(BlindTiger),
-                None,
-                white(Bishop),
-                None,
-                white(ReverseChariot),
-            ],
-            [
-                white(SideMover),
-                white(VerticalMover),
-                white(Rook),
-                white(DragonHorse),
-                white(DragonKing),
-                white(FreeKing),
-                white(Lion),
-                white(DragonKing),
-                white(DragonHorse),
-                white(Rook),
-                white(VerticalMover),
-                white(SideMover),
-            ],
-            [white(Pawn); BOARD_FILES as usize],
-            [
-                None,
-                None,
-                None,
-                white(GoBetween),
-                None,
-                None,
-                None,
-                None,
-                white(GoBetween),
-                None,
-                None,
-                None,
-            ],
-            [None; BOARD_FILES as usize],
-            [None; BOARD_FILES as usize],
-            [
-                None,
-                None,
-                None,
-                black(GoBetween),
-                None,
-                None,
-                None,
-                None,
-                black(GoBetween),
-                None,
-                None,
-                None,
-            ],
-            [black(Pawn); BOARD_FILES as usize],
-            [
-                black(SideMover),
-                black(VerticalMover),
-                black(Rook),
-                black(DragonHorse),
-                black(DragonKing),
-                black(Lion),
-                black(FreeKing),
-                black(DragonKing),
-                black(DragonHorse),
-                black(Rook),
-                black(VerticalMover),
-                black(SideMover),
-            ],
-            [
-                black(ReverseChariot),
-                None,
-                black(Bishop),
-                None,
-                black(BlindTiger),
-                black(Kirin),
-                black(Phoenix),
-                black(BlindTiger),
-                None,
-                black(Bishop),
-                None,
-                black(ReverseChariot),
-            ],
-            [
-                black(Lance),
-                black(FerociousLeopard),
-                black(CopperGeneral),
-                black(SilverGeneral),
-                black(GoldGeneral),
-                black(King),
-                black(DrunkElephant),
-                black(GoldGeneral),
-                black(SilverGeneral),
-                black(CopperGeneral),
-                black(FerociousLeopard),
-                black(Lance),
-            ],
-        ];
+    // 初期配置は第5条の配置図と全144升で完全に一致し、全駒が未成である(D4-005-01)。
+    #[test]
+    fn article_5_initial_position_matches_the_full_144_square_table() {
         let initial = Position::initial();
+        let table = article_5_expected_table();
 
-        for (diagram_rank, expected_rank) in expected_from_white_side.into_iter().enumerate() {
-            let internal_rank = BOARD_RANKS - 1 - diagram_rank as u8;
-            for (file, expected_piece) in expected_rank.into_iter().enumerate() {
-                assert_eq!(
-                    initial.piece_at(sq(file as u8, internal_rank)),
-                    expected_piece,
-                    "RULES.md 第5条の{}段目{}筋",
-                    diagram_rank + 1,
-                    file + 1,
-                );
+        for (row, expected_rank) in table.into_iter().enumerate() {
+            // 段d(一=1)は内部rank 12−d、印字列の左からi番目(筋12−i)は内部file iにあたる。
+            let rank = BOARD_RANKS - 1 - row as u8;
+            for (file, expected) in expected_rank.into_iter().enumerate() {
+                let square = sq(file as u8, rank);
+                let actual = initial
+                    .piece_at(square)
+                    .map(|piece| (piece.color().unwrap(), piece.kind().unwrap()));
+                assert_eq!(actual, expected, "第5条の{}段目・筋{}", row + 1, 12 - file);
+                // 初期局面に成駒は存在しない(第4条3項)。
+                if let Some(piece) = initial.piece_at(square) {
+                    assert!(!piece.is_promoted());
+                }
             }
         }
     }
 
+    // 初期局面の駒数は各側46枚・計92枚・空升52升で、どの列挙経路でも一致する
+    // (第4条2項、D4-004-02)。駒種別内訳はD4-005-01の検算に一致する。
     #[test]
-    fn non_lion_capture_of_lion_sets_capture_square() {
-        let (position, captured_lion) = position_after_non_lion_captures_lion();
+    fn article_4_2_initial_piece_counts_match_on_every_enumeration_path() {
+        let initial = Position::initial();
+        assert_eq!(initial.occupied().popcount(), 92);
+        assert_eq!(initial.pieces_of(Color::Black).popcount(), 46);
+        assert_eq!(initial.pieces_of(Color::White).popcount(), 46);
 
+        for color in Color::ALL {
+            let scanned = Square::all()
+                .filter(|&square| {
+                    initial.piece_at(square).and_then(PieceCode::color) == Some(color)
+                })
+                .count();
+            assert_eq!(scanned, 46);
+            let by_kind_total: u32 = PieceKind::ALL
+                .iter()
+                .map(|&kind| initial.pieces_of_kind(color, kind).popcount())
+                .sum();
+            assert_eq!(by_kind_total, 46);
+        }
+        let empty_squares = Square::all()
+            .filter(|&square| initial.piece_at(square).is_none())
+            .count();
+        assert_eq!(empty_squares, 144 - 92);
+
+        // 各側の駒種別内訳(第5条配置図の検算)。
+        let expected_kind_counts = [
+            (PieceKind::Pawn, 12),
+            (PieceKind::GoBetween, 2),
+            (PieceKind::Lance, 2),
+            (PieceKind::FerociousLeopard, 2),
+            (PieceKind::CopperGeneral, 2),
+            (PieceKind::SilverGeneral, 2),
+            (PieceKind::GoldGeneral, 2),
+            (PieceKind::DrunkElephant, 1),
+            (PieceKind::King, 1),
+            (PieceKind::ReverseChariot, 2),
+            (PieceKind::Bishop, 2),
+            (PieceKind::BlindTiger, 2),
+            (PieceKind::Phoenix, 1),
+            (PieceKind::Kirin, 1),
+            (PieceKind::SideMover, 2),
+            (PieceKind::VerticalMover, 2),
+            (PieceKind::Rook, 2),
+            (PieceKind::DragonHorse, 2),
+            (PieceKind::DragonKing, 2),
+            (PieceKind::FreeKing, 1),
+            (PieceKind::Lion, 1),
+        ];
+        for color in Color::ALL {
+            for &(kind, count) in &expected_kind_counts {
+                assert_eq!(
+                    initial.pieces_of_kind(color, kind).popcount(),
+                    count,
+                    "{color:?} {kind:?}"
+                );
+            }
+            // 成駒としてのみ現れる8種(第10条)は初期盤上に存在しない。
+            for kind in [
+                PieceKind::CrownPrince,
+                PieceKind::WhiteHorse,
+                PieceKind::Whale,
+                PieceKind::FlyingOx,
+                PieceKind::FreeBoar,
+                PieceKind::FlyingStag,
+                PieceKind::HornedFalcon,
+                PieceKind::SoaringEagle,
+            ] {
+                assert!(initial.pieces_of_kind(color, kind).is_empty());
+            }
+        }
+    }
+
+    // 初期局面の王駒は先手が王将7十二、後手が玉将6一の各1枚で、太子は存在しない
+    // (第5条・第20条1項、D4-005-02・D4-020-01)。王駒の判定は駒種だけで決まる(第3条4項)。
+    #[test]
+    fn articles_5_and_20_1_each_side_starts_with_exactly_one_royal_king() {
+        let initial = Position::initial();
+        // 7十二は内部(5,0)、6一は内部(6,11)にあたる(座標規約はD4マトリクス)。
+        let expected = [(Color::Black, sq(5, 0)), (Color::White, sq(6, 11))];
+        for (color, square) in expected {
+            assert_eq!(
+                initial.royal_pieces(color).iter().collect::<Vec<_>>(),
+                vec![square]
+            );
+            let piece = initial.piece_at(square).unwrap();
+            assert_eq!(piece.kind(), Some(PieceKind::King));
+            assert_eq!(piece.color(), Some(color));
+            assert!(
+                initial
+                    .pieces_of_kind(color, PieceKind::CrownPrince)
+                    .is_empty()
+            );
+        }
+
+        // 王駒(王将・玉将・太子)の判定は位置に依存せず、醉象は王駒ではない
+        // (第3条4項、第20条2項: 醉象は成って太子となったときに初めて王駒となる)。
+        let custom = position_from_codes(
+            Color::Black,
+            &[
+                (sq(3, 3), PieceCode::new(Color::Black, PieceKind::King)),
+                (
+                    sq(7, 7),
+                    PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap(),
+                ),
+                (
+                    sq(9, 9),
+                    PieceCode::new(Color::Black, PieceKind::DrunkElephant),
+                ),
+            ],
+        );
         assert_eq!(
-            position.lion_taken_by_non_lion(),
-            Some(LionTrigger {
-                square: captured_lion,
-                by_kirin_promotion: false,
-            })
+            custom.royal_pieces(Color::Black),
+            Bitboard::from_squares([sq(3, 3), sq(7, 7)])
         );
     }
 
+    // 初期配置は王駒の名称を除きσ(180度回転)で対称である(第5条、D4-005-03)。
+    // 左右鏡映では対称にならない行があるため、検査は必ずσで行う。
     #[test]
-    fn lion_capture_of_lion_does_not_set_capture_square() {
-        let mut position = position_with_pieces(
+    fn article_5_initial_position_is_symmetric_under_180_degree_rotation() {
+        let initial = Position::initial();
+        for square in Square::all() {
+            match (initial.piece_at(square), initial.piece_at(sigma(square))) {
+                (None, None) => {}
+                (Some(piece), Some(mirrored)) => {
+                    // 所有者は反転し、駒種と成否は一致する。王将と玉将の名称差は
+                    // 駒種上区別しない(第5条、SPEC_UNCLEAR SU-D4-3)。
+                    assert_eq!(mirrored.color(), piece.color().map(Color::opposite));
+                    assert_eq!(mirrored.kind(), piece.kind());
+                    assert_eq!(mirrored.is_promoted(), piece.is_promoted());
+                }
+                (own, mirrored) => {
+                    panic!("σ対称でない: {square:?} => {own:?} / {mirrored:?}")
+                }
+            }
+        }
+    }
+
+    // 先手から着手し、1手ごとに手番が相手へ移る(第6条1項、D4-006-01)。
+    // 獅子の2段階移動もじっとも全体で1手であり、手番移動は1回だけである
+    // (第3条7項・13項、第6条4項、第12条11項)。
+    #[test]
+    fn article_6_1_black_moves_first_and_the_turn_passes_once_per_move() {
+        let generator = MoveGenerator::standard();
+        let mut game_position = Position::initial();
+        assert_eq!(game_position.side_to_move(), Color::Black);
+
+        let mut moves = Vec::new();
+        generator.generate_moves(&game_position, &mut moves);
+        game_position.try_make_move(moves[0], &generator).unwrap();
+        assert_eq!(game_position.side_to_move(), Color::White);
+
+        moves.clear();
+        generator.generate_moves(&game_position, &mut moves);
+        game_position.try_make_move(moves[0], &generator).unwrap();
+        assert_eq!(game_position.side_to_move(), Color::Black);
+
+        // 獅子の2段階移動(第1段階で捕獲する経由升つきの手)は全体で1手である。
+        let lion_home = sq(5, 5);
+        let capture_position = position_with_pieces(
+            Color::Black,
+            &[
+                (lion_home, Color::Black, PieceKind::Lion),
+                (sq(5, 6), Color::White, PieceKind::Pawn),
+            ],
+        );
+        let mut capture_moves = Vec::new();
+        generator.generate_moves(&capture_position, &mut capture_moves);
+        let two_stage = capture_moves
+            .iter()
+            .copied()
+            .find(|mv| mv.mid == Some(sq(5, 6)))
+            .expect("経由升で捕獲する2段階移動が生成される");
+        let mut after_two_stage = capture_position.clone();
+        after_two_stage
+            .try_make_move(two_stage, &generator)
+            .unwrap();
+        assert_eq!(after_two_stage.side_to_move(), Color::White);
+
+        // じっとも合法な1手であり、適用後に手番が相手へ移る。
+        let lone_lion =
+            position_with_pieces(Color::Black, &[(lion_home, Color::Black, PieceKind::Lion)]);
+        let mut lone_moves = Vec::new();
+        generator.generate_moves(&lone_lion, &mut lone_moves);
+        let jitto = lone_moves
+            .iter()
+            .copied()
+            .find(|mv| mv.to == lion_home)
+            .expect("じっとが生成される(第12条9項)");
+        let mut after_jitto = lone_lion.clone();
+        after_jitto.try_make_move(jitto, &generator).unwrap();
+        assert_eq!(after_jitto.side_to_move(), Color::White);
+    }
+
+    // 取った駒は盤上から除かれ再使用されず、持ち駒に相当する観測状態は存在しない
+    // (第4条4項・5項、D4-004-04)。2段階移動の2枚捕獲では総駒数が2減る(第12条4項)。
+    #[test]
+    fn article_4_4_captured_pieces_are_removed_and_never_reused() {
+        let generator = MoveGenerator::standard();
+
+        // 単独捕獲: 総駒数がちょうど1減る。
+        let mut single = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(4, 4), Color::Black, PieceKind::Rook),
+                (sq(4, 9), Color::White, PieceKind::Pawn),
+            ],
+        );
+        assert_eq!(single.occupied().popcount(), 2);
+        single
+            .try_make_move(
+                Move {
+                    from: sq(4, 4),
+                    mid: None,
+                    to: sq(4, 9),
+                    promote: false,
+                },
+                &generator,
+            )
+            .unwrap();
+        assert_eq!(single.occupied().popcount(), 1);
+        assert!(single.pieces_of(Color::White).is_empty());
+        assert_eq!(
+            single.piece_at(sq(4, 9)).and_then(PieceCode::kind),
+            Some(PieceKind::Rook)
+        );
+
+        // 獅子の2枚捕獲: 総駒数がちょうど2減る。
+        let mut double = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(5, 5), Color::Black, PieceKind::Lion),
+                (sq(5, 6), Color::White, PieceKind::Pawn),
+                (sq(5, 7), Color::White, PieceKind::Pawn),
+            ],
+        );
+        assert_eq!(double.occupied().popcount(), 3);
+        double
+            .try_make_move(
+                Move {
+                    from: sq(5, 5),
+                    mid: Some(sq(5, 6)),
+                    to: sq(5, 7),
+                    promote: false,
+                },
+                &generator,
+            )
+            .unwrap();
+        assert_eq!(double.occupied().popcount(), 1);
+        assert!(double.pieces_of(Color::White).is_empty());
+
+        // 取られた駒は配置・キーのどの観測にも痕跡を残さない: 捕獲後の局面は
+        // 同じ配置を直接構築した局面と完全一致する(持ち駒集合は存在しない)。
+        let rebuilt =
+            position_with_pieces(Color::White, &[(sq(5, 7), Color::Black, PieceKind::Lion)]);
+        assert_eq!(double, rebuilt);
+        assert_eq!(double.zobrist(), rebuilt.zobrist());
+    }
+
+    // 局面キーは全駒の位置・種類・所有者・成否を区別する(第24条1項a・2項、D4-024-01)。
+    // 成否の区別は動きが同一の対(生の金将と歩兵の成駒など、第17条4項)にも及ぶ。
+    #[test]
+    fn article_24_1_a_key_distinguishes_placement_kind_owner_and_promotion() {
+        let anchor = [
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+        ];
+        let with = |extra: (Square, Color, PieceKind)| {
+            let mut pieces = anchor.to_vec();
+            pieces.push(extra);
+            position_with_pieces(Color::Black, &pieces)
+        };
+
+        // (1) 1枚の位置だけが異なる対。
+        assert_ne!(
+            with((sq(4, 4), Color::Black, PieceKind::GoldGeneral)).zobrist(),
+            with((sq(4, 5), Color::Black, PieceKind::GoldGeneral)).zobrist()
+        );
+        // (2) 同一升・同一所有者で駒種だけが異なる対。
+        assert_ne!(
+            with((sq(4, 4), Color::Black, PieceKind::GoldGeneral)).zobrist(),
+            with((sq(4, 4), Color::Black, PieceKind::SilverGeneral)).zobrist()
+        );
+        // (3) 同一升・同一駒種で所有者だけが異なる対。
+        assert_ne!(
+            with((sq(4, 4), Color::Black, PieceKind::Pawn)).zobrist(),
+            with((sq(4, 4), Color::White, PieceKind::Pawn)).zobrist()
+        );
+
+        // (4) 成否だけが異なる対: 生の金将と歩兵の成駒、生の獅子と麒麟の成駒、
+        // 生の醉象と仲人の成駒。
+        let anchor_codes = [
+            (sq(0, 0), PieceCode::new(Color::Black, PieceKind::King)),
+            (sq(11, 11), PieceCode::new(Color::White, PieceKind::King)),
+        ];
+        for kind in [
+            PieceKind::GoldGeneral,
+            PieceKind::Lion,
+            PieceKind::DrunkElephant,
+        ] {
+            let with_code = |code| {
+                let mut pieces = anchor_codes.to_vec();
+                pieces.push((sq(4, 4), code));
+                position_from_codes(Color::Black, &pieces)
+            };
+            assert_ne!(
+                with_code(PieceCode::new(Color::Black, kind)).zobrist(),
+                with_code(PieceCode::new_promoted(Color::Black, kind).unwrap()).zobrist(),
+                "{kind:?}"
+            );
+        }
+
+        // 逆に、構成要素がすべて一致する2局面はキーが一致する(構築順序を入れ替えて確認)。
+        let pieces = [
+            (sq(2, 2), Color::Black, PieceKind::Rook),
+            (sq(3, 8), Color::White, PieceKind::Bishop),
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+        ];
+        let mut reversed = pieces;
+        reversed.reverse();
+        let forward_position = position_with_pieces(Color::Black, &pieces);
+        let reversed_position = position_with_pieces(Color::Black, &reversed);
+        assert_eq!(forward_position, reversed_position);
+        assert_eq!(forward_position.zobrist(), reversed_position.zobrist());
+    }
+
+    // 局面キーは手番側を区別し、その寄与はどの盤面でも現れる(第24条1項b、D4-024-02)。
+    #[test]
+    fn article_24_1_b_key_distinguishes_side_to_move_on_any_board() {
+        assert_ne!(
+            Position::empty(Color::Black).zobrist(),
+            Position::empty(Color::White).zobrist()
+        );
+
+        let pieces = [
+            (sq(4, 4), Color::Black, PieceKind::King),
+            (sq(7, 7), Color::White, PieceKind::King),
+        ];
+        assert_ne!(
+            position_with_pieces(Color::Black, &pieces).zobrist(),
+            position_with_pieces(Color::White, &pieces).zobrist()
+        );
+
+        // 初期配置の盤面で手番だけを後手にした局面は、初期局面と同一局面ではない。
+        let initial = Position::initial();
+        let flipped = rebuild_board_with_side(&initial, Color::White);
+        assert!(Square::all().all(|square| initial.piece_at(square) == flipped.piece_at(square)));
+        assert_ne!(initial.zobrist(), flipped.zobrist());
+    }
+
+    // 局面キーは先獅子による直後の捕獲禁止の有無を反映する(第24条1項c、D4-024-03)。
+    #[test]
+    fn article_24_1_c_key_reflects_lion_recapture_state() {
+        let generator = MoveGenerator::standard();
+
+        // 非獅子が獅子を取った直後は、同一盤面・同一手番の禁止なし局面とキーが異なる。
+        let (with_trigger, _) = position_after_non_lion_captures_lion();
+        let same_board_without =
+            rebuild_board_with_side(&with_trigger, with_trigger.side_to_move());
+        assert!(
+            Square::all()
+                .all(|square| with_trigger.piece_at(square) == same_board_without.piece_at(square))
+        );
+        assert_ne!(with_trigger.zobrist(), same_board_without.zobrist());
+
+        // 獅子が獅子を取った場合は先獅子が成立せず(第15条6項)、禁止なしの直接構築と一致する。
+        let mut lion_takes_lion = position_with_pieces(
             Color::Black,
             &[
                 (sq(4, 4), Color::Black, PieceKind::Lion),
                 (sq(5, 4), Color::White, PieceKind::Lion),
             ],
         );
-        position.make_move_unchecked(
-            Move {
-                from: sq(4, 4),
-                mid: None,
-                to: sq(5, 4),
-                promote: false,
-            },
-            Rules::standard(),
+        lion_takes_lion
+            .try_make_move(
+                Move {
+                    from: sq(4, 4),
+                    mid: None,
+                    to: sq(5, 4),
+                    promote: false,
+                },
+                &generator,
+            )
+            .unwrap();
+        assert_eq!(
+            lion_takes_lion,
+            rebuild_board_with_side(&lion_takes_lion, Color::White)
         );
 
-        assert_eq!(position.lion_taken_by_non_lion(), None);
-    }
-
-    #[test]
-    fn kirin_promoting_to_lion_still_sets_capture_square() {
-        let captured_lion = sq(5, 8);
-        let mut position = position_with_pieces(
+        // 麒麟が獅子を取って同じ着手で成った場合、標準規則では先獅子が成立し得る(第15条7項)。
+        let mut kirin = position_with_pieces(
             Color::Black,
             &[
                 (sq(4, 7), Color::Black, PieceKind::Kirin),
-                (captured_lion, Color::White, PieceKind::Lion),
+                (sq(5, 8), Color::White, PieceKind::Lion),
             ],
         );
-        position.make_move_unchecked(
-            Move {
-                from: sq(4, 7),
-                mid: None,
-                to: captured_lion,
-                promote: true,
-            },
-            Rules::standard(),
-        );
-
-        assert_eq!(
-            position.lion_taken_by_non_lion(),
-            Some(LionTrigger {
-                square: captured_lion,
-                by_kirin_promotion: true,
-            })
-        );
-        assert_eq!(
-            position.piece_at(captured_lion),
-            PieceCode::new_promoted(Color::Black, PieceKind::Lion),
-        );
-    }
-
-    #[test]
-    fn extended_sfen_lion_capture_injection_validates_occupant_and_updates_zobrist() {
-        let own = sq(1, 1);
-        let empty = sq(2, 2);
-        let opponent = sq(3, 3);
-        let promoted_lion = sq(4, 4);
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(own, PieceCode::new(Color::Black, PieceKind::Pawn))
-            .unwrap();
-        builder
-            .put(opponent, PieceCode::new(Color::White, PieceKind::Rook))
-            .unwrap();
-        builder
-            .put(
-                promoted_lion,
-                PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
-            )
-            .unwrap();
-        let mut position = builder.finish().unwrap();
-
-        let before_rejection = position.clone();
-        assert_eq!(
-            position.set_lion_capture(Some(own)),
-            Err(PositionError::InvalidLionCapture { square: own })
-        );
-        assert_eq!(position, before_rejection);
-
-        for (square, by_kirin_promotion) in
-            [(empty, false), (opponent, false), (promoted_lion, true)]
-        {
-            assert_eq!(position.set_lion_capture(Some(square)), Ok(()));
-            assert_eq!(
-                position.lion_taken_by_non_lion(),
-                Some(LionTrigger {
-                    square,
-                    by_kirin_promotion,
-                })
-            );
-            assert_zobrist_matches(&position);
-            assert_eq!(position.validate(), Ok(()));
-        }
-
-        assert_eq!(position.set_lion_capture(None), Ok(()));
-        assert_eq!(position.lion_taken_by_non_lion(), None);
-        assert_zobrist_matches(&position);
-    }
-
-    #[test]
-    fn article_24_1_c_kirin_promotion_trigger_zobrist_round_trip() {
-        let mut position = position_with_pieces(
-            Color::Black,
-            &[
-                (sq(5, 9), Color::Black, PieceKind::Kirin),
-                (sq(5, 11), Color::White, PieceKind::Lion),
-                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
-                (sq(5, 4), Color::White, PieceKind::Rook),
-            ],
-        );
-        let before = position.clone();
-        let previous_zobrist = position.zobrist();
-
-        let undo = position.make_move_unchecked(
-            Move {
-                from: sq(5, 9),
-                mid: None,
-                to: sq(5, 11),
-                promote: true,
-            },
-            Rules::standard(),
-        );
-        assert!(
-            position
-                .lion_taken_by_non_lion()
-                .is_some_and(|trigger| trigger.by_kirin_promotion)
-        );
-        assert_zobrist_matches(&position);
-
-        position.unmake_move(undo);
-
-        assert_eq!(position.zobrist(), previous_zobrist);
-        assert_eq!(position, before);
-        assert_zobrist_matches(&position);
-    }
-
-    #[test]
-    fn article_24_1_c_zobrist_distinguishes_senjishi_target_squares() {
-        let origin = sq(5, 9);
-        let left_target = sq(5, 11);
-        let right_target = sq(7, 9);
-        let promoted_lion = PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap();
-        let mut left_builder = PositionBuilder::new(Color::Black);
-        for (square, piece) in [
-            (origin, PieceCode::new(Color::Black, PieceKind::Kirin)),
-            (left_target, PieceCode::new(Color::White, PieceKind::Lion)),
-            (right_target, promoted_lion),
-        ] {
-            left_builder.put(square, piece).unwrap();
-        }
-        let mut left = left_builder.finish().unwrap();
-        let mut right_builder = PositionBuilder::new(Color::Black);
-        for (square, piece) in [
-            (origin, PieceCode::new(Color::Black, PieceKind::Kirin)),
-            (left_target, promoted_lion),
-            (right_target, PieceCode::new(Color::White, PieceKind::Lion)),
-        ] {
-            right_builder.put(square, piece).unwrap();
-        }
-        let mut right = right_builder.finish().unwrap();
-        let left_before = left.clone();
-        let right_before = right.clone();
-        let generator = MoveGenerator::standard();
-        let left_undo = left
+        kirin
             .try_make_move(
                 Move {
-                    from: origin,
+                    from: sq(4, 7),
                     mid: None,
-                    to: left_target,
+                    to: sq(5, 8),
                     promote: true,
                 },
                 &generator,
             )
             .unwrap();
-        let right_undo = right
+        assert_ne!(
+            kirin.zobrist(),
+            rebuild_board_with_side(&kirin, Color::White).zobrist()
+        );
+
+        // 相手が別の着手を行うと禁止は消滅し(第15条5項)、禁止なしの同一配置とキーが一致する。
+        let (mut cleared, _) = position_after_non_lion_captures_lion();
+        cleared
             .try_make_move(
                 Move {
-                    from: origin,
+                    from: sq(10, 10),
                     mid: None,
-                    to: right_target,
-                    promote: true,
+                    to: sq(10, 9),
+                    promote: false,
                 },
                 &generator,
             )
             .unwrap();
-
-        assert_eq!(left.side_to_move(), right.side_to_move());
-        assert!(Square::all().all(|square| left.piece_at(square) == right.piece_at(square)));
-        assert!(
-            left.lion_taken_by_non_lion()
-                .is_some_and(|trigger| trigger.by_kirin_promotion)
-        );
-        assert!(
-            right
-                .lion_taken_by_non_lion()
-                .is_some_and(|trigger| trigger.by_kirin_promotion)
-        );
-        assert_eq!(
-            left.lion_taken_by_non_lion().map(|trigger| trigger.square),
-            Some(left_target)
-        );
-        assert_eq!(
-            right.lion_taken_by_non_lion().map(|trigger| trigger.square),
-            Some(right_target)
-        );
-        assert_ne!(left.zobrist(), right.zobrist());
-        assert_zobrist_matches(&left);
-        assert_zobrist_matches(&right);
-
-        left.unmake_move(left_undo);
-        right.unmake_move(right_undo);
-
-        assert_eq!(left, left_before);
-        assert_eq!(right, right_before);
-        assert_zobrist_matches(&left);
-        assert_zobrist_matches(&right);
+        assert_eq!(cleared, rebuild_board_with_side(&cleared, Color::Black));
     }
 
+    // 盤上に獅子が複数ある局面では、禁止の対象升が異なればキーも異なる
+    // (第24条1項c、D4-024-03境界)。
     #[test]
-    fn unrelated_next_move_clears_capture_square() {
-        let (mut position, captured_lion) = position_after_non_lion_captures_lion();
-        assert_eq!(
-            position
-                .lion_taken_by_non_lion()
-                .map(|trigger| trigger.square),
-            Some(captured_lion)
-        );
-
-        position.make_move_unchecked(
-            Move {
-                from: sq(10, 10),
-                mid: None,
-                to: sq(10, 9),
-                promote: false,
-            },
-            Rules::standard(),
-        );
-
-        assert_eq!(position.lion_taken_by_non_lion(), None);
-    }
-
-    #[test]
-    fn unmake_move_restores_previous_capture_square() {
-        let (mut position, captured_lion) = position_after_non_lion_captures_lion();
-        let before_unrelated_move = position.clone();
-        let undo = position.make_move_unchecked(
-            Move {
-                from: sq(10, 10),
-                mid: None,
-                to: sq(10, 9),
-                promote: false,
-            },
-            Rules::standard(),
-        );
-        assert_eq!(position.lion_taken_by_non_lion(), None);
-
-        position.unmake_move(undo);
-
-        assert_eq!(
-            position
-                .lion_taken_by_non_lion()
-                .map(|trigger| trigger.square),
-            Some(captured_lion)
-        );
-        assert_eq!(position, before_unrelated_move);
-    }
-
-    #[test]
-    fn zobrist_distinguishes_side_to_move() {
-        let pieces = [
-            (sq(4, 4), Color::Black, PieceKind::King),
-            (sq(7, 7), Color::White, PieceKind::King),
-        ];
-        let black = position_with_pieces(Color::Black, &pieces);
-        let white = position_with_pieces(Color::White, &pieces);
-
-        assert_ne!(black.zobrist(), white.zobrist());
-        assert_zobrist_matches(&black);
-        assert_zobrist_matches(&white);
-    }
-
-    #[test]
-    fn article_24_1_c_zobrist_includes_senjishi_trigger() {
-        let (with_trigger, captured_lion) = position_after_non_lion_captures_lion();
-        let without_trigger = position_with_pieces(
-            Color::White,
-            &[
-                (captured_lion, Color::Black, PieceKind::Bishop),
-                (sq(10, 10), Color::White, PieceKind::Pawn),
-            ],
-        );
-
-        assert_eq!(
-            with_trigger
-                .lion_taken_by_non_lion()
-                .map(|trigger| trigger.square),
-            Some(captured_lion)
-        );
-        assert_eq!(without_trigger.lion_taken_by_non_lion(), None);
-        assert_ne!(with_trigger, without_trigger);
-        assert_ne!(with_trigger.zobrist(), without_trigger.zobrist());
-        assert_zobrist_matches(&with_trigger);
-        assert_zobrist_matches(&without_trigger);
-    }
-
-    #[test]
-    fn article_24_1_d_p1_rights_zobrist_round_trip() {
-        let mut position = position_with_pieces(
+    fn article_24_1_c_key_distinguishes_the_prohibition_target_square() {
+        let base = position_from_codes(
             Color::Black,
             &[
-                (sq(4, 7), Color::Black, PieceKind::SilverGeneral),
-                (sq(10, 10), Color::White, PieceKind::GoldGeneral),
+                (sq(2, 2), PieceCode::new(Color::White, PieceKind::Lion)),
+                (
+                    sq(9, 9),
+                    PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
+                ),
+                (sq(5, 5), PieceCode::new(Color::Black, PieceKind::Lion)),
             ],
         );
-        let before = position.clone();
-        let previous_zobrist = position.zobrist();
-        let previous_promotion_deferred = position.promotion_deferred();
-        let previous_rights_zobrist = position.rights_zobrist();
-        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
-        let moves = [
-            Move {
-                from: sq(4, 7),
-                mid: None,
-                to: sq(4, 8),
-                promote: false,
-            },
-            Move {
-                from: sq(10, 10),
-                mid: None,
-                to: sq(10, 9),
-                promote: false,
-            },
-            Move {
-                from: sq(4, 8),
-                mid: None,
-                to: sq(4, 9),
-                promote: false,
-            },
-            Move {
-                from: sq(10, 9),
-                mid: None,
-                to: sq(10, 10),
-                promote: false,
-            },
-            Move {
-                from: sq(4, 9),
-                mid: None,
-                to: sq(4, 10),
-                promote: false,
-            },
-            Move {
-                from: sq(10, 10),
-                mid: None,
-                to: sq(10, 9),
-                promote: false,
-            },
-        ];
-        let mut history = Vec::new();
 
-        for mv in moves {
-            history.push(position.make_move_unchecked(mv, p1));
-            assert_eq!(position.validate(), Ok(()));
-            assert_zobrist_matches(&position);
-            assert_rights_zobrist_matches(&position);
-        }
-        while let Some(undo) = history.pop() {
-            position.unmake_move(undo);
-            assert_eq!(position.validate(), Ok(()));
-            assert_zobrist_matches(&position);
-            assert_rights_zobrist_matches(&position);
-        }
+        let mut at_first = base.clone();
+        at_first.set_lion_capture(Some(sq(3, 3))).unwrap();
+        let mut at_second = base.clone();
+        at_second.set_lion_capture(Some(sq(6, 6))).unwrap();
+        assert_ne!(at_first.zobrist(), base.zobrist());
+        assert_ne!(at_first.zobrist(), at_second.zobrist());
 
-        assert_eq!(position, before);
-        assert_eq!(position.zobrist(), previous_zobrist);
-        assert_eq!(position.promotion_deferred(), previous_promotion_deferred);
-        assert_eq!(position.rights_zobrist(), previous_rights_zobrist);
+        // 禁止を解除すると元のキーへ完全に戻る。
+        at_first.set_lion_capture(None).unwrap();
+        assert_eq!(at_first, base);
+        assert_eq!(at_first.zobrist(), base.zobrist());
+
+        // 手番側の駒がある升は獅子捕獲升として受理されず、局面は変化しない。
+        let mut rejected = base.clone();
+        assert_eq!(
+            rejected.set_lion_capture(Some(sq(5, 5))),
+            Err(PositionError::InvalidLionCapture { square: sq(5, 5) })
+        );
+        assert_eq!(rejected, base);
     }
 
+    // 構成要素d(P1の成り権保留)は盤面キー(a〜c)と分離して保持される(第24条1項d、
+    // D4-024-04)。R2・R3の同一局面判定はa〜cのみ、R1はd込みで行う(第31条)ため、
+    // dだけが異なる2局面は盤面キーが一致し権利キーだけが異なる。
     #[test]
-    fn article_24_1_d_promotion_rights_use_a_separate_zobrist() {
-        let deferred = sq(4, 9);
+    fn article_24_1_d_promotion_rights_key_is_separate_from_the_board_key() {
+        let deferred_square = sq(4, 9);
         let piece = PieceCode::new(Color::Black, PieceKind::SilverGeneral);
         let mut plain_builder = PositionBuilder::new(Color::Black);
-        plain_builder.put(deferred, piece).unwrap();
+        plain_builder.put(deferred_square, piece).unwrap();
         let plain = plain_builder.finish().unwrap();
+
         let mut deferred_builder = PositionBuilder::new(Color::Black);
-        deferred_builder.put(deferred, piece).unwrap();
-        deferred_builder.mark_promotion_deferred(deferred).unwrap();
-        let with_deferred_right = deferred_builder.finish().unwrap();
+        deferred_builder.put(deferred_square, piece).unwrap();
+        deferred_builder
+            .mark_promotion_deferred(deferred_square)
+            .unwrap();
+        let deferred = deferred_builder.finish().unwrap();
 
-        assert_eq!(plain.zobrist(), with_deferred_right.zobrist());
-        assert_ne!(plain.rights_zobrist(), with_deferred_right.rights_zobrist());
-        assert!(plain.promotion_deferred().is_empty());
-        assert_eq!(
-            with_deferred_right.promotion_deferred(),
-            Bitboard::from_square(deferred)
-        );
-        assert_rights_zobrist_matches(&plain);
-        assert_rights_zobrist_matches(&with_deferred_right);
-    }
+        assert_eq!(plain.zobrist(), deferred.zobrist());
+        assert_ne!(plain.rights_zobrist(), deferred.rights_zobrist());
 
-    #[test]
-    fn article_24_1_d_builder_rejects_invalid_promotion_deferred_marks() {
+        // 保留状態を持てるのは敵陣内(第3条6項)の未成の成れる駒だけである(第30条P1)。
+        // 空升・成れない駒(王将)・成駒・敵陣外の駒への保留指定は拒否される。
         let invalid = |square| {
             Err(PositionBuildError::InvalidPosition(
                 PositionError::InvalidPromotionDeferred { square },
             ))
         };
-
-        let empty = sq(4, 9);
         let mut empty_builder = PositionBuilder::new(Color::Black);
-        assert_eq!(empty_builder.mark_promotion_deferred(empty), invalid(empty));
-
-        let king = sq(5, 9);
-        let mut king_builder = PositionBuilder::new(Color::Black);
-        king_builder
-            .put(king, PieceCode::new(Color::Black, PieceKind::King))
-            .unwrap();
-        assert_eq!(king_builder.mark_promotion_deferred(king), invalid(king));
-
-        let outside_enemy_camp = sq(4, 7);
-        let mut outside_builder = PositionBuilder::new(Color::Black);
-        outside_builder
-            .put(
-                outside_enemy_camp,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
         assert_eq!(
-            outside_builder.mark_promotion_deferred(outside_enemy_camp),
-            invalid(outside_enemy_camp)
+            empty_builder.mark_promotion_deferred(sq(4, 9)),
+            invalid(sq(4, 9))
         );
 
-        let promoted = sq(6, 9);
-        let mut promoted_builder = PositionBuilder::new(Color::Black);
-        promoted_builder
-            .put(
-                promoted,
+        let cases = [
+            (PieceCode::new(Color::Black, PieceKind::King), sq(5, 9)),
+            (
                 PieceCode::new(Color::Black, PieceKind::SilverGeneral)
                     .promote()
                     .unwrap(),
-            )
-            .unwrap();
-        assert_eq!(
-            promoted_builder.mark_promotion_deferred(promoted),
-            invalid(promoted)
-        );
-
-        let valid = sq(7, 9);
-        let mut valid_builder = PositionBuilder::new(Color::Black);
-        valid_builder
-            .put(
-                valid,
+                sq(6, 9),
+            ),
+            (
                 PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        assert_eq!(valid_builder.mark_promotion_deferred(valid), Ok(()));
-        assert_eq!(valid_builder.finish().unwrap().validate(), Ok(()));
-    }
-
-    #[test]
-    fn seeded_random_playouts_preserve_incremental_zobrist() {
-        let generator = MoveGenerator::standard();
-        let mut rng = XorShift64::new(0x5a4f_4252_4953_5401);
-
-        for game in 0..8 {
-            let mut position = Position::initial();
-            let initial = position.clone();
-            let mut history = Vec::new();
-
-            for ply in 0..64 {
-                let mut moves = Vec::new();
-                generator.generate_moves(&position, &mut moves);
-                if moves.is_empty() {
-                    break;
-                }
-                let mv = moves[rng.next() as usize % moves.len()];
-                let previous_zobrist = position.zobrist();
-                let undo = position.make_move_unchecked(mv, Rules::standard());
-                assert_eq!(undo.previous_zobrist, previous_zobrist);
-                assert_zobrist_matches(&position);
-                history.push((undo, previous_zobrist));
-                assert_eq!(position.validate(), Ok(()), "game={game}, ply={ply}");
-            }
-
-            while let Some((undo, previous_zobrist)) = history.pop() {
-                position.unmake_move(undo);
-                assert_eq!(position.zobrist(), previous_zobrist);
-                assert_zobrist_matches(&position);
-                assert_eq!(
-                    position.validate(),
-                    Ok(()),
-                    "game={game}, unmade ply={}",
-                    history.len()
-                );
-            }
-            assert_eq!(position, initial, "game={game}");
+                sq(4, 7),
+            ),
+        ];
+        for (code, square) in cases {
+            let mut builder = PositionBuilder::new(Color::Black);
+            builder.put(square, code).unwrap();
+            assert_eq!(builder.mark_promotion_deferred(square), invalid(square));
         }
     }
 
+    // 局面キーは到達手順・手数・盤外情報に依存しない(第24条3項、D4-024-05)。
     #[test]
-    fn builder_rejects_double_placement() {
-        let square = Square::new(4, 4).unwrap();
+    fn article_24_3_key_depends_on_the_position_not_on_the_path() {
+        let generator = MoveGenerator::standard();
+        let start = || {
+            position_with_pieces(
+                Color::Black,
+                &[
+                    (sq(5, 0), Color::Black, PieceKind::King),
+                    (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
+                    (sq(6, 11), Color::White, PieceKind::King),
+                    (sq(7, 7), Color::White, PieceKind::GoldGeneral),
+                ],
+            )
+        };
+        let mv = |from, to| Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        };
+        let play = |steps: &[Move]| {
+            let mut position = start();
+            for &step in steps {
+                position.try_make_move(step, &generator).unwrap();
+            }
+            position
+        };
+
+        // 手順の入れ替え(transposition)で同一局面へ到達してもキーは一致する。
+        let path_a = play(&[
+            mv(sq(4, 4), sq(4, 5)),
+            mv(sq(7, 7), sq(7, 6)),
+            mv(sq(5, 0), sq(5, 1)),
+            mv(sq(6, 11), sq(6, 10)),
+        ]);
+        let path_b = play(&[
+            mv(sq(5, 0), sq(5, 1)),
+            mv(sq(6, 11), sq(6, 10)),
+            mv(sq(4, 4), sq(4, 5)),
+            mv(sq(7, 7), sq(7, 6)),
+        ]);
+        assert_eq!(path_a, path_b);
+        assert_eq!(path_a.zobrist(), path_b.zobrist());
+
+        // 往復を含む長い経路(手数が異なる)でも、同じ局面なら同じキーになる。
+        let path_long = play(&[
+            mv(sq(4, 4), sq(4, 5)),
+            mv(sq(7, 7), sq(7, 6)),
+            mv(sq(5, 0), sq(5, 1)),
+            mv(sq(6, 11), sq(6, 10)),
+            mv(sq(4, 5), sq(4, 6)),
+            mv(sq(6, 10), sq(6, 11)),
+            mv(sq(4, 6), sq(4, 5)),
+            mv(sq(6, 11), sq(6, 10)),
+        ]);
+        assert_eq!(path_long, path_a);
+        assert_eq!(path_long.zobrist(), path_a.zobrist());
+    }
+
+    // 実装契約(D4-IMP-01): 空盤への1枚配置と同じ升の除去は互いに逆操作であり、
+    // 全144升×全駒コード(未成29種＋成駒18種×両所有者)で空盤へ完全に戻る。
+    #[test]
+    fn placing_then_removing_any_piece_restores_the_empty_position() {
+        let pristine = Position::empty(Color::Black);
+        let mut codes = Vec::new();
+        for color in Color::ALL {
+            for kind in PieceKind::ALL {
+                codes.push(PieceCode::new(color, kind));
+                if let Some(promoted) = PieceCode::new_promoted(color, kind) {
+                    codes.push(promoted);
+                }
+            }
+        }
+
+        let mut position = pristine.clone();
+        for square in Square::all() {
+            for &code in &codes {
+                position.put_piece(square, code).unwrap();
+                assert!(position.occupied().contains(square));
+                assert_eq!(position.remove_piece(square), code);
+                assert_eq!(position, pristine, "{square:?} {code:?}");
+            }
+        }
+
+        // 既に駒がある升への二重配置と、空升・番兵コードの配置は拒否され状態を変えない。
         let mut builder = PositionBuilder::new(Color::Black);
         builder
-            .put(square, PieceCode::new(Color::Black, PieceKind::King))
+            .put(sq(4, 4), PieceCode::new(Color::Black, PieceKind::King))
             .unwrap();
         assert_eq!(
-            builder.put(square, PieceCode::new(Color::White, PieceKind::King),),
-            Err(PositionBuildError::SquareOccupied { square })
+            builder.put(sq(4, 4), PieceCode::new(Color::White, PieceKind::King)),
+            Err(PositionBuildError::SquareOccupied { square: sq(4, 4) })
+        );
+        assert_eq!(
+            builder.put(sq(5, 5), PieceCode::EMPTY),
+            Err(PositionBuildError::EmptyOrWallPiece)
+        );
+        assert_eq!(
+            builder.put(sq(5, 5), PieceCode::WALL),
+            Err(PositionBuildError::EmptyOrWallPiece)
         );
     }
 
+    // 実装契約(D4-IMP-02): キーは局面状態の純関数であり、同一の目標局面は
+    // 構築経路(配置順序・指し手適用)によらず同一キーになる。
     #[test]
-    fn exhaustive_placement_and_removal_returns_to_empty_position() {
-        let mut position = Position::empty(Color::White);
-        let empty = position.clone();
+    fn equal_configurations_share_one_key_regardless_of_construction_path() {
+        let generator = MoveGenerator::standard();
 
-        for square in Square::all() {
-            let color = if square.dense_index() % 2 == 0 {
-                Color::Black
-            } else {
-                Color::White
-            };
-            let kind = PieceKind::ALL[square.dense_index() % PIECE_KIND_COUNT];
-            position
-                .put_piece(square, PieceCode::new(color, kind))
-                .unwrap();
-            assert!(position.validate().is_ok());
-            assert_zobrist_matches(&position);
-        }
-
-        for square in Square::all().collect::<Vec<_>>().into_iter().rev() {
-            position.remove_piece(square);
-            assert!(position.validate().is_ok());
-            assert_zobrist_matches(&position);
-        }
-        assert_eq!(position, empty);
+        // 歩兵の成り(第18条)を経由した局面と、成駒を直接配置した局面。
+        let mut played = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(4, 7), Color::Black, PieceKind::Pawn),
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(6, 11), Color::White, PieceKind::King),
+            ],
+        );
+        played
+            .try_make_move(
+                Move {
+                    from: sq(4, 7),
+                    mid: None,
+                    to: sq(4, 8),
+                    promote: true,
+                },
+                &generator,
+            )
+            .unwrap();
+        let built = position_from_codes(
+            Color::White,
+            &[
+                (
+                    sq(4, 8),
+                    PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap(),
+                ),
+                (sq(0, 0), PieceCode::new(Color::Black, PieceKind::King)),
+                (sq(6, 11), PieceCode::new(Color::White, PieceKind::King)),
+            ],
+        );
+        assert_eq!(played, built);
+        assert_eq!(played.zobrist(), built.zobrist());
     }
 
-    #[test]
-    fn mixed_placement_and_removal_sequence_preserves_invariants() {
-        let mut position = Position::empty(Color::Black);
-        let mut present = [false; crate::BOARD_SQUARE_COUNT];
-        let mut state = 0xbb67_ae85_84ca_a73b_u64;
+    /// 増分更新とundoの検査に使う代表シナリオ(局面・規則・着手列)を返す。
+    /// 2枚捕獲・居喰い・じっと・成り・王駒捕獲・成駒の捕獲・先獅子・P1保留を覆う
+    /// (D4-IMP-03・D4-IMP-04の境界事例)。
+    fn make_unmake_scenarios() -> Vec<(Position, Rules, Vec<Move>)> {
+        let mv = |from, mid, to, promote| Move {
+            from,
+            mid,
+            to,
+            promote,
+        };
+        let standard = Rules::standard();
+        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
+        vec![
+            // 獅子の2段階移動による2枚捕獲(第12条4項)。
+            (
+                position_with_pieces(
+                    Color::Black,
+                    &[
+                        (sq(5, 5), Color::Black, PieceKind::Lion),
+                        (sq(5, 6), Color::White, PieceKind::Pawn),
+                        (sq(5, 7), Color::White, PieceKind::Pawn),
+                    ],
+                ),
+                standard,
+                vec![mv(sq(5, 5), Some(sq(5, 6)), sq(5, 7), false)],
+            ),
+            // 居喰い(第3条14項)。
+            (
+                position_with_pieces(
+                    Color::Black,
+                    &[
+                        (sq(5, 5), Color::Black, PieceKind::Lion),
+                        (sq(5, 6), Color::White, PieceKind::Pawn),
+                    ],
+                ),
+                standard,
+                vec![mv(sq(5, 5), Some(sq(5, 6)), sq(5, 5), false)],
+            ),
+            // じっと(第3条13項)。
+            (
+                position_with_pieces(Color::Black, &[(sq(5, 5), Color::Black, PieceKind::Lion)]),
+                standard,
+                vec![mv(sq(5, 5), None, sq(5, 5), false)],
+            ),
+            // 成りを伴う手(第18条1項)。
+            (
+                position_with_pieces(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]),
+                standard,
+                vec![mv(sq(4, 7), None, sq(4, 8), true)],
+            ),
+            // 成駒を取る手(undoで取られた駒の成否も復元される)。
+            (
+                position_from_codes(
+                    Color::Black,
+                    &[
+                        (sq(4, 4), PieceCode::new(Color::Black, PieceKind::Rook)),
+                        (
+                            sq(4, 9),
+                            PieceCode::new_promoted(Color::White, PieceKind::FreeBoar).unwrap(),
+                        ),
+                    ],
+                ),
+                standard,
+                vec![mv(sq(4, 4), None, sq(4, 9), false)],
+            ),
+            // 王駒を取る手(第21条1項)。
+            (
+                position_with_pieces(
+                    Color::Black,
+                    &[
+                        (sq(4, 4), Color::Black, PieceKind::Rook),
+                        (sq(4, 9), Color::White, PieceKind::King),
+                    ],
+                ),
+                standard,
+                vec![mv(sq(4, 4), None, sq(4, 9), false)],
+            ),
+            // 非獅子による獅子捕獲(先獅子トリガー、第15条)と、その消滅(第15条5項)。
+            (
+                position_with_pieces(
+                    Color::Black,
+                    &[
+                        (sq(0, 0), Color::Black, PieceKind::Bishop),
+                        (sq(1, 1), Color::White, PieceKind::Lion),
+                        (sq(10, 10), Color::White, PieceKind::Pawn),
+                    ],
+                ),
+                standard,
+                vec![
+                    mv(sq(0, 0), None, sq(1, 1), false),
+                    mv(sq(10, 10), None, sq(10, 9), false),
+                ],
+            ),
+            // 麒麟が獅子を取って成る手(第15条7項)。
+            (
+                position_with_pieces(
+                    Color::Black,
+                    &[
+                        (sq(4, 7), Color::Black, PieceKind::Kirin),
+                        (sq(5, 8), Color::White, PieceKind::Lion),
+                    ],
+                ),
+                standard,
+                vec![mv(sq(4, 7), None, sq(5, 8), true)],
+            ),
+            // P1の成り権保留の設定と消滅(第30条P1、第24条1項d)。
+            (
+                position_with_pieces(
+                    Color::Black,
+                    &[
+                        (sq(4, 7), Color::Black, PieceKind::SilverGeneral),
+                        (sq(10, 10), Color::White, PieceKind::GoldGeneral),
+                    ],
+                ),
+                p1,
+                vec![
+                    mv(sq(4, 7), None, sq(4, 8), false),
+                    mv(sq(10, 10), None, sq(10, 9), false),
+                    mv(sq(4, 8), None, sq(4, 9), false),
+                    mv(sq(10, 9), None, sq(10, 10), false),
+                    mv(sq(4, 9), None, sq(4, 10), false),
+                    mv(sq(10, 10), None, sq(10, 9), false),
+                ],
+            ),
+        ]
+    }
 
-        for _ in 0..2_000 {
-            state = state
-                .wrapping_mul(2_862_933_555_777_941_757)
-                .wrapping_add(3_037_000_493);
-            let dense = state as usize % crate::BOARD_SQUARE_COUNT;
-            let square = Square::from_dense(dense).unwrap();
-            if present[dense] {
-                position.remove_piece(square);
-            } else {
-                let color = if state & 1 == 0 {
-                    Color::Black
-                } else {
-                    Color::White
-                };
-                let kind = PieceKind::ALL[(state as usize / 2) % PIECE_KIND_COUNT];
-                let piece = match PieceCode::new_promoted(color, kind) {
-                    Some(promoted) if state & 2 != 0 => promoted,
-                    _ => PieceCode::new(color, kind),
-                };
-                position.put_piece(square, piece).unwrap();
+    // 実装契約(D4-IMP-03): 増分維持されるキー・占有集合は、毎手、素の盤面からの
+    // 全再計算および整合検査と一致する。
+    #[test]
+    fn incrementally_maintained_state_matches_full_recomputation() {
+        for (mut position, rules, moves) in make_unmake_scenarios() {
+            let generator = MoveGenerator::new(rules);
+            for mv in moves {
+                position.try_make_move(mv, &generator).unwrap();
+                assert_eq!(position.zobrist(), position.recompute_zobrist(), "{mv:?}");
+                assert_eq!(
+                    position.rights_zobrist(),
+                    position.recompute_rights_zobrist(),
+                    "{mv:?}"
+                );
+                assert_eq!(position.validate(), Ok(()), "{mv:?}");
             }
-            present[dense] = !present[dense];
-            assert!(position.validate().is_ok());
-            assert_zobrist_matches(&position);
+        }
+    }
+
+    // 実装契約(D4-IMP-04): 着手の適用と取り消しは恒等写像を合成し、全観測可能状態
+    // (盤面・手番・キー・先獅子状態・成り権保留)が完全一致で復元される。
+    #[test]
+    fn unmake_restores_every_observable_component() {
+        for (mut position, rules, moves) in make_unmake_scenarios() {
+            let generator = MoveGenerator::new(rules);
+            let mut trail = Vec::new();
+            for mv in moves {
+                let snapshot = position.clone();
+                let undo = position.try_make_move(mv, &generator).unwrap();
+                trail.push((snapshot, undo));
+            }
+            while let Some((snapshot, undo)) = trail.pop() {
+                position.unmake_move(undo);
+                assert_eq!(position, snapshot);
+                assert_eq!(position.zobrist(), snapshot.zobrist());
+                assert_eq!(position.rights_zobrist(), snapshot.rights_zobrist());
+            }
+        }
+    }
+
+    // 実装契約(D4-IMP-09): 固定シードの一様ランダムプレイアウトで、毎手、
+    // (1)増分キー＝全再計算、(2)同じ指し手列の再適用による再構築との全観測一致、
+    // (3)総駒数=92−累計捕獲枚数、(4)手番の交替則(第6条1項)を検証する。
+    // 終了後は全undoで初期局面へ完全復帰し、同一シードは同一の指し手列を再現する。
+    #[test]
+    fn seeded_random_playouts_uphold_conservation_replay_and_undo_invariants() {
+        let generator = MoveGenerator::standard();
+        let seeds = [0x5a4f_4252_4953_5401_u64, 0x6d69_6e61_7365_4434];
+        let games_per_seed = 4;
+        let max_plies = 72;
+        let mut captures_seen = 0_u32;
+        let mut promotions_seen = 0_u32;
+        let mut double_moves_seen = 0_u32;
+        let mut recorded_move_lists = Vec::new();
+
+        for seed in seeds {
+            let mut rng = XorShift64::new(seed);
+            for game in 0..games_per_seed {
+                let initial = Position::initial();
+                let mut position = initial.clone();
+                let mut history = Vec::new();
+                let mut played = Vec::new();
+                let mut captured_total = 0_u32;
+
+                for ply in 0..max_plies {
+                    // n手適用後の手番は、nが偶数なら先手、奇数なら後手である(第6条1項)。
+                    let expected_side = if played.len() % 2 == 0 {
+                        Color::Black
+                    } else {
+                        Color::White
+                    };
+                    assert_eq!(position.side_to_move(), expected_side);
+
+                    let mut moves = Vec::new();
+                    generator.generate_moves(&position, &mut moves);
+                    if moves.is_empty() {
+                        break;
+                    }
+                    let mv = moves[rng.next() as usize % moves.len()];
+                    captured_total += position.captured_squares(mv).iter().flatten().count() as u32;
+                    if mv.mid.is_some() {
+                        double_moves_seen += 1;
+                    }
+                    if mv.promote {
+                        promotions_seen += 1;
+                    }
+                    history.push(position.make_move_unchecked(mv, Rules::standard()));
+                    played.push(mv);
+
+                    let context = format!("seed={seed:#x} game={game} ply={ply}");
+                    assert_eq!(
+                        position.zobrist(),
+                        position.recompute_zobrist(),
+                        "{context}"
+                    );
+                    assert_eq!(
+                        position.rights_zobrist(),
+                        position.recompute_rights_zobrist(),
+                        "{context}"
+                    );
+                    assert_eq!(position.validate(), Ok(()), "{context}");
+                    // 盤上総駒数＝92−累計捕獲枚数(第4条4項)。
+                    assert_eq!(
+                        position.occupied().popcount(),
+                        92 - captured_total,
+                        "{context}"
+                    );
+
+                    // 同じ指し手列を初期局面へ適用し直した再構築局面と全観測で一致する。
+                    let mut replayed = initial.clone();
+                    for &past in &played {
+                        replayed.make_move_unchecked(past, Rules::standard());
+                    }
+                    assert_eq!(position, replayed, "{context}");
+                }
+                captures_seen += captured_total;
+
+                // 全着手を逆順にundoすると初期局面(第5条・先手番・キー)へ完全復帰する。
+                while let Some(undo) = history.pop() {
+                    position.unmake_move(undo);
+                }
+                assert_eq!(position, initial, "seed={seed:#x} game={game}");
+
+                recorded_move_lists.push((seed, played));
+            }
+        }
+
+        // 検査力の担保: 捕獲・成り・2段階移動がプレイアウト中に実際に出現した。
+        assert!(captures_seen > 0, "捕獲が出現しないシードは検査力が弱い");
+        assert!(promotions_seen > 0, "成りが出現しないシードは検査力が弱い");
+        assert!(
+            double_moves_seen > 0,
+            "2段階移動が出現しないシードは検査力が弱い"
+        );
+
+        // 決定性: 同一シードからの再実行は同一の指し手列を再現する。
+        for seed in seeds {
+            let mut rng = XorShift64::new(seed);
+            for game in 0..games_per_seed {
+                let mut position = Position::initial();
+                let mut replayed_moves = Vec::new();
+                for _ in 0..max_plies {
+                    let mut moves = Vec::new();
+                    generator.generate_moves(&position, &mut moves);
+                    if moves.is_empty() {
+                        break;
+                    }
+                    let mv = moves[rng.next() as usize % moves.len()];
+                    position.make_move_unchecked(mv, Rules::standard());
+                    replayed_moves.push(mv);
+                }
+                let recorded = recorded_move_lists
+                    .iter()
+                    .filter(|(recorded_seed, _)| *recorded_seed == seed)
+                    .nth(game)
+                    .map(|(_, list)| list.clone())
+                    .unwrap();
+                assert_eq!(replayed_moves, recorded, "seed={seed:#x} game={game}");
+            }
         }
     }
 }

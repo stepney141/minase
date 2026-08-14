@@ -133,41 +133,6 @@ impl R1History {
             counters,
         ))
     }
-
-    /// テスト用に指定局面の出現回数を返す。
-    #[cfg(test)]
-    pub(crate) fn occurrences(&self, position: &Position) -> Option<u8> {
-        self.positions
-            .get(&R1Key::from_position(position))
-            .map(|state| state.occurrences)
-    }
-
-    /// テスト用に双方の攻撃連続数を返す。
-    #[cfg(test)]
-    pub(crate) const fn consecutive_attacking_moves(&self) -> [u32; 2] {
-        self.consecutive_attacking_moves
-    }
-
-    /// テスト用に指定局面の出現状態を未登録の状態から設定する。
-    #[cfg(test)]
-    pub(crate) fn set_state(&mut self, position: &Position, occurrences: u8, first_ply: u32) {
-        assert_eq!(
-            self.positions.insert(
-                R1Key::from_position(position),
-                R1PositionState {
-                    occurrences,
-                    first_ply,
-                },
-            ),
-            None
-        );
-    }
-
-    /// テスト用に双方の攻撃連続数を設定する。
-    #[cfg(test)]
-    pub(crate) fn set_attacking_counters(&mut self, counters: [u32; 2]) {
-        self.consecutive_attacking_moves = counters;
-    }
 }
 
 /// R2の既出局面集合。
@@ -189,12 +154,6 @@ impl R2History {
     pub(crate) fn record(&mut self, position: &Position) {
         let inserted = self.positions.insert(R2R3Key::from_position(position));
         debug_assert!(inserted, "R2 must reject repeated positions");
-    }
-
-    /// テスト用に指定局面が既出かどうかを返す。
-    #[cfg(test)]
-    pub(crate) fn contains(&self, position: &Position) -> bool {
-        self.positions.contains(&R2R3Key::from_position(position))
     }
 }
 
@@ -222,14 +181,6 @@ impl R3History {
         *occurrences = occurrences
             .checked_add(1)
             .expect("a position cannot occur more than u8::MAX times");
-    }
-
-    /// テスト用に指定局面の出現回数を返す。
-    #[cfg(test)]
-    pub(crate) fn occurrences(&self, position: &Position) -> Option<u8> {
-        self.positions
-            .get(&R2R3Key::from_position(position))
-            .copied()
     }
 }
 
@@ -349,40 +300,31 @@ fn moves_by_color_through(ply: u32, color: Color) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::piece::{PieceCode, PieceKind};
-    use crate::core::position::PositionBuilder;
-    use crate::test_util::sq;
 
     #[test]
-    fn r1_and_r2_r3_keys_keep_required_components_separate() {
-        assert_ne!(
-            R1Key {
-                position_zobrist: 1,
-                rights_zobrist: 2,
-            },
-            R1Key {
-                position_zobrist: 2,
-                rights_zobrist: 1,
-            }
+    fn article_31_r1_attacking_moves_extend_the_run_and_others_reset_it() {
+        // D3-031-05: 攻撃連続数の更新は共有の純粋関数で行い、攻撃的着手は
+        // 手番側の連続数を1増やし、非攻撃的着手は0へ戻す。相手側の値は
+        // 変更しない(adjudication-refactor.md「R1の攻撃連続数」)。
+        assert_eq!(
+            updated_attacking_counters([2, 5], Color::Black, true),
+            [3, 5]
         );
-
-        let deferred = sq(4, 9);
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(
-                deferred,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        builder.mark_promotion_deferred(deferred).unwrap();
-        let position = builder.finish().unwrap();
-
-        let r1 = R1Key::from_position(&position);
-        let r2_r3 = R2R3Key::from_position(&position);
-
-        assert_ne!(position.rights_zobrist(), 0);
-        assert_eq!(r1.position_zobrist, position.zobrist());
-        assert_eq!(r1.rights_zobrist, position.rights_zobrist());
-        assert_eq!(r2_r3, R2R3Key(position.zobrist()));
+        assert_eq!(
+            updated_attacking_counters([2, 5], Color::Black, false),
+            [0, 5]
+        );
+        assert_eq!(
+            updated_attacking_counters([2, 5], Color::White, true),
+            [2, 6]
+        );
+        assert_eq!(
+            updated_attacking_counters([2, 5], Color::White, false),
+            [2, 0]
+        );
+        assert_eq!(
+            updated_attacking_counters([0, 0], Color::Black, true),
+            [1, 0]
+        );
     }
 }

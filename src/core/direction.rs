@@ -104,15 +104,39 @@ pub const fn step_square(square: Square, direction: Direction) -> Option<Square>
 mod tests {
     use super::*;
 
+    // 実装契約(D4-IMP-07): 8方向の単位変位は(0,0)を除く{-1,0,1}²の8通りを重複なく覆い、
+    // 逆方向は変位の符号反転かつ対合である。step_squareは筋・段への変位適用と一致し、
+    // 盤外なら拒否する。内部レイアウト由来の定数(生値の増分など)は期待値にしない。
     #[test]
-    fn raw_deltas_match_the_padded_layout() {
-        assert_eq!(Direction::East.raw_delta(), 1);
-        assert_eq!(Direction::West.raw_delta(), -1);
-        assert_eq!(Direction::North.raw_delta(), 16);
-        assert_eq!(Direction::South.raw_delta(), -16);
-        assert_eq!(Direction::NorthEast.raw_delta(), 17);
-        assert_eq!(Direction::NorthWest.raw_delta(), 15);
-        assert_eq!(Direction::SouthEast.raw_delta(), -15);
-        assert_eq!(Direction::SouthWest.raw_delta(), -17);
+    fn eight_directions_form_consistent_unit_displacements() {
+        assert_eq!(Direction::ALL.len(), DIRECTION_COUNT);
+
+        let mut seen = Vec::new();
+        for direction in Direction::ALL {
+            let delta = (direction.file_delta(), direction.rank_delta());
+            assert!(delta.0.abs() <= 1 && delta.1.abs() <= 1);
+            assert_ne!(delta, (0, 0));
+            assert!(!seen.contains(&delta), "変位の重複: {delta:?}");
+            seen.push(delta);
+
+            let opposite = direction.opposite();
+            assert_eq!(
+                (opposite.file_delta(), opposite.rank_delta()),
+                (-delta.0, -delta.1),
+                "逆方向は変位の符号反転"
+            );
+            assert_eq!(opposite.opposite(), direction, "逆方向は対合");
+        }
+        assert_eq!(seen.len(), DIRECTION_COUNT);
+
+        // step_squareは変位適用と一致し、盤端を越える移動は拒否される(D4-IMP-07)。
+        for square in Square::all() {
+            for direction in Direction::ALL {
+                assert_eq!(
+                    step_square(square, direction),
+                    square.offset(direction.file_delta(), direction.rank_delta())
+                );
+            }
+        }
     }
 }

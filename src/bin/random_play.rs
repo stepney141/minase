@@ -557,16 +557,76 @@ fn main() {
 mod tests {
     use super::*;
 
+    // D8-HARN-16(random-play.mdコマンドライン引数節): `--games`既定1、
+    // `--max-ply`既定4096、`--seed`省略可、`--verify-all`・`--verbose`受理。
+    // `--rules`は明文で必須、`--game`と`--games`の同時指定はエラー、
+    // 局番号は1起算(0は不正)。
     #[test]
-    fn rules_argument_accepts_preset_and_codes_but_rejects_their_combination() {
+    fn cli_defaults_flags_and_conflicts_follow_the_design_document() {
+        let defaults = Arguments::try_parse_from(["random_play", "--rules", "engine-default"])
+            .expect("the minimal documented invocation must be accepted");
+        assert_eq!(defaults.games, 1);
+        assert_eq!(defaults.max_ply, 4096);
+        assert_eq!(defaults.seed, None);
+        assert_eq!(defaults.game, None);
+        assert!(!defaults.verify_all);
+        assert!(!defaults.verbose);
+
+        let full = Arguments::try_parse_from([
+            "random_play",
+            "--rules",
+            "R1",
+            "--games",
+            "30",
+            "--seed",
+            "7",
+            "--max-ply",
+            "64",
+            "--verify-all",
+            "--verbose",
+        ])
+        .expect("all documented options must be accepted together");
+        assert_eq!(full.games, 30);
+        assert_eq!(full.seed, Some(7));
+        assert_eq!(full.max_ply, 64);
+        assert!(full.verify_all);
+        assert!(full.verbose);
+
+        // --rules省略はエラー(match_runnerと異なり明文で必須)
+        assert!(Arguments::try_parse_from(["random_play"]).is_err());
+        // --gameと--gamesの同時指定はエラー
+        assert!(
+            Arguments::try_parse_from([
+                "random_play",
+                "--rules",
+                "R1",
+                "--game",
+                "2",
+                "--games",
+                "5",
+            ])
+            .is_err()
+        );
+        // 局番号は1起算のため0は受理しない
+        assert!(
+            Arguments::try_parse_from(["random_play", "--rules", "R1", "--game", "0"]).is_err()
+        );
+    }
+
+    // D8-HARN-16/D8-HARN-12(RULES.md第33条): 値文法はエンジンバイナリと統一。
+    // プリセット名は大文字小文字を区別せず解決され、規則コードとの併記と
+    // R0の指定は拒否される。
+    #[test]
+    fn rules_argument_resolves_presets_case_insensitively_and_rejects_combinations() {
         let engine_default =
             Arguments::try_parse_from(["random_play", "--rules", "engine-default"])
                 .expect("the engine-default preset must be accepted");
-        let preset = Arguments::try_parse_from(["random_play", "--rules", "lishogi"])
-            .expect("the lishogi preset must be accepted");
+        assert_eq!(engine_default.rules.0, [RuleCode::R1]);
+
+        let preset = Arguments::try_parse_from(["random_play", "--rules", "LISHOGI"])
+            .expect("preset names must match case-insensitively");
         let codes = Arguments::try_parse_from(["random_play", "--rules", "L1,L2,P3,R1,E1,E3"])
             .expect("an explicit rule code list must be accepted");
-        assert_eq!(engine_default.rules.0, [RuleCode::R1]);
         assert_eq!(
             preset.rules.0,
             [
@@ -580,14 +640,56 @@ mod tests {
         );
         assert_eq!(preset.rules.0, codes.rules.0);
 
-        let error = match Arguments::try_parse_from(["random_play", "--rules", "lishogi,P1"]) {
-            Ok(_) => panic!("a preset combined with a rule code must be rejected"),
-            Err(error) => error,
-        };
-        assert!(
-            error
-                .to_string()
-                .contains("preset 'lishogi' must be specified alone")
+        for invalid in ["lishogi,P1", "R0", "R0,R1"] {
+            assert!(
+                Arguments::try_parse_from(["random_play", "--rules", invalid]).is_err(),
+                "rules {invalid:?} must be rejected"
+            );
+        }
+    }
+
+    // D8-HARN-17(random-play.mdシード派生節): 局シードは
+    // splitmix64(base_seed.wrapping_add(n))であり、式は仕様として固定されて
+    // いる。参照値は仕様式から独立に(実装を経由せずに)計算した。
+    #[test]
+    fn game_seed_follows_the_documented_splitmix64_derivation() {
+        // splitmix64(1 + 1) = splitmix64(2)
+        assert_eq!(game_seed(1, 1), 0x9758_35DE_1C97_56CE);
+        assert_eq!(game_seed(0xDEAD_BEEF, 41), 0xA472_D968_8D97_8A28);
+        // 加算はラッピング演算: u64::MAX + 3 ≡ 2 ≡ 1 + 1 (mod 2^64)
+        assert_eq!(game_seed(u64::MAX, 3), game_seed(1, 1));
+        // 派生値0は固定の非ゼロ定数0x9E37_79B9_7F4A_7C15へ置換される。
+        // 仕様式の各段は全単射なので出力0の原像は一意で、逆算により
+        // 0x61C8_8646_80B5_83EB(增分定数の2の補数)である。
+        assert_eq!(
+            game_seed(0x61C8_8646_80B5_83EB - 3, 3),
+            0x9E37_79B9_7F4A_7C15
         );
+    }
+
+    // D8-HARN-17性質/D8-HARN-18(random-play.md): 同一の(--rules, --seed,
+    // --game, --max-ply)で着手列が完全に再現される。手数上限への到達は
+    // 異常ではなく打ち切りである。
+    #[test]
+    fn same_seed_and_game_number_reproduce_the_same_game() {
+        let rules = Rules::from_codes(&[RuleCode::R1]).expect("R1 alone must be a valid rule set");
+        let first = run_game(rules, "R1", 20_260_814, 1, 16, false);
+        let second = run_game(rules, "R1", 20_260_814, 1, 16, false);
+        assert_eq!(first.moves, second.moves);
+        assert_eq!(first.plies, second.plies);
+        assert_eq!(first.plies, 16);
+        assert!(matches!(first.outcome, Outcome::Cutoff));
+    }
+
+    // D8-HARN-18(random-play.md対局ループと検証節): --verify-all指定時は毎手、
+    // 全合法手を複製した対局へ適用して受理を全数検証する。検証の失敗は
+    // プロセス異常終了として現れるため、完走自体が観測である。
+    #[test]
+    fn verify_all_verification_completes_on_a_short_game() {
+        let rules = Rules::from_codes(&[RuleCode::R1]).expect("R1 alone must be a valid rule set");
+        let completed = run_game(rules, "R1", 20_260_814, 2, 4, true);
+        assert_eq!(completed.plies, 4);
+        assert_eq!(completed.moves.len(), 4);
+        assert!(matches!(completed.outcome, Outcome::Cutoff));
     }
 }

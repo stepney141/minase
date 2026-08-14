@@ -342,10 +342,13 @@ fn reject_game_error(error: GameError) -> RejectReason {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::WinReason;
     use crate::core::piece::{Color, PieceCode, PieceKind};
     use crate::core::position::{Position, PositionBuilder};
     use crate::test_util::sq;
-    use crate::{WinReason, notation::usi};
+
+    // 本モジュールの検査対象はEngineReply（公開境界）までとする（D6-ENG-07）。
+    // 状態の不変・遷移は後続コマンドへの応答差で観測し、内部フィールドへは触れない。
 
     fn setup(position: Position) -> SetupPosition {
         SetupPosition {
@@ -364,33 +367,58 @@ mod tests {
         }
     }
 
+    /// 先手玉(3,3)・後手玉(8,8)の2王局面。反復系の基底に使う。
+    fn kings_position() -> Position {
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(sq(3, 3), PieceCode::new(Color::Black, PieceKind::King))
+            .unwrap();
+        builder
+            .put(sq(8, 8), PieceCode::new(Color::White, PieceKind::King))
+            .unwrap();
+        builder.finish().unwrap()
+    }
+
+    /// 開始局面へ戻る4手。末尾の1手が同一局面の出現を1回増やす。
+    fn kings_cycle() -> Vec<Move> {
+        vec![
+            step(sq(3, 3), sq(3, 4)),
+            step(sq(8, 8), sq(8, 7)),
+            step(sq(3, 4), sq(3, 3)),
+            step(sq(8, 7), sq(8, 8)),
+        ]
+    }
+
+    /// 先手が飛車で後手の最後の王駒を取る1手前の局面。
+    fn royal_position() -> Position {
+        let mut builder = PositionBuilder::new(Color::Black);
+        for (square, color, kind) in [
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(5, 5), Color::Black, PieceKind::Rook),
+            (sq(5, 8), Color::White, PieceKind::King),
+        ] {
+            builder.put(square, PieceCode::new(color, kind)).unwrap();
+        }
+        builder.finish().unwrap()
+    }
+
+    /// royal_position上の王駒捕獲手（RULES.md第21条）。
+    fn royal_capture() -> Move {
+        step(sq(5, 5), sq(5, 8))
+    }
+
     #[test]
-    fn failed_awaiting_start_commit_changes_no_engine_state() {
+    fn failed_commit_is_atomic_and_keeps_active_pending_and_lifecycle() {
+        // PL「コマンドenum…」: commitは複製上の全適用が成功した場合に限りactive規則・Game・
+        // ライフサイクルを同時に交換する原子的操作（D6-ENG-01）。
         let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(Position::initial()),
-                moves: Vec::new(),
-            }),
-            EngineReply::Accepted { .. }
-        ));
         assert!(matches!(
             engine.handle(EngineCommand::SetRules(vec![RuleCode::R2, RuleCode::E2])),
             EngineReply::Accepted { .. }
         ));
-        assert!(matches!(
-            engine.handle(EngineCommand::EndGame),
-            EngineReply::Accepted { .. }
-        ));
 
-        let position_before = engine.game.position().clone();
-        let status_before = engine.status();
-        let ply_before = engine.game.ply_count();
-        let active_before = engine.active.clone();
-        let pending_before = engine.pending.clone();
-        let lifecycle_before = engine.lifecycle;
+        // 初期配置の(0,0)香車は自駒のある(0,1)へ動けない（RULES.md第26条）。
         let illegal = step(sq(0, 0), sq(0, 1));
-
         assert_eq!(
             engine.handle(EngineCommand::SetPosition {
                 setup: setup(Position::initial()),
@@ -401,29 +429,42 @@ mod tests {
                 cause: IllegalMoveCause::Movement,
             })
         );
-        assert_eq!(engine.game.position(), &position_before);
-        assert_eq!(engine.status(), status_before);
-        assert_eq!(engine.game.ply_count(), ply_before);
-        assert_eq!(engine.active.rules, active_before.rules);
-        assert_eq!(engine.active.codes, active_before.codes);
-        assert_eq!(engine.pending.rules, pending_before.rules);
-        assert_eq!(engine.pending.codes, pending_before.codes);
-        assert_eq!(engine.lifecycle, lifecycle_before);
+        // ライフサイクルは遷移していない: AwaitingStartでの着手はInvalidPositionのまま。
+        assert!(matches!(
+            engine.handle(EngineCommand::ApplyMove(illegal)),
+            EngineReply::Rejected(RejectReason::InvalidPosition(_))
+        ));
+        // pendingは失敗をまたいで保持され、次のcommitの検証にはpending規則(R2)が使われる。
+        // R2は既出局面の再現を禁止する（RULES.md第31条R2、第27条第4項）。
+        let moves = kings_cycle();
+        let repeated = moves[3];
+        assert_eq!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(kings_position()),
+                moves,
+            }),
+            EngineReply::Rejected(RejectReason::IllegalMove {
+                mv: repeated,
+                cause: IllegalMoveCause::Repetition,
+            })
+        );
+        // 成功するcommitは通常どおり受理される。
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(Position::initial()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                ..
+            }
+        ));
     }
 
     #[test]
-    fn newly_finished_is_returned_only_by_the_finishing_response() {
-        let mut builder = PositionBuilder::new(Color::Black);
-        for (square, color, kind) in [
-            (sq(0, 0), Color::Black, PieceKind::King),
-            (sq(5, 5), Color::Black, PieceKind::Rook),
-            (sq(5, 8), Color::White, PieceKind::King),
-        ] {
-            builder.put(square, PieceCode::new(color, kind)).unwrap();
-        }
-        let position = builder.finish().unwrap();
-        let capture = step(sq(5, 5), sq(5, 8));
-        assert_eq!(usi::text(&position, capture), "7g7d");
+    fn newly_finished_marks_only_the_finishing_transition() {
+        // PL「コマンドenum…」: newly_finishedはOngoingからFinishedへ遷移した応答だけが持つ。
+        // 終局通知は状態遷移イベントであって状態述語ではない（D6-ENG-04）。
         let result = GameResult::Win {
             winner: Color::Black,
             reason: WinReason::RoyalCapture,
@@ -432,7 +473,7 @@ mod tests {
 
         assert_eq!(
             engine.handle(EngineCommand::SetPosition {
-                setup: setup(position),
+                setup: setup(royal_position()),
                 moves: Vec::new(),
             }),
             EngineReply::Accepted {
@@ -441,64 +482,72 @@ mod tests {
             }
         );
         assert_eq!(
-            engine.handle(EngineCommand::ApplyMove(capture)),
+            engine.handle(EngineCommand::ApplyMove(royal_capture())),
             EngineReply::Accepted {
                 status: GameStatus::Finished(result),
                 newly_finished: Some(result),
             }
         );
+        // 終局後の着手は成立しない（RULES.md第26条第12項、D6-ENG-05のGameAlreadyOver）。
         assert_eq!(
-            engine.handle(EngineCommand::ApplyMove(capture)),
+            engine.handle(EngineCommand::ApplyMove(royal_capture())),
             EngineReply::Rejected(RejectReason::GameAlreadyOver)
         );
+        // EndGameはAwaitingStartへ戻るだけで、終局通知を再生成しない。
         assert_eq!(
-            engine.handle(EngineCommand::NewGame),
+            engine.handle(EngineCommand::EndGame),
             EngineReply::Accepted {
-                status: GameStatus::Ongoing,
+                status: GameStatus::Finished(result),
                 newly_finished: None,
+            }
+        );
+        // 終局局面を含む再構成では、その応答が「新たに終局を確定した」応答になる。
+        assert_eq!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(royal_position()),
+                moves: vec![royal_capture()],
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Finished(result),
+                newly_finished: Some(result),
             }
         );
     }
 
     #[test]
-    fn set_rules_validates_repetition_and_preserves_pending_on_failure() {
+    fn set_rules_validates_on_receipt_and_keeps_pending_on_failure() {
+        // PL「コマンドenum…」: SetRulesの検証はfrom_codesの成功に加えて反復規則の存在を含み、
+        // commit時ではなく受信時に弾く（D6-ENG-02）。R33第5項（反復規則は常にいずれか1つ）・
+        // 第9項（矛盾する組合せは無効）。
         let mut engine = Engine::new(vec![RuleCode::R1]).unwrap();
         assert!(matches!(
-            engine.handle(EngineCommand::SetRules(vec![RuleCode::P3, RuleCode::R2])),
+            engine.handle(EngineCommand::SetRules(vec![RuleCode::R2, RuleCode::E2])),
             EngineReply::Accepted { .. }
         ));
-        let pending = engine.pending_rule_codes().to_vec();
 
+        // 反復規則を含まない列・排他違反・重複はいずれも受信時に拒否される。
+        for codes in [
+            vec![RuleCode::P3],
+            vec![RuleCode::R1, RuleCode::R2],
+            vec![RuleCode::L1, RuleCode::L1, RuleCode::R1],
+        ] {
+            assert!(matches!(
+                engine.handle(EngineCommand::SetRules(codes)),
+                EngineReply::Rejected(RejectReason::InvalidRules(_))
+            ));
+        }
+
+        // 拒否はpendingを変えない: commitすると直前の正当なpending(R2,E2)が反映され、
+        // R2の反復禁止として観測できる。
         assert!(matches!(
-            engine.handle(EngineCommand::SetRules(vec![RuleCode::P3])),
-            EngineReply::Rejected(RejectReason::InvalidRules(_))
+            engine.handle(EngineCommand::NewGame),
+            EngineReply::Accepted { .. }
         ));
-        assert_eq!(engine.pending_rule_codes(), pending);
-    }
-
-    #[test]
-    fn set_position_classifies_r2_rejection_and_preserves_the_previous_state() {
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(sq(3, 3), PieceCode::new(Color::Black, PieceKind::King))
-            .unwrap();
-        builder
-            .put(sq(8, 8), PieceCode::new(Color::White, PieceKind::King))
-            .unwrap();
-        let position = builder.finish().unwrap();
-        let moves = vec![
-            step(sq(3, 3), sq(3, 4)),
-            step(sq(8, 8), sq(8, 7)),
-            step(sq(3, 4), sq(3, 3)),
-            step(sq(8, 7), sq(8, 8)),
-        ];
+        let moves = kings_cycle();
         let repeated = moves[3];
-        let mut engine = Engine::new(vec![RuleCode::R2, RuleCode::E2]).unwrap();
-        let position_before = engine.game().position().clone();
-
         assert_eq!(
             engine.handle(EngineCommand::SetPosition {
-                setup: setup(position),
+                setup: setup(kings_position()),
                 moves,
             }),
             EngineReply::Rejected(RejectReason::IllegalMove {
@@ -506,8 +555,152 @@ mod tests {
                 cause: IllegalMoveCause::Repetition,
             })
         );
-        assert_eq!(engine.game().position(), &position_before);
-        assert_eq!(engine.game().ply_count(), 0);
-        assert_eq!(engine.lifecycle(), EngineLifecycle::AwaitingStart);
+    }
+
+    #[test]
+    fn each_reject_reason_is_idempotent_and_state_preserving() {
+        // PL「コマンドenum…」: Rejectedはエンジンの状態を一切変化させない。
+        // 同じ不正入力の再送は同じ拒否を返す（D6-ENG-05）。
+        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+
+        // InvalidPosition（AwaitingStartでの着手）。
+        let probe = step(sq(0, 3), sq(0, 4)); // 初期配置の歩兵の前進（合法手）
+        let first = engine.handle(EngineCommand::ApplyMove(probe));
+        assert!(matches!(
+            first,
+            EngineReply::Rejected(RejectReason::InvalidPosition(_))
+        ));
+        assert_eq!(engine.handle(EngineCommand::ApplyMove(probe)), first);
+
+        // InvalidRules（反復規則の欠如）。
+        let first = engine.handle(EngineCommand::SetRules(vec![RuleCode::P3]));
+        assert!(matches!(
+            first,
+            EngineReply::Rejected(RejectReason::InvalidRules(_))
+        ));
+        assert_eq!(
+            engine.handle(EngineCommand::SetRules(vec![RuleCode::P3])),
+            first
+        );
+
+        // IllegalMove: 拒否後も同じ局面の合法手が受理される（状態保持の観測）。
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(Position::initial()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted { .. }
+        ));
+        let illegal = step(sq(0, 0), sq(0, 1));
+        let first = engine.handle(EngineCommand::ApplyMove(illegal));
+        assert!(matches!(
+            first,
+            EngineReply::Rejected(RejectReason::IllegalMove { .. })
+        ));
+        assert_eq!(engine.handle(EngineCommand::ApplyMove(illegal)), first);
+        assert!(matches!(
+            engine.handle(EngineCommand::ApplyMove(probe)),
+            EngineReply::Accepted { .. }
+        ));
+
+        // GameAlreadyOver（RULES.md第26条第12項）。
+        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(royal_position()),
+                moves: vec![royal_capture()],
+            }),
+            EngineReply::Accepted { .. }
+        ));
+        let first = engine.handle(EngineCommand::ApplyMove(royal_capture()));
+        assert_eq!(first, EngineReply::Rejected(RejectReason::GameAlreadyOver));
+        assert_eq!(
+            engine.handle(EngineCommand::ApplyMove(royal_capture())),
+            first
+        );
+    }
+
+    #[test]
+    fn lifecycle_cycles_through_start_game_finish_and_back() {
+        // PL「コマンドenum…」: AwaitingStart／InGame／Finishedのライフサイクルと、
+        // EndGameによるAwaitingStartへの復帰（D6-ENG-06）。
+        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+
+        // AwaitingStart: 着手は拒否、SetPositionはcommit経路。
+        assert!(matches!(
+            engine.handle(EngineCommand::ApplyMove(royal_capture())),
+            EngineReply::Rejected(RejectReason::InvalidPosition(_))
+        ));
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(royal_position()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                ..
+            }
+        ));
+        // InGame → Finished。
+        assert!(matches!(
+            engine.handle(EngineCommand::ApplyMove(royal_capture())),
+            EngineReply::Accepted {
+                status: GameStatus::Finished(_),
+                ..
+            }
+        ));
+        // Finished: 局面設定も着手も不成立（GameAlreadyOver）。
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(Position::initial()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Rejected(RejectReason::GameAlreadyOver)
+        ));
+        // EndGameでAwaitingStartへ戻り、次局を開始できる（周回性）。
+        assert!(matches!(
+            engine.handle(EngineCommand::EndGame),
+            EngineReply::Accepted { .. }
+        ));
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(Position::initial()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                ..
+            }
+        ));
+
+        // NewGameもFinishedからの復帰経路である（commitしてAwaitingStartへ）。
+        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(royal_position()),
+                moves: vec![royal_capture()],
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Finished(_),
+                ..
+            }
+        ));
+        assert!(matches!(
+            engine.handle(EngineCommand::NewGame),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                newly_finished: None,
+            }
+        ));
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(Position::initial()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                ..
+            }
+        ));
     }
 }

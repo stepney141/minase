@@ -181,6 +181,8 @@ fn main() -> io::Result<()> {
 mod tests {
     use std::io::Cursor;
 
+    use minase::{Game, Rules};
+
     use super::*;
 
     fn run(input: &str) -> String {
@@ -192,7 +194,9 @@ mod tests {
     }
 
     #[test]
-    fn handshake_and_readiness_match_the_complete_transcript() {
+    fn handshake_declares_ruleset_and_seed_defaults() {
+        // usi_randomの宣言細目は規範文書に明文がなく（SU-08・SU-09）、校正用エンジンの
+        // 現行挙動を実装契約として固定する。id/usiok/readyokの行形式はUSI原典に従う。
         assert_eq!(
             run("usi\nisready\nquit\n"),
             concat!(
@@ -207,7 +211,10 @@ mod tests {
     }
 
     #[test]
-    fn identical_seed_and_commands_produce_identical_bestmove_sequences() {
+    fn identical_seeds_reproduce_identical_outputs() {
+        // docs/sprt.md: usi_randomは合法手から一様ランダムに着手し、同一シード・同一入力で
+        // 出力が完全に再現される（D6-CLI-06）。期待着手は乱数契約（XorShift64＋一様選択）から
+        // 独立に導出する（spec-first-tests.md引き継ぎ資産5のシード42導出様式）。
         let input = concat!(
             "setoption name Seed value 42\n",
             "position startpos\n",
@@ -218,21 +225,19 @@ mod tests {
         );
         let first = run(input);
         let second = run(input);
-        let mut expected_engine = RandomUsi::new();
-        let mut ignored = Vec::new();
-        expected_engine
-            .handle_standard_line("position startpos", &mut ignored)
-            .unwrap();
-        let game = expected_engine.engine.game();
-        let moves = game.legal_moves();
-        let mut expected_rng = XorShift64::new(42);
-        let expected = usi::text(game.position(), moves[expected_rng.index(moves.len())]);
-
         assert_eq!(first, second);
+
+        let rules = Rules::from_codes(&parse_rule_set("R1").unwrap()).unwrap();
+        let game = Game::new(rules).unwrap();
+        let moves = game.legal_moves();
+        let mut rng = XorShift64::new(42);
+        let expected = usi::text(game.position(), moves[rng.index(moves.len())]);
+
         assert_eq!(
             first.lines().next(),
             Some(format!("bestmove {expected}").as_str())
         );
+        // goごとにbestmoveがちょうど1行ずつ返る。
         assert_eq!(
             first
                 .lines()
@@ -244,6 +249,7 @@ mod tests {
 
     #[test]
     fn seed_zero_is_rejected() {
+        // シード0の拒否は明文外の実装契約（SU-08）。XorShift64は非零シードを前提とする。
         assert_eq!(
             run("setoption name Seed value 0\nquit\n"),
             "info string error: Seed must be a positive integer\n"
@@ -251,7 +257,8 @@ mod tests {
     }
 
     #[test]
-    fn go_rejects_inactive_and_finished_games_without_bestmove() {
+    fn go_outside_an_active_game_returns_no_bestmove() {
+        // D6-USI-25と同型のライフサイクル契約を校正用エンジンにも適用する（実装契約）。
         let input = concat!(
             "go\n",
             "position sfen 12/12/12/12/12/12/12/12/12/12/12/12 b - 1\n",
@@ -273,26 +280,22 @@ mod tests {
     }
 
     #[test]
-    fn ruleset_and_usinewgame_use_the_existing_usi_path() {
-        let mut engine = RandomUsi::new();
-        let mut input = Cursor::new(
-            concat!(
-                "setoption name RuleSet value lishogi\n",
-                "usinewgame\n",
-                "position startpos\n",
-                "go\n",
-                "quit\n",
-            )
-            .as_bytes(),
-        );
-        let mut output = Vec::new();
+    fn ruleset_delegates_to_the_shared_usi_grammar() {
+        // PL「規則オプション」の共通値文法（parse_rule_set）への接続確認（D6-CLI-05）。
+        // プリセット併記の専用エラーがUSI経路からそのまま返ることで委譲を観測する。
+        let output = run(concat!(
+            "setoption name RuleSet value lishogi,P1\n",
+            "setoption name RuleSet value lishogi\n",
+            "usinewgame\n",
+            "position startpos\n",
+            "go\n",
+            "quit\n",
+        ));
+        let lines: Vec<_> = output.lines().collect();
 
-        engine.run(&mut input, &mut output).unwrap();
-
-        assert!(String::from_utf8(output).unwrap().starts_with("bestmove "));
-        assert_eq!(
-            engine.engine.active_rule_codes(),
-            parse_rule_set("lishogi").unwrap()
-        );
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("info string error: "));
+        assert!(lines[0].contains("lishogi"));
+        assert!(lines[1].starts_with("bestmove "));
     }
 }

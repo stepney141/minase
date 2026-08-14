@@ -511,1900 +511,1402 @@ fn square_is_controlled(
 
 #[cfg(test)]
 mod tests {
+    // 領域D2「獅子特殊規則とローカルルール」の挙動マトリクス
+    // (scratchpad/matrices/d2-lion-local-rules.md、挙動ID D2-*)に基づくテスト。
+    // 期待値の根拠はRULES.md第3条(9〜14号)・第13〜16条・第28〜33条だけである。
+    // 座標はマトリクスの表記(筋1〜12、段a〜l)をmsqで盤座標へ変換して用いる。
     use super::*;
-    use crate::core::bitboard::Bitboard;
+    use crate::core::game::{Game, GameBuildError};
     use crate::core::movegen::MoveGenerator;
-    use crate::core::position::PositionBuilder;
-    use crate::test_util::{position, position_from_codes, sq};
+    use crate::test_util::{position_from_codes, sq};
 
-    fn is_generated_with_rules(rules: Rules, position: &Position, expected: Move) -> bool {
+    // ---------- マトリクス共通の補助 ----------
+
+    /// マトリクスの座標(筋1〜12、段a〜l)を盤座標へ変換する。段aが後手側最奥。
+    fn msq(file: u8, rank: char) -> Square {
+        sq(file - 1, 11 - (rank as u8 - b'a'))
+    }
+
+    fn piece(color: Color, kind: PieceKind) -> PieceCode {
+        PieceCode::new(color, kind)
+    }
+
+    /// 麒麟由来の成獅子(第17条。同一側2枚目以降の獅子はこの形で置く)。
+    fn promoted_lion(color: Color) -> PieceCode {
+        PieceCode::new_promoted(color, PieceKind::Lion).unwrap()
+    }
+
+    /// 先手王将12l・後手玉将1aを加えて局面を構築する(マトリクスの共通前提)。
+    fn fixture(side_to_move: Color, pieces: &[(Square, PieceCode)]) -> Position {
+        let mut all = vec![
+            (msq(12, 'l'), piece(Color::Black, PieceKind::King)),
+            (msq(1, 'a'), piece(Color::White, PieceKind::King)),
+        ];
+        all.extend_from_slice(pieces);
+        position_from_codes(side_to_move, &all)
+    }
+
+    /// マトリクス前提の基準規則(標準規則＋R1)。
+    fn base() -> Rules {
+        Rules::engine_default()
+    }
+
+    fn rules_of(codes: &[RuleCode]) -> Rules {
+        Rules::from_codes(codes).unwrap()
+    }
+
+    fn mv(from: Square, to: Square) -> Move {
+        Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        }
+    }
+
+    fn mv2(from: Square, mid: Square, to: Square) -> Move {
+        Move {
+            from,
+            mid: Some(mid),
+            to,
+            promote: false,
+        }
+    }
+
+    fn mvp(from: Square, to: Square) -> Move {
+        Move {
+            from,
+            mid: None,
+            to,
+            promote: true,
+        }
+    }
+
+    /// 居喰い(第3条14号)の正準形。第1段階で隣接駒を取り元の升へ戻る。
+    fn igui(from: Square, victim: Square) -> Move {
+        Move {
+            from,
+            mid: Some(victim),
+            to: from,
+            promote: false,
+        }
+    }
+
+    /// じっと(第3条13号)の正準形。Minaseは経由升によらず単一のfrom==to形で表す。
+    fn jitto(from: Square) -> Move {
+        Move {
+            from,
+            mid: None,
+            to: from,
+            promote: false,
+        }
+    }
+
+    fn generated(rules: Rules, position: &Position) -> Vec<Move> {
         let mut moves = Vec::new();
         MoveGenerator::new(rules).generate_moves(position, &mut moves);
-        moves.contains(&expected)
+        moves
     }
 
-    fn is_generated(position: &Position, expected: Move) -> bool {
-        is_generated_with_rules(Rules::standard(), position, expected)
+    fn is_generated(rules: Rules, position: &Position, expected: Move) -> bool {
+        generated(rules, position).contains(&expected)
     }
 
-    fn after_non_lion_capture(pieces: &[(Square, Color, PieceKind)], capture: Move) -> Position {
-        let mut position = position(Color::Black, pieces);
-        position.make_move_unchecked(capture, Rules::standard());
-        assert!(position.lion_taken_by_non_lion().is_some());
-        position
+    /// 指定升の駒を取る着手だけを合法手集合から抽出する(符号化に依存しない観測)。
+    fn captures_of(rules: Rules, position: &Position, target: Square) -> Vec<Move> {
+        generated(rules, position)
+            .into_iter()
+            .filter(|&candidate| {
+                position
+                    .captured_squares(candidate)
+                    .into_iter()
+                    .flatten()
+                    .any(|square| square == target)
+            })
+            .collect()
+    }
+
+    /// 合法手集合に含まれることを確認したうえで着手を適用する。
+    fn play(rules: Rules, position: &mut Position, chosen: Move) {
+        assert!(is_generated(rules, position, chosen), "{chosen:?}");
+        position.make_move_unchecked(chosen, rules);
+    }
+
+    // ---------- 共有フィクスチャ ----------
+
+    /// F1系: 後手獅子6d・先手獅子6f(距離2・非隣接)・先手金将7g(6fの足)。手番後手。
+    fn f1(extra: &[(Square, PieceCode)]) -> Position {
+        let mut pieces = vec![
+            (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+            (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+            (msq(7, 'g'), piece(Color::Black, PieceKind::GoldGeneral)),
+        ];
+        pieces.extend_from_slice(extra);
+        fixture(Color::White, &pieces)
+    }
+
+    /// F9系: 後手獅子6c・飛車9a(・銅将5b)／先手獅子9f・飛車6i。手番後手。
+    fn f9(with_copper: bool) -> Position {
+        let mut pieces = vec![
+            (msq(6, 'c'), piece(Color::White, PieceKind::Lion)),
+            (msq(9, 'a'), piece(Color::White, PieceKind::Rook)),
+            (msq(9, 'f'), piece(Color::Black, PieceKind::Lion)),
+            (msq(6, 'i'), piece(Color::Black, PieceKind::Rook)),
+        ];
+        if with_copper {
+            pieces.push((msq(5, 'b'), piece(Color::White, PieceKind::CopperGeneral)));
+        }
+        fixture(Color::White, &pieces)
+    }
+
+    /// F10: 先手獅子6f／後手獅子6e(隣接)・金将5d(6eの足)。手番先手。
+    fn f10() -> Position {
+        fixture(
+            Color::Black,
+            &[
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'e'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'd'), piece(Color::White, PieceKind::GoldGeneral)),
+            ],
+        )
+    }
+
+    /// F11系の駒組: 先手麒麟6e(・竪行6h)／後手獅子6c・金将5b。
+    fn f11_pieces(with_vertical_mover: bool) -> Vec<(Square, PieceCode)> {
+        let mut pieces = vec![
+            (msq(6, 'e'), piece(Color::Black, PieceKind::Kirin)),
+            (msq(6, 'c'), piece(Color::White, PieceKind::Lion)),
+            (msq(5, 'b'), piece(Color::White, PieceKind::GoldGeneral)),
+        ];
+        if with_vertical_mover {
+            pieces.push((msq(6, 'h'), piece(Color::Black, PieceKind::VerticalMover)));
+        }
+        pieces
+    }
+
+    /// F11: 手番先手。麒麟は6cへ跳んで獅子を取り、敵陣(段a〜d)で成れる。
+    fn f11(with_vertical_mover: bool) -> Position {
+        fixture(Color::Black, &f11_pieces(with_vertical_mover))
+    }
+
+    /// F11a: F11に先手獅子9f(・銀将9g=9fの足)と後手飛車9aを加える。手番先手。
+    fn f11a(with_silver: bool) -> Position {
+        let mut pieces = f11_pieces(true);
+        pieces.push((msq(9, 'f'), piece(Color::Black, PieceKind::Lion)));
+        pieces.push((msq(9, 'a'), piece(Color::White, PieceKind::Rook)));
+        if with_silver {
+            pieces.push((msq(9, 'g'), piece(Color::Black, PieceKind::SilverGeneral)));
+        }
+        fixture(Color::Black, &pieces)
+    }
+
+    /// F12系: 先手獅子6h／後手獅子6f・経由駒6g(任意)・金将7e(任意=6fの足)。手番先手。
+    fn f12(mid_piece: Option<PieceKind>, with_gold: bool) -> Position {
+        let mut pieces = vec![
+            (msq(6, 'h'), piece(Color::Black, PieceKind::Lion)),
+            (msq(6, 'f'), piece(Color::White, PieceKind::Lion)),
+        ];
+        if let Some(kind) = mid_piece {
+            pieces.push((msq(6, 'g'), piece(Color::White, kind)));
+        }
+        if with_gold {
+            pieces.push((msq(7, 'e'), piece(Color::White, PieceKind::GoldGeneral)));
+        }
+        fixture(Color::Black, &pieces)
+    }
+
+    /// F13: 先手獅子6d／後手獅子6f・歩兵6e(6fの唯一の足)。手番先手。
+    fn f13() -> Position {
+        fixture(
+            Color::Black,
+            &[
+                (msq(6, 'd'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'e'), piece(Color::White, PieceKind::Pawn)),
+            ],
+        )
+    }
+
+    /// F15: 後手獅子6d・銀将6e・銅将5c(6dの足)・飛車9a／先手獅子6f・成獅子9f。手番後手。
+    fn f15() -> Position {
+        fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'e'), piece(Color::White, PieceKind::SilverGeneral)),
+                (msq(5, 'c'), piece(Color::White, PieceKind::CopperGeneral)),
+                (msq(9, 'a'), piece(Color::White, PieceKind::Rook)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(9, 'f'), promoted_lion(Color::Black)),
+            ],
+        )
+    }
+
+    /// F16: 後手獅子6c・銅将5b(6cの足)・飛車9a／先手獅子3f・横行2c・成獅子9f。手番後手。
+    fn f16() -> Position {
+        fixture(
+            Color::White,
+            &[
+                (msq(6, 'c'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'b'), piece(Color::White, PieceKind::CopperGeneral)),
+                (msq(9, 'a'), piece(Color::White, PieceKind::Rook)),
+                (msq(3, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(2, 'c'), piece(Color::Black, PieceKind::SideMover)),
+                (msq(9, 'f'), promoted_lion(Color::Black)),
+            ],
+        )
+    }
+
+    /// F17: 後手獅子6c・銅将5b(6cの足)・飛車9a／先手獅子6d(6cに隣接)・成獅子9f。手番後手。
+    fn f17() -> Position {
+        fixture(
+            Color::White,
+            &[
+                (msq(6, 'c'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'b'), piece(Color::White, PieceKind::CopperGeneral)),
+                (msq(9, 'a'), piece(Color::White, PieceKind::Rook)),
+                (msq(6, 'd'), piece(Color::Black, PieceKind::Lion)),
+                (msq(9, 'f'), promoted_lion(Color::Black)),
+            ],
+        )
+    }
+
+    /// F19: 後手獅子6c(足なし)・飛車9a／先手獅子6e・横行2c・成獅子9f。手番後手。
+    fn f19() -> Position {
+        fixture(
+            Color::White,
+            &[
+                (msq(6, 'c'), piece(Color::White, PieceKind::Lion)),
+                (msq(9, 'a'), piece(Color::White, PieceKind::Rook)),
+                (msq(6, 'e'), piece(Color::Black, PieceKind::Lion)),
+                (msq(2, 'c'), piece(Color::Black, PieceKind::SideMover)),
+                (msq(9, 'f'), promoted_lion(Color::Black)),
+            ],
+        )
+    }
+
+    // ---------- 第3条 用語のテスト上の観測 ----------
+
+    #[test]
+    fn article_3_11_lance_in_the_mid_square_is_a_valuable_piece() {
+        // 第3条11号・第16条1・4項(D2-003-03): 香車は歩兵・仲人以外なので価値ある
+        // 駒であり、香車を経由捕獲する付け喰いは足(金7e)があっても成立する。
+        // 経由駒を歩兵に替えた不成立(D2-016-03)とのメタモルフィック対。
+        let position = f12(Some(PieceKind::Lance), true);
+
+        assert!(is_generated(
+            base(),
+            &position,
+            mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
+        ));
     }
 
     #[test]
-    fn rule_codes_parse_case_insensitively_and_display_canonically() {
-        for code in RuleCode::ALL {
-            let canonical = code.to_string();
-            assert_eq!(canonical.parse::<RuleCode>(), Ok(code));
-            assert_eq!(canonical.to_ascii_lowercase().parse::<RuleCode>(), Ok(code));
+    fn article_3_14_igui_returns_the_lion_and_leaves_no_recapture_target() {
+        // 第3条14号・第12条8項・第14条1項(D2-003-06): 居喰いは隣接獅子の捕獲と
+        // して合法であり、着手後は獅子が6fへ戻るため、6eへ利く金5dの取り返しは
+        // 対象を失う。停止形(D2-015-04)とは異なる着手として区別される。
+        let mut position = f10();
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'f'), msq(6, 'e'))
+        ));
+        play(base(), &mut position, igui(msq(6, 'f'), msq(6, 'e')));
+
+        assert_eq!(position.piece_at(msq(6, 'e')), None);
+        assert_eq!(
+            position.piece_at(msq(6, 'f')),
+            Some(piece(Color::Black, PieceKind::Lion))
+        );
+    }
+
+    // ---------- 第13条 足の判定 ----------
+
+    #[test]
+    fn article_13_1_a_footed_lion_cannot_be_captured_by_a_lion_at_distance_two() {
+        // 第13条1項・第14条2項(D2-013-01): 金7gの利きが6fに届くため、後手獅子6d
+        // が先手獅子6fを取る着手は経路のいかんによらず含まれない。足なし局面F1a
+        // との反転対(D2-003-01)はarticle_14_3のテストが受け持つ。
+        let position = f1(&[]);
+
+        assert!(captures_of(base(), &position, msq(6, 'f')).is_empty());
+        // 禁止は相手獅子を取る着手だけに掛かる(境界)。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'd'), msq(6, 'e'))
+        ));
+    }
+
+    #[test]
+    fn article_13_2_a_slider_blocked_by_the_lion_itself_is_a_hidden_foot() {
+        // 第13条2項・第3条10号・第14条4項(D2-013-02): 飛車6jの利きは6fの自獅子
+        // で遮られているが、獅子が盤上から除かれると通るため裏足となる。
+        let hidden_foot = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'j'), piece(Color::Black, PieceKind::Rook)),
+            ],
+        );
+        assert!(captures_of(base(), &hidden_foot, msq(6, 'f')).is_empty());
+
+        // 飛車を6筋の線外(5j)へ移すと足がなくなり、同じ捕獲が含まれる(境界)。
+        let off_line = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(5, 'j'), piece(Color::Black, PieceKind::Rook)),
+            ],
+        );
+        assert!(is_generated(
+            base(),
+            &off_line,
+            mv(msq(6, 'd'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_13_3_a_piece_that_cannot_reach_the_capture_square_is_not_a_foot() {
+        // 第13条3項(D2-013-03): 基準は隣接ではなく「駒本来の動きで捕獲後の升へ
+        // 移動できるか」である。歩7fは6fの隣だが前(7e)へしか動けず足でない。
+        let f3 = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(7, 'f'), piece(Color::Black, PieceKind::Pawn)),
+            ],
+        );
+        assert!(is_generated(base(), &f3, mv(msq(6, 'd'), msq(6, 'f'))));
+
+        // F3a: 歩6gの前は6fなので足となり、1升の置き換えで合法性が反転する。
+        let f3a = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'g'), piece(Color::Black, PieceKind::Pawn)),
+            ],
+        );
+        assert!(captures_of(base(), &f3a, msq(6, 'f')).is_empty());
+    }
+
+    #[test]
+    fn article_13_4_the_foot_is_judged_on_the_board_just_after_the_capture() {
+        // 第13条4項(D2-013-04): 着手前は飛車6bの利きが捕獲側の起点6dで遮られる
+        // が、捕獲直後の仮想盤面では6dが空いて6fへ通るため足がある。着手前の
+        // 利きで判定する実装を検出する。
+        let f4 = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'b'), piece(Color::Black, PieceKind::Rook)),
+            ],
+        );
+        assert!(captures_of(base(), &f4, msq(6, 'f')).is_empty());
+
+        // 飛車を線外(5b)へ移すと足がなくなる(境界)。
+        let off_line = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(5, 'b'), piece(Color::Black, PieceKind::Rook)),
+            ],
+        );
+        assert!(is_generated(
+            base(),
+            &off_line,
+            mv(msq(6, 'd'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_13_5_a_foot_that_can_itself_be_captured_still_counts() {
+        // 第13条5項(D2-013-05): 足の金7gに後手飛車7aの当たりが掛かっていても
+        // 足として扱う。足の駒の安全性は判定に関与しない(F1への単調性)。
+        let position = f1(&[(msq(7, 'a'), piece(Color::White, PieceKind::Rook))]);
+
+        assert!(captures_of(base(), &position, msq(6, 'f')).is_empty());
+    }
+
+    #[test]
+    fn article_13_6_a_king_as_the_only_foot_still_counts() {
+        // 第13条6項・第8条3項(D2-013-06): 取り返せるのは王将6gだけで、取り返し
+        // 升6fには後手角3cの利きが通っているが、王駒であることだけを理由に足から
+        // 除外しない。この局面のみ先手王将は12lでなく6gに置く(F5)。
+        let f5 = position_from_codes(
+            Color::White,
+            &[
+                (msq(1, 'a'), piece(Color::White, PieceKind::King)),
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(3, 'c'), piece(Color::White, PieceKind::Bishop)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'g'), piece(Color::Black, PieceKind::King)),
+            ],
+        );
+        assert!(!is_generated(base(), &f5, mv(msq(6, 'd'), msq(6, 'f'))));
+
+        // 王将を6fへ届かない7hへ移すと足がなくなる(境界)。
+        let unreachable_king = position_from_codes(
+            Color::White,
+            &[
+                (msq(1, 'a'), piece(Color::White, PieceKind::King)),
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(3, 'c'), piece(Color::White, PieceKind::Bishop)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(7, 'h'), piece(Color::Black, PieceKind::King)),
+            ],
+        );
+        assert!(is_generated(
+            base(),
+            &unreachable_king,
+            mv(msq(6, 'd'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_13_7_the_foot_judgement_is_not_recursive() {
+        // 第13条7項・第14条2項(D2-013-07): 3枚獅子局面F6。成獅子6hは獅子の動き
+        // で6fへ到達でき足である。金5eが6fへ利くため、取り返しへ第13〜16条を
+        // 再帰適用すると足が否定されてしまうが、判定は仮想盤面での到達可能性
+        // だけによる。金の有無で結果が変わらないこと(非再帰なら不変)も確認する。
+        let with_gold = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'e'), piece(Color::White, PieceKind::GoldGeneral)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'h'), promoted_lion(Color::Black)),
+            ],
+        );
+        // 金5e自身は非獅子として6fを取れる(第14条5項)ため、後手獅子の跳びだけを
+        // 対象に観測する(空升経由の2段階は跳びへ正準化される)。
+        assert!(!is_generated(
+            base(),
+            &with_gold,
+            mv(msq(6, 'd'), msq(6, 'f'))
+        ));
+
+        let without_gold = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'h'), promoted_lion(Color::Black)),
+            ],
+        );
+        assert!(captures_of(base(), &without_gold, msq(6, 'f')).is_empty());
+    }
+
+    // ---------- 第14条 獅子による獅子の捕獲 ----------
+
+    #[test]
+    fn article_14_1_an_adjacent_lion_can_be_captured_unconditionally() {
+        // 第14条1項(D2-014-01)・第16条12項(D2-016-10): 隣接する相手獅子は足
+        // (金7g)があっても取れ、付け喰いの成立を要しない。停止形と居喰い形の
+        // 双方が含まれる。
+        let f7 = fixture(
+            Color::White,
+            &[
+                (msq(6, 'e'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(7, 'g'), piece(Color::Black, PieceKind::GoldGeneral)),
+            ],
+        );
+        let stop = mv(msq(6, 'e'), msq(6, 'f'));
+        assert!(is_generated(base(), &f7, stop));
+        assert!(is_generated(base(), &f7, igui(msq(6, 'e'), msq(6, 'f'))));
+
+        // 獅子が獅子を取ったので先獅子は成立せず(第15条6項)、金7gで取り返せる。
+        let mut position = f7;
+        play(base(), &mut position, stop);
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(7, 'g'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_14_3_an_unfooted_lion_at_distance_two_can_be_captured() {
+        // 第14条3項(D2-014-03): 非隣接でも足がなければ獅子で取れる。F1(足あり、
+        // D2-013-01)との反転対。Minaseの正準符号化では空升経由の2段階移動は
+        // 跳び(midなし)へ正準化されるため、捕獲は跳び形で観測する。
+        let f1a = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+            ],
+        );
+
+        assert!(is_generated(base(), &f1a, mv(msq(6, 'd'), msq(6, 'f'))));
+    }
+
+    #[test]
+    fn article_14_5_a_non_lion_captures_a_lion_regardless_of_feet() {
+        // 第14条5項(D2-014-05): 後手飛車2fは足(金7g)のある先手獅子6fを取れる。
+        let mut position = fixture(
+            Color::White,
+            &[
+                (msq(2, 'f'), piece(Color::White, PieceKind::Rook)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(7, 'g'), piece(Color::Black, PieceKind::GoldGeneral)),
+            ],
+        );
+        play(base(), &mut position, mv(msq(2, 'f'), msq(6, 'f')));
+
+        // 後手に獅子は残らないため先獅子の保護対象はなく、直後の取り返しは
+        // 通常どおり含まれる(第15条1項は「取った側に残る獅子」を前提とする)。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(7, 'g'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_14_6_promoted_lions_follow_the_same_capture_rules() {
+        // 第14条6項・第17条(D2-014-06): 麒麟由来の成獅子でも第13〜16条の判定は
+        // 変わらない。(i)取る側が成獅子、(ii)取られる側が成獅子のいずれもF1と
+        // 同じく非隣接・足ありの捕獲は含まれない。
+        let promoted_capturer = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), promoted_lion(Color::White)),
+                (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
+                (msq(7, 'g'), piece(Color::Black, PieceKind::GoldGeneral)),
+            ],
+        );
+        assert!(captures_of(base(), &promoted_capturer, msq(6, 'f')).is_empty());
+
+        let promoted_target = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), promoted_lion(Color::Black)),
+                (msq(7, 'g'), piece(Color::Black, PieceKind::GoldGeneral)),
+            ],
+        );
+        assert!(captures_of(base(), &promoted_target, msq(6, 'f')).is_empty());
+    }
+
+    #[test]
+    fn articles_14_5_and_15_1_an_eagle_may_capture_two_lions_and_triggers_senjishi() {
+        // 第14条5項・第11条2・3項・第7条9項・第15条1項(D2-014-07): 飛鷲は非獅子
+        // なので2段階移動の各段階で足条件なく獅子を取れる。着手後は取った側に
+        // 残る後手獅子9d(足=銅8c)へ先獅子が成立し、直後の「飛車9j×獅子9d」は
+        // 含まれない。
+        let mut position = fixture(
+            Color::White,
+            &[
+                (msq(6, 'd'), piece(Color::White, PieceKind::SoaringEagle)),
+                (msq(9, 'd'), piece(Color::White, PieceKind::Lion)),
+                (msq(8, 'c'), piece(Color::White, PieceKind::CopperGeneral)),
+                (msq(5, 'e'), piece(Color::Black, PieceKind::Lion)),
+                (msq(4, 'f'), promoted_lion(Color::Black)),
+                (msq(9, 'j'), piece(Color::Black, PieceKind::Rook)),
+            ],
+        );
+        play(
+            base(),
+            &mut position,
+            mv2(msq(6, 'd'), msq(5, 'e'), msq(4, 'f')),
+        );
+
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(9, 'j'), msq(9, 'd'))
+        ));
+    }
+
+    // ---------- 第15条 先獅子 ----------
+
+    #[test]
+    fn article_15_1_senjishi_blocks_the_immediate_capture_of_the_footed_lion() {
+        // 第15条1・3項(D2-015-01): 飛車9a×獅子9fの直後、取った側に残る後手獅子
+        // 6cには足(銅5b)があるため先獅子が成立し、「飛車6i×獅子6c」は含まれない。
+        let mut position = f9(true);
+        play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'i'), msq(6, 'c'))
+        ));
+        // 禁止は保護された獅子の捕獲だけに掛かる(境界)。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'i'), msq(6, 'd'))
+        ));
+    }
+
+    #[test]
+    fn article_15_2_without_a_foot_the_lion_can_be_recaptured_immediately() {
+        // 第15条2項(D2-015-02、岡崎方式): 残る獅子6cに足がなければ先獅子は
+        // 成立せず、直後の取り返しが含まれる(非獅子の捕獲は第14条5項で無条件)。
+        let mut position = f9(false);
+        play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'i'), msq(6, 'c'))
+        ));
+    }
+
+    #[test]
+    fn articles_15_4_and_15_5_senjishi_lasts_only_for_the_very_next_move() {
+        // 第15条4・5項・第3条12号(D2-015-03・D2-003-04): 禁止は直後の1手だけに
+        // 及び、相手が別の着手を行った時点で消滅する。足(銅5b)は維持されたまま
+        // でも、非獅子による捕獲に足は関係ない(第14条5項)。
+        let mut position = f9(true);
+        play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'i'), msq(6, 'c'))
+        ));
+
+        play(base(), &mut position, mv(msq(12, 'l'), msq(12, 'k')));
+        play(base(), &mut position, mv(msq(1, 'a'), msq(1, 'b')));
+
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'i'), msq(6, 'c'))
+        ));
+    }
+
+    #[test]
+    fn article_15_6_a_lion_capturing_a_lion_does_not_trigger_senjishi() {
+        // 第15条6項・第14条1・5項(D2-015-04): 隣接獅子の捕獲(停止形)は合法で、
+        // 獅子が獅子を取ったため先獅子は成立せず、直後の「金5d×獅子6e」が
+        // 含まれる。居喰い形との差はarticle_3_14のテストが受け持つ。
+        let mut position = f10();
+        play(base(), &mut position, mv(msq(6, 'f'), msq(6, 'e')));
+
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(5, 'd'), msq(6, 'e'))
+        ));
+    }
+
+    #[test]
+    fn article_15_7_senjishi_can_protect_a_kirin_promoted_lion() {
+        // 第15条7項・第15条1項・第18条1項(D2-015-05): 麒麟6e→6c捕獲・成りの
+        // 終了時、新しい成獅子6c自身に足(麒麟の去った6筋で開通した竪行6h。
+        // 第13条4項)があるため、標準規則では先獅子が成立する。
+        let mut promoted_case = f11(true);
+        play(base(), &mut promoted_case, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(!is_generated(
+            base(),
+            &promoted_case,
+            mv(msq(5, 'b'), msq(6, 'c'))
+        ));
+
+        // 境界(i): 不成なら盤上の6cは麒麟であり獅子ではないため保護されない。
+        let mut unpromoted_case = f11(true);
+        play(base(), &mut unpromoted_case, mv(msq(6, 'e'), msq(6, 'c')));
+        assert!(is_generated(
+            base(),
+            &unpromoted_case,
+            mv(msq(5, 'b'), msq(6, 'c'))
+        ));
+
+        // 境界(ii): 竪行6hがなければ成獅子6cに足がなく先獅子は成立しない。
+        let mut footless_case = f11(false);
+        play(base(), &mut footless_case, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(is_generated(
+            base(),
+            &footless_case,
+            mv(msq(5, 'b'), msq(6, 'c'))
+        ));
+    }
+
+    #[test]
+    fn articles_15_5_and_3_13_jitto_is_a_move_that_expires_senjishi() {
+        // 第15条5項・第3条13号・第6条4項(D2-015-06・D2-003-05): じっとは手番
+        // 放棄ではなく合法な1手であり、「別の着手」として先獅子の禁止を消滅
+        // させる。じっとを着手なしと扱い禁止を持続させる実装を検出する。
+        let mut position = f16();
+        play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(2, 'c'), msq(6, 'c'))
+        ));
+
+        play(base(), &mut position, jitto(msq(3, 'f')));
+        play(base(), &mut position, mv(msq(1, 'a'), msq(1, 'b')));
+
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(2, 'c'), msq(6, 'c'))
+        ));
+    }
+
+    #[test]
+    fn articles_15_1_and_14_1_senjishi_blocks_even_an_adjacent_lion_recapture() {
+        // D2-015-09(解釈固定): 第14条1項(隣接獅子は無条件に取れる)と第15条1項
+        // (先獅子中は直後の1手で取れない)の優先関係は条文に明文がない
+        // (SPEC_UNCLEAR-1)。本プロジェクトは第15条1項を優先する解釈を固定し、
+        // 先獅子中は隣接でも取り返せないものとする。
+        let mut position = f17();
+        play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'd'), msq(6, 'c'))
+        ));
+        // 居喰い形「6d→6c(捕獲)→6d」は合法とする(解釈固定、SPEC_UNCLEAR-1関連)。
+        // 第13条3項は取り返す駒が「獅子捕獲後の升」へ移動できることを足の要件と
+        // するため、着手ごとの判定では到達升6dに銅5bの利きが届かず足が成立しない。
+        // 先獅子の禁止(第15条1項)は足条件付きであり、この着手には及ばない。
+        assert!(is_generated(
+            base(),
+            &position,
+            igui(msq(6, 'd'), msq(6, 'c'))
+        ));
+
+        // 第3手以降は失効し、隣接捕獲が通常どおり含まれる(境界)。
+        play(base(), &mut position, mv(msq(12, 'l'), msq(12, 'k')));
+        play(base(), &mut position, mv(msq(1, 'a'), msq(1, 'b')));
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'd'), msq(6, 'c'))
+        ));
+    }
+
+    #[test]
+    fn article_15_1_each_remaining_footed_lion_is_protected_independently() {
+        // D2-015-08(解釈固定): 第15条1項の「取った側に残る獅子」が複数ある場合
+        // の扱いは明文がない(SPEC_UNCLEAR-2)。足のある残存獅子のそれぞれが独立
+        // に保護される解釈を採り、新しい成獅子6cと既存の獅子9fの双方を保護する。
+        let mut position = f11a(true);
+        play(base(), &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(5, 'b'), msq(6, 'c'))
+        ));
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(9, 'a'), msq(9, 'f'))
+        ));
+
+        // 境界: 銀9gを除くと獅子9fに足がなく、保護は獅子ごとの足条件による。
+        let mut without_silver = f11a(false);
+        play(base(), &mut without_silver, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(is_generated(
+            base(),
+            &without_silver,
+            mv(msq(9, 'a'), msq(9, 'f'))
+        ));
+        assert!(!is_generated(
+            base(),
+            &without_silver,
+            mv(msq(5, 'b'), msq(6, 'c'))
+        ));
+    }
+
+    // ---------- 第16条 付け喰い ----------
+
+    #[test]
+    fn articles_16_1_and_16_4_tsukegui_captures_a_footed_lion() {
+        // 第16条1・2・4項・第14条2項(D2-016-01): 第1段階で銀6gを取り第2段階で
+        // 獅子6fを取る付け喰いは、足(金7e)があっても含まれる。直接跳びは経由升
+        // の駒を取らない(第12条7項)ため付け喰いにならず、含まれない。
+        let position = f12(Some(PieceKind::SilverGeneral), true);
+        let tsukegui = mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'));
+        assert!(is_generated(base(), &position, tsukegui));
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'h'), msq(6, 'f'))
+        ));
+
+        // 付け喰い後は足の金7eで取り返せる(第16条5項。獅子が取ったので先獅子は
+        // 成立しない。第16条6項、D2-016-01境界)。
+        let mut after = position;
+        play(base(), &mut after, tsukegui);
+        assert!(is_generated(base(), &after, mv(msq(7, 'e'), msq(6, 'f'))));
+    }
+
+    #[test]
+    fn article_16_1_passing_an_empty_mid_square_is_not_tsukegui() {
+        // 第16条1項・第14条2項(D2-016-02): 付け喰いの成立要件は「第1段階での
+        // 価値ある駒の捕獲」であり、2段階移動という形式ではない。経由升6gが空
+        // なら足(金7e)により捕獲は含まれない。
+        let f12b = f12(None, true);
+        assert!(captures_of(base(), &f12b, msq(6, 'f')).is_empty());
+
+        // 金7eを除けば足がなく取れる(第14条3項、境界)。
+        let footless = f12(None, false);
+        assert!(is_generated(
+            base(),
+            &footless,
+            mv(msq(6, 'h'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_16_3_capturing_a_pawn_in_the_mid_square_is_not_tsukegui() {
+        // 第16条3項・第14条2・3項(D2-016-03): 歩兵経由では付け喰いが成立せず、
+        // 足(金7e)があるため含まれない。第1段階終了時に両獅子が隣接する形に
+        // なっても第14条1項の隣接例外は適用されない(隣接判定は着手開始時)。
+        let f12a = f12(Some(PieceKind::Pawn), true);
+        assert!(!is_generated(
+            base(),
+            &f12a,
+            mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
+        ));
+
+        // F12a′: 足がなければ同じ2段階移動は通常の連続捕獲として含まれる
+        // (第14条3項。付け喰いの成立は不要)。
+        let footless = f12(Some(PieceKind::Pawn), false);
+        assert!(is_generated(
+            base(),
+            &footless,
+            mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
+        ));
+        // 跳びでは歩6gが盤上に残るが、歩は6fへ移動できず足ではない(境界)。
+        assert!(is_generated(
+            base(),
+            &footless,
+            mv(msq(6, 'h'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_16_11_a_mid_square_off_the_straight_line_still_counts_as_between() {
+        // 第16条11項・1・4項(D2-016-04): 銀5gは両獅子を結ぶ直線上にないが、
+        // 第1段階の経由升で取られる駒は「間」にある価値ある駒に当たる。唯一の
+        // 足が経由捕獲される銀自身でも、付け喰いは足の有無と無関係に成立する。
+        let position = fixture(
+            Color::Black,
+            &[
+                (msq(6, 'h'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'g'), piece(Color::White, PieceKind::SilverGeneral)),
+            ],
+        );
+
+        assert!(is_generated(
+            base(),
+            &position,
+            mv2(msq(6, 'h'), msq(5, 'g'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn articles_16_4_and_16_5_tsukegui_stands_even_if_a_sliding_foot_opens() {
+        // 第16条4・5・6項・第13条4項(D2-016-05): 経由捕獲で銀5gが消えると角3i
+        // の斜線が6fへ開くが、付け喰いは足があっても成立し、直後に角で取り
+        // 返せる(取り返されるリスクは合法性に影響しない)。
+        let mut position = fixture(
+            Color::Black,
+            &[
+                (msq(6, 'h'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'g'), piece(Color::White, PieceKind::SilverGeneral)),
+                (msq(3, 'i'), piece(Color::White, PieceKind::Bishop)),
+            ],
+        );
+        play(
+            base(),
+            &mut position,
+            mv2(msq(6, 'h'), msq(5, 'g'), msq(6, 'f')),
+        );
+
+        // 獅子が取ったので先獅子は不成立(第16条6項)、角の取り返しが含まれる。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(3, 'i'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn articles_16_7_and_15_8_tsukegui_overrides_an_established_senjishi() {
+        // 第16条7項・第15条8項(D2-016-06・D2-015-07): 成立済みの先獅子による
+        // 捕獲禁止と第14条2項の足あり禁止の双方に、付け喰いが優先する。
+        let mut position = f15();
+        play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+
+        let tsukegui = mv2(msq(6, 'f'), msq(6, 'e'), msq(6, 'd'));
+        // 保護された獅子6dを取れる手は付け喰いだけであり、直接跳びは両禁止に
+        // 服して含まれない(境界)。
+        assert_eq!(captures_of(base(), &position, msq(6, 'd')), vec![tsukegui]);
+
+        play(base(), &mut position, tsukegui);
+        // 付け喰いでは先獅子が成立しない(第16条6項)ため、足の銅5cによる
+        // 取り返しが含まれる(第16条5項)。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(5, 'c'), msq(6, 'd'))
+        ));
+    }
+
+    #[test]
+    fn articles_16_8_to_16_10_a_go_between_as_the_only_foot_does_not_vanish_mid_move() {
+        // 第16条8・9・10項・第12条13項(D2-016-07): 唯一の足である仲人6gを第1
+        // 段階で取っても、着手の途中で足が消滅したとは扱わず、着手全体を1手と
+        // して足ありと判定する。
+        let position = f12(Some(PieceKind::GoBetween), false);
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
+        ));
+        // 跳びでは仲人が盤上に残り6fへ移動できる足であるため、こちらも含まれない。
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'h'), msq(6, 'f'))
+        ));
+        // 仲人を取って停止する着手は通常の捕獲として含まれる。禁止は同じ着手の
+        // 第2段階で獅子を取ることだけである(第16条9項の境界)。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'h'), msq(6, 'g'))
+        ));
+    }
+
+    #[test]
+    fn articles_16_8_to_16_10_a_pawn_as_the_only_foot_does_not_vanish_mid_move() {
+        // 第16条8・9・10項(D2-016-08): 歩兵への拡張はRULES.mdが敷衍と明記する。
+        // 仲人(D2-016-07)と同一の判定になる。
+        let position = f13();
+
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv2(msq(6, 'd'), msq(6, 'e'), msq(6, 'f'))
+        ));
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'd'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn articles_13_4_and_16_3_a_captured_pawn_is_not_restored_to_block_slider_feet() {
+        // 第13条4項・第16条3項・第16条8〜10項の適用限界(D2-016-09): 歩5gは足で
+        // なく角3iの斜線を遮っているだけである。喰い進みは付け喰いにならず、
+        // 着手完了後の仮想盤面(歩は除かれている)で開通した角が足になるため
+        // 含まれない。第16条8項は歩・仲人が足である場合の規定であり、足でない
+        // 歩を復元して走りの利きを遮る根拠にはならない。
+        let position = fixture(
+            Color::Black,
+            &[
+                (msq(6, 'h'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'g'), piece(Color::White, PieceKind::Pawn)),
+                (msq(3, 'i'), piece(Color::White, PieceKind::Bishop)),
+            ],
+        );
+        assert!(!is_generated(
+            base(),
+            &position,
+            mv2(msq(6, 'h'), msq(5, 'g'), msq(6, 'f'))
+        ));
+        // 跳びでは歩5gが盤上に残って角の斜線を実際に遮り、他に足がないため
+        // 含まれる(第14条3項)。喰い進みと跳びで合法性が分かれる非自明な対。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(6, 'h'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn articles_16_1_and_16_11_a_lion_captured_in_the_mid_square_is_a_valuable_piece() {
+        // 第16条1・11項・第3条11号・第14条1項(D2-016-11): 第1段階は隣接獅子の
+        // 無条件捕獲、第2段階は経由升で価値ある駒(獅子は歩兵・仲人以外)を取った
+        // 付け喰いとして、足(金7e)があっても成立する。1手で獅子2枚を取る。
+        let mut position = fixture(
+            Color::Black,
+            &[
+                (msq(6, 'h'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'g'), piece(Color::White, PieceKind::Lion)),
+                (msq(6, 'f'), promoted_lion(Color::White)),
+                (msq(7, 'e'), piece(Color::White, PieceKind::GoldGeneral)),
+            ],
+        );
+        play(
+            base(),
+            &mut position,
+            mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f')),
+        );
+
+        // 直後の「金7e×獅子6f」は含まれる(第16条5項。先獅子は不成立。第15条6項)。
+        assert!(is_generated(
+            base(),
+            &position,
+            mv(msq(7, 'e'), msq(6, 'f'))
+        ));
+    }
+
+    // ---------- 第29条 獅子に関するローカルルール ----------
+
+    #[test]
+    fn articles_29_l0_and_33_1_explicit_l0_is_identical_to_the_standard_rules() {
+        // 第29条L0・第33条1・2項(D2-029-01・D2-033-04): L0は標準規則と同内容の
+        // 記録用コードであり、明示採用しても挙動を一切変えない。
+        let l0 = rules_of(&[RuleCode::L0, RuleCode::R1]);
+        assert_eq!(l0, base());
+
+        // F9系の先獅子観測(D2-015-01・02)がL0明示でも同一の結果になる。
+        let mut footed = f9(true);
+        play(l0, &mut footed, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(l0, &footed, mv(msq(6, 'i'), msq(6, 'c'))));
+
+        let mut footless = f9(false);
+        play(l0, &mut footless, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(is_generated(l0, &footless, mv(msq(6, 'i'), msq(6, 'c'))));
+    }
+
+    #[test]
+    fn article_29_l1_forbids_non_lion_recapture_regardless_of_foot() {
+        // 第29条L1(D2-029-02): 足のないF9aでも、L1では非獅子による直後の
+        // 取り返しが禁止される。標準規則(D2-015-02)とL1を弁別する最小局面。
+        let l1 = rules_of(&[RuleCode::L1, RuleCode::R1]);
+        let mut position = f9(false);
+        play(l1, &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(l1, &position, mv(msq(6, 'i'), msq(6, 'c'))));
+
+        // 禁止は直後の1手だけであり、第15条4・5項と同じ時系列で失効する(境界)。
+        play(l1, &mut position, mv(msq(12, 'l'), msq(12, 'k')));
+        play(l1, &mut position, mv(msq(1, 'a'), msq(1, 'b')));
+        assert!(is_generated(l1, &position, mv(msq(6, 'i'), msq(6, 'c'))));
+    }
+
+    #[test]
+    fn article_29_l1_restricts_only_non_lion_pieces() {
+        // 第29条L1・第14条3項(D2-029-03): 同一局面・同一手番で、L1は非獅子
+        // (横行)の取り返しだけを禁じ、獅子による捕獲は第14条だけに従う
+        // (非隣接だが足なしなので合法)。
+        let l1 = rules_of(&[RuleCode::L1, RuleCode::R1]);
+        let mut restricted = f19();
+        play(l1, &mut restricted, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(l1, &restricted, mv(msq(2, 'c'), msq(6, 'c'))));
+        // 空升経由の2段階は跳びへ正準化されるため、獅子の捕獲は跳び形で観測する。
+        assert!(is_generated(l1, &restricted, mv(msq(6, 'e'), msq(6, 'c'))));
+
+        // 標準規則の同一局面では、足なしのため先獅子が成立せず両方含まれる(境界)。
+        let mut standard = f19();
+        play(base(), &mut standard, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(is_generated(
+            base(),
+            &standard,
+            mv(msq(2, 'c'), msq(6, 'c'))
+        ));
+        assert!(is_generated(
+            base(),
+            &standard,
+            mv(msq(6, 'e'), msq(6, 'c'))
+        ));
+    }
+
+    #[test]
+    fn article_29_l2_allows_immediate_capture_of_the_new_promoted_lion() {
+        // 第29条L2・第15条7項(D2-029-04): L2は第15条7項を適用せず、麒麟成獅子
+        // への直後の取り返しを認める。標準規則での禁止(D2-015-05)との反転対。
+        let l0_l2 = rules_of(&[RuleCode::L0, RuleCode::L2, RuleCode::R1]);
+        let mut position = f11(true);
+        play(l0_l2, &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
+
+        assert!(is_generated(l0_l2, &position, mv(msq(5, 'b'), msq(6, 'c'))));
+    }
+
+    #[test]
+    fn article_29_l1_plus_l2_reproduces_the_english_source_rule() {
+        // 第29条L1・L2および同条注記(D2-029-05): 英語文献の原文規則はL1とL2の
+        // 併用で再現される。L1単独では麒麟(捕獲時点で非獅子)による捕獲として
+        // 足の有無によらず取り返しが禁止され、L1＋L2では例外が働く。
+        let l1 = rules_of(&[RuleCode::L1, RuleCode::R1]);
+        let mut l1_footed = f11(true);
+        play(l1, &mut l1_footed, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(!is_generated(l1, &l1_footed, mv(msq(5, 'b'), msq(6, 'c'))));
+
+        // 竪行6h(足)の有無にもよらない。
+        let mut l1_footless = f11(false);
+        play(l1, &mut l1_footless, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(!is_generated(
+            l1,
+            &l1_footless,
+            mv(msq(5, 'b'), msq(6, 'c'))
+        ));
+
+        let l1_l2 = rules_of(&[RuleCode::L1, RuleCode::L2, RuleCode::R1]);
+        let mut exempted = f11(true);
+        play(l1_l2, &mut exempted, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(is_generated(l1_l2, &exempted, mv(msq(5, 'b'), msq(6, 'c'))));
+    }
+
+    #[test]
+    fn article_29_l2_exempts_only_the_new_promoted_lion() {
+        // 第29条L2・第15条1項(D2-029-06): L2の例外は「その新しい獅子」だけに
+        // 及び、既存の獅子9fへの先獅子の保護(足=銀9g)は残る。
+        let l0_l2 = rules_of(&[RuleCode::L0, RuleCode::L2, RuleCode::R1]);
+        let mut position = f11a(true);
+        play(l0_l2, &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
+
+        assert!(is_generated(l0_l2, &position, mv(msq(5, 'b'), msq(6, 'c'))));
+        assert!(!is_generated(
+            l0_l2,
+            &position,
+            mv(msq(9, 'a'), msq(9, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_29_l3_adopts_stage_wise_foot_judgement() {
+        // 第29条L3(D2-029-07): 唯一の足である仲人・歩兵を第1段階で取った直後に
+        // 足が消滅したと判定し、喰い進みを認める(第16条8〜10項の不適用)。
+        // 跳びでは足の駒が盤上に残るため、L3でも含まれない。
+        let l3 = rules_of(&[RuleCode::L3, RuleCode::R1]);
+        let go_between = f12(Some(PieceKind::GoBetween), false);
+        assert!(is_generated(
+            l3,
+            &go_between,
+            mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
+        ));
+        assert!(!is_generated(l3, &go_between, mv(msq(6, 'h'), msq(6, 'f'))));
+
+        let pawn = f13();
+        assert!(is_generated(
+            l3,
+            &pawn,
+            mv2(msq(6, 'd'), msq(6, 'e'), msq(6, 'f'))
+        ));
+        assert!(!is_generated(l3, &pawn, mv(msq(6, 'd'), msq(6, 'f'))));
+
+        // L3の効果は第16条8〜10項の無効化だけに限られる(性質)。F12(銀経由の
+        // 付け喰い)とF14b(足でない歩の除去で開く走りの足)の判定は変わらない。
+        let silver_mid = f12(Some(PieceKind::SilverGeneral), true);
+        assert!(is_generated(
+            l3,
+            &silver_mid,
+            mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
+        ));
+        assert!(!is_generated(l3, &silver_mid, mv(msq(6, 'h'), msq(6, 'f'))));
+
+        let opened_slider = fixture(
+            Color::Black,
+            &[
+                (msq(6, 'h'), piece(Color::Black, PieceKind::Lion)),
+                (msq(6, 'f'), piece(Color::White, PieceKind::Lion)),
+                (msq(5, 'g'), piece(Color::White, PieceKind::Pawn)),
+                (msq(3, 'i'), piece(Color::White, PieceKind::Bishop)),
+            ],
+        );
+        assert!(!is_generated(
+            l3,
+            &opened_slider,
+            mv2(msq(6, 'h'), msq(5, 'g'), msq(6, 'f'))
+        ));
+        assert!(is_generated(
+            l3,
+            &opened_slider,
+            mv(msq(6, 'h'), msq(6, 'f'))
+        ));
+    }
+
+    #[test]
+    fn article_29_l0_and_l1_are_mutually_exclusive() {
+        // 第29条注記・第33条9項(D2-029-08): L0とL1は同時に採用できない。
+        // 受理判定はコードの集合に対して働き、列記順序に依存しない。
+        assert!(matches!(
+            Rules::from_codes(&[RuleCode::L0, RuleCode::L1, RuleCode::R1]),
+            Err(RulesError::Conflicting { .. })
+        ));
+        assert!(matches!(
+            Rules::from_codes(&[RuleCode::L1, RuleCode::L0, RuleCode::R1]),
+            Err(RulesError::Conflicting { .. })
+        ));
+
+        // L2はL0またはL1への追加例外として、L3は他と排他でなく採用できる(境界)。
+        assert!(Rules::from_codes(&[RuleCode::L0, RuleCode::L2, RuleCode::R1]).is_ok());
+        assert!(Rules::from_codes(&[RuleCode::L1, RuleCode::L2, RuleCode::R1]).is_ok());
+        assert!(Rules::from_codes(&[RuleCode::L1, RuleCode::L3, RuleCode::R1]).is_ok());
+    }
+
+    // ---------- 第30〜33条 規則セットの検証 ----------
+
+    #[test]
+    fn article_30_p1_and_p2_are_mutually_exclusive() {
+        // 第30条注記・第33条9項(D2-030-01): 排他はP1×P2の対だけに掛かり、
+        // P3・P4は他の成り規則へ追加して採用できる。
+        assert!(matches!(
+            Rules::from_codes(&[RuleCode::P1, RuleCode::P2, RuleCode::R1]),
+            Err(RulesError::Conflicting { .. })
+        ));
+        assert!(
+            Rules::from_codes(&[RuleCode::P1, RuleCode::P3, RuleCode::P4, RuleCode::R1]).is_ok()
+        );
+        assert!(Rules::from_codes(&[RuleCode::P2, RuleCode::P3, RuleCode::R1]).is_ok());
+    }
+
+    #[test]
+    fn article_31_a_repetition_rule_must_be_specified() {
+        // 第31条注記(D2-031-01): MinaseはR1、R2またはR3のいずれか1つの明示を
+        // 必須とし、反復規則を含まない規則集合では対局を構築できない。
+        for codes in [&[][..], &[RuleCode::L1][..], &[RuleCode::P3][..]] {
+            let rules = rules_of(codes);
+            assert_eq!(rules.repetition_rule(), None, "{codes:?}");
+            assert!(matches!(
+                Game::new(rules),
+                Err(GameBuildError::MissingRepetitionRule)
+            ));
+        }
+        assert!(Game::new(base()).is_ok());
+    }
+
+    #[test]
+    fn article_31_r0_is_not_a_selectable_rule_code() {
+        // 第31条注記(D2-031-02): R0は日本中将棋連盟式千日手の記録用識別子で
+        // あり、選択可能な規則コードとして提供されない。
+        assert!("R0".parse::<RuleCode>().is_err());
+        assert!(parse_rule_set("R0").is_err());
+        assert!(parse_rule_set("R0,R1").is_err());
+    }
+
+    #[test]
+    fn article_31_repetition_rules_are_mutually_exclusive() {
+        // 第31条注記(D2-031-03): R1・R2・R3の全対で対称に拒否され、1つだけ
+        // 含む集合は受理される。
+        for codes in [
+            [RuleCode::R1, RuleCode::R2],
+            [RuleCode::R1, RuleCode::R3],
+            [RuleCode::R2, RuleCode::R3],
+        ] {
+            assert!(
+                matches!(
+                    Rules::from_codes(&codes),
+                    Err(RulesError::Conflicting { .. })
+                ),
+                "{codes:?}"
+            );
         }
         assert_eq!(
-            "R4".parse::<RuleCode>(),
-            Err("unknown rule code 'R4'".to_owned())
+            rules_of(&[RuleCode::R1]).repetition_rule(),
+            Some(RepetitionRule::R1)
+        );
+        assert_eq!(
+            rules_of(&[RuleCode::R2]).repetition_rule(),
+            Some(RepetitionRule::R2)
+        );
+        assert_eq!(
+            rules_of(&[RuleCode::R3]).repetition_rule(),
+            Some(RepetitionRule::R3)
+        );
+        // 他の整合的なコードとの併用でも反復規則はちょうど1つ(境界)。
+        assert_eq!(
+            rules_of(&[RuleCode::L1, RuleCode::R2]).repetition_rule(),
+            Some(RepetitionRule::R2)
         );
     }
 
     #[test]
-    fn article_33_6_lishogi_preset_is_case_insensitive() {
-        let expected = vec![
+    fn article_33_5_rule_set_name_engine_default_expands_to_r1() {
+        // 第33条5項(D2-033-01): engine-defaultは大文字小文字を区別せず受理
+        // され、実行可能なエンジン既定構成(R1)と観測上区別できない。
+        for name in ["engine-default", "ENGINE-DEFAULT", "Engine-Default"] {
+            let codes = parse_rule_set(name).unwrap();
+            assert_eq!(
+                Rules::from_codes(&codes),
+                Ok(Rules::engine_default()),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            Rules::engine_default().repetition_rule(),
+            Some(RepetitionRule::R1)
+        );
+
+        // 規則コードや他の規則セット名との併記は受理されない。
+        assert!(parse_rule_set("engine-default,L1").is_err());
+        assert!(parse_rule_set("engine-default,lishogi").is_err());
+    }
+
+    #[test]
+    fn article_33_6_rule_set_name_lishogi_expands_to_the_fixed_combination() {
+        // 第33条6項(D2-033-02): lishogiはL1＋L2＋P3＋R1＋E1＋E3の構成全体の
+        // 別名であり、大文字小文字を区別しない。部分一致・追加合成は許さない。
+        let expected = rules_of(&[
             RuleCode::L1,
             RuleCode::L2,
             RuleCode::P3,
             RuleCode::R1,
             RuleCode::E1,
             RuleCode::E3,
-        ];
-
-        assert_eq!(parse_rule_set("lishogi"), Ok(expected.clone()));
-        assert_eq!(parse_rule_set("LISHOGI"), Ok(expected));
-    }
-
-    #[test]
-    fn article_33_5_engine_default_preset_matches_engine_default() {
-        let expected = vec![RuleCode::R1];
-
-        assert_eq!(parse_rule_set("engine-default"), Ok(expected.clone()));
-        assert_eq!(parse_rule_set("ENGINE-DEFAULT"), Ok(expected.clone()));
-        assert_eq!(Rules::from_codes(&expected), Ok(Rules::engine_default()));
-    }
-
-    #[test]
-    fn article_33_6_lishogi_preset_must_be_specified_alone() {
-        let error = parse_rule_set("lishogi,P1").unwrap_err();
-
-        assert!(error.contains("preset 'lishogi' must be specified alone"));
-    }
-
-    #[test]
-    fn article_33_5_engine_default_preset_must_be_specified_alone() {
-        let error = parse_rule_set("engine-default,R2").unwrap_err();
-
-        assert!(error.contains("preset 'engine-default' must be specified alone"));
-    }
-
-    #[test]
-    fn unknown_rule_set_names_and_codes_are_rejected() {
-        assert_eq!(
-            parse_rule_set("standard"),
-            Err("unknown rule code 'standard'".to_owned())
-        );
-        assert_eq!(
-            parse_rule_set("hachu"),
-            Err("unknown rule code 'hachu'".to_owned())
-        );
-        assert_eq!(
-            parse_rule_set("L1,ZZ"),
-            Err("unknown rule code 'ZZ'".to_owned())
-        );
-    }
-
-    #[test]
-    fn explicit_lishogi_code_list_matches_the_preset() {
-        assert_eq!(
-            parse_rule_set("L1,L2,P3,R1,E1,E3"),
-            parse_rule_set("lishogi")
-        );
-    }
-
-    #[test]
-    fn article_33_9_conflicting_code_sets_are_invalid_and_other_inputs_are_validated() {
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::L0, RuleCode::L1]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::L0,
-                second: RuleCode::L1,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::P1, RuleCode::P2]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::P1,
-                second: RuleCode::P2,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R1, RuleCode::R2]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::R1,
-                second: RuleCode::R2,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R1, RuleCode::R3]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::R1,
-                second: RuleCode::R3,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R2, RuleCode::R3]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::R2,
-                second: RuleCode::R3,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::E2, RuleCode::E3]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::E2,
-                second: RuleCode::E3,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::R1, RuleCode::R2, RuleCode::R3]),
-            Err(RulesError::Conflicting {
-                first: RuleCode::R1,
-                second: RuleCode::R2,
-            }),
-        );
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::L0, RuleCode::L0]),
-            Err(RulesError::Duplicate(RuleCode::L0)),
-        );
-        for code in RuleCode::ALL {
-            assert!(Rules::from_codes(&[code]).is_ok());
+        ]);
+        for name in ["lishogi", "LISHOGI", "Lishogi"] {
+            let codes = parse_rule_set(name).unwrap();
+            assert_eq!(Rules::from_codes(&codes), Ok(expected), "{name}");
         }
+
+        // 展開結果と重複するコードであっても併記自体が不可。
+        assert!(parse_rule_set("lishogi,R1").is_err());
+        assert!(parse_rule_set("lishogi,L1").is_err());
+
+        // 挙動照合: lishogi構成ではL1＋L2の効果により、麒麟成獅子への直後の
+        // 取り返しが含まれる(D2-029-05と同じ反転)。
+        let mut position = f11(true);
+        play(expected, &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(is_generated(
+            expected,
+            &position,
+            mv(msq(5, 'b'), msq(6, 'c'))
+        ));
+    }
+
+    #[test]
+    fn article_33_9_contradictory_code_combinations_are_rejected() {
+        // 第33条9項・第29〜32条の各排他注記(D2-033-03): 相互に矛盾するコードの
+        // 組合せは有効な規則セットとして扱わない。
+        for codes in [
+            &[RuleCode::L0, RuleCode::L1, RuleCode::R1][..],
+            &[RuleCode::P1, RuleCode::P2, RuleCode::R1][..],
+            &[RuleCode::R1, RuleCode::R2][..],
+            &[RuleCode::E2, RuleCode::E3, RuleCode::R1][..],
+        ] {
+            assert!(
+                matches!(
+                    Rules::from_codes(codes),
+                    Err(RulesError::Conflicting { .. })
+                ),
+                "{codes:?}"
+            );
+        }
+
+        // 矛盾対を含まない残余の妥当な集合は受理される(境界)。
         assert!(
             Rules::from_codes(&[
-                RuleCode::L3,
+                RuleCode::L1,
                 RuleCode::P3,
-                RuleCode::P4,
                 RuleCode::R1,
                 RuleCode::E1,
+                RuleCode::E3,
             ])
             .is_ok()
         );
-    }
-
-    #[test]
-    fn article_33_1_explicit_l0_normalizes_to_standard() {
-        let explicit_l0 = Rules::from_codes(&[RuleCode::L0]).unwrap();
-
-        assert_eq!(explicit_l0, Rules::standard());
-        assert!(!explicit_l0.contains(RuleCode::L0));
-    }
-
-    #[test]
-    fn article_31_r2_is_supported() {
-        let rules = Rules::from_codes(&[RuleCode::R2]).unwrap();
-
-        assert_eq!(rules.repetition_rule(), Some(RepetitionRule::R2));
-        assert!(rules.contains(RuleCode::R2));
-    }
-
-    #[test]
-    fn article_31_r3_is_supported() {
-        let rules = Rules::from_codes(&[RuleCode::R3]).unwrap();
-
-        assert_eq!(rules.repetition_rule(), Some(RepetitionRule::R3));
-        assert!(rules.contains(RuleCode::R3));
-    }
-
-    #[test]
-    fn standard_rules_do_not_select_a_repetition_rule() {
-        assert_eq!(Rules::standard().repetition_rule(), None);
-    }
-
-    #[test]
-    fn article_33_5_engine_default_selects_r1() {
-        let rules = Rules::engine_default();
-
-        assert_eq!(rules.repetition_rule(), Some(RepetitionRule::R1));
-        assert!(rules.mate_adjudication_enabled());
-        assert!(!rules.piece_exhaustion_disabled());
-        assert!(!rules.contains(RuleCode::L0));
-        assert!(!rules.contains(RuleCode::E1));
-        assert!(!rules.contains(RuleCode::E2));
-    }
-
-    #[test]
-    fn article_9_all_eighteen_promotion_targets_are_explicit() {
-        let promotion_pairs = [
-            (PieceKind::GoldGeneral, PieceKind::Rook),
-            (PieceKind::SilverGeneral, PieceKind::VerticalMover),
-            (PieceKind::CopperGeneral, PieceKind::SideMover),
-            (PieceKind::FerociousLeopard, PieceKind::Bishop),
-            (PieceKind::BlindTiger, PieceKind::FlyingStag),
-            (PieceKind::DrunkElephant, PieceKind::CrownPrince),
-            (PieceKind::Pawn, PieceKind::GoldGeneral),
-            (PieceKind::GoBetween, PieceKind::DrunkElephant),
-            (PieceKind::Lance, PieceKind::WhiteHorse),
-            (PieceKind::ReverseChariot, PieceKind::Whale),
-            (PieceKind::SideMover, PieceKind::FreeBoar),
-            (PieceKind::VerticalMover, PieceKind::FlyingOx),
-            (PieceKind::Bishop, PieceKind::DragonHorse),
-            (PieceKind::Rook, PieceKind::DragonKing),
-            (PieceKind::DragonHorse, PieceKind::HornedFalcon),
-            (PieceKind::DragonKing, PieceKind::SoaringEagle),
-            (PieceKind::Kirin, PieceKind::Lion),
-            (PieceKind::Phoenix, PieceKind::FreeKing),
-        ];
-
-        assert_eq!(promotion_pairs.len(), 18);
-        for (unpromoted, promoted) in promotion_pairs {
-            assert_eq!(unpromoted.promoted(), Some(promoted), "{unpromoted:?}");
-        }
-    }
-
-    #[test]
-    fn articles_15_8_and_16_1_tsukegui_exemption_requires_a_lion_mover() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Bishop),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(6, 6), Color::White, PieceKind::SoaringEagle),
-                (sq(5, 5), Color::Black, PieceKind::SilverGeneral),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(4, 1), Color::Black, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let double_capture = Move {
-            from: sq(6, 6),
-            mid: Some(sq(5, 5)),
-            to: sq(4, 4),
-            promote: false,
-        };
-
-        assert!(!Rules::standard().special_move_is_legal(&position, double_capture));
-    }
-
-    #[test]
-    fn article_14_1_adjacent_lion_capture_is_unconditional() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(3, 2), Color::White, PieceKind::Lion),
-                (sq(3, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let capture = Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(3, 2),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, capture));
-    }
-
-    #[test]
-    fn article_14_2_lion_cannot_capture_a_defended_lion_at_distance_two() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let capture = Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(!is_generated(&position, capture));
-    }
-
-    #[test]
-    fn articles_13_5_and_14_2_attackable_defender_still_blocks_distance_two_lion_capture() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(0, 5), Color::Black, PieceKind::Rook),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let capture_defender = Move {
-            from: sq(0, 5),
-            mid: None,
-            to: sq(4, 5),
-            promote: false,
-        };
-        let capture_lion = Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, capture_defender));
-        assert!(!is_generated(&position, capture_lion));
-    }
-
-    #[test]
-    fn articles_13_2_and_14_4_hidden_sliding_defender_counts_as_a_foot() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(6, 2), Color::White, PieceKind::Rook),
-            ],
-        );
-        let capture = Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(lion_has_foot_after_capture(
-            Rules::standard(),
-            &position,
-            capture,
-            sq(4, 2),
-        ));
-        assert!(!is_generated(&position, capture));
-    }
-
-    #[test]
-    fn article_13_7_lion_foot_is_judged_without_recursion() {
-        fn captures_target_lion(position: &Position) -> Vec<Move> {
-            let mut moves = Vec::new();
-            MoveGenerator::standard().generate_moves(position, &mut moves);
-            moves
-                .into_iter()
-                .filter(|&mv| {
-                    mv.from == sq(2, 2)
-                        && position
-                            .captured_squares(mv)
-                            .into_iter()
-                            .flatten()
-                            .any(|square| square == sq(4, 2))
-                })
-                .collect()
-        }
-
-        let with_lion_foot = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(6, 2), Color::White, PieceKind::Lion),
-            ],
-        );
-
-        // 足となる白獅子の取り返しには第13〜16条を再帰適用せず、
-        // 捕獲直後の盤面で(4,2)へ到達できることだけを判定する。
-        assert!(captures_target_lion(&with_lion_foot).is_empty());
-
-        let without_lion_foot = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-            ],
-        );
-        assert!(captures_target_lion(&without_lion_foot).contains(&Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        }));
-    }
-
-    #[test]
-    fn article_14_5_non_lion_can_capture_a_defended_lion() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(4, 0), Color::Black, PieceKind::Rook),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let capture = Move {
-            from: sq(4, 0),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, capture));
-    }
-
-    #[test]
-    fn article_14_3_undefended_lion_at_distance_two_can_be_captured() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-            ],
-        );
-        let capture = Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, capture));
-    }
-
-    #[test]
-    fn articles_16_1_and_16_4_tsukegui_captures_a_defended_lion() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(3, 2), Color::White, PieceKind::SilverGeneral),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let tsukegui = Move {
-            from: sq(2, 2),
-            mid: Some(sq(3, 2)),
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, tsukegui));
-    }
-
-    #[test]
-    fn articles_15_1_and_16_1_adjacent_double_capture_is_not_tsukegui() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Bishop),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(2, 2), Color::White, PieceKind::Lion),
-                (sq(2, 3), Color::Black, PieceKind::SilverGeneral),
-                (sq(3, 2), Color::Black, PieceKind::Lion),
-                (sq(3, 5), Color::Black, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let adjacent_double_capture = Move {
-            from: sq(2, 2),
-            mid: Some(sq(2, 3)),
-            to: sq(3, 2),
-            promote: false,
-        };
-
-        assert!(!is_tsukegui(&position, adjacent_double_capture, sq(3, 2)));
-        assert!(!is_generated(&position, adjacent_double_capture));
-    }
-
-    #[test]
-    fn articles_12_13_and_16_8_9_10_restore_a_pawn_that_is_the_only_foot() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(4, 6), Color::Black, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Pawn),
-                (sq(4, 4), Color::White, PieceKind::Lion),
-            ],
-        );
-        let capture = Move {
-            from: sq(4, 6),
-            mid: Some(sq(4, 5)),
-            to: sq(4, 4),
-            promote: false,
-        };
-
-        assert!(lion_has_foot_after_capture(
-            Rules::standard(),
-            &position,
-            capture,
-            sq(4, 4),
-        ));
-        assert!(!is_generated(&position, capture));
-    }
-
-    #[test]
-    fn article_29_l2_allows_immediate_capture_of_the_new_promoted_lion() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(5, 9), Color::Black, PieceKind::Kirin),
-                (sq(5, 11), Color::White, PieceKind::Lion),
-                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
-                (sq(5, 4), Color::White, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(5, 9),
-                mid: None,
-                to: sq(5, 11),
-                promote: true,
-            },
-        );
-        let trigger = position.lion_taken_by_non_lion().unwrap();
-        assert_eq!(trigger.square, sq(5, 11));
-        assert!(trigger.by_kirin_promotion);
-
-        let recapture = Move {
-            from: sq(5, 4),
-            mid: None,
-            to: sq(5, 11),
-            promote: false,
-        };
-        let l2 = Rules::from_codes(&[RuleCode::L2]).unwrap();
-
-        assert!(!is_generated(&position, recapture));
-        assert!(is_generated_with_rules(l2, &position, recapture));
-    }
-
-    #[test]
-    fn article_29_l2_does_not_exempt_an_existing_unpromoted_lion() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(5, 9), Color::Black, PieceKind::Kirin),
-                (sq(5, 11), Color::White, PieceKind::Lion),
-                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
-                (sq(5, 4), Color::White, PieceKind::Rook),
-                (sq(8, 7), Color::Black, PieceKind::Lion),
-                (sq(7, 7), Color::Black, PieceKind::GoldGeneral),
-                (sq(8, 4), Color::White, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(5, 9),
-                mid: None,
-                to: sq(5, 11),
-                promote: true,
-            },
-        );
-        let l2 = Rules::from_codes(&[RuleCode::L2]).unwrap();
-        let recapture_new_lion = Move {
-            from: sq(5, 4),
-            mid: None,
-            to: sq(5, 11),
-            promote: false,
-        };
-        let capture_existing_lion = Move {
-            from: sq(8, 4),
-            mid: None,
-            to: sq(8, 7),
-            promote: false,
-        };
-
-        assert!(is_generated_with_rules(l2, &position, recapture_new_lion));
-        assert!(!is_generated_with_rules(
-            l2,
-            &position,
-            capture_existing_lion
-        ));
-    }
-
-    #[test]
-    fn article_29_l2_exempts_only_the_new_promoted_lion() {
-        let mut position = position_from_codes(
-            Color::Black,
-            &[
-                (sq(5, 9), PieceCode::new(Color::Black, PieceKind::Kirin)),
-                (sq(5, 11), PieceCode::new(Color::White, PieceKind::Lion)),
-                (
-                    sq(8, 7),
-                    PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap(),
-                ),
-                (sq(6, 7), PieceCode::new(Color::Black, PieceKind::Lion)),
-                (
-                    sq(4, 11),
-                    PieceCode::new(Color::Black, PieceKind::GoldGeneral),
-                ),
-                (
-                    sq(7, 7),
-                    PieceCode::new(Color::Black, PieceKind::GoldGeneral),
-                ),
-                (sq(5, 4), PieceCode::new(Color::White, PieceKind::Rook)),
-                (sq(8, 4), PieceCode::new(Color::White, PieceKind::Rook)),
-                (sq(6, 4), PieceCode::new(Color::White, PieceKind::Rook)),
-            ],
-        );
-        position.make_move_unchecked(
-            Move {
-                from: sq(5, 9),
-                mid: None,
-                to: sq(5, 11),
-                promote: true,
-            },
-            Rules::standard(),
-        );
-        assert_eq!(
-            position
-                .lion_taken_by_non_lion()
-                .map(|trigger| trigger.square),
-            Some(sq(5, 11))
-        );
-
-        let l2 = Rules::from_codes(&[RuleCode::L2]).unwrap();
-        let capture = |from, to| Move {
-            from,
-            mid: None,
-            to,
-            promote: false,
-        };
-
-        assert!(is_generated_with_rules(
-            l2,
-            &position,
-            capture(sq(5, 4), sq(5, 11))
-        ));
-        assert!(!is_generated_with_rules(
-            l2,
-            &position,
-            capture(sq(8, 4), sq(8, 7))
-        ));
-        assert!(!is_generated_with_rules(
-            l2,
-            &position,
-            capture(sq(6, 4), sq(6, 7))
-        ));
-    }
-
-    #[test]
-    fn articles_14_6_15_7_and_29_l2_apply_per_lion_in_a_double_capture() {
-        let after_kirin_promotion = |with_foot| {
-            let mut pieces = vec![
-                (sq(5, 9), Color::Black, PieceKind::Kirin),
-                (sq(5, 10), Color::Black, PieceKind::Lion),
-                (sq(5, 11), Color::White, PieceKind::Lion),
-                (sq(4, 10), Color::White, PieceKind::Lion),
-            ];
-            if with_foot {
-                pieces.push((sq(4, 11), Color::Black, PieceKind::GoldGeneral));
-            }
-            after_non_lion_capture(
-                &pieces,
-                Move {
-                    from: sq(5, 9),
-                    mid: None,
-                    to: sq(5, 11),
-                    promote: true,
-                },
-            )
-        };
-        let capture_both_lions = Move {
-            from: sq(4, 10),
-            mid: Some(sq(5, 10)),
-            to: sq(5, 11),
-            promote: false,
-        };
-        let l2 = Rules::from_codes(&[RuleCode::L2]).unwrap();
-        let l1_l2 = Rules::from_codes(&[RuleCode::L1, RuleCode::L2]).unwrap();
-
-        // 第29条L2は、麒麟が成った到達升の新しい成獅子だけを免除する。
-        // 同じ手で取る既存の不成獅子に足があれば、第15条1項により手全体を禁止する。
-        assert!(!is_generated_with_rules(
-            l2,
-            &after_kirin_promotion(true),
-            capture_both_lions
-        ));
-        // 不成獅子に足がなければ、標準の第15条2項ではL2と併せて両方を取れる。
-        assert!(is_generated_with_rules(
-            l2,
-            &after_kirin_promotion(false),
-            capture_both_lions
-        ));
-        // L1併用時は捕獲主体が獅子なので、第29条L1ではなく第14条だけに従う。
-        // 両方の相手獅子が隣接しているため、第14条1項により足の有無を問わず取れる。
-        assert!(is_generated_with_rules(
-            l1_l2,
-            &after_kirin_promotion(true),
-            capture_both_lions
-        ));
-    }
-
-    #[test]
-    fn article_29_l1_prevents_immediate_non_lion_capture_regardless_of_foot() {
-        let after_capture = |with_foot| {
-            let mut pieces = vec![
-                (sq(1, 0), Color::Black, PieceKind::Pawn),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(4, 6), Color::White, PieceKind::Rook),
-            ];
-            if with_foot {
-                pieces.push((sq(4, 0), Color::Black, PieceKind::Rook));
-            }
-            after_non_lion_capture(
-                &pieces,
-                Move {
-                    from: sq(1, 0),
-                    mid: None,
-                    to: sq(1, 1),
-                    promote: false,
-                },
-            )
-        };
-        let recapture = Move {
-            from: sq(4, 6),
-            mid: None,
-            to: sq(4, 4),
-            promote: false,
-        };
-        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
-
-        // 標準規則では第15条1・2項により足の有無で結果が分かれる。
-        assert!(!is_generated(&after_capture(true), recapture));
-        assert!(is_generated(&after_capture(false), recapture));
-        // 第29条L1では、非獅子による直後の取り返しを足の有無にかかわらず禁じる。
-        assert!(!is_generated_with_rules(
-            l1,
-            &after_capture(true),
-            recapture
-        ));
-        assert!(!is_generated_with_rules(
-            l1,
-            &after_capture(false),
-            recapture
-        ));
-    }
-
-    #[test]
-    fn articles_11_1_11_2_14_5_and_29_l1_block_non_lion_double_captures() {
-        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
-        let cases = [
-            (PieceKind::HornedFalcon, sq(5, 5), sq(5, 4), sq(5, 3)),
-            (PieceKind::SoaringEagle, sq(6, 6), sq(5, 5), sq(4, 4)),
-        ];
-
-        for (kind, from, mid, to) in cases {
-            let position = after_non_lion_capture(
-                &[
-                    (sq(0, 0), Color::Black, PieceKind::Pawn),
-                    (sq(0, 1), Color::White, PieceKind::Lion),
-                    (from, Color::White, kind),
-                    (mid, Color::Black, PieceKind::Lion),
-                    (to, Color::Black, PieceKind::Lion),
-                ],
-                Move {
-                    from: sq(0, 0),
-                    mid: None,
-                    to: sq(0, 1),
-                    promote: false,
-                },
-            );
-            let capture_both_lions = Move {
-                from,
-                mid: Some(mid),
-                to,
-                promote: false,
-            };
-
-            // 第14条5項により標準規則では非獅子の2枚取りを許す。一方、L1では
-            // 角鷹・飛鷲による取り返しを非獅子の駒による捕獲として禁止する。
-            assert!(is_generated(&position, capture_both_lions), "{kind:?}");
-            assert!(
-                !is_generated_with_rules(l1, &position, capture_both_lions),
-                "{kind:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn articles_14_2_14_3_and_29_l1_govern_distance_two_lion_recapture_with_a_trigger() {
-        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
-        let capture = Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        };
-        let defended = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Pawn),
-                (sq(0, 1), Color::White, PieceKind::Lion),
-                (sq(2, 2), Color::White, PieceKind::Lion),
-                (sq(4, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 5), Color::Black, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(0, 1),
-                promote: false,
-            },
-        );
-        let undefended = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Pawn),
-                (sq(0, 1), Color::White, PieceKind::Lion),
-                (sq(2, 2), Color::White, PieceKind::Lion),
-                (sq(4, 2), Color::Black, PieceKind::Lion),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(0, 1),
-                promote: false,
-            },
-        );
-
-        // 第29条L1でも獅子による取り返しは第14条だけに従う。距離2では、
-        // 第13条の足があれば第14条2項により禁止され、なければ第3項により許される。
-        assert!(!is_generated_with_rules(l1, &defended, capture));
-        assert!(is_generated_with_rules(l1, &undefended, capture));
-    }
-
-    #[test]
-    fn articles_14_1_and_29_l1_allow_adjacent_lion_recapture_with_a_trigger() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Bishop),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::Black, PieceKind::Lion),
-                (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
-                (sq(5, 6), Color::White, PieceKind::Lion),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let adjacent_recapture = Move {
-            from: sq(5, 6),
-            mid: None,
-            to: sq(4, 5),
-            promote: false,
-        };
-        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
-
-        // 標準規則では足のある獅子への取り返しを第15条1項が禁じる。
-        assert!(!is_generated(&position, adjacent_recapture));
-        // 第29条L1では獅子による捕獲を第15条の足判定から外し、隣接捕獲を
-        // 足の有無にかかわらず許す第14条1項だけを適用する。
-        assert!(is_generated_with_rules(l1, &position, adjacent_recapture));
-    }
-
-    #[test]
-    fn articles_14_2_16_1_16_4_and_29_l1_allow_lion_tsukegui() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Bishop),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(4, 3), Color::Black, PieceKind::SilverGeneral),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let tsukegui = Move {
-            from: sq(4, 2),
-            mid: Some(sq(4, 3)),
-            to: sq(4, 4),
-            promote: false,
-        };
-        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
-
-        // L1は獅子による捕獲を制限せず、付け喰いは第16条1・4項により
-        // 距離2で足のある獅子を取れる第14条2項の例外となる。
-        assert!(is_generated_with_rules(l1, &position, tsukegui));
-    }
-
-    #[test]
-    fn article_29_l2_exempts_a_new_promoted_lion_under_l1() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(5, 9), Color::Black, PieceKind::Kirin),
-                (sq(5, 11), Color::White, PieceKind::Lion),
-                (sq(4, 11), Color::Black, PieceKind::GoldGeneral),
-                (sq(5, 4), Color::White, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(5, 9),
-                mid: None,
-                to: sq(5, 11),
-                promote: true,
-            },
-        );
-        let recapture = Move {
-            from: sq(5, 4),
-            mid: None,
-            to: sq(5, 11),
-            promote: false,
-        };
-        let l1 = Rules::from_codes(&[RuleCode::L1]).unwrap();
-        let l1_l2 = Rules::from_codes(&[RuleCode::L1, RuleCode::L2]).unwrap();
-
-        // 麒麟は捕獲時点では非獅子なので、L1だけなら新しい成獅子への
-        // 非獅子による直後の取り返しを禁じ、L2併用時だけ同一升例外を適用する。
-        assert!(!is_generated_with_rules(l1, &position, recapture));
-        assert!(is_generated_with_rules(l1_l2, &position, recapture));
-    }
-
-    #[test]
-    fn article_29_l3_removes_a_captured_pawn_foot_between_lion_steps() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(5, 6), Color::Black, PieceKind::Lion),
-                (sq(5, 5), Color::White, PieceKind::Pawn),
-                (sq(5, 4), Color::White, PieceKind::Lion),
-            ],
-        );
-        let capture = Move {
-            from: sq(5, 6),
-            mid: Some(sq(5, 5)),
-            to: sq(5, 4),
-            promote: false,
-        };
-        let l3 = Rules::from_codes(&[RuleCode::L3]).unwrap();
-
-        assert!(lion_has_foot_after_capture(
-            Rules::standard(),
-            &position,
-            capture,
-            sq(5, 4),
-        ));
-        assert!(!lion_has_foot_after_capture(
-            l3,
-            &position,
-            capture,
-            sq(5, 4),
-        ));
-        assert!(!is_generated(&position, capture));
-        assert!(is_generated_with_rules(l3, &position, capture));
-    }
-
-    #[test]
-    fn articles_14_2_16_3_and_29_l1_l3_allow_lion_capture_after_foot_disappears() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Pawn),
-                (sq(0, 1), Color::White, PieceKind::Lion),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(4, 3), Color::Black, PieceKind::Pawn),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(0, 1),
-                promote: false,
-            },
-        );
-        let capture = Move {
-            from: sq(4, 2),
-            mid: Some(sq(4, 3)),
-            to: sq(4, 4),
-            promote: false,
-        };
-        let l3 = Rules::from_codes(&[RuleCode::L3]).unwrap();
-        let l1_l3 = Rules::from_codes(&[RuleCode::L1, RuleCode::L3]).unwrap();
-
-        // 第16条3項により付け喰いではないが、L3では歩兵の足が第1段階で消滅する。
-        // そのため第14条2・3項により捕獲でき、L1併用時も獅子の捕獲なので結果は同じ。
-        assert!(is_generated_with_rules(l3, &position, capture));
-        assert!(is_generated_with_rules(l1_l3, &position, capture));
-    }
-
-    #[test]
-    fn articles_13_2_14_4_and_29_l3_keep_a_sliding_foot_opened_by_pawn_removal() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(3, 3), Color::White, PieceKind::Pawn),
-                (sq(4, 4), Color::White, PieceKind::Lion),
-                (sq(0, 0), Color::White, PieceKind::Bishop),
-            ],
-        );
-        let jump = Move {
-            from: sq(2, 2),
-            mid: None,
-            to: sq(4, 4),
-            promote: false,
-        };
-        let double = Move {
-            from: sq(2, 2),
-            mid: Some(sq(3, 3)),
-            to: sq(4, 4),
-            promote: false,
-        };
-        let l3 = Rules::from_codes(&[RuleCode::L3]).unwrap();
-
-        // 跳びでは歩兵が角道を遮るので足はない。一方、2段階手は歩兵除去によって
-        // 第13条2・4項の裏足が開くため、L3でも第14条4項により禁止される。
-        assert!(is_generated_with_rules(l3, &position, jump));
-        assert!(!is_generated_with_rules(l3, &position, double));
-    }
-
-    #[test]
-    fn articles_13_4_14_2_and_16_8_pawn_removal_opens_sliding_foot() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(3, 5), Color::Black, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Pawn),
-                (sq(5, 5), Color::White, PieceKind::Lion),
-                (sq(0, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let jump = Move {
-            from: sq(3, 5),
-            mid: None,
-            to: sq(5, 5),
-            promote: false,
-        };
-        let double = Move {
-            from: sq(3, 5),
-            mid: Some(sq(4, 5)),
-            to: sq(5, 5),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, jump));
-        assert!(!is_generated(&position, double));
-    }
-
-    #[test]
-    fn articles_13_4_16_3_and_16_4_tsukegui_with_hidden_foot_opened_by_mid_capture() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(3, 5), Color::Black, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::SilverGeneral),
-                (sq(5, 5), Color::White, PieceKind::Lion),
-                (sq(0, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let jump = Move {
-            from: sq(3, 5),
-            mid: None,
-            to: sq(5, 5),
-            promote: false,
-        };
-        let tsukegui = Move {
-            from: sq(3, 5),
-            mid: Some(sq(4, 5)),
-            to: sq(5, 5),
-            promote: false,
-        };
-
-        // 歩兵なら第16条3項により付け喰いが成立せず、銀の除去で開く裏足により不合法となる。
-        // 銀は価値ある駒なので、同じ裏足が開いても第16条4項により付け喰いが優先される。
-        assert!(is_generated(&position, tsukegui));
-        assert!(is_generated(&position, jump));
-    }
-
-    #[test]
-    fn article_13_4_vacating_origin_opens_sliding_foot() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(6, 2), Color::Black, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(9, 2), Color::White, PieceKind::Rook),
-            ],
-        );
-        let before = position.clone();
-        let capture = Move {
-            from: sq(6, 2),
-            mid: None,
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(!is_generated(&position, capture));
-        assert_eq!(position, before);
-    }
-
-    #[test]
-    fn article_16_3_pawn_between_lions_is_not_tsukegui() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(3, 2), Color::White, PieceKind::Pawn),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let capture = Move {
-            from: sq(2, 2),
-            mid: Some(sq(3, 2)),
-            to: sq(4, 2),
-            promote: false,
-        };
-
-        assert!(!is_tsukegui(&position, capture, sq(4, 2)));
-        assert!(!is_generated(&position, capture));
-    }
-
-    #[test]
-    fn article_15_1_senjishi_prevents_immediate_capture_of_a_defended_lion() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Bishop),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(4, 3), Color::Black, PieceKind::GoldGeneral),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(4, 6), Color::White, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let recapture = Move {
-            from: sq(4, 6),
-            mid: None,
-            to: sq(4, 4),
-            promote: false,
-        };
-
-        assert!(!is_generated(&position, recapture));
-    }
-
-    #[test]
-    fn article_15_2_senjishi_allows_immediate_capture_of_an_undefended_lion() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(1, 0), Color::Black, PieceKind::Pawn),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(4, 6), Color::White, PieceKind::Rook),
-            ],
-            Move {
-                from: sq(1, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let recapture = Move {
-            from: sq(4, 6),
-            mid: None,
-            to: sq(4, 4),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, recapture));
-    }
-
-    #[test]
-    fn articles_15_8_and_16_7_tsukegui_takes_priority_over_senjishi() {
-        let position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Bishop),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(4, 3), Color::Black, PieceKind::SilverGeneral),
-                (sq(4, 7), Color::Black, PieceKind::Rook),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let tsukegui = Move {
-            from: sq(4, 2),
-            mid: Some(sq(4, 3)),
-            to: sq(4, 4),
-            promote: false,
-        };
-
-        assert!(is_generated(&position, tsukegui));
-    }
-
-    #[test]
-    fn articles_15_8_and_16_7_tsukegui_exempts_the_whole_move_from_senjishi() {
-        let mut builder = PositionBuilder::new(Color::Black);
-        for (square, piece) in [
-            (sq(0, 0), PieceCode::new(Color::Black, PieceKind::Bishop)),
-            (sq(1, 1), PieceCode::new(Color::White, PieceKind::Lion)),
-            (sq(2, 2), PieceCode::new(Color::White, PieceKind::Lion)),
-            (sq(3, 2), PieceCode::new(Color::Black, PieceKind::Lion)),
-            (
-                sq(4, 2),
-                PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap(),
-            ),
-            (sq(4, 5), PieceCode::new(Color::Black, PieceKind::Rook)),
-        ] {
-            builder.put(square, piece).unwrap();
-        }
-        let mut position = builder.finish().unwrap();
-        position.make_move_unchecked(
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-            Rules::standard(),
-        );
-        assert!(position.lion_taken_by_non_lion().is_some());
-
-        let tsukegui = Move {
-            from: sq(2, 2),
-            mid: Some(sq(3, 2)),
-            to: sq(4, 2),
-            promote: false,
-        };
-        assert!(is_tsukegui(&position, tsukegui, sq(4, 2)));
-        assert!(is_generated(&position, tsukegui));
-    }
-
-    #[test]
-    fn articles_15_6_and_16_6_lion_capture_does_not_trigger_senjishi() {
-        let mut position = position(
-            Color::Black,
-            &[
-                (sq(1, 1), Color::Black, PieceKind::Lion),
-                (sq(2, 0), Color::Black, PieceKind::GoldGeneral),
-                (sq(2, 1), Color::White, PieceKind::Lion),
-                (sq(2, 4), Color::White, PieceKind::Rook),
-            ],
-        );
-        position.make_move_unchecked(
-            Move {
-                from: sq(1, 1),
-                mid: None,
-                to: sq(2, 1),
-                promote: false,
-            },
-            Rules::standard(),
-        );
-        assert_eq!(position.lion_taken_by_non_lion(), None);
-
-        let capture = Move {
-            from: sq(2, 4),
-            mid: None,
-            to: sq(2, 1),
-            promote: false,
-        };
-        assert!(is_generated(&position, capture));
-    }
-
-    #[test]
-    fn articles_15_6_and_16_6_tsukegui_does_not_trigger_senjishi() {
-        let mut position = position(
-            Color::Black,
-            &[
-                (sq(2, 2), Color::Black, PieceKind::Lion),
-                (sq(3, 2), Color::White, PieceKind::SilverGeneral),
-                (sq(4, 2), Color::White, PieceKind::Lion),
-                (sq(4, 5), Color::White, PieceKind::Rook),
-            ],
-        );
-        let tsukegui = Move {
-            from: sq(2, 2),
-            mid: Some(sq(3, 2)),
-            to: sq(4, 2),
-            promote: false,
-        };
-        assert!(is_generated(&position, tsukegui));
-
-        position.make_move_unchecked(tsukegui, Rules::standard());
-
-        // 第16条6項: 付け喰いは獅子による獅子捕獲なので、先獅子を新設しない。
-        // したがって、第15条6項どおり直後の飛車による取り返しも禁止されない。
-        assert_eq!(position.lion_taken_by_non_lion(), None);
-        assert!(is_generated(
-            &position,
-            Move {
-                from: sq(4, 5),
-                mid: None,
-                to: sq(4, 2),
-                promote: false,
-            }
-        ));
-    }
-
-    #[test]
-    fn articles_18_1_and_18_6_two_stage_move_with_only_mid_in_enemy_camp_cannot_promote() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(4, 7), Color::Black, PieceKind::DragonHorse),
-                (sq(4, 8), Color::White, PieceKind::Pawn),
-            ],
-        );
-        // この合成した龍馬の2段階捕獲は生成器からは生成されない。
-        // promotion_choice単体の契約を検査するための着手である。
-        let mv = Move {
-            from: sq(4, 7),
-            mid: Some(sq(4, 8)),
-            to: sq(5, 7),
-            promote: false,
-        };
-
-        assert_eq!(
-            Rules::standard().promotion_choice(&position, &mv, PieceKind::DragonHorse),
-            PromotionChoice::NoPromotion,
-        );
-    }
-
-    #[test]
-    fn article_18_3_non_capture_inside_enemy_camp_has_no_promotion_option() {
-        let position = position(Color::Black, &[(sq(4, 8), Color::Black, PieceKind::Pawn)]);
-        let non_promoting = Move {
-            from: sq(4, 8),
-            mid: None,
-            to: sq(4, 9),
-            promote: false,
-        };
-        let promoting = Move {
-            from: sq(4, 8),
-            mid: None,
-            to: sq(4, 9),
-            promote: true,
-        };
-
-        assert!(is_generated(&position, non_promoting));
-        assert!(!is_generated(&position, promoting));
-    }
-
-    #[test]
-    fn article_18_2_a_capture_inside_enemy_camp_can_promote() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(4, 8), Color::Black, PieceKind::Pawn),
-                (sq(4, 9), Color::White, PieceKind::GoBetween),
-            ],
-        );
-        let promotion = Move {
-            from: sq(4, 8),
-            mid: None,
-            to: sq(4, 9),
-            promote: true,
-        };
-
-        assert!(is_generated(&position, promotion));
-    }
-
-    #[test]
-    fn article_18_2_b_capture_leaving_enemy_camp_can_promote() {
-        let position = position(
-            Color::Black,
-            &[
-                (sq(4, 8), Color::Black, PieceKind::Rook),
-                (sq(4, 7), Color::White, PieceKind::Pawn),
-            ],
-        );
-        let promotion = Move {
-            from: sq(4, 8),
-            mid: None,
-            to: sq(4, 7),
-            promote: true,
-        };
-
-        assert!(is_generated(&position, promotion));
-    }
-
-    #[test]
-    fn article_19_1_pawn_can_promote_on_a_non_capture_to_the_last_rank() {
-        let position = position(Color::Black, &[(sq(4, 10), Color::Black, PieceKind::Pawn)]);
-        let promotion = Move {
-            from: sq(4, 10),
-            mid: None,
-            to: sq(4, 11),
-            promote: true,
-        };
-
-        assert!(is_generated(&position, promotion));
-    }
-
-    #[test]
-    fn article_30_p3_lance_can_promote_on_a_non_capture_to_the_last_rank() {
-        let position = position(Color::Black, &[(sq(4, 10), Color::Black, PieceKind::Lance)]);
-        let non_promoting = Move {
-            from: sq(4, 10),
-            mid: None,
-            to: sq(4, 11),
-            promote: false,
-        };
-        let promoting = Move {
-            promote: true,
-            ..non_promoting
-        };
-        let p3 = Rules::from_codes(&[RuleCode::P3]).unwrap();
-
-        assert!(is_generated(&position, non_promoting));
-        assert!(!is_generated(&position, promoting));
-        assert!(is_generated_with_rules(p3, &position, promoting));
-    }
-
-    #[test]
-    fn article_30_p4_go_between_can_promote_on_a_non_capture_to_the_last_rank() {
-        let position = position(
-            Color::Black,
-            &[(sq(4, 10), Color::Black, PieceKind::GoBetween)],
-        );
-        let non_promoting = Move {
-            from: sq(4, 10),
-            mid: None,
-            to: sq(4, 11),
-            promote: false,
-        };
-        let promoting = Move {
-            promote: true,
-            ..non_promoting
-        };
-        let p4 = Rules::from_codes(&[RuleCode::P4]).unwrap();
-
-        assert!(is_generated(&position, non_promoting));
-        assert!(!is_generated(&position, promoting));
-        assert!(is_generated_with_rules(p4, &position, promoting));
-    }
-
-    #[test]
-    fn article_30_p2_quiet_move_inside_enemy_camp_can_promote() {
-        let mut position = position(
-            Color::Black,
-            &[(sq(4, 9), Color::Black, PieceKind::SilverGeneral)],
-        );
-        let non_promoting = Move {
-            from: sq(4, 9),
-            mid: None,
-            to: sq(4, 10),
-            promote: false,
-        };
-        let promoting = Move {
-            promote: true,
-            ..non_promoting
-        };
-        let p2 = Rules::from_codes(&[RuleCode::P2]).unwrap();
-
-        assert!(is_generated(&position, non_promoting));
-        assert!(!is_generated(&position, promoting));
-        assert!(is_generated_with_rules(p2, &position, non_promoting));
-        assert!(is_generated_with_rules(p2, &position, promoting));
-
-        position.make_move_unchecked(non_promoting, p2);
-        assert!(position.promotion_deferred().is_empty());
-        assert_eq!(position.rights_zobrist(), 0);
-    }
-
-    #[test]
-    fn article_30_p2_does_not_add_promotion_to_captures_or_enemy_camp_exit() {
-        let capture_position = position(
-            Color::Black,
-            &[
-                (sq(4, 9), Color::Black, PieceKind::SilverGeneral),
-                (sq(4, 10), Color::White, PieceKind::Pawn),
-            ],
-        );
-        let capture = Move {
-            from: sq(4, 9),
-            mid: None,
-            to: sq(4, 10),
-            promote: false,
-        };
-        let capture_promotion = Move {
-            promote: true,
-            ..capture
-        };
-        let p2 = Rules::from_codes(&[RuleCode::P2]).unwrap();
-        let mut standard_capture_variants = Vec::new();
-        MoveGenerator::standard().generate_moves(&capture_position, &mut standard_capture_variants);
-        standard_capture_variants.retain(|mv| mv.from == capture.from && mv.to == capture.to);
-        let mut p2_capture_variants = Vec::new();
-        MoveGenerator::new(p2).generate_moves(&capture_position, &mut p2_capture_variants);
-        p2_capture_variants.retain(|mv| mv.from == capture.from && mv.to == capture.to);
-
-        assert_eq!(standard_capture_variants.len(), 2);
-        assert!(standard_capture_variants.contains(&capture));
-        assert!(standard_capture_variants.contains(&capture_promotion));
-        assert_eq!(p2_capture_variants, standard_capture_variants);
-
-        let exit_position = position(
-            Color::Black,
-            &[(sq(4, 8), Color::Black, PieceKind::SilverGeneral)],
-        );
-        let exit = Move {
-            from: sq(4, 8),
-            mid: None,
-            to: sq(3, 7),
-            promote: false,
-        };
-        let exit_promotion = Move {
-            promote: true,
-            ..exit
-        };
-        assert!(is_generated_with_rules(p2, &exit_position, exit));
-        assert!(!is_generated_with_rules(p2, &exit_position, exit_promotion));
-    }
-
-    #[test]
-    fn articles_19_1_19_4_and_30_p2_p3_p4_merge_last_rank_choices_without_duplicates() {
-        let p2 = Rules::from_codes(&[RuleCode::P2]).unwrap();
-        let p2_p3 = Rules::from_codes(&[RuleCode::P2, RuleCode::P3]).unwrap();
-        let p2_p4 = Rules::from_codes(&[RuleCode::P2, RuleCode::P4]).unwrap();
-
-        for (kind, rules) in [
-            (PieceKind::Pawn, p2),
-            (PieceKind::Lance, p2_p3),
-            (PieceKind::GoBetween, p2_p4),
-        ] {
-            let from = sq(4, 10);
-            let to = sq(4, 11);
-            let position = position(Color::Black, &[(from, Color::Black, kind)]);
-            let non_promoting = Move {
-                from,
-                mid: None,
-                to,
-                promote: false,
-            };
-            let promoting = Move {
-                promote: true,
-                ..non_promoting
-            };
-            let mut variants = Vec::new();
-            MoveGenerator::new(rules).generate_moves(&position, &mut variants);
-            variants.retain(|mv| mv.from == from && mv.to == to);
-
-            // 第19条1・4項と第30条P2/P3/P4の条件が重なっても、成り選択肢は
-            // PromotionOptionalの1組だけであり、不成・成を重複生成しない。
-            assert_eq!(variants.len(), 2, "{kind:?}");
-            assert_eq!(
-                variants.iter().filter(|&&mv| mv == non_promoting).count(),
-                1
-            );
-            assert_eq!(variants.iter().filter(|&&mv| mv == promoting).count(), 1);
-        }
-
-        // P2だけでも敵陣内の非捕獲移動として同じ選択肢を与えるため、P3/P4の
-        // 追加採用は香車・仲人の最奥段着手を3通り以上へ増やさない。
-        for kind in [PieceKind::Lance, PieceKind::GoBetween] {
-            let position = position(Color::Black, &[(sq(4, 10), Color::Black, kind)]);
-            let mut variants = Vec::new();
-            MoveGenerator::new(p2).generate_moves(&position, &mut variants);
-            variants.retain(|mv| mv.from == sq(4, 10) && mv.to == sq(4, 11));
-            assert_eq!(variants.len(), 2, "{kind:?}");
-        }
-    }
-
-    #[test]
-    fn article_30_p1_deferred_promotion_toggles_after_one_piece_move() {
-        let mut position = position(
-            Color::Black,
-            &[
-                (sq(4, 7), Color::Black, PieceKind::SilverGeneral),
-                (sq(10, 10), Color::White, PieceKind::GoldGeneral),
-            ],
-        );
-        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
-        let enter = Move {
-            from: sq(4, 7),
-            mid: None,
-            to: sq(4, 8),
-            promote: false,
-        };
-        let white_forward = Move {
-            from: sq(10, 10),
-            mid: None,
-            to: sq(10, 9),
-            promote: false,
-        };
-        let recover = Move {
-            from: sq(4, 8),
-            mid: None,
-            to: sq(4, 9),
-            promote: false,
-        };
-        let white_back = Move {
-            from: sq(10, 9),
-            mid: None,
-            to: sq(10, 10),
-            promote: false,
-        };
-        let use_recovered_right = Move {
-            from: sq(4, 9),
-            mid: None,
-            to: sq(4, 10),
-            promote: false,
-        };
-        let deferred_again = Move {
-            from: sq(4, 10),
-            mid: None,
-            to: sq(4, 11),
-            promote: false,
-        };
-
-        assert!(is_generated_with_rules(p1, &position, enter));
-        assert!(is_generated_with_rules(
-            p1,
-            &position,
-            Move {
-                promote: true,
-                ..enter
-            }
-        ));
-        position.make_move_unchecked(enter, p1);
-        assert_eq!(
-            position.promotion_deferred(),
-            Bitboard::from_square(sq(4, 8))
-        );
-
-        position.make_move_unchecked(white_forward, p1);
-        assert!(is_generated_with_rules(p1, &position, recover));
-        assert!(!is_generated_with_rules(
-            p1,
-            &position,
-            Move {
-                promote: true,
-                ..recover
-            }
-        ));
-        position.make_move_unchecked(recover, p1);
-        assert!(position.promotion_deferred().is_empty());
-
-        position.make_move_unchecked(white_back, p1);
-        assert!(is_generated_with_rules(p1, &position, use_recovered_right));
-        assert!(is_generated_with_rules(
-            p1,
-            &position,
-            Move {
-                promote: true,
-                ..use_recovered_right
-            }
-        ));
-        position.make_move_unchecked(use_recovered_right, p1);
-        assert_eq!(
-            position.promotion_deferred(),
-            Bitboard::from_square(sq(4, 10))
-        );
-
-        position.make_move_unchecked(white_forward, p1);
-        assert!(is_generated_with_rules(p1, &position, deferred_again));
-        assert!(!is_generated_with_rules(
-            p1,
-            &position,
-            Move {
-                promote: true,
-                ..deferred_again
-            }
-        ));
-    }
-
-    #[test]
-    fn articles_18_2_a_18_5_and_30_p1_capture_restarts_or_consumes_deferral() {
-        let deferred = sq(4, 9);
-        let destination = sq(4, 10);
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(
-                deferred,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        builder
-            .put(destination, PieceCode::new(Color::White, PieceKind::Pawn))
-            .unwrap();
-        builder.mark_promotion_deferred(deferred).unwrap();
-        let position = builder.finish().unwrap();
-        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
-        let capture = Move {
-            from: deferred,
-            mid: None,
-            to: destination,
-            promote: false,
-        };
-        let promoting_capture = Move {
-            promote: true,
-            ..capture
-        };
-
-        // 第18条2項a・5項の捕獲による成り選択肢はP1保留中でも失われない。
-        assert!(is_generated_with_rules(p1, &position, capture));
-        assert!(is_generated_with_rules(p1, &position, promoting_capture));
-
-        let mut declined = position.clone();
-        declined.make_move_unchecked(capture, p1);
-        // 捕獲時に再び不成を選べば、第30条P1の待機を到達升からやり直す。
-        assert_eq!(
-            declined.promotion_deferred(),
-            Bitboard::from_square(destination)
-        );
-
-        let mut promoted = position;
-        promoted.make_move_unchecked(promoting_capture, p1);
-        // 捕獲時に成れば保留権は消費され、成駒へ保留ビットを残さない。
-        assert!(promoted.promotion_deferred().is_empty());
-        assert_eq!(promoted.rights_zobrist(), 0);
-    }
-
-    #[test]
-    fn articles_7_3_12_4_12_8_24_1_d_and_30_p1_igui_clears_captured_piece_right() {
-        let lion = sq(4, 9);
-        let victim = sq(4, 10);
-        let mut builder = PositionBuilder::new(Color::White);
-        builder
-            .put(lion, PieceCode::new(Color::White, PieceKind::Lion))
-            .unwrap();
-        builder
-            .put(
-                victim,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        builder.mark_promotion_deferred(victim).unwrap();
-        let mut position = builder.finish().unwrap();
-        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
-        let igui = Move {
-            from: lion,
-            mid: Some(victim),
-            to: lion,
-            promote: false,
-        };
-
-        // 第12条4・8項の中間升捕獲も第7条3項の捕獲であり、取られた駒の
-        // 第24条1項d・第30条P1の一時権利を盤上から同時に除去する。
-        assert!(is_generated_with_rules(p1, &position, igui));
-        position.make_move_unchecked(igui, p1);
-        assert_eq!(position.piece_at(victim), None);
-        assert!(position.promotion_deferred().is_empty());
-        assert_eq!(position.rights_zobrist(), 0);
-    }
-
-    #[test]
-    fn article_30_p1_deferred_state_is_normalized_after_capture_exit_or_promotion() {
-        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
-
-        let deferred = sq(4, 9);
-        let mut captured_builder = PositionBuilder::new(Color::White);
-        captured_builder
-            .put(
-                deferred,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        captured_builder
-            .put(
-                sq(4, 11),
-                PieceCode::new(Color::White, PieceKind::ReverseChariot),
-            )
-            .unwrap();
-        captured_builder.mark_promotion_deferred(deferred).unwrap();
-        let mut captured = captured_builder.finish().unwrap();
-        captured.make_move_unchecked(
-            Move {
-                from: sq(4, 11),
-                mid: None,
-                to: deferred,
-                promote: false,
-            },
-            p1,
-        );
-        assert!(captured.promotion_deferred().is_empty());
-        assert_eq!(captured.rights_zobrist(), 0);
-
-        let mut exit_builder = PositionBuilder::new(Color::Black);
-        exit_builder
-            .put(
-                sq(4, 8),
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        exit_builder.mark_promotion_deferred(sq(4, 8)).unwrap();
-        let mut exit = exit_builder.finish().unwrap();
-        exit.make_move_unchecked(
-            Move {
-                from: sq(4, 8),
-                mid: None,
-                to: sq(3, 7),
-                promote: false,
-            },
-            p1,
-        );
-        assert!(exit.promotion_deferred().is_empty());
-        assert_eq!(exit.rights_zobrist(), 0);
-
-        let mut promotion_builder = PositionBuilder::new(Color::Black);
-        promotion_builder
-            .put(
-                deferred,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        promotion_builder
-            .put(sq(4, 10), PieceCode::new(Color::White, PieceKind::Pawn))
-            .unwrap();
-        promotion_builder.mark_promotion_deferred(deferred).unwrap();
-        let mut promotion = promotion_builder.finish().unwrap();
-        promotion.make_move_unchecked(
-            Move {
-                from: deferred,
-                mid: None,
-                to: sq(4, 10),
-                promote: true,
-            },
-            p1,
-        );
-        assert!(promotion.promotion_deferred().is_empty());
-        assert_eq!(promotion.rights_zobrist(), 0);
-    }
-
-    #[test]
-    fn article_26_8_try_make_move_rejects_unavailable_promotion() {
-        let mut position = position(Color::Black, &[(sq(4, 4), Color::Black, PieceKind::Pawn)]);
-        let illegal = Move {
-            from: sq(4, 4),
-            mid: None,
-            to: sq(4, 5),
-            promote: true,
-        };
-
-        assert_eq!(
-            position.try_make_move(illegal, &MoveGenerator::standard()),
-            Err(crate::IllegalMove(illegal)),
-        );
-    }
-
-    #[test]
-    fn article_27_1_try_make_move_error_preserves_entire_position() {
-        let mut position = after_non_lion_capture(
-            &[
-                (sq(0, 0), Color::Black, PieceKind::Bishop),
-                (sq(1, 1), Color::White, PieceKind::Lion),
-                (sq(4, 4), Color::Black, PieceKind::Lion),
-                (sq(10, 10), Color::White, PieceKind::Pawn),
-            ],
-            Move {
-                from: sq(0, 0),
-                mid: None,
-                to: sq(1, 1),
-                promote: false,
-            },
-        );
-        let before = position.clone();
-        let side_to_move = position.side_to_move();
-        let illegal = Move {
-            from: sq(11, 11),
-            mid: None,
-            to: sq(11, 10),
-            promote: false,
-        };
-
-        assert_eq!(
-            position.try_make_move(illegal, &MoveGenerator::standard()),
-            Err(crate::IllegalMove(illegal)),
-        );
-        assert_eq!(position, before);
-        assert_eq!(position.side_to_move(), side_to_move);
     }
 }

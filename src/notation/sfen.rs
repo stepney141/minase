@@ -333,9 +333,11 @@ pub fn parse_extended_sfen(sfen: &str, rules: Rules) -> Result<SetupPosition, Sf
     } else {
         Some(parse_square(fields[2]).ok_or(SfenError::InvalidLionCaptureSquare)?)
     };
-    let next_move_number = fields[3]
-        .parse::<u32>()
-        .ok()
+    // 手数欄は数字列だけを受理する。u32のFromStrは先頭の`+`を受理するため、
+    // 拡張SFEN文法（protocol-layer.md）の整数表記に合わせて事前に検査する。
+    let next_move_number = Some(fields[3])
+        .filter(|text| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()))
+        .and_then(|text| text.parse::<u32>().ok())
         .filter(|number| (1..=9999).contains(number))
         .ok_or(SfenError::InvalidMoveNumber)?;
     let promotion_deferred =
@@ -570,442 +572,590 @@ fn parse_position(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PositionError;
     use crate::test_util::sq;
 
     const EMPTY_BOARD: &str = "12/12/12/12/12/12/12/12/12/12/12/12";
 
+    // lishogi正準4欄の初期局面SFEN（引き継ぎ資産。[USI]「SFENの全体構文」、盤面部は
+    // [CECP]第7章のHaChu内蔵FENと文字列一致）。
+    const LISHOGI_INITIAL_SFEN: &str = "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b - 1";
+
+    fn board(rows: [&str; 12]) -> String {
+        rows.join("/")
+    }
+
+    fn board_with_row(row_index: usize, row: &str) -> String {
+        let mut rows = ["12"; 12];
+        rows[row_index] = row;
+        rows.join("/")
+    }
+
+    // D5-SFEN-01: 升名は筋数字（1〜12）＋段英字（a〜l）。[USI]「座標系」の変換式に従う。
     #[test]
-    fn initial_position_round_trips_and_matches_lishogi_sfen() {
+    fn square_names_follow_lishogi_coordinates_and_round_trip_all_144_squares() {
+        for square in Square::all() {
+            // 筋番号 = 12 − 内部file、段英字 = 'a' + (11 − 内部rank)（[USI]「座標系」）。
+            let expected = format!(
+                "{}{}",
+                BOARD_FILES - square.file(),
+                char::from(b'a' + (BOARD_RANKS - 1 - square.rank()))
+            );
+            assert_eq!(square_to_text(square), expected);
+            assert_eq!(parse_square(&expected), Some(square));
+        }
+
+        // 12aは先手から見て左上隅であり、2桁筋は1桁筋と混同されない（[USI]「座標系」）。
+        assert_eq!(parse_square("12a"), Some(sq(0, 11)));
+        assert_eq!(parse_square("1a"), Some(sq(11, 11)));
+        assert_eq!(parse_square("10l"), Some(sq(2, 0)));
+
+        // 筋0・筋13以上・段m以降などは升名として不正（D5-SFEN-01境界）。
+        for invalid in ["0a", "13a", "7m", "a1", "7", "", "01a"] {
+            assert_eq!(parse_square(invalid), None, "{invalid}");
+        }
+    }
+
+    // D5-SFEN-02: 基底駒21文字と先後の大小文字（[USI]「駒種の文字表記」、[HACHU]第11節）。
+    #[test]
+    fn all_21_base_piece_letters_parse_and_round_trip_in_both_cases() {
+        let letters = [
+            ('p', PieceKind::Pawn),
+            ('i', PieceKind::GoBetween),
+            ('l', PieceKind::Lance),
+            ('a', PieceKind::ReverseChariot),
+            ('f', PieceKind::FerociousLeopard),
+            ('c', PieceKind::CopperGeneral),
+            ('s', PieceKind::SilverGeneral),
+            ('g', PieceKind::GoldGeneral),
+            ('t', PieceKind::BlindTiger),
+            ('e', PieceKind::DrunkElephant),
+            ('x', PieceKind::Phoenix),
+            ('o', PieceKind::Kirin),
+            ('m', PieceKind::SideMover),
+            ('v', PieceKind::VerticalMover),
+            ('b', PieceKind::Bishop),
+            ('r', PieceKind::Rook),
+            ('h', PieceKind::DragonHorse),
+            ('d', PieceKind::DragonKing),
+            ('k', PieceKind::King),
+            ('n', PieceKind::Lion),
+            ('q', PieceKind::FreeKing),
+        ];
+        assert_eq!(letters.len(), 21);
+
+        for (letter, kind) in letters {
+            // 大文字が先手、小文字が後手（[USI]「駒種の文字表記」）。
+            for (text, color) in [
+                (letter.to_ascii_uppercase(), Color::Black),
+                (letter, Color::White),
+            ] {
+                let sfen = format!("{} b", board_with_row(0, &format!("{text}11")));
+                let position = parse_sfen(&sfen).unwrap();
+                assert_eq!(
+                    position.piece_at(sq(0, 11)),
+                    Some(PieceCode::new(color, kind)),
+                    "{text}"
+                );
+                assert_eq!(to_sfen(&position), sfen, "{text}");
+            }
+        }
+
+        // J・U・W・Y・Zは未割当であり拒否する（[HACHU]第11節）。
+        for letter in ['j', 'u', 'w', 'y', 'z', 'J', 'U', 'W', 'Y', 'Z'] {
+            let sfen = format!("{} b", board_with_row(0, &format!("{letter}11")));
+            assert!(
+                matches!(parse_sfen(&sfen), Err(SfenError::UnsupportedPiece { .. })),
+                "{letter}"
+            );
+        }
+    }
+
+    // D5-SFEN-03: 成駒18種の`+`前置と出自保存、成れない3種k・n・qへの`+`の拒否
+    // （[USI]「駒種の文字表記」、[RULES]第17条）。引き継ぎ資産の駒文字表。
+    #[test]
+    fn promoted_prefix_covers_18_kinds_and_unpromotable_pieces_reject_it() {
+        let promoted = [
+            ('p', PieceKind::GoldGeneral),
+            ('i', PieceKind::DrunkElephant),
+            ('l', PieceKind::WhiteHorse),
+            ('a', PieceKind::Whale),
+            ('f', PieceKind::Bishop),
+            ('c', PieceKind::SideMover),
+            ('s', PieceKind::VerticalMover),
+            ('g', PieceKind::Rook),
+            ('t', PieceKind::FlyingStag),
+            ('e', PieceKind::CrownPrince),
+            ('x', PieceKind::FreeKing),
+            ('o', PieceKind::Lion),
+            ('m', PieceKind::FreeBoar),
+            ('v', PieceKind::FlyingOx),
+            ('b', PieceKind::DragonHorse),
+            ('r', PieceKind::DragonKing),
+            ('h', PieceKind::HornedFalcon),
+            ('d', PieceKind::SoaringEagle),
+        ];
+        assert_eq!(promoted.len(), 18);
+
+        for (letter, kind) in promoted {
+            for (text, color) in [
+                (letter.to_ascii_uppercase(), Color::Black),
+                (letter, Color::White),
+            ] {
+                let sfen = format!("{} b", board_with_row(0, &format!("+{text}11")));
+                let position = parse_sfen(&sfen).unwrap();
+                assert_eq!(
+                    position.piece_at(sq(0, 11)),
+                    PieceCode::new_promoted(color, kind),
+                    "+{text}"
+                );
+                assert_eq!(to_sfen(&position), sfen, "+{text}");
+            }
+        }
+
+        // 猛豹成りの角行相当+fと生の角行bは出自別に区別される（[USI]「駒種の文字表記」末尾）。
+        let promoted_leopard = parse_sfen(&format!("{} b", board_with_row(0, "+f11"))).unwrap();
+        let raw_bishop = parse_sfen(&format!("{} b", board_with_row(0, "b11"))).unwrap();
+        assert_ne!(
+            promoted_leopard.piece_at(sq(0, 11)),
+            raw_bishop.piece_at(sq(0, 11))
+        );
+        assert_ne!(to_sfen(&promoted_leopard), to_sfen(&raw_bishop));
+
+        // 成らない駒への`+`の拒否（[RULES]第17条第1項）。
+        for letter in ['k', 'n', 'q', 'K', 'N', 'Q'] {
+            let sfen = format!("{} b", board_with_row(0, &format!("+{letter}11")));
+            assert!(
+                matches!(parse_sfen(&sfen), Err(SfenError::UnpromotablePiece { .. })),
+                "+{letter}"
+            );
+        }
+
+        // `+`の直後に駒文字が続かない入力の拒否（D5-SFEN-03境界）。
+        for row in ["11+", "+111", "++p10", "+"] {
+            assert!(
+                parse_sfen(&format!("{} b", board_with_row(0, row))).is_err(),
+                "{row}"
+            );
+        }
+    }
+
+    // D5-SFEN-04: 盤面欄の走査順（段a→段l、12筋→1筋）と空升の10進圧縮
+    // （[USI]「SFENの全体構文」第1項・「to_sfenへの要求事項」）。
+    #[test]
+    fn board_scan_order_and_empty_run_compression_follow_shogiops() {
+        // 先頭行の左端は12a（内部file 0・rank 11）、最終行の右端は1l（内部file 11・rank 0）。
+        let corners = parse_sfen(&format!(
+            "{} b",
+            board([
+                "P11", "12", "12", "12", "12", "12", "12", "12", "12", "12", "12", "11p"
+            ])
+        ))
+        .unwrap();
+        assert_eq!(
+            corners.piece_at(sq(0, 11)),
+            Some(PieceCode::new(Color::Black, PieceKind::Pawn))
+        );
+        assert_eq!(
+            corners.piece_at(sq(11, 0)),
+            Some(PieceCode::new(Color::White, PieceKind::Pawn))
+        );
+
+        // 連続する数字トークンの累積解釈: 3i4i3は3空＋仲人＋4空＋仲人＋3空。
+        let go_betweens = parse_sfen(&format!("{} b", board_with_row(0, "3i4i3"))).unwrap();
+        assert_eq!(
+            go_betweens.piece_at(sq(3, 11)),
+            Some(PieceCode::new(Color::White, PieceKind::GoBetween))
+        );
+        assert_eq!(
+            go_betweens.piece_at(sq(8, 11)),
+            Some(PieceCode::new(Color::White, PieceKind::GoBetween))
+        );
+
+        // `1`の直後の`2`は12と解釈される（`12`のみ＝全空の段の受理）。
+        let empty = parse_sfen(&format!("{EMPTY_BOARD} b")).unwrap();
+        assert!(Square::all().all(|square| empty.piece_at(square).is_none()));
+
+        // 書き出しは最長連続をひとつの数字で圧縮する（非圧縮の`111`等を生成しない）。
+        assert_eq!(
+            to_sfen(&go_betweens),
+            format!("{} b", board_with_row(0, "3i4i3"))
+        );
+        assert_eq!(to_sfen(&empty), format!("{EMPTY_BOARD} b"));
+
+        // 段数・升数の不一致、空升数0の拒否（D5-SFEN-04境界）。
+        assert!(matches!(
+            parse_sfen("12/12/12/12/12/12/12/12/12/12/12 b"),
+            Err(SfenError::WrongRowCount { .. })
+        ));
+        assert!(matches!(
+            parse_sfen(&format!("{} b", board_with_row(0, "11"))),
+            Err(SfenError::WrongRowWidth { .. })
+        ));
+        assert!(matches!(
+            parse_sfen(&format!("{} b", board_with_row(0, "13"))),
+            Err(SfenError::WrongRowWidth { .. })
+        ));
+        assert!(matches!(
+            parse_sfen(&format!("{} b", board_with_row(0, "0P11"))),
+            Err(SfenError::InvalidEmptyCount { .. })
+        ));
+    }
+
+    // D5-SFEN-05: 手番欄はbが先手、wが後手（[USI]「SFENの全体構文」第2項）。
+    #[test]
+    fn side_to_move_letter_maps_b_to_black_and_w_to_white() {
+        assert_eq!(
+            parse_sfen(&format!("{EMPTY_BOARD} b"))
+                .unwrap()
+                .side_to_move(),
+            Color::Black
+        );
+        assert_eq!(
+            parse_sfen(&format!("{EMPTY_BOARD} w"))
+                .unwrap()
+                .side_to_move(),
+            Color::White
+        );
+        assert!(to_sfen(&Position::empty(Color::Black)).ends_with(" b"));
+        assert!(to_sfen(&Position::empty(Color::White)).ends_with(" w"));
+
+        for invalid in ["B", "W", "x"] {
+            assert_eq!(
+                parse_sfen(&format!("{EMPTY_BOARD} {invalid}")),
+                Err(SfenError::InvalidSideToMove),
+                "{invalid}"
+            );
+        }
+    }
+
+    // D5-SFEN-06: lishogi正準4欄構文と初期局面SFENの厳密一致（引き継ぎ資産。
+    // [USI]「SFENの全体構文」、[RULES]第5条、[CECP]第7章）。
+    #[test]
+    fn lishogi_initial_four_field_sfen_matches_the_initial_position() {
+        let setup = parse_extended_sfen(LISHOGI_INITIAL_SFEN, Rules::engine_default()).unwrap();
+        assert_eq!(setup.position, Position::initial());
+        assert_eq!(setup.lion_capture, None);
+        assert_eq!(setup.next_move_number, 1);
+
+        // 王将Kが先手、玉将kが後手にある（[RULES]第5条）。
+        assert_eq!(
+            setup.position.piece_at(sq(5, 0)),
+            Some(PieceCode::new(Color::Black, PieceKind::King))
+        );
+        assert_eq!(
+            setup.position.piece_at(sq(6, 11)),
+            Some(PieceCode::new(Color::White, PieceKind::King))
+        );
+
+        // 書き出しの4欄導出形（5欄から第5欄を落とす）が初期SFEN文字列と一致する。
+        assert_eq!(
+            to_extended_sfen(&setup),
+            format!("{LISHOGI_INITIAL_SFEN} -")
+        );
+    }
+
+    // D5-SFEN-07: minase基本形式は「盤面部 手番部」の2欄だけを読み書きする
+    // （[USI]「to_sfenへの要求事項」、[PL]「拡張SFEN」）。
+    #[test]
+    fn basic_form_reads_and_writes_exactly_two_fields() {
         let position = Position::initial();
         let sfen = to_sfen(&position);
-
-        assert_eq!(
-            sfen,
-            "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b"
-        );
+        assert_eq!(sfen.split_whitespace().count(), 2);
         assert_eq!(parse_sfen(&sfen).unwrap(), position);
-    }
 
-    #[test]
-    fn extended_sfen_initial_position_round_trips_and_four_fields_default_to_no_deferred_rights() {
-        let setup = SetupPosition {
-            position: Position::initial(),
-            lion_capture: None,
-            next_move_number: 1,
-        };
-        let extended = to_extended_sfen(&setup);
+        // 獅子捕獲升欄への部分対応（`-`だけの受理）は行わない。3欄以上と1欄は拒否する。
+        for extra in [format!("{sfen} -"), format!("{sfen} - 1")] {
+            assert_eq!(parse_sfen(&extra), Err(SfenError::UnexpectedFields));
+        }
+        assert_eq!(parse_sfen(EMPTY_BOARD), Err(SfenError::MissingSideToMove));
 
-        assert_eq!(extended, format!("{} - 1 -", to_sfen(&setup.position)));
-        assert_eq!(
-            parse_extended_sfen(&extended, Rules::engine_default()).unwrap(),
-            setup
-        );
-
-        let four_fields = format!("{} - 1", to_sfen(&setup.position));
-        let parsed = parse_extended_sfen(&four_fields, Rules::engine_default()).unwrap();
-        assert_eq!(parsed, setup);
-        assert_eq!(to_extended_sfen(&parsed), extended);
-    }
-
-    #[test]
-    fn extended_sfen_round_trips_occupied_and_empty_lion_capture_squares() {
-        let occupied = sq(4, 4);
+        // 2欄形式は成り権保留を運ばない（仕様上の制限）。盤面と手番は往復で保存される。
+        let deferred_square = sq(7, 9);
         let mut builder = PositionBuilder::new(Color::White);
         builder
             .put(
-                occupied,
-                PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap(),
-            )
-            .unwrap();
-        let occupied_setup = SetupPosition {
-            position: builder.finish().unwrap(),
-            lion_capture: Some(occupied),
-            next_move_number: 42,
-        };
-        let occupied_text = to_extended_sfen(&occupied_setup);
-        let parsed_occupied = parse_extended_sfen(&occupied_text, Rules::engine_default()).unwrap();
-        assert_eq!(parsed_occupied, occupied_setup);
-        assert_eq!(
-            parsed_occupied.position.lion_taken_by_non_lion(),
-            None,
-            "解析は獅子捕獲升をPositionへ注入しない"
-        );
-
-        let empty = sq(6, 6);
-        let empty_setup = SetupPosition {
-            position: Position::empty(Color::Black),
-            lion_capture: Some(empty),
-            next_move_number: 9999,
-        };
-        let empty_text = to_extended_sfen(&empty_setup);
-        assert_eq!(
-            parse_extended_sfen(&empty_text, Rules::engine_default()).unwrap(),
-            empty_setup
-        );
-    }
-
-    #[test]
-    fn extended_sfen_round_trips_p1_deferred_squares_in_dense_order() {
-        let first = sq(4, 2);
-        let second = sq(7, 9);
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(
-                first,
-                PieceCode::new(Color::White, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        builder
-            .put(
-                second,
+                deferred_square,
                 PieceCode::new(Color::Black, PieceKind::SilverGeneral),
             )
             .unwrap();
-        builder.mark_promotion_deferred(second).unwrap();
-        builder.mark_promotion_deferred(first).unwrap();
-        let setup = SetupPosition {
-            position: builder.finish().unwrap(),
-            lion_capture: None,
-            next_move_number: 17,
-        };
-        let rules = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
-        let extended = to_extended_sfen(&setup);
-
-        assert!(extended.ends_with(" - 17 8j,5c"));
-        assert_eq!(parse_extended_sfen(&extended, rules).unwrap(), setup);
+        builder.mark_promotion_deferred(deferred_square).unwrap();
+        let with_deferred = builder.finish().unwrap();
+        let restored = parse_sfen(&to_sfen(&with_deferred)).unwrap();
+        assert!(restored.promotion_deferred().is_empty());
+        assert_eq!(restored.side_to_move(), with_deferred.side_to_move());
+        assert!(
+            Square::all().all(|square| restored.piece_at(square) == with_deferred.piece_at(square))
+        );
     }
 
+    // D5-SFEN-08: 不正入力の非パニック拒否（[PL]「フェーズ2の確定設計」のエンジン境界の
+    // 厳格性）。エラー分類の粒度は規範文書に定めがないため（SU-3）、拒否だけを断定する。
     #[test]
-    fn extended_sfen_rejects_invalid_lion_capture_fields_and_side_to_move_occupancy() {
-        let own = sq(11, 11);
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(own, PieceCode::new(Color::Black, PieceKind::Pawn))
-            .unwrap();
-        let board = to_sfen(&builder.finish().unwrap());
+    fn malformed_inputs_are_rejected_without_panicking() {
+        let inputs = [
+            String::new(),
+            "   ".to_owned(),
+            "b".to_owned(),
+            format!("{EMPTY_BOARD} z"),
+            // 2桁数字の途中で行が終わる。
+            "12/12/12/12/12/12/12/12/12/12/12/1 b".to_owned(),
+            // 段区切りの連続と末尾の段区切り。
+            "12/12//12/12/12/12/12/12/12/12/12 b".to_owned(),
+            format!("{EMPTY_BOARD}/ b"),
+            // 非ASCII文字。
+            "１2/12/12/12/12/12/12/12/12/12/12/12 b".to_owned(),
+            format!("{} b", board_with_row(0, "11＋p")),
+            // 空升数の桁あふれ。
+            format!("{} b", board_with_row(0, &"9".repeat(30))),
+            // 極端に長い入力。
+            format!("{} b", "1".repeat(65536)),
+        ];
+        for input in inputs {
+            assert!(parse_sfen(&input).is_err(), "{input:.40}");
+            assert!(
+                parse_extended_sfen(&format!("{input} - 1"), Rules::engine_default()).is_err(),
+                "{input:.40}"
+            );
+        }
+    }
 
-        for invalid in ["0a", "13a", "1m", "01a", "a1"] {
+    // D5-SFEN-09: 第3欄は`-`または升名1つ。空升は受理し、手番側の駒がある升は拒否する
+    // （[PL]「拡張SFEN」、[USI]「SFENの全体構文」第3項の経由升捕獲を含む訂正後条件）。
+    #[test]
+    fn lion_capture_field_accepts_dash_empty_and_non_mover_squares_only() {
+        let rules = Rules::engine_default();
+        // 7f = 内部(5, 6)。
+        let capture_square = sq(5, 6);
+        let occupied_board = board_with_row(5, "5p6");
+
+        // `-`は獅子捕獲なし。
+        assert_eq!(
+            parse_extended_sfen(&format!("{occupied_board} b - 1"), rules)
+                .unwrap()
+                .lion_capture,
+            None
+        );
+        // 非手番側の駒がいる升（通常の到達升捕獲）。
+        let occupied = parse_extended_sfen(&format!("{occupied_board} b 7f 1"), rules).unwrap();
+        assert_eq!(occupied.lion_capture, Some(capture_square));
+        // 空升も受理する（飛鷲・角鷹の経由升捕獲では捕獲升が空になる。[PL]フェーズ3の契約訂正）。
+        let empty = parse_extended_sfen(&format!("{EMPTY_BOARD} b 7f 1"), rules).unwrap();
+        assert_eq!(empty.lion_capture, Some(capture_square));
+
+        // 書き出し⇒解析の往復で捕獲升が保存される。
+        assert_eq!(
+            parse_extended_sfen(&to_extended_sfen(&occupied), rules).unwrap(),
+            occupied
+        );
+
+        // 手番側の駒がある升は、直前の着手の結果として成立しないため拒否する。
+        let own_board = board_with_row(5, "5P6");
+        assert!(matches!(
+            parse_extended_sfen(&format!("{own_board} b 7f 1"), rules),
+            Err(SfenError::LionCaptureOccupiedBySideToMove { .. })
+        ));
+
+        // 不正な升名の拒否。
+        for invalid in ["13a", "0a", "7m", "--"] {
             assert_eq!(
-                parse_extended_sfen(
-                    &format!("{EMPTY_BOARD} b {invalid} 1 -"),
-                    Rules::engine_default()
-                ),
+                parse_extended_sfen(&format!("{EMPTY_BOARD} b {invalid} 1"), rules),
                 Err(SfenError::InvalidLionCaptureSquare),
                 "{invalid}"
             );
         }
-        assert_eq!(
-            parse_extended_sfen(&format!("{board} 1a 1 -"), Rules::engine_default()),
-            Err(SfenError::LionCaptureOccupiedBySideToMove { square: own })
-        );
-        assert_eq!(
-            parse_extended_sfen(&format!("{EMPTY_BOARD} b 7f 1 -"), Rules::engine_default())
-                .unwrap()
-                .lion_capture,
-            Some(sq(5, 6))
-        );
     }
 
+    // D5-SFEN-10: L2判定情報は第3欄の升にいる非手番側の駒が麒麟由来の成獅子（+o）か
+    // どうかから導出される（[PL]「拡張SFEN」、[RULES]第29条L2）。表記層は捕獲升と
+    // 盤面の出自を保存し、導出の前提（+oとnの区別）を担う。
     #[test]
-    fn extended_sfen_accepts_only_move_numbers_from_one_through_9999() {
-        for valid in [1, 9999] {
-            assert_eq!(
-                parse_extended_sfen(
-                    &format!("{EMPTY_BOARD} b - {valid} -"),
-                    Rules::engine_default()
-                )
-                .unwrap()
-                .next_move_number,
-                valid
-            );
+    fn lion_capture_square_preserves_kirin_promoted_lion_identity_for_l2() {
+        let rules = Rules::engine_default();
+        let capture_square = sq(5, 6);
+
+        // 非手番側の+o（麒麟由来の成獅子）・n（生の獅子）・他の駒のいずれも受理する
+        // （拒否条件は手番側の駒だけ。D5-SFEN-10境界）。
+        let mut pieces = Vec::new();
+        for row in ["5+o6", "5n6", "5p6"] {
+            let setup =
+                parse_extended_sfen(&format!("{} b 7f 1", board_with_row(5, row)), rules).unwrap();
+            assert_eq!(setup.lion_capture, Some(capture_square), "{row}");
+            pieces.push(setup.position.piece_at(capture_square).unwrap());
         }
-        for invalid in ["0", "10000", "-1", "1.0", "x"] {
+
+        // +oとnは解析後も区別され（D5-SFEN-03の出自保存）、L2導出の一意性が成り立つ。
+        assert_eq!(
+            Some(pieces[0]),
+            PieceCode::new_promoted(Color::White, PieceKind::Lion)
+        );
+        assert_eq!(pieces[1], PieceCode::new(Color::White, PieceKind::Lion));
+        assert_ne!(pieces[0], pieces[1]);
+    }
+
+    // D5-SFEN-11: 第4欄は次の着手の手数で、1以上9999以下の整数だけを受理する
+    // （[PL]「拡張SFEN」、[USI]「SFENの全体構文」第4項）。
+    #[test]
+    fn move_number_field_accepts_one_through_9999_and_round_trips() {
+        let rules = Rules::engine_default();
+        for valid in [1_u32, 9999] {
+            let setup = parse_extended_sfen(&format!("{EMPTY_BOARD} b - {valid}"), rules).unwrap();
+            assert_eq!(setup.next_move_number, valid);
+            // 受理した手数は書き出しで保存される（往復一致）。
+            assert!(to_extended_sfen(&setup).contains(&format!(" {valid} ")));
+        }
+        // `+1`はu32のFromStrが受理するが、拡張SFEN文法の整数表記ではないため拒否する
+        // （spec-first再構築で検出した乖離の修正を固定）。
+        for invalid in ["0", "10000", "-1", "+1", "1.5", "x"] {
             assert_eq!(
-                parse_extended_sfen(
-                    &format!("{EMPTY_BOARD} b - {invalid} -"),
-                    Rules::engine_default()
-                ),
+                parse_extended_sfen(&format!("{EMPTY_BOARD} b - {invalid}"), rules),
                 Err(SfenError::InvalidMoveNumber),
                 "{invalid}"
             );
         }
     }
 
+    // D5-SFEN-12: 第5欄はP1成り権保留升のコンマ区切り列（[PL]「拡張SFEN」、[RULES]第30条
+    // P1）。順序キー「内部密番号」の文書定義は未補修のため（SU-2）、決定性・往復保存・
+    // 順序の単調性だけを断定し、特定の並びの直値は固定しない。
     #[test]
-    fn extended_sfen_rejects_invalid_deferred_lists_and_requires_p1() {
-        let first = sq(4, 9);
-        let second = sq(5, 10);
-        let mut builder = PositionBuilder::new(Color::Black);
-        for square in [first, second] {
-            builder
-                .put(
-                    square,
-                    PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-                )
-                .unwrap();
-        }
-        let board = to_sfen(&builder.finish().unwrap());
+    fn deferred_field_is_a_strictly_ordered_comma_list_that_round_trips() {
         let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        // 黒銀8c＝内部(4, 9)、白銀7j＝内部(5, 2)。どちらも自軍から見た敵陣内の未成駒。
+        let mut rows = ["12"; 12];
+        rows[2] = "4S7";
+        rows[9] = "5s6";
+        let board = rows.join("/");
 
-        assert_eq!(
-            parse_extended_sfen(&format!("{board} - 1 8c"), Rules::engine_default()),
-            Err(SfenError::PromotionDeferredRequiresP1)
-        );
+        // 1升だけの列の受理と往復。
+        let single = parse_extended_sfen(&format!("{board} b - 1 8c"), p1).unwrap();
+        assert!(single.position.promotion_deferred().contains(sq(4, 9)));
+        assert_eq!(to_extended_sfen(&single), format!("{board} b - 1 8c"));
+
+        // 2升の列は一方の順序だけが昇順として受理され、逆順は拒否される（順序の単調性）。
+        let forward = parse_extended_sfen(&format!("{board} b - 1 7j,8c"), p1);
+        let backward = parse_extended_sfen(&format!("{board} b - 1 8c,7j"), p1);
+        let (accepted, accepted_text) = match (forward, backward) {
+            (Ok(setup), Err(SfenError::PromotionDeferredNotStrictlyAscending { .. })) => {
+                (setup, format!("{board} b - 1 7j,8c"))
+            }
+            (Err(SfenError::PromotionDeferredNotStrictlyAscending { .. }), Ok(setup)) => {
+                (setup, format!("{board} b - 1 8c,7j"))
+            }
+            other => panic!("exactly one order must be accepted: {other:?}"),
+        };
+        // 受理した保留集合は同一の列（同一順序）として再現される。
+        assert_eq!(to_extended_sfen(&accepted), accepted_text);
+
+        // 重複・空要素・不正升名の拒否。
         assert!(matches!(
-            parse_extended_sfen(&format!("{board} - 1 8c,8c"), p1),
+            parse_extended_sfen(&format!("{board} b - 1 8c,8c"), p1),
             Err(SfenError::PromotionDeferredNotStrictlyAscending { .. })
         ));
-        assert!(matches!(
-            parse_extended_sfen(&format!("{board} - 1 7b,8c"), p1),
-            Err(SfenError::PromotionDeferredNotStrictlyAscending { .. })
-        ));
-        for invalid in ["13a", "8c,"] {
+        for invalid in ["7j,,8c", ",8c", "8c,", "13a"] {
             assert_eq!(
-                parse_extended_sfen(&format!("{board} - 1 {invalid}"), p1),
+                parse_extended_sfen(&format!("{board} b - 1 {invalid}"), p1),
                 Err(SfenError::InvalidPromotionDeferredSquare),
                 "{invalid}"
             );
         }
     }
 
+    // D5-SFEN-13: P1を含まない規則では`-`以外の第5欄を拒否する（[PL]「拡張SFEN」。
+    // R1同一局面キーの分断が[RULES]第24条第1項dと不整合になるため）。
     #[test]
-    fn extended_sfen_applies_position_builder_invariants_to_deferred_squares() {
-        let empty = sq(0, 9);
-        let king = sq(1, 9);
-        let promoted = sq(2, 9);
-        let outside_zone = sq(3, 7);
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder
-            .put(king, PieceCode::new(Color::Black, PieceKind::King))
-            .unwrap();
-        builder
-            .put(
-                promoted,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral)
-                    .promote()
-                    .unwrap(),
-            )
-            .unwrap();
-        builder
-            .put(
-                outside_zone,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        let board = to_sfen(&builder.finish().unwrap());
-        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+    fn deferred_field_requires_rule_p1() {
+        let mut rows = ["12"; 12];
+        rows[2] = "4S7";
+        let board = rows.join("/");
 
-        for square in [empty, king, promoted, outside_zone] {
-            let text = square_to_text(square);
-            assert!(matches!(
-                parse_extended_sfen(&format!("{board} - 1 {text}"), p1),
-                Err(SfenError::PositionBuild(
-                    PositionBuildError::InvalidPosition(
-                        PositionError::InvalidPromotionDeferred { square: rejected }
-                    )
-                )) if rejected == square
-            ));
+        // P1なし: `-`は受理し、升名列は構文が正しくても拒否する。
+        assert!(parse_extended_sfen(&format!("{board} b - 1 -"), Rules::engine_default()).is_ok());
+        assert_eq!(
+            parse_extended_sfen(&format!("{board} b - 1 8c"), Rules::engine_default()),
+            Err(SfenError::PromotionDeferredRequiresP1)
+        );
+        // P1あり: 同一入力を受理する（D5-SFEN-12と対）。
+        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        assert!(parse_extended_sfen(&format!("{board} b - 1 8c"), p1).is_ok());
+    }
+
+    // D5-SFEN-14: 保留升には成り得る未成駒の存在を要求し、空升・成駒・成れない駒の升を
+    // 拒否する（[PL]「拡張SFEN」の不変条件4類型、[RULES]第17条第1項）。
+    #[test]
+    fn deferred_squares_must_hold_an_unpromoted_promotable_piece() {
+        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        // 段c（内部rank 9）: 空升・王将・成銀・歩兵・獅子・奔王を並べる。
+        let mut rows = ["12"; 12];
+        rows[2] = "1K+SPNQ6";
+        let board = rows.join("/");
+
+        // 未成の歩兵がいる升（9c）は受理する。
+        let ok = parse_extended_sfen(&format!("{board} b - 1 9c"), p1).unwrap();
+        assert!(ok.position.promotion_deferred().contains(sq(3, 9)));
+
+        // 空升12c・王将11c・成駒10c・獅子8c・奔王7cはいずれも拒否する。
+        for invalid in ["12c", "11c", "10c", "8c", "7c"] {
+            assert!(
+                matches!(
+                    parse_extended_sfen(&format!("{board} b - 1 {invalid}"), p1),
+                    Err(SfenError::PositionBuild(_))
+                ),
+                "{invalid}"
+            );
         }
     }
 
+    // D5-SFEN-15: 拡張形式は5欄と4欄（第5欄`-`扱い）だけを受理する（[PL]「拡張SFEN」）。
     #[test]
-    fn extended_sfen_rejects_field_counts_other_than_four_or_five() {
-        for input in [
+    fn extended_parser_accepts_only_four_or_five_fields() {
+        let rules = Rules::engine_default();
+        // 4欄入力は第5欄`-`を明示した5欄入力と同じ解析結果になる。
+        let four = parse_extended_sfen(&format!("{EMPTY_BOARD} b - 1"), rules).unwrap();
+        let five = parse_extended_sfen(&format!("{EMPTY_BOARD} b - 1 -"), rules).unwrap();
+        assert_eq!(four, five);
+        // lishogi正準の4欄（初期SFEN）が受理される。
+        assert!(parse_extended_sfen(LISHOGI_INITIAL_SFEN, rules).is_ok());
+
+        // 1〜3欄と6欄以上は拒否する。2欄基本形も拡張解析では拒否される。
+        for invalid in [
+            EMPTY_BOARD.to_owned(),
+            format!("{EMPTY_BOARD} b"),
             format!("{EMPTY_BOARD} b -"),
             format!("{EMPTY_BOARD} b - 1 - extra"),
         ] {
             assert!(matches!(
-                parse_extended_sfen(&input, Rules::engine_default()),
+                parse_extended_sfen(&invalid, rules),
                 Err(SfenError::InvalidExtendedFieldCount { .. })
             ));
         }
     }
 
+    // D5-SFEN-16: 書き出しは常に5欄で、lishogi互換4欄は第5欄を落とした導出形。
+    // 全5欄の情報が往復で一致する（[PL]「拡張SFEN」）。
     #[test]
-    fn promoted_position_round_trips() {
-        let position = parse_sfen("12/12/12/12/4+f2l4/4S7/5+O6/7n4/12/12/12/12 w").unwrap();
-        let sfen = to_sfen(&position);
+    fn extended_output_always_writes_five_fields_and_round_trips_all_state() {
+        // 捕獲なし・保留なしでも第3欄`-`と第5欄`-`は省略されない。
+        let plain = SetupPosition {
+            position: Position::initial(),
+            lion_capture: None,
+            next_move_number: 1,
+        };
+        let plain_text = to_extended_sfen(&plain);
+        assert_eq!(plain_text.split_whitespace().count(), 5);
+        assert!(plain_text.ends_with(" b - 1 -"));
 
-        assert_eq!(parse_sfen(&sfen).unwrap(), position);
-    }
-
-    #[test]
-    fn promotion_deferred_position_preserves_board_and_side() {
-        let deferred = sq(7, 9);
-        let mut builder = PositionBuilder::new(Color::White);
-        builder
-            .put(
-                deferred,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
-            )
-            .unwrap();
-        builder.mark_promotion_deferred(deferred).unwrap();
-        let position = builder.finish().unwrap();
-        let sfen = to_sfen(&position);
-        let restored = parse_sfen(&sfen).unwrap();
-
-        assert!(!position.promotion_deferred().is_empty());
-        assert!(restored.promotion_deferred().is_empty());
-        assert_eq!(to_sfen(&restored), sfen);
-        assert_eq!(restored.side_to_move(), position.side_to_move());
-        assert!(Square::all().all(|square| restored.piece_at(square) == position.piece_at(square)));
-    }
-
-    #[test]
-    fn sfen_conversion_uses_shogiops_coordinates_and_piece_codes() {
-        let position = parse_sfen("12/12/12/12/4B2l4/4S7/5+O6/7n4/12/12/12/12 b").unwrap();
-
+        // 盤面・手番・獅子捕獲升・手数・保留集合のすべてが往復で一致する。
+        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        let mut rows = ["12"; 12];
+        rows[2] = "4S7";
+        rows[9] = "5s6";
+        let board = rows.join("/");
+        let rich_text = format!("{board} b 7j 4321 8c");
+        let rich = parse_extended_sfen(&rich_text, p1).unwrap();
+        assert_eq!(to_extended_sfen(&rich), rich_text);
         assert_eq!(
-            position.piece_at(sq(4, 7)),
-            Some(PieceCode::new(Color::Black, PieceKind::Bishop))
-        );
-        assert_eq!(
-            position.piece_at(sq(7, 7)),
-            Some(PieceCode::new(Color::White, PieceKind::Lance))
-        );
-        assert_eq!(
-            position.piece_at(sq(4, 6)),
-            Some(PieceCode::new(Color::Black, PieceKind::SilverGeneral))
-        );
-        assert_eq!(
-            position.piece_at(sq(5, 5)),
-            PieceCode::new(Color::Black, PieceKind::Kirin).promote()
-        );
-        assert_eq!(
-            position.piece_at(sq(7, 4)),
-            Some(PieceCode::new(Color::White, PieceKind::Lion))
-        );
-    }
-
-    #[test]
-    fn lishogi_initial_position_matches_position_initial() {
-        let position = parse_sfen(
-            "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b",
-        )
-        .unwrap();
-
-        assert_eq!(position, Position::initial());
-    }
-
-    #[test]
-    fn parses_every_promoted_piece_and_rejects_unpromotable_pieces() {
-        let promoted_pieces = [
-            ('p', PieceKind::GoldGeneral),
-            ('l', PieceKind::WhiteHorse),
-            ('s', PieceKind::VerticalMover),
-            ('g', PieceKind::Rook),
-            ('b', PieceKind::DragonHorse),
-            ('r', PieceKind::DragonKing),
-            ('f', PieceKind::Bishop),
-            ('c', PieceKind::SideMover),
-            ('e', PieceKind::CrownPrince),
-            ('a', PieceKind::Whale),
-            ('t', PieceKind::FlyingStag),
-            ('o', PieceKind::Lion),
-            ('x', PieceKind::FreeKing),
-            ('m', PieceKind::FreeBoar),
-            ('v', PieceKind::FlyingOx),
-            ('h', PieceKind::HornedFalcon),
-            ('d', PieceKind::SoaringEagle),
-            ('i', PieceKind::DrunkElephant),
-        ];
-        for (letter, promoted_kind) in promoted_pieces {
-            let sfen = format!("11+{letter}/12/12/12/12/12/12/12/12/12/12/12 b");
-            let position = parse_sfen(&sfen).unwrap();
-
-            assert_eq!(
-                position.piece_at(Square::new(11, 11).unwrap()),
-                PieceCode::new_promoted(Color::White, promoted_kind),
-                "+{letter}"
-            );
-        }
-
-        for letter in ['k', 'n', 'q'] {
-            let sfen = format!("11+{letter}/12/12/12/12/12/12/12/12/12/12/12 b");
-
-            assert_eq!(
-                parse_sfen(&sfen),
-                Err(SfenError::UnpromotablePiece {
-                    row: 1,
-                    column: 12,
-                    letter,
-                }),
-                "+{letter}"
-            );
-        }
-    }
-
-    #[test]
-    fn parses_supported_pieces_promotions_coordinates_and_side() {
-        let position = parse_sfen("12/12/12/12/4B2l4/4S7/5+O6/7n4/12/12/12/12 w").unwrap();
-
-        assert_eq!(position.side_to_move(), Color::White);
-        assert_eq!(
-            position.piece_at(Square::new(4, 7).unwrap()),
-            Some(PieceCode::new(Color::Black, PieceKind::Bishop))
-        );
-        assert_eq!(
-            position.piece_at(Square::new(7, 7).unwrap()),
-            Some(PieceCode::new(Color::White, PieceKind::Lance))
-        );
-        assert_eq!(
-            position.piece_at(Square::new(5, 5).unwrap()),
-            PieceCode::new(Color::Black, PieceKind::Kirin).promote()
-        );
-        assert_eq!(
-            position.piece_at(Square::new(7, 4).unwrap()),
-            Some(PieceCode::new(Color::White, PieceKind::Lion))
-        );
-    }
-
-    #[test]
-    fn rejects_missing_invalid_and_extra_fields() {
-        assert_eq!(parse_sfen(""), Err(SfenError::MissingBoard));
-        assert_eq!(parse_sfen(EMPTY_BOARD), Err(SfenError::MissingSideToMove));
-        assert_eq!(
-            parse_sfen(&format!("{EMPTY_BOARD} x")),
-            Err(SfenError::InvalidSideToMove)
-        );
-        assert_eq!(
-            parse_sfen(&format!("{EMPTY_BOARD} b -")),
-            Err(SfenError::UnexpectedFields)
-        );
-    }
-
-    #[test]
-    fn rejects_malformed_board_without_panicking() {
-        assert_eq!(
-            parse_sfen("12/12/12/12/12/12/12/12/12/12/12 b"),
-            Err(SfenError::WrongRowCount { found: 11 })
-        );
-        assert_eq!(
-            parse_sfen("13/12/12/12/12/12/12/12/12/12/12/12 b"),
-            Err(SfenError::WrongRowWidth { row: 1, found: 13 })
-        );
-        assert_eq!(
-            parse_sfen("11J/12/12/12/12/12/12/12/12/12/12/12 b"),
-            Err(SfenError::UnsupportedPiece {
-                row: 1,
-                column: 12,
-                letter: 'J',
-            })
-        );
-        assert_eq!(
-            parse_sfen("11+/12/12/12/12/12/12/12/12/12/12/12 b"),
-            Err(SfenError::MissingPromotedPiece { row: 1, column: 12 })
-        );
-        assert_eq!(
-            parse_sfen("11+N/12/12/12/12/12/12/12/12/12/12/12 b"),
-            Err(SfenError::UnpromotablePiece {
-                row: 1,
-                column: 12,
-                letter: 'N',
-            })
-        );
-        assert_eq!(
-            parse_sfen("999999999999999999999999999999/12/12/12/12/12/12/12/12/12/12/12 b"),
-            Err(SfenError::InvalidEmptyCount { row: 1 })
+            parse_extended_sfen(&to_extended_sfen(&rich), p1).unwrap(),
+            rich
         );
     }
 }

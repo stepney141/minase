@@ -462,24 +462,74 @@ pub(crate) fn all_profiles() -> impl ExactSizeIterator<Item = MovementProfileId>
 mod tests {
     use super::*;
 
+    // 実装契約(D4-IMP-08の基盤): 「前」「後」は所有者相対で定まる(第3条3項)ため、
+    // 後手の相対方向・相対変位は先手の180度回転である。
     #[test]
-    fn every_piece_kind_has_a_valid_profile() {
-        for kind in PieceKind::ALL {
-            assert!(movement_profile(kind).index() < MOVEMENT_PROFILE_COUNT);
-        }
-        assert_eq!(
-            movement_profile(PieceKind::King),
-            movement_profile(PieceKind::CrownPrince)
-        );
-    }
-
-    #[test]
-    fn white_directions_are_rotated_by_180_degrees() {
+    fn white_relative_moves_are_180_degree_rotations_of_black() {
+        // 相対8方向は相異なる絶対方向へ写り、後手は先手の逆方向になる。
         for relative in RelativeDirection::ALL {
             assert_eq!(
                 relative.for_color(Color::White),
                 relative.for_color(Color::Black).opposite()
             );
         }
+        for (index, relative) in RelativeDirection::ALL.iter().enumerate() {
+            for earlier in &RelativeDirection::ALL[..index] {
+                assert_ne!(
+                    relative.for_color(Color::Black),
+                    earlier.for_color(Color::Black),
+                    "相対方向の写像は単射"
+                );
+            }
+        }
+
+        // 相対変位(1升移動・跳びの全範囲)も、後手では先手の符号反転になる。
+        for file in -2_i8..=2 {
+            for rank in -2_i8..=2 {
+                let relative = delta(file, rank);
+                let (black_file, black_rank) = relative.for_color(Color::Black);
+                let (white_file, white_rank) = relative.for_color(Color::White);
+                assert_eq!((white_file, white_rank), (-black_file, -black_rank));
+            }
+        }
+    }
+
+    // 実装契約: 全29駒種が動きプロファイルを持ち、プロファイルを共有するのは
+    // 動きが同一の王将・玉将と太子だけである(第9条・第10条6項)。第9条・第10条の
+    // 動きは駒種ごとに相異なるため、残る28プロファイルの定義は互いに異なる。
+    #[test]
+    fn movement_profiles_are_shared_only_by_kinds_with_identical_moves() {
+        for kind in PieceKind::ALL {
+            assert!(movement_profile(kind).index() < MOVEMENT_PROFILE_COUNT);
+        }
+        // 太子は周囲8方向へ1升の王駒であり、王将と同じ動きを共有する(第10条6項)。
+        assert_eq!(
+            movement_profile(PieceKind::King),
+            movement_profile(PieceKind::CrownPrince)
+        );
+
+        // それ以外の駒種対は、動きの定義そのものが相異なる。
+        for &left in &PieceKind::ALL {
+            for &right in &PieceKind::ALL {
+                if left == right {
+                    continue;
+                }
+                let shares_king_profile = matches!(
+                    (left, right),
+                    (PieceKind::King, PieceKind::CrownPrince)
+                        | (PieceKind::CrownPrince, PieceKind::King)
+                );
+                let left_data = movement_profile_data(movement_profile(left));
+                let right_data = movement_profile_data(movement_profile(right));
+                assert_eq!(
+                    left_data == right_data,
+                    shares_king_profile,
+                    "{left:?} と {right:?} の動きの異同"
+                );
+            }
+        }
+
+        // プロファイル識別子は28個をちょうど覆う。
+        assert_eq!(all_profiles().len(), MOVEMENT_PROFILE_COUNT);
     }
 }

@@ -21,6 +21,7 @@
 | 探索部 | [plans/search.md](plans/search.md) | 進行中 | ― |
 | 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 完了 | 2026年8月14日 |
 | Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 未着手 | ― |
+| テストスイートのspec-first再構築 | [plans/spec-first-tests.md](plans/spec-first-tests.md) | 完了 | 2026年8月15日 |
 
 直前局面生成器は設計済みだが、2026年8月10日の利用者決定により探索部を先行させ、待機中のままとする。
 順方向の探索部と評価関数は直前局面生成器の完了を前提とせず、いつ再開しても手戻りがない。
@@ -34,6 +35,9 @@
 2026年8月13日に、残タスクの進行順をLazy SMP着手の最速化を基準とする並行運用（探索トラックと接続トラック）として確定した。
 接続トラックは2026年8月14日に外部対局接続マイルストーンの完了として決着し、CECP対局進行とXBoard・HaChuの端到端検証まで終えた（記録は plans/engine-connectivity.md）。
 実lishogiサーバへの接続は、未完成のエンジンを公開の場へ出さない方針から対象外のままであり、探索・評価の成熟後に別マイルストーンとして計画する。
+
+2026年8月15日に、テストスイートのspec-first再構築を完了した。
+全ユニットテストは挙動マトリクス（plans/spec-first-tests/）由来となり、変異検証83件で検出力を確認済みである。
 
 残る本線は探索トラックである。
 plans/search.md に従い、静止探索の実装とGSPRT採否、続いて第2層の逐次採否を進める。

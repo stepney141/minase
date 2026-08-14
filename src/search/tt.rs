@@ -127,6 +127,12 @@ impl TranspositionTable {
         self.generation = self.generation.wrapping_add(1);
     }
 
+    /// テスト用に現在の世代カウンタを返す。
+    #[cfg(test)]
+    pub(super) const fn generation(&self) -> u8 {
+        self.generation
+    }
+
     /// 局面キーに対応するエントリを照合して返す。
     pub(super) fn probe(&self, key: u64, ply: u32) -> Option<Hit> {
         let entry = self.entries[key as usize & self.mask];

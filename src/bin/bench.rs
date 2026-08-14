@@ -186,13 +186,18 @@ fn main() {
 mod tests {
     use super::*;
 
+    // D8-BENCH-01(search.md bench節・実施状況フェーズ2): 固定局面集は初期局面1
+    // ＋lishogiリプレイ7局から抽出した14局面の計15局面で確定している。全局面が
+    // パース可能かつengine-default規則の下で合法な対局局面であり、合法手を持つ。
     #[test]
-    fn embedded_positions_are_valid_games_with_legal_moves() {
+    fn bench_positions_are_the_fifteen_documented_valid_games() {
         let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
         let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
 
-        assert!((10..=20).contains(&BENCH_POSITIONS.len()));
+        // 局面の追加・変更は決定性アンカーを変えるため設計書の改定を伴う
+        assert_eq!(BENCH_POSITIONS.len(), 15);
         for bench_position in BENCH_POSITIONS {
+            // 各局面は独立に検証する(1局面の破損が他を隠さない)
             let position = parse_sfen(bench_position.sfen).unwrap_or_else(|error| {
                 panic!("{} has invalid SFEN: {error}", bench_position.name)
             });
@@ -207,9 +212,46 @@ mod tests {
         }
     }
 
+    // D8-BENCH-02(search.md検証節): benchの総ノード数は再実行間で完全に一致する。
+    // 特定の総ノード数(217,305など実施状況の値)は各時点の測定記録であり、
+    // テストで固定してはならない。契約は「再実行間の一致」だけである。
     #[test]
-    fn arguments_reject_zero_depth() {
-        assert!(Arguments::try_parse_from(["bench", "--depth", "0"]).is_err());
-        assert!(Arguments::try_parse_from(["bench", "--depth", "257"]).is_err());
+    fn total_node_counts_are_reproducible_across_runs() {
+        let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
+        let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
+        let limits = SearchLimits {
+            depth: Some(1),
+            nodes: None,
+            movetime_ms: None,
+            clock: None,
+            infinite: false,
+        };
+        let run = || {
+            let mut transposition_table = TranspositionTable::default();
+            let mut total_nodes = 0_u64;
+            for bench_position in BENCH_POSITIONS {
+                let position =
+                    parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
+                let game = Game::from_position(rules, position)
+                    .expect("embedded SFEN must form a game under engine-default rules");
+                let legal_moves = game.legal_moves();
+                // 本体と同じく局面ごとに置換表をクリアして探索する
+                transposition_table.clear();
+                let result = search(
+                    game.position(),
+                    rules,
+                    &legal_moves,
+                    game.search_key_history(),
+                    &limits,
+                    &mut transposition_table,
+                );
+                total_nodes += result.nodes;
+            }
+            total_nodes
+        };
+        let first = run();
+        let second = run();
+        assert!(first > 0, "the bench search must count nodes");
+        assert_eq!(first, second, "total node counts must be deterministic");
     }
 }

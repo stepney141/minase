@@ -176,40 +176,106 @@ pub(crate) fn attack_tables() -> &'static AttackTables {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::attacks::movement_profile;
-    use crate::core::piece::PieceKind;
+    use crate::MoveGenerator;
+    use crate::core::piece::{PieceCode, PieceKind};
+    use crate::core::position::PositionBuilder;
 
+    /// 180度回転写像σ(D4マトリクスの座標規約)。内部0始まり座標では(11−筋,11−段)にあたる。
+    fn sigma(square: Square) -> Square {
+        Square::new(11 - square.file(), 11 - square.rank()).unwrap()
+    }
+
+    /// 空盤に指定色の駒1枚だけを置いた局面で、1手で到達し得る到達升の集合を返す。
+    /// 利きテーブルの生成方式に依存しない、公開の指し手生成経由の観測である。
+    fn reachable_squares(color: Color, kind: PieceKind, from: Square) -> Bitboard {
+        let mut builder = PositionBuilder::new(color);
+        builder.put(from, PieceCode::new(color, kind)).unwrap();
+        let position = builder.finish().unwrap();
+        let mut moves = Vec::new();
+        MoveGenerator::standard().generate_moves(&position, &mut moves);
+        Bitboard::from_squares(moves.into_iter().map(|mv| mv.to))
+    }
+
+    // 実装契約(D4-IMP-08): 任意の駒種pと升sについて、先手のpがsから1手で到達し得る
+    // 升集合をσで写した集合は、後手のpがσ(s)から到達し得る升集合と一致する。
+    // 「前」「後」が所有者相対で定義される(第3条3項)ことと、第9条・第10条の動きが
+    // 所有者に対して同型であることの帰結である。獅子・角鷹・飛鷲は2段階移動を含む
+    // 最終到達升全体で、その他は空盤での到達可能升全体で判定する。
     #[test]
-    fn fixed_masks_rotate_for_white() {
-        let tables = attack_tables();
+    fn reachable_sets_are_180_degree_rotation_symmetric_across_colors() {
         for kind in PieceKind::ALL {
-            let profile = movement_profile(kind);
             for from in Square::all() {
-                let rotated_from = Square::new(11 - from.file(), 11 - from.rank()).unwrap();
-                let rotated_black = Bitboard::from_squares(
-                    tables
-                        .fixed(Color::Black, profile, from)
-                        .into_iter()
-                        .map(|square| Square::new(11 - square.file(), 11 - square.rank()).unwrap()),
-                );
+                let black = reachable_squares(Color::Black, kind, from);
+                let rotated_black = Bitboard::from_squares(black.into_iter().map(sigma));
+                let white = reachable_squares(Color::White, kind, sigma(from));
                 assert_eq!(
                     rotated_black,
-                    tables.fixed(Color::White, profile, rotated_from)
+                    white,
+                    "{kind:?} from {:?}",
+                    (from.file(), from.rank())
                 );
             }
         }
     }
 
+    // 実装契約(第7条4項・5項の走りの定義に接地): 走りの利きは、方向へ1升ずつ進む
+    // 逐次歩行と一致する。距離制限内の升を進行順に含み、最初の駒がある升を含んだ
+    // 直後に打ち切られ、その先の升を含まない。
     #[test]
-    fn limited_slides_obey_range_and_blockers() {
+    fn sliding_control_matches_a_stepwise_walk_with_blockers_and_limits() {
+        /// 第7条4項・5項の文言どおりに、1升ずつ進んで期待利きを構成する対照実装。
+        fn walk(
+            from: Square,
+            direction: Direction,
+            max_steps: Option<u8>,
+            occupied: Bitboard,
+        ) -> Bitboard {
+            let mut expected = Bitboard::EMPTY;
+            let mut current = from;
+            let mut steps = 0_u8;
+            while let Some(next) = step_square(current, direction) {
+                if let Some(limit) = max_steps
+                    && steps >= limit
+                {
+                    break;
+                }
+                expected.set(next);
+                if occupied.contains(next) {
+                    break; // 走り駒は進行方向の最初の駒を越えられない(第7条4項)。
+                }
+                current = next;
+                steps += 1;
+            }
+            expected
+        }
+
+        // 決定的な占有標本: 空盤、対角線、擬似乱数集合。
+        let mut state = 0x5a4f_4252_4953_5401_u64;
+        let random_set = Bitboard::from_squares(Square::all().filter(|_| {
+            state = state
+                .wrapping_mul(2_862_933_555_777_941_757)
+                .wrapping_add(3_037_000_493);
+            state.is_multiple_of(4)
+        }));
+        let diagonal =
+            Bitboard::from_squares(Square::all().filter(|square| square.file() == square.rank()));
+        let occupancies = [Bitboard::EMPTY, diagonal, random_set];
+
         let tables = attack_tables();
-        let from = Square::new(4, 4).unwrap();
-        let blocker = Square::new(4, 6).unwrap();
-        let occupied = Bitboard::from_square(blocker);
-        let actual = tables.sliding_control(from, Direction::North, Some(3), occupied);
-        assert_eq!(
-            actual,
-            Bitboard::from_squares([Square::new(4, 5).unwrap(), blocker,])
-        );
+        for occupied in occupancies {
+            for from in Square::all() {
+                for direction in Direction::ALL {
+                    for max_steps in [None, Some(0), Some(1), Some(2), Some(5), Some(11), Some(12)]
+                    {
+                        assert_eq!(
+                            tables.sliding_control(from, direction, max_steps, occupied),
+                            walk(from, direction, max_steps, occupied),
+                            "from {:?} {direction:?} max {max_steps:?}",
+                            (from.file(), from.rank())
+                        );
+                    }
+                }
+            }
+        }
     }
 }

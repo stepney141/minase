@@ -118,41 +118,74 @@ fn run() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
+    use minase::Rules;
+
     use super::*;
 
     #[test]
-    fn rules_argument_accepts_preset_and_codes_but_rejects_their_combination() {
-        let engine_default =
-            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "engine-default"])
-                .unwrap();
-        let preset =
-            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "lishogi"])
-                .unwrap();
-        let codes = Arguments::try_parse_from([
-            "minase",
-            "--protocol",
-            "usi",
-            "--rules",
-            "L1,L2,P3,R1,E1,E3",
-        ])
-        .unwrap();
-        let error = match Arguments::try_parse_from([
-            "minase",
-            "--protocol",
-            "usi",
-            "--rules",
-            "lishogi,P1",
-        ]) {
-            Ok(_) => panic!("a preset combined with a rule code must be rejected"),
-            Err(error) => error,
+    fn cli_requires_explicit_protocol_and_rules() {
+        // PL「モジュールと名称」・完了条件: --protocol usi|cecpと--rulesの明示指定を必須とし、
+        // 既定値と自動判別を設けない（D6-CLI-01）。
+        assert!(Arguments::try_parse_from(["minase"]).is_err());
+        assert!(Arguments::try_parse_from(["minase", "--protocol", "usi"]).is_err());
+        assert!(Arguments::try_parse_from(["minase", "--rules", "R1"]).is_err());
+        // --protocolの値はusiとcecpの2値のみ。
+        assert!(
+            Arguments::try_parse_from(["minase", "--protocol", "xboard", "--rules", "R1"]).is_err()
+        );
+        assert!(
+            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", "R1"]).is_ok()
+        );
+        assert!(
+            Arguments::try_parse_from(["minase", "--protocol", "cecp", "--rules", "R1"]).is_ok()
+        );
+    }
+
+    #[test]
+    fn rules_argument_shares_the_wire_value_grammar() {
+        // PL「規則オプション」（同じ値文法を--rulesにも適用、解析は共通関数parse_rule_set）・
+        // R33第5・6項（engine-default=R1、lishogi=L1+L2+P3+R1+E1+E3、大小非区別・併記拒否）
+        // （D6-CLI-02〜04、D6-CLI-05のminase側接続確認）。
+        let parse = |value: &str| {
+            Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", value])
+                .map(|arguments| arguments.rules.0)
         };
 
-        assert_eq!(engine_default.rules.0, [RuleCode::R1]);
-        assert_eq!(preset.rules.0, codes.rules.0);
+        assert_eq!(
+            parse("engine-default").unwrap(),
+            parse_rule_set("R1").unwrap()
+        );
+        assert_eq!(
+            parse("Engine-Default").unwrap(),
+            parse("engine-default").unwrap()
+        );
+        assert_eq!(
+            parse("lishogi").unwrap(),
+            parse("L1,L2,P3,R1,E1,E3").unwrap()
+        );
+        assert_eq!(parse("LISHOGI").unwrap(), parse("lishogi").unwrap());
+        // 値は大文字小文字を区別せず、コード列は同じ規則集合へ解決される。
+        assert_eq!(
+            Rules::from_codes(&parse("r1,l1").unwrap()).unwrap(),
+            Rules::from_codes(&parse("L1,R1").unwrap()).unwrap()
+        );
+
+        assert!(parse("XX9").is_err());
+        // R33第5項: MinaseはR0を選択可能な規則コードとして提供しない。
+        assert!(parse("R0").is_err());
+        // PL 2026-08-11追記: standardという名前は受理しない。
+        assert!(parse("standard").is_err());
+        assert!(parse("lishogi,engine-default").is_err());
+        // プリセットとコードの併記には専用エラーを返す（PLフェーズ4追補）。
+        let error = parse("lishogi,P1").unwrap_err();
         assert!(
             error
                 .to_string()
                 .contains("preset 'lishogi' must be specified alone")
         );
+
+        // 反復規則を含まない列は値文法としては解析できるが、エンジン構築（起動）の時点で
+        // 拒否されるため、不正値での起動成功はあり得ない（D6-CLI-02境界）。
+        assert!(Engine::new(parse("L1,E1").unwrap()).is_err());
     }
 }

@@ -61,4 +61,18 @@ fn random_usi_match_output_is_independent_of_concurrency() {
     let parallel = run_random_match("4", "4");
 
     assert_eq!(without_elapsed(&sequential), without_elapsed(&parallel));
+
+    // sprt.md「ペア対局と再現性」: 開始局面はペア番号ごとに決定的に派生したシードで
+    // 作る。全ペアが同一シードへ退化していないことをpair_seed=の相異で固定する
+    // (変異検証フェーズ4で検出した派生配線の無検証を補強)。
+    let seeds: Vec<&str> = sequential
+        .lines()
+        .filter_map(|line| {
+            line.split_whitespace()
+                .find(|token| token.starts_with("pair_seed="))
+        })
+        .collect();
+    assert_eq!(seeds.len(), 4);
+    let unique: std::collections::HashSet<&str> = seeds.iter().copied().collect();
+    assert_eq!(unique.len(), 4);
 }

@@ -193,6 +193,7 @@ USIにはエンジン発の裁定通知手段がないため出力せず、USI�
 ### CECPのfeature宣言
 
 起動時のfeature宣言は`myname`、`variants="chu"`、`setboard=1`、`usermove=1`、`ping=1`、`colors=0`、`sigint=0`、`sigterm=0`、`analyze=0`、`time=0`、`draw=0`、`option`（RuleSet）、`done=1`の最小セットとする。`time=0`と`draw=0`は、既定値1のまま届く`time`・`otim`・引き分け提案に対する処理を持たないための抑止である（codexレビュー指摘）。`debug`は`#`出力を行わないため宣言しない。featureの拒否への対応は前述のとおり、必須3種（`setboard`、`usermove`、`ping`）の拒否で終了し、他は記録にとどめる。`highlight`は宣言せず、人間の対話入力支援として外部対局接続マイルストーンの対象外に置く（hachu.mdの調査どおり、highlightは人間の対話入力に必要であり、台本テストとエンジン間対局には不要である）。XBoard内蔵のVariantChu駒文字表とHaChu表の一致確認は未実施であり、フェーズ5の着手前条件とする。
+なお本節の`time=0`は起案時の値である。外部対局接続マイルストーン（engine-connectivity.md）が時間コマンド処理の実装に伴い`time=1`へ改定し、`memory=1`を追加したため、現行のfeature宣言はengine-connectivity.mdの記述を正とする（2026年8月14日注記）。
 
 ### モジュールと名称
 

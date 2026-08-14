@@ -1484,167 +1484,95 @@ mod tests {
     use super::*;
     use minase::{DrawReason, WinReason};
 
+    // D8-HARN-08/D8-STAT-06(sprt.md): 文書化された既定値
+    // (--response-timeout 120秒、--max-ply 4096、--max-pairs 100,000)を
+    // 文書の明文値リテラルで固定する。文書が変わらない限り実装定数の変更は
+    // 逸脱である。
     #[test]
-    fn arguments_accept_modes_specs_limits_and_defaults() {
-        let gsprt = Arguments::try_parse_from(["match_runner", "gsprt"])
-            .expect("the GSPRT mode must be accepted");
-        assert_eq!(gsprt.rules.0, [RuleCode::R1]);
-        assert_eq!(gsprt.candidate.kind, PlayerKind::Random);
-        assert_eq!(gsprt.baseline.kind, PlayerKind::Random);
-        assert_eq!(
-            gsprt.each,
-            SearchLimit::Fixed {
-                depth: Some(1),
-                nodes: None
-            }
-        );
-        assert_eq!(gsprt.response_timeout, DEFAULT_RESPONSE_TIMEOUT_SECONDS);
-        assert_eq!(gsprt.concurrency, 1);
-        assert!(matches!(
-            gsprt.mode,
-            Mode::Gsprt {
-                max_pairs: DEFAULT_MAX_PAIRS
-            }
-        ));
-
-        let elo = Arguments::try_parse_from([
-            "match_runner",
-            "--candidate",
-            "/tmp/candidate",
-            "--baseline",
-            "random",
-            "--each",
-            "depth=2,nodes=1000",
-            "--baseline-limit",
-            "nodes=25",
-            "--response-timeout",
-            "9",
-            "--concurrency",
-            "4",
-            "elo",
-            "--pairs",
-            "20",
-        ])
-        .expect("path specs and limit overrides must be accepted");
-        assert_eq!(
-            elo.candidate.kind,
-            PlayerKind::Command {
-                program: PathBuf::from("/tmp/candidate"),
-                args: Vec::new()
-            }
-        );
-        assert_eq!(
-            elo.each,
-            SearchLimit::Fixed {
-                depth: Some(2),
-                nodes: Some(1000)
-            }
-        );
-        assert_eq!(
-            elo.baseline_limit,
-            Some(SearchLimit::Fixed {
-                depth: None,
-                nodes: Some(25)
-            })
-        );
-        assert_eq!(elo.response_timeout, 9);
-        assert_eq!(elo.concurrency, 4);
-        assert!(matches!(elo.mode, Mode::Elo { pairs: 20 }));
+    fn documented_defaults_match_sprt_md() {
+        let arguments = Arguments::try_parse_from(["match_runner", "gsprt"])
+            .expect("the documented default invocation must be accepted");
+        assert_eq!(arguments.response_timeout, 120);
+        assert_eq!(arguments.max_ply, 4096);
+        assert!(matches!(arguments.mode, Mode::Gsprt { max_pairs: 100_000 }));
     }
 
+    // D8-HARN-01(sprt.mdエンジンの指定方法節): specは`commit:<hash>`・
+    // 起動コマンド(パス＋空白区切り引数)・`random`の3形式である。
     #[test]
-    fn player_spec_accepts_commit_revision() {
-        let spec = parse_player_spec("commit:0045833")
-            .expect("a commit engine spec must be accepted without resolving it");
-        assert_eq!(spec.kind, PlayerKind::Commit("0045833".to_owned()));
-    }
+    fn engine_specs_cover_the_documented_three_forms() {
+        let random = parse_player_spec("random").expect("the reserved spec must be accepted");
+        assert_eq!(random.kind, PlayerKind::Random);
 
-    #[test]
-    fn player_spec_splits_program_and_startup_arguments() {
-        let spec = parse_player_spec("target/release/minase --protocol usi --rules engine-default")
+        let commit = parse_player_spec("commit:0045833")
+            .expect("a commit spec must be accepted without resolving it");
+        assert_eq!(commit.kind, PlayerKind::Commit("0045833".to_owned()));
+
+        // 起動コマンド形式: 2語目以降は起動引数として渡す
+        let command = parse_player_spec("target/release/minase --protocol usi --rules R1")
             .expect("a command line spec must be accepted");
         assert_eq!(
-            spec.kind,
+            command.kind,
             PlayerKind::Command {
                 program: PathBuf::from("target/release/minase"),
                 args: vec![
                     "--protocol".to_owned(),
                     "usi".to_owned(),
                     "--rules".to_owned(),
-                    "engine-default".to_owned(),
+                    "R1".to_owned(),
                 ],
             }
         );
-    }
 
-    #[test]
-    fn arguments_reject_legacy_player_specs() {
-        for spec in ["depth=1", "depth=2,nodes=1000"] {
+        // 3形式に含まれない入力は拒否される。旧`depth=N` specの削除は
+        // match-harness.md適用範囲に明文がある。空リビジョンとcommit形式への
+        // 起動引数付与の拒否は[実装契約](SPEC_UNCLEAR-05関連)。
+        for invalid in [
+            "",
+            "depth=1",
+            "depth=2,nodes=1000",
+            "commit:",
+            "commit:abc --x",
+        ] {
             assert!(
-                Arguments::try_parse_from([
-                    "match_runner",
-                    "--candidate",
-                    spec,
-                    "elo",
-                    "--pairs",
-                    "1"
-                ])
-                .is_err(),
-                "unsupported spec {spec:?} must be rejected"
+                parse_player_spec(invalid).is_err(),
+                "spec {invalid:?} must be rejected"
             );
         }
     }
 
+    // SPEC_UNCLEAR-05 [実装契約]: 不明リビジョンの解決は対局実行前に失敗する。
+    // 診断文言は契約ではないため種別(Err)だけを検証する。
     #[test]
-    fn invalid_commit_revision_fails_before_match_execution() {
-        let error = normalize_commit(
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-            "definitely-not-a-minase-commit",
-        )
-        .expect_err("an unknown revision must fail normalization");
-        assert!(error.to_string().contains("git rev-parse --verify"));
+    fn unknown_commit_revision_fails_resolution() {
+        assert!(
+            normalize_commit(
+                Path::new(env!("CARGO_MANIFEST_DIR")),
+                "definitely-not-a-minase-commit",
+            )
+            .is_err()
+        );
     }
 
+    // D8-HARN-09(sprt.md・search.md実施状況): 思考制限は
+    // `depth=N|nodes=M|time=<base_ms>+<inc_ms>[,byoyomi=<ms>]`。
+    // depthとnodesの併記受理はSPEC_UNCLEAR-08につき[実装契約]。
     #[test]
-    fn search_limits_accept_only_supported_forms() {
+    fn search_limits_accept_the_documented_grammar() {
         assert_eq!(
-            parse_search_limit("depth=3"),
+            parse_search_limit("depth=4"),
             Ok(SearchLimit::Fixed {
-                depth: Some(3),
+                depth: Some(4),
                 nodes: None
             })
         );
         assert_eq!(
-            parse_search_limit("nodes=400"),
+            parse_search_limit("nodes=100000"),
             Ok(SearchLimit::Fixed {
                 depth: None,
-                nodes: Some(400)
+                nodes: Some(100_000)
             })
         );
-        assert_eq!(
-            parse_search_limit("depth=3,nodes=400"),
-            Ok(SearchLimit::Fixed {
-                depth: Some(3),
-                nodes: Some(400)
-            })
-        );
-        for limit in [
-            "",
-            "depth=0",
-            "nodes=0",
-            "nodes=1,depth=1",
-            "depth=1,foo=2",
-            "depth=1,nodes=2,x=3",
-        ] {
-            assert!(
-                parse_search_limit(limit).is_err(),
-                "invalid limit {limit:?} must be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn search_limits_accept_time_and_optional_byoyomi() {
         assert_eq!(
             parse_search_limit("time=10000+100"),
             Ok(SearchLimit::Time(TimeControl {
@@ -1661,55 +1589,129 @@ mod tests {
                 byoyomi_ms: 1_000,
             }))
         );
+        // [実装契約] 併記形
+        assert_eq!(
+            parse_search_limit("depth=3,nodes=400"),
+            Ok(SearchLimit::Fixed {
+                depth: Some(3),
+                nodes: Some(400)
+            })
+        );
     }
 
+    // SPEC_UNCLEAR-08 [実装契約]: 文法に合致しない制限は拒否される。
+    // エラー文言は契約ではない。
     #[test]
-    fn search_limits_reject_time_mixed_with_fixed_limits() {
-        for limit in [
-            "time=1000+10,depth=1",
-            "time=1000+10,nodes=100",
-            "depth=1,time=1000+10",
-            "nodes=100,time=1000+10",
+    fn search_limits_reject_malformed_inputs() {
+        for invalid in [
+            "",
             "byoyomi=1000",
+            "time=1000",
+            "time=1000+10+5",
+            "time=1000+10,depth=1",
+            "depth=1,time=1000+10",
+            "nodes=1,depth=1",
+            "depth=0",
+            "nodes=0",
+            "depth=1,nodes=2,x=3",
         ] {
             assert!(
-                parse_search_limit(limit).is_err(),
-                "mixed or incomplete limit {limit:?} must be rejected"
+                parse_search_limit(invalid).is_err(),
+                "limit {invalid:?} must be rejected"
             );
         }
     }
 
+    // D8-HARN-09(sprt.md測定の種類と標準コマンド節): `--each`がマッチ共通既定、
+    // `--candidate-limit`・`--baseline-limit`が当該エンジンだけを上書きする。
+    // 対等条件と完了基準ゲートの非対称条件を同じCLIで表現できる。
     #[test]
-    fn clocks_update_remaining_time_and_detect_time_forfeits() {
+    fn each_limit_is_shared_and_per_engine_overrides_are_optional() {
+        let equal = Arguments::try_parse_from(["match_runner", "--each", "depth=4", "gsprt"])
+            .expect("the equal-condition invocation must be accepted");
+        assert_eq!(
+            equal.each,
+            SearchLimit::Fixed {
+                depth: Some(4),
+                nodes: None
+            }
+        );
+        assert_eq!(equal.candidate_limit, None);
+        assert_eq!(equal.baseline_limit, None);
+
+        // 完了基準ゲートの形: ベースライン側だけdepth=1へ上書き
+        let gate = Arguments::try_parse_from([
+            "match_runner",
+            "--each",
+            "depth=4",
+            "--baseline-limit",
+            "depth=1",
+            "gsprt",
+        ])
+        .expect("the asymmetric gate invocation must be accepted");
+        assert_eq!(
+            gate.baseline_limit,
+            Some(SearchLimit::Fixed {
+                depth: Some(1),
+                nodes: None
+            })
+        );
+        assert_eq!(gate.candidate_limit, None);
+
+        // 等価表現: `--each X`と`--candidate-limit X --baseline-limit X`は
+        // 同一の制限値を与える
+        let explicit = Arguments::try_parse_from([
+            "match_runner",
+            "--candidate-limit",
+            "depth=4",
+            "--baseline-limit",
+            "depth=4",
+            "gsprt",
+        ])
+        .expect("explicit overrides must be accepted");
+        assert_eq!(explicit.candidate_limit, Some(equal.each));
+        assert_eq!(explicit.baseline_limit, Some(equal.each));
+    }
+
+    // D8-HARN-10(search.md実施状況): 実測思考時間が`残り時間 + byoyomi`を
+    // 「超えた」場合だけ時間切れ失権となる。同値は超過ではない。
+    #[test]
+    fn time_forfeit_requires_exceeding_remaining_plus_byoyomi() {
+        let mut clock = Clock::new(TimeControl {
+            base_ms: 1_000,
+            increment_ms: 0,
+            byoyomi_ms: 50,
+        });
+        // ちょうど残り+秒読みの消費は失権ではない
+        assert_eq!(clock.update(Duration::from_millis(1_050)), Ok(()));
+        // 残りは消費に応じて減少する(現在値契約。加算時間0で会計の曖昧さを避ける)
+        assert_eq!(clock.remaining_ms(), 0);
+        assert_eq!(clock.update(Duration::from_millis(50)), Ok(()));
+        assert_eq!(
+            clock.update(Duration::from_millis(51)),
+            Err(EngineFailure::TimeForfeit)
+        );
+    }
+
+    #[test]
+    fn clock_update_adds_the_increment_after_each_move() {
+        // sprt.md時間制御対局のフィッシャー式加算の会計: base 1000ms・加算100msで
+        // 250ms消費すると残りは1000-250+100=850msになる。変異検証(フェーズ4)で
+        // 検出した加算会計の無検証を補強する。
         let mut clock = Clock::new(TimeControl {
             base_ms: 1_000,
             increment_ms: 100,
             byoyomi_ms: 0,
         });
         assert_eq!(clock.update(Duration::from_millis(250)), Ok(()));
-        assert_eq!(clock.remaining, Duration::from_millis(850));
-        assert_eq!(
-            clock.update(Duration::from_millis(851)),
-            Err(EngineFailure::TimeForfeit)
-        );
-        assert_eq!(clock.remaining, Duration::from_millis(850));
-
-        let mut byoyomi_clock = Clock::new(TimeControl {
-            base_ms: 100,
-            increment_ms: 20,
-            byoyomi_ms: 50,
-        });
-        assert_eq!(byoyomi_clock.update(Duration::from_millis(150)), Ok(()));
-        assert_eq!(byoyomi_clock.remaining, Duration::from_millis(20));
-        assert_eq!(
-            byoyomi_clock.update(Duration::from_millis(71)),
-            Err(EngineFailure::TimeForfeit)
-        );
-        assert_eq!(byoyomi_clock.remaining, Duration::from_millis(20));
+        assert_eq!(clock.remaining_ms(), 850);
     }
 
+    // D8-HARN-10(search.md実施状況＋sprt.mdペア対局): 毎手のgoは両者の時計の
+    // 現在値をbtime/wtime/binc/winc/byoyomiで送る。ペア内の先後入替で同一
+    // エンジンの時計がbtime側とwtime側を交差する。
     #[test]
-    fn time_go_text_uses_current_clocks_for_both_colors() {
+    fn go_time_arguments_reflect_current_clocks_and_cross_colors() {
         let player_a = SearchLimit::Time(TimeControl {
             base_ms: 10_000,
             increment_ms: 100,
@@ -1720,11 +1722,36 @@ mod tests {
             increment_ms: 200,
             byoyomi_ms: 2_000,
         });
+        // プレイヤーAが後手の局では、Aの時計がwtime/winc側に載る
         let clocks = GameClocks::new(Color::White, player_a, player_b);
         assert_eq!(
             clocks.go_text(Color::Black),
             "btime 20000 wtime 10000 binc 200 winc 100 byoyomi 2000"
         );
+        // byoyomiは手番側の値を送る
+        assert_eq!(
+            clocks.go_text(Color::White),
+            "btime 20000 wtime 10000 binc 200 winc 100 byoyomi 1000"
+        );
+
+        // 現在値契約: 消費後のgoは減少した残り時間を反映する(加算時間0)
+        let simple = SearchLimit::Time(TimeControl {
+            base_ms: 10_000,
+            increment_ms: 0,
+            byoyomi_ms: 0,
+        });
+        let mut clocks = GameClocks::new(Color::Black, simple, simple);
+        clocks
+            .get_mut(Color::Black)
+            .expect("a time-controlled player must have a clock")
+            .update(Duration::from_millis(250))
+            .expect("a small consumption must not forfeit");
+        assert_eq!(
+            clocks.go_text(Color::White),
+            "btime 9750 wtime 10000 binc 0 winc 0 byoyomi 0"
+        );
+
+        // 固定制限側のgo引数(sprt.mdの`--each depth=4`等に対応)
         assert_eq!(
             SearchLimit::Fixed {
                 depth: Some(3),
@@ -1735,54 +1762,65 @@ mod tests {
         );
     }
 
+    // D8-HARN-12(RULES.md第33条): `engine-default`はR1、`lishogi`は
+    // L1+L2+P3+R1+E1+E3へ解決される。照合は大文字小文字を区別せず、
+    // 規則コードとの併記とR0の指定は拒否される。`--rules`省略時の既定R1は
+    // search.md自己対局既定へ接地する(SPEC_UNCLEAR-10の文書補修待ち)。
     #[test]
-    fn rules_argument_rejects_preset_combined_with_code() {
-        let error =
-            match Arguments::try_parse_from(["match_runner", "--rules", "lishogi,P1", "gsprt"]) {
-                Ok(_) => panic!("a preset combined with a rule code must be rejected"),
-                Err(error) => error,
-            };
-        assert!(
-            error
-                .to_string()
-                .contains("preset 'lishogi' must be specified alone")
+    fn rules_presets_resolve_per_article_33() {
+        let default = Arguments::try_parse_from(["match_runner", "gsprt"])
+            .expect("omitting --rules must fall back to engine-default");
+        assert_eq!(default.rules.0, [RuleCode::R1]);
+
+        let named =
+            Arguments::try_parse_from(["match_runner", "--rules", "engine-default", "gsprt"])
+                .expect("the engine-default preset must be accepted");
+        assert_eq!(named.rules.0, [RuleCode::R1]);
+
+        let lishogi = Arguments::try_parse_from(["match_runner", "--rules", "LISHOGI", "gsprt"])
+            .expect("preset names must match case-insensitively");
+        assert_eq!(
+            lishogi.rules.0,
+            [
+                RuleCode::L1,
+                RuleCode::L2,
+                RuleCode::P3,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3,
+            ]
         );
+
+        for invalid in ["lishogi,P1", "engine-default,lishogi", "R0", "R0,R1"] {
+            assert!(
+                Arguments::try_parse_from(["match_runner", "--rules", invalid, "gsprt"]).is_err(),
+                "rules {invalid:?} must be rejected"
+            );
+        }
     }
 
+    // D8-HARN-06(1)/D8-HARN-11(sprt.md異常時の裁定節・match-harness.md): 審判層が
+    // 対局進行の正であり、合法手リストにない`bestmove`は不正着手として分類する。
     #[test]
-    fn bestmove_validation_classifies_illegal_responses() {
-        let game = Game::new(Rules::engine_default()).unwrap();
+    fn referee_rejects_bestmove_outside_the_legal_move_list() {
+        let game = Game::new(Rules::engine_default()).expect("engine-default rules must be valid");
         let legal = game.legal_moves()[0];
         let legal_text = usi::text(game.position(), legal);
         assert_eq!(validate_bestmove(&game, &legal_text), Ok(legal));
+        // 表記として解釈できない応答
         assert_eq!(
             validate_bestmove(&game, "not-a-move"),
             Err(EngineFailure::IllegalMove)
         );
+        // 表記としては読めるが初期局面では指せない着手(空升からの移動)
         assert_eq!(
-            validate_bestmove(&game, "1a1b"),
+            validate_bestmove(&game, "6f6g"),
             Err(EngineFailure::IllegalMove)
         );
     }
 
-    #[test]
-    fn failure_counts_classify_each_reason() {
-        let mut counts = FailureCounts::default();
-        counts.record(EngineFailure::IllegalMove);
-        counts.record(EngineFailure::Crash);
-        counts.record(EngineFailure::Timeout);
-        counts.record(EngineFailure::TimeForfeit);
-        assert_eq!(
-            counts,
-            FailureCounts {
-                illegal_moves: 1,
-                crashes: 1,
-                timeouts: 1,
-                time_forfeits: 1
-            }
-        );
-    }
-
+    // D8-HARN-06(2)(3)(sprt.md異常時の裁定節): プロセス終了・パイプ切断は
+    // クラッシュ、応答期限超過は応答タイムアウトとして分類する。
     #[test]
     fn response_channel_classifies_disconnect_and_timeout() {
         let (sender, lines) = mpsc::channel();
@@ -1799,13 +1837,17 @@ mod tests {
         );
     }
 
+    // D8-HARN-11(match-harness.md USIセッション管理節): ハーネスは`bestmove`を
+    // 受けて着手を適用する。それ以外の行(infoなど)は応答待ちで読み飛ばす。
     #[test]
-    fn response_channel_ignores_info_before_bestmove() {
+    fn response_channel_waits_for_bestmove_ignoring_other_lines() {
         let (sender, lines) = mpsc::channel();
         sender
             .send(Ok("info depth 1 score cp 0".to_owned()))
-            .unwrap();
-        sender.send(Ok("bestmove 1a1b".to_owned())).unwrap();
+            .expect("the receiver must be alive");
+        sender
+            .send(Ok("bestmove 1a1b".to_owned()))
+            .expect("the receiver must be alive");
         assert_eq!(
             receive_until(&lines, Duration::from_secs(1), |line| {
                 line.split_whitespace().next() == Some("bestmove")
@@ -1814,26 +1856,142 @@ mod tests {
         );
     }
 
+    // D8-HARN-14(sprt.md異常時の裁定節): `engine_failures:`は不正着手・
+    // クラッシュ・応答タイムアウト・時間切れの理由別件数を報告する。
+    // 理由別件数の合計は反則負けとして算入された局数と一致する(保存則)。
     #[test]
-    fn game_results_convert_to_candidate_half_points() {
-        let win = GameOutcome::Adjudicated(GameResult::Win {
+    fn failure_reasons_are_counted_separately_and_conserved() {
+        let mut counts = FailureCounts::default();
+        counts.record(EngineFailure::IllegalMove);
+        counts.record(EngineFailure::Crash);
+        counts.record(EngineFailure::Timeout);
+        counts.record(EngineFailure::TimeForfeit);
+        assert_eq!(
+            counts,
+            FailureCounts {
+                illegal_moves: 1,
+                crashes: 1,
+                timeouts: 1,
+                time_forfeits: 1
+            }
+        );
+        // 集計の合成でも件数は保存される
+        let mut total = FailureCounts::default();
+        total.add(counts);
+        total.add(counts);
+        assert_eq!(
+            total.illegal_moves + total.crashes + total.timeouts + total.time_forfeits,
+            8
+        );
+    }
+
+    // D8-STAT-04/D8-HARN-06(sprt.md統計的手続き節): 観測単位はペアであり、
+    // 候補側ペア得点合計{0, 0.5, 1, 1.5, 2}の5分類で集計する。反則負けは
+    // 当該局の敗北として算入される(ペア破棄ではない)。
+    #[test]
+    fn game_outcomes_map_to_candidate_pair_score_categories() {
+        let win_black = GameOutcome::Adjudicated(GameResult::Win {
             winner: Color::Black,
             reason: WinReason::RoyalCapture,
         });
-        let loss = GameOutcome::Adjudicated(GameResult::Win {
+        let win_white = GameOutcome::Adjudicated(GameResult::Win {
             winner: Color::White,
             reason: WinReason::RoyalCapture,
         });
         let draw = GameOutcome::Adjudicated(GameResult::Draw {
             reason: DrawReason::Repetition,
         });
-        let forfeit = GameOutcome::Forfeit {
+        let forfeit_win_black = GameOutcome::Forfeit {
             winner: Color::Black,
             reason: EngineFailure::Crash,
         };
-        assert_eq!(half_points(win, Color::Black), 2);
-        assert_eq!(half_points(loss, Color::Black), 0);
+
+        // 1局の得点は半点単位: 勝ち2、引き分け1、負け0(候補の色に依存)
+        assert_eq!(half_points(win_black, Color::Black), 2);
+        assert_eq!(half_points(win_black, Color::White), 0);
         assert_eq!(half_points(draw, Color::Black), 1);
-        assert_eq!(half_points(forfeit, Color::Black), 2);
+        assert_eq!(half_points(draw, Color::White), 1);
+        // 反則負けも通常の勝敗として得点化される
+        assert_eq!(half_points(forfeit_win_black, Color::Black), 2);
+        assert_eq!(half_points(forfeit_win_black, Color::White), 0);
+
+        // ペア分類 = 第1局(候補が先手) + 第2局(候補が後手)の半点合計
+        // 2局とも勝ち → 得点2.0のセル4
+        assert_eq!(
+            half_points(win_black, Color::Black) + half_points(win_white, Color::White),
+            4
+        );
+        // 1勝1敗 → 得点1.0のセル2
+        assert_eq!(
+            half_points(win_black, Color::Black) + half_points(win_black, Color::White),
+            2
+        );
+        // 候補が2局とも反則負け → 得点0のセル0(相手のペア得点2相当)
+        assert_eq!(
+            half_points(forfeit_win_black, Color::White)
+                + half_points(
+                    GameOutcome::Forfeit {
+                        winner: Color::White,
+                        reason: EngineFailure::Timeout,
+                    },
+                    Color::Black
+                ),
+            0
+        );
+    }
+
+    // D8-HARN-13(sprt.md測定の種類と標準コマンド節): 判定の表示語彙は
+    // `decision: H1`(採用)・`decision: H0`(不採用)・`decision: pending`(保留)。
+    #[test]
+    fn decision_labels_match_the_sprt_md_vocabulary() {
+        assert_eq!(decision_text(GsprtDecision::AcceptH1), "H1");
+        assert_eq!(decision_text(GsprtDecision::AcceptH0), "H0");
+        assert_eq!(decision_text(GsprtDecision::Continue), "pending");
+    }
+
+    // D8-HARN-03(search.md自己対局ハーネス節・random-play.mdシード派生節):
+    // ペアシードは基本シードとペア番号から決定的に派生し、0にならず、
+    // ペア番号間で相異なる(ペア間独立の前提)。厳密な合成式は
+    // SPEC_UNCLEAR-06につき固定しない。
+    #[test]
+    fn pair_seed_derivation_is_deterministic_nonzero_and_distinct() {
+        let base = 0xACE1_u64;
+        let seeds: Vec<u64> = (1..=100).map(|n| derive_seed(base, n)).collect();
+        let replay: Vec<u64> = (1..=100).map(|n| derive_seed(base, n)).collect();
+        assert_eq!(seeds, replay);
+        assert!(seeds.iter().all(|&seed| seed != 0));
+        let mut unique = seeds.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), seeds.len());
+        // 派生値が0になる入力でも非ゼロへ置換される(random-play.mdの
+        // 仕様式の逆算により、splitmix64の出力0の原像は0x61C8_8646_80B5_83EB)
+        assert_ne!(derive_seed(0x61C8_8646_80B5_83EB - 5, 5), 0);
+    }
+
+    // D8-HARN-02(sprt.mdペア対局と再現性節): 開始局面は初期局面から8〜12手
+    // だけランダムに進めて作り、ペアシードから決定的に再現される。
+    #[test]
+    fn openings_stay_within_8_to_12_plies_and_derive_deterministically() {
+        let rules = Rules::engine_default();
+        let base_seed = 20_260_814_u64;
+        let mut all_moves = Vec::new();
+        for pair_number in 1..=4 {
+            let pair_seed = derive_seed(base_seed, pair_number);
+            let opening = generate_opening(rules, pair_seed);
+            assert!(
+                (8..=12).contains(&opening.moves.len()),
+                "opening length {} is outside the documented 8..=12 range",
+                opening.moves.len()
+            );
+            // エンジンへ送るUSI表記列は開始手順と同数
+            assert_eq!(opening.usi_moves.len(), opening.moves.len());
+            let replay = generate_opening(rules, pair_seed);
+            assert_eq!(replay.moves, opening.moves);
+            assert_eq!(replay.usi_moves, opening.usi_moves);
+            all_moves.push(opening.moves);
+        }
+        // ペア間独立: 異なるペア番号がすべて同じ開始手順なら派生が退化している
+        assert!(all_moves.windows(2).any(|pair| pair[0] != pair[1]));
     }
 }
