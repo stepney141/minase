@@ -492,6 +492,133 @@ fn search_with_node_limit_is_deterministic() {
     assert_eq!(first, second);
 }
 
+// D7-SRCH-08。search.md「静止探索」: 深さ0ではstand-patと捕獲手を探索する。
+// 守られた歩兵を飛車で取る損な交換は静止探索で見抜かれ、最善手にならない。
+#[test]
+fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
+    // 先手: 飛車3十、王将6十二。後手: 歩兵3四、飛車3一、玉将6一。
+    // 3筋の間は空で、後手飛車は歩兵越しに先手飛車から攻撃されない。
+    let position = position(
+        Color::Black,
+        &[
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+            (fs(3, 1), Color::White, PieceKind::Rook),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let moves = legal_moves(&position);
+
+    let result = search(
+        &position,
+        engine_rules(),
+        &moves,
+        &[],
+        &depth_limits(1),
+        &mut small_tt(),
+    );
+
+    assert!(
+        result.best_move.from != fs(3, 10) || result.best_move.to != fs(3, 4),
+        "守られた歩兵を飛車で取る手は最善手にならない"
+    );
+    assert!(result.score.abs() < 29_000);
+}
+
+// D7-SRCH-09。search.md「静止探索」: 捕獲手のない葉ではstand-patを返すため、
+// depth=1の根評価は各合法手の子局面に対する静的評価の最大値と一致する。
+#[test]
+fn quiescence_without_captures_matches_static_evaluation() {
+    let mut position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::GoldGeneral),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(6, 3), Color::White, PieceKind::GoldGeneral),
+        ],
+    );
+    let moves = legal_moves(&position);
+    let expected = moves
+        .iter()
+        .map(|&mv| {
+            let undo = position.make_move_unchecked(mv, engine_rules());
+            let score = -crate::eval::evaluate(&position);
+            position.unmake_move(undo);
+            score
+        })
+        .max()
+        .expect("root must have a legal move");
+
+    let result = search(
+        &position,
+        engine_rules(),
+        &moves,
+        &[],
+        &depth_limits(1),
+        &mut small_tt(),
+    );
+
+    assert_eq!(result.score, expected);
+}
+
+// D7-SRCH-10。search.md「静止探索」: stand-patは損な捕獲より優先される
+// fail-softの下限であり、捕獲手が存在しても選択を強制されない。
+#[test]
+fn quiescence_stand_pat_declines_a_losing_capture() {
+    let mut position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(9, 9), Color::Black, PieceKind::Pawn),
+            (fs(9, 12), Color::Black, PieceKind::Rook),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(9, 3), Color::White, PieceKind::Rook),
+        ],
+    );
+    let moves = legal_moves(&position);
+    let quiet_move = Move {
+        from: fs(6, 12),
+        mid: None,
+        to: fs(6, 11),
+        promote: false,
+    };
+    assert!(moves.contains(&quiet_move));
+
+    let quiet_undo = position.make_move_unchecked(quiet_move, engine_rules());
+    let losing_capture = Move {
+        from: fs(9, 3),
+        mid: None,
+        to: fs(9, 9),
+        promote: false,
+    };
+    assert!(legal_moves(&position).contains(&losing_capture));
+    position.unmake_move(quiet_undo);
+
+    let expected = moves
+        .iter()
+        .map(|&mv| {
+            let undo = position.make_move_unchecked(mv, engine_rules());
+            let score = -crate::eval::evaluate(&position);
+            position.unmake_move(undo);
+            score
+        })
+        .max()
+        .expect("root must have a legal move");
+
+    let result = search(
+        &position,
+        engine_rules(),
+        &moves,
+        &[],
+        &depth_limits(1),
+        &mut small_tt(),
+    );
+
+    assert_eq!(result.score, expected);
+}
+
 // ---------------------------------------------------------------------------
 // D7-LIM　SearchLimits
 // ---------------------------------------------------------------------------

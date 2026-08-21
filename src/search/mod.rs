@@ -1,4 +1,4 @@
-//! 評価関数を使って着手を選ぶ探索。
+//! 評価関数と静止探索を使って着手を選ぶ探索。
 
 #[cfg(test)]
 mod tests;
@@ -466,8 +466,8 @@ impl Searcher<'_> {
 
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
     ///
-    /// 合法手のない局面は詰みとして`-MATE + ply`を返す。中断された場合は
-    /// `None`を返す。
+    /// 深さ0では静止探索へ移り、合法手のない局面は詰みとして
+    /// `-MATE + ply`を返す。中断された場合は`None`を返す。
     fn negamax(
         &mut self,
         position: &mut Position,
@@ -482,7 +482,7 @@ impl Searcher<'_> {
         self.pv[ply as usize].clear();
 
         if depth == 0 {
-            return Some(evaluate(position));
+            return self.quiesce(position, alpha, beta, ply);
         }
 
         let key = search_key(position);
@@ -535,6 +535,58 @@ impl Searcher<'_> {
         };
         self.tt.store(key, depth, best_score, bound, best_move, ply);
         Some(best_score)
+    }
+
+    /// stand-patと捕獲手だけを使う静止探索で局面を評価する。
+    ///
+    /// 静止探索内の手は主変化へ含めず、反復検出と置換表も使用しない。
+    /// 中断された場合は`None`を返す。
+    fn quiesce(
+        &mut self,
+        position: &mut Position,
+        mut alpha: i32,
+        beta: i32,
+        ply: u32,
+    ) -> Option<i32> {
+        if !self.enter_node() {
+            return None;
+        }
+        self.pv[ply as usize].clear();
+
+        if ply >= MAX_PLY {
+            return Some(evaluate(position));
+        }
+
+        let stand_pat = evaluate(position);
+        if stand_pat >= beta {
+            return Some(stand_pat);
+        }
+        let mut best = stand_pat;
+        alpha = alpha.max(stand_pat);
+
+        let mut captures = Vec::new();
+        self.generator.generate_moves(position, &mut captures);
+        captures.retain(|&mv| move_order_key(position, mv).is_some());
+        order_moves(position, &mut captures, None);
+
+        for mv in captures {
+            let score = if captures_last_royal(position, mv) {
+                self.enter_node().then_some(MATE - ply as i32)?
+            } else {
+                let undo = position.make_move_unchecked(mv, self.rules);
+                let score = self
+                    .quiesce(position, -beta, -alpha, ply + 1)
+                    .map(|value| -value);
+                position.unmake_move(undo);
+                score?
+            };
+            best = best.max(score);
+            alpha = alpha.max(score);
+            if alpha >= beta {
+                break;
+            }
+        }
+        Some(best)
     }
 
     /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。
