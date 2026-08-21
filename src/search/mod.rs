@@ -6,7 +6,7 @@ mod tt;
 
 pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable};
 
-use core::cmp::Ordering;
+use core::cmp::Reverse;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
 use std::thread;
@@ -14,9 +14,10 @@ use std::time::{Duration, Instant};
 
 use crate::MoveGenerator;
 use crate::core::mv::Move;
-use crate::core::piece::PieceKind;
+use crate::core::piece::{COLOR_COUNT, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::Rules;
+use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::{evaluate, piece_value};
 
 use tt::Bound;
@@ -34,6 +35,15 @@ pub const DRAW_SCORE: i32 = 0;
 const INFINITY: i32 = MATE + 1;
 /// 停止要求と時間切れを検査するノード数間隔。
 const STOP_CHECK_INTERVAL: u64 = 4096;
+/// History値を全体の半減で抑える上限。
+const HISTORY_LIMIT: i32 = 1 << 14;
+/// 1つのplyに記録するkiller手の数。
+const KILLER_COUNT: usize = 2;
+
+/// 手番側・移動元・移動先で参照するhistory表。
+type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
+/// plyごとに新しい順で保持するkiller表。
+type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 
 /// 1回の探索に適用する制限。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -346,6 +356,8 @@ fn run_search(
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
+        history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
     };
     let mut result = SearchResult {
@@ -421,6 +433,10 @@ struct Searcher<'a> {
     stop_reason: Option<StopReason>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pv: Vec<Vec<Move>>,
+    /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
+    history: Box<HistoryTable>,
+    /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
+    killers: KillerTable,
     /// 置換表。
     tt: &'a mut TranspositionTable,
 }
@@ -444,7 +460,7 @@ impl Searcher<'_> {
         let mut moves = root_moves.to_vec();
         let key = search_key(&position);
         let tt_move = self.tt.probe(key, 0).map(|hit| hit.best_move);
-        order_moves(&position, &mut moves, tt_move);
+        self.order_moves(&position, &mut moves, tt_move, 0);
         let mut alpha = -INFINITY;
         let beta = INFINITY;
         let mut best_move = moves[0];
@@ -509,7 +525,7 @@ impl Searcher<'_> {
             return Some(-MATE + ply as i32);
         }
 
-        order_moves(position, &mut moves, tt_move);
+        self.order_moves(position, &mut moves, tt_move, ply);
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
@@ -523,6 +539,9 @@ impl Searcher<'_> {
             alpha = alpha.max(score);
             if alpha >= beta {
                 beta_cutoff = true;
+                if move_order_key(position, mv).is_none() {
+                    self.record_quiet_beta_cutoff(position, mv, depth, ply);
+                }
                 break;
             }
         }
@@ -567,7 +586,7 @@ impl Searcher<'_> {
         let mut captures = Vec::new();
         self.generator.generate_moves(position, &mut captures);
         captures.retain(|&mv| move_order_key(position, mv).is_some());
-        order_moves(position, &mut captures, None);
+        order_captures(position, &mut captures);
 
         for mv in captures {
             let score = if captures_last_royal(position, mv) {
@@ -671,6 +690,61 @@ impl Searcher<'_> {
             row.extend_from_slice(child);
         }
     }
+
+    /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。
+    fn order_moves(
+        &self,
+        position: &Position,
+        moves: &mut [Move],
+        tt_move: Option<Move>,
+        ply: u32,
+    ) {
+        let killers = self.killers[ply as usize];
+        let color = position.side_to_move().index();
+        moves.sort_by_cached_key(|&mv| {
+            if let Some(key) = move_order_key(position, mv) {
+                OrderedMoveKey::Capture {
+                    captured_value: Reverse(key.captured_value),
+                    attacker_value: key.attacker_value,
+                }
+            } else if Some(mv) == killers[0] {
+                OrderedMoveKey::Killer(0)
+            } else if Some(mv) == killers[1] {
+                OrderedMoveKey::Killer(1)
+            } else {
+                OrderedMoveKey::Quiet(Reverse(
+                    self.history[color][mv.from.dense_index()][mv.to.dense_index()],
+                ))
+            }
+        });
+        if let Some(index) = tt_move.and_then(|tt_move| moves.iter().position(|&mv| mv == tt_move))
+        {
+            moves.swap(0, index);
+        }
+    }
+
+    /// βカットを起こした非捕獲手をkiller表とhistory表へ記録する。
+    fn record_quiet_beta_cutoff(&mut self, position: &Position, mv: Move, depth: u32, ply: u32) {
+        let killers = &mut self.killers[ply as usize];
+        if killers[0] != Some(mv) {
+            killers[1] = killers[0];
+            killers[0] = Some(mv);
+        }
+
+        let color = position.side_to_move().index();
+        let from = mv.from.dense_index();
+        let to = mv.to.dense_index();
+        self.history[color][from][to] += (depth * depth) as i32;
+        if self.history[color][from][to] > HISTORY_LIMIT {
+            for color_history in self.history.iter_mut() {
+                for from_history in color_history.iter_mut() {
+                    for value in from_history.iter_mut() {
+                        *value /= 2;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// 1手に使う時間の予算。
@@ -746,27 +820,28 @@ fn captures_last_royal(position: &Position, mv: Move) -> bool {
             == royal_count as usize
 }
 
-/// 着手を捕獲手優先で整列し、置換表の最善手があれば先頭へ置く。
-fn order_moves(position: &Position, moves: &mut [Move], tt_move: Option<Move>) {
-    moves.sort_by(|left, right| compare_moves(position, *left, *right));
-    if let Some(index) = tt_move.and_then(|tt_move| moves.iter().position(|&mv| mv == tt_move)) {
-        moves.swap(0, index);
-    }
+/// 捕獲手をMVV-LVA順で安定に整列する。
+fn order_captures(position: &Position, captures: &mut [Move]) {
+    captures.sort_by_cached_key(|&mv| {
+        let key = move_order_key(position, mv).expect("capture list must contain only captures");
+        (Reverse(key.captured_value), key.attacker_value)
+    });
 }
 
-/// MVV-LVA(高価な駒を安い駒で取る手を優先)の順序で2手を比較する。
-fn compare_moves(position: &Position, left: Move, right: Move) -> Ordering {
-    let left_key = move_order_key(position, left);
-    let right_key = move_order_key(position, right);
-    match (left_key, right_key) {
-        (Some(left), Some(right)) => right
-            .captured_value
-            .cmp(&left.captured_value)
-            .then_with(|| left.attacker_value.cmp(&right.attacker_value)),
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (None, None) => Ordering::Equal,
-    }
+/// 通常探索で使う着手の整列キー。
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum OrderedMoveKey {
+    /// 捕獲価値の降順、攻撃駒価値の昇順で並べる捕獲手。
+    Capture {
+        /// 取る駒の駒価値の合計。
+        captured_value: Reverse<i32>,
+        /// 動かす駒の駒価値。
+        attacker_value: i32,
+    },
+    /// 添字が小さいほど新しいkiller手。
+    Killer(usize),
+    /// History値の降順で並べる残りの非捕獲手。
+    Quiet(Reverse<i32>),
 }
 
 /// 捕獲手の整列キー。
