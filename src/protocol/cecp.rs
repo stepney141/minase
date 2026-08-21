@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
+use std::num::NonZeroUsize;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
@@ -32,6 +33,8 @@ pub struct CecpProtocol {
     transposition_table: Option<TranspositionTable>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
+    /// 次の探索に使うワーカー数。
+    threads: NonZeroUsize,
     /// CECPの時間コマンドをミリ秒へ正規化した値。
     time_control: TimeControl,
 }
@@ -84,6 +87,7 @@ impl CecpProtocol {
             force_mode: true,
             transposition_table: None,
             next_search_id: 1,
+            threads: search::DEFAULT_THREADS,
             time_control: TimeControl::default(),
         }
     }
@@ -159,6 +163,7 @@ impl CecpProtocol {
             }
             "option" => self.handle_option(engine, line, output)?,
             "memory" => self.handle_memory(&tokens[1..], output)?,
+            "cores" => self.handle_cores(&tokens[1..], output)?,
             "time" => self.handle_centiseconds(&tokens[1..], true, output)?,
             "otim" => self.handle_centiseconds(&tokens[1..], false, output)?,
             "level" => self.handle_level(&tokens[1..], output)?,
@@ -211,7 +216,7 @@ impl CecpProtocol {
                 snapshot,
                 limits,
                 search_id,
-                search::DEFAULT_THREADS,
+                self.threads,
                 transposition_table,
             ),
         }))
@@ -494,6 +499,7 @@ impl CecpProtocol {
             "feature option=\"RuleSet -string {}\"",
             self.startup_rules_text
         )?;
+        writeln!(output, "feature smp=1")?;
         writeln!(output, "feature done=1")
     }
 
@@ -670,6 +676,15 @@ impl CecpProtocol {
         Ok(())
     }
 
+    /// `cores N`を1以上256以下のワーカー数として受理する。
+    fn handle_cores(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
+        let Some(threads) = tokens.first().and_then(|value| parse_cores(value)) else {
+            return writeln!(output, "Error (invalid command): cores");
+        };
+        self.threads = threads;
+        Ok(())
+    }
+
     /// `time`または`otim`の1/100秒値をミリ秒へ正規化する。
     fn handle_centiseconds(
         &mut self,
@@ -803,6 +818,15 @@ fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
     handle
         .join()
         .map_err(|_| io::Error::other("search thread panicked"))
+}
+
+/// 1以上256以下のワーカー数を解析する。
+fn parse_cores(value: &str) -> Option<NonZeroUsize> {
+    value
+        .parse::<usize>()
+        .ok()
+        .and_then(NonZeroUsize::new)
+        .filter(|threads| threads.get() <= 256)
 }
 
 /// `level`の分または`分:秒`表記をミリ秒へ正規化する。
@@ -1029,9 +1053,15 @@ mod tests {
             "feature memory=1",
             "feature draw=0",
             "feature option=\"RuleSet -string L1,R1,E2\"",
+            "feature smp=1",
         ] {
             assert!(lines.contains(&expected), "missing: {expected}");
         }
+        let smp = lines
+            .iter()
+            .position(|line| *line == "feature smp=1")
+            .unwrap();
+        assert_eq!(smp + 1, lines.len() - 1, "smp=1 must precede done=1");
         // 文字列値は二重引用符で囲む（PL実施状況フェーズ5のレビュー修正）。
         assert!(
             lines
@@ -1042,6 +1072,23 @@ mod tests {
         for absent in ["debug=", "highlight=", "san=", "reuse="] {
             assert!(!output.contains(absent), "unexpected: {absent}");
         }
+    }
+
+    #[test]
+    fn cores_accepts_boundaries_and_rejects_invalid_values() {
+        // LS「プロトコル設定」: coresは1..=256だけを受理し、不正値は固定CECPエラーを
+        // 返す（D6-CECP-33）。正当値は無応答である。
+        let output = session(
+            &[RuleCode::R1],
+            "cores 1\ncores 256\ncores\ncores nope\ncores 0\ncores 257\n",
+        );
+
+        assert_eq!(output, "Error (invalid command): cores\n".repeat(4));
+        assert_eq!(parse_cores("1").unwrap().get(), 1);
+        assert_eq!(parse_cores("256").unwrap().get(), 256);
+        assert!(parse_cores("0").is_none());
+        assert!(parse_cores("257").is_none());
+        assert!(parse_cores("nope").is_none());
     }
 
     #[test]
@@ -1477,6 +1524,19 @@ mod tests {
             .unwrap();
         let pong = lines.iter().position(|line| *line == "pong 7").unwrap();
         assert!(last_move < pong);
+    }
+
+    #[test]
+    fn cores_arriving_during_search_applies_before_the_next_search() {
+        // LS「プロトコル設定」: 探索中のcoresはpendingへ積み、実行中探索を変えず、
+        // join後に処理して次の探索へ適用する（D6-CECP-34）。
+        let output = queued_session(
+            &[RuleCode::R1],
+            "sd 256\nnew\ngo\ncores 2\n?\nsd 1\nnew\ngo\n",
+        );
+
+        assert!(!output.contains("Error"));
+        assert_eq!(logical_move_count(&output), 2);
     }
 
     #[test]

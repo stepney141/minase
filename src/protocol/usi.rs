@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
+use std::num::NonZeroUsize;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
@@ -31,6 +32,8 @@ pub struct UsiProtocol {
     position_synchronized: bool,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
+    /// 次の探索に使うワーカー数。
+    threads: NonZeroUsize,
 }
 
 /// 実行中の探索に対応する局面と設定。
@@ -84,6 +87,7 @@ impl UsiProtocol {
             transposition_table: None,
             position_synchronized: false,
             next_search_id: 1,
+            threads: search::DEFAULT_THREADS,
         }
     }
 
@@ -185,7 +189,7 @@ impl UsiProtocol {
             snapshot,
             config,
             search_id,
-            search::DEFAULT_THREADS,
+            self.threads,
             transposition_table,
         );
         Ok(Some(ActiveSearch::Running {
@@ -492,10 +496,15 @@ impl UsiProtocol {
             "option name USI_Hash type spin default {}",
             search::DEFAULT_TT_SIZE_MB
         )?;
+        writeln!(
+            output,
+            "option name Threads type spin default {} min 1 max 256",
+            search::DEFAULT_THREADS
+        )?;
         writeln!(output, "usiok")
     }
 
-    /// `setoption`を処理する。RuleSet・USI_Variant・USI_Hashを受理し、
+    /// `setoption`を処理する。RuleSet・USI_Variant・USI_Hash・Threadsを受理し、
     /// 未知のoption名はUSIの慣例に従って黙って無視する。
     fn handle_setoption(
         &mut self,
@@ -537,6 +546,15 @@ impl UsiProtocol {
                 Some(transposition_table) => transposition_table.resize(size_mb),
                 None => self.transposition_table = Some(TranspositionTable::new(size_mb)),
             }
+            Ok(())
+        } else if name.eq_ignore_ascii_case("Threads") {
+            let Some(value) = value else {
+                return write_error(output, "Threads requires a value");
+            };
+            let Some(threads) = parse_threads(value) else {
+                return write_error(output, "Threads must be an integer from 1 to 256");
+            };
+            self.threads = threads;
             Ok(())
         } else {
             Ok(())
@@ -904,6 +922,15 @@ fn token_after<'a>(tokens: &'a [&str], key: &str) -> Option<&'a str> {
         .and_then(|index| tokens.get(index + 1).copied())
 }
 
+/// 1以上256以下のワーカー数を解析する。
+fn parse_threads(value: &str) -> Option<NonZeroUsize> {
+    value
+        .parse::<usize>()
+        .ok()
+        .and_then(NonZeroUsize::new)
+        .filter(|threads| threads.get() <= 256)
+}
+
 /// `moves`以降の指し手列を解析し、局面を進めながら検証する。
 ///
 /// 不合法な指し手が現れても解析済みの列は返し、拒否理由の報告用に
@@ -1102,8 +1129,42 @@ mod tests {
                 .iter()
                 .any(|line| line.starts_with("option name USI_Hash"))
         );
+        // LS「プロトコル設定」: Threadsの宣言はdefaultを探索層の既定値から表示する（D6-USI-35）。
+        assert!(lines.contains(&"option name Threads type spin default 1 min 1 max 256"));
         // EC適用範囲: ponder非対応のためUSI_Ponderは宣言しない（D6-USI-18）。
         assert!(!output.contains("USI_Ponder"));
+    }
+
+    #[test]
+    fn threads_accepts_boundaries_and_rejects_invalid_values() {
+        // LS「プロトコル設定」: Threadsは1..=256だけを受理し、不正値には固定エラーを返す
+        // （D6-USI-36）。正当値は無応答である。
+        let output = session(
+            &[RuleCode::R1],
+            concat!(
+                "setoption name Threads value 1\n",
+                "setoption name Threads value 256\n",
+                "setoption name Threads\n",
+                "setoption name Threads value nope\n",
+                "setoption name Threads value 0\n",
+                "setoption name Threads value 257\n",
+            ),
+        );
+
+        assert_eq!(
+            output,
+            concat!(
+                "info string error: Threads requires a value\n",
+                "info string error: Threads must be an integer from 1 to 256\n",
+                "info string error: Threads must be an integer from 1 to 256\n",
+                "info string error: Threads must be an integer from 1 to 256\n",
+            )
+        );
+        assert_eq!(parse_threads("1").unwrap().get(), 1);
+        assert_eq!(parse_threads("256").unwrap().get(), 256);
+        assert!(parse_threads("0").is_none());
+        assert!(parse_threads("257").is_none());
+        assert!(parse_threads("nope").is_none());
     }
 
     #[test]
@@ -1638,6 +1699,26 @@ mod tests {
         assert!(readyok < state);
         // join後に適用されたpositionが1手進んだ局面（手番w）を作っている。
         assert_eq!(lines[state].split_whitespace().nth(5), Some("w"));
+    }
+
+    #[test]
+    fn threads_arriving_during_search_applies_before_the_next_search() {
+        // LS「プロトコル設定」: 探索中のThreadsはpendingへ積み、実行中探索を変えず、
+        // join後に処理して次の探索へ適用する（D6-USI-37）。
+        let output = session(
+            &[RuleCode::R1],
+            concat!(
+                "position startpos\n",
+                "go infinite\n",
+                "setoption name Threads value 2\n",
+                "stop\n",
+                "position startpos\n",
+                "go depth 1\n",
+            ),
+        );
+
+        assert!(error_lines(&output).is_empty());
+        assert_eq!(bestmoves(&output).len(), 2);
     }
 
     #[test]

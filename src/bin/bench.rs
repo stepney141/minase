@@ -1,5 +1,6 @@
 //! 固定局面の探索ベンチ。ノード数の決定性検証とNPS計測に使う。
 
+use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use clap::Parser;
@@ -21,6 +22,12 @@ struct Arguments {
     /// 全局面を探索する固定深さ。
     #[arg(long, default_value_t = DEFAULT_DEPTH, value_parser = parse_positive_u32)]
     depth: u32,
+    /// 探索ワーカーの総数。
+    #[arg(long, default_value_t = DEFAULT_THREADS, value_parser = parse_threads)]
+    threads: NonZeroUsize,
+    /// 計測する反復回数。2回以上では計測外のウォームアップを先に行う。
+    #[arg(long, default_value = "1", value_parser = parse_repetitions)]
+    repetitions: NonZeroUsize,
 }
 
 /// ベンチ対象の名前と2欄SFEN。
@@ -123,22 +130,72 @@ fn parse_positive_u32(text: &str) -> Result<u32, String> {
     Ok(depth)
 }
 
-/// 探索ベンチを実行する。
-fn main() {
-    let arguments = Arguments::parse();
-    let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
-    let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
-    let limits = SearchLimits {
-        depth: Some(arguments.depth),
-        nodes: None,
-        movetime_ms: None,
-        clock: None,
-        infinite: false,
-    };
-    // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
-    // 置換表は1個を使い回して局面ごとに計測外でクリアし(クリア後は
-    // 新品と同一状態)、NPSは各局面の探索時間の合計から計算する。
-    let mut transposition_table = TranspositionTable::default();
+/// 1以上256以下のワーカー数を解析する。
+fn parse_threads(text: &str) -> Result<NonZeroUsize, String> {
+    let threads = text
+        .parse::<usize>()
+        .map_err(|error| format!("invalid worker count '{text}': {error}"))?;
+    NonZeroUsize::new(threads)
+        .filter(|threads| threads.get() <= 256)
+        .ok_or_else(|| "threads must be from 1 to 256".to_owned())
+}
+
+/// 1以上の反復回数を解析する。
+fn parse_repetitions(text: &str) -> Result<NonZeroUsize, String> {
+    let repetitions = text
+        .parse::<usize>()
+        .map_err(|error| format!("invalid repetition count '{text}': {error}"))?;
+    NonZeroUsize::new(repetitions).ok_or_else(|| "repetitions must be at least 1".to_owned())
+}
+
+/// bench 1回分の集計。
+struct BenchRun {
+    /// 全局面が到達した深さ。
+    depth: u32,
+    /// 全局面の総ノード数。
+    nodes: u64,
+    /// 各局面の探索時間の合計。
+    elapsed: f64,
+}
+
+impl BenchRun {
+    /// 1秒あたりの探索ノード数。
+    fn nps(&self) -> f64 {
+        self.nodes as f64 / self.elapsed
+    }
+}
+
+/// 整数標本の中央値を返す。偶数件では中央2値の算術平均を切り捨てる。
+fn median_u64(values: &mut [u64]) -> u64 {
+    values.sort_unstable();
+    let middle = values.len() / 2;
+    if values.len() % 2 == 1 {
+        values[middle]
+    } else {
+        values[middle - 1] + (values[middle] - values[middle - 1]) / 2
+    }
+}
+
+/// 浮動小数点標本の中央値を返す。
+fn median_f64(values: &mut [f64]) -> f64 {
+    values.sort_by(f64::total_cmp);
+    let middle = values.len() / 2;
+    if values.len() % 2 == 1 {
+        values[middle]
+    } else {
+        (values[middle - 1] + values[middle]) / 2.0
+    }
+}
+
+/// 固定局面集を1回探索する。
+fn run_bench(
+    rules: Rules,
+    limits: &SearchLimits,
+    threads: NonZeroUsize,
+    transposition_table: &mut TranspositionTable,
+    print_positions: bool,
+) -> BenchRun {
+    let mut reached_depth = u32::MAX;
     let mut total_nodes = 0_u64;
     let mut total_elapsed = 0.0_f64;
 
@@ -158,38 +215,152 @@ fn main() {
             rules,
             &legal_moves,
             game.search_key_history(),
-            &limits,
-            DEFAULT_THREADS,
-            &mut transposition_table,
+            limits,
+            threads,
+            transposition_table,
         );
         let elapsed = position_start.elapsed();
+        reached_depth = reached_depth.min(result.depth);
         total_elapsed += elapsed.as_secs_f64();
         total_nodes = total_nodes
             .checked_add(result.nodes)
             .expect("total node count overflow");
-        println!(
-            "position={} depth={} nodes={} elapsed={:.6}s",
-            bench_position.name,
-            result.depth,
-            result.nodes,
-            elapsed.as_secs_f64()
-        );
+        if print_positions {
+            println!(
+                "position={} depth={} nodes={} elapsed={:.6}s",
+                bench_position.name,
+                result.depth,
+                result.nodes,
+                elapsed.as_secs_f64()
+            );
+        }
     }
 
-    let nps = total_nodes as f64 / total_elapsed;
+    BenchRun {
+        depth: reached_depth,
+        nodes: total_nodes,
+        elapsed: total_elapsed,
+    }
+}
+
+/// 探索ベンチを実行する。
+fn main() {
+    let arguments = Arguments::parse();
+    let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
+    let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
+    let limits = SearchLimits {
+        depth: Some(arguments.depth),
+        nodes: None,
+        movetime_ms: None,
+        clock: None,
+        infinite: false,
+    };
+    // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
+    // 置換表は1個を使い回して局面ごとに計測外でクリアし(クリア後は
+    // 新品と同一状態)、NPSは各局面の探索時間の合計から計算する。
+    let mut transposition_table = TranspositionTable::default();
+    if arguments.repetitions.get() == 1 {
+        let result = run_bench(
+            rules,
+            &limits,
+            arguments.threads,
+            &mut transposition_table,
+            true,
+        );
+        println!(
+            "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
+            BENCH_POSITIONS.len(),
+            arguments.depth,
+            result.nodes,
+            result.elapsed,
+            result.nps()
+        );
+        return;
+    }
+
+    let _ = run_bench(
+        rules,
+        &limits,
+        arguments.threads,
+        &mut transposition_table,
+        false,
+    );
+    let mut runs = Vec::with_capacity(arguments.repetitions.get());
+    for run in 1..=arguments.repetitions.get() {
+        let result = run_bench(
+            rules,
+            &limits,
+            arguments.threads,
+            &mut transposition_table,
+            false,
+        );
+        println!(
+            "run={run} depth={} nodes={} elapsed={:.6}s nps={:.0}",
+            result.depth,
+            result.nodes,
+            result.elapsed,
+            result.nps()
+        );
+        runs.push(result);
+    }
+    let mut depths: Vec<_> = runs.iter().map(|run| u64::from(run.depth)).collect();
+    let mut nodes: Vec<_> = runs.iter().map(|run| run.nodes).collect();
+    let mut elapsed: Vec<_> = runs.iter().map(|run| run.elapsed).collect();
+    let mut nps: Vec<_> = runs.iter().map(BenchRun::nps).collect();
     println!(
-        "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
-        BENCH_POSITIONS.len(),
-        arguments.depth,
-        total_nodes,
-        total_elapsed,
-        nps
+        "median: depth={} nodes={} elapsed={:.6}s nps={:.0}",
+        median_u64(&mut depths),
+        median_u64(&mut nodes),
+        median_f64(&mut elapsed),
+        median_f64(&mut nps)
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arguments_accept_thread_and_repetition_boundaries() {
+        let minimum =
+            Arguments::try_parse_from(["bench", "--threads", "1", "--repetitions", "1"]).unwrap();
+        assert_eq!(minimum.threads.get(), 1);
+        assert_eq!(minimum.repetitions.get(), 1);
+
+        let maximum_threads =
+            Arguments::try_parse_from(["bench", "--threads", "256", "--repetitions", "2"]).unwrap();
+        assert_eq!(maximum_threads.threads.get(), 256);
+        assert_eq!(maximum_threads.repetitions.get(), 2);
+    }
+
+    #[test]
+    fn arguments_reject_invalid_threads_and_repetitions() {
+        for value in ["0", "257", "not-a-number"] {
+            assert!(
+                Arguments::try_parse_from(["bench", "--threads", value]).is_err(),
+                "threads={value} must be rejected"
+            );
+        }
+        for value in ["0", "not-a-number"] {
+            assert!(
+                Arguments::try_parse_from(["bench", "--repetitions", value]).is_err(),
+                "repetitions={value} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn medians_are_computed_per_metric_for_odd_and_even_samples() {
+        let mut odd_integers = [9, 1, 5];
+        let mut even_integers = [10, 2, 6, 4];
+        let mut odd_floats = [9.0, 1.0, 5.0];
+        let mut even_floats = [10.0, 2.0, 6.0, 4.0];
+
+        assert_eq!(median_u64(&mut odd_integers), 5);
+        assert_eq!(median_u64(&mut even_integers), 5);
+        assert_eq!(median_f64(&mut odd_floats), 5.0);
+        assert_eq!(median_f64(&mut even_floats), 5.0);
+    }
 
     // D8-BENCH-01(search.md bench節・実施状況フェーズ2): 固定局面集は初期局面1
     // ＋lishogiリプレイ7局から抽出した14局面の計15局面で確定している。全局面が

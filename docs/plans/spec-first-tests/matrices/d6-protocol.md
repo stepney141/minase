@@ -13,8 +13,9 @@
 | HA | docs/protocols/hachu.md（HaChu調査文書） |
 | UL | docs/protocols/usi-lishogi.md（USI原典・lishogi系調査文書、minase固有拡張の節を含む） |
 | R33 | RULES.md 第33条（規則セット名の受理） |
+| LS | docs/plans/lazy-smp.md（「プロトコル設定」節） |
 
-規範性の順位はspec-first-tests.mdの原則に従う。設計書（PL・EC・BG）の確定事項は規範文書であり、調査文書（CE・HA・UL）は外部仕様の典拠である。調査文書が「未確認」と明記する事項を期待値の根拠にしてはならない。
+規範性の順位はspec-first-tests.mdの原則に従う。設計書（PL・EC・BG・LS）の確定事項は規範文書であり、調査文書（CE・HA・UL）は外部仕様の典拠である。調査文書が「未確認」と明記する事項を期待値の根拠にしてはならない。
 
 ## 観測方針（全項共通の指示）
 
@@ -265,15 +266,36 @@
 - 境界・不正: 本項は既存統合テスト（リプレイ照合）が担う領域と重なるため、ユニット側では代表1局面（王駒捕獲1手前→捕獲手適用）に縮約してよい。
 - 性質: 裁定の正は外部オラクル（lishogi実裁定）である。
 
+### D6-USI-35 `Threads`オプションの宣言
+- 典拠: LS「プロトコル設定」（`option name Threads type spin default 1 min 1 max 256`を宣言し、既定値は探索層の`DEFAULT_THREADS`から表示する）。
+- 前提: 起動直後。
+- 操作と期待観測: `usi`送信 → 応答列に`option name Threads type spin default 1 min 1 max 256`が1行現れ、最後に`usiok`が現れる。
+- 境界・不正: 利用可能なCPU数を既定値や上限の表示へ反映しない。
+- 性質: 宣言は実行環境に依存せず決定的である。
+
+### D6-USI-36 `Threads`の受理・拒否と設定維持
+- 典拠: LS「プロトコル設定」（`setoption name Threads value N`は1以上256以下の10進整数だけを受理し、値の欠落、非整数、0、上限超過は固定した`info string error`を返して直前の設定を保持する）。
+- 前提: 待機中。
+- 操作と期待観測: `value 1`と`value 256`は無応答で受理され、値の欠落、`value nope`、`value 0`、`value 257`は固定した`info string error: ...`を各1行返す。
+- 境界・不正: 不正値をCPU数や境界値へ丸めず、直前に受理した設定を保持する。
+- 性質: 設定値は常に`NonZeroUsize`として1以上256以下である。
+
+### D6-USI-37 探索中の`Threads`変更
+- 典拠: LS「プロトコル設定」（探索中の設定変更は既存の入力待機列へ載せ、実行中探索を変更せず次の探索から適用する）。
+- 前提: `go infinite`による探索中。
+- 操作と期待観測: `setoption name Threads value 2`→`stop`→次の`position`→`go depth 1`を送ると、最初の`bestmove`後に設定が処理され、次の探索も単一の`bestmove`を返して完走する。
+- 境界・不正: 実行中探索のワーカー数は変更せず、設定処理のために別の並列探索経路を作らない。
+- 性質: 設定の反映境界は探索のjoinである。
+
 ---
 
 ## 2. CECP（D6-CECP）
 
 ### D6-CECP-01 feature宣言の全文
-- 典拠: PL「CECPのfeature宣言」（`myname`、`variants="chu"`、`setboard=1`、`usermove=1`、`ping=1`、`colors=0`、`sigint=0`、`sigterm=0`、`analyze=0`、`draw=0`、`option`（RuleSet）、`done=1`。文字列値は二重引用符）＋PL2026-08-14注記とEC（`time=1`へ改定、`memory=1`を追加。現行はECを正とする）。CE第4章（featureの型と既定値、done=1の意味）。
+- 典拠: PL「CECPのfeature宣言」（`myname`、`variants="chu"`、`setboard=1`、`usermove=1`、`ping=1`、`colors=0`、`sigint=0`、`sigterm=0`、`analyze=0`、`draw=0`、`option`（RuleSet）、`done=1`。文字列値は二重引用符）＋PL2026-08-14注記とEC（`time=1`へ改定、`memory=1`を追加。現行はECを正とする）＋LS「プロトコル設定」（`smp=1`を`done=1`の前に追加）。CE第4章（featureの型と既定値、done=1の意味）。
 - 前提: 起動直後。
-- 操作と期待観測: `xboard`→`protover 2` → feature宣言列が出力され、集合として {myname="…", variants="chu", setboard=1, usermove=1, ping=1, colors=0, sigint=0, sigterm=0, analyze=0, time=1, draw=0, memory=1, option="RuleSet -string <正準表記>"} を含み、最後が`done=1`。`myname`・`variants`・`option`の値は二重引用符で囲む（PL実施状況フェーズ5のレビュー修正が明記）。
-- 境界・不正: `debug`・`highlight`・`san`・`reuse`は宣言しない（PL: debugは#出力を行わないため宣言しない、highlightは対象外）。宣言の行分割・行内順序は仕様が任意とするため（CE第4章）、`done=1`が最後であること以外の順序を契約にしない。
+- 操作と期待観測: `xboard`→`protover 2` → feature宣言列が出力され、集合として {myname="…", variants="chu", setboard=1, usermove=1, ping=1, colors=0, sigint=0, sigterm=0, analyze=0, time=1, draw=0, memory=1, option="RuleSet -string <正準表記>", smp=1} を含み、`smp=1`の次が`done=1`である。`myname`・`variants`・`option`の値は二重引用符で囲む（PL実施状況フェーズ5のレビュー修正が明記）。
+- 境界・不正: `debug`・`highlight`・`san`・`reuse`は宣言しない（PL: debugは#出力を行わないため宣言しない、highlightは対象外）。宣言の行分割・行内順序は仕様が任意とするため（CE第4章）、LSが定める`smp=1`直後の`done=1`以外の順序を契約にしない。
 - 性質: 宣言は起動時`--rules`値だけに依存する。
 
 ### D6-CECP-02 必須featureの拒否で終了、他の拒否は無視
@@ -486,6 +508,27 @@
 - 境界・不正: 破棄後に遅延`move`行が漏れない（出力走査で`move`行数を固定）。
 - 性質: USIのキュー契約（D6-USI-22）と同型の順序保存。
 
+### D6-CECP-32 `smp=1`の宣言
+- 典拠: LS「プロトコル設定」（CECPで`feature smp=1`を宣言し、`feature done=1`の前に置く）。
+- 前提: 起動直後。
+- 操作と期待観測: `protover 2`送信 → `feature smp=1`が1行現れ、その直後に`feature done=1`が現れる。
+- 境界・不正: `smp=1`は対応能力の宣言であり、既定のワーカー数1を変更しない。
+- 性質: 宣言順は`smp=1`、`done=1`の順で固定する。
+
+### D6-CECP-33 `cores`の受理・拒否と設定維持
+- 典拠: LS「プロトコル設定」（`cores N`は1以上256以下の10進整数だけを受理し、不正値は固定したCECPエラーを返して丸めや縮退を行わない）。
+- 前提: 待機中。
+- 操作と期待観測: `cores 1`と`cores 256`は無応答で受理され、値の欠落、`cores nope`、`cores 0`、`cores 257`は`Error (invalid command): cores`を各1行返す。
+- 境界・不正: 不正値をCPU数や境界値へ丸めず、直前に受理した設定を保持する。
+- 性質: USIの`Threads`と同じ`NonZeroUsize`の範囲を使う。
+
+### D6-CECP-34 探索中の`cores`変更
+- 典拠: LS「プロトコル設定」（探索中の`cores`は既存の入力待機列を経由し、次の探索から反映する）。
+- 前提: `go`による探索中。
+- 操作と期待観測: 探索中に`cores 2`を送り、`?`で探索を完了してから次局の`go`を送ると、設定は最初の`move`行後に処理され、次の探索も単一の論理着手を返して完走する。
+- 境界・不正: 実行中探索のワーカー数は変更せず、CECP固有の並列探索経路を作らない。
+- 性質: 設定の反映境界は探索のjoinであり、USIのD6-USI-37と同型である。
+
 ---
 
 ## 3. エンジン状態機械（D6-ENG）
@@ -614,5 +657,5 @@
 
 ## 集計
 
-- 仕様化した挙動: 78件（USI 34、CECP 31、ENG 7、CLI 6）
+- 仕様化した挙動: 84件（USI 37、CECP 34、ENG 7、CLI 6）
 - SPEC_UNCLEAR: 14件（うち文書補修対象2件: SU-01、SU-02。SU-11は補修時の併合候補）
