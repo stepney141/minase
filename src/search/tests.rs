@@ -11,7 +11,12 @@ use crate::Square;
 use crate::core::piece::{Color, PieceKind};
 use crate::test_util::{position, sq};
 
-use super::tt::{Bound, pack_move, unpack_move};
+use super::tt::{
+    ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, ADVISORY_MOVE_SHIFT,
+    ADVISORY_RESERVED_MASK, Bound, CRITICAL_BOUND_MASK, CRITICAL_BOUND_SHIFT, CRITICAL_DEPTH_MASK,
+    CRITICAL_DEPTH_SHIFT, CRITICAL_KEY_MASK, CRITICAL_KEY_SHIFT, CRITICAL_RESERVED_MASK,
+    CRITICAL_SCORE_MASK, CRITICAL_SCORE_SHIFT, entry_size, pack_move, unpack_move,
+};
 
 // ---------------------------------------------------------------------------
 // ヘルパ
@@ -1048,7 +1053,7 @@ fn packed_moves_round_trip_across_all_move_shapes() {
         for mv in moves {
             let packed = pack_move(mv);
             // 往復一致（恒等写像）。
-            assert_eq!(unpack_move(packed), mv);
+            assert_eq!(unpack_move(packed), Some(mv));
 
             // 各フィールドの帯域。midなしは厳密に0xffで、別の番兵で
             // 代替されないことをビット層で確認する。
@@ -1107,7 +1112,7 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
         promote: false,
     };
     let key = 0x0123_4567_0000_0042;
-    let mut table = small_tt();
+    let table = small_tt();
     table.new_search();
 
     // 全組合せでstore変換→load逆変換が恒等。29001〜29743はINV-3により
@@ -1202,7 +1207,7 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
 
     // 境界: 世代の周回。既存gen=255・現在gen=0のとき年齢は
     // 0 wrapping_sub 255 = 1で「古い」と判定され置換される。
-    let mut table = small_tt();
+    let table = small_tt();
     for _ in 0..255 {
         table.new_search();
     }
@@ -1319,4 +1324,165 @@ fn idle_resize_applies_and_later_searches_complete() {
         &mut table,
     );
     assert!(moves.contains(&after.best_move));
+}
+
+// D7-TT-08。lazy-smp.md「共有置換表」節: 1エントリはcriticalとadvisoryの
+// 2個のAtomicU64からなる厳密な16バイトで、全フィールドを所定の幅へ
+// 詰め込む。予約ビットは常に0とする。
+#[test]
+fn atomic_tt_entry_is_16_bytes_and_all_fields_round_trip() {
+    assert_eq!(entry_size(), 16);
+
+    let best_move = Move {
+        from: sq(3, 4),
+        mid: Some(sq(4, 5)),
+        to: sq(5, 6),
+        promote: true,
+    };
+    let key = 0x89ab_cdef_0000_0042;
+    let table = small_tt();
+    for _ in 0..7 {
+        table.new_search();
+    }
+    table.store(key, 23, -1_234, Bound::Upper, best_move, 0);
+
+    let hit = table.probe(key, 0).unwrap();
+    assert_eq!(hit.best_move, best_move);
+    assert_eq!(hit.score, -1_234);
+    assert_eq!(hit.depth, 23);
+    assert_eq!(hit.bound, Bound::Upper);
+
+    let (critical, advisory) = table.raw_entry(key);
+    assert_eq!(
+        ((critical & CRITICAL_KEY_MASK) >> CRITICAL_KEY_SHIFT) as u32,
+        (key >> 32) as u32
+    );
+    assert_eq!(
+        ((critical & CRITICAL_SCORE_MASK) >> CRITICAL_SCORE_SHIFT) as u16 as i16,
+        -1_234
+    );
+    assert_eq!(
+        ((critical & CRITICAL_DEPTH_MASK) >> CRITICAL_DEPTH_SHIFT) as u8,
+        23
+    );
+    assert_eq!(
+        ((critical & CRITICAL_BOUND_MASK) >> CRITICAL_BOUND_SHIFT) as u8,
+        Bound::Upper as u8
+    );
+    assert_eq!(critical & CRITICAL_RESERVED_MASK, 0);
+    assert_eq!(
+        ((advisory & ADVISORY_MOVE_MASK) >> ADVISORY_MOVE_SHIFT) as u32,
+        pack_move(best_move)
+    );
+    assert_eq!(
+        ((advisory & ADVISORY_GENERATION_MASK) >> ADVISORY_GENERATION_SHIFT) as u8,
+        7
+    );
+    assert_eq!(advisory & ADVISORY_RESERVED_MASK, 0);
+}
+
+// D7-TT-09。lazy-smp.md「共有置換表」節: criticalの予約ビット、バウンド、
+// 検証キー、または指し手の復号が不正なら、probeはpanicせず未命中にする。
+#[test]
+fn malformed_atomic_tt_entries_are_probe_misses() {
+    let best_move = Move {
+        from: sq(0, 0),
+        mid: None,
+        to: sq(0, 1),
+        promote: false,
+    };
+    let key = 0x1234_5678_0000_0042;
+    let table = small_tt();
+    table.new_search();
+    table.store(key, 8, 100, Bound::Exact, best_move, 0);
+    let (critical, advisory) = table.raw_entry(key);
+
+    table.write_raw(key, critical | CRITICAL_RESERVED_MASK, advisory);
+    assert!(table.probe(key, 0).is_none());
+
+    table.write_raw(key, critical & !CRITICAL_BOUND_MASK, advisory);
+    assert!(table.probe(key, 0).is_none());
+
+    let mismatched_key = key ^ (1_u64 << 32);
+    table.write_raw(key, critical, advisory);
+    assert!(table.probe(mismatched_key, 0).is_none());
+
+    let packed = pack_move(best_move);
+    let invalid_moves = [
+        (packed & !0xff) | 144,
+        (packed & !(0xff << 8)) | (144 << 8),
+        (packed & !(0xff << 16)) | (144 << 16),
+    ];
+    for invalid_move in invalid_moves {
+        let invalid_advisory = (advisory & !ADVISORY_MOVE_MASK) | u64::from(invalid_move);
+        table.write_raw(key, critical, invalid_advisory);
+        assert!(table.probe(key, 0).is_none());
+    }
+}
+
+// D7-TT-10。lazy-smp.md「共有置換表」節: 共有参照から同一スロットへの
+// probe/storeを競合させてもpanicせず、取り違え得る指し手は書き込まれた
+// 合法な候補のいずれかに限られる。
+#[test]
+fn concurrent_probe_and_store_only_return_written_moves() {
+    let table = std::sync::Arc::new(small_tt());
+    table.new_search();
+    let keys = [
+        0x1234_5678_0000_0042,
+        0x1234_5678_0001_0042,
+        0x1234_5678_0002_0042,
+        0x1234_5678_0003_0042,
+    ];
+    let candidates = [
+        Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(0, 1),
+            promote: false,
+        },
+        Move {
+            from: sq(1, 0),
+            mid: Some(sq(1, 1)),
+            to: sq(1, 2),
+            promote: false,
+        },
+        Move {
+            from: sq(2, 0),
+            mid: None,
+            to: sq(2, 1),
+            promote: true,
+        },
+        Move {
+            from: sq(3, 0),
+            mid: Some(sq(3, 1)),
+            to: sq(3, 0),
+            promote: false,
+        },
+    ];
+
+    let threads: Vec<_> = (0..4)
+        .map(|thread_index| {
+            let table = std::sync::Arc::clone(&table);
+            std::thread::spawn(move || {
+                for iteration in 0..20_000 {
+                    let candidate_index = (thread_index + iteration) % candidates.len();
+                    table.store(
+                        keys[candidate_index],
+                        8,
+                        iteration as i32,
+                        Bound::Exact,
+                        candidates[candidate_index],
+                        0,
+                    );
+                    if let Some(hit) = table.probe(keys[candidate_index], 0) {
+                        assert!(candidates.contains(&hit.best_move));
+                    }
+                }
+            })
+        })
+        .collect();
+
+    for thread in threads {
+        thread.join().unwrap();
+    }
 }

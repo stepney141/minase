@@ -1,6 +1,10 @@
 //! 探索局面の置換表。
 
 use core::mem::size_of;
+use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+
+#[cfg(not(target_has_atomic = "64"))]
+compile_error!("the transposition table requires 64-bit atomic integers");
 
 use crate::Square;
 use crate::core::mv::Move;
@@ -22,48 +26,74 @@ pub(super) enum Bound {
     Upper = 3,
 }
 
-/// 置換表の1エントリ。
+/// `critical`の検証キーはbit 0..=31に置く。
+pub(super) const CRITICAL_KEY_SHIFT: u32 = 0;
+/// `critical`の検証キーマスク。
+pub(super) const CRITICAL_KEY_MASK: u64 = 0xffff_ffff << CRITICAL_KEY_SHIFT;
+/// `critical`の評価値はbit 32..=47に置く。
+pub(super) const CRITICAL_SCORE_SHIFT: u32 = 32;
+/// `critical`の評価値マスク。
+pub(super) const CRITICAL_SCORE_MASK: u64 = 0xffff << CRITICAL_SCORE_SHIFT;
+/// `critical`の深さはbit 48..=55に置く。
+pub(super) const CRITICAL_DEPTH_SHIFT: u32 = 48;
+/// `critical`の深さマスク。
+pub(super) const CRITICAL_DEPTH_MASK: u64 = 0xff << CRITICAL_DEPTH_SHIFT;
+/// `critical`のバウンドはbit 56..=57に置く。
+pub(super) const CRITICAL_BOUND_SHIFT: u32 = 56;
+/// `critical`のバウンドマスク。
+pub(super) const CRITICAL_BOUND_MASK: u64 = 0b11 << CRITICAL_BOUND_SHIFT;
+/// `critical`の予約領域はbit 58..=63に置き、常に0にする。
+pub(super) const CRITICAL_RESERVED_MASK: u64 = 0b11_1111 << 58;
+
+/// `advisory`の指し手はbit 0..=24に置く。
+pub(super) const ADVISORY_MOVE_SHIFT: u32 = 0;
+/// `advisory`の指し手マスク。
+pub(super) const ADVISORY_MOVE_MASK: u64 = 0x01ff_ffff << ADVISORY_MOVE_SHIFT;
+/// `advisory`の世代はbit 25..=32に置く。
+pub(super) const ADVISORY_GENERATION_SHIFT: u32 = 25;
+/// `advisory`の世代マスク。
+pub(super) const ADVISORY_GENERATION_MASK: u64 = 0xff << ADVISORY_GENERATION_SHIFT;
+/// `advisory`の予約領域はbit 33..=63に置き、常に0にする。
+pub(super) const ADVISORY_RESERVED_MASK: u64 = 0x7fff_ffff << 33;
+
+/// 置換表の1エントリ。2個の64ビット原子値で厳密に16バイトを占める。
 #[repr(C)]
-#[derive(Clone, Copy)]
 struct Entry {
-    // 先頭8バイトと後半8バイトを分け、将来2個のu64へ移しやすくする。
-    /// 局面キーの上位32ビットによる照合キー。
-    key: u32,
-    /// 詰め込み表現の最善手。
-    best_move: u32,
-    /// 格納形式(根からの手数を除いた形)の評価値。
-    score: i16,
-    /// 探索した残り深さ。
-    depth: u8,
-    /// [`Bound`]の判別値。0は空エントリを表す。
-    bound: u8,
-    /// 書き込んだ探索の世代。
-    generation: u8,
+    /// 検証キー、評価値、深さ、バウンド、および予約領域。
+    critical: AtomicU64,
+    /// 指し手、世代、および予約領域。
+    advisory: AtomicU64,
 }
 
 impl Entry {
-    /// 空エントリ。bound=0が未使用の目印になる。
-    const EMPTY: Self = Self {
-        key: 0,
-        best_move: 0,
-        score: 0,
-        depth: 0,
-        bound: 0,
-        generation: 0,
-    };
-
-    /// 判別値を[`Bound`]へ戻す。空エントリでは`None`を返す。
-    fn bound(self) -> Option<Bound> {
-        match self.bound {
-            value if value == Bound::Exact as u8 => Some(Bound::Exact),
-            value if value == Bound::Lower as u8 => Some(Bound::Lower),
-            value if value == Bound::Upper as u8 => Some(Bound::Upper),
-            _ => None,
+    /// 空エントリ。`critical`のバウンド0が未使用の目印になる。
+    fn empty() -> Self {
+        Self {
+            critical: AtomicU64::new(0),
+            advisory: AtomicU64::new(0),
         }
     }
 }
 
-const _: () = assert!(size_of::<Entry>() <= 16);
+const _: () = assert!(size_of::<Entry>() == 16);
+
+/// テスト用にエントリ型のバイト数を返す。
+#[cfg(test)]
+pub(super) const fn entry_size() -> usize {
+    size_of::<Entry>()
+}
+
+/// `critical`から取り出した探索値。
+struct CriticalFields {
+    /// 局面キーの上位32ビットによる照合キー。
+    key: u32,
+    /// 格納形式の評価値。
+    score: i16,
+    /// 探索した残り深さ。
+    depth: u8,
+    /// 評価値と探索窓の関係。
+    bound: Bound,
+}
 
 /// 置換表の照合に成功したエントリの内容。
 #[derive(Clone, Copy, Debug)]
@@ -88,7 +118,7 @@ pub struct TranspositionTable {
     /// 局面キーからスロット番号を取り出すビットマスク。
     mask: usize,
     /// 現在の探索の世代。
-    generation: u8,
+    generation: AtomicU8,
 }
 
 impl TranspositionTable {
@@ -101,16 +131,20 @@ impl TranspositionTable {
     pub fn new(size_mb: usize) -> Self {
         let entry_count = entry_count(size_mb);
         Self {
-            entries: vec![Entry::EMPTY; entry_count],
+            entries: core::iter::repeat_with(Entry::empty)
+                .take(entry_count)
+                .collect(),
             mask: entry_count - 1,
-            generation: 0,
+            generation: AtomicU8::new(0),
         }
     }
 
     /// 全エントリを空にし、世代を初期化する。
     pub fn clear(&mut self) {
-        self.entries.fill(Entry::EMPTY);
-        self.generation = 0;
+        for entry in &mut self.entries {
+            *entry = Entry::empty();
+        }
+        *self.generation.get_mut() = 0;
     }
 
     /// 探索中でない置換表を指定容量(MB)へ作り直す。
@@ -123,25 +157,31 @@ impl TranspositionTable {
     }
 
     /// 新しい探索の開始を記録し、既存エントリを置換候補として古びさせる。
-    pub(super) fn new_search(&mut self) {
-        self.generation = self.generation.wrapping_add(1);
+    pub(super) fn new_search(&self) {
+        self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
     /// テスト用に現在の世代カウンタを返す。
     #[cfg(test)]
-    pub(super) const fn generation(&self) -> u8 {
-        self.generation
+    pub(super) fn generation(&self) -> u8 {
+        self.generation.load(Ordering::Relaxed)
     }
 
     /// 局面キーに対応するエントリを照合して返す。
     pub(super) fn probe(&self, key: u64, ply: u32) -> Option<Hit> {
-        let entry = self.entries[key as usize & self.mask];
-        let bound = entry.bound()?;
-        (entry.key == verification_key(key)).then(|| Hit {
-            best_move: unpack_move(entry.best_move),
-            score: score_from_tt(entry.score, ply),
-            depth: entry.depth,
-            bound,
+        let entry = &self.entries[key as usize & self.mask];
+        let critical = entry.critical.load(Ordering::Acquire);
+        let fields = unpack_critical(critical)?;
+        if fields.key != verification_key(key) {
+            return None;
+        }
+        let advisory = entry.advisory.load(Ordering::Relaxed);
+        let best_move = unpack_move(unpack_advisory_move(advisory))?;
+        Some(Hit {
+            best_move,
+            score: score_from_tt(fields.score, ply),
+            depth: fields.depth,
+            bound: fields.bound,
         })
     }
 
@@ -150,7 +190,7 @@ impl TranspositionTable {
     /// 同一局面、過去世代、またはより深い結果は既存エントリを置き換え、
     /// 同世代のより浅い結果は捨てる。
     pub(super) fn store(
-        &mut self,
+        &self,
         key: u64,
         depth: u32,
         score: i32,
@@ -159,26 +199,45 @@ impl TranspositionTable {
         ply: u32,
     ) {
         let index = key as usize & self.mask;
-        let existing = self.entries[index];
+        let entry = &self.entries[index];
+        let existing_critical = entry.critical.load(Ordering::Acquire);
+        let existing_advisory = entry.advisory.load(Ordering::Relaxed);
+        let existing = unpack_critical(existing_critical);
         let key = verification_key(key);
-        let age = self.generation.wrapping_sub(existing.generation);
+        let generation = self.generation.load(Ordering::Relaxed);
+        let age = generation.wrapping_sub(unpack_advisory_generation(existing_advisory));
         // MAX_PLYは256だが、根以外の残り深さは最大255である。公開APIから
         // 256を渡されても比較を保守的にするため、格納幅の上限へ飽和させる。
         let depth = depth.min(u8::MAX as u32) as u8;
-        let replace =
-            existing.bound().is_none() || existing.key == key || age > 0 || existing.depth < depth;
+        let replace = existing
+            .as_ref()
+            .is_none_or(|existing| existing.key == key || age > 0 || existing.depth < depth);
         if !replace {
             return;
         }
 
-        self.entries[index] = Entry {
-            key,
-            best_move: pack_move(best_move),
-            score: score_to_tt(score, ply),
-            depth,
-            bound: bound as u8,
-            generation: self.generation,
-        };
+        let advisory = pack_advisory(best_move, generation);
+        let critical = pack_critical(key, score_to_tt(score, ply), depth, bound);
+        entry.advisory.store(advisory, Ordering::Relaxed);
+        entry.critical.store(critical, Ordering::Release);
+    }
+
+    /// テスト用にキーが指すスロットの生の原子値を返す。
+    #[cfg(test)]
+    pub(super) fn raw_entry(&self, key: u64) -> (u64, u64) {
+        let entry = &self.entries[key as usize & self.mask];
+        (
+            entry.critical.load(Ordering::Acquire),
+            entry.advisory.load(Ordering::Relaxed),
+        )
+    }
+
+    /// テスト用にキーが指すスロットへ生の原子値を書き込む。
+    #[cfg(test)]
+    pub(super) fn write_raw(&self, key: u64, critical: u64, advisory: u64) {
+        let entry = &self.entries[key as usize & self.mask];
+        entry.advisory.store(advisory, Ordering::Relaxed);
+        entry.critical.store(critical, Ordering::Release);
     }
 }
 
@@ -205,6 +264,51 @@ fn verification_key(key: u64) -> u32 {
     (key >> 32) as u32
 }
 
+/// 探索値を`critical`のビット配置へ詰め込む。
+fn pack_critical(key: u32, score: i16, depth: u8, bound: Bound) -> u64 {
+    (u64::from(key) << CRITICAL_KEY_SHIFT)
+        | (u64::from(score as u16) << CRITICAL_SCORE_SHIFT)
+        | (u64::from(depth) << CRITICAL_DEPTH_SHIFT)
+        | ((bound as u64) << CRITICAL_BOUND_SHIFT)
+}
+
+/// `critical`を探索値へ復号する。予約領域またはバウンドが不正なら失敗する。
+fn unpack_critical(critical: u64) -> Option<CriticalFields> {
+    if critical & CRITICAL_RESERVED_MASK != 0 {
+        return None;
+    }
+    let bound = match ((critical & CRITICAL_BOUND_MASK) >> CRITICAL_BOUND_SHIFT) as u8 {
+        value if value == Bound::Exact as u8 => Bound::Exact,
+        value if value == Bound::Lower as u8 => Bound::Lower,
+        value if value == Bound::Upper as u8 => Bound::Upper,
+        _ => return None,
+    };
+    Some(CriticalFields {
+        key: ((critical & CRITICAL_KEY_MASK) >> CRITICAL_KEY_SHIFT) as u32,
+        score: ((critical & CRITICAL_SCORE_MASK) >> CRITICAL_SCORE_SHIFT) as u16 as i16,
+        depth: ((critical & CRITICAL_DEPTH_MASK) >> CRITICAL_DEPTH_SHIFT) as u8,
+        bound,
+    })
+}
+
+/// 助言情報を`advisory`のビット配置へ詰め込む。
+fn pack_advisory(best_move: Move, generation: u8) -> u64 {
+    let advisory = (u64::from(pack_move(best_move)) << ADVISORY_MOVE_SHIFT)
+        | (u64::from(generation) << ADVISORY_GENERATION_SHIFT);
+    debug_assert_eq!(advisory & ADVISORY_RESERVED_MASK, 0);
+    advisory
+}
+
+/// `advisory`から詰め込み表現の指し手を取り出す。
+fn unpack_advisory_move(advisory: u64) -> u32 {
+    ((advisory & ADVISORY_MOVE_MASK) >> ADVISORY_MOVE_SHIFT) as u32
+}
+
+/// `advisory`から世代を取り出す。
+fn unpack_advisory_generation(advisory: u64) -> u8 {
+    ((advisory & ADVISORY_GENERATION_MASK) >> ADVISORY_GENERATION_SHIFT) as u8
+}
+
 /// 指し手を32ビットへ詰め込む。中間升なしは0xffで表す。
 pub(super) fn pack_move(mv: Move) -> u32 {
     let from = mv.from.dense_index() as u32;
@@ -213,26 +317,22 @@ pub(super) fn pack_move(mv: Move) -> u32 {
     from | (mid << 8) | (to << 16) | (u32::from(mv.promote) << 24)
 }
 
-/// 詰め込み表現から指し手を復元する。
-///
-/// # Panics
-///
-/// 升番号が盤上の範囲を外れている場合にパニックする。
-pub(super) fn unpack_move(packed: u32) -> Move {
-    let from = Square::from_dense((packed & 0xff) as usize)
-        .expect("stored move must have a valid source square");
+/// 詰め込み表現から指し手を復元する。升番号が盤外なら失敗する。
+pub(super) fn unpack_move(packed: u32) -> Option<Move> {
+    let from = Square::from_dense((packed & 0xff) as usize)?;
     let mid = ((packed >> 8) & 0xff) as usize;
-    let mid = (mid != 0xff).then(|| {
-        Square::from_dense(mid).expect("stored move must have a valid intermediate square")
-    });
-    let to = Square::from_dense(((packed >> 16) & 0xff) as usize)
-        .expect("stored move must have a valid destination square");
-    Move {
+    let mid = if mid == 0xff {
+        None
+    } else {
+        Some(Square::from_dense(mid)?)
+    };
+    let to = Square::from_dense(((packed >> 16) & 0xff) as usize)?;
+    Some(Move {
         from,
         mid,
         to,
         promote: packed & (1 << 24) != 0,
-    }
+    })
 }
 
 /// 評価値を格納形式へ変換する。

@@ -20,7 +20,7 @@
 | 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
 | 探索部 | [plans/search.md](plans/search.md) | 完了 | 2026年8月22日 |
 | 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 完了 | 2026年8月14日 |
-| Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 未着手 | ― |
+| Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 進行中 | ― |
 | テストスイートのspec-first再構築 | [plans/spec-first-tests.md](plans/spec-first-tests.md) | 完了 | 2026年8月15日 |
 
 直前局面生成器は設計済みだが、2026年8月10日の利用者決定により探索部を先行させ、待機中のままとする。

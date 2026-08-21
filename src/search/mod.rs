@@ -224,7 +224,7 @@ pub fn start_search(
     snapshot: SearchSnapshot,
     limits: SearchLimits,
     search_id: u64,
-    mut tt: TranspositionTable,
+    tt: TranspositionTable,
 ) -> SearchHandle {
     validate_input(&snapshot.root_moves, &limits);
     let (sender, events) = mpsc::channel();
@@ -238,7 +238,7 @@ pub fn start_search(
             &snapshot.history_keys,
             &limits,
             &thread_stop,
-            &mut tt,
+            &tt,
             Some((&sender, search_id)),
         );
         let result = outcome.result;
@@ -331,7 +331,7 @@ fn run_search(
     history_keys: &[u64],
     limits: &SearchLimits,
     stop: &AtomicBool,
-    tt: &mut TranspositionTable,
+    tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
 ) -> SearchOutcome {
     let started = Instant::now();
@@ -443,7 +443,7 @@ struct Searcher<'a> {
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
     killers: KillerTable,
     /// 置換表。
-    tt: &'a mut TranspositionTable,
+    tt: &'a TranspositionTable,
 }
 
 impl Searcher<'_> {
