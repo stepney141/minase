@@ -6,8 +6,9 @@ use std::time::{Duration, Instant};
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use minase::{Move, MoveGenerator, Position, Rules, Square, parse_sfen};
 
-// #[global_allocator]
-// static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+/// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// perftコマンドの引数。
 #[derive(Parser)]

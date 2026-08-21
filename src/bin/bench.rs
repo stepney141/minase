@@ -7,6 +7,10 @@ use minase::core::rules::parse_rule_set;
 use minase::search::{MAX_PLY, SearchLimits, TranspositionTable, search};
 use minase::{Game, Rules, parse_sfen};
 
+/// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// 既定の探索深さ。
 const DEFAULT_DEPTH: u32 = 3;
 

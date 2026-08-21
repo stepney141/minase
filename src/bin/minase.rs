@@ -11,6 +11,10 @@ use minase::RuleCode;
 use minase::core::rules::parse_rule_set;
 use minase::protocol::{CecpProtocol, Engine, UsiProtocol};
 
+/// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// 中将棋エンジンのプロトコル入口。
 #[derive(Parser)]
 #[command(name = "minase")]

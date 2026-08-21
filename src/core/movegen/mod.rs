@@ -135,10 +135,11 @@ fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut V
     let color = position.side_to_move();
     let own = position.pieces_of(color);
 
+    let mut base_moves = Vec::new();
     for kind in PieceKind::ALL {
         let profile = movement_profile_data(movement_profile(kind));
         for from in position.pieces_of_kind(color, kind) {
-            let mut base_moves = Vec::new();
+            base_moves.clear();
             let step_destinations =
                 (piece_control_without_special(
                     generator.tables(),
@@ -178,7 +179,7 @@ fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut V
                     );
                 }
             }
-            for base in base_moves {
+            for &base in &base_moves {
                 push_with_promotion(generator, position, kind, base, output);
             }
         }
