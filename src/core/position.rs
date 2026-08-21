@@ -109,6 +109,12 @@ pub(crate) struct LionTrigger {
     pub(crate) by_kirin_promotion: bool,
 }
 
+/// [`Position::make_null_move`]の巻き戻しに必要な情報。
+pub struct NullUndo {
+    /// 手番パス前の先獅子トリガー。
+    previous_lion_taken: Option<LionTrigger>,
+}
+
 /// 中将棋の局面。盤面・手番・次の合法手に影響する一時状態を保持する。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Position {
@@ -478,6 +484,34 @@ impl Position {
     fn flip_side_to_move(&mut self) {
         self.side_to_move = self.side_to_move.opposite();
         self.zobrist ^= zobrist_keys().side_to_move;
+    }
+
+    /// 探索用の手番パスを適用し、巻き戻し用トークンを返す。
+    ///
+    /// 盤上の駒とP1成り権保留状態は変更せず、手番を反転して、相手の
+    /// 直後の1手だけに適用される先獅子状態を消滅させる(第15条第4・5項)。
+    pub fn make_null_move(&mut self) -> NullUndo {
+        let previous_lion_taken = self.lion_taken_by_non_lion;
+        self.flip_side_to_move();
+        let keys = zobrist_keys();
+        self.zobrist ^=
+            keys.lion_trigger_state(previous_lion_taken) ^ keys.lion_trigger_state(None);
+        self.lion_taken_by_non_lion = None;
+        NullUndo {
+            previous_lion_taken,
+        }
+    }
+
+    /// `undo`に記録された手番パスを巻き戻す。
+    ///
+    /// トークンはこの局面に対する[`Position::make_null_move`]が返した
+    /// ものでなければならず、適用と逆の順序で巻き戻す必要がある。
+    pub fn unmake_null_move(&mut self, undo: NullUndo) {
+        self.flip_side_to_move();
+        let keys = zobrist_keys();
+        self.zobrist ^= keys.lion_trigger_state(self.lion_taken_by_non_lion)
+            ^ keys.lion_trigger_state(undo.previous_lion_taken);
+        self.lion_taken_by_non_lion = undo.previous_lion_taken;
     }
 
     /// 手番を指定した複製を返す。
@@ -1806,6 +1840,80 @@ mod tests {
                 assert_eq!(position.rights_zobrist(), snapshot.rights_zobrist());
             }
         }
+    }
+
+    // D4-IMP-10[実装契約] 手番パスは配置を変えずに手番と局面キーを反転し、
+    // 巻き戻すと全観測可能状態を復元する。
+    #[test]
+    fn d4_imp_10_null_move_flips_side_preserves_board_and_round_trips() {
+        let mut position = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(5, 0), Color::Black, PieceKind::King),
+                (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
+                (sq(6, 11), Color::White, PieceKind::King),
+                (sq(7, 7), Color::White, PieceKind::Pawn),
+            ],
+        );
+        let before = position.clone();
+        let undo = position.make_null_move();
+
+        assert_eq!(position.side_to_move(), Color::White);
+        for square in Square::all() {
+            assert_eq!(position.piece_at(square), before.piece_at(square));
+        }
+        assert_eq!(position.zobrist(), position.recompute_zobrist());
+        assert_ne!(position.zobrist(), before.zobrist());
+
+        position.unmake_null_move(undo);
+        assert_eq!(position, before);
+    }
+
+    // D4-IMP-10[実装契約] 手番パスは先獅子の一時状態を消滅させ、
+    // 禁止なしで手番だけを反転した同一配置のキーへ移る。
+    #[test]
+    fn d4_imp_10_null_move_clears_lion_trigger_and_round_trips() {
+        let (mut position, _) = position_after_non_lion_captures_lion();
+        let before = position.clone();
+        assert!(position.lion_taken_by_non_lion().is_some());
+        let expected = rebuild_board_with_side(&position, position.side_to_move().opposite());
+
+        let undo = position.make_null_move();
+
+        assert_eq!(position.lion_taken_by_non_lion(), None);
+        assert_eq!(position.zobrist(), expected.recompute_zobrist());
+        assert_eq!(position.zobrist(), position.recompute_zobrist());
+
+        position.unmake_null_move(undo);
+        assert_eq!(position, before);
+        assert_eq!(position.zobrist(), before.zobrist());
+        assert_eq!(position.rights_zobrist(), before.rights_zobrist());
+    }
+
+    // D4-IMP-10[実装契約] P1成り権保留と権利キーは手番パスで変化せず、
+    // 巻き戻すと局面全体が復元される。
+    #[test]
+    fn d4_imp_10_null_move_preserves_promotion_rights() {
+        let deferred_square = sq(4, 9);
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder
+            .put(
+                deferred_square,
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+            )
+            .unwrap();
+        builder.mark_promotion_deferred(deferred_square).unwrap();
+        let mut position = builder.finish().unwrap();
+        let before = position.clone();
+
+        let undo = position.make_null_move();
+
+        assert_eq!(position.promotion_deferred(), before.promotion_deferred());
+        assert_eq!(position.rights_zobrist(), before.rights_zobrist());
+        assert_eq!(position.zobrist(), position.recompute_zobrist());
+
+        position.unmake_null_move(undo);
+        assert_eq!(position, before);
     }
 
     // 実装契約(D4-IMP-09): 固定シードの一様ランダムプレイアウトで、毎手、

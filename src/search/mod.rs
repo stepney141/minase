@@ -347,6 +347,7 @@ fn run_search(
         generator: MoveGenerator::new(rules),
         history_keys,
         path_keys: vec![search_key(position)],
+        null_move_ply: None,
         nodes: 0,
         node_limit,
         started,
@@ -419,6 +420,8 @@ struct Searcher<'a> {
     history_keys: &'a [u64],
     /// 探索経路上の局面キー。探索内の反復の検出に使う。
     path_keys: Vec<u64>,
+    /// null moveで到達した直後のノードのply。
+    null_move_ply: Option<u32>,
     /// 訪問したノード数。
     nodes: u64,
     /// ノード数の上限。
@@ -519,6 +522,39 @@ impl Searcher<'_> {
                 }
             }
         }
+
+        let side = position.side_to_move();
+        let has_non_royal_piece =
+            !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
+        if depth >= 3
+            && self.null_move_ply != Some(ply)
+            && beta.abs() < MATE_THRESHOLD
+            && has_non_royal_piece
+        {
+            let reduction = 2 + depth / 6;
+            let undo = position.make_null_move();
+            let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
+            let score = self
+                .negamax(
+                    position,
+                    depth.saturating_sub(1 + reduction),
+                    -beta,
+                    -beta + 1,
+                    ply + 1,
+                )
+                .map(|value| -value);
+            self.null_move_ply = previous_null_move_ply;
+            position.unmake_null_move(undo);
+            let score = score?;
+            if score >= beta {
+                return Some(if score.abs() >= MATE_THRESHOLD {
+                    beta
+                } else {
+                    score
+                });
+            }
+        }
+
         let mut moves = Vec::new();
         self.generator.generate_moves(position, &mut moves);
         if moves.is_empty() {
