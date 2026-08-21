@@ -470,7 +470,8 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
 
         for (index, mv) in moves.into_iter().enumerate() {
-            let score = self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0)?;
+            let score =
+                self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0, 0)?;
             if score > best_score {
                 best_score = score;
                 best_move = mv;
@@ -566,7 +567,15 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
         for (index, mv) in moves.into_iter().enumerate() {
-            let score = self.search_move(position, mv, depth, alpha, beta, ply, index == 0)?;
+            let reduction = u32::from(
+                depth >= 3
+                    && index >= 3
+                    && Some(mv) != tt_move
+                    && move_order_key(position, mv).is_none()
+                    && !self.killers[ply as usize][..].contains(&Some(mv)),
+            );
+            let score =
+                self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
             if score > best_score {
                 best_score = score;
                 best_move = mv;
@@ -647,8 +656,8 @@ impl Searcher<'_> {
     /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。
     ///
     /// 王駒をすべて取る手は即詰みの値を返す。対局履歴または探索経路と
-    /// 同一の局面は引き分け値とする。2手目以降はnull windowで探索し、
-    /// 窓内に入った場合だけ全窓で再探索する(principal variation search)。
+    /// 同一の局面は引き分け値とする。2手目以降は零窓で探索する。減深した
+    /// 探索がαを超えた場合は通常深さの零窓、さらに窓内なら全窓で再探索する。
     #[allow(clippy::too_many_arguments)]
     fn search_move(
         &mut self,
@@ -659,6 +668,7 @@ impl Searcher<'_> {
         beta: i32,
         ply: u32,
         first: bool,
+        reduction: u32,
     ) -> Option<i32> {
         self.pv[(ply + 1) as usize].clear();
         if captures_last_royal(position, mv) {
@@ -679,9 +689,14 @@ impl Searcher<'_> {
             self.negamax(position, depth - 1, -beta, -alpha, ply + 1)
                 .map(|value| -value)
         } else {
-            self.negamax(position, depth - 1, -alpha - 1, -alpha, ply + 1)
+            self.negamax(position, depth - 1 - reduction, -alpha - 1, -alpha, ply + 1)
                 .map(|value| -value)
         };
+        if !first && reduction > 0 && score.is_some_and(|value| value > alpha) {
+            score = self
+                .negamax(position, depth - 1, -alpha - 1, -alpha, ply + 1)
+                .map(|value| -value);
+        }
         if !first && score.is_some_and(|value| value > alpha && value < beta) {
             score = self
                 .negamax(position, depth - 1, -beta, -alpha, ply + 1)
