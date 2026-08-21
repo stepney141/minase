@@ -88,6 +88,10 @@ fn small_tt() -> TranspositionTable {
     TranspositionTable::new(1)
 }
 
+fn worker_count(count: usize) -> NonZeroUsize {
+    NonZeroUsize::new(count).expect("test worker count must be non-zero")
+}
+
 fn snapshot_for(position: &Position) -> SearchSnapshot {
     SearchSnapshot {
         root_moves: legal_moves(position),
@@ -252,6 +256,7 @@ fn depth_one_capture_of_the_last_royal_scores_mate() {
         &moves,
         &[],
         &depth_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -285,6 +290,7 @@ fn capture_of_the_first_of_two_royals_scores_as_material_gain() {
         &moves,
         &[],
         &depth_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -317,6 +323,7 @@ fn repetition_with_history_is_preferred_as_a_draw_over_losing_lines() {
         &moves,
         &history,
         &depth_limits(2),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -340,6 +347,7 @@ fn without_history_the_repetition_fixture_scores_a_mate_band_loss() {
         &moves,
         &[],
         &depth_limits(2),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -368,6 +376,7 @@ fn free_lion_capture_is_preferred_without_entering_the_mate_band() {
         &moves,
         &[],
         &depth_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -409,6 +418,7 @@ fn lion_double_capture_of_both_royals_scores_mate() {
         &moves,
         &[],
         &depth_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -445,6 +455,7 @@ fn opponent_with_no_legal_moves_scores_mate_minus_one_ply() {
         &moves,
         &[],
         &depth_limits(2),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -466,7 +477,13 @@ fn search_with_node_limit_is_deterministic() {
         Vec<(u32, i32, u64, Vec<Move>)>,
         (Move, i32, u32, u64, Vec<Move>, StopReason),
     ) {
-        let handle = start_search(snapshot_for(position), limits, id, small_tt());
+        let handle = start_search(
+            snapshot_for(position),
+            limits,
+            id,
+            DEFAULT_THREADS,
+            small_tt(),
+        );
         let (progress, finished) = drain_events(&handle);
         handle.join().expect("search thread must not panic");
         (
@@ -521,6 +538,7 @@ fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
         &moves,
         &[],
         &depth_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -562,6 +580,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
         &moves,
         &[],
         &depth_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -618,6 +637,7 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
         &moves,
         &[],
         &depth_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
 
@@ -656,7 +676,13 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
 
-    let handle = start_search(snapshot, nodes_limits(5_000), 31, small_tt());
+    let handle = start_search(
+        snapshot,
+        nodes_limits(5_000),
+        31,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
 
@@ -672,6 +698,7 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
         &moves,
         &[],
         &nodes_limits(1),
+        DEFAULT_THREADS,
         &mut small_tt(),
     );
     assert!(moves.contains(&result.best_move));
@@ -689,7 +716,7 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
     // 外部停止要求しかあり得ない。
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
-    let handle = start_search(snapshot, infinite_limits(), 41, small_tt());
+    let handle = start_search(snapshot, infinite_limits(), 41, DEFAULT_THREADS, small_tt());
     handle.request_stop();
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
@@ -699,7 +726,13 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
     // 境界: 極小のhard予算（movetime=1ms、D7-TIME-02境界の受理側）でも
     // 同じ保証が成り立つ。soft=hardのため停止理由は2値を許容する
     // （SPEC_UNCLEAR-04）。
-    let handle = start_search(snapshot_for(&initial), movetime_limits(1), 42, small_tt());
+    let handle = start_search(
+        snapshot_for(&initial),
+        movetime_limits(1),
+        42,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
     assert!(matches!(
@@ -717,7 +750,7 @@ fn infinite_limits_stop_only_on_external_request() {
     let initial = Position::initial();
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
-    let handle = start_search(snapshot, infinite_limits(), 51, small_tt());
+    let handle = start_search(snapshot, infinite_limits(), 51, DEFAULT_THREADS, small_tt());
 
     // 数百ms待つ間、Finishedは届かずProgressが届き続ける。
     let started = Instant::now();
@@ -821,7 +854,13 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
 #[test]
 fn movetime_search_stops_near_the_fixed_budget() {
     let initial = Position::initial();
-    let handle = start_search(snapshot_for(&initial), movetime_limits(300), 61, small_tt());
+    let handle = start_search(
+        snapshot_for(&initial),
+        movetime_limits(300),
+        61,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
 
@@ -846,7 +885,13 @@ fn movetime_search_stops_near_the_fixed_budget() {
 #[test]
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
-    let handle = start_search(snapshot_for(&midgame), depth_limits(4), 81, small_tt());
+    let handle = start_search(
+        snapshot_for(&midgame),
+        depth_limits(4),
+        81,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (progress, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
 
@@ -860,7 +905,13 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     assert_eq!(finished.depth, 4);
 
     // 境界: depth=1では深さ列は[1]のみ。
-    let handle = start_search(snapshot_for(&midgame), depth_limits(1), 82, small_tt());
+    let handle = start_search(
+        snapshot_for(&midgame),
+        depth_limits(1),
+        82,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (progress, _) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
@@ -875,6 +926,7 @@ fn progress_and_finished_elapsed_times_are_monotonic() {
         snapshot_for(&quiet_midgame()),
         depth_limits(4),
         83,
+        DEFAULT_THREADS,
         small_tt(),
     );
     let (progress, finished) = drain_events(&handle);
@@ -891,7 +943,13 @@ fn progress_and_finished_elapsed_times_are_monotonic() {
 #[test]
 fn depth_limited_search_reports_depth_completed_with_a_consistent_pv() {
     let midgame = quiet_midgame();
-    let handle = start_search(snapshot_for(&midgame), depth_limits(2), 84, small_tt());
+    let handle = start_search(
+        snapshot_for(&midgame),
+        depth_limits(2),
+        84,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
 
@@ -916,7 +974,13 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
         clock: Some(clock(6_000, 100, 0)),
         ..no_limits()
     };
-    let handle = start_search(snapshot_for(&initial), limits, 85, small_tt());
+    let handle = start_search(
+        snapshot_for(&initial),
+        limits,
+        85,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
     assert!(matches!(
@@ -931,7 +995,13 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
         clock: Some(clock(0, 0, 100)),
         ..no_limits()
     };
-    let handle = start_search(snapshot_for(&initial), limits, 86, small_tt());
+    let handle = start_search(
+        snapshot_for(&initial),
+        limits,
+        86,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
     assert!(matches!(
@@ -949,12 +1019,24 @@ fn events_carry_the_search_id_given_at_start() {
     let initial = Position::initial();
 
     // ライフサイクル契約: 停止フラグ→join→新しい探索の開始。
-    let stale_handle = start_search(snapshot_for(&initial), depth_limits(1), 101, small_tt());
+    let stale_handle = start_search(
+        snapshot_for(&initial),
+        depth_limits(1),
+        101,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     stale_handle.request_stop();
     let stale_events = drain_raw(&stale_handle);
     stale_handle.join().expect("search thread must not panic");
 
-    let current_handle = start_search(snapshot_for(&initial), depth_limits(1), 202, small_tt());
+    let current_handle = start_search(
+        snapshot_for(&initial),
+        depth_limits(1),
+        202,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let current_events = drain_raw(&current_handle);
     current_handle.join().expect("search thread must not panic");
 
@@ -984,7 +1066,13 @@ fn join_returns_the_transposition_table_for_reuse() {
     let midgame = quiet_midgame();
     let snapshot = snapshot_for(&midgame);
 
-    let handle = start_search(snapshot.clone(), depth_limits(3), 91, small_tt());
+    let handle = start_search(
+        snapshot.clone(),
+        depth_limits(3),
+        91,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
     let (_, first) = drain_events(&handle);
     let mut returned_tt = handle.join().expect("search thread must not panic");
 
@@ -1001,12 +1089,207 @@ fn join_returns_the_transposition_table_for_reuse() {
         &snapshot.root_moves,
         &snapshot.history_keys,
         &depth_limits(3),
+        DEFAULT_THREADS,
         &mut returned_tt,
     );
     assert_eq!(second.best_move, first.best_move);
     assert_eq!(second.score, first.score);
     assert!(second.nodes <= first.nodes);
     assert_eq!(returned_tt.generation(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// D7-SMP　探索チーム
+// ---------------------------------------------------------------------------
+
+// D7-SMP-01・07。lazy-smp.md「探索チーム」「停止と探索予算」: 2・4
+// ワーカーは深さ、ノード、時間、無期限＋外部停止の全経路で終了し、
+// Finishedを1回だけ送り、全join後に世代が1回だけ進んだ置換表を返す。
+#[test]
+fn multi_worker_teams_finish_once_and_return_the_shared_table() {
+    let initial = Position::initial();
+    let root_moves = legal_moves(&initial);
+    let cases = [
+        (depth_limits(1), false),
+        (nodes_limits(1_000), false),
+        (movetime_limits(10), false),
+        (infinite_limits(), true),
+    ];
+    let mut search_id = 300;
+
+    for threads in [worker_count(2), worker_count(4)] {
+        for (limits, request_stop) in cases {
+            let handle = start_search(
+                snapshot_for(&initial),
+                limits,
+                search_id,
+                threads,
+                small_tt(),
+            );
+            if request_stop {
+                handle.request_stop();
+            }
+            let events = drain_raw(&handle);
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| matches!(event, SearchEvent::Finished { .. }))
+                    .count(),
+                1
+            );
+            let SearchEvent::Finished { best_move, .. } = events.last().unwrap() else {
+                unreachable!("drain_raw ends with Finished");
+            };
+            assert!(root_moves.contains(best_move));
+            assert!(matches!(
+                handle.events().recv_timeout(Duration::from_secs(1)),
+                Err(mpsc::RecvTimeoutError::Disconnected)
+            ));
+            let table = handle.join().expect("search team must not panic");
+            assert_eq!(table.generation(), 1);
+            search_id += 1;
+        }
+    }
+}
+
+// D7-SMP-02。lazy-smp.md「停止と探索予算」: ノード予約は探索チーム全体の
+// AtomicU64に対して行い、Nを超える予約を拒否する。
+#[test]
+fn four_worker_node_limit_never_exceeds_the_team_budget() {
+    let initial = Position::initial();
+    let root_moves = legal_moves(&initial);
+    let limit = 500;
+    let handle = start_search(
+        snapshot_for(&initial),
+        nodes_limits(limit),
+        320,
+        worker_count(4),
+        small_tt(),
+    );
+    let (_, finished) = drain_events(&handle);
+    handle.join().expect("search team must not panic");
+
+    assert_eq!(finished.stop_reason, StopReason::NodeLimit);
+    assert!(finished.nodes <= limit);
+    assert!(root_moves.contains(&finished.best_move));
+}
+
+// D7-SMP-03。lazy-smp.md「探索チーム」: Progressは主ワーカーだけが深さ1
+// から1ずつ送り、チーム総ノード数と経過時間は単調非減少となる。
+#[test]
+fn four_worker_progress_is_main_worker_only_and_monotonic() {
+    let handle = start_search(
+        snapshot_for(&quiet_midgame()),
+        depth_limits(4),
+        321,
+        worker_count(4),
+        small_tt(),
+    );
+    let (progress, finished) = drain_events(&handle);
+    handle.join().expect("search team must not panic");
+
+    assert_eq!(
+        progress.iter().map(|entry| entry.0).collect::<Vec<_>>(),
+        vec![1, 2, 3, 4]
+    );
+    assert!(
+        progress
+            .windows(2)
+            .all(|pair| pair[0].2 <= pair[1].2 && pair[0].3 <= pair[1].3)
+    );
+    assert!(progress.iter().all(|entry| !entry.4.is_empty()));
+    assert!(progress.last().unwrap().2 <= finished.nodes);
+}
+
+// D7-SMP-04。lazy-smp.md「再現性」: Threads=1の固定ノード探索は、経過
+// 時間を除く結果、PV、Progress列、ノード数、停止理由が完全に一致する。
+// D7-SRCH-07のsearch_with_node_limit_is_deterministicが同じ観測を初期局面と
+// 中盤局面の双方で固定する。
+
+// D7-SMP-05。lazy-smp.md「停止と探索予算」: ExternalStopはNodeLimitより
+// 優先する。開始時点で両方が成立し得る構成を直接チーム経路へ与える。
+#[test]
+fn external_stop_takes_priority_over_the_node_limit() {
+    let initial = Position::initial();
+    let snapshot = snapshot_for(&initial);
+    let limits = nodes_limits(1);
+    let external_stop = AtomicBool::new(true);
+    let table = small_tt();
+    let outcome = run_search_team(
+        &snapshot.position,
+        snapshot.rules,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &limits,
+        &external_stop,
+        worker_count(4),
+        &table,
+        None,
+    );
+
+    assert_eq!(outcome.stop_reason, StopReason::ExternalStop);
+    assert!(outcome.result.nodes <= 1);
+}
+
+// D7-SMP-06。lazy-smp.md「探索チーム」: 補助ワーカーはルート列を番号だけ
+// 回転してから既存の安定ソートを適用する。TT手と捕獲価値の優先度を保ち、
+// 同順位の静かな手だけが回転後の相対順になる。
+#[test]
+fn auxiliary_root_rotation_preserves_move_priorities_and_changes_ties() {
+    let root = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 6), Color::Black, PieceKind::Rook),
+            (fs(6, 2), Color::White, PieceKind::Lion),
+            (fs(2, 6), Color::White, PieceKind::Pawn),
+            (fs(12, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let legal = legal_moves(&root);
+    let rook_from = fs(6, 6);
+    let high_capture = Move {
+        from: rook_from,
+        mid: None,
+        to: fs(6, 2),
+        promote: false,
+    };
+    let tt_capture = Move {
+        from: rook_from,
+        mid: None,
+        to: fs(2, 6),
+        promote: false,
+    };
+    assert!(legal.contains(&high_capture));
+    assert!(legal.contains(&tt_capture));
+    let quiet: Vec<Move> = legal
+        .iter()
+        .copied()
+        .filter(|&mv| mv.from == rook_from && move_order_key(&root, mv).is_none())
+        .take(2)
+        .collect();
+    assert_eq!(quiet.len(), 2);
+
+    let mut ordered = vec![quiet[0], tt_capture, quiet[1], high_capture];
+    rotate_root_moves(&mut ordered, 1);
+    assert_eq!(ordered, vec![tt_capture, quiet[1], high_capture, quiet[0]]);
+
+    let external_stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        node_limit: None,
+        started: Instant::now(),
+        hard_limit: None,
+    };
+    let history = [];
+    let table = small_tt();
+    let searcher = new_searcher(&root, engine_rules(), &history, &shared, &table);
+    searcher.order_moves(&root, &mut ordered, Some(tt_capture), 0);
+
+    assert_eq!(ordered, vec![tt_capture, high_capture, quiet[1], quiet[0]]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1238,6 +1521,7 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
         &moves,
         &history,
         &depth_limits(2),
+        DEFAULT_THREADS,
         &mut table,
     );
 
@@ -1287,6 +1571,7 @@ fn tt_clear_empties_all_entries_and_search_restarts() {
         &moves,
         &[],
         &depth_limits(2),
+        DEFAULT_THREADS,
         &mut table,
     );
     assert!(moves.contains(&result.best_move));
@@ -1309,6 +1594,7 @@ fn idle_resize_applies_and_later_searches_complete() {
         &moves,
         &[],
         &depth_limits(2),
+        DEFAULT_THREADS,
         &mut table,
     );
     assert!(moves.contains(&before.best_move));
@@ -1321,6 +1607,7 @@ fn idle_resize_applies_and_later_searches_complete() {
         &moves,
         &[],
         &depth_limits(2),
+        DEFAULT_THREADS,
         &mut table,
     );
     assert!(moves.contains(&after.best_move));

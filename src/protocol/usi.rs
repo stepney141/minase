@@ -181,7 +181,13 @@ impl UsiProtocol {
         self.next_search_id = self.next_search_id.wrapping_add(1);
         let transposition_table = self.transposition_table.take().unwrap_or_default();
         let infinite = config.infinite;
-        let handle = search::start_search(snapshot, config, search_id, transposition_table);
+        let handle = search::start_search(
+            snapshot,
+            config,
+            search_id,
+            search::DEFAULT_THREADS,
+            transposition_table,
+        );
         Ok(Some(ActiveSearch::Running {
             context: SearchContext {
                 id: search_id,

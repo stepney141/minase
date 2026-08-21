@@ -7,7 +7,8 @@ mod tt;
 pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable};
 
 use core::cmp::Reverse;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use core::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -30,6 +31,8 @@ pub const MAX_PLY: u32 = 256;
 pub const MATE_THRESHOLD: i32 = MATE - MAX_PLY as i32;
 /// 引き分けを表す評価値。
 pub const DRAW_SCORE: i32 = 0;
+/// 探索に使う既定のワーカー数。
+pub const DEFAULT_THREADS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 
 /// 探索窓の初期値。全評価値より大きい。
 const INFINITY: i32 = MATE + 1;
@@ -175,13 +178,13 @@ impl SearchEvent {
     }
 }
 
-/// 実行中の探索スレッドを操作するハンドル。
+/// 実行中の探索チームを操作するハンドル。
 pub struct SearchHandle {
     /// 探索イベントの受信端。
     events: mpsc::Receiver<SearchEvent>,
-    /// 探索スレッドと共有する停止フラグ。
+    /// 探索チームと共有する外部停止フラグ。
     stop: Arc<AtomicBool>,
-    /// 置換表を返して終了する探索スレッドのハンドル。
+    /// 全ワーカーの終了後に置換表を返す調整役のハンドル。
     thread: thread::JoinHandle<TranspositionTable>,
 }
 
@@ -191,12 +194,12 @@ impl SearchHandle {
         &self.events
     }
 
-    /// 探索スレッドへ停止を要求する。
+    /// 探索チーム全体へ停止を要求する。
     pub fn request_stop(&self) {
         self.stop.store(true, AtomicOrdering::Relaxed);
     }
 
-    /// 探索スレッドの終了を待ち、所有していた置換表を返す。
+    /// 全ワーカーの終了を待ち、共有していた置換表を返す。
     pub fn join(self) -> thread::Result<TranspositionTable> {
         self.thread.join()
     }
@@ -215,7 +218,7 @@ pub struct SearchResult {
     pub nodes: u64,
 }
 
-/// 所有権を移した入力と置換表を使い、別スレッドで探索を開始する。
+/// 所有権を移した入力と置換表を使い、別スレッドで探索チームを開始する。
 ///
 /// # Panics
 ///
@@ -224,6 +227,7 @@ pub fn start_search(
     snapshot: SearchSnapshot,
     limits: SearchLimits,
     search_id: u64,
+    threads: NonZeroUsize,
     tt: TranspositionTable,
 ) -> SearchHandle {
     validate_input(&snapshot.root_moves, &limits);
@@ -231,13 +235,14 @@ pub fn start_search(
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
     let thread = thread::spawn(move || {
-        let outcome = run_search(
+        let outcome = run_search_team(
             &snapshot.position,
             snapshot.rules,
             &snapshot.root_moves,
             &snapshot.history_keys,
             &limits,
             &thread_stop,
+            threads,
             &tt,
             Some((&sender, search_id)),
         );
@@ -280,6 +285,7 @@ pub fn search(
     root_moves: &[Move],
     history_keys: &[u64],
     limits: &SearchLimits,
+    threads: NonZeroUsize,
     tt: &mut TranspositionTable,
 ) -> SearchResult {
     validate_input(root_moves, limits);
@@ -288,13 +294,14 @@ pub fn search(
         "synchronous search cannot use an infinite limit"
     );
     let stop = AtomicBool::new(false);
-    run_search(
+    run_search_team(
         position,
         rules,
         root_moves,
         history_keys,
         limits,
         &stop,
+        threads,
         tt,
         None,
     )
@@ -319,18 +326,111 @@ struct SearchOutcome {
     stop_reason: StopReason,
 }
 
-/// 反復深化のループを実行し、深さ完了ごとに進捗イベントを送る。
-///
-/// soft limitの判定は完了イテレーションの境界だけで行い、探索途中の
-/// 打ち切りはhard limitと停止要求が担う。
+/// 探索チームで共有する停止状態と探索予算。
+struct SharedSearch<'a> {
+    /// 呼び出し側からの停止要求。
+    external_stop: &'a AtomicBool,
+    /// 探索チーム内部の停止要求。
+    team_stop: AtomicBool,
+    /// 優先順位を反映した停止理由。
+    stop_reason: AtomicU8,
+    /// 全ワーカーが訪問したノード数。
+    total_nodes: AtomicU64,
+    /// 探索チーム全体のノード数上限。
+    node_limit: Option<u64>,
+    /// 補助ワーカー生成前に記録した探索開始時刻。
+    started: Instant,
+    /// 探索途中でも打ち切る時間制限。
+    hard_limit: Option<Duration>,
+}
+
+impl SharedSearch<'_> {
+    /// 停止理由を優先度付きで共有状態へ合成し、チーム停止を要求する。
+    fn stop(&self, reason: StopReason) {
+        self.stop_reason
+            .fetch_max(stop_reason_priority(reason), AtomicOrdering::Relaxed);
+        self.team_stop.store(true, AtomicOrdering::Release);
+    }
+
+    /// 外部停止が成立していれば最優先の停止理由として記録する。
+    fn observe_external_stop(&self) -> bool {
+        if self.external_stop.load(AtomicOrdering::Relaxed) {
+            self.stop(StopReason::ExternalStop);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 現在までに探索チームが訪問した総ノード数を返す。
+    fn nodes(&self) -> u64 {
+        self.total_nodes.load(AtomicOrdering::Relaxed)
+    }
+
+    /// 共有状態に記録された停止理由を返す。
+    fn reason(&self) -> StopReason {
+        stop_reason_from_priority(self.stop_reason.load(AtomicOrdering::Relaxed))
+            .expect("a completed search team must record a stop reason")
+    }
+
+    /// ノードを1個予約する。上限を超える予約は拒否する。
+    fn reserve_node(&self) -> bool {
+        let Some(limit) = self.node_limit else {
+            self.total_nodes.fetch_add(1, AtomicOrdering::Relaxed);
+            return true;
+        };
+        let mut current = self.total_nodes.load(AtomicOrdering::Relaxed);
+        loop {
+            if current >= limit {
+                self.stop(StopReason::NodeLimit);
+                return false;
+            }
+            match self.total_nodes.compare_exchange_weak(
+                current,
+                current + 1,
+                AtomicOrdering::Relaxed,
+                AtomicOrdering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+}
+
+/// 停止理由の優先順位を原子値へ写す。
+const fn stop_reason_priority(reason: StopReason) -> u8 {
+    match reason {
+        StopReason::DepthCompleted => 1,
+        StopReason::SoftLimit => 2,
+        StopReason::NodeLimit => 3,
+        StopReason::HardLimit => 4,
+        StopReason::ExternalStop => 5,
+    }
+}
+
+/// 原子値から停止理由を復元する。
+const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
+    match priority {
+        1 => Some(StopReason::DepthCompleted),
+        2 => Some(StopReason::SoftLimit),
+        3 => Some(StopReason::NodeLimit),
+        4 => Some(StopReason::HardLimit),
+        5 => Some(StopReason::ExternalStop),
+        _ => None,
+    }
+}
+
+/// 調整役として補助ワーカーを生成し、主ワーカー探索と全joinを実行する。
 #[allow(clippy::too_many_arguments)]
-fn run_search(
+fn run_search_team(
     position: &Position,
     rules: Rules,
     root_moves: &[Move],
     history_keys: &[u64],
     limits: &SearchLimits,
-    stop: &AtomicBool,
+    external_stop: &AtomicBool,
+    threads: NonZeroUsize,
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
 ) -> SearchOutcome {
@@ -342,19 +442,67 @@ fn run_search(
         limits.depth.unwrap_or(MAX_PLY)
     };
     let node_limit = (!limits.infinite).then_some(limits.nodes).flatten();
-
     tt.new_search();
-    let mut searcher = Searcher {
+    let shared = SharedSearch {
+        external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        node_limit,
+        started,
+        hard_limit: time_budget.map(|budget| budget.hard),
+    };
+
+    let mut outcome = thread::scope(|scope| {
+        for worker_index in 1..threads.get() {
+            let shared = &shared;
+            scope.spawn(move || {
+                run_auxiliary_worker(
+                    position,
+                    rules,
+                    root_moves,
+                    history_keys,
+                    depth_limit,
+                    worker_index,
+                    shared,
+                    tt,
+                );
+            });
+        }
+        run_main_worker(
+            position,
+            rules,
+            root_moves,
+            history_keys,
+            depth_limit,
+            time_budget,
+            &shared,
+            tt,
+            events,
+        )
+    });
+    outcome.result.nodes = shared.nodes();
+    outcome.elapsed = started.elapsed();
+    outcome.stop_reason = shared.reason();
+    outcome
+}
+
+/// ワーカー固有の探索状態を構築する。
+fn new_searcher<'a>(
+    position: &Position,
+    rules: Rules,
+    history_keys: &'a [u64],
+    shared: &'a SharedSearch<'a>,
+    tt: &'a TranspositionTable,
+) -> Searcher<'a> {
+    Searcher {
         rules,
         generator: MoveGenerator::new(rules),
         history_keys,
         path_keys: vec![search_key(position)],
         null_move_ply: None,
         nodes: 0,
-        node_limit,
-        started,
-        hard_limit: time_budget.map(|budget| budget.hard),
-        stop,
+        shared,
         stop_reason: None,
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
@@ -362,7 +510,23 @@ fn run_search(
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
-    };
+    }
+}
+
+/// 主ワーカーの反復深化を実行し、深さ完了ごとに進捗イベントを送る。
+#[allow(clippy::too_many_arguments)]
+fn run_main_worker(
+    position: &Position,
+    rules: Rules,
+    root_moves: &[Move],
+    history_keys: &[u64],
+    depth_limit: u32,
+    time_budget: Option<TimeBudget>,
+    shared: &SharedSearch<'_>,
+    tt: &TranspositionTable,
+    events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
+) -> SearchOutcome {
+    let mut searcher = new_searcher(position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: evaluate(position),
@@ -370,45 +534,70 @@ fn run_search(
         nodes: 0,
     };
     let mut completed_pv = vec![root_moves[0]];
-    let mut stop_reason = StopReason::DepthCompleted;
 
     for depth in 1..=depth_limit {
-        let Some((best_move, score)) = searcher.search_root(position, root_moves, depth) else {
-            stop_reason = searcher
-                .stop_reason
-                .expect("interrupted search must record a stop reason");
+        let Some((best_move, score)) = searcher.search_root(position, root_moves, depth, 0) else {
+            debug_assert!(searcher.stop_reason.is_some());
             break;
         };
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
         completed_pv.clone_from(&searcher.pv[0]);
-        let elapsed = started.elapsed();
+        let elapsed = shared.started.elapsed();
         if let Some((sender, search_id)) = events {
             let _ = sender.send(SearchEvent::Progress {
                 search_id,
                 depth,
                 score,
-                nodes: searcher.nodes,
+                nodes: shared.nodes(),
                 elapsed,
                 pv: completed_pv.clone(),
             });
         }
-        if node_limit.is_some_and(|limit| searcher.nodes >= limit) {
-            stop_reason = StopReason::NodeLimit;
+        if shared
+            .node_limit
+            .is_some_and(|limit| shared.nodes() >= limit)
+        {
+            shared.stop(StopReason::NodeLimit);
             break;
         }
         if time_budget.is_some_and(|budget| elapsed >= budget.soft) {
-            stop_reason = StopReason::SoftLimit;
+            shared.stop(StopReason::SoftLimit);
             break;
         }
     }
-    result.nodes = searcher.nodes;
+    if !shared.team_stop.load(AtomicOrdering::Acquire) {
+        shared.stop(StopReason::DepthCompleted);
+    }
     SearchOutcome {
         result,
-        elapsed: started.elapsed(),
+        elapsed: shared.started.elapsed(),
         pv: completed_pv,
-        stop_reason,
+        stop_reason: shared.reason(),
+    }
+}
+
+/// 補助ワーカーの反復深化を実行する。結果と進捗は公開しない。
+#[allow(clippy::too_many_arguments)]
+fn run_auxiliary_worker(
+    position: &Position,
+    rules: Rules,
+    root_moves: &[Move],
+    history_keys: &[u64],
+    depth_limit: u32,
+    worker_index: usize,
+    shared: &SharedSearch<'_>,
+    tt: &TranspositionTable,
+) {
+    let mut searcher = new_searcher(position, rules, history_keys, shared, tt);
+    for depth in 1..=depth_limit {
+        if searcher
+            .search_root(position, root_moves, depth, worker_index)
+            .is_none()
+        {
+            break;
+        }
     }
 }
 
@@ -426,14 +615,8 @@ struct Searcher<'a> {
     null_move_ply: Option<u32>,
     /// 訪問したノード数。
     nodes: u64,
-    /// ノード数の上限。
-    node_limit: Option<u64>,
-    /// 探索の開始時刻。
-    started: Instant,
-    /// 探索途中でも打ち切る時間制限。
-    hard_limit: Option<Duration>,
-    /// 外部からの停止要求フラグ。
-    stop: &'a AtomicBool,
+    /// 探索チームで共有する停止状態と予算。
+    shared: &'a SharedSearch<'a>,
     /// 中断時に記録する停止条件。
     stop_reason: Option<StopReason>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
@@ -455,6 +638,7 @@ impl Searcher<'_> {
         position: &Position,
         root_moves: &[Move],
         depth: u32,
+        worker_index: usize,
     ) -> Option<(Move, i32)> {
         if !self.enter_node() {
             return None;
@@ -463,6 +647,7 @@ impl Searcher<'_> {
 
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
+        rotate_root_moves(&mut moves, worker_index);
         let key = search_key(&position);
         let tt_move = self.tt.probe(key, 0).map(|hit| hit.best_move);
         self.order_moves(&position, &mut moves, tt_move, 0);
@@ -718,22 +903,27 @@ impl Searcher<'_> {
 
     /// ノードへ入る前に停止条件を検査し、続行可能ならノード数を数える。
     fn enter_node(&mut self) -> bool {
-        if self.node_limit.is_some_and(|limit| self.nodes >= limit) {
-            self.stop_reason = Some(StopReason::NodeLimit);
+        if self.shared.observe_external_stop() {
+            self.stop_reason = Some(StopReason::ExternalStop);
             return false;
         }
-        if self.nodes.is_multiple_of(STOP_CHECK_INTERVAL) {
-            if self.stop.load(AtomicOrdering::Relaxed) {
-                self.stop_reason = Some(StopReason::ExternalStop);
-                return false;
-            }
-            if self
+        if self.shared.team_stop.load(AtomicOrdering::Acquire) {
+            self.stop_reason = Some(self.shared.reason());
+            return false;
+        }
+        if self.nodes.is_multiple_of(STOP_CHECK_INTERVAL)
+            && self
+                .shared
                 .hard_limit
-                .is_some_and(|limit| self.started.elapsed() >= limit)
-            {
-                self.stop_reason = Some(StopReason::HardLimit);
-                return false;
-            }
+                .is_some_and(|limit| self.shared.started.elapsed() >= limit)
+        {
+            self.shared.stop(StopReason::HardLimit);
+            self.stop_reason = Some(StopReason::HardLimit);
+            return false;
+        }
+        if !self.shared.reserve_node() {
+            self.stop_reason = Some(self.shared.reason());
+            return false;
         }
         self.nodes += 1;
         true
@@ -805,6 +995,12 @@ impl Searcher<'_> {
             }
         }
     }
+}
+
+/// 補助ワーカーのルート手列をワーカー番号だけ左回転する。
+fn rotate_root_moves(moves: &mut [Move], worker_index: usize) {
+    let rotation = worker_index % moves.len();
+    moves.rotate_left(rotation);
 }
 
 /// 1手に使う時間の予算。

@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use minase::core::rules::parse_rule_set;
-use minase::search::{MAX_PLY, SearchLimits, TranspositionTable, search};
+use minase::search::{DEFAULT_THREADS, MAX_PLY, SearchLimits, TranspositionTable, search};
 use minase::{Game, Rules, parse_sfen};
 
 /// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
@@ -159,6 +159,7 @@ fn main() {
             &legal_moves,
             game.search_key_history(),
             &limits,
+            DEFAULT_THREADS,
             &mut transposition_table,
         );
         let elapsed = position_start.elapsed();
@@ -247,6 +248,7 @@ mod tests {
                     &legal_moves,
                     game.search_key_history(),
                     &limits,
+                    DEFAULT_THREADS,
                     &mut transposition_table,
                 );
                 total_nodes += result.nodes;

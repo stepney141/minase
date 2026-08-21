@@ -207,7 +207,13 @@ impl CecpProtocol {
         let transposition_table = self.transposition_table.take().unwrap_or_default();
         Ok(Some(ActiveSearch {
             context: SearchContext { id: search_id },
-            handle: search::start_search(snapshot, limits, search_id, transposition_table),
+            handle: search::start_search(
+                snapshot,
+                limits,
+                search_id,
+                search::DEFAULT_THREADS,
+                transposition_table,
+            ),
         }))
     }
 
