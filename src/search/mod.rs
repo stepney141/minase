@@ -39,6 +39,8 @@ const STOP_CHECK_INTERVAL: u64 = 4096;
 const HISTORY_LIMIT: i32 = 1 << 14;
 /// 1つのplyに記録するkiller手の数。
 const KILLER_COUNT: usize = 2;
+/// 静止探索で小さな捕獲を残すための余裕値。
+const DELTA_MARGIN: i32 = 200;
 
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
@@ -630,11 +632,18 @@ impl Searcher<'_> {
 
         let mut captures = Vec::new();
         self.generator.generate_moves(position, &mut captures);
-        captures.retain(|&mv| move_order_key(position, mv).is_some());
-        order_captures(position, &mut captures);
+        let mut captures: Vec<_> = captures
+            .into_iter()
+            .filter_map(|mv| move_order_key(position, mv).map(|key| (mv, key)))
+            .collect();
+        order_captures(&mut captures);
 
-        for mv in captures {
-            let score = if captures_last_royal(position, mv) {
+        for (mv, key) in captures {
+            let is_last_royal_capture = captures_last_royal(position, mv);
+            if !is_last_royal_capture && stand_pat + key.captured_value + DELTA_MARGIN <= alpha {
+                continue;
+            }
+            let score = if is_last_royal_capture {
                 self.enter_node().then_some(MATE - ply as i32)?
             } else {
                 let undo = position.make_move_unchecked(mv, self.rules);
@@ -871,12 +880,9 @@ fn captures_last_royal(position: &Position, mv: Move) -> bool {
             == royal_count as usize
 }
 
-/// 捕獲手をMVV-LVA順で安定に整列する。
-fn order_captures(position: &Position, captures: &mut [Move]) {
-    captures.sort_by_cached_key(|&mv| {
-        let key = move_order_key(position, mv).expect("capture list must contain only captures");
-        (Reverse(key.captured_value), key.attacker_value)
-    });
+/// 捕獲手と整列キーのペアをMVV-LVA順で安定に整列する。
+fn order_captures(captures: &mut [(Move, MoveOrderKey)]) {
+    captures.sort_by_key(|&(_, key)| (Reverse(key.captured_value), key.attacker_value));
 }
 
 /// 通常探索で使う着手の整列キー。
