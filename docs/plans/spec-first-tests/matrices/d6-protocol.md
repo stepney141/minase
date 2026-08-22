@@ -287,6 +287,13 @@
 - 境界・不正: 実行中探索のワーカー数は変更せず、設定処理のために別の並列探索経路を作らない。
 - 性質: 設定の反映境界は探索のjoinである。
 
+### D6-USI-38 採用結果の条件付き最終`info`
+- 典拠: LS「設計判断」「探索チーム」第2版（`Finished.depth`が最後に出力した`info depth`を超える場合だけ、`bestmove`の前に採用結果の最終`info`を出す）。
+- 前提: 対局中。`Threads=1`または2以上で、1件以上の`info`を生成できる固定深さ探索。
+- 操作と期待観測: `Finished.depth`が最後に出力済みの深さを超える場合、`Finished`のdepth、score、nodes、elapsed、およびpvを使った`info`を1行出し、その直後に`bestmove`を1回だけ出す。超えない場合は追加の`info`を出さない。
+- 境界・不正: `Threads=1`では`Finished.depth`が最後の`Progress.depth`を超えないため、出力列は従来と同一である。`Threads>=2`の探索順は非決定的なので、統合テストは最終`info`の追加有無や深さの値を固定せず、`info`行の後に`bestmove`が1回だけ続く構造を確認する。
+- 性質: 最終`info`を出す場合もD6-USI-26と同じ書式を使い、`bestmove`より後には`info`を出さない。
+
 ---
 
 ## 2. CECP（D6-CECP）
@@ -657,5 +664,5 @@
 
 ## 集計
 
-- 仕様化した挙動: 84件（USI 37、CECP 34、ENG 7、CLI 6）
+- 仕様化した挙動: 85件（USI 38、CECP 34、ENG 7、CLI 6）
 - SPEC_UNCLEAR: 14件（うち文書補修対象2件: SU-01、SU-02。SU-11は補修時の併合候補）

@@ -1399,9 +1399,10 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
     assert!(root_moves.contains(&finished.best_move));
 }
 
-// D7-SMP-03。lazy-smp.md「停止と探索予算」第2版: 上限なしではProgressが
+// D7-SMP-03・10。lazy-smp.md「探索チーム」第2版: 上限なしではProgressが
 // 共有カウンタのスナップショットを持ち、Finishedは各ワーカー実数の合計を
-// 持つ。Progressは主ワーカーだけが深さ1から1ずつ送る。
+// 持つ。Progressは主ワーカーだけが深さ1から1ずつ送り、採用深さは最後の
+// Progress以上になる。
 #[test]
 fn four_worker_progress_is_main_worker_only_and_monotonic() {
     let position = quiet_midgame();
@@ -1435,9 +1436,10 @@ fn four_worker_progress_is_main_worker_only_and_monotonic() {
         })
         .collect();
 
+    let progress_depths: Vec<_> = progress.iter().map(|entry| entry.0).collect();
     assert_eq!(
-        progress.iter().map(|entry| entry.0).collect::<Vec<_>>(),
-        vec![1, 2, 3, 4]
+        progress_depths,
+        (1..=*progress_depths.last().unwrap()).collect::<Vec<_>>()
     );
     assert!(
         progress
@@ -1447,6 +1449,7 @@ fn four_worker_progress_is_main_worker_only_and_monotonic() {
     assert!(progress.iter().all(|entry| !entry.3.is_empty()));
     assert!(outcome.result.nodes > 0);
     assert!(progress.last().unwrap().1 <= outcome.result.nodes);
+    assert!(outcome.result.depth >= progress.last().unwrap().0);
     assert_eq!(
         outcome.result.nodes,
         outcome.worker_nodes.iter().sum::<u64>()
@@ -1483,65 +1486,88 @@ fn external_stop_takes_priority_over_the_node_limit() {
     assert!(outcome.result.nodes <= 1);
 }
 
-// D7-SMP-06。lazy-smp.md「探索チーム」: 補助ワーカーはルート列を番号だけ
-// 回転してから既存の安定ソートを適用する。TT手と捕獲価値の優先度を保ち、
-// 同順位の静かな手だけが回転後の相対順になる。
+// D7-SMP-06。lazy-smp.md「探索チーム」第2版: 補助ワーカーkは周期
+// 2 + ((k - 1) % 4)に従う深さと深さ上限を昇順に探索する。
 #[test]
-fn auxiliary_root_rotation_preserves_move_priorities_and_changes_ties() {
-    let root = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 6), Color::Black, PieceKind::Rook),
-            (fs(6, 2), Color::White, PieceKind::Lion),
-            (fs(2, 6), Color::White, PieceKind::Pawn),
-            (fs(12, 1), Color::White, PieceKind::King),
-        ],
+fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
+    let periods = [2_u32, 3, 4, 5, 2];
+    for (worker_index, period) in (1..=5).zip(periods) {
+        for depth_limit in [1, 2, 6, 7, MAX_PLY] {
+            let expected: Vec<_> = (1..=depth_limit)
+                .filter(|&depth| depth == 1 || (depth - 1) % period == 0 || depth == depth_limit)
+                .collect();
+            let actual: Vec<_> = auxiliary_depths(worker_index, depth_limit).collect();
+            assert_eq!(
+                actual, expected,
+                "worker={worker_index}, limit={depth_limit}"
+            );
+            assert_eq!(actual.first(), Some(&1));
+            assert_eq!(actual.last(), Some(&depth_limit));
+            assert!(actual.windows(2).all(|pair| pair[0] < pair[1]));
+        }
+    }
+    assert_eq!(auxiliary_depths(1, 6).collect::<Vec<_>>(), vec![1, 3, 5, 6]);
+}
+
+// D7-SMP-08。lazy-smp.md「探索チーム」第2版: 最大完了深さを採用し、
+// 同じ深さなら番号最小を選ぶ。深さ0は除き、全員0なら主の既定値を返す。
+#[test]
+fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
+    let moves = legal_moves(&Position::initial());
+    let outcome = |worker_index: usize, depth: u32, move_index: usize| WorkerOutcome {
+        worker_index,
+        result: SearchResult {
+            best_move: moves[move_index],
+            score: worker_index as i32 * 10,
+            depth,
+            nodes: 0,
+        },
+        pv: vec![moves[move_index]],
+        nodes: worker_index as u64,
+    };
+
+    let different_depths = vec![outcome(0, 2, 0), outcome(1, 4, 1), outcome(2, 3, 2)];
+    assert_eq!(
+        select_worker_outcome(&different_depths),
+        &different_depths[1]
     );
-    let legal = legal_moves(&root);
-    let rook_from = fs(6, 6);
-    let high_capture = Move {
-        from: rook_from,
-        mid: None,
-        to: fs(6, 2),
-        promote: false,
-    };
-    let tt_capture = Move {
-        from: rook_from,
-        mid: None,
-        to: fs(2, 6),
-        promote: false,
-    };
-    assert!(legal.contains(&high_capture));
-    assert!(legal.contains(&tt_capture));
-    let quiet: Vec<Move> = legal
-        .iter()
-        .copied()
-        .filter(|&mv| mv.from == rook_from && move_order_key(&root, mv).is_none())
-        .take(2)
-        .collect();
-    assert_eq!(quiet.len(), 2);
 
-    let mut ordered = vec![quiet[0], tt_capture, quiet[1], high_capture];
-    rotate_root_moves(&mut ordered, 1);
-    assert_eq!(ordered, vec![tt_capture, quiet[1], high_capture, quiet[0]]);
+    let tied_depths = vec![outcome(2, 4, 2), outcome(0, 3, 0), outcome(1, 4, 1)];
+    assert_eq!(select_worker_outcome(&tied_depths), &tied_depths[2]);
 
-    let external_stop = AtomicBool::new(false);
-    let shared = SharedSearch {
-        external_stop: &external_stop,
-        team_stop: AtomicBool::new(false),
-        stop_reason: AtomicU8::new(0),
-        total_nodes: CacheAlignedAtomicU64(AtomicU64::new(0)),
-        node_limit: None,
-        started: Instant::now(),
-        hard_limit: None,
-    };
-    let history = [];
-    let table = small_tt();
-    let searcher = new_searcher(&root, engine_rules(), &history, &shared, &table);
-    searcher.order_moves(&root, &mut ordered, Some(tt_capture), 0);
+    let main_tied = vec![outcome(1, 4, 1), outcome(0, 4, 0), outcome(2, 3, 2)];
+    assert_eq!(select_worker_outcome(&main_tied), &main_tied[1]);
 
-    assert_eq!(ordered, vec![tt_capture, high_capture, quiet[1], quiet[0]]);
+    let with_zero = vec![outcome(0, 1, 0), outcome(1, 0, 1), outcome(2, 0, 2)];
+    assert_eq!(select_worker_outcome(&with_zero), &with_zero[0]);
+
+    let all_zero = vec![outcome(2, 0, 2), outcome(0, 0, 0), outcome(1, 0, 1)];
+    assert_eq!(select_worker_outcome(&all_zero), &all_zero[1]);
+}
+
+// D7-SMP-09・10。lazy-smp.md「探索チーム」第2版: いずれかのワーカーが
+// 深さ上限を完了するとチームを停止し、最深結果をFinishedへ載せる。
+#[test]
+fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
+    let initial = Position::initial();
+    let snapshot = snapshot_for(&initial);
+    let root_moves = snapshot.root_moves.clone();
+    let depth_limit = 4;
+    let handle = start_search(
+        snapshot,
+        depth_limits(depth_limit),
+        322,
+        worker_count(4),
+        small_tt(),
+    );
+    let (progress, finished) = drain_events(&handle);
+    handle.join().expect("search team must not panic");
+
+    assert_eq!(finished.depth, depth_limit);
+    let last_progress_depth = progress.last().map_or(0, |entry| entry.0);
+    assert!(finished.depth >= last_progress_depth);
+    assert_eq!(finished.stop_reason, StopReason::DepthCompleted);
+    assert!(root_moves.contains(&finished.best_move));
 }
 
 // ---------------------------------------------------------------------------

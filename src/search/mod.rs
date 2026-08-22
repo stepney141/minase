@@ -331,6 +331,19 @@ struct SearchOutcome {
     worker_nodes: Vec<u64>,
 }
 
+/// 1ワーカーが最後まで完了した反復と実訪問ノード数。
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct WorkerOutcome {
+    /// 探索チーム内のワーカー番号。主ワーカーは0。
+    worker_index: usize,
+    /// 最後まで完了した反復の結果。
+    result: SearchResult,
+    /// 最後まで完了した反復の主変化。
+    pv: Vec<Move>,
+    /// このワーカーが実際に訪問したノード数。
+    nodes: u64,
+}
+
 /// 停止フラグとの偽共有を避ける総ノード数。
 #[repr(align(64))]
 struct CacheAlignedAtomicU64(AtomicU64);
@@ -466,52 +479,85 @@ fn run_search_team(
         hard_limit: time_budget.map(|budget| budget.hard),
     };
 
-    let (mut outcome, worker_nodes) = thread::scope(|scope| {
-        let auxiliary_workers: Vec<_> = (1..threads.get())
-            .map(|worker_index| {
-                let shared = &shared;
-                scope.spawn(move || {
-                    run_auxiliary_worker(
-                        position,
-                        rules,
-                        root_moves,
-                        history_keys,
-                        depth_limit,
-                        worker_index,
-                        shared,
-                        tt,
-                    )
+    let worker_outcomes =
+        thread::scope(|scope| {
+            let auxiliary_workers: Vec<_> = (1..threads.get())
+                .map(|worker_index| {
+                    let shared = &shared;
+                    scope.spawn(move || {
+                        run_auxiliary_worker(
+                            position,
+                            rules,
+                            root_moves,
+                            history_keys,
+                            depth_limit,
+                            worker_index,
+                            shared,
+                            tt,
+                        )
+                    })
                 })
-            })
-            .collect();
-        let (outcome, main_nodes) = run_main_worker(
-            position,
-            rules,
-            root_moves,
-            history_keys,
-            depth_limit,
-            time_budget,
-            &shared,
-            tt,
-            events,
-        );
-        let mut worker_nodes = Vec::with_capacity(threads.get());
-        worker_nodes.push(main_nodes);
-        worker_nodes.extend(
-            auxiliary_workers
-                .into_iter()
-                .map(|worker| worker.join().expect("search worker must not panic")),
-        );
-        (outcome, worker_nodes)
-    });
-    outcome.result.nodes = worker_nodes.iter().sum();
-    #[cfg(test)]
-    {
-        outcome.worker_nodes = worker_nodes;
+                .collect();
+            let main_outcome = run_main_worker(
+                position,
+                rules,
+                root_moves,
+                history_keys,
+                depth_limit,
+                time_budget,
+                &shared,
+                tt,
+                events,
+            );
+            let mut worker_outcomes = Vec::with_capacity(threads.get());
+            worker_outcomes.push(main_outcome);
+            worker_outcomes.extend(auxiliary_workers.into_iter().map(
+                |worker| match worker.join() {
+                    Ok(outcome) => outcome,
+                    Err(payload) => std::panic::resume_unwind(payload),
+                },
+            ));
+            worker_outcomes
+        });
+    let worker_nodes: Vec<_> = worker_outcomes
+        .iter()
+        .map(|outcome| outcome.nodes)
+        .collect();
+    let adopted = select_worker_outcome(&worker_outcomes);
+    let mut result = adopted.result;
+    result.nodes = worker_nodes.iter().sum();
+    SearchOutcome {
+        result,
+        elapsed: started.elapsed(),
+        pv: adopted.pv.clone(),
+        stop_reason: shared.reason(),
+        #[cfg(test)]
+        worker_nodes,
     }
-    outcome.elapsed = started.elapsed();
-    outcome.stop_reason = shared.reason();
-    outcome
+}
+
+/// 完了深さが最大のワーカーを選び、同じ深さなら番号が最小のものを選ぶ。
+///
+/// 深さ0は採用候補から除き、全ワーカーが深さ0なら主ワーカーの既定結果を
+/// 返す。
+fn select_worker_outcome(worker_outcomes: &[WorkerOutcome]) -> &WorkerOutcome {
+    let main_outcome = worker_outcomes
+        .iter()
+        .find(|outcome| outcome.worker_index == 0)
+        .expect("search team must contain the main worker");
+    worker_outcomes
+        .iter()
+        .filter(|outcome| outcome.result.depth > 0)
+        .max_by_key(|outcome| (outcome.result.depth, Reverse(outcome.worker_index)))
+        .unwrap_or(main_outcome)
+}
+
+/// 補助ワーカーが探索する深さを昇順に返す。
+fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item = u32> {
+    assert!(worker_index > 0, "auxiliary worker index must be positive");
+    let period = 2 + ((worker_index - 1) % 4) as u32;
+    (1..=depth_limit)
+        .filter(move |&depth| depth == 1 || (depth - 1) % period == 0 || depth == depth_limit)
 }
 
 /// ワーカー固有の探索状態を構築する。
@@ -552,7 +598,7 @@ fn run_main_worker(
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
-) -> (SearchOutcome, u64) {
+) -> WorkerOutcome {
     let mut searcher = new_searcher(position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
@@ -563,7 +609,7 @@ fn run_main_worker(
     let mut completed_pv = vec![root_moves[0]];
 
     for depth in 1..=depth_limit {
-        let Some((best_move, score)) = searcher.search_root(position, root_moves, depth, 0) else {
+        let Some((best_move, score)) = searcher.search_root(position, root_moves, depth) else {
             debug_assert!(searcher.stop_reason.is_some());
             break;
         };
@@ -593,22 +639,21 @@ fn run_main_worker(
             shared.stop(StopReason::SoftLimit);
             break;
         }
+        if depth == depth_limit {
+            shared.stop(StopReason::DepthCompleted);
+            break;
+        }
     }
-    if !shared.team_stop.load(AtomicOrdering::Acquire) {
-        shared.stop(StopReason::DepthCompleted);
-    }
-    let outcome = SearchOutcome {
+    let nodes = searcher.finish_nodes();
+    WorkerOutcome {
+        worker_index: 0,
         result,
-        elapsed: shared.started.elapsed(),
         pv: completed_pv,
-        stop_reason: shared.reason(),
-        #[cfg(test)]
-        worker_nodes: Vec::new(),
-    };
-    (outcome, searcher.finish_nodes())
+        nodes,
+    }
 }
 
-/// 補助ワーカーの反復深化を実行する。結果と進捗は公開しない。
+/// 補助ワーカーの反復深化を実行し、最後まで完了した反復を返す。
 #[allow(clippy::too_many_arguments)]
 fn run_auxiliary_worker(
     position: &Position,
@@ -619,17 +664,35 @@ fn run_auxiliary_worker(
     worker_index: usize,
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
-) -> u64 {
+) -> WorkerOutcome {
     let mut searcher = new_searcher(position, rules, history_keys, shared, tt);
-    for depth in 1..=depth_limit {
-        if searcher
-            .search_root(position, root_moves, depth, worker_index)
-            .is_none()
-        {
+    let mut result = SearchResult {
+        best_move: root_moves[0],
+        score: evaluate(position),
+        depth: 0,
+        nodes: 0,
+    };
+    let mut completed_pv = vec![root_moves[0]];
+    for depth in auxiliary_depths(worker_index, depth_limit) {
+        let Some((best_move, score)) = searcher.search_root(position, root_moves, depth) else {
+            break;
+        };
+        result.best_move = best_move;
+        result.score = score;
+        result.depth = depth;
+        completed_pv.clone_from(&searcher.pv[0]);
+        if depth == depth_limit {
+            shared.stop(StopReason::DepthCompleted);
             break;
         }
     }
-    searcher.finish_nodes()
+    let nodes = searcher.finish_nodes();
+    WorkerOutcome {
+        worker_index,
+        result,
+        pv: completed_pv,
+        nodes,
+    }
 }
 
 /// 1回の探索実行の可変状態。
@@ -680,7 +743,6 @@ impl Searcher<'_> {
         position: &Position,
         root_moves: &[Move],
         depth: u32,
-        worker_index: usize,
     ) -> Option<(Move, i32)> {
         if !self.enter_node() {
             return None;
@@ -689,7 +751,6 @@ impl Searcher<'_> {
 
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
-        rotate_root_moves(&mut moves, worker_index);
         let key = search_key(&position);
         let tt_move = self.tt.probe(key, 0).and_then(|hit| hit.best_move);
         self.order_moves(&position, &mut moves, tt_move, 0);
@@ -1074,12 +1135,6 @@ impl Searcher<'_> {
             }
         }
     }
-}
-
-/// 補助ワーカーのルート手列をワーカー番号だけ左回転する。
-fn rotate_root_moves(moves: &mut [Move], worker_index: usize) {
-    let rotation = worker_index % moves.len();
-    moves.rotate_left(rotation);
 }
 
 /// 1手に使う時間の予算。

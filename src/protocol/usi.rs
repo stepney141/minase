@@ -46,6 +46,8 @@ struct SearchContext {
     rules: crate::Rules,
     /// `go infinite`による探索かどうか。
     infinite: bool,
+    /// 最後に`info`として出力した完了深さ。
+    last_info_depth: Option<u32>,
 }
 
 /// 探索の進行状態。
@@ -198,6 +200,7 @@ impl UsiProtocol {
                 position,
                 rules,
                 infinite,
+                last_info_depth: None,
             },
             handle,
         }))
@@ -380,10 +383,11 @@ impl UsiProtocol {
         event: SearchEvent,
         output: &mut dyn Write,
     ) -> io::Result<()> {
-        let Some(ActiveSearch::Running { context, .. }) = active.as_ref() else {
+        let event_search_id = event.search_id();
+        let Some(ActiveSearch::Running { context, .. }) = active.as_mut() else {
             return Ok(());
         };
-        if event.search_id() != context.id {
+        if event_search_id != context.id {
             return Ok(());
         }
 
@@ -395,12 +399,37 @@ impl UsiProtocol {
                 elapsed,
                 pv,
                 ..
-            } => write_info(output, context, depth, score, nodes, elapsed, &pv),
-            SearchEvent::Finished { best_move, .. } => {
-                let Some(ActiveSearch::Running { context, handle }) = active.take() else {
+            } => {
+                write_info(output, context, depth, score, nodes, elapsed, &pv)?;
+                context.last_info_depth = Some(depth);
+                Ok(())
+            }
+            SearchEvent::Finished {
+                best_move,
+                score,
+                depth,
+                nodes,
+                elapsed,
+                pv,
+                ..
+            } => {
+                let Some(ActiveSearch::Running {
+                    mut context,
+                    handle,
+                }) = active.take()
+                else {
                     unreachable!();
                 };
                 self.transposition_table = Some(join_search(handle)?);
+                write_final_info_if_deeper(
+                    output,
+                    &mut context,
+                    depth,
+                    score,
+                    nodes,
+                    elapsed,
+                    &pv,
+                )?;
                 if context.infinite {
                     *active = Some(ActiveSearch::AwaitingStop { context, best_move });
                     Ok(())
@@ -436,7 +465,10 @@ impl UsiProtocol {
             ActiveSearch::AwaitingStop { context, best_move } => {
                 write_bestmove(output, &context.position, best_move)
             }
-            ActiveSearch::Running { context, handle } => {
+            ActiveSearch::Running {
+                mut context,
+                handle,
+            } => {
                 if request_stop {
                     handle.request_stop();
                 }
@@ -456,8 +488,30 @@ impl UsiProtocol {
                             elapsed,
                             pv,
                             ..
-                        } => write_info(output, &context, depth, score, nodes, elapsed, &pv)?,
-                        SearchEvent::Finished { best_move, .. } => break best_move,
+                        } => {
+                            write_info(output, &context, depth, score, nodes, elapsed, &pv)?;
+                            context.last_info_depth = Some(depth);
+                        }
+                        SearchEvent::Finished {
+                            best_move,
+                            score,
+                            depth,
+                            nodes,
+                            elapsed,
+                            pv,
+                            ..
+                        } => {
+                            write_final_info_if_deeper(
+                                output,
+                                &mut context,
+                                depth,
+                                score,
+                                nodes,
+                                elapsed,
+                                &pv,
+                            )?;
+                            break best_move;
+                        }
                     }
                 };
                 self.transposition_table = Some(join_search(handle)?);
@@ -892,6 +946,25 @@ fn write_info(
     }
     writeln!(output)?;
     output.flush()
+}
+
+/// 採用深さが最後の進捗出力を超える場合だけ、採用結果を`info`として出す。
+#[allow(clippy::too_many_arguments)]
+fn write_final_info_if_deeper(
+    output: &mut dyn Write,
+    context: &mut SearchContext,
+    depth: u32,
+    score: i32,
+    nodes: u64,
+    elapsed: Duration,
+    pv: &[Move],
+) -> io::Result<()> {
+    if depth <= context.last_info_depth.unwrap_or(0) {
+        return Ok(());
+    }
+    write_info(output, context, depth, score, nodes, elapsed, pv)?;
+    context.last_info_depth = Some(depth);
+    Ok(())
 }
 
 /// 評価値を`info score`の種別(`cp`または`mate`)と値へ変換する。
@@ -1719,6 +1792,37 @@ mod tests {
 
         assert!(error_lines(&output).is_empty());
         assert_eq!(bestmoves(&output).len(), 2);
+    }
+
+    #[test]
+    fn multi_worker_search_places_info_immediately_before_one_bestmove() {
+        // D6-USI-38。補助ワーカーの採用深さは非決定的なので数値を固定せず、
+        // 採用結果のinfoが必要な場合もbestmove直前の構造を保つことを確認する。
+        let output = session(
+            &[RuleCode::R1],
+            concat!(
+                "setoption name Threads value 2\n",
+                "position startpos\n",
+                "go depth 4\n",
+            ),
+        );
+        let lines: Vec<_> = output.lines().collect();
+        let bestmove_positions: Vec<_> = lines
+            .iter()
+            .enumerate()
+            .filter_map(|(index, line)| line.starts_with("bestmove ").then_some(index))
+            .collect();
+
+        assert_eq!(bestmove_positions.len(), 1);
+        let bestmove = bestmove_positions[0];
+        assert_eq!(bestmove, lines.len() - 1);
+        assert!(bestmove > 0);
+        assert!(lines[bestmove - 1].starts_with("info depth "));
+        assert!(
+            lines[..bestmove]
+                .iter()
+                .all(|line| line.starts_with("info depth "))
+        );
     }
 
     #[test]
