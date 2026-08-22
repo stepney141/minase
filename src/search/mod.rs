@@ -38,8 +38,6 @@ pub const DEFAULT_THREADS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 const INFINITY: i32 = MATE + 1;
 /// 停止要求と時間切れを検査するノード数間隔。
 const STOP_CHECK_INTERVAL: u64 = 4096;
-/// 上限なし探索で局所ノード数を共有カウンタへ反映する間隔。
-const NODE_FLUSH_INTERVAL: u64 = 1024;
 /// History値を全体の半減で抑える上限。
 const HISTORY_LIMIT: i32 = 1 << 14;
 /// 1つのplyに記録するkiller手の数。
@@ -326,9 +324,6 @@ struct SearchOutcome {
     pv: Vec<Move>,
     /// 探索を停止した条件。
     stop_reason: StopReason,
-    /// 各ワーカーが実際に訪問したノード数。
-    #[cfg(test)]
-    worker_nodes: Vec<u64>,
 }
 
 /// 1ワーカーが最後まで完了した反復と実訪問ノード数。
@@ -344,10 +339,6 @@ struct WorkerOutcome {
     nodes: u64,
 }
 
-/// 停止フラグとの偽共有を避ける総ノード数。
-#[repr(align(64))]
-struct CacheAlignedAtomicU64(AtomicU64);
-
 /// 探索チームで共有する停止状態と探索予算。
 struct SharedSearch<'a> {
     /// 呼び出し側からの停止要求。
@@ -357,7 +348,7 @@ struct SharedSearch<'a> {
     /// 優先順位を反映した停止理由。
     stop_reason: AtomicU8,
     /// 全ワーカーが訪問したノード数。
-    total_nodes: CacheAlignedAtomicU64,
+    total_nodes: AtomicU64,
     /// 探索チーム全体のノード数上限。
     node_limit: Option<u64>,
     /// 補助ワーカー生成前に記録した探索開始時刻。
@@ -386,12 +377,7 @@ impl SharedSearch<'_> {
 
     /// 現在までに探索チームが訪問した総ノード数を返す。
     fn nodes(&self) -> u64 {
-        self.total_nodes.0.load(AtomicOrdering::Relaxed)
-    }
-
-    /// 局所カウンタから共有カウンタへノード数を反映する。
-    fn add_nodes(&self, nodes: u64) {
-        self.total_nodes.0.fetch_add(nodes, AtomicOrdering::Relaxed);
+        self.total_nodes.load(AtomicOrdering::Relaxed)
     }
 
     /// 共有状態に記録された停止理由を返す。
@@ -403,15 +389,16 @@ impl SharedSearch<'_> {
     /// ノードを1個予約する。上限を超える予約は拒否する。
     fn reserve_node(&self) -> bool {
         let Some(limit) = self.node_limit else {
+            self.total_nodes.fetch_add(1, AtomicOrdering::Relaxed);
             return true;
         };
-        let mut current = self.total_nodes.0.load(AtomicOrdering::Relaxed);
+        let mut current = self.total_nodes.load(AtomicOrdering::Relaxed);
         loop {
             if current >= limit {
                 self.stop(StopReason::NodeLimit);
                 return false;
             }
-            match self.total_nodes.0.compare_exchange_weak(
+            match self.total_nodes.compare_exchange_weak(
                 current,
                 current + 1,
                 AtomicOrdering::Relaxed,
@@ -473,7 +460,7 @@ fn run_search_team(
         external_stop,
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
-        total_nodes: CacheAlignedAtomicU64(AtomicU64::new(0)),
+        total_nodes: AtomicU64::new(0),
         node_limit,
         started,
         hard_limit: time_budget.map(|budget| budget.hard),
@@ -519,20 +506,22 @@ fn run_search_team(
             ));
             worker_outcomes
         });
-    let worker_nodes: Vec<_> = worker_outcomes
-        .iter()
-        .map(|outcome| outcome.nodes)
-        .collect();
+    let total_nodes = shared.nodes();
+    debug_assert_eq!(
+        total_nodes,
+        worker_outcomes
+            .iter()
+            .map(|outcome| outcome.nodes)
+            .sum::<u64>()
+    );
     let adopted = select_worker_outcome(&worker_outcomes);
     let mut result = adopted.result;
-    result.nodes = worker_nodes.iter().sum();
+    result.nodes = total_nodes;
     SearchOutcome {
         result,
         elapsed: started.elapsed(),
         pv: adopted.pv.clone(),
         stop_reason: shared.reason(),
-        #[cfg(test)]
-        worker_nodes,
     }
 }
 
@@ -644,7 +633,7 @@ fn run_main_worker(
             break;
         }
     }
-    let nodes = searcher.finish_nodes();
+    let nodes = searcher.nodes;
     WorkerOutcome {
         worker_index: 0,
         result,
@@ -686,7 +675,7 @@ fn run_auxiliary_worker(
             break;
         }
     }
-    let nodes = searcher.finish_nodes();
+    let nodes = searcher.nodes;
     WorkerOutcome {
         worker_index,
         result,
@@ -724,17 +713,6 @@ struct Searcher<'a> {
 }
 
 impl Searcher<'_> {
-    /// 共有カウンタへ未反映の端数を加え、実訪問ノード数を返す。
-    fn finish_nodes(self) -> u64 {
-        if self.shared.node_limit.is_none() {
-            let pending = self.nodes % NODE_FLUSH_INTERVAL;
-            if pending != 0 {
-                self.shared.add_nodes(pending);
-            }
-        }
-        self.nodes
-    }
-
     /// ルート局面を指定深さで探索し、最善手と評価値を返す。
     ///
     /// 中断された場合は`None`を返し、停止条件を記録する。
@@ -1063,9 +1041,6 @@ impl Searcher<'_> {
             return false;
         }
         self.nodes += 1;
-        if self.shared.node_limit.is_none() && self.nodes.is_multiple_of(NODE_FLUSH_INTERVAL) {
-            self.shared.add_nodes(NODE_FLUSH_INTERVAL);
-        }
         true
     }
 
