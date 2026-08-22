@@ -55,6 +55,8 @@ pub(super) const ADVISORY_GENERATION_SHIFT: u32 = 25;
 pub(super) const ADVISORY_GENERATION_MASK: u64 = 0xff << ADVISORY_GENERATION_SHIFT;
 /// `advisory`の予約領域はbit 33..=63に置き、常に0にする。
 pub(super) const ADVISORY_RESERVED_MASK: u64 = 0x7fff_ffff << 33;
+/// 指し手25ビットがすべて1の「手なし」符号。
+pub(super) const NO_MOVE: u32 = 0x01ff_ffff;
 
 /// 置換表の1エントリ。2個の64ビット原子値で厳密に16バイトを占める。
 #[repr(C)]
@@ -99,7 +101,7 @@ struct CriticalFields {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Hit {
     /// 格納されていた最善手。
-    pub(super) best_move: Move,
+    pub(super) best_move: Option<Move>,
     /// 現在の手数基準へ戻した評価値。
     pub(super) score: i32,
     /// 格納時の残り深さ。
@@ -187,15 +189,15 @@ impl TranspositionTable {
 
     /// 探索結果をエントリへ書き込む。
     ///
-    /// 同一局面、過去世代、またはより深い結果は既存エントリを置き換え、
-    /// 同世代のより浅い結果は捨てる。
+    /// 同一局面は既存以上の深さ、異なる局面は過去世代または既存より深い
+    /// 結果だけが既存エントリを置き換える。
     pub(super) fn store(
         &self,
         key: u64,
         depth: u32,
         score: i32,
         bound: Bound,
-        best_move: Move,
+        best_move: Option<Move>,
         ply: u32,
     ) {
         let index = key as usize & self.mask;
@@ -209,9 +211,11 @@ impl TranspositionTable {
         // MAX_PLYは256だが、根以外の残り深さは最大255である。公開APIから
         // 256を渡されても比較を保守的にするため、格納幅の上限へ飽和させる。
         let depth = depth.min(u8::MAX as u32) as u8;
-        let replace = existing
-            .as_ref()
-            .is_none_or(|existing| existing.key == key || age > 0 || existing.depth < depth);
+        let replace = match existing {
+            None => true,
+            Some(existing) if existing.key == key => depth >= existing.depth,
+            Some(existing) => age > 0 || depth > existing.depth,
+        };
         if !replace {
             return;
         }
@@ -292,8 +296,9 @@ fn unpack_critical(critical: u64) -> Option<CriticalFields> {
 }
 
 /// 助言情報を`advisory`のビット配置へ詰め込む。
-fn pack_advisory(best_move: Move, generation: u8) -> u64 {
-    let advisory = (u64::from(pack_move(best_move)) << ADVISORY_MOVE_SHIFT)
+fn pack_advisory(best_move: Option<Move>, generation: u8) -> u64 {
+    let packed_move = best_move.map_or(NO_MOVE, pack_move);
+    let advisory = (u64::from(packed_move) << ADVISORY_MOVE_SHIFT)
         | (u64::from(generation) << ADVISORY_GENERATION_SHIFT);
     debug_assert_eq!(advisory & ADVISORY_RESERVED_MASK, 0);
     advisory
@@ -317,8 +322,13 @@ pub(super) fn pack_move(mv: Move) -> u32 {
     from | (mid << 8) | (to << 16) | (u32::from(mv.promote) << 24)
 }
 
-/// 詰め込み表現から指し手を復元する。升番号が盤外なら失敗する。
-pub(super) fn unpack_move(packed: u32) -> Option<Move> {
+/// 詰め込み表現から指し手を復元する。
+///
+/// 「手なし」なら`Some(None)`、升番号が盤外なら`None`を返す。
+pub(super) fn unpack_move(packed: u32) -> Option<Option<Move>> {
+    if packed == NO_MOVE {
+        return Some(None);
+    }
     let from = Square::from_dense((packed & 0xff) as usize)?;
     let mid = ((packed >> 8) & 0xff) as usize;
     let mid = if mid == 0xff {
@@ -327,12 +337,12 @@ pub(super) fn unpack_move(packed: u32) -> Option<Move> {
         Some(Square::from_dense(mid)?)
     };
     let to = Square::from_dense(((packed >> 16) & 0xff) as usize)?;
-    Some(Move {
+    Some(Some(Move {
         from,
         mid,
         to,
         promote: packed & (1 << 24) != 0,
-    })
+    }))
 }
 
 /// 評価値を格納形式へ変換する。

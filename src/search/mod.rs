@@ -649,7 +649,7 @@ impl Searcher<'_> {
         let mut moves = root_moves.to_vec();
         rotate_root_moves(&mut moves, worker_index);
         let key = search_key(&position);
-        let tt_move = self.tt.probe(key, 0).map(|hit| hit.best_move);
+        let tt_move = self.tt.probe(key, 0).and_then(|hit| hit.best_move);
         self.order_moves(&position, &mut moves, tt_move, 0);
         let mut alpha = -INFINITY;
         let beta = INFINITY;
@@ -667,7 +667,7 @@ impl Searcher<'_> {
             alpha = alpha.max(score);
         }
         self.tt
-            .store(key, depth, best_score, Bound::Exact, best_move, 0);
+            .store(key, depth, best_score, Bound::Exact, Some(best_move), 0);
         Some((best_move, best_score))
     }
 
@@ -698,7 +698,7 @@ impl Searcher<'_> {
         // 深さが足りるヒットは即時カットオフだけに使い、探索窓は狭めない。
         // 窓を狭めると、格納時のバウンド分類が実際に探索した窓と食い違う。
         if let Some(hit) = self.tt.probe(key, ply) {
-            tt_move = Some(hit.best_move);
+            tt_move = hit.best_move;
             if u32::from(hit.depth) >= depth {
                 let cutoff = match hit.bound {
                     Bound::Exact => true,
@@ -784,13 +784,14 @@ impl Searcher<'_> {
         } else {
             Bound::Exact
         };
-        self.tt.store(key, depth, best_score, bound, best_move, ply);
+        self.tt
+            .store(key, depth, best_score, bound, Some(best_move), ply);
         Some(best_score)
     }
 
     /// stand-patと捕獲手だけを使う静止探索で局面を評価する。
     ///
-    /// 静止探索内の手は主変化へ含めず、反復検出と置換表も使用しない。
+    /// 静止探索内の手は主変化へ含めず、反復検出は行わない。
     /// 中断された場合は`None`を返す。
     fn quiesce(
         &mut self,
@@ -808,11 +809,28 @@ impl Searcher<'_> {
             return Some(evaluate(position));
         }
 
+        let original_alpha = alpha;
+        let key = search_key(position);
+        let mut tt_move = None;
+        if let Some(hit) = self.tt.probe(key, ply) {
+            tt_move = hit.best_move;
+            let cutoff = match hit.bound {
+                Bound::Exact => true,
+                Bound::Lower => hit.score >= beta,
+                Bound::Upper => hit.score <= alpha,
+            };
+            if cutoff {
+                return Some(hit.score);
+            }
+        }
+
         let stand_pat = evaluate(position);
         if stand_pat >= beta {
+            self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
             return Some(stand_pat);
         }
         let mut best = stand_pat;
+        let mut best_move = None;
         alpha = alpha.max(stand_pat);
 
         let mut captures = Vec::new();
@@ -822,6 +840,11 @@ impl Searcher<'_> {
             .filter_map(|mv| move_order_key(position, mv).map(|key| (mv, key)))
             .collect();
         order_captures(&mut captures);
+        if let Some(index) =
+            tt_move.and_then(|tt_move| captures.iter().position(|&(mv, _)| mv == tt_move))
+        {
+            captures.swap(0, index);
+        }
 
         for (mv, key) in captures {
             let is_last_royal_capture = captures_last_royal(position, mv);
@@ -838,12 +861,23 @@ impl Searcher<'_> {
                 position.unmake_move(undo);
                 score?
             };
-            best = best.max(score);
+            if score > best {
+                best = score;
+                best_move = Some(mv);
+            }
             alpha = alpha.max(score);
             if alpha >= beta {
                 break;
             }
         }
+        let bound = if best >= beta {
+            Bound::Lower
+        } else if best <= original_alpha {
+            Bound::Upper
+        } else {
+            Bound::Exact
+        };
+        self.tt.store(key, 0, best, bound, best_move, ply);
         Some(best)
     }
 

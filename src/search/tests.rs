@@ -15,7 +15,7 @@ use super::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, ADVISORY_MOVE_SHIFT,
     ADVISORY_RESERVED_MASK, Bound, CRITICAL_BOUND_MASK, CRITICAL_BOUND_SHIFT, CRITICAL_DEPTH_MASK,
     CRITICAL_DEPTH_SHIFT, CRITICAL_KEY_MASK, CRITICAL_KEY_SHIFT, CRITICAL_RESERVED_MASK,
-    CRITICAL_SCORE_MASK, CRITICAL_SCORE_SHIFT, entry_size, pack_move, unpack_move,
+    CRITICAL_SCORE_MASK, CRITICAL_SCORE_SHIFT, NO_MOVE, entry_size, pack_move, unpack_move,
 };
 
 // ---------------------------------------------------------------------------
@@ -86,6 +86,61 @@ fn clock(remaining_ms: u64, increment_ms: u64, byoyomi_ms: u64) -> ClockLimits {
 
 fn small_tt() -> TranspositionTable {
     TranspositionTable::new(1)
+}
+
+/// 静止探索を直接実行し、評価値と当該Searcherの訪問ノード数を返す。
+fn run_quiesce(
+    position: &Position,
+    alpha: i32,
+    beta: i32,
+    ply: u32,
+    table: &TranspositionTable,
+) -> (i32, u64) {
+    let external_stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        node_limit: None,
+        started: Instant::now(),
+        hard_limit: None,
+    };
+    let history = [];
+    let mut current = position.clone();
+    let mut searcher = new_searcher(position, engine_rules(), &history, &shared, table);
+    let score = searcher
+        .quiesce(&mut current, alpha, beta, ply)
+        .expect("unlimited quiescence search must complete");
+    (score, searcher.nodes)
+}
+
+/// 通常探索を直接実行し、評価値と当該Searcherの訪問ノード数を返す。
+fn run_negamax(
+    position: &Position,
+    depth: u32,
+    alpha: i32,
+    beta: i32,
+    ply: u32,
+    table: &TranspositionTable,
+) -> (i32, u64) {
+    let external_stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        node_limit: None,
+        started: Instant::now(),
+        hard_limit: None,
+    };
+    let history = [];
+    let mut current = position.clone();
+    let mut searcher = new_searcher(position, engine_rules(), &history, &shared, table);
+    let score = searcher
+        .negamax(&mut current, depth, alpha, beta, ply)
+        .expect("unlimited negamax search must complete");
+    (score, searcher.nodes)
 }
 
 fn worker_count(count: usize) -> NonZeroUsize {
@@ -642,6 +697,176 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
     );
 
     assert_eq!(result.score, expected);
+}
+
+// D7-SRCH-11。search.md「静止探索」節の2026年8月22日改訂: Exact、
+// score >= betaのLower、score <= alphaのUpperは深さ条件なしで返す。
+#[test]
+fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let key = search_key(&position);
+    let cases = [
+        (Bound::Exact, 17, -10, 10),
+        (Bound::Lower, 50, -100, 50),
+        (Bound::Upper, -50, -50, 100),
+    ];
+
+    for (bound, score, alpha, beta) in cases {
+        let table = small_tt();
+        table.store(key, 0, score, bound, None, 0);
+        let (actual, _) = run_quiesce(&position, alpha, beta, 0, &table);
+        assert_eq!(actual, score);
+    }
+}
+
+// D7-SRCH-12。静止探索の通常出口は深さ0で記録され、同じ入口局面を
+// 再訪するとExactヒットで捕獲展開を省く。
+#[test]
+fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let capture = Move {
+        from: fs(3, 10),
+        mid: None,
+        to: fs(3, 4),
+        promote: false,
+    };
+    assert!(legal_moves(&position).contains(&capture));
+
+    let table = small_tt();
+    let (first_score, first_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
+    let hit = table.probe(search_key(&position), 0).unwrap();
+    assert_eq!(hit.depth, 0);
+    assert_eq!(hit.bound, Bound::Exact);
+    let stored_move = hit.best_move.expect("捕獲手が最善なら記録手を持つ");
+    assert_eq!(stored_move.from, capture.from);
+    assert_eq!(stored_move.to, capture.to);
+    assert_eq!(hit.score, first_score);
+
+    let (second_score, second_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
+    assert_eq!(second_score, first_score);
+    assert!(first_nodes > 1);
+    assert!(second_nodes < first_nodes);
+}
+
+// D7-SRCH-12。stand-pat即時β超過と通常出口のUpper・Exactを経路別に
+// 深さ0で記録し、stand-patが最善なら手なしとする。
+#[test]
+fn quiescence_records_bounds_and_no_move_by_exit_path() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let key = search_key(&position);
+    let stand_pat = evaluate(&position);
+    let cases = [
+        (-INFINITY, stand_pat, Bound::Lower),
+        (stand_pat, INFINITY, Bound::Upper),
+        (stand_pat - 1, stand_pat + 1, Bound::Exact),
+    ];
+
+    for (alpha, beta, expected_bound) in cases {
+        let table = small_tt();
+        let (score, _) = run_quiesce(&position, alpha, beta, 0, &table);
+        let hit = table.probe(key, 0).unwrap();
+        assert_eq!(score, stand_pat);
+        assert_eq!(hit.depth, 0);
+        assert_eq!(hit.bound, expected_bound);
+        assert_eq!(hit.best_move, None);
+    }
+}
+
+// D7-SRCH-12。深さ0のExact記録は通常探索の深さ1条件を満たさず、
+// 通常探索の評価値カットオフには使われない。
+#[test]
+fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::GoldGeneral),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(6, 3), Color::White, PieceKind::GoldGeneral),
+        ],
+    );
+    let key = search_key(&position);
+    let table = small_tt();
+    table.store(key, 0, 28_000, Bound::Exact, None, 0);
+    assert_eq!(table.probe(key, 0).unwrap().depth, 0);
+
+    let (score, nodes) = run_negamax(&position, 1, -INFINITY, INFINITY, 0, &table);
+    assert_ne!(score, 28_000);
+    assert!(score.abs() < 29_000);
+    assert!(nodes > 1, "深さ1の子を探索しなければならない");
+    assert_eq!(table.probe(key, 0).unwrap().depth, 1);
+}
+
+// D7-SRCH-13。静止探索で最後の王駒を取ったMATE-plyは、現在plyを渡した
+// 置換表の既存変換で往復する。
+#[test]
+fn quiescence_mate_score_round_trips_through_the_tt() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(1, 12), Color::Black, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::Rook),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let mate_move = Move {
+        from: fs(6, 10),
+        mid: None,
+        to: fs(6, 1),
+        promote: false,
+    };
+    assert!(legal_moves(&position).contains(&mate_move));
+
+    let table = small_tt();
+    let ply = 5;
+    let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, ply, &table);
+    let hit = table.probe(search_key(&position), ply).unwrap();
+    assert_eq!(score, MATE - ply as i32);
+    assert_eq!(hit.score, score);
+    assert_eq!(hit.depth, 0);
+    assert_eq!(hit.best_move, Some(mate_move));
+}
+
+// D7-SRCH-13。最大ply葉は置換表照会より先に静的評価を返し、既存の
+// エントリを参照も更新もしない。
+#[test]
+fn quiescence_max_ply_leaf_does_not_probe_or_store() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let key = search_key(&position);
+    let table = small_tt();
+    table.store(key, 8, 12_345, Bound::Exact, None, MAX_PLY);
+    let raw_before = table.raw_entry(key);
+
+    let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, MAX_PLY, &table);
+    assert_eq!(score, evaluate(&position));
+    assert_ne!(score, 12_345);
+    assert_eq!(table.raw_entry(key), raw_before);
 }
 
 // ---------------------------------------------------------------------------
@@ -1336,7 +1561,7 @@ fn packed_moves_round_trip_across_all_move_shapes() {
         for mv in moves {
             let packed = pack_move(mv);
             // 往復一致（恒等写像）。
-            assert_eq!(unpack_move(packed), Some(mv));
+            assert_eq!(unpack_move(packed), Some(Some(mv)));
 
             // 各フィールドの帯域。midなしは厳密に0xffで、別の番兵で
             // 代替されないことをビット層で確認する。
@@ -1381,6 +1606,18 @@ fn packed_moves_round_trip_across_all_move_shapes() {
     assert!(saw_promotion);
     assert!(saw_from_dense_0);
     assert!(saw_to_dense_143);
+
+    // 指し手25ビットがすべて1なら、不正値ではなく「手なし」として復号する。
+    assert_eq!(NO_MOVE, 0x01ff_ffff);
+    assert_eq!(unpack_move(NO_MOVE), Some(None));
+
+    // 手なしを持つエントリも有効なヒットとして往復する。
+    let table = small_tt();
+    let key = 0x0fed_cba9_0000_0042;
+    table.store(key, 0, 321, Bound::Exact, None, 0);
+    let hit = table.probe(key, 0).unwrap();
+    assert_eq!(hit.best_move, None);
+    assert_eq!(hit.score, 321);
 }
 
 // D7-TT-02。search.md「置換表」節: 格納時は`score >= MATE−256`なら
@@ -1407,25 +1644,24 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
     let plies = [0, 1, 5, 255, 256];
     for score in scores {
         for ply in plies {
-            table.store(key, 8, score, Bound::Exact, best_move, ply);
+            table.store(key, 8, score, Bound::Exact, Some(best_move), ply);
             assert_eq!(table.probe(key, ply).unwrap().score, score);
         }
     }
 
     // 境界: 29744（詰み帯下限）は変換され、別plyの取り出しで根相対値が
     // ずれて観測される。28999（通常帯上限直下）は変換されない。
-    table.store(key, 8, 29_744, Bound::Exact, best_move, 5);
+    table.store(key, 8, 29_744, Bound::Exact, Some(best_move), 5);
     assert_eq!(table.probe(key, 4).unwrap().score, 29_745);
-    table.store(key, 8, -29_744, Bound::Exact, best_move, 5);
+    table.store(key, 8, -29_744, Bound::Exact, Some(best_move), 5);
     assert_eq!(table.probe(key, 4).unwrap().score, -29_745);
-    table.store(key, 8, 28_999, Bound::Exact, best_move, 5);
+    table.store(key, 8, 28_999, Bound::Exact, Some(best_move), 5);
     assert_eq!(table.probe(key, 4).unwrap().score, 28_999);
 }
 
-// D7-TT-03。search.md「置換表」節: 空きスロットまたは同一キーへは常に
-// 書き込む。異なるキーは年齢（wrapping_sub）がより古いエントリを置換し、
-// 同年齢なら深さがより浅いエントリだけを置換する。同年齢で深さが等しいか
-// 深い既存エントリは保持する。
+// D7-TT-03。search.md「置換表」節の2026年8月22日改訂: 同一キーは世代を
+// 問わず既存以上の深さだけを書き込み、異なるキーは過去世代または既存より
+// 深い結果だけを書き込む。
 #[test]
 fn tt_replacement_follows_same_key_generation_then_depth() {
     let best_move = Move {
@@ -1442,49 +1678,80 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
     // (1) 空きスロットへは書き込まれる。
     let mut table = small_tt();
     table.new_search();
-    table.store(key_a, 8, 100, Bound::Exact, best_move, 0);
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
     let hit = table.probe(key_a, 0).unwrap();
     assert_eq!(hit.score, 100);
     assert_eq!(hit.depth, 8);
 
-    // (2) 同一キーは、新エントリが浅くても常に上書きされる。深さ優先の
-    //     誤実装（浅い結果の格納拒否）と峻別する最重要assert。
-    table.store(key_a, 2, 222, Bound::Upper, best_move, 0);
+    // (2a) 同一キー・同世代の浅い結果は既存値を保持する。
+    table.store(key_a, 2, 222, Bound::Upper, Some(best_move), 0);
     let hit = table.probe(key_a, 0).unwrap();
-    assert_eq!(hit.score, 222);
-    assert_eq!(hit.depth, 2);
+    assert_eq!(hit.score, 100);
+    assert_eq!(hit.depth, 8);
+    assert_eq!(hit.bound, Bound::Exact);
+
+    // (2b) 同一キー・同深さは最終書き込み優先とし、バウンド種別を問わず
+    //      置換する。`>`への変異を検出する境界でもある。
+    table.store(key_a, 8, 333, Bound::Lower, Some(best_move), 0);
+    let hit = table.probe(key_a, 0).unwrap();
+    assert_eq!(hit.score, 333);
+    assert_eq!(hit.depth, 8);
+    assert_eq!(hit.bound, Bound::Lower);
+
+    // (2c) 同一キーの深い結果は置換する。
+    table.store(key_a, 9, 444, Bound::Upper, Some(best_move), 0);
+    let hit = table.probe(key_a, 0).unwrap();
+    assert_eq!(hit.score, 444);
+    assert_eq!(hit.depth, 9);
     assert_eq!(hit.bound, Bound::Upper);
 
-    // (3) 異キーでも既存世代が古ければ深さによらず置換する。
+    // (3) 同一キーは過去世代でも浅い結果を保持し、保持時は世代を更新しない。
     table.clear();
     table.new_search();
-    table.store(key_a, 8, 100, Bound::Exact, best_move, 0);
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
+    let (_, advisory_before) = table.raw_entry(key_a);
     table.new_search();
-    table.store(key_b, 1, 300, Bound::Exact, best_move, 0);
+    table.store(key_a, 2, 222, Bound::Upper, Some(best_move), 0);
+    let hit = table.probe(key_a, 0).unwrap();
+    let (_, advisory_after) = table.raw_entry(key_a);
+    assert_eq!(hit.score, 100);
+    assert_eq!(hit.depth, 8);
+    assert_eq!(advisory_after, advisory_before);
+    assert_eq!(
+        ((advisory_after & ADVISORY_GENERATION_MASK) >> ADVISORY_GENERATION_SHIFT) as u8,
+        1
+    );
+
+    // (4) 異キーでも既存世代が古ければ深さによらず置換する。
+    table.clear();
+    table.new_search();
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
+    table.new_search();
+    table.store(key_b, 1, 300, Bound::Exact, Some(best_move), 0);
     assert!(table.probe(key_a, 0).is_none());
     assert_eq!(table.probe(key_b, 0).unwrap().score, 300);
 
-    // (4) 異キー・同世代: 既存depth=3へdepth=5は置換する。
+    // (5a) 異キー・同世代: 既存depth=3へdepth=5は置換する。
     table.clear();
     table.new_search();
-    table.store(key_a, 3, 100, Bound::Exact, best_move, 0);
-    table.store(key_b, 5, 400, Bound::Exact, best_move, 0);
+    table.store(key_a, 3, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key_b, 5, 400, Bound::Exact, Some(best_move), 0);
     assert!(table.probe(key_a, 0).is_none());
     assert_eq!(table.probe(key_b, 0).unwrap().score, 400);
 
-    // (5) 異キー・同世代・同深さ: 既存を保持する（`<`と`<=`の変異検出）。
+    // (5b) 異キー・同世代・同深さ: 既存を保持する（`<`と`<=`の変異検出）。
     table.clear();
     table.new_search();
-    table.store(key_a, 5, 100, Bound::Exact, best_move, 0);
-    table.store(key_b, 5, 500, Bound::Exact, best_move, 0);
+    table.store(key_a, 5, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key_b, 5, 500, Bound::Exact, Some(best_move), 0);
     assert_eq!(table.probe(key_a, 0).unwrap().score, 100);
     assert!(table.probe(key_b, 0).is_none());
 
-    // (6) 異キー・同世代: 既存depth=7へdepth=5は保持する。
+    // (5c) 異キー・同世代: 既存depth=7へdepth=5は保持する。
     table.clear();
     table.new_search();
-    table.store(key_a, 7, 100, Bound::Exact, best_move, 0);
-    table.store(key_b, 5, 600, Bound::Exact, best_move, 0);
+    table.store(key_a, 7, 100, Bound::Exact, Some(best_move), 0);
+    table.store(key_b, 5, 600, Bound::Exact, Some(best_move), 0);
     assert_eq!(table.probe(key_a, 0).unwrap().score, 100);
     assert!(table.probe(key_b, 0).is_none());
 
@@ -1494,9 +1761,9 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
     for _ in 0..255 {
         table.new_search();
     }
-    table.store(key_a, 8, 100, Bound::Exact, best_move, 0);
+    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
     table.new_search();
-    table.store(key_b, 1, 700, Bound::Exact, best_move, 0);
+    table.store(key_b, 1, 700, Bound::Exact, Some(best_move), 0);
     assert!(table.probe(key_a, 0).is_none());
     assert_eq!(table.probe(key_b, 0).unwrap().score, 700);
 }
@@ -1551,7 +1818,7 @@ fn tt_clear_empties_all_entries_and_search_restarts() {
     let mut table = small_tt();
     table.new_search();
     for &key in &keys {
-        table.store(key, 4, 100, Bound::Exact, best_move, 0);
+        table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
         assert!(table.probe(key, 0).is_some());
     }
 
@@ -1631,10 +1898,10 @@ fn atomic_tt_entry_is_16_bytes_and_all_fields_round_trip() {
     for _ in 0..7 {
         table.new_search();
     }
-    table.store(key, 23, -1_234, Bound::Upper, best_move, 0);
+    table.store(key, 23, -1_234, Bound::Upper, Some(best_move), 0);
 
     let hit = table.probe(key, 0).unwrap();
-    assert_eq!(hit.best_move, best_move);
+    assert_eq!(hit.best_move, Some(best_move));
     assert_eq!(hit.score, -1_234);
     assert_eq!(hit.depth, 23);
     assert_eq!(hit.bound, Bound::Upper);
@@ -1681,7 +1948,7 @@ fn malformed_atomic_tt_entries_are_probe_misses() {
     let key = 0x1234_5678_0000_0042;
     let table = small_tt();
     table.new_search();
-    table.store(key, 8, 100, Bound::Exact, best_move, 0);
+    table.store(key, 8, 100, Bound::Exact, Some(best_move), 0);
     let (critical, advisory) = table.raw_entry(key);
 
     table.write_raw(key, critical | CRITICAL_RESERVED_MASK, advisory);
@@ -1758,11 +2025,11 @@ fn concurrent_probe_and_store_only_return_written_moves() {
                         8,
                         iteration as i32,
                         Bound::Exact,
-                        candidates[candidate_index],
+                        Some(candidates[candidate_index]),
                         0,
                     );
                     if let Some(hit) = table.probe(keys[candidate_index], 0) {
-                        assert!(candidates.contains(&hit.best_move));
+                        assert!(hit.best_move.is_some_and(|mv| candidates.contains(&mv)));
                     }
                 }
             })
