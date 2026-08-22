@@ -101,7 +101,7 @@ fn run_quiesce(
         external_stop: &external_stop,
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
-        total_nodes: AtomicU64::new(0),
+        total_nodes: CacheAlignedAtomicU64(AtomicU64::new(0)),
         node_limit: None,
         started: Instant::now(),
         hard_limit: None,
@@ -129,7 +129,7 @@ fn run_negamax(
         external_stop: &external_stop,
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
-        total_nodes: AtomicU64::new(0),
+        total_nodes: CacheAlignedAtomicU64(AtomicU64::new(0)),
         node_limit: None,
         started: Instant::now(),
         hard_limit: None,
@@ -1377,8 +1377,8 @@ fn multi_worker_teams_finish_once_and_return_the_shared_table() {
     }
 }
 
-// D7-SMP-02。lazy-smp.md「停止と探索予算」: ノード予約は探索チーム全体の
-// AtomicU64に対して行い、Nを超える予約を拒否する。
+// D7-SMP-02。lazy-smp.md「停止と探索予算」第2版: 上限ありのノード予約は
+// 探索チーム全体のAtomicU64に対して行い、Nを超える予約を拒否する。
 #[test]
 fn four_worker_node_limit_never_exceeds_the_team_budget() {
     let initial = Position::initial();
@@ -1399,19 +1399,41 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
     assert!(root_moves.contains(&finished.best_move));
 }
 
-// D7-SMP-03。lazy-smp.md「探索チーム」: Progressは主ワーカーだけが深さ1
-// から1ずつ送り、チーム総ノード数と経過時間は単調非減少となる。
+// D7-SMP-03。lazy-smp.md「停止と探索予算」第2版: 上限なしではProgressが
+// 共有カウンタのスナップショットを持ち、Finishedは各ワーカー実数の合計を
+// 持つ。Progressは主ワーカーだけが深さ1から1ずつ送る。
 #[test]
 fn four_worker_progress_is_main_worker_only_and_monotonic() {
-    let handle = start_search(
-        snapshot_for(&quiet_midgame()),
-        depth_limits(4),
-        321,
+    let position = quiet_midgame();
+    let snapshot = snapshot_for(&position);
+    let limits = depth_limits(4);
+    let external_stop = AtomicBool::new(false);
+    let table = small_tt();
+    let (sender, receiver) = mpsc::channel();
+    let outcome = run_search_team(
+        &snapshot.position,
+        snapshot.rules,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &limits,
+        &external_stop,
         worker_count(4),
-        small_tt(),
+        &table,
+        Some((&sender, 321)),
     );
-    let (progress, finished) = drain_events(&handle);
-    handle.join().expect("search team must not panic");
+    let progress: Vec<_> = receiver
+        .try_iter()
+        .map(|event| match event {
+            SearchEvent::Progress {
+                depth,
+                nodes,
+                elapsed,
+                pv,
+                ..
+            } => (depth, nodes, elapsed, pv),
+            SearchEvent::Finished { .. } => panic!("team runner must only send progress"),
+        })
+        .collect();
 
     assert_eq!(
         progress.iter().map(|entry| entry.0).collect::<Vec<_>>(),
@@ -1420,10 +1442,15 @@ fn four_worker_progress_is_main_worker_only_and_monotonic() {
     assert!(
         progress
             .windows(2)
-            .all(|pair| pair[0].2 <= pair[1].2 && pair[0].3 <= pair[1].3)
+            .all(|pair| pair[0].1 <= pair[1].1 && pair[0].2 <= pair[1].2)
     );
-    assert!(progress.iter().all(|entry| !entry.4.is_empty()));
-    assert!(progress.last().unwrap().2 <= finished.nodes);
+    assert!(progress.iter().all(|entry| !entry.3.is_empty()));
+    assert!(outcome.result.nodes > 0);
+    assert!(progress.last().unwrap().1 <= outcome.result.nodes);
+    assert_eq!(
+        outcome.result.nodes,
+        outcome.worker_nodes.iter().sum::<u64>()
+    );
 }
 
 // D7-SMP-04。lazy-smp.md「再現性」: Threads=1の固定ノード探索は、経過
@@ -1504,7 +1531,7 @@ fn auxiliary_root_rotation_preserves_move_priorities_and_changes_ties() {
         external_stop: &external_stop,
         team_stop: AtomicBool::new(false),
         stop_reason: AtomicU8::new(0),
-        total_nodes: AtomicU64::new(0),
+        total_nodes: CacheAlignedAtomicU64(AtomicU64::new(0)),
         node_limit: None,
         started: Instant::now(),
         hard_limit: None,
