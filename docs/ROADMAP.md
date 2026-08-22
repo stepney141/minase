@@ -20,25 +20,26 @@
 | 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
 | 探索部 | [plans/search.md](plans/search.md) | 完了 | 2026年8月22日 |
 | 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 完了 | 2026年8月14日 |
-| Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 進行中 | ― |
+| Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 実装完了・採用保留 | 2026年8月22日 |
 | テストスイートのspec-first再構築 | [plans/spec-first-tests.md](plans/spec-first-tests.md) | 完了 | 2026年8月15日 |
 
 直前局面生成器は設計済みだが、2026年8月10日の利用者決定により探索部を先行させ、待機中のままとする。
 順方向の探索部と評価関数は直前局面生成器の完了を前提とせず、いつ再開しても手戻りがない。
 
-## 現在地：Lazy SMPの着手
+## 現在地：Lazy SMPの採用保留と単一ワーカー探索改良の起案
 
 探索部マイルストーンは2026年8月22日に完了した。
 評価関数v0、反復深化αβ＋PVS、置換表、静止探索（delta pruning付き）、killer・history順序付け、null move pruning、late move reductions、soft/hard二段リミットの時間管理、探索呼び出し境界からなる単一ワーカー探索が揃い、各改良はコミット対コミットのGSPRTで採用された（記録は plans/search.md の実施状況）。
-完了基準ゲート（凍結ベースライン0045833のdepth=1に対するdepth=4の対局）は207ペア全勝でH1、時間制御つき自己対局は時間切れなしに完走した。
-保留だったmimalloc採否と合法手生成器のVec割当改善も、benchのNPS実測に基づき両方採用して決着した。
-aspiration windowsとcheck extensionは、測定条件で発動しないこと、および延長条件の設計コストを理由に見送り、設計だけを残した。
 
-Lazy SMPの着手条件「単一ワーカー探索の完成」と「CECPの対局進行」は両方満たされた。
-次は plans/lazy-smp.md の設計に従い、共有置換表、探索チーム、共通の停止とノード予算、USIの`Threads`、CECPの`cores`を5フェーズで実装し、時間制御のコミット対コミットGSPRTで`Threads=2`対1を採否判定する。
-評価関数の本格化はLazy SMPの採否完了後に別マイルストーンとして起案する。
+Lazy SMPマイルストーンは同日に着手し、原子型置換表、探索チーム、共通の停止と予算、USIの`Threads`とCECPの`cores`、benchの並列測定までを実装してコミットした（〜90c1dd1、423件全緑、`Threads=1`のbench署名は実装前と一致）。
+一方、採否を決める時間制御GSPRT（`Threads=2`対1）は92ペアでLLRがほぼ0のまま判定保留となり、診断の結果、単一ワーカーの全ノードの約98%が置換表を使わない静止探索と深さ0ノードであるため、置換表共有だけでは主ワーカーの探索が短縮されないことが判明した（記録は plans/lazy-smp.md の実施状況）。
+利用者の決定により、本マイルストーンは実装完了・採用保留として閉じ、基盤は製品に残して既定ワーカー数1を維持する。
+
+次は、静止探索での置換表利用や静止探索の効率化など単一ワーカーの探索改良を別マイルストーンとして起案する。
+その完了後に、`DEFAULT_THREADS`だけを2へ変えた候補コミット対基準コミットの時間制御GSPRTで`Threads=2`対1を再測定し、Lazy SMPの採否を改めて判定する。
+評価関数の本格化は、この探索改良と並行または後続の別マイルストーンとして起案する。
 実lishogiサーバへの接続は、未完成のエンジンを公開の場へ出さない方針から対象外のままであり、探索・評価の成熟後に別マイルストーンとして計画する。
-直前局面生成器は待機中のままとし、`Position`のAPI再編を含むため、Lazy SMPの進み具合による衝突コストを見て着手時期を別途決める。
+直前局面生成器は待機中のままとし、`Position`のAPI再編を含むため、着手時期を別途決める。
 
 ## 横断的な記録済みの決定
 
