@@ -4,7 +4,7 @@
 
 2026年8月11日に本設計書を起案した。
 起案に先立ち、Game・Rules・探索を共有して対局進行をプロトコル別に分ける構成案を批判的にレビューし、時間制御のwire解析と予算計算の所有境界、USIで探索手を永続`Engine.game`へ適用しない非対称の根拠、CECP状態機械、およびHaChuを接続試験に限って使う完了条件を確定した。
-同日、Claude Fable 5の設計レビューを実施した。
+同日、設計レビューを実施した。
 レビューで指摘された、探索進捗チャネルの欠落、Lishogi-Bot接続時の規則前提と局面同期失敗、終局後のCECP `go`、秒読みを含む時間予算の検証、および実lishogi接続の完了条件を本版へ反映した。
 本設計書の起案に伴い、探索部設計書（search.md）の後半にあったUSI・CECPの対局進行、`go`系コマンドのwire処理、実GUI接続の端到端検証の責務を本書へ移した。
 実装は未着手である。
@@ -18,7 +18,6 @@ wire上の`go depth|nodes`→`bestmove`の契約は前倒し実装から変更�
 
 2026年8月12日にフェーズ1（USI対局進行）を完了した。
 着手条件である探索部フェーズ5（時間管理と探索呼び出し境界）は、同日の順序入替（search.mdの実施状況を参照）により先行実装済みである。
-実装はcodexへ委任し、Claudeが設計整合のレビューと検証を行った。
 `go`は`btime`・`wtime`・`binc`・`winc`・`byoyomi`・`movetime`・`depth`・`nodes`・`infinite`を受理してミリ秒の`SearchLimits`へ正規化し、残り時間と加算は現局面の手番側から選ぶ。
 裸の`go`と未知引数は従来どおりエラーとし、`go depth|nodes`→`bestmove`のwire契約は不変でmatch_runnerは無改修のまま動作する。
 探索は`SearchSnapshot`の複製上で行い、`bestmove`は`Engine.game`へ適用しない。
@@ -28,7 +27,6 @@ wire上の`go depth|nodes`→`bestmove`の契約は前倒し実装から変更�
 実バイナリの煙試験で、時計引数つき`go`のinfo行と`stop`によるbestmove送出、`go infinite`→`stop`の単一bestmove、探索中`quit`の結果破棄を確認した。
 
 2026年8月13日にフェーズ2（CECP対局進行）を完了した。
-実装はcodexへ委任し、Claudeが設計整合のレビューと検証を行った。
 CECPアダプターへ担当手番（`Option<Color>`）とforce状態を追加し、`new`（force解除・担当手番は後手）、`force`、`go`（`InGame`以外はエラー）、`usermove`後の自動応手、`result`（探索停止・結果破棄つき確定通知）、`?`（move now）の状態機械を実装した。
 エンジン着手は`ApplyMove`→`move`行（既存のレグ分割、じっとは`@@@@`）→`newly_finished`時のみ`RESULT`1回の順で送出し、拒否時は`tellusererror`を出してforce状態へ退避する。
 feature宣言を`time=1`・`memory=1`化し、`time`・`otim`（1/100秒）、`level`（分・`分:秒`・加算秒）、`st`（秒）、`sd`（深さ）をミリ秒へ正規化して`SearchLimits`へ写す。`memory <MB>`は探索中でないときの置換表リサイズとして受理する（既定256MB、探索間で再利用、`new`とRuleSet変更でクリア）。
@@ -249,8 +247,6 @@ HaChuの不正手をminaseが`Illegal move`で拒否する挙動は、この接�
 HaChuとの規則互換性の照合と互換プリセットの再検討は、完了条件に含めない（プロトコル層の決定を維持する）。
 
 ## 実装フェーズ
-
-分業は従来どおり、実装をcodexへフェーズ単位で委任し、Claudeが設計指示・レビュー・コミットを担当する。
 
 ### フェーズ1　USI対局進行
 
