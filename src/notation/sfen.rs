@@ -1,4 +1,4 @@
-//! shogiops互換SFENと、先獅子・手数・P1成り権保留を加えた拡張SFENの読み書き。
+//! shogiops互換SFENと、先獅子・手数・成り権保留(P1・P2・P5)を加えた拡張SFENの読み書き。
 
 use core::fmt;
 
@@ -10,7 +10,7 @@ use crate::core::square::{BOARD_FILES, BOARD_RANKS, Square};
 /// 拡張SFENが表す対局開始局面。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SetupPosition {
-    /// 盤面、手番およびP1成り権保留状態。
+    /// 盤面、手番および成り権保留状態(P1・P2・P5)。
     pub position: Position,
     /// 直前の非獅子による獅子捕獲升。先獅子(第15条)の復元に使う。
     pub lion_capture: Option<Square>,
@@ -43,17 +43,17 @@ pub enum SfenError {
     },
     /// 手数が1以上9999以下の整数ではない。
     InvalidMoveNumber,
-    /// P1成り権保留升の表記が盤上の升を表さない。
+    /// 成り権保留升(P1・P2・P5)の表記が盤上の升を表さない。
     InvalidPromotionDeferredSquare,
-    /// P1成り権保留升が内部密番号の狭義昇順ではない。
+    /// 成り権保留升(P1・P2・P5)が内部密番号の狭義昇順ではない。
     PromotionDeferredNotStrictlyAscending {
         /// 直前に読んだ升。
         previous: Square,
         /// 順序に反した升。
         current: Square,
     },
-    /// P1を採用していない規則で成り権保留升が指定された(第30条P1)。
-    PromotionDeferredRequiresP1,
+    /// 成り権保留欄はP1・P2・P5のいずれかの採用を要する。
+    PromotionDeferredRequiresRule,
     /// 盤面の段数が12ではない。
     WrongRowCount {
         /// 入力にあった段数。
@@ -133,9 +133,8 @@ impl fmt::Display for SfenError {
                 formatter,
                 "extended SFEN promotion-deferred squares are not strictly ascending: {previous:?}, {current:?}"
             ),
-            Self::PromotionDeferredRequiresP1 => {
-                formatter.write_str("extended SFEN promotion-deferred squares require rule P1")
-            }
+            Self::PromotionDeferredRequiresRule => formatter
+                .write_str("extended SFEN promotion-deferred squares require rule P1, P2, or P5"),
             Self::WrongRowCount { found } => write!(
                 formatter,
                 "SFEN board has {found} rows; expected {BOARD_RANKS}"
@@ -189,7 +188,7 @@ impl std::error::Error for SfenError {
             | Self::InvalidMoveNumber
             | Self::InvalidPromotionDeferredSquare
             | Self::PromotionDeferredNotStrictlyAscending { .. }
-            | Self::PromotionDeferredRequiresP1
+            | Self::PromotionDeferredRequiresRule
             | Self::WrongRowCount { .. }
             | Self::InvalidEmptyCount { .. }
             | Self::WrongRowWidth { .. }
@@ -292,7 +291,7 @@ pub fn to_sfen(position: &Position) -> String {
     sfen
 }
 
-/// 対局開始局面を先獅子とP1成り権保留を含む5欄の拡張SFENへ書き出す。
+/// 対局開始局面を先獅子と成り権保留(P1・P2・P5)を含む5欄の拡張SFENへ書き出す。
 pub fn to_extended_sfen(setup: &SetupPosition) -> String {
     let lion_capture = setup
         .lion_capture
@@ -316,7 +315,7 @@ pub fn to_extended_sfen(setup: &SetupPosition) -> String {
 
 /// 4欄または5欄の拡張SFENを解析する。
 ///
-/// 4欄入力ではP1成り権保留欄を`-`とみなす。獅子捕獲升は検証して
+/// 4欄入力では成り権保留欄(P1・P2・P5)を`-`とみなす。獅子捕獲升は検証して
 /// [`SetupPosition::lion_capture`]へ保持し、先獅子状態(第15条)の
 /// [`Position`]への注入は対局管理層へ委ねる。
 pub fn parse_extended_sfen(sfen: &str, rules: Rules) -> Result<SetupPosition, SfenError> {
@@ -399,13 +398,16 @@ fn parse_side_to_move(field: &str) -> Result<Color, SfenError> {
     }
 }
 
-/// P1成り権保留欄を解析する。`-`は空を表し、升は内部密番号の狭義昇順を要求する。
+/// 成り権保留欄(P1・P2・P5)を解析する。`-`は空を表し、升は内部密番号の狭義昇順を要求する。
 fn parse_promotion_deferred(field: &str, rules: Rules) -> Result<Vec<Square>, SfenError> {
     if field == "-" {
         return Ok(Vec::new());
     }
-    if !rules.contains(RuleCode::P1) {
-        return Err(SfenError::PromotionDeferredRequiresP1);
+    if ![RuleCode::P1, RuleCode::P2, RuleCode::P5]
+        .into_iter()
+        .any(|code| rules.contains(code))
+    {
+        return Err(SfenError::PromotionDeferredRequiresRule);
     }
 
     let mut squares: Vec<Square> = Vec::new();
@@ -428,7 +430,7 @@ fn parse_promotion_deferred(field: &str, rules: Rules) -> Result<Vec<Square>, Sf
 ///
 /// 段は内部rank 11から0へ、筋は内部file 0から11へ進む。全21種の
 /// 駒文字を受理し、後手は小文字、成駒は接頭辞`+`で表す。獅子捕獲升、
-/// 手数およびP1成り権保留は拡張SFENで扱う。
+/// 手数および成り権保留(P1・P2・P5)は拡張SFENで扱う。
 ///
 /// 構文と[`PositionBuilder`]の不変条件だけを検証する。王駒の存在や
 /// 駒種ごとの枚数上限など、規則上の局面合法性は呼出し側が検証する。
@@ -1014,8 +1016,8 @@ mod tests {
         }
     }
 
-    // D5-SFEN-12: 第5欄はP1成り権保留升のコンマ区切り列（[PL]「拡張SFEN」、[RULES]第30条
-    // P1）。順序キー「内部密番号」の文書定義は未補修のため（SU-2）、決定性・往復保存・
+    // D5-SFEN-12: 第5欄は成り権保留升(P1・P2・P5)のコンマ区切り列（[PL]「拡張SFEN」、
+    // [RULES]第30条）。順序キー「内部密番号」の文書定義は未補修のため（SU-2）、決定性・往復保存・
     // 順序の単調性だけを断定し、特定の並びの直値は固定しない。
     #[test]
     fn deferred_field_is_a_strictly_ordered_comma_list_that_round_trips() {
@@ -1060,23 +1062,28 @@ mod tests {
         }
     }
 
-    // D5-SFEN-13: P1を含まない規則では`-`以外の第5欄を拒否する（[PL]「拡張SFEN」。
-    // R1同一局面キーの分断が[RULES]第24条第1項dと不整合になるため）。
+    // 第30条P1・P2・P5: 第5欄は3規則のいずれかを採用するときだけ受理する。
     #[test]
-    fn deferred_field_requires_rule_p1() {
+    fn deferred_field_requires_p1_p2_or_p5_and_round_trips_for_each() {
         let mut rows = ["12"; 12];
         rows[2] = "4S7";
         let board = rows.join("/");
 
-        // P1なし: `-`は受理し、升名列は構文が正しくても拒否する。
+        // 第30条P1・P2・P5: いずれもなければ、構文が正しい升名列も拒否する。
         assert!(parse_extended_sfen(&format!("{board} b - 1 -"), Rules::engine_default()).is_ok());
         assert_eq!(
             parse_extended_sfen(&format!("{board} b - 1 8c"), Rules::engine_default()),
-            Err(SfenError::PromotionDeferredRequiresP1)
+            Err(SfenError::PromotionDeferredRequiresRule)
         );
-        // P1あり: 同一入力を受理する（D5-SFEN-12と対）。
-        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
-        assert!(parse_extended_sfen(&format!("{board} b - 1 8c"), p1).is_ok());
+
+        // 第30条P1・P2・P5: 各規則の単独採用で第5欄を受理し、そのまま往復する。
+        let text = format!("{board} b - 1 8c");
+        for code in [RuleCode::P1, RuleCode::P2, RuleCode::P5] {
+            let rules = Rules::from_codes(&[code, RuleCode::R1]).unwrap();
+            let setup = parse_extended_sfen(&text, rules).unwrap();
+            assert!(setup.position.promotion_deferred().contains(sq(4, 9)));
+            assert_eq!(to_extended_sfen(&setup), text, "{code:?}");
+        }
     }
 
     // D5-SFEN-14: 保留升には成り得る未成駒の存在を要求し、空升・成駒・成れない駒の升を

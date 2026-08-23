@@ -2206,7 +2206,7 @@ mod tests {
         // D3-PRP-01横断: 代表規則セット群の決定的シードのランダム自己対局で、
         // 対局合法手はすべて受理され、終局理由は発動し得る裁定に限られる。
         const PLY_CAP: u32 = 1_500;
-        const RULE_SETS: [(&str, &[RuleCode], u64); 7] = [
+        const RULE_SETS: [(&str, &[RuleCode], u64); 9] = [
             (
                 "L1+L2+P3+R1+E1",
                 &[
@@ -2274,6 +2274,32 @@ mod tests {
                     RuleCode::E3,
                 ],
                 0x5255_4c45_4741_4d07,
+            ),
+            (
+                "L1+L3+P5+P6+R2+E1+E2",
+                &[
+                    RuleCode::L1,
+                    RuleCode::L3,
+                    RuleCode::P5,
+                    RuleCode::P6,
+                    RuleCode::R2,
+                    RuleCode::E1,
+                    RuleCode::E2,
+                ],
+                0x5255_4c45_4741_4d08,
+            ),
+            (
+                "L4+P2+P5+P6+R2+E1+E2",
+                &[
+                    RuleCode::L4,
+                    RuleCode::P2,
+                    RuleCode::P5,
+                    RuleCode::P6,
+                    RuleCode::R2,
+                    RuleCode::E1,
+                    RuleCode::E2,
+                ],
+                0x5255_4c45_4741_4d09,
             ),
         ];
 

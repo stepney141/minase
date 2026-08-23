@@ -127,6 +127,7 @@ fn push_with_promotion(
             output.push(base);
             output.push(promoting_variant(base));
         }
+        PromotionChoice::PromotionForced => output.push(promoting_variant(base)),
     }
 }
 

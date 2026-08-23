@@ -132,9 +132,9 @@ pub struct Position {
     lion_taken_by_non_lion: Option<LionTrigger>,
     /// 現局面のzobristハッシュ。着手のたびに増分更新する。
     zobrist: u64,
-    /// P1で成り権を保留中の駒がある升の集合。
+    /// 成り権を保留中(P1・P2・P5)の駒がある升の集合。
     promotion_deferred: Bitboard,
-    /// P1成り権保留状態のzobristハッシュ。
+    /// 成り権保留状態(P1・P2・P5)のzobristハッシュ。
     rights_zobrist: u64,
 }
 
@@ -404,13 +404,13 @@ impl Position {
         self.zobrist
     }
 
-    /// P1成り権保留状態のzobristハッシュを返す。
+    /// 成り権保留状態(P1・P2・P5)のzobristハッシュを返す。
     #[inline]
     pub const fn rights_zobrist(&self) -> u64 {
         self.rights_zobrist
     }
 
-    /// P1で成り権を保留中の駒がある升の集合を返す。
+    /// 成り権を保留中(P1・P2・P5)の駒がある升の集合を返す。
     #[inline]
     pub(crate) const fn promotion_deferred(&self) -> Bitboard {
         self.promotion_deferred
@@ -488,7 +488,7 @@ impl Position {
 
     /// 探索用の手番パスを適用し、巻き戻し用トークンを返す。
     ///
-    /// 盤上の駒とP1成り権保留状態は変更せず、手番を反転して、相手の
+    /// 盤上の駒と成り権保留状態(P1・P2・P5)は変更せず、手番を反転して、相手の
     /// 直後の1手だけに適用される先獅子状態を消滅させる(第15条第4・5項)。
     pub fn make_null_move(&mut self) -> NullUndo {
         let previous_lion_taken = self.lion_taken_by_non_lion;
@@ -536,7 +536,7 @@ impl Position {
         hash ^ keys.lion_trigger_state(self.lion_taken_by_non_lion)
     }
 
-    /// P1成り権保留状態からzobristハッシュを計算し直して返す。
+    /// 成り権保留状態(P1・P2・P5)からzobristハッシュを計算し直して返す。
     pub(crate) fn recompute_rights_zobrist(&self) -> u64 {
         let keys = zobrist_keys();
         self.promotion_deferred
@@ -545,7 +545,7 @@ impl Position {
             .fold(0, |hash, key| hash ^ key)
     }
 
-    /// P1の成り権保留ビットを立て、権利ハッシュを更新する。
+    /// 成り権保留(P1・P2・P5)のビットを立て、権利ハッシュを更新する。
     fn set_promotion_deferred(&mut self, square: Square) {
         if !self.promotion_deferred.contains(square) {
             self.promotion_deferred.set(square);
@@ -553,7 +553,7 @@ impl Position {
         }
     }
 
-    /// P1の成り権保留ビットを消し、権利ハッシュを更新する。
+    /// 成り権保留(P1・P2・P5)のビットを消し、権利ハッシュを更新する。
     fn clear_promotion_deferred(&mut self, square: Square) {
         if self.promotion_deferred.contains(square) {
             self.promotion_deferred.clear(square);
@@ -561,7 +561,7 @@ impl Position {
         }
     }
 
-    /// 指定升の駒がP1の成り権保留状態を持てるかどうかを返す。
+    /// 指定升の駒が成り権保留状態(P1・P2・P5)を持てるかどうかを返す。
     fn promotion_deferred_is_valid(&self, square: Square) -> bool {
         self.piece_at(square).is_some_and(|piece| {
             let Some(color) = piece.color() else {
@@ -674,12 +674,29 @@ impl Position {
             .piece_at(mv.from)
             .and_then(PieceCode::kind)
             .expect("move origin must contain a valid piece");
-        let had_promotion_option =
-            rules.promotion_choice(self, &mv, moving_kind) == PromotionChoice::PromotionOptional;
-        if rules.contains(RuleCode::P1) {
+        let moving_color = self.side_to_move;
+        let promotion_choice = rules.promotion_choice(self, &mv, moving_kind);
+        let had_promotion_chance = promotion_choice != PromotionChoice::NoPromotion;
+        let was_deferred = self.promotion_deferred.contains(mv.from);
+        let tracks_promotion_deferred = rules.contains(RuleCode::P1)
+            || rules.contains(RuleCode::P2)
+            || rules.contains(RuleCode::P5);
+        if tracks_promotion_deferred {
             self.clear_promotion_deferred(mv.from);
             for square in capture_squares.into_iter().flatten() {
                 self.clear_promotion_deferred(square);
+            }
+        }
+        if rules.contains(RuleCode::P2) {
+            // 待機はその側の直後の1手番で満了する(第30条P2)。
+            // P5の保留歩兵は恒久状態なので消さない。
+            let expiring = self.promotion_deferred & self.pieces_of(moving_color);
+            for square in expiring {
+                let is_p5_pawn = rules.contains(RuleCode::P5)
+                    && self.piece_at(square).and_then(PieceCode::kind) == Some(PieceKind::Pawn);
+                if !is_p5_pawn {
+                    self.clear_promotion_deferred(square);
+                }
             }
         }
         let moved_piece_before = self.remove_piece(mv.from);
@@ -703,16 +720,18 @@ impl Position {
         };
         self.put_piece(mv.to, moved_piece_after)
             .expect("generated move must end on an empty square");
-        if rules.contains(RuleCode::P1)
-            && had_promotion_option
+        let to_in_zone = in_promotion_zone(moving_color, mv.to);
+        let enters_zone = !in_promotion_zone(moving_color, mv.from) && to_in_zone;
+        let defer_for_p1 =
+            rules.contains(RuleCode::P1) && had_promotion_chance && !mv.promote && to_in_zone;
+        let defer_for_p2 =
+            rules.contains(RuleCode::P2) && had_promotion_chance && !mv.promote && enters_zone;
+        let defer_for_p5 = rules.contains(RuleCode::P5)
+            && moving_kind == PieceKind::Pawn
             && !mv.promote
-            && in_promotion_zone(
-                moved_piece_before
-                    .color()
-                    .expect("moving piece must have an owner"),
-                mv.to,
-            )
-        {
+            && (was_deferred || had_promotion_chance);
+        if defer_for_p1 || defer_for_p2 || defer_for_p5 {
+            debug_assert!(self.promotion_deferred_is_valid(mv.to));
             self.set_promotion_deferred(mv.to);
         }
         self.flip_side_to_move();
@@ -794,7 +813,7 @@ impl PositionBuilder {
         self.position.put_piece(square, piece)
     }
 
-    /// 指定升の駒をP1の成り権保留中として記録する。
+    /// 指定升の駒を成り権保留中(P1・P2・P5)として記録する。
     pub fn mark_promotion_deferred(&mut self, square: Square) -> Result<(), PositionBuildError> {
         if !self.position.promotion_deferred_is_valid(square) {
             return Err(PositionBuildError::InvalidPosition(
@@ -1476,7 +1495,7 @@ mod tests {
         assert_eq!(rejected, base);
     }
 
-    // 構成要素d(P1の成り権保留)は盤面キー(a〜c)と分離して保持される(第24条1項d、
+    // 構成要素d(成り権保留(P1・P2・P5))は盤面キー(a〜c)と分離して保持される(第24条1項d、
     // D4-024-04)。R2・R3の同一局面判定はa〜cのみ、R1はd込みで行う(第31条)ため、
     // dだけが異なる2局面は盤面キーが一致し権利キーだけが異なる。
     #[test]
@@ -1528,6 +1547,115 @@ mod tests {
             builder.put(square, code).unwrap();
             assert_eq!(builder.mark_promotion_deferred(square), invalid(square));
         }
+    }
+
+    #[test]
+    fn article_30_p2_waiting_right_survives_the_reply_and_expires_on_the_next_own_move() {
+        // 第30条P2: 敵陣入りの不成で生じた待機状態は相手の応手では残り、
+        // その側の直後の1手番で満了する。権利キーとundoも同じ遷移を保存する。
+        let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+        let mut position = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(4, 7), Color::Black, PieceKind::SilverGeneral),
+                (sq(10, 10), Color::White, PieceKind::GoldGeneral),
+            ],
+        );
+        let entry = Move {
+            from: sq(4, 7),
+            mid: None,
+            to: sq(4, 8),
+            promote: false,
+        };
+        position.make_move_unchecked(entry, rules);
+        assert!(position.promotion_deferred().contains(sq(4, 8)));
+        assert_ne!(position.rights_zobrist(), 0);
+        assert_eq!(
+            position.rights_zobrist(),
+            position.recompute_rights_zobrist()
+        );
+
+        position.make_move_unchecked(
+            Move {
+                from: sq(10, 10),
+                mid: None,
+                to: sq(10, 9),
+                promote: false,
+            },
+            rules,
+        );
+        assert!(position.promotion_deferred().contains(sq(4, 8)));
+        let before_expiry = position.clone();
+
+        let undo = position.make_move_unchecked(
+            Move {
+                from: sq(4, 8),
+                mid: None,
+                to: sq(4, 9),
+                promote: false,
+            },
+            rules,
+        );
+        assert!(position.promotion_deferred().is_empty());
+        assert_eq!(position.rights_zobrist(), 0);
+        assert_eq!(
+            position.rights_zobrist(),
+            position.recompute_rights_zobrist()
+        );
+
+        position.unmake_move(undo);
+        assert_eq!(position, before_expiry);
+        assert_eq!(position.rights_zobrist(), before_expiry.rights_zobrist());
+    }
+
+    #[test]
+    fn article_30_p5_deferred_pawn_state_moves_with_an_unpromoted_pawn() {
+        // 第30条P5: 敵陣入りで不成を選んだ歩兵の保留状態は、以後その歩兵が
+        // 不成のまま前進しても消滅せず、移動先へ引き継がれる。
+        let rules = Rules::from_codes(&[RuleCode::P5]).unwrap();
+        let mut position = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(4, 7), Color::Black, PieceKind::Pawn),
+                (sq(10, 10), Color::White, PieceKind::GoldGeneral),
+            ],
+        );
+        position.make_move_unchecked(
+            Move {
+                from: sq(4, 7),
+                mid: None,
+                to: sq(4, 8),
+                promote: false,
+            },
+            rules,
+        );
+        position.make_move_unchecked(
+            Move {
+                from: sq(10, 10),
+                mid: None,
+                to: sq(10, 9),
+                promote: false,
+            },
+            rules,
+        );
+        let old_rights = position.rights_zobrist();
+
+        position.make_move_unchecked(
+            Move {
+                from: sq(4, 8),
+                mid: None,
+                to: sq(4, 9),
+                promote: false,
+            },
+            rules,
+        );
+        assert!(!position.promotion_deferred().contains(sq(4, 8)));
+        assert!(position.promotion_deferred().contains(sq(4, 9)));
+        assert_ne!(position.rights_zobrist(), old_rights);
+        assert_eq!(
+            position.rights_zobrist(),
+            position.recompute_rights_zobrist()
+        );
     }
 
     // 局面キーは到達手順・手数・盤外情報に依存しない(第24条3項、D4-024-05)。
@@ -1780,7 +1908,7 @@ mod tests {
                 standard,
                 vec![mv(sq(4, 7), None, sq(5, 8), true)],
             ),
-            // P1の成り権保留の設定と消滅(第30条P1、第24条1項d)。
+            // 成り権保留の設定と消滅(第30条P1、第24条1項d)。
             (
                 position_with_pieces(
                     Color::Black,
@@ -1890,7 +2018,7 @@ mod tests {
         assert_eq!(position.rights_zobrist(), before.rights_zobrist());
     }
 
-    // D4-IMP-10[実装契約] P1成り権保留と権利キーは手番パスで変化せず、
+    // D4-IMP-10[実装契約] 成り権保留と権利キーは手番パスで変化せず、
     // 巻き戻すと局面全体が復元される。
     #[test]
     fn d4_imp_10_null_move_preserves_promotion_rights() {

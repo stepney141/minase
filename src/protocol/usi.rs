@@ -831,7 +831,7 @@ fn parse_go_milliseconds(
 
 /// `position sfen`の欄列を4欄または5欄の拡張SFENとして解析する。
 ///
-/// 第5欄はP1成り権保留欄にも`moves`なしで続く余分な語にもなり得るため、
+/// 第5欄は成り権保留欄(P1・P2・P5)にも`moves`なしで続く余分な語にもなり得るため、
 /// 5欄解析が失敗した場合は、第5欄が成り権保留欄の形をしているときだけ
 /// そのエラーを報告し、そうでなければ4欄解析の結果を採用する。
 fn parse_sfen_fields(
@@ -852,7 +852,7 @@ fn parse_sfen_fields(
     }
 }
 
-/// 欄がP1成り権保留欄の形(`-`、コンマ区切り、または数字始まり)かを返す。
+/// 欄が成り権保留欄の形(`-`、コンマ区切り、または数字始まり)かを返す。
 fn looks_like_promotion_deferred(field: &str) -> bool {
     field == "-" || field.contains(',') || field.as_bytes().first().is_some_and(u8::is_ascii_digit)
 }

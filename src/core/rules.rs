@@ -21,6 +21,8 @@ pub enum RuleCode {
     L2,
     /// 段階別の足判定(第29条)。
     L3,
+    /// HaChu式の先獅子の非獅子限定(第29条)。
+    L4,
     /// Hodges式の成り権回復(第30条)。
     P1,
     /// 旧英語版Wikipedia式の成り(第30条)。
@@ -29,6 +31,10 @@ pub enum RuleCode {
     P3,
     /// 仲人の最奥段救済(第30条)。
     P4,
+    /// HaChu式の歩兵の成り(第30条)。
+    P5,
+    /// HaChu式の前進専用駒の最奥段強制成り(第30条)。
+    P6,
     /// Lishogi式の4回反復裁定(第31条)。
     R1,
     /// 既出局面の再現禁止(第31条)。
@@ -45,15 +51,18 @@ pub enum RuleCode {
 
 impl RuleCode {
     /// 全ローカルルールコード。
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 17] = [
         Self::L0,
         Self::L1,
         Self::L2,
         Self::L3,
+        Self::L4,
         Self::P1,
         Self::P2,
         Self::P3,
         Self::P4,
+        Self::P5,
+        Self::P6,
         Self::R1,
         Self::R2,
         Self::R3,
@@ -63,7 +72,7 @@ impl RuleCode {
     ];
 
     /// ビット集合表現でこのコードが占めるビットを返す。
-    const fn bit(self) -> u16 {
+    const fn bit(self) -> u32 {
         1 << self as u8
     }
 
@@ -74,10 +83,13 @@ impl RuleCode {
             Self::L1 => "L1",
             Self::L2 => "L2",
             Self::L3 => "L3",
+            Self::L4 => "L4",
             Self::P1 => "P1",
             Self::P2 => "P2",
             Self::P3 => "P3",
             Self::P4 => "P4",
+            Self::P5 => "P5",
+            Self::P6 => "P6",
             Self::R1 => "R1",
             Self::R2 => "R2",
             Self::R3 => "R3",
@@ -197,7 +209,7 @@ impl std::error::Error for RulesError {}
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rules {
     /// 採用コードのビット集合。L0は標準規則そのものなので保持せず、常に0ビットとする。
-    codes: u16,
+    codes: u32,
 }
 
 impl Rules {
@@ -217,7 +229,7 @@ impl Rules {
 
     /// コード列から集合を作る。重複・矛盾を検査する。
     pub fn from_codes(codes: &[RuleCode]) -> Result<Self, RulesError> {
-        let mut adopted = 0_u16;
+        let mut adopted = 0_u32;
         for &code in codes {
             if adopted & code.bit() != 0 {
                 return Err(RulesError::Duplicate(code));
@@ -227,6 +239,7 @@ impl Rules {
 
         for (first, second) in [
             (RuleCode::L0, RuleCode::L1),
+            (RuleCode::L1, RuleCode::L4),
             (RuleCode::P1, RuleCode::P2),
             (RuleCode::R1, RuleCode::R2),
             (RuleCode::R1, RuleCode::R3),
@@ -300,24 +313,34 @@ impl Rules {
             .any(|capture| capture.is_some());
         let enters_zone = !from_in_zone && to_in_zone;
         let capture_in_or_from_zone = has_capture && (from_in_zone || to_in_zone);
+        let reaches_last_rank = match color {
+            Color::Black => mv.to.rank() == BOARD_RANKS - 1,
+            Color::White => mv.to.rank() == 0,
+        };
+        let deferred = position.promotion_deferred().contains(mv.from);
+
+        if self.contains(RuleCode::P5) && moving_kind == PieceKind::Pawn && deferred {
+            return if reaches_last_rank {
+                PromotionChoice::PromotionForced
+            } else {
+                PromotionChoice::NoPromotion
+            };
+        }
+
         let piece_reaches_last_rank_without_capture = !has_capture
-            && match color {
-                Color::Black => mv.to.rank() == BOARD_RANKS - 1,
-                Color::White => mv.to.rank() == 0,
-            }
+            && reaches_last_rank
             && match moving_kind {
-                PieceKind::Pawn => true,
+                PieceKind::Pawn => !self.contains(RuleCode::P5),
                 PieceKind::Lance => self.contains(RuleCode::P3),
                 PieceKind::GoBetween => self.contains(RuleCode::P4),
                 _ => false,
             };
-        let p2_waiting_promotion =
-            self.contains(RuleCode::P2) && from_in_zone && to_in_zone && !has_capture;
-        let p1_recovered_promotion = self.contains(RuleCode::P1)
-            && from_in_zone
-            && to_in_zone
+        let p2_waiting_promotion = self.contains(RuleCode::P2)
             && !has_capture
-            && !position.promotion_deferred().contains(mv.from);
+            && (from_in_zone || to_in_zone)
+            && !deferred;
+        let p1_recovered_promotion =
+            self.contains(RuleCode::P1) && from_in_zone && to_in_zone && !has_capture && !deferred;
 
         if enters_zone
             || capture_in_or_from_zone
@@ -325,7 +348,14 @@ impl Rules {
             || p2_waiting_promotion
             || p1_recovered_promotion
         {
-            PromotionChoice::PromotionOptional
+            if self.contains(RuleCode::P6)
+                && matches!(moving_kind, PieceKind::Pawn | PieceKind::Lance)
+                && reaches_last_rank
+            {
+                PromotionChoice::PromotionForced
+            } else {
+                PromotionChoice::PromotionOptional
+            }
         } else {
             PromotionChoice::NoPromotion
         }
@@ -370,7 +400,9 @@ impl Rules {
                     && if self.contains(RuleCode::L1) {
                         moving_kind != Some(PieceKind::Lion)
                     } else {
-                        lion_has_foot_after_capture(self, position, mv, lion)
+                        // L4は禁止を非獅子の駒による捕獲に限定する(第29条L4)。
+                        !(self.contains(RuleCode::L4) && moving_kind == Some(PieceKind::Lion))
+                            && lion_has_foot_after_capture(self, position, mv, lion)
                     }
             })
         {
@@ -388,6 +420,8 @@ pub enum PromotionChoice {
     NoPromotion,
     /// 成るか成らないかを選択できる(第18条第5項)。
     PromotionOptional,
+    /// 必ず成る。不成の着手は生成しない(第30条P5・P6)。
+    PromotionForced,
 }
 
 /// 指定升が指定対局者の敵陣(相手側の最奥4段、第3条)にあるかどうかを返す。
@@ -1258,10 +1292,8 @@ mod tests {
 
     #[test]
     fn articles_15_1_and_14_1_senjishi_blocks_even_an_adjacent_lion_recapture() {
-        // D2-015-09(解釈固定): 第14条1項(隣接獅子は無条件に取れる)と第15条1項
-        // (先獅子中は直後の1手で取れない)の優先関係は条文に明文がない
-        // (SPEC_UNCLEAR-1)。本プロジェクトは第15条1項を優先する解釈を固定し、
-        // 先獅子中は隣接でも取り返せないものとする。
+        // 第15条解説・第14条1項: 標準規則の先獅子は獅子による取り返しにも及び、
+        // 隣接獅子を獅子で取る着手も直後の1手では認めない。
         let mut position = f17();
         play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
         assert!(!is_generated(
@@ -1269,7 +1301,7 @@ mod tests {
             &position,
             mv(msq(6, 'd'), msq(6, 'c'))
         ));
-        // 居喰い形「6d→6c(捕獲)→6d」は合法とする(解釈固定、SPEC_UNCLEAR-1関連)。
+        // 境界として、居喰い形「6d→6c(捕獲)→6d」は合法となる。
         // 第13条3項は取り返す駒が「獅子捕獲後の升」へ移動できることを足の要件と
         // するため、着手ごとの判定では到達升6dに銅5bの利きが届かず足が成立しない。
         // 先獅子の禁止(第15条1項)は足条件付きであり、この着手には及ばない。
@@ -1730,6 +1762,29 @@ mod tests {
     }
 
     #[test]
+    fn article_29_l4_limits_senjishi_to_non_lion_recaptures() {
+        // 第29条L4: 非獅子が獅子を取った直後、足のある残存獅子を獅子で
+        // 取り返す着手は認めるが、非獅子による取り返しは禁止したままとする。
+        let l4 = rules_of(&[RuleCode::L4, RuleCode::R1]);
+
+        let mut adjacent_standard = f17();
+        play(base(), &mut adjacent_standard, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(
+            base(),
+            &adjacent_standard,
+            mv(msq(6, 'd'), msq(6, 'c'))
+        ));
+
+        let mut adjacent_l4 = f17();
+        play(l4, &mut adjacent_l4, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(is_generated(l4, &adjacent_l4, mv(msq(6, 'd'), msq(6, 'c'))));
+
+        let mut non_lion = f16();
+        play(l4, &mut non_lion, mv(msq(9, 'a'), msq(9, 'f')));
+        assert!(!is_generated(l4, &non_lion, mv(msq(2, 'c'), msq(6, 'c'))));
+    }
+
+    #[test]
     fn article_29_l0_and_l1_are_mutually_exclusive() {
         // 第29条注記・第33条9項(D2-029-08): L0とL1は同時に採用できない。
         // 受理判定はコードの集合に対して働き、列記順序に依存しない。
@@ -1748,6 +1803,17 @@ mod tests {
         assert!(Rules::from_codes(&[RuleCode::L1, RuleCode::L3, RuleCode::R1]).is_ok());
     }
 
+    #[test]
+    fn article_29_l1_and_l4_are_mutually_exclusive() {
+        // 第29条末尾: L1とL4は併記せず、L4単独および他系列との併用は認める。
+        assert!(matches!(
+            Rules::from_codes(&[RuleCode::L1, RuleCode::L4]),
+            Err(RulesError::Conflicting { .. })
+        ));
+        assert!(Rules::from_codes(&[RuleCode::L4]).is_ok());
+        assert!(Rules::from_codes(&[RuleCode::L4, RuleCode::R1]).is_ok());
+    }
+
     // ---------- 第30〜33条 規則セットの検証 ----------
 
     #[test]
@@ -1762,6 +1828,15 @@ mod tests {
             Rules::from_codes(&[RuleCode::P1, RuleCode::P3, RuleCode::P4, RuleCode::R1]).is_ok()
         );
         assert!(Rules::from_codes(&[RuleCode::P2, RuleCode::P3, RuleCode::R1]).is_ok());
+    }
+
+    #[test]
+    fn article_29_30_all_rule_codes_round_trip_through_text() {
+        // 第29・30条および第31〜33条: 公開する17コードは表示と解析で往復する。
+        assert_eq!(RuleCode::ALL.len(), 17);
+        for code in RuleCode::ALL {
+            assert_eq!(code.to_string().parse::<RuleCode>(), Ok(code));
+        }
     }
 
     #[test]
