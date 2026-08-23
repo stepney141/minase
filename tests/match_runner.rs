@@ -45,6 +45,33 @@ fn without_elapsed(output: &str) -> String {
         .join("\n")
 }
 
+fn run_minase_candidate_match(candidate: &str) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_match_runner"))
+        .args([
+            "--candidate",
+            candidate,
+            "--baseline",
+            "random",
+            "--each",
+            "depth=1",
+            "--seed",
+            "20260824",
+            "--max-ply",
+            "400",
+            "elo",
+            "--pairs",
+            "1",
+        ])
+        .output()
+        .expect("match_runner must start");
+    assert!(
+        output.status.success(),
+        "match_runner failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("match_runner output must be UTF-8")
+}
+
 #[test]
 fn random_usi_match_is_reproducible_for_the_same_seed() {
     let first = run_random_match("1", "1");
@@ -75,4 +102,28 @@ fn random_usi_match_output_is_independent_of_concurrency() {
     assert_eq!(seeds.len(), 4);
     let unique: std::collections::HashSet<&str> = seeds.iter().copied().collect();
     assert_eq!(unique.len(), 4);
+}
+
+// D8-HARN-20（sprt.md「エンジンの指定方法」、match-harness.md「CECPセッション
+// 管理」）: minase自身をCECP候補にした対局は異常なく完走し、同じ起動バイナリをUSI
+// 候補にした対局と同じ着手列・結果になる。spec原文の表示はD8-HARN-01の契約により
+// 必ず異なるため、両原文だけを同じ表示へ置換して経過時間以外の全出力を比較する。
+#[test]
+fn minase_cecp_match_is_failure_free_and_matches_usi() {
+    let minase = env!("CARGO_BIN_EXE_minase");
+    let cecp_spec = format!("cecp:{minase} --protocol cecp --rules engine-default");
+    let usi_spec = format!("{minase} --protocol usi --rules engine-default");
+    let cecp = run_minase_candidate_match(&cecp_spec);
+    let usi = run_minase_candidate_match(&usi_spec);
+    let no_failures =
+        "engine_failures: illegal_moves=0 crashes=0 timeouts=0 time_forfeits=0 rejected_moves=0";
+    assert!(cecp.contains(no_failures));
+    assert!(usi.contains(no_failures));
+
+    let normalized_cecp = cecp.replace(&cecp_spec, "<candidate>");
+    let normalized_usi = usi.replace(&usi_spec, "<candidate>");
+    assert_eq!(
+        without_elapsed(&normalized_cecp),
+        without_elapsed(&normalized_usi)
+    );
 }

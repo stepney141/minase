@@ -40,6 +40,26 @@ cargo run --release --bin match_runner -- \
 
 ベースライン側だけ`--baseline-limit`で深さ1へ上書きする非対称条件が、このゲートの定義である。
 
+### 外部エンジンとの強さ比較
+
+HaChuのような外部エンジンとの比較は、対等な時間制御のGSPRTで行う。
+深さ固定では探索1段の意味がエンジンごとに異なるため、強さの比較には使わない。
+規則はHaChuの既定設定（RULES.md第33条第7項、`L1,L3,P5,P6,R2,E1,E2`）に合わせ、審判層とminase側の双方へ同じ規則を与える。
+
+```console
+cargo run --release --bin match_runner -- \
+  --candidate commit:<測定対象> --baseline "cecp:../hachu-debian/hachu" \
+  --rules L1,L3,P5,P6,R2,E1,E2 --each time=60000+1000 \
+  --concurrency 8 --seed <シード> gsprt
+```
+
+HaChuは`usermove`で受けた着手を自前の規則で検査し、不合法と判定すると`Illegal move`を返して進行不能になる。
+審判層が合法とした着手を相手エンジンが拒否した場合は、拒否した側の反則負け（`rejected_moves`）として算入する。
+HaChuは詰みを自認すると着手を返さずに結果行だけを出力する。
+これは投了として当該局の負けに算入し、`engine_failures:`には数えない。
+判定の採用前に、`rejected_moves`が0であることを必ず確認する。
+0でない場合は規則の不一致が疑われるため、当該局の着手列を再現して原因を調べる。
+
 ### 進捗記録の固定局数Elo
 
 各フェーズ完了時の強さの積み上がりは、固定ペア数のEloと95%信頼区間で記録する。
@@ -55,11 +75,12 @@ cargo run --release --bin match_runner -- \
 
 ## エンジンの指定方法
 
-`--candidate`と`--baseline`のspecは次の3形式である。
+`--candidate`と`--baseline`のspecは次の4形式である。
 
 - `commit:<hash>`: ハーネスがgit worktreeで当該コミットを展開して`cargo build --release --bin minase`を実行し、完全ハッシュをキーに`target/match-cache/`へキャッシュする。起動引数`--protocol usi --rules <マッチ規則>`は自動付与される。標準の測定はこの形式を使う。
 - 起動コマンド（パス＋空白区切り引数）: 任意のUSIエンジンを起動する（例 `"target/release/minase --protocol usi --rules engine-default"`）。未コミットの作業ツリーや外部エンジンの測定に使う。minase本体は`--protocol`と`--rules`が必須である点に注意する。
 - `random`: 同一ビルドの`usi_random`（合法手から一様ランダムに着手する校正用エンジン）。真のelo差が0であることが既知の唯一の対戦カードであり、ハーネス自体の煙試験に使う。
+- `cecp:<起動コマンド>`: CECP（XBoardプロトコル）で対局する任意のエンジンを起動する（例 `"cecp:../hachu-debian/hachu"`）。HaChuのようにUSIを話さない外部エンジンとの比較に使う。ハーネスは`xboard`・`protover 2`の握手後に`memory 256`・`new`・`variant chu`・`easy`・`nopost`・`force`を送り、毎手、未送信の着手を`usermove`で転送してから`go`で思考させ、`move`行を受けたら`force`へ戻す。思考制限は`depth`（`sd`へ写す）と秒単位の時間制御（`level`・`time`・`otim`へ写す）に限り、`nodes`と秒読み、および秒未満の持ち時間・加算は指定できない。規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 
 ## 統計的手続き
 
@@ -112,3 +133,4 @@ Eloの写像はロジスティック（`s = 1/(1+10^(-elo/400))`）、H0はelo=0
 これらは出力の`summary:`以下をそのまま転記すれば足りる。
 
 並列測定では、CPU型、物理コア数、論理コア数、候補と基準のワーカー数、`USI_Hash`、同時対局数、時間制御、および`time_forfeits`も記録する。
+外部エンジンを含む測定では、そのエンジンの版（ソースのコミットとビルド手順）と規則オプションの設定も記録する。

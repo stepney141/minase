@@ -115,6 +115,7 @@ def replay_game(binary: str, rules: str, game: dict, log) -> dict:
         engine.send("protover 2")
         engine.send("variant chu")
         engine.send("new")
+        engine.send("force")
         engine.sync()
         for index, move in enumerate(game["moves"], start=1):
             engine.send(f"usermove {move}")

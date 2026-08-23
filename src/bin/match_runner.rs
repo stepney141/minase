@@ -16,7 +16,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use clap::{CommandFactory, Parser, Subcommand, error::ErrorKind};
 use minase::core::rules::parse_rule_set;
-use minase::notation::usi;
+use minase::notation::{cecp, usi};
 use minase::rng::{XorShift64, derive_seed};
 use minase::search::MAX_PLY;
 use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
@@ -28,6 +28,13 @@ const DEFAULT_MAX_PLY: u32 = 4096;
 const DEFAULT_MAX_PAIRS: u64 = 100_000;
 /// 1回のエンジン応答を待つ秒数の既定値。
 const DEFAULT_RESPONSE_TIMEOUT_SECONDS: u64 = 120;
+/// CECPエンジンへ割り当てる置換表容量。HaChuは`memory`受信前の`go`で
+/// 異常終了するため明示し、256 MBはminaseの`USI_Hash`既定値に合わせる。
+const CECP_MEMORY_MB: u32 = 256;
+/// 固定制限時にCECPエンジンへ通知する時計残量。時計残量0ではHaChuが
+/// 反復深化を即座に打ち切り、HaChuは5倍した残量を32ビット整数で計算するため、
+/// 十分大きくかつその範囲に収まる3,000,000センチ秒とする。
+const CECP_FIXED_TIME_CS: u64 = 3_000_000;
 
 /// バイナリ対戦ハーネスのコマンドライン引数。
 #[derive(Parser)]
@@ -125,6 +132,22 @@ enum PlayerKind {
         /// 起動引数。
         args: Vec<String>,
     },
+    /// 任意のCECPエンジンの起動コマンド。
+    Cecp {
+        /// 実行ファイルのパス。
+        program: PathBuf,
+        /// 起動引数。
+        args: Vec<String>,
+    },
+}
+
+/// 外部エンジンとの通信プロトコル。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Protocol {
+    /// USIプロトコル。
+    Usi,
+    /// CECP（XBoard）プロトコル。
+    Cecp,
 }
 
 /// USIの`go`へ渡す思考制限。
@@ -258,6 +281,12 @@ impl Clock {
     fn byoyomi_ms(self) -> u128 {
         self.byoyomi.as_millis()
     }
+
+    /// CECPへ送るセンチ秒単位の残り時間を返す。10 ms未満は切り捨てる。
+    fn remaining_cs(self) -> u64 {
+        u64::try_from(self.remaining.as_millis() / 10)
+            .expect("a clock created from u64 milliseconds must fit in u64 centiseconds")
+    }
 }
 
 /// 1局で両色に割り当てた時計。
@@ -311,6 +340,29 @@ impl GameClocks {
             byoyomi.byoyomi_ms()
         )
     }
+
+    /// 現在の制限と両時計からプロトコル共通の思考要求を作る。
+    fn think_request(&self, side_to_move: Color, limit: SearchLimit) -> ThinkRequest {
+        match limit {
+            SearchLimit::Fixed { .. } => ThinkRequest {
+                go_text: limit
+                    .fixed_go_text()
+                    .expect("a fixed limit must have USI go text"),
+                own_cs: CECP_FIXED_TIME_CS,
+                opponent_cs: CECP_FIXED_TIME_CS,
+            },
+            SearchLimit::Time(_) => ThinkRequest {
+                go_text: self.go_text(side_to_move),
+                own_cs: self
+                    .get(side_to_move)
+                    .expect("a time-controlled player must have a clock")
+                    .remaining_cs(),
+                opponent_cs: self
+                    .get(side_to_move.opposite())
+                    .map_or(0, Clock::remaining_cs),
+            },
+        }
+    }
 }
 
 /// 時間制御を使わない側をUSI時間引数へ表す0値の時計を返す。
@@ -330,6 +382,8 @@ struct PlayerConfig {
     path: PathBuf,
     /// 起動引数。
     args: Vec<String>,
+    /// エンジンとの通信プロトコル。
+    protocol: Protocol,
     /// 校正用ランダムエンジンかどうか。真ならシードを設定する。
     is_random: bool,
     /// このプレイヤーに適用する思考制限。
@@ -354,6 +408,8 @@ enum EngineFailure {
     Timeout,
     /// 時間制御対局での時間切れ。
     TimeForfeit,
+    /// 審判層が合法とした相手の着手を`Illegal move`で拒否した。
+    RejectedMove,
 }
 
 /// 異常理由別の発生件数。
@@ -367,6 +423,8 @@ struct FailureCounts {
     timeouts: u64,
     /// 時間切れの件数。
     time_forfeits: u64,
+    /// 審判層の合法手を拒否した件数。
+    rejected_moves: u64,
 }
 
 impl FailureCounts {
@@ -377,6 +435,7 @@ impl FailureCounts {
             EngineFailure::Crash => self.crashes += 1,
             EngineFailure::Timeout => self.timeouts += 1,
             EngineFailure::TimeForfeit => self.time_forfeits += 1,
+            EngineFailure::RejectedMove => self.rejected_moves += 1,
         }
     }
 
@@ -386,21 +445,45 @@ impl FailureCounts {
         self.crashes += other.crashes;
         self.timeouts += other.timeouts;
         self.time_forfeits += other.time_forfeits;
+        self.rejected_moves += other.rejected_moves;
     }
 }
 
-/// 読み取りスレッドからUSI出力を受け取る外部エンジン。
+/// 1回の思考に必要なプロトコル別の制限値。
+struct ThinkRequest {
+    /// USIの`go`へ渡す引数。
+    go_text: String,
+    /// CECPの`time`へ渡す手番側の残り時間（センチ秒）。
+    own_cs: u64,
+    /// CECPの`otim`へ渡す相手側の残り時間（センチ秒）。
+    opponent_cs: u64,
+}
+
+/// エンジンが返した対局上の応答。
+#[derive(PartialEq, Eq, Debug)]
+enum EngineResponse {
+    /// エンジンが選んだ指し手表記。
+    Move(String),
+    /// エンジンが着手を返さず投了した。
+    Resigned,
+}
+
+/// 読み取りスレッドからプロトコル出力を受け取る外部エンジン。
 struct EngineProcess {
     /// エンジンの子プロセス。
     child: Child,
-    /// エンジンの標準入力。
-    input: ChildStdin,
+    /// エンジンの標準入力。dropで読み取りスレッドの回収前に閉じる。
+    input: Option<ChildStdin>,
     /// 読み取りスレッドが送るUSI出力行。
     lines: Receiver<io::Result<String>>,
     /// 読み取りスレッドのハンドル。dropで回収する。
     reader: Option<JoinHandle<()>>,
     /// 1回の応答を待つ期限。
     timeout: Duration,
+    /// エンジンとの通信プロトコル。
+    protocol: Protocol,
+    /// CECPエンジンへ送信済みとして扱う着手数。
+    sent_moves: usize,
 }
 
 impl EngineProcess {
@@ -444,27 +527,57 @@ impl EngineProcess {
         });
         let mut process = Self {
             child,
-            input,
+            input: Some(input),
             lines,
             reader: Some(reader),
             timeout,
+            protocol: config.protocol,
+            sent_moves: 0,
         };
-        process.send("usi")?;
-        process.wait_for("usiok")?;
-        process.send(&format!("setoption name RuleSet value {rules_text}"))?;
-        if config.is_random {
-            process.send(&format!("setoption name Seed value {seed}"))?;
+        match config.protocol {
+            Protocol::Usi => {
+                process.send("usi")?;
+                process.wait_for("usiok")?;
+                process.send(&format!("setoption name RuleSet value {rules_text}"))?;
+                if config.is_random {
+                    process.send(&format!("setoption name Seed value {seed}"))?;
+                }
+                process.send("isready")?;
+                process.wait_for("readyok")?;
+                process.send("usinewgame")?;
+            }
+            Protocol::Cecp => {
+                process.send("xboard")?;
+                process.send("protover 2")?;
+                process.wait_for("feature done=1")?;
+                process.send(&format!("memory {CECP_MEMORY_MB}"))?;
+                process.send("new")?;
+                process.send("variant chu")?;
+                process.send("easy")?;
+                process.send("nopost")?;
+                process.send("force")?;
+                match config.limit {
+                    SearchLimit::Fixed {
+                        depth: Some(depth),
+                        nodes: None,
+                    } => process.send(&format!("sd {depth}"))?,
+                    SearchLimit::Time(time) => {
+                        process.send(&cecp_level_text(time))?;
+                    }
+                    SearchLimit::Fixed { .. } => {
+                        unreachable!("CECP limits are validated during player resolution")
+                    }
+                }
+            }
         }
-        process.send("isready")?;
-        process.wait_for("readyok")?;
-        process.send("usinewgame")?;
         Ok(process)
     }
 
     /// エンジンへ1行を送る。
     fn send(&mut self, line: &str) -> Result<(), EngineFailure> {
-        writeln!(self.input, "{line}").map_err(|_| EngineFailure::Crash)?;
-        self.input.flush().map_err(|_| EngineFailure::Crash)
+        let input = self.input.as_mut().ok_or(EngineFailure::Crash)?;
+        writeln!(input, "{line}").map_err(|_| EngineFailure::Crash)?;
+        input.flush().map_err(|_| EngineFailure::Crash)
     }
 
     /// 指定行を期限まで読み進める。
@@ -473,12 +586,25 @@ impl EngineProcess {
             .map(|_| ())
     }
 
-    /// 現局面と`go`を送り、`bestmove`と実測思考時間を受け取る。
+    /// 現局面と思考指示を送り、着手または投了と実測思考時間を受け取る。
     fn bestmove(
+        &mut self,
+        usi_history: &[String],
+        move_history: &[Move],
+        request: &ThinkRequest,
+    ) -> Result<(EngineResponse, Duration), EngineFailure> {
+        match self.protocol {
+            Protocol::Usi => self.bestmove_usi(usi_history, &request.go_text),
+            Protocol::Cecp => self.bestmove_cecp(move_history, request),
+        }
+    }
+
+    /// USIの既存送信列で`bestmove`を受け取る。
+    fn bestmove_usi(
         &mut self,
         history: &[String],
         go_text: &str,
-    ) -> Result<(String, Duration), EngineFailure> {
+    ) -> Result<(EngineResponse, Duration), EngineFailure> {
         if history.is_empty() {
             self.send("position startpos")?;
         } else {
@@ -489,19 +615,134 @@ impl EngineProcess {
         self.receive_until(|line| line.split_whitespace().next() == Some("bestmove"))
             .map(|line| {
                 (
-                    line.split_whitespace()
-                        .nth(1)
-                        .unwrap_or_default()
-                        .to_owned(),
+                    EngineResponse::Move(
+                        line.split_whitespace()
+                            .nth(1)
+                            .unwrap_or_default()
+                            .to_owned(),
+                    ),
                     start.elapsed(),
                 )
             })
+    }
+
+    /// CECPの差分着手と時計を送り、`pong`までの応答を解釈する。
+    fn bestmove_cecp(
+        &mut self,
+        history: &[Move],
+        request: &ThinkRequest,
+    ) -> Result<(EngineResponse, Duration), EngineFailure> {
+        for &mv in &history[self.sent_moves..] {
+            self.send(&format!("usermove {}", cecp::legs(mv).concat()))?;
+        }
+        self.sent_moves = history.len();
+        self.send(&format!("time {}", request.own_cs))?;
+        self.send(&format!("otim {}", request.opponent_cs))?;
+        let start = Instant::now();
+        self.send("go")?;
+        let pong_number = history.len();
+        self.send(&format!("ping {pong_number}"))?;
+        let response = receive_cecp_response(&self.lines, self.timeout, pong_number, start)?;
+        if matches!(response.0, EngineResponse::Move(_)) {
+            self.send("force")?;
+            self.sent_moves += 1;
+        }
+        Ok(response)
     }
 
     /// 条件を満たす行を、呼び出し全体の期限まで受信する。
     fn receive_until(&self, predicate: impl FnMut(&str) -> bool) -> Result<String, EngineFailure> {
         receive_until(&self.lines, self.timeout, predicate)
     }
+}
+
+/// 時間制御をCECPの`level`コマンドへ変換する。
+fn cecp_level_text(time: TimeControl) -> String {
+    let total_seconds = time.base_ms / 1_000;
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    let base = if seconds == 0 {
+        minutes.to_string()
+    } else {
+        format!("{minutes}:{seconds:02}")
+    };
+    format!("level 0 {base} {}", time.increment_ms / 1_000)
+}
+
+/// CECPの着手・結果・拒否のいずれかを示す行かどうかを返す。
+fn is_cecp_response_line(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("move ")
+        || line.starts_with("Illegal move")
+        || ["1-0", "0-1", "1/2-1/2", "resign"]
+            .iter()
+            .any(|prefix| line.starts_with(prefix))
+}
+
+/// `pong`までのCECP応答行を着手または投了へ解釈する。
+///
+/// 応答行がない`pong`はプロトコル違反であり、クラッシュ相当に分類する。
+fn interpret_cecp_response(lines: &[String]) -> Result<EngineResponse, EngineFailure> {
+    if lines
+        .iter()
+        .any(|line| line.trim_start().starts_with("Illegal move"))
+    {
+        return Err(EngineFailure::RejectedMove);
+    }
+
+    let mut moves = lines
+        .iter()
+        .filter_map(|line| line.trim_start().strip_prefix("move ").map(str::trim));
+    if let Some(first) = moves.next() {
+        let mut text = first.to_owned();
+        if text.ends_with(',')
+            && let Some(second) = moves.next()
+        {
+            text.push_str(second);
+        }
+        return Ok(EngineResponse::Move(text));
+    }
+
+    if lines.iter().any(|line| {
+        let line = line.trim_start();
+        ["1-0", "0-1", "1/2-1/2", "resign"]
+            .iter()
+            .any(|prefix| line.starts_with(prefix))
+    }) {
+        Ok(EngineResponse::Resigned)
+    } else {
+        Err(EngineFailure::Crash)
+    }
+}
+
+/// CECP応答を最初の着手または結果から`pong`まで読み切る。
+fn receive_cecp_response(
+    lines: &Receiver<io::Result<String>>,
+    timeout: Duration,
+    pong_number: usize,
+    start: Instant,
+) -> Result<(EngineResponse, Duration), EngineFailure> {
+    let expected_pong = format!("pong {pong_number}");
+    let mut received = Vec::new();
+    let mut response_elapsed = None;
+    let first = receive_until(lines, timeout, |line| {
+        received.push(line.to_owned());
+        if is_cecp_response_line(line) {
+            response_elapsed = Some(start.elapsed());
+            true
+        } else {
+            line.trim() == expected_pong
+        }
+    })?;
+    if first.trim() != expected_pong {
+        receive_until(lines, timeout, |line| {
+            received.push(line.to_owned());
+            line.trim() == expected_pong
+        })?;
+    }
+    let response = interpret_cecp_response(&received)?;
+    let elapsed = response_elapsed.expect("a valid CECP response has a response line");
+    Ok((response, elapsed))
 }
 
 /// USI出力を条件一致、切断、または期限切れまで受信する。
@@ -528,6 +769,10 @@ fn receive_until(
 
 impl Drop for EngineProcess {
     fn drop(&mut self) {
+        // 標準入力を先に閉じる。ラッパースクリプト経由で起動したエンジンは
+        // killでは止まらず、入力のEOFで終了して初めて出力パイプが閉じるため、
+        // この順序でないと読み取りスレッドの回収が止まる。
+        drop(self.input.take());
         let _ = self.child.kill();
         let _ = self.child.wait();
         if let Some(reader) = self.reader.take() {
@@ -559,6 +804,11 @@ enum GameOutcome {
         winner: Color,
         /// 反則の分類。
         reason: EngineFailure,
+    },
+    /// エンジンの投了による勝敗。
+    Resigned {
+        /// 投了しなかった側。
+        winner: Color,
     },
 }
 
@@ -609,6 +859,18 @@ fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
     let Some(program) = tokens.next() else {
         return Err("engine spec must be a command line or 'random'".to_owned());
     };
+    if let Some(program) = program.strip_prefix("cecp:") {
+        if program.is_empty() {
+            return Err("cecp: engine spec requires a startup command".to_owned());
+        }
+        return Ok(PlayerSpec {
+            text: input.to_owned(),
+            kind: PlayerKind::Cecp {
+                program: PathBuf::from(program),
+                args: tokens.map(str::to_owned).collect(),
+            },
+        });
+    }
     if program.starts_with("depth=") {
         return Err("the legacy depth=N player spec is not supported; use --each".to_owned());
     }
@@ -639,11 +901,16 @@ fn resolve_player(
     limit: SearchLimit,
     rules_text: &str,
 ) -> io::Result<PlayerConfig> {
-    let (path, args, is_random) = match spec.kind {
+    let (path, args, protocol, is_random) = match spec.kind {
         PlayerKind::Random => {
             let current = std::env::current_exe()?;
             let filename = format!("usi_random{}", std::env::consts::EXE_SUFFIX);
-            (current.with_file_name(filename), Vec::new(), true)
+            (
+                current.with_file_name(filename),
+                Vec::new(),
+                Protocol::Usi,
+                true,
+            )
         }
         PlayerKind::Commit(revision) => (
             resolve_commit(&revision)?,
@@ -653,17 +920,52 @@ fn resolve_player(
                 "--rules".to_owned(),
                 rules_text.to_owned(),
             ],
+            Protocol::Usi,
             false,
         ),
-        PlayerKind::Command { program, args } => (program, args, false),
+        PlayerKind::Command { program, args } => (program, args, Protocol::Usi, false),
+        PlayerKind::Cecp { program, args } => {
+            validate_cecp_limit(limit)?;
+            (program, args, Protocol::Cecp, false)
+        }
     };
     Ok(PlayerConfig {
         text: spec.text,
         path,
         args,
+        protocol,
         is_random,
         limit,
     })
+}
+
+/// CECPで表現できる思考制限かどうかを検証する。
+fn validate_cecp_limit(limit: SearchLimit) -> io::Result<()> {
+    match limit {
+        SearchLimit::Fixed { nodes: Some(_), .. } => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CECP engine does not support a fixed node limit",
+        )),
+        SearchLimit::Fixed {
+            depth: Some(_),
+            nodes: None,
+        } => Ok(()),
+        SearchLimit::Fixed {
+            depth: None,
+            nodes: None,
+        } => unreachable!("a validated fixed limit contains depth or nodes"),
+        SearchLimit::Time(time) if time.byoyomi_ms > 0 => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CECP engine does not support byoyomi",
+        )),
+        SearchLimit::Time(time) if time.base_ms % 1_000 != 0 || time.increment_ms % 1_000 != 0 => {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "CECP time control requires base time and increment in whole seconds",
+            ))
+        }
+        SearchLimit::Time(_) => Ok(()),
+    }
 }
 
 /// Gitコマンドの失敗内容を標準出力と標準エラーを含めて返す。
@@ -938,10 +1240,30 @@ fn generate_opening(rules: Rules, pair_seed: u64) -> Opening {
     }
 }
 
-/// `bestmove`を解析し、審判の合法手集合と照合する。
-fn validate_bestmove(game: &Game, text: &str) -> Result<Move, EngineFailure> {
-    let selected = usi::parse(game.position(), text).map_err(|_| EngineFailure::IllegalMove)?;
-    if game.legal_moves().contains(&selected) {
+/// 合法手集合から移動元の内部升番号が最小の正準じっとを選ぶ。
+fn canonical_jitto(legal_moves: &[Move]) -> Option<Move> {
+    legal_moves
+        .iter()
+        .copied()
+        .filter(|mv| mv.mid.is_none() && mv.from == mv.to)
+        .min_by_key(|mv| mv.from.raw_index())
+}
+
+/// エンジンの着手表記を解析し、審判の合法手集合と照合する。
+fn validate_bestmove(game: &Game, text: &str, protocol: Protocol) -> Result<Move, EngineFailure> {
+    let legal_moves = game.legal_moves();
+    let selected = match protocol {
+        Protocol::Usi => {
+            usi::parse(game.position(), text).map_err(|_| EngineFailure::IllegalMove)?
+        }
+        Protocol::Cecp if text == "@@@@" => {
+            canonical_jitto(&legal_moves).ok_or(EngineFailure::IllegalMove)?
+        }
+        Protocol::Cecp => {
+            cecp::parse(game.position(), text).map_err(|_| EngineFailure::IllegalMove)?
+        }
+    };
+    if legal_moves.contains(&selected) {
         Ok(selected)
     } else {
         Err(EngineFailure::IllegalMove)
@@ -952,7 +1274,8 @@ fn validate_bestmove(game: &Game, text: &str) -> Result<Move, EngineFailure> {
 #[allow(clippy::too_many_arguments)]
 fn play_game(
     mut game: Game,
-    mut history: Vec<String>,
+    mut usi_history: Vec<String>,
+    mut move_history: Vec<Move>,
     max_ply: u32,
     player_a_color: Color,
     player_a: &PlayerConfig,
@@ -996,11 +1319,8 @@ fn play_game(
         } else {
             (&mut player_b_process, player_b.limit)
         };
-        let go_text = match limit.fixed_go_text() {
-            Some(go_text) => go_text,
-            None => clocks.go_text(side_to_move),
-        };
-        let (response, elapsed) = match process.bestmove(&history, &go_text) {
+        let request = clocks.think_request(side_to_move, limit);
+        let (response, elapsed) = match process.bestmove(&usi_history, &move_history, &request) {
             Ok(response) => response,
             Err(reason) => return forfeit(game.ply_count(), side_to_move, reason),
         };
@@ -1009,11 +1329,20 @@ fn play_game(
         {
             return forfeit(game.ply_count(), side_to_move, reason);
         }
-        let selected = match validate_bestmove(&game, &response) {
+        let EngineResponse::Move(response) = response else {
+            return PlayedGame::Finished {
+                plies: game.ply_count(),
+                outcome: GameOutcome::Resigned {
+                    winner: side_to_move.opposite(),
+                },
+            };
+        };
+        let selected = match validate_bestmove(&game, &response, process.protocol) {
             Ok(selected) => selected,
             Err(reason) => return forfeit(game.ply_count(), side_to_move, reason),
         };
-        history.push(usi::text(game.position(), selected));
+        usi_history.push(usi::text(game.position(), selected));
+        move_history.push(selected);
         let status = game
             .play(selected)
             .expect("a move validated against legal_moves must be accepted");
@@ -1030,7 +1359,8 @@ fn play_game(
 fn half_points(outcome: GameOutcome, player_a_color: Color) -> u8 {
     let winner = match outcome {
         GameOutcome::Adjudicated(GameResult::Win { winner, .. })
-        | GameOutcome::Forfeit { winner, .. } => Some(winner),
+        | GameOutcome::Forfeit { winner, .. }
+        | GameOutcome::Resigned { winner } => Some(winner),
         GameOutcome::Adjudicated(GameResult::Draw { .. }) => None,
     };
     match winner {
@@ -1055,6 +1385,10 @@ fn played_game_text(game: PlayedGame) -> String {
             plies,
             outcome: GameOutcome::Forfeit { winner, reason },
         } => format!("plies={plies} result=win winner={winner:?} reason={reason:?}"),
+        PlayedGame::Finished {
+            plies,
+            outcome: GameOutcome::Resigned { winner },
+        } => format!("plies={plies} result=win winner={winner:?} reason=Resigned"),
         PlayedGame::Cutoff { plies } => format!("plies={plies} result=cutoff"),
     }
 }
@@ -1117,6 +1451,7 @@ fn run_pair(
     let game1 = play_game(
         opening.game.clone(),
         opening.usi_moves.clone(),
+        opening.moves.clone(),
         max_ply,
         Color::Black,
         candidate,
@@ -1141,6 +1476,7 @@ fn run_pair(
     let game2 = play_game(
         opening.game,
         opening.usi_moves,
+        opening.moves,
         max_ply,
         Color::White,
         candidate,
@@ -1224,8 +1560,12 @@ fn elo_text(elo: f64) -> String {
 /// 異常理由別の件数を表示する。
 fn print_failure_summary(failures: FailureCounts) {
     println!(
-        "engine_failures: illegal_moves={} crashes={} timeouts={} time_forfeits={}",
-        failures.illegal_moves, failures.crashes, failures.timeouts, failures.time_forfeits
+        "engine_failures: illegal_moves={} crashes={} timeouts={} time_forfeits={} rejected_moves={}",
+        failures.illegal_moves,
+        failures.crashes,
+        failures.timeouts,
+        failures.time_forfeits,
+        failures.rejected_moves
     );
 }
 
@@ -1497,10 +1837,11 @@ mod tests {
         assert!(matches!(arguments.mode, Mode::Gsprt { max_pairs: 100_000 }));
     }
 
-    // D8-HARN-01(sprt.mdエンジンの指定方法節): specは`commit:<hash>`・
-    // 起動コマンド(パス＋空白区切り引数)・`random`の3形式である。
+    // D8-HARN-01（sprt.md「エンジンの指定方法」、match-harness.md「エンジン指定と
+    // 解決」）: specは`commit:<hash>`・USI起動コマンド・`random`・CECP起動コマンドの
+    // 4形式であり、起動コマンドの2語目以降は引数になる。
     #[test]
-    fn engine_specs_cover_the_documented_three_forms() {
+    fn engine_specs_cover_the_documented_four_forms() {
         let random = parse_player_spec("random").expect("the reserved spec must be accepted");
         assert_eq!(random.kind, PlayerKind::Random);
 
@@ -1524,7 +1865,33 @@ mod tests {
             }
         );
 
-        // 3形式に含まれない入力は拒否される。旧`depth=N` specの削除は
+        let hachu = parse_player_spec("cecp:../hachu-debian/hachu")
+            .expect("a CECP command without arguments must be accepted");
+        assert_eq!(hachu.text, "cecp:../hachu-debian/hachu");
+        assert_eq!(
+            hachu.kind,
+            PlayerKind::Cecp {
+                program: PathBuf::from("../hachu-debian/hachu"),
+                args: Vec::new(),
+            }
+        );
+        let minase =
+            parse_player_spec("cecp:target/release/minase --protocol cecp --rules engine-default")
+                .expect("a CECP command with arguments must be accepted");
+        assert_eq!(
+            minase.kind,
+            PlayerKind::Cecp {
+                program: PathBuf::from("target/release/minase"),
+                args: vec![
+                    "--protocol".to_owned(),
+                    "cecp".to_owned(),
+                    "--rules".to_owned(),
+                    "engine-default".to_owned(),
+                ],
+            }
+        );
+
+        // 4形式に含まれない入力は拒否される。旧`depth=N` specの削除は
         // match-harness.md適用範囲に明文がある。空リビジョンとcommit形式への
         // 起動引数付与の拒否は[実装契約](SPEC_UNCLEAR-05関連)。
         for invalid in [
@@ -1533,12 +1900,80 @@ mod tests {
             "depth=2,nodes=1000",
             "commit:",
             "commit:abc --x",
+            "cecp:",
+            "cecp:   ",
         ] {
             assert!(
                 parse_player_spec(invalid).is_err(),
                 "spec {invalid:?} must be rejected"
             );
         }
+    }
+
+    // D8-HARN-01境界（sprt.md「エンジンの指定方法」、match-harness.md「CECP
+    // セッション管理」）: CECPに写せないnodes、秒読み、秒未満の時間単位は解決時に
+    // InvalidInputとして拒否する。
+    #[test]
+    fn cecp_resolution_rejects_unsupported_search_limits() {
+        for limit in [
+            parse_search_limit("nodes=1").unwrap(),
+            parse_search_limit("depth=1,nodes=1").unwrap(),
+            parse_search_limit("time=1000+0,byoyomi=1000").unwrap(),
+            parse_search_limit("time=1500+0").unwrap(),
+            parse_search_limit("time=1000+1500").unwrap(),
+        ] {
+            let spec = parse_player_spec("cecp:engine").unwrap();
+            let error = resolve_player(spec, limit, "R1")
+                .err()
+                .expect("the unsupported CECP limit must fail resolution");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert!(!error.to_string().is_empty());
+        }
+    }
+
+    // D8-HARN-01/20（sprt.md「エンジンの指定方法」、match-harness.md「CECP
+    // セッション管理」）: 対応する深さ固定と秒単位時間制御はCECP設定へ解決できる。
+    #[test]
+    fn cecp_resolution_accepts_supported_limits_and_marks_the_protocol() {
+        let depth = resolve_player(
+            parse_player_spec("cecp:engine --option value").unwrap(),
+            parse_search_limit("depth=4").unwrap(),
+            "R1",
+        )
+        .unwrap();
+        assert_eq!(depth.protocol, Protocol::Cecp);
+        assert_eq!(depth.path, PathBuf::from("engine"));
+        assert_eq!(depth.args, ["--option", "value"]);
+
+        let time = resolve_player(
+            parse_player_spec("cecp:engine").unwrap(),
+            parse_search_limit("time=61000+2000").unwrap(),
+            "R1",
+        )
+        .unwrap();
+        assert_eq!(time.protocol, Protocol::Cecp);
+    }
+
+    // D8-HARN-20（match-harness.md「CECPセッション管理」）: `level`の持ち時間は
+    // 60秒の倍数なら分だけ、それ以外は分:秒の2桁表記になり、加算は秒で送る。
+    #[test]
+    fn cecp_level_formats_minutes_seconds_and_increment() {
+        assert_eq!(
+            cecp_level_text(TimeControl {
+                base_ms: 60_000,
+                increment_ms: 1_000,
+                byoyomi_ms: 0,
+            }),
+            "level 0 1 1"
+        );
+        assert_eq!(
+            cecp_level_text(TimeControl {
+                base_ms: 61_000,
+                increment_ms: 2_000,
+                byoyomi_ms: 0,
+            }),
+            "level 0 1:01 2"
+        );
     }
 
     // SPEC_UNCLEAR-05 [実装契約]: 不明リビジョンの解決は対局実行前に失敗する。
@@ -1760,6 +2195,21 @@ mod tests {
             .fixed_go_text(),
             Some("depth 3 nodes 400".to_owned())
         );
+
+        // D8-HARN-20（match-harness.md「CECPセッション管理」）: CECPへは固定制限で
+        // 十分大きい固定時計を、時間制御で現在値を10 ms単位へ切り捨てて送る。
+        let fixed = clocks.think_request(
+            Color::Black,
+            SearchLimit::Fixed {
+                depth: Some(1),
+                nodes: None,
+            },
+        );
+        assert_eq!(fixed.own_cs, 3_000_000);
+        assert_eq!(fixed.opponent_cs, 3_000_000);
+        let timed = clocks.think_request(Color::Black, simple);
+        assert_eq!(timed.own_cs, 975);
+        assert_eq!(timed.opponent_cs, 1_000);
     }
 
     // D8-HARN-12(RULES.md第33条): `engine-default`はR1、`lishogi`は
@@ -1806,17 +2256,46 @@ mod tests {
         let game = Game::new(Rules::engine_default()).expect("engine-default rules must be valid");
         let legal = game.legal_moves()[0];
         let legal_text = usi::text(game.position(), legal);
-        assert_eq!(validate_bestmove(&game, &legal_text), Ok(legal));
+        assert_eq!(
+            validate_bestmove(&game, &legal_text, Protocol::Usi),
+            Ok(legal)
+        );
         // 表記として解釈できない応答
         assert_eq!(
-            validate_bestmove(&game, "not-a-move"),
+            validate_bestmove(&game, "not-a-move", Protocol::Usi),
             Err(EngineFailure::IllegalMove)
         );
         // 表記としては読めるが初期局面では指せない着手(空升からの移動)
         assert_eq!(
-            validate_bestmove(&game, "6f6g"),
+            validate_bestmove(&game, "6f6g", Protocol::Usi),
             Err(EngineFailure::IllegalMove)
         );
+    }
+
+    // D8-HARN-20（match-harness.md「CECPセッション管理」、hachu.md第8節）:
+    // `@@@@`は合法手中の正準じっとから移動元の内部升番号が最小の手へ一意に割り当てる。
+    #[test]
+    fn cecp_null_move_selects_the_lowest_origin_canonical_jitto() {
+        let low = Move {
+            from: Square::new(2, 3).unwrap(),
+            mid: None,
+            to: Square::new(2, 3).unwrap(),
+            promote: false,
+        };
+        let high = Move {
+            from: Square::new(9, 8).unwrap(),
+            mid: None,
+            to: Square::new(9, 8).unwrap(),
+            promote: false,
+        };
+        let ordinary = Move {
+            from: Square::new(0, 0).unwrap(),
+            mid: None,
+            to: Square::new(0, 1).unwrap(),
+            promote: false,
+        };
+        assert_eq!(canonical_jitto(&[high, ordinary, low]), Some(low));
+        assert_eq!(canonical_jitto(&[ordinary]), None);
     }
 
     // D8-HARN-06(2)(3)(sprt.md異常時の裁定節): プロセス終了・パイプ切断は
@@ -1856,8 +2335,51 @@ mod tests {
         );
     }
 
-    // D8-HARN-14(sprt.md異常時の裁定節): `engine_failures:`は不正着手・
-    // クラッシュ・応答タイムアウト・時間切れの理由別件数を報告する。
+    // D8-HARN-06/20（match-harness.md「CECPセッション管理」「異常時裁定」）:
+    // CECP応答はpongまで読み切り、分割レグを連結し、拒否を反則へ、結果行だけを投了へ
+    // 分類する。着手後の結果行はHaChuの王駒捕獲出力なので着手を優先する。
+    #[test]
+    fn cecp_response_lines_are_interpreted_through_pong() {
+        fn receive(lines_to_send: &[&str]) -> Result<EngineResponse, EngineFailure> {
+            let (sender, lines) = mpsc::channel();
+            for &line in lines_to_send {
+                sender.send(Ok(line.to_owned())).unwrap();
+            }
+            sender.send(Ok("pong 12".to_owned())).unwrap();
+            receive_cecp_response(&lines, Duration::from_secs(1), 12, Instant::now())
+                .map(|(response, _)| response)
+        }
+
+        assert_eq!(
+            receive(&["# debug", "move e7d8,", "move d8d7"]),
+            Ok(EngineResponse::Move("e7d8,d8d7".to_owned()))
+        );
+        assert_eq!(
+            receive(&["Illegal move (repetition): e7d8"]),
+            Err(EngineFailure::RejectedMove)
+        );
+        assert_eq!(receive(&["0-1 {resign}"]), Ok(EngineResponse::Resigned));
+        assert_eq!(
+            receive(&["move c9i3+", "1-0 {royal capture}"]),
+            Ok(EngineResponse::Move("c9i3+".to_owned()))
+        );
+    }
+
+    // D8-HARN-20（match-harness.md「CECPセッション管理」）: 応答なしのpongは
+    // プロトコル違反であり、クラッシュ相当に分類する。
+    #[test]
+    fn cecp_pong_without_a_move_or_result_is_a_crash() {
+        let (sender, lines) = mpsc::channel();
+        sender.send(Ok("pong 3".to_owned())).unwrap();
+        assert_eq!(
+            receive_cecp_response(&lines, Duration::from_secs(1), 3, Instant::now())
+                .map(|(response, _)| response),
+            Err(EngineFailure::Crash)
+        );
+    }
+
+    // D8-HARN-14（sprt.md「異常時の裁定」）: `engine_failures:`は不正着手・
+    // クラッシュ・応答タイムアウト・時間切れ・着手拒否の理由別件数を報告する。
     // 理由別件数の合計は反則負けとして算入された局数と一致する(保存則)。
     #[test]
     fn failure_reasons_are_counted_separately_and_conserved() {
@@ -1866,13 +2388,15 @@ mod tests {
         counts.record(EngineFailure::Crash);
         counts.record(EngineFailure::Timeout);
         counts.record(EngineFailure::TimeForfeit);
+        counts.record(EngineFailure::RejectedMove);
         assert_eq!(
             counts,
             FailureCounts {
                 illegal_moves: 1,
                 crashes: 1,
                 timeouts: 1,
-                time_forfeits: 1
+                time_forfeits: 1,
+                rejected_moves: 1,
             }
         );
         // 集計の合成でも件数は保存される
@@ -1880,8 +2404,12 @@ mod tests {
         total.add(counts);
         total.add(counts);
         assert_eq!(
-            total.illegal_moves + total.crashes + total.timeouts + total.time_forfeits,
-            8
+            total.illegal_moves
+                + total.crashes
+                + total.timeouts
+                + total.time_forfeits
+                + total.rejected_moves,
+            10
         );
     }
 
@@ -1905,6 +2433,9 @@ mod tests {
             winner: Color::Black,
             reason: EngineFailure::Crash,
         };
+        let resignation_win_black = GameOutcome::Resigned {
+            winner: Color::Black,
+        };
 
         // 1局の得点は半点単位: 勝ち2、引き分け1、負け0(候補の色に依存)
         assert_eq!(half_points(win_black, Color::Black), 2);
@@ -1914,6 +2445,22 @@ mod tests {
         // 反則負けも通常の勝敗として得点化される
         assert_eq!(half_points(forfeit_win_black, Color::Black), 2);
         assert_eq!(half_points(forfeit_win_black, Color::White), 0);
+        assert_eq!(half_points(resignation_win_black, Color::Black), 2);
+        assert_eq!(half_points(resignation_win_black, Color::White), 0);
+
+        // D8-HARN-06（match-harness.md「異常時裁定」）: 投了は通常の敗北であり、
+        // engine_failuresには算入しない。
+        let resigned = PlayedGame::Finished {
+            plies: 12,
+            outcome: resignation_win_black,
+        };
+        assert_eq!(
+            played_game_text(resigned),
+            "plies=12 result=win winner=Black reason=Resigned"
+        );
+        let mut resignation_failures = FailureCounts::default();
+        record_game_failure(resigned, &mut resignation_failures);
+        assert_eq!(resignation_failures, FailureCounts::default());
 
         // ペア分類 = 第1局(候補が先手) + 第2局(候補が後手)の半点合計
         // 2局とも勝ち → 得点2.0のセル4
