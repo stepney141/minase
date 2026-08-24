@@ -659,9 +659,36 @@ fn article_30_p5_deferred_pawn_cannot_promote_on_a_later_capture() {
 }
 
 #[test]
-fn article_30_p5_deferred_pawn_must_promote_on_a_quiet_last_rank_move() {
-    // 第30条P5: 保留歩兵が非捕獲で最奥段へ到達するときは成りを強制する。
+fn article_30_p5_deferred_pawn_cannot_promote_on_a_quiet_last_rank_move() {
+    // 第30条P5: 標準規則の下では非捕獲着手で成ることができないため、保留歩兵が
+    // 非捕獲で最奥段へ到達しても成れず、以後は移動不能となる(第19条2項)。
     let rules = Rules::from_codes(&[RuleCode::P5]).unwrap();
+    let generator = MoveGenerator::new(rules);
+    let mut board = position(
+        Color::Black,
+        &[
+            (msq(6, 5), Color::Black, PieceKind::Pawn),
+            (msq(1, 7), Color::White, PieceKind::GoBetween),
+        ],
+    );
+    board.make_move_unchecked(mv(msq(6, 5), None, msq(6, 4), false), rules);
+    board.make_move_unchecked(mv(msq(1, 7), None, msq(1, 8), false), rules);
+    board.make_move_unchecked(mv(msq(6, 4), None, msq(6, 3), false), rules);
+    board.make_move_unchecked(mv(msq(1, 8), None, msq(1, 7), false), rules);
+    board.make_move_unchecked(mv(msq(6, 3), None, msq(6, 2), false), rules);
+    board.make_move_unchecked(mv(msq(1, 7), None, msq(1, 8), false), rules);
+
+    assert_no_promotion(&generated_with(&generator, &board), msq(6, 2), msq(6, 1));
+    board.make_move_unchecked(mv(msq(6, 2), None, msq(6, 1), false), rules);
+    board.make_move_unchecked(mv(msq(1, 8), None, msq(1, 7), false), rules);
+    assert!(moves_from(&generated_with(&generator, &board), msq(6, 1)).is_empty());
+}
+
+#[test]
+fn article_30_p2_p5_deferred_pawn_must_promote_on_a_quiet_last_rank_move() {
+    // 第30条P2・P5: P2の下では非捕獲着手でも成れるため、保留歩兵が非捕獲で
+    // 最奥段へ到達するときは成りを強制する。
+    let rules = Rules::from_codes(&[RuleCode::P2, RuleCode::P5]).unwrap();
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,

@@ -320,7 +320,12 @@ impl Rules {
         let deferred = position.promotion_deferred().contains(mv.from);
 
         if self.contains(RuleCode::P5) && moving_kind == PieceKind::Pawn && deferred {
-            return if reaches_last_rank {
+            // 保留歩兵は、採用中の成り規則で成れる着手のうち到達升が最奥段である
+            // 着手でのみ、必ず成る(第30条P5)。標準規則では敵陣内の捕獲着手に
+            // 限られ、P2では非捕獲着手も該当する。
+            let promotable = capture_in_or_from_zone
+                || (self.contains(RuleCode::P2) && !has_capture && (from_in_zone || to_in_zone));
+            return if promotable && reaches_last_rank {
                 PromotionChoice::PromotionForced
             } else {
                 PromotionChoice::NoPromotion
