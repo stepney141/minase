@@ -17,7 +17,7 @@ use crate::MoveGenerator;
 use crate::core::mv::Move;
 use crate::core::piece::{COLOR_COUNT, PieceKind};
 use crate::core::position::Position;
-use crate::core::rules::Rules;
+use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::{evaluate, piece_value};
 
@@ -108,7 +108,7 @@ pub struct SearchSnapshot {
     /// 探索を開始する局面。
     pub position: Position,
     /// 探索内で着手へ適用する規則。
-    pub rules: Rules,
+    pub rules: MoveRules,
     /// 対局開始から現局面までの探索局面キー。
     pub history_keys: Vec<u64>,
     /// 対局管理層が確定したルート合法手。
@@ -281,7 +281,7 @@ pub fn start_search(
 /// `infinite`を指定した場合はpanicする。
 pub fn search(
     position: &Position,
-    rules: Rules,
+    rules: MoveRules,
     root_moves: &[Move],
     history_keys: &[u64],
     limits: &SearchLimits,
@@ -438,7 +438,7 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
 #[allow(clippy::too_many_arguments)]
 fn run_search_team(
     position: &Position,
-    rules: Rules,
+    rules: MoveRules,
     root_moves: &[Move],
     history_keys: &[u64],
     limits: &SearchLimits,
@@ -552,7 +552,7 @@ fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item
 /// ワーカー固有の探索状態を構築する。
 fn new_searcher<'a>(
     position: &Position,
-    rules: Rules,
+    rules: MoveRules,
     history_keys: &'a [u64],
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
@@ -579,7 +579,7 @@ fn new_searcher<'a>(
 #[allow(clippy::too_many_arguments)]
 fn run_main_worker(
     position: &Position,
-    rules: Rules,
+    rules: MoveRules,
     root_moves: &[Move],
     history_keys: &[u64],
     depth_limit: u32,
@@ -646,7 +646,7 @@ fn run_main_worker(
 #[allow(clippy::too_many_arguments)]
 fn run_auxiliary_worker(
     position: &Position,
-    rules: Rules,
+    rules: MoveRules,
     root_moves: &[Move],
     history_keys: &[u64],
     depth_limit: u32,
@@ -687,7 +687,7 @@ fn run_auxiliary_worker(
 /// 1回の探索実行の可変状態。
 struct Searcher<'a> {
     /// 探索内の着手適用に使う規則。
-    rules: Rules,
+    rules: MoveRules,
     /// 探索ノードでの合法手生成器。
     generator: MoveGenerator,
     /// 対局開始から現局面までの探索局面キー。反復の検出に使う。

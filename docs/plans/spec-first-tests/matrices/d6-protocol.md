@@ -44,36 +44,36 @@
 
 ### D6-USI-03 RuleSetオプション宣言の形式
 - 典拠: PL「規則オプション」（`option name RuleSet type string default <起動時の--rules値の正準表記>`。正準表記は大文字・L,P,R,E順・同カテゴリ番号昇順）。
-- 前提: `--rules l1,r1,e1,l2`のような非正準指定で起動。
-- 操作と期待観測: `usi`応答内に`option name RuleSet type string default L1,L2,R1,E1`（正準化された値）が現れる。プリセット起動（`--rules lishogi`）ではdefaultは展開後コード列の正準表記`L1,L2,P3,R1,E1,E3`であり、プリセット名は現れない（PL: プリセットは入力糖衣、宣言・状態には展開後だけが現れる）。
+- 前提: `--rules e3,r1,p3,l2,p0,e1,l1`のような非正準指定で起動。
+- 操作と期待観測: `usi`応答内に`option name RuleSet type string default L1,L2,P0,P3,R1,E1,E3`（正準化された値）が現れる。プリセット起動（`--rules lishogi`）でも同じ展開後コード列が現れ、プリセット名は現れない。
 - 境界・不正: なし（宣言は起動値の関数）。
 - 性質: 宣言default値は`--rules`値の正準化写像として決定的。
 
 ### D6-USI-04 RuleSet値文法（コンマ区切り・大小非区別・重複拒否）
 - 典拠: PL「規則オプション」（コンマ区切り空白なし、大文字小文字を区別せず受理、重複コードは拒否）。UL（setoption値は空白を含められない）。
 - 前提: `usi`/`usiok`後の待機中。
-- 操作と期待観測: `setoption name RuleSet value l1,r2` → エラー出力なし（受理、pending更新）。次局開始後の観測（D6-USI-07経由、または`state`のrules欄）で`L1,R2`が反映される。
-- 境界・不正: `value L1,l1,R1`（重複、大小違いも同一コード）→ `info string error: ...`行、pending不変。空白入り値はUSI仕様上送れない（構文上トークンが分かれ、未知トークン無視により意味不正となる）。
+- 操作と期待観測: `setoption name RuleSet value l1,p0,r2,e0` → エラー出力なし（受理、pending更新）。次局開始後の観測で`L1,P0,R2,E0`が反映される。
+- 境界・不正: `value L1,l1,P0,R1,E0`（重複、大小違いも同一コード）→ `info string error: ...`行、pending不変。空白入り値はUSI仕様上送れない。
 - 性質: 受理判定は大文字小文字の正規化後の集合として決まる。
 
 ### D6-USI-05 プリセット名の受理と併記拒否
 - 典拠: PL「規則オプション」（プリセット名は`engine-default`と`lishogi`、単独指定のみ、規則コードまたは他プリセットとの併記は拒否、`lishogi,P1`への専用エラー）。R33第5・6項（大文字小文字非区別、併記を認めない）。
 - 前提: 待機中。
-- 操作と期待観測: `setoption name RuleSet value LISHOGI` → 受理（大小非区別）。次局の`state`のrules欄が`L1,L2,P3,R1,E1,E3`（展開後正準表記）。`value engine-default` → 次局rules欄`R1`。
+- 操作と期待観測: `setoption name RuleSet value LISHOGI` → 受理（大小非区別）。次局の`state`のrules欄が`L1,L2,P0,P3,R1,E1,E3`（展開後正準表記）。`value engine-default` → 次局rules欄`L0,P0,R1,E0`。
 - 境界・不正: `value lishogi,P1`・`value lishogi,engine-default` → `info string error: ...`、pending不変。`value standard`は受理しない（PL 2026-08-11追記: `standard`という名前は受理しない）→ エラー行。
 - 性質: プリセットは受理時にコード列へ展開され、以後の観測にプリセット名は現れない。
 
 ### D6-USI-06 無効なRuleSet値の受信時拒否とpending維持
 - 典拠: PL「規則オプション」（受信時に`SetRules`検証、不正ならpendingを変えずエラー通知。USIは`info string error: ...`）。
-- 前提: 起動時`--rules R1`。`setoption name RuleSet value L1,R2`で正当なpendingを作った後。
-- 操作と期待観測: `setoption name RuleSet value XX9`（未知コード）→ `info string error: ...`行。その後`usinewgame`→`position startpos`→`state` → rules欄は`L1,R2`（直前の正当なpendingが生きている）。
-- 境界・不正: 反復規則を含まない列（例`value L1,E1`）も受信時に拒否される（D6-ENG-02）。矛盾組合せ（`L0,L1`、`R1,R2`、`E2,E3`）は`Rules::from_codes`検証で拒否（R33第9項、RULES.md第29〜32条の排他規定）。
+- 前提: 起動時`--rules engine-default`。`setoption name RuleSet value L1,P0,R2,E0`で正当なpendingを作った後。
+- 操作と期待観測: `setoption name RuleSet value XX9`（未知コード）→ `info string error: ...`行。その後`usinewgame`→`position startpos`→`state` → rules欄は`L1,P0,R2,E0`（直前の正当なpendingが生きている）。
+- 境界・不正: 4群のいずれかを欠く列も受信時に`Missing`で拒否される（D6-ENG-02）。同一コードの重複と同群の複数指定は、それぞれ`Duplicate`と`Conflicting`で拒否される。
 - 性質: 拒否はpending・active・ライフサイクルのいずれも変更しない。
 
 ### D6-USI-07 規則latch（対局中は不反映、次局から反映）
 - 典拠: PL設計判断「規則指定」・「規則オプション」（active/pendingの2状態、変更は次の対局開始時に反映）。PL実施状況フェーズ3（`InGame`中の`SetPosition`はactive規則で現局を原子的に再構成し、pending規則は次局まで反映しない）。
-- 前提: `--rules R1`で起動し対局中（`position startpos moves ...`適用済み）。
-- 操作と期待観測: `setoption name RuleSet value R2` → エラーなし。直後の`state` → rules欄は依然`R1`（active不変）。続けて同一対局の`position startpos moves <延長列>`を適用しても`state`のrulesは`R1`のまま。`gameover ...`後に新しい`position startpos` → `state`のrulesが`R2`。
+- 前提: `--rules engine-default`で起動し対局中（`position startpos moves ...`適用済み）。
+- 操作と期待観測: `setoption name RuleSet value L0,P0,R2,E0` → エラーなし。直後の`state` → rules欄は依然`L0,P0,R1,E0`（active不変）。続けて同一対局の`position startpos moves <延長列>`を適用してもactive規則は変わらない。`gameover ...`後に新しい`position startpos` → rules欄が`L0,P0,R2,E0`になる。
 - 境界・不正: 起動時は`--rules`値がactiveとpendingの両方に入り、未確定状態は存在しない（PL）。
 - 性質: activeの変化点はcommit（D6-USI-08）だけである。
 
@@ -248,14 +248,14 @@
 ### D6-USI-32 `state`の行形式とstatus語彙
 - 典拠: BG「stateコマンド」（`state rules <rules> board <board-sfen> <side> status <status>`の1行。rulesは正準順コンマ区切り、boardは`to_sfen`の2欄SFEN。statusは`ongoing`／`win black|white royal-capture|repetition|piece-exhaustion|bare-king|stalemate|mate`／`draw repetition|piece-exhaustion|bare-king`）。UL同節。
 - 前提: `position startpos`適用済み、`--rules lishogi`。
-- 操作と期待観測: `state` → `state rules L1,L2,P3,R1,E1,E3 board <初期2欄SFEN> status ongoing`（単一行・完全一致。BGテスト方針が完全一致比較を明記）。終局局面では`status win black royal-capture`等、裁定に対応する語。
+- 操作と期待観測: `state` → `state rules L1,L2,P0,P3,R1,E1,E3 board <初期2欄SFEN> status ongoing`（単一行・完全一致。BGテスト方針が完全一致比較を明記）。終局局面では`status win black royal-capture`等、裁定に対応する語。
 - 境界・不正: `resignation`と`agreement`は文法に含めず、遭遇時はstatusを出さず`info string error: ...`（BG。現行USIには到達経路がないため通常台本では検証不能。実装契約としての防御的テストのみ可）。`piece-exhaustion`と`bare-king`は採用規則により排他。
 - 性質: 2欄SFENは先獅子状態・成り権保留・反復履歴を運ばない（GUIは`board`欄から状態を復元しない、という利用制約が文書化されている）。
 
 ### D6-USI-33 `state`のライフサイクル（Finished応答・AwaitingStartエラー・次局はactive規則）
 - 典拠: BG（`state`は`InGame`と`Finished`で応答。起動直後と`gameover`受信後のAwaitingStartでは`info string error: state requires an active or finished game`。`gameover`後は終局済み局面を内部に保持していても応答しない）。BGテスト方針（`gameover`後にRuleSetを変更して次局を開始し、rulesが新しい規則を返す）。
 - 前提: 終局裁定に至る`position`適用済み。
-- 操作と期待観測: Finishedで`state` → status欄が終局裁定（`moves`はエラーになる非対称と対で検証）。`gameover win`後に`state` → `info string error: state requires an active or finished game`（台本完全一致）。続けて`setoption name RuleSet value R2`→`position startpos`→`state` → rules欄`R2`（次局のactive規則）。
+- 操作と期待観測: Finishedで`state` → status欄が終局裁定（`moves`はエラーになる非対称と対で検証）。`gameover win`後に`state` → `info string error: state requires an active or finished game`（台本完全一致）。続けて`setoption name RuleSet value L0,P0,R2,E0`→`position startpos`→`state` → rules欄`L0,P0,R2,E0`（次局のactive規則）。
 - 境界・不正: 起動直後の`state`も同じエラー行。
 - 性質: GUIは`state`で終局を確認してから`gameover`を送る、という利用順序が契約の前提。
 
@@ -469,8 +469,8 @@
 ### D6-CECP-25 RuleSetオプション（宣言・latch・不正値）
 - 典拠: PL「規則オプション」（CECPは`feature option="RuleSet -string <起動値の正準表記>"`で宣言。`option NAME=VALUE`受信で検証し、正当ならpendingのみ更新、不正なら`Error (invalid option value): <受信行>`。commitは`new`）。CE第8章（feature optionの構文、GUIは`option NAME=VALUE`を送る、最初のnewより前に届く規定）。R33。
 - 前提: feature交渉済み。
-- 操作と期待観測: `option RuleSet=L1,R2` → 無応答で受理。現局（あれば）の裁定は不変で、次の`new`から反映（反映の観測は反復裁定の差など規則依存挙動で行うか、R2禁止手への`Illegal move (repetition)`の出現で行う）。`option RuleSet=lishogi` → 受理（プリセット、大小非区別）。
-- 境界・不正: `option RuleSet=XX9`・`option RuleSet=lishogi,P1`・反復規則欠如列 → `Error (invalid option value): <受信行>`1行（受信行を反響。台本完全一致相当）、pending不変。
+- 操作と期待観測: `option RuleSet=L1,P0,R2,E0` → 無応答で受理。現局（あれば）の裁定は不変で、次の`new`から反映する。`option RuleSet=lishogi` → 受理（プリセット、大小非区別）。
+- 境界・不正: `option RuleSet=XX9`・`option RuleSet=lishogi,P1`・いずれかの群を欠く列 → `Error (invalid option value): <受信行>`1行、pending不変。
 - 性質: USI側（D6-USI-04〜07）と同一の値文法・同一のlatch意味論をwireだけ変えて再検証する（共通解析関数の契約）。
 
 ### D6-CECP-26 無視するコマンド群
@@ -549,11 +549,11 @@
 - 境界・不正: moves列の最後の1手だけが不合法な場合も先頭からの部分適用が残らない（D6-USI-11）。
 - 性質: 交換は全か無か。active規則・Game・ライフサイクルの3つ組は常に整合する。
 
-### D6-ENG-02 `SetRules`の受信時検証と反復規則欠如の拒否
-- 典拠: PL「コマンドenum…」（SetRulesの検証にはRules::from_codesの成功に加えて反復規則の存在（Game構築可能性）を含める。from_codesはR1〜R3を含まない列も受理するがGame::newが拒否するため、commit時ではなく受信時に弾く）。R33第5項（反復規則は常にいずれか1つ）。
+### D6-ENG-02 `SetRules`の受信時検証と群欠落の拒否
+- 典拠: PL「コマンドenum…」、rules-type.md「検証の層」、R33第4項。`Rules::from_codes`が重複、排他違反、4群の欠落を一括して検証し、`Game`は検証済みの`Rules`だけを受ける。
 - 前提: 待機中。
-- 操作と期待観測: USI `setoption name RuleSet value L1,E1`（R欠如）→ `info string error: ...`、pending不変。CECP `option RuleSet=L1,E1` → `Error (invalid option value): ...`。その後のcommit点（usinewgame等）が旧pendingで成功する（エラーが遅延しない証拠）。
-- 境界・不正: R0は選択可能コードとして提供されない（R33第5項: MinaseはR0を提供せずR1〜R3の明示を必須とする）→ `value R0`は拒否。
+- 操作と期待観測: USI `setoption name RuleSet value L1,P0,E0`（R欠如）→ `info string error: ...`、pending不変。CECPの同じ値も`Error (invalid option value): ...`となる。その後のcommit点が旧pendingで成功するため、エラーは遅延しない。
+- 境界・不正: 空列とR1単独は`Missing(Lion)`、L0＋P0＋E0は`Missing(Repetition)`となる。R0は選択可能コードとして提供されない。
 - 性質: 「未確定のまま対局開始」という状態が存在しない（起動時から常に規則確定、拒否は受信時点）。
 
 ### D6-ENG-03 `IllegalMoveCause`の分類
@@ -598,21 +598,21 @@
 ### D6-CLI-01 `--protocol`と`--rules`の明示必須
 - 典拠: PL「モジュールと名称」・完了条件（単一バイナリが`--protocol usi|cecp`と`--rules`の明示指定を必須とし、未指定時に起動を拒否する。既定値と自動判別は設けない）。EC（明示指定を維持）。
 - 前提: minaseバイナリの起動。
-- 操作と期待観測: `minase`（引数なし）・`minase --protocol usi`（--rulesなし）・`minase --rules R1`（--protocolなし）→ いずれも非0終了しエンジンとして起動しない。`minase --protocol usi --rules R1` → 起動して`usi`に応答する。
+- 操作と期待観測: `minase`（引数なし）・`minase --protocol usi`（--rulesなし）・`minase --rules engine-default`（--protocolなし）→ いずれも非0終了しエンジンとして起動しない。`minase --protocol usi --rules engine-default` → 起動して`usi`に応答する。
 - 境界・不正: `--protocol`の値は`usi`と`cecp`の2値のみ（他値は拒否）。
 - 性質: 既定値・フォールバック不在。
 
 ### D6-CLI-02 `--rules`の値文法とRuleSetオプションの同一性
-- 典拠: PL「規則オプション」（同じ値文法を`--rules`起動フラグにも適用し、解析はコア層の共通関数（`parse_rule_set`）が担う。`engine-default`と`Rules::engine_default()`の一致はコア層の単体テストが保証）。R33第5項（engine-defaultはR1へ展開、大文字小文字非区別、併記拒否）。
+- 典拠: PL「規則オプション」。同じ値文法を`--rules`起動フラグにも適用し、解析はコア層の共通関数が担う。R33第4・5項により4群を明示し、engine-defaultはL0＋P0＋R1＋E0へ展開する。
 - 前提: minase起動。
-- 操作と期待観測: `--rules engine-default`で起動 → `usi`応答のRuleSet default値が`R1`。`--rules r1,l1` → default値`L1,R1`（正準化）。wireオプションで受理される値と`--rules`で受理される値の集合が一致することを、代表値（正当・不正各数件）の突き合わせで固定する。
-- 境界・不正: `--rules XX9`・`--rules L1,E1`（R欠如）・`--rules R0` → 起動拒否（非0終了）。エンジンは起動時点から規則確定状態でなければならないため、不正値での起動成功はあり得ない。
+- 操作と期待観測: `--rules engine-default`で起動 → `usi`応答のRuleSet default値が`L0,P0,R1,E0`。`--rules r1,l1,p0,e0` → default値`L1,P0,R1,E0`（正準化）。wireオプションで受理される値と`--rules`で受理される値の集合が一致する。
+- 境界・不正: `--rules XX9`・`--rules L1,P0,E0`（R欠如）・`--rules R1`（L群欠如）・`--rules R0` → 起動拒否（非0終了）。
 - 性質: 値文法の単一定義（wireとCLIで同一の解析関数）。
 
 ### D6-CLI-03 `lishogi`プリセットの展開
-- 典拠: R33第6項（`L1＋L2＋P3＋R1＋E1＋E3`の組合せを規則セット名lishogiとして受理）。PL（プリセット表と`parse_rule_set`、リプレイ照合テストが`parse_rule_set("lishogi")`の解決を経由し、名前が指す組合せと検証済み組合せの一致をテストが保証）。
+- 典拠: R33第6項（`L1＋L2＋P0＋P3＋R1＋E1＋E3`の組合せを規則セット名lishogiとして受理）。PL（プリセット表と`parse_rule_set`、リプレイ照合テストが定数から戻したコード列との一致を保証）。
 - 前提: `--rules lishogi`で起動。
-- 操作と期待観測: `usi`応答のRuleSet default値が`L1,L2,P3,R1,E1,E3`。`state`のrules欄も同値。プリセット名自体はいかなる出力にも現れない。
+- 操作と期待観測: `usi`応答のRuleSet default値が`L1,L2,P0,P3,R1,E1,E3`。`state`のrules欄も同値。プリセット名自体はいかなる出力にも現れない。
 - 境界・不正: `--rules lishogi,P1` → 起動拒否（専用エラー。PLがこの併記への専用エラーを明記）。
 - 性質: 名前→組合せの写像はコード内の契約であり、リプレイ照合（統合テスト）が実裁定との一致で裏づける。
 
@@ -626,8 +626,9 @@
 ### D6-CLI-05 バイナリ間の同一契約と共通化の注記
 - 典拠: PL（解析はコア層の共通関数が担う）。docs/sprt.md（match_runnerの`commit:`specは起動引数`--protocol usi --rules <マッチ規則>`を自動付与。minase本体は`--protocol`と`--rules`が必須。`usi_random`は同一ビルドの校正用エンジン）。R33第5・6項（「本規則を実装するプログラム（Minase）」として名前受理を規定しており、バイナリを限定しない）。
 - 前提: minase・usi_random・match_runner・random_playの各バイナリ。
-- 操作と期待観測: 4バイナリの規則引数が同じ値集合を受理・拒否することを、代表値（`engine-default`、`lishogi`、明示コード列、`lishogi,P1`拒否、R欠如拒否）で突き合わせる。共通解析関数`parse_rule_set`の単体テスト1系列と、各バイナリの受け口が同関数を経由することのwire確認で構成し、4重の全数重複テストは書かない（共通化の検討: 値文法のテストは共通関数側へ集約し、バイナリ側は接続確認1件ずつに留めることを推奨）。
+- 操作と期待観測: 4バイナリの規則引数が同じ値集合を受理・拒否することを、代表値（`engine-default`、`lishogi`、4群を明示したコード列、`lishogi,P1`拒否、群欠落拒否）で突き合わせる。共通解析関数`parse_rule_set`の単体テスト1系列と、各バイナリの受け口が同関数を経由することのwire確認で構成する。
 - 境界・不正: usi_randomとrandom_playの規則引数の存在・形式は規範文書に明文がない → SPEC_UNCLEAR-09。テスト化するなら実装契約と明示する。
+- 性質: match_runnerは解析済みコード列を審判の意味検証と記録に使う一方、入力原文を両エンジンの起動引数とRuleSetオプションへそのまま渡す。プリセットは各エンジンが自分の版の語彙で展開する。
 - 性質: 規則文法の定義は1箇所（コア層）であり、バイナリはすべてそれを参照する。
 
 ### D6-CLI-06 usi_randomの`Seed`オプションと決定性

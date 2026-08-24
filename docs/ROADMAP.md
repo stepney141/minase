@@ -23,12 +23,14 @@
 | Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 完了 | 2026年8月23日 |
 | テストスイートのspec-first再構築 | [plans/spec-first-tests.md](plans/spec-first-tests.md) | 完了 | 2026年8月15日 |
 | 評価関数 | [plans/evaluation.md](plans/evaluation.md) | 起案済み | ― |
+| 規則集合の代数的データ型化 | [plans/rules-type.md](plans/rules-type.md) | 完了 | 2026年8月25日 |
 
 直前局面生成器は設計済みだが、2026年8月10日に探索部を先行させると決定し、待機中のままとする。
 順方向の探索部と評価関数は直前局面生成器の完了を前提とせず、いつ再開しても手戻りがない。
 
 ## 現在地：評価関数マイルストーンの起案
 
+規則集合の代数的データ型化は2026年8月25日に完了し、評価関数マイルストーンの着手順には影響しない。
 Lazy SMPマイルストーンは2026年8月23日に完了した（記録は plans/lazy-smp.md）。
 製品の既定ワーカー数は1のままであり、並列探索はUSIの`Threads`とCECPの`cores`で明示した場合だけ有効になる。
 

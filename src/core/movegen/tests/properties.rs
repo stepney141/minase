@@ -13,7 +13,7 @@ use super::{
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuilder};
-use crate::core::rules::{RuleCode, Rules};
+use crate::core::rules::{MoveRules, PromotionRule};
 use crate::core::square::Square;
 use crate::rng::XorShift64;
 
@@ -178,7 +178,7 @@ fn assert_canonical_invariants(position: &Position, moves: &[Move], ply: usize) 
 }
 
 /// 着手適用後の盤面変化が第6条2項・第7条3項・第9条（成り先18組）に従うことを検査する。
-fn assert_application_effects(before: &Position, mv: Move, rules: Rules, ply: usize) {
+fn assert_application_effects(before: &Position, mv: Move, rules: MoveRules, ply: usize) {
     let side = before.side_to_move();
     let captures = expected_captures(before, mv);
     let mut after = before.clone();
@@ -230,7 +230,7 @@ fn assert_application_effects(before: &Position, mv: Move, rules: Rules, ply: us
 }
 
 /// シード固定プレイアウトで正準形不変条件と適用効果を検査する（D1-MC-01）。
-fn playout_canonical(rules: Rules, seed: u64, plies: usize) {
+fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
     let generator = MoveGenerator::new(rules);
     let mut rng = XorShift64::new(seed);
     let mut position = Position::initial();
@@ -250,16 +250,21 @@ fn playout_canonical(rules: Rules, seed: u64, plies: usize) {
 // 併せて第6〜7条・第17〜18条の全域性質を到達可能局面で検査する。
 #[test]
 fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
-    playout_canonical(Rules::standard(), 0x5255_4c45_5345_5401, 96);
+    playout_canonical(MoveRules::standard(), 0x5255_4c45_5345_5401, 96);
     playout_canonical(
-        Rules::from_codes(&[RuleCode::P1, RuleCode::P3, RuleCode::P4]).unwrap(),
+        MoveRules {
+            promotion: PromotionRule::P1,
+            p3: true,
+            p4: true,
+            ..MoveRules::standard()
+        },
         0x5255_4c45_5345_5402,
         96,
     );
 }
 
 /// シード固定プレイアウトで全生成手の適用・復元の往復を検査する（D1-MC-02）。
-fn playout_round_trip(rules: Rules, seed: u64, plies: usize) {
+fn playout_round_trip(rules: MoveRules, seed: u64, plies: usize) {
     let generator = MoveGenerator::new(rules);
     let mut rng = XorShift64::new(seed);
     let mut position = Position::initial();
@@ -283,11 +288,14 @@ fn playout_round_trip(rules: Rules, seed: u64, plies: usize) {
 // implementation contract。局面ハッシュ等の内部表現の検証は領域D4）。
 #[test]
 fn mc_make_unmake_round_trips_every_generated_move() {
-    playout_round_trip(Rules::standard(), 0x5255_4c45_5345_5403, 64);
+    playout_round_trip(MoveRules::standard(), 0x5255_4c45_5345_5403, 64);
     // P1の成り権状態（第24条1項dに関わる一時的権利）も含めて復元されることを、
     // P1採用プレイアウトで確認する。
     playout_round_trip(
-        Rules::from_codes(&[RuleCode::P1]).unwrap(),
+        MoveRules {
+            promotion: PromotionRule::P1,
+            ..MoveRules::standard()
+        },
         0x5255_4c45_5345_5404,
         64,
     );

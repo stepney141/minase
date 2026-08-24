@@ -228,6 +228,7 @@ const fn rule_code_text(code: RuleCode) -> &'static str {
         RuleCode::L2 => "L2",
         RuleCode::L3 => "L3",
         RuleCode::L4 => "L4",
+        RuleCode::P0 => "P0",
         RuleCode::P1 => "P1",
         RuleCode::P2 => "P2",
         RuleCode::P3 => "P3",
@@ -237,6 +238,7 @@ const fn rule_code_text(code: RuleCode) -> &'static str {
         RuleCode::R1 => "R1",
         RuleCode::R2 => "R2",
         RuleCode::R3 => "R3",
+        RuleCode::E0 => "E0",
         RuleCode::E1 => "E1",
         RuleCode::E2 => "E2",
         RuleCode::E3 => "E3",
@@ -367,7 +369,7 @@ fn run_game(
     max_ply: u32,
     verify_all: bool,
 ) -> CompletedGame {
-    let mut game = Game::new(rules).expect("validated rules must contain a repetition rule");
+    let mut game = Game::new(rules);
     let mut rng = XorShift64::new(game_seed(base_seed, game_number));
     let mut history = Vec::new();
 
@@ -511,12 +513,6 @@ fn main() {
             .error(ErrorKind::ValueValidation, error.to_string())
             .exit(),
     };
-    if let Err(error) = Game::new(rules) {
-        Arguments::command()
-            .error(ErrorKind::ValueValidation, error.to_string())
-            .exit();
-    }
-
     let base_seed = match arguments.seed {
         Some(seed) => seed,
         None => match time_seed() {
@@ -602,7 +598,7 @@ mod tests {
             Arguments::try_parse_from([
                 "random_play",
                 "--rules",
-                "R1",
+                "engine-default",
                 "--game",
                 "2",
                 "--games",
@@ -612,7 +608,8 @@ mod tests {
         );
         // 局番号は1起算のため0は受理しない
         assert!(
-            Arguments::try_parse_from(["random_play", "--rules", "R1", "--game", "0"]).is_err()
+            Arguments::try_parse_from(["random_play", "--rules", "engine-default", "--game", "0",])
+                .is_err()
         );
     }
 
@@ -624,17 +621,21 @@ mod tests {
         let engine_default =
             Arguments::try_parse_from(["random_play", "--rules", "engine-default"])
                 .expect("the engine-default preset must be accepted");
-        assert_eq!(engine_default.rules.0, [RuleCode::R1]);
+        assert_eq!(
+            engine_default.rules.0,
+            [RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]
+        );
 
         let preset = Arguments::try_parse_from(["random_play", "--rules", "LISHOGI"])
             .expect("preset names must match case-insensitively");
-        let codes = Arguments::try_parse_from(["random_play", "--rules", "L1,L2,P3,R1,E1,E3"])
+        let codes = Arguments::try_parse_from(["random_play", "--rules", "L1,L2,P0,P3,R1,E1,E3"])
             .expect("an explicit rule code list must be accepted");
         assert_eq!(
             preset.rules.0,
             [
                 RuleCode::L1,
                 RuleCode::L2,
+                RuleCode::P0,
                 RuleCode::P3,
                 RuleCode::R1,
                 RuleCode::E1,
@@ -675,9 +676,10 @@ mod tests {
     // 異常ではなく打ち切りである。
     #[test]
     fn same_seed_and_game_number_reproduce_the_same_game() {
-        let rules = Rules::from_codes(&[RuleCode::R1]).expect("R1 alone must be a valid rule set");
-        let first = run_game(rules, "R1", 20_260_814, 1, 16, false);
-        let second = run_game(rules, "R1", 20_260_814, 1, 16, false);
+        let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0])
+            .expect("the complete engine-default rule set must be valid");
+        let first = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, false);
+        let second = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, false);
         assert_eq!(first.moves, second.moves);
         assert_eq!(first.plies, second.plies);
         assert_eq!(first.plies, 16);
@@ -689,8 +691,9 @@ mod tests {
     // プロセス異常終了として現れるため、完走自体が観測である。
     #[test]
     fn verify_all_verification_completes_on_a_short_game() {
-        let rules = Rules::from_codes(&[RuleCode::R1]).expect("R1 alone must be a valid rule set");
-        let completed = run_game(rules, "R1", 20_260_814, 2, 4, true);
+        let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0])
+            .expect("the complete engine-default rule set must be valid");
+        let completed = run_game(rules, "L0,P0,R1,E0", 20_260_814, 2, 4, true);
         assert_eq!(completed.plies, 4);
         assert_eq!(completed.moves.len(), 4);
         assert!(matches!(completed.outcome, Outcome::Cutoff));

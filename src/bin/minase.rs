@@ -148,7 +148,8 @@ mod tests {
     #[test]
     fn rules_argument_shares_the_wire_value_grammar() {
         // PL「規則オプション」（同じ値文法を--rulesにも適用、解析は共通関数parse_rule_set）・
-        // R33第5・6項（engine-default=R1、lishogi=L1+L2+P3+R1+E1+E3、大小非区別・併記拒否）
+        // R33第5・6項（engine-default=L0+P0+R1+E0、
+        // lishogi=L1+L2+P0+P3+R1+E1+E3、大小非区別・併記拒否）
         // （D6-CLI-02〜04、D6-CLI-05のminase側接続確認）。
         let parse = |value: &str| {
             Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", value])
@@ -157,7 +158,7 @@ mod tests {
 
         assert_eq!(
             parse("engine-default").unwrap(),
-            parse_rule_set("R1").unwrap()
+            parse_rule_set("L0,P0,R1,E0").unwrap()
         );
         assert_eq!(
             parse("Engine-Default").unwrap(),
@@ -165,13 +166,13 @@ mod tests {
         );
         assert_eq!(
             parse("lishogi").unwrap(),
-            parse("L1,L2,P3,R1,E1,E3").unwrap()
+            parse("L1,L2,P0,P3,R1,E1,E3").unwrap()
         );
         assert_eq!(parse("LISHOGI").unwrap(), parse("lishogi").unwrap());
         // 値は大文字小文字を区別せず、コード列は同じ規則集合へ解決される。
         assert_eq!(
-            Rules::from_codes(&parse("r1,l1").unwrap()).unwrap(),
-            Rules::from_codes(&parse("L1,R1").unwrap()).unwrap()
+            Rules::from_codes(&parse("p0,r1,l1,e0").unwrap()).unwrap(),
+            Rules::from_codes(&parse("L1,P0,R1,E0").unwrap()).unwrap()
         );
 
         assert!(parse("XX9").is_err());
@@ -188,8 +189,8 @@ mod tests {
                 .contains("preset 'lishogi' must be specified alone")
         );
 
-        // 反復規則を含まない列は値文法としては解析できるが、エンジン構築（起動）の時点で
-        // 拒否されるため、不正値での起動成功はあり得ない（D6-CLI-02境界）。
-        assert!(Engine::new(parse("L1,E1").unwrap()).is_err());
+        // 4群のいずれかを欠く列は値文法としては解析できるが、エンジン構築時に拒否される
+        // ため、不正値での起動成功はあり得ない（D6-CLI-02境界）。
+        assert!(Engine::new(parse("L1,P0,E1,E0").unwrap()).is_err());
     }
 }

@@ -4,7 +4,7 @@ use core::fmt;
 
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuildError, PositionBuilder};
-use crate::core::rules::{RuleCode, Rules};
+use crate::core::rules::{MoveRules, PromotionRule};
 use crate::core::square::{BOARD_FILES, BOARD_RANKS, Square};
 
 /// 拡張SFENが表す対局開始局面。
@@ -318,7 +318,7 @@ pub fn to_extended_sfen(setup: &SetupPosition) -> String {
 /// 4欄入力では成り権保留欄(P1・P2・P5)を`-`とみなす。獅子捕獲升は検証して
 /// [`SetupPosition::lion_capture`]へ保持し、先獅子状態(第15条)の
 /// [`Position`]への注入は対局管理層へ委ねる。
-pub fn parse_extended_sfen(sfen: &str, rules: Rules) -> Result<SetupPosition, SfenError> {
+pub fn parse_extended_sfen(sfen: &str, rules: MoveRules) -> Result<SetupPosition, SfenError> {
     let fields: Vec<_> = sfen.split_whitespace().collect();
     if !matches!(fields.len(), 4 | 5) {
         return Err(SfenError::InvalidExtendedFieldCount {
@@ -399,14 +399,11 @@ fn parse_side_to_move(field: &str) -> Result<Color, SfenError> {
 }
 
 /// 成り権保留欄(P1・P2・P5)を解析する。`-`は空を表し、升は内部密番号の狭義昇順を要求する。
-fn parse_promotion_deferred(field: &str, rules: Rules) -> Result<Vec<Square>, SfenError> {
+fn parse_promotion_deferred(field: &str, rules: MoveRules) -> Result<Vec<Square>, SfenError> {
     if field == "-" {
         return Ok(Vec::new());
     }
-    if ![RuleCode::P1, RuleCode::P2, RuleCode::P5]
-        .into_iter()
-        .any(|code| rules.contains(code))
-    {
+    if rules.promotion == PromotionRule::P0 && !rules.p5 {
         return Err(SfenError::PromotionDeferredRequiresRule);
     }
 
@@ -834,7 +831,7 @@ mod tests {
     // [USI]「SFENの全体構文」、[RULES]第5条、[CECP]第7章）。
     #[test]
     fn lishogi_initial_four_field_sfen_matches_the_initial_position() {
-        let setup = parse_extended_sfen(LISHOGI_INITIAL_SFEN, Rules::engine_default()).unwrap();
+        let setup = parse_extended_sfen(LISHOGI_INITIAL_SFEN, MoveRules::standard()).unwrap();
         assert_eq!(setup.position, Position::initial());
         assert_eq!(setup.lion_capture, None);
         assert_eq!(setup.next_move_number, 1);
@@ -915,7 +912,7 @@ mod tests {
         for input in inputs {
             assert!(parse_sfen(&input).is_err(), "{input:.40}");
             assert!(
-                parse_extended_sfen(&format!("{input} - 1"), Rules::engine_default()).is_err(),
+                parse_extended_sfen(&format!("{input} - 1"), MoveRules::standard()).is_err(),
                 "{input:.40}"
             );
         }
@@ -925,7 +922,7 @@ mod tests {
     // （[PL]「拡張SFEN」、[USI]「SFENの全体構文」第3項の経由升捕獲を含む訂正後条件）。
     #[test]
     fn lion_capture_field_accepts_dash_empty_and_non_mover_squares_only() {
-        let rules = Rules::engine_default();
+        let rules = MoveRules::standard();
         // 7f = 内部(5, 6)。
         let capture_square = sq(5, 6);
         let occupied_board = board_with_row(5, "5p6");
@@ -972,7 +969,7 @@ mod tests {
     // 盤面の出自を保存し、導出の前提（+oとnの区別）を担う。
     #[test]
     fn lion_capture_square_preserves_kirin_promoted_lion_identity_for_l2() {
-        let rules = Rules::engine_default();
+        let rules = MoveRules::standard();
         let capture_square = sq(5, 6);
 
         // 非手番側の+o（麒麟由来の成獅子）・n（生の獅子）・他の駒のいずれも受理する
@@ -998,7 +995,7 @@ mod tests {
     // （[PL]「拡張SFEN」、[USI]「SFENの全体構文」第4項）。
     #[test]
     fn move_number_field_accepts_one_through_9999_and_round_trips() {
-        let rules = Rules::engine_default();
+        let rules = MoveRules::standard();
         for valid in [1_u32, 9999] {
             let setup = parse_extended_sfen(&format!("{EMPTY_BOARD} b - {valid}"), rules).unwrap();
             assert_eq!(setup.next_move_number, valid);
@@ -1021,7 +1018,10 @@ mod tests {
     // 順序の単調性だけを断定し、特定の並びの直値は固定しない。
     #[test]
     fn deferred_field_is_a_strictly_ordered_comma_list_that_round_trips() {
-        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        let p1 = MoveRules {
+            promotion: PromotionRule::P1,
+            ..MoveRules::standard()
+        };
         // 黒銀8c＝内部(4, 9)、白銀7j＝内部(5, 2)。どちらも自軍から見た敵陣内の未成駒。
         let mut rows = ["12"; 12];
         rows[2] = "4S7";
@@ -1070,19 +1070,31 @@ mod tests {
         let board = rows.join("/");
 
         // 第30条P1・P2・P5: いずれもなければ、構文が正しい升名列も拒否する。
-        assert!(parse_extended_sfen(&format!("{board} b - 1 -"), Rules::engine_default()).is_ok());
+        assert!(parse_extended_sfen(&format!("{board} b - 1 -"), MoveRules::standard()).is_ok());
         assert_eq!(
-            parse_extended_sfen(&format!("{board} b - 1 8c"), Rules::engine_default()),
+            parse_extended_sfen(&format!("{board} b - 1 8c"), MoveRules::standard()),
             Err(SfenError::PromotionDeferredRequiresRule)
         );
 
         // 第30条P1・P2・P5: 各規則の単独採用で第5欄を受理し、そのまま往復する。
         let text = format!("{board} b - 1 8c");
-        for code in [RuleCode::P1, RuleCode::P2, RuleCode::P5] {
-            let rules = Rules::from_codes(&[code, RuleCode::R1]).unwrap();
+        for rules in [
+            MoveRules {
+                promotion: PromotionRule::P1,
+                ..MoveRules::standard()
+            },
+            MoveRules {
+                promotion: PromotionRule::P2,
+                ..MoveRules::standard()
+            },
+            MoveRules {
+                p5: true,
+                ..MoveRules::standard()
+            },
+        ] {
             let setup = parse_extended_sfen(&text, rules).unwrap();
             assert!(setup.position.promotion_deferred().contains(sq(4, 9)));
-            assert_eq!(to_extended_sfen(&setup), text, "{code:?}");
+            assert_eq!(to_extended_sfen(&setup), text, "{rules:?}");
         }
     }
 
@@ -1090,7 +1102,10 @@ mod tests {
     // 拒否する（[PL]「拡張SFEN」の不変条件4類型、[RULES]第17条第1項）。
     #[test]
     fn deferred_squares_must_hold_an_unpromoted_promotable_piece() {
-        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        let p1 = MoveRules {
+            promotion: PromotionRule::P1,
+            ..MoveRules::standard()
+        };
         // 段c（内部rank 9）: 空升・王将・成銀・歩兵・獅子・奔王を並べる。
         let mut rows = ["12"; 12];
         rows[2] = "1K+SPNQ6";
@@ -1115,7 +1130,7 @@ mod tests {
     // D5-SFEN-15: 拡張形式は5欄と4欄（第5欄`-`扱い）だけを受理する（[PL]「拡張SFEN」）。
     #[test]
     fn extended_parser_accepts_only_four_or_five_fields() {
-        let rules = Rules::engine_default();
+        let rules = MoveRules::standard();
         // 4欄入力は第5欄`-`を明示した5欄入力と同じ解析結果になる。
         let four = parse_extended_sfen(&format!("{EMPTY_BOARD} b - 1"), rules).unwrap();
         let five = parse_extended_sfen(&format!("{EMPTY_BOARD} b - 1 -"), rules).unwrap();
@@ -1152,7 +1167,10 @@ mod tests {
         assert!(plain_text.ends_with(" b - 1 -"));
 
         // 盤面・手番・獅子捕獲升・手数・保留集合のすべてが往復で一致する。
-        let p1 = Rules::from_codes(&[RuleCode::P1, RuleCode::R1]).unwrap();
+        let p1 = MoveRules {
+            promotion: PromotionRule::P1,
+            ..MoveRules::standard()
+        };
         let mut rows = ["12"; 12];
         rows[2] = "4S7";
         rows[9] = "5s6";

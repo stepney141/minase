@@ -115,8 +115,7 @@ impl Engine {
     /// 拒否するため、構築後に規則未確定状態は存在しない。
     pub fn new(startup_codes: Vec<RuleCode>) -> Result<Self, RejectReason> {
         let selection = validate_rules(startup_codes)?;
-        let game = Game::new(selection.rules)
-            .map_err(|error| RejectReason::InvalidRules(error.to_string()))?;
+        let game = Game::new(selection.rules);
         Ok(Self {
             game,
             active: selection.clone(),
@@ -203,11 +202,7 @@ impl Engine {
 
     /// pending規則をcommitして初期局面の対局を作り、開始待ちへ戻る。
     fn new_game(&mut self) -> EngineReply {
-        let Ok(game) = Game::new(self.pending.rules) else {
-            return EngineReply::Rejected(RejectReason::InvalidRules(
-                "missing repetition rule".to_owned(),
-            ));
-        };
+        let game = Game::new(self.pending.rules);
         self.active = self.pending.clone();
         self.game = game;
         self.lifecycle = EngineLifecycle::AwaitingStart;
@@ -231,11 +226,7 @@ impl Engine {
         if let Err(error) = position.set_lion_capture(setup.lion_capture) {
             return EngineReply::Rejected(RejectReason::InvalidPosition(error.to_string()));
         }
-        let Ok(mut game) = Game::from_position(selection.rules, position) else {
-            return EngineReply::Rejected(RejectReason::InvalidRules(
-                "missing repetition rule".to_owned(),
-            ));
-        };
+        let mut game = Game::from_position(selection.rules, position);
 
         for &mv in moves {
             if let Err(error) = game.play(mv) {
@@ -324,7 +315,6 @@ pub(crate) fn canonical_rules_text(codes: &[RuleCode]) -> String {
 fn validate_rules(codes: Vec<RuleCode>) -> Result<RuleSelection, RejectReason> {
     let rules =
         Rules::from_codes(&codes).map_err(|error| RejectReason::InvalidRules(error.to_string()))?;
-    Game::new(rules).map_err(|error| RejectReason::InvalidRules(error.to_string()))?;
     Ok(RuleSelection {
         codes: canonical_rule_codes(&codes),
         rules,
@@ -411,9 +401,15 @@ mod tests {
     fn failed_commit_is_atomic_and_keeps_active_pending_and_lifecycle() {
         // PL「コマンドenum…」: commitは複製上の全適用が成功した場合に限りactive規則・Game・
         // ライフサイクルを同時に交換する原子的操作（D6-ENG-01）。
-        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
         assert!(matches!(
-            engine.handle(EngineCommand::SetRules(vec![RuleCode::R2, RuleCode::E2])),
+            engine.handle(EngineCommand::SetRules(vec![
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R2,
+                RuleCode::E2,
+            ])),
             EngineReply::Accepted { .. }
         ));
 
@@ -469,7 +465,8 @@ mod tests {
             winner: Color::Black,
             reason: WinReason::RoyalCapture,
         };
-        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
 
         assert_eq!(
             engine.handle(EngineCommand::SetPosition {
@@ -519,9 +516,15 @@ mod tests {
         // PL「コマンドenum…」: SetRulesの検証はfrom_codesの成功に加えて反復規則の存在を含み、
         // commit時ではなく受信時に弾く（D6-ENG-02）。R33第5項（反復規則は常にいずれか1つ）・
         // 第9項（矛盾する組合せは無効）。
-        let mut engine = Engine::new(vec![RuleCode::R1]).unwrap();
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]).unwrap();
         assert!(matches!(
-            engine.handle(EngineCommand::SetRules(vec![RuleCode::R2, RuleCode::E2])),
+            engine.handle(EngineCommand::SetRules(vec![
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R2,
+                RuleCode::E2,
+            ])),
             EngineReply::Accepted { .. }
         ));
 
@@ -561,7 +564,8 @@ mod tests {
     fn each_reject_reason_is_idempotent_and_state_preserving() {
         // PL「コマンドenum…」: Rejectedはエンジンの状態を一切変化させない。
         // 同じ不正入力の再送は同じ拒否を返す（D6-ENG-05）。
-        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
 
         // InvalidPosition（AwaitingStartでの着手）。
         let probe = step(sq(0, 3), sq(0, 4)); // 初期配置の歩兵の前進（合法手）
@@ -604,7 +608,8 @@ mod tests {
         ));
 
         // GameAlreadyOver（RULES.md第26条第12項）。
-        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
         assert!(matches!(
             engine.handle(EngineCommand::SetPosition {
                 setup: setup(royal_position()),
@@ -624,7 +629,8 @@ mod tests {
     fn lifecycle_cycles_through_start_game_finish_and_back() {
         // PL「コマンドenum…」: AwaitingStart／InGame／Finishedのライフサイクルと、
         // EndGameによるAwaitingStartへの復帰（D6-ENG-06）。
-        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
 
         // AwaitingStart: 着手は拒否、SetPositionはcommit経路。
         assert!(matches!(
@@ -674,7 +680,8 @@ mod tests {
         ));
 
         // NewGameもFinishedからの復帰経路である（commitしてAwaitingStartへ）。
-        let mut engine = Engine::new(vec![RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
         assert!(matches!(
             engine.handle(EngineCommand::SetPosition {
                 setup: setup(royal_position()),

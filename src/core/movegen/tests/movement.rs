@@ -6,7 +6,7 @@ use super::dir::{B, BL, BR, F, FL, FR, L, R};
 use super::{direct_destinations, generated, jitto_moves, msq, mv, same_board, step_squares};
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
-use crate::core::rules::Rules;
+use crate::core::rules::MoveRules;
 use crate::core::square::Square;
 use crate::test_util::position;
 
@@ -15,7 +15,7 @@ use crate::test_util::position;
 fn assert_single_mover(before: &Position, mv: crate::core::mv::Move) {
     let mover = before.side_to_move();
     let mut after = before.clone();
-    after.make_move_unchecked(mv, Rules::standard());
+    after.make_move_unchecked(mv, MoveRules::standard());
 
     // 期待捕獲升: mid（第1段階の捕獲）と、相手駒がいる到達升（第7条3項）。
     let mut expected_captures: BTreeSet<Square> = BTreeSet::new();
@@ -69,7 +69,7 @@ fn article_6_1_initial_position_alternates_turns_starting_with_black() {
         );
     }
 
-    position.make_move_unchecked(moves[0], Rules::standard());
+    position.make_move_unchecked(moves[0], MoveRules::standard());
     // 先手の1手を適用した局面では、全着手が後手（White）の駒を from とする。
     for m in generated(&position) {
         assert_eq!(
@@ -116,7 +116,7 @@ fn article_6_4_lion_jitto_passes_turn_without_board_change() {
     assert!(generated(&before).contains(&jitto));
 
     let mut after = before.clone();
-    after.make_move_unchecked(jitto, Rules::standard());
+    after.make_move_unchecked(jitto, MoveRules::standard());
     // 盤面成分は不変で、手番だけが相手へ移る。
     assert!(same_board(&before, &after));
     assert_eq!(after.side_to_move(), Color::White);
@@ -179,7 +179,7 @@ fn article_7_3_capture_removes_the_enemy_piece_permanently() {
     let capture = mv(msq(6, 6), None, msq(6, 5), false);
     assert!(generated(&board).contains(&capture));
 
-    board.make_move_unchecked(capture, Rules::standard());
+    board.make_move_unchecked(capture, MoveRules::standard());
     // 到達升に金将が移り、取られた歩兵は盤上から消える（持ち駒にならない）。
     assert_eq!(
         board.piece_at(msq(6, 5)).and_then(|piece| piece.kind()),
@@ -226,7 +226,7 @@ fn article_7_6_7_jumps_ignore_and_preserve_intermediate_pieces() {
         // 中間升 (6,5) の駒の有無・所有者にかかわらず跳べる。
         assert!(generated(&board).contains(&jump), "owner={middle_owner:?}");
         let mut after = board.clone();
-        after.make_move_unchecked(jump, Rules::standard());
+        after.make_move_unchecked(jump, MoveRules::standard());
         // 跳び越した中間升の駒は取らない（第7条7項）。
         assert_eq!(after.piece_at(msq(6, 5)), board.piece_at(msq(6, 5)));
     }
@@ -286,7 +286,7 @@ fn article_7_8_second_stage_is_judged_after_first_capture() {
     let mut after = board.clone();
     after.make_move_unchecked(
         mv(msq(6, 6), Some(mid), msq(5, 4), false),
-        Rules::standard(),
+        MoveRules::standard(),
     );
     assert!(after.pieces_of(Color::White).is_empty());
     // (6,8) は mid に隣接しないので到達できない。

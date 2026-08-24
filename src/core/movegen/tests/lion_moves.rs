@@ -9,7 +9,7 @@ use super::dir::{B, BL, BR, F, FL, FR, L, R};
 use super::{generated, jitto_moves, moves_from, msq, mv, same_board, step_squares};
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
-use crate::core::rules::Rules;
+use crate::core::rules::MoveRules;
 use crate::core::square::Square;
 use crate::test_util::{position, position_from_codes};
 
@@ -118,7 +118,7 @@ fn article_11_3_two_stage_move_captures_up_to_two_pieces() {
     );
     board.make_move_unchecked(
         mv(msq(6, 6), Some(msq(6, 5)), msq(6, 4), false),
-        Rules::standard(),
+        MoveRules::standard(),
     );
     // 歩兵と銅将の両方が消え、角鷹が (6,4) にある。
     assert!(board.pieces_of(Color::White).is_empty());
@@ -148,7 +148,7 @@ fn article_11_4_direct_jump_does_not_capture_the_intermediate() {
                 "kind={kind:?}, owner={middle_owner:?}"
             );
             let mut after = board.clone();
-            after.make_move_unchecked(jump, Rules::standard());
+            after.make_move_unchecked(jump, MoveRules::standard());
             assert_eq!(
                 after.piece_at(msq(middle.0, middle.1)),
                 board.piece_at(msq(middle.0, middle.1)),
@@ -185,7 +185,7 @@ fn article_11_5_falcon_igui_captures_and_returns() {
     assert!(jitto_moves(&moves, msq(6, 6)).is_empty());
 
     let mut after = board.clone();
-    after.make_move_unchecked(igui, Rules::standard());
+    after.make_move_unchecked(igui, MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(6, 6)),
         PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon)
@@ -201,7 +201,7 @@ fn article_11_6_jitto_is_generated_exactly_once() {
     let moves = generated(&falcon);
     assert_eq!(jitto_moves(&moves, msq(6, 6)).len(), 1);
     let mut after = falcon.clone();
-    after.make_move_unchecked(mv(msq(6, 6), None, msq(6, 6), false), Rules::standard());
+    after.make_move_unchecked(mv(msq(6, 6), None, msq(6, 6), false), MoveRules::standard());
     assert!(same_board(&falcon, &after));
     assert_eq!(after.side_to_move(), Color::White);
 
@@ -369,7 +369,7 @@ fn article_12_5_7_lion_jumps_two_squares_including_knight_positions() {
     let jump = mv(msq(6, 6), None, msq(6, 4), false);
     assert!(generated(&occupied_middle).contains(&jump));
     let mut after = occupied_middle.clone();
-    after.make_move_unchecked(jump, Rules::standard());
+    after.make_move_unchecked(jump, MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(6, 5)),
         Some(PieceCode::new(Color::White, PieceKind::Pawn))
@@ -403,7 +403,7 @@ fn article_12_4_lion_path_capture_double_move() {
     let mut after = board.clone();
     after.make_move_unchecked(
         mv(msq(6, 6), Some(msq(6, 5)), msq(5, 4), false),
-        Rules::standard(),
+        MoveRules::standard(),
     );
     assert!(after.pieces_of(Color::White).is_empty());
     assert_eq!(
@@ -435,13 +435,13 @@ fn article_12_4_7_jump_capture_and_path_capture_are_distinct_moves() {
 
     // 跳びは歩兵を残し、経路捕獲は歩兵を取る。
     let mut jumped = board.clone();
-    jumped.make_move_unchecked(jump, Rules::standard());
+    jumped.make_move_unchecked(jump, MoveRules::standard());
     assert_eq!(
         jumped.piece_at(msq(6, 5)),
         Some(PieceCode::new(Color::White, PieceKind::Pawn))
     );
     let mut captured = board.clone();
-    captured.make_move_unchecked(path, Rules::standard());
+    captured.make_move_unchecked(path, MoveRules::standard());
     assert!(captured.pieces_of(Color::White).is_empty());
 }
 
@@ -459,7 +459,7 @@ fn article_12_8_lion_igui() {
     let igui = mv(msq(6, 6), Some(msq(6, 5)), msq(6, 6), false);
     assert_eq!(moves.iter().filter(|&&m| m == igui).count(), 1);
     let mut after = board.clone();
-    after.make_move_unchecked(igui, Rules::standard());
+    after.make_move_unchecked(igui, MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(6, 6)),
         Some(PieceCode::new(Color::Black, PieceKind::Lion))
@@ -490,7 +490,7 @@ fn article_12_9_lion_jitto() {
     let moves = generated(&board);
     assert_eq!(jitto_moves(&moves, msq(6, 6)).len(), 1);
     let mut after = board.clone();
-    after.make_move_unchecked(mv(msq(6, 6), None, msq(6, 6), false), Rules::standard());
+    after.make_move_unchecked(mv(msq(6, 6), None, msq(6, 6), false), MoveRules::standard());
     assert!(same_board(&board, &after));
     assert_eq!(after.side_to_move(), Color::White);
 }

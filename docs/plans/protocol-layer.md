@@ -14,13 +14,13 @@
 
 フェーズ3の実装は2026年8月10日に3段階で完了した。着手時に、拡張SFEN第3欄の解析契約の矛盾（飛鷲・角鷹の経由升捕獲では捕獲升が空になるため、「直前着手側の駒が存在しない入力は拒否する」とした初版契約ではエンジン自身の出力を往復解析できない）を検出し、空升を麒麟由来ではない捕獲として受理し手番側の駒がある升だけを拒否する契約へ訂正した（「拡張SFEN」の節に反映済み）。第1段階は`src/notation/`の新設と`sfen.rs`の移設、`SetupPosition`と`to_extended_sfen`・`parse_extended_sfen`、`GameError::IllegalMove`への`IllegalMoveCause`（`Movement`・`Repetition`）の分類、`Position::set_lion_capture`による第3欄注入APIを実装した。第2段階は`src/notation/usi.rs`にlishogi系拡張USI指し手表記の`text`・`parse`を実装し、全合法手のMove単位往復一致（じっと以外は文字列単位でも）を検証した。第3段階は`src/protocol/`に`Protocol` trait・`Engine`・USIモジュール、`src/bin/minase.rs`（`--protocol`と`--rules`の明示必須）、台本テストを実装した。設計書が定めていなかった`InGame`中の`SetPosition`は、lishogi-botが毎手`position`全列を再送する挙動に合わせ、active規則で現局を原子的に再構成しpending規則は次局まで反映しない挙動として確定した。テストは233件全緑、`perft(3)=48315`一致である。
 
-フェーズ4のリプレイ照合は2026年8月10日に完了した。lishogi APIから上位8プレイヤーの中将棋695局を取得して終局statusの分布を調査し、王駒捕獲（royalsLost）3局、裸玉（bareKing）2局、反復（repetition）1局、合意引き分け（draw）2局、投了（resign）2局の計10局を棋譜IDで固定した。lishogiは王駒実捕獲制（E1）で対局を続けるため、status mateの中将棋棋譜は存在せず（695局中0局）、設計時に挙げた「詰み」の多様性はroyalsLostが担う。フィクスチャは`tests/fixtures/lishogi_replays.ndjson.gz`（gzip圧縮NDJSON。棋譜ID、初期SFEN、USI着手列、status、勝者）、取得スクリプトは`scripts/fetch_lishogi_replays.py`（棋譜ID固定、標準ライブラリのみ）であり、統合テスト`tests/lishogi_replay.rs`がL1+L2+P3+R1+E1+E3（E3の採用経緯は次段落）で全2,462手の合法性と裁定タイミングを照合する。dev-dependenciesとして`flate2`と`serde_json`を追加した（テスト専用であり実行時依存は増えない）。
+フェーズ4のリプレイ照合は2026年8月10日に完了した。lishogi APIから上位8プレイヤーの中将棋695局を取得して終局statusの分布を調査し、王駒捕獲（royalsLost）3局、裸玉（bareKing）2局、反復（repetition）1局、合意引き分け（draw）2局、投了（resign）2局の計10局を棋譜IDで固定した。lishogiは王駒実捕獲制（E1）で対局を続けるため、status mateの中将棋棋譜は存在せず（695局中0局）、設計時に挙げた「詰み」の多様性はroyalsLostが担う。フィクスチャは`tests/fixtures/lishogi_replays.ndjson.gz`（gzip圧縮NDJSON。棋譜ID、初期SFEN、USI着手列、status、勝者）、取得スクリプトは`scripts/fetch_lishogi_replays.py`（棋譜ID固定、標準ライブラリのみ）であり、統合テスト`tests/lishogi_replay.rs`が現行表記L1+L2+P0+P3+R1+E1+E3（E3の採用経緯は次段落）で全2,462手の合法性と裁定タイミングを照合する。dev-dependenciesとして`flate2`と`serde_json`を追加した（テスト専用であり実行時依存は増えない）。
 
 フェーズ4の事前照合で不具合1件と規則差1件を検出した。不具合は、`usi::parse`がじっと（移動元＝移動先）以外の3升連結を正規化せず、経由升が空の二段移動（SNjoPiHz第15手の`7j7i6h`、2u7dwJf9第176手の`6c7c8c`で確認）を拒否することであった。正準化後の合法手集合は経由升で捕獲しない二段移動を`mid: None`の直接移動だけで保持する一方、lishogi系は捕獲がなくても実経路の3升連結を送るため、解析契約を「3升連結の中間升に相手駒がなければ、終点にかかわらず`mid: None`へ正規化する」へ一般化して修正した（「Move文字列表記2形式」の節に反映済み）。規則差は裸玉の裁定である。scalashogiの`bareKing`判定は「一方の駒が王駒1枚だけ（最奥段で移動不能の歩兵・香車を除く）になり、相手が王駒に加えて歩兵・仲人以外の駒を持ち、裸玉側から相手王駒への王手がなく、かつ相手の当該駒が3枚以上あるか裸玉の隣接升にない場合」に即時に裁定する伝統的な裸玉規則であり、第22条の駒枯れ（王駒以外の駒が一方に1枚だけ）より大幅に広い。該当2局（hgNaEt5P、VoPpZxG5）の最終局面は勝者側が18枚以上の駒を保持しており第22条は成立しないため、minaseが対局を継続するのは標準規則として正しい挙動である。この規則差はRULES.mdの改版で解消した。同2026年8月10日にRULES.mdを第10版へ改定して第32条にローカルルールE3（Lishogi式裸玉即時裁定）を新設し、minaseへ`RuleCode::E3`（E2と排他）と裁定ロジックを実装した。リプレイ照合の規則セットはL1+L2+P3+R1+E1+E3へ更新し、裸玉2局がlishogiの実裁定と同じ手（328手目・341手目）で勝敗確定することを含めて、10局すべてが各手の合法性と終局裁定で一致した。検証コマンドはすべて成功し、テストは244件全緑である。
 
 同2026年8月10日に、フェーズ4の追補として規則セットのプリセット名`lishogi`を導入した。導入にあたり、目的（誤指定防止を主とし、検証済みの組合せをコード内の契約として保持する）、HaChuプリセットの見送り（フェーズ5の実測検証後に判断）、受け口（`--rules`とRuleSetオプションで値文法を統一）、混在禁止（プリセット名は単独指定のみ）、名前（`lishogi`、大文字小文字非区別・正準は小文字）、文書化（RULES.md第33条6項へ受理の1文）、配置（コア層の共通解析関数）、版の扱い（第11版へ改版）を確定した。実装は、`src/core/rules.rs`のプリセット表と`parse_rule_set`、CLIのカスタムパーサ化、USIの`RuleSet`処理の共通関数化、併記（`lishogi,P1`）への専用エラーを行った。リプレイ照合テストは規則セットの直書きをやめて`parse_rule_set("lishogi")`の解決を経由し、名前が指す組合せと検証済みの組合せの一致をテストが保証する。テストは250件全緑である。
 
-2026年8月11日に、R0を実装しない現状で規則書上の標準規則と実行可能な既定構成を区別するため、規則セット名`engine-default`を追加した。この名前は`Rules::engine_default()`と同じR1へ展開し、`standard`という名前は受理しない。`--rules`と両プロトコルのRuleSetオプションは、いずれも共通解析関数を介してこの名前を受理する。RULES.mdは第12版へ改定した。
+2026年8月11日に、R0を実装しない現状で規則書上の標準規則と実行可能な既定構成を区別するため、規則セット名`engine-default`を追加した。RULES.md第14版以後、この名前は`Rules::ENGINE_DEFAULT`と同じL0+P0+R1+E0へ展開し、`standard`という名前は受理しない。`--rules`と両プロトコルのRuleSetオプションは、いずれも共通解析関数を介してこの名前を受理する。
 
 フェーズ5のCECP実装は2026年8月10日に完了した。着手前条件としていたXBoard内蔵VariantChu駒文字表とHaChu表の照合は、XBoardのmaster HEAD（コミット46b3c1d4）のSetCharTableEsc文字列を展開して基底21文字の完全一致と内蔵初期配置のFEN一致を確認し、cecp.md第7章へ記録した。残っていた実装細部（指し手表記の関数契約、setboardの受理契約、newの意味論、残余コマンドの扱い、台本テストの範囲）は「フェーズ5の確定設計」の章として確定した。実装は2段階で行った（第1段階が`src/notation/cecp.rs`、第2段階が`src/protocol/cecp.rs`と`minase.rs`の接続および台本テスト）。レビューでfeature宣言の文字列値（`myname`・`variants`・`option`）の二重引用符欠落1件を検出して修正した。エンジン本体（`src/protocol/engine.rs`とコマンドenum）は無変更のままCECPモジュールを追加でき、完了条件に掲げたtrait抽象の妥当性を確認した。テストは271件全緑であり、検証コマンド（cargo test、clippy、fmt、git diff --check、perft 4）はすべて成功した。HaChu互換規則セットの検証（CECP経由の実対局照合とプリセット化判断）は未実施であり、フェーズ5の残作業である。
 
@@ -119,7 +119,7 @@ CECPのじっとは送信を`@@@@`とする。受信の`@@@@`は、現在局面�
 
 ```text
 EngineCommand
-  SetRules(Vec<RuleCode>)   検証（from_codesの成功と反復規則の存在）に通ればpendingへ格納する
+  SetRules(Vec<RuleCode>)   from_codesによる4群の意味検証に通ればpendingへ格納する
   NewGame                   pendingをcommitしてAwaitingStartへ遷移する
   SetPosition { setup: SetupPosition, moves: Vec<Move> }
                             局面設定と着手列の適用を1コマンドで原子的に行う
@@ -141,7 +141,7 @@ IllegalMoveCause
   Movement（駒の動き・獅子規則等の違反）、Repetition（R2またはR3の反復禁止手）
 ```
 
-`SetRules`の検証には`Rules::from_codes`の成功に加えて反復規則の存在（`Game`構築可能性）を含める。`Rules::from_codes`はR1からR3を含まない列も受理するが、`Game::new`が拒否するため、commit時ではなく受信時に弾く。commitは「pending規則で新しい`Game`を構築し、`SetPosition`の場合は局面と着手列を複製上で全適用し、成功した場合に限りactive規則・`Game`・ライフサイクルを同時に交換する」原子的操作とし、途中で失敗した場合は全状態を変更しない。これにより`position ... moves`の途中に不合法手があっても直前の有効状態が保持される。commit点は`NewGame`受信時（CECPの`new`、USIの`usinewgame`）と、`AwaitingStart`状態での`SetPosition`受信時である。参照したLishogi-Bot（コミット17c16bc7）は`usinewgame`を送信せず、対局ごとに`setoption`（`USI_Variant`を含む）→`position`→`go`の順で送ることをソースで確認した。したがってUSIでは`AwaitingStart`での`SetPosition`が実質のcommit経路であり、`usinewgame`に依存しない設計が必須である。`IllegalMoveCause`の分類には`GameError::IllegalMove`への原因分類の追加が必要であり、フェーズ3のコア変更に含める。
+`SetRules`は受信時に`Rules::from_codes`を呼び、同一コードの重複、同群の複数指定、獅子・成り・反復・駒枯れの各群の欠落を検証する。不正ならpendingを維持し、検証済みの`Rules`だけを`Game`へ渡す。commitは「pending規則で新しい`Game`を構築し、`SetPosition`の場合は局面と着手列を複製上で全適用し、成功した場合に限りactive規則・`Game`・ライフサイクルを同時に交換する」原子的操作とし、途中で失敗した場合は全状態を変更しない。これにより`position ... moves`の途中に不合法手があっても直前の有効状態が保持される。commit点は`NewGame`受信時（CECPの`new`、USIの`usinewgame`）と、`AwaitingStart`状態での`SetPosition`受信時である。参照したLishogi-Bot（コミット17c16bc7）は`usinewgame`を送信せず、対局ごとに`setoption`（`USI_Variant`を含む）→`position`→`go`の順で送ることをソースで確認した。したがってUSIでは`AwaitingStart`での`SetPosition`が実質のcommit経路であり、`usinewgame`に依存しない設計が必須である。
 
 プロトコルモジュールのtraitは次の同期署名とする。
 
@@ -162,9 +162,9 @@ USIの未知入力は原典準拠とする。未知のコマンド行と既知�
 
 ### 規則オプション
 
-オプション名は両プロトコル共通で`RuleSet`とする。値は規則コードのコンマ区切り（空白なし、例: `L1,L2,P3,R1,E1`）、または検証済みプリセット名の単独指定であり、USIのsetoption値が空白を含められない制約と両立する。値は大文字小文字を区別せずに受理し、重複コードは拒否する。プリセット名は`engine-default`（R1）と`lishogi`（RULES.md第33条6項の組合せ`L1,L2,P3,R1,E1,E3`）であり、規則コードまたは他のプリセット名との併記は拒否する。プリセット名は受理時にコード列へ展開される入力糖衣であり、正準表記・オプション宣言のdefault値・エンジン状態には展開後のコード列だけが現れる。同じ値文法を`--rules`起動フラグにも適用し、解析はコア層の共通関数が担う。`engine-default`と`Rules::engine_default()`の一致はコア層の単体テストが保証する。`lishogi`が指す組合せとリプレイ照合が検証する組合せの一致は、照合テストがプリセット名の解決を経由することで保証する（2026年8月10日の追補。HaChu互換セットのプリセット化はフェーズ5の実測検証後に判断する）。正準表記は大文字で、カテゴリをL、P、R、Eの順、同カテゴリ内を番号昇順に整列した形とし、宣言のdefault値と応答出力にはこの正準表記を使う。宣言は、USIが`option name RuleSet type string default <起動時の--rules値の正準表記>`、CECPが`feature option="RuleSet -string <同>"`とする。
+オプション名は両プロトコル共通で`RuleSet`とする。値は4群を明示した規則コードのコンマ区切り（空白なし、例: `L1,L2,P0,P3,R1,E1,E3`）、または検証済みプリセット名の単独指定である。値は大文字小文字を区別せずに受理し、重複、排他違反、群の欠落を拒否する。プリセット名は`engine-default`（L0+P0+R1+E0）と`lishogi`（L1+L2+P0+P3+R1+E1+E3）であり、規則コードまたは他のプリセット名との併記は拒否する。プリセットは`Rules`定数からコード列へ戻して展開し、正準表記・オプション宣言のdefault値・エンジン状態には展開後のコード列だけが現れる。同じ値文法を`--rules`起動フラグにも適用し、解析はコア層の共通関数が担う。正準表記は大文字で、カテゴリをL、P、R、Eの順、同カテゴリ内を番号昇順に整列した形とする。宣言は、USIが`option name RuleSet type string default <起動時の--rules値の正準表記>`、CECPが`feature option="RuleSet -string <同>"`とする。
 
-latchはactive（対局に適用中）とpending（次局から適用）の2状態とし、起動時は`--rules`の値を両方へ入れる。これにより未確定状態は存在しない。`setoption`と`option`は受信時に前節の`SetRules`検証（`from_codes`と反復規則の存在）を行い、正当ならpendingだけを更新し、不正ならpendingを変えずにエラーを通知する。エラー通知は、USIが`info string error: ...`（USIに標準のエラー応答がないため情報行で代替）、CECPが`Error (invalid option value): <受信行>`とする。commitの時点と原子性は前節のライフサイクルの定義に従う。
+latchはactive（対局に適用中）とpending（次局から適用）の2状態とし、起動時は`--rules`の値を両方へ入れる。`setoption`と`option`は受信時に`from_codes`で4群を意味検証し、正当ならpendingだけを更新し、不正ならpendingを変えずにエラーを通知する。エラー通知は、USIが`info string error: ...`、CECPが`Error (invalid option value): <受信行>`とする。commitの時点と原子性は前節のライフサイクルの定義に従う。
 
 `USI_Variant`はstring型で宣言し、値`chushogi`だけを受理する。他の値は上記と同じエラー通知とする。`position startpos`は中将棋初期局面と解釈する。原典の`startpos`は標準将棋を指すが、本エンジンは中将棋専用であり標準将棋の局面を扱えないため、読み替えがlishogi-bot互換にとって安全側である。この読み替えは仕様として明記する。
 
@@ -273,7 +273,7 @@ CECPの台本テストは次を含む。握手とfeature交渉（必須feature`s
 
 ### フェーズ4　リプレイ照合
 
-厳選したlishogi棋譜を圧縮フィクスチャとして同梱し、L1+L2+P3+R1+E1の設定で各手の合法性と終局裁定の一致を確認するテストを導入する。対象は、終局理由の多様性（詰み、投了、王駒捕獲、反復、駒枯れ）を可能な範囲で網羅する10局程度とし、lishogiの棋譜IDで固定する。フィクスチャは棋譜ID、初期SFEN、USI着手列、期待結果（勝者と終局status）を持つ圧縮NDJSONとし、期待結果はlishogi APIの値を出典とする。比較項目は各手の合法性と、終局時の勝者および理由の対応である。具体的な棋譜IDは取得時に確定してフィクスチャとともにコミットする。取得スクリプトは同梱するが、実行はコーパス更新時に限る。
+厳選したlishogi棋譜を圧縮フィクスチャとして同梱し、L1+L2+P0+P3+R1+E1+E3の設定で各手の合法性と終局裁定の一致を確認するテストを導入する。対象は、終局理由の多様性（詰み、投了、王駒捕獲、反復、駒枯れ）を可能な範囲で網羅する10局程度とし、lishogiの棋譜IDで固定する。フィクスチャは棋譜ID、初期SFEN、USI着手列、期待結果（勝者と終局status）を持つ圧縮NDJSONとし、期待結果はlishogi APIの値を出典とする。比較項目は各手の合法性と、終局時の勝者および理由の対応である。具体的な棋譜IDは取得時に確定してフィクスチャとともにコミットする。取得スクリプトは同梱するが、実行はコーパス更新時に限る。
 
 ### フェーズ5　CECP実装
 
@@ -312,7 +312,7 @@ cargo run --quiet --bin perft -- 4
 - 単一バイナリが`--protocol`と`--rules`の明示指定を必須とし、未指定時に起動を拒否する。
 - 規則セットが両プロトコルのオプション機構で変更でき、次の対局開始時に反映される。
 - 表記変換層が`src/notation/`、通信層が`src/protocol/`に配置され、`protocol`から`notation`への一方向依存になっている。
-- lishogi棋譜のリプレイ照合が導入され、L1+L2+P3+R1+E1+E3で全対局の各手の合法性と終局裁定が一致する。
+- lishogi棋譜のリプレイ照合が導入され、L1+L2+P0+P3+R1+E1+E3で全対局の各手の合法性と終局裁定が一致する。
 - 本節の検証コマンドがすべて成功する。
 
 ## 参考資料

@@ -201,8 +201,7 @@ fn run_bench(
 
     for bench_position in BENCH_POSITIONS {
         let position = parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
-        let game = Game::from_position(rules, position)
-            .expect("embedded SFEN must form a game under engine-default rules");
+        let game = Game::from_position(rules, position);
         let legal_moves = game.legal_moves();
         assert!(
             !legal_moves.is_empty(),
@@ -212,7 +211,7 @@ fn run_bench(
         let position_start = Instant::now();
         let result = search(
             game.position(),
-            rules,
+            rules.moves,
             &legal_moves,
             game.search_key_history(),
             limits,
@@ -377,9 +376,7 @@ mod tests {
             let position = parse_sfen(bench_position.sfen).unwrap_or_else(|error| {
                 panic!("{} has invalid SFEN: {error}", bench_position.name)
             });
-            let game = Game::from_position(rules, position).unwrap_or_else(|error| {
-                panic!("{} is not a valid game: {error}", bench_position.name)
-            });
+            let game = Game::from_position(rules, position);
             assert!(
                 !game.legal_moves().is_empty(),
                 "{} must have legal moves",
@@ -408,14 +405,13 @@ mod tests {
             for bench_position in BENCH_POSITIONS {
                 let position =
                     parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
-                let game = Game::from_position(rules, position)
-                    .expect("embedded SFEN must form a game under engine-default rules");
+                let game = Game::from_position(rules, position);
                 let legal_moves = game.legal_moves();
                 // 本体と同じく局面ごとに置換表をクリアして探索する
                 transposition_table.clear();
                 let result = search(
                     game.position(),
-                    rules,
+                    rules.moves,
                     &legal_moves,
                     game.search_key_history(),
                     &limits,

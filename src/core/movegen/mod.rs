@@ -14,7 +14,7 @@ use crate::core::direction::step_square;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
-use crate::core::rules::{PromotionChoice, Rules};
+use crate::core::rules::{MoveRules, PromotionChoice};
 use crate::core::square::Square;
 
 /// 採用ルールの下で合法手を列挙する生成器。
@@ -23,17 +23,17 @@ pub struct MoveGenerator {
     /// 利きの前計算テーブル。
     tables: &'static AttackTables,
     /// 採用しているローカルルールの集合。
-    rules: Rules,
+    rules: MoveRules,
 }
 
 impl MoveGenerator {
     /// 標準規則の生成器を作る。
     pub fn standard() -> Self {
-        Self::new(Rules::standard())
+        Self::new(MoveRules::standard())
     }
 
     /// 指定ルールの生成器を作る。
-    pub fn new(rules: Rules) -> Self {
+    pub fn new(rules: MoveRules) -> Self {
         Self {
             tables: attack_tables(),
             rules,
@@ -51,7 +51,7 @@ impl MoveGenerator {
     }
 
     /// 採用しているルールの集合を返す。
-    pub const fn rules(&self) -> Rules {
+    pub const fn rules(&self) -> MoveRules {
         self.rules
     }
 }

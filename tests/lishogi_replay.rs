@@ -3,7 +3,9 @@ use std::io::{BufRead, BufReader};
 use flate2::read::GzDecoder;
 use minase::core::rules::parse_rule_set;
 use minase::notation::{sfen::parse_extended_sfen, usi};
-use minase::{Color, DrawReason, Game, GameResult, GameStatus, Position, Rules, WinReason};
+use minase::{
+    Color, DrawReason, Game, GameResult, GameStatus, Position, RuleCode, Rules, WinReason,
+};
 use serde_json::Value;
 
 const REPLAYS: &[u8] = include_bytes!("fixtures/lishogi_replays.ndjson.gz");
@@ -48,9 +50,12 @@ fn replay_game(replay: &Value) -> Result<(), String> {
     let status = string_field(replay, "status")?;
     let winner = winner_field(replay, id)?;
     let rule_codes = parse_rule_set("lishogi").expect("the lishogi preset must resolve");
+    if rule_codes != Vec::<RuleCode>::from(Rules::LISHOGI) {
+        return Err("the lishogi preset does not match Rules::LISHOGI".to_owned());
+    }
     let rules = Rules::from_codes(&rule_codes).expect("the lishogi replay rule set must be valid");
 
-    let setup = parse_extended_sfen(initial_sfen, rules)
+    let setup = parse_extended_sfen(initial_sfen, rules.moves)
         .map_err(|error| format!("game {id}: failed to parse initial_sfen: {error}"))?;
     if setup.position != Position::initial()
         || setup.lion_capture.is_some()
@@ -65,8 +70,7 @@ fn replay_game(replay: &Value) -> Result<(), String> {
     position
         .set_lion_capture(setup.lion_capture)
         .map_err(|error| format!("game {id}: failed to restore lion-capture state: {error}"))?;
-    let mut game = Game::from_position(rules, position)
-        .map_err(|error| format!("game {id}: failed to construct game: {error}"))?;
+    let mut game = Game::from_position(rules, position);
     let moves: Vec<_> = moves.split_whitespace().collect();
     if moves.is_empty() {
         return Err(format!("game {id}: moves must not be empty"));

@@ -22,8 +22,8 @@ use super::tt::{
 // ヘルパ
 // ---------------------------------------------------------------------------
 
-fn engine_rules() -> Rules {
-    Rules::engine_default()
+fn engine_rules() -> MoveRules {
+    MoveRules::standard()
 }
 
 /// 筋段表記（筋1〜12、段1〜12）を内部座標へ写す。

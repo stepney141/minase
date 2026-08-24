@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use crate::core::bitboard::Bitboard;
 use crate::core::mv::{CapturedPiece, Move, Undo};
 use crate::core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
-use crate::core::rules::{PromotionChoice, RuleCode, Rules, in_promotion_zone};
+use crate::core::rules::{MoveRules, PromotionChoice, PromotionRule, in_promotion_zone};
 use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 use crate::rng::XorShift64;
 
@@ -664,7 +664,7 @@ impl Position {
     /// panicするか、zobristハッシュや先獅子トリガーを含めて局面を静かに
     /// 壊すことがある。合法性検査付きの適用には
     /// [`Position::try_make_move`]を使う。
-    pub fn make_move_unchecked(&mut self, mv: Move, rules: Rules) -> Undo {
+    pub fn make_move_unchecked(&mut self, mv: Move, rules: MoveRules) -> Undo {
         let previous_zobrist = self.zobrist;
         let previous_promotion_deferred = self.promotion_deferred;
         let previous_rights_zobrist = self.rights_zobrist;
@@ -678,21 +678,19 @@ impl Position {
         let promotion_choice = rules.promotion_choice(self, &mv, moving_kind);
         let had_promotion_chance = promotion_choice != PromotionChoice::NoPromotion;
         let was_deferred = self.promotion_deferred.contains(mv.from);
-        let tracks_promotion_deferred = rules.contains(RuleCode::P1)
-            || rules.contains(RuleCode::P2)
-            || rules.contains(RuleCode::P5);
+        let tracks_promotion_deferred = rules.promotion != PromotionRule::P0 || rules.p5;
         if tracks_promotion_deferred {
             self.clear_promotion_deferred(mv.from);
             for square in capture_squares.into_iter().flatten() {
                 self.clear_promotion_deferred(square);
             }
         }
-        if rules.contains(RuleCode::P2) {
+        if rules.promotion == PromotionRule::P2 {
             // 待機はその側の直後の1手番で満了する(第30条P2)。
             // P5の保留歩兵は恒久状態なので消さない。
             let expiring = self.promotion_deferred & self.pieces_of(moving_color);
             for square in expiring {
-                let is_p5_pawn = rules.contains(RuleCode::P5)
+                let is_p5_pawn = rules.p5
                     && self.piece_at(square).and_then(PieceCode::kind) == Some(PieceKind::Pawn);
                 if !is_p5_pawn {
                     self.clear_promotion_deferred(square);
@@ -722,11 +720,15 @@ impl Position {
             .expect("generated move must end on an empty square");
         let to_in_zone = in_promotion_zone(moving_color, mv.to);
         let enters_zone = !in_promotion_zone(moving_color, mv.from) && to_in_zone;
-        let defer_for_p1 =
-            rules.contains(RuleCode::P1) && had_promotion_chance && !mv.promote && to_in_zone;
-        let defer_for_p2 =
-            rules.contains(RuleCode::P2) && had_promotion_chance && !mv.promote && enters_zone;
-        let defer_for_p5 = rules.contains(RuleCode::P5)
+        let defer_for_p1 = rules.promotion == PromotionRule::P1
+            && had_promotion_chance
+            && !mv.promote
+            && to_in_zone;
+        let defer_for_p2 = rules.promotion == PromotionRule::P2
+            && had_promotion_chance
+            && !mv.promote
+            && enters_zone;
+        let defer_for_p5 = rules.p5
             && moving_kind == PieceKind::Pawn
             && !mv.promote
             && (was_deferred || had_promotion_chance);
@@ -1553,7 +1555,10 @@ mod tests {
     fn article_30_p2_waiting_right_survives_the_reply_and_expires_on_the_next_own_move() {
         // 第30条P2: 敵陣入りの不成で生じた待機状態は相手の応手では残り、
         // その側の直後の1手番で満了する。権利キーとundoも同じ遷移を保存する。
-        let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+        let rules = MoveRules {
+            promotion: PromotionRule::P2,
+            ..MoveRules::standard()
+        };
         let mut position = position_with_pieces(
             Color::Black,
             &[
@@ -1612,7 +1617,10 @@ mod tests {
     fn article_30_p5_deferred_pawn_state_moves_with_an_unpromoted_pawn() {
         // 第30条P5: 敵陣入りで不成を選んだ歩兵の保留状態は、以後その歩兵が
         // 不成のまま前進しても消滅せず、移動先へ引き継がれる。
-        let rules = Rules::from_codes(&[RuleCode::P5]).unwrap();
+        let rules = MoveRules {
+            p5: true,
+            ..MoveRules::standard()
+        };
         let mut position = position_with_pieces(
             Color::Black,
             &[
@@ -1806,15 +1814,18 @@ mod tests {
     /// 増分更新とundoの検査に使う代表シナリオ(局面・規則・着手列)を返す。
     /// 2枚捕獲・居喰い・じっと・成り・王駒捕獲・成駒の捕獲・先獅子・P1保留を覆う
     /// (D4-IMP-03・D4-IMP-04の境界事例)。
-    fn make_unmake_scenarios() -> Vec<(Position, Rules, Vec<Move>)> {
+    fn make_unmake_scenarios() -> Vec<(Position, MoveRules, Vec<Move>)> {
         let mv = |from, mid, to, promote| Move {
             from,
             mid,
             to,
             promote,
         };
-        let standard = Rules::standard();
-        let p1 = Rules::from_codes(&[RuleCode::P1]).unwrap();
+        let standard = MoveRules::standard();
+        let p1 = MoveRules {
+            promotion: PromotionRule::P1,
+            ..MoveRules::standard()
+        };
         vec![
             // 獅子の2段階移動による2枚捕獲(第12条4項)。
             (
@@ -2090,7 +2101,7 @@ mod tests {
                     if mv.promote {
                         promotions_seen += 1;
                     }
-                    history.push(position.make_move_unchecked(mv, Rules::standard()));
+                    history.push(position.make_move_unchecked(mv, MoveRules::standard()));
                     played.push(mv);
 
                     let context = format!("seed={seed:#x} game={game} ply={ply}");
@@ -2115,7 +2126,7 @@ mod tests {
                     // 同じ指し手列を初期局面へ適用し直した再構築局面と全観測で一致する。
                     let mut replayed = initial.clone();
                     for &past in &played {
-                        replayed.make_move_unchecked(past, Rules::standard());
+                        replayed.make_move_unchecked(past, MoveRules::standard());
                     }
                     assert_eq!(position, replayed, "{context}");
                 }
@@ -2152,7 +2163,7 @@ mod tests {
                         break;
                     }
                     let mv = moves[rng.next() as usize % moves.len()];
-                    position.make_move_unchecked(mv, Rules::standard());
+                    position.make_move_unchecked(mv, MoveRules::standard());
                     replayed_moves.push(mv);
                 }
                 let recorded = recorded_move_lists

@@ -203,7 +203,7 @@ impl CecpProtocol {
         }
         let snapshot = SearchSnapshot {
             position: game.position().clone(),
-            rules: engine.active_rules(),
+            rules: engine.active_rules().moves,
             history_keys: game.search_key_history().to_vec(),
             root_moves,
         };
@@ -552,7 +552,7 @@ impl CecpProtocol {
             _ => return writeln!(output, "tellusererror Illegal position"),
         };
         let text = format!("{board} {sfen_side} - 1");
-        let setup = match parse_extended_sfen(&text, engine.position_rules()) {
+        let setup = match parse_extended_sfen(&text, engine.position_rules().moves) {
             Ok(setup) => setup,
             Err(_) => return writeln!(output, "tellusererror Illegal position"),
         };
@@ -955,7 +955,26 @@ mod tests {
     const PAWN_PROMO: &str = "11k/12/12/12/4P7/12/12/12/12/12/12/K11";
 
     fn make_engine(codes: &[RuleCode]) -> Engine {
-        Engine::new(codes.to_vec()).unwrap()
+        let mut complete = codes.to_vec();
+        if !complete
+            .iter()
+            .any(|code| matches!(code, RuleCode::L0 | RuleCode::L1))
+        {
+            complete.push(RuleCode::L0);
+        }
+        if !complete
+            .iter()
+            .any(|code| matches!(code, RuleCode::P0 | RuleCode::P1 | RuleCode::P2))
+        {
+            complete.push(RuleCode::P0);
+        }
+        if !complete
+            .iter()
+            .any(|code| matches!(code, RuleCode::E0 | RuleCode::E2 | RuleCode::E3))
+        {
+            complete.push(RuleCode::E0);
+        }
+        Engine::new(complete).unwrap()
     }
 
     fn run(protocol: &mut CecpProtocol, engine: &mut Engine, input: &str) -> String {
@@ -1052,7 +1071,7 @@ mod tests {
             "feature time=1",
             "feature memory=1",
             "feature draw=0",
-            "feature option=\"RuleSet -string L1,R1,E2\"",
+            "feature option=\"RuleSet -string L1,P0,R1,E2\"",
             "feature smp=1",
         ] {
             assert!(lines.contains(&expected), "missing: {expected}");
@@ -1316,7 +1335,7 @@ mod tests {
             .map(|line| line.strip_prefix("move ").unwrap())
             .collect();
 
-        let game = Game::new(Rules::from_codes(&[RuleCode::R1]).unwrap()).unwrap();
+        let game = Game::new(Rules::ENGINE_DEFAULT);
         if payload == "@@@@" {
             // 正準じっと（移動元=移動先・中間升なし・不成）が初期局面に存在することの確認。
             assert!(
@@ -1615,7 +1634,7 @@ mod tests {
                 concat!(
                     "setboard {} w\n",
                     "{}", // R1では2回目の同一局面は合法
-                    "option RuleSet=R2,E2\n",
+                    "option RuleSet=L0,P0,R2,E2\n",
                     "{}", // 変更は対局中に反映されない（3回目の出現も合法のまま）
                     "option RuleSet=XX9\n",
                     "option RuleSet=lishogi,P1\n",

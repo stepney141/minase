@@ -140,23 +140,6 @@ impl From<IllegalMove> for GameError {
     }
 }
 
-/// 対局の構築エラー。
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum GameBuildError {
-    /// 実行可能な反復規則が指定されていない。
-    MissingRepetitionRule,
-}
-
-impl fmt::Display for GameBuildError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MissingRepetitionRule => formatter.write_str("missing repetition rule"),
-        }
-    }
-}
-
-impl std::error::Error for GameBuildError {}
-
 /// 1対局の進行を管理する対局管理層。
 ///
 /// 着手の合法性検査、反復履歴の更新、終局裁定の呼出しをまとめ、
@@ -165,6 +148,8 @@ impl std::error::Error for GameBuildError {}
 pub struct Game {
     /// 現在の局面。
     position: Position,
+    /// 対局で採用している完全な規則集合。
+    rules: Rules,
     /// 採用規則に基づく合法手生成器。
     generator: MoveGenerator,
     /// 反復履歴・駒枯れ猶予・手数の裁定用状態。
@@ -177,19 +162,13 @@ pub struct Game {
 
 impl Game {
     /// 指定した規則で初期局面から対局を構築する。
-    ///
-    /// # エラー
-    ///
-    /// R1、R2またはR3が指定されていなければ
-    /// [`GameBuildError::MissingRepetitionRule`]を返す。
-    pub fn new(rules: Rules) -> Result<Self, GameBuildError> {
+    pub fn new(rules: Rules) -> Self {
         Self::from_position(rules, Position::initial())
     }
 
     /// エンジン既定規則で初期局面から対局を構築する。
     pub fn with_default_rules() -> Self {
-        Self::new(Rules::engine_default())
-            .expect("engine default rules must contain a repetition rule")
+        Self::new(Rules::ENGINE_DEFAULT)
     }
 
     /// 着手を検証して適用し、王駒捕獲、反復、駒枯れ、合法手なし、詰みの順で裁定する。
@@ -211,7 +190,7 @@ impl Game {
                 .record_move(&self.position, &self.generator, mover, mv);
         let adjudication = adjudicate_after_move(
             &mut self.position,
-            AdjudicationContext::new(&self.adjudication, &self.generator),
+            AdjudicationContext::new(self.rules, &self.adjudication, &self.generator),
             mover,
             promoted_waiting_piece,
             repetition_result,
@@ -303,8 +282,8 @@ impl Game {
 
     /// 対局で採用している規則を返す。
     #[inline]
-    pub fn rules(&self) -> Rules {
-        self.generator.rules()
+    pub const fn rules(&self) -> Rules {
+        self.rules
     }
 
     /// 対局開始からの手数を返す。
@@ -317,24 +296,17 @@ impl Game {
     ///
     /// 王駒の存在や駒種ごとの枚数上限など、規則上の局面合法性は検証しない。
     /// 渡された局面は反復履歴上の第1回として記録する。
-    ///
-    /// # エラー
-    ///
-    /// R1、R2またはR3が指定されていなければ
-    /// [`GameBuildError::MissingRepetitionRule`]を返す。
-    pub fn from_position(rules: Rules, position: Position) -> Result<Self, GameBuildError> {
-        let repetition_rule = rules
-            .repetition_rule()
-            .ok_or(GameBuildError::MissingRepetitionRule)?;
-        let adjudication = AdjudicationState::new(repetition_rule, &position);
+    pub fn from_position(rules: Rules, position: Position) -> Self {
+        let adjudication = AdjudicationState::new(rules.repetition, &position);
         let search_key = position.zobrist() ^ position.rights_zobrist();
-        Ok(Self {
+        Self {
             position,
-            generator: MoveGenerator::new(rules),
+            rules,
+            generator: MoveGenerator::new(rules.moves),
             adjudication,
             search_key_history: vec![search_key],
             result: None,
-        })
+        }
     }
 
     /// 対局が継続中であることを検査する(第26条第12項)。
@@ -360,7 +332,7 @@ mod tests {
 
     use super::*;
     use crate::core::piece::{PieceCode, PieceKind};
-    use crate::core::rules::{RuleCode, RulesError};
+    use crate::core::rules::{ExhaustionRule, RepetitionRule, RuleCode, RuleGroup, RulesError};
     use crate::core::square::Square;
     use crate::parse_sfen;
     use crate::rng::XorShift64;
@@ -375,15 +347,65 @@ mod tests {
     }
 
     fn game(position: Position) -> Game {
-        Game::from_position(Rules::engine_default(), position).unwrap()
+        Game::from_position(Rules::ENGINE_DEFAULT, position)
     }
 
     fn game_with_codes(position: Position, codes: &[RuleCode]) -> Game {
-        Game::from_position(Rules::from_codes(codes).unwrap(), position).unwrap()
+        let lion = if codes.contains(&RuleCode::L1) {
+            RuleCode::L1
+        } else {
+            RuleCode::L0
+        };
+        let promotion = if codes.contains(&RuleCode::P1) {
+            RuleCode::P1
+        } else if codes.contains(&RuleCode::P2) {
+            RuleCode::P2
+        } else {
+            RuleCode::P0
+        };
+        let repetition = [RuleCode::R1, RuleCode::R2, RuleCode::R3]
+            .into_iter()
+            .find(|code| codes.contains(code))
+            .unwrap_or(RuleCode::R1);
+        let exhaustion = if codes.contains(&RuleCode::E3) {
+            RuleCode::E3
+        } else if codes.contains(&RuleCode::E2) {
+            RuleCode::E2
+        } else {
+            RuleCode::E0
+        };
+        let mut complete = vec![lion];
+        complete.extend(codes.iter().copied().filter(|code| {
+            !matches!(
+                code,
+                RuleCode::L0
+                    | RuleCode::L1
+                    | RuleCode::P0
+                    | RuleCode::P1
+                    | RuleCode::P2
+                    | RuleCode::R1
+                    | RuleCode::R2
+                    | RuleCode::R3
+                    | RuleCode::E0
+                    | RuleCode::E2
+                    | RuleCode::E3
+            )
+        }));
+        complete.extend([promotion, repetition, exhaustion]);
+        Game::from_position(Rules::from_codes(&complete).unwrap(), position)
     }
 
     fn bare_king_game(position: Position) -> Game {
-        game_with_codes(position, &[RuleCode::R1, RuleCode::E1, RuleCode::E3])
+        game_with_codes(
+            position,
+            &[
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3,
+            ],
+        )
     }
 
     fn step(from: Square, to: Square) -> Move {
@@ -493,7 +515,7 @@ mod tests {
     #[test]
     fn article_20_1_game_starts_ongoing_with_one_royal_each() {
         // D3-020-01: 開始時は各対局者の王駒が王将・玉将の1枚だけで、終局していない。
-        let game = Game::new(Rules::engine_default()).unwrap();
+        let game = Game::new(Rules::ENGINE_DEFAULT);
 
         assert_eq!(game.status(), GameStatus::Ongoing);
         assert_eq!(game.result(), None);
@@ -620,8 +642,9 @@ mod tests {
 
         // parse_sfenで得た局面も同じ契約で受け入れ、採用規則をそのまま返す。
         let parsed = parse_sfen("12/12/12/8k3/12/12/12/12/3K8/12/12/12 b").unwrap();
-        let rules = Rules::from_codes(&[RuleCode::R1, RuleCode::E2]).unwrap();
-        let mut sfen_game = Game::from_position(rules, parsed).unwrap();
+        let rules =
+            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
+        let mut sfen_game = Game::from_position(rules, parsed);
         assert_eq!(sfen_game.rules(), rules);
         assert_eq!(
             sfen_game.play(step(sq(3, 3), sq(3, 4))),
@@ -1253,7 +1276,7 @@ mod tests {
         // D3-024-01/D3-031-01: F1(初期局面の仲人往復)は④⑧⑫の完了時に初期
         // 局面の2〜4回目を生じさせ、全12手が非攻撃的なため⑫で引き分けになる。
         // 対局開始局面は履歴上の第1回として数える。
-        let mut game = Game::new(Rules::engine_default()).unwrap();
+        let mut game = Game::new(Rules::ENGINE_DEFAULT);
         let f1 = [
             step(sq(3, 4), sq(3, 5)),
             step(sq(8, 7), sq(8, 6)),
@@ -1389,37 +1412,30 @@ mod tests {
     fn article_25_2_repetition_rule_is_mandatory_and_exclusive() {
         // D3-025-01: 反復規則はR1・R2・R3のいずれか1つの明示が必須であり、
         // 未指定は明示的なエラー、2つ以上の同時指定は競合として拒否される。
-        assert!(matches!(
-            Game::new(Rules::standard()),
-            Err(GameBuildError::MissingRepetitionRule)
-        ));
-        assert!(matches!(
-            Game::from_position(Rules::standard(), Position::initial()),
-            Err(GameBuildError::MissingRepetitionRule)
-        ));
-        assert!(matches!(
-            Game::new(Rules::from_codes(&[RuleCode::E2]).unwrap()),
-            Err(GameBuildError::MissingRepetitionRule)
-        ));
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::E0]),
+            Err(RulesError::Missing(RuleGroup::Repetition))
+        );
 
         for pair in [
             [RuleCode::R1, RuleCode::R2],
             [RuleCode::R1, RuleCode::R3],
             [RuleCode::R2, RuleCode::R3],
         ] {
+            let codes = [RuleCode::L0, RuleCode::P0, pair[0], pair[1], RuleCode::E0];
             assert!(matches!(
-                Rules::from_codes(&pair),
+                Rules::from_codes(&codes),
                 Err(RulesError::Conflicting { .. })
             ));
         }
 
-        // R1〜R3の単独指定とエンジン既定(R1)は対局を構築できる。
-        for codes in [[RuleCode::R1], [RuleCode::R2], [RuleCode::R3]] {
-            let game = Game::new(Rules::from_codes(&codes).unwrap()).unwrap();
+        for repetition in [RuleCode::R1, RuleCode::R2, RuleCode::R3] {
+            let codes = [RuleCode::L0, RuleCode::P0, repetition, RuleCode::E0];
+            let game = Game::new(Rules::from_codes(&codes).unwrap());
             assert_eq!(game.status(), GameStatus::Ongoing);
         }
         assert_eq!(
-            Game::new(Rules::engine_default()).unwrap().status(),
+            Game::new(Rules::ENGINE_DEFAULT).status(),
             GameStatus::Ongoing
         );
     }
@@ -2025,14 +2041,35 @@ mod tests {
         // D3-032-09: E1はE2またはE3と併用できるが、E2とE3は同時に採用できず
         // 有効な規則セットとして扱われない。
         assert!(matches!(
-            Rules::from_codes(&[RuleCode::R1, RuleCode::E2, RuleCode::E3]),
+            Rules::from_codes(&[
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R1,
+                RuleCode::E2,
+                RuleCode::E3,
+            ]),
             Err(RulesError::Conflicting { .. })
         ));
         for codes in [
-            &[RuleCode::R1, RuleCode::E1, RuleCode::E2][..],
-            &[RuleCode::R1, RuleCode::E1, RuleCode::E3][..],
+            &[
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E2,
+            ][..],
+            &[
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R1,
+                RuleCode::E1,
+                RuleCode::E3,
+            ][..],
         ] {
-            assert!(Game::new(Rules::from_codes(codes).unwrap()).is_ok());
+            assert_eq!(
+                Game::new(Rules::from_codes(codes).unwrap()).status(),
+                GameStatus::Ongoing
+            );
         }
     }
 
@@ -2055,8 +2092,17 @@ mod tests {
         ];
         for repetition in [RuleCode::R1, RuleCode::R2, RuleCode::R3] {
             for exceptions in exception_sets {
-                let mut codes = vec![repetition];
-                codes.extend_from_slice(exceptions);
+                let mut codes = vec![RuleCode::L0, RuleCode::P0, repetition];
+                if exceptions.contains(&RuleCode::E1) {
+                    codes.push(RuleCode::E1);
+                }
+                codes.push(if exceptions.contains(&RuleCode::E3) {
+                    RuleCode::E3
+                } else if exceptions.contains(&RuleCode::E2) {
+                    RuleCode::E2
+                } else {
+                    RuleCode::E0
+                });
                 let rules = Rules::from_codes(&codes).unwrap();
 
                 // 王駒捕獲は全組合せで同じ結果になる。
@@ -2070,8 +2116,7 @@ mod tests {
                             (sq(5, 8), piece(Color::White, PieceKind::King)),
                         ],
                     ),
-                )
-                .unwrap();
+                );
                 assert_eq!(
                     capture.play(step(sq(5, 5), sq(5, 8))),
                     win(Color::Black, WinReason::RoyalCapture),
@@ -2080,10 +2125,10 @@ mod tests {
 
                 // 詰み局面: E3は裸玉裁定が先に成立し、E1は詰みだけを無効化する。
                 let (mate_position, mate_move) = mate_predecessor();
-                let mut mate = Game::from_position(rules, mate_position).unwrap();
-                let expected_mate = if rules.contains(RuleCode::E3) {
+                let mut mate = Game::from_position(rules, mate_position);
+                let expected_mate = if rules.exhaustion == ExhaustionRule::E3 {
                     win(Color::White, WinReason::BareKing)
-                } else if rules.contains(RuleCode::E1) {
+                } else if rules.e1 {
                     Ok(GameStatus::Ongoing)
                 } else {
                     win(Color::White, WinReason::Mate)
@@ -2102,11 +2147,10 @@ mod tests {
                             (sq(11, 11), piece(Color::White, PieceKind::King)),
                         ],
                     ),
-                )
-                .unwrap();
-                let expected_exhaustion = if rules.contains(RuleCode::E3) {
+                );
+                let expected_exhaustion = if rules.exhaustion == ExhaustionRule::E3 {
                     win(Color::White, WinReason::BareKing)
-                } else if rules.contains(RuleCode::E2) {
+                } else if rules.exhaustion == ExhaustionRule::E2 {
                     Ok(GameStatus::Ongoing)
                 } else {
                     win(Color::White, WinReason::PieceExhaustion)
@@ -2118,7 +2162,7 @@ mod tests {
                 );
 
                 // 反復列: R1は受理後の裁定、R2は2回目、R3は4回目の再現を拒否する。
-                let mut repeated = Game::from_position(rules, gold_cycle_position()).unwrap();
+                let mut repeated = Game::from_position(rules, gold_cycle_position());
                 let cycle = gold_cycle();
                 let accepted_plies = match repetition {
                     RuleCode::R1 | RuleCode::R3 => 11,
@@ -2181,20 +2225,16 @@ mod tests {
         let allowed = match result {
             GameResult::Win { reason, .. } => match reason {
                 WinReason::RoyalCapture | WinReason::Stalemate => true,
-                WinReason::Repetition => rules.contains(RuleCode::R1),
-                WinReason::Mate => !rules.contains(RuleCode::E1),
-                WinReason::PieceExhaustion => {
-                    !rules.contains(RuleCode::E2) && !rules.contains(RuleCode::E3)
-                }
-                WinReason::BareKing => rules.contains(RuleCode::E3),
+                WinReason::Repetition => rules.repetition == RepetitionRule::R1,
+                WinReason::Mate => !rules.e1,
+                WinReason::PieceExhaustion => rules.exhaustion == ExhaustionRule::E0,
+                WinReason::BareKing => rules.exhaustion == ExhaustionRule::E3,
                 WinReason::Resignation => false,
             },
             GameResult::Draw { reason } => match reason {
-                DrawReason::Repetition => rules.contains(RuleCode::R1),
-                DrawReason::PieceExhaustion => {
-                    !rules.contains(RuleCode::E2) && !rules.contains(RuleCode::E3)
-                }
-                DrawReason::BareKing => rules.contains(RuleCode::E3),
+                DrawReason::Repetition => rules.repetition == RepetitionRule::R1,
+                DrawReason::PieceExhaustion => rules.exhaustion == ExhaustionRule::E0,
+                DrawReason::BareKing => rules.exhaustion == ExhaustionRule::E3,
                 DrawReason::Agreement => false,
             },
         };
@@ -2212,25 +2252,34 @@ mod tests {
                 &[
                     RuleCode::L1,
                     RuleCode::L2,
+                    RuleCode::P0,
                     RuleCode::P3,
                     RuleCode::R1,
                     RuleCode::E1,
+                    RuleCode::E0,
                 ],
                 0x5255_4c45_4741_4d01,
             ),
             (
                 "L3+P4+R1",
-                &[RuleCode::L3, RuleCode::P4, RuleCode::R1],
+                &[
+                    RuleCode::L0,
+                    RuleCode::L3,
+                    RuleCode::P0,
+                    RuleCode::P4,
+                    RuleCode::R1,
+                    RuleCode::E0,
+                ],
                 0x5255_4c45_4741_4d02,
             ),
             (
                 "P1+R1",
-                &[RuleCode::P1, RuleCode::R1],
+                &[RuleCode::L0, RuleCode::P1, RuleCode::R1, RuleCode::E0],
                 0x5255_4c45_4741_4d03,
             ),
             (
                 "P2+R1",
-                &[RuleCode::P2, RuleCode::R1],
+                &[RuleCode::L0, RuleCode::P2, RuleCode::R1, RuleCode::E0],
                 0x5255_4c45_4741_4d04,
             ),
             (
@@ -2268,6 +2317,7 @@ mod tests {
                 &[
                     RuleCode::L1,
                     RuleCode::L2,
+                    RuleCode::P0,
                     RuleCode::P3,
                     RuleCode::R1,
                     RuleCode::E1,
@@ -2280,6 +2330,7 @@ mod tests {
                 &[
                     RuleCode::L1,
                     RuleCode::L3,
+                    RuleCode::P0,
                     RuleCode::P5,
                     RuleCode::P6,
                     RuleCode::R2,
@@ -2291,6 +2342,7 @@ mod tests {
             (
                 "L4+P2+P5+P6+R2+E1+E2",
                 &[
+                    RuleCode::L0,
                     RuleCode::L4,
                     RuleCode::P2,
                     RuleCode::P5,
@@ -2305,7 +2357,7 @@ mod tests {
 
         for (rule_set_name, codes, seed) in RULE_SETS {
             let mut rng = XorShift64::new(seed);
-            let mut game = Game::new(Rules::from_codes(codes).unwrap()).unwrap();
+            let mut game = Game::new(Rules::from_codes(codes).unwrap());
 
             for _ in 0..PLY_CAP {
                 // 継続中の対局には対局合法手が必ず残る(第23条により空なら終局済み)。
@@ -2339,12 +2391,18 @@ mod tests {
 
         let mut rng = XorShift64::new(SEED);
         for codes in [
-            &[RuleCode::R2][..],
-            &[RuleCode::R2, RuleCode::E1, RuleCode::E2][..],
+            &[RuleCode::L0, RuleCode::P0, RuleCode::R2, RuleCode::E0][..],
+            &[
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R2,
+                RuleCode::E1,
+                RuleCode::E2,
+            ][..],
         ] {
             for game_index in 0..GAMES_PER_RULE_SET {
-                let mut game = Game::new(Rules::from_codes(codes).unwrap()).unwrap();
-                let generator = MoveGenerator::new(game.rules());
+                let mut game = Game::new(Rules::from_codes(codes).unwrap());
+                let generator = MoveGenerator::new(game.rules().moves);
                 let mut terminated = false;
 
                 'game: for _ in 0..PLY_CAP {

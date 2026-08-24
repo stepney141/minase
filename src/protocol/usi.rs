@@ -179,7 +179,7 @@ impl UsiProtocol {
         let rules = engine.active_rules();
         let snapshot = SearchSnapshot {
             position: position.clone(),
-            rules,
+            rules: rules.moves,
             history_keys: game.search_key_history().to_vec(),
             root_moves,
         };
@@ -637,7 +637,7 @@ impl UsiProtocol {
             },
             "sfen" => {
                 let end = moves_index.unwrap_or(tokens.len());
-                match parse_sfen_fields(&tokens[1..end], rules) {
+                match parse_sfen_fields(&tokens[1..end], rules.moves) {
                     Ok(setup) => setup,
                     Err(error) => return write_error(output, &error.to_string()),
                 }
@@ -836,7 +836,7 @@ fn parse_go_milliseconds(
 /// そのエラーを報告し、そうでなければ4欄解析の結果を採用する。
 fn parse_sfen_fields(
     fields: &[&str],
-    rules: crate::Rules,
+    rules: crate::MoveRules,
 ) -> Result<SetupPosition, crate::notation::sfen::SfenError> {
     let four_field_text = fields.iter().take(4).copied().collect::<Vec<_>>().join(" ");
     let four_field_setup = parse_extended_sfen(&four_field_text, rules)?;
@@ -942,7 +942,7 @@ fn write_info(
     let mut position = context.position.clone();
     for &mv in pv {
         write!(output, " {}", usi::text(&position, mv))?;
-        let _ = position.make_move_unchecked(mv, context.rules);
+        let _ = position.make_move_unchecked(mv, context.rules.moves);
     }
     writeln!(output)?;
     output.flush()
@@ -1017,7 +1017,7 @@ fn parse_moves(
     position
         .set_lion_capture(setup.lion_capture)
         .map_err(|error| error.to_string())?;
-    let mut game = Game::from_position(rules, position).map_err(|error| error.to_string())?;
+    let mut game = Game::from_position(rules, position);
     let mut moves = Vec::with_capacity(move_tokens.len());
 
     for &text in move_tokens {
@@ -1107,7 +1107,7 @@ mod tests {
     const ROYAL_SFEN: &str = "12/12/12/5k6/12/12/5R6/12/12/12/12/K11 b - 1";
 
     /// 7g7d適用後のFinished局面に対応するstate行（BG「stateコマンド」の単一行完全一致契約）。
-    const ROYAL_FINISHED_STATE: &str = "state rules R1,E2 board 12/12/12/5R6/12/12/12/12/12/12/12/K11 w status win black royal-capture";
+    const ROYAL_FINISHED_STATE: &str = "state rules L0,P0,R1,E2 board 12/12/12/5R6/12/12/12/12/12/12/12/K11 w status win black royal-capture";
 
     /// movesの対局開始前・終局後エラー行（BG「movesコマンド」、台本完全一致）。
     const MOVES_ERROR: &str = "info string error: moves requires an active game";
@@ -1116,7 +1116,26 @@ mod tests {
     const STATE_ERROR: &str = "info string error: state requires an active or finished game";
 
     fn make_engine(codes: &[RuleCode]) -> Engine {
-        Engine::new(codes.to_vec()).unwrap()
+        let mut complete = codes.to_vec();
+        if !complete
+            .iter()
+            .any(|code| matches!(code, RuleCode::L0 | RuleCode::L1))
+        {
+            complete.push(RuleCode::L0);
+        }
+        if !complete
+            .iter()
+            .any(|code| matches!(code, RuleCode::P0 | RuleCode::P1 | RuleCode::P2))
+        {
+            complete.push(RuleCode::P0);
+        }
+        if !complete
+            .iter()
+            .any(|code| matches!(code, RuleCode::E0 | RuleCode::E2 | RuleCode::E3))
+        {
+            complete.push(RuleCode::E0);
+        }
+        Engine::new(complete).unwrap()
     }
 
     fn run(protocol: &mut UsiProtocol, engine: &mut Engine, input: &str) -> String {
@@ -1189,7 +1208,7 @@ mod tests {
         assert_eq!(*lines.last().unwrap(), "usiok");
         let ruleset = lines
             .iter()
-            .position(|line| *line == "option name RuleSet type string default L1,R1,E2")
+            .position(|line| *line == "option name RuleSet type string default L1,P0,R1,E2")
             .expect("RuleSet declaration must exist with the canonical default");
         let variant = lines
             .iter()
@@ -1262,11 +1281,11 @@ mod tests {
             &[RuleCode::E1, RuleCode::R1, RuleCode::L2, RuleCode::L1],
             "usi\n",
         );
-        assert!(output.contains("option name RuleSet type string default L1,L2,R1,E1\n"));
+        assert!(output.contains("option name RuleSet type string default L1,L2,P0,R1,E0,E1\n"));
 
         // プリセット起動では展開後コード列だけが現れ、プリセット名は現れない（PL: 入力糖衣）。
         let output = lishogi_session("usi\n");
-        assert!(output.contains("option name RuleSet type string default L1,L2,P3,R1,E1,E3\n"));
+        assert!(output.contains("option name RuleSet type string default L1,L2,P0,P3,R1,E1,E3\n"));
         assert!(!output.contains("lishogi"));
     }
 
@@ -1276,8 +1295,8 @@ mod tests {
         let output = session(
             &[RuleCode::R1],
             concat!(
-                "setoption name RuleSet value l1,r2\n",
-                "setoption name RuleSet value L1,l1,R1\n",
+                "setoption name RuleSet value l1,p0,r2,e0\n",
+                "setoption name RuleSet value L1,l1,P0,R1,E0\n",
                 "usinewgame\nposition startpos\nstate\n",
             ),
         );
@@ -1286,7 +1305,7 @@ mod tests {
         assert_eq!(lines.len(), 2);
         // 重複（大小違いも同一コード）は拒否され、pendingは変わらない。
         assert!(lines[0].starts_with("info string error: "));
-        assert_eq!(state_rules(lines[1]), "L1,R2");
+        assert_eq!(state_rules(lines[1]), "L1,P0,R2,E0");
     }
 
     #[test]
@@ -1299,7 +1318,7 @@ mod tests {
             &mut engine,
             "setoption name RuleSet value LISHOGI\nusinewgame\nposition startpos\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "L1,L2,P3,R1,E1,E3");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L1,L2,P0,P3,R1,E1,E3");
         assert!(!output.contains("lishogi"));
 
         let output = run(
@@ -1307,7 +1326,7 @@ mod tests {
             &mut engine,
             "gameover win\nsetoption name RuleSet value engine-default\nposition startpos\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "R1");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
 
         // 併記とstandardは拒否し、直前の正当なpendingを保つ（PL 2026-08-11追記を含む）。
         let output = session(
@@ -1321,7 +1340,7 @@ mod tests {
             ),
         );
         assert_eq!(error_lines(&output).len(), 3);
-        assert_eq!(state_rules(state_lines(&output)[0]), "L1,L2,P3,R1,E1,E3");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L1,L2,P0,P3,R1,E1,E3");
     }
 
     #[test]
@@ -1330,7 +1349,7 @@ mod tests {
         let output = session(
             &[RuleCode::R1],
             concat!(
-                "setoption name RuleSet value L1,R2\n",
+                "setoption name RuleSet value L1,P0,R2,E0\n",
                 "setoption name RuleSet value XX9\n",
                 "setoption name RuleSet value L1,E1\n", // 反復規則欠如は受信時に拒否
                 "setoption name RuleSet value R0\n",    // R0は選択可能コードとして提供しない
@@ -1339,7 +1358,7 @@ mod tests {
         );
         assert_eq!(error_lines(&output).len(), 3);
         // 直前の正当なpending（L1,R2）が生きており、commitが旧pendingで成功する。
-        assert_eq!(state_rules(state_lines(&output)[0]), "L1,R2");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L1,P0,R2,E0");
     }
 
     #[test]
@@ -1351,9 +1370,9 @@ mod tests {
         let output = run(
             &mut protocol,
             &mut engine,
-            "position startpos moves 6i6h\nsetoption name RuleSet value R2\nstate\n",
+            "position startpos moves 6i6h\nsetoption name RuleSet value L0,P0,R2,E0\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "R1");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
 
         // 対局中の全列再送でもactive規則は変わらない。
         let output = run(
@@ -1361,7 +1380,7 @@ mod tests {
             &mut engine,
             "position startpos moves 6i6h 1d1e\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "R1");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
 
         // commit点（次局開始）で初めて反映される。
         let output = run(
@@ -1369,7 +1388,7 @@ mod tests {
             &mut engine,
             "gameover win\nposition startpos\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "R2");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R2,E0");
     }
 
     #[test]
@@ -1378,7 +1397,7 @@ mod tests {
         let with_newgame = session(
             &[RuleCode::R1],
             concat!(
-                "setoption name RuleSet value R2,E2\n",
+                "setoption name RuleSet value L0,P0,R2,E2\n",
                 "usinewgame\nposition startpos\nstate\n",
             ),
         );
@@ -1386,13 +1405,13 @@ mod tests {
             &[RuleCode::R1],
             concat!(
                 "position startpos\ngameover win\n",
-                "setoption name RuleSet value R2,E2\n",
+                "setoption name RuleSet value L0,P0,R2,E2\n",
                 "position startpos\nstate\n",
             ),
         );
 
         // lishogi-bot互換の要: usinewgameの有無は次局規則の反映結果に影響しない。
-        assert_eq!(state_rules(state_lines(&with_newgame)[0]), "R2,E2");
+        assert_eq!(state_rules(state_lines(&with_newgame)[0]), "L0,P0,R2,E2");
         assert_eq!(
             state_lines(&with_newgame).last().unwrap(),
             state_lines(&without_newgame).last().unwrap()
@@ -1431,7 +1450,7 @@ mod tests {
 
         assert_eq!(
             state_lines(&startpos)[0],
-            format!("state rules R1 board {INITIAL_BOARD} status ongoing")
+            format!("state rules L0,P0,R1,E0 board {INITIAL_BOARD} status ongoing")
         );
         assert_eq!(state_lines(&startpos), state_lines(&sfen));
         assert_eq!(moves_sets(&startpos), moves_sets(&sfen));
@@ -1977,7 +1996,7 @@ mod tests {
         let states = state_lines(&output);
 
         // 期待集合はBGが定義するとおりGame::legal_moves()のUSI表記から作る。
-        let game = Game::new(Rules::from_codes(&[RuleCode::R1]).unwrap()).unwrap();
+        let game = Game::new(Rules::ENGINE_DEFAULT);
         let expected: HashSet<String> = game
             .legal_moves()
             .into_iter()
@@ -2012,7 +2031,7 @@ mod tests {
         // BG「stateコマンド」: 単一行の完全一致契約（D6-USI-32）。
         assert_eq!(
             lishogi_session("position startpos\nstate\n"),
-            format!("state rules L1,L2,P3,R1,E1,E3 board {INITIAL_BOARD} status ongoing\n")
+            format!("state rules L1,L2,P0,P3,R1,E1,E3 board {INITIAL_BOARD} status ongoing\n")
         );
     }
 
@@ -2102,9 +2121,9 @@ mod tests {
         let output = run(
             &mut protocol,
             &mut engine,
-            "setoption name RuleSet value R2,E2\nposition startpos\nstate\n",
+            "setoption name RuleSet value L0,P0,R2,E2\nposition startpos\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "R2,E2");
+        assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R2,E2");
     }
 
     #[test]
@@ -2113,7 +2132,7 @@ mod tests {
         let output = session(
             &[RuleCode::R1],
             concat!(
-                "setoption name RuleSet value R2,E2\n",
+                "setoption name RuleSet value L0,P0,R2,E2\n",
                 "position startpos moves 1a1b\n", // 失敗するcommit
                 "moves\n",                        // ライフサイクルが遷移していない証拠
                 "position startpos\n",
@@ -2126,6 +2145,6 @@ mod tests {
         assert!(lines[0].starts_with("info string error: "));
         assert_eq!(lines[1], MOVES_ERROR);
         // pendingは失敗をまたいで保持され、次の成功したcommitで反映される。
-        assert_eq!(state_rules(lines[2]), "R2,E2");
+        assert_eq!(state_rules(lines[2]), "L0,P0,R2,E2");
     }
 }

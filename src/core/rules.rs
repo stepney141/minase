@@ -23,6 +23,8 @@ pub enum RuleCode {
     L3,
     /// HaChu式の先獅子の非獅子限定(第29条)。
     L4,
+    /// 標準規則の成りを表す識別子(第30条)。
+    P0,
     /// Hodges式の成り権回復(第30条)。
     P1,
     /// 旧英語版Wikipedia式の成り(第30条)。
@@ -41,6 +43,8 @@ pub enum RuleCode {
     R2,
     /// 既出局面の4回目の出現を生じさせる着手の禁止(第31条)。
     R3,
+    /// 標準規則の駒枯れを表す識別子(第32条)。
+    E0,
     /// 王駒実捕獲による終局(第32条)。
     E1,
     /// 駒枯れ不採用(第32条)。
@@ -51,12 +55,13 @@ pub enum RuleCode {
 
 impl RuleCode {
     /// 全ローカルルールコード。
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 19] = [
         Self::L0,
         Self::L1,
         Self::L2,
         Self::L3,
         Self::L4,
+        Self::P0,
         Self::P1,
         Self::P2,
         Self::P3,
@@ -66,15 +71,11 @@ impl RuleCode {
         Self::R1,
         Self::R2,
         Self::R3,
+        Self::E0,
         Self::E1,
         Self::E2,
         Self::E3,
     ];
-
-    /// ビット集合表現でこのコードが占めるビットを返す。
-    const fn bit(self) -> u32 {
-        1 << self as u8
-    }
 
     /// コードの表示名を返す。
     const fn text(self) -> &'static str {
@@ -84,6 +85,7 @@ impl RuleCode {
             Self::L2 => "L2",
             Self::L3 => "L3",
             Self::L4 => "L4",
+            Self::P0 => "P0",
             Self::P1 => "P1",
             Self::P2 => "P2",
             Self::P3 => "P3",
@@ -93,6 +95,7 @@ impl RuleCode {
             Self::R1 => "R1",
             Self::R2 => "R2",
             Self::R3 => "R3",
+            Self::E0 => "E0",
             Self::E1 => "E1",
             Self::E2 => "E2",
             Self::E3 => "E3",
@@ -117,24 +120,14 @@ impl FromStr for RuleCode {
     }
 }
 
-/// 規則セット名と、名前が表す規則コード列の対応表。
+/// 規則セット名と、名前が表す規則集合の対応表。
 ///
-/// `engine-default`は[`Rules::engine_default`]と同じR1を表す。
+/// `engine-default`は[`Rules::ENGINE_DEFAULT`]と同じ規則を表す。
 /// `lishogi`の組合せはRULES.md第33条第6項に基づき、名前と組合せの一致は
 /// `tests/lishogi_replay.rs`の棋譜リプレイ照合が検証する。
-const RULE_SET_PRESETS: &[(&str, &[RuleCode])] = &[
-    ("engine-default", &[RuleCode::R1]),
-    (
-        "lishogi",
-        &[
-            RuleCode::L1,
-            RuleCode::L2,
-            RuleCode::P3,
-            RuleCode::R1,
-            RuleCode::E1,
-            RuleCode::E3,
-        ],
-    ),
+const RULE_SET_PRESETS: &[(&str, Rules)] = &[
+    ("engine-default", Rules::ENGINE_DEFAULT),
+    ("lishogi", Rules::LISHOGI),
 ];
 
 /// 規則セット値を、プリセット名またはコンマ区切りの規則コード列として解析する。
@@ -142,11 +135,11 @@ const RULE_SET_PRESETS: &[(&str, &[RuleCode])] = &[
 /// プリセット名は単独で指定し、規則コードとの併記は認めない(第33条第5項・第6項)。
 /// 重複および排他制約の検証は`Rules::from_codes`が担う。
 pub fn parse_rule_set(input: &str) -> Result<Vec<RuleCode>, String> {
-    if let Some((_, codes)) = RULE_SET_PRESETS
+    if let Some((_, rules)) = RULE_SET_PRESETS
         .iter()
         .find(|(name, _)| input.eq_ignore_ascii_case(name))
     {
-        return Ok(codes.to_vec());
+        return Ok((*rules).into());
     }
 
     input
@@ -175,9 +168,58 @@ pub enum RepetitionRule {
     R3,
 }
 
+/// 採用する獅子規則。L0およびL1は相互に排他である(第29条・第33条第2項)。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum LionRule {
+    /// 岡崎式の足条件付き先獅子を採用する(第29条L0)。
+    L0 {
+        /// 先獅子の禁止を非獅子の駒による捕獲だけに限定する(第29条L4)。
+        l4: bool,
+    },
+    /// 足条件なしで非獅子による取り返しを禁じる(第29条L1)。
+    L1,
+}
+
+/// 採用する成り規則。P0、P1およびP2は相互に排他である(第30条・第33条第2項)。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum PromotionRule {
+    /// 標準規則の成りを採用する(第30条P0)。
+    P0,
+    /// Hodges式の成り権回復を採用する(第30条P1)。
+    P1,
+    /// 旧英語版Wikipedia式の成りを採用する(第30条P2)。
+    P2,
+}
+
+/// 採用する駒枯れ規則。E0、E2およびE3は相互に排他である(第32条・第33条第2項)。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ExhaustionRule {
+    /// 標準規則の駒枯れを採用する(第32条E0)。
+    E0,
+    /// 駒枯れを適用しない(第32条E2)。
+    E2,
+    /// Lishogi式裸玉即時裁定を採用する(第32条E3)。
+    E3,
+}
+
+/// 規則コードが属する排他群(第33条第2項)。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum RuleGroup {
+    /// 獅子規則群。
+    Lion,
+    /// 成り規則群。
+    Promotion,
+    /// 反復規則群。
+    Repetition,
+    /// 駒枯れ規則群。
+    Exhaustion,
+}
+
 /// ルールコード集合の検証エラー。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RulesError {
+    /// 同じコードの重複指定(第33条第4項)。
+    Duplicate(RuleCode),
     /// 併用できないコードの組合せ(第33条第9項)。
     Conflicting {
         /// 矛盾する組の一方。
@@ -185,8 +227,8 @@ pub enum RulesError {
         /// 矛盾する組のもう一方。
         second: RuleCode,
     },
-    /// 同じコードの重複指定。
-    Duplicate(RuleCode),
+    /// 必須の排他群が指定されていない(第33条第4項)。
+    Missing(RuleGroup),
 }
 
 impl fmt::Display for RulesError {
@@ -199,93 +241,55 @@ impl fmt::Display for RulesError {
                 )
             }
             Self::Duplicate(code) => write!(formatter, "duplicate rule code: {code:?}"),
+            Self::Missing(group) => {
+                let name = match group {
+                    RuleGroup::Lion => "lion",
+                    RuleGroup::Promotion => "promotion",
+                    RuleGroup::Repetition => "repetition",
+                    RuleGroup::Exhaustion => "exhaustion",
+                };
+                write!(formatter, "missing {name} rule")
+            }
         }
     }
 }
 
 impl std::error::Error for RulesError {}
 
-/// 対局で採用するローカルルールの集合。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Rules {
-    /// 採用コードのビット集合。L0は標準規則そのものなので保持せず、常に0ビットとする。
-    codes: u32,
+/// 着手生成と局面更新に用いる規則(第29条・第30条)。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct MoveRules {
+    /// 採用する獅子規則(第29条L0・L1・L4)。
+    pub lion: LionRule,
+    /// 麒麟成獅子の同一升例外を採用するかどうか(第29条L2)。
+    pub l2: bool,
+    /// 段階別の足判定を採用するかどうか(第29条L3)。
+    pub l3: bool,
+    /// 採用する成り規則(第30条P0・P1・P2)。
+    pub promotion: PromotionRule,
+    /// 香車の最奥段救済を採用するかどうか(第30条P3)。
+    pub p3: bool,
+    /// 仲人の最奥段救済を採用するかどうか(第30条P4)。
+    pub p4: bool,
+    /// HaChu式の歩兵の成りを採用するかどうか(第30条P5)。
+    pub p5: bool,
+    /// 前進専用駒の最奥段強制成りを採用するかどうか(第30条P6)。
+    pub p6: bool,
 }
 
-impl Rules {
-    /// ローカル差分のない規則集合を返す。
-    ///
-    /// 実行可能な反復規則は含まないため、この値だけでは対局を構築できない。
+impl MoveRules {
+    /// L0とP0からなる標準の着手規則を返す(第29条L0・第30条P0)。
     pub const fn standard() -> Self {
-        Self { codes: 0 }
-    }
-
-    /// 反復規則にR1を採用したエンジン既定規則を返す。
-    pub const fn engine_default() -> Self {
         Self {
-            codes: RuleCode::R1.bit(),
+            lion: LionRule::L0 { l4: false },
+            l2: false,
+            l3: false,
+            promotion: PromotionRule::P0,
+            p3: false,
+            p4: false,
+            p5: false,
+            p6: false,
         }
-    }
-
-    /// コード列から集合を作る。重複・矛盾を検査する。
-    pub fn from_codes(codes: &[RuleCode]) -> Result<Self, RulesError> {
-        let mut adopted = 0_u32;
-        for &code in codes {
-            if adopted & code.bit() != 0 {
-                return Err(RulesError::Duplicate(code));
-            }
-            adopted |= code.bit();
-        }
-
-        for (first, second) in [
-            (RuleCode::L0, RuleCode::L1),
-            (RuleCode::L1, RuleCode::L4),
-            (RuleCode::P1, RuleCode::P2),
-            (RuleCode::R1, RuleCode::R2),
-            (RuleCode::R1, RuleCode::R3),
-            (RuleCode::R2, RuleCode::R3),
-            (RuleCode::E2, RuleCode::E3),
-        ] {
-            if adopted & first.bit() != 0 && adopted & second.bit() != 0 {
-                return Err(RulesError::Conflicting { first, second });
-            }
-        }
-
-        adopted &= !RuleCode::L0.bit();
-        Ok(Self { codes: adopted })
-    }
-
-    /// 指定コードを採用しているかどうかを返す。
-    pub const fn contains(self, code: RuleCode) -> bool {
-        self.codes & code.bit() != 0
-    }
-
-    /// 採用している反復規則を返す。指定がなければ`None`を返す。
-    pub const fn repetition_rule(self) -> Option<RepetitionRule> {
-        if self.contains(RuleCode::R1) {
-            Some(RepetitionRule::R1)
-        } else if self.contains(RuleCode::R2) {
-            Some(RepetitionRule::R2)
-        } else if self.contains(RuleCode::R3) {
-            Some(RepetitionRule::R3)
-        } else {
-            None
-        }
-    }
-
-    /// 詰みによる終局判定(第21条第2項)を行うかどうかを返す。E1採用時は行わない。
-    pub const fn mate_adjudication_enabled(self) -> bool {
-        !self.contains(RuleCode::E1)
-    }
-
-    /// 駒枯れ(第22条)を適用しないかどうかを返す。E2採用時に適用しない。
-    pub const fn piece_exhaustion_disabled(self) -> bool {
-        self.contains(RuleCode::E2)
-    }
-
-    /// 裸玉即時裁定(第32条E3)を適用するかどうかを返す。E3採用時に適用する。
-    pub const fn bare_king_adjudication(self) -> bool {
-        self.contains(RuleCode::E3)
     }
 
     /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条・第30条)。
@@ -319,12 +323,14 @@ impl Rules {
         };
         let deferred = position.promotion_deferred().contains(mv.from);
 
-        if self.contains(RuleCode::P5) && moving_kind == PieceKind::Pawn && deferred {
+        if self.p5 && moving_kind == PieceKind::Pawn && deferred {
             // 保留歩兵は、採用中の成り規則で成れる着手のうち到達升が最奥段である
             // 着手でのみ、必ず成る(第30条P5)。標準規則では敵陣内の捕獲着手に
             // 限られ、P2では非捕獲着手も該当する。
             let promotable = capture_in_or_from_zone
-                || (self.contains(RuleCode::P2) && !has_capture && (from_in_zone || to_in_zone));
+                || (self.promotion == PromotionRule::P2
+                    && !has_capture
+                    && (from_in_zone || to_in_zone));
             return if promotable && reaches_last_rank {
                 PromotionChoice::PromotionForced
             } else {
@@ -335,17 +341,20 @@ impl Rules {
         let piece_reaches_last_rank_without_capture = !has_capture
             && reaches_last_rank
             && match moving_kind {
-                PieceKind::Pawn => !self.contains(RuleCode::P5),
-                PieceKind::Lance => self.contains(RuleCode::P3),
-                PieceKind::GoBetween => self.contains(RuleCode::P4),
+                PieceKind::Pawn => !self.p5,
+                PieceKind::Lance => self.p3,
+                PieceKind::GoBetween => self.p4,
                 _ => false,
             };
-        let p2_waiting_promotion = self.contains(RuleCode::P2)
+        let p2_waiting_promotion = self.promotion == PromotionRule::P2
             && !has_capture
             && (from_in_zone || to_in_zone)
             && !deferred;
-        let p1_recovered_promotion =
-            self.contains(RuleCode::P1) && from_in_zone && to_in_zone && !has_capture && !deferred;
+        let p1_recovered_promotion = self.promotion == PromotionRule::P1
+            && from_in_zone
+            && to_in_zone
+            && !has_capture
+            && !deferred;
 
         if enters_zone
             || capture_in_or_from_zone
@@ -353,7 +362,7 @@ impl Rules {
             || p2_waiting_promotion
             || p1_recovered_promotion
         {
-            if self.contains(RuleCode::P6)
+            if self.p6
                 && matches!(moving_kind, PieceKind::Pawn | PieceKind::Lance)
                 && reaches_last_rank
             {
@@ -395,19 +404,20 @@ impl Rules {
             && let Some(trigger) = position.lion_taken_by_non_lion()
             && captured_lions.into_iter().flatten().any(|lion| {
                 // L2採用時、麒麟が成った獅子への直後の取り返しは禁止しない(第29条L2)。
-                let l2_exemption = self.contains(RuleCode::L2)
+                let l2_exemption = self.l2
                     && trigger.by_kirin_promotion
                     && lion == trigger.square
                     && position.piece_at(lion).is_some_and(PieceCode::is_promoted);
                 // L1は足の有無にかかわらず非獅子による取り返しを禁じ、
                 // 標準規則(L0)は取った側に残る獅子に足がある場合だけ禁じる(第29条)。
                 !l2_exemption
-                    && if self.contains(RuleCode::L1) {
-                        moving_kind != Some(PieceKind::Lion)
-                    } else {
-                        // L4は禁止を非獅子の駒による捕獲に限定する(第29条L4)。
-                        !(self.contains(RuleCode::L4) && moving_kind == Some(PieceKind::Lion))
-                            && lion_has_foot_after_capture(self, position, mv, lion)
+                    && match self.lion {
+                        LionRule::L1 => moving_kind != Some(PieceKind::Lion),
+                        LionRule::L0 { l4 } => {
+                            // L4は禁止を非獅子の駒による捕獲に限定する(第29条L4)。
+                            !(l4 && moving_kind == Some(PieceKind::Lion))
+                                && lion_has_foot_after_capture(self, position, mv, lion)
+                        }
                     }
             })
         {
@@ -415,6 +425,186 @@ impl Rules {
         }
 
         true
+    }
+}
+
+/// 対局で採用する規則の集合(第29条から第33条)。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct Rules {
+    /// 着手生成と局面更新に用いる規則(第29条・第30条)。
+    pub moves: MoveRules,
+    /// 採用する反復規則(第31条R1・R2・R3)。
+    pub repetition: RepetitionRule,
+    /// 最後の王駒を実際に取るまで対局を続けるかどうか(第32条E1)。
+    pub e1: bool,
+    /// 採用する駒枯れ規則(第32条E0・E2・E3)。
+    pub exhaustion: ExhaustionRule,
+}
+
+impl Rules {
+    /// エンジン既定の規則集合L0・P0・R1・E0(第33条第5項)。
+    pub const ENGINE_DEFAULT: Self = Self {
+        moves: MoveRules::standard(),
+        repetition: RepetitionRule::R1,
+        e1: false,
+        exhaustion: ExhaustionRule::E0,
+    };
+
+    /// Lishogiに近い規則集合L1・L2・P0・P3・R1・E1・E3(第33条第6項)。
+    pub const LISHOGI: Self = Self {
+        moves: MoveRules {
+            lion: LionRule::L1,
+            l2: true,
+            l3: false,
+            promotion: PromotionRule::P0,
+            p3: true,
+            p4: false,
+            p5: false,
+            p6: false,
+        },
+        repetition: RepetitionRule::R1,
+        e1: true,
+        exhaustion: ExhaustionRule::E3,
+    };
+
+    /// コード列を意味検証して規則集合を作る(第33条第4項・第9項)。
+    pub fn from_codes(codes: &[RuleCode]) -> Result<Self, RulesError> {
+        for (index, &code) in codes.iter().enumerate() {
+            if codes[..index].contains(&code) {
+                return Err(RulesError::Duplicate(code));
+            }
+        }
+
+        let mut lion = None;
+        let mut promotion = None;
+        let mut repetition = None;
+        let mut exhaustion = None;
+        let mut l4 = false;
+
+        for code in RuleCode::ALL {
+            if !codes.contains(&code) {
+                continue;
+            }
+            match code {
+                RuleCode::L0 => assign_group(&mut lion, LionRule::L0 { l4: false }, code)?,
+                RuleCode::L1 => assign_group(&mut lion, LionRule::L1, code)?,
+                RuleCode::L2 | RuleCode::L3 => {}
+                RuleCode::L4 => {
+                    if lion.is_some_and(|(rule, _)| rule == LionRule::L1) {
+                        return Err(RulesError::Conflicting {
+                            first: RuleCode::L1,
+                            second: RuleCode::L4,
+                        });
+                    }
+                    l4 = true;
+                }
+                RuleCode::P0 => assign_group(&mut promotion, PromotionRule::P0, code)?,
+                RuleCode::P1 => assign_group(&mut promotion, PromotionRule::P1, code)?,
+                RuleCode::P2 => assign_group(&mut promotion, PromotionRule::P2, code)?,
+                RuleCode::P3 | RuleCode::P4 | RuleCode::P5 | RuleCode::P6 => {}
+                RuleCode::R1 => assign_group(&mut repetition, RepetitionRule::R1, code)?,
+                RuleCode::R2 => assign_group(&mut repetition, RepetitionRule::R2, code)?,
+                RuleCode::R3 => assign_group(&mut repetition, RepetitionRule::R3, code)?,
+                RuleCode::E0 => assign_group(&mut exhaustion, ExhaustionRule::E0, code)?,
+                RuleCode::E1 => {}
+                RuleCode::E2 => assign_group(&mut exhaustion, ExhaustionRule::E2, code)?,
+                RuleCode::E3 => assign_group(&mut exhaustion, ExhaustionRule::E3, code)?,
+            }
+        }
+
+        let lion = lion
+            .map(|(rule, _)| rule)
+            .ok_or(RulesError::Missing(RuleGroup::Lion))?;
+        let promotion = promotion
+            .map(|(rule, _)| rule)
+            .ok_or(RulesError::Missing(RuleGroup::Promotion))?;
+        let repetition = repetition
+            .map(|(rule, _)| rule)
+            .ok_or(RulesError::Missing(RuleGroup::Repetition))?;
+        let exhaustion = exhaustion
+            .map(|(rule, _)| rule)
+            .ok_or(RulesError::Missing(RuleGroup::Exhaustion))?;
+
+        Ok(Self {
+            moves: MoveRules {
+                lion: match lion {
+                    LionRule::L0 { .. } => LionRule::L0 { l4 },
+                    LionRule::L1 => LionRule::L1,
+                },
+                l2: codes.contains(&RuleCode::L2),
+                l3: codes.contains(&RuleCode::L3),
+                promotion,
+                p3: codes.contains(&RuleCode::P3),
+                p4: codes.contains(&RuleCode::P4),
+                p5: codes.contains(&RuleCode::P5),
+                p6: codes.contains(&RuleCode::P6),
+            },
+            repetition,
+            e1: codes.contains(&RuleCode::E1),
+            exhaustion,
+        })
+    }
+}
+
+/// 排他群のスロットへ規則を入れる。既に埋まっていれば先に入れたコードとの`Conflicting`を返す。
+fn assign_group<T: Copy>(
+    slot: &mut Option<(T, RuleCode)>,
+    value: T,
+    second: RuleCode,
+) -> Result<(), RulesError> {
+    if let Some((_, first)) = *slot {
+        return Err(RulesError::Conflicting { first, second });
+    }
+    *slot = Some((value, second));
+    Ok(())
+}
+
+impl Rules {
+    /// 指定コードを採用しているかどうかを返す。L0、P0およびE0も採用コードとして数える。
+    const fn adopts(self, code: RuleCode) -> bool {
+        match code {
+            RuleCode::L0 => matches!(self.moves.lion, LionRule::L0 { .. }),
+            RuleCode::L1 => matches!(self.moves.lion, LionRule::L1),
+            RuleCode::L2 => self.moves.l2,
+            RuleCode::L3 => self.moves.l3,
+            RuleCode::L4 => matches!(self.moves.lion, LionRule::L0 { l4: true }),
+            RuleCode::P0 => matches!(self.moves.promotion, PromotionRule::P0),
+            RuleCode::P1 => matches!(self.moves.promotion, PromotionRule::P1),
+            RuleCode::P2 => matches!(self.moves.promotion, PromotionRule::P2),
+            RuleCode::P3 => self.moves.p3,
+            RuleCode::P4 => self.moves.p4,
+            RuleCode::P5 => self.moves.p5,
+            RuleCode::P6 => self.moves.p6,
+            RuleCode::R1 => matches!(self.repetition, RepetitionRule::R1),
+            RuleCode::R2 => matches!(self.repetition, RepetitionRule::R2),
+            RuleCode::R3 => matches!(self.repetition, RepetitionRule::R3),
+            RuleCode::E0 => matches!(self.exhaustion, ExhaustionRule::E0),
+            RuleCode::E1 => self.e1,
+            RuleCode::E2 => matches!(self.exhaustion, ExhaustionRule::E2),
+            RuleCode::E3 => matches!(self.exhaustion, ExhaustionRule::E3),
+        }
+    }
+}
+
+/// 採用コードを[`RuleCode::ALL`]の順に並べる。L0、P0およびE0を含む(第33条第4項)。
+impl From<Rules> for Vec<RuleCode> {
+    fn from(rules: Rules) -> Self {
+        RuleCode::ALL
+            .into_iter()
+            .filter(|&code| rules.adopts(code))
+            .collect()
+    }
+}
+
+impl fmt::Display for Rules {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, code) in Vec::<RuleCode>::from(*self).into_iter().enumerate() {
+            if index != 0 {
+                formatter.write_str(",")?;
+            }
+            write!(formatter, "{code}")?;
+        }
+        Ok(())
     }
 }
 
@@ -477,7 +667,12 @@ fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
 
 /// 獅子による相手獅子の捕獲が第14条・第16条を満たすかどうかを返す。隣接していれば
 /// 無条件に取れる。距離2では、付け喰いが成立するか、取られる獅子に足がない場合に限る。
-fn lion_capture_is_legal(rules: Rules, position: &Position, mv: Move, lion_square: Square) -> bool {
+fn lion_capture_is_legal(
+    rules: MoveRules,
+    position: &Position,
+    mv: Move,
+    lion_square: Square,
+) -> bool {
     let distance = mv
         .from
         .file()
@@ -497,7 +692,7 @@ fn lion_capture_is_legal(rules: Rules, position: &Position, mv: Move, lion_squar
 /// (第16条第8項から第10項)。L3採用時は、これらの規定を適用せず、着手適用後の
 /// 仮想盤面だけで足を判定する(第29条L3)。
 fn lion_has_foot_after_capture(
-    rules: Rules,
+    rules: MoveRules,
     position: &Position,
     mv: Move,
     lion_square: Square,
@@ -508,7 +703,7 @@ fn lion_has_foot_after_capture(
         .expect("capture square must contain a lion");
     let board = VirtualBoard::after_move(position, mv);
 
-    let captured_pawn_or_go_between_had_foot = if rules.contains(RuleCode::L3) {
+    let captured_pawn_or_go_between_had_foot = if rules.l3 {
         false
     } else {
         let [mid_capture, destination_capture] = position.captured_squares(mv);
@@ -555,7 +750,6 @@ mod tests {
     // 期待値の根拠はRULES.md第3条(9〜14号)・第13〜16条・第28〜33条だけである。
     // 座標はマトリクスの表記(筋1〜12、段a〜l)をmsqで盤座標へ変換して用いる。
     use super::*;
-    use crate::core::game::{Game, GameBuildError};
     use crate::core::movegen::MoveGenerator;
     use crate::test_util::{position_from_codes, sq};
 
@@ -586,12 +780,12 @@ mod tests {
     }
 
     /// マトリクス前提の基準規則(標準規則＋R1)。
-    fn base() -> Rules {
-        Rules::engine_default()
+    fn base() -> MoveRules {
+        Rules::ENGINE_DEFAULT.moves
     }
 
-    fn rules_of(codes: &[RuleCode]) -> Rules {
-        Rules::from_codes(codes).unwrap()
+    fn rules_of(codes: &[RuleCode]) -> MoveRules {
+        Rules::from_codes(codes).unwrap().moves
     }
 
     fn mv(from: Square, to: Square) -> Move {
@@ -641,18 +835,18 @@ mod tests {
         }
     }
 
-    fn generated(rules: Rules, position: &Position) -> Vec<Move> {
+    fn generated(rules: MoveRules, position: &Position) -> Vec<Move> {
         let mut moves = Vec::new();
         MoveGenerator::new(rules).generate_moves(position, &mut moves);
         moves
     }
 
-    fn is_generated(rules: Rules, position: &Position, expected: Move) -> bool {
+    fn is_generated(rules: MoveRules, position: &Position, expected: Move) -> bool {
         generated(rules, position).contains(&expected)
     }
 
     /// 指定升の駒を取る着手だけを合法手集合から抽出する(符号化に依存しない観測)。
-    fn captures_of(rules: Rules, position: &Position, target: Square) -> Vec<Move> {
+    fn captures_of(rules: MoveRules, position: &Position, target: Square) -> Vec<Move> {
         generated(rules, position)
             .into_iter()
             .filter(|&candidate| {
@@ -666,7 +860,7 @@ mod tests {
     }
 
     /// 合法手集合に含まれることを確認したうえで着手を適用する。
-    fn play(rules: Rules, position: &mut Position, chosen: Move) {
+    fn play(rules: MoveRules, position: &mut Position, chosen: Move) {
         assert!(is_generated(rules, position, chosen), "{chosen:?}");
         position.make_move_unchecked(chosen, rules);
     }
@@ -1606,7 +1800,7 @@ mod tests {
     fn articles_29_l0_and_33_1_explicit_l0_is_identical_to_the_standard_rules() {
         // 第29条L0・第33条1・2項(D2-029-01・D2-033-04): L0は標準規則と同内容の
         // 記録用コードであり、明示採用しても挙動を一切変えない。
-        let l0 = rules_of(&[RuleCode::L0, RuleCode::R1]);
+        let l0 = rules_of(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]);
         assert_eq!(l0, base());
 
         // F9系の先獅子観測(D2-015-01・02)がL0明示でも同一の結果になる。
@@ -1623,7 +1817,7 @@ mod tests {
     fn article_29_l1_forbids_non_lion_recapture_regardless_of_foot() {
         // 第29条L1(D2-029-02): 足のないF9aでも、L1では非獅子による直後の
         // 取り返しが禁止される。標準規則(D2-015-02)とL1を弁別する最小局面。
-        let l1 = rules_of(&[RuleCode::L1, RuleCode::R1]);
+        let l1 = rules_of(&[RuleCode::L1, RuleCode::P0, RuleCode::R1, RuleCode::E0]);
         let mut position = f9(false);
         play(l1, &mut position, mv(msq(9, 'a'), msq(9, 'f')));
         assert!(!is_generated(l1, &position, mv(msq(6, 'i'), msq(6, 'c'))));
@@ -1639,7 +1833,7 @@ mod tests {
         // 第29条L1・第14条3項(D2-029-03): 同一局面・同一手番で、L1は非獅子
         // (横行)の取り返しだけを禁じ、獅子による捕獲は第14条だけに従う
         // (非隣接だが足なしなので合法)。
-        let l1 = rules_of(&[RuleCode::L1, RuleCode::R1]);
+        let l1 = rules_of(&[RuleCode::L1, RuleCode::P0, RuleCode::R1, RuleCode::E0]);
         let mut restricted = f19();
         play(l1, &mut restricted, mv(msq(9, 'a'), msq(9, 'f')));
         assert!(!is_generated(l1, &restricted, mv(msq(2, 'c'), msq(6, 'c'))));
@@ -1665,7 +1859,13 @@ mod tests {
     fn article_29_l2_allows_immediate_capture_of_the_new_promoted_lion() {
         // 第29条L2・第15条7項(D2-029-04): L2は第15条7項を適用せず、麒麟成獅子
         // への直後の取り返しを認める。標準規則での禁止(D2-015-05)との反転対。
-        let l0_l2 = rules_of(&[RuleCode::L0, RuleCode::L2, RuleCode::R1]);
+        let l0_l2 = rules_of(&[
+            RuleCode::L0,
+            RuleCode::L2,
+            RuleCode::P0,
+            RuleCode::R1,
+            RuleCode::E0,
+        ]);
         let mut position = f11(true);
         play(l0_l2, &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
 
@@ -1677,7 +1877,7 @@ mod tests {
         // 第29条L1・L2および同条注記(D2-029-05): 英語文献の原文規則はL1とL2の
         // 併用で再現される。L1単独では麒麟(捕獲時点で非獅子)による捕獲として
         // 足の有無によらず取り返しが禁止され、L1＋L2では例外が働く。
-        let l1 = rules_of(&[RuleCode::L1, RuleCode::R1]);
+        let l1 = rules_of(&[RuleCode::L1, RuleCode::P0, RuleCode::R1, RuleCode::E0]);
         let mut l1_footed = f11(true);
         play(l1, &mut l1_footed, mvp(msq(6, 'e'), msq(6, 'c')));
         assert!(!is_generated(l1, &l1_footed, mv(msq(5, 'b'), msq(6, 'c'))));
@@ -1691,7 +1891,13 @@ mod tests {
             mv(msq(5, 'b'), msq(6, 'c'))
         ));
 
-        let l1_l2 = rules_of(&[RuleCode::L1, RuleCode::L2, RuleCode::R1]);
+        let l1_l2 = rules_of(&[
+            RuleCode::L1,
+            RuleCode::L2,
+            RuleCode::P0,
+            RuleCode::R1,
+            RuleCode::E0,
+        ]);
         let mut exempted = f11(true);
         play(l1_l2, &mut exempted, mvp(msq(6, 'e'), msq(6, 'c')));
         assert!(is_generated(l1_l2, &exempted, mv(msq(5, 'b'), msq(6, 'c'))));
@@ -1701,7 +1907,13 @@ mod tests {
     fn article_29_l2_exempts_only_the_new_promoted_lion() {
         // 第29条L2・第15条1項(D2-029-06): L2の例外は「その新しい獅子」だけに
         // 及び、既存の獅子9fへの先獅子の保護(足=銀9g)は残る。
-        let l0_l2 = rules_of(&[RuleCode::L0, RuleCode::L2, RuleCode::R1]);
+        let l0_l2 = rules_of(&[
+            RuleCode::L0,
+            RuleCode::L2,
+            RuleCode::P0,
+            RuleCode::R1,
+            RuleCode::E0,
+        ]);
         let mut position = f11a(true);
         play(l0_l2, &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
 
@@ -1718,7 +1930,13 @@ mod tests {
         // 第29条L3(D2-029-07): 唯一の足である仲人・歩兵を第1段階で取った直後に
         // 足が消滅したと判定し、喰い進みを認める(第16条8〜10項の不適用)。
         // 跳びでは足の駒が盤上に残るため、L3でも含まれない。
-        let l3 = rules_of(&[RuleCode::L3, RuleCode::R1]);
+        let l3 = rules_of(&[
+            RuleCode::L0,
+            RuleCode::L3,
+            RuleCode::P0,
+            RuleCode::R1,
+            RuleCode::E0,
+        ]);
         let go_between = f12(Some(PieceKind::GoBetween), false);
         assert!(is_generated(
             l3,
@@ -1770,7 +1988,13 @@ mod tests {
     fn article_29_l4_limits_senjishi_to_non_lion_recaptures() {
         // 第29条L4: 非獅子が獅子を取った直後、足のある残存獅子を獅子で
         // 取り返す着手は認めるが、非獅子による取り返しは禁止したままとする。
-        let l4 = rules_of(&[RuleCode::L4, RuleCode::R1]);
+        let l4 = rules_of(&[
+            RuleCode::L0,
+            RuleCode::L4,
+            RuleCode::P0,
+            RuleCode::R1,
+            RuleCode::E0,
+        ]);
 
         let mut adjacent_standard = f17();
         play(base(), &mut adjacent_standard, mv(msq(9, 'a'), msq(9, 'f')));
@@ -1789,204 +2013,152 @@ mod tests {
         assert!(!is_generated(l4, &non_lion, mv(msq(2, 'c'), msq(6, 'c'))));
     }
 
-    #[test]
-    fn article_29_l0_and_l1_are_mutually_exclusive() {
-        // 第29条注記・第33条9項(D2-029-08): L0とL1は同時に採用できない。
-        // 受理判定はコードの集合に対して働き、列記順序に依存しない。
-        assert!(matches!(
-            Rules::from_codes(&[RuleCode::L0, RuleCode::L1, RuleCode::R1]),
-            Err(RulesError::Conflicting { .. })
-        ));
-        assert!(matches!(
-            Rules::from_codes(&[RuleCode::L1, RuleCode::L0, RuleCode::R1]),
-            Err(RulesError::Conflicting { .. })
-        ));
-
-        // L2はL0またはL1への追加例外として、L3は他と排他でなく採用できる(境界)。
-        assert!(Rules::from_codes(&[RuleCode::L0, RuleCode::L2, RuleCode::R1]).is_ok());
-        assert!(Rules::from_codes(&[RuleCode::L1, RuleCode::L2, RuleCode::R1]).is_ok());
-        assert!(Rules::from_codes(&[RuleCode::L1, RuleCode::L3, RuleCode::R1]).is_ok());
-    }
-
-    #[test]
-    fn article_29_l1_and_l4_are_mutually_exclusive() {
-        // 第29条末尾: L1とL4は併記せず、L4単独および他系列との併用は認める。
-        assert!(matches!(
-            Rules::from_codes(&[RuleCode::L1, RuleCode::L4]),
-            Err(RulesError::Conflicting { .. })
-        ));
-        assert!(Rules::from_codes(&[RuleCode::L4]).is_ok());
-        assert!(Rules::from_codes(&[RuleCode::L4, RuleCode::R1]).is_ok());
-    }
-
     // ---------- 第30〜33条 規則セットの検証 ----------
 
     #[test]
-    fn article_30_p1_and_p2_are_mutually_exclusive() {
-        // 第30条注記・第33条9項(D2-030-01): 排他はP1×P2の対だけに掛かり、
-        // P3・P4は他の成り規則へ追加して採用できる。
-        assert!(matches!(
-            Rules::from_codes(&[RuleCode::P1, RuleCode::P2, RuleCode::R1]),
-            Err(RulesError::Conflicting { .. })
-        ));
-        assert!(
-            Rules::from_codes(&[RuleCode::P1, RuleCode::P3, RuleCode::P4, RuleCode::R1]).is_ok()
-        );
-        assert!(Rules::from_codes(&[RuleCode::P2, RuleCode::P3, RuleCode::R1]).is_ok());
-    }
-
-    #[test]
     fn article_29_30_all_rule_codes_round_trip_through_text() {
-        // 第29・30条および第31〜33条: 公開する17コードは表示と解析で往復する。
-        assert_eq!(RuleCode::ALL.len(), 17);
+        assert_eq!(RuleCode::ALL.len(), 19);
         for code in RuleCode::ALL {
             assert_eq!(code.to_string().parse::<RuleCode>(), Ok(code));
         }
-    }
-
-    #[test]
-    fn article_31_a_repetition_rule_must_be_specified() {
-        // 第31条注記(D2-031-01): MinaseはR1、R2またはR3のいずれか1つの明示を
-        // 必須とし、反復規則を含まない規則集合では対局を構築できない。
-        for codes in [&[][..], &[RuleCode::L1][..], &[RuleCode::P3][..]] {
-            let rules = rules_of(codes);
-            assert_eq!(rules.repetition_rule(), None, "{codes:?}");
-            assert!(matches!(
-                Game::new(rules),
-                Err(GameBuildError::MissingRepetitionRule)
-            ));
-        }
-        assert!(Game::new(base()).is_ok());
-    }
-
-    #[test]
-    fn article_31_r0_is_not_a_selectable_rule_code() {
-        // 第31条注記(D2-031-02): R0は日本中将棋連盟式千日手の記録用識別子で
-        // あり、選択可能な規則コードとして提供されない。
         assert!("R0".parse::<RuleCode>().is_err());
-        assert!(parse_rule_set("R0").is_err());
-        assert!(parse_rule_set("R0,R1").is_err());
     }
 
     #[test]
-    fn article_31_repetition_rules_are_mutually_exclusive() {
-        // 第31条注記(D2-031-03): R1・R2・R3の全対で対称に拒否され、1つだけ
-        // 含む集合は受理される。
-        for codes in [
-            [RuleCode::R1, RuleCode::R2],
-            [RuleCode::R1, RuleCode::R3],
-            [RuleCode::R2, RuleCode::R3],
-        ] {
-            assert!(
-                matches!(
-                    Rules::from_codes(&codes),
-                    Err(RulesError::Conflicting { .. })
-                ),
-                "{codes:?}"
-            );
-        }
-        assert_eq!(
-            rules_of(&[RuleCode::R1]).repetition_rule(),
-            Some(RepetitionRule::R1)
-        );
-        assert_eq!(
-            rules_of(&[RuleCode::R2]).repetition_rule(),
-            Some(RepetitionRule::R2)
-        );
-        assert_eq!(
-            rules_of(&[RuleCode::R3]).repetition_rule(),
-            Some(RepetitionRule::R3)
-        );
-        // 他の整合的なコードとの併用でも反復規則はちょうど1つ(境界)。
-        assert_eq!(
-            rules_of(&[RuleCode::L1, RuleCode::R2]).repetition_rule(),
-            Some(RepetitionRule::R2)
-        );
-    }
-
-    #[test]
-    fn article_33_5_rule_set_name_engine_default_expands_to_r1() {
-        // 第33条5項(D2-033-01): engine-defaultは大文字小文字を区別せず受理
-        // され、実行可能なエンジン既定構成(R1)と観測上区別できない。
-        for name in ["engine-default", "ENGINE-DEFAULT", "Engine-Default"] {
-            let codes = parse_rule_set(name).unwrap();
-            assert_eq!(
-                Rules::from_codes(&codes),
-                Ok(Rules::engine_default()),
-                "{name}"
-            );
-        }
-        assert_eq!(
-            Rules::engine_default().repetition_rule(),
-            Some(RepetitionRule::R1)
-        );
-
-        // 規則コードや他の規則セット名との併記は受理されない。
-        assert!(parse_rule_set("engine-default,L1").is_err());
-        assert!(parse_rule_set("engine-default,lishogi").is_err());
-    }
-
-    #[test]
-    fn article_33_6_rule_set_name_lishogi_expands_to_the_fixed_combination() {
-        // 第33条6項(D2-033-02): lishogiはL1＋L2＋P3＋R1＋E1＋E3の構成全体の
-        // 別名であり、大文字小文字を区別しない。部分一致・追加合成は許さない。
-        let expected = rules_of(&[
-            RuleCode::L1,
+    fn article_33_4_from_codes_accepts_complete_rule_sets() {
+        let codes = [
+            RuleCode::L0,
             RuleCode::L2,
+            RuleCode::L3,
+            RuleCode::L4,
+            RuleCode::P1,
             RuleCode::P3,
-            RuleCode::R1,
+            RuleCode::P4,
+            RuleCode::P5,
+            RuleCode::P6,
+            RuleCode::R2,
             RuleCode::E1,
-            RuleCode::E3,
-        ]);
-        for name in ["lishogi", "LISHOGI", "Lishogi"] {
-            let codes = parse_rule_set(name).unwrap();
-            assert_eq!(Rules::from_codes(&codes), Ok(expected), "{name}");
-        }
-
-        // 展開結果と重複するコードであっても併記自体が不可。
-        assert!(parse_rule_set("lishogi,R1").is_err());
-        assert!(parse_rule_set("lishogi,L1").is_err());
-
-        // 挙動照合: lishogi構成ではL1＋L2の効果により、麒麟成獅子への直後の
-        // 取り返しが含まれる(D2-029-05と同じ反転)。
-        let mut position = f11(true);
-        play(expected, &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
-        assert!(is_generated(
-            expected,
-            &position,
-            mv(msq(5, 'b'), msq(6, 'c'))
-        ));
+            RuleCode::E2,
+        ];
+        let rules = Rules::from_codes(&codes).unwrap();
+        assert_eq!(Vec::<RuleCode>::from(rules), codes);
     }
 
     #[test]
-    fn article_33_9_contradictory_code_combinations_are_rejected() {
-        // 第33条9項・第29〜32条の各排他注記(D2-033-03): 相互に矛盾するコードの
-        // 組合せは有効な規則セットとして扱わない。
-        for codes in [
-            &[RuleCode::L0, RuleCode::L1, RuleCode::R1][..],
-            &[RuleCode::P1, RuleCode::P2, RuleCode::R1][..],
-            &[RuleCode::R1, RuleCode::R2][..],
-            &[RuleCode::E2, RuleCode::E3, RuleCode::R1][..],
-        ] {
-            assert!(
-                matches!(
-                    Rules::from_codes(codes),
-                    Err(RulesError::Conflicting { .. })
-                ),
-                "{codes:?}"
-            );
-        }
-
-        // 矛盾対を含まない残余の妥当な集合は受理される(境界)。
-        assert!(
+    fn article_33_4_from_codes_reports_duplicate_conflict_and_missing_in_contract_order() {
+        assert_eq!(
+            Rules::from_codes(&[
+                RuleCode::R1,
+                RuleCode::R2,
+                RuleCode::R1,
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::E0,
+            ]),
+            Err(RulesError::Duplicate(RuleCode::R1))
+        );
+        assert_eq!(
             Rules::from_codes(&[
                 RuleCode::L1,
-                RuleCode::P3,
+                RuleCode::L4,
+                RuleCode::P0,
                 RuleCode::R1,
-                RuleCode::E1,
-                RuleCode::E3,
-            ])
-            .is_ok()
+                RuleCode::E0,
+            ]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::L1,
+                second: RuleCode::L4,
+            })
         );
+        assert_eq!(
+            Rules::from_codes(&[
+                RuleCode::L1,
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::R1,
+                RuleCode::E0,
+            ]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::L0,
+                second: RuleCode::L1,
+            })
+        );
+        assert_eq!(
+            Rules::from_codes(&[
+                RuleCode::L0,
+                RuleCode::P0,
+                RuleCode::P1,
+                RuleCode::R1,
+                RuleCode::R2,
+                RuleCode::E0,
+            ]),
+            Err(RulesError::Conflicting {
+                first: RuleCode::P0,
+                second: RuleCode::P1,
+            })
+        );
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::L4, RuleCode::P0, RuleCode::R1, RuleCode::E0]),
+            Err(RulesError::Missing(RuleGroup::Lion))
+        );
+        assert_eq!(
+            Rules::from_codes(&[]),
+            Err(RulesError::Missing(RuleGroup::Lion))
+        );
+        assert_eq!(
+            Rules::from_codes(&[RuleCode::R1]),
+            Err(RulesError::Missing(RuleGroup::Lion))
+        );
+    }
+
+    #[test]
+    fn article_33_5_and_33_6_presets_expand_from_rule_constants() {
+        for name in ["engine-default", "ENGINE-DEFAULT", "Engine-Default"] {
+            let codes = parse_rule_set(name).unwrap();
+            assert_eq!(Rules::from_codes(&codes), Ok(Rules::ENGINE_DEFAULT));
+            assert_eq!(codes, Vec::<RuleCode>::from(Rules::ENGINE_DEFAULT));
+        }
+        for name in ["lishogi", "LISHOGI", "Lishogi"] {
+            let codes = parse_rule_set(name).unwrap();
+            assert_eq!(Rules::from_codes(&codes), Ok(Rules::LISHOGI));
+            assert_eq!(codes, Vec::<RuleCode>::from(Rules::LISHOGI));
+        }
+        for invalid in ["engine-default,L1", "engine-default,lishogi", "lishogi,R1"] {
+            assert!(parse_rule_set(invalid).is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn rule_set_display_includes_all_four_base_groups() {
+        assert_eq!(Rules::ENGINE_DEFAULT.to_string(), "L0,P0,R1,E0");
+        assert_eq!(Rules::LISHOGI.to_string(), "L1,L2,P0,P3,R1,E1,E3");
+    }
+
+    #[test]
+    fn rules_error_display_is_stable() {
+        assert_eq!(
+            RulesError::Missing(RuleGroup::Lion).to_string(),
+            "missing lion rule"
+        );
+        assert_eq!(
+            RulesError::Missing(RuleGroup::Promotion).to_string(),
+            "missing promotion rule"
+        );
+        assert_eq!(
+            RulesError::Missing(RuleGroup::Repetition).to_string(),
+            "missing repetition rule"
+        );
+        assert_eq!(
+            RulesError::Missing(RuleGroup::Exhaustion).to_string(),
+            "missing exhaustion rule"
+        );
+    }
+
+    #[test]
+    fn article_33_6_lishogi_move_rules_reproduce_the_capture_exception() {
+        let rules = Rules::LISHOGI.moves;
+        let mut position = f11(true);
+        play(rules, &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
+        assert!(is_generated(rules, &position, mv(msq(5, 'b'), msq(6, 'c'))));
     }
 }

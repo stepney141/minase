@@ -100,13 +100,21 @@ enum Mode {
     },
 }
 
-/// 解析済みの`--rules`引数。
+/// `--rules`の入力原文と解析済みコード列。
 #[derive(Clone)]
-struct RuleSetArgument(Vec<RuleCode>);
+struct RuleSetArgument {
+    /// 両エンジンへ渡す入力原文。
+    source: String,
+    /// 審判層と測定記録に使う解析済みコード列。
+    codes: Vec<RuleCode>,
+}
 
 /// `--rules`の値を規則セット名またはコード列として解析する。
 fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
-    parse_rule_set(input).map(RuleSetArgument)
+    parse_rule_set(input).map(|codes| RuleSetArgument {
+        source: input.to_owned(),
+        codes,
+    })
 }
 
 /// 外部エンジンの指定。
@@ -388,6 +396,8 @@ struct PlayerConfig {
     is_random: bool,
     /// このプレイヤーに適用する思考制限。
     limit: SearchLimit,
+    /// 起動引数と規則オプションへ渡す`--rules`入力原文。
+    rules_source: String,
 }
 
 impl PlayerConfig {
@@ -488,12 +498,7 @@ struct EngineProcess {
 
 impl EngineProcess {
     /// プロセスを起動し、USI初期化列を完了する。
-    fn start(
-        config: &PlayerConfig,
-        rules_text: &str,
-        seed: u64,
-        timeout: Duration,
-    ) -> Result<Self, EngineFailure> {
+    fn start(config: &PlayerConfig, seed: u64, timeout: Duration) -> Result<Self, EngineFailure> {
         let mut child = Command::new(&config.path)
             .args(&config.args)
             .stdin(Stdio::piped())
@@ -538,7 +543,10 @@ impl EngineProcess {
             Protocol::Usi => {
                 process.send("usi")?;
                 process.wait_for("usiok")?;
-                process.send(&format!("setoption name RuleSet value {rules_text}"))?;
+                process.send(&format!(
+                    "setoption name RuleSet value {}",
+                    config.rules_source
+                ))?;
                 if config.is_random {
                     process.send(&format!("setoption name Seed value {seed}"))?;
                 }
@@ -936,6 +944,7 @@ fn resolve_player(
         protocol,
         is_random,
         limit,
+        rules_source: rules_text.to_owned(),
     })
 }
 
@@ -1203,7 +1212,7 @@ fn rules_text(codes: &[RuleCode]) -> String {
 fn generate_opening(rules: Rules, pair_seed: u64) -> Opening {
     let mut opening_seed = derive_seed(pair_seed, 0);
     loop {
-        let mut game = Game::new(rules).expect("validated rules must contain a repetition rule");
+        let mut game = Game::new(rules);
         let mut rng = XorShift64::new(opening_seed);
         let opening_plies = 8 + rng.index(5);
         let mut moves = Vec::with_capacity(opening_plies);
@@ -1282,7 +1291,6 @@ fn play_game(
     player_a_seed: u64,
     player_b: &PlayerConfig,
     player_b_seed: u64,
-    rules_text: &str,
     timeout: Duration,
 ) -> PlayedGame {
     let forfeit = |plies, loser: Color, reason| PlayedGame::Finished {
@@ -1292,18 +1300,16 @@ fn play_game(
             reason,
         },
     };
-    let mut player_a_process =
-        match EngineProcess::start(player_a, rules_text, player_a_seed, timeout) {
-            Ok(process) => process,
-            Err(reason) => return forfeit(game.ply_count(), player_a_color, reason),
-        };
-    let mut player_b_process =
-        match EngineProcess::start(player_b, rules_text, player_b_seed, timeout) {
-            Ok(process) => process,
-            Err(reason) => {
-                return forfeit(game.ply_count(), player_a_color.opposite(), reason);
-            }
-        };
+    let mut player_a_process = match EngineProcess::start(player_a, player_a_seed, timeout) {
+        Ok(process) => process,
+        Err(reason) => return forfeit(game.ply_count(), player_a_color, reason),
+    };
+    let mut player_b_process = match EngineProcess::start(player_b, player_b_seed, timeout) {
+        Ok(process) => process,
+        Err(reason) => {
+            return forfeit(game.ply_count(), player_a_color.opposite(), reason);
+        }
+    };
     let mut clocks = GameClocks::new(player_a_color, player_a.limit, player_b.limit);
 
     loop {
@@ -1458,7 +1464,6 @@ fn run_pair(
         game1_a_seed,
         baseline,
         game1_b_seed,
-        rules_text,
         timeout,
     );
     writeln!(
@@ -1483,7 +1488,6 @@ fn run_pair(
         game2_a_seed,
         baseline,
         game2_b_seed,
-        rules_text,
         timeout,
     );
     writeln!(
@@ -1620,17 +1624,12 @@ fn print_elo_summary(
 /// 引数を検証し、ワーカープールでペア対局を実行して集計を出力する。
 fn main() {
     let arguments = Arguments::parse();
-    let rules = match Rules::from_codes(&arguments.rules.0) {
+    let rules = match Rules::from_codes(&arguments.rules.codes) {
         Ok(rules) => rules,
         Err(error) => Arguments::command()
             .error(ErrorKind::ValueValidation, error.to_string())
             .exit(),
     };
-    if let Err(error) = Game::new(rules) {
-        Arguments::command()
-            .error(ErrorKind::ValueValidation, error.to_string())
-            .exit();
-    }
     let base_seed = match arguments.seed {
         Some(seed) => seed,
         None => match time_seed() {
@@ -1643,15 +1642,20 @@ fn main() {
     };
     let candidate_limit = arguments.candidate_limit.unwrap_or(arguments.each);
     let baseline_limit = arguments.baseline_limit.unwrap_or(arguments.each);
-    let rules_text = rules_text(&arguments.rules.0);
-    let candidate = match resolve_player(arguments.candidate, candidate_limit, &rules_text) {
+    let rules_text = rules_text(&arguments.rules.codes);
+    let candidate = match resolve_player(
+        arguments.candidate,
+        candidate_limit,
+        &arguments.rules.source,
+    ) {
         Ok(player) => player,
         Err(error) => {
             eprintln!("failed to resolve candidate engine: {error}");
             process::exit(1);
         }
     };
-    let baseline = match resolve_player(arguments.baseline, baseline_limit, &rules_text) {
+    let baseline = match resolve_player(arguments.baseline, baseline_limit, &arguments.rules.source)
+    {
         Ok(player) => player,
         Err(error) => {
             eprintln!("failed to resolve baseline engine: {error}");
@@ -2220,20 +2224,29 @@ mod tests {
     fn rules_presets_resolve_per_article_33() {
         let default = Arguments::try_parse_from(["match_runner", "gsprt"])
             .expect("omitting --rules must fall back to engine-default");
-        assert_eq!(default.rules.0, [RuleCode::R1]);
+        assert_eq!(default.rules.source, "engine-default");
+        assert_eq!(
+            default.rules.codes,
+            Vec::<RuleCode>::from(Rules::ENGINE_DEFAULT)
+        );
 
         let named =
             Arguments::try_parse_from(["match_runner", "--rules", "engine-default", "gsprt"])
                 .expect("the engine-default preset must be accepted");
-        assert_eq!(named.rules.0, [RuleCode::R1]);
+        assert_eq!(named.rules.source, "engine-default");
+        assert_eq!(
+            named.rules.codes,
+            Vec::<RuleCode>::from(Rules::ENGINE_DEFAULT)
+        );
 
         let lishogi = Arguments::try_parse_from(["match_runner", "--rules", "LISHOGI", "gsprt"])
             .expect("preset names must match case-insensitively");
         assert_eq!(
-            lishogi.rules.0,
+            lishogi.rules.codes,
             [
                 RuleCode::L1,
                 RuleCode::L2,
+                RuleCode::P0,
                 RuleCode::P3,
                 RuleCode::R1,
                 RuleCode::E1,
@@ -2253,7 +2266,7 @@ mod tests {
     // 対局進行の正であり、合法手リストにない`bestmove`は不正着手として分類する。
     #[test]
     fn referee_rejects_bestmove_outside_the_legal_move_list() {
-        let game = Game::new(Rules::engine_default()).expect("engine-default rules must be valid");
+        let game = Game::new(Rules::ENGINE_DEFAULT);
         let legal = game.legal_moves()[0];
         let legal_text = usi::text(game.position(), legal);
         assert_eq!(
@@ -2520,7 +2533,7 @@ mod tests {
     // だけランダムに進めて作り、ペアシードから決定的に再現される。
     #[test]
     fn openings_stay_within_8_to_12_plies_and_derive_deterministically() {
-        let rules = Rules::engine_default();
+        let rules = Rules::ENGINE_DEFAULT;
         let base_seed = 20_260_814_u64;
         let mut all_moves = Vec::new();
         for pair_number in 1..=4 {

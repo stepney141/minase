@@ -8,7 +8,7 @@ use minase::protocol::{Engine, EngineLifecycle, Protocol, UsiProtocol};
 use minase::rng::XorShift64;
 
 /// 既定の規則セット。
-const DEFAULT_RULE_SET: &str = "R1";
+const DEFAULT_RULE_SET: &str = "L0,P0,R1,E0";
 /// 既定の乱数シード。
 const DEFAULT_SEED: u64 = 1;
 
@@ -202,7 +202,7 @@ mod tests {
             concat!(
                 "id name minase-usi-random\n",
                 "id author stepney141\n",
-                "option name RuleSet type string default R1\n",
+                "option name RuleSet type string default L0,P0,R1,E0\n",
                 "option name Seed type string default 1\n",
                 "usiok\n",
                 "readyok\n",
@@ -227,8 +227,8 @@ mod tests {
         let second = run(input);
         assert_eq!(first, second);
 
-        let rules = Rules::from_codes(&parse_rule_set("R1").unwrap()).unwrap();
-        let game = Game::new(rules).unwrap();
+        let rules = Rules::from_codes(&parse_rule_set("L0,P0,R1,E0").unwrap()).unwrap();
+        let game = Game::new(rules);
         let moves = game.legal_moves();
         let mut rng = XorShift64::new(42);
         let expected = usi::text(game.position(), moves[rng.index(moves.len())]);

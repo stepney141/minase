@@ -5,7 +5,24 @@
 use super::{MoveGenerator, PROMOTION_PAIRS, generated, generated_with, moves_from, msq, mv};
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
-use crate::core::rules::{RuleCode, Rules};
+use crate::core::rules::{MoveRules, PromotionRule, RuleCode, Rules};
+
+fn promotion_rules(rule: PromotionRule) -> MoveRules {
+    MoveRules {
+        promotion: rule,
+        ..MoveRules::standard()
+    }
+}
+
+fn modifier_rules(p3: bool, p4: bool, p5: bool, p6: bool) -> MoveRules {
+    MoveRules {
+        p3,
+        p4,
+        p5,
+        p6,
+        ..MoveRules::standard()
+    }
+}
 use crate::core::square::Square;
 use crate::test_util::{position, position_from_codes};
 
@@ -52,7 +69,7 @@ fn article_9_17_promotion_maps_the_eighteen_pairs() {
             .find(|m| m.from == msq(6, 5) && m.promote && m.to.rank() >= 8)
             .unwrap_or_else(|| panic!("kind={kind:?} must have a promoting entry"));
         let mut after = board.clone();
-        after.make_move_unchecked(entry, Rules::standard());
+        after.make_move_unchecked(entry, MoveRules::standard());
         assert_eq!(
             after.piece_at(entry.to),
             PieceCode::new_promoted(Color::Black, promoted_kind),
@@ -90,7 +107,7 @@ fn article_17_3_promotion_is_irreversible() {
     let board = position_from_codes(Color::Black, &[(msq(6, 3), code)]);
     for m in moves_from(&generated(&board), msq(6, 3)) {
         let mut after = board.clone();
-        after.make_move_unchecked(m, Rules::standard());
+        after.make_move_unchecked(m, MoveRules::standard());
         assert_eq!(after.piece_at(m.to), Some(code), "move={m:?}");
     }
 }
@@ -165,7 +182,7 @@ fn article_18_1_entry_into_the_zone_offers_promotion_choice() {
 
     // 成り選択ありを適用すると到達升に竪行（銀将の成駒）が生じる。
     let mut after = board.clone();
-    after.make_move_unchecked(mv(msq(7, 5), None, msq(7, 4), true), Rules::standard());
+    after.make_move_unchecked(mv(msq(7, 5), None, msq(7, 4), true), MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(7, 4)),
         PieceCode::new_promoted(Color::Black, PieceKind::VerticalMover)
@@ -204,7 +221,7 @@ fn article_18_2b_capture_leaving_the_zone_offers_promotion() {
 
     // 成りの成立は到達升が敵陣内であることを要しない。敵陣外に成駒が生じる。
     let mut after = board.clone();
-    after.make_move_unchecked(mv(msq(6, 4), None, msq(7, 5), true), Rules::standard());
+    after.make_move_unchecked(mv(msq(6, 4), None, msq(7, 5), true), MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(7, 5)),
         PieceCode::new_promoted(Color::Black, PieceKind::Bishop)
@@ -221,7 +238,7 @@ fn article_18_2c_reentry_offers_promotion_again() {
             (msq(1, 7), Color::White, PieceKind::GoBetween),
         ],
     );
-    let rules = Rules::standard();
+    let rules = MoveRules::standard();
     // 敵陣入りで不成を選ぶ。
     assert_both_choices(&generated(&board), msq(6, 5), msq(6, 4));
     board.make_move_unchecked(mv(msq(6, 5), None, msq(6, 4), false), rules);
@@ -311,7 +328,7 @@ fn article_19_1_pawn_reaching_last_rank_may_promote() {
     // 非捕獲の最奥段到達でも成り（金将と同じ動きの成駒）と不成の2手がある。
     assert_both_choices(&moves, msq(6, 2), msq(6, 1));
     let mut after = board.clone();
-    after.make_move_unchecked(mv(msq(6, 2), None, msq(6, 1), true), Rules::standard());
+    after.make_move_unchecked(mv(msq(6, 2), None, msq(6, 1), true), MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(6, 1)),
         PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral)
@@ -329,7 +346,7 @@ fn article_19_2_unpromoted_pawn_on_last_rank_is_immobile() {
             (msq(1, 7), Color::White, PieceKind::GoBetween),
         ],
     );
-    let rules = Rules::standard();
+    let rules = MoveRules::standard();
     board.make_move_unchecked(mv(msq(6, 2), None, msq(6, 1), false), rules);
     board.make_move_unchecked(mv(msq(1, 7), None, msq(1, 8), false), rules);
     // 以後、最奥段の未成歩兵を from とする着手は生成されない。
@@ -413,7 +430,7 @@ fn article_19_18_overlapping_promotion_chances_yield_two_moves() {
     assert_both_choices(&generated(&pawn), msq(6, 2), msq(6, 1));
 
     // 例2: P3採用下で香車が敵陣外から最奥段へ走り込む（第18条1項とP3が重なる）。
-    let generator = MoveGenerator::new(Rules::from_codes(&[RuleCode::P3]).unwrap());
+    let generator = MoveGenerator::new(modifier_rules(true, false, false, false));
     let lance = position(Color::Black, &[(msq(6, 5), Color::Black, PieceKind::Lance)]);
     assert_both_choices(&generated_with(&generator, &lance), msq(6, 5), msq(6, 1));
 }
@@ -426,7 +443,7 @@ fn article_19_18_overlapping_promotion_chances_yield_two_moves() {
 // 非捕獲移動で成れる。再不成でトグルする。
 #[test]
 fn article_30_p1_promotion_right_recovers_after_one_wait_and_toggles() {
-    let rules = Rules::from_codes(&[RuleCode::P1]).unwrap();
+    let rules = promotion_rules(PromotionRule::P1);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -463,7 +480,7 @@ fn article_30_p1_promotion_right_recovers_after_one_wait_and_toggles() {
 // 第30条P2: 敵陣入りで不成を選ぶと、その側の直後の1手番だけ待機する。
 #[test]
 fn article_30_p2_entry_defers_quiet_promotion_until_the_following_own_turn() {
-    let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+    let rules = promotion_rules(PromotionRule::P2);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -490,7 +507,7 @@ fn article_30_p2_entry_defers_quiet_promotion_until_the_following_own_turn() {
 #[test]
 fn article_30_p2_waiting_does_not_block_a_capture_promotion() {
     // 第30条P2: 待機中でも、敵陣内の捕獲による成りの機会は妨げない。
-    let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+    let rules = promotion_rules(PromotionRule::P2);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -509,7 +526,7 @@ fn article_30_p2_waiting_does_not_block_a_capture_promotion() {
 #[test]
 fn article_30_p2_quiet_move_started_in_zone_does_not_create_waiting() {
     // 第30条P2: 敵陣内で開始する非捕獲着手の不成は、新たな待機を生じさせない。
-    let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+    let rules = promotion_rules(PromotionRule::P2);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -528,7 +545,7 @@ fn article_30_p2_quiet_move_started_in_zone_does_not_create_waiting() {
 #[test]
 fn article_30_p2_quiet_exit_from_zone_offers_promotion() {
     // 第30条P2: 敵陣から出る非捕獲着手にも成りの選択肢がある。
-    let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+    let rules = promotion_rules(PromotionRule::P2);
     let generator = MoveGenerator::new(rules);
     let board = position(
         Color::Black,
@@ -541,7 +558,7 @@ fn article_30_p2_quiet_exit_from_zone_offers_promotion() {
 #[test]
 fn article_30_p2_waiting_expires_when_another_piece_moves() {
     // 第30条P2: 待機は当該駒ではなく、その側が何かを動かした直後に満了する。
-    let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+    let rules = promotion_rules(PromotionRule::P2);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -562,7 +579,7 @@ fn article_30_p2_waiting_expires_when_another_piece_moves() {
 #[test]
 fn article_30_p2_capture_entry_also_creates_waiting() {
     // 第30条P2: 敵陣入りが捕獲を伴っても、不成を選べば直後の自手番は待機中となる。
-    let rules = Rules::from_codes(&[RuleCode::P2]).unwrap();
+    let rules = promotion_rules(PromotionRule::P2);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -582,7 +599,7 @@ fn article_30_p2_capture_entry_also_creates_waiting() {
 // D1-030-03: P3（香車の最奥段救済）。
 #[test]
 fn article_30_p3_lance_gains_last_rank_relief() {
-    let generator = MoveGenerator::new(Rules::from_codes(&[RuleCode::P3]).unwrap());
+    let generator = MoveGenerator::new(modifier_rules(true, false, false, false));
     let board = position(Color::Black, &[(msq(6, 3), Color::Black, PieceKind::Lance)]);
     let moves = generated_with(&generator, &board);
     // 非捕獲の最奥段到達に成り（白駒）と不成の2手が含まれる（D1-019-03 との差分）。
@@ -620,7 +637,7 @@ fn article_30_p4_go_between_gains_last_rank_relief() {
     assert_no_promotion(&generated(&board), msq(6, 2), msq(6, 1));
 
     // P4では成り（醉象）と不成の2手。
-    let generator = MoveGenerator::new(Rules::from_codes(&[RuleCode::P4]).unwrap());
+    let generator = MoveGenerator::new(modifier_rules(false, true, false, false));
     assert_both_choices(&generated_with(&generator, &board), msq(6, 2), msq(6, 1));
     let mut promoted = board.clone();
     promoted.make_move_unchecked(mv(msq(6, 2), None, msq(6, 1), true), generator.rules());
@@ -642,7 +659,7 @@ fn article_30_p4_go_between_gains_last_rank_relief() {
 #[test]
 fn article_30_p5_deferred_pawn_cannot_promote_on_a_later_capture() {
     // 第30条P5: 敵陣入りで不成を選んだ歩兵は、以後の敵陣内捕獲でも成れない。
-    let rules = Rules::from_codes(&[RuleCode::P5]).unwrap();
+    let rules = modifier_rules(false, false, true, false);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -662,7 +679,7 @@ fn article_30_p5_deferred_pawn_cannot_promote_on_a_later_capture() {
 fn article_30_p5_deferred_pawn_cannot_promote_on_a_quiet_last_rank_move() {
     // 第30条P5: 標準規則の下では非捕獲着手で成ることができないため、保留歩兵が
     // 非捕獲で最奥段へ到達しても成れず、以後は移動不能となる(第19条2項)。
-    let rules = Rules::from_codes(&[RuleCode::P5]).unwrap();
+    let rules = modifier_rules(false, false, true, false);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -688,7 +705,11 @@ fn article_30_p5_deferred_pawn_cannot_promote_on_a_quiet_last_rank_move() {
 fn article_30_p2_p5_deferred_pawn_must_promote_on_a_quiet_last_rank_move() {
     // 第30条P2・P5: P2の下では非捕獲着手でも成れるため、保留歩兵が非捕獲で
     // 最奥段へ到達するときは成りを強制する。
-    let rules = Rules::from_codes(&[RuleCode::P2, RuleCode::P5]).unwrap();
+    let rules = MoveRules {
+        promotion: PromotionRule::P2,
+        p5: true,
+        ..MoveRules::standard()
+    };
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -710,7 +731,7 @@ fn article_30_p2_p5_deferred_pawn_must_promote_on_a_quiet_last_rank_move() {
 #[test]
 fn article_30_p5_deferred_pawn_must_promote_on_a_capturing_last_rank_move() {
     // 第30条P5: 保留歩兵が捕獲を伴って最奥段へ到達するときも成りを強制する。
-    let rules = Rules::from_codes(&[RuleCode::P5]).unwrap();
+    let rules = modifier_rules(false, false, true, false);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -733,7 +754,7 @@ fn article_30_p5_deferred_pawn_must_promote_on_a_capturing_last_rank_move() {
 #[test]
 fn article_30_p5_unmarked_pawn_has_no_quiet_last_rank_relief() {
     // 第30条P5: 保留状態でない歩兵には第19条1項の最奥段救済を適用しない。
-    let rules = Rules::from_codes(&[RuleCode::P5]).unwrap();
+    let rules = modifier_rules(false, false, true, false);
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -753,7 +774,11 @@ fn article_30_p5_unmarked_pawn_has_no_quiet_last_rank_relief() {
 #[test]
 fn article_30_p2_p5_deferred_pawn_stays_unpromotable_after_waiting_expires() {
     // 第30条P2・P5: P2の待機が別駒の着手で満了しても、P5の歩兵保留は恒久に残る。
-    let rules = Rules::from_codes(&[RuleCode::P2, RuleCode::P5]).unwrap();
+    let rules = MoveRules {
+        promotion: PromotionRule::P2,
+        p5: true,
+        ..MoveRules::standard()
+    };
     let generator = MoveGenerator::new(rules);
     let mut board = position(
         Color::Black,
@@ -774,7 +799,7 @@ fn article_30_p2_p5_deferred_pawn_stays_unpromotable_after_waiting_expires() {
 #[test]
 fn article_30_p6_forces_a_lance_only_on_the_last_rank() {
     // 第30条P6: 香車の最奥段到達は強制成りだが、それ以外の入陣は選択制である。
-    let rules = Rules::from_codes(&[RuleCode::P6]).unwrap();
+    let rules = modifier_rules(false, false, false, true);
     let generator = MoveGenerator::new(rules);
     let board = position(Color::Black, &[(msq(6, 5), Color::Black, PieceKind::Lance)]);
     let moves = generated_with(&generator, &board);
@@ -786,7 +811,7 @@ fn article_30_p6_forces_a_lance_only_on_the_last_rank() {
 #[test]
 fn article_30_p6_forces_standard_pawn_relief() {
     // 第30条P6・第19条1項: 歩兵の最奥段への非捕獲到達は成りを強制する。
-    let rules = Rules::from_codes(&[RuleCode::P6]).unwrap();
+    let rules = modifier_rules(false, false, false, true);
     let generator = MoveGenerator::new(rules);
     let board = position(Color::Black, &[(msq(6, 2), Color::Black, PieceKind::Pawn)]);
 
@@ -796,7 +821,11 @@ fn article_30_p6_forces_standard_pawn_relief() {
 #[test]
 fn article_30_p2_p6_forces_an_in_zone_lance_on_the_last_rank() {
     // 第30条P2・P6: P2で得た敵陣内非捕獲の成り機会にもP6の強制成りを適用する。
-    let rules = Rules::from_codes(&[RuleCode::P2, RuleCode::P6]).unwrap();
+    let rules = MoveRules {
+        promotion: PromotionRule::P2,
+        p6: true,
+        ..MoveRules::standard()
+    };
     let generator = MoveGenerator::new(rules);
     let board = position(Color::Black, &[(msq(6, 3), Color::Black, PieceKind::Lance)]);
 
@@ -806,7 +835,7 @@ fn article_30_p2_p6_forces_an_in_zone_lance_on_the_last_rank() {
 #[test]
 fn article_30_p6_does_not_force_other_piece_kinds() {
     // 第30条P6: 最奥段であっても、歩兵・香車以外の駒種の成りは選択制のままとする。
-    let rules = Rules::from_codes(&[RuleCode::P6]).unwrap();
+    let rules = modifier_rules(false, false, false, true);
     let generator = MoveGenerator::new(rules);
     let board = position(
         Color::Black,
@@ -822,10 +851,55 @@ fn article_30_p6_does_not_force_other_piece_kinds() {
 // D1-030-05: 成り規則の排他と併用（第30条末尾、第33条9項）。
 #[test]
 fn article_30_p1_and_p2_are_exclusive_while_p3_p4_compose() {
-    assert!(Rules::from_codes(&[RuleCode::P1, RuleCode::P2]).is_err());
-    assert!(Rules::from_codes(&[RuleCode::P1, RuleCode::P3]).is_ok());
-    assert!(Rules::from_codes(&[RuleCode::P2, RuleCode::P3, RuleCode::P4]).is_ok());
-    assert!(Rules::from_codes(&[RuleCode::P2, RuleCode::P5]).is_ok());
-    assert!(Rules::from_codes(&[RuleCode::P5, RuleCode::P6]).is_ok());
-    assert!(Rules::from_codes(&[RuleCode::P1, RuleCode::P6]).is_ok());
+    assert!(
+        Rules::from_codes(&[
+            RuleCode::L0,
+            RuleCode::P1,
+            RuleCode::P2,
+            RuleCode::R1,
+            RuleCode::E0,
+        ])
+        .is_err()
+    );
+    for codes in [
+        &[
+            RuleCode::L0,
+            RuleCode::P1,
+            RuleCode::P3,
+            RuleCode::R1,
+            RuleCode::E0,
+        ][..],
+        &[
+            RuleCode::L0,
+            RuleCode::P2,
+            RuleCode::P3,
+            RuleCode::P4,
+            RuleCode::R1,
+            RuleCode::E0,
+        ],
+        &[
+            RuleCode::L0,
+            RuleCode::P2,
+            RuleCode::P5,
+            RuleCode::R1,
+            RuleCode::E0,
+        ],
+        &[
+            RuleCode::L0,
+            RuleCode::P0,
+            RuleCode::P5,
+            RuleCode::P6,
+            RuleCode::R1,
+            RuleCode::E0,
+        ],
+        &[
+            RuleCode::L0,
+            RuleCode::P1,
+            RuleCode::P6,
+            RuleCode::R1,
+            RuleCode::E0,
+        ],
+    ] {
+        assert!(Rules::from_codes(codes).is_ok(), "{codes:?}");
+    }
 }

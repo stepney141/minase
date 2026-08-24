@@ -7,7 +7,7 @@ use crate::core::mv::{Move, Undo};
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
 use crate::core::repetition::{RepetitionHistory, retain_repetition_allowed_moves};
-use crate::core::rules::{RepetitionRule, Rules};
+use crate::core::rules::{ExhaustionRule, RepetitionRule, Rules};
 use crate::core::square::{BOARD_RANKS, Square};
 
 /// 対局裁定に必要な履歴依存状態。
@@ -90,7 +90,7 @@ impl AdjudicationState {
 pub(crate) struct AdjudicationContext<'a> {
     /// 反復履歴と手数を供給する審判状態。
     state: &'a AdjudicationState,
-    /// 合法手と採用規則を供給する生成器。
+    /// 合法手を供給する生成器。
     generator: &'a MoveGenerator,
     /// 採用しているローカルルールの集合。
     rules: Rules,
@@ -99,12 +99,16 @@ pub(crate) struct AdjudicationContext<'a> {
 }
 
 impl<'a> AdjudicationContext<'a> {
-    /// 審判状態と生成器から裁定文脈を作る。
-    pub(crate) fn new(state: &'a AdjudicationState, generator: &'a MoveGenerator) -> Self {
+    /// 完全な規則集合、審判状態、生成器から裁定文脈を作る。
+    pub(crate) fn new(
+        rules: Rules,
+        state: &'a AdjudicationState,
+        generator: &'a MoveGenerator,
+    ) -> Self {
         Self {
             state,
             generator,
-            rules: generator.rules(),
+            rules,
             piece_exhaustion_grace: state.piece_exhaustion_grace(),
         }
     }
@@ -136,13 +140,13 @@ impl<'a> AdjudicationContext<'a> {
             return matches!(result, GameResult::Win { winner, .. } if winner == mover);
         }
 
-        if self.rules.bare_king_adjudication() {
+        if self.rules.exhaustion == ExhaustionRule::E3 {
             matches!(
                 bare_king_result(position, self.generator),
                 Some(GameResult::Win { winner, .. }) if winner == mover
             )
         } else {
-            !self.rules.piece_exhaustion_disabled()
+            self.rules.exhaustion != ExhaustionRule::E2
                 && matches!(
                     piece_exhaustion_outcome(
                         position,
@@ -223,7 +227,7 @@ pub(crate) fn adjudicate_after_move(
         };
     }
 
-    let exhaustion = if context.rules.bare_king_adjudication() {
+    let exhaustion = if context.rules.exhaustion == ExhaustionRule::E3 {
         PieceExhaustionTransition {
             result: bare_king_result(position, context.generator),
             next_grace: false,
@@ -234,7 +238,7 @@ pub(crate) fn adjudicate_after_move(
             context.generator,
             promoted_waiting_piece,
             current_grace,
-            context.rules.piece_exhaustion_disabled(),
+            context.rules.exhaustion == ExhaustionRule::E2,
         )
     };
     if exhaustion.result.is_some() {
@@ -256,11 +260,10 @@ pub(crate) fn adjudicate_after_move(
         };
     }
 
-    let result = (context.rules.mate_adjudication_enabled() && is_mate(position, &context))
-        .then_some(GameResult::Win {
-            winner: side_to_move.opposite(),
-            reason: WinReason::Mate,
-        });
+    let result = (!context.rules.e1 && is_mate(position, &context)).then_some(GameResult::Win {
+        winner: side_to_move.opposite(),
+        reason: WinReason::Mate,
+    });
     PostMoveAdjudication {
         result,
         piece_exhaustion_grace: exhaustion.next_grace,
@@ -340,7 +343,7 @@ pub(crate) fn is_mate(position: &mut Position, context: &AdjudicationContext<'_>
             return false;
         }
 
-        let undo = position.make_move_unchecked(mv, context.rules);
+        let undo = position.make_move_unchecked(mv, context.rules.moves);
         has_legal_move = true;
         if context.candidate_is_immediate_win(position, mv, &undo) {
             position.unmake_move(undo);
@@ -657,7 +660,7 @@ mod tests {
         let state_before = state.clone();
         assert!(is_mate(
             &mut mated,
-            &AdjudicationContext::new(&state, &generator)
+            &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
         ));
         assert_eq!(mated, mated_before);
         assert_eq!(state, state_before);
@@ -675,7 +678,7 @@ mod tests {
         let state = r1_state(&escapable);
         assert!(!is_mate(
             &mut escapable,
-            &AdjudicationContext::new(&state, &generator)
+            &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
         ));
 
         // 3項b: 相手の最後の王駒を先に取れる着手が残れば詰みではない(第21条4項)。
@@ -690,7 +693,7 @@ mod tests {
         assert!(can_capture_last_royal(&counter_capture, &generator));
         assert!(!is_mate(
             &mut counter_capture,
-            &AdjudicationContext::new(&state, &generator)
+            &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
         ));
 
         // 3項b境界: 先取りした王駒の升へ相手の取り返しの利き(飛車)が残っていても、
@@ -707,7 +710,7 @@ mod tests {
         let state = r1_state(&counter_capture_with_retaliation);
         assert!(!is_mate(
             &mut counter_capture_with_retaliation,
-            &AdjudicationContext::new(&state, &generator)
+            &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
         ));
 
         // 第23条境界: 着手が1つもない局面は合法手なしであり、詰みではない。
@@ -727,7 +730,7 @@ mod tests {
         ));
         assert!(!is_mate(
             &mut stuck,
-            &AdjudicationContext::new(&state, &generator)
+            &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
         ));
     }
 
@@ -739,7 +742,7 @@ mod tests {
         let scenarios: [(&[RuleCode], Position, Move); 4] = [
             (
                 // 詰み(第21条2項)。
-                &[RuleCode::R1, RuleCode::E2],
+                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2],
                 position(
                     Color::White,
                     &[
@@ -754,7 +757,7 @@ mod tests {
             ),
             (
                 // 王駒捕獲(第21条1項)。
-                &[RuleCode::R1],
+                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
                 position(
                     Color::Black,
                     &[
@@ -767,7 +770,7 @@ mod tests {
             ),
             (
                 // 駒枯れ引き分け(第22条8項)。
-                &[RuleCode::R1],
+                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
                 position(
                     Color::Black,
                     &[
@@ -779,7 +782,7 @@ mod tests {
             ),
             (
                 // 終局しない通常の着手。
-                &[RuleCode::R1],
+                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
                 position(
                     Color::Black,
                     &[
@@ -795,11 +798,11 @@ mod tests {
 
         for (codes, start, mv) in scenarios {
             let rules = Rules::from_codes(codes).unwrap();
-            let generator = MoveGenerator::new(rules);
+            let generator = MoveGenerator::new(rules.moves);
 
             // 探索層の経路: make/unmakeと共有裁定関数を直接使う。
             let mut low_level = start.clone();
-            let mut state = AdjudicationState::new(rules.repetition_rule().unwrap(), &low_level);
+            let mut state = AdjudicationState::new(rules.repetition, &low_level);
             let mover = low_level.side_to_move();
             let undo = low_level.try_make_move(mv, &generator).unwrap();
             assert!(!repetition_is_forbidden(state.repetition(), &low_level));
@@ -807,14 +810,14 @@ mod tests {
             let repetition_result = state.record_move(&low_level, &generator, mover, mv);
             let outcome = adjudicate_after_move(
                 &mut low_level,
-                AdjudicationContext::new(&state, &generator),
+                AdjudicationContext::new(rules, &state, &generator),
                 mover,
                 waiting,
                 repetition_result,
             );
 
             // 対局進行の経路。
-            let mut game = Game::from_position(rules, start.clone()).unwrap();
+            let mut game = Game::from_position(rules, start.clone());
             let status = game.play(mv).unwrap();
 
             let expected = match outcome.result() {
@@ -838,15 +841,16 @@ mod tests {
                 (sq(8, 8), piece(Color::White, PieceKind::King)),
             ],
         );
-        let rules = Rules::from_codes(&[RuleCode::R2, RuleCode::E2]).unwrap();
-        let generator = MoveGenerator::new(rules);
+        let rules =
+            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R2, RuleCode::E2]).unwrap();
+        let generator = MoveGenerator::new(rules.moves);
         let cycle = [
             step(sq(3, 3), sq(3, 4)),
             step(sq(8, 8), sq(8, 7)),
             step(sq(3, 4), sq(3, 3)),
         ];
 
-        let mut game = Game::from_position(rules, start.clone()).unwrap();
+        let mut game = Game::from_position(rules, start.clone());
         let mut low_level = start.clone();
         let mut state = AdjudicationState::new(RepetitionRule::R2, &low_level);
         for mv in cycle {
