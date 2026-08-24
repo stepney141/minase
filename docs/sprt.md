@@ -44,12 +44,12 @@ cargo run --release --bin match_runner -- \
 
 HaChuのような外部エンジンとの比較は、対等な時間制御のGSPRTで行う。
 深さ固定では探索1段の意味がエンジンごとに異なるため、強さの比較には使わない。
-規則はHaChuの既定設定（RULES.md第33条第7項、`L1,L3,P5,P6,R2,E1,E2`）に合わせ、審判層とminase側の双方へ同じ規則を与える。
+規則はHaChuの既定設定（RULES.md第33条第7項、`L1,L3,P0,P5,P6,R2,E1,E2`）に合わせ、審判層とminase側の双方へ同じ規則を与える。
 
 ```console
 cargo run --release --bin match_runner -- \
   --candidate commit:<測定対象> --baseline "cecp:../hachu-debian/hachu" \
-  --rules L1,L3,P5,P6,R2,E1,E2 --each time=60000+1000 \
+  --rules L1,L3,P0,P5,P6,R2,E1,E2 --each time=60000+1000 \
   --concurrency 8 --seed <シード> gsprt
 ```
 
@@ -77,7 +77,7 @@ cargo run --release --bin match_runner -- \
 
 `--candidate`と`--baseline`のspecは次の4形式である。
 
-- `commit:<hash>`: ハーネスがgit worktreeで当該コミットを展開して`cargo build --release --bin minase`を実行し、完全ハッシュをキーに`target/match-cache/`へキャッシュする。起動引数`--protocol usi --rules <マッチ規則>`は自動付与される。標準の測定はこの形式を使う。
+- `commit:<hash>`: ハーネスがgit worktreeで当該コミットを展開して`cargo build --release --bin minase`を実行し、完全ハッシュをキーに`target/match-cache/`へキャッシュする。起動引数`--protocol usi --rules <マッチ規則>`は自動付与される。標準の測定はこの形式を使う。`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットが自分の語彙で解釈する。規則コードP0・E0を導入したコミットより前のコミットを相手にする測定では、コードを列挙した指定は旧コミットが拒否するため、`engine-default`などのプリセット名で指定する。
 - 起動コマンド（パス＋空白区切り引数）: 任意のUSIエンジンを起動する（例 `"target/release/minase --protocol usi --rules engine-default"`）。未コミットの作業ツリーや外部エンジンの測定に使う。minase本体は`--protocol`と`--rules`が必須である点に注意する。
 - `random`: 同一ビルドの`usi_random`（合法手から一様ランダムに着手する校正用エンジン）。真のelo差が0であることが既知の唯一の対戦カードであり、ハーネス自体の煙試験に使う。
 - `cecp:<起動コマンド>`: CECP（XBoardプロトコル）で対局する任意のエンジンを起動する（例 `"cecp:../hachu-debian/hachu"`）。HaChuのようにUSIを話さない外部エンジンとの比較に使う。ハーネスは`xboard`・`protover 2`の握手後に`memory 256`・`new`・`variant chu`・`easy`・`nopost`・`force`を送り、毎手、未送信の着手を`usermove`で転送してから`go`で思考させ、`move`行を受けたら`force`へ戻す。思考制限は`depth`（`sd`へ写す）と秒単位の時間制御（`level`・`time`・`otim`へ写す）に限り、`nodes`と秒読み、および秒未満の持ち時間・加算は指定できない。規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。

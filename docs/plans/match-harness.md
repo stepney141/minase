@@ -52,6 +52,8 @@ LLRはH0境界−2.944に僅かに届かなかったが、これはelo0=0とelo1
 結果はペンタノミアル[4, 0, 15, 0, 5]、Elo +14［−71, +102］、異常は`rejected_moves=1`（P5系統の既知差）、経過6,969秒であり、持ち時間4倍でminaseは統計的に互角へ達する。
 等時間の−252から約265の回復は持ち時間2倍化およそ2回分に相当し、差の主因が規則やプロトコルの不利ではなく、HaChuが全ノードで計算する利きマップ由来の評価知識（モビリティ・王安全度・獅子関連項）による1ノードあたりの質であることを裏づける。
 
+上記のHaChu実測コマンドと規則列はRULES.md第13版当時の記録として保持する。第14版以後に同じ条件を新たに指定する場合は、成り規則群の基底コードP0を加えた`L1,L3,P0,P5,P6,R2,E1,E2`を用いる。
+
 ## 動機
 
 探索部フェーズ2で導入したselfplayのエンジン指定（`--candidate depth=N`と機能フラグ）は、比較対象の機能構成をハーネスが知る設計であり、新機能を追加するたびにspec語彙を広げる必要があった。
@@ -132,7 +134,7 @@ USIプロトコルへ`go depth <N>`と`go nodes <N>`を実装する。
 `--candidate <spec>`と`--baseline <spec>`のspecは次の2形式とする。
 
 - パス形式: 実行ファイルの起動コマンド。空白区切りの2語目以降は起動引数として渡す（fastchessの`cmd=`＋`args=`に相当。minase本体は起動時に`--protocol usi --rules <規則>`を要求するため、この形式が必要である。フェーズ2の実装時に追加した）。
-- コミット形式: `commit:<hash>`。ハーネスが`git worktree add`で当該コミットを一時展開し、`cargo build --release --bin minase`でビルドし、成果物を正規化した完全ハッシュをキーに`target/match-cache/`（提案）へキャッシュする。キャッシュ命中時はビルドを省略する。worktreeはビルド後に破棄する。
+- コミット形式: `commit:<hash>`。ハーネスが`git worktree add`で当該コミットを一時展開し、`cargo build --release --bin minase`でビルドし、成果物を正規化した完全ハッシュをキーに`target/match-cache/`（提案）へキャッシュする。規則の入力原文を`--rules`へ渡すため、プリセットは各コミットが自分の語彙で展開する。キャッシュ命中時はビルドを省略し、worktreeはビルド後に破棄する。
 
 ランダムエンジンは`random`という予約specで指定し、現行ビルドの`usi_random`バイナリを起動する。
 
@@ -141,7 +143,7 @@ CECP形式は`cecp:<起動コマンド>`とし、パス形式と同じく空白�
 
 ### USIセッション管理
 
-各対局でハーネスは、両エンジンプロセスを起動し、`usi`→`setoption name RuleSet value <マッチ規則>`→（ランダムエンジンのみ`setoption name Seed value <局シード>`）→`isready`→`usinewgame`で初期化する。
+各対局でハーネスは、両エンジンプロセスを起動し、`usi`→`setoption name RuleSet value <規則の入力原文>`→（ランダムエンジンのみ`setoption name Seed value <局シード>`）→`isready`→`usinewgame`で初期化する。解析済みコード列は審判層の`Rules`構築と測定記録だけに使う。
 毎手、手番側エンジンへ`position sfen <開始SFEN> moves <着手列>`と`go depth|nodes <制限>`を送り、`bestmove`を受けて審判層の`Game`へ適用する。
 対局進行・合法性判定・終局裁定は従来どおりハーネスの審判層が正であり、エンジンの返答は着手の提案としてのみ扱う。
 プロセスはペアごとに起動し直し、ペア内2局の間でエンジンの内部状態（将来の置換表を含む）を持ち越さない。
@@ -191,7 +193,7 @@ GSPRTのLLR取り込みは完了順ではなくペア番号順に整列して行
 ### CLIの形
 
 バイナリは`selfplay`を置き換える形で改名する（`src/bin/match_runner.rs`、名称は起案時提案でありレビューで確定する）。
-サブコマンド`gsprt`と`elo`、`--rules`、`--max-ply`、`--seed`、ペア再現情報の出力形式は現行selfplayから引き継ぐ。
+サブコマンド`gsprt`と`elo`、`--rules`、`--max-ply`、`--seed`、ペア再現情報の出力形式は現行selfplayから引き継ぐ。`--rules`省略時の入力原文は`engine-default`とし、審判層ではL0＋P0＋R1＋E0として検証する。
 
 使用例（提案）:
 
