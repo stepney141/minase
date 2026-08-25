@@ -1,7 +1,7 @@
 //! 評価関数の学習に使う自己対局データの生成と検査。
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::num::NonZeroUsize;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -289,7 +289,7 @@ fn run() -> io::Result<()> {
     }
 }
 
-/// 自己対局を並列実行し、対局番号順に学習データを書き出す。
+/// 来歴を確定して出力ファイルを作り、生成が失敗すれば出力を削除する。
 fn generate(arguments: &GenerateArguments) -> io::Result<()> {
     let rules = engine_default_rules()?;
     let rule_set = rules.to_string();
@@ -306,9 +306,31 @@ fn generate(arguments: &GenerateArguments) -> io::Result<()> {
         .write(true)
         .create_new(true)
         .open(&arguments.output)?;
+    let result = write_training_data(file, arguments, rules, &rule_set, &generation_commit);
+    // 失敗した出力を残すと、Readerが受理する空ファイルや破損ファイルが最終パスに
+    // 残り、同じコマンドの再実行もcreate_newで拒否されるため、失敗時は削除する。
+    if result.is_err()
+        && let Err(remove_error) = fs::remove_file(&arguments.output)
+    {
+        eprintln!(
+            "error: cannot remove incomplete output {}: {remove_error}",
+            arguments.output.display()
+        );
+    }
+    result
+}
+
+/// 自己対局を並列実行し、対局番号順にレコードを書き出して要約を表示する。
+fn write_training_data(
+    file: File,
+    arguments: &GenerateArguments,
+    rules: Rules,
+    rule_set: &str,
+    generation_commit: &str,
+) -> io::Result<()> {
     let header = Header::new(
-        rule_set.clone(),
-        generation_commit.clone(),
+        rule_set.to_owned(),
+        generation_commit.to_owned(),
         V0_NETWORK_CHECKSUM,
         arguments.nodes,
         arguments.seed,
@@ -403,8 +425,8 @@ fn generate(arguments: &GenerateArguments) -> io::Result<()> {
     file.sync_all()?;
     print_generation_summary(
         arguments,
-        &rule_set,
-        &generation_commit,
+        rule_set,
+        generation_commit,
         &total,
         start.elapsed().as_secs_f64(),
     );
