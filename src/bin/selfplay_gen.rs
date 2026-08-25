@@ -35,8 +35,6 @@ const DEFAULT_MAX_PLY: u16 = 600;
 const DEFAULT_HASH_MB: NonZeroUsize = NonZeroUsize::new(16).unwrap();
 /// 詰み帯として除外する探索値の絶対値下限。
 const MATE_BAND_START: u32 = 29_000;
-/// v0評価関数に対応するネット検査和。
-const V0_NETWORK_CHECKSUM: [u8; 32] = [0; 32];
 
 /// 自己対局データ生成器のコマンドライン引数。
 #[derive(Parser)]
@@ -332,10 +330,14 @@ fn write_training_data(
     rule_set: &str,
     generation_commit: &str,
 ) -> io::Result<()> {
+    // 探索は埋め込み学習PSTで着手するので、その重み本体の検査和を生成元として残す。
+    let network_checksum = *minase::eval::weights()
+        .expect("main validated the embedded weights")
+        .checksum();
     let header = Header::new(
         rule_set.to_owned(),
         generation_commit.to_owned(),
-        V0_NETWORK_CHECKSUM,
+        network_checksum,
         arguments.nodes,
         arguments.seed,
         0,

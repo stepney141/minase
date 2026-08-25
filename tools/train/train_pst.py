@@ -22,6 +22,8 @@ from mnsd import NO_LION_SQUARE, load_records
 HEADER_LENGTH = 80
 FORMAT_VERSION = 1
 RULE_SET = b"L0,P0,R1,E0"
+# 設計書「量子化と整数推論」の合格条件: 浮動小数点評価との平均絶対誤差2センチポーン以下。
+QUANTIZATION_ERROR_LIMIT = 2.0
 PIECE_VALUES = np.array(
     [
         100, 125, 375, 375, 500, 500, 625, 750, 875, 1000,
@@ -199,6 +201,8 @@ def build_targets(records: np.ndarray, k: float, lambda_value: float) -> NDArray
 
 def quantize(weights: NDArray[np.float32]) -> NDArray[np.int16]:
     """センチポーン重みを1/8センチポーン単位のi16へ量子化する。"""
+    if not np.all(np.isfinite(weights)):
+        raise ValueError("trained weights contain a non-finite value")
     rounded = np.rint(weights.astype(np.float64) * 8.0)
     if np.any((rounded < np.iinfo(np.int16).min) | (rounded > np.iinfo(np.int16).max)):
         raise OverflowError("trained weight does not fit i16")
@@ -274,13 +278,8 @@ def command_train(arguments: argparse.Namespace) -> None:
     validation_features = torch.as_tensor(normal[validation_mask], device=device)
     validation_targets = torch.as_tensor(targets[validation_mask], device=device)
 
-    if arguments.init is None:
-        initial = torch.zeros(FEATURE_COUNT, dtype=torch.float32, device=device)
-    else:
-        initial_quantized, _ = read_mnpt(arguments.init)
-        initial = torch.as_tensor(
-            initial_quantized.astype(np.float32) / 8.0, device=device
-        )
+    initial_quantized, _ = read_mnpt(arguments.init)
+    initial = torch.as_tensor(initial_quantized.astype(np.float32) / 8.0, device=device)
 
     selected_rate = arguments.lr[0]
     if len(arguments.lr) > 1:
@@ -336,7 +335,6 @@ def command_train(arguments: argparse.Namespace) -> None:
 
     float_weights = model.weight[:FEATURE_COUNT, 0].detach().cpu().numpy().astype(np.float32)
     quantized = quantize(float_weights)
-    write_mnpt(arguments.output, quantized, arguments.k)
 
     validation_count = validation_features.shape[0]
     sample_count = min(arguments.validation_sample, validation_count)
@@ -348,7 +346,13 @@ def command_train(arguments: argparse.Namespace) -> None:
     floating_scores = extended_float[sample_features].sum(axis=1, dtype=np.float32)
     integer_scores = integer_evaluate(quantized, sample_features)
     errors = np.abs(floating_scores - integer_scores.astype(np.float32))
-    print(f"quantization error: samples={sample_count} mean_absolute={float(errors.mean()):.9f} max={float(errors.max()):.9f} cp")
+    mean_absolute_error = float(errors.mean())
+    print(f"quantization error: samples={sample_count} mean_absolute={mean_absolute_error:.9f} max={float(errors.max()):.9f} cp")
+    if not math.isfinite(mean_absolute_error) or mean_absolute_error > QUANTIZATION_ERROR_LIMIT:
+        raise ValueError(
+            f"quantization mean absolute error {mean_absolute_error} exceeds {QUANTIZATION_ERROR_LIMIT} cp"
+        )
+    write_mnpt(arguments.output, quantized, arguments.k)
     print(f"initial position evaluation: {initial_position_score(quantized)} cp")
 
 
@@ -369,7 +373,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser = commands.add_parser("train", help="学習PSTを訓練する")
     train_parser.add_argument("--data", required=True, nargs="+")
     train_parser.add_argument("--output", required=True)
-    train_parser.add_argument("--init")
+    train_parser.add_argument("--init", required=True)
     train_parser.add_argument("--k", required=True, type=float)
     train_parser.add_argument("--lambda", dest="lambda_value", type=float, default=0.75)
     train_parser.add_argument("--lr", type=float, nargs="+", required=True)

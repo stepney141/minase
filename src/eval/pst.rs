@@ -21,6 +21,8 @@ pub struct Pst {
     weights: [i16; FEATURE_COUNT],
     /// 学習時に使ったセンチポーンから勝率ロジットへの尺度。
     k: f32,
+    /// 重み本体のSHA-256。学習データのヘッダに生成元のネットとして記録する。
+    checksum: [u8; 32],
 }
 
 impl Pst {
@@ -51,10 +53,17 @@ impl Pst {
         if !k.is_finite() || k <= 0.0 {
             return Err(Error::InvalidK { actual: k });
         }
+        let rule_set = &bytes[16..48];
+        let rule_end = rule_set.iter().position(|&byte| byte == 0).unwrap_or(32);
+        if rule_set[rule_end..].iter().any(|&byte| byte != 0)
+            || std::str::from_utf8(&rule_set[..rule_end]).is_err()
+        {
+            return Err(Error::InvalidRuleSet);
+        }
         let body = &bytes[HEADER_LENGTH..];
-        let expected_checksum: [u8; 32] = bytes[48..80].try_into().expect("slice length is fixed");
+        let checksum: [u8; 32] = bytes[48..80].try_into().expect("slice length is fixed");
         let actual_checksum: [u8; 32] = Sha256::digest(body).into();
-        if actual_checksum != expected_checksum {
+        if actual_checksum != checksum {
             return Err(Error::ChecksumMismatch);
         }
 
@@ -67,12 +76,21 @@ impl Pst {
                     .expect("slice length is fixed"),
             );
         }
-        Ok(Self { weights, k })
+        Ok(Self {
+            weights,
+            k,
+            checksum,
+        })
     }
 
     /// 学習時に使った勝率尺度Kを返す。
     pub const fn k(&self) -> f32 {
         self.k
+    }
+
+    /// 重み本体のSHA-256を返す。
+    pub const fn checksum(&self) -> &[u8; 32] {
+        &self.checksum
     }
 }
 
@@ -101,6 +119,8 @@ pub enum Error {
         /// 読み取った特徴数。
         actual: u32,
     },
+    /// 規則セット名欄がUTF-8またはNUL埋めの規約を満たさない。
+    InvalidRuleSet,
     /// 勝率尺度Kが正の有限値ではない。
     InvalidK {
         /// 読み取った勝率尺度。
@@ -128,6 +148,7 @@ impl fmt::Display for Error {
                 formatter,
                 "invalid MNPT feature count: expected {FEATURE_COUNT}, got {actual}"
             ),
+            Self::InvalidRuleSet => formatter.write_str("invalid MNPT rule-set field"),
             Self::InvalidK { actual } => write!(formatter, "invalid MNPT K: {actual}"),
             Self::ChecksumMismatch => formatter.write_str("MNPT weight checksum mismatch"),
         }
@@ -237,6 +258,14 @@ mod tests {
             Pst::decode(&bytes),
             Err(Error::UnexpectedFeatureCount { .. })
         ));
+    }
+
+    /// 規則セット名欄のNUL埋め違反が拒否されることを検査する。
+    #[test]
+    fn decode_rejects_invalid_rule_set_field() {
+        let mut bytes = valid_bytes();
+        bytes[47] = b'x';
+        assert!(matches!(Pst::decode(&bytes), Err(Error::InvalidRuleSet)));
     }
 
     /// MNPT重み本体の改変がSHA-256で拒否されることを検査する。
