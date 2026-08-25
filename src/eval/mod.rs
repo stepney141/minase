@@ -1,5 +1,7 @@
 //! 中将棋の静的評価関数。
 
+pub mod training_data;
+
 use crate::core::piece::{Color, PIECE_KIND_COUNT, PieceKind};
 use crate::core::position::Position;
 use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, Square};
