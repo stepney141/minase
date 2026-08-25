@@ -108,7 +108,14 @@ fn run_quiesce(
     };
     let history = [];
     let mut current = position.clone();
-    let mut searcher = new_searcher(position, engine_rules(), &history, &shared, table);
+    let mut searcher = new_searcher(
+        crate::eval::weights().unwrap(),
+        position,
+        engine_rules(),
+        &history,
+        &shared,
+        table,
+    );
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
         .expect("unlimited quiescence search must complete");
@@ -136,7 +143,14 @@ fn run_negamax(
     };
     let history = [];
     let mut current = position.clone();
-    let mut searcher = new_searcher(position, engine_rules(), &history, &shared, table);
+    let mut searcher = new_searcher(
+        crate::eval::weights().unwrap(),
+        position,
+        engine_rules(),
+        &history,
+        &shared,
+        table,
+    );
     let score = searcher
         .negamax(&mut current, depth, alpha, beta, ply)
         .expect("unlimited negamax search must complete");
@@ -622,7 +636,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
         .iter()
         .map(|&mv| {
             let undo = position.make_move_unchecked(mv, engine_rules());
-            let score = -crate::eval::evaluate(&position);
+            let score = -crate::eval::evaluate(crate::eval::weights().unwrap(), &position);
             position.unmake_move(undo);
             score
         })
@@ -665,7 +679,7 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
     };
     assert!(moves.contains(&quiet_move));
 
-    let quiet_undo = position.make_move_unchecked(quiet_move, engine_rules());
+    position.make_move_unchecked(quiet_move, engine_rules());
     let losing_capture = Move {
         from: fs(9, 3),
         mid: None,
@@ -673,30 +687,9 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
         promote: false,
     };
     assert!(legal_moves(&position).contains(&losing_capture));
-    position.unmake_move(quiet_undo);
-
-    let expected = moves
-        .iter()
-        .map(|&mv| {
-            let undo = position.make_move_unchecked(mv, engine_rules());
-            let score = -crate::eval::evaluate(&position);
-            position.unmake_move(undo);
-            score
-        })
-        .max()
-        .expect("root must have a legal move");
-
-    let result = search(
-        &position,
-        engine_rules(),
-        &moves,
-        &[],
-        &depth_limits(1),
-        DEFAULT_THREADS,
-        &mut small_tt(),
-    );
-
-    assert_eq!(result.score, expected);
+    let stand_pat = crate::eval::evaluate(crate::eval::weights().unwrap(), &position);
+    let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, 0, &small_tt());
+    assert_eq!(score, stand_pat);
 }
 
 // D7-SRCH-11。search.md「静止探索」節の2026年8月22日改訂: Exact、
@@ -774,7 +767,7 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
         ],
     );
     let key = search_key(&position);
-    let stand_pat = evaluate(&position);
+    let stand_pat = evaluate(crate::eval::weights().unwrap(), &position);
     let cases = [
         (-INFINITY, stand_pat, Bound::Lower),
         (stand_pat, INFINITY, Bound::Upper),
@@ -864,7 +857,7 @@ fn quiescence_max_ply_leaf_does_not_probe_or_store() {
     let raw_before = table.raw_entry(key);
 
     let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, MAX_PLY, &table);
-    assert_eq!(score, evaluate(&position));
+    assert_eq!(score, evaluate(crate::eval::weights().unwrap(), &position));
     assert_ne!(score, 12_345);
     assert_eq!(table.raw_entry(key), raw_before);
 }
@@ -1415,6 +1408,7 @@ fn four_worker_progress_is_main_worker_only_and_monotonic() {
     let table = small_tt();
     let (sender, receiver) = mpsc::channel();
     let outcome = run_search_team(
+        crate::eval::weights().unwrap(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -1470,6 +1464,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
     let external_stop = AtomicBool::new(true);
     let table = small_tt();
     let outcome = run_search_team(
+        crate::eval::weights().unwrap(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,

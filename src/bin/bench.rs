@@ -244,6 +244,10 @@ fn run_bench(
 
 /// 探索ベンチを実行する。
 fn main() {
+    if let Err(error) = minase::eval::weights() {
+        eprintln!("error: embedded evaluation weights are invalid: {error}");
+        std::process::exit(1);
+    }
     let arguments = Arguments::parse();
     let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
     let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");

@@ -19,7 +19,8 @@ use crate::core::piece::{COLOR_COUNT, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
-use crate::eval::{evaluate, piece_value};
+use crate::eval::handcrafted::piece_value;
+use crate::eval::{Pst, evaluate};
 
 use tt::Bound;
 
@@ -231,11 +232,14 @@ pub fn start_search(
     tt: TranspositionTable,
 ) -> SearchHandle {
     validate_input(&snapshot.root_moves, &limits);
+    let pst = crate::eval::weights()
+        .expect("embedded PST must be valid; binaries validate it at startup");
     let (sender, events) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
     let thread = thread::spawn(move || {
         let outcome = run_search_team(
+            pst,
             &snapshot.position,
             snapshot.rules,
             &snapshot.root_moves,
@@ -293,8 +297,11 @@ pub fn search(
         !limits.infinite,
         "synchronous search cannot use an infinite limit"
     );
+    let pst = crate::eval::weights()
+        .expect("embedded PST must be valid; binaries validate it at startup");
     let stop = AtomicBool::new(false);
     run_search_team(
+        pst,
         position,
         rules,
         root_moves,
@@ -437,6 +444,7 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
 /// 調整役として補助ワーカーを生成し、主ワーカー探索と全joinを実行する。
 #[allow(clippy::too_many_arguments)]
 fn run_search_team(
+    pst: &'static Pst,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -473,6 +481,7 @@ fn run_search_team(
                     let shared = &shared;
                     scope.spawn(move || {
                         run_auxiliary_worker(
+                            pst,
                             position,
                             rules,
                             root_moves,
@@ -486,6 +495,7 @@ fn run_search_team(
                 })
                 .collect();
             let main_outcome = run_main_worker(
+                pst,
                 position,
                 rules,
                 root_moves,
@@ -551,6 +561,7 @@ fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item
 
 /// ワーカー固有の探索状態を構築する。
 fn new_searcher<'a>(
+    pst: &'static Pst,
     position: &Position,
     rules: MoveRules,
     history_keys: &'a [u64],
@@ -558,6 +569,7 @@ fn new_searcher<'a>(
     tt: &'a TranspositionTable,
 ) -> Searcher<'a> {
     Searcher {
+        pst,
         rules,
         generator: MoveGenerator::new(rules),
         history_keys,
@@ -578,6 +590,7 @@ fn new_searcher<'a>(
 /// 主ワーカーの反復深化を実行し、深さ完了ごとに進捗イベントを送る。
 #[allow(clippy::too_many_arguments)]
 fn run_main_worker(
+    pst: &'static Pst,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -588,10 +601,10 @@ fn run_main_worker(
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(position, rules, history_keys, shared, tt);
+    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: evaluate(position),
+        score: evaluate(pst, position),
         depth: 0,
         nodes: 0,
     };
@@ -645,6 +658,7 @@ fn run_main_worker(
 /// 補助ワーカーの反復深化を実行し、最後まで完了した反復を返す。
 #[allow(clippy::too_many_arguments)]
 fn run_auxiliary_worker(
+    pst: &'static Pst,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -654,10 +668,10 @@ fn run_auxiliary_worker(
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(position, rules, history_keys, shared, tt);
+    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: evaluate(position),
+        score: evaluate(pst, position),
         depth: 0,
         nodes: 0,
     };
@@ -686,6 +700,8 @@ fn run_auxiliary_worker(
 
 /// 1回の探索実行の可変状態。
 struct Searcher<'a> {
+    /// 探索中に使う検証済み学習PST。
+    pst: &'static Pst,
     /// 探索内の着手適用に使う規則。
     rules: MoveRules,
     /// 探索ノードでの合法手生成器。
@@ -887,7 +903,7 @@ impl Searcher<'_> {
         self.pv[ply as usize].clear();
 
         if ply >= MAX_PLY {
-            return Some(evaluate(position));
+            return Some(evaluate(self.pst, position));
         }
 
         let original_alpha = alpha;
@@ -905,7 +921,7 @@ impl Searcher<'_> {
             }
         }
 
-        let stand_pat = evaluate(position);
+        let stand_pat = evaluate(self.pst, position);
         if stand_pat >= beta {
             self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
             return Some(stand_pat);

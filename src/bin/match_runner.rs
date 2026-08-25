@@ -1623,6 +1623,10 @@ fn print_elo_summary(
 
 /// 引数を検証し、ワーカープールでペア対局を実行して集計を出力する。
 fn main() {
+    if let Err(error) = minase::eval::weights() {
+        eprintln!("error: embedded evaluation weights are invalid: {error}");
+        process::exit(1);
+    }
     let arguments = Arguments::parse();
     let rules = match Rules::from_codes(&arguments.rules.codes) {
         Ok(rules) => rules,

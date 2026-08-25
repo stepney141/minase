@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.6.4", features = ["derive"] }
 mimalloc = "0.1.52"
+sha2 = "0.10"
 
 [dev-dependencies]
 flate2 = "1"

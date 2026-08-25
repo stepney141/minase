@@ -1,0 +1,4 @@
+[project]
+name = "minase-train"
+requires-python = ">=3.12"
+dependencies = ["torch", "numpy"]

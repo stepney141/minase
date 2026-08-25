@@ -275,6 +275,10 @@ impl InspectionSummary {
 
 /// コマンドを実行し、失敗時は説明を標準エラーへ出して非0終了する。
 fn main() {
+    if let Err(error) = minase::eval::weights() {
+        eprintln!("error: embedded evaluation weights are invalid: {error}");
+        process::exit(1);
+    }
     if let Err(error) = run() {
         eprintln!("error: {error}");
         process::exit(1);
