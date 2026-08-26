@@ -1,3 +1,5 @@
+//! 自己対局測定ハーネスのプロセス境界を検査する統合テスト。
+
 use std::process::Command;
 
 fn run_random_match(concurrency: &str, pairs: &str) -> String {

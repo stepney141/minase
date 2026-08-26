@@ -6,6 +6,7 @@
 //! （implementation contract: move-canonicalization.md）である。
 
 use std::collections::{BTreeSet, HashSet};
+use std::num::{NonZeroU64, NonZeroUsize};
 
 use super::{
     MoveGenerator, PROMOTION_PAIRS, TWO_STAGE_KINDS, forward_rank_delta, generated_with, same_board,
@@ -59,8 +60,10 @@ fn article_9_black_and_white_move_sets_are_180_degree_symmetric() {
         let mut codes: Vec<(PieceCode, PieceCode)> = Vec::new();
         if !promoted_only.contains(&kind) {
             codes.push((
-                PieceCode::new(Color::White, kind),
-                PieceCode::new(Color::Black, kind),
+                PieceCode::new(Color::White, kind)
+                    .expect("generated fixture uses an unpromoted-capable kind"),
+                PieceCode::new(Color::Black, kind)
+                    .expect("generated fixture uses an unpromoted-capable kind"),
             ));
         }
         if let (Some(white), Some(black)) = (
@@ -232,7 +235,7 @@ fn assert_application_effects(before: &Position, mv: Move, rules: MoveRules, ply
 /// シード固定プレイアウトで正準形不変条件と適用効果を検査する（D1-MC-01）。
 fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
     let generator = MoveGenerator::new(rules);
-    let mut rng = XorShift64::new(seed);
+    let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
     let mut position = Position::initial();
     for ply in 0..plies {
         let moves = generated_with(&generator, &position);
@@ -240,7 +243,7 @@ fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
             break;
         }
         assert_canonical_invariants(&position, &moves, ply);
-        let mv = moves[rng.index(moves.len())];
+        let mv = moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())];
         assert_application_effects(&position, mv, rules, ply);
         position.make_move_unchecked(mv, rules);
     }
@@ -266,7 +269,7 @@ fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
 /// シード固定プレイアウトで全生成手の適用・復元の往復を検査する（D1-MC-02）。
 fn playout_round_trip(rules: MoveRules, seed: u64, plies: usize) {
     let generator = MoveGenerator::new(rules);
-    let mut rng = XorShift64::new(seed);
+    let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
     let mut position = Position::initial();
     for ply in 0..plies {
         let moves = generated_with(&generator, &position);
@@ -280,7 +283,10 @@ fn playout_round_trip(rules: MoveRules, seed: u64, plies: usize) {
             position.unmake_move(undo);
             assert_eq!(position, before, "ply={ply}, move={mv:?}");
         }
-        position.make_move_unchecked(moves[rng.index(moves.len())], rules);
+        position.make_move_unchecked(
+            moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())],
+            rules,
+        );
     }
 }
 

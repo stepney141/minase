@@ -9,7 +9,12 @@ pub(crate) fn sq(file: u8, rank: u8) -> Square {
 pub(crate) fn position(side_to_move: Color, pieces: &[(Square, Color, PieceKind)]) -> Position {
     let mut builder = PositionBuilder::new(side_to_move);
     for &(square, color, kind) in pieces {
-        builder.put(square, PieceCode::new(color, kind)).unwrap();
+        builder
+            .put(
+                square,
+                PieceCode::new(color, kind).expect("test fixture uses an unpromoted-capable kind"),
+            )
+            .unwrap();
     }
     builder.finish().unwrap()
 }

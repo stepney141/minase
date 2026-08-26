@@ -34,7 +34,7 @@ impl Move {
 
 /// 着手で取られた駒の記録。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct CapturedPiece {
+pub(crate) struct CapturedPiece {
     /// 駒が取られた升。
     pub square: Square,
     /// 取られた駒。
@@ -43,7 +43,7 @@ pub struct CapturedPiece {
 
 /// [`Position::make_move_unchecked`](crate::Position::make_move_unchecked)の巻き戻しに必要な情報。
 #[derive(PartialEq, Eq, Debug)]
-pub struct Undo {
+pub(crate) struct Undo {
     /// 適用した着手。
     pub(crate) mv: Move,
     /// 移動前(成る前)の駒。

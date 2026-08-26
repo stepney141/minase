@@ -22,6 +22,9 @@ use super::engine::{
     Engine, EngineCommand, EngineLifecycle, EngineReply, RejectReason, canonical_rules_text,
 };
 
+/// USIから設定できる置換表容量の上限(MiB)。
+const MAX_HASH_SIZE_MB: usize = 65_536;
+
 /// lishogi系拡張を含むUSIプロトコル。
 pub struct UsiProtocol {
     /// `option`宣言のdefault値に使う起動時規則の正準表記。
@@ -170,24 +173,37 @@ impl UsiProtocol {
                 return Ok(None);
             }
         };
-        let root_moves = game.legal_moves();
-        if root_moves.is_empty() {
-            write_error(output, "go requires at least one legal move")?;
-            return Ok(None);
-        }
         let position = game.position().clone();
         let rules = engine.active_rules();
-        let snapshot = SearchSnapshot {
-            position: position.clone(),
-            rules: rules.moves,
-            history_keys: game.search_key_history().to_vec(),
-            root_moves,
+        let snapshot = match SearchSnapshot::from_game(game) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                write_error(output, &error.to_string())?;
+                return Ok(None);
+            }
         };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
-        let transposition_table = self.transposition_table.take().unwrap_or_default();
-        let infinite = config.infinite;
+        let pst = match crate::eval::weights() {
+            Ok(pst) => pst,
+            Err(error) => {
+                write_error(output, &error.to_string())?;
+                return Ok(None);
+            }
+        };
+        let transposition_table = match self.transposition_table.take() {
+            Some(table) => table,
+            None => match TranspositionTable::new(search::DEFAULT_TT_SIZE_MB) {
+                Ok(table) => table,
+                Err(error) => {
+                    write_error(output, &error.to_string())?;
+                    return Ok(None);
+                }
+            },
+        };
+        let infinite = config.is_infinite();
         let handle = search::start_search(
+            pst,
             snapshot,
             config,
             search_id,
@@ -547,8 +563,9 @@ impl UsiProtocol {
         )?;
         writeln!(
             output,
-            "option name USI_Hash type spin default {}",
-            search::DEFAULT_TT_SIZE_MB
+            "option name USI_Hash type spin default {} min 1 max {}",
+            search::DEFAULT_TT_SIZE_MB,
+            MAX_HASH_SIZE_MB
         )?;
         writeln!(
             output,
@@ -578,7 +595,7 @@ impl UsiProtocol {
             };
             let codes = match parse_rule_set(value) {
                 Ok(codes) => codes,
-                Err(error) => return write_error(output, &error),
+                Err(error) => return write_error(output, &error.to_string()),
             };
             self.apply_silent(engine, EngineCommand::SetRules(codes), output)
         } else if name.eq_ignore_ascii_case("USI_Variant") {
@@ -593,12 +610,24 @@ impl UsiProtocol {
             let Some(value) = value else {
                 return write_error(output, "USI_Hash requires a value");
             };
-            let Some(size_mb) = value.parse::<usize>().ok().filter(|&size| size > 0) else {
-                return write_error(output, "USI_Hash must be a positive integer");
+            let Some(size_mb) = value
+                .parse::<usize>()
+                .ok()
+                .filter(|&size| (1..=MAX_HASH_SIZE_MB).contains(&size))
+            else {
+                return write_error(
+                    output,
+                    &format!("USI_Hash must be an integer from 1 to {MAX_HASH_SIZE_MB}"),
+                );
             };
-            match &mut self.transposition_table {
+            let result = match &mut self.transposition_table {
                 Some(transposition_table) => transposition_table.resize(size_mb),
-                None => self.transposition_table = Some(TranspositionTable::new(size_mb)),
+                None => TranspositionTable::new(size_mb).map(|table| {
+                    self.transposition_table = Some(table);
+                }),
+            };
+            if let Err(error) = result {
+                return write_error(output, &error.to_string());
             }
             Ok(())
         } else if name.eq_ignore_ascii_case("Threads") {
@@ -628,21 +657,21 @@ impl UsiProtocol {
         };
         let moves_index = tokens.iter().position(|token| *token == "moves");
         let move_tokens = moves_index.map(|index| &tokens[index + 1..]).unwrap_or(&[]);
+        let position_tokens = &tokens[..moves_index.unwrap_or(tokens.len())];
         let rules = engine.position_rules();
         let setup = match kind {
-            "startpos" => SetupPosition {
-                position: Position::initial(),
-                lion_capture: None,
-                next_move_number: 1,
-            },
-            "sfen" => {
-                let end = moves_index.unwrap_or(tokens.len());
-                match parse_sfen_fields(&tokens[1..end], rules.moves) {
-                    Ok(setup) => setup,
-                    Err(error) => return write_error(output, &error.to_string()),
+            "startpos" => {
+                if position_tokens.len() != 1 {
+                    return write_error(output, "position startpos has unexpected fields");
                 }
+                SetupPosition::new(Position::initial(), None, 1)
+                    .expect("the standard initial setup is valid")
             }
-            _ => return Ok(()),
+            "sfen" => match parse_sfen_fields(&position_tokens[1..], rules.moves) {
+                Ok(setup) => setup,
+                Err(error) => return write_error(output, &error.to_string()),
+            },
+            _ => return write_error(output, "position requires startpos or sfen"),
         };
 
         let parsed = match parse_moves(&setup, rules, move_tokens) {
@@ -673,7 +702,7 @@ impl UsiProtocol {
         let game = engine.game();
         write!(output, "moves")?;
         for mv in game.legal_moves() {
-            write!(output, " {}", usi::text(game.position(), mv))?;
+            write!(output, " {}", usi::text_generated(game.position(), mv))?;
         }
         writeln!(output)
     }
@@ -794,25 +823,25 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color) -> Result<SearchLimits,
 
     let clock_specified =
         btime.is_some() || wtime.is_some() || binc.is_some() || winc.is_some() || byoyomi.is_some();
-    let clock = clock_specified.then(|| {
-        let (remaining_ms, increment_ms) = match side_to_move {
-            Color::Black => (btime.unwrap_or(0), binc.unwrap_or(0)),
-            Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0)),
-        };
-        ClockLimits {
-            remaining_ms,
-            increment_ms,
-            byoyomi_ms: byoyomi.unwrap_or(0),
-        }
-    });
+    let clock = clock_specified
+        .then(|| {
+            let (remaining_ms, increment_ms) = match side_to_move {
+                Color::Black => (btime.unwrap_or(0), binc.unwrap_or(0)),
+                Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0)),
+            };
+            ClockLimits::new(remaining_ms, increment_ms, byoyomi.unwrap_or(0))
+        })
+        .transpose()
+        .map_err(|error| error.to_string())?;
 
-    Ok(SearchLimits {
-        depth,
-        nodes,
-        movetime_ms,
-        clock,
-        infinite,
-    })
+    if infinite {
+        if depth.is_some() || nodes.is_some() || movetime_ms.is_some() || clock.is_some() {
+            return Err("go infinite cannot be combined with finite limits".to_owned());
+        }
+        Ok(SearchLimits::infinite())
+    } else {
+        SearchLimits::new(depth, nodes, movetime_ms, clock).map_err(|error| error.to_string())
+    }
 }
 
 /// `go`の時間引数1個をミリ秒として解析する。重複指定は拒否する。
@@ -830,31 +859,11 @@ fn parse_go_milliseconds(
 }
 
 /// `position sfen`の欄列を4欄または5欄の拡張SFENとして解析する。
-///
-/// 第5欄は成り権保留欄(P1・P2・P5)にも`moves`なしで続く余分な語にもなり得るため、
-/// 5欄解析が失敗した場合は、第5欄が成り権保留欄の形をしているときだけ
-/// そのエラーを報告し、そうでなければ4欄解析の結果を採用する。
 fn parse_sfen_fields(
     fields: &[&str],
     rules: crate::MoveRules,
 ) -> Result<SetupPosition, crate::notation::sfen::SfenError> {
-    let four_field_text = fields.iter().take(4).copied().collect::<Vec<_>>().join(" ");
-    let four_field_setup = parse_extended_sfen(&four_field_text, rules)?;
-    let Some(fifth) = fields.get(4) else {
-        return Ok(four_field_setup);
-    };
-
-    let five_field_text = fields.iter().take(5).copied().collect::<Vec<_>>().join(" ");
-    match parse_extended_sfen(&five_field_text, rules) {
-        Ok(setup) => Ok(setup),
-        Err(error) if looks_like_promotion_deferred(fifth) => Err(error),
-        Err(_) => Ok(four_field_setup),
-    }
-}
-
-/// 欄が成り権保留欄の形(`-`、コンマ区切り、または数字始まり)かを返す。
-fn looks_like_promotion_deferred(field: &str) -> bool {
-    field == "-" || field.contains(',') || field.as_bytes().first().is_some_and(u8::is_ascii_digit)
+    parse_extended_sfen(&fields.join(" "), rules)
 }
 
 impl Protocol for UsiProtocol {
@@ -919,7 +928,7 @@ fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
 
 /// `bestmove`行を出力する。
 fn write_bestmove(output: &mut dyn Write, position: &Position, mv: Move) -> io::Result<()> {
-    writeln!(output, "bestmove {}", usi::text(position, mv))?;
+    writeln!(output, "bestmove {}", usi::text_generated(position, mv))?;
     output.flush()
 }
 
@@ -941,7 +950,7 @@ fn write_info(
     )?;
     let mut position = context.position.clone();
     for &mv in pv {
-        write!(output, " {}", usi::text(&position, mv))?;
+        write!(output, " {}", usi::text_generated(&position, mv))?;
         let _ = position.make_move_unchecked(mv, context.rules.moves);
     }
     writeln!(output)?;
@@ -1013,9 +1022,9 @@ fn parse_moves(
     rules: crate::Rules,
     move_tokens: &[&str],
 ) -> Result<ParsedMoves, String> {
-    let mut position = setup.position.clone();
+    let mut position = setup.position().clone();
     position
-        .set_lion_capture(setup.lion_capture)
+        .set_lion_capture(setup.lion_capture())
         .map_err(|error| error.to_string())?;
     let mut game = Game::from_position(rules, position);
     let mut moves = Vec::with_capacity(move_tokens.len());
@@ -1484,6 +1493,30 @@ mod tests {
     }
 
     #[test]
+    fn malformed_position_kind_and_fields_are_rejected_atomically() {
+        // 監査「positionコマンドの黙示的な無視と補完」: 解釈不能な種別、
+        // startposの余剰欄、SFENの不正な第5欄と第6欄を黙って補完・無視しない。
+        let output = session(
+            &[RuleCode::R1],
+            &format!(
+                concat!(
+                    "position startpos\nstate\n",
+                    "position unknown\nstate\n",
+                    "position startpos extra\nstate\n",
+                    "position sfen {} - 1 typo\nstate\n",
+                    "position sfen {} - 1 - extra\nstate\n",
+                ),
+                INITIAL_BOARD, INITIAL_BOARD
+            ),
+        );
+        let states = state_lines(&output);
+
+        assert_eq!(error_lines(&output).len(), 4);
+        assert_eq!(states.len(), 5);
+        assert!(states.iter().all(|state| *state == states[0]));
+    }
+
+    #[test]
     fn failed_position_blocks_go_until_a_valid_position_recovers() {
         // EC「Lishogi-Bot経路」: 局面同期失敗状態では正当なposition受理までgoを拒否する（D6-USI-12）。
         let output = session(
@@ -1586,20 +1619,12 @@ mod tests {
             "btime", "1000", "wtime", "2000", "binc", "30", "winc", "40", "byoyomi", "500",
         ];
         assert_eq!(
-            parse_go_config(&tokens, Color::Black).unwrap().clock,
-            Some(ClockLimits {
-                remaining_ms: 1000,
-                increment_ms: 30,
-                byoyomi_ms: 500,
-            })
+            parse_go_config(&tokens, Color::Black).unwrap().clock(),
+            Some(ClockLimits::new(1000, 30, 500).unwrap())
         );
         assert_eq!(
-            parse_go_config(&tokens, Color::White).unwrap().clock,
-            Some(ClockLimits {
-                remaining_ms: 2000,
-                increment_ms: 40,
-                byoyomi_ms: 500,
-            })
+            parse_go_config(&tokens, Color::White).unwrap().clock(),
+            Some(ClockLimits::new(2000, 40, 500).unwrap())
         );
     }
 
@@ -1931,6 +1956,22 @@ mod tests {
     }
 
     #[test]
+    fn oversized_usi_hash_is_rejected_and_the_session_continues() {
+        // 監査「置換表サイズのオーバーフロー」: 極大の外部設定値は
+        // エラー応答となり、後続の有効な設定と探索を妨げない。
+        let output = session(
+            &[RuleCode::R1],
+            &format!(
+                "setoption name USI_Hash value {}\nsetoption name USI_Hash value 1\nposition startpos\ngo depth 1\n",
+                usize::MAX
+            ),
+        );
+
+        assert_eq!(error_lines(&output).len(), 1);
+        assert_eq!(bestmoves(&output).len(), 1);
+    }
+
+    #[test]
     fn royal_capture_finishes_silently_and_state_reports_the_verdict() {
         // PL「思考開始指示と終局裁定の通知」（USIは終局を出力しない）・EC「終局責任」（D6-USI-28、D6-USI-34、D6-ENG-04）。
         let mut engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
@@ -1973,11 +2014,11 @@ mod tests {
     }
 
     #[test]
-    fn unknown_commands_and_tokens_are_ignored_and_quit_is_silent() {
-        // PL「USIの未知入力は原典準拠」: 未知コマンド行と既知コマンド内の未知トークンは無視（D6-USI-29）。
+    fn unknown_commands_are_ignored_and_quit_is_silent() {
+        // PL「USIの未知入力は原典準拠」: 未知コマンド行は無視する（D6-USI-29）。
         let noisy = session(
             &[RuleCode::R1],
-            "foobar baz\nposition startpos extra tokens\nstate\nquit\nusi\n",
+            "foobar baz\nposition startpos\nstate\nquit\nusi\n",
         );
         let clean = session(&[RuleCode::R1], "position startpos\nstate\n");
 
@@ -2000,7 +2041,7 @@ mod tests {
         let expected: HashSet<String> = game
             .legal_moves()
             .into_iter()
-            .map(|mv| usi::text(game.position(), mv))
+            .map(|mv| usi::text_generated(game.position(), mv))
             .collect();
 
         assert_eq!(moves[0], expected);

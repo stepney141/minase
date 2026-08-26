@@ -176,7 +176,7 @@ impl Game {
         self.ensure_ongoing()?;
 
         let mover = self.position.side_to_move();
-        let undo = self.position.try_make_move(mv, &self.generator)?;
+        let undo = self.position.try_make_move_with_undo(mv, &self.generator)?;
         if repetition_is_forbidden(self.adjudication.repetition(), &self.position) {
             self.position.unmake_move(undo);
             return Err(GameError::IllegalMove {
@@ -329,6 +329,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use std::num::NonZeroU64;
 
     use super::*;
     use crate::core::piece::{PieceCode, PieceKind};
@@ -339,7 +340,7 @@ mod tests {
     use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
-        PieceCode::new(color, kind)
+        PieceCode::new(color, kind).expect("fixture uses an unpromoted-capable kind")
     }
 
     fn prince(color: Color) -> PieceCode {
@@ -2356,7 +2357,7 @@ mod tests {
         ];
 
         for (rule_set_name, codes, seed) in RULE_SETS {
-            let mut rng = XorShift64::new(seed);
+            let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
             let mut game = Game::new(Rules::from_codes(codes).unwrap());
 
             for _ in 0..PLY_CAP {
@@ -2389,7 +2390,7 @@ mod tests {
         const PLY_CAP: u32 = 1_500;
         const SEED: u64 = 0x5232_5f53_4f41_4b21;
 
-        let mut rng = XorShift64::new(SEED);
+        let mut rng = XorShift64::new(NonZeroU64::new(SEED).unwrap());
         for codes in [
             &[RuleCode::L0, RuleCode::P0, RuleCode::R2, RuleCode::E0][..],
             &[
@@ -2461,7 +2462,7 @@ mod tests {
         const PLY_CAP: u32 = 1_500;
         const SEED: u64 = 0x4741_4d45_5f53_4f41;
 
-        let mut rng = XorShift64::new(SEED);
+        let mut rng = XorShift64::new(NonZeroU64::new(SEED).unwrap());
         for game_index in 0..GAME_COUNT {
             let mut game = Game::with_default_rules();
             let mut terminated = false;

@@ -2,6 +2,15 @@
 name = "minase"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+publish = false
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
 
 [dependencies]
 clap = { version = "4.6.4", features = ["derive"] }

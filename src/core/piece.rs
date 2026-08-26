@@ -223,6 +223,21 @@ impl PieceKind {
     pub const fn can_promote(self) -> bool {
         self.promoted().is_some()
     }
+
+    /// 成っていない状態で盤上に存在できる駒種かどうかを返す。
+    const fn can_exist_unpromoted(self) -> bool {
+        !matches!(
+            self,
+            Self::CrownPrince
+                | Self::WhiteHorse
+                | Self::Whale
+                | Self::FlyingOx
+                | Self::FreeBoar
+                | Self::FlyingStag
+                | Self::HornedFalcon
+                | Self::SoaringEagle
+        )
+    }
 }
 
 /// 盤の1升に格納する駒コード。下位5ビットが駒種番号+1、`0x20`が成りフラグ、
@@ -245,18 +260,29 @@ impl PieceCode {
     const KIND_MASK: u8 = 0x1f;
 
     /// 所有者と駒種から成っていない駒のコードを作る。
-    pub const fn new(color: Color, kind: PieceKind) -> Self {
+    ///
+    /// 成駒としてのみ現れる駒種なら`None`を返す。
+    pub const fn new(color: Color, kind: PieceKind) -> Option<Self> {
+        if !kind.can_exist_unpromoted() {
+            return None;
+        }
+        Some(Self::from_parts(color, kind, false))
+    }
+
+    /// 検証済みの所有者、駒種および成り状態をコード化する。
+    const fn from_parts(color: Color, kind: PieceKind, promoted: bool) -> Self {
         let color_bit = match color {
             Color::Black => 0,
             Color::White => Self::WHITE_BIT,
         };
-        Self(color_bit | (kind as u8 + 1))
+        let promoted_bit = if promoted { Self::PROMOTED_BIT } else { 0 };
+        Self(color_bit | promoted_bit | (kind as u8 + 1))
     }
 
     /// 指定駒種を成駒として持つコードを作る。その駒種が成駒として現れないなら`None`を返す。
     pub const fn new_promoted(color: Color, kind: PieceKind) -> Option<Self> {
         if kind.unpromoted().is_some() {
-            Some(Self(Self::new(color, kind).0 | Self::PROMOTED_BIT))
+            Some(Self::from_parts(color, kind, true))
         } else {
             None
         }
@@ -443,7 +469,7 @@ mod tests {
         for color in Color::ALL {
             for (base, target) in pairs {
                 // 駒コードでの成りも表と一致し、所有者を保存する。
-                let promoted = PieceCode::new(color, base).promote().unwrap();
+                let promoted = PieceCode::new(color, base).unwrap().promote().unwrap();
                 assert_eq!(promoted.kind(), Some(target));
                 assert_eq!(promoted.color(), Some(color));
                 assert!(promoted.is_promoted());
@@ -452,7 +478,7 @@ mod tests {
                 assert!(promoted.promote().is_none());
             }
             for kind in [PieceKind::King, PieceKind::Lion, PieceKind::FreeKing] {
-                assert!(PieceCode::new(color, kind).promote().is_none());
+                assert!(PieceCode::new(color, kind).unwrap().promote().is_none());
             }
             // 成駒コードを構築できるのは、成駒として現れる駒種にちょうど限られる。
             for kind in PieceKind::ALL {
@@ -472,7 +498,10 @@ mod tests {
         let mut codes = Vec::new();
         for color in Color::ALL {
             for kind in PieceKind::ALL {
-                let raw = PieceCode::new(color, kind);
+                let Some(raw) = PieceCode::new(color, kind) else {
+                    assert!(!kind.can_exist_unpromoted());
+                    continue;
+                };
                 assert_eq!(raw.color(), Some(color));
                 assert_eq!(raw.kind(), Some(kind));
                 assert!(!raw.is_promoted());
@@ -504,5 +533,20 @@ mod tests {
         assert!(PieceCode::EMPTY.is_empty());
         assert!(PieceCode::WALL.is_wall());
         assert_ne!(PieceCode::EMPTY, PieceCode::WALL);
+    }
+
+    // 第10条。成駒専用8種は未成の盤上駒コードとして構築できない。
+    #[test]
+    fn promoted_only_kinds_have_no_unpromoted_piece_code() {
+        for color in Color::ALL {
+            for kind in PROMOTED_ONLY_KINDS {
+                assert_eq!(PieceCode::new(color, kind), None, "{color:?} {kind:?}");
+                assert!(!kind.can_exist_unpromoted());
+            }
+            for kind in INITIAL_KINDS {
+                assert!(PieceCode::new(color, kind).is_some(), "{color:?} {kind:?}");
+                assert!(kind.can_exist_unpromoted());
+            }
+        }
     }
 }

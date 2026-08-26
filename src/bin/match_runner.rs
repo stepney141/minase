@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::process::{self, Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
@@ -20,7 +21,7 @@ use minase::notation::{cecp, usi};
 use minase::rng::{XorShift64, derive_seed};
 use minase::search::MAX_PLY;
 use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
-use minase::{Color, Game, GameResult, GameStatus, Move, RuleCode, Rules, Square};
+use minase::{Color, Game, GameResult, GameStatus, Move, MoveGenerator, RuleCode, Rules, Square};
 
 /// 1局を打ち切る手数上限の既定値。
 const DEFAULT_MAX_PLY: u32 = 4096;
@@ -111,10 +112,12 @@ struct RuleSetArgument {
 
 /// `--rules`の値を規則セット名またはコード列として解析する。
 fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
-    parse_rule_set(input).map(|codes| RuleSetArgument {
-        source: input.to_owned(),
-        codes,
-    })
+    parse_rule_set(input)
+        .map(|codes| RuleSetArgument {
+            source: input.to_owned(),
+            codes,
+        })
+        .map_err(|error| error.to_string())
 }
 
 /// 外部エンジンの指定。
@@ -794,7 +797,7 @@ struct Opening {
     /// 開始手順を適用済みの対局。
     game: Game,
     /// 開始手順の生成に使ったシード。
-    seed: u64,
+    seed: NonZeroU64,
     /// 開始手順の指し手列。
     moves: Vec<Move>,
     /// 開始手順のUSI表記列。エンジンへの`position`送信に使う。
@@ -1209,12 +1212,12 @@ fn rules_text(codes: &[RuleCode]) -> String {
 }
 
 /// 終局しない8手から12手の開始手順を生成する。
-fn generate_opening(rules: Rules, pair_seed: u64) -> Opening {
-    let mut opening_seed = derive_seed(pair_seed, 0);
+fn generate_opening(rules: Rules, pair_seed: NonZeroU64) -> Opening {
+    let mut opening_seed = derive_seed(pair_seed.get(), 0);
     loop {
         let mut game = Game::new(rules);
         let mut rng = XorShift64::new(opening_seed);
-        let opening_plies = 8 + rng.index(5);
+        let opening_plies = 8 + rng.index(NonZeroUsize::new(5).unwrap());
         let mut moves = Vec::with_capacity(opening_plies);
         let mut usi_moves = Vec::with_capacity(opening_plies);
         let mut finished = false;
@@ -1225,9 +1228,17 @@ fn generate_opening(rules: Rules, pair_seed: u64) -> Opening {
                 !legal_moves.is_empty(),
                 "ongoing game must have legal moves"
             );
-            let selected = legal_moves[rng.index(legal_moves.len())];
+            let selected = legal_moves
+                [rng.index(NonZeroUsize::new(legal_moves.len()).expect("moves are non-empty"))];
             moves.push(selected);
-            usi_moves.push(usi::text(game.position(), selected));
+            usi_moves.push(
+                usi::text(
+                    game.position(),
+                    selected,
+                    &MoveGenerator::new(game.rules().moves),
+                )
+                .expect("a move returned by legal_moves must be renderable"),
+            );
             let status = game
                 .play(selected)
                 .expect("a move returned by legal_moves must be accepted");
@@ -1245,7 +1256,7 @@ fn generate_opening(rules: Rules, pair_seed: u64) -> Opening {
                 usi_moves,
             };
         }
-        opening_seed = derive_seed(opening_seed, 0);
+        opening_seed = derive_seed(opening_seed.get(), 0);
     }
 }
 
@@ -1288,9 +1299,9 @@ fn play_game(
     max_ply: u32,
     player_a_color: Color,
     player_a: &PlayerConfig,
-    player_a_seed: u64,
+    player_a_seed: NonZeroU64,
     player_b: &PlayerConfig,
-    player_b_seed: u64,
+    player_b_seed: NonZeroU64,
     timeout: Duration,
 ) -> PlayedGame {
     let forfeit = |plies, loser: Color, reason| PlayedGame::Finished {
@@ -1300,11 +1311,11 @@ fn play_game(
             reason,
         },
     };
-    let mut player_a_process = match EngineProcess::start(player_a, player_a_seed, timeout) {
+    let mut player_a_process = match EngineProcess::start(player_a, player_a_seed.get(), timeout) {
         Ok(process) => process,
         Err(reason) => return forfeit(game.ply_count(), player_a_color, reason),
     };
-    let mut player_b_process = match EngineProcess::start(player_b, player_b_seed, timeout) {
+    let mut player_b_process = match EngineProcess::start(player_b, player_b_seed.get(), timeout) {
         Ok(process) => process,
         Err(reason) => {
             return forfeit(game.ply_count(), player_a_color.opposite(), reason);
@@ -1347,7 +1358,14 @@ fn play_game(
             Ok(selected) => selected,
             Err(reason) => return forfeit(game.ply_count(), side_to_move, reason),
         };
-        usi_history.push(usi::text(game.position(), selected));
+        usi_history.push(
+            usi::text(
+                game.position(),
+                selected,
+                &MoveGenerator::new(game.rules().moves),
+            )
+            .expect("a move validated against legal_moves must be renderable"),
+        );
         move_history.push(selected);
         let status = game
             .play(selected)
@@ -1424,10 +1442,10 @@ fn run_pair(
 ) -> CompletedPair {
     let pair_seed = derive_seed(base_seed, pair_number);
     let opening = generate_opening(rules, pair_seed);
-    let game1_a_seed = derive_seed(pair_seed, 1);
-    let game1_b_seed = derive_seed(pair_seed, 2);
-    let game2_a_seed = derive_seed(pair_seed, 3);
-    let game2_b_seed = derive_seed(pair_seed, 4);
+    let game1_a_seed = derive_seed(pair_seed.get(), 1);
+    let game1_b_seed = derive_seed(pair_seed.get(), 2);
+    let game2_a_seed = derive_seed(pair_seed.get(), 3);
+    let game2_b_seed = derive_seed(pair_seed.get(), 4);
 
     let mut output = String::new();
     writeln!(
@@ -2272,7 +2290,12 @@ mod tests {
     fn referee_rejects_bestmove_outside_the_legal_move_list() {
         let game = Game::new(Rules::ENGINE_DEFAULT);
         let legal = game.legal_moves()[0];
-        let legal_text = usi::text(game.position(), legal);
+        let legal_text = usi::text(
+            game.position(),
+            legal,
+            &MoveGenerator::new(game.rules().moves),
+        )
+        .unwrap();
         assert_eq!(
             validate_bestmove(&game, &legal_text, Protocol::Usi),
             Ok(legal)
@@ -2520,17 +2543,19 @@ mod tests {
     #[test]
     fn pair_seed_derivation_is_deterministic_nonzero_and_distinct() {
         let base = 0xACE1_u64;
-        let seeds: Vec<u64> = (1..=100).map(|n| derive_seed(base, n)).collect();
-        let replay: Vec<u64> = (1..=100).map(|n| derive_seed(base, n)).collect();
+        let seeds: Vec<NonZeroU64> = (1..=100).map(|n| derive_seed(base, n)).collect();
+        let replay: Vec<NonZeroU64> = (1..=100).map(|n| derive_seed(base, n)).collect();
         assert_eq!(seeds, replay);
-        assert!(seeds.iter().all(|&seed| seed != 0));
         let mut unique = seeds.clone();
         unique.sort_unstable();
         unique.dedup();
         assert_eq!(unique.len(), seeds.len());
         // 派生値が0になる入力でも非ゼロへ置換される(random-play.mdの
         // 仕様式の逆算により、splitmix64の出力0の原像は0x61C8_8646_80B5_83EB)
-        assert_ne!(derive_seed(0x61C8_8646_80B5_83EB - 5, 5), 0);
+        assert_eq!(
+            derive_seed(0x61C8_8646_80B5_83EB - 5, 5).get(),
+            0x9E37_79B9_7F4A_7C15
+        );
     }
 
     // D8-HARN-02(sprt.mdペア対局と再現性節): 開始局面は初期局面から8〜12手

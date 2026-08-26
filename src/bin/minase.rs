@@ -33,7 +33,9 @@ struct RuleSetArgument(Vec<RuleCode>);
 
 /// `--rules`の値を規則セット名またはコード列として解析する。
 fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
-    parse_rule_set(input).map(RuleSetArgument)
+    parse_rule_set(input)
+        .map(RuleSetArgument)
+        .map_err(|error| error.to_string())
 }
 
 /// 対応する通信プロトコル。

@@ -1,5 +1,7 @@
 //! 決定的な擬似乱数生成器。
 
+use core::num::{NonZeroU64, NonZeroUsize};
+
 /// splitmix64の增分定数(黄金比の64ビット表現)。
 const SPLITMIX_GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
 /// splitmix64の第1混合乗数。
@@ -16,10 +18,10 @@ pub fn splitmix64(value: u64) -> u64 {
 }
 
 /// 基本シードと系列番号から0でないシードを派生する。
-pub fn derive_seed(base_seed: u64, number: u64) -> u64 {
+pub fn derive_seed(base_seed: u64, number: u64) -> NonZeroU64 {
     match splitmix64(base_seed.wrapping_add(number)) {
-        0 => SPLITMIX_GAMMA,
-        seed => seed,
+        0 => NonZeroU64::new(SPLITMIX_GAMMA).expect("splitmix gamma is non-zero"),
+        seed => NonZeroU64::new(seed).expect("the zero seed was handled separately"),
     }
 }
 
@@ -31,9 +33,8 @@ pub struct XorShift64 {
 
 impl XorShift64 {
     /// シードから生成器を作る。シードは0以外でなければならない。
-    pub fn new(seed: u64) -> Self {
-        assert_ne!(seed, 0);
-        Self { state: seed }
+    pub const fn new(seed: NonZeroU64) -> Self {
+        Self { state: seed.get() }
     }
 
     /// 次の乱数を返す。
@@ -51,7 +52,9 @@ impl XorShift64 {
     }
 
     /// 0以上`length`未満の添字を返す。
-    pub fn index(&mut self, length: usize) -> usize {
-        self.next() as usize % length
+    pub fn index(&mut self, length: NonZeroUsize) -> usize {
+        let length = u64::try_from(length.get()).expect("usize must fit in u64");
+        usize::try_from(self.next() % length)
+            .expect("an index below a usize length must fit in usize")
     }
 }

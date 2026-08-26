@@ -4,16 +4,19 @@
 mod tests;
 mod tt;
 
-pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable};
+pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError};
 
 use core::cmp::Reverse;
-use core::num::NonZeroUsize;
+use core::fmt;
+use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::MoveGenerator;
+use crate::core::game::{Game, GameStatus};
 use crate::core::mv::Move;
 use crate::core::piece::{COLOR_COUNT, PieceKind};
 use crate::core::position::Position;
@@ -51,44 +54,132 @@ type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUN
 /// plyごとに新しい順で保持するkiller表。
 type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 
-/// 1回の探索に適用する制限。
+/// 1回の有限探索に適用する制限。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct FiniteSearchLimits {
+    /// 反復深化で完了を目指す最大深さ。
+    depth: Option<NonZeroU32>,
+    /// 探索するノード数の上限。
+    nodes: Option<NonZeroU64>,
+    /// 1手に使う固定時間(ms)。
+    movetime_ms: Option<NonZeroU64>,
+    /// 持ち時間、加算時間、秒読みによる制限。
+    clock: Option<ClockLimits>,
+}
+
+/// 1回の探索に適用する検証済み制限。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SearchLimits {
-    /// 反復深化で完了を目指す最大深さ。`None`なら深さで制限しない。
-    pub depth: Option<u32>,
-    /// 探索するノード数の上限。`None`なら上限を設けない。
-    pub nodes: Option<u64>,
-    /// 1手に使う固定時間(ms)。
-    pub movetime_ms: Option<u64>,
-    /// 持ち時間、加算時間、秒読みによる制限。
-    pub clock: Option<ClockLimits>,
-    /// 外部停止要求だけを停止条件とするか。
-    pub infinite: bool,
+    kind: SearchLimitKind,
+}
+
+/// 有限探索と無期限探索を排他的に表す。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SearchLimitKind {
+    /// 1個以上の停止条件を持つ有限探索。
+    Finite(FiniteSearchLimits),
+    /// 外部停止要求だけを停止条件とする探索。
+    Infinite,
 }
 
 impl SearchLimits {
-    /// 制限が探索可能な組合せか検査する。
+    /// 有限探索の制限を検証して構築する。
     ///
     /// # Errors
     ///
-    /// 制約が1つもない場合、または深さが1未満か[`MAX_PLY`]を超える場合は
-    /// エラーメッセージを返す。
-    pub fn validate(&self) -> Result<(), &'static str> {
-        if !self.infinite
-            && self.depth.is_none()
-            && self.nodes.is_none()
-            && self.movetime_ms.is_none()
-            && self.clock.is_none()
-        {
-            return Err("search limits must contain at least one constraint");
+    /// 制約が1つもない場合、深さが範囲外の場合、ノード数が0の場合、または
+    /// 固定時間が0 msの場合は[`SearchError`]を返す。
+    pub fn new(
+        depth: Option<u32>,
+        nodes: Option<u64>,
+        movetime_ms: Option<u64>,
+        clock: Option<ClockLimits>,
+    ) -> Result<Self, SearchError> {
+        if depth.is_none() && nodes.is_none() && movetime_ms.is_none() && clock.is_none() {
+            return Err(SearchError::MissingLimit);
         }
-        if self
-            .depth
-            .is_some_and(|depth| depth == 0 || depth > MAX_PLY)
-        {
-            return Err("search depth must be between one and MAX_PLY");
+        let depth = depth
+            .map(|depth| {
+                NonZeroU32::new(depth)
+                    .filter(|depth| depth.get() <= MAX_PLY)
+                    .ok_or(SearchError::InvalidDepth { depth })
+            })
+            .transpose()?;
+        let nodes = nodes
+            .map(|nodes| NonZeroU64::new(nodes).ok_or(SearchError::ZeroNodeLimit))
+            .transpose()?;
+        let movetime_ms = movetime_ms
+            .map(|milliseconds| NonZeroU64::new(milliseconds).ok_or(SearchError::ZeroMoveTime))
+            .transpose()?;
+        Ok(Self {
+            kind: SearchLimitKind::Finite(FiniteSearchLimits {
+                depth,
+                nodes,
+                movetime_ms,
+                clock,
+            }),
+        })
+    }
+
+    /// 外部停止要求だけで停止する無期限探索の制限を返す。
+    pub const fn infinite() -> Self {
+        Self {
+            kind: SearchLimitKind::Infinite,
         }
-        Ok(())
+    }
+
+    /// 外部停止要求だけで停止する無期限探索かを返す。
+    pub const fn is_infinite(self) -> bool {
+        matches!(self.kind, SearchLimitKind::Infinite)
+    }
+
+    /// 有限探索の深さ上限を返す。
+    pub const fn depth(self) -> Option<u32> {
+        match self.kind {
+            SearchLimitKind::Finite(limits) => match limits.depth {
+                Some(depth) => Some(depth.get()),
+                None => None,
+            },
+            SearchLimitKind::Infinite => None,
+        }
+    }
+
+    /// 有限探索のノード数上限を返す。
+    pub const fn nodes(self) -> Option<u64> {
+        match self.kind {
+            SearchLimitKind::Finite(limits) => match limits.nodes {
+                Some(nodes) => Some(nodes.get()),
+                None => None,
+            },
+            SearchLimitKind::Infinite => None,
+        }
+    }
+
+    /// 有限探索の固定時間(ms)を返す。
+    pub const fn movetime_ms(self) -> Option<u64> {
+        match self.kind {
+            SearchLimitKind::Finite(limits) => match limits.movetime_ms {
+                Some(milliseconds) => Some(milliseconds.get()),
+                None => None,
+            },
+            SearchLimitKind::Infinite => None,
+        }
+    }
+
+    /// 有限探索の持ち時間制限を返す。
+    pub const fn clock(self) -> Option<ClockLimits> {
+        match self.kind {
+            SearchLimitKind::Finite(limits) => limits.clock,
+            SearchLimitKind::Infinite => None,
+        }
+    }
+
+    /// 有限探索の制限を返す。
+    fn finite(self) -> Option<FiniteSearchLimits> {
+        match self.kind {
+            SearchLimitKind::Finite(limits) => Some(limits),
+            SearchLimitKind::Infinite => None,
+        }
     }
 }
 
@@ -96,25 +187,167 @@ impl SearchLimits {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ClockLimits {
     /// 手番開始時の残り時間(ms)。
-    pub remaining_ms: u64,
+    remaining_ms: u64,
     /// 1手ごとの加算時間(ms)。
-    pub increment_ms: u64,
+    increment_ms: u64,
     /// 1手ごとの秒読み時間(ms)。
-    pub byoyomi_ms: u64,
+    byoyomi_ms: u64,
+}
+
+impl ClockLimits {
+    /// 持ち時間制の制限を検証して構築する。
+    ///
+    /// # Errors
+    ///
+    /// 残り時間、加算時間、秒読み時間がすべて0 msの場合は
+    /// [`SearchError::EmptyClock`]を返す。
+    pub const fn new(
+        remaining_ms: u64,
+        increment_ms: u64,
+        byoyomi_ms: u64,
+    ) -> Result<Self, SearchError> {
+        if remaining_ms == 0 && increment_ms == 0 && byoyomi_ms == 0 {
+            return Err(SearchError::EmptyClock);
+        }
+        Ok(Self {
+            remaining_ms,
+            increment_ms,
+            byoyomi_ms,
+        })
+    }
+
+    /// 手番開始時の残り時間(ms)を返す。
+    pub const fn remaining_ms(self) -> u64 {
+        self.remaining_ms
+    }
+
+    /// 1手ごとの加算時間(ms)を返す。
+    pub const fn increment_ms(self) -> u64 {
+        self.increment_ms
+    }
+
+    /// 1手ごとの秒読み時間(ms)を返す。
+    pub const fn byoyomi_ms(self) -> u64 {
+        self.byoyomi_ms
+    }
 }
 
 /// 探索スレッドへ渡す不変の入力。
 #[derive(Clone)]
 pub struct SearchSnapshot {
     /// 探索を開始する局面。
-    pub position: Position,
+    position: Position,
     /// 探索内で着手へ適用する規則。
-    pub rules: MoveRules,
+    rules: MoveRules,
     /// 対局開始から現局面までの探索局面キー。
-    pub history_keys: Vec<u64>,
+    history_keys: Vec<u64>,
     /// 対局管理層が確定したルート合法手。
-    pub root_moves: Vec<Move>,
+    root_moves: Vec<Move>,
 }
+
+impl SearchSnapshot {
+    /// 継続中の対局から探索用の不変入力を構築する。
+    ///
+    /// # Errors
+    ///
+    /// 対局が終局済みの場合は[`SearchError::FinishedGame`]を返す。
+    /// 継続中でもルート合法手がない場合は[`SearchError::NoLegalMoves`]を返す。
+    pub fn from_game(game: &Game) -> Result<Self, SearchError> {
+        if matches!(game.status(), GameStatus::Finished(_)) {
+            return Err(SearchError::FinishedGame);
+        }
+        Self::from_parts(
+            game.position().clone(),
+            game.rules().moves,
+            game.search_key_history().to_vec(),
+            game.legal_moves(),
+        )
+    }
+
+    /// 検証済みの対局管理層が確定した各入力からスナップショットを構築する。
+    fn from_parts(
+        position: Position,
+        rules: MoveRules,
+        history_keys: Vec<u64>,
+        root_moves: Vec<Move>,
+    ) -> Result<Self, SearchError> {
+        if root_moves.is_empty() {
+            return Err(SearchError::NoLegalMoves);
+        }
+        Ok(Self {
+            position,
+            rules,
+            history_keys,
+            root_moves,
+        })
+    }
+
+    /// 探索を開始する局面を返す。
+    pub const fn position(&self) -> &Position {
+        &self.position
+    }
+
+    /// 探索内で着手へ適用する規則を返す。
+    pub const fn rules(&self) -> MoveRules {
+        self.rules
+    }
+
+    /// 対局開始から現局面までの探索局面キーを返す。
+    pub fn history_keys(&self) -> &[u64] {
+        &self.history_keys
+    }
+
+    /// 対局管理層が確定したルート合法手を返す。
+    pub fn root_moves(&self) -> &[Move] {
+        &self.root_moves
+    }
+}
+
+/// 探索入力または探索器の初期化に失敗した理由。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SearchError {
+    /// 有限探索に停止条件が指定されていない。
+    MissingLimit,
+    /// 探索深さが1以上[`MAX_PLY`]以下でない。
+    InvalidDepth {
+        /// 指定された探索深さ。
+        depth: u32,
+    },
+    /// ノード数上限が0である。
+    ZeroNodeLimit,
+    /// 固定探索時間が0 msである。
+    ZeroMoveTime,
+    /// 持ち時間、加算時間、秒読み時間がすべて0 msである。
+    EmptyClock,
+    /// 探索できるルート合法手がない。
+    NoLegalMoves,
+    /// 終局済みの対局が指定された。
+    FinishedGame,
+    /// 同期探索に無期限探索が指定された。
+    InfiniteSynchronousSearch,
+}
+
+impl fmt::Display for SearchError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingLimit => formatter.write_str("search requires at least one limit"),
+            Self::InvalidDepth { depth } => write!(
+                formatter,
+                "search depth must be between 1 and {MAX_PLY}, got {depth}"
+            ),
+            Self::ZeroNodeLimit => formatter.write_str("search node limit must be non-zero"),
+            Self::ZeroMoveTime => formatter.write_str("search movetime must be non-zero"),
+            Self::EmptyClock => formatter.write_str("search clock must contain non-zero time"),
+            Self::NoLegalMoves => formatter.write_str("search requires at least one legal move"),
+            Self::FinishedGame => formatter.write_str("search requires an ongoing game"),
+            Self::InfiniteSynchronousSearch => {
+                formatter.write_str("synchronous search cannot use an infinite limit")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SearchError {}
 
 /// 探索を停止した条件。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -180,13 +413,15 @@ impl SearchEvent {
 }
 
 /// 実行中の探索チームを操作するハンドル。
+///
+/// 値を破棄すると探索チームへ停止を要求し、全ワーカーを回収するまで待つ。
 pub struct SearchHandle {
     /// 探索イベントの受信端。
     events: mpsc::Receiver<SearchEvent>,
     /// 探索チームと共有する外部停止フラグ。
     stop: Arc<AtomicBool>,
     /// 全ワーカーの終了後に置換表を返す調整役のハンドル。
-    thread: thread::JoinHandle<TranspositionTable>,
+    thread: Option<thread::JoinHandle<TranspositionTable>>,
 }
 
 impl SearchHandle {
@@ -200,9 +435,26 @@ impl SearchHandle {
         self.stop.store(true, AtomicOrdering::Relaxed);
     }
 
-    /// 全ワーカーの終了を待ち、共有していた置換表を返す。
-    pub fn join(self) -> thread::Result<TranspositionTable> {
-        self.thread.join()
+    /// 探索チームへ停止を要求して全ワーカーの終了を待ち、共有していた
+    /// 置換表を返す。
+    ///
+    /// 探索ワーカーがパニックした場合は、そのペイロードを`Err`で返す。
+    /// この場合、探索イベントの[`SearchEvent::Finished`]は送信されない。
+    pub fn join(mut self) -> thread::Result<TranspositionTable> {
+        self.stop_and_join()
+            .expect("a live SearchHandle must own its search thread")
+    }
+
+    /// 停止要求と探索スレッドの回収を1回だけ行う。
+    fn stop_and_join(&mut self) -> Option<thread::Result<TranspositionTable>> {
+        self.request_stop();
+        self.thread.take().map(thread::JoinHandle::join)
+    }
+}
+
+impl Drop for SearchHandle {
+    fn drop(&mut self) {
+        let _ = self.stop_and_join();
     }
 }
 
@@ -219,27 +471,26 @@ pub struct SearchResult {
     pub nodes: u64,
 }
 
-/// 所有権を移した入力と置換表を使い、別スレッドで探索チームを開始する。
+/// 所有権を移した評価重み、入力および置換表を使い、別スレッドで探索チームを
+/// 開始する。
 ///
-/// # Panics
-///
-/// `snapshot.root_moves`が空、または`limits`が不正な場合はpanicする。
+/// 探索ワーカーがパニックした場合は残るワーカーへ停止を通知する。その後、
+/// [`SearchHandle::join`]がパニックのペイロードを返し、
+/// [`SearchEvent::Finished`]は送信されない。
 pub fn start_search(
+    pst: Arc<Pst>,
     snapshot: SearchSnapshot,
     limits: SearchLimits,
     search_id: u64,
     threads: NonZeroUsize,
     tt: TranspositionTable,
 ) -> SearchHandle {
-    validate_input(&snapshot.root_moves, &limits);
-    let pst = crate::eval::weights()
-        .expect("embedded PST must be valid; binaries validate it at startup");
     let (sender, events) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
     let thread = thread::spawn(move || {
         let outcome = run_search_team(
-            pst,
+            &pst,
             &snapshot.position,
             snapshot.rules,
             &snapshot.root_moves,
@@ -266,59 +517,44 @@ pub fn start_search(
     SearchHandle {
         events,
         stop,
-        thread,
+        thread: Some(thread),
     }
 }
 
 /// 指定局面を呼び出しスレッド上で反復深化探索する。
 ///
-/// `root_moves`には、対局管理層がR2・R3を含めて検査したルート合法手を
-/// 渡す。`history_keys`の各要素は、対局開始から現局面までの
-/// `Position::zobrist() ^ Position::rights_zobrist()`でなければならない。
-///
 /// ノード上限によって反復深化が中断された場合は、直前に完了した深さの
-/// 結果を返す。深さ1の完了前に中断された場合も、`root_moves`の先頭を返す。
+/// 結果を返す。深さ1の完了前に中断された場合も、スナップショットが保持する
+/// ルート合法手の先頭を返す。
 ///
-/// # Panics
+/// # Errors
 ///
-/// `root_moves`が空、`limits`が不正、または外部停止手段を持たない同期版へ
-/// `infinite`を指定した場合はpanicする。
+/// 外部停止手段を持たない同期版へ無期限探索を指定した場合は
+/// [`SearchError`]を返す。
 pub fn search(
-    position: &Position,
-    rules: MoveRules,
-    root_moves: &[Move],
-    history_keys: &[u64],
+    pst: &Pst,
+    snapshot: &SearchSnapshot,
     limits: &SearchLimits,
     threads: NonZeroUsize,
     tt: &mut TranspositionTable,
-) -> SearchResult {
-    validate_input(root_moves, limits);
-    assert!(
-        !limits.infinite,
-        "synchronous search cannot use an infinite limit"
-    );
-    let pst = crate::eval::weights()
-        .expect("embedded PST must be valid; binaries validate it at startup");
+) -> Result<SearchResult, SearchError> {
+    if limits.is_infinite() {
+        return Err(SearchError::InfiniteSynchronousSearch);
+    }
     let stop = AtomicBool::new(false);
-    run_search_team(
+    Ok(run_search_team(
         pst,
-        position,
-        rules,
-        root_moves,
-        history_keys,
+        &snapshot.position,
+        snapshot.rules,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
         limits,
         &stop,
         threads,
         tt,
         None,
     )
-    .result
-}
-
-/// ルート合法手と制限の妥当性を検査する。
-fn validate_input(root_moves: &[Move], limits: &SearchLimits) {
-    assert!(!root_moves.is_empty(), "root move list must not be empty");
-    assert!(limits.validate().is_ok(), "invalid search limits");
+    .result)
 }
 
 /// 探索の内部実行が返す結果一式。
@@ -444,7 +680,7 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
 /// 調整役として補助ワーカーを生成し、主ワーカー探索と全joinを実行する。
 #[allow(clippy::too_many_arguments)]
 fn run_search_team(
-    pst: &'static Pst,
+    pst: &Pst,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -457,12 +693,13 @@ fn run_search_team(
 ) -> SearchOutcome {
     let started = Instant::now();
     let time_budget = time_budget(limits);
-    let depth_limit = if limits.infinite {
-        MAX_PLY
-    } else {
-        limits.depth.unwrap_or(MAX_PLY)
-    };
-    let node_limit = (!limits.infinite).then_some(limits.nodes).flatten();
+    let finite_limits = limits.finite();
+    let depth_limit = finite_limits
+        .and_then(|limits| limits.depth)
+        .map_or(MAX_PLY, NonZeroU32::get);
+    let node_limit = finite_limits
+        .and_then(|limits| limits.nodes)
+        .map(NonZeroU64::get);
     tt.new_search();
     let shared = SharedSearch {
         external_stop,
@@ -474,27 +711,9 @@ fn run_search_team(
         hard_limit: time_budget.map(|budget| budget.hard),
     };
 
-    let worker_outcomes =
-        thread::scope(|scope| {
-            let auxiliary_workers: Vec<_> = (1..threads.get())
-                .map(|worker_index| {
-                    let shared = &shared;
-                    scope.spawn(move || {
-                        run_auxiliary_worker(
-                            pst,
-                            position,
-                            rules,
-                            root_moves,
-                            history_keys,
-                            depth_limit,
-                            worker_index,
-                            shared,
-                            tt,
-                        )
-                    })
-                })
-                .collect();
-            let main_outcome = run_main_worker(
+    let worker_outcomes = run_worker_team(threads, &shared, |worker_index| {
+        if worker_index == 0 {
+            run_main_worker(
                 pst,
                 position,
                 rules,
@@ -505,17 +724,21 @@ fn run_search_team(
                 &shared,
                 tt,
                 events,
-            );
-            let mut worker_outcomes = Vec::with_capacity(threads.get());
-            worker_outcomes.push(main_outcome);
-            worker_outcomes.extend(auxiliary_workers.into_iter().map(
-                |worker| match worker.join() {
-                    Ok(outcome) => outcome,
-                    Err(payload) => std::panic::resume_unwind(payload),
-                },
-            ));
-            worker_outcomes
-        });
+            )
+        } else {
+            run_auxiliary_worker(
+                pst,
+                position,
+                rules,
+                root_moves,
+                history_keys,
+                depth_limit,
+                worker_index,
+                &shared,
+                tt,
+            )
+        }
+    });
     let total_nodes = shared.nodes();
     debug_assert_eq!(
         total_nodes,
@@ -533,6 +756,57 @@ fn run_search_team(
         pv: adopted.pv.clone(),
         stop_reason: shared.reason(),
     }
+}
+
+/// 主ワーカーと補助ワーカーを実行し、パニック時も全ワーカーを回収する。
+fn run_worker_team(
+    threads: NonZeroUsize,
+    shared: &SharedSearch<'_>,
+    worker: impl Fn(usize) -> WorkerOutcome + Sync,
+) -> Vec<WorkerOutcome> {
+    thread::scope(|scope| {
+        let auxiliary_workers: Vec<_> = (1..threads.get())
+            .map(|worker_index| {
+                let worker = &worker;
+                scope.spawn(move || run_worker_guarded(shared, || worker(worker_index)))
+            })
+            .collect();
+        let main_outcome = run_worker_guarded(shared, || worker(0));
+        let mut worker_outcomes = Vec::with_capacity(threads.get());
+        let mut panic_payload = match main_outcome {
+            Ok(outcome) => {
+                worker_outcomes.push(outcome);
+                None
+            }
+            Err(payload) => Some(payload),
+        };
+        for worker in auxiliary_workers {
+            let outcome = worker
+                .join()
+                .expect("guarded search worker must not unwind across its thread boundary");
+            match outcome {
+                Ok(outcome) => worker_outcomes.push(outcome),
+                Err(payload) if panic_payload.is_none() => panic_payload = Some(payload),
+                Err(_) => {}
+            }
+        }
+        if let Some(payload) = panic_payload {
+            std::panic::resume_unwind(payload);
+        }
+        worker_outcomes
+    })
+}
+
+/// ワーカーパニックを捕捉し、残るワーカーへ停止を通知してから呼び出し側へ返す。
+fn run_worker_guarded<T>(
+    shared: &SharedSearch<'_>,
+    worker: impl FnOnce() -> T,
+) -> thread::Result<T> {
+    let outcome = catch_unwind(AssertUnwindSafe(worker));
+    if outcome.is_err() {
+        shared.team_stop.store(true, AtomicOrdering::Release);
+    }
+    outcome
 }
 
 /// 完了深さが最大のワーカーを選び、同じ深さなら番号が最小のものを選ぶ。
@@ -561,7 +835,7 @@ fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item
 
 /// ワーカー固有の探索状態を構築する。
 fn new_searcher<'a>(
-    pst: &'static Pst,
+    pst: &'a Pst,
     position: &Position,
     rules: MoveRules,
     history_keys: &'a [u64],
@@ -590,7 +864,7 @@ fn new_searcher<'a>(
 /// 主ワーカーの反復深化を実行し、深さ完了ごとに進捗イベントを送る。
 #[allow(clippy::too_many_arguments)]
 fn run_main_worker(
-    pst: &'static Pst,
+    pst: &Pst,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -658,7 +932,7 @@ fn run_main_worker(
 /// 補助ワーカーの反復深化を実行し、最後まで完了した反復を返す。
 #[allow(clippy::too_many_arguments)]
 fn run_auxiliary_worker(
-    pst: &'static Pst,
+    pst: &Pst,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -685,7 +959,6 @@ fn run_auxiliary_worker(
         result.depth = depth;
         completed_pv.clone_from(&searcher.pv[0]);
         if depth == depth_limit {
-            shared.stop(StopReason::DepthCompleted);
             break;
         }
     }
@@ -701,7 +974,7 @@ fn run_auxiliary_worker(
 /// 1回の探索実行の可変状態。
 struct Searcher<'a> {
     /// 探索中に使う検証済み学習PST。
-    pst: &'static Pst,
+    pst: &'a Pst,
     /// 探索内の着手適用に使う規則。
     rules: MoveRules,
     /// 探索ノードでの合法手生成器。
@@ -1159,12 +1432,10 @@ fn clock_budget(clock: ClockLimits) -> TimeBudget {
 
 /// 探索制限から時間予算を求める。`movetime`と時計の併用時は小さい方を採る。
 fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
-    if limits.infinite {
-        return None;
-    }
+    let limits = limits.finite()?;
     let movetime = limits.movetime_ms.map(|milliseconds| TimeBudget {
-        soft: Duration::from_millis(milliseconds),
-        hard: Duration::from_millis(milliseconds),
+        soft: Duration::from_millis(milliseconds.get()),
+        hard: Duration::from_millis(milliseconds.get()),
     });
     match (movetime, limits.clock.map(clock_budget)) {
         (Some(fixed), Some(clock)) => Some(TimeBudget {

@@ -24,7 +24,10 @@ fn with_promoted(
         PieceCode::new_promoted(Color::Black, promoted.2).unwrap(),
     )];
     for &((file, rank), color, kind) in others {
-        pieces.push((msq(file, rank), PieceCode::new(color, kind)));
+        pieces.push((
+            msq(file, rank),
+            PieceCode::new(color, kind).expect("fixture uses an unpromoted-capable kind"),
+        ));
     }
     position_from_codes(side_to_move, &pieces)
 }
@@ -372,7 +375,7 @@ fn article_12_5_7_lion_jumps_two_squares_including_knight_positions() {
     after.make_move_unchecked(jump, MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(6, 5)),
-        Some(PieceCode::new(Color::White, PieceKind::Pawn))
+        PieceCode::new(Color::White, PieceKind::Pawn)
     );
 }
 
@@ -408,7 +411,7 @@ fn article_12_4_lion_path_capture_double_move() {
     assert!(after.pieces_of(Color::White).is_empty());
     assert_eq!(
         after.piece_at(msq(5, 4)),
-        Some(PieceCode::new(Color::Black, PieceKind::Lion))
+        PieceCode::new(Color::Black, PieceKind::Lion)
     );
 
     // mid になり得るのは from に隣接する相手駒の升だけ。2升先の銅将 (5,4) は
@@ -438,7 +441,7 @@ fn article_12_4_7_jump_capture_and_path_capture_are_distinct_moves() {
     jumped.make_move_unchecked(jump, MoveRules::standard());
     assert_eq!(
         jumped.piece_at(msq(6, 5)),
-        Some(PieceCode::new(Color::White, PieceKind::Pawn))
+        PieceCode::new(Color::White, PieceKind::Pawn)
     );
     let mut captured = board.clone();
     captured.make_move_unchecked(path, MoveRules::standard());
@@ -462,7 +465,7 @@ fn article_12_8_lion_igui() {
     after.make_move_unchecked(igui, MoveRules::standard());
     assert_eq!(
         after.piece_at(msq(6, 6)),
-        Some(PieceCode::new(Color::Black, PieceKind::Lion))
+        PieceCode::new(Color::Black, PieceKind::Lion)
     );
     assert!(after.pieces_of(Color::White).is_empty());
 

@@ -4,9 +4,9 @@ use crate::core::piece::PIECE_KIND_COUNT;
 use crate::{Color, PieceCode, PieceKind, Position, Square};
 
 /// 学習評価関数が使う特徴の総数。
-pub const FEATURE_COUNT: usize = 13_680;
+pub(super) const FEATURE_COUNT: usize = 13_680;
 /// 駒種と現在の成り可否を区別した駒状態の総数。
-pub const PIECE_STATE_COUNT: usize = 47;
+const PIECE_STATE_COUNT: usize = 47;
 /// 駒と升の組からなる特徴の総数。
 const BOARD_FEATURE_COUNT: usize = 2 * PIECE_STATE_COUNT * 144;
 /// 成っていない駒の駒種番号から状態番号への表。成れる駒種は29以降の
@@ -31,7 +31,7 @@ const fn build_unpromoted_states() -> [u8; PIECE_KIND_COUNT] {
 }
 
 /// 駒コードを駒種と現在の成り可否からなる状態番号へ変換する。
-pub fn piece_state(piece: PieceCode) -> usize {
+fn piece_state(piece: PieceCode) -> usize {
     let kind = piece.kind().expect("feature piece must have a valid kind");
     if piece.is_promoted() {
         kind.index()
@@ -41,7 +41,7 @@ pub fn piece_state(piece: PieceCode) -> usize {
 }
 
 /// 指定視点における盤上の駒の特徴番号を返す。
-pub fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> usize {
+fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> usize {
     let relative_color = usize::from(
         piece
             .color()
@@ -57,7 +57,7 @@ pub fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> us
 }
 
 /// 指定視点における先獅子対象升の特徴番号を返す。
-pub fn lion_feature_index(perspective: Color, square: Square) -> usize {
+fn lion_feature_index(perspective: Color, square: Square) -> usize {
     let relative_rank = match perspective {
         Color::Black => square.rank(),
         Color::White => 11 - square.rank(),
@@ -66,7 +66,7 @@ pub fn lion_feature_index(perspective: Color, square: Square) -> usize {
 }
 
 /// 局面で有効な手番側視点の特徴番号を列挙する。
-pub fn active_features(position: &Position, mut f: impl FnMut(usize)) {
+pub(super) fn active_features(position: &Position, mut f: impl FnMut(usize)) {
     let perspective = position.side_to_move();
     for square in position.occupied() {
         let piece = position
@@ -90,17 +90,18 @@ mod tests {
     fn every_piece_code_maps_to_the_specified_state() {
         for color in Color::ALL {
             for kind in PieceKind::ALL {
-                let piece = PieceCode::new(color, kind);
-                let expected = if kind.can_promote() {
-                    29 + PieceKind::ALL[..kind.index()]
-                        .iter()
-                        .filter(|kind| kind.can_promote())
-                        .count()
-                } else {
-                    kind.index()
-                };
-                assert_eq!(piece_state(piece), expected);
-                assert!(piece_state(piece) < PIECE_STATE_COUNT);
+                if let Some(piece) = PieceCode::new(color, kind) {
+                    let expected = if kind.can_promote() {
+                        29 + PieceKind::ALL[..kind.index()]
+                            .iter()
+                            .filter(|kind| kind.can_promote())
+                            .count()
+                    } else {
+                        kind.index()
+                    };
+                    assert_eq!(piece_state(piece), expected);
+                    assert!(piece_state(piece) < PIECE_STATE_COUNT);
+                }
 
                 if let Some(piece) = PieceCode::new_promoted(color, kind) {
                     assert_eq!(piece_state(piece), kind.index());
@@ -109,10 +110,10 @@ mod tests {
             }
         }
 
-        let lion = PieceCode::new(Color::Black, PieceKind::Lion);
+        let lion = PieceCode::new(Color::Black, PieceKind::Lion).unwrap();
         let promoted_kirin = PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap();
         assert_eq!(piece_state(lion), piece_state(promoted_kirin));
-        let gold = PieceCode::new(Color::Black, PieceKind::GoldGeneral);
+        let gold = PieceCode::new(Color::Black, PieceKind::GoldGeneral).unwrap();
         let promoted_pawn = PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap();
         assert_ne!(piece_state(gold), piece_state(promoted_pawn));
     }
@@ -128,7 +129,10 @@ mod tests {
             &[
                 (sq(1, 2), promoted_gold),
                 (sq(7, 8), promoted_lion),
-                (sq(4, 6), PieceCode::new(Color::White, PieceKind::King)),
+                (
+                    sq(4, 6),
+                    PieceCode::new(Color::White, PieceKind::King).unwrap(),
+                ),
             ],
         );
         positions.push(fixture);
@@ -154,7 +158,7 @@ mod tests {
                         let reflected_piece = if piece.is_promoted() {
                             PieceCode::new_promoted(color, kind).unwrap()
                         } else {
-                            PieceCode::new(color, kind)
+                            PieceCode::new(color, kind).unwrap()
                         };
                         (sq(square.file(), 11 - square.rank()), reflected_piece)
                     })
@@ -181,7 +185,10 @@ mod tests {
 
         let mut with_lion = position_from_codes(
             Color::Black,
-            &[(sq(5, 0), PieceCode::new(Color::Black, PieceKind::King))],
+            &[(
+                sq(5, 0),
+                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+            )],
         );
         with_lion.set_lion_capture(Some(sq(4, 4))).unwrap();
         let mut features = Vec::new();

@@ -4,7 +4,8 @@ use core::fmt;
 
 use crate::core::game::{Game, GameError, GameResult, GameStatus, IllegalMoveCause};
 use crate::core::mv::Move;
-use crate::core::rules::{RuleCode, Rules};
+use crate::core::position::PositionError;
+use crate::core::rules::{RuleCode, Rules, RulesError};
 use crate::notation::sfen::SetupPosition;
 
 /// 対局セッションのライフサイクル。
@@ -59,9 +60,11 @@ pub enum EngineReply {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RejectReason {
     /// 規則コード列が不正、または実行可能な反復規則を含まない。
-    InvalidRules(String),
-    /// 開始局面またはライフサイクルが着手適用に適さない。
-    InvalidPosition(String),
+    InvalidRules(RulesError),
+    /// 開始局面が規則と整合しない。
+    InvalidPosition(PositionError),
+    /// 開始局面を受信する前に着手が送られた。
+    GameNotStarted,
     /// 駒の動きまたは反復禁止規則により着手を適用できない。
     IllegalMove {
         /// 拒否された着手。
@@ -76,16 +79,24 @@ pub enum RejectReason {
 impl fmt::Display for RejectReason {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidRules(message) | Self::InvalidPosition(message) => {
-                formatter.write_str(message)
-            }
+            Self::InvalidRules(error) => error.fmt(formatter),
+            Self::InvalidPosition(error) => error.fmt(formatter),
+            Self::GameNotStarted => formatter.write_str("the game has not started"),
             Self::IllegalMove { mv, cause } => write!(formatter, "illegal move {mv:?}: {cause}"),
             Self::GameAlreadyOver => formatter.write_str("the game is already over"),
         }
     }
 }
 
-impl std::error::Error for RejectReason {}
+impl std::error::Error for RejectReason {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidRules(error) => Some(error),
+            Self::InvalidPosition(error) => Some(error),
+            Self::GameNotStarted | Self::IllegalMove { .. } | Self::GameAlreadyOver => None,
+        }
+    }
+}
 
 /// 検証済みの規則コード列と、それが表す規則集合の組。
 #[derive(Clone)]
@@ -222,9 +233,9 @@ impl Engine {
             EngineLifecycle::InGame => &self.active,
             EngineLifecycle::Finished => unreachable!(),
         };
-        let mut position = setup.position.clone();
-        if let Err(error) = position.set_lion_capture(setup.lion_capture) {
-            return EngineReply::Rejected(RejectReason::InvalidPosition(error.to_string()));
+        let mut position = setup.position().clone();
+        if let Err(error) = position.set_lion_capture(setup.lion_capture()) {
+            return EngineReply::Rejected(RejectReason::InvalidPosition(error));
         }
         let mut game = Game::from_position(selection.rules, position);
 
@@ -257,9 +268,7 @@ impl Engine {
     fn apply_move(&mut self, mv: Move) -> EngineReply {
         match self.lifecycle {
             EngineLifecycle::AwaitingStart => {
-                return EngineReply::Rejected(RejectReason::InvalidPosition(
-                    "the game has not started".to_owned(),
-                ));
+                return EngineReply::Rejected(RejectReason::GameNotStarted);
             }
             EngineLifecycle::Finished => {
                 return EngineReply::Rejected(RejectReason::GameAlreadyOver);
@@ -313,8 +322,7 @@ pub(crate) fn canonical_rules_text(codes: &[RuleCode]) -> String {
 
 /// 規則コード列の重複・矛盾と実行可能な反復規則の存在を検証する。
 fn validate_rules(codes: Vec<RuleCode>) -> Result<RuleSelection, RejectReason> {
-    let rules =
-        Rules::from_codes(&codes).map_err(|error| RejectReason::InvalidRules(error.to_string()))?;
+    let rules = Rules::from_codes(&codes).map_err(RejectReason::InvalidRules)?;
     Ok(RuleSelection {
         codes: canonical_rule_codes(&codes),
         rules,
@@ -341,11 +349,7 @@ mod tests {
     // 状態の不変・遷移は後続コマンドへの応答差で観測し、内部フィールドへは触れない。
 
     fn setup(position: Position) -> SetupPosition {
-        SetupPosition {
-            position,
-            lion_capture: None,
-            next_move_number: 1,
-        }
+        SetupPosition::new(position, None, 1).unwrap()
     }
 
     fn step(from: crate::Square, to: crate::Square) -> Move {
@@ -361,10 +365,16 @@ mod tests {
     fn kings_position() -> Position {
         let mut builder = PositionBuilder::new(Color::Black);
         builder
-            .put(sq(3, 3), PieceCode::new(Color::Black, PieceKind::King))
+            .put(
+                sq(3, 3),
+                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+            )
             .unwrap();
         builder
-            .put(sq(8, 8), PieceCode::new(Color::White, PieceKind::King))
+            .put(
+                sq(8, 8),
+                PieceCode::new(Color::White, PieceKind::King).unwrap(),
+            )
             .unwrap();
         builder.finish().unwrap()
     }
@@ -387,7 +397,12 @@ mod tests {
             (sq(5, 5), Color::Black, PieceKind::Rook),
             (sq(5, 8), Color::White, PieceKind::King),
         ] {
-            builder.put(square, PieceCode::new(color, kind)).unwrap();
+            builder
+                .put(
+                    square,
+                    PieceCode::new(color, kind).expect("fixture uses an unpromoted-capable kind"),
+                )
+                .unwrap();
         }
         builder.finish().unwrap()
     }
@@ -425,10 +440,10 @@ mod tests {
                 cause: IllegalMoveCause::Movement,
             })
         );
-        // ライフサイクルは遷移していない: AwaitingStartでの着手はInvalidPositionのまま。
+        // ライフサイクルは遷移していないため、AwaitingStartでの着手として拒否される。
         assert!(matches!(
             engine.handle(EngineCommand::ApplyMove(illegal)),
-            EngineReply::Rejected(RejectReason::InvalidPosition(_))
+            EngineReply::Rejected(RejectReason::GameNotStarted)
         ));
         // pendingは失敗をまたいで保持され、次のcommitの検証にはpending規則(R2)が使われる。
         // R2は既出局面の再現を禁止する（RULES.md第31条R2、第27条第4項）。
@@ -567,12 +582,12 @@ mod tests {
         let mut engine =
             Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
 
-        // InvalidPosition（AwaitingStartでの着手）。
+        // GameNotStarted（AwaitingStartでの着手）。
         let probe = step(sq(0, 3), sq(0, 4)); // 初期配置の歩兵の前進（合法手）
         let first = engine.handle(EngineCommand::ApplyMove(probe));
         assert!(matches!(
             first,
-            EngineReply::Rejected(RejectReason::InvalidPosition(_))
+            EngineReply::Rejected(RejectReason::GameNotStarted)
         ));
         assert_eq!(engine.handle(EngineCommand::ApplyMove(probe)), first);
 
@@ -635,7 +650,7 @@ mod tests {
         // AwaitingStart: 着手は拒否、SetPositionはcommit経路。
         assert!(matches!(
             engine.handle(EngineCommand::ApplyMove(royal_capture())),
-            EngineReply::Rejected(RejectReason::InvalidPosition(_))
+            EngineReply::Rejected(RejectReason::GameNotStarted)
         ));
         assert!(matches!(
             engine.handle(EngineCommand::SetPosition {

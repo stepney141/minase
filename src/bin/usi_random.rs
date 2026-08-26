@@ -1,7 +1,9 @@
 //! 校正用のランダム着手USIエンジン。真のelo差0の対戦カードを提供する。
 
 use std::io::{self, BufRead, Cursor, Write};
+use std::num::{NonZeroU64, NonZeroUsize};
 
+use minase::MoveGenerator;
 use minase::core::rules::parse_rule_set;
 use minase::notation::usi;
 use minase::protocol::{Engine, EngineLifecycle, Protocol, UsiProtocol};
@@ -10,7 +12,7 @@ use minase::rng::XorShift64;
 /// 既定の規則セット。
 const DEFAULT_RULE_SET: &str = "L0,P0,R1,E0";
 /// 既定の乱数シード。
-const DEFAULT_SEED: u64 = 1;
+const DEFAULT_SEED: NonZeroU64 = NonZeroU64::new(1).unwrap();
 
 /// 合法手から一様ランダムに選ぶ最小のUSIエンジン。
 struct RandomUsi {
@@ -129,12 +131,9 @@ impl RandomUsi {
         let Some(value) = token_after(tokens, "value") else {
             return write_error(output, "Seed requires a value");
         };
-        let Ok(seed) = value.parse::<u64>() else {
+        let Some(seed) = value.parse::<u64>().ok().and_then(NonZeroU64::new) else {
             return write_error(output, "Seed must be a positive integer");
         };
-        if seed == 0 {
-            return write_error(output, "Seed must be a positive integer");
-        }
         self.rng = XorShift64::new(seed);
         Ok(())
     }
@@ -151,8 +150,16 @@ impl RandomUsi {
         if moves.is_empty() {
             return write_error(output, "go requires at least one legal move");
         }
-        let best_move = moves[self.rng.index(moves.len())];
-        writeln!(output, "bestmove {}", usi::text(game.position(), best_move))
+        let best_move = moves[self
+            .rng
+            .index(NonZeroUsize::new(moves.len()).expect("legal moves were checked as non-empty"))];
+        let bestmove = usi::text(
+            game.position(),
+            best_move,
+            &MoveGenerator::new(game.rules().moves),
+        )
+        .expect("a move returned by legal_moves must be renderable");
+        writeln!(output, "bestmove {bestmove}")
     }
 }
 
@@ -230,8 +237,13 @@ mod tests {
         let rules = Rules::from_codes(&parse_rule_set("L0,P0,R1,E0").unwrap()).unwrap();
         let game = Game::new(rules);
         let moves = game.legal_moves();
-        let mut rng = XorShift64::new(42);
-        let expected = usi::text(game.position(), moves[rng.index(moves.len())]);
+        let mut rng = XorShift64::new(NonZeroU64::new(42).unwrap());
+        let expected = usi::text(
+            game.position(),
+            moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())],
+            &MoveGenerator::new(game.rules().moves),
+        )
+        .unwrap();
 
         assert_eq!(
             first.lines().next(),

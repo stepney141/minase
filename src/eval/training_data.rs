@@ -5,8 +5,8 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 
 use crate::core::piece::PIECE_KIND_COUNT;
 use crate::{
-    BOARD_SQUARE_COUNT, Color, GameResult, Move, PieceCode, PieceKind, Position,
-    PositionBuildError, PositionBuilder, PositionError, Square,
+    BOARD_SQUARE_COUNT, Color, GameResult, IllegalMove, Move, MoveGenerator, PieceCode, PieceKind,
+    Position, PositionBuildError, PositionBuilder, PositionError, Square,
 };
 
 /// 学習データファイルの識別子。
@@ -562,13 +562,24 @@ impl Record {
     }
 }
 
-/// 最善手が捕獲または成りなら`true`を返す。
-pub fn best_move_is_tactical(position: &Position, best_move: Move) -> bool {
-    best_move.promote
+/// 合法な最善手が捕獲または成りなら`true`を返す。
+///
+/// `best_move`が指定局面の合法手でなければ`IllegalMove`を返し、局面は変更しない。
+pub fn best_move_is_tactical(
+    position: &Position,
+    generator: &MoveGenerator,
+    best_move: Move,
+) -> Result<bool, IllegalMove> {
+    let mut legal_moves = Vec::new();
+    generator.generate_moves(position, &mut legal_moves);
+    if !legal_moves.contains(&best_move) {
+        return Err(IllegalMove(best_move));
+    }
+    Ok(best_move.promote
         || position
             .captured_squares(best_move)
             .into_iter()
-            .any(|square| square.is_some())
+            .any(|square| square.is_some()))
 }
 
 /// ヘッダを検証し、レコードを逐次復号する読み込み器。
@@ -740,7 +751,7 @@ fn decode_piece(square: Square, value: u8) -> Result<PieceCode, Error> {
     if promoted {
         PieceCode::new_promoted(color, kind).ok_or(Error::InvalidPieceCode { square, value })
     } else {
-        Ok(PieceCode::new(color, kind))
+        PieceCode::new(color, kind).ok_or(Error::InvalidPieceCode { square, value })
     }
 }
 
@@ -792,6 +803,25 @@ mod tests {
             .unwrap()
     }
 
+    // 公開境界は未検証の着手をパニックせず型付きエラーとして拒否する。
+    #[test]
+    fn tactical_move_classification_rejects_a_move_without_an_origin_piece() {
+        let position = Position::empty(Color::Black);
+        let invalid = Move {
+            from: sq(0, 0),
+            mid: None,
+            to: sq(0, 1),
+            promote: false,
+        };
+        let before = position.clone();
+
+        assert_eq!(
+            best_move_is_tactical(&position, &MoveGenerator::standard(), invalid),
+            Err(IllegalMove(invalid))
+        );
+        assert_eq!(position, before);
+    }
+
     // evaluation.md 203〜215行。盤面、手番、成り状態およびzobristを固定長形式が保存する。
     #[test]
     fn positions_round_trip_with_initial_promoted_and_white_to_move_states() {
@@ -803,7 +833,7 @@ mod tests {
             &[
                 (
                     sq(1, 1),
-                    PieceCode::new(Color::Black, PieceKind::WhiteHorse),
+                    PieceCode::new_promoted(Color::Black, PieceKind::WhiteHorse).unwrap(),
                 ),
                 (
                     sq(4, 4),
@@ -856,16 +886,28 @@ mod tests {
     fn persistent_piece_codes_use_disjoint_color_ranges_and_reject_gaps() {
         for color in Color::ALL {
             for kind in PieceKind::ALL {
-                let code = encode_piece(PieceCode::new(color, kind));
                 let expected_range = match color {
                     Color::Black => 1..=58,
                     Color::White => 65..=122,
                 };
-                assert!(expected_range.contains(&code));
-                assert_eq!(
-                    decode_piece(sq(0, 0), code).unwrap(),
-                    PieceCode::new(color, kind)
-                );
+                let unpromoted_code = 1 + kind.index() as u8 + 64 * color as u8;
+                assert!(expected_range.contains(&unpromoted_code));
+                if let Some(piece) = PieceCode::new(color, kind) {
+                    assert_eq!(decode_piece(sq(0, 0), unpromoted_code).unwrap(), piece);
+                } else {
+                    assert!(matches!(
+                        decode_piece(sq(0, 0), unpromoted_code),
+                        Err(Error::InvalidPieceCode { .. })
+                    ));
+                    let mut encoded =
+                        Record::from_position(&Position::initial(), 0, Outcome::Draw, 1, 0)
+                            .encode();
+                    encoded[0] = unpromoted_code;
+                    assert!(matches!(
+                        Record::decode(&encoded),
+                        Err(Error::InvalidPieceCode { .. })
+                    ));
+                }
                 if let Some(promoted) = PieceCode::new_promoted(color, kind) {
                     let promoted_code = encode_piece(promoted);
                     assert!(expected_range.contains(&promoted_code));
@@ -874,11 +916,6 @@ mod tests {
             }
         }
 
-        let unflagged_promoted_only = PieceCode::new(Color::Black, PieceKind::WhiteHorse);
-        assert_eq!(
-            decode_piece(sq(0, 0), encode_piece(unflagged_promoted_only)).unwrap(),
-            unflagged_promoted_only
-        );
         for value in (59..=64).chain(123..=u8::MAX) {
             assert!(matches!(
                 decode_piece(sq(0, 0), value),

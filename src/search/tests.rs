@@ -8,8 +8,8 @@
 
 use super::*;
 use crate::Square;
-use crate::core::piece::{Color, PieceKind};
-use crate::test_util::{position, sq};
+use crate::core::piece::{Color, PieceCode, PieceKind};
+use crate::test_util::{position, position_from_codes, sq};
 
 use super::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, ADVISORY_MOVE_SHIFT,
@@ -38,54 +38,83 @@ fn legal_moves(position: &Position) -> Vec<Move> {
     moves
 }
 
-fn no_limits() -> SearchLimits {
-    SearchLimits {
-        depth: None,
-        nodes: None,
-        movetime_ms: None,
-        clock: None,
-        infinite: false,
-    }
+/// 成駒を含むテスト局面を駒種と成否から構築する。
+fn position_with_promoted_pieces(
+    side_to_move: Color,
+    pieces: &[(Square, Color, PieceKind, bool)],
+) -> Position {
+    let codes: Vec<_> = pieces
+        .iter()
+        .map(|&(square, color, kind, promoted)| {
+            let piece = if promoted {
+                PieceCode::new_promoted(color, kind).expect("test fixture promotion must be valid")
+            } else {
+                PieceCode::new(color, kind).expect("test fixture piece must allow unpromoted state")
+            };
+            (square, piece)
+        })
+        .collect();
+    position_from_codes(side_to_move, &codes)
 }
 
 fn depth_limits(depth: u32) -> SearchLimits {
-    SearchLimits {
-        depth: Some(depth),
-        ..no_limits()
-    }
+    SearchLimits::new(Some(depth), None, None, None).expect("test depth must be valid")
 }
 
 fn nodes_limits(nodes: u64) -> SearchLimits {
-    SearchLimits {
-        nodes: Some(nodes),
-        ..no_limits()
-    }
+    SearchLimits::new(None, Some(nodes), None, None).expect("test node limit must be valid")
 }
 
 fn movetime_limits(milliseconds: u64) -> SearchLimits {
-    SearchLimits {
-        movetime_ms: Some(milliseconds),
-        ..no_limits()
-    }
+    SearchLimits::new(None, None, Some(milliseconds), None).expect("test movetime must be valid")
 }
 
 fn infinite_limits() -> SearchLimits {
-    SearchLimits {
-        infinite: true,
-        ..no_limits()
-    }
+    SearchLimits::infinite()
 }
 
 fn clock(remaining_ms: u64, increment_ms: u64, byoyomi_ms: u64) -> ClockLimits {
-    ClockLimits {
-        remaining_ms,
-        increment_ms,
-        byoyomi_ms,
-    }
+    ClockLimits::new(remaining_ms, increment_ms, byoyomi_ms)
+        .expect("test clock must contain non-zero time")
 }
 
 fn small_tt() -> TranspositionTable {
-    TranspositionTable::new(1)
+    TranspositionTable::new(1).unwrap()
+}
+
+// 監査「置換表サイズのオーバーフロー」: 容量は外部設定値なので、0と
+// MiBからbyteへの変換不能をpanicではなく呼び出し側が処理できるエラーにする。
+#[test]
+fn invalid_table_sizes_are_reported_without_panicking() {
+    assert!(matches!(
+        TranspositionTable::new(0),
+        Err(TranspositionTableError::Empty)
+    ));
+    assert!(matches!(
+        TranspositionTable::new(usize::MAX),
+        Err(TranspositionTableError::SizeOverflow)
+    ));
+
+    let mut table = TranspositionTable::new(1).unwrap();
+    table.new_search();
+    let key = 0x1234_5678_9abc_def0;
+    let stored_move = Move {
+        from: sq(0, 0),
+        mid: None,
+        to: sq(0, 1),
+        promote: false,
+    };
+    table.store(key, 4, 321, Bound::Exact, Some(stored_move), 0);
+    assert_eq!(
+        table.resize(usize::MAX),
+        Err(TranspositionTableError::SizeOverflow)
+    );
+    assert_eq!(table.generation(), 1);
+    let hit = table
+        .probe(key, 0)
+        .expect("failed resize must retain entries");
+    assert_eq!(hit.score, 321);
+    assert_eq!(hit.best_move, Some(stored_move));
 }
 
 /// 静止探索を直接実行し、評価値と当該Searcherの訪問ノード数を返す。
@@ -108,14 +137,8 @@ fn run_quiesce(
     };
     let history = [];
     let mut current = position.clone();
-    let mut searcher = new_searcher(
-        crate::eval::weights().unwrap(),
-        position,
-        engine_rules(),
-        &history,
-        &shared,
-        table,
-    );
+    let pst = crate::eval::weights().unwrap();
+    let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
         .expect("unlimited quiescence search must complete");
@@ -143,14 +166,8 @@ fn run_negamax(
     };
     let history = [];
     let mut current = position.clone();
-    let mut searcher = new_searcher(
-        crate::eval::weights().unwrap(),
-        position,
-        engine_rules(),
-        &history,
-        &shared,
-        table,
-    );
+    let pst = crate::eval::weights().unwrap();
+    let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
     let score = searcher
         .negamax(&mut current, depth, alpha, beta, ply)
         .expect("unlimited negamax search must complete");
@@ -161,13 +178,55 @@ fn worker_count(count: usize) -> NonZeroUsize {
     NonZeroUsize::new(count).expect("test worker count must be non-zero")
 }
 
+/// 検証済み入力で非同期探索を開始するテスト用ヘルパ。
+fn start(
+    snapshot: SearchSnapshot,
+    limits: SearchLimits,
+    search_id: u64,
+    threads: NonZeroUsize,
+    tt: TranspositionTable,
+) -> SearchHandle {
+    super::start_search(
+        crate::eval::weights().unwrap(),
+        snapshot,
+        limits,
+        search_id,
+        threads,
+        tt,
+    )
+}
+
+/// 個別の探索入力をスナップショットへまとめて同期探索するテスト用ヘルパ。
+#[allow(clippy::too_many_arguments)]
+fn run_search(
+    position: &Position,
+    rules: MoveRules,
+    root_moves: &[Move],
+    history_keys: &[u64],
+    limits: &SearchLimits,
+    threads: NonZeroUsize,
+    tt: &mut TranspositionTable,
+) -> SearchResult {
+    let snapshot = SearchSnapshot::from_parts(
+        position.clone(),
+        rules,
+        history_keys.to_vec(),
+        root_moves.to_vec(),
+    )
+    .expect("test root moves must not be empty");
+    let pst = crate::eval::weights().unwrap();
+    super::search(&pst, &snapshot, limits, threads, tt)
+        .expect("valid test input must be searchable")
+}
+
 fn snapshot_for(position: &Position) -> SearchSnapshot {
-    SearchSnapshot {
-        root_moves: legal_moves(position),
-        history_keys: vec![search_key(position)],
-        position: position.clone(),
-        rules: engine_rules(),
-    }
+    SearchSnapshot::from_parts(
+        position.clone(),
+        engine_rules(),
+        vec![search_key(position)],
+        legal_moves(position),
+    )
+    .expect("test position must have a legal move")
 }
 
 /// 静穏な中盤フィクスチャ。浅い深さで王駒捕獲や強制手順が現れないよう、
@@ -319,7 +378,7 @@ fn depth_one_capture_of_the_last_royal_scores_mate() {
     );
     let moves = legal_moves(&position);
 
-    let result = search(
+    let result = run_search(
         &position,
         engine_rules(),
         &moves,
@@ -342,18 +401,18 @@ fn depth_one_capture_of_the_last_royal_scores_mate() {
 #[test]
 fn capture_of_the_first_of_two_royals_scores_as_material_gain() {
     // 後手: 玉将6一、太子8三（王駒2枚）。先手: 飛車8十、王将6十二。先手番。
-    let position = position(
+    let position = position_with_promoted_pieces(
         Color::Black,
         &[
-            (fs(6, 1), Color::White, PieceKind::King),
-            (fs(8, 3), Color::White, PieceKind::CrownPrince),
-            (fs(8, 10), Color::Black, PieceKind::Rook),
-            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King, false),
+            (fs(8, 3), Color::White, PieceKind::CrownPrince, true),
+            (fs(8, 10), Color::Black, PieceKind::Rook, false),
+            (fs(6, 12), Color::Black, PieceKind::King, false),
         ],
     );
     let moves = legal_moves(&position);
 
-    let result = search(
+    let result = run_search(
         &position,
         engine_rules(),
         &moves,
@@ -386,7 +445,7 @@ fn repetition_with_history_is_preferred_as_a_draw_over_losing_lines() {
     child.make_move_unchecked(draw_move, engine_rules());
     let history = [search_key(&child)];
 
-    let result = search(
+    let result = run_search(
         &root,
         engine_rules(),
         &moves,
@@ -410,7 +469,7 @@ fn without_history_the_repetition_fixture_scores_a_mate_band_loss() {
     let root = repetition_fixture();
     let moves = legal_moves(&root);
 
-    let result = search(
+    let result = run_search(
         &root,
         engine_rules(),
         &moves,
@@ -439,7 +498,7 @@ fn free_lion_capture_is_preferred_without_entering_the_mate_band() {
     );
     let moves = legal_moves(&position);
 
-    let result = search(
+    let result = run_search(
         &position,
         engine_rules(),
         &moves,
@@ -461,13 +520,13 @@ fn free_lion_capture_is_preferred_without_entering_the_mate_band() {
 #[test]
 fn lion_double_capture_of_both_royals_scores_mate() {
     // 先手: 獅子6六、王将6十二。後手: 玉将6五、太子6四（隣接して直列）。
-    let position = position(
+    let position = position_with_promoted_pieces(
         Color::Black,
         &[
-            (fs(6, 6), Color::Black, PieceKind::Lion),
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 5), Color::White, PieceKind::King),
-            (fs(6, 4), Color::White, PieceKind::CrownPrince),
+            (fs(6, 6), Color::Black, PieceKind::Lion, false),
+            (fs(6, 12), Color::Black, PieceKind::King, false),
+            (fs(6, 5), Color::White, PieceKind::King, false),
+            (fs(6, 4), Color::White, PieceKind::CrownPrince, true),
         ],
     );
     let moves = legal_moves(&position);
@@ -481,7 +540,7 @@ fn lion_double_capture_of_both_royals_scores_mate() {
     };
     assert!(moves.contains(&expected));
 
-    let result = search(
+    let result = run_search(
         &position,
         engine_rules(),
         &moves,
@@ -518,7 +577,7 @@ fn opponent_with_no_legal_moves_scores_mate_minus_one_ply() {
     );
     let moves = legal_moves(&position);
 
-    let result = search(
+    let result = run_search(
         &position,
         engine_rules(),
         &moves,
@@ -546,7 +605,7 @@ fn search_with_node_limit_is_deterministic() {
         Vec<(u32, i32, u64, Vec<Move>)>,
         (Move, i32, u32, u64, Vec<Move>, StopReason),
     ) {
-        let handle = start_search(
+        let handle = start(
             snapshot_for(position),
             limits,
             id,
@@ -601,7 +660,7 @@ fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
     );
     let moves = legal_moves(&position);
 
-    let result = search(
+    let result = run_search(
         &position,
         engine_rules(),
         &moves,
@@ -636,14 +695,14 @@ fn quiescence_without_captures_matches_static_evaluation() {
         .iter()
         .map(|&mv| {
             let undo = position.make_move_unchecked(mv, engine_rules());
-            let score = -crate::eval::evaluate(crate::eval::weights().unwrap(), &position);
+            let score = -crate::eval::evaluate(&crate::eval::weights().unwrap(), &position);
             position.unmake_move(undo);
             score
         })
         .max()
         .expect("root must have a legal move");
 
-    let result = search(
+    let result = run_search(
         &position,
         engine_rules(),
         &moves,
@@ -687,7 +746,7 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
         promote: false,
     };
     assert!(legal_moves(&position).contains(&losing_capture));
-    let stand_pat = crate::eval::evaluate(crate::eval::weights().unwrap(), &position);
+    let stand_pat = crate::eval::evaluate(&crate::eval::weights().unwrap(), &position);
     let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, 0, &small_tt());
     assert_eq!(score, stand_pat);
 }
@@ -767,7 +826,7 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
         ],
     );
     let key = search_key(&position);
-    let stand_pat = evaluate(crate::eval::weights().unwrap(), &position);
+    let stand_pat = evaluate(&crate::eval::weights().unwrap(), &position);
     let cases = [
         (-INFINITY, stand_pat, Bound::Lower),
         (stand_pat, INFINITY, Bound::Upper),
@@ -857,7 +916,7 @@ fn quiescence_max_ply_leaf_does_not_probe_or_store() {
     let raw_before = table.raw_entry(key);
 
     let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, MAX_PLY, &table);
-    assert_eq!(score, evaluate(crate::eval::weights().unwrap(), &position));
+    assert_eq!(score, evaluate(&crate::eval::weights().unwrap(), &position));
     assert_ne!(score, 12_345);
     assert_eq!(table.raw_entry(key), raw_before);
 }
@@ -870,10 +929,16 @@ fn quiescence_max_ply_leaf_does_not_probe_or_store() {
 // 以下だけを受理し、範囲外は`SearchLimits`の検証で拒否する。
 #[test]
 fn depth_limit_accepts_the_1_to_256_range_only() {
-    assert!(depth_limits(0).validate().is_err());
-    assert!(depth_limits(1).validate().is_ok());
-    assert!(depth_limits(256).validate().is_ok());
-    assert!(depth_limits(257).validate().is_err());
+    assert!(matches!(
+        SearchLimits::new(Some(0), None, None, None),
+        Err(SearchError::InvalidDepth { depth: 0 })
+    ));
+    assert!(SearchLimits::new(Some(1), None, None, None).is_ok());
+    assert!(SearchLimits::new(Some(256), None, None, None).is_ok());
+    assert!(matches!(
+        SearchLimits::new(Some(257), None, None, None),
+        Err(SearchError::InvalidDepth { depth: 257 })
+    ));
 }
 
 // D7-LIM-02[実装契約]。search.md「時間管理」節の制約列挙からの導出:
@@ -881,8 +946,128 @@ fn depth_limit_accepts_the_1_to_256_range_only() {
 // 拒否する。無期限の明示（D7-LIM-05）とは峻別される。
 #[test]
 fn limits_without_any_constraint_are_rejected_but_explicit_infinite_is_accepted() {
-    assert!(no_limits().validate().is_err());
-    assert!(infinite_limits().validate().is_ok());
+    assert!(matches!(
+        SearchLimits::new(None, None, None, None),
+        Err(SearchError::MissingLimit)
+    ));
+    assert!(infinite_limits().is_infinite());
+}
+
+// 監査「探索条件と探索局面の不正状態」: 0ノード、0ms、および全要素が
+// 0msの時計は、探索開始前の検証済みコンストラクタで拒否する。
+#[test]
+fn zero_search_budgets_are_rejected_at_construction() {
+    assert!(matches!(
+        SearchLimits::new(None, Some(0), None, None),
+        Err(SearchError::ZeroNodeLimit)
+    ));
+    assert!(matches!(
+        SearchLimits::new(None, None, Some(0), None),
+        Err(SearchError::ZeroMoveTime)
+    ));
+    assert!(matches!(
+        ClockLimits::new(0, 0, 0),
+        Err(SearchError::EmptyClock)
+    ));
+}
+
+// 監査「探索条件と探索局面の不正状態」: 公開スナップショットはGameが
+// 確定した局面、規則、履歴およびルート合法手を一括して複製する。
+#[test]
+fn snapshot_is_constructed_from_one_game_state() {
+    let game = crate::Game::with_default_rules();
+    let snapshot = SearchSnapshot::from_game(&game).unwrap();
+
+    assert_eq!(snapshot.position(), game.position());
+    assert_eq!(snapshot.rules(), game.rules().moves);
+    assert_eq!(snapshot.history_keys(), game.search_key_history());
+    assert_eq!(snapshot.root_moves(), game.legal_moves());
+
+    let empty =
+        crate::Game::from_position(crate::Rules::ENGINE_DEFAULT, position(Color::Black, &[]));
+    assert!(matches!(
+        SearchSnapshot::from_game(&empty),
+        Err(SearchError::NoLegalMoves)
+    ));
+
+    let mut finished = crate::Game::with_default_rules();
+    finished.agree_draw().unwrap();
+    assert!(matches!(
+        SearchSnapshot::from_game(&finished),
+        Err(SearchError::FinishedGame)
+    ));
+}
+
+// 監査「start_search/searchの公開パニック」: 外部停止手段のない同期APIは
+// 無期限指定をpanicせず型付きエラーとして返す。
+#[test]
+fn synchronous_search_rejects_infinite_limits_without_panicking() {
+    let snapshot = snapshot_for(&Position::initial());
+    let pst = crate::eval::weights().unwrap();
+    let result = super::search(
+        &pst,
+        &snapshot,
+        &SearchLimits::infinite(),
+        DEFAULT_THREADS,
+        &mut small_tt(),
+    );
+    assert!(matches!(
+        result,
+        Err(SearchError::InfiniteSynchronousSearch)
+    ));
+}
+
+// 監査「学習PST追加後の公開境界」: 探索APIはグローバルな埋め込み重みでは
+// なく、呼び出し側が明示した検証済みPSTで葉を評価する。
+#[test]
+fn search_apis_use_the_supplied_pst() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let supplied = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+    let embedded = crate::eval::weights().unwrap();
+    let mut child = position.clone();
+    let root_move = legal_moves(&position)
+        .into_iter()
+        .find(|&mv| {
+            let undo = child.make_move_unchecked(mv, engine_rules());
+            let differs = evaluate(&supplied, &child) != evaluate(&embedded, &child);
+            child.unmake_move(undo);
+            differs
+        })
+        .expect("fixture must distinguish the supplied and embedded PSTs");
+    let undo = child.make_move_unchecked(root_move, engine_rules());
+    let expected = -evaluate(&supplied, &child);
+    child.unmake_move(undo);
+    let snapshot =
+        SearchSnapshot::from_parts(position, engine_rules(), Vec::new(), vec![root_move]).unwrap();
+
+    let synchronous = super::search(
+        &supplied,
+        &snapshot,
+        &depth_limits(1),
+        DEFAULT_THREADS,
+        &mut small_tt(),
+    )
+    .unwrap();
+    assert_eq!(synchronous.score, expected);
+
+    let handle = super::start_search(
+        Arc::new(supplied),
+        snapshot,
+        depth_limits(1),
+        7,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
+    let (_, asynchronous) = drain_events(&handle);
+    handle.join().unwrap();
+
+    assert_eq!(asynchronous.score, expected);
 }
 
 // D7-LIM-03。search.md「時間管理」節（最も早く満たされた条件で停止）と
@@ -894,7 +1079,7 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
 
-    let handle = start_search(
+    let handle = start(
         snapshot,
         nodes_limits(5_000),
         31,
@@ -910,7 +1095,7 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
 
     // 境界: nodes=1の極小値でも合法な最善手が返る（D7-LIM-04と同根）。
     let moves = legal_moves(&initial);
-    let result = search(
+    let result = run_search(
         &initial,
         engine_rules(),
         &moves,
@@ -934,7 +1119,7 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
     // 外部停止要求しかあり得ない。
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
-    let handle = start_search(snapshot, infinite_limits(), 41, DEFAULT_THREADS, small_tt());
+    let handle = start(snapshot, infinite_limits(), 41, DEFAULT_THREADS, small_tt());
     handle.request_stop();
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
@@ -944,7 +1129,7 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
     // 境界: 極小のhard予算（movetime=1ms、D7-TIME-02境界の受理側）でも
     // 同じ保証が成り立つ。soft=hardのため停止理由は2値を許容する
     // （SPEC_UNCLEAR-04）。
-    let handle = start_search(
+    let handle = start(
         snapshot_for(&initial),
         movetime_limits(1),
         42,
@@ -968,7 +1153,7 @@ fn infinite_limits_stop_only_on_external_request() {
     let initial = Position::initial();
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
-    let handle = start_search(snapshot, infinite_limits(), 51, DEFAULT_THREADS, small_tt());
+    let handle = start(snapshot, infinite_limits(), 51, DEFAULT_THREADS, small_tt());
 
     // 数百ms待つ間、Finishedは届かずProgressが届き続ける。
     let started = Instant::now();
@@ -1045,10 +1230,8 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
 fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     // 時計単独ならsoft=1900、hard=7600（D7-TIME-01(a)）。
     let base = clock(60_000, 1_000, 0);
-    let with_movetime = |milliseconds: u64| SearchLimits {
-        clock: Some(base),
-        ..movetime_limits(milliseconds)
-    };
+    let with_movetime =
+        |milliseconds: u64| SearchLimits::new(None, None, Some(milliseconds), Some(base)).unwrap();
 
     // (a) 交差例: softは時計側、hardはmovetime側が勝つ。独立比較の固定。
     let budget = time_budget(&with_movetime(5_000)).unwrap();
@@ -1072,7 +1255,7 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
 #[test]
 fn movetime_search_stops_near_the_fixed_budget() {
     let initial = Position::initial();
-    let handle = start_search(
+    let handle = start(
         snapshot_for(&initial),
         movetime_limits(300),
         61,
@@ -1103,7 +1286,7 @@ fn movetime_search_stops_near_the_fixed_budget() {
 #[test]
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
-    let handle = start_search(
+    let handle = start(
         snapshot_for(&midgame),
         depth_limits(4),
         81,
@@ -1123,7 +1306,7 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     assert_eq!(finished.depth, 4);
 
     // 境界: depth=1では深さ列は[1]のみ。
-    let handle = start_search(
+    let handle = start(
         snapshot_for(&midgame),
         depth_limits(1),
         82,
@@ -1140,7 +1323,7 @@ fn progress_depths_start_at_one_and_increase_by_one() {
 // 経過時間を返す。同一ミリ秒があり得るため厳密増加は要求しない。
 #[test]
 fn progress_and_finished_elapsed_times_are_monotonic() {
-    let handle = start_search(
+    let handle = start(
         snapshot_for(&quiet_midgame()),
         depth_limits(4),
         83,
@@ -1161,7 +1344,7 @@ fn progress_and_finished_elapsed_times_are_monotonic() {
 #[test]
 fn depth_limited_search_reports_depth_completed_with_a_consistent_pv() {
     let midgame = quiet_midgame();
-    let handle = start_search(
+    let handle = start(
         snapshot_for(&midgame),
         depth_limits(2),
         84,
@@ -1188,11 +1371,8 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
 
     // (3) soft≪hardの時計設定（残り6000ms・加算100ms → soft=190ms、
     //     hard=760ms）。原則はsoftリミットで停止する。
-    let limits = SearchLimits {
-        clock: Some(clock(6_000, 100, 0)),
-        ..no_limits()
-    };
-    let handle = start_search(
+    let limits = SearchLimits::new(None, None, None, Some(clock(6_000, 100, 0))).unwrap();
+    let handle = start(
         snapshot_for(&initial),
         limits,
         85,
@@ -1209,11 +1389,8 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
 
     // (4) hard(70ms) < soft(80ms)の時計設定（D7-TIME-01(c)）。原則はhard
     //     リミットで停止する。
-    let limits = SearchLimits {
-        clock: Some(clock(0, 0, 100)),
-        ..no_limits()
-    };
-    let handle = start_search(
+    let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 100))).unwrap();
+    let handle = start(
         snapshot_for(&initial),
         limits,
         86,
@@ -1237,7 +1414,7 @@ fn events_carry_the_search_id_given_at_start() {
     let initial = Position::initial();
 
     // ライフサイクル契約: 停止フラグ→join→新しい探索の開始。
-    let stale_handle = start_search(
+    let stale_handle = start(
         snapshot_for(&initial),
         depth_limits(1),
         101,
@@ -1248,7 +1425,7 @@ fn events_carry_the_search_id_given_at_start() {
     let stale_events = drain_raw(&stale_handle);
     stale_handle.join().expect("search thread must not panic");
 
-    let current_handle = start_search(
+    let current_handle = start(
         snapshot_for(&initial),
         depth_limits(1),
         202,
@@ -1284,7 +1461,7 @@ fn join_returns_the_transposition_table_for_reuse() {
     let midgame = quiet_midgame();
     let snapshot = snapshot_for(&midgame);
 
-    let handle = start_search(
+    let handle = start(
         snapshot.clone(),
         depth_limits(3),
         91,
@@ -1301,7 +1478,7 @@ fn join_returns_the_transposition_table_for_reuse() {
 
     // 返却された置換表を渡した探索2は正常に完了し、最善手と最終評価が
     // 探索1と一致する。記録手とカットオフによりノード数は増えない。
-    let second = search(
+    let second = run_search(
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -1314,6 +1491,97 @@ fn join_returns_the_transposition_table_for_reuse() {
     assert_eq!(second.score, first.score);
     assert!(second.nodes <= first.nodes);
     assert_eq!(returned_tt.generation(), 2);
+}
+
+// 監査「SearchHandle破棄後の探索スレッド」: 所有者が明示的にjoinしなくても、
+// Dropが停止フラグを立て、探索スレッドの終了を待ってから戻る。
+#[test]
+fn dropping_search_handle_requests_stop_and_joins_the_thread() {
+    let (sender, events) = mpsc::channel();
+    drop(sender);
+    let stop = Arc::new(AtomicBool::new(false));
+    let worker_stop = Arc::clone(&stop);
+    let worker_finished = Arc::new(AtomicBool::new(false));
+    let finished = Arc::clone(&worker_finished);
+    let thread = thread::spawn(move || {
+        while !worker_stop.load(AtomicOrdering::Acquire) {
+            thread::yield_now();
+        }
+        finished.store(true, AtomicOrdering::Release);
+        small_tt()
+    });
+    let handle = SearchHandle {
+        events,
+        stop,
+        thread: Some(thread),
+    };
+
+    drop(handle);
+
+    assert!(worker_finished.load(AtomicOrdering::Acquire));
+}
+
+// 監査「探索ワーカーのパニック伝播」: 調整役はパニックしたワーカーから
+// チーム停止を通知し、残るワーカーをすべて回収してからパニックを伝播する。
+#[test]
+fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
+    let fallback = legal_moves(&Position::initial())[0];
+
+    for panicking_worker in [0, 1] {
+        let external_stop = AtomicBool::new(false);
+        let shared = SharedSearch {
+            external_stop: &external_stop,
+            team_stop: AtomicBool::new(false),
+            stop_reason: AtomicU8::new(0),
+            total_nodes: AtomicU64::new(0),
+            node_limit: None,
+            started: Instant::now(),
+            hard_limit: None,
+        };
+        let completed = AtomicU64::new(0);
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            run_worker_team(worker_count(3), &shared, |worker_index| {
+                if worker_index == panicking_worker {
+                    panic!("injected worker {worker_index} panic");
+                }
+                while !shared.team_stop.load(AtomicOrdering::Acquire) {
+                    thread::yield_now();
+                }
+                completed.fetch_add(1, AtomicOrdering::Release);
+                WorkerOutcome {
+                    worker_index,
+                    result: SearchResult {
+                        best_move: fallback,
+                        score: 0,
+                        depth: 0,
+                        nodes: 0,
+                    },
+                    pv: vec![fallback],
+                    nodes: 0,
+                }
+            })
+        }));
+
+        assert!(outcome.is_err());
+        assert!(shared.team_stop.load(AtomicOrdering::Acquire));
+        assert_eq!(completed.load(AtomicOrdering::Acquire), 2);
+    }
+}
+
+// SearchHandleは調整役のパニック結果をjoinへ返し、Finishedを捏造しない。
+#[test]
+fn search_handle_join_returns_the_coordinator_panic() {
+    let (sender, events) = mpsc::channel();
+    drop(sender);
+    let handle = SearchHandle {
+        events,
+        stop: Arc::new(AtomicBool::new(false)),
+        thread: Some(thread::spawn(|| -> TranspositionTable {
+            panic!("injected coordinator panic")
+        })),
+    };
+
+    assert!(handle.join().is_err());
 }
 
 // ---------------------------------------------------------------------------
@@ -1337,7 +1605,7 @@ fn multi_worker_teams_finish_once_and_return_the_shared_table() {
 
     for threads in [worker_count(2), worker_count(4)] {
         for (limits, request_stop) in cases {
-            let handle = start_search(
+            let handle = start(
                 snapshot_for(&initial),
                 limits,
                 search_id,
@@ -1377,7 +1645,7 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
     let initial = Position::initial();
     let root_moves = legal_moves(&initial);
     let limit = 500;
-    let handle = start_search(
+    let handle = start(
         snapshot_for(&initial),
         nodes_limits(limit),
         320,
@@ -1408,7 +1676,7 @@ fn four_worker_progress_is_main_worker_only_and_monotonic() {
     let table = small_tt();
     let (sender, receiver) = mpsc::channel();
     let outcome = run_search_team(
-        crate::eval::weights().unwrap(),
+        &crate::eval::weights().unwrap(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -1464,7 +1732,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
     let external_stop = AtomicBool::new(true);
     let table = small_tt();
     let outcome = run_search_team(
-        crate::eval::weights().unwrap(),
+        &crate::eval::weights().unwrap(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -1547,7 +1815,7 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
     let depth_limit = 4;
-    let handle = start_search(
+    let handle = start(
         snapshot,
         depth_limits(depth_limit),
         322,
@@ -1578,18 +1846,18 @@ fn packed_moves_round_trip_across_all_move_shapes() {
     // (2) 2段階移動フィクスチャ: 経由升あり、居喰い（to=from・mid占有）、
     //     じっと（to=from。正準表記はmidなし）、2枚取り、dense_index 0と
     //     143の端升、成り選択（香車の敵陣入り）を含む。
-    let two_stage = position(
+    let two_stage = position_with_promoted_pieces(
         Color::Black,
         &[
-            (sq(0, 0), Color::Black, PieceKind::King), // dense_index 0
-            (sq(6, 6), Color::Black, PieceKind::Lion),
-            (sq(11, 6), Color::Black, PieceKind::Lance), // (11,11)=dense 143へ到達
-            (sq(2, 4), Color::Black, PieceKind::HornedFalcon),
-            (sq(9, 2), Color::Black, PieceKind::SoaringEagle),
-            (sq(6, 7), Color::White, PieceKind::Pawn), // 獅子の居喰い・2枚取りの1枚目
-            (sq(6, 8), Color::White, PieceKind::Rook), // 2枚取りの2枚目
-            (sq(2, 5), Color::White, PieceKind::Pawn), // 角鷹の居喰い
-            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(0, 0), Color::Black, PieceKind::King, false), // dense_index 0
+            (sq(6, 6), Color::Black, PieceKind::Lion, false),
+            (sq(11, 6), Color::Black, PieceKind::Lance, false), // (11,11)=dense 143へ到達
+            (sq(2, 4), Color::Black, PieceKind::HornedFalcon, true),
+            (sq(9, 2), Color::Black, PieceKind::SoaringEagle, true),
+            (sq(6, 7), Color::White, PieceKind::Pawn, false), // 獅子の居喰い・2枚取りの1枚目
+            (sq(6, 8), Color::White, PieceKind::Rook, false), // 2枚取りの2枚目
+            (sq(2, 5), Color::White, PieceKind::Pawn, false), // 角鷹の居喰い
+            (sq(0, 11), Color::White, PieceKind::King, false),
         ],
     );
 
@@ -1815,6 +2083,47 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
     assert_eq!(table.probe(key_b, 0).unwrap().score, 700);
 }
 
+// 監査「置換表の最善手と評価値の別原子語」: 助言手は生成済み合法手と
+// 一致した場合だけ順序付けへ使い、同じキーにある不合法手は無視する。
+#[test]
+fn illegal_transposition_table_move_is_ignored_at_the_root() {
+    let root = quiet_midgame();
+    let moves = legal_moves(&root);
+    let illegal = Move {
+        from: fs(2, 2),
+        mid: None,
+        to: fs(2, 3),
+        promote: false,
+    };
+    assert!(!moves.contains(&illegal));
+
+    let mut clean_table = small_tt();
+    let expected = run_search(
+        &root,
+        engine_rules(),
+        &moves,
+        &[],
+        &depth_limits(1),
+        DEFAULT_THREADS,
+        &mut clean_table,
+    );
+
+    let mut contaminated_table = small_tt();
+    contaminated_table.store(search_key(&root), 32, MATE, Bound::Exact, Some(illegal), 0);
+    let actual = run_search(
+        &root,
+        engine_rules(),
+        &moves,
+        &[],
+        &depth_limits(1),
+        DEFAULT_THREADS,
+        &mut contaminated_table,
+    );
+
+    assert_eq!(actual.best_move, expected.best_move);
+    assert!(moves.contains(&actual.best_move));
+}
+
 // D7-TT-04。search.md「置換表」節: 反復で終端した評価値は探索経路と対局
 // 履歴に依存するため置換表へ保存しない。別経路への引き分けスコアの伝播を
 // 防ぐ。親ノードの格納可否は明文がなく、子の不保存だけをassertする。
@@ -1829,7 +2138,7 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
     let history = [child_key];
 
     let mut table = small_tt();
-    let result = search(
+    let result = run_search(
         &root,
         engine_rules(),
         &moves,
@@ -1879,7 +2188,7 @@ fn tt_clear_empties_all_entries_and_search_restarts() {
     // クリア後の探索が正常に完了する（D7-SRCH-07の空置換表前提と接続）。
     let midgame = quiet_midgame();
     let moves = legal_moves(&midgame);
-    let result = search(
+    let result = run_search(
         &midgame,
         engine_rules(),
         &moves,
@@ -1900,9 +2209,9 @@ fn tt_clear_empties_all_entries_and_search_restarts() {
 fn idle_resize_applies_and_later_searches_complete() {
     let midgame = quiet_midgame();
     let moves = legal_moves(&midgame);
-    let mut table = TranspositionTable::new(4);
+    let mut table = TranspositionTable::new(4).unwrap();
 
-    let before = search(
+    let before = run_search(
         &midgame,
         engine_rules(),
         &moves,
@@ -1913,9 +2222,9 @@ fn idle_resize_applies_and_later_searches_complete() {
     );
     assert!(moves.contains(&before.best_move));
 
-    table.resize(1);
+    table.resize(1).unwrap();
 
-    let after = search(
+    let after = run_search(
         &midgame,
         engine_rules(),
         &moves,

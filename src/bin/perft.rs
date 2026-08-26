@@ -4,7 +4,7 @@ use std::process;
 use std::time::{Duration, Instant};
 
 use clap::{CommandFactory, Parser, error::ErrorKind};
-use minase::{Move, MoveGenerator, MoveRules, Position, Square, parse_sfen};
+use minase::{Move, MoveGenerator, Position, Square, parse_sfen};
 
 /// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
 #[global_allocator]
@@ -115,9 +115,11 @@ fn perft(generator: &MoveGenerator, position: &mut Position, counts: &mut [u64])
     }
 
     for mv in moves {
-        let undo = position.make_move_unchecked(mv, MoveRules::standard());
-        perft(generator, position, deeper);
-        position.unmake_move(undo);
+        let mut child = position.clone();
+        child
+            .try_make_move(mv, generator)
+            .expect("generated moves are legal");
+        perft(generator, &mut child, deeper);
     }
 }
 

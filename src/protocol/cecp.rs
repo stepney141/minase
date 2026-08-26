@@ -21,14 +21,15 @@ use super::engine::{
     Engine, EngineCommand, EngineLifecycle, EngineReply, RejectReason, canonical_rules_text,
 };
 
+/// CECPから設定できる置換表容量の上限(MiB)。
+const MAX_MEMORY_MB: usize = 65_536;
+
 /// 中将棋用のCECPアダプター。
 pub struct CecpProtocol {
     /// feature宣言のRuleSet既定値に使う起動時規則の正準表記。
     startup_rules_text: String,
-    /// CECPがエンジンに担当させている内部手番。
-    engine_side: Option<Color>,
-    /// `force`により両陣営の着手を受信のみする状態かどうか。
-    force_mode: bool,
+    /// CECPの着手応答モード。
+    play_mode: PlayMode,
     /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出し中は`None`。
     transposition_table: Option<TranspositionTable>,
     /// 次に開始する探索へ割り当てる識別子。
@@ -37,6 +38,15 @@ pub struct CecpProtocol {
     threads: NonZeroUsize,
     /// CECPの時間コマンドをミリ秒へ正規化した値。
     time_control: TimeControl,
+}
+
+/// CECPの着手応答モード。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PlayMode {
+    /// 両陣営の着手を受信するだけで、エンジンは応手しない。
+    Force,
+    /// 指定された手番をエンジンが担当する。
+    Playing { engine_side: Color },
 }
 
 /// CECPから受け取った探索制限の正規化値。
@@ -83,8 +93,7 @@ impl CecpProtocol {
     pub fn new(engine: &Engine) -> Self {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
-            engine_side: None,
-            force_mode: true,
+            play_mode: PlayMode::Force,
             transposition_table: None,
             next_search_id: 1,
             threads: search::DEFAULT_THREADS,
@@ -125,15 +134,15 @@ impl CecpProtocol {
             }
             "new" => self.handle_new(engine, output)?,
             "force" => {
-                self.force_mode = true;
-                self.engine_side = None;
+                self.play_mode = PlayMode::Force;
             }
             "go" => {
                 if engine.lifecycle() != EngineLifecycle::InGame {
                     writeln!(output, "Error (command not legal now): go")?;
                 } else {
-                    self.force_mode = false;
-                    self.engine_side = Some(engine.game().position().side_to_move());
+                    self.play_mode = PlayMode::Playing {
+                        engine_side: engine.game().position().side_to_move(),
+                    };
                     let Some(search) = self.start_search(engine, output)? else {
                         output.flush()?;
                         return Ok(LineAction::Continue);
@@ -191,34 +200,55 @@ impl CecpProtocol {
         engine: &Engine,
         output: &mut dyn Write,
     ) -> io::Result<Option<ActiveSearch>> {
-        let Some(limits) = self.time_control.search_limits() else {
-            writeln!(output, "tellusererror search limits are not set")?;
-            return Ok(None);
+        let limits = match self.time_control.search_limits() {
+            Ok(Some(limits)) => limits,
+            Ok(None) => {
+                writeln!(output, "tellusererror search limits are not set")?;
+                return Ok(None);
+            }
+            Err(error) => {
+                writeln!(output, "tellusererror {error}")?;
+                return Ok(None);
+            }
         };
         let game = engine.game();
-        let root_moves = game.legal_moves();
-        if root_moves.is_empty() {
-            writeln!(output, "tellusererror no legal move to search")?;
-            return Ok(None);
-        }
-        let snapshot = SearchSnapshot {
-            position: game.position().clone(),
-            rules: engine.active_rules().moves,
-            history_keys: game.search_key_history().to_vec(),
-            root_moves,
+        let snapshot = match SearchSnapshot::from_game(game) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                writeln!(output, "tellusererror {error}")?;
+                return Ok(None);
+            }
         };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
-        let transposition_table = self.transposition_table.take().unwrap_or_default();
+        let pst = match crate::eval::weights() {
+            Ok(pst) => pst,
+            Err(error) => {
+                writeln!(output, "tellusererror {error}")?;
+                return Ok(None);
+            }
+        };
+        let transposition_table = match self.transposition_table.take() {
+            Some(table) => table,
+            None => match TranspositionTable::new(search::DEFAULT_TT_SIZE_MB) {
+                Ok(table) => table,
+                Err(error) => {
+                    writeln!(output, "tellusererror {error}")?;
+                    return Ok(None);
+                }
+            },
+        };
+        let handle = search::start_search(
+            pst,
+            snapshot,
+            limits,
+            search_id,
+            self.threads,
+            transposition_table,
+        );
         Ok(Some(ActiveSearch {
             context: SearchContext { id: search_id },
-            handle: search::start_search(
-                snapshot,
-                limits,
-                search_id,
-                self.threads,
-                transposition_table,
-            ),
+            handle,
         }))
     }
 
@@ -466,8 +496,7 @@ impl CecpProtocol {
             }
             EngineReply::Rejected(reason) => {
                 writeln!(output, "tellusererror engine move rejected: {reason}")?;
-                self.force_mode = true;
-                self.engine_side = None;
+                self.play_mode = PlayMode::Force;
             }
         }
         output.flush()
@@ -512,11 +541,8 @@ impl CecpProtocol {
             return writeln!(output, "Error (command not legal now): new");
         }
 
-        let setup = SetupPosition {
-            position: Position::initial(),
-            lion_capture: None,
-            next_move_number: 1,
-        };
+        let setup = SetupPosition::new(Position::initial(), None, 1)
+            .expect("the standard initial setup is valid");
         if matches!(
             engine.handle(EngineCommand::SetPosition {
                 setup,
@@ -524,8 +550,9 @@ impl CecpProtocol {
             }),
             EngineReply::Accepted { .. }
         ) {
-            self.force_mode = false;
-            self.engine_side = Some(Color::White);
+            self.play_mode = PlayMode::Playing {
+                engine_side: Color::White,
+            };
             if let Some(transposition_table) = &mut self.transposition_table {
                 transposition_table.clear();
             }
@@ -600,9 +627,12 @@ impl CecpProtocol {
                 write_result(output, result)?;
                 Ok(false)
             }
-            EngineReply::Accepted { .. } => Ok(!self.force_mode
-                && engine.lifecycle() == EngineLifecycle::InGame
-                && self.engine_side == Some(engine.game().position().side_to_move())),
+            EngineReply::Accepted { .. } => Ok(matches!(
+                self.play_mode,
+                PlayMode::Playing { engine_side }
+                    if engine.lifecycle() == EngineLifecycle::InGame
+                        && engine_side == engine.game().position().side_to_move()
+            )),
             EngineReply::Rejected(RejectReason::IllegalMove {
                 cause: IllegalMoveCause::Movement,
                 ..
@@ -660,18 +690,23 @@ impl CecpProtocol {
         }
     }
 
-    /// `memory MB`を正の容量として受理し、待機中の置換表を作り直す。
+    /// `memory MB`を範囲内の容量として受理し、待機中の置換表を作り直す。
     fn handle_memory(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         let Some(size_mb) = tokens
             .first()
             .and_then(|value| value.parse::<usize>().ok())
-            .filter(|&size| size > 0)
+            .filter(|&size| (1..=MAX_MEMORY_MB).contains(&size))
         else {
             return writeln!(output, "Error (invalid command): memory");
         };
-        match &mut self.transposition_table {
+        let result = match &mut self.transposition_table {
             Some(transposition_table) => transposition_table.resize(size_mb),
-            None => self.transposition_table = Some(TranspositionTable::new(size_mb)),
+            None => TranspositionTable::new(size_mb).map(|table| {
+                self.transposition_table = Some(table);
+            }),
+        };
+        if result.is_err() {
+            return writeln!(output, "Error (cannot allocate memory): {size_mb}");
         }
         Ok(())
     }
@@ -753,21 +788,15 @@ impl CecpProtocol {
 
 impl TimeControl {
     /// 保持した正規化値を探索層の制限型へ写す。
-    fn search_limits(&self) -> Option<SearchLimits> {
-        let clock = self.engine_remaining_ms.map(|remaining_ms| ClockLimits {
-            remaining_ms,
-            increment_ms: self.increment_ms,
-            byoyomi_ms: 0,
-        });
-        (self.depth.is_some() || self.movetime_ms.is_some() || clock.is_some()).then_some(
-            SearchLimits {
-                depth: self.depth,
-                nodes: None,
-                movetime_ms: self.movetime_ms,
-                clock,
-                infinite: false,
-            },
-        )
+    fn search_limits(&self) -> Result<Option<SearchLimits>, search::SearchError> {
+        let clock = self
+            .engine_remaining_ms
+            .map(|remaining_ms| ClockLimits::new(remaining_ms, self.increment_ms, 0))
+            .transpose()?;
+        if self.depth.is_none() && self.movetime_ms.is_none() && clock.is_none() {
+            return Ok(None);
+        }
+        SearchLimits::new(self.depth, None, self.movetime_ms, clock).map(Some)
     }
 }
 
@@ -1587,6 +1616,19 @@ mod tests {
 
         assert!(!output.is_empty());
         assert!(output.lines().all(|line| line.starts_with("move ")));
+    }
+
+    #[test]
+    fn oversized_memory_is_rejected_and_the_session_continues() {
+        // 監査「置換表サイズのオーバーフロー」: 極大の外部設定値は
+        // CECPエラーとなり、後続の有効な設定と探索を妨げない。
+        let output = session(
+            &[RuleCode::R1],
+            &format!("memory {}\nmemory 1\nsd 1\nnew\ngo\n", usize::MAX),
+        );
+
+        assert!(output.lines().any(|line| line.starts_with("Error ")));
+        assert_eq!(move_lines(&output).len(), 1);
     }
 
     #[test]

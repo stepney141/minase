@@ -3,6 +3,7 @@
 use core::fmt;
 
 use crate::core::direction::Direction;
+use crate::core::movegen::{IllegalMove, MoveGenerator};
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
@@ -13,6 +14,8 @@ use super::sfen::{parse_square, square_to_text};
 /// lishogi系拡張USI指し手の解析エラー。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UsiError {
+    /// 入力にUSI着手文法で使わない非ASCII文字がある。
+    NonAscii,
     /// 指定欄が盤上の升名ではない。
     InvalidSquare {
         /// 問題の1起算の升名欄位置。
@@ -32,6 +35,7 @@ pub enum UsiError {
 impl fmt::Display for UsiError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NonAscii => formatter.write_str("USI move must contain only ASCII characters"),
             Self::InvalidSquare { field } => {
                 write!(formatter, "invalid USI square in field {field}")
             }
@@ -49,12 +53,31 @@ impl fmt::Display for UsiError {
 
 impl std::error::Error for UsiError {}
 
-/// 指し手をlishogi系拡張USI形式へ変換する。
+/// 指し手を検証してlishogi系拡張USI形式へ変換する。
+///
+/// # Errors
+///
+/// `mv`が`generator`による局面の合法手集合に含まれない場合は
+/// [`IllegalMove`]を返す。
+pub fn text(
+    position: &Position,
+    mv: Move,
+    generator: &MoveGenerator,
+) -> Result<String, IllegalMove> {
+    let mut moves = Vec::new();
+    generator.generate_moves(position, &mut moves);
+    if !moves.contains(&mv) {
+        return Err(IllegalMove(mv));
+    }
+    Ok(text_generated(position, mv))
+}
+
+/// 生成済み合法手をlishogi系拡張USI形式へ変換する。
 ///
 /// 正準じっとは中間升を保持しないため、局面上で第1段階として使える
 /// 空升のうち内部密番号が最小の升を補う(第11条・第12条)。
 /// 正準じっとは、局面の合法手として生成された値であることを前提とする。
-pub fn text(position: &Position, mv: Move) -> String {
+pub(crate) fn text_generated(position: &Position, mv: Move) -> String {
     let mid = if mv.mid.is_none() && mv.to == mv.from {
         Some(jitto_intermediate(position, mv.from))
     } else {
@@ -79,6 +102,9 @@ pub fn text(position: &Position, mv: Move) -> String {
 /// 直接の二段移動になる(第11条・第12条)。
 /// 着手そのものの合法性は検査しない。
 pub fn parse(position: &Position, input: &str) -> Result<Move, UsiError> {
+    if !input.is_ascii() {
+        return Err(UsiError::NonAscii);
+    }
     let (body, promote) = split_suffix(input)?;
     let squares = parse_squares(body)?;
     if !matches!(squares.len(), 2 | 3) {
@@ -204,7 +230,8 @@ fn jitto_intermediate(position: &Position, from: Square) -> Square {
 mod tests {
     use super::*;
     use crate::core::movegen::MoveGenerator;
-    use crate::test_util::{position, sq};
+    use crate::core::piece::PieceCode;
+    use crate::test_util::{position, position_from_codes, sq};
 
     fn generated(pos: &Position) -> Vec<Move> {
         let mut moves = Vec::new();
@@ -216,12 +243,30 @@ mod tests {
         position(color, &[(from, color, kind)])
     }
 
+    fn single_promoted_piece_position(color: Color, kind: PieceKind, from: Square) -> Position {
+        position_from_codes(
+            color,
+            &[(from, PieceCode::new_promoted(color, kind).unwrap())],
+        )
+    }
+
     fn canonical_jitto(from: Square) -> Move {
         Move {
             from,
             mid: None,
             to: from,
             promote: false,
+        }
+    }
+
+    // 監査「非ASCIIのUSI着手文字列」: 外部入力の構文誤りはUsiErrorであり、
+    // UTF-8文字境界に依存するpanicでプロセスを停止してはならない。
+    #[test]
+    fn non_ascii_move_text_is_rejected_as_a_parse_error() {
+        let empty = Position::empty(Color::Black);
+
+        for invalid in ["1あ", "7gあ", "あ7g", "7g7あ+"] {
+            assert!(parse(&empty, invalid).is_err(), "{invalid}");
         }
     }
 
@@ -279,8 +324,8 @@ mod tests {
 
         assert_eq!(parse(&empty, "6f5e"), Ok(step));
         assert_eq!(parse(&empty, "6f7d"), Ok(jump));
-        assert_eq!(text(&empty, step), "6f5e");
-        assert_eq!(text(&empty, jump), "6f7d");
+        assert_eq!(text_generated(&empty, step), "6f5e");
+        assert_eq!(text_generated(&empty, jump), "6f7d");
 
         // 距離0の2升連結は不合法であり、じっとは必ず3升連結で表す（[USI]同節第4項）。
         assert_eq!(parse(&empty, "6f6f"), Err(UsiError::InvalidJittoForm));
@@ -309,7 +354,7 @@ mod tests {
             }
         );
         assert!(generated(&capture_position).contains(&capture));
-        assert_eq!(text(&capture_position, capture), "6f5e6d");
+        assert_eq!(text_generated(&capture_position, capture), "6f5e6d");
 
         // 5hの相手駒を取って6iへ戻る居喰い（[RULES]第3条第14項・第12条第8項）。
         let igui_position = position(
@@ -330,7 +375,7 @@ mod tests {
             }
         );
         assert!(generated(&igui_position).contains(&igui));
-        assert_eq!(text(&igui_position, igui), "6i5h6i");
+        assert_eq!(text_generated(&igui_position, igui), "6i5h6i");
 
         // 空の中間升6gを経て元の升へ戻るじっと（[RULES]第3条第13項・第12条第9項）。
         let jitto_position = single_piece_position(Color::Black, PieceKind::Lion, sq(6, 6));
@@ -360,8 +405,8 @@ mod tests {
         assert_eq!(parse(&empty, "7g7d="), Ok(plain));
         assert_eq!(parse(&empty, "7g7d?"), Ok(plain));
         assert_eq!(parse(&empty, "7g7d+"), Ok(promoted));
-        assert_eq!(text(&empty, plain), "7g7d");
-        assert_eq!(text(&empty, promoted), "7g7d+");
+        assert_eq!(text_generated(&empty, plain), "7g7d");
+        assert_eq!(text_generated(&empty, promoted), "7g7d+");
 
         // 記号の重複の拒否。
         for invalid in ["7g7d++", "7g7d+=", "7g7d=?"] {
@@ -379,7 +424,7 @@ mod tests {
         assert!(moves.iter().any(|mv| mv.promote));
         assert!(moves.iter().any(|mv| !mv.promote));
         for mv in moves {
-            let rendered = text(&promotion_position, mv);
+            let rendered = text_generated(&promotion_position, mv);
             assert!(
                 !rendered.contains('=') && !rendered.contains('?'),
                 "{rendered}"
@@ -445,7 +490,7 @@ mod tests {
         );
 
         // 正規化の冪等性: 正準形の文字列化を再解析しても同じMoveになる（D5-USI-08の基礎）。
-        let rendered = text(&alone, direct);
+        let rendered = text_generated(&alone, direct);
         assert_eq!(rendered, "6f6d");
         assert_eq!(parse(&alone, &rendered), Ok(direct));
     }
@@ -459,10 +504,10 @@ mod tests {
         // 獅子: 8方向の空隣接升のいずれかを代表升とし、同一局面では常に同じ文字列になる。
         let lion_from = sq(5, 5);
         let lion_position = single_piece_position(Color::Black, PieceKind::Lion, lion_from);
-        let lion_rendered = text(&lion_position, canonical_jitto(lion_from));
+        let lion_rendered = text_generated(&lion_position, canonical_jitto(lion_from));
         assert_eq!(
             lion_rendered,
-            text(&lion_position, canonical_jitto(lion_from))
+            text_generated(&lion_position, canonical_jitto(lion_from))
         );
         assert!(lion_rendered.starts_with("7g") && lion_rendered.ends_with("7g"));
         let lion_mid = parse_square(&lion_rendered[2..lion_rendered.len() - 2]).unwrap();
@@ -482,30 +527,36 @@ mod tests {
             ],
         );
         assert_eq!(
-            text(&corner_position, canonical_jitto(sq(0, 0))),
+            text_generated(&corner_position, canonical_jitto(sq(0, 0))),
             "12l12k12l"
         );
 
         // 角鷹の第1段階は前方1方向だけ（[RULES]第11条第1項・第7項）。先後で向きが変わる。
         for (color, forward) in [(Color::Black, sq(5, 6)), (Color::White, sq(5, 4))] {
-            let falcon = single_piece_position(color, PieceKind::HornedFalcon, sq(5, 5));
+            let falcon = single_promoted_piece_position(color, PieceKind::HornedFalcon, sq(5, 5));
             let expected = format!(
                 "{}{}{}",
                 square_to_text(sq(5, 5)),
                 square_to_text(forward),
                 square_to_text(sq(5, 5))
             );
-            assert_eq!(text(&falcon, canonical_jitto(sq(5, 5))), expected);
+            assert_eq!(text_generated(&falcon, canonical_jitto(sq(5, 5))), expected);
         }
 
         // 飛鷲は前斜め2方向のうち片方だけが空なら、その方向が代表升になる
         // （[RULES]第11条第2項・第8項。候補一意のため直値を断定できる）。
         let eagle_from = sq(5, 5);
-        let blocked = position(
+        let blocked = position_from_codes(
             Color::Black,
             &[
-                (eagle_from, Color::Black, PieceKind::SoaringEagle),
-                (sq(4, 6), Color::Black, PieceKind::Pawn),
+                (
+                    eagle_from,
+                    PieceCode::new_promoted(Color::Black, PieceKind::SoaringEagle).unwrap(),
+                ),
+                (
+                    sq(4, 6),
+                    PieceCode::new(Color::Black, PieceKind::Pawn).unwrap(),
+                ),
             ],
         );
         let expected = format!(
@@ -514,12 +565,19 @@ mod tests {
             square_to_text(sq(6, 6)),
             square_to_text(eagle_from)
         );
-        assert_eq!(text(&blocked, canonical_jitto(eagle_from)), expected);
+        assert_eq!(
+            text_generated(&blocked, canonical_jitto(eagle_from)),
+            expected
+        );
 
         // 両方が空の場合も、代表升は前斜め2方向のいずれかで決定的である。
-        let open = single_piece_position(Color::Black, PieceKind::SoaringEagle, eagle_from);
-        let eagle_rendered = text(&open, canonical_jitto(eagle_from));
-        assert_eq!(eagle_rendered, text(&open, canonical_jitto(eagle_from)));
+        let open =
+            single_promoted_piece_position(Color::Black, PieceKind::SoaringEagle, eagle_from);
+        let eagle_rendered = text_generated(&open, canonical_jitto(eagle_from));
+        assert_eq!(
+            eagle_rendered,
+            text_generated(&open, canonical_jitto(eagle_from))
+        );
         let eagle_mid = parse_square(&eagle_rendered[2..eagle_rendered.len() - 2]).unwrap();
         assert!(eagle_mid == sq(4, 6) || eagle_mid == sq(6, 6));
     }
@@ -536,22 +594,67 @@ mod tests {
         }
     }
 
+    // 監査「未検証着手と合法手の混在」: 公開文字列化APIは生成器の合法手集合を
+    // 境界とし、空升を移動元とする値を文字列化しない。
+    #[test]
+    fn public_text_rejects_an_unvalidated_move() {
+        let position = Position::initial();
+        let generator = MoveGenerator::standard();
+        let legal = generated(&position)[0];
+        assert_eq!(
+            text(&position, legal, &generator),
+            Ok(text_generated(&position, legal))
+        );
+
+        let invalid = Move {
+            from: sq(5, 5),
+            mid: None,
+            to: sq(5, 6),
+            promote: false,
+        };
+        assert_eq!(
+            text(&position, invalid, &generator),
+            Err(IllegalMove(invalid))
+        );
+    }
+
     // D5-USI-08, D5-PROP-01, D5-PROP-02: 代表局面群の全合法手についてMove単位の往復一致
     // （じっと以外は文字列単位でも）を検証し、合法手集合が各類型を実際に含むことを断定する
     // （[PL]「Move文字列表記2形式」と「検証」）。
     #[test]
     fn all_legal_moves_round_trip_in_representative_positions() {
         // (b)(c) 獅子・角鷹・飛鷲の2段階移動・居喰いが合法な局面。
-        let special = position(
+        let special = position_from_codes(
             Color::Black,
             &[
-                (sq(5, 5), Color::Black, PieceKind::Lion),
-                (sq(1, 1), Color::Black, PieceKind::HornedFalcon),
-                (sq(9, 1), Color::Black, PieceKind::SoaringEagle),
-                (sq(5, 6), Color::White, PieceKind::Pawn),
-                (sq(6, 6), Color::White, PieceKind::SilverGeneral),
-                (sq(1, 2), Color::White, PieceKind::Pawn),
-                (sq(8, 2), Color::White, PieceKind::Pawn),
+                (
+                    sq(5, 5),
+                    PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
+                ),
+                (
+                    sq(1, 1),
+                    PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon).unwrap(),
+                ),
+                (
+                    sq(9, 1),
+                    PieceCode::new_promoted(Color::Black, PieceKind::SoaringEagle).unwrap(),
+                ),
+                (
+                    sq(5, 6),
+                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                ),
+                (
+                    sq(6, 6),
+                    PieceCode::new(Color::White, PieceKind::SilverGeneral).unwrap(),
+                ),
+                (
+                    sq(1, 2),
+                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                ),
+                (
+                    sq(8, 2),
+                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                ),
             ],
         );
         // (d) 成りと不成が選択できる局面（[RULES]第18条）。
@@ -561,10 +664,10 @@ mod tests {
             Position::initial(),
             special,
             single_piece_position(Color::Black, PieceKind::Lion, sq(5, 5)),
-            single_piece_position(Color::Black, PieceKind::HornedFalcon, sq(5, 5)),
-            single_piece_position(Color::White, PieceKind::HornedFalcon, sq(5, 5)),
-            single_piece_position(Color::Black, PieceKind::SoaringEagle, sq(5, 5)),
-            single_piece_position(Color::White, PieceKind::SoaringEagle, sq(5, 5)),
+            single_promoted_piece_position(Color::Black, PieceKind::HornedFalcon, sq(5, 5)),
+            single_promoted_piece_position(Color::White, PieceKind::HornedFalcon, sq(5, 5)),
+            single_promoted_piece_position(Color::Black, PieceKind::SoaringEagle, sq(5, 5)),
+            single_promoted_piece_position(Color::White, PieceKind::SoaringEagle, sq(5, 5)),
             promotion,
         ];
 
@@ -572,12 +675,15 @@ mod tests {
             let moves = generated(pos);
             assert!(!moves.is_empty());
             for mv in moves {
-                let rendered = text(pos, mv);
-                // Move単位の往復一致（parse(position, text(position, m)) == m）。
+                let rendered = text_generated(pos, mv);
+                // Move単位の往復一致（parse(position, text_generated(position, m)) == m）。
                 assert_eq!(parse(pos, &rendered), Ok(mv), "{rendered}");
                 // じっと以外は文字列単位でも往復一致する。
                 if !(mv.mid.is_none() && mv.to == mv.from) {
-                    assert_eq!(text(pos, parse(pos, &rendered).unwrap()), rendered);
+                    assert_eq!(
+                        text_generated(pos, parse(pos, &rendered).unwrap()),
+                        rendered
+                    );
                 }
                 // 2段階移動を行う駒は成れないため、2段階の合法手に成りは現れない
                 // （[USI]同節第6項、[RULES]第11条第10項。SU-4）。
@@ -627,6 +733,6 @@ mod tests {
         let alone = &positions[2];
         let normalized = parse(alone, "7g7f7e").unwrap();
         assert_eq!(normalized.mid, None);
-        assert_eq!(text(alone, normalized), "7g7e");
+        assert_eq!(text_generated(alone, normalized), "7g7e");
     }
 }

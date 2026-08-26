@@ -1,7 +1,7 @@
 //! 量子化した学習PSTの復号、埋め込みおよび整数評価。
 
 use core::fmt;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use sha2::{Digest, Sha256};
 
@@ -178,13 +178,13 @@ fn read_u32(bytes: &[u8], offset: usize) -> u32 {
 /// 実行バイナリへ埋め込むMNPTバイト列。
 static EMBEDDED: &[u8] = include_bytes!("../../nets/pst.bin");
 /// 埋め込み重みの復号結果を保持する領域。
-static WEIGHTS: OnceLock<Result<Pst, Error>> = OnceLock::new();
+static WEIGHTS: OnceLock<Result<Arc<Pst>, Error>> = OnceLock::new();
 
 /// 検証済みの埋め込み学習PSTを返す。
-pub fn weights() -> Result<&'static Pst, &'static Error> {
-    match WEIGHTS.get_or_init(|| Pst::decode(EMBEDDED)) {
-        Ok(pst) => Ok(pst),
-        Err(error) => Err(error),
+pub fn weights() -> Result<Arc<Pst>, Error> {
+    match WEIGHTS.get_or_init(|| Pst::decode(EMBEDDED).map(Arc::new)) {
+        Ok(pst) => Ok(Arc::clone(pst)),
+        Err(error) => Err(error.clone()),
     }
 }
 
@@ -289,16 +289,22 @@ mod tests {
                 &[
                     (sq(1, 2), promoted_gold),
                     (sq(7, 8), promoted_lion),
-                    (sq(4, 6), PieceCode::new(Color::White, PieceKind::King)),
+                    (
+                        sq(4, 6),
+                        PieceCode::new(Color::White, PieceKind::King).unwrap(),
+                    ),
                 ],
             ),
             position_from_codes(
                 Color::White,
                 &[
-                    (sq(0, 0), PieceCode::new(Color::Black, PieceKind::Pawn)),
+                    (
+                        sq(0, 0),
+                        PieceCode::new(Color::Black, PieceKind::Pawn).unwrap(),
+                    ),
                     (
                         sq(11, 11),
-                        PieceCode::new(Color::White, PieceKind::FreeKing),
+                        PieceCode::new(Color::White, PieceKind::FreeKing).unwrap(),
                     ),
                 ],
             ),
@@ -311,6 +317,6 @@ mod tests {
     /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
     #[test]
     fn embedded_pst_matches_python_initial_position_evaluation() {
-        assert_eq!(evaluate(weights().unwrap(), &Position::initial()), 12);
+        assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 12);
     }
 }

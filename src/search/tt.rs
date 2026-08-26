@@ -2,6 +2,7 @@
 
 use core::mem::size_of;
 use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::fmt;
 
 #[cfg(not(target_has_atomic = "64"))]
 compile_error!("the transposition table requires 64-bit atomic integers");
@@ -13,6 +14,29 @@ use super::{MATE_THRESHOLD, MAX_PLY};
 
 /// 置換表の既定容量(MB)。
 pub const DEFAULT_SIZE_MB: usize = 256;
+
+/// 置換表の構築またはサイズ変更に失敗した原因。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TranspositionTableError {
+    /// 容量が0である。
+    Empty,
+    /// MiBからbyteへの容量計算が`usize`に収まらない。
+    SizeOverflow,
+    /// エントリ配列のメモリを確保できない。
+    AllocationFailed,
+}
+
+impl fmt::Display for TranspositionTableError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Empty => "transposition table size must be positive",
+            Self::SizeOverflow => "transposition table size overflow",
+            Self::AllocationFailed => "transposition table allocation failed",
+        })
+    }
+}
+
+impl std::error::Error for TranspositionTableError {}
 
 /// 格納された評価値と探索窓の関係。0は空エントリの目印に予約する。
 #[repr(u8)]
@@ -100,7 +124,10 @@ struct CriticalFields {
 /// 置換表の照合に成功したエントリの内容。
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Hit {
-    /// 格納されていた最善手。
+    /// 手順序付けにだけ使う助言手。
+    ///
+    /// 並行書込み時は検証キーおよび評価値と同じ格納操作に由来する保証がない。
+    /// 生成済み合法手との一致を確認せず、着手や枝刈りに使ってはならない。
     pub(super) best_move: Option<Move>,
     /// 現在の手数基準へ戻した評価値。
     pub(super) score: i32,
@@ -126,19 +153,22 @@ pub struct TranspositionTable {
 impl TranspositionTable {
     /// 指定した容量(MB)で空の置換表を作る。
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// `size_mb`が0、容量計算がオーバーフローする、または1エントリも
-    /// 収容できない場合はpanicする。
-    pub fn new(size_mb: usize) -> Self {
-        let entry_count = entry_count(size_mb);
-        Self {
-            entries: core::iter::repeat_with(Entry::empty)
-                .take(entry_count)
-                .collect(),
+    /// `size_mb`が0、容量計算がオーバーフローする、またはエントリ配列を
+    /// 確保できない場合はエラーを返す。
+    pub fn new(size_mb: usize) -> Result<Self, TranspositionTableError> {
+        let entry_count = entry_count(size_mb)?;
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(entry_count)
+            .map_err(|_| TranspositionTableError::AllocationFailed)?;
+        entries.resize_with(entry_count, Entry::empty);
+        Ok(Self {
+            entries,
             mask: entry_count - 1,
             generation: AtomicU8::new(0),
-        }
+        })
     }
 
     /// 全エントリを空にし、世代を初期化する。
@@ -151,11 +181,14 @@ impl TranspositionTable {
 
     /// 探索中でない置換表を指定容量(MB)へ作り直す。
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// `size_mb`の条件は[`new`](Self::new)と同じである。
-    pub fn resize(&mut self, size_mb: usize) {
-        *self = Self::new(size_mb);
+    /// `size_mb`の条件は[`new`](Self::new)と同じである。失敗した場合は
+    /// 既存の置換表を変更しない。
+    pub fn resize(&mut self, size_mb: usize) -> Result<(), TranspositionTableError> {
+        let replacement = Self::new(size_mb)?;
+        *self = replacement;
+        Ok(())
     }
 
     /// 新しい探索の開始を記録し、既存エントリを置換候補として古びさせる。
@@ -170,6 +203,9 @@ impl TranspositionTable {
     }
 
     /// 局面キーに対応するエントリを照合して返す。
+    ///
+    /// 照合対象は評価値、深さ、バウンドであり、[`Hit::best_move`]は別の
+    /// 原子語にある助言値である。呼出し側は合法手との一致を検証して使う。
     pub(super) fn probe(&self, key: u64, ply: u32) -> Option<Hit> {
         let entry = &self.entries[key as usize & self.mask];
         let critical = entry.critical.load(Ordering::Acquire);
@@ -245,21 +281,16 @@ impl TranspositionTable {
     }
 }
 
-impl Default for TranspositionTable {
-    fn default() -> Self {
-        Self::new(DEFAULT_SIZE_MB)
-    }
-}
-
 /// 指定容量(MB)に収まる最大の2の冪のエントリ数を返す。
-fn entry_count(size_mb: usize) -> usize {
-    assert!(size_mb > 0, "transposition table size must be positive");
+fn entry_count(size_mb: usize) -> Result<usize, TranspositionTableError> {
+    if size_mb == 0 {
+        return Err(TranspositionTableError::Empty);
+    }
     let bytes = size_mb
         .checked_mul(1024 * 1024)
-        .expect("transposition table size overflow");
+        .ok_or(TranspositionTableError::SizeOverflow)?;
     let capacity = bytes / size_of::<Entry>();
-    assert!(capacity > 0, "transposition table is too small");
-    1 << capacity.ilog2()
+    Ok(1 << capacity.ilog2())
 }
 
 /// 局面キーの上位32ビットを照合キーとして取り出す。

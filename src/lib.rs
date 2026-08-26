@@ -5,9 +5,6 @@
 //! 表記(`notation`)、プロトコル(`protocol`)、探索(`search`)、
 //! 評価(`eval`)はその外に置く。
 
-#![forbid(unsafe_code)]
-#![warn(missing_docs)]
-
 pub mod core;
 pub mod eval;
 pub mod notation;
@@ -27,12 +24,12 @@ pub use crate::core::game::{
     DrawReason, Game, GameError, GameResult, GameStatus, IllegalMoveCause, WinReason,
 };
 pub use crate::core::movegen::{IllegalMove, MoveGenerator};
-pub use crate::core::mv::{CapturedPiece, Move, Undo};
+pub use crate::core::mv::Move;
 pub use crate::core::piece::{Color, PieceCode, PieceKind};
 pub use crate::core::position::{Position, PositionBuildError, PositionBuilder, PositionError};
 pub use crate::core::rules::{
     ExhaustionRule, LionRule, MoveRules, PromotionChoice, PromotionRule, RepetitionRule, RuleCode,
-    RuleGroup, Rules, RulesError,
+    RuleCodeParseError, RuleGroup, RuleSetParseError, Rules, RulesError,
 };
 pub use crate::core::square::{
     BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square,

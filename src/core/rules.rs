@@ -110,13 +110,77 @@ impl fmt::Display for RuleCode {
 }
 
 impl FromStr for RuleCode {
-    type Err = String;
+    type Err = RuleCodeParseError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         Self::ALL
             .into_iter()
             .find(|code| input.eq_ignore_ascii_case(code.text()))
-            .ok_or_else(|| format!("unknown rule code '{input}'"))
+            .ok_or_else(|| RuleCodeParseError {
+                input: input.to_owned(),
+            })
+    }
+}
+
+/// 規則コード文字列が既知のコードでないことを表すエラー。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RuleCodeParseError {
+    input: String,
+}
+
+impl RuleCodeParseError {
+    /// 解釈できなかった入力を返す。
+    pub fn input(&self) -> &str {
+        &self.input
+    }
+}
+
+impl fmt::Display for RuleCodeParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "unknown rule code '{}'", self.input)
+    }
+}
+
+impl std::error::Error for RuleCodeParseError {}
+
+/// 規則セット文字列の構文エラー。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum RuleSetParseError {
+    /// 未知の規則コードが含まれている。
+    UnknownCode(RuleCodeParseError),
+    /// 規則セットのプリセット名が別の要素と併記されている。
+    PresetMustBeAlone {
+        /// 併記されたプリセット名。
+        preset: &'static str,
+    },
+}
+
+impl fmt::Display for RuleSetParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownCode(error) => error.fmt(formatter),
+            Self::PresetMustBeAlone { preset } => {
+                write!(
+                    formatter,
+                    "rule set preset '{preset}' must be specified alone"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for RuleSetParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::UnknownCode(error) => Some(error),
+            Self::PresetMustBeAlone { .. } => None,
+        }
+    }
+}
+
+impl From<RuleCodeParseError> for RuleSetParseError {
+    fn from(error: RuleCodeParseError) -> Self {
+        Self::UnknownCode(error)
     }
 }
 
@@ -134,7 +198,7 @@ const RULE_SET_PRESETS: &[(&str, Rules)] = &[
 ///
 /// プリセット名は単独で指定し、規則コードとの併記は認めない(第33条第5項・第6項)。
 /// 重複および排他制約の検証は`Rules::from_codes`が担う。
-pub fn parse_rule_set(input: &str) -> Result<Vec<RuleCode>, String> {
+pub fn parse_rule_set(input: &str) -> Result<Vec<RuleCode>, RuleSetParseError> {
     if let Some((_, rules)) = RULE_SET_PRESETS
         .iter()
         .find(|(name, _)| input.eq_ignore_ascii_case(name))
@@ -149,9 +213,9 @@ pub fn parse_rule_set(input: &str) -> Result<Vec<RuleCode>, String> {
                 .iter()
                 .find(|(name, _)| element.eq_ignore_ascii_case(name))
             {
-                Err(format!("rule set preset '{name}' must be specified alone"))
+                Err(RuleSetParseError::PresetMustBeAlone { preset: name })
             } else {
-                element.parse()
+                element.parse().map_err(RuleSetParseError::from)
             }
         })
         .collect()
@@ -598,11 +662,13 @@ impl From<Rules> for Vec<RuleCode> {
 
 impl fmt::Display for Rules {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (index, code) in Vec::<RuleCode>::from(*self).into_iter().enumerate() {
-            if index != 0 {
+        let mut first = true;
+        for code in RuleCode::ALL.into_iter().filter(|&code| self.adopts(code)) {
+            if !first {
                 formatter.write_str(",")?;
             }
             write!(formatter, "{code}")?;
+            first = false;
         }
         Ok(())
     }
@@ -761,7 +827,7 @@ mod tests {
     }
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
-        PieceCode::new(color, kind)
+        PieceCode::new(color, kind).expect("fixture uses an unpromoted-capable kind")
     }
 
     /// 麒麟由来の成獅子(第17条。同一側2枚目以降の獅子はこの形で置く)。
@@ -1339,7 +1405,10 @@ mod tests {
         let mut position = fixture(
             Color::White,
             &[
-                (msq(6, 'd'), piece(Color::White, PieceKind::SoaringEagle)),
+                (
+                    msq(6, 'd'),
+                    PieceCode::new_promoted(Color::White, PieceKind::SoaringEagle).unwrap(),
+                ),
                 (msq(9, 'd'), piece(Color::White, PieceKind::Lion)),
                 (msq(8, 'c'), piece(Color::White, PieceKind::CopperGeneral)),
                 (msq(5, 'e'), piece(Color::Black, PieceKind::Lion)),
@@ -2126,6 +2195,21 @@ mod tests {
         for invalid in ["engine-default,L1", "engine-default,lishogi", "lishogi,R1"] {
             assert!(parse_rule_set(invalid).is_err(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn rule_set_parse_errors_preserve_the_failure_kind() {
+        let unknown = parse_rule_set("L0,unknown").unwrap_err();
+        assert!(matches!(
+            unknown,
+            RuleSetParseError::UnknownCode(ref error) if error.input() == "unknown"
+        ));
+        assert!(std::error::Error::source(&unknown).is_some());
+
+        assert_eq!(
+            parse_rule_set("lishogi,R1"),
+            Err(RuleSetParseError::PresetMustBeAlone { preset: "lishogi" })
+        );
     }
 
     #[test]

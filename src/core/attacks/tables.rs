@@ -189,7 +189,11 @@ mod tests {
     /// 利きテーブルの生成方式に依存しない、公開の指し手生成経由の観測である。
     fn reachable_squares(color: Color, kind: PieceKind, from: Square) -> Bitboard {
         let mut builder = PositionBuilder::new(color);
-        builder.put(from, PieceCode::new(color, kind)).unwrap();
+        let piece = PieceCode::new(color, kind).unwrap_or_else(|| {
+            PieceCode::new_promoted(color, kind)
+                .expect("every promoted-only kind has a promoted piece code")
+        });
+        builder.put(from, piece).unwrap();
         let position = builder.finish().unwrap();
         let mut moves = Vec::new();
         MoveGenerator::standard().generate_moves(&position, &mut moves);

@@ -414,7 +414,16 @@ impl Position {
         &mut self,
         mv: Move,
         generator: &MoveGenerator,
-    ) -> Result<crate::Undo, IllegalMove> {
+    ) -> Result<(), IllegalMove> {
+        self.try_make_move_with_undo(mv, generator).map(drop)
+    }
+
+    /// 着手が合法手に含まれるか検査してから適用し、内部の巻き戻しトークンを返す。
+    pub(crate) fn try_make_move_with_undo(
+        &mut self,
+        mv: Move,
+        generator: &MoveGenerator,
+    ) -> Result<crate::core::mv::Undo, IllegalMove> {
         let mut moves = Vec::new();
         generator.generate_moves(self, &mut moves);
         if moves.contains(&mv) {

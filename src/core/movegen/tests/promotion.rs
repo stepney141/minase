@@ -123,7 +123,10 @@ fn article_17_4_promoted_pieces_never_promote_again() {
                 msq(6, 3),
                 PieceCode::new_promoted(Color::Black, PieceKind::DrunkElephant).unwrap(),
             ),
-            (msq(6, 2), PieceCode::new(Color::White, PieceKind::Pawn)),
+            (
+                msq(6, 2),
+                PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+            ),
         ],
     );
     let moves = generated(&promoted_elephant);
@@ -147,7 +150,10 @@ fn article_17_4_promoted_pieces_never_promote_again() {
                 msq(6, 3),
                 PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap(),
             ),
-            (msq(6, 2), PieceCode::new(Color::White, PieceKind::Pawn)),
+            (
+                msq(6, 2),
+                PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+            ),
         ],
     );
     assert_no_promotion(&generated(&promoted_pawn), msq(6, 3), msq(6, 2));

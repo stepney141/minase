@@ -1,6 +1,7 @@
 //! 局面の表現と、着手の適用・巻き戻し。
 
 use core::fmt;
+use core::num::NonZeroU64;
 use std::sync::OnceLock;
 
 use crate::core::bitboard::Bitboard;
@@ -13,7 +14,7 @@ use crate::rng::XorShift64;
 /// 1升あたりのzobrist駒キー数(色×駒種×成否)。
 const ZOBRIST_PIECE_CODE_COUNT: usize = COLOR_COUNT * PIECE_KIND_COUNT * 2;
 /// zobristキー生成に使う乱数列のシード。
-const ZOBRIST_SEED: u64 = 0x4d49_4e41_5345_5a31;
+const ZOBRIST_SEED: NonZeroU64 = NonZeroU64::new(0x4d49_4e41_5345_5a31).unwrap();
 
 /// zobristハッシュの基底乱数表。
 struct ZobristKeys {
@@ -110,7 +111,7 @@ pub(crate) struct LionTrigger {
 }
 
 /// [`Position::make_null_move`]の巻き戻しに必要な情報。
-pub struct NullUndo {
+pub(crate) struct NullUndo {
     /// 手番パス前の先獅子トリガー。
     previous_lion_taken: Option<LionTrigger>,
 }
@@ -300,7 +301,8 @@ impl Position {
                 builder
                     .put(
                         Square::new(file, rank).unwrap(),
-                        PieceCode::new(color, kind),
+                        PieceCode::new(color, kind)
+                            .expect("the initial position uses unpromoted-capable kinds"),
                     )
                     .unwrap();
             };
@@ -432,7 +434,7 @@ impl Position {
     /// 捕獲升とは、着手で実際に相手駒を取る升をいう。獅子、角鷹および
     /// 飛鷲の2段階移動では、1手で最大2升の相手駒を取る(第11条第3項・
     /// 第12条第4項)。
-    pub fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
+    pub(crate) fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
         let moving_color = self
             .piece_at(mv.from)
             .and_then(PieceCode::color)
@@ -490,7 +492,7 @@ impl Position {
     ///
     /// 盤上の駒と成り権保留状態(P1・P2・P5)は変更せず、手番を反転して、相手の
     /// 直後の1手だけに適用される先獅子状態を消滅させる(第15条第4・5項)。
-    pub fn make_null_move(&mut self) -> NullUndo {
+    pub(crate) fn make_null_move(&mut self) -> NullUndo {
         let previous_lion_taken = self.lion_taken_by_non_lion;
         self.flip_side_to_move();
         let keys = zobrist_keys();
@@ -506,7 +508,7 @@ impl Position {
     ///
     /// トークンはこの局面に対する[`Position::make_null_move`]が返した
     /// ものでなければならず、適用と逆の順序で巻き戻す必要がある。
-    pub fn unmake_null_move(&mut self, undo: NullUndo) {
+    pub(crate) fn unmake_null_move(&mut self, undo: NullUndo) {
         self.flip_side_to_move();
         let keys = zobrist_keys();
         self.zobrist ^= keys.lion_trigger_state(self.lion_taken_by_non_lion)
@@ -664,7 +666,7 @@ impl Position {
     /// panicするか、zobristハッシュや先獅子トリガーを含めて局面を静かに
     /// 壊すことがある。合法性検査付きの適用には
     /// [`Position::try_make_move`]を使う。
-    pub fn make_move_unchecked(&mut self, mv: Move, rules: MoveRules) -> Undo {
+    pub(crate) fn make_move_unchecked(&mut self, mv: Move, rules: MoveRules) -> Undo {
         let previous_zobrist = self.zobrist;
         let previous_promotion_deferred = self.promotion_deferred;
         let previous_rights_zobrist = self.rights_zobrist;
@@ -771,7 +773,7 @@ impl Position {
     /// トークンはこの局面に対する[`Position::make_move_unchecked`]が返した
     /// ものでなければならず、着手は適用と逆の順序で巻き戻す必要がある。
     /// どちらかの前提を破ると、panicするか局面を静かに壊すことがある。
-    pub fn unmake_move(&mut self, undo: Undo) {
+    pub(crate) fn unmake_move(&mut self, undo: Undo) {
         self.flip_side_to_move();
         self.remove_piece(undo.mv.to);
         self.put_piece(undo.mv.from, undo.moved_piece_before)
@@ -839,6 +841,8 @@ impl PositionBuilder {
 
 #[cfg(test)]
 mod tests {
+    use core::num::NonZeroU64;
+
     use super::*;
     use crate::MoveGenerator;
     use crate::test_util::{position as position_with_pieces, position_from_codes, sq};
@@ -1129,14 +1133,17 @@ mod tests {
         let custom = position_from_codes(
             Color::Black,
             &[
-                (sq(3, 3), PieceCode::new(Color::Black, PieceKind::King)),
+                (
+                    sq(3, 3),
+                    PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                ),
                 (
                     sq(7, 7),
                     PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap(),
                 ),
                 (
                     sq(9, 9),
-                    PieceCode::new(Color::Black, PieceKind::DrunkElephant),
+                    PieceCode::new(Color::Black, PieceKind::DrunkElephant).unwrap(),
                 ),
             ],
         );
@@ -1322,8 +1329,14 @@ mod tests {
         // (4) 成否だけが異なる対: 生の金将と歩兵の成駒、生の獅子と麒麟の成駒、
         // 生の醉象と仲人の成駒。
         let anchor_codes = [
-            (sq(0, 0), PieceCode::new(Color::Black, PieceKind::King)),
-            (sq(11, 11), PieceCode::new(Color::White, PieceKind::King)),
+            (
+                sq(0, 0),
+                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+            ),
+            (
+                sq(11, 11),
+                PieceCode::new(Color::White, PieceKind::King).unwrap(),
+            ),
         ];
         for kind in [
             PieceKind::GoldGeneral,
@@ -1336,7 +1349,7 @@ mod tests {
                 position_from_codes(Color::Black, &pieces)
             };
             assert_ne!(
-                with_code(PieceCode::new(Color::Black, kind)).zobrist(),
+                with_code(PieceCode::new(Color::Black, kind).unwrap()).zobrist(),
                 with_code(PieceCode::new_promoted(Color::Black, kind).unwrap()).zobrist(),
                 "{kind:?}"
             );
@@ -1467,12 +1480,18 @@ mod tests {
         let base = position_from_codes(
             Color::Black,
             &[
-                (sq(2, 2), PieceCode::new(Color::White, PieceKind::Lion)),
+                (
+                    sq(2, 2),
+                    PieceCode::new(Color::White, PieceKind::Lion).unwrap(),
+                ),
                 (
                     sq(9, 9),
                     PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap(),
                 ),
-                (sq(5, 5), PieceCode::new(Color::Black, PieceKind::Lion)),
+                (
+                    sq(5, 5),
+                    PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
+                ),
             ],
         );
 
@@ -1503,7 +1522,7 @@ mod tests {
     #[test]
     fn article_24_1_d_promotion_rights_key_is_separate_from_the_board_key() {
         let deferred_square = sq(4, 9);
-        let piece = PieceCode::new(Color::Black, PieceKind::SilverGeneral);
+        let piece = PieceCode::new(Color::Black, PieceKind::SilverGeneral).unwrap();
         let mut plain_builder = PositionBuilder::new(Color::Black);
         plain_builder.put(deferred_square, piece).unwrap();
         let plain = plain_builder.finish().unwrap();
@@ -1532,15 +1551,19 @@ mod tests {
         );
 
         let cases = [
-            (PieceCode::new(Color::Black, PieceKind::King), sq(5, 9)),
+            (
+                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                sq(5, 9),
+            ),
             (
                 PieceCode::new(Color::Black, PieceKind::SilverGeneral)
+                    .unwrap()
                     .promote()
                     .unwrap(),
                 sq(6, 9),
             ),
             (
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral).unwrap(),
                 sq(4, 7),
             ),
         ];
@@ -1727,14 +1750,16 @@ mod tests {
     }
 
     // 実装契約(D4-IMP-01): 空盤への1枚配置と同じ升の除去は互いに逆操作であり、
-    // 全144升×全駒コード(未成29種＋成駒18種×両所有者)で空盤へ完全に戻る。
+    // 全144升×全盤上駒コード(未成21種＋成駒18種×両所有者)で空盤へ完全に戻る。
     #[test]
     fn placing_then_removing_any_piece_restores_the_empty_position() {
         let pristine = Position::empty(Color::Black);
         let mut codes = Vec::new();
         for color in Color::ALL {
             for kind in PieceKind::ALL {
-                codes.push(PieceCode::new(color, kind));
+                if let Some(piece) = PieceCode::new(color, kind) {
+                    codes.push(piece);
+                }
                 if let Some(promoted) = PieceCode::new_promoted(color, kind) {
                     codes.push(promoted);
                 }
@@ -1754,10 +1779,16 @@ mod tests {
         // 既に駒がある升への二重配置と、空升・番兵コードの配置は拒否され状態を変えない。
         let mut builder = PositionBuilder::new(Color::Black);
         builder
-            .put(sq(4, 4), PieceCode::new(Color::Black, PieceKind::King))
+            .put(
+                sq(4, 4),
+                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+            )
             .unwrap();
         assert_eq!(
-            builder.put(sq(4, 4), PieceCode::new(Color::White, PieceKind::King)),
+            builder.put(
+                sq(4, 4),
+                PieceCode::new(Color::White, PieceKind::King).unwrap(),
+            ),
             Err(PositionBuildError::SquareOccupied { square: sq(4, 4) })
         );
         assert_eq!(
@@ -1803,8 +1834,14 @@ mod tests {
                     sq(4, 8),
                     PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap(),
                 ),
-                (sq(0, 0), PieceCode::new(Color::Black, PieceKind::King)),
-                (sq(6, 11), PieceCode::new(Color::White, PieceKind::King)),
+                (
+                    sq(0, 0),
+                    PieceCode::new(Color::Black, PieceKind::King).unwrap(),
+                ),
+                (
+                    sq(6, 11),
+                    PieceCode::new(Color::White, PieceKind::King).unwrap(),
+                ),
             ],
         );
         assert_eq!(played, built);
@@ -1869,7 +1906,10 @@ mod tests {
                 position_from_codes(
                     Color::Black,
                     &[
-                        (sq(4, 4), PieceCode::new(Color::Black, PieceKind::Rook)),
+                        (
+                            sq(4, 4),
+                            PieceCode::new(Color::Black, PieceKind::Rook).unwrap(),
+                        ),
                         (
                             sq(4, 9),
                             PieceCode::new_promoted(Color::White, PieceKind::FreeBoar).unwrap(),
@@ -1969,7 +2009,7 @@ mod tests {
             let mut trail = Vec::new();
             for mv in moves {
                 let snapshot = position.clone();
-                let undo = position.try_make_move(mv, &generator).unwrap();
+                let undo = position.try_make_move_with_undo(mv, &generator).unwrap();
                 trail.push((snapshot, undo));
             }
             while let Some((snapshot, undo)) = trail.pop() {
@@ -2038,7 +2078,7 @@ mod tests {
         builder
             .put(
                 deferred_square,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral).unwrap(),
             )
             .unwrap();
         builder.mark_promotion_deferred(deferred_square).unwrap();
@@ -2071,7 +2111,7 @@ mod tests {
         let mut recorded_move_lists = Vec::new();
 
         for seed in seeds {
-            let mut rng = XorShift64::new(seed);
+            let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
             for game in 0..games_per_seed {
                 let initial = Position::initial();
                 let mut position = initial.clone();
@@ -2152,7 +2192,7 @@ mod tests {
 
         // 決定性: 同一シードからの再実行は同一の指し手列を再現する。
         for seed in seeds {
-            let mut rng = XorShift64::new(seed);
+            let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
             for game in 0..games_per_seed {
                 let mut position = Position::initial();
                 let mut replayed_moves = Vec::new();

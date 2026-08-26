@@ -168,7 +168,7 @@ mod tests {
 
     use super::*;
     use crate::core::piece::PieceCode;
-    use crate::test_util::{position, position_from_codes, sq};
+    use crate::test_util::{position_from_codes, sq};
 
     // D7-EVAL-01。RULES.md第5条の初期配置は王将⇄玉将の対応を除き点対称で
     // あり、negamax（search.md「設計判断」）が要求する手番対称性の下で
@@ -253,42 +253,49 @@ mod tests {
     // 検出する。
     #[test]
     fn evaluation_is_symmetric_under_180_degree_rotation() {
-        let fixtures: [&[(Square, Color, PieceKind)]; 2] = [
-            &[
-                (sq(5, 0), Color::Black, PieceKind::King),
-                (sq(7, 5), Color::Black, PieceKind::Lion),
-                (sq(2, 3), Color::Black, PieceKind::Rook),
-                (sq(6, 4), Color::Black, PieceKind::Pawn),
-                (sq(6, 11), Color::White, PieceKind::King),
-                (sq(5, 10), Color::White, PieceKind::GoldGeneral),
-                (sq(9, 8), Color::White, PieceKind::Bishop),
+        let piece = |color, kind| PieceCode::new(color, kind).unwrap();
+        let fixtures = [
+            vec![
+                (sq(5, 0), piece(Color::Black, PieceKind::King)),
+                (sq(7, 5), piece(Color::Black, PieceKind::Lion)),
+                (sq(2, 3), piece(Color::Black, PieceKind::Rook)),
+                (sq(6, 4), piece(Color::Black, PieceKind::Pawn)),
+                (sq(6, 11), piece(Color::White, PieceKind::King)),
+                (sq(5, 10), piece(Color::White, PieceKind::GoldGeneral)),
+                (sq(9, 8), piece(Color::White, PieceKind::Bishop)),
             ],
-            &[
-                (sq(0, 0), Color::Black, PieceKind::King),
-                (sq(4, 6), Color::Black, PieceKind::DragonHorse),
-                (sq(11, 2), Color::Black, PieceKind::Lance),
-                (sq(11, 11), Color::White, PieceKind::King),
-                (sq(10, 10), Color::White, PieceKind::CrownPrince),
-                (sq(3, 9), Color::White, PieceKind::FreeKing),
-                (sq(8, 7), Color::White, PieceKind::Pawn),
+            vec![
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(4, 6), piece(Color::Black, PieceKind::DragonHorse)),
+                (sq(11, 2), piece(Color::Black, PieceKind::Lance)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+                (
+                    sq(10, 10),
+                    PieceCode::new_promoted(Color::White, PieceKind::CrownPrince).unwrap(),
+                ),
+                (sq(3, 9), piece(Color::White, PieceKind::FreeKing)),
+                (sq(8, 7), piece(Color::White, PieceKind::Pawn)),
             ],
         ];
 
         for pieces in fixtures {
-            let original = position(Color::Black, pieces);
+            let original = position_from_codes(Color::Black, &pieces);
             // 180度回転（升(f, r)→(11−f, 11−r)）と所有者の入れ替え。王将⇄
             // 玉将は駒種として同一（RULES.md第5条: 性能同一）に読み替える。
-            let rotated_pieces: Vec<(Square, Color, PieceKind)> = pieces
+            let rotated_pieces: Vec<(Square, PieceCode)> = pieces
                 .iter()
-                .map(|&(square, color, kind)| {
-                    (
-                        sq(11 - square.file(), 11 - square.rank()),
-                        color.opposite(),
-                        kind,
-                    )
+                .map(|&(square, piece)| {
+                    let color = piece.color().unwrap().opposite();
+                    let kind = piece.kind().unwrap();
+                    let rotated_piece = if piece.is_promoted() {
+                        PieceCode::new_promoted(color, kind).unwrap()
+                    } else {
+                        PieceCode::new(color, kind).unwrap()
+                    };
+                    (sq(11 - square.file(), 11 - square.rank()), rotated_piece)
                 })
                 .collect();
-            let rotated = position(Color::White, &rotated_pieces);
+            let rotated = position_from_codes(Color::White, &rotated_pieces);
             assert_eq!(evaluate(&original), evaluate(&rotated));
         }
     }

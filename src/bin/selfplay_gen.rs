@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::process::{self, Command};
@@ -14,13 +14,15 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use minase::core::rules::parse_rule_set;
+use minase::eval::Pst;
 use minase::eval::training_data::{
     Error as TrainingDataError, Header, Outcome, Reader, Record, Writer, best_move_is_tactical,
 };
 use minase::rng::{XorShift64, derive_seed};
-use minase::search::{DEFAULT_THREADS, SearchLimits, TranspositionTable, search};
+use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
 use minase::{
-    Color, DrawReason, Game, GameResult, GameStatus, Position, Rules, WinReason, to_sfen,
+    Color, DrawReason, Game, GameResult, GameStatus, MoveGenerator, Position, Rules, WinReason,
+    to_sfen,
 };
 
 /// グローバルアロケータ。探索を行う既存バイナリと同じくmimallocを使う。
@@ -331,9 +333,8 @@ fn write_training_data(
     generation_commit: &str,
 ) -> io::Result<()> {
     // 探索は埋め込み学習PSTで着手するので、その重み本体の検査和を生成元として残す。
-    let network_checksum = *minase::eval::weights()
-        .expect("main validated the embedded weights")
-        .checksum();
+    let pst = minase::eval::weights().map_err(|error| invalid_data(error.to_string()))?;
+    let network_checksum = *pst.checksum();
     let header = Header::new(
         rule_set.to_owned(),
         generation_commit.to_owned(),
@@ -353,8 +354,15 @@ fn write_training_data(
         for _ in 0..arguments.concurrency.get() {
             let sender = sender.clone();
             let next_game = &next_game;
+            let pst = pst.as_ref();
             scope.spawn(move || {
-                let mut table = TranspositionTable::new(arguments.hash_mb.get());
+                let mut table = match TranspositionTable::new(arguments.hash_mb.get()) {
+                    Ok(table) => table,
+                    Err(error) => {
+                        let _ = sender.send(Err(invalid_data(error.to_string())));
+                        return;
+                    }
+                };
                 loop {
                     let game_number = next_game.fetch_add(1, Ordering::Relaxed);
                     if game_number > u64::from(arguments.games) {
@@ -369,6 +377,7 @@ fn write_training_data(
                     };
                     let completed = match catch_unwind(AssertUnwindSafe(|| {
                         play_game(
+                            pst,
                             rules,
                             arguments.seed,
                             game_number,
@@ -441,6 +450,7 @@ fn write_training_data(
 
 /// 1局をランダム序盤から終局まで進め、採用レコードを返す。
 fn play_game(
+    pst: &Pst,
     rules: Rules,
     base_seed: u64,
     game_number: u32,
@@ -451,32 +461,20 @@ fn play_game(
     let game_seed = derive_seed(base_seed, u64::from(game_number));
     let mut game = generate_opening(rules, game_seed)?;
     table.clear();
-    let limits = SearchLimits {
-        depth: None,
-        nodes: Some(u64::from(nodes)),
-        movetime_ms: None,
-        clock: None,
-        infinite: false,
-    };
+    let limits = SearchLimits::new(None, Some(u64::from(nodes)), None, None)
+        .expect("the CLI parser accepts only non-zero node limits");
     let mut candidates = Vec::new();
     let mut stats = Statistics::default();
+    let generator = MoveGenerator::new(rules.moves);
 
     while game.result().is_none() && game.ply_count() < u32::from(max_ply) {
-        let legal_moves = game.legal_moves();
-        if legal_moves.is_empty() {
-            return Err(invalid_data(format!(
+        let snapshot = SearchSnapshot::from_game(&game).map_err(|_| {
+            invalid_data(format!(
                 "game {game_number} is ongoing but has no legal moves"
-            )));
-        }
-        let search_result = search(
-            game.position(),
-            rules.moves,
-            &legal_moves,
-            game.search_key_history(),
-            &limits,
-            DEFAULT_THREADS,
-            table,
-        );
+            ))
+        })?;
+        let search_result = search(pst, &snapshot, &limits, DEFAULT_THREADS, table)
+            .map_err(|error| invalid_data(error.to_string()))?;
         stats.searched_positions += 1;
         stats.searched_nodes = stats
             .searched_nodes
@@ -485,7 +483,13 @@ fn play_game(
 
         if search_result.score.unsigned_abs() >= MATE_BAND_START {
             stats.excluded_mate_band += 1;
-        } else if best_move_is_tactical(game.position(), search_result.best_move) {
+        } else if best_move_is_tactical(game.position(), &generator, search_result.best_move)
+            .map_err(|error| {
+                invalid_data(format!(
+                    "game {game_number} search returned an illegal best move: {error}"
+                ))
+            })?
+        {
             stats.excluded_tactical += 1;
         } else if current_position_is_repeated(&game) {
             stats.excluded_repetition += 1;
@@ -551,12 +555,12 @@ fn play_game(
 }
 
 /// 決定的な8手から16手のランダム序盤を作る。
-fn generate_opening(rules: Rules, game_seed: u64) -> io::Result<Game> {
-    let mut opening_seed = derive_seed(game_seed, 0);
+fn generate_opening(rules: Rules, game_seed: NonZeroU64) -> io::Result<Game> {
+    let mut opening_seed = derive_seed(game_seed.get(), 0);
     loop {
         let mut game = Game::new(rules);
         let mut rng = XorShift64::new(opening_seed);
-        let opening_plies = 8 + rng.index(9);
+        let opening_plies = 8 + rng.index(NonZeroUsize::new(9).unwrap());
         let mut finished = false;
         for _ in 0..opening_plies {
             let legal_moves = game.legal_moves();
@@ -565,7 +569,9 @@ fn generate_opening(rules: Rules, game_seed: u64) -> io::Result<Game> {
                     "an opening game is ongoing but has no legal moves",
                 ));
             }
-            let selected = legal_moves[rng.index(legal_moves.len())];
+            let move_count = NonZeroUsize::new(legal_moves.len())
+                .expect("the empty move list was rejected above");
+            let selected = legal_moves[rng.index(move_count)];
             let status = game.play(selected).map_err(|error| {
                 invalid_data(format!("random opening move was rejected: {error}"))
             })?;
@@ -577,7 +583,7 @@ fn generate_opening(rules: Rules, game_seed: u64) -> io::Result<Game> {
         if !finished {
             return Ok(game);
         }
-        opening_seed = derive_seed(opening_seed, 0);
+        opening_seed = derive_seed(opening_seed.get(), 0);
     }
 }
 
@@ -774,7 +780,8 @@ fn print_record(index: u64, record: &Record, position: &Position) {
 
 /// `engine-default`を公開規則解析APIから構築する。
 fn engine_default_rules() -> io::Result<Rules> {
-    let codes = parse_rule_set("engine-default").map_err(invalid_data)?;
+    let codes =
+        parse_rule_set("engine-default").map_err(|error| invalid_data(error.to_string()))?;
     Rules::from_codes(&codes).map_err(|error| invalid_data(error.to_string()))
 }
 

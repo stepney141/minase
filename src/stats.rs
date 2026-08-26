@@ -56,7 +56,7 @@ fn secular(pdf: &Pdf, expected: f64) -> f64 {
     let mut upper = -1.0 / min - SECULAR_MARGIN;
 
     while upper - lower > SECULAR_TOLERANCE {
-        let middle = (lower + upper) / 2.0;
+        let middle = lower.midpoint(upper);
         let value = pdf
             .iter()
             .map(|&(score, probability)| {
@@ -72,7 +72,7 @@ fn secular(pdf: &Pdf, expected: f64) -> f64 {
             return middle;
         }
     }
-    (lower + upper) / 2.0
+    lower.midpoint(upper)
 }
 
 /// 観測分布から、指定した期待値を持つ最尤分布を求める。
@@ -163,6 +163,8 @@ pub fn estimate_elo(results: &[u64; 5]) -> EloEstimate {
 
 #[cfg(test)]
 mod tests {
+    use core::num::NonZeroU64;
+
     use super::*;
     use crate::rng::XorShift64;
 
@@ -322,7 +324,8 @@ mod tests {
 
     /// 指定分布について上限つきGSPRTを反復し、[H0, 継続, H1]の件数を返す。
     fn simulate(pdf: &Pdf, repetitions: usize, max_pairs: usize, seed: u64) -> [usize; 3] {
-        let mut rng = XorShift64::new(seed);
+        let mut rng =
+            XorShift64::new(NonZeroU64::new(seed).expect("simulation tests use non-zero seeds"));
         let mut decisions = [0; 3];
         for _ in 0..repetitions {
             let mut results = [0; 5];

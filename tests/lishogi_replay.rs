@@ -1,3 +1,5 @@
+//! Lishogi公開棋譜をMinaseの規則実装で再生する統合テスト。
+
 use std::io::{BufRead, BufReader};
 
 use flate2::read::GzDecoder;
@@ -57,18 +59,18 @@ fn replay_game(replay: &Value) -> Result<(), String> {
 
     let setup = parse_extended_sfen(initial_sfen, rules.moves)
         .map_err(|error| format!("game {id}: failed to parse initial_sfen: {error}"))?;
-    if setup.position != Position::initial()
-        || setup.lion_capture.is_some()
-        || setup.next_move_number != 1
+    if setup.position() != &Position::initial()
+        || setup.lion_capture().is_some()
+        || setup.next_move_number() != 1
     {
         return Err(format!(
             "game {id}: initial_sfen is not the standard initial position: {setup:?}"
         ));
     }
 
-    let mut position = setup.position;
+    let (mut position, lion_capture, _) = setup.into_parts();
     position
-        .set_lion_capture(setup.lion_capture)
+        .set_lion_capture(lion_capture)
         .map_err(|error| format!("game {id}: failed to restore lion-capture state: {error}"))?;
     let mut game = Game::from_position(rules, position);
     let moves: Vec<_> = moves.split_whitespace().collect();

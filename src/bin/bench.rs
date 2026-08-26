@@ -5,7 +5,10 @@ use std::time::Instant;
 
 use clap::Parser;
 use minase::core::rules::parse_rule_set;
-use minase::search::{DEFAULT_THREADS, MAX_PLY, SearchLimits, TranspositionTable, search};
+use minase::eval::Pst;
+use minase::search::{
+    DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search,
+};
 use minase::{Game, Rules, parse_sfen};
 
 /// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
@@ -183,12 +186,13 @@ fn median_f64(values: &mut [f64]) -> f64 {
     if values.len() % 2 == 1 {
         values[middle]
     } else {
-        (values[middle - 1] + values[middle]) / 2.0
+        values[middle - 1].midpoint(values[middle])
     }
 }
 
 /// 固定局面集を1回探索する。
 fn run_bench(
+    pst: &Pst,
     rules: Rules,
     limits: &SearchLimits,
     threads: NonZeroUsize,
@@ -202,22 +206,11 @@ fn run_bench(
     for bench_position in BENCH_POSITIONS {
         let position = parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
         let game = Game::from_position(rules, position);
-        let legal_moves = game.legal_moves();
-        assert!(
-            !legal_moves.is_empty(),
-            "bench position must have legal moves"
-        );
+        let snapshot = SearchSnapshot::from_game(&game).expect("bench position must have moves");
         transposition_table.clear();
         let position_start = Instant::now();
-        let result = search(
-            game.position(),
-            rules.moves,
-            &legal_moves,
-            game.search_key_history(),
-            limits,
-            threads,
-            transposition_table,
-        );
+        let result = search(pst, &snapshot, limits, threads, transposition_table)
+            .expect("bench search input must be valid");
         let elapsed = position_start.elapsed();
         reached_depth = reached_depth.min(result.depth);
         total_elapsed += elapsed.as_secs_f64();
@@ -244,26 +237,23 @@ fn run_bench(
 
 /// 探索ベンチを実行する。
 fn main() {
-    if let Err(error) = minase::eval::weights() {
+    let pst = minase::eval::weights().unwrap_or_else(|error| {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         std::process::exit(1);
-    }
+    });
     let arguments = Arguments::parse();
     let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
     let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
-    let limits = SearchLimits {
-        depth: Some(arguments.depth),
-        nodes: None,
-        movetime_ms: None,
-        clock: None,
-        infinite: false,
-    };
+    let limits = SearchLimits::new(Some(arguments.depth), None, None, None)
+        .expect("the CLI parser accepts only valid search depths");
     // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
     // 置換表は1個を使い回して局面ごとに計測外でクリアし(クリア後は
     // 新品と同一状態)、NPSは各局面の探索時間の合計から計算する。
-    let mut transposition_table = TranspositionTable::default();
+    let mut transposition_table = TranspositionTable::new(minase::search::DEFAULT_TT_SIZE_MB)
+        .expect("default transposition table size must be valid");
     if arguments.repetitions.get() == 1 {
         let result = run_bench(
+            &pst,
             rules,
             &limits,
             arguments.threads,
@@ -282,6 +272,7 @@ fn main() {
     }
 
     let _ = run_bench(
+        &pst,
         rules,
         &limits,
         arguments.threads,
@@ -291,6 +282,7 @@ fn main() {
     let mut runs = Vec::with_capacity(arguments.repetitions.get());
     for run in 1..=arguments.repetitions.get() {
         let result = run_bench(
+            &pst,
             rules,
             &limits,
             arguments.threads,
@@ -396,32 +388,28 @@ mod tests {
     fn total_node_counts_are_reproducible_across_runs() {
         let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
         let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
-        let limits = SearchLimits {
-            depth: Some(1),
-            nodes: None,
-            movetime_ms: None,
-            clock: None,
-            infinite: false,
-        };
+        let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
+        let pst = minase::eval::weights().unwrap();
         let run = || {
-            let mut transposition_table = TranspositionTable::default();
+            let mut transposition_table =
+                TranspositionTable::new(minase::search::DEFAULT_TT_SIZE_MB)
+                    .expect("default transposition table size must be valid");
             let mut total_nodes = 0_u64;
             for bench_position in BENCH_POSITIONS {
                 let position =
                     parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
                 let game = Game::from_position(rules, position);
-                let legal_moves = game.legal_moves();
+                let snapshot = SearchSnapshot::from_game(&game).unwrap();
                 // 本体と同じく局面ごとに置換表をクリアして探索する
                 transposition_table.clear();
                 let result = search(
-                    game.position(),
-                    rules.moves,
-                    &legal_moves,
-                    game.search_key_history(),
+                    &pst,
+                    &snapshot,
                     &limits,
                     DEFAULT_THREADS,
                     &mut transposition_table,
-                );
+                )
+                .unwrap();
                 total_nodes += result.nodes;
             }
             total_nodes

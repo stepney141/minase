@@ -11,11 +11,59 @@ use crate::core::square::{BOARD_FILES, BOARD_RANKS, Square};
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SetupPosition {
     /// 盤面、手番および成り権保留状態(P1・P2・P5)。
-    pub position: Position,
+    position: Position,
     /// 直前の非獅子による獅子捕獲升。先獅子(第15条)の復元に使う。
-    pub lion_capture: Option<Square>,
+    lion_capture: Option<Square>,
     /// 次の着手の手数。表記だけに保持し、裁定には使わない。
-    pub next_move_number: u32,
+    next_move_number: u32,
+}
+
+impl SetupPosition {
+    /// 検証済みの対局開始局面を作る。
+    pub fn new(
+        position: Position,
+        lion_capture: Option<Square>,
+        next_move_number: u32,
+    ) -> Result<Self, SfenError> {
+        position.validate().map_err(|error| {
+            SfenError::PositionBuild(PositionBuildError::InvalidPosition(error))
+        })?;
+        if !(1..=9999).contains(&next_move_number) {
+            return Err(SfenError::InvalidMoveNumber);
+        }
+        if let Some(square) = lion_capture
+            && position
+                .piece_at(square)
+                .is_some_and(|piece| piece.color() == Some(position.side_to_move()))
+        {
+            return Err(SfenError::LionCaptureOccupiedBySideToMove { square });
+        }
+        Ok(Self {
+            position,
+            lion_capture,
+            next_move_number,
+        })
+    }
+
+    /// 盤面、手番および成り権保留状態を返す。
+    pub fn position(&self) -> &Position {
+        &self.position
+    }
+
+    /// 直前の非獅子による獅子捕獲升を返す。
+    pub fn lion_capture(&self) -> Option<Square> {
+        self.lion_capture
+    }
+
+    /// 次の着手の手数を返す。
+    pub fn next_move_number(&self) -> u32 {
+        self.next_move_number
+    }
+
+    /// 局面、獅子捕獲升および次の手数へ分解する。
+    pub fn into_parts(self) -> (Position, Option<Square>, u32) {
+        (self.position, self.lion_capture, self.next_move_number)
+    }
 }
 
 /// SFENの構文または局面構築のエラー。
@@ -297,7 +345,7 @@ pub fn to_extended_sfen(setup: &SetupPosition) -> String {
         .lion_capture
         .map_or_else(|| "-".to_owned(), square_to_text);
     let promotion_deferred = Square::all()
-        .filter(|&square| setup.position.promotion_deferred().contains(square))
+        .filter(|&square| setup.position().promotion_deferred().contains(square))
         .map(square_to_text)
         .collect::<Vec<_>>();
     let promotion_deferred = if promotion_deferred.is_empty() {
@@ -308,8 +356,8 @@ pub fn to_extended_sfen(setup: &SetupPosition) -> String {
 
     format!(
         "{} {lion_capture} {} {promotion_deferred}",
-        to_sfen(&setup.position),
-        setup.next_move_number
+        to_sfen(setup.position()),
+        setup.next_move_number()
     )
 }
 
@@ -343,19 +391,7 @@ pub fn parse_extended_sfen(sfen: &str, rules: MoveRules) -> Result<SetupPosition
         parse_promotion_deferred(fields.get(4).copied().unwrap_or("-"), rules)?;
     let position = parse_position(fields[0], side_to_move, &promotion_deferred)?;
 
-    if let Some(square) = lion_capture
-        && position
-            .piece_at(square)
-            .is_some_and(|piece| piece.color() == Some(side_to_move))
-    {
-        return Err(SfenError::LionCaptureOccupiedBySideToMove { square });
-    }
-
-    Ok(SetupPosition {
-        position,
-        lion_capture,
-        next_move_number,
-    })
+    SetupPosition::new(position, lion_capture, next_move_number)
 }
 
 /// 升を筋数字と段英字の表記(例: `6f`)へ変換する。
@@ -536,7 +572,8 @@ fn parse_position(
                     });
                 }
             };
-            let unpromoted = PieceCode::new(color, kind);
+            let unpromoted = PieceCode::new(color, kind)
+                .expect("SFEN letters denote unpromoted-capable piece kinds");
             let piece = if promote {
                 unpromoted.promote().ok_or(SfenError::UnpromotablePiece {
                     row: display_row,
@@ -652,7 +689,7 @@ mod tests {
                 let position = parse_sfen(&sfen).unwrap();
                 assert_eq!(
                     position.piece_at(sq(0, 11)),
-                    Some(PieceCode::new(color, kind)),
+                    PieceCode::new(color, kind),
                     "{text}"
                 );
                 assert_eq!(to_sfen(&position), sfen, "{text}");
@@ -752,22 +789,22 @@ mod tests {
         .unwrap();
         assert_eq!(
             corners.piece_at(sq(0, 11)),
-            Some(PieceCode::new(Color::Black, PieceKind::Pawn))
+            PieceCode::new(Color::Black, PieceKind::Pawn)
         );
         assert_eq!(
             corners.piece_at(sq(11, 0)),
-            Some(PieceCode::new(Color::White, PieceKind::Pawn))
+            PieceCode::new(Color::White, PieceKind::Pawn)
         );
 
         // 連続する数字トークンの累積解釈: 3i4i3は3空＋仲人＋4空＋仲人＋3空。
         let go_betweens = parse_sfen(&format!("{} b", board_with_row(0, "3i4i3"))).unwrap();
         assert_eq!(
             go_betweens.piece_at(sq(3, 11)),
-            Some(PieceCode::new(Color::White, PieceKind::GoBetween))
+            PieceCode::new(Color::White, PieceKind::GoBetween)
         );
         assert_eq!(
             go_betweens.piece_at(sq(8, 11)),
-            Some(PieceCode::new(Color::White, PieceKind::GoBetween))
+            PieceCode::new(Color::White, PieceKind::GoBetween)
         );
 
         // `1`の直後の`2`は12と解釈される（`12`のみ＝全空の段の受理）。
@@ -832,18 +869,18 @@ mod tests {
     #[test]
     fn lishogi_initial_four_field_sfen_matches_the_initial_position() {
         let setup = parse_extended_sfen(LISHOGI_INITIAL_SFEN, MoveRules::standard()).unwrap();
-        assert_eq!(setup.position, Position::initial());
-        assert_eq!(setup.lion_capture, None);
-        assert_eq!(setup.next_move_number, 1);
+        assert_eq!(setup.position(), &Position::initial());
+        assert_eq!(setup.lion_capture(), None);
+        assert_eq!(setup.next_move_number(), 1);
 
         // 王将Kが先手、玉将kが後手にある（[RULES]第5条）。
         assert_eq!(
-            setup.position.piece_at(sq(5, 0)),
-            Some(PieceCode::new(Color::Black, PieceKind::King))
+            setup.position().piece_at(sq(5, 0)),
+            PieceCode::new(Color::Black, PieceKind::King)
         );
         assert_eq!(
-            setup.position.piece_at(sq(6, 11)),
-            Some(PieceCode::new(Color::White, PieceKind::King))
+            setup.position().piece_at(sq(6, 11)),
+            PieceCode::new(Color::White, PieceKind::King)
         );
 
         // 書き出しの4欄導出形（5欄から第5欄を落とす）が初期SFEN文字列と一致する。
@@ -874,7 +911,7 @@ mod tests {
         builder
             .put(
                 deferred_square,
-                PieceCode::new(Color::Black, PieceKind::SilverGeneral),
+                PieceCode::new(Color::Black, PieceKind::SilverGeneral).unwrap(),
             )
             .unwrap();
         builder.mark_promotion_deferred(deferred_square).unwrap();
@@ -978,8 +1015,8 @@ mod tests {
         for row in ["5+o6", "5n6", "5p6"] {
             let setup =
                 parse_extended_sfen(&format!("{} b 7f 1", board_with_row(5, row)), rules).unwrap();
-            assert_eq!(setup.lion_capture, Some(capture_square), "{row}");
-            pieces.push(setup.position.piece_at(capture_square).unwrap());
+            assert_eq!(setup.lion_capture(), Some(capture_square), "{row}");
+            pieces.push(setup.position().piece_at(capture_square).unwrap());
         }
 
         // +oとnは解析後も区別され（D5-SFEN-03の出自保存）、L2導出の一意性が成り立つ。
@@ -987,7 +1024,10 @@ mod tests {
             Some(pieces[0]),
             PieceCode::new_promoted(Color::White, PieceKind::Lion)
         );
-        assert_eq!(pieces[1], PieceCode::new(Color::White, PieceKind::Lion));
+        assert_eq!(
+            pieces[1],
+            PieceCode::new(Color::White, PieceKind::Lion).unwrap()
+        );
         assert_ne!(pieces[0], pieces[1]);
     }
 
@@ -998,7 +1038,7 @@ mod tests {
         let rules = MoveRules::standard();
         for valid in [1_u32, 9999] {
             let setup = parse_extended_sfen(&format!("{EMPTY_BOARD} b - {valid}"), rules).unwrap();
-            assert_eq!(setup.next_move_number, valid);
+            assert_eq!(setup.next_move_number(), valid);
             // 受理した手数は書き出しで保存される（往復一致）。
             assert!(to_extended_sfen(&setup).contains(&format!(" {valid} ")));
         }
@@ -1011,6 +1051,25 @@ mod tests {
                 "{invalid}"
             );
         }
+    }
+
+    // 公開コンストラクタは解析器と同じ手数・先獅子条件を課す。
+    #[test]
+    fn setup_position_constructor_rejects_values_the_parser_cannot_produce() {
+        for invalid in [0, 10_000] {
+            assert_eq!(
+                SetupPosition::new(Position::initial(), None, invalid),
+                Err(SfenError::InvalidMoveNumber)
+            );
+        }
+
+        let occupied_by_side_to_move = sq(5, 0);
+        assert_eq!(
+            SetupPosition::new(Position::initial(), Some(occupied_by_side_to_move), 1),
+            Err(SfenError::LionCaptureOccupiedBySideToMove {
+                square: occupied_by_side_to_move
+            })
+        );
     }
 
     // D5-SFEN-12: 第5欄は成り権保留升(P1・P2・P5)のコンマ区切り列（[PL]「拡張SFEN」、
@@ -1093,7 +1152,7 @@ mod tests {
             },
         ] {
             let setup = parse_extended_sfen(&text, rules).unwrap();
-            assert!(setup.position.promotion_deferred().contains(sq(4, 9)));
+            assert!(setup.position().promotion_deferred().contains(sq(4, 9)));
             assert_eq!(to_extended_sfen(&setup), text, "{rules:?}");
         }
     }
@@ -1157,11 +1216,7 @@ mod tests {
     #[test]
     fn extended_output_always_writes_five_fields_and_round_trips_all_state() {
         // 捕獲なし・保留なしでも第3欄`-`と第5欄`-`は省略されない。
-        let plain = SetupPosition {
-            position: Position::initial(),
-            lion_capture: None,
-            next_move_number: 1,
-        };
+        let plain = SetupPosition::new(Position::initial(), None, 1).unwrap();
         let plain_text = to_extended_sfen(&plain);
         assert_eq!(plain_text.split_whitespace().count(), 5);
         assert!(plain_text.ends_with(" b - 1 -"));

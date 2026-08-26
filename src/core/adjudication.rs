@@ -621,7 +621,7 @@ mod tests {
     use crate::test_util::{position_from_codes as position, sq};
 
     fn piece(color: Color, kind: PieceKind) -> PieceCode {
-        PieceCode::new(color, kind)
+        PieceCode::new(color, kind).expect("fixture uses an unpromoted-capable kind")
     }
 
     fn step(from: Square, to: Square) -> Move {
@@ -804,7 +804,7 @@ mod tests {
             let mut low_level = start.clone();
             let mut state = AdjudicationState::new(rules.repetition, &low_level);
             let mover = low_level.side_to_move();
-            let undo = low_level.try_make_move(mv, &generator).unwrap();
+            let undo = low_level.try_make_move_with_undo(mv, &generator).unwrap();
             assert!(!repetition_is_forbidden(state.repetition(), &low_level));
             let waiting = promoted_waiting_square(mv, &undo);
             let repetition_result = state.record_move(&low_level, &generator, mover, mv);

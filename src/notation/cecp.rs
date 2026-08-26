@@ -196,9 +196,9 @@ fn square_to_text(square: Square) -> String {
 mod tests {
     use super::*;
     use crate::core::movegen::MoveGenerator;
-    use crate::core::piece::{Color, PieceKind};
+    use crate::core::piece::{Color, PieceCode, PieceKind};
     use crate::notation::usi;
-    use crate::test_util::{position, sq};
+    use crate::test_util::{position, position_from_codes, sq};
 
     fn generated(pos: &Position) -> Vec<Move> {
         let mut moves = Vec::new();
@@ -208,6 +208,13 @@ mod tests {
 
     fn single_piece_position(color: Color, kind: PieceKind, from: Square) -> Position {
         position(color, &[(from, color, kind)])
+    }
+
+    fn single_promoted_piece_position(color: Color, kind: PieceKind, from: Square) -> Position {
+        position_from_codes(
+            color,
+            &[(from, PieceCode::new_promoted(color, kind).unwrap())],
+        )
     }
 
     fn canonical_jitto(from: Square) -> Move {
@@ -242,7 +249,7 @@ mod tests {
             to: sq(5, 8),
             promote: false,
         };
-        assert_eq!(usi::text(&empty, mv), "7g7d");
+        assert_eq!(usi::text_generated(&empty, mv), "7g7d");
         assert_eq!(legs(mv), ["f6f9"]);
         assert_eq!(parse(&empty, "f6f9"), Ok(mv));
 
@@ -477,16 +484,37 @@ mod tests {
     // 設計」）。じっとは`@@@@`が移動元を運ばないため往復対象外とし、解決はD6が担う。
     #[test]
     fn all_legal_moves_round_trip_via_concatenated_legs() {
-        let special = position(
+        let special = position_from_codes(
             Color::Black,
             &[
-                (sq(5, 5), Color::Black, PieceKind::Lion),
-                (sq(1, 1), Color::Black, PieceKind::HornedFalcon),
-                (sq(9, 1), Color::Black, PieceKind::SoaringEagle),
-                (sq(5, 6), Color::White, PieceKind::Pawn),
-                (sq(6, 6), Color::White, PieceKind::SilverGeneral),
-                (sq(1, 2), Color::White, PieceKind::Pawn),
-                (sq(8, 2), Color::White, PieceKind::Pawn),
+                (
+                    sq(5, 5),
+                    PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
+                ),
+                (
+                    sq(1, 1),
+                    PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon).unwrap(),
+                ),
+                (
+                    sq(9, 1),
+                    PieceCode::new_promoted(Color::Black, PieceKind::SoaringEagle).unwrap(),
+                ),
+                (
+                    sq(5, 6),
+                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                ),
+                (
+                    sq(6, 6),
+                    PieceCode::new(Color::White, PieceKind::SilverGeneral).unwrap(),
+                ),
+                (
+                    sq(1, 2),
+                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                ),
+                (
+                    sq(8, 2),
+                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
+                ),
             ],
         );
         let promotion = position(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]);
@@ -494,10 +522,10 @@ mod tests {
             Position::initial(),
             special,
             single_piece_position(Color::Black, PieceKind::Lion, sq(5, 5)),
-            single_piece_position(Color::Black, PieceKind::HornedFalcon, sq(5, 5)),
-            single_piece_position(Color::White, PieceKind::HornedFalcon, sq(5, 5)),
-            single_piece_position(Color::Black, PieceKind::SoaringEagle, sq(5, 5)),
-            single_piece_position(Color::White, PieceKind::SoaringEagle, sq(5, 5)),
+            single_promoted_piece_position(Color::Black, PieceKind::HornedFalcon, sq(5, 5)),
+            single_promoted_piece_position(Color::White, PieceKind::HornedFalcon, sq(5, 5)),
+            single_promoted_piece_position(Color::Black, PieceKind::SoaringEagle, sq(5, 5)),
+            single_promoted_piece_position(Color::White, PieceKind::SoaringEagle, sq(5, 5)),
             promotion,
         ];
 
