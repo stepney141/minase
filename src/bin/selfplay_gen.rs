@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{self, File, OpenOptions};
-use std::io;
+use std::io::{self, Seek, Write};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
@@ -496,23 +496,11 @@ fn write_training_data(
         }
         drop(sender);
 
-        let mut pending = BTreeMap::new();
-        let mut next_to_write = 1_u64;
-        let mut completed_count = 0_u64;
-        let mut total = Statistics::default();
-        let mut recorded = RecordedStatistics::default();
-        for message in receiver {
-            let completed = message?;
-            pending.insert(completed.game_number, completed);
-            while let Some(completed) = pending.remove(&(next_to_write as u32)) {
-                for record in &completed.records {
-                    writer
-                        .write_record(&record.record)
-                        .map_err(training_error)?;
-                    recorded.record(record);
-                }
-                total.merge(&completed.stats);
-                completed_count += 1;
+        merge_completed_games(
+            receiver,
+            &mut writer,
+            arguments.games,
+            |completed_count, total| {
                 if completed_count.is_multiple_of(progress_interval)
                     || completed_count == u64::from(arguments.games)
                 {
@@ -523,17 +511,8 @@ fn write_training_data(
                         start.elapsed().as_secs_f64()
                     );
                 }
-                next_to_write += 1;
-            }
-        }
-        if next_to_write != u64::from(arguments.games) + 1 {
-            return Err(invalid_data(format!(
-                "worker channel closed after {} of {} games",
-                next_to_write - 1,
-                arguments.games
-            )));
-        }
-        Ok((total, recorded))
+            },
+        )
     })?;
 
     let (total, recorded) = total;
@@ -549,6 +528,49 @@ fn write_training_data(
         start.elapsed().as_secs_f64(),
     );
     Ok(())
+}
+
+/// 任意の到着順の対局を対局番号順に書き出して集計する。
+fn merge_completed_games<I, W, F>(
+    messages: I,
+    writer: &mut Writer<W>,
+    games: u32,
+    mut on_completed: F,
+) -> io::Result<(Statistics, RecordedStatistics)>
+where
+    I: IntoIterator<Item = io::Result<CompletedGame>>,
+    W: Write + Seek,
+    F: FnMut(u64, &Statistics),
+{
+    let mut pending = BTreeMap::new();
+    let mut next_to_write = 1_u64;
+    let mut completed_count = 0_u64;
+    let mut total = Statistics::default();
+    let mut recorded = RecordedStatistics::default();
+    for message in messages {
+        let completed = message?;
+        pending.insert(completed.game_number, completed);
+        while let Some(completed) = pending.remove(&(next_to_write as u32)) {
+            for record in &completed.records {
+                writer
+                    .write_record(&record.record)
+                    .map_err(training_error)?;
+                recorded.record(record);
+            }
+            total.merge(&completed.stats);
+            completed_count += 1;
+            on_completed(completed_count, &total);
+            next_to_write += 1;
+        }
+    }
+    if next_to_write != u64::from(games) + 1 {
+        return Err(invalid_data(format!(
+            "worker channel closed after {} of {} games",
+            next_to_write - 1,
+            games
+        )));
+    }
+    Ok((total, recorded))
 }
 
 /// 1局をランダム序盤から終局まで進め、採用レコードを返す。
@@ -830,6 +852,15 @@ fn score_percentile(frequencies: &[u64], percentile: u8) -> Option<i16> {
     unreachable!("the cumulative frequency reaches the total count")
 }
 
+/// 件数を百分率へ変換し、分母が0なら`n/a`を返す。
+fn format_rate_percent(count: u64, total: u64) -> String {
+    if total == 0 {
+        "n/a".to_owned()
+    } else {
+        format!("{:.6}", count as f64 * 100.0 / total as f64)
+    }
+}
+
 /// 生成統計を設計書へ転記できる1項目1行の形式で表示する。
 fn print_generation_summary(
     arguments: &GenerateArguments,
@@ -839,15 +870,7 @@ fn print_generation_summary(
     recorded: &RecordedStatistics,
     elapsed_seconds: f64,
 ) {
-    let recordable = stats.recordable_positions as f64;
     let games = f64::from(arguments.games);
-    let rate = |count: u64| {
-        if recordable == 0.0 {
-            0.0
-        } else {
-            count as f64 * 100.0 / recordable
-        }
-    };
     let per_second = |count: u64| {
         if elapsed_seconds == 0.0 {
             0.0
@@ -899,18 +922,18 @@ fn print_generation_summary(
     println!("recorded_positions: {}", stats.recorded_positions);
     println!("excluded_mate_band: {}", stats.excluded_mate_band);
     println!(
-        "excluded_mate_band_rate_percent: {:.6}",
-        rate(stats.excluded_mate_band)
+        "excluded_mate_band_rate_percent: {}",
+        format_rate_percent(stats.excluded_mate_band, stats.recordable_positions)
     );
     println!("excluded_tactical: {}", stats.excluded_tactical);
     println!(
-        "excluded_tactical_rate_percent: {:.6}",
-        rate(stats.excluded_tactical)
+        "excluded_tactical_rate_percent: {}",
+        format_rate_percent(stats.excluded_tactical, stats.recordable_positions)
     );
     println!("excluded_repetition: {}", stats.excluded_repetition);
     println!(
-        "excluded_repetition_rate_percent: {:.6}",
-        rate(stats.excluded_repetition)
+        "excluded_repetition_rate_percent: {}",
+        format_rate_percent(stats.excluded_repetition, stats.recordable_positions)
     );
     match score_mean_and_std(&recorded.score_frequencies) {
         Some((mean, standard_deviation)) => {
@@ -1138,6 +1161,7 @@ fn invalid_data(error: impl Into<String>) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     /// テスト用の小さい置換表を作る。
     fn test_table() -> TranspositionTable {
@@ -1393,5 +1417,97 @@ mod tests {
 
         assert_eq!(statistics.duplicate_positions, 2);
         assert_eq!(statistics.score_frequencies[score_index(0)], 4);
+    }
+
+    /// テスト用の完了対局を1レコード付きで作る。
+    fn completed_game(game_number: u32) -> CompletedGame {
+        let game = Game::new(engine_default_rules().expect("engine-default rules are valid"));
+        let score = i16::try_from(game_number).unwrap() - 2;
+        let search_key = if game_number == 3 {
+            10
+        } else {
+            u64::from(game_number) * 10
+        };
+        CompletedGame {
+            game_number,
+            records: vec![CompletedRecord {
+                record: Record::from_position(
+                    game.position(),
+                    score,
+                    Outcome::Draw,
+                    game_number,
+                    game.ply_count().try_into().unwrap(),
+                ),
+                search_key,
+            }],
+            stats: Statistics {
+                searched_positions: u64::from(game_number),
+                recordable_positions: 1,
+                recorded_positions: 1,
+                searched_nodes: u64::from(game_number) * 100,
+                ..Statistics::default()
+            },
+        }
+    }
+
+    /// 到着順を変えて統合し、完成バイト列と集計を返す。
+    fn merge_in_order(order: &[u32]) -> (Vec<u8>, Statistics, Vec<u64>, u64) {
+        let header = Header::new("L0,P0,R1,E0".to_owned(), "0".repeat(40), [0; 32], 100, 1, 0)
+            .expect("the test header is valid");
+        let mut writer =
+            Writer::new(Cursor::new(Vec::new()), header).expect("the in-memory writer is valid");
+        let messages = order.iter().map(|&number| Ok(completed_game(number)));
+        let (statistics, recorded) = merge_completed_games(messages, &mut writer, 4, |_, _| {})
+            .expect("all four games are present");
+        let bytes = writer
+            .finish()
+            .expect("the in-memory writer finishes")
+            .into_inner();
+        (
+            bytes,
+            statistics,
+            recorded.score_frequencies,
+            recorded.duplicate_positions,
+        )
+    }
+
+    /// 同じ対局集合は到着順によらず対局番号順のデータと集計になる。
+    #[test]
+    fn completed_games_are_merged_independently_of_arrival_order() {
+        let sequential = merge_in_order(&[1, 2, 3, 4]);
+        let shuffled = merge_in_order(&[4, 2, 1, 3]);
+
+        assert_eq!(sequential, shuffled);
+        assert_eq!(sequential.1.recorded_positions, 4);
+        assert_eq!(sequential.2.iter().sum::<u64>(), 4);
+        assert_eq!(sequential.3, 1);
+    }
+
+    /// 対局番号が欠けたまま入力が終われば統合を拒否する。
+    #[test]
+    fn completed_game_merge_rejects_a_missing_game_number() {
+        let header = Header::new("L0,P0,R1,E0".to_owned(), "0".repeat(40), [0; 32], 100, 1, 0)
+            .expect("the test header is valid");
+        let mut writer =
+            Writer::new(Cursor::new(Vec::new()), header).expect("the in-memory writer is valid");
+        let messages = [1, 3, 4].map(|number| Ok(completed_game(number)));
+
+        let error = match merge_completed_games(messages, &mut writer, 4, |_, _| {}) {
+            Ok(_) => panic!("game 2 is missing"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            error.to_string(),
+            "worker channel closed after 1 of 4 games"
+        );
+    }
+
+    /// 除外率は分母0なら数値ではなく`n/a`になる。
+    #[test]
+    fn rate_percent_is_not_available_for_zero_denominator() {
+        assert_eq!(format_rate_percent(0, 0), "n/a");
+        assert_eq!(format_rate_percent(1, 4), "25.000000");
     }
 }

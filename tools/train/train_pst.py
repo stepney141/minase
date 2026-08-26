@@ -379,6 +379,11 @@ def _print_feature_observations(observations: NDArray[np.int64]) -> None:
     )
 
 
+def should_replace_best_epoch(candidate_loss: float, best_loss: float) -> bool:
+    """検証損失が厳密に改善した場合だけ最良エポックを更新する。"""
+    return candidate_loss < best_loss
+
+
 def command_train(arguments: argparse.Namespace) -> None:
     """trainサブコマンドを実行する。"""
     if not 0.0 <= arguments.lambda_value <= 1.0:
@@ -494,7 +499,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         print(f"epoch {epoch}: {_format_validation_loss(loss, generation_losses)}")
         if observations is not None:
             _print_feature_observations(observations)
-        if loss < best_loss:
+        if should_replace_best_epoch(loss, best_loss):
             best_loss = loss
             best_epoch = epoch
             best_weights = model.weight[:FEATURE_COUNT, 0].detach().cpu().clone()

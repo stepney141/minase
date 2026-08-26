@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+import re
 import struct
 import tempfile
 import unittest
@@ -10,13 +13,17 @@ import unittest
 import numpy as np
 import torch
 
-from features import INITIAL_BOARD
+from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices, mirror
 from mnsd import Dataset, HEADER_LENGTH, RECORD_DTYPE, RECORD_LENGTH, hash64
 from train_pst import (
     build_targets,
     estimate_generation_ks,
     estimate_k,
+    main as train_main,
     model_logits,
+    read_mnpt,
+    should_replace_best_epoch,
+    write_mnpt,
 )
 
 
@@ -28,11 +35,12 @@ def write_mnsd(
     games: list[int],
     scores: list[int] | None = None,
     results: list[int] | None = None,
+    board: np.ndarray | None = None,
 ) -> None:
     """テスト用の最小MNSDファイルを書く。"""
     count = len(games)
     records = np.zeros(count, dtype=RECORD_DTYPE)
-    records["board"] = INITIAL_BOARD
+    records["board"] = INITIAL_BOARD if board is None else board
     records["lion"] = 255
     records["game"] = games
     records["ply"] = np.arange(count, dtype=np.uint16)
@@ -186,6 +194,161 @@ class TeacherScaleTest(unittest.TestCase):
                 model.weight[:, 0] = torch.tensor([30.0, 10.0])
             logits = model_logits(model, torch.tensor([[0, 1]]), 200.0)
             self.assertAlmostEqual(float(logits.item()), 0.2)
+
+
+class TrainingPathTest(unittest.TestCase):
+    """訓練CLIの最良重み、教師値、観測数、検証標本を検証する。"""
+
+    def test_best_epoch_replacement_requires_strict_improvement(self) -> None:
+        self.assertTrue(should_replace_best_epoch(0.4, 0.5))
+        self.assertFalse(should_replace_best_epoch(0.5, 0.5))
+        self.assertFalse(should_replace_best_epoch(0.6, 0.5))
+
+    def test_training_path_uses_documented_data_membership(self) -> None:
+        count = 256
+        games = list(range(count))
+        asymmetric_board = INITIAL_BOARD.copy()
+        asymmetric_board[[0, 60]] = asymmetric_board[[60, 0]]
+
+        def labels(seed: int, generation: int) -> tuple[list[int], list[int]]:
+            scores: list[int] = []
+            results: list[int] = []
+            training_score = 1000 if generation == 0 else -1000
+            for game in games:
+                if reference_hash64(seed, game) % 20 == 0:
+                    scores.append(0)
+                    results.append(1)
+                else:
+                    scores.append(training_score)
+                    results.append(2)
+            return scores, results
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            generation0 = root / "generation0.mnsd"
+            generation1 = root / "generation1.mnsd"
+            initial_path = root / "initial.mnpt"
+            output_path = root / "trained.mnpt"
+            scores0, results0 = labels(101, 0)
+            scores1, results1 = labels(202, 1)
+            write_mnsd(
+                generation0,
+                seed=101,
+                checksum=b"a" * 32,
+                games=games,
+                scores=scores0,
+                results=results0,
+                board=asymmetric_board,
+            )
+            write_mnsd(
+                generation1,
+                seed=202,
+                checksum=b"b" * 32,
+                games=games,
+                scores=scores1,
+                results=results1,
+                board=asymmetric_board,
+            )
+            initial_weights = np.zeros(FEATURE_COUNT, dtype="<i2")
+            write_mnpt(initial_path, initial_weights, 200.0)
+
+            dataset = Dataset([generation0, generation1])
+            expected_ks = []
+            for generation in range(dataset.generation_count):
+                records = dataset.gather(
+                    dataset.generation_training_indices(generation)
+                )
+                expected_ks.append(estimate_k(records["score"], records["result"]))
+
+            training_records = dataset.gather(dataset.training_indices)
+            normal = feature_indices(
+                training_records["board"],
+                training_records["stm"],
+                training_records["lion"],
+            )
+            active = normal[normal != PADDING_INDEX]
+            expected_observations = np.bincount(active, minlength=FEATURE_COUNT)
+            expected_unobserved = int(np.count_nonzero(expected_observations == 0))
+            expected_maximum = int(expected_observations.max())
+
+            mirrored_board, mirrored_lion = mirror(
+                training_records["board"], training_records["lion"]
+            )
+            reflected = feature_indices(
+                mirrored_board, training_records["stm"], mirrored_lion
+            )
+            reflected_active = reflected[reflected != PADDING_INDEX]
+            augmented_observations = expected_observations + np.bincount(
+                reflected_active, minlength=FEATURE_COUNT
+            )
+            self.assertNotEqual(
+                (
+                    expected_unobserved,
+                    expected_maximum,
+                ),
+                (
+                    int(np.count_nonzero(augmented_observations == 0)),
+                    int(augmented_observations.max()),
+                ),
+            )
+            self.assertNotEqual(
+                dataset.training_indices.size, dataset.validation_indices.size
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                train_main(
+                    [
+                        "train",
+                        "--data",
+                        str(generation0),
+                        str(generation1),
+                        "--output",
+                        str(output_path),
+                        "--init",
+                        str(initial_path),
+                        "--k",
+                        "200",
+                        "--lambda",
+                        "0.75",
+                        "--lr",
+                        "10",
+                        "--epochs",
+                        "1",
+                        "--batch",
+                        "128",
+                        "--seed",
+                        "1",
+                        "--validation-sample",
+                        "10000",
+                        "--device",
+                        "cpu",
+                    ]
+                )
+            output = stdout.getvalue()
+
+            self.assertIn(
+                "teacher K: "
+                f"generation 0 = {expected_ks[0]:.9f}, "
+                f"generation 1 = {expected_ks[1]:.9f}",
+                output,
+            )
+            self.assertRegex(output, r"best epoch: 0 validation_loss=")
+            observation_log = re.search(
+                r"feature observations: unobserved=(\d+).* max=(\d+) mean=",
+                output,
+            )
+            self.assertIsNotNone(observation_log)
+            assert observation_log is not None
+            self.assertEqual(int(observation_log.group(1)), expected_unobserved)
+            self.assertEqual(int(observation_log.group(2)), expected_maximum)
+            self.assertIn(
+                f"quantization error: samples={dataset.validation_indices.size} ",
+                output,
+            )
+            output_weights, output_k = read_mnpt(output_path)
+            np.testing.assert_array_equal(output_weights, initial_weights)
+            self.assertEqual(output_k, 200.0)
 
 
 if __name__ == "__main__":
