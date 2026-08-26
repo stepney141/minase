@@ -1,7 +1,6 @@
-//! 量子化した学習PSTの復号、埋め込みおよび整数評価。
+//! 量子化した学習PSTの復号および整数評価。
 
 use core::fmt;
-use std::sync::OnceLock;
 
 use sha2::{Digest, Sha256};
 
@@ -175,19 +174,6 @@ fn read_u32(bytes: &[u8], offset: usize) -> u32 {
     )
 }
 
-/// 実行バイナリへ埋め込むMNPTバイト列。
-static EMBEDDED: &[u8] = include_bytes!("../../nets/pst.bin");
-/// 埋め込み重みの復号結果を保持する領域。
-static WEIGHTS: OnceLock<Result<Pst, Error>> = OnceLock::new();
-
-/// 検証済みの埋め込み学習PSTを返す。
-pub fn weights() -> Result<&'static Pst, &'static Error> {
-    match WEIGHTS.get_or_init(|| Pst::decode(EMBEDDED)) {
-        Ok(pst) => Ok(pst),
-        Err(error) => Err(error),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,6 +297,7 @@ mod tests {
     /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
     #[test]
     fn embedded_pst_matches_python_initial_position_evaluation() {
-        assert_eq!(evaluate(weights().unwrap(), &Position::initial()), 12);
+        let pst = Pst::decode(include_bytes!("../../nets/pst.bin")).unwrap();
+        assert_eq!(evaluate(&pst, &Position::initial()), 12);
     }
 }

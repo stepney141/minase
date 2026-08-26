@@ -244,7 +244,7 @@ fn run_bench(
 
 /// 探索ベンチを実行する。
 fn main() {
-    if let Err(error) = minase::eval::weights() {
+    if let Err(error) = minase::eval::network() {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         std::process::exit(1);
     }

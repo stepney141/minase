@@ -20,7 +20,8 @@ use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::handcrafted::piece_value;
-use crate::eval::{Pst, evaluate};
+use crate::eval::nnue::{AccumulatorPair, update_after_move, update_after_null_move};
+use crate::eval::{Network, evaluate, evaluate_position};
 
 use tt::Bound;
 
@@ -232,14 +233,14 @@ pub fn start_search(
     tt: TranspositionTable,
 ) -> SearchHandle {
     validate_input(&snapshot.root_moves, &limits);
-    let pst = crate::eval::weights()
-        .expect("embedded PST must be valid; binaries validate it at startup");
+    let network = crate::eval::network()
+        .expect("embedded NNUE must be valid; binaries validate it at startup");
     let (sender, events) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
     let thread = thread::spawn(move || {
         let outcome = run_search_team(
-            pst,
+            network,
             &snapshot.position,
             snapshot.rules,
             &snapshot.root_moves,
@@ -297,11 +298,11 @@ pub fn search(
         !limits.infinite,
         "synchronous search cannot use an infinite limit"
     );
-    let pst = crate::eval::weights()
-        .expect("embedded PST must be valid; binaries validate it at startup");
+    let network = crate::eval::network()
+        .expect("embedded NNUE must be valid; binaries validate it at startup");
     let stop = AtomicBool::new(false);
     run_search_team(
-        pst,
+        network,
         position,
         rules,
         root_moves,
@@ -444,7 +445,7 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
 /// 調整役として補助ワーカーを生成し、主ワーカー探索と全joinを実行する。
 #[allow(clippy::too_many_arguments)]
 fn run_search_team(
-    pst: &'static Pst,
+    network: &'static Network,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -481,7 +482,7 @@ fn run_search_team(
                     let shared = &shared;
                     scope.spawn(move || {
                         run_auxiliary_worker(
-                            pst,
+                            network,
                             position,
                             rules,
                             root_moves,
@@ -495,7 +496,7 @@ fn run_search_team(
                 })
                 .collect();
             let main_outcome = run_main_worker(
-                pst,
+                network,
                 position,
                 rules,
                 root_moves,
@@ -561,15 +562,18 @@ fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item
 
 /// ワーカー固有の探索状態を構築する。
 fn new_searcher<'a>(
-    pst: &'static Pst,
+    network: &'static Network,
     position: &Position,
     rules: MoveRules,
     history_keys: &'a [u64],
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
 ) -> Searcher<'a> {
+    let mut accumulators = vec![AccumulatorPair::default(); MAX_PLY as usize + 2];
+    crate::eval::nnue::refresh(network, position, &mut accumulators[0]);
     Searcher {
-        pst,
+        network,
+        accumulators,
         rules,
         generator: MoveGenerator::new(rules),
         history_keys,
@@ -590,7 +594,7 @@ fn new_searcher<'a>(
 /// 主ワーカーの反復深化を実行し、深さ完了ごとに進捗イベントを送る。
 #[allow(clippy::too_many_arguments)]
 fn run_main_worker(
-    pst: &'static Pst,
+    network: &'static Network,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -601,10 +605,10 @@ fn run_main_worker(
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    let mut searcher = new_searcher(network, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: evaluate(pst, position),
+        score: evaluate_position(network, position),
         depth: 0,
         nodes: 0,
     };
@@ -658,7 +662,7 @@ fn run_main_worker(
 /// 補助ワーカーの反復深化を実行し、最後まで完了した反復を返す。
 #[allow(clippy::too_many_arguments)]
 fn run_auxiliary_worker(
-    pst: &'static Pst,
+    network: &'static Network,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -668,10 +672,10 @@ fn run_auxiliary_worker(
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    let mut searcher = new_searcher(network, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: evaluate(pst, position),
+        score: evaluate_position(network, position),
         depth: 0,
         nodes: 0,
     };
@@ -700,8 +704,10 @@ fn run_auxiliary_worker(
 
 /// 1回の探索実行の可変状態。
 struct Searcher<'a> {
-    /// 探索中に使う検証済み学習PST。
-    pst: &'static Pst,
+    /// 探索中に使う検証済みNNUEネット。
+    network: &'static Network,
+    /// 探索経路上のplyごとの両視点アキュムレータ。
+    accumulators: Vec<AccumulatorPair>,
     /// 探索内の着手適用に使う規則。
     rules: MoveRules,
     /// 探索ノードでの合法手生成器。
@@ -817,7 +823,11 @@ impl Searcher<'_> {
             && has_non_royal_piece
         {
             let reduction = 2 + depth / 6;
+            let lion_before = position
+                .lion_taken_by_non_lion()
+                .map(|trigger| trigger.square);
             let undo = position.make_null_move();
+            self.update_accumulators_after_null_move(ply, lion_before);
             let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
             let score = self
                 .negamax(
@@ -903,7 +913,11 @@ impl Searcher<'_> {
         self.pv[ply as usize].clear();
 
         if ply >= MAX_PLY {
-            return Some(evaluate(self.pst, position));
+            return Some(evaluate(
+                self.network,
+                &self.accumulators[ply as usize],
+                position.side_to_move(),
+            ));
         }
 
         let original_alpha = alpha;
@@ -921,7 +935,11 @@ impl Searcher<'_> {
             }
         }
 
-        let stand_pat = evaluate(self.pst, position);
+        let stand_pat = evaluate(
+            self.network,
+            &self.accumulators[ply as usize],
+            position.side_to_move(),
+        );
         if stand_pat >= beta {
             self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
             return Some(stand_pat);
@@ -952,6 +970,7 @@ impl Searcher<'_> {
                 self.enter_node().then_some(MATE - ply as i32)?
             } else {
                 let undo = position.make_move_unchecked(mv, self.rules);
+                self.update_accumulators_after_move(position, &undo, ply);
                 let score = self
                     .quiesce(position, -beta, -alpha, ply + 1)
                     .map(|value| -value);
@@ -1001,6 +1020,7 @@ impl Searcher<'_> {
         }
 
         let undo = position.make_move_unchecked(mv, self.rules);
+        self.update_accumulators_after_move(position, &undo, ply);
         let key = search_key(position);
         let repeated = self.history_keys.contains(&key) || self.path_keys.contains(&key);
         if repeated {
@@ -1030,6 +1050,35 @@ impl Searcher<'_> {
         self.path_keys.pop();
         position.unmake_move(undo);
         score
+    }
+
+    /// 通常着手の差分から次のplyの両視点アキュムレータを作る。
+    fn update_accumulators_after_move(
+        &mut self,
+        position_after: &Position,
+        undo: &crate::Undo,
+        ply: u32,
+    ) {
+        let ply = ply as usize;
+        let (before, after) = self.accumulators.split_at_mut(ply + 1);
+        update_after_move(
+            self.network,
+            &before[ply],
+            &mut after[0],
+            position_after,
+            undo,
+        );
+    }
+
+    /// null move前の先獅子状態から次のplyの両視点アキュムレータを作る。
+    fn update_accumulators_after_null_move(
+        &mut self,
+        ply: u32,
+        lion_before: Option<crate::Square>,
+    ) {
+        let ply = ply as usize;
+        let (before, after) = self.accumulators.split_at_mut(ply + 1);
+        update_after_null_move(self.network, &before[ply], &mut after[0], lion_before);
     }
 
     /// ノードへ入る前に停止条件を検査し、続行可能ならノード数を数える。

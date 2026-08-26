@@ -47,7 +47,7 @@ enum ProtocolKind {
 
 /// エラーを標準エラーへ報告して終了コード1で終わる入口。
 fn main() {
-    if let Err(error) = minase::eval::weights() {
+    if let Err(error) = minase::eval::network() {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         process::exit(1);
     }
