@@ -34,6 +34,10 @@ const WEIGHT_SHIFT: u32 = 12;
 const WEIGHT_LIMIT: i16 = 8_192;
 /// 第2層以降のバイアスの絶対値上限（実数±8.0に相当）。
 const BIAS_LIMIT: i32 = 8 * 127 * 4_096;
+/// 第1層の重みとバイアスの絶対値上限（実数±8.0に相当）。146項の積和がi32に収まる条件。
+const WEIGHT1_LIMIT: i16 = 8 * 127;
+/// 勝率尺度Kの上限。センチポーン変換の積がi64に収まる条件。
+const K_LIMIT: f32 = 100_000.0;
 
 /// 量子化済みNNUEの重み、バイアスおよび来歴情報。
 pub struct Network {
@@ -101,7 +105,7 @@ impl Network {
             return Err(Error::UnexpectedLayerWidths { actual: widths });
         }
         let k = f32::from_le_bytes(bytes[28..32].try_into().expect("slice length is fixed"));
-        if !k.is_finite() || k <= 0.0 {
+        if !k.is_finite() || k <= 0.0 || k > K_LIMIT {
             return Err(Error::InvalidK { actual: k });
         }
         if bytes[32..64] != rule_set_field() {
@@ -124,12 +128,18 @@ impl Network {
         let wo: [i16; HIDDEN3_WIDTH] = std::array::from_fn(|_| read_i16(body, &mut offset));
         let bo = read_i32(body, &mut offset);
         debug_assert_eq!(offset, BODY_LENGTH);
-        // 積和のi32溢れを防ぐため、第2層以降の重みとバイアスの大きさを制限する。
-        if w2
+        // 積和のi32溢れを防ぐため、各層の重みとバイアスの大きさを制限する。
+        if w1
             .iter()
-            .chain(&w3)
-            .chain(&wo)
-            .any(|&w| w.unsigned_abs() > WEIGHT_LIMIT.unsigned_abs())
+            .any(|&w| w.unsigned_abs() > WEIGHT1_LIMIT.unsigned_abs())
+            || b1
+                .iter()
+                .any(|&b| b.unsigned_abs() > u32::from(WEIGHT1_LIMIT.unsigned_abs()))
+            || w2
+                .iter()
+                .chain(&w3)
+                .chain(&wo)
+                .any(|&w| w.unsigned_abs() > WEIGHT_LIMIT.unsigned_abs())
             || b2
                 .iter()
                 .chain(&b3)
@@ -138,7 +148,8 @@ impl Network {
         {
             return Err(Error::WeightOutOfRange);
         }
-        let scale = (f64::from(k) * 65_536.0 / f64::from(127 * 4_096)).round() as i64;
+        // Pythonのround()と同じ最近接偶数丸めで固定小数点尺度を作る。
+        let scale = (f64::from(k) * 65_536.0 / f64::from(127 * 4_096)).round_ties_even() as i64;
         Ok(Self {
             w1,
             b1,
@@ -204,7 +215,7 @@ pub enum Error {
     },
     /// ネット本体のSHA-256がヘッダの値と一致しない。
     ChecksumMismatch,
-    /// 第2層以降の重みまたはバイアスが積和の溢れを防ぐ上限を超える。
+    /// 重みまたはバイアスが積和の溢れを防ぐ上限を超える。
     WeightOutOfRange,
 }
 
@@ -232,9 +243,7 @@ impl fmt::Display for Error {
             Self::InvalidRuleSet => formatter.write_str("invalid MNUE rule-set field"),
             Self::InvalidK { actual } => write!(formatter, "invalid MNUE K: {actual}"),
             Self::ChecksumMismatch => formatter.write_str("MNUE body checksum mismatch"),
-            Self::WeightOutOfRange => {
-                formatter.write_str("MNUE hidden-layer weight or bias exceeds its limit")
-            }
+            Self::WeightOutOfRange => formatter.write_str("MNUE weight or bias exceeds its limit"),
         }
     }
 }
@@ -389,7 +398,7 @@ pub fn evaluate(network: &Network, accumulators: &AccumulatorPair, side_to_move:
         output += i32::from(weight) * i32::from(input);
     }
     let centipawns = (i64::from(output) * network.scale + 32_768) >> 16;
-    (centipawns as i32).clamp(-EVALUATION_LIMIT, EVALUATION_LIMIT)
+    centipawns.clamp(-i64::from(EVALUATION_LIMIT), i64::from(EVALUATION_LIMIT)) as i32
 }
 
 /// 局面から両視点を完全再計算して静的評価値を返す。
@@ -621,17 +630,48 @@ mod tests {
         ));
     }
 
-    /// 第2層の重みが上限を超えるネットが拒否されることを検査する。
-    #[test]
-    fn decode_rejects_hidden_weights_beyond_the_limit() {
+    /// 本体を改変し、SHA-256を再計算したバイト列を返す。
+    fn with_body_patch(offset: usize, patch: &[u8]) -> Vec<u8> {
         let mut bytes = valid_bytes();
-        let w2_offset = HEADER_LENGTH + FEATURE_COUNT * HIDDEN1_WIDTH * 2 + HIDDEN1_WIDTH * 4;
-        bytes[w2_offset..w2_offset + 2].copy_from_slice(&i16::MAX.to_le_bytes());
+        let start = HEADER_LENGTH + offset;
+        bytes[start..start + patch.len()].copy_from_slice(patch);
         let digest: [u8; 32] = Sha256::digest(&bytes[HEADER_LENGTH..]).into();
         bytes[64..96].copy_from_slice(&digest);
+        bytes
+    }
+
+    /// 各層の重みとバイアスが上限を超えるネットが拒否され、上限ちょうどは受理されることを検査する。
+    #[test]
+    fn decode_rejects_weights_and_biases_beyond_their_limits() {
+        let w1_end = FEATURE_COUNT * HIDDEN1_WIDTH * 2;
+        let b1_end = w1_end + HIDDEN1_WIDTH * 4;
+        let w2_end = b1_end + HIDDEN2_WIDTH * INPUT2_WIDTH * 2;
+        let cases = [
+            (0, (WEIGHT1_LIMIT + 1).to_le_bytes().to_vec()),
+            (
+                w1_end,
+                (i32::from(WEIGHT1_LIMIT) + 1).to_le_bytes().to_vec(),
+            ),
+            (b1_end, (WEIGHT_LIMIT + 1).to_le_bytes().to_vec()),
+            (w2_end, (BIAS_LIMIT + 1).to_le_bytes().to_vec()),
+        ];
+        for (offset, patch) in cases {
+            assert!(matches!(
+                Network::decode(&with_body_patch(offset, &patch)),
+                Err(Error::WeightOutOfRange)
+            ));
+        }
+        assert!(Network::decode(&with_body_patch(0, &WEIGHT1_LIMIT.to_le_bytes())).is_ok());
+    }
+
+    /// 上限を超える勝率尺度Kが拒否されることを検査する。
+    #[test]
+    fn decode_rejects_k_beyond_the_limit() {
+        let mut bytes = valid_bytes();
+        bytes[28..32].copy_from_slice(&(K_LIMIT * 2.0).to_le_bytes());
         assert!(matches!(
             Network::decode(&bytes),
-            Err(Error::WeightOutOfRange)
+            Err(Error::InvalidK { .. })
         ));
     }
 

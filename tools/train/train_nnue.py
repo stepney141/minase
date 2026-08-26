@@ -28,6 +28,7 @@ from nnue_net import (
 # 第2層以降の重みの訓練時範囲。第1層はi16の余裕を使って広く取る。
 WEIGHT_LIMIT = 1.98
 WEIGHT1_LIMIT = 8.0
+BIAS_LIMIT = 7.99
 INPUT2_WIDTH = HIDDEN1_WIDTH * 2
 WEIGHT1_SCALE = 127
 WEIGHT_SCALE = 4096
@@ -89,6 +90,10 @@ class NnueModel(nn.Module):
             self.layer2.weight.clamp_(-WEIGHT_LIMIT, WEIGHT_LIMIT)
             self.layer3.weight.clamp_(-WEIGHT_LIMIT, WEIGHT_LIMIT)
             self.output.weight.clamp_(-WEIGHT_LIMIT, WEIGHT_LIMIT)
+            # 第2層以降のバイアスはRustの復号が課す上限（実数±8.0）の内側に保つ。
+            self.layer2.bias.clamp_(-BIAS_LIMIT, BIAS_LIMIT)
+            self.layer3.bias.clamp_(-BIAS_LIMIT, BIAS_LIMIT)
+            self.output.bias.clamp_(-BIAS_LIMIT, BIAS_LIMIT)
             self.embedding.weight[PADDING_INDEX].zero_()
 
 

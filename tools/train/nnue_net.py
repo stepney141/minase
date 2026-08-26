@@ -68,6 +68,19 @@ _PARAMETER_SPECS = (
 )
 
 
+# Rustの復号が積和のi32溢れを防ぐために課す大きさの上限（src/eval/nnue.rs）。
+_MAGNITUDE_LIMITS = {
+    "W1": 8 * 127,
+    "b1": 8 * 127,
+    "W2": 8192,
+    "b2": 8 * 127 * 4096,
+    "W3": 8192,
+    "b3": 8 * 127 * 4096,
+    "Wo": 8192,
+    "bo": 8 * 127 * 4096,
+}
+
+
 def _validate_parameters(params: Parameters) -> None:
     """全パラメータの型と形状がファイル契約に一致することを検査する。"""
     if not isinstance(params, Parameters):
@@ -79,6 +92,9 @@ def _validate_parameters(params: Parameters) -> None:
             raise TypeError(f"{name} must have dtype {dtype}")
         if value.shape != shape:
             raise ValueError(f"{name} must have shape {shape}")
+        limit = _MAGNITUDE_LIMITS[name]
+        if np.any(np.abs(value.astype(np.int64)) > limit):
+            raise ValueError(f"{name} contains a value beyond the magnitude limit {limit}")
 
 
 def _body_bytes(params: Parameters) -> bytes:
