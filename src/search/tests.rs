@@ -109,14 +109,13 @@ fn run_quiesce(
     let history = [];
     let mut current = position.clone();
     let mut searcher = new_searcher(
-        crate::eval::network().unwrap(),
+        crate::eval::weights().unwrap(),
         position,
         engine_rules(),
         &history,
         &shared,
         table,
     );
-    searcher.accumulators[ply as usize] = searcher.accumulators[0].clone();
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
         .expect("unlimited quiescence search must complete");
@@ -145,7 +144,7 @@ fn run_negamax(
     let history = [];
     let mut current = position.clone();
     let mut searcher = new_searcher(
-        crate::eval::network().unwrap(),
+        crate::eval::weights().unwrap(),
         position,
         engine_rules(),
         &history,
@@ -424,7 +423,7 @@ fn without_history_the_repetition_fixture_scores_a_mate_band_loss() {
     assert_eq!(result.score, -(MATE - 1));
 }
 
-// D7-SRCH-04。学習評価関数の獅子の価値とMVV-LVA。RULES.md
+// D7-SRCH-04。search.md「評価関数v0」（獅子=2500）とMVV-LVA。RULES.md
 // 第14条第5項により非獅子は足の有無にかかわらず獅子を取れる。
 #[test]
 fn free_lion_capture_is_preferred_without_entering_the_mate_band() {
@@ -452,7 +451,7 @@ fn free_lion_capture_is_preferred_without_entering_the_mate_band() {
 
     assert_eq!(result.best_move.from, fs(3, 10));
     assert_eq!(result.best_move.to, fs(3, 4));
-    // 獅子は高価だが王駒ではないため、詰み帯に入らない（INV-3）。
+    // 獅子2500は高価だが王駒ではないため、詰み帯に入らない（INV-3）。
     assert!(result.score > 0);
     assert!(result.score < 29_000);
 }
@@ -637,7 +636,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
         .iter()
         .map(|&mv| {
             let undo = position.make_move_unchecked(mv, engine_rules());
-            let score = -crate::eval::evaluate_position(crate::eval::network().unwrap(), &position);
+            let score = -crate::eval::evaluate(crate::eval::weights().unwrap(), &position);
             position.unmake_move(undo);
             score
         })
@@ -688,7 +687,7 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
         promote: false,
     };
     assert!(legal_moves(&position).contains(&losing_capture));
-    let stand_pat = crate::eval::evaluate_position(crate::eval::network().unwrap(), &position);
+    let stand_pat = crate::eval::evaluate(crate::eval::weights().unwrap(), &position);
     let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, 0, &small_tt());
     assert_eq!(score, stand_pat);
 }
@@ -768,7 +767,7 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
         ],
     );
     let key = search_key(&position);
-    let stand_pat = crate::eval::evaluate_position(crate::eval::network().unwrap(), &position);
+    let stand_pat = evaluate(crate::eval::weights().unwrap(), &position);
     let cases = [
         (-INFINITY, stand_pat, Bound::Lower),
         (stand_pat, INFINITY, Bound::Upper),
@@ -858,10 +857,7 @@ fn quiescence_max_ply_leaf_does_not_probe_or_store() {
     let raw_before = table.raw_entry(key);
 
     let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, MAX_PLY, &table);
-    assert_eq!(
-        score,
-        crate::eval::evaluate_position(crate::eval::network().unwrap(), &position)
-    );
+    assert_eq!(score, evaluate(crate::eval::weights().unwrap(), &position));
     assert_ne!(score, 12_345);
     assert_eq!(table.raw_entry(key), raw_before);
 }
@@ -1412,7 +1408,7 @@ fn four_worker_progress_is_main_worker_only_and_monotonic() {
     let table = small_tt();
     let (sender, receiver) = mpsc::channel();
     let outcome = run_search_team(
-        crate::eval::network().unwrap(),
+        crate::eval::weights().unwrap(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,
@@ -1468,7 +1464,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
     let external_stop = AtomicBool::new(true);
     let table = small_tt();
     let outcome = run_search_team(
-        crate::eval::network().unwrap(),
+        crate::eval::weights().unwrap(),
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,

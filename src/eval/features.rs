@@ -65,8 +65,9 @@ pub fn lion_feature_index(perspective: Color, square: Square) -> usize {
     BOARD_FEATURE_COUNT + relative_rank as usize * 12 + square.file() as usize
 }
 
-/// 局面で有効な指定視点の特徴番号を列挙する。
-pub fn active_features_for(perspective: Color, position: &Position, mut f: impl FnMut(usize)) {
+/// 局面で有効な手番側視点の特徴番号を列挙する。
+pub fn active_features(position: &Position, mut f: impl FnMut(usize)) {
+    let perspective = position.side_to_move();
     for square in position.occupied() {
         let piece = position
             .piece_at(square)
@@ -76,11 +77,6 @@ pub fn active_features_for(perspective: Color, position: &Position, mut f: impl 
     if let Some(trigger) = position.lion_taken_by_non_lion() {
         f(lion_feature_index(perspective, trigger.square));
     }
-}
-
-/// 局面で有効な手番側視点の特徴番号を列挙する。
-pub fn active_features(position: &Position, f: impl FnMut(usize)) {
-    active_features_for(position.side_to_move(), position, f);
 }
 
 #[cfg(test)]

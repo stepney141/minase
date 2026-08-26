@@ -273,7 +273,7 @@ impl InspectionSummary {
 
 /// コマンドを実行し、失敗時は説明を標準エラーへ出して非0終了する。
 fn main() {
-    if let Err(error) = minase::eval::network() {
+    if let Err(error) = minase::eval::weights() {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         process::exit(1);
     }
@@ -330,9 +330,9 @@ fn write_training_data(
     rule_set: &str,
     generation_commit: &str,
 ) -> io::Result<()> {
-    // 探索に使ったNNUEネット本体の検査和を生成元として残す。
-    let network_checksum = *minase::eval::network()
-        .expect("main validated the embedded network")
+    // 探索は埋め込み学習PSTで着手するので、その重み本体の検査和を生成元として残す。
+    let network_checksum = *minase::eval::weights()
+        .expect("main validated the embedded weights")
         .checksum();
     let header = Header::new(
         rule_set.to_owned(),
