@@ -2,3 +2,4 @@
 /minase-gui
 /data
 /tools/train/.venv
+__pycache__/
