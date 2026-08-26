@@ -6,7 +6,9 @@ import argparse
 import hashlib
 import math
 from pathlib import Path
+import resource
 import struct
+import time
 from typing import Sequence
 
 import numpy as np
@@ -16,7 +18,7 @@ from torch import Tensor, nn
 from torch.nn import functional as torch_functional
 
 from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices, mirror
-from mnsd import NO_LION_SQUARE, load_records
+from mnsd import Dataset, NO_LION_SQUARE
 
 
 HEADER_LENGTH = 80
@@ -143,56 +145,154 @@ def model_logits(model: nn.Embedding, features: Tensor, k: float) -> Tensor:
     return model(features).sum(dim=1).squeeze(1) / k
 
 
-def validation_loss(model: nn.Embedding, features: Tensor, targets: Tensor, k: float, batch: int) -> float:
-    """検証集合全体の平均二値交差エントロピーを計算する。"""
-    total = 0.0
+def _training_scores_results(
+    dataset: Dataset, generation: int | None = None
+) -> tuple[NDArray[np.int16], NDArray[np.uint8]]:
+    """指定世代または全世代の訓練用探索値と結果を集める。"""
+    score_chunks: list[NDArray[np.int16]] = []
+    result_chunks: list[NDArray[np.uint8]] = []
+    for file_generation, records, validation in zip(
+        dataset.file_generations, dataset.records, dataset.validation_masks
+    ):
+        if generation is not None and file_generation != generation:
+            continue
+        training = ~validation
+        score_chunks.append(np.asarray(records["score"][training], dtype=np.int16))
+        result_chunks.append(np.asarray(records["result"][training], dtype=np.uint8))
+    scores = np.concatenate(score_chunks)
+    results = np.concatenate(result_chunks)
+    if scores.size == 0:
+        scope = "dataset" if generation is None else f"generation {generation}"
+        raise ValueError(f"{scope} has no training records")
+    return scores, results
+
+
+def estimate_generation_ks(dataset: Dataset) -> tuple[NDArray[np.float64], list[int]]:
+    """各世代の訓練レコードから教師Kと件数を求める。"""
+    values = np.empty(dataset.generation_count, dtype=np.float64)
+    counts: list[int] = []
+    for generation in range(dataset.generation_count):
+        scores, results = _training_scores_results(dataset, generation)
+        values[generation] = estimate_k(scores, results)
+        counts.append(int(scores.size))
+    return values, counts
+
+
+def validation_loss(
+    model: nn.Embedding,
+    dataset: Dataset,
+    teacher_ks: NDArray[np.float64],
+    k: float,
+    lambda_value: float,
+    batch: int,
+    device: torch.device,
+) -> tuple[float, NDArray[np.float64]]:
+    """検証損失をバッチ単位で計算し、全体値と世代別値を返す。"""
+    generation_sums = np.zeros(dataset.generation_count, dtype=np.float64)
+    generation_counts = np.zeros(dataset.generation_count, dtype=np.int64)
     with torch.no_grad():
-        for start in range(0, features.shape[0], batch):
-            end = min(start + batch, features.shape[0])
-            loss = torch_functional.binary_cross_entropy_with_logits(
-                model_logits(model, features[start:end], k),
-                targets[start:end],
-                reduction="sum",
+        for start in range(0, dataset.validation_indices.size, batch):
+            global_indices = dataset.validation_indices[start : start + batch]
+            records = dataset.gather(global_indices)
+            generations = dataset.generations(global_indices)
+            features = feature_indices(
+                records["board"], records["stm"], records["lion"]
             )
-            total += float(loss.item())
-    return total / features.shape[0]
+            targets = build_targets(records, teacher_ks, generations, lambda_value)
+            device_features = torch.as_tensor(features, device=device)
+            device_targets = torch.as_tensor(targets, device=device)
+            losses = torch_functional.binary_cross_entropy_with_logits(
+                model_logits(model, device_features, k),
+                device_targets,
+                reduction="none",
+            ).cpu().numpy().astype(np.float64)
+            generation_sums += np.bincount(
+                generations, weights=losses, minlength=dataset.generation_count
+            )
+            generation_counts += np.bincount(
+                generations, minlength=dataset.generation_count
+            )
+    generation_losses = np.divide(
+        generation_sums,
+        generation_counts,
+        out=np.full(dataset.generation_count, np.nan, dtype=np.float64),
+        where=generation_counts != 0,
+    )
+    return (
+        float(generation_sums.sum() / generation_counts.sum()),
+        generation_losses,
+    )
 
 
 def train_epoch(
     model: nn.Embedding,
     optimizer: torch.optim.Optimizer,
-    features: Tensor,
-    mirrored_features: Tensor,
-    targets: Tensor,
+    dataset: Dataset,
+    teacher_ks: NDArray[np.float64],
     k: float,
+    lambda_value: float,
     batch: int,
     generator: torch.Generator,
-) -> float:
-    """鏡映を標本ごとに選び、訓練集合を1エポック学習する。"""
-    order = torch.randperm(features.shape[0], generator=generator, device=features.device)
+    device: torch.device,
+    count_features: bool = False,
+) -> tuple[float, NDArray[np.int64] | None]:
+    """訓練レコードをバッチごとに読み、鏡映を選んで1エポック学習する。"""
+    order = torch.randperm(
+        dataset.training_indices.size, generator=generator, device=device
+    )
     total = 0.0
+    observations = (
+        np.zeros(FEATURE_COUNT, dtype=np.int64) if count_features else None
+    )
     for start in range(0, order.shape[0], batch):
-        indices = order[start : start + batch]
-        normal = features[indices]
-        reflected = mirrored_features[indices]
+        positions = order[start : start + batch]
+        global_indices = dataset.training_indices[positions.cpu().numpy()]
+        records = dataset.gather(global_indices)
+        generations = dataset.generations(global_indices)
+        normal = feature_indices(records["board"], records["stm"], records["lion"])
+        mirrored_board, mirrored_lion = mirror(records["board"], records["lion"])
+        reflected = feature_indices(mirrored_board, records["stm"], mirrored_lion)
+        if observations is not None:
+            active = normal[normal != PADDING_INDEX]
+            observations += np.bincount(active, minlength=FEATURE_COUNT)
         choose_reflected = torch.rand(
-            indices.shape[0], generator=generator, device=features.device
+            positions.shape[0], generator=generator, device=device
         ) < 0.5
-        selected = torch.where(choose_reflected[:, None], reflected, normal)
-        selected_targets = targets[indices]
+        selected = normal.copy()
+        reflected_rows = choose_reflected.cpu().numpy()
+        selected[reflected_rows] = reflected[reflected_rows]
+        targets = build_targets(records, teacher_ks, generations, lambda_value)
+        device_features = torch.as_tensor(selected, device=device)
+        device_targets = torch.as_tensor(targets, device=device)
         optimizer.zero_grad(set_to_none=True)
         loss = torch_functional.binary_cross_entropy_with_logits(
-            model_logits(model, selected, k), selected_targets
+            model_logits(model, device_features, k), device_targets
         )
         loss.backward()
         optimizer.step()
-        total += float(loss.item()) * indices.shape[0]
-    return total / features.shape[0]
+        total += float(loss.item()) * positions.shape[0]
+    return total / dataset.training_indices.size, observations
 
 
-def build_targets(records: np.ndarray, k: float, lambda_value: float) -> NDArray[np.float32]:
-    """探索値と最終結果を混合した教師勝率を作る。"""
-    score_probability = 1.0 / (1.0 + np.exp(-records["score"].astype(np.float64) / k))
+def build_targets(
+    records: np.ndarray,
+    teacher_ks: NDArray[np.float64],
+    generations: NDArray[np.int64],
+    lambda_value: float,
+) -> NDArray[np.float32]:
+    """世代別Kで探索値を変換し、最終結果と混合した教師勝率を作る。"""
+    teacher_ks = np.asarray(teacher_ks, dtype=np.float64)
+    generations = np.asarray(generations, dtype=np.int64)
+    if generations.shape != (records.shape[0],):
+        raise ValueError("generations must have one value per record")
+    if np.any(generations < 0) or np.any(generations >= teacher_ks.size):
+        raise ValueError("generation is outside teacher K values")
+    scales = teacher_ks[generations]
+    if np.any(scales <= 0.0) or not np.all(np.isfinite(scales)):
+        raise ValueError("teacher K values must be finite and positive")
+    score_probability = 1.0 / (
+        1.0 + np.exp(-records["score"].astype(np.float64) / scales)
+    )
     result_probability = records["result"].astype(np.float64) / 2.0
     return (
         lambda_value * score_probability + (1.0 - lambda_value) * result_probability
@@ -237,12 +337,46 @@ def command_init(arguments: argparse.Namespace) -> None:
 
 def command_estimate_k(arguments: argparse.Namespace) -> None:
     """estimate-kサブコマンドを実行する。"""
-    records = load_records(arguments.data)
-    training = records[records["game"] % 20 != 0]
-    k = estimate_k(training["score"], training["result"])
-    loss = binary_cross_entropy_sum(training["score"], training["result"], k)
-    print(f"K: {k:.9f}")
-    print(f"training BCE sum: {loss:.9f}")
+    dataset = Dataset(arguments.data)
+    generation_ks, generation_counts = estimate_generation_ks(dataset)
+    for generation, (checksum, k, count) in enumerate(
+        zip(dataset.generation_checksums, generation_ks, generation_counts)
+    ):
+        file_count = int(np.count_nonzero(dataset.file_generations == generation))
+        print(
+            f"generation {generation}: files={file_count} checksum={checksum.hex()} "
+            f"training_records={count} K={k:.9f}"
+        )
+    scores, results = _training_scores_results(dataset)
+    mixed_k = estimate_k(scores, results)
+    print(f"mixed: training_records={scores.size} K={mixed_k:.9f}")
+
+
+def _format_validation_loss(
+    overall: float, generation_losses: NDArray[np.float64]
+) -> str:
+    """全体と世代別の検証損失を1行へ整形する。"""
+    generations = " ".join(
+        f"generation{generation}={loss:.9f}"
+        for generation, loss in enumerate(generation_losses)
+    )
+    return f"validation_loss: overall={overall:.9f} {generations}"
+
+
+def _print_feature_observations(observations: NDArray[np.int64]) -> None:
+    """観測済み特徴の出現回数と未観測数を表示する。"""
+    observed = observations[observations > 0]
+    if observed.size == 0:
+        raise ValueError("no training features were observed")
+    percentiles = np.quantile(observed, [0.05, 0.25, 0.5, 0.75, 0.95])
+    print(
+        "feature observations: "
+        f"unobserved={np.count_nonzero(observations == 0)} "
+        f"min={observed.min()} p05={percentiles[0]:.3f} "
+        f"p25={percentiles[1]:.3f} p50={percentiles[2]:.3f} "
+        f"p75={percentiles[3]:.3f} p95={percentiles[4]:.3f} "
+        f"max={observed.max()} mean={observed.mean():.3f}"
+    )
 
 
 def command_train(arguments: argparse.Namespace) -> None:
@@ -260,23 +394,23 @@ def command_train(arguments: argparse.Namespace) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(arguments.seed)
     device = torch.device(arguments.device)
-    records = load_records(arguments.data)
-    validation_mask = records["game"] % 20 == 0
-    if not np.any(validation_mask) or np.all(validation_mask):
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    dataset = Dataset(arguments.data)
+    if dataset.training_indices.size == 0 or dataset.validation_indices.size == 0:
         raise ValueError("game split produced an empty training or validation set")
 
-    print(f"records: total={records.size} training={np.count_nonzero(~validation_mask)} validation={np.count_nonzero(validation_mask)}")
-    print("building feature indices")
-    normal = feature_indices(records["board"], records["stm"], records["lion"])
-    mirrored_board, mirrored_lion = mirror(records["board"], records["lion"])
-    reflected = feature_indices(mirrored_board, records["stm"], mirrored_lion)
-    targets = build_targets(records, arguments.k, arguments.lambda_value)
-
-    training_features = torch.as_tensor(normal[~validation_mask], device=device)
-    training_reflected = torch.as_tensor(reflected[~validation_mask], device=device)
-    training_targets = torch.as_tensor(targets[~validation_mask], device=device)
-    validation_features = torch.as_tensor(normal[validation_mask], device=device)
-    validation_targets = torch.as_tensor(targets[validation_mask], device=device)
+    teacher_ks, _ = estimate_generation_ks(dataset)
+    teacher_k_log = ", ".join(
+        f"generation {generation} = {k:.9f}"
+        for generation, k in enumerate(teacher_ks)
+    )
+    print(f"teacher K: {teacher_k_log}")
+    print(
+        f"records: total={dataset.record_count} "
+        f"training={dataset.training_indices.size} "
+        f"validation={dataset.validation_indices.size}"
+    )
 
     initial_quantized, _ = read_mnpt(arguments.init)
     initial = torch.as_tensor(initial_quantized.astype(np.float32) / 8.0, device=device)
@@ -291,19 +425,22 @@ def command_train(arguments: argparse.Namespace) -> None:
             training_loss = train_epoch(
                 model,
                 optimizer,
-                training_features,
-                training_reflected,
-                training_targets,
+                dataset,
+                teacher_ks,
                 arguments.k,
+                arguments.lambda_value,
                 arguments.batch,
                 generator,
-            )
-            loss = validation_loss(
+                device,
+            )[0]
+            loss, _ = validation_loss(
                 model,
-                validation_features,
-                validation_targets,
+                dataset,
+                teacher_ks,
                 arguments.k,
+                arguments.lambda_value,
                 arguments.batch,
+                device,
             )
             candidates.append((loss, rate))
             print(f"learning-rate candidate: lr={rate:g} train_loss={training_loss:.9f} validation_loss={loss:.9f}")
@@ -313,34 +450,68 @@ def command_train(arguments: argparse.Namespace) -> None:
     model = make_model(initial, device)
     optimizer = torch.optim.Adam(model.parameters(), lr=selected_rate)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
+    best_loss, generation_losses = validation_loss(
+        model,
+        dataset,
+        teacher_ks,
+        arguments.k,
+        arguments.lambda_value,
+        arguments.batch,
+        device,
+    )
+    best_epoch = 0
+    best_weights = model.weight[:FEATURE_COUNT, 0].detach().cpu().clone()
+    print(f"epoch 0: {_format_validation_loss(best_loss, generation_losses)}")
     for epoch in range(1, arguments.epochs + 1):
-        training_loss = train_epoch(
+        started = time.perf_counter()
+        training_loss, observations = train_epoch(
             model,
             optimizer,
-            training_features,
-            training_reflected,
-            training_targets,
+            dataset,
+            teacher_ks,
             arguments.k,
+            arguments.lambda_value,
             arguments.batch,
             generator,
+            device,
+            count_features=epoch == 1,
         )
-        loss = validation_loss(
+        elapsed = time.perf_counter() - started
+        positions_per_second = dataset.training_indices.size / elapsed
+        loss, generation_losses = validation_loss(
             model,
-            validation_features,
-            validation_targets,
+            dataset,
+            teacher_ks,
             arguments.k,
+            arguments.lambda_value,
             arguments.batch,
+            device,
         )
-        print(f"epoch {epoch}: train_loss={training_loss:.9f} validation_loss={loss:.9f}")
+        print(
+            f"epoch {epoch}: train_loss={training_loss:.9f} "
+            f"positions_per_second={positions_per_second:.3f}"
+        )
+        print(f"epoch {epoch}: {_format_validation_loss(loss, generation_losses)}")
+        if observations is not None:
+            _print_feature_observations(observations)
+        if loss < best_loss:
+            best_loss = loss
+            best_epoch = epoch
+            best_weights = model.weight[:FEATURE_COUNT, 0].detach().cpu().clone()
 
-    float_weights = model.weight[:FEATURE_COUNT, 0].detach().cpu().numpy().astype(np.float32)
+    print(f"best epoch: {best_epoch} validation_loss={best_loss:.9f}")
+
+    float_weights = best_weights.numpy().astype(np.float32)
     quantized = quantize(float_weights)
 
-    validation_count = validation_features.shape[0]
+    validation_count = dataset.validation_indices.size
     sample_count = min(arguments.validation_sample, validation_count)
     random = np.random.default_rng(arguments.seed)
     sample_indices = random.choice(validation_count, size=sample_count, replace=False)
-    sample_features = normal[validation_mask][sample_indices]
+    sample_records = dataset.gather(dataset.validation_indices[sample_indices])
+    sample_features = feature_indices(
+        sample_records["board"], sample_records["stm"], sample_records["lion"]
+    )
     extended_float = np.zeros(FEATURE_COUNT + 1, dtype=np.float32)
     extended_float[:FEATURE_COUNT] = float_weights
     floating_scores = extended_float[sample_features].sum(axis=1, dtype=np.float32)
@@ -354,6 +525,13 @@ def command_train(arguments: argparse.Namespace) -> None:
         )
     write_mnpt(arguments.output, quantized, arguments.k)
     print(f"initial position evaluation: {initial_position_score(quantized)} cp")
+    max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    print(f"resource usage: max_rss={max_rss} KiB")
+    if device.type == "cuda":
+        print(
+            "resource usage: "
+            f"max_vram={torch.cuda.max_memory_allocated(device)} bytes"
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:

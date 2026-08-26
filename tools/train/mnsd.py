@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import struct
+from typing import Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -154,20 +155,136 @@ def map_records(path: str | Path) -> np.memmap:
     return records
 
 
-def load_records(paths: list[str] | tuple[str, ...]) -> np.ndarray:
-    """複数MNSDを対局番号が衝突しないよう補正して連結する。"""
-    if not paths:
-        raise ValueError("at least one MNSD path is required")
-    chunks: list[np.ndarray] = []
-    game_offset = 0
-    for path in paths:
-        mapped = map_records(path)
-        chunk = np.array(mapped, copy=True)
-        if chunk.size:
-            adjusted = chunk["game"].astype(np.uint64) + game_offset
-            if adjusted.max(initial=0) > np.iinfo(np.uint32).max:
-                raise OverflowError("combined game number exceeds u32")
-            chunk["game"] = adjusted.astype(np.uint32)
-            game_offset = int(adjusted.max())
-        chunks.append(chunk)
-    return np.concatenate(chunks)
+def hash64(seed: int, games: NDArray[np.uint32]) -> NDArray[np.uint64]:
+    """ファイルのシードと対局番号から安定した64ビット値を作る。"""
+    values = np.asarray(games, dtype=np.uint64)
+    with np.errstate(over="ignore"):
+        values = np.uint64(seed) ^ (values * np.uint64(0x9E3779B97F4A7C15))
+        values = (values ^ (values >> np.uint64(30))) * np.uint64(
+            0xBF58476D1CE4E5B9
+        )
+        values = (values ^ (values >> np.uint64(27))) * np.uint64(
+            0x94D049BB133111EB
+        )
+    return values ^ (values >> np.uint64(31))
+
+
+class Dataset:
+    """複数MNSDをメモリマップのまま保持し、大域番号で参照する。"""
+
+    def __init__(self, paths: Sequence[str | Path]) -> None:
+        if not paths:
+            raise ValueError("at least one MNSD path is required")
+
+        resolved_paths = tuple(Path(path).resolve() for path in paths)
+        if len(set(resolved_paths)) != len(resolved_paths):
+            raise ValueError("the same MNSD file was specified more than once")
+
+        headers = tuple(read_header(path) for path in resolved_paths)
+        seeds = [header.seed for header in headers]
+        if len(set(seeds)) != len(seeds):
+            raise ValueError("MNSD file seeds must be unique")
+
+        counts = np.fromiter(
+            (header.record_count for header in headers), dtype=np.uint64
+        )
+        total = sum(header.record_count for header in headers)
+        if total > np.iinfo(np.int64).max:
+            raise OverflowError("combined record count exceeds i64")
+
+        checksums: list[bytes] = []
+        checksum_generations: dict[bytes, int] = {}
+        file_generations = np.empty(len(headers), dtype=np.int64)
+        for file_index, header in enumerate(headers):
+            generation = checksum_generations.get(header.network_checksum)
+            if generation is None:
+                generation = len(checksums)
+                checksum_generations[header.network_checksum] = generation
+                checksums.append(header.network_checksum)
+            file_generations[file_index] = generation
+
+        offsets = np.empty(len(headers) + 1, dtype=np.int64)
+        offsets[0] = 0
+        offsets[1:] = np.cumsum(counts, dtype=np.uint64)
+        records = tuple(map_records(path) for path in resolved_paths)
+
+        validation_masks: list[NDArray[np.bool_]] = []
+        training_indices_by_file: list[NDArray[np.int64]] = []
+        validation_indices_by_file: list[NDArray[np.int64]] = []
+        for file_index, (header, mapped) in enumerate(zip(headers, records)):
+            validation = hash64(header.seed, mapped["game"]) % np.uint64(20) == 0
+            validation_masks.append(validation)
+            offset = offsets[file_index]
+            training_indices_by_file.append(
+                np.flatnonzero(~validation).astype(np.int64) + offset
+            )
+            validation_indices_by_file.append(
+                np.flatnonzero(validation).astype(np.int64) + offset
+            )
+
+        self.paths = resolved_paths
+        self.headers = headers
+        self.records = records
+        self.offsets = offsets
+        self.file_generations = file_generations
+        self.generation_checksums = tuple(checksums)
+        self.validation_masks = tuple(validation_masks)
+        self.training_indices_by_file = tuple(training_indices_by_file)
+        self.validation_indices_by_file = tuple(validation_indices_by_file)
+        self.training_indices = np.concatenate(training_indices_by_file)
+        self.validation_indices = np.concatenate(validation_indices_by_file)
+
+    @property
+    def record_count(self) -> int:
+        """全ファイルのレコード数を返す。"""
+        return int(self.offsets[-1])
+
+    @property
+    def generation_count(self) -> int:
+        """ネット検査和で識別した世代数を返す。"""
+        return len(self.generation_checksums)
+
+    def generation_training_indices(self, generation: int) -> NDArray[np.int64]:
+        """指定世代に属する訓練レコードの大域番号を返す。"""
+        if not 0 <= generation < self.generation_count:
+            raise IndexError("generation is outside the dataset")
+        chunks = [
+            indices
+            for file_generation, indices in zip(
+                self.file_generations, self.training_indices_by_file
+            )
+            if file_generation == generation
+        ]
+        return np.concatenate(chunks)
+
+    def generations(self, indices: NDArray[np.int64]) -> NDArray[np.int64]:
+        """大域レコード番号に対応する世代番号を返す。"""
+        normalized = self._normalize_indices(indices)
+        files = np.searchsorted(self.offsets[1:], normalized, side="right")
+        return self.file_generations[files]
+
+    def gather(self, indices: NDArray[np.int64]) -> np.ndarray:
+        """任意順の大域レコード番号を同じ順序の構造化配列へ集める。"""
+        normalized = self._normalize_indices(indices)
+        gathered = np.empty(normalized.shape[0], dtype=RECORD_DTYPE)
+        if normalized.size == 0:
+            return gathered
+
+        files = np.searchsorted(self.offsets[1:], normalized, side="right")
+        for file_index, mapped in enumerate(self.records):
+            positions = np.flatnonzero(files == file_index)
+            if positions.size == 0:
+                continue
+            local = normalized[positions] - self.offsets[file_index]
+            local_order = np.argsort(local, kind="stable")
+            gathered[positions[local_order]] = mapped[local[local_order]]
+        return gathered
+
+    def _normalize_indices(self, indices: NDArray[np.int64]) -> NDArray[np.int64]:
+        """大域レコード番号を検証してint64配列に揃える。"""
+        normalized = np.asarray(indices, dtype=np.int64)
+        if normalized.ndim != 1:
+            raise ValueError("record indices must be one-dimensional")
+        if np.any(normalized < 0) or np.any(normalized >= self.record_count):
+            raise IndexError("record index is outside the dataset")
+        return normalized
