@@ -25,7 +25,7 @@
 | 評価関数 | [plans/evaluation.md](plans/evaluation.md) | 完了 | 2026年8月26日 |
 | 規則集合の代数的データ型化 | [plans/rules-type.md](plans/rules-type.md) | 完了 | 2026年8月25日 |
 | Rust設計監査対応 | [plans/rust-design-audit-remediation.md](plans/rust-design-audit-remediation.md) | 完了 | 2026年8月26日 |
-| 評価関数の世代反復 | [plans/evaluation-gen1.md](plans/evaluation-gen1.md) | 進行中 | ― |
+| 評価関数の世代反復 | [plans/evaluation-gen1.md](plans/evaluation-gen1.md) | 完了 | 2026年8月29日 |
 | 棋力測定ハーネス基盤の効率化 | [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) | 完了 | 2026年8月28日 |
 | 棋力測定条件の校正と段階ゲート | [plans/match-measurement-calibration.md](plans/match-measurement-calibration.md) | 待機中 | ― |
 | 早期投了の導入判定 | [plans/match-early-resignation.md](plans/match-early-resignation.md) | 待機中 | ― |
@@ -33,11 +33,15 @@
 直前局面生成器は設計済みだが、2026年8月10日に探索部を先行させると決定し、待機中のままとする。
 順方向の探索部と評価関数は直前局面生成器の完了を前提とせず、いつ再開しても手戻りがない。
 
-## 現在地：評価関数の世代反復
+## 現在地：評価関数の世代反復の完了
 
-2026年8月27日に評価関数の世代反復マイルストーン（plans/evaluation-gen1.md）を起案した。
-評価関数マイルストーンが残した「教師不足が主因」という判定を、世代1データ1,000万局面の生成と、学習PSTの再学習およびP型NNUEの再学習で検証する。
-採否は時間制御GSPRTで決め、固定ノードGSPRTとbench NPSなどの速度の診断指標を併記して、評価の重さが総合の強さに与える影響を記録する。
+評価関数の世代反復マイルストーン（plans/evaluation-gen1.md）は2026年8月29日に完了した。
+学習PST同士の自己対局で世代1データ10,138,396局面を生成し、世代0と合わせた1,106万局面で再学習した学習PST（コミットaf200b4）を採用した。
+直前コミットに対する時間制御GSPRTは得点率90.9%の`H1`、HaChu比較の固定局数Eloは−111（前回−282）である。
+同じデータで学習したP型NNUEは固定ノードと時間制御の両方で`H0`となり不採用とした（分岐`nnue-gen1`に保持）。
+前マイルストーンの「教師不足が主因」という判定は成り立たず、NNUEが学習しなかった主因は学習器の第1層初期化がclipped ReLUを飽和させていたことにあった。
+初期化の修正後も対局では学習PSTに劣り、次の課題はデータ量より教師値と評価の質にある。
+次期候補は、採用PSTによる世代2の生成と再学習（Kを固定した尺度効果の切り分けを含む）、NNUEの教師値の質と過学習対策、静止探索の効率化であり、隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 
 Rust設計監査対応は2026年8月26日に完了した。
 公開入力のパニック、不正状態を作れる公開型、探索スレッドの未回収および文字列へ失われていた規則エラーを修正し、Rust 1.88.0による全ターゲット検査を含む検証結果をplans/rust-design-audit-remediation.mdへ記録した。
