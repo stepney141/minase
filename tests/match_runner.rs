@@ -1,8 +1,19 @@
 //! 自己対局測定ハーネスのプロセス境界を検査する統合テスト。
 
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+fn run_directory() -> std::path::PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "minase-match-run-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
+}
 
 fn run_random_match(concurrency: &str, pairs: &str) -> String {
+    let run_dir = run_directory();
     let expected_random = std::path::Path::new(env!("CARGO_BIN_EXE_match_runner"))
         .with_file_name(format!("usi_random{}", std::env::consts::EXE_SUFFIX));
     assert_eq!(
@@ -10,6 +21,8 @@ fn run_random_match(concurrency: &str, pairs: &str) -> String {
         std::path::Path::new(env!("CARGO_BIN_EXE_usi_random"))
     );
     let output = Command::new(env!("CARGO_BIN_EXE_match_runner"))
+        .arg("--run-dir")
+        .arg(&run_dir)
         .args([
             "--seed",
             "20260811",
@@ -36,19 +49,23 @@ fn run_random_match(concurrency: &str, pairs: &str) -> String {
         "match_runner failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    std::fs::remove_dir_all(&run_dir).expect("run directory must be removable");
     String::from_utf8(output.stdout).expect("match_runner output must be UTF-8")
 }
 
 fn without_elapsed(output: &str) -> String {
     output
         .lines()
-        .filter(|line| !line.starts_with("elapsed:"))
+        .filter(|line| !line.starts_with("elapsed:") && !line.starts_with("run_dir:"))
         .collect::<Vec<_>>()
         .join("\n")
 }
 
 fn run_minase_candidate_match(candidate: &str) -> String {
+    let run_dir = run_directory();
     let output = Command::new(env!("CARGO_BIN_EXE_match_runner"))
+        .arg("--run-dir")
+        .arg(&run_dir)
         .args([
             "--candidate",
             candidate,
@@ -71,6 +88,7 @@ fn run_minase_candidate_match(candidate: &str) -> String {
         "match_runner failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    std::fs::remove_dir_all(&run_dir).expect("run directory must be removable");
     String::from_utf8(output.stdout).expect("match_runner output must be UTF-8")
 }
 
@@ -128,4 +146,69 @@ fn minase_cecp_match_is_failure_free_and_matches_usi() {
         without_elapsed(&normalized_cecp),
         without_elapsed(&normalized_usi)
     );
+}
+
+// match-harness-efficiency.md「実行記録と再開」: 欠番より後の確定済み記録を
+// 変更せず、最小の欠番だけを再実行して番号順の統計を復元する。
+#[test]
+fn resume_fills_the_lowest_gap_and_preserves_later_records() {
+    let run_dir = run_directory();
+    let run = |operation: &str| {
+        Command::new(env!("CARGO_BIN_EXE_match_runner"))
+            .arg(operation)
+            .arg(&run_dir)
+            .args([
+                "--seed",
+                "20260828",
+                "--candidate",
+                "random",
+                "--baseline",
+                "random",
+                "--each",
+                "nodes=1",
+                "--response-timeout",
+                "5",
+                "--max-ply",
+                "400",
+                "--concurrency",
+                "1",
+                "elo",
+                "--pairs",
+                "3",
+            ])
+            .output()
+            .expect("match_runner must start")
+    };
+
+    let initial = run("--run-dir");
+    assert!(
+        initial.status.success(),
+        "{}",
+        String::from_utf8_lossy(&initial.stderr)
+    );
+    let pair2 = run_dir.join("pairs/00000000000000000002.json");
+    let pair3 = run_dir.join("pairs/00000000000000000003.json");
+    let pair3_before = std::fs::read(&pair3).unwrap();
+    std::fs::remove_file(&pair2).unwrap();
+
+    let resumed = run("--resume");
+    assert!(
+        resumed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&resumed.stderr)
+    );
+    assert!(pair2.is_file());
+    assert_eq!(std::fs::read(&pair3).unwrap(), pair3_before);
+
+    let initial = String::from_utf8(initial.stdout).unwrap();
+    let resumed = String::from_utf8(resumed.stdout).unwrap();
+    for prefix in ["summary:", "pentanomial:", "engine_failures:"] {
+        assert_eq!(
+            initial.lines().find(|line| line.starts_with(prefix)),
+            resumed.lines().find(|line| line.starts_with(prefix))
+        );
+    }
+    assert!(resumed.contains("pair 1: loaded from saved record"));
+    assert!(resumed.contains("pair 3: loaded from saved record"));
+    std::fs::remove_dir_all(run_dir).unwrap();
 }

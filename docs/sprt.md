@@ -1,7 +1,8 @@
 # SPRTによる棋力測定の手引き
 
 本書は、Minaseのエンジン変更の効果を自己対局で測定する標準手順を定める。
-測定基盤の設計と実装経緯は [plans/match-harness.md](plans/match-harness.md) が、統計方式の設計決定は [plans/search.md](plans/search.md) の測定基盤の節が所有し、本書は測定の実行者（人間およびエージェント）向けの運用規約と手順だけを記す。
+測定基盤の成立過程は [plans/match-harness.md](plans/match-harness.md) が、保存、再開、および集計基盤は [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) が、統計方式は [plans/search.md](plans/search.md) の測定基盤の節が所有する。
+本書は、測定の実行者（人間およびエージェント）向けの運用規約と手順だけを記す。
 
 ## 原則
 
@@ -17,12 +18,14 @@
 
 ```console
 cargo run --release --bin match_runner -- \
+  --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
-  --each depth=4 --concurrency 8 gsprt
+  --each time=30000+300,byoyomi=500 --concurrency 8 gsprt
 ```
 
 思考制限は`--each`で両エンジンに同一条件を与える。
-深さ・ノード数の水準は測定目的に応じて選ぶが、同一機能の判定をやり直す場合は同じ水準を使う。
+機能採否には現行の標準時間制御`time=30000+300,byoyomi=500`を使う。
+固定深さと固定ノード数は、探索速度を除いた診断に限定し、採否の根拠には使わない。
 `decision: H1`（候補が有意に強い）で採用、`decision: H0`（elo=5の改善があるとは言えない）で不採用とする。
 上限ペア数（`--max-pairs`、既定100,000）に達した`decision: pending`は判定保留であり、水準を変えて再測定するか、変更の見直しへ戻る。
 
@@ -33,6 +36,7 @@ cargo run --release --bin match_runner -- \
 
 ```console
 cargo run --release --bin match_runner -- \
+  --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<測定対象> \
   --baseline commit:0045833 --baseline-limit depth=1 \
   --each depth=4 --concurrency 8 gsprt
@@ -48,9 +52,10 @@ HaChuのような外部エンジンとの比較は、対等な時間制御のGSP
 
 ```console
 cargo run --release --bin match_runner -- \
+  --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<測定対象> --baseline "cecp:../hachu-debian/hachu" \
   --rules L1,L3,P0,P5,P6,R2,E1,E2 --each time=60000+1000 \
-  --concurrency 8 --seed <シード> gsprt
+  --concurrency 8 gsprt
 ```
 
 HaChuは`usermove`で受けた着手を自前の規則で検査し、不合法と判定すると`Illegal move`を返して進行不能になる。
@@ -66,6 +71,7 @@ HaChuは詰みを自認すると着手を返さずに結果行だけを出力す
 
 ```console
 cargo run --release --bin match_runner -- \
+  --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<新> --baseline commit:<旧> \
   --each depth=4 --concurrency 8 elo --pairs 200
 ```
@@ -73,11 +79,55 @@ cargo run --release --bin match_runner -- \
 全勝・全敗の標本ではロジスティックEloの点推定が無限大になる。
 その場合は勝率と局数をそのまま記録し、必要なら1局あたり期待スコアの95%下限（rule of three）による下界を併記する。
 
+## 実行ディレクトリと再開
+
+`match_runner`は、新しい測定では`--run-dir`、保存済み測定の再開では`--resume`のどちらか一方を必須とする。
+`--run-dir`には存在しないパスを指定し、測定ごとに別のディレクトリを使う。
+ハーネスはそのディレクトリを作成し、実行条件を`manifest.json`、累計実行時間と中断状態を`summary.json`、確定した各ペアを`pairs/`以下へ原子的に保存する。
+`match_runner`は実行ディレクトリを排他的にロックするため、同じディレクトリに対する別のrunnerまたは`match_report`はロックの取得に失敗して終了する。
+再開と監査には3種類の保存物がすべて必要なので、実行ディレクトリ全体を保存し、個別のJSONを編集しない。
+
+中断した測定は、最初のコマンドの`--run-dir`を`--resume`へ置き換え、それ以外の実行条件を同じ値で指定して再開する。
+再開時にも`--seed`は必須であり、ハーネスはエンジン、規則、思考制限、シード、手数上限、応答タイムアウト、同時対局数、実効ワーカー数、置換表容量、測定機、およびrunnerのSHA-256が保存済み条件と完全に一致することを検査する。
+条件が異なる場合は再開せず、明示的なエラーで終了する。
+
+```console
+cargo run --release --bin match_runner -- \
+  --resume data/matches/<測定名> --seed <シード> \
+  --candidate commit:<新コミット> --baseline commit:<旧コミット> \
+  --each depth=4 --concurrency 8 gsprt
+```
+
+確定済みペアは再計算せず、欠番だけを実行して、ペア番号順に同じ統計へ取り込む。
+GSPRTの`--max-pairs`または固定局数Eloの`--pairs`だけを増やす場合も、同じ`--resume`手順で対局列を延長する。
+時間制御の対局結果と逐次検定は再開後も有効だが、強制終了した測定は処理停止から記録更新までの時間を確定できないため、スループット校正には使わない。
+
+## 保存記録の集計
+
+`match_report`は、同一時間制御の固定局数Eloで完了した実行ディレクトリから、Elo、95%信頼区間、異常件数、CPU時間、局時間、最大常駐メモリ、および校正用の2主指標をJSONで再計算する。
+GSPRT、候補と基準で時間制御が異なる測定、実行中の測定、および強制終了を含む測定は集計対象外であり、条件を満たさなければエラーで終了する。
+校正測定はLinux上で行い、両エンジンの`Threads`、各局のCPU時間と最大常駐メモリ、物理コア数、および実メモリ容量が保存されていることを前提とする。
+有効ペア、得点分散、または総CPU時間が0の場合も、校正指標へ読み替えずにエラーで終了する。
+
+```console
+cargo run --release --bin match_report -- \
+  --run-dir data/matches/<測定名>
+```
+
+時間制御を比較する場合は、比較対象に候補時間制御の実行ディレクトリ、`--compare-to`に現行時間制御の実行ディレクトリを指定する。
+両方の実行は、候補側と基準側の時間制御を除く`manifest.json`の全条件、および保存済みペア番号が一致していなければならない。
+
+```console
+cargo run --release --bin match_report -- \
+  --run-dir data/matches/<候補時間制御> \
+  --compare-to data/matches/<現行時間制御>
+```
+
 ## エンジンの指定方法
 
 `--candidate`と`--baseline`のspecは次の4形式である。
 
-- `commit:<hash>`: ハーネスがgit worktreeで当該コミットを展開して`cargo build --release --bin minase`を実行し、完全ハッシュをキーに`target/match-cache/`へキャッシュする。起動引数`--protocol usi --rules <マッチ規則>`は自動付与される。標準の測定はこの形式を使う。`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットが自分の語彙で解釈する。規則コードP0・E0を導入したコミットより前のコミットを相手にする測定では、コードを列挙した指定は旧コミットが拒否するため、`engine-default`などのプリセット名で指定する。
+- `commit:<hash>`: ハーネスが`git archive`で当該コミットを一時ディレクトリへ展開して`cargo build --release --bin minase`を実行し、完全ハッシュをキーに`target/match-cache/`へキャッシュする。未コミットの作業ツリー変更はビルドに含まれない。キャッシュにはバイナリとSHA-256を保存し、使用前に検証する。どちらかの欠損または不一致を検出した場合は、当該コミットを再ビルドする。同じコミットの並行ビルドはロックで直列化し、完成したキャッシュを原子的に配置する。起動引数`--protocol usi --rules <マッチ規則>`は自動付与される。標準の測定はこの形式を使う。`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットが自分の語彙で解釈する。規則コードP0・E0を導入したコミットより前のコミットを相手にする測定では、コードを列挙した指定は旧コミットが拒否するため、`engine-default`などのプリセット名で指定する。
 - 起動コマンド（パス＋空白区切り引数）: 任意のUSIエンジンを起動する（例 `"target/release/minase --protocol usi --rules engine-default"`）。未コミットの作業ツリーや外部エンジンの測定に使う。minase本体は`--protocol`と`--rules`が必須である点に注意する。
 - `random`: 同一ビルドの`usi_random`（合法手から一様ランダムに着手する校正用エンジン）。真のelo差が0であることが既知の唯一の対戦カードであり、ハーネス自体の煙試験に使う。
 - `cecp:<起動コマンド>`: CECP（XBoardプロトコル）で対局する任意のエンジンを起動する（例 `"cecp:../hachu-debian/hachu"`）。HaChuのようにUSIを話さない外部エンジンとの比較に使う。ハーネスは`xboard`・`protover 2`の握手後に`memory 256`・`new`・`variant chu`・`easy`・`nopost`・`force`を送り、毎手、未送信の着手を`usermove`で転送してから`go`で思考させ、`move`行を受けたら`force`へ戻す。思考制限は`depth`（`sd`へ写す）と秒単位の時間制御（`level`・`time`・`otim`へ写す）に限り、`nodes`と秒読み、および秒未満の持ち時間・加算は指定できない。規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
@@ -130,7 +180,9 @@ Eloの写像はロジスティック（`s = 1/(1+10^(-elo/400))`）、H0はelo=0
 マイルストーンの設計書へ記録する測定は、次の項目を含める。
 
 コマンドライン全体（シードを含む）、両エンジンのコミットハッシュ、ペンタノミアル度数、LLRと判定（またはEloと信頼区間）、破棄ペア数と異常件数、経過時間。
-これらは出力の`summary:`以下をそのまま転記すれば足りる。
+実行条件とエンジンバイナリのSHA-256は`manifest.json`、確定済みの結果と異常分類は`pairs/`、再開を含む累計実行時間は`summary.json`を正とする。
+標準出力の`elapsed`は当該起動だけの経過時間であり、再開した測定の累計時間には`summary.json`の`active_wall_time_ns`を使う。
+固定局数の時間制御測定では`match_report`のJSONを保存記録から再計算した集計値として使い、標準出力の最終サマリだけに依存しない。
 
 並列測定では、CPU型、物理コア数、論理コア数、候補と基準のワーカー数、`USI_Hash`、同時対局数、時間制御、および`time_forfeits`も記録する。
 外部エンジンを含む測定では、そのエンジンの版（ソースのコミットとビルド手順）と規則オプションの設定も記録する。

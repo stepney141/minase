@@ -26,6 +26,9 @@
 | 規則集合の代数的データ型化 | [plans/rules-type.md](plans/rules-type.md) | 完了 | 2026年8月25日 |
 | Rust設計監査対応 | [plans/rust-design-audit-remediation.md](plans/rust-design-audit-remediation.md) | 完了 | 2026年8月26日 |
 | 評価関数の世代反復 | [plans/evaluation-gen1.md](plans/evaluation-gen1.md) | 進行中 | ― |
+| 棋力測定ハーネス基盤の効率化 | [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) | 完了 | 2026年8月28日 |
+| 棋力測定条件の校正と段階ゲート | [plans/match-measurement-calibration.md](plans/match-measurement-calibration.md) | 待機中 | ― |
+| 早期投了の導入判定 | [plans/match-early-resignation.md](plans/match-early-resignation.md) | 待機中 | ― |
 
 直前局面生成器は設計済みだが、2026年8月10日に探索部を先行させると決定し、待機中のままとする。
 順方向の探索部と評価関数は直前局面生成器の完了を前提とせず、いつ再開しても手戻りがない。
@@ -54,6 +57,18 @@ minaseは探索量でHaChuに劣らず、持ち時間を4倍にすると統計�
 
 静止探索の効率化（捕獲専用の手生成、SEE、futility pruning）は評価関数と独立に採否できるため、評価関数の後に別マイルストーンとして起案する。
 `Threads=4`対2の測定は、必要になった時点で plans/lazy-smp.md の手順で実施する。
+棋力測定ハーネス基盤の効率化は2026年8月28日に完了した。
+並列枠の補充、原子的な保存と再開、監査可能な資源記録、および保存記録の再集計を実装し、利用手順を`docs/sprt.md`へ反映した。
+実装と検証の詳細はplans/match-harness-efficiency.mdに残した。
+
+時間制御と同時対局数の校正、および段階ゲートはplans/match-measurement-calibration.mdへ分離した。
+正例の現行条件200ペアは異常0件で完走したが、負例のP型NNUEは学習PSTに400局全敗してペア得点分散が0となり、校正指標を算出できなかった。
+結果を見た後に比較カードを差し替えず、新しいカードと判定契約を事前固定するまで同マイルストーンを待機中とする。
+
+早期投了はplans/match-early-resignation.mdへ分離した。
+必要な記録量と検証契約が確定するまで、同マイルストーンを待機中とする。
+
+進行中の評価測定には着手時点のハーネスと測定条件を使い、段階ゲートを遡及適用しない。
 実lishogiサーバへの接続は、未完成のエンジンを公開の場へ出さない方針から対象外のままであり、探索・評価の成熟後に別マイルストーンとして計画する。
 直前局面生成器は待機中のままとし、`Position`のAPI再編を含むため、着手時期を別途決める。
 

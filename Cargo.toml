@@ -14,12 +14,17 @@ all = "warn"
 
 [dependencies]
 clap = { version = "4.6.4", features = ["derive"] }
+fs2 = "0.4.3"
 mimalloc = "0.1.52"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.140"
 sha2 = "0.10"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+procfs = { version = "0.18.0", default-features = false }
 
 [dev-dependencies]
 flate2 = "1"
-serde_json = "1"
 
 [profile.dev]
 opt-level = 3
