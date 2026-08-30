@@ -1,59 +1,25 @@
 # 外部対局接続の設計書
 
-## 実施状況
+## 先に読む要約
 
-2026年8月11日に本設計書を起案した。
-起案に先立ち、Game・Rules・探索を共有して対局進行をプロトコル別に分ける構成案を批判的にレビューし、時間制御のwire解析と予算計算の所有境界、USIで探索手を永続`Engine.game`へ適用しない非対称の根拠、CECP状態機械、およびHaChuを接続試験に限って使う完了条件を確定した。
-同日、設計レビューを実施した。
-レビューで指摘された、探索進捗チャネルの欠落、Lishogi-Bot接続時の規則前提と局面同期失敗、終局後のCECP `go`、秒読みを含む時間予算の検証、および実lishogi接続の完了条件を本版へ反映した。
-本設計書の起案に伴い、探索部設計書（search.md）の後半にあったUSI・CECPの対局進行、`go`系コマンドのwire処理、実GUI接続の端到端検証の責務を本書へ移した。
-実装は未着手である。
+本マイルストーンは、探索部が決めた着手を外部の対局環境へ送り、minaseを自律対局できるエンジンにする。
+対象は2つの通信プロトコルである。
+USI（Universal Shogi Interface）は将棋エンジンとGUIの間の標準プロトコルで、lishogiサーバへエンジンを接続する仲介プログラムLishogi-Botが使う。
+CECP（Chess Engine Communication Protocol、XBoardプロトコルとも呼ぶ）は対局GUIのXBoardが使うプロトコルで、H. G. Muller作の中将棋エンジンHaChuもこれを話す。
+方式は、局面・規則・探索の呼び出しを両プロトコルで共有し、対局の進め方（いつ探索を始め、着手と終局をどう通知するか）だけをプロトコル別のモジュールに分けることである。
+USIでは毎手サーバから全着手列が届くので、エンジンは局面の複製上で探索して着手を返すだけで、内部の対局状態には適用しない。
+CECPではGUIが着手を1手ずつ送り、エンジンは自分の手番で自動的に応手し、終局を`RESULT`行で1回だけ通知する。
+完了条件は、両経路の対局進行が台本テストで固定され、XBoardが仲介するMinase同士の時間制御対局が時間切れと反則なしに完走し、HaChuとの握手と指し手授受が確認されることである。
+HaChuは規則に反する手を出す既知の欠陥があるため、接続の確認だけに使い、規則互換性の基準や対局完走の相手にはしない。
+2026年8月14日にこれらをすべて満たして完了した。
 
-2026年8月11日、対局ハーネスのバイナリ対戦化マイルストーン（[match-harness.md](match-harness.md)）が、USIの同期版`go depth|nodes`と`bestmove`応答を前倒しで実装することになった。
-本書の適用範囲のうち`go`一式のwire処理は、この同期版を非同期の探索呼び出し境界（`SearchSnapshot`・停止フラグ・チャネル）へ置き換え、時間引数・`stop`・`info`を追加する作業として残る。
-wire上の`go depth|nodes`→`bestmove`の契約は前倒し実装から変更しない。
+## 状態
 
-2026年8月12日、実lishogiサーバへの接続をフェーズ3と完了条件から除外した。
-未完成のエンジンを公開サーバへ出さないという運用判断によるものであり、Lishogi-Bot経路の検証は実送信系列の台本テストまでとする（「適用範囲」の対象外の項を参照）。
-
-2026年8月12日にフェーズ1（USI対局進行）を完了した。
-着手条件である探索部フェーズ5（時間管理と探索呼び出し境界）は、同日の順序入替（search.mdの実施状況を参照）により先行実装済みである。
-`go`は`btime`・`wtime`・`binc`・`winc`・`byoyomi`・`movetime`・`depth`・`nodes`・`infinite`を受理してミリ秒の`SearchLimits`へ正規化し、残り時間と加算は現局面の手番側から選ぶ。
-裸の`go`と未知引数は従来どおりエラーとし、`go depth|nodes`→`bestmove`のwire契約は不変でmatch_runnerは無改修のまま動作する。
-探索は`SearchSnapshot`の複製上で行い、`bestmove`は`Engine.game`へ適用しない。
-実バイナリはstdin専用readerスレッドとチャネル駆動の`run_channel`で入力と探索イベントを並行処理し、台本テスト用の逐次`run`も維持した。
-`stop`・`gameover`・`quit`・重複`go`・`go ponder`・`ponderhit`の探索中契約、`go infinite`の`bestmove`保留、`position`検証失敗後の同期失敗状態と正当な`position`による回復、`USI_Hash`（既定256MB、探索中でないときのリサイズ）、`info depth <d> score <cp|mate> <v> nodes <n> nps <n> pv ...`行を実装した。
-テストは342件全緑（Lishogi-Bot実送信系列、時間引数の先手後手別正規化、同期回復系列、USI_Hash等を追加）、clippy警告なし、fmt通過で、CECP台本13件とlishogiリプレイ照合10局は変化しなかった。
-実バイナリの煙試験で、時計引数つき`go`のinfo行と`stop`によるbestmove送出、`go infinite`→`stop`の単一bestmove、探索中`quit`の結果破棄を確認した。
-
-2026年8月13日にフェーズ2（CECP対局進行）を完了した。
-CECPアダプターへ担当手番（`Option<Color>`）とforce状態を追加し、`new`（force解除・担当手番は後手）、`force`、`go`（`InGame`以外はエラー）、`usermove`後の自動応手、`result`（探索停止・結果破棄つき確定通知）、`?`（move now）の状態機械を実装した。
-エンジン着手は`ApplyMove`→`move`行（既存のレグ分割、じっとは`@@@@`）→`newly_finished`時のみ`RESULT`1回の順で送出し、拒否時は`tellusererror`を出してforce状態へ退避する。
-feature宣言を`time=1`・`memory=1`化し、`time`・`otim`（1/100秒）、`level`（分・`分:秒`・加算秒）、`st`（秒）、`sd`（深さ）をミリ秒へ正規化して`SearchLimits`へ写す。`memory <MB>`は探索中でないときの置換表リサイズとして受理する（既定256MB、探索間で再利用、`new`とRuleSet変更でクリア）。
-USIと同型のstdin専用readerスレッド＋チャネル駆動`run_channel`を実装して実バイナリのCECP分岐を切り替え、台本テスト用の逐次`run`も維持した。探索中のコマンドは停止を指示するもの（`?`・`force`・`result`・`new`・`quit`）を除きpendingキューへ積んで探索join後に適用し、探索中の`ping`への`pong`はmove行の後に返す順序契約を台本テストで固定した。停止済み探索の遅延結果は探索IDの不一致で破棄し、CECPでは探索`Progress`を出力しない。
-実装判断として、`level`第1引数（区切り手数）は構文検証のみ行い予算へは渡さない（`SearchLimits`に残り手数欄がないため）。探索制限が一つも設定されていない`go`は、暗黙の既定値でフォールバックせず`tellusererror`を返す。
-テストは357件全緑（`new`→`go`、自動応手、force、move→RESULT順序、`RESULT`後の`go`拒否、move now、探索中`result`/`new`の破棄、`ping`順序、時間正規化、`memory`の11本を追加）、clippy警告なし、fmt通過、既存のCECP台本13件・lishogiリプレイ照合は不変である。
-
-2026年8月14日にフェーズ3（端到端検証）を完了し、本マイルストーンの完了条件をすべて満たした。
-検証はxboard 4.9.1を仮想Xディスプレイ（Xvfb）上で実行し、コミット3e375c6のリリースビルドを用いた。
-
-Minase対Minaseの時間制御対局は、次のコマンドで1局を完走した。
-
-```console
-xboard -variant chu \
-  -fcp "target/release/minase --protocol cecp --rules engine-default" \
-  -scp "target/release/minase --protocol cecp --rules engine-default" \
-  -tc 1 -inc 1 -mg 1 -autoCallFlag true -testLegality false \
-  -saveGameFile mm.pgn -debugMode true -nameOfDebugFile mm.debug
-```
-
-結果は0-1（193手目、後手勝ち）、終局理由はcheckmateである。
-時間切れ0件、`Illegal move`0件で、両エンジンが送出した`RESULT`行は`0-1 {checkmate}`で完全に一致し、xboardのPGN（`[Result "0-1"]`、`[TimeControl "60+1"]`）とも一致した（裁定不一致なし）。
-なお、xboardの`-autoflag`は値を取らないArgTrue型オプションであり、`-autoflag true`と書くと余った`true`が位置引数（ICSホスト名）として解釈されてエンジンなしモードに落ちる。時間切れ検出を有効にする場合はArgBoolean型の`-autoCallFlag true`を使うこと（xboard 4.9.1のargs.hで確認）。
-
-HaChu 0.23との接続試験は、同条件で先手minase・後手HaChu（`-scp ~/board-games/hachu/hachu`）として実施した。
-握手は成立し（HaChuのfeature群を受信、variant chuで対局開始）、序盤6手の指し手授受を双方向に確認した（minase: c4c5・f3g5・f4f5、HaChu: e9e8・h9h8・d9d8）。
-HaChuの4手目`d9d8`は自駒の仲人がある升への移動であり、minaseが`Illegal move: d9d8`で拒否した。これはdocs/protocols/hachu.md第11章の既知欠陥どおりの挙動で、本試験では正常系である。その後HaChuは進行不能となりxboardが時間切れで裁定したが、接続試験の目的（握手の成立と指し手授受の相互運用確認）は達成済みである。規則互換性の照合と対局完走は完了条件に含めない（プロトコル層の決定を維持）。
+完了。
+2026年8月11日に起案し、2026年8月12日に着手して、2026年8月14日に完了した。
+USIとCECPの両経路で対局進行を実装し、XBoard仲介のMinase対Minase時間制御対局を時間切れと反則なしに完走させ、HaChuとの握手と指し手授受を確認したため、完了条件をすべて満たしたと判定した。
+棋力を比較する測定は本マイルストーンの対象ではないため測定記録はなく、根拠となる端到端検証の手順と結果は「検証」節に記す。
+次期候補は実lishogiサーバへの接続であり、探索と評価の成熟後に別マイルストーンとして計画する。
 
 ## 目的
 
@@ -88,10 +54,10 @@ HaChuの4手目`d9d8`は自駒の仲人がある升への移動であり、minas
 
 ## 依存関係
 
-- 探索部（search.md）のフェーズ5「時間管理と探索呼び出し境界」の完了を着手条件とする。本マイルストーンは、`SearchSnapshot`、`SearchLimits`、停止フラグ、探索ID付き進捗・完了チャネルを利用する。
+- 探索部（search.md）のフェーズ5「時間管理と探索呼び出し境界」の完了を着手条件とする。本マイルストーンは、`SearchSnapshot`（探索に渡す局面の複製）、`SearchLimits`（ミリ秒単位の時間、深さ、ノード数の探索制限）、停止フラグ、探索ID付き進捗・完了チャネルを利用する。
 - 探索部フェーズ6（第2層の逐次採否）とは独立であり、並行して進められる。
 - ブラウザGUI向けUSI照会（browser-gui.md）とは設計上独立だが、同じ`src/protocol/usi.rs`を編集するため、ROADMAPの順序（ブラウザGUI照会が先行）に従う。
-- プロトコル層（protocol-layer.md）は完了済みであり、本マイルストーンはその握手、局面設定、表記変換、規則オプションを変更せずに使う。feature宣言の変更は`time=1`と`memory=1`の2点だけである。
+- プロトコル層（[protocol-layer.md](protocol-layer.md)）は完了済みであり、本マイルストーンはその握手、局面設定、表記変換、規則オプションを変更せずに使う。feature宣言の変更は`time=1`と`memory=1`の2点だけである。本書が使う`Engine`の状態（対局開始前の`AwaitingStart`、対局中の`InGame`、終局後の`Finished`）と、着手の合法性と終局を裁定する審判層（`Game`）は、プロトコル層が定義する。
 
 参照の向きは一方向である。
 本設計書はsearch.mdの探索呼び出し境界とbrowser-gui.mdの2コマンド仕様を参照するが、search.mdとbrowser-gui.mdは所有境界の注記を除いて本設計書の内容に依存しない。
@@ -125,6 +91,8 @@ wire形式の解析と単位正規化（CECPの`time`・`otim`は1/100秒、`st`
 | `go`のライフサイクル契約 | `InGame`以外で届いた`go`は`info string error: ...`を出力し`bestmove`を返さない。詳細と根拠はLishogi-Bot経路の章に記す。 |
 | 台本テストの決定性 | 探索を含む台本テストは`depth`または`nodes`固定（CECPは`sd`）で書き、時間ベースの対局は台本にしない。時間制御の実挙動は端到端検証と探索部の自己対局で確認する。 |
 | HaChuの用途 | 接続試験（握手と指し手授受の相互運用確認）に限る。規則互換性の基準と完走相手には使わない。 |
+| 入力と探索の並行処理 | USI・CECPとも、実バイナリはstdin専用のreaderスレッドとチャネル駆動の`run_channel`で入力と探索イベントを並行処理する。台本テスト用の逐次`run`も維持する。 |
+| 停止済み探索の遅延結果 | 両経路とも、停止を指示した探索の結果が遅れて届いた場合は探索IDの不一致により破棄する。 |
 
 ## Lishogi-Bot経路（USI）
 
@@ -132,12 +100,15 @@ wire形式の解析と単位正規化（CECPの`time`・`otim`は1/100秒、`st`
 
 lishogiサーバを対局結果の正とする。
 Lishogi-Botは毎手`position <初期局面> moves <全着手列>`を送り、minaseは既存の`SetPosition`（`InGame`では現局の原子的再構成）で局面を再構築する。
-反復履歴と先獅子状態は着手列の再適用で復元される（プロトコル層の確定事項）。
+反復履歴（RULES.md第24条）と先獅子状態（同第15条）は着手列の再適用で復元される（[protocol-layer.md](protocol-layer.md)の確定事項）。
 `usinewgame`には依存しない（Lishogi-Botは送信しないことを調査で確認済み）。
 
 ### 探索とbestmove
 
-`go`を受けたら、`Engine.game`から`SearchSnapshot`を写し、`go`引数から正規化した`SearchLimits`とともに探索を開始する。
+`go`は`btime`・`wtime`・`binc`・`winc`・`byoyomi`・`movetime`・`depth`・`nodes`・`infinite`を受理してミリ秒の`SearchLimits`へ正規化し、残り時間と加算は現局面の手番側の値を選ぶ。
+裸の`go`と未知の引数はエラーとする。
+`go depth|nodes`→`bestmove`のwire契約は、対局ハーネス（[match-harness.md](match-harness.md)）が依存するため変更しない。
+`go`を受けたら、`Engine.game`から`SearchSnapshot`を写し、正規化した`SearchLimits`とともに探索を開始する。
 探索は局面の複製上で行い、返った着手を`bestmove`として送出するだけで、`Engine.game`へは適用しない。
 適用しない根拠は2つある。
 第1に、次の`position`が全着手列で現局を再構成するため、適用は冗長である。
@@ -180,6 +151,10 @@ PVの指し手は既存のlishogi系USI表記を使う。
 その他のコマンドは探索のjoin後（`bestmove`送出後）に適用する。
 停止済み探索の遅延結果は、探索IDの不一致により破棄する。
 
+### 置換表サイズ
+
+`USI_Hash`は既定256MBとし、探索中でないときに限り置換表をリサイズする。
+
 ### 終局責任
 
 終局の裁定と通知はlishogiサーバが行い、minaseは`gameover`の受理（`AwaitingStart`への復帰）だけを行う。
@@ -190,6 +165,7 @@ USIにはエンジン発の裁定通知手段がないという既存の整理�
 
 ### 状態機械
 
+CECPではGUIが着手を`usermove`で1手ずつ送り、全着手列を再送しないため、エンジン自身が`Game`へ着手を適用して局面を保持する。
 CECPアダプターは、既存の`Engine`に加えて担当手番（`Option<Color>`）とforce状態を持つ。
 コマンドごとの遷移は次のとおりとする。
 
@@ -200,7 +176,7 @@ CECPアダプターは、既存の`Engine`に加えて担当手番（`Option<Col
 - `result`：時間切れや切断など外部要因を含むGUIからの確定通知として受理する。探索中なら停止して結果を破棄し、`EndGame`で`AwaitingStart`へ戻る。エンジンは自らの裁定と食い違っても異議を唱えない。
 - `?`（move now）：探索中なら停止を指示し、その時点の最善手で通常の着手処理を行う。探索中でなければ無視する。
 
-`setboard`で設定した局面からの対局進行も同じ状態機械で動くが、CECPのsetboardは先獅子状態・成り権保留・反復履歴を運べない（プロトコル層の確定事項）ため、反復判定が空の履歴から始まる制約つきの対局になる。
+`setboard`で設定した局面からの対局進行も同じ状態機械で動くが、CECPのsetboardは先獅子状態・成り権保留（RULES.md第18条）・反復履歴を運べない（[protocol-layer.md](protocol-layer.md)の確定事項）ため、反復判定が空の履歴から始まる制約つきの対局になる。
 本マイルストーンの端到端検証は、この制約の影響を受けない通常初期局面（`new`）からの対局で行う。
 
 ### 着手と結果の順序
@@ -209,19 +185,27 @@ CECPアダプターは、既存の`Engine`に加えて担当手番（`Option<Col
 
 1. `ApplyMove`で`Game`へ適用する。審判層で確定済みのルート合法手から選んだ手なので、拒否は探索とプロトコルの間の契約違反である。拒否された場合は`tellusererror`を出してforce状態へ退避する。
 2. `move`行として送信する。複数レグは既存のレグ分割（非最終レグの末尾コンマ）を使い、じっとは`@@@@`とする。
-3. この着手で`newly_finished`が値を持つ場合に限り、`RESULT {comment}`行を1回だけ送る。既存の再生成禁止の契約を保つ。
+3. この着手で対局が終局した場合（`ApplyMove`の応答`newly_finished`が勝敗と終局理由を返す場合）に限り、`RESULT {comment}`行を1回だけ送る。既存の再生成禁止の契約を保つ。
 
 `usermove`の適用で終局した場合も、現行どおり`newly_finished`から`RESULT`を1回送る。
 エンジンが`RESULT`を送った後にGUIから届く`result`は、前節の確定通知として処理する。
 
 ### 時間制御と探索中のコマンド
 
-feature宣言を`time=0`から`time=1`へ変更し、`time`・`otim`（1/100秒）を受理してミリ秒へ正規化する。
-`level`（分）・`st`（秒）・`sd`（深さ上限）も受理し、正規化した値を`SearchLimits`へ写す。
+feature宣言は`time=1`・`memory=1`とし、`time`・`otim`（1/100秒）を受理してミリ秒へ正規化する。
+`level`（分、`分:秒`、および加算秒）・`st`（秒）・`sd`（深さ上限）も受理し、正規化した値を`SearchLimits`へ写す。
+`level`の第1引数（区切り手数）は構文検証だけを行い、`SearchLimits`に残り手数の欄がないため予算へは渡さない。
+探索制限が一つも設定されていない状態で届いた`go`は、暗黙の既定値で代替せず`tellusererror`を返す。
 `draw=0`は維持し、引き分け提案は扱わない。
 
-探索中に届いたコマンドは、停止を指示するもの（`?`・`force`・`result`・`new`・`quit`）を除き、探索のjoin後に適用する。
-探索中の`ping`への`pong`の順序は、先行コマンドの処理完了後に返すという仕様の規定に従い、フェーズ2の実装時に台本テストで固定する。
+探索中に届いたコマンドは、停止を指示するもの（`?`・`force`・`result`・`new`・`quit`）を除きpendingキューへ積み、探索のjoin後に適用する。
+探索中の`ping`への`pong`は、先行コマンドの処理完了後に返すという仕様の規定に従い、`move`行の後に返す。
+CECPでは探索の`Progress`を出力しない。
+
+### 置換表サイズ
+
+`memory <MB>`は、探索中でないときに限り置換表をリサイズする受理として扱う。
+既定は256MBで、置換表は探索間で再利用し、`new`とRuleSetの変更でクリアする。
 
 ### 現状維持の範囲
 
@@ -264,13 +248,31 @@ HaChuとの規則互換性の照合と互換プリセットの再検討は、完
 XBoardの自動対局機構でMinase対Minaseの時間制御つき1局を完走させ、時間切れ、反則、および両者の裁定不一致がないことを確認する。
 HaChuとの接続試験（握手と序盤の指し手授受）を実施する。
 Lishogi-Bot経路の検証は、実送信系列を再現した台本テスト（フェーズ1）までとし、実lishogiサーバへの接続は行わない（「適用範囲」の対象外の項を参照）。
-検証の手順と結果は、本設計書の実施状況の章へ記録する。
+検証の手順と結果は、本設計書の「検証」節に記録する。
 
 ## 検証
 
 - `cargo test`、`cargo clippy --all-targets`、`cargo fmt --all -- --check`、`git diff --check`を各フェーズの完了条件とする。
 - USIとCECPの台本テストが、探索を含む対局進行（`position`→`go`→`bestmove`、`usermove`→`move`→`RESULT`）を決定的な探索条件で再現する。
 - 既存の台本テスト、lishogi棋譜リプレイ照合、およびブラウザGUI照会の`moves`・`state`の試験が変化しないことを確認する。
+- readerスレッドと`run_channel`の経路を変更したときは、台本テストの逐次`run`では覆えないため、実バイナリで時計つき`go`と`stop`、`go infinite`と`stop`、探索中`quit`の3系列を煙試験する。
+
+### 端到端検証の手順と結果
+
+Minase対Minaseの時間制御対局は、仮想Xディスプレイ上のxboardで次のコマンドにより実行する。
+時間切れ検出のオプションは`-autoCallFlag true`であり、`-autoflag`に値を続けてはならない（[lessons/xboard-autoflag-argtrue.md](../lessons/xboard-autoflag-argtrue.md)）。
+
+```console
+xboard -variant chu \
+  -fcp "target/release/minase --protocol cecp --rules engine-default" \
+  -scp "target/release/minase --protocol cecp --rules engine-default" \
+  -tc 1 -inc 1 -mg 1 -autoCallFlag true -testLegality false \
+  -saveGameFile mm.pgn -debugMode true -nameOfDebugFile mm.debug
+```
+
+2026年8月14日の実行では1局が詰みで完走し、時間切れと`Illegal move`はともに0件で、両エンジンの`RESULT`行とxboardのPGNの結果が一致した。
+HaChuとの接続試験は同条件で先手minase・後手HaChuとして実施し、握手の成立と序盤数手の指し手授受を双方向に確認した。
+HaChuが自駒のある升へ動かす不正手を出力してminaseが`Illegal move`で拒否した後、HaChuは進行不能となったが、これは「HaChuの位置づけ」の章のとおり正常系である。
 
 ## 完了条件
 
