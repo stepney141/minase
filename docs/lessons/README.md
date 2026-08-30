@@ -20,3 +20,8 @@
 - [学習前に1エポックのステップ数を確認する](check-steps-per-epoch-before-training.md) — 局面数÷バッチサイズで1エポックのステップ数を計算し、総ステップ数が数千回以上になる設定にしてから学習曲線を評価する。
 - [速度指標の計測区間に大容量メモリの確保を含めない](bench-allocation-outside-timing.md) — benchでは置換表を計測区間外で1個を使い回し、確保サイズを変えても指標が動かないことを確認する。
 - [採否測定の条件で改良が発動することを実装前に確認する](measure-feature-activation-before-sprt.md) — 探索改良は実装前に採否測定の思考制限で発動するかをbenchで確かめ、発動しなければ条件変更か先送りにする。
+- [隣接する基本シードは1局ずれた同じ対局列を生む](derive-seed-adjacent-collision.md) — 複数の基本シードで生成や測定を走らせるときは、基本シードを対局数以上離し、合わせる前にサマリの統計を突き合わせる。
+- [NNUE第1層の既定初期化がclipped ReLUを飽和させる](nnue-first-layer-init-saturation.md) — 疎特徴を加算する第1層は発火数の平方根の逆数程度の標準偏差で初期化し、停滞時はデータを増やす前に活性化の飽和率を測る。
+- [教師不足と判定する前に学習曲線を確認する](check-learning-before-blaming-data.md) — 訓練損失の低下と過学習への転化を学習曲線で確認し、どちらも見られなければ学習器の欠陥を先に疑う。
+- [検証分割を変えたら旧分割の重みを基準にしない](validation-split-change-invalidates-old-baseline.md) — 検証分割を変更したら、旧分割で学習した重みを新分割での比較基準に使わない。
+- [長時間の生成は生成コミットを固定したworktreeで実行する](pin-generation-binary-to-worktree.md) — 数時間を超える生成や測定は、対象コミットを固定したworktreeのバイナリから実行する。
