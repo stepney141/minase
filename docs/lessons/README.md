@@ -14,3 +14,7 @@
 - [xboardの-autoflagは値を取らない](xboard-autoflag-argtrue.md) — xboardで時間切れ検出を有効にするときは`-autoCallFlag true`を書き、`-autoflag`に値を続けない。
 - [外部エンジンは接続前に棋譜照合と着手転送で検証する](verify-external-engine-before-cecp-match.md) — `cecp:`で外部エンジンを接続する前に、自己対局棋譜の審判層照合と`usermove`転送の盤面一致を確認する。
 - [置換表なしの静止探索は捕獲木の重複を全列挙する](qsearch-dag-without-tt.md) — 速度や並列化を論じる前にbenchで置換表を照会するノードの割合を数え、大半が置換表を使わない経路なら先にその経路へ置換表を適用する。
+- [検証損失の近さは駒価値の正しさを保証しない](validation-loss-hides-material-distortion.md) — 学習した評価関数をGSPRTへ出す前に、教師探索値との平均絶対誤差と駒種を1つ除いた局面の評価で駒価値の歪みを点検する。
+- [ランダム初期化の評価関数では探索が止まらない](random-init-net-stalls-search.md) — 推論コードは学習済み重みと同じコミットで入れ、ランダム初期化の重みは一致テストと参照実装の照合にだけ使う。
+- [GPUを要する学習はcodexへ委任しない](run-gpu-training-outside-codex-sandbox.md) — codexのサンドボックスからGPUは見えないので、学習器のコードだけを委任し、学習の実行は本環境で直接行う。
+- [学習前に1エポックのステップ数を確認する](check-steps-per-epoch-before-training.md) — 局面数÷バッチサイズで1エポックのステップ数を計算し、総ステップ数が数千回以上になる設定にしてから学習曲線を評価する。
