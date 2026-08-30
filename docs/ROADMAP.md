@@ -29,6 +29,7 @@
 | 棋力測定ハーネス基盤の効率化 | [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) | 完了 | 2026年8月28日 |
 | 棋力測定条件の校正と段階ゲート | [plans/match-measurement-calibration.md](plans/match-measurement-calibration.md) | 待機中 | ― |
 | 早期投了の導入判定 | [plans/match-early-resignation.md](plans/match-early-resignation.md) | 待機中 | ― |
+| 棋力向上の段階計画 | [plans/strength-stages.md](plans/strength-stages.md) | 起案 | ― |
 
 ## 現在地
 
@@ -41,7 +42,7 @@
 棋力測定条件の校正と段階ゲート（plans/match-measurement-calibration.md）は、負例カードのP型NNUEが学習PSTに全敗して校正指標を算出できなかったため、新しい比較カードと判定契約を事前に固定するまで待機する。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、採用PSTによる世代2の生成と再学習（Kを固定した尺度効果の切り分けを含む）、NNUEの教師値の質と過学習対策、および静止探索の効率化（捕獲専用の手生成、SEE、futility pruning）である。
+次期候補は棋力向上の段階計画（plans/strength-stages.md、起案）が10段階に整理しており、最初の段階は静止探索と探索ループの高速化、並行して進めてよい段階は採用PSTによる世代2の生成と再学習である。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 実lishogiサーバへの接続は、未完成のエンジンを公開の場へ出さない方針から対象外のままとし、探索と評価の成熟後に別マイルストーンとして計画する。
