@@ -18,3 +18,5 @@
 - [ランダム初期化の評価関数では探索が止まらない](random-init-net-stalls-search.md) — 推論コードは学習済み重みと同じコミットで入れ、ランダム初期化の重みは一致テストと参照実装の照合にだけ使う。
 - [GPUを要する学習はcodexへ委任しない](run-gpu-training-outside-codex-sandbox.md) — codexのサンドボックスからGPUは見えないので、学習器のコードだけを委任し、学習の実行は本環境で直接行う。
 - [学習前に1エポックのステップ数を確認する](check-steps-per-epoch-before-training.md) — 局面数÷バッチサイズで1エポックのステップ数を計算し、総ステップ数が数千回以上になる設定にしてから学習曲線を評価する。
+- [速度指標の計測区間に大容量メモリの確保を含めない](bench-allocation-outside-timing.md) — benchでは置換表を計測区間外で1個を使い回し、確保サイズを変えても指標が動かないことを確認する。
+- [採否測定の条件で改良が発動することを実装前に確認する](measure-feature-activation-before-sprt.md) — 探索改良は実装前に採否測定の思考制限で発動するかをbenchで確かめ、発動しなければ条件変更か先送りにする。
