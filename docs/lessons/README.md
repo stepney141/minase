@@ -13,3 +13,4 @@
 - [回帰テストは修正を外して失敗を確認する](confirm-regression-test-fails-without-fix.md) — 回帰テストを追加したら修正を一時的に外して失敗することを確認してから採用する。
 - [xboardの-autoflagは値を取らない](xboard-autoflag-argtrue.md) — xboardで時間切れ検出を有効にするときは`-autoCallFlag true`を書き、`-autoflag`に値を続けない。
 - [外部エンジンは接続前に棋譜照合と着手転送で検証する](verify-external-engine-before-cecp-match.md) — `cecp:`で外部エンジンを接続する前に、自己対局棋譜の審判層照合と`usermove`転送の盤面一致を確認する。
+- [置換表なしの静止探索は捕獲木の重複を全列挙する](qsearch-dag-without-tt.md) — 速度や並列化を論じる前にbenchで置換表を照会するノードの割合を数え、大半が置換表を使わない経路なら先にその経路へ置換表を適用する。
