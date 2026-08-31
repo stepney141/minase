@@ -1,7 +1,7 @@
 # SPRTによる棋力測定の手引き
 
 本書は、Minaseのエンジン変更の効果を自己対局で測定する標準手順を定める。
-測定基盤の成立過程は [plans/match-harness.md](plans/match-harness.md) が、保存、再開、および集計基盤は [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) が、統計方式は [plans/search.md](plans/search.md) の測定基盤の節が所有する。
+測定基盤の成立過程は [plans/match-harness.md](plans/match-harness.md) が、保存、再開、および集計基盤は [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) が、統計方式は [plans/search.md](plans/search.md) の測定基盤の節が、機能採否の段階ゲートの設計判断は [plans/match-staged-gate.md](plans/match-staged-gate.md) が所有する。
 本書は、測定の実行者（人間およびエージェント）向けの運用規約と手順だけを記す。
 
 ## 原則
@@ -12,22 +12,57 @@
 
 ## 測定の種類と標準コマンド
 
-### 機能採否のSPRT
+### 機能採否の段階ゲート（STCとLTC）
 
-新機能の採否は、機能実装コミットと直前コミットの対等条件GSPRTで判定する。
+新機能の採否は、機能実装コミットと直前コミットの対等条件GSPRTを、短時間の選別と長時間の最終測定の2段階で実行して判定する。
+短時間条件を**STC**（short time control、`time=10000+100`）、長時間条件を**LTC**（long time control、`time=60000+600`）と呼び、いずれもfishtestの標準値と同じで、秒読みは使わない。
+思考制限は`--each`で両エンジンに同一条件を与える。
+固定深さと固定ノード数は、探索速度を除いた診断に限定し、採否の根拠には使わない。
+STCとLTCは別の測定として扱い、測定名と実行ディレクトリを接尾辞`-stc`と`-ltc`で分ける。
+
+STCの標準コマンドは次のとおりである。
 
 ```console
 cargo run --release --bin match_runner -- \
-  --run-dir data/matches/<測定名> --seed <シード> \
+  --run-dir data/matches/<測定名>-stc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
-  --each time=30000+300,byoyomi=500 --concurrency 8 gsprt
+  --each time=10000+100 --max-pairs 3000 gsprt
 ```
 
-思考制限は`--each`で両エンジンに同一条件を与える。
-機能採否には現行の標準時間制御`time=30000+300,byoyomi=500`を使う。
-固定深さと固定ノード数は、探索速度を除いた診断に限定し、採否の根拠には使わない。
-`decision: H1`（候補が有意に強い）で採用、`decision: H0`（elo=5の改善があるとは言えない）で不採用とする。
-上限ペア数（`--max-pairs`、既定100,000）に達した`decision: pending`は判定保留であり、水準を変えて再測定するか、変更の見直しへ戻る。
+STCの判定は、次の振分け規則で扱う。
+
+- `decision: H1`（候補が有意に強い）は、候補をLTCへ進める。
+- `decision: H0`（elo=5の改善があるとは言えない）は、候補を採用しない。
+- 上限3,000ペアに達した`decision: pending`は、停止時点のLLRが0以上ならLTCへ進め、負なら進めない。
+
+候補の棄却はSTCでもLTCでも起こるが、採用の決定はLTCの判定だけが下し、STCの通過を採用の根拠にしない。
+
+LTCの標準コマンドは次のとおりである。
+
+```console
+cargo run --release --bin match_runner -- \
+  --run-dir data/matches/<測定名>-ltc --seed <シード> \
+  --candidate commit:<新コミット> --baseline commit:<旧コミット> \
+  --each time=60000+600 gsprt
+```
+
+LTCのシードは、STCの基本シードからペア数以上離れた未使用の値とする（[隣接シードで対局が重複する教訓](lessons/derive-seed-adjacent-collision.md)）。
+`decision: H1`であり、かつエンジン異常、時間切れ、および拒否着手が0件の場合だけ採用する。
+LTCの`decision: pending`は、同じ実行ディレクトリを`--resume`で再開し、`--max-pairs`だけを増やして対局列を延長する（再開手順は後述）。
+
+時間管理の変更、`Threads`の変更、STCの到達深さでは発火しない機構のように、短時間条件では効果が原理的に現れない変更は、省略の理由を測定開始前に設計書へ記録したうえで、STCを省略してLTCへ直行できる。
+結果を見た後の経路変更は認めない。
+
+次の操作は、いずれも禁止する。
+
+- 判定保留からの裁量採用。`pending`の扱いは、STCでは振分け規則、LTCでは`--resume`による延長だけとする。
+- シードを変えた再試行。
+- STCとLTCの結果の合算。
+- 信頼区間または固定局数Eloによる採用の読み替え。
+- 完了済みの測定への遡及適用。
+- 同じ着想のパラメータ違いを、LTCの結果を見てから同じ主張へ追加すること。パラメータ違いはSTCまでに1つへ絞る。
+
+段階ゲートの時間制御で開始する最初の測定で、時間切れ、エンジン異常、または拒否着手が1件でも出た場合は、測定を停止して原因を調査する。
 
 ### 完了基準ゲート
 
@@ -39,7 +74,7 @@ cargo run --release --bin match_runner -- \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<測定対象> \
   --baseline commit:0045833 --baseline-limit depth=1 \
-  --each depth=4 --concurrency 8 gsprt
+  --each depth=4 gsprt
 ```
 
 ベースライン側だけ`--baseline-limit`で深さ1へ上書きする非対称条件が、このゲートの定義である。
@@ -54,8 +89,7 @@ HaChuのような外部エンジンとの比較は、対等な時間制御のGSP
 cargo run --release --bin match_runner -- \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<測定対象> --baseline "cecp:../hachu-debian/hachu" \
-  --rules L1,L3,P0,P5,P6,R2,E1,E2 --each time=60000+1000 \
-  --concurrency 8 gsprt
+  --rules L1,L3,P0,P5,P6,R2,E1,E2 --each time=60000+1000 gsprt
 ```
 
 HaChuは`usermove`で受けた着手を自前の規則で検査し、不合法と判定すると`Illegal move`を返して進行不能になる。
@@ -73,7 +107,7 @@ HaChuは詰みを自認すると着手を返さずに結果行だけを出力す
 cargo run --release --bin match_runner -- \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<新> --baseline commit:<旧> \
-  --each depth=4 --concurrency 8 elo --pairs 200
+  --each depth=4 elo --pairs 200
 ```
 
 全勝・全敗の標本ではロジスティックEloの点推定が無限大になる。
@@ -95,7 +129,7 @@ cargo run --release --bin match_runner -- \
 cargo run --release --bin match_runner -- \
   --resume data/matches/<測定名> --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
-  --each depth=4 --concurrency 8 gsprt
+  --each depth=4 gsprt
 ```
 
 確定済みペアは再計算せず、欠番だけを実行して、ペア番号順に同じ統計へ取り込む。
@@ -114,7 +148,8 @@ cargo run --release --bin match_report -- \
   --run-dir data/matches/<測定名>
 ```
 
-時間制御を比較する場合は、比較対象に候補時間制御の実行ディレクトリ、`--compare-to`に現行時間制御の実行ディレクトリを指定する。
+時間制御の比較と校正用の2主指標は、機能採否の標準手順には含まれない診断用途であり、測定条件そのものを調べるときにだけ使う。
+時間制御を比較する場合は、比較対象に候補時間制御の実行ディレクトリ、`--compare-to`に基準時間制御の実行ディレクトリを指定する。
 両方の実行は、候補側と基準側の時間制御を除く`manifest.json`の全条件、および保存済みペア番号が一致していなければならない。
 
 ```console
@@ -142,6 +177,7 @@ LLRの計算はfishtestの`LLR_logistic`（statistic="expectation"のMLE法）�
 Eloの写像はロジスティック（`s = 1/(1+10^(-elo/400))`）、H0はelo=0、H1はelo=5、α=β=0.05である。
 判定境界は`log((1-β)/α) ≈ +2.944`（H1採用）と`log(β/(1-α)) ≈ -2.944`（H0採用）で、1ペア取り込むごとにLLRを再計算する。
 停止は原則としてLLRの境界交差によって起こる。ペア数上限（`--max-pairs`、既定100,000）はfishtestと同様の暴走保険であり、到達時は判定保留として報告する。
+ただしSTCで指定する上限3,000ペアは暴走保険ではなく段階ゲートの振分け規則であり、到達時の判定保留は停止時点のLLRの符号によってLTCへ進むかどうかを決める。
 
 必要標本数の目安は次のとおりである。
 真のelo差が仮説境界の5付近にある場合、判定までの期待ペア数は約`0.9·2.944·2σ²/(s1-s0)²`であり、実測のペア得点分散σ²≈0.12（中将棋の低深度自己対局は引き分けがほとんどなく分散が大きい）では約13,000ペア、分散の理論上限0.25では約26,000ペアになる。
@@ -166,7 +202,9 @@ Eloの写像はロジスティック（`s = 1/(1+10^(-elo/400))`）、H0はelo=0
 時間制御対局では、最終サマリの`time_forfeits`を必ず記録する。
 シードを省略すると時刻から生成されるので、記録に残す測定では`--seed`を明示し、出力先頭の`seed:`行とともに保存する。
 
-並列測定の同時対局数Cは、`C × max(候補Threads, 基準Threads)`が物理コア数を超えず、OSとハーネス用に1コア以上残す値とする。
+同時対局数は、`--concurrency`の省略時に`match_runner`が「物理コア数から1を引き、候補と基準の`Threads`の大きい方で割った商」として自動計算する。
+物理コア数またはどちらかの`Threads`が取得できない場合、および計算結果が1未満になる場合は、既定値を推測せずに明示エラーで終了するため、`--concurrency`を明示する。
+解決後の同時対局数は`manifest.json`へ記録され、再開時の一致検査の対象になる。
 
 ## 異常時の裁定
 

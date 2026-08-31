@@ -27,19 +27,16 @@
 | Rust設計監査対応 | [plans/rust-design-audit-remediation.md](plans/rust-design-audit-remediation.md) | 完了 | 2026年8月26日 |
 | 評価関数の世代反復 | [plans/evaluation-gen1.md](plans/evaluation-gen1.md) | 完了 | 2026年8月29日 |
 | 棋力測定ハーネス基盤の効率化 | [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) | 完了 | 2026年8月28日 |
-| 棋力測定の段階ゲート | [plans/match-staged-gate.md](plans/match-staged-gate.md) | 進行中 | ― |
+| 棋力測定の段階ゲート | [plans/match-staged-gate.md](plans/match-staged-gate.md) | 完了 | 2026年9月1日 |
 | 早期投了の導入判定 | [plans/match-early-resignation.md](plans/match-early-resignation.md) | 待機中 | ― |
 | 棋力向上の段階計画 | [plans/strength-stages.md](plans/strength-stages.md) | 起案 | ― |
 
 ## 現在地
 
-直近に完了したマイルストーンは評価関数の世代反復（plans/evaluation-gen1.md、2026年8月29日）である。
-世代0と世代1を合わせた1,106万局面で再学習した学習PSTを採用し、直前コミットに対する時間制御GSPRTは`H1`、HaChu比較の固定局数Eloは−111（前回−282）であった。
-同じデータで学習したP型NNUEは固定ノードと時間制御の両方で`H0`となり、分岐`nnue-gen1`に保持したまま不採用とした。
+直近に完了したマイルストーンは棋力測定の段階ゲート（plans/match-staged-gate.md、2026年9月1日）である。
+機能採否の標準手順を、fishtestの標準値に整列したSTC（`time=10000+100`）の選別とLTC（`time=60000+600`）の最終測定の2段階へ標準化し、`match_runner`の同時対局数の自動計算を実装して、docs/sprt.mdを段階ゲートだけを標準とする形へ改訂した。
 
-進行中のマイルストーンは棋力測定の段階ゲート（plans/match-staged-gate.md）である。
-校正方式を廃止し、fishtestに合わせた短時間選別STCと長時間最終測定LTCの2段階の標準化として全面改訂して、フェーズ1の文書改訂を終えた。
-次は、ハーネスの同時対局数の自動計算とdocs/sprt.mdへの反映である。
+進行中のマイルストーンはない。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
