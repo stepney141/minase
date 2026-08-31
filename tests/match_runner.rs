@@ -77,6 +77,8 @@ fn run_minase_candidate_match(candidate: &str) -> String {
             "20260824",
             "--max-ply",
             "400",
+            "--concurrency",
+            "1",
             "elo",
             "--pairs",
             "1",

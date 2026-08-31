@@ -106,9 +106,9 @@ struct Arguments {
         value_parser = parse_positive_u64
     )]
     response_timeout: u64,
-    /// 同時に実行するペア数。
-    #[arg(long, default_value_t = 1, value_parser = parse_positive_usize)]
-    concurrency: usize,
+    /// 同時に実行するペア数。省略時は物理コア数から自動計算する。
+    #[arg(long, value_parser = parse_positive_usize)]
+    concurrency: Option<usize>,
     /// 実行する統計モード。
     #[command(subcommand)]
     mode: Mode,
@@ -1789,6 +1789,41 @@ const fn physical_core_count() -> Option<usize> {
     None
 }
 
+/// 省略時の同時対局数を物理コア数と両エンジンのスレッド数から計算する。
+fn default_concurrency(
+    physical_cores: Option<usize>,
+    candidate_threads: Option<u32>,
+    baseline_threads: Option<u32>,
+) -> Result<usize, String> {
+    let physical_cores = physical_cores.ok_or_else(|| {
+        "physical core count is unavailable; specify --concurrency explicitly".to_owned()
+    })?;
+    let candidate_threads = candidate_threads.ok_or_else(|| {
+        "candidate engine Threads is unavailable; specify --concurrency explicitly".to_owned()
+    })?;
+    let baseline_threads = baseline_threads.ok_or_else(|| {
+        "baseline engine Threads is unavailable; specify --concurrency explicitly".to_owned()
+    })?;
+    if candidate_threads == 0 || baseline_threads == 0 {
+        return Err(
+            "engine Threads must be at least 1; specify --concurrency explicitly".to_owned(),
+        );
+    }
+    let engine_threads = candidate_threads.max(baseline_threads);
+    let available_cores = physical_cores.checked_sub(1).ok_or_else(|| {
+        "automatic concurrency is less than 1; specify --concurrency explicitly".to_owned()
+    })?;
+    let engine_threads = usize::try_from(engine_threads)
+        .map_err(|_| "engine Threads is too large; specify --concurrency explicitly".to_owned())?;
+    let concurrency = available_cores / engine_threads;
+    if concurrency == 0 {
+        return Err(
+            "automatic concurrency is less than 1; specify --concurrency explicitly".to_owned(),
+        );
+    }
+    Ok(concurrency)
+}
+
 /// Linuxの`MemTotal`から実メモリ容量を得る。
 #[cfg(target_os = "linux")]
 fn physical_memory_bytes() -> Option<u64> {
@@ -1842,11 +1877,21 @@ fn run_manifest(
     seed: u64,
     max_ply: u32,
     response_timeout_secs: u64,
-    concurrency: usize,
+    concurrency: Option<usize>,
 ) -> io::Result<RunManifest> {
     let timeout = Duration::from_secs(response_timeout_secs);
     let candidate_defaults = probe_engine_defaults(candidate, timeout)?;
     let baseline_defaults = probe_engine_defaults(baseline, timeout)?;
+    let physical_cores = physical_core_count();
+    let concurrency = match concurrency {
+        Some(concurrency) => concurrency,
+        None => default_concurrency(
+            physical_cores,
+            candidate_defaults.threads,
+            baseline_defaults.threads,
+        )
+        .map_err(io::Error::other)?,
+    };
     Ok(RunManifest {
         format_version: FORMAT_VERSION,
         candidate: EngineRecord {
@@ -1874,7 +1919,7 @@ fn run_manifest(
         concurrency,
         cpu: CpuRecord {
             model: cpu_model(),
-            physical_cores: physical_core_count(),
+            physical_cores,
             logical_cores: thread::available_parallelism()?.get(),
             physical_memory_bytes: physical_memory_bytes(),
         },
@@ -2934,6 +2979,7 @@ fn main() {
             process::exit(1);
         }
     };
+    let concurrency = manifest.concurrency;
     let (store, saved_records) = match (&arguments.run_dir, &arguments.resume) {
         (Some(path), None) => match RunStore::create(path, manifest) {
             Ok(store) => (store, BTreeMap::new()),
@@ -3016,7 +3062,7 @@ fn main() {
     let worker_count = if stop.load(Ordering::Acquire) {
         0
     } else {
-        arguments.concurrency.min(pending_jobs.len())
+        concurrency.min(pending_jobs.len())
     };
     let pool_result = thread::scope(|scope| {
         let (job_sender, job_receiver) = mpsc::channel::<u64>();
@@ -3161,6 +3207,41 @@ fn main() {
 mod tests {
     use super::*;
     use minase::{DrawReason, WinReason};
+
+    #[test]
+    fn default_concurrency_uses_available_cores_and_larger_thread_count() {
+        assert_eq!(default_concurrency(Some(20), Some(1), Some(1)), Ok(19));
+        assert_eq!(default_concurrency(Some(20), Some(4), Some(2)), Ok(4));
+    }
+
+    #[test]
+    fn default_concurrency_requires_resource_counts() {
+        let error = default_concurrency(None, Some(1), Some(1)).unwrap_err();
+        assert!(error.contains("physical core count"));
+        assert!(error.contains("--concurrency"));
+
+        let error = default_concurrency(Some(20), None, Some(1)).unwrap_err();
+        assert!(error.contains("candidate engine Threads"));
+        assert!(error.contains("--concurrency"));
+
+        let error = default_concurrency(Some(20), Some(1), None).unwrap_err();
+        assert!(error.contains("baseline engine Threads"));
+        assert!(error.contains("--concurrency"));
+    }
+
+    #[test]
+    fn default_concurrency_rejects_values_below_one() {
+        let error = default_concurrency(Some(1), Some(1), Some(1)).unwrap_err();
+        assert!(error.contains("--concurrency"));
+
+        let error = default_concurrency(Some(20), Some(0), Some(1)).unwrap_err();
+        assert!(error.contains("Threads must be at least 1"));
+        assert!(error.contains("--concurrency"));
+
+        let error = default_concurrency(Some(20), Some(1), Some(0)).unwrap_err();
+        assert!(error.contains("Threads must be at least 1"));
+        assert!(error.contains("--concurrency"));
+    }
 
     #[test]
     fn usi_resource_probe_parses_exact_spin_option_defaults() {
@@ -3642,7 +3723,33 @@ mod tests {
             .expect("the documented default invocation must be accepted");
         assert_eq!(arguments.response_timeout, 120);
         assert_eq!(arguments.max_ply, 4096);
+        assert_eq!(arguments.concurrency, None);
         assert!(matches!(arguments.mode, Mode::Gsprt { max_pairs: 100_000 }));
+    }
+
+    #[test]
+    fn explicit_concurrency_remains_a_positive_override() {
+        let arguments = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "run",
+            "--concurrency",
+            "4",
+            "gsprt",
+        ])
+        .unwrap();
+        assert_eq!(arguments.concurrency, Some(4));
+        assert!(
+            Arguments::try_parse_from([
+                "match_runner",
+                "--run-dir",
+                "run",
+                "--concurrency",
+                "0",
+                "gsprt",
+            ])
+            .is_err()
+        );
     }
 
     // match-harness-efficiency.md「実行記録と再開」: 記録なし実行を許さず、
