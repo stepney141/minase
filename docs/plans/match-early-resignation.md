@@ -134,5 +134,5 @@ Haikuレビューは実行環境の権限制約により起動できなかった
 ## 参考資料
 
 - [棋力測定ハーネス基盤の効率化](match-harness-efficiency.md)：評価値を含む完走記録。
-- [棋力測定条件の校正](match-measurement-calibration.md)：時間制御と段階ゲート。
+- [棋力測定の段階ゲート](match-staged-gate.md)：時間制御と段階ゲート。
 - [SPRTによる棋力測定の手引き](../sprt.md)：現在有効な棋力測定手順。

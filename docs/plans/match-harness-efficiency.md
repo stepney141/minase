@@ -12,7 +12,7 @@ Minaseは、変更前後のエンジンを同じ条件で対局させて棋力�
 棋力の採否方法は変更しておらず、探索、評価、時間管理など棋力に影響し得る変更は、引き続き機能スイッチではなくコミット対コミットの時間制御GSPRTで判定する。
 
 本マイルストーンは2026年8月28日に完了し、実データの煙試験と校正カード200ペアの完走によって、保存、再開、および再集計が機能することを確認した。
-時間制御と同時対局数の校正、および短時間選別から長時間最終測定へ進む段階ゲートは[棋力測定条件の校正](match-measurement-calibration.md)へ、評価値による早期投了は[早期投了の導入判定](match-early-resignation.md)へ分離し、両マイルストーンの未完了は本マイルストーンの完了条件に含めない。
+時間制御と同時対局数の標準化、および短時間選別から長時間最終測定へ進む段階ゲートは[棋力測定の段階ゲート](match-staged-gate.md)へ、評価値による早期投了は[早期投了の導入判定](match-early-resignation.md)へ分離し、両マイルストーンの未完了は本マイルストーンの完了条件に含めない。
 
 ## 状態
 
@@ -20,7 +20,7 @@ Minaseは、変更前後のエンジンを同じ条件で対局させて棋力�
 2026年8月27日に起案し、2026年8月28日に完了した。
 並列枠の補充、原子的な保存と再開、監査可能な資源記録、および保存記録の再集計を採用し、棋力の採否方法は変更しなかった。
 根拠は、「検証」節の煙試験と、校正カードの正例[measurements/calibration-positive-current.md](../measurements/calibration-positive-current.md)と負例[measurements/calibration-negative-current.md](../measurements/calibration-negative-current.md)である。
-時間制御の校正は負例カードの不適切さが判明したため[棋力測定条件の校正](match-measurement-calibration.md)が待機中として引き継ぎ、早期投了は[早期投了の導入判定](match-early-resignation.md)が待機中として扱う。
+時間制御の標準化は、校正方式の不成立を経て[棋力測定の段階ゲート](match-staged-gate.md)が進行中として引き継ぎ、早期投了は[早期投了の導入判定](match-early-resignation.md)が待機中として扱う。
 
 ## 目的
 
@@ -41,8 +41,8 @@ Minaseは、変更前後のエンジンを同じ条件で対局させて棋力�
 
 次の項目はハーネス基盤と独立に採否できるため、本マイルストーンへ含めない。
 
-- 時間制御、比較カード、および同時対局数の校正は、[棋力測定条件の校正](match-measurement-calibration.md)で扱う。
-- 短時間選別と長時間最終測定の段階ゲートは、[棋力測定条件の校正](match-measurement-calibration.md)で扱う。
+- 時間制御と同時対局数の標準化は、[棋力測定の段階ゲート](match-staged-gate.md)で扱う。
+- 短時間選別と長時間最終測定の段階ゲートは、[棋力測定の段階ゲート](match-staged-gate.md)で扱う。
 - 評価値による早期投了は、[早期投了の導入判定](match-early-resignation.md)で扱う。
 - 固定した互角局面集、早期引き分け、複数マシンへの分散実行、およびエンジンプロセスの局間再利用は導入しない。
 - 実lishogiサーバーへの接続は、探索と評価が成熟した後の別マイルストーンで扱う。
@@ -145,7 +145,7 @@ RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features
 ランダムエンジン同士の4ペア煙試験は15.41秒で完走し、保存記録だけから総CPU時間14.80秒、物理コア数20、実メモリ容量33,218,965,504バイト、および異常0件を再集計できた。
 Lazy SMPの深さ1の1ペア煙試験は、コミット93bccd9を2ワーカー、コミット4ec0b1dを1ワーカーとして実効ワーカー数を記録し、各局のCPU時間と最大常駐メモリが保存記録に残ることを確認した。
 校正カードの正例[measurements/calibration-positive-current.md](../measurements/calibration-positive-current.md)は、現行時間制御200ペアの保存、再集計、および異常検査が実データで機能することを確認した。
-校正カードの負例[measurements/calibration-negative-current.md](../measurements/calibration-negative-current.md)は、分散0に対する算出不能の拒否が機能する一方でカード自体が校正に不適切であることを示したため、校正の判断は[棋力測定条件の校正](match-measurement-calibration.md)へ移した。
+校正カードの負例[measurements/calibration-negative-current.md](../measurements/calibration-negative-current.md)は、分散0に対する算出不能の拒否が機能する一方でカード自体が校正に不適切であることを示したため、測定条件の判断は[棋力測定の段階ゲート](match-staged-gate.md)へ移した。
 
 ## 完了条件
 
@@ -162,5 +162,5 @@ Lazy SMPの深さ1の1ペア煙試験は、コミット93bccd9を2ワーカー�
 
 - [SPRTによる棋力測定の手引き](../sprt.md)：現行の測定手順と統計契約。
 - [対局ハーネスのバイナリ対戦化](match-harness.md)：コミット対コミット測定の成立過程。
-- [棋力測定条件の校正](match-measurement-calibration.md)：時間制御、同時対局数、および段階ゲート。
+- [棋力測定の段階ゲート](match-staged-gate.md)：時間制御、同時対局数、および段階ゲート。
 - [早期投了の導入判定](match-early-resignation.md)：完走記録を使う投了条件の検証。

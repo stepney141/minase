@@ -19,7 +19,7 @@
 in-processのエンジン対局経路を削除して測定経路をプロセス方式へ一本化し、凍結ベースラインを「凍結ベースラインの再定義」の節のとおり確定した。
 移行検証は、凍結ベースライン対random（[measurements/frozen-baseline-vs-random-depth1.md](../measurements/frozen-baseline-vs-random-depth1.md)）とdepth=2対depth=1のGSPRT（[measurements/depth2-vs-depth1-migration-gsprt.md](../measurements/depth2-vs-depth1-migration-gsprt.md)）の2件が旧方式と同じ結果を再現したことによる。
 2026年8月24日にCECPエンジン指定を追加し、HaChuとの初回比較と要因分析を「HaChuとの比較」の節のとおり行った。
-本ハーネスの保存、再開、および集計基盤は[match-harness-efficiency.md](match-harness-efficiency.md)が、測定条件の校正は[match-measurement-calibration.md](match-measurement-calibration.md)が引き継ぐ。
+本ハーネスの保存、再開、および集計基盤は[match-harness-efficiency.md](match-harness-efficiency.md)が、測定の段階ゲートは[match-staged-gate.md](match-staged-gate.md)が引き継ぐ。
 
 ## 目的
 

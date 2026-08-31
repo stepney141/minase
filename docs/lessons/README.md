@@ -25,3 +25,4 @@
 - [教師不足と判定する前に学習曲線を確認する](check-learning-before-blaming-data.md) — 訓練損失の低下と過学習への転化を学習曲線で確認し、どちらも見られなければ学習器の欠陥を先に疑う。
 - [検証分割を変えたら旧分割の重みを基準にしない](validation-split-change-invalidates-old-baseline.md) — 検証分割を変更したら、旧分割で学習した重みを新分割での比較基準に使わない。
 - [長時間の生成は生成コミットを固定したworktreeで実行する](pin-generation-binary-to-worktree.md) — 数時間を超える生成や測定は、対象コミットを固定したworktreeのバイナリから実行する。
+- [効果量が極端な対は測定条件の比較情報を持たない](calibration-card-needs-contested-pair.md) — 条件比較のカードには勝敗が割れる拮抗した対を選び、全勝または全敗が予想される対を使わない。
