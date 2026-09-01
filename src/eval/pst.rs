@@ -5,8 +5,11 @@ use std::sync::{Arc, OnceLock};
 
 use sha2::{Digest, Sha256};
 
-use super::features::{FEATURE_COUNT, active_features};
-use crate::Position;
+use super::features::{
+    FEATURE_COUNT, active_features, active_features_for, feature_index, lion_feature_index,
+};
+use crate::core::mv::Undo;
+use crate::{Color, Position, Square};
 
 /// MNPTヘッダのバイト数。
 const HEADER_LENGTH: usize = 80;
@@ -23,6 +26,12 @@ pub struct Pst {
     k: f32,
     /// 重み本体のSHA-256。学習データのヘッダに生成元のネットとして記録する。
     checksum: [u8; 32],
+}
+
+/// 先手視点と後手視点で集計したPSTの生重み和。
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub(crate) struct PstAccumulator {
+    sums: [i32; 2],
 }
 
 impl Pst {
@@ -91,6 +100,76 @@ impl Pst {
     /// 重み本体のSHA-256を返す。
     pub const fn checksum(&self) -> &[u8; 32] {
         &self.checksum
+    }
+
+    /// 局面のPST累算値を両視点から完全再計算する。
+    pub(crate) fn refresh_accumulator(&self, position: &Position) -> PstAccumulator {
+        let mut accumulator = PstAccumulator::default();
+        for perspective in Color::ALL {
+            active_features_for(perspective, position, |feature| {
+                accumulator.sums[perspective.index()] += i32::from(self.weights[feature]);
+            });
+        }
+        accumulator
+    }
+
+    /// 通常着手後の局面について、PST累算値を差分更新する。
+    pub(crate) fn update_accumulator_after_move(
+        &self,
+        before: PstAccumulator,
+        position_after: &Position,
+        undo: &Undo,
+    ) -> PstAccumulator {
+        let mut after = before;
+        let moved_piece_after = position_after
+            .piece_at(undo.mv.to)
+            .expect("move destination must contain the moved piece");
+
+        for perspective in Color::ALL {
+            let sum = &mut after.sums[perspective.index()];
+            *sum -= i32::from(
+                self.weights[feature_index(perspective, undo.moved_piece_before, undo.mv.from)],
+            );
+            for captured in undo.captured.into_iter().flatten() {
+                *sum -= i32::from(
+                    self.weights[feature_index(perspective, captured.piece, captured.square)],
+                );
+            }
+            if let Some(trigger) = undo.previous_lion_taken {
+                *sum -= i32::from(self.weights[lion_feature_index(perspective, trigger.square)]);
+            }
+            *sum +=
+                i32::from(self.weights[feature_index(perspective, moved_piece_after, undo.mv.to)]);
+            if let Some(trigger) = position_after.lion_taken_by_non_lion() {
+                *sum += i32::from(self.weights[lion_feature_index(perspective, trigger.square)]);
+            }
+        }
+        after
+    }
+
+    /// null move後の局面について、PST累算値から直前の先獅子特徴を除く。
+    pub(crate) fn update_accumulator_after_null(
+        &self,
+        before: PstAccumulator,
+        lion_before: Option<Square>,
+    ) -> PstAccumulator {
+        let mut after = before;
+        if let Some(square) = lion_before {
+            for perspective in Color::ALL {
+                after.sums[perspective.index()] -=
+                    i32::from(self.weights[lion_feature_index(perspective, square)]);
+            }
+        }
+        after
+    }
+
+    /// 指定手番の視点からPST累算値をセンチポーン評価へ変換する。
+    pub(crate) fn evaluate_accumulator(
+        &self,
+        accumulator: PstAccumulator,
+        side_to_move: Color,
+    ) -> i32 {
+        (accumulator.sums[side_to_move.index()] / 8).clamp(-EVALUATION_LIMIT, EVALUATION_LIMIT)
     }
 }
 
@@ -191,9 +270,10 @@ pub fn weights() -> Result<Arc<Pst>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Move;
     use crate::eval::handcrafted::piece_value;
     use crate::test_util::{position_from_codes, sq};
-    use crate::{Color, PieceCode, PieceKind, Square};
+    use crate::{Color, MoveRules, PieceCode, PieceKind, Square};
 
     /// 検査用の正しいMNPTバイト列を返す。
     fn valid_bytes() -> Vec<u8> {
@@ -214,6 +294,154 @@ mod tests {
                 sign * piece_value(piece.kind().unwrap())
             })
             .sum()
+    }
+
+    /// 着手前後の差分累算値が完全再計算と一致し、親累算値を変更しないことを検査する。
+    fn assert_move_accumulator(pst: &Pst, position: &mut Position, mv: Move) {
+        let before = pst.refresh_accumulator(position);
+        let undo = position.make_move_unchecked(mv, MoveRules::standard());
+        let after = pst.update_accumulator_after_move(before, position, &undo);
+        assert_eq!(after, pst.refresh_accumulator(position));
+        position.unmake_move(undo);
+        assert_eq!(before, pst.refresh_accumulator(position));
+    }
+
+    /// 差分累算値が通常手、特殊移動、先獅子状態、およびnull moveで完全再計算と一致する。
+    #[test]
+    fn accumulator_updates_match_full_refresh_across_move_shapes() {
+        let pst = weights().unwrap();
+        let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+        let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
+        let black_pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
+        let white_pawn = PieceCode::new(Color::White, PieceKind::Pawn).unwrap();
+        let black_lion = PieceCode::new(Color::Black, PieceKind::Lion).unwrap();
+
+        let mut promotion = position_from_codes(
+            Color::Black,
+            &[
+                (sq(0, 11), black_king),
+                (sq(11, 0), white_king),
+                (sq(5, 3), black_pawn),
+                (sq(5, 2), white_pawn),
+            ],
+        );
+        assert_move_accumulator(
+            &pst,
+            &mut promotion,
+            Move {
+                from: sq(5, 3),
+                mid: None,
+                to: sq(5, 2),
+                promote: true,
+            },
+        );
+
+        let mut lion = position_from_codes(
+            Color::Black,
+            &[
+                (sq(0, 11), black_king),
+                (sq(11, 0), white_king),
+                (sq(5, 5), black_lion),
+                (sq(5, 4), white_pawn),
+                (sq(5, 3), white_pawn),
+            ],
+        );
+        assert_move_accumulator(
+            &pst,
+            &mut lion,
+            Move {
+                from: sq(5, 5),
+                mid: Some(sq(5, 4)),
+                to: sq(5, 3),
+                promote: false,
+            },
+        );
+
+        let mut igui = position_from_codes(
+            Color::Black,
+            &[
+                (sq(0, 11), black_king),
+                (sq(11, 0), white_king),
+                (sq(5, 5), black_lion),
+                (sq(5, 4), white_pawn),
+            ],
+        );
+        assert_move_accumulator(
+            &pst,
+            &mut igui,
+            Move {
+                from: sq(5, 5),
+                mid: Some(sq(5, 4)),
+                to: sq(5, 5),
+                promote: false,
+            },
+        );
+
+        let mut jitto = position_from_codes(
+            Color::Black,
+            &[
+                (sq(0, 11), black_king),
+                (sq(11, 0), white_king),
+                (sq(5, 5), black_lion),
+            ],
+        );
+        assert_move_accumulator(
+            &pst,
+            &mut jitto,
+            Move {
+                from: sq(5, 5),
+                mid: Some(sq(5, 4)),
+                to: sq(5, 5),
+                promote: false,
+            },
+        );
+
+        let black_rook = PieceCode::new(Color::Black, PieceKind::Rook).unwrap();
+        let white_lion = PieceCode::new(Color::White, PieceKind::Lion).unwrap();
+        let mut lion_capture = position_from_codes(
+            Color::Black,
+            &[
+                (sq(0, 11), black_king),
+                (sq(11, 0), white_king),
+                (sq(5, 5), black_rook),
+                (sq(5, 3), white_lion),
+            ],
+        );
+        let before = pst.refresh_accumulator(&lion_capture);
+        let undo = lion_capture.make_move_unchecked(
+            Move {
+                from: sq(5, 5),
+                mid: None,
+                to: sq(5, 3),
+                promote: false,
+            },
+            MoveRules::standard(),
+        );
+        let after = pst.update_accumulator_after_move(before, &lion_capture, &undo);
+        assert_eq!(after, pst.refresh_accumulator(&lion_capture));
+
+        let mut normal_response = lion_capture.clone();
+        assert_move_accumulator(
+            &pst,
+            &mut normal_response,
+            Move {
+                from: sq(11, 0),
+                mid: None,
+                to: sq(10, 0),
+                promote: false,
+            },
+        );
+
+        let lion_before = lion_capture
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square);
+        let null_undo = lion_capture.make_null_move();
+        let after_null = pst.update_accumulator_after_null(after, lion_before);
+        assert_eq!(after_null, pst.refresh_accumulator(&lion_capture));
+        lion_capture.unmake_null_move(null_undo);
+        assert_eq!(after, pst.refresh_accumulator(&lion_capture));
+        lion_capture.unmake_move(undo);
+        assert_eq!(before, pst.refresh_accumulator(&lion_capture));
     }
 
     /// 固定長より短いMNPTが拒否されることを検査する。

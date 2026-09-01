@@ -41,7 +41,7 @@ fn piece_state(piece: PieceCode) -> usize {
 }
 
 /// 指定視点における盤上の駒の特徴番号を返す。
-fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> usize {
+pub(super) fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> usize {
     let relative_color = usize::from(
         piece
             .color()
@@ -57,7 +57,7 @@ fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> usize 
 }
 
 /// 指定視点における先獅子対象升の特徴番号を返す。
-fn lion_feature_index(perspective: Color, square: Square) -> usize {
+pub(super) fn lion_feature_index(perspective: Color, square: Square) -> usize {
     let relative_rank = match perspective {
         Color::Black => square.rank(),
         Color::White => 11 - square.rank(),
@@ -67,7 +67,15 @@ fn lion_feature_index(perspective: Color, square: Square) -> usize {
 
 /// 局面で有効な手番側視点の特徴番号を列挙する。
 pub(super) fn active_features(position: &Position, mut f: impl FnMut(usize)) {
-    let perspective = position.side_to_move();
+    active_features_for(position.side_to_move(), position, &mut f);
+}
+
+/// 局面で有効な指定視点の特徴番号を列挙する。
+pub(super) fn active_features_for(
+    perspective: Color,
+    position: &Position,
+    mut f: impl FnMut(usize),
+) {
     for square in position.occupied() {
         let piece = position
             .piece_at(square)

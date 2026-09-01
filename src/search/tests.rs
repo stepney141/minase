@@ -9,6 +9,7 @@
 use super::*;
 use crate::Square;
 use crate::core::piece::{Color, PieceCode, PieceKind};
+use crate::eval::evaluate;
 use crate::test_util::{position, position_from_codes, sq};
 
 use super::tt::{

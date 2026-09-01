@@ -22,8 +22,9 @@ use crate::core::piece::{COLOR_COUNT, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
+use crate::eval::Pst;
 use crate::eval::handcrafted::piece_value;
-use crate::eval::{Pst, evaluate};
+use crate::eval::pst::PstAccumulator;
 
 use tt::Bound;
 
@@ -842,6 +843,7 @@ fn new_searcher<'a>(
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
 ) -> Searcher<'a> {
+    let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
         pst,
         rules,
@@ -855,6 +857,7 @@ fn new_searcher<'a>(
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
+        accumulators: [root_accumulator; MAX_PLY as usize + 1],
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
@@ -878,7 +881,7 @@ fn run_main_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: evaluate(pst, position),
+        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -945,7 +948,7 @@ fn run_auxiliary_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: evaluate(pst, position),
+        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -993,6 +996,8 @@ struct Searcher<'a> {
     stop_reason: Option<StopReason>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pv: Vec<Vec<Move>>,
+    /// plyごとのPST生重み和。
+    accumulators: [PstAccumulator; MAX_PLY as usize + 1],
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     history: Box<HistoryTable>,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
@@ -1090,7 +1095,13 @@ impl Searcher<'_> {
             && has_non_royal_piece
         {
             let reduction = 2 + depth / 6;
+            let lion_before = position
+                .lion_taken_by_non_lion()
+                .map(|trigger| trigger.square);
             let undo = position.make_null_move();
+            self.accumulators[(ply + 1) as usize] = self
+                .pst
+                .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
             let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
             let score = self
                 .negamax(
@@ -1176,7 +1187,10 @@ impl Searcher<'_> {
         self.pv[ply as usize].clear();
 
         if ply >= MAX_PLY {
-            return Some(evaluate(self.pst, position));
+            return Some(
+                self.pst
+                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
+            );
         }
 
         let original_alpha = alpha;
@@ -1194,7 +1208,9 @@ impl Searcher<'_> {
             }
         }
 
-        let stand_pat = evaluate(self.pst, position);
+        let stand_pat = self
+            .pst
+            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
         if stand_pat >= beta {
             self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
             return Some(stand_pat);
@@ -1229,6 +1245,11 @@ impl Searcher<'_> {
                 self.enter_node().then_some(MATE - ply as i32)?
             } else {
                 let undo = position.make_move_unchecked(mv, self.rules);
+                self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
+                    self.accumulators[ply as usize],
+                    position,
+                    &undo,
+                );
                 let score = self
                     .quiesce(position, -beta, -alpha, ply + 1)
                     .map(|value| -value);
@@ -1286,6 +1307,11 @@ impl Searcher<'_> {
             return score;
         }
 
+        self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
+            self.accumulators[ply as usize],
+            position,
+            &undo,
+        );
         self.path_keys.push(key);
         let mut score = if first {
             self.negamax(position, depth - 1, -beta, -alpha, ply + 1)
