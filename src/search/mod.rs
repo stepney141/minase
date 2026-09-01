@@ -1124,17 +1124,12 @@ impl Searcher<'_> {
             }
         }
 
-        let mut moves = Vec::new();
-        self.generator.generate_moves(position, &mut moves);
-        if moves.is_empty() {
-            return Some(-MATE + ply as i32);
-        }
-
-        self.order_moves(position, &mut moves, tt_move, ply);
-        let mut best_move = moves[0];
+        let mut picker = MovePicker::new(tt_move, self.killers[ply as usize]);
+        let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
-        for (index, mv) in moves.into_iter().enumerate() {
+        let mut index = 0;
+        while let Some(mv) = picker.next(position, &self.generator, &self.history) {
             let reduction = u32::from(
                 depth >= 3
                     && index >= 3
@@ -1146,7 +1141,7 @@ impl Searcher<'_> {
                 self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
             if score > best_score {
                 best_score = score;
-                best_move = mv;
+                best_move = Some(mv);
                 self.update_pv(ply, mv);
             }
             alpha = alpha.max(score);
@@ -1157,7 +1152,11 @@ impl Searcher<'_> {
                 }
                 break;
             }
+            index += 1;
         }
+        let Some(best_move) = best_move else {
+            return Some(-MATE + ply as i32);
+        };
         let bound = if best_score <= original_alpha {
             Bound::Upper
         } else if beta_cutoff {
@@ -1521,6 +1520,117 @@ enum OrderedMoveKey {
     Killer(usize),
     /// History値の降順で並べる残りの非捕獲手。
     Quiet(Reverse<i32>),
+}
+
+/// 通常探索で手を返す段階。
+#[derive(Clone, Copy)]
+enum MovePickerStage {
+    Tt,
+    Captures,
+    Killer0,
+    Killer1,
+    Quiets,
+    Done,
+}
+
+/// TT手、捕獲手、killer手、静かな手の順に合法手を1回ずつ返す。
+struct MovePicker {
+    stage: MovePickerStage,
+    tt_move: Option<Move>,
+    killers: [Option<Move>; KILLER_COUNT],
+    captures: Vec<Move>,
+    capture_index: usize,
+    captures_generated: bool,
+    quiets: Vec<Move>,
+    quiet_index: usize,
+    quiets_generated: bool,
+}
+
+impl MovePicker {
+    /// 助言手を保持した空の手選択器を作る。
+    fn new(tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) -> Self {
+        Self {
+            stage: MovePickerStage::Tt,
+            tt_move,
+            killers,
+            captures: Vec::new(),
+            capture_index: 0,
+            captures_generated: false,
+            quiets: Vec::new(),
+            quiet_index: 0,
+            quiets_generated: false,
+        }
+    }
+
+    /// 現在の段階で次に探索する合法手を返す。
+    fn next(
+        &mut self,
+        position: &Position,
+        generator: &MoveGenerator,
+        history: &HistoryTable,
+    ) -> Option<Move> {
+        loop {
+            match self.stage {
+                MovePickerStage::Tt => {
+                    self.stage = MovePickerStage::Captures;
+                    if let Some(tt_move) = self.tt_move
+                        && generator.is_legal_move(position, tt_move)
+                    {
+                        return Some(tt_move);
+                    }
+                }
+                MovePickerStage::Captures => {
+                    if !self.captures_generated {
+                        generator.generate_captures(position, &mut self.captures);
+                        self.captures.retain(|&mv| Some(mv) != self.tt_move);
+                        self.captures.sort_by_key(|&mv| {
+                            let key = move_order_key(position, mv)
+                                .expect("capture generator must not return a quiet move");
+                            (Reverse(key.captured_value), key.attacker_value)
+                        });
+                        self.captures_generated = true;
+                    }
+                    if let Some(&mv) = self.captures.get(self.capture_index) {
+                        self.capture_index += 1;
+                        return Some(mv);
+                    }
+                    self.stage = MovePickerStage::Killer0;
+                }
+                MovePickerStage::Killer0 | MovePickerStage::Killer1 => {
+                    if !self.quiets_generated {
+                        generator.generate_quiets(position, &mut self.quiets);
+                        self.quiets.retain(|&mv| Some(mv) != self.tt_move);
+                        self.quiets_generated = true;
+                    }
+                    let killer_index = usize::from(matches!(self.stage, MovePickerStage::Killer1));
+                    self.stage = if killer_index == 0 {
+                        MovePickerStage::Killer1
+                    } else {
+                        MovePickerStage::Quiets
+                    };
+                    if let Some(killer) = self.killers[killer_index]
+                        && let Some(index) = self.quiets.iter().position(|&mv| mv == killer)
+                    {
+                        return Some(self.quiets.remove(index));
+                    }
+                }
+                MovePickerStage::Quiets => {
+                    let color = position.side_to_move().index();
+                    self.quiets.sort_by_cached_key(|&mv| {
+                        Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()])
+                    });
+                    self.stage = MovePickerStage::Done;
+                }
+                MovePickerStage::Done => {
+                    if let Some(&mv) = self.quiets.get(self.quiet_index) {
+                        self.quiet_index += 1;
+                        return Some(mv);
+                    }
+                    return None;
+                }
+            }
+        }
+    }
 }
 
 /// 捕獲手の整列キー。

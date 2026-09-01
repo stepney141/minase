@@ -250,6 +250,99 @@ fn quiet_midgame() -> Position {
     )
 }
 
+/// 捕獲手と静かな手を同時に持つ手選択フィクスチャ。
+fn staged_picker_fixture() -> Position {
+    position(
+        Color::Black,
+        &[
+            (fs(7, 12), Color::Black, PieceKind::King),
+            (fs(6, 8), Color::Black, PieceKind::Rook),
+            (fs(6, 5), Color::White, PieceKind::Pawn),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    )
+}
+
+/// 段階的手選択が助言手の合法性と重複を処理し、全合法手を1回ずつ返す。
+#[test]
+fn staged_picker_yields_every_legal_move_exactly_once() {
+    let position = staged_picker_fixture();
+    let legal = legal_moves(&position);
+    let capture = legal
+        .iter()
+        .copied()
+        .find(|&mv| move_order_key(&position, mv).is_some())
+        .unwrap();
+    let quiets: Vec<_> = legal
+        .iter()
+        .copied()
+        .filter(|&mv| move_order_key(&position, mv).is_none())
+        .collect();
+    let illegal = Move {
+        from: fs(1, 1),
+        mid: None,
+        to: fs(1, 2),
+        promote: false,
+    };
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+
+    for (tt_move, killers) in [
+        (Some(capture), [None, None]),
+        (Some(quiets[0]), [Some(quiets[0]), None]),
+        (Some(illegal), [Some(illegal), Some(quiets[1])]),
+    ] {
+        let mut picker = MovePicker::new(tt_move, killers);
+        let mut actual = Vec::new();
+        while let Some(mv) = picker.next(&position, &MoveGenerator::new(engine_rules()), &history) {
+            actual.push(mv);
+        }
+
+        assert_eq!(actual.len(), legal.len());
+        assert_eq!(
+            actual
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>(),
+            legal.iter().copied().collect()
+        );
+        assert_eq!(actual.iter().filter(|&&mv| mv == illegal).count(), 0);
+    }
+}
+
+/// 段階的手選択がTT手、捕獲手、killer手、その他の静かな手の順を守る。
+#[test]
+fn staged_picker_respects_advisory_precedence() {
+    let position = staged_picker_fixture();
+    let legal = legal_moves(&position);
+    let capture = legal
+        .iter()
+        .copied()
+        .find(|&mv| move_order_key(&position, mv).is_some())
+        .unwrap();
+    let quiets: Vec<_> = legal
+        .iter()
+        .copied()
+        .filter(|&mv| move_order_key(&position, mv).is_none())
+        .collect();
+    let killer = quiets[0];
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut picker = MovePicker::new(Some(quiets[1]), [Some(killer), None]);
+    let mut actual = Vec::new();
+    while let Some(mv) = picker.next(&position, &MoveGenerator::new(engine_rules()), &history) {
+        actual.push(mv);
+    }
+
+    assert_eq!(actual[0], quiets[1]);
+    let capture_index = actual.iter().position(|&mv| mv == capture).unwrap();
+    let killer_index = actual.iter().position(|&mv| mv == killer).unwrap();
+    assert!(capture_index < killer_index);
+    assert!(
+        actual[killer_index + 1..]
+            .iter()
+            .all(|&mv| move_order_key(&position, mv).is_none())
+    );
+}
+
 /// D7-SRCH-03／D7-TT-04共用のフィクスチャ。先手王将は飛車（十二段の横利き）
 /// と奔王（12一〜1十二の斜線）の利きに入っており、反車6六→6七だけが
 /// 履歴と同一キーの子局面を作る。

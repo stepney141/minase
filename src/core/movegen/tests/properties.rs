@@ -405,6 +405,19 @@ fn playout_capture_generation(rules: MoveRules, seed: u64, plies: usize) {
     for _ in 0..plies {
         assert_capture_generation_matches(&generator, &position);
         let moves = generated_with(&generator, &position);
+        assert!(
+            moves
+                .iter()
+                .all(|&mv| generator.is_legal_move(&position, mv))
+        );
+        let expected_quiets: Vec<_> = moves
+            .iter()
+            .copied()
+            .filter(|&mv| expected_captures(&position, mv).is_empty())
+            .collect();
+        let mut quiets = Vec::new();
+        generator.generate_quiets(&position, &mut quiets);
+        assert_eq!(quiets, expected_quiets);
         if moves.is_empty() {
             break;
         }

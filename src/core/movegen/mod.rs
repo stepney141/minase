@@ -50,6 +50,48 @@ impl MoveGenerator {
         generate_moves::<true>(self, position, output);
     }
 
+    /// `position`の手番側の捕獲を伴わない合法手を`output`へ追加する。
+    pub(crate) fn generate_quiets(&self, position: &Position, output: &mut Vec<Move>) {
+        let start = output.len();
+        generate_moves::<false>(self, position, output);
+        let mut write = start;
+        for read in start..output.len() {
+            let mv = output[read];
+            if position
+                .captured_squares(mv)
+                .into_iter()
+                .all(|square| square.is_none())
+            {
+                output[write] = mv;
+                write += 1;
+            }
+        }
+        output.truncate(write);
+    }
+
+    /// 候補手が`position`で手番側の合法手かを返す。
+    pub(crate) fn is_legal_move(&self, position: &Position, candidate: Move) -> bool {
+        let Some(piece) = position.piece_at(candidate.from) else {
+            return false;
+        };
+        if piece.color() != Some(position.side_to_move()) {
+            return false;
+        }
+        let kind = piece.kind().expect("board piece must have a valid kind");
+        let mut base_moves = Vec::new();
+        let mut moves = Vec::new();
+        generate_piece_moves::<false>(
+            self,
+            position,
+            position.side_to_move(),
+            kind,
+            candidate.from,
+            &mut base_moves,
+            &mut moves,
+        );
+        moves.contains(&candidate)
+    }
+
     /// 利きの前計算テーブルを返す。
     pub(crate) const fn tables(&self) -> &AttackTables {
         self.tables
@@ -143,58 +185,69 @@ fn generate_moves<const CAPTURES_ONLY: bool>(
     output: &mut Vec<Move>,
 ) {
     let color = position.side_to_move();
+    let mut base_moves = Vec::new();
+    for kind in PieceKind::ALL {
+        for from in position.pieces_of_kind(color, kind) {
+            generate_piece_moves::<CAPTURES_ONLY>(
+                generator,
+                position,
+                color,
+                kind,
+                from,
+                &mut base_moves,
+                output,
+            );
+        }
+    }
+}
+
+/// 指定した1枚の駒について合法手を生成する。
+fn generate_piece_moves<const CAPTURES_ONLY: bool>(
+    generator: &MoveGenerator,
+    position: &Position,
+    color: Color,
+    kind: PieceKind,
+    from: Square,
+    base_moves: &mut Vec<Move>,
+    output: &mut Vec<Move>,
+) {
+    let profile = movement_profile_data(movement_profile(kind));
     let own = position.pieces_of(color);
     let enemy = position.pieces_of(color.opposite());
     let destinations = if CAPTURES_ONLY { enemy } else { !own };
+    base_moves.clear();
+    let step_destinations =
+        (piece_control_without_special(generator.tables(), position.occupied(), color, kind, from)
+            | special_step_destinations(generator.tables(), color, from, profile.special))
+            & destinations;
+    for to in step_destinations {
+        base_moves.push(Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        });
+    }
 
-    let mut base_moves = Vec::new();
-    for kind in PieceKind::ALL {
-        let profile = movement_profile_data(movement_profile(kind));
-        for from in position.pieces_of_kind(color, kind) {
-            base_moves.clear();
-            let step_destinations =
-                (piece_control_without_special(
-                    generator.tables(),
-                    position.occupied(),
-                    color,
-                    kind,
-                    from,
-                ) | special_step_destinations(generator.tables(), color, from, profile.special))
-                    & destinations;
-            for to in step_destinations {
-                base_moves.push(Move {
-                    from,
-                    mid: None,
-                    to,
-                    promote: false,
-                });
-            }
-
-            match profile.special {
-                SpecialMovement::None => {}
-                SpecialMovement::Lion => {
-                    generate_lion_double_and_jumps::<CAPTURES_ONLY>(
-                        generator.tables(),
-                        position,
-                        color,
-                        from,
-                        &mut base_moves,
-                    );
-                }
-                SpecialMovement::LionLike(profile) => {
-                    generate_lion_like_double_and_jumps::<CAPTURES_ONLY>(
-                        position,
-                        color,
-                        from,
-                        profile,
-                        &mut base_moves,
-                    );
-                }
-            }
-            for &base in &base_moves {
-                push_with_promotion(generator, position, kind, base, output);
-            }
+    match profile.special {
+        SpecialMovement::None => {}
+        SpecialMovement::Lion => {
+            generate_lion_double_and_jumps::<CAPTURES_ONLY>(
+                generator.tables(),
+                position,
+                color,
+                from,
+                base_moves,
+            );
         }
+        SpecialMovement::LionLike(profile) => {
+            generate_lion_like_double_and_jumps::<CAPTURES_ONLY>(
+                position, color, from, profile, base_moves,
+            );
+        }
+    }
+    for &base in base_moves.iter() {
+        push_with_promotion(generator, position, kind, base, output);
     }
 }
 
