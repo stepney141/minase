@@ -49,6 +49,13 @@ pub(super) fn generated_with(generator: &MoveGenerator, position: &Position) -> 
     moves
 }
 
+/// 指定した生成器で手番側の捕獲手だけを生成する。
+pub(super) fn generated_captures_with(generator: &MoveGenerator, position: &Position) -> Vec<Move> {
+    let mut moves = Vec::new();
+    generator.generate_captures(position, &mut moves);
+    moves
+}
+
 /// origin を from とする着手だけを取り出す。
 pub(super) fn moves_from(moves: &[Move], origin: Square) -> Vec<Move> {
     moves

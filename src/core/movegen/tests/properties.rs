@@ -9,12 +9,13 @@ use std::collections::{BTreeSet, HashSet};
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use super::{
-    MoveGenerator, PROMOTION_PAIRS, TWO_STAGE_KINDS, forward_rank_delta, generated_with, same_board,
+    MoveGenerator, PROMOTION_PAIRS, TWO_STAGE_KINDS, forward_rank_delta, generated_captures_with,
+    generated_with, msq, same_board,
 };
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuilder};
-use crate::core::rules::{MoveRules, PromotionRule};
+use crate::core::rules::{LionRule, MoveRules, PromotionRule, Rules};
 use crate::core::square::Square;
 use crate::rng::XorShift64;
 
@@ -108,6 +109,136 @@ fn expected_captures(position: &Position, mv: Move) -> BTreeSet<Square> {
         captures.insert(mv.to);
     }
     captures
+}
+
+/// 全手列から規則上の捕獲手だけを残した列と、捕獲専用生成の列が一致することを検査する。
+fn assert_capture_generation_matches(generator: &MoveGenerator, position: &Position) {
+    let expected: Vec<_> = generated_with(generator, position)
+        .into_iter()
+        .filter(|&mv| !expected_captures(position, mv).is_empty())
+        .collect();
+    let actual = generated_captures_with(generator, position);
+    assert_eq!(actual, expected);
+}
+
+/// 指定駒だけを置いた局面と、残りの全升を相手駒で埋めた局面を作る。
+fn capture_extreme_position(from: Square, code: PieceCode, dense: bool) -> Position {
+    let mut builder = PositionBuilder::new(Color::Black);
+    builder.put(from, code).unwrap();
+    if dense {
+        let enemy = PieceCode::new(Color::White, PieceKind::Pawn).unwrap();
+        for square in Square::all().filter(|&square| square != from) {
+            builder.put(square, enemy).unwrap();
+        }
+    }
+    builder.finish().unwrap()
+}
+
+// strength-stage1.md「捕獲専用生成」: 全駒種と全升について、空升だけの局面では
+// 捕獲を生成せず、他の全升が相手駒の局面では全手列の捕獲部分列と一致する。
+#[test]
+fn capture_generation_matches_full_generation_for_every_kind_and_square() {
+    let generator = MoveGenerator::standard();
+    let promoted_only = [
+        PieceKind::WhiteHorse,
+        PieceKind::Whale,
+        PieceKind::FlyingStag,
+        PieceKind::FreeBoar,
+        PieceKind::FlyingOx,
+        PieceKind::CrownPrince,
+        PieceKind::HornedFalcon,
+        PieceKind::SoaringEagle,
+    ];
+
+    for kind in PieceKind::ALL {
+        let mut codes = Vec::new();
+        if !promoted_only.contains(&kind) {
+            codes.push(PieceCode::new(Color::Black, kind).unwrap());
+        }
+        if let Some(promoted) = PieceCode::new_promoted(Color::Black, kind) {
+            codes.push(promoted);
+        }
+
+        for code in codes {
+            for from in Square::all() {
+                let sparse = capture_extreme_position(from, code, false);
+                assert!(
+                    generated_captures_with(&generator, &sparse).is_empty(),
+                    "kind={kind:?}, from={from:?}, promoted={}",
+                    code.is_promoted()
+                );
+
+                let dense = capture_extreme_position(from, code, true);
+                assert_capture_generation_matches(&generator, &dense);
+            }
+        }
+    }
+}
+
+// strength-stage1.md「捕獲専用生成」: 獅子、角鷹、飛鷲の経由升捕獲、
+// 到達升捕獲、2枚取り、居喰い、および捕獲を伴う成りを同じ列で返す。
+#[test]
+fn capture_generation_matches_full_generation_for_special_and_promoting_captures() {
+    let mut builder = PositionBuilder::new(Color::Black);
+    let black = |kind| PieceCode::new(Color::Black, kind).unwrap();
+    let promoted = |kind| PieceCode::new_promoted(Color::Black, kind).unwrap();
+    let enemy = PieceCode::new(Color::White, PieceKind::Pawn).unwrap();
+
+    builder.put(msq(6, 7), black(PieceKind::Lion)).unwrap();
+    for square in [msq(6, 6), msq(6, 5), msq(7, 5)] {
+        builder.put(square, enemy).unwrap();
+    }
+
+    builder
+        .put(msq(3, 7), promoted(PieceKind::HornedFalcon))
+        .unwrap();
+    for square in [msq(3, 6), msq(3, 5)] {
+        builder.put(square, enemy).unwrap();
+    }
+
+    builder
+        .put(msq(10, 7), promoted(PieceKind::SoaringEagle))
+        .unwrap();
+    for square in [msq(9, 6), msq(8, 5), msq(12, 5)] {
+        builder.put(square, enemy).unwrap();
+    }
+
+    builder
+        .put(msq(1, 3), black(PieceKind::FerociousLeopard))
+        .unwrap();
+    builder.put(msq(1, 2), enemy).unwrap();
+
+    let position = builder.finish().unwrap();
+    assert_capture_generation_matches(&MoveGenerator::standard(), &position);
+
+    let captures = generated_captures_with(&MoveGenerator::standard(), &position);
+    assert!(
+        captures
+            .iter()
+            .any(|mv| mv.mid.is_some() && mv.to == mv.from)
+    );
+    assert!(
+        captures
+            .iter()
+            .any(|mv| { expected_captures(&position, *mv).len() == 2 })
+    );
+    assert!(
+        captures
+            .iter()
+            .any(|mv| mv.mid.is_none() && mv.to != mv.from)
+    );
+    assert!(captures.iter().any(|mv| mv.promote));
+
+    let sentinel = Move {
+        from: msq(12, 12),
+        mid: None,
+        to: msq(12, 12),
+        promote: false,
+    };
+    let mut appended = vec![sentinel];
+    MoveGenerator::standard().generate_captures(&position, &mut appended);
+    assert_eq!(appended[0], sentinel);
+    assert_eq!(&appended[1..], captures);
 }
 
 /// 正準形の不変条件（D1-MC-01）と第6〜7条・第17〜18条の全域性質を1局面分検査する。
@@ -264,6 +395,54 @@ fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
         0x5255_4c45_5345_5402,
         96,
     );
+}
+
+/// シード固定プレイアウトの各局面で捕獲専用生成の同値性を検査する。
+fn playout_capture_generation(rules: MoveRules, seed: u64, plies: usize) {
+    let generator = MoveGenerator::new(rules);
+    let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
+    let mut position = Position::initial();
+    for _ in 0..plies {
+        assert_capture_generation_matches(&generator, &position);
+        let moves = generated_with(&generator, &position);
+        if moves.is_empty() {
+            break;
+        }
+        position.make_move_unchecked(
+            moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())],
+            rules,
+        );
+    }
+}
+
+// strength-stage1.md「捕獲専用生成」: 到達可能局面でも、捕獲専用生成は
+// 全手列から規則上の捕獲だけを残した部分列と一致する。
+#[test]
+fn capture_generation_matches_full_generation_in_seeded_playouts() {
+    let rule_sets = [
+        MoveRules::standard(),
+        Rules::LISHOGI.moves,
+        MoveRules {
+            promotion: PromotionRule::P1,
+            p3: true,
+            p4: true,
+            ..MoveRules::standard()
+        },
+        MoveRules {
+            promotion: PromotionRule::P2,
+            p5: true,
+            p6: true,
+            ..MoveRules::standard()
+        },
+        MoveRules {
+            lion: LionRule::L0 { l4: true },
+            l3: true,
+            ..MoveRules::standard()
+        },
+    ];
+    for (index, rules) in rule_sets.into_iter().enumerate() {
+        playout_capture_generation(rules, 0x4341_5054_5552_4501 + index as u64, 128);
+    }
 }
 
 /// シード固定プレイアウトで全生成手の適用・復元の往復を検査する（D1-MC-02）。

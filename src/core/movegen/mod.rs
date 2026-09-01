@@ -42,7 +42,12 @@ impl MoveGenerator {
 
     /// `position`の手番側の全合法手を`output`へ追加する。
     pub fn generate_moves(&self, position: &Position, output: &mut Vec<Move>) {
-        generate_moves(self, position, output);
+        generate_moves::<false>(self, position, output);
+    }
+
+    /// `position`の手番側の捕獲を伴う合法手を`output`へ追加する。
+    pub fn generate_captures(&self, position: &Position, output: &mut Vec<Move>) {
+        generate_moves::<true>(self, position, output);
     }
 
     /// 利きの前計算テーブルを返す。
@@ -132,9 +137,15 @@ fn push_with_promotion(
 }
 
 /// 手番側の全駒について合法手を生成する。
-fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut Vec<Move>) {
+fn generate_moves<const CAPTURES_ONLY: bool>(
+    generator: &MoveGenerator,
+    position: &Position,
+    output: &mut Vec<Move>,
+) {
     let color = position.side_to_move();
     let own = position.pieces_of(color);
+    let enemy = position.pieces_of(color.opposite());
+    let destinations = if CAPTURES_ONLY { enemy } else { !own };
 
     let mut base_moves = Vec::new();
     for kind in PieceKind::ALL {
@@ -149,7 +160,7 @@ fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut V
                     kind,
                     from,
                 ) | special_step_destinations(generator.tables(), color, from, profile.special))
-                    & !own;
+                    & destinations;
             for to in step_destinations {
                 base_moves.push(Move {
                     from,
@@ -162,7 +173,7 @@ fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut V
             match profile.special {
                 SpecialMovement::None => {}
                 SpecialMovement::Lion => {
-                    generate_lion_double_and_jumps(
+                    generate_lion_double_and_jumps::<CAPTURES_ONLY>(
                         generator.tables(),
                         position,
                         color,
@@ -171,7 +182,7 @@ fn generate_moves(generator: &MoveGenerator, position: &Position, output: &mut V
                     );
                 }
                 SpecialMovement::LionLike(profile) => {
-                    generate_lion_like_double_and_jumps(
+                    generate_lion_like_double_and_jumps::<CAPTURES_ONLY>(
                         position,
                         color,
                         from,
@@ -291,7 +302,7 @@ impl VirtualBoard {
 
 /// 獅子の2段階移動・跳び・じっと(第12条)を生成する。1升移動で停止する着手は
 /// 通常経路で生成済みのため含めない。
-fn generate_lion_double_and_jumps(
+fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
     tables: &AttackTables,
     position: &Position,
     color: Color,
@@ -315,7 +326,8 @@ fn generate_lion_double_and_jumps(
         }
     }
 
-    for to in tables.lion_jumps(from) & !own {
+    let jump_destinations = if CAPTURES_ONLY { enemy } else { !own };
+    for to in tables.lion_jumps(from) & jump_destinations {
         output.push(Move {
             from,
             mid: None,
@@ -324,7 +336,7 @@ fn generate_lion_double_and_jumps(
         });
     }
 
-    if !(adjacent & !position.occupied()).is_empty() {
+    if !CAPTURES_ONLY && !(adjacent & !position.occupied()).is_empty() {
         output.push(Move {
             from,
             mid: None,
@@ -336,7 +348,7 @@ fn generate_lion_double_and_jumps(
 
 /// 角鷹・飛鷲の2段階移動・居喰い・じっと(第11条)を生成する。1升移動で停止する
 /// 着手は通常経路で生成済みのため含めない。
-fn generate_lion_like_double_and_jumps(
+fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
     position: &Position,
     color: Color,
     from: Square,
@@ -352,7 +364,7 @@ fn generate_lion_like_double_and_jumps(
         let Some(first) = step_square(from, direction) else {
             continue;
         };
-        if !position.occupied().contains(first) {
+        if !CAPTURES_ONLY && !position.occupied().contains(first) {
             can_jitto = true;
         } else if enemy.contains(first) {
             output.push(Move {
@@ -369,12 +381,14 @@ fn generate_lion_like_double_and_jumps(
         if own.contains(second) {
             continue;
         }
-        output.push(Move {
-            from,
-            mid: None,
-            to: second,
-            promote: false,
-        });
+        if !CAPTURES_ONLY || enemy.contains(second) {
+            output.push(Move {
+                from,
+                mid: None,
+                to: second,
+                promote: false,
+            });
+        }
         if enemy.contains(first) {
             output.push(Move {
                 from,
@@ -385,7 +399,7 @@ fn generate_lion_like_double_and_jumps(
         }
     }
 
-    if can_jitto {
+    if !CAPTURES_ONLY && can_jitto {
         output.push(Move {
             from,
             mid: None,

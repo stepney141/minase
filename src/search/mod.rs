@@ -1204,10 +1204,14 @@ impl Searcher<'_> {
         alpha = alpha.max(stand_pat);
 
         let mut captures = Vec::new();
-        self.generator.generate_moves(position, &mut captures);
+        self.generator.generate_captures(position, &mut captures);
         let mut captures: Vec<_> = captures
             .into_iter()
-            .filter_map(|mv| move_order_key(position, mv).map(|key| (mv, key)))
+            .map(|mv| {
+                let key = move_order_key(position, mv)
+                    .expect("capture generator must not return a quiet move");
+                (mv, key)
+            })
             .collect();
         order_captures(&mut captures);
         if let Some(index) =

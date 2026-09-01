@@ -29,20 +29,24 @@
 | 棋力測定ハーネス基盤の効率化 | [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) | 完了 | 2026年8月28日 |
 | 棋力測定の段階ゲート | [plans/match-staged-gate.md](plans/match-staged-gate.md) | 完了 | 2026年9月1日 |
 | 早期投了の導入判定 | [plans/match-early-resignation.md](plans/match-early-resignation.md) | 待機中 | ― |
-| 棋力向上の段階計画 | [plans/strength-stages.md](plans/strength-stages.md) | 起案 | ― |
+| 棋力向上の段階計画 | [plans/strength-stages.md](plans/strength-stages.md) | 進行中 | ― |
+| 棋力向上段階1 | [plans/strength-stage1.md](plans/strength-stage1.md) | 進行中 | ― |
 
 ## 現在地
 
 直近に完了したマイルストーンは棋力測定の段階ゲート（plans/match-staged-gate.md、2026年9月1日）である。
 機能採否の標準手順を、fishtestの標準値に整列したSTC（`time=10000+100`）の選別とLTC（`time=60000+600`）の最終測定の2段階へ標準化し、`match_runner`の同時対局数の自動計算を実装して、docs/sprt.mdを段階ゲートだけを標準とする形へ改訂した。
 
-進行中のマイルストーンはない。
+進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）と、その最初の段階である棋力向上段階1（plans/strength-stage1.md）の2件である。
+静止探索と探索ループの1ノードあたりの費用を減らす計画のうち、捕獲専用手生成は同値性テスト、静止探索への組込み、およびbenchの事前ゲートまで完了している。
+次の一手は、捕獲専用生成の測定記録を候補コミットへ結び付け、手配列の再利用へ進むことである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は棋力向上の段階計画（plans/strength-stages.md、起案）が10段階に整理しており、最初の段階は静止探索と探索ループの高速化、並行して進めてよい段階は採用PSTによる世代2の生成と再学習である。
+次期候補は、棋力向上段階1の後続項目である手配列の再利用、反復検出の定数時間化、評価値の差分更新、および段階的な手選択である。
+棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 実lishogiサーバへの接続は、未完成のエンジンを公開の場へ出さない方針から対象外のままとし、探索と評価の成熟後に別マイルストーンとして計画する。
