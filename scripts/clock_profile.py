@@ -7,7 +7,7 @@
 停止理由または完了反復の経過時間がない記録は欠測として扱い、推定しない。
 
 使い方:
-    scripts/clock_profile.py data/matches/<測定名>
+    scripts/clock_profile.py data/matches/<測定名> [--role candidate|baseline]
 """
 
 import argparse
@@ -37,6 +37,11 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("run_dir", type=Path, help="match_runnerの実行ディレクトリ")
+    parser.add_argument(
+        "--role",
+        choices=("candidate", "baseline"),
+        help="指定した側の手だけを集計する（省略時は両側）",
+    )
     args = parser.parse_args()
 
     manifest = json.loads((args.run_dir / "manifest.json").read_text())
@@ -71,6 +76,9 @@ def main():
                 ply = opening_plies + index
                 band = band_of(ply)
                 color = turn["side"]
+                if args.role is not None and role_of[color] != args.role:
+                    clocks[color] = max(clocks[color] - turn["think_time_ns"] / 1e6, 0) + limits[role_of[color]]["increment_ms"]
+                    continue
                 limit = limits[role_of[color]]
                 elapsed = turn["think_time_ns"] / 1e6
                 remaining_ms[band].append(clocks[color])

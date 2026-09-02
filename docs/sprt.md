@@ -26,7 +26,7 @@ STCの標準コマンドは次のとおりである。
 cargo run --release --bin match_runner -- \
   --run-dir data/matches/<測定名>-stc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
-  --each time=10000+100 --max-pairs 3000 gsprt
+  --each time=10000+100 gsprt --max-pairs 3000
 ```
 
 STCの判定は、次の振分け規則で扱う。
