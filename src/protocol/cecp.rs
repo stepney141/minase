@@ -200,7 +200,7 @@ impl CecpProtocol {
         engine: &Engine,
         output: &mut dyn Write,
     ) -> io::Result<Option<ActiveSearch>> {
-        let limits = match self.time_control.search_limits() {
+        let limits = match self.time_control.search_limits(engine.ply()) {
             Ok(Some(limits)) => limits,
             Ok(None) => {
                 writeln!(output, "tellusererror search limits are not set")?;
@@ -788,10 +788,10 @@ impl CecpProtocol {
 
 impl TimeControl {
     /// 保持した正規化値を探索層の制限型へ写す。
-    fn search_limits(&self) -> Result<Option<SearchLimits>, search::SearchError> {
+    fn search_limits(&self, ply: u32) -> Result<Option<SearchLimits>, search::SearchError> {
         let clock = self
             .engine_remaining_ms
-            .map(|remaining_ms| ClockLimits::new(remaining_ms, self.increment_ms, 0))
+            .map(|remaining_ms| ClockLimits::new(remaining_ms, self.increment_ms, 0, ply))
             .transpose()?;
         if self.depth.is_none() && self.movetime_ms.is_none() && clock.is_none() {
             return Ok(None);
@@ -1025,6 +1025,14 @@ mod tests {
         assert!(output.is_empty());
         assert_eq!(protocol.time_control.engine_remaining_ms, Some(60_000));
         assert_eq!(protocol.time_control.opponent_remaining_ms, Some(1_230));
+        let clock = protocol
+            .time_control
+            .search_limits(37)
+            .unwrap()
+            .unwrap()
+            .clock()
+            .unwrap();
+        assert_eq!(clock.ply(), 37);
     }
 
     fn run_queued(protocol: &mut CecpProtocol, engine: &mut Engine, input: &str) -> String {

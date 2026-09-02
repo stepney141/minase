@@ -193,6 +193,8 @@ pub struct ClockLimits {
     increment_ms: u64,
     /// 1手ごとの秒読み時間(ms)。
     byoyomi_ms: u64,
+    /// 開始局面から現局面までの手数。
+    ply: u32,
 }
 
 impl ClockLimits {
@@ -206,6 +208,7 @@ impl ClockLimits {
         remaining_ms: u64,
         increment_ms: u64,
         byoyomi_ms: u64,
+        ply: u32,
     ) -> Result<Self, SearchError> {
         if remaining_ms == 0 && increment_ms == 0 && byoyomi_ms == 0 {
             return Err(SearchError::EmptyClock);
@@ -214,6 +217,7 @@ impl ClockLimits {
             remaining_ms,
             increment_ms,
             byoyomi_ms,
+            ply,
         })
     }
 
@@ -230,6 +234,11 @@ impl ClockLimits {
     /// 1手ごとの秒読み時間(ms)を返す。
     pub const fn byoyomi_ms(self) -> u64 {
         self.byoyomi_ms
+    }
+
+    /// 開始局面から現局面までの手数を返す。
+    pub const fn ply(self) -> u32 {
+        self.ply
     }
 }
 
@@ -1439,23 +1448,38 @@ struct TimeBudget {
     hard: Duration,
 }
 
-/// 持ち時間制の初期予算式を1箇所に集約する。
+/// 1局の開始から終局までに見込む手数。
+const EXPECTED_PLIES: u32 = 450;
+/// 1局面で見込む残り手数の下限。
+const MIN_MOVES: u32 = 100;
+
+/// 現在の手数から、手番側が今後指すと見込む手数を返す。
+fn moves_to_go(ply: u32) -> u128 {
+    u128::from(MIN_MOVES.max(EXPECTED_PLIES.saturating_sub(ply) / 2))
+}
+
+/// 持ち時間制の予算式を1箇所に集約する。
 ///
-/// softは`remaining / 50 + increment * 0.7 + byoyomi * 0.8`、hardは
-/// `min(soft * 4, remaining / 4 + byoyomi * 0.8)`とする。hardは1ms以上とし、
-/// 時計合計が30ms以下の場合を除いて`remaining + byoyomi - 30ms`を超えない。
+/// `moves_to_go = max(MIN_MOVES, EXPECTED_PLIES.saturating_sub(ply) / 2)`、
+/// `soft_raw = remaining / moves_to_go + 0.7 * increment + 0.8 * byoyomi`、
+/// `safe_hard = max(1ms, (remaining + byoyomi).saturating_sub(30ms))`、
+/// `hard = max(1ms, min(4 * soft_raw, remaining / 4 + 0.8 * byoyomi, safe_hard))`、
+/// `soft = min(soft_raw, hard)`とする。
 /// 係数を変更する場合は自己対局で採否を判定する。
 fn clock_budget(clock: ClockLimits) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);
     let byoyomi = u128::from(clock.byoyomi_ms);
     let byoyomi_share = byoyomi * 8 / 10;
-    let soft = remaining / 50 + increment * 7 / 10 + byoyomi_share;
-    let raw_hard = (soft * 4).min(remaining / 4 + byoyomi_share);
+    let soft_raw = remaining / moves_to_go(clock.ply) + increment * 7 / 10 + byoyomi_share;
     let safe_hard = remaining.saturating_add(byoyomi).saturating_sub(30).max(1);
+    let hard = (soft_raw * 4)
+        .min(remaining / 4 + byoyomi_share)
+        .min(safe_hard)
+        .max(1);
     TimeBudget {
-        soft: Duration::from_millis(to_u64_ms(soft)),
-        hard: Duration::from_millis(to_u64_ms(raw_hard.max(1).min(safe_hard))),
+        soft: Duration::from_millis(to_u64_ms(soft_raw.min(hard))),
+        hard: Duration::from_millis(to_u64_ms(hard)),
     }
 }
 

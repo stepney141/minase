@@ -169,7 +169,7 @@ impl UsiProtocol {
             return Ok(None);
         }
         let game = engine.game();
-        let config = match parse_go_config(tokens, game.position().side_to_move()) {
+        let config = match parse_go_config(tokens, game.position().side_to_move(), engine.ply()) {
             Ok(config) => config,
             Err(error) => {
                 write_error(output, &error)?;
@@ -766,7 +766,7 @@ impl UsiProtocol {
 ///
 /// `depth`・`nodes`・`movetime`・時計引数(`btime`等)・`infinite`を受理し、
 /// 時計引数からは手番側の残り時間だけを取り出す。
-fn parse_go_config(tokens: &[&str], side_to_move: Color) -> Result<SearchLimits, String> {
+fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<SearchLimits, String> {
     if tokens.is_empty() {
         return Err("go requires depth or nodes".to_owned());
     }
@@ -840,7 +840,7 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color) -> Result<SearchLimits,
                 Color::Black => (btime.unwrap_or(0), binc.unwrap_or(0)),
                 Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0)),
             };
-            ClockLimits::new(remaining_ms, increment_ms, byoyomi.unwrap_or(0))
+            ClockLimits::new(remaining_ms, increment_ms, byoyomi.unwrap_or(0), ply)
         })
         .transpose()
         .map_err(|error| error.to_string())?;
@@ -1648,13 +1648,37 @@ mod tests {
             "btime", "1000", "wtime", "2000", "binc", "30", "winc", "40", "byoyomi", "500",
         ];
         assert_eq!(
-            parse_go_config(&tokens, Color::Black).unwrap().clock(),
-            Some(ClockLimits::new(1000, 30, 500).unwrap())
+            parse_go_config(&tokens, Color::Black, 37).unwrap().clock(),
+            Some(ClockLimits::new(1000, 30, 500, 37).unwrap())
         );
         assert_eq!(
-            parse_go_config(&tokens, Color::White).unwrap().clock(),
-            Some(ClockLimits::new(2000, 40, 500).unwrap())
+            parse_go_config(&tokens, Color::White, 37).unwrap().clock(),
+            Some(ClockLimits::new(2000, 40, 500, 37).unwrap())
         );
+    }
+
+    #[test]
+    fn position_tracks_absolute_ply_from_sfen_and_moves() {
+        // strength-stage2.md「予算式」: Engineの絶対手数はSFENの手数欄−1と、
+        // positionで再生した着手数の和である。USIはこの値をgoの時計へ渡す。
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos moves 6i6h 6d6e\n",
+        );
+        assert!(error_lines(&output).is_empty());
+        assert_eq!(engine.ply(), 2);
+
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            &format!("position sfen {INITIAL_BOARD} - 41 moves 6i6h 6d6e\n"),
+        );
+        assert!(error_lines(&output).is_empty());
+        assert_eq!(engine.ply(), 42);
     }
 
     #[test]

@@ -75,7 +75,11 @@ fn infinite_limits() -> SearchLimits {
 }
 
 fn clock(remaining_ms: u64, increment_ms: u64, byoyomi_ms: u64) -> ClockLimits {
-    ClockLimits::new(remaining_ms, increment_ms, byoyomi_ms)
+    clock_at_ply(remaining_ms, increment_ms, byoyomi_ms, 0)
+}
+
+fn clock_at_ply(remaining_ms: u64, increment_ms: u64, byoyomi_ms: u64, ply: u32) -> ClockLimits {
+    ClockLimits::new(remaining_ms, increment_ms, byoyomi_ms, ply)
         .expect("test clock must contain non-zero time")
 }
 
@@ -1060,7 +1064,7 @@ fn zero_search_budgets_are_rejected_at_construction() {
         Err(SearchError::ZeroMoveTime)
     ));
     assert!(matches!(
-        ClockLimits::new(0, 0, 0),
+        ClockLimits::new(0, 0, 0, 0),
         Err(SearchError::EmptyClock)
     ));
 }
@@ -1277,36 +1281,82 @@ fn infinite_limits_stop_only_on_external_request() {
 // D7-TIME　時間予算
 // ---------------------------------------------------------------------------
 
-// D7-TIME-01。search.md「時間管理」節と「実施状況」2026年8月12日確定の
-// 予算式: soft＝残り/50＋加算×0.7＋秒読み×0.8、hard＝min(soft×4,
-// 残り/4＋秒読み×0.8)、hardは1ms以上かつ「残り＋秒読み−30ms」以下。
-// 数値例はすべて端数の出ない入力から式で導出した固定値である
-// （丸め規約はSPEC_UNCLEAR-02）。
+// D7-TIME-01。search.md「時間管理」節の予算式。数値例は整数演算による
+// 切り捨てを含めて同節から導出する。
 #[test]
 fn clock_budget_matches_the_normative_formula() {
-    // (a) 残り60000・加算1000・秒読み0:
-    //     soft = 60000/50 + 1000×0.7 = 1900、hard = min(7600, 15000) = 7600。
-    let budget = clock_budget(clock(60_000, 1_000, 0));
-    assert_eq!(budget.soft, Duration::from_millis(1_900));
-    assert_eq!(budget.hard, Duration::from_millis(7_600));
+    // (a) 残り60000・加算1000・秒読み0・ply=0:
+    //     moves_to_go=max(100, (450-0)/2)=225、soft_raw=60000/225+700=966、
+    //     safe_hard=59970、hard=min(3864, 15000, 59970)=3864、soft=966。
+    let budget = clock_budget(clock_at_ply(60_000, 1_000, 0, 0));
+    assert_eq!(budget.soft, Duration::from_millis(966));
+    assert_eq!(budget.hard, Duration::from_millis(3_864));
 
-    // (b) 残り10000・加算0・秒読み200:
-    //     soft = 200 + 160 = 360、hard = min(1440, 2500+160) = 1440。
-    let budget = clock_budget(clock(10_000, 0, 200));
-    assert_eq!(budget.soft, Duration::from_millis(360));
-    assert_eq!(budget.hard, Duration::from_millis(1_440));
+    // (b) 残り10000・加算0・秒読み200・ply=0:
+    //     moves_to_go=225、soft_raw=10000/225+160=204、safe_hard=10170、
+    //     hard=min(816, 2660, 10170)=816、soft=204。
+    let budget = clock_budget(clock_at_ply(10_000, 0, 200, 0));
+    assert_eq!(budget.soft, Duration::from_millis(204));
+    assert_eq!(budget.hard, Duration::from_millis(816));
 
-    // (c) 残り0・加算0・秒読み100: soft = 80、式のhard = min(320, 80) = 80
-    //     だが安全上限 0+100−30 = 70 が効いて hard = 70。softへの上限適用は
-    //     規定されないため80のままassertする。
-    let budget = clock_budget(clock(0, 0, 100));
-    assert_eq!(budget.soft, Duration::from_millis(80));
+    // (c) 旧式でhard<softになった入力。残り200・加算100・秒読み0・ply=300:
+    //     moves_to_go=100、soft_raw=2+70=72、safe_hard=170、
+    //     hard=min(288, 50, 170)=50、soft=min(72, 50)=50。
+    let budget = clock_budget(clock_at_ply(200, 100, 0, 300));
+    assert_eq!(budget.soft, Duration::from_millis(50));
+    assert_eq!(budget.hard, Duration::from_millis(50));
+
+    // (d) 時計合計30ms以下ではsafe_hard=1となり、softもhard以下へ縮む。
+    let budget = clock_budget(clock_at_ply(20, 0, 0, 0));
+    assert_eq!(budget.hard, Duration::from_millis(1));
+    assert!(budget.soft <= budget.hard);
+
+    // 主時間0・秒読み100ではsoft_raw=80、safe_hard=70、hard=soft=70。
+    let budget = clock_budget(clock_at_ply(0, 0, 100, 0));
+    assert_eq!(budget.soft, Duration::from_millis(70));
     assert_eq!(budget.hard, Duration::from_millis(70));
+}
 
-    // 境界: 残り20msでは下限1msと安全上限が両立しない。優先順位は明文が
-    // なく（SPEC_UNCLEAR-03）、hard ≥ 1msだけを実装契約としてassertする。
-    let budget = clock_budget(clock(20, 0, 0));
-    assert!(budget.hard >= Duration::from_millis(1));
+// D7-TIME-01。search.md「時間管理」節: 残り手数の見積りは手数について
+// 単調非増加で、plyがEXPECTED_PLIES以上ならMIN_MOVESに固定される。
+#[test]
+fn moves_to_go_decreases_monotonically_to_the_documented_floor() {
+    let plys = [0, 1, 100, 299, 300, 449, 450, 1_000, u32::MAX];
+    let estimates: Vec<u128> = plys.into_iter().map(moves_to_go).collect();
+
+    assert!(estimates.windows(2).all(|pair| pair[0] >= pair[1]));
+    assert_eq!(moves_to_go(450), 100);
+    assert_eq!(moves_to_go(1_000), 100);
+}
+
+// D7-TIME-01。search.md「時間管理」節が規定する予算の不変条件を、代表値の
+// 直積で検査する。期待値は公開された式から導出し、探索実装の状態には依存しない。
+#[test]
+fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
+    let remaining_values = [0, 20, 31, 200, 10_000, 60_000, u64::MAX];
+    let increment_values = [0, 100, 1_000, u64::MAX];
+    let byoyomi_values = [0, 100, 200, u64::MAX];
+    let ply_values = [0, 100, 300, 449, 450, 1_000, u32::MAX];
+
+    for remaining in remaining_values {
+        for increment in increment_values {
+            for byoyomi in byoyomi_values {
+                if remaining == 0 && increment == 0 && byoyomi == 0 {
+                    continue;
+                }
+                for ply in ply_values {
+                    let budget = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
+                    assert!(budget.soft <= budget.hard);
+                    assert!(budget.hard >= Duration::from_millis(1));
+
+                    let clock_total = u128::from(remaining) + u128::from(byoyomi);
+                    if clock_total > 30 {
+                        assert!(budget.hard.as_millis() <= clock_total - 30);
+                    }
+                }
+            }
+        }
+    }
 }
 
 // D7-TIME-02。search.md「時間管理」節: 時計なしの固定時間単独では、併用則
@@ -1322,25 +1372,25 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
 // softとhardのそれぞれで両者の小さい方を採る（一括minではない独立比較）。
 #[test]
 fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
-    // 時計単独ならsoft=1900、hard=7600（D7-TIME-01(a)）。
+    // 時計単独ならsoft=966、hard=3864（D7-TIME-01(a)）。
     let base = clock(60_000, 1_000, 0);
     let with_movetime =
         |milliseconds: u64| SearchLimits::new(None, None, Some(milliseconds), Some(base)).unwrap();
 
     // (a) 交差例: softは時計側、hardはmovetime側が勝つ。独立比較の固定。
-    let budget = time_budget(&with_movetime(5_000)).unwrap();
-    assert_eq!(budget.soft, Duration::from_millis(1_900));
-    assert_eq!(budget.hard, Duration::from_millis(5_000));
+    let budget = time_budget(&with_movetime(2_000)).unwrap();
+    assert_eq!(budget.soft, Duration::from_millis(966));
+    assert_eq!(budget.hard, Duration::from_millis(2_000));
 
     // (b) movetimeが両方で勝つ。
     let budget = time_budget(&with_movetime(500)).unwrap();
     assert_eq!(budget.soft, Duration::from_millis(500));
     assert_eq!(budget.hard, Duration::from_millis(500));
 
-    // (c) softは時計側、hardはmovetime側。
-    let budget = time_budget(&with_movetime(2_000)).unwrap();
-    assert_eq!(budget.soft, Duration::from_millis(1_900));
-    assert_eq!(budget.hard, Duration::from_millis(2_000));
+    // (c) 時計側が両方で勝つ。
+    let budget = time_budget(&with_movetime(5_000)).unwrap();
+    assert_eq!(budget.soft, Duration::from_millis(966));
+    assert_eq!(budget.hard, Duration::from_millis(3_864));
 }
 
 // D7-TIME-04。search.md「時間管理」節: softはイテレーション境界、hardは
@@ -1463,8 +1513,8 @@ fn depth_limited_search_reports_depth_completed_with_a_consistent_pv() {
 fn clock_driven_searches_stop_with_a_time_limit_reason() {
     let initial = Position::initial();
 
-    // (3) soft≪hardの時計設定（残り6000ms・加算100ms → soft=190ms、
-    //     hard=760ms）。原則はsoftリミットで停止する。
+    // (3) soft≪hardの時計設定（残り6000ms・加算100ms・ply=0 → soft=96ms、
+    //     hard=384ms）。原則はsoftリミットで停止する。
     let limits = SearchLimits::new(None, None, None, Some(clock(6_000, 100, 0))).unwrap();
     let handle = start(
         snapshot_for(&initial),
@@ -1481,8 +1531,7 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
     ));
     assert!(legal_moves(&initial).contains(&finished.best_move)); // INV-1
 
-    // (4) hard(70ms) < soft(80ms)の時計設定（D7-TIME-01(c)）。原則はhard
-    //     リミットで停止する。
+    // (4) 時計の安全上限が効いてsoft=hard=70msとなる設定（D7-TIME-01(d)）。
     let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 100))).unwrap();
     let handle = start(
         snapshot_for(&initial),

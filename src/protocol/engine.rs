@@ -111,6 +111,8 @@ struct RuleSelection {
 pub struct Engine {
     /// 現在保持している対局。
     game: Game,
+    /// 現在の対局を再構成した基底局面までの絶対手数。
+    base_ply: u32,
     /// 現局に適用中の規則。
     active: RuleSelection,
     /// 次局の開始時に適用する規則。
@@ -129,6 +131,7 @@ impl Engine {
         let game = Game::new(selection.rules);
         Ok(Self {
             game,
+            base_ply: 0,
             active: selection.clone(),
             pending: selection,
             lifecycle: EngineLifecycle::AwaitingStart,
@@ -153,6 +156,7 @@ impl Engine {
             EngineCommand::SetPosition { setup, moves } => self.set_position(setup, &moves),
             EngineCommand::ApplyMove(mv) => self.apply_move(mv),
             EngineCommand::EndGame => {
+                self.base_ply = 0;
                 self.lifecycle = EngineLifecycle::AwaitingStart;
                 self.accepted(None)
             }
@@ -176,6 +180,12 @@ impl Engine {
     /// 現在保持している対局を返す。
     pub const fn game(&self) -> &Game {
         &self.game
+    }
+
+    #[inline]
+    /// 開始局面から現局面までの絶対手数を返す。
+    pub const fn ply(&self) -> u32 {
+        self.base_ply + self.game.ply_count()
     }
 
     #[inline]
@@ -216,6 +226,7 @@ impl Engine {
         let game = Game::new(self.pending.rules);
         self.active = self.pending.clone();
         self.game = game;
+        self.base_ply = 0;
         self.lifecycle = EngineLifecycle::AwaitingStart;
         self.accepted(None)
     }
@@ -233,6 +244,7 @@ impl Engine {
             EngineLifecycle::InGame => &self.active,
             EngineLifecycle::Finished => unreachable!(),
         };
+        let base_ply = setup.next_move_number() - 1;
         let mut position = setup.position().clone();
         if let Err(error) = position.set_lion_capture(setup.lion_capture()) {
             return EngineReply::Rejected(RejectReason::InvalidPosition(error));
@@ -254,6 +266,7 @@ impl Engine {
             self.active = self.pending.clone();
         }
         self.game = game;
+        self.base_ply = base_ply;
         self.lifecycle = match status {
             GameStatus::Ongoing => EngineLifecycle::InGame,
             GameStatus::Finished(_) => EngineLifecycle::Finished,
