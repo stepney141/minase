@@ -35,8 +35,8 @@ mod storage;
 use storage::{
     CpuRecord, EngineHashSizes, EngineIdentity, EngineRecord, EngineThreadCounts, EvaluationRecord,
     FORMAT_VERSION, FailureKind, GameRecord, HarnessRecord, ManifestMode, OpeningRecord,
-    PairRecord, RunManifest, RunStore, ScoreBound, ScoreRecord, StoredColor, StoredProtocol,
-    StoredSearchLimit, TerminationRecord, TurnRecord, TurnResponse,
+    PairRecord, RunManifest, RunStore, ScoreBound, ScoreRecord, StopReasonRecord, StoredColor,
+    StoredProtocol, StoredSearchLimit, TerminationRecord, TurnRecord, TurnResponse,
 };
 
 /// 1局を打ち切る手数上限の既定値。
@@ -535,7 +535,7 @@ enum EngineScore {
     MatedIn(Option<u32>),
 }
 
-/// 1回の思考で得た応答、所要時間、および最終評価値。
+/// 1回の思考で得た応答、所要時間、および探索情報。
 struct ThinkResult {
     /// エンジンが返した着手または投了。
     response: EngineResponse,
@@ -543,6 +543,10 @@ struct ThinkResult {
     elapsed: Duration,
     /// 最後の有効な`info score`。報告がなければ`None`。
     evaluation: Option<EngineEvaluation>,
+    /// エンジンが報告した停止理由。報告がなければ`None`。
+    stop_reason: Option<StopReasonRecord>,
+    /// 最後の`info`行が報告した経過時間(ms)。報告がなければ`None`。
+    completed_time_ms: Option<u64>,
 }
 
 /// USI `info`行から評価値を解析する。
@@ -606,6 +610,55 @@ fn observe_usi_evaluation(current: &mut Option<EngineEvaluation>, line: &str) {
     if let Ok(Some(parsed)) = parse_usi_evaluation(line) {
         *current = Some(parsed);
     }
+}
+
+/// USI `info string stop`行から停止理由を解析する。
+fn parse_usi_stop_reason(line: &str) -> Result<Option<StopReasonRecord>, EngineFailure> {
+    let tokens: Vec<_> = line.split_whitespace().collect();
+    if tokens.get(..3) != Some(["info", "string", "stop"].as_slice()) {
+        return Ok(None);
+    }
+    let reason = match tokens.as_slice() {
+        ["info", "string", "stop", "depth"] => StopReasonRecord::Depth,
+        ["info", "string", "stop", "nodes"] => StopReasonRecord::Nodes,
+        ["info", "string", "stop", "soft"] => StopReasonRecord::Soft,
+        ["info", "string", "stop", "hard"] => StopReasonRecord::Hard,
+        ["info", "string", "stop", "external"] => StopReasonRecord::External,
+        _ => return Err(EngineFailure::Crash),
+    };
+    Ok(Some(reason))
+}
+
+/// USI `info`行から探索開始後の経過時間を解析する。
+fn parse_usi_time(line: &str) -> Result<Option<u64>, EngineFailure> {
+    let tokens: Vec<_> = line.split_whitespace().collect();
+    if tokens.first() != Some(&"info") || tokens.get(1) == Some(&"string") {
+        return Ok(None);
+    }
+    let Some(index) = tokens.iter().position(|token| *token == "time") else {
+        return Ok(None);
+    };
+    let value = tokens
+        .get(index + 1)
+        .ok_or(EngineFailure::Crash)?
+        .parse()
+        .map_err(|_| EngineFailure::Crash)?;
+    Ok(Some(value))
+}
+
+/// 停止理由と完了反復の経過時間を最新の`info`行で更新する。
+fn observe_usi_search_data(
+    stop_reason: &mut Option<StopReasonRecord>,
+    completed_time_ms: &mut Option<u64>,
+    line: &str,
+) -> Result<(), EngineFailure> {
+    if let Some(reason) = parse_usi_stop_reason(line)? {
+        *stop_reason = Some(reason);
+    }
+    if let Some(time) = parse_usi_time(line)? {
+        *completed_time_ms = Some(time);
+    }
+    Ok(())
 }
 
 /// 読み取りスレッドからプロトコル出力を受け取る外部エンジン。
@@ -816,10 +869,22 @@ impl EngineProcess {
         let start = Instant::now();
         self.send(&format!("go {go_text}"))?;
         let mut evaluation = None;
+        let mut stop_reason = None;
+        let mut completed_time_ms = None;
+        let mut observation_error = None;
         let line = self.receive_until(|line| {
             observe_usi_evaluation(&mut evaluation, line);
-            line.split_whitespace().next() == Some("bestmove")
+            if observation_error.is_none()
+                && let Err(reason) =
+                    observe_usi_search_data(&mut stop_reason, &mut completed_time_ms, line)
+            {
+                observation_error = Some(reason);
+            }
+            observation_error.is_some() || line.split_whitespace().next() == Some("bestmove")
         })?;
+        if let Some(reason) = observation_error {
+            return Err(reason);
+        }
         let response = match line.split_whitespace().nth(1).unwrap_or_default() {
             "resign" => EngineResponse::Resigned,
             bestmove => EngineResponse::Move(bestmove.to_owned()),
@@ -828,6 +893,8 @@ impl EngineProcess {
             response,
             elapsed: start.elapsed(),
             evaluation,
+            stop_reason,
+            completed_time_ms,
         })
     }
 
@@ -857,6 +924,8 @@ impl EngineProcess {
             response,
             elapsed,
             evaluation: None,
+            stop_reason: None,
+            completed_time_ms: None,
         })
     }
 
@@ -2140,6 +2209,8 @@ fn play_game(
             response,
             elapsed,
             evaluation,
+            stop_reason,
+            completed_time_ms,
         } = match process.bestmove(&usi_history, &move_history, &request) {
             Ok(response) => response,
             Err(reason) => {
@@ -2165,6 +2236,8 @@ fn play_game(
                 side: stored_color(side_to_move),
                 think_time_ns: duration_ns(elapsed),
                 evaluation: evaluation_record(evaluation, side_to_move),
+                stop_reason,
+                completed_time_ms,
                 response: TurnResponse::Failure {
                     reason: stored_failure(reason),
                 },
@@ -2185,6 +2258,8 @@ fn play_game(
                 side: stored_color(side_to_move),
                 think_time_ns: duration_ns(elapsed),
                 evaluation: evaluation_record(evaluation, side_to_move),
+                stop_reason,
+                completed_time_ms,
                 response: TurnResponse::Resigned,
             });
             return Some(recorded_game(
@@ -2210,6 +2285,8 @@ fn play_game(
                     side: stored_color(side_to_move),
                     think_time_ns: duration_ns(elapsed),
                     evaluation: evaluation_record(evaluation, side_to_move),
+                    stop_reason,
+                    completed_time_ms,
                     response: TurnResponse::Failure {
                         reason: stored_failure(reason),
                     },
@@ -2236,6 +2313,8 @@ fn play_game(
             side: stored_color(side_to_move),
             think_time_ns: duration_ns(elapsed),
             evaluation: evaluation_record(evaluation, side_to_move),
+            stop_reason,
+            completed_time_ms,
             response: TurnResponse::Move {
                 usi: canonical.clone(),
             },
@@ -2411,9 +2490,13 @@ fn validate_saved_game(
         } else {
             conditions.baseline_protocol
         };
-        if protocol == Protocol::Cecp && turn.evaluation.is_some() {
+        if protocol == Protocol::Cecp
+            && (turn.evaluation.is_some()
+                || turn.stop_reason.is_some()
+                || turn.completed_time_ms.is_some())
+        {
             return Err(invalid_pair_record(
-                "CECP turn must not contain an evaluation",
+                "CECP turn must not contain USI search information",
             ));
         }
         let expects_time_forfeit = matches!(
@@ -3532,6 +3615,8 @@ mod tests {
                 side: mover,
                 think_time_ns: 1,
                 evaluation: None,
+                stop_reason: None,
+                completed_time_ms: None,
                 response: TurnResponse::Move { usi: text },
             }],
             termination: TerminationRecord::Forfeit {
@@ -3604,6 +3689,8 @@ mod tests {
                     score: ScoreRecord::Cp { value: 0 },
                     bound: ScoreBound::Exact,
                 }),
+                stop_reason: None,
+                completed_time_ms: None,
                 response: TurnResponse::Resigned,
             }],
             termination: TerminationRecord::Resigned { loser: side },
@@ -4368,6 +4455,62 @@ mod tests {
         assert_eq!(observed, None);
         observe_usi_evaluation(&mut observed, "info score mate +");
         assert_eq!(observed.unwrap().score, EngineScore::MateIn(None));
+    }
+
+    #[test]
+    fn usi_search_data_uses_the_last_time_and_known_stop_reason() {
+        let mut stop_reason = None;
+        let mut completed_time_ms = None;
+        observe_usi_search_data(
+            &mut stop_reason,
+            &mut completed_time_ms,
+            "info depth 3 time 12 score cp 0",
+        )
+        .unwrap();
+        observe_usi_search_data(
+            &mut stop_reason,
+            &mut completed_time_ms,
+            "info depth 4 score cp 1 time 34",
+        )
+        .unwrap();
+        observe_usi_search_data(
+            &mut stop_reason,
+            &mut completed_time_ms,
+            "info string stop hard",
+        )
+        .unwrap();
+        assert_eq!(stop_reason, Some(StopReasonRecord::Hard));
+        assert_eq!(completed_time_ms, Some(34));
+
+        for (word, expected) in [
+            ("depth", StopReasonRecord::Depth),
+            ("nodes", StopReasonRecord::Nodes),
+            ("soft", StopReasonRecord::Soft),
+            ("hard", StopReasonRecord::Hard),
+            ("external", StopReasonRecord::External),
+        ] {
+            assert_eq!(
+                parse_usi_stop_reason(&format!("info string stop {word}")),
+                Ok(Some(expected))
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_usi_search_data_is_a_crash() {
+        assert_eq!(
+            parse_usi_stop_reason("info string stop unknown"),
+            Err(EngineFailure::Crash)
+        );
+        assert_eq!(
+            parse_usi_stop_reason("info string stop"),
+            Err(EngineFailure::Crash)
+        );
+        assert_eq!(
+            parse_usi_time("info depth 1 time invalid"),
+            Err(EngineFailure::Crash)
+        );
+        assert_eq!(parse_usi_time("info string time invalid"), Ok(None));
     }
 
     // D8-HARN-06/20（match-harness.md「CECPセッション管理」「異常時裁定」）:

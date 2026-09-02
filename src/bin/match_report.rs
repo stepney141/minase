@@ -9,6 +9,9 @@ use fs2::FileExt;
 use minase::stats::estimate_elo;
 use serde::{Deserialize, Serialize};
 
+/// 集計対象の実行記録形式。
+const FORMAT_VERSION: u32 = 3;
+
 /// 校正指標集計器のコマンドライン引数。
 #[derive(Parser)]
 #[command(name = "match_report")]
@@ -305,11 +308,11 @@ fn report(run_dir: &Path) -> io::Result<Report> {
                 format!("invalid calibration manifest: {error}"),
             )
         })?;
-    if manifest.format_version != 2 {
+    if manifest.format_version != FORMAT_VERSION {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "match_report requires format version 2, found {}",
+                "match_report requires format version {FORMAT_VERSION}, found {}",
                 manifest.format_version
             ),
         ));
@@ -777,6 +780,49 @@ mod tests {
     }
 
     #[test]
+    fn report_rejects_format_version_two() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let run_dir = std::env::temp_dir().join(format!(
+            "minase-match-report-version-two-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&run_dir).unwrap();
+        File::create(run_dir.join(".match_runner.lock")).unwrap();
+        std::fs::write(
+            run_dir.join("manifest.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "format_version": 2,
+                "candidate": {
+                    "limit": {"kind": "time", "base_ms": 1, "increment_ms": 0, "byoyomi_ms": 0}
+                },
+                "baseline": {
+                    "limit": {"kind": "time", "base_ms": 1, "increment_ms": 0, "byoyomi_ms": 0}
+                },
+                "mode": {"kind": "elo"},
+                "concurrency": 1,
+                "engine_threads": {"candidate": 1, "baseline": 1},
+                "cpu": {"physical_cores": 1, "physical_memory_bytes": 1}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let error = match report(&run_dir) {
+            Ok(_) => panic!("version 2 must be rejected"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            error.to_string(),
+            "match_report requires format version 3, found 2"
+        );
+        std::fs::remove_dir_all(run_dir).unwrap();
+    }
+
+    #[test]
     fn report_recomputes_the_documented_metrics_from_pair_records() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -791,7 +837,7 @@ mod tests {
         std::fs::write(
             run_dir.join("manifest.json"),
             serde_json::to_vec(&serde_json::json!({
-                "format_version": 2,
+                "format_version": FORMAT_VERSION,
                 "candidate": {
                     "identity": {"kind": "commit", "hash": "a", "sha256": "b"},
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}

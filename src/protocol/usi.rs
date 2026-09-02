@@ -14,7 +14,8 @@ use crate::core::rules::parse_rule_set;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_sfen};
 use crate::notation::usi;
 use crate::search::{
-    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, TranspositionTable,
+    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, StopReason,
+    TranspositionTable,
 };
 
 use super::Protocol;
@@ -68,6 +69,8 @@ enum ActiveSearch {
         context: SearchContext,
         /// `stop`受信時に返す最善手。
         best_move: Move,
+        /// 探索を停止した条件。
+        stop_reason: StopReason,
     },
 }
 
@@ -427,6 +430,7 @@ impl UsiProtocol {
                 nodes,
                 elapsed,
                 pv,
+                stop_reason,
                 ..
             } => {
                 let Some(ActiveSearch::Running {
@@ -447,10 +451,14 @@ impl UsiProtocol {
                     &pv,
                 )?;
                 if context.infinite {
-                    *active = Some(ActiveSearch::AwaitingStop { context, best_move });
+                    *active = Some(ActiveSearch::AwaitingStop {
+                        context,
+                        best_move,
+                        stop_reason,
+                    });
                     Ok(())
                 } else {
-                    write_bestmove(output, &context.position, best_move)
+                    write_bestmove(output, &context.position, best_move, stop_reason)
                 }
             }
         }
@@ -478,9 +486,11 @@ impl UsiProtocol {
             return Ok(());
         };
         match search {
-            ActiveSearch::AwaitingStop { context, best_move } => {
-                write_bestmove(output, &context.position, best_move)
-            }
+            ActiveSearch::AwaitingStop {
+                context,
+                best_move,
+                stop_reason,
+            } => write_bestmove(output, &context.position, best_move, stop_reason),
             ActiveSearch::Running {
                 mut context,
                 handle,
@@ -488,7 +498,7 @@ impl UsiProtocol {
                 if request_stop {
                     handle.request_stop();
                 }
-                let best_move = loop {
+                let (best_move, stop_reason) = loop {
                     let event = handle
                         .events()
                         .recv()
@@ -515,6 +525,7 @@ impl UsiProtocol {
                             nodes,
                             elapsed,
                             pv,
+                            stop_reason,
                             ..
                         } => {
                             write_final_info_if_deeper(
@@ -526,12 +537,12 @@ impl UsiProtocol {
                                 elapsed,
                                 &pv,
                             )?;
-                            break best_move;
+                            break (best_move, stop_reason);
                         }
                     }
                 };
                 self.transposition_table = Some(join_search(handle)?);
-                write_bestmove(output, &context.position, best_move)
+                write_bestmove(output, &context.position, best_move, stop_reason)
             }
         }
     }
@@ -926,10 +937,27 @@ fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
         .map_err(|_| io::Error::other("search thread panicked"))
 }
 
-/// `bestmove`行を出力する。
-fn write_bestmove(output: &mut dyn Write, position: &Position, mv: Move) -> io::Result<()> {
+/// 停止理由と`bestmove`行を出力する。
+fn write_bestmove(
+    output: &mut dyn Write,
+    position: &Position,
+    mv: Move,
+    stop_reason: StopReason,
+) -> io::Result<()> {
+    writeln!(output, "info string stop {}", stop_reason_text(stop_reason))?;
     writeln!(output, "bestmove {}", usi::text_generated(position, mv))?;
     output.flush()
+}
+
+/// 探索停止理由をUSI出力用の固定語へ変換する。
+const fn stop_reason_text(reason: StopReason) -> &'static str {
+    match reason {
+        StopReason::DepthCompleted => "depth",
+        StopReason::NodeLimit => "nodes",
+        StopReason::SoftLimit => "soft",
+        StopReason::HardLimit => "hard",
+        StopReason::ExternalStop => "external",
+    }
 }
 
 /// 探索進捗の`info`行を出力する。読み筋は局面を進めながら表記する。
@@ -945,8 +973,9 @@ fn write_info(
     let (score_kind, score_value) = score_text(score);
     write!(
         output,
-        "info depth {depth} score {score_kind} {score_value} nodes {nodes} nps {} pv",
-        nodes_per_second(nodes, elapsed)
+        "info depth {depth} score {score_kind} {score_value} nodes {nodes} nps {} time {} pv",
+        nodes_per_second(nodes, elapsed),
+        elapsed.as_millis()
     )?;
     let mut position = context.position.clone();
     for &mv in pv {
@@ -1661,6 +1690,7 @@ mod tests {
 
         assert!(error_lines(&output).is_empty());
         assert_eq!(bestmoves(&output).len(), 1);
+        assert!(output.contains("info string stop nodes\n"));
     }
 
     #[test]
@@ -1763,12 +1793,18 @@ mod tests {
             }
 
             command_sender.send(Ok("stop".to_owned())).unwrap();
+            let mut stop_reason = None;
             loop {
                 let line = line_receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+                if line.starts_with("info string stop ") {
+                    stop_reason = Some(line);
+                    continue;
+                }
                 if line.starts_with("bestmove ") {
                     break;
                 }
             }
+            assert_eq!(stop_reason.as_deref(), Some("info string stop external\n"));
             drop(command_sender);
             worker.join().unwrap().unwrap();
         });
@@ -1789,6 +1825,7 @@ mod tests {
         assert!(lines.iter().all(|line| {
             line.starts_with("info depth ")
                 || line.starts_with("info string error: ")
+                || line.starts_with("info string stop ")
                 || line.starts_with("bestmove ")
         }));
     }
@@ -1860,10 +1897,11 @@ mod tests {
         assert_eq!(bestmove_positions.len(), 1);
         let bestmove = bestmove_positions[0];
         assert_eq!(bestmove, lines.len() - 1);
-        assert!(bestmove > 0);
-        assert!(lines[bestmove - 1].starts_with("info depth "));
+        assert!(bestmove > 1);
+        assert!(lines[bestmove - 1].starts_with("info string stop "));
+        assert!(lines[bestmove - 2].starts_with("info depth "));
         assert!(
-            lines[..bestmove]
+            lines[..bestmove - 1]
                 .iter()
                 .all(|line| line.starts_with("info depth "))
         );
@@ -1907,7 +1945,8 @@ mod tests {
         let lines: Vec<_> = output.lines().collect();
 
         assert!(lines.last().unwrap().starts_with("bestmove "));
-        let info_lines = &lines[..lines.len() - 1];
+        assert_eq!(lines[lines.len() - 2], "info string stop depth");
+        let info_lines = &lines[..lines.len() - 2];
         assert!(!info_lines.is_empty());
         // infoはbestmoveより前にだけ現れる。
         for line in info_lines {
@@ -1922,16 +1961,27 @@ mod tests {
             tokens[7].parse::<u64>().unwrap();
             assert_eq!(tokens[8], "nps");
             tokens[9].parse::<u64>().unwrap();
-            assert_eq!(tokens[10], "pv");
-            assert!(tokens.len() > 11);
+            assert_eq!(tokens[10], "time");
+            tokens[11].parse::<u64>().unwrap();
+            assert_eq!(tokens[12], "pv");
+            assert!(tokens.len() > 13);
             // PVの各手はlishogi系USI指し手構文の文字だけからなる。
-            for mv in &tokens[11..] {
+            for mv in &tokens[13..] {
                 assert!(
                     mv.chars()
                         .all(|c| c.is_ascii_digit() || ('a'..='l').contains(&c) || c == '+')
                 );
             }
         }
+    }
+
+    #[test]
+    fn stop_reasons_have_distinct_protocol_words() {
+        assert_eq!(stop_reason_text(StopReason::DepthCompleted), "depth");
+        assert_eq!(stop_reason_text(StopReason::NodeLimit), "nodes");
+        assert_eq!(stop_reason_text(StopReason::SoftLimit), "soft");
+        assert_eq!(stop_reason_text(StopReason::HardLimit), "hard");
+        assert_eq!(stop_reason_text(StopReason::ExternalStop), "external");
     }
 
     #[test]

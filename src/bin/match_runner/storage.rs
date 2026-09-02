@@ -6,10 +6,10 @@ use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// 現行の実行記録形式。
-pub(super) const FORMAT_VERSION: u32 = 2;
+pub(super) const FORMAT_VERSION: u32 = 3;
 
 const MANIFEST_FILE: &str = "manifest.json";
 const MANIFEST_TEMP_FILE: &str = ".manifest.json.tmp";
@@ -258,6 +258,31 @@ pub(super) struct EvaluationRecord {
     pub(super) bound: ScoreBound,
 }
 
+/// 探索を停止した条件。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum StopReasonRecord {
+    /// 指定深さを完了した。
+    Depth,
+    /// 指定ノード数へ達した。
+    Nodes,
+    /// 完了イテレーションの境界でsoft limitへ達した。
+    Soft,
+    /// 探索中にhard limitへ達した。
+    Hard,
+    /// 呼び出し側から停止を要求された。
+    External,
+}
+
+/// `null`を認めつつ、JSON欄自体の省略は拒否する。
+fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::deserialize(deserializer)
+}
+
 /// 1回の思考に対するエンジン応答。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -286,6 +311,12 @@ pub(super) struct TurnRecord {
     pub(super) think_time_ns: u64,
     /// 最後の評価情報。評価値がない場合は`None`。
     pub(super) evaluation: Option<EvaluationRecord>,
+    /// エンジンが報告した停止理由。報告がない場合は`None`。
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub(super) stop_reason: Option<StopReasonRecord>,
+    /// 最後に完了した反復の経過時間(ms)。報告がない場合は`None`。
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub(super) completed_time_ms: Option<u64>,
     /// エンジンの応答。
     pub(super) response: TurnResponse,
 }
@@ -854,6 +885,8 @@ mod tests {
                     score: ScoreRecord::Cp { value: 12 },
                     bound: ScoreBound::Exact,
                 }),
+                stop_reason: Some(StopReasonRecord::Hard),
+                completed_time_ms: Some(40),
                 response: TurnResponse::Resigned,
             }],
             termination: TerminationRecord::Resigned {
@@ -888,6 +921,71 @@ mod tests {
         assert_eq!(store.path(), path);
         assert_eq!(records.keys().copied().collect::<Vec<_>>(), vec![1, 2]);
         assert_eq!(records[&2], pair(2));
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn turn_record_round_trip_preserves_stop_data_and_nulls() {
+        let with_values = game(StoredColor::Black).turns.remove(0);
+        let value = serde_json::to_value(&with_values).unwrap();
+        assert_eq!(value["stop_reason"], "hard");
+        assert_eq!(value["completed_time_ms"], 40);
+        assert_eq!(
+            serde_json::from_value::<TurnRecord>(value).unwrap(),
+            with_values
+        );
+
+        let mut without_values = with_values.clone();
+        without_values.stop_reason = None;
+        without_values.completed_time_ms = None;
+        let value = serde_json::to_value(&without_values).unwrap();
+        assert!(value["stop_reason"].is_null());
+        assert!(value["completed_time_ms"].is_null());
+        assert_eq!(
+            serde_json::from_value::<TurnRecord>(value).unwrap(),
+            without_values
+        );
+
+        let mut missing = serde_json::to_value(&without_values).unwrap();
+        missing.as_object_mut().unwrap().remove("stop_reason");
+        assert!(serde_json::from_value::<TurnRecord>(missing).is_err());
+        let mut missing = serde_json::to_value(&without_values).unwrap();
+        missing.as_object_mut().unwrap().remove("completed_time_ms");
+        assert!(serde_json::from_value::<TurnRecord>(missing).is_err());
+    }
+
+    #[test]
+    fn stop_reason_record_uses_fixed_snake_case_words() {
+        for (reason, word) in [
+            (StopReasonRecord::Depth, "depth"),
+            (StopReasonRecord::Nodes, "nodes"),
+            (StopReasonRecord::Soft, "soft"),
+            (StopReasonRecord::Hard, "hard"),
+            (StopReasonRecord::External, "external"),
+        ] {
+            let value = serde_json::to_value(reason).unwrap();
+            assert_eq!(value, word);
+            assert_eq!(
+                serde_json::from_value::<StopReasonRecord>(value).unwrap(),
+                reason
+            );
+        }
+    }
+
+    #[test]
+    fn resume_rejects_format_version_two() {
+        let path = temporary_directory("version-two");
+        let expected = manifest();
+        let store = RunStore::create(&path, expected.clone()).unwrap();
+        drop(store);
+        let manifest_path = path.join(MANIFEST_FILE);
+        let mut old_manifest = serde_json::to_value(&expected).unwrap();
+        old_manifest["format_version"] = serde_json::json!(2);
+        fs::write(&manifest_path, serde_json::to_vec(&old_manifest).unwrap()).unwrap();
+
+        let error = RunStore::resume(&path, &expected, 1).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "unsupported manifest format version 2");
         fs::remove_dir_all(path).unwrap();
     }
 
