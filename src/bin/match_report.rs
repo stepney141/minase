@@ -160,23 +160,25 @@ struct Report {
     standard_error: f64,
     elo: String,
     elo_ci95: [String; 2],
-    total_cpu_time_ns: u64,
-    average_cpu_time_per_valid_pair_ns: f64,
-    variance_time_product: f64,
-    evidence_per_cpu_second: f64,
+    total_cpu_time_ns: Option<u64>,
+    average_cpu_time_per_valid_pair_ns: Option<f64>,
+    variance_time_product: Option<f64>,
+    evidence_per_cpu_second: Option<f64>,
     active_wall_time_ns: u64,
     valid_pairs_per_hour: f64,
     game_wall_time_median_ns: u64,
     game_wall_time_p95_ns: u64,
     cutoffs: u64,
     engine_failures: FailureCounts,
-    maximum_game_peak_rss_bytes: u64,
-    conservative_concurrent_peak_rss_bytes: u64,
+    missing_resource_observations: MissingResourceCounts,
+    maximum_game_peak_rss_bytes: Option<u64>,
+    conservative_concurrent_peak_rss_bytes: Option<u64>,
     physical_memory_bytes: u64,
-    conservative_memory_fraction: f64,
+    conservative_memory_fraction: Option<f64>,
     physical_cores: usize,
-    maximum_engine_threads: u32,
-    leaves_one_physical_core: bool,
+    missing_engine_threads: MissingEngineThreads,
+    maximum_engine_threads: Option<u32>,
+    leaves_one_physical_core: Option<bool>,
     #[serde(skip)]
     comparison_manifest: serde_json::Value,
     #[serde(skip)]
@@ -191,6 +193,22 @@ struct FailureCounts {
     timeouts: u64,
     time_forfeits: u64,
     rejected_moves: u64,
+}
+
+/// エンジン別、資源別の欠測数。
+#[derive(Default, Serialize)]
+struct MissingResourceCounts {
+    candidate_cpu_time: u64,
+    baseline_cpu_time: u64,
+    candidate_peak_rss: u64,
+    baseline_peak_rss: u64,
+}
+
+/// エンジン別の探索ワーカー数の欠測状態。
+#[derive(Serialize)]
+struct MissingEngineThreads {
+    candidate: bool,
+    baseline: bool,
 }
 
 /// 現行条件に対する候補条件の指標比。
@@ -394,10 +412,11 @@ fn report(run_dir: &Path) -> io::Result<Report> {
 
     let mut pentanomial = [0_u64; 5];
     let mut game_times = Vec::with_capacity(paths.len() * 2);
-    let mut total_cpu_time_ns = 0_u128;
-    let mut maximum_game_peak_rss_bytes = 0_u64;
+    let mut total_cpu_time_ns = Some(0_u128);
+    let mut maximum_game_peak_rss_bytes = Some(0_u64);
     let mut cutoffs = 0_u64;
     let mut engine_failures = FailureCounts::default();
+    let mut missing_resource_observations = MissingResourceCounts::default();
     let mut pair_numbers = Vec::with_capacity(paths.len());
     for (index, (file_number, path)) in paths.iter().enumerate() {
         let expected_number = u64::try_from(index + 1).expect("pair count fits u64");
@@ -441,24 +460,44 @@ fn report(run_dir: &Path) -> io::Result<Report> {
         }
         for game in pair.games {
             game_times.push(game.wall_time_ns);
-            let candidate_cpu = game.candidate_cpu_time_ns.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "candidate CPU time is missing")
-            })?;
-            let baseline_cpu = game.baseline_cpu_time_ns.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "baseline CPU time is missing")
-            })?;
-            total_cpu_time_ns += u128::from(candidate_cpu) + u128::from(baseline_cpu);
-            let candidate_rss = game.candidate_peak_rss_bytes.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "candidate peak RSS is missing")
-            })?;
-            let baseline_rss = game.baseline_peak_rss_bytes.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "baseline peak RSS is missing")
-            })?;
-            maximum_game_peak_rss_bytes = maximum_game_peak_rss_bytes.max(
-                candidate_rss.checked_add(baseline_rss).ok_or_else(|| {
+            if game.candidate_cpu_time_ns.is_none() {
+                missing_resource_observations.candidate_cpu_time += 1;
+            }
+            if game.baseline_cpu_time_ns.is_none() {
+                missing_resource_observations.baseline_cpu_time += 1;
+            }
+            if let (Some(candidate), Some(baseline), Some(total)) = (
+                game.candidate_cpu_time_ns,
+                game.baseline_cpu_time_ns,
+                total_cpu_time_ns.as_mut(),
+            ) {
+                *total = total
+                    .checked_add(u128::from(candidate) + u128::from(baseline))
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "total CPU time overflow")
+                    })?;
+            } else {
+                total_cpu_time_ns = None;
+            }
+
+            if game.candidate_peak_rss_bytes.is_none() {
+                missing_resource_observations.candidate_peak_rss += 1;
+            }
+            if game.baseline_peak_rss_bytes.is_none() {
+                missing_resource_observations.baseline_peak_rss += 1;
+            }
+            if let (Some(candidate), Some(baseline)) =
+                (game.candidate_peak_rss_bytes, game.baseline_peak_rss_bytes)
+            {
+                let game_peak = candidate.checked_add(baseline).ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "game peak RSS overflow")
-                })?,
-            );
+                })?;
+                if let Some(maximum) = maximum_game_peak_rss_bytes.as_mut() {
+                    *maximum = (*maximum).max(game_peak);
+                }
+            } else {
+                maximum_game_peak_rss_bytes = None;
+            }
             match game.termination {
                 Termination::Cutoff => cutoffs += 1,
                 Termination::Forfeit { reason, .. } => {
@@ -476,9 +515,11 @@ fn report(run_dir: &Path) -> io::Result<Report> {
             "run has no valid pairs",
         ));
     }
-    let total_cpu_time_ns = u64::try_from(total_cpu_time_ns)
+    let total_cpu_time_ns = total_cpu_time_ns
+        .map(u64::try_from)
+        .transpose()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "total CPU time overflow"))?;
-    if total_cpu_time_ns == 0 {
+    if total_cpu_time_ns == Some(0) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "total CPU time is zero",
@@ -507,19 +548,24 @@ fn report(run_dir: &Path) -> io::Result<Report> {
         ));
     }
     let standard_error = (normalized_pair_variance / count).sqrt();
-    let average_cpu_time_per_valid_pair_ns = total_cpu_time_ns as f64 / count;
-    let variance_time_product = normalized_pair_variance * average_cpu_time_per_valid_pair_ns;
+    let average_cpu_time_per_valid_pair_ns = total_cpu_time_ns.map(|total| total as f64 / count);
+    let variance_time_product =
+        average_cpu_time_per_valid_pair_ns.map(|average| normalized_pair_variance * average);
     let z = (normalized_mean_score - 0.5) / standard_error;
-    let evidence_per_cpu_second = z * z / (total_cpu_time_ns as f64 / 1_000_000_000.0);
+    let evidence_per_cpu_second =
+        total_cpu_time_ns.map(|total| z * z / (total as f64 / 1_000_000_000.0));
     let estimate = estimate_elo(&pentanomial);
     game_times.sort_unstable();
 
+    let missing_engine_threads = MissingEngineThreads {
+        candidate: manifest.engine_threads.candidate.is_none(),
+        baseline: manifest.engine_threads.baseline.is_none(),
+    };
     let maximum_engine_threads = manifest
         .engine_threads
         .candidate
         .zip(manifest.engine_threads.baseline)
-        .map(|(candidate, baseline)| candidate.max(baseline))
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "engine threads are missing"))?;
+        .map(|(candidate, baseline)| candidate.max(baseline));
     let physical_cores = manifest.cpu.physical_cores.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "physical core count is missing")
     })?;
@@ -529,20 +575,28 @@ fn report(run_dir: &Path) -> io::Result<Report> {
             "physical memory size is missing",
         )
     })?;
+    let concurrency = u64::try_from(manifest.concurrency)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "concurrency does not fit u64"))?;
     let conservative_concurrent_peak_rss_bytes = maximum_game_peak_rss_bytes
-        .checked_mul(u64::try_from(manifest.concurrency).map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "concurrency does not fit u64")
-        })?)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "concurrent RSS overflow"))?;
-    let used_search_cores = manifest
-        .concurrency
-        .checked_mul(usize::try_from(maximum_engine_threads).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "thread count does not fit usize",
-            )
-        })?)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "search core count overflow"))?;
+        .map(|maximum| {
+            maximum.checked_mul(concurrency).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "concurrent RSS overflow")
+            })
+        })
+        .transpose()?;
+    let used_search_cores = maximum_engine_threads
+        .map(|threads| {
+            let threads = usize::try_from(threads).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "thread count does not fit usize",
+                )
+            })?;
+            manifest.concurrency.checked_mul(threads).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "search core count overflow")
+            })
+        })
+        .transpose()?;
 
     Ok(Report {
         pentanomial,
@@ -563,14 +617,16 @@ fn report(run_dir: &Path) -> io::Result<Report> {
         game_wall_time_p95_ns: nearest_rank(&game_times, 95, 100),
         cutoffs,
         engine_failures,
+        missing_resource_observations,
         maximum_game_peak_rss_bytes,
         conservative_concurrent_peak_rss_bytes,
         physical_memory_bytes,
-        conservative_memory_fraction: conservative_concurrent_peak_rss_bytes as f64
-            / physical_memory_bytes as f64,
+        conservative_memory_fraction: conservative_concurrent_peak_rss_bytes
+            .map(|bytes| bytes as f64 / physical_memory_bytes as f64),
         physical_cores,
+        missing_engine_threads,
         maximum_engine_threads,
-        leaves_one_physical_core: used_search_cores < physical_cores,
+        leaves_one_physical_core: used_search_cores.map(|cores| cores < physical_cores),
         comparison_manifest,
         pair_numbers,
     })
@@ -590,7 +646,31 @@ fn compare(candidate: &Report, current: &Report) -> io::Result<Comparison> {
             "comparison runs do not contain the same pair numbers",
         ));
     }
-    if current.variance_time_product == 0.0 || current.evidence_per_cpu_second == 0.0 {
+    let candidate_variance_time_product = candidate.variance_time_product.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "candidate variance-time product is unavailable",
+        )
+    })?;
+    let current_variance_time_product = current.variance_time_product.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "current variance-time product is unavailable",
+        )
+    })?;
+    let candidate_evidence_per_cpu_second = candidate.evidence_per_cpu_second.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "candidate evidence per CPU second is unavailable",
+        )
+    })?;
+    let current_evidence_per_cpu_second = current.evidence_per_cpu_second.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "current evidence per CPU second is unavailable",
+        )
+    })?;
+    if current_variance_time_product == 0.0 || current_evidence_per_cpu_second == 0.0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "current condition has an indeterminate metric ratio",
@@ -598,8 +678,8 @@ fn compare(candidate: &Report, current: &Report) -> io::Result<Comparison> {
     }
     Ok(Comparison {
         variance_time_reduction_percent: 100.0
-            * (1.0 - candidate.variance_time_product / current.variance_time_product),
-        evidence_per_cpu_ratio: candidate.evidence_per_cpu_second / current.evidence_per_cpu_second,
+            * (1.0 - candidate_variance_time_product / current_variance_time_product),
+        evidence_per_cpu_ratio: candidate_evidence_per_cpu_second / current_evidence_per_cpu_second,
     })
 }
 
@@ -662,23 +742,28 @@ mod tests {
             standard_error: 0.1,
             elo: "0".to_owned(),
             elo_ci95: ["-1".to_owned(), "1".to_owned()],
-            total_cpu_time_ns: 1,
-            average_cpu_time_per_valid_pair_ns: 1.0,
-            variance_time_product: m1,
-            evidence_per_cpu_second: m2,
+            total_cpu_time_ns: Some(1),
+            average_cpu_time_per_valid_pair_ns: Some(1.0),
+            variance_time_product: Some(m1),
+            evidence_per_cpu_second: Some(m2),
             active_wall_time_ns: 1,
             valid_pairs_per_hour: 1.0,
             game_wall_time_median_ns: 1,
             game_wall_time_p95_ns: 1,
             cutoffs: 0,
             engine_failures: FailureCounts::default(),
-            maximum_game_peak_rss_bytes: 1,
-            conservative_concurrent_peak_rss_bytes: 1,
+            missing_resource_observations: MissingResourceCounts::default(),
+            maximum_game_peak_rss_bytes: Some(1),
+            conservative_concurrent_peak_rss_bytes: Some(1),
             physical_memory_bytes: 10,
-            conservative_memory_fraction: 0.1,
+            conservative_memory_fraction: Some(0.1),
             physical_cores: 2,
-            maximum_engine_threads: 1,
-            leaves_one_physical_core: true,
+            missing_engine_threads: MissingEngineThreads {
+                candidate: false,
+                baseline: false,
+            },
+            maximum_engine_threads: Some(1),
+            leaves_one_physical_core: Some(true),
             comparison_manifest: serde_json::json!({"experiment": 1}),
             pair_numbers: vec![1],
         };
@@ -776,18 +861,84 @@ mod tests {
             .unwrap();
         }
 
-        let result = report(&run_dir).unwrap();
-        assert_eq!(result.pentanomial, [0, 0, 8, 0, 2]);
-        assert_eq!(result.valid_pairs, 10);
-        assert!((result.normalized_mean_score - 0.6).abs() < 1e-12);
-        assert!((result.normalized_pair_variance - 0.04).abs() < 1e-12);
-        assert!((result.standard_error - 0.04_f64.sqrt() / 10.0_f64.sqrt()).abs() < 1e-12);
-        assert_eq!(result.total_cpu_time_ns, 10_000_000_000);
-        assert!((result.variance_time_product - 40_000_000.0).abs() < 1e-6);
-        assert!((result.evidence_per_cpu_second - 0.25).abs() < 1e-12);
-        assert!((result.valid_pairs_per_hour - 1_800.0).abs() < 1e-12);
-        assert_eq!(result.conservative_concurrent_peak_rss_bytes, 2_400);
-        assert!(result.leaves_one_physical_core);
+        let complete_report = report(&run_dir).unwrap();
+        assert_eq!(complete_report.pentanomial, [0, 0, 8, 0, 2]);
+        assert_eq!(complete_report.valid_pairs, 10);
+        assert!((complete_report.normalized_mean_score - 0.6).abs() < 1e-12);
+        assert!((complete_report.normalized_pair_variance - 0.04).abs() < 1e-12);
+        assert!((complete_report.standard_error - 0.04_f64.sqrt() / 10.0_f64.sqrt()).abs() < 1e-12);
+        assert_eq!(complete_report.total_cpu_time_ns, Some(10_000_000_000));
+        assert!((complete_report.variance_time_product.unwrap() - 40_000_000.0).abs() < 1e-6);
+        assert!((complete_report.evidence_per_cpu_second.unwrap() - 0.25).abs() < 1e-12);
+        assert!((complete_report.valid_pairs_per_hour - 1_800.0).abs() < 1e-12);
+        assert_eq!(
+            complete_report.conservative_concurrent_peak_rss_bytes,
+            Some(2_400)
+        );
+        assert_eq!(complete_report.leaves_one_physical_core, Some(true));
+
+        // docs/sprt.md「異常時の裁定」「測定結果の記録」: クラッシュは反則負けとして
+        // Eloと異常件数へ算入する。終了済みプロセスの資源が欠測しても、その統計を
+        // 失わず、欠測値へ依存する集計だけをnullとして明示する。
+        let pair_path = run_dir.join("pairs/00000000000000000001.json");
+        let complete_pair: serde_json::Value = read_json(&pair_path).unwrap();
+        let mut missing_rss_pair = complete_pair.clone();
+        missing_rss_pair["games"][0]["termination"] = serde_json::json!({
+            "kind": "forfeit",
+            "loser": "black",
+            "reason": "crash"
+        });
+        missing_rss_pair["games"][0]["baseline_peak_rss_bytes"] = serde_json::Value::Null;
+        std::fs::write(&pair_path, serde_json::to_vec(&missing_rss_pair).unwrap()).unwrap();
+
+        let missing_rss_report = report(&run_dir).unwrap();
+        assert_eq!(missing_rss_report.pentanomial, [0, 0, 8, 0, 2]);
+        assert_eq!(missing_rss_report.engine_failures.crashes, 1);
+        assert_eq!(
+            missing_rss_report
+                .missing_resource_observations
+                .baseline_peak_rss,
+            1
+        );
+        assert_eq!(missing_rss_report.total_cpu_time_ns, Some(10_000_000_000));
+        assert!(missing_rss_report.variance_time_product.is_some());
+        assert_eq!(missing_rss_report.maximum_game_peak_rss_bytes, None);
+        assert_eq!(
+            missing_rss_report.conservative_concurrent_peak_rss_bytes,
+            None
+        );
+        assert_eq!(missing_rss_report.conservative_memory_fraction, None);
+        let output = serde_json::to_value(&missing_rss_report).unwrap();
+        assert!(output["maximum_game_peak_rss_bytes"].is_null());
+        assert_eq!(
+            output["missing_resource_observations"]["baseline_peak_rss"],
+            1
+        );
+
+        // 同じ契約をCPU時間の欠測にも適用する。主指標の比較だけは、算出不能な値を
+        // 推測せずに明示エラーとする。
+        missing_rss_pair["games"][0]["baseline_cpu_time_ns"] = serde_json::Value::Null;
+        std::fs::write(&pair_path, serde_json::to_vec(&missing_rss_pair).unwrap()).unwrap();
+        let missing_cpu_report = report(&run_dir).unwrap();
+        assert_eq!(missing_cpu_report.engine_failures.crashes, 1);
+        assert_eq!(
+            missing_cpu_report
+                .missing_resource_observations
+                .baseline_cpu_time,
+            1
+        );
+        assert_eq!(missing_cpu_report.total_cpu_time_ns, None);
+        assert_eq!(missing_cpu_report.average_cpu_time_per_valid_pair_ns, None);
+        assert_eq!(missing_cpu_report.variance_time_product, None);
+        assert_eq!(missing_cpu_report.evidence_per_cpu_second, None);
+        let error = match compare(&missing_cpu_report, &complete_report) {
+            Ok(_) => panic!("comparison must reject unavailable primary metrics"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("unavailable"));
+
+        std::fs::write(&pair_path, serde_json::to_vec(&complete_pair).unwrap()).unwrap();
 
         std::fs::rename(
             run_dir.join("pairs/00000000000000000010.json"),
@@ -802,6 +953,29 @@ mod tests {
         .unwrap();
 
         let mut manifest: serde_json::Value = read_json(&run_dir.join("manifest.json")).unwrap();
+        // CECPエンジンはUSIのThreads既定値を報告しない。1ワーカーと推測せず、
+        // ワーカー数に依存する補助指標だけをnullとして他の集計を維持する。
+        manifest["engine_threads"]["baseline"] = serde_json::Value::Null;
+        std::fs::write(
+            run_dir.join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let missing_threads_report = report(&run_dir).unwrap();
+        assert_eq!(missing_threads_report.pentanomial, [0, 0, 8, 0, 2]);
+        assert_eq!(
+            missing_threads_report.total_cpu_time_ns,
+            Some(10_000_000_000)
+        );
+        assert_eq!(missing_threads_report.maximum_engine_threads, None);
+        assert_eq!(missing_threads_report.leaves_one_physical_core, None);
+        assert!(!missing_threads_report.missing_engine_threads.candidate);
+        assert!(missing_threads_report.missing_engine_threads.baseline);
+        let output = serde_json::to_value(&missing_threads_report).unwrap();
+        assert!(output["maximum_engine_threads"].is_null());
+        assert_eq!(output["missing_engine_threads"]["baseline"], true);
+
+        manifest["engine_threads"]["baseline"] = serde_json::json!(1);
         manifest["mode"] = serde_json::json!({
             "kind": "gsprt",
             "h0_elo": 0.0,
