@@ -1393,11 +1393,99 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     assert_eq!(budget.hard, Duration::from_millis(3_864));
 }
 
-// D7-TIME-04。search.md「時間管理」節: softはイテレーション境界、hardは
-// ノード周期の時計チェックで適用される。許容幅はテスト環境定数であり
-// 規範値ではない。フィクスチャは詰みのない初期局面（SPEC_UNCLEAR-08）。
+// D7-TIME-05。search.md「時間管理」節: 主ワーカーはelapsed < softかつ
+// elapsed×2.5 <= hardの場合だけ次の反復を開始する。
 #[test]
-fn movetime_search_stops_near_the_fixed_budget() {
+fn next_iteration_requires_both_time_conditions() {
+    let budget = |soft, hard| TimeBudget {
+        soft: Duration::from_millis(soft),
+        hard: Duration::from_millis(hard),
+    };
+
+    // soft境界は未満だけを継続する。
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(100),
+        budget(100, 250)
+    ));
+    assert!(should_start_next_iteration(
+        Duration::from_millis(99),
+        budget(100, 248)
+    ));
+
+    // 予測完了時刻のhard境界は等号を含む。
+    assert!(should_start_next_iteration(
+        Duration::from_millis(100),
+        budget(101, 250)
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(100),
+        budget(101, 249)
+    ));
+
+    // movetime相当のsoft=hardでは、hardの40%までは継続できる。
+    assert!(should_start_next_iteration(
+        Duration::from_millis(40),
+        budget(100, 100)
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(41),
+        budget(100, 100)
+    ));
+}
+
+// D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは
+// 次の深さへ入らず、softリミットとして最後の完了反復の合法手を返す。
+#[test]
+fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let root_moves = legal_moves(&position);
+    let history_keys = [search_key(&position)];
+    let external_stop = AtomicBool::new(false);
+    let budget = TimeBudget {
+        soft: Duration::from_secs(1),
+        hard: Duration::from_secs(1),
+    };
+    let shared = SharedSearch {
+        external_stop: &external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        node_limit: None,
+        started: Instant::now() - Duration::from_millis(500),
+        hard_limit: Some(budget.hard),
+    };
+    let pst = crate::eval::weights().unwrap();
+    let tt = small_tt();
+
+    let outcome = run_main_worker(
+        &pst,
+        &position,
+        engine_rules(),
+        &root_moves,
+        &history_keys,
+        2,
+        Some(budget),
+        &shared,
+        &tt,
+        None,
+    );
+
+    assert_eq!(shared.reason(), StopReason::SoftLimit);
+    assert_eq!(outcome.result.depth, 1);
+    assert!(root_moves.contains(&outcome.result.best_move)); // INV-1
+}
+
+// D7-TIME-04。search.md「時間管理」節: hardはノード周期の時計チェックで
+// 適用される。上限の許容幅はテスト環境定数であり規範値ではない。
+// D7-TIME-05の継続判断との先着は実時間に依存するため停止理由は2値を許容する。
+#[test]
+fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     let initial = Position::initial();
     let handle = start(
         snapshot_for(&initial),
@@ -1409,7 +1497,6 @@ fn movetime_search_stops_near_the_fixed_budget() {
     let (_, finished) = drain_events(&handle);
     handle.join().expect("search thread must not panic");
 
-    assert!(finished.elapsed >= Duration::from_millis(300));
     // 上限ガード: ノード周期チェックの遅延を見込んだ十分な許容幅。
     assert!(finished.elapsed <= Duration::from_millis(1_000));
     // soft=hardのため停止理由は機構上の先着が不定（SPEC_UNCLEAR-04）。

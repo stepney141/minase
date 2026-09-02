@@ -923,7 +923,7 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| elapsed >= budget.soft) {
+        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget)) {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1452,6 +1452,19 @@ struct TimeBudget {
 const EXPECTED_PLIES: u32 = 450;
 /// 1局面で見込む残り手数の下限。
 const MIN_MOVES: u32 = 100;
+/// 次の反復の予測時間に使う固定比2.5の分子。
+const ITERATION_RATIO_NUMERATOR: u128 = 5;
+/// 次の反復の予測時間に使う固定比2.5の分母。
+const ITERATION_RATIO_DENOMINATOR: u128 = 2;
+
+/// 時間予算内で次の反復を開始できるかを返す。
+///
+/// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
+fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget) -> bool {
+    elapsed < budget.soft
+        && elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR
+            <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
+}
 
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
 fn moves_to_go(ply: u32) -> u128 {
