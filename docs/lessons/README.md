@@ -26,3 +26,4 @@
 - [検証分割を変えたら旧分割の重みを基準にしない](validation-split-change-invalidates-old-baseline.md) — 検証分割を変更したら、旧分割で学習した重みを新分割での比較基準に使わない。
 - [長時間の生成は生成コミットを固定したworktreeで実行する](pin-generation-binary-to-worktree.md) — 数時間を超える生成や測定は、対象コミットを固定したworktreeのバイナリから実行する。
 - [効果量が極端な対は測定条件の比較情報を持たない](calibration-card-needs-contested-pair.md) — 条件比較のカードには勝敗が割れる拮抗した対を選び、全勝または全敗が予想される対を使わない。
+- [時間管理を変える前に保存記録から時計を再構成する](reconstruct-clock-from-match-records.md) — 時間管理を変更する前に、保存済み実行ディレクトリの思考時間から時計を再構成し、手数帯ごとの到達深さ、残り時間、および停止理由の分布を数えてから設計する。
