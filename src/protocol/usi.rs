@@ -34,10 +34,33 @@ pub struct UsiProtocol {
     transposition_table: Option<TranspositionTable>,
     /// 最後の`position`コマンドが受理され、局面が同期済みかどうか。
     position_synchronized: bool,
+    /// 最後に受理した`position`の開始局面と着手のトークン列。
+    accepted_position: Option<AcceptedPosition>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
     /// 次の探索に使うワーカー数。
     threads: NonZeroUsize,
+}
+
+/// 最後に受理した`position`のトークン列。
+struct AcceptedPosition {
+    /// `startpos`または`sfen`から`moves`直前までのトークン列。
+    setup_tokens: Vec<String>,
+    /// `moves`以降の着手トークン列。
+    move_tokens: Vec<String>,
+}
+
+/// 受理した`position`に応じたトークン履歴の更新方法。
+enum PositionHistoryUpdate<'a> {
+    /// 全再生後にトークン列全体を置き換える。
+    Replace {
+        /// 開始局面のトークン列。
+        setup_tokens: &'a [&'a str],
+        /// 着手のトークン列。
+        move_tokens: &'a [&'a str],
+    },
+    /// 差分適用後に追加分だけを連結する。
+    Extend(&'a [&'a str]),
 }
 
 /// 実行中の探索に対応する局面と設定。
@@ -94,6 +117,7 @@ impl UsiProtocol {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
             transposition_table: None,
             position_synchronized: false,
+            accepted_position: None,
             next_search_id: 1,
             threads: search::DEFAULT_THREADS,
         }
@@ -116,12 +140,10 @@ impl UsiProtocol {
             "isready" => writeln!(output, "readyok")?,
             "setoption" => self.handle_setoption(engine, &tokens[1..], output)?,
             "usinewgame" => {
-                self.position_synchronized = false;
                 self.apply_silent(engine, EngineCommand::NewGame, output)?;
             }
             "position" => self.handle_position(engine, &tokens[1..], output)?,
             "gameover" => {
-                self.position_synchronized = false;
                 self.apply_silent(engine, EngineCommand::EndGame, output)?;
             }
             "moves" => self.handle_moves(engine, output)?,
@@ -664,15 +686,44 @@ impl UsiProtocol {
     ) -> io::Result<()> {
         self.position_synchronized = false;
         let Some(kind) = tokens.first().copied() else {
+            self.accepted_position = None;
             return write_error(output, "position requires startpos or sfen");
         };
         let moves_index = tokens.iter().position(|token| *token == "moves");
         let move_tokens = moves_index.map(|index| &tokens[index + 1..]).unwrap_or(&[]);
         let position_tokens = &tokens[..moves_index.unwrap_or(tokens.len())];
+
+        let extension_start = position_extension_start(
+            self.accepted_position.as_ref(),
+            engine.lifecycle(),
+            position_tokens,
+            move_tokens,
+        );
+        if let Some(extension_start) = extension_start {
+            let parsed = match parse_moves_from_game(engine.game(), &move_tokens[extension_start..])
+            {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    self.accepted_position = None;
+                    return write_error(output, &error);
+                }
+            };
+            return self.apply_position(
+                engine,
+                EngineCommand::ExtendPosition {
+                    moves: parsed.moves,
+                },
+                parsed.first_rejected_text.as_deref(),
+                PositionHistoryUpdate::Extend(&move_tokens[extension_start..]),
+                output,
+            );
+        }
+
         let rules = engine.position_rules();
         let setup = match kind {
             "startpos" => {
                 if position_tokens.len() != 1 {
+                    self.accepted_position = None;
                     return write_error(output, "position startpos has unexpected fields");
                 }
                 SetupPosition::new(Position::initial(), None, 1)
@@ -680,27 +731,83 @@ impl UsiProtocol {
             }
             "sfen" => match parse_sfen_fields(&position_tokens[1..], rules.moves) {
                 Ok(setup) => setup,
-                Err(error) => return write_error(output, &error.to_string()),
+                Err(error) => {
+                    self.accepted_position = None;
+                    return write_error(output, &error.to_string());
+                }
             },
-            _ => return write_error(output, "position requires startpos or sfen"),
+            _ => {
+                self.accepted_position = None;
+                return write_error(output, "position requires startpos or sfen");
+            }
         };
 
         let parsed = match parse_moves(&setup, rules, move_tokens) {
             Ok(parsed) => parsed,
-            Err(error) => return write_error(output, &error),
+            Err(error) => {
+                self.accepted_position = None;
+                return write_error(output, &error);
+            }
         };
-        match engine.handle(EngineCommand::SetPosition {
-            setup,
-            moves: parsed.moves,
-        }) {
+        self.apply_position(
+            engine,
+            EngineCommand::SetPosition {
+                setup,
+                moves: parsed.moves,
+            },
+            parsed.first_rejected_text.as_deref(),
+            PositionHistoryUpdate::Replace {
+                setup_tokens: position_tokens,
+                move_tokens,
+            },
+            output,
+        )
+    }
+
+    /// `position`の状態機械コマンドを適用し、同期状態と履歴を更新する。
+    fn apply_position(
+        &mut self,
+        engine: &mut Engine,
+        command: EngineCommand,
+        first_rejected_text: Option<&str>,
+        history_update: PositionHistoryUpdate<'_>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        match engine.handle(command) {
             EngineReply::Accepted { .. } => {
                 self.position_synchronized = true;
+                match history_update {
+                    PositionHistoryUpdate::Replace {
+                        setup_tokens,
+                        move_tokens,
+                    } => {
+                        self.accepted_position = Some(AcceptedPosition {
+                            setup_tokens: setup_tokens
+                                .iter()
+                                .map(|token| (*token).to_owned())
+                                .collect(),
+                            move_tokens: move_tokens
+                                .iter()
+                                .map(|token| (*token).to_owned())
+                                .collect(),
+                        });
+                    }
+                    PositionHistoryUpdate::Extend(move_tokens) => self
+                        .accepted_position
+                        .as_mut()
+                        .expect("the extension path requires an accepted position")
+                        .move_tokens
+                        .extend(move_tokens.iter().map(|token| (*token).to_owned())),
+                }
                 Ok(())
             }
-            EngineReply::Rejected(reason) => write_error(
-                output,
-                &position_reject_reason_text(&reason, parsed.first_rejected_text.as_deref()),
-            ),
+            EngineReply::Rejected(reason) => {
+                self.accepted_position = None;
+                write_error(
+                    output,
+                    &position_reject_reason_text(&reason, first_rejected_text),
+                )
+            }
         }
     }
 
@@ -748,8 +855,20 @@ impl UsiProtocol {
             &command,
             EngineCommand::NewGame | EngineCommand::SetRules(_)
         );
+        let clears_position_history = matches!(
+            &command,
+            EngineCommand::NewGame | EngineCommand::SetRules(_) | EngineCommand::EndGame
+        );
+        let invalidates_position =
+            matches!(&command, EngineCommand::NewGame | EngineCommand::EndGame);
         match engine.handle(command) {
             EngineReply::Accepted { .. } => {
+                if invalidates_position {
+                    self.position_synchronized = false;
+                }
+                if clears_position_history {
+                    self.accepted_position = None;
+                }
                 if clears_transposition_table
                     && let Some(transposition_table) = &mut self.transposition_table
                 {
@@ -760,6 +879,29 @@ impl UsiProtocol {
             EngineReply::Rejected(reason) => write_error(output, &reason.to_string()),
         }
     }
+}
+
+/// 前回受理した`position`との差分を適用できる場合に追加開始位置を返す。
+fn position_extension_start(
+    accepted: Option<&AcceptedPosition>,
+    lifecycle: EngineLifecycle,
+    setup_tokens: &[&str],
+    move_tokens: &[&str],
+) -> Option<usize> {
+    let accepted = accepted?;
+    let same_setup = accepted
+        .setup_tokens
+        .iter()
+        .map(String::as_str)
+        .eq(setup_tokens.iter().copied());
+    let extends_moves = move_tokens.len() >= accepted.move_tokens.len()
+        && accepted
+            .move_tokens
+            .iter()
+            .map(String::as_str)
+            .eq(move_tokens[..accepted.move_tokens.len()].iter().copied());
+    (lifecycle == EngineLifecycle::InGame && same_setup && extends_moves)
+        .then_some(accepted.move_tokens.len())
 }
 
 /// `go`の引数列を探索制限へ変換する。
@@ -1055,7 +1197,13 @@ fn parse_moves(
     position
         .set_lion_capture(setup.lion_capture())
         .map_err(|error| error.to_string())?;
-    let mut game = Game::from_position(rules, position);
+    let game = Game::from_position(rules, position);
+    parse_moves_from_game(&game, move_tokens)
+}
+
+/// 現在の対局を起点に着手列を解析し、局面を進めながら検証する。
+fn parse_moves_from_game(game: &Game, move_tokens: &[&str]) -> Result<ParsedMoves, String> {
+    let mut game = game.clone();
     let mut moves = Vec::with_capacity(move_tokens.len());
 
     for &text in move_tokens {
@@ -1519,6 +1667,229 @@ mod tests {
         assert!(states.iter().all(|state| *state == states[0]));
         assert_eq!(moves.len(), 2);
         assert_eq!(moves[0], moves[1]);
+    }
+
+    #[test]
+    fn position_extension_requires_ingame_matching_setup_and_move_prefix() {
+        let accepted = AcceptedPosition {
+            setup_tokens: vec!["startpos".to_owned()],
+            move_tokens: vec!["6i6h".to_owned(), "1d1e".to_owned()],
+        };
+
+        assert_eq!(
+            position_extension_start(
+                Some(&accepted),
+                EngineLifecycle::InGame,
+                &["startpos"],
+                &["6i6h", "1d1e"],
+            ),
+            Some(2)
+        );
+        assert_eq!(
+            position_extension_start(
+                Some(&accepted),
+                EngineLifecycle::InGame,
+                &["startpos"],
+                &["6i6h", "1d1e", "3i3h"],
+            ),
+            Some(2)
+        );
+        for (lifecycle, setup, moves) in [
+            (
+                EngineLifecycle::AwaitingStart,
+                &["startpos"][..],
+                &["6i6h", "1d1e"][..],
+            ),
+            (
+                EngineLifecycle::Finished,
+                &["startpos"][..],
+                &["6i6h", "1d1e"][..],
+            ),
+            (
+                EngineLifecycle::InGame,
+                &["sfen"][..],
+                &["6i6h", "1d1e"][..],
+            ),
+            (EngineLifecycle::InGame, &["startpos"][..], &["6i6h"][..]),
+            (
+                EngineLifecycle::InGame,
+                &["startpos"][..],
+                &["3i3h", "1d1e"][..],
+            ),
+        ] {
+            assert_eq!(
+                position_extension_start(Some(&accepted), lifecycle, setup, moves),
+                None
+            );
+        }
+        assert_eq!(
+            position_extension_start(
+                None,
+                EngineLifecycle::InGame,
+                &["startpos"],
+                &["6i6h", "1d1e"],
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn incremental_position_matches_full_replay_for_ongoing_and_finished_games() {
+        let moves = "3i3h 5a4b 8l9k 8b9b";
+        let mut full_engine = make_engine(&[RuleCode::R1]);
+        let mut full_protocol = UsiProtocol::new(&full_engine);
+        let full_output = run(
+            &mut full_protocol,
+            &mut full_engine,
+            &format!("position startpos moves {moves}\nstate\n"),
+        );
+
+        let mut incremental_engine = make_engine(&[RuleCode::R1]);
+        let mut incremental_protocol = UsiProtocol::new(&incremental_engine);
+        let incremental_output = run(
+            &mut incremental_protocol,
+            &mut incremental_engine,
+            concat!(
+                "position startpos\n",
+                "position startpos moves 3i3h\n",
+                "position startpos moves 3i3h 5a4b\n",
+                "position startpos moves 3i3h 5a4b 8l9k\n",
+                "position startpos moves 3i3h 5a4b 8l9k 8b9b\n",
+                "state\n",
+            ),
+        );
+
+        assert_eq!(incremental_output, full_output);
+        assert_eq!(
+            incremental_engine.game().position(),
+            full_engine.game().position()
+        );
+        assert_eq!(incremental_engine.ply(), full_engine.ply());
+        assert_eq!(incremental_engine.status(), full_engine.status());
+
+        let mut full_engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
+        let mut full_protocol = UsiProtocol::new(&full_engine);
+        let full_output = run(
+            &mut full_protocol,
+            &mut full_engine,
+            &format!("position sfen {ROYAL_SFEN} moves 7g7d\nstate\n"),
+        );
+        let mut incremental_engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
+        let mut incremental_protocol = UsiProtocol::new(&incremental_engine);
+        let incremental_output = run(
+            &mut incremental_protocol,
+            &mut incremental_engine,
+            &format!("position sfen {ROYAL_SFEN}\nposition sfen {ROYAL_SFEN} moves 7g7d\nstate\n"),
+        );
+
+        assert_eq!(incremental_output, full_output);
+        assert_eq!(
+            incremental_engine.game().position(),
+            full_engine.game().position()
+        );
+        assert_eq!(incremental_engine.ply(), full_engine.ply());
+        assert_eq!(incremental_engine.status(), full_engine.status());
+    }
+
+    #[test]
+    fn shorter_moves_and_different_setup_use_full_replay() {
+        let shortened = session(
+            &[RuleCode::R1],
+            concat!(
+                "position startpos moves 6i6h 1d1e\n",
+                "position startpos moves 6i6h\n",
+                "state\n",
+            ),
+        );
+        let shortened_full = session(&[RuleCode::R1], "position startpos moves 6i6h\nstate\n");
+        assert_eq!(shortened, shortened_full);
+
+        let different_setup = session(
+            &[RuleCode::R1],
+            &format!(
+                concat!(
+                    "position startpos moves 6i6h 1d1e\n",
+                    "position sfen {} - 1 moves 6i6h\n",
+                    "state\n",
+                ),
+                INITIAL_BOARD,
+            ),
+        );
+        let different_setup_full = session(
+            &[RuleCode::R1],
+            &format!("position sfen {INITIAL_BOARD} - 1 moves 6i6h\nstate\n"),
+        );
+        assert_eq!(different_setup, different_setup_full);
+    }
+
+    #[test]
+    fn position_history_is_cleared_at_boundaries_and_on_rule_changes() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+
+        assert_eq!(
+            run(&mut protocol, &mut engine, "position startpos moves 6i6h\n"),
+            ""
+        );
+        assert!(protocol.accepted_position.is_some());
+        assert_eq!(run(&mut protocol, &mut engine, "usinewgame\n"), "");
+        assert!(protocol.accepted_position.is_none());
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "position startpos moves 6i6h 1d1e\n"
+            ),
+            ""
+        );
+
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name RuleSet value L0,P0,R2,E0\n"
+            ),
+            ""
+        );
+        assert!(protocol.accepted_position.is_none());
+        assert!(protocol.position_synchronized);
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "position startpos moves 6i6h 1d1e\n"
+            ),
+            ""
+        );
+
+        assert_eq!(run(&mut protocol, &mut engine, "gameover win\n"), "");
+        assert!(protocol.accepted_position.is_none());
+        assert!(!protocol.position_synchronized);
+    }
+
+    #[test]
+    fn invalid_incremental_position_preserves_state_and_clears_synchronization() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        assert_eq!(
+            run(&mut protocol, &mut engine, "position startpos moves 6i6h\n"),
+            ""
+        );
+        let position = engine.game().position().clone();
+        let ply = engine.ply();
+        let status = engine.status();
+
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "position startpos moves 6i6h 1a1b\n",
+        );
+        assert_eq!(error_lines(&output).len(), 1);
+        assert_eq!(engine.game().position(), &position);
+        assert_eq!(engine.ply(), ply);
+        assert_eq!(engine.status(), status);
+        assert!(protocol.accepted_position.is_none());
+        assert!(!protocol.position_synchronized);
     }
 
     #[test]

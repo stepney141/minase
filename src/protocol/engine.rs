@@ -34,6 +34,11 @@ pub enum EngineCommand {
         /// 開始局面から再適用する着手列。
         moves: Vec<Move>,
     },
+    /// 現局へ着手列を原子的に追加する。
+    ExtendPosition {
+        /// 現局から追加する着手列。
+        moves: Vec<Move>,
+    },
     /// 現局へ1手を適用する。
     ApplyMove(Move),
     /// GUI発の終局通知を受け、次局の開始待ちへ戻る。
@@ -143,6 +148,7 @@ impl Engine {
     /// `ApplyMove`は`InGame`だけで受理する。`AwaitingStart`では開始局面がなく、
     /// `Finished`では終局済みなので拒否する。`SetPosition`は`AwaitingStart`なら
     /// pending規則をcommitし、`InGame`ならactive規則で現局を原子的に再構成する。
+    /// `ExtendPosition`は`InGame`だけで受理し、現局へ着手列を原子的に追加する。
     pub fn handle(&mut self, command: EngineCommand) -> EngineReply {
         match command {
             EngineCommand::SetRules(codes) => match validate_rules(codes) {
@@ -154,6 +160,7 @@ impl Engine {
             },
             EngineCommand::NewGame => self.new_game(),
             EngineCommand::SetPosition { setup, moves } => self.set_position(setup, &moves),
+            EngineCommand::ExtendPosition { moves } => self.extend_position(&moves),
             EngineCommand::ApplyMove(mv) => self.apply_move(mv),
             EngineCommand::EndGame => {
                 self.base_ply = 0;
@@ -267,6 +274,41 @@ impl Engine {
         }
         self.game = game;
         self.base_ply = base_ply;
+        self.lifecycle = match status {
+            GameStatus::Ongoing => EngineLifecycle::InGame,
+            GameStatus::Finished(_) => EngineLifecycle::Finished,
+        };
+        EngineReply::Accepted {
+            status,
+            newly_finished,
+        }
+    }
+
+    /// 現局の複製へ指し手列を適用し、全手が成功した場合だけ置き換える。
+    fn extend_position(&mut self, moves: &[Move]) -> EngineReply {
+        match self.lifecycle {
+            EngineLifecycle::AwaitingStart => {
+                return EngineReply::Rejected(RejectReason::GameNotStarted);
+            }
+            EngineLifecycle::Finished => {
+                return EngineReply::Rejected(RejectReason::GameAlreadyOver);
+            }
+            EngineLifecycle::InGame => {}
+        }
+
+        let mut game = self.game.clone();
+        for &mv in moves {
+            if let Err(error) = game.play(mv) {
+                return EngineReply::Rejected(reject_game_error(error));
+            }
+        }
+
+        let status = game.status();
+        let newly_finished = match status {
+            GameStatus::Ongoing => None,
+            GameStatus::Finished(result) => Some(result),
+        };
+        self.game = game;
         self.lifecycle = match status {
             GameStatus::Ongoing => EngineLifecycle::InGame,
             GameStatus::Finished(_) => EngineLifecycle::Finished,
@@ -536,6 +578,90 @@ mod tests {
                 status: GameStatus::Finished(result),
                 newly_finished: Some(result),
             }
+        );
+    }
+
+    #[test]
+    fn extend_position_is_atomic_and_preserves_base_ply() {
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
+        assert_eq!(
+            engine.handle(EngineCommand::ExtendPosition { moves: Vec::new() }),
+            EngineReply::Rejected(RejectReason::GameNotStarted)
+        );
+
+        let setup = SetupPosition::new(Position::initial(), None, 41).unwrap();
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup,
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted { .. }
+        ));
+        let initial = engine.game().position().clone();
+        assert_eq!(engine.ply(), 40);
+        assert_eq!(
+            engine.handle(EngineCommand::ExtendPosition { moves: Vec::new() }),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                newly_finished: None,
+            }
+        );
+        assert_eq!(engine.game().position(), &initial);
+        assert_eq!(engine.ply(), 40);
+
+        let legal = step(sq(0, 3), sq(0, 4));
+        let illegal = step(sq(0, 0), sq(0, 1));
+        assert_eq!(
+            engine.handle(EngineCommand::ExtendPosition {
+                moves: vec![legal, illegal],
+            }),
+            EngineReply::Rejected(RejectReason::IllegalMove {
+                mv: illegal,
+                cause: IllegalMoveCause::Movement,
+            })
+        );
+        assert_eq!(engine.game().position(), &initial);
+        assert_eq!(engine.ply(), 40);
+
+        assert!(matches!(
+            engine.handle(EngineCommand::ExtendPosition { moves: vec![legal] }),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                newly_finished: None,
+            }
+        ));
+        assert_eq!(engine.ply(), 41);
+    }
+
+    #[test]
+    fn extend_position_reports_the_finishing_transition_once() {
+        let result = GameResult::Win {
+            winner: Color::Black,
+            reason: WinReason::RoyalCapture,
+        };
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: SetupPosition::new(royal_position(), None, 12).unwrap(),
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted { .. }
+        ));
+        assert_eq!(
+            engine.handle(EngineCommand::ExtendPosition {
+                moves: vec![royal_capture()],
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Finished(result),
+                newly_finished: Some(result),
+            }
+        );
+        assert_eq!(engine.ply(), 12);
+        assert_eq!(
+            engine.handle(EngineCommand::ExtendPosition { moves: Vec::new() }),
+            EngineReply::Rejected(RejectReason::GameAlreadyOver)
         );
     }
 

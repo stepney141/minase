@@ -123,6 +123,8 @@ EngineCommand
   NewGame                   pendingをcommitしてAwaitingStartへ遷移する
   SetPosition { setup: SetupPosition, moves: Vec<Move> }
                             局面設定と着手列の適用を1コマンドで原子的に行う
+  ExtendPosition { moves: Vec<Move> }
+                            現局への着手列の追加を1コマンドで原子的に行う
   ApplyMove(Move)           1手を適用する（CECPのusermove）
   EndGame                   GUI発の終局通知（USI gameover、CECP result）。AwaitingStartへ戻る
   Quit                      セッションを終了する
@@ -141,7 +143,7 @@ IllegalMoveCause
   Movement（駒の動き・獅子規則等の違反）、Repetition（R2またはR3の反復禁止手）
 ```
 
-`SetRules`は受信時に`Rules::from_codes`を呼び、同一コードの重複、同群の複数指定、獅子・成り・反復・駒枯れの各群の欠落を検証する。不正ならpendingを維持し、検証済みの`Rules`だけを`Game`へ渡す。commitは「pending規則で新しい`Game`を構築し、`SetPosition`の場合は局面と着手列を複製上で全適用し、成功した場合に限りactive規則・`Game`・ライフサイクルを同時に交換する」原子的操作とし、途中で失敗した場合は全状態を変更しない。これにより`position ... moves`の途中に不合法手があっても直前の有効状態が保持される。commit点は`NewGame`受信時（CECPの`new`、USIの`usinewgame`）と、`AwaitingStart`状態での`SetPosition`受信時である。参照したLishogi-Bot（コミット17c16bc7）は`usinewgame`を送信せず、対局ごとに`setoption`（`USI_Variant`を含む）→`position`→`go`の順で送ることをソースで確認した。したがってUSIでは`AwaitingStart`での`SetPosition`が実質のcommit経路であり、`usinewgame`に依存しない設計が必須である。`InGame`中の`SetPosition`は、lishogi-botが毎手`position`の全列を再送する挙動に合わせ、active規則で現局を原子的に再構成し、pending規則は次局まで反映しない。
+`SetRules`は受信時に`Rules::from_codes`を呼び、同一コードの重複、同群の複数指定、獅子・成り・反復・駒枯れの各群の欠落を検証する。不正ならpendingを維持し、検証済みの`Rules`だけを`Game`へ渡す。commitは「pending規則で新しい`Game`を構築し、`SetPosition`の場合は局面と着手列を複製上で全適用し、成功した場合に限りactive規則・`Game`・ライフサイクルを同時に交換する」原子的操作とし、途中で失敗した場合は全状態を変更しない。これにより`position ... moves`の途中に不合法手があっても直前の有効状態が保持される。`ExtendPosition`は`InGame`でだけ受理し、現局の複製へ着手列を適用して、全手が成功した場合に限り`Game`とライフサイクルを更新し、基底局面までの絶対手数は変更しない。commit点は`NewGame`受信時（CECPの`new`、USIの`usinewgame`）と、`AwaitingStart`状態での`SetPosition`受信時である。参照したLishogi-Bot（コミット17c16bc7）は`usinewgame`を送信せず、対局ごとに`setoption`（`USI_Variant`を含む）→`position`→`go`の順で送ることをソースで確認した。したがってUSIでは`AwaitingStart`での`SetPosition`が実質のcommit経路であり、`usinewgame`に依存しない設計が必須である。`InGame`中の`SetPosition`は、lishogi-botが毎手`position`の全列を再送する挙動に合わせ、active規則で現局を原子的に再構成し、pending規則は次局まで反映しない。
 
 プロトコルモジュールのtraitは次の同期署名とする。
 
@@ -188,7 +190,7 @@ latchはactive（対局に適用中）とpending（次局から適用）の2状�
 
 USIにはエンジン発の裁定通知手段がないため出力せず、USIの台本テストは`run`終了後の`Engine`状態で裁定の一致を検証する。
 
-不合法手の扱いは、CECPが`Illegal move (REASON): MOVE`応答とし、REASONは`IllegalMoveCause`から生成する（`Movement`は省略形の`Illegal move: MOVE`、`Repetition`は`Illegal move (repetition): MOVE`）。USIは`position`コマンドの原子的適用が不合法手で失敗した時点で`info string error: ...`を出力し、当該`position`全体を適用せず直前の有効状態を保持する。
+不合法手の扱いは、CECPが`Illegal move (REASON): MOVE`応答とし、REASONは`IllegalMoveCause`から生成する（`Movement`は省略形の`Illegal move: MOVE`、`Repetition`は`Illegal move (repetition): MOVE`）。USIは`position`コマンドの原子的適用が不合法手で失敗した時点で`info string error: ...`を出力し、当該`position`全体を適用せず直前の有効状態を保持する。USIでは、開始局面のトークン列が前回受理時と一致し、新しい着手トークン列が前回の列を接頭辞として含む場合に限り、追加分を現局へ原子的に適用する。それ以外の場合は、開始局面から着手列全体を再生する。
 
 ### CECPのfeature宣言
 
