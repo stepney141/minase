@@ -32,6 +32,7 @@
 | 棋力向上の段階計画 | [plans/strength-stages.md](plans/strength-stages.md) | 進行中 | ― |
 | 棋力向上段階1 | [plans/strength-stage1.md](plans/strength-stage1.md) | 完了 | 2026年9月2日 |
 | 棋力向上段階2 | [plans/strength-stage2.md](plans/strength-stage2.md) | 完了 | 2026年9月4日 |
+| 棋力測定の所要時間削減 | [plans/match-cost-reduction.md](plans/match-cost-reduction.md) | 起案 | ― |
 
 ## 現在地
 
@@ -44,6 +45,10 @@
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
 10段階のうち段階2までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
 次の一手は、段階3の個別設計書を起案し、静止探索の質へ進むことである。
+
+棋力測定の所要時間削減（plans/match-cost-reduction.md）は2026年9月3日に起案し、着手前である。
+GSPRTの仮説H1を5 Eloから10 Eloへ広げ、LTCの加算を0.6秒から0.2秒へ縮める。
+再集計スクリプトの整備は直ちに着手できるが、H1の実装変更は対局ハーネスのバイナリを変えて実行中の測定の再開を妨げるため、段階2の段階ゲート測定がすべて完了してから着手する。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
