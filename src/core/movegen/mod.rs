@@ -113,6 +113,84 @@ pub(crate) fn piece_control_with_occupancy(
     piece_control_with_tables(attack_tables(), occupied, color, kind, from)
 }
 
+impl Position {
+    /// 指定した占有状態で`square`へ疑似利きが届く両陣営の駒を返す。
+    ///
+    /// 固定利き、走り、および特殊移動の到達範囲を逆引きする。結果は`occupied`に
+    /// 含まれる駒に限る。これは規則上の合法性を判定する関数ではなく、静的交換評価で
+    /// 仮想的な取り合いを調べるための幾何的な利き集合である
+    /// (`docs/plans/strength-stage3.md`「升への疑似利き集合」)。
+    pub(crate) fn attackers_to(&self, square: Square, occupied: Bitboard) -> Bitboard {
+        let tables = attack_tables();
+        (ordinary_attackers_to(tables, self, square, occupied)
+            | special_attackers_to(tables, self, square))
+            & occupied
+    }
+}
+
+/// 固定利きと走りを逆引きし、`square`へ届く駒を返す。
+fn ordinary_attackers_to(
+    tables: &AttackTables,
+    position: &Position,
+    square: Square,
+    occupied: Bitboard,
+) -> Bitboard {
+    let mut attackers = Bitboard::EMPTY;
+    for color in Color::ALL {
+        for kind in PieceKind::ALL {
+            let pieces = position.pieces_of_kind(color, kind);
+            if pieces.is_empty() {
+                continue;
+            }
+            let profile_id = movement_profile(kind);
+            let profile = movement_profile_data(profile_id);
+            attackers |= tables.fixed(color.opposite(), profile_id, square) & pieces;
+            for slide in profile.slides {
+                let direction = slide.direction.for_color(color);
+                attackers |=
+                    tables.sliding_control(square, direction.opposite(), slide.max_steps, occupied)
+                        & pieces;
+            }
+        }
+    }
+    attackers
+}
+
+/// 特殊移動の到達範囲を逆引きし、`square`へ届く駒を返す。
+fn special_attackers_to(tables: &AttackTables, position: &Position, square: Square) -> Bitboard {
+    let mut attackers = Bitboard::EMPTY;
+    for color in Color::ALL {
+        for kind in PieceKind::ALL {
+            let pieces = position.pieces_of_kind(color, kind);
+            if pieces.is_empty() {
+                continue;
+            }
+            match movement_profile_data(movement_profile(kind)).special {
+                SpecialMovement::None => {}
+                SpecialMovement::Lion => {
+                    attackers |= (tables.king_steps(square) | tables.lion_jumps(square)) & pieces;
+                }
+                SpecialMovement::LionLike(profile) => {
+                    for relative in profile.directions {
+                        let reverse = relative.for_color(color).opposite();
+                        if let Some(first) = step_square(square, reverse) {
+                            if pieces.contains(first) {
+                                attackers.set(first);
+                            }
+                            if let Some(second) = step_square(first, reverse)
+                                && pieces.contains(second)
+                            {
+                                attackers.set(second);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    attackers
+}
+
 /// 同じ着手の成りを選んだ変種を返す。
 fn promoting_variant(mv: Move) -> Move {
     Move {

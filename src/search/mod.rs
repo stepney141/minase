@@ -1,5 +1,6 @@
 //! 評価関数と静止探索を使って着手を選ぶ探索。
 
+mod see;
 #[cfg(test)]
 mod tests;
 mod tt;
@@ -25,6 +26,7 @@ use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::Pst;
 use crate::eval::pst::PstAccumulator;
 
+use see::see;
 use tt::Bound;
 
 /// 詰みを表す評価値。
@@ -1247,6 +1249,11 @@ impl Searcher<'_> {
             {
                 continue;
             }
+            if !is_last_royal_capture
+                && capture_is_pruned_by_see(position, self.rules, self.pst, mv)
+            {
+                continue;
+            }
             let score = if is_last_royal_capture {
                 self.enter_node().then_some(MATE - ply as i32)?
             } else {
@@ -1701,4 +1708,9 @@ fn piece_at_for_ordering(position: &Position, square: crate::Square) -> PieceCod
     position
         .piece_at(square)
         .expect("move ordering square must contain a piece")
+}
+
+/// 静的交換評価で損と判定できる捕獲手かを返す。
+fn capture_is_pruned_by_see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
+    see(position, rules, pst, mv).is_some_and(|value| value < 0)
 }

@@ -4,6 +4,7 @@
 //! docs/plans/move-canonicalization.md だけである。獅子の捕獲制限
 //! （第13〜16条・第29条L系）は領域D2（rules.rs側）が検証する。
 
+mod attackers;
 mod lion_moves;
 mod movement;
 mod pieces;

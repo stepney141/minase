@@ -369,23 +369,50 @@ impl MoveRules {
         let Some(color) = piece.color() else {
             return PromotionChoice::NoPromotion;
         };
-        if piece.is_promoted() || !moving_kind.can_promote() {
-            return PromotionChoice::NoPromotion;
-        }
-
-        let from_in_zone = in_promotion_zone(color, mv.from);
-        let to_in_zone = in_promotion_zone(color, mv.to);
         let has_capture = position
             .captured_squares(*mv)
             .into_iter()
             .any(|capture| capture.is_some());
+        let deferred = position.promotion_deferred().contains(mv.from);
+
+        self.promotion_choice_for(
+            color,
+            moving_kind,
+            piece.is_promoted(),
+            mv.from,
+            mv.to,
+            has_capture,
+            deferred,
+        )
+    }
+
+    /// 指定した駒状態と捕獲条件について、成りの選択肢を返す。
+    ///
+    /// 実局面に存在しない交換列からも使える規則判定であり、第18条、第19条、
+    /// および第30条P1からP6までを適用する。
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn promotion_choice_for(
+        self,
+        color: Color,
+        moving_kind: PieceKind,
+        is_promoted: bool,
+        from: Square,
+        to: Square,
+        has_capture: bool,
+        deferred: bool,
+    ) -> PromotionChoice {
+        if is_promoted || !moving_kind.can_promote() {
+            return PromotionChoice::NoPromotion;
+        }
+
+        let from_in_zone = in_promotion_zone(color, from);
+        let to_in_zone = in_promotion_zone(color, to);
         let enters_zone = !from_in_zone && to_in_zone;
         let capture_in_or_from_zone = has_capture && (from_in_zone || to_in_zone);
         let reaches_last_rank = match color {
-            Color::Black => mv.to.rank() == BOARD_RANKS - 1,
-            Color::White => mv.to.rank() == 0,
+            Color::Black => to.rank() == BOARD_RANKS - 1,
+            Color::White => to.rank() == 0,
         };
-        let deferred = position.promotion_deferred().contains(mv.from);
 
         if self.p5 && moving_kind == PieceKind::Pawn && deferred {
             // 保留歩兵は、採用中の成り規則で成れる着手のうち到達升が最奥段である
