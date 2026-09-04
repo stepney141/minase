@@ -1,7 +1,7 @@
 //! 自己対局結果の統計処理。
 //!
 //! LLRの計算はfishtestの`LLR_logistic`(statistic="expectation"のMLE法)と
-//! 同一アルゴリズムであり、fishtest本家の参照値5件との一致を単体テストで
+//! 同一アルゴリズムであり、fishtest本家の参照値との一致を単体テストで
 //! 固定している。統計的契約の全体はdocs/sprt.mdを参照。
 
 /// 度数0の分類へ与える擬似度数。
@@ -17,6 +17,8 @@ const SCORES: [f64; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
 pub const GSPRT_LOWER_BOUND: f64 = -2.944_438_979_166_440_3;
 /// GSPRTの上側判定境界。
 pub const GSPRT_UPPER_BOUND: f64 = 2.944_438_979_166_440_3;
+/// GSPRTの対立仮説H1のElo。
+pub const GSPRT_H1_ELO: f64 = 10.0;
 
 /// (正規化ペア得点, 確率)の5分類分布。
 type Pdf = [(f64, f64); 5];
@@ -98,11 +100,11 @@ fn results_to_pdf(results: &[u64; 5]) -> (f64, Pdf) {
     (count, pdf)
 }
 
-/// H0をelo=0、H1をelo=5とするペンタノミアルGSPRTのLLRを返す。
-pub fn gsprt_llr(results: &[u64; 5]) -> f64 {
+/// H0をelo=0、H1を指定値とするペンタノミアルGSPRTのLLRを返す。
+fn gsprt_llr_with_h1(results: &[u64; 5], h1_elo: f64) -> f64 {
     let (count, observed) = results_to_pdf(results);
     let null_pdf = mle_expected(&observed, logistic_score(0.0));
-    let alternative_pdf = mle_expected(&observed, logistic_score(5.0));
+    let alternative_pdf = mle_expected(&observed, logistic_score(h1_elo));
     count
         * observed
             .iter()
@@ -111,6 +113,11 @@ pub fn gsprt_llr(results: &[u64; 5]) -> f64 {
                 probability * (alternative.ln() - null.ln())
             })
             .sum::<f64>()
+}
+
+/// H0をelo=0、H1を[`GSPRT_H1_ELO`]とするペンタノミアルGSPRTのLLRを返す。
+pub fn gsprt_llr(results: &[u64; 5]) -> f64 {
+    gsprt_llr_with_h1(results, GSPRT_H1_ELO)
 }
 
 /// LLRを固定境界と比較してGSPRTの判定を返す。
@@ -180,6 +187,28 @@ mod tests {
             ([0, 3, 65, 4, 2], 0.675_550_992_5),
             ([50, 150, 400, 200, 60], 1.799_329_087_7),
             ([141, 593, 1112, 666, 158], 2.146_607_391_5),
+        ];
+        for (results, expected) in references {
+            let actual = gsprt_llr_with_h1(&results, 5.0);
+            assert!(
+                (actual - expected).abs() <= 1e-6,
+                "pentanomial {results:?}: expected {expected}, got {actual}"
+            );
+        }
+    }
+
+    // D8-STAT-01(sprt.md統計的手続き節): fishtest本家のコミット
+    // b8eecff220b562a0dc2c4e68d1fa02521e06d72cにあるserver/fishtest/stats/
+    // LLRcalc.pyのLLR_logistic(0, 10, results)で事前計算した参照値5件と、
+    // 公開関数が1e-6以内で一致することを検証する。
+    #[test]
+    fn public_gsprt_llr_matches_h1_10_fishtest_reference_values_within_1e_6() {
+        let references: [([u64; 5], f64); 5] = [
+            ([10, 25, 45, 25, 10], -0.168_331_555_1),
+            ([30, 120, 240, 180, 30], 2.709_124_660_1),
+            ([0, 3, 65, 4, 2], 0.968_334_818_5),
+            ([50, 150, 400, 200, 60], 2.831_151_919_2),
+            ([141, 593, 1112, 666, 158], 1.887_843_808_0),
         ];
         for (results, expected) in references {
             let actual = gsprt_llr(&results);
@@ -350,15 +379,16 @@ mod tests {
 
     // D8-STAT-05(search.md測定基盤・実施状況): 既知の分布から合成した結果で
     // 検定全体を3,000反復し、真のelo=0でH1誤採用率8%以下(名目α=0.05と整合)、
-    // 真のelo=5で検出率90%以上(名目1-β=0.95と整合)を確認する。
+    // 真のelo=10で検出率90%以上(名目1-β=0.95と整合)を確認する。
     // 固定シードにより決定的である。
     #[test]
     fn gsprt_monte_carlo_error_rates_match_documented_thresholds() {
         const REPETITIONS: usize = 3000;
-        // 得点0.5のセルから隣接セルへ移す確率質量。真のelo=5の分布は平均
-        // 正規化ペア得点がs(5)になるよう、0.75のセルへ4*(s(5)-0.5) =
-        // 0.0287803268…を移して構成する(sprt.mdの写像式から独立に導出)。
-        const SHIFT: f64 = 0.028_780_326_836_205_46;
+        // 得点0.5のセルから隣接セルへ移す確率質量。真のelo=10の分布は平均
+        // 正規化ペア得点がs(10)になるよう、sprt.mdの写像式
+        // s(10)=1/(1+10^(-10/400))=0.5143871841659987から独立に導出した
+        // 4*(s(10)-0.5)=0.05754873666399485を0.75のセルへ移して構成する。
+        const SHIFT: f64 = 0.057_548_736_663_994_85;
         // 真のelo=0: 平均0.5の対称分布
         let null_pdf: Pdf = [
             (0.0, 0.0),
@@ -367,7 +397,7 @@ mod tests {
             (0.75, SHIFT / 2.0),
             (1.0, 0.0),
         ];
-        // 真のelo=5: 平均 0.5 + 0.25*SHIFT = s(5)
+        // 真のelo=10: 平均 0.5 + 0.25*SHIFT = s(10)
         let alternative_pdf: Pdf = [
             (0.0, 0.0),
             (0.25, 0.0),

@@ -22,7 +22,7 @@ use minase::core::rules::parse_rule_set;
 use minase::notation::{cecp, usi};
 use minase::rng::{XorShift64, derive_seed};
 use minase::search::MAX_PLY;
-use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
+use minase::stats::{GSPRT_H1_ELO, GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
 use minase::{Color, Game, GameResult, GameStatus, Move, MoveGenerator, RuleCode, Rules, Square};
 use sha2::{Digest, Sha256};
 
@@ -3017,7 +3017,7 @@ fn main() {
             true,
             ManifestMode::Gsprt {
                 h0_elo: 0.0,
-                h1_elo: 5.0,
+                h1_elo: GSPRT_H1_ELO,
                 alpha: 0.05,
                 beta: 0.05,
             },
