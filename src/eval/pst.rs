@@ -6,10 +6,11 @@ use std::sync::{Arc, OnceLock};
 use sha2::{Digest, Sha256};
 
 use super::features::{
-    FEATURE_COUNT, active_features, active_features_for, feature_index, lion_feature_index,
+    FEATURE_COUNT, PIECE_STATE_COUNT, active_features, active_features_for, feature_index,
+    lion_feature_index, piece_state,
 };
 use crate::core::mv::Undo;
-use crate::{Color, Position, Square};
+use crate::{Color, PieceCode, PieceKind, Position, Square};
 
 /// MNPTヘッダのバイト数。
 const HEADER_LENGTH: usize = 80;
@@ -22,6 +23,10 @@ const EVALUATION_LIMIT: i32 = 28_999;
 pub struct Pst {
     /// 1/8センチポーン単位の特徴重み。
     weights: [i16; FEATURE_COUNT],
+    /// 駒状態ごとのセンチポーン単位の駒価値。
+    piece_values: [i32; PIECE_STATE_COUNT],
+    /// 静止探索で小さな捕獲を残すための余裕値。
+    delta_margin: i32,
     /// 学習時に使ったセンチポーンから勝率ロジットへの尺度。
     k: f32,
     /// 重み本体のSHA-256。学習データのヘッダに生成元のネットとして記録する。
@@ -85,11 +90,32 @@ impl Pst {
                     .expect("slice length is fixed"),
             );
         }
+        let (piece_values, delta_margin) = derive_piece_values(&weights)?;
         Ok(Self {
             weights,
+            piece_values,
+            delta_margin,
             k,
             checksum,
         })
+    }
+
+    /// 盤上の駒コードに対応する駒価値をセンチポーンで返す。
+    ///
+    /// 値の導出は`docs/plans/strength-stage3.md`の「駒価値の再調整」節に従う。
+    ///
+    /// # Panics
+    ///
+    /// `piece`が空升または盤外の番兵を表す場合にパニックする。
+    #[inline]
+    pub fn piece_value(&self, piece: PieceCode) -> i32 {
+        self.piece_values[piece_state(piece)]
+    }
+
+    /// 静止探索で小さな捕獲を残すための余裕値を返す。
+    #[inline]
+    pub const fn delta_margin(&self) -> i32 {
+        self.delta_margin
     }
 
     /// 学習時に使った勝率尺度Kを返す。
@@ -207,6 +233,15 @@ pub enum Error {
     },
     /// 重み本体のSHA-256がヘッダの値と一致しない。
     ChecksumMismatch,
+    /// 盤上に現れ得る非王駒の導出値が正ではない。
+    NonPositivePieceValue {
+        /// 導出値が正ではない駒種。
+        kind: PieceKind,
+        /// 成った状態かどうか。
+        promoted: bool,
+        /// 導出したセンチポーン単位の駒価値。
+        value: i32,
+    },
 }
 
 impl fmt::Display for Error {
@@ -230,11 +265,87 @@ impl fmt::Display for Error {
             Self::InvalidRuleSet => formatter.write_str("invalid MNPT rule-set field"),
             Self::InvalidK { actual } => write!(formatter, "invalid MNPT K: {actual}"),
             Self::ChecksumMismatch => formatter.write_str("MNPT weight checksum mismatch"),
+            Self::NonPositivePieceValue {
+                kind,
+                promoted,
+                value,
+            } => write!(
+                formatter,
+                "non-positive MNPT piece value: kind={kind:?}, promoted={promoted}, value={value}"
+            ),
         }
     }
 }
 
 impl std::error::Error for Error {}
+
+/// 全駒状態の駒価値と静止探索の余裕値をPST重みから導出する。
+fn derive_piece_values(
+    weights: &[i16; FEATURE_COUNT],
+) -> Result<([i32; PIECE_STATE_COUNT], i32), Error> {
+    let mut values = [0_i32; PIECE_STATE_COUNT];
+    for (state, value) in values.iter_mut().enumerate() {
+        let own_start = state * 144;
+        let enemy_start = (PIECE_STATE_COUNT + state) * 144;
+        let own_sum: i64 = weights[own_start..own_start + 144]
+            .iter()
+            .map(|&weight| i64::from(weight))
+            .sum();
+        let enemy_sum: i64 = weights[enemy_start..enemy_start + 144]
+            .iter()
+            .map(|&weight| i64::from(weight))
+            .sum();
+        *value = round_piece_value(own_sum - enemy_sum);
+    }
+
+    let mut max_non_royal = 0;
+    for kind in PieceKind::ALL {
+        if kind.can_promote() {
+            let piece = PieceCode::new(Color::Black, kind)
+                .expect("promotable kind must have an unpromoted code");
+            validate_piece_value(&values, piece_state(piece), kind, false, &mut max_non_royal)?;
+            if kind.unpromoted().is_some() {
+                validate_piece_value(&values, kind.index(), kind, true, &mut max_non_royal)?;
+            }
+        } else if !matches!(kind, PieceKind::King | PieceKind::CrownPrince) {
+            let promoted = PieceCode::new(Color::Black, kind).is_none();
+            validate_piece_value(&values, kind.index(), kind, promoted, &mut max_non_royal)?;
+        }
+    }
+
+    let pawn =
+        PieceCode::new(Color::Black, PieceKind::Pawn).expect("pawn must have an unpromoted code");
+    let pawn_value = values[piece_state(pawn)];
+    let royal_value = max_non_royal + pawn_value;
+    values[PieceKind::King.index()] = royal_value;
+    values[PieceKind::CrownPrince.index()] = royal_value;
+    Ok((values, 2 * pawn_value))
+}
+
+/// 盤上に現れ得る非王駒の値を検査し、最大値を更新する。
+fn validate_piece_value(
+    values: &[i32; PIECE_STATE_COUNT],
+    state: usize,
+    kind: PieceKind,
+    promoted: bool,
+    max_non_royal: &mut i32,
+) -> Result<(), Error> {
+    let value = values[state];
+    if value <= 0 {
+        return Err(Error::NonPositivePieceValue {
+            kind,
+            promoted,
+            value,
+        });
+    }
+    *max_non_royal = (*max_non_royal).max(value);
+    Ok(())
+}
+
+/// 2304分の生重み差を、0.5を0から遠ざけて整数センチポーンへ丸める。
+fn round_piece_value(num: i64) -> i32 {
+    ((num + num.signum() * 1_152) / 2_304) as i32
+}
 
 /// 学習PSTで局面を手番側の視点からセンチポーン評価する。
 pub fn evaluate(pst: &Pst, position: &Position) -> i32 {
@@ -271,6 +382,7 @@ pub fn weights() -> Result<Arc<Pst>, Error> {
 mod tests {
     use super::*;
     use crate::Move;
+    use crate::eval::features::{PIECE_STATE_COUNT, piece_state};
     use crate::eval::handcrafted::piece_value;
     use crate::test_util::{position_from_codes, sq};
     use crate::{Color, MoveRules, PieceCode, PieceKind, Square};
@@ -278,6 +390,39 @@ mod tests {
     /// 検査用の正しいMNPTバイト列を返す。
     fn valid_bytes() -> Vec<u8> {
         include_bytes!("../../nets/pst-init.bin").to_vec()
+    }
+
+    /// 盤上に現れ得る駒状態を代表する先手の駒コードを返す。
+    fn reachable_piece_states() -> Vec<PieceCode> {
+        let mut pieces = Vec::new();
+        for kind in PieceKind::ALL {
+            if kind.can_promote() {
+                pieces.push(PieceCode::new(Color::Black, kind).unwrap());
+                if kind.unpromoted().is_some() {
+                    pieces.push(PieceCode::new_promoted(Color::Black, kind).unwrap());
+                }
+            } else {
+                pieces.push(
+                    PieceCode::new(Color::Black, kind)
+                        .or_else(|| PieceCode::new_promoted(Color::Black, kind))
+                        .unwrap(),
+                );
+            }
+        }
+        assert_eq!(pieces.len(), PIECE_STATE_COUNT - 10);
+        pieces
+    }
+
+    /// MNPT本体の指定特徴の重みを書き換える。
+    fn set_weight(bytes: &mut [u8], feature: usize, weight: i16) {
+        let offset = HEADER_LENGTH + feature * 2;
+        bytes[offset..offset + 2].copy_from_slice(&weight.to_le_bytes());
+    }
+
+    /// MNPT本体を変更した後のSHA-256をヘッダへ反映する。
+    fn refresh_checksum(bytes: &mut [u8]) {
+        let checksum: [u8; 32] = Sha256::digest(&bytes[HEADER_LENGTH..]).into();
+        bytes[48..80].copy_from_slice(&checksum);
     }
 
     /// 指定局面の手番側駒価値差を計算する。
@@ -540,6 +685,79 @@ mod tests {
         for position in positions {
             assert_eq!(evaluate(&pst, &position), material_score(&position));
         }
+    }
+
+    /// 初期PSTから導出した全駒価値がv0の表と一致することを検査する。
+    #[test]
+    fn initialized_pst_derives_the_frozen_piece_values() {
+        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+        for piece in reachable_piece_states() {
+            let kind = piece.kind().unwrap();
+            if !matches!(kind, PieceKind::King | PieceKind::CrownPrince) {
+                assert_eq!(pst.piece_value(piece), piece_value(kind), "piece={piece:?}");
+            }
+        }
+
+        let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+        let prince = PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap();
+        assert_eq!(pst.piece_value(king), 2_600);
+        assert_eq!(pst.piece_value(prince), 2_600);
+    }
+
+    /// 埋め込みPSTの盤上駒価値が正で、王駒と余裕値が設計式を満たすことを検査する。
+    #[test]
+    fn embedded_pst_piece_values_satisfy_search_invariants() {
+        let pst = Pst::decode(include_bytes!("../../nets/pst.bin")).unwrap();
+        let pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
+        let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+        let prince = PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap();
+        let max_non_royal = reachable_piece_states()
+            .into_iter()
+            .filter(|piece| !matches!(piece.kind(), Some(PieceKind::King | PieceKind::CrownPrince)))
+            .map(|piece| {
+                let value = pst.piece_value(piece);
+                assert!(value > 0, "piece={piece:?}, value={value}");
+                value
+            })
+            .max()
+            .unwrap();
+
+        assert!(pst.piece_value(king) > max_non_royal);
+        assert!(pst.piece_value(prince) > max_non_royal);
+        assert_eq!(pst.delta_margin(), 2 * pst.piece_value(pawn));
+    }
+
+    /// 盤上に現れ得る非王駒の導出値が0なら復号を拒否することを検査する。
+    #[test]
+    fn decode_rejects_non_positive_reachable_piece_value() {
+        let mut bytes = valid_bytes();
+        let pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
+        let state = piece_state(pawn);
+        for relative_color in 0..2 {
+            for square in 0..144 {
+                let feature = (relative_color * PIECE_STATE_COUNT + state) * 144 + square;
+                set_weight(&mut bytes, feature, 0);
+            }
+        }
+        refresh_checksum(&mut bytes);
+
+        assert!(matches!(
+            Pst::decode(&bytes),
+            Err(Error::NonPositivePieceValue {
+                kind: PieceKind::Pawn,
+                promoted: false,
+                value: 0,
+            })
+        ));
+    }
+
+    /// 駒価値の丸めが正負とも0.5を0から遠ざけることを検査する。
+    #[test]
+    fn piece_value_rounding_uses_half_away_from_zero() {
+        assert_eq!(round_piece_value(1_152), 1);
+        assert_eq!(round_piece_value(1_151), 0);
+        assert_eq!(round_piece_value(-1_152), -1);
+        assert_eq!(round_piece_value(-1_151), 0);
     }
 
     /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。

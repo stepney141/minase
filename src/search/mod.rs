@@ -18,12 +18,11 @@ use std::time::{Duration, Instant};
 use crate::MoveGenerator;
 use crate::core::game::{Game, GameStatus};
 use crate::core::mv::Move;
-use crate::core::piece::{COLOR_COUNT, PieceKind};
+use crate::core::piece::{COLOR_COUNT, PieceCode};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::Pst;
-use crate::eval::handcrafted::piece_value;
 use crate::eval::pst::PstAccumulator;
 
 use tt::Bound;
@@ -47,9 +46,6 @@ const STOP_CHECK_INTERVAL: u64 = 4096;
 const HISTORY_LIMIT: i32 = 1 << 14;
 /// 1つのplyに記録するkiller手の数。
 const KILLER_COUNT: usize = 2;
-/// 静止探索で小さな捕獲を残すための余裕値。
-const DELTA_MARGIN: i32 = 200;
-
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
@@ -1138,12 +1134,12 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
         let mut index = 0;
-        while let Some(mv) = picker.next(position, &self.generator, &self.history) {
+        while let Some(mv) = picker.next(position, self.pst, &self.generator, &self.history) {
             let reduction = u32::from(
                 depth >= 3
                     && index >= 3
                     && Some(mv) != tt_move
-                    && move_order_key(position, mv).is_none()
+                    && move_order_key(position, self.pst, mv).is_none()
                     && !self.killers[ply as usize][..].contains(&Some(mv)),
             );
             let score =
@@ -1156,7 +1152,7 @@ impl Searcher<'_> {
             alpha = alpha.max(score);
             if alpha >= beta {
                 beta_cutoff = true;
-                if move_order_key(position, mv).is_none() {
+                if move_order_key(position, self.pst, mv).is_none() {
                     self.record_quiet_beta_cutoff(position, mv, depth, ply);
                 }
                 break;
@@ -1232,7 +1228,7 @@ impl Searcher<'_> {
         let mut captures: Vec<_> = captures
             .into_iter()
             .map(|mv| {
-                let key = move_order_key(position, mv)
+                let key = move_order_key(position, self.pst, mv)
                     .expect("capture generator must not return a quiet move");
                 (mv, key)
             })
@@ -1246,7 +1242,9 @@ impl Searcher<'_> {
 
         for (mv, key) in captures {
             let is_last_royal_capture = captures_last_royal(position, mv);
-            if !is_last_royal_capture && stand_pat + key.captured_value + DELTA_MARGIN <= alpha {
+            if !is_last_royal_capture
+                && stand_pat + key.captured_value + self.pst.delta_margin() <= alpha
+            {
                 continue;
             }
             let score = if is_last_royal_capture {
@@ -1394,7 +1392,7 @@ impl Searcher<'_> {
         let killers = self.killers[ply as usize];
         let color = position.side_to_move().index();
         moves.sort_by_cached_key(|&mv| {
-            if let Some(key) = move_order_key(position, mv) {
+            if let Some(key) = move_order_key(position, self.pst, mv) {
                 OrderedMoveKey::Capture {
                     captured_value: Reverse(key.captured_value),
                     attacker_value: key.attacker_value,
@@ -1603,6 +1601,7 @@ impl MovePicker {
     fn next(
         &mut self,
         position: &Position,
+        pst: &Pst,
         generator: &MoveGenerator,
         history: &HistoryTable,
     ) -> Option<Move> {
@@ -1621,7 +1620,7 @@ impl MovePicker {
                         generator.generate_captures(position, &mut self.captures);
                         self.captures.retain(|&mv| Some(mv) != self.tt_move);
                         self.captures.sort_by_key(|&mv| {
-                            let key = move_order_key(position, mv)
+                            let key = move_order_key(position, pst, mv)
                                 .expect("capture generator must not return a quiet move");
                             (Reverse(key.captured_value), key.attacker_value)
                         });
@@ -1680,27 +1679,26 @@ struct MoveOrderKey {
 }
 
 /// 捕獲手なら整列キーを返す。非捕獲手は`None`を返す。
-fn move_order_key(position: &Position, mv: Move) -> Option<MoveOrderKey> {
+fn move_order_key(position: &Position, pst: &Pst, mv: Move) -> Option<MoveOrderKey> {
     let captured_value: i32 = position
         .captured_squares(mv)
         .into_iter()
         .flatten()
-        .map(|square| piece_value(piece_kind_at(position, square)))
+        .map(|square| pst.piece_value(piece_at_for_ordering(position, square)))
         .sum();
     (captured_value > 0).then(|| MoveOrderKey {
         captured_value,
-        attacker_value: piece_value(piece_kind_at(position, mv.from)),
+        attacker_value: pst.piece_value(piece_at_for_ordering(position, mv.from)),
     })
 }
 
-/// 指定升の駒種を返す。
+/// 指定升の駒コードを返す。
 ///
 /// # Panics
 ///
 /// 升に駒がない場合にパニックする。
-fn piece_kind_at(position: &Position, square: crate::Square) -> PieceKind {
+fn piece_at_for_ordering(position: &Position, square: crate::Square) -> PieceCode {
     position
         .piece_at(square)
-        .and_then(crate::PieceCode::kind)
         .expect("move ordering square must contain a piece")
 }

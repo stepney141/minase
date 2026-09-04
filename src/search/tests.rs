@@ -9,7 +9,7 @@
 use super::*;
 use crate::Square;
 use crate::core::piece::{Color, PieceCode, PieceKind};
-use crate::eval::evaluate;
+use crate::eval::{evaluate, weights};
 use crate::test_util::{position, position_from_codes, sq};
 
 use super::tt::{
@@ -271,16 +271,17 @@ fn staged_picker_fixture() -> Position {
 #[test]
 fn staged_picker_yields_every_legal_move_exactly_once() {
     let position = staged_picker_fixture();
+    let pst = weights().unwrap();
     let legal = legal_moves(&position);
     let capture = legal
         .iter()
         .copied()
-        .find(|&mv| move_order_key(&position, mv).is_some())
+        .find(|&mv| move_order_key(&position, &pst, mv).is_some())
         .unwrap();
     let quiets: Vec<_> = legal
         .iter()
         .copied()
-        .filter(|&mv| move_order_key(&position, mv).is_none())
+        .filter(|&mv| move_order_key(&position, &pst, mv).is_none())
         .collect();
     let illegal = Move {
         from: fs(1, 1),
@@ -297,7 +298,12 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
     ] {
         let mut picker = MovePicker::new(tt_move, killers);
         let mut actual = Vec::new();
-        while let Some(mv) = picker.next(&position, &MoveGenerator::new(engine_rules()), &history) {
+        while let Some(mv) = picker.next(
+            &position,
+            &pst,
+            &MoveGenerator::new(engine_rules()),
+            &history,
+        ) {
             actual.push(mv);
         }
 
@@ -317,22 +323,28 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
 #[test]
 fn staged_picker_respects_advisory_precedence() {
     let position = staged_picker_fixture();
+    let pst = weights().unwrap();
     let legal = legal_moves(&position);
     let capture = legal
         .iter()
         .copied()
-        .find(|&mv| move_order_key(&position, mv).is_some())
+        .find(|&mv| move_order_key(&position, &pst, mv).is_some())
         .unwrap();
     let quiets: Vec<_> = legal
         .iter()
         .copied()
-        .filter(|&mv| move_order_key(&position, mv).is_none())
+        .filter(|&mv| move_order_key(&position, &pst, mv).is_none())
         .collect();
     let killer = quiets[0];
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut picker = MovePicker::new(Some(quiets[1]), [Some(killer), None]);
     let mut actual = Vec::new();
-    while let Some(mv) = picker.next(&position, &MoveGenerator::new(engine_rules()), &history) {
+    while let Some(mv) = picker.next(
+        &position,
+        &pst,
+        &MoveGenerator::new(engine_rules()),
+        &history,
+    ) {
         actual.push(mv);
     }
 
@@ -343,7 +355,7 @@ fn staged_picker_respects_advisory_precedence() {
     assert!(
         actual[killer_index + 1..]
             .iter()
-            .all(|&mv| move_order_key(&position, mv).is_none())
+            .all(|&mv| move_order_key(&position, &pst, mv).is_none())
     );
 }
 
