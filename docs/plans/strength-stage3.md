@@ -18,11 +18,11 @@ SEEの前提として、ある升を取れる駒の集合を幾何だけで求�
 本マイルストーンは2026年9月5日に起案して同日に着手し、進行中である。
 フェーズ1の診断で、学習PSTから導出した非王駒の駒価値はすべて正であり、学習PSTを駒価値の基準として使えることを確認した。
 いま詰まっている点はない。
-フェーズ2の駒価値の再調整は段階開始版との[STC](../measurements/strength-stage3-values-stc.md)が`H1`となりLTCを実行中である。
+フェーズ2の駒価値の再調整は、段階開始版との[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)がともに`H1`かつ異常0件となり採用した。
 フェーズ3の`attackers_to`とSEEは実装とテストを終え、benchの深さ3で捕獲手の38.7%をSEEが負として除き、25.0%を判定不能とする発動を確認した。
 フェーズ4の深さ上限は、[深さ分布のbench](../measurements/strength-stage3-qsearch-depth-bench.md)で深さ8以上が0.82%と事前基準の1%を下回ったため見送った。
 いま詰まっている点はない。
-次の一手は、駒価値のLTCの判定を受けて、採用ならSEEをそのコミットを基準にSTCへかけることである。
+次の一手は、SEEを駒価値の採用コミットを基準にSTCへかけ、`H1`ならLTCへ進めることである。
 
 ## 目的
 
@@ -191,6 +191,7 @@ benchの各局面を標準時間制御の到達深さに近い深さ5で探索�
 `Pst`に駒価値の表を持たせ、復号時に正値性を検査し、`move_order_key`と`DELTA_MARGIN`をその表に基づく値へ改める。
 単体テストで、埋め込みPSTの表が非王駒で正であること、王駒の値が非王駒の最大値を上回ること、余裕値が歩兵の2倍であること、および非王駒の導出値が正でない重みを`decode`が専用のエラーで拒否することを固定する。
 benchの総ノード数が変わることを確認し（順序と枝刈りが変わるため）、段階開始版とのSTCとLTCで採否を決める。
+benchの総ノード数は深さ3で607,322から773,071へ変わり、[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)がともに`H1`かつ異常0件となったため採用した。
 
 ### フェーズ3　`attackers_to`とSEE
 
