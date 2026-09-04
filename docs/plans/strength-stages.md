@@ -45,7 +45,7 @@
 ## 依存関係
 
 本計画は、探索部（[search.md](search.md)）、Lazy SMP（[lazy-smp.md](lazy-smp.md)）、評価関数（[evaluation.md](evaluation.md)）、評価関数の世代反復（[evaluation-gen1.md](evaluation-gen1.md)）、および対局ハーネス（[match-harness.md](match-harness.md)、[match-harness-efficiency.md](match-harness-efficiency.md)）の完了を前提とする。
-測定は [docs/sprt.md](../sprt.md) の標準手順に従い、機能採否はSTC（`time=10000+100`）の選別とLTC（`time=60000+600`）の最終測定による段階ゲート（[match-staged-gate.md](match-staged-gate.md)）のGSPRT、進捗の記録は固定200ペアのEloで行う。
+測定は [docs/sprt.md](../sprt.md) の標準手順に従い、機能採否はSTC（`time=10000+100`）の選別とLTC（`time=60000+200`）の最終測定による段階ゲート（[match-staged-gate.md](match-staged-gate.md)）のGSPRT、進捗の記録は固定200ペアのEloで行う。
 待機中の早期投了（[match-early-resignation.md](match-early-resignation.md)）が完了すれば、本計画の測定にその手順も適用する。
 
 段階の間の依存は次のとおりである。

@@ -15,7 +15,8 @@
 ### 機能採否の段階ゲート（STCとLTC）
 
 新機能の採否は、機能実装コミットと直前コミットの対等条件GSPRTを、短時間の選別と長時間の最終測定の2段階で実行して判定する。
-短時間条件を**STC**（short time control、`time=10000+100`）、長時間条件を**LTC**（long time control、`time=60000+600`）と呼び、いずれもfishtestの標準値と同じで、秒読みは使わない。
+短時間条件を**STC**（short time control、`time=10000+100`）、長時間条件を**LTC**（long time control、`time=60000+200`）と呼び、秒読みは使わない。
+STCはfishtestの標準値と同じであり、LTCは中将棋の1局が片側約240手続くことを踏まえ、片側の総思考時間がfishtestのLTC（60秒+0.6秒、チェスの片側約70手）と同程度になるよう加算を0.2秒にしている（選定理由は [plans/match-cost-reduction.md](plans/match-cost-reduction.md)）。
 思考制限は`--each`で両エンジンに同一条件を与える。
 固定深さと固定ノード数は、探索速度を除いた診断に限定し、採否の根拠には使わない。
 STCとLTCは別の測定として扱い、測定名と実行ディレクトリを接尾辞`-stc`と`-ltc`で分ける。
@@ -43,7 +44,7 @@ LTCの標準コマンドは次のとおりである。
 cargo run --release --bin match_runner -- \
   --run-dir data/matches/<測定名>-ltc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
-  --each time=60000+600 gsprt
+  --each time=60000+200 gsprt
 ```
 
 LTCのシードは、STCの基本シードからペア数以上離れた未使用の値とする（[隣接シードで対局が重複する教訓](lessons/derive-seed-adjacent-collision.md)）。
