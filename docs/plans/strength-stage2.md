@@ -17,8 +17,9 @@ fail-low（反復の評価値が前回を大きく下回り、最善手が崩れ
 
 ## 状態
 
-本マイルストーンは2026年9月2日に起案し、着手前である。
-次の一手は、フェーズ1の停止理由の記録に着手することである。
+本マイルストーンは2026年9月2日に起案して同日に着手し、2026年9月4日に完了した。
+予算式、反復継続の判断、および`position`再生の差分適用を採用し、停止理由の記録を段階開始版として残した。
+予算式は[STC](../measurements/strength-stage2-budget-stc.md)と[LTC](../measurements/strength-stage2-budget-ltc.md)、反復継続の判断は[STC](../measurements/strength-stage2-iteration-stc.md)と[LTC](../measurements/strength-stage2-iteration-ltc.md)がいずれも`H1`であり、[秒読みの煙試験](../measurements/strength-stage2-byoyomi-smoke.md)は時間切れ0件、[固定自己対局](../measurements/strength-stage2-elo200.md)は+113.9 Elo、[HaChu戦](../measurements/strength-stage2-hachu-elo200.md)は+149.3 Eloを進捗指標として記録した。
 
 ## 目的
 
@@ -145,18 +146,22 @@ hard limitによる探索途中の打ち切りは安全弁として残す。
 エンジンの`info string stop`と`time`欄、ハーネスの2欄と形式版の更新、および`clock_profile.py`の表示の置き換えを実装する。
 探索の挙動は変わらないので、benchの総ノード数が段階1の完了コミットと一致することを確認し、GSPRTは行わない。
 この完了コミットを段階開始版とし、段階開始版どうしの10ペアのSTC煙試験で、100ply以降のhard限り打ち切りの割合が本書の推定値（STCで86%以上）と整合することを確認する。
+benchの総ノード数は一致し、[煙試験](../measurements/strength-stage2-phase1-smoke.md)では100ply以降の79〜92%がhard打ち切りで、捨てられた計算時間の中央値は約50msであった。
 
 ### フェーズ2　予算式
 
 残り手数の見積り、`ply`の経路、および`soft ≤ hard`の不変条件を実装する。
 単体テストで、任意の入力に対して`soft ≤ hard`と`hard ≥ 1ms`が成り立つこと、時計合計が30msを超える入力で`hard ≤ remaining + byoyomi − 30ms`が成り立つこと、見積りが手数について単調非増加であること、および`ply`が`EXPECTED_PLIES`以上なら見積りが`MIN_MOVES`であることを固定する。
 10ペアのSTC煙試験で停止理由の分布を確認してから、段階開始版とのSTCとLTCで採否を決める。
+[煙試験](../measurements/strength-stage2-budget-smoke.md)で主時間の枯渇が100手目付近から200手目付近へ遅れることを確認し、[STC](../measurements/strength-stage2-budget-stc.md)と[LTC](../measurements/strength-stage2-budget-ltc.md)がともに`H1`かつ異常0件となったため採用した。
 
 ### フェーズ3　反復継続の判断
 
 継続判断の純粋関数を実装し、境界条件を単体テストで固定する。
 10ペアのSTC煙試験でhard限り打ち切りの割合が下がることを確認してから、フェーズ2の採用結果とのSTCとLTCで採否を決める。
 フェーズ2が不採用なら段階開始版を基準にする。
+[煙試験](../measurements/strength-stage2-iteration-smoke.md)で200手目以降のhard打ち切りが8割前後から2〜3割へ減ることを確認し、[STC](../measurements/strength-stage2-iteration-stc.md)と[LTC](../measurements/strength-stage2-iteration-ltc.md)がともに`H1`となったため採用した。
+STCの時間切れ1件は基準側の`position`再生の固定費が原因であり、フェーズ4で対処した。
 
 ### フェーズ4　`position`再生の差分適用
 
@@ -164,11 +169,13 @@ hard limitによる探索途中の打ち切りは安全弁として残す。
 全再生と差分適用で受理後の局面、手数、および終局状態が一致すること、不合法な差分着手で状態が変わらないことをテストで固定する。
 探索の挙動は変わらないので、benchの総ノード数が一致することを確認し、2,000手以上の着手列で1回あたりの処理時間が手数に比例して増えないことを計測する。
 単独のGSPRTは行わず、段階ゲートの測定に含める。
+benchの総ノード数は一致し、2,860手の着手列に対する`position`の処理時間は全再生の約65msから0.1ms程度になった。
 
 ### フェーズ5　秒読みの煙試験
 
 採用構成で`time=10000+100,byoyomi=200`の10ペアを走らせ、`time_forfeits`が0件であることを確認する。
 時間切れが出た場合は本段階を完了とせず、原因を調査して不具合として修正し、係数の調整は行わない。
+[煙試験](../measurements/strength-stage2-byoyomi-smoke.md)は時間切れ0件であった。
 
 ### フェーズ6　段階ゲート
 
@@ -177,6 +184,7 @@ hard limitによる探索途中の打ち切りは安全弁として残す。
 フェーズ4は探索の挙動を変えず、benchの総ノード数の一致と`position`処理時間の計測で確認する。
 最終構成と段階開始版とのSTCとLTCを省略する判断は、LTC1回に半日から1日を要する測定費用を理由とする利用者の決定である。
 反復継続の判断のLTCが`H1`で異常が0件になれば、段階開始版との固定200ペアEloをSTCで、HaChu戦の固定200ペアEloを対等な時間制御で、進捗指標として記録する。
+[固定自己対局](../measurements/strength-stage2-elo200.md)は+113.9 Elo（95%信頼区間+80.8〜+149.1）、[HaChu戦](../measurements/strength-stage2-hachu-elo200.md)は+149.3 Elo（95%信頼区間+115.5〜+186.0）であった。
 
 ## 検証
 
@@ -209,3 +217,9 @@ hard limitによる探索途中の打ち切りは安全弁として残す。
 - [持ち時間感度](../measurements/sensitivity-time2x.md)：持ち時間2倍で+216 Eloという効果の目安。
 - [段階1の最終STC](../measurements/strength-stage1-final-stc.md)と[最終LTC](../measurements/strength-stage1-final-ltc.md)：時計再構成に用いた保存記録。
 - [採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)：停止理由を記録する根拠。
+- [段階開始版の煙試験](../measurements/strength-stage2-phase1-smoke.md)：記録された停止理由と診断の整合。
+- [予算式の煙試験](../measurements/strength-stage2-budget-smoke.md)、[STC](../measurements/strength-stage2-budget-stc.md)、および[LTC](../measurements/strength-stage2-budget-ltc.md)：予算式の採用根拠。
+- [反復継続の判断の煙試験](../measurements/strength-stage2-iteration-smoke.md)、[STC](../measurements/strength-stage2-iteration-stc.md)、および[LTC](../measurements/strength-stage2-iteration-ltc.md)：反復継続の判断の採用根拠と時間切れの分析。
+- [秒読みの煙試験](../measurements/strength-stage2-byoyomi-smoke.md)：秒読みの経路の安全確認。
+- [固定自己対局](../measurements/strength-stage2-elo200.md)と[HaChu戦](../measurements/strength-stage2-hachu-elo200.md)：段階間の進捗指標。
+- [手数に比例する固定費は超長手数の対局で時間切れを起こす](../lessons/per-move-overhead-grows-with-game-length.md)：`position`再生の差分適用から得た教訓。
