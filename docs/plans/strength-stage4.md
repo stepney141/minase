@@ -15,7 +15,8 @@
 本マイルストーンは2026年9月5日に起案して同日に着手し、進行中である。
 フェーズ1の[診断bench](../measurements/strength-stage4-pruning-bench.md)を完了し、reverse futility pruning、futility pruning、late move pruningの余裕値と手数の上限を「採用した余裕値」節のとおり確定した。
 診断では、起案時の「条件付き不一致率10%」の規則が基礎率の低さで縮退することが分かり、最初のSTCより前に「失う良い結果の割合10%」の規則へ置き換えた。
-次の一手は、フェーズ2の王駒への利きの判定とreverse futility pruningを実装し、段階開始版とのSTCへ進むことである。
+フェーズ2のreverse futility pruningは、段階開始版との[STC](../measurements/strength-stage4-rfp-stc.md)が`H0`となり不採用とし、王駒への利きの判定とともに実装を外した。
+次の一手は、フェーズ3のfutility pruningを実装し、段階開始版とのSTCへ進むことである。
 
 ## 目的
 
