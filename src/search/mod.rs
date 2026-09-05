@@ -48,10 +48,6 @@ const STOP_CHECK_INTERVAL: u64 = 4096;
 const HISTORY_LIMIT: i32 = 1 << 14;
 /// 1つのplyに記録するkiller手の数。
 const KILLER_COUNT: usize = 2;
-/// 深さ1〜3のreverse futility pruningの余裕値を半歩兵単位で表した倍率。
-///
-/// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
-const REVERSE_FUTILITY_MARGIN_HALF_PAWNS: i32 = 1;
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
@@ -1097,22 +1093,6 @@ impl Searcher<'_> {
             }
         }
 
-        // docs/plans/strength-stage4.mdの「reverse futility pruning」節。
-        // 利きの判定は他の条件が成立した場合だけ行い、返す静的評価は置換表に保存しない。
-        if depth <= 3
-            && beta - alpha == 1
-            && alpha.abs() < MATE_THRESHOLD
-            && beta.abs() < MATE_THRESHOLD
-        {
-            let static_eval = self
-                .pst
-                .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
-            let margin = self.pst.pawn_value() * REVERSE_FUTILITY_MARGIN_HALF_PAWNS / 2;
-            if static_eval - margin >= beta && !royal_under_attack(position) {
-                return Some(static_eval);
-            }
-        }
-
         let side = position.side_to_move();
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
@@ -1546,20 +1526,6 @@ fn to_u64_ms(milliseconds: u128) -> u64 {
 /// 反復検出に使う探索局面キー(第24条第1項)を計算する。
 fn search_key(position: &Position) -> u64 {
     position.zobrist() ^ position.rights_zobrist()
-}
-
-/// 手番側のいずれかの王駒に相手駒の疑似利きが届くかを返す。
-///
-/// `docs/plans/strength-stage4.md`の「設計判断」の王駒への利きの判定に従う。
-/// 王駒の捕獲を禁じる規則はなく、王手放置も合法（RULES.md第8条）なので、
-/// 王駒の升では疑似利きと実際の捕獲可能性が一致する。
-fn royal_under_attack(position: &Position) -> bool {
-    let side = position.side_to_move();
-    let opponents = position.pieces_of(side.opposite());
-    position
-        .royal_pieces(side)
-        .into_iter()
-        .any(|square| !(position.attackers_to(square, position.occupied()) & opponents).is_empty())
 }
 
 /// 着手が相手の残存王駒をすべて取るかを返す(第21条第1項)。
