@@ -52,10 +52,6 @@ const KILLER_COUNT: usize = 2;
 ///
 /// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
 const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
-/// 深さ1〜3のlate move pruningで静かな手を展開する手番号の上限。
-///
-/// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
-const LATE_MOVE_LIMITS: [usize; 3] = [12, 23, 13];
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
@@ -1139,21 +1135,20 @@ impl Searcher<'_> {
             }
         }
 
-        // docs/plans/strength-stage4.mdの「適用するノード」節。
-        // futility pruningとlate move pruningでノード単位の条件を共有する。
-        let prune_quiets = depth <= 3
+        // docs/plans/strength-stage4.mdの「適用するノード」「futility pruning」節。
+        // 静的評価と余裕値の和は対象ノードで1回だけ求める。
+        let futility_bound = (depth <= 3
             && beta - alpha == 1
             && alpha.abs() < MATE_THRESHOLD
-            && beta.abs() < MATE_THRESHOLD;
-        // 同「futility pruning」節。
-        // 静的評価と余裕値の和は対象ノードで1回だけ求める。
-        let futility_bound = prune_quiets.then(|| {
-            let static_eval = self
-                .pst
-                .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
-            let margin = self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
-            static_eval + margin
-        });
+            && beta.abs() < MATE_THRESHOLD)
+            .then(|| {
+                let static_eval = self
+                    .pst
+                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+                let margin =
+                    self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
+                static_eval + margin
+            });
         let mut royal_attacked = None;
         let mut picker = MovePicker::new(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
@@ -1163,10 +1158,8 @@ impl Searcher<'_> {
         while let Some(mv) = picker.next(position, self.pst, &self.generator, &self.history) {
             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
-            if prune_quiets
-                && best_score > -MATE_THRESHOLD
-                && (futility_bound.is_some_and(|bound| bound <= alpha)
-                    || index >= LATE_MOVE_LIMITS[depth as usize - 1])
+            if best_score > -MATE_THRESHOLD
+                && futility_bound.is_some_and(|bound| bound <= alpha)
                 && Some(mv) != tt_move
                 && !mv.promote
                 && move_order_key(position, self.pst, mv).is_none()
