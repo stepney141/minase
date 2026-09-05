@@ -35,6 +35,7 @@
 | 棋力測定の所要時間削減 | [plans/match-cost-reduction.md](plans/match-cost-reduction.md) | 完了 | 2026年9月4日 |
 | lishogi Bot接続 | [plans/lishogi-bot.md](plans/lishogi-bot.md) | 起案 | ― |
 | 棋力向上段階3 | [plans/strength-stage3.md](plans/strength-stage3.md) | 完了 | 2026年9月5日 |
+| 棋力向上段階4 | [plans/strength-stage4.md](plans/strength-stage4.md) | 起案 | ― |
 
 ## 現在地
 
@@ -44,13 +45,14 @@
 
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
 10段階のうち段階3までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
-次の一手は、段階4の個別設計書を起案し、前向き枝刈りの第2層へ進むことである。
+段階4の前向き枝刈りの第2層は、個別設計書（plans/strength-stage4.md）を2026年9月5日に起案した。
+次の一手は、段階4のフェーズ1の診断benchで余裕値と手数の上限を確定し、reverse futility pruningから着手することである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、棋力向上段階4の前向き枝刈りの第2層である。
+次期候補は、段階4の完了後に続く棋力向上段階5の指し手順序付けとLMRの近代化である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
