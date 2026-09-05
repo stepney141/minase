@@ -52,10 +52,6 @@ const KILLER_COUNT: usize = 2;
 ///
 /// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
 const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
-/// 深さ1〜2のrazoringの余裕値を半歩兵単位で表した倍率。
-///
-/// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
-const RAZORING_MARGIN_HALF_PAWNS: [i32; 2] = [8, 8];
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
@@ -1101,33 +1097,6 @@ impl Searcher<'_> {
             }
         }
 
-        // docs/plans/strength-stage4.mdの「適用するノード」「静的評価の取得」節。
-        // 対象ノードの静的評価は1回だけ求め、razoringとfutility pruningで共有する。
-        let static_eval = (depth <= 3
-            && beta - alpha == 1
-            && alpha.abs() < MATE_THRESHOLD
-            && beta.abs() < MATE_THRESHOLD)
-            .then(|| {
-                self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move())
-            });
-        let mut royal_attacked = None;
-        // 同「razoring」「王駒への利きの判定」節。利きは他の条件が揃ってから調べる。
-        if depth <= 2
-            && static_eval.is_some_and(|value| {
-                let margin =
-                    self.pst.pawn_value() * RAZORING_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
-                value + margin <= alpha
-            })
-            && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
-        {
-            let value = self.quiesce(position, alpha, beta, ply)?;
-            if value <= alpha {
-                return Some(value);
-            }
-            // 静止探索はこのplyの主変化を空にし、通常探索のupdate_pvが置き換える。
-        }
-
         let side = position.side_to_move();
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
@@ -1168,10 +1137,19 @@ impl Searcher<'_> {
 
         // docs/plans/strength-stage4.mdの「適用するノード」「futility pruning」節。
         // 静的評価と余裕値の和は対象ノードで1回だけ求める。
-        let futility_bound = static_eval.map(|value| {
-            let margin = self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
-            value + margin
-        });
+        let futility_bound = (depth <= 3
+            && beta - alpha == 1
+            && alpha.abs() < MATE_THRESHOLD
+            && beta.abs() < MATE_THRESHOLD)
+            .then(|| {
+                let static_eval = self
+                    .pst
+                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+                let margin =
+                    self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
+                static_eval + margin
+            });
+        let mut royal_attacked = None;
         let mut picker = MovePicker::new(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
         let mut best_score = -INFINITY;
