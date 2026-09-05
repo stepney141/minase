@@ -46,8 +46,8 @@
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
 10段階のうち段階3までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
 段階4の前向き枝刈りの第2層（plans/strength-stage4.md）は2026年9月5日に着手し、フェーズ1の診断benchで余裕値と手数の上限を確定した。
-reverse futility pruningはSTCで`H0`となり不採用とした。
-次の一手は、futility pruningを実装し、段階開始版とのSTCへ進むことである。
+reverse futility pruningはSTCで`H0`となり不採用とし、futility pruningはSTCとLTCがともに`H1`で採用した。
+次の一手は、late move pruningを実装し、futility pruningの採用コミットを基準とするSTCへ進むことである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
