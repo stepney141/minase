@@ -179,14 +179,138 @@ fn run_negamax(
     (score, searcher.nodes)
 }
 
+// docs/plans/strength-stage4.md「razoring」「採用した余裕値」。
+// 捕獲のない局面では静止探索が静的評価を返し、4pの境界から通常探索を省く。
+#[test]
+fn razoring_returns_quiescence_at_the_margin_boundary() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let static_eval = evaluate(&pst, &position);
+    assert!(!royal_under_attack(&position));
+    for depth in 1..=2 {
+        for excess in [0, pst.pawn_value()] {
+            let alpha = static_eval + 4 * pst.pawn_value() + excess;
+            let (quiet_score, quiet_nodes) =
+                run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+            assert_eq!(quiet_score, static_eval);
+            let table = small_tt();
+            let (score, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
+            let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, 0, &small_tt());
+            assert_eq!(score, quiet_score);
+            assert_eq!(nodes, quiet_nodes + 1, "通常探索の手を展開しない");
+            assert!(nodes < full_nodes);
+            let hit = table.probe(search_key(&position), 0).unwrap();
+            assert_eq!(hit.depth, 0, "静止探索の記録を通常探索の深さで上書きしない");
+            assert_eq!(hit.bound, Bound::Upper);
+        }
+        let alpha = static_eval + 4 * pst.pawn_value() - 1;
+        let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+        let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
+        assert!(nodes > quiet_nodes + 1, "余裕値に1足りなければ通常探索する");
+    }
+}
+
+// 同「razoring」とsearch.md「静止探索」。静止探索の上界がαと等しい場合も打ち切る。
+#[test]
+fn razoring_accepts_quiescence_equal_to_alpha() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
+    for depth in 1..=2 {
+        let table = small_tt();
+        table.store(search_key(&position), 0, alpha, Bound::Upper, None, 0);
+        let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &table);
+        assert_eq!(quiet_score, alpha);
+        let (score, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &table);
+        assert_eq!(score, alpha);
+        assert_eq!(nodes, quiet_nodes + 1);
+    }
+}
+
+// 同「適用するノード」「razoring」。PV窓、詰み帯、深さ3では通常探索を行う。
+#[test]
+fn razoring_excludes_pv_mate_windows_and_depth_three() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
+    for (depth, alpha, beta) in [
+        (1, alpha, alpha + 2),
+        (2, alpha, alpha + 2),
+        (1, MATE_THRESHOLD - 1, MATE_THRESHOLD),
+        (2, MATE_THRESHOLD - 1, MATE_THRESHOLD),
+        (1, MATE_THRESHOLD, MATE_THRESHOLD + 1),
+        (2, MATE_THRESHOLD, MATE_THRESHOLD + 1),
+        (1, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
+        (2, -MATE_THRESHOLD, -MATE_THRESHOLD + 1),
+        (3, alpha, alpha + 1),
+    ] {
+        let (_, quiet_nodes) = run_quiesce(&position, alpha, beta, 0, &small_tt());
+        let (_, nodes) = run_negamax(&position, depth, alpha, beta, 0, &small_tt());
+        assert!(
+            nodes > quiet_nodes + 1,
+            "depth={depth}, alpha={alpha}, beta={beta}: {nodes} <= {}",
+            quiet_nodes + 1
+        );
+    }
+}
+
+// 同「王駒への利きの判定」。王駒への疑似利きがあれば、静的評価の条件が成立しても探索する。
+#[test]
+fn razoring_excludes_attacked_royals() {
+    let pst = weights().unwrap();
+    for rook_file in [10, 11] {
+        let position = position(
+            Color::Black,
+            &[
+                (sq(0, 11), Color::White, PieceKind::King),
+                (sq(11, 0), Color::Black, PieceKind::King),
+                (sq(rook_file, 6), Color::White, PieceKind::Rook),
+            ],
+        );
+        assert_eq!(royal_under_attack(&position), rook_file == 11);
+        let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
+        let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+        assert!(quiet_score <= alpha);
+        for depth in 1..=2 {
+            let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
+            if rook_file == 11 {
+                assert!(nodes > quiet_nodes + 1, "王駒への利きがあれば通常探索する");
+            } else {
+                assert_eq!(nodes, quiet_nodes + 1);
+            }
+        }
+    }
+}
+
+// 同「razoring」。捕獲でαを上回れば通常探索へ進み、PV窓の探索と同じ値を返す。
+#[test]
+fn razoring_continues_normal_search_after_recovering_capture() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/5r6/5R6/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
+    assert!(!royal_under_attack(&position));
+    let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+    assert!(quiet_score > alpha, "無防備な飛車の捕獲で余裕値を取り戻す");
+    // 深さ1なら子は静止探索となり、子ノードでの枝刈りの差を比較へ持ち込まない。
+    let table = small_tt();
+    let (score, nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
+    let (full_score, _) = run_negamax(&position, 1, alpha, alpha + 2, 0, &small_tt());
+    assert_eq!(score, full_score);
+    assert!(nodes > quiet_nodes + 1, "静止探索の後にも通常探索を行う");
+    let hit = table.probe(search_key(&position), 0).unwrap();
+    assert_eq!(hit.depth, 1);
+    assert!(hit.best_move.is_some());
+}
+
 // docs/plans/strength-stage4.md「futility pruning」「検証」。
 // 静かな合法手だけの局面では零窓の探索量が減り、少なくとも1手を探索して詰みを捏造しない。
+// futilityの各余裕値を上回り、razoringの4pには届かない窓で検証する。
 #[test]
 fn futility_reduces_quiet_nodes_without_false_mate() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     let pst = weights().unwrap();
     let static_eval = evaluate(&pst, &position);
-    let alpha = static_eval + 10 * pst.pawn_value();
+    let alpha = static_eval + 3 * pst.pawn_value();
     assert!(!royal_under_attack(&position));
     assert!(
         legal_moves(&position)
@@ -225,7 +349,7 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
 fn futility_searches_safe_quiets_after_losing_tt_move() {
     let position = crate::parse_sfen("k11/12/12/12/12/10r1/12/12/12/12/12/11K b").unwrap();
     let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &position) + 10 * pst.pawn_value();
+    let alpha = evaluate(&pst, &position) + 3 * pst.pawn_value();
     let losing_move = Move {
         from: sq(11, 0),
         mid: None,
@@ -271,7 +395,7 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
     ] {
         let position = crate::parse_sfen(sfen).unwrap();
         let pst = weights().unwrap();
-        let alpha = evaluate(&pst, &position) + 10 * pst.pawn_value();
+        let alpha = evaluate(&pst, &position) + 3 * pst.pawn_value();
         let tt_move = Move {
             from: sq(11, 0),
             mid: None,
