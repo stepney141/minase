@@ -48,6 +48,10 @@ const STOP_CHECK_INTERVAL: u64 = 4096;
 const HISTORY_LIMIT: i32 = 1 << 14;
 /// 1つのplyに記録するkiller手の数。
 const KILLER_COUNT: usize = 2;
+/// 深さ1〜3のfutility pruningの余裕値を半歩兵単位で表した倍率。
+///
+/// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
+const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
@@ -1131,12 +1135,39 @@ impl Searcher<'_> {
             }
         }
 
+        // docs/plans/strength-stage4.mdの「適用するノード」「futility pruning」節。
+        // 静的評価と余裕値の和は対象ノードで1回だけ求める。
+        let futility_bound = (depth <= 3
+            && beta - alpha == 1
+            && alpha.abs() < MATE_THRESHOLD
+            && beta.abs() < MATE_THRESHOLD)
+            .then(|| {
+                let static_eval = self
+                    .pst
+                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+                let margin =
+                    self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
+                static_eval + margin
+            });
+        let mut royal_attacked = None;
         let mut picker = MovePicker::new(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
         let mut index = 0;
         while let Some(mv) = picker.next(position, self.pst, &self.generator, &self.history) {
+            // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
+            // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
+            if best_score > -MATE_THRESHOLD
+                && futility_bound.is_some_and(|bound| bound <= alpha)
+                && Some(mv) != tt_move
+                && !mv.promote
+                && move_order_key(position, self.pst, mv).is_none()
+                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+            {
+                index += 1;
+                continue;
+            }
             let reduction = u32::from(
                 depth >= 3
                     && index >= 3
@@ -1526,6 +1557,20 @@ fn to_u64_ms(milliseconds: u128) -> u64 {
 /// 反復検出に使う探索局面キー(第24条第1項)を計算する。
 fn search_key(position: &Position) -> u64 {
     position.zobrist() ^ position.rights_zobrist()
+}
+
+/// 手番側のいずれかの王駒に相手駒の疑似利きが届くかを返す。
+///
+/// `docs/plans/strength-stage4.md`の「設計判断」の王駒への利きの判定に従う。
+/// 王駒の捕獲を禁じる規則はなく、王手放置も合法（RULES.md第8条）なので、
+/// 王駒の升では疑似利きと実際の捕獲可能性が一致する。
+fn royal_under_attack(position: &Position) -> bool {
+    let side = position.side_to_move();
+    let opponents = position.pieces_of(side.opposite());
+    position
+        .royal_pieces(side)
+        .into_iter()
+        .any(|square| !(position.attackers_to(square, position.occupied()) & opponents).is_empty())
 }
 
 /// 着手が相手の残存王駒をすべて取るかを返す(第21条第1項)。

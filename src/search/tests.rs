@@ -179,6 +179,152 @@ fn run_negamax(
     (score, searcher.nodes)
 }
 
+// docs/plans/strength-stage4.md「futility pruning」「検証」。
+// 静かな合法手だけの局面では零窓の探索量が減り、少なくとも1手を探索して詰みを捏造しない。
+#[test]
+fn futility_reduces_quiet_nodes_without_false_mate() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let static_eval = evaluate(&pst, &position);
+    let alpha = static_eval + 10 * pst.pawn_value();
+    assert!(!royal_under_attack(&position));
+    assert!(
+        legal_moves(&position)
+            .iter()
+            .all(|&mv| { !mv.promote && move_order_key(&position, &pst, mv).is_none() })
+    );
+    for depth in 1..=3 {
+        let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
+        let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, 0, &small_tt());
+        assert!(pruned_nodes > 1, "最初の手は探索する: depth={depth}");
+        assert!(
+            pruned_nodes < full_nodes,
+            "depth={depth}: {pruned_nodes} >= {full_nodes}"
+        );
+        assert!(score.abs() < MATE_THRESHOLD, "depth={depth}: score={score}");
+        if depth == 1 {
+            let leaf_scores: Vec<_> = legal_moves(&position)
+                .into_iter()
+                .map(|mv| {
+                    let mut child = position.clone();
+                    child.make_move_unchecked(mv, engine_rules());
+                    -evaluate(&pst, &child)
+                })
+                .collect();
+            assert!(
+                (*leaf_scores.iter().min().unwrap()..=*leaf_scores.iter().max().unwrap())
+                    .contains(&score)
+            );
+        }
+    }
+}
+
+// 同「展開しない手の範囲」「検証」。先頭の記録手が王駒を失っても、
+// 後続の安全な静かな手を読み、返り値にも置換表にも誤った詰み値を残さない。
+#[test]
+fn futility_searches_safe_quiets_after_losing_tt_move() {
+    let position = crate::parse_sfen("k11/12/12/12/12/10r1/12/12/12/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let alpha = evaluate(&pst, &position) + 10 * pst.pawn_value();
+    let losing_move = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    assert!(legal_moves(&position).contains(&losing_move));
+    assert!(!royal_under_attack(&position));
+    assert!(
+        legal_moves(&position)
+            .iter()
+            .all(|&mv| { !mv.promote && move_order_key(&position, &pst, mv).is_none() })
+    );
+    let ply = 5;
+    let mut child = position.clone();
+    child.make_move_unchecked(losing_move, engine_rules());
+    let (opponent_score, _) = run_negamax(&child, 1, -alpha - 1, -alpha, ply + 1, &small_tt());
+    assert!(opponent_score >= MATE_THRESHOLD, "先頭手は王駒を失う");
+
+    let table = small_tt();
+    table.store(
+        search_key(&position),
+        0,
+        0,
+        Bound::Upper,
+        Some(losing_move),
+        ply,
+    );
+    let (score, _) = run_negamax(&position, 2, alpha, alpha + 1, ply, &table);
+    assert!(score.abs() < MATE_THRESHOLD, "score={score}");
+    let hit = table.probe(search_key(&position), ply).unwrap();
+    assert!(hit.score.abs() < MATE_THRESHOLD);
+    assert_ne!(hit.best_move, Some(losing_move));
+}
+
+// 同「展開しない手の範囲」。静かな記録手を先に探索して条件を成立させても、
+// 後続の捕獲手と非捕獲の成る手は展開し、記録手だけの場合より探索ノードが増える。
+#[test]
+fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
+    for (sfen, promotion) in [
+        ("k11/12/12/12/12/12/12/5p6/5R6/12/12/11K b", false),
+        ("k11/12/12/12/5P6/12/12/12/12/12/12/11K b", true),
+    ] {
+        let position = crate::parse_sfen(sfen).unwrap();
+        let pst = weights().unwrap();
+        let alpha = evaluate(&pst, &position) + 10 * pst.pawn_value();
+        let tt_move = Move {
+            from: sq(11, 0),
+            mid: None,
+            to: sq(11, 1),
+            promote: false,
+        };
+        assert!(legal_moves(&position).contains(&tt_move));
+        assert!(!royal_under_attack(&position));
+        let protected: Vec<_> = legal_moves(&position)
+            .into_iter()
+            .filter(|&mv| {
+                if promotion {
+                    mv.promote && move_order_key(&position, &pst, mv).is_none()
+                } else {
+                    move_order_key(&position, &pst, mv).is_some()
+                }
+            })
+            .collect();
+        assert!(!protected.is_empty());
+        let table = small_tt();
+        table.store(search_key(&position), 0, 0, Bound::Upper, Some(tt_move), 0);
+        let (score, nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
+        assert!(
+            score < alpha,
+            "全対象手を調べる窓: score={score}, alpha={alpha}"
+        );
+        assert!(nodes > 3, "記録手の後にも探索する");
+    }
+}
+
+// 同「検証」。王将が安全でも太子が攻撃されていれば真になる。
+#[test]
+fn royal_under_attack_includes_crown_prince_alone() {
+    for (last_rank, attacked) in [("11K", false), ("5+E5K", true)] {
+        let position =
+            crate::parse_sfen(&format!("k11/12/12/12/12/5r6/12/12/12/12/12/{last_rank} b"))
+                .unwrap();
+        assert_eq!(royal_under_attack(&position), attacked);
+    }
+}
+
+// 同「検証」とRULES.md第8条。獅子は間の駒を跳び越えて距離2の王駒を取れる。
+#[test]
+fn royal_under_attack_includes_lion_jump_and_only_opponents() {
+    for (lion, side, attacked) in [("n", "b", true), ("N", "b", false), ("n", "w", false)] {
+        let position = crate::parse_sfen(&format!(
+            "k11/12/12/12/12/12/12/12/12/9{lion}2/10P1/11K {side}"
+        ))
+        .unwrap();
+        assert_eq!(royal_under_attack(&position), attacked);
+    }
+}
+
 fn worker_count(count: usize) -> NonZeroUsize {
     NonZeroUsize::new(count).expect("test worker count must be non-zero")
 }
