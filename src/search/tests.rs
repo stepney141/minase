@@ -302,6 +302,150 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
     }
 }
 
+// docs/plans/strength-stage4.md「late move pruning」「採用した余裕値」「検証」。
+// futilityの余裕値に届かない窓でも、後方の静かな手を省いて探索量を減らす。
+#[test]
+fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/2G2G2G3/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let moves = legal_moves(&position);
+    assert!(moves.len() > 12);
+    assert!(!royal_under_attack(&position));
+    assert!(
+        moves
+            .iter()
+            .all(|&mv| !mv.promote && move_order_key(&position, &pst, mv).is_none())
+    );
+    let leaf_scores: Vec<_> = moves
+        .iter()
+        .map(|&mv| {
+            let mut child = position.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            -evaluate(&pst, &child)
+        })
+        .collect();
+    let alpha = *leaf_scores.iter().max().unwrap();
+    assert!(
+        alpha < evaluate(&pst, &position) + pst.pawn_value() / 2,
+        "futility pruningが発動しない窓にする"
+    );
+    let (score, pruned_nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &small_tt());
+    let (_, full_nodes) = run_negamax(&position, 1, alpha, alpha + 2, 0, &small_tt());
+    assert!(pruned_nodes < full_nodes, "{pruned_nodes} >= {full_nodes}");
+    // 根の1ノードと、上限12手それぞれの通常探索・静止探索を数える。
+    assert_eq!(pruned_nodes, 1 + 2 * 12);
+    assert!(score.abs() < MATE_THRESHOLD);
+    assert!((*leaf_scores.iter().min().unwrap()..=alpha).contains(&score));
+}
+
+// 同「展開しない手の範囲」「late move pruning」。捕獲手も通し番号に含め、
+// 上限以降の捕獲手と成る手をすべて探索する。飛ばした静かな手でも番号を進める。
+#[test]
+fn late_move_pruning_searches_captures_and_promotions_beyond_limit() {
+    for (sfen, promotion) in [
+        ("k11/12/12/12/12/4ppp5/5N6/12/12/12/12/11K b", false),
+        ("k11/12/12/12/5O6/12/12/12/12/2G2G2G3/12/11K b", true),
+    ] {
+        let position = crate::parse_sfen(sfen).unwrap();
+        let pst = weights().unwrap();
+        let tt_move = Move {
+            from: sq(11, 0),
+            mid: None,
+            to: sq(11, 1),
+            promote: false,
+        };
+        assert!(legal_moves(&position).contains(&tt_move));
+        assert!(!royal_under_attack(&position));
+        let mut picker = MovePicker::new(Some(tt_move), [None; KILLER_COUNT]);
+        let generator = MoveGenerator::new(engine_rules());
+        let history = [[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
+        let mut ordered = Vec::new();
+        while let Some(mv) = picker.next(&position, &pst, &generator, &history) {
+            ordered.push(mv);
+        }
+        assert!(
+            ordered.iter().skip(12).any(|&mv| {
+                if promotion {
+                    mv.promote && move_order_key(&position, &pst, mv).is_none()
+                } else {
+                    move_order_key(&position, &pst, mv).is_some()
+                }
+            }),
+            "上限以降に保護対象の手がある: promotion={promotion}, total={}",
+            ordered.len()
+        );
+        let protected = ordered
+            .iter()
+            .filter(|&&mv| mv.promote || move_order_key(&position, &pst, mv).is_some())
+            .count();
+        let alpha = MATE_THRESHOLD - 2;
+        let table = small_tt();
+        table.store(search_key(&position), 0, 0, Bound::Upper, Some(tt_move), 0);
+        let (score, nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
+        assert!(score < alpha, "途中でβカットしない");
+        // 高いαで静止探索はstand-patを返し、静かな記録手と全保護対象を各2ノードで読む。
+        // 残りの静かな手にはfutility pruningが働く。
+        assert_eq!(
+            nodes,
+            1 + 2 * (1 + protected as u64),
+            "promotion={promotion}"
+        );
+    }
+}
+
+// 同「展開しない手の範囲」「検証」。先頭の記録手が王駒を失う局面でも、
+// 手数上限を超える安全な静かな手を持つノードに誤った詰み値を残さない。
+#[test]
+fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
+    let position = crate::parse_sfen("k11/12/12/12/12/10r1/12/2G9/12/G2G2G2G2/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let alpha = evaluate(&pst, &position) + 3 * pst.pawn_value() / 2 - 1;
+    let losing_move = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    let moves = legal_moves(&position);
+    assert!(moves.contains(&losing_move));
+    assert!(!royal_under_attack(&position));
+    assert!(
+        moves
+            .iter()
+            .all(|&mv| !mv.promote && move_order_key(&position, &pst, mv).is_none())
+    );
+    let safe_moves = moves
+        .iter()
+        .filter(|&&mv| {
+            let mut child = position.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            !legal_moves(&child)
+                .into_iter()
+                .any(|reply| captures_last_royal(&child, reply))
+        })
+        .count();
+    assert!(safe_moves > 23, "深さ2の上限より多い安全な手: {safe_moves}");
+    let ply = 5;
+    let mut child = position.clone();
+    child.make_move_unchecked(losing_move, engine_rules());
+    let (opponent_score, _) = run_negamax(&child, 1, -alpha - 1, -alpha, ply + 1, &small_tt());
+    assert!(opponent_score >= MATE_THRESHOLD, "先頭手は王駒を失う");
+    let table = small_tt();
+    table.store(
+        search_key(&position),
+        0,
+        0,
+        Bound::Upper,
+        Some(losing_move),
+        ply,
+    );
+    let (score, _) = run_negamax(&position, 2, alpha, alpha + 1, ply, &table);
+    assert!(score.abs() < MATE_THRESHOLD, "score={score}");
+    let hit = table.probe(search_key(&position), ply).unwrap();
+    assert!(hit.score.abs() < MATE_THRESHOLD);
+    assert_ne!(hit.best_move, Some(losing_move));
+}
+
 // 同「検証」。王将が安全でも太子が攻撃されていれば真になる。
 #[test]
 fn royal_under_attack_includes_crown_prince_alone() {
