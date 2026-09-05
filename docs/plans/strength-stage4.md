@@ -18,7 +18,8 @@
 フェーズ2のreverse futility pruningは、段階開始版との[STC](../measurements/strength-stage4-rfp-stc.md)が`H0`となり不採用とし、王駒への利きの判定とともに実装を外した。
 フェーズ3のfutility pruningは、段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件となり採用した。
 フェーズ4のlate move pruningは、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-lmp-stc.md)が`H0`となり不採用とし、実装を外した。
-次の一手は、フェーズ5のnull move pruningの減深量を実装し、futility pruningの採用コミットを基準とするSTCへ進むことである。
+フェーズ5のnull move pruningの減深量の変更は、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-nmp-r-stc.md)が2,280有効ペアで`H0`となり不採用とし、実装を外した。
+次の一手は、フェーズ6のverification searchの矛盾率をfutility pruningの採用構成のbenchで診断し、要否を決めることである。
 
 ## 目的
 
