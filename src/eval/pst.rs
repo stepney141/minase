@@ -112,6 +112,16 @@ impl Pst {
         self.piece_values[piece_state(piece)]
     }
 
+    /// 成っていない歩兵の駒価値をセンチポーンで返す。
+    ///
+    /// `docs/plans/strength-stage4.md`の「採用した余裕値」節で使う単位`p`。
+    #[inline]
+    pub fn pawn_value(&self) -> i32 {
+        let pawn = PieceCode::new(Color::Black, PieceKind::Pawn)
+            .expect("pawn must have an unpromoted code");
+        self.piece_value(pawn)
+    }
+
     /// 静止探索で小さな捕獲を残すための余裕値を返す。
     #[inline]
     pub const fn delta_margin(&self) -> i32 {
@@ -724,6 +734,7 @@ mod tests {
 
         assert!(pst.piece_value(king) > max_non_royal);
         assert!(pst.piece_value(prince) > max_non_royal);
+        assert_eq!(pst.pawn_value(), pst.piece_value(pawn));
         assert_eq!(pst.delta_margin(), 2 * pst.piece_value(pawn));
     }
 

@@ -179,6 +179,103 @@ fn run_negamax(
     (score, searcher.nodes)
 }
 
+// docs/plans/strength-stage4.md「採用した余裕値」「検証」。
+// 深さ1〜3で差がちょうどp/2なら静的評価を返し、置換表には保存しない。
+#[test]
+fn reverse_futility_returns_static_eval_at_margin_without_storing() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let static_eval = evaluate(&pst, &position);
+    let beta = static_eval - pst.pawn_value() / 2;
+    for depth in 1..=3 {
+        let table = small_tt();
+        let (score, nodes) = run_negamax(&position, depth, beta - 1, beta, 0, &table);
+        assert_eq!(score, static_eval, "depth={depth}");
+        assert_eq!(nodes, 1, "子を探索せずに返す: depth={depth}");
+        assert!(table.probe(search_key(&position), 0).is_none());
+    }
+}
+
+// 同「設計判断」「検証」。各除外条件と余裕値の境界では子を探索する。
+#[test]
+fn reverse_futility_exclusions_search_children() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let static_eval = evaluate(&pst, &position);
+    let beta = static_eval - pst.pawn_value() / 2;
+    let cases = [
+        (1, beta - 2, beta, "幅2のPV窓"),
+        (1, -MATE_THRESHOLD - 1, -MATE_THRESHOLD, "βが負の詰み帯"),
+        (1, -MATE_THRESHOLD, -MATE_THRESHOLD + 1, "αだけが詰み帯"),
+        (1, MATE_THRESHOLD - 1, MATE_THRESHOLD, "βが正の詰み帯"),
+        (1, beta, beta + 1, "余裕値に1不足"),
+        (4, beta - 1, beta, "深さ4"),
+    ];
+    for (depth, alpha, beta, reason) in cases {
+        let (_, nodes) = run_negamax(&position, depth, alpha, beta, 0, &small_tt());
+        assert!(nodes > 1, "{reason}");
+    }
+}
+
+// 同「設計判断」。置換表の打ち切りをreverse futilityより先に適用する。
+#[test]
+fn reverse_futility_preserves_tt_cutoff_priority() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let static_eval = evaluate(&pst, &position);
+    let beta = static_eval - pst.pawn_value() / 2;
+    let table = small_tt();
+    table.store(search_key(&position), 1, beta - 1, Bound::Exact, None, 0);
+    let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &table);
+    assert_eq!(score, beta - 1);
+    assert_eq!(nodes, 1);
+}
+
+// 同「検証」。相手飛車を1筋へ移し、王駒だけへの利きを加えると枝刈りを控える。
+#[test]
+fn reverse_futility_does_not_prune_when_royal_is_attacked() {
+    for (rook_rank, attacked) in [("10r1", false), ("11r", true)] {
+        let position = crate::parse_sfen(&format!(
+            "k11/12/12/12/12/{rook_rank}/12/12/12/12/5P6/11K b"
+        ))
+        .unwrap();
+        let pst = weights().unwrap();
+        let static_eval = evaluate(&pst, &position);
+        let beta = static_eval - pst.pawn_value() / 2;
+        assert_eq!(royal_under_attack(&position), attacked);
+        let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &small_tt());
+        if attacked {
+            assert!(nodes > 1);
+        } else {
+            assert_eq!(score, static_eval);
+            assert_eq!(nodes, 1);
+        }
+    }
+}
+
+// 同「検証」。王将が安全でも太子が攻撃されていれば真になる。
+#[test]
+fn royal_under_attack_includes_crown_prince_alone() {
+    for (last_rank, attacked) in [("11K", false), ("5+E5K", true)] {
+        let position =
+            crate::parse_sfen(&format!("k11/12/12/12/12/5r6/12/12/12/12/12/{last_rank} b"))
+                .unwrap();
+        assert_eq!(royal_under_attack(&position), attacked);
+    }
+}
+
+// 同「検証」とRULES.md第8条。獅子は間の駒を跳び越えて距離2の王駒を取れる。
+#[test]
+fn royal_under_attack_includes_lion_jump_and_only_opponents() {
+    for (lion, side, attacked) in [("n", "b", true), ("N", "b", false), ("n", "w", false)] {
+        let position = crate::parse_sfen(&format!(
+            "k11/12/12/12/12/12/12/12/12/9{lion}2/10P1/11K {side}"
+        ))
+        .unwrap();
+        assert_eq!(royal_under_attack(&position), attacked);
+    }
+}
+
 fn worker_count(count: usize) -> NonZeroUsize {
     NonZeroUsize::new(count).expect("test worker count must be non-zero")
 }
