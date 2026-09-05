@@ -17,7 +17,8 @@
 診断では、起案時の「条件付き不一致率10%」の規則が基礎率の低さで縮退することが分かり、最初のSTCより前に「失う良い結果の割合10%」の規則へ置き換えた。
 フェーズ2のreverse futility pruningは、段階開始版との[STC](../measurements/strength-stage4-rfp-stc.md)が`H0`となり不採用とし、王駒への利きの判定とともに実装を外した。
 フェーズ3のfutility pruningは、段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件となり採用した。
-次の一手は、フェーズ4のlate move pruningを実装し、futility pruningの採用コミットを基準とするSTCへ進むことである。
+フェーズ4のlate move pruningは、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-lmp-stc.md)が`H0`となり不採用とし、実装を外した。
+次の一手は、フェーズ5のnull move pruningの減深量を実装し、futility pruningの採用コミットを基準とするSTCへ進むことである。
 
 ## 目的
 

@@ -22,7 +22,8 @@
 静止探索の深さ上限は、深さ分布の測定で発動しない改良として見送った。
 2026年9月5日に[段階4](strength-stage4.md)へ着手し、診断benchで余裕値と手数の上限を確定した。
 reverse futility pruningはSTCで`H0`となり不採用とし、futility pruningはSTCとLTCがともに`H1`で採用した。
-次の一手は、段階4のlate move pruningを実装してSTCへ進むことである。
+late move pruningはSTCで`H0`となり不採用とした。
+次の一手は、段階4のnull move pruningの減深量の変更を実装してSTCへ進むことである。
 
 ## 目的
 
