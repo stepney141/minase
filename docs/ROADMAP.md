@@ -48,8 +48,8 @@
 段階4の前向き枝刈りの第2層（plans/strength-stage4.md）は2026年9月5日に着手し、フェーズ1の診断benchで余裕値と手数の上限を確定した。
 reverse futility pruningはSTCで`H0`となり不採用とし、futility pruningはSTCとLTCがともに`H1`で採用した。
 late move pruningとnull move pruningの減深量の変更はSTCで`H0`となり不採用とした。
-verification searchは診断で矛盾率0%のため見送った。
-次の一手は、razoringを実装してSTCへ進むことである。
+verification searchは診断で矛盾率0%のため見送り、razoringはSTCで`H0`となり不採用とした。
+次の一手は、最終構成の固定200ペアEloを段階開始版とHaChuに対して記録し、段階4を完了することである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。

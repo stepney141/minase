@@ -21,7 +21,8 @@
 フェーズ5のnull move pruningの減深量の変更は、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-nmp-r-stc.md)が2,280有効ペアで`H0`となり不採用とし、実装を外した。
 フェーズ6のverification searchは、futility pruningの採用構成の[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で矛盾率が0%となり見送った。
 フェーズ7のrazoringは、同じ構成の[診断bench](../measurements/strength-stage4-razoring-bench.md)で余裕値を深さ1と2とも歩兵価値の4倍と決め、発動率が基準を満たしたので実装する。
-次の一手は、razoringを実装してfutility pruningの採用コミットを基準とするSTCへ進むことである。
+razoringは、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-razoring-stc.md)が`H0`となり不採用とし、実装を外した。
+次の一手は、最終構成（futility pruningのみ採用）について、段階開始版との固定200ペアEloとHaChu戦の固定200ペアEloを記録し、段階を完了することである。
 
 ## 目的
 
