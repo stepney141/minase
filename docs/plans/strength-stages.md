@@ -20,11 +20,9 @@
 時間管理の適応的な延長と係数の再調整は段階6へ移した。
 2026年9月5日に[段階3](strength-stage3.md)を完了し、学習PSTから導出した駒価値、および`attackers_to`とSEEを採用した。
 静止探索の深さ上限は、深さ分布の測定で発動しない改良として見送った。
-2026年9月5日に[段階4](strength-stage4.md)へ着手し、診断benchで余裕値と手数の上限を確定した。
-reverse futility pruningはSTCで`H0`となり不採用とし、futility pruningはSTCとLTCがともに`H1`で採用した。
-late move pruningとnull move pruningの減深量の変更はSTCで`H0`となり不採用とした。
-verification searchは診断で矛盾率0%のため見送り、razoringはSTCで`H0`となり不採用とした。
-次の一手は、段階4の進捗指標を記録して完了することである。
+2026年9月6日に[段階4](strength-stage4.md)を完了し、futility pruningを採用した。
+reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringはSTCで`H0`となり不採用、verification searchは診断で矛盾率0%のため見送った。
+次の一手は、段階5の個別設計書を起案し、指し手順序付けとLMRの近代化へ進むことである。
 
 ## 目的
 
@@ -172,6 +170,18 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 各項目の余裕値は学習PSTの尺度に依存するので、段階3の駒価値の再調整後に着手する。
 発動の事前確認は設計判断に従う。
 段階の完了条件は、各項目の採否が記録されていることである。
+
+最終判断は次のとおりである。
+
+- futility pruningを採用した。残り深さ3以下の非PVノードで、静的評価に余裕値（深さ1で歩兵の半分、深さ2と3で歩兵の1.5倍）を加えてもαに届かないとき、置換表の記録手、捕獲手、成る手を除く静かな手を展開しない。王駒に相手の利きが届くノードと、探索済みの最善値が負の詰み帯にある間は行わない。段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`であった。
+- reverse futility pruningは不採用とした。余裕値を歩兵の半分とした実装の[STC](../measurements/strength-stage4-rfp-stc.md)が`H0`であった。
+- late move pruningは不採用とした。手数上限を深さ順に12、23、13とした実装の[STC](../measurements/strength-stage4-lmp-stc.md)が`H0`であった。
+- null move pruningの減深量を静的評価とβの差に依存させる変更は不採用とした。[STC](../measurements/strength-stage4-nmp-r-stc.md)が2,280有効ペアで`H0`となり、効果は検出できる大きさになかった。
+- verification searchは見送った。[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で、null moveの打ち切りが縮めた深さの通常探索で覆される割合が0%であった。
+- razoringは不採用とした。余裕値を歩兵の4倍とした実装の[STC](../measurements/strength-stage4-razoring-stc.md)が`H0`であった。
+
+余裕値と手数上限は[診断bench](../measurements/strength-stage4-pruning-bench.md)で「失う良い結果の割合が10%以下になる最小値」として決めた。起案時の条件付き不一致率の規則は基礎率の低さで縮退したため、最初のSTCより前に置き換えた（教訓は [lessons/select-thresholds-by-recall-loss.md](../lessons/select-thresholds-by-recall-loss.md)）。
+[固定自己対局](../measurements/strength-stage4-elo200.md)は段階開始版に対してSTCで+86.4 Elo、[HaChu戦](../measurements/strength-stage4-hachu-elo200.md)は+200.2 Eloを進捗指標として記録したため、段階4を完了した。
 
 ## 段階5　指し手順序付けとLMRの近代化
 

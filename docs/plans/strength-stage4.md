@@ -9,20 +9,15 @@
 採否は項目ごとに、短時間（STC）と長時間（LTC）の時間制御GSPRT（自己対局の勝敗から強さの差を逐次判定する統計検定、[docs/sprt.md](../sprt.md)）で判定し、段階開始版（本書の着手時点のコミット）は変更せず、各項目は直前に採用した構成を基準に測る。
 各項目は実装前にbenchの診断で発動を確かめ、発動または効果の見込みが本書の基準に届かなければ実装せずに見送る。
 完了条件は、各項目の採否または見送りが記録され、採用した枝刈りが誤った詰みの値を返さないことがテストで固定され、段階開始版と外部エンジンHaChuに対する固定200ペアのElo（採否には使わない進捗指標）が記録されていることである。
+futility pruningだけをSTCとLTCがともに`H1`で採用し、reverse futility pruning、late move pruning、null move pruningの減深量、およびrazoringはSTCで`H0`となり不採用、verification searchは診断で矛盾率0%のため見送った。
 
 ## 状態
 
-本マイルストーンは2026年9月5日に起案して同日に着手し、進行中である。
-フェーズ1の[診断bench](../measurements/strength-stage4-pruning-bench.md)を完了し、reverse futility pruning、futility pruning、late move pruningの余裕値と手数の上限を「採用した余裕値」節のとおり確定した。
-診断では、起案時の「条件付き不一致率10%」の規則が基礎率の低さで縮退することが分かり、最初のSTCより前に「失う良い結果の割合10%」の規則へ置き換えた。
-フェーズ2のreverse futility pruningは、段階開始版との[STC](../measurements/strength-stage4-rfp-stc.md)が`H0`となり不採用とし、王駒への利きの判定とともに実装を外した。
-フェーズ3のfutility pruningは、段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件となり採用した。
-フェーズ4のlate move pruningは、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-lmp-stc.md)が`H0`となり不採用とし、実装を外した。
-フェーズ5のnull move pruningの減深量の変更は、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-nmp-r-stc.md)が2,280有効ペアで`H0`となり不採用とし、実装を外した。
-フェーズ6のverification searchは、futility pruningの採用構成の[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で矛盾率が0%となり見送った。
-フェーズ7のrazoringは、同じ構成の[診断bench](../measurements/strength-stage4-razoring-bench.md)で余裕値を深さ1と2とも歩兵価値の4倍と決め、発動率が基準を満たしたので実装する。
-razoringは、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-razoring-stc.md)が`H0`となり不採用とし、実装を外した。
-次の一手は、最終構成（futility pruningのみ採用）について、段階開始版との固定200ペアEloとHaChu戦の固定200ペアEloを記録し、段階を完了することである。
+本マイルストーンは2026年9月5日に起案して同日に着手し、2026年9月6日に完了した。
+futility pruningを採用し、reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringは不採用、verification searchは見送った。
+futility pruningは段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件であり、不採用の4項目は[reverse futility](../measurements/strength-stage4-rfp-stc.md)、[late move pruning](../measurements/strength-stage4-lmp-stc.md)、[null move pruningの減深量](../measurements/strength-stage4-nmp-r-stc.md)、[razoring](../measurements/strength-stage4-razoring-stc.md)のSTCがいずれも`H0`であった。
+verification searchは[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で矛盾率が0%であった。
+[固定自己対局](../measurements/strength-stage4-elo200.md)は段階開始版に対してSTCで+86.4 Elo、[HaChu戦](../measurements/strength-stage4-hachu-elo200.md)は+200.2 Eloを進捗指標として記録した。
 
 ## 目的
 
