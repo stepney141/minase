@@ -19,7 +19,9 @@
 フェーズ3のfutility pruningは、段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件となり採用した。
 フェーズ4のlate move pruningは、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-lmp-stc.md)が`H0`となり不採用とし、実装を外した。
 フェーズ5のnull move pruningの減深量の変更は、futility pruningの採用コミットとの[STC](../measurements/strength-stage4-nmp-r-stc.md)が2,280有効ペアで`H0`となり不採用とし、実装を外した。
-次の一手は、フェーズ6のverification searchの矛盾率をfutility pruningの採用構成のbenchで診断し、要否を決めることである。
+フェーズ6のverification searchは、futility pruningの採用構成の[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で矛盾率が0%となり見送った。
+フェーズ7のrazoringは、同じ構成の[診断bench](../measurements/strength-stage4-razoring-bench.md)で余裕値を深さ1と2とも歩兵価値の4倍と決め、発動率が基準を満たしたので実装する。
+次の一手は、razoringを実装してfutility pruningの採用コミットを基準とするSTCへ進むことである。
 
 ## 目的
 
@@ -122,7 +124,8 @@ LMRは、深さ3以上で、置換表の記録手、捕獲手、killer手を除�
 
 発動率はreverse futilityが深さ順に67.6%、55.4%、38.2%、futilityが91.7%、63.0%、65.1%、late move pruningが92.3%、80.5%、93.4%であり、いずれも5%以上である。
 王駒への利きの判定による除外率は1.6%から3.0%で、いずれかの王駒に利きが届けば枝刈りを控える方式を採用した。
-razoringの余裕値とverification searchの矛盾率は、それぞれの診断が終わった時点でここへ追記する。
+verification searchは、futility pruningの採用構成の[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で、縮めた深さが1以上のnull moveの打ち切り723回（深さ7では7,455回）に矛盾が0件であり、見送った。
+razoringの余裕値は、同じ構成の[診断bench](../measurements/strength-stage4-razoring-bench.md)で深さ1と2とも400（`4p`）とし、静止探索の値で打ち切られる発動率は深さ順に13.6%と6.0%であった。
 
 ## 各項目の実装
 

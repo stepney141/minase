@@ -23,7 +23,8 @@
 2026年9月5日に[段階4](strength-stage4.md)へ着手し、診断benchで余裕値と手数の上限を確定した。
 reverse futility pruningはSTCで`H0`となり不採用とし、futility pruningはSTCとLTCがともに`H1`で採用した。
 late move pruningとnull move pruningの減深量の変更はSTCで`H0`となり不採用とした。
-次の一手は、段階4のverification searchとrazoringの要否をbenchで診断することである。
+verification searchは診断で矛盾率0%のため見送った。
+次の一手は、段階4のrazoringを実装してSTCへ進むことである。
 
 ## 目的
 
