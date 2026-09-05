@@ -1105,7 +1105,10 @@ impl Searcher<'_> {
             && beta.abs() < MATE_THRESHOLD
             && has_non_royal_piece
         {
-            let reduction = 2 + depth / 6;
+            let static_eval = self
+                .pst
+                .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+            let reduction = null_move_reduction(depth, static_eval, beta, self.pst.pawn_value());
             let lion_before = position
                 .lion_taken_by_non_lion()
                 .map(|trigger| trigger.square);
@@ -1557,6 +1560,15 @@ fn to_u64_ms(milliseconds: u128) -> u64 {
 /// 反復検出に使う探索局面キー(第24条第1項)を計算する。
 fn search_key(position: &Position) -> u64 {
     position.zobrist() ^ position.rights_zobrist()
+}
+
+/// 深さと静的評価のβに対する余裕からnull move pruningの減深量を返す。
+///
+/// `docs/plans/strength-stage4.md`の「null move pruningの減深量」節に従い、
+/// 基本量`2 + depth / 6`に、差を歩兵価値の2倍で割って0〜3に制限した値を加える。
+fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn_value: i32) -> u32 {
+    let extra = ((static_eval - beta) / (2 * pawn_value)).clamp(0, 3) as u32;
+    2 + depth / 6 + extra
 }
 
 /// 手番側のいずれかの王駒に相手駒の疑似利きが届くかを返す。

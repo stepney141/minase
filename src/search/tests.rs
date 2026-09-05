@@ -179,6 +179,63 @@ fn run_negamax(
     (score, searcher.nodes)
 }
 
+// docs/plans/strength-stage4.md「null move pruningの減深量」「検証」。
+// 加算は2pごとに増えて0〜3に収まり、基本量は深さ6ごとに1増える。
+#[test]
+fn null_move_reduction_scales_with_eval_surplus_and_depth() {
+    let beta = 137;
+    for pawn_value in [37, 100] {
+        for (depth, base) in [(3, 2), (5, 2), (6, 3), (11, 3), (12, 4)] {
+            for (difference, extra) in [
+                (-6 * pawn_value, 0),
+                (-1, 0),
+                (0, 0),
+                (2 * pawn_value - 1, 0),
+                (2 * pawn_value, 1),
+                (4 * pawn_value - 1, 1),
+                (4 * pawn_value, 2),
+                (6 * pawn_value - 1, 2),
+                (6 * pawn_value, 3),
+                (8 * pawn_value, 3),
+            ] {
+                assert_eq!(
+                    null_move_reduction(depth, beta + difference, beta, pawn_value),
+                    base + extra,
+                    "depth={depth}, difference={difference}, pawn_value={pawn_value}"
+                );
+            }
+        }
+    }
+}
+
+// 同「null move pruningの減深量」。6pの余裕がある深さ5の非PVノードでは、
+// null move後の深さが2から0へ飽和し、打ち切りまでの探索ノード数が減る。
+#[test]
+fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let beta = evaluate(&pst, &position) - 6 * pst.pawn_value();
+    assert!(beta.abs() < MATE_THRESHOLD);
+    assert!(!royal_under_attack(&position));
+
+    // 旧式R=2で行うnull move後の深さ2を直接探索する。
+    // この深さではnull moveを再試行しないため、旧式の探索を再現できる。
+    let mut passed = position.clone();
+    passed.make_null_move();
+    let (reply_score, reply_nodes) = run_negamax(&passed, 2, -beta, -beta + 1, 1, &small_tt());
+    assert!(-reply_score >= beta, "旧式でもnull moveで打ち切る");
+    let base_nodes = 1 + reply_nodes;
+
+    let table = small_tt();
+    let (score, nodes) = run_negamax(&position, 5, beta - 1, beta, 0, &table);
+    assert!(score >= beta && score.abs() < MATE_THRESHOLD);
+    assert!(
+        table.probe(search_key(&position), 0).is_none(),
+        "通常の手の探索へ進まずnull moveで打ち切る"
+    );
+    assert!(nodes < base_nodes, "nodes={nodes}, base_nodes={base_nodes}");
+}
+
 // docs/plans/strength-stage4.md「futility pruning」「検証」。
 // 静かな合法手だけの局面では零窓の探索量が減り、少なくとも1手を探索して詰みを捏造しない。
 #[test]
