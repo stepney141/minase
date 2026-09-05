@@ -18,8 +18,9 @@
 手配列の再利用と反復回数表は、benchの採用基準を満たさなかったため除いた。
 2026年9月4日に[段階2](strength-stage2.md)を完了し、予算式、反復継続の判断、および`position`再生の差分適用を採用した。
 時間管理の適応的な延長と係数の再調整は段階6へ移した。
-2026年9月5日に[段階3](strength-stage3.md)を起案し、駒価値の再調整、`attackers_to`とSEE、静止探索の深さ上限の順に進める。
-次の一手は、段階3のフェーズ2として駒価値の再調整を実装し、段階開始版とのSTCへかけることである。
+2026年9月5日に[段階3](strength-stage3.md)を完了し、学習PSTから導出した駒価値、および`attackers_to`とSEEを採用した。
+静止探索の深さ上限は、深さ分布の測定で発動しない改良として見送った。
+次の一手は、段階4の個別設計書を起案し、前向き枝刈りの第2層へ進むことである。
 
 ## 目的
 
@@ -143,6 +144,14 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 
 採否は1項目ずつ時間制御GSPRTで判定する。
 段階の完了条件は、各項目の採否が記録され、`attackers_to`とSEEを採用した場合はその契約がテストで固定されていることである。
+
+最終判断は次のとおりである。
+
+- 駒価値の再調整を採用した。学習PSTの重みから復号時に導出した駒価値（自駒と相手駒の144升平均の対称化、王駒は非王駒の最大値に歩兵を加えた固定値、余裕値は歩兵の2倍）で、段階開始版との[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)がともに`H1`であった。
+- `attackers_to`とSEEを採用した。判定不能の条件を経由升のある2段階移動と獅子が獅子を取る段階に絞り、駒価値の採用コミットを基準とする[STC](../measurements/strength-stage3-see-stc.md)と[LTC](../measurements/strength-stage3-see-ltc.md)がともに`H1`であった。
+- 静止探索の深さ上限は見送った。[深さ分布のbench](../measurements/strength-stage3-qsearch-depth-bench.md)で深さ8以上のノードが0.82%と事前基準の1%を下回った。
+
+[固定自己対局](../measurements/strength-stage3-elo200.md)は段階開始版に対してSTCで+41.8 Elo、[HaChu戦](../measurements/strength-stage3-hachu-elo200.md)は+125.0 Eloを進捗指標として記録したため、段階3を完了した。
 
 ## 段階4　前向き枝刈りの第2層
 
