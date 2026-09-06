@@ -87,6 +87,76 @@ fn small_tt() -> TranspositionTable {
     TranspositionTable::new(1).unwrap()
 }
 
+// docs/plans/strength-stage5.md「LMRの減深量」「検証」とフェーズ6指示書。
+// c = 2.00、H = 128の生成規則と、補正後の切り詰めを個別に固定する。
+#[test]
+fn lmr_table_follows_logarithmic_rule() {
+    let table = lmr_table();
+    assert!(table[0].iter().all(|&value| value == 0));
+    for row in table {
+        assert_eq!(row[0], 0);
+        assert_eq!(row[1], 0);
+    }
+    assert_eq!(table[3][3], 0);
+    assert_eq!(table[4][8], 1);
+    assert_eq!(table[5][255], 4);
+}
+
+#[test]
+fn lmr_history_adjustment_precedes_clamping() {
+    for (history, expected) in [
+        (i32::MIN, 2),
+        (-129, 2),
+        (-128, 2),
+        (-127, 1),
+        (0, 1),
+        (127, 1),
+        (128, 0),
+        (129, 0),
+        (i32::MAX, 0),
+    ] {
+        assert_eq!(lmr_reduction(4, 8, history), expected);
+        assert_eq!(lmr_reduction(5, 255, history), 3);
+    }
+    // 表の値が0でも負のhistoryなら減深し、負の補正結果は0で切る。
+    assert_eq!(lmr_reduction(4, 1, -128), 1);
+    assert_eq!(lmr_reduction(4, 1, 128), 0);
+}
+
+#[test]
+fn lmr_reduction_preserves_remaining_depth() {
+    for depth in 0..=MAX_PLY {
+        for index in 0..256 {
+            for history in [i32::MIN, -128, -127, 0, 127, 128, i32::MAX] {
+                let reduction = lmr_reduction(depth, index, history);
+                assert!(reduction <= 3);
+                match depth {
+                    0..=2 => assert_eq!(reduction, 0),
+                    3 => assert!(reduction <= 1),
+                    _ => {}
+                }
+                if depth >= 2 {
+                    assert!(depth - 1 - reduction >= 1);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn lmr_large_move_indices_use_last_column() {
+    for depth in 0..=MAX_PLY {
+        for history in [-128, 0, 128] {
+            for index in [256, 512, usize::MAX] {
+                assert_eq!(
+                    lmr_reduction(depth, index, history),
+                    lmr_reduction(depth, 255, history)
+                );
+            }
+        }
+    }
+}
+
 // 監査「置換表サイズのオーバーフロー」: 容量は外部設定値なので、0と
 // MiBからbyteへの変換不能をpanicではなく呼び出し側が処理できるエラーにする。
 #[test]

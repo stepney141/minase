@@ -12,7 +12,7 @@ use core::fmt;
 use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering as AtomicOrdering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -48,6 +48,18 @@ const STOP_CHECK_INTERVAL: u64 = 4096;
 const HISTORY_LIMIT: i32 = 1 << 14;
 /// 1つのplyに記録するkiller手の数。
 const KILLER_COUNT: usize = 2;
+/// LMRの対数積を割る係数。
+///
+/// `docs/plans/strength-stage5.md`の「採用した係数」節を参照。
+const LMR_DIVISOR: f64 = 2.0;
+/// LMRの減深量を1増減するhistory値の閾値。
+///
+/// `docs/plans/strength-stage5.md`の「採用した係数」節を参照。
+const LMR_HISTORY_THRESHOLD: i32 = 128;
+/// LMRの減深量の上限。
+const LMR_MAX_REDUCTION: u32 = 3;
+/// LMRの減深量表に保持する手番号の列数。
+const LMR_MOVE_COUNT: usize = 256;
 /// 深さ1〜3のfutility pruningの余裕値を半歩兵単位で表した倍率。
 ///
 /// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
@@ -56,6 +68,36 @@ const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
 type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
+
+/// 残り深さと手番号から引く、切り詰め前のLMR減深量表を1回だけ生成する。
+fn lmr_table() -> &'static [[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 1] {
+    static TABLE: OnceLock<[[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 1]> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut table = [[0; LMR_MOVE_COUNT]; MAX_PLY as usize + 1];
+        for (depth, row) in table.iter_mut().enumerate().skip(1) {
+            for (index, value) in row.iter_mut().enumerate().skip(1) {
+                *value = ((depth as f64).ln() * (index as f64).ln() / LMR_DIVISOR).floor() as u8;
+            }
+        }
+        table
+    })
+}
+
+/// history値で補正し、減深後の深さを1以上に保つLMR減深量を求める。
+///
+/// 深さ2未満では減深せず、手番号が表の列数以上なら最後の列を使う。
+fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
+    let base = i32::from(lmr_table()[depth as usize][index.min(LMR_MOVE_COUNT - 1)]);
+    let adjustment = if history >= LMR_HISTORY_THRESHOLD {
+        -1
+    } else if history <= -LMR_HISTORY_THRESHOLD {
+        1
+    } else {
+        0
+    };
+    let upper = LMR_MAX_REDUCTION.min(depth.saturating_sub(2)) as i32;
+    (base + adjustment).clamp(0, upper) as u32
+}
 
 /// 1回の有限探索に適用する制限。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1170,13 +1212,16 @@ impl Searcher<'_> {
                 index += 1;
                 continue;
             }
-            let reduction = u32::from(
-                depth >= 3
-                    && index >= 3
-                    && Some(mv) != tt_move
-                    && !capture
-                    && !self.killers[ply as usize][..].contains(&Some(mv)),
-            );
+            let reduction = if Some(mv) != tt_move
+                && !capture
+                && !self.killers[ply as usize][..].contains(&Some(mv))
+            {
+                let history =
+                    self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()];
+                lmr_reduction(depth, index, history)
+            } else {
+                0
+            };
             let score =
                 self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
             if score > best_score {
