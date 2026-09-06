@@ -413,186 +413,6 @@ fn staged_picker_fixture() -> Position {
     )
 }
 
-/// historyの契約を探索ごとに初期化された状態で検証する。
-fn with_history_searcher(position: &Position, check: impl FnOnce(&mut Searcher<'_>)) {
-    let external_stop = AtomicBool::new(false);
-    let shared = SharedSearch {
-        external_stop: &external_stop,
-        team_stop: AtomicBool::new(false),
-        stop_reason: AtomicU8::new(0),
-        total_nodes: AtomicU64::new(0),
-        node_limit: None,
-        started: Instant::now(),
-        hard_limit: None,
-    };
-    let pst = weights().unwrap();
-    let table = small_tt();
-    let mut searcher = new_searcher(&pst, position, engine_rules(), &[], &shared, &table);
-    check(&mut searcher);
-}
-
-/// 段階5「検証」: 静かな手のβ打ち切りが両history表を更新する。
-#[test]
-fn quiet_beta_cutoff_updates_butterfly_and_piece_history() {
-    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    with_history_searcher(&position, |searcher| {
-        let beta = -INFINITY + 1;
-        let score = searcher
-            .negamax(&mut position.clone(), 1, -INFINITY, beta, 0)
-            .unwrap();
-        assert!(score >= beta);
-        let mv = searcher.killers[0][0].expect("quiet beta cutoff must record its move");
-        assert!(move_order_key(&position, searcher.pst, mv).is_none());
-        let color = Color::Black.index();
-        let to = mv.to.dense_index();
-        assert_eq!(searcher.history[color][mv.from.dense_index()][to], 1);
-        assert_eq!(
-            searcher.piece_history[color][PieceKind::King.index()][to],
-            1
-        );
-        assert_eq!(
-            quiet_history(&position, mv, &searcher.history, &searcher.piece_history),
-            2
-        );
-    });
-}
-
-/// 段階5「history表の構成」: 成る手も着手前の駒種で記録・参照する。
-#[test]
-fn promoting_quiet_uses_unpromoted_piece_history() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(7, 12), Color::Black, PieceKind::King),
-            (fs(6, 5), Color::Black, PieceKind::Pawn),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    let mv = Move {
-        from: fs(6, 5),
-        mid: None,
-        to: fs(6, 4),
-        promote: true,
-    };
-    assert!(MoveGenerator::new(engine_rules()).is_legal_move(&position, mv));
-    with_history_searcher(&position, |searcher| {
-        searcher.record_quiet_beta_cutoff(&position, mv, 3, 0);
-        let color = Color::Black.index();
-        let to = mv.to.dense_index();
-        assert_eq!(searcher.history[color][mv.from.dense_index()][to], 9);
-        assert_eq!(
-            searcher.piece_history[color][PieceKind::Pawn.index()][to],
-            9
-        );
-        assert_eq!(
-            searcher.piece_history[color][PieceKind::GoldGeneral.index()][to],
-            0
-        );
-        assert_eq!(
-            quiet_history(&position, mv, &searcher.history, &searcher.piece_history),
-            18
-        );
-    });
-}
-
-/// 段階5「historyの更新値」: 深さの2乗を加点し、1,024で頭打ちにする。
-#[test]
-fn quiet_history_bonus_is_capped_at_1024() {
-    let position = staged_picker_fixture();
-    let mv = Move {
-        from: fs(6, 8),
-        mid: None,
-        to: fs(5, 8),
-        promote: false,
-    };
-    for (depth, expected) in [(1, 1), (31, 961), (32, 1024), (33, 1024), (256, 1024)] {
-        with_history_searcher(&position, |searcher| {
-            searcher.record_quiet_beta_cutoff(&position, mv, depth, 0);
-            let color = Color::Black.index();
-            let to = mv.to.dense_index();
-            assert_eq!(searcher.history[color][mv.from.dense_index()][to], expected);
-            assert_eq!(
-                i32::from(searcher.piece_history[color][PieceKind::Rook.index()][to]),
-                expected
-            );
-        });
-    }
-}
-
-/// 段階5「historyの更新値」: どちらの表も上限超過時に全色・全要素を半減する。
-#[test]
-fn either_history_limit_halves_both_tables() {
-    let position = staged_picker_fixture();
-    let mv = Move {
-        from: fs(6, 8),
-        mid: None,
-        to: fs(5, 8),
-        promote: false,
-    };
-    for piece_limit in [false, true] {
-        with_history_searcher(&position, |searcher| {
-            let color = Color::Black.index();
-            let other = Color::White.index();
-            let from = mv.from.dense_index();
-            let to = mv.to.dense_index();
-            let kind = PieceKind::Rook.index();
-            if piece_limit {
-                searcher.piece_history[color][kind][to] = 16_383;
-            } else {
-                searcher.history[color][from][to] = 16_383;
-            }
-            searcher.history[other][0][0] = 10;
-            searcher.piece_history[other][0][0] = 20;
-            searcher.record_quiet_beta_cutoff(&position, mv, 1, 0);
-            assert_eq!(searcher.history[other][0][0], 10);
-            assert_eq!(searcher.piece_history[other][0][0], 20);
-            searcher.record_quiet_beta_cutoff(&position, mv, 1, 0);
-            assert_eq!(searcher.history[other][0][0], 5);
-            assert_eq!(searcher.piece_history[other][0][0], 10);
-            assert_eq!(
-                searcher.history[color][from][to],
-                if piece_limit { 1 } else { 8192 }
-            );
-            assert_eq!(
-                searcher.piece_history[color][kind][to],
-                if piece_limit { 8192 } else { 1 }
-            );
-        });
-    }
-}
-
-/// 段階5「駒種と到達升で引くhistory」: 根と手選択器が両表の合計順を使う。
-#[test]
-fn root_and_staged_picker_order_quiets_by_combined_history() {
-    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let moves = legal_moves(&position);
-    assert_eq!(moves.len(), 3);
-    with_history_searcher(&position, |searcher| {
-        let color = Color::Black.index();
-        for (mv, butterfly, piece) in [(moves[0], 9, 0), (moves[1], 0, 10), (moves[2], 6, 6)] {
-            searcher.history[color][mv.from.dense_index()][mv.to.dense_index()] = butterfly;
-            searcher.piece_history[color][PieceKind::King.index()][mv.to.dense_index()] = piece;
-        }
-        let expected = vec![moves[2], moves[1], moves[0]];
-        let mut root_moves = moves.clone();
-        searcher.order_moves(&position, &mut root_moves, None, 0);
-        assert_eq!(root_moves, expected);
-        let mut picker = MovePicker::new(None, [None, None]);
-        let mut picked = Vec::new();
-        while let Some((mv, capture)) = picker.next(
-            &position,
-            searcher.pst,
-            &searcher.generator,
-            &searcher.history,
-            &searcher.piece_history,
-        ) {
-            assert!(!capture);
-            picked.push(mv);
-        }
-        assert_eq!(picked, expected);
-    });
-}
-
 /// 段階的手選択が助言手の合法性と重複を処理し、全合法手を1回ずつ返す。
 #[test]
 fn staged_picker_yields_every_legal_move_exactly_once() {
@@ -616,7 +436,6 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
         promote: false,
     };
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let piece_history = Box::new([[[0; BOARD_SQUARE_COUNT]; PIECE_KIND_COUNT]; COLOR_COUNT]);
 
     for (tt_move, killers) in [
         (Some(capture), [None, None]),
@@ -630,7 +449,6 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
             &pst,
             &MoveGenerator::new(engine_rules()),
             &history,
-            &piece_history,
         ) {
             actual.push(mv);
         }
@@ -665,7 +483,6 @@ fn staged_picker_respects_advisory_precedence() {
         .collect();
     let killer = quiets[0];
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let piece_history = Box::new([[[0; BOARD_SQUARE_COUNT]; PIECE_KIND_COUNT]; COLOR_COUNT]);
     let mut picker = MovePicker::new(Some(quiets[1]), [Some(killer), None]);
     let mut actual = Vec::new();
     while let Some((mv, _)) = picker.next(
@@ -673,7 +490,6 @@ fn staged_picker_respects_advisory_precedence() {
         &pst,
         &MoveGenerator::new(engine_rules()),
         &history,
-        &piece_history,
     ) {
         actual.push(mv);
     }
@@ -696,7 +512,6 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let pst = weights().unwrap();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let piece_history = Box::new([[[0; BOARD_SQUARE_COUNT]; PIECE_KIND_COUNT]; COLOR_COUNT]);
     let capture = Move {
         from: fs(6, 8),
         mid: None,
@@ -715,18 +530,14 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     for (tt_move, expected_capture) in [(capture, true), (quiet, false)] {
         assert!(generator.is_legal_move(&position, tt_move));
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
-        let picked = picker
-            .next(&position, &pst, &generator, &history, &piece_history)
-            .unwrap();
+        let picked = picker.next(&position, &pst, &generator, &history).unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
         assert_eq!(
             picked.1,
             move_order_key(&position, &pst, picked.0).is_some()
         );
 
-        while let Some((mv, capture)) =
-            picker.next(&position, &pst, &generator, &history, &piece_history)
-        {
+        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history) {
             assert_eq!(capture, move_order_key(&position, &pst, mv).is_some());
         }
     }
@@ -738,7 +549,6 @@ fn staged_picker_classifies_all_generated_captures() {
     let pst = weights().unwrap();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let piece_history = Box::new([[[0; BOARD_SQUARE_COUNT]; PIECE_KIND_COUNT]; COLOR_COUNT]);
     let lion_position = position(
         Color::Black,
         &[
@@ -761,9 +571,7 @@ fn staged_picker_classifies_all_generated_captures() {
         assert!(!captures.is_empty());
         let mut picker = MovePicker::new(None, [None, None]);
         let mut picked_captures = Vec::new();
-        while let Some((mv, capture)) =
-            picker.next(&position, &pst, &generator, &history, &piece_history)
-        {
+        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history) {
             assert_eq!(capture, captures.contains(&mv));
             assert_eq!(capture, move_order_key(&position, &pst, mv).is_some());
             if capture {
