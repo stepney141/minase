@@ -1155,14 +1155,16 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
         let mut index = 0;
-        while let Some(mv) = picker.next(position, self.pst, &self.generator, &self.history) {
+        while let Some((mv, capture)) =
+            picker.next(position, self.pst, &self.generator, &self.history)
+        {
             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
             if best_score > -MATE_THRESHOLD
                 && futility_bound.is_some_and(|bound| bound <= alpha)
                 && Some(mv) != tt_move
                 && !mv.promote
-                && move_order_key(position, self.pst, mv).is_none()
+                && !capture
                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
             {
                 index += 1;
@@ -1172,7 +1174,7 @@ impl Searcher<'_> {
                 depth >= 3
                     && index >= 3
                     && Some(mv) != tt_move
-                    && move_order_key(position, self.pst, mv).is_none()
+                    && !capture
                     && !self.killers[ply as usize][..].contains(&Some(mv)),
             );
             let score =
@@ -1185,7 +1187,7 @@ impl Searcher<'_> {
             alpha = alpha.max(score);
             if alpha >= beta {
                 beta_cutoff = true;
-                if move_order_key(position, self.pst, mv).is_none() {
+                if !capture {
                     self.record_quiet_beta_cutoff(position, mv, depth, ply);
                 }
                 break;
@@ -1649,14 +1651,14 @@ impl MovePicker {
         }
     }
 
-    /// 現在の段階で次に探索する合法手を返す。
+    /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
     fn next(
         &mut self,
         position: &Position,
         pst: &Pst,
         generator: &MoveGenerator,
         history: &HistoryTable,
-    ) -> Option<Move> {
+    ) -> Option<(Move, bool)> {
         loop {
             match self.stage {
                 MovePickerStage::Tt => {
@@ -1664,7 +1666,7 @@ impl MovePicker {
                     if let Some(tt_move) = self.tt_move
                         && generator.is_legal_move(position, tt_move)
                     {
-                        return Some(tt_move);
+                        return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
                     }
                 }
                 MovePickerStage::Captures => {
@@ -1680,7 +1682,7 @@ impl MovePicker {
                     }
                     if let Some(&mv) = self.captures.get(self.capture_index) {
                         self.capture_index += 1;
-                        return Some(mv);
+                        return Some((mv, true));
                     }
                     self.stage = MovePickerStage::Killer0;
                 }
@@ -1699,7 +1701,7 @@ impl MovePicker {
                     if let Some(killer) = self.killers[killer_index]
                         && let Some(index) = self.quiets.iter().position(|&mv| mv == killer)
                     {
-                        return Some(self.quiets.remove(index));
+                        return Some((self.quiets.remove(index), false));
                     }
                 }
                 MovePickerStage::Quiets => {
@@ -1712,7 +1714,7 @@ impl MovePicker {
                 MovePickerStage::Done => {
                     if let Some(&mv) = self.quiets.get(self.quiet_index) {
                         self.quiet_index += 1;
-                        return Some(mv);
+                        return Some((mv, false));
                     }
                     return None;
                 }

@@ -444,7 +444,7 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
     ] {
         let mut picker = MovePicker::new(tt_move, killers);
         let mut actual = Vec::new();
-        while let Some(mv) = picker.next(
+        while let Some((mv, _)) = picker.next(
             &position,
             &pst,
             &MoveGenerator::new(engine_rules()),
@@ -485,7 +485,7 @@ fn staged_picker_respects_advisory_precedence() {
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut picker = MovePicker::new(Some(quiets[1]), [Some(killer), None]);
     let mut actual = Vec::new();
-    while let Some(mv) = picker.next(
+    while let Some((mv, _)) = picker.next(
         &position,
         &pst,
         &MoveGenerator::new(engine_rules()),
@@ -503,6 +503,89 @@ fn staged_picker_respects_advisory_precedence() {
             .iter()
             .all(|&mv| move_order_key(&position, &pst, mv).is_none())
     );
+}
+
+/// 段階5「手の分類」: 捕獲・非捕獲のTT手と後続手の分類が整列キーと一致する。
+#[test]
+fn staged_picker_classifies_capture_and_quiet_tt_moves() {
+    let position = staged_picker_fixture();
+    let pst = weights().unwrap();
+    let generator = MoveGenerator::new(engine_rules());
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let capture = Move {
+        from: fs(6, 8),
+        mid: None,
+        to: fs(6, 5),
+        promote: false,
+    };
+    let quiet = Move {
+        to: fs(5, 8),
+        ..capture
+    };
+    let other_quiet = Move {
+        to: fs(4, 8),
+        ..capture
+    };
+
+    for (tt_move, expected_capture) in [(capture, true), (quiet, false)] {
+        assert!(generator.is_legal_move(&position, tt_move));
+        let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
+        let picked = picker.next(&position, &pst, &generator, &history).unwrap();
+        assert_eq!(picked, (tt_move, expected_capture));
+        assert_eq!(
+            picked.1,
+            move_order_key(&position, &pst, picked.0).is_some()
+        );
+
+        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history) {
+            assert_eq!(capture, move_order_key(&position, &pst, mv).is_some());
+        }
+    }
+}
+
+/// 段階5「手の分類」: 捕獲専用生成の全手が捕獲手として返り、整列キーと一致する。
+#[test]
+fn staged_picker_classifies_all_generated_captures() {
+    let pst = weights().unwrap();
+    let generator = MoveGenerator::new(engine_rules());
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let lion_position = position(
+        Color::Black,
+        &[
+            (fs(7, 12), Color::Black, PieceKind::King),
+            (fs(6, 6), Color::Black, PieceKind::Lion),
+            (fs(6, 5), Color::White, PieceKind::Pawn),
+            (fs(5, 5), Color::White, PieceKind::Pawn),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    // benchのgame-3-ply-465。後手番で成駒を含む局面。
+    let bench_position = crate::parse_sfen(
+        "3+s1ok5/5ett4/12/3ps1x+bpm1+r/3i1g1cip+p1/4+b+pP5/4n2N4/7E4/12/12/4S+VD5/5KS1FC2 w",
+    )
+    .unwrap();
+
+    for position in [staged_picker_fixture(), lion_position, bench_position] {
+        let mut captures = Vec::new();
+        generator.generate_captures(&position, &mut captures);
+        assert!(!captures.is_empty());
+        let mut picker = MovePicker::new(None, [None, None]);
+        let mut picked_captures = Vec::new();
+        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history) {
+            assert_eq!(capture, captures.contains(&mv));
+            assert_eq!(capture, move_order_key(&position, &pst, mv).is_some());
+            if capture {
+                picked_captures.push(mv);
+            }
+        }
+        assert_eq!(picked_captures.len(), captures.len());
+        assert_eq!(
+            picked_captures
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>(),
+            captures.into_iter().collect()
+        );
+    }
 }
 
 /// D7-SRCH-03／D7-TT-04共用のフィクスチャ。先手王将は飛車（十二段の横利き）
