@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use crate::MoveGenerator;
 use crate::core::game::{Game, GameStatus};
 use crate::core::mv::Move;
-use crate::core::piece::{COLOR_COUNT, PieceCode};
+use crate::core::piece::{COLOR_COUNT, PIECE_KIND_COUNT, PieceCode};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
@@ -54,6 +54,8 @@ const KILLER_COUNT: usize = 2;
 const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
+/// 手番側・着手前の駒種・到達升で参照するhistory表。
+type PieceHistoryTable = [[[i16; BOARD_SQUARE_COUNT]; PIECE_KIND_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
 type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 
@@ -870,6 +872,7 @@ fn new_searcher<'a>(
             .collect(),
         accumulators: [root_accumulator; MAX_PLY as usize + 1],
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        piece_history: Box::new([[[0; BOARD_SQUARE_COUNT]; PIECE_KIND_COUNT]; COLOR_COUNT]),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
     }
@@ -1011,6 +1014,8 @@ struct Searcher<'a> {
     accumulators: [PstAccumulator; MAX_PLY as usize + 1],
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     history: Box<HistoryTable>,
+    /// βカットを起こした非捕獲手の手番側・着手前の駒種・到達升別スコア。
+    piece_history: Box<PieceHistoryTable>,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
     killers: KillerTable,
     /// 置換表。
@@ -1155,9 +1160,13 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
         let mut index = 0;
-        while let Some((mv, capture)) =
-            picker.next(position, self.pst, &self.generator, &self.history)
-        {
+        while let Some((mv, capture)) = picker.next(
+            position,
+            self.pst,
+            &self.generator,
+            &self.history,
+            &self.piece_history,
+        ) {
             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
             if best_score > -MATE_THRESHOLD
@@ -1430,7 +1439,6 @@ impl Searcher<'_> {
         ply: u32,
     ) {
         let killers = self.killers[ply as usize];
-        let color = position.side_to_move().index();
         moves.sort_by_cached_key(|&mv| {
             if let Some(key) = move_order_key(position, self.pst, mv) {
                 OrderedMoveKey::Capture {
@@ -1442,9 +1450,12 @@ impl Searcher<'_> {
             } else if Some(mv) == killers[1] {
                 OrderedMoveKey::Killer(1)
             } else {
-                OrderedMoveKey::Quiet(Reverse(
-                    self.history[color][mv.from.dense_index()][mv.to.dense_index()],
-                ))
+                OrderedMoveKey::Quiet(Reverse(quiet_history(
+                    position,
+                    mv,
+                    &self.history,
+                    &self.piece_history,
+                )))
             }
         });
         if let Some(index) = tt_move.and_then(|tt_move| moves.iter().position(|&mv| mv == tt_move))
@@ -1464,12 +1475,26 @@ impl Searcher<'_> {
         let color = position.side_to_move().index();
         let from = mv.from.dense_index();
         let to = mv.to.dense_index();
-        self.history[color][from][to] += (depth * depth) as i32;
-        if self.history[color][from][to] > HISTORY_LIMIT {
+        let kind = piece_at_for_ordering(position, mv.from)
+            .kind()
+            .unwrap()
+            .index();
+        let bonus = depth.min(32).pow(2) as i32;
+        self.history[color][from][to] += bonus;
+        let piece_value = i32::from(self.piece_history[color][kind][to]) + bonus;
+        self.piece_history[color][kind][to] = piece_value as i16;
+        if self.history[color][from][to] > HISTORY_LIMIT || piece_value > HISTORY_LIMIT {
             for color_history in self.history.iter_mut() {
                 for from_history in color_history.iter_mut() {
                     for value in from_history.iter_mut() {
                         *value /= 2;
+                    }
+                }
+            }
+            for color_history in self.piece_history.iter_mut() {
+                for kind_history in color_history.iter_mut() {
+                    for value in kind_history.iter_mut() {
+                        *value = (i32::from(*value) / 2) as i16;
                     }
                 }
             }
@@ -1658,6 +1683,7 @@ impl MovePicker {
         pst: &Pst,
         generator: &MoveGenerator,
         history: &HistoryTable,
+        piece_history: &PieceHistoryTable,
     ) -> Option<(Move, bool)> {
         loop {
             match self.stage {
@@ -1705,9 +1731,8 @@ impl MovePicker {
                     }
                 }
                 MovePickerStage::Quiets => {
-                    let color = position.side_to_move().index();
                     self.quiets.sort_by_cached_key(|&mv| {
-                        Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()])
+                        Reverse(quiet_history(position, mv, history, piece_history))
                     });
                     self.stage = MovePickerStage::Done;
                 }
@@ -1721,6 +1746,22 @@ impl MovePicker {
             }
         }
     }
+}
+
+/// 静かな手のbutterfly表とpiece-to表の値を着手前の駒種で引き、合計する。
+fn quiet_history(
+    position: &Position,
+    mv: Move,
+    history: &HistoryTable,
+    piece_history: &PieceHistoryTable,
+) -> i32 {
+    let color = position.side_to_move().index();
+    let kind = piece_at_for_ordering(position, mv.from)
+        .kind()
+        .unwrap()
+        .index();
+    let to = mv.to.dense_index();
+    history[color][mv.from.dense_index()][to] + i32::from(piece_history[color][kind][to])
 }
 
 /// 捕獲手の整列キー。
