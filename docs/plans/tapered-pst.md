@@ -16,8 +16,8 @@
 進行中。
 起案日と着手日はいずれも2026年9月7日である。
 第1フェーズから第4フェーズまでを完了した（[識別性の記録](../measurements/pst-tapered-identifiability.md)、[学習と診断の記録](../measurements/pst-tapered-training.md)、[benchの記録](../measurements/bench-pst-tapered-depth5.md)）。
-単一PSTの再学習は開始版と一致したため、測定連鎖は開始版との採用比較だけとし、`pst-tapered-adoption-stc`を実行中である。
-次の一手は、STCの判定に従ってLTCへ進み、採否の結論を確定することである。
+単一PSTの再学習は開始版と一致したため、測定連鎖は開始版との採用比較だけとし、[STC](../measurements/pst-tapered-adoption-stc.md)は`H1`で通過して`pst-tapered-adoption-ltc`を実行中である。
+次の一手は、LTCの判定で採否の結論を確定することである。
 
 ## 目的
 
