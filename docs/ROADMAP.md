@@ -37,13 +37,14 @@
 | 棋力向上段階3 | [plans/strength-stage3.md](plans/strength-stage3.md) | 完了 | 2026年9月5日 |
 | 棋力向上段階4 | [plans/strength-stage4.md](plans/strength-stage4.md) | 完了 | 2026年9月6日 |
 | 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
-| PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 進行中 | ― |
+| PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
 
 ## 現在地
 
-直近に完了したマイルストーンは、棋力向上段階5（plans/strength-stage5.md、2026年9月7日）である。
-指し手順序付けとLMRの近代化のうち、順序付けキーの重複計算の除去とLMRの減深量（残り深さと手番号の対数に基づく表をhistory値で増減）を採用し、駒種と到達升で引くhistoryとmalusはSTCで不採用、counter move historyとcontinuation historyは発動率が1%未満で見送った。
-段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Elo（段階4完了時の+200.2 Eloと信頼区間が重なる）であった。
+直近に完了したマイルストーンは、PSTの序中盤と終盤の補間（plans/tapered-pst.md、2026年9月8日）である。
+序中盤用と終盤用の2組のPSTを盤上総駒数で線形補間する評価を実装し、既存の世代0と世代1のデータで学習した2端点PSTが開始版に対してSTCとLTCの両方で`H1`となり採用した。
+単一PSTの同条件の再学習は開始版と一致したため、構造比較は省いた。
+その前の棋力向上段階5（2026年9月7日）では、順序付けキーの重複計算の除去とLMRの減深量を採用し、段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Eloであった。
 
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
@@ -55,8 +56,7 @@
 
 次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
-PSTの序中盤と終盤の補間（[plans/tapered-pst.md](plans/tapered-pst.md)）は進行中である。
-盤上総駒数による2組のPSTの線形補間を既存の世代0と世代1のデータで比較する設計であり、評価と重み形式の実装を終え、学習と採否測定へ進む。
+2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 実lishogiサーバへの接続は、段階2完了時点の棋力（HaChuに対して+149 Elo）を受けて2026年9月4日に公開へ進むと決め、lishogi Bot接続（plans/lishogi-bot.md）として起案した。

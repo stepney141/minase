@@ -9,15 +9,14 @@
 探索が駒交換や枝刈りに使う駒価値は開始時の値に固定し、静的評価を補間する効果を調べる。
 以下では序中盤用と終盤用の2組の表を端点と呼び、評価計算の正しさ、2つの端点をデータから区別して学習できるか、駒数の帯ごとの学習結果、および探索速度を確認した後、自己対局の逐次確率比検定で採否を判定する。
 採用には、開始版に対して標準の長時間条件で改善を示すことを要し、再学習した単一PSTが開始版と異なる場合はその単一PSTに対する改善も要する。
-改善を確認できなかった場合も、不採用の結論と測定記録を残せば本マイルストーンを完了とする。
+実測では単一PSTの再学習が開始版と一致したため開始版との比較だけを行い、2端点PSTは短時間と長時間の両条件で改善を示して採用した。
 
 ## 状態
 
-進行中。
-起案日と着手日はいずれも2026年9月7日である。
-第1フェーズから第4フェーズまでを完了した（[識別性の記録](../measurements/pst-tapered-identifiability.md)、[学習と診断の記録](../measurements/pst-tapered-training.md)、[benchの記録](../measurements/bench-pst-tapered-depth5.md)）。
-単一PSTの再学習は開始版と一致したため、測定連鎖は開始版との採用比較だけとし、[STC](../measurements/pst-tapered-adoption-stc.md)は`H1`で通過して`pst-tapered-adoption-ltc`を実行中である。
-次の一手は、LTCの判定で採否の結論を確定することである。
+完了。
+2026年9月7日に起案と着手、2026年9月8日に完了した。
+2端点PSTを採用する。根拠は[LTC](../measurements/pst-tapered-adoption-ltc.md)の`H1`（187有効ペア、ペンタノミアル[21, 2, 84, 0, 80]、LLR +2.970、異常0件）であり、[STC](../measurements/pst-tapered-adoption-stc.md)も`H1`であった。
+学習と診断は[学習と診断の記録](../measurements/pst-tapered-training.md)、端点の識別性は[識別性の記録](../measurements/pst-tapered-identifiability.md)、探索速度は[benchの記録](../measurements/bench-pst-tapered-depth5.md)にある。
 
 ## 目的
 
