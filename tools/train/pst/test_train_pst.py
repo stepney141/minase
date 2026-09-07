@@ -15,16 +15,25 @@ import torch
 
 from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices, mirror
 from mnsd import Dataset, HEADER_LENGTH, RECORD_DTYPE, RECORD_LENGTH, hash64
+from taper import band_indices, phase_numerators, phase_ratios, piece_counts
 from train_pst import (
+    FILE_LENGTH,
+    HEADER_LENGTH as MNPT_HEADER_LENGTH,
     build_targets,
     estimate_generation_ks,
     estimate_k,
+    float_weights_path,
+    initial_piece_values,
+    integer_evaluate,
     main as train_main,
+    make_model,
     model_logits,
     read_mnpt,
     should_replace_best_epoch,
     write_mnpt,
 )
+
+PIECE_VALUES = initial_piece_values()
 
 
 def write_mnsd(
@@ -189,11 +198,18 @@ class TeacherScaleTest(unittest.TestCase):
             )
             np.testing.assert_allclose(targets, expected, rtol=1e-6)
 
-            model = torch.nn.Embedding(2, 1)
+            single = torch.nn.Embedding(2, 1)
             with torch.no_grad():
-                model.weight[:, 0] = torch.tensor([30.0, 10.0])
-            logits = model_logits(model, torch.tensor([[0, 1]]), 200.0)
+                single.weight[:, 0] = torch.tensor([30.0, 10.0])
+            phi = torch.tensor([0.25])
+            logits = model_logits(single, torch.tensor([[0, 1]]), phi, 200.0)
             self.assertAlmostEqual(float(logits.item()), 0.2)
+            tapered = torch.nn.Embedding(2, 2)
+            with torch.no_grad():
+                tapered.weight.copy_(torch.tensor([[30.0, 100.0], [10.0, 300.0]]))
+            # φ=0.25: 0.25×40 + 0.75×400 = 310 → 310/200。
+            logits = model_logits(tapered, torch.tensor([[0, 1]]), phi, 200.0)
+            self.assertAlmostEqual(float(logits.item()), 1.55)
 
 
 class TrainingPathTest(unittest.TestCase):
@@ -250,7 +266,7 @@ class TrainingPathTest(unittest.TestCase):
                 board=asymmetric_board,
             )
             initial_weights = np.zeros(FEATURE_COUNT, dtype="<i2")
-            write_mnpt(initial_path, initial_weights, 200.0)
+            write_mnpt(initial_path, initial_weights, initial_weights, PIECE_VALUES, 200.0)
 
             dataset = Dataset([generation0, generation1])
             expected_ks = []
@@ -307,6 +323,8 @@ class TrainingPathTest(unittest.TestCase):
                         str(output_path),
                         "--init",
                         str(initial_path),
+                        "--model",
+                        "single",
                         "--k",
                         "200",
                         "--lambda",
@@ -346,9 +364,148 @@ class TrainingPathTest(unittest.TestCase):
                 f"quantization error: samples={dataset.validation_indices.size} ",
                 output,
             )
-            output_weights, output_k = read_mnpt(output_path)
-            np.testing.assert_array_equal(output_weights, initial_weights)
+            middlegame, endgame, piece_values, output_k = read_mnpt(output_path)
+            np.testing.assert_array_equal(middlegame, initial_weights)
+            np.testing.assert_array_equal(endgame, initial_weights)
+            np.testing.assert_array_equal(piece_values, PIECE_VALUES)
             self.assertEqual(output_k, 200.0)
+            saved = np.load(float_weights_path(output_path))
+            np.testing.assert_array_equal(saved["middlegame"], 0)
+            np.testing.assert_array_equal(saved["endgame"], 0)
+
+
+class TaperedFormatTest(unittest.TestCase):
+    """補間係数、整数評価の式、MNPTバージョン2の検査、およびモデル種別の契約を検証する。"""
+
+    def test_phase_numerator_counts_board_pieces_only(self) -> None:
+        boards = np.zeros((4, 144), dtype=np.uint8)
+        boards[0] = INITIAL_BOARD  # 92枚
+        boards[1, :2] = 12  # 王2枚
+        boards[2, :47] = 1  # 47枚 → q=45
+        boards[3, :] = 1  # 144枚 → 上限
+        np.testing.assert_array_equal(piece_counts(boards), [92, 2, 47, 144])
+        np.testing.assert_array_equal(phase_numerators(boards), [90, 0, 45, 90])
+        np.testing.assert_array_equal(phase_ratios(boards), [1.0, 0.0, 0.5, 1.0])
+        # 先獅子の対象升は特徴だが駒ではないので、局面の駒数に影響しない。
+        features = feature_indices(boards[:1], np.zeros(1, dtype=np.uint8), np.array([5], dtype=np.uint8))
+        self.assertEqual(int((features != PADDING_INDEX).sum()), 93)
+        np.testing.assert_array_equal(
+            band_indices(np.array([0.0, 0.19, 0.2, 0.4, 0.6, 0.8, 0.99, 1.0])), [0, 0, 1, 2, 3, 4, 4, 4]
+        )
+
+    def test_integer_evaluate_interpolates_truncates_and_clips(self) -> None:
+        middlegame = np.zeros(FEATURE_COUNT, dtype=np.int16)
+        endgame = np.zeros(FEATURE_COUNT, dtype=np.int16)
+        middlegame[0] = 800  # 100 cp
+        endgame[0] = -1600  # -200 cp
+        features = np.full((5, 145), PADDING_INDEX, dtype=np.int32)
+        features[:, 0] = 0
+        numerators = np.array([90, 0, 45, 1, 89], dtype=np.int64)
+        # q=45: (45×800 + 45×(−1600))/720 = −50。q=1: (800 − 89×1600)/720 = −196.6 → −196。
+        # q=89: (89×800 − 1600)/720 = 96.67 → 96。
+        np.testing.assert_array_equal(
+            integer_evaluate(middlegame, endgame, features, numerators), [100, -200, -50, -196, 96]
+        )
+        # 分子−719は0、−720は−1へ切り捨てる。
+        middlegame[0] = 0
+        endgame[0] = 0
+        middlegame[1] = -719
+        endgame[1] = 0
+        features[:, 1] = 1
+        np.testing.assert_array_equal(
+            integer_evaluate(middlegame, endgame, features[:1], np.array([1])), [0]
+        )
+        middlegame[1] = -720
+        np.testing.assert_array_equal(
+            integer_evaluate(middlegame, endgame, features[:1], np.array([1])), [-1]
+        )
+        clipped = np.full(FEATURE_COUNT, 32_000, dtype=np.int16)
+        wide = np.zeros((1, 145), dtype=np.int32)
+        wide[0, :144] = np.arange(144)
+        wide[0, 144] = PADDING_INDEX
+        np.testing.assert_array_equal(
+            integer_evaluate(clipped, clipped, wide, np.array([30])), [28_999]
+        )
+        with self.assertRaises(ValueError):
+            integer_evaluate(middlegame, endgame, features[:1], np.array([91]))
+
+    def test_mnpt_corruption_and_inconsistent_piece_values_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "weights.bin"
+            weights = np.arange(FEATURE_COUNT, dtype=np.int16)
+            write_mnpt(path, weights, -weights, PIECE_VALUES, 300.0)
+            self.assertEqual(path.stat().st_size, FILE_LENGTH)
+            middlegame, endgame, values, k = read_mnpt(path)
+            np.testing.assert_array_equal(middlegame, weights)
+            np.testing.assert_array_equal(endgame, -weights)
+            np.testing.assert_array_equal(values, PIECE_VALUES)
+            self.assertEqual(k, 300.0)
+            original = path.read_bytes()
+            corruptions = {
+                "length": original[:-1],
+                "magic": b"MNPX" + original[4:],
+                "version": original[:4] + struct.pack("<I", 1) + original[8:],
+                "checksum": original[:MNPT_HEADER_LENGTH] + bytes([original[MNPT_HEADER_LENGTH] ^ 1]) + original[MNPT_HEADER_LENGTH + 1:],
+            }
+            for name, content in corruptions.items():
+                with self.subTest(name=name):
+                    path.write_bytes(content)
+                    with self.assertRaises(ValueError):
+                        read_mnpt(path)
+            bad_values = [
+                ("nonpositive", {29: 0}),
+                ("royal", {11: 2601}),
+                ("range", {4: 29_000, 11: 29_100, 21: 29_100}),
+            ]
+            for name, changes in bad_values:
+                with self.subTest(name=name):
+                    values = PIECE_VALUES.copy()
+                    for state, value in changes.items():
+                        values[state] = value
+                    with self.assertRaises(ValueError):
+                        write_mnpt(path, weights, weights, values, 300.0)
+
+    def test_single_model_requires_identical_endpoints_and_duplicates_output(self) -> None:
+        games = list(range(64))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "data.mnsd"
+            write_mnsd(data, seed=5, checksum=b"a" * 32, games=games, scores=[300] * 64, results=[2] * 64)
+            initial_path = root / "initial.mnpt"
+            output_path = root / "trained.mnpt"
+            weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
+            write_mnpt(initial_path, weights, weights + 8, PIECE_VALUES, 200.0)
+            arguments = [
+                "train", "--data", str(data), "--output", str(output_path), "--init", str(initial_path),
+                "--model", "single", "--k", "200", "--lr", "1", "--epochs", "1", "--batch", "16",
+                "--seed", "1", "--validation-sample", "100", "--device", "cpu",
+            ]
+            with redirect_stdout(StringIO()):
+                with self.assertRaises(ValueError):
+                    train_main(arguments)
+            self.assertFalse(output_path.exists())
+            write_mnpt(initial_path, weights, weights, PIECE_VALUES, 200.0)
+            for model in ("single", "tapered"):
+                with self.subTest(model=model):
+                    arguments[8] = model
+                    output = root / f"{model}.mnpt"
+                    arguments[4] = str(output)
+                    stdout = StringIO()
+                    with redirect_stdout(stdout):
+                        train_main(arguments)
+                    self.assertIn(f"model: {model} columns={1 if model == 'single' else 2}", stdout.getvalue())
+                    middlegame, endgame, values, _ = read_mnpt(output)
+                    np.testing.assert_array_equal(values, PIECE_VALUES)
+                    if model == "single":
+                        np.testing.assert_array_equal(middlegame, endgame)
+                    else:
+                        # 初期局面の訓練局面は q=90 なので、終盤側の勾配は0で初期値のまま残る。
+                        np.testing.assert_array_equal(endgame, weights)
+                        self.assertTrue(np.any(middlegame != 0))
+
+    def test_make_model_rejects_unexpected_columns(self) -> None:
+        with self.assertRaises(ValueError):
+            make_model(torch.zeros((FEATURE_COUNT, 3)), torch.device("cpu"))
 
 
 if __name__ == "__main__":

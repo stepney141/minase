@@ -13,8 +13,9 @@ import numpy as np
 
 from features import FEATURE_COUNT
 import pst_workflow as workflow
+from test_pst_diagnostics import python_probe
 from test_train_pst import write_mnsd
-from train_pst import read_mnpt, write_mnpt
+from train_pst import initial_piece_values, read_mnpt, write_mnpt
 
 
 CONFIG = '''[run]
@@ -30,6 +31,7 @@ max_ply = 600
 hash_mb = 16
 random_moves = 0
 [train]
+model = "single"
 learning_rate = 3
 epochs = 10
 batch = 16384
@@ -60,6 +62,10 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(self.config["run"]["data"], [str(self.root / "data/old.bin")])
         self.assertEqual(self.config["generate"]["seeds"], [100, 110])
         self.assertEqual(self.config["train"]["device"], "cpu")
+        self.assertEqual(self.config["train"]["model"], "single")
+        # 生成シードの空配列は、既存データだけで学習する明示的な指定として受理する。
+        self.config_path.write_text(CONFIG.replace("seeds = [100, 110]", "seeds = []"))
+        self.assertEqual(workflow.load_config(self.config_path, self.root)["generate"]["seeds"], [])
 
     def test_missing_and_unknown_fields_are_rejected(self) -> None:
         for content in (CONFIG.replace("epochs = 10\n", ""),
@@ -78,6 +84,7 @@ class WorkflowTest(unittest.TestCase):
             ("learning_rate = 3", "learning_rate = nan"),
             ("learning_rate = 3", "learning_rate = inf"),
             ("learning_rate = 3", "learning_rate = 0"),
+            ('model = "single"', 'model = "dual"'),
             ("lambda = 0.75", "lambda = 1.01"),
             ("lambda = 0.75", "lambda = -0.01"),
             ("sample_size = 10000", "sample_size = 0"),
@@ -110,13 +117,19 @@ class WorkflowTest(unittest.TestCase):
         binary = run / "generator/target/release/selfplay_gen"
         binary.parent.mkdir(parents=True)
         binary.write_bytes(b"fixture executable")
-        write_mnpt(run / "pst-base.bin", np.zeros(FEATURE_COUNT, dtype=np.int16), 1000)
+        probe = run / "generator/target/release/pst_probe"
+        probe.write_bytes(b"fixture probe")
+        zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
+        write_mnpt(run / "pst-base.bin", zeros, zeros, initial_piece_values(), 1000)
         state = {
             "config": self.config,
             "existing_data": workflow.check_existing_data(self.config),
             "sources": workflow.source_hashes(),
             "base_sha256": workflow.digest(run / "pst-base.bin"),
+            "base_piece_values_sha256": hashlib.sha256(
+                (run / "pst-base.bin").read_bytes()[-workflow.PIECE_VALUE_BYTES:]).hexdigest(),
             "generator_sha256": workflow.digest(binary),
+            "probe_sha256": workflow.digest(probe),
             "repository": str(self.root),
         }
         (run / "prepared.json").write_text(json.dumps(state))
@@ -180,7 +193,10 @@ class WorkflowTest(unittest.TestCase):
         training.mkdir()
         candidate = training / "pst.bin"
         candidate.write_bytes((run / "pst-base.bin").read_bytes())
-        (training / "complete.json").write_text(json.dumps({"sha256": workflow.digest(candidate)}))
+        float_path = training / "pst-float.npz"
+        float_path.write_bytes(b"fixture")
+        (training / "complete.json").write_text(json.dumps({
+            "sha256": workflow.digest(candidate), "float_sha256": workflow.digest(float_path)}))
         candidate.write_bytes(candidate.read_bytes() + b"changed")
         with self.assertRaises(ValueError):
             workflow.diagnose(run)
@@ -207,19 +223,25 @@ class WorkflowTest(unittest.TestCase):
         candidate = run / "training/pst.bin"
         inputs = json.loads((run / "training/inputs.json").read_text())
         completion = json.loads((run / "training/complete.json").read_text())
-        _, saved_k = read_mnpt(candidate)
+        middlegame, endgame, piece_values, saved_k = read_mnpt(candidate)
+        np.testing.assert_array_equal(middlegame, endgame)
+        np.testing.assert_array_equal(piece_values, initial_piece_values())
+        self.assertEqual(completion["float_sha256"], workflow.digest(run / "training/pst-float.npz"))
         # MNPTは尺度をfloat32で保存する。推定値の保存時丸めだけを許容する。
         self.assertAlmostEqual(saved_k / inputs["k"], 1, places=6)
         self.assertEqual(completion["sha256"], workflow.digest(candidate))
         self.assertEqual(inputs["training_records"] + inputs["validation_records"], 240)
         self.assertEqual(inputs["options"]["device"], "cpu")
 
-        workflow.diagnose(run)
+        with patch.object(workflow, "diagnose_probe", return_value=python_probe):
+            workflow.diagnose(run)
         report = json.loads((run / "diagnostics/report.json").read_text())
-        self.assertEqual(len(report["generations"]), 2)
-        for generation in report["generations"]:
-            self.assertGreater(generation["samples"], 0)
-            self.assertTrue((run / "diagnostics" / generation["indices_file"]).is_file())
+        self.assertEqual(len(report["bands"]), 10)
+        validation = inputs["validation_records"]
+        self.assertEqual(sum(entry["samples"] for entry in report["bands"]), validation)
+        for entry in report["bands"]:
+            self.assertTrue((run / "diagnostics" / entry["indices_file"]).is_file())
+        self.assertEqual(report["rust_agreement"], {"base": validation, "candidate": validation})
         original = candidate.read_bytes()
         with self.assertRaises(ValueError):
             workflow.train(run)

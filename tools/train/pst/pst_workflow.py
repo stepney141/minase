@@ -23,6 +23,8 @@ from mnsd import Dataset, read_header
 ROOT = Path(__file__).resolve().parents[3]
 SOURCES = Path(__file__).resolve().parent
 RULES = "L0,P0,R1,E0"
+# MNPT本体末尾の探索用駒価値(47個のi32)。
+PIECE_VALUE_BYTES = 47 * 4
 
 
 def digest(path: Path) -> str:
@@ -68,7 +70,7 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     fields = {
         "run": {"directory", "base_commit", "data"},
         "generate": {"seeds", "games", "nodes", "concurrency", "max_ply", "hash_mb", "random_moves"},
-        "train": {"learning_rate", "epochs", "batch", "seed", "lambda", "device", "validation_sample"},
+        "train": {"model", "learning_rate", "epochs", "batch", "seed", "lambda", "device", "validation_sample"},
         "diagnose": {"sample_size", "seed"},
     }
     if set(config) != set(fields):
@@ -95,8 +97,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
         integer(generation[key], f"generate.{key}", 1, maximum)
     integer(generation["random_moves"], "generate.random_moves", 0, 80)
     seeds = generation["seeds"]
-    if not isinstance(seeds, list) or not seeds:
-        raise ValueError("generate.seeds must be a nonempty list")
+    if not isinstance(seeds, list):
+        raise ValueError("generate.seeds must be a list; [] trains on existing data only")
     for seed in seeds:
         integer(seed, "generate.seeds", 0, 2**64 - 1 - generation["games"])
     for left, right in zip(sorted(seeds), sorted(seeds)[1:]):
@@ -110,6 +112,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     number(training["lambda"], "train.lambda", 0, 1)
     if training["device"] not in ("cpu", "cuda"):
         raise ValueError("train.device must explicitly be cpu or cuda")
+    if training["model"] not in ("single", "tapered"):
+        raise ValueError("train.model must explicitly be single or tapered")
     integer(config["diagnose"]["seed"], "diagnose.seed", 0, 2**63 - 1)
     integer(config["diagnose"]["sample_size"], "diagnose.sample_size", 1, 2**31 - 1)
     return config
@@ -178,11 +182,14 @@ def prepare(config_path: Path) -> None:
         shutil.copyfile(generator / "nets/pst.bin", run / "pst-base.bin")
         read_mnpt(run / "pst-base.bin")
         run_command(run, "build", ["cargo", "build", "--release", "--locked", "--target-dir",
-                    str(generator / "target"), "--bin", "selfplay_gen"], generator)
+                    str(generator / "target"), "--bin", "selfplay_gen", "--bin", "pst_probe"], generator)
         write_json(run / "prepared.json", {
             "config": config, "existing_data": existing, "sources": source_hashes(),
             "base_sha256": digest(run / "pst-base.bin"),
+            "base_piece_values_sha256": hashlib.sha256(
+                (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
             "generator_sha256": digest(generator / "target/release/selfplay_gen"),
+            "probe_sha256": digest(generator / "target/release/pst_probe"),
             "repository": str(ROOT),
         })
     print(f"Prepared {run}")
@@ -269,7 +276,7 @@ def train(run: Path) -> None:
     if destination.exists():
         raise ValueError(f"training already started; use a new run or isolate {destination} before retrying")
     import torch
-    from train_pst import estimate_generation_ks, estimate_mixed_k, read_mnpt
+    from train_pst import estimate_generation_ks, estimate_mixed_k, float_weights_path, read_mnpt
     config = state["config"]["train"]
     if config["device"] == "cuda" and not torch.cuda.is_available():
         raise ValueError("CUDA unavailable; run training on a GPU host")
@@ -299,26 +306,43 @@ def train(run: Path) -> None:
     print(f"K={k}, training={training_count}, validation={validation_count}, steps/epoch={steps}", flush=True)
     command = [sys.executable, str(SOURCES / "train_pst.py"), "train", "--data", *paths,
                "--init", str(run / "pst-base.bin"), "--output", str(destination / "pst.bin"), "--k", repr(k)]
-    for key, option in (("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
+    for key, option in (("model", "model"), ("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
                         ("seed", "seed"), ("lambda", "lambda"), ("device", "device"),
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
     run_command(run, "train", command, ROOT)
     read_mnpt(destination / "pst.bin")
-    write_json(destination / "complete.json", {"sha256": digest(destination / "pst.bin")})
+    if (destination / "pst.bin").read_bytes()[-PIECE_VALUE_BYTES:] != (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]:
+        raise ValueError("trained weights changed the fixed piece values")
+    write_json(destination / "complete.json", {
+        "sha256": digest(destination / "pst.bin"),
+        "float_sha256": digest(float_weights_path(destination / "pst.bin")),
+    })
+
+
+def diagnose_probe(binary: Path):
+    """診断で使うRustの探査関数を返す。テストではPythonの参照実装へ差し替える。"""
+    from pst_diagnostics import rust_probe
+    return rust_probe(binary)
 
 
 def diagnose(run: Path) -> None:
     from pst_diagnostics import diagnose as diagnose_weights
+    from train_pst import float_weights_path
     state = load_prepared(run)
     candidate = run / "training/pst.bin"
-    verify_file(candidate, json.loads((run / "training/complete.json").read_text())["sha256"])
+    completion = json.loads((run / "training/complete.json").read_text())
+    verify_file(candidate, completion["sha256"])
+    verify_file(float_weights_path(candidate), completion["float_sha256"])
+    probe = run / "generator/target/release/pst_probe"
+    verify_file(probe, state["probe_sha256"])
     paths = [item["path"] for item in training_data(run, state)]
     destination = run / "diagnostics"
     destination.mkdir()
     config = state["config"]["diagnose"]
-    report = diagnose_weights(Dataset(paths), run / "pst-base.bin", candidate, destination,
-                              config["sample_size"], config["seed"])
+    report = diagnose_weights(Dataset(paths), run / "pst-base.bin", candidate, float_weights_path(candidate),
+                              destination, config["sample_size"], config["seed"],
+                              state["config"]["train"]["lambda"], diagnose_probe(probe))
     write_json(destination / "report.json", report)
     print(f"Diagnostics: {destination / 'report.json'}")
 

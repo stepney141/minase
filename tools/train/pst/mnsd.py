@@ -288,3 +288,27 @@ class Dataset:
         if np.any(normalized < 0) or np.any(normalized >= self.record_count):
             raise IndexError("record index is outside the dataset")
         return normalized
+
+
+def write_mnsd(
+    path: Path,
+    records: np.ndarray,
+    *,
+    seed: int,
+    network_checksum: bytes,
+    rule_set: str = "L0,P0,R1,E0",
+    generation_commit: str = "0" * 40,
+    teacher_nodes: int = 0,
+) -> None:
+    """レコード配列を検証済みの来歴ヘッダ付きMNSDファイルへ書く。"""
+    records = np.ascontiguousarray(records, dtype=RECORD_DTYPE)
+    if len(network_checksum) != 32 or len(generation_commit) != 40:
+        raise ValueError("network checksum must be 32 bytes and commit 40 characters")
+    _validate_records(path, records)
+    header = bytearray(HEADER_LENGTH)
+    struct.pack_into("<4sII", header, 0, b"MNSD", 1, RECORD_LENGTH)
+    header[12:44] = rule_set.encode("utf-8").ljust(32, b"\0")
+    header[44:84] = generation_commit.encode("ascii")
+    header[84:116] = network_checksum
+    struct.pack_into("<IQQ", header, 116, teacher_nodes, seed, records.shape[0])
+    path.write_bytes(bytes(header) + records.tobytes())

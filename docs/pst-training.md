@@ -42,13 +42,14 @@ git rev-parse HEAD
 |---|---|
 | `run.directory` | 結果を保存する未使用のディレクトリとして `data/pst-gen2` を指定する。 |
 | `run.data` | 既存の学習データをファイルごとに列挙する。 |
-| `generate.seeds` | 各生成ファイルの基本シードを指定する。 |
+| `generate.seeds` | 各生成ファイルの基本シードを指定する。既存データだけで学習する場合は空配列`[]`を明示する。 |
 | `generate.games` | 1ファイルあたり7,500局を生成する。 |
 | `generate.nodes` | 1手の探索ノード上限を100,000とする。 |
 | `generate.concurrency` | 同時に生成する対局数を16とする。実行機に合わせて決める。 |
 | `generate.max_ply` | 600手までに終局しない対局を破棄する。 |
 | `generate.hash_mb` | 生成ワーカーごとの置換表を16 MBとする。 |
 | `generate.random_moves` | 対局中のランダム着手注入を0とする。開始局面の8〜16手のランダム化は残る。 |
+| `train.model` | 学習するモデルの種別を`single`（単一PST）または`tapered`（序中盤用と終盤用の2端点PST）で明示する。単一PSTは1組の重みを学習して出力時に両端点へ複製し、初期重みの両端点が一致していなければ停止する。 |
 | `train.learning_rate` | Adamの学習率を3とする。 |
 | `train.epochs` | 10エポックを学習し、初期状態も含めて検証損失が最小の重みを保存する。 |
 | `train.batch` | 1回の更新に16,384局面を使う。 |
@@ -75,8 +76,8 @@ git rev-parse HEAD
 tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config pst-gen2.toml
 ```
 
-この操作は基準コミットを固定したworktreeを `data/pst-gen2/generator` に作り、生成器をビルドする。
-基準PST、設定、既存データと学習スクリプトの検査和も保存する。
+この操作は基準コミットを固定したworktreeを `data/pst-gen2/generator` に作り、生成器`selfplay_gen`と診断用の`pst_probe`をビルドする。
+基準PST、その探索用駒価値、設定、既存データと学習スクリプトの検査和も保存する。
 元の作業ブランチに未コミットの変更があっても、生成に使うのは指定コミットである。
 
 準備後は、元のTOMLファイルを編集しても実験の設定は変わらない。
@@ -87,6 +88,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config ps
 ## 3. 自己対局データを生成する
 
 次のコマンドで、設定した5つのシードを順に処理する。
+生成シードが空配列の場合は、生成するファイルがないので何もしない。
 
 ```bash
 tools/train/.venv/bin/python tools/train/pst/pst_workflow.py generate --run-dir data/pst-gen2
@@ -131,6 +133,9 @@ Kは丸めずに学習器へ渡すため、前回の値やログの数字を転�
 `device = "cuda"` でCUDAが使えない場合は停止し、CPUへ切り替えない。
 
 採用済みの `pst-base.bin` から学習し、結果を `training/pst.bin` に保存する。
+重みファイルはMNPTバージョン2であり、序中盤用と終盤用の2組の重みに加え、基準から引き継いだ探索用駒価値47個を持つ。
+静的評価は盤上総駒数で両端点を線形補間し、探索用駒価値は学習で変えない（[設計書](plans/tapered-pst.md)）。
+診断が量子化誤差を測れるよう、量子化前の重みを `training/pst-float.npz` に併置する。
 世代ごとの尺度、訓練と検証の局面数、1エポックと全体の更新回数は `training/inputs.json` に記録する。
 Python、PyTorch、CUDA、導入パッケージの版は `training/environment.json` に残す。
 
@@ -152,13 +157,17 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 ```
 
 結果は `diagnostics/report.json` に保存される。
-各世代の同じ検証標本について、教師探索値との平均絶対誤差と相関を基準と候補で比較する。
-相関が定義できない場合は `null` と理由を出力し、検証局面がない世代では停止する。
-抽出した局面番号も保存するので、入力ファイルの一覧と合わせて標本を特定できる。
+`bands` は、補間係数を5等分した局面帯と世代ごとに、訓練と検証の局面数、全検証局面の検証損失、および最大 `diagnose.sample_size` 局面の標本について教師探索値との平均絶対誤差（出力Kと教師Kの比で換算した値と生の値）と相関を基準と候補で比較する。
+相関が定義できない場合は `null` と理由を出力し、空の帯は理由を記録して標本を作らない。
+抽出した局面番号も帯ごとに保存するので、入力ファイルの一覧と合わせて標本を特定できる。
+`quantization` は全帯の標本を合わせた量子化誤差であり、平均絶対誤差が2センチポーンを超えると停止する。
+`rust_agreement` は、同じ標本を `pst_probe` で評価したRustの値がPythonの整数参照評価と全件一致したことを示し、不一致なら停止する。
 
-駒価値の診断では、初期配置から先手の駒を1枚ずつ除き、評価の変化を比較する。
-これは合法な対局履歴を要求しない静的評価の検査である。
-駒損を有利と評価するなどの異常がないか、`material` の基準と候補を確認する。
+`representatives` は、初期配置と各帯の標本のうち最小の通算番号を持つ代表局面について、各非王駒を1枚除いた評価変化を基準と候補で並べる。
+駒を除くと補間係数も変わるため、評価差をその駒固有の価値と同一視しない。
+同じ代表局面の合法な成り手は `pst_probe` が実際に適用し、着手前の手番側視点の評価差を `promotions` に記録する。成り手がない局面は `promotion_reason` にその旨を残す。
+`derived_piece_values` は、各端点の全升平均から導出した駒価値と固定した探索用駒価値を並べ、端点ごとの静的な駒価値が固定値からどれだけ離れたかを示す。
+駒損を有利と評価するなどの異常がないか、基準と候補を確認する。
 検証損失や教師誤差の改善だけを、棋力が向上した根拠にはしない。
 
 診断は既存の `diagnostics` を上書きしない。
@@ -171,7 +180,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 対局時の動作の変更はPSTに限定し、ほかの探索改良は混ぜない。
 
 `src/eval/pst.rs` の `embedded_pst_matches_python_initial_position_evaluation` は、初期局面の評価を固定値で検査している。
-その期待値を、Python診断の `material.candidate.initial_cp` と学習ログで独立に確認した値へ更新する。
+その期待値を、Python診断の `representatives` の初期配置の候補評価と学習ログで独立に確認した値へ更新する。
 候補で `cargo test --locked` を実行し、重みと参照値の更新をコミットする。
 ほかのテストが失敗した場合は、期待値を一括変更せず原因を調べる。
 
@@ -194,8 +203,8 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 | `pst-base.bin` | 学習の初期重みを保持する。 |
 | `commands.jsonl`、各 `.log` | 実行引数、作業ディレクトリ、終了コード、所要時間、出力を保持する。 |
 | `generated-*.bin`、`generated-*.json` | 生成データと検査済みの検査和を保持する。 |
-| `training/` | 学習条件、環境、尺度、重み、正常終了の記録を保持する。 |
-| `diagnostics/` | 基準との比較結果と診断用標本を保持する。 |
+| `training/` | 学習条件、環境、尺度、重み、量子化前の重み、正常終了の記録を保持する。 |
+| `diagnostics/` | 基準との比較結果、帯ごとの診断用標本、標本と代表局面のMNSDファイルを保持する。 |
 
 生成と学習の結果を `docs/measurements/pst-gen2-training.md` にまとめ、設計書からリンクする。
 対局測定は短時間と長時間を別の測定名で記録し、`sprt.md` の記録項目を満たす。
