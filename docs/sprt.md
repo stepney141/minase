@@ -174,7 +174,11 @@ cargo run --release --bin match_report -- \
 - `commit:<hash>`: ハーネスが`git archive`で当該コミットを一時ディレクトリへ展開して`cargo build --release --bin minase`を実行し、完全ハッシュをキーに`target/match-cache/`へキャッシュする。未コミットの作業ツリー変更はビルドに含まれない。キャッシュにはバイナリとSHA-256を保存し、使用前に検証する。どちらかの欠損または不一致を検出した場合は、当該コミットを再ビルドする。同じコミットの並行ビルドはロックで直列化し、完成したキャッシュを原子的に配置する。起動引数`--protocol usi --rules <マッチ規則>`は自動付与される。標準の測定はこの形式を使う。`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットが自分の語彙で解釈する。規則コードP0・E0を導入したコミットより前のコミットを相手にする測定では、コードを列挙した指定は旧コミットが拒否するため、`engine-default`などのプリセット名で指定する。
 - 起動コマンド（パス＋空白区切り引数）: 任意のUSIエンジンを起動する（例 `"target/release/minase --protocol usi --rules engine-default"`）。未コミットの作業ツリーや外部エンジンの測定に使う。minase本体は`--protocol`と`--rules`が必須である点に注意する。
 - `random`: 同一ビルドの`usi_random`（合法手から一様ランダムに着手する校正用エンジン）。真のelo差が0であることが既知の唯一の対戦カードであり、ハーネス自体の煙試験に使う。
-- `cecp:<起動コマンド>`: CECP（XBoardプロトコル）で対局する任意のエンジンを起動する（例 `"cecp:../hachu-debian/hachu"`）。HaChuのようにUSIを話さない外部エンジンとの比較に使う。ハーネスは`xboard`・`protover 2`の握手後に`memory 256`・`new`・`variant chu`・`easy`・`nopost`・`force`を送り、毎手、未送信の着手を`usermove`で転送してから`go`で思考させ、`move`行を受けたら`force`へ戻す。思考制限は`depth`（`sd`へ写す）と秒単位の時間制御（`level`・`time`・`otim`へ写す）に限り、`nodes`と秒読み、および秒未満の持ち時間・加算は指定できない。規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
+- `cecp:<起動コマンド>`: CECP（XBoardプロトコル）で対局する任意のエンジンを起動する（例 `"cecp:../hachu-debian/hachu"`）。HaChuのようにUSIを話さない外部エンジンとの比較に使う。ハーネスは`xboard`・`protover 2`の握手後に`memory <置換表容量>`・`new`・`variant chu`・`easy`・`nopost`・`force`を送り、毎手、未送信の着手を`usermove`で転送してから`go`で思考させ、`move`行を受けたら`force`へ戻す。思考制限は`depth`（`sd`へ写す）と秒単位の時間制御（`level`・`time`・`otim`へ写す）に限り、`nodes`と秒読み、および秒未満の持ち時間・加算は指定できない。規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
+
+置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
+省略時はエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPエンジンは`memory 256`）で走り、解決後の容量は`manifest.json`の`hash_mb`に記録されて再開時の一致検査の対象になる。
+HaChuは受けた容量を2の冪へ丸めるため、CECPエンジンには2の冪だけを指定できる。
 
 ## 統計的手続き
 

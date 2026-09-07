@@ -45,9 +45,9 @@ const DEFAULT_MAX_PLY: u32 = 4096;
 const DEFAULT_MAX_PAIRS: u64 = 100_000;
 /// 1回のエンジン応答を待つ秒数の既定値。
 const DEFAULT_RESPONSE_TIMEOUT_SECONDS: u64 = 120;
-/// CECPエンジンへ割り当てる置換表容量。HaChuは`memory`受信前の`go`で
+/// CECPエンジンへ割り当てる置換表容量の既定値。HaChuは`memory`受信前の`go`で
 /// 異常終了するため明示し、256 MBはminaseの`USI_Hash`既定値に合わせる。
-const CECP_MEMORY_MB: u32 = 256;
+const CECP_MEMORY_MB: u64 = 256;
 /// 固定制限時にCECPエンジンへ通知する時計残量。時計残量0ではHaChuが
 /// 反復深化を即座に打ち切り、HaChuは5倍した残量を32ビット整数で計算するため、
 /// 十分大きくかつその範囲に収まる3,000,000センチ秒とする。
@@ -96,9 +96,15 @@ struct Arguments {
     /// 候補側だけに適用する思考制限。
     #[arg(long, value_parser = parse_search_limit)]
     candidate_limit: Option<SearchLimit>,
+    /// 候補側だけに適用する置換表容量(MB)。省略時はエンジンの既定値。
+    #[arg(long, value_name = "MB")]
+    candidate_hash: Option<u64>,
     /// 基準側だけに適用する思考制限。
     #[arg(long, value_parser = parse_search_limit)]
     baseline_limit: Option<SearchLimit>,
+    /// 基準側だけに適用する置換表容量(MB)。省略時はエンジンの既定値。
+    #[arg(long, value_name = "MB")]
+    baseline_hash: Option<u64>,
     /// 1回のエンジン応答を待つ秒数。
     #[arg(
         long,
@@ -431,6 +437,8 @@ struct PlayerConfig {
     is_random: bool,
     /// このプレイヤーに適用する思考制限。
     limit: SearchLimit,
+    /// このプレイヤーに適用する置換表容量(MB)。省略時はエンジンの既定値。
+    hash_mb: Option<u64>,
     /// 起動引数と規則オプションへ渡す`--rules`入力原文。
     rules_source: String,
 }
@@ -784,6 +792,11 @@ impl EngineProcess {
                     "setoption name RuleSet value {}",
                     config.rules_source
                 ))?;
+                if !config.is_random
+                    && let Some(hash_mb) = config.hash_mb
+                {
+                    process.send(&format!("setoption name USI_Hash value {hash_mb}"))?;
+                }
                 if config.is_random {
                     process.send(&format!("setoption name Seed value {seed}"))?;
                 }
@@ -795,7 +808,7 @@ impl EngineProcess {
                 process.send("xboard")?;
                 process.send("protover 2")?;
                 process.wait_for("feature done=1")?;
-                process.send(&format!("memory {CECP_MEMORY_MB}"))?;
+                process.send(&cecp_memory_text(config.hash_mb))?;
                 process.send("new")?;
                 process.send("variant chu")?;
                 process.send("easy")?;
@@ -1401,8 +1414,29 @@ fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
 fn resolve_player(
     spec: PlayerSpec,
     limit: SearchLimit,
+    hash_mb: Option<u64>,
     rules_text: &str,
 ) -> io::Result<PlayerConfig> {
+    if let Some(hash_mb) = hash_mb {
+        if hash_mb == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "engine hash size must be at least 1 MB",
+            ));
+        }
+        if matches!(spec.kind, PlayerKind::Random) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "random engine does not support a hash size",
+            ));
+        }
+        if matches!(spec.kind, PlayerKind::Cecp { .. }) && !hash_mb.is_power_of_two() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "CECP engine hash size must be a power of two in MB because HaChu rounds its memory allocation",
+            ));
+        }
+    }
     let working_directory = std::env::current_dir()?;
     let (path, args, protocol, is_random, identity) = match spec.kind {
         PlayerKind::Random => {
@@ -1470,8 +1504,14 @@ fn resolve_player(
         protocol,
         is_random,
         limit,
+        hash_mb,
         rules_source: rules_text.to_owned(),
     })
+}
+
+/// 明示容量または既定容量を設定するCECPコマンドを返す。
+fn cecp_memory_text(hash_mb: Option<u64>) -> String {
+    format!("memory {}", hash_mb.unwrap_or(CECP_MEMORY_MB))
 }
 
 /// CECPで表現できる思考制限かどうかを検証する。
@@ -1768,7 +1808,7 @@ fn probe_engine_defaults(player: &PlayerConfig, timeout: Duration) -> io::Result
     if player.protocol == Protocol::Cecp {
         return Ok(EngineDefaults {
             threads: None,
-            hash_mb: Some(u64::from(CECP_MEMORY_MB)),
+            hash_mb: Some(CECP_MEMORY_MB),
         });
     }
     let mut process = EngineProcess::spawn(player, timeout).map_err(|_| {
@@ -1982,8 +2022,8 @@ fn run_manifest(
             baseline: baseline_defaults.threads,
         },
         hash_mb: EngineHashSizes {
-            candidate: candidate_defaults.hash_mb,
-            baseline: baseline_defaults.hash_mb,
+            candidate: candidate.hash_mb.or(candidate_defaults.hash_mb),
+            baseline: baseline.hash_mb.or(baseline_defaults.hash_mb),
         },
         concurrency,
         cpu: CpuRecord {
@@ -3030,6 +3070,7 @@ fn main() {
     let candidate = match resolve_player(
         arguments.candidate,
         candidate_limit,
+        arguments.candidate_hash,
         &arguments.rules.source,
     ) {
         Ok(player) => player,
@@ -3038,8 +3079,12 @@ fn main() {
             process::exit(1);
         }
     };
-    let baseline = match resolve_player(arguments.baseline, baseline_limit, &arguments.rules.source)
-    {
+    let baseline = match resolve_player(
+        arguments.baseline,
+        baseline_limit,
+        arguments.baseline_hash,
+        &arguments.rules.source,
+    ) {
         Ok(player) => player,
         Err(error) => {
             eprintln!("failed to resolve baseline engine: {error}");
@@ -3944,7 +3989,7 @@ mod tests {
             parse_search_limit("time=1000+1500").unwrap(),
         ] {
             let spec = parse_player_spec("cecp:engine").unwrap();
-            let error = resolve_player(spec, limit, "R1")
+            let error = resolve_player(spec, limit, None, "R1")
                 .err()
                 .expect("the unsupported CECP limit must fail resolution");
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
@@ -3959,6 +4004,7 @@ mod tests {
         let depth = resolve_player(
             parse_player_spec("cecp:engine --option value").unwrap(),
             parse_search_limit("depth=4").unwrap(),
+            None,
             "R1",
         )
         .unwrap();
@@ -3976,6 +4022,7 @@ mod tests {
         let time = resolve_player(
             parse_player_spec("cecp:engine").unwrap(),
             parse_search_limit("time=61000+2000").unwrap(),
+            None,
             "R1",
         )
         .unwrap();
@@ -4145,6 +4192,125 @@ mod tests {
         .expect("explicit overrides must be accepted");
         assert_eq!(explicit.candidate_limit, Some(equal.each));
         assert_eq!(explicit.baseline_limit, Some(equal.each));
+    }
+
+    // 置換表容量の指定: 両側の容量は独立に指定でき、省略時はNoneを保つ。
+    #[test]
+    fn hash_options_resolve_independently_for_each_engine() {
+        for (options, expected_candidate, expected_baseline) in [
+            (vec![], None, None),
+            (vec!["--candidate-hash", "300"], Some(300), None),
+            (vec!["--baseline-hash", "512"], None, Some(512)),
+            (
+                vec!["--candidate-hash", "300", "--baseline-hash", "512"],
+                Some(300),
+                Some(512),
+            ),
+        ] {
+            let mut args = vec![
+                "match_runner",
+                "--run-dir",
+                "run",
+                "--candidate",
+                "engine",
+                "--baseline",
+                "cecp:engine",
+            ];
+            args.extend(options);
+            args.push("gsprt");
+            let arguments = Arguments::try_parse_from(args).unwrap();
+            assert_eq!(arguments.candidate_hash, expected_candidate);
+            assert_eq!(arguments.baseline_hash, expected_baseline);
+            for (spec, hash_mb, expected) in [
+                (
+                    arguments.candidate,
+                    arguments.candidate_hash,
+                    expected_candidate,
+                ),
+                (
+                    arguments.baseline,
+                    arguments.baseline_hash,
+                    expected_baseline,
+                ),
+            ] {
+                let player = resolve_player(spec, arguments.each, hash_mb, "R1").unwrap();
+                assert_eq!(player.hash_mb, expected);
+            }
+        }
+    }
+
+    // 置換表容量の検証: 0、CECPでの2の冪以外、randomへの指定は拒否する。
+    #[test]
+    fn hash_resolution_rejects_invalid_or_inapplicable_sizes() {
+        for (spec, hash_mb) in [
+            ("engine", 0),
+            ("cecp:engine", 0),
+            ("cecp:engine", 3),
+            ("cecp:engine", 255),
+            ("cecp:engine", 257),
+            ("random", 256),
+        ] {
+            let error = resolve_player(
+                parse_player_spec(spec).unwrap(),
+                parse_search_limit("depth=1").unwrap(),
+                Some(hash_mb),
+                "R1",
+            )
+            .err()
+            .expect("invalid or inapplicable hash size must fail resolution");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        }
+    }
+
+    // CECPの`memory`コマンド: CECPには明示容量を送り、省略時だけ256 MBを使う。
+    #[test]
+    fn cecp_memory_command_uses_explicit_size_or_default() {
+        for (hash_mb, expected) in [
+            (None, "memory 256"),
+            (Some(1), "memory 1"),
+            (Some(512), "memory 512"),
+        ] {
+            let player = resolve_player(
+                parse_player_spec("cecp:engine").unwrap(),
+                parse_search_limit("depth=1").unwrap(),
+                hash_mb,
+                "R1",
+            )
+            .unwrap();
+            assert_eq!(cecp_memory_text(player.hash_mb), expected);
+        }
+    }
+
+    // manifestの`hash_mb`: manifestは明示容量を優先し、省略側は既定値を記録する。
+    #[test]
+    fn manifest_hash_sizes_prefer_each_players_explicit_value() {
+        for (candidate_hash, baseline_hash, expected_candidate, expected_baseline) in [
+            (Some(512), None, Some(512), Some(256)),
+            (None, Some(128), Some(256), Some(128)),
+        ] {
+            let player = |hash_mb| {
+                resolve_player(
+                    parse_player_spec("cecp:engine").unwrap(),
+                    parse_search_limit("depth=1").unwrap(),
+                    hash_mb,
+                    "R1",
+                )
+                .unwrap()
+            };
+            let manifest = run_manifest(
+                &player(candidate_hash),
+                &player(baseline_hash),
+                &parse_rule_set_argument("R1").unwrap(),
+                ManifestMode::Elo,
+                1,
+                4096,
+                120,
+                Some(1),
+            )
+            .unwrap();
+            assert_eq!(manifest.hash_mb.candidate, expected_candidate);
+            assert_eq!(manifest.hash_mb.baseline, expected_baseline);
+        }
     }
 
     // D8-HARN-10(search.md実施状況): 実測思考時間が`残り時間 + byoyomi`を
