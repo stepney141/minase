@@ -38,6 +38,7 @@
 | 棋力向上段階4 | [plans/strength-stage4.md](plans/strength-stage4.md) | 完了 | 2026年9月6日 |
 | 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
 | PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
+| HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 進行中 | ― |
 
 ## 現在地
 
@@ -46,7 +47,9 @@
 単一PSTの同条件の再学習は開始版と一致したため、構造比較は省いた。
 その前の棋力向上段階5（2026年9月7日）では、順序付けキーの重複計算の除去とLMRの減深量を採用し、段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Eloであった。
 
-進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
+進行中のマイルストーンは2件である。
+HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
+上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
 次の一手は、段階6の個別設計書を起案し、aspiration windowsと置換表の改良へ進むことである。
 
