@@ -22,8 +22,9 @@
 静止探索の深さ上限は、深さ分布の測定で発動しない改良として見送った。
 2026年9月6日に[段階4](strength-stage4.md)を完了し、futility pruningを採用した。
 reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringはSTCで`H0`となり不採用、verification searchは診断で矛盾率0%のため見送った。
-2026年9月6日に[段階5](strength-stage5.md)の設計書を起案した。
-次の一手は、段階5のフェーズ1に着手することである。
+2026年9月7日に[段階5](strength-stage5.md)を完了し、順序付けキーの重複計算の除去と、対数に基づきhistory値で増減するLMRの減深量を採用した。
+駒種と到達升で引くhistoryとmalusはSTCで不採用、counter move historyとcontinuation historyは発動率の診断で見送った。
+次の一手は、段階6の個別設計書を起案し、aspiration windowsと置換表の改良へ進むことである。
 
 ## 目的
 
@@ -201,6 +202,17 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 採否は1項目ずつ時間制御GSPRTで判定する。
 順序付けキーの重複計算の除去だけは、探索挙動を変えない重複の除去であって高速化項目ではないので、benchの総ノード数の一致とNPSの非低下で判定し、時間制御GSPRTの対象としない。
 段階の完了条件は、各項目の採否が記録されていることである。
+
+最終判断は次のとおりである。
+
+- 順序付けキーの重複計算の除去を採用した。手選択器が捕獲手かどうかを手とともに返す変更で、[bench](../measurements/strength-stage5-order-key-bench.md)の総ノード数が段階開始版と一致し、NPSは低下しなかった。
+- LMRの減深量を採用した。残り深さ`d`と手番号`m`から`floor(ln(d) · ln(m) / 2.0)`で減深量を求め、history値が128以上なら1減らし、`[0, min(3, d − 2)]`に切り詰める。係数と閾値は[診断bench](../measurements/strength-stage5-lmr-bench.md)で「同じ標本で現行の規則より失う良い結果が増えず、減深量の平均が最大」の規則により決め、段階開始版に重複計算の除去を加えた構成との[STC](../measurements/strength-stage5-lmr-stc.md)と[LTC](../measurements/strength-stage5-lmr-ltc.md)がともに`H1`であった。
+- 駒種と到達升で引くhistoryは不採用とした。butterfly表との合計で順序付けする実装の[STC](../measurements/strength-stage5-piece-history-stc.md)が`H0`であった。
+- counter move historyとcontinuation historyは見送った。根探索ごとに初期化する`[29][144][29][144]`の表は1回の探索では埋まらず、順序付けで値が0でない手の割合が[0.73%](../measurements/strength-stage5-cmh-bench.md)と[0.62%](../measurements/strength-stage5-continuation-bench.md)で、事前基準の5%を下回った。
+- malusは不採用とした。benchの総ノード数は17.9%減ったが、[STC](../measurements/strength-stage5-malus-stc.md)が上限3,000ペアでLLR −1.58の判定保留となり、振分け規則によりLTCへ進めなかった。
+
+LMRの減深量の選択規則は、当初の「失う良い結果が10%以下」という段階4と同じ絶対基準では、良い結果の基礎率が0.6%と低く現行構成すら適格にならなかったため、[試行診断](../measurements/strength-stage5-lmr-trial-bench.md)の後、本診断の前に相対基準へ置き換えた。
+[固定自己対局](../measurements/strength-stage5-elo200.md)は段階開始版に対してSTCで+35.6 Elo、[HaChu戦](../measurements/strength-stage5-hachu-elo200.md)は+188.5 Elo（段階4完了時の+200.2 Eloと信頼区間が重なる）を進捗指標として記録したため、段階5を完了した。
 
 ## 段階6　aspiration windowsと置換表の改良
 

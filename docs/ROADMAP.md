@@ -36,24 +36,23 @@
 | lishogi Bot接続 | [plans/lishogi-bot.md](plans/lishogi-bot.md) | 起案 | ― |
 | 棋力向上段階3 | [plans/strength-stage3.md](plans/strength-stage3.md) | 完了 | 2026年9月5日 |
 | 棋力向上段階4 | [plans/strength-stage4.md](plans/strength-stage4.md) | 完了 | 2026年9月6日 |
-| 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 起案 | ― |
+| 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
 
 ## 現在地
 
-直近に完了したマイルストーンは、棋力向上段階4（plans/strength-stage4.md、2026年9月6日）である。
-前向き枝刈りの第2層のうちfutility pruningだけを採用し、reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringはSTCで`H0`となり不採用、verification searchは診断で矛盾率0%のため見送った。
-段階開始版との固定200ペアはSTCで+86.4 Elo、HaChu戦は+200.2 Elo（段階3完了時の+125.0 Eloと信頼区間が重ならない）であった。
+直近に完了したマイルストーンは、棋力向上段階5（plans/strength-stage5.md、2026年9月7日）である。
+指し手順序付けとLMRの近代化のうち、順序付けキーの重複計算の除去とLMRの減深量（残り深さと手番号の対数に基づく表をhistory値で増減）を採用し、駒種と到達升で引くhistoryとmalusはSTCで不採用、counter move historyとcontinuation historyは発動率が1%未満で見送った。
+段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Elo（段階4完了時の+200.2 Eloと信頼区間が重なる）であった。
 
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
-10段階のうち段階4までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
-段階5の指し手順序付けとLMRの近代化は、個別設計書（plans/strength-stage5.md）を2026年9月6日に起案した。
-次の一手は、段階5のフェーズ1（順序付けキーの重複計算の除去）に着手することである。
+10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
+次の一手は、段階6の個別設計書を起案し、aspiration windowsと置換表の改良へ進むことである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、起案済みの棋力向上段階5の着手である。
+次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。

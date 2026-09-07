@@ -11,11 +11,17 @@
 減深量の式の係数とhistory値の閾値は、チェスや本将棋の値を流用せず、bench（固定局面集を固定深さで探索する速度計測コマンド）で測った「浅く読んだ結果が本来の深さの結果と食い違う割合」から「診断による係数の決定」節の規則で1つに決め、最初の採否測定より後には変えない。
 採否は項目ごとに、短時間（STC）と長時間（LTC）の時間制御GSPRT（自己対局の勝敗から強さの差を逐次判定する統計検定、[docs/sprt.md](../sprt.md)）で判定し、探索の挙動を変えない重複計算の除去だけはbenchの総ノード数の一致で判定する。
 完了条件は、各項目の採否が記録され、採用したhistoryの更新とLMRの減深量がテストで固定され、段階開始版（本書の着手時点のコミット）と外部エンジンHaChuに対する固定200ペアのElo（採否には使わない進捗指標）が記録されていることである。
+順序付けキーの重複計算の除去をbenchで、LMRの減深量をSTCとLTCがともに`H1`で採用し、駒種と到達升で引くhistoryはSTCで`H0`、malusはSTCの上限3,000ペアで負のLLRの判定保留となり不採用、counter move historyとcontinuation historyは発動率が1%未満のため見送った。
 
 ## 状態
 
-本マイルストーンは2026年9月6日に起案し、着手前である。
-次の一手は、フェーズ1の順序付けキーの重複計算の除去に着手することである。
+本マイルストーンは2026年9月6日に起案して同日に着手し、2026年9月7日に完了した。
+順序付けキーの重複計算の除去とLMRの減深量を採用し、駒種と到達升で引くhistoryとmalusは不採用、counter move historyとcontinuation historyは見送った。
+重複計算の除去は[bench](../measurements/strength-stage5-order-key-bench.md)で総ノード数が一致しNPSが低下しなかった。
+LMRの減深量は[診断bench](../measurements/strength-stage5-lmr-bench.md)で`c = 2.00`、`H = 128`を選び、[STC](../measurements/strength-stage5-lmr-stc.md)と[LTC](../measurements/strength-stage5-lmr-ltc.md)がともに`H1`かつ異常0件であった。
+駒種と到達升で引くhistoryは[STC](../measurements/strength-stage5-piece-history-stc.md)が`H0`、malusは[STC](../measurements/strength-stage5-malus-stc.md)が上限3,000ペアでLLR −1.58の判定保留であった。
+counter move historyとcontinuation historyは[発動率の診断](../measurements/strength-stage5-cmh-bench.md)と[同](../measurements/strength-stage5-continuation-bench.md)で0.73%と0.62%であり、根探索ごとに初期化する1,744万要素の表は1回の探索では埋まらないため見送った。
+[固定自己対局](../measurements/strength-stage5-elo200.md)は段階開始版に対してSTCで+35.6 Elo、[HaChu戦](../measurements/strength-stage5-hachu-elo200.md)は+188.5 Elo（段階4完了時の+200.2 Eloと信頼区間が重なる）を進捗指標として記録した。
 
 ## 目的
 
