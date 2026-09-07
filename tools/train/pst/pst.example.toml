@@ -1,0 +1,36 @@
+# リポジトリのルートからの相対パス。prepare後の編集は実験へ反映されない。
+[run]
+directory = "data/pst-gen2"
+# 採用済みコミットの完全ハッシュへ置き換える。
+base_commit = "REPLACE_WITH_FULL_COMMIT_HASH"
+data = [
+  "data/gen0.bin",
+  "data/gen1-s100000.bin",
+  "data/gen1-s200000.bin",
+  "data/gen1-s300000.bin",
+  "data/gen1-s400000.bin",
+  "data/gen1-s500000.bin",
+]
+
+[generate]
+# 過去ログでも範囲の未使用を確認する。gen0b.binは入力へ加えない。
+seeds = [600000, 700000, 800000, 900000, 1000000]
+games = 7500
+nodes = 100000
+concurrency = 16
+max_ply = 600
+hash_mb = 16
+random_moves = 0
+
+[train]
+learning_rate = 3.0
+epochs = 10
+batch = 16384
+seed = 1
+lambda = 0.75
+device = "cuda"
+validation_sample = 10000
+
+[diagnose]
+sample_size = 10000
+seed = 1

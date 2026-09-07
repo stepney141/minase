@@ -50,7 +50,7 @@ NNUEは分岐`nnue-gen1`に保持し、次期候補は採用PSTによる世代2�
 ## 依存関係
 
 前マイルストーンの成果物をそのまま使う。
-データ形式`MNSD`と生成器`selfplay_gen`（コミット6bc33e1、80c430d）、学習PSTの特徴定義と重みファイル`MNPT`（コミット588363a、7e13888）、学習器`tools/train/train_pst.py`である。
+データ形式`MNSD`と生成器`selfplay_gen`（コミット6bc33e1、80c430d）、学習PSTの特徴定義と重みファイル`MNPT`（コミット588363a、7e13888）、学習器`tools/train/pst/train_pst.py`である。
 NNUEの推論、差分更新、学習器はmasterから外されているので、コミット05362b1、3ee849c（masterに含まれる）とブランチ`nnue-residual`のコミット510fcde（残差線形項）から復元する。
 `nnue-residual`はコミット3ee849cから分岐しており、その後のmasterのRust設計監査対応（探索スレッドの寿命と公開境界の変更）を含まない。
 復元の契約はフェーズ4に記す。
@@ -337,6 +337,7 @@ NNUEの推論、差分更新、学習器をmasterへ復元する。
 
 ## 参考資料
 
+- [PSTの学習手順](../pst-training.md) は、次世代の生成、再学習、診断、および現行規約による採否判定の実行方法を示す。
 - plans/evaluation.md：前マイルストーンの設計、世代0の測定、次期候補の設計。
 - plans/match-harness.md：HaChu戦の要因分析（探索実測と持ち時間4倍のElo）。
 - docs/sprt.md：測定の標準手順。

@@ -347,9 +347,13 @@ def command_estimate_k(arguments: argparse.Namespace) -> None:
             f"generation {generation}: files={file_count} checksum={checksum.hex()} "
             f"training_records={count} K={k:.9f}"
         )
-    scores, results = _training_scores_results(dataset)
-    mixed_k = estimate_k(scores, results)
-    print(f"mixed: training_records={scores.size} K={mixed_k:.9f}")
+    mixed_k = estimate_mixed_k(dataset)
+    print(f"mixed: training_records={dataset.training_indices.size} K={mixed_k:.9f}")
+
+
+def estimate_mixed_k(dataset: Dataset) -> float:
+    """全世代の訓練レコードからモデル出力の尺度を求める。"""
+    return estimate_k(*_training_scores_results(dataset))
 
 
 def _format_validation_loss(
