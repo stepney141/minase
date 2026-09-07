@@ -37,6 +37,7 @@
 | 棋力向上段階3 | [plans/strength-stage3.md](plans/strength-stage3.md) | 完了 | 2026年9月5日 |
 | 棋力向上段階4 | [plans/strength-stage4.md](plans/strength-stage4.md) | 完了 | 2026年9月6日 |
 | 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
+| PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 進行中 | ― |
 
 ## 現在地
 
@@ -54,6 +55,8 @@
 
 次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
+PSTの序中盤と終盤の補間（[plans/tapered-pst.md](plans/tapered-pst.md)）は進行中である。
+盤上総駒数による2組のPSTの線形補間を既存の世代0と世代1のデータで比較する設計であり、評価と重み形式の実装を終え、学習と採否測定へ進む。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 実lishogiサーバへの接続は、段階2完了時点の棋力（HaChuに対して+149 Elo）を受けて2026年9月4日に公開へ進むと決め、lishogi Bot接続（plans/lishogi-bot.md）として起案した。
