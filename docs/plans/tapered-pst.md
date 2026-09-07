@@ -15,8 +15,9 @@
 
 進行中。
 起案日と着手日はいずれも2026年9月7日である。
-第1フェーズ（開始版と学習入力の固定、端点の識別性診断、[測定記録](../measurements/pst-tapered-identifiability.md)）と第2フェーズ（MNPTバージョン2、整数評価、差分更新、初期化版の一致確認）を完了し、学習器、ワークフロー、および診断の更新も済んでいる。
-次の一手は、初期化版を基準コミットとして単一PSTと2端点PSTを学習し、単一PSTが開始版と一致するかで測定連鎖を確定することである。
+第1フェーズから第4フェーズまでを完了した（[識別性の記録](../measurements/pst-tapered-identifiability.md)、[学習と診断の記録](../measurements/pst-tapered-training.md)、[benchの記録](../measurements/bench-pst-tapered-depth5.md)）。
+単一PSTの再学習は開始版と一致したため、測定連鎖は開始版との採用比較だけとし、`pst-tapered-adoption-stc`を実行中である。
+次の一手は、STCの判定に従ってLTCへ進み、採否の結論を確定することである。
 
 ## 目的
 
