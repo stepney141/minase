@@ -151,7 +151,7 @@ fail-lowによる延長、最善手交替時の延長、最善手安定時の早
 
 最終判断は次のとおりである。
 
-- 駒価値の再調整を採用した。学習PSTの重みから復号時に導出した駒価値（自駒と相手駒の144升平均の対称化、王駒は非王駒の最大値に歩兵を加えた固定値、余裕値は歩兵の2倍）で、段階開始版との[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)がともに`H1`であった。
+- 駒価値の再調整を採用した。学習PSTの重みから復号時に導出した駒価値（自駒と相手駒の144升平均の対称化、王駒は非王駒の最大値に歩兵を加えた固定値、余裕値は歩兵の2倍。2端点PSTの採用後は同じ値を重みファイルに固定して格納する）で、段階開始版との[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)がともに`H1`であった。
 - `attackers_to`とSEEを採用した。判定不能の条件を経由升のある2段階移動と獅子が獅子を取る段階に絞り、駒価値の採用コミットを基準とする[STC](../measurements/strength-stage3-see-stc.md)と[LTC](../measurements/strength-stage3-see-ltc.md)がともに`H1`であった。
 - 静止探索の深さ上限は見送った。[深さ分布のbench](../measurements/strength-stage3-qsearch-depth-bench.md)で深さ8以上のノードが0.82%と事前基準の1%を下回った。
 
