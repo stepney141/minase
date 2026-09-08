@@ -183,10 +183,18 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 駒損を有利と評価するなどの異常がないか、基準と候補を確認する。
 検証損失や教師誤差の改善だけを、棋力が向上した根拠にはしない。
 
-FMの第1フェーズでは、候補v3をPythonで評価し、基準v2の `pst_probe` による照合を維持する。
-帯別の検証損失、教師誤差、駒除去、量子化誤差を記録し、駒除去では基準との差から補正の変化量も示す。
-候補のRustとの一致検査、成り、着手差は「未実施（第2フェーズ）」と記録する。
-v3をエンジンへ組み込む手順は、RustのFM評価を実装する第2フェーズ以降に行う。
+FMの診断では、実行元の作業ツリーで `cargo build --release --locked --bin pst_probe` を実行し、`target/release/pst_probe` で候補v3を評価する。
+ビルドしたバイナリのSHA-256、`git rev-parse HEAD`、`git status --porcelain` の結果を `diagnostics/candidate-probe.json` に保存する。
+基準v2には、準備時に基準worktreeでビルドしたprobeを使う。
+全診断標本と代表局面について、候補の `eval` がPythonの整数参照評価と一致し、`eval_pst` が基準probeの `eval` と一致することを検査し、不一致なら停止する。
+`rust_agreement.candidate_pst` は全診断標本で後者の照合が成立した件数を示す。
+帯別の検証損失、教師誤差、駒除去、量子化誤差も記録し、駒除去では基準との差から補正の変化量を示す。
+
+同じ代表局面について、候補probeの `--promotions` による成り手ごとの `delta` と `delta_pst` を `representatives` の `promotions.candidate` に保存する。
+さらに `--moves` で全合法手を列挙し、FMによる着手差 `delta - delta_pst` と、その絶対値を候補v3の探索用歩兵価値で割った比を集計する。
+代表局面ごとの `move_deltas` とレポート全体の `move_deltas` に、それぞれ局面内と全代表局面の全合法手について、件数、平均、母標準偏差、最大絶対値を保存する。
+`fm_delta_cp` はセンチポーン単位の差、`absolute_fm_delta_pawns` は歩兵価値に対する絶対値の比であり、分母は `pawn_value_cp` に記録する。
+合法手が0件なら件数を0、ほかの統計値を `null` とし、着手差の分布には採否の閾値を設けない。
 
 診断は既存の `diagnostics` を上書きしない。
 失敗した場合は原因を確認し、そのディレクトリを退避してから再実行する。

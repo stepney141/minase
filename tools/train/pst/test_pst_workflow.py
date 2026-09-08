@@ -13,7 +13,7 @@ import numpy as np
 
 from features import FEATURE_COUNT
 import pst_workflow as workflow
-from test_pst_diagnostics import python_probe
+from test_pst_diagnostics import python_fm_probe, python_probe
 from test_train_pst import write_mnsd
 from train_pst import initial_piece_values, read_mnpt, write_mnpt
 
@@ -242,6 +242,7 @@ class WorkflowTest(unittest.TestCase):
         for entry in report["bands"]:
             self.assertTrue((run / "diagnostics" / entry["indices_file"]).is_file())
         self.assertEqual(report["rust_agreement"], {"base": validation, "candidate": validation})
+        self.assertFalse((run / "diagnostics/candidate-probe.json").exists())
         original = candidate.read_bytes()
         with self.assertRaises(ValueError):
             workflow.train(run)
@@ -296,11 +297,50 @@ class FMWorkflowTest(unittest.TestCase):
         candidate = read_mnpt_v3(run / "training/pst.bin")
         for expected, actual in zip(read_mnpt(run / "pst-base.bin"), candidate[:4]):
             np.testing.assert_array_equal(actual, expected)
-        with patch.object(workflow, "diagnose_probe", return_value=python_probe):
+        binary = self.root / "target/release/pst_probe"
+        base_binary = run / "generator/target/release/pst_probe"
+        built_bytes = b"newly built FM probe"
+        commit = "1234567890" * 4
+        status = " M src/eval/fm.rs\n?? untracked.rs"
+
+        def build_probe(run_directory, label, command, cwd):
+            self.assertEqual(cwd, self.root)
+            self.assertEqual(command, ["cargo", "build", "--release", "--locked", "--bin", "pst_probe"])
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(built_bytes)
+
+        def select_probe(path):
+            if path == binary:
+                self.assertEqual(binary.read_bytes(), built_bytes)
+                return python_fm_probe
+            self.assertEqual(path, base_binary)
+            return python_probe
+
+        with patch.object(workflow, "run_command", side_effect=build_probe) as build, \
+                patch.object(workflow, "diagnose_probe", side_effect=select_probe) as probes, \
+                patch.object(workflow, "git", side_effect=lambda repo, *args:
+                             commit if args == ("rev-parse", "HEAD") else status) as git:
             workflow.diagnose(run)
+        build.assert_called_once()
+        self.assertCountEqual([call.args[0] for call in probes.call_args_list], [binary, base_binary])
+        self.assertCountEqual([call.args for call in git.call_args_list],
+                              [(self.root, "rev-parse", "HEAD"), (self.root, "status", "--porcelain")])
+        provenance = json.loads((run / "diagnostics/candidate-probe.json").read_text())
+        self.assertEqual(provenance, {
+            "repository": str(self.root), "binary": str(binary),
+            "sha256": hashlib.sha256(built_bytes).hexdigest(), "commit": commit,
+            "status_porcelain": status,
+        })
         report = json.loads((run / "diagnostics/report.json").read_text())
-        self.assertEqual(report["rust_agreement"]["candidate"]["status"], "未実施（第2フェーズ）")
+        samples = sum(band["samples"] for band in report["bands"])
+        self.assertGreater(samples, 0)
+        self.assertEqual(report["rust_agreement"],
+                         {"base": samples, "candidate": samples, "candidate_pst": samples})
         self.assertTrue((run / "training/complete.json").exists())
+
+    def test_git_status_preserves_index_and_worktree_columns(self) -> None:
+        with patch.object(workflow.subprocess, "check_output", return_value=" M tracked.rs\n?? new.rs\n"):
+            self.assertEqual(workflow.git(self.root, "status", "--porcelain"), " M tracked.rs\n?? new.rs")
 
     def test_fm_epoch_zero_completes_as_excluded_without_candidate(self) -> None:
         run = self.fm_prepared(epoch_zero=True)

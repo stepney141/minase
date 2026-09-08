@@ -35,6 +35,7 @@ from taper import (
     piece_counts,
 )
 from train_pst import (
+    PAWN_STATE,
     QUANTIZATION_ERROR_LIMIT,
     REACHABLE_NON_ROYAL_STATES,
     ROYAL_STATES,
@@ -45,8 +46,8 @@ from train_pst import (
     read_mnpt,
 )
 
-# (MNPTのパス, MNSDのパス, 成り手を列挙するか) を受け、Rustの評価結果をレコード順に返す。
-Probe = Callable[[Path, Path, bool], list[dict]]
+# (MNPTのパス, MNSDのパス, 成り手の列挙, 全合法手の列挙) を受け、レコード順に返す。
+Probe = Callable[[Path, Path, bool, bool], list[dict]]
 
 
 class Weights:
@@ -63,7 +64,7 @@ class Weights:
 
 
 class FMWeights:
-    """第1フェーズの候補をPythonの整数参照評価で評価する。"""
+    """FM候補をPythonの整数参照評価で評価する。"""
 
     def __init__(self, path: Path) -> None:
         (self.middlegame, self.endgame, self.piece_values, self.k,
@@ -84,10 +85,12 @@ class FMWeights:
 def rust_probe(binary: Path) -> Probe:
     """`pst_probe`バイナリを呼ぶ探査関数を返す。"""
 
-    def probe(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
+    def probe(mnpt: Path, mnsd: Path, promotions: bool, moves: bool) -> list[dict]:
         command = [str(binary), "--pst", str(mnpt), "--positions", str(mnsd)]
         if promotions:
             command.append("--promotions")
+        if moves:
+            command.append("--moves")
         output = subprocess.run(command, check=True, capture_output=True, text=True).stdout
         return json.loads(output)
 
@@ -191,6 +194,21 @@ def _removal_report(records: np.ndarray, models: dict[str, Weights | FMWeights])
     return reports
 
 
+def _move_delta_summary(deltas: list[int], pawn_value: int) -> dict:
+    """FMによる着手差とその歩兵比を集計する。標準偏差は母標準偏差とする。"""
+    values = np.asarray(deltas, dtype=np.float64)
+    report = {"pawn_value_cp": pawn_value}
+    for name, samples in (("fm_delta_cp", values),
+                          ("absolute_fm_delta_pawns", np.abs(values) / pawn_value)):
+        report[name] = {
+            "count": int(samples.size),
+            "mean": float(samples.mean()) if samples.size else None,
+            "std": float(samples.std()) if samples.size else None,
+            "max_absolute": float(np.abs(samples).max()) if samples.size else None,
+        }
+    return report
+
+
 def diagnose(
     dataset: Dataset,
     base_path: Path,
@@ -203,6 +221,7 @@ def diagnose(
     probe: Probe,
     *,
     model_kind: str,
+    candidate_probe: Probe | None = None,
 ) -> dict:
     """帯別の教師誤差、量子化誤差、駒の除去、および成りの診断を返す。
 
@@ -212,6 +231,8 @@ def diagnose(
     if model_kind not in ("single", "tapered", "fm"):
         raise ValueError("unknown diagnostic model kind")
     is_fm = model_kind == "fm"
+    if is_fm and candidate_probe is None:
+        raise ValueError("FM diagnosis requires a candidate probe")
     if is_fm:
         validate_fixed_base(base_path, candidate_path)
     models = {"base": Weights(base_path),
@@ -309,18 +330,25 @@ def diagnose(
     union_path = output_dir / "diagnostic-samples.bin"
     write_mnsd(union_path, union_records, seed=0, network_checksum=base_path.read_bytes()[48:80])
     report["rust_agreement"] = {}
-    probe_paths = [("base", base_path)] if is_fm else [("base", base_path), ("candidate", candidate_path)]
+    probe_paths = [("base", base_path), ("candidate", candidate_path)]
+    probes = {"base": probe, "candidate": candidate_probe if is_fm else probe}
     if is_fm:
-        report["rust_agreement"]["candidate"] = {"status": "未実施（第2フェーズ）"}
-        report["move_deltas"] = {"status": "未実施（第2フェーズ）"}
         report["candidate_evaluator"] = "Python MNPT v3 integer reference"
+    evaluations = {}
     for name, path in probe_paths:
-        probed = probe(path, union_path, False)
+        probed = probes[name](path, union_path, False, False)
         rust = np.array([item["eval"] for item in probed], dtype=np.int64)
         python = models[name].evaluate(union_records).astype(np.int64)
         if rust.shape != python.shape or not np.array_equal(rust, python):
             raise ValueError(f"Rust evaluation disagrees with the Python reference for {name}")
         report["rust_agreement"][name] = int(rust.size)
+        evaluations[name] = probed
+    if is_fm:
+        rust_pst = [item["eval_pst"] for item in evaluations["candidate"]]
+        base_eval = [item["eval"] for item in evaluations["base"]]
+        if rust_pst != base_eval:
+            raise ValueError("candidate Rust eval_pst disagrees with the base Rust evaluation")
+        report["rust_agreement"]["candidate_pst"] = len(rust_pst)
 
     initial = np.zeros(1, dtype=RECORD_DTYPE)
     initial["board"] = INITIAL_BOARD
@@ -330,9 +358,14 @@ def diagnose(
     representative_path = output_dir / "representatives.bin"
     write_mnsd(representative_path, representatives, seed=0, network_checksum=base_path.read_bytes()[48:80])
     removal = _removal_report(representatives, models)
-    promotions = {name: probe(path, representative_path, True) for name, path in probe_paths}
+    promotions = {name: probes[name](path, representative_path, True, is_fm and name == "candidate")
+                  for name, path in probe_paths}
+    for name, rows in promotions.items():
+        if len(rows) != len(representatives):
+            raise ValueError(f"Rust probe returned an unexpected representative count for {name}")
     labels = ["initial"] + [f"band{band}" for band in sorted(representative_candidates)]
     report["representatives"] = []
+    all_move_deltas = []
     for position, label in enumerate(labels):
         entry = {"label": label, "index": None if position == 0 else representative_indices[position - 1]}
         entry.update(removal[position])
@@ -344,12 +377,20 @@ def diagnose(
             entry["promotions"][name] = probed["promotions"] or None
         entry["promotion_reason"] = None if promotions["base"][position]["promotions"] else "no legal promotion"
         if is_fm:
-            entry["promotions"]["candidate"] = {"status": "未実施（第2フェーズ）"}
+            candidate_row = promotions["candidate"][position]
+            if candidate_row["eval_pst"] != promotions["base"][position]["eval"]:
+                raise ValueError("candidate Rust eval_pst disagrees with the base Rust evaluation")
+            deltas = [move["delta"] - move["delta_pst"] for move in candidate_row["moves"]]
+            pawn_value = int(models["candidate"].piece_values[PAWN_STATE])
+            entry["move_deltas"] = _move_delta_summary(deltas, pawn_value)
+            all_move_deltas.extend(deltas)
             entry["fm_correction_cp"] = entry["evaluations"]["candidate"] - entry["evaluations"]["base"]
             for removal_entry in entry["removals"]:
                 delta = removal_entry["delta_cp"]
                 removal_entry["fm_delta_cp"] = delta["candidate"] - delta["base"]
         report["representatives"].append(entry)
+    if is_fm:
+        report["move_deltas"] = _move_delta_summary(all_move_deltas, pawn_value)
     report["derived_piece_values"] = {
         "states": list(REACHABLE_NON_ROYAL_STATES),
         "fixed": [int(models["base"].piece_values[s]) for s in REACHABLE_NON_ROYAL_STATES],

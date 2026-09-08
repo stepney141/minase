@@ -42,7 +42,7 @@ def write_json(path: Path, value: object) -> None:
 def git(repository: Path, *arguments: str) -> str:
     return subprocess.check_output(
         ["git", "-C", str(repository), *arguments], text=True
-    ).strip()
+    ).rstrip("\n")
 
 
 def integer(value: object, name: str, minimum: int, maximum: int) -> int:
@@ -373,10 +373,23 @@ def diagnose(run: Path) -> None:
     destination = run / "diagnostics"
     destination.mkdir()
     config = state["config"]["diagnose"]
+    model_kind = state["config"]["train"]["model"]
+    candidate_probe = None
+    if model_kind == "fm":
+        candidate_binary = ROOT / "target/release/pst_probe"
+        run_command(run, "build-candidate-probe",
+                    ["cargo", "build", "--release", "--locked", "--bin", "pst_probe"], ROOT)
+        write_json(destination / "candidate-probe.json", {
+            "repository": str(ROOT), "binary": str(candidate_binary),
+            "sha256": digest(candidate_binary),
+            "commit": git(ROOT, "rev-parse", "HEAD"),
+            "status_porcelain": git(ROOT, "status", "--porcelain"),
+        })
+        candidate_probe = diagnose_probe(candidate_binary)
     report = diagnose_weights(Dataset(paths), run / "pst-base.bin", candidate, float_weights_path(candidate),
                               destination, config["sample_size"], config["seed"],
                               state["config"]["train"]["lambda"], diagnose_probe(probe),
-                              model_kind=state["config"]["train"]["model"])
+                              model_kind=model_kind, candidate_probe=candidate_probe)
     write_json(destination / "report.json", report)
     print(f"Diagnostics: {destination / 'report.json'}")
 

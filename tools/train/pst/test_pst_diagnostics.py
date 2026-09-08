@@ -4,20 +4,21 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 from features import BOARD_FEATURE_COUNT, FEATURE_COUNT, INITIAL_BOARD, feature_indices
 from mnsd import Dataset, read_header, map_records
-from pst_diagnostics import Weights, derived_piece_values, diagnose
+from pst_diagnostics import FMWeights, Weights, derived_piece_values, diagnose, rust_probe
 from taper import BAND_COUNT, phase_numerators
 from test_train_pst import write_mnsd
-from train_pst import initial_piece_values, integer_evaluate, write_mnpt
+from train_pst import PAWN_STATE, ROYAL_STATES, initial_piece_values, integer_evaluate, write_mnpt
 
 PIECE_VALUES = initial_piece_values()
 
 
-def python_probe(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
+def python_probe(mnpt: Path, mnsd: Path, promotions: bool, moves: bool) -> list[dict]:
     """Rustの代わりにPythonの参照評価で応答し、成り手は1件の固定値を返す。"""
     weights = Weights(mnpt)
     records = map_records(mnsd)
@@ -27,6 +28,25 @@ def python_probe(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
          **({"promotions": [{"move": "1a1b+", "delta": 7}]} if promotions else {})}
         for index, score in enumerate(scores)
     ]
+
+
+def python_fm_probe(mnpt: Path, mnsd: Path, promotions: bool, moves: bool) -> list[dict]:
+    """v3の参照評価と、集計用の既知の着手差を返す。"""
+    weights = FMWeights(mnpt)
+    records = map_records(mnsd)
+    features = feature_indices(records["board"], records["stm"], records["lion"])
+    pst = integer_evaluate(weights.middlegame, weights.endgame, features,
+                           phase_numerators(records["board"]))
+    output = []
+    for index, score in enumerate(weights.evaluate(records)):
+        rows = ([{"move": "1a1b+", "delta": -193, "delta_pst": 7},
+                 {"move": "1a1b", "delta": 5, "delta_pst": 5},
+                 {"move": "2a2b", "delta": 110, "delta_pst": 10}] if index == 0 else
+                [{"move": "3a3b", "delta": 280, "delta_pst": -20}])
+        output.append({"index": index, "eval": int(score), "eval_pst": int(pst[index]),
+                       **({"promotions": rows[:1] if index == 0 else []} if promotions else {}),
+                       **({"moves": rows} if moves else {})})
+    return output
 
 
 class DiagnosticsTest(unittest.TestCase):
@@ -174,8 +194,8 @@ class DiagnosticsTest(unittest.TestCase):
                         self.assertTrue(entry["candidate"]["correlation_reason"])
                         self.assertGreaterEqual(entry["candidate"]["mae_scaled_cp"], 0)
 
-        def wrong_probe(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
-            return [{**item, "eval": item["eval"] + 1} for item in python_probe(mnpt, mnsd, promotions)]
+        def wrong_probe(mnpt: Path, mnsd: Path, promotions: bool, moves: bool) -> list[dict]:
+            return [{**item, "eval": item["eval"] + 1} for item in python_probe(mnpt, mnsd, promotions, moves)]
 
         output = self.root / "mismatch"
         output.mkdir()
@@ -215,31 +235,37 @@ class DiagnosticsTest(unittest.TestCase):
 class FMDiagnosticsTest(unittest.TestCase):
     """候補の参照評価と駒除去を、1組1cpの既知のFMで確認する。"""
 
-    setUp = DiagnosticsTest.setUp
     write_candidate = DiagnosticsTest.write_candidate
     dataset = DiagnosticsTest.dataset
 
-    def test_python_fm_diagnostics_never_send_v3_to_rust(self) -> None:
+    def setUp(self) -> None:
+        DiagnosticsTest.setUp(self)
         from train_fm import write_mnpt_v3
         write_mnpt_v3(self.candidate, self.weights, self.weights, PIECE_VALUES, 1000,
                       np.full((FEATURE_COUNT, 1), 64, dtype=np.int16), np.array([1], dtype=np.int8), 6)
         np.savez(self.float_path, V=np.ones((FEATURE_COUNT, 1)), a=np.array([0.001]),
                  mask=np.ones(FEATURE_COUNT, dtype=bool))
+
+    def test_fm_uses_separate_probes_and_records_promotions_and_move_distributions(self) -> None:
         calls = []
-        def baseline_probe(mnpt, mnsd, promotions):
+        def baseline_probe(mnpt, mnsd, promotions, moves):
             self.assertEqual(mnpt, self.base)
-            calls.append(promotions)
-            return python_probe(mnpt, mnsd, promotions)
+            self.assertFalse(moves)
+            calls.append(("base", promotions, moves))
+            return python_probe(mnpt, mnsd, promotions, moves)
+        def candidate_probe(mnpt, mnsd, promotions, moves):
+            self.assertEqual(mnpt, self.candidate)
+            calls.append(("candidate", promotions, moves))
+            return python_fm_probe(mnpt, mnsd, promotions, moves)
         output = self.root / "fm"
         output.mkdir()
         dataset = self.dataset()
         report = diagnose(dataset, self.base, self.candidate, self.float_path, output,
-                          5, 19, 0.75, baseline_probe, model_kind="fm")
+                          5, 19, 0.75, baseline_probe, model_kind="fm", candidate_probe=candidate_probe)
         json.dumps(report, allow_nan=False)
-        self.assertIn(False, calls)
-        self.assertIn(True, calls)
-        self.assertEqual(report["rust_agreement"]["candidate"]["status"], "未実施（第2フェーズ）")
-        self.assertEqual(report["move_deltas"]["status"], "未実施（第2フェーズ）")
+        self.assertCountEqual(calls, [("base", False, False), ("base", True, False),
+                                      ("candidate", False, False), ("candidate", True, True)])
+        self.assertEqual(report["rust_agreement"], {"base": 10, "candidate": 10, "candidate_pst": 10})
         self.assertLess(report["quantization"]["max_absolute_error_cp"], 1e-8)
         for entry in report["bands"]:
             if not entry["samples"]:
@@ -253,8 +279,101 @@ class FMDiagnosticsTest(unittest.TestCase):
         self.assertEqual(initial["fm_correction_cp"], 92 * 91 // 2)
         for item in initial["removals"]:
             self.assertEqual(item["fm_delta_cp"], -91)
-        for representative in report["representatives"]:
-            self.assertEqual(representative["promotions"]["candidate"]["status"], "未実施（第2フェーズ）")
+        self.assertEqual(initial["promotions"]["base"], [{"move": "1a1b+", "delta": 7}])
+        self.assertEqual(initial["promotions"]["candidate"],
+                         [{"move": "1a1b+", "delta": -193, "delta_pst": 7}])
+        # 差[-200, 0, 100]cpと歩兵比[2, 0, 1]の母集団統計。
+        first = initial["move_deltas"]
+        self.assertEqual(first["pawn_value_cp"], 100)
+        self.assertEqual(first["fm_delta_cp"]["count"], 3)
+        self.assertAlmostEqual(first["fm_delta_cp"]["mean"], -100 / 3)
+        self.assertAlmostEqual(first["fm_delta_cp"]["std"], (140000 / 9)**0.5)
+        self.assertEqual(first["fm_delta_cp"]["max_absolute"], 200)
+        self.assertEqual(first["absolute_fm_delta_pawns"]["count"], 3)
+        self.assertEqual(first["absolute_fm_delta_pawns"]["mean"], 1)
+        self.assertAlmostEqual(first["absolute_fm_delta_pawns"]["std"], (2 / 3)**0.5)
+        self.assertEqual(first["absolute_fm_delta_pawns"]["max_absolute"], 2)
+        second = report["representatives"][1]
+        self.assertIsNone(second["promotions"]["candidate"])
+        self.assertEqual(second["move_deltas"]["fm_delta_cp"],
+                         {"count": 1, "mean": 300, "std": 0, "max_absolute": 300})
+        pooled = report["move_deltas"]
+        self.assertEqual(pooled["fm_delta_cp"],
+                         {"count": 4, "mean": 50, "std": 32500**0.5, "max_absolute": 300})
+        self.assertEqual(pooled["absolute_fm_delta_pawns"],
+                         {"count": 4, "mean": 1.5, "std": 1.25**0.5, "max_absolute": 3})
+
+    def test_fm_rejects_mismatches_and_missing_positions_in_both_probe_batches(self) -> None:
+        dataset = self.dataset()
+        for representatives in (False, True):
+            for field in ("eval", "eval_pst", "missing", "extra"):
+                def wrong_probe(mnpt, mnsd, promotions, moves):
+                    rows = python_fm_probe(mnpt, mnsd, promotions, moves)
+                    if promotions == representatives:
+                        if field == "missing":
+                            return rows[:-1]
+                        if field == "extra":
+                            return rows + rows[-1:]
+                        rows[-1][field] += 1
+                    return rows
+                output = self.root / f"mismatch-{representatives}-{field}"
+                output.mkdir()
+                with self.subTest(representatives=representatives, field=field), self.assertRaises(ValueError):
+                    diagnose(dataset, self.base, self.candidate, self.float_path, output,
+                             5, 19, 0.75, python_probe, model_kind="fm", candidate_probe=wrong_probe)
+
+    def test_fm_requires_an_explicit_candidate_probe(self) -> None:
+        with self.assertRaises(ValueError):
+            diagnose(self.dataset(), self.base, self.candidate, self.float_path, self.root,
+                     5, 19, 0.75, python_probe, model_kind="fm")
+
+    def test_move_ratios_use_the_stored_search_pawn_value(self) -> None:
+        from train_fm import read_mnpt_v3, write_mnpt_v3
+        mg, eg, values, k, u, signs, exponent = read_mnpt_v3(self.candidate)
+        values[PAWN_STATE] = 200
+        values[list(ROYAL_STATES)] += 100
+        write_mnpt(self.base, mg, eg, values, k)
+        write_mnpt_v3(self.candidate, mg, eg, values, k, u, signs, exponent)
+        output = self.root / "pawn-200"
+        output.mkdir()
+        report = diagnose(self.dataset(), self.base, self.candidate, self.float_path, output,
+                          5, 19, 0.75, python_probe, model_kind="fm", candidate_probe=python_fm_probe)
+        summary = report["move_deltas"]
+        self.assertEqual(summary["pawn_value_cp"], 200)
+        self.assertEqual(summary["fm_delta_cp"]["mean"], 50)
+        # 差[-200, 0, 100, 300]cpを200cpで割った絶対値は[1, 0, 0.5, 1.5]。
+        self.assertEqual(summary["absolute_fm_delta_pawns"],
+                         {"count": 4, "mean": 0.75, "std": 0.3125**0.5, "max_absolute": 1.5})
+
+    def test_fm_reports_empty_legal_move_distributions_without_nan(self) -> None:
+        def empty_probe(mnpt, mnsd, promotions, moves):
+            rows = python_fm_probe(mnpt, mnsd, promotions, moves)
+            if promotions:
+                for row in rows:
+                    row["promotions"] = []
+                    row["moves"] = []
+            return rows
+        output = self.root / "empty-moves"
+        output.mkdir()
+        report = diagnose(self.dataset(), self.base, self.candidate, self.float_path, output,
+                          5, 19, 0.75, python_probe, model_kind="fm", candidate_probe=empty_probe)
+        json.dumps(report, allow_nan=False)
+        for summary in [report["move_deltas"], *[r["move_deltas"] for r in report["representatives"]]]:
+            for field in ("fm_delta_cp", "absolute_fm_delta_pawns"):
+                self.assertEqual(summary[field], {"count": 0, "mean": None, "std": None, "max_absolute": None})
+
+
+class RustProbeTest(unittest.TestCase):
+    def test_flags_are_forwarded_independently(self) -> None:
+        for promotions, moves in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(promotions=promotions, moves=moves), patch("pst_diagnostics.subprocess.run") as execute:
+                execute.return_value.stdout = '[{"index": 0, "eval": 9, "eval_pst": 7}]'
+                rows = rust_probe(Path("/probe"))(Path("/candidate.bin"), Path("/positions.bin"), promotions, moves)
+                flags = (["--promotions"] if promotions else []) + (["--moves"] if moves else [])
+                execute.assert_called_once_with(
+                    ["/probe", "--pst", "/candidate.bin", "--positions", "/positions.bin", *flags],
+                    check=True, capture_output=True, text=True)
+                self.assertEqual(rows, [{"index": 0, "eval": 9, "eval_pst": 7}])
 
 
 if __name__ == "__main__":
