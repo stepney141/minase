@@ -5,7 +5,7 @@ use super::pst::Error;
 use crate::{Color, Position};
 
 /// 埋め込むFMの潜在次元。MNPTの次元もこの値と一致する必要がある。
-pub const FM_RANK: usize = 16;
+pub const FM_RANK: usize = 32;
 /// MNPT本体のFM節のバイト数。
 pub(super) const ENCODED_LENGTH: usize = 8 + FM_RANK + FEATURE_COUNT * FM_RANK * 2;
 
