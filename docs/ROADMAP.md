@@ -39,6 +39,7 @@
 | 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
 | PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 進行中 | ― |
+| Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 起案 | ― |
 
 ## 現在地
 
@@ -58,6 +59,7 @@ HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaCh
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
 次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
+評価関数については、現行PSTを固定して2駒関係の補正項を学習するFactorization Machineによる2駒関係評価（plans/factorization-machine.md）を2026年9月9日に起案した。探索と独立に採否できるので段階6と並行して進めてよい。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
