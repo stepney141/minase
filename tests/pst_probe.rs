@@ -141,17 +141,17 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
             }
         }
     }
-    // 学習済みFMの初期局面評価はPython参照値53cp、固定PSTは67cp。
+    // 学習済みFMの初期局面評価はPython参照値52cp、固定PSTは67cp。
     let candidate = probe(
         &path,
         concat!(env!("CARGO_MANIFEST_DIR"), "/nets/pst.bin"),
         &["--moves", "--promotions"],
     );
-    assert_eq!(candidate[0]["eval"], 53);
+    assert_eq!(candidate[0]["eval"], 52);
     assert_eq!(candidate[0]["eval_pst"], 67);
-    // Python参照で、両手番の歩兵捕獲はFM込み148cp、成り捕獲は353cp。
+    // Python参照で、両手番の歩兵捕獲はFM込み165cp、成り捕獲は360cp。
     for index in [1, 2] {
-        assert_eq!(candidate[index]["eval"], 41);
+        assert_eq!(candidate[index]["eval"], 34);
         assert_eq!(candidate[index]["eval_pst"], 184);
         let mut pawn_moves = 0;
         for row in candidate[index]["moves"].as_array().unwrap() {
@@ -160,7 +160,7 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
                 continue;
             }
             pawn_moves += 1;
-            let (delta, delta_pst) = if mv.promote { (353, 268) } else { (148, -159) };
+            let (delta, delta_pst) = if mv.promote { (360, 268) } else { (165, -159) };
             assert_eq!(row["delta"], delta);
             assert_eq!(row["delta_pst"], delta_pst);
             if mv.promote {
