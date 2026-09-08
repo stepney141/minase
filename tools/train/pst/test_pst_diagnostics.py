@@ -70,7 +70,7 @@ class DiagnosticsTest(unittest.TestCase):
     def run_diagnose(self, dataset: Dataset, output: Path, sample_size: int = 5) -> dict:
         output.mkdir()
         return diagnose(dataset, self.base, self.candidate, self.float_path, output,
-                        sample_size, 19, 0.75, python_probe)
+                        sample_size, 19, 0.75, python_probe, model_kind="tapered")
 
     def test_same_saved_samples_compare_both_weights_and_report_empty_bands(self) -> None:
         dataset = self.dataset()
@@ -180,7 +180,7 @@ class DiagnosticsTest(unittest.TestCase):
         output = self.root / "mismatch"
         output.mkdir()
         with self.assertRaises(ValueError):
-            diagnose(self.dataset(), self.base, self.candidate, self.float_path, output, 5, 19, 0.75, wrong_probe)
+            diagnose(self.dataset(), self.base, self.candidate, self.float_path, output, 5, 19, 0.75, wrong_probe, model_kind="tapered")
 
     def test_rejects_changed_piece_values_and_quantization_drift(self) -> None:
         dataset = self.dataset()
@@ -191,7 +191,7 @@ class DiagnosticsTest(unittest.TestCase):
         output = self.root / "values"
         output.mkdir()
         with self.assertRaises(ValueError):
-            diagnose(dataset, self.base, self.candidate, self.float_path, output, 5, 19, 0.75, python_probe)
+            diagnose(dataset, self.base, self.candidate, self.float_path, output, 5, 19, 0.75, python_probe, model_kind="tapered")
         write_mnpt(self.candidate, self.weights, self.weights, PIECE_VALUES, 1000)
         with self.float_path.open("wb") as stream:
             np.savez(stream, middlegame=self.weights.astype(np.float32) / 8 + 3,
@@ -199,7 +199,7 @@ class DiagnosticsTest(unittest.TestCase):
         drift = self.root / "drift"
         drift.mkdir()
         with self.assertRaises(ValueError):
-            diagnose(dataset, self.base, self.candidate, self.float_path, drift, 5, 19, 0.75, python_probe)
+            diagnose(dataset, self.base, self.candidate, self.float_path, drift, 5, 19, 0.75, python_probe, model_kind="tapered")
 
     def test_derived_values_round_half_away_from_zero(self) -> None:
         weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
@@ -210,6 +210,51 @@ class DiagnosticsTest(unittest.TestCase):
         self.assertEqual(derived_piece_values(weights)[0], -1)
         weights[:144] = 7
         self.assertEqual(derived_piece_values(weights)[0], 0)
+
+
+class FMDiagnosticsTest(unittest.TestCase):
+    """候補の参照評価と駒除去を、1組1cpの既知のFMで確認する。"""
+
+    setUp = DiagnosticsTest.setUp
+    write_candidate = DiagnosticsTest.write_candidate
+    dataset = DiagnosticsTest.dataset
+
+    def test_python_fm_diagnostics_never_send_v3_to_rust(self) -> None:
+        from train_fm import write_mnpt_v3
+        write_mnpt_v3(self.candidate, self.weights, self.weights, PIECE_VALUES, 1000,
+                      np.full((FEATURE_COUNT, 1), 64, dtype=np.int16), np.array([1], dtype=np.int8), 6)
+        np.savez(self.float_path, V=np.ones((FEATURE_COUNT, 1)), a=np.array([0.001]),
+                 mask=np.ones(FEATURE_COUNT, dtype=bool))
+        calls = []
+        def baseline_probe(mnpt, mnsd, promotions):
+            self.assertEqual(mnpt, self.base)
+            calls.append(promotions)
+            return python_probe(mnpt, mnsd, promotions)
+        output = self.root / "fm"
+        output.mkdir()
+        dataset = self.dataset()
+        report = diagnose(dataset, self.base, self.candidate, self.float_path, output,
+                          5, 19, 0.75, baseline_probe, model_kind="fm")
+        json.dumps(report, allow_nan=False)
+        self.assertIn(False, calls)
+        self.assertIn(True, calls)
+        self.assertEqual(report["rust_agreement"]["candidate"]["status"], "未実施（第2フェーズ）")
+        self.assertEqual(report["move_deltas"]["status"], "未実施（第2フェーズ）")
+        self.assertLess(report["quantization"]["max_absolute_error_cp"], 1e-8)
+        for entry in report["bands"]:
+            if not entry["samples"]:
+                continue
+            indices = np.load(output / entry["indices_file"])
+            count = np.count_nonzero(dataset.gather(indices)["board"], axis=1)
+            expected_mae = float((count * (count - 1) / 2).mean())
+            self.assertEqual(entry["candidate"]["mae_raw_cp"], expected_mae)
+            self.assertIsNotNone(entry["validation_loss"]["candidate"])
+        initial = report["representatives"][0]
+        self.assertEqual(initial["fm_correction_cp"], 92 * 91 // 2)
+        for item in initial["removals"]:
+            self.assertEqual(item["fm_delta_cp"], -91)
+        for representative in report["representatives"]:
+            self.assertEqual(representative["promotions"]["candidate"]["status"], "未実施（第2フェーズ）")
 
 
 if __name__ == "__main__":

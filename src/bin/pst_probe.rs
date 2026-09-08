@@ -1,4 +1,4 @@
-//! MNPT重みファイルでMNSD局面を評価し、合法な成り手による評価変化を列挙する。
+//! MNPT重みファイルでMNSD局面を評価し、合法手による評価変化を列挙する。
 //!
 //! PST学習の診断（`tools/train/pst/pst_diagnostics.py`）から呼ばれ、Pythonの整数参照評価と
 //! Rustの評価の一致確認、および代表局面の成りの診断に使う。出力はJSON配列であり、
@@ -13,7 +13,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use minase::core::rules::parse_rule_set;
 use minase::eval::Pst;
-use minase::eval::pst::evaluate;
+use minase::eval::pst::{evaluate, evaluate_pst};
 use minase::eval::training_data::Reader;
 use minase::notation::usi;
 use minase::{Game, MoveGenerator, Rules};
@@ -32,15 +32,20 @@ struct Arguments {
     /// 各局面の合法な成り手を実際に適用して評価差を列挙する。
     #[arg(long)]
     promotions: bool,
+    /// 各局面の全合法手を適用して評価差を列挙する。
+    #[arg(long)]
+    moves: bool,
 }
 
-/// 1つの成り手の評価差。
+/// 1つの合法手の評価差。
 #[derive(Serialize)]
-struct Promotion {
+struct MoveDelta {
     /// USI表記の着手。
     r#move: String,
     /// 着手前の手番側視点で測った評価差（着手後の評価の符号を反転して差し引く）。
     delta: i32,
+    /// FMの補正を含まないPSTだけの評価差。
+    delta_pst: i32,
 }
 
 /// 1局面の評価結果。
@@ -50,9 +55,14 @@ struct Probe {
     index: usize,
     /// 手番側視点の静的評価。
     eval: i32,
+    /// FMの補正を含まないPSTだけの静的評価。
+    eval_pst: i32,
     /// `--promotions`指定時の成り手ごとの評価差。
     #[serde(skip_serializing_if = "Option::is_none")]
-    promotions: Option<Vec<Promotion>>,
+    promotions: Option<Vec<MoveDelta>>,
+    /// `--moves`指定時の全合法手の評価差。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    moves: Option<Vec<MoveDelta>>,
 }
 
 /// 局面を読み、評価と成り手の評価差を計算する。
@@ -69,27 +79,45 @@ fn run(arguments: &Arguments) -> Result<Vec<Probe>, String> {
     while let Some(record) = reader.read_record().map_err(|error| error.to_string())? {
         let position = record.to_position().map_err(|error| error.to_string())?;
         let before = evaluate(&pst, &position);
-        let promotions = arguments.promotions.then(|| {
+        let before_pst = evaluate_pst(&pst, &position);
+        let mut promotions = arguments.promotions.then(Vec::new);
+        let mut moves = arguments.moves.then(Vec::new);
+        if arguments.promotions || arguments.moves {
             let game = Game::from_position(rules, position.clone());
-            game.legal_moves()
-                .into_iter()
-                .filter(|mv| mv.promote)
-                .map(|mv| {
-                    let text = usi::text(&position, mv, &generator)
-                        .expect("legal move must have a USI text");
-                    let mut after = game.clone();
-                    after.play(mv).expect("legal move must be playable");
-                    Promotion {
+            for mv in game.legal_moves() {
+                if !arguments.moves && !mv.promote {
+                    continue;
+                }
+                let text =
+                    usi::text(&position, mv, &generator).expect("legal move must have a USI text");
+                let mut after = game.clone();
+                after.play(mv).expect("legal move must be playable");
+                let delta = -evaluate(&pst, after.position()) - before;
+                let delta_pst = -evaluate_pst(&pst, after.position()) - before_pst;
+                if mv.promote
+                    && let Some(promotions) = &mut promotions
+                {
+                    promotions.push(MoveDelta {
+                        r#move: text.clone(),
+                        delta,
+                        delta_pst,
+                    });
+                }
+                if let Some(moves) = &mut moves {
+                    moves.push(MoveDelta {
                         r#move: text,
-                        delta: -evaluate(&pst, after.position()) - before,
-                    }
-                })
-                .collect()
-        });
+                        delta,
+                        delta_pst,
+                    });
+                }
+            }
+        }
         probes.push(Probe {
             index,
             eval: before,
+            eval_pst: before_pst,
             promotions,
+            moves,
         });
         index += 1;
     }

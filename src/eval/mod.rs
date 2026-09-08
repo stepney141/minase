@@ -1,6 +1,7 @@
 //! 中将棋の静的評価関数。
 
 pub(crate) mod features;
+pub mod fm;
 pub mod handcrafted;
 pub mod pst;
 pub mod training_data;

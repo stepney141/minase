@@ -248,5 +248,96 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(candidate.read_bytes(), original)
 
 
+class FMWorkflowTest(unittest.TestCase):
+    """FM固有の設定、基準尺度の維持、および候補の適格性を検証する。"""
+
+    setUp = WorkflowTest.setUp
+    prepared = WorkflowTest.prepared
+
+    def test_fm_requires_all_and_only_its_fields(self) -> None:
+        content = CONFIG.replace('model = "single"',
+                                 'model = "fm"\nrank = 16\nweight_decay = 0.0001\nlambda_res = 0.001\npatience = 3')
+        self.config_path.write_text(content)
+        self.assertEqual(workflow.load_config(self.config_path, self.root)["train"]["rank"], 16)
+        for before, after in (("rank = 16\n", ""), ("patience = 3\n", ""),
+                              ("weight_decay = 0.0001\n", ""), ("lambda_res = 0.001\n", ""),
+                              ("rank = 16", "rank = 0"), ("rank = 16", "rank = true"),
+                              ("patience = 3", "patience = 0"),
+                              ("lambda_res = 0.001", "lambda_res = nan"),
+                              ("weight_decay = 0.0001", "weight_decay = -1"),
+                              ("rank = 16", "rank = 16\nextra = 1"),
+                              ('model = "fm"', 'model = "tapered"')):
+            self.config_path.write_text(content.replace(before, after))
+            with self.subTest(after=after), self.assertRaises(ValueError):
+                workflow.load_config(self.config_path, self.root)
+
+    def fm_prepared(self, *, epoch_zero: bool = False) -> Path:
+        from test_train_fm import fixture
+        data, _ = fixture(self.root, epoch_zero=epoch_zero)
+        self.config["run"]["data"] = [str(data)]
+        self.config["generate"]["seeds"] = []
+        self.config["train"].update(model="fm", rank=2, weight_decay=0.001, lambda_res=0.001,
+                                    patience=1, learning_rate=0.01, epochs=2, batch=8,
+                                    validation_sample=10, **{"lambda": 0})
+        run, _ = self.prepared()
+        return run
+
+    def test_fm_uses_baseline_k_and_passes_teacher_ks_then_diagnoses(self) -> None:
+        from train_fm import read_mnpt_v3
+        run = self.fm_prepared()
+        with patch("train_pst.estimate_mixed_k", side_effect=AssertionError("FM must not estimate output K")):
+            workflow.train(run)
+        inputs = json.loads((run / "training/inputs.json").read_text())
+        self.assertEqual(inputs["k"], 1000)
+        self.assertIn("train_fm.py", json.loads((run / "prepared.json").read_text())["sources"])
+        commands = [json.loads(line) for line in (run / "commands.jsonl").read_text().splitlines()]
+        argv = commands[0]["argv"]
+        self.assertEqual(float(argv[argv.index("--teacher-ks") + 1]), inputs["teacher_ks"][0])
+        candidate = read_mnpt_v3(run / "training/pst.bin")
+        for expected, actual in zip(read_mnpt(run / "pst-base.bin"), candidate[:4]):
+            np.testing.assert_array_equal(actual, expected)
+        with patch.object(workflow, "diagnose_probe", return_value=python_probe):
+            workflow.diagnose(run)
+        report = json.loads((run / "diagnostics/report.json").read_text())
+        self.assertEqual(report["rust_agreement"]["candidate"]["status"], "未実施（第2フェーズ）")
+        self.assertTrue((run / "training/complete.json").exists())
+
+    def test_fm_epoch_zero_completes_as_excluded_without_candidate(self) -> None:
+        run = self.fm_prepared(epoch_zero=True)
+        workflow.train(run)
+        self.assertTrue((run / "training/excluded.json").exists())
+        self.assertFalse((run / "training/complete.json").exists())
+        self.assertFalse((run / "training/pst.bin").exists())
+        with self.assertRaisesRegex(ValueError, "epoch is 0"):
+            workflow.diagnose(run)
+
+    def test_fm_rejects_changes_to_each_fixed_component_before_completion(self) -> None:
+        from train_fm import training_report_path, write_mnpt_v3
+        # 出力プロセスが正常終了しても、不変性違反には完了記録を作らない。
+        run = self.fm_prepared()
+        for changed_component in range(4):
+            def changed_output(run, label, command, cwd):
+                mg, eg, values, k = read_mnpt(run / "pst-base.bin")
+                if changed_component == 0:
+                    mg[0] += 1
+                elif changed_component == 1:
+                    eg[0] += 1
+                elif changed_component == 2:
+                    values[29] += 1
+                    values[11] += 1
+                    values[21] += 1
+                else:
+                    k += 1
+                output = run / "training/pst.bin"
+                write_mnpt_v3(output, mg, eg, values, k, np.ones((FEATURE_COUNT, 2), dtype=np.int16),
+                              np.ones(2, dtype=np.int8), 0)
+                training_report_path(output).write_text(json.dumps({"status": "candidate", "best_epoch": 1}))
+            with self.subTest(component=changed_component), patch.object(workflow, "run_command", side_effect=changed_output):
+                with self.assertRaisesRegex(ValueError, "changed fixed"):
+                    workflow.train(run)
+                self.assertFalse((run / "training/complete.json").exists())
+            (run / "training").rename(run / f"rejected-{changed_component}")
+
+
 if __name__ == "__main__":
     unittest.main()

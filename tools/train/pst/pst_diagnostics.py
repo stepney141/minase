@@ -18,6 +18,10 @@ from features import (
     PIECE_STATE_COUNT,
     feature_indices,
 )
+from train_fm import (
+    read_mnpt_v3, validate_fixed_base, float_evaluate as fm_float_evaluate,
+    integer_evaluate as fm_integer_evaluate,
+)
 from mnsd import NO_LION_SQUARE, RECORD_DTYPE, Dataset, write_mnsd
 from taper import (
     BAND_COUNT,
@@ -58,6 +62,25 @@ class Weights:
         )
 
 
+class FMWeights:
+    """第1フェーズの候補をPythonの整数参照評価で評価する。"""
+
+    def __init__(self, path: Path) -> None:
+        (self.middlegame, self.endgame, self.piece_values, self.k,
+         self.u, self.signs, self.exponent) = read_mnpt_v3(path)
+
+    def evaluate(self, records: np.ndarray) -> NDArray[np.int32]:
+        features = feature_indices(records["board"], records["stm"], records["lion"])
+        return fm_integer_evaluate(self.middlegame, self.endgame, self.u, self.signs,
+                                   self.exponent, features, phase_numerators(records["board"]))
+
+    def floating(self, records: np.ndarray, weights: dict) -> NDArray[np.float64]:
+        """学習器の量子化前評価を、同じ特徴と固定PSTで計算する。"""
+        features = feature_indices(records["board"], records["stm"], records["lion"])
+        return fm_float_evaluate(self.middlegame, self.endgame, self.k, weights["V"], weights["a"],
+                                 features, phase_numerators(records["board"]))
+
+
 def rust_probe(binary: Path) -> Probe:
     """`pst_probe`バイナリを呼ぶ探査関数を返す。"""
 
@@ -86,7 +109,7 @@ def derived_piece_values(weights: NDArray[np.int16]) -> list[int]:
 
 def _band_losses(
     dataset: Dataset,
-    models: dict[str, Weights],
+    models: dict[str, Weights | FMWeights],
     teacher_ks: NDArray[np.float64],
     lambda_value: float,
 ) -> dict[str, NDArray[np.float64]]:
@@ -129,7 +152,7 @@ def _error_summary(predicted: NDArray, scaled: NDArray, raw: NDArray) -> dict:
     }
 
 
-def _removal_report(records: np.ndarray, models: dict[str, Weights]) -> list[dict]:
+def _removal_report(records: np.ndarray, models: dict[str, Weights | FMWeights]) -> list[dict]:
     """各局面の非王駒を1枚ずつ除いた評価変化をモデル別に返す。"""
     reports = []
     for record in records:
@@ -178,16 +201,36 @@ def diagnose(
     seed: int,
     lambda_value: float,
     probe: Probe,
+    *,
+    model_kind: str,
 ) -> dict:
     """帯別の教師誤差、量子化誤差、駒の除去、および成りの診断を返す。
 
     output_dirは呼出側が作成した新規ディレクトリとする。
     候補の探索用駒価値は基準と一致していなければならない。
     """
-    models = {"base": Weights(base_path), "candidate": Weights(candidate_path)}
+    if model_kind not in ("single", "tapered", "fm"):
+        raise ValueError("unknown diagnostic model kind")
+    is_fm = model_kind == "fm"
+    if is_fm:
+        validate_fixed_base(base_path, candidate_path)
+    models = {"base": Weights(base_path),
+              "candidate": FMWeights(candidate_path) if is_fm else Weights(candidate_path)}
     if not np.array_equal(models["base"].piece_values, models["candidate"].piece_values):
         raise ValueError("candidate piece values differ from the base")
-    float_weights = np.load(candidate_float_path)
+    with np.load(candidate_float_path, allow_pickle=False) as stored:
+        float_weights = {name: stored[name] for name in stored.files}
+    if is_fm:
+        rank = models["candidate"].u.shape[1]
+        if (set(float_weights) != {"V", "a", "mask"}
+                or float_weights["V"].shape != models["candidate"].u.shape
+                or float_weights["a"].shape != (rank,)
+                or float_weights["mask"].shape != (len(models["candidate"].u),)
+                or float_weights["mask"].dtype != np.bool_
+                or not np.isfinite(float_weights["V"]).all()
+                or not np.isfinite(float_weights["a"]).all()
+                or np.any(float_weights["V"][~float_weights["mask"]] != 0)):
+            raise ValueError("invalid floating FM weights or observation mask")
     teacher_ks, _ = estimate_generation_ks(dataset)
     samples = band_samples(dataset, sample_size, seed)
     losses = _band_losses(dataset, models, teacher_ks, lambda_value)
@@ -245,9 +288,12 @@ def diagnose(
     union = np.sort(np.concatenate(sample_chunks))
     union_records = dataset.gather(union)
     features = feature_indices(union_records["board"], union_records["stm"], union_records["lion"])
-    floating = float_evaluate(
-        float_weights["middlegame"], float_weights["endgame"], features, phase_ratios(union_records["board"])
-    )
+    if is_fm:
+        floating = models["candidate"].floating(union_records, float_weights)
+    else:
+        floating = float_evaluate(
+            float_weights["middlegame"], float_weights["endgame"], features, phase_ratios(union_records["board"])
+        )
     integer = models["candidate"].evaluate(union_records)
     errors = np.abs(floating - integer.astype(np.float32))
     report["quantization"] = {
@@ -263,7 +309,12 @@ def diagnose(
     union_path = output_dir / "diagnostic-samples.bin"
     write_mnsd(union_path, union_records, seed=0, network_checksum=base_path.read_bytes()[48:80])
     report["rust_agreement"] = {}
-    for name, path in (("base", base_path), ("candidate", candidate_path)):
+    probe_paths = [("base", base_path)] if is_fm else [("base", base_path), ("candidate", candidate_path)]
+    if is_fm:
+        report["rust_agreement"]["candidate"] = {"status": "未実施（第2フェーズ）"}
+        report["move_deltas"] = {"status": "未実施（第2フェーズ）"}
+        report["candidate_evaluator"] = "Python MNPT v3 integer reference"
+    for name, path in probe_paths:
         probed = probe(path, union_path, False)
         rust = np.array([item["eval"] for item in probed], dtype=np.int64)
         python = models[name].evaluate(union_records).astype(np.int64)
@@ -279,19 +330,25 @@ def diagnose(
     representative_path = output_dir / "representatives.bin"
     write_mnsd(representative_path, representatives, seed=0, network_checksum=base_path.read_bytes()[48:80])
     removal = _removal_report(representatives, models)
-    promotions = {name: probe(path, representative_path, True) for name, path in (("base", base_path), ("candidate", candidate_path))}
+    promotions = {name: probe(path, representative_path, True) for name, path in probe_paths}
     labels = ["initial"] + [f"band{band}" for band in sorted(representative_candidates)]
     report["representatives"] = []
     for position, label in enumerate(labels):
         entry = {"label": label, "index": None if position == 0 else representative_indices[position - 1]}
         entry.update(removal[position])
         entry["promotions"] = {}
-        for name in models:
+        for name, _ in probe_paths:
             probed = promotions[name][position]
             if probed["eval"] != entry["evaluations"][name]:
                 raise ValueError(f"Rust evaluation disagrees with the Python reference for {name}")
             entry["promotions"][name] = probed["promotions"] or None
         entry["promotion_reason"] = None if promotions["base"][position]["promotions"] else "no legal promotion"
+        if is_fm:
+            entry["promotions"]["candidate"] = {"status": "未実施（第2フェーズ）"}
+            entry["fm_correction_cp"] = entry["evaluations"]["candidate"] - entry["evaluations"]["base"]
+            for removal_entry in entry["removals"]:
+                delta = removal_entry["delta_cp"]
+                removal_entry["fm_delta_cp"] = delta["candidate"] - delta["base"]
         report["representatives"].append(entry)
     report["derived_piece_values"] = {
         "states": list(REACHABLE_NON_ROYAL_STATES),

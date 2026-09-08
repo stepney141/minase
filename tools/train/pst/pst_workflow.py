@@ -75,6 +75,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     }
     if set(config) != set(fields):
         raise ValueError(f"config sections must be {sorted(fields)}")
+    if isinstance(config["train"], dict) and config["train"].get("model") == "fm":
+        fields["train"] |= {"rank", "weight_decay", "lambda_res", "patience"}
     for section, expected in fields.items():
         if not isinstance(config[section], dict) or set(config[section]) != expected:
             raise ValueError(f"{section} fields must be {sorted(expected)}")
@@ -112,8 +114,13 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     number(training["lambda"], "train.lambda", 0, 1)
     if training["device"] not in ("cpu", "cuda"):
         raise ValueError("train.device must explicitly be cpu or cuda")
-    if training["model"] not in ("single", "tapered"):
-        raise ValueError("train.model must explicitly be single or tapered")
+    if training["model"] not in ("single", "tapered", "fm"):
+        raise ValueError("train.model must explicitly be single, tapered, or fm")
+    if training["model"] == "fm":
+        for key in ("rank", "patience"):
+            integer(training[key], f"train.{key}", 1, 2**31 - 1)
+        for key in ("weight_decay", "lambda_res"):
+            number(training[key], f"train.{key}", 0, sys.float_info.max)
     integer(config["diagnose"]["seed"], "diagnose.seed", 0, 2**63 - 1)
     integer(config["diagnose"]["sample_size"], "diagnose.sample_size", 1, 2**31 - 1)
     return config
@@ -287,7 +294,7 @@ def train(run: Path) -> None:
     if not training_count or not validation_count:
         raise ValueError("training and validation records must both be nonempty")
     teacher_ks, _ = estimate_generation_ks(dataset)
-    k = estimate_mixed_k(dataset)
+    k = read_mnpt(run / "pst-base.bin")[3] if config["model"] == "fm" else estimate_mixed_k(dataset)
     del dataset
     destination.mkdir()
     steps = (int(training_count) + config["batch"] - 1) // config["batch"]
@@ -304,16 +311,40 @@ def train(run: Path) -> None:
         "packages": sorted(f"{d.metadata['Name']}=={d.version}" for d in distributions()),
     })
     print(f"K={k}, training={training_count}, validation={validation_count}, steps/epoch={steps}", flush=True)
-    command = [sys.executable, str(SOURCES / "train_pst.py"), "train", "--data", *paths,
+    script = "train_fm.py" if config["model"] == "fm" else "train_pst.py"
+    command = [sys.executable, str(SOURCES / script), "train", "--data", *paths,
                "--init", str(run / "pst-base.bin"), "--output", str(destination / "pst.bin"), "--k", repr(k)]
-    for key, option in (("model", "model"), ("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
+    for key, option in (("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
                         ("seed", "seed"), ("lambda", "lambda"), ("device", "device"),
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
+    if config["model"] == "fm":
+        command += ["--teacher-ks", *map(repr, teacher_ks.tolist())]
+        for key in ("rank", "weight_decay", "lambda_res", "patience"):
+            command += ["--" + key.replace("_", "-"), str(config[key])]
+    else:
+        command += ["--model", config["model"]]
     run_command(run, "train", command, ROOT)
-    read_mnpt(destination / "pst.bin")
-    if (destination / "pst.bin").read_bytes()[-PIECE_VALUE_BYTES:] != (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]:
-        raise ValueError("trained weights changed the fixed piece values")
+    if config["model"] == "fm":
+        from train_fm import training_report_path, validate_fixed_base
+        report = json.loads(training_report_path(destination / "pst.bin").read_text())
+        if report["status"] == "excluded_epoch_zero" and report["best_epoch"] == 0:
+            if (destination / "pst.bin").exists():
+                raise ValueError("epoch zero must not produce an FM candidate")
+            write_json(destination / "excluded.json", {
+                "reason": report["reason"], "best_epoch": 0,
+                "report_sha256": digest(training_report_path(destination / "pst.bin")),
+                "float_sha256": digest(float_weights_path(destination / "pst.bin")),
+            })
+            print("Best epoch is 0; excluded from candidate selection")
+            return
+        if report["status"] != "candidate" or report["best_epoch"] <= 0:
+            raise ValueError("FM training did not produce an eligible candidate")
+        validate_fixed_base(run / "pst-base.bin", destination / "pst.bin")
+    else:
+        read_mnpt(destination / "pst.bin")
+        if (destination / "pst.bin").read_bytes()[-PIECE_VALUE_BYTES:] != (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]:
+            raise ValueError("trained weights changed the fixed piece values")
     write_json(destination / "complete.json", {
         "sha256": digest(destination / "pst.bin"),
         "float_sha256": digest(float_weights_path(destination / "pst.bin")),
@@ -331,6 +362,8 @@ def diagnose(run: Path) -> None:
     from train_pst import float_weights_path
     state = load_prepared(run)
     candidate = run / "training/pst.bin"
+    if (run / "training/excluded.json").exists():
+        raise ValueError("best epoch is 0; no FM candidate is available for diagnosis")
     completion = json.loads((run / "training/complete.json").read_text())
     verify_file(candidate, completion["sha256"])
     verify_file(float_weights_path(candidate), completion["float_sha256"])
@@ -342,7 +375,8 @@ def diagnose(run: Path) -> None:
     config = state["config"]["diagnose"]
     report = diagnose_weights(Dataset(paths), run / "pst-base.bin", candidate, float_weights_path(candidate),
                               destination, config["sample_size"], config["seed"],
-                              state["config"]["train"]["lambda"], diagnose_probe(probe))
+                              state["config"]["train"]["lambda"], diagnose_probe(probe),
+                              model_kind=state["config"]["train"]["model"])
     write_json(destination / "report.json", report)
     print(f"Diagnostics: {destination / 'report.json'}")
 
