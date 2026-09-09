@@ -1267,7 +1267,7 @@ mod tests {
     /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
     #[test]
     fn embedded_pst_matches_python_initial_position_evaluation() {
-        assert_evaluation(&weights().unwrap(), &Position::initial(), 52);
+        assert_evaluation(&weights().unwrap(), &Position::initial(), 64);
         assert_eq!(evaluate_pst(&weights().unwrap(), &Position::initial()), 67);
     }
     /// 未観測行も非零とし、全特徴の取り違えを検出できるv3重みを作る。
@@ -1514,23 +1514,23 @@ mod tests {
                 0,
                 255,
                 -1945,
-                -2227,
+                -2015,
             ),
             (
                 &[(132, 12), (11, 76), (65, 8), (41, 85)][..],
                 1,
                 65,
                 1968,
-                1674,
+                1895,
             ),
             (
                 &[(132, 12), (11, 76), (65, 51), (41, 85), (29, 65)][..],
                 1,
                 65,
                 625,
-                641,
+                629,
             ),
-            (&[(25, 47), (103, 114), (76, 76)][..], 1, 63, 4588, 4381),
+            (&[(25, 47), (103, 114), (76, 76)][..], 1, 63, 4588, 4537),
         ];
         let pst = weights().unwrap();
         for &(pieces, side, lion, baseline, expected) in cases {

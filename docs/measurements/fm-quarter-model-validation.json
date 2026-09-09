@@ -1,0 +1,50 @@
+{
+  "source_commit": "658a301a6d782f7ca359c7fb8b3eec515ccf45ce",
+  "original_sha256": "962e22432f622e526c4f4bfcbad2f053994002afb6a6a4381a9ad25b4a337cb1",
+  "quarter_sha256": "d781bc0466451ccf7b14494916e72c8086dbac6681d9b464a03b02c7d6dab0ba",
+  "original_checksum": "bb4105ef452cbfee3d93eaf9d7008662f5e64c7a6243c96bae4a6aa4e2000283",
+  "quarter_checksum": "4391d63425a285285056b4670d569459c6afb1628ad9a2c130b7f01213dbbcec",
+  "original_exponent": 9,
+  "quarter_exponent": 10,
+  "rank": 32,
+  "unchanged_fields": [
+    "PST",
+    "piece_values",
+    "K",
+    "rank",
+    "signs",
+    "embeddings",
+    "rule_set"
+  ],
+  "definition": "quarter_correction = trunc_toward_zero(original_correction / 4), before final evaluation clipping",
+  "script_sha256": "9ec8c1f7f60636a666017574eb48a29a548703c63250e108019a61acfa7ced1f",
+  "probe_sha256": "b1817b5f1946702ed92e814dd96687ca4b06522f305ccd340c4994a1b9033aeb",
+  "python": "3.12.14 (main, Aug 14 2026, 15:34:45) [Clang 22.1.3 ]",
+  "numpy": "2.5.2",
+  "validation": [
+    {
+      "cohort": "saved",
+      "positions": "/home/stepney141/board-games/minase/data/fm-search-diagnosis/fm-strength-saved-static-all/sample.bin",
+      "positions_sha256": "eb120fad9e90bc1f302ee3702f7fd4d854b5a79ae2a69b3e56c1952e3734d0b5",
+      "count": 91841,
+      "negative_corrections": 45765,
+      "positive_corrections": 45756,
+      "original_correction_mean_cp": 0.9193497457562526,
+      "quarter_correction_mean_cp": 0.22898269835912066,
+      "exact_truncation_matches": true,
+      "rust_evaluation_matches": true
+    },
+    {
+      "cohort": "match",
+      "positions": "/home/stepney141/board-games/minase/data/fm-search-diagnosis/fm-strength-match-static-all/sample.bin",
+      "positions_sha256": "9b2cfdef115f5fdc809b09b061ce1ece68a9ecf4635141d66358e1fd136053d7",
+      "count": 7002,
+      "negative_corrections": 100,
+      "positive_corrections": 6898,
+      "original_correction_mean_cp": 956.248500428449,
+      "quarter_correction_mean_cp": 238.70265638389031,
+      "exact_truncation_matches": true,
+      "rust_evaluation_matches": true
+    }
+  ]
+}
