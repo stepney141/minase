@@ -43,17 +43,16 @@
 | FMの配置変化と手番依存性の診断 | [plans/fm-search-diagnosis.md](plans/fm-search-diagnosis.md) | 完了 | 2026年9月9日 |
 | FMの選択手をPST教師で検証する | [plans/fm-teacher-diagnosis.md](plans/fm-teacher-diagnosis.md) | 完了 | 2026年9月9日 |
 | FM補正の縮小 | [plans/fm-quarter.md](plans/fm-quarter.md) | 完了 | 2026年9月9日 |
-| 補正1/4のFMの採否 | [plans/fm-quarter-adoption.md](plans/fm-quarter-adoption.md) | 進行中 | ― |
+| 補正1/4のFMの採否 | [plans/fm-quarter-adoption.md](plans/fm-quarter-adoption.md) | 完了 | 2026年9月10日 |
 
 ## 現在地
 
-FM補正を1/4に縮めた候補が、元FMとの比較に続いて採用PSTとの短時間比較も通過した。
-PSTとの比較は有効567ペアでH1に達し、候補615勝510敗9引き分け、得点率54.63%だった。時間切れとエンジン異常は0件だった。
-同じ候補による長時間測定を開始した。採用はまだ確定していない。
-現行の評価は、短時間と長時間の採用条件を満たした2端点PSTである。
+補正1/4のFMがPSTとの短時間・長時間の採用条件を満たし、2026年9月10日にfm-evalで採用と判定した。
+長時間測定は有効808ペアでH1に達し、850勝740敗26引き分け、得点率53.40%だった。時間切れとエンジン異常は0件だった。
+fm-evalの採用評価は2端点PSTに補正1/4のFMを加えたモデルである。
+masterへの統合は未実施であり、別の作業として扱う。
 
-進行中のマイルストーンは3件である。
-補正1/4のFMの採否（plans/fm-quarter-adoption.md）では、採用PSTとの短時間比較を通過し、長時間測定を実行中である。
+進行中のマイルストーンは2件である。
 HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
 上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
@@ -64,7 +63,7 @@ HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaCh
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
 次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
-FM補正を1/4に縮めた候補はPSTとの長時間測定を実行中であり、その結果に従って採否を決める。
+補正1/4のFMの採否は確定し、masterへの統合が未実施である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
