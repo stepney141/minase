@@ -1,0 +1,65 @@
+{
+  "format_version": 3,
+  "candidate": {
+    "identity": {
+      "kind": "commit",
+      "hash": "3143b082ac15efceb889ba35ce79ed37abe8594d",
+      "sha256": "dbef41e25650ec7d1314acb6f4221058d0a200abbc928eff52b17db54f5d2621"
+    },
+    "limit": {
+      "kind": "time",
+      "base_ms": 10000,
+      "increment_ms": 100,
+      "byoyomi_ms": 0
+    }
+  },
+  "baseline": {
+    "identity": {
+      "kind": "commit",
+      "hash": "658a301a6d782f7ca359c7fb8b3eec515ccf45ce",
+      "sha256": "7b7b526fca06d85ceda3c983ccb0da2916f894508e8e478719071bccc0ef578b"
+    },
+    "limit": {
+      "kind": "time",
+      "base_ms": 10000,
+      "increment_ms": 100,
+      "byoyomi_ms": 0
+    }
+  },
+  "rules_source": "engine-default",
+  "canonical_rules": [
+    "L0",
+    "P0",
+    "R1",
+    "E0"
+  ],
+  "mode": {
+    "kind": "gsprt",
+    "h0_elo": 0.0,
+    "h1_elo": 10.0,
+    "alpha": 0.05,
+    "beta": 0.05
+  },
+  "seed": 20690909,
+  "max_ply": 4096,
+  "response_timeout_secs": 120,
+  "engine_threads": {
+    "candidate": 1,
+    "baseline": 1
+  },
+  "hash_mb": {
+    "candidate": 256,
+    "baseline": 256
+  },
+  "concurrency": 19,
+  "cpu": {
+    "model": "Intel(R) Core(TM) Ultra 7 265KF",
+    "physical_cores": 20,
+    "logical_cores": 20,
+    "physical_memory_bytes": 33218965504
+  },
+  "runner": {
+    "version": "0.1.0",
+    "sha256": "bf93af069463d9b7d9b0f737aeb29ca8c0d1362f4aac3c034f106be8d8ce5214"
+  }
+}
