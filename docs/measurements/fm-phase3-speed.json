@@ -1,0 +1,641 @@
+{
+  "date": "2026-09-09",
+  "command": "bench --depth 5 --repetitions 3 --threads 1",
+  "build_command": "cargo build --offline --release --bin bench",
+  "measurements": {
+    "before": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1356280,
+        "elapsed": 1.076389
+      },
+      {
+        "round": 1,
+        "name": "before",
+        "nodes": 1295497,
+        "nps": 1222355,
+        "elapsed": 1.059837
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1357513,
+        "elapsed": 1.075411
+      },
+      {
+        "round": 2,
+        "name": "before",
+        "nodes": 1295497,
+        "nps": 1221602,
+        "elapsed": 1.060491
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1345471,
+        "elapsed": 1.085036
+      },
+      {
+        "round": 3,
+        "name": "before",
+        "nodes": 1295497,
+        "nps": 1221754,
+        "elapsed": 1.060359
+      }
+    ],
+    "copy": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1354228,
+        "elapsed": 1.07802
+      },
+      {
+        "round": 1,
+        "name": "copy",
+        "nodes": 1295497,
+        "nps": 1280461,
+        "elapsed": 1.011743
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1352663,
+        "elapsed": 1.079268
+      },
+      {
+        "round": 2,
+        "name": "copy",
+        "nodes": 1295497,
+        "nps": 1282801,
+        "elapsed": 1.009897
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1357185,
+        "elapsed": 1.075672
+      },
+      {
+        "round": 3,
+        "name": "copy",
+        "nodes": 1295497,
+        "nps": 1279615,
+        "elapsed": 1.012412
+      }
+    ],
+    "shift": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1351270,
+        "elapsed": 1.08038
+      },
+      {
+        "round": 1,
+        "name": "shift",
+        "nodes": 1295497,
+        "nps": 1282975,
+        "elapsed": 1.00976
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1371041,
+        "elapsed": 1.0648
+      },
+      {
+        "round": 2,
+        "name": "shift",
+        "nodes": 1295497,
+        "nps": 1280394,
+        "elapsed": 1.011796
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1345315,
+        "elapsed": 1.085162
+      },
+      {
+        "round": 3,
+        "name": "shift",
+        "nodes": 1295497,
+        "nps": 1282648,
+        "elapsed": 1.010017
+      }
+    ],
+    "sign": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1377993,
+        "elapsed": 1.059428
+      },
+      {
+        "round": 1,
+        "name": "sign",
+        "nodes": 1295497,
+        "nps": 1298971,
+        "elapsed": 0.997325
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1373497,
+        "elapsed": 1.062897
+      },
+      {
+        "round": 2,
+        "name": "sign",
+        "nodes": 1295497,
+        "nps": 1302353,
+        "elapsed": 0.994736
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1355371,
+        "elapsed": 1.077111
+      },
+      {
+        "round": 3,
+        "name": "sign",
+        "nodes": 1295497,
+        "nps": 1299406,
+        "elapsed": 0.996992
+      }
+    ],
+    "i32": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1355302,
+        "elapsed": 1.077166
+      },
+      {
+        "round": 1,
+        "name": "i32",
+        "nodes": 1295497,
+        "nps": 1292326,
+        "elapsed": 1.002453
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1345127,
+        "elapsed": 1.085314
+      },
+      {
+        "round": 2,
+        "name": "i32",
+        "nodes": 1295497,
+        "nps": 1315010,
+        "elapsed": 0.985162
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1351701,
+        "elapsed": 1.080036
+      },
+      {
+        "round": 3,
+        "name": "i32",
+        "nodes": 1295497,
+        "nps": 1296441,
+        "elapsed": 0.999272
+      }
+    ],
+    "fused": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1367756,
+        "elapsed": 1.067358
+      },
+      {
+        "round": 1,
+        "name": "fused",
+        "nodes": 1295497,
+        "nps": 1340576,
+        "elapsed": 0.966373
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1376119,
+        "elapsed": 1.060871
+      },
+      {
+        "round": 2,
+        "name": "fused",
+        "nodes": 1295497,
+        "nps": 1340844,
+        "elapsed": 0.96618
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1369714,
+        "elapsed": 1.065832
+      },
+      {
+        "round": 3,
+        "name": "fused",
+        "nodes": 1295497,
+        "nps": 1328340,
+        "elapsed": 0.975275
+      }
+    ],
+    "fused-i32": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1347447,
+        "elapsed": 1.083445
+      },
+      {
+        "round": 1,
+        "name": "fused-i32",
+        "nodes": 1295497,
+        "nps": 1332745,
+        "elapsed": 0.972052
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1354761,
+        "elapsed": 1.077596
+      },
+      {
+        "round": 2,
+        "name": "fused-i32",
+        "nodes": 1295497,
+        "nps": 1340237,
+        "elapsed": 0.966618
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1342185,
+        "elapsed": 1.087693
+      },
+      {
+        "round": 3,
+        "name": "fused-i32",
+        "nodes": 1295497,
+        "nps": 1331703,
+        "elapsed": 0.972813
+      }
+    ],
+    "fused-shift": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1355512,
+        "elapsed": 1.076999
+      },
+      {
+        "round": 1,
+        "name": "fused-shift",
+        "nodes": 1295497,
+        "nps": 1317696,
+        "elapsed": 0.983153
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1358446,
+        "elapsed": 1.074673
+      },
+      {
+        "round": 2,
+        "name": "fused-shift",
+        "nodes": 1295497,
+        "nps": 1341004,
+        "elapsed": 0.966065
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1353610,
+        "elapsed": 1.078513
+      },
+      {
+        "round": 3,
+        "name": "fused-shift",
+        "nodes": 1295497,
+        "nps": 1345798,
+        "elapsed": 0.962623
+      }
+    ],
+    "final": [
+      {
+        "round": 1,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1351401,
+        "elapsed": 1.080275
+      },
+      {
+        "round": 1,
+        "name": "final",
+        "nodes": 1295497,
+        "nps": 1335836,
+        "elapsed": 0.969802
+      },
+      {
+        "round": 2,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1351283,
+        "elapsed": 1.080369
+      },
+      {
+        "round": 2,
+        "name": "final",
+        "nodes": 1295497,
+        "nps": 1358825,
+        "elapsed": 0.953395
+      },
+      {
+        "round": 3,
+        "name": "baseline",
+        "nodes": 1459885,
+        "nps": 1359160,
+        "elapsed": 1.074108
+      },
+      {
+        "round": 3,
+        "name": "final",
+        "nodes": 1295497,
+        "nps": 1334470,
+        "elapsed": 0.970795
+      }
+    ]
+  },
+  "variant_comparison": [
+    {
+      "round": 1,
+      "name": "fused-plain",
+      "nodes": 1295497,
+      "nps": 1319759,
+      "elapsed": 0.981616
+    },
+    {
+      "round": 1,
+      "name": "fused-shift",
+      "nodes": 1295497,
+      "nps": 1319581,
+      "elapsed": 0.981749
+    },
+    {
+      "round": 1,
+      "name": "fused",
+      "nodes": 1295497,
+      "nps": 1360299,
+      "elapsed": 0.952362
+    },
+    {
+      "round": 1,
+      "name": "fused-i32",
+      "nodes": 1295497,
+      "nps": 1340363,
+      "elapsed": 0.966527
+    },
+    {
+      "round": 2,
+      "name": "fused-i32",
+      "nodes": 1295497,
+      "nps": 1333200,
+      "elapsed": 0.97172
+    },
+    {
+      "round": 2,
+      "name": "fused",
+      "nodes": 1295497,
+      "nps": 1341492,
+      "elapsed": 0.965713
+    },
+    {
+      "round": 2,
+      "name": "fused-shift",
+      "nodes": 1295497,
+      "nps": 1320975,
+      "elapsed": 0.980713
+    },
+    {
+      "round": 2,
+      "name": "fused-plain",
+      "nodes": 1295497,
+      "nps": 1331339,
+      "elapsed": 0.973078
+    },
+    {
+      "round": 3,
+      "name": "fused-plain",
+      "nodes": 1295497,
+      "nps": 1324208,
+      "elapsed": 0.978318
+    },
+    {
+      "round": 3,
+      "name": "fused-shift",
+      "nodes": 1295497,
+      "nps": 1323252,
+      "elapsed": 0.979026
+    },
+    {
+      "round": 3,
+      "name": "fused",
+      "nodes": 1295497,
+      "nps": 1364890,
+      "elapsed": 0.949158
+    },
+    {
+      "round": 3,
+      "name": "fused-i32",
+      "nodes": 1295497,
+      "nps": 1340694,
+      "elapsed": 0.966288
+    }
+  ],
+  "division_comparison": [
+    {
+      "round": 1,
+      "name": "final",
+      "nodes": 1295497,
+      "nps": 1357749,
+      "elapsed": 0.95415
+    },
+    {
+      "round": 1,
+      "name": "fused",
+      "nodes": 1295497,
+      "nps": 1367138,
+      "elapsed": 0.947598
+    },
+    {
+      "round": 2,
+      "name": "fused",
+      "nodes": 1295497,
+      "nps": 1337807,
+      "elapsed": 0.968374
+    },
+    {
+      "round": 2,
+      "name": "final",
+      "nodes": 1295497,
+      "nps": 1339377,
+      "elapsed": 0.967239
+    },
+    {
+      "round": 3,
+      "name": "final",
+      "nodes": 1295497,
+      "nps": 1338212,
+      "elapsed": 0.968081
+    },
+    {
+      "round": 3,
+      "name": "fused",
+      "nodes": 1295497,
+      "nps": 1339884,
+      "elapsed": 0.966873
+    }
+  ],
+  "binary_sha256": {
+    "before": "a7ad57927d4cd440fdf6a7336b546f0d3a5a68343efddeb35ed0fe8d8c628475",
+    "copy": "ddaec1f63685be0ef20a24636413ceb4166d2fc6891f333e07b13e27274c60b8",
+    "shift": "39137ee21c2835722d55e89e097b625eb3b79c96d9abc214e3f674ef61f0b846",
+    "sign": "2b62676882ce0c60d10a45ec49c4a30944c4268a4ced6b7a071f0ca99b708435",
+    "i32": "729ba849c7bf6ca823a6dab2cf4fe671249f31c235a594b95eb9b7011e50d211",
+    "fused": "130a4ae6ca9d691972bed5dd9d2b9dcc125be1a737c7f2cde507a068b50cbeae",
+    "fused-i32": "040ba49d9c3d8846c4f427c792d210fa06ec762c350c64dd777055745db66f72",
+    "fused-shift": "b98cedc516a748cb549f11da867c500b2760aed06ca2f8287c5b53da69649083",
+    "final": "0664e5532f1b7c7f9f4849f8ef12ecc8811c2c70c273b029762f0449b64fe236",
+    "fused-plain": "b3d0a6b525026e619e9d54da70ff05cdd33f31a833abf1d3cffe16b8348357f1"
+  },
+  "logs": {
+    "before-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.076389s nps=1356280\nrun=2 depth=5 nodes=1459885 elapsed=1.074599s nps=1358539\nrun=3 depth=5 nodes=1459885 elapsed=1.076705s nps=1355882\nmedian: depth=5 nodes=1459885 elapsed=1.076389s nps=1356280\n",
+    "before-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.075411s nps=1357513\nrun=2 depth=5 nodes=1459885 elapsed=1.076636s nps=1355969\nrun=3 depth=5 nodes=1459885 elapsed=1.075207s nps=1357771\nmedian: depth=5 nodes=1459885 elapsed=1.075411s nps=1357513\n",
+    "before-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.089833s nps=1339550\nrun=2 depth=5 nodes=1459885 elapsed=1.085036s nps=1345471\nrun=3 depth=5 nodes=1459885 elapsed=1.084709s nps=1345877\nmedian: depth=5 nodes=1459885 elapsed=1.085036s nps=1345471\n",
+    "before-before-1.log": "run=1 depth=5 nodes=1295497 elapsed=1.059193s nps=1223098\nrun=2 depth=5 nodes=1295497 elapsed=1.060290s nps=1221833\nrun=3 depth=5 nodes=1295497 elapsed=1.059837s nps=1222355\nmedian: depth=5 nodes=1295497 elapsed=1.059837s nps=1222355\n",
+    "before-before-2.log": "run=1 depth=5 nodes=1295497 elapsed=1.059588s nps=1222642\nrun=2 depth=5 nodes=1295497 elapsed=1.060491s nps=1221602\nrun=3 depth=5 nodes=1295497 elapsed=1.061184s nps=1220804\nmedian: depth=5 nodes=1295497 elapsed=1.060491s nps=1221602\n",
+    "before-before-3.log": "run=1 depth=5 nodes=1295497 elapsed=1.059872s nps=1222315\nrun=2 depth=5 nodes=1295497 elapsed=1.060359s nps=1221754\nrun=3 depth=5 nodes=1295497 elapsed=1.060958s nps=1221063\nmedian: depth=5 nodes=1295497 elapsed=1.060359s nps=1221754\n",
+    "compare-fused-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.951756s nps=1361165\nrun=2 depth=5 nodes=1295497 elapsed=0.952362s nps=1360299\nrun=3 depth=5 nodes=1295497 elapsed=0.952715s nps=1359795\nmedian: depth=5 nodes=1295497 elapsed=0.952362s nps=1360299\n",
+    "compare-fused-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.965713s nps=1341492\nrun=2 depth=5 nodes=1295497 elapsed=0.965148s nps=1342278\nrun=3 depth=5 nodes=1295497 elapsed=0.966064s nps=1341006\nmedian: depth=5 nodes=1295497 elapsed=0.965713s nps=1341492\n",
+    "compare-fused-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.950310s nps=1363237\nrun=2 depth=5 nodes=1295497 elapsed=0.949158s nps=1364890\nrun=3 depth=5 nodes=1295497 elapsed=0.949109s nps=1364962\nmedian: depth=5 nodes=1295497 elapsed=0.949158s nps=1364890\n",
+    "compare-fused-i32-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.965502s nps=1341786\nrun=2 depth=5 nodes=1295497 elapsed=0.966527s nps=1340363\nrun=3 depth=5 nodes=1295497 elapsed=0.966572s nps=1340301\nmedian: depth=5 nodes=1295497 elapsed=0.966527s nps=1340363\n",
+    "compare-fused-i32-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.970579s nps=1334767\nrun=2 depth=5 nodes=1295497 elapsed=0.971720s nps=1333200\nrun=3 depth=5 nodes=1295497 elapsed=0.972620s nps=1331966\nmedian: depth=5 nodes=1295497 elapsed=0.971720s nps=1333200\n",
+    "compare-fused-i32-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.965873s nps=1341271\nrun=2 depth=5 nodes=1295497 elapsed=0.968620s nps=1337467\nrun=3 depth=5 nodes=1295497 elapsed=0.966288s nps=1340694\nmedian: depth=5 nodes=1295497 elapsed=0.966288s nps=1340694\n",
+    "compare-fused-plain-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.981616s nps=1319759\nrun=2 depth=5 nodes=1295497 elapsed=0.983509s nps=1317219\nrun=3 depth=5 nodes=1295497 elapsed=0.980632s nps=1321083\nmedian: depth=5 nodes=1295497 elapsed=0.981616s nps=1319759\n",
+    "compare-fused-plain-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.973078s nps=1331339\nrun=2 depth=5 nodes=1295497 elapsed=0.972868s nps=1331627\nrun=3 depth=5 nodes=1295497 elapsed=0.976338s nps=1326894\nmedian: depth=5 nodes=1295497 elapsed=0.973078s nps=1331339\n",
+    "compare-fused-plain-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.978059s nps=1324559\nrun=2 depth=5 nodes=1295497 elapsed=0.978318s nps=1324208\nrun=3 depth=5 nodes=1295497 elapsed=0.980710s nps=1320979\nmedian: depth=5 nodes=1295497 elapsed=0.978318s nps=1324208\n",
+    "compare-fused-shift-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.981144s nps=1320394\nrun=2 depth=5 nodes=1295497 elapsed=0.981749s nps=1319581\nrun=3 depth=5 nodes=1295497 elapsed=0.983690s nps=1316977\nmedian: depth=5 nodes=1295497 elapsed=0.981749s nps=1319581\n",
+    "compare-fused-shift-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.980713s nps=1320975\nrun=2 depth=5 nodes=1295497 elapsed=0.980494s nps=1321270\nrun=3 depth=5 nodes=1295497 elapsed=0.981811s nps=1319498\nmedian: depth=5 nodes=1295497 elapsed=0.980713s nps=1320975\n",
+    "compare-fused-shift-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.978227s nps=1324332\nrun=2 depth=5 nodes=1295497 elapsed=0.979026s nps=1323252\nrun=3 depth=5 nodes=1295497 elapsed=0.979536s nps=1322562\nmedian: depth=5 nodes=1295497 elapsed=0.979026s nps=1323252\n",
+    "copy-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.078822s nps=1353221\nrun=2 depth=5 nodes=1459885 elapsed=1.077659s nps=1354682\nrun=3 depth=5 nodes=1459885 elapsed=1.078020s nps=1354228\nmedian: depth=5 nodes=1459885 elapsed=1.078020s nps=1354228\n",
+    "copy-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.078413s nps=1353734\nrun=2 depth=5 nodes=1459885 elapsed=1.079616s nps=1352226\nrun=3 depth=5 nodes=1459885 elapsed=1.079268s nps=1352663\nmedian: depth=5 nodes=1459885 elapsed=1.079268s nps=1352663\n",
+    "copy-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.075672s nps=1357185\nrun=2 depth=5 nodes=1459885 elapsed=1.078885s nps=1353142\nrun=3 depth=5 nodes=1459885 elapsed=1.075609s nps=1357263\nmedian: depth=5 nodes=1459885 elapsed=1.075672s nps=1357185\n",
+    "copy-copy-1.log": "run=1 depth=5 nodes=1295497 elapsed=1.011743s nps=1280461\nrun=2 depth=5 nodes=1295497 elapsed=1.011919s nps=1280238\nrun=3 depth=5 nodes=1295497 elapsed=1.011297s nps=1281025\nmedian: depth=5 nodes=1295497 elapsed=1.011743s nps=1280461\n",
+    "copy-copy-2.log": "run=1 depth=5 nodes=1295497 elapsed=1.009566s nps=1283222\nrun=2 depth=5 nodes=1295497 elapsed=1.009897s nps=1282801\nrun=3 depth=5 nodes=1295497 elapsed=1.011269s nps=1281061\nmedian: depth=5 nodes=1295497 elapsed=1.009897s nps=1282801\n",
+    "copy-copy-3.log": "run=1 depth=5 nodes=1295497 elapsed=1.012880s nps=1279023\nrun=2 depth=5 nodes=1295497 elapsed=1.012412s nps=1279615\nrun=3 depth=5 nodes=1295497 elapsed=1.012181s nps=1279907\nmedian: depth=5 nodes=1295497 elapsed=1.012412s nps=1279615\n",
+    "division-final-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.953482s nps=1358701\nrun=2 depth=5 nodes=1295497 elapsed=0.955136s nps=1356349\nrun=3 depth=5 nodes=1295497 elapsed=0.954150s nps=1357749\nmedian: depth=5 nodes=1295497 elapsed=0.954150s nps=1357749\n",
+    "division-final-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.966238s nps=1340764\nrun=2 depth=5 nodes=1295497 elapsed=0.967239s nps=1339377\nrun=3 depth=5 nodes=1295497 elapsed=0.968302s nps=1337905\nmedian: depth=5 nodes=1295497 elapsed=0.967239s nps=1339377\n",
+    "division-final-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.968081s nps=1338212\nrun=2 depth=5 nodes=1295497 elapsed=0.968756s nps=1337279\nrun=3 depth=5 nodes=1295497 elapsed=0.967797s nps=1338605\nmedian: depth=5 nodes=1295497 elapsed=0.968081s nps=1338212\n",
+    "division-fused-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.947598s nps=1367138\nrun=2 depth=5 nodes=1295497 elapsed=0.947262s nps=1367623\nrun=3 depth=5 nodes=1295497 elapsed=0.949475s nps=1364435\nmedian: depth=5 nodes=1295497 elapsed=0.947598s nps=1367138\n",
+    "division-fused-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.968374s nps=1337807\nrun=2 depth=5 nodes=1295497 elapsed=0.968221s nps=1338018\nrun=3 depth=5 nodes=1295497 elapsed=0.969103s nps=1336800\nmedian: depth=5 nodes=1295497 elapsed=0.968374s nps=1337807\n",
+    "division-fused-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.968745s nps=1337295\nrun=2 depth=5 nodes=1295497 elapsed=0.966873s nps=1339884\nrun=3 depth=5 nodes=1295497 elapsed=0.965792s nps=1341383\nmedian: depth=5 nodes=1295497 elapsed=0.966873s nps=1339884\n",
+    "final-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.080381s nps=1351269\nrun=2 depth=5 nodes=1459885 elapsed=1.079123s nps=1352844\nrun=3 depth=5 nodes=1459885 elapsed=1.080275s nps=1351401\nmedian: depth=5 nodes=1459885 elapsed=1.080275s nps=1351401\n",
+    "final-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.076983s nps=1355533\nrun=2 depth=5 nodes=1459885 elapsed=1.081199s nps=1350246\nrun=3 depth=5 nodes=1459885 elapsed=1.080369s nps=1351283\nmedian: depth=5 nodes=1459885 elapsed=1.080369s nps=1351283\n",
+    "final-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.073576s nps=1359834\nrun=2 depth=5 nodes=1459885 elapsed=1.074108s nps=1359160\nrun=3 depth=5 nodes=1459885 elapsed=1.109038s nps=1316352\nmedian: depth=5 nodes=1459885 elapsed=1.074108s nps=1359160\n",
+    "final-final-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.971104s nps=1334045\nrun=2 depth=5 nodes=1295497 elapsed=0.969802s nps=1335836\nrun=3 depth=5 nodes=1295497 elapsed=0.967878s nps=1338493\nmedian: depth=5 nodes=1295497 elapsed=0.969802s nps=1335836\n",
+    "final-final-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.953106s nps=1359237\nrun=2 depth=5 nodes=1295497 elapsed=0.953395s nps=1358825\nrun=3 depth=5 nodes=1295497 elapsed=0.954133s nps=1357774\nmedian: depth=5 nodes=1295497 elapsed=0.953395s nps=1358825\n",
+    "final-final-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.969123s nps=1336772\nrun=2 depth=5 nodes=1295497 elapsed=0.970795s nps=1334470\nrun=3 depth=5 nodes=1295497 elapsed=0.970819s nps=1334438\nmedian: depth=5 nodes=1295497 elapsed=0.970795s nps=1334470\n",
+    "fused-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.068505s nps=1366288\nrun=2 depth=5 nodes=1459885 elapsed=1.067212s nps=1367943\nrun=3 depth=5 nodes=1459885 elapsed=1.067358s nps=1367756\nmedian: depth=5 nodes=1459885 elapsed=1.067358s nps=1367756\n",
+    "fused-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.062036s nps=1374609\nrun=2 depth=5 nodes=1459885 elapsed=1.059975s nps=1377282\nrun=3 depth=5 nodes=1459885 elapsed=1.060871s nps=1376119\nmedian: depth=5 nodes=1459885 elapsed=1.060871s nps=1376119\n",
+    "fused-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.066271s nps=1369151\nrun=2 depth=5 nodes=1459885 elapsed=1.065832s nps=1369714\nrun=3 depth=5 nodes=1459885 elapsed=1.065066s nps=1370699\nmedian: depth=5 nodes=1459885 elapsed=1.065832s nps=1369714\n",
+    "fused-fused-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.966788s nps=1340001\nrun=2 depth=5 nodes=1295497 elapsed=0.966373s nps=1340576\nrun=3 depth=5 nodes=1295497 elapsed=0.965838s nps=1341319\nmedian: depth=5 nodes=1295497 elapsed=0.966373s nps=1340576\n",
+    "fused-fused-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.968028s nps=1338284\nrun=2 depth=5 nodes=1295497 elapsed=0.966180s nps=1340844\nrun=3 depth=5 nodes=1295497 elapsed=0.965810s nps=1341357\nmedian: depth=5 nodes=1295497 elapsed=0.966180s nps=1340844\n",
+    "fused-fused-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.975275s nps=1328340\nrun=2 depth=5 nodes=1295497 elapsed=0.974806s nps=1328979\nrun=3 depth=5 nodes=1295497 elapsed=0.975410s nps=1328156\nmedian: depth=5 nodes=1295497 elapsed=0.975275s nps=1328340\n",
+    "fused-i32-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.083301s nps=1347626\nrun=2 depth=5 nodes=1459885 elapsed=1.083926s nps=1346850\nrun=3 depth=5 nodes=1459885 elapsed=1.083445s nps=1347447\nmedian: depth=5 nodes=1459885 elapsed=1.083445s nps=1347447\n",
+    "fused-i32-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.077596s nps=1354761\nrun=2 depth=5 nodes=1459885 elapsed=1.078197s nps=1354005\nrun=3 depth=5 nodes=1459885 elapsed=1.077169s nps=1355298\nmedian: depth=5 nodes=1459885 elapsed=1.077596s nps=1354761\n",
+    "fused-i32-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.088583s nps=1341087\nrun=2 depth=5 nodes=1459885 elapsed=1.087693s nps=1342185\nrun=3 depth=5 nodes=1459885 elapsed=1.086825s nps=1343256\nmedian: depth=5 nodes=1459885 elapsed=1.087693s nps=1342185\n",
+    "fused-i32-fused-i32-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.972891s nps=1331595\nrun=2 depth=5 nodes=1295497 elapsed=0.969867s nps=1335748\nrun=3 depth=5 nodes=1295497 elapsed=0.972052s nps=1332745\nmedian: depth=5 nodes=1295497 elapsed=0.972052s nps=1332745\n",
+    "fused-i32-fused-i32-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.966618s nps=1340237\nrun=2 depth=5 nodes=1295497 elapsed=0.966357s nps=1340599\nrun=3 depth=5 nodes=1295497 elapsed=0.967257s nps=1339351\nmedian: depth=5 nodes=1295497 elapsed=0.966618s nps=1340237\n",
+    "fused-i32-fused-i32-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.974292s nps=1329681\nrun=2 depth=5 nodes=1295497 elapsed=0.972278s nps=1332435\nrun=3 depth=5 nodes=1295497 elapsed=0.972813s nps=1331703\nmedian: depth=5 nodes=1295497 elapsed=0.972813s nps=1331703\n",
+    "fused-shift-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.077398s nps=1355010\nrun=2 depth=5 nodes=1459885 elapsed=1.076940s nps=1355586\nrun=3 depth=5 nodes=1459885 elapsed=1.076999s nps=1355512\nmedian: depth=5 nodes=1459885 elapsed=1.076999s nps=1355512\n",
+    "fused-shift-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.074673s nps=1358446\nrun=2 depth=5 nodes=1459885 elapsed=1.074971s nps=1358069\nrun=3 depth=5 nodes=1459885 elapsed=1.074199s nps=1359045\nmedian: depth=5 nodes=1459885 elapsed=1.074673s nps=1358446\n",
+    "fused-shift-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.077535s nps=1354838\nrun=2 depth=5 nodes=1459885 elapsed=1.078513s nps=1353610\nrun=3 depth=5 nodes=1459885 elapsed=1.079351s nps=1352558\nmedian: depth=5 nodes=1459885 elapsed=1.078513s nps=1353610\n",
+    "fused-shift-fused-shift-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.982337s nps=1318791\nrun=2 depth=5 nodes=1295497 elapsed=0.983153s nps=1317696\nrun=3 depth=5 nodes=1295497 elapsed=0.983249s nps=1317567\nmedian: depth=5 nodes=1295497 elapsed=0.983153s nps=1317696\n",
+    "fused-shift-fused-shift-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.966065s nps=1341004\nrun=2 depth=5 nodes=1295497 elapsed=0.964190s nps=1343611\nrun=3 depth=5 nodes=1295497 elapsed=0.966980s nps=1339735\nmedian: depth=5 nodes=1295497 elapsed=0.966065s nps=1341004\n",
+    "fused-shift-fused-shift-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.962623s nps=1345798\nrun=2 depth=5 nodes=1295497 elapsed=0.963629s nps=1344395\nrun=3 depth=5 nodes=1295497 elapsed=0.962213s nps=1346373\nmedian: depth=5 nodes=1295497 elapsed=0.962623s nps=1345798\n",
+    "i32-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.076606s nps=1356006\nrun=2 depth=5 nodes=1459885 elapsed=1.077166s nps=1355302\nrun=3 depth=5 nodes=1459885 elapsed=1.077858s nps=1354431\nmedian: depth=5 nodes=1459885 elapsed=1.077166s nps=1355302\n",
+    "i32-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.086506s nps=1343651\nrun=2 depth=5 nodes=1459885 elapsed=1.084592s nps=1346023\nrun=3 depth=5 nodes=1459885 elapsed=1.085314s nps=1345127\nmedian: depth=5 nodes=1459885 elapsed=1.085314s nps=1345127\n",
+    "i32-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.082684s nps=1348394\nrun=2 depth=5 nodes=1459885 elapsed=1.080036s nps=1351701\nrun=3 depth=5 nodes=1459885 elapsed=1.078301s nps=1353875\nmedian: depth=5 nodes=1459885 elapsed=1.080036s nps=1351701\n",
+    "i32-i32-1.log": "run=1 depth=5 nodes=1295497 elapsed=1.002453s nps=1292326\nrun=2 depth=5 nodes=1295497 elapsed=1.002082s nps=1292806\nrun=3 depth=5 nodes=1295497 elapsed=1.005748s nps=1288093\nmedian: depth=5 nodes=1295497 elapsed=1.002453s nps=1292326\n",
+    "i32-i32-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.985162s nps=1315010\nrun=2 depth=5 nodes=1295497 elapsed=0.985310s nps=1314811\nrun=3 depth=5 nodes=1295497 elapsed=0.984009s nps=1316550\nmedian: depth=5 nodes=1295497 elapsed=0.985162s nps=1315010\n",
+    "i32-i32-3.log": "run=1 depth=5 nodes=1295497 elapsed=1.000439s nps=1294929\nrun=2 depth=5 nodes=1295497 elapsed=0.999272s nps=1296441\nrun=3 depth=5 nodes=1295497 elapsed=0.998601s nps=1297312\nmedian: depth=5 nodes=1295497 elapsed=0.999272s nps=1296441\n",
+    "mutation.log": "\nrunning 3 tests\ntest eval::fm::tests::negative_numerator_truncates_toward_zero ... FAILED\ntest eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent ... FAILED\ntest eval::pst::tests::interpolation_divides_once_and_truncates_toward_zero ... ok\n\nfailures:\n\n---- eval::fm::tests::negative_numerator_truncates_toward_zero stdout ----\n\nthread 'eval::fm::tests::negative_numerator_truncates_toward_zero' (263) panicked at src/eval/fm.rs:236:9:\nassertion `left == right` failed\n  left: -1\n right: 0\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent stdout ----\n\nthread 'eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent' (264) panicked at src/eval/fm.rs:267:21:\nassertion `left == right` failed: exponent=1, left=-32767, right=1\n  left: -8192\n right: -8191\n\n\nfailures:\n    eval::fm::tests::negative_numerator_truncates_toward_zero\n    eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent\n\ntest result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 508 filtered out; finished in 0.01s\n\n   Compiling minase v0.1.0 (/home/stepney141/board-games/minase-fm)\n    Finished `test` profile [optimized + debuginfo] target(s) in 2.23s\n     Running unittests src/lib.rs (target/debug/deps/minase-2c0b27eb8b42022b)\nerror: test failed, to rerun pass `--lib`\n",
+    "shift-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.080380s nps=1351270\nrun=2 depth=5 nodes=1459885 elapsed=1.082265s nps=1348917\nrun=3 depth=5 nodes=1459885 elapsed=1.079858s nps=1351924\nmedian: depth=5 nodes=1459885 elapsed=1.080380s nps=1351270\n",
+    "shift-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.064800s nps=1371041\nrun=2 depth=5 nodes=1459885 elapsed=1.064454s nps=1371487\nrun=3 depth=5 nodes=1459885 elapsed=1.071148s nps=1362916\nmedian: depth=5 nodes=1459885 elapsed=1.064800s nps=1371041\n",
+    "shift-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.087824s nps=1342024\nrun=2 depth=5 nodes=1459885 elapsed=1.084976s nps=1345546\nrun=3 depth=5 nodes=1459885 elapsed=1.085162s nps=1345315\nmedian: depth=5 nodes=1459885 elapsed=1.085162s nps=1345315\n",
+    "shift-shift-1.log": "run=1 depth=5 nodes=1295497 elapsed=1.008862s nps=1284117\nrun=2 depth=5 nodes=1295497 elapsed=1.009760s nps=1282975\nrun=3 depth=5 nodes=1295497 elapsed=1.010232s nps=1282376\nmedian: depth=5 nodes=1295497 elapsed=1.009760s nps=1282975\n",
+    "shift-shift-2.log": "run=1 depth=5 nodes=1295497 elapsed=1.012119s nps=1279985\nrun=2 depth=5 nodes=1295497 elapsed=1.011668s nps=1280556\nrun=3 depth=5 nodes=1295497 elapsed=1.011796s nps=1280394\nmedian: depth=5 nodes=1295497 elapsed=1.011796s nps=1280394\n",
+    "shift-shift-3.log": "run=1 depth=5 nodes=1295497 elapsed=1.010017s nps=1282648\nrun=2 depth=5 nodes=1295497 elapsed=1.010017s nps=1282649\nrun=3 depth=5 nodes=1295497 elapsed=1.010517s nps=1282014\nmedian: depth=5 nodes=1295497 elapsed=1.010017s nps=1282648\n",
+    "sign-baseline-1.log": "run=1 depth=5 nodes=1459885 elapsed=1.059428s nps=1377993\nrun=2 depth=5 nodes=1459885 elapsed=1.061844s nps=1374858\nrun=3 depth=5 nodes=1459885 elapsed=1.059095s nps=1378426\nmedian: depth=5 nodes=1459885 elapsed=1.059428s nps=1377993\n",
+    "sign-baseline-2.log": "run=1 depth=5 nodes=1459885 elapsed=1.062690s nps=1373764\nrun=2 depth=5 nodes=1459885 elapsed=1.062897s nps=1373497\nrun=3 depth=5 nodes=1459885 elapsed=1.064329s nps=1371648\nmedian: depth=5 nodes=1459885 elapsed=1.062897s nps=1373497\n",
+    "sign-baseline-3.log": "run=1 depth=5 nodes=1459885 elapsed=1.076145s nps=1356587\nrun=2 depth=5 nodes=1459885 elapsed=1.077111s nps=1355371\nrun=3 depth=5 nodes=1459885 elapsed=1.079858s nps=1351923\nmedian: depth=5 nodes=1459885 elapsed=1.077111s nps=1355371\n",
+    "sign-sign-1.log": "run=1 depth=5 nodes=1295497 elapsed=0.997401s nps=1298873\nrun=2 depth=5 nodes=1295497 elapsed=0.996121s nps=1300542\nrun=3 depth=5 nodes=1295497 elapsed=0.997325s nps=1298971\nmedian: depth=5 nodes=1295497 elapsed=0.997325s nps=1298971\n",
+    "sign-sign-2.log": "run=1 depth=5 nodes=1295497 elapsed=0.994736s nps=1302353\nrun=2 depth=5 nodes=1295497 elapsed=0.993203s nps=1304363\nrun=3 depth=5 nodes=1295497 elapsed=0.996090s nps=1300582\nmedian: depth=5 nodes=1295497 elapsed=0.994736s nps=1302353\n",
+    "sign-sign-3.log": "run=1 depth=5 nodes=1295497 elapsed=0.996992s nps=1299406\nrun=2 depth=5 nodes=1295497 elapsed=0.996975s nps=1299427\nrun=3 depth=5 nodes=1295497 elapsed=0.997621s nps=1298586\nmedian: depth=5 nodes=1295497 elapsed=0.996992s nps=1299406\n"
+  },
+  "validation": {
+    "fmt": "",
+    "clippy": "    Checking minase v0.1.0 (/home/stepney141/board-games/minase-fm)\n    Finished `dev` profile [optimized + debuginfo] target(s) in 0.70s\n",
+    "mutation": "\nrunning 3 tests\ntest eval::fm::tests::negative_numerator_truncates_toward_zero ... FAILED\ntest eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent ... FAILED\ntest eval::pst::tests::interpolation_divides_once_and_truncates_toward_zero ... ok\n\nfailures:\n\n---- eval::fm::tests::negative_numerator_truncates_toward_zero stdout ----\n\nthread 'eval::fm::tests::negative_numerator_truncates_toward_zero' (263) panicked at src/eval/fm.rs:236:9:\nassertion `left == right` failed\n  left: -1\n right: 0\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent stdout ----\n\nthread 'eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent' (264) panicked at src/eval/fm.rs:267:21:\nassertion `left == right` failed: exponent=1, left=-32767, right=1\n  left: -8192\n right: -8191\n\n\nfailures:\n    eval::fm::tests::negative_numerator_truncates_toward_zero\n    eval::fm::tests::pair_correction_truncates_toward_zero_for_every_exponent\n\ntest result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 508 filtered out; finished in 0.01s\n\n   Compiling minase v0.1.0 (/home/stepney141/board-games/minase-fm)\n    Finished `test` profile [optimized + debuginfo] target(s) in 2.23s\n     Running unittests src/lib.rs (target/debug/deps/minase-2c0b27eb8b42022b)\nerror: test failed, to rerun pass `--lib`\n",
+    "test_summaries": [
+      "test result: ok. 511 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s",
+      "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.61s",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    ]
+  }
+}
