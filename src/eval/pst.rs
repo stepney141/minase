@@ -196,78 +196,73 @@ impl Pst {
         accumulator
     }
 
-    /// 通常着手後の局面について、PSTとFMの累算値を差分更新する。
+    /// 親の累算値を子の格納先へ複写し、通常着手の差分を反映する。
     pub(crate) fn update_accumulator_after_move(
         &self,
-        before: PstAccumulator,
+        before: &PstAccumulator,
+        after: &mut PstAccumulator,
         position_after: &Position,
         undo: &Undo,
-    ) -> PstAccumulator {
-        let mut after = before;
+    ) {
         let moved_piece_after = position_after
             .piece_at(undo.mv.to)
             .expect("move destination must contain the moved piece");
 
-        after.piece_count -= undo.captured.iter().flatten().count() as u32;
+        after.piece_count = before.piece_count - undo.captured.iter().flatten().count() as u32;
         for perspective in Color::ALL {
-            self.remove_feature(
-                &mut after,
-                perspective,
-                feature_index(perspective, undo.moved_piece_before, undo.mv.from),
-            );
+            let removed = feature_index(perspective, undo.moved_piece_before, undo.mv.from);
+            let added = feature_index(perspective, moved_piece_after, undo.mv.to);
+            let index = perspective.index();
+            for (endpoint, weights) in self.weights.iter().enumerate() {
+                after.sums[index][endpoint] = before.sums[index][endpoint]
+                    - i32::from(weights[removed])
+                    + i32::from(weights[added]);
+            }
+            self.fm
+                .replace(&before.fm[index], &mut after.fm[index], removed, added);
             for captured in undo.captured.into_iter().flatten() {
                 self.remove_feature(
-                    &mut after,
+                    after,
                     perspective,
                     feature_index(perspective, captured.piece, captured.square),
                 );
             }
             if let Some(trigger) = undo.previous_lion_taken {
                 self.remove_feature(
-                    &mut after,
+                    after,
                     perspective,
                     lion_feature_index(perspective, trigger.square),
                 );
             }
-            self.add_feature(
-                &mut after,
-                perspective,
-                feature_index(perspective, moved_piece_after, undo.mv.to),
-            );
             if let Some(trigger) = position_after.lion_taken_by_non_lion() {
                 self.add_feature(
-                    &mut after,
+                    after,
                     perspective,
                     lion_feature_index(perspective, trigger.square),
                 );
             }
         }
-        after
     }
 
-    /// null move後の累算値から直前の先獅子特徴を除く。
+    /// 親の累算値を子の格納先へ複写し、null moveで消える先獅子特徴を除く。
     pub(crate) fn update_accumulator_after_null(
         &self,
-        before: PstAccumulator,
+        before: &PstAccumulator,
+        after: &mut PstAccumulator,
         lion_before: Option<Square>,
-    ) -> PstAccumulator {
-        let mut after = before;
+    ) {
+        *after = *before;
         if let Some(square) = lion_before {
             for perspective in Color::ALL {
-                self.remove_feature(
-                    &mut after,
-                    perspective,
-                    lion_feature_index(perspective, square),
-                );
+                self.remove_feature(after, perspective, lion_feature_index(perspective, square));
             }
         }
-        after
     }
 
     /// 指定手番の視点から累算値をFM込みのセンチポーン評価へ変換する。
     pub(crate) fn evaluate_accumulator(
         &self,
-        accumulator: PstAccumulator,
+        accumulator: &PstAccumulator,
         side_to_move: Color,
     ) -> i32 {
         let baseline = interpolate(
@@ -613,7 +608,7 @@ mod tests {
     fn assert_evaluation(pst: &Pst, position: &Position, expected: i32) {
         assert_eq!(evaluate(pst, position), expected);
         assert_eq!(
-            pst.evaluate_accumulator(pst.refresh_accumulator(position), position.side_to_move()),
+            pst.evaluate_accumulator(&pst.refresh_accumulator(position), position.side_to_move()),
             expected
         );
     }
@@ -644,10 +639,11 @@ mod tests {
     fn assert_move_accumulator(pst: &Pst, position: &mut Position, mv: Move) {
         let before = pst.refresh_accumulator(position);
         let undo = position.make_move_unchecked(mv, MoveRules::standard());
-        let after = pst.update_accumulator_after_move(before, position, &undo);
+        let mut after = PstAccumulator::default();
+        pst.update_accumulator_after_move(&before, &mut after, position, &undo);
         assert_eq!(after, pst.refresh_accumulator(position));
         assert_eq!(
-            pst.evaluate_accumulator(after, position.side_to_move()),
+            pst.evaluate_accumulator(&after, position.side_to_move()),
             evaluate(pst, position)
         );
         position.unmake_move(undo);
@@ -771,12 +767,13 @@ mod tests {
             },
             MoveRules::standard(),
         );
-        let after = pst.update_accumulator_after_move(before, &lion_capture, &undo);
+        let mut after = PstAccumulator::default();
+        pst.update_accumulator_after_move(&before, &mut after, &lion_capture, &undo);
         assert_eq!(after, pst.refresh_accumulator(&lion_capture));
         assert_eq!(after.piece_count, 3);
         assert!(lion_capture.lion_taken_by_non_lion().is_some());
         assert_eq!(
-            pst.evaluate_accumulator(after, lion_capture.side_to_move()),
+            pst.evaluate_accumulator(&after, lion_capture.side_to_move()),
             evaluate(pst, &lion_capture)
         );
 
@@ -796,11 +793,12 @@ mod tests {
             .lion_taken_by_non_lion()
             .map(|trigger| trigger.square);
         let null_undo = lion_capture.make_null_move();
-        let after_null = pst.update_accumulator_after_null(after, lion_before);
+        let mut after_null = PstAccumulator::default();
+        pst.update_accumulator_after_null(&after, &mut after_null, lion_before);
         assert_eq!(after_null, pst.refresh_accumulator(&lion_capture));
         assert_eq!(after_null.piece_count, 3);
         assert_eq!(
-            pst.evaluate_accumulator(after_null, lion_capture.side_to_move()),
+            pst.evaluate_accumulator(&after_null, lion_capture.side_to_move()),
             evaluate(pst, &lion_capture)
         );
         lion_capture.unmake_null_move(null_undo);
@@ -808,7 +806,7 @@ mod tests {
         assert_eq!(after.piece_count, 3);
         assert!(lion_capture.lion_taken_by_non_lion().is_some());
         assert_eq!(
-            pst.evaluate_accumulator(after, lion_capture.side_to_move()),
+            pst.evaluate_accumulator(&after, lion_capture.side_to_move()),
             evaluate(pst, &lion_capture)
         );
         lion_capture.unmake_move(undo);
@@ -1387,6 +1385,9 @@ mod tests {
             let mut position = Position::initial();
             let original = pst.refresh_accumulator(&position);
             let mut accumulator = original;
+            // 探索と同様に子の格納先を再利用し、前回の値が残らないことも確かめる。
+            let mut after = PstAccumulator::default();
+            let mut after_null = PstAccumulator::default();
             let mut history = Vec::new();
             let mut state = 1_u32;
             for _ in 0..256 {
@@ -1410,25 +1411,25 @@ mod tests {
                     moves[state as usize % moves.len()],
                     MoveRules::standard(),
                 );
-                let after = pst.update_accumulator_after_move(accumulator, &position, &undo);
+                pst.update_accumulator_after_move(&accumulator, &mut after, &position, &undo);
                 history.push((undo, accumulator));
                 accumulator = after;
                 assert_eq!(accumulator, pst.refresh_accumulator(&position));
                 assert_evaluation(
                     &pst,
                     &position,
-                    pst.evaluate_accumulator(accumulator, position.side_to_move()),
+                    pst.evaluate_accumulator(&accumulator, position.side_to_move()),
                 );
                 let lion_before = position
                     .lion_taken_by_non_lion()
                     .map(|trigger| trigger.square);
                 let undo = position.make_null_move();
-                let after_null = pst.update_accumulator_after_null(accumulator, lion_before);
+                pst.update_accumulator_after_null(&accumulator, &mut after_null, lion_before);
                 assert_eq!(after_null, pst.refresh_accumulator(&position));
                 assert_evaluation(
                     &pst,
                     &position,
-                    pst.evaluate_accumulator(after_null, position.side_to_move()),
+                    pst.evaluate_accumulator(&after_null, position.side_to_move()),
                 );
                 position.unmake_null_move(undo);
                 assert_eq!(accumulator, pst.refresh_accumulator(&position));
@@ -1440,7 +1441,7 @@ mod tests {
                 assert_evaluation(
                     &pst,
                     &position,
-                    pst.evaluate_accumulator(accumulator, position.side_to_move()),
+                    pst.evaluate_accumulator(&accumulator, position.side_to_move()),
                 );
             }
             assert_eq!(position, Position::initial());

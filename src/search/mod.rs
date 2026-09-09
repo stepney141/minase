@@ -934,7 +934,7 @@ fn run_main_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+        score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -1001,7 +1001,7 @@ fn run_auxiliary_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+        score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -1152,9 +1152,12 @@ impl Searcher<'_> {
                 .lion_taken_by_non_lion()
                 .map(|trigger| trigger.square);
             let undo = position.make_null_move();
-            self.accumulators[(ply + 1) as usize] = self
-                .pst
-                .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
+            let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
+            self.pst.update_accumulator_after_null(
+                &parents[ply as usize],
+                &mut children[0],
+                lion_before,
+            );
             let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
             let score = self
                 .negamax(
@@ -1184,9 +1187,10 @@ impl Searcher<'_> {
             && alpha.abs() < MATE_THRESHOLD
             && beta.abs() < MATE_THRESHOLD)
             .then(|| {
-                let static_eval = self
-                    .pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+                let static_eval = self.pst.evaluate_accumulator(
+                    &self.accumulators[ply as usize],
+                    position.side_to_move(),
+                );
                 let margin =
                     self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
                 static_eval + margin
@@ -1272,8 +1276,10 @@ impl Searcher<'_> {
 
         if ply >= MAX_PLY {
             return Some(
-                self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
+                self.pst.evaluate_accumulator(
+                    &self.accumulators[ply as usize],
+                    position.side_to_move(),
+                ),
             );
         }
 
@@ -1294,7 +1300,7 @@ impl Searcher<'_> {
 
         let stand_pat = self
             .pst
-            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+            .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move());
         if stand_pat >= beta {
             self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
             return Some(stand_pat);
@@ -1336,8 +1342,10 @@ impl Searcher<'_> {
                 self.enter_node().then_some(MATE - ply as i32)?
             } else {
                 let undo = position.make_move_unchecked(mv, self.rules);
-                self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
-                    self.accumulators[ply as usize],
+                let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
+                self.pst.update_accumulator_after_move(
+                    &parents[ply as usize],
+                    &mut children[0],
                     position,
                     &undo,
                 );
@@ -1398,8 +1406,10 @@ impl Searcher<'_> {
             return score;
         }
 
-        self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
-            self.accumulators[ply as usize],
+        let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
+        self.pst.update_accumulator_after_move(
+            &parents[ply as usize],
+            &mut children[0],
             position,
             &undo,
         );

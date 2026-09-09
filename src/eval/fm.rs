@@ -93,13 +93,30 @@ impl Fm {
         accumulator.self_sum -= self.self_terms[feature];
     }
 
+    /// 親からの複写と移動元の減算、移動先の加算を1回の走査で行う。
+    pub(super) fn replace(
+        &self,
+        before: &FmAccumulator,
+        after: &mut FmAccumulator,
+        removed: usize,
+        added: usize,
+    ) {
+        let removed_row = &self.embeddings[removed];
+        let added_row = &self.embeddings[added];
+        for f in 0..FM_RANK {
+            after.sums[f] = before.sums[f] - i32::from(removed_row[f]) + i32::from(added_row[f]);
+        }
+        after.self_sum = before.self_sum - self.self_terms[removed] + self.self_terms[added];
+    }
+
     /// 2駒関係の補正をセンチポーンへ換算し、負値も0方向へ切り捨てる。
     pub(super) fn correction(&self, accumulator: &FmAccumulator) -> i64 {
+        // 最大145特徴でも|a|は4,751,360以下なので、符号は32ビットのまま掛けられる。
         let square_sum: i64 = accumulator
             .sums
             .iter()
             .zip(self.signs)
-            .map(|(&a, d)| i64::from(d) * i64::from(a).pow(2))
+            .map(|(&a, d)| i64::from(a * i32::from(d)) * i64::from(a))
             .sum();
         (square_sum - accumulator.self_sum) / (1_i64 << (2 * self.exponent + 1))
     }
@@ -217,6 +234,44 @@ mod tests {
         assert_eq!(accumulator.sums, [0; FM_RANK]);
         assert_eq!(accumulator.self_sum, 2);
         assert_eq!(fm.correction(&accumulator), 0);
+    }
+
+    /// 2特徴の積を直接割った仕様値と、全指数で一致する。
+    #[test]
+    fn pair_correction_truncates_toward_zero_for_every_exponent() {
+        let values = [
+            i16::MIN,
+            -32767,
+            -17,
+            -16,
+            -15,
+            -1,
+            0,
+            1,
+            15,
+            16,
+            17,
+            i16::MAX,
+        ];
+        for exponent in 0..=30 {
+            let fm = Fm::decode(&encoded(exponent, [1; FM_RANK], |i, f| {
+                if f == 0 { values[i % values.len()] } else { 0 }
+            }))
+            .unwrap();
+            for (i, &left) in values.iter().enumerate() {
+                for (j, &right) in values.iter().enumerate() {
+                    let mut accumulator = FmAccumulator::default();
+                    fm.add(&mut accumulator, i);
+                    fm.add(&mut accumulator, values.len() + j);
+                    let expected = i64::from(left) * i64::from(right) / (1_i64 << (2 * exponent));
+                    assert_eq!(
+                        fm.correction(&accumulator),
+                        expected,
+                        "exponent={exponent}, left={left}, right={right}"
+                    );
+                }
+            }
+        }
     }
 
     /// 最大145特徴とi16の両端でも、累算と補正は指定した整数型に収まる。
