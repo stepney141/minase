@@ -43,6 +43,7 @@
 | FMの配置変化と手番依存性の診断 | [plans/fm-search-diagnosis.md](plans/fm-search-diagnosis.md) | 完了 | 2026年9月9日 |
 | FMの選択手をPST教師で検証する | [plans/fm-teacher-diagnosis.md](plans/fm-teacher-diagnosis.md) | 完了 | 2026年9月9日 |
 | FM補正の縮小 | [plans/fm-quarter.md](plans/fm-quarter.md) | 完了 | 2026年9月9日 |
+| 補正1/4のFMの採否 | [plans/fm-quarter-adoption.md](plans/fm-quarter-adoption.md) | 進行中 | ― |
 
 ## 現在地
 
@@ -51,7 +52,8 @@ FM補正を1/4に縮めた候補と元FMの短時間比較を2026年9月9日に�
 次は同じ候補をPSTとの短時間比較へ進める。PSTより強いことと採用はまだ確定していない。
 現行の評価は、短時間と長時間の採用条件を満たした2端点PSTである。
 
-進行中のマイルストーンは2件である。
+進行中のマイルストーンは3件である。
+補正1/4のFMの採否（plans/fm-quarter-adoption.md）では、採用PSTとの短時間比較を開始する。
 HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
 上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
