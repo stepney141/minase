@@ -334,6 +334,15 @@ impl Clock {
         u64::try_from(self.remaining.as_millis() / 10)
             .expect("a clock created from u64 milliseconds must fit in u64 centiseconds")
     }
+
+    /// CECPへ送る残り時間と秒読みの合計をセンチ秒で返す。10 ms未満は切り捨てる。
+    fn cecp_time_cs(self) -> u64 {
+        Self {
+            remaining: self.remaining + self.byoyomi,
+            ..self
+        }
+        .remaining_cs()
+    }
 }
 
 /// 1局で両色に割り当てた時計。
@@ -403,10 +412,10 @@ impl GameClocks {
                 own_cs: self
                     .get(side_to_move)
                     .expect("a time-controlled player must have a clock")
-                    .remaining_cs(),
+                    .cecp_time_cs(),
                 opponent_cs: self
                     .get(side_to_move.opposite())
-                    .map_or(0, Clock::remaining_cs),
+                    .map_or(0, Clock::cecp_time_cs),
             },
         }
     }
@@ -819,6 +828,9 @@ impl EngineProcess {
                         depth: Some(depth),
                         nodes: None,
                     } => process.send(&format!("sd {depth}"))?,
+                    SearchLimit::Time(time) if time.byoyomi_ms > 0 => {
+                        process.send(&cecp_fixed_time_text(time))?;
+                    }
                     SearchLimit::Time(time) => {
                         process.send(&cecp_level_text(time))?;
                     }
@@ -1000,6 +1012,13 @@ fn cecp_level_text(time: TimeControl) -> String {
         format!("{minutes}:{seconds:02}")
     };
     format!("level 0 {base} {}", time.increment_ms / 1_000)
+}
+
+/// 1手固定時間をCECPの`st`コマンドへ変換する。
+/// HaChuでは`st`が固定時間モードを設定し、毎手の`time`が表す時間の0.4倍を目標、
+/// 約0.98倍を強制中断の上限とするため、`time`にも1手分の時間を送る必要がある。
+fn cecp_fixed_time_text(time: TimeControl) -> String {
+    format!("st {}", time.byoyomi_ms / 1_000)
 }
 
 /// CECPの着手・結果・拒否のいずれかを示す行かどうかを返す。
@@ -1529,10 +1548,16 @@ fn validate_cecp_limit(limit: SearchLimit) -> io::Result<()> {
             depth: None,
             nodes: None,
         } => unreachable!("a validated fixed limit contains depth or nodes"),
-        SearchLimit::Time(time) if time.byoyomi_ms > 0 => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "CECP engine does not support byoyomi",
-        )),
+        SearchLimit::Time(time) if time.byoyomi_ms > 0 => {
+            if time.base_ms == 0 && time.increment_ms == 0 && time.byoyomi_ms % 1_000 == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "CECP engine supports byoyomi only as a fixed time per move: base 0, increment 0, whole seconds",
+                ))
+            }
+        }
         SearchLimit::Time(time) if time.base_ms % 1_000 != 0 || time.increment_ms % 1_000 != 0 => {
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -3977,14 +4002,16 @@ mod tests {
     }
 
     // D8-HARN-01境界（sprt.md「エンジンの指定方法」、match-harness.md「CECP
-    // セッション管理」）: CECPに写せないnodes、秒読み、秒未満の時間単位は解決時に
-    // InvalidInputとして拒否する。
+    // セッション管理」）と1手固定時間の仕様: CECPに写せないnodes、固定時間以外の
+    // 秒読み、秒未満の時間単位は解決時にInvalidInputとして拒否する。
     #[test]
     fn cecp_resolution_rejects_unsupported_search_limits() {
         for limit in [
             parse_search_limit("nodes=1").unwrap(),
             parse_search_limit("depth=1,nodes=1").unwrap(),
             parse_search_limit("time=1000+0,byoyomi=1000").unwrap(),
+            parse_search_limit("time=0+1000,byoyomi=1000").unwrap(),
+            parse_search_limit("time=0+0,byoyomi=1500").unwrap(),
             parse_search_limit("time=1500+0").unwrap(),
             parse_search_limit("time=1000+1500").unwrap(),
         ] {
@@ -3998,7 +4025,8 @@ mod tests {
     }
 
     // D8-HARN-01/20（sprt.md「エンジンの指定方法」、match-harness.md「CECP
-    // セッション管理」）: 対応する深さ固定と秒単位時間制御はCECP設定へ解決できる。
+    // セッション管理」）と1手固定時間の仕様: 深さ固定、秒単位時間制御、
+    // 整数秒の秒読みだけを使う固定時間はCECP設定へ解決できる。
     #[test]
     fn cecp_resolution_accepts_supported_limits_and_marks_the_protocol() {
         let depth = resolve_player(
@@ -4019,14 +4047,16 @@ mod tests {
             }
         );
 
-        let time = resolve_player(
-            parse_player_spec("cecp:engine").unwrap(),
-            parse_search_limit("time=61000+2000").unwrap(),
-            None,
-            "R1",
-        )
-        .unwrap();
-        assert_eq!(time.protocol, Protocol::Cecp);
+        for limit in ["time=61000+2000", "time=0+0,byoyomi=2000"] {
+            let time = resolve_player(
+                parse_player_spec("cecp:engine").unwrap(),
+                parse_search_limit(limit).unwrap(),
+                None,
+                "R1",
+            )
+            .unwrap();
+            assert_eq!(time.protocol, Protocol::Cecp);
+        }
     }
 
     // D8-HARN-20（match-harness.md「CECPセッション管理」）: `level`の持ち時間は
@@ -4048,6 +4078,19 @@ mod tests {
                 byoyomi_ms: 0,
             }),
             "level 0 1:01 2"
+        );
+    }
+
+    // 1手固定時間の仕様: 2000 msの秒読みを`st 2`として送る。
+    #[test]
+    fn cecp_fixed_time_formats_byoyomi_in_seconds() {
+        assert_eq!(
+            cecp_fixed_time_text(TimeControl {
+                base_ms: 0,
+                increment_ms: 0,
+                byoyomi_ms: 2_000,
+            }),
+            "st 2"
         );
     }
 
@@ -4415,6 +4458,37 @@ mod tests {
         let timed = clocks.think_request(Color::Black, simple);
         assert_eq!(timed.own_cs, 975);
         assert_eq!(timed.opponent_cs, 1_000);
+    }
+
+    // 1手固定時間の仕様: CECPの両時計は残り時間と秒読みの合計を送り、
+    // 時計を持たない相手には0を送る。USIには秒読みを独立して渡す。
+    #[test]
+    fn cecp_time_requests_include_byoyomi() {
+        let fixed_time = parse_search_limit("time=0+0,byoyomi=2000").unwrap();
+        let opponent = parse_search_limit("time=1007+0,byoyomi=1007").unwrap();
+        for color in [Color::Black, Color::White] {
+            let clocks = GameClocks::new(color, fixed_time, opponent);
+            let request = clocks.think_request(color, fixed_time);
+            assert_eq!(request.own_cs, 200);
+            // 合計2014 msを切り捨てる。個別の切り捨てでは200になってしまう。
+            assert_eq!(request.opponent_cs, 201);
+            let request = clocks.think_request(color.opposite(), opponent);
+            assert_eq!(request.own_cs, 201);
+            assert_eq!(request.opponent_cs, 200);
+        }
+
+        let clocks = GameClocks::new(
+            Color::Black,
+            fixed_time,
+            parse_search_limit("depth=1").unwrap(),
+        );
+        let request = clocks.think_request(Color::Black, fixed_time);
+        assert_eq!(request.own_cs, 200);
+        assert_eq!(request.opponent_cs, 0);
+        assert_eq!(
+            request.go_text,
+            "btime 0 wtime 0 binc 0 winc 0 byoyomi 2000"
+        );
     }
 
     // D8-HARN-12(RULES.md第33条): `engine-default`はR1、`lishogi`は
