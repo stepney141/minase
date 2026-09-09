@@ -502,6 +502,15 @@ pub fn evaluate_pst(pst: &Pst, position: &Position) -> i32 {
     interpolate(sums, position.occupied().popcount())
 }
 
+/// 診断用に同一配置を指定側の視点で評価し、(FM込み, PSTのみ)を返す。
+///
+/// 先獅子状態を含む配置は保持し、評価に使う視点だけを変える。
+/// 合法な手番交代やパスを適用する操作ではない。
+pub fn evaluate_for_diagnostics(pst: &Pst, position: &Position, perspective: Color) -> (i32, i32) {
+    let position = position.clone_with_side_to_move(perspective);
+    (evaluate(pst, &position), evaluate_pst(pst, &position))
+}
+
 /// リトルエンディアンのu32を指定位置から読む。
 fn read_u32(bytes: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes(
@@ -542,6 +551,51 @@ mod tests {
         bytes[offset + 8..offset + 8 + FM_RANK].fill(1);
         refresh_checksum(&mut bytes);
         bytes
+    }
+
+    #[test]
+    fn diagnostic_perspectives_preserve_lion_feature_and_use_selected_fm_view() {
+        // PSTは先獅子特徴だけが100/200cp、FMはその特徴と王の積6/20cp。
+        // 視点変更で先獅子を消す、符号だけ反転する、FM視点を固定する実装を検出する。
+        let mut bytes = valid_bytes();
+        bytes[HEADER_LENGTH..HEADER_LENGTH + FEATURE_COUNT * 4].fill(0);
+        let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+        let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
+        let mut position = position_from_codes(
+            Color::Black,
+            &[(sq(0, 11), black_king), (sq(11, 0), white_king)],
+        );
+        position.set_lion_capture(Some(sq(5, 3))).unwrap();
+        let original_hash = position.zobrist();
+        let fm_start = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+        let embedding_start = fm_start + 8 + FM_RANK;
+        for (perspective, pst_weight, lion_embedding, king_embedding) in [
+            (Color::Black, 800, 2_i16, 3_i16),
+            (Color::White, 1600, 4_i16, 5_i16),
+        ] {
+            let lion = lion_feature_index(perspective, sq(5, 3));
+            for endpoint in 0..2 {
+                set_weight(&mut bytes, endpoint, lion, pst_weight);
+            }
+            let king = feature_index(perspective, black_king, sq(0, 11));
+            for (feature, value) in [(lion, lion_embedding), (king, king_embedding)] {
+                let offset = embedding_start + feature * FM_RANK * 2;
+                bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+            }
+        }
+        refresh_checksum(&mut bytes);
+        let pst = Pst::decode(&bytes).unwrap();
+        assert_eq!(
+            evaluate_for_diagnostics(&pst, &position, Color::Black),
+            (106, 100)
+        );
+        assert_eq!(
+            evaluate_for_diagnostics(&pst, &position, Color::White),
+            (220, 200)
+        );
+        assert_eq!(position.side_to_move(), Color::Black);
+        assert_eq!(position.zobrist(), original_hash);
+        assert_eq!(position.lion_taken_by_non_lion().unwrap().square, sq(5, 3));
     }
 
     /// 盤上に現れ得る駒状態を代表する先手の駒コードを返す。

@@ -40,14 +40,15 @@
 | PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 進行中 | ― |
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
+| FMの配置変化と手番依存性の診断 | [plans/fm-search-diagnosis.md](plans/fm-search-diagnosis.md) | 完了 | 2026年9月9日 |
 
 ## 現在地
 
-直近に完了したマイルストーンは、Factorization Machineによる2駒関係評価（plans/factorization-machine.md、2026年9月9日）である。
-現行PSTを固定して2駒関係の補正項を学習したFMは、教師値から対局結果の成分を外すと検証損失と教師誤差を全局面帯で改善し探索速度の費用も1.2%に収まったが、STCで得点率19.6%の`H0`となり不採用とした。候補はブランチ`fm-eval`に保持する。
-その前に完了したPSTの序中盤と終盤の補間（plans/tapered-pst.md、2026年9月8日）では、序中盤用と終盤用の2組のPSTを盤上総駒数で線形補間する評価を実装し、既存の世代0と世代1のデータで学習した2端点PSTが開始版に対してSTCとLTCの両方で`H1`となり採用した。
-単一PSTの同条件の再学習は開始版と一致したため、構造比較は省いた。
-その前の棋力向上段階5（2026年9月7日）では、順序付けキーの重複計算の除去とLMRの減深量を採用し、段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Eloであった。
+直近に完了したマイルストーンは、FMの配置変化と手番依存性の診断（plans/fm-search-diagnosis.md、2026年9月9日）である。
+既存FM候補の対局7,002局面では、静的補正の平均が+956センチポーン、正の割合が98.51%であり、駒数帯とPST評価500センチポーン刻みの層で調整しても保存局面との差が残った。
+着手差の手番成分も対局側で大きかったが、同一局面の候補間変動は配置成分の方が大きいので、手番成分だけを敗因とは判定していない。
+FM候補の不採用は維持し、次は独立教師で到達局面と候補手順位を再評価する。
+現行の評価は、短時間と長時間の採用条件を満たした2端点PSTである。
 
 進行中のマイルストーンは2件である。
 HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
@@ -59,7 +60,7 @@ HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaCh
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
+次期候補は、棋力向上段階6のaspiration windowsと置換表の改良、およびFMの到達局面を独立教師で再評価する診断である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
