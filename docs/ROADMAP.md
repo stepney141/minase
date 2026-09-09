@@ -38,20 +38,21 @@
 | 棋力向上段階4 | [plans/strength-stage4.md](plans/strength-stage4.md) | 完了 | 2026年9月6日 |
 | 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
 | PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
-| HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 進行中 | ― |
+| HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 完了 | 2026年9月9日 |
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
 
 ## 現在地
 
 直近に完了したマイルストーンは、Factorization Machineによる2駒関係評価（plans/factorization-machine.md、2026年9月9日）である。
 現行PSTを固定して2駒関係の補正項を学習したFMは、教師値から対局結果の成分を外すと検証損失と教師誤差を全局面帯で改善し探索速度の費用も1.2%に収まったが、STCで得点率19.6%の`H0`となり不採用とした。候補はブランチ`fm-eval`に保持する。
+同日に完了したHaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）では、HaChuを60秒＋1秒加算・256 MBに固定してminaseの持ち時間比と両者の置換表比を変えた8条件と、1手固定時間の2条件を固定200ペアEloで測った。
+対等条件で+207.5 Elo、持ち時間1/4で−26.1 Eloの互角、1/8で−205.0 Eloとなり、置換表を16 MBまたは1,024 MBへ変えた4条件はいずれも対等条件と信頼区間が重なり、1手固定時間のminase 1秒対HaChu 2秒でもminaseが+166.2 Eloで強く、HaChuが強いという仮説は支持されなかった。
+対局ハーネスには候補と基準ごとの置換表容量オプションと、CECPエンジンへの1手固定時間の対応を追加した。
 その前に完了したPSTの序中盤と終盤の補間（plans/tapered-pst.md、2026年9月8日）では、序中盤用と終盤用の2組のPSTを盤上総駒数で線形補間する評価を実装し、既存の世代0と世代1のデータで学習した2端点PSTが開始版に対してSTCとLTCの両方で`H1`となり採用した。
 単一PSTの同条件の再学習は開始版と一致したため、構造比較は省いた。
 その前の棋力向上段階5（2026年9月7日）では、順序付けキーの重複計算の除去とLMRの減深量を採用し、段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Eloであった。
 
-進行中のマイルストーンは2件である。
-HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
-上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
+進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
 次の一手は、段階6の個別設計書を起案し、aspiration windowsと置換表の改良へ進むことである。
 
