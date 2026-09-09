@@ -41,6 +41,7 @@
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 進行中 | ― |
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
 | FMの配置変化と手番依存性の診断 | [plans/fm-search-diagnosis.md](plans/fm-search-diagnosis.md) | 完了 | 2026年9月9日 |
+| FMの選択手をPST教師で検証する | [plans/fm-teacher-diagnosis.md](plans/fm-teacher-diagnosis.md) | 進行中 | ― |
 
 ## 現在地
 
@@ -50,7 +51,8 @@
 FM候補の不採用は維持し、次は独立教師で到達局面と候補手順位を再評価する。
 現行の評価は、短時間と長時間の採用条件を満たした2端点PSTである。
 
-進行中のマイルストーンは2件である。
+進行中のマイルストーンは3件である。
+FMの選択手をPST教師で検証する診断（plans/fm-teacher-diagnosis.md）では、局面構成を揃えた標本で候補手の教師評価と探索予算による安定性を測る。
 HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
 上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
