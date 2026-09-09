@@ -42,18 +42,16 @@
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
 | FMの配置変化と手番依存性の診断 | [plans/fm-search-diagnosis.md](plans/fm-search-diagnosis.md) | 完了 | 2026年9月9日 |
 | FMの選択手をPST教師で検証する | [plans/fm-teacher-diagnosis.md](plans/fm-teacher-diagnosis.md) | 完了 | 2026年9月9日 |
-| FM補正の縮小 | [plans/fm-quarter.md](plans/fm-quarter.md) | 進行中 | ― |
+| FM補正の縮小 | [plans/fm-quarter.md](plans/fm-quarter.md) | 完了 | 2026年9月9日 |
 
 ## 現在地
 
-FM選択手のPST教師診断を2026年9月9日に完了した。
-保存・実戦の各8局面では、10,000,000ノード教師によるPST選択手とFM選択手の評価差は平均15.875・40.750センチポーンだった。
-1,000,000から10,000,000ノードで最上位手集合が5局面で変わったため、128局面への拡大は行わず、教師の限界を測定記録へ保存した。
-FM不採用を維持し、次は再学習せず補正を1/4に縮めた1候補と元FMを自己対局で比較する。
+FM補正を1/4に縮めた候補と元FMの短時間比較を2026年9月9日に完了した。
+有効123ペアで逐次検定のH1に達し、補正縮小による改善を確認した。時間切れとエンジン異常は0件だった。
+次は同じ候補をPSTとの短時間比較へ進める。PSTより強いことと採用はまだ確定していない。
 現行の評価は、短時間と長時間の採用条件を満たした2端点PSTである。
 
-進行中のマイルストーンは3件である。
-FM補正の縮小（plans/fm-quarter.md）では、補正1/4の候補を固定し、元FMとの短時間自己対局を実行中である。
+進行中のマイルストーンは2件である。
 HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
 上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
@@ -64,7 +62,7 @@ HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaCh
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
 次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
-FM補正の縮小が元FMとの短時間比較を通過した場合は、PSTとの比較へ進む。
+FM補正を1/4に縮めた候補は元FMとの短時間比較を通過したため、次はPSTとの比較へ進む。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
