@@ -41,18 +41,17 @@
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 進行中 | ― |
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
 | FMの配置変化と手番依存性の診断 | [plans/fm-search-diagnosis.md](plans/fm-search-diagnosis.md) | 完了 | 2026年9月9日 |
-| FMの選択手をPST教師で検証する | [plans/fm-teacher-diagnosis.md](plans/fm-teacher-diagnosis.md) | 進行中 | ― |
+| FMの選択手をPST教師で検証する | [plans/fm-teacher-diagnosis.md](plans/fm-teacher-diagnosis.md) | 完了 | 2026年9月9日 |
 
 ## 現在地
 
-直近に完了したマイルストーンは、FMの配置変化と手番依存性の診断（plans/fm-search-diagnosis.md、2026年9月9日）である。
-既存FM候補の対局7,002局面では、静的補正の平均が+956センチポーン、正の割合が98.51%であり、駒数帯とPST評価500センチポーン刻みの層で調整しても保存局面との差が残った。
-着手差の手番成分も対局側で大きかったが、同一局面の候補間変動は配置成分の方が大きいので、手番成分だけを敗因とは判定していない。
-FM候補の不採用は維持し、次は独立教師で到達局面と候補手順位を再評価する。
+FM選択手のPST教師診断を2026年9月9日に完了した。
+保存・実戦の各8局面では、10,000,000ノード教師によるPST選択手とFM選択手の評価差は平均15.875・40.750センチポーンだった。
+1,000,000から10,000,000ノードで最上位手集合が5局面で変わったため、128局面への拡大は行わず、教師の限界を測定記録へ保存した。
+FM不採用を維持し、次は再学習せず補正を1/4に縮めた1候補と元FMを自己対局で比較する。
 現行の評価は、短時間と長時間の採用条件を満たした2端点PSTである。
 
-進行中のマイルストーンは3件である。
-FMの選択手をPST教師で検証する診断（plans/fm-teacher-diagnosis.md）では、局面構成を揃えた標本で候補手の教師評価と探索予算による安定性を測る。
+進行中のマイルストーンは2件である。
 HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
 上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
@@ -62,7 +61,7 @@ HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaCh
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、棋力向上段階6のaspiration windowsと置換表の改良、およびFMの到達局面を独立教師で再評価する診断である。
+次期候補は、棋力向上段階6のaspiration windowsと置換表の改良、およびFM補正を1/4に縮めた候補と元FMの自己対局比較である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。

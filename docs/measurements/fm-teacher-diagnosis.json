@@ -1,0 +1,1998 @@
+{
+  "proposal_nodes": 100000,
+  "teacher_nodes": [
+    100000,
+    1000000,
+    10000000
+  ],
+  "summary": [
+    {
+      "cohort": "saved",
+      "budget": 100000,
+      "parents": 8,
+      "cp_parents": 8,
+      "proposal_valid_parents": 8,
+      "same_proposal_count": 3,
+      "same_proposal_fraction": 0.375,
+      "parent_equal_gap": {
+        "count": 8,
+        "mean": 13.5,
+        "std": 24.124676163629637,
+        "mean_abs": 15.25,
+        "p95_abs": 55.3,
+        "max_abs": 56.0
+      },
+      "game_equal_gap": {
+        "count": 8,
+        "mean": 13.5,
+        "std": 24.124676163629637,
+        "mean_abs": 15.25,
+        "p95_abs": 55.3,
+        "max_abs": 56.0
+      },
+      "positive_gap_count": 4,
+      "zero_gap_count": 3,
+      "negative_gap_count": 1,
+      "gap_at_least_100cp_count": 0,
+      "gap_at_most_minus100cp_count": 0,
+      "child_score_kinds": {
+        "cp": 15
+      }
+    },
+    {
+      "cohort": "saved",
+      "budget": 1000000,
+      "parents": 8,
+      "cp_parents": 8,
+      "proposal_valid_parents": 8,
+      "same_proposal_count": 3,
+      "same_proposal_fraction": 0.375,
+      "parent_equal_gap": {
+        "count": 8,
+        "mean": 11.875,
+        "std": 24.56846301663985,
+        "mean_abs": 11.875,
+        "p95_abs": 52.89999999999996,
+        "max_abs": 76.0
+      },
+      "game_equal_gap": {
+        "count": 8,
+        "mean": 11.875,
+        "std": 24.56846301663985,
+        "mean_abs": 11.875,
+        "p95_abs": 52.89999999999996,
+        "max_abs": 76.0
+      },
+      "positive_gap_count": 3,
+      "zero_gap_count": 5,
+      "negative_gap_count": 0,
+      "gap_at_least_100cp_count": 0,
+      "gap_at_most_minus100cp_count": 0,
+      "child_score_kinds": {
+        "cp": 15
+      }
+    },
+    {
+      "cohort": "saved",
+      "budget": 10000000,
+      "parents": 8,
+      "cp_parents": 8,
+      "proposal_valid_parents": 8,
+      "same_proposal_count": 3,
+      "same_proposal_fraction": 0.375,
+      "parent_equal_gap": {
+        "count": 8,
+        "mean": 15.875,
+        "std": 13.842303818367808,
+        "mean_abs": 15.875,
+        "p95_abs": 35.25,
+        "max_abs": 37.0
+      },
+      "game_equal_gap": {
+        "count": 8,
+        "mean": 15.875,
+        "std": 13.842303818367808,
+        "mean_abs": 15.875,
+        "p95_abs": 35.25,
+        "max_abs": 37.0
+      },
+      "positive_gap_count": 5,
+      "zero_gap_count": 3,
+      "negative_gap_count": 0,
+      "gap_at_least_100cp_count": 0,
+      "gap_at_most_minus100cp_count": 0,
+      "child_score_kinds": {
+        "cp": 15
+      }
+    },
+    {
+      "cohort": "match",
+      "budget": 100000,
+      "parents": 8,
+      "cp_parents": 8,
+      "proposal_valid_parents": 8,
+      "same_proposal_count": 3,
+      "same_proposal_fraction": 0.375,
+      "parent_equal_gap": {
+        "count": 8,
+        "mean": 16.25,
+        "std": 36.37220779661306,
+        "mean_abs": 29.0,
+        "p95_abs": 62.8,
+        "max_abs": 67.0
+      },
+      "game_equal_gap": {
+        "count": 8,
+        "mean": 16.25,
+        "std": 36.37220779661306,
+        "mean_abs": 29.0,
+        "p95_abs": 62.8,
+        "max_abs": 67.0
+      },
+      "positive_gap_count": 4,
+      "zero_gap_count": 3,
+      "negative_gap_count": 1,
+      "gap_at_least_100cp_count": 0,
+      "gap_at_most_minus100cp_count": 0,
+      "child_score_kinds": {
+        "cp": 18
+      }
+    },
+    {
+      "cohort": "match",
+      "budget": 1000000,
+      "parents": 8,
+      "cp_parents": 8,
+      "proposal_valid_parents": 8,
+      "same_proposal_count": 3,
+      "same_proposal_fraction": 0.375,
+      "parent_equal_gap": {
+        "count": 8,
+        "mean": 30.25,
+        "std": 27.851166941440713,
+        "mean_abs": 30.25,
+        "p95_abs": 65.55,
+        "max_abs": 68.0
+      },
+      "game_equal_gap": {
+        "count": 8,
+        "mean": 30.25,
+        "std": 27.851166941440713,
+        "mean_abs": 30.25,
+        "p95_abs": 65.55,
+        "max_abs": 68.0
+      },
+      "positive_gap_count": 5,
+      "zero_gap_count": 3,
+      "negative_gap_count": 0,
+      "gap_at_least_100cp_count": 0,
+      "gap_at_most_minus100cp_count": 0,
+      "child_score_kinds": {
+        "cp": 18
+      }
+    },
+    {
+      "cohort": "match",
+      "budget": 10000000,
+      "parents": 8,
+      "cp_parents": 8,
+      "proposal_valid_parents": 8,
+      "same_proposal_count": 3,
+      "same_proposal_fraction": 0.375,
+      "parent_equal_gap": {
+        "count": 8,
+        "mean": 40.75,
+        "std": 39.29297010916838,
+        "mean_abs": 40.75,
+        "p95_abs": 100.6,
+        "max_abs": 109.0
+      },
+      "game_equal_gap": {
+        "count": 8,
+        "mean": 40.75,
+        "std": 39.29297010916838,
+        "mean_abs": 40.75,
+        "p95_abs": 100.6,
+        "max_abs": 109.0
+      },
+      "positive_gap_count": 5,
+      "zero_gap_count": 3,
+      "negative_gap_count": 0,
+      "gap_at_least_100cp_count": 1,
+      "gap_at_most_minus100cp_count": 0,
+      "child_score_kinds": {
+        "cp": 18
+      }
+    }
+  ],
+  "stability_summary": [
+    {
+      "cohort": "saved",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_comparable": 8,
+      "gap_sign_stable": 5,
+      "strict_gap_reversal_count": 1,
+      "zero_nonzero_change_count": 2,
+      "top_set_comparable": 8,
+      "top_set_changed_count": 4,
+      "rank_comparable": 6,
+      "rank_stable": 2,
+      "gap_change": {
+        "count": 8,
+        "mean": -1.625,
+        "std": 38.6326853195581,
+        "mean_abs": 23.875,
+        "p95_abs": 72.84999999999998,
+        "max_abs": 83.0
+      }
+    },
+    {
+      "cohort": "saved",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_comparable": 8,
+      "gap_sign_stable": 6,
+      "strict_gap_reversal_count": 0,
+      "zero_nonzero_change_count": 2,
+      "top_set_comparable": 8,
+      "top_set_changed_count": 2,
+      "rank_comparable": 6,
+      "rank_stable": 4,
+      "gap_change": {
+        "count": 8,
+        "mean": 4.0,
+        "std": 25.802131694881336,
+        "mean_abs": 18.5,
+        "p95_abs": 47.149999999999984,
+        "max_abs": 58.0
+      }
+    },
+    {
+      "cohort": "match",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_comparable": 8,
+      "gap_sign_stable": 7,
+      "strict_gap_reversal_count": 1,
+      "zero_nonzero_change_count": 0,
+      "top_set_comparable": 8,
+      "top_set_changed_count": 4,
+      "rank_comparable": 7,
+      "rank_stable": 3,
+      "gap_change": {
+        "count": 8,
+        "mean": 14.0,
+        "std": 38.24591481452627,
+        "mean_abs": 20.25,
+        "p95_abs": 79.09999999999995,
+        "max_abs": 112.0
+      }
+    },
+    {
+      "cohort": "match",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_comparable": 8,
+      "gap_sign_stable": 8,
+      "strict_gap_reversal_count": 0,
+      "zero_nonzero_change_count": 0,
+      "top_set_comparable": 8,
+      "top_set_changed_count": 3,
+      "rank_comparable": 7,
+      "rank_stable": 4,
+      "gap_change": {
+        "count": 8,
+        "mean": 10.5,
+        "std": 17.073371078963874,
+        "mean_abs": 12.5,
+        "p95_abs": 40.29999999999999,
+        "max_abs": 48.0
+      }
+    }
+  ],
+  "parents": [
+    {
+      "index": 0,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:2914",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": -7,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 7
+      }
+    },
+    {
+      "index": 0,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:2914",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 76,
+      "candidate_set_losses": {
+        "fm": 76,
+        "pst": 0
+      }
+    },
+    {
+      "index": 0,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:2914",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 18,
+      "candidate_set_losses": {
+        "fm": 18,
+        "pst": 0
+      }
+    },
+    {
+      "index": 1,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:4816",
+      "budget": 100000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 1,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:4816",
+      "budget": 1000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 1,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:4816",
+      "budget": 10000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 2,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:615",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 56,
+      "candidate_set_losses": {
+        "fm": 56,
+        "pst": 0
+      }
+    },
+    {
+      "index": 2,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:615",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 10,
+      "candidate_set_losses": {
+        "fm": 10,
+        "pst": 0
+      }
+    },
+    {
+      "index": 2,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:615",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 37,
+      "candidate_set_losses": {
+        "fm": 37,
+        "pst": 0
+      }
+    },
+    {
+      "index": 3,
+      "cohort": "saved",
+      "game_key": "saved:6bc33e133861faaa1fd1d55e6c0ec1152e1bed38:0000000000000000000000000000000000000000000000000000000000000000:1:1638",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 54,
+      "candidate_set_losses": {
+        "fm": 54,
+        "pst": 0
+      }
+    },
+    {
+      "index": 3,
+      "cohort": "saved",
+      "game_key": "saved:6bc33e133861faaa1fd1d55e6c0ec1152e1bed38:0000000000000000000000000000000000000000000000000000000000000000:1:1638",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 3,
+      "cohort": "saved",
+      "game_key": "saved:6bc33e133861faaa1fd1d55e6c0ec1152e1bed38:0000000000000000000000000000000000000000000000000000000000000000:1:1638",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 24,
+      "candidate_set_losses": {
+        "fm": 24,
+        "pst": 0
+      }
+    },
+    {
+      "index": 4,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:1957",
+      "budget": 100000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 4,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:1957",
+      "budget": 1000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 27,
+        "pst": 27
+      }
+    },
+    {
+      "index": 4,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:1957",
+      "budget": 10000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 118,
+        "pst": 118
+      }
+    },
+    {
+      "index": 5,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:6833",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 3,
+      "candidate_set_losses": {
+        "fm": 3,
+        "pst": 0
+      }
+    },
+    {
+      "index": 5,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:6833",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 9,
+      "candidate_set_losses": {
+        "fm": 9,
+        "pst": 0
+      }
+    },
+    {
+      "index": 5,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:6833",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 32,
+      "candidate_set_losses": {
+        "fm": 32,
+        "pst": 0
+      }
+    },
+    {
+      "index": 6,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:7475",
+      "budget": 100000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 6,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:7475",
+      "budget": 1000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 6,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:7475",
+      "budget": 10000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 7,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:200000:5533",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 3
+      },
+      "gap": 2,
+      "candidate_set_losses": {
+        "fm": 6,
+        "pst": 4
+      }
+    },
+    {
+      "index": 7,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:200000:5533",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 3
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 7,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:200000:5533",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 3
+      },
+      "gap": 16,
+      "candidate_set_losses": {
+        "fm": 28,
+        "pst": 12
+      }
+    },
+    {
+      "index": 8,
+      "cohort": "match",
+      "game_key": "match:pair15:game2",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 50,
+      "candidate_set_losses": {
+        "fm": 50,
+        "pst": 0
+      }
+    },
+    {
+      "index": 8,
+      "cohort": "match",
+      "game_key": "match:pair15:game2",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 68,
+      "candidate_set_losses": {
+        "fm": 68,
+        "pst": 0
+      }
+    },
+    {
+      "index": 8,
+      "cohort": "match",
+      "game_key": "match:pair15:game2",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 60,
+      "candidate_set_losses": {
+        "fm": 60,
+        "pst": 0
+      }
+    },
+    {
+      "index": 9,
+      "cohort": "match",
+      "game_key": "match:pair16:game2",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 3
+      },
+      "gap": 67,
+      "candidate_set_losses": {
+        "fm": 67,
+        "pst": 0
+      }
+    },
+    {
+      "index": 9,
+      "cohort": "match",
+      "game_key": "match:pair16:game2",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 3
+      },
+      "gap": 59,
+      "candidate_set_losses": {
+        "fm": 59,
+        "pst": 0
+      }
+    },
+    {
+      "index": 9,
+      "cohort": "match",
+      "game_key": "match:pair16:game2",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 3
+      },
+      "gap": 85,
+      "candidate_set_losses": {
+        "fm": 99,
+        "pst": 14
+      }
+    },
+    {
+      "index": 10,
+      "cohort": "match",
+      "game_key": "match:pair15:game1",
+      "budget": 100000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 10,
+      "cohort": "match",
+      "game_key": "match:pair15:game1",
+      "budget": 1000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 6,
+        "pst": 6
+      }
+    },
+    {
+      "index": 10,
+      "cohort": "match",
+      "game_key": "match:pair15:game1",
+      "budget": 10000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 11,
+      "cohort": "match",
+      "game_key": "match:pair11:game2",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 4
+      },
+      "gap": 9,
+      "candidate_set_losses": {
+        "fm": 186,
+        "pst": 177
+      }
+    },
+    {
+      "index": 11,
+      "cohort": "match",
+      "game_key": "match:pair11:game2",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 4
+      },
+      "gap": 16,
+      "candidate_set_losses": {
+        "fm": 16,
+        "pst": 0
+      }
+    },
+    {
+      "index": 11,
+      "cohort": "match",
+      "game_key": "match:pair11:game2",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 4
+      },
+      "gap": 23,
+      "candidate_set_losses": {
+        "fm": 69,
+        "pst": 46
+      }
+    },
+    {
+      "index": 12,
+      "cohort": "match",
+      "game_key": "match:pair3:game1",
+      "budget": 100000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 12,
+      "cohort": "match",
+      "game_key": "match:pair3:game1",
+      "budget": 1000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 12,
+      "cohort": "match",
+      "game_key": "match:pair3:game1",
+      "budget": 10000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 1
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 13,
+      "cohort": "match",
+      "game_key": "match:pair2:game2",
+      "budget": 100000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 1,
+        "pst": 1
+      }
+    },
+    {
+      "index": 13,
+      "cohort": "match",
+      "game_key": "match:pair2:game2",
+      "budget": 1000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 13,
+      "cohort": "match",
+      "game_key": "match:pair2:game2",
+      "budget": 10000000,
+      "proposal_same": true,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 0,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 0
+      }
+    },
+    {
+      "index": 14,
+      "cohort": "match",
+      "game_key": "match:pair11:game1",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 55,
+      "candidate_set_losses": {
+        "fm": 55,
+        "pst": 0
+      }
+    },
+    {
+      "index": 14,
+      "cohort": "match",
+      "game_key": "match:pair11:game1",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 38,
+      "candidate_set_losses": {
+        "fm": 38,
+        "pst": 0
+      }
+    },
+    {
+      "index": 14,
+      "cohort": "match",
+      "game_key": "match:pair11:game1",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 49,
+      "candidate_set_losses": {
+        "fm": 49,
+        "pst": 0
+      }
+    },
+    {
+      "index": 15,
+      "cohort": "match",
+      "game_key": "match:pair8:game1",
+      "budget": 100000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": -51,
+      "candidate_set_losses": {
+        "fm": 0,
+        "pst": 51
+      }
+    },
+    {
+      "index": 15,
+      "cohort": "match",
+      "game_key": "match:pair8:game1",
+      "budget": 1000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 61,
+      "candidate_set_losses": {
+        "fm": 61,
+        "pst": 0
+      }
+    },
+    {
+      "index": 15,
+      "cohort": "match",
+      "game_key": "match:pair8:game1",
+      "budget": 10000000,
+      "proposal_same": false,
+      "proposal_valid": true,
+      "child_score_kinds": {
+        "cp": 2
+      },
+      "gap": 109,
+      "candidate_set_losses": {
+        "fm": 109,
+        "pst": 0
+      }
+    }
+  ],
+  "stability": [
+    {
+      "index": 0,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:2914",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": false,
+      "gap_change": 83,
+      "strict_gap_reversal": true,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "2b3c"
+        ],
+        [
+          "9b8c"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 0,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:2914",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": -58,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "9b8c"
+        ],
+        [
+          "9b8c"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 1,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:4816",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "8f5i"
+        ],
+        [
+          "8f5i"
+        ]
+      ],
+      "cp_common_moves": 1,
+      "candidate_count": 1,
+      "rank_pair_count": 0,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": null
+    },
+    {
+      "index": 1,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:4816",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "8f5i"
+        ],
+        [
+          "8f5i"
+        ]
+      ],
+      "cp_common_moves": 1,
+      "candidate_count": 1,
+      "rank_pair_count": 0,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": null
+    },
+    {
+      "index": 2,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:615",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": -46,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "5k6l"
+        ],
+        [
+          "5k6l"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 2,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:615",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 27,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "5k6l"
+        ],
+        [
+          "5k6l"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 3,
+      "cohort": "saved",
+      "game_key": "saved:6bc33e133861faaa1fd1d55e6c0ec1152e1bed38:0000000000000000000000000000000000000000000000000000000000000000:1:1638",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": false,
+      "gap_change": -54,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": true,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "9j9i"
+        ],
+        [
+          "7g8f",
+          "9j9i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 3,
+      "cohort": "saved",
+      "game_key": "saved:6bc33e133861faaa1fd1d55e6c0ec1152e1bed38:0000000000000000000000000000000000000000000000000000000000000000:1:1638",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": false,
+      "gap_change": 24,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": true,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "7g8f",
+          "9j9i"
+        ],
+        [
+          "9j9i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 4,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:1957",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "9f9d"
+        ],
+        [
+          "9f9g"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 4,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:1957",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "9f9g"
+        ],
+        [
+          "9f9g"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 5,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:6833",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 6,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "9j7i"
+        ],
+        [
+          "9j7i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 5,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:300000:6833",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 23,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "9j7i"
+        ],
+        [
+          "9j7i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 6,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:7475",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "6e6f"
+        ],
+        [
+          "6e6f"
+        ]
+      ],
+      "cp_common_moves": 1,
+      "candidate_count": 1,
+      "rank_pair_count": 0,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": null
+    },
+    {
+      "index": 6,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:500000:7475",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "6e6f"
+        ],
+        [
+          "6e6f"
+        ]
+      ],
+      "cp_common_moves": 1,
+      "candidate_count": 1,
+      "rank_pair_count": 0,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": null
+    },
+    {
+      "index": 7,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:200000:5533",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": false,
+      "gap_change": -2,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": true,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "6e5f"
+        ],
+        [
+          "4b4c",
+          "5d5e",
+          "6e5f"
+        ]
+      ],
+      "cp_common_moves": 3,
+      "candidate_count": 3,
+      "rank_pair_count": 3,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 7,
+      "cohort": "saved",
+      "game_key": "saved:dd46d1e47952e7137ec054420374279fb48daf8e:2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2:200000:5533",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": false,
+      "gap_change": 16,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": true,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "4b4c",
+          "5d5e",
+          "6e5f"
+        ],
+        [
+          "6e5f"
+        ]
+      ],
+      "cp_common_moves": 3,
+      "candidate_count": 3,
+      "rank_pair_count": 3,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 8,
+      "cohort": "match",
+      "game_key": "match:pair15:game2",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 18,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "7b5d"
+        ],
+        [
+          "7b5d"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 8,
+      "cohort": "match",
+      "game_key": "match:pair15:game2",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": -8,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "7b5d"
+        ],
+        [
+          "7b5d"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 9,
+      "cohort": "match",
+      "game_key": "match:pair16:game2",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": -8,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "8e8f"
+        ],
+        [
+          "8e8f"
+        ]
+      ],
+      "cp_common_moves": 3,
+      "candidate_count": 3,
+      "rank_pair_count": 3,
+      "rank_pair_agree": 3,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 9,
+      "cohort": "match",
+      "game_key": "match:pair16:game2",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 26,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "8e8f"
+        ],
+        [
+          "8c8d"
+        ]
+      ],
+      "cp_common_moves": 3,
+      "candidate_count": 3,
+      "rank_pair_count": 3,
+      "rank_pair_agree": 2,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 10,
+      "cohort": "match",
+      "game_key": "match:pair15:game1",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "5i5g"
+        ],
+        [
+          "10j8j"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 10,
+      "cohort": "match",
+      "game_key": "match:pair15:game1",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "10j8j"
+        ],
+        [
+          "5i5g"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 11,
+      "cohort": "match",
+      "game_key": "match:pair11:game2",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 7,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "7d7e"
+        ],
+        [
+          "11a11b"
+        ]
+      ],
+      "cp_common_moves": 4,
+      "candidate_count": 4,
+      "rank_pair_count": 6,
+      "rank_pair_agree": 3,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 11,
+      "cohort": "match",
+      "game_key": "match:pair11:game2",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 7,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "11a11b"
+        ],
+        [
+          "7d7e"
+        ]
+      ],
+      "cp_common_moves": 4,
+      "candidate_count": 4,
+      "rank_pair_count": 6,
+      "rank_pair_agree": 5,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 12,
+      "cohort": "match",
+      "game_key": "match:pair3:game1",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "4j4k"
+        ],
+        [
+          "4j4k"
+        ]
+      ],
+      "cp_common_moves": 1,
+      "candidate_count": 1,
+      "rank_pair_count": 0,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": null
+    },
+    {
+      "index": 12,
+      "cohort": "match",
+      "game_key": "match:pair3:game1",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "4j4k"
+        ],
+        [
+          "4j4k"
+        ]
+      ],
+      "cp_common_moves": 1,
+      "candidate_count": 1,
+      "rank_pair_count": 0,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": null
+    },
+    {
+      "index": 13,
+      "cohort": "match",
+      "game_key": "match:pair2:game2",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "7b7c"
+        ],
+        [
+          "4i5i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 13,
+      "cohort": "match",
+      "game_key": "match:pair2:game2",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 0,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "4i5i"
+        ],
+        [
+          "4i5i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 14,
+      "cohort": "match",
+      "game_key": "match:pair11:game1",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": true,
+      "gap_change": -17,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "7l6k"
+        ],
+        [
+          "7l6k"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 14,
+      "cohort": "match",
+      "game_key": "match:pair11:game1",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 11,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "7l6k"
+        ],
+        [
+          "7l6k"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    },
+    {
+      "index": 15,
+      "cohort": "match",
+      "game_key": "match:pair8:game1",
+      "first_budget": 100000,
+      "second_budget": 1000000,
+      "gap_sign_stable": false,
+      "gap_change": 112,
+      "strict_gap_reversal": true,
+      "zero_nonzero_change": false,
+      "top_set_changed": true,
+      "top_sets": [
+        [
+          "6h5h"
+        ],
+        [
+          "6h7i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 0,
+      "all_candidate_ranks_stable": false
+    },
+    {
+      "index": 15,
+      "cohort": "match",
+      "game_key": "match:pair8:game1",
+      "first_budget": 1000000,
+      "second_budget": 10000000,
+      "gap_sign_stable": true,
+      "gap_change": 48,
+      "strict_gap_reversal": false,
+      "zero_nonzero_change": false,
+      "top_set_changed": false,
+      "top_sets": [
+        [
+          "6h7i"
+        ],
+        [
+          "6h7i"
+        ]
+      ],
+      "cp_common_moves": 2,
+      "candidate_count": 2,
+      "rank_pair_count": 1,
+      "rank_pair_agree": 1,
+      "all_candidate_ranks_stable": true
+    }
+  ],
+  "inputs": {
+    "manifest_sha256": "6c04aba2c21c5504899ad3371f4e76ca2eaeadf686215228d20d8f083be8e68c",
+    "results_sha256": "52f738f6e8d81ee43526fb3b37734eb35953d8fee6d8689b813b572d4ff7cd45",
+    "sample_kind": "pilot"
+  },
+  "definitions": {
+    "gap": "T(PST move) - T(FM move), parent perspective cp; positive means FM worse",
+    "teacher": "fixed PST, FM embeddings zero; a budget-dependent reference, not ground truth",
+    "candidate_set_losses": "max T among finite proposed candidates minus T(selected); not full legal-move regret",
+    "mate_terminal_incomplete": "excluded from cp gap; score kinds counted separately",
+    "rank_stability": "pairwise ordering including ties among the same candidate moves"
+  },
+  "execution": {
+    "source_commit": "c688c11a1351e73f23f7051122dbee994a17e1d9",
+    "source_status": "",
+    "binary_sha256": "e9c53f693f3a4b4aa94f84d2f1145e4f2ef137813f63f29c1a8b778d1796bb53",
+    "probe_source_sha256": "babe55bc183578a1b466a95a6bee8c80fcfc55023adb1ef2dfc6ff2585104e70",
+    "command": [
+      "target/release/fm_teacher_probe",
+      "--positions",
+      "data/fm-teacher/pilot.mnsd",
+      "--candidate-pst",
+      "nets/pst.bin",
+      "--teacher-pst",
+      "data/fm-teacher/teacher-pst.bin",
+      "--proposal-nodes",
+      "100000",
+      "--teacher-nodes",
+      "100000,1000000,10000000",
+      "--hash-mb",
+      "64"
+    ],
+    "cwd": "/home/stepney141/board-games/minase/data/worktrees/fm-teacher",
+    "platform": "Linux-6.18.45-2-lts-x86_64-with-glibc2.44",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "sample_manifest": "data/fm-teacher-v2/manifest.json",
+    "sample_manifest_sha256": "6c04aba2c21c5504899ad3371f4e76ca2eaeadf686215228d20d8f083be8e68c",
+    "note": "Source committed during execution; probe source and binary unchanged since launch. All searches Threads=1 with fresh TT. Three-budget run supersedes preliminary two-budget output."
+  },
+  "runtime": {
+    "search_count": 179,
+    "total_nodes": 547100000,
+    "search_elapsed_ms_sum": 329742.784921,
+    "depth_min": 3,
+    "depth_max": 12,
+    "stop_reasons": {
+      "NodeLimit": 179
+    },
+    "time_output": "330.13user 0.99system 5:31.24elapsed 99%CPU (0avgtext+0avgdata 73132maxresident)k\n0inputs+152outputs (0major+121674minor)pagefaults 0swaps\n",
+    "depths_by_teacher_budget": {
+      "100000": {
+        "min": 3,
+        "max": 6
+      },
+      "1000000": {
+        "min": 5,
+        "max": 9
+      },
+      "10000000": {
+        "min": 7,
+        "max": 12
+      }
+    }
+  },
+  "pilot_static_corrections": {
+    "saved": {
+      "count": 8,
+      "mean": -3.25,
+      "median": -2.0,
+      "min": -244,
+      "max": 257,
+      "values": [
+        -118,
+        147,
+        -31,
+        27,
+        257,
+        61,
+        -244,
+        -125
+      ]
+    },
+    "match": {
+      "count": 8,
+      "mean": 962.625,
+      "median": 806.5,
+      "min": 375,
+      "max": 1542,
+      "values": [
+        790,
+        1487,
+        651,
+        499,
+        1534,
+        375,
+        1542,
+        823
+      ]
+    }
+  },
+  "artifact_directory": "/home/stepney141/board-games/minase/data/fm-teacher-diagnosis",
+  "artifact_sha256": {
+    "report.json": "4afc94443a4ad1afcece69bbd385ff0094bfff2318c21454b9cc3e6d34dfbe2a",
+    "pilot-static-corrections.json": "8c39097fa547fedd631963fd5c8b812a1d11789ce1a31af7754563b43a082d02",
+    "teacher-pst.bin": "7fcb8c188f1f25de6739b9c67dbcc23c0b303caceeb1fd8b2074f61494a03b21",
+    "execution.json": "7b58786d052aedb83476c4eddba44aeeac1c134c6a53c9c5fdfae4ff57a61873",
+    "positions.mnsd": "d9d900255b3d0065c910c74dca8dfae3661c374f2c62db993f72b1d929ce7f81",
+    "manifest.json": "6c04aba2c21c5504899ad3371f4e76ca2eaeadf686215228d20d8f083be8e68c",
+    "pilot.mnsd": "4d5539dd425397761a701bb0e888d6358f86d88aee61cf70a341049a09368a64",
+    "pilot.time": "eb293eae7cd3794528ee84aa346b4bd3fba1f87f9db03a0e28eb456872975235",
+    "repeat-b.jsonl": "3b70e48bbea5788970d6d274c334e32430b8542093f8721159a9d63b57b93ff1",
+    "repeat-a.jsonl": "151a32370a1cf3facc663760c96a461465404da25a47357affefc8b94e83de62",
+    "pilot.jsonl": "52f738f6e8d81ee43526fb3b37734eb35953d8fee6d8689b813b572d4ff7cd45"
+  },
+  "decision": {
+    "full_sample_run": false,
+    "reason": "5 of 16 top sets changed between 1m and 10m; teacher stability gate not met",
+    "fm_adopted": false
+  },
+  "validation": {
+    "rust_tests": 618,
+    "python_tests": 76,
+    "fmt": true,
+    "clippy_all_targets": true,
+    "repeat_rows_identical_except_time": 16
+  }
+}
