@@ -42,6 +42,7 @@
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
 | FMの配置変化と手番依存性の診断 | [plans/fm-search-diagnosis.md](plans/fm-search-diagnosis.md) | 完了 | 2026年9月9日 |
 | FMの選択手をPST教師で検証する | [plans/fm-teacher-diagnosis.md](plans/fm-teacher-diagnosis.md) | 完了 | 2026年9月9日 |
+| FM補正の縮小 | [plans/fm-quarter.md](plans/fm-quarter.md) | 進行中 | ― |
 
 ## 現在地
 
@@ -51,7 +52,8 @@ FM選択手のPST教師診断を2026年9月9日に完了した。
 FM不採用を維持し、次は再学習せず補正を1/4に縮めた1候補と元FMを自己対局で比較する。
 現行の評価は、短時間と長時間の採用条件を満たした2端点PSTである。
 
-進行中のマイルストーンは2件である。
+進行中のマイルストーンは3件である。
+FM補正の縮小（plans/fm-quarter.md）では、補正1/4の候補を固定し、元FMとの短時間自己対局を開始する。
 HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaChuを対等条件に固定してminaseの持ち時間比と両者の置換表比を変えた8条件を固定200ペアEloで測る測定であり、2026年9月8日に着手した。
 上位計画の棋力向上の段階計画（plans/strength-stages.md）も進行中である。
 10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
@@ -61,7 +63,8 @@ HaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）は、HaCh
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、棋力向上段階6のaspiration windowsと置換表の改良、およびFM補正を1/4に縮めた候補と元FMの自己対局比較である。
+次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
+FM補正の縮小が元FMとの短時間比較を通過した場合は、PSTとの比較へ進む。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
