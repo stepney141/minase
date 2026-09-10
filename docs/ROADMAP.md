@@ -54,8 +54,8 @@
 その前の棋力向上段階5（2026年9月7日）では、順序付けキーの重複計算の除去とLMRの減深量を採用し、段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Eloであった。
 
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）と、その段階6（plans/strength-stage6.md、2026年9月10日着手）である。
-段階6は、着手時の診断で静的評価の置換表保存とmate distance pruningを見送り、aspiration windows、置換表のクラスタ化、internal iterative reduction、fail-lowによる延長、最善手交替時の延長、および最善手安定時の早期終了の6項目を1項目ずつ測る。
-次の一手は、aspiration windowsを実装して段階開始版とのSTCへ進めることである。
+段階6は、着手時の診断で静的評価の置換表保存とmate distance pruningを見送り、置換表のクラスタ化は実装後の固定深さ再生で効果が基準に届かず外し、aspiration windows、internal iterative reduction、fail-lowによる延長、最善手交替時の延長、および最善手安定時の早期終了の5項目を1項目ずつ測る。
+次の一手は、aspiration windowsの段階開始版とのSTCの判定を受けてLTCへ進めることである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
