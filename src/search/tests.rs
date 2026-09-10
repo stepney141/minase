@@ -2049,11 +2049,11 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
                     ] {
                         let within_hard = elapsed.as_nanos() * 5 <= budget.hard.as_nanos() * 2;
                         assert_eq!(
-                            should_start_next_iteration(elapsed, budget, false),
+                            should_start_next_iteration(elapsed, budget, false, false),
                             elapsed < budget.soft && within_hard
                         );
                         assert_eq!(
-                            should_start_next_iteration(elapsed, budget, true),
+                            should_start_next_iteration(elapsed, budget, true, false),
                             within_hard
                         );
                     }
@@ -2139,7 +2139,7 @@ fn extension_signal_best_move_change_applies_only_to_the_next_decision() {
     assert_eq!(signals, [false, true, false, true]);
 }
 
-// D7-TIME-05。search.md「時間管理」節: 延長なしではelapsed < softかつ
+// D7-TIME-05。search.md「時間管理」節: 延長も安定もない場合はelapsed < softかつ
 // elapsed×2.5 <= hardの場合だけ次の反復を開始する。
 #[test]
 fn next_iteration_requires_both_time_conditions() {
@@ -2152,11 +2152,13 @@ fn next_iteration_requires_both_time_conditions() {
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
         budget(100, 250),
+        false,
         false
     ));
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
         budget(100, 248),
+        false,
         false
     ));
 
@@ -2164,11 +2166,13 @@ fn next_iteration_requires_both_time_conditions() {
     assert!(should_start_next_iteration(
         Duration::from_millis(100),
         budget(101, 250),
+        false,
         false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
         budget(101, 249),
+        false,
         false
     ));
 
@@ -2176,13 +2180,117 @@ fn next_iteration_requires_both_time_conditions() {
     assert!(should_start_next_iteration(
         Duration::from_millis(40),
         budget(100, 100),
+        false,
         false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(41),
         budget(100, 100),
+        false,
         false
     ));
+}
+
+// docs/plans/strength-stage6.md「最善手安定時の早期終了」。
+// 延長の信号がなく、末尾の4反復が同じ手の場合だけ安定と判定する。
+#[test]
+fn stable_signal_requires_four_recent_equal_bests_without_extension() {
+    let moves = legal_moves(&Position::initial());
+    let [a, b] = [moves[0], moves[1]];
+    let cases: &[(&[Move], bool)] = &[
+        (&[], false),
+        (&[a], false),
+        (&[a, a], false),
+        (&[a, a, a], false),
+        (&[a, a, a, a], true),
+        (&[b, a, a, a, a], true),
+        (&[a, a, a, b], false),
+        (&[a, a, b, a], false),
+        (&[a, b, a, a], false),
+        (&[b, a, a, a], false),
+    ];
+    for &(bests, expected) in cases {
+        assert_eq!(stable_signal(false, bests), expected, "bests={bests:?}");
+        assert!(!stable_signal(true, bests), "bests={bests:?}");
+    }
+}
+
+// 同「最善手安定時の早期終了」。安定時は予測完了時刻がsoftに等しい場合まで続ける。
+#[test]
+fn next_iteration_stable_stops_at_the_soft_prediction_boundary() {
+    let budget = TimeBudget {
+        soft: Duration::from_millis(100),
+        hard: Duration::from_millis(400),
+    };
+    for (elapsed, ordinary, stable) in [
+        (Duration::ZERO, true, true),
+        (Duration::from_millis(40), true, true),
+        (
+            Duration::from_millis(40) + Duration::from_nanos(1),
+            true,
+            false,
+        ),
+        (Duration::from_millis(41), true, false),
+        (Duration::from_millis(99), true, false),
+        (Duration::from_millis(100), false, false),
+    ] {
+        assert_eq!(
+            should_start_next_iteration(elapsed, budget, false, false),
+            ordinary,
+            "ordinary elapsed={elapsed:?}"
+        );
+        assert_eq!(
+            should_start_next_iteration(elapsed, budget, false, true),
+            stable,
+            "stable elapsed={elapsed:?}"
+        );
+    }
+}
+
+// 同「fail-lowによる延長」の統合式と「検証」。延長は安定より優先し、
+// hardの予測上限は両信号の組合せによらず守る。
+#[test]
+fn next_iteration_stable_preserves_hard_limit_and_extension_priority() {
+    let budget = TimeBudget {
+        soft: Duration::from_millis(100),
+        hard: Duration::from_millis(400),
+    };
+    for (elapsed, expected) in [
+        (Duration::from_millis(100), true),
+        (Duration::from_millis(160), true),
+        (Duration::from_millis(160) + Duration::from_nanos(1), false),
+        (Duration::MAX, false),
+    ] {
+        for stable in [false, true] {
+            assert_eq!(
+                should_start_next_iteration(elapsed, budget, true, stable),
+                expected,
+                "elapsed={elapsed:?}, stable={stable}"
+            );
+        }
+        assert!(!should_start_next_iteration(elapsed, budget, false, true));
+    }
+
+    // soft <= hardならsoftの予測条件だけでもhardを守るため、hardの独立性は
+    // 純粋関数へのsoft > hardの入力で検査する。主ワーカーはこの予算を作らない。
+    let budget = TimeBudget {
+        soft: Duration::from_millis(400),
+        hard: Duration::from_millis(100),
+    };
+    for extend in [false, true] {
+        assert!(should_start_next_iteration(
+            Duration::from_millis(40),
+            budget,
+            extend,
+            true
+        ));
+        assert!(!should_start_next_iteration(
+            Duration::from_millis(40) + Duration::from_nanos(1),
+            budget,
+            extend,
+            true
+        ));
+    }
 }
 
 // docs/plans/strength-stage6.md「fail-lowによる延長」「検証」。
@@ -2197,8 +2305,8 @@ fn next_iteration_extension_changes_only_times_with_hard_headroom() {
         for milliseconds in 0..=hard {
             for nanos in [0, 1, 999_999] {
                 let elapsed = Duration::from_millis(milliseconds) + Duration::from_nanos(nanos);
-                let ordinary = should_start_next_iteration(elapsed, budget, false);
-                let extended = should_start_next_iteration(elapsed, budget, true);
+                let ordinary = should_start_next_iteration(elapsed, budget, false, false);
+                let extended = should_start_next_iteration(elapsed, budget, true, false);
                 assert_eq!(
                     ordinary != extended,
                     hard == 200 && elapsed == budget.soft,
@@ -2232,10 +2340,13 @@ fn next_iteration_extension_stops_at_the_hard_prediction_boundary() {
         (Duration::from_millis(400), false, false),
     ] {
         assert_eq!(
-            should_start_next_iteration(elapsed, budget, false),
+            should_start_next_iteration(elapsed, budget, false, false),
             ordinary
         );
-        assert_eq!(should_start_next_iteration(elapsed, budget, true), extended);
+        assert_eq!(
+            should_start_next_iteration(elapsed, budget, true, false),
+            extended
+        );
     }
 }
 
