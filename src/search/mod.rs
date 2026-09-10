@@ -1001,6 +1001,8 @@ fn run_main_worker(
             debug_assert!(searcher.stop_reason.is_some());
             break;
         };
+        let previous_best = (result.depth > 0).then_some(result.best_move);
+        let extend = extension_signal(searcher.root_failed_low, previous_best, best_move);
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -1023,9 +1025,7 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| {
-            !should_start_next_iteration(elapsed, budget, searcher.root_failed_low)
-        }) {
+        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget, extend)) {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1649,6 +1649,15 @@ const MIN_MOVES: u32 = 100;
 const ITERATION_RATIO_NUMERATOR: u128 = 5;
 /// 次の反復の予測時間に使う固定比2.5の分母。
 const ITERATION_RATIO_DENOMINATOR: u128 = 2;
+
+/// 完了反復の直後の判断でsoftの条件を外すかを返す。
+///
+/// `docs/plans/strength-stage6.md`の「最善手交替時の延長」節に従い、
+/// 保持されたfail-lowと直前の完了反復からの最善手の交替を論理和で合成する。
+/// 直前の完了反復がなければ、最善手の交替による延長は行わない。
+fn extension_signal(failed_low: bool, previous_best: Option<Move>, best: Move) -> bool {
+    failed_low || previous_best.is_some_and(|previous| previous != best)
+}
 
 /// 時間予算内で次の反復を開始できるかを返す。
 ///

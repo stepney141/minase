@@ -2102,6 +2102,43 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     assert_eq!(budget.hard, Duration::from_millis(3_864));
 }
 
+// docs/plans/strength-stage6.md「最善手交替時の延長」。
+// 初回と同一手では交替の信号を出さず、fail-lowは最善手によらず延長する。
+#[test]
+fn extension_signal_combines_fail_low_and_best_move_change() {
+    let moves = legal_moves(&Position::initial());
+    let [a, b] = [moves[0], moves[1]];
+    for (failed_low, previous_best, best, expected) in [
+        (false, None, a, false),
+        (false, Some(a), a, false),
+        (false, Some(a), b, true),
+        (true, None, a, true),
+        (true, Some(a), a, true),
+        (true, Some(a), b, true),
+    ] {
+        assert_eq!(
+            extension_signal(failed_low, previous_best, best),
+            expected,
+            "failed_low={failed_low}, previous_best={previous_best:?}, best={best:?}"
+        );
+    }
+}
+
+// 同「最善手交替時の延長」「検証」。交替は直後の判断1回にだけ働き、
+// 次の反復で同じ手なら信号は偽に戻り、再び交替すれば真になる。
+#[test]
+fn extension_signal_best_move_change_applies_only_to_the_next_decision() {
+    let moves = legal_moves(&Position::initial());
+    let [a, b, c] = [moves[0], moves[1], moves[2]];
+    let mut previous_best = None;
+    let signals = [a, b, b, c].map(|best| {
+        let extend = extension_signal(false, previous_best, best);
+        previous_best = Some(best);
+        extend
+    });
+    assert_eq!(signals, [false, true, false, true]);
+}
+
 // D7-TIME-05。search.md「時間管理」節: 延長なしではelapsed < softかつ
 // elapsed×2.5 <= hardの場合だけ次の反復を開始する。
 #[test]
