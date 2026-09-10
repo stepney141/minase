@@ -1,6 +1,6 @@
 //! 探索局面の置換表。
 
-use core::mem::{align_of, size_of};
+use core::mem::size_of;
 use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::fmt;
 
@@ -22,7 +22,7 @@ pub enum TranspositionTableError {
     Empty,
     /// MiBからbyteへの容量計算が`usize`に収まらない。
     SizeOverflow,
-    /// クラスタ配列のメモリを確保できない。
+    /// エントリ配列のメモリを確保できない。
     AllocationFailed,
 }
 
@@ -103,25 +103,6 @@ impl Entry {
 
 const _: () = assert!(size_of::<Entry>() == 16);
 
-/// 「置換表のクラスタ化」（strength-stage6.md）の64バイト境界に揃えた4エントリ。
-#[repr(align(64))]
-struct Cluster {
-    /// 添字順に照会するエントリ。
-    entries: [Entry; 4],
-}
-
-impl Cluster {
-    /// 全エントリが空のクラスタ。
-    fn empty() -> Self {
-        Self {
-            entries: core::array::from_fn(|_| Entry::empty()),
-        }
-    }
-}
-
-const _: () = assert!(size_of::<Cluster>() == 64);
-const _: () = assert!(align_of::<Cluster>() == 64);
-
 /// テスト用にエントリ型のバイト数を返す。
 #[cfg(test)]
 pub(super) const fn entry_size() -> usize {
@@ -157,14 +138,13 @@ pub(super) struct Hit {
     pub(super) bound: Bound,
 }
 
-/// 1スロット4エントリのクラスタ型置換表。
+/// 1スロット1エントリの直接マップ型置換表。
 ///
 /// 容量はMB単位で受け取り、指定容量を超えない最大の2の冪個の
-/// クラスタを確保する（strength-stage6.md「置換表のクラスタ化」）。
-/// 探索中は[`resize`](Self::resize)してはならない。
+/// エントリを確保する。探索中は[`resize`](Self::resize)してはならない。
 pub struct TranspositionTable {
-    /// クラスタの配列。長さは2の冪。
-    clusters: Vec<Cluster>,
+    /// エントリの配列。長さは2の冪。
+    entries: Vec<Entry>,
     /// 局面キーからスロット番号を取り出すビットマスク。
     mask: usize,
     /// 現在の探索の世代。
@@ -176,26 +156,26 @@ impl TranspositionTable {
     ///
     /// # Errors
     ///
-    /// `size_mb`が0、容量計算がオーバーフローする、またはクラスタ配列を
+    /// `size_mb`が0、容量計算がオーバーフローする、またはエントリ配列を
     /// 確保できない場合はエラーを返す。
     pub fn new(size_mb: usize) -> Result<Self, TranspositionTableError> {
-        let cluster_count = cluster_count(size_mb)?;
-        let mut clusters = Vec::new();
-        clusters
-            .try_reserve_exact(cluster_count)
+        let entry_count = entry_count(size_mb)?;
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(entry_count)
             .map_err(|_| TranspositionTableError::AllocationFailed)?;
-        clusters.resize_with(cluster_count, Cluster::empty);
+        entries.resize_with(entry_count, Entry::empty);
         Ok(Self {
-            clusters,
-            mask: cluster_count - 1,
+            entries,
+            mask: entry_count - 1,
             generation: AtomicU8::new(0),
         })
     }
 
     /// 全エントリを空にし、世代を初期化する。
     pub fn clear(&mut self) {
-        for cluster in &mut self.clusters {
-            *cluster = Cluster::empty();
+        for entry in &mut self.entries {
+            *entry = Entry::empty();
         }
         *self.generation.get_mut() = 0;
     }
@@ -223,37 +203,31 @@ impl TranspositionTable {
         self.generation.load(Ordering::Relaxed)
     }
 
-    /// クラスタ内で局面キーに最初に一致するエントリを返す。
+    /// 局面キーに対応するエントリを照合して返す。
     ///
     /// 照合対象は評価値、深さ、バウンドであり、[`Hit::best_move`]は別の
     /// 原子語にある助言値である。呼出し側は合法手との一致を検証して使う。
     pub(super) fn probe(&self, key: u64, ply: u32) -> Option<Hit> {
-        let cluster = &self.clusters[key as usize & self.mask];
-        for entry in &cluster.entries {
-            let critical = entry.critical.load(Ordering::Acquire);
-            let Some(fields) = unpack_critical(critical) else {
-                continue;
-            };
-            if fields.key != verification_key(key) {
-                continue;
-            }
-            let advisory = entry.advisory.load(Ordering::Relaxed);
-            let best_move = unpack_move(unpack_advisory_move(advisory))?;
-            return Some(Hit {
-                best_move,
-                score: score_from_tt(fields.score, ply),
-                depth: fields.depth,
-                bound: fields.bound,
-            });
+        let entry = &self.entries[key as usize & self.mask];
+        let critical = entry.critical.load(Ordering::Acquire);
+        let fields = unpack_critical(critical)?;
+        if fields.key != verification_key(key) {
+            return None;
         }
-        None
+        let advisory = entry.advisory.load(Ordering::Relaxed);
+        let best_move = unpack_move(unpack_advisory_move(advisory))?;
+        Some(Hit {
+            best_move,
+            score: score_from_tt(fields.score, ply),
+            depth: fields.depth,
+            bound: fields.bound,
+        })
     }
 
     /// 探索結果をエントリへ書き込む。
     ///
-    /// strength-stage6.md「置換表のクラスタ化」に従い、同一局面は既存以上の
-    /// 深さだけを保存する。異なる局面は空きを優先し、空きがなければ
-    /// 世代の周回差が最大、深さが最小、添字が最小の順で置換先を選ぶ。
+    /// 同一局面は既存以上の深さ、異なる局面は過去世代または既存より深い
+    /// 結果だけが既存エントリを置き換える。
     pub(super) fn store(
         &self,
         key: u64,
@@ -263,45 +237,25 @@ impl TranspositionTable {
         best_move: Option<Move>,
         ply: u32,
     ) {
-        let cluster = &self.clusters[key as usize & self.mask];
+        let index = key as usize & self.mask;
+        let entry = &self.entries[index];
+        let existing_critical = entry.critical.load(Ordering::Acquire);
+        let existing_advisory = entry.advisory.load(Ordering::Relaxed);
+        let existing = unpack_critical(existing_critical);
         let key = verification_key(key);
         let generation = self.generation.load(Ordering::Relaxed);
+        let age = generation.wrapping_sub(unpack_advisory_generation(existing_advisory));
         // MAX_PLYは256だが、根以外の残り深さは最大255である。公開APIから
         // 256を渡されても比較を保守的にするため、格納幅の上限へ飽和させる。
         let depth = depth.min(u8::MAX as u32) as u8;
-        let mut replacement = &cluster.entries[0];
-        let mut oldest_age = 0;
-        let mut shallowest_depth = u8::MAX;
-        let mut empty = None;
-        for entry in &cluster.entries {
-            let critical = entry.critical.load(Ordering::Acquire);
-            let advisory = entry.advisory.load(Ordering::Relaxed);
-            if let Some(existing) = unpack_critical(critical)
-                && existing.key == key
-            {
-                if depth < existing.depth {
-                    return;
-                }
-                replacement = entry;
-                empty = None;
-                break;
-            }
-            if critical == 0 {
-                // 空きより後ろに同一キーがある可能性があるので照合を続ける。
-                if empty.is_none() {
-                    empty = Some(entry);
-                }
-                continue;
-            }
-            let age = generation.wrapping_sub(unpack_advisory_generation(advisory));
-            let existing_depth = ((critical & CRITICAL_DEPTH_MASK) >> CRITICAL_DEPTH_SHIFT) as u8;
-            if age > oldest_age || (age == oldest_age && existing_depth < shallowest_depth) {
-                replacement = entry;
-                oldest_age = age;
-                shallowest_depth = existing_depth;
-            }
+        let replace = match existing {
+            None => true,
+            Some(existing) if existing.key == key => depth >= existing.depth,
+            Some(existing) => age > 0 || depth > existing.depth,
+        };
+        if !replace {
+            return;
         }
-        let entry = empty.unwrap_or(replacement);
 
         let advisory = pack_advisory(best_move, generation);
         let critical = pack_critical(key, score_to_tt(score, ply), depth, bound);
@@ -309,34 +263,34 @@ impl TranspositionTable {
         entry.critical.store(critical, Ordering::Release);
     }
 
-    /// テスト用にキーが指すクラスタの先頭エントリの生の原子値を返す。
+    /// テスト用にキーが指すスロットの生の原子値を返す。
     #[cfg(test)]
     pub(super) fn raw_entry(&self, key: u64) -> (u64, u64) {
-        let entry = &self.clusters[key as usize & self.mask].entries[0];
+        let entry = &self.entries[key as usize & self.mask];
         (
             entry.critical.load(Ordering::Acquire),
             entry.advisory.load(Ordering::Relaxed),
         )
     }
 
-    /// テスト用にキーが指すクラスタの先頭エントリへ生の原子値を書き込む。
+    /// テスト用にキーが指すスロットへ生の原子値を書き込む。
     #[cfg(test)]
     pub(super) fn write_raw(&self, key: u64, critical: u64, advisory: u64) {
-        let entry = &self.clusters[key as usize & self.mask].entries[0];
+        let entry = &self.entries[key as usize & self.mask];
         entry.advisory.store(advisory, Ordering::Relaxed);
         entry.critical.store(critical, Ordering::Release);
     }
 }
 
-/// 指定容量(MB)に収まる最大の2の冪のクラスタ数を返す。
-fn cluster_count(size_mb: usize) -> Result<usize, TranspositionTableError> {
+/// 指定容量(MB)に収まる最大の2の冪のエントリ数を返す。
+fn entry_count(size_mb: usize) -> Result<usize, TranspositionTableError> {
     if size_mb == 0 {
         return Err(TranspositionTableError::Empty);
     }
     let bytes = size_mb
         .checked_mul(1024 * 1024)
         .ok_or(TranspositionTableError::SizeOverflow)?;
-    let capacity = bytes / size_of::<Cluster>();
+    let capacity = bytes / size_of::<Entry>();
     Ok(1 << capacity.ilog2())
 }
 
@@ -451,176 +405,3 @@ fn score_from_tt(score: i16, ply: u32) -> i32 {
 }
 
 const _: () = assert!(MAX_PLY == 256);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_util::sq;
-
-    // strength-stage6.md「置換表のクラスタ化」「検証」。下位ビットは共通で、
-    // 上位32ビットだけが異なる。検証キー0も空エントリと区別する。
-    const KEYS: [u64; 5] = [
-        0x0000_0000_0000_0042,
-        0x1111_1111_0000_0042,
-        0x2222_2222_0000_0042,
-        0x3333_3333_0000_0042,
-        0x4444_4444_0000_0042,
-    ];
-
-    #[test]
-    fn cluster_layout_and_capacity_follow_the_specification() {
-        assert_eq!(size_of::<Entry>(), 16);
-        assert_eq!(size_of::<Cluster>(), 64);
-        assert_eq!(align_of::<Cluster>(), 64);
-        for (size_mb, expected_clusters) in [(1, 16_384), (2, 32_768), (3, 32_768), (4, 65_536)] {
-            let table = TranspositionTable::new(size_mb).unwrap();
-            assert_eq!(table.clusters.len(), expected_clusters);
-            assert_eq!(table.mask, expected_clusters - 1);
-            assert_eq!(table.clusters.as_ptr() as usize % 64, 0);
-        }
-    }
-
-    #[test]
-    fn cluster_resize_preserves_error_contract_and_resets_contents_on_success() {
-        let mut table = TranspositionTable::new(1).unwrap();
-        table.new_search();
-        table.store(KEYS[0], 8, 100, Bound::Exact, None, 0);
-        for (size_mb, error) in [
-            (0, TranspositionTableError::Empty),
-            (usize::MAX, TranspositionTableError::SizeOverflow),
-        ] {
-            assert_eq!(table.resize(size_mb), Err(error));
-            assert_eq!(table.probe(KEYS[0], 0).unwrap().score, 100);
-            assert_eq!(table.generation(), 1);
-            assert_eq!(table.clusters.len(), 16_384);
-        }
-        table.resize(3).unwrap();
-        assert_eq!(table.clusters.len(), 32_768);
-        assert_eq!(table.mask, 32_767);
-        assert_eq!(table.generation(), 0);
-        assert!(table.probe(KEYS[0], 0).is_none());
-    }
-
-    #[test]
-    fn cluster_keeps_four_colliding_positions_in_empty_entries() {
-        let table = TranspositionTable::new(1).unwrap();
-        let bounds = [Bound::Exact, Bound::Lower, Bound::Upper, Bound::Exact];
-        let moves = core::array::from_fn::<_, 4, _>(|index| {
-            Some(Move {
-                from: sq(index as u8, 0),
-                mid: None,
-                to: sq(index as u8, 1),
-                promote: false,
-            })
-        });
-        for index in 0..4 {
-            table.new_search();
-            table.store(
-                KEYS[index],
-                8 - index as u32,
-                100 + index as i32,
-                bounds[index],
-                moves[index],
-                0,
-            );
-        }
-        for index in 0..4 {
-            let hit = table.probe(KEYS[index], 0).unwrap();
-            assert_eq!(hit.depth, 8 - index as u8);
-            assert_eq!(hit.score, 100 + index as i32);
-            assert_eq!(hit.bound, bounds[index]);
-            assert_eq!(hit.best_move, moves[index]);
-        }
-        assert!(table.probe(KEYS[4], 0).is_none());
-    }
-
-    #[test]
-    fn cluster_replaces_oldest_generation_including_wraparound() {
-        for initial_generation in [0, 252] {
-            let table = TranspositionTable::new(1).unwrap();
-            for _ in 0..initial_generation {
-                table.new_search();
-            }
-            for (index, &key) in KEYS[..4].iter().enumerate() {
-                // 最古になる添字1を最深にし、深さより古さが優先されることを検査する。
-                let depth = if index == 1 { 20 } else { 1 };
-                table.store(key, depth, 100, Bound::Exact, None, 0);
-                table.new_search();
-            }
-            assert_eq!(
-                table.generation(),
-                if initial_generation == 0 { 4 } else { 0 }
-            );
-            // 添字0だけ現在世代へ更新し、古さを順に0、3、2、1にする。
-            table.store(KEYS[0], 1, 200, Bound::Exact, None, 0);
-            table.store(KEYS[4], 0, 500, Bound::Lower, None, 0);
-            assert!(table.probe(KEYS[1], 0).is_none());
-            for &key in &[KEYS[0], KEYS[2], KEYS[3], KEYS[4]] {
-                assert!(table.probe(key, 0).is_some());
-            }
-            assert_eq!(table.probe(KEYS[4], 0).unwrap().score, 500);
-        }
-    }
-
-    #[test]
-    fn cluster_breaks_age_ties_by_depth_then_index() {
-        for (depths, evicted) in [([8, 3, 6, 5], 1), ([8, 3, 3, 5], 1), ([3; 4], 0)] {
-            let table = TranspositionTable::new(1).unwrap();
-            for (&key, depth) in KEYS[..4].iter().zip(depths) {
-                table.store(key, depth, 100, Bound::Exact, None, 0);
-            }
-            // 現在世代で、どの既存値より浅い結果でも空きがなければ置き換える。
-            table.store(KEYS[4], 0, 500, Bound::Lower, None, 0);
-            for (index, &key) in KEYS.iter().enumerate() {
-                assert_eq!(table.probe(key, 0).is_none(), index == evicted);
-            }
-        }
-    }
-
-    #[test]
-    fn cluster_matches_existing_key_before_an_empty_or_older_entry() {
-        for leave_empty in [false, true] {
-            let table = TranspositionTable::new(1).unwrap();
-            for &key in &KEYS[..4] {
-                table.store(key, 8, 100, Bound::Exact, None, 0);
-            }
-            if leave_empty {
-                table.write_raw(KEYS[0], 0, 0);
-            }
-            table.new_search();
-            // 添字2の既存値より浅い結果は、空きや別の置換候補があっても保存しない。
-            table.store(KEYS[2], 0, 200, Bound::Lower, None, 0);
-            let hit = table.probe(KEYS[2], 0).unwrap();
-            assert_eq!((hit.score, hit.depth, hit.bound), (100, 8, Bound::Exact));
-
-            table.store(KEYS[2], 8, 300, Bound::Upper, None, 0);
-            let hit = table.probe(KEYS[2], 0).unwrap();
-            assert_eq!((hit.score, hit.depth, hit.bound), (300, 8, Bound::Upper));
-            assert_eq!(table.probe(KEYS[0], 0).is_none(), leave_empty);
-            for &key in &[KEYS[1], KEYS[3]] {
-                assert_eq!(table.probe(key, 0).unwrap().score, 100);
-            }
-            // 空きへ同一キーを重複保存していないことを、後続の保存で検査する。
-            if leave_empty {
-                table.store(KEYS[4], 0, 500, Bound::Exact, None, 0);
-                for &key in &KEYS[1..] {
-                    assert!(table.probe(key, 0).is_some());
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn cluster_probe_returns_first_matching_entry() {
-        let mut table = TranspositionTable::new(1).unwrap();
-        for &key in &KEYS[..4] {
-            table.store(key, 8, 100, Bound::Exact, None, 0);
-        }
-        // 並行保存で同一キーが複数エントリに残った状態を構成する。
-        let cluster = &mut table.clusters[KEYS[0] as usize & table.mask];
-        *cluster.entries[1].critical.get_mut() =
-            pack_critical(verification_key(KEYS[3]), 200, 2, Bound::Lower);
-        let hit = table.probe(KEYS[3], 0).unwrap();
-        assert_eq!((hit.score, hit.depth, hit.bound), (200, 2, Bound::Lower));
-    }
-}
