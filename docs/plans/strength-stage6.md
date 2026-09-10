@@ -16,8 +16,9 @@ aspiration windows、internal iterative reduction（置換表の記録手がな�
 
 本マイルストーンは2026年9月10日に起案して同日に着手し、進行中である。
 着手時の診断として、[保存記録の再構成](../measurements/strength-stage6-records-profile.md)、[置換表と記録手の診断bench](../measurements/strength-stage6-tt-bench.md)、[置換表の対局再生診断](../measurements/strength-stage6-tt-replay.md)、[評価の費用のbench](../measurements/strength-stage6-eval-cost-bench.md)、および[反復深化の診断](../measurements/strength-stage6-iteration-diag.md)を終え、静的評価の置換表保存とmate distance pruningを見送った。
-aspiration windows（[bench](../measurements/strength-stage6-aspiration-bench.md)）、置換表のクラスタ化、およびinternal iterative reductionを実装し、クラスタ化は[固定深さの対局再生](../measurements/strength-stage6-tt-cluster-replay.md)で総ノード数の減少が0.14%と基準の3%に届かなかったため採否測定へ進めずに外した。
-次の一手は、aspiration windowsの段階開始版とのSTCの判定を受けてLTCまたは不採用の処理へ進み、その後にinternal iterative reductionを測ることである。
+aspiration windows（[bench](../measurements/strength-stage6-aspiration-bench.md)）、置換表のクラスタ化、internal iterative reduction（[bench](../measurements/strength-stage6-iir-bench.md)）、および時間管理の3項目（[信号の計数](../measurements/strength-stage6-time-signals-diag.md)）を実装し、クラスタ化は[固定深さの対局再生](../measurements/strength-stage6-tt-cluster-replay.md)で総ノード数の減少が0.14%と基準の3%に届かなかったため採否測定へ進めずに外した。
+aspiration windowsは段階開始版との[STC](../measurements/strength-stage6-aspiration-stc.md)が`H1`であり、LTCを実行中である。
+次の一手は、そのLTCの判定を受けて、internal iterative reduction、fail-lowによる延長、最善手交替時の延長、最善手安定時の早期終了の順に直前の採用構成とのSTCとLTCを進めることである。
 
 ## 目的
 
@@ -90,8 +91,11 @@ aspiration windows（[bench](../measurements/strength-stage6-aspiration-bench.md
 エンジンは計数を`info string`で報告し、スクリプトが集計する。
 各局面は新しいプロセスで探索し、置換表は空から始め、着手列は`position startpos moves`で復元し、10プロセスを並列に走らせる。
 数えるのは、窓を使った反復の数、fail-lowとfail-highの回数、読み直しの回数、読み直しの途中で中断された回数、および時間管理の各信号が次の反復へ入るかの判断を実際に変えた件数である。
-判断を変えた件数は、完了した反復ごとの判断（分母）について、同じ経過時間と状態で直前の採用構成の判断と当該項目の信号を加えた判断を並べて評価し、結果が異なる件数（分子）とする。
+判断を変えた件数は、完了した反復ごとの判断について、同じ経過時間と状態で直前の採用構成の判断と当該項目の信号を加えた判断を並べて評価し、結果が異なる件数（分子）とする。
 先に採用した延長が既に続行を決めている判断は、後の項目の分子に数えない。
+発動率の分母は局面数（1局面につき1手の探索）とする。
+1手の反復深化では最初の数反復の判断が経過時間の不足でどの規則でも続行になり、判断数を分母にすると時間管理が働く単位である1手の停止の判断が薄まるためである。
+[時間管理の信号の計数](../measurements/strength-stage6-time-signals-diag.md)の最初の計数では、判断数を分母にした割合が3項目とも1.1〜3.4%、局面数を分母にした割合が7.5〜21.3%であり、当初は判断数を分母と定めていたが、この結果を受けて各項目のSTCの開始前に分母を局面数へ改めた。
 判定はSTCとLTCのそれぞれで行い、いずれかで分子が分母の5%未満なら、その項目は発動しない改良として見送る。
 計数コードは残さず、結果は各項目の測定記録に含める。
 
