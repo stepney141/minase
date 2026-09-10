@@ -229,11 +229,46 @@ fn aspiration_researches_scores_equal_to_either_edge() {
                 .search_iteration(&position, &moves, 5, Some(prev))
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
+            assert_eq!(searcher.root_failed_low, prev == delta);
             assert_eq!(searcher.nodes, first_nodes + 1 + moves.len() as u64);
             assert_eq!(
                 searcher.tt.probe(search_key(&position), 0).unwrap().bound,
                 Bound::Exact
             );
+        });
+    }
+}
+
+// docs/plans/strength-stage6.md「fail-lowの定義と保持」「検証」。
+// 全ルート手が反復引き分けになる履歴で評価値を0に固定し、窓外れの方向を指定する。
+#[test]
+fn aspiration_fail_low_persists_until_the_search_ends() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = repeated_root_children(&position, &moves);
+    for offset in [1_000, -1_000] {
+        with_root_searcher(&position, &history, |searcher| {
+            assert!(!searcher.root_failed_low);
+            let (_, score) = searcher
+                .search_iteration(&position, &moves, 5, None)
+                .unwrap();
+            assert_eq!(score, DRAW_SCORE);
+            assert!(!searcher.root_failed_low);
+
+            let (_, score) = searcher
+                .search_iteration(&position, &moves, 5, Some(score + offset))
+                .unwrap();
+            assert_eq!(score, DRAW_SCORE);
+            assert_eq!(searcher.root_failed_low, offset > 0);
+
+            // 正確なprevを使う次の反復でも、全窓を使う反復でも保持する。
+            for prev in [Some(score), None] {
+                let (_, next_score) = searcher
+                    .search_iteration(&position, &moves, 6, prev)
+                    .unwrap();
+                assert_eq!(next_score, DRAW_SCORE);
+                assert_eq!(searcher.root_failed_low, offset > 0);
+            }
         });
     }
 }
@@ -2002,6 +2037,27 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
                     assert!(budget.soft <= budget.hard);
                     assert!(budget.hard >= Duration::from_millis(1));
 
+                    // 段階6「検証」: 延長なしなら段階2「反復継続の判断」と一致する。
+                    for elapsed in [
+                        Duration::ZERO,
+                        budget.soft.saturating_sub(Duration::from_nanos(1)),
+                        budget.soft,
+                        budget.hard * 2 / 5,
+                        budget.hard * 2 / 5 + Duration::from_nanos(1),
+                        budget.hard,
+                        Duration::MAX,
+                    ] {
+                        let within_hard = elapsed.as_nanos() * 5 <= budget.hard.as_nanos() * 2;
+                        assert_eq!(
+                            should_start_next_iteration(elapsed, budget, false),
+                            elapsed < budget.soft && within_hard
+                        );
+                        assert_eq!(
+                            should_start_next_iteration(elapsed, budget, true),
+                            within_hard
+                        );
+                    }
+
                     let clock_total = u128::from(remaining) + u128::from(byoyomi);
                     if clock_total > 30 {
                         assert!(budget.hard.as_millis() <= clock_total - 30);
@@ -2046,7 +2102,7 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     assert_eq!(budget.hard, Duration::from_millis(3_864));
 }
 
-// D7-TIME-05。search.md「時間管理」節: 主ワーカーはelapsed < softかつ
+// D7-TIME-05。search.md「時間管理」節: 延長なしではelapsed < softかつ
 // elapsed×2.5 <= hardの場合だけ次の反復を開始する。
 #[test]
 fn next_iteration_requires_both_time_conditions() {
@@ -2058,32 +2114,92 @@ fn next_iteration_requires_both_time_conditions() {
     // soft境界は未満だけを継続する。
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(100, 250)
+        budget(100, 250),
+        false
     ));
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
-        budget(100, 248)
+        budget(100, 248),
+        false
     ));
 
     // 予測完了時刻のhard境界は等号を含む。
     assert!(should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 250)
+        budget(101, 250),
+        false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 249)
+        budget(101, 249),
+        false
     ));
 
     // movetime相当のsoft=hardでは、hardの40%までは継続できる。
     assert!(should_start_next_iteration(
         Duration::from_millis(40),
-        budget(100, 100)
+        budget(100, 100),
+        false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(41),
-        budget(100, 100)
+        budget(100, 100),
+        false
     ));
+}
+
+// docs/plans/strength-stage6.md「fail-lowによる延長」「検証」。
+// hard < 2.5·softでは延長せず、等しい場合はsoft境界だけで判断が変わる。
+#[test]
+fn next_iteration_extension_changes_only_times_with_hard_headroom() {
+    for (soft, hard) in [(76, 145), (80, 200)] {
+        let budget = TimeBudget {
+            soft: Duration::from_millis(soft),
+            hard: Duration::from_millis(hard),
+        };
+        for milliseconds in 0..=hard {
+            for nanos in [0, 1, 999_999] {
+                let elapsed = Duration::from_millis(milliseconds) + Duration::from_nanos(nanos);
+                let ordinary = should_start_next_iteration(elapsed, budget, false);
+                let extended = should_start_next_iteration(elapsed, budget, true);
+                assert_eq!(
+                    ordinary != extended,
+                    hard == 200 && elapsed == budget.soft,
+                    "soft={soft}, hard={hard}, elapsed={elapsed:?}"
+                );
+            }
+        }
+    }
+}
+
+// 同「fail-lowによる延長」: hard = 4·softなら延長時の上限は1.6·soft。
+#[test]
+fn next_iteration_extension_stops_at_the_hard_prediction_boundary() {
+    let budget = TimeBudget {
+        soft: Duration::from_millis(100),
+        hard: Duration::from_millis(400),
+    };
+    for (elapsed, ordinary, extended) in [
+        (
+            Duration::from_millis(100) - Duration::from_nanos(1),
+            true,
+            true,
+        ),
+        (Duration::from_millis(100), false, true),
+        (Duration::from_millis(160), false, true),
+        (
+            Duration::from_millis(160) + Duration::from_nanos(1),
+            false,
+            false,
+        ),
+        (Duration::from_millis(400), false, false),
+    ] {
+        assert_eq!(
+            should_start_next_iteration(elapsed, budget, false),
+            ordinary
+        );
+        assert_eq!(should_start_next_iteration(elapsed, budget, true), extended);
+    }
 }
 
 // D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは

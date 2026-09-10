@@ -960,6 +960,7 @@ fn new_searcher<'a>(
         nodes: 0,
         shared,
         stop_reason: None,
+        root_failed_low: false,
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
@@ -1022,7 +1023,9 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget)) {
+        if time_budget.is_some_and(|budget| {
+            !should_start_next_iteration(elapsed, budget, searcher.root_failed_low)
+        }) {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1104,6 +1107,9 @@ struct Searcher<'a> {
     shared: &'a SharedSearch<'a>,
     /// 中断時に記録する停止条件。
     stop_reason: Option<StopReason>,
+    /// 根のfail-lowを1手の探索が終わるまで保持する。
+    /// `docs/plans/strength-stage6.md`の「fail-lowの定義と保持」に従う。
+    root_failed_low: bool,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pv: Vec<Vec<Move>>,
     /// plyごとのPST生重み和。
@@ -1133,6 +1139,7 @@ impl Searcher<'_> {
             let (best_move, score) =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
             if score <= window.alpha {
+                self.root_failed_low = true;
                 window.widen_low();
             } else if score >= window.beta {
                 window.widen_high();
@@ -1645,11 +1652,13 @@ const ITERATION_RATIO_DENOMINATOR: u128 = 2;
 
 /// 時間予算内で次の反復を開始できるかを返す。
 ///
+/// `docs/plans/strength-stage6.md`の「fail-lowによる延長」節に従い、
+/// `extend`が真ならsoftの条件を外す。hardの予測による上限は常に守る。
 /// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
-fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget) -> bool {
-    elapsed < budget.soft
-        && elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR
-            <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
+fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget, extend: bool) -> bool {
+    elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR
+        <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
+        && (extend || elapsed < budget.soft)
 }
 
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
