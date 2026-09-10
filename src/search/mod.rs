@@ -42,6 +42,59 @@ pub const DEFAULT_THREADS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 
 /// 探索窓の初期値。全評価値より大きい。
 const INFINITY: i32 = MATE + 1;
+
+/// 反復探索の窓と、次に外れた側を広げる幅。
+///
+/// `docs/plans/strength-stage6.md`の「窓の適用条件と拡大」節に従う。
+struct AspirationWindow {
+    alpha: i32,
+    beta: i32,
+    delta: i32,
+}
+
+impl AspirationWindow {
+    /// 同じワーカーの直前の完了値から窓を作り、詰み帯に掛かる端を正規化する。
+    fn initial(depth: u32, prev: Option<i32>, delta: i32) -> Self {
+        let (alpha, beta) = match prev {
+            Some(score) if depth >= 5 && score.abs() < MATE_THRESHOLD => {
+                (score - delta, score + delta)
+            }
+            _ => (-INFINITY, INFINITY),
+        };
+        let mut window = Self { alpha, beta, delta };
+        window.normalize();
+        window
+    }
+
+    /// 下側だけを広げ、次の拡大量を2倍にする。
+    fn widen_low(&mut self) {
+        if self.alpha != -INFINITY {
+            self.alpha -= self.delta;
+        }
+        self.normalize();
+        self.delta = self.delta.saturating_mul(2);
+    }
+
+    /// 上側だけを広げ、次の拡大量を2倍にする。
+    fn widen_high(&mut self) {
+        if self.beta != INFINITY {
+            self.beta += self.delta;
+        }
+        self.normalize();
+        self.delta = self.delta.saturating_mul(2);
+    }
+
+    /// 詰み帯の閾値へ達した端を無限へ置き換える。
+    fn normalize(&mut self) {
+        if self.alpha <= -MATE_THRESHOLD {
+            self.alpha = -INFINITY;
+        }
+        if self.beta >= MATE_THRESHOLD {
+            self.beta = INFINITY;
+        }
+    }
+}
+
 /// 停止要求と時間切れを検査するノード数間隔。
 const STOP_CHECK_INTERVAL: u64 = 4096;
 /// History値を全体の半減で抑える上限。
@@ -941,7 +994,9 @@ fn run_main_worker(
     let mut completed_pv = vec![root_moves[0]];
 
     for depth in 1..=depth_limit {
-        let Some((best_move, score)) = searcher.search_root(position, root_moves, depth) else {
+        let prev = (result.depth > 0).then_some(result.score);
+        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
+        else {
             debug_assert!(searcher.stop_reason.is_some());
             break;
         };
@@ -1007,7 +1062,9 @@ fn run_auxiliary_worker(
     };
     let mut completed_pv = vec![root_moves[0]];
     for depth in auxiliary_depths(worker_index, depth_limit) {
-        let Some((best_move, score)) = searcher.search_root(position, root_moves, depth) else {
+        let prev = (result.depth > 0).then_some(result.score);
+        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
+        else {
             break;
         };
         result.best_move = best_move;
@@ -1060,14 +1117,43 @@ struct Searcher<'a> {
 }
 
 impl Searcher<'_> {
+    /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
+    ///
+    /// `docs/plans/strength-stage6.md`の「aspiration windows」節に従い、
+    /// 主・補助ワーカーが共有する。読み直し中の中断も`None`を返す。
+    fn search_iteration(
+        &mut self,
+        position: &Position,
+        root_moves: &[Move],
+        depth: u32,
+        prev: Option<i32>,
+    ) -> Option<(Move, i32)> {
+        let mut window = AspirationWindow::initial(depth, prev, self.pst.pawn_value() / 2);
+        loop {
+            let (best_move, score) =
+                self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
+            if score <= window.alpha {
+                window.widen_low();
+            } else if score >= window.beta {
+                window.widen_high();
+            } else {
+                return Some((best_move, score));
+            }
+        }
+    }
+
     /// ルート局面を指定深さで探索し、最善手と評価値を返す。
     ///
+    /// `docs/plans/strength-stage6.md`の「根の探索の窓化」節に従い、
+    /// β以上で打ち切り、入力時の窓に対する上界・下界・正確な値を記録する。
     /// 中断された場合は`None`を返し、停止条件を記録する。
     fn search_root(
         &mut self,
         position: &Position,
         root_moves: &[Move],
         depth: u32,
+        mut alpha: i32,
+        beta: i32,
     ) -> Option<(Move, i32)> {
         if !self.enter_node() {
             return None;
@@ -1079,8 +1165,7 @@ impl Searcher<'_> {
         let key = search_key(&position);
         let tt_move = self.tt.probe(key, 0).and_then(|hit| hit.best_move);
         self.order_moves(&position, &mut moves, tt_move, 0);
-        let mut alpha = -INFINITY;
-        let beta = INFINITY;
+        let original_alpha = alpha;
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
 
@@ -1093,9 +1178,19 @@ impl Searcher<'_> {
                 self.update_pv(0, mv);
             }
             alpha = alpha.max(score);
+            if best_score >= beta {
+                break;
+            }
         }
+        let bound = if best_score <= original_alpha {
+            Bound::Upper
+        } else if best_score >= beta {
+            Bound::Lower
+        } else {
+            Bound::Exact
+        };
         self.tt
-            .store(key, depth, best_score, Bound::Exact, Some(best_move), 0);
+            .store(key, depth, best_score, bound, Some(best_move), 0);
         Some((best_move, best_score))
     }
 
