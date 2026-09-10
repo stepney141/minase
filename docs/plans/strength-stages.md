@@ -24,7 +24,8 @@
 reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringはSTCで`H0`となり不採用、verification searchは診断で矛盾率0%のため見送った。
 2026年9月7日に[段階5](strength-stage5.md)を完了し、順序付けキーの重複計算の除去と、対数に基づきhistory値で増減するLMRの減深量を採用した。
 駒種と到達升で引くhistoryとmalusはSTCで不採用、counter move historyとcontinuation historyは発動率の診断で見送った。
-次の一手は、段階6の個別設計書を起案し、aspiration windowsと置換表の改良へ進むことである。
+2026年9月10日に[段階6](strength-stage6.md)へ着手し、着手時の診断で静的評価の置換表保存とmate distance pruningを見送った。
+次の一手は、段階6のaspiration windowsを実装して採否測定へ進むことである。
 
 ## 目的
 

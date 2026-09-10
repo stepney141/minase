@@ -40,6 +40,7 @@
 | PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 完了 | 2026年9月9日 |
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
+| 棋力向上段階6 | [plans/strength-stage6.md](plans/strength-stage6.md) | 進行中 | ― |
 
 ## 現在地
 
@@ -52,15 +53,15 @@
 単一PSTの同条件の再学習は開始版と一致したため、構造比較は省いた。
 その前の棋力向上段階5（2026年9月7日）では、順序付けキーの重複計算の除去とLMRの減深量を採用し、段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Eloであった。
 
-進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
-10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
-次の一手は、段階6の個別設計書を起案し、aspiration windowsと置換表の改良へ進むことである。
+進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）と、その段階6（plans/strength-stage6.md、2026年9月10日着手）である。
+段階6は、着手時の診断で静的評価の置換表保存とmate distance pruningを見送り、aspiration windows、置換表のクラスタ化、internal iterative reduction、fail-lowによる延長、最善手交替時の延長、および最善手安定時の早期終了の6項目を1項目ずつ測る。
+次の一手は、aspiration windowsを実装して段階開始版とのSTCへ進めることである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
+次期候補は、段階6の完了後の棋力向上段階7（評価関数の世代2と線形モデルの拡張）である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
