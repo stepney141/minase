@@ -2772,21 +2772,17 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
     assert_eq!(table.probe(key, 4).unwrap().score, 28_999);
 }
 
-// D7-TT-03。search.md「置換表」節の2026年8月22日改訂: 同一キーは世代を
-// 問わず既存以上の深さだけを書き込み、異なるキーは過去世代または既存より
-// 深い結果だけを書き込む。
+// D7-TT-03。strength-stage6.md「置換表のクラスタ化」: 同一キーは世代を
+// 問わず既存以上の深さだけを書き込む。
 #[test]
-fn tt_replacement_follows_same_key_generation_then_depth() {
+fn tt_same_key_replacement_requires_at_least_existing_depth() {
     let best_move = Move {
         from: sq(0, 0),
         mid: None,
         to: sq(0, 1),
         promote: false,
     };
-    // 1MBの表は2の冪スロットで下位ビットが一致するキー対が同一スロットに
-    // 落ちる。上位32bitの照合キーは異なる。
     let key_a = 0x1111_1111_0000_0001;
-    let key_b = 0x2222_2222_0000_0001;
 
     // (1) 空きスロットへは書き込まれる。
     let mut table = small_tt();
@@ -2834,51 +2830,6 @@ fn tt_replacement_follows_same_key_generation_then_depth() {
         ((advisory_after & ADVISORY_GENERATION_MASK) >> ADVISORY_GENERATION_SHIFT) as u8,
         1
     );
-
-    // (4) 異キーでも既存世代が古ければ深さによらず置換する。
-    table.clear();
-    table.new_search();
-    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
-    table.new_search();
-    table.store(key_b, 1, 300, Bound::Exact, Some(best_move), 0);
-    assert!(table.probe(key_a, 0).is_none());
-    assert_eq!(table.probe(key_b, 0).unwrap().score, 300);
-
-    // (5a) 異キー・同世代: 既存depth=3へdepth=5は置換する。
-    table.clear();
-    table.new_search();
-    table.store(key_a, 3, 100, Bound::Exact, Some(best_move), 0);
-    table.store(key_b, 5, 400, Bound::Exact, Some(best_move), 0);
-    assert!(table.probe(key_a, 0).is_none());
-    assert_eq!(table.probe(key_b, 0).unwrap().score, 400);
-
-    // (5b) 異キー・同世代・同深さ: 既存を保持する（`<`と`<=`の変異検出）。
-    table.clear();
-    table.new_search();
-    table.store(key_a, 5, 100, Bound::Exact, Some(best_move), 0);
-    table.store(key_b, 5, 500, Bound::Exact, Some(best_move), 0);
-    assert_eq!(table.probe(key_a, 0).unwrap().score, 100);
-    assert!(table.probe(key_b, 0).is_none());
-
-    // (5c) 異キー・同世代: 既存depth=7へdepth=5は保持する。
-    table.clear();
-    table.new_search();
-    table.store(key_a, 7, 100, Bound::Exact, Some(best_move), 0);
-    table.store(key_b, 5, 600, Bound::Exact, Some(best_move), 0);
-    assert_eq!(table.probe(key_a, 0).unwrap().score, 100);
-    assert!(table.probe(key_b, 0).is_none());
-
-    // 境界: 世代の周回。既存gen=255・現在gen=0のとき年齢は
-    // 0 wrapping_sub 255 = 1で「古い」と判定され置換される。
-    let table = small_tt();
-    for _ in 0..255 {
-        table.new_search();
-    }
-    table.store(key_a, 8, 100, Bound::Exact, Some(best_move), 0);
-    table.new_search();
-    table.store(key_b, 1, 700, Bound::Exact, Some(best_move), 0);
-    assert!(table.probe(key_a, 0).is_none());
-    assert_eq!(table.probe(key_b, 0).unwrap().score, 700);
 }
 
 // 監査「置換表の最善手と評価値の別原子語」: 助言手は生成済み合法手と
@@ -2966,8 +2917,10 @@ fn tt_clear_empties_all_entries_and_search_restarts() {
     };
     let keys = [
         0x1111_1111_0000_0001_u64,
-        0x2222_2222_0000_0002,
-        0x3333_3333_0000_0003,
+        0x2222_2222_0000_0001,
+        0x3333_3333_0000_0001,
+        0x4444_4444_0000_0001,
+        0x5555_5555_0000_0002,
     ];
     let mut table = small_tt();
     table.new_search();
