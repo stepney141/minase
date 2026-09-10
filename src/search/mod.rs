@@ -1234,6 +1234,14 @@ impl Searcher<'_> {
             }
         }
 
+        // docs/plans/strength-stage6.md「internal iterative reduction」節。
+        // 即時打ち切りを要求深さで判定した後、記録手がなければ1だけ浅く読む。
+        let depth = if depth >= 3 && tt_move.is_none() {
+            depth - 1
+        } else {
+            depth
+        };
+
         let side = position.side_to_move();
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
