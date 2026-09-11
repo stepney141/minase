@@ -1640,10 +1640,7 @@ struct TimeBudget {
 /// 1局の開始から終局までに見込む手数。
 const EXPECTED_PLIES: u32 = 450;
 /// 1局面で見込む残り手数の下限。
-///
-/// `docs/plans/strength-stage6.md`の「係数の再導出」節に従い、段階6の最終構成の
-/// 保存記録から求めた手数帯ごとの期待残り手数の最小値に合わせる。
-const MIN_MOVES: u32 = 130;
+const MIN_MOVES: u32 = 100;
 /// 次の反復の予測時間に使う固定比2.5の分子。
 const ITERATION_RATIO_NUMERATOR: u128 = 5;
 /// 次の反復の予測時間に使う固定比2.5の分母。

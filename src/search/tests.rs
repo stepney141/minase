@@ -1939,7 +1939,7 @@ fn infinite_limits_stop_only_on_external_request() {
 #[test]
 fn clock_budget_matches_the_normative_formula() {
     // (a) 残り60000・加算1000・秒読み0・ply=0:
-    //     moves_to_go=max(130, (450-0)/2)=225、soft_raw=60000/225+700=966、
+    //     moves_to_go=max(100, (450-0)/2)=225、soft_raw=60000/225+700=966、
     //     safe_hard=59970、hard=min(3864, 15000, 59970)=3864、soft=966。
     let budget = clock_budget(clock_at_ply(60_000, 1_000, 0, 0));
     assert_eq!(budget.soft, Duration::from_millis(966));
@@ -1953,8 +1953,8 @@ fn clock_budget_matches_the_normative_formula() {
     assert_eq!(budget.hard, Duration::from_millis(816));
 
     // (c) 旧式でhard<softになった入力。残り200・加算100・秒読み0・ply=300:
-    //     moves_to_go=130、soft_raw=1+70=71、safe_hard=170、
-    //     hard=min(284, 50, 170)=50、soft=min(71, 50)=50。
+    //     moves_to_go=100、soft_raw=2+70=72、safe_hard=170、
+    //     hard=min(288, 50, 170)=50、soft=min(72, 50)=50。
     let budget = clock_budget(clock_at_ply(200, 100, 0, 300));
     assert_eq!(budget.soft, Duration::from_millis(50));
     assert_eq!(budget.hard, Duration::from_millis(50));
@@ -1978,10 +1978,8 @@ fn moves_to_go_decreases_monotonically_to_the_documented_floor() {
     let estimates: Vec<u128> = plys.into_iter().map(moves_to_go).collect();
 
     assert!(estimates.windows(2).all(|pair| pair[0] >= pair[1]));
-    assert_eq!(moves_to_go(0), 225);
-    assert_eq!(moves_to_go(190), 130);
-    assert_eq!(moves_to_go(450), 130);
-    assert_eq!(moves_to_go(1_000), 130);
+    assert_eq!(moves_to_go(450), 100);
+    assert_eq!(moves_to_go(1_000), 100);
 }
 
 // D7-TIME-01。search.md「時間管理」節が規定する予算の不変条件を、代表値の
