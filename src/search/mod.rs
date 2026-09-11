@@ -960,7 +960,6 @@ fn new_searcher<'a>(
         nodes: 0,
         shared,
         stop_reason: None,
-        root_failed_low: false,
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
@@ -1002,7 +1001,7 @@ fn run_main_worker(
             break;
         };
         let previous_best = (result.depth > 0).then_some(result.best_move);
-        let extend = extension_signal(searcher.root_failed_low, previous_best, best_move);
+        let extend = extension_signal(previous_best, best_move);
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -1107,9 +1106,6 @@ struct Searcher<'a> {
     shared: &'a SharedSearch<'a>,
     /// 中断時に記録する停止条件。
     stop_reason: Option<StopReason>,
-    /// 根のfail-lowを1手の探索が終わるまで保持する。
-    /// `docs/plans/strength-stage6.md`の「fail-lowの定義と保持」に従う。
-    root_failed_low: bool,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pv: Vec<Vec<Move>>,
     /// plyごとのPST生重み和。
@@ -1139,7 +1135,6 @@ impl Searcher<'_> {
             let (best_move, score) =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
             if score <= window.alpha {
-                self.root_failed_low = true;
                 window.widen_low();
             } else if score >= window.beta {
                 window.widen_high();
@@ -1653,10 +1648,10 @@ const ITERATION_RATIO_DENOMINATOR: u128 = 2;
 /// 完了反復の直後の判断でsoftの条件を外すかを返す。
 ///
 /// `docs/plans/strength-stage6.md`の「最善手交替時の延長」節に従い、
-/// 保持されたfail-lowと直前の完了反復からの最善手の交替を論理和で合成する。
-/// 直前の完了反復がなければ、最善手の交替による延長は行わない。
-fn extension_signal(failed_low: bool, previous_best: Option<Move>, best: Move) -> bool {
-    failed_low || previous_best.is_some_and(|previous| previous != best)
+/// 直前の完了反復から最善手が交替した場合だけ真を返す。
+/// 直前の完了反復がなければ延長しない。
+fn extension_signal(previous_best: Option<Move>, best: Move) -> bool {
+    previous_best.is_some_and(|previous| previous != best)
 }
 
 /// 時間予算内で次の反復を開始できるかを返す。

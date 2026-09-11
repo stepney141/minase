@@ -229,46 +229,11 @@ fn aspiration_researches_scores_equal_to_either_edge() {
                 .search_iteration(&position, &moves, 5, Some(prev))
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
-            assert_eq!(searcher.root_failed_low, prev == delta);
             assert_eq!(searcher.nodes, first_nodes + 1 + moves.len() as u64);
             assert_eq!(
                 searcher.tt.probe(search_key(&position), 0).unwrap().bound,
                 Bound::Exact
             );
-        });
-    }
-}
-
-// docs/plans/strength-stage6.md「fail-lowの定義と保持」「検証」。
-// 全ルート手が反復引き分けになる履歴で評価値を0に固定し、窓外れの方向を指定する。
-#[test]
-fn aspiration_fail_low_persists_until_the_search_ends() {
-    let position = quiet_midgame();
-    let moves = legal_moves(&position);
-    let history = repeated_root_children(&position, &moves);
-    for offset in [1_000, -1_000] {
-        with_root_searcher(&position, &history, |searcher| {
-            assert!(!searcher.root_failed_low);
-            let (_, score) = searcher
-                .search_iteration(&position, &moves, 5, None)
-                .unwrap();
-            assert_eq!(score, DRAW_SCORE);
-            assert!(!searcher.root_failed_low);
-
-            let (_, score) = searcher
-                .search_iteration(&position, &moves, 5, Some(score + offset))
-                .unwrap();
-            assert_eq!(score, DRAW_SCORE);
-            assert_eq!(searcher.root_failed_low, offset > 0);
-
-            // 正確なprevを使う次の反復でも、全窓を使う反復でも保持する。
-            for prev in [Some(score), None] {
-                let (_, next_score) = searcher
-                    .search_iteration(&position, &moves, 6, prev)
-                    .unwrap();
-                assert_eq!(next_score, DRAW_SCORE);
-                assert_eq!(searcher.root_failed_low, offset > 0);
-            }
         });
     }
 }
@@ -2103,23 +2068,18 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
 }
 
 // docs/plans/strength-stage6.md「最善手交替時の延長」。
-// 初回と同一手では交替の信号を出さず、fail-lowは最善手によらず延長する。
+// 初回と同一手では交替の信号を出さず、交替したときだけ延長する。
 #[test]
-fn extension_signal_combines_fail_low_and_best_move_change() {
+fn extension_signal_signals_a_best_move_change() {
     let moves = legal_moves(&Position::initial());
     let [a, b] = [moves[0], moves[1]];
-    for (failed_low, previous_best, best, expected) in [
-        (false, None, a, false),
-        (false, Some(a), a, false),
-        (false, Some(a), b, true),
-        (true, None, a, true),
-        (true, Some(a), a, true),
-        (true, Some(a), b, true),
-    ] {
+    for (previous_best, best, expected) in
+        [(None, a, false), (Some(a), a, false), (Some(a), b, true)]
+    {
         assert_eq!(
-            extension_signal(failed_low, previous_best, best),
+            extension_signal(previous_best, best),
             expected,
-            "failed_low={failed_low}, previous_best={previous_best:?}, best={best:?}"
+            "previous_best={previous_best:?}, best={best:?}"
         );
     }
 }
@@ -2132,7 +2092,7 @@ fn extension_signal_best_move_change_applies_only_to_the_next_decision() {
     let [a, b, c] = [moves[0], moves[1], moves[2]];
     let mut previous_best = None;
     let signals = [a, b, b, c].map(|best| {
-        let extend = extension_signal(false, previous_best, best);
+        let extend = extension_signal(previous_best, best);
         previous_best = Some(best);
         extend
     });
