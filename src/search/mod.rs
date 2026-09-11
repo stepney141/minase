@@ -993,7 +993,6 @@ fn run_main_worker(
         nodes: 0,
     };
     let mut completed_pv = vec![root_moves[0]];
-    let mut completed_bests = Vec::new();
 
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some(result.score);
@@ -1004,8 +1003,6 @@ fn run_main_worker(
         };
         let previous_best = (result.depth > 0).then_some(result.best_move);
         let extend = extension_signal(searcher.root_failed_low, previous_best, best_move);
-        completed_bests.push(best_move);
-        let stable = stable_signal(extend, &completed_bests);
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -1028,9 +1025,7 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget
-            .is_some_and(|budget| !should_start_next_iteration(elapsed, budget, extend, stable))
-        {
+        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget, extend)) {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1655,13 +1650,6 @@ const ITERATION_RATIO_NUMERATOR: u128 = 5;
 /// 次の反復の予測時間に使う固定比2.5の分母。
 const ITERATION_RATIO_DENOMINATOR: u128 = 2;
 
-/// 最善手の安定を判定する直近の完了反復数。
-///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従う。
-/// 「反復深化の診断」の時間条件を含む模擬で、失う良い結果の割合が10%以下に
-/// なる最小の反復数がk = 4だったことに基づく。
-const STABLE_ITERATIONS: usize = 4;
-
 /// 完了反復の直後の判断でsoftの条件を外すかを返す。
 ///
 /// `docs/plans/strength-stage6.md`の「最善手交替時の延長」節に従い、
@@ -1671,39 +1659,15 @@ fn extension_signal(failed_low: bool, previous_best: Option<Move>, best: Move) -
     failed_low || previous_best.is_some_and(|previous| previous != best)
 }
 
-/// 完了反復の最善手列から、予測完了時刻をsoftで抑えるかを返す。
-///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従い、
-/// 延長の信号がなく、直近4反復の最善手がすべて同じ場合だけ真を返す。
-/// `bests`は完了順に並び、末尾が最新の反復の最善手である。
-fn stable_signal(extend: bool, bests: &[Move]) -> bool {
-    !extend
-        && bests.len() >= STABLE_ITERATIONS
-        && bests[bests.len() - STABLE_ITERATIONS..]
-            .windows(2)
-            .all(|pair| pair[0] == pair[1])
-}
-
 /// 時間予算内で次の反復を開始できるかを返す。
 ///
-/// `docs/plans/strength-stage6.md`の「fail-lowによる延長」節の統合式に従い、
-/// `extend`が真ならsoftの条件を外し、偽で`stable`が真なら予測完了時刻をsoft以下に抑える。
-/// 両方が偽なら経過時間がsoft未満であることを要求し、hardの予測による上限は常に守る。
+/// `docs/plans/strength-stage6.md`の「fail-lowによる延長」節に従い、
+/// `extend`が真ならsoftの条件を外す。hardの予測による上限は常に守る。
 /// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
-fn should_start_next_iteration(
-    elapsed: Duration,
-    budget: TimeBudget,
-    extend: bool,
-    stable: bool,
-) -> bool {
-    let predicted = elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR;
-    predicted <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
-        && (extend
-            || if stable {
-                predicted <= budget.soft.as_nanos() * ITERATION_RATIO_DENOMINATOR
-            } else {
-                elapsed < budget.soft
-            })
+fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget, extend: bool) -> bool {
+    elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR
+        <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
+        && (extend || elapsed < budget.soft)
 }
 
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
