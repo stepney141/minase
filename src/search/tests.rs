@@ -2002,7 +2002,7 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
                     assert!(budget.soft <= budget.hard);
                     assert!(budget.hard >= Duration::from_millis(1));
 
-                    // 段階6「検証」: 延長なしなら段階2「反復継続の判断」と一致する。
+                    // 段階2「反復継続の判断」の規則と一致する。
                     for elapsed in [
                         Duration::ZERO,
                         budget.soft.saturating_sub(Duration::from_nanos(1)),
@@ -2014,12 +2014,8 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
                     ] {
                         let within_hard = elapsed.as_nanos() * 5 <= budget.hard.as_nanos() * 2;
                         assert_eq!(
-                            should_start_next_iteration(elapsed, budget, false),
+                            should_start_next_iteration(elapsed, budget),
                             elapsed < budget.soft && within_hard
-                        );
-                        assert_eq!(
-                            should_start_next_iteration(elapsed, budget, true),
-                            within_hard
                         );
                     }
 
@@ -2067,39 +2063,7 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     assert_eq!(budget.hard, Duration::from_millis(3_864));
 }
 
-// docs/plans/strength-stage6.md「最善手交替時の延長」。
-// 初回と同一手では交替の信号を出さず、交替したときだけ延長する。
-#[test]
-fn extension_signal_signals_a_best_move_change() {
-    let moves = legal_moves(&Position::initial());
-    let [a, b] = [moves[0], moves[1]];
-    for (previous_best, best, expected) in
-        [(None, a, false), (Some(a), a, false), (Some(a), b, true)]
-    {
-        assert_eq!(
-            extension_signal(previous_best, best),
-            expected,
-            "previous_best={previous_best:?}, best={best:?}"
-        );
-    }
-}
-
-// 同「最善手交替時の延長」「検証」。交替は直後の判断1回にだけ働き、
-// 次の反復で同じ手なら信号は偽に戻り、再び交替すれば真になる。
-#[test]
-fn extension_signal_best_move_change_applies_only_to_the_next_decision() {
-    let moves = legal_moves(&Position::initial());
-    let [a, b, c] = [moves[0], moves[1], moves[2]];
-    let mut previous_best = None;
-    let signals = [a, b, b, c].map(|best| {
-        let extend = extension_signal(previous_best, best);
-        previous_best = Some(best);
-        extend
-    });
-    assert_eq!(signals, [false, true, false, true]);
-}
-
-// D7-TIME-05。search.md「時間管理」節: 延長なしではelapsed < softかつ
+// D7-TIME-05。search.md「時間管理」節: elapsed < softかつ
 // elapsed×2.5 <= hardの場合だけ次の反復を開始する。
 #[test]
 fn next_iteration_requires_both_time_conditions() {
@@ -2111,92 +2075,32 @@ fn next_iteration_requires_both_time_conditions() {
     // soft境界は未満だけを継続する。
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(100, 250),
-        false
+        budget(100, 250)
     ));
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
-        budget(100, 248),
-        false
+        budget(100, 248)
     ));
 
     // 予測完了時刻のhard境界は等号を含む。
     assert!(should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 250),
-        false
+        budget(101, 250)
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 249),
-        false
+        budget(101, 249)
     ));
 
     // movetime相当のsoft=hardでは、hardの40%までは継続できる。
     assert!(should_start_next_iteration(
         Duration::from_millis(40),
-        budget(100, 100),
-        false
+        budget(100, 100)
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(41),
-        budget(100, 100),
-        false
+        budget(100, 100)
     ));
-}
-
-// docs/plans/strength-stage6.md「fail-lowによる延長」「検証」。
-// hard < 2.5·softでは延長せず、等しい場合はsoft境界だけで判断が変わる。
-#[test]
-fn next_iteration_extension_changes_only_times_with_hard_headroom() {
-    for (soft, hard) in [(76, 145), (80, 200)] {
-        let budget = TimeBudget {
-            soft: Duration::from_millis(soft),
-            hard: Duration::from_millis(hard),
-        };
-        for milliseconds in 0..=hard {
-            for nanos in [0, 1, 999_999] {
-                let elapsed = Duration::from_millis(milliseconds) + Duration::from_nanos(nanos);
-                let ordinary = should_start_next_iteration(elapsed, budget, false);
-                let extended = should_start_next_iteration(elapsed, budget, true);
-                assert_eq!(
-                    ordinary != extended,
-                    hard == 200 && elapsed == budget.soft,
-                    "soft={soft}, hard={hard}, elapsed={elapsed:?}"
-                );
-            }
-        }
-    }
-}
-
-// 同「fail-lowによる延長」: hard = 4·softなら延長時の上限は1.6·soft。
-#[test]
-fn next_iteration_extension_stops_at_the_hard_prediction_boundary() {
-    let budget = TimeBudget {
-        soft: Duration::from_millis(100),
-        hard: Duration::from_millis(400),
-    };
-    for (elapsed, ordinary, extended) in [
-        (
-            Duration::from_millis(100) - Duration::from_nanos(1),
-            true,
-            true,
-        ),
-        (Duration::from_millis(100), false, true),
-        (Duration::from_millis(160), false, true),
-        (
-            Duration::from_millis(160) + Duration::from_nanos(1),
-            false,
-            false,
-        ),
-        (Duration::from_millis(400), false, false),
-    ] {
-        assert_eq!(
-            should_start_next_iteration(elapsed, budget, false),
-            ordinary
-        );
-        assert_eq!(should_start_next_iteration(elapsed, budget, true), extended);
-    }
 }
 
 // D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは

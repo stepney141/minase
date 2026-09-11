@@ -1000,8 +1000,6 @@ fn run_main_worker(
             debug_assert!(searcher.stop_reason.is_some());
             break;
         };
-        let previous_best = (result.depth > 0).then_some(result.best_move);
-        let extend = extension_signal(previous_best, best_move);
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -1024,7 +1022,7 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget, extend)) {
+        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget)) {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1645,24 +1643,13 @@ const ITERATION_RATIO_NUMERATOR: u128 = 5;
 /// 次の反復の予測時間に使う固定比2.5の分母。
 const ITERATION_RATIO_DENOMINATOR: u128 = 2;
 
-/// 完了反復の直後の判断でsoftの条件を外すかを返す。
-///
-/// `docs/plans/strength-stage6.md`の「最善手交替時の延長」節に従い、
-/// 直前の完了反復から最善手が交替した場合だけ真を返す。
-/// 直前の完了反復がなければ延長しない。
-fn extension_signal(previous_best: Option<Move>, best: Move) -> bool {
-    previous_best.is_some_and(|previous| previous != best)
-}
-
 /// 時間予算内で次の反復を開始できるかを返す。
 ///
-/// `docs/plans/strength-stage6.md`の「fail-lowによる延長」節に従い、
-/// `extend`が真ならsoftの条件を外す。hardの予測による上限は常に守る。
 /// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
-fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget, extend: bool) -> bool {
-    elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR
-        <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
-        && (extend || elapsed < budget.soft)
+fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget) -> bool {
+    elapsed < budget.soft
+        && elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR
+            <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
 }
 
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
