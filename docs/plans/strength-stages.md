@@ -24,8 +24,9 @@
 reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringはSTCで`H0`となり不採用、verification searchは診断で矛盾率0%のため見送った。
 2026年9月7日に[段階5](strength-stage5.md)を完了し、順序付けキーの重複計算の除去と、対数に基づきhistory値で増減するLMRの減深量を採用した。
 駒種と到達升で引くhistoryとmalusはSTCで不採用、counter move historyとcontinuation historyは発動率の診断で見送った。
-2026年9月10日に[段階6](strength-stage6.md)へ着手し、着手時の診断で静的評価の置換表保存とmate distance pruningを見送った。
-次の一手は、段階6のaspiration windowsを実装して採否測定へ進むことである。
+2026年9月12日に[段階6](strength-stage6.md)を完了し、aspiration windows、internal iterative reduction、および最善手安定時の早期終了を採用した。
+fail-lowによる延長、最善手交替時の延長、および係数の候補はSTCで`H0`となり不採用、置換表のクラスタ化は実装後の固定深さ再生で効果が基準に届かず外し、静的評価の置換表保存とmate distance pruningは診断で見送った。
+次の一手は、段階7（評価関数の世代2と線形モデルの拡張）の個別設計書を起案することである。
 
 ## 目的
 
@@ -231,6 +232,20 @@ aspiration windowsの再開条件は「深さ5以上が常用域になった時�
 
 採否は1項目ずつ時間制御GSPRTで判定する。
 段階の完了条件は、各項目の採否が記録されていることである。
+
+最終判断は次のとおりである。
+
+- aspiration windowsを採用した。深さ5以上の反復で前回の評価値を中心に半幅50（歩兵の駒価値の半分）の窓を使い、外れた側を倍々に広げて読み直し、根にβ打ち切りと保存種別の分類を加えた。段階開始版との[STC](../measurements/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6-aspiration-ltc.md)がともに`H1`であった。
+- internal iterative reductionを採用した。残り深さ3以上で置換表の記録手がないノードの残り深さを1減らす。[STC](../measurements/strength-stage6-iir-stc.md)と[LTC](../measurements/strength-stage6-iir-ltc.md)がともに`H1`であったが、LTCは外部のOOMによる約33秒の停止で時間切れ11件（候補側6件、基準側5件）を伴い、該当ペアを除いても`H1`であることから、利用者が規則からの逸脱を記録したうえで採用すると決定した。
+- 最善手安定時の早期終了を採用した。直近4反復の最善手が同じなら、次の反復へ入る条件を「経過時間に固定比2.5を掛けた予測完了時刻がsoft以下」に置き換える。反復数4は時間条件を含めた模擬で失う良い結果の割合が10%以下になる最小値であり、[STC](../measurements/strength-stage6-stable-stc.md)と[LTC](../measurements/strength-stage6-stable-ltc.md)がともに`H1`であった。
+- fail-lowによる延長は不採用とした。窓外れのfail-lowを保持する間softの条件を外す実装の[STC](../measurements/strength-stage6-faillow-stc.md)が`H0`であった。
+- 最善手交替時の延長は不採用とした。交替の直後の判断1回だけsoftの条件を外す実装の[STC](../measurements/strength-stage6-bmchange-stc.md)が`H0`であった。
+- 係数の再調整は、最終構成で[再導出](../measurements/strength-stage6-coefficients-diag.md)した固定比（2.13）と`EXPECTED_PLIES`（520）が現行値との差20%以内、終局時の残り時間が基本時間の25%未満で変更の対象にならず、唯一基準を超えた`MIN_MOVES = 130`は[STC](../measurements/strength-stage6-coefficients-stc.md)が`H0`で不採用とした。盤上駒数に基づく残り手数見積りは本段階で扱わなかった。
+- 置換表のクラスタ化は、対局再生で浅い記録による過去の深い記録の上書きが全保存の7.1%あったため実装したが、[固定深さの対局再生](../measurements/strength-stage6-tt-cluster-replay.md)で総ノード数の減少が0.14%と基準の3%に届かず、採否測定へ進めずに外した。
+- 静的評価の置換表保存は、評価1回の費用が処理時間の0.24%（[bench](../measurements/strength-stage6-eval-cost-bench.md)）で高速化の事前ゲートに届かないため見送った。
+- mate distance pruningは、[対局再生](../measurements/strength-stage6-tt-replay.md)で探索内部の打ち切りが通常探索のノードの1.08〜1.65%であり、発動率の基準を下回るため見送った。
+
+[固定自己対局](../measurements/strength-stage6-elo200.md)は段階開始版に対してSTCで+129.2 Elo、[HaChu戦](../measurements/strength-stage6-hachu-elo200.md)は+334.1 Elo（段階5完了時の+188.5 Eloと信頼区間が重ならない）を進捗指標として記録したため、段階6を完了した。
 
 ## 段階7　評価関数の世代2と線形モデルの拡張
 
