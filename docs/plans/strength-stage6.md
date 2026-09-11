@@ -19,8 +19,9 @@ aspiration windows、internal iterative reduction（置換表の記録手がな�
 aspiration windows（[bench](../measurements/strength-stage6-aspiration-bench.md)）、置換表のクラスタ化、internal iterative reduction（[bench](../measurements/strength-stage6-iir-bench.md)）、および時間管理の3項目（[信号の計数](../measurements/strength-stage6-time-signals-diag.md)）を実装し、クラスタ化は[固定深さの対局再生](../measurements/strength-stage6-tt-cluster-replay.md)で総ノード数の減少が0.14%と基準の3%に届かなかったため採否測定へ進めずに外した。
 aspiration windowsは段階開始版との[STC](../measurements/strength-stage6-aspiration-stc.md)と[LTC](../measurements/strength-stage6-aspiration-ltc.md)がともに`H1`かつ異常0件で採用した。
 internal iterative reductionは[STC](../measurements/strength-stage6-iir-stc.md)が`H1`、[LTC](../measurements/strength-stage6-iir-ltc.md)も`H1`だが、LTCの途中で外部のOOMによる約33秒の停止が起こり時間切れが11件（候補側6件、基準側5件）出たため、docs/sprt.md の採用条件（時間切れ0件）からの逸脱を伴う採用の可否を利用者の決定に委ねている（該当ペアを除いてもLLR +3.11で`H1`）。
-決定までの間、fail-lowによる延長のSTCをinternal iterative reductionを含む構成を暫定の基準として実行中である。
-次の一手は、利用者の決定を受けてinternal iterative reductionの採否を確定し、fail-lowによる延長、最善手交替時の延長、最善手安定時の早期終了の順にSTCとLTCを進めることである。
+fail-lowによる延長は、この構成を暫定の基準とする[STC](../measurements/strength-stage6-faillow-stc.md)が`H0`となり不採用とし、実装を外した。
+最善手交替時の延長のSTCを同じ暫定の基準で実行中である。
+次の一手は、利用者の決定を受けてinternal iterative reductionの採否を確定し、最善手交替時の延長と最善手安定時の早期終了のSTCとLTCを進めることである。
 
 ## 目的
 
