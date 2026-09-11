@@ -2014,7 +2014,7 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
                     ] {
                         let within_hard = elapsed.as_nanos() * 5 <= budget.hard.as_nanos() * 2;
                         assert_eq!(
-                            should_start_next_iteration(elapsed, budget),
+                            should_start_next_iteration(elapsed, budget, false),
                             elapsed < budget.soft && within_hard
                         );
                     }
@@ -2075,32 +2075,98 @@ fn next_iteration_requires_both_time_conditions() {
     // soft境界は未満だけを継続する。
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(100, 250)
+        budget(100, 250),
+        false
     ));
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
-        budget(100, 248)
+        budget(100, 248),
+        false
     ));
 
     // 予測完了時刻のhard境界は等号を含む。
     assert!(should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 250)
+        budget(101, 250),
+        false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 249)
+        budget(101, 249),
+        false
     ));
 
     // movetime相当のsoft=hardでは、hardの40%までは継続できる。
     assert!(should_start_next_iteration(
         Duration::from_millis(40),
-        budget(100, 100)
+        budget(100, 100),
+        false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(41),
-        budget(100, 100)
+        budget(100, 100),
+        false
     ));
+}
+
+// docs/plans/strength-stage6.md「最善手安定時の早期終了」「検証」。
+// 安定時は予測完了時刻がsoft以下のときだけ続け、hardの条件は緩めない。
+#[test]
+fn next_iteration_stable_requires_the_prediction_within_soft() {
+    let budget = |soft, hard| TimeBudget {
+        soft: Duration::from_millis(soft),
+        hard: Duration::from_millis(hard),
+    };
+    // soft 100ms、hard 400ms: 通常は99msまで続け、安定時は40msまでしか続けない。
+    assert!(should_start_next_iteration(
+        Duration::from_millis(99),
+        budget(100, 400),
+        false
+    ));
+    assert!(should_start_next_iteration(
+        Duration::from_millis(40),
+        budget(100, 400),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(41),
+        budget(100, 400),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(99),
+        budget(100, 400),
+        true
+    ));
+    // hardの予測が先に拘束する場合は安定の有無で変わらない。
+    assert!(should_start_next_iteration(
+        Duration::from_millis(40),
+        budget(400, 100),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(41),
+        budget(400, 100),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(41),
+        budget(400, 100),
+        false
+    ));
+}
+
+// 同「最善手安定時の早期終了」。直近4反復の最善手が同じときだけ安定とする。
+#[test]
+fn stable_signal_requires_four_identical_recent_best_moves() {
+    let moves = legal_moves(&Position::initial());
+    let [a, b] = [moves[0], moves[1]];
+    assert!(stable_signal(&[a, a, a, a]));
+    assert!(!stable_signal(&[a, a, a]));
+    assert!(stable_signal(&[b, a, a, a, a]));
+    assert!(!stable_signal(&[a, a, a, b]));
+    assert!(!stable_signal(&[a, b, a, a, a]));
+    assert!(!stable_signal(&[]));
 }
 
 // D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは
