@@ -21,7 +21,7 @@ aspiration windowsは段階開始版との[STC](../measurements/strength-stage6-
 internal iterative reductionは[STC](../measurements/strength-stage6-iir-stc.md)が`H1`、[LTC](../measurements/strength-stage6-iir-ltc.md)も`H1`だが、LTCの途中で外部のOOMによる約33秒の停止が起こり時間切れが11件（候補側6件、基準側5件）出たため、docs/sprt.md の採用条件（時間切れ0件）からの逸脱を伴う採用の可否を利用者の決定に委ねている（該当ペアを除いてもLLR +3.11で`H1`）。
 fail-lowによる延長は、この構成を暫定の基準とする[STC](../measurements/strength-stage6-faillow-stc.md)が`H0`となり不採用とし、実装を外した。
 最善手交替時の延長も同じ暫定の基準との[STC](../measurements/strength-stage6-bmchange-stc.md)が`H0`となり不採用とし、実装を外した。
-最善手安定時の早期終了は延長の信号を持たない形で実装し（コミット8f4e41c）、同じ暫定の基準とのSTCを実行中である。
+最善手安定時の早期終了は延長の信号を持たない形で実装し（コミット8f4e41c）、同じ暫定の基準との[STC](../measurements/strength-stage6-stable-stc.md)が`H1`となり、LTCを実行中である。
 次の一手は、利用者の決定を受けてinternal iterative reductionの採否を確定し、最善手安定時の早期終了のSTCとLTC、係数の再導出、および進捗指標の記録へ進むことである。
 
 ## 目的
