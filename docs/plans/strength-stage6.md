@@ -22,8 +22,8 @@ internal iterative reductionは[STC](../measurements/strength-stage6-iir-stc.md)
 fail-lowによる延長は、この構成を基準とする[STC](../measurements/strength-stage6-faillow-stc.md)が`H0`となり不採用とし、実装を外した。
 最善手交替時の延長も同じ基準との[STC](../measurements/strength-stage6-bmchange-stc.md)が`H0`となり不採用とし、実装を外した。
 最善手安定時の早期終了は延長の信号を持たない形で実装し（コミット8f4e41c）、同じ基準との[STC](../measurements/strength-stage6-stable-stc.md)と[LTC](../measurements/strength-stage6-stable-ltc.md)がともに`H1`かつ異常0件で採用した。
-[係数の再導出](../measurements/strength-stage6-coefficients-diag.md)では`MIN_MOVES`だけが基準（差30%）を超え、130を候補として最終構成とのSTCを実行中である。
-次の一手は、係数の候補のSTCとLTC、および進捗指標の記録へ進むことである。
+[係数の再導出](../measurements/strength-stage6-coefficients-diag.md)では`MIN_MOVES`だけが基準（差30%）を超えたが、130を候補とする最終構成との[STC](../measurements/strength-stage6-coefficients-stc.md)が`H0`となり不採用とし、係数はすべて現行値を保つ。
+次の一手は、進捗指標（段階開始版との固定200ペア、HaChu戦）の記録と、秒読みの煙試験である。
 
 ## 目的
 
