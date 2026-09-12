@@ -316,7 +316,7 @@ mod tests {
     // および王駒による取り返しを手計算した交換列と照合する。
     #[test]
     fn see_values_match_hand_calculated_exchange_sequences() {
-        let pst = weights().unwrap();
+        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
 
@@ -376,17 +376,12 @@ mod tests {
                 (sq(5, 10), white_rook),
             ],
         );
-        let mut expected = [0_i32; 4];
-        expected[0] = value(&pst, white_go_between);
-        expected[1] = value(&pst, black_gold) - expected[0];
-        expected[2] = value(&pst, white_pawn) - expected[1];
-        expected[3] = value(&pst, black_silver) - expected[2];
-        for depth in (1..=3).rev() {
-            expected[depth - 1] = -(-expected[depth - 1]).max(expected[depth]);
-        }
+        // 凍結駒価値は仲人125、金378、歩100、銀250、飛750。
+        // 金で仲人を取って歩に取り返された時点で125−378=−253。
+        // 銀で歩を取り返すと遮蔽が外れた飛車に銀を取られ、さらに150損するため中止する。
         assert_eq!(
             see(&xray, rules, &pst, capture(sq(4, 4), target)),
-            Some(expected[0])
+            Some(-253)
         );
 
         let free_king = unpromoted(Color::White, PieceKind::FreeKing);
@@ -410,7 +405,7 @@ mod tests {
     // 非獅子の取り返しと獅子による取り返しの価値を反映する。
     #[test]
     fn see_values_lion_captures_of_non_lions() {
-        let pst = weights().unwrap();
+        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
         let black_lion = unpromoted(Color::Black, PieceKind::Lion);
@@ -440,16 +435,12 @@ mod tests {
                 (sq(7, 7), black_lion),
             ],
         );
-        let mut expected = [0_i32; 3];
-        expected[0] = value(&pst, white_pawn);
-        expected[1] = value(&pst, black_gold) - expected[0];
-        expected[2] = value(&pst, white_rook) - expected[1];
-        for depth in (1..=2).rev() {
-            expected[depth - 1] = -(-expected[depth - 1]).max(expected[depth]);
-        }
+        // 凍結駒価値は歩100、金378、飛750。金が歩を取った後に飛車が
+        // 金を取ると獅子が飛車を取り返し、先手は100−378+750=472を得る。
+        // 後手は取り返さず歩100の損で止められるため、交換評価は100となる。
         assert_eq!(
             see(&lion_recaptures, rules, &pst, capture(sq(4, 4), target)),
-            Some(expected[0])
+            Some(100)
         );
     }
 

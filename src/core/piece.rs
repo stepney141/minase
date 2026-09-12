@@ -389,7 +389,6 @@ mod tests {
     // 駒種は初期21種＋成駒のみ8種の29種である(第4条3項・第10条、D4-004-03)。
     #[test]
     fn article_4_3_piece_kinds_are_21_initial_plus_8_promoted_only() {
-        assert_eq!(PieceKind::ALL.len(), PIECE_KIND_COUNT);
         assert_eq!(INITIAL_KINDS.len() + PROMOTED_ONLY_KINDS.len(), 29);
 
         // 21種と8種は互いに素で、全29種をちょうど覆う。

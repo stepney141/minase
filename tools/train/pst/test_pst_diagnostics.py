@@ -7,12 +7,12 @@ import unittest
 
 import numpy as np
 
-from features import BOARD_FEATURE_COUNT, FEATURE_COUNT, INITIAL_BOARD, feature_indices
+from features import BOARD_FEATURE_COUNT, FEATURE_COUNT
 from mnsd import Dataset, read_header, map_records
 from pst_diagnostics import Weights, derived_piece_values, diagnose
-from taper import BAND_COUNT, phase_numerators
+from taper import BAND_COUNT
 from test_train_pst import write_mnsd
-from train_pst import initial_piece_values, integer_evaluate, write_mnpt
+from train_pst import initial_piece_values, write_mnpt
 
 PIECE_VALUES = initial_piece_values()
 
@@ -146,13 +146,11 @@ class DiagnosticsTest(unittest.TestCase):
         report = self.run_diagnose(dataset, self.root / "tapered")
         initial = report["representatives"][0]
         # 初期配置(q=90)は序中盤側だけで評価され、1枚除くと q=89 になる。
-        first_removal = initial["removals"][0]
-        variant = INITIAL_BOARD.copy()
-        variant[first_removal["square"]] = 0
-        features = feature_indices(np.stack([INITIAL_BOARD, variant]), np.zeros(2, dtype=np.uint8),
-                                   np.full(2, 255, dtype=np.uint8))
-        scores = integer_evaluate(middlegame, endgame, features, phase_numerators(np.stack([INITIAL_BOARD, variant])))
-        self.assertEqual(first_removal["delta_cp"]["candidate"], int(scores[1] - scores[0]))
+        # tapered-pst.mdの補間式より、除去後の1枚の価値は
+        # (89×200 + 1×100)/90 = 198.88… cp。整数評価では0方向へ切り捨てる。
+        for color, expected in ((0, -198), (1, 198)):
+            removal = next(item for item in initial["removals"] if item["relative_color"] == color)
+            self.assertEqual(removal["delta_cp"]["candidate"], expected)
         self.assertEqual(report["derived_piece_values"]["candidate_middlegame"][0], 200)
         self.assertEqual(report["derived_piece_values"]["candidate_endgame"][0], 100)
         # 端点が異なると補間後の浮動小数点評価は整数にならないが、切り捨て誤差は上限内に収まる。

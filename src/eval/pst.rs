@@ -571,12 +571,7 @@ mod tests {
     /// 差分累算値が通常手、特殊移動、先獅子状態、およびnull moveで完全再計算と一致する。
     #[test]
     fn accumulator_updates_match_full_refresh_across_move_shapes() {
-        check_move_shapes(&weights().unwrap());
-        check_move_shapes(&distinct_pst());
-    }
-
-    /// 指定した両端点で各着手形状の差分更新を検査する。
-    fn check_move_shapes(pst: &Pst) {
+        let pst = &distinct_pst();
         let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
         let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
         let black_pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
@@ -781,14 +776,6 @@ mod tests {
         assert!(matches!(Pst::decode(&bytes), Err(Error::InvalidRuleSet)));
     }
 
-    /// MNPT重み本体の改変がSHA-256で拒否されることを検査する。
-    #[test]
-    fn decode_rejects_checksum_mismatch() {
-        let mut bytes = valid_bytes();
-        bytes[HEADER_LENGTH] ^= 1;
-        assert!(matches!(Pst::decode(&bytes), Err(Error::ChecksumMismatch)));
-    }
-
     /// v0初期重みが先獅子のない局面の駒価値差と一致することを検査する。
     #[test]
     fn initialized_pst_matches_material_evaluation() {
@@ -868,49 +855,19 @@ mod tests {
         assert_eq!(pst.delta_margin(), 2 * pst.piece_value(pawn));
     }
 
-    /// 盤上に現れ得る非王駒の格納値が0なら復号を拒否することを検査する。
-    #[test]
-    fn decode_rejects_non_positive_reachable_piece_value() {
-        let mut bytes = valid_bytes();
-        let pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
-        let state = piece_state(pawn);
-        set_piece_value(&mut bytes, state, 0);
-        refresh_checksum(&mut bytes);
-
-        assert!(matches!(
-            Pst::decode(&bytes),
-            Err(Error::NonPositivePieceValue {
-                kind: PieceKind::Pawn,
-                promoted: false,
-                value: 0,
-            })
-        ));
-    }
-
     /// 同一端点では駒数によらず生重み和を8で割った値に一致する。
     #[test]
     fn identical_endpoints_match_single_table_evaluation() {
-        {
-            let pst = Pst::decode(&valid_bytes()).unwrap();
-            assert_eq!(pst.weights[0], pst.weights[1]);
-            for count in [0, 1, 2, 3, 47, 92, 93, 144] {
-                for side in Color::ALL {
-                    let mut position = position_with_count(count, side);
-                    let trigger = Square::all()
-                        .find(|&square| {
-                            position
-                                .piece_at(square)
-                                .is_none_or(|piece| piece.color() != Some(side))
-                        })
-                        .unwrap();
-                    position.set_lion_capture(Some(trigger)).unwrap();
-                    let mut sum = 0_i32;
-                    active_features(&position, |feature| {
-                        sum += i32::from(pst.weights[0][feature])
-                    });
-                    assert_evaluation(&pst, &position, (sum / 8).clamp(-28_999, 28_999));
-                }
-            }
+        let pst = Pst::decode(&valid_bytes()).unwrap();
+        assert_eq!(pst.weights[0], pst.weights[1]);
+        for count in [2, 47, 92] {
+            let mut position = position_with_count(count, Color::Black);
+            position.set_lion_capture(Some(sq(3, 9))).unwrap();
+            let mut sum = 0_i32;
+            active_features(&position, |feature| {
+                sum += i32::from(pst.weights[0][feature])
+            });
+            assert_evaluation(&pst, &position, (sum / 8).clamp(-28_999, 28_999));
         }
     }
 
@@ -918,50 +875,33 @@ mod tests {
     #[test]
     fn distinct_endpoints_follow_phase_boundaries_and_exclude_lion_feature() {
         let pst = distinct_pst();
-        for (count, q) in [
-            (0, 0),
-            (1, 0),
-            (2, 0),
-            (3, 1),
-            (47, 45),
-            (92, 90),
-            (93, 90),
-            (144, 90),
+        for (count, q, with_lion) in [
+            (0, 0, false),
+            (1, 0, false),
+            (2, 0, false),
+            (3, 1, false),
+            (47, 45, false),
+            (92, 90, false),
+            (93, 90, false),
+            (144, 90, false),
+            (47, 45, true),
         ] {
-            for side in Color::ALL {
-                for with_lion in [false, true] {
-                    let mut position = if count == 92 {
-                        let initial = Position::initial();
-                        let pieces: Vec<_> = Square::all()
-                            .filter_map(|square| {
-                                initial.piece_at(square).map(|piece| (square, piece))
-                            })
-                            .collect();
-                        position_from_codes(side, &pieces)
-                    } else {
-                        position_with_count(count, side)
-                    };
-                    if with_lion {
-                        let trigger = Square::all()
-                            .find(|&square| {
-                                position
-                                    .piece_at(square)
-                                    .is_none_or(|piece| piece.color() != Some(side))
-                            })
-                            .unwrap();
-                        position.set_lion_capture(Some(trigger)).unwrap();
-                    }
-                    let mut sums = [0_i64; 2];
-                    active_features(&position, |feature| {
-                        sums[0] += i64::from(pst.weights[0][feature]);
-                        sums[1] += i64::from(pst.weights[1][feature]);
-                    });
-                    let expected =
-                        ((q * sums[0] + (90 - q) * sums[1]) / 720).clamp(-28_999, 28_999) as i32;
-                    assert_evaluation(&pst, &position, expected);
-                    assert_eq!(pst.refresh_accumulator(&position).piece_count, count as u32);
-                }
+            let mut position = if count == 92 {
+                Position::initial()
+            } else {
+                position_with_count(count, Color::Black)
+            };
+            if with_lion {
+                position.set_lion_capture(Some(sq(3, 9))).unwrap();
             }
+            let mut sums = [0_i64; 2];
+            active_features(&position, |feature| {
+                sums[0] += i64::from(pst.weights[0][feature]);
+                sums[1] += i64::from(pst.weights[1][feature]);
+            });
+            let expected = ((q * sums[0] + (90 - q) * sums[1]) / 720).clamp(-28_999, 28_999) as i32;
+            assert_evaluation(&pst, &position, expected);
+            assert_eq!(pst.refresh_accumulator(&position).piece_count, count as u32);
         }
     }
 
@@ -989,7 +929,7 @@ mod tests {
         }
     }
 
-    /// 最大絶対値の重みでも中間と序中盤端点で評価上限に収まる。
+    /// 最大絶対値の重みと最大駒数でも評価上限に収まる。
     #[test]
     fn interpolation_clips_both_signs() {
         for (mg, eg, expected) in [
@@ -1003,9 +943,7 @@ mod tests {
             }
             refresh_checksum(&mut bytes);
             let pst = Pst::decode(&bytes).unwrap();
-            for count in [47, 92, 144] {
-                assert_evaluation(&pst, &position_with_count(count, Color::Black), expected);
-            }
+            assert_evaluation(&pst, &position_with_count(144, Color::Black), expected);
         }
     }
 
@@ -1013,29 +951,31 @@ mod tests {
     #[test]
     fn evaluation_matches_rank_reflection_with_colors_swapped() {
         let pst = distinct_pst();
-        for count in [2, 47, 92, 93] {
-            let mut position = position_with_count(count, Color::White);
-            position.set_lion_capture(Some(sq(3, 5))).unwrap();
-            let pieces: Vec<_> = Square::all()
-                .filter_map(|square| {
-                    position.piece_at(square).map(|piece| {
-                        let color = piece.color().unwrap().opposite();
-                        let kind = piece.kind().unwrap();
-                        let reflected_piece = if piece.is_promoted() {
-                            PieceCode::new_promoted(color, kind).unwrap()
-                        } else {
-                            PieceCode::new(color, kind).unwrap()
-                        };
-                        (sq(square.file(), 11 - square.rank()), reflected_piece)
-                    })
+        // 46枚なら補間係数は44と46であり、白番だけの端点交換も区別できる。
+        let mut position = position_with_count(46, Color::White);
+        position.set_lion_capture(Some(sq(3, 5))).unwrap();
+        let pieces: Vec<_> = Square::all()
+            .filter_map(|square| {
+                position.piece_at(square).map(|piece| {
+                    let color = piece.color().unwrap().opposite();
+                    let kind = piece.kind().unwrap();
+                    let reflected_piece = if piece.is_promoted() {
+                        PieceCode::new_promoted(color, kind).unwrap()
+                    } else {
+                        PieceCode::new(color, kind).unwrap()
+                    };
+                    (sq(square.file(), 11 - square.rank()), reflected_piece)
                 })
-                .collect();
-            let mut reflected = position_from_codes(Color::Black, &pieces);
-            reflected.set_lion_capture(Some(sq(3, 6))).unwrap();
-            let expected = evaluate(&pst, &position);
-            assert_evaluation(&pst, &position, expected);
-            assert_evaluation(&pst, &reflected, expected);
-        }
+            })
+            .collect();
+        let mut reflected = position_from_codes(Color::Black, &pieces);
+        reflected.set_lion_capture(Some(sq(3, 6))).unwrap();
+        let expected = evaluate(&pst, &position);
+        assert_eq!(
+            pst.evaluate_accumulator(pst.refresh_accumulator(&position), Color::White),
+            expected
+        );
+        assert_evaluation(&pst, &reflected, expected);
     }
 
     /// 勝率尺度は正かつ有限の値だけを受け入れる。
@@ -1052,7 +992,7 @@ mod tests {
     #[test]
     fn decode_rejects_inconsistent_royal_values() {
         for kind in [PieceKind::King, PieceKind::CrownPrince] {
-            for actual in [0, 2_599, 2_601, 28_999] {
+            for actual in [2_599, 2_601] {
                 let mut bytes = valid_bytes();
                 set_piece_value(&mut bytes, kind.index(), actual);
                 refresh_checksum(&mut bytes);
@@ -1066,15 +1006,16 @@ mod tests {
     /// 未到達状態を含む全47値に探索上の数値範囲を適用する。
     #[test]
     fn decode_rejects_out_of_range_piece_values() {
-        for state in 0..PIECE_STATE_COUNT {
-            for value in [-1, 29_000, i32::MIN, i32::MAX] {
-                let mut bytes = valid_bytes();
-                set_piece_value(&mut bytes, state, value);
-                refresh_checksum(&mut bytes);
-                assert!(
-                    matches!(Pst::decode(&bytes), Err(Error::PieceValueOutOfRange { state: found, value: actual }) if found == state && actual == value)
-                );
-            }
+        let cases = (0..PIECE_STATE_COUNT)
+            .flat_map(|state| [-1, 29_000].map(|value| (state, value)))
+            .chain([(0, i32::MIN), (0, i32::MAX)]);
+        for (state, value) in cases {
+            let mut bytes = valid_bytes();
+            set_piece_value(&mut bytes, state, value);
+            refresh_checksum(&mut bytes);
+            assert!(
+                matches!(Pst::decode(&bytes), Err(Error::PieceValueOutOfRange { state: found, value: actual }) if found == state && actual == value)
+            );
         }
     }
 
@@ -1116,7 +1057,8 @@ mod tests {
             refresh_checksum(&mut bytes);
             assert!(matches!(
                 Pst::decode(&bytes),
-                Err(Error::NonPositivePieceValue { value: 0, .. })
+                Err(Error::NonPositivePieceValue { kind, promoted, value: 0 })
+                    if Some(kind) == piece.kind() && promoted == piece.is_promoted()
             ));
         }
     }

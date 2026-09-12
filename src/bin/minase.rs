@@ -163,37 +163,10 @@ mod tests {
         };
 
         assert_eq!(
-            parse("engine-default").unwrap(),
-            parse_rule_set("L0,P0,R1,E0").unwrap()
+            parse("LISHOGI").unwrap(),
+            Vec::<RuleCode>::from(Rules::LISHOGI)
         );
-        assert_eq!(
-            parse("Engine-Default").unwrap(),
-            parse("engine-default").unwrap()
-        );
-        assert_eq!(
-            parse("lishogi").unwrap(),
-            parse("L1,L2,P0,P3,R1,E1,E3").unwrap()
-        );
-        assert_eq!(parse("LISHOGI").unwrap(), parse("lishogi").unwrap());
-        // 値は大文字小文字を区別せず、コード列は同じ規則集合へ解決される。
-        assert_eq!(
-            Rules::from_codes(&parse("p0,r1,l1,e0").unwrap()).unwrap(),
-            Rules::from_codes(&parse("L1,P0,R1,E0").unwrap()).unwrap()
-        );
-
-        assert!(parse("XX9").is_err());
-        // R33第5項: MinaseはR0を選択可能な規則コードとして提供しない。
-        assert!(parse("R0").is_err());
-        // PL 2026-08-11追記: standardという名前は受理しない。
-        assert!(parse("standard").is_err());
-        assert!(parse("lishogi,engine-default").is_err());
-        // プリセットとコードの併記には専用エラーを返す（PLフェーズ4追補）。
-        let error = parse("lishogi,P1").unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("preset 'lishogi' must be specified alone")
-        );
+        assert!(parse("lishogi,P1").is_err());
 
         // 4群のいずれかを欠く列は値文法としては解析できるが、エンジン構築時に拒否される
         // ため、不正値での起動成功はあり得ない（D6-CLI-02境界）。

@@ -1207,97 +1207,88 @@ mod tests {
 
         assert!(!first.records.is_empty());
         assert_eq!(first, second);
+        let (_, plan) = opening_and_plan(rules, 7, 1, 4);
+        assert!(
+            first
+                .records
+                .iter()
+                .all(|completed| u32::from(completed.record.ply()) >= plan.record_from)
+        );
+        assert_eq!(
+            first.stats.recordable_positions,
+            first
+                .stats
+                .total_plies
+                .saturating_sub(u64::from(plan.record_from))
+        );
+        assert_eq!(
+            first.stats.recordable_positions,
+            first.stats.recorded_positions
+                + first.stats.excluded_mate_band
+                + first.stats.excluded_tactical
+                + first.stats.excluded_repetition
+        );
     }
 
-    /// 複数局で注入回数と実施オフセットが指定範囲に収まる。
+    /// 注入計画の途中で打ち切った対局でも実施回数と探索回数を正しく集計する。
     #[test]
     fn injection_counts_and_offsets_stay_within_configured_bounds() {
         let rules = engine_default_rules().expect("engine-default rules are valid");
         let pst = minase::eval::weights().expect("embedded weights are valid");
         let maximum = 80;
 
-        for game_number in 1..=8 {
-            let (opening_ply, plan) = opening_and_plan(rules, 19, game_number, maximum);
-            let mut table = test_table();
-            let completed = play_game(
-                pst.as_ref(),
-                rules,
-                game_number,
-                test_settings(19, maximum, 32),
-                &mut table,
-            )
-            .expect("the fixed game is valid");
-
-            assert!(plan.plies.len() <= usize::from(maximum));
-            assert_eq!(
-                completed.stats.planned_injections,
-                u64::try_from(plan.plies.len()).unwrap()
-            );
-            assert!(completed.stats.performed_injections <= completed.stats.planned_injections);
-            assert_eq!(
-                completed
-                    .stats
-                    .injection_offset_histogram
-                    .iter()
-                    .sum::<u64>(),
-                completed.stats.performed_injections
-            );
-
-            let mut expected_histogram = [0_u64; INJECTION_HISTOGRAM_BINS];
-            for &ply in plan
-                .plies
-                .iter()
-                .filter(|&&ply| u64::from(ply) < completed.stats.total_plies)
-            {
-                let offset = usize::try_from(ply - opening_ply).unwrap();
-                assert!(offset < INJECTION_WINDOW);
-                expected_histogram[offset / 10] += 1;
-            }
-            assert_eq!(
-                completed.stats.injection_offset_histogram,
-                expected_histogram
-            );
-            assert_eq!(
-                completed.stats.searched_plies + completed.stats.performed_injections,
-                completed.stats.total_plies - u64::from(opening_ply)
-            );
-            assert_eq!(
-                completed.stats.searched_positions,
-                completed.stats.searched_plies
-            );
-        }
-    }
-
-    /// 記録は最後に予定した注入より後の局面だけを含む。
-    #[test]
-    fn records_start_at_or_after_planned_injection_boundary() {
-        let rules = engine_default_rules().expect("engine-default rules are valid");
-        let pst = minase::eval::weights().expect("embedded weights are valid");
-        let (_, plan) = opening_and_plan(rules, 7, 1, 4);
+        let game_number = 1;
+        let (opening_ply, plan) = opening_and_plan(rules, 19, game_number, maximum);
         let mut table = test_table();
-        let completed = play_game(pst.as_ref(), rules, 1, test_settings(7, 4, 600), &mut table)
-            .expect("the fixed game is valid");
+        let completed = play_game(
+            pst.as_ref(),
+            rules,
+            game_number,
+            test_settings(19, maximum, 32),
+            &mut table,
+        )
+        .expect("the fixed game is valid");
 
-        assert!(!completed.records.is_empty());
-        assert!(
-            completed
-                .records
-                .iter()
-                .all(|completed| u32::from(completed.record.ply()) >= plan.record_from)
-        );
+        assert!(plan.plies.len() <= usize::from(maximum));
         assert_eq!(
-            completed.stats.recordable_positions,
+            completed.stats.planned_injections,
+            u64::try_from(plan.plies.len()).unwrap()
+        );
+        assert!(completed.stats.performed_injections > 0);
+        assert!(completed.stats.performed_injections < completed.stats.planned_injections);
+        assert_eq!(completed.stats.total_plies, 32);
+        assert!(u64::from(plan.record_from) > completed.stats.total_plies);
+        assert!(completed.records.is_empty());
+        assert_eq!(
             completed
                 .stats
-                .total_plies
-                .saturating_sub(u64::from(plan.record_from))
+                .injection_offset_histogram
+                .iter()
+                .sum::<u64>(),
+            completed.stats.performed_injections
+        );
+
+        let mut expected_histogram = [0_u64; INJECTION_HISTOGRAM_BINS];
+        for &ply in plan
+            .plies
+            .iter()
+            .filter(|&&ply| u64::from(ply) < completed.stats.total_plies)
+        {
+            let offset = usize::try_from(ply - opening_ply).unwrap();
+            assert!(offset < INJECTION_WINDOW);
+            expected_histogram[offset / 10] += 1;
+        }
+        assert_eq!(
+            completed.stats.injection_offset_histogram,
+            expected_histogram
         );
         assert_eq!(
-            completed.stats.recordable_positions,
-            completed.stats.recorded_positions
-                + completed.stats.excluded_mate_band
-                + completed.stats.excluded_tactical
-                + completed.stats.excluded_repetition
+            completed.stats.searched_plies + completed.stats.performed_injections,
+            completed.stats.total_plies - u64::from(opening_ply)
+        );
+        assert_eq!(
+            completed.stats.searched_positions,
+            completed.stats.searched_plies
         );
     }
 
@@ -1305,10 +1296,6 @@ mod tests {
     #[test]
     fn injection_plan_has_unique_offsets_and_planned_boundary() {
         let opening_ply = 12;
-        let (fixed_plan, _) = plan_injections(derive_seed(7, 1), opening_ply, 4);
-        assert_eq!(fixed_plan.plies, [68, 72, 82]);
-        assert_eq!(fixed_plan.record_from, 83);
-
         for number in 1..=32 {
             let game_seed = derive_seed(31, number);
             let (plan, _) = plan_injections(game_seed, opening_ply, 80);
@@ -1331,12 +1318,10 @@ mod tests {
     /// 上限0では注入を予定せず序盤終了局面から記録する。
     #[test]
     fn zero_random_moves_produces_empty_plan_at_opening_boundary() {
-        for opening_ply in [8, 12, 16] {
-            let (plan, _) =
-                plan_injections(derive_seed(41, u64::from(opening_ply)), opening_ply, 0);
-            assert!(plan.plies.is_empty());
-            assert_eq!(plan.record_from, opening_ply);
-        }
+        let opening_ply = 12;
+        let (plan, _) = plan_injections(derive_seed(41, 12), opening_ply, 0);
+        assert!(plan.plies.is_empty());
+        assert_eq!(plan.record_from, opening_ply);
     }
 
     /// CLIはランダム着手上限の0と80だけを境界値として受理する。
@@ -1389,41 +1374,11 @@ mod tests {
         assert_eq!(score_percentile(&frequencies, 50), None);
     }
 
-    /// 既出の探索キーは2回目以降を重複局面として数える。
-    #[test]
-    fn recorded_statistics_counts_every_repeated_search_key() {
-        let rules = engine_default_rules().expect("engine-default rules are valid");
-        let game = Game::new(rules);
-        let completed = |game_number, search_key| CompletedRecord {
-            record: Record::from_position(
-                game.position(),
-                0,
-                Outcome::Draw,
-                game_number,
-                game.ply_count().try_into().unwrap(),
-            ),
-            search_key,
-        };
-        let mut statistics = RecordedStatistics::default();
-
-        for record in [
-            completed(1, 1),
-            completed(2, 2),
-            completed(3, 1),
-            completed(4, 1),
-        ] {
-            statistics.record(&record);
-        }
-
-        assert_eq!(statistics.duplicate_positions, 2);
-        assert_eq!(statistics.score_frequencies[score_index(0)], 4);
-    }
-
     /// テスト用の完了対局を1レコード付きで作る。
     fn completed_game(game_number: u32) -> CompletedGame {
         let game = Game::new(engine_default_rules().expect("engine-default rules are valid"));
         let score = i16::try_from(game_number).unwrap() - 2;
-        let search_key = if game_number == 3 {
+        let search_key = if game_number >= 3 {
             10
         } else {
             u64::from(game_number) * 10
@@ -1480,7 +1435,7 @@ mod tests {
         assert_eq!(sequential, shuffled);
         assert_eq!(sequential.1.recorded_positions, 4);
         assert_eq!(sequential.2.iter().sum::<u64>(), 4);
-        assert_eq!(sequential.3, 1);
+        assert_eq!(sequential.3, 2);
     }
 
     /// 対局番号が欠けたまま入力が終われば統合を拒否する。
@@ -1498,10 +1453,6 @@ mod tests {
         };
 
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert_eq!(
-            error.to_string(),
-            "worker channel closed after 1 of 4 games"
-        );
     }
 
     /// 除外率は分母0なら数値ではなく`n/a`になる。

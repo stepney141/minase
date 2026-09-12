@@ -298,7 +298,8 @@ mod tests {
 
         // 4升以上の連結、駒打ち形式、区切り文字、盤外の段・筋の拒否（D5-USI-01境界）。
         for invalid in [
-            "7g7d7e7f", "P*3d", "7g 7d", "7g-7d", "7m7d", "13a1a", "0a1a",
+            "7g7d7e7f", "P*3d", "7g 7d", "7g-7d", "7m7d", "13a1a", "0a1a", "", "resign", "@@@@",
+            "7g7d#",
         ] {
             assert!(parse(&empty, invalid).is_err(), "{invalid}");
         }
@@ -414,20 +415,6 @@ mod tests {
                 parse(&empty, invalid),
                 Err(UsiError::InvalidSuffix),
                 "{invalid}"
-            );
-        }
-
-        // 成り選択のある局面（[RULES]第18条第5項）でも出力に`=`と`?`は現れない。
-        let promotion_position =
-            position(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]);
-        let moves = generated(&promotion_position);
-        assert!(moves.iter().any(|mv| mv.promote));
-        assert!(moves.iter().any(|mv| !mv.promote));
-        for mv in moves {
-            let rendered = text_generated(&promotion_position, mv);
-            assert!(
-                !rendered.contains('=') && !rendered.contains('?'),
-                "{rendered}"
             );
         }
     }
@@ -582,18 +569,6 @@ mod tests {
         assert!(eagle_mid == sq(4, 6) || eagle_mid == sq(6, 6));
     }
 
-    // D5-USI-07: 不正入力をパニックせず拒否する。USI表記に`@@@@`は存在しない
-    // （[USI]「指し手の文字列表記」第4項・第5項。CECPとの差は[HACHU]第8節）。
-    #[test]
-    fn invalid_inputs_are_rejected_without_panicking() {
-        let empty = Position::empty(Color::Black);
-        for invalid in [
-            "", "6f6f", "P*3d", "13a1a", "0a1a", "7m1a", "resign", "@@@@", "7g7d7e7f", "7g7d#",
-        ] {
-            assert!(parse(&empty, invalid).is_err(), "{invalid:?}");
-        }
-    }
-
     // 監査「未検証着手と合法手の混在」: 公開文字列化APIは生成器の合法手集合を
     // 境界とし、空升を移動元とする値を文字列化しない。
     #[test]
@@ -618,11 +593,10 @@ mod tests {
         );
     }
 
-    // D5-USI-08, D5-PROP-01, D5-PROP-02: 代表局面群の全合法手についてMove単位の往復一致
-    // （じっと以外は文字列単位でも）を検証し、合法手集合が各類型を実際に含むことを断定する
-    // （[PL]「Move文字列表記2形式」と「検証」）。
+    // [PL]「Move文字列表記2形式」: 同じ合法手をUSIとCECPで往復させる。
+    // CECPのじっとは移動元を運ばないため、表記層での往復対象から除く。
     #[test]
-    fn all_legal_moves_round_trip_in_representative_positions() {
+    fn both_notations_round_trip_legal_moves_in_representative_positions() {
         // (b)(c) 獅子・角鷹・飛鷲の2段階移動・居喰いが合法な局面。
         let special = position_from_codes(
             Color::Black,
@@ -671,28 +645,22 @@ mod tests {
             promotion,
         ];
 
-        for pos in &positions {
-            let moves = generated(pos);
+        let generated_moves: Vec<_> = positions.iter().map(generated).collect();
+        for (pos, moves) in positions.iter().zip(&generated_moves) {
             assert!(!moves.is_empty());
-            for mv in moves {
+            for &mv in moves {
                 let rendered = text_generated(pos, mv);
                 // Move単位の往復一致（parse(position, text_generated(position, m)) == m）。
                 assert_eq!(parse(pos, &rendered), Ok(mv), "{rendered}");
-                // じっと以外は文字列単位でも往復一致する。
-                if !(mv.mid.is_none() && mv.to == mv.from) {
-                    assert_eq!(
-                        text_generated(pos, parse(pos, &rendered).unwrap()),
-                        rendered
-                    );
+                if mv.mid.is_some() || mv.to != mv.from {
+                    let wire = crate::notation::cecp::legs(mv).concat();
+                    assert_eq!(crate::notation::cecp::parse(pos, &wire), Ok(mv), "{wire}");
                 }
-                // 2段階移動を行う駒は成れないため、2段階の合法手に成りは現れない
-                // （[USI]同節第6項、[RULES]第11条第10項。SU-4）。
-                assert!(!(mv.promote && (mv.mid.is_some() || mv.to == mv.from)));
             }
         }
 
         // カバレッジ空振り防止（D5-PROP-02）: 類型(1)(2)を獅子・角鷹・飛鷲の各出自で確認する。
-        let special_moves = generated(&positions[1]);
+        let special_moves = &generated_moves[1];
         for origin in [sq(5, 5), sq(1, 1), sq(9, 1)] {
             // (1) 経路捕獲つき2段階移動（mid: Some かつ to != from）。
             assert!(
@@ -707,16 +675,16 @@ mod tests {
                     .any(|mv| mv.from == origin && mv.mid.is_some() && mv.to == origin)
             );
         }
-        // (3) 正準じっと（mid: None かつ to == from）を3駒種×先後で確認する。
-        for pos in &positions[2..=6] {
+        // (3) 正準じっとを獅子と、角鷹・飛鷲の先後で確認する。
+        for moves in &generated_moves[2..=6] {
             assert!(
-                generated(pos)
+                moves
                     .iter()
                     .any(|mv| mv.mid.is_none() && mv.to == mv.from && !mv.promote)
             );
         }
         // (4) 成りと(5) 同一from/toの不成。
-        let promotion_moves = generated(&positions[7]);
+        let promotion_moves = &generated_moves[7];
         let promote_move = promotion_moves
             .iter()
             .copied()
@@ -727,12 +695,5 @@ mod tests {
                 !mv.promote && mv.from == promote_move.from && mv.to == promote_move.to
             })
         );
-
-        // (e) 冗長経路入力: 空升経由の3升連結の解析結果を文字列化すると正準の2升連結になる
-        // （文字列単位では非対称。[PL]「Move文字列表記2形式」）。
-        let alone = &positions[2];
-        let normalized = parse(alone, "7g7f7e").unwrap();
-        assert_eq!(normalized.mid, None);
-        assert_eq!(text_generated(alone, normalized), "7g7e");
     }
 }

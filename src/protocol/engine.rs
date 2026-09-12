@@ -528,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn newly_finished_marks_only_the_finishing_transition() {
+    fn lifecycle_reports_each_finishing_transition_once_and_rejects_invalid_moves() {
         // PL「コマンドenum…」: newly_finishedはOngoingからFinishedへ遷移した応答だけが持つ。
         // 終局通知は状態遷移イベントであって状態述語ではない（D6-ENG-04）。
         let result = GameResult::Win {
@@ -538,6 +538,10 @@ mod tests {
         let mut engine =
             Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
 
+        assert_eq!(
+            engine.handle(EngineCommand::ApplyMove(royal_capture())),
+            EngineReply::Rejected(RejectReason::GameNotStarted)
+        );
         assert_eq!(
             engine.handle(EngineCommand::SetPosition {
                 setup: setup(royal_position()),
@@ -560,6 +564,13 @@ mod tests {
             engine.handle(EngineCommand::ApplyMove(royal_capture())),
             EngineReply::Rejected(RejectReason::GameAlreadyOver)
         );
+        assert_eq!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(Position::initial()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Rejected(RejectReason::GameAlreadyOver)
+        );
         // EndGameはAwaitingStartへ戻るだけで、終局通知を再生成しない。
         assert_eq!(
             engine.handle(EngineCommand::EndGame),
@@ -577,6 +588,39 @@ mod tests {
             EngineReply::Accepted {
                 status: GameStatus::Finished(result),
                 newly_finished: Some(result),
+            }
+        );
+        assert_eq!(
+            engine.handle(EngineCommand::NewGame),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                newly_finished: None,
+            }
+        );
+        assert_eq!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: setup(Position::initial()),
+                moves: Vec::new(),
+            }),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                newly_finished: None,
+            }
+        );
+        // ApplyMoveの拒否後も、同じ局面の合法手が受理される。
+        let illegal = step(sq(0, 0), sq(0, 1));
+        assert_eq!(
+            engine.handle(EngineCommand::ApplyMove(illegal)),
+            EngineReply::Rejected(RejectReason::IllegalMove {
+                mv: illegal,
+                cause: IllegalMoveCause::Movement,
+            })
+        );
+        assert_eq!(
+            engine.handle(EngineCommand::ApplyMove(step(sq(0, 3), sq(0, 4)))),
+            EngineReply::Accepted {
+                status: GameStatus::Ongoing,
+                newly_finished: None,
             }
         );
     }
@@ -712,156 +756,5 @@ mod tests {
                 cause: IllegalMoveCause::Repetition,
             })
         );
-    }
-
-    #[test]
-    fn each_reject_reason_is_idempotent_and_state_preserving() {
-        // PL「コマンドenum…」: Rejectedはエンジンの状態を一切変化させない。
-        // 同じ不正入力の再送は同じ拒否を返す（D6-ENG-05）。
-        let mut engine =
-            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
-
-        // GameNotStarted（AwaitingStartでの着手）。
-        let probe = step(sq(0, 3), sq(0, 4)); // 初期配置の歩兵の前進（合法手）
-        let first = engine.handle(EngineCommand::ApplyMove(probe));
-        assert!(matches!(
-            first,
-            EngineReply::Rejected(RejectReason::GameNotStarted)
-        ));
-        assert_eq!(engine.handle(EngineCommand::ApplyMove(probe)), first);
-
-        // InvalidRules（反復規則の欠如）。
-        let first = engine.handle(EngineCommand::SetRules(vec![RuleCode::P3]));
-        assert!(matches!(
-            first,
-            EngineReply::Rejected(RejectReason::InvalidRules(_))
-        ));
-        assert_eq!(
-            engine.handle(EngineCommand::SetRules(vec![RuleCode::P3])),
-            first
-        );
-
-        // IllegalMove: 拒否後も同じ局面の合法手が受理される（状態保持の観測）。
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(Position::initial()),
-                moves: Vec::new(),
-            }),
-            EngineReply::Accepted { .. }
-        ));
-        let illegal = step(sq(0, 0), sq(0, 1));
-        let first = engine.handle(EngineCommand::ApplyMove(illegal));
-        assert!(matches!(
-            first,
-            EngineReply::Rejected(RejectReason::IllegalMove { .. })
-        ));
-        assert_eq!(engine.handle(EngineCommand::ApplyMove(illegal)), first);
-        assert!(matches!(
-            engine.handle(EngineCommand::ApplyMove(probe)),
-            EngineReply::Accepted { .. }
-        ));
-
-        // GameAlreadyOver（RULES.md第26条第12項）。
-        let mut engine =
-            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(royal_position()),
-                moves: vec![royal_capture()],
-            }),
-            EngineReply::Accepted { .. }
-        ));
-        let first = engine.handle(EngineCommand::ApplyMove(royal_capture()));
-        assert_eq!(first, EngineReply::Rejected(RejectReason::GameAlreadyOver));
-        assert_eq!(
-            engine.handle(EngineCommand::ApplyMove(royal_capture())),
-            first
-        );
-    }
-
-    #[test]
-    fn lifecycle_cycles_through_start_game_finish_and_back() {
-        // PL「コマンドenum…」: AwaitingStart／InGame／Finishedのライフサイクルと、
-        // EndGameによるAwaitingStartへの復帰（D6-ENG-06）。
-        let mut engine =
-            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
-
-        // AwaitingStart: 着手は拒否、SetPositionはcommit経路。
-        assert!(matches!(
-            engine.handle(EngineCommand::ApplyMove(royal_capture())),
-            EngineReply::Rejected(RejectReason::GameNotStarted)
-        ));
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(royal_position()),
-                moves: Vec::new(),
-            }),
-            EngineReply::Accepted {
-                status: GameStatus::Ongoing,
-                ..
-            }
-        ));
-        // InGame → Finished。
-        assert!(matches!(
-            engine.handle(EngineCommand::ApplyMove(royal_capture())),
-            EngineReply::Accepted {
-                status: GameStatus::Finished(_),
-                ..
-            }
-        ));
-        // Finished: 局面設定も着手も不成立（GameAlreadyOver）。
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(Position::initial()),
-                moves: Vec::new(),
-            }),
-            EngineReply::Rejected(RejectReason::GameAlreadyOver)
-        ));
-        // EndGameでAwaitingStartへ戻り、次局を開始できる（周回性）。
-        assert!(matches!(
-            engine.handle(EngineCommand::EndGame),
-            EngineReply::Accepted { .. }
-        ));
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(Position::initial()),
-                moves: Vec::new(),
-            }),
-            EngineReply::Accepted {
-                status: GameStatus::Ongoing,
-                ..
-            }
-        ));
-
-        // NewGameもFinishedからの復帰経路である（commitしてAwaitingStartへ）。
-        let mut engine =
-            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(royal_position()),
-                moves: vec![royal_capture()],
-            }),
-            EngineReply::Accepted {
-                status: GameStatus::Finished(_),
-                ..
-            }
-        ));
-        assert!(matches!(
-            engine.handle(EngineCommand::NewGame),
-            EngineReply::Accepted {
-                status: GameStatus::Ongoing,
-                newly_finished: None,
-            }
-        ));
-        assert!(matches!(
-            engine.handle(EngineCommand::SetPosition {
-                setup: setup(Position::initial()),
-                moves: Vec::new(),
-            }),
-            EngineReply::Accepted {
-                status: GameStatus::Ongoing,
-                ..
-            }
-        ));
     }
 }

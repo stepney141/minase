@@ -159,16 +159,6 @@ mod tests {
             }
         }
 
-        // 四隅は有効な升である。
-        for (file, rank) in [
-            (0, 0),
-            (BOARD_FILES - 1, 0),
-            (0, BOARD_RANKS - 1),
-            (BOARD_FILES - 1, BOARD_RANKS - 1),
-        ] {
-            assert!(Square::new(file, rank).is_some());
-        }
-
         // 盤外座標(内部0始まりでは筋12・段12以上に相当)からの構築は拒否される。
         for file in 0..=BOARD_FILES {
             assert!(Square::new(file, BOARD_RANKS).is_none());

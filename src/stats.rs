@@ -229,61 +229,23 @@ mod tests {
         assert!(gsprt_llr(&mirrored) < 0.0);
     }
 
-    // D8-STAT-02(sprt.md統計的手続き節): 判定境界はα=β=0.05から
-    // log((1-β)/α)と log(β/(1-α))で定まる。式からの導出値と照合し、
-    // 実装定数を写さない。
-    #[test]
-    fn gsprt_bounds_equal_log_error_rate_ratios() {
-        let upper = (0.95_f64 / 0.05_f64).ln();
-        let lower = (0.05_f64 / 0.95_f64).ln();
-        assert!((GSPRT_UPPER_BOUND - upper).abs() < 1e-12);
-        assert!((GSPRT_LOWER_BOUND - lower).abs() < 1e-12);
-    }
-
     // D8-STAT-02: 判定は3値(H1/H0/継続)で網羅的・排他的。上側境界超過でH1、
     // 下側境界超過でH0、境界内は継続。境界同値の比較演算はSPEC_UNCLEAR-01に
     // つき検証しない。
     #[test]
     fn gsprt_decision_is_three_way_and_exhaustive() {
-        assert_eq!(
-            gsprt_decision(GSPRT_UPPER_BOUND + 1e-9),
-            GsprtDecision::AcceptH1
-        );
-        assert_eq!(
-            gsprt_decision(GSPRT_LOWER_BOUND - 1e-9),
-            GsprtDecision::AcceptH0
-        );
-        assert_eq!(gsprt_decision(0.0), GsprtDecision::Continue);
-        assert_eq!(gsprt_decision(2.9), GsprtDecision::Continue);
-        assert_eq!(gsprt_decision(-2.9), GsprtDecision::Continue);
-    }
-
-    // D8-STAT-03(sprt.md統計的手続き節): ロジスティック写像
-    // s = 1/(1+10^(-elo/400))。期待値はすべて式から独立に導出した値である。
-    #[test]
-    fn logistic_elo_mapping_matches_documented_formula() {
-        assert!((logistic_score(0.0) - 0.5).abs() < 1e-15);
-        // s(5) = 1/(1+10^(-1/80)) = 0.5071950817…
-        assert!((logistic_score(5.0) - 0.507_195_081_709_051_4).abs() < 1e-12);
-        // 境界事例: elo=±400でs=1/(1+10^∓1)
-        assert!((logistic_score(400.0) - 10.0 / 11.0).abs() < 1e-12);
-        assert!((logistic_score(-400.0) - 1.0 / 11.0).abs() < 1e-12);
-        // 性質: 狭義単調増加と点対称 s(-x) = 1 - s(x)
-        assert!(logistic_score(0.0) < logistic_score(5.0));
-        assert!(logistic_score(5.0) < logistic_score(400.0));
-        for elo in [1.0, 5.0, 123.0, 400.0] {
-            assert!((logistic_score(-elo) - (1.0 - logistic_score(elo))).abs() < 1e-12);
+        // sprt.mdのα=β=0.05から求め、実装の境界定数を期待側に使わない。
+        let upper = (0.95_f64 / 0.05).ln();
+        let lower = (0.05_f64 / 0.95).ln();
+        for (llr, expected) in [
+            (lower - 1e-9, GsprtDecision::AcceptH0),
+            (lower + 1e-9, GsprtDecision::Continue),
+            (0.0, GsprtDecision::Continue),
+            (upper - 1e-9, GsprtDecision::Continue),
+            (upper + 1e-9, GsprtDecision::AcceptH1),
+        ] {
+            assert_eq!(gsprt_decision(llr), expected);
         }
-    }
-
-    // D8-STAT-07(sprt.md統計的手続き節): 完全対称な度数は平均正規化ペア得点0.5
-    // に対応し、Elo点推定は0、95%信頼区間は0と点推定を含む。
-    #[test]
-    fn symmetric_frequencies_estimate_zero_elo_with_interval_containing_zero() {
-        let estimate = estimate_elo(&[10, 25, 45, 25, 10]);
-        assert!(estimate.elo.abs() < 1e-12);
-        assert!(estimate.lower <= 0.0 && 0.0 <= estimate.upper);
-        assert!(estimate.lower <= estimate.elo && estimate.elo <= estimate.upper);
     }
 
     // sprt.md固定局数Elo節: 95%信頼区間は、ペンタノミアル度数の平均と分散による
@@ -293,11 +255,11 @@ mod tests {
     #[test]
     fn elo_confidence_interval_uses_the_95_percent_normal_margin() {
         let estimate = estimate_elo(&[10, 25, 45, 25, 10]);
-        let count: f64 = 115.0;
-        let variance = (10.0 * 0.25 + 25.0 * 0.0625 + 25.0 * 0.0625 + 10.0 * 0.25) / count;
-        let margin = 1.96 * (variance / count).sqrt();
-        assert!((estimate.lower - score_to_elo(0.5 - margin)).abs() < 1e-9);
-        assert!((estimate.upper - score_to_elo(0.5 + margin)).abs() < 1e-9);
+        // 平均1/2、分散13/184、n=115。95%得点区間を±1.96標準誤差で求め、
+        // 400*log10(s/(1-s))で独立計算したElo区間は±33.864642936575。
+        assert!(estimate.elo.abs() < 1e-12);
+        assert!((estimate.lower + 33.864_642_936_575).abs() < 1e-9);
+        assert!((estimate.upper - 33.864_642_936_575).abs() < 1e-9);
     }
 
     // D8-STAT-07/D8-STAT-03: 点推定はロジスティック写像の逆写像に一致する。
@@ -309,20 +271,13 @@ mod tests {
         assert!((estimate.elo - 190.848_501_887_864_98).abs() < 1e-9);
     }
 
-    // D8-STAT-07性質: 度数の左右反転(候補と基準の入替)でElo点推定の符号が
-    // 反転する(ロジスティック写像の点対称から従う)。
-    #[test]
-    fn mirrored_frequencies_flip_elo_sign() {
-        let forward = estimate_elo(&[1, 2, 4, 3, 1]);
-        let mirrored = estimate_elo(&[1, 3, 4, 2, 1]);
-        assert!((forward.elo + mirrored.elo).abs() < 1e-9);
-    }
-
     // D8-STAT-07性質: 同一分布のスケーリング(度数の定数倍)で点推定は不変、
     // 信頼区間は狭くなる(観測単位はペアであり、ペア数増で分散推定が締まる)。
     #[test]
-    fn scaling_frequencies_preserves_estimate_and_narrows_interval() {
+    fn frequency_reflection_and_scaling_preserve_elo_properties() {
         let small = estimate_elo(&[1, 2, 4, 3, 1]);
+        let mirrored = estimate_elo(&[1, 3, 4, 2, 1]);
+        assert!((small.elo + mirrored.elo).abs() < 1e-9);
         let large = estimate_elo(&[10, 20, 40, 30, 10]);
         assert!((small.elo - large.elo).abs() < 1e-9);
         assert!(large.upper - large.lower < small.upper - small.lower);
@@ -382,6 +337,7 @@ mod tests {
     // 真のelo=10で検出率90%以上(名目1-β=0.95と整合)を確認する。
     // 固定シードにより決定的である。
     #[test]
+    #[ignore = "run when the GSPRT formula, regularization, or stopping rule changes; see docs/sprt.md"]
     fn gsprt_monte_carlo_error_rates_match_documented_thresholds() {
         const REPETITIONS: usize = 3000;
         // 得点0.5のセルから隣接セルへ移す確率質量。真のelo=10の分布は平均

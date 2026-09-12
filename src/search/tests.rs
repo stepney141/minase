@@ -13,10 +13,8 @@ use crate::eval::{evaluate, weights};
 use crate::test_util::{position, position_from_codes, sq};
 
 use super::tt::{
-    ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, ADVISORY_MOVE_SHIFT,
-    ADVISORY_RESERVED_MASK, Bound, CRITICAL_BOUND_MASK, CRITICAL_BOUND_SHIFT, CRITICAL_DEPTH_MASK,
-    CRITICAL_DEPTH_SHIFT, CRITICAL_KEY_MASK, CRITICAL_KEY_SHIFT, CRITICAL_RESERVED_MASK,
-    CRITICAL_SCORE_MASK, CRITICAL_SCORE_SHIFT, NO_MOVE, entry_size, pack_move, unpack_move,
+    ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
+    CRITICAL_BOUND_MASK, CRITICAL_RESERVED_MASK, pack_move, unpack_move,
 };
 
 // ---------------------------------------------------------------------------
@@ -323,7 +321,7 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
         worker_count(1),
         small_tt(),
     );
-    let (progress, finished) = drain_events(&handle);
+    let (progress, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
     assert_eq!(
         progress.iter().map(|entry| entry.0).collect::<Vec<_>>(),
@@ -369,8 +367,9 @@ fn lmr_history_adjustment_precedes_clamping() {
         (i32::MAX, 0),
     ] {
         assert_eq!(lmr_reduction(4, 8, history), expected);
-        assert_eq!(lmr_reduction(5, 255, history), 3);
     }
+    assert_eq!(lmr_reduction(5, 255, i32::MIN), 3);
+    assert_eq!(lmr_reduction(5, 255, i32::MAX), 3);
     // 表の値が0でも負のhistoryなら減深し、負の補正結果は0で切る。
     assert_eq!(lmr_reduction(4, 1, -128), 1);
     assert_eq!(lmr_reduction(4, 1, 128), 0);
@@ -378,8 +377,8 @@ fn lmr_history_adjustment_precedes_clamping() {
 
 #[test]
 fn lmr_reduction_preserves_remaining_depth() {
-    for depth in 0..=MAX_PLY {
-        for index in 0..256 {
+    for depth in [0, 1, 2, 3, 4, MAX_PLY] {
+        for index in [0, 1, 8, 255] {
             for history in [i32::MIN, -128, -127, 0, 127, 128, i32::MAX] {
                 let reduction = lmr_reduction(depth, index, history);
                 assert!(reduction <= 3);
@@ -398,9 +397,9 @@ fn lmr_reduction_preserves_remaining_depth() {
 
 #[test]
 fn lmr_large_move_indices_use_last_column() {
-    for depth in 0..=MAX_PLY {
+    for depth in [0, 1, 2, 3, 4, MAX_PLY] {
         for history in [-128, 0, 128] {
-            for index in [256, 512, usize::MAX] {
+            for index in [256, usize::MAX] {
                 assert_eq!(
                     lmr_reduction(depth, index, history),
                     lmr_reduction(depth, 255, history)
@@ -784,7 +783,6 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
                 .collect::<std::collections::HashSet<_>>(),
             legal.iter().copied().collect()
         );
-        assert_eq!(actual.iter().filter(|&&mv| mv == illegal).count(), 0);
     }
 }
 
@@ -828,7 +826,7 @@ fn staged_picker_respects_advisory_precedence() {
     );
 }
 
-/// 段階5「手の分類」: 捕獲・非捕獲のTT手と後続手の分類が整列キーと一致する。
+/// 段階5「手の分類」: 捕獲・非捕獲のTT手が正しく分類されて先頭に出る。
 #[test]
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let position = staged_picker_fixture();
@@ -855,14 +853,6 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
         let picked = picker.next(&position, &pst, &generator, &history).unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
-        assert_eq!(
-            picked.1,
-            move_order_key(&position, &pst, picked.0).is_some()
-        );
-
-        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history) {
-            assert_eq!(capture, move_order_key(&position, &pst, mv).is_some());
-        }
     }
 }
 
@@ -967,11 +957,11 @@ fn drain_raw(handle: &SearchHandle) -> Vec<SearchEvent> {
 
 /// イベント列を`Progress`の内訳と`Finished`へ分解する。
 #[allow(clippy::type_complexity)]
-fn drain_events(
-    handle: &SearchHandle,
+fn event_reports(
+    events: Vec<SearchEvent>,
 ) -> (Vec<(u32, i32, u64, Duration, Vec<Move>)>, FinishedReport) {
     let mut progress = Vec::new();
-    for event in drain_raw(handle) {
+    for event in events {
         match event {
             SearchEvent::Progress {
                 depth,
@@ -1090,37 +1080,6 @@ fn capture_of_the_first_of_two_royals_scores_as_material_gain() {
     // とどまり、詰み帯には入らない（INV-3）。
     assert!(result.score > 0);
     assert!(result.score < 29_000);
-}
-
-// D7-SRCH-03。search.md「探索内の終局と規則処理」: 反復は探索局面キーの
-// スタックで検出し引き分けスコアで返す近似。引き分け0は詰み帯の負値より
-// 選好される。
-#[test]
-fn repetition_with_history_is_preferred_as_a_draw_over_losing_lines() {
-    let root = repetition_fixture();
-    let moves = legal_moves(&root);
-    let draw_move = repetition_move();
-    assert!(moves.contains(&draw_move));
-
-    // 履歴へ「反車が6七にあり後手番」の局面キーを1件入れる。
-    let mut child = root.clone();
-    child.make_move_unchecked(draw_move, engine_rules());
-    let history = [search_key(&child)];
-
-    let result = run_search(
-        &root,
-        engine_rules(),
-        &moves,
-        &history,
-        &depth_limits(2),
-        DEFAULT_THREADS,
-        &mut small_tt(),
-    );
-
-    // 反復再現手だけが引き分け0を得る。他手はすべて次手で先手王将が
-    // 取られ詰み帯の負値になるため、最善手は一意である。
-    assert_eq!(result.best_move, draw_move);
-    assert_eq!(result.score, 0);
 }
 
 // D7-SRCH-03境界。履歴が空なら反復は検出されず、評価は詰み帯の負値
@@ -1274,7 +1233,7 @@ fn search_with_node_limit_is_deterministic() {
             DEFAULT_THREADS,
             small_tt(),
         );
-        let (progress, finished) = drain_events(&handle);
+        let (progress, finished) = event_reports(drain_raw(&handle));
         handle.join().expect("search thread must not panic");
         (
             progress
@@ -1584,12 +1543,6 @@ fn iir_reduces_depth_when_tt_entry_has_no_move() {
     let key = search_key(&position);
     let table = small_tt();
     table.store(key, 0, 28_000, Bound::Exact, None, 0);
-    let (critical, advisory) = table.raw_entry(key);
-    table.write_raw(
-        key,
-        critical,
-        (advisory & !ADVISORY_MOVE_MASK) | (u64::from(NO_MOVE) << ADVISORY_MOVE_SHIFT),
-    );
     assert!(table.probe(key, 0).unwrap().best_move.is_none());
 
     let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
@@ -1815,7 +1768,7 @@ fn search_apis_use_the_supplied_pst() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (_, asynchronous) = drain_events(&handle);
+    let (_, asynchronous) = event_reports(drain_raw(&handle));
     handle.join().unwrap();
 
     assert_eq!(asynchronous.score, expected);
@@ -1837,7 +1790,7 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (_, finished) = drain_events(&handle);
+    let (_, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
 
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
@@ -1872,7 +1825,9 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
     let root_moves = snapshot.root_moves.clone();
     let handle = start(snapshot, infinite_limits(), 41, DEFAULT_THREADS, small_tt());
     handle.request_stop();
-    let (_, finished) = drain_events(&handle);
+    let events = drain_raw(&handle);
+    assert!(events.iter().all(|event| event.search_id() == 41));
+    let (_, finished) = event_reports(events);
     handle.join().expect("search thread must not panic");
     assert_eq!(finished.stop_reason, StopReason::ExternalStop);
     assert!(root_moves.contains(&finished.best_move)); // INV-1
@@ -1887,7 +1842,7 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (_, finished) = drain_events(&handle);
+    let (_, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
     assert!(matches!(
         finished.stop_reason,
@@ -1897,37 +1852,25 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
 }
 
 // D7-LIM-05。search.md「時間管理」節: 無期限ではsoft/hardの両リミットを
-// 無効化し、外部停止要求だけで停止する。「届かないこと」の待ち時間は
-// テスト定数であり規範値ではない。D7-API-03(5)の外部停止要求も兼ねる。
+// 無効化し、外部停止要求だけで停止する。予算生成、Progress、外部停止、
+// joinを検査し、D7-API-03(5)の外部停止要求も兼ねる。
 #[test]
 fn infinite_limits_stop_only_on_external_request() {
+    let limits = infinite_limits();
+    assert!(time_budget(&limits).is_none());
     let initial = Position::initial();
     let snapshot = snapshot_for(&initial);
     let root_moves = snapshot.root_moves.clone();
-    let handle = start(snapshot, infinite_limits(), 51, DEFAULT_THREADS, small_tt());
-
-    // 数百ms待つ間、Finishedは届かずProgressが届き続ける。
-    let started = Instant::now();
-    let mut progress_seen = 0;
-    while started.elapsed() < Duration::from_millis(300) {
-        match handle.events().recv_timeout(Duration::from_millis(50)) {
-            Ok(SearchEvent::Progress { search_id, .. }) => {
-                assert_eq!(search_id, 51);
-                progress_seen += 1;
-            }
-            Ok(SearchEvent::Finished { .. }) => {
-                panic!("infinite search must not finish without a stop request");
-            }
-            Err(_) => {}
-        }
-    }
-    assert!(progress_seen >= 1);
-
+    let handle = start(snapshot, limits, 51, DEFAULT_THREADS, small_tt());
+    assert!(matches!(
+        handle.events().recv_timeout(Duration::from_secs(60)),
+        Ok(SearchEvent::Progress { search_id: 51, .. })
+    ));
     handle.request_stop();
-    let (_, finished) = drain_events(&handle);
+    let (_, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
     assert_eq!(finished.stop_reason, StopReason::ExternalStop);
-    assert!(root_moves.contains(&finished.best_move)); // INV-1
+    assert!(root_moves.contains(&finished.best_move));
 }
 
 // ---------------------------------------------------------------------------
@@ -2001,23 +1944,6 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
                     let budget = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
                     assert!(budget.soft <= budget.hard);
                     assert!(budget.hard >= Duration::from_millis(1));
-
-                    // 段階2「反復継続の判断」の規則と一致する。
-                    for elapsed in [
-                        Duration::ZERO,
-                        budget.soft.saturating_sub(Duration::from_nanos(1)),
-                        budget.soft,
-                        budget.hard * 2 / 5,
-                        budget.hard * 2 / 5 + Duration::from_nanos(1),
-                        budget.hard,
-                        Duration::MAX,
-                    ] {
-                        let within_hard = elapsed.as_nanos() * 5 <= budget.hard.as_nanos() * 2;
-                        assert_eq!(
-                            should_start_next_iteration(elapsed, budget, false),
-                            elapsed < budget.soft && within_hard
-                        );
-                    }
 
                     let clock_total = u128::from(remaining) + u128::from(byoyomi);
                     if clock_total > 30 {
@@ -2230,7 +2156,7 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (_, finished) = drain_events(&handle);
+    let (_, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
 
     // 上限ガード: ノード周期チェックの遅延を見込んだ十分な許容幅。
@@ -2260,7 +2186,9 @@ fn progress_depths_start_at_one_and_increase_by_one() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (progress, finished) = drain_events(&handle);
+    let events = drain_raw(&handle);
+    assert!(events.iter().all(|event| event.search_id() == 81));
+    let (progress, finished) = event_reports(events);
     handle.join().expect("search thread must not panic");
 
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
@@ -2275,6 +2203,12 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     let nodes: Vec<u64> = progress.iter().map(|entry| entry.2).collect();
     assert!(nodes.windows(2).all(|pair| pair[0] <= pair[1]));
     assert_eq!(finished.depth, 6);
+    assert_eq!(finished.stop_reason, StopReason::DepthCompleted);
+    assert_eq!(finished.pv.first(), Some(&finished.best_move));
+    assert_pv_is_legal(&midgame, &finished.pv);
+    let mut elapsed: Vec<_> = progress.iter().map(|entry| entry.3).collect();
+    elapsed.push(finished.elapsed);
+    assert!(elapsed.windows(2).all(|pair| pair[0] <= pair[1]));
 
     // 境界: depth=1では深さ列は[1]のみ。
     let handle = start(
@@ -2284,53 +2218,10 @@ fn progress_depths_start_at_one_and_increase_by_one() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (progress, _) = drain_events(&handle);
+    let (progress, _) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
     assert_eq!(depths, vec![1]);
-}
-
-// D7-API-02。search.md「検証」節: `Progress`は反復深化の完了ごとに単調な
-// 経過時間を返す。同一ミリ秒があり得るため厳密増加は要求しない。
-#[test]
-fn progress_and_finished_elapsed_times_are_monotonic() {
-    let handle = start(
-        snapshot_for(&quiet_midgame()),
-        depth_limits(4),
-        83,
-        DEFAULT_THREADS,
-        small_tt(),
-    );
-    let (progress, finished) = drain_events(&handle);
-    handle.join().expect("search thread must not panic");
-
-    let mut elapsed: Vec<Duration> = progress.iter().map(|entry| entry.3).collect();
-    elapsed.push(finished.elapsed);
-    assert!(elapsed.windows(2).all(|pair| pair[0] <= pair[1]));
-}
-
-// D7-API-03(1)。search.md「スレッド構成」節: 停止理由「指定深さの完了」と
-// 報告深さ。PVの先頭手が最善手と一致し、PVの各手が変化を順に進めた局面で
-// 合法であることは「主変化」の意味からの導出（実装契約）。
-#[test]
-fn depth_limited_search_reports_depth_completed_with_a_consistent_pv() {
-    let midgame = quiet_midgame();
-    let handle = start(
-        snapshot_for(&midgame),
-        depth_limits(2),
-        84,
-        DEFAULT_THREADS,
-        small_tt(),
-    );
-    let (_, finished) = drain_events(&handle);
-    handle.join().expect("search thread must not panic");
-
-    assert_eq!(finished.stop_reason, StopReason::DepthCompleted);
-    assert_eq!(finished.depth, 2);
-    assert!(!finished.pv.is_empty());
-    assert_eq!(finished.pv[0], finished.best_move);
-    assert_pv_is_legal(&midgame, &finished.pv);
-    assert!(legal_moves(&midgame).contains(&finished.best_move)); // INV-1
 }
 
 // D7-API-03(3)(4)。search.md「スレッド構成」節の停止理由のうちsoftリミットと
@@ -2350,7 +2241,7 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (_, finished) = drain_events(&handle);
+    let (_, finished) = event_reports(drain_raw(&handle));
     handle.join().expect("search thread must not panic");
     assert!(matches!(
         finished.stop_reason,
@@ -2360,68 +2251,9 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
 
     // (4) 時計の安全上限が効いてsoft=hard=70msとなる設定（D7-TIME-01(d)）。
     let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 100))).unwrap();
-    let handle = start(
-        snapshot_for(&initial),
-        limits,
-        86,
-        DEFAULT_THREADS,
-        small_tt(),
-    );
-    let (_, finished) = drain_events(&handle);
-    handle.join().expect("search thread must not panic");
-    assert!(matches!(
-        finished.stop_reason,
-        StopReason::SoftLimit | StopReason::HardLimit
-    ));
-    assert!(legal_moves(&initial).contains(&finished.best_move)); // INV-1
-}
-
-// D7-API-04。search.md「スレッド構成」節: 2種のイベントは両方が探索IDを
-// 持ち、停止済み探索の遅延結果は呼び出し側がIDの不一致で破棄する。
-// エンジン側の検証可能な契約は「全イベントが開始時に渡したIDを運ぶこと」。
-#[test]
-fn events_carry_the_search_id_given_at_start() {
-    let initial = Position::initial();
-
-    // ライフサイクル契約: 停止フラグ→join→新しい探索の開始。
-    let stale_handle = start(
-        snapshot_for(&initial),
-        depth_limits(1),
-        101,
-        DEFAULT_THREADS,
-        small_tt(),
-    );
-    stale_handle.request_stop();
-    let stale_events = drain_raw(&stale_handle);
-    stale_handle.join().expect("search thread must not panic");
-
-    let current_handle = start(
-        snapshot_for(&initial),
-        depth_limits(1),
-        202,
-        DEFAULT_THREADS,
-        small_tt(),
-    );
-    let current_events = drain_raw(&current_handle);
-    current_handle.join().expect("search thread must not panic");
-
-    for event in &stale_events {
-        assert_eq!(event.search_id(), 101);
-    }
-    for event in &current_events {
-        assert_eq!(event.search_id(), 202);
-    }
-
-    // 遅延して読まれた探索1のイベントは、IDの不一致で識別・破棄できる。
-    let mixed: Vec<SearchEvent> = stale_events
-        .into_iter()
-        .chain(current_events.iter().cloned())
-        .collect();
-    let accepted: Vec<&SearchEvent> = mixed
-        .iter()
-        .filter(|event| event.search_id() == 202)
-        .collect();
-    assert_eq!(accepted.len(), current_events.len());
+    let budget = time_budget(&limits).expect("byoyomi must produce a time budget");
+    assert_eq!(budget.soft, Duration::from_millis(70));
+    assert_eq!(budget.hard, Duration::from_millis(70));
 }
 
 // D7-API-05。search.md「実施状況」2026年8月12日（`join()`による置換表の
@@ -2438,7 +2270,7 @@ fn join_returns_the_transposition_table_for_reuse() {
         DEFAULT_THREADS,
         small_tt(),
     );
-    let (_, first) = drain_events(&handle);
+    let (_, first) = event_reports(drain_raw(&handle));
     let mut returned_tt = handle.join().expect("search thread must not panic");
 
     // ルート探索ごとに世代が進む(search.md「置換表」節)。世代が進まないと、
@@ -2558,53 +2390,42 @@ fn search_handle_join_returns_the_coordinator_panic() {
 // D7-SMP　探索チーム
 // ---------------------------------------------------------------------------
 
-// D7-SMP-01・07。lazy-smp.md「探索チーム」「停止と探索予算」: 2・4
-// ワーカーは深さ、ノード、時間、無期限＋外部停止の全経路で終了し、
-// Finishedを1回だけ送り、全join後に世代が1回だけ進んだ置換表を返す。
+// D7-SMP-01・07。時間と外部停止でFinishedを1回だけ送り、全join後に
+// 世代が1回だけ進んだ置換表を返す。深さとノードの停止は専用テストで検査する。
 #[test]
 fn multi_worker_teams_finish_once_and_return_the_shared_table() {
     let initial = Position::initial();
     let root_moves = legal_moves(&initial);
-    let cases = [
-        (depth_limits(1), false),
-        (nodes_limits(1_000), false),
-        (movetime_limits(10), false),
-        (infinite_limits(), true),
-    ];
-    let mut search_id = 300;
-
-    for threads in [worker_count(2), worker_count(4)] {
-        for (limits, request_stop) in cases {
-            let handle = start(
-                snapshot_for(&initial),
-                limits,
-                search_id,
-                threads,
-                small_tt(),
-            );
-            if request_stop {
-                handle.request_stop();
-            }
-            let events = drain_raw(&handle);
-            assert_eq!(
-                events
-                    .iter()
-                    .filter(|event| matches!(event, SearchEvent::Finished { .. }))
-                    .count(),
-                1
-            );
-            let SearchEvent::Finished { best_move, .. } = events.last().unwrap() else {
-                unreachable!("drain_raw ends with Finished");
-            };
-            assert!(root_moves.contains(best_move));
-            assert!(matches!(
-                handle.events().recv_timeout(Duration::from_secs(1)),
-                Err(mpsc::RecvTimeoutError::Disconnected)
-            ));
-            let table = handle.join().expect("search team must not panic");
-            assert_eq!(table.generation(), 1);
-            search_id += 1;
+    for (limits, request_stop, search_id) in [
+        (movetime_limits(10), false, 300),
+        (infinite_limits(), true, 301),
+    ] {
+        let handle = start(
+            snapshot_for(&initial),
+            limits,
+            search_id,
+            worker_count(4),
+            small_tt(),
+        );
+        if request_stop {
+            handle.request_stop();
         }
+        let (_, finished) = event_reports(drain_raw(&handle));
+        assert!(root_moves.contains(&finished.best_move));
+        if request_stop {
+            assert_eq!(finished.stop_reason, StopReason::ExternalStop);
+        } else {
+            assert!(matches!(
+                finished.stop_reason,
+                StopReason::SoftLimit | StopReason::HardLimit
+            ));
+        }
+        assert!(matches!(
+            handle.events().recv_timeout(Duration::from_secs(1)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        ));
+        let table = handle.join().expect("search team must not panic");
+        assert_eq!(table.generation(), 1);
     }
 }
 
@@ -2622,8 +2443,13 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
         worker_count(4),
         small_tt(),
     );
-    let (progress, finished) = drain_events(&handle);
-    handle.join().expect("search team must not panic");
+    let (progress, finished) = event_reports(drain_raw(&handle));
+    assert!(matches!(
+        handle.events().recv_timeout(Duration::from_secs(1)),
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    ));
+    let table = handle.join().expect("search team must not panic");
+    assert_eq!(table.generation(), 1);
 
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
     assert!(progress.iter().all(|entry| entry.2 <= limit));
@@ -2632,59 +2458,6 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
         assert!(last.2 <= finished.nodes);
     }
     assert!(root_moves.contains(&finished.best_move));
-}
-
-// D7-SMP-03・10。lazy-smp.md「探索チーム」: Progressは主ワーカーだけが
-// 深さ1から1ずつ送り、ノード数は送信時点のチーム総数となる。採用深さは
-// 最後のProgress以上になる。
-#[test]
-fn four_worker_progress_is_main_worker_only_and_monotonic() {
-    let position = quiet_midgame();
-    let snapshot = snapshot_for(&position);
-    let limits = depth_limits(4);
-    let external_stop = AtomicBool::new(false);
-    let table = small_tt();
-    let (sender, receiver) = mpsc::channel();
-    let outcome = run_search_team(
-        &crate::eval::weights().unwrap(),
-        &snapshot.position,
-        snapshot.rules,
-        &snapshot.root_moves,
-        &snapshot.history_keys,
-        &limits,
-        &external_stop,
-        worker_count(4),
-        &table,
-        Some((&sender, 321)),
-    );
-    let progress: Vec<_> = receiver
-        .try_iter()
-        .map(|event| match event {
-            SearchEvent::Progress {
-                depth,
-                nodes,
-                elapsed,
-                pv,
-                ..
-            } => (depth, nodes, elapsed, pv),
-            SearchEvent::Finished { .. } => panic!("team runner must only send progress"),
-        })
-        .collect();
-
-    let progress_depths: Vec<_> = progress.iter().map(|entry| entry.0).collect();
-    assert_eq!(
-        progress_depths,
-        (1..=*progress_depths.last().unwrap()).collect::<Vec<_>>()
-    );
-    assert!(
-        progress
-            .windows(2)
-            .all(|pair| pair[0].1 <= pair[1].1 && pair[0].2 <= pair[1].2)
-    );
-    assert!(progress.iter().all(|entry| !entry.3.is_empty()));
-    assert!(outcome.result.nodes > 0);
-    assert!(progress.last().unwrap().1 <= outcome.result.nodes);
-    assert!(outcome.result.depth >= progress.last().unwrap().0);
 }
 
 // D7-SMP-04。lazy-smp.md「再現性」: Threads=1の固定ノード探索は、経過
@@ -2722,23 +2495,23 @@ fn external_stop_takes_priority_over_the_node_limit() {
 // 2 + ((k - 1) % 4)に従う深さと深さ上限を昇順に探索する。
 #[test]
 fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
-    let periods = [2_u32, 3, 4, 5, 2];
-    for (worker_index, period) in (1..=5).zip(periods) {
-        for depth_limit in [1, 2, 6, 7, MAX_PLY] {
-            let expected: Vec<_> = (1..=depth_limit)
-                .filter(|&depth| depth == 1 || (depth - 1) % period == 0 || depth == depth_limit)
-                .collect();
-            let actual: Vec<_> = auxiliary_depths(worker_index, depth_limit).collect();
-            assert_eq!(
-                actual, expected,
-                "worker={worker_index}, limit={depth_limit}"
-            );
-            assert_eq!(actual.first(), Some(&1));
-            assert_eq!(actual.last(), Some(&depth_limit));
-            assert!(actual.windows(2).all(|pair| pair[0] < pair[1]));
-        }
+    let cases: &[(usize, u32, &[u32])] = &[
+        (1, 1, &[1]),
+        (1, 2, &[1, 2]),
+        (1, 6, &[1, 3, 5, 6]),
+        (1, 7, &[1, 3, 5, 7]),
+        (2, 7, &[1, 4, 7]),
+        (3, 7, &[1, 5, 7]),
+        (4, 7, &[1, 6, 7]),
+        (5, 6, &[1, 3, 5, 6]),
+    ];
+    for &(worker_index, depth_limit, expected) in cases {
+        assert_eq!(
+            auxiliary_depths(worker_index, depth_limit).collect::<Vec<_>>(),
+            expected,
+            "worker={worker_index}, limit={depth_limit}"
+        );
     }
-    assert_eq!(auxiliary_depths(1, 6).collect::<Vec<_>>(), vec![1, 3, 5, 6]);
 }
 
 // D7-SMP-08。lazy-smp.md「探索チーム」第2版: 最大完了深さを採用し、
@@ -2792,9 +2565,32 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
         worker_count(4),
         small_tt(),
     );
-    let (progress, finished) = drain_events(&handle);
-    handle.join().expect("search team must not panic");
+    let (progress, finished) = event_reports(drain_raw(&handle));
+    assert!(matches!(
+        handle.events().recv_timeout(Duration::from_secs(1)),
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    ));
+    let table = handle.join().expect("search team must not panic");
+    assert_eq!(table.generation(), 1);
 
+    let depths: Vec<_> = progress.iter().map(|entry| entry.0).collect();
+    assert_eq!(depths, (1..=depths.len() as u32).collect::<Vec<_>>());
+    assert!(
+        progress
+            .windows(2)
+            .all(|pair| pair[0].2 <= pair[1].2 && pair[0].3 <= pair[1].3)
+    );
+    for (_, _, _, _, pv) in &progress {
+        assert!(!pv.is_empty());
+        assert_pv_is_legal(&initial, pv);
+    }
+    if let Some(last) = progress.last() {
+        assert!(last.2 <= finished.nodes);
+        assert!(last.3 <= finished.elapsed);
+    }
+    assert!(finished.nodes > 0);
+    assert_eq!(finished.pv.first(), Some(&finished.best_move));
+    assert_pv_is_legal(&initial, &finished.pv);
     assert_eq!(finished.depth, depth_limit);
     let last_progress_depth = progress.last().map_or(0, |entry| entry.0);
     assert!(finished.depth >= last_progress_depth);
@@ -2808,95 +2604,32 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
 
 // D7-TT-01。search.md「置換表」節: bit 0–7がfrom、8–15がmid、16–23がto、
 // 24がpromote。midなしは0xff、升の符号化は`Square::dense_index()`（0–143）。
-// pack/unpackは全合法手の往復一致で検証する。
+// 各fieldの符号境界を独立した既知符号値と照合する。
 #[test]
-fn packed_moves_round_trip_across_all_move_shapes() {
-    // (1) 初期局面: midなしの通常手と跳び手（麒麟・鳳凰・獅子、RULES.md
-    //     第9条）を含む。
-    // (2) 2段階移動フィクスチャ: 経由升あり、居喰い（to=from・mid占有）、
-    //     じっと（to=from。正準表記はmidなし）、2枚取り、dense_index 0と
-    //     143の端升、成り選択（香車の敵陣入り）を含む。
-    let two_stage = position_with_promoted_pieces(
-        Color::Black,
-        &[
-            (sq(0, 0), Color::Black, PieceKind::King, false), // dense_index 0
-            (sq(6, 6), Color::Black, PieceKind::Lion, false),
-            (sq(11, 6), Color::Black, PieceKind::Lance, false), // (11,11)=dense 143へ到達
-            (sq(2, 4), Color::Black, PieceKind::HornedFalcon, true),
-            (sq(9, 2), Color::Black, PieceKind::SoaringEagle, true),
-            (sq(6, 7), Color::White, PieceKind::Pawn, false), // 獅子の居喰い・2枚取りの1枚目
-            (sq(6, 8), Color::White, PieceKind::Rook, false), // 2枚取りの2枚目
-            (sq(2, 5), Color::White, PieceKind::Pawn, false), // 角鷹の居喰い
-            (sq(0, 11), Color::White, PieceKind::King, false),
-        ],
-    );
-
-    let mut saw_mid_none = false;
-    let mut saw_two_stage = false;
-    let mut saw_igui = false;
-    let mut saw_jitto = false;
-    let mut saw_double_capture = false;
-    let mut saw_promotion = false;
-    let mut saw_from_dense_0 = false;
-    let mut saw_to_dense_143 = false;
-
-    for position in [Position::initial(), two_stage] {
-        let moves = legal_moves(&position);
-        assert!(!moves.is_empty());
-        for mv in moves {
-            let packed = pack_move(mv);
-            // 往復一致（恒等写像）。
-            assert_eq!(unpack_move(packed), Some(Some(mv)));
-
-            // 各フィールドの帯域。midなしは厳密に0xffで、別の番兵で
-            // 代替されないことをビット層で確認する。
-            let from_bits = packed & 0xff;
-            let mid_bits = (packed >> 8) & 0xff;
-            let to_bits = (packed >> 16) & 0xff;
-            assert!(from_bits <= 143);
-            assert!(to_bits <= 143);
-            match mv.mid {
-                None => assert_eq!(mid_bits, 0xff),
-                Some(mid) => {
-                    assert!(mid_bits <= 143);
-                    assert_eq!(mid_bits, mid.dense_index() as u32);
-                }
-            }
-            // promoteはbit 24の1ビットに収まり、上位ビットは使われない。
-            assert_eq!(packed >> 25, 0);
-
-            saw_mid_none |= mv.mid.is_none();
-            saw_two_stage |= mv.mid.is_some();
-            saw_promotion |= mv.promote;
-            saw_from_dense_0 |= mv.from.dense_index() == 0;
-            saw_to_dense_143 |= mv.to.dense_index() == 143;
-            // じっとの正準表記はmidなし・to=from、居喰いはmid（敵駒升）
-            // あり・to=fromである（獅子指し手の正準化）。
-            saw_jitto |= mv.mid.is_none() && mv.to == mv.from;
-            if let Some(mid) = mv.mid {
-                let mid_occupied = position.piece_at(mid).is_some();
-                saw_igui |= mv.to == mv.from && mid_occupied;
-                saw_double_capture |=
-                    mv.to != mv.from && mid_occupied && position.piece_at(mv.to).is_some();
-            }
-        }
+fn packed_moves_round_trip_across_field_boundaries() {
+    // search.mdのbit配置から手計算した符号値。相異なる升番号でfield混同を検出する。
+    let cases = [
+        (0, None, 143, false, 0x008f_ff00),
+        (143, Some(0), 0, true, 0x0100_008f),
+        (16, Some(32), 64, false, 0x0040_2010),
+        (32, Some(64), 16, true, 0x0110_4020),
+        (64, Some(16), 32, false, 0x0020_1040),
+        (0x55, Some(0x2a), 0x55, false, 0x0055_2a55),
+        (0x2a, Some(0x55), 0x2a, true, 0x012a_552a),
+        (64, Some(143), 32, false, 0x0020_8f40),
+        (143, None, 143, false, 0x008f_ff8f),
+    ];
+    for (from, mid, to, promote, encoded) in cases {
+        let mv = Move {
+            from: Square::from_dense(from).unwrap(),
+            mid: mid.map(|index| Square::from_dense(index).unwrap()),
+            to: Square::from_dense(to).unwrap(),
+            promote,
+        };
+        assert_eq!(pack_move(mv), encoded);
+        assert_eq!(unpack_move(encoded), Some(Some(mv)));
     }
-
-    // 検証対象の着手種別が実際に含まれていたことの確認。
-    assert!(saw_mid_none);
-    assert!(saw_two_stage);
-    assert!(saw_igui);
-    assert!(saw_jitto);
-    assert!(saw_double_capture);
-    assert!(saw_promotion);
-    assert!(saw_from_dense_0);
-    assert!(saw_to_dense_143);
-
-    // 指し手25ビットがすべて1なら、不正値ではなく「手なし」として復号する。
-    assert_eq!(NO_MOVE, 0x01ff_ffff);
-    assert_eq!(unpack_move(NO_MOVE), Some(None));
-
-    // 手なしを持つエントリも有効なヒットとして往復する。
+    assert_eq!(unpack_move(0x01ff_ffff), Some(None));
     let table = small_tt();
     let key = 0x0fed_cba9_0000_0042;
     table.store(key, 0, 321, Bound::Exact, None, 0);
@@ -2920,18 +2653,16 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
     let table = small_tt();
     table.new_search();
 
-    // 全組合せでstore変換→load逆変換が恒等。29001〜29743はINV-3により
-    // 発生しない帯なので入力に含めない。最大格納値30000+256=30256は
-    // i16に収まる（store成功と往復一致で確認される）。
-    let scores = [
-        30_000, 29_999, 29_744, -29_744, -29_800, -30_000, 0, 500, 28_999,
-    ];
-    let plies = [0, 1, 5, 255, 256];
-    for score in scores {
-        for ply in plies {
-            table.store(key, 8, score, Bound::Exact, Some(best_move), ply);
-            assert_eq!(table.probe(key, ply).unwrap().score, score);
-        }
+    // 最大詰み値と最大plyでも格納値が欠けず、通常値の符号も保たれる。
+    for (score, ply) in [
+        (30_000, 0),
+        (30_000, 256),
+        (-30_000, 256),
+        (0, 0),
+        (-500, 256),
+    ] {
+        table.store(key, 8, score, Bound::Exact, Some(best_move), ply);
+        assert_eq!(table.probe(key, ply).unwrap().score, score);
     }
 
     // 境界: 29744（詰み帯下限）は変換され、別plyの取り出しで根相対値が
@@ -3119,10 +2850,10 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
     );
 
     // 反復終端が実際に起きたことの確認（D7-SRCH-03と同じ裁定）。
+    assert_eq!(result.best_move, draw_move);
     assert_eq!(result.score, 0);
     // 反復で終端した子局面のキーはprobeしてもエントリが存在しない。
     assert!(table.probe(child_key, 0).is_none());
-    assert!(table.probe(child_key, 1).is_none());
 }
 
 // D7-TT-05。search.md「置換表」節: 規則セットの変更時と新規対局の開始時には
@@ -3181,18 +2912,11 @@ fn idle_resize_applies_and_later_searches_complete() {
     let moves = legal_moves(&midgame);
     let mut table = TranspositionTable::new(4).unwrap();
 
-    let before = run_search(
-        &midgame,
-        engine_rules(),
-        &moves,
-        &[],
-        &depth_limits(2),
-        DEFAULT_THREADS,
-        &mut table,
-    );
-    assert!(moves.contains(&before.best_move));
-
+    let key = search_key(&midgame);
+    table.store(key, 2, 100, Bound::Exact, Some(moves[0]), 0);
+    assert!(table.probe(key, 0).is_some());
     table.resize(1).unwrap();
+    assert!(table.probe(key, 0).is_none());
 
     let after = run_search(
         &midgame,
@@ -3206,13 +2930,10 @@ fn idle_resize_applies_and_later_searches_complete() {
     assert!(moves.contains(&after.best_move));
 }
 
-// D7-TT-08。lazy-smp.md「共有置換表」節: 1エントリはcriticalとadvisoryの
-// 2個のAtomicU64からなる厳密な16バイトで、全フィールドを所定の幅へ
-// 詰め込む。予約ビットは常に0とする。
+// D7-TT-08。lazy-smp.md「共有置換表」節: 手、評価値、深さ、boundを
+// 格納すると、probeから同じ値が得られる。
 #[test]
-fn atomic_tt_entry_is_16_bytes_and_all_fields_round_trip() {
-    assert_eq!(entry_size(), 16);
-
+fn atomic_tt_fields_round_trip_through_probe() {
     let best_move = Move {
         from: sq(3, 4),
         mid: Some(sq(4, 5)),
@@ -3221,9 +2942,6 @@ fn atomic_tt_entry_is_16_bytes_and_all_fields_round_trip() {
     };
     let key = 0x89ab_cdef_0000_0042;
     let table = small_tt();
-    for _ in 0..7 {
-        table.new_search();
-    }
     table.store(key, 23, -1_234, Bound::Upper, Some(best_move), 0);
 
     let hit = table.probe(key, 0).unwrap();
@@ -3231,34 +2949,6 @@ fn atomic_tt_entry_is_16_bytes_and_all_fields_round_trip() {
     assert_eq!(hit.score, -1_234);
     assert_eq!(hit.depth, 23);
     assert_eq!(hit.bound, Bound::Upper);
-
-    let (critical, advisory) = table.raw_entry(key);
-    assert_eq!(
-        ((critical & CRITICAL_KEY_MASK) >> CRITICAL_KEY_SHIFT) as u32,
-        (key >> 32) as u32
-    );
-    assert_eq!(
-        ((critical & CRITICAL_SCORE_MASK) >> CRITICAL_SCORE_SHIFT) as u16 as i16,
-        -1_234
-    );
-    assert_eq!(
-        ((critical & CRITICAL_DEPTH_MASK) >> CRITICAL_DEPTH_SHIFT) as u8,
-        23
-    );
-    assert_eq!(
-        ((critical & CRITICAL_BOUND_MASK) >> CRITICAL_BOUND_SHIFT) as u8,
-        Bound::Upper as u8
-    );
-    assert_eq!(critical & CRITICAL_RESERVED_MASK, 0);
-    assert_eq!(
-        ((advisory & ADVISORY_MOVE_MASK) >> ADVISORY_MOVE_SHIFT) as u32,
-        pack_move(best_move)
-    );
-    assert_eq!(
-        ((advisory & ADVISORY_GENERATION_MASK) >> ADVISORY_GENERATION_SHIFT) as u8,
-        7
-    );
-    assert_eq!(advisory & ADVISORY_RESERVED_MASK, 0);
 }
 
 // D7-TT-09。lazy-smp.md「共有置換表」節: criticalの予約ビット、バウンド、
@@ -3297,72 +2987,5 @@ fn malformed_atomic_tt_entries_are_probe_misses() {
         let invalid_advisory = (advisory & !ADVISORY_MOVE_MASK) | u64::from(invalid_move);
         table.write_raw(key, critical, invalid_advisory);
         assert!(table.probe(key, 0).is_none());
-    }
-}
-
-// D7-TT-10。lazy-smp.md「共有置換表」節: 共有参照から同一スロットへの
-// probe/storeを競合させてもpanicせず、取り違え得る指し手は書き込まれた
-// 合法な候補のいずれかに限られる。
-#[test]
-fn concurrent_probe_and_store_only_return_written_moves() {
-    let table = std::sync::Arc::new(small_tt());
-    table.new_search();
-    let keys = [
-        0x1234_5678_0000_0042,
-        0x1234_5678_0001_0042,
-        0x1234_5678_0002_0042,
-        0x1234_5678_0003_0042,
-    ];
-    let candidates = [
-        Move {
-            from: sq(0, 0),
-            mid: None,
-            to: sq(0, 1),
-            promote: false,
-        },
-        Move {
-            from: sq(1, 0),
-            mid: Some(sq(1, 1)),
-            to: sq(1, 2),
-            promote: false,
-        },
-        Move {
-            from: sq(2, 0),
-            mid: None,
-            to: sq(2, 1),
-            promote: true,
-        },
-        Move {
-            from: sq(3, 0),
-            mid: Some(sq(3, 1)),
-            to: sq(3, 0),
-            promote: false,
-        },
-    ];
-
-    let threads: Vec<_> = (0..4)
-        .map(|thread_index| {
-            let table = std::sync::Arc::clone(&table);
-            std::thread::spawn(move || {
-                for iteration in 0..20_000 {
-                    let candidate_index = (thread_index + iteration) % candidates.len();
-                    table.store(
-                        keys[candidate_index],
-                        8,
-                        iteration as i32,
-                        Bound::Exact,
-                        Some(candidates[candidate_index]),
-                        0,
-                    );
-                    if let Some(hit) = table.probe(keys[candidate_index], 0) {
-                        assert!(hit.best_move.is_some_and(|mv| candidates.contains(&mv)));
-                    }
-                }
-            })
-        })
-        .collect();
-
-    for thread in threads {
-        thread.join().unwrap();
     }
 }

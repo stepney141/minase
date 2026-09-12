@@ -103,12 +103,6 @@ impl Entry {
 
 const _: () = assert!(size_of::<Entry>() == 16);
 
-/// テスト用にエントリ型のバイト数を返す。
-#[cfg(test)]
-pub(super) const fn entry_size() -> usize {
-    size_of::<Entry>()
-}
-
 /// `critical`から取り出した探索値。
 struct CriticalFields {
     /// 局面キーの上位32ビットによる照合キー。

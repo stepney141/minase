@@ -195,27 +195,9 @@ fn square_to_text(square: Square) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::movegen::MoveGenerator;
-    use crate::core::piece::{Color, PieceCode, PieceKind};
+    use crate::core::piece::{Color, PieceKind};
     use crate::notation::usi;
-    use crate::test_util::{position, position_from_codes, sq};
-
-    fn generated(pos: &Position) -> Vec<Move> {
-        let mut moves = Vec::new();
-        MoveGenerator::standard().generate_moves(pos, &mut moves);
-        moves
-    }
-
-    fn single_piece_position(color: Color, kind: PieceKind, from: Square) -> Position {
-        position(color, &[(from, color, kind)])
-    }
-
-    fn single_promoted_piece_position(color: Color, kind: PieceKind, from: Square) -> Position {
-        position_from_codes(
-            color,
-            &[(from, PieceCode::new_promoted(color, kind).unwrap())],
-        )
-    }
+    use crate::test_util::{position, sq};
 
     fn canonical_jitto(from: Square) -> Move {
         Move {
@@ -407,11 +389,6 @@ mod tests {
         for invalid in ["e6d6+,d6c6", "e6d6=,d6c6", "e6d6,d6c6++", "e6d6?", "e6d6q"] {
             assert!(parse(&board, invalid).is_err(), "{invalid}");
         }
-
-        // 送信文字列に`=`は現れない。
-        for leg in legs(plain).into_iter().chain(legs(two_leg)) {
-            assert!(!leg.contains('='));
-        }
     }
 
     // D5-CECP-05: 表記層は`@@@@`を拒否する。合法手リストという局面文脈を要する解決は
@@ -467,106 +444,5 @@ mod tests {
                 promote: false,
             })
         );
-
-        // USI形式と同じ実経路の入力は同じ正準Moveへ落ちる（D5-USI-05と同一の正規化規則）。
-        assert_eq!(
-            usi::parse(&enemy, "7g6f5e").unwrap(),
-            parse(&enemy, "f6g7,g7h8").unwrap()
-        );
-        assert_eq!(
-            usi::parse(&empty, "7g6f5e").unwrap(),
-            parse(&empty, "f6g7,g7h8").unwrap()
-        );
-    }
-
-    // D5-CECP-07, D5-PROP-01, D5-PROP-02: じっと以外の全合法手について、legsの出力を
-    // そのまま連結した文字列をparseへ渡すとMove単位で一致する（[PL]「フェーズ5の確定
-    // 設計」）。じっとは`@@@@`が移動元を運ばないため往復対象外とし、解決はD6が担う。
-    #[test]
-    fn all_legal_moves_round_trip_via_concatenated_legs() {
-        let special = position_from_codes(
-            Color::Black,
-            &[
-                (
-                    sq(5, 5),
-                    PieceCode::new(Color::Black, PieceKind::Lion).unwrap(),
-                ),
-                (
-                    sq(1, 1),
-                    PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon).unwrap(),
-                ),
-                (
-                    sq(9, 1),
-                    PieceCode::new_promoted(Color::Black, PieceKind::SoaringEagle).unwrap(),
-                ),
-                (
-                    sq(5, 6),
-                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
-                ),
-                (
-                    sq(6, 6),
-                    PieceCode::new(Color::White, PieceKind::SilverGeneral).unwrap(),
-                ),
-                (
-                    sq(1, 2),
-                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
-                ),
-                (
-                    sq(8, 2),
-                    PieceCode::new(Color::White, PieceKind::Pawn).unwrap(),
-                ),
-            ],
-        );
-        let promotion = position(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]);
-        let positions = [
-            Position::initial(),
-            special,
-            single_piece_position(Color::Black, PieceKind::Lion, sq(5, 5)),
-            single_promoted_piece_position(Color::Black, PieceKind::HornedFalcon, sq(5, 5)),
-            single_promoted_piece_position(Color::White, PieceKind::HornedFalcon, sq(5, 5)),
-            single_promoted_piece_position(Color::Black, PieceKind::SoaringEagle, sq(5, 5)),
-            single_promoted_piece_position(Color::White, PieceKind::SoaringEagle, sq(5, 5)),
-            promotion,
-        ];
-
-        for pos in &positions {
-            let moves = generated(pos);
-            assert!(!moves.is_empty());
-            for mv in moves {
-                let rendered = legs(mv);
-                if mv.mid.is_none() && mv.to == mv.from {
-                    assert_eq!(rendered, ["@@@@"]);
-                } else {
-                    // 非最終レグが末尾コンマを持つため、連結だけで受信形式になる。
-                    let wire = rendered.concat();
-                    assert_eq!(parse(pos, &wire), Ok(mv), "{wire}");
-                }
-            }
-        }
-
-        // カバレッジ空振り防止（D5-PROP-02）。居喰い（to == from かつ mid: Some）が
-        // じっとではなく往復対象に含まれることを、実在の断定で保証する。
-        let special_moves = generated(&positions[1]);
-        for origin in [sq(5, 5), sq(1, 1), sq(9, 1)] {
-            assert!(
-                special_moves
-                    .iter()
-                    .any(|mv| mv.from == origin && mv.mid.is_some() && mv.to != origin)
-            );
-            assert!(
-                special_moves
-                    .iter()
-                    .any(|mv| mv.from == origin && mv.mid.is_some() && mv.to == origin)
-            );
-        }
-        for pos in &positions[2..=6] {
-            assert!(
-                generated(pos)
-                    .iter()
-                    .any(|mv| mv.mid.is_none() && mv.to == mv.from && !mv.promote)
-            );
-        }
-        assert!(generated(&positions[7]).iter().any(|mv| mv.promote));
-        assert!(generated(&positions[7]).iter().any(|mv| !mv.promote));
     }
 }

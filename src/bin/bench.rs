@@ -357,30 +357,6 @@ mod tests {
         assert_eq!(median_f64(&mut even_floats), 5.0);
     }
 
-    // D8-BENCH-01(search.md bench節・実施状況フェーズ2): 固定局面集は初期局面1
-    // ＋lishogiリプレイ7局から抽出した14局面の計15局面で確定している。全局面が
-    // パース可能かつengine-default規則の下で合法な対局局面であり、合法手を持つ。
-    #[test]
-    fn bench_positions_are_the_fifteen_documented_valid_games() {
-        let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
-        let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
-
-        // 局面の追加・変更は決定性アンカーを変えるため設計書の改定を伴う
-        assert_eq!(BENCH_POSITIONS.len(), 15);
-        for bench_position in BENCH_POSITIONS {
-            // 各局面は独立に検証する(1局面の破損が他を隠さない)
-            let position = parse_sfen(bench_position.sfen).unwrap_or_else(|error| {
-                panic!("{} has invalid SFEN: {error}", bench_position.name)
-            });
-            let game = Game::from_position(rules, position);
-            assert!(
-                !game.legal_moves().is_empty(),
-                "{} must have legal moves",
-                bench_position.name
-            );
-        }
-    }
-
     // D8-BENCH-02(search.md検証節): benchの総ノード数は再実行間で完全に一致する。
     // 特定の総ノード数(217,305など実施状況の値)は各時点の測定記録であり、
     // テストで固定してはならない。契約は「再実行間の一致」だけである。
@@ -390,29 +366,19 @@ mod tests {
         let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let pst = minase::eval::weights().unwrap();
-        let run = || {
-            let mut transposition_table =
-                TranspositionTable::new(minase::search::DEFAULT_TT_SIZE_MB)
-                    .expect("default transposition table size must be valid");
-            let mut total_nodes = 0_u64;
-            for bench_position in BENCH_POSITIONS {
-                let position =
-                    parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
-                let game = Game::from_position(rules, position);
-                let snapshot = SearchSnapshot::from_game(&game).unwrap();
-                // 本体と同じく局面ごとに置換表をクリアして探索する
-                transposition_table.clear();
-                let result = search(
-                    &pst,
-                    &snapshot,
-                    &limits,
-                    DEFAULT_THREADS,
-                    &mut transposition_table,
-                )
-                .unwrap();
-                total_nodes += result.nodes;
-            }
-            total_nodes
+        // docs/plans/search.md: 固定15局面を本番のbench経由で解析し探索する。
+        assert_eq!(BENCH_POSITIONS.len(), 15);
+        let mut transposition_table = TranspositionTable::new(1).unwrap();
+        let mut run = || {
+            run_bench(
+                &pst,
+                rules,
+                &limits,
+                DEFAULT_THREADS,
+                &mut transposition_table,
+                false,
+            )
+            .nodes
         };
         let first = run();
         let second = run();

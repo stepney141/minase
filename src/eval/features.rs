@@ -96,40 +96,56 @@ mod tests {
     /// 駒コードの全定義域が47状態へ仕様どおり写ることを検査する。
     #[test]
     fn every_piece_code_maps_to_the_specified_state() {
+        // evaluation.md「入力特徴」の交換形式を固定する。右2列は未成コードと成駒コードの状態番号。
+        let states = [
+            (PieceKind::Pawn, Some(29), None),
+            (PieceKind::GoBetween, Some(30), None),
+            (PieceKind::Lance, Some(31), None),
+            (PieceKind::ReverseChariot, Some(32), None),
+            (PieceKind::SideMover, Some(33), Some(4)),
+            (PieceKind::VerticalMover, Some(34), Some(5)),
+            (PieceKind::Bishop, Some(35), Some(6)),
+            (PieceKind::Rook, Some(36), Some(7)),
+            (PieceKind::DragonHorse, Some(37), Some(8)),
+            (PieceKind::DragonKing, Some(38), Some(9)),
+            (PieceKind::FreeKing, Some(10), Some(10)),
+            (PieceKind::King, Some(11), None),
+            (PieceKind::DrunkElephant, Some(39), Some(12)),
+            (PieceKind::FerociousLeopard, Some(40), None),
+            (PieceKind::BlindTiger, Some(41), None),
+            (PieceKind::CopperGeneral, Some(42), None),
+            (PieceKind::SilverGeneral, Some(43), None),
+            (PieceKind::GoldGeneral, Some(44), Some(17)),
+            (PieceKind::Kirin, Some(45), None),
+            (PieceKind::Phoenix, Some(46), None),
+            (PieceKind::Lion, Some(20), Some(20)),
+            (PieceKind::CrownPrince, None, Some(21)),
+            (PieceKind::WhiteHorse, None, Some(22)),
+            (PieceKind::Whale, None, Some(23)),
+            (PieceKind::FlyingOx, None, Some(24)),
+            (PieceKind::FreeBoar, None, Some(25)),
+            (PieceKind::FlyingStag, None, Some(26)),
+            (PieceKind::HornedFalcon, None, Some(27)),
+            (PieceKind::SoaringEagle, None, Some(28)),
+        ];
         for color in Color::ALL {
-            for kind in PieceKind::ALL {
-                if let Some(piece) = PieceCode::new(color, kind) {
-                    let expected = if kind.can_promote() {
-                        29 + PieceKind::ALL[..kind.index()]
-                            .iter()
-                            .filter(|kind| kind.can_promote())
-                            .count()
-                    } else {
-                        kind.index()
-                    };
-                    assert_eq!(piece_state(piece), expected);
-                    assert!(piece_state(piece) < PIECE_STATE_COUNT);
+            for (kind, unpromoted, promoted) in states {
+                if let Some(expected) = unpromoted {
+                    assert_eq!(piece_state(PieceCode::new(color, kind).unwrap()), expected);
                 }
-
-                if let Some(piece) = PieceCode::new_promoted(color, kind) {
-                    assert_eq!(piece_state(piece), kind.index());
-                    assert!(piece_state(piece) < PIECE_STATE_COUNT);
+                if let Some(expected) = promoted {
+                    assert_eq!(
+                        piece_state(PieceCode::new_promoted(color, kind).unwrap()),
+                        expected
+                    );
                 }
             }
         }
-
-        let lion = PieceCode::new(Color::Black, PieceKind::Lion).unwrap();
-        let promoted_kirin = PieceCode::new_promoted(Color::Black, PieceKind::Lion).unwrap();
-        assert_eq!(piece_state(lion), piece_state(promoted_kirin));
-        let gold = PieceCode::new(Color::Black, PieceKind::GoldGeneral).unwrap();
-        let promoted_pawn = PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap();
-        assert_ne!(piece_state(gold), piece_state(promoted_pawn));
     }
 
     /// 段反転と陣営交換が後手視点を先手視点へ写すことを検査する。
     #[test]
     fn white_features_match_rank_reflection_with_colors_swapped() {
-        let mut positions = vec![Position::initial()];
         let promoted_gold = PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap();
         let promoted_lion = PieceCode::new_promoted(Color::White, PieceKind::Lion).unwrap();
         let fixture = position_from_codes(
@@ -143,9 +159,8 @@ mod tests {
                 ),
             ],
         );
-        positions.push(fixture);
 
-        for mut position in positions {
+        for (mut position, expected_count) in [(Position::initial(), 92), (fixture, 4)] {
             if position.side_to_move() == Color::Black {
                 let pieces: Vec<_> = Square::all()
                     .filter_map(|square| position.piece_at(square).map(|piece| (square, piece)))
@@ -156,6 +171,7 @@ mod tests {
             }
             let mut white_features = Vec::new();
             active_features(&position, |feature| white_features.push(feature));
+            assert_eq!(white_features.len(), expected_count);
             white_features.sort_unstable();
 
             let reflected_pieces: Vec<_> = Square::all()
@@ -181,26 +197,5 @@ mod tests {
             black_features.sort_unstable();
             assert_eq!(white_features, black_features);
         }
-    }
-
-    /// 盤上の駒数と先獅子状態が有効特徴数へそのまま反映されることを検査する。
-    #[test]
-    fn active_feature_count_matches_pieces_and_optional_lion_square() {
-        let initial = Position::initial();
-        let mut features = Vec::new();
-        active_features(&initial, |feature| features.push(feature));
-        assert_eq!(features.len(), 92);
-
-        let mut with_lion = position_from_codes(
-            Color::Black,
-            &[(
-                sq(5, 0),
-                PieceCode::new(Color::Black, PieceKind::King).unwrap(),
-            )],
-        );
-        with_lion.set_lion_capture(Some(sq(4, 4))).unwrap();
-        let mut features = Vec::new();
-        active_features(&with_lion, |feature| features.push(feature));
-        assert_eq!(features.len(), 2);
     }
 }

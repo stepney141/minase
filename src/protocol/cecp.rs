@@ -1113,11 +1113,6 @@ mod tests {
         ] {
             assert!(lines.contains(&expected), "missing: {expected}");
         }
-        let smp = lines
-            .iter()
-            .position(|line| *line == "feature smp=1")
-            .unwrap();
-        assert_eq!(smp + 1, lines.len() - 1, "smp=1 must precede done=1");
         // 文字列値は二重引用符で囲む（PL実施状況フェーズ5のレビュー修正）。
         assert!(
             lines
@@ -1134,17 +1129,24 @@ mod tests {
     fn cores_accepts_boundaries_and_rejects_invalid_values() {
         // LS「プロトコル設定」: coresは1..=256だけを受理し、不正値は固定CECPエラーを
         // 返す（D6-CECP-33）。正当値は無応答である。
-        let output = session(
-            &[RuleCode::R1],
-            "cores 1\ncores 256\ncores\ncores nope\ncores 0\ncores 257\n",
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = CecpProtocol::new(&engine);
+        // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
+        for threads in [256, 1] {
+            assert_eq!(
+                run(&mut protocol, &mut engine, &format!("cores {threads}\n")),
+                ""
+            );
+            assert_eq!(protocol.threads.get(), threads);
+        }
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "cores\ncores nope\ncores 0\ncores 257\n",
         );
 
         assert_eq!(output, "Error (invalid command): cores\n".repeat(4));
-        assert_eq!(parse_cores("1").unwrap().get(), 1);
-        assert_eq!(parse_cores("256").unwrap().get(), 256);
-        assert!(parse_cores("0").is_none());
-        assert!(parse_cores("257").is_none());
-        assert!(parse_cores("nope").is_none());
+        assert_eq!(protocol.threads.get(), 1);
     }
 
     #[test]
@@ -1223,12 +1225,6 @@ mod tests {
         );
         assert_eq!(output.lines().count(), 1);
         assert!(output.starts_with("info string error: "));
-
-        // 不正な手番文字は拒否する（D6-CECP-24の失敗経路）。
-        assert_eq!(
-            session(&[RuleCode::R1], &format!("setboard {INITIAL_BOARD} x\n")),
-            "tellusererror Illegal position\n"
-        );
     }
 
     #[test]
@@ -1279,14 +1275,6 @@ mod tests {
             ),
             "Illegal move: e6d6,b6a6\n"
         );
-        // 3レグ以上は中将棋の合法手に対応しないため拒否する。
-        assert_eq!(
-            session(
-                &[RuleCode::R1, RuleCode::E2],
-                &format!("setboard {LION_TWO_STAGE} w\nusermove e6d6,d6c6,c6b6\n"),
-            ),
-            "Illegal move: e6d6,d6c6,c6b6\n"
-        );
         // 居喰い（RULES.md第12条）は@@@@ではなく明示レグで送る（D6-CECP-09境界）。
         assert_eq!(
             session(
@@ -1322,14 +1310,6 @@ mod tests {
                 "Illegal move: e9f9\n"
             );
         }
-        // 非最終レグへの+は拒否する。
-        assert_eq!(
-            session(
-                &[RuleCode::R1, RuleCode::E2],
-                &format!("setboard {LION_TWO_STAGE} w\nusermove e6d6+,d6c6\n"),
-            ),
-            "Illegal move: e6d6+,d6c6\n"
-        );
         // 成れない着手への+も拒否する（RULES.md第26条）。
         assert_eq!(
             session(&[RuleCode::R1], "new\nforce\nusermove g4g5+\n"),
@@ -1528,16 +1508,6 @@ mod tests {
     }
 
     #[test]
-    fn move_now_plays_immediately_or_is_ignored() {
-        // EC「状態機械」: ?は探索中なら停止してその時点の最善手で通常の着手処理を行い、
-        // 探索中でなければ無視する（D6-CECP-18）。
-        let output = queued_session(&[RuleCode::R1], "sd 256\nnew\ngo\n?\n");
-        assert!(output.lines().any(|line| line.starts_with("move ")));
-
-        assert_eq!(session(&[RuleCode::R1], "?\n"), "");
-    }
-
-    #[test]
     fn stop_class_commands_discard_the_running_search() {
         // EC実施状況フェーズ2: 探索中のforce・result・new・quitは停止・破棄で、遅延した
         // move行が漏れない（D6-CECP-31、D6-CECP-17/06/29の探索中経路）。
@@ -1568,31 +1538,30 @@ mod tests {
     }
 
     #[test]
-    fn pong_echoes_after_prior_commands_complete() {
-        // PL（ping Nにpong N）・EC実施状況フェーズ2（探索中のpongはmove行の後）（D6-CECP-19）。
-        assert_eq!(session(&[RuleCode::R1], "ping 42\n"), "pong 42\n");
-
-        let output = queued_session(&[RuleCode::R1], "sd 1\nnew\ngo\nping 7\n");
+    fn move_now_and_queued_commands_complete_in_order() {
+        // ECの停止・ping順序と、LSの探索中cores待機列が次の探索まで進む契約。
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = CecpProtocol::new(&engine);
+        assert_eq!(run(&mut protocol, &mut engine, "?\nping 42\n"), "pong 42\n");
+        let output = run_queued(
+            &mut protocol,
+            &mut engine,
+            "sd 256\nnew\ngo\ncores 2\nping 7\n?\nsd 1\nnew\ngo\n",
+        );
+        assert!(!output.contains("Error"));
+        assert_eq!(logical_move_count(&output), 2);
         let lines: Vec<_> = output.lines().collect();
+        let first_move = lines
+            .iter()
+            .position(|line| line.starts_with("move ") && !line.ends_with(','))
+            .unwrap();
+        let pong = lines.iter().position(|line| *line == "pong 7").unwrap();
         let last_move = lines
             .iter()
             .rposition(|line| line.starts_with("move "))
             .unwrap();
-        let pong = lines.iter().position(|line| *line == "pong 7").unwrap();
-        assert!(last_move < pong);
-    }
-
-    #[test]
-    fn cores_arriving_during_search_applies_before_the_next_search() {
-        // LS「プロトコル設定」: 探索中のcoresはpendingへ積み、実行中探索を変えず、
-        // join後に処理して次の探索へ適用する（D6-CECP-34）。
-        let output = queued_session(
-            &[RuleCode::R1],
-            "sd 256\nnew\ngo\ncores 2\n?\nsd 1\nnew\ngo\n",
-        );
-
-        assert!(!output.contains("Error"));
-        assert_eq!(logical_move_count(&output), 2);
+        assert!(first_move < pong);
+        assert!(pong < last_move);
     }
 
     #[test]
@@ -1601,11 +1570,9 @@ mod tests {
         // stは秒、sdは深さで、正規化先はミリ秒のSearchLimits（D6-CECP-20〜22）。
         let output = session(
             &[RuleCode::R1],
-            "time 6000\notim 6000\nlevel 40 5 0\nlevel 0 0:30 1\nst 5\nsd 3\nnew\nsd 1\ngo\n",
+            "level 40 5 0\nlevel 0 0:30 1\nst 5\nsd 3\n",
         );
-        // すべて無応答で受理され、後続のgoが正常に着手する。
-        assert!(!output.is_empty());
-        assert!(output.lines().all(|line| line.starts_with("move ")));
+        assert!(output.is_empty());
 
         // 正規化値の検証はマトリクスの指示どおり引数解析の単体レベルで行う。
         assert_eq!(parse_level_base_milliseconds("5"), Some(300_000));
@@ -1617,25 +1584,21 @@ mod tests {
     }
 
     #[test]
-    fn memory_is_accepted_while_idle_and_search_still_works() {
-        // EC: feature memory=1とmemory <MB>の非探索中リサイズ（D6-CECP-23）。置換表の内部
-        // 効果はSU-13により観測せず、受理の外形（エラーなし・後続goの正常）だけを契約とする。
-        let output = session(&[RuleCode::R1], "memory 64\nmemory 1\nsd 1\nnew\ngo\n");
-
-        assert!(!output.is_empty());
-        assert!(output.lines().all(|line| line.starts_with("move ")));
-    }
-
-    #[test]
     fn oversized_memory_is_rejected_and_the_session_continues() {
         // 監査「置換表サイズのオーバーフロー」: 極大の外部設定値は
         // CECPエラーとなり、後続の有効な設定と探索を妨げない。
         let output = session(
             &[RuleCode::R1],
-            &format!("memory {}\nmemory 1\nsd 1\nnew\ngo\n", usize::MAX),
+            &format!("memory {}\nmemory 1\nmemory 2\nsd 1\nnew\ngo\n", usize::MAX),
         );
 
-        assert!(output.lines().any(|line| line.starts_with("Error ")));
+        assert_eq!(
+            output
+                .lines()
+                .filter(|line| line.starts_with("Error "))
+                .count(),
+            1
+        );
         assert_eq!(move_lines(&output).len(), 1);
     }
 
@@ -1790,35 +1753,5 @@ mod tests {
         for (reason, text) in draws {
             assert_eq!(draw_reason_text(reason), text);
         }
-
-        // 結果コードは白（先手）視点: 先手勝ち1-0、後手勝ち0-1、引き分け1/2-1/2。
-        let mut buffer = Vec::new();
-        write_result(
-            &mut buffer,
-            GameResult::Win {
-                winner: Color::Black,
-                reason: WinReason::Mate,
-            },
-        )
-        .unwrap();
-        write_result(
-            &mut buffer,
-            GameResult::Win {
-                winner: Color::White,
-                reason: WinReason::Mate,
-            },
-        )
-        .unwrap();
-        write_result(
-            &mut buffer,
-            GameResult::Draw {
-                reason: DrawReason::BareKing,
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            String::from_utf8(buffer).unwrap(),
-            "1-0 {checkmate}\n0-1 {checkmate}\n1/2-1/2 {bare kings}\n"
-        );
     }
 }

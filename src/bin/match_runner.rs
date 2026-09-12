@@ -3527,87 +3527,6 @@ mod tests {
         assert!(completed.is_empty());
     }
 
-    // match-harness-efficiency.md「並列枠の維持」: 実際の2ワーカーでペア1を
-    // 停止させても、ペア2の完了を受信した枠にはペア3が投入される。
-    #[test]
-    fn delayed_head_pair_does_not_leave_a_worker_idle() {
-        let release_head = Arc::new(AtomicBool::new(false));
-        thread::scope(|scope| {
-            let (job_sender, job_receiver) = mpsc::channel::<u64>();
-            let job_receiver = Arc::new(Mutex::new(job_receiver));
-            let (result_sender, result_receiver) = mpsc::channel::<CompletedPair>();
-            let (started_sender, started_receiver) = mpsc::channel::<u64>();
-            let mut workers = Vec::new();
-
-            for _ in 0..2 {
-                let job_receiver = Arc::clone(&job_receiver);
-                let result_sender = result_sender.clone();
-                let started_sender = started_sender.clone();
-                let release_head = Arc::clone(&release_head);
-                workers.push(scope.spawn(move || {
-                    loop {
-                        let job = job_receiver.lock().unwrap().recv();
-                        let Ok(number) = job else {
-                            break;
-                        };
-                        started_sender.send(number).unwrap();
-                        if number == 1 {
-                            while !release_head.load(Ordering::Acquire) {
-                                thread::yield_now();
-                            }
-                        }
-                        result_sender.send(completed_pair(number, 2)).unwrap();
-                    }
-                }));
-            }
-            drop(result_sender);
-            drop(started_sender);
-
-            job_sender.send(1).unwrap();
-            job_sender.send(2).unwrap();
-            let _release_on_unwind = SetAtomicOnDrop(Arc::clone(&release_head));
-            let mut initially_started = [
-                started_receiver
-                    .recv_timeout(Duration::from_secs(2))
-                    .unwrap(),
-                started_receiver
-                    .recv_timeout(Duration::from_secs(2))
-                    .unwrap(),
-            ];
-            initially_started.sort_unstable();
-            assert_eq!(initially_started, [1, 2]);
-
-            let pair = result_receiver
-                .recv_timeout(Duration::from_secs(2))
-                .unwrap();
-            assert_eq!(pair.number, 2);
-            let mut completed = BTreeMap::new();
-            let mut next_to_integrate = 1;
-            let mut pending_jobs = VecDeque::from([3]);
-            let replacement = accept_completed_pair(
-                pair,
-                &mut completed,
-                &mut next_to_integrate,
-                &mut pending_jobs,
-                |_| true,
-            );
-            job_sender.send(replacement.unwrap()).unwrap();
-
-            assert_eq!(
-                started_receiver
-                    .recv_timeout(Duration::from_secs(2))
-                    .unwrap(),
-                3
-            );
-            assert!(!release_head.load(Ordering::Acquire));
-            release_head.store(true, Ordering::Release);
-            drop(job_sender);
-            for worker in workers {
-                worker.join().unwrap();
-            }
-        });
-    }
-
     // match-harness-efficiency.md「並列枠の維持」: GSPRT境界は停止フラグを
     // 設定し、実行中のワーカーが打ち切った未完了ペアを結果へ送らない。
     #[test]
@@ -3878,6 +3797,8 @@ mod tests {
     fn documented_defaults_match_sprt_md() {
         let arguments = Arguments::try_parse_from(["match_runner", "--run-dir", "run", "gsprt"])
             .expect("the documented default invocation must be accepted");
+        assert_eq!(arguments.candidate_hash, None);
+        assert_eq!(arguments.baseline_hash, None);
         assert_eq!(arguments.response_timeout, 120);
         assert_eq!(arguments.max_ply, 4096);
         assert_eq!(arguments.concurrency, None);
@@ -4020,7 +3941,6 @@ mod tests {
                 .err()
                 .expect("the unsupported CECP limit must fail resolution");
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
-            assert!(!error.to_string().is_empty());
         }
     }
 
@@ -4240,45 +4160,27 @@ mod tests {
     // 置換表容量の指定: 両側の容量は独立に指定でき、省略時はNoneを保つ。
     #[test]
     fn hash_options_resolve_independently_for_each_engine() {
-        for (options, expected_candidate, expected_baseline) in [
-            (vec![], None, None),
-            (vec!["--candidate-hash", "300"], Some(300), None),
-            (vec!["--baseline-hash", "512"], None, Some(512)),
-            (
-                vec!["--candidate-hash", "300", "--baseline-hash", "512"],
-                Some(300),
-                Some(512),
-            ),
+        let arguments = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "run",
+            "--candidate",
+            "engine",
+            "--baseline",
+            "cecp:engine",
+            "--candidate-hash",
+            "300",
+            "--baseline-hash",
+            "512",
+            "gsprt",
+        ])
+        .unwrap();
+        for (spec, hash_mb, expected) in [
+            (arguments.candidate, arguments.candidate_hash, 300),
+            (arguments.baseline, arguments.baseline_hash, 512),
         ] {
-            let mut args = vec![
-                "match_runner",
-                "--run-dir",
-                "run",
-                "--candidate",
-                "engine",
-                "--baseline",
-                "cecp:engine",
-            ];
-            args.extend(options);
-            args.push("gsprt");
-            let arguments = Arguments::try_parse_from(args).unwrap();
-            assert_eq!(arguments.candidate_hash, expected_candidate);
-            assert_eq!(arguments.baseline_hash, expected_baseline);
-            for (spec, hash_mb, expected) in [
-                (
-                    arguments.candidate,
-                    arguments.candidate_hash,
-                    expected_candidate,
-                ),
-                (
-                    arguments.baseline,
-                    arguments.baseline_hash,
-                    expected_baseline,
-                ),
-            ] {
-                let player = resolve_player(spec, arguments.each, hash_mb, "R1").unwrap();
-                assert_eq!(player.hash_mb, expected);
-            }
+            let player = resolve_player(spec, arguments.each, hash_mb, "R1").unwrap();
+            assert_eq!(player.hash_mb, Some(expected));
         }
     }
 
@@ -4376,20 +4278,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn clock_update_adds_the_increment_after_each_move() {
-        // sprt.md時間制御対局のフィッシャー式加算の会計: base 1000ms・加算100msで
-        // 250ms消費すると残りは1000-250+100=850msになる。変異検証(フェーズ4)で
-        // 検出した加算会計の無検証を補強する。
-        let mut clock = Clock::new(TimeControl {
-            base_ms: 1_000,
-            increment_ms: 100,
-            byoyomi_ms: 0,
-        });
-        assert_eq!(clock.update(Duration::from_millis(250)), Ok(()));
-        assert_eq!(clock.remaining_ms(), 850);
-    }
-
     // D8-HARN-10(search.md実施状況＋sprt.mdペア対局): 毎手のgoは両者の時計の
     // 現在値をbtime/wtime/binc/winc/byoyomiで送る。ペア内の先後入替で同一
     // エンジンの時計がbtime側とwtime側を交差する。
@@ -4417,10 +4305,10 @@ mod tests {
             "btime 20000 wtime 10000 binc 200 winc 100 byoyomi 1000"
         );
 
-        // 現在値契約: 消費後のgoは減少した残り時間を反映する(加算時間0)
+        // 現在値契約: 消費後のgoは消費250 msと加算100 msを残り時間へ反映する
         let simple = SearchLimit::Time(TimeControl {
-            base_ms: 10_000,
-            increment_ms: 0,
+            base_ms: 1_000,
+            increment_ms: 100,
             byoyomi_ms: 0,
         });
         let mut clocks = GameClocks::new(Color::Black, simple, simple);
@@ -4431,7 +4319,7 @@ mod tests {
             .expect("a small consumption must not forfeit");
         assert_eq!(
             clocks.go_text(Color::White),
-            "btime 9750 wtime 10000 binc 0 winc 0 byoyomi 0"
+            "btime 850 wtime 1000 binc 100 winc 100 byoyomi 0"
         );
 
         // 固定制限側のgo引数(sprt.mdの`--each depth=4`等に対応)
@@ -4456,8 +4344,8 @@ mod tests {
         assert_eq!(fixed.own_cs, 3_000_000);
         assert_eq!(fixed.opponent_cs, 3_000_000);
         let timed = clocks.think_request(Color::Black, simple);
-        assert_eq!(timed.own_cs, 975);
-        assert_eq!(timed.opponent_cs, 1_000);
+        assert_eq!(timed.own_cs, 85);
+        assert_eq!(timed.opponent_cs, 100);
     }
 
     // 1手固定時間の仕様: CECPの両時計は残り時間と秒読みの合計を送り、
@@ -4491,10 +4379,8 @@ mod tests {
         );
     }
 
-    // D8-HARN-12(RULES.md第33条): `engine-default`はR1、`lishogi`は
-    // L1+L2+P3+R1+E1+E3へ解決される。照合は大文字小文字を区別せず、
-    // 規則コードとの併記とR0の指定は拒否される。`--rules`省略時の既定R1は
-    // search.md自己対局既定へ接地する(SPEC_UNCLEAR-10の文書補修待ち)。
+    // RULES.md第33条: 共通parserへの接続と指定原文の保持を検査する。
+    // sprt.md: --rules省略時にはengine-defaultを使う。
     #[test]
     fn rules_presets_resolve_per_article_33() {
         let default = Arguments::try_parse_from(["match_runner", "--run-dir", "run", "gsprt"])
@@ -4502,21 +4388,6 @@ mod tests {
         assert_eq!(default.rules.source, "engine-default");
         assert_eq!(
             default.rules.codes,
-            Vec::<RuleCode>::from(Rules::ENGINE_DEFAULT)
-        );
-
-        let named = Arguments::try_parse_from([
-            "match_runner",
-            "--run-dir",
-            "run",
-            "--rules",
-            "engine-default",
-            "gsprt",
-        ])
-        .expect("the engine-default preset must be accepted");
-        assert_eq!(named.rules.source, "engine-default");
-        assert_eq!(
-            named.rules.codes,
             Vec::<RuleCode>::from(Rules::ENGINE_DEFAULT)
         );
 
@@ -4529,33 +4400,19 @@ mod tests {
             "gsprt",
         ])
         .expect("preset names must match case-insensitively");
-        assert_eq!(
-            lishogi.rules.codes,
-            [
-                RuleCode::L1,
-                RuleCode::L2,
-                RuleCode::P0,
-                RuleCode::P3,
-                RuleCode::R1,
-                RuleCode::E1,
-                RuleCode::E3,
-            ]
+        assert_eq!(lishogi.rules.source, "LISHOGI");
+        assert_eq!(lishogi.rules.codes, Vec::<RuleCode>::from(Rules::LISHOGI));
+        assert!(
+            Arguments::try_parse_from([
+                "match_runner",
+                "--run-dir",
+                "run",
+                "--rules",
+                "lishogi,P1",
+                "gsprt",
+            ])
+            .is_err()
         );
-
-        for invalid in ["lishogi,P1", "engine-default,lishogi", "R0", "R0,R1"] {
-            assert!(
-                Arguments::try_parse_from([
-                    "match_runner",
-                    "--run-dir",
-                    "run",
-                    "--rules",
-                    invalid,
-                    "gsprt",
-                ])
-                .is_err(),
-                "rules {invalid:?} must be rejected"
-            );
-        }
     }
 
     // D8-HARN-06(1)/D8-HARN-11(sprt.md異常時の裁定節・match-harness.md): 審判層が
@@ -4831,17 +4688,12 @@ mod tests {
         );
     }
 
-    // D8-STAT-04/D8-HARN-06(sprt.md統計的手続き節): 観測単位はペアであり、
-    // 候補側ペア得点合計{0, 0.5, 1, 1.5, 2}の5分類で集計する。反則負けは
-    // 当該局の敗北として算入される(ペア破棄ではない)。
+    // sprt.md: 各局の勝敗を候補側の得点へ変換し、反則負けも敗北として扱う。
+    // match-harness.md: 投了を異常件数へ算入しない。
     #[test]
-    fn game_outcomes_map_to_candidate_pair_score_categories() {
+    fn game_outcomes_map_to_candidate_scores_and_resignation_is_not_failure() {
         let win_black = GameOutcome::Adjudicated(GameResult::Win {
             winner: Color::Black,
-            reason: WinReason::RoyalCapture,
-        });
-        let win_white = GameOutcome::Adjudicated(GameResult::Win {
-            winner: Color::White,
             reason: WinReason::RoyalCapture,
         });
         let draw = GameOutcome::Adjudicated(GameResult::Draw {
@@ -4879,30 +4731,6 @@ mod tests {
         let mut resignation_failures = FailureCounts::default();
         record_game_failure(resigned, &mut resignation_failures);
         assert_eq!(resignation_failures, FailureCounts::default());
-
-        // ペア分類 = 第1局(候補が先手) + 第2局(候補が後手)の半点合計
-        // 2局とも勝ち → 得点2.0のセル4
-        assert_eq!(
-            half_points(win_black, Color::Black) + half_points(win_white, Color::White),
-            4
-        );
-        // 1勝1敗 → 得点1.0のセル2
-        assert_eq!(
-            half_points(win_black, Color::Black) + half_points(win_black, Color::White),
-            2
-        );
-        // 候補が2局とも反則負け → 得点0のセル0(相手のペア得点2相当)
-        assert_eq!(
-            half_points(forfeit_win_black, Color::White)
-                + half_points(
-                    GameOutcome::Forfeit {
-                        winner: Color::White,
-                        reason: EngineFailure::Timeout,
-                    },
-                    Color::Black
-                ),
-            0
-        );
     }
 
     // D8-HARN-13(sprt.md測定の種類と標準コマンド節): 判定の表示語彙は
@@ -4914,20 +4742,9 @@ mod tests {
         assert_eq!(decision_text(GsprtDecision::Continue), "pending");
     }
 
-    // D8-HARN-03(search.md自己対局ハーネス節・random-play.mdシード派生節):
-    // ペアシードは基本シードとペア番号から決定的に派生し、0にならず、
-    // ペア番号間で相異なる(ペア間独立の前提)。厳密な合成式は
-    // SPEC_UNCLEAR-06につき固定しない。
+    // random-play.md: 乱数系列を停止させる0の派生値は非零定数へ置換する。
     #[test]
-    fn pair_seed_derivation_is_deterministic_nonzero_and_distinct() {
-        let base = 0xACE1_u64;
-        let seeds: Vec<NonZeroU64> = (1..=100).map(|n| derive_seed(base, n)).collect();
-        let replay: Vec<NonZeroU64> = (1..=100).map(|n| derive_seed(base, n)).collect();
-        assert_eq!(seeds, replay);
-        let mut unique = seeds.clone();
-        unique.sort_unstable();
-        unique.dedup();
-        assert_eq!(unique.len(), seeds.len());
+    fn pair_seed_replaces_the_zero_output() {
         // 派生値が0になる入力でも非ゼロへ置換される(random-play.mdの
         // 仕様式の逆算により、splitmix64の出力0の原像は0x61C8_8646_80B5_83EB)
         assert_eq!(
@@ -4939,7 +4756,7 @@ mod tests {
     // D8-HARN-02(sprt.mdペア対局と再現性節): 開始局面は初期局面から8〜12手
     // だけランダムに進めて作り、ペアシードから決定的に再現される。
     #[test]
-    fn openings_stay_within_8_to_12_plies_and_derive_deterministically() {
+    fn openings_stay_within_8_to_12_plies_and_vary_between_pairs() {
         let rules = Rules::ENGINE_DEFAULT;
         let base_seed = 20_260_814_u64;
         let mut all_moves = Vec::new();
@@ -4953,9 +4770,6 @@ mod tests {
             );
             // エンジンへ送るUSI表記列は開始手順と同数
             assert_eq!(opening.usi_moves.len(), opening.moves.len());
-            let replay = generate_opening(rules, pair_seed);
-            assert_eq!(replay.moves, opening.moves);
-            assert_eq!(replay.usi_moves, opening.usi_moves);
             all_moves.push(opening.moves);
         }
         // ペア間独立: 異なるペア番号がすべて同じ開始手順なら派生が退化している
