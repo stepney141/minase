@@ -4,7 +4,7 @@
 
 本マイルストーンは、minaseをオンライン対局サイトlishogiへBotアカウントとして接続し、人間および他のBotと中将棋を公開対局できるようにする。
 接続には、lishogiのBot API（lichess由来の、Botアカウントが対局イベントを受け取り着手を送るためのHTTPインターフェース）とUSIエンジンを仲介するPython製ブリッジLishogi-Botをそのまま使い、minase側にはブリッジ専用のコードを書かない。
-配備は、固定した版のLishogi-Botと固定コミットのminaseを1つのDockerイメージにまとめ、運用機ではそのイメージを認証トークンだけを与えて起動する形にし、その一式は別リポジトリ`minase-lishogi-bot`に置いてminase本体にlishogi接続の知識を持ち込まない。
+配備は、固定した版のLishogi-Botとminaseのmasterの最新コミットを1つのDockerイメージにまとめ、運用機ではそのイメージを認証トークンだけを与えて起動する形にし、その一式は別リポジトリ`minase-lishogi-bot`に置いてminase本体にlishogi接続の知識を持ち込まない。
 minaseは[外部対局接続](engine-connectivity.md)でLishogi-Botの送信系列に対応済みなので、本マイルストーンの主な作業は、実接続で初めて問題になる3点の解消である。
 第1に、lishogiの反復裁定（同一局面の繰り返しによる終局の判定、RULES.md第24条と第31条）は「対局開始または直前の不可逆手の直後から、可逆手が12手以上続いている」ことを前提条件にする。不可逆手とは、元の局面へ戻れなくなる着手であり、中将棋では捕獲、成り、歩兵または香車の着手を指す。それ以外の着手を可逆手という。同じ局面が4回現れた時点で裁定する現行のminaseは、この前提条件を持たないためlishogiより先に対局を終局と判断し、次に届く`position`を拒否して着手不能になり得る。この差を規則R1の定義と実装の訂正で解消する。
 第2に、Lishogi-Botは自分の残り時間から固定の余裕、受信からの経過時間、加算、および秒読みを引いた値を`btime`または`wtime`として送り、秒読みの回数は送らない。この換算の下でminaseの時間管理が安全側に働くことと、着手がサーバへ届くまでの遅延を含めて時間切れが起きないことを確かめる。
@@ -32,7 +32,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 
 - 規則R1の反復裁定へ、lishogiの規則ライブラリscalashogiが実装する前提条件を取り込み、RULES.md、`src/core/repetition.rs`、`src/core/adjudication.rs`、および`src/core/game.rs`を更新する。
 - lishogiの実対局のうち、この前提条件で裁定が分かれる対局をリプレイ照合のフィクスチャへ追加し、取得スクリプト`scripts/fetch_lishogi_replays.py`の初期局面の扱いを直す。
-- 固定した版のLishogi-Botと固定コミットのminaseを1つのDockerイメージにまとめるDockerfile、コミットを指定してビルドと起動を行うcompose定義、minase用の設定ファイル、および運用手順を、別リポジトリ`minase-lishogi-bot`に置く。
+- 固定した版のLishogi-Botとminaseのmasterを1つのDockerイメージにまとめるDockerfile、ビルドと起動を行うcompose定義、minase用の設定ファイル、および運用手順を、別リポジトリ`minase-lishogi-bot`に置く。
 - Botアカウントの作成と昇格、認証トークンの管理、およびエンジンバイナリの固定手順を定める。
 - 非レート対局とレート対局の2段階で公開運用し、対局記録の事後照合で異常0件を確認する。
 
@@ -51,7 +51,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 - [プロトコル層](protocol-layer.md)の拡張SFEN、指し手表記、規則セット名`lishogi`、およびリプレイ照合`tests/lishogi_replay.rs`をそのまま使う。
 - [棋力向上段階2](strength-stage2.md)の時間管理（秒読みを含む予算式）を前提とする。本マイルストーンはこれを変更しない。
 - [ローカルルール13コードの実装](local-rules.md)が所有するR1の実装を、本マイルストーンのフェーズ1で改める。改めた後のR1の正は本設計書ではなくRULES.md第31条である。
-- 棋力向上の段階計画とは独立に進められる。運用に使うエンジンは固定コミットのバイナリであり、段階計画の進行による差し替えは運用上の更新であって本設計書の変更を要しない。
+- 棋力向上の段階計画とは独立に進められる。運用に使うエンジンはビルド時点のmasterのバイナリであり、段階計画の進行による差し替えは運用上の更新であって本設計書の変更を要しない。
 
 ## 設計判断
 
@@ -60,7 +60,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 | ブリッジ | TheYoBots/Lishogi-Botを固定した版（コミット17c16bc、2024年10月26日）でそのまま使う。Rustで自前のブリッジを書く案は、Bot APIのイベントストリーム、対局の受諾、時計の換算、切断からの再接続を再実装する費用に対して、minase側に得られる利点がないため棄却した。Lishogi-Botの改変も、上流の更新へ追従する費用が増えるため行わない。 |
 | 配備 | Lishogi-Botとminaseを1つのDockerイメージにまとめ、compose定義で起動する。配備一式はminaseとは別のリポジトリ`minase-lishogi-bot`に置く。minaseはUSIエンジンとして呼ばれる側であり、本リポジトリにlishogi接続の設定や手順を置く理由がないためである。Lishogi-Botが固定する依存パッケージはPython 3.11で検証されているので、イメージの基底をpython:3.11に固定し、運用機のPython版に依存しない。運用機にPythonの仮想環境とRustのツールチェーンを置いてリポジトリの外でLishogi-Botを動かす案は、運用機ごとに環境が変わり、エンジンと設定の組合せを再現できないため棄却した。 |
 | エンジンの指定 | `--protocol usi --rules lishogi`を必須とする。他の規則セットでの公開対局は、lishogiの裁定との互換性を保証しないため行わない。Lishogi-Botの`engine_options`は使えない。`engine_options`を与えるとLishogi-Botは起動コマンドを引数つきのリストのまま`shell=True`で`Popen`に渡すので、引数はシェルの位置引数になってエンジンへ届かず、`--protocol`を欠いたminaseは直ちに終了する（engine_wrapper.py `create_engine`、engine_ctrl/usi.py `open_process`。イメージ内で再現を確認した。[ブリッジ経由のエンジン起動は設定どおりに起動されることを実際に確かめる](../lessons/verify-bridge-launch-path.md)）。このため、引数を固定したシェルスクリプト`minase-lishogi`（`minase-lishogi-bot`リポジトリ）をイメージへ入れ、`engine.name`にそれを指定する。 |
-| エンジンバイナリ | 公開運用に使うコミットを固定し、`minase-lishogi-bot`のcompose定義がminase-guiと同じ方式でGitHubの`minase.git#<コミット>`を名前付きビルド文脈として渡し、イメージ内でビルドする（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)と同じ趣旨）。コミットは`.env`の`MINASE_REF`で指定し、イメージにはラベル`org.opencontainers.image.revision`と環境変数`MINASE_REF`が付くので、運用中のコミットをイメージから読める。作業ツリーをビルド文脈にすると開発中の変更が公開対局へ混入するため、ローカルのディレクトリをビルド文脈にしない。 |
+| エンジンバイナリ | `minase-lishogi-bot`のcompose定義がminase-guiと同じ方式でGitHubの`minase.git`を名前付きビルド文脈として渡し、ビルド時にデフォルトブランチ（master）の最新コミットを取得してイメージ内でビルドする。masterは棋力向上の段階が完了した状態を表すので、これで公開運用のエンジンは段階の完了時点に固定される。ビルド時点のコミットは`git ls-remote`で確かめて運用記録に残す。作業ツリーをビルド文脈にすると開発中の変更が公開対局へ混入するため、ローカルのディレクトリをビルド文脈にしない。 |
 | 反復裁定の差 | R1の定義と実装をscalashogiに合わせて訂正する仕様変更を行う。差をUSI層で吸収する案（終局後の`position`を許容する）は、規則の曖昧さをコード側で補わないRULES.mdの方針と、暗黙のフォールバックを置かない方針に反するため棄却した。差を放置する案は、minaseが先に終局と判断した対局で`bestmove`を返せず時間切れ負けになるため棄却した。詳細は「反復裁定の整合」の節に記す。 |
 | R1訂正の採否判定 | SPRTの対象外とし、利用者の裁定で採用する。理由は「反復裁定の整合」の節に記す。 |
 | 公開の順序 | 非レート対局だけを受け付ける段階を先に置き、異常0件を確認してからレート対局を有効にする。Lishogi-Botには挑戦者を限定する設定がないため、非レート段階でも不特定の相手と対局する。 |
@@ -134,11 +134,11 @@ EHUTJJu4とA4EO2swaは4欄のSFENで与えられる途中局面から始まり�
 ### 配備の分担
 
 lishogiへの配備一式は、別リポジトリ`minase-lishogi-bot`（本リポジトリ直下に同名のシンボリックリンクを置き、gitでは無視する）が持つ。
-そこには、固定した版のLishogi-Botと固定コミットのminaseを1つのDockerイメージにまとめるDockerfile、GitHubのminaseを名前付きビルド文脈として渡すcompose定義、Lishogi-Botの設定`config.yml`、起動引数を固定したラッパー`minase-lishogi`、および運用手順のREADMEがある。
+そこには、固定した版のLishogi-Botとminaseのmasterを1つのDockerイメージにまとめるDockerfile、GitHubのminaseを名前付きビルド文脈として渡すcompose定義、Lishogi-Botの設定`config.yml`、起動引数を固定したラッパー`minase-lishogi`、および運用手順のREADMEがある。
 minase本体はUSIエンジンとして呼ばれる側であり、lishogi接続の知識を持たない。
 本設計書がminase側に求めるのは、`--protocol usi --rules lishogi`で起動されたときにLishogi-Botの送信系列で対局を進められることと、lishogiの裁定と一致することだけである。
 
-`minase-lishogi-bot`のcompose定義は、GitHubへpush済みのminaseの指定コミットをビルド文脈にするので、作業ツリーの未コミットの変更はイメージへ入らない（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)と同じ趣旨）。
+`minase-lishogi-bot`のcompose定義は、GitHubのminaseのmasterをビルド文脈にするので、作業ツリーの未コミットの変更はイメージへ入らない（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)と同じ趣旨）。
 ラッパーが必要なのは、Lishogi-Botの`engine_options`が起動引数をエンジンへ届けないためである（「設計判断」の節、[ブリッジ経由のエンジン起動は設定どおりに起動されることを実際に確かめる](../lessons/verify-bridge-launch-path.md)）。
 
 ### 対局進行
@@ -183,7 +183,7 @@ RULES.md第31条のR1へ前提条件を追記し、`src/core/game.rs`、`src/cor
 
 ### フェーズ2　環境の構築
 
-別リポジトリ`minase-lishogi-bot`にDockerfile、compose定義、設定ファイル、および運用手順を書き、固定コミットのイメージを作る。
+別リポジトリ`minase-lishogi-bot`にDockerfile、compose定義、設定ファイル、および運用手順を書き、masterからイメージを作る。
 イメージ内でminaseがUSIの握手に応答し、Lishogi-Botが設定ファイルからminaseを起動できることを確かめる。
 利用者がBotアカウントを作成し昇格する。
 途中局面からの挑戦の可否を確かめる（「開始局面」の節）。
