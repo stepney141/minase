@@ -46,7 +46,7 @@ git rev-parse HEAD
 | `generate.games` | 1ファイルあたり7,500局を生成する。 |
 | `generate.nodes` | 1手の探索ノード上限を100,000とする。 |
 | `generate.concurrency` | 同時に生成する対局数を16とする。実行機に合わせて決める。 |
-| `generate.max_ply` | 600手までに終局しない対局を破棄する。 |
+| `generate.max_ply` | 4,000手までに終局しない対局を破棄する。 |
 | `generate.hash_mb` | 生成ワーカーごとの置換表を16 MBとする。 |
 | `generate.random_moves` | 対局中のランダム着手注入を0とする。開始局面の8〜16手のランダム化は残る。 |
 | `train.model` | 単一PSTを学習する`single`、序中盤用と終盤用の2端点PSTを学習する`tapered`、左右の鏡映対で重みを共有する2端点PSTを学習する`mirrored`から選ぶ。 |
@@ -67,7 +67,7 @@ git rev-parse HEAD
 
 `mirrored`は鏡映対の重みの平均から学習を始め、左右の鏡映で同じ正準特徴を使う。
 重みを共有するため確率的な鏡映のデータ拡張は行わず、保存時に全13,680特徴へ展開する。
-世代2のモデルは[段階7](plans/strength-stage7.md)の採否に従い、重み共有を採用した場合は`mirrored`、不採用なら`tapered`を指定する。
+世代2のモデルには、[段階7](plans/strength-stage7.md)で採用した`mirrored`を指定する。
 `single`は1組の重みを保存時に両端点へ複製し、初期重みの両端点が一致しなければ停止するため、両端点が異なる採用済みPSTの継続学習には使えない。
 
 生成シードは互いに生成局数以上離し、過去の生成にも使っていない範囲を選ぶ。
@@ -132,14 +132,14 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py generate --run-dir 
 
 すべての生成ファイルが完成したら、学習前に`taper_report.py`で訓練集合の駒数分布と端点の識別性を集計する。
 `--model`は必須であり、設定ファイルの`train.model`と同じモデルを指定する。
-次の例は`tapered`用であり、鏡映の重み共有を使う場合は`mirrored`へ変える。
+次の例は、設定例と同じく鏡映の重み共有を使う`mirrored`を指定している。
 
 ```bash
 tools/train/.venv/bin/python tools/train/pst/taper_report.py \
   --data data/gen0.bin \
     data/gen1-s{100000,200000,300000,400000,500000}.bin \
     data/pst-gen2/generated-{600000,700000,800000,900000,1000000}.bin \
-  --model tapered --pst data/pst-gen2/pst-base.bin \
+  --model mirrored --pst data/pst-gen2/pst-base.bin \
   --output-dir data/pst-gen2/identifiability
 ```
 

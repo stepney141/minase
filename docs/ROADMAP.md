@@ -58,9 +58,9 @@ internal iterative reductionのLTCは外部のOOMによる時間切れ11件を�
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）と段階7（plans/strength-stage7.md）である。
 10段階のうち段階6までが完了した。
 段階7は2026年9月12日に着手し、鏡映の診断とシード監査を完了し、試行生成500局から手数上限4,000を選んだ。
-鏡映共有モデルの学習と局面帯別の診断を完了し、[STC](measurements/strength-stage7-mirror-stc.md)は有効913ペアでH1となった。
-現在は[LTC](measurements/strength-stage7-mirror-ltc.md)を実行中であり、鏡映共有の採否は未確定である。
-次の一手はLTCの結果から鏡映共有の採否を確定し、手数上限4,000を生成器へ反映することである。
+鏡映共有モデルの学習と局面帯別の診断を完了し、[STC](measurements/strength-stage7-mirror-stc.md)は有効913ペア、[LTC](measurements/strength-stage7-mirror-ltc.md)は有効1,660ペアでともにH1となり、異常と時間切れ0件を確認して採用した。
+手数上限4,000を生成器の既定値と設定例へ反映した。
+次の一手は採用済みの鏡映共有モデルで世代2を5シード生成し、世代0から世代2までの訓練集合で端点の識別性を確認することである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。

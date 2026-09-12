@@ -19,14 +19,14 @@ seeds = [600000, 700000, 800000, 900000, 1000000]
 games = 7500
 nodes = 100000
 concurrency = 16
-max_ply = 600
+max_ply = 4000
 hash_mb = 16
 random_moves = 0
 
 [train]
 # 左右の鏡映対で重みを共有する2端点はmirrored、共有しない2端点はtapered。
-# 段階7の採否に従って選ぶ。singleは両端点が一致する初期重みだけを受理する。
-model = "tapered"
+# 世代2は段階7で採用したmirroredを使う。singleは両端点が一致する初期重みだけを受理する。
+model = "mirrored"
 # 出力Kは必須。段階7では採用済み重みのヘッダの値に固定する。
 k = 1072.6529541015625
 learning_rate = 3.0

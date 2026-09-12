@@ -32,7 +32,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 /// 教師探索の既定ノード上限。
 const DEFAULT_NODES: u32 = 100_000;
 /// 1局の既定手数上限。
-const DEFAULT_MAX_PLY: u16 = 600;
+const DEFAULT_MAX_PLY: u16 = 4_000;
 /// ワーカーごとの既定置換表容量。
 const DEFAULT_HASH_MB: NonZeroUsize = NonZeroUsize::new(16).unwrap();
 /// 詰み帯として除外する探索値の絶対値下限。
@@ -1322,6 +1322,29 @@ mod tests {
         let (plan, _) = plan_injections(derive_seed(41, 12), opening_ply, 0);
         assert!(plan.plies.is_empty());
         assert_eq!(plan.record_from, opening_ply);
+    }
+
+    /// 段階7の試行生成で選んだ4,000手を、省略時の手数上限とする。
+    #[test]
+    fn omitted_max_ply_uses_measured_generation_cap() {
+        let arguments = Arguments::try_parse_from([
+            "selfplay_gen",
+            "generate",
+            "--output",
+            "unused.bin",
+            "--games",
+            "1",
+            "--seed",
+            "1",
+            "--random-moves",
+            "0",
+        ])
+        .expect("the required generation arguments are valid");
+        let Operation::Generate(arguments) = arguments.command else {
+            panic!("generate must select generation arguments");
+        };
+
+        assert_eq!(arguments.max_ply, 4_000);
     }
 
     /// CLIはランダム着手上限の0と80だけを境界値として受理する。
