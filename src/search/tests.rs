@@ -87,6 +87,259 @@ fn small_tt() -> TranspositionTable {
     TranspositionTable::new(1).unwrap()
 }
 
+// docs/plans/strength-stage6.md「窓の適用条件と拡大」「検証」。
+#[test]
+fn aspiration_initial_window_uses_only_eligible_previous_scores() {
+    for depth in 1..=4 {
+        let window = AspirationWindow::initial(depth, Some(100), 50);
+        assert_eq!((window.alpha, window.beta), (-INFINITY, INFINITY));
+    }
+    for prev in [
+        None,
+        Some(MATE_THRESHOLD),
+        Some(-MATE_THRESHOLD),
+        Some(MATE),
+        Some(-MATE),
+    ] {
+        let window = AspirationWindow::initial(5, prev, 50);
+        assert_eq!((window.alpha, window.beta), (-INFINITY, INFINITY));
+    }
+    for depth in [5, 6, 8] {
+        let window = AspirationWindow::initial(depth, Some(100), 50);
+        assert_eq!((window.alpha, window.beta, window.delta), (50, 150, 50));
+    }
+}
+
+#[test]
+fn aspiration_widens_only_the_failed_side_and_doubles_delta() {
+    let mut low = AspirationWindow::initial(5, Some(100), 50);
+    low.widen_low();
+    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, 100));
+    low.widen_low();
+    assert_eq!((low.alpha, low.beta, low.delta), (-100, 150, 200));
+
+    let mut high = AspirationWindow::initial(5, Some(100), 50);
+    high.widen_high();
+    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, 100));
+    high.widen_high();
+    assert_eq!((high.alpha, high.beta, high.delta), (50, 300, 200));
+
+    low.widen_high();
+    assert_eq!((low.alpha, low.beta, low.delta), (-100, 350, 400));
+    low.widen_low();
+    assert_eq!((low.alpha, low.beta, low.delta), (-500, 350, 800));
+    low.widen_high();
+    assert_eq!((low.alpha, low.beta, low.delta), (-500, 1150, 1600));
+    for _ in 0..4 {
+        low.widen_low();
+        low.widen_high();
+    }
+    assert_eq!((low.alpha, low.beta), (-INFINITY, INFINITY));
+}
+
+#[test]
+fn aspiration_normalizes_initial_and_widened_mate_edges() {
+    for distance in [49, 50, 51, 100] {
+        let mut high = AspirationWindow::initial(5, Some(MATE_THRESHOLD - distance), 50);
+        let mut low = AspirationWindow::initial(5, Some(-MATE_THRESHOLD + distance), 50);
+        if distance <= 50 {
+            assert_eq!(high.beta, INFINITY);
+            assert_eq!(low.alpha, -INFINITY);
+        } else {
+            assert_eq!(high.beta, MATE_THRESHOLD - distance + 50);
+            assert_eq!(low.alpha, -MATE_THRESHOLD + distance - 50);
+        }
+        let unchanged_alpha = high.alpha;
+        let unchanged_beta = low.beta;
+        for _ in 0..3 {
+            high.widen_high();
+            low.widen_low();
+            assert_eq!((high.alpha, high.beta), (unchanged_alpha, INFINITY));
+            assert_eq!((low.alpha, low.beta), (-INFINITY, unchanged_beta));
+        }
+    }
+}
+
+/// 時間制限のない単一ワーカーで根の窓と置換表を検査する。
+fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&mut Searcher<'_>)) {
+    let external_stop = AtomicBool::new(false);
+    let shared = SharedSearch {
+        external_stop: &external_stop,
+        team_stop: AtomicBool::new(false),
+        stop_reason: AtomicU8::new(0),
+        total_nodes: AtomicU64::new(0),
+        node_limit: None,
+        started: Instant::now(),
+        hard_limit: None,
+    };
+    let pst = weights().unwrap();
+    let table = small_tt();
+    let mut searcher = new_searcher(&pst, position, engine_rules(), history, &shared, &table);
+    test(&mut searcher);
+}
+
+/// 全ルート手が反復による引き分けとなる履歴を作る。
+fn repeated_root_children(position: &Position, moves: &[Move]) -> Vec<u64> {
+    moves
+        .iter()
+        .map(|&mv| {
+            let mut child = position.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            search_key(&child)
+        })
+        .collect()
+}
+
+// 同「根の探索の窓化」。引き分け値0を境界に置き、等号とβ打ち切りを検査する。
+#[test]
+fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    assert!(moves.len() > 1);
+    let history = repeated_root_children(&position, &moves);
+    for (alpha, beta, bound, expected_nodes) in [
+        (0, 1, Bound::Upper, 1 + moves.len() as u64),
+        (-1, 0, Bound::Lower, 2),
+        (-1, 1, Bound::Exact, 1 + moves.len() as u64),
+    ] {
+        with_root_searcher(&position, &history, |searcher| {
+            let (best_move, score) = searcher
+                .search_root(&position, &moves, 1, alpha, beta)
+                .unwrap();
+            assert_eq!(score, DRAW_SCORE);
+            assert_eq!(searcher.nodes, expected_nodes);
+            let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
+            assert_eq!(hit.bound, bound);
+            assert_eq!(hit.score, score);
+            assert_eq!(hit.best_move, Some(best_move));
+        });
+    }
+}
+
+// 同「aspiration windows」。s == α、s == βのどちらも再探索を要する。
+#[test]
+fn aspiration_researches_scores_equal_to_either_edge() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = repeated_root_children(&position, &moves);
+    let delta = weights().unwrap().pawn_value() / 2;
+    for (prev, first_nodes) in [(delta, 1 + moves.len() as u64), (-delta, 2)] {
+        with_root_searcher(&position, &history, |searcher| {
+            let (_, score) = searcher
+                .search_iteration(&position, &moves, 5, Some(prev))
+                .unwrap();
+            assert_eq!(score, DRAW_SCORE);
+            assert_eq!(searcher.nodes, first_nodes + 1 + moves.len() as u64);
+            assert_eq!(
+                searcher.tt.probe(search_key(&position), 0).unwrap().bound,
+                Bound::Exact
+            );
+        });
+    }
+}
+
+// 同「根の探索の窓化」。fail-lowでもαの更新と独立に最善手を保存し、
+// 読み直しではその記録手を先頭に使う。
+#[test]
+fn root_fail_low_keeps_the_best_bound_move_for_research() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::Rook),
+            (fs(6, 12), Color::Black, PieceKind::King),
+        ],
+    );
+    let moves = legal_moves(&position);
+    let quiet = *moves
+        .iter()
+        .find(|&&mv| !captures_last_royal(&position, mv))
+        .unwrap();
+    let history = repeated_root_children(&position, &moves);
+    with_root_searcher(&position, &history, |searcher| {
+        let key = search_key(&position);
+        searcher
+            .tt
+            .store(key, 0, DRAW_SCORE, Bound::Exact, Some(quiet), 0);
+        let (best_move, score) = searcher
+            .search_root(&position, &moves, 1, MATE, INFINITY)
+            .unwrap();
+        assert_eq!(score, MATE);
+        assert!(captures_last_royal(&position, best_move));
+        let hit = searcher.tt.probe(key, 0).unwrap();
+        assert_eq!(hit.bound, Bound::Upper);
+        assert_eq!(hit.best_move, Some(best_move));
+        let before = searcher.nodes;
+        assert_eq!(
+            searcher.search_root(&position, &moves, 1, -1, 0),
+            Some((best_move, MATE))
+        );
+        assert_eq!(searcher.nodes - before, 2);
+        assert_eq!(searcher.tt.probe(key, 0).unwrap().bound, Bound::Lower);
+    });
+}
+
+// 同「窓外れの報告」「検証」。深さ5の最初の窓外れを実測してノード予算を
+// 決め、読み直しの根へ入った直後に中断させる。経過時間やスケジューリングに依存しない。
+#[test]
+fn aspiration_interruption_preserves_the_last_completed_iteration() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = [search_key(&position)];
+    let mut node_limit = 0;
+    let mut completed = None;
+    let mut completed_pv = Vec::new();
+    with_root_searcher(&position, &history, |searcher| {
+        for depth in 1..=4 {
+            completed = searcher.search_iteration(
+                &position,
+                &moves,
+                depth,
+                completed.map(|(_, score)| score),
+            );
+            assert!(completed.is_some());
+        }
+        completed_pv.clone_from(&searcher.pv[0]);
+        let (_, prev) = completed.unwrap();
+        let delta = searcher.pst.pawn_value() / 2;
+        let (_, score) = searcher
+            .search_root(&position, &moves, 5, prev - delta, prev + delta)
+            .unwrap();
+        assert!(
+            score >= prev + delta,
+            "fixture must fail high before the interruption"
+        );
+        assert_eq!(
+            searcher.tt.probe(search_key(&position), 0).unwrap().bound,
+            Bound::Lower
+        );
+        node_limit = searcher.nodes + 1;
+    });
+
+    let handle = start(
+        snapshot_for(&position),
+        nodes_limits(node_limit),
+        85,
+        worker_count(1),
+        small_tt(),
+    );
+    let (progress, finished) = drain_events(&handle);
+    handle.join().expect("search thread must not panic");
+    assert_eq!(
+        progress.iter().map(|entry| entry.0).collect::<Vec<_>>(),
+        vec![1, 2, 3, 4]
+    );
+    assert_eq!(finished.depth, 4);
+    assert_eq!((finished.best_move, finished.score), completed.unwrap());
+    assert_eq!(finished.pv, completed_pv);
+    assert_eq!(finished.nodes, node_limit);
+    assert_eq!(finished.stop_reason, StopReason::NodeLimit);
+    let last = progress.last().unwrap();
+    assert_eq!(last.1, finished.score);
+    assert_eq!(last.4, finished.pv);
+    assert!(last.2 < finished.nodes);
+}
+
 // docs/plans/strength-stage5.md「LMRの減深量」「検証」とフェーズ6指示書。
 // c = 2.00、H = 128の生成規則と、補正後の切り詰めを個別に固定する。
 #[test]
@@ -1278,6 +1531,95 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
     assert_eq!(table.probe(key, 0).unwrap().depth, 1);
 }
 
+// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
+// 記録手のない深さ3の探索は、深さ2の探索と同じ結果・探索量になり、深さ2で保存する。
+#[test]
+fn iir_without_tt_entry_searches_and_stores_reduced_depth() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let expected = run_negamax(&position, 2, -INFINITY, INFINITY, 0, &small_tt());
+    let table = small_tt();
+    let actual = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
+
+    assert_eq!(actual, expected);
+    assert_eq!(table.probe(search_key(&position), 0).unwrap().depth, 2);
+}
+
+// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
+// 深さ不足の記録でも記録手があれば、要求された深さ3を保つ。
+#[test]
+fn iir_preserves_depth_when_tt_has_a_move() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let key = search_key(&position);
+    let table = small_tt();
+    run_negamax(&position, 1, -INFINITY, INFINITY, 0, &table);
+    let hit = table.probe(key, 0).unwrap();
+    assert_eq!(hit.depth, 1);
+    assert!(hit.best_move.is_some());
+
+    let (_, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
+    assert!(nodes > 1);
+    assert_eq!(table.probe(key, 0).unwrap().depth, 3);
+}
+
+// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
+// 記録手がなくても残り深さ2以下では減深しない。
+#[test]
+fn iir_preserves_depth_below_three() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    for depth in [1, 2] {
+        let table = small_tt();
+        run_negamax(&position, depth, -INFINITY, INFINITY, 0, &table);
+        assert_eq!(
+            u32::from(table.probe(search_key(&position), 0).unwrap().depth),
+            depth
+        );
+    }
+}
+
+// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
+// stand-patに相当する記録手なしのエントリも減深の対象になる。
+#[test]
+fn iir_reduces_depth_when_tt_entry_has_no_move() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let key = search_key(&position);
+    let table = small_tt();
+    table.store(key, 0, 28_000, Bound::Exact, None, 0);
+    let (critical, advisory) = table.raw_entry(key);
+    table.write_raw(
+        key,
+        critical,
+        (advisory & !ADVISORY_MOVE_MASK) | (u64::from(NO_MOVE) << ADVISORY_MOVE_SHIFT),
+    );
+    assert!(table.probe(key, 0).unwrap().best_move.is_none());
+
+    let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
+    assert_ne!(score, 28_000);
+    assert!(nodes > 1);
+    assert_eq!(table.probe(key, 0).unwrap().depth, 2);
+}
+
+// docs/plans/strength-stage6.md「設計判断」のinternal iterative reduction。
+// 即時打ち切りは減深前の要求深さで判定し、深さが足りる場合は減深より先に返す。
+#[test]
+fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let key = search_key(&position);
+    for stored_depth in [2, 3] {
+        let table = small_tt();
+        table.store(key, stored_depth, 28_000, Bound::Exact, None, 0);
+        let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
+        if stored_depth == 3 {
+            assert_eq!((score, nodes), (28_000, 1));
+            assert!(table.probe(key, 0).unwrap().best_move.is_none());
+        } else {
+            assert_ne!(score, 28_000);
+            assert!(nodes > 1);
+            assert!(table.probe(key, 0).unwrap().best_move.is_some());
+        }
+        assert_eq!(u32::from(table.probe(key, 0).unwrap().depth), stored_depth);
+    }
+}
+
 // D7-SRCH-13。静止探索で最後の王駒を取ったMATE-plyは、現在plyを渡した
 // 置換表の既存変換で往復する。
 #[test]
@@ -1660,6 +2002,23 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
                     assert!(budget.soft <= budget.hard);
                     assert!(budget.hard >= Duration::from_millis(1));
 
+                    // 段階2「反復継続の判断」の規則と一致する。
+                    for elapsed in [
+                        Duration::ZERO,
+                        budget.soft.saturating_sub(Duration::from_nanos(1)),
+                        budget.soft,
+                        budget.hard * 2 / 5,
+                        budget.hard * 2 / 5 + Duration::from_nanos(1),
+                        budget.hard,
+                        Duration::MAX,
+                    ] {
+                        let within_hard = elapsed.as_nanos() * 5 <= budget.hard.as_nanos() * 2;
+                        assert_eq!(
+                            should_start_next_iteration(elapsed, budget, false),
+                            elapsed < budget.soft && within_hard
+                        );
+                    }
+
                     let clock_total = u128::from(remaining) + u128::from(byoyomi);
                     if clock_total > 30 {
                         assert!(budget.hard.as_millis() <= clock_total - 30);
@@ -1704,7 +2063,7 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     assert_eq!(budget.hard, Duration::from_millis(3_864));
 }
 
-// D7-TIME-05。search.md「時間管理」節: 主ワーカーはelapsed < softかつ
+// D7-TIME-05。search.md「時間管理」節: elapsed < softかつ
 // elapsed×2.5 <= hardの場合だけ次の反復を開始する。
 #[test]
 fn next_iteration_requires_both_time_conditions() {
@@ -1716,32 +2075,98 @@ fn next_iteration_requires_both_time_conditions() {
     // soft境界は未満だけを継続する。
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(100, 250)
+        budget(100, 250),
+        false
     ));
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
-        budget(100, 248)
+        budget(100, 248),
+        false
     ));
 
     // 予測完了時刻のhard境界は等号を含む。
     assert!(should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 250)
+        budget(101, 250),
+        false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 249)
+        budget(101, 249),
+        false
     ));
 
     // movetime相当のsoft=hardでは、hardの40%までは継続できる。
     assert!(should_start_next_iteration(
         Duration::from_millis(40),
-        budget(100, 100)
+        budget(100, 100),
+        false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(41),
-        budget(100, 100)
+        budget(100, 100),
+        false
     ));
+}
+
+// docs/plans/strength-stage6.md「最善手安定時の早期終了」「検証」。
+// 安定時は予測完了時刻がsoft以下のときだけ続け、hardの条件は緩めない。
+#[test]
+fn next_iteration_stable_requires_the_prediction_within_soft() {
+    let budget = |soft, hard| TimeBudget {
+        soft: Duration::from_millis(soft),
+        hard: Duration::from_millis(hard),
+    };
+    // soft 100ms、hard 400ms: 通常は99msまで続け、安定時は40msまでしか続けない。
+    assert!(should_start_next_iteration(
+        Duration::from_millis(99),
+        budget(100, 400),
+        false
+    ));
+    assert!(should_start_next_iteration(
+        Duration::from_millis(40),
+        budget(100, 400),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(41),
+        budget(100, 400),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(99),
+        budget(100, 400),
+        true
+    ));
+    // hardの予測が先に拘束する場合は安定の有無で変わらない。
+    assert!(should_start_next_iteration(
+        Duration::from_millis(40),
+        budget(400, 100),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(41),
+        budget(400, 100),
+        true
+    ));
+    assert!(!should_start_next_iteration(
+        Duration::from_millis(41),
+        budget(400, 100),
+        false
+    ));
+}
+
+// 同「最善手安定時の早期終了」。直近4反復の最善手が同じときだけ安定とする。
+#[test]
+fn stable_signal_requires_four_identical_recent_best_moves() {
+    let moves = legal_moves(&Position::initial());
+    let [a, b] = [moves[0], moves[1]];
+    assert!(stable_signal(&[a, a, a, a]));
+    assert!(!stable_signal(&[a, a, a]));
+    assert!(stable_signal(&[b, a, a, a, a]));
+    assert!(!stable_signal(&[a, a, a, b]));
+    assert!(!stable_signal(&[a, b, a, a, a]));
+    assert!(!stable_signal(&[]));
 }
 
 // D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは
@@ -1830,7 +2255,7 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
     let handle = start(
         snapshot_for(&midgame),
-        depth_limits(4),
+        depth_limits(6),
         81,
         DEFAULT_THREADS,
         small_tt(),
@@ -1839,13 +2264,17 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     handle.join().expect("search thread must not panic");
 
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
-    assert_eq!(depths, vec![1, 2, 3, 4]);
+    assert_eq!(depths, vec![1, 2, 3, 4, 5, 6]);
+    // strength-stage6.md「窓外れの報告」。深さ5は初期窓を外れるが、
+    // 読み直しは通知されず、窓内で完了した反復が1回だけ通知される。
+    let delta = weights().unwrap().pawn_value() / 2;
+    assert!(progress[4].1 >= progress[3].1 + delta);
     for (_, _, _, _, pv) in &progress {
         assert!(!pv.is_empty());
     }
     let nodes: Vec<u64> = progress.iter().map(|entry| entry.2).collect();
     assert!(nodes.windows(2).all(|pair| pair[0] <= pair[1]));
-    assert_eq!(finished.depth, 4);
+    assert_eq!(finished.depth, 6);
 
     // 境界: depth=1では深さ列は[1]のみ。
     let handle = start(

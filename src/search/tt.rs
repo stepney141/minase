@@ -124,8 +124,9 @@ struct CriticalFields {
 /// 置換表の照合に成功したエントリの内容。
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Hit {
-    /// 手順序付けにだけ使う助言手。
+    /// 手順序付けに使う助言手。
     ///
+    /// 記録手の有無は減深判断にも使う（strength-stage6.md「internal iterative reduction」節）。
     /// 並行書込み時は検証キーおよび評価値と同じ格納操作に由来する保証がない。
     /// 生成済み合法手との一致を確認せず、着手や枝刈りに使ってはならない。
     pub(super) best_move: Option<Move>,

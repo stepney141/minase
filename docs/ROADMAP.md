@@ -40,27 +40,29 @@
 | PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 完了 | 2026年9月9日 |
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
+| 棋力向上段階6 | [plans/strength-stage6.md](plans/strength-stage6.md) | 完了 | 2026年9月12日 |
 
 ## 現在地
 
-直近に完了したマイルストーンは、Factorization Machineによる2駒関係評価（plans/factorization-machine.md、2026年9月9日）である。
-現行PSTを固定して2駒関係の補正項を学習したFMは、教師値から対局結果の成分を外すと検証損失と教師誤差を全局面帯で改善し探索速度の費用も1.2%に収まったが、STCで得点率19.6%の`H0`となり不採用とした。候補はブランチ`fm-eval`に保持する。
+直近に完了したマイルストーンは、棋力向上段階6（plans/strength-stage6.md、2026年9月12日）である。
+aspiration windows、internal iterative reduction、および最善手安定時の早期終了をSTCとLTCの`H1`で採用し、fail-lowによる延長、最善手交替時の延長、および係数候補`MIN_MOVES = 130`はSTCの`H0`で不採用、置換表のクラスタ化は実装後の固定深さ再生で効果が基準に届かず外し、静的評価の置換表保存とmate distance pruningは診断で見送った。
+最終構成は段階開始版に対してSTCで+129.2 Elo、HaChu戦で+334.1 Elo（段階5完了時の+188.5 Eloと信頼区間が重ならない）であった。
+internal iterative reductionのLTCは外部のOOMによる時間切れ11件を伴い、該当ペアを除いても`H1`であることから、利用者が規則からの逸脱を記録したうえで採用すると決定した。
+その前に完了したFactorization Machineによる2駒関係評価（plans/factorization-machine.md、2026年9月9日）では、現行PSTを固定して2駒関係の補正項を学習したFMが、教師値から対局結果の成分を外すと検証損失と教師誤差を全局面帯で改善し探索速度の費用も1.2%に収まったが、STCで得点率19.6%の`H0`となり不採用とした。候補はブランチ`fm-eval`に保持する。
 同日に完了したHaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）では、HaChuを60秒＋1秒加算・256 MBに固定してminaseの持ち時間比と両者の置換表比を変えた8条件と、1手固定時間の2条件を固定200ペアEloで測った。
 対等条件で+207.5 Elo、持ち時間1/4で−26.1 Eloの互角、1/8で−205.0 Eloとなり、置換表を16 MBまたは1,024 MBへ変えた4条件はいずれも対等条件と信頼区間が重なり、1手固定時間のminase 1秒対HaChu 2秒でもminaseが+166.2 Eloで強く、HaChuが強いという仮説は支持されなかった。
 対局ハーネスには候補と基準ごとの置換表容量オプションと、CECPエンジンへの1手固定時間の対応を追加した。
 その前に完了したPSTの序中盤と終盤の補間（plans/tapered-pst.md、2026年9月8日）では、序中盤用と終盤用の2組のPSTを盤上総駒数で線形補間する評価を実装し、既存の世代0と世代1のデータで学習した2端点PSTが開始版に対してSTCとLTCの両方で`H1`となり採用した。
 単一PSTの同条件の再学習は開始版と一致したため、構造比較は省いた。
-その前の棋力向上段階5（2026年9月7日）では、順序付けキーの重複計算の除去とLMRの減深量を採用し、段階開始版との固定200ペアはSTCで+35.6 Elo、HaChu戦は+188.5 Eloであった。
-
 進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）である。
-10段階のうち段階5までが完了し、時間管理の適応的な延長と係数の再調整は段階6へ移した。
-次の一手は、段階6の個別設計書を起案し、aspiration windowsと置換表の改良へ進むことである。
+10段階のうち段階6までが完了した。
+次の一手は、段階7（評価関数の世代2と線形モデルの拡張）の個別設計書を起案することである。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、棋力向上段階6のaspiration windowsと置換表の改良である。
+次期候補は、棋力向上段階7（評価関数の世代2と線形モデルの拡張）である。
 棋力向上の段階計画と並行して進めてよい候補は、採用PSTによる世代2の生成と再学習である。
 2端点PSTの採用により、世代2の再学習は2端点PSTと重み形式MNPTバージョン2を起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
