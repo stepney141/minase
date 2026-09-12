@@ -1,0 +1,23 @@
+# minase の lishogi Bot を動かす compose 定義。
+# 先に tools/lishogi-bot/build-image.sh <コミット> でイメージを作り、
+# 環境変数 LISHOGI_BOT_TOKEN(bot:play スコープ)を置いてから
+# `docker compose -f tools/lishogi-bot/compose.yml up -d` で起動する。
+# アカウントの昇格は Bot を起動せずに lishogi の API へ直接行う
+# (docs/plans/lishogi-bot.md「運用手順」)。
+# 設定ファイルは同じディレクトリの config.yml をマウントするので、
+# 変更は `docker compose ... restart` で反映され、イメージの再ビルドは要らない。
+services:
+  bot:
+    image: minase-lishogi-bot:latest
+    environment:
+      LISHOGI_BOT_TOKEN: ${LISHOGI_BOT_TOKEN:?set LISHOGI_BOT_TOKEN to the bot:play token}
+    volumes:
+      - ./config.yml:/opt/lishogi-bot/config.yml:ro
+      - lishogi-bot-logs:/var/log/lishogi-bot
+    restart: unless-stopped
+    # config.yml の Threads と同じ CPU 数を上限にする。
+    cpus: 4
+    mem_limit: 2g
+    init: true
+volumes:
+  lishogi-bot-logs:

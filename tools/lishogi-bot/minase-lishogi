@@ -1,0 +1,6 @@
+#!/bin/sh
+# Lishogi-Bot から minase を起動するための固定引数ラッパー。
+# Lishogi-Bot は engine_options を与えると起動コマンドをリストのまま shell=True で
+# Popen に渡すため引数が捨てられる(engine_wrapper.py、engine_ctrl/usi.py open_process)。
+# そのため引数なしで起動できる本スクリプトを engine.name に指定する。
+exec /opt/minase/minase --protocol usi --rules lishogi "$@"

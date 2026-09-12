@@ -4,6 +4,7 @@
 
 本マイルストーンは、minaseをオンライン対局サイトlishogiへBotアカウントとして接続し、人間および他のBotと中将棋を公開対局できるようにする。
 接続には、lishogiのBot API（lichess由来の、Botアカウントが対局イベントを受け取り着手を送るためのHTTPインターフェース）とUSIエンジンを仲介するPython製ブリッジLishogi-Botをそのまま使い、minase側にはブリッジ専用のコードを書かない。
+配備は、固定した版のLishogi-Botと固定コミットのminaseを1つのDockerイメージにまとめ、運用機ではそのイメージを認証トークンだけを与えて起動する形にする。
 minaseは[外部対局接続](engine-connectivity.md)でLishogi-Botの送信系列に対応済みなので、本マイルストーンの主な作業は、実接続で初めて問題になる3点の解消である。
 第1に、lishogiの反復裁定（同一局面の繰り返しによる終局の判定、RULES.md第24条と第31条）は「対局開始または直前の不可逆手の直後から、可逆手が12手以上続いている」ことを前提条件にする。不可逆手とは、元の局面へ戻れなくなる着手であり、中将棋では捕獲、成り、歩兵または香車の着手を指す。それ以外の着手を可逆手という。同じ局面が4回現れた時点で裁定する現行のminaseは、この前提条件を持たないためlishogiより先に対局を終局と判断し、次に届く`position`を拒否して着手不能になり得る。この差を規則R1の定義と実装の訂正で解消する。
 第2に、Lishogi-Botは自分の残り時間から固定の余裕、受信からの経過時間、加算、および秒読みを引いた値を`btime`または`wtime`として送り、秒読みの回数は送らない。この換算の下でminaseの時間管理が安全側に働くことと、着手がサーバへ届くまでの遅延を含めて時間切れが起きないことを確かめる。
@@ -12,11 +13,12 @@ minaseは[外部対局接続](engine-connectivity.md)でLishogi-Botの送信系�
 
 ## 状態
 
-起案。
-2026年9月4日に起案した。
+進行中。
+2026年9月4日に起案し、2026年9月12日に着手した。
 実lishogiサーバへの接続は、未完成のエンジンを公開の場へ出さない方針から[外部対局接続](engine-connectivity.md)の対象外としていたが、[棋力向上段階2](strength-stage2.md)の完了時点でHaChuに対して+149 Eloに達したことを受けて、利用者が2026年9月4日に公開へ進むと決めた。
-着手前に確定が必要な点は2つある。規則R1の定義へlishogiの前提条件を取り込む仕様変更の裁定と、この変更をSPRTによる採否判定の対象外とする裁定である（「反復裁定の整合」の節）。
-次の一手は、この2つの裁定を得てフェーズ1へ着手することである。
+規則R1へlishogiの前提条件を取り込む仕様変更と、その変更をSPRTの対象外とする扱いは、利用者が着手を指示した2026年9月12日に確定した。
+フェーズ1（反復裁定の整合）とフェーズ2のうち配備物の作成（Dockerイメージのビルド、設定ファイル、起動手順）は完了し、イメージのビルドとminaseの起動、および認証エラーがサーバから返ることまでを本環境で確認した。
+次の一手は、利用者がBotアカウントを作成して昇格し、運用機でイメージを起動して挑戦の待受に入り、途中局面からの挑戦の可否を確かめることである。
 
 ## 目的
 
@@ -30,7 +32,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 
 - 規則R1の反復裁定へ、lishogiの規則ライブラリscalashogiが実装する前提条件を取り込み、RULES.md、`src/core/repetition.rs`、`src/core/adjudication.rs`、および`src/core/game.rs`を更新する。
 - lishogiの実対局のうち、この前提条件で裁定が分かれる対局をリプレイ照合のフィクスチャへ追加し、取得スクリプト`scripts/fetch_lishogi_replays.py`の初期局面の扱いを直す。
-- Lishogi-Botを固定した版で導入し、minase用の設定ファイルをリポジトリに置く。
+- 固定した版のLishogi-Botと固定コミットのminaseを1つのDockerイメージにまとめるDockerfile、コミットを固定してイメージを作るスクリプト、compose定義、およびminase用の設定ファイルを`tools/lishogi-bot/`に置く。
 - Botアカウントの作成と昇格、認証トークンの管理、およびエンジンバイナリの固定手順を定める。
 - 非レート対局とレート対局の2段階で公開運用し、対局記録の事後照合で異常0件を確認する。
 
@@ -55,9 +57,10 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 
 | 項目 | 決定 |
 |---|---|
-| ブリッジ | TheYoBots/Lishogi-Botを固定した版でそのまま使う。Rustで自前のブリッジを書く案は、Bot APIのイベントストリーム、対局の受諾、時計の換算、切断からの再接続を再実装する費用に対して、minase側に得られる利点がないため棄却した。Lishogi-Botの改変も、上流の更新へ追従する費用が増えるため行わない。 |
-| エンジンの指定 | `--protocol usi --rules lishogi`を必須とする。他の規則セットでの公開対局は、lishogiの裁定との互換性を保証しないため行わない。 |
-| エンジンバイナリ | 公開運用に使うコミットを固定し、そのコミットを検出したgit worktree（同じリポジトリの別コミットを別ディレクトリへ展開したもの）でビルドしたバイナリを使う（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)）。作業ツリーのバイナリを直接使うと、開発中の変更が公開対局へ混入するためである。 |
+| ブリッジ | TheYoBots/Lishogi-Botを固定した版（コミット17c16bc、2024年10月26日）でそのまま使う。Rustで自前のブリッジを書く案は、Bot APIのイベントストリーム、対局の受諾、時計の換算、切断からの再接続を再実装する費用に対して、minase側に得られる利点がないため棄却した。Lishogi-Botの改変も、上流の更新へ追従する費用が増えるため行わない。 |
+| 配備 | Lishogi-Botとminaseを1つのDockerイメージ（`tools/lishogi-bot/Dockerfile`）にまとめ、`compose.yml`で起動する。Lishogi-Botが固定する依存パッケージはPython 3.11で検証されているので、イメージの基底をpython:3.11に固定し、運用機のPython版に依存しない。運用機にPythonの仮想環境とRustのツールチェーンを置いてリポジトリの外でLishogi-Botを動かす案は、運用機ごとに環境が変わり、エンジンと設定の組合せを再現できないため棄却した。 |
+| エンジンの指定 | `--protocol usi --rules lishogi`を必須とする。他の規則セットでの公開対局は、lishogiの裁定との互換性を保証しないため行わない。Lishogi-Botの`engine_options`は使えない。`engine_options`を与えるとLishogi-Botは起動コマンドを引数つきのリストのまま`shell=True`で`Popen`に渡すので、引数はシェルの位置引数になってエンジンへ届かず、`--protocol`を欠いたminaseは直ちに終了する（engine_wrapper.py `create_engine`、engine_ctrl/usi.py `open_process`。イメージ内で再現を確認した。[ブリッジ経由のエンジン起動は設定どおりに起動されることを実際に確かめる](../lessons/verify-bridge-launch-path.md)）。このため、引数を固定した2行のシェルスクリプト`tools/lishogi-bot/minase-lishogi`をイメージへ入れ、`engine.name`にそれを指定する。 |
+| エンジンバイナリ | 公開運用に使うコミットを固定し、`tools/lishogi-bot/build-image.sh <コミット>`がそのコミットの`git archive`だけをビルド文脈にしてイメージ内でビルドする（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)と同じ趣旨）。イメージには完全ハッシュのタグとラベル`org.opencontainers.image.revision`、および環境変数`MINASE_COMMIT`を付け、運用中のコミットをイメージから読める。作業ツリーをビルド文脈にすると開発中の変更が公開対局へ混入するため、スクリプト以外の経路でイメージを作らない。 |
 | 反復裁定の差 | R1の定義と実装をscalashogiに合わせて訂正する仕様変更を行う。差をUSI層で吸収する案（終局後の`position`を許容する）は、規則の曖昧さをコード側で補わないRULES.mdの方針と、暗黙のフォールバックを置かない方針に反するため棄却した。差を放置する案は、minaseが先に終局と判断した対局で`bestmove`を返せず時間切れ負けになるため棄却した。詳細は「反復裁定の整合」の節に記す。 |
 | R1訂正の採否判定 | SPRTの対象外とし、利用者の裁定で採用する。理由は「反復裁定の整合」の節に記す。 |
 | 公開の順序 | 非レート対局だけを受け付ける段階を先に置き、異常0件を確認してからレート対局を有効にする。Lishogi-Botには挑戦者を限定する設定がないため、非レート段階でも不特定の相手と対局する。 |
@@ -79,11 +82,11 @@ scalashogiは、反復の裁定に2つの条件を課す（`History.scala`の`is
 したがって第2の条件は、対局開始または直前の不可逆手の直後から、可逆手が先後合計で12手以上続いていることと同じである。
 中将棋の不可逆手は、捕獲、成り、および歩兵または香車の着手である（`variant/Chushogi.scala`の`isIrreversible`）。
 
-一方、RULES.md第31条のR1と現行の`src/core/repetition.rs`は、第1の条件だけで裁定する。
-このため、不可逆手の直後から双方がじっと（RULES.md第3条、駒を動かさずに手番を渡す着手）を繰り返す2手周期の反復では、不可逆手の直後の局面を1回目として2手ごとに同じ局面が現れるので、minaseは6手後の4回目で裁定するのに対し、lishogiは12手後まで裁定しない。
-lishogiの全棋譜との照合（2026年8月26日、GitHub issue #5）で現存する差異はこの1種類だけであり、その実例が対局uy7y6mP6、EHUTJJu4、およびA4EO2swaの3局である。
+取り込み前のRULES.md第31条のR1と`src/core/repetition.rs`は、第1の条件だけで裁定していた。
+そのため、不可逆手の直後から双方がじっと（RULES.md第3条、駒を動かさずに手番を渡す着手）を繰り返す2手周期の反復では、不可逆手の直後の局面を1回目として2手ごとに同じ局面が現れるので、minaseは6手後の4回目で裁定するのに対し、lishogiは12手後まで裁定しない。
+lishogiの全棋譜との照合（2026年8月26日、GitHub issue #5）で現存した差異はこの1種類だけであり、その実例が対局uy7y6mP6、EHUTJJu4、およびA4EO2swaの3局である。
 
-差が問題になるのは片方向だけである。
+差が問題になるのは片方向だけであった。
 不可逆手の後には、それ以前の局面が再現し得ないため、履歴を空にする処理は裁定の対象となる局面を変えない。
 したがってlishogiの裁定条件を満たす局面は必ずminaseの裁定条件も満たし、lishogiが裁定する局面ではminaseも同じ手か、それ以前の手で必ず裁定している。
 逆に、lishogiが裁定しないままminaseだけが先に裁定する場合があり、この場合だけが問題になる。
@@ -92,15 +95,17 @@ minaseが先に終局と判断すると、`Engine`は`Finished`になり、lisho
 
 ### 取り込み方
 
-RULES.md第31条のR1の規則文へ、裁定の前提条件として「対局開始または直前の不可逆手の直後から、可逆手が先後合計で12手以上続いていること」を加え、不可逆手の定義を典拠のscalashogiの実装に合わせて書く。
-現行の条文は4回目の出現で無条件に裁定するので、これは裁定される局面の集合を狭める仕様変更である。
+RULES.md第31条のR1の規則文は、裁定の前提条件として「対局開始または直前の不可逆手の直後から、可逆手が先後合計で12手以上続いていること」を持ち、不可逆手の定義を典拠のscalashogiの実装に合わせて定める。
+取り込み前の条文は4回目の出現で無条件に裁定していたので、これは裁定される局面の集合を狭める仕様変更である。
 R1はLishogiの規則として定義されたコードであり、変更の目的は典拠への適合である。
+攻撃的着手の判定区間は、最初の出現から裁定の時点までであり、前提条件によって裁定が5回目以降の出現まで遅れても区間はそこまで延びる。
 R2とR3は変えない。
 
-実装は次の境界で行う。
-`src/core/game.rs`の`play`は着手の巻き戻し情報`Undo`（移動前の駒種と捕獲した駒）を持つので、ここで着手が不可逆かどうかを1か所で判定し、`src/core/adjudication.rs`の`record_move`を通じて`src/core/repetition.rs`のR1の履歴へ渡す。
+実装の境界は次のとおりである。
+着手が不可逆かどうかは、`src/core/adjudication.rs`の`move_is_irreversible`が着手の巻き戻し情報`Undo`（移動前の駒種と捕獲した駒）から判定する。
+`Game::play`は`Undo`を`AdjudicationState::record_move`へ渡し、そこから`src/core/repetition.rs`のR1の履歴へ不可逆かどうかを伝える。
 R1の履歴は、直前の不可逆手からの可逆手の数を持ち、対局開始時は0、不可逆手のたびに0へ戻し、裁定の判定に前提条件を加える。
-仮想着手に対するR1の判定経路（`src/core/adjudication.rs`）も同じ判定を使う。
+詰み判定が仮想着手を評価する経路（`candidate_is_immediate_win`）も同じ関数で判定し、仮想着手が不可逆手なら反復は成立しない。
 
 探索部は、読み筋の中で対局履歴と同じ局面が再び現れると、その枝を引き分けの評価値で打ち切る。
 これは手を選ぶための評価であって規則の裁定ではなく、4回目の出現や前提条件を待たずに2回目の出現で働くので、前提条件の追加によって変えない。
@@ -116,18 +121,23 @@ R1の履歴は、直前の不可逆手からの可逆手の数を持ち、対局
 
 ### 検証
 
-上記3局のうち、lishogi APIから4欄以上の完全なSFENまたは`startpos`として取得できる対局をリプレイ照合のフィクスチャへ追加し、終局裁定がlishogiと一致することを確認する。
+上記3局をリプレイ照合のフィクスチャへ追加し、終局裁定がlishogiと一致することを確認する。
 追加は`scripts/fetch_lishogi_replays.py`の対象棋譜へ加えて再生成する。
-このスクリプトは途中局面開始の対局を旧欄名`initialFen`の有無で検出して拒否し、常に標準初期局面を保存するので、lishogi APIの現行の欄名`initialSfen`を読んで初期局面をフィクスチャへ格納するよう修正する。
-SFEN（盤面、手番、獅子捕獲升、手数などを空白区切りの欄で表す局面表記、[プロトコル層](protocol-layer.md)）の欄が欠けた古い書き出し形式の対局は、欄を推測して補わず、フィクスチャに入れない。
-3局のうち完全な初期局面を持つ対局が1局以上フィクスチャへ入ることを要し、3局とも欄が欠けている場合は、同じ差異を示す別の対局を全棋譜照合の方式で探す。
+このスクリプトはlishogi APIの現行の欄名`initialSfen`を読んで初期局面をフィクスチャへ格納し、`tests/lishogi_replay.rs`はその局面から再生を始める。
+uy7y6mP6は標準初期局面から始まり、9手目に同一局面が4回目に現れるが可逆手が8手しかないため裁定されず、128手目の王駒捕獲で終わる。
+EHUTJJu4とA4EO2swaは4欄のSFENで与えられる途中局面から始まり、双方のじっとの往復で可逆手12手目に裁定される。
+この2局は2023年4月の対局であり、lishogiが反復による終局に`repetition`の状態名を割り当てる前（scalashogiのコミットfe9ccf8、2023年5月20日）なので、APIは`draw`を返す。
+スクリプトは、この2局に限って対局日がその日付より前で状態が`draw`であることを検査したうえで`repetition`として保存する。
 
 ## 接続の構成
 
 ### 構成要素
 
 構成要素は、lishogiサーバ、Lishogi-Bot、およびminaseの3つである。
-Lishogi-Botはリポジトリの外（`../Lishogi-Bot`）へ固定した版で取得し、Pythonの仮想環境で動かす。
+Lishogi-Botとminaseは1つのDockerイメージに入る。
+イメージは2段階で作る。第1段階はrust:1.88でビルド文脈（固定コミットの`git archive`）から`cargo build --release --locked --bin minase`を実行し、第2段階はpython:3.11-slimへLishogi-Botを固定コミットでgit cloneして依存パッケージを入れ、第1段階のバイナリを`/opt/minase/minase`、起動引数を固定したラッパーを`/opt/minase/minase-lishogi`に置く。
+設定ファイルはイメージへ入れず、compose定義が`tools/lishogi-bot/config.yml`を`/opt/lishogi-bot/config.yml`へ読み取り専用でマウントする。エンジンはコミットで固定し、運用パラメータは作業ツリーの設定ファイルで変えて再起動だけで反映する分担である。
+コンテナのエントリポイントは`python3 lishogi-bot.py`であり、既定の引数は`-v --logfile /var/log/lishogi-bot/lishogi-bot.log`で、ログはcompose定義の名前付きボリュームに残る。
 Lishogi-Botは対局を1局受諾するたびにエンジンプロセスを起動し、終局時に`quit`で終了させるので、置換表や`Engine`の状態は対局間に持ち越されない。
 `usinewgame`と`gameover`は送られない。
 変種は、対局ごとの最初の探索の前に`setoption name USI_Variant value chushogi`で1回だけ通知され、以後は`position`と`go`の反復になる。
@@ -135,22 +145,20 @@ Lishogi-Botは対局を1局受諾するたびにエンジンプロセスを起�
 
 ### 設定ファイル
 
-minase用の設定は`tools/lishogi-bot/config.yml`としてリポジトリに置く。
+minase用の設定は`tools/lishogi-bot/config.yml`としてリポジトリに置き、compose定義がコンテナへマウントする。
 認証トークンだけは書かず、環境変数で渡す。
+Lishogi-Botは`token`の項目自体を必須とするので、設定ファイルには環境変数で上書きされる旨の占位文字列を置く。
 設定は少なくとも次の階層を持つ。
 
 ```yaml
 engine:
-  dir: "<固定コミットのworktreeのtarget/release>"
-  name: "minase"
+  dir: "/opt/minase"
+  name: "minase-lishogi"
   protocol: "usi"
   ponder: false
-  engine_options:
-    protocol: usi
-    rules: lishogi
   usi_options:
-    Threads: <運用機の物理コア数から決める>
-    USI_Hash: <運用機の実メモリ容量から決める>
+    Threads: <compose定義のCPU上限と同じ値>
+    USI_Hash: <compose定義のメモリ上限から決める>
 move_overhead: 1900
 challenge:
   concurrency: 1
@@ -167,21 +175,24 @@ greeting:
   goodbye: "<短い挨拶>"
 ```
 
-`engine.protocol`はLishogi-Bot自身がエンジンの種別を選ぶ項目であり、`engine_options`はminaseの起動引数である。
-Lishogi-Botは`engine_options`の各項目を`--protocol=usi --rules=lishogi`の形で渡し、minaseの引数解析（clap）はこの形を受理する。
+`engine.protocol`はLishogi-Bot自身がエンジンの種別を選ぶ項目である。
+minaseの起動引数は`engine_options`ではなくラッパー`minase-lishogi`が固定する（「設計判断」の節）。
 `go_commands`は与えない。深さやノード数の上書きは時間管理を無効にするためである。
 `move_overhead`は、雛形`config.yml.default`の値が1,900ミリ秒、項目を省略したときのコード上の既定値が1,000ミリ秒と異なるので、明示する。
 `Threads`と`USI_Hash`の値、時間制御の下限、および秒読みの上限は運用パラメータであり、契約ではない。
 
 ### 時計の換算
 
-Lishogi-Botは、自分の手番で`go`を送る前に、lishogiから受け取った残り時間から`move_overhead`と受信からの経過時間を引き、さらに秒読みと加算を引いた値を`btime`または`wtime`に入れる。
+Lishogi-Botは、自分の手番で`go`を送る前に、lishogiから受け取った残り時間から`move_overhead`と受信からの経過時間を引いて0で切り上げ、さらに秒読みと加算を引いて0で切り上げた値を`btime`または`wtime`に入れる。
 秒読みと加算は、それとは別に`byoyomi`、`binc`、`winc`として送る。
 各対局の最初の1手だけは、時計の引数ではなく固定の`movetime`で探索する。
-したがってminaseが受け取る残り時間は、実際の残り時間より常に少なく、秒読みと加算を予算式が足し戻しても実際の上限を超えない。
+持ち時間が残っている間は、minaseが受け取る残り時間は実際より`move_overhead`以上少なく、秒読みと加算を予算式が足し戻しても実際の上限を超えない。
+一方、持ち時間が秒読みに近いか秒読みに入っている間は、切り上げによって`btime`が0になり、`move_overhead`の減算は効かない。
+このときminaseの予算式は秒読みの8割を上限にするので（`src/search/mod.rs`）、サーバへの送信遅延に使える余裕は秒読みの2割だけである。
+したがって秒読みの短い対局ほど余裕が小さく、安全性は換算式からは導けず、後述の端到端の実測で確かめる。
 lishogiの秒読みは複数回（periods）を持ち得るが、Lishogi-Botは回数を送らないので、minaseは1回として扱う（「設計判断」の節）。
 
-この換算は安全側だが、サーバの時間切れ判定は、minaseが`bestmove`を出してからLishogi-Botが着手をHTTPで送り、サーバが受け取るまでの遅延を含む。
+サーバの時間切れ判定は、minaseが`bestmove`を出してからLishogi-Botが着手をHTTPで送り、サーバが受け取るまでの遅延を含む。
 そのため、エンジン内部の予算が受信した残り時間の内側に収まることだけでは不十分であり、対局イベントの受信からサーバの着手受理までを端到端で測り、最小の余裕を記録する。
 測定は、Lishogi-Botの詳細ログから`go`の引数、`bestmove`の時刻、および着手送信の時刻を取り出し、lishogi側の時計と突き合わせて行う（[時間管理を変える前に保存記録から時計を再構成する](../lessons/reconstruct-clock-from-match-records.md)）。
 余裕が不足して時間切れが起こる場合は、`move_overhead`を増やして対処せず、本マイルストーンを待機中にして時間管理側を修正する。
@@ -204,13 +215,20 @@ Botのプロフィールには、エンジン名、リポジトリの所在、�
 
 運用は次の順序で行う。
 
-1. 公開に使うコミットを決め、そのコミットのworktreeで`cargo build --release --bin minase`を実行する。
-2. 設定ファイルの`engine`がそのバイナリを指すことを確認する。
-3. 環境変数にトークンを置き、`python3 lishogi-bot.py -v --logfile <ログファイル>`で起動する。
+1. 公開に使うコミットを決め、`tools/lishogi-bot/build-image.sh <コミット>`でイメージ`minase-lishogi-bot:<完全ハッシュ>`と`minase-lishogi-bot:latest`を作る。
+2. 初回だけ、Botを起動せずにアカウントを昇格する。Lishogi-Botの`-u`は昇格後にそのまま挑戦の待受へ進むので使わず、`-u`が呼ぶのと同じAPIを直接呼ぶ。応答が`{"ok":true}`であることを確かめる。
+
+   ```console
+   curl -X POST https://lishogi.org/api/bot/account/upgrade -H "Authorization: Bearer $LISHOGI_BOT_TOKEN"
+   ```
+
+3. 環境変数`LISHOGI_BOT_TOKEN`にトークンを置き、`docker compose -f tools/lishogi-bot/compose.yml up -d`で起動し、`docker compose -f tools/lishogi-bot/compose.yml logs -f`で挑戦の待受に入ったことと認証エラーがないことを確かめる。同じアカウントのBotを2つ起動しない。
 4. 運用の開始と終了、使用コミット、および受け付けた対局条件を運用記録に残す。運用記録は`tools/lishogi-bot/`に置かず、Botアカウントのプロフィールとgit履歴で足りる範囲にとどめる。
 
-運用中のコミットを差し替えるときは、1から3をやり直す。
+運用中のコミットを差し替えるときは、`docker compose -f tools/lishogi-bot/compose.yml down`で止めてから1と3をやり直す。
 差し替えは棋力向上の段階が完了するたびに行い、段階の途中のコミットは使わない。
+設定ファイルの変更（`Threads`、`USI_Hash`、受け付ける時間制御、およびフェーズ4の`modes`への`rated`の追加）は、イメージの再ビルドを要せず、`docker compose -f tools/lishogi-bot/compose.yml restart`で反映する。
+compose定義のCPU数とメモリ上限は設定ファイルの`Threads`と`USI_Hash`に合わせて変え、両者を一致させる。
 
 ## 実装フェーズ
 
@@ -223,8 +241,8 @@ RULES.md第31条のR1へ前提条件を追記し、`src/core/game.rs`、`src/cor
 
 ### フェーズ2　環境の構築
 
-Lishogi-Botを固定した版で取得し、Pythonの仮想環境を作り、設定ファイルを書き、固定コミットのバイナリを用意する。
-Lishogi-Botが固定する依存パッケージのPython 3.14での動作は確認されていないので、導入できない場合はuvで3.11系の仮想環境を用意し、原因となったパッケージとエラーを記録する。
+Dockerfile、ビルドスクリプト、compose定義、および設定ファイルを書き、固定コミットのイメージを作る。
+イメージ内でminaseがUSIの握手に応答し、Lishogi-Botが設定ファイルからminaseを起動できることを確かめる。
 利用者がBotアカウントを作成し昇格する。
 途中局面からの挑戦の可否を確かめる（「開始局面」の節）。
 完了条件は、Lishogi-Botがサーバへ接続して挑戦の待受に入り、ログに認証エラーがないことである。
@@ -253,16 +271,16 @@ Lishogi-Botが固定する依存パッケージのPython 3.14での動作は確�
 ## 完了条件
 
 - RULES.md第31条のR1にlishogiの前提条件が記され、実装とリプレイ照合がそれに一致している。
-- `tools/lishogi-bot/config.yml`がリポジトリにあり、認証トークンを含まない。
+- `tools/lishogi-bot/`にDockerfile、`build-image.sh`、`compose.yml`、`config.yml`、およびラッパー`minase-lishogi`があり、いずれも認証トークンを含まず、`build-image.sh`で作ったイメージにマウントした`config.yml`からLishogi-Botがminaseを起動できる。
 - 非レート対局10局とレート対局10局が受諾され、事後照合で`position`の拒否、`bestmove`の欠落、エンジン異常、時間切れ負け、minase側に起因する未完走、および裁定の不一致がいずれも0件である。
 - 非レート対局にBot相手の対局と秒読みつきの対局が含まれ、端到端の時計の再構成と最小の余裕が記録されている。
 - 途中局面からの挑戦の可否が確認され、許される場合は先手番開始と後手番開始の接続試験が記録されている。
-- docs/protocols/usi-lishogi.mdの「lishogiへのエンジン接続経路」の章に、Lishogi-Botの時計の換算（余裕、経過時間、秒読み、加算の減算と別項目での送信、最初の1手の`movetime`）、対局ごとのプロセス起動と終了、`USI_Variant`の送信回数、および`engine_options`の引数形式が、参照した版つきで追記されている。
+- docs/protocols/usi-lishogi.mdの「lishogiへのエンジン接続経路」の章に、Lishogi-Botの時計の換算（余裕、経過時間、秒読み、加算の減算と別項目での送信、最初の1手の`movetime`）、対局ごとのプロセス起動と終了、`USI_Variant`の送信回数、および`engine_options`が引数を捨てる挙動が、参照した版つきで追記されている。
 - 本節の検証手順がすべて成功する。
 
 ## 参考資料
 
-- TheYoBots/Lishogi-Bot（lishogi Bot APIとUSIエンジンのブリッジ）。設定の雛形`config.yml.default`、時計の換算`lishogi-bot.py`の`adjust_game_time`と`play_midgame_move`、`go`の組み立て`engine_ctrl/usi.py`、エンジンの起動と終了`play_game`、変種通知`set_variant_options`、途中局面の手番判定`model.py`を2026年9月4日にmasterで参照した。<https://github.com/TheYoBots/Lishogi-Bot>
+- TheYoBots/Lishogi-Bot（lishogi Bot APIとUSIエンジンのブリッジ、コミット17c16bc、2024年10月26日）。設定の雛形`config.yml.default`、認証トークンの環境変数による上書き`config.py`、エンジンの起動引数の組み立て`engine_wrapper.py`、時計の換算`lishogi-bot.py`の`adjust_game_time`と`play_midgame_move`、`go`の組み立て`engine_ctrl/usi.py`、エンジンの起動と終了`play_game`、変種通知`set_variant_options`、途中局面の手番判定`model.py`を参照した。<https://github.com/TheYoBots/Lishogi-Bot>
 - WandererXII/scalashogi（lishogiサーバの規則ライブラリ、コミット9a1c2c3、2026年3月18日）。反復裁定の前提条件`History.scala`の`isRepetition`、履歴の更新`Situation.scala`、および不可逆手の定義`variant/Chushogi.scala`の`isIrreversible`を参照した。<https://github.com/WandererXII/scalashogi>
 - GitHub issue #5。lishogiの全棋譜をminaseで再生して差異を確認した記録。反復裁定の前提条件の差と実例3局はここで判明した。
 - [docs/protocols/usi-lishogi.md](../protocols/usi-lishogi.md)。USIの仕様、lishogi系の表記、およびLishogi-Botの接続経路の調査記録。

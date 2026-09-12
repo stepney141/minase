@@ -150,6 +150,12 @@ lishogiはlichess由来のBot APIを備え、USIエンジンはブリッジプ�
 
 Lishogi-Botは`usinewgame`を送信しない（engine_ctrl/usi.pyに当該コマンドの送信箇所が存在しないことを確認した）。局面は毎手`position <初期局面> moves <着手列>`で送られ、思考要求は`position`直後の`go`である。初期局面はAPIの`initialSfen`フィールドから取り、`startpos`でなければ`sfen `を前置する［B1: engine_ctrl/usi.py `position`、model.py］。中将棋の対局で`initialSfen`が常に完全なSFEN文字列になるかどうかはAPIの実測を行っておらず未確認だが、エンジン側は`startpos`と`sfen`両形式への対応が安全である。
 
+### Lishogi-Botの対局進行と時計の換算
+
+以下はTheYoBots/Lishogi-Botのコミット17c16bc（2024年10月26日）による。Lishogi-Botは対局を1局受諾するたびにエンジンプロセスを起動し、終局時に`quit`を送ってプロセスを終了させる［B1: lishogi-bot.py `play_game`、engine_wrapper.py `create_engine`］。`usinewgame`と`gameover`は送らない。`USI_Variant`は対局ごとの最初の探索の前に1回だけ送られる［B1: engine_wrapper.py `set_variant_options`］。設定ファイルの`engine_options`の各項目は`--<key>=<value>`の形で起動コマンドのリストに付くが、Lishogi-Botはそのリストを`shell=True`のまま`Popen`へ渡すので、2要素以上のリストでは先頭以外がシェルの位置引数になり、エンジンには届かない［B1: engine_wrapper.py `create_engine`、engine_ctrl/usi.py `open_process`］。引数を要するエンジンは、引数を固定したラッパースクリプトを`engine.name`に指定する。
+
+各対局の最初の1手は、lishogiの初手30秒制限に合わせて時計の引数ではなく固定の`movetime 1000`で探索する［B1: lishogi-bot.py `play_game`］。2手目以降は、自分の残り時間から`move_overhead`（設定ファイルの既定は1,900ミリ秒、項目を省略したときのコード上の既定は1,000ミリ秒）と対局イベントの受信からの経過時間を引いて0で切り上げ、さらに秒読みと加算を引いて0で切り上げた値を`btime`または`wtime`に入れる。秒読みと加算はそれとは別に`byoyomi`、`binc`、`winc`として送る［B1: lishogi-bot.py `adjust_game_time`、engine_ctrl/usi.py `go`］。秒読みの回数（periods）は送らない。持ち時間が残っている間は、エンジンが受け取る残り時間は実際より少なく、予算式が秒読みと加算を足し戻しても実際の上限を超えない。持ち時間が秒読み以下になると`btime`は0に切り上げられ、`move_overhead`の減算は効かない。たとえば残り10,000ミリ秒、秒読み10,000ミリ秒では`btime 0 byoyomi 10000`が送られる。秒読み中の余裕はエンジン自身の予算式だけに依存する。
+
 ### 接続経路からのオプション設定
 
 ブリッジ経由のオプション設定には2つの経路がある。第一に、ブリッジの設定ファイル`config.yml`の`usi_options`節に書いた各項目が、起動時のハンドシェイク後に`setoption name <key> value <value>`として送信される［B1: config.yml.default、engine_ctrl/usi.py `setoption`］。したがって、minaseが規則セットをUSIオプションとして公開すれば、bot運用者は`config.yml`から規則を指定できる。lishogiサーバ自身がエンジンへ`setoption`を送る経路はない。

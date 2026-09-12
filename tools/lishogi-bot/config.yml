@@ -1,0 +1,47 @@
+# minase 用の Lishogi-Bot 設定(docs/plans/lishogi-bot.md「設定ファイル」)。
+# 認証トークンは書かず、環境変数 LISHOGI_BOT_TOKEN で上書きする。
+# Threads、USI_Hash、受け付ける時間制御の範囲は運用パラメータであり、契約ではない。
+token: "provided-by-LISHOGI_BOT_TOKEN"
+url: "https://lishogi.org/"
+
+engine:
+  dir: "/opt/minase"
+  # 引数なしで --protocol usi --rules lishogi を付けて起動するラッパー。
+  # engine_options は Lishogi-Bot が引数を捨てるため使わない。
+  name: "minase-lishogi"
+  protocol: "usi"
+  ponder: false
+  usi_options:
+    Threads: 4
+    USI_Hash: 1024
+  silence_stderr: false
+  startup_lines: 0
+
+abort_time: 30
+fake_think_time: false
+rate_limiting_delay: 0
+move_overhead: 1900
+
+challenge:
+  concurrency: 1
+  sort_by: "best"
+  accept_bot: true
+  only_bot: false
+  max_increment: 60
+  min_increment: 0
+  max_byoyomi: 60
+  min_byoyomi: 0
+  max_base: 3600
+  min_base: 180
+  variants:
+    - chushogi
+  time_controls:
+    - blitz
+    - rapid
+    - classical
+  modes:
+    - casual
+
+greeting:
+  hello: "Hi! I'm {me}, running minase, a chu shogi engine under development (https://github.com/stepney141/minase). Good luck!"
+  goodbye: "Good game!"
