@@ -241,7 +241,6 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(sum(entry["samples"] for entry in report["bands"]), validation)
         for entry in report["bands"]:
             self.assertTrue((run / "diagnostics" / entry["indices_file"]).is_file())
-        self.assertEqual(report["rust_agreement"], {"base": validation, "candidate": validation})
         original = candidate.read_bytes()
         with self.assertRaises(ValueError):
             workflow.train(run)

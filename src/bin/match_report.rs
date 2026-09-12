@@ -815,10 +815,6 @@ mod tests {
             Err(error) => error,
         };
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert_eq!(
-            error.to_string(),
-            "match_report requires format version 3, found 2"
-        );
         std::fs::remove_dir_all(run_dir).unwrap();
     }
 

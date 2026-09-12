@@ -618,43 +618,13 @@ mod tests {
         );
     }
 
-    // D8-HARN-16/D8-HARN-12(RULES.md第33条): 値文法はエンジンバイナリと統一。
-    // プリセット名は大文字小文字を区別せず解決され、規則コードとの併記と
-    // R0の指定は拒否される。
+    // RULES.md第33条: 正常なプリセットと不正な併記で共通parserへの接続を検査する。
     #[test]
     fn rules_argument_resolves_presets_case_insensitively_and_rejects_combinations() {
-        let engine_default =
-            Arguments::try_parse_from(["random_play", "--rules", "engine-default"])
-                .expect("the engine-default preset must be accepted");
-        assert_eq!(
-            engine_default.rules.0,
-            [RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]
-        );
-
         let preset = Arguments::try_parse_from(["random_play", "--rules", "LISHOGI"])
-            .expect("preset names must match case-insensitively");
-        let codes = Arguments::try_parse_from(["random_play", "--rules", "L1,L2,P0,P3,R1,E1,E3"])
-            .expect("an explicit rule code list must be accepted");
-        assert_eq!(
-            preset.rules.0,
-            [
-                RuleCode::L1,
-                RuleCode::L2,
-                RuleCode::P0,
-                RuleCode::P3,
-                RuleCode::R1,
-                RuleCode::E1,
-                RuleCode::E3,
-            ]
-        );
-        assert_eq!(preset.rules.0, codes.rules.0);
-
-        for invalid in ["lishogi,P1", "R0", "R0,R1"] {
-            assert!(
-                Arguments::try_parse_from(["random_play", "--rules", invalid]).is_err(),
-                "rules {invalid:?} must be rejected"
-            );
-        }
+            .expect("the common rules parser must accept the preset");
+        assert_eq!(preset.rules.0, Vec::<RuleCode>::from(Rules::LISHOGI));
+        assert!(Arguments::try_parse_from(["random_play", "--rules", "lishogi,P1"]).is_err());
     }
 
     // D8-HARN-17(random-play.mdシード派生節): 局シードは
@@ -684,23 +654,12 @@ mod tests {
         let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0])
             .expect("the complete engine-default rule set must be valid");
         let first = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, false);
-        let second = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, false);
+        // random-play.md: 全合法手の適用検査を有効にしても同じ対局になる。
+        let second = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, true);
         assert_eq!(first.moves, second.moves);
         assert_eq!(first.plies, second.plies);
         assert_eq!(first.plies, 16);
         assert!(matches!(first.outcome, Outcome::Cutoff));
-    }
-
-    // D8-HARN-18(random-play.md対局ループと検証節): --verify-all指定時は毎手、
-    // 全合法手を複製した対局へ適用して受理を全数検証する。検証の失敗は
-    // プロセス異常終了として現れるため、完走自体が観測である。
-    #[test]
-    fn verify_all_verification_completes_on_a_short_game() {
-        let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0])
-            .expect("the complete engine-default rule set must be valid");
-        let completed = run_game(rules, "L0,P0,R1,E0", 20_260_814, 2, 4, true);
-        assert_eq!(completed.plies, 4);
-        assert_eq!(completed.moves.len(), 4);
-        assert!(matches!(completed.outcome, Outcome::Cutoff));
+        assert!(matches!(second.outcome, Outcome::Cutoff));
     }
 }

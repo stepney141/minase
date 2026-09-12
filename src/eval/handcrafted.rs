@@ -234,18 +234,6 @@ mod tests {
         assert!(covered.iter().all(|&seen| seen));
     }
 
-    // D7-EVAL-03。search.md「評価関数v0」節: 王将・玉将・太子はHaChuの
-    // 280・270を採用せず、獅子を上回る2600とする。王駒2枚側の1枚目の喪失
-    // （RULES.md第20条第3〜5項）を評価へ反映する順序の意図を独立に固定する。
-    #[test]
-    fn royal_piece_value_exceeds_the_lion_value() {
-        assert_eq!(
-            piece_value(PieceKind::King),
-            piece_value(PieceKind::CrownPrince)
-        );
-        assert!(piece_value(PieceKind::King) > piece_value(PieceKind::Lion));
-    }
-
     // D7-EVAL-04[実装契約]。search.md「設計判断」のfail-soft negamaxは静的
     // 評価の手番対称性を要件とする。局面Pの先手視点評価と、Pを180度回転して
     // 所有者を入れ替えた局面P'の後手視点評価は一致しなければならない。

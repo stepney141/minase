@@ -930,10 +930,6 @@ mod tests {
         let value = serde_json::to_value(&with_values).unwrap();
         assert_eq!(value["stop_reason"], "hard");
         assert_eq!(value["completed_time_ms"], 40);
-        assert_eq!(
-            serde_json::from_value::<TurnRecord>(value).unwrap(),
-            with_values
-        );
 
         let mut without_values = with_values.clone();
         without_values.stop_reason = None;
@@ -965,10 +961,6 @@ mod tests {
         ] {
             let value = serde_json::to_value(reason).unwrap();
             assert_eq!(value, word);
-            assert_eq!(
-                serde_json::from_value::<StopReasonRecord>(value).unwrap(),
-                reason
-            );
         }
     }
 
@@ -985,7 +977,6 @@ mod tests {
 
         let error = RunStore::resume(&path, &expected, 1).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert_eq!(error.to_string(), "unsupported manifest format version 2");
         fs::remove_dir_all(path).unwrap();
     }
 

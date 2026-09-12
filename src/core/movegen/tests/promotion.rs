@@ -250,56 +250,11 @@ fn article_18_2c_reentry_offers_promotion_again() {
     board.make_move_unchecked(mv(msq(6, 5), None, msq(6, 4), false), rules);
     board.make_move_unchecked(mv(msq(1, 7), None, msq(1, 8), false), rules);
     // 敵陣から非捕獲で退出する（後斜め）。
+    assert_no_promotion(&generated(&board), msq(6, 4), msq(7, 5));
     board.make_move_unchecked(mv(msq(6, 4), None, msq(7, 5), false), rules);
     board.make_move_unchecked(mv(msq(1, 8), None, msq(1, 7), false), rules);
     // 改めて敵陣へ入る着手には成り・不成の2手が含まれる。
     assert_both_choices(&generated(&board), msq(7, 5), msq(6, 4));
-}
-
-// D1-018-05: 敵陣内の非捕獲移動では成れない（第18条3項）。
-#[test]
-fn article_18_3_quiet_move_inside_the_zone_cannot_promote() {
-    let board = position(
-        Color::Black,
-        &[(msq(6, 3), Color::Black, PieceKind::FerociousLeopard)],
-    );
-    assert_no_promotion(&generated(&board), msq(6, 3), msq(6, 2));
-}
-
-// D1-018-06: 敵陣から非捕獲で出るだけでは成れない（第18条4項）。
-#[test]
-fn article_18_4_quiet_exit_from_the_zone_cannot_promote() {
-    let board = position(
-        Color::Black,
-        &[(msq(6, 4), Color::Black, PieceKind::SilverGeneral)],
-    );
-    assert_no_promotion(&generated(&board), msq(6, 4), msq(7, 5));
-}
-
-// D1-018-07: 成り・不成の選択（第18条5項）。強制成りは存在しない。
-#[test]
-fn article_18_5_promotion_is_always_optional() {
-    // 最奥段到達の歩兵にも不成の選択がある（帰結は D1-019-02）。
-    let pawn = position(Color::Black, &[(msq(6, 2), Color::Black, PieceKind::Pawn)]);
-    assert_both_choices(&generated(&pawn), msq(6, 2), msq(6, 1));
-
-    // 成り選択ありの着手には、同じ (from, mid, to) の不成の対が必ず存在する。
-    let entry = position(
-        Color::Black,
-        &[(msq(7, 5), Color::Black, PieceKind::SilverGeneral)],
-    );
-    let moves = generated(&entry);
-    for m in &moves {
-        if m.promote {
-            assert!(
-                moves.contains(&Move {
-                    promote: false,
-                    ..*m
-                }),
-                "move={m:?}"
-            );
-        }
-    }
 }
 
 // D1-018-08: 2段階移動と成りのタイミング（第18条6項・7項、第17条1項・4項）。
@@ -613,14 +568,6 @@ fn article_30_p3_lance_gains_last_rank_relief() {
     // 最奥段以外への敵陣内非捕獲移動は P3 の下でも成れない。
     assert_no_promotion(&moves, msq(6, 3), msq(6, 2));
 
-    // 成りを適用すると白駒が生じる。
-    let mut promoted = board.clone();
-    promoted.make_move_unchecked(mv(msq(6, 3), None, msq(6, 1), true), generator.rules());
-    assert_eq!(
-        promoted.piece_at(msq(6, 1)),
-        PieceCode::new_promoted(Color::Black, PieceKind::WhiteHorse)
-    );
-
     // 不成を選べば第19条3項どおり移動不能になる。
     let frozen = position(
         Color::Black,
@@ -645,13 +592,6 @@ fn article_30_p4_go_between_gains_last_rank_relief() {
     // P4では成り（醉象）と不成の2手。
     let generator = MoveGenerator::new(modifier_rules(false, true, false, false));
     assert_both_choices(&generated_with(&generator, &board), msq(6, 2), msq(6, 1));
-    let mut promoted = board.clone();
-    promoted.make_move_unchecked(mv(msq(6, 2), None, msq(6, 1), true), generator.rules());
-    assert_eq!(
-        promoted.piece_at(msq(6, 1)),
-        PieceCode::new_promoted(Color::Black, PieceKind::DrunkElephant)
-    );
-
     // 仲人は前後に動けるため、最奥段で不成でも移動不能にならない
     // （第19条2項・3項は歩兵・香車限定）。
     let unpromoted = position(

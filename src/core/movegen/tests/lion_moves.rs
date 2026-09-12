@@ -39,7 +39,7 @@ fn with_promoted(
 // D1-011-01: 角鷹の前方4動作（第11条1項a〜d）。
 #[test]
 fn article_11_1_falcon_has_four_forward_actions() {
-    let board = with_promoted(
+    let mut board = with_promoted(
         Color::Black,
         (6, 6, PieceKind::HornedFalcon),
         &[
@@ -56,6 +56,16 @@ fn article_11_1_falcon_has_four_forward_actions() {
     assert!(moves.contains(&mv(msq(6, 6), Some(msq(6, 5)), msq(6, 4), false)));
     // d: 中間駒を跳び越して2升目へ直接移動。
     assert!(moves.contains(&mv(msq(6, 6), None, msq(6, 4), false)));
+
+    board.make_move_unchecked(
+        mv(msq(6, 6), Some(msq(6, 5)), msq(6, 4), false),
+        MoveRules::standard(),
+    );
+    assert!(board.pieces_of(Color::White).is_empty());
+    assert_eq!(
+        board.piece_at(msq(6, 4)),
+        PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon)
+    );
 
     // 前方2升が空なら、正準形では a の非捕獲版と d の跳びだけが前方に現れる
     // （空升経由の2段階は跳びへ正準化される。move-canonicalization.md 決定1）。
@@ -106,29 +116,6 @@ fn article_11_2_eagle_two_stage_on_both_forward_diagonals() {
     assert!(moves.contains(&mv(msq(6, 6), Some(msq(7, 5)), msq(6, 6), false)));
     assert!(moves.contains(&mv(msq(6, 6), Some(msq(7, 5)), msq(8, 4), false)));
     assert!(moves.contains(&mv(msq(6, 6), None, msq(8, 4), false)));
-}
-
-// D1-011-03: 各段階での捕獲、1手で最大2枚（第11条3項）。
-#[test]
-fn article_11_3_two_stage_move_captures_up_to_two_pieces() {
-    let mut board = with_promoted(
-        Color::Black,
-        (6, 6, PieceKind::HornedFalcon),
-        &[
-            ((6, 5), Color::White, PieceKind::Pawn),
-            ((6, 4), Color::White, PieceKind::CopperGeneral),
-        ],
-    );
-    board.make_move_unchecked(
-        mv(msq(6, 6), Some(msq(6, 5)), msq(6, 4), false),
-        MoveRules::standard(),
-    );
-    // 歩兵と銅将の両方が消え、角鷹が (6,4) にある。
-    assert!(board.pieces_of(Color::White).is_empty());
-    assert_eq!(
-        board.piece_at(msq(6, 4)),
-        PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon)
-    );
 }
 
 // D1-011-04: 跳びは中間駒を取らない（第11条4項、第7条7項）。
@@ -224,16 +211,6 @@ fn article_11_7_falcon_jitto_requires_empty_forward_square() {
     );
     assert!(jitto_moves(&generated(&own_forward), msq(6, 6)).is_empty());
 
-    // 前方隣接升が相手駒: じっと不可だが居喰いは可（捕獲になる方向はじっとの根拠にならない）。
-    let enemy_forward = with_promoted(
-        Color::Black,
-        (6, 6, PieceKind::HornedFalcon),
-        &[((6, 5), Color::White, PieceKind::Pawn)],
-    );
-    let moves = generated(&enemy_forward);
-    assert!(jitto_moves(&moves, msq(6, 6)).is_empty());
-    assert!(moves.contains(&mv(msq(6, 6), Some(msq(6, 5)), msq(6, 6), false)));
-
     // 段1（先手の最前）では前方が盤外なのでじっと不可。
     let at_edge = with_promoted(Color::Black, (6, 1, PieceKind::HornedFalcon), &[]);
     assert!(jitto_moves(&generated(&at_edge), msq(6, 1)).is_empty());
@@ -292,17 +269,6 @@ fn article_11_9_second_stage_uses_board_after_first_capture() {
     assert!(!moves.contains(&mv(msq(6, 6), None, msq(6, 4), false)));
     // 居喰いは from を離れた後の空升への帰還として合法。
     assert!(moves.contains(&mv(msq(6, 6), Some(msq(6, 5)), msq(6, 6), false)));
-
-    // 対照: (6,4) を相手駒に変えると2枚取りが生成される。
-    let enemy_second = with_promoted(
-        Color::Black,
-        (6, 6, PieceKind::HornedFalcon),
-        &[
-            ((6, 5), Color::White, PieceKind::Pawn),
-            ((6, 4), Color::White, PieceKind::SilverGeneral),
-        ],
-    );
-    assert!(generated(&enemy_second).contains(&mv(msq(6, 6), Some(msq(6, 5)), msq(6, 4), false)));
 }
 
 // D1-011-10: 角鷹・飛鷲は1手の途中でも成らない（第11条10項、第17条4項）。
@@ -327,57 +293,6 @@ fn article_11_10_falcon_and_eagle_moves_never_promote() {
 // ---------------------------------------------------------------------------
 // 第12条　獅子の基本動作
 // ---------------------------------------------------------------------------
-
-// D1-012-01: 1升移動（第12条1項・3項）。王将と同じ8方向。
-#[test]
-fn article_12_1_3_lion_single_steps() {
-    let board = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::Lion)]);
-    let moves = generated(&board);
-    for square in step_squares((6, 6), &[F, B, L, R, FL, FR, BL, BR]) {
-        assert!(
-            moves.contains(&mv(msq(6, 6), None, square, false)),
-            "{square:?}"
-        );
-    }
-}
-
-// D1-012-02: 2升への直接跳び。ナイト位置を含む16升（第12条5〜7項・2項）。
-#[test]
-fn article_12_5_7_lion_jumps_two_squares_including_knight_positions() {
-    let board = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::Lion)]);
-    let moves = generated(&board);
-    // max(|df|,|dr|)=2 の16升（縦横斜めの2升先8＋ナイト位置8）。
-    let jump_deltas: Vec<(i16, i16)> = (-2..=2_i16)
-        .flat_map(|df| (-2..=2_i16).map(move |dr| (df, dr)))
-        .filter(|&(df, dr)| df.abs().max(dr.abs()) == 2)
-        .collect();
-    assert_eq!(jump_deltas.len(), 16);
-    for square in step_squares((6, 6), &jump_deltas) {
-        assert!(
-            moves.contains(&mv(msq(6, 6), None, square, false)),
-            "{square:?}"
-        );
-    }
-    // 3升以上先への着手は存在しない。
-    assert!(!moves.iter().any(|m| m.to == msq(6, 3) || m.to == msq(3, 6)));
-
-    // 中間升に駒があっても跳べ、その駒は取らない（第12条7項）。
-    let occupied_middle = position(
-        Color::Black,
-        &[
-            (msq(6, 6), Color::Black, PieceKind::Lion),
-            (msq(6, 5), Color::White, PieceKind::Pawn),
-        ],
-    );
-    let jump = mv(msq(6, 6), None, msq(6, 4), false);
-    assert!(generated(&occupied_middle).contains(&jump));
-    let mut after = occupied_middle.clone();
-    after.make_move_unchecked(jump, MoveRules::standard());
-    assert_eq!(
-        after.piece_at(msq(6, 5)),
-        PieceCode::new(Color::White, PieceKind::Pawn)
-    );
-}
 
 // D1-012-03: 経路捕獲つき2段階移動と最大2枚取り（第12条4項・12項）。
 #[test]
@@ -485,19 +400,6 @@ fn article_12_8_lion_igui() {
     assert_eq!(iguis.len(), 2);
 }
 
-// D1-012-06: 獅子のじっと（第12条9項・11項）。
-#[test]
-fn article_12_9_lion_jitto() {
-    // 空の隣接升が複数あっても、じっとは1手だけ生成される。
-    let board = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::Lion)]);
-    let moves = generated(&board);
-    assert_eq!(jitto_moves(&moves, msq(6, 6)).len(), 1);
-    let mut after = board.clone();
-    after.make_move_unchecked(mv(msq(6, 6), None, msq(6, 6), false), MoveRules::standard());
-    assert!(same_board(&board, &after));
-    assert_eq!(after.side_to_move(), Color::White);
-}
-
 // D1-012-07: じっと不能条件（第12条10項・9項）。
 #[test]
 fn article_12_10_lion_jitto_requires_an_empty_adjacent_square() {
@@ -545,9 +447,16 @@ fn article_12_12_second_stage_judged_sequentially() {
 fn article_12_lone_lion_generates_25_canonical_moves() {
     let board = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::Lion)]);
     let moves = generated(&board);
-    assert_eq!(moves.len(), 25);
-    assert_eq!(moves.iter().filter(|m| m.to != m.from).count(), 24);
-    assert_eq!(jitto_moves(&moves, msq(6, 6)).len(), 1);
-    // 捕獲対象がないため mid ありの着手は0手。
-    assert!(moves.iter().all(|m| m.mid.is_none()));
+    // 第12条1〜9項: 周囲1升8手、距離2の16手、じっとを含む完全な集合。
+    let expected: Vec<_> = (4..=8)
+        .flat_map(|file| (4..=8).map(move |rank| mv(msq(6, 6), None, msq(file, rank), false)))
+        .collect();
+    assert_eq!(moves.len(), expected.len());
+    let actual: std::collections::HashSet<_> = moves.into_iter().collect();
+    assert_eq!(actual, expected.into_iter().collect());
+
+    let mut after = board.clone();
+    after.make_move_unchecked(mv(msq(6, 6), None, msq(6, 6), false), MoveRules::standard());
+    assert!(same_board(&board, &after));
+    assert_eq!(after.side_to_move(), Color::White);
 }

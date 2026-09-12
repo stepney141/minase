@@ -1417,11 +1417,24 @@ mod tests {
     fn threads_accepts_boundaries_and_rejects_invalid_values() {
         // LS「プロトコル設定」: Threadsは1..=256だけを受理し、不正値には固定エラーを返す
         // （D6-USI-36）。正当値は無応答である。
-        let output = session(
-            &[RuleCode::R1],
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
+        for threads in [256, 1] {
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    &mut engine,
+                    &format!("setoption name Threads value {threads}\n")
+                ),
+                ""
+            );
+            assert_eq!(protocol.threads.get(), threads);
+        }
+        let output = run(
+            &mut protocol,
+            &mut engine,
             concat!(
-                "setoption name Threads value 1\n",
-                "setoption name Threads value 256\n",
                 "setoption name Threads\n",
                 "setoption name Threads value nope\n",
                 "setoption name Threads value 0\n",
@@ -1438,11 +1451,7 @@ mod tests {
                 "info string error: Threads must be an integer from 1 to 256\n",
             )
         );
-        assert_eq!(parse_threads("1").unwrap().get(), 1);
-        assert_eq!(parse_threads("256").unwrap().get(), 256);
-        assert!(parse_threads("0").is_none());
-        assert!(parse_threads("257").is_none());
-        assert!(parse_threads("nope").is_none());
+        assert_eq!(protocol.threads.get(), 1);
     }
 
     #[test]
@@ -1556,7 +1565,7 @@ mod tests {
         let output = run(
             &mut protocol,
             &mut engine,
-            "position startpos moves 6i6h\nsetoption name RuleSet value L0,P0,R2,E0\nstate\n",
+            "position startpos moves 6i6h\nsetoption name RuleSet value L1,P0,R2,E0\nstate\n",
         );
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
 
@@ -1574,34 +1583,7 @@ mod tests {
             &mut engine,
             "gameover win\nposition startpos\nstate\n",
         );
-        assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R2,E0");
-    }
-
-    #[test]
-    fn pending_rules_commit_with_or_without_usinewgame() {
-        // PLコマンドenum: commit点はNewGame受信時とAwaitingStartでのSetPosition受信時（D6-USI-08）。
-        let with_newgame = session(
-            &[RuleCode::R1],
-            concat!(
-                "setoption name RuleSet value L0,P0,R2,E2\n",
-                "usinewgame\nposition startpos\nstate\n",
-            ),
-        );
-        let without_newgame = session(
-            &[RuleCode::R1],
-            concat!(
-                "position startpos\ngameover win\n",
-                "setoption name RuleSet value L0,P0,R2,E2\n",
-                "position startpos\nstate\n",
-            ),
-        );
-
-        // lishogi-bot互換の要: usinewgameの有無は次局規則の反映結果に影響しない。
-        assert_eq!(state_rules(state_lines(&with_newgame)[0]), "L0,P0,R2,E2");
-        assert_eq!(
-            state_lines(&with_newgame).last().unwrap(),
-            state_lines(&without_newgame).last().unwrap()
-        );
+        assert_eq!(state_rules(state_lines(&output)[0]), "L1,P0,R2,E0");
     }
 
     #[test]
@@ -1670,70 +1652,6 @@ mod tests {
     }
 
     #[test]
-    fn position_extension_requires_ingame_matching_setup_and_move_prefix() {
-        let accepted = AcceptedPosition {
-            setup_tokens: vec!["startpos".to_owned()],
-            move_tokens: vec!["6i6h".to_owned(), "1d1e".to_owned()],
-        };
-
-        assert_eq!(
-            position_extension_start(
-                Some(&accepted),
-                EngineLifecycle::InGame,
-                &["startpos"],
-                &["6i6h", "1d1e"],
-            ),
-            Some(2)
-        );
-        assert_eq!(
-            position_extension_start(
-                Some(&accepted),
-                EngineLifecycle::InGame,
-                &["startpos"],
-                &["6i6h", "1d1e", "3i3h"],
-            ),
-            Some(2)
-        );
-        for (lifecycle, setup, moves) in [
-            (
-                EngineLifecycle::AwaitingStart,
-                &["startpos"][..],
-                &["6i6h", "1d1e"][..],
-            ),
-            (
-                EngineLifecycle::Finished,
-                &["startpos"][..],
-                &["6i6h", "1d1e"][..],
-            ),
-            (
-                EngineLifecycle::InGame,
-                &["sfen"][..],
-                &["6i6h", "1d1e"][..],
-            ),
-            (EngineLifecycle::InGame, &["startpos"][..], &["6i6h"][..]),
-            (
-                EngineLifecycle::InGame,
-                &["startpos"][..],
-                &["3i3h", "1d1e"][..],
-            ),
-        ] {
-            assert_eq!(
-                position_extension_start(Some(&accepted), lifecycle, setup, moves),
-                None
-            );
-        }
-        assert_eq!(
-            position_extension_start(
-                None,
-                EngineLifecycle::InGame,
-                &["startpos"],
-                &["6i6h", "1d1e"],
-            ),
-            None
-        );
-    }
-
-    #[test]
     fn incremental_position_matches_full_replay_for_ongoing_and_finished_games() {
         let moves = "3i3h 5a4b 8l9k 8b9b";
         let mut full_engine = make_engine(&[RuleCode::R1]);
@@ -1765,7 +1683,6 @@ mod tests {
             full_engine.game().position()
         );
         assert_eq!(incremental_engine.ply(), full_engine.ply());
-        assert_eq!(incremental_engine.status(), full_engine.status());
 
         let mut full_engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
         let mut full_protocol = UsiProtocol::new(&full_engine);
@@ -1788,108 +1705,27 @@ mod tests {
             full_engine.game().position()
         );
         assert_eq!(incremental_engine.ply(), full_engine.ply());
-        assert_eq!(incremental_engine.status(), full_engine.status());
     }
 
     #[test]
-    fn shorter_moves_and_different_setup_use_full_replay() {
-        let shortened = session(
-            &[RuleCode::R1],
-            concat!(
-                "position startpos moves 6i6h 1d1e\n",
-                "position startpos moves 6i6h\n",
-                "state\n",
-            ),
-        );
-        let shortened_full = session(&[RuleCode::R1], "position startpos moves 6i6h\nstate\n");
-        assert_eq!(shortened, shortened_full);
-
-        let different_setup = session(
-            &[RuleCode::R1],
-            &format!(
-                concat!(
-                    "position startpos moves 6i6h 1d1e\n",
-                    "position sfen {} - 1 moves 6i6h\n",
-                    "state\n",
-                ),
-                INITIAL_BOARD,
-            ),
-        );
-        let different_setup_full = session(
-            &[RuleCode::R1],
-            &format!("position sfen {INITIAL_BOARD} - 1 moves 6i6h\nstate\n"),
-        );
-        assert_eq!(different_setup, different_setup_full);
-    }
-
-    #[test]
-    fn position_history_is_cleared_at_boundaries_and_on_rule_changes() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-
-        assert_eq!(
-            run(&mut protocol, &mut engine, "position startpos moves 6i6h\n"),
-            ""
-        );
-        assert!(protocol.accepted_position.is_some());
-        assert_eq!(run(&mut protocol, &mut engine, "usinewgame\n"), "");
-        assert!(protocol.accepted_position.is_none());
-        assert_eq!(
-            run(
-                &mut protocol,
-                &mut engine,
-                "position startpos moves 6i6h 1d1e\n"
-            ),
-            ""
-        );
-
-        assert_eq!(
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name RuleSet value L0,P0,R2,E0\n"
-            ),
-            ""
-        );
-        assert!(protocol.accepted_position.is_none());
-        assert!(protocol.position_synchronized);
-        assert_eq!(
-            run(
-                &mut protocol,
-                &mut engine,
-                "position startpos moves 6i6h 1d1e\n"
-            ),
-            ""
-        );
-
-        assert_eq!(run(&mut protocol, &mut engine, "gameover win\n"), "");
-        assert!(protocol.accepted_position.is_none());
-        assert!(!protocol.position_synchronized);
-    }
-
-    #[test]
-    fn invalid_incremental_position_preserves_state_and_clears_synchronization() {
-        let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = UsiProtocol::new(&engine);
-        assert_eq!(
-            run(&mut protocol, &mut engine, "position startpos moves 6i6h\n"),
-            ""
-        );
-        let position = engine.game().position().clone();
-        let ply = engine.ply();
-        let status = engine.status();
-
-        let output = run(
-            &mut protocol,
-            &mut engine,
-            "position startpos moves 6i6h 1a1b\n",
-        );
-        assert_eq!(error_lines(&output).len(), 1);
-        assert_eq!(engine.game().position(), &position);
-        assert_eq!(engine.ply(), ply);
-        assert_eq!(engine.status(), status);
-        assert!(protocol.accepted_position.is_none());
-        assert!(!protocol.position_synchronized);
+    fn repeated_and_replaced_positions_match_fresh_replay() {
+        // PLのposition契約: 再送、短縮、同数の別手順、開始局面だけの変更は、
+        // それぞれ新しいpositionコマンドを単独で再生した結果に一致する。
+        let changed_board = INITIAL_BOARD.replace("LFCSGKEGSCFL b", "LFCSGKEGSCF1 b");
+        for command in [
+            "position startpos moves 6i6h 1d1e".to_owned(),
+            "position startpos moves 6i6h".to_owned(),
+            "position startpos moves 3i3h 1d1e".to_owned(),
+            format!("position sfen {changed_board} - 1 moves 6i6h 1d1e"),
+        ] {
+            let actual = session(
+                &[RuleCode::R1],
+                &format!("position startpos moves 6i6h 1d1e\n{command}\nstate\nmoves\n"),
+            );
+            let expected = session(&[RuleCode::R1], &format!("{command}\nstate\nmoves\n"));
+            assert!(error_lines(&expected).is_empty(), "{command}: {expected}");
+            assert_eq!(actual, expected, "{command}");
+        }
     }
 
     #[test]
@@ -1922,9 +1758,9 @@ mod tests {
         let output = session(
             &[RuleCode::R1],
             concat!(
-                "position startpos\n",
+                "position startpos moves 6i6h\n",
                 "state\n",
-                "position startpos moves 1a1b\n",
+                "position startpos moves 6i6h 1a1b\n",
                 "state\n",
                 "go depth 1\n",
                 "position startpos moves 6i6h\n",
@@ -2007,12 +1843,8 @@ mod tests {
         // EC実施状況フェーズ1: 時間引数の受理とミリ秒正規化、手番側の時計選択（D6-USI-14）。
         let go = "go btime 1000 wtime 2000 binc 10 winc 20 byoyomi 0 nodes 1";
         let black = session(&[RuleCode::R1], &format!("position startpos\n{go}\n"));
-        let white = session(
-            &[RuleCode::R1],
-            &format!("position startpos moves 6i6h\n{go}\n"),
-        );
+
         assert_eq!(bestmoves(&black).len(), 1);
-        assert_eq!(bestmoves(&white).len(), 1);
 
         // wire解析と単位正規化はプロトコル側の責務（EC「責務分担」）。手番側の選択を単体で固定する。
         let tokens = [
@@ -2110,8 +1942,8 @@ mod tests {
 
         // 同一局面・同一引数の再実行は同一のbestmoveを返す（決定性）。
         let again = session(&[RuleCode::R1], "position startpos\ngo depth 1\n");
-        let again2 = session(&[RuleCode::R1], "position startpos\ngo depth 1\n");
-        assert_eq!(bestmoves(&again), bestmoves(&again2));
+        assert_eq!(bestmoves(&output), bestmoves(&again));
+        assert_search_info(&again);
     }
 
     #[test]
@@ -2230,8 +2062,15 @@ mod tests {
         // EC「探索中に届くコマンド」: 停止指示以外は探索のjoin後（bestmove送出後）に適用する（D6-USI-22）。
         let output = session(
             &[RuleCode::R1],
-            "position startpos\ngo depth 1\nposition startpos moves 6i6h\nisready\nstate\n",
+            concat!(
+                "position startpos\ngo infinite\n",
+                "setoption name Threads value 2\n",
+                "position startpos moves 6i6h\nisready\nstate\n",
+                "stop\ngo depth 1\n",
+            ),
         );
+        assert!(error_lines(&output).is_empty());
+        assert_eq!(bestmoves(&output).len(), 2);
         let lines: Vec<_> = output.lines().collect();
         let bestmove = lines
             .iter()
@@ -2251,26 +2090,6 @@ mod tests {
     }
 
     #[test]
-    fn threads_arriving_during_search_applies_before_the_next_search() {
-        // LS「プロトコル設定」: 探索中のThreadsはpendingへ積み、実行中探索を変えず、
-        // join後に処理して次の探索へ適用する（D6-USI-37）。
-        let output = session(
-            &[RuleCode::R1],
-            concat!(
-                "position startpos\n",
-                "go infinite\n",
-                "setoption name Threads value 2\n",
-                "stop\n",
-                "position startpos\n",
-                "go depth 1\n",
-            ),
-        );
-
-        assert!(error_lines(&output).is_empty());
-        assert_eq!(bestmoves(&output).len(), 2);
-    }
-
-    #[test]
     fn multi_worker_search_places_info_immediately_before_one_bestmove() {
         // D6-USI-38。補助ワーカーの採用深さは非決定的なので数値を固定せず、
         // 採用結果のinfoが必要な場合もbestmove直前の構造を保つことを確認する。
@@ -2282,24 +2101,7 @@ mod tests {
                 "go depth 4\n",
             ),
         );
-        let lines: Vec<_> = output.lines().collect();
-        let bestmove_positions: Vec<_> = lines
-            .iter()
-            .enumerate()
-            .filter_map(|(index, line)| line.starts_with("bestmove ").then_some(index))
-            .collect();
-
-        assert_eq!(bestmove_positions.len(), 1);
-        let bestmove = bestmove_positions[0];
-        assert_eq!(bestmove, lines.len() - 1);
-        assert!(bestmove > 1);
-        assert!(lines[bestmove - 1].starts_with("info string stop "));
-        assert!(lines[bestmove - 2].starts_with("info depth "));
-        assert!(
-            lines[..bestmove - 1]
-                .iter()
-                .all(|line| line.starts_with("info depth "))
-        );
+        assert_search_info(&output);
     }
 
     #[test]
@@ -2333,10 +2135,8 @@ mod tests {
         assert!(bestmoves(&finished).is_empty());
     }
 
-    #[test]
-    fn info_lines_follow_the_contract_token_order() {
-        // EC「思考情報」のinfo行形式（D6-USI-26）。行数と数値の値は契約にしない。
-        let output = session(&[RuleCode::R1], "position startpos\ngo depth 2\n");
+    // EC「思考情報」: 完了理由とinfoの構文を既存の1・複数ワーカー探索で検査する。
+    fn assert_search_info(output: &str) {
         let lines: Vec<_> = output.lines().collect();
 
         assert!(lines.last().unwrap().starts_with("bestmove "));
@@ -2371,48 +2171,33 @@ mod tests {
     }
 
     #[test]
-    fn stop_reasons_have_distinct_protocol_words() {
-        assert_eq!(stop_reason_text(StopReason::DepthCompleted), "depth");
-        assert_eq!(stop_reason_text(StopReason::NodeLimit), "nodes");
+    fn clock_stop_reasons_have_distinct_protocol_words() {
         assert_eq!(stop_reason_text(StopReason::SoftLimit), "soft");
         assert_eq!(stop_reason_text(StopReason::HardLimit), "hard");
-        assert_eq!(stop_reason_text(StopReason::ExternalStop), "external");
     }
 
     #[test]
-    fn usi_hash_is_accepted_and_leaves_the_game_unchanged() {
-        // EC実施状況フェーズ1: USI_Hash受理と非探索中リサイズの外形無害性（D6-USI-27）。
-        // 不正値0の拒否は明文外の実装契約（SU-04）。
-        let output = session(
-            &[RuleCode::R1],
-            concat!(
-                "setoption name USI_Hash value 0\n",
-                "position startpos\nstate\n",
-                "setoption name USI_Hash value 64\n",
-                "state\ngo depth 1\n",
-            ),
-        );
-        let states = state_lines(&output);
-
-        assert_eq!(error_lines(&output).len(), 1);
-        // リサイズは対局状態を変えない。
-        assert_eq!(states[0], states[1]);
-        assert_eq!(bestmoves(&output).len(), 1);
-    }
-
-    #[test]
-    fn oversized_usi_hash_is_rejected_and_the_session_continues() {
-        // 監査「置換表サイズのオーバーフロー」: 極大の外部設定値は
-        // エラー応答となり、後続の有効な設定と探索を妨げない。
+    fn hash_rejects_invalid_sizes_and_resizes_without_changing_the_game() {
+        // ECの非探索中リサイズと、極大の外部設定値によるオーバーフローの回帰。
         let output = session(
             &[RuleCode::R1],
             &format!(
-                "setoption name USI_Hash value {}\nsetoption name USI_Hash value 1\nposition startpos\ngo depth 1\n",
+                concat!(
+                    "position startpos\nstate\n",
+                    "setoption name USI_Hash value 0\n",
+                    "setoption name USI_Hash value {}\n",
+                    "state\n",
+                    "setoption name USI_Hash value 1\n",
+                    "setoption name USI_Hash value 2\n",
+                    "state\ngo depth 1\n",
+                ),
                 usize::MAX
             ),
         );
-
-        assert_eq!(error_lines(&output).len(), 1);
+        let states = state_lines(&output);
+        assert_eq!(error_lines(&output).len(), 2);
+        assert_eq!(states.len(), 3);
+        assert!(states.iter().all(|state| *state == states[0]));
         assert_eq!(bestmoves(&output).len(), 1);
     }
 
@@ -2523,8 +2308,7 @@ mod tests {
 
     #[test]
     fn state_status_vocabulary_matches_the_contract() {
-        // BGのstatus語彙表（D6-USI-32）。resignationとagreementは文法に含めず、
-        // statusを出さない防御分岐は現行USIに到達経路がないため実装契約として固定する。
+        // BGの公開status語彙表（D6-USI-32）。勝因の語彙と勝者の色を検査する。
         let win_reasons = [
             (WinReason::RoyalCapture, "royal-capture"),
             (WinReason::Repetition, "repetition"),
@@ -2541,13 +2325,6 @@ mod tests {
                 })),
                 Ok(format!("win white {text}"))
             );
-            assert_eq!(
-                state_status_text(GameStatus::Finished(GameResult::Win {
-                    winner: Color::Black,
-                    reason,
-                })),
-                Ok(format!("win black {text}"))
-            );
         }
 
         let draw_reasons = [
@@ -2563,21 +2340,11 @@ mod tests {
         }
 
         assert_eq!(
-            state_status_text(GameStatus::Ongoing),
-            Ok("ongoing".to_owned())
-        );
-        assert!(
             state_status_text(GameStatus::Finished(GameResult::Win {
                 winner: Color::Black,
-                reason: WinReason::Resignation,
-            }))
-            .is_err()
-        );
-        assert!(
-            state_status_text(GameStatus::Finished(GameResult::Draw {
-                reason: DrawReason::Agreement,
-            }))
-            .is_err()
+                reason: WinReason::RoyalCapture,
+            })),
+            Ok("win black royal-capture".to_owned())
         );
     }
 

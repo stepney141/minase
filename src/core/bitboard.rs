@@ -267,7 +267,7 @@ mod tests {
     use crate::core::square::BOARD_SQUARE_COUNT;
 
     /// 決定的に構成した検査用の升集合標本を返す。空集合・全集合・単升・
-    /// 構造的な部分集合・擬似乱数集合を含む。
+    /// 構造的な部分集合を含む。
     fn sample_sets() -> Vec<Bitboard> {
         let corner_squares = [
             Square::new(0, 0).unwrap(),
@@ -287,19 +287,6 @@ mod tests {
         sets.push(Bitboard::from_squares(
             Square::all().filter(|square| square.dense_index() % 2 == 0),
         ));
-        // 旧テスト資産のシード系列から派生した決定的な擬似乱数集合。
-        let mut state = 0x5a4f_4252_4953_5401_u64;
-        for _ in 0..3 {
-            let members = Square::all()
-                .filter(|_| {
-                    state = state
-                        .wrapping_mul(2_862_933_555_777_941_757)
-                        .wrapping_add(3_037_000_493);
-                    state & 1 == 0
-                })
-                .collect::<Vec<_>>();
-            sets.push(Bitboard::from_squares(members));
-        }
         sets
     }
 

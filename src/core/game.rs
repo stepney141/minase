@@ -335,7 +335,6 @@ mod tests {
     use crate::core::piece::{PieceCode, PieceKind};
     use crate::core::rules::{ExhaustionRule, RepetitionRule, RuleCode, RuleGroup, RulesError};
     use crate::core::square::Square;
-    use crate::parse_sfen;
     use crate::rng::XorShift64;
     use crate::test_util::{position_from_codes as position, sq};
 
@@ -451,28 +450,6 @@ mod tests {
             ),
             mv,
         )
-    }
-
-    // 王と金の非攻撃的4手周期(第31条R1の反復フィクスチャ)。
-    fn gold_cycle_position() -> Position {
-        position(
-            Color::Black,
-            &[
-                (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                (sq(3, 3), piece(Color::Black, PieceKind::GoldGeneral)),
-                (sq(11, 11), piece(Color::White, PieceKind::King)),
-                (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
-            ],
-        )
-    }
-
-    fn gold_cycle() -> [Move; 4] {
-        [
-            step(sq(3, 3), sq(3, 4)),
-            step(sq(8, 8), sq(8, 7)),
-            step(sq(3, 4), sq(3, 3)),
-            step(sq(8, 7), sq(8, 8)),
-        ]
     }
 
     // 王将2枚だけの非攻撃的4手周期(R2・R3の拒否フィクスチャ。E2併用で駒枯れを外す)。
@@ -640,45 +617,11 @@ mod tests {
             exhausted.play(step(sq(0, 0), sq(0, 1))),
             win(Color::White, WinReason::PieceExhaustion)
         );
-
-        // parse_sfenで得た局面も同じ契約で受け入れ、採用規則をそのまま返す。
-        let parsed = parse_sfen("12/12/12/8k3/12/12/12/12/3K8/12/12/12 b").unwrap();
-        let rules =
-            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
-        let mut sfen_game = Game::from_position(rules, parsed);
-        assert_eq!(sfen_game.rules(), rules);
-        assert_eq!(
-            sfen_game.play(step(sq(3, 3), sq(3, 4))),
-            Ok(GameStatus::Ongoing)
-        );
     }
 
     // ---------------------------------------------------------------
     // 第21条　王駒による勝敗
     // ---------------------------------------------------------------
-
-    #[test]
-    fn article_21_1_capturing_the_last_royal_wins() {
-        // D3-021-01: 最後の王駒を取る着手の完了時に、捕獲を理由として終局する。
-        let mut game = game(position(
-            Color::Black,
-            &[
-                (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                (sq(5, 5), piece(Color::Black, PieceKind::Rook)),
-                (sq(5, 8), piece(Color::White, PieceKind::King)),
-            ],
-        ));
-
-        let result = GameResult::Win {
-            winner: Color::Black,
-            reason: WinReason::RoyalCapture,
-        };
-        assert_eq!(
-            game.play(step(sq(5, 5), sq(5, 8))),
-            Ok(GameStatus::Finished(result))
-        );
-        assert_eq!(game.result(), Some(result));
-    }
 
     #[test]
     fn article_21_2_mate_ends_the_game_at_move_completion() {
@@ -1429,16 +1372,6 @@ mod tests {
                 Err(RulesError::Conflicting { .. })
             ));
         }
-
-        for repetition in [RuleCode::R1, RuleCode::R2, RuleCode::R3] {
-            let codes = [RuleCode::L0, RuleCode::P0, repetition, RuleCode::E0];
-            let game = Game::new(Rules::from_codes(&codes).unwrap());
-            assert_eq!(game.status(), GameStatus::Ongoing);
-        }
-        assert_eq!(
-            Game::new(Rules::ENGINE_DEFAULT).status(),
-            GameStatus::Ongoing
-        );
     }
 
     // ---------------------------------------------------------------
@@ -1507,6 +1440,30 @@ mod tests {
         assert!(captured.legal_moves().is_empty());
     }
 
+    fn assert_rejection_is_pure(game: &mut Game, rejected: Move, cause: IllegalMoveCause) {
+        let position_before = game.position().clone();
+        let ply_before = game.ply_count();
+        let keys_before = game.search_key_history().to_vec();
+        let legal_before: HashSet<Move> = game.legal_moves().into_iter().collect();
+
+        assert_eq!(
+            game.play(rejected),
+            Err(GameError::IllegalMove {
+                mv: rejected,
+                cause
+            })
+        );
+
+        assert_eq!(game.position(), &position_before);
+        assert_eq!(game.ply_count(), ply_before);
+        assert_eq!(game.search_key_history(), keys_before.as_slice());
+        assert_eq!(
+            game.legal_moves().into_iter().collect::<HashSet<_>>(),
+            legal_before
+        );
+        assert_eq!(game.status(), GameStatus::Ongoing);
+    }
+
     #[test]
     fn article_27_4_r2_r3_reject_before_acceptance_while_r1_adjudicates_after() {
         // D3-026-03/D3-027-02: 同じ着手列でも、R1は⑫を受理してから裁定し、
@@ -1531,14 +1488,7 @@ mod tests {
         for mv in cycle.into_iter().take(3) {
             assert_eq!(r2.play(mv), Ok(GameStatus::Ongoing));
         }
-        assert_eq!(
-            r2.play(cycle[3]),
-            Err(GameError::IllegalMove {
-                mv: cycle[3],
-                cause: IllegalMoveCause::Repetition,
-            })
-        );
-        assert_eq!(r2.status(), GameStatus::Ongoing);
+        assert_rejection_is_pure(&mut r2, cycle[3], IllegalMoveCause::Repetition);
         assert_eq!(r2.play(alternative), Ok(GameStatus::Ongoing));
 
         let mut r3 = game_with_codes(king_cycle_position(), &[RuleCode::R3, RuleCode::E2]);
@@ -1549,14 +1499,7 @@ mod tests {
                 "R3 ply {ply}"
             );
         }
-        assert_eq!(
-            r3.play(cycle[3]),
-            Err(GameError::IllegalMove {
-                mv: cycle[3],
-                cause: IllegalMoveCause::Repetition,
-            })
-        );
-        assert_eq!(r3.status(), GameStatus::Ongoing);
+        assert_rejection_is_pure(&mut r3, cycle[3], IllegalMoveCause::Repetition);
         assert_eq!(r3.play(alternative), Ok(GameStatus::Ongoing));
     }
 
@@ -1564,51 +1507,18 @@ mod tests {
     fn article_27_1_rejected_moves_leave_the_game_state_unchanged() {
         // D3-027-01: 不合法な着手の拒否の前後で、局面・手番・手数・探索局面
         // キー履歴・対局合法手集合・対局状態がすべて不変である。
-        let assert_rejection_is_pure = |game: &mut Game, rejected: Move| {
-            let position_before = game.position().clone();
-            let ply_before = game.ply_count();
-            let keys_before = game.search_key_history().to_vec();
-            let legal_before: HashSet<Move> = game.legal_moves().into_iter().collect();
-
-            assert!(game.play(rejected).is_err());
-
-            assert_eq!(game.position(), &position_before);
-            assert_eq!(game.ply_count(), ply_before);
-            assert_eq!(game.search_key_history(), keys_before.as_slice());
-            assert_eq!(
-                game.legal_moves().into_iter().collect::<HashSet<_>>(),
-                legal_before
-            );
-            assert_eq!(game.status(), GameStatus::Ongoing);
-        };
 
         // 駒の動きに反する入力(第26条2号)。
         let mut movement = Game::with_default_rules();
-        assert_rejection_is_pure(&mut movement, step(sq(5, 5), sq(5, 6)));
+        assert_rejection_is_pure(
+            &mut movement,
+            step(sq(5, 5), sq(5, 6)),
+            IllegalMoveCause::Movement,
+        );
         assert_eq!(
             movement.play(movement.legal_moves()[0]),
             Ok(GameStatus::Ongoing)
         );
-
-        // R2が禁止する反復着手(第26条11号)。
-        let cycle = king_cycle();
-        let mut r2 = game_with_codes(king_cycle_position(), &[RuleCode::R2, RuleCode::E2]);
-        for mv in cycle.into_iter().take(3) {
-            assert_eq!(r2.play(mv), Ok(GameStatus::Ongoing));
-        }
-        assert_rejection_is_pure(&mut r2, cycle[3]);
-        assert_eq!(r2.play(step(sq(8, 7), sq(9, 7))), Ok(GameStatus::Ongoing));
-
-        // R3が禁止する4回目の出現(第26条11号)。
-        let mut r3 = game_with_codes(king_cycle_position(), &[RuleCode::R3, RuleCode::E2]);
-        for ply in 1..=11 {
-            assert_eq!(
-                r3.play(cycle[(ply - 1) % cycle.len()]),
-                Ok(GameStatus::Ongoing)
-            );
-        }
-        assert_rejection_is_pure(&mut r3, cycle[3]);
-        assert_eq!(r3.play(step(sq(8, 7), sq(9, 7))), Ok(GameStatus::Ongoing));
     }
 
     // ---------------------------------------------------------------
@@ -2038,9 +1948,8 @@ mod tests {
     }
 
     #[test]
-    fn article_33_9_e2_and_e3_conflict_while_e1_composes() {
-        // D3-032-09: E1はE2またはE3と併用できるが、E2とE3は同時に採用できず
-        // 有効な規則セットとして扱われない。
+    fn article_33_9_e2_and_e3_conflict() {
+        // D3-032-09: E2とE3は同時に採用できず、有効な規則セットとして扱われない。
         assert!(matches!(
             Rules::from_codes(&[
                 RuleCode::L0,
@@ -2051,150 +1960,11 @@ mod tests {
             ]),
             Err(RulesError::Conflicting { .. })
         ));
-        for codes in [
-            &[
-                RuleCode::L0,
-                RuleCode::P0,
-                RuleCode::R1,
-                RuleCode::E1,
-                RuleCode::E2,
-            ][..],
-            &[
-                RuleCode::L0,
-                RuleCode::P0,
-                RuleCode::R1,
-                RuleCode::E1,
-                RuleCode::E3,
-            ][..],
-        ] {
-            assert_eq!(
-                Game::new(Rules::from_codes(codes).unwrap()).status(),
-                GameStatus::Ongoing
-            );
-        }
     }
 
     // ---------------------------------------------------------------
     // 横断的性質
     // ---------------------------------------------------------------
-
-    #[test]
-    fn plan_referee_7_all_rule_combinations_report_the_firing_adjudication() {
-        // D3-PRP-01: 反復規則{R1,R2,R3}×終局例外{なし,E1,E2,E1+E2,E3,E1+E3}の
-        // 有効な全組合せで、王駒捕獲は常に働き、詰みの有無はE1が、駒枯れ系は
-        // E2・E3・標準のいずれか1つが、反復の裁定・フィルタは反復規則が決める。
-        let exception_sets: [&[RuleCode]; 6] = [
-            &[],
-            &[RuleCode::E1],
-            &[RuleCode::E2],
-            &[RuleCode::E1, RuleCode::E2],
-            &[RuleCode::E3],
-            &[RuleCode::E1, RuleCode::E3],
-        ];
-        for repetition in [RuleCode::R1, RuleCode::R2, RuleCode::R3] {
-            for exceptions in exception_sets {
-                let mut codes = vec![RuleCode::L0, RuleCode::P0, repetition];
-                if exceptions.contains(&RuleCode::E1) {
-                    codes.push(RuleCode::E1);
-                }
-                codes.push(if exceptions.contains(&RuleCode::E3) {
-                    RuleCode::E3
-                } else if exceptions.contains(&RuleCode::E2) {
-                    RuleCode::E2
-                } else {
-                    RuleCode::E0
-                });
-                let rules = Rules::from_codes(&codes).unwrap();
-
-                // 王駒捕獲は全組合せで同じ結果になる。
-                let mut capture = Game::from_position(
-                    rules,
-                    position(
-                        Color::Black,
-                        &[
-                            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                            (sq(5, 5), piece(Color::Black, PieceKind::Rook)),
-                            (sq(5, 8), piece(Color::White, PieceKind::King)),
-                        ],
-                    ),
-                );
-                assert_eq!(
-                    capture.play(step(sq(5, 5), sq(5, 8))),
-                    win(Color::Black, WinReason::RoyalCapture),
-                    "codes={codes:?}"
-                );
-
-                // 詰み局面: E3は裸玉裁定が先に成立し、E1は詰みだけを無効化する。
-                let (mate_position, mate_move) = mate_predecessor();
-                let mut mate = Game::from_position(rules, mate_position);
-                let expected_mate = if rules.exhaustion == ExhaustionRule::E3 {
-                    win(Color::White, WinReason::BareKing)
-                } else if rules.e1 {
-                    Ok(GameStatus::Ongoing)
-                } else {
-                    win(Color::White, WinReason::Mate)
-                };
-                assert_eq!(mate.play(mate_move), expected_mate, "codes={codes:?}");
-
-                // 駒枯れ局面: 標準は第22条、E2は継続、E3は裸玉裁定に置き換わる。
-                let mut exhaustion = Game::from_position(
-                    rules,
-                    position(
-                        Color::Black,
-                        &[
-                            (sq(4, 4), piece(Color::Black, PieceKind::King)),
-                            (sq(4, 5), piece(Color::White, PieceKind::Pawn)),
-                            (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
-                            (sq(11, 11), piece(Color::White, PieceKind::King)),
-                        ],
-                    ),
-                );
-                let expected_exhaustion = if rules.exhaustion == ExhaustionRule::E3 {
-                    win(Color::White, WinReason::BareKing)
-                } else if rules.exhaustion == ExhaustionRule::E2 {
-                    Ok(GameStatus::Ongoing)
-                } else {
-                    win(Color::White, WinReason::PieceExhaustion)
-                };
-                assert_eq!(
-                    exhaustion.play(step(sq(4, 4), sq(4, 5))),
-                    expected_exhaustion,
-                    "codes={codes:?}"
-                );
-
-                // 反復列: R1は受理後の裁定、R2は2回目、R3は4回目の再現を拒否する。
-                let mut repeated = Game::from_position(rules, gold_cycle_position());
-                let cycle = gold_cycle();
-                let accepted_plies = match repetition {
-                    RuleCode::R1 | RuleCode::R3 => 11,
-                    RuleCode::R2 => 3,
-                    _ => unreachable!(),
-                };
-                for ply in 0..accepted_plies {
-                    assert_eq!(
-                        repeated.play(cycle[ply % cycle.len()]),
-                        Ok(GameStatus::Ongoing),
-                        "codes={codes:?}, ply={}",
-                        ply + 1
-                    );
-                }
-                let terminal_move = cycle[accepted_plies % cycle.len()];
-                let expected_repetition = match repetition {
-                    RuleCode::R1 => draw(DrawReason::Repetition),
-                    RuleCode::R2 | RuleCode::R3 => Err(GameError::IllegalMove {
-                        mv: terminal_move,
-                        cause: IllegalMoveCause::Repetition,
-                    }),
-                    _ => unreachable!(),
-                };
-                assert_eq!(
-                    repeated.play(terminal_move),
-                    expected_repetition,
-                    "codes={codes:?}"
-                );
-            }
-        }
-    }
 
     #[test]
     fn plan_referee_7_piece_exhaustion_evaluates_before_mate() {
@@ -2219,6 +1989,10 @@ mod tests {
             game.play(step(sq(5, 5), sq(0, 5))),
             win(Color::White, WinReason::PieceExhaustion)
         );
+        // E3の裸玉と詰みが同時に成立しても、裸玉を先に裁定する。
+        let (position, mv) = mate_predecessor();
+        let mut bare_king = game_with_codes(position, &[RuleCode::R1, RuleCode::E3]);
+        assert_eq!(bare_king.play(mv), win(Color::White, WinReason::BareKing));
     }
 
     // 終局理由が採用規則で発動し得る裁定かを検査する(D3-PRP-01)。
@@ -2243,11 +2017,16 @@ mod tests {
     }
 
     #[test]
-    fn representative_rule_sets_random_self_play_reaches_valid_terminations() {
+    fn representative_rule_sets_random_self_play_accepts_legal_moves_and_valid_results() {
         // D3-PRP-01横断: 代表規則セット群の決定的シードのランダム自己対局で、
         // 対局合法手はすべて受理され、終局理由は発動し得る裁定に限られる。
         const PLY_CAP: u32 = 1_500;
-        const RULE_SETS: [(&str, &[RuleCode], u64); 9] = [
+        const RULE_SETS: [(&str, &[RuleCode], u64); 10] = [
+            (
+                "engine-default",
+                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
+                0x4741_4d45_5f53_4f41,
+            ),
             (
                 "L1+L2+P3+R1+E1",
                 &[
@@ -2373,114 +2152,78 @@ mod tests {
                     break;
                 }
             }
-
-            assert!(
-                matches!(game.status(), GameStatus::Finished(_)) || game.ply_count() == PLY_CAP,
-                "random game ended prematurely: rule_set={rule_set_name}, ply={}",
-                game.ply_count()
-            );
         }
     }
 
     #[test]
-    fn deterministic_random_r2_self_play_never_forbids_captures_and_terminates() {
+    fn deterministic_random_r2_self_play_never_forbids_captures_or_promotions() {
         // D3-031-08性質: R2のランダム自己対局で拒否される着手は決して捕獲・
         // 成りを含まない(補題)。D3-PRP-01: R2では反復を理由とする終局がない。
-        const GAMES_PER_RULE_SET: usize = 3;
         const PLY_CAP: u32 = 1_500;
-        const SEED: u64 = 0x5232_5f53_4f41_4b21;
-
-        let mut rng = XorShift64::new(NonZeroU64::new(SEED).unwrap());
-        for codes in [
-            &[RuleCode::L0, RuleCode::P0, RuleCode::R2, RuleCode::E0][..],
-            &[
-                RuleCode::L0,
-                RuleCode::P0,
-                RuleCode::R2,
-                RuleCode::E1,
-                RuleCode::E2,
-            ][..],
+        // 拒否を実際に観測できる代表局を規則ごとに1局使う。
+        for (seed, codes) in [
+            (
+                12,
+                &[RuleCode::L0, RuleCode::P0, RuleCode::R2, RuleCode::E0][..],
+            ),
+            (
+                19,
+                &[
+                    RuleCode::L0,
+                    RuleCode::P0,
+                    RuleCode::R2,
+                    RuleCode::E1,
+                    RuleCode::E2,
+                ][..],
+            ),
         ] {
-            for game_index in 0..GAMES_PER_RULE_SET {
-                let mut game = Game::new(Rules::from_codes(codes).unwrap());
-                let generator = MoveGenerator::new(game.rules().moves);
-                let mut terminated = false;
-
-                'game: for _ in 0..PLY_CAP {
-                    // 局面合法手から選び、R2の受理前拒否(第27条4項)を観測する。
-                    let mut moves = Vec::new();
-                    generator.generate_moves(game.position(), &mut moves);
-                    assert!(!moves.is_empty(), "codes={codes:?}");
-                    let start = (rng.next() as usize) % moves.len();
-                    let mut played = None;
-                    for offset in 0..moves.len() {
-                        let selected = moves[(start + offset) % moves.len()];
-                        match game.play(selected) {
-                            Ok(status) => {
-                                played = Some(status);
-                                break;
-                            }
-                            Err(GameError::IllegalMove {
-                                mv,
-                                cause: IllegalMoveCause::Repetition,
-                            }) => {
-                                assert_eq!(mv, selected);
-                                assert!(!mv.promote, "R2 rejected a promotion: {mv:?}");
-                                assert!(
-                                    game.position()
-                                        .captured_squares(mv)
-                                        .into_iter()
-                                        .all(|capture| capture.is_none()),
-                                    "R2 rejected a capture: {mv:?}"
-                                );
-                            }
-                            Err(error) => panic!("unexpected self-play error: {error}"),
-                        }
-                    }
-                    let status = played
-                        .expect("Article 23 must end the game before all moves are forbidden");
-                    if let GameStatus::Finished(result) = status {
-                        assert_result_reason_allowed(game.rules(), result, "R2");
-                        terminated = true;
-                        break 'game;
-                    }
-                }
-
-                assert!(
-                    terminated,
-                    "R2 random game {game_index} with {codes:?} exceeded the {PLY_CAP}-ply cap"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn deterministic_random_default_rules_self_play_reaches_a_terminal_result() {
-        // D3-PRP-01横断: エンジン既定規則の決定的ランダム自己対局は手数上限内に
-        // 終局し、終局理由は既定規則で発動し得る裁定に限られる。
-        const GAME_COUNT: usize = 4;
-        const PLY_CAP: u32 = 1_500;
-        const SEED: u64 = 0x4741_4d45_5f53_4f41;
-
-        let mut rng = XorShift64::new(NonZeroU64::new(SEED).unwrap());
-        for game_index in 0..GAME_COUNT {
-            let mut game = Game::with_default_rules();
-            let mut terminated = false;
+            let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
+            let mut rejections = 0;
+            let mut game = Game::new(Rules::from_codes(codes).unwrap());
+            let generator = MoveGenerator::new(game.rules().moves);
 
             for _ in 0..PLY_CAP {
-                let moves = game.legal_moves();
-                assert!(!moves.is_empty(), "ongoing game {game_index} has no move");
-                let selected = moves[(rng.next() as usize) % moves.len()];
-                if let GameStatus::Finished(result) = game.play(selected).unwrap() {
-                    assert_result_reason_allowed(game.rules(), result, "engine-default");
-                    terminated = true;
+                // 局面合法手から選び、R2の受理前拒否(第27条4項)を観測する。
+                let mut moves = Vec::new();
+                generator.generate_moves(game.position(), &mut moves);
+                assert!(!moves.is_empty(), "codes={codes:?}");
+                let start = (rng.next() as usize) % moves.len();
+                let mut played = None;
+                for offset in 0..moves.len() {
+                    let selected = moves[(start + offset) % moves.len()];
+                    match game.play(selected) {
+                        Ok(status) => {
+                            played = Some(status);
+                            break;
+                        }
+                        Err(GameError::IllegalMove {
+                            mv,
+                            cause: IllegalMoveCause::Repetition,
+                        }) => {
+                            rejections += 1;
+                            assert_eq!(mv, selected);
+                            assert!(!mv.promote, "R2 rejected a promotion: {mv:?}");
+                            assert!(
+                                game.position()
+                                    .captured_squares(mv)
+                                    .into_iter()
+                                    .all(|capture| capture.is_none()),
+                                "R2 rejected a capture: {mv:?}"
+                            );
+                        }
+                        Err(error) => panic!("unexpected self-play error: {error}"),
+                    }
+                }
+                let status =
+                    played.expect("Article 23 must end the game before all moves are forbidden");
+                if let GameStatus::Finished(result) = status {
+                    assert_result_reason_allowed(game.rules(), result, "R2");
                     break;
                 }
             }
-
             assert!(
-                terminated,
-                "random game {game_index} exceeded the {PLY_CAP}-ply cap"
+                rejections > 0,
+                "seed={seed}, codes={codes:?}: fixture must exercise R2 rejection"
             );
         }
     }

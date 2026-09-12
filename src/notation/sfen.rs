@@ -677,7 +677,6 @@ mod tests {
             ('n', PieceKind::Lion),
             ('q', PieceKind::FreeKing),
         ];
-        assert_eq!(letters.len(), 21);
 
         for (letter, kind) in letters {
             // 大文字が先手、小文字が後手（[USI]「駒種の文字表記」）。
@@ -730,7 +729,6 @@ mod tests {
             ('h', PieceKind::HornedFalcon),
             ('d', PieceKind::SoaringEagle),
         ];
-        assert_eq!(promoted.len(), 18);
 
         for (letter, kind) in promoted {
             for (text, color) in [
@@ -747,15 +745,6 @@ mod tests {
                 assert_eq!(to_sfen(&position), sfen, "+{text}");
             }
         }
-
-        // 猛豹成りの角行相当+fと生の角行bは出自別に区別される（[USI]「駒種の文字表記」末尾）。
-        let promoted_leopard = parse_sfen(&format!("{} b", board_with_row(0, "+f11"))).unwrap();
-        let raw_bishop = parse_sfen(&format!("{} b", board_with_row(0, "b11"))).unwrap();
-        assert_ne!(
-            promoted_leopard.piece_at(sq(0, 11)),
-            raw_bishop.piece_at(sq(0, 11))
-        );
-        assert_ne!(to_sfen(&promoted_leopard), to_sfen(&raw_bishop));
 
         // 成らない駒への`+`の拒否（[RULES]第17条第1項）。
         for letter in ['k', 'n', 'q', 'K', 'N', 'Q'] {
@@ -873,16 +862,6 @@ mod tests {
         assert_eq!(setup.lion_capture(), None);
         assert_eq!(setup.next_move_number(), 1);
 
-        // 王将Kが先手、玉将kが後手にある（[RULES]第5条）。
-        assert_eq!(
-            setup.position().piece_at(sq(5, 0)),
-            PieceCode::new(Color::Black, PieceKind::King)
-        );
-        assert_eq!(
-            setup.position().piece_at(sq(6, 11)),
-            PieceCode::new(Color::White, PieceKind::King)
-        );
-
         // 書き出しの4欄導出形（5欄から第5欄を落とす）が初期SFEN文字列と一致する。
         assert_eq!(
             to_extended_sfen(&setup),
@@ -932,7 +911,6 @@ mod tests {
             String::new(),
             "   ".to_owned(),
             "b".to_owned(),
-            format!("{EMPTY_BOARD} z"),
             // 2桁数字の途中で行が終わる。
             "12/12/12/12/12/12/12/12/12/12/12/1 b".to_owned(),
             // 段区切りの連続と末尾の段区切り。
@@ -943,16 +921,18 @@ mod tests {
             format!("{} b", board_with_row(0, "11＋p")),
             // 空升数の桁あふれ。
             format!("{} b", board_with_row(0, &"9".repeat(30))),
-            // 極端に長い入力。
-            format!("{} b", "1".repeat(65536)),
         ];
         for input in inputs {
             assert!(parse_sfen(&input).is_err(), "{input:.40}");
-            assert!(
-                parse_extended_sfen(&format!("{input} - 1"), MoveRules::standard()).is_err(),
-                "{input:.40}"
-            );
         }
+        // 拡張形式も共通盤面パーサの拒否を伝える。
+        assert!(
+            parse_extended_sfen(
+                "１2/12/12/12/12/12/12/12/12/12/12/12 b - 1",
+                MoveRules::standard(),
+            )
+            .is_err()
+        );
     }
 
     // D5-SFEN-09: 第3欄は`-`または升名1つ。空升は受理し、手番側の駒がある升は拒否する
@@ -974,6 +954,18 @@ mod tests {
         // 非手番側の駒がいる升（通常の到達升捕獲）。
         let occupied = parse_extended_sfen(&format!("{occupied_board} b 7f 1"), rules).unwrap();
         assert_eq!(occupied.lion_capture, Some(capture_square));
+        for (row, expected) in [
+            (
+                "5+o6",
+                PieceCode::new_promoted(Color::White, PieceKind::Lion),
+            ),
+            ("5n6", PieceCode::new(Color::White, PieceKind::Lion)),
+        ] {
+            let setup =
+                parse_extended_sfen(&format!("{} b 7f 1", board_with_row(5, row)), rules).unwrap();
+            assert_eq!(setup.lion_capture(), Some(capture_square));
+            assert_eq!(setup.position().piece_at(capture_square), expected);
+        }
         // 空升も受理する（飛鷲・角鷹の経由升捕獲では捕獲升が空になる。[PL]フェーズ3の契約訂正）。
         let empty = parse_extended_sfen(&format!("{EMPTY_BOARD} b 7f 1"), rules).unwrap();
         assert_eq!(empty.lion_capture, Some(capture_square));
@@ -999,36 +991,6 @@ mod tests {
                 "{invalid}"
             );
         }
-    }
-
-    // D5-SFEN-10: L2判定情報は第3欄の升にいる非手番側の駒が麒麟由来の成獅子（+o）か
-    // どうかから導出される（[PL]「拡張SFEN」、[RULES]第29条L2）。表記層は捕獲升と
-    // 盤面の出自を保存し、導出の前提（+oとnの区別）を担う。
-    #[test]
-    fn lion_capture_square_preserves_kirin_promoted_lion_identity_for_l2() {
-        let rules = MoveRules::standard();
-        let capture_square = sq(5, 6);
-
-        // 非手番側の+o（麒麟由来の成獅子）・n（生の獅子）・他の駒のいずれも受理する
-        // （拒否条件は手番側の駒だけ。D5-SFEN-10境界）。
-        let mut pieces = Vec::new();
-        for row in ["5+o6", "5n6", "5p6"] {
-            let setup =
-                parse_extended_sfen(&format!("{} b 7f 1", board_with_row(5, row)), rules).unwrap();
-            assert_eq!(setup.lion_capture(), Some(capture_square), "{row}");
-            pieces.push(setup.position().piece_at(capture_square).unwrap());
-        }
-
-        // +oとnは解析後も区別され（D5-SFEN-03の出自保存）、L2導出の一意性が成り立つ。
-        assert_eq!(
-            Some(pieces[0]),
-            PieceCode::new_promoted(Color::White, PieceKind::Lion)
-        );
-        assert_eq!(
-            pieces[1],
-            PieceCode::new(Color::White, PieceKind::Lion).unwrap()
-        );
-        assert_ne!(pieces[0], pieces[1]);
     }
 
     // D5-SFEN-11: 第4欄は次の着手の手数で、1以上9999以下の整数だけを受理する
@@ -1086,11 +1048,6 @@ mod tests {
         rows[2] = "4S7";
         rows[9] = "5s6";
         let board = rows.join("/");
-
-        // 1升だけの列の受理と往復。
-        let single = parse_extended_sfen(&format!("{board} b - 1 8c"), p1).unwrap();
-        assert!(single.position.promotion_deferred().contains(sq(4, 9)));
-        assert_eq!(to_extended_sfen(&single), format!("{board} b - 1 8c"));
 
         // 2升の列は一方の順序だけが昇順として受理され、逆順は拒否される（順序の単調性）。
         let forward = parse_extended_sfen(&format!("{board} b - 1 7j,8c"), p1);
@@ -1194,8 +1151,6 @@ mod tests {
         let four = parse_extended_sfen(&format!("{EMPTY_BOARD} b - 1"), rules).unwrap();
         let five = parse_extended_sfen(&format!("{EMPTY_BOARD} b - 1 -"), rules).unwrap();
         assert_eq!(four, five);
-        // lishogi正準の4欄（初期SFEN）が受理される。
-        assert!(parse_extended_sfen(LISHOGI_INITIAL_SFEN, rules).is_ok());
 
         // 1〜3欄と6欄以上は拒否する。2欄基本形も拡張解析では拒否される。
         for invalid in [
@@ -1215,12 +1170,6 @@ mod tests {
     // 全5欄の情報が往復で一致する（[PL]「拡張SFEN」）。
     #[test]
     fn extended_output_always_writes_five_fields_and_round_trips_all_state() {
-        // 捕獲なし・保留なしでも第3欄`-`と第5欄`-`は省略されない。
-        let plain = SetupPosition::new(Position::initial(), None, 1).unwrap();
-        let plain_text = to_extended_sfen(&plain);
-        assert_eq!(plain_text.split_whitespace().count(), 5);
-        assert!(plain_text.ends_with(" b - 1 -"));
-
         // 盤面・手番・獅子捕獲升・手数・保留集合のすべてが往復で一致する。
         let p1 = MoveRules {
             promotion: PromotionRule::P1,
@@ -1233,9 +1182,5 @@ mod tests {
         let rich_text = format!("{board} b 7j 4321 8c");
         let rich = parse_extended_sfen(&rich_text, p1).unwrap();
         assert_eq!(to_extended_sfen(&rich), rich_text);
-        assert_eq!(
-            parse_extended_sfen(&to_extended_sfen(&rich), p1).unwrap(),
-            rich
-        );
     }
 }

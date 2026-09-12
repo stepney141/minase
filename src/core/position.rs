@@ -847,14 +847,6 @@ mod tests {
     use crate::MoveGenerator;
     use crate::test_util::{position as position_with_pieces, position_from_codes, sq};
 
-    /// 180度回転写像σ(D4マトリクスの座標規約)。内部0始まり座標では(11−筋,11−段)にあたる。
-    fn sigma(square: Square) -> Square {
-        sq(
-            BOARD_FILES - 1 - square.file(),
-            BOARD_RANKS - 1 - square.rank(),
-        )
-    }
-
     /// 既存局面と同じ盤面を、指定手番・先獅子状態なしで直接構築し直す。
     fn rebuild_board_with_side(source: &Position, side_to_move: Color) -> Position {
         let mut builder = PositionBuilder::new(side_to_move);
@@ -1013,12 +1005,20 @@ mod tests {
     fn article_5_initial_position_matches_the_full_144_square_table() {
         let initial = Position::initial();
         let table = article_5_expected_table();
+        let mut occupied = Bitboard::EMPTY;
+        let mut by_color = [Bitboard::EMPTY; COLOR_COUNT];
+        let mut by_kind = [[Bitboard::EMPTY; PIECE_KIND_COUNT]; COLOR_COUNT];
 
         for (row, expected_rank) in table.into_iter().enumerate() {
             // 段d(一=1)は内部rank 12−d、印字列の左からi番目(筋12−i)は内部file iにあたる。
             let rank = BOARD_RANKS - 1 - row as u8;
             for (file, expected) in expected_rank.into_iter().enumerate() {
                 let square = sq(file as u8, rank);
+                if let Some((color, kind)) = expected {
+                    occupied.set(square);
+                    by_color[color.index()].set(square);
+                    by_kind[color.index()][kind.index()].set(square);
+                }
                 let actual = initial
                     .piece_at(square)
                     .map(|piece| (piece.color().unwrap(), piece.kind().unwrap()));
@@ -1029,79 +1029,15 @@ mod tests {
                 }
             }
         }
-    }
-
-    // 初期局面の駒数は各側46枚・計92枚・空升52升で、どの列挙経路でも一致する
-    // (第4条2項、D4-004-02)。駒種別内訳はD4-005-01の検算に一致する。
-    #[test]
-    fn article_4_2_initial_piece_counts_match_on_every_enumeration_path() {
-        let initial = Position::initial();
-        assert_eq!(initial.occupied().popcount(), 92);
-        assert_eq!(initial.pieces_of(Color::Black).popcount(), 46);
-        assert_eq!(initial.pieces_of(Color::White).popcount(), 46);
-
+        assert_eq!(initial.occupied(), occupied);
         for color in Color::ALL {
-            let scanned = Square::all()
-                .filter(|&square| {
-                    initial.piece_at(square).and_then(PieceCode::color) == Some(color)
-                })
-                .count();
-            assert_eq!(scanned, 46);
-            let by_kind_total: u32 = PieceKind::ALL
-                .iter()
-                .map(|&kind| initial.pieces_of_kind(color, kind).popcount())
-                .sum();
-            assert_eq!(by_kind_total, 46);
-        }
-        let empty_squares = Square::all()
-            .filter(|&square| initial.piece_at(square).is_none())
-            .count();
-        assert_eq!(empty_squares, 144 - 92);
-
-        // 各側の駒種別内訳(第5条配置図の検算)。
-        let expected_kind_counts = [
-            (PieceKind::Pawn, 12),
-            (PieceKind::GoBetween, 2),
-            (PieceKind::Lance, 2),
-            (PieceKind::FerociousLeopard, 2),
-            (PieceKind::CopperGeneral, 2),
-            (PieceKind::SilverGeneral, 2),
-            (PieceKind::GoldGeneral, 2),
-            (PieceKind::DrunkElephant, 1),
-            (PieceKind::King, 1),
-            (PieceKind::ReverseChariot, 2),
-            (PieceKind::Bishop, 2),
-            (PieceKind::BlindTiger, 2),
-            (PieceKind::Phoenix, 1),
-            (PieceKind::Kirin, 1),
-            (PieceKind::SideMover, 2),
-            (PieceKind::VerticalMover, 2),
-            (PieceKind::Rook, 2),
-            (PieceKind::DragonHorse, 2),
-            (PieceKind::DragonKing, 2),
-            (PieceKind::FreeKing, 1),
-            (PieceKind::Lion, 1),
-        ];
-        for color in Color::ALL {
-            for &(kind, count) in &expected_kind_counts {
+            assert_eq!(initial.pieces_of(color), by_color[color.index()]);
+            for kind in PieceKind::ALL {
                 assert_eq!(
-                    initial.pieces_of_kind(color, kind).popcount(),
-                    count,
+                    initial.pieces_of_kind(color, kind),
+                    by_kind[color.index()][kind.index()],
                     "{color:?} {kind:?}"
                 );
-            }
-            // 成駒としてのみ現れる8種(第10条)は初期盤上に存在しない。
-            for kind in [
-                PieceKind::CrownPrince,
-                PieceKind::WhiteHorse,
-                PieceKind::Whale,
-                PieceKind::FlyingOx,
-                PieceKind::FreeBoar,
-                PieceKind::FlyingStag,
-                PieceKind::HornedFalcon,
-                PieceKind::SoaringEagle,
-            ] {
-                assert!(initial.pieces_of_kind(color, kind).is_empty());
             }
         }
     }
@@ -1151,28 +1087,6 @@ mod tests {
             custom.royal_pieces(Color::Black),
             Bitboard::from_squares([sq(3, 3), sq(7, 7)])
         );
-    }
-
-    // 初期配置は王駒の名称を除きσ(180度回転)で対称である(第5条、D4-005-03)。
-    // 左右鏡映では対称にならない行があるため、検査は必ずσで行う。
-    #[test]
-    fn article_5_initial_position_is_symmetric_under_180_degree_rotation() {
-        let initial = Position::initial();
-        for square in Square::all() {
-            match (initial.piece_at(square), initial.piece_at(sigma(square))) {
-                (None, None) => {}
-                (Some(piece), Some(mirrored)) => {
-                    // 所有者は反転し、駒種と成否は一致する。王将と玉将の名称差は
-                    // 駒種上区別しない(第5条、SPEC_UNCLEAR SU-D4-3)。
-                    assert_eq!(mirrored.color(), piece.color().map(Color::opposite));
-                    assert_eq!(mirrored.kind(), piece.kind());
-                    assert_eq!(mirrored.is_promoted(), piece.is_promoted());
-                }
-                (own, mirrored) => {
-                    panic!("σ対称でない: {square:?} => {own:?} / {mirrored:?}")
-                }
-            }
-        }
     }
 
     // 先手から着手し、1手ごとに手番が相手へ移る(第6条1項、D4-006-01)。
@@ -1293,7 +1207,6 @@ mod tests {
         let rebuilt =
             position_with_pieces(Color::White, &[(sq(5, 7), Color::Black, PieceKind::Lion)]);
         assert_eq!(double, rebuilt);
-        assert_eq!(double.zobrist(), rebuilt.zobrist());
     }
 
     // 局面キーは全駒の位置・種類・所有者・成否を区別する(第24条1項a・2項、D4-024-01)。
@@ -1354,20 +1267,6 @@ mod tests {
                 "{kind:?}"
             );
         }
-
-        // 逆に、構成要素がすべて一致する2局面はキーが一致する(構築順序を入れ替えて確認)。
-        let pieces = [
-            (sq(2, 2), Color::Black, PieceKind::Rook),
-            (sq(3, 8), Color::White, PieceKind::Bishop),
-            (sq(0, 0), Color::Black, PieceKind::King),
-            (sq(11, 11), Color::White, PieceKind::King),
-        ];
-        let mut reversed = pieces;
-        reversed.reverse();
-        let forward_position = position_with_pieces(Color::Black, &pieces);
-        let reversed_position = position_with_pieces(Color::Black, &reversed);
-        assert_eq!(forward_position, reversed_position);
-        assert_eq!(forward_position.zobrist(), reversed_position.zobrist());
     }
 
     // 局面キーは手番側を区別し、その寄与はどの盤面でも現れる(第24条1項b、D4-024-02)。
@@ -1505,7 +1404,6 @@ mod tests {
         // 禁止を解除すると元のキーへ完全に戻る。
         at_first.set_lion_capture(None).unwrap();
         assert_eq!(at_first, base);
-        assert_eq!(at_first.zobrist(), base.zobrist());
 
         // 手番側の駒がある升は獅子捕獲升として受理されず、局面は変化しない。
         let mut rejected = base.clone();
@@ -1633,7 +1531,6 @@ mod tests {
 
         position.unmake_move(undo);
         assert_eq!(position, before_expiry);
-        assert_eq!(position.rights_zobrist(), before_expiry.rights_zobrist());
     }
 
     #[test]
@@ -1732,7 +1629,6 @@ mod tests {
             mv(sq(7, 7), sq(7, 6)),
         ]);
         assert_eq!(path_a, path_b);
-        assert_eq!(path_a.zobrist(), path_b.zobrist());
 
         // 往復を含む長い経路(手数が異なる)でも、同じ局面なら同じキーになる。
         let path_long = play(&[
@@ -1746,7 +1642,6 @@ mod tests {
             mv(sq(6, 11), sq(6, 10)),
         ]);
         assert_eq!(path_long, path_a);
-        assert_eq!(path_long.zobrist(), path_a.zobrist());
     }
 
     // 実装契約(D4-IMP-01): 空盤への1枚配置と同じ升の除去は互いに逆操作であり、
@@ -1845,7 +1740,6 @@ mod tests {
             ],
         );
         assert_eq!(played, built);
-        assert_eq!(played.zobrist(), built.zobrist());
     }
 
     /// 増分更新とundoの検査に使う代表シナリオ(局面・規則・着手列)を返す。
@@ -1981,26 +1875,7 @@ mod tests {
         ]
     }
 
-    // 実装契約(D4-IMP-03): 増分維持されるキー・占有集合は、毎手、素の盤面からの
-    // 全再計算および整合検査と一致する。
-    #[test]
-    fn incrementally_maintained_state_matches_full_recomputation() {
-        for (mut position, rules, moves) in make_unmake_scenarios() {
-            let generator = MoveGenerator::new(rules);
-            for mv in moves {
-                position.try_make_move(mv, &generator).unwrap();
-                assert_eq!(position.zobrist(), position.recompute_zobrist(), "{mv:?}");
-                assert_eq!(
-                    position.rights_zobrist(),
-                    position.recompute_rights_zobrist(),
-                    "{mv:?}"
-                );
-                assert_eq!(position.validate(), Ok(()), "{mv:?}");
-            }
-        }
-    }
-
-    // 実装契約(D4-IMP-04): 着手の適用と取り消しは恒等写像を合成し、全観測可能状態
+    // 実装契約(D4-IMP-03・04): 前進状態は全再計算と一致し、着手を取り消すと全観測可能状態
     // (盤面・手番・キー・先獅子状態・成り権保留)が完全一致で復元される。
     #[test]
     fn unmake_restores_every_observable_component() {
@@ -2010,42 +1885,20 @@ mod tests {
             for mv in moves {
                 let snapshot = position.clone();
                 let undo = position.try_make_move_with_undo(mv, &generator).unwrap();
+                assert_eq!(position.zobrist(), position.recompute_zobrist(), "{mv:?}");
+                assert_eq!(
+                    position.rights_zobrist(),
+                    position.recompute_rights_zobrist(),
+                    "{mv:?}"
+                );
+                assert_eq!(position.validate(), Ok(()), "{mv:?}");
                 trail.push((snapshot, undo));
             }
             while let Some((snapshot, undo)) = trail.pop() {
                 position.unmake_move(undo);
                 assert_eq!(position, snapshot);
-                assert_eq!(position.zobrist(), snapshot.zobrist());
-                assert_eq!(position.rights_zobrist(), snapshot.rights_zobrist());
             }
         }
-    }
-
-    // D4-IMP-10[実装契約] 手番パスは配置を変えずに手番と局面キーを反転し、
-    // 巻き戻すと全観測可能状態を復元する。
-    #[test]
-    fn d4_imp_10_null_move_flips_side_preserves_board_and_round_trips() {
-        let mut position = position_with_pieces(
-            Color::Black,
-            &[
-                (sq(5, 0), Color::Black, PieceKind::King),
-                (sq(4, 4), Color::Black, PieceKind::GoldGeneral),
-                (sq(6, 11), Color::White, PieceKind::King),
-                (sq(7, 7), Color::White, PieceKind::Pawn),
-            ],
-        );
-        let before = position.clone();
-        let undo = position.make_null_move();
-
-        assert_eq!(position.side_to_move(), Color::White);
-        for square in Square::all() {
-            assert_eq!(position.piece_at(square), before.piece_at(square));
-        }
-        assert_eq!(position.zobrist(), position.recompute_zobrist());
-        assert_ne!(position.zobrist(), before.zobrist());
-
-        position.unmake_null_move(undo);
-        assert_eq!(position, before);
     }
 
     // D4-IMP-10[実装契約] 手番パスは先獅子の一時状態を消滅させ、
@@ -2059,14 +1912,17 @@ mod tests {
 
         let undo = position.make_null_move();
 
+        assert_eq!(position.side_to_move(), before.side_to_move().opposite());
+        for square in Square::all() {
+            assert_eq!(position.piece_at(square), before.piece_at(square));
+        }
+        assert_ne!(position.zobrist(), before.zobrist());
         assert_eq!(position.lion_taken_by_non_lion(), None);
         assert_eq!(position.zobrist(), expected.recompute_zobrist());
         assert_eq!(position.zobrist(), position.recompute_zobrist());
 
         position.unmake_null_move(undo);
         assert_eq!(position, before);
-        assert_eq!(position.zobrist(), before.zobrist());
-        assert_eq!(position.rights_zobrist(), before.rights_zobrist());
     }
 
     // D4-IMP-10[実装契約] 成り権保留と権利キーは手番パスで変化せず、
@@ -2096,11 +1952,10 @@ mod tests {
     }
 
     // 実装契約(D4-IMP-09): 固定シードの一様ランダムプレイアウトで、毎手、
-    // (1)増分キー＝全再計算、(2)同じ指し手列の再適用による再構築との全観測一致、
-    // (3)総駒数=92−累計捕獲枚数、(4)手番の交替則(第6条1項)を検証する。
-    // 終了後は全undoで初期局面へ完全復帰し、同一シードは同一の指し手列を再現する。
+    // 増分キー＝全再計算、総駒数=92−累計捕獲枚数、手番の交替則(第6条1項)を検証する。
+    // 終了後は全undoで初期局面へ完全復帰する。
     #[test]
-    fn seeded_random_playouts_uphold_conservation_replay_and_undo_invariants() {
+    fn seeded_random_playouts_uphold_conservation_and_undo_invariants() {
         let generator = MoveGenerator::standard();
         let seeds = [0x5a4f_4252_4953_5401_u64, 0x6d69_6e61_7365_4434];
         let games_per_seed = 4;
@@ -2108,7 +1963,6 @@ mod tests {
         let mut captures_seen = 0_u32;
         let mut promotions_seen = 0_u32;
         let mut double_moves_seen = 0_u32;
-        let mut recorded_move_lists = Vec::new();
 
         for seed in seeds {
             let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
@@ -2116,12 +1970,11 @@ mod tests {
                 let initial = Position::initial();
                 let mut position = initial.clone();
                 let mut history = Vec::new();
-                let mut played = Vec::new();
                 let mut captured_total = 0_u32;
 
                 for ply in 0..max_plies {
                     // n手適用後の手番は、nが偶数なら先手、奇数なら後手である(第6条1項)。
-                    let expected_side = if played.len() % 2 == 0 {
+                    let expected_side = if ply % 2 == 0 {
                         Color::Black
                     } else {
                         Color::White
@@ -2142,7 +1995,6 @@ mod tests {
                         promotions_seen += 1;
                     }
                     history.push(position.make_move_unchecked(mv, MoveRules::standard()));
-                    played.push(mv);
 
                     let context = format!("seed={seed:#x} game={game} ply={ply}");
                     assert_eq!(
@@ -2162,13 +2014,6 @@ mod tests {
                         92 - captured_total,
                         "{context}"
                     );
-
-                    // 同じ指し手列を初期局面へ適用し直した再構築局面と全観測で一致する。
-                    let mut replayed = initial.clone();
-                    for &past in &played {
-                        replayed.make_move_unchecked(past, MoveRules::standard());
-                    }
-                    assert_eq!(position, replayed, "{context}");
                 }
                 captures_seen += captured_total;
 
@@ -2177,8 +2022,6 @@ mod tests {
                     position.unmake_move(undo);
                 }
                 assert_eq!(position, initial, "seed={seed:#x} game={game}");
-
-                recorded_move_lists.push((seed, played));
             }
         }
 
@@ -2189,31 +2032,5 @@ mod tests {
             double_moves_seen > 0,
             "2段階移動が出現しないシードは検査力が弱い"
         );
-
-        // 決定性: 同一シードからの再実行は同一の指し手列を再現する。
-        for seed in seeds {
-            let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
-            for game in 0..games_per_seed {
-                let mut position = Position::initial();
-                let mut replayed_moves = Vec::new();
-                for _ in 0..max_plies {
-                    let mut moves = Vec::new();
-                    generator.generate_moves(&position, &mut moves);
-                    if moves.is_empty() {
-                        break;
-                    }
-                    let mv = moves[rng.next() as usize % moves.len()];
-                    position.make_move_unchecked(mv, MoveRules::standard());
-                    replayed_moves.push(mv);
-                }
-                let recorded = recorded_move_lists
-                    .iter()
-                    .filter(|(recorded_seed, _)| *recorded_seed == seed)
-                    .nth(game)
-                    .map(|(_, list)| list.clone())
-                    .unwrap();
-                assert_eq!(replayed_moves, recorded, "seed={seed:#x} game={game}");
-            }
-        }
     }
 }

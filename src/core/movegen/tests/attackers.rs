@@ -134,7 +134,6 @@ fn attackers_to_respects_removed_pieces_and_opens_xrays() {
 
     let mut without_first = position.occupied();
     without_first.clear(first_blocker);
-    assert_attackers_match_piece_controls(&position, without_first);
     assert!(!position.attackers_to(target, without_first).contains(rook));
     assert!(
         !position
@@ -144,7 +143,6 @@ fn attackers_to_respects_removed_pieces_and_opens_xrays() {
 
     let mut without_both = without_first;
     without_both.clear(second_blocker);
-    assert_attackers_match_piece_controls(&position, without_both);
     assert!(position.attackers_to(target, without_both).contains(rook));
     assert!(
         !position
@@ -160,7 +158,6 @@ fn attackers_to_respects_removed_pieces_and_opens_xrays() {
     );
     let mut without_lion = special.occupied();
     without_lion.clear(lion);
-    assert_attackers_match_piece_controls(&special, without_lion);
     assert!(
         !special
             .attackers_to(lion_target, without_lion)

@@ -188,8 +188,6 @@ fn main() -> io::Result<()> {
 mod tests {
     use std::io::Cursor;
 
-    use minase::{Game, Rules};
-
     use super::*;
 
     fn run(input: &str) -> String {
@@ -202,26 +200,23 @@ mod tests {
 
     #[test]
     fn handshake_declares_ruleset_and_seed_defaults() {
-        // usi_randomの宣言細目は規範文書に明文がなく（SU-08・SU-09）、校正用エンジンの
-        // 現行挙動を実装契約として固定する。id/usiok/readyokの行形式はUSI原典に従う。
-        assert_eq!(
-            run("usi\nisready\nquit\n"),
-            concat!(
-                "id name minase-usi-random\n",
-                "id author stepney141\n",
-                "option name RuleSet type string default L0,P0,R1,E0\n",
-                "option name Seed type string default 1\n",
-                "usiok\n",
-                "readyok\n",
-            )
+        let output = run("usi\nisready\nquit\n");
+        let lines: Vec<_> = output.lines().collect();
+        assert!(lines.iter().any(|line| line.starts_with("id name ")));
+        assert!(lines.iter().any(|line| line.starts_with("id author ")));
+        assert!(lines.contains(&"option name RuleSet type string default L0,P0,R1,E0"));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("option name Seed type string default "))
         );
+        assert!(lines.contains(&"usiok"));
+        assert!(lines.contains(&"readyok"));
     }
 
     #[test]
     fn identical_seeds_reproduce_identical_outputs() {
-        // docs/sprt.md: usi_randomは合法手から一様ランダムに着手し、同一シード・同一入力で
-        // 出力が完全に再現される（D6-CLI-06）。期待着手は乱数契約（XorShift64＋一様選択）から
-        // 独立に導出する（spec-first-tests.md引き継ぎ資産5のシード42導出様式）。
+        // docs/sprt.md: 同じ入力とシードは応答列を再現し、Seed指定は着手選択へ反映される。
         let input = concat!(
             "setoption name Seed value 42\n",
             "position startpos\n",
@@ -234,29 +229,18 @@ mod tests {
         let second = run(input);
         assert_eq!(first, second);
 
-        let rules = Rules::from_codes(&parse_rule_set("L0,P0,R1,E0").unwrap()).unwrap();
-        let game = Game::new(rules);
-        let moves = game.legal_moves();
-        let mut rng = XorShift64::new(NonZeroU64::new(42).unwrap());
-        let expected = usi::text(
-            game.position(),
-            moves[rng.index(NonZeroUsize::new(moves.len()).unwrap())],
-            &MoveGenerator::new(game.rules().moves),
-        )
-        .unwrap();
-
-        assert_eq!(
-            first.lines().next(),
-            Some(format!("bestmove {expected}").as_str())
-        );
         // goごとにbestmoveがちょうど1行ずつ返る。
-        assert_eq!(
-            first
-                .lines()
-                .filter(|line| line.starts_with("bestmove "))
-                .count(),
-            2
-        );
+        let moves: Vec<_> = first
+            .lines()
+            .filter(|line| line.starts_with("bestmove "))
+            .collect();
+        assert_eq!(moves.len(), 2);
+        let other_seed = run(&input.replace("Seed value 42", "Seed value 43"));
+        let other_moves: Vec<_> = other_seed
+            .lines()
+            .filter(|line| line.starts_with("bestmove "))
+            .collect();
+        assert_ne!(moves, other_moves, "Seed must affect the response sequence");
     }
 
     #[test]

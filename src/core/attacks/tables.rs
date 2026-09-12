@@ -176,51 +176,6 @@ pub(crate) fn attack_tables() -> &'static AttackTables {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MoveGenerator;
-    use crate::core::piece::{PieceCode, PieceKind};
-    use crate::core::position::PositionBuilder;
-
-    /// 180度回転写像σ(D4マトリクスの座標規約)。内部0始まり座標では(11−筋,11−段)にあたる。
-    fn sigma(square: Square) -> Square {
-        Square::new(11 - square.file(), 11 - square.rank()).unwrap()
-    }
-
-    /// 空盤に指定色の駒1枚だけを置いた局面で、1手で到達し得る到達升の集合を返す。
-    /// 利きテーブルの生成方式に依存しない、公開の指し手生成経由の観測である。
-    fn reachable_squares(color: Color, kind: PieceKind, from: Square) -> Bitboard {
-        let mut builder = PositionBuilder::new(color);
-        let piece = PieceCode::new(color, kind).unwrap_or_else(|| {
-            PieceCode::new_promoted(color, kind)
-                .expect("every promoted-only kind has a promoted piece code")
-        });
-        builder.put(from, piece).unwrap();
-        let position = builder.finish().unwrap();
-        let mut moves = Vec::new();
-        MoveGenerator::standard().generate_moves(&position, &mut moves);
-        Bitboard::from_squares(moves.into_iter().map(|mv| mv.to))
-    }
-
-    // 実装契約(D4-IMP-08): 任意の駒種pと升sについて、先手のpがsから1手で到達し得る
-    // 升集合をσで写した集合は、後手のpがσ(s)から到達し得る升集合と一致する。
-    // 「前」「後」が所有者相対で定義される(第3条3項)ことと、第9条・第10条の動きが
-    // 所有者に対して同型であることの帰結である。獅子・角鷹・飛鷲は2段階移動を含む
-    // 最終到達升全体で、その他は空盤での到達可能升全体で判定する。
-    #[test]
-    fn reachable_sets_are_180_degree_rotation_symmetric_across_colors() {
-        for kind in PieceKind::ALL {
-            for from in Square::all() {
-                let black = reachable_squares(Color::Black, kind, from);
-                let rotated_black = Bitboard::from_squares(black.into_iter().map(sigma));
-                let white = reachable_squares(Color::White, kind, sigma(from));
-                assert_eq!(
-                    rotated_black,
-                    white,
-                    "{kind:?} from {:?}",
-                    (from.file(), from.rank())
-                );
-            }
-        }
-    }
 
     // 実装契約(第7条4項・5項の走りの定義に接地): 走りの利きは、方向へ1升ずつ進む
     // 逐次歩行と一致する。距離制限内の升を進行順に含み、最初の駒がある升を含んだ

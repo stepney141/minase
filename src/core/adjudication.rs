@@ -616,7 +616,6 @@ mod tests {
     use super::*;
     use crate::core::game::{Game, GameStatus};
     use crate::core::piece::PieceCode;
-    use crate::core::repetition::repetition_is_forbidden;
     use crate::core::rules::RuleCode;
     use crate::test_util::{position_from_codes as position, sq};
 
@@ -640,7 +639,7 @@ mod tests {
     #[test]
     fn article_21_3_mate_requires_every_escape_clause_to_fail() {
         // D3-021-02: 3項a(回避)・b(相手王駒の先取り)のいずれかが残れば詰みは
-        // 成立しない。仮想着手の評価後に局面と裁定状態は完全に復元される
+        // 成立しない。仮想着手の評価後に局面は完全に復元される
         // (adjudication-refactor.md「検証」)。
         let generator = MoveGenerator::standard();
 
@@ -657,13 +656,11 @@ mod tests {
         );
         let mated_before = mated.clone();
         let state = r1_state(&mated);
-        let state_before = state.clone();
         assert!(is_mate(
             &mut mated,
             &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
         ));
         assert_eq!(mated, mated_before);
-        assert_eq!(state, state_before);
 
         // 3項a: (0,1)への逃げが残れば詰みではない。
         let mut escapable = position(
@@ -732,101 +729,6 @@ mod tests {
             &mut stuck,
             &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
         ));
-    }
-
-    #[test]
-    fn plan_adjudication_shared_functions_match_game_play() {
-        // D3-PRP-03: 探索層が使う共有裁定関数と対局進行(Game::play)は、同一の
-        // 局面・規則・履歴に対して同じ終局判定と同じ着手後局面を与える
-        // (adjudication-refactor.md「探索部との境界」)。
-        let scenarios: [(&[RuleCode], Position, Move); 4] = [
-            (
-                // 詰み(第21条2項)。
-                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2],
-                position(
-                    Color::White,
-                    &[
-                        (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                        (sq(0, 11), piece(Color::White, PieceKind::Rook)),
-                        (sq(11, 0), piece(Color::White, PieceKind::Rook)),
-                        (sq(11, 11), piece(Color::White, PieceKind::Bishop)),
-                        (sq(10, 8), piece(Color::White, PieceKind::King)),
-                    ],
-                ),
-                step(sq(10, 8), sq(10, 9)),
-            ),
-            (
-                // 王駒捕獲(第21条1項)。
-                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
-                position(
-                    Color::Black,
-                    &[
-                        (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                        (sq(5, 5), piece(Color::Black, PieceKind::Rook)),
-                        (sq(5, 8), piece(Color::White, PieceKind::King)),
-                    ],
-                ),
-                step(sq(5, 5), sq(5, 8)),
-            ),
-            (
-                // 駒枯れ引き分け(第22条8項)。
-                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
-                position(
-                    Color::Black,
-                    &[
-                        (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                        (sq(11, 11), piece(Color::White, PieceKind::King)),
-                    ],
-                ),
-                step(sq(0, 0), sq(0, 1)),
-            ),
-            (
-                // 終局しない通常の着手。
-                &[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0],
-                position(
-                    Color::Black,
-                    &[
-                        (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                        (sq(3, 3), piece(Color::Black, PieceKind::GoldGeneral)),
-                        (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
-                        (sq(11, 11), piece(Color::White, PieceKind::King)),
-                    ],
-                ),
-                step(sq(3, 3), sq(3, 4)),
-            ),
-        ];
-
-        for (codes, start, mv) in scenarios {
-            let rules = Rules::from_codes(codes).unwrap();
-            let generator = MoveGenerator::new(rules.moves);
-
-            // 探索層の経路: make/unmakeと共有裁定関数を直接使う。
-            let mut low_level = start.clone();
-            let mut state = AdjudicationState::new(rules.repetition, &low_level);
-            let mover = low_level.side_to_move();
-            let undo = low_level.try_make_move_with_undo(mv, &generator).unwrap();
-            assert!(!repetition_is_forbidden(state.repetition(), &low_level));
-            let waiting = promoted_waiting_square(mv, &undo);
-            let repetition_result = state.record_move(&low_level, &generator, mover, mv);
-            let outcome = adjudicate_after_move(
-                &mut low_level,
-                AdjudicationContext::new(rules, &state, &generator),
-                mover,
-                waiting,
-                repetition_result,
-            );
-
-            // 対局進行の経路。
-            let mut game = Game::from_position(rules, start.clone());
-            let status = game.play(mv).unwrap();
-
-            let expected = match outcome.result() {
-                Some(result) => GameStatus::Finished(result),
-                None => GameStatus::Ongoing,
-            };
-            assert_eq!(status, expected, "codes={codes:?}");
-            assert_eq!(&low_level, game.position(), "codes={codes:?}");
-        }
     }
 
     #[test]

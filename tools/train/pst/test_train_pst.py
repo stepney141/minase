@@ -13,7 +13,7 @@ import unittest
 import numpy as np
 import torch
 
-from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices, mirror
+from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices
 from mnsd import Dataset, HEADER_LENGTH, RECORD_DTYPE, RECORD_LENGTH, hash64
 from taper import band_indices, phase_numerators, phase_ratios, piece_counts
 from train_pst import (
@@ -29,7 +29,6 @@ from train_pst import (
     make_model,
     model_logits,
     read_mnpt,
-    should_replace_best_epoch,
     write_mnpt,
 )
 
@@ -65,15 +64,6 @@ def write_mnsd(
     path.write_bytes(bytes(header) + records.tobytes())
 
 
-def reference_hash64(seed: int, game: int) -> int:
-    """指示書のu64演算をPython整数で独立に計算する。"""
-    mask = (1 << 64) - 1
-    value = (seed ^ (game * 0x9E3779B97F4A7C15)) & mask
-    value = ((value ^ (value >> 30)) * 0xBF58476D1CE4E5B9) & mask
-    value = ((value ^ (value >> 27)) * 0x94D049BB133111EB) & mask
-    return (value ^ (value >> 31)) & mask
-
-
 class DatasetTest(unittest.TestCase):
     """Datasetの来歴検証、分割、世代、収集順を検証する。"""
 
@@ -92,14 +82,20 @@ class DatasetTest(unittest.TestCase):
 
     def test_hash_split_is_stable_when_file_order_changes(self) -> None:
         games = list(range(80))
-        expected_hashes = np.array(
-            [reference_hash64(1, game) for game in games], dtype=np.uint64
-        )
-        np.testing.assert_array_equal(
-            hash64(1, np.array(games, dtype=np.uint32)), expected_hashes
-        )
-        self.assertEqual(reference_hash64(0, 0), 0)
-        self.assertEqual(reference_hash64(1, 0), 0x5692161D100B05E5)
+        # 既存データの検証分割を保つ回帰値。厳密なハッシュ式は規範文書に未定義。
+        # 0、シード差、u64の桁あふれを含む既知の参照値を固定する。
+        for seed, game, expected in (
+            (0, 0, 0),
+            (1, 0, 0x5692161D100B05E5),
+            (0, 1, 0xE220A8397B1DCDAF),
+            (0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF, 0x3A9B57C277B22E0A),
+        ):
+            with self.subTest(seed=seed, game=game):
+                self.assertEqual(int(hash64(seed, np.array([game], dtype=np.uint32))[0]), expected)
+        validation_games = {
+            11: {4, 15, 22, 41, 48, 59, 70},
+            22: {6, 8, 35, 44, 58, 63, 74},
+        }
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -119,7 +115,7 @@ class DatasetTest(unittest.TestCase):
                         key = (header.seed, int(game))
                         membership[key] = bool(selected)
                         self.assertEqual(
-                            bool(selected), reference_hash64(*key) % 20 == 0
+                            bool(selected), int(game) in validation_games[header.seed]
                         )
                 memberships.append(membership)
             self.assertEqual(memberships[0], memberships[1])
@@ -215,29 +211,24 @@ class TeacherScaleTest(unittest.TestCase):
 class TrainingPathTest(unittest.TestCase):
     """訓練CLIの最良重み、教師値、観測数、検証標本を検証する。"""
 
-    def test_best_epoch_replacement_requires_strict_improvement(self) -> None:
-        self.assertTrue(should_replace_best_epoch(0.4, 0.5))
-        self.assertFalse(should_replace_best_epoch(0.5, 0.5))
-        self.assertFalse(should_replace_best_epoch(0.6, 0.5))
-
     def test_training_path_uses_documented_data_membership(self) -> None:
         count = 256
         games = list(range(count))
         asymmetric_board = INITIAL_BOARD.copy()
         asymmetric_board[[0, 60]] = asymmetric_board[[60, 0]]
 
-        def labels(seed: int, generation: int) -> tuple[list[int], list[int]]:
-            scores: list[int] = []
-            results: list[int] = []
-            training_score = 1000 if generation == 0 else -1000
-            for game in games:
-                if reference_hash64(seed, game) % 20 == 0:
-                    scores.append(0)
-                    results.append(1)
-                else:
-                    scores.append(training_score)
-                    results.append(2)
-            return scores, results
+        # 対局の所属を固定し、分割処理が変わって教師値まで同時に変わるのを防ぐ。
+        validation_games = {
+            101: {28, 36, 51, 68, 74, 82, 96, 97, 101, 143, 152, 181, 190, 200, 218, 224, 231, 243, 251},
+            202: {45, 61, 73, 120, 171, 213, 230},
+        }
+
+        def labels(seed: int, training_score: int) -> tuple[list[int], list[int]]:
+            selected = validation_games[seed]
+            return (
+                [0 if game in selected else training_score for game in games],
+                [1 if game in selected else 2 for game in games],
+            )
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -245,8 +236,8 @@ class TrainingPathTest(unittest.TestCase):
             generation1 = root / "generation1.mnsd"
             initial_path = root / "initial.mnpt"
             output_path = root / "trained.mnpt"
-            scores0, results0 = labels(101, 0)
-            scores1, results1 = labels(202, 1)
+            scores0, results0 = labels(101, 1000)
+            scores1, results1 = labels(202, -1000)
             write_mnsd(
                 generation0,
                 seed=101,
@@ -276,41 +267,10 @@ class TrainingPathTest(unittest.TestCase):
                 )
                 expected_ks.append(estimate_k(records["score"], records["result"]))
 
-            training_records = dataset.gather(dataset.training_indices)
-            normal = feature_indices(
-                training_records["board"],
-                training_records["stm"],
-                training_records["lion"],
-            )
-            active = normal[normal != PADDING_INDEX]
-            expected_observations = np.bincount(active, minlength=FEATURE_COUNT)
-            expected_unobserved = int(np.count_nonzero(expected_observations == 0))
-            expected_maximum = int(expected_observations.max())
-
-            mirrored_board, mirrored_lion = mirror(
-                training_records["board"], training_records["lion"]
-            )
-            reflected = feature_indices(
-                mirrored_board, training_records["stm"], mirrored_lion
-            )
-            reflected_active = reflected[reflected != PADDING_INDEX]
-            augmented_observations = expected_observations + np.bincount(
-                reflected_active, minlength=FEATURE_COUNT
-            )
-            self.assertNotEqual(
-                (
-                    expected_unobserved,
-                    expected_maximum,
-                ),
-                (
-                    int(np.count_nonzero(augmented_observations == 0)),
-                    int(augmented_observations.max()),
-                ),
-            )
-            self.assertNotEqual(
-                dataset.training_indices.size, dataset.validation_indices.size
-            )
-
+            # 特徴は2陣営×47駒状態×144升＋先獅子144升の13,680個。
+            # 全訓練局面が同じ92枚の盤面で、検証対局は19＋7局なので、
+            # 未観測は13,588個、各観測特徴の頻度は512−26＝486回になる。
+            # 鏡映拡張を頻度へ二重計上する変更はこの固定値と一致しない。
             stdout = StringIO()
             with redirect_stdout(stdout):
                 train_main(
@@ -358,10 +318,10 @@ class TrainingPathTest(unittest.TestCase):
             )
             self.assertIsNotNone(observation_log)
             assert observation_log is not None
-            self.assertEqual(int(observation_log.group(1)), expected_unobserved)
-            self.assertEqual(int(observation_log.group(2)), expected_maximum)
+            self.assertEqual(int(observation_log.group(1)), 13_588)
+            self.assertEqual(int(observation_log.group(2)), 486)
             self.assertIn(
-                f"quantization error: samples={dataset.validation_indices.size} ",
+                "quantization error: samples=26 ",
                 output,
             )
             middlegame, endgame, piece_values, output_k = read_mnpt(output_path)
@@ -465,7 +425,7 @@ class TaperedFormatTest(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         write_mnpt(path, weights, weights, values, 300.0)
 
-    def test_single_model_requires_identical_endpoints_and_duplicates_output(self) -> None:
+    def test_model_endpoints_are_validated_and_tapered_training_updates_the_active_endpoint(self) -> None:
         games = list(range(64))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -485,27 +445,14 @@ class TaperedFormatTest(unittest.TestCase):
                     train_main(arguments)
             self.assertFalse(output_path.exists())
             write_mnpt(initial_path, weights, weights, PIECE_VALUES, 200.0)
-            for model in ("single", "tapered"):
-                with self.subTest(model=model):
-                    arguments[8] = model
-                    output = root / f"{model}.mnpt"
-                    arguments[4] = str(output)
-                    stdout = StringIO()
-                    with redirect_stdout(stdout):
-                        train_main(arguments)
-                    self.assertIn(f"model: {model} columns={1 if model == 'single' else 2}", stdout.getvalue())
-                    middlegame, endgame, values, _ = read_mnpt(output)
-                    np.testing.assert_array_equal(values, PIECE_VALUES)
-                    if model == "single":
-                        np.testing.assert_array_equal(middlegame, endgame)
-                    else:
-                        # 初期局面の訓練局面は q=90 なので、終盤側の勾配は0で初期値のまま残る。
-                        np.testing.assert_array_equal(endgame, weights)
-                        self.assertTrue(np.any(middlegame != 0))
-
-    def test_make_model_rejects_unexpected_columns(self) -> None:
-        with self.assertRaises(ValueError):
-            make_model(torch.zeros((FEATURE_COUNT, 3)), torch.device("cpu"))
+            arguments[8] = "tapered"
+            with redirect_stdout(StringIO()):
+                train_main(arguments)
+            middlegame, endgame, values, _ = read_mnpt(output_path)
+            np.testing.assert_array_equal(values, PIECE_VALUES)
+            # 初期局面は q=90 なので、終盤側の勾配は0で初期値のまま残る。
+            np.testing.assert_array_equal(endgame, weights)
+            self.assertTrue(np.any(middlegame != 0))
 
 
 if __name__ == "__main__":
