@@ -187,7 +187,7 @@ impl Game {
         let promoted_waiting_piece = promoted_waiting_square(mv, &undo);
         let repetition_result =
             self.adjudication
-                .record_move(&self.position, &self.generator, mover, mv);
+                .record_move(&self.position, &self.generator, mover, mv, &undo);
         let adjudication = adjudicate_after_move(
             &mut self.position,
             AdjudicationContext::new(self.rules, &self.adjudication, &self.generator),
@@ -1524,6 +1524,65 @@ mod tests {
     // ---------------------------------------------------------------
     // 第31条　反復に関するローカルルール
     // ---------------------------------------------------------------
+
+    #[test]
+    fn article_31_r1_requires_twelve_reversible_plies_from_start() {
+        // D3-031-11: 対局開始から可逆手が12手続くまでは、4回以上同じ局面が
+        // 現れても裁定しない(lishogi-bot.md「反復裁定の整合」、第31条R1)。
+        let start = position(
+            Color::Black,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(3, 3), piece(Color::Black, PieceKind::Lion)),
+                (sq(8, 8), piece(Color::White, PieceKind::Lion)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        );
+        let cycle = [step(sq(3, 3), sq(3, 3)), step(sq(8, 8), sq(8, 8))];
+        let mut game = game_with_codes(start.clone(), &[RuleCode::R1]);
+        for ply in 1..=11 {
+            assert_eq!(
+                game.play(cycle[(ply - 1) % 2]),
+                Ok(GameStatus::Ongoing),
+                "ply {ply}"
+            );
+            if ply % 2 == 0 {
+                assert_eq!(game.position(), &start);
+            }
+        }
+        assert_eq!(game.play(cycle[1]), draw(DrawReason::Repetition));
+        assert_eq!(game.position(), &start);
+    }
+
+    #[test]
+    fn article_31_r1_requires_twelve_reversible_plies_after_an_irreversible_move() {
+        // D3-031-12: 不可逆手の前に可逆手を11手指していても、その後の可逆手が
+        // 12手になるまで裁定しない(lishogi-bot.md「反復裁定の整合」、第31条R1)。
+        let start = position(
+            Color::Black,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(3, 3), piece(Color::Black, PieceKind::Lion)),
+                (sq(8, 8), piece(Color::White, PieceKind::Lion)),
+                (sq(6, 8), piece(Color::White, PieceKind::Pawn)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        );
+        let cycle = [step(sq(3, 3), sq(3, 3)), step(sq(8, 8), sq(8, 8))];
+        let mut game = game_with_codes(start, &[RuleCode::R1]);
+        for ply in 1..=11 {
+            assert_eq!(game.play(cycle[(ply - 1) % 2]), Ok(GameStatus::Ongoing));
+        }
+        assert_eq!(game.play(step(sq(6, 8), sq(6, 7))), Ok(GameStatus::Ongoing));
+        for ply in 1..=11 {
+            assert_eq!(
+                game.play(cycle[(ply - 1) % 2]),
+                Ok(GameStatus::Ongoing),
+                "reversible ply {ply} after pawn move"
+            );
+        }
+        assert_eq!(game.play(cycle[1]), draw(DrawReason::Repetition));
+    }
 
     #[test]
     fn article_31_r1_sole_continuous_checker_loses() {

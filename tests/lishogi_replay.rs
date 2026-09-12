@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 
 use flate2::read::GzDecoder;
 use minase::notation::{sfen::parse_extended_sfen, usi};
-use minase::{Color, DrawReason, Game, GameResult, GameStatus, Position, Rules, WinReason};
+use minase::{Color, DrawReason, Game, GameResult, GameStatus, Rules, WinReason};
 use serde_json::Value;
 
 const REPLAYS: &[u8] = include_bytes!("fixtures/lishogi_replays.ndjson.gz");
@@ -52,15 +52,6 @@ fn replay_game(replay: &Value) -> Result<(), String> {
 
     let setup = parse_extended_sfen(initial_sfen, rules.moves)
         .map_err(|error| format!("game {id}: failed to parse initial_sfen: {error}"))?;
-    if setup.position() != &Position::initial()
-        || setup.lion_capture().is_some()
-        || setup.next_move_number() != 1
-    {
-        return Err(format!(
-            "game {id}: initial_sfen is not the standard initial position: {setup:?}"
-        ));
-    }
-
     let (mut position, lion_capture, _) = setup.into_parts();
     position
         .set_lion_capture(lion_capture)

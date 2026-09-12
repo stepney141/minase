@@ -9,6 +9,12 @@ use crate::core::piece::Color;
 use crate::core::position::Position;
 use crate::core::rules::RepetitionRule;
 
+/// 第31条R1の裁定に必要な連続可逆手数。
+///
+/// scalashogiの「局面ハッシュ履歴が12個を超える」に対応する。
+/// 対局開始または不可逆手の直後の局面に可逆手12手分を加えると13局面になる。
+const R1_MIN_REVERSIBLE_PLIES: u32 = 12;
+
 /// R1で同一局面を判定するキー。
 ///
 /// 局面本体とP1成り権保留状態のZobrist値を別成分として保持する。
@@ -56,12 +62,17 @@ struct R1PositionState {
 }
 
 /// R1の局面出現履歴と双方の攻撃連続数。
+///
+/// 対局開始または直前の不可逆手から可逆手が12手以上続き、同一局面が
+/// 4回以上出現した場合に裁定する(第31条R1)。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct R1History {
     /// 出現済み局面ごとの出現状態。
     positions: HashMap<R1Key, R1PositionState>,
     /// 対局者ごとの、直近まで連続した攻撃的着手の数。
     consecutive_attacking_moves: [u32; 2],
+    /// 対局開始または直前の不可逆手からの連続可逆手数。
+    reversible_plies: u32,
 }
 
 impl R1History {
@@ -76,17 +87,28 @@ impl R1History {
                 },
             )]),
             consecutive_attacking_moves: [0; 2],
+            reversible_plies: 0,
         }
     }
 
-    /// 着手後の局面を記録し、4回目の出現なら裁定結果を返す(第31条R1)。
+    /// 着手後の局面を記録し、4回以上出現していれば裁定結果を返す(第31条R1)。
+    ///
+    /// 対局開始または直前の不可逆手から可逆手が12手以上続いていることを要する。
     pub(crate) fn record_move(
         &mut self,
         position: &Position,
         ply: u32,
         mover: Color,
         is_attacking: bool,
+        irreversible: bool,
     ) -> Option<GameResult> {
+        self.reversible_plies = if irreversible {
+            0
+        } else {
+            self.reversible_plies
+                .checked_add(1)
+                .expect("a reversible sequence cannot exceed u32::MAX plies")
+        };
         self.consecutive_attacking_moves =
             updated_attacking_counters(self.consecutive_attacking_moves, mover, is_attacking);
         let state = self
@@ -97,7 +119,7 @@ impl R1History {
                 first_ply: ply,
             });
         state.occurrences += 1;
-        if state.occurrences < 4 {
+        if state.occurrences < 4 || self.reversible_plies < R1_MIN_REVERSIBLE_PLIES {
             return None;
         }
 
@@ -108,8 +130,9 @@ impl R1History {
         ))
     }
 
-    /// 仮想着手が4回目の出現を生じさせる場合の裁定結果を、履歴を変更せずに返す。
+    /// 仮想着手が4回目以降の出現を生じさせる場合の裁定結果を、履歴を変更せずに返す。
     ///
+    /// 仮想着手を含めて可逆手が12手以上続くことを要する(第31条R1)。
     /// 詰み判定(第21条第3項c)が回避手の即時勝利を調べるために使う。
     pub(crate) fn candidate_result(
         &self,
@@ -117,7 +140,11 @@ impl R1History {
         ply: u32,
         mover: Color,
         is_attacking: bool,
+        irreversible: bool,
     ) -> Option<GameResult> {
+        if irreversible || self.reversible_plies < R1_MIN_REVERSIBLE_PLIES - 1 {
+            return None;
+        }
         let state = self.positions.get(&R1Key::from_position(position))?;
         if u16::from(state.occurrences) + 1 < 4 {
             return None;
@@ -241,9 +268,9 @@ pub(crate) fn retain_repetition_allowed_moves(
     });
 }
 
-/// 4回目の同一局面出現に対するR1の裁定結果を返す(第31条R1)。
+/// 4回目以降の同一局面出現に対するR1の裁定結果を返す(第31条R1)。
 ///
-/// 最初の出現から4回目までの自分の全着手が攻撃的着手であった対局者が
+/// 最初の出現から裁定時までの自分の全着手が攻撃的着手であった対局者が
 /// 一方だけならその側の負け、それ以外は引き分けとする。
 pub(crate) fn r1_repetition_result(
     ply: u32,
