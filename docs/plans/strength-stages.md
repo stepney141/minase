@@ -26,8 +26,8 @@ reverse futility pruning、late move pruning、null move pruningの減深量の�
 駒種と到達升で引くhistoryとmalusはSTCで不採用、counter move historyとcontinuation historyは発動率の診断で見送った。
 2026年9月12日に[段階6](strength-stage6.md)を完了し、aspiration windows、internal iterative reduction、および最善手安定時の早期終了を採用した。
 fail-lowによる延長、最善手交替時の延長、および係数の候補はSTCで`H0`となり不採用、置換表のクラスタ化は実装後の固定深さ再生で効果が基準に届かず外し、静的評価の置換表保存とmate distance pruningは診断で見送った。
-2026年9月12日に[段階7](strength-stage7.md)へ着手し、鏡映と手数上限の診断、および学習器の実装を進めている。
-次の一手は、診断を終えて鏡映共有モデルを学習し、STCとLTCで採否を判定することである。
+2026年9月12日に[段階7](strength-stage7.md)へ着手し、鏡映と手数上限の診断、および学習器の実装を完了した。
+鏡映共有モデルを学習中であり、次の一手は局面帯別の診断とSTC、LTCによる採否判定である。
 
 ## 目的
 
