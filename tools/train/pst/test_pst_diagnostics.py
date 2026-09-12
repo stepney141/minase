@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 
 from features import BOARD_FEATURE_COUNT, FEATURE_COUNT
-from mnsd import Dataset, read_header, map_records
+from mnsd import NO_LION_SQUARE, RECORD_DTYPE, Dataset, read_header, map_records
 from pst_diagnostics import Weights, derived_piece_values, diagnose
 from taper import BAND_COUNT
 from test_train_pst import write_mnsd
@@ -18,13 +18,22 @@ PIECE_VALUES = initial_piece_values()
 
 
 def python_probe(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
-    """Rustの代わりにPythonの参照評価で応答し、成り手は1件の固定値を返す。"""
+    """参照評価で応答し、成り後の応答には先手の成金1枚だけの固定局面を使う。"""
     weights = Weights(mnpt)
     records = map_records(mnsd)
     scores = weights.evaluate(records)
+    after = np.zeros(len(records), dtype=RECORD_DTYPE)
+    after["board"][:, 0] = 47  # MNSD: 1 + 成駒29 + 金将17。
+    after["stm"] = 1 - records["stm"]
+    after["lion"] = NO_LION_SQUARE
+    after_scores = weights.evaluate(after)
     return [
         {"index": index, "eval": int(score),
-         **({"promotions": [{"move": "1a1b+", "delta": 7}]} if promotions else {})}
+         **({"promotions": [{
+             "move": "1a1b+", "delta": -int(after_scores[index]) - int(score),
+             "after": {"board": after[index]["board"].tolist(),
+                       "stm": int(after[index]["stm"]), "lion": int(after[index]["lion"])},
+         }]} if promotions else {})}
         for index, score in enumerate(scores)
     ]
 
@@ -106,6 +115,7 @@ class DiagnosticsTest(unittest.TestCase):
         self.assertEqual(report["quantization"]["samples"], 10)
         self.assertEqual(report["quantization"]["mean_absolute_error_cp"], 0)
         self.assertEqual(report["rust_agreement"], {"base": 10, "candidate": 10})
+        self.assertEqual(report["rust_promotion_agreement"], {"base": 2, "candidate": 2})
 
         repeated = self.root / "repeated"
         self.assertEqual(report, self.run_diagnose(dataset, repeated))
@@ -131,7 +141,7 @@ class DiagnosticsTest(unittest.TestCase):
             sign = -1 if item["relative_color"] == 0 else 1
             # 先手の駒を除くと駒数も減るが、両端点が同一なので評価差は駒価値だけである。
             self.assertEqual(item["delta_cp"], {"base": sign * 100, "candidate": sign * 200})
-        self.assertEqual(initial["promotions"]["candidate"], [{"move": "1a1b+", "delta": 7}])
+        self.assertEqual(initial["promotions"]["candidate"][0]["delta"], 200)
         self.assertIsNone(initial["promotion_reason"])
         derived = report["derived_piece_values"]
         self.assertEqual(derived["fixed"], [int(PIECE_VALUES[s]) for s in derived["states"]])
@@ -153,6 +163,8 @@ class DiagnosticsTest(unittest.TestCase):
             self.assertEqual(removal["delta_cp"]["candidate"], expected)
         self.assertEqual(report["derived_piece_values"]["candidate_middlegame"][0], 200)
         self.assertEqual(report["derived_piece_values"]["candidate_endgame"][0], 100)
+        # 成り後の固定局面は駒が1枚なのでq=0。着手前のq=90を流用してはならない。
+        self.assertEqual(initial["promotions"]["candidate"][0]["delta"], 100)
         # 端点が異なると補間後の浮動小数点評価は整数にならないが、切り捨て誤差は上限内に収まる。
         self.assertGreater(report["quantization"]["mean_absolute_error_cp"], 0)
         self.assertLessEqual(report["quantization"]["mean_absolute_error_cp"], 2)
@@ -199,15 +211,70 @@ class DiagnosticsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             diagnose(dataset, self.base, self.candidate, self.float_path, drift, 5, 19, 0.75, python_probe)
 
+    def test_promotion_delta_mismatch_is_rejected_when_before_evaluations_agree(self) -> None:
+        """strength-stage7.md: 成りの評価差もRustとPython整数評価で一致しなければ停止する。"""
+        dataset = self.dataset()
+        for incorrect_model in (self.base, self.candidate):
+            def wrong_promotion(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
+                rows = python_probe(mnpt, mnsd, promotions)
+                if promotions and mnpt == incorrect_model:
+                    rows[0]["promotions"][0]["delta"] += 1
+                return rows
+
+            with self.subTest(model=incorrect_model.name):
+                output = self.root / f"wrong-promotion-{incorrect_model.stem}"
+                output.mkdir()
+                with self.assertRaises(ValueError):
+                    diagnose(dataset, self.base, self.candidate, self.float_path, output,
+                             5, 19, 0.75, wrong_promotion)
+
     def test_derived_values_round_half_away_from_zero(self) -> None:
         weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
         weights[:144] = 8  # own state 0: 1152/2304 = 0.5 → 1
         weights[47 * 144:48 * 144] = 0
-        self.assertEqual(derived_piece_values(weights)[0], 1)
+        self.assertEqual(derived_piece_values(weights, weights, 0.5)[0], 1)
         weights[:144] = -8
-        self.assertEqual(derived_piece_values(weights)[0], -1)
+        self.assertEqual(derived_piece_values(weights, weights, 0.5)[0], -1)
         weights[:144] = 7
-        self.assertEqual(derived_piece_values(weights)[0], 0)
+        self.assertEqual(derived_piece_values(weights, weights, 0.5)[0], 0)
+
+    def test_derived_values_blend_endpoints_before_rounding_and_set_royal_values(self) -> None:
+        # strength-stage7.md: 平均φで合成後に駒価値を導き、王駒は最大非王駒+未成歩。
+        for phi, expected in ((0.0, 200), (0.25, 175), (1.0, 100)):
+            with self.subTest(phi=phi):
+                values = derived_piece_values(self.weights, self.weights * 2, phi)
+                self.assertEqual(len(values), 47)
+                self.assertEqual(values[29], expected)
+                self.assertEqual(values[10], expected)
+                self.assertEqual(values[11], expected * 2)
+                self.assertEqual(values[21], expected * 2)
+        # 端点を先に丸めると平均0.5cpから1になるが、合成した0.4375cpは0へ丸める。
+        middlegame = np.zeros(FEATURE_COUNT, dtype=np.int16)
+        endgame = middlegame.copy()
+        middlegame[:144] = 9
+        endgame[:144] = 5
+        self.assertEqual(derived_piece_values(middlegame, endgame, 0.5)[0], 0)
+
+    def test_royal_values_exclude_unreachable_states_and_use_unpromoted_pawn(self) -> None:
+        middlegame = self.weights.copy()
+        endgame = self.weights.copy()
+        # 到達不能な歩の成り状態と王の静的重みが、到達可能な最大非王駒を上回る。
+        for state, mg_cp, eg_cp in ((0, 3000, 3000), (11, 4000, 4000),
+                                    (20, 400, 800), (29, 50, 100)):
+            for weights, value in ((middlegame, mg_cp), (endgame, eg_cp)):
+                weights[state * 144:(state + 1) * 144] = value * 8
+                weights[(47 + state) * 144:(48 + state) * 144] = -value * 8
+        values = derived_piece_values(middlegame, endgame, 0.5)
+        self.assertEqual(values[0], 3000)
+        self.assertEqual(values[20], 600)
+        self.assertEqual(values[29], 75)
+        self.assertEqual(values[11], 675)
+        self.assertEqual(values[21], 675)
+
+    def test_derived_values_reject_invalid_mean_phase(self) -> None:
+        for phi in (-0.01, 1.01, float("nan"), float("inf")):
+            with self.subTest(phi=phi), self.assertRaises(ValueError):
+                derived_piece_values(self.weights, self.weights, phi)
 
 
 if __name__ == "__main__":

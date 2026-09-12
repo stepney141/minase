@@ -2,7 +2,7 @@
 
 PST（駒の種類と位置に応じた評価表）の学習には、専用スクリプト [pst_workflow.py](../tools/train/pst/pst_workflow.py) を使う。
 条件を設定ファイルへ記入し、「準備」「生成」「学習」「診断」の順に実行する。
-スクリプトが尺度Kの推定、ログの保存、入力と重みの検査和の記録を行うため、シェル変数やPythonコードを手順書から転記する必要はない。
+スクリプトが教師尺度Kの推定、ログの保存、入力と重みの検査和の記録を行い、モデル出力の尺度Kには設定ファイルで指定した値を使う。
 学習の計算は既存の [train_pst.py](../tools/train/pst/train_pst.py) が担当する。
 PSTの学習コード、診断コード、テスト、設定例は `tools/train/pst/` にまとめている。
 
@@ -49,7 +49,8 @@ git rev-parse HEAD
 | `generate.max_ply` | 600手までに終局しない対局を破棄する。 |
 | `generate.hash_mb` | 生成ワーカーごとの置換表を16 MBとする。 |
 | `generate.random_moves` | 対局中のランダム着手注入を0とする。開始局面の8〜16手のランダム化は残る。 |
-| `train.model` | 学習するモデルの種別を`single`（単一PST）または`tapered`（序中盤用と終盤用の2端点PST）で明示する。単一PSTは1組の重みを学習して出力時に両端点へ複製し、初期重みの両端点が一致していなければ停止する。採用済みのPSTは両端点が異なるため、その続きを学習する世代2では`tapered`を指定する。 |
+| `train.model` | 単一PSTを学習する`single`、序中盤用と終盤用の2端点PSTを学習する`tapered`、左右の鏡映対で重みを共有する2端点PSTを学習する`mirrored`から選ぶ。 |
+| `train.k` | モデル出力の尺度Kを有限の正値で明示する。段階7では基準重みのヘッダに合わせて`1072.6529541015625`に固定する。 |
 | `train.learning_rate` | Adamの学習率を3とする。 |
 | `train.epochs` | 10エポックを学習し、初期状態も含めて検証損失が最小の重みを保存する。 |
 | `train.batch` | 1回の更新に16,384局面を使う。 |
@@ -64,6 +65,11 @@ git rev-parse HEAD
 すべての設定項目が必須であり、省略や未知の項目はエラーになる。
 `gen0b.bin` は既存対局と重複するため、入力へ加えない。
 
+`mirrored`は鏡映対の重みの平均から学習を始め、左右の鏡映で同じ正準特徴を使う。
+重みを共有するため確率的な鏡映のデータ拡張は行わず、保存時に全13,680特徴へ展開する。
+世代2のモデルは[段階7](plans/strength-stage7.md)の採否に従い、重み共有を採用した場合は`mirrored`、不採用なら`tapered`を指定する。
+`single`は1組の重みを保存時に両端点へ複製し、初期重みの両端点が一致しなければ停止するため、両端点が異なる採用済みPSTの継続学習には使えない。
+
 生成シードは互いに生成局数以上離し、過去の生成にも使っていない範囲を選ぶ。
 スクリプトは設定内の重複と、既存データに記録された対局番号との重なりを検出する。
 ただし、破棄されて記録されなかった対局や、入力に含めていないファイルの範囲は分からないため、過去の生成ログも確認する。
@@ -76,13 +82,15 @@ git rev-parse HEAD
 tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config pst-gen2.toml
 ```
 
-この操作は基準コミットを固定したworktreeを `data/pst-gen2/generator` に作り、生成器`selfplay_gen`と診断用の`pst_probe`をビルドする。
-基準PST、その探索用駒価値、設定、既存データと学習スクリプトの検査和も保存する。
-元の作業ブランチに未コミットの変更があっても、生成に使うのは指定コミットである。
+この操作は基準コミットを固定したworktreeを `data/pst-gen2/generator` に作り、生成器`selfplay_gen`をビルドする。
+診断用の`pst_probe`は、準備時の学習ツール側の`HEAD`を固定した別のworktree `data/pst-gen2/probe`でビルドするため、生成基準が古いコミットでも現在の診断形式を使える。
+基準PST、その探索用駒価値、設定、既存データと学習スクリプトの検査和を保存し、`prepared.json`に診断器のコミット`probe_commit`とバイナリの検査和`probe_sha256`も記録する。
+`pst_probe`の変更は準備前にコミットする。
+元の作業ブランチに未コミットの変更があっても、各バイナリに使うのはそれぞれ固定したコミットである。
 
 準備後は、元のTOMLファイルを編集しても実験の設定は変わらない。
 学習条件や入力を変更する場合は、新しい `run.directory` で準備し直す。
-`prepared.json` などの保存記録や、生成用worktreeは編集しない。
+`prepared.json` などの保存記録や、生成用と診断用のworktreeは編集しない。
 学習スクリプトの変更も検出して停止するので、実行中はその版を維持する。
 
 ## 3. 自己対局データを生成する
@@ -122,14 +130,33 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py generate --run-dir 
 
 ## 4. PSTを学習する
 
-すべての生成ファイルが完成したら、GPUを利用できるホスト側で次を実行する。
+すべての生成ファイルが完成したら、学習前に`taper_report.py`で訓練集合の駒数分布と端点の識別性を集計する。
+`--model`は必須であり、設定ファイルの`train.model`と同じモデルを指定する。
+次の例は`tapered`用であり、鏡映の重み共有を使う場合は`mirrored`へ変える。
+
+```bash
+tools/train/.venv/bin/python tools/train/pst/taper_report.py \
+  --data data/gen0.bin \
+    data/gen1-s{100000,200000,300000,400000,500000}.bin \
+    data/pst-gen2/generated-{600000,700000,800000,900000,1000000}.bin \
+  --model tapered --pst data/pst-gen2/pst-base.bin \
+  --output-dir data/pst-gen2/identifiability
+```
+
+`mirrored`では、鏡映対の観測を正準特徴ごとに統合してから補間係数φの平均と偏差平方和を計算し、`features.csv`へ6,840個の特徴を記録する。
+`tapered`では元の13,680特徴を別々に集計する。
+`report.json`の`training_mean_phi`は、検証局面を除く全訓練局面に等しい重みを与えたφの平均である。
+段階7の探索用駒価値は、この平均で両端点の重みを合成してから47値を導出する。
+
+診断を記録したら、GPUを利用できるホスト側で次を実行する。
 
 ```bash
 tools/train/.venv/bin/python tools/train/pst/pst_workflow.py train --run-dir data/pst-gen2
 ```
 
-スクリプトは既存データと生成データを検証し、世代ごとの教師尺度と全体のモデル出力尺度Kを推定する。
-Kは丸めずに学習器へ渡すため、前回の値やログの数字を転記する必要はない。
+スクリプトは既存データと生成データを検証し、訓練集合から世代ごとの教師尺度Kを推定する。
+モデル出力の尺度には`train.k`をそのまま渡し、全世代の混合データから推定したKは標準出力と`training/inputs.json`の`mixed_k`へ参考値として記録する。
+同ファイルの`k`には学習に使う指定値を記録し、`train.k`を省略した設定は準備時に拒否する。
 `device = "cuda"` でCUDAが使えない場合は停止し、CPUへ切り替えない。
 
 採用済みの `pst-base.bin` から学習し、結果を `training/pst.bin` に保存する。
@@ -157,6 +184,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 ```
 
 結果は `diagnostics/report.json` に保存される。
+診断前に、`probe`のコミットと作業ツリー、およびバイナリの検査和が準備時と一致することを検査する。
 `bands` は、補間係数を5等分した局面帯と世代ごとに、訓練と検証の局面数、全検証局面の検証損失、および最大 `diagnose.sample_size` 局面の標本について教師探索値との平均絶対誤差（出力Kと教師Kの比で換算した値と生の値）と相関を基準と候補で比較する。
 相関が定義できない場合は `null` と理由を出力し、空の帯は理由を記録して標本を作らない。
 抽出した局面番号も帯ごとに保存するので、入力ファイルの一覧と合わせて標本を特定できる。
@@ -166,6 +194,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 `representatives` は、初期配置と各帯の標本のうち最小の通算番号を持つ代表局面について、各非王駒を1枚除いた評価変化を基準と候補で並べる。
 駒を除くと補間係数も変わるため、評価差をその駒固有の価値と同一視しない。
 同じ代表局面の合法な成り手は `pst_probe` が実際に適用し、着手前の手番側視点の評価差を `promotions` に記録する。成り手がない局面は `promotion_reason` にその旨を残す。
+`after`の着手後局面からPythonで計算した評価差がRustの値と異なると停止し、一致した成り手の件数を`rust_promotion_agreement`に記録する。
 `derived_piece_values` は、各端点の全升平均から導出した駒価値と固定した探索用駒価値を並べ、端点ごとの静的な駒価値が固定値からどれだけ離れたかを示す。
 駒損を有利と評価するなどの異常がないか、基準と候補を確認する。
 検証損失や教師誤差の改善だけを、棋力が向上した根拠にはしない。
@@ -199,7 +228,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 
 | 保存物 | 用途 |
 |---|---|
-| `config.toml`、`settings.json`、`prepared.json` | 準備時の設定、基準コミット、入力とツールの検査和を保持する。 |
+| `config.toml`、`settings.json`、`prepared.json` | 準備時の設定、生成基準と診断器のコミット、入力とツールの検査和を保持する。 |
 | `pst-base.bin` | 学習の初期重みを保持する。 |
 | `commands.jsonl`、各 `.log` | 実行引数、作業ディレクトリ、終了コード、所要時間、出力を保持する。 |
 | `generated-*.bin`、`generated-*.json` | 生成データと検査済みの検査和を保持する。 |
@@ -211,10 +240,11 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 採用または不採用が決まったら、設計書とROADMAPの状態を更新する。
 次世代の教師には、採用が確定したコミットと重みを使う。
 
-実験を終了して生成用worktreeを片付ける際は、診断と必要な記録の保存を済ませてから次を実行する。
+実験を終了して生成用と診断用のworktreeを片付ける際は、診断と必要な記録の保存を済ませてから次を実行する。
 
 ```bash
 git worktree remove data/pst-gen2/generator
+git worktree remove data/pst-gen2/probe
 ```
 
 実験ディレクトリを先に削除するとworktreeの登録が残るため、必ずこの順序で片付ける。

@@ -3,7 +3,7 @@
 //! PST学習の診断（`tools/train/pst/pst_diagnostics.py`）から呼ばれ、Pythonの整数参照評価と
 //! Rustの評価の一致確認、および代表局面の成りの診断に使う。出力はJSON配列であり、
 //! 各要素は入力レコードの順に`index`、手番側視点の`eval`、および成り手ごとの
-//! 着手前の手番側視点で測った評価差`delta`を持つ。
+//! 着手前の手番側視点で測った評価差`delta`とMNSD表現の着手後局面`after`を持つ。
 
 use std::fs::File;
 use std::io::{self, BufReader, Write};
@@ -14,9 +14,9 @@ use clap::Parser;
 use minase::core::rules::parse_rule_set;
 use minase::eval::Pst;
 use minase::eval::pst::evaluate;
-use minase::eval::training_data::Reader;
+use minase::eval::training_data::{Outcome, Reader, Record};
 use minase::notation::usi;
-use minase::{Game, MoveGenerator, Rules};
+use minase::{BOARD_SQUARE_COUNT, Game, MoveGenerator, Rules};
 use serde::Serialize;
 
 /// コマンドライン引数。
@@ -41,6 +41,19 @@ struct Promotion {
     r#move: String,
     /// 着手前の手番側視点で測った評価差（着手後の評価の符号を反転して差し引く）。
     delta: i32,
+    /// Pythonが評価差を独立に計算するための着手後局面。
+    after: AfterPosition,
+}
+
+/// PST評価に必要な局面をMNSDと同じ盤面・手番・先獅子コードで表す。
+#[derive(Serialize)]
+struct AfterPosition {
+    /// dense index順のMNSD盤面コード。
+    board: Vec<u8>,
+    /// 手番側（先手0、後手1）。
+    stm: u8,
+    /// 先獅子の対象升（存在しない場合は255）。
+    lion: u8,
 }
 
 /// 1局面の評価結果。
@@ -79,9 +92,16 @@ fn run(arguments: &Arguments) -> Result<Vec<Probe>, String> {
                         .expect("legal move must have a USI text");
                     let mut after = game.clone();
                     after.play(mv).expect("legal move must be playable");
+                    let encoded =
+                        Record::from_position(after.position(), 0, Outcome::Draw, 1, 0).encode();
                     Promotion {
                         r#move: text,
                         delta: -evaluate(&pst, after.position()) - before,
+                        after: AfterPosition {
+                            board: encoded[..BOARD_SQUARE_COUNT].to_vec(),
+                            stm: encoded[144],
+                            lion: encoded[145],
+                        },
                     }
                 })
                 .collect()

@@ -11,6 +11,7 @@ BOARD_SQUARE_COUNT = 144
 BOARD_FEATURE_COUNT = 2 * PIECE_STATE_COUNT * BOARD_SQUARE_COUNT
 FEATURE_COUNT = BOARD_FEATURE_COUNT + BOARD_SQUARE_COUNT
 PADDING_INDEX = FEATURE_COUNT
+MIRRORED_FEATURE_COUNT = FEATURE_COUNT // 2
 NO_LION_SQUARE = 255
 
 PROMOTABLE_KINDS = np.array(
@@ -66,6 +67,20 @@ INITIAL_BOARD = np.array(
     ],
     dtype=np.uint8,
 )
+
+
+def canonical_feature_indices(indices: NDArray[np.integer]) -> NDArray[np.int32]:
+    """左右の鏡映対を6,840個の正準特徴へ写し、paddingを末尾へ写す。"""
+    indices = np.asarray(indices)
+    if indices.dtype.kind not in "iu" or np.any(indices < 0) or np.any(indices > PADDING_INDEX):
+        raise ValueError("feature indices must be integers in 0..13680")
+    squares = indices % BOARD_SQUARE_COUNT
+    files = squares % 12
+    return (
+        (indices // BOARD_SQUARE_COUNT) * 72
+        + (squares // 12) * 6
+        + np.minimum(files, 11 - files)
+    ).astype(np.int32)
 
 
 def feature_indices(

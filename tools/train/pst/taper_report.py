@@ -10,10 +10,12 @@ from pathlib import Path
 
 import numpy as np
 
-from features import FEATURE_COUNT, PIECE_STATE_COUNT, feature_indices
+from features import PIECE_STATE_COUNT, feature_indices
 from mnsd import Dataset
 from taper import (
     BAND_COUNT,
+    PHASE_DIVISOR,
+    PHASE_OFFSET,
     BATCH,
     band_counts,
     band_indices,
@@ -24,7 +26,7 @@ from taper import (
     phase_ratios,
     piece_count_histogram,
 )
-from train_pst import build_targets, estimate_generation_ks, integer_evaluate, read_mnpt
+from train_pst import MODEL_KINDS, build_targets, estimate_generation_ks, integer_evaluate, read_mnpt
 
 
 def digest(path: Path) -> str:
@@ -96,31 +98,31 @@ def band_diagnostics(dataset: Dataset, middlegame: np.ndarray, endgame: np.ndarr
     return rows
 
 
-def state_summary(stats: dict) -> list[dict]:
+def state_summary(stats: dict, squares: int) -> list[dict]:
     """駒状態と陣営ごとに出現回数、φの平均、および識別できない特徴数をまとめる。"""
     rows = []
     for relative_color in range(2):
         for state in range(PIECE_STATE_COUNT):
-            start = (relative_color * PIECE_STATE_COUNT + state) * 144
-            counts = stats["count"][start : start + 144]
-            ssd = stats["ssd"][start : start + 144]
+            start = (relative_color * PIECE_STATE_COUNT + state) * squares
+            counts = stats["count"][start : start + squares]
+            ssd = stats["ssd"][start : start + squares]
             observed = counts > 0
             total = int(counts.sum())
             rows.append({
                 "relative_color": relative_color, "state": state, "occurrences": total,
                 "observed_squares": int(observed.sum()),
-                "mean_phi": float(np.average(stats["mean_phi"][start : start + 144][observed], weights=counts[observed])) if total else None,
+                "mean_phi": float(np.average(stats["mean_phi"][start : start + squares][observed], weights=counts[observed])) if total else None,
                 "min_ssd": float(ssd[observed].min()) if total else None,
                 "unidentifiable_squares": int(np.count_nonzero(observed & (ssd < 100.0))),
                 "unidentifiable_occurrences": int(counts[observed & (ssd < 100.0)].sum()),
             })
-    lion = stats["count"][2 * PIECE_STATE_COUNT * 144 :]
-    lion_ssd = stats["ssd"][2 * PIECE_STATE_COUNT * 144 :]
+    lion = stats["count"][2 * PIECE_STATE_COUNT * squares :]
+    lion_ssd = stats["ssd"][2 * PIECE_STATE_COUNT * squares :]
     observed = lion > 0
     rows.append({
         "relative_color": None, "state": "lion_square", "occurrences": int(lion.sum()),
         "observed_squares": int(observed.sum()),
-        "mean_phi": float(np.average(stats["mean_phi"][2 * PIECE_STATE_COUNT * 144 :][observed], weights=lion[observed])) if lion.sum() else None,
+        "mean_phi": float(np.average(stats["mean_phi"][2 * PIECE_STATE_COUNT * squares :][observed], weights=lion[observed])) if lion.sum() else None,
         "min_ssd": float(lion_ssd[observed].min()) if lion.sum() else None,
         "unidentifiable_squares": int(np.count_nonzero(observed & (lion_ssd < 100.0))),
         "unidentifiable_occurrences": int(lion[observed & (lion_ssd < 100.0)].sum()),
@@ -131,6 +133,7 @@ def state_summary(stats: dict) -> list[dict]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", required=True, nargs="+")
+    parser.add_argument("--model", choices=MODEL_KINDS, required=True)
     parser.add_argument("--pst", required=True, help="基準PST(MNPT)")
     parser.add_argument("--lambda", dest="lambda_value", type=float, default=0.75)
     parser.add_argument("--output-dir", required=True)
@@ -142,15 +145,21 @@ def main() -> None:
     teacher_ks, teacher_counts = estimate_generation_ks(dataset)
     training = dataset.training_indices
     validation = dataset.validation_indices
-    stats = feature_identifiability(dataset, training)
+    mirrored = arguments.model == "mirrored"
+    stats = feature_identifiability(dataset, training, mirrored=mirrored)
+    training_histogram = piece_count_histogram(dataset, training)
+    numerators = np.clip(np.arange(training_histogram.size) - PHASE_OFFSET, 0, PHASE_DIVISOR)
+    mean_phi = float(np.dot(training_histogram, numerators) / (training.size * PHASE_DIVISOR))
     with (output / "features.csv").open("x", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(["feature", "count", "mean_phi", "ssd"])
-        for feature in range(FEATURE_COUNT):
+        for feature in range(stats["count"].size):
             writer.writerow([feature, int(stats["count"][feature]),
                              "" if stats["count"][feature] == 0 else f"{stats['mean_phi'][feature]:.6f}",
                              f"{stats['ssd'][feature]:.3f}"])
     report = {
+        "model": arguments.model,
+        "training_mean_phi": mean_phi,
         "data": [{"path": str(Path(p).resolve()), "sha256": digest(Path(p)),
                   "seed": h.seed, "records": h.record_count, "generation": int(g)}
                  for p, h, g in zip(arguments.data, dataset.headers, dataset.file_generations)],
@@ -160,7 +169,7 @@ def main() -> None:
         "records": {"training": int(training.size), "validation": int(validation.size)},
         "teacher_ks": teacher_ks.tolist(), "teacher_training_records": teacher_counts,
         "piece_count_histogram": {
-            "training": piece_count_histogram(dataset, training).tolist(),
+            "training": training_histogram.tolist(),
             "validation": piece_count_histogram(dataset, validation).tolist(),
         },
         "band_counts": {
@@ -169,7 +178,7 @@ def main() -> None:
             "validation": band_counts(dataset, validation).tolist(),
         },
         "identifiability": identifiability_verdict(stats),
-        "state_summary": state_summary(stats),
+        "state_summary": state_summary(stats, 72 if mirrored else 144),
         "base_band_diagnostics": band_diagnostics(dataset, middlegame, endgame, k, teacher_ks, arguments.lambda_value),
     }
     with (output / "report.json").open("x") as stream:

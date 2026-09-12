@@ -24,9 +24,11 @@ hash_mb = 16
 random_moves = 0
 
 [train]
-# 序中盤と終盤の2端点はtapered、単一PSTはsingle。採用済みのPSTは両端点が異なるので、
-# その続きを学習するならtaperedを指定する（singleは両端点が一致する初期重みだけを受理する）。
+# 左右の鏡映対で重みを共有する2端点はmirrored、共有しない2端点はtapered。
+# 段階7の採否に従って選ぶ。singleは両端点が一致する初期重みだけを受理する。
 model = "tapered"
+# 出力Kは必須。段階7では採用済み重みのヘッダの値に固定する。
+k = 1072.6529541015625
 learning_rate = 3.0
 epochs = 10
 batch = 16384

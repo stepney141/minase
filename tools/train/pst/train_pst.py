@@ -17,7 +17,15 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as torch_functional
 
-from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices, mirror
+from features import (
+    FEATURE_COUNT,
+    INITIAL_BOARD,
+    MIRRORED_FEATURE_COUNT,
+    PADDING_INDEX,
+    canonical_feature_indices,
+    feature_indices,
+    mirror,
+)
 from mnsd import Dataset, NO_LION_SQUARE
 from taper import PHASE_DIVISOR, phase_numerators, phase_ratios
 
@@ -32,7 +40,7 @@ FILE_LENGTH = HEADER_LENGTH + BODY_LENGTH
 EVALUATION_LIMIT = 28_999
 # 設計書「量子化と整数推論」の合格条件: 浮動小数点評価との平均絶対誤差2センチポーン以下。
 QUANTIZATION_ERROR_LIMIT = 2.0
-MODEL_KINDS = ("single", "tapered")
+MODEL_KINDS = ("single", "tapered", "mirrored")
 PIECE_VALUES = np.array(
     [
         100, 125, 375, 375, 500, 500, 625, 750, 875, 1000,
@@ -181,16 +189,52 @@ def estimate_k(scores: NDArray[np.int16], results: NDArray[np.uint8]) -> float:
     return (lower + upper) / 2.0
 
 
-def make_model(initial: Tensor, device: torch.device) -> nn.Embedding:
-    """指定初期値(特徴数×列数)からpadding行付き線形PSTモデルを作る。列数は単一PSTで1、2端点で2。"""
-    if initial.ndim != 2 or initial.shape[0] != FEATURE_COUNT or initial.shape[1] not in (1, 2):
-        raise ValueError("initial weights must have shape (FEATURE_COUNT, 1 or 2)")
-    columns = initial.shape[1]
+class MirroredEmbedding(nn.Embedding):
+    """左右の鏡映対が序中盤・終盤の2端点を共有するPSTモデル。"""
+
+    def __init__(self, initial: Tensor, device: torch.device) -> None:
+        super().__init__(
+            MIRRORED_FEATURE_COUNT + 1, 2,
+            padding_idx=MIRRORED_FEATURE_COUNT, device=device,
+        )
+        self.register_buffer(
+            "canonical_indices",
+            torch.as_tensor(
+                canonical_feature_indices(np.arange(FEATURE_COUNT + 1)),
+                dtype=torch.long, device=device,
+            ),
+        )
+        tables = initial.reshape(-1, 12, 12, 2)
+        shared = (tables[:, :, :6] + tables[:, :, 6:].flip(2)) / 2.0
+        with torch.no_grad():
+            self.weight.zero_()
+            self.weight[:MIRRORED_FEATURE_COUNT].copy_(shared.reshape(-1, 2))
+
+    def forward(self, indices: Tensor) -> Tensor:
+        return super().forward(self.canonical_indices[indices.long()])
+
+
+def make_model(initial: Tensor, device: torch.device, kind: str) -> nn.Embedding:
+    """指定種別と初期値(特徴数×端点数)からpadding行付き線形PSTモデルを作る。"""
+    if kind not in MODEL_KINDS:
+        raise ValueError(f"unknown model kind: {kind}")
+    columns = 1 if kind == "single" else 2
+    if initial.shape != (FEATURE_COUNT, columns):
+        raise ValueError(f"{kind} initial weights must have shape ({FEATURE_COUNT}, {columns})")
+    if kind == "mirrored":
+        return MirroredEmbedding(initial, device)
     model = nn.Embedding(FEATURE_COUNT + 1, columns, padding_idx=PADDING_INDEX, device=device)
     with torch.no_grad():
         model.weight.zero_()
         model.weight[:FEATURE_COUNT].copy_(initial)
     return model
+
+
+def expanded_model_weights(model: nn.Embedding) -> Tensor:
+    """学習パラメータを量子化前の全13,680特徴の重みへ展開する。"""
+    if isinstance(model, MirroredEmbedding):
+        return model.weight[model.canonical_indices[:FEATURE_COUNT]]
+    return model.weight[:FEATURE_COUNT]
 
 
 def phase_weights(phi: Tensor, columns: int) -> Tensor:
@@ -307,7 +351,7 @@ def train_epoch(
     device: torch.device,
     count_features: bool = False,
 ) -> tuple[float, NDArray[np.int64] | None]:
-    """訓練レコードをバッチごとに読み、鏡映を選んで1エポック学習する。"""
+    """訓練レコードを1エポック学習し、重み共有しないモデルには鏡映拡張を施す。"""
     order = torch.randperm(
         dataset.training_indices.size, generator=generator, device=device
     )
@@ -321,17 +365,19 @@ def train_epoch(
         records = dataset.gather(global_indices)
         generations = dataset.generations(global_indices)
         normal = feature_indices(records["board"], records["stm"], records["lion"])
-        mirrored_board, mirrored_lion = mirror(records["board"], records["lion"])
-        reflected = feature_indices(mirrored_board, records["stm"], mirrored_lion)
         if observations is not None:
             active = normal[normal != PADDING_INDEX]
             observations += np.bincount(active, minlength=FEATURE_COUNT)
-        choose_reflected = torch.rand(
-            positions.shape[0], generator=generator, device=device
-        ) < 0.5
-        selected = normal.copy()
-        reflected_rows = choose_reflected.cpu().numpy()
-        selected[reflected_rows] = reflected[reflected_rows]
+        selected = normal
+        if not isinstance(model, MirroredEmbedding):
+            mirrored_board, mirrored_lion = mirror(records["board"], records["lion"])
+            reflected = feature_indices(mirrored_board, records["stm"], mirrored_lion)
+            choose_reflected = torch.rand(
+                positions.shape[0], generator=generator, device=device
+            ) < 0.5
+            selected = normal.copy()
+            reflected_rows = choose_reflected.cpu().numpy()
+            selected[reflected_rows] = reflected[reflected_rows]
         targets = build_targets(records, teacher_ks, generations, lambda_value)
         device_features = torch.as_tensor(selected, device=device)
         device_targets = torch.as_tensor(targets, device=device)
@@ -552,7 +598,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     if len(arguments.lr) > 1:
         candidates: list[tuple[float, float]] = []
         for rate in arguments.lr:
-            model = make_model(initial, device)
+            model = make_model(initial, device, arguments.model)
             optimizer = torch.optim.Adam(model.parameters(), lr=rate)
             generator = torch.Generator(device=device).manual_seed(arguments.seed)
             training_loss = train_epoch(
@@ -580,7 +626,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         selected_rate = min(candidates)[1]
     print(f"selected learning rate: {selected_rate:g}")
 
-    model = make_model(initial, device)
+    model = make_model(initial, device, arguments.model)
     optimizer = torch.optim.Adam(model.parameters(), lr=selected_rate)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
     best_loss, generation_losses = validation_loss(
@@ -593,7 +639,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         device,
     )
     best_epoch = 0
-    best_weights = model.weight[:FEATURE_COUNT].detach().cpu().clone()
+    best_weights = expanded_model_weights(model).detach().cpu().clone()
     print(f"epoch 0: {_format_validation_loss(best_loss, generation_losses)}")
     for epoch in range(1, arguments.epochs + 1):
         started = time.perf_counter()
@@ -630,7 +676,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         if should_replace_best_epoch(loss, best_loss):
             best_loss = loss
             best_epoch = epoch
-            best_weights = model.weight[:FEATURE_COUNT].detach().cpu().clone()
+            best_weights = expanded_model_weights(model).detach().cpu().clone()
 
     print(f"best epoch: {best_epoch} validation_loss={best_loss:.9f}")
 
