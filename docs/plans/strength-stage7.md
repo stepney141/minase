@@ -116,6 +116,7 @@
 `pst_workflow.py`の`prepare`、`generate`、`train`、`diagnose`を、設計判断の条件を書いた設定ファイルで順に実行する。
 `prepare`は生成器を段階7の採用構成のコミットへ固定し、`generate`はそのworktreeのバイナリだけを使う。
 診断用の`pst_probe`は準備時の学習ツール側コミットへ別に固定し、過去の生成器を使う場合も、成りの着手後局面をPythonで評価してRustの評価差と照合する検査を維持する。
+[診断値は独立した参照値と照合する](../lessons/compare-diagnostics-with-independent-reference.md)に従い、成りの評価差だけを変えた入力を拒否することを回帰テストで固定する。
 生成した5ファイルは`selfplay_gen inspect`で世代のコミット、シード、局面数、および結果の内訳を確認し、[strength-stage7-gen2-generation](../measurements/strength-stage7-gen2-generation.md)へ記録する。
 学習の前に`taper_report.py`で世代0から世代2までの識別性の診断を行い、[PSTの序中盤と終盤の補間](tapered-pst.md)と同じ基準（偏差平方和100未満の特徴の出現割合が5%以下）を満たすことを確認して[strength-stage7-gen2-identifiability](../measurements/strength-stage7-gen2-identifiability.md)へ記録する。
 重み共有を採用している場合、識別性の集計は正準特徴の単位で行う。
