@@ -19,7 +19,8 @@
 フェーズ1の[学習と局面帯別の診断](../measurements/strength-stage7-mirror-training.md)を完了し、鏡映共有モデルを採用した。
 [STC](../measurements/strength-stage7-mirror-stc.md)は有効913ペア、[LTC](../measurements/strength-stage7-mirror-ltc.md)は有効1,660ペアでともにH1となり、両測定のエンジン異常と時間切れは0件だった。
 フェーズ2では、試行生成で選んだ手数上限4,000を生成器の既定値と設定例へ反映した。
-次の一手は採用済みの鏡映共有モデルで世代2を5シード生成し、世代0から世代2までの訓練集合で端点の識別性を確認することである。
+現在は採用済みの鏡映共有モデルで[世代2を5シード生成している](../measurements/strength-stage7-gen2-generation.md)。
+次の一手は5ファイルの検証を終え、世代0から世代2までの訓練集合で端点の識別性を確認することである。
 
 ## 目的
 
