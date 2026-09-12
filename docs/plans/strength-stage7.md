@@ -16,7 +16,7 @@
 
 本マイルストーンは2026年9月12日に起案し、同日に着手して進行中である。
 フェーズ0を完了し、[鏡映診断](../measurements/strength-stage7-mirror-diag.md)、[シード監査](../measurements/strength-stage7-seed-audit.md)、および[手数上限の試行生成](../measurements/strength-stage7-plycap-trial.md)を記録した。
-フェーズ1の[学習と局面帯別の診断](../measurements/strength-stage7-mirror-training.md)を完了し、鏡映共有候補のSTCを実行中である。
+フェーズ1の[学習と局面帯別の診断](../measurements/strength-stage7-mirror-training.md)を完了し、鏡映共有候補の[STC](../measurements/strength-stage7-mirror-stc.md)を実行中である。
 次の一手はSTCの結果に応じてLTCへ進めるかを判定し、鏡映共有の採否を確定してから、選択済みの手数上限を生成器へ反映することである。
 
 ## 目的
