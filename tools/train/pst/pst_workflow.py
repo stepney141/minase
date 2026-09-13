@@ -70,7 +70,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     fields = {
         "run": {"directory", "base_commit", "data"},
         "generate": {"seeds", "games", "nodes", "concurrency", "max_ply", "hash_mb", "random_moves"},
-        "train": {"model", "k", "learning_rate", "epochs", "batch", "seed", "lambda", "device", "validation_sample"},
+        "train": {"model", "k", "learning_rate", "epochs", "batch", "seed", "lambda",
+                  "removal_penalty", "device", "validation_sample"},
         "diagnose": {"sample_size", "seed"},
     }
     if set(config) != set(fields):
@@ -111,10 +112,13 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     number(training["k"], "train.k", sys.float_info.min, sys.float_info.max)
     number(training["learning_rate"], "train.learning_rate", sys.float_info.min, sys.float_info.max)
     number(training["lambda"], "train.lambda", 0, 1)
+    number(training["removal_penalty"], "train.removal_penalty", 0, sys.float_info.max)
     if training["device"] not in ("cpu", "cuda"):
         raise ValueError("train.device must explicitly be cpu or cuda")
     if training["model"] not in ("single", "tapered", "mirrored"):
         raise ValueError("train.model must explicitly be single, tapered, or mirrored")
+    if training["removal_penalty"] > 0 and training["model"] != "mirrored":
+        raise ValueError("positive train.removal_penalty requires train.model = mirrored")
     integer(config["diagnose"]["seed"], "diagnose.seed", 0, 2**63 - 1)
     integer(config["diagnose"]["sample_size"], "diagnose.sample_size", 1, 2**31 - 1)
     return config
@@ -293,8 +297,8 @@ def train(run: Path) -> None:
     training_count, validation_count = dataset.training_indices.size, dataset.validation_indices.size
     if not training_count or not validation_count:
         raise ValueError("training and validation records must both be nonempty")
-    teacher_ks, _ = estimate_generation_ks(dataset)
-    mixed_k = estimate_mixed_k(dataset)
+    teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
+    mixed_k = estimate_mixed_k(dataset, indices=dataset.training_indices)
     k = config["k"]
     del dataset
     destination.mkdir()
@@ -317,7 +321,8 @@ def train(run: Path) -> None:
     command = [sys.executable, str(SOURCES / "train_pst.py"), "train", "--data", *paths,
                "--init", str(run / "pst-base.bin"), "--output", str(destination / "pst.bin"), "--k", repr(k)]
     for key, option in (("model", "model"), ("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
-                        ("seed", "seed"), ("lambda", "lambda"), ("device", "device"),
+                        ("seed", "seed"), ("lambda", "lambda"),
+                        ("removal_penalty", "removal-penalty"), ("device", "device"),
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
     run_command(run, "train", command, ROOT)

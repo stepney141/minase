@@ -196,7 +196,7 @@ def diagnose(
     if not np.array_equal(models["base"].piece_values, models["candidate"].piece_values):
         raise ValueError("candidate piece values differ from the base")
     float_weights = np.load(candidate_float_path)
-    teacher_ks, _ = estimate_generation_ks(dataset)
+    teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
     samples = band_samples(dataset, sample_size, seed)
     losses = _band_losses(dataset, models, teacher_ks, lambda_value)
     training_counts = band_counts(dataset, dataset.training_indices)

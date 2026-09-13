@@ -180,7 +180,7 @@ class TeacherScaleTest(unittest.TestCase):
             dataset = Dataset([first, second])
             self.assertEqual(dataset.file_generations.tolist(), [0, 1])
 
-            generation_ks, generation_counts = estimate_generation_ks(dataset)
+            generation_ks, generation_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
             expected_ks = []
             expected_counts = []
             for generation in range(dataset.generation_count):
@@ -314,6 +314,8 @@ class TrainingPathTest(unittest.TestCase):
                         "10000",
                         "--device",
                         "cpu",
+                        "--removal-penalty",
+                        "0",
                     ]
                 )
             output = stdout.getvalue()
@@ -451,7 +453,7 @@ class TaperedFormatTest(unittest.TestCase):
             arguments = [
                 "train", "--data", str(data), "--output", str(output_path), "--init", str(initial_path),
                 "--model", "single", "--k", "200", "--lr", "1", "--epochs", "1", "--batch", "16",
-                "--seed", "1", "--validation-sample", "100", "--device", "cpu",
+                "--seed", "1", "--validation-sample", "100", "--device", "cpu", "--removal-penalty", "0",
             ]
             with redirect_stdout(StringIO()):
                 with self.assertRaises(ValueError):
@@ -551,7 +553,7 @@ class MirroredModelTest(unittest.TestCase):
             arguments = [
                 "train", "--data", str(data), "--output", str(output_path), "--init", str(initial_path),
                 "--model", "mirrored", "--k", "200", "--lr", "0.1", "1", "--epochs", "1", "--batch", "16",
-                "--seed", "1", "--validation-sample", "100", "--device", "cpu",
+                "--seed", "1", "--validation-sample", "100", "--device", "cpu", "--removal-penalty", "0",
             ]
             with patch("train_pst.mirror", side_effect=AssertionError("mirrored must not augment data")):
                 with redirect_stdout(StringIO()):
@@ -576,11 +578,13 @@ class MirroredModelTest(unittest.TestCase):
             write_mnsd(data, seed=5, checksum=b"a" * 32, games=list(range(64)))
             device = torch.device("cpu")
             model = make_model(torch.zeros((FEATURE_COUNT, 2)), device, "tapered")
+            dataset = Dataset([data])
             with patch("train_pst.mirror", wraps=mirror) as augment:
                 train_epoch(
-                    model, torch.optim.SGD(model.parameters(), lr=0.1), Dataset([data]),
+                    model, torch.optim.SGD(model.parameters(), lr=0.1), dataset,
                     np.array([200.0]), 200.0, 0.75, 64,
                     torch.Generator().manual_seed(1), device,
+                    indices=dataset.training_indices, removal_penalty=0.0, removal_reference=None,
                 )
             self.assertTrue(augment.called)
 
@@ -619,6 +623,7 @@ class WeightProjectionTest(unittest.TestCase):
             model, optimizer, dataset, np.array([1072.6529541015625]),
             1072.6529541015625, 0.75, 1,
             torch.Generator().manual_seed(1), torch.device("cpu"),
+            indices=dataset.training_indices, removal_penalty=0.0, removal_reference=None,
         )
 
     def test_each_adam_step_projects_before_the_next_batch_and_epoch_end(self) -> None:

@@ -142,7 +142,7 @@ def main() -> None:
     output.mkdir(parents=True)
     dataset = Dataset(arguments.data)
     middlegame, endgame, _, k = read_mnpt(arguments.pst)
-    teacher_ks, teacher_counts = estimate_generation_ks(dataset)
+    teacher_ks, teacher_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
     training = dataset.training_indices
     validation = dataset.validation_indices
     mirrored = arguments.model == "mirrored"
