@@ -377,7 +377,7 @@ def make_removal_reference(
 def removal_loss(
     feature_weights: Tensor, features: Tensor, reference: Tensor, counts: Tensor, k: float
 ) -> Tensor:
-    """元局面等重み・対象除去等重みで、基準符号と悪化上限の片側二乗損失を返す。"""
+    """元局面等重み・対象除去等重みで、基準符号と悪化上限の片側絶対値損失を返す。"""
     if not math.isfinite(k) or k <= 0.0:
         raise ValueError("K must be finite and positive")
     if features.ndim != 2 or features.shape[1] != 145 or features.shape[0] == 0:
@@ -426,9 +426,9 @@ def removal_loss(
     magnitude = base_delta.abs()
     lower = torch_functional.relu(magnitude.clamp(max=REMOVAL_MARGIN_CP) - signed_delta)
     upper = torch_functional.relu(signed_delta - magnitude)
-    penalties = lower.square() + wrong_direction * upper.square()
+    penalties = lower + wrong_direction * upper
     per_position = torch.where(eligible, penalties, 0.0).sum(dim=1) / eligible.sum(dim=1).clamp_min(1)
-    loss = per_position.mean() / (k * k)
+    loss = per_position.mean() / k
     if not bool(torch.isfinite(loss)):
         raise ValueError("removal loss is non-finite")
     return loss

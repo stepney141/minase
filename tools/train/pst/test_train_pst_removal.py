@@ -78,7 +78,7 @@ def direct_loss(records: np.ndarray, base_i16: np.ndarray, candidate_cp: np.ndar
             lower = max(Fraction(), margin - sign * candidate_delta)
             bad_base = (relative == 0 and integer_delta > 0) or (relative == 1 and integer_delta < 0)
             upper = max(Fraction(), sign * candidate_delta - abs(base_delta)) if bad_base else Fraction()
-            losses.append((lower ** 2 + upper ** 2) / k ** 2)
+            losses.append((lower + upper) / k)
         per_position.append(sum(losses, Fraction()) / len(losses) if losses else Fraction())
     return sum(per_position, Fraction()) / len(per_position)
 
@@ -129,7 +129,7 @@ class RemovalFormulaTest(unittest.TestCase):
         base = constant_base()
         for byte in (1, 65):
             records = records_with([[(0, byte), (142, 12), (143, 76)]])
-            for candidate_factor, expected in [(-1, Fraction(25, 64)), (Fraction(1, 8), Fraction(1, 256)),
+            for candidate_factor, expected in [(-1, Fraction(5, 8)), (Fraction(1, 8), Fraction(1, 16)),
                                                (Fraction(1, 4), Fraction()), (1, Fraction()), (2, Fraction())]:
                 with self.subTest(byte=byte, factor=candidate_factor):
                     candidate = base.astype(np.float64) / 8 * float(candidate_factor)
@@ -140,8 +140,8 @@ class RemovalFormulaTest(unittest.TestCase):
         base = constant_base(-8, 8)
         for byte in (1, 65):
             records = records_with([[(0, byte), (142, 12), (143, 76)]])
-            for factor, expected in [(-1, Fraction(25, 64)), (Fraction(1, 2), Fraction()),
-                                     (1, Fraction()), (2, Fraction(1, 4))]:
+            for factor, expected in [(-1, Fraction(5, 8)), (Fraction(1, 2), Fraction()),
+                                     (1, Fraction()), (2, Fraction(1, 2))]:
                 with self.subTest(byte=byte, factor=factor):
                     candidate = base.astype(np.float64) / 8 * float(factor)
                     _, loss = self.assert_oracle(records, base, candidate)
@@ -164,7 +164,7 @@ class RemovalFormulaTest(unittest.TestCase):
         candidate[29 * 144:30 * 144] = 0
         records = records_with([[(0, 1), (142, 12)]])
         _, loss = self.assert_oracle(records, base, candidate)
-        self.assertAlmostEqual(float(loss.detach()), float(Fraction(1, 256)), delta=1e-12)
+        self.assertAlmostEqual(float(loss.detach()), float(Fraction(1, 16)), delta=1e-12)
 
     def test_baseline_integer_clipping_excludes_equal_clipped_scores(self):
         base = np.full((13680, 2), 32000, dtype=np.int16)
@@ -177,11 +177,11 @@ class RemovalFormulaTest(unittest.TestCase):
         candidate = base.astype(np.float64) / 8
         candidate[29 * 144:30 * 144] = -1
         # First: 1 wrong pawn. Second: 1 wrong pawn + 1 correct go-between.
-        # Third has only kings. Loss=(25/64 + 25/128 + 0)/3=25/128.
+        # Third has only kings. Loss=(5/8 + 5/16 + 0)/3=5/16.
         records = records_with([[(0, 1), (142, 12), (143, 76)],
                                 [(0, 1), (2, 2), (142, 12), (143, 76)], [(142, 12), (143, 76)]])
         _, loss = self.assert_oracle(records, base, candidate)
-        self.assertAlmostEqual(float(loss.detach()), float(Fraction(25, 128)), delta=1e-12)
+        self.assertAlmostEqual(float(loss.detach()), float(Fraction(5, 16)), delta=1e-12)
 
     def test_integer_zero_removal_is_not_counted_in_a_positions_denominator(self):
         base = constant_base()
@@ -190,7 +190,7 @@ class RemovalFormulaTest(unittest.TestCase):
         candidate[29 * 144:30 * 144] = -1
         records = records_with([[(0, 1), (2, 2), (142, 12), (143, 76)]])
         _, loss = self.assert_oracle(records, base, candidate)
-        self.assertAlmostEqual(float(loss.detach()), float(Fraction(25, 64)), delta=1e-12)
+        self.assertAlmostEqual(float(loss.detach()), float(Fraction(5, 8)), delta=1e-12)
 
     def test_royals_are_excluded_and_shared_canonical_occurrences_remove_only_one(self):
         base = constant_base()
@@ -198,7 +198,7 @@ class RemovalFormulaTest(unittest.TestCase):
         # Squares 0 and 11 share one parameter; removing one pawn must retain the other.
         records = records_with([[(0, 1), (11, 1), (130, 51), (142, 12), (143, 76)]])
         _, loss = self.assert_oracle(records, base, candidate)
-        self.assertAlmostEqual(float(loss.detach()), float(Fraction(25, 64)), delta=1e-12)
+        self.assertAlmostEqual(float(loss.detach()), float(Fraction(5, 8)), delta=1e-12)
 
     def test_each_reachable_nonroyal_state_is_eligible_but_both_royals_are_excluded(self):
         base = constant_base()
@@ -210,7 +210,7 @@ class RemovalFormulaTest(unittest.TestCase):
             with self.subTest(state=state):
                 record = records_with([[(0, byte), (142, 12), (143, 76)]])
                 _, loss = self.assert_oracle(record, base, candidate)
-                self.assertAlmostEqual(float(loss.detach()), float(Fraction(25, 64)), delta=1e-12)
+                self.assertAlmostEqual(float(loss.detach()), float(Fraction(5, 8)), delta=1e-12)
         royal_base = np.full((13680, 2), 8, dtype=np.int16)
         royal_record = records_with([[(0, 12), (11, 51)]])
         _, loss = self.assert_oracle(royal_record, royal_base, -royal_base.astype(np.float64) / 8)
@@ -240,7 +240,38 @@ class RemovalFormulaTest(unittest.TestCase):
         candidate[13536:] = [-180, 180]
         records = records_with([[(0, 1), (142, 12), (143, 76)]], lion=0)
         _, loss = self.assert_oracle(records, base, candidate)
-        self.assertAlmostEqual(float(loss.detach()), float(Fraction(169, 64)), delta=1e-12)
+        self.assertAlmostEqual(float(loss.detach()), float(Fraction(13, 8)), delta=1e-12)
+
+    def test_violation_gradient_is_constant_over_k_and_zero_at_each_boundary(self):
+        # One synthetic pawn isolates S=s0*delta from phase and averaging factors.
+        records = records_with([[(0, 1)]])
+        features = torch.from_numpy(feature_indices(records["board"], records["stm"], records["lion"]))
+        counts = torch.tensor([1], dtype=torch.int64, device=CPU)
+        for baseline_wrong in (False, True):
+            base = constant_base(-8, 8) if baseline_wrong else constant_base()
+            reference = train.make_removal_reference(base[:, 0], base[:, 1], CPU)
+            base_sign = 1 if baseline_wrong else -1
+            for k in (2, 4):
+                for signed_value in (Fraction(-20), Fraction(-2), Fraction(1, 8), Fraction(1, 4),
+                                     Fraction(1, 2), Fraction(1), Fraction(2), Fraction(20)):
+                    with self.subTest(baseline_wrong=baseline_wrong, k=k, signed_value=signed_value):
+                        signed_delta = torch.tensor(float(signed_value), dtype=torch.float64, requires_grad=True)
+                        weights = torch.zeros((1, 145, 2), dtype=torch.float64, device=CPU)
+                        # q=0 both before and after removal, so delta=-pawn_EG.
+                        weights[0, 0, 1] = -base_sign * signed_delta
+                        loss = train.removal_loss(weights, features, reference, counts, k)
+                        expected = max(Fraction(), Fraction(1, 4) - signed_value)
+                        if baseline_wrong:
+                            expected += max(Fraction(), signed_value - 1)
+                        self.assertAlmostEqual(float(loss.detach()), float(expected / k), delta=1e-12)
+                        loss.backward()
+                        if signed_value < Fraction(1, 4):
+                            gradient = -Fraction(1, k)
+                        elif baseline_wrong and signed_value > 1:
+                            gradient = Fraction(1, k)
+                        else:
+                            gradient = Fraction()
+                        self.assertEqual(float(signed_delta.grad), float(gradient))
 
     def test_mirror_preserves_loss_and_gradients(self):
         base = constant_base()
@@ -361,7 +392,7 @@ class RemovalApiTest(unittest.TestCase):
             dataset = Dataset([path])
             base = constant_base()
             candidate = -base.astype(np.float32) / 8
-            expected_r = float(Fraction(25, 64))
+            expected_r = float(Fraction(5, 8))
             expected_bce = float(np.logaddexp(0, -.5) + .25)
             updated = {}
             for rho, step_size in [(0.0, .1), (2.0, .1), (2.0, 1e8)]:
@@ -373,18 +404,19 @@ class RemovalApiTest(unittest.TestCase):
                         np.array([2.0]), 2.0, 0.0, 1, torch.Generator().manual_seed(7), CPU,
                         count_features=True, indices=np.array([0]), removal_penalty=rho, removal_reference=reference,
                     )
+                    expanded = train.expanded_model_weights(model).detach().numpy()
+                    if step_size == .1:
+                        updated[rho] = expanded
                     self.assertAlmostEqual(result.bce_loss, expected_bce, delta=1e-7)
                     self.assertAlmostEqual(result.total_loss, expected_bce + rho * expected_r, delta=1e-7)
                     self.assertEqual(int(result.observations.sum()), 3)
                     if rho:
                         self.assertAlmostEqual(result.removal_loss, expected_r, delta=1e-7)
-                    expanded = train.expanded_model_weights(model).detach().numpy()
                     self.assertTrue(np.all(np.isfinite(expanded)))
                     self.assertTrue(np.all(expanded >= -4096))
                     self.assertTrue(np.all(expanded <= 4095.875))
                     np.testing.assert_array_equal(model.weight[-1].detach().numpy(), 0)
                     if step_size == .1:
-                        updated[rho] = expanded
                         self.assertLess(direct_loss(records, base, expanded, 2), direct_loss(records, base, candidate, 2))
                     else:
                         self.assertTrue(np.any(expanded == 4095.875) or np.any(expanded == -4096))
