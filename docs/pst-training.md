@@ -36,7 +36,7 @@ git rev-parse HEAD
 ```
 
 主要な設定は次のとおりである。
-設定例の値は次回用の開始条件であり、前回の未記録オプションを復元したものではない。
+設定例は汎用の開始条件であり、個別実験で固定した条件は、その計画と測定記録に従って指定する。
 
 | 設定 | 意味と設定例 |
 |---|---|
@@ -51,7 +51,7 @@ git rev-parse HEAD
 | `generate.random_moves` | 対局中のランダム着手注入を0とする。開始局面の8〜16手のランダム化は残る。 |
 | `train.model` | 単一PSTを学習する`single`、序中盤用と終盤用の2端点PSTを学習する`tapered`、左右の鏡映対で重みを共有する2端点PSTを学習する`mirrored`から選ぶ。 |
 | `train.k` | モデル出力の尺度Kを有限の正値で明示する。段階7では基準重みのヘッダに合わせて`1072.6529541015625`に固定する。 |
-| `train.learning_rate` | Adamの学習率を3とする。 |
+| `train.learning_rate` | Adamの学習率を有限の正値で明示する。汎用設定例は3とする。 |
 | `train.epochs` | 10エポックを学習し、初期状態も含めて検証集合の二値交差エントロピーが最小の重みを保存する。 |
 | `train.batch` | 1回の更新に16,384局面を使う。 |
 | `train.lambda` | 教師値に占める探索評価由来の割合を0.75とする。残りは最終結果を使う。 |
@@ -59,7 +59,7 @@ git rev-parse HEAD
 | `train.seed` | 学習の乱数シードを1とする。検証分割の指定ではない。 |
 | `train.device` | GPU実行は `cuda`、明示的なCPU実行は `cpu` を指定する。 |
 | `train.validation_sample` | 量子化誤差の確認に最大10,000検証局面を使う。 |
-| `diagnose.sample_size` | 教師評価との比較に各世代最大10,000検証局面を使う。 |
+| `diagnose.sample_size` | 教師評価との比較に各世代の各局面帯で最大10,000検証局面を使う。 |
 | `diagnose.seed` | 診断用標本の抽出シードを1とする。 |
 
 パスは設定ファイルの場所によらず、リポジトリのルートから解釈する。
@@ -72,7 +72,8 @@ git rev-parse HEAD
 `single`は1組の重みを保存時に両端点へ複製し、初期重みの両端点が一致しなければ停止するため、両端点が異なる採用済みPSTの継続学習には使えない。
 `train.removal_penalty`が正の場合は、基準として使う初期MNPTのi16重みが両端点とも完全な鏡映対称であることを学習器が検査し、不一致なら停止する。
 設定例の0は追加損失を無効にする明示値であり、段階7の再学習で採用する係数を決定したものではない。
-再学習の準備前に、訓練集合内の予備比較で採用した係数を設定へ転記する。
+再学習の準備前に、訓練集合内の予備比較で採用した係数と、その比較で固定した学習率を一組として設定へ転記する。
+段階7の[片側絶対値型の予備比較](measurements/strength-stage7-removal-absolute.md)では、学習率0.03で係数1000を選び、本学習でもこの組を用いる。
 
 生成シードは互いに生成局数以上離し、過去の生成にも使っていない範囲を選ぶ。
 スクリプトは設定内の重複と、既存データに記録された対局番号との重なりを検出する。
@@ -98,11 +99,13 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config ps
 学習スクリプトの変更も検出して停止するので、実行中はその版を維持する。
 
 学習器を変更して再学習する場合は、既存の実験を保持し、変更後のツールを新しい実行ディレクトリへ固定する。
-段階7の範囲射影を加えた再学習では、`data/strength-stage7/gen2-projected.toml`を用意し、`run.directory`を`data/strength-stage7/gen2-projected`とする。
-`run.data`には世代0と世代1の6ファイル、および`data/strength-stage7/gen2/generated-<seed>.bin`の全5ファイルを列挙し、`generate.seeds = []`として生成済みデータを使う。
-元の`data/strength-stage7/gen2/`にある生成物、失敗時の資料、および準備時の固定情報は変更しない。
-除去差分の追加損失を使う再学習も、全11ファイルと`generate.seeds = []`を指定した新しい実行ディレクトリで準備し、データを再生成しない。
-`gen2/`と`gen2-projected/`の候補、失敗記録、および固定情報は保持する。
+現行の[設定例](../tools/train/pst/pst.example.toml)から全必須項目を含む設定を用意し、`run.directory`には未使用の保存先を指定する。
+段階7の生成済みデータで再学習する場合、`run.data`には世代0と世代1の6ファイル、および`data/strength-stage7/gen2/generated-<seed>.bin`の全5ファイルを列挙し、`generate.seeds = []`としてデータを再生成しない。
+
+段階7で範囲射影を加えた最初の再学習には`data/strength-stage7/gen2-projected.toml`を使い、結果を`data/strength-stage7/gen2-projected`へ保存した。
+この旧設定には現在必須の`train.removal_penalty`がないため、現行の準備コマンドへそのまま渡すことはできない。
+片側絶対値型の追加損失を使った本学習には、全必須項目を備えた`data/strength-stage7/gen2-absolute.toml`を使い、学習率0.03と係数1000を`data/strength-stage7/gen2-absolute`へ固定した。
+これらの保存先と元の`data/strength-stage7/gen2/`にある生成物、候補、失敗記録、および準備時の固定情報は保持する。
 
 ## 3. 自己対局データを生成する
 

@@ -27,9 +27,10 @@ reverse futility pruning、late move pruning、null move pruningの減深量の�
 2026年9月12日に[段階6](strength-stage6.md)を完了し、aspiration windows、internal iterative reduction、および最善手安定時の早期終了を採用した。
 fail-lowによる延長、最善手交替時の延長、および係数の候補はSTCで`H0`となり不採用、置換表のクラスタ化は実装後の固定深さ再生で効果が基準に届かず外し、静的評価の置換表保存とmate distance pruningは診断で見送った。
 2026年9月12日に[段階7](strength-stage7.md)へ着手し、鏡映共有モデルをSTCとLTCのH1で採用して、生成器の手数上限を4,000へ変更した。
-世代2の14,057,872局面を生成し、保存範囲への射影を加えた再学習を完了したが、候補は駒の除去による評価差の符号反転で診断基準を満たさなかった。
-利用者の選択に従い、候補を除外して先へ進めることはせず、[符号反転を抑える学習方法](../measurements/strength-stage7-removal-learning.md)を検討している。
-現採用重みからの駒価値導出は済んでいるが、最終値の判断と進捗指標の測定は世代2の再学習と採否が確定してから進める。
+世代2の14,057,872局面を生成し、駒除去差分の符号反転を抑える[片側絶対値型の予備比較](../measurements/strength-stage7-removal-absolute.md)で係数1000を選んだ。
+学習率0.03で本学習を完了し、既存診断を通過した候補の[世代2STC](../measurements/strength-stage7-gen2-stc.md)はH1で終了して、先行保存分を含む全保存結果の異常0件を独立監査で確認した。
+LTCの開始準備へ進み、世代2の採否はその結果で判定する。
+フェーズ5での探索用駒価値の最終判断、および段階開始版とHaChuに対する固定200ペアの進捗指標も未確定であり、段階7は進行中である。
 
 ## 目的
 
