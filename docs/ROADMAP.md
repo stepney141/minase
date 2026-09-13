@@ -60,7 +60,8 @@ internal iterative reductionのLTCは外部のOOMによる時間切れ11件を�
 段階7は2026年9月12日に着手し、鏡映の診断とシード監査を完了し、試行生成500局から手数上限4,000を選んだ。
 鏡映共有モデルの学習と局面帯別の診断を完了し、[STC](measurements/strength-stage7-mirror-stc.md)は有効913ペア、[LTC](measurements/strength-stage7-mirror-ltc.md)は有効1,660ペアでともにH1となり、異常と時間切れ0件を確認して採用した。
 手数上限4,000を生成器の既定値と設定例へ反映した。
-現在は採用済みの鏡映共有モデルで[世代2を5シード生成している](measurements/strength-stage7-gen2-generation.md)。
+現在は採用済みの鏡映共有モデルで[世代2を生成している](measurements/strength-stage7-gen2-generation.md)。
+5シードのうち1シードを検証し、2,855,537局面を保存した。
 次の一手は5ファイルの検証を終え、世代0から世代2までの訓練集合で端点の識別性を確認することである。
 
 待機中のマイルストーンは2件である。
