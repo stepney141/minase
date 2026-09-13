@@ -36,3 +36,4 @@
 - [診断値は独立した参照値と照合する](compare-diagnostics-with-independent-reference.md)。診断項目ごとに参照値と停止条件を定め、照合対象だけを変えた入力が拒否されることを回帰テストで固定する。
 - [学習する重みの範囲を保存形式に合わせる](training-weights-must-fit-export-format.md)。学習の最適化領域を保存範囲と一致させ、射影を導入する場合は条件を明示して再学習し、候補診断後に棋力測定で採否を判定する。
 - [停止条件と後続手順を一緒に確認する](check-stop-and-resumption-rules-together.md)。診断で停止した場合の原因調査、再学習、および再開条件を原文で確認し、全候補の扱いが確定してから最終測定へ進む。
+- [平均ペナルティで制約充足を判定しない](mean-penalty-does-not-guarantee-constraints.md)。保存候補の違反件数と最大違反幅を独立に計算し、調べた母集団を明示して事前の判定規則に従う。

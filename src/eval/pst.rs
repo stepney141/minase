@@ -1066,7 +1066,7 @@ mod tests {
     /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
     #[test]
     fn embedded_pst_matches_python_initial_position_evaluation() {
-        // strength-stage7-mirror-training のPython整数参照評価による値。
-        assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 57);
+        // strength-stage7-gen2-training のPython整数参照評価による値。
+        assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 33);
     }
 }
