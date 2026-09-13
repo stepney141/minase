@@ -585,5 +585,122 @@ class MirroredModelTest(unittest.TestCase):
             self.assertTrue(augment.called)
 
 
+class WeightProjectionTest(unittest.TestCase):
+    """各Adam更新後に、MNPTのi16/8範囲へ射影する承認済みの契約を検証する。"""
+
+    LOWER_CP = -4096.0
+    UPPER_CP = 4095.875
+
+    def make_case(self, path: Path, kind: str, direction: str):
+        # 48枚なら両端点に勾配が流れる。正負24枚ずつの初期評価を0にして、
+        # 飽和していない実際の損失からAdamが上下の保存境界を越えるようにする。
+        board = np.zeros(144, dtype=np.uint8)
+        board[:48] = 1
+        games = np.arange(100, dtype=np.uint32)
+        game = int(games[hash64(5, games) % 20 != 0][0])
+        write_mnsd(
+            path, seed=5, checksum=b"p" * 32, games=[game, game], board=board,
+            scores=[32767 if direction == "upper" else -32768] * 2,
+            results=[2 if direction == "upper" else 0] * 2,
+        )
+        dataset = Dataset([path])
+        self.assertEqual(dataset.training_indices.size, 2)
+        columns = 1 if kind == "single" else 2
+        initial = np.full((FEATURE_COUNT, columns), 0.03125, dtype=np.float32)
+        if columns == 2:
+            initial[:, 1] = -0.03125
+        initial[29 * 144:29 * 144 + 24] = 4095.0
+        initial[29 * 144 + 24:29 * 144 + 48] = -4095.0
+        model = make_model(torch.from_numpy(initial), torch.device("cpu"), kind)
+        return model, dataset
+
+    def run_epoch(self, model, optimizer, dataset) -> None:
+        train_epoch(
+            model, optimizer, dataset, np.array([1072.6529541015625]),
+            1072.6529541015625, 0.75, 1,
+            torch.Generator().manual_seed(1), torch.device("cpu"),
+        )
+
+    def test_each_adam_step_projects_before_the_next_batch_and_epoch_end(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for kind in ("single", "tapered", "mirrored"):
+                for direction in ("upper", "lower"):
+                    with self.subTest(model=kind, direction=direction):
+                        model, dataset = self.make_case(Path(directory) / f"{kind}-{direction}.mnsd", kind, direction)
+                        optimizer = torch.optim.Adam(model.parameters(), lr=3.0)
+                        before_forward = []
+                        after_adam = []
+
+                        def before(_model, _inputs):
+                            before_forward.append(model.weight.detach().numpy().copy())
+
+                        def after(_optimizer, _args, _kwargs):
+                            after_adam.append(model.weight.detach().numpy().copy())
+
+                        forward_hook = model.register_forward_pre_hook(before)
+                        step_hook = optimizer.register_step_post_hook(after)
+                        try:
+                            self.run_epoch(model, optimizer, dataset)
+                        finally:
+                            forward_hook.remove()
+                            step_hook.remove()
+                        self.assertEqual(len(before_forward), 2)
+                        self.assertEqual(len(after_adam), 2)
+                        observed = before_forward[1:] + [model.weight.detach().numpy().copy()]
+                        for raw, weights in zip(after_adam, observed):
+                            crossed = raw > self.UPPER_CP if direction == "upper" else raw < self.LOWER_CP
+                            self.assertTrue(np.all(crossed.any(axis=0)), "each endpoint must cross the boundary after Adam")
+                            self.assertTrue(np.all(weights >= self.LOWER_CP), "next batch or epoch end sees a weight below the lower bound")
+                            self.assertTrue(np.all(weights <= self.UPPER_CP), "next batch or epoch end sees a weight above the upper bound")
+                            np.testing.assert_array_equal(weights[raw < self.LOWER_CP], self.LOWER_CP)
+                            np.testing.assert_array_equal(weights[raw > self.UPPER_CP], self.UPPER_CP)
+                            inside = (raw >= self.LOWER_CP) & (raw <= self.UPPER_CP)
+                            self.assertTrue(np.any(inside & (raw * 8 != np.rint(raw * 8))))
+                            np.testing.assert_array_equal(weights[inside], raw[inside])
+                            np.testing.assert_array_equal(weights[-1], 0)
+                        if kind == "mirrored":
+                            expanded = expanded_model_weights(model).detach().numpy().reshape(95, 12, 12, 2)
+                            np.testing.assert_array_equal(expanded, expanded[:, :, ::-1])
+
+    def test_nonfinite_adam_weights_are_rejected_before_any_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for kind in ("single", "tapered", "mirrored"):
+                for endpoint in range(1 if kind == "single" else 2):
+                    for value in (np.nan, np.inf, -np.inf):
+                        with self.subTest(model=kind, endpoint=endpoint, value=value):
+                            model, dataset = self.make_case(Path(directory) / f"{kind}-{endpoint}.mnsd", kind, "upper")
+                            optimizer = torch.optim.Adam(model.parameters(), lr=3.0)
+                            after_adam = []
+
+                            def inject(_optimizer, _args, _kwargs):
+                                # 実Adam更新後の異常を作り、有限な範囲外値も残して
+                                # 非有限値の拒否より先にclampが走らないことを検証する。
+                                with torch.no_grad():
+                                    model.weight[0, endpoint] = float(value)
+                                after_adam.append(model.weight.detach().numpy().copy())
+
+                            hook = optimizer.register_step_post_hook(inject)
+                            try:
+                                with self.assertRaises(ValueError):
+                                    self.run_epoch(model, optimizer, dataset)
+                            finally:
+                                hook.remove()
+                            self.assertEqual(len(after_adam), 1)
+                            raw = after_adam[0]
+                            self.assertTrue(np.any(raw[np.isfinite(raw)] > self.UPPER_CP))
+                            np.testing.assert_array_equal(model.weight.detach().numpy(), raw)
+
+    def test_quantize_keeps_i16_boundaries_and_rejects_invalid_weights(self) -> None:
+        # 補間計画の1/8cp単位のi16形式から直接得られる保存境界。
+        weights = np.array([self.LOWER_CP, 0.0, self.UPPER_CP], dtype=np.float32)
+        np.testing.assert_array_equal(quantize(weights), [-32768, 0, 32767])
+        for value in (-4096.125, 4096.0):
+            with self.subTest(value=value), self.assertRaises(OverflowError):
+                quantize(np.array([value], dtype=np.float32))
+        for value in (np.nan, np.inf, -np.inf):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                quantize(np.array([value], dtype=np.float32))
+
+
 if __name__ == "__main__":
     unittest.main()

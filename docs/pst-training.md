@@ -93,6 +93,11 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config ps
 `prepared.json` などの保存記録や、生成用と診断用のworktreeは編集しない。
 学習スクリプトの変更も検出して停止するので、実行中はその版を維持する。
 
+学習器を変更して再学習する場合は、既存の実験を保持し、変更後のツールを新しい実行ディレクトリへ固定する。
+段階7の範囲射影を加えた再学習では、`data/strength-stage7/gen2-projected.toml`を用意し、`run.directory`を`data/strength-stage7/gen2-projected`とする。
+`run.data`には世代0と世代1の6ファイル、および`data/strength-stage7/gen2/generated-<seed>.bin`の全5ファイルを列挙し、`generate.seeds = []`として生成済みデータを使う。
+元の`data/strength-stage7/gen2/`にある生成物、失敗時の資料、および準備時の固定情報は変更しない。
+
 ## 3. 自己対局データを生成する
 
 次のコマンドで、設定した5つのシードを順に処理する。
@@ -166,14 +171,23 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py train --run-dir dat
 世代ごとの尺度、訓練と検証の局面数、1エポックと全体の更新回数は `training/inputs.json` に記録する。
 Python、PyTorch、CUDA、導入パッケージの版は `training/environment.json` に残す。
 
+学習更新では、`single`、`tapered`、`mirrored`のすべてに重みの範囲射影を適用する契約とする。
+各`Adam.step`の直後に`torch.no_grad()`の下でpadding行を含む全`model.weight`の有限性を検査し、NaNまたはInfがあれば原因を示す`ValueError`で停止する。
+検査に合格した場合だけ、各重みを`[−4096, 4095.875]`センチポーンへ射影する。
+範囲内の連続値はそのまま保持し、padding行は0を保つ。
+検証損失による最良重みの選択は、初期状態のエポック0を含めて行う。
+
 学習曲線は `train.log` で確認する。
 訓練損失、全体と世代別の検証損失、最良エポック、特徴の観測回数を読み、更新回数の不足や過学習がないか点検する。
 検証分割は生成シードと対局番号によって固定され、約5%の対局が検証用になる。
 
-学習器は1/8センチポーン単位へ量子化し、検証標本で浮動小数点評価との平均絶対誤差が2センチポーン以下であることを確認する。
+保存時には重みを8倍して最近接整数へ丸め、中間値なら偶数を選んで、1/8センチポーン単位へ量子化する。
+量子化時にも非有限値を拒否し、丸めた値がi16の`[−32768, 32767]`を超えれば停止する。
+検証標本では浮動小数点評価との平均絶対誤差が2センチポーン以下であることを確認する。
 合格して正常終了した重みだけに `training/complete.json` が作られる。
 既存の `training` は上書きしない。
-中断後の再開機能はないため、失敗した `training` を退避したうえで、同じ初期値から実行し直す。
+中断後の再開機能はないため、コードと条件を変えない再試行では失敗した `training` を退避し、同じ初期値から実行し直す。
+学習器を変更する再試行では、前述のとおり新しい実行ディレクトリで準備し直す。
 
 ## 5. 重みを診断する
 

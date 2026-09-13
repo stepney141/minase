@@ -391,6 +391,11 @@ def train_epoch(
         )
         loss.backward()
         optimizer.step()
+        # MNPTの1/8センチポーン単位のi16に収まる範囲で学習する。
+        with torch.no_grad():
+            if not bool(torch.isfinite(model.weight).all()):
+                raise ValueError("trained weights contain a non-finite value")
+            model.weight.clamp_(min=-4096.0, max=4095.875)
         total += float(loss.item()) * positions.shape[0]
     return total / dataset.training_indices.size, observations
 
