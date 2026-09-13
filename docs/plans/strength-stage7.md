@@ -19,9 +19,11 @@
 フェーズ1の[学習と局面帯別の診断](../measurements/strength-stage7-mirror-training.md)を完了し、鏡映共有モデルを採用した。
 [STC](../measurements/strength-stage7-mirror-stc.md)は有効913ペア、[LTC](../measurements/strength-stage7-mirror-ltc.md)は有効1,660ペアでともにH1となり、両測定のエンジン異常と時間切れは0件だった。
 フェーズ2では、試行生成で選んだ手数上限4,000を生成器の既定値と設定例へ反映した。
-現在は採用済みの鏡映共有モデルで[世代2を生成している](../measurements/strength-stage7-gen2-generation.md)。
-5シードのうち4シードを検証し、11,254,972局面を保存した。
-次の一手は5ファイルの検証を終え、世代0から世代2までの訓練集合で端点の識別性を確認することである。
+フェーズ3では、採用済みの鏡映共有モデルで[世代2の生成と検証を完了した](../measurements/strength-stage7-gen2-generation.md)。
+全5シードの14,057,872局面を保存し、各ファイルの独立集計でも生成器の検査結果と一致した。
+全11ファイルの[識別性診断](../measurements/strength-stage7-gen2-identifiability.md)では、識別できない特徴の出現割合が0.228%で基準5%以下を満たした。
+現在は採用中の重みを初期値として、訓練集合23,879,611局面で再学習している。
+次の一手は再学習の結果と局面帯別の診断を確認することである。
 
 ## 目的
 
