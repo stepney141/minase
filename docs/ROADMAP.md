@@ -60,11 +60,9 @@ internal iterative reductionのLTCは外部のOOMによる時間切れ11件を�
 段階7は2026年9月12日に着手し、鏡映共有モデルを[STC](measurements/strength-stage7-mirror-stc.md)と[LTC](measurements/strength-stage7-mirror-ltc.md)のH1で採用した。
 試行生成で選んだ手数上限4,000を既定値へ反映し、[世代2の生成](measurements/strength-stage7-gen2-generation.md)では5シードの14,057,872局面を保存した。
 全11入力の[識別性診断](measurements/strength-stage7-gen2-identifiability.md)は合格し、保存範囲への射影を加えた[再学習](measurements/strength-stage7-gen2-training.md)も候補の保存まで成功したが、駒除去差分の符号反転が残った。
-利用者の選択に従って[追加損失を検討](measurements/strength-stage7-removal-learning.md)し、実装と検証後に元の訓練集合内で[5係数を比較](measurements/strength-stage7-removal-pilot.md)した。
-反転は対照の668件から最大係数で7件へ減ったが、適格な正係数はなかった。
-残る7件は量子化前にも存在し、駒を失う負の寄与を補間比変化の正の寄与が上回ることを確認した。
-次の候補は片側絶対値ペナルティとし、解析例と有限回のAdam更新を確認して、[学習率0.03と係数5条件を固定した](measurements/strength-stage7-removal-absolute.md)。
-実装と検証を終え、採用済み重みからの新しい予備比較を準備している。
+追加損失の[二乗型の予備比較](measurements/strength-stage7-removal-pilot.md)では適格な正係数がなく、[片側絶対値型の5係数比較](measurements/strength-stage7-removal-absolute.md)ではη1000だけが保存可能性と標本の符号反転0件を満たし、独立監査も合格した。
+全11入力の元訓練集合をη1000と学習率0.03で再学習する準備を進め、元の検証集合で初期状態を含む最良重みを選び、既存診断後に採否対局を行う。
+本学習と世代2の採否対局は未開始である。
 採用済みの鏡映共有モデルを維持し、全候補と実行記録を保持している。
 現採用重みからの[駒価値の再導出](measurements/strength-stage7-values-diag.md)は最大相対差2.830189%で基準20%以下だったが、段階最終値の判断は世代2の扱いが確定するまで保留する。
 段階開始版との固定200ペア測定は停止して保存済み37ペアを保持し、HaChu戦は未開始であり、世代2の再学習と採否の確定後に残りの手順を進める。
