@@ -15,26 +15,20 @@
 
 ## 状態
 
-本マイルストーンは2026年9月12日に起案し、同日に着手して進行中である。
-フェーズ0を完了し、[鏡映診断](../measurements/strength-stage7-mirror-diag.md)、[シード監査](../measurements/strength-stage7-seed-audit.md)、および[手数上限の試行生成](../measurements/strength-stage7-plycap-trial.md)を記録した。
-フェーズ1の[学習と局面帯別の診断](../measurements/strength-stage7-mirror-training.md)を完了し、鏡映共有モデルを採用した。
-[STC](../measurements/strength-stage7-mirror-stc.md)は有効913ペア、[LTC](../measurements/strength-stage7-mirror-ltc.md)は有効1,660ペアでともにH1となり、両測定のエンジン異常と時間切れは0件だった。
-フェーズ2では、試行生成で選んだ手数上限4,000を生成器の既定値と設定例へ反映した。
-フェーズ3では、採用済みの鏡映共有モデルで[世代2の生成と検証を完了した](../measurements/strength-stage7-gen2-generation.md)。
-全5シードの14,057,872局面を保存し、各ファイルの独立集計でも生成器の検査結果と一致した。
-全11ファイルの[識別性診断](../measurements/strength-stage7-gen2-identifiability.md)では、識別できない特徴の出現割合が0.228%で基準5%以下を満たした。
-量子化時の範囲超過で停止した[世代2の再学習](../measurements/strength-stage7-gen2-training.md)に対し、利用者が追加を決めた保存範囲への射影を学習器へ実装して検証を完了した。
-新しい実行ディレクトリの準備を終え、全11入力、初期重み、探索用駒価値47個、および学習条件が元実行と一致することを確認した。
-独立監査でも既存の識別性診断を再利用できることを確認し、訓練集合23,879,611局面でGPU再学習を正常に終えて候補を書き出した。
-候補診断で駒の除去差分の符号反転を1件検出し、独立した整数計算、浮動小数点重み、およびRust評価でも再現した。
-この候補のSTCとLTCは実施しておらず、採用済みの鏡映共有モデルを維持している。
-利用者の選択に従い、[符号反転を抑える学習方法の検討](../measurements/strength-stage7-removal-learning.md)を終えた。
-基準の符号を保ち、基準自体が逆向きの場合の増悪も抑える駒除去差分の追加損失を実装し、検証を終えた。
-係数の候補と選択規則を本書で固定し、元の訓練集合内の対局単位の分割で予備比較を行う。
-現時点の採用重みと世代0〜2の訓練局面の平均補間係数から[探索用駒価値を再導出した](../measurements/strength-stage7-values-diag.md)。
-到達可能な37状態の最大相対差は2.830189%で基準20%以下だったが、世代2の扱いが確定するまで段階最終値の判断を保留する。
-方針確定前に開始した段階開始版との固定200ペア測定は停止し、保存済み37ペアを保持している。
-HaChu戦は未開始であり、世代2の再学習と採否が確定してから残りの手順を進める。
+本マイルストーンは2026年9月12日に起案・着手し、フェーズ4を進行中である。
+フェーズ0の[鏡映診断](../measurements/strength-stage7-mirror-diag.md)、[シード監査](../measurements/strength-stage7-seed-audit.md)、および[手数上限の試行生成](../measurements/strength-stage7-plycap-trial.md)を終えた。
+フェーズ1の鏡映共有モデルは[STC](../measurements/strength-stage7-mirror-stc.md)と[LTC](../measurements/strength-stage7-mirror-ltc.md)がともにH1で採用し、フェーズ2では手数上限4,000を生成器の既定値へ反映した。
+フェーズ3の[世代2の生成](../measurements/strength-stage7-gen2-generation.md)では5シードの14,057,872局面を保存し、全11入力の[識別性診断](../measurements/strength-stage7-gen2-identifiability.md)も合格した。
+保存範囲への射影を加えた[世代2の再学習](../measurements/strength-stage7-gen2-training.md)は候補の保存まで成功したが、駒除去差分の符号反転を検出したため採否測定へ進めなかった。
+利用者の選択に従い、[駒除去差分の追加損失を検討](../measurements/strength-stage7-removal-learning.md)して実装と検証を終え、元の訓練集合内で[5係数の予備比較](../measurements/strength-stage7-removal-pilot.md)を実施した。
+符号反転は対照の668件から最大係数で7件へ減ったが、適格な正係数はなかった。
+残る7件は量子化前にも存在し、駒を失う負の寄与を補間比変化の正の寄与が上回ることを独立計算で確認した。
+次の候補は片側絶対値ペナルティとし、有限係数で境界を最小点にできる性質を解析と合成例で確認した。
+この方法の実学習の係数と更新条件は未決であり、再学習と採否測定へ進む前に定める。
+採用済みの鏡映共有モデルを維持し、予備比較の候補と失敗した実行は保持している。
+現採用重みから[探索用駒価値を再導出](../measurements/strength-stage7-values-diag.md)した最大相対差は2.830189%で基準20%以下だったが、段階最終値の判断は世代2の扱いが確定するまで保留する。
+先行して開始した段階開始版との固定200ペア測定は停止して保存済み37ペアを保持し、HaChu戦は未開始である。
+世代2の再学習と採否を確定してから残りの手順を進める。
 
 ## 目的
 
