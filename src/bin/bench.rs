@@ -6,10 +6,11 @@ use std::time::Instant;
 use clap::Parser;
 use minase::core::rules::parse_rule_set;
 use minase::eval::Pst;
+use minase::notation::usi;
 use minase::search::{
     DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search,
 };
-use minase::{Game, Rules, parse_sfen};
+use minase::{Game, MoveGenerator, Rules, parse_sfen};
 
 /// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
 #[global_allocator]
@@ -218,11 +219,20 @@ fn run_bench(
             .checked_add(result.nodes)
             .expect("total node count overflow");
         if print_positions {
+            // 最善手と探索値は計測区間の外で文字列化する。局面別の一致比較に使う。
+            let best_move = usi::text(
+                game.position(),
+                result.best_move,
+                &MoveGenerator::new(rules.moves),
+            )
+            .expect("search must return a legal best move");
             println!(
-                "position={} depth={} nodes={} elapsed={:.6}s",
+                "position={} depth={} nodes={} best={} score={} elapsed={:.6}s",
                 bench_position.name,
                 result.depth,
                 result.nodes,
+                best_move,
+                result.score,
                 elapsed.as_secs_f64()
             );
         }

@@ -1420,10 +1420,12 @@ impl Searcher<'_> {
             })
             .collect();
         order_captures(&mut captures);
+        // 置換表の手を先頭へ移し、残る手の相対順序は保つ(docs/plans/movegen-speedup.md
+        // 「静止探索の置換表の手を回転で先頭へ移す」)。
         if let Some(index) =
             tt_move.and_then(|tt_move| captures.iter().position(|&(mv, _)| mv == tt_move))
         {
-            captures.swap(0, index);
+            captures[..=index].rotate_right(1);
         }
 
         for (mv, key) in captures {
