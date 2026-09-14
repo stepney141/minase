@@ -57,7 +57,7 @@ pub(super) fn see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) ->
     let mut depth = 0_usize;
 
     loop {
-        let attackers = position.attackers_to(mv.to, occupied) & position.pieces_of(side);
+        let attackers = position.attackers_to_by(side, mv.to, occupied);
         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
         {
             return None;

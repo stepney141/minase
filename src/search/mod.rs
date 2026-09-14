@@ -1747,11 +1747,11 @@ fn search_key(position: &Position) -> u64 {
 /// 王駒の升では疑似利きと実際の捕獲可能性が一致する。
 fn royal_under_attack(position: &Position) -> bool {
     let side = position.side_to_move();
-    let opponents = position.pieces_of(side.opposite());
-    position
-        .royal_pieces(side)
-        .into_iter()
-        .any(|square| !(position.attackers_to(square, position.occupied()) & opponents).is_empty())
+    position.royal_pieces(side).into_iter().any(|square| {
+        !position
+            .attackers_to_by(side.opposite(), square, position.occupied())
+            .is_empty()
+    })
 }
 
 /// 着手が相手の残存王駒をすべて取るかを返す(第21条第1項)。
