@@ -1,0 +1,9 @@
+{
+  "generate_captures_nodes": 469829,
+  "generated_captures": 3247848,
+  "examined_captures": 1719799,
+  "generated_under_staged_generation": 2253005,
+  "generated_under_staged_generation_with_entry_threshold": 1180903,
+  "entry_prunable_captures": 1461527,
+  "beta_cutoff_nodes": 217398
+}

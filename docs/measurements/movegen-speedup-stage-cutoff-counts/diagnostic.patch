@@ -1,0 +1,78 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..e2bf4f0 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -213,6 +213,7 @@ fn run_bench(
+         let result = search(pst, &snapshot, limits, threads, transposition_table)
+             .expect("bench search input must be valid");
+         let elapsed = position_start.elapsed();
++        println!("stage position={} counts={:?}", bench_position.name, minase::search::stage_counts_take());
+         reached_depth = reached_depth.min(result.depth);
+         total_elapsed += elapsed.as_secs_f64();
+         total_nodes = total_nodes
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 6b67e39..dd558b5 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -27,6 +27,15 @@ use crate::eval::Pst;
+ use crate::eval::pst::PstAccumulator;
+ 
+ use see::see;
++/// 診断用の作業量カウンタ。速度測定には使わない。
++static STAGE_COUNTS: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
++fn stage_count(index: usize, n: usize) {
++    STAGE_COUNTS[index].fetch_add(n as u64, AtomicOrdering::Relaxed);
++}
++/// 診断カウンタを読み出して0へ戻す。
++pub fn stage_counts_take() -> Vec<u64> {
++    STAGE_COUNTS.iter().map(|v| v.swap(0, AtomicOrdering::Relaxed)).collect()
++}
+ use tt::Bound;
+ 
+ /// 詰みを表す評価値。
+@@ -1428,7 +1437,18 @@ impl Searcher<'_> {
+             captures[..=index].rotate_right(1);
+         }
+ 
+-        for (mv, key) in captures {
++        stage_count(0, 1);
++        stage_count(1, captures.len());
++        let threshold = alpha - stand_pat - self.pst.delta_margin();
++        let entry_prunable = captures
++            .iter()
++            .filter(|&&(mv, key)| !captures_last_royal(position, mv) && key.captured_value <= threshold)
++            .count();
++        stage_count(5, entry_prunable);
++        let mut examined = 0_usize;
++        let mut cut = false;
++        for (index, (mv, key)) in captures.iter().copied().enumerate() {
++            examined = index + 1;
+             let is_last_royal_capture = captures_last_royal(position, mv);
+             if !is_last_royal_capture
+                 && stand_pat + key.captured_value + self.pst.delta_margin() <= alpha
+@@ -1461,9 +1481,25 @@ impl Searcher<'_> {
+             }
+             alpha = alpha.max(score);
+             if alpha >= beta {
++                cut = true;
+                 break;
+             }
+         }
++        stage_count(2, examined);
++        if cut {
++            let cut_value = captures[examined - 1].1.captured_value;
++            let staged = captures.iter().filter(|&&(_, key)| key.captured_value >= cut_value).count();
++            let staged_with_threshold = captures
++                .iter()
++                .filter(|&&(mv, key)| key.captured_value >= cut_value && (captures_last_royal(position, mv) || key.captured_value > threshold))
++                .count();
++            stage_count(3, staged);
++            stage_count(4, staged_with_threshold);
++            stage_count(6, 1);
++        } else {
++            stage_count(3, captures.len());
++            stage_count(4, captures.len() - entry_prunable);
++        }
+         let bound = if best >= beta {
+             Bound::Lower
+         } else if best <= original_alpha {
