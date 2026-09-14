@@ -15,7 +15,7 @@
 
 ## 状態
 
-本マイルストーンは2026年9月12日に起案・着手し、フェーズ5までを完了してフェーズ6の測定を準備している。
+本マイルストーンは2026年9月12日に起案・着手し、フェーズ5までを完了してフェーズ6の測定を進めている。
 フェーズ0の[鏡映診断](../measurements/strength-stage7-mirror-diag.md)、[シード監査](../measurements/strength-stage7-seed-audit.md)、および[手数上限の試行生成](../measurements/strength-stage7-plycap-trial.md)を終えた。
 フェーズ1の鏡映共有モデルは[STC](../measurements/strength-stage7-mirror-stc.md)と[LTC](../measurements/strength-stage7-mirror-ltc.md)がともにH1で採用し、フェーズ2では手数上限4,000を生成器の既定値へ反映した。
 フェーズ3の[世代2の生成](../measurements/strength-stage7-gen2-generation.md)では5シードの14,057,872局面を保存し、全11入力の[識別性診断](../measurements/strength-stage7-gen2-identifiability.md)も合格した。
@@ -28,7 +28,8 @@
 採用済みの鏡映共有モデルとの[世代2のSTC](../measurements/strength-stage7-gen2-stc.md)と[LTC](../measurements/strength-stage7-gen2-ltc.md)はともにH1で終了し、先行保存分を含む全保存結果の異常0件を独立監査で確認して世代2の重みを採用した。
 最終採用重みからの[探索用駒価値の再導出](../measurements/strength-stage7-gen2-values-diag.md)では最大相対差が8%となり、更新基準20%を超えなかったため、固定駒価値と探索の余裕値を維持する。
 旧採用重みの診断と中断した段階開始版との37ペア、および失敗した候補の全記録は保持している。
-最終構成で段階開始版とHaChuに対する各200ペアの進捗測定を準備しており、段階7全体は未完了である。
+最終構成の[段階開始版との固定200ペア](../measurements/strength-stage7-gen2-elo200.md)は有効197ペア、破棄3ペア、Elo +113.19、95%信頼区間[+77.64, +151.19]となり、全400局の異常0件を独立監査で確認した。
+残るHaChuとの固定200ペア測定を実行中であり、段階7全体は未完了である。
 
 ## 目的
 

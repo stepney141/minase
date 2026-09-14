@@ -30,7 +30,8 @@ fail-lowによる延長、最善手交替時の延長、および係数の候補
 世代2の14,057,872局面を生成し、駒除去差分の符号反転を抑える[片側絶対値型の予備比較](../measurements/strength-stage7-removal-absolute.md)で係数1000を選んだ。
 学習率0.03で本学習を完了し、既存診断を通過した候補の[世代2STC](../measurements/strength-stage7-gen2-stc.md)と[LTC](../measurements/strength-stage7-gen2-ltc.md)はともにH1となり、全保存結果の異常0件を確認して採用した。
 最終重みからの[駒価値の再導出](../measurements/strength-stage7-gen2-values-diag.md)は最大相対差8%で基準20%以下となり、既存の固定値を維持する。
-段階開始版とHaChuに対する各200ペアの進捗測定を準備しており、段階7は進行中である。
+[段階開始版との固定200ペア](../measurements/strength-stage7-gen2-elo200.md)はElo +113.19、95%信頼区間[+77.64, +151.19]となり、全400局の異常0件を確認した。
+HaChuとの固定200ペア測定を実行中であり、段階7は進行中である。
 
 ## 目的
 
