@@ -5,7 +5,10 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
-from features import BOARD_SQUARE_COUNT, FEATURE_COUNT, PADDING_INDEX, feature_indices
+from features import (
+    BOARD_SQUARE_COUNT, FEATURE_COUNT, MIRRORED_FEATURE_COUNT, PADDING_INDEX,
+    canonical_feature_indices, feature_indices,
+)
 from mnsd import Dataset
 
 # 設計書「盤上総駒数で補間する」: q = min(90, max(0, N - 2)), φ = q / 90。
@@ -54,24 +57,27 @@ def band_label(band: int) -> str:
 
 
 def feature_identifiability(
-    dataset: Dataset, indices: NDArray[np.int64], batch: int = BATCH
+    dataset: Dataset, indices: NDArray[np.int64], *, mirrored: bool, batch: int = BATCH
 ) -> dict[str, NDArray]:
     """特徴ごとの出現回数、出現時のφの平均、および偏差平方和を集める。"""
-    counts = np.zeros(FEATURE_COUNT, dtype=np.int64)
-    phi_sums = np.zeros(FEATURE_COUNT, dtype=np.float64)
-    phi_square_sums = np.zeros(FEATURE_COUNT, dtype=np.float64)
+    feature_count = MIRRORED_FEATURE_COUNT if mirrored else FEATURE_COUNT
+    counts = np.zeros(feature_count, dtype=np.int64)
+    phi_sums = np.zeros(feature_count, dtype=np.float64)
+    phi_square_sums = np.zeros(feature_count, dtype=np.float64)
     for start in range(0, indices.size, batch):
         records = dataset.gather(indices[start : start + batch])
         features = feature_indices(records["board"], records["stm"], records["lion"])
         phi = phase_ratios(records["board"])
         active = features != PADDING_INDEX
+        if mirrored:
+            features = canonical_feature_indices(features)
         rows = np.broadcast_to(phi[:, None], features.shape)[active]
         flat = features[active]
-        counts += np.bincount(flat, minlength=FEATURE_COUNT)
-        phi_sums += np.bincount(flat, weights=rows, minlength=FEATURE_COUNT)
-        phi_square_sums += np.bincount(flat, weights=rows * rows, minlength=FEATURE_COUNT)
+        counts += np.bincount(flat, minlength=feature_count)
+        phi_sums += np.bincount(flat, weights=rows, minlength=feature_count)
+        phi_square_sums += np.bincount(flat, weights=rows * rows, minlength=feature_count)
     observed = counts > 0
-    means = np.divide(phi_sums, counts, out=np.full(FEATURE_COUNT, np.nan), where=observed)
+    means = np.divide(phi_sums, counts, out=np.full(feature_count, np.nan), where=observed)
     ssd = np.where(observed, phi_square_sums - phi_sums * means, 0.0)
     return {"count": counts, "mean_phi": means, "ssd": np.maximum(ssd, 0.0)}
 

@@ -1,7 +1,8 @@
 """明示した設定と完了記録だけで学習工程を進める契約を検証する。"""
 
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stdout
 import hashlib
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -32,11 +33,13 @@ hash_mb = 16
 random_moves = 0
 [train]
 model = "single"
+k = 1072.6529541015625
 learning_rate = 3
 epochs = 10
 batch = 16384
 seed = 1
 lambda = 0.75
+removal_penalty = 0
 device = "cpu"
 validation_sample = 10000
 [diagnose]
@@ -76,6 +79,67 @@ class WorkflowTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     workflow.load_config(self.config_path, self.root)
 
+    def test_output_k_must_be_explicit(self) -> None:
+        """段階7の出力K固定契約に従い、省略した設定は推定前に拒否する。"""
+        self.config_path.write_text(CONFIG.replace("k = 1072.6529541015625\n", ""))
+        with self.assertRaises(ValueError):
+            workflow.load_config(self.config_path, self.root)
+
+    def test_removal_penalty_must_be_explicit_for_every_model(self) -> None:
+        """追加損失を使わないモデルでも、係数0の明示を要求する。"""
+        for model in ("single", "tapered", "mirrored"):
+            with self.subTest(model=model):
+                self.config_path.write_text(CONFIG.replace(
+                    'model = "single"', f'model = "{model}"').replace(
+                    "removal_penalty = 0\n", ""))
+                with self.assertRaises(ValueError):
+                    workflow.load_config(self.config_path, self.root)
+
+    def test_zero_removal_penalty_is_accepted_for_every_model(self) -> None:
+        for model in ("single", "tapered", "mirrored"):
+            for zero in ("0", "0.0"):
+                with self.subTest(model=model, zero=zero):
+                    self.config_path.write_text(CONFIG.replace(
+                        'model = "single"', f'model = "{model}"').replace(
+                        "removal_penalty = 0", f"removal_penalty = {zero}"))
+                    config = workflow.load_config(self.config_path, self.root)
+                    self.assertEqual(config["train"]["removal_penalty"], 0)
+
+    def test_positive_removal_penalty_requires_mirrored_model(self) -> None:
+        for model in ("single", "tapered", "mirrored"):
+            with self.subTest(model=model):
+                self.config_path.write_text(CONFIG.replace(
+                    'model = "single"', f'model = "{model}"').replace(
+                    "removal_penalty = 0", "removal_penalty = 2.5"))
+                if model == "mirrored":
+                    config = workflow.load_config(self.config_path, self.root)
+                    self.assertEqual(config["train"]["removal_penalty"], 2.5)
+                else:
+                    with self.assertRaisesRegex(ValueError, "removal_penalty.*mirrored"):
+                        workflow.load_config(self.config_path, self.root)
+
+    def test_removal_penalty_rejects_negative_nonfinite_and_nonnumeric_values(self) -> None:
+        for value in ("-0.01", "nan", "inf", "-inf", "true", "false", '"0"'):
+            with self.subTest(value=value):
+                self.config_path.write_text(CONFIG.replace(
+                    'model = "single"', 'model = "mirrored"').replace(
+                    "removal_penalty = 0", f"removal_penalty = {value}"))
+                with self.assertRaisesRegex(ValueError, "removal_penalty"):
+                    workflow.load_config(self.config_path, self.root)
+
+    def test_mirrored_model_is_an_explicit_choice(self) -> None:
+        self.config_path.write_text(CONFIG.replace('model = "single"', 'model = "mirrored"'))
+        self.assertEqual(workflow.load_config(self.config_path, self.root)["train"]["model"],
+                         "mirrored")
+
+    def test_example_explicitly_disables_unselected_removal_penalty(self) -> None:
+        """未選定の係数を設定例で仮定せず、必須項目をすべて明示する。"""
+        example = Path(__file__).with_name("pst.example.toml").read_text()
+        self.config_path.write_text(example.replace("REPLACE_WITH_FULL_COMMIT_HASH", "0" * 40))
+        config = workflow.load_config(self.config_path, self.root)
+        self.assertEqual(config["train"]["model"], "mirrored")
+        self.assertEqual(config["train"]["removal_penalty"], 0)
+
     def test_invalid_numbers_seed_ranges_and_paths_are_rejected(self) -> None:
         changes = [
             ("games = 10", "games = 0"),
@@ -84,6 +148,11 @@ class WorkflowTest(unittest.TestCase):
             ("learning_rate = 3", "learning_rate = nan"),
             ("learning_rate = 3", "learning_rate = inf"),
             ("learning_rate = 3", "learning_rate = 0"),
+            ("k = 1072.6529541015625", "k = 0"),
+            ("k = 1072.6529541015625", "k = -1"),
+            ("k = 1072.6529541015625", "k = nan"),
+            ("k = 1072.6529541015625", "k = inf"),
+            ("k = 1072.6529541015625", "k = true"),
             ('model = "single"', 'model = "dual"'),
             ("lambda = 0.75", "lambda = 1.01"),
             ("lambda = 0.75", "lambda = -0.01"),
@@ -110,6 +179,53 @@ class WorkflowTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             workflow.check_existing_data(self.config)
 
+    def test_prepare_pins_generator_to_base_and_probe_to_training_tools_commit(self) -> None:
+        """生成基準が古くても、診断器はprepare時のHEADから別にビルドする。"""
+        run = self.root / "data/run"
+        base = "0" * 40
+        tools_commit = "1" * 40
+        checkouts = {}
+        builds = {}
+
+        def fake_git(repository, *arguments):
+            if arguments == ("rev-parse", base + "^{commit}"):
+                return base
+            if arguments == ("rev-parse", "HEAD"):
+                return tools_commit
+            raise AssertionError(arguments)
+
+        def fake_command(run, label, command, cwd):
+            if command[:3] == ["git", "worktree", "add"]:
+                destination = Path(command[-2])
+                checkouts[destination] = command[-1]
+                (destination / "nets").mkdir(parents=True)
+                weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
+                write_mnpt(destination / "nets/pst.bin", weights, weights,
+                           initial_piece_values(), 1000)
+            elif command[:2] == ["cargo", "build"]:
+                names = [command[index + 1] for index, value in enumerate(command) if value == "--bin"]
+                builds[cwd] = names
+                target = Path(command[command.index("--target-dir") + 1]) / "release"
+                target.mkdir(parents=True)
+                for name in names:
+                    (target / name).write_bytes(f"{checkouts[cwd]}:{name}".encode())
+            else:
+                raise AssertionError(command)
+
+        with patch.object(workflow, "ROOT", self.root), \
+                patch.object(workflow, "load_config", return_value=self.config), \
+                patch.object(workflow, "git", side_effect=fake_git), \
+                patch.object(workflow, "run_command", side_effect=fake_command):
+            workflow.prepare(self.config_path)
+        state = json.loads((run / "prepared.json").read_text())
+        self.assertEqual(checkouts, {run / "generator": base, run / "probe": tools_commit})
+        self.assertEqual(builds, {run / "generator": ["selfplay_gen"], run / "probe": ["pst_probe"]})
+        self.assertEqual(state["config"]["run"]["base_commit"], base)
+        self.assertEqual(state["config"]["train"]["removal_penalty"], 0)
+        self.assertEqual(state["probe_commit"], tools_commit)
+        self.assertEqual(state["generator_sha256"], workflow.digest(run / "generator/target/release/selfplay_gen"))
+        self.assertEqual(state["probe_sha256"], workflow.digest(run / "probe/target/release/pst_probe"))
+
     def prepared(self) -> tuple[Path, ExitStack]:
         """外部git操作だけを置換し、完了記録とファイル検証は実際に通す。"""
         run = self.root / "data/run"
@@ -117,7 +233,8 @@ class WorkflowTest(unittest.TestCase):
         binary = run / "generator/target/release/selfplay_gen"
         binary.parent.mkdir(parents=True)
         binary.write_bytes(b"fixture executable")
-        probe = run / "generator/target/release/pst_probe"
+        probe = run / "probe/target/release/pst_probe"
+        probe.parent.mkdir(parents=True)
         probe.write_bytes(b"fixture probe")
         zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
         write_mnpt(run / "pst-base.bin", zeros, zeros, initial_piece_values(), 1000)
@@ -129,6 +246,7 @@ class WorkflowTest(unittest.TestCase):
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-workflow.PIECE_VALUE_BYTES:]).hexdigest(),
             "generator_sha256": workflow.digest(binary),
+            "probe_commit": "1" * 40,
             "probe_sha256": workflow.digest(probe),
             "repository": str(self.root),
         }
@@ -137,7 +255,8 @@ class WorkflowTest(unittest.TestCase):
         self.addCleanup(stack.close)
         stack.enter_context(patch.object(workflow, "ROOT", self.root))
         stack.enter_context(patch.object(workflow, "git", side_effect=lambda repo, *args:
-                                        "0" * 40 if args == ("rev-parse", "HEAD") else ""))
+                                        ("1" if repo == run / "probe" else "0") * 40
+                                        if args == ("rev-parse", "HEAD") else ""))
         return run, stack
 
     def test_existing_output_without_completion_is_not_reused(self) -> None:
@@ -187,8 +306,7 @@ class WorkflowTest(unittest.TestCase):
         workflow.generate(run, 100)
         execute.assert_not_called()
 
-    def test_diagnosis_rejects_modified_completed_weights(self) -> None:
-        run, _ = self.prepared()
+    def completed_training(self, run: Path) -> Path:
         training = run / "training"
         training.mkdir()
         candidate = training / "pst.bin"
@@ -197,13 +315,39 @@ class WorkflowTest(unittest.TestCase):
         float_path.write_bytes(b"fixture")
         (training / "complete.json").write_text(json.dumps({
             "sha256": workflow.digest(candidate), "float_sha256": workflow.digest(float_path)}))
+        return candidate
+
+    def test_diagnosis_rejects_modified_completed_weights(self) -> None:
+        run, _ = self.prepared()
+        candidate = self.completed_training(run)
         candidate.write_bytes(candidate.read_bytes() + b"changed")
         with self.assertRaises(ValueError):
             workflow.diagnose(run)
         self.assertFalse((run / "diagnostics").exists())
 
+    def test_diagnosis_rejects_modified_probe_binary(self) -> None:
+        run, _ = self.prepared()
+        self.completed_training(run)
+        (run / "probe/target/release/pst_probe").write_bytes(b"modified probe")
+        with patch.object(workflow, "diagnose_probe") as probe, self.assertRaises(ValueError):
+            workflow.diagnose(run)
+        probe.assert_not_called()
+        self.assertFalse((run / "diagnostics").exists())
+
+    def test_diagnosis_rejects_modified_probe_worktree(self) -> None:
+        run, _ = self.prepared()
+        self.completed_training(run)
+        for head, status in (("0" * 40, ""), ("1" * 40, " M src/bin/pst_probe.rs")):
+            with self.subTest(head=head, status=status), \
+                    patch.object(workflow, "git", side_effect=lambda repo, *args:
+                                 head if args == ("rev-parse", "HEAD") else status), \
+                    patch.object(workflow, "diagnose_probe") as probe, self.assertRaises(ValueError):
+                workflow.diagnose(run)
+            probe.assert_not_called()
+            self.assertFalse((run / "diagnostics").exists())
+
     def test_cpu_training_and_diagnostics_preserve_scale_and_outputs(self) -> None:
-        """小さな実データで尺度推定から量子化・診断までを実際に接続する。"""
+        """指定した出力Kを量子化後も保持し、混合推定値は参考記録に限る。"""
         games = list(range(1, 81))
         write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
                    games=games)
@@ -219,7 +363,9 @@ class WorkflowTest(unittest.TestCase):
             (run / f"generated-{seed}.json").write_text(
                 json.dumps({"sha256": workflow.digest(output)}))
 
-        workflow.train(run)
+        stdout = io.StringIO()
+        with patch("train_pst.estimate_mixed_k", return_value=321.25), redirect_stdout(stdout):
+            workflow.train(run)
         candidate = run / "training/pst.bin"
         inputs = json.loads((run / "training/inputs.json").read_text())
         completion = json.loads((run / "training/complete.json").read_text())
@@ -227,14 +373,20 @@ class WorkflowTest(unittest.TestCase):
         np.testing.assert_array_equal(middlegame, endgame)
         np.testing.assert_array_equal(piece_values, initial_piece_values())
         self.assertEqual(completion["float_sha256"], workflow.digest(run / "training/pst-float.npz"))
-        # MNPTは尺度をfloat32で保存する。推定値の保存時丸めだけを許容する。
-        self.assertAlmostEqual(saved_k / inputs["k"], 1, places=6)
+        # 設定値は段階7の基準MNPTヘッダと同じfloat32の正確な値である。
+        self.assertEqual(saved_k, 1072.6529541015625)
+        self.assertEqual(inputs["k"], self.config["train"]["k"])
+        self.assertEqual(inputs["mixed_k"], 321.25)
+        self.assertIn("321.25", stdout.getvalue())
+        self.assertIn("reference", stdout.getvalue())
         self.assertEqual(completion["sha256"], workflow.digest(candidate))
         self.assertEqual(inputs["training_records"] + inputs["validation_records"], 240)
         self.assertEqual(inputs["options"]["device"], "cpu")
+        self.assertEqual(inputs["options"]["removal_penalty"], 0)
 
-        with patch.object(workflow, "diagnose_probe", return_value=python_probe):
+        with patch.object(workflow, "diagnose_probe", return_value=python_probe) as probe:
             workflow.diagnose(run)
+        probe.assert_called_once_with(run / "probe/target/release/pst_probe")
         report = json.loads((run / "diagnostics/report.json").read_text())
         self.assertEqual(len(report["bands"]), 10)
         validation = inputs["validation_records"]
@@ -245,6 +397,50 @@ class WorkflowTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             workflow.train(run)
         self.assertEqual(candidate.read_bytes(), original)
+
+    def test_training_forwards_and_records_mirrored_penalty_and_explicit_k(self) -> None:
+        """指定した係数を保存してCLIへ渡し、教師尺度は訓練集合だけから推定する。"""
+        write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
+                   games=list(range(1, 81)))
+        self.config["generate"]["seeds"] = []
+        self.config["train"].update(model="mirrored", k=1500.5, removal_penalty=2.5)
+        run, stack = self.prepared()
+        generation_ks = stack.enter_context(patch(
+            "train_pst.estimate_generation_ks", return_value=(np.array([777.0]), None)))
+        mixed_k = stack.enter_context(patch("train_pst.estimate_mixed_k", return_value=888.0))
+        execute = stack.enter_context(patch.object(
+            workflow, "run_command", side_effect=subprocess.CalledProcessError(1, "train")))
+        with self.assertRaises(subprocess.CalledProcessError):
+            workflow.train(run)
+        command = execute.call_args.args[2]
+        self.assertEqual(command[command.index("--model") + 1], "mirrored")
+        self.assertEqual(command[command.index("--k") + 1], "1500.5")
+        self.assertEqual(command[command.index("--removal-penalty") + 1], "2.5")
+        inputs = json.loads((run / "training/inputs.json").read_text())
+        self.assertEqual(inputs["options"], self.config["train"])
+        self.assertEqual(inputs["options"]["removal_penalty"], 2.5)
+        for estimate in (generation_ks, mixed_k):
+            dataset = estimate.call_args.args[0]
+            np.testing.assert_array_equal(estimate.call_args.kwargs["indices"],
+                                          dataset.training_indices)
+
+    def test_training_forwards_explicit_zero_removal_penalty(self) -> None:
+        """追加損失を無効にする0もCLI境界で省略しない。"""
+        write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
+                   games=list(range(1, 81)))
+        self.config["generate"]["seeds"] = []
+        run, stack = self.prepared()
+        stack.enter_context(patch(
+            "train_pst.estimate_generation_ks", return_value=(np.array([777.0]), None)))
+        stack.enter_context(patch("train_pst.estimate_mixed_k", return_value=888.0))
+        execute = stack.enter_context(patch.object(
+            workflow, "run_command", side_effect=subprocess.CalledProcessError(1, "train")))
+        with self.assertRaises(subprocess.CalledProcessError):
+            workflow.train(run)
+        command = execute.call_args.args[2]
+        self.assertEqual(command[command.index("--removal-penalty") + 1], "0")
+        inputs = json.loads((run / "training/inputs.json").read_text())
+        self.assertEqual(inputs["options"]["removal_penalty"], 0)
 
 
 if __name__ == "__main__":

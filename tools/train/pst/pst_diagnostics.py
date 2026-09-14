@@ -32,6 +32,7 @@ from taper import (
 )
 from train_pst import (
     QUANTIZATION_ERROR_LIMIT,
+    PAWN_STATE,
     REACHABLE_NON_ROYAL_STATES,
     ROYAL_STATES,
     build_targets,
@@ -71,16 +72,23 @@ def rust_probe(binary: Path) -> Probe:
     return probe
 
 
-def derived_piece_values(weights: NDArray[np.int16]) -> list[int]:
-    """1端点の全升平均から、盤上に現れ得る非王駒の駒価値を導出する(0.5は0から遠ざける)。"""
-    table = weights.astype(np.int64)
+def derived_piece_values(
+    middlegame: NDArray[np.int16], endgame: NDArray[np.int16], mean_phi: float
+) -> list[int]:
+    """訓練局面の平均φで両端点を合成し、47状態の探索用駒価値を導く。"""
+    if not np.isfinite(mean_phi) or not 0 <= mean_phi <= 1:
+        raise ValueError("mean phase ratio must be finite and in 0..1")
+    table = mean_phi * middlegame.astype(np.float64) + (1 - mean_phi) * endgame.astype(np.float64)
     values = []
     for state in range(PIECE_STATE_COUNT):
-        own = int(table[state * 144 : (state + 1) * 144].sum())
-        enemy = int(table[(PIECE_STATE_COUNT + state) * 144 : (PIECE_STATE_COUNT + state + 1) * 144].sum())
+        own = table[state * 144 : (state + 1) * 144].sum()
+        enemy = table[(PIECE_STATE_COUNT + state) * 144 : (PIECE_STATE_COUNT + state + 1) * 144].sum()
         numerator = own - enemy
-        magnitude = (abs(numerator) + 1_152) // 2_304
+        magnitude = int(np.floor(abs(numerator) / 2_304 + 0.5))
         values.append(magnitude if numerator >= 0 else -magnitude)
+    royal = max(values[state] for state in REACHABLE_NON_ROYAL_STATES) + values[PAWN_STATE]
+    for state in ROYAL_STATES:
+        values[state] = royal
     return values
 
 
@@ -188,7 +196,7 @@ def diagnose(
     if not np.array_equal(models["base"].piece_values, models["candidate"].piece_values):
         raise ValueError("candidate piece values differ from the base")
     float_weights = np.load(candidate_float_path)
-    teacher_ks, _ = estimate_generation_ks(dataset)
+    teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
     samples = band_samples(dataset, sample_size, seed)
     losses = _band_losses(dataset, models, teacher_ks, lambda_value)
     training_counts = band_counts(dataset, dataset.training_indices)
@@ -282,6 +290,7 @@ def diagnose(
     promotions = {name: probe(path, representative_path, True) for name, path in (("base", base_path), ("candidate", candidate_path))}
     labels = ["initial"] + [f"band{band}" for band in sorted(representative_candidates)]
     report["representatives"] = []
+    report["rust_promotion_agreement"] = {name: 0 for name in models}
     for position, label in enumerate(labels):
         entry = {"label": label, "index": None if position == 0 else representative_indices[position - 1]}
         entry.update(removal[position])
@@ -290,6 +299,16 @@ def diagnose(
             probed = promotions[name][position]
             if probed["eval"] != entry["evaluations"][name]:
                 raise ValueError(f"Rust evaluation disagrees with the Python reference for {name}")
+            moves = probed["promotions"]
+            if moves:
+                after = np.zeros(len(moves), dtype=RECORD_DTYPE)
+                for field in ("board", "stm", "lion"):
+                    after[field] = [move["after"][field] for move in moves]
+                python_delta = -models[name].evaluate(after).astype(np.int64) - entry["evaluations"][name]
+                rust_delta = np.array([move["delta"] for move in moves], dtype=np.int64)
+                if not np.array_equal(rust_delta, python_delta):
+                    raise ValueError(f"Rust promotion delta disagrees with the Python reference for {name}")
+                report["rust_promotion_agreement"][name] += len(moves)
             entry["promotions"][name] = probed["promotions"] or None
         entry["promotion_reason"] = None if promotions["base"][position]["promotions"] else "no legal promotion"
         report["representatives"].append(entry)
@@ -298,7 +317,7 @@ def diagnose(
         "fixed": [int(models["base"].piece_values[s]) for s in REACHABLE_NON_ROYAL_STATES],
     }
     for name, model in models.items():
-        for endpoint, weights in (("middlegame", model.middlegame), ("endgame", model.endgame)):
-            derived = derived_piece_values(weights)
+        for endpoint, phi in (("middlegame", 1.0), ("endgame", 0.0)):
+            derived = derived_piece_values(model.middlegame, model.endgame, phi)
             report["derived_piece_values"][f"{name}_{endpoint}"] = [derived[s] for s in REACHABLE_NON_ROYAL_STATES]
     return report

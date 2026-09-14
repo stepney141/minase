@@ -9,11 +9,20 @@ import re
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import torch
 
-from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices
+from features import (
+    FEATURE_COUNT,
+    INITIAL_BOARD,
+    MIRRORED_FEATURE_COUNT,
+    PADDING_INDEX,
+    canonical_feature_indices,
+    feature_indices,
+    mirror,
+)
 from mnsd import Dataset, HEADER_LENGTH, RECORD_DTYPE, RECORD_LENGTH, hash64
 from taper import band_indices, phase_numerators, phase_ratios, piece_counts
 from train_pst import (
@@ -22,13 +31,17 @@ from train_pst import (
     build_targets,
     estimate_generation_ks,
     estimate_k,
+    expanded_model_weights,
+    float_evaluate,
     float_weights_path,
     initial_piece_values,
     integer_evaluate,
     main as train_main,
     make_model,
     model_logits,
+    quantize,
     read_mnpt,
+    train_epoch,
     write_mnpt,
 )
 
@@ -167,7 +180,7 @@ class TeacherScaleTest(unittest.TestCase):
             dataset = Dataset([first, second])
             self.assertEqual(dataset.file_generations.tolist(), [0, 1])
 
-            generation_ks, generation_counts = estimate_generation_ks(dataset)
+            generation_ks, generation_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
             expected_ks = []
             expected_counts = []
             for generation in range(dataset.generation_count):
@@ -301,6 +314,8 @@ class TrainingPathTest(unittest.TestCase):
                         "10000",
                         "--device",
                         "cpu",
+                        "--removal-penalty",
+                        "0",
                     ]
                 )
             output = stdout.getvalue()
@@ -438,7 +453,7 @@ class TaperedFormatTest(unittest.TestCase):
             arguments = [
                 "train", "--data", str(data), "--output", str(output_path), "--init", str(initial_path),
                 "--model", "single", "--k", "200", "--lr", "1", "--epochs", "1", "--batch", "16",
-                "--seed", "1", "--validation-sample", "100", "--device", "cpu",
+                "--seed", "1", "--validation-sample", "100", "--device", "cpu", "--removal-penalty", "0",
             ]
             with redirect_stdout(StringIO()):
                 with self.assertRaises(ValueError):
@@ -453,6 +468,243 @@ class TaperedFormatTest(unittest.TestCase):
             # 初期局面は q=90 なので、終盤側の勾配は0で初期値のまま残る。
             np.testing.assert_array_equal(endgame, weights)
             self.assertTrue(np.any(middlegame != 0))
+
+
+class MirroredModelTest(unittest.TestCase):
+    """strength-stage7.md「鏡映の重み共有」の全特徴と学習経路の契約を検証する。"""
+
+    def test_canonical_mapping_preserves_ranks_and_has_exactly_6840_pairs(self) -> None:
+        # 各陣営・駒状態と先獅子の表は12段×12筋で、左右の筋だけを同一視する。
+        indices = np.arange(FEATURE_COUNT, dtype=np.int32).reshape(95, 12, 12)
+        canonical = canonical_feature_indices(indices)
+        np.testing.assert_array_equal(canonical, canonical[:, :, ::-1])
+        values, counts = np.unique(canonical, return_counts=True)
+        np.testing.assert_array_equal(values, np.arange(6840))
+        np.testing.assert_array_equal(counts, 2)
+        self.assertEqual(MIRRORED_FEATURE_COUNT, 6840)
+        # 先頭、中央、次段、次状態、敵駒、先獅子、末尾、paddingの境界。
+        np.testing.assert_array_equal(
+            canonical_feature_indices(np.array([0, 5, 6, 11, 12, 144, 6768, 13536, 13679, 13680])),
+            [0, 5, 5, 0, 6, 72, 3384, 6768, 6834, 6840],
+        )
+
+    def test_initialization_averages_each_endpoint_and_padding_stays_zero_after_update(self) -> None:
+        random = np.random.default_rng(731)
+        initial = random.integers(-16_000, 16_000, size=(FEATURE_COUNT, 2)).astype(np.float32) / 8.0
+        model = make_model(torch.from_numpy(initial), torch.device("cpu"), "mirrored")
+        self.assertEqual(tuple(model.weight.shape), (6841, 2))
+        self.assertEqual(sum(parameter.numel() for parameter in model.parameters()), 6841 * 2)
+        expected = (initial.reshape(95, 12, 12, 2) + initial.reshape(95, 12, 12, 2)[:, :, ::-1]) / 2
+        np.testing.assert_array_equal(expanded_model_weights(model).detach().numpy(), expected.reshape(FEATURE_COUNT, 2))
+        # 全特徴を個別に入力して、各鏡映対が片側の更新を共有することを確認する。
+        features = torch.arange(FEATURE_COUNT + 1).reshape(-1, 1)
+        phi = torch.linspace(0, 1, FEATURE_COUNT + 1)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+        model_logits(model, features, phi, 200.0).sum().backward()
+        optimizer.step()
+        expanded = expanded_model_weights(model).detach().numpy().reshape(95, 12, 12, 2)
+        np.testing.assert_array_equal(expanded, expanded[:, :, ::-1])
+        np.testing.assert_array_equal(model(torch.tensor([[PADDING_INDEX]])).detach().numpy(), 0)
+
+    def test_expansion_matches_tapered_predictions_and_initial_perspectives(self) -> None:
+        random = np.random.default_rng(432)
+        initial = torch.from_numpy(random.normal(0.0, 100.0, (FEATURE_COUNT, 2)).astype(np.float32))
+        model = make_model(initial, torch.device("cpu"), "mirrored")
+        expanded = expanded_model_weights(model).detach()
+        tapered = make_model(expanded, torch.device("cpu"), "tapered")
+        # 0, 2, 47, 92枚と全盤面の境界、両視点、先獅子対象升を含む。
+        boards = np.zeros((6, 144), dtype=np.uint8)
+        boards[1, [5, 138]] = [12, 76]
+        boards[2, :47] = 1
+        boards[3] = INITIAL_BOARD
+        boards[4] = INITIAL_BOARD
+        boards[5, :] = random.choice([1, 30, 65, 94], 144)
+        stm = np.array([0, 1, 0, 0, 1, 1], dtype=np.uint8)
+        lion = np.array([255, 255, 17, 255, 255, 143], dtype=np.uint8)
+        features = feature_indices(boards, stm, lion)
+        phi = torch.from_numpy(phase_ratios(boards).astype(np.float32))
+        logits = model_logits(model, torch.from_numpy(features), phi, 1072.6529541015625)
+        torch.testing.assert_close(logits, model_logits(tapered, torch.from_numpy(features), phi, 1072.6529541015625))
+        reflected_board, reflected_lion = mirror(boards, lion)
+        reflected = feature_indices(reflected_board, stm, reflected_lion)
+        torch.testing.assert_close(logits, model_logits(model, torch.from_numpy(reflected), phi, 1072.6529541015625))
+        floating = float_evaluate(expanded[:, 0].numpy(), expanded[:, 1].numpy(), features, phase_ratios(boards))
+        self.assertAlmostEqual(float(floating[3]), float(floating[4]), delta=0.001)
+        self.assertAlmostEqual(float(logits[3].detach()), float(logits[4].detach()), delta=0.000001)
+        quantized = quantize(expanded.numpy())
+        integer = integer_evaluate(quantized[:, 0], quantized[:, 1], features, phase_numerators(boards))
+        self.assertEqual(int(integer[3]), int(integer[4]))
+        np.testing.assert_array_equal(
+            integer,
+            integer_evaluate(quantized[:, 0], quantized[:, 1], reflected, phase_numerators(boards)),
+        )
+
+    def test_training_skips_mirror_augmentation_and_exports_symmetric_mnpt_v2(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "data.mnsd"
+            initial_path = root / "initial.mnpt"
+            output_path = root / "trained.mnpt"
+            board = INITIAL_BOARD.copy()
+            board[[0, 60]] = board[[60, 0]]
+            write_mnsd(data, seed=5, checksum=b"a" * 32, games=list(range(64)), scores=[300] * 64, results=[2] * 64, board=board)
+            weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
+            write_mnpt(initial_path, weights, weights, PIECE_VALUES, 200.0)
+            arguments = [
+                "train", "--data", str(data), "--output", str(output_path), "--init", str(initial_path),
+                "--model", "mirrored", "--k", "200", "--lr", "0.1", "1", "--epochs", "1", "--batch", "16",
+                "--seed", "1", "--validation-sample", "100", "--device", "cpu", "--removal-penalty", "0",
+            ]
+            with patch("train_pst.mirror", side_effect=AssertionError("mirrored must not augment data")):
+                with redirect_stdout(StringIO()):
+                    train_main(arguments)
+            middlegame, endgame, values, k = read_mnpt(output_path)
+            self.assertEqual(struct.unpack_from("<I", output_path.read_bytes(), 4)[0], 2)
+            self.assertEqual(k, 200.0)
+            np.testing.assert_array_equal(values, PIECE_VALUES)
+            for endpoint in (middlegame, endgame):
+                table = endpoint.reshape(95, 12, 12)
+                np.testing.assert_array_equal(table, table[:, :, ::-1])
+            np.testing.assert_array_equal(endgame, weights)
+            self.assertTrue(np.any(middlegame != 0))
+            with np.load(float_weights_path(output_path)) as floating:
+                for endpoint in ("middlegame", "endgame"):
+                    table = floating[endpoint].reshape(95, 12, 12)
+                    np.testing.assert_array_equal(table, table[:, :, ::-1])
+
+    def test_tapered_training_retains_mirror_augmentation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory) / "data.mnsd"
+            write_mnsd(data, seed=5, checksum=b"a" * 32, games=list(range(64)))
+            device = torch.device("cpu")
+            model = make_model(torch.zeros((FEATURE_COUNT, 2)), device, "tapered")
+            dataset = Dataset([data])
+            with patch("train_pst.mirror", wraps=mirror) as augment:
+                train_epoch(
+                    model, torch.optim.SGD(model.parameters(), lr=0.1), dataset,
+                    np.array([200.0]), 200.0, 0.75, 64,
+                    torch.Generator().manual_seed(1), device,
+                    indices=dataset.training_indices, removal_penalty=0.0, removal_reference=None,
+                )
+            self.assertTrue(augment.called)
+
+
+class WeightProjectionTest(unittest.TestCase):
+    """各Adam更新後に、MNPTのi16/8範囲へ射影する承認済みの契約を検証する。"""
+
+    LOWER_CP = -4096.0
+    UPPER_CP = 4095.875
+
+    def make_case(self, path: Path, kind: str, direction: str):
+        # 48枚なら両端点に勾配が流れる。正負24枚ずつの初期評価を0にして、
+        # 飽和していない実際の損失からAdamが上下の保存境界を越えるようにする。
+        board = np.zeros(144, dtype=np.uint8)
+        board[:48] = 1
+        games = np.arange(100, dtype=np.uint32)
+        game = int(games[hash64(5, games) % 20 != 0][0])
+        write_mnsd(
+            path, seed=5, checksum=b"p" * 32, games=[game, game], board=board,
+            scores=[32767 if direction == "upper" else -32768] * 2,
+            results=[2 if direction == "upper" else 0] * 2,
+        )
+        dataset = Dataset([path])
+        self.assertEqual(dataset.training_indices.size, 2)
+        columns = 1 if kind == "single" else 2
+        initial = np.full((FEATURE_COUNT, columns), 0.03125, dtype=np.float32)
+        if columns == 2:
+            initial[:, 1] = -0.03125
+        initial[29 * 144:29 * 144 + 24] = 4095.0
+        initial[29 * 144 + 24:29 * 144 + 48] = -4095.0
+        model = make_model(torch.from_numpy(initial), torch.device("cpu"), kind)
+        return model, dataset
+
+    def run_epoch(self, model, optimizer, dataset) -> None:
+        train_epoch(
+            model, optimizer, dataset, np.array([1072.6529541015625]),
+            1072.6529541015625, 0.75, 1,
+            torch.Generator().manual_seed(1), torch.device("cpu"),
+            indices=dataset.training_indices, removal_penalty=0.0, removal_reference=None,
+        )
+
+    def test_each_adam_step_projects_before_the_next_batch_and_epoch_end(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for kind in ("single", "tapered", "mirrored"):
+                for direction in ("upper", "lower"):
+                    with self.subTest(model=kind, direction=direction):
+                        model, dataset = self.make_case(Path(directory) / f"{kind}-{direction}.mnsd", kind, direction)
+                        optimizer = torch.optim.Adam(model.parameters(), lr=3.0)
+                        before_forward = []
+                        after_adam = []
+
+                        def before(_model, _inputs):
+                            before_forward.append(model.weight.detach().numpy().copy())
+
+                        def after(_optimizer, _args, _kwargs):
+                            after_adam.append(model.weight.detach().numpy().copy())
+
+                        forward_hook = model.register_forward_pre_hook(before)
+                        step_hook = optimizer.register_step_post_hook(after)
+                        try:
+                            self.run_epoch(model, optimizer, dataset)
+                        finally:
+                            forward_hook.remove()
+                            step_hook.remove()
+                        self.assertEqual(len(before_forward), 2)
+                        self.assertEqual(len(after_adam), 2)
+                        observed = before_forward[1:] + [model.weight.detach().numpy().copy()]
+                        for raw, weights in zip(after_adam, observed):
+                            crossed = raw > self.UPPER_CP if direction == "upper" else raw < self.LOWER_CP
+                            self.assertTrue(np.all(crossed.any(axis=0)), "each endpoint must cross the boundary after Adam")
+                            self.assertTrue(np.all(weights >= self.LOWER_CP), "next batch or epoch end sees a weight below the lower bound")
+                            self.assertTrue(np.all(weights <= self.UPPER_CP), "next batch or epoch end sees a weight above the upper bound")
+                            np.testing.assert_array_equal(weights[raw < self.LOWER_CP], self.LOWER_CP)
+                            np.testing.assert_array_equal(weights[raw > self.UPPER_CP], self.UPPER_CP)
+                            inside = (raw >= self.LOWER_CP) & (raw <= self.UPPER_CP)
+                            self.assertTrue(np.any(inside & (raw * 8 != np.rint(raw * 8))))
+                            np.testing.assert_array_equal(weights[inside], raw[inside])
+                            np.testing.assert_array_equal(weights[-1], 0)
+                        if kind == "mirrored":
+                            expanded = expanded_model_weights(model).detach().numpy().reshape(95, 12, 12, 2)
+                            np.testing.assert_array_equal(expanded, expanded[:, :, ::-1])
+
+    def test_nonfinite_adam_weights_are_rejected_before_any_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for kind in ("single", "tapered", "mirrored"):
+                for endpoint in range(1 if kind == "single" else 2):
+                    for value in (np.nan, np.inf, -np.inf):
+                        with self.subTest(model=kind, endpoint=endpoint, value=value):
+                            model, dataset = self.make_case(Path(directory) / f"{kind}-{endpoint}.mnsd", kind, "upper")
+                            optimizer = torch.optim.Adam(model.parameters(), lr=3.0)
+                            after_adam = []
+
+                            def inject(_optimizer, _args, _kwargs):
+                                # 実Adam更新後の異常を作り、有限な範囲外値も残して
+                                # 非有限値の拒否より先にclampが走らないことを検証する。
+                                with torch.no_grad():
+                                    model.weight[0, endpoint] = float(value)
+                                after_adam.append(model.weight.detach().numpy().copy())
+
+                            hook = optimizer.register_step_post_hook(inject)
+                            try:
+                                with self.assertRaises(ValueError):
+                                    self.run_epoch(model, optimizer, dataset)
+                            finally:
+                                hook.remove()
+                            self.assertEqual(len(after_adam), 1)
+                            raw = after_adam[0]
+                            self.assertTrue(np.any(raw[np.isfinite(raw)] > self.UPPER_CP))
+                            np.testing.assert_array_equal(model.weight.detach().numpy(), raw)
+
+    def test_quantize_keeps_i16_boundaries_and_rejects_invalid_weights(self) -> None:
+        # 補間計画の1/8cp単位のi16形式から直接得られる保存境界。
+        weights = np.array([self.LOWER_CP, 0.0, self.UPPER_CP], dtype=np.float32)
+        np.testing.assert_array_equal(quantize(weights), [-32768, 0, 32767])
+        for value in (-4096.125, 4096.0):
+            with self.subTest(value=value), self.assertRaises(OverflowError):
+                quantize(np.array([value], dtype=np.float32))
+        for value in (np.nan, np.inf, -np.inf):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                quantize(np.array([value], dtype=np.float32))
 
 
 if __name__ == "__main__":

@@ -70,7 +70,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     fields = {
         "run": {"directory", "base_commit", "data"},
         "generate": {"seeds", "games", "nodes", "concurrency", "max_ply", "hash_mb", "random_moves"},
-        "train": {"model", "learning_rate", "epochs", "batch", "seed", "lambda", "device", "validation_sample"},
+        "train": {"model", "k", "learning_rate", "epochs", "batch", "seed", "lambda",
+                  "removal_penalty", "device", "validation_sample"},
         "diagnose": {"sample_size", "seed"},
     }
     if set(config) != set(fields):
@@ -108,12 +109,16 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     for key in ("epochs", "batch", "validation_sample"):
         integer(training[key], f"train.{key}", 1, 2**31 - 1)
     integer(training["seed"], "train.seed", 0, 2**63 - 1)
+    number(training["k"], "train.k", sys.float_info.min, sys.float_info.max)
     number(training["learning_rate"], "train.learning_rate", sys.float_info.min, sys.float_info.max)
     number(training["lambda"], "train.lambda", 0, 1)
+    number(training["removal_penalty"], "train.removal_penalty", 0, sys.float_info.max)
     if training["device"] not in ("cpu", "cuda"):
         raise ValueError("train.device must explicitly be cpu or cuda")
-    if training["model"] not in ("single", "tapered"):
-        raise ValueError("train.model must explicitly be single or tapered")
+    if training["model"] not in ("single", "tapered", "mirrored"):
+        raise ValueError("train.model must explicitly be single, tapered, or mirrored")
+    if training["removal_penalty"] > 0 and training["model"] != "mirrored":
+        raise ValueError("positive train.removal_penalty requires train.model = mirrored")
     integer(config["diagnose"]["seed"], "diagnose.seed", 0, 2**63 - 1)
     integer(config["diagnose"]["sample_size"], "diagnose.sample_size", 1, 2**31 - 1)
     return config
@@ -170,6 +175,7 @@ def prepare(config_path: Path) -> None:
     from train_pst import read_mnpt
     config = load_config(config_path)
     base = git(ROOT, "rev-parse", config["run"]["base_commit"] + "^{commit}")
+    probe_commit = git(ROOT, "rev-parse", "HEAD")
     config["run"]["base_commit"] = base
     existing = check_existing_data(config)
     run = Path(config["run"]["directory"])
@@ -182,14 +188,19 @@ def prepare(config_path: Path) -> None:
         shutil.copyfile(generator / "nets/pst.bin", run / "pst-base.bin")
         read_mnpt(run / "pst-base.bin")
         run_command(run, "build", ["cargo", "build", "--release", "--locked", "--target-dir",
-                    str(generator / "target"), "--bin", "selfplay_gen", "--bin", "pst_probe"], generator)
+                    str(generator / "target"), "--bin", "selfplay_gen"], generator)
+        probe = run / "probe"
+        run_command(run, "probe-worktree", ["git", "worktree", "add", "--detach", str(probe), probe_commit], ROOT)
+        run_command(run, "probe-build", ["cargo", "build", "--release", "--locked", "--target-dir",
+                    str(probe / "target"), "--bin", "pst_probe"], probe)
         write_json(run / "prepared.json", {
             "config": config, "existing_data": existing, "sources": source_hashes(),
             "base_sha256": digest(run / "pst-base.bin"),
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
             "generator_sha256": digest(generator / "target/release/selfplay_gen"),
-            "probe_sha256": digest(generator / "target/release/pst_probe"),
+            "probe_commit": probe_commit,
+            "probe_sha256": digest(probe / "target/release/pst_probe"),
             "repository": str(ROOT),
         })
     print(f"Prepared {run}")
@@ -286,14 +297,16 @@ def train(run: Path) -> None:
     training_count, validation_count = dataset.training_indices.size, dataset.validation_indices.size
     if not training_count or not validation_count:
         raise ValueError("training and validation records must both be nonempty")
-    teacher_ks, _ = estimate_generation_ks(dataset)
-    k = estimate_mixed_k(dataset)
+    teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
+    mixed_k = estimate_mixed_k(dataset, indices=dataset.training_indices)
+    k = config["k"]
     del dataset
     destination.mkdir()
     steps = (int(training_count) + config["batch"] - 1) // config["batch"]
     write_json(destination / "inputs.json", {
         "data": files,
-        "teacher_ks": teacher_ks.tolist(), "k": k, "training_records": int(training_count),
+        "teacher_ks": teacher_ks.tolist(), "k": k, "mixed_k": mixed_k,
+        "training_records": int(training_count),
         "validation_records": int(validation_count), "steps_per_epoch": steps,
         "total_steps": steps * config["epochs"], "options": config,
     })
@@ -303,11 +316,13 @@ def train(run: Path) -> None:
         "device_name": torch.cuda.get_device_name(0) if config["device"] == "cuda" else platform.processor(),
         "packages": sorted(f"{d.metadata['Name']}=={d.version}" for d in distributions()),
     })
-    print(f"K={k}, training={training_count}, validation={validation_count}, steps/epoch={steps}", flush=True)
+    print(f"K={k}, mixed K={mixed_k} (reference), training={training_count}, "
+          f"validation={validation_count}, steps/epoch={steps}", flush=True)
     command = [sys.executable, str(SOURCES / "train_pst.py"), "train", "--data", *paths,
                "--init", str(run / "pst-base.bin"), "--output", str(destination / "pst.bin"), "--k", repr(k)]
     for key, option in (("model", "model"), ("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
-                        ("seed", "seed"), ("lambda", "lambda"), ("device", "device"),
+                        ("seed", "seed"), ("lambda", "lambda"),
+                        ("removal_penalty", "removal-penalty"), ("device", "device"),
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
     run_command(run, "train", command, ROOT)
@@ -334,15 +349,18 @@ def diagnose(run: Path) -> None:
     completion = json.loads((run / "training/complete.json").read_text())
     verify_file(candidate, completion["sha256"])
     verify_file(float_weights_path(candidate), completion["float_sha256"])
-    probe = run / "generator/target/release/pst_probe"
-    verify_file(probe, state["probe_sha256"])
+    probe = run / "probe"
+    if git(probe, "rev-parse", "HEAD") != state["probe_commit"] or git(probe, "status", "--porcelain"):
+        raise ValueError("probe worktree changed since prepare")
+    binary = probe / "target/release/pst_probe"
+    verify_file(binary, state["probe_sha256"])
     paths = [item["path"] for item in training_data(run, state)]
     destination = run / "diagnostics"
     destination.mkdir()
     config = state["config"]["diagnose"]
     report = diagnose_weights(Dataset(paths), run / "pst-base.bin", candidate, float_weights_path(candidate),
                               destination, config["sample_size"], config["seed"],
-                              state["config"]["train"]["lambda"], diagnose_probe(probe))
+                              state["config"]["train"]["lambda"], diagnose_probe(binary))
     write_json(destination / "report.json", report)
     print(f"Diagnostics: {destination / 'report.json'}")
 

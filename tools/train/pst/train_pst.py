@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import math
 from pathlib import Path
@@ -17,9 +18,18 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as torch_functional
 
-from features import FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, feature_indices, mirror
+from features import (
+    BOARD_FEATURE_COUNT,
+    FEATURE_COUNT,
+    INITIAL_BOARD,
+    MIRRORED_FEATURE_COUNT,
+    PADDING_INDEX,
+    canonical_feature_indices,
+    feature_indices,
+    mirror,
+)
 from mnsd import Dataset, NO_LION_SQUARE
-from taper import PHASE_DIVISOR, phase_numerators, phase_ratios
+from taper import PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
 
 
 HEADER_LENGTH = 80
@@ -32,7 +42,8 @@ FILE_LENGTH = HEADER_LENGTH + BODY_LENGTH
 EVALUATION_LIMIT = 28_999
 # 設計書「量子化と整数推論」の合格条件: 浮動小数点評価との平均絶対誤差2センチポーン以下。
 QUANTIZATION_ERROR_LIMIT = 2.0
-MODEL_KINDS = ("single", "tapered")
+REMOVAL_MARGIN_CP = 0.25
+MODEL_KINDS = ("single", "tapered", "mirrored")
 PIECE_VALUES = np.array(
     [
         100, 125, 375, 375, 500, 500, 625, 750, 875, 1000,
@@ -181,16 +192,52 @@ def estimate_k(scores: NDArray[np.int16], results: NDArray[np.uint8]) -> float:
     return (lower + upper) / 2.0
 
 
-def make_model(initial: Tensor, device: torch.device) -> nn.Embedding:
-    """指定初期値(特徴数×列数)からpadding行付き線形PSTモデルを作る。列数は単一PSTで1、2端点で2。"""
-    if initial.ndim != 2 or initial.shape[0] != FEATURE_COUNT or initial.shape[1] not in (1, 2):
-        raise ValueError("initial weights must have shape (FEATURE_COUNT, 1 or 2)")
-    columns = initial.shape[1]
+class MirroredEmbedding(nn.Embedding):
+    """左右の鏡映対が序中盤・終盤の2端点を共有するPSTモデル。"""
+
+    def __init__(self, initial: Tensor, device: torch.device) -> None:
+        super().__init__(
+            MIRRORED_FEATURE_COUNT + 1, 2,
+            padding_idx=MIRRORED_FEATURE_COUNT, device=device,
+        )
+        self.register_buffer(
+            "canonical_indices",
+            torch.as_tensor(
+                canonical_feature_indices(np.arange(FEATURE_COUNT + 1)),
+                dtype=torch.long, device=device,
+            ),
+        )
+        tables = initial.reshape(-1, 12, 12, 2)
+        shared = (tables[:, :, :6] + tables[:, :, 6:].flip(2)) / 2.0
+        with torch.no_grad():
+            self.weight.zero_()
+            self.weight[:MIRRORED_FEATURE_COUNT].copy_(shared.reshape(-1, 2))
+
+    def forward(self, indices: Tensor) -> Tensor:
+        return super().forward(self.canonical_indices[indices.long()])
+
+
+def make_model(initial: Tensor, device: torch.device, kind: str) -> nn.Embedding:
+    """指定種別と初期値(特徴数×端点数)からpadding行付き線形PSTモデルを作る。"""
+    if kind not in MODEL_KINDS:
+        raise ValueError(f"unknown model kind: {kind}")
+    columns = 1 if kind == "single" else 2
+    if initial.shape != (FEATURE_COUNT, columns):
+        raise ValueError(f"{kind} initial weights must have shape ({FEATURE_COUNT}, {columns})")
+    if kind == "mirrored":
+        return MirroredEmbedding(initial, device)
     model = nn.Embedding(FEATURE_COUNT + 1, columns, padding_idx=PADDING_INDEX, device=device)
     with torch.no_grad():
         model.weight.zero_()
         model.weight[:FEATURE_COUNT].copy_(initial)
     return model
+
+
+def expanded_model_weights(model: nn.Embedding) -> Tensor:
+    """学習パラメータを量子化前の全13,680特徴の重みへ展開する。"""
+    if isinstance(model, MirroredEmbedding):
+        return model.weight[model.canonical_indices[:FEATURE_COUNT]]
+    return model.weight[:FEATURE_COUNT]
 
 
 def phase_weights(phi: Tensor, columns: int) -> Tensor:
@@ -213,34 +260,46 @@ def model_columns(model: nn.Embedding) -> int:
     return model.weight.shape[1]
 
 
-def _training_scores_results(
-    dataset: Dataset, generation: int | None = None
+def _selected_indices(dataset: Dataset, indices: NDArray[np.int64]) -> NDArray[np.int64]:
+    """呼出側が明示した局面集合を検証する。訓練・検証の分割は変更しない。"""
+    indices = np.asarray(indices)
+    if indices.ndim != 1 or indices.dtype.kind not in "iu" or indices.size == 0:
+        raise ValueError("indices must be a nonempty one-dimensional integer array")
+    if np.any(indices < 0) or np.any(indices >= dataset.record_count):
+        raise ValueError("indices are outside the dataset")
+    return indices.astype(np.int64, copy=False)
+
+
+def _selected_scores_results(
+    dataset: Dataset, indices: NDArray[np.int64], generation: int | None
 ) -> tuple[NDArray[np.int16], NDArray[np.uint8]]:
-    """指定世代または全世代の訓練用探索値と結果を集める。"""
+    """明示した局面集合から、指定世代または全世代の探索値と結果を集める。"""
     score_chunks: list[NDArray[np.int16]] = []
     result_chunks: list[NDArray[np.uint8]] = []
-    for file_generation, records, validation in zip(
-        dataset.file_generations, dataset.records, dataset.validation_masks
-    ):
+    for file_index, (file_generation, records) in enumerate(zip(dataset.file_generations, dataset.records)):
         if generation is not None and file_generation != generation:
             continue
-        training = ~validation
-        score_chunks.append(np.asarray(records["score"][training], dtype=np.int16))
-        result_chunks.append(np.asarray(records["result"][training], dtype=np.uint8))
+        start, end = dataset.offsets[file_index:file_index + 2]
+        local = indices[(indices >= start) & (indices < end)] - start
+        score_chunks.append(np.asarray(records["score"][local], dtype=np.int16))
+        result_chunks.append(np.asarray(records["result"][local], dtype=np.uint8))
     scores = np.concatenate(score_chunks)
     results = np.concatenate(result_chunks)
     if scores.size == 0:
         scope = "dataset" if generation is None else f"generation {generation}"
-        raise ValueError(f"{scope} has no training records")
+        raise ValueError(f"{scope} has no selected records")
     return scores, results
 
 
-def estimate_generation_ks(dataset: Dataset) -> tuple[NDArray[np.float64], list[int]]:
-    """各世代の訓練レコードから教師Kと件数を求める。"""
+def estimate_generation_ks(
+    dataset: Dataset, *, indices: NDArray[np.int64]
+) -> tuple[NDArray[np.float64], list[int]]:
+    """明示した局面集合だけから各世代の教師Kと件数を求める。"""
+    indices = _selected_indices(dataset, indices)
     values = np.empty(dataset.generation_count, dtype=np.float64)
     counts: list[int] = []
     for generation in range(dataset.generation_count):
-        scores, results = _training_scores_results(dataset, generation)
+        scores, results = _selected_scores_results(dataset, indices, generation)
         values[generation] = estimate_k(scores, results)
         counts.append(int(scores.size))
     return values, counts
@@ -254,13 +313,16 @@ def validation_loss(
     lambda_value: float,
     batch: int,
     device: torch.device,
+    *,
+    indices: NDArray[np.int64],
 ) -> tuple[float, NDArray[np.float64]]:
-    """検証損失をバッチ単位で計算し、全体値と世代別値を返す。"""
+    """明示した局面集合の純粋なBCEを計算し、全体値と世代別値を返す。"""
+    indices = _selected_indices(dataset, indices)
     generation_sums = np.zeros(dataset.generation_count, dtype=np.float64)
     generation_counts = np.zeros(dataset.generation_count, dtype=np.int64)
     with torch.no_grad():
-        for start in range(0, dataset.validation_indices.size, batch):
-            global_indices = dataset.validation_indices[start : start + batch]
+        for start in range(0, indices.size, batch):
+            global_indices = indices[start : start + batch]
             records = dataset.gather(global_indices)
             generations = dataset.generations(global_indices)
             features = feature_indices(
@@ -295,6 +357,93 @@ def validation_loss(
     )
 
 
+def make_removal_reference(
+    middlegame: NDArray[np.int16], endgame: NDArray[np.int16], device: torch.device
+) -> Tensor:
+    """完全鏡映対称の初期MNPTを、padding付きの整数基準表へ変換する。"""
+    columns = (np.asarray(middlegame), np.asarray(endgame))
+    if any(column.shape != (FEATURE_COUNT,) or column.dtype != np.dtype("int16")
+           for column in columns):
+        raise ValueError("removal reference endpoints must be i16 arrays of length 13680")
+    original = np.stack(columns, axis=1)
+    squares = original.reshape(95, 12, 12, 2)
+    if not np.array_equal(squares, squares[:, :, ::-1, :]):
+        raise ValueError("positive removal penalty requires exactly mirrored initial i16 weights")
+    reference = torch.zeros((FEATURE_COUNT + 1, 2), dtype=torch.int64, device=device)
+    reference[:FEATURE_COUNT] = torch.as_tensor(original.astype(np.int64), device=device)
+    return reference
+
+
+def removal_loss(
+    feature_weights: Tensor, features: Tensor, reference: Tensor, counts: Tensor, k: float
+) -> Tensor:
+    """元局面等重み・対象除去等重みで、基準符号と悪化上限の片側絶対値損失を返す。"""
+    if not math.isfinite(k) or k <= 0.0:
+        raise ValueError("K must be finite and positive")
+    if features.ndim != 2 or features.shape[1] != 145 or features.shape[0] == 0:
+        raise ValueError("removal features must have shape (B, 145) with B > 0")
+    if feature_weights.shape != (*features.shape, 2):
+        raise ValueError("removal weights must have shape (B, 145, 2)")
+    if reference.shape != (FEATURE_COUNT + 1, 2) or reference.dtype != torch.int64:
+        raise ValueError("removal reference must be an i64 table of shape (13681, 2)")
+    if counts.shape != (features.shape[0],) or counts.dtype != torch.int64:
+        raise ValueError("removal counts must be an i64 vector with one value per position")
+    if not bool(torch.isfinite(feature_weights).all()):
+        raise ValueError("removal weights contain a non-finite value")
+
+    q = (counts - 2).clamp(0, PHASE_DIVISOR)
+    after_q = (counts - 3).clamp(0, PHASE_DIVISOR)
+
+    def numerators(weights: Tensor) -> tuple[Tensor, Tensor]:
+        sums = weights.sum(dim=1)
+        before = q * sums[:, 0] + (PHASE_DIVISOR - q) * sums[:, 1]
+        remaining = sums[:, None, :] - weights[:, :144, :]
+        after = (after_q[:, None] * remaining[:, :, 0]
+                 + (PHASE_DIVISOR - after_q[:, None]) * remaining[:, :, 1])
+        return before, after
+
+    # 先獅子と王駒も端点和に残す。基準はi16整数、候補は倍精度で差分を求める。
+    base_before, base_after = numerators(reference[features.long()])
+    divisor = PHASE_DIVISOR * 8
+    integer_before = (base_before.sign() * (base_before.abs() // divisor)).clamp(
+        -EVALUATION_LIMIT, EVALUATION_LIMIT
+    )
+    integer_after = (base_after.sign() * (base_after.abs() // divisor)).clamp(
+        -EVALUATION_LIMIT, EVALUATION_LIMIT
+    )
+    base_sign = (integer_after - integer_before[:, None]).sign()
+    base_delta = (base_after - base_before[:, None]).to(torch.float64) / divisor
+    before, after = numerators(feature_weights.to(torch.float64))
+    signed_delta = base_sign * ((after - before[:, None]) / PHASE_DIVISOR)
+
+    board_features = features[:, :144]
+    states = (board_features // 144) % PIECE_STATE_COUNT
+    relative_color = board_features // (PIECE_STATE_COUNT * 144)
+    eligible = ((board_features < BOARD_FEATURE_COUNT) & (states != ROYAL_STATES[0])
+                & (states != ROYAL_STATES[1]) & (base_sign != 0))
+    wrong_direction = (((relative_color == 0) & (base_sign > 0))
+                       | ((relative_color == 1) & (base_sign < 0)))
+    magnitude = base_delta.abs()
+    lower = torch_functional.relu(magnitude.clamp(max=REMOVAL_MARGIN_CP) - signed_delta)
+    upper = torch_functional.relu(signed_delta - magnitude)
+    penalties = lower + wrong_direction * upper
+    per_position = torch.where(eligible, penalties, 0.0).sum(dim=1) / eligible.sum(dim=1).clamp_min(1)
+    loss = per_position.mean() / k
+    if not bool(torch.isfinite(loss)):
+        raise ValueError("removal loss is non-finite")
+    return loss
+
+
+@dataclass(frozen=True)
+class TrainEpochResult:
+    """同じ更新前バッチで測った純BCE、係数適用前の除去損失、総損失を保持する。"""
+
+    bce_loss: float
+    removal_loss: float
+    total_loss: float
+    observations: NDArray[np.int64] | None
+
+
 def train_epoch(
     model: nn.Embedding,
     optimizer: torch.optim.Optimizer,
@@ -306,32 +455,46 @@ def train_epoch(
     generator: torch.Generator,
     device: torch.device,
     count_features: bool = False,
-) -> tuple[float, NDArray[np.int64] | None]:
-    """訓練レコードをバッチごとに読み、鏡映を選んで1エポック学習する。"""
-    order = torch.randperm(
-        dataset.training_indices.size, generator=generator, device=device
-    )
-    total = 0.0
+    *,
+    indices: NDArray[np.int64],
+    removal_penalty: float,
+    removal_reference: Tensor | None,
+) -> TrainEpochResult:
+    """訓練レコードを1エポック学習し、重み共有しないモデルには鏡映拡張を施す。"""
+    indices = _selected_indices(dataset, indices)
+    if not math.isfinite(removal_penalty) or removal_penalty < 0.0:
+        raise ValueError("removal penalty must be finite and nonnegative")
+    if removal_penalty > 0.0:
+        if not isinstance(model, MirroredEmbedding):
+            raise ValueError("positive removal penalty requires model mirrored")
+        if removal_reference is None:
+            raise ValueError("positive removal penalty requires a reference")
+    elif removal_reference is not None:
+        raise ValueError("zero removal penalty requires reference None")
+    order = torch.randperm(indices.size, generator=generator, device=device)
+    bce_total = removal_total = total = 0.0
     observations = (
         np.zeros(FEATURE_COUNT, dtype=np.int64) if count_features else None
     )
     for start in range(0, order.shape[0], batch):
         positions = order[start : start + batch]
-        global_indices = dataset.training_indices[positions.cpu().numpy()]
+        global_indices = indices[positions.cpu().numpy()]
         records = dataset.gather(global_indices)
         generations = dataset.generations(global_indices)
         normal = feature_indices(records["board"], records["stm"], records["lion"])
-        mirrored_board, mirrored_lion = mirror(records["board"], records["lion"])
-        reflected = feature_indices(mirrored_board, records["stm"], mirrored_lion)
         if observations is not None:
             active = normal[normal != PADDING_INDEX]
             observations += np.bincount(active, minlength=FEATURE_COUNT)
-        choose_reflected = torch.rand(
-            positions.shape[0], generator=generator, device=device
-        ) < 0.5
-        selected = normal.copy()
-        reflected_rows = choose_reflected.cpu().numpy()
-        selected[reflected_rows] = reflected[reflected_rows]
+        selected = normal
+        if not isinstance(model, MirroredEmbedding):
+            mirrored_board, mirrored_lion = mirror(records["board"], records["lion"])
+            reflected = feature_indices(mirrored_board, records["stm"], mirrored_lion)
+            choose_reflected = torch.rand(
+                positions.shape[0], generator=generator, device=device
+            ) < 0.5
+            selected = normal.copy()
+            reflected_rows = choose_reflected.cpu().numpy()
+            selected[reflected_rows] = reflected[reflected_rows]
         targets = build_targets(records, teacher_ks, generations, lambda_value)
         device_features = torch.as_tensor(selected, device=device)
         device_targets = torch.as_tensor(targets, device=device)
@@ -340,13 +503,31 @@ def train_epoch(
             phase_ratios(records["board"]).astype(np.float32), device=device
         )
         optimizer.zero_grad(set_to_none=True)
-        loss = torch_functional.binary_cross_entropy_with_logits(
+        bce = torch_functional.binary_cross_entropy_with_logits(
             model_logits(model, device_features, device_phi, k), device_targets
         )
+        if removal_penalty > 0.0:
+            device_counts = torch.as_tensor(piece_counts(records["board"]), device=device)
+            penalty = removal_loss(
+                model(device_features), device_features, removal_reference, device_counts, k
+            )
+            loss = bce + removal_penalty * penalty
+        else:
+            penalty = bce.new_zeros(())
+            loss = bce
         loss.backward()
         optimizer.step()
+        # MNPTの1/8センチポーン単位のi16に収まる範囲で学習する。
+        with torch.no_grad():
+            if not bool(torch.isfinite(model.weight).all()):
+                raise ValueError("trained weights contain a non-finite value")
+            model.weight.clamp_(min=-4096.0, max=4095.875)
+        bce_total += float(bce.item()) * positions.shape[0]
+        removal_total += float(penalty.item()) * positions.shape[0]
         total += float(loss.item()) * positions.shape[0]
-    return total / dataset.training_indices.size, observations
+    return TrainEpochResult(
+        bce_total / indices.size, removal_total / indices.size, total / indices.size, observations
+    )
 
 
 def build_targets(
@@ -452,7 +633,7 @@ def command_init(arguments: argparse.Namespace) -> None:
 def command_estimate_k(arguments: argparse.Namespace) -> None:
     """estimate-kサブコマンドを実行する。"""
     dataset = Dataset(arguments.data)
-    generation_ks, generation_counts = estimate_generation_ks(dataset)
+    generation_ks, generation_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
     for generation, (checksum, k, count) in enumerate(
         zip(dataset.generation_checksums, generation_ks, generation_counts)
     ):
@@ -461,13 +642,14 @@ def command_estimate_k(arguments: argparse.Namespace) -> None:
             f"generation {generation}: files={file_count} checksum={checksum.hex()} "
             f"training_records={count} K={k:.9f}"
         )
-    mixed_k = estimate_mixed_k(dataset)
+    mixed_k = estimate_mixed_k(dataset, indices=dataset.training_indices)
     print(f"mixed: training_records={dataset.training_indices.size} K={mixed_k:.9f}")
 
 
-def estimate_mixed_k(dataset: Dataset) -> float:
-    """全世代の訓練レコードからモデル出力の尺度を求める。"""
-    return estimate_k(*_training_scores_results(dataset))
+def estimate_mixed_k(dataset: Dataset, *, indices: NDArray[np.int64]) -> float:
+    """明示した全世代の局面集合から参考用の混合Kを求める。"""
+    indices = _selected_indices(dataset, indices)
+    return estimate_k(*_selected_scores_results(dataset, indices, None))
 
 
 def _format_validation_loss(
@@ -512,6 +694,10 @@ def command_train(arguments: argparse.Namespace) -> None:
         raise ValueError("every --lr value must be finite and positive")
     if arguments.k <= 0.0 or not math.isfinite(arguments.k):
         raise ValueError("--k must be finite and positive")
+    if not math.isfinite(arguments.removal_penalty) or arguments.removal_penalty < 0.0:
+        raise ValueError("--removal-penalty must be finite and nonnegative")
+    if arguments.removal_penalty > 0.0 and arguments.model != "mirrored":
+        raise ValueError("positive --removal-penalty requires --model mirrored")
 
     torch.manual_seed(arguments.seed)
     if torch.cuda.is_available():
@@ -523,7 +709,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     if dataset.training_indices.size == 0 or dataset.validation_indices.size == 0:
         raise ValueError("game split produced an empty training or validation set")
 
-    teacher_ks, _ = estimate_generation_ks(dataset)
+    teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
     teacher_k_log = ", ".join(
         f"generation {generation} = {k:.9f}"
         for generation, k in enumerate(teacher_ks)
@@ -536,6 +722,10 @@ def command_train(arguments: argparse.Namespace) -> None:
     )
 
     initial_middlegame, initial_endgame, piece_values, _ = read_mnpt(arguments.init)
+    removal_reference = (
+        make_removal_reference(initial_middlegame, initial_endgame, device)
+        if arguments.removal_penalty > 0.0 else None
+    )
     if arguments.model == "single":
         # 単一PSTは1組のパラメータを学習する。初期値の両端点は一致していなければならない。
         if not np.array_equal(initial_middlegame, initial_endgame):
@@ -547,15 +737,16 @@ def command_train(arguments: argparse.Namespace) -> None:
         np.stack(columns, axis=1).astype(np.float32) / 8.0, device=device
     )
     print(f"model: {arguments.model} columns={initial.shape[1]}")
+    print(f"removal penalty: coefficient={arguments.removal_penalty:g} margin_cp={REMOVAL_MARGIN_CP:g}")
 
     selected_rate = arguments.lr[0]
     if len(arguments.lr) > 1:
         candidates: list[tuple[float, float]] = []
         for rate in arguments.lr:
-            model = make_model(initial, device)
+            model = make_model(initial, device, arguments.model)
             optimizer = torch.optim.Adam(model.parameters(), lr=rate)
             generator = torch.Generator(device=device).manual_seed(arguments.seed)
-            training_loss = train_epoch(
+            training = train_epoch(
                 model,
                 optimizer,
                 dataset,
@@ -565,7 +756,10 @@ def command_train(arguments: argparse.Namespace) -> None:
                 arguments.batch,
                 generator,
                 device,
-            )[0]
+                indices=dataset.training_indices,
+                removal_penalty=arguments.removal_penalty,
+                removal_reference=removal_reference,
+            )
             loss, _ = validation_loss(
                 model,
                 dataset,
@@ -574,13 +768,18 @@ def command_train(arguments: argparse.Namespace) -> None:
                 arguments.lambda_value,
                 arguments.batch,
                 device,
+                indices=dataset.validation_indices,
             )
             candidates.append((loss, rate))
-            print(f"learning-rate candidate: lr={rate:g} train_loss={training_loss:.9f} validation_loss={loss:.9f}")
+            print(
+                f"learning-rate candidate: lr={rate:g} train_loss={training.bce_loss:.9f} "
+                f"removal_loss={training.removal_loss:.9f} total_loss={training.total_loss:.9f} "
+                f"validation_loss={loss:.9f}"
+            )
         selected_rate = min(candidates)[1]
     print(f"selected learning rate: {selected_rate:g}")
 
-    model = make_model(initial, device)
+    model = make_model(initial, device, arguments.model)
     optimizer = torch.optim.Adam(model.parameters(), lr=selected_rate)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
     best_loss, generation_losses = validation_loss(
@@ -591,13 +790,14 @@ def command_train(arguments: argparse.Namespace) -> None:
         arguments.lambda_value,
         arguments.batch,
         device,
+        indices=dataset.validation_indices,
     )
     best_epoch = 0
-    best_weights = model.weight[:FEATURE_COUNT].detach().cpu().clone()
+    best_weights = expanded_model_weights(model).detach().cpu().clone()
     print(f"epoch 0: {_format_validation_loss(best_loss, generation_losses)}")
     for epoch in range(1, arguments.epochs + 1):
         started = time.perf_counter()
-        training_loss, observations = train_epoch(
+        training = train_epoch(
             model,
             optimizer,
             dataset,
@@ -608,6 +808,9 @@ def command_train(arguments: argparse.Namespace) -> None:
             generator,
             device,
             count_features=epoch == 1,
+            indices=dataset.training_indices,
+            removal_penalty=arguments.removal_penalty,
+            removal_reference=removal_reference,
         )
         elapsed = time.perf_counter() - started
         positions_per_second = dataset.training_indices.size / elapsed
@@ -619,18 +822,20 @@ def command_train(arguments: argparse.Namespace) -> None:
             arguments.lambda_value,
             arguments.batch,
             device,
+            indices=dataset.validation_indices,
         )
         print(
-            f"epoch {epoch}: train_loss={training_loss:.9f} "
+            f"epoch {epoch}: train_loss={training.bce_loss:.9f} "
+            f"removal_loss={training.removal_loss:.9f} total_loss={training.total_loss:.9f} "
             f"positions_per_second={positions_per_second:.3f}"
         )
         print(f"epoch {epoch}: {_format_validation_loss(loss, generation_losses)}")
-        if observations is not None:
-            _print_feature_observations(observations)
+        if training.observations is not None:
+            _print_feature_observations(training.observations)
         if should_replace_best_epoch(loss, best_loss):
             best_loss = loss
             best_epoch = epoch
-            best_weights = model.weight[:FEATURE_COUNT].detach().cpu().clone()
+            best_weights = expanded_model_weights(model).detach().cpu().clone()
 
     print(f"best epoch: {best_epoch} validation_loss={best_loss:.9f}")
 
@@ -698,6 +903,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--init", required=True)
     train_parser.add_argument("--model", required=True, choices=MODEL_KINDS)
     train_parser.add_argument("--k", required=True, type=float)
+    train_parser.add_argument("--removal-penalty", required=True, type=float)
     train_parser.add_argument("--lambda", dest="lambda_value", type=float, default=0.75)
     train_parser.add_argument("--lr", type=float, nargs="+", required=True)
     train_parser.add_argument("--epochs", type=int, default=10)
