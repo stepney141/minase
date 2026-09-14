@@ -41,34 +41,23 @@
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 完了 | 2026年9月9日 |
 | Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
 | 棋力向上段階6 | [plans/strength-stage6.md](plans/strength-stage6.md) | 完了 | 2026年9月12日 |
-| 棋力向上段階7 | [plans/strength-stage7.md](plans/strength-stage7.md) | 進行中 | ― |
+| 棋力向上段階7 | [plans/strength-stage7.md](plans/strength-stage7.md) | 完了 | 2026年9月14日 |
 
 ## 現在地
 
-直近に完了したマイルストーンは、棋力向上段階6（plans/strength-stage6.md、2026年9月12日）である。
-aspiration windows、internal iterative reduction、および最善手安定時の早期終了をSTCとLTCの`H1`で採用し、fail-lowによる延長、最善手交替時の延長、および係数候補`MIN_MOVES = 130`はSTCの`H0`で不採用、置換表のクラスタ化は実装後の固定深さ再生で効果が基準に届かず外し、静的評価の置換表保存とmate distance pruningは診断で見送った。
-最終構成は段階開始版に対してSTCで+129.2 Elo、HaChu戦で+334.1 Elo（段階5完了時の+188.5 Eloと信頼区間が重ならない）であった。
-internal iterative reductionのLTCは外部のOOMによる時間切れ11件を伴い、該当ペアを除いても`H1`であることから、利用者が規則からの逸脱を記録したうえで採用すると決定した。
-その前に完了したFactorization Machineによる2駒関係評価（plans/factorization-machine.md、2026年9月9日）では、現行PSTを固定して2駒関係の補正項を学習したFMが、教師値から対局結果の成分を外すと検証損失と教師誤差を全局面帯で改善し探索速度の費用も1.2%に収まったが、STCで得点率19.6%の`H0`となり不採用とした。候補はブランチ`fm-eval`に保持する。
-同日に完了したHaChu対minaseの条件格子測定（plans/hachu-condition-grid.md）では、HaChuを60秒＋1秒加算・256 MBに固定してminaseの持ち時間比と両者の置換表比を変えた8条件と、1手固定時間の2条件を固定200ペアEloで測った。
-対等条件で+207.5 Elo、持ち時間1/4で−26.1 Eloの互角、1/8で−205.0 Eloとなり、置換表を16 MBまたは1,024 MBへ変えた4条件はいずれも対等条件と信頼区間が重なり、1手固定時間のminase 1秒対HaChu 2秒でもminaseが+166.2 Eloで強く、HaChuが強いという仮説は支持されなかった。
-対局ハーネスには候補と基準ごとの置換表容量オプションと、CECPエンジンへの1手固定時間の対応を追加した。
-その前に完了したPSTの序中盤と終盤の補間（plans/tapered-pst.md、2026年9月8日）では、序中盤用と終盤用の2組のPSTを盤上総駒数で線形補間する評価を実装し、既存の世代0と世代1のデータで学習した2端点PSTが開始版に対してSTCとLTCの両方で`H1`となり採用した。
-単一PSTの同条件の再学習は開始版と一致したため、構造比較は省いた。
-進行中のマイルストーンは、上位計画の棋力向上の段階計画（plans/strength-stages.md）と段階7（plans/strength-stage7.md）である。
-10段階のうち段階6までが完了した。
-段階7は2026年9月12日に着手し、鏡映共有モデルを[STC](measurements/strength-stage7-mirror-stc.md)と[LTC](measurements/strength-stage7-mirror-ltc.md)のH1で採用した。
-試行生成で選んだ手数上限4,000を既定値へ反映し、[世代2の生成](measurements/strength-stage7-gen2-generation.md)では5シードの14,057,872局面を保存した。
-全11入力の[識別性診断](measurements/strength-stage7-gen2-identifiability.md)は合格し、保存範囲への射影を加えた[再学習](measurements/strength-stage7-gen2-training.md)も候補の保存まで成功したが、駒除去差分の符号反転が残った。
-追加損失の[二乗型の予備比較](measurements/strength-stage7-removal-pilot.md)では適格な正係数がなく、[片側絶対値型の5係数比較](measurements/strength-stage7-removal-absolute.md)ではη1000だけが保存可能性と標本の符号反転0件を満たし、独立監査も合格した。
-全11入力の元訓練集合をη1000と学習率0.03で再学習し、元の検証集合で最良エポック10を選び、既存診断を完了した。
-同じ6代表局面の352件の駒除去で新しい符号反転は0件となり、量子化の平均絶対誤差とRustの評価および成り差分の一致条件も満たした。
-候補の既存検査と深さ5のbenchも完了し、探索速度の低下がないことを確認した。
-採用済みの鏡映共有モデルとの[世代2のSTC](measurements/strength-stage7-gen2-stc.md)と[LTC](measurements/strength-stage7-gen2-ltc.md)はともにH1となり、全保存結果の異常0件を独立監査で確認して世代2の重みを採用した。
-最終採用重みからの[駒価値の再導出](measurements/strength-stage7-gen2-values-diag.md)は最大相対差8%で更新基準20%以下となり、固定駒価値と探索の余裕値を維持する。
-フェーズ5までの採否は確定し、[段階開始版との固定200ペア](measurements/strength-stage7-gen2-elo200.md)は得点率65.74%、Elo +113.19、95%信頼区間[+77.64, +151.19]となり、全400局の異常0件を確認した。
-残るHaChuとの固定200ペア測定を実行中であり、段階7は未完了である。
-旧構成で中断した段階開始版との37ペアは保持し、最終構成の新しい測定には混ぜない。
+直近に完了したマイルストーンは、2026年9月14日に完了した[棋力向上段階7](plans/strength-stage7.md)である。
+鏡映による重み共有と世代2の再学習重みを、個別の短時間・長時間測定で採用した。
+再学習には更新後の射影と[片側絶対値型の追加損失](measurements/strength-stage7-removal-absolute.md)を用い、6代表局面の352件の駒除去診断で新しい符号反転が0件となった。
+試行で選んだ手数上限4,000手を生成器へ反映し、[世代2の14,057,872局面](measurements/strength-stage7-gen2-generation.md)を次世代でも使える形で保存した。
+[最終重みから再導出した駒価値](measurements/strength-stage7-gen2-values-diag.md)は固定値との差が最大8%で更新基準の20%を超えず、固定駒価値と探索の余裕値を維持する。
+
+最終構成の[段階開始版との固定200ペア](measurements/strength-stage7-gen2-elo200.md)は+113.19 Elo、95%信頼区間[+77.64, +151.19]となり、全400局の異常は0件だった。
+[HaChuとの固定200ペア](measurements/strength-stage7-hachu-elo200.md)は+391.57 Elo、95%信頼区間[+339.80, +460.03]となった。
+HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの証拠を得たが、不正着手1件は生の応答が保存されておらず原因未特定であり、どちらも規約どおり反則負けとして集計した。
+旧構成で中断した段階開始版との37ペアは保持し、最終構成の集計へは含めない。
+
+進行中のマイルストーンは、上位計画の[棋力向上の段階計画](plans/strength-stages.md)である。
+10段階のうち段階7までが完了し、次の段階は採用構成と世代2のデータを起点に進められる。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
