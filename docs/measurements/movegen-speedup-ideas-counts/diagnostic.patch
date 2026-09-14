@@ -1,0 +1,132 @@
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -27,6 +27,11 @@
+ use crate::eval::pst::PstAccumulator;
+ 
+ use see::see;
++static IDEA_COUNTS: [AtomicU64; 22] = [const { AtomicU64::new(0) }; 22];
++fn idea_count(index: usize, n: usize) { IDEA_COUNTS[index].fetch_add(n as u64, AtomicOrdering::Relaxed); }
++/// Temporary deterministic work counters, never use this binary for timing.
++pub fn idea_counts_take() -> Vec<u64> { IDEA_COUNTS.iter().map(|v| v.swap(0, AtomicOrdering::Relaxed)).collect() }
++
+ use tt::Bound;
+ 
+ /// 詰みを表す評価値。
+@@ -1409,8 +1414,26 @@
+         let mut best_move = None;
+         alpha = alpha.max(stand_pat);
+ 
++        idea_count(0, 1);
+         let mut captures = Vec::new();
+         self.generator.generate_captures(position, &mut captures);
++        idea_count(1, captures.len());
++        let mut initial_prunable = 0;
++        let mut one_step_prunable = 0;
++        let mut unique_targets = crate::Bitboard::EMPTY;
++        for &mv in &captures {
++            unique_targets.set(mv.to);
++            if !captures_last_royal(position, mv) && stand_pat + move_order_key(position, self.pst, mv).unwrap().captured_value + self.pst.delta_margin() <= alpha {
++                initial_prunable += 1;
++                if mv.mid.is_none() { one_step_prunable += 1; }
++            }
++        }
++        idea_count(2, initial_prunable);
++        idea_count(3, one_step_prunable);
++        idea_count(4, unique_targets.popcount() as usize);
++        idea_count(5, usize::from(initial_prunable == captures.len()));
++        idea_count(6, usize::from(captures.is_empty()));
++
+         let mut captures: Vec<_> = captures
+             .into_iter()
+             .map(|mv| {
+@@ -1426,18 +1449,34 @@
+             captures.swap(0, index);
+         }
+ 
++        let mut seen_see_targets = crate::Bitboard::EMPTY;
++        let mut seen_see_pairs = Vec::new();
+         for (mv, key) in captures {
++            idea_count(7, 1);
+             let is_last_royal_capture = captures_last_royal(position, mv);
+             if !is_last_royal_capture
+                 && stand_pat + key.captured_value + self.pst.delta_margin() <= alpha
+             {
++                idea_count(8, 1);
+                 continue;
++            }
++            if !is_last_royal_capture {
++                idea_count(9, 1);
++                if mv.mid.is_none() {
++                    idea_count(10, 1);
++                    if seen_see_pairs.contains(&(mv.from, mv.to)) { idea_count(20, 1); }
++                    seen_see_pairs.push((mv.from, mv.to));
++                    if seen_see_targets.contains(mv.to) { idea_count(11, 1); }
++                    seen_see_targets.set(mv.to);
++                }
+             }
+             if !is_last_royal_capture
+                 && capture_is_pruned_by_see(position, self.rules, self.pst, mv)
+             {
++                idea_count(12, 1);
+                 continue;
+             }
++            idea_count(13, 1);
+             let score = if is_last_royal_capture {
+                 self.enter_node().then_some(MATE - ply as i32)?
+             } else {
+--- a/src/search/see.rs
++++ b/src/search/see.rs
+@@ -42,6 +42,7 @@
+     } else {
+         moving_piece
+     };
++    super::idea_count(14, 1);
+     let mut gains = [0_i32; MAX_GAINS];
+     gains[0] = pst.piece_value(captured_piece) + pst.piece_value(piece_after_move)
+         - pst.piece_value(moving_piece);
+@@ -55,11 +56,15 @@
+     let mut occupied = position.occupied();
+     occupied.clear(mv.from);
+     let mut depth = 0_usize;
++    let mut early_keep = false;
+ 
+     loop {
++        super::idea_count(15, 1);
++        super::idea_count(19, usize::from(early_keep));
+         let attackers = position.attackers_to_by(side, mv.to, occupied);
+         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
+         {
++            super::idea_count(16, 1);
+             return None;
+         }
+         if attackers.is_empty() {
+@@ -104,6 +109,10 @@
+         lion_on_square = next_kind == PieceKind::Lion
+             || (next_kind == PieceKind::Kirin && promotion_choice != PromotionChoice::NoPromotion);
+ 
++        if depth == 1 && gains[0] >= 0 && gains[1] <= 0 {
++            early_keep = true;
++            super::idea_count(18, 1);
++        }
+         occupied.clear(next);
+         side = side.opposite();
+     }
+@@ -112,6 +121,8 @@
+         gains[depth - 1] = -(-gains[depth - 1]).max(gains[depth]);
+         depth -= 1;
+     }
++    assert!(!early_keep || gains[0] >= 0);
++    super::idea_count(17, usize::from(gains[0] >= 0));
+     Some(gains[0])
+ }
+ 
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -212,6 +212,7 @@
+         let result = search(pst, &snapshot, limits, threads, transposition_table)
+             .expect("bench search input must be valid");
+         let elapsed = position_start.elapsed();
++        println!("idea position={} nodes={} best={:?} score={} counts={:?}", bench_position.name, result.nodes, result.best_move, result.score, minase::search::idea_counts_take());
+         reached_depth = reached_depth.min(result.depth);
+         total_elapsed += elapsed.as_secs_f64();
+         total_nodes = total_nodes

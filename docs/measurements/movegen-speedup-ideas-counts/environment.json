@@ -1,0 +1,10 @@
+{
+  "date": "2026-09-13",
+  "head": "d0d3c52024c5ab4d74cc82588640a55953426aad",
+  "command": "cargo build --release --bin bench -j 2; target/release/bench --depth 5 --threads 1 --repetitions 1",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "rules": "engine-default",
+  "total_nodes": 1438048,
+  "timing_used": false,
+  "concurrent_workload": "selfplay_gen --concurrency 16"
+}

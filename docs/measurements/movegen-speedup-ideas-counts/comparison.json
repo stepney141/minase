@@ -1,0 +1,21 @@
+{
+  "positions": 15,
+  "all_nodes_best_moves_scores_equal": true,
+  "rows": [
+    "position=initial nodes=42296 best=Move { from: Square(37), mid: None, to: Square(69), promote: false } score=30",
+    "position=game-2-ply-40 nodes=53577 best=Move { from: Square(137), mid: None, to: Square(138), promote: false } score=985",
+    "position=game-2-ply-60 nodes=73206 best=Move { from: Square(137), mid: None, to: Square(121), promote: false } score=6333",
+    "position=game-3-ply-310 nodes=217511 best=Move { from: Square(18), mid: None, to: Square(48), promote: false } score=-2512",
+    "position=game-3-ply-465 nodes=49310 best=Move { from: Square(101), mid: None, to: Square(85), promote: false } score=4599",
+    "position=game-4-ply-164 nodes=23565 best=Move { from: Square(57), mid: Some(Square(40)), to: Square(41), promote: false } score=-1597",
+    "position=game-4-ply-246 nodes=106488 best=Move { from: Square(112), mid: None, to: Square(113), promote: false } score=-1724",
+    "position=game-5-ply-170 nodes=236110 best=Move { from: Square(118), mid: Some(Square(101)), to: Square(117), promote: false } score=2159",
+    "position=game-5-ply-255 nodes=66036 best=Move { from: Square(170), mid: None, to: Square(187), promote: false } score=-5040",
+    "position=game-6-ply-51 nodes=146002 best=Move { from: Square(115), mid: None, to: Square(99), promote: false } score=7",
+    "position=game-6-ply-77 nodes=212876 best=Move { from: Square(83), mid: None, to: Square(100), promote: false } score=112",
+    "position=game-8-ply-183 nodes=68586 best=Move { from: Square(163), mid: None, to: Square(148), promote: false } score=160",
+    "position=game-8-ply-275 nodes=6344 best=Move { from: Square(119), mid: None, to: Square(122), promote: false } score=-21",
+    "position=game-10-ply-277 nodes=60427 best=Move { from: Square(167), mid: None, to: Square(48), promote: true } score=1724",
+    "position=game-10-ply-416 nodes=75714 best=Move { from: Square(24), mid: None, to: Square(17), promote: false } score=-1065"
+  ]
+}

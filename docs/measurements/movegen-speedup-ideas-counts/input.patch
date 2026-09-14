@@ -1,0 +1,319 @@
+diff --git a/src/core/movegen/mod.rs b/src/core/movegen/mod.rs
+index 6d259a4..8fd389f 100644
+--- a/src/core/movegen/mod.rs
++++ b/src/core/movegen/mod.rs
+@@ -10,7 +10,7 @@ use crate::core::attacks::{
+     movement_profile_data,
+ };
+ use crate::core::bitboard::Bitboard;
+-use crate::core::direction::step_square;
++use crate::core::direction::{Direction, step_square};
+ use crate::core::mv::Move;
+ use crate::core::piece::{Color, PieceKind};
+ use crate::core::position::Position;
+@@ -114,74 +114,104 @@ pub(crate) fn piece_control_with_occupancy(
+ }
+ 
+ impl Position {
+-    /// 指定した占有状態で`square`へ疑似利きが届く両陣営の駒を返す。
++    /// 指定した占有状態で`square`へ疑似利きが届く`color`側の駒を返す。
+     ///
+     /// 固定利き、走り、および特殊移動の到達範囲を逆引きする。結果は`occupied`に
+-    /// 含まれる駒に限る。これは規則上の合法性を判定する関数ではなく、静的交換評価で
+-    /// 仮想的な取り合いを調べるための幾何的な利き集合である
+-    /// (`docs/plans/strength-stage3.md`「升への疑似利き集合」)。
+-    pub(crate) fn attackers_to(&self, square: Square, occupied: Bitboard) -> Bitboard {
++    /// 含まれる駒に限り、走りの遮蔽判定にも`occupied`を使う。これは規則上の合法性を
++    /// 判定する関数ではなく、静的交換評価で仮想的な取り合いを調べるための幾何的な
++    /// 利き集合である(`docs/plans/strength-stage3.md`「升への疑似利き集合」)。
++    /// 静的交換評価と王駒への利き判定は片側の色しか使わないため、反対側は計算しない。
++    pub(crate) fn attackers_to_by(
++        &self,
++        color: Color,
++        square: Square,
++        occupied: Bitboard,
++    ) -> Bitboard {
+         let tables = attack_tables();
+-        (ordinary_attackers_to(tables, self, square, occupied)
+-            | special_attackers_to(tables, self, square))
++        (ordinary_attackers_to(tables, self, color, square, occupied)
++            | special_attackers_to(tables, self, color, square))
+             & occupied
+     }
+ }
+ 
+-/// 固定利きと走りを逆引きし、`square`へ届く駒を返す。
++/// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
++///
++/// 固定利きは駒種ごとの逆引き表で求める。走りは`square`から8方向の利き線を引き、
++/// 最初の遮蔽駒がその逆方向へ走るプロファイルを持つかだけを調べる。全プロファイルの
++/// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
+ fn ordinary_attackers_to(
+     tables: &AttackTables,
+     position: &Position,
++    color: Color,
+     square: Square,
+     occupied: Bitboard,
+ ) -> Bitboard {
+     let mut attackers = Bitboard::EMPTY;
+-    for color in Color::ALL {
+-        for kind in PieceKind::ALL {
+-            let pieces = position.pieces_of_kind(color, kind);
+-            if pieces.is_empty() {
+-                continue;
+-            }
+-            let profile_id = movement_profile(kind);
+-            let profile = movement_profile_data(profile_id);
+-            attackers |= tables.fixed(color.opposite(), profile_id, square) & pieces;
+-            for slide in profile.slides {
+-                let direction = slide.direction.for_color(color);
+-                attackers |=
+-                    tables.sliding_control(square, direction.opposite(), slide.max_steps, occupied)
+-                        & pieces;
+-            }
++    for kind in PieceKind::ALL {
++        let pieces = position.pieces_of_kind(color, kind);
++        if pieces.is_empty() {
++            continue;
++        }
++        attackers |= tables.fixed(color.opposite(), movement_profile(kind), square) & pieces;
++    }
++    let own = position.pieces_of(color) & occupied;
++    for direction in Direction::ALL {
++        // 利き線は最初の遮蔽駒までしか含まないので、`ray & own`は空か1升である。
++        let ray = tables.sliding_control(square, direction, None, occupied);
++        let Some(blocker) = (ray & own).lsb() else {
++            continue;
++        };
++        let kind = position
++            .piece_at(blocker)
++            .and_then(|piece| piece.kind())
++            .expect("blocker must be a piece");
++        let profile = movement_profile_data(movement_profile(kind));
++        let reverse = direction.opposite();
++        if profile
++            .slides
++            .iter()
++            .any(|slide| slide.direction.for_color(color) == reverse)
++        {
++            attackers.set(blocker);
+         }
+     }
+     attackers
+ }
+ 
+-/// 特殊移動の到達範囲を逆引きし、`square`へ届く駒を返す。
+-fn special_attackers_to(tables: &AttackTables, position: &Position, square: Square) -> Bitboard {
++/// 特殊移動の到達範囲を逆引きし、`square`へ届く`color`側の駒を返す。
++/// 特殊移動を持つ駒種は獅子、角鷹および飛鷲だけなので、その3種だけを調べる。
++fn special_attackers_to(
++    tables: &AttackTables,
++    position: &Position,
++    color: Color,
++    square: Square,
++) -> Bitboard {
+     let mut attackers = Bitboard::EMPTY;
+-    for color in Color::ALL {
+-        for kind in PieceKind::ALL {
+-            let pieces = position.pieces_of_kind(color, kind);
+-            if pieces.is_empty() {
+-                continue;
++    for kind in [
++        PieceKind::Lion,
++        PieceKind::HornedFalcon,
++        PieceKind::SoaringEagle,
++    ] {
++        let pieces = position.pieces_of_kind(color, kind);
++        if pieces.is_empty() {
++            continue;
++        }
++        match movement_profile_data(movement_profile(kind)).special {
++            SpecialMovement::None => {}
++            SpecialMovement::Lion => {
++                attackers |= (tables.king_steps(square) | tables.lion_jumps(square)) & pieces;
+             }
+-            match movement_profile_data(movement_profile(kind)).special {
+-                SpecialMovement::None => {}
+-                SpecialMovement::Lion => {
+-                    attackers |= (tables.king_steps(square) | tables.lion_jumps(square)) & pieces;
+-                }
+-                SpecialMovement::LionLike(profile) => {
+-                    for relative in profile.directions {
+-                        let reverse = relative.for_color(color).opposite();
+-                        if let Some(first) = step_square(square, reverse) {
+-                            if pieces.contains(first) {
+-                                attackers.set(first);
+-                            }
+-                            if let Some(second) = step_square(first, reverse)
+-                                && pieces.contains(second)
+-                            {
+-                                attackers.set(second);
+-                            }
++            SpecialMovement::LionLike(profile) => {
++                for relative in profile.directions {
++                    let reverse = relative.for_color(color).opposite();
++                    if let Some(first) = step_square(square, reverse) {
++                        if pieces.contains(first) {
++                            attackers.set(first);
++                        }
++                        if let Some(second) = step_square(first, reverse)
++                            && pieces.contains(second)
++                        {
++                            attackers.set(second);
+                         }
+                     }
+                 }
+diff --git a/src/core/movegen/tests/attackers.rs b/src/core/movegen/tests/attackers.rs
+index 92b4594..3263307 100644
+--- a/src/core/movegen/tests/attackers.rs
++++ b/src/core/movegen/tests/attackers.rs
+@@ -1,4 +1,4 @@
+-//! `Position::attackers_to`の契約テスト。
++//! `Position::attackers_to_by`の契約テスト。
+ //!
+ //! 期待値は`docs/plans/strength-stage3.md`「升への疑似利き集合」が定める、
+ //! 既存の駒別利きとの同値関係から導く。
+@@ -36,24 +36,28 @@ const BENCH_SFENS: &[&str] = &[
+ 
+ fn assert_attackers_match_piece_controls(position: &Position, occupied: Bitboard) {
+     for target in Square::all() {
+-        let attackers = position.attackers_to(target, occupied);
+-        for from in position.occupied() {
+-            let piece = position
+-                .piece_at(from)
+-                .expect("occupied square has a piece");
+-            let expected = occupied.contains(from)
+-                && piece_control_with_occupancy(
+-                    occupied,
+-                    piece.color().expect("board piece has a color"),
+-                    piece.kind().expect("board piece has a kind"),
+-                    from,
+-                )
+-                .contains(target);
+-            assert_eq!(
+-                attackers.contains(from),
+-                expected,
+-                "from={from:?}, target={target:?}, occupied={occupied:?}"
+-            );
++        for color in Color::ALL {
++            let attackers = position.attackers_to_by(color, target, occupied);
++            for from in position.occupied() {
++                let piece = position
++                    .piece_at(from)
++                    .expect("occupied square has a piece");
++                let piece_color = piece.color().expect("board piece has a color");
++                let expected = piece_color == color
++                    && occupied.contains(from)
++                    && piece_control_with_occupancy(
++                        occupied,
++                        piece_color,
++                        piece.kind().expect("board piece has a kind"),
++                        from,
++                    )
++                    .contains(target);
++                assert_eq!(
++                    attackers.contains(from),
++                    expected,
++                    "color={color:?}, from={from:?}, target={target:?}, occupied={occupied:?}"
++                );
++            }
+         }
+     }
+ }
+@@ -81,9 +85,10 @@ fn sampled_random_positions() -> Vec<Position> {
+ }
+ 
+ // strength-stage3.md「升への疑似利き集合」: 初期局面、benchの14局面、および
+-// 一様ランダム対局の数十局面で、逆引き集合と駒別利きの同値を全升で固定する。
++// 一様ランダム対局の数十局面で、各色の逆引き集合とその色の駒別利きの同値を
++// 全升で固定する。反対側の駒は集合に現れない。
+ #[test]
+-fn attackers_to_matches_piece_control_on_reference_positions() {
++fn attackers_to_by_matches_piece_control_on_reference_positions() {
+     let positions = BENCH_SFENS
+         .iter()
+         .map(|sfen| parse_sfen(sfen).expect("bench SFEN is valid"))
+@@ -112,7 +117,7 @@ fn attackers_to_matches_piece_control_on_reference_positions() {
+ // strength-stage3.md「升への疑似利き集合」: 仮想盤面から除いた駒は攻撃駒として
+ // 再出現せず、走り駒の後ろの利きは遮蔽物の除去によって開通する。
+ #[test]
+-fn attackers_to_respects_removed_pieces_and_opens_xrays() {
++fn attackers_to_by_respects_removed_pieces_and_opens_xrays() {
+     let rook = sq(2, 2);
+     let first_blocker = sq(2, 4);
+     let second_blocker = sq(2, 6);
+@@ -134,19 +139,27 @@ fn attackers_to_respects_removed_pieces_and_opens_xrays() {
+ 
+     let mut without_first = position.occupied();
+     without_first.clear(first_blocker);
+-    assert!(!position.attackers_to(target, without_first).contains(rook));
+     assert!(
+         !position
+-            .attackers_to(target, without_first)
++            .attackers_to_by(Color::Black, target, without_first)
++            .contains(rook)
++    );
++    assert!(
++        !position
++            .attackers_to_by(Color::Black, target, without_first)
+             .contains(first_blocker)
+     );
+ 
+     let mut without_both = without_first;
+     without_both.clear(second_blocker);
+-    assert!(position.attackers_to(target, without_both).contains(rook));
++    assert!(
++        position
++            .attackers_to_by(Color::Black, target, without_both)
++            .contains(rook)
++    );
+     assert!(
+         !position
+-            .attackers_to(target, without_both)
++            .attackers_to_by(Color::Black, target, without_both)
+             .contains(second_blocker)
+     );
+ 
+@@ -160,7 +173,7 @@ fn attackers_to_respects_removed_pieces_and_opens_xrays() {
+     without_lion.clear(lion);
+     assert!(
+         !special
+-            .attackers_to(lion_target, without_lion)
++            .attackers_to_by(Color::Black, lion_target, without_lion)
+             .contains(lion)
+     );
+ }
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 901b252..dfa7a5a 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -1745,11 +1745,11 @@ fn search_key(position: &Position) -> u64 {
+ /// 王駒の升では疑似利きと実際の捕獲可能性が一致する。
+ fn royal_under_attack(position: &Position) -> bool {
+     let side = position.side_to_move();
+-    let opponents = position.pieces_of(side.opposite());
+-    position
+-        .royal_pieces(side)
+-        .into_iter()
+-        .any(|square| !(position.attackers_to(square, position.occupied()) & opponents).is_empty())
++    position.royal_pieces(side).into_iter().any(|square| {
++        !position
++            .attackers_to_by(side.opposite(), square, position.occupied())
++            .is_empty()
++    })
+ }
+ 
+ /// 着手が相手の残存王駒をすべて取るかを返す(第21条第1項)。
+diff --git a/src/search/see.rs b/src/search/see.rs
+index 3ff9425..f47aa87 100644
+--- a/src/search/see.rs
++++ b/src/search/see.rs
+@@ -57,7 +57,7 @@ pub(super) fn see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) ->
+     let mut depth = 0_usize;
+ 
+     loop {
+-        let attackers = position.attackers_to(mv.to, occupied) & position.pieces_of(side);
++        let attackers = position.attackers_to_by(side, mv.to, occupied);
+         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
+         {
+             return None;
