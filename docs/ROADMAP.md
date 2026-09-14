@@ -33,7 +33,7 @@
 | 棋力向上段階1 | [plans/strength-stage1.md](plans/strength-stage1.md) | 完了 | 2026年9月2日 |
 | 棋力向上段階2 | [plans/strength-stage2.md](plans/strength-stage2.md) | 完了 | 2026年9月4日 |
 | 棋力測定の所要時間削減 | [plans/match-cost-reduction.md](plans/match-cost-reduction.md) | 完了 | 2026年9月4日 |
-| lishogi Bot接続 | [plans/lishogi-bot.md](plans/lishogi-bot.md) | 起案 | ― |
+| lishogi Bot接続 | [plans/lishogi-bot.md](plans/lishogi-bot.md) | 進行中 | ― |
 | 棋力向上段階3 | [plans/strength-stage3.md](plans/strength-stage3.md) | 完了 | 2026年9月5日 |
 | 棋力向上段階4 | [plans/strength-stage4.md](plans/strength-stage4.md) | 完了 | 2026年9月6日 |
 | 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
@@ -66,8 +66,8 @@ HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの�
 次期候補は、棋力向上段階8（利きマップと評価特徴の拡張）であり、段階7の採用構成と世代2のデータを起点にする。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
-実lishogiサーバへの接続は、段階2完了時点の棋力（HaChuに対して+149 Elo）を受けて2026年9月4日に公開へ進むと決め、lishogi Bot接続（plans/lishogi-bot.md）として起案した。
-着手前に、lishogiの反復裁定の前提条件を規則R1の定義へ取り込む仕様変更と、その変更をSPRTの対象外とする扱いについて裁定を要する。
+lishogi Bot接続（plans/lishogi-bot.md）は2026年9月12日に着手し、規則R1へlishogiの反復裁定の前提条件を取り込み、Lishogi-Botとminaseを1つのDockerイメージにまとめる配備手段を整えた。
+次の一手は、利用者がBotアカウントを作成してイメージを運用機で起動し、非レート対局の公開運用へ進むことである。
 
 ## 横断的な記録済みの決定
 
