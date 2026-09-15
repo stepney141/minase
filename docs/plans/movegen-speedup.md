@@ -12,19 +12,15 @@
 探索木の一致は、基準コミットに静止探索の手順の小さな変更を加えた照合参照コミットに対して確かめ、速度の基準は基準コミットのままとする。
 この採否の方式は本マイルストーンに限る利用者の決定であり、理由は設計判断の節に記す。
 最低受入条件を満たし、必須候補の採否が確定し、最終のSPRTが長時間条件で採用判定（`H1`）を得たら完了とし、2倍に達しなければ差と残存負荷を測定記録に残す。
+本マイルストーンは完了し、採用版のNPSは基準比1.794倍で、最終のSPRTはSTCとLTCの両方で`H1`だった。
 
 ## 状態
 
-進行中。
-2026年9月13日に起案と着手し、フェーズ1（計測基盤）からフェーズ6（単位E）までが完了した。
-照合参照コミットは基準に回転と`bench`の出力拡張を加えたものであり、回転単独では最善手と探索値が変わらず、ノード数は5局面で計198（0.016%）減った（[回転の記録](../measurements/movegen-speedup-rotation-bench-depth5.md)）。
-単位Aは参照と15局面で一致し、NPSは基準比1.319倍で採用した（[単位Aの記録](../measurements/movegen-speedup-unit-a-bench-depth5.md)）。
-単位Bは参照と一致し、駒別生成を採ってNPSを基準比1.461倍、参照比1.501倍にしたので採用した（[単位Bの記録](../measurements/movegen-speedup-unit-b-bench-depth5.md)、[打ち切り位置の診断](../measurements/movegen-speedup-stage-cutoff-counts.md)）。
-単位Cは参照と一致し、NPSを単位B比1.016倍（基準比1.500倍）にしたので採用し、逆引きの3回目以降が約21%にとどまるため差分更新と利きの事前計算は実施しない（[単位Cの記録](../measurements/movegen-speedup-unit-c-bench-depth5.md)）。
-単位DはPGOで同じソースのNPSが約1.19倍となり、再現基盤を整えて採用した（基準比1.794倍、[PGOの記録](../measurements/movegen-speedup-pgo-bench-depth5.md)）。
-単位Eは置換表行の先読みと公開生成の判定省略を試してどちらも速度が上がらず、残る候補は残存負荷の内訳から見込みが数%以下なので採用しなかった（[単位Eの記録](../measurements/movegen-speedup-unit-e-bench-depth5.md)）。
-2倍の目標には届かず、採用版の基準比は1.794倍である。
-次の一手は、採用版と基準の最終SPRTをSTC、続いてLTCで行うことである。
+完了。
+2026年9月13日に起案と着手し、2026年9月15日に完了した。
+採用版（コミット`d961adf`、単位AからDまでとPGO）は照合参照コミットと15局面のノード数、最善手、探索値で一致し、NPSは基準比1.794倍で最低受入条件1.5倍を満たすが、目標の2倍には届かず、残る差と残存負荷は[単位Eの記録](../measurements/movegen-speedup-unit-e-bench-depth5.md)にある。
+最終のSPRTは[STC](../measurements/movegen-speedup-final-stc.md)と[LTC](../measurements/movegen-speedup-final-ltc.md)がいずれも`H1`かつ異常0件だった。
+各単位の記録は[回転](../measurements/movegen-speedup-rotation-bench-depth5.md)、[単位A](../measurements/movegen-speedup-unit-a-bench-depth5.md)、[単位B](../measurements/movegen-speedup-unit-b-bench-depth5.md)、[単位C](../measurements/movegen-speedup-unit-c-bench-depth5.md)、[単位D](../measurements/movegen-speedup-pgo-bench-depth5.md)にある。
 
 ## 目的
 
