@@ -6,11 +6,24 @@ use std::sync::{Arc, OnceLock};
 use sha2::{Digest, Sha256};
 
 use super::features::{
-    FEATURE_COUNT, PIECE_STATE_COUNT, active_features, active_features_for, feature_index,
-    lion_feature_index, piece_state,
+    FEATURE_COUNT, active_features, active_features_for, feature_index, lion_feature_index,
+    piece_state,
 };
 use crate::core::mv::Undo;
 use crate::{Color, PieceCode, PieceKind, Position, Square};
+
+/// 駒種と現在の成り可否を区別した駒状態の総数。
+pub const PIECE_STATE_COUNT: usize = super::features::PIECE_STATE_COUNT;
+
+/// 駒コードを駒状態の番号へ変換する。
+///
+/// # Panics
+///
+/// `piece`が空升または盤外の番兵を表す場合にパニックする。
+#[inline]
+pub fn piece_state_of(piece: PieceCode) -> usize {
+    piece_state(piece)
+}
 
 /// MNPTヘッダのバイト数。
 const HEADER_LENGTH: usize = 80;
@@ -122,6 +135,16 @@ impl Pst {
     #[inline]
     pub fn piece_value(&self, piece: PieceCode) -> i32 {
         self.piece_values[piece_state(piece)]
+    }
+
+    /// 駒状態に対応する駒価値をセンチポーンで返す。
+    ///
+    /// # Panics
+    ///
+    /// `state`が`PIECE_STATE_COUNT`以上の場合にパニックする。
+    #[inline]
+    pub fn piece_value_of_state(&self, state: usize) -> i32 {
+        self.piece_values[state]
     }
 
     /// 成っていない歩兵の駒価値をセンチポーンで返す。

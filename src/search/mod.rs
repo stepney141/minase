@@ -1,5 +1,7 @@
 //! 評価関数と静止探索を使って着手を選ぶ探索。
 
+#[cfg(test)]
+mod search_captures_tests;
 mod see;
 #[cfg(test)]
 mod tests;
@@ -17,14 +19,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::MoveGenerator;
+use crate::core::bitboard::Bitboard;
 use crate::core::game::{Game, GameStatus};
+use crate::core::movegen::{CaptureCandidate, OrdinaryCapturer};
 use crate::core::mv::Move;
 use crate::core::piece::{COLOR_COUNT, PieceCode};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::Pst;
-use crate::eval::pst::PstAccumulator;
+use crate::eval::pst::{PIECE_STATE_COUNT, PstAccumulator, piece_state_of};
 
 use see::see;
 use tt::Bound;
@@ -963,6 +967,8 @@ fn new_searcher<'a>(
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
+        capture_ranks: CaptureRanks::new(pst),
+        qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: [root_accumulator; MAX_PLY as usize + 1],
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
@@ -1109,6 +1115,10 @@ struct Searcher<'a> {
     stop_reason: Option<StopReason>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pv: Vec<Vec<Move>>,
+    /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
+    qsearch: Vec<QsearchBuffers>,
+    /// ワーカー内で共有する捕獲価値の順位。
+    capture_ranks: CaptureRanks,
     /// plyごとのPST生重み和。
     accumulators: [PstAccumulator; MAX_PLY as usize + 1],
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
@@ -1409,29 +1419,19 @@ impl Searcher<'_> {
         let mut best_move = None;
         alpha = alpha.max(stand_pat);
 
-        let mut captures = Vec::new();
-        self.generator.generate_captures(position, &mut captures);
-        let mut captures: Vec<_> = captures
-            .into_iter()
-            .map(|mv| {
-                let key = move_order_key(position, self.pst, mv)
-                    .expect("capture generator must not return a quiet move");
-                (mv, key)
-            })
-            .collect();
-        order_captures(&mut captures);
-        // 置換表の手を先頭へ移し、残る手の相対順序は保つ(docs/plans/movegen-speedup.md
-        // 「静止探索の置換表の手を回転で先頭へ移す」)。
-        if let Some(index) =
-            tt_move.and_then(|tt_move| captures.iter().position(|&(mv, _)| mv == tt_move))
-        {
-            captures[..=index].rotate_right(1);
-        }
-
-        for (mv, key) in captures {
-            let is_last_royal_capture = captures_last_royal(position, mv);
+        let threshold = alpha - stand_pat - self.pst.delta_margin();
+        self.qsearch[ply as usize].reset(position, &self.generator, tt_move);
+        while let Some(candidate) = self.qsearch[ply as usize].next(
+            position,
+            &self.generator,
+            self.pst,
+            &self.capture_ranks,
+            threshold,
+        ) {
+            let mv = candidate.capture.mv;
+            let is_last_royal_capture = captured_last_royal(position, candidate.capture.captured);
             if !is_last_royal_capture
-                && stand_pat + key.captured_value + self.pst.delta_margin() <= alpha
+                && stand_pat + candidate.captured_value + self.pst.delta_margin() <= alpha
             {
                 continue;
             }
@@ -1754,14 +1754,271 @@ fn royal_under_attack(position: &Position) -> bool {
     })
 }
 
+/// 静止探索の捕獲価値と、同順位で生成順を保つ連番。
+#[derive(Clone, Copy)]
+struct QsearchCapture {
+    capture: CaptureCandidate,
+    captured_value: i32,
+    attacker_value: i32,
+    origin_key: (usize, usize),
+    seq: usize,
+}
+
+impl QsearchCapture {
+    fn new(pst: &Pst, capture: CaptureCandidate, captured_value: i32) -> Self {
+        let piece = capture.piece;
+        Self {
+            captured_value,
+            attacker_value: pst.piece_value(piece),
+            origin_key: (
+                piece.kind().expect("capture origin has a kind").index(),
+                capture.mv.from.raw_index(),
+            ),
+            capture,
+            seq: 0,
+        }
+    }
+}
+
+/// 捕獲価値の降順の順位。等しい値の駒状態は同じ順位を共有する。
+struct CaptureRanks {
+    rank_of_state: [u8; PIECE_STATE_COUNT],
+    values: Vec<i32>,
+}
+
+impl CaptureRanks {
+    fn new(pst: &Pst) -> Self {
+        let mut states: [_; PIECE_STATE_COUNT] = core::array::from_fn(|state| state);
+        states.sort_unstable_by_key(|&state| Reverse(pst.piece_value_of_state(state)));
+        let mut ranks = Self {
+            rank_of_state: [0; PIECE_STATE_COUNT],
+            values: Vec::with_capacity(PIECE_STATE_COUNT),
+        };
+        for state in states {
+            let value = pst.piece_value_of_state(state);
+            if ranks.values.last() != Some(&value) {
+                ranks.values.push(value);
+            }
+            ranks.rank_of_state[state] = (ranks.values.len() - 1) as u8;
+        }
+        ranks
+    }
+}
+
+/// 静止探索の1深さ分の領域。対象升の配列は使用する順位だけを初期化する。
+struct QsearchBuffers {
+    raw: Vec<CaptureCandidate>,
+    capturers: Vec<OrdinaryCapturer>,
+    special: Vec<QsearchCapture>,
+    group: Vec<QsearchCapture>,
+    targets_by_rank: [Bitboard; PIECE_STATE_COUNT],
+    present_ranks: u64,
+    tt_move: Option<Move>,
+    tt_pending: bool,
+    initialized: bool,
+    special_cursor: usize,
+    cursor: usize,
+}
+
+impl Default for QsearchBuffers {
+    fn default() -> Self {
+        Self {
+            raw: Vec::new(),
+            capturers: Vec::new(),
+            special: Vec::new(),
+            group: Vec::new(),
+            targets_by_rank: [Bitboard::EMPTY; PIECE_STATE_COUNT],
+            present_ranks: 0,
+            tt_move: None,
+            tt_pending: false,
+            initialized: false,
+            special_cursor: 0,
+            cursor: 0,
+        }
+    }
+}
+
+impl QsearchBuffers {
+    fn reset(&mut self, position: &Position, generator: &MoveGenerator, tt_move: Option<Move>) {
+        self.raw.clear();
+        self.special.clear();
+        self.group.clear();
+        self.present_ranks = 0;
+        self.capturers.clear();
+        self.tt_move =
+            tt_move.filter(|&mv| generator.is_legal_capture(position, mv, &mut self.raw));
+        self.raw.clear();
+        self.tt_pending = self.tt_move.is_some();
+        self.initialized = false;
+        self.special_cursor = 0;
+        self.cursor = 0;
+    }
+
+    /// 入口で残す対象と価値グループを決め、通常駒の利きを保存する。
+    fn initialize(
+        &mut self,
+        position: &Position,
+        generator: &MoveGenerator,
+        pst: &Pst,
+        ranks: &CaptureRanks,
+        threshold: i32,
+    ) {
+        generator.generate_special_captures(position, &mut self.raw);
+        for &capture in &self.raw {
+            let captured_value = capture
+                .captured
+                .into_iter()
+                .flatten()
+                .map(|s| pst.piece_value(piece_at_for_ordering(position, s)))
+                .sum();
+            let mut candidate = QsearchCapture::new(pst, capture, captured_value);
+            if candidate.captured_value > threshold
+                || captured_last_royal(position, capture.captured)
+            {
+                candidate.seq = self.special.len();
+                self.special.push(candidate);
+            }
+        }
+        self.special
+            .sort_unstable_by_key(|c| (Reverse(c.captured_value), c.seq));
+        let opponent = position.side_to_move().opposite();
+        let royals = position.royal_pieces(opponent);
+        let mut allowed = Bitboard::EMPTY;
+        for square in position.pieces_of(opponent) {
+            let state = piece_state_of(piece_at_for_ordering(position, square));
+            let value = pst.piece_value_of_state(state);
+            if value > threshold || royals.contains(square) {
+                let rank = ranks.rank_of_state[state] as usize;
+                let bit = 1_u64 << rank;
+                if self.present_ranks & bit == 0 {
+                    self.targets_by_rank[rank] = Bitboard::EMPTY;
+                    self.present_ranks |= bit;
+                }
+                self.targets_by_rank[rank].set(square);
+                allowed.set(square);
+            }
+        }
+        generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
+        self.initialized = true;
+    }
+
+    /// 価値順の2列から次の値を選び、その通常捕獲と特殊捕獲を生成順でマージする。
+    fn generate_group(
+        &mut self,
+        position: &Position,
+        generator: &MoveGenerator,
+        pst: &Pst,
+        ranks: &CaptureRanks,
+    ) -> Option<()> {
+        let rank = self.present_ranks.trailing_zeros() as usize;
+        let ordinary_value = (self.present_ranks != 0).then(|| ranks.values[rank]);
+        let special_value = self
+            .special
+            .get(self.special_cursor)
+            .map(|c| c.captured_value);
+        let value = ordinary_value.into_iter().chain(special_value).max()?;
+        let targets = if ordinary_value == Some(value) {
+            self.present_ranks &= !(1_u64 << rank);
+            self.targets_by_rank[rank]
+        } else {
+            Bitboard::EMPTY
+        };
+        let special_start = self.special_cursor;
+        while self
+            .special
+            .get(self.special_cursor)
+            .is_some_and(|c| c.captured_value == value)
+        {
+            self.special_cursor += 1;
+        }
+        self.raw.clear();
+        self.group.clear();
+        self.cursor = 0;
+        generator.emit_ordinary_captures(position, &self.capturers, targets, &mut self.raw);
+        let mut ordinary = self
+            .raw
+            .iter()
+            .copied()
+            .map(|capture| QsearchCapture::new(pst, capture, value))
+            .peekable();
+        let mut special = self.special[special_start..self.special_cursor]
+            .iter()
+            .copied()
+            .peekable();
+        while ordinary.peek().is_some() || special.peek().is_some() {
+            let take_ordinary = match (ordinary.peek(), special.peek()) {
+                (Some(a), Some(b)) => a.origin_key < b.origin_key,
+                (Some(_), None) => true,
+                _ => false,
+            };
+            let mut candidate = if take_ordinary {
+                ordinary.next().expect("ordinary candidate exists")
+            } else {
+                special.next().expect("special candidate exists")
+            };
+            candidate.seq = self.group.len();
+            self.group.push(candidate);
+        }
+        self.group
+            .sort_unstable_by_key(|c| (c.attacker_value, c.seq));
+        Some(())
+    }
+
+    /// 置換表の捕獲を先頭に返し、要求されたグループまでだけを生成する。
+    fn next(
+        &mut self,
+        position: &Position,
+        generator: &MoveGenerator,
+        pst: &Pst,
+        ranks: &CaptureRanks,
+        threshold: i32,
+    ) -> Option<QsearchCapture> {
+        if self.tt_pending {
+            self.tt_pending = false;
+            let mv = self.tt_move.expect("pending TT capture exists");
+            let captured = position.captured_squares(mv);
+            let captured_value = captured
+                .into_iter()
+                .flatten()
+                .map(|s| pst.piece_value(piece_at_for_ordering(position, s)))
+                .sum();
+            return Some(QsearchCapture::new(
+                pst,
+                CaptureCandidate {
+                    mv,
+                    piece: piece_at_for_ordering(position, mv.from),
+                    captured,
+                },
+                captured_value,
+            ));
+        }
+        if !self.initialized {
+            self.initialize(position, generator, pst, ranks, threshold);
+        }
+        loop {
+            while let Some(&candidate) = self.group.get(self.cursor) {
+                self.cursor += 1;
+                if Some(candidate.capture.mv) != self.tt_move {
+                    return Some(candidate);
+                }
+            }
+            self.generate_group(position, generator, pst, ranks)?;
+        }
+    }
+}
+
 /// 着手が相手の残存王駒をすべて取るかを返す(第21条第1項)。
 fn captures_last_royal(position: &Position, mv: Move) -> bool {
+    captured_last_royal(position, position.captured_squares(mv))
+}
+
+/// 生成済みの捕獲升から最後の王駒の捕獲を判定する。
+fn captured_last_royal(position: &Position, captured: [Option<crate::Square>; 2]) -> bool {
     let opponent = position.side_to_move().opposite();
     let royals = position.royal_pieces(opponent);
     let royal_count = royals.popcount();
     royal_count > 0
-        && position
-            .captured_squares(mv)
+        && captured
             .into_iter()
             .flatten()
             .filter(|&square| royals.contains(square))
@@ -1769,7 +2026,8 @@ fn captures_last_royal(position: &Position, mv: Move) -> bool {
             == royal_count as usize
 }
 
-/// 捕獲手と整列キーのペアをMVV-LVA順で安定に整列する。
+/// 捕獲手と整列キーのペアをMVV-LVA順で安定に整列する参照実装。
+#[cfg(test)]
 fn order_captures(captures: &mut [(Move, MoveOrderKey)]) {
     captures.sort_by_key(|&(_, key)| (Reverse(key.captured_value), key.attacker_value));
 }

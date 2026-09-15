@@ -1,7 +1,10 @@
 //! 合法手の生成。
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
+
+mod search_captures;
+pub(crate) use search_captures::{CaptureCandidate, OrdinaryCapturer};
 
 use core::fmt;
 
@@ -345,12 +348,16 @@ fn generate_piece_moves<const CAPTURES_ONLY: bool>(
                 position,
                 color,
                 from,
-                base_moves,
+                &mut |mv| base_moves.push(mv),
             );
         }
         SpecialMovement::LionLike(profile) => {
             generate_lion_like_double_and_jumps::<CAPTURES_ONLY>(
-                position, color, from, profile, base_moves,
+                position,
+                color,
+                from,
+                profile,
+                &mut |mv| base_moves.push(mv),
             );
         }
     }
@@ -468,7 +475,7 @@ fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
     position: &Position,
     color: Color,
     from: Square,
-    output: &mut Vec<Move>,
+    output: &mut impl FnMut(Move),
 ) {
     let own = position.pieces_of(color);
     let enemy = position.pieces_of(color.opposite());
@@ -478,7 +485,7 @@ fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
         let local = VirtualBoard::new(position, color, from).move_to(mid);
         let second = tables.king_steps(mid) & !local.own;
         for to in second {
-            output.push(Move {
+            output(Move {
                 from,
                 mid: Some(mid),
                 to,
@@ -489,7 +496,7 @@ fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
 
     let jump_destinations = if CAPTURES_ONLY { enemy } else { !own };
     for to in tables.lion_jumps(from) & jump_destinations {
-        output.push(Move {
+        output(Move {
             from,
             mid: None,
             to,
@@ -498,7 +505,7 @@ fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
     }
 
     if !CAPTURES_ONLY && !(adjacent & !position.occupied()).is_empty() {
-        output.push(Move {
+        output(Move {
             from,
             mid: None,
             to: from,
@@ -514,7 +521,7 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
     color: Color,
     from: Square,
     profile: LionLikeProfile,
-    output: &mut Vec<Move>,
+    output: &mut impl FnMut(Move),
 ) {
     let own = position.pieces_of(color);
     let enemy = position.pieces_of(color.opposite());
@@ -528,7 +535,7 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
         if !CAPTURES_ONLY && !position.occupied().contains(first) {
             can_jitto = true;
         } else if enemy.contains(first) {
-            output.push(Move {
+            output(Move {
                 from,
                 mid: Some(first),
                 to: from,
@@ -543,7 +550,7 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
             continue;
         }
         if !CAPTURES_ONLY || enemy.contains(second) {
-            output.push(Move {
+            output(Move {
                 from,
                 mid: None,
                 to: second,
@@ -551,7 +558,7 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
             });
         }
         if enemy.contains(first) {
-            output.push(Move {
+            output(Move {
                 from,
                 mid: Some(first),
                 to: second,
@@ -561,7 +568,7 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
     }
 
     if !CAPTURES_ONLY && can_jitto {
-        output.push(Move {
+        output(Move {
             from,
             mid: None,
             to: from,

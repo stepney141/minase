@@ -26,6 +26,8 @@ pub(crate) struct AttackTables {
     rays: Box<RayTable>,
     /// 色×プロファイル×升ごとの固定利き。
     fixed: FixedAttackTable,
+    /// 遮蔽のない盤面での固定利きと走りの和。
+    reach: FixedAttackTable,
     /// 距離制限付き走りに使う範囲マスク。
     range_masks: RangeMaskTable,
     /// 各升から獅子が直接跳べる2升先の集合(第12条第5項・第6項)。
@@ -86,12 +88,30 @@ impl AttackTables {
             }
         }
 
-        Self {
+        let reach = fixed.clone();
+        let mut tables = Self {
+            reach,
             rays,
             fixed,
             range_masks,
             lion_jumps,
+        };
+        for color in Color::ALL {
+            for profile_id in all_profiles() {
+                for from in Square::all() {
+                    let index = Self::fixed_index(color, profile_id, from);
+                    for slide in movement_profile_data(profile_id).slides {
+                        tables.reach[index] |= tables.sliding_control(
+                            from,
+                            slide.direction.for_color(color),
+                            slide.max_steps,
+                            Bitboard::EMPTY,
+                        );
+                    }
+                }
+            }
         }
+        tables
     }
 
     /// 固定利きテーブルの添字を計算して返す。
@@ -111,6 +131,12 @@ impl AttackTables {
     #[inline]
     pub(crate) fn fixed(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
         self.fixed[Self::fixed_index(color, profile, from)]
+    }
+
+    /// 遮蔽を考慮しない固定利きと走りの到達範囲を返す。
+    #[inline]
+    pub(crate) fn reach(&self, color: Color, profile: MovementProfileId, from: Square) -> Bitboard {
+        self.reach[Self::fixed_index(color, profile, from)]
     }
 
     /// 周囲8升(王将の1升移動の範囲)を返す。獅子の第1段階の判定にも使う。
@@ -176,6 +202,29 @@ pub(crate) fn attack_tables() -> &'static AttackTables {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // movegen-speedup.md「捕獲対象を生成前に除外する」: 遮蔽なしの範囲は
+    // 全色・全プロファイル・全升で固定利きと距離制限つき走りの和になる。
+    #[test]
+    fn reach_matches_fixed_and_unblocked_slides() {
+        let tables = attack_tables();
+        for color in Color::ALL {
+            for profile in all_profiles() {
+                for from in Square::all() {
+                    let mut expected = tables.fixed(color, profile, from);
+                    for slide in movement_profile_data(profile).slides {
+                        expected |= tables.sliding_control(
+                            from,
+                            slide.direction.for_color(color),
+                            slide.max_steps,
+                            Bitboard::EMPTY,
+                        );
+                    }
+                    assert_eq!(tables.reach(color, profile, from), expected);
+                }
+            }
+        }
+    }
 
     // 実装契約(第7条4項・5項の走りの定義に接地): 走りの利きは、方向へ1升ずつ進む
     // 逐次歩行と一致する。距離制限内の升を進行順に含み、最初の駒がある升を含んだ
