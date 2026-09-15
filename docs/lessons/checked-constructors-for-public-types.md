@@ -19,5 +19,5 @@
 ## 出典
 
 - [plans/rust-design-audit-remediation.md](../plans/rust-design-audit-remediation.md)
-- [rust-design-audit-2026-08-26.md](../rust-design-audit-2026-08-26.md) の「駒コードとSFEN出力の不一致」「未検証着手と合法手の混在」「探索条件と探索局面の不正状態」「SetupPositionの公開フィールド」
+- [rust-design-audit-2026-08-26.md](../audits/rust-design-audit-2026-08-26.md) の「駒コードとSFEN出力の不一致」「未検証着手と合法手の混在」「探索条件と探索局面の不正状態」「SetupPositionの公開フィールド」
 - コミット 8b48929

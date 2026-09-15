@@ -70,7 +70,7 @@ minaseは`Threads=1`とし、規則、開始局面の作り方、およびハー
 
 対局の実行、保存、および再開は[対局ハーネスのバイナリ対戦化](match-harness.md)と[棋力測定ハーネス基盤の効率化](match-harness-efficiency.md)を前提とする。
 HaChuとのCECP接続は[外部対局接続](engine-connectivity.md)が確立した手順に従い、HaChuの版とビルド手順は既存のHaChu戦の記録と同じである。
-固定局数Eloの統計契約は[SPRTによる棋力測定の手引き](../sprt.md)の「進捗記録の固定局数Elo」の節が定める。
+固定局数Eloの統計契約は[SPRTによる棋力測定の手引き](../guides/sprt.md)の「進捗記録の固定局数Elo」の節が定める。
 
 ## 設計判断
 
@@ -80,7 +80,7 @@ HaChuの条件を固定し、minaseの条件だけを変える。
 ただし置換表容量については、HaChu側の感度も知りたいので、minase側を256 MBに固定してHaChu側だけを変えるセルも置く。
 
 測定は固定200ペアEloとし、GSPRTを使わない。
-本測定は機能の採否ではなく効果量を条件ごとに並べる測定であり、docs/sprt.mdの「進捗記録の固定局数Elo」の枠に当たる。
+本測定は機能の採否ではなく効果量を条件ごとに並べる測定であり、docs/guides/sprt.mdの「進捗記録の固定局数Elo」の枠に当たる。
 200ペアは既存のHaChu戦の記録と同じ精度であり、1セルの95%信頼区間の幅は約±35 Eloである。
 2セルの差の95%信頼区間は独立なら約±50 Eloになるので、本測定は条件ごとの概況を把握する標本数と位置付け、差が約50 Elo未満の2セルを「異なる」とは主張しない。
 セル間の差の解釈は、時間比の隣り合うセル同士と、置換表比の各セルと対等条件のtime1との比較に限る。
@@ -96,11 +96,11 @@ HaChuは`memory`で受けた容量を2の冪へ丸めて確保するため（hac
 測定者がCECPエンジンに2の冪以外の容量を指定した場合、ハーネスは対局を始めずにエラーで停止する。
 
 置換表容量はハーネスの対局条件として指定し、機能比較のスイッチにはしない。
-docs/sprt.mdが禁じるのは差分の内容を知るスイッチであり、時間制御と同じく両エンジンへ与える資源条件は`manifest.json`に記録される条件である。
+docs/guides/sprt.mdが禁じるのは差分の内容を知るスイッチであり、時間制御と同じく両エンジンへ与える資源条件は`manifest.json`に記録される条件である。
 指定がなければ従来どおりエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPは`memory 256`）で走るので、既存の測定手順は変わらない。
 
 結果の正は実行ディレクトリの`pairs/`、累計実行時間の正は`summary.json`の`active_wall_time_ns`である。
-時間制御が等しいtime1と置換表比の4セルは、docs/sprt.mdの定めどおり`match_report`で保存記録から再集計したJSONを記録の値とする。
+時間制御が等しいtime1と置換表比の4セルは、docs/guides/sprt.mdの定めどおり`match_report`で保存記録から再集計したJSONを記録の値とする。
 `match_report`は候補と基準の時間制御が等しい測定だけを受け付けるため、minaseの持ち時間を縮めた3セルは、[自己対局の持ち時間感度](../measurements/sensitivity-time2x.md)と同じく`match_runner`の標準出力の要約（ペンタノミアル度数、Elo、信頼区間、異常件数）を記録の値とする。
 
 全セルで同じ基本シードを使い、同じ200個の開始局面で戦わせる。
@@ -175,7 +175,7 @@ match_runner --run-dir data/matches/hachu-grid-hash16-256 --seed 20560903 \
 
 ## 実装フェーズ
 
-1. ハーネスに`--candidate-hash`と`--baseline-hash`（MB）を追加し、CECPエンジンに秒読みだけの時間制御を`st`として伝える対応を加える。USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝え、`manifest.json`の`hash_mb`に明示値を記録する。完了条件は、単体テストとclippyが通ることである。あわせてdocs/sprt.mdへ指定方法を追記する。
+1. ハーネスに`--candidate-hash`と`--baseline-hash`（MB）を追加し、CECPエンジンに秒読みだけの時間制御を`st`として伝える対応を加える。USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝え、`manifest.json`の`hash_mb`に明示値を記録する。完了条件は、単体テストとclippyが通ることである。あわせてdocs/guides/sprt.mdへ指定方法を追記する。
 2. 煙試験を行う。固定深さの1ペアで16 MBと1,024 MBの指定がHaChuとminaseの双方で起動と対局を通り、`manifest.json`の`hash_mb`が指定値になることを確認する。加えて、最短のtime1of8の時間制御で1ペアを対局させ、時間切れが出ないことと、保存された着手時間から長手数の局面でも残り時間が安全余裕の内側に収まることを確認する。煙試験の実行ディレクトリは記録に残さない。完了条件は、両容量と最短時間制御で異常件数が0であることである。
 3. 8セルを測定し、セルごとに`docs/measurements/hachu-grid-<セル名>.md`へ記録する。完了条件は、8件の記録がdocs/plans/README.mdの6見出しを持ち、異常件数と拒否着手を記載していることである。
 4. 本書へ8セルのEloと95%信頼区間の一覧表を載せ、状態を完了に書き換え、docs/ROADMAP.mdの状態表と現在地を更新する。
@@ -197,9 +197,9 @@ HaChuは2,000手を超える対局で棋譜配列の上限により異常終了�
 
 ## 参考資料
 
-- [SPRTによる棋力測定の手引き](../sprt.md)
+- [SPRTによる棋力測定の手引き](../guides/sprt.md)
 - [段階5のHaChu戦の記録](../measurements/strength-stage5-hachu-elo200.md)
 - [HaChu対minaseの等時間GSPRT](../measurements/hachu-vs-search-tc60.md)
 - [HaChu対minaseの持ち時間4倍の固定局数Elo](../measurements/hachu-vs-search-tc-handicap-4x.md)
 - [自己対局の持ち時間感度](../measurements/sensitivity-time2x.md)
-- [HaChu調査](../protocols/hachu.md)
+- [HaChu調査](../research/protocols/hachu.md)

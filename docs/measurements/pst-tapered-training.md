@@ -6,7 +6,7 @@
 
 ## コマンドライン
 
-学習は[PSTの学習手順](../pst-training.md)のワークフローで実行した。
+学習は[PSTの学習手順](../guides/pst-training.md)のワークフローで実行した。
 設定ファイルは`data/pst-tapered/pst-tapered-single.toml`と`data/pst-tapered/pst-tapered-tapered.toml`であり、`train.model`だけが異なる。
 
 ```console

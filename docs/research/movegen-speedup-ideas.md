@@ -1,6 +1,6 @@
 # 合法手生成の高速化計画への追加候補
 
-2026年9月13日時点の[高速化計画書](plans/movegen-speedup.md)と作業ツリーを調べた結果、追加案の優先候補は、静止探索で不要になる捕獲を生成前に除くことと、必要になった捕獲だけを段階的に生成することである。
+2026年9月13日時点の[高速化計画書](../plans/movegen-speedup.md)と作業ツリーを調べた結果、追加案の優先候補は、静止探索で不要になる捕獲を生成前に除くことと、必要になった捕獲だけを段階的に生成することである。
 本書で追加案と比較している計画は、追加案を統合する前の2026年9月13日時点の内容を指す。
 現行の着手順と採用条件は、リンク先の計画書を参照する。
 15局面の診断では、生成した捕獲手の39.3%を入口の評価値だけで除外でき、48.5%は探索ループ内の検査まで到達していなかった。
@@ -10,7 +10,7 @@
 ## 2倍に必要な削減量
 
 100%以上の高速化を、同じ探索を半分以下の時間で終えることと解釈する。
-[既存測定](measurements/bench-movegen-profile-depth5.md)では、基準コミット`0e3dfa6`の0.845秒に対して試作が0.639秒なので、基準比2倍の目標は0.422秒である。
+[既存測定](../measurements/bench-movegen-profile-depth5.md)では、基準コミット`0e3dfa6`の0.845秒に対して試作が0.639秒なので、基準比2倍の目標は0.422秒である。
 試作からさらに0.216秒、すなわち33.8%の時間削減が必要であり、速度では約51.2%の上積みに相当する。
 既存試作の約1.32倍に追加案を重ねて基準比2倍を狙う余地はあるが、追加案だけで試作をさらに2倍にできる根拠はまだない。
 
@@ -42,11 +42,11 @@
 生成後のループでは、評価値による棄却、静的交換評価、子局面の探索の順に処理する。
 したがって「ループ内で検査した手」も、すべて子局面を探索したわけではない。
 上表の割合は削減候補の件数であり、各手の費用が等しいとも、同じ割合の時間を削れるとも仮定していない。
-生データと再現用差分は[診断資料](measurements/movegen-speedup-ideas-counts/totals.json)に付属する。
+生データと再現用差分は[診断資料](../measurements/movegen-speedup-ideas-counts/totals.json)に付属する。
 
 ## 評価値で捕獲対象を生成前に絞る
 
-現在の[静止探索](../src/search/mod.rs#L1412)は、すべての捕獲を生成して合法性を調べ、成りを展開し、整列した後で、獲得価値が足りない手を捨てる。
+現在の[静止探索](../../src/search/mod.rs#L1412)は、すべての捕獲を生成して合法性を調べ、成りを展開し、整列した後で、獲得価値が足りない手を捨てる。
 入口のα、局面の静的評価値 `stand_pat`、既存の余裕値 `delta_margin` から、捕獲価値の閾値 `α - stand_pat - delta_margin` を先に求められる。
 αはそのノード内で低下しないため、入口で棄却条件を満たす手は後でも棄却される。
 
@@ -78,8 +78,8 @@ minaseでも前項の閾値で相手駒を絞り、その対象から取り手�
 
 ## 静的交換評価を判定に必要な範囲で打ち切る
 
-現在の呼び出し側が静的交換評価（SEE）から使う情報は、[値が負で、かつ判定不能でないこと](../src/search/mod.rs#L1938)だけである。
-一方、[SEE本体](../src/search/see.rs#L25)は交換列を最後まで作ってから値を逆算している。
+現在の呼び出し側が静的交換評価（SEE）から使う情報は、[値が負で、かつ判定不能でないこと](../../src/search/mod.rs#L1938)だけである。
+一方、[SEE本体](../../src/search/see.rs#L25)は交換列を最後まで作ってから値を逆算している。
 [Stockfishの `see_ge`](https://github.com/official-stockfish/Stockfish/blob/master/src/position.cpp#L1268)にも、値全体を返す代わりに閾値との比較で早期終了する実装がある。
 minaseでは成りと獅子規則の扱いを含めて独自に同値条件を導く必要がある。
 
@@ -115,7 +115,7 @@ minaseでは成りと獅子規則の扱いを含めて独自に同値条件を�
 
 ## 固定利きを移動量ごとにまとめる
 
-[現在の生成器](../src/core/movegen/mod.rs#L297)は、駒種、移動元の順に各駒の固定利きを引く。
+[現在の生成器](../../src/core/movegen/mod.rs#L297)は、駒種、移動元の順に各駒の固定利きを引く。
 同じ移動量dを持つ駒の集合をSdとし、`shift(Sd, d) & 捕獲対象` をまとめて計算すれば、捕獲元を逆シフトで復元できる。
 歩兵のように同じ移動をする駒が複数ある場合、駒ごとの表参照を集合演算へ置き換えられる。
 
@@ -156,7 +156,7 @@ SEEの早期終了とPGOをそれぞれ比較し、共有、固定利きの一�
 各案の削減対象は重なるため、直前の採用版に対する増分を測る。
 
 今回の診断の入力は、当時のmaster（`d0d3c52`）に作業ツリーの差分を適用したものとして保存した。
-[環境情報](measurements/movegen-speedup-ideas-counts/environment.json)、[入力差分](measurements/movegen-speedup-ideas-counts/input.patch)、[診断差分](measurements/movegen-speedup-ideas-counts/diagnostic.patch)、[元ファイルのSHA-256](measurements/movegen-speedup-ideas-counts/source-sha256.json)、[局面別件数](measurements/movegen-speedup-ideas-counts/counts.log)、[比較結果](measurements/movegen-speedup-ideas-counts/comparison.json)を保存している。
+[環境情報](../measurements/movegen-speedup-ideas-counts/environment.json)、[入力差分](../measurements/movegen-speedup-ideas-counts/input.patch)、[診断差分](../measurements/movegen-speedup-ideas-counts/diagnostic.patch)、[元ファイルのSHA-256](../measurements/movegen-speedup-ideas-counts/source-sha256.json)、[局面別件数](../measurements/movegen-speedup-ideas-counts/counts.log)、[比較結果](../measurements/movegen-speedup-ideas-counts/comparison.json)を保存している。
 再現するときは新規の一時ディレクトリへ当時のmasterを展開し、入力差分と診断差分を順に適用する。
 
 ```console
@@ -171,4 +171,4 @@ target/release/bench --depth 5 --threads 1 --repetitions 1
 このバイナリは処理件数を数えるためのもので、速度測定には使用しない。
 速度比較では診断コードを外し、他のCPU負荷がない状態で通常ビルドの `bench --depth 5 --repetitions 3 --threads 1` を実行する。
 生成順、合法性、成り、特殊手、判定不能の扱いを各案の契約に従って検証し、局面別のノード数、最善手、探索値を照合する。
-棋力に影響し得る候補の採否は、[プロジェクトの測定方針](sprt.md)に従うコミット間の自己対局の逐次確率比検定で決める。
+棋力に影響し得る候補の採否は、[プロジェクトの測定方針](../guides/sprt.md)に従うコミット間の自己対局の逐次確率比検定で決める。

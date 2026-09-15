@@ -1,7 +1,7 @@
 //! コミット対コミットの自己対局測定ハーネス。
 //!
 //! ペア対局のペンタノミアルGSPRTと固定局数Eloを提供する。運用規約と
-//! 統計的契約はdocs/sprt.mdを参照。
+//! 統計的契約はdocs/guides/sprt.mdを参照。
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Write as _;

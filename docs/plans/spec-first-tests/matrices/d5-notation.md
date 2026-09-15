@@ -3,9 +3,9 @@
 作成日: 2026-08-14。期待値の根拠は規範文書のみとし、実装コード（src/）は一切参照していない。
 
 典拠文書の略記:
-- **[USI]** docs/protocols/usi-lishogi.md
-- **[CECP]** docs/protocols/cecp.md
-- **[HACHU]** docs/protocols/hachu.md
+- **[USI]** docs/research/protocols/usi-lishogi.md
+- **[CECP]** docs/research/protocols/cecp.md
+- **[HACHU]** docs/research/protocols/hachu.md
 - **[PL]** docs/plans/protocol-layer.md（節名で引く。「拡張SFEN」「Move文字列表記2形式」「フェーズ5の確定設計」）
 - **[CANON]** docs/plans/move-canonicalization.md
 - **[RULES]** RULES.md

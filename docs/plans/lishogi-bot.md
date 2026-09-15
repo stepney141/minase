@@ -217,7 +217,7 @@ RULES.md第31条のR1へ前提条件を追記し、`src/core/game.rs`、`src/cor
 - 非レート対局10局とレート対局10局が受諾され、事後照合で`position`の拒否、`bestmove`の欠落、エンジン異常、時間切れ負け、minase側に起因する未完走、および裁定の不一致がいずれも0件である。
 - 非レート対局にBot相手の対局と秒読みつきの対局が含まれ、端到端の時計の再構成と最小の余裕が記録されている。
 - 途中局面からの挑戦の可否が確認され、許される場合は先手番開始と後手番開始の接続試験が記録されている。
-- docs/protocols/usi-lishogi.mdの「lishogiへのエンジン接続経路」の章に、Lishogi-Botの時計の換算（余裕、経過時間、秒読み、加算の減算と別項目での送信、最初の1手の`movetime`）、対局ごとのプロセス起動と終了、`USI_Variant`の送信回数、および`engine_options`が引数を捨てる挙動が、参照した版つきで追記されている。
+- docs/research/protocols/usi-lishogi.mdの「lishogiへのエンジン接続経路」の章に、Lishogi-Botの時計の換算（余裕、経過時間、秒読み、加算の減算と別項目での送信、最初の1手の`movetime`）、対局ごとのプロセス起動と終了、`USI_Variant`の送信回数、および`engine_options`が引数を捨てる挙動が、参照した版つきで追記されている。
 - 本節の検証手順がすべて成功する。
 
 ## 参考資料
@@ -226,5 +226,5 @@ RULES.md第31条のR1へ前提条件を追記し、`src/core/game.rs`、`src/cor
 - TheYoBots/Lishogi-Bot（lishogi Bot APIとUSIエンジンのブリッジ、コミット17c16bc、2024年10月26日）。設定の雛形`config.yml.default`、認証トークンの環境変数による上書き`config.py`、エンジンの起動引数の組み立て`engine_wrapper.py`、時計の換算`lishogi-bot.py`の`adjust_game_time`と`play_midgame_move`、`go`の組み立て`engine_ctrl/usi.py`、エンジンの起動と終了`play_game`、変種通知`set_variant_options`、途中局面の手番判定`model.py`を参照した。<https://github.com/TheYoBots/Lishogi-Bot>
 - WandererXII/scalashogi（lishogiサーバの規則ライブラリ、コミット9a1c2c3、2026年3月18日）。反復裁定の前提条件`History.scala`の`isRepetition`、履歴の更新`Situation.scala`、および不可逆手の定義`variant/Chushogi.scala`の`isIrreversible`を参照した。<https://github.com/WandererXII/scalashogi>
 - GitHub issue #5。lishogiの全棋譜をminaseで再生して差異を確認した記録。反復裁定の前提条件の差と実例3局はここで判明した。
-- [docs/protocols/usi-lishogi.md](../protocols/usi-lishogi.md)。USIの仕様、lishogi系の表記、およびLishogi-Botの接続経路の調査記録。
+- [docs/research/protocols/usi-lishogi.md](../research/protocols/usi-lishogi.md)。USIの仕様、lishogi系の表記、およびLishogi-Botの接続経路の調査記録。
 - [外部対局接続](engine-connectivity.md)。Lishogi-Bot経路の対局進行の契約。

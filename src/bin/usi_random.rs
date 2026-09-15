@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn identical_seeds_reproduce_identical_outputs() {
-        // docs/sprt.md: 同じ入力とシードは応答列を再現し、Seed指定は着手選択へ反映される。
+        // docs/guides/sprt.md: 同じ入力とシードは応答列を再現し、Seed指定は着手選択へ反映される。
         let input = concat!(
             "setoption name Seed value 42\n",
             "position startpos\n",

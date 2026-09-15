@@ -1,13 +1,13 @@
 # PSTの学習手順
 
-PST（駒の種類と位置に応じた評価表）の学習には、専用スクリプト [pst_workflow.py](../tools/train/pst/pst_workflow.py) を使う。
+PST（駒の種類と位置に応じた評価表）の学習には、専用スクリプト [pst_workflow.py](../../tools/train/pst/pst_workflow.py) を使う。
 条件を設定ファイルへ記入し、「準備」「生成」「学習」「診断」の順に実行する。
 スクリプトが教師尺度Kの推定、ログの保存、入力と重みの検査和の記録を行い、モデル出力の尺度Kには設定ファイルで指定した値を使う。
-学習の計算は既存の [train_pst.py](../tools/train/pst/train_pst.py) が担当する。
+学習の計算は既存の [train_pst.py](../../tools/train/pst/train_pst.py) が担当する。
 PSTの学習コード、診断コード、テスト、設定例は `tools/train/pst/` にまとめている。
 
 以下では、世代1までのデータに、新たな自己対局データを加えて世代2を学習する。
-学習を始める際は、[設計書の型](plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](ROADMAP.md) に状態を登録する。
+学習を始める際は、[設計書の型](../plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md) に状態を登録する。
 学習後の採否は [棋力測定の標準手順](sprt.md) に従う。
 
 ## 1. 設定ファイルを用意する
@@ -22,7 +22,7 @@ GPUで学習する場合は、その環境からCUDAを利用できる必要が�
 tools/train/.venv/bin/python -m unittest discover -s tools/train/pst -p 'test_*.py'
 ```
 
-まず、[設定例](../tools/train/pst/pst.example.toml) をコピーする。
+まず、[設定例](../../tools/train/pst/pst.example.toml) をコピーする。
 
 ```bash
 cp tools/train/pst/pst.example.toml pst-gen2.toml
@@ -68,12 +68,12 @@ git rev-parse HEAD
 
 `mirrored`は鏡映対の重みの平均から学習を始め、左右の鏡映で同じ正準特徴を使う。
 重みを共有するため確率的な鏡映のデータ拡張は行わず、保存時に全13,680特徴へ展開する。
-世代2のモデルには、[段階7](plans/strength-stage7.md)で採用した`mirrored`を指定する。
+世代2のモデルには、[段階7](../plans/strength-stage7.md)で採用した`mirrored`を指定する。
 `single`は1組の重みを保存時に両端点へ複製し、初期重みの両端点が一致しなければ停止するため、両端点が異なる採用済みPSTの継続学習には使えない。
 `train.removal_penalty`が正の場合は、基準として使う初期MNPTのi16重みが両端点とも完全な鏡映対称であることを学習器が検査し、不一致なら停止する。
 設定例の0は追加損失を無効にする明示値であり、段階7の再学習で採用する係数を決定したものではない。
 再学習の準備前に、訓練集合内の予備比較で採用した係数と、その比較で固定した学習率を一組として設定へ転記する。
-段階7の[片側絶対値型の予備比較](measurements/strength-stage7-removal-absolute.md)では、学習率0.03で係数1000を選び、本学習でもこの組を用いる。
+段階7の[片側絶対値型の予備比較](../measurements/strength-stage7-removal-absolute.md)では、学習率0.03で係数1000を選び、本学習でもこの組を用いる。
 
 生成シードは互いに生成局数以上離し、過去の生成にも使っていない範囲を選ぶ。
 スクリプトは設定内の重複と、既存データに記録された対局番号との重なりを検出する。
@@ -99,7 +99,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config ps
 学習スクリプトの変更も検出して停止するので、実行中はその版を維持する。
 
 学習器を変更して再学習する場合は、既存の実験を保持し、変更後のツールを新しい実行ディレクトリへ固定する。
-現行の[設定例](../tools/train/pst/pst.example.toml)から全必須項目を含む設定を用意し、`run.directory`には未使用の保存先を指定する。
+現行の[設定例](../../tools/train/pst/pst.example.toml)から全必須項目を含む設定を用意し、`run.directory`には未使用の保存先を指定する。
 段階7の生成済みデータで再学習する場合、`run.data`には世代0と世代1の6ファイル、および`data/strength-stage7/gen2/generated-<seed>.bin`の全5ファイルを列挙し、`generate.seeds = []`としてデータを再生成しない。
 
 段階7で範囲射影を加えた最初の再学習には`data/strength-stage7/gen2-projected.toml`を使い、結果を`data/strength-stage7/gen2-projected`へ保存した。
@@ -175,7 +175,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py train --run-dir dat
 
 採用済みの `pst-base.bin` から学習し、結果を `training/pst.bin` に保存する。
 重みファイルはMNPTバージョン2であり、序中盤用と終盤用の2組の重みに加え、基準から引き継いだ探索用駒価値47個を持つ。
-静的評価は盤上総駒数で両端点を線形補間し、探索用駒価値は学習で変えない（[設計書](plans/tapered-pst.md)）。
+静的評価は盤上総駒数で両端点を線形補間し、探索用駒価値は学習で変えない（[設計書](../plans/tapered-pst.md)）。
 診断が量子化誤差を測れるよう、量子化前の重みを `training/pst-float.npz` に併置する。
 世代ごとの尺度、訓練と検証の局面数、1エポックと全体の更新回数は `training/inputs.json` に記録する。
 同ファイルの`options`には`removal_penalty`を含む全学習設定を保存し、学習器の必須引数`--removal-penalty`へ指定値をそのまま渡す。
@@ -189,7 +189,7 @@ Python、PyTorch、CUDA、導入パッケージの版は `training/environment.j
 除去ごとの下限不足と上限超過に片側絶対値ペナルティを課し、その和を出力Kで割る。
 局面内の対象を等重みで平均してから、訓練局面を等重みで平均する。
 対象がない局面も分母に含めて追加損失への寄与を0とし、教師値の二値交差エントロピーには全局面を使う。
-追加係数は教師混合係数`train.lambda`と区別し、式の定義は[評価関数の学習](plans/evaluation.md#教師値と損失)に従う。
+追加係数は教師混合係数`train.lambda`と区別し、式の定義は[評価関数の学習](../plans/evaluation.md#教師値と損失)に従う。
 有限の係数による追加損失は、量子化後の符号維持や診断合格を保証しない。
 基準自体が逆向きの場合に、その符号を改善する反転も拒否する現行の診断基準は変えない。
 

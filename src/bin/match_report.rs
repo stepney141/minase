@@ -919,7 +919,7 @@ mod tests {
         );
         assert_eq!(complete_report.leaves_one_physical_core, Some(true));
 
-        // docs/sprt.md「異常時の裁定」「測定結果の記録」: クラッシュは反則負けとして
+        // docs/guides/sprt.md「異常時の裁定」「測定結果の記録」: クラッシュは反則負けとして
         // Eloと異常件数へ算入する。終了済みプロセスの資源が欠測しても、その統計を
         // 失わず、欠測値へ依存する集計だけをnullとして明示する。
         let pair_path = run_dir.join("pairs/00000000000000000001.json");

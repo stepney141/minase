@@ -19,5 +19,5 @@ USIで`position startpos moves 1あ`のように非ASCII文字を含む着手を
 ## 出典
 
 - [plans/rust-design-audit-remediation.md](../plans/rust-design-audit-remediation.md)
-- [rust-design-audit-2026-08-26.md](../rust-design-audit-2026-08-26.md) の「非ASCIIのUSI着手文字列」「置換表サイズのオーバーフロー」「positionコマンドの黙示的な無視と補完」
+- [rust-design-audit-2026-08-26.md](../audits/rust-design-audit-2026-08-26.md) の「非ASCIIのUSI着手文字列」「置換表サイズのオーバーフロー」「positionコマンドの黙示的な無視と補完」
 - コミット 8b48929

@@ -7,7 +7,7 @@
 一方で自己対局の片側だけ持ち時間を2倍にすると約+216 Elo分の勝率が上がり、探索量の増加はそのまま棋力へ転化するので、探索の無駄を除く純粋な高速化にも大きな価値がある。
 段階は、確実性の高い高速化と時間管理の修正から始め、静止探索（読みの末端で捕獲手だけを読み進める探索）の質、前向き枝刈り（劣ると見込んだ枝を読まずに済ませる手法）、指し手順序付け、置換表（探索済み局面の結果を保存して再利用する表）の順に探索を成熟させる。
 その後に評価関数の世代反復、利きマップ（各升にどの駒の利きが届いているかを保持する表）に基づく評価特徴の拡張、前回は時間制御で不採用となったNNUE（差分更新できる小さなニューラルネットによる評価関数）の再挑戦、並列度と終盤処理へ進む。
-各段階の各項目は、既存方針どおりコミット対コミットの自己対局をペンタノミアルGSPRT（同じ開始局面で先後を入れ替えた2局の得点合計を5分類に集計し、2つのエンジンの強さの差を逐次判定する統計検定、[docs/sprt.md](../sprt.md)）で判定し、探索挙動を変えない高速化だけはbench（固定局面集を固定深さで探索する速度計測コマンド）の総ノード数の不変とNPS（1秒あたり探索ノード数）の改善で仮採用する。
+各段階の各項目は、既存方針どおりコミット対コミットの自己対局をペンタノミアルGSPRT（同じ開始局面で先後を入れ替えた2局の得点合計を5分類に集計し、2つのエンジンの強さの差を逐次判定する統計検定、[docs/guides/sprt.md](../guides/sprt.md)）で判定し、探索挙動を変えない高速化だけはbench（固定局面集を固定深さで探索する速度計測コマンド）の総ノード数の不変とNPS（1秒あたり探索ノード数）の改善で仮採用する。
 段階は原則として順に進めるが、評価関数の世代反復のように探索の挙動を変えず評価値だけを変える段階は、探索の段階と並行して進めてよい。
 完了条件は、10段階のそれぞれが採否の記録を伴って完了し、HaChuとの固定200ペアのElo（採否には使わない進捗指標）が段階ごとに記録されていることである。
 
@@ -44,7 +44,7 @@
 ## 依存関係
 
 本計画は、探索部（[search.md](search.md)）、Lazy SMP（[lazy-smp.md](lazy-smp.md)）、評価関数（[evaluation.md](evaluation.md)）、評価関数の世代反復（[evaluation-gen1.md](evaluation-gen1.md)）、および対局ハーネス（[match-harness.md](match-harness.md)、[match-harness-efficiency.md](match-harness-efficiency.md)）の完了を前提とする。
-測定は [docs/sprt.md](../sprt.md) の標準手順に従い、機能採否はSTC（`time=10000+100`）の選別とLTC（`time=60000+200`）の最終測定による段階ゲート（[match-staged-gate.md](match-staged-gate.md)）のGSPRT、進捗の記録は固定200ペアのEloで行う。
+測定は [docs/guides/sprt.md](../guides/sprt.md) の標準手順に従い、機能採否はSTC（`time=10000+100`）の選別とLTC（`time=60000+200`）の最終測定による段階ゲート（[match-staged-gate.md](match-staged-gate.md)）のGSPRT、進捗の記録は固定200ペアのEloで行う。
 待機中の早期投了（[match-early-resignation.md](match-early-resignation.md)）が完了すれば、本計画の測定にその手順も適用する。
 
 段階の間の依存は次のとおりである。
@@ -318,7 +318,7 @@ Kを固定した比較は、本段階の再学習が出力Kを固定するので
 
 - 高速化の項目は、benchの総ノード数が段階開始時と一致することで探索挙動の不変を確認し、NPSは3回の中央値で比較する。
 - 探索挙動を変える項目は、実装前にbenchで標準時間制御の到達深さでの発動を確認し、時間制御GSPRTで判定する。
-- 段階の完了時に、段階開始コミットとの固定200ペアのEloと、HaChu比較の固定200ペアのEloを記録し、強さの積み上がりを系列として残す。HaChu比較は採否に使わない進捗指標であり、条件は [measurements/hachu-pst-gen1.md](../measurements/hachu-pst-gen1.md) と同じ規則`L1,L3,P0,P5,P6,R2,E1,E2`、時間制御`time=60000+1000`、シード固定とする。docs/sprt.md の外部エンジン比較のGSPRTは、採否の判断が必要になった場合にだけ使う。
+- 段階の完了時に、段階開始コミットとの固定200ペアのEloと、HaChu比較の固定200ペアのEloを記録し、強さの積み上がりを系列として残す。HaChu比較は採否に使わない進捗指標であり、条件は [measurements/hachu-pst-gen1.md](../measurements/hachu-pst-gen1.md) と同じ規則`L1,L3,P0,P5,P6,R2,E1,E2`、時間制御`time=60000+1000`、シード固定とする。docs/guides/sprt.md の外部エンジン比較のGSPRTは、採否の判断が必要になった場合にだけ使う。
 - `attackers_to`、評価値の差分更新、および捕獲専用生成は、全升と全駒種について既存の生成と一致するテストで固定する。
 
 ## 完了条件
@@ -330,6 +330,6 @@ Kを固定した比較は、本段階の再学習が出力Kを固定するので
 ## 参考資料
 
 - 設計書：[search.md](search.md)、[lazy-smp.md](lazy-smp.md)、[evaluation.md](evaluation.md)、[evaluation-gen1.md](evaluation-gen1.md)、[match-harness.md](match-harness.md)
-- 測定手順：[docs/sprt.md](../sprt.md)
+- 測定手順：[docs/guides/sprt.md](../guides/sprt.md)
 - 測定記録：[hachu-pst-gen1.md](../measurements/hachu-pst-gen1.md)、[hachu-vs-search-nps.md](../measurements/hachu-vs-search-nps.md)、[sensitivity-time2x.md](../measurements/sensitivity-time2x.md)、[lazy-smp-v1-diversification-bench.md](../measurements/lazy-smp-v1-diversification-bench.md)、[lazy-smp-v2-threads2-tc.md](../measurements/lazy-smp-v2-threads2-tc.md)
 - 教訓：[measure-feature-activation-before-sprt.md](../lessons/measure-feature-activation-before-sprt.md)、[qsearch-dag-without-tt.md](../lessons/qsearch-dag-without-tt.md)、[derive-seed-adjacent-collision.md](../lessons/derive-seed-adjacent-collision.md)

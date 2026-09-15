@@ -4,7 +4,7 @@
 期待値の根拠は規範文書のみとし、src/配下の実装コードは一切参照していない。
 
 **典拠文書の略記**
-- [SPRT] docs/sprt.md（SPRT測定の運用規約。統計的契約の正）
+- [SPRT] docs/guides/sprt.md（SPRT測定の運用規約。統計的契約の正）
 - [HARN] docs/plans/match-harness.md（対局ハーネスの設計書）
 - [RP] docs/plans/random-play.md（シード派生式と再現契約）
 - [SEARCH] docs/plans/search.md（時間管理・測定基盤・bench・実施状況の確定事項）

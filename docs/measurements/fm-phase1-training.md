@@ -6,7 +6,7 @@
 
 ## コマンドライン
 
-学習は[PSTの学習手順](../pst-training.md)のワークフローのモデル種別`fm`で実行した。
+学習は[PSTの学習手順](../guides/pst-training.md)のワークフローのモデル種別`fm`で実行した。
 設定ファイルはworktree `minase-fm` の `fm-<条件>.toml` であり、条件ごとに `run.directory`、`train.rank`、`train.lambda_res`、`train.lambda`、`train.learning_rate` だけが異なる。
 
 ```console

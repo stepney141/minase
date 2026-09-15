@@ -17,7 +17,7 @@ cargo run --release --bin match_runner -- --candidate commit:7e13888 --baseline 
 
 候補はコミット7e13888（学習PST）である。
 基準はHaChuのDebianパッケージ収録版（コミットdf26f4a、RULES.md［E5］）を既定設定（“Okazaki rule” 無効、“Promote on entry” 有効、“Allow repeats” 無効）で用いた。
-ビルド手順は docs/sprt.md の外部エンジン比較に従う（詳細は記録なし）。
+ビルド手順は docs/guides/sprt.md の外部エンジン比較に従う（詳細は記録なし）。
 規則セットは`L1,L3,P0,P5,P6,R2,E1,E2`（RULES.md第33条第7項のHaChu既定設定に対応する組合せ）を審判層と候補の双方に与えた。
 
 ## 環境

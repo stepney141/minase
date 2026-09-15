@@ -1,7 +1,7 @@
 # SPRTによる棋力測定の手引き
 
 本書は、Minaseのエンジン変更の効果を自己対局で測定する標準手順を定める。
-測定基盤の成立過程は [plans/match-harness.md](plans/match-harness.md) が、保存、再開、および集計基盤は [plans/match-harness-efficiency.md](plans/match-harness-efficiency.md) が、統計方式は [plans/search.md](plans/search.md) の測定基盤の節が、機能採否の段階ゲートの設計判断は [plans/match-staged-gate.md](plans/match-staged-gate.md) が所有する。
+測定基盤の成立過程は [plans/match-harness.md](../plans/match-harness.md) が、保存、再開、および集計基盤は [plans/match-harness-efficiency.md](../plans/match-harness-efficiency.md) が、統計方式は [plans/search.md](../plans/search.md) の測定基盤の節が、機能採否の段階ゲートの設計判断は [plans/match-staged-gate.md](../plans/match-staged-gate.md) が所有する。
 本書は、測定の実行者（人間およびエージェント）向けの運用規約と手順だけを記す。
 
 ## 原則
@@ -16,7 +16,7 @@
 
 新機能の採否は、機能実装コミットと直前コミットの対等条件GSPRTを、短時間の選別と長時間の最終測定の2段階で実行して判定する。
 短時間条件を**STC**（short time control、`time=10000+100`）、長時間条件を**LTC**（long time control、`time=60000+200`）と呼び、秒読みは使わない。
-STCはfishtestの標準値と同じであり、LTCは中将棋の1局が片側約240手続くことを踏まえ、片側の総思考時間がfishtestのLTC（60秒+0.6秒、チェスの片側約70手）と同程度になるよう加算を0.2秒にしている（選定理由は [plans/match-cost-reduction.md](plans/match-cost-reduction.md)）。
+STCはfishtestの標準値と同じであり、LTCは中将棋の1局が片側約240手続くことを踏まえ、片側の総思考時間がfishtestのLTC（60秒+0.6秒、チェスの片側約70手）と同程度になるよう加算を0.2秒にしている（選定理由は [plans/match-cost-reduction.md](../plans/match-cost-reduction.md)）。
 思考制限は`--each`で両エンジンに同一条件を与える。
 固定深さと固定ノード数は、探索速度を除いた診断に限定し、採否の根拠には使わない。
 STCとLTCは別の測定として扱い、測定名と実行ディレクトリを接尾辞`-stc`と`-ltc`で分ける。
@@ -47,7 +47,7 @@ cargo run --release --bin match_runner -- \
   --each time=60000+200 gsprt
 ```
 
-LTCのシードは、STCの基本シードからペア数以上離れた未使用の値とする（[隣接シードで対局が重複する教訓](lessons/derive-seed-adjacent-collision.md)）。
+LTCのシードは、STCの基本シードからペア数以上離れた未使用の値とする（[隣接シードで対局が重複する教訓](../lessons/derive-seed-adjacent-collision.md)）。
 `decision: H1`であり、かつエンジン異常、時間切れ、および拒否着手が0件の場合だけ採用する。
 LTCの`decision: pending`は、同じ実行ディレクトリを`--resume`で再開し、`--max-pairs`だけを増やして対局列を延長する（再開手順は後述）。
 
@@ -191,14 +191,14 @@ Eloの写像はロジスティック（`s = 1/(1+10^(-elo/400))`）、H0はelo=0
 判定境界は`log((1-β)/α) ≈ +2.944`（H1採用）と`log(β/(1-α)) ≈ -2.944`（H0採用）で、1ペア取り込むごとにLLRを再計算する。
 停止は原則としてLLRの境界交差によって起こる。ペア数上限（`--max-pairs`、既定100,000）はfishtestと同様の暴走保険であり、到達時は判定保留として報告する。
 ただしSTCで指定する上限3,000ペアは暴走保険ではなく段階ゲートの振分け規則であり、到達時の判定保留は停止時点のLLRの符号によってLTCへ進むかどうかを決める。
-新しいH1は、[棋力測定の所要時間削減](plans/match-cost-reduction.md)の完了後に開始する段階から適用し、旧条件で開始した段階は旧条件で完了する。
+新しいH1は、[棋力測定の所要時間削減](../plans/match-cost-reduction.md)の完了後に開始する段階から適用し、旧条件で開始した段階は旧条件で完了する。
 旧条件は`manifest.json`の`h1_elo`で識別できる。
 H1=10は恒久の値ではなく、新境界のLTCで`H0`となった候補が連続して3件出た時点、または段階計画が完了した時点で再検討する。
 
 必要標本数の目安は次のとおりである。
 判定までの期待ペア数は、実測のペア得点分散をσ²=0.10に固定したWald近似では、真のElo差がH0とH1の中間（5 Elo）にある場合に約4,200ペア、H1と同じ10 Eloの場合に約2,600ペア、20 Eloの場合に約950ペア、40 Eloの場合に約410ペアとなる。
 一方、置換表や静止探索のような数十Elo以上の効果は数十〜数百ペアで決着する。
-計算方法と効果量別の表は[棋力測定の所要時間削減](plans/match-cost-reduction.md#仮説h1を10-eloへ広げる)が定める。
+計算方法と効果量別の表は[棋力測定の所要時間削減](../plans/match-cost-reduction.md#仮説h1を10-eloへ広げる)が定める。
 検定全体の健全性は、合成結果によるモンテカルロ検証で確認する。
 固定シードで各仮説を3,000回反復し、elo=0での誤採用率が8%以下、elo=10での検出率が90%以上であることを検査する。
 この検証は通常のテスト実行から外し、検定式、仮説、正則化、判定境界、または停止規則を変更したときに、次のコマンドで実行する。

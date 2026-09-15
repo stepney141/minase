@@ -8,7 +8,7 @@
 テストの目的は、意図された挙動からの逸脱を検出することであり、現在の実装を記述することではない。
 この原則から、期待値の根拠は次の優先順位の証拠に限る。
 
-1. RULES.mdおよび各領域の規範文書（docs/protocols/、docs/sprt.md、docs/plans/search.md ほか設計書の確定事項）
+1. RULES.mdおよび各領域の規範文書（docs/research/protocols/、docs/guides/sprt.md、docs/plans/search.md ほか設計書の確定事項）
 2. 外部プロトコル・外部実装との互換性契約（fishtest参照値、lishogi実棋譜、XBoard/HaChu駒文字表）
 3. 確認済みの過去のバグと境界事例（棚卸しで特定した引き継ぎ資産）
 4. 意図的な挙動を符号化していると確認できた既存テスト
