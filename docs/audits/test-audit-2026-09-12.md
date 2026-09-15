@@ -10,11 +10,11 @@
 
 | 範囲 | 精査したテスト数 | 候補群 | 全一覧 |
 |---|---:|---:|---|
-| 盤面・合法手・規則・棋譜再生 | 250 | 39 | [C01〜C39](/home/stepney141/board-games/minase/docs/test-audit-2026-09-12/core.md)に記載した。 |
-| 表記・外部通信 | 120 | 38 | [P01〜P22、N01〜N16](/home/stepney141/board-games/minase/docs/test-audit-2026-09-12/protocol.md)に記載した。 |
-| 探索・評価・統計 | 145 | 42 | [S01〜S42](/home/stepney141/board-games/minase/docs/test-audit-2026-09-12/search-eval.md)に記載した。 |
-| 実行プログラム・測定・学習ツール | 121 | 25 | [T01〜T25](/home/stepney141/board-games/minase/docs/test-audit-2026-09-12/tools.md)に記載した。 |
-| 合計 | 636 | 144 | [ファイル別の対象一覧](/home/stepney141/board-games/minase/docs/test-audit-2026-09-12/inventory.md)と実行件数を照合した。 |
+| 盤面・合法手・規則・棋譜再生 | 250 | 39 | [C01〜C39](test-audit-2026-09-12/core.md)に記載した。 |
+| 表記・外部通信 | 120 | 38 | [P01〜P22、N01〜N16](test-audit-2026-09-12/protocol.md)に記載した。 |
+| 探索・評価・統計 | 145 | 42 | [S01〜S42](test-audit-2026-09-12/search-eval.md)に記載した。 |
+| 実行プログラム・測定・学習ツール | 121 | 25 | [T01〜T25](test-audit-2026-09-12/tools.md)に記載した。 |
+| 合計 | 636 | 144 | [ファイル別の対象一覧](test-audit-2026-09-12/inventory.md)と実行件数を照合した。 |
 
 優先して整理するのは、製品の不具合を追加で検出せず、独自の模擬処理や同じ実行を維持している箇所である。
 次の候補はその代表であり、小さなassertの重複も含む全候補は上記4ファイルに記載した。

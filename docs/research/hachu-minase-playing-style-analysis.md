@@ -17,7 +17,7 @@ HaChuの内部評価値が保存されておらず、共通の十分深い参照
 
 分析には、同じ200個の開始手順から先後を入れ替えた400局の保存棋譜を用いた。
 条件は持ち時間60秒、1手ごとに1秒加算、ハッシュ256 MB、規則集合`L1,L3,P0,P5,P6,R2,E1,E2`であり、Minaseは1スレッド、HaChuはワーカー数を報告しない。
-実行条件とバイナリ識別子は[manifest](../data/matches/strength-stage2-hachu-elo200/manifest.json)に、公式結果は[棋力測定記録](measurements/strength-stage2-hachu-elo200.md)に保存されている。
+実行条件とバイナリ識別子は[manifest](../../data/matches/strength-stage2-hachu-elo200/manifest.json)に、公式結果は[棋力測定記録](../measurements/strength-stage2-hachu-elo200.md)に保存されている。
 
 測定対象のMinaseはコミット`ce654d93ab9130df2168fbd883b0910d61133e62`である。
 このコミットから分析時のHEAD `2d1831eb0c912abf0d2c059783b812e0cc98b4aa`まで、局面処理、評価、探索、プロトコル、埋め込み重み、およびMinase本体に差分がないことを確認した。
@@ -30,9 +30,9 @@ git diff --quiet ce654d9..HEAD -- \
 
 保存された開始手順と全着手を、指定規則の`Game`とUniversal Shogi Interface（USI）表記解析器で初期局面から再生した。
 合法終局399局の全着手が再生時の合法手検査を通り、各局面から捕獲、成り、盤上駒価値、駒数、およびMinase評価値を集計した。
-保存形式と再読込時の検査は[対局ハーネス](../src/bin/match_runner.rs#L2201)に実装されている。
+保存形式と再読込時の検査は[対局ハーネス](../../src/bin/match_runner.rs#L2201)に実装されている。
 
-駒価値にはMinaseの[固定駒価値表](../src/eval/handcrafted.rs#L19)を使い、歩兵を100センチポーン、横行と竪行を各500センチポーン、獅子を2500センチポーンとした。
+駒価値にはMinaseの[固定駒価値表](../../src/eval/handcrafted.rs#L19)を使い、歩兵を100センチポーン、横行と竪行を各500センチポーン、獅子を2500センチポーンとした。
 この尺度は比較用であり、HaChu自身の評価値でも、現在のMinaseが使う学習済み評価値でもない。
 
 ランダム開始手順の終了時点で既に駒価値差がある対局が400局中52局あった。
@@ -81,8 +81,8 @@ HaChuが勝った119局では、Minaseが連続した詰まされる評価へ入
 Minase勝ちではHaChuが捕獲前に投了するため同じ数え方ができないが、少なくともHaChu勝ちでは獅子による接近と王追いが中心的だった。
 
 実装上も、この観測と整合する差がある。
-現在のMinaseの静的評価は、駒種、成り状態、所有者、および升を組み合わせた特徴と、先獅子状態の特徴との線形和である。[Minaseの特徴定義](../src/eval/features.rs#L43) [評価値の計算](../src/eval/pst.rs#L239)
-一方、HaChuは機動力に加え、王の安全、王周辺の守備駒、獅子に耐える囲い、終盤の王位置、麒麟の成りやすさ、および歩兵配置を明示的に評価する。[有効な評価項目](../../hachu-debian/hachu.c#L18) [HaChuの評価関数](../../hachu-debian/hachu.c#L1897)
+現在のMinaseの静的評価は、駒種、成り状態、所有者、および升を組み合わせた特徴と、先獅子状態の特徴との線形和である。[Minaseの特徴定義](../../src/eval/features.rs#L43) [評価値の計算](../../src/eval/pst.rs#L239)
+一方、HaChuは機動力に加え、王の安全、王周辺の守備駒、獅子に耐える囲い、終盤の王位置、麒麟の成りやすさ、および歩兵配置を明示的に評価する。[有効な評価項目](../../../hachu-debian/hachu.c#L18) [HaChuの評価関数](../../../hachu-debian/hachu.c#L1897)
 HaChuが駒損でも王を取り切る実戦傾向は、この王安全評価と整合する。
 ただし、探索と評価の両方が異なり、評価項目を個別に無効化した比較実験ではないため、王安全評価だけを原因とは断定できない。
 
@@ -144,6 +144,6 @@ jq -s '[.[].games[].termination] | group_by(.kind) |
   data/matches/strength-stage2-hachu-elo200/pairs/*.json
 ```
 
-駒価値と評価値の集計では、[ペア記録](../data/matches/strength-stage2-hachu-elo200/pairs/)の`opening.moves`と`games[].turns[].response.usi`を順に`minase::notation::usi::parse`へ渡し、`Game::play`で局面を更新した。
+駒価値と評価値の集計では、[ペア記録](../../data/matches/strength-stage2-hachu-elo200/pairs/)の`opening.moves`と`games[].turns[].response.usi`を順に`minase::notation::usi::parse`へ渡し、`Game::play`で局面を更新した。
 各局面の全144升を走査して固定駒価値を合計し、開始手順終了時を基準として勝者視点へ符号を統一した。
 Minase評価値は`games[].turns[].evaluation`だけを使い、欠測しているHaChu評価値を補完していない。

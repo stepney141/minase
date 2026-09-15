@@ -2,7 +2,7 @@
 
 ## 先に読む要約
 
-本マイルストーンは、探索と評価の変更を採否判定にかける自己対局測定（[docs/sprt.md](../sprt.md)）の所要時間を、単機20コアの計算資源のままで短くした。
+本マイルストーンは、探索と評価の変更を採否判定にかける自己対局測定（[docs/guides/sprt.md](../guides/sprt.md)）の所要時間を、単機20コアの計算資源のままで短くした。
 段階ゲート（[match-staged-gate.md](match-staged-gate.md)）は、短時間の選別（STC、持ち時間10秒と1手0.1秒加算）と長時間の最終測定（LTC）を、いずれもGSPRTで行う。
 GSPRTは、同じ開始局面で先後を入れ替えた2局（ペア）の得点を積み上げ、「改善なし（H0、0 Elo）」と「改善あり（H1）」のどちらの仮説が尤もらしいかを1ペアごとに判定し直し、十分な証拠が集まった時点で止まる統計検定である。
 完了済みの測定記録を再集計すると、所要時間は「必要ペア数 × 1局の時間 ÷ 同時対局数」でほぼ決まり、ハーネス側の無駄はない。
@@ -214,8 +214,8 @@ fishtestの名目値を維持する案は、段階ゲート設計書が時間制
 既存のH1=5の参照値5件（fishtestリポジトリの`LLRcalc.py`をローカルで実行して得た値をテストコードの定数として置いたもの）は内部関数の回帰テストとして保持し、H1=10の参照値を同じ手順でfishtest側から独立に計算して公開関数のテストに追加する。実装の出力を参照値として転記してはならない。
 モンテカルロテストは、合成分布のelo=5をelo=10に置き換え、既存の許容幅（elo=0での誤採用率8%以下、elo=H1での検出率90%以上）を維持する。
 `match_runner`が`manifest.json`へ記録する`h1_elo`を10.0にする。
-同じコミットで、`docs/sprt.md`の仮説、判定の説明、標本数の目安、および新条件の適用範囲（本マイルストーン完了後に開始する段階から適用し、旧条件で開始した段階は旧条件で完了する）を書き直し、[search.md](search.md)の統計方式の記述と[match-staged-gate.md](match-staged-gate.md)の「検定境界の維持」節を本書への参照に置き換える。
-あわせて、固定200ペアのEloは95%信頼区間の幅が約65 Eloあり、個々の変更の効果量を測る精度はないので、変更ごとのEloは測らず段階ごとの固定局数Eloだけを進捗指標とする現行の運用を`docs/sprt.md`に明文化する。
+同じコミットで、`docs/guides/sprt.md`の仮説、判定の説明、標本数の目安、および新条件の適用範囲（本マイルストーン完了後に開始する段階から適用し、旧条件で開始した段階は旧条件で完了する）を書き直し、[search.md](search.md)の統計方式の記述と[match-staged-gate.md](match-staged-gate.md)の「検定境界の維持」節を本書への参照に置き換える。
+あわせて、固定200ペアのEloは95%信頼区間の幅が約65 Eloあり、個々の変更の効果量を測る精度はないので、変更ごとのEloは測らず段階ごとの固定局数Eloだけを進捗指標とする現行の運用を`docs/guides/sprt.md`に明文化する。
 完了条件は、`cargo test`の成功と、上記3文書に「H1はelo=5」の記述が残っていないことである。
 
 ### フェーズ2　LTC条件の煙試験
@@ -229,7 +229,7 @@ fishtestの名目値を維持する案は、段階ゲート設計書が時間制
 
 ### フェーズ3　LTC条件の標準手順への反映
 
-フェーズ2の完了後、`docs/sprt.md`のLTCの標準コマンドと時間制御の説明を`time=60000+200`へ改め、[match-staged-gate.md](match-staged-gate.md)の「fishtestの標準値への整列」節を本書への参照に置き換え、[strength-stages.md](strength-stages.md)の測定条件の記述を更新する。
+フェーズ2の完了後、`docs/guides/sprt.md`のLTCの標準コマンドと時間制御の説明を`time=60000+200`へ改め、[match-staged-gate.md](match-staged-gate.md)の「fishtestの標準値への整列」節を本書への参照に置き換え、[strength-stages.md](strength-stages.md)の測定条件の記述を更新する。
 完了条件は、3文書の記述が本書と一致し、ROADMAPの状態表と現在地が更新されていることである。
 
 ## 検証
@@ -239,7 +239,7 @@ fishtestの名目値を維持する案は、段階ゲート設計書が時間制
 - `scripts/match_cost_profile.py`を完了済みの5測定に適用した出力が、本書の表と一致する。
 - `cargo test`が成功し、H1=5とH1=10の両方の参照値照合とモンテカルロテストが通る。
 - フェーズ2の煙試験の記録に、異常0件、1局の平均時間、および手数帯ごとの到達深さの新旧LTCとSTCの比較が記されている。
-- `docs/sprt.md`、[search.md](search.md)、[match-staged-gate.md](match-staged-gate.md)、および[strength-stages.md](strength-stages.md)に、`time=60000+600`と「H1はelo=5」の記述が残っていない。
+- `docs/guides/sprt.md`、[search.md](search.md)、[match-staged-gate.md](match-staged-gate.md)、および[strength-stages.md](strength-stages.md)に、`time=60000+600`と「H1はelo=5」の記述が残っていない。
 - 本書の完了後、新条件で開始する最初の段階ゲートの測定で、時間切れ、エンジン異常、または拒否着手が1件でも出た場合は測定を停止して原因を調査する。これは段階ゲート設計書が新条件の初回測定に課す既存規則であり、煙試験とは別に本測定でも確認する。
 
 ## 完了条件
@@ -250,7 +250,7 @@ fishtestの名目値を維持する案は、段階ゲート設計書が時間制
 
 ## 参考資料
 
-- [SPRTによる棋力測定の手引き](../sprt.md)：機能採否の標準手順。
+- [SPRTによる棋力測定の手引き](../guides/sprt.md)：機能採否の標準手順。
 - [棋力測定の段階ゲート](match-staged-gate.md)：STCとLTCの2段構成の設計判断。
 - [早期投了の導入判定](match-early-resignation.md)：評価値による早期投了の契約。
 - [Statistical Methods and Algorithms in Fishtest](https://official-stockfish.github.io/docs/fishtest-wiki/Fishtest-Mathematics.html)：GSPRTとペンタノミアル統計の解説。

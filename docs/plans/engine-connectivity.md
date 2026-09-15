@@ -224,7 +224,7 @@ feature交渉、`variant chu`の受理、`undo`・`remove`・`analyze`へのエ�
 
 ## HaChuの位置づけ
 
-HaChu 0.23は、基本移動規則に反する手を自発出力する欠陥がプロトコル層の検証で確定している（docs/protocols/hachu.md第11章）。
+HaChu 0.23は、基本移動規則に反する手を自発出力する欠陥がプロトコル層の検証で確定している（docs/research/protocols/hachu.md第11章）。
 したがってHaChuは、規則互換性の基準にも、対局完走の相手にも使えない。
 本マイルストーンでは、XBoardがMinaseとHaChuを2つのCECPエンジンとして仲介する接続試験（握手の成立と序盤数手の指し手授受の相互運用確認）に限って使う。
 HaChuの不正手をminaseが`Illegal move`で拒否する挙動は、この接続試験では正常系である。

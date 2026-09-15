@@ -2,7 +2,7 @@
 //!
 //! LLRの計算はfishtestの`LLR_logistic`(statistic="expectation"のMLE法)と
 //! 同一アルゴリズムであり、fishtest本家の参照値との一致を単体テストで
-//! 固定している。統計的契約の全体はdocs/sprt.mdを参照。
+//! 固定している。統計的契約の全体はdocs/guides/sprt.mdを参照。
 
 /// 度数0の分類へ与える擬似度数。
 const REGULARIZATION: f64 = 1e-3;
@@ -337,7 +337,7 @@ mod tests {
     // 真のelo=10で検出率90%以上(名目1-β=0.95と整合)を確認する。
     // 固定シードにより決定的である。
     #[test]
-    #[ignore = "run when the GSPRT formula, regularization, or stopping rule changes; see docs/sprt.md"]
+    #[ignore = "run when the GSPRT formula, regularization, or stopping rule changes; see docs/guides/sprt.md"]
     fn gsprt_monte_carlo_error_rates_match_documented_thresholds() {
         const REPETITIONS: usize = 3000;
         // 得点0.5のセルから隣接セルへ移す確率質量。真のelo=10の分布は平均

@@ -13,7 +13,7 @@ E3経路の既存テスト5件とlishogi棋譜リプレイの期待値、`random
 第2段階では`src/protocol/usi.rs`へ`moves`と`state`を追加し、テスト方針の全ケース（集合比較、単一行完全一致、開始前エラー、`gameover`後の規則切替）をインラインテストとして実装した。
 `resignation`と`agreement`は設計どおりstatusを出力せず`info string error: ...`で通知する。
 検証は`cargo test`276件全緑、`cargo clippy --all-targets`警告なし、`cargo fmt --all -- --check`および`git diff --check`の通過を確認した。
-`docs/protocols/usi-lishogi.md`へ「minase固有のUSI拡張」の節を追加し、2コマンドの契約を記録した。
+`docs/research/protocols/usi-lishogi.md`へ「minase固有のUSI拡張」の節を追加し、2コマンドの契約を記録した。
 
 本設計書はminase側のマイルストーンだけを扱う。
 別リポジトリへ置くGUIとランチャーの計画は、本設計書の規範に含めない。
@@ -38,7 +38,7 @@ Lishogi-Botではlishogiサーバーの終局statusを正とし、CECPでは`RES
 - USI拡張`moves`を実装する。
 - USI拡張`state`を実装する。
 - 2コマンドの試験を既存のUSIテストへ追加する。
-- `docs/protocols/usi-lishogi.md`に2コマンドをminase固有拡張として記録する。
+- `docs/research/protocols/usi-lishogi.md`に2コマンドをminase固有拡張として記録する。
 
 次の作業は本マイルストーンに含めない。
 
@@ -176,4 +176,4 @@ GUIは終局状態を`state`で確認してから`gameover`を送る。
 - `state`がactive規則、表示用2欄SFEN、終局状態を1行で返す。
 - `src/core/`とCECPの変更が裁定理由enumの分割とその追従に限られ、2コマンド自体は`src/protocol/usi.rs`に閉じている。
 - 既存のUSI台本とlishogi棋譜リプレイを含む全テストが成功する。
-- `docs/protocols/usi-lishogi.md`にminase固有拡張として記録されている。
+- `docs/research/protocols/usi-lishogi.md`にminase固有拡張として記録されている。

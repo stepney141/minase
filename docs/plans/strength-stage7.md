@@ -9,7 +9,7 @@
 再学習で保存範囲の超過と駒除去差分の符号反転が生じたため、各Adam更新後の射影と符号反転を抑える片側絶対値型の追加損失を導入した。
 
 追加損失の係数ηは元の訓練集合内の予備比較で1000に固定し、本学習後の6代表局面に対する352件の駒除去では新たな符号反転が0件となった。
-採否には[測定手順](../sprt.md)に従って短時間と長時間の自己対局による逐次検定を用い、鏡映共有モデルと世代2の重みはいずれも両測定で採用基準を満たした。
+採否には[測定手順](../guides/sprt.md)に従って短時間と長時間の自己対局による逐次検定を用い、鏡映共有モデルと世代2の重みはいずれも両測定で採用基準を満たした。
 最終重みから再導出した探索用駒価値は固定値との差が最大8%で更新基準の20%を超えず、固定値を維持した。
 完了条件は、各項目の採否と学習規則の検証を記録し、HaChuに対する固定200ペアのEloを残すことであり、採用項目がある今回は段階開始版とも固定200ペアで比較する。
 [段階開始版との比較](../measurements/strength-stage7-gen2-elo200.md)と[HaChu比較](../measurements/strength-stage7-hachu-elo200.md)はいずれも完了し、HaChu側の不正着手1件とクラッシュ1件は調査のうえ反則負けとして集計した。
@@ -40,9 +40,9 @@
 
 評価関数の特徴、教師値、生成器、および学習器の契約は[評価関数](evaluation.md)と[評価関数の世代反復](evaluation-gen1.md)が所有し、2端点の補間、重み形式、探索用駒価値の固定、および局面帯別の診断は[PSTの序中盤と終盤の補間](tapered-pst.md)が所有する。
 探索用駒価値の導出式は[棋力向上段階3](strength-stage3.md)が所有し、本書はそれを2端点の重みへ適用する規則を加える。
-機能採否の時間制御GSPRTは[SPRTによる棋力測定の手引き](../sprt.md)と[棋力測定の段階ゲート](match-staged-gate.md)に従う。
+機能採否の時間制御GSPRTは[SPRTによる棋力測定の手引き](../guides/sprt.md)と[棋力測定の段階ゲート](match-staged-gate.md)に従う。
 段階の順序、項目、共通の採否基準、および全体の完了条件は[棋力向上の段階計画](strength-stages.md)が所有し、本書は段階7の実装方式、検証範囲、および不採用時の処理を具体化する。
-学習の実行手順は[docs/pst-training.md](../pst-training.md)に従い、本書が学習器へ加える変更は同書へ反映する。
+学習の実行手順は[docs/guides/pst-training.md](../guides/pst-training.md)に従い、本書が学習器へ加える変更は同書へ反映する。
 段階8の利きマップに基づく特徴と段階9のNNUEは、本書が採用した重みと世代2のデータを起点にする。
 
 ## 設計判断
@@ -50,8 +50,8 @@
 | 項目 | 決定 |
 |---|---|
 | 項目の順序 | 鏡映の重み共有、手数上限の見直し、世代2の生成と再学習、探索用駒価値の再導出の順に進め、各項目は直前に採用した構成を基準に測る。鏡映の重み共有は既存のデータだけで学習できるので、約20時間の生成費用を伴う世代2より先に置き、採用されれば世代2の生成にもその重みを使う。世代反復の契約は「世代N+1は採用済みの評価関数で生成する」なので、生成の前に採用を確定させる順序が契約に合う。手数上限は生成器の設定なので生成の直前に確定する。駒価値の再導出は最終的な重みに依存するので最後に置く。世代2の生成中は同じ計算機で採否測定を走らせられないため、各項目は直列に進む。 |
-| 採否の判定 | 評価関数の変更は静止探索のstand-pat、delta pruning、および置換表の値を通じて探索木を変えるので、[評価関数の世代反復](evaluation-gen1.md)と同じく時間制御GSPRTだけで採否を決め、固定ノードと固定深さは診断にとどめる。段階ゲートはSTC（`time=10000+100`、上限3,000ペア）の選別とLTC（`time=60000+200`）の最終測定とし、振分け規則は[docs/sprt.md](../sprt.md)に従う。検証損失と教師探索値との誤差は、[Factorization Machine](factorization-machine.md)が全局面帯で改善しながらSTCで得点率19.6%となった実績のとおり棋力の証拠にならず、悪化が棋力の悪化を意味するとも限らないので、診断記録にとどめて選別には使わない。重みの診断を理由に候補を採否測定へ出さない条件は、駒の除去の符号の反転、成りの評価差のRust側との不一致、および量子化の平均絶対誤差2センチポーン超である。実行中の対局測定の異常と停止は測定手順に従う。 |
-| 採否仮説の維持 | 採否測定の仮説はH0=0 Elo、H1=10 Elo、α=β=0.05を維持する。鏡映と世代2の両候補は短時間と長時間のいずれも境界で決着し、長時間測定の棄却が連続する状況は認めなかった（[鏡映STC](../measurements/strength-stage7-mirror-stc.md)、[鏡映LTC](../measurements/strength-stage7-mirror-ltc.md)、[世代2STC](../measurements/strength-stage7-gen2-stc.md)、[世代2LTC](../measurements/strength-stage7-gen2-ltc.md)）。この結果は将来の小さい効果の検出力を保証せず、以後の再検討は[測定手順](../sprt.md)の規則に従う。 |
+| 採否の判定 | 評価関数の変更は静止探索のstand-pat、delta pruning、および置換表の値を通じて探索木を変えるので、[評価関数の世代反復](evaluation-gen1.md)と同じく時間制御GSPRTだけで採否を決め、固定ノードと固定深さは診断にとどめる。段階ゲートはSTC（`time=10000+100`、上限3,000ペア）の選別とLTC（`time=60000+200`）の最終測定とし、振分け規則は[docs/guides/sprt.md](../guides/sprt.md)に従う。検証損失と教師探索値との誤差は、[Factorization Machine](factorization-machine.md)が全局面帯で改善しながらSTCで得点率19.6%となった実績のとおり棋力の証拠にならず、悪化が棋力の悪化を意味するとも限らないので、診断記録にとどめて選別には使わない。重みの診断を理由に候補を採否測定へ出さない条件は、駒の除去の符号の反転、成りの評価差のRust側との不一致、および量子化の平均絶対誤差2センチポーン超である。実行中の対局測定の異常と停止は測定手順に従う。 |
+| 採否仮説の維持 | 採否測定の仮説はH0=0 Elo、H1=10 Elo、α=β=0.05を維持する。鏡映と世代2の両候補は短時間と長時間のいずれも境界で決着し、長時間測定の棄却が連続する状況は認めなかった（[鏡映STC](../measurements/strength-stage7-mirror-stc.md)、[鏡映LTC](../measurements/strength-stage7-mirror-ltc.md)、[世代2STC](../measurements/strength-stage7-gen2-stc.md)、[世代2LTC](../measurements/strength-stage7-gen2-ltc.md)）。この結果は将来の小さい効果の検出力を保証せず、以後の再検討は[測定手順](../guides/sprt.md)の規則に従う。 |
 | 見送りと不採用の語彙 | 見送りとは、実装前の診断または設計上の理由で実装しないと決めることをいい、不採用とは、実装して採否測定で採らないと決めることをいう。段階4から段階6までと同じ語彙である。 |
 | 出力バケットの見送り | 上位計画が挙げる盤上駒数による重み表の切り替えは、盤上総駒数で2組の表を線形補間する[PSTの序中盤と終盤の補間](tapered-pst.md)が同じ情報源で既に採用した設計であり、その動機である「序盤と終盤で同じ重みを使っている」は解消した。同書は、閾値による表の一斉切替を境界で評価が飛ぶため棄却し、3組以上の表を対象外とした。端点の識別性とは、ある特徴が現れる局面の進行度に幅があり、序中盤用と終盤用の重みをデータから別々に決められることをいい、同書は進行度の偏差平方和が100未満の特徴を識別できないと定めた。[端点の識別性の診断](../measurements/pst-tapered-identifiability.md)では、13,680特徴のうち6,048が2端点すら分離できず、その出現回数は全体の0.775%で同書の基準5%を満たすにとどまる。端点や表を増やせば分離できない特徴が増えるだけなので、本書では見送る。世代2のデータを加えた後の識別性の診断で分離できる特徴が増えていれば、進行度の分解能は後続の段階で改めて検討する。 |
 | Kを固定した比較の見送り | 世代1の[時間制御測定](../measurements/pst-gen1-tc.md)の得点率90.9%には、モデル出力の尺度Kが807から1,073へ変わり評価値の目盛りが約33%広がった効果が含まれ得る。しかしKは学習時にロジットを評価値へ写す尺度であって実行時には使われず、段階3が現行の重みから探索用駒価値と`DELTA_MARGIN`を導き直して以降、枝刈りの余裕値は現行の目盛りに合っている。本書の再学習はすべて出力Kを現行の1,072.65に固定するので、出力Kの変更による換算尺度の差は今後生じない。学習で重みの目盛りが動く分は残るので、その差は駒価値の再導出の項目で点検する。世代0の重みを相手にする遡及的な切り分けは、どの採否も変えないうえに数千ペアを要するので行わない。Kの固定は学習器の設定として明示し、混合データから推定したKは記録のために出力するだけにする。 |
@@ -181,7 +181,7 @@
 この出力から対局ごとの最終手数を集計し、100手刻みの候補上限`c`ごとに探索1局面あたりの記録局面数を計算して、最大となる`c`を選ぶ。
 候補の計算に必要な「対局が`c`までに探索した局面数」は、終局した対局では最終手数から序盤のランダム着手数を引いた値、`c`で打ち切られる対局では`c`から序盤のランダム着手数を引いた値であり、記録局面数は`c`以下で終局した対局の記録数の和である。
 試行生成の記録は学習には使わず、集計結果を[strength-stage7-plycap-trial](../measurements/strength-stage7-plycap-trial.md)へ残す。
-選んだ`c`が600と異なる場合は、`selfplay_gen`の既定値`DEFAULT_MAX_PLY`と`pst.example.toml`の`max_ply`を`c`へ変え、[docs/pst-training.md](../pst-training.md)の設定表を更新する。
+選んだ`c`が600と異なる場合は、`selfplay_gen`の既定値`DEFAULT_MAX_PLY`と`pst.example.toml`の`max_ply`を`c`へ変え、[docs/guides/pst-training.md](../guides/pst-training.md)の設定表を更新する。
 
 ### 世代2の生成と再学習
 
@@ -257,7 +257,7 @@
 - 各コミットで`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings`、および`cargo fmt --check`が成功する。
 - 重みを差し替えたコミットでは、benchの深さ5の総ノード数の変化を記録する。評価関数の変更は探索木を変えるので不変は要求しないが、NPSは3回の中央値で段階開始版と比べて低下していないことを確認する。
 - 重みを変える候補は、STCへ出す前に局面帯別の診断を通し、駒の除去の符号が保存されていること、成りの評価差がRust側と一致すること、および量子化の平均絶対誤差が2センチポーン以内であることを確認する。駒価値だけを変える候補は、重み領域のバイト一致と47値の導出式との一致を確認する。
-- 採否測定は`docs/sprt.md`のコミット対コミット測定に従い、各測定の`time_forfeits`と異常件数を記録する。測定名は`strength-stage7-<項目>-stc`および`-ltc`とし、項目は`mirror`、`gen2`、`values`とする。進捗指標は`strength-stage7-elo200`（段階開始版との`time=10000+100`）と`strength-stage7-hachu-elo200`（HaChuとの`time=60000+1000`、規則`L1,L3,P0,P5,P6,R2,E1,E2`、置換表は両者256 MB）、診断は`strength-stage7-mirror-diag`、`strength-stage7-plycap-trial`、`strength-stage7-gen2-generation`、`strength-stage7-gen2-identifiability`、`strength-stage7-gen2-training`、および`strength-stage7-values-diag`とする。基本シードは20900903から測定の順に割り当て、次の測定の基本シードは先行する全測定が実際に使ったペア数以上離す（目安は10,000刻み）。生成の基本シードは600000から1000000までの5つと試行生成の1100000であり、測定のシードと同じ派生関数を使うため、過去の生成と測定のいずれの範囲とも重ならないことを着手時に確認する（[隣接する基本シードは1局ずれた同じ対局列を生む](../lessons/derive-seed-adjacent-collision.md)）。
+- 採否測定は`docs/guides/sprt.md`のコミット対コミット測定に従い、各測定の`time_forfeits`と異常件数を記録する。測定名は`strength-stage7-<項目>-stc`および`-ltc`とし、項目は`mirror`、`gen2`、`values`とする。進捗指標は`strength-stage7-elo200`（段階開始版との`time=10000+100`）と`strength-stage7-hachu-elo200`（HaChuとの`time=60000+1000`、規則`L1,L3,P0,P5,P6,R2,E1,E2`、置換表は両者256 MB）、診断は`strength-stage7-mirror-diag`、`strength-stage7-plycap-trial`、`strength-stage7-gen2-generation`、`strength-stage7-gen2-identifiability`、`strength-stage7-gen2-training`、および`strength-stage7-values-diag`とする。基本シードは20900903から測定の順に割り当て、次の測定の基本シードは先行する全測定が実際に使ったペア数以上離す（目安は10,000刻み）。生成の基本シードは600000から1000000までの5つと試行生成の1100000であり、測定のシードと同じ派生関数を使うため、過去の生成と測定のいずれの範囲とも重ならないことを着手時に確認する（[隣接する基本シードは1局ずれた同じ対局列を生む](../lessons/derive-seed-adjacent-collision.md)）。
 - 生成した各ファイルは`selfplay_gen inspect`で世代のコミットがworktreeのコミットと一致することを確認する。
 
 旧構成の中断測定と駒価値診断を保持するため、最終構成の開始版比較は[strength-stage7-gen2-elo200](../measurements/strength-stage7-gen2-elo200.md)、世代2採用後の駒価値診断は[strength-stage7-gen2-values-diag](../measurements/strength-stage7-gen2-values-diag.md)へ保存した。
@@ -270,7 +270,7 @@
 - 鏡映の重み共有と世代2の再学習の採否が個別の測定記録に残り、不採用の実装がコードに残っていない。
 - 手数上限の確定と探索用駒価値の再導出が、測定の有無にかかわらず診断の測定記録に残っている。
 - 出力バケットとKを固定した比較の見送りが、本書の設計判断に残っている。
-- 採用した項目について、学習器のテスト、Clippy、および整形検査が成功し、重み共有の写像、出力Kの固定、各学習更新後の保存範囲と非有限値の拒否、および手数上限の既定値がテストで固定されている。学習器の設定項目の変更が[docs/pst-training.md](../pst-training.md)へ反映され、[評価関数](evaluation.md)と[PSTの序中盤と終盤の補間](tapered-pst.md)の該当する節が現行の実装と一致するよう更新されている。
+- 採用した項目について、学習器のテスト、Clippy、および整形検査が成功し、重み共有の写像、出力Kの固定、各学習更新後の保存範囲と非有限値の拒否、および手数上限の既定値がテストで固定されている。学習器の設定項目の変更が[docs/guides/pst-training.md](../guides/pst-training.md)へ反映され、[評価関数](evaluation.md)と[PSTの序中盤と終盤の補間](tapered-pst.md)の該当する節が現行の実装と一致するよう更新されている。
 - 世代2のデータが`inspect`の記録とともに保存され、次の世代の起点として使える。
 - HaChu戦の固定200ペアEloが測定記録に残り、採用項目が1つでもあれば段階開始版との固定200ペアEloも残っている。
 - [棋力向上の段階計画](strength-stages.md)の段階7の節と状態、および docs/ROADMAP.md の状態表と「現在地」が上書きされている。
@@ -283,6 +283,6 @@
 - [PSTの序中盤と終盤の補間](tapered-pst.md)：2端点の補間、重み形式、探索用駒価値の固定、局面帯別の診断。
 - [棋力向上段階3](strength-stage3.md)：探索用駒価値の導出式。
 - [Factorization Machineによる2駒関係評価](factorization-machine.md)：検証損失の改善が対局で悪化した実績。
-- [docs/pst-training.md](../pst-training.md)：学習の実行手順。
+- [docs/guides/pst-training.md](../guides/pst-training.md)：学習の実行手順。
 - 測定記録：[pst-tapered-training.md](../measurements/pst-tapered-training.md)、[pst-tapered-identifiability.md](../measurements/pst-tapered-identifiability.md)、[pst-gen1-tc.md](../measurements/pst-gen1-tc.md)
 - 教訓：[pin-generation-binary-to-worktree.md](../lessons/pin-generation-binary-to-worktree.md)、[validation-loss-hides-material-distortion.md](../lessons/validation-loss-hides-material-distortion.md)、[check-steps-per-epoch-before-training.md](../lessons/check-steps-per-epoch-before-training.md)、[derive-seed-adjacent-collision.md](../lessons/derive-seed-adjacent-collision.md)

@@ -9,9 +9,9 @@
 | PL | docs/plans/protocol-layer.md（フェーズ2・フェーズ5の確定設計、実施状況の確定事項を含む） |
 | EC | docs/plans/engine-connectivity.md（time=1/memory=1改定、時間正規化、CECP対局進行。feature宣言はPLよりECを正とする） |
 | BG | docs/plans/browser-gui.md（moves/state仕様） |
-| CE | docs/protocols/cecp.md（CECP調査文書） |
-| HA | docs/protocols/hachu.md（HaChu調査文書） |
-| UL | docs/protocols/usi-lishogi.md（USI原典・lishogi系調査文書、minase固有拡張の節を含む） |
+| CE | docs/research/protocols/cecp.md（CECP調査文書） |
+| HA | docs/research/protocols/hachu.md（HaChu調査文書） |
+| UL | docs/research/protocols/usi-lishogi.md（USI原典・lishogi系調査文書、minase固有拡張の節を含む） |
 | R33 | RULES.md 第33条（規則セット名の受理） |
 | LS | docs/plans/lazy-smp.md（「プロトコル設定」節） |
 
@@ -624,7 +624,7 @@
 - 性質: 照合の正準は小文字（PL: 名前はlishogi、大文字小文字非区別・正準は小文字）。
 
 ### D6-CLI-05 バイナリ間の同一契約と共通化の注記
-- 典拠: PL（解析はコア層の共通関数が担う）。docs/sprt.md（match_runnerの`commit:`specは起動引数`--protocol usi --rules <マッチ規則>`を自動付与。minase本体は`--protocol`と`--rules`が必須。`usi_random`は同一ビルドの校正用エンジン）。R33第5・6項（「本規則を実装するプログラム（Minase）」として名前受理を規定しており、バイナリを限定しない）。
+- 典拠: PL（解析はコア層の共通関数が担う）。docs/guides/sprt.md（match_runnerの`commit:`specは起動引数`--protocol usi --rules <マッチ規則>`を自動付与。minase本体は`--protocol`と`--rules`が必須。`usi_random`は同一ビルドの校正用エンジン）。R33第5・6項（「本規則を実装するプログラム（Minase）」として名前受理を規定しており、バイナリを限定しない）。
 - 前提: minase・usi_random・match_runner・random_playの各バイナリ。
 - 操作と期待観測: 4バイナリの規則引数が同じ値集合を受理・拒否することを、代表値（`engine-default`、`lishogi`、4群を明示したコード列、`lishogi,P1`拒否、群欠落拒否）で突き合わせる。共通解析関数`parse_rule_set`の単体テスト1系列と、各バイナリの受け口が同関数を経由することのwire確認で構成する。
 - 境界・不正: usi_randomとrandom_playの規則引数の存在・形式は規範文書に明文がない → SPEC_UNCLEAR-09。テスト化するなら実装契約と明示する。
@@ -632,7 +632,7 @@
 - 性質: 規則文法の定義は1箇所（コア層）であり、バイナリはすべてそれを参照する。
 
 ### D6-CLI-06 usi_randomの`Seed`オプションと決定性
-- 典拠: docs/sprt.md（`usi_random`は合法手から一様ランダムに着手する校正用エンジン、真のelo差0の煙試験用。同じ`--seed`と引数で出力・度数・LLR・判定・停止ペア番号が完全再現）。spec-first-tests.md引き継ぎ資産5（決定的シード群と決定性契約、`usi_random`のシード42導出）。
+- 典拠: docs/guides/sprt.md（`usi_random`は合法手から一様ランダムに着手する校正用エンジン、真のelo差0の煙試験用。同じ`--seed`と引数で出力・度数・LLR・判定・停止ペア番号が完全再現）。spec-first-tests.md引き継ぎ資産5（決定的シード群と決定性契約、`usi_random`のシード42導出）。
 - 前提: usi_randomバイナリ。
 - 操作と期待観測: 同一シード・同一入力系列（`position`→`go`の反復）で2回実行した出力が完全一致する（決定性）。異なるシードでは着手系列が変わり得る。
 - 境界・不正: `Seed`オプションの宣言形式・値0の拒否は規範文書に明文がない → SPEC_UNCLEAR-08。テスト化する場合は「実装契約」とテスト名に明示し、根拠は引き継ぎ資産（意図的挙動の符号化と確認済みの既存テスト）とする。

@@ -6,7 +6,7 @@
 
 ## コマンドライン
 
-2026年9月12日に、[PSTの学習手順](../pst-training.md)のワークフローを設定ファイル`data/strength-stage7/mirror.toml`で実行した。
+2026年9月12日に、[PSTの学習手順](../guides/pst-training.md)のワークフローを設定ファイル`data/strength-stage7/mirror.toml`で実行した。
 `prepare`が固定した条件とソースの検査和は`data/strength-stage7/mirror-training/prepared.json`、実行コマンドと学習の終了コード0は同ディレクトリの`commands.jsonl`に保存されている。
 
 ```console

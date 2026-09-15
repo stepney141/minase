@@ -1212,7 +1212,7 @@ fn opponent_with_no_legal_moves_scores_mate_minus_one_ply() {
     assert_eq!(result.score, MATE - 1);
 }
 
-// D7-SRCH-07。search.md「bench」節・「検証」節、docs/sprt.mdの完全再現契約:
+// D7-SRCH-07。search.md「bench」節・「検証」節、docs/guides/sprt.mdの完全再現契約:
 // depthまたはnodes制限だけの探索は同一入力に対し完全に決定的である
 // （INV-2）。経過時間の値を除く全観測を比較する。
 #[test]

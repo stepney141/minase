@@ -11,7 +11,7 @@ FMを試す理由は、NNUEより表現力が高いからではなく、2駒関�
 NNUEは着手ごとの差分更新の後に第2層以降の行列計算を毎回行うのに対し、FMの推論は着手で変わった特徴のベクトルの加減算と、評価時の長さ32のベクトルの二乗和だけで済む。
 方式は、現行PSTの重み、評価尺度、探索用駒価値、および枝刈りの余裕値をすべて固定し、既存の自己対局データ（評価関数v0で生成した世代0と、学習PSTで生成した世代1の合計約1,106万局面）でFMの補正項だけを学習するものとする。
 潜在次元（各特徴に割り当てるベクトルの長さ）は16、32、64を学習で比較し、対局測定より前に1つへ絞る。
-採否は、docs/sprt.md の段階ゲートに従い、開始版（着手時のmasterの先頭コミット）に対する短時間条件と長時間条件のGSPRT（自己対局の勝敗から強さの差を逐次判定する統計検定）で判定し、長時間条件で`H1`（候補が有意に強い）となった場合だけ採用する。
+採否は、docs/guides/sprt.md の段階ゲートに従い、開始版（着手時のmasterの先頭コミット）に対する短時間条件と長時間条件のGSPRT（自己対局の勝敗から強さの差を逐次判定する統計検定）で判定し、長時間条件で`H1`（候補が有意に強い）となった場合だけ採用する。
 2次のFMは、遮蔽物の有無で利きが変わるような3駒以上の関係や、利きそのものを表せないので、期待する効果は限定的であり、本マイルストーンはその効果の有無を測定で確定することを目的とする。
 結論として、既存データではFMは検証損失と教師誤差を全局面帯で改善し探索速度の費用も1.2%に収まったが、短時間条件の自己対局で得点率19.6%（約−240 Elo）の`H0`となり不採用とした。
 
@@ -32,7 +32,7 @@ FMは利きや可動性を入力に持たないので、これらの知識の代
 ただし、王駒に隣接する攻撃駒や同じ筋に並ぶ走り駒と王駒のように、利きの知識と相関する配置の関係は2駒の組として表せる。
 利きマップの実装は[段階8](strength-stages.md)が扱う大きな費用の項目であるため、その前に、既存の特徴と既存のデータだけで学べる2駒関係がどれだけの効果を持つかを確定する。
 
-本マイルストーンの完了基準は、FMの補正項を加えた評価関数のコミットが、開始版に対する長時間条件のGSPRTで`H1`となって採用されるか、または docs/sprt.md の段階ゲート（短時間条件の`H0`、上限到達時の負のLLR、および長時間条件の`H0`のいずれか）により不採用が確定することである。
+本マイルストーンの完了基準は、FMの補正項を加えた評価関数のコミットが、開始版に対する長時間条件のGSPRTで`H1`となって採用されるか、または docs/guides/sprt.md の段階ゲート（短時間条件の`H0`、上限到達時の負のLLR、および長時間条件の`H0`のいずれか）により不採用が確定することである。
 仮説の検証を目的とするので、[評価関数の世代反復](evaluation-gen1.md)と同じく、不採用でも測定結果と判定を記録すれば完了とする。
 
 ## 適用範囲
@@ -60,7 +60,7 @@ FMは利きや可動性を入力に持たないので、これらの知識の代
 [評価関数](evaluation.md)、[評価関数の世代反復](evaluation-gen1.md)、および[PSTの序中盤と終盤の補間](tapered-pst.md)が定める特徴、教師値、検証分割、およびMNPTバージョン2を前提とする。
 特徴番号は`src/eval/features.rs`と`tools/train/pst/features.py`の13,680特徴（47駒状態×2陣営×144升と先獅子対象升144個）をそのまま使う。
 探索との接続は、[棋力向上段階1](strength-stage1.md)で採用した評価値の差分更新（`PstAccumulator`と`update_accumulator_after_move`）を拡張する。
-学習には[PSTの学習手順](../pst-training.md)のワークフローを使い、生成シードを空配列にして既存の6ファイル（`data/gen0.bin`と`data/gen1-s{100000,200000,300000,400000,500000}.bin`、重複を除いた11,062,811局面）だけで学習する。
+学習には[PSTの学習手順](../guides/pst-training.md)のワークフローを使い、生成シードを空配列にして既存の6ファイル（`data/gen0.bin`と`data/gen1-s{100000,200000,300000,400000,500000}.bin`、重複を除いた11,062,811局面）だけで学習する。
 GPU学習はGPUを利用できるホストで実行し、codexへは委任しない（[GPUを要する学習はcodexへ委任しない](../lessons/run-gpu-training-outside-codex-sandbox.md)）。
 
 固定する基準は次の4つである。
@@ -92,7 +92,7 @@ PSTへ線形補正だけを追加した対照モデルは、実験範囲を2駒�
 FMが採用された場合の同時学習は、世代2の再学習に引き継ぐ。
 
 FMの補正の強さを推論時に変える係数は設けない。
-docs/sprt.md は同じ着想のパラメータ違いを対局測定で比較することを禁じており、補正の大きさは学習時の正則化で決める。
+docs/guides/sprt.md は同じ着想のパラメータ違いを対局測定で比較することを禁じており、補正の大きさは学習時の正則化で決める。
 
 ### 特徴は現在の13,680個を再利用する
 
@@ -185,7 +185,7 @@ PSTは序中盤用と終盤用の2端点を総駒数で補間するが、FMの�
 追加の2シードはばらつきの測定にだけ使い、候補の重みは乱数シード1の学習結果とする。
 シードのばらつきが、候補の検証損失のエポック0（開始版PSTの検証損失）からの減少幅より大きい場合は、その事実を学習記録に残し、対局測定の解釈に使う。
 診断と量子化誤差は最良エポックが0でない次元すべてについて記録し、第3フェーズで速度を理由に次元を下げる場合は、この記録済みの小さい次元の乱数シード1の重みを候補にして再学習はしない。
-対局測定へ進める候補は1つだけであり、これは docs/sprt.md の「パラメータ違いはSTCまでに1つへ絞る」に従う。
+対局測定へ進める候補は1つだけであり、これは docs/guides/sprt.md の「パラメータ違いはSTCまでに1つへ絞る」に従う。
 対局測定が判定するのはこの候補コミットそのものであり、次元の選択に含まれるばらつきは結果の一部として扱い、FMという方式全般の効果を主張しない。
 
 ### 探索側のパラメータは変更しない
@@ -334,7 +334,7 @@ Rustの全テスト、フォーマット検査、Clippy、およびPST関連のP
 
 ## 完了条件
 
-採否測定は[SPRTの標準手順](../sprt.md)の段階ゲートに従い、コミット対コミットで実施する。
+採否測定は[SPRTの標準手順](../guides/sprt.md)の段階ゲートに従い、コミット対コミットで実施する。
 候補は第3フェーズで確定した1つのコミット、基準は開始版とし、両エンジンを1スレッド、置換表256 MB、`engine-default`規則で動かす。
 測定名は`fm-adoption-stc`と`fm-adoption-ltc`とし、測定開始前に対局列が重複しないシード範囲を確認して保存する。
 STCの振分け規則に従ってLTCへ進み、LTCが`H1`であり、かつエンジン異常、時間切れ、および拒否着手が0件の場合に採用する。
@@ -355,6 +355,6 @@ STCが`H0`、またはSTCが上限3,000ペアで判定保留かつLLRが負の�
 - Steffen Rendle, "Factorization Machines," Proceedings of the 2010 IEEE International Conference on Data Mining, 2010. 2次項の恒等式と疎な二値特徴に対する学習の根拠である。
 - 起案の材料とした検討: [ChatGPTでの中将棋評価関数案の会話](https://chatgpt.com/share/6aa028f9-2cdc-83e8-abb4-117e4b1bd8d9)。同会話が挙げる通常将棋でのFM評価の先行例は本書では確認しておらず、典拠として使わない。
 - 設計書: [評価関数](evaluation.md)、[評価関数の世代反復](evaluation-gen1.md)、[PSTの序中盤と終盤の補間](tapered-pst.md)、[棋力向上の段階計画](strength-stages.md)。
-- 運用: [PSTの学習手順](../pst-training.md)、[SPRTの標準手順](../sprt.md)。
+- 運用: [PSTの学習手順](../guides/pst-training.md)、[SPRTの標準手順](../guides/sprt.md)。
 - 測定記録: [nnue-gen1-tc.md](../measurements/nnue-gen1-tc.md)、[bench-nnue-gen1-depth5.md](../measurements/bench-nnue-gen1-depth5.md)、[sensitivity-time2x.md](../measurements/sensitivity-time2x.md)、[pst-tapered-training.md](../measurements/pst-tapered-training.md)。
 - 教訓: [nnue-first-layer-init-saturation.md](../lessons/nnue-first-layer-init-saturation.md)、[check-steps-per-epoch-before-training.md](../lessons/check-steps-per-epoch-before-training.md)、[validation-loss-hides-material-distortion.md](../lessons/validation-loss-hides-material-distortion.md)、[run-gpu-training-outside-codex-sandbox.md](../lessons/run-gpu-training-outside-codex-sandbox.md)、[bench-allocation-outside-timing.md](../lessons/bench-allocation-outside-timing.md)。

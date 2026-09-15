@@ -156,7 +156,7 @@ class DiagnosticsTest(unittest.TestCase):
         report = self.run_diagnose(dataset, self.root / "tapered")
         initial = report["representatives"][0]
         # 初期配置(q=90)は序中盤側だけで評価され、1枚除くと q=89 になる。
-        # tapered-pst.mdの補間式より、除去後の1枚の価値は
+        # docs/research/tapered-pst.mdの補間式より、除去後の1枚の価値は
         # (89×200 + 1×100)/90 = 198.88… cp。整数評価では0方向へ切り捨てる。
         for color, expected in ((0, -198), (1, 198)):
             removal = next(item for item in initial["removals"] if item["relative_color"] == color)

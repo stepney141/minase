@@ -14,7 +14,7 @@
 ### 横断的性質（全挙動に適用）
 
 - INV-1: `Finished`の最善手は、`SearchSnapshot`が持つ審判層確定済みルート合法手の集合に必ず含まれる（search.md 時間管理節「常に合法な`bestmove`を返す」、スレッド構成節）。
-- INV-2: `Threads=1`かつ`depth`または`nodes`制限だけの探索は、同一入力に対し完全に決定的である（lazy-smp.md「再現性」、search.md bench節・検証節、docs/sprt.mdの再現契約）。時間制御と`Threads>1`の探索はこの契約の対象外である。
+- INV-2: `Threads=1`かつ`depth`または`nodes`制限だけの探索は、同一入力に対し完全に決定的である（lazy-smp.md「再現性」、search.md bench節・検証節、docs/guides/sprt.mdの再現契約）。時間制御と`Threads>1`の探索はこの契約の対象外である。
 - INV-3: スコアの帯域は排他である。詰みスコアは絶対値が`MATE − 256`以上、通常評価値は絶対値29000未満であり、29000以上29744未満の値は現れない（search.md 置換表節）。
 
 ## D7-SRCH　探索本体
@@ -83,7 +83,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 典拠 | search.md「bench」節（総ノード数は探索の決定性チェックを兼ねる）・「検証」節、docs/sprt.mdの完全再現契約（depth・nodes制限に限る）、spec-first-tests.md引き継ぎ資産5 |
+| 典拠 | search.md「bench」節（総ノード数は探索の決定性チェックを兼ねる）・「検証」節、docs/guides/sprt.mdの完全再現契約（depth・nodes制限に限る）、spec-first-tests.md引き継ぎ資産5 |
 | 前提 | 初期局面（RULES.md第5条）および任意の中盤フィクスチャ。履歴・制限（depth=4またはnodes=100000）・スナップショットを完全に同一とし、シードなし |
 | 操作と期待観測 | 同一入力で探索を2回実行する。最善手・最終評価・到達深さ・総ノード数・PV・`Progress`系列（経過時間の値を除く）がすべて一致する |
 | 境界・不正事例 | 時間制御（clock・movetime）の探索は再現契約の対象外であり、一致を要求しない |

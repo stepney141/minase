@@ -33,4 +33,4 @@ benchの総ノード数は、depth=4で77,415,194から15,931,373へ減った。
 
 ## 結論
 
-null move pruningを採用する。効果が数十Elo規模のため、docs/sprt.md の目安どおり判定に2000ペア超を要した。
+null move pruningを採用する。効果が数十Elo規模のため、docs/guides/sprt.md の目安どおり判定に2000ペア超を要した。
