@@ -16,12 +16,13 @@
 ## 状態
 
 進行中。
-2026年9月13日に起案と着手し、フェーズ1（計測基盤）からフェーズ4（単位C）までが完了した。
+2026年9月13日に起案と着手し、フェーズ1（計測基盤）からフェーズ5（単位D）までが完了した。
 照合参照コミットは基準に回転と`bench`の出力拡張を加えたものであり、回転単独では最善手と探索値が変わらず、ノード数は5局面で計198（0.016%）減った（[回転の記録](../measurements/movegen-speedup-rotation-bench-depth5.md)）。
 単位Aは参照と15局面で一致し、NPSは基準比1.319倍で採用した（[単位Aの記録](../measurements/movegen-speedup-unit-a-bench-depth5.md)）。
 単位Bは参照と一致し、駒別生成を採ってNPSを基準比1.461倍、参照比1.501倍にしたので採用した（[単位Bの記録](../measurements/movegen-speedup-unit-b-bench-depth5.md)、[打ち切り位置の診断](../measurements/movegen-speedup-stage-cutoff-counts.md)）。
 単位Cは参照と一致し、NPSを単位B比1.016倍（基準比1.500倍）にしたので採用し、逆引きの3回目以降が約21%にとどまるため差分更新と利きの事前計算は実施しない（[単位Cの記録](../measurements/movegen-speedup-unit-c-bench-depth5.md)）。
-次の一手は、単位D（PGO）を分離した学習入力で手動ビルドして比較することである。
+単位DはPGOで同じソースのNPSが約1.19倍となり、再現基盤を整えて採用した（基準比1.794倍、[PGOの記録](../measurements/movegen-speedup-pgo-bench-depth5.md)）。
+次の一手は、残存負荷の内訳から単位Eの候補の着手と不着手を確定することである。
 
 ## 目的
 
@@ -220,6 +221,13 @@ PGOは、代表入力で実行頻度を集めるビルド、その実行、プ�
 PGOの採用後に上記の照合対象（ソース、評価データ、依存関係、ツールチェーン、適用設定）のいずれかが変わる場合は、固定済みの学習入力と手順でプロファイルを再生成して候補コミットへ含め、親は親コミットに固定したプロファイルでビルドし、学習入力や最適化設定の調整は同じ比較へ混ぜず、通常ビルド同士の補助診断も記録する。
 再生成時間、プロファイル容量、複数回更新した場合のgitオブジェクトの増分を測り、速度の利益と併記したうえで採否測定へ進むか決める。
 ハーネスへPGOの有無を切り替える機能比較スイッチは追加しない。
+
+手動ビルドの比較でNPSが約1.19倍となり、継続負担も許容範囲だったので（[PGOの記録](../measurements/movegen-speedup-pgo-bench-depth5.md)）、再現基盤を次のとおり実装した。
+`.cargo/config.toml`の`rustflags`に相対パスの`-C profile-use`を置くと依存クレートのコンパイルで解決できないため、適用は`build.rustc-wrapper`に指定した`scripts/pgo_rustc.py`が行い、`--crate-name minase`のコンパイルにだけ`pgo/minase.profdata`の絶対パスを付ける（[ラッパーで適用する教訓](../lessons/pgo-profile-path-via-wrapper.md)）。
+`build.rs`はreleaseビルドで、コンパイル対象のソース（`src/`配下の`.rs`から`tests/`配下、`_tests.rs`、`src/test_util.rs`を除く）、評価データ（`nets/pst.bin`、`nets/pst-init.bin`）、`Cargo.toml`と`Cargo.lock`、`rustc -Vv`、適用設定（`.cargo/config.toml`と`scripts/pgo_rustc.py`）、学習入力（`scripts/pgo_profile.py`と`pgo/training.json`）、およびプロファイル自身のSHA-256を`pgo/manifest.json`と照合し、不足、追加、不一致をすべて列挙してビルドを失敗させる。
+`scripts/pgo_profile.py`は、計測用ビルド、`usi_random`に局ごとのシードを与えた12局（既定の基本シード9001）から手数12、40、80、120、160、200、260、320の局面を`go depth 5`で探索する学習、`llvm-profdata`による統合、照合記録の書き出し、および検証つきビルドを1コマンドで行う。
+明示的な例外は環境変数`MINASE_PGO_GENERATE=1`（計測用と診断用のビルドで適用と検証を省く）だけであり、`MINASE_PGO_WRITE_MANIFEST=1`は生成スクリプトが照合記録を書くために使う。
+ソース、評価データ、依存関係、ツールチェーン、適用設定のいずれかを変えたら、releaseビルドの前に`python3 scripts/pgo_profile.py`で再生成し、プロファイルと照合記録を同じコミットへ含める。
 
 ### 残存負荷に応じて代替方式を比べる
 

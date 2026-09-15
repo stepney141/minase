@@ -33,4 +33,5 @@ lishogiのBotアカウントとしてminaseを動かす配備一式（Dockerイ�
 - 早すぎる最適化、測定なしの最適化は禁止する。ボトルネック議論では実測データか再現手順をセットで提示すること。
 - KISS（簡潔かつ単純にする）原則に従う。同じことをもっと簡潔なやり方・最小限のコード量で実装できないか考える。
 - YAGNI（必要になるまで書かない）原則に従う。将来用のフィールド/フラグ追加、未使用コードの温存は禁止。
+- releaseビルドはPGOのプロファイル（pgo/）を照合してから適用する。`src/`のコンパイル対象、`nets/`、`Cargo.toml`、`Cargo.lock`、ツールチェーン、`.cargo/config.toml`、`scripts/pgo_*.py`のいずれかを変えたら、`cargo clippy --release`、`cargo test --release`、`match_runner`の前に`python3 scripts/pgo_profile.py`で再生成し、`pgo/`を同じコミットへ含める。計測用・診断用のビルドは`MINASE_PGO_GENERATE=1`で検証と適用を省く。仕組みは docs/plans/movegen-speedup.md の「PGOは効果を測ってから基盤を作る」を参照。
 

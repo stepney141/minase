@@ -1,0 +1,72 @@
+{
+  "apply": {
+    ".cargo/config.toml": "825e333ebe1c2b6bac2002e219ae0e945c840c327ca563c6df5d6621dc222c0e",
+    "scripts/pgo_rustc.py": "39c5be1d8b29eac75e7cda5f8ae8e6f86dfdc0260af8fe6d1377645b43d79fbb"
+  },
+  "data": {
+    "nets/pst-init.bin": "a7a9d32e23a4e4744401d713ee65a7584ae9c7d7a29d784e90b178056afba196",
+    "nets/pst.bin": "73b9950538c8fa9dba0e050988c85ec7d42c7e19e75e07ff96cfb9224c0f9e9a"
+  },
+  "dependencies": {
+    "Cargo.lock": "1544aaa67090ecbed544a38bb888d84081bd7f2874baac74a1170e6d35220ede",
+    "Cargo.toml": "9d3b11ab35ef4b9f1ac2b68ae93b38da0f22759abf63a5b5b967be1752fd50ec"
+  },
+  "profile": {
+    "bytes": 7112296,
+    "sha256": "e5f272a0eba51a29f6c59e82babbdb981fa94c2d49e51d9eef7a6d703a7c7d94"
+  },
+  "sources": {
+    "src/bin/bench.rs": "a7fe79631bc6ec8949e5313ec1a2327afad577ae3464ec89bac840f5385227ef",
+    "src/bin/match_report.rs": "e2b804d342e46a82bca3a792b357b4d0ff086ef0abc18cc76c463e81d1e39201",
+    "src/bin/match_runner.rs": "68a4a0a5a7284735311fd988c96f711169238e675f43af4a86304121b6193c3a",
+    "src/bin/match_runner/storage.rs": "ce02b43c52cdae33ce2fccdf51abb4f833695921c8ceb31fd23e40fc4c59ccca",
+    "src/bin/minase.rs": "d90b33edea1015e2387dce083731e9f34766de0b530e006023cb1697fb9d16ba",
+    "src/bin/perft.rs": "f35426beb7201c14ab59a707fbed9eec7885f4a0a546b9c7a01ea19389dcc344",
+    "src/bin/pst_probe.rs": "d2f2291ba24bfafc725935a825692209f3b8d30cd17e1b29fb62391b1a3ec493",
+    "src/bin/random_play.rs": "a781a10ed4399984773ece2fb27aa3187ab7f2a0967ff66bcc74ce8f9f8432c6",
+    "src/bin/selfplay_gen.rs": "7fe4e7fe1f2f532704b0b5e48051d0c45625c5e98a65b00b3537ba046ee69ecc",
+    "src/bin/usi_random.rs": "5251461c977bd1a625f48dd078a58e9d4fe19f23f2030dd4ee8ba329245a8d2b",
+    "src/core/adjudication.rs": "b2ac20a191fab4536f1222ff7be47cc73af8a7070603ccf2c9902f3c571c6dcc",
+    "src/core/attacks/fixed.rs": "49c04d9fb40ac3c750f4bad2b3298b8741042045ff7755d6f43e9efc2db708e0",
+    "src/core/attacks/mod.rs": "d9bd932226251b6df25cd12c6f4a1c9baf2a9387741a04f7cf5cca5374b3cc55",
+    "src/core/attacks/sliding.rs": "ab4bddf11d8be2d37aee079f8aff4b6aa5e57055c9a8ffc4a3444e0db900aa59",
+    "src/core/attacks/tables.rs": "9c08f6f35fae58735ab21a95fd97f89d9fc906f3801c92b9bee376651d1cefa7",
+    "src/core/bitboard.rs": "49ec8cd1fd0cef75059dfa6699b416b31e7f739f3952eea3c0a9d47508b30559",
+    "src/core/direction.rs": "88961382284c76a9bed34f11521fe612f00c482eacbffd4fe9ce3de8b79ae1ce",
+    "src/core/game.rs": "a909d9c05c0dec1c86f8310036e46675cf1dcafa36d3170221ce75e8afa9bcb3",
+    "src/core/mod.rs": "695810b71e643079ae8385eeb198c00dac8352110fbf32cd0a4d42e419c7e810",
+    "src/core/movegen/mod.rs": "097e43756784943b3464f32b00f17d50a701e9507202ee6f2f3dfacab4b9bee5",
+    "src/core/movegen/search_captures.rs": "81c91eb46f280c57e0d0749da8b85d5c3db882cdf6afe11e98b2b50006957fe8",
+    "src/core/mv.rs": "535cb805fbc364c5c58f777bb1b081d80bd81bd1c6c807ddaab1abf55afaa735",
+    "src/core/piece.rs": "56051d6f1b0c1d12d1d2b478dafa072db6d3dee17ab170c94e4d197e9a24d02f",
+    "src/core/position.rs": "200c29e8163f5c9629f63d6a288245f1cea9637054b6b6ea186b016c7d9182d7",
+    "src/core/repetition.rs": "b2acffeee9ba32d6edfcef7a4ce16bac9f081293bef0a69e1d5434b9f3c480f4",
+    "src/core/rules.rs": "d063747e66e7bfbec93b8d7d074df2dc8a7c2c7ef13afd6aa0d045da753bdd7e",
+    "src/core/square.rs": "be7dc3e86264e509ea220cdf42540fb84838b34fbcdaf9721e90fd81a4b7079d",
+    "src/eval/features.rs": "a7ba1ea440ab4432f5e3d55780b87cbe8a950e372b2e5502bf045b91c7392aec",
+    "src/eval/handcrafted.rs": "6384aeb2a881176449a044aef889827e5049cf56510295d4593a55b7d910fdcc",
+    "src/eval/mod.rs": "df7ef6f3de03e576183f5dceced91bbe2cfb11fe4e4ac8ef8148d975e2dad1a3",
+    "src/eval/pst.rs": "bc9d3cc66eecd1a524034581905e2c1fbb906bc587237baa0e9b76db729b2e0b",
+    "src/eval/training_data.rs": "36a38eb3eb7d607d64ac677b4351266ac330a3d7a5f8e43c4eeba4bddca35427",
+    "src/lib.rs": "6f228f0a9945fe516ad502043a75b559a1e5f0e1cf18ec24a0f6cccbe95793fb",
+    "src/notation/cecp.rs": "ccafe437c3520055aa65741b2b6817fb52316790ca46ddca7e94a7bc98aeec75",
+    "src/notation/mod.rs": "cae15766a81abce4d9b68a021408f8492e6ae4faadae8b1fd20683575d82bfb5",
+    "src/notation/sfen.rs": "1b9728baf9f890ba40784aa53d1d4092209c679c98120132510515824c0a5015",
+    "src/notation/usi.rs": "0b6dfd9da6d9958e3b24e7fee92a82ac804de9a3a1145899a1b4e58d96741aa5",
+    "src/protocol/cecp.rs": "c9bedcaaefafd459f0a8ca8d30ccdccb8bcfe169783d85a3488ac08348c9d9f4",
+    "src/protocol/engine.rs": "1ae7027e69d385cadedce4b41b9836cad54afacecf8dca52c2c0b5477338396d",
+    "src/protocol/mod.rs": "99787456c32bd6f3f4835a9f5e04721dc7c7d65b96e6b66cbb4c66901fcc418a",
+    "src/protocol/usi.rs": "6d3142db687a3b2affe735003c200d89b956bd124566dd470b25f2bda4534e2a",
+    "src/rng.rs": "f1720c2548d2595e3c4aff00dedfcb647ae6aac456234026fdc995b230e87463",
+    "src/search/mod.rs": "dc58f20ff391ad177988fe7ef2e4d8f86fe339c415bf812eb93f092e6742277e",
+    "src/search/see.rs": "8a23385a62695dc60307cca19f129d7e63a66116eb1156cc03c20061dcb55e41",
+    "src/search/tests.rs": "fc5fd3828ff60ec35bfb8b3071419c3bfc0d4bc5f634a310245d269bf4247073",
+    "src/search/tt.rs": "9fa384a1da2b66cd6c5e84b5033a7213919c589de772b7101835f9234b494960",
+    "src/stats.rs": "36a0c882b8d996b12c15f24f8aad6f7c4927318c4886b60daf9854bb48d65550"
+  },
+  "toolchain": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0\nLLVM version: 22.1.8\n",
+  "training": {
+    "pgo/training.json": "37a3700342bad67f532ad99bd5f39dfd38335bab5aa7915a6e908dc0ac2e4edc",
+    "scripts/pgo_profile.py": "560f2e94dcc6f6609d5ffb146b4194a6c099c7cb5eb30039ca69ec69d09df8e0"
+  }
+}
