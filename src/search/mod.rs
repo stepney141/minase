@@ -30,7 +30,7 @@ use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::Pst;
 use crate::eval::pst::{PIECE_STATE_COUNT, PstAccumulator, piece_state_of};
 
-use see::see;
+use see::see_prunes;
 use tt::Bound;
 
 /// 詰みを表す評価値。
@@ -2196,5 +2196,5 @@ fn piece_at_for_ordering(position: &Position, square: crate::Square) -> PieceCod
 
 /// 静的交換評価で損と判定できる捕獲手かを返す。
 fn capture_is_pruned_by_see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
-    see(position, rules, pst, mv).is_some_and(|value| value < 0)
+    see_prunes(position, rules, pst, mv)
 }

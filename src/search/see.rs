@@ -15,6 +15,111 @@ use crate::eval::Pst;
 /// 交換列で保持できる利得の数。中将棋の盤上の駒は最大92枚である。
 const MAX_GAINS: usize = 93;
 
+/// 捕獲の交換評価が負で、規則依存による判定不能でもない場合に枝刈りする。
+///
+/// 最初の取り返しで損をしないと確定したら、残る逆引きと逆算を省く。
+/// 正確な評価値との契約は`docs/plans/movegen-speedup.md`「SEEの不要な反復を省く」。
+pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
+    if mv.mid.is_some() {
+        return false;
+    }
+
+    let moving_piece = piece_at(position, mv.from);
+    let moving_kind = moving_piece.kind().expect("moving piece has a kind");
+    let captured_piece = piece_at(position, mv.to);
+    let captured_kind = captured_piece.kind().expect("captured piece has a kind");
+    if moving_kind == PieceKind::Kirin && mv.promote && captured_kind == PieceKind::Lion {
+        return false;
+    }
+
+    let piece_after_move = if mv.promote {
+        moving_piece
+            .promote()
+            .expect("a promoting capture must move a promotable piece")
+    } else {
+        moving_piece
+    };
+    let mut gains = [0_i32; MAX_GAINS];
+    gains[0] = pst.piece_value(captured_piece) + pst.piece_value(piece_after_move)
+        - pst.piece_value(moving_piece);
+    let mut piece_value = pst.piece_value(piece_after_move);
+    let mut lion_on_square =
+        moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
+    let mut side = moving_piece
+        .color()
+        .expect("moving piece has a color")
+        .opposite();
+    let mut occupied = position.occupied();
+    occupied.clear(mv.from);
+    let mut depth = 0_usize;
+
+    loop {
+        #[cfg(test)]
+        tests::LOOKUPS.set(tests::LOOKUPS.get() + 1);
+        let attackers = position.attackers_to_by(side, mv.to, occupied);
+        if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
+        {
+            return false;
+        }
+        if attackers.is_empty() {
+            break;
+        }
+
+        depth += 1;
+        debug_assert!(depth < MAX_GAINS);
+        gains[depth] = piece_value - gains[depth - 1];
+
+        let next = least_valuable_attacker(position, pst, attackers);
+        let next_piece = piece_at(position, next);
+        let next_kind = next_piece.kind().expect("attacking piece has a kind");
+        let promotion_choice = rules.promotion_choice_for(
+            side,
+            next_kind,
+            next_piece.is_promoted(),
+            next,
+            mv.to,
+            true,
+            position.promotion_deferred().contains(next),
+        );
+        match promotion_choice {
+            PromotionChoice::NoPromotion => {
+                piece_value = pst.piece_value(next_piece);
+            }
+            PromotionChoice::PromotionOptional => {
+                let promoted = promoted_piece(side, next_kind);
+                let unpromoted_value = pst.piece_value(next_piece);
+                let promoted_value = pst.piece_value(promoted);
+                gains[depth] += (promoted_value - unpromoted_value).max(0);
+                piece_value = unpromoted_value.max(promoted_value);
+            }
+            PromotionChoice::PromotionForced => {
+                let promoted = promoted_piece(side, next_kind);
+                let unpromoted_value = pst.piece_value(next_piece);
+                let promoted_value = pst.piece_value(promoted);
+                gains[depth] += promoted_value - unpromoted_value;
+                piece_value = promoted_value;
+            }
+        }
+        // movegen-speedup.md「SEEの不要な反復を省く」:
+        // 逆算結果は min(g0, max(-g1, X))。成り益を含むg1で判定する。
+        // 後続が獅子規則に依存しても枝刈りしないので、この終了は安全である。
+        if depth == 1 && gains[0] >= 0 && gains[1] <= 0 {
+            return false;
+        }
+        lion_on_square = next_kind == PieceKind::Lion
+            || (next_kind == PieceKind::Kirin && promotion_choice != PromotionChoice::NoPromotion);
+
+        occupied.clear(next);
+        side = side.opposite();
+    }
+
+    while depth >= 1 {
+        gains[depth - 1] = -(-gains[depth - 1]).max(gains[depth]);
+        depth -= 1;
+    }
+    gains[0] < 0
+}
+
 /// 捕獲手について、到達升での駒の取り合いを手番側視点で見積もる。
 ///
 /// 経由升を持つ着手、麒麟が獅子を取って成る着手、および到達升の
@@ -22,7 +127,8 @@ const MAX_GAINS: usize = 93;
 /// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
 /// その他の捕獲は、`docs/plans/strength-stage3.md`「静的交換評価」に従い、
 /// 規則に依存しない通常の交換列として評価する。
-pub(super) fn see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> Option<i32> {
+#[cfg(test)]
+fn see_reference(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> Option<i32> {
     if mv.mid.is_some() {
         return None;
     }
@@ -57,6 +163,7 @@ pub(super) fn see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) ->
     let mut depth = 0_usize;
 
     loop {
+        tests::LOOKUPS.set(tests::LOOKUPS.get() + 1);
         let attackers = position.attackers_to_by(side, mv.to, occupied);
         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
         {
@@ -172,9 +279,212 @@ mod tests {
     use super::*;
     use crate::MoveGenerator;
     use crate::core::position::PositionBuilder;
+    use crate::core::rules::Rules;
     use crate::eval::weights;
     use crate::search::capture_is_pruned_by_see;
-    use crate::test_util::{position_from_codes, sq};
+    use crate::test_util::{bench_positions, position_from_codes, sampled_random_positions, sq};
+
+    use core::cell::Cell;
+
+    thread_local! {
+        pub(super) static LOOKUPS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    /// 参照値と枝刈り契約を検査し、両経路の逆引き回数を返す。
+    fn assert_prune_contract(
+        board: &Position,
+        rules: MoveRules,
+        pst: &Pst,
+        mv: Move,
+        expected: Option<i32>,
+    ) -> (usize, usize) {
+        LOOKUPS.set(0);
+        let reference = see_reference(board, rules, pst, mv);
+        let reference_lookups = LOOKUPS.get();
+        assert_eq!(reference, expected, "move={mv:?}");
+        LOOKUPS.set(0);
+        assert_eq!(
+            see_prunes(board, rules, pst, mv),
+            reference.is_some_and(|v| v < 0),
+            "move={mv:?}"
+        );
+        (LOOKUPS.get(), reference_lookups)
+    }
+
+    // movegen-speedup.md「SEEの不要な反復を省く」: 全捕獲の枝刈り判断を
+    // benchの15局面と各規則32局面の固定シード対局で参照値と照合する。
+    #[test]
+    fn see_prunes_matches_reference_on_bench_and_random_captures() {
+        let pst = weights().unwrap();
+        for rules in [Rules::ENGINE_DEFAULT.moves, Rules::LISHOGI.moves] {
+            let generator = MoveGenerator::new(rules);
+            let mut checked = 0;
+            for (index, board) in bench_positions()
+                .into_iter()
+                .chain(sampled_random_positions(rules))
+                .enumerate()
+            {
+                let mut captures = Vec::new();
+                generator.generate_captures(&board, &mut captures);
+                for mv in captures {
+                    assert_eq!(
+                        see_prunes(&board, rules, &pst, mv),
+                        see_reference(&board, rules, &pst, mv).is_some_and(|v| v < 0),
+                        "rules={rules:?}, position={index}, move={mv:?}"
+                    );
+                    checked += 1;
+                }
+            }
+            assert!(checked > 0);
+        }
+    }
+
+    // movegen-speedup.md「SEEの不要な反復を省く」: 値0を枝刈りせず、
+    // 最初の取り返し後の逆引きを実際に省く。
+    #[test]
+    fn see_prunes_stops_at_zero_and_skips_remaining_lookups() {
+        let pst = weights().unwrap();
+        let board = position(
+            Color::Black,
+            &[
+                (sq(5, 4), unpromoted(Color::Black, PieceKind::Pawn)),
+                (sq(5, 5), unpromoted(Color::White, PieceKind::Pawn)),
+                (sq(5, 6), unpromoted(Color::White, PieceKind::Pawn)),
+            ],
+        );
+        let counts = assert_prune_contract(
+            &board,
+            MoveRules::standard(),
+            &pst,
+            capture(sq(5, 4), sq(5, 5)),
+            Some(0),
+        );
+        assert_eq!(counts, (1, 2));
+    }
+
+    // movegen-speedup.md「SEEの不要な反復を省く」: 相手の正の成り益を
+    // 加えてから判定する。同価値の捕獲でも成り益分の損を枝刈りする。
+    #[test]
+    fn see_prunes_includes_recapture_promotion_before_early_exit() {
+        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+        let mover = unpromoted(Color::White, PieceKind::Rook);
+        let attacker = unpromoted(Color::Black, PieceKind::DragonHorse);
+        let bonus =
+            value(&pst, promoted(Color::Black, PieceKind::HornedFalcon)) - value(&pst, attacker);
+        assert!(bonus > 0);
+        for kind in [PieceKind::Rook, PieceKind::FreeKing] {
+            let victim = unpromoted(Color::Black, kind);
+            let board = position(
+                Color::White,
+                &[(sq(5, 10), mover), (sq(5, 8), victim), (sq(4, 7), attacker)],
+            );
+            let expected = value(&pst, victim) - value(&pst, mover) - bonus;
+            let counts = assert_prune_contract(
+                &board,
+                MoveRules::standard(),
+                &pst,
+                capture(sq(5, 10), sq(5, 8)),
+                Some(expected),
+            );
+            if kind == PieceKind::Rook {
+                assert!(expected < 0);
+                assert_eq!(counts, (2, 2));
+            } else {
+                assert!(expected >= 0);
+                assert_eq!(counts, (1, 2));
+            }
+        }
+    }
+
+    // movegen-speedup.md「SEEの不要な反復を省く」: P6の強制成りで
+    // 価値が下がる初手もg0へ反映する。取り返しの有無を両方検査する。
+    #[test]
+    fn see_prunes_accounts_for_value_loss_on_forced_initial_promotion() {
+        use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
+        use sha2::{Digest, Sha256};
+
+        // evaluation.mdのMNPT形式に従い、成香の価値だけを1へ下げる。
+        let mut bytes = include_bytes!("../../nets/pst-init.bin").to_vec();
+        let promoted_lance = promoted(Color::Black, PieceKind::WhiteHorse);
+        let offset = bytes.len() - PIECE_STATE_COUNT * 4 + piece_state_of(promoted_lance) * 4;
+        bytes[offset..offset + 4].copy_from_slice(&1_i32.to_le_bytes());
+        let checksum = Sha256::digest(&bytes[80..]);
+        bytes[48..80].copy_from_slice(&checksum);
+        let pst = Pst::decode(&bytes).unwrap();
+        let mover = unpromoted(Color::Black, PieceKind::Lance);
+        let victim = unpromoted(Color::White, PieceKind::Pawn);
+        assert!(value(&pst, promoted_lance) < value(&pst, mover));
+        let rules = MoveRules {
+            p6: true,
+            ..MoveRules::standard()
+        };
+        let mv = Move {
+            promote: true,
+            ..capture(sq(5, 10), sq(5, 11))
+        };
+        assert_eq!(
+            rules.promotion_choice_for(
+                Color::Black,
+                PieceKind::Lance,
+                false,
+                mv.from,
+                mv.to,
+                true,
+                false,
+            ),
+            PromotionChoice::PromotionForced
+        );
+        for defended in [false, true] {
+            let mut pieces = vec![(mv.from, mover), (mv.to, victim)];
+            if defended {
+                pieces.push((sq(5, 9), unpromoted(Color::White, PieceKind::Rook)));
+            }
+            let board = position(Color::Black, &pieces);
+            let expected = value(&pst, victim) - value(&pst, mover)
+                + if defended {
+                    0
+                } else {
+                    value(&pst, promoted_lance)
+                };
+            assert!(expected < 0);
+            let counts = assert_prune_contract(&board, rules, &pst, mv, Some(expected));
+            assert_eq!(counts, if defended { (2, 2) } else { (1, 1) });
+        }
+    }
+
+    // movegen-speedup.md「SEEの不要な反復を省く」: 後続で判定不能に
+    // なる列も枝刈りしない。負の中間利得による早期枝刈りは禁止する。
+    #[test]
+    fn see_prunes_preserves_late_rule_dependence_with_and_without_early_exit() {
+        let pst = weights().unwrap();
+        for victim_kind in [PieceKind::Lion, PieceKind::Pawn] {
+            let board = position(
+                Color::Black,
+                &[
+                    (sq(5, 0), unpromoted(Color::Black, PieceKind::Rook)),
+                    (sq(5, 5), unpromoted(Color::White, victim_kind)),
+                    (sq(5, 6), unpromoted(Color::White, PieceKind::Pawn)),
+                    (sq(7, 7), unpromoted(Color::Black, PieceKind::Lion)),
+                    (sq(3, 3), unpromoted(Color::White, PieceKind::Lion)),
+                ],
+            );
+            let counts = assert_prune_contract(
+                &board,
+                MoveRules::standard(),
+                &pst,
+                capture(sq(5, 0), sq(5, 5)),
+                None,
+            );
+            assert_eq!(
+                counts,
+                if victim_kind == PieceKind::Lion {
+                    (1, 3)
+                } else {
+                    (3, 3)
+                }
+            );
+        }
+    }
 
     fn unpromoted(color: Color, kind: PieceKind) -> PieceCode {
         PieceCode::new(color, kind).expect("test piece has an unpromoted state")
@@ -201,6 +511,7 @@ mod tests {
         pst.piece_value(piece)
     }
 
+    // movegen-speedup.md「SEEの不要な反復を省く」: 初手から判定不能なら枝刈りしない。
     // strength-stage3.md「静的交換評価」: 2段階移動と、麒麟が
     // 獅子を取って成る初手は規則依存なので判定不能とする。
     #[test]
@@ -224,7 +535,10 @@ mod tests {
             to: target,
             promote: false,
         };
-        assert_eq!(see(&two_stage, rules, &pst, attached_capture), None);
+        assert_eq!(
+            assert_prune_contract(&two_stage, rules, &pst, attached_capture, None),
+            (0, 0)
+        );
 
         let igui = Move {
             from: sq(5, 7),
@@ -232,7 +546,10 @@ mod tests {
             to: sq(5, 7),
             promote: false,
         };
-        assert_eq!(see(&two_stage, rules, &pst, igui), None);
+        assert_eq!(
+            assert_prune_contract(&two_stage, rules, &pst, igui, None),
+            (0, 0)
+        );
 
         let kirin = position(
             Color::Black,
@@ -241,20 +558,13 @@ mod tests {
                 (sq(5, 8), unpromoted(Color::White, PieceKind::Lion)),
             ],
         );
-        assert_eq!(
-            see(
-                &kirin,
-                rules,
-                &pst,
-                Move {
-                    from: sq(4, 7),
-                    mid: None,
-                    to: sq(5, 8),
-                    promote: true,
-                },
-            ),
-            None
-        );
+        let mv = Move {
+            from: sq(4, 7),
+            mid: None,
+            to: sq(5, 8),
+            promote: true,
+        };
+        assert_eq!(assert_prune_contract(&kirin, rules, &pst, mv, None), (0, 0));
     }
 
     // strength-stage3.md「静的交換評価」: 到達升の獅子を、獅子または
@@ -308,7 +618,7 @@ mod tests {
         ];
 
         for (board, mv) in cases {
-            assert_eq!(see(&board, rules, &pst, mv), None, "move={mv:?}");
+            assert_prune_contract(&board, rules, &pst, mv, None);
         }
     }
 
@@ -327,7 +637,7 @@ mod tests {
             &[(sq(5, 4), black_pawn), (target, white_go_between)],
         );
         assert_eq!(
-            see(&unguarded, rules, &pst, capture(sq(5, 4), target)),
+            see_reference(&unguarded, rules, &pst, capture(sq(5, 4), target)),
             Some(value(&pst, white_go_between))
         );
 
@@ -343,7 +653,7 @@ mod tests {
                 ],
             );
             assert_eq!(
-                see(&lion_capture, rules, &pst, capture(sq(5, 0), target)),
+                see_reference(&lion_capture, rules, &pst, capture(sq(5, 0), target)),
                 Some(value(&pst, white_lion))
             );
         }
@@ -360,7 +670,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            see(&defended, rules, &pst, capture(sq(5, 0), target)),
+            see_reference(&defended, rules, &pst, capture(sq(5, 0), target)),
             Some(value(&pst, white_pawn) - value(&pst, black_rook))
         );
 
@@ -380,7 +690,7 @@ mod tests {
         // 金で仲人を取って歩に取り返された時点で125−378=−253。
         // 銀で歩を取り返すと遮蔽が外れた飛車に銀を取られ、さらに150損するため中止する。
         assert_eq!(
-            see(&xray, rules, &pst, capture(sq(4, 4), target)),
+            see_reference(&xray, rules, &pst, capture(sq(4, 4), target)),
             Some(-253)
         );
 
@@ -396,7 +706,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            see(&king_recapture, rules, &pst, capture(sq(4, 4), target)),
+            see_reference(&king_recapture, rules, &pst, capture(sq(4, 4), target)),
             Some(value(&pst, free_king))
         );
     }
@@ -420,7 +730,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            see(&lion_is_recaptured, rules, &pst, capture(sq(4, 4), target)),
+            see_reference(&lion_is_recaptured, rules, &pst, capture(sq(4, 4), target)),
             Some(value(&pst, white_pawn) - value(&pst, black_lion))
         );
 
@@ -439,7 +749,7 @@ mod tests {
         // 金を取ると獅子が飛車を取り返し、先手は100−378+750=472を得る。
         // 後手は取り返さず歩100の損で止められるため、交換評価は100となる。
         assert_eq!(
-            see(&lion_recaptures, rules, &pst, capture(sq(4, 4), target)),
+            see_reference(&lion_recaptures, rules, &pst, capture(sq(4, 4), target)),
             Some(100)
         );
     }
@@ -477,7 +787,7 @@ mod tests {
 
         for (index, board) in cases.into_iter().enumerate() {
             assert_eq!(
-                see(&board, rules, &pst, capture(sq(4, 4), target)),
+                see_reference(&board, rules, &pst, capture(sq(4, 4), target)),
                 Some(expected),
                 "case={index}"
             );
@@ -509,7 +819,7 @@ mod tests {
             promote: true,
         };
         assert_eq!(
-            see(&first_promotion, rules, &pst, promoting_capture),
+            see_reference(&first_promotion, rules, &pst, promoting_capture),
             Some(value(&pst, white_pawn) - value(&pst, dragon_horse))
         );
         assert!(value(&pst, horned_falcon) > value(&pst, dragon_horse));
@@ -526,7 +836,7 @@ mod tests {
         );
         let promotion_bonus = (value(&pst, horned_falcon) - value(&pst, dragon_horse)).max(0);
         assert_eq!(
-            see(&promoted_recapture, rules, &pst, capture(sq(5, 10), target)),
+            see_reference(&promoted_recapture, rules, &pst, capture(sq(5, 10), target)),
             Some(value(&pst, black_pawn) - value(&pst, white_rook) - promotion_bonus)
         );
     }
@@ -552,7 +862,7 @@ mod tests {
         };
 
         assert_eq!(
-            see(&board, rules, &pst, capture(sq(5, 10), target)),
+            see_reference(&board, rules, &pst, capture(sq(5, 10), target)),
             Some(value(&pst, black_go_between) - value(&pst, white_rook))
         );
     }
@@ -600,7 +910,10 @@ mod tests {
         ];
 
         for (board, mv) in cases {
-            assert_eq!(see(&board, rules, &pst, mv), Some(value(&pst, victim)));
+            assert_eq!(
+                see_reference(&board, rules, &pst, mv),
+                Some(value(&pst, victim))
+            );
         }
     }
 
@@ -624,7 +937,7 @@ mod tests {
         let none_captures: Vec<_> = captures
             .iter()
             .copied()
-            .filter(|&mv| see(&board, rules, &pst, mv).is_none())
+            .filter(|&mv| see_reference(&board, rules, &pst, mv).is_none())
             .collect();
         assert!(!none_captures.is_empty());
         assert!(
