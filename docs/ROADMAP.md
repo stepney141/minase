@@ -43,6 +43,7 @@
 | 棋力向上段階6 | [plans/strength-stage6.md](plans/strength-stage6.md) | 完了 | 2026年9月12日 |
 | 棋力向上段階7 | [plans/strength-stage7.md](plans/strength-stage7.md) | 完了 | 2026年9月14日 |
 | 合法手生成と利き計算の高速化 | [plans/movegen-speedup.md](plans/movegen-speedup.md) | 完了 | 2026年9月15日 |
+| 合法手生成と利き計算の高速化（第2期） | [plans/movegen-speedup-2.md](plans/movegen-speedup-2.md) | 起案 | |
 
 ## 現在地
 
@@ -59,6 +60,7 @@ HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの�
 
 直近に完了したマイルストーンは[合法手生成と利き計算の高速化](plans/movegen-speedup.md)であり、利き逆引きの片側化、静止探索の段階的な捕獲生成、およびSEEの早期終了でbenchのNPSを基準比1.500倍にした。
 PGOはNPS約1.19倍の効果を確認したが、運用の複雑さを理由に利用者の判断で採用しなかった。
+[第2期](plans/movegen-speedup-2.md)は2026年9月15日に起案し、第1期の採用版を基準に10段階で1.3倍を目標とする。利用者の決定により`unsafe`は使わず、探索木を変える変更はSPRTで判定する前提で段階7から段階9に置いた。着手には、探索木を変える3段階を段階ごとに判定するか1コミットに固定して1組のSTCとLTCで判定するかと、ブランチの起点の2点の利用者の判断を待つ。起案時の診断は measurements/movegen-speedup-2-diagnostics-depth5.md にある。
 進行中のマイルストーンは、上位計画の[棋力向上の段階計画](plans/strength-stages.md)である。
 10段階のうち段階7までが完了し、次の段階は採用構成と世代2のデータを起点に進められる。
 
