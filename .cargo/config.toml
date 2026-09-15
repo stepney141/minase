@@ -1,3 +1,2 @@
 [build]
-rustc-wrapper = "scripts/pgo_rustc.py"
 rustflags = ["-C", "target-cpu=native"]

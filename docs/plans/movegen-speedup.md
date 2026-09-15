@@ -12,14 +12,15 @@
 探索木の一致は、基準コミットに静止探索の手順の小さな変更を加えた照合参照コミットに対して確かめ、速度の基準は基準コミットのままとする。
 この採否の方式は本マイルストーンに限る利用者の決定であり、理由は設計判断の節に記す。
 最低受入条件を満たし、必須候補の採否が確定し、最終のSPRTが長時間条件で採用判定（`H1`）を得たら完了とし、2倍に達しなければ差と残存負荷を測定記録に残す。
-本マイルストーンは完了し、採用版のNPSは基準比1.794倍で、最終のSPRTはSTCとLTCの両方で`H1`だった。
+本マイルストーンは完了し、採用版（単位AからCまで）のNPSは基準比1.500倍である。PGOは効果を確認したが利用者の判断で採用せず、最終のSPRTはPGOを含む構成でSTCとLTCの両方で`H1`だった。
 
 ## 状態
 
 完了。
 2026年9月13日に起案と着手し、2026年9月15日に完了した。
-採用版（コミット`d961adf`、単位AからDまでとPGO）は照合参照コミットと15局面のノード数、最善手、探索値で一致し、NPSは基準比1.794倍で最低受入条件1.5倍を満たすが、目標の2倍には届かず、残る差と残存負荷は[単位Eの記録](../measurements/movegen-speedup-unit-e-bench-depth5.md)にある。
-最終のSPRTは[STC](../measurements/movegen-speedup-final-stc.md)と[LTC](../measurements/movegen-speedup-final-ltc.md)がいずれも`H1`かつ異常0件だった。
+採用版（コミット`888bd10`、単位AからCまで）は照合参照コミットと15局面のノード数、最善手、探索値で一致し、NPSは基準比1.500倍で最低受入条件1.5倍を満たすが、目標の2倍には届かず、残る差と残存負荷は[単位Eの記録](../measurements/movegen-speedup-unit-e-bench-depth5.md)にある。
+単位D（PGO）はNPS約1.19倍の効果を確認したが、再生成を要する運用の複雑さを理由に利用者の判断で採用せず、実装を取り消した。
+最終のSPRTは、PGOを含む構成（コミット`5a67d41`）で[STC](../measurements/movegen-speedup-final-stc.md)と[LTC](../measurements/movegen-speedup-final-ltc.md)がいずれも`H1`かつ異常0件だった。PGOを外した採用版そのものの自己対局は行っていない。
 各単位の記録は[回転](../measurements/movegen-speedup-rotation-bench-depth5.md)、[単位A](../measurements/movegen-speedup-unit-a-bench-depth5.md)、[単位B](../measurements/movegen-speedup-unit-b-bench-depth5.md)、[単位C](../measurements/movegen-speedup-unit-c-bench-depth5.md)、[単位D](../measurements/movegen-speedup-pgo-bench-depth5.md)にある。
 
 ## 目的
@@ -220,12 +221,8 @@ PGOの採用後に上記の照合対象（ソース、評価データ、依存�
 再生成時間、プロファイル容量、複数回更新した場合のgitオブジェクトの増分を測り、速度の利益と併記したうえで採否測定へ進むか決める。
 ハーネスへPGOの有無を切り替える機能比較スイッチは追加しない。
 
-手動ビルドの比較でNPSが約1.19倍となり、継続負担も許容範囲だったので（[PGOの記録](../measurements/movegen-speedup-pgo-bench-depth5.md)）、再現基盤を次のとおり実装した。
-`.cargo/config.toml`の`rustflags`に相対パスの`-C profile-use`を置くと依存クレートのコンパイルで解決できないため、適用は`build.rustc-wrapper`に指定した`scripts/pgo_rustc.py`が行い、`--crate-name minase`のコンパイルにだけ`pgo/minase.profdata`の絶対パスを付ける（[ラッパーで適用する教訓](../lessons/pgo-profile-path-via-wrapper.md)）。
-`build.rs`はreleaseビルドで、コンパイル対象のソース（`src/`配下の`.rs`から`tests/`配下、`_tests.rs`、`src/test_util.rs`を除く）、評価データ（`nets/pst.bin`、`nets/pst-init.bin`）、`Cargo.toml`と`Cargo.lock`、`rustc -Vv`、適用設定（`.cargo/config.toml`と`scripts/pgo_rustc.py`）、学習入力（`scripts/pgo_profile.py`と`pgo/training.json`）、およびプロファイル自身のSHA-256を`pgo/manifest.json`と照合し、不足、追加、不一致をすべて列挙してビルドを失敗させる。
-`scripts/pgo_profile.py`は、計測用ビルド、`usi_random`に局ごとのシードを与えた12局（既定の基本シード9001）から手数12、40、80、120、160、200、260、320の局面を`go depth 5`で探索する学習、`llvm-profdata`による統合、照合記録の書き出し、および検証つきビルドを1コマンドで行う。
-明示的な例外は環境変数`MINASE_PGO_GENERATE=1`（計測用と診断用のビルドで適用と検証を省く）だけであり、`MINASE_PGO_WRITE_MANIFEST=1`は生成スクリプトが照合記録を書くために使う。
-ソース、評価データ、依存関係、ツールチェーン、適用設定のいずれかを変えたら、releaseビルドの前に`python3 scripts/pgo_profile.py`で再生成し、プロファイルと照合記録を同じコミットへ含める。
+手動ビルドの比較ではNPSが約1.19倍となり判断値を超えたため、rustcラッパーで適用しreleaseビルドで照合記録を検証する再現基盤を一度実装したが、ソースを変えるたびにプロファイルの再生成を要する運用とビルド手順の追加がコードベースを複雑にしすぎるという利用者の判断で採用しなかった（[PGOの記録](../measurements/movegen-speedup-pgo-bench-depth5.md)、[ラッパーで適用する教訓](../lessons/pgo-profile-path-via-wrapper.md)）。
+測定と実装の経緯は記録に残し、再検討する場合は同じ判断規則と再現条件を出発点にする。
 
 ### 残存負荷に応じて代替方式を比べる
 
@@ -258,7 +255,7 @@ PGOの採用後に上記の照合対象（ソース、評価データ、依存�
 | A | 片側化、方向主導化、特殊利きの走査限定。 | 照合参照コミットとの局面別一致と、NPSの増加。 |
 | B | 捕獲対象の除外、規則判定の早期終了、バッファ再利用、静止探索の段階生成。 | 各検証点での残存手順と局面別の一致と、統合版のNPSの増加。 |
 | C | SEEの早期終了と、その後続比較の差分更新。 | 全捕獲の枝刈りの真偽値と局面別の一致と、NPSの増加。 |
-| D | PGO。 | 分離した入力でNPSが10%以上増え、再現条件と継続負担を評価して進むと決めている。 |
+| D | PGO。 | 分離した入力でNPSが10%以上増え、再現条件と継続負担を評価して進むと決めている。効果は確認したが運用の複雑さを理由に利用者の判断で不採用。 |
 | E | 残存負荷に応じて選んだ代替方式。 | 着手の条件を満たし、必要な生成契約とSEE判定と局面別の一致と、維持費を含むNPSの増加。 |
 
 Eで互いに独立した候補を複数試す場合は、E1、E2のように分け、各候補の採否を確定してから次へ進む。
