@@ -1374,6 +1374,7 @@ impl Searcher<'_> {
 
     /// stand-patと捕獲手だけを使う静止探索で局面を評価する。
     ///
+    /// 設計書movegen-speedup-2.md「段階7」に従い、静的評価で打ち切るときは置換表に触れない。
     /// 静止探索内の手は主変化へ含めず、反復検出は行わない。
     /// 中断された場合は`None`を返す。
     fn quiesce(
@@ -1395,7 +1396,28 @@ impl Searcher<'_> {
             );
         }
 
+        let stand_pat = self
+            .pst
+            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+        if stand_pat >= beta {
+            return Some(stand_pat);
+        }
+
         let original_alpha = alpha;
+        alpha = alpha.max(stand_pat);
+        let threshold = alpha - stand_pat - self.pst.delta_margin();
+        let buffers = &mut self.qsearch[ply as usize];
+        buffers.reset(position);
+        if !buffers.initialize(
+            position,
+            &self.generator,
+            self.pst,
+            &self.capture_ranks,
+            threshold,
+        ) {
+            return Some(stand_pat);
+        }
+
         let key = search_key(position);
         let mut tt_move = None;
         if let Some(hit) = self.tt.probe(key, ply) {
@@ -1403,32 +1425,21 @@ impl Searcher<'_> {
             let cutoff = match hit.bound {
                 Bound::Exact => true,
                 Bound::Lower => hit.score >= beta,
-                Bound::Upper => hit.score <= alpha,
+                Bound::Upper => hit.score <= original_alpha,
             };
             if cutoff {
                 return Some(hit.score);
             }
         }
 
-        let stand_pat = self
-            .pst
-            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
-        if stand_pat >= beta {
-            self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
-            return Some(stand_pat);
-        }
         let mut best = stand_pat;
         let mut best_move = None;
-        alpha = alpha.max(stand_pat);
-
-        let threshold = alpha - stand_pat - self.pst.delta_margin();
-        self.qsearch[ply as usize].reset(position, &self.generator, tt_move);
+        self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
         while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
             &self.generator,
             self.pst,
             &self.capture_ranks,
-            threshold,
         ) {
             let mv = candidate.capture.mv;
             let buffers = &self.qsearch[ply as usize];
@@ -1772,7 +1783,7 @@ fn royal_under_attack(position: &Position) -> bool {
 }
 
 /// 静止探索の捕獲価値と、同順位で生成順を保つ連番。
-/// 設計書movegen-speedup-2.md「段階5」に従い、順序キーと獅子の到達升を圧縮する。
+/// 設計書movegen-speedup-2.md「段階5」に従い、順序キーを圧縮する。
 #[derive(Clone, Copy)]
 struct QsearchCapture {
     capture: CaptureCandidate,
@@ -1783,8 +1794,6 @@ struct QsearchCapture {
     // 1駒につき通常到達升143個と2段階移動8×8個、成否2通りを上界に取ると、
     // 144×(143+64)×2 = 59,616候補なので連番はu16に収まる。
     seq: u16,
-    /// 獅子の経由升の周囲3×3升を表すビット。0なら単独の候補。
-    lion_destinations: u16,
 }
 
 impl QsearchCapture {
@@ -1799,7 +1808,6 @@ impl QsearchCapture {
             ),
             capture,
             seq: 0,
-            lion_destinations: 0,
         }
     }
 }
@@ -1858,7 +1866,6 @@ struct QsearchBuffers {
     royal_count: u32,
     tt_move: Option<Move>,
     tt_pending: bool,
-    initialized: bool,
     special_cursor: usize,
     cursor: usize,
 }
@@ -1876,7 +1883,6 @@ impl Default for QsearchBuffers {
             royal_count: 0,
             tt_move: None,
             tt_pending: false,
-            initialized: false,
             special_cursor: 0,
             cursor: 0,
         }
@@ -1884,7 +1890,7 @@ impl Default for QsearchBuffers {
 }
 
 impl QsearchBuffers {
-    fn reset(&mut self, position: &Position, generator: &MoveGenerator, tt_move: Option<Move>) {
+    fn reset(&mut self, position: &Position) {
         self.validation.clear();
         self.special.clear();
         self.group.clear();
@@ -1892,15 +1898,26 @@ impl QsearchBuffers {
         self.royals = position.royal_pieces(position.side_to_move().opposite());
         self.royal_count = self.royals.popcount();
         self.capturers.clear();
-        self.tt_move =
-            tt_move.filter(|&mv| generator.is_legal_capture(position, mv, &mut self.validation));
-        self.tt_pending = self.tt_move.is_some();
-        self.initialized = false;
+        self.tt_move = None;
+        self.tt_pending = false;
         self.special_cursor = 0;
         self.cursor = 0;
     }
 
+    /// 設計書movegen-speedup-2.md「段階9」に従い、初期化後に置換表の手を設定する。
+    fn set_tt_move(
+        &mut self,
+        position: &Position,
+        generator: &MoveGenerator,
+        tt_move: Option<Move>,
+    ) {
+        self.tt_move =
+            tt_move.filter(|&mv| generator.is_legal_capture(position, mv, &mut self.validation));
+        self.tt_pending = self.tt_move.is_some();
+    }
+
     /// 入口で残す対象と価値グループを決め、通常駒の利きを保存する。
+    /// 設計書movegen-speedup-2.md「段階9」に従い、入口の枝刈り後に合法な候補があるかを返す。
     fn initialize(
         &mut self,
         position: &Position,
@@ -1908,12 +1925,14 @@ impl QsearchBuffers {
         pst: &Pst,
         ranks: &CaptureRanks,
         threshold: i32,
-    ) {
+    ) -> bool {
         let opponent = position.side_to_move().opposite();
         let royals = self.royals;
         let royal_count = self.royal_count;
-        let mut lion_group: Option<usize> = None;
-        generator.generate_special_captures(position, &self.validation, &mut |capture| {
+        generator.generate_special_captures(position, &mut |capture| {
+            if MoveGenerator::is_excluded_lion_capture(position, capture.mv) {
+                return;
+            }
             let captured_value = capture
                 .captured
                 .into_iter()
@@ -1925,30 +1944,8 @@ impl QsearchBuffers {
             {
                 return;
             }
-            // 設計書movegen-speedup-2.md「段階5」: 同じ経由升だけを取る獅子手を圧縮する。
-            let destinations = if capture.piece.kind() == Some(PieceKind::Lion)
-                && let [Some(mid), None] = capture.captured
-            {
-                let file = i16::from(capture.mv.to.file()) - i16::from(mid.file()) + 1;
-                let rank = i16::from(capture.mv.to.rank()) - i16::from(mid.rank()) + 1;
-                let bit = 1_u16 << (rank * 3 + file);
-                if let Some(index) = lion_group {
-                    let previous = &mut self.special[index];
-                    if previous.capture.mv.from == capture.mv.from
-                        && previous.capture.mv.mid == Some(mid)
-                    {
-                        previous.lion_destinations |= bit;
-                        return;
-                    }
-                }
-                lion_group = Some(self.special.len());
-                bit
-            } else {
-                0
-            };
             let mut candidate = QsearchCapture::new(pst, capture, captured_value);
             candidate.seq = self.special.len() as u16;
-            candidate.lion_destinations = destinations;
             self.special.push(candidate);
         });
         self.special
@@ -1977,13 +1974,17 @@ impl QsearchBuffers {
                 }
             }
         }
-        generator.collect_ordinary_capturers(
-            position,
-            allowed,
-            self.validation.ordinary,
-            &mut self.capturers,
-        );
-        self.initialized = true;
+        generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
+        !self.special.is_empty()
+            || self.capturers.iter().any(|capturer| {
+                let mut present = false;
+                generator.emit_ordinary_captures(position, &[*capturer], allowed, &mut |capture| {
+                    let value = pst.piece_value(piece_at_for_ordering(position, capture.mv.to));
+                    present |= value > threshold
+                        || captures_all_royals(royals, royal_count, capture.captured);
+                });
+                present
+            })
     }
 
     /// 設計書movegen-speedup-2.md「段階5」に従い、同価値の対象升を集合のまま登録する。
@@ -2058,7 +2059,6 @@ impl QsearchBuffers {
         generator: &MoveGenerator,
         pst: &Pst,
         ranks: &CaptureRanks,
-        threshold: i32,
     ) -> Option<QsearchCapture> {
         if self.tt_pending {
             self.tt_pending = false;
@@ -2079,28 +2079,9 @@ impl QsearchBuffers {
                 captured_value,
             ));
         }
-        if !self.initialized {
-            self.initialize(position, generator, pst, ranks, threshold);
-        }
         loop {
-            while let Some(stored) = self.group.get_mut(self.cursor) {
-                let mut candidate = *stored;
-                if stored.lion_destinations == 0 {
-                    self.cursor += 1;
-                } else {
-                    let offset = stored.lion_destinations.trailing_zeros() as i8;
-                    stored.lion_destinations &= stored.lion_destinations - 1;
-                    candidate.capture.mv.to = stored
-                        .capture
-                        .mv
-                        .mid
-                        .expect("compressed lion has a midpoint")
-                        .offset(offset % 3 - 1, offset / 3 - 1)
-                        .expect("generated destination is on board");
-                    if stored.lion_destinations == 0 {
-                        self.cursor += 1;
-                    }
-                }
+            while let Some(&candidate) = self.group.get(self.cursor) {
+                self.cursor += 1;
                 if Some(candidate.capture.mv) != self.tt_move {
                     return Some(candidate);
                 }

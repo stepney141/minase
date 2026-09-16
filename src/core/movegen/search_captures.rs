@@ -25,20 +25,31 @@ pub(crate) struct OrdinaryCapturer {
     pub(crate) captures: Bitboard,
 }
 
-/// 設計書movegen-speedup-2.md「段階5」に従い、置換表の検証で得た利きを保存する。
+/// 設計書movegen-speedup-2.md「段階9」に従う、置換表の特殊捕獲の検証用領域。
 #[derive(Default)]
 pub(crate) struct CaptureCache {
-    pub(crate) ordinary: Option<OrdinaryCapturer>,
-    special_from: Option<Square>,
     captures: Vec<CaptureCandidate>,
 }
 
 impl MoveGenerator {
+    /// 設計書movegen-speedup-2.md「段階8」に従い、獅子が経由升で取って空升へ進む手を除く。
+    pub(crate) fn is_excluded_lion_capture(position: &Position, mv: Move) -> bool {
+        position
+            .piece_at(mv.from)
+            .is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
+            && mv.mid.is_some_and(|mid| {
+                position
+                    .piece_at(mid)
+                    .is_some_and(|piece| piece.color() == Some(position.side_to_move().opposite()))
+            })
+            && position.piece_at(mv.to).is_none()
+            && mv.to != mv.from
+    }
+
     /// 特殊駒の全捕獲を公開生成と同じ相対順序で追加する。
     pub(crate) fn generate_special_captures(
         &self,
         position: &Position,
-        cache: &CaptureCache,
         output: &mut impl FnMut(CaptureCandidate),
     ) {
         let color = position.side_to_move();
@@ -49,13 +60,7 @@ impl MoveGenerator {
         ] {
             for from in position.pieces_of_kind(color, kind) {
                 let piece = position.piece_at(from).expect("capture origin has a piece");
-                if cache.special_from == Some(from) {
-                    for &candidate in &cache.captures {
-                        output(candidate);
-                    }
-                } else {
-                    self.generate_special_piece_captures(position, from, piece, output);
-                }
+                self.generate_special_piece_captures(position, from, piece, output);
             }
         }
     }
@@ -126,7 +131,6 @@ impl MoveGenerator {
         &self,
         position: &Position,
         allowed: Bitboard,
-        cached: Option<OrdinaryCapturer>,
         output: &mut Vec<OrdinaryCapturer>,
     ) {
         if allowed.is_empty() {
@@ -142,14 +146,7 @@ impl MoveGenerator {
             }
             for from in position.pieces_of_kind(color, kind) {
                 let piece = position.piece_at(from).expect("capture origin has a piece");
-                if let Some(mut capturer) = cached.filter(|c| c.from == from) {
-                    capturer.captures &= allowed;
-                    if !capturer.captures.is_empty() {
-                        output.push(capturer);
-                    }
-                } else if let Some(capturer) =
-                    self.ordinary_capturer(position, from, piece, allowed)
-                {
+                if let Some(capturer) = self.ordinary_capturer(position, from, piece, allowed) {
                     output.push(capturer);
                 }
             }
@@ -220,8 +217,8 @@ impl MoveGenerator {
         }
     }
 
-    /// 1駒分の捕獲で置換表の手を検査し、利きを初期化へ引き継ぐ。
-    /// 設計書movegen-speedup-2.md「段階5」に従う。
+    /// 1駒分の捕獲で置換表の手を検査する。
+    /// 設計書movegen-speedup-2.md「段階9」に従い、初期化への利きの引き継ぎは行わない。
     pub(crate) fn is_legal_capture(
         &self,
         position: &Position,
@@ -232,7 +229,8 @@ impl MoveGenerator {
         let Some(piece) = position.piece_at(mv.from) else {
             return false;
         };
-        if piece.color() != Some(position.side_to_move())
+        if Self::is_excluded_lion_capture(position, mv)
+            || piece.color() != Some(position.side_to_move())
             || position
                 .captured_squares(mv)
                 .into_iter()
@@ -249,8 +247,7 @@ impl MoveGenerator {
                 return false;
             }
             let enemy = position.pieces_of(position.side_to_move().opposite());
-            cache.ordinary = self.ordinary_capturer(position, mv.from, piece, enemy);
-            if let Some(capturer) = cache.ordinary
+            if let Some(capturer) = self.ordinary_capturer(position, mv.from, piece, enemy)
                 && capturer.captures.contains(mv.to)
             {
                 let mut legal = false;
@@ -264,7 +261,6 @@ impl MoveGenerator {
             }
             false
         } else {
-            cache.special_from = Some(mv.from);
             self.generate_special_piece_captures(position, mv.from, piece, &mut |candidate| {
                 cache.captures.push(candidate)
             });
@@ -319,8 +315,6 @@ impl MoveGenerator {
 
 impl CaptureCache {
     pub(crate) fn clear(&mut self) {
-        self.ordinary = None;
-        self.special_from = None;
         self.captures.clear();
     }
 

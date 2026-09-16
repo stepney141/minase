@@ -1372,6 +1372,28 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
     assert_eq!(score, stand_pat);
 }
 
+// 設計書movegen-speedup-2.md「段階7」: β以上の静的評価は置換表を照合も保存もしない。
+#[test]
+fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
+    let position = Position::initial();
+    let stand_pat = evaluate(&weights().unwrap(), &position);
+    let key = search_key(&position);
+    for beta in [stand_pat, stand_pat - 1] {
+        let table = small_tt();
+        let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        assert!(table.probe(key, 0).is_none());
+        table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
+        let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        let hit = table.probe(key, 0).unwrap();
+        assert_eq!(
+            (hit.score, hit.depth, hit.bound),
+            (stand_pat + 123, 4, Bound::Exact)
+        );
+    }
+}
+
 // D7-SRCH-11。search.md「静止探索」節の2026年8月22日改訂: Exact、
 // score >= betaのLower、score <= alphaのUpperは深さ条件なしで返す。
 #[test]
@@ -1381,13 +1403,26 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
         &[
             (fs(6, 12), Color::Black, PieceKind::King),
             (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
         ],
     );
     let key = search_key(&position);
+    let stand_pat = evaluate(&weights().unwrap(), &position);
     let cases = [
-        (Bound::Exact, 17, -10, 10),
-        (Bound::Lower, 50, -100, 50),
-        (Bound::Upper, -50, -50, 100),
+        (Bound::Exact, stand_pat + 17, stand_pat - 10, stand_pat + 10),
+        (
+            Bound::Lower,
+            stand_pat + 50,
+            stand_pat - 100,
+            stand_pat + 50,
+        ),
+        (
+            Bound::Upper,
+            stand_pat - 50,
+            stand_pat - 50,
+            stand_pat + 100,
+        ),
     ];
 
     for (bound, score, alpha, beta) in cases {
@@ -1435,8 +1470,8 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     assert!(second_nodes < first_nodes);
 }
 
-// D7-SRCH-12。stand-pat即時β超過と通常出口のUpper・Exactを経路別に
-// 深さ0で記録し、stand-patが最善なら手なしとする。
+// D7-SRCH-12。通常出口のUpper・Exactを深さ0で記録し、
+// stand-patが最善なら手なしとする。
 #[test]
 fn quiescence_records_bounds_and_no_move_by_exit_path() {
     let position = position(
@@ -1444,12 +1479,14 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
         &[
             (fs(6, 12), Color::Black, PieceKind::King),
             (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+            (fs(3, 1), Color::White, PieceKind::Rook),
         ],
     );
     let key = search_key(&position);
     let stand_pat = evaluate(&crate::eval::weights().unwrap(), &position);
     let cases = [
-        (-INFINITY, stand_pat, Bound::Lower),
         (stand_pat, INFINITY, Bound::Upper),
         (stand_pat - 1, stand_pat + 1, Bound::Exact),
     ];
@@ -3165,7 +3202,8 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
     }
 }
 
-/// 「段階6」（movegen-speedup-2.md）の300手の履歴で、変更前の探索結果を固定する。
+/// 「段階6」（movegen-speedup-2.md）の300手の履歴と反復判定を検証する。
+/// 「段階7」以降は探索木が変わるため、結果の再現性と合法性を確かめる。
 #[test]
 fn stage6_long_history_search_contract() {
     let rules = engine_rules();
@@ -3191,19 +3229,20 @@ fn stage6_long_history_search_contract() {
         DEFAULT_THREADS,
         &mut small_tt(),
     );
+    assert!(moves.contains(&result.best_move));
+    assert_eq!(result.depth, 5);
+    assert!(result.nodes > 0);
     assert_eq!(
         result,
-        SearchResult {
-            best_move: Move {
-                from: sq(5, 3),
-                mid: None,
-                to: sq(5, 2),
-                promote: false
-            },
-            score: 2860,
-            depth: 5,
-            nodes: 55817,
-        }
+        run_search(
+            &root,
+            rules,
+            &moves,
+            &history,
+            &depth_limits(5),
+            DEFAULT_THREADS,
+            &mut small_tt(),
+        )
     );
     // null moveは経路にキーを追加しない。パス後の実着手による反復も参照に含める。
     let mut after_null = root.clone();
@@ -3255,7 +3294,8 @@ fn stage6_long_history_search_contract() {
     });
 }
 
-/// 「段階6」（movegen-speedup-2.md）の固定ノード数で変更前の完了結果を固定する。
+/// 「段階6」（movegen-speedup-2.md）のノード上限を境界の両側で検証する。
+/// 「段階8」では探索木が変わるため、完了深さの旧値ではなく上限と再現性を固定する。
 #[test]
 fn stage6_fixed_node_search_contract() {
     let root = Position::initial();
@@ -3275,21 +3315,89 @@ fn stage6_fixed_node_search_contract() {
             DEFAULT_THREADS,
             &mut small_tt(),
         );
-        let (from, to, score, depth) = if nodes == 1 {
-            (sq(0, 3), sq(0, 4), 33, 0)
-        } else {
-            (sq(4, 0), sq(3, 1), 5, 3)
-        };
+        assert!(legal_moves(&root).contains(&result.best_move));
         assert_eq!(
-            result.best_move,
-            Move {
-                from,
-                mid: None,
-                to,
-                promote: false
-            }
+            result,
+            run_search(
+                &root,
+                engine_rules(),
+                &legal_moves(&root),
+                &[search_key(&root)],
+                &nodes_limits(nodes),
+                DEFAULT_THREADS,
+                &mut small_tt(),
+            )
         );
-        assert_eq!((result.score, result.depth), (score, depth));
         assert_eq!(result.nodes, nodes);
     }
+}
+
+// 設計書movegen-speedup-2.md「段階9」: 合法な捕獲がない場合と、入口の閾値で
+// 全捕獲が消える場合は、既存の置換表の値にかかわらず静的評価を返す。
+#[test]
+fn quiescence_empty_candidates_do_not_probe_or_store() {
+    let pst = weights().unwrap();
+    let capture_position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let stand_pat = evaluate(&pst, &capture_position);
+    for (position, alpha) in [
+        (Position::initial(), -INFINITY),
+        (
+            capture_position,
+            stand_pat + pst.delta_margin() + pst.pawn_value(),
+        ),
+    ] {
+        let key = search_key(&position);
+        let stand_pat = evaluate(&pst, &position);
+        let table = small_tt();
+        let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        assert!(table.probe(key, 0).is_none());
+        table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
+        let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        let hit = table.probe(key, 0).unwrap();
+        assert_eq!((hit.score, hit.depth), (stand_pat + 123, 4));
+    }
+}
+
+// 設計書movegen-speedup-2.md「段階9」: 候補があり、SEEで全て捨てるノードは保存する。
+#[test]
+fn quiescence_see_pruned_candidates_still_store() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+            (fs(3, 1), Color::White, PieceKind::Rook),
+        ],
+    );
+    let pst = weights().unwrap();
+    let mut captures = Vec::new();
+    MoveGenerator::standard().generate_captures(&position, &mut captures);
+    assert!(!captures.is_empty());
+    assert!(captures.iter().all(|&mv| capture_is_pruned_by_see(
+        &position,
+        engine_rules(),
+        &pst,
+        mv
+    )));
+    let table = small_tt();
+    let stand_pat = evaluate(&pst, &position);
+    let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
+    assert_eq!((score, nodes), (stand_pat, 1));
+    let hit = table.probe(search_key(&position), 0).unwrap();
+    assert_eq!(
+        (hit.score, hit.bound, hit.best_move),
+        (stand_pat, Bound::Exact, None)
+    );
 }
