@@ -1,0 +1,797 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..cd3b028 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -1,7 +1,6 @@
+-//! 固定局面の探索ベンチ。ノード数の決定性検証とNPS計測に使う。
++//! 固定局面の処理件数診断。診断を含むビルドなので速度指標は出力しない。
+ 
+ use std::num::NonZeroUsize;
+-use std::time::Instant;
+ 
+ use clap::Parser;
+ use minase::core::rules::parse_rule_set;
+@@ -29,7 +28,7 @@ struct Arguments {
+     /// 探索ワーカーの総数。
+     #[arg(long, default_value_t = DEFAULT_THREADS, value_parser = parse_threads)]
+     threads: NonZeroUsize,
+-    /// 計測する反復回数。2回以上では計測外のウォームアップを先に行う。
++    /// 診断では1回だけ実行する。
+     #[arg(long, default_value = "1", value_parser = parse_repetitions)]
+     repetitions: NonZeroUsize,
+ }
+@@ -158,37 +157,15 @@ struct BenchRun {
+     depth: u32,
+     /// 全局面の総ノード数。
+     nodes: u64,
+-    /// 各局面の探索時間の合計。
+-    elapsed: f64,
+ }
+ 
+-impl BenchRun {
+-    /// 1秒あたりの探索ノード数。
+-    fn nps(&self) -> f64 {
+-        self.nodes as f64 / self.elapsed
+-    }
+-}
+-
+-/// 整数標本の中央値を返す。偶数件では中央2値の算術平均を切り捨てる。
+-fn median_u64(values: &mut [u64]) -> u64 {
+-    values.sort_unstable();
+-    let middle = values.len() / 2;
+-    if values.len() % 2 == 1 {
+-        values[middle]
+-    } else {
+-        values[middle - 1] + (values[middle] - values[middle - 1]) / 2
+-    }
+-}
+-
+-/// 浮動小数点標本の中央値を返す。
+-fn median_f64(values: &mut [f64]) -> f64 {
+-    values.sort_by(f64::total_cmp);
+-    let middle = values.len() / 2;
+-    if values.len() % 2 == 1 {
+-        values[middle]
+-    } else {
+-        values[middle - 1].midpoint(values[middle])
+-    }
++/// 全キーを固定順で出力する。ゼロの項目も省略しない。
++fn counts_text(counts: &[(String, u64)]) -> String {
++    counts
++        .iter()
++        .map(|(key, value)| format!("{key}={value}"))
++        .collect::<Vec<_>>()
++        .join(" ")
+ }
+ 
+ /// 固定局面集を1回探索する。
+@@ -202,24 +179,37 @@ fn run_bench(
+ ) -> BenchRun {
+     let mut reached_depth = u32::MAX;
+     let mut total_nodes = 0_u64;
+-    let mut total_elapsed = 0.0_f64;
++    assert_eq!(threads.get(), 1, "diagnostic counters require one worker");
++    let mut totals = minase::search::diagnostics::take("before bench");
++    assert!(
++        totals.iter().all(|(_, value)| *value == 0),
++        "diagnostic counters must start at zero"
++    );
+ 
+     for bench_position in BENCH_POSITIONS {
+         let position = parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
+         let game = Game::from_position(rules, position);
+         let snapshot = SearchSnapshot::from_game(&game).expect("bench position must have moves");
+         transposition_table.clear();
+-        let position_start = Instant::now();
+         let result = search(pst, &snapshot, limits, threads, transposition_table)
+             .expect("bench search input must be valid");
+-        let elapsed = position_start.elapsed();
++        let counts = minase::search::diagnostics::take(bench_position.name);
++        eprintln!(
++            "counts position={} nodes={} {}",
++            bench_position.name,
++            result.nodes,
++            counts_text(&counts)
++        );
++        for ((key, total), (actual_key, value)) in totals.iter_mut().zip(&counts) {
++            assert_eq!(key, actual_key);
++            *total += value;
++        }
+         reached_depth = reached_depth.min(result.depth);
+-        total_elapsed += elapsed.as_secs_f64();
+         total_nodes = total_nodes
+             .checked_add(result.nodes)
+             .expect("total node count overflow");
+         if print_positions {
+-            // 最善手と探索値は計測区間の外で文字列化する。局面別の一致比較に使う。
++            // 最善手と探索値は局面別の一致比較に使う。
+             let best_move = usi::text(
+                 game.position(),
+                 result.best_move,
+@@ -227,21 +217,16 @@ fn run_bench(
+             )
+             .expect("search must return a legal best move");
+             println!(
+-                "position={} depth={} nodes={} best={} score={} elapsed={:.6}s",
+-                bench_position.name,
+-                result.depth,
+-                result.nodes,
+-                best_move,
+-                result.score,
+-                elapsed.as_secs_f64()
++                "position={} depth={} nodes={} best={} score={}",
++                bench_position.name, result.depth, result.nodes, best_move, result.score
+             );
+         }
+     }
+ 
++    eprintln!("totals {}", counts_text(&totals));
+     BenchRun {
+         depth: reached_depth,
+         nodes: total_nodes,
+-        elapsed: total_elapsed,
+     }
+ }
+ 
+@@ -256,68 +241,25 @@ fn main() {
+     let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
+     let limits = SearchLimits::new(Some(arguments.depth), None, None, None)
+         .expect("the CLI parser accepts only valid search depths");
+-    // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
+-    // 置換表は1個を使い回して局面ごとに計測外でクリアし(クリア後は
+-    // 新品と同一状態)、NPSは各局面の探索時間の合計から計算する。
++    if arguments.threads.get() != 1 || arguments.repetitions.get() != 1 {
++        eprintln!("error: diagnostic bench requires --threads 1 --repetitions 1");
++        std::process::exit(1);
++    }
+     let mut transposition_table = TranspositionTable::new(minase::search::DEFAULT_TT_SIZE_MB)
+         .expect("default transposition table size must be valid");
+-    if arguments.repetitions.get() == 1 {
+-        let result = run_bench(
+-            &pst,
+-            rules,
+-            &limits,
+-            arguments.threads,
+-            &mut transposition_table,
+-            true,
+-        );
+-        println!(
+-            "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
+-            BENCH_POSITIONS.len(),
+-            arguments.depth,
+-            result.nodes,
+-            result.elapsed,
+-            result.nps()
+-        );
+-        return;
+-    }
+-
+-    let _ = run_bench(
++    let result = run_bench(
+         &pst,
+         rules,
+         &limits,
+         arguments.threads,
+         &mut transposition_table,
+-        false,
++        true,
+     );
+-    let mut runs = Vec::with_capacity(arguments.repetitions.get());
+-    for run in 1..=arguments.repetitions.get() {
+-        let result = run_bench(
+-            &pst,
+-            rules,
+-            &limits,
+-            arguments.threads,
+-            &mut transposition_table,
+-            false,
+-        );
+-        println!(
+-            "run={run} depth={} nodes={} elapsed={:.6}s nps={:.0}",
+-            result.depth,
+-            result.nodes,
+-            result.elapsed,
+-            result.nps()
+-        );
+-        runs.push(result);
+-    }
+-    let mut depths: Vec<_> = runs.iter().map(|run| u64::from(run.depth)).collect();
+-    let mut nodes: Vec<_> = runs.iter().map(|run| run.nodes).collect();
+-    let mut elapsed: Vec<_> = runs.iter().map(|run| run.elapsed).collect();
+-    let mut nps: Vec<_> = runs.iter().map(BenchRun::nps).collect();
+     println!(
+-        "median: depth={} nodes={} elapsed={:.6}s nps={:.0}",
+-        median_u64(&mut depths),
+-        median_u64(&mut nodes),
+-        median_f64(&mut elapsed),
+-        median_f64(&mut nps)
++        "summary: positions={} depth={} nodes={}",
++        BENCH_POSITIONS.len(),
++        result.depth,
++        result.nodes
+     );
+ }
+ 
+@@ -354,19 +296,6 @@ mod tests {
+         }
+     }
+ 
+-    #[test]
+-    fn medians_are_computed_per_metric_for_odd_and_even_samples() {
+-        let mut odd_integers = [9, 1, 5];
+-        let mut even_integers = [10, 2, 6, 4];
+-        let mut odd_floats = [9.0, 1.0, 5.0];
+-        let mut even_floats = [10.0, 2.0, 6.0, 4.0];
+-
+-        assert_eq!(median_u64(&mut odd_integers), 5);
+-        assert_eq!(median_u64(&mut even_integers), 5);
+-        assert_eq!(median_f64(&mut odd_floats), 5.0);
+-        assert_eq!(median_f64(&mut even_floats), 5.0);
+-    }
+-
+     // D8-BENCH-02(search.md検証節): benchの総ノード数は再実行間で完全に一致する。
+     // 特定の総ノード数(217,305など実施状況の値)は各時点の測定記録であり、
+     // テストで固定してはならない。契約は「再実行間の一致」だけである。
+diff --git a/src/core/attacks/tables.rs b/src/core/attacks/tables.rs
+index 1a95c5d..7973505 100644
+--- a/src/core/attacks/tables.rs
++++ b/src/core/attacks/tables.rs
+@@ -157,7 +157,7 @@ impl AttackTables {
+ 
+     /// 指定方向の盤端までの利き線を返す。
+     #[inline]
+-    fn ray(&self, from: Square, direction: Direction) -> Bitboard {
++    pub(crate) fn ray(&self, from: Square, direction: Direction) -> Bitboard {
+         self.rays[direction.index()][from.raw_index()]
+     }
+ 
+@@ -170,6 +170,13 @@ impl AttackTables {
+         max_steps: Option<u8>,
+         occupied: Bitboard,
+     ) -> Bitboard {
++        use crate::search::diagnostics::{self, COUNTS, add as count};
++        use std::sync::atomic::Ordering::Relaxed;
++        if diagnostics::IN_COLLECT.load(Relaxed) {
++            count(&COUNTS.init_slide_calls, 1);
++            let bin = usize::from(diagnostics::TARGET_BIN.load(Relaxed));
++            count(&diagnostics::SLIDE_BINS[bin], 1);
++        }
+         let full_ray = self.ray(from, direction);
+         let candidates = match max_steps {
+             None => full_ray,
+diff --git a/src/core/movegen/mod.rs b/src/core/movegen/mod.rs
+index 48b8957..e63808a 100644
+--- a/src/core/movegen/mod.rs
++++ b/src/core/movegen/mod.rs
+@@ -8,10 +8,9 @@ pub(crate) use search_captures::{CaptureCandidate, OrdinaryCapturer};
+ 
+ use core::fmt;
+ 
+-use crate::core::attacks::{
+-    AttackTables, LionLikeProfile, SpecialMovement, attack_tables, movement_profile,
+-    movement_profile_data,
+-};
++use crate::core::attacks::{AttackTables, LionLikeProfile, SpecialMovement, attack_tables};
++// 段階1の診断が、生成済み候補を読まず動きの定義を参照するために公開する。
++pub(crate) use crate::core::attacks::{movement_profile, movement_profile_data};
+ use crate::core::bitboard::Bitboard;
+ use crate::core::direction::{Direction, step_square};
+ use crate::core::mv::Move;
+diff --git a/src/core/movegen/search_captures.rs b/src/core/movegen/search_captures.rs
+index 15f936e..bd0b0ac 100644
+--- a/src/core/movegen/search_captures.rs
++++ b/src/core/movegen/search_captures.rs
+@@ -2,6 +2,8 @@
+ 
+ use super::*;
+ use crate::core::piece::PieceCode;
++use crate::search::diagnostics::{self, COUNTS, add as count};
++use std::sync::atomic::Ordering::Relaxed;
+ 
+ /// 生成時に得た捕獲升を持つ探索専用の候補。
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+@@ -107,7 +109,9 @@ impl MoveGenerator {
+         allowed: Bitboard,
+         output: &mut Vec<OrdinaryCapturer>,
+     ) {
++        diagnostics::IN_COLLECT.store(true, Relaxed);
+         if allowed.is_empty() {
++            diagnostics::IN_COLLECT.store(false, Relaxed);
+             return;
+         }
+         let color = position.side_to_move();
+@@ -125,6 +129,7 @@ impl MoveGenerator {
+                 }
+             }
+         }
++        diagnostics::IN_COLLECT.store(false, Relaxed);
+     }
+ 
+     /// 通常駒1枚について、対象升へ実際に届く利きを求める。
+@@ -140,9 +145,47 @@ impl MoveGenerator {
+         if (self.tables().reach(color, movement_profile(kind), from) & allowed).is_empty() {
+             return None;
+         }
++        // 同じ関数を使う置換表の手の検査は、初期化の件数に含めない。
++        let diagnosing = diagnostics::IN_COLLECT.load(Relaxed);
++        let bin = usize::from(diagnostics::TARGET_BIN.load(Relaxed));
++        if diagnosing {
++            count(&COUNTS.init_control_calls, 1);
++            count(&diagnostics::CONTROL_BINS[bin], 1);
++            count(
++                &COUNTS.init_dirs_total,
++                movement_profile_data(movement_profile(kind)).slides.len() as u64,
++            );
++        }
+         let captures =
+             piece_control_without_special(self.tables(), position.occupied(), color, kind, from)
+                 & allowed;
++        if diagnosing {
++            // 診断で追加する走り計算を、実際の呼出し回数へ混ぜない。
++            diagnostics::IN_COLLECT.store(false, Relaxed);
++            for slide in movement_profile_data(movement_profile(kind)).slides {
++                let direction = slide.direction.for_color(color);
++                let ray = self
++                    .tables()
++                    .sliding_control(from, direction, None, Bitboard::EMPTY);
++                if (ray & allowed).is_empty() {
++                    count(&COUNTS.init_dirs_ray_miss, 1);
++                } else if (self.tables().sliding_control(
++                    from,
++                    direction,
++                    None,
++                    position.occupied(),
++                ) & allowed)
++                    .is_empty()
++                {
++                    count(&COUNTS.init_dirs_blocked_miss, 1);
++                }
++            }
++            diagnostics::IN_COLLECT.store(true, Relaxed);
++            if !captures.is_empty() {
++                count(&COUNTS.init_reaching_pieces, 1);
++                count(&diagnostics::REACHING_BINS[bin], 1);
++            }
++        }
+         (!captures.is_empty()).then_some(OrdinaryCapturer {
+             from,
+             kind,
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 98eed40..03f0055 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -33,6 +33,154 @@ use crate::eval::pst::{PIECE_STATE_COUNT, PstAccumulator, piece_state_of};
+ use see::see_prunes;
+ use tt::Bound;
+ 
++use diagnostics::{COUNTS, add as count};
++
++/// 段階1の処理件数診断。単一ワーカー専用であり、速度測定には使わない。
++pub mod diagnostics {
++    use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering::Relaxed};
++
++    macro_rules! counters {
++        ($($name:ident),+ $(,)?) => {
++            pub(crate) struct Counters {
++                $(pub(crate) $name: AtomicU64,)+
++            }
++            pub(crate) static COUNTS: Counters = Counters {
++                $($name: AtomicU64::new(0),)+
++            };
++            fn take_scalar_counts() -> Vec<(String, u64)> {
++                vec![$((stringify!($name).to_owned(), COUNTS.$name.swap(0, Relaxed)),)+]
++            }
++        };
++    }
++
++    counters!(
++        q_nodes,
++        q_tt_hit,
++        q_tt_cutoff,
++        q_tt_cutoff_standpat_ok,
++        q_standpat_cutoff,
++        q_standpat_cutoff_tt_hit,
++        q_generate,
++        q_generate_tt_move,
++        q_candidates_empty,
++        q_candidates_present,
++        init_nodes,
++        init_targets_sum,
++        init_targets_all_enemy,
++        init_control_calls,
++        init_slide_calls,
++        init_dirs_total,
++        init_dirs_ray_miss,
++        init_dirs_blocked_miss,
++        init_reaching_pieces,
++        main_tt_probe,
++        main_tt_hit,
++        see_calls,
++        see_after_exclusions,
++        see_early_eligible,
++        see_early_reference_none,
++        see_early_reference_nonnegative,
++        see_early_reference_negative,
++    );
++
++    pub(crate) static IN_COLLECT: AtomicBool = AtomicBool::new(false);
++    pub(crate) static TARGET_BIN: AtomicU8 = AtomicU8::new(0);
++    pub(crate) static TARGET_BINS: [AtomicU64; 18] = [const { AtomicU64::new(0) }; 18];
++    pub(crate) static CONTROL_BINS: [AtomicU64; 18] = [const { AtomicU64::new(0) }; 18];
++    pub(crate) static SLIDE_BINS: [AtomicU64; 18] = [const { AtomicU64::new(0) }; 18];
++    pub(crate) static REACHING_BINS: [AtomicU64; 18] = [const { AtomicU64::new(0) }; 18];
++
++    pub(crate) fn add(counter: &AtomicU64, value: u64) {
++        counter.fetch_add(value, Relaxed);
++    }
++
++    pub(crate) fn read(counter: &AtomicU64) -> u64 {
++        counter.load(Relaxed)
++    }
++
++    pub(crate) fn check(context: &str, key: &str, actual: u64, expected: u64) {
++        if actual != expected {
++            eprintln!("diagnostic mismatch: {context} {key} actual={actual} expected={expected}");
++            std::process::abort();
++        }
++    }
++
++    /// 局面ごとの恒等式を検査し、固定順の全件数を返してゼロへ戻す。
++    pub fn take(position: &str) -> Vec<(String, u64)> {
++        check(
++            position,
++            "q_node_partition",
++            read(&COUNTS.q_tt_cutoff) + read(&COUNTS.q_standpat_cutoff) + read(&COUNTS.q_generate),
++            read(&COUNTS.q_nodes),
++        );
++        check(
++            position,
++            "q_candidate_partition",
++            read(&COUNTS.q_candidates_empty) + read(&COUNTS.q_candidates_present),
++            read(&COUNTS.q_generate),
++        );
++        check(
++            position,
++            "init_dirs_total",
++            read(&COUNTS.init_dirs_total),
++            read(&COUNTS.init_slide_calls),
++        );
++        check(
++            position,
++            "see_early_partition",
++            read(&COUNTS.see_early_reference_none)
++                + read(&COUNTS.see_early_reference_nonnegative)
++                + read(&COUNTS.see_early_reference_negative),
++            read(&COUNTS.see_early_eligible),
++        );
++        check(
++            position,
++            "see_early_reference_negative",
++            read(&COUNTS.see_early_reference_negative),
++            0,
++        );
++        for (key, bins, total) in [
++            ("init_targets_bins", &TARGET_BINS, &COUNTS.init_nodes),
++            ("control_bins", &CONTROL_BINS, &COUNTS.init_control_calls),
++            ("slide_bins", &SLIDE_BINS, &COUNTS.init_slide_calls),
++            (
++                "reaching_bins",
++                &REACHING_BINS,
++                &COUNTS.init_reaching_pieces,
++            ),
++        ] {
++            check(position, key, bins.iter().map(read).sum(), read(total));
++        }
++        let mut values = take_scalar_counts();
++        for bin in 0..18 {
++            let label = if bin == 17 {
++                "17plus".to_owned()
++            } else {
++                bin.to_string()
++            };
++            values.push((
++                format!("init_targets_bin_{label}"),
++                TARGET_BINS[bin].swap(0, Relaxed),
++            ));
++        }
++        for bin in 0..18 {
++            let label = if bin == 17 {
++                "17plus".to_owned()
++            } else {
++                bin.to_string()
++            };
++            for (suffix, bins) in [
++                ("control_calls", &CONTROL_BINS),
++                ("slide_calls", &SLIDE_BINS),
++                ("reaching_pieces", &REACHING_BINS),
++            ] {
++                values.push((format!("bin{label}_{suffix}"), bins[bin].swap(0, Relaxed)));
++            }
++        }
++        values
++    }
++}
++
+ /// 詰みを表す評価値。
+ pub const MATE: i32 = 30_000;
+ /// 探索が扱う最大ply。
+@@ -1233,7 +1381,9 @@ impl Searcher<'_> {
+         let mut tt_move = None;
+         // 深さが足りるヒットは即時カットオフだけに使い、探索窓は狭めない。
+         // 窓を狭めると、格納時のバウンド分類が実際に探索した窓と食い違う。
++        count(&COUNTS.main_tt_probe, 1);
+         if let Some(hit) = self.tt.probe(key, ply) {
++            count(&COUNTS.main_tt_hit, 1);
+             tt_move = hit.best_move;
+             if u32::from(hit.depth) >= depth {
+                 let cutoff = match hit.bound {
+@@ -1393,10 +1543,14 @@ impl Searcher<'_> {
+             );
+         }
+ 
++        count(&COUNTS.q_nodes, 1);
++        let mut tt_hit = false;
+         let original_alpha = alpha;
+         let key = search_key(position);
+         let mut tt_move = None;
+         if let Some(hit) = self.tt.probe(key, ply) {
++            tt_hit = true;
++            count(&COUNTS.q_tt_hit, 1);
+             tt_move = hit.best_move;
+             let cutoff = match hit.bound {
+                 Bound::Exact => true,
+@@ -1404,6 +1558,15 @@ impl Searcher<'_> {
+                 Bound::Upper => hit.score <= alpha,
+             };
+             if cutoff {
++                count(&COUNTS.q_tt_cutoff, 1);
++                // 診断のためだけに評価し、返却値には置換表の値を保つ。
++                let stand_pat = self
++                    .pst
++                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
++                count(
++                    &COUNTS.q_tt_cutoff_standpat_ok,
++                    u64::from(stand_pat >= beta),
++                );
+                 return Some(hit.score);
+             }
+         }
+@@ -1412,6 +1575,8 @@ impl Searcher<'_> {
+             .pst
+             .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+         if stand_pat >= beta {
++            count(&COUNTS.q_standpat_cutoff, 1);
++            count(&COUNTS.q_standpat_cutoff_tt_hit, u64::from(tt_hit));
+             self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
+             return Some(stand_pat);
+         }
+@@ -1420,7 +1585,13 @@ impl Searcher<'_> {
+         alpha = alpha.max(stand_pat);
+ 
+         let threshold = alpha - stand_pat - self.pst.delta_margin();
++        count(&COUNTS.q_generate, 1);
+         self.qsearch[ply as usize].reset(position, &self.generator, tt_move);
++        count(
++            &COUNTS.q_generate_tt_move,
++            u64::from(self.qsearch[ply as usize].tt_move.is_some()),
++        );
++        let mut candidates_present = false;
+         while let Some(candidate) = self.qsearch[ply as usize].next(
+             position,
+             &self.generator,
+@@ -1428,6 +1599,11 @@ impl Searcher<'_> {
+             &self.capture_ranks,
+             threshold,
+         ) {
++            // 枝刈りより前に、nextが最初の候補を返したことを数える。
++            if !candidates_present {
++                count(&COUNTS.q_candidates_present, 1);
++                candidates_present = true;
++            }
+             let mv = candidate.capture.mv;
+             let is_last_royal_capture = captured_last_royal(position, candidate.capture.captured);
+             if !is_last_royal_capture
+@@ -1464,6 +1640,9 @@ impl Searcher<'_> {
+                 break;
+             }
+         }
++        if !candidates_present {
++            count(&COUNTS.q_candidates_empty, 1);
++        }
+         let bound = if best >= beta {
+             Bound::Lower
+         } else if best <= original_alpha {
+@@ -1898,7 +2077,106 @@ impl QsearchBuffers {
+                 allowed.set(square);
+             }
+         }
++        count(&COUNTS.init_nodes, 1);
++        let targets = u64::from(allowed.popcount());
++        count(&COUNTS.init_targets_sum, targets);
++        count(
++            &COUNTS.init_targets_all_enemy,
++            u64::from(allowed == position.pieces_of(opponent)),
++        );
++        let bin = targets.min(17) as usize;
++        diagnostics::TARGET_BIN.store(bin as u8, AtomicOrdering::Relaxed);
++        count(&diagnostics::TARGET_BINS[bin], 1);
++        let observed = [
++            &COUNTS.init_reaching_pieces,
++            &COUNTS.init_control_calls,
++            &COUNTS.init_slide_calls,
++            &COUNTS.init_dirs_ray_miss,
++            &COUNTS.init_dirs_total,
++        ];
++        let before = observed.map(diagnostics::read);
+         generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
++        let actual =
++            core::array::from_fn::<_, 5, _>(|i| diagnostics::read(observed[i]) - before[i]);
++
++        // 順位表や保存済みcapturersを読まず、駒コードから対象集合を再構成する。
++        let mut reference_targets = Bitboard::EMPTY;
++        for square in position.pieces_of(opponent) {
++            let piece = position
++                .piece_at(square)
++                .expect("reference target has a piece");
++            if pst.piece_value(piece) > threshold
++                || position.royal_pieces(opponent).contains(square)
++            {
++                reference_targets.set(square);
++            }
++        }
++        let color = position.side_to_move();
++        let ordinary = |kind| {
++            !matches!(
++                kind,
++                crate::PieceKind::Lion
++                    | crate::PieceKind::HornedFalcon
++                    | crate::PieceKind::SoaringEagle
++            )
++        };
++        let mut reaching = 0;
++        for from in position.pieces_of(color) {
++            let kind = position
++                .piece_at(from)
++                .expect("reference origin has a piece")
++                .kind()
++                .expect("reference origin has a kind");
++            if ordinary(kind)
++                && !(crate::core::movegen::piece_control_with_occupancy(
++                    position.occupied(),
++                    color,
++                    kind,
++                    from,
++                ) & allowed)
++                    .is_empty()
++            {
++                reaching += 1;
++            }
++        }
++        let (mut controls, mut slides, mut ray_misses) = (0, 0, 0);
++        for from in position.pieces_of(color) {
++            let kind = position
++                .piece_at(from)
++                .expect("reference origin has a piece")
++                .kind()
++                .expect("reference origin has a kind");
++            if !ordinary(kind) {
++                continue;
++            }
++            let profile = crate::core::movegen::movement_profile(kind);
++            if (generator.tables().reach(color, profile, from) & allowed).is_empty() {
++                continue;
++            }
++            controls += 1;
++            let profile = crate::core::movegen::movement_profile_data(profile);
++            slides += profile.slides.len() as u64;
++            for slide in profile.slides {
++                if (generator
++                    .tables()
++                    .ray(from, slide.direction.for_color(color))
++                    & allowed)
++                    .is_empty()
++                {
++                    ray_misses += 1;
++                }
++            }
++        }
++        let expected = [reaching, controls, slides, ray_misses, slides];
++        if allowed != reference_targets || actual != expected {
++            eprintln!(
++                "diagnostic mismatch: position={} threshold={threshold} allowed={allowed:?} reference_targets={reference_targets:?} targets={} reference_targets_count={} [reaching,control,slide,ray_miss,dirs] actual={actual:?} expected={expected:?}",
++                crate::notation::sfen::to_sfen(position),
++                targets,
++                reference_targets.popcount()
++            );
++            std::process::abort();
++        }
+         self.initialized = true;
+     }
+ 
+diff --git a/src/search/see.rs b/src/search/see.rs
+index 8fbd458..0ec1e19 100644
+--- a/src/search/see.rs
++++ b/src/search/see.rs
+@@ -5,6 +5,7 @@
+ //! 取る手、獅子が非獅子を取る手、および角鷹と飛鷲が到達升だけで取る手は
+ //! 通常の交換として評価する。
+ 
++use super::diagnostics::{COUNTS, add as count};
+ use crate::core::bitboard::Bitboard;
+ use crate::core::mv::Move;
+ use crate::core::piece::{Color, PieceCode, PieceKind};
+@@ -20,6 +21,7 @@ const MAX_GAINS: usize = 93;
+ /// 最初の取り返しで損をしないと確定したら、残る逆引きと逆算を省く。
+ /// 正確な評価値との契約は`docs/plans/movegen-speedup.md`「SEEの不要な反復を省く」。
+ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
++    count(&COUNTS.see_calls, 1);
+     if mv.mid.is_some() {
+         return false;
+     }
+@@ -31,6 +33,7 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: M
+     if moving_kind == PieceKind::Kirin && mv.promote && captured_kind == PieceKind::Lion {
+         return false;
+     }
++    count(&COUNTS.see_after_exclusions, 1);
+ 
+     let piece_after_move = if mv.promote {
+         moving_piece
+@@ -42,6 +45,42 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: M
+     let mut gains = [0_i32; MAX_GAINS];
+     gains[0] = pst.piece_value(captured_piece) + pst.piece_value(piece_after_move)
+         - pst.piece_value(moving_piece);
++    // 使用中の表から、両色の全ての成れる駒種について成り益の上限を求める。
++    let mut d_max = 0;
++    for color in Color::ALL {
++        for kind in PieceKind::ALL {
++            if kind.can_promote() {
++                let piece =
++                    PieceCode::new(color, kind).expect("promotable kind has an unpromoted code");
++                let promoted = piece
++                    .promote()
++                    .expect("promotable piece has a promoted code");
++                d_max = d_max.max(pst.piece_value(promoted) - pst.piece_value(piece));
++            }
++        }
++    }
++    if gains[0] >= 0 && pst.piece_value(moving_piece) - pst.piece_value(captured_piece) + d_max <= 0
++    {
++        count(&COUNTS.see_early_eligible, 1);
++        // 既存テストの本番経路の逆引き回数に、診断の参照呼出しを混ぜない。
++        #[cfg(test)]
++        let lookups = tests::LOOKUPS.get();
++        let reference = see_reference(position, rules, pst, mv);
++        #[cfg(test)]
++        tests::LOOKUPS.set(lookups);
++        match reference {
++            None => count(&COUNTS.see_early_reference_none, 1),
++            Some(value) if value >= 0 => count(&COUNTS.see_early_reference_nonnegative, 1),
++            Some(value) => {
++                count(&COUNTS.see_early_reference_negative, 1);
++                eprintln!(
++                    "diagnostic mismatch: position={} move={mv:?} see_reference={value} d_max={d_max}",
++                    crate::notation::sfen::to_sfen(position)
++                );
++                std::process::abort();
++            }
++        }
++    }
+     let mut piece_value = pst.piece_value(piece_after_move);
+     let mut lion_on_square =
+         moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
+@@ -127,7 +166,6 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: M
+ /// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
+ /// その他の捕獲は、`docs/plans/strength-stage3.md`「静的交換評価」に従い、
+ /// 規則に依存しない通常の交換列として評価する。
+-#[cfg(test)]
+ fn see_reference(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> Option<i32> {
+     if mv.mid.is_some() {
+         return None;
+@@ -163,6 +201,7 @@ fn see_reference(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) ->
+     let mut depth = 0_usize;
+ 
+     loop {
++        #[cfg(test)]
+         tests::LOOKUPS.set(tests::LOOKUPS.get() + 1);
+         let attackers = position.attackers_to_by(side, mv.to, occupied);
+         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)

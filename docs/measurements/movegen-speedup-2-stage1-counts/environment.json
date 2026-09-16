@@ -1,0 +1,10 @@
+{
+  "date": "2026-09-16",
+  "head": "008f6590f7e0620fbb75e0cb4e418d7491ba5bfc",
+  "command": "git apply docs/measurements/movegen-speedup-2-stage1-counts/diagnostic.patch; CARGO_TARGET_DIR=target/diag cargo build --release --bin bench; target/diag/release/bench --depth 5 --threads 1 --repetitions 1 2> counts.log",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "rules": "engine-default",
+  "total_nodes": 1268607,
+  "timing_used": false,
+  "concurrent_workload": "cargo build of bench cache commits"
+}
