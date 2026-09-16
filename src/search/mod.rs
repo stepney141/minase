@@ -1,6 +1,8 @@
 //! 評価関数と静止探索を使って着手を選ぶ探索。
 
 #[cfg(test)]
+mod root_moves_tests;
+#[cfg(test)]
 mod search_captures_tests;
 mod see;
 #[cfg(test)]
@@ -955,6 +957,7 @@ fn new_searcher<'a>(
 ) -> Searcher<'a> {
     let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
+        root_results: None,
         pst,
         rules,
         generator: MoveGenerator::new(rules),
@@ -976,6 +979,90 @@ fn new_searcher<'a>(
     }
 }
 
+/// 根の合法手1手について保持する探索結果。
+struct RootMove {
+    /// 根の合法手。
+    mv: Move,
+    /// 今回の窓で完了した評価値と境界。未探索または中断した手は`None`。
+    score: Option<(i32, Bound)>,
+    /// 直前の反復の評価値。最初の反復では`None`。
+    previous_score: Option<i32>,
+    /// 今回の窓で完了した探索の主変化。先頭はこの手自身。
+    pv: Vec<Move>,
+    /// 今回の反復で消費したノード数。窓の再探索と中断した探索も含む。
+    nodes: u64,
+}
+
+/// 合法手の順序を変えず、根の各手の探索結果を保持する表。
+struct RootMoves {
+    /// 探索開始時の合法手順に並ぶ記録。
+    entries: Vec<RootMove>,
+}
+
+impl RootMoves {
+    /// 各合法手を未探索として登録する。
+    fn new(moves: &[Move]) -> Self {
+        Self {
+            entries: moves
+                .iter()
+                .map(|&mv| RootMove {
+                    mv,
+                    score: None,
+                    previous_score: None,
+                    pv: Vec::new(),
+                    nodes: 0,
+                })
+                .collect(),
+        }
+    }
+
+    /// 反復開始時に評価値を繰り越し、ノード数を初期化する。
+    fn begin_iteration(&mut self) {
+        for entry in &mut self.entries {
+            entry.previous_score = entry.score.map(|(score, _)| score);
+            entry.nodes = 0;
+        }
+    }
+
+    /// 窓ごとの結果を消去し、前の窓の境界値が残ることを防ぐ。
+    fn begin_window(&mut self) {
+        for entry in &mut self.entries {
+            entry.score = None;
+            entry.pv.clear();
+        }
+    }
+
+    /// 消費ノード数を加算し、全幅の読み直しまで完了した手の結果を記録する。
+    fn record(
+        &mut self,
+        mv: Move,
+        score: Option<i32>,
+        window: (i32, i32),
+        pv: &[Move],
+        nodes: u64,
+    ) {
+        let entry = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.mv == mv)
+            .expect("searched root move must be registered");
+        entry.nodes += nodes;
+        if let Some(score) = score {
+            let (alpha, beta) = window;
+            let bound = if score <= alpha {
+                Bound::Upper
+            } else if score >= beta {
+                Bound::Lower
+            } else {
+                Bound::Exact
+            };
+            entry.score = Some((score, bound));
+            entry.pv.push(mv);
+            entry.pv.extend_from_slice(pv);
+        }
+    }
+}
+
 /// 主ワーカーの反復深化を実行し、深さ完了ごとに進捗イベントを送る。
 #[allow(clippy::too_many_arguments)]
 fn run_main_worker(
@@ -990,7 +1077,9 @@ fn run_main_worker(
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
 ) -> WorkerOutcome {
+    let mut root_results = RootMoves::new(root_moves);
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    searcher.root_results = Some(&mut root_results);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
@@ -1095,6 +1184,8 @@ fn run_auxiliary_worker(
 
 /// 1回の探索実行の可変状態。
 struct Searcher<'a> {
+    /// 主ワーカーが所有する根の表。探索結果の記録にだけ使う。
+    root_results: Option<&'a mut RootMoves>,
     /// 探索中に使う検証済み学習PST。
     pst: &'a Pst,
     /// 探索内の着手適用に使う規則。
@@ -1141,6 +1232,9 @@ impl Searcher<'_> {
         depth: u32,
         prev: Option<i32>,
     ) -> Option<(Move, i32)> {
+        if let Some(results) = &mut self.root_results {
+            results.begin_iteration();
+        }
         let mut window = AspirationWindow::initial(depth, prev, self.pst.pawn_value() / 2);
         loop {
             let (best_move, score) =
@@ -1168,6 +1262,9 @@ impl Searcher<'_> {
         mut alpha: i32,
         beta: i32,
     ) -> Option<(Move, i32)> {
+        if let Some(results) = &mut self.root_results {
+            results.begin_window();
+        }
         if !self.enter_node() {
             return None;
         }
@@ -1183,8 +1280,18 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
 
         for (index, mv) in moves.into_iter().enumerate() {
-            let score =
-                self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0, 0)?;
+            let nodes_before = self.nodes;
+            let score = self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0, 0);
+            if let Some(results) = &mut self.root_results {
+                results.record(
+                    mv,
+                    score,
+                    (alpha, beta),
+                    &self.pv[1],
+                    self.nodes - nodes_before,
+                );
+            }
+            let score = score?;
             if score > best_score {
                 best_score = score;
                 best_move = mv;
