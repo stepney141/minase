@@ -10,15 +10,15 @@
 走り計算の78%は捕獲対象へ届かない駒に属し、対象升が4升以下のノードが3分の1あるので、利き線を対象升で事前に選別する変更と、対象升が少ないノードだけ対象升から取り手を逆引きする変更を先に行い、続いて走り計算の書き換え、SEE逆引きの近傍走査、静止探索と主探索の固定費の削減を1段階1測定単位で判定する。
 静止探索の置換表は照合の的中率が11%しかないので、探索木を変える変更として静的評価の打ち切りを照合より先に行う変更と捕獲対象がないノードで置換表へ触れない変更を、静止探索の獅子の候補を絞る変更とともにSPRTへ出す。
 置換表のメモリ待ちそのものを隠すプリフェッチ命令は`unsafe`を要し、利用者が`unsafe`を許可しないと決めたため使わず、ビットボード（144升の集合を3個の64ビット整数で表す型）の微最適化も試作で効果がなかったので扱わない。
+本マイルストーンは完了し、段階6までの採用版のNPSは基準比1.385倍（目標1.3倍を達成）、段階7から段階9を加えた最終の採用版は固定深さの経過時間が基準の0.640倍で、第1期の採用版に対して固定200ペアで+117 Eloである。
 
 ## 状態
 
-進行中。2026年9月15日に起案し、2026年9月16日に着手した。
-段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）、段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）、段階4（走り計算の減算方式とSEE逆引きの近傍走査、[bench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)、親比1.1205倍）、段階5（静止探索の候補処理の簡素化、[bench比較](../measurements/movegen-speedup-2-stage5-bench-depth5.md)、親比1.0443倍）、および段階6（主探索の手生成と探索ノードの固定費、[bench比較](../measurements/movegen-speedup-2-stage6-bench-depth5.md)、段階5比約1.09倍）は完了して採用し、累積は基準比1.3854倍で目標の1.3倍を超えた。
-段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手しない。段階4の減少方向の書き換えと在席マスク、段階6のSEE作業領域、ノード数の一括反映、および履歴の`HashSet`は効果を確認できず採用しない。
-段階10の前半では、段階6までの採用版と第1期の採用版の[STC](../measurements/movegen-speedup-2-stage6-stc.md)と[LTC](../measurements/movegen-speedup-2-stage6-ltc.md)がいずれも`H1`かつ異常0件で、段階6までの採用版を採用した。
-段階7から段階9は[事前選別](../measurements/movegen-speedup-2-stage7-9-prescreen-depth5.md)を3段階とも通過し（経過の親比はそれぞれ0.977、0.941、0.961）、1コミットに固定した構成の段階6までの採用版との[STC](../measurements/movegen-speedup-2-stage7-9-stc.md)（有効1,012ペア）と[LTC](../measurements/movegen-speedup-2-stage7-9-ltc.md)（有効1,515ペア）がいずれも`H1`かつ異常0件で、段階7から段階9を採用した。段階8が段階5の獅子候補の圧縮を取り除いたので、圧縮の再評価は完了している。
-次の一手は段階10の後半、最終の採用版と第1期の採用版の固定200ペアのEloと残存負荷の測り直しである。
+完了。2026年9月15日に起案し、2026年9月16日に着手して2026年9月17日に完了した。
+探索木を変えない段階1、2、4、5、6を採用してNPSは基準比1.3854倍（[段階6のbench比較](../measurements/movegen-speedup-2-stage6-bench-depth5.md)）となり、第1期の採用版との[STC](../measurements/movegen-speedup-2-stage6-stc.md)と[LTC](../measurements/movegen-speedup-2-stage6-ltc.md)はいずれも`H1`かつ異常0件だった。
+探索木を変える段階7、8、9は[事前選別](../measurements/movegen-speedup-2-stage7-9-prescreen-depth5.md)を通過し、1コミットに固定した構成の段階6までの採用版との[STC](../measurements/movegen-speedup-2-stage7-9-stc.md)と[LTC](../measurements/movegen-speedup-2-stage7-9-ltc.md)がいずれも`H1`かつ異常0件で採用した。
+最終の採用版は第1期の採用版に対して[固定200ペア](../measurements/movegen-speedup-2-elo200.md)で+117 Elo（95%信頼区間[+83, +153]）であり、残存負荷は[最終の残存負荷](../measurements/movegen-speedup-2-final-profile-depth5.md)に記録した。
+段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手せず、段階4の減少方向の書き換えと在席マスク、段階6のSEE作業領域、ノード数の一括反映、および履歴の`HashSet`は効果を確認できず採用しなかった。
 
 ## 目的
 
@@ -331,6 +331,7 @@ SEEの逆引きの固定利きも本段階に含める。
 第1期の採用版を基準にするのは、第1期の最終SPRTがPGOを含む構成で行われ、PGOを外した採用版の自己対局が未実施だからでもある。
 段階7から段階9の採否が確定した後、最終の採用版と第1期の採用版の固定200ペアのEloを進捗記録として測る。
 併せて、段階1と同じ方法で残存負荷のプロファイルと件数を測り直し、記録する。
+結果は[段階6までのSTC](../measurements/movegen-speedup-2-stage6-stc.md)、[LTC](../measurements/movegen-speedup-2-stage6-ltc.md)、[段階7から段階9のSTC](../measurements/movegen-speedup-2-stage7-9-stc.md)、[LTC](../measurements/movegen-speedup-2-stage7-9-ltc.md)、[固定200ペアのElo](../measurements/movegen-speedup-2-elo200.md)、および[最終の残存負荷](../measurements/movegen-speedup-2-final-profile-depth5.md)にある。
 
 ## 実装フェーズ
 
