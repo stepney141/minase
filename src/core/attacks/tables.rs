@@ -157,7 +157,7 @@ impl AttackTables {
 
     /// 指定方向の盤端までの利き線を返す。
     #[inline]
-    fn ray(&self, from: Square, direction: Direction) -> Bitboard {
+    pub(crate) fn ray(&self, from: Square, direction: Direction) -> Bitboard {
         self.rays[direction.index()][from.raw_index()]
     }
 

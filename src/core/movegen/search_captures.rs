@@ -3,6 +3,10 @@
 use super::*;
 use crate::core::piece::PieceCode;
 
+#[cfg(test)]
+#[path = "tests/ordinary_capturer.rs"]
+mod tests;
+
 /// 生成時に得た捕獲升を持つ探索専用の候補。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct CaptureCandidate {
@@ -128,6 +132,7 @@ impl MoveGenerator {
     }
 
     /// 通常駒1枚について、対象升へ実際に届く利きを求める。
+    /// 設計書movegen-speedup-2.md「段階2」に従い、対象升と交わる利き線だけを調べる。
     fn ordinary_capturer(
         &self,
         position: &Position,
@@ -137,12 +142,21 @@ impl MoveGenerator {
     ) -> Option<OrdinaryCapturer> {
         let color = position.side_to_move();
         let kind = piece.kind().expect("capture origin has a kind");
-        if (self.tables().reach(color, movement_profile(kind), from) & allowed).is_empty() {
+        let tables = self.tables();
+        let profile_id = movement_profile(kind);
+        if (tables.reach(color, profile_id, from) & allowed).is_empty() {
             return None;
         }
-        let captures =
-            piece_control_without_special(self.tables(), position.occupied(), color, kind, from)
-                & allowed;
+        let mut captures = tables.fixed(color, profile_id, from) & allowed;
+        let profile = movement_profile_data(profile_id);
+        for slide in profile.slides {
+            let direction = slide.direction.for_color(color);
+            if !(tables.ray(from, direction) & allowed).is_empty() {
+                captures |=
+                    tables.sliding_control(from, direction, slide.max_steps, position.occupied())
+                        & allowed;
+            }
+        }
         (!captures.is_empty()).then_some(OrdinaryCapturer {
             from,
             kind,

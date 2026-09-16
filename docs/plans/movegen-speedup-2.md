@@ -14,9 +14,8 @@
 ## 状態
 
 進行中。2026年9月15日に起案し、2026年9月16日に着手した。
-段階1は完了し、`scripts/bench_compare.py`は参照、基準、親との比較を1コマンドで行い、[段階1の件数診断](../measurements/movegen-speedup-2-stage1-counts.md)は全件数が独立した参照と一致し、`codegen-units = 1`は[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)で親比1.0296倍となり採用した。
-段階1の完了時点の累積は基準比1.0287倍である。
-次の一手は段階2の利き線の事前選別であり、診断では走り方向の69.9%が利き線の段階で省ける。
+段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）と段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）は完了して採用し、累積は基準比1.0781倍である。
+次の一手は段階3の判定であり、段階2の採用版で対象升数ごとの演算数を測り直して閾値を定める。
 
 ## 目的
 
@@ -192,6 +191,7 @@ SEEの早期終了の件数は、条件を満たす呼出しで参照実装の�
 見込みは、走り計算の自己時間のうち静止探索の初期化に属する約11ポイントに、段階1で数える「対象升と交わらない方向」の割合を掛け、選別の費用を差し引いた値とする。
 参考として、届かない駒に属する走り計算の割合77.7%をそのまま当てはめると約8.6ポイントになるが、これは方向単位の値ではないので見込みには使わない。
 検証は、`src/search/search_captures_tests.rs`の残存手順一致、`src/core/movegen/tests/properties.rs`の捕獲生成一致、および局面別一致とNPSによる。
+結果は[段階2のbench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)にある。
 
 ### 段階3　対象升が少ないノードの逆引き生成
 
