@@ -97,6 +97,7 @@ fn interrupted_aspiration_window_does_not_reuse_previous_window_lower_bound() {
 fn worker_selection_prefers_depth_then_partial_then_lowest_index() {
     with_root_results(true, None, |_, moves, _| {
         let make = |worker_index, depth, partial| WorkerOutcome {
+            time_report: TimeReport::new(None, TimeHistory::default()),
             worker_index,
             partial,
             result: SearchResult {
@@ -165,6 +166,7 @@ fn forced_move_stops_at_depth_one_only_with_a_time_budget() {
                 rules,
                 &moves,
                 &[search_key(&position)],
+                TimeHistory::default(),
                 &limits,
                 &external_stop,
                 NonZeroUsize::new(threads).unwrap(),
@@ -254,6 +256,7 @@ fn partial_root_can_adopt_a_different_best_move() {
         })
     );
     assert_eq!(searcher.pv[0], [winning]);
+    assert_eq!(searcher.root_results.as_ref().unwrap().best_move_changes, 1);
     assert!(tt.probe(search_key(&position), 0).is_none());
 }
 
@@ -328,6 +331,7 @@ fn infinite_forced_position_continues_past_depth_one_until_external_stop() {
             rules,
             &moves,
             &[search_key(&position)],
+            TimeHistory::default(),
             &SearchLimits::infinite(),
             &external_stop,
             NonZeroUsize::new(1).unwrap(),

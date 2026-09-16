@@ -36,6 +36,8 @@ pub struct UsiProtocol {
     position_synchronized: bool,
     /// 最後に受理した`position`の開始局面と着手のトークン列。
     accepted_position: Option<AcceptedPosition>,
+    /// 同じ対局の直前のgoが返した時間管理の状態。
+    time_history: search::TimeHistory,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
     /// 次の探索に使うワーカー数。
@@ -73,8 +75,6 @@ struct SearchContext {
     rules: crate::Rules,
     /// `go infinite`による探索かどうか。
     infinite: bool,
-    /// 最後に`info`として出力した完了深さ。
-    last_info_depth: Option<u32>,
 }
 
 /// 探索の進行状態。
@@ -118,6 +118,7 @@ impl UsiProtocol {
             transposition_table: None,
             position_synchronized: false,
             accepted_position: None,
+            time_history: search::TimeHistory::default(),
             next_search_id: 1,
             threads: search::DEFAULT_THREADS,
         }
@@ -200,13 +201,14 @@ impl UsiProtocol {
         };
         let position = game.position().clone();
         let rules = engine.active_rules();
-        let snapshot = match SearchSnapshot::from_game(game) {
+        let mut snapshot = match SearchSnapshot::from_game(game) {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 write_error(output, &error.to_string())?;
                 return Ok(None);
             }
         };
+        snapshot.time_history = self.time_history;
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
         let pst = match crate::eval::weights() {
@@ -241,7 +243,6 @@ impl UsiProtocol {
                 position,
                 rules,
                 infinite,
-                last_info_depth: None,
             },
             handle,
         }))
@@ -442,7 +443,6 @@ impl UsiProtocol {
                 ..
             } => {
                 write_info(output, context, depth, score, nodes, elapsed, &pv)?;
-                context.last_info_depth = Some(depth);
                 Ok(())
             }
             SearchEvent::Finished {
@@ -455,6 +455,7 @@ impl UsiProtocol {
                 stop_reason,
                 partial,
                 forced,
+                time_report,
                 ..
             } => {
                 let Some(ActiveSearch::Running {
@@ -465,6 +466,8 @@ impl UsiProtocol {
                     unreachable!();
                 };
                 self.transposition_table = Some(join_search(handle)?);
+                self.time_history = time_report.history;
+                writeln!(output, "{time_report}")?;
                 write_final_info(
                     output,
                     &mut context,
@@ -544,7 +547,6 @@ impl UsiProtocol {
                             ..
                         } => {
                             write_info(output, &context, depth, score, nodes, elapsed, &pv)?;
-                            context.last_info_depth = Some(depth);
                         }
                         SearchEvent::Finished {
                             best_move,
@@ -556,8 +558,11 @@ impl UsiProtocol {
                             stop_reason,
                             partial,
                             forced,
+                            time_report,
                             ..
                         } => {
+                            self.time_history = time_report.history;
+                            writeln!(output, "{time_report}")?;
                             write_final_info(
                                 output,
                                 &mut context,
@@ -711,6 +716,9 @@ impl UsiProtocol {
             position_tokens,
             move_tokens,
         );
+        if !extension_start.is_some_and(|start| (1..=2).contains(&(move_tokens.len() - start))) {
+            self.time_history = search::TimeHistory::default();
+        }
         if let Some(extension_start) = extension_start {
             let parsed = match parse_moves_from_game(engine.game(), &move_tokens[extension_start..])
             {
@@ -880,6 +888,7 @@ impl UsiProtocol {
                 }
                 if clears_position_history {
                     self.accepted_position = None;
+                    self.time_history = search::TimeHistory::default();
                 }
                 if clears_transposition_table
                     && let Some(transposition_table) = &mut self.transposition_table
@@ -1140,7 +1149,7 @@ fn write_info(
     output.flush()
 }
 
-/// 途中結果は印と最終`info`を出し、完了結果は未報告の深さだけ出す。
+/// 途中結果の印と、終了時点の時間・ノード数を含む最終`info`を出す。
 #[allow(clippy::too_many_arguments)]
 fn write_final_info(
     output: &mut dyn Write,
@@ -1154,11 +1163,8 @@ fn write_final_info(
 ) -> io::Result<()> {
     if partial {
         writeln!(output, "info string partial")?;
-    } else if depth <= context.last_info_depth.unwrap_or(0) {
-        return Ok(());
     }
     write_info(output, context, depth, score, nodes, elapsed, pv)?;
-    context.last_info_depth = Some(depth);
     Ok(())
 }
 
@@ -1667,6 +1673,112 @@ mod tests {
     }
 
     #[test]
+    fn time_history_survives_only_one_or_two_move_position_extensions() {
+        let seed = search::TimeHistory {
+            average_score: Some(123.5),
+            time_reduction: 1.2,
+        };
+        for (command, retained) in [
+            ("position startpos moves 3i3h", true),
+            ("position startpos moves 3i3h 5a4b", true),
+            ("position startpos moves 3i3h 5a4b 8l9k", false),
+            ("position startpos", false),
+            ("usinewgame", false),
+        ] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = UsiProtocol::new(&engine);
+            let mut output = Vec::new();
+            protocol
+                .handle_idle_line(&mut engine, "position startpos", &mut output)
+                .unwrap();
+            assert_eq!(protocol.time_history, search::TimeHistory::default());
+            protocol.time_history = seed;
+            protocol
+                .handle_idle_line(&mut engine, command, &mut output)
+                .unwrap();
+            assert!(output.is_empty(), "{command}: {output:?}");
+            assert_eq!(
+                protocol.time_history,
+                if retained {
+                    seed
+                } else {
+                    search::TimeHistory::default()
+                },
+                "{command}"
+            );
+        }
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        let mut output = Vec::new();
+        protocol
+            .handle_idle_line(&mut engine, "position startpos moves 3i3h", &mut output)
+            .unwrap();
+        protocol.time_history = seed;
+        protocol
+            .handle_idle_line(&mut engine, "position startpos moves 6i6h", &mut output)
+            .unwrap();
+        assert_eq!(protocol.time_history, search::TimeHistory::default());
+    }
+
+    #[test]
+    fn time_history_is_passed_to_search_and_saved_on_both_finished_paths() {
+        for poll_events in [false, true] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = UsiProtocol::new(&engine);
+            let mut output = Vec::new();
+            protocol
+                .handle_idle_line(&mut engine, "position startpos", &mut output)
+                .unwrap();
+            protocol.time_history = search::TimeHistory {
+                average_score: Some(30_000.0),
+                time_reduction: 1.2,
+            };
+            let mut active = protocol
+                .start_go(
+                    &engine,
+                    &["depth", "1", "btime", "300000", "wtime", "300000"],
+                    &mut output,
+                )
+                .unwrap();
+            if poll_events {
+                while let Some(ActiveSearch::Running { handle, .. }) = &active {
+                    let event = handle
+                        .events()
+                        .recv_timeout(Duration::from_secs(60))
+                        .unwrap();
+                    protocol
+                        .handle_search_event(&mut active, event, &mut output)
+                        .unwrap();
+                }
+            } else {
+                protocol
+                    .finish_search(&mut active, &mut output, false)
+                    .unwrap();
+            }
+            let output = String::from_utf8(output).unwrap();
+            let lines: Vec<_> = output.lines().collect();
+            let diagnostics: Vec<_> = lines
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| line.starts_with("info string timeman "))
+                .collect();
+            assert_eq!(diagnostics.len(), 1);
+            let (index, diagnostic) = diagnostics[0];
+            assert!(diagnostic.contains("falling=1.728000"), "{output}");
+            assert!(diagnostic.contains("reduction=1.828"), "{output}");
+            assert!(lines[index + 1].starts_with("info depth 1 "), "{output}");
+            let score: f64 = lines[index + 1]
+                .split_whitespace()
+                .nth(5)
+                .unwrap()
+                .parse()
+                .unwrap();
+            assert_eq!(protocol.time_history.average_score, Some(score));
+            assert_eq!(protocol.time_history.time_reduction, 0.639);
+        }
+    }
+
+    #[test]
     fn incremental_position_matches_full_replay_for_ongoing_and_finished_games() {
         let moves = "3i3h 5a4b 8l9k 8b9b";
         let mut full_engine = make_engine(&[RuleCode::R1]);
@@ -2066,6 +2178,7 @@ mod tests {
         // 台本末尾まで遅延bestmoveが漏れない（出力はinfo・エラー・bestmoveだけ）。
         assert!(lines.iter().all(|line| {
             line.starts_with("info depth ")
+                || line.starts_with("info string timeman ")
                 || line.starts_with("info string error: ")
                 || line.starts_with("info string stop ")
                 || line.starts_with("bestmove ")
@@ -2159,7 +2272,18 @@ mod tests {
         let info_lines = &lines[..lines.len() - 2];
         assert!(!info_lines.is_empty());
         // infoはbestmoveより前にだけ現れる。
-        for line in info_lines {
+        assert_eq!(
+            info_lines
+                .iter()
+                .filter(|line| line.starts_with("info string timeman "))
+                .count(),
+            1
+        );
+        assert!(info_lines[info_lines.len() - 2].starts_with("info string timeman "));
+        for line in info_lines
+            .iter()
+            .filter(|line| !line.starts_with("info string timeman "))
+        {
             let tokens: Vec<_> = line.split_whitespace().collect();
             assert_eq!(tokens[0], "info");
             assert_eq!(tokens[1], "depth");
@@ -2194,7 +2318,6 @@ mod tests {
             position: Position::initial(),
             rules: engine.active_rules(),
             infinite: false,
-            last_info_depth: Some(3),
         };
         let mut moves = Vec::new();
         crate::MoveGenerator::new(context.rules.moves)
@@ -2232,7 +2355,11 @@ mod tests {
             false,
         )
         .unwrap();
-        assert!(output.is_empty());
+        assert!(
+            String::from_utf8(output)
+                .unwrap()
+                .starts_with("info depth 3 ")
+        );
     }
 
     #[test]

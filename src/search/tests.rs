@@ -1887,34 +1887,34 @@ fn infinite_limits_stop_only_on_external_request() {
 // D7-TIME　時間予算
 // ---------------------------------------------------------------------------
 
-// D7-TIME-01。time-management-efficiency.mdの第1段階に従う。
+// D7-TIME-01。time-management-efficiency.mdの第3段階に従う。
 #[test]
 fn clock_budget_matches_the_normative_formula() {
-    for (remaining, increment, byoyomi, ply, expected) in [
-        (60_000, 1_000, 0, 0, 96),
-        (10_000, 0, 200, 0, 20),
-        (200, 100, 0, 300, 72),
-        (20, 0, 0, 0, 1),
-        (0, 0, 100, 0, 70),
-        (300_000, 0, 10_000, 0, 933),
-        (300_000, 0, 10_000, 36, 9_449),
-        (0, 0, 10_000, 0, 8_000),
-        (10_000, 100, 0, 0, 11),
-        (200, 100, 0, 36, 70),
-        (10_000, 0, 10_000, 0, 19_970),
-        (60_000, 200, 0, 0, 40),
-        (11_999, 0, 10_000, 0, 21_969),
-        (12_000, 0, 10_000, 0, 805),
-        (300_000, 0, 10_000, 35, 9_212),
-        (300_000, 0, 10_000, u32::MAX, 11_000),
+    for (remaining, increment, byoyomi, ply, expected_soft, expected_hard) in [
+        (60_000, 1_000, 0, 0, 96, 483),
+        (10_000, 0, 200, 0, 20, 38),
+        (200, 100, 0, 300, 72, 170),
+        (20, 0, 0, 0, 1, 1),
+        (0, 0, 100, 0, 70, 70),
+        (300_000, 0, 10_000, 0, 933, 1466),
+        (300_000, 0, 10_000, 36, 9_449, 15245),
+        (0, 0, 10_000, 0, 8_000, 8000),
+        (10_000, 100, 0, 0, 11, 57),
+        (200, 100, 0, 36, 70, 170),
+        (10_000, 0, 10_000, 0, 19_970, 19970),
+        (60_000, 200, 0, 0, 40, 203),
+        (11_999, 0, 10_000, 0, 21_969, 21969),
+        (12_000, 0, 10_000, 0, 805, 826),
+        (300_000, 0, 10_000, 35, 9_212, 14863),
+        (300_000, 0, 10_000, u32::MAX, 11_000, 23000),
     ] {
         let budget = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
         assert_eq!(
             budget.soft,
-            Duration::from_millis(expected),
+            Duration::from_millis(expected_soft),
             "clock=({remaining}, {increment}, {byoyomi}, {ply})"
         );
-        assert_eq!(budget.hard, budget.soft);
+        assert_eq!(budget.hard, Duration::from_millis(expected_hard));
     }
 }
 
@@ -1969,58 +1969,28 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
     assert_eq!(budget.hard, Duration::from_millis(500));
 }
 
+// 残り時間0の手と最終押し込みの手は係数で短縮しない（time-management-efficiency.md
+// 「局面適応の係数」）。
+#[test]
+fn coefficients_apply_only_where_saving_time_carries_over() {
+    assert!(clock_budget(clock(300_000, 0, 10_000)).adaptive);
+    assert!(clock_budget(clock(10_000, 100, 0)).adaptive);
+    assert!(!clock_budget(clock(0, 0, 10_000)).adaptive);
+    assert!(!clock_budget(clock(0, 100, 10_000)).adaptive);
+    assert!(!clock_budget(clock(10_000, 0, 10_000)).adaptive);
+}
+
 // D7-TIME-03。序盤の係数を適用してからmovetimeとの小さい方を採る。
 #[test]
 fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     let base = clock(60_000, 1_000, 0);
-    for (movetime, expected) in [(2_000, 96), (50, 50), (96, 96)] {
+    for (movetime, expected_soft, expected_hard) in [(2_000, 96, 483), (50, 50, 50), (96, 96, 96)] {
         let limits = SearchLimits::new(None, None, Some(movetime), Some(base)).unwrap();
         let budget = time_budget(&limits).unwrap();
-        assert_eq!(budget.soft, Duration::from_millis(expected));
-        assert_eq!(budget.hard, budget.soft);
+        assert_eq!(budget.soft, Duration::from_millis(expected_soft));
+        assert_eq!(budget.hard, Duration::from_millis(expected_hard));
+        assert!(!budget.adaptive);
     }
-}
-
-// D7-TIME-05。通常時はsoft未満なら継続し、hardの予測では止めない。
-#[test]
-fn next_iteration_uses_soft_without_a_hard_prediction() {
-    let budget = TimeBudget {
-        soft: Duration::from_millis(100),
-        hard: Duration::from_millis(100),
-    };
-    assert!(should_start_next_iteration(
-        Duration::from_millis(99),
-        budget,
-        false
-    ));
-    assert!(!should_start_next_iteration(
-        Duration::from_millis(100),
-        budget,
-        false
-    ));
-    assert!(should_start_next_iteration(
-        Duration::from_millis(40),
-        budget,
-        true
-    ));
-    assert!(!should_start_next_iteration(
-        Duration::from_nanos(40_000_001),
-        budget,
-        true
-    ));
-}
-
-// 同「最善手安定時の早期終了」。直近4反復の最善手が同じときだけ安定とする。
-#[test]
-fn stable_signal_requires_four_identical_recent_best_moves() {
-    let moves = legal_moves(&Position::initial());
-    let [a, b] = [moves[0], moves[1]];
-    assert!(stable_signal(&[a, a, a, a]));
-    assert!(!stable_signal(&[a, a, a]));
-    assert!(stable_signal(&[b, a, a, a, a]));
-    assert!(!stable_signal(&[a, a, a, b]));
-    assert!(!stable_signal(&[a, b, a, a, a]));
-    assert!(!stable_signal(&[]));
 }
 
 // D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは
@@ -2038,7 +2008,8 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     let history_keys = [search_key(&position)];
     let external_stop = AtomicBool::new(false);
     let budget = TimeBudget {
-        soft: Duration::from_millis(400),
+        adaptive: true,
+        soft: Duration::from_millis(10),
         hard: Duration::from_secs(1),
     };
     let shared = SharedSearch {
@@ -2061,6 +2032,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         &history_keys,
         2,
         Some(budget),
+        TimeHistory::default(),
         &shared,
         &tt,
         None,
@@ -2279,6 +2251,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                 }
                 completed.fetch_add(1, AtomicOrdering::Release);
                 WorkerOutcome {
+                    time_report: TimeReport::new(None, TimeHistory::default()),
                     partial: false,
                     worker_index,
                     result: SearchResult {
@@ -2409,6 +2382,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
         snapshot.rules,
         &snapshot.root_moves,
         &snapshot.history_keys,
+        TimeHistory::default(),
         &limits,
         &external_stop,
         worker_count(4),
@@ -2449,6 +2423,7 @@ fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
 fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
     let moves = legal_moves(&Position::initial());
     let outcome = |worker_index: usize, depth: u32, move_index: usize| WorkerOutcome {
+        time_report: TimeReport::new(None, TimeHistory::default()),
         partial: false,
         worker_index,
         result: SearchResult {

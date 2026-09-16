@@ -7,9 +7,14 @@ mod search_captures_tests;
 mod see;
 #[cfg(test)]
 mod tests;
+mod time_management;
 #[cfg(test)]
 mod time_management_tests;
 mod tt;
+
+pub(crate) use time_management::TimeHistory;
+pub use time_management::TimeReport;
+use time_management::TimeSignals;
 
 pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError};
 
@@ -358,6 +363,8 @@ pub struct SearchSnapshot {
     history_keys: Vec<u64>,
     /// 対局管理層が確定したルート合法手。
     root_moves: Vec<Move>,
+    /// 同じ対局の直前の探索から引き継ぐ時間管理の状態。
+    pub(crate) time_history: TimeHistory,
 }
 
 impl SearchSnapshot {
@@ -394,6 +401,7 @@ impl SearchSnapshot {
             rules,
             history_keys,
             root_moves,
+            time_history: TimeHistory::default(),
         })
     }
 
@@ -480,7 +488,7 @@ pub enum StopReason {
 }
 
 /// 探索スレッドから届く進捗または完了通知。
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum SearchEvent {
     /// 反復深化の1イテレーションが完了した。
     Progress {
@@ -519,6 +527,8 @@ pub enum SearchEvent {
         partial: bool,
         /// 時間制限下で唯一の合法手を深さ1で返したか。
         forced: bool,
+        /// 最後の停止判断の係数と、次の探索へ引き継ぐ状態。
+        time_report: TimeReport,
     },
 }
 
@@ -614,6 +624,7 @@ pub fn start_search(
             snapshot.rules,
             &snapshot.root_moves,
             &snapshot.history_keys,
+            snapshot.time_history,
             &limits,
             &thread_stop,
             threads,
@@ -632,6 +643,7 @@ pub fn start_search(
             stop_reason: outcome.stop_reason,
             partial: outcome.partial,
             forced: outcome.forced,
+            time_report: outcome.time_report,
         });
         tt
     });
@@ -669,6 +681,7 @@ pub fn search(
         snapshot.rules,
         &snapshot.root_moves,
         &snapshot.history_keys,
+        snapshot.time_history,
         limits,
         &stop,
         threads,
@@ -692,11 +705,15 @@ struct SearchOutcome {
     partial: bool,
     /// 唯一の合法手を深さ1で返したか。
     forced: bool,
+    /// 時間管理の最終診断と持ち越し値。
+    time_report: TimeReport,
 }
 
 /// 1ワーカーの採用結果、完了深さ、および実訪問ノード数。
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 struct WorkerOutcome {
+    /// このワーカーの平均評価値と、主ワーカーの時間診断。
+    time_report: TimeReport,
     /// 中断した反復の途中結果を採用したか。主ワーカーだけが持つ。
     partial: bool,
     /// 探索チーム内のワーカー番号。主ワーカーは0。
@@ -812,6 +829,7 @@ fn run_search_team(
     rules: MoveRules,
     root_moves: &[Move],
     history_keys: &[u64],
+    time_history: TimeHistory,
     limits: &SearchLimits,
     external_stop: &AtomicBool,
     threads: NonZeroUsize,
@@ -850,6 +868,7 @@ fn run_search_team(
                 history_keys,
                 depth_limit,
                 time_budget,
+                time_history,
                 &shared,
                 tt,
                 events,
@@ -879,7 +898,10 @@ fn run_search_team(
     let adopted = select_worker_outcome(&worker_outcomes);
     let mut result = adopted.result;
     result.nodes = total_nodes;
+    let mut time_report = worker_outcomes[0].time_report;
+    time_report.history.average_score = adopted.time_report.history.average_score;
     SearchOutcome {
+        time_report,
         result,
         elapsed: started.elapsed(),
         pv: adopted.pv.clone(),
@@ -1013,6 +1035,10 @@ struct RootMove {
     score: Option<(i32, Bound)>,
     /// 直前の反復の評価値。最初の反復では`None`。
     previous_score: Option<i32>,
+    /// 完了した反復だけで更新する指数移動平均。
+    average_score: Option<f64>,
+    /// このgoの全反復で費やしたノード数。
+    total_nodes: u64,
     /// 今回の窓で完了した探索の主変化。先頭はこの手自身。
     pv: Vec<Move>,
     /// 今回の反復で消費したノード数。窓の再探索と中断した探索も含む。
@@ -1021,6 +1047,10 @@ struct RootMove {
 
 /// 合法手の順序を変えず、根の各手の探索結果を保持する表。
 struct RootMoves {
+    /// 主ワーカーだけが前回の最善手の優先と途中結果の採用を行う。
+    worker_index: usize,
+    /// 現在の反復で2手目以降の手が最善手になった回数。
+    best_move_changes: u32,
     /// 探索開始時の合法手順に並ぶ記録。
     entries: Vec<RootMove>,
     /// 直前に完了した反復の最善手。
@@ -1031,6 +1061,8 @@ impl RootMoves {
     /// 各合法手を未探索として登録する。
     fn new(moves: &[Move]) -> Self {
         Self {
+            worker_index: 0,
+            best_move_changes: 0,
             previous_best: None,
             entries: moves
                 .iter()
@@ -1038,6 +1070,8 @@ impl RootMoves {
                     mv,
                     score: None,
                     previous_score: None,
+                    average_score: None,
+                    total_nodes: 0,
                     pv: Vec::new(),
                     nodes: 0,
                 })
@@ -1047,6 +1081,7 @@ impl RootMoves {
 
     /// 反復開始時に評価値を繰り越し、ノード数を初期化する。
     fn begin_iteration(&mut self) {
+        self.best_move_changes = 0;
         self.previous_best = self
             .entries
             .iter()
@@ -1063,9 +1098,31 @@ impl RootMoves {
         }
     }
 
+    /// 完了した反復の各手の評価値だけを平均へ取り込む。
+    fn complete_iteration(&mut self) {
+        for entry in &mut self.entries {
+            if let Some((score, _)) = entry.score {
+                let score = f64::from(score);
+                entry.average_score = Some(match entry.average_score {
+                    Some(average) => (score + average) / 2.0,
+                    None => score,
+                });
+            }
+        }
+    }
+
+    fn entry(&self, mv: Move) -> &RootMove {
+        self.entries
+            .iter()
+            .find(|entry| entry.mv == mv)
+            .expect("adopted move must be registered")
+    }
+
     /// 直前に完了した反復の最善手を返す。
     fn previous_best(&self) -> Option<Move> {
-        self.previous_best
+        (self.worker_index == 0)
+            .then_some(self.previous_best)
+            .flatten()
     }
 
     /// 中断した窓の完了済みの手だけから途中結果を選ぶ。
@@ -1112,6 +1169,7 @@ impl RootMoves {
             .find(|entry| entry.mv == mv)
             .expect("searched root move must be registered");
         entry.nodes += nodes;
+        entry.total_nodes += nodes;
         if let Some(score) = score {
             let (alpha, beta) = window;
             let bound = if score <= alpha {
@@ -1138,6 +1196,7 @@ fn run_main_worker(
     history_keys: &[u64],
     depth_limit: u32,
     time_budget: Option<TimeBudget>,
+    time_history: TimeHistory,
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
@@ -1152,7 +1211,8 @@ fn run_main_worker(
         nodes: 0,
     };
     let mut completed_pv = vec![root_moves[0]];
-    let mut completed_bests = Vec::new();
+    let mut signals = TimeSignals::new(time_history);
+    let mut time_report = TimeReport::new(time_budget, time_history);
     let mut partial = false;
 
     for depth in 1..=depth_limit {
@@ -1169,8 +1229,20 @@ fn run_main_worker(
             partial = true;
             break;
         }
-        completed_bests.push(best_move);
-        let stable = stable_signal(&completed_bests);
+        let roots = searcher
+            .root_results
+            .as_ref()
+            .expect("main root table exists");
+        time_report = signals.complete_iteration(
+            depth,
+            best_move,
+            score,
+            pst.pawn_value(),
+            roots.best_move_changes,
+            roots.entry(best_move).total_nodes,
+            searcher.nodes,
+            time_budget,
+        );
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
@@ -1193,9 +1265,9 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| {
-            root_moves.len() == 1 || !should_start_next_iteration(elapsed, budget, stable)
-        }) {
+        if time_budget
+            .is_some_and(|budget| root_moves.len() == 1 || time_report.should_stop(elapsed, budget))
+        {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1205,7 +1277,9 @@ fn run_main_worker(
         }
     }
     let nodes = searcher.nodes;
+    time_report.history.average_score = root_results.entry(result.best_move).average_score;
     WorkerOutcome {
+        time_report,
         partial,
         worker_index: 0,
         result,
@@ -1227,7 +1301,10 @@ fn run_auxiliary_worker(
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
 ) -> WorkerOutcome {
+    let mut root_results = RootMoves::new(root_moves);
+    root_results.worker_index = worker_index;
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    searcher.root_results = Some(&mut root_results);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
@@ -1253,7 +1330,10 @@ fn run_auxiliary_worker(
         }
     }
     let nodes = searcher.nodes;
+    let mut time_report = TimeReport::new(None, TimeHistory::default());
+    time_report.history.average_score = root_results.entry(result.best_move).average_score;
     WorkerOutcome {
+        time_report,
         partial: false,
         worker_index,
         result,
@@ -1335,6 +1415,9 @@ impl Searcher<'_> {
             } else if score >= window.beta {
                 window.widen_high();
             } else {
+                if let Some(results) = &mut self.root_results {
+                    results.complete_iteration();
+                }
                 return Some(result);
             }
         }
@@ -1405,6 +1488,11 @@ impl Searcher<'_> {
                 return None;
             };
             if score > best_score {
+                if index > 0
+                    && let Some(results) = &mut self.root_results
+                {
+                    results.best_move_changes += 1;
+                }
                 best_score = score;
                 best_move = mv;
                 self.update_pv(0, mv);
@@ -1861,6 +1949,8 @@ impl Searcher<'_> {
 /// 1手に使う時間の予算。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct TimeBudget {
+    /// 時計だけの探索では局面適応の係数を適用する。
+    adaptive: bool,
     /// 完了イテレーションの境界で停止する目安時間。
     soft: Duration,
     /// 探索途中でも打ち切る上限時間。
@@ -1871,83 +1961,54 @@ struct TimeBudget {
 const EXPECTED_PLIES: u32 = 450;
 /// 1局面で見込む残り手数の下限。
 const MIN_MOVES: u32 = 100;
-/// 次の反復の予測時間に使う固定比2.5の分子。
-const ITERATION_RATIO_NUMERATOR: u128 = 5;
-/// 次の反復の予測時間に使う固定比2.5の分母。
-const ITERATION_RATIO_DENOMINATOR: u128 = 2;
-
-/// 最善手の安定を判定する直近の完了反復数。
-///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従う。
-/// 「反復深化の診断」の時間条件を含む模擬で、失う良い結果の割合が10%以下に
-/// なる最小の反復数がk = 4だったことに基づく。
-const STABLE_ITERATIONS: usize = 4;
-
-/// 完了反復の最善手列から、予測完了時刻をsoftで抑えるかを返す。
-///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従い、
-/// 直近4反復の最善手がすべて同じ場合だけ真を返す。
-/// `bests`は完了順に並び、末尾が最新の反復の最善手である。
-fn stable_signal(bests: &[Move]) -> bool {
-    bests.len() >= STABLE_ITERATIONS
-        && bests[bests.len() - STABLE_ITERATIONS..]
-            .windows(2)
-            .all(|pair| pair[0] == pair[1])
-}
-
-/// 時間予算内で次の反復を開始できるかを返す。
-///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従い、
-/// `stable`が真なら経過時間に固定比を掛けた予測完了時刻がsoft以下であることを、
-/// 偽なら経過時間がsoft未満であることを要求する。hardは探索中に検査する。
-/// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
-fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget, stable: bool) -> bool {
-    let predicted = elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR;
-    if stable {
-        predicted <= budget.soft.as_nanos() * ITERATION_RATIO_DENOMINATOR
-    } else {
-        elapsed < budget.soft
-    }
-}
-
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
 fn moves_to_go(ply: u32) -> u128 {
     u128::from(MIN_MOVES.max(EXPECTED_PLIES.saturating_sub(ply) / 2))
 }
 
-/// 持ち時間制の予算式を1箇所に集約する。
-///
-/// `raw = remaining / moves_to_go + 0.7 * increment + 0.8 * byoyomi`を整数msで計算し、
-/// 残り時間が正なら序盤の係数`min(40, ply + 4) / 40`を掛ける。
-/// ただし`0 < remaining < 1.2 * byoyomi`では安全上限まで使う。
-/// `soft = hard = max(1ms, min(target, safe_hard))`とし、
-/// `safe_hard = max(1ms, remaining + byoyomi - 30ms)`で抑える。
+/// 第3段階の予算式。持ち時間と加算の分だけhardを5倍へ広げる。
+/// 秒読みと安全余裕、序盤の係数、および最終押し込みは第1段階のまま使う。
 fn clock_budget(clock: ClockLimits) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);
     let byoyomi = u128::from(clock.byoyomi_ms);
-    let raw = remaining / moves_to_go(clock.ply) + increment * 7 / 10 + byoyomi * 8 / 10;
+    let base = remaining / moves_to_go(clock.ply) + increment * 7 / 10;
     let safe_hard = (remaining + byoyomi).saturating_sub(30).max(1);
-    let target = if remaining > 0 && remaining * 10 < byoyomi * 12 {
-        safe_hard
-    } else if remaining > 0 {
-        raw * u128::from(clock.ply.saturating_add(4).min(40)) / 40
+    let opening = if remaining > 0 {
+        u128::from(clock.ply.saturating_add(4).min(40))
     } else {
-        raw
+        40
     };
-    let hard = Duration::from_millis(to_u64_ms(target.min(safe_hard).max(1)));
-    TimeBudget { soft: hard, hard }
+    let clamp = |target: u128| Duration::from_millis(to_u64_ms(target.min(safe_hard).max(1)));
+    let final_push = remaining > 0 && remaining * 10 < byoyomi * 12;
+    let (soft, hard) = if final_push {
+        (clamp(safe_hard), clamp(safe_hard))
+    } else {
+        (
+            clamp((base + byoyomi * 8 / 10) * opening / 40),
+            clamp((5 * base + byoyomi * 8 / 10) * opening / 40),
+        )
+    };
+    // 残り時間0の手と最終押し込みの手では、早く指しても未使用の秒読みを
+    // 持ち越せないので、係数で短縮せずhardまで読む。
+    TimeBudget {
+        adaptive: remaining > 0 && !final_push,
+        soft,
+        hard,
+    }
 }
 
 /// 探索制限から時間予算を求める。`movetime`と時計の併用時は小さい方を採る。
 fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
     let limits = limits.finite()?;
     let movetime = limits.movetime_ms.map(|milliseconds| TimeBudget {
+        adaptive: false,
         soft: Duration::from_millis(milliseconds.get()),
         hard: Duration::from_millis(milliseconds.get()),
     });
     match (movetime, limits.clock.map(clock_budget)) {
         (Some(fixed), Some(clock)) => Some(TimeBudget {
+            adaptive: false,
             soft: fixed.soft.min(clock.soft),
             hard: fixed.hard.min(clock.hard),
         }),
