@@ -6,24 +6,54 @@ from typing import Any
 
 NS_PER_MS = 1_000_000
 COLORS = ("black", "white")
-FORMULAS = ("quadruple-soft", "quadruple-main")
+FORMULAS = ("quadruple-soft", "quadruple-main", "target", "total")
 STOP_REASONS = ("depth", "nodes", "soft", "hard", "external")
 
 
 def budget_ms(
     remaining_ms: int, increment_ms: int, byoyomi_ms: int, ply: int, formula: str
 ) -> tuple[int, int]:
-    """指定した予算式を整数ミリ秒で評価し、softとhardを返す。"""
+    """指定した予算式を整数ミリ秒で評価し、softとhardを返す。
+
+    設計書の代表時計を、targetとtotalの順に確認する。
+    totalのsoftは局面適応の係数を掛ける前の標準予算である。
+
+    >>> [budget_ms(300000, 0, 10000, 0, f) for f in ("target", "total")]
+    [(933, 933), (933, 1466)]
+    >>> [budget_ms(300000, 0, 10000, 36, f) for f in ("target", "total")]
+    [(9449, 9449), (9449, 15245)]
+    >>> [budget_ms(0, 0, 10000, 0, f) for f in ("target", "total")]
+    [(8000, 8000), (8000, 8000)]
+    >>> [budget_ms(10000, 0, 10000, 0, f) for f in ("target", "total")]
+    [(19970, 19970), (19970, 19970)]
+    >>> [budget_ms(10000, 100, 0, 0, f) for f in ("target", "total")]
+    [(11, 11), (11, 57)]
+    >>> [budget_ms(60000, 200, 0, 0, f) for f in ("target", "total")]
+    [(40, 40), (40, 203)]
+    >>> [budget_ms(0, 100, 10000, 0, f) for f in ("target", "total")]
+    [(8070, 8070), (8070, 8070)]
+    """
     if formula not in FORMULAS:
         raise ValueError(f"未知の予算式: {formula}")
     if min(remaining_ms, increment_ms, byoyomi_ms, ply) < 0:
         raise ValueError("時計とplyは非負でなければならない")
-    moves_to_go = max(100, max(450 - ply, 0) // 2)
+    moves_to_go = max(100, (450 - ply) // 2)
     main = remaining_ms // moves_to_go + increment_ms * 7 // 10
     byoyomi = byoyomi_ms * 8 // 10
     soft_raw = main + byoyomi
-    ceiling = 4 * soft_raw if formula == "quadruple-soft" else 4 * main + byoyomi
     safe_hard = max(1, remaining_ms + byoyomi_ms - 30)
+    if formula in ("target", "total"):
+        hard_raw = 5 * main + byoyomi if formula == "total" else soft_raw
+        if byoyomi_ms > 0 and 0 < remaining_ms < byoyomi_ms * 12 // 10:
+            soft_raw = hard_raw = safe_hard
+        elif remaining_ms > 0:
+            weight = min(40, ply + 4)
+            soft_raw = soft_raw * weight // 40
+            hard_raw = hard_raw * weight // 40
+        else:
+            hard_raw = soft_raw
+        return max(1, min(soft_raw, safe_hard)), max(1, min(hard_raw, safe_hard))
+    ceiling = 4 * soft_raw if formula == "quadruple-soft" else 4 * main + byoyomi
     hard = max(1, min(ceiling, remaining_ms // 4 + byoyomi, safe_hard))
     return min(soft_raw, hard), hard
 
@@ -93,6 +123,12 @@ def replay_game(
             "phase": "main" if remaining[side] > 0 else "byoyomi",
             # soft=0の比は未定義であり、集計の有効標本へ含めない。
             "think_soft_ratio": elapsed / (soft * NS_PER_MS) if soft > 0 else None,
+            "think_hard_ratio": elapsed / (hard * NS_PER_MS),
+            "hard_overrun_ms": (elapsed - hard * NS_PER_MS) / NS_PER_MS,
+            "byoyomi_utilization": (
+                elapsed / (clock["byoyomi_ms"] * NS_PER_MS)
+                if remaining[side] == 0 and clock["byoyomi_ms"] > 0 else None
+            ),
             "time_forfeit": forfeit,
         })
         if after == 0 and record["depletion_move"] is None:
@@ -112,45 +148,71 @@ def quantiles(values: Iterable[float]) -> tuple[float | None, float | None]:
     return median, ordered[(9 * n + 9) // 10 - 1]
 
 
+def summarize_turns(turns: list[dict[str, Any]]) -> dict[str, Any]:
+    """選択された手の深さ・予算比・超過・秒読み利用率を集計する。"""
+    depths = [
+        turn["evaluation"]["depth"] for turn in turns
+        if turn.get("evaluation") is not None and turn["evaluation"].get("depth") is not None
+    ]
+    soft_ratios = [
+        turn["think_soft_ratio"] for turn in turns if turn["think_soft_ratio"] is not None
+    ]
+    soft_median, soft_p90 = quantiles(soft_ratios)
+    hard_median, hard_p90 = quantiles(turn["think_hard_ratio"] for turn in turns)
+    utilization = [
+        turn["byoyomi_utilization"] for turn in turns if turn["byoyomi_utilization"] is not None
+    ]
+    utilization_median, _ = quantiles(utilization)
+    return {
+        "turns": len(turns),
+        "mean_depth": sum(depths) / len(depths) if depths else None,
+        "depth_samples": len(depths),
+        "depth_missing": len(turns) - len(depths),
+        "depth_zero": depths.count(0),
+        "think_soft_median": soft_median,
+        "think_soft_p90": soft_p90,
+        "think_soft_samples": len(soft_ratios),
+        "think_soft_missing": len(turns) - len(soft_ratios),
+        "think_hard_median": hard_median,
+        "think_hard_p90": hard_p90,
+        "hard_overrun_max_ms": max(turn["hard_overrun_ms"] for turn in turns) if turns else None,
+        "byoyomi_utilization_median": utilization_median,
+        "byoyomi_utilization_samples": len(utilization),
+    }
+
+
 def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
     """局・側の記録をまとめ、丸めずにJSON化できる集計を返す。"""
     turns = [turn for record in records for turn in record["turns"]]
     phases = {}
     for phase in ("main", "byoyomi"):
         selected = [turn for turn in turns if turn["phase"] == phase]
-        depths = []
-        reasons: Counter[str] = Counter()
-        ratios = []
+        groups: dict[str, list[dict[str, Any]]] = {reason: [] for reason in ("hard", "soft", "forced")}
         for turn in selected:
-            evaluation = turn.get("evaluation")
-            if evaluation is not None and evaluation.get("depth") is not None:
-                depths.append(evaluation["depth"])
             reason = turn.get("stop_reason")
             if reason is not None and reason not in STOP_REASONS:
                 raise ValueError(f"未知の停止理由: {reason}")
-            reasons["missing" if reason is None else reason] += 1
-            if turn["think_soft_ratio"] is not None:
-                ratios.append(turn["think_soft_ratio"])
-        median, p90 = quantiles(ratios)
-        known_stops = len(selected) - reasons["missing"]
+            # ハーネス記録にはforced欄がなく、その場合はstop行の分類を保つ。
+            if turn.get("forced") is True:
+                reason = "forced"
+            key = "missing" if reason is None else reason
+            groups.setdefault(key, []).append(turn)
+        reasons = {reason: len(group) for reason, group in groups.items() if group}
+        missing = len(groups["missing"]) if "missing" in groups else 0
+        known_stops = len(selected) - missing
         phases[phase] = {
-            "turns": len(selected),
-            "mean_depth": sum(depths) / len(depths) if depths else None,
-            "depth_samples": len(depths),
-            "depth_missing": len(selected) - len(depths),
+            **summarize_turns(selected),
+            "by_stop_reason": {reason: summarize_turns(group) for reason, group in groups.items()},
             "stop_reasons": dict(sorted(reasons.items())),
-            "stop_reason_missing": reasons["missing"],
+            "stop_reason_missing": missing,
             "stop_reason_fractions": {
                 reason: count / known_stops
                 for reason, count in sorted(reasons.items()) if reason != "missing"
             },
-            "think_soft_median": median,
-            "think_soft_p90": p90,
-            "think_soft_samples": len(ratios),
-            "think_soft_missing": len(selected) - len(ratios),
-            "hard_fraction": reasons["hard"] / known_stops if known_stops else None,
+            "hard_fraction": len(groups["hard"]) / known_stops if known_stops else None,
             "hard_denominator": known_stops,
         }
+    depletion_counts = Counter(record["depletion_move"] for record in records)
     return {
         "phases": phases,
         "game_sides": len(records),
@@ -158,6 +220,10 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             {"game": r["game"], "side": r["side"], "move": r["depletion_move"]}
             for r in records
         ],
+        "depletion_distribution": [
+            {"move": move, "game_sides": depletion_counts[move]}
+            for move in sorted(move for move in depletion_counts if move is not None)
+        ] + [{"move": None, "game_sides": depletion_counts[None]}],
         # 両側の集計では1局につき2件、役割・先手だけなら1局につき1件。
         "not_depleted_game_sides": sum(r["depletion_move"] is None for r in records),
         "time_forfeits": sum(r["time_forfeits"] for r in records),
@@ -170,8 +236,8 @@ def format_summary(summary: dict[str, Any]) -> str:
         return "欠測" if value is None else f"{value:.6f}"
 
     lines = [
-        "phase turns mean-depth depth-missing ratio-median ratio-p90 ratio-n "
-        "ratio-missing hard-fraction hard-denominator stop-reasons"
+        "phase turns mean-depth depth-missing soft-ratio-median soft-ratio-p90 soft-ratio-n "
+        "soft-ratio-missing hard-fraction hard-denominator stop-reasons"
     ]
     for phase, stats in summary["phases"].items():
         reasons = " ".join(
@@ -186,12 +252,24 @@ def format_summary(summary: dict[str, Any]) -> str:
             f"{stats['think_soft_missing']} {number(stats['hard_fraction'])} "
             f"{stats['hard_denominator']} {reasons}"
         )
-    lines.append("枯渇手数（計時開始後、各側の1手目から数える）:")
-    for item in summary["depletion"]:
-        if item["move"] is not None:
-            lines.append(f"  {item['game']} {item['side']}: {item['move']}手目")
     lines.append(
-        f"枯渇なし={summary['not_depleted_game_sides']}/{summary['game_sides']}件（各局の側ごと） "
+        "phase stop turns hard-ratio-median hard-ratio-p90 hard-overrun-max-ms "
+        "byoyomi-utilization-median byoyomi-utilization-n depth-zero depth-missing"
+    )
+    for phase, stats in summary["phases"].items():
+        for reason, group in [("all", stats), *stats["by_stop_reason"].items()]:
+            lines.append(
+                f"{phase} {reason} {group['turns']} {number(group['think_hard_median'])} "
+                f"{number(group['think_hard_p90'])} {number(group['hard_overrun_max_ms'])} "
+                f"{number(group['byoyomi_utilization_median'])} "
+                f"{group['byoyomi_utilization_samples']} {group['depth_zero']} {group['depth_missing']}"
+            )
+    lines.append("枯渇手数の分布（計時開始後、各側の1手目から数える）:")
+    for item in summary["depletion_distribution"]:
+        label = "未枯渇" if item["move"] is None else f"{item['move']}手目"
+        lines.append(f"  {label}: {item['game_sides']}件")
+    lines.append(
+        f"未枯渇={summary['not_depleted_game_sides']}/{summary['game_sides']}件（各局の側ごと） "
         f"time_forfeits={summary['time_forfeits']}"
     )
     return "\n".join(lines)

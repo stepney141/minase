@@ -74,11 +74,23 @@ def parse_evaluation(tokens: list[str], side: str) -> dict[str, Any] | None:
 
 
 def observe_search_data(turn: dict[str, Any], line: str) -> None:
-    """評価・停止理由・完了時間を、それぞれ最後の該当行で更新する。"""
+    """最終infoの値と、途中結果へ置き換わる前の完了反復の主変化を記録する。"""
     tokens = line.split()
+    if tokens == ["info", "string", "partial"]:
+        turn["partial"] = True
+    if tokens == ["info", "string", "forced"]:
+        turn["forced"] = True
     evaluation = parse_evaluation(tokens, turn["side"])
     if evaluation is not None:
         turn["evaluation"] = evaluation
+        if (
+            not turn["partial"]
+            and evaluation["depth"] is not None
+            and evaluation["depth"] > 0
+            and "pv" in tokens
+        ):
+            pv = tokens[tokens.index("pv") + 1:]
+            turn["last_completed_pv_head"] = pv[0] if pv else None
     if tokens[:3] == ["info", "string", "stop"]:
         if len(tokens) != 4 or tokens[3] not in budgets.STOP_REASONS:
             raise EngineError("crash", f"不正な停止理由: {line}")
@@ -165,6 +177,10 @@ class Engine:
             "evaluation": None,
             "stop_reason": None,
             "completed_time_ms": None,
+            "partial": False,
+            "forced": False,
+            "last_completed_pv_head": None,
+            "bestmove_changed": False,
         }
         deadline = time.monotonic() + self.timeout
         start = time.perf_counter_ns()
@@ -181,6 +197,11 @@ class Engine:
                     turn["response"] = (
                         {"kind": "resigned"} if tokens[1] == "resign"
                         else {"kind": "move", "usi": tokens[1]}
+                    )
+                    turn["bestmove_changed"] = (
+                        tokens[1] != "resign"
+                        and turn["last_completed_pv_head"] is not None
+                        and tokens[1] != turn["last_completed_pv_head"]
                     )
                     return turn, None
                 observe_search_data(turn, line)

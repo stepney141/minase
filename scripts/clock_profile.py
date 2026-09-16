@@ -3,8 +3,8 @@
 
 各局の`turns`にある実測思考時間から、ハーネスと同じ規則で両側の時計を
 再構成し、手数帯ごとに平均到達深さ、思考時間と着手前の残り時間の中央値、
-停止理由の分布、および完了反復後に捨てられた計算時間の中央値を出力する。
-停止理由または完了反復の経過時間がない記録は欠測として扱い、推定しない。
+停止理由の分布、および最後のinfo以後の時間の中央値を出力する。
+停止理由または最後のinfoの経過時間がない記録は欠測として扱い、推定しない。
 
 使い方:
     scripts/clock_profile.py data/matches/<測定名> --budget quadruple-soft [--role candidate|baseline]
@@ -65,7 +65,7 @@ def main() -> None:
     think_ms = {band: [] for band in PLY_BANDS}
     remaining_ms = {band: [] for band in PLY_BANDS}
     stop_reasons = {band: Counter() for band in PLY_BANDS}
-    discarded_ms = {band: [] for band in PLY_BANDS}
+    after_last_info_ms = {band: [] for band in PLY_BANDS}
     game_lengths = []
     roles = (args.role,) if args.role is not None else ("candidate", "baseline")
     records_by_role: dict[str, list[dict[str, Any]]] = {role: [] for role in roles}
@@ -101,7 +101,7 @@ def main() -> None:
                     reason = turn.get("stop_reason")
                     stop_reasons[band]["欠測" if reason is None else reason] += 1
                     if turn.get("completed_time_ms") is not None:
-                        discarded_ms[band].append(elapsed - turn["completed_time_ms"])
+                        after_last_info_ms[band].append(elapsed - turn["completed_time_ms"])
 
     if not game_lengths:
         raise SystemExit("対局記録がない")
@@ -111,7 +111,7 @@ def main() -> None:
     )
     print(
         "ply-band   turns  mean-depth  median-think-ms  median-remaining-ms  "
-        "median-discarded-ms  stop-reasons"
+        "median-after-last-info-ms  stop-reasons"
     )
     for band in PLY_BANDS:
         if not think_ms[band]:
@@ -124,15 +124,15 @@ def main() -> None:
                 for reason, count in sorted(stop_reasons[band].items())
             )
         mean_depth = statistics.mean(depth[band]) if depth[band] else float("nan")
-        discarded = (
-            f"{statistics.median(discarded_ms[band]):.0f}"
-            if discarded_ms[band]
+        after_last_info = (
+            f"{statistics.median(after_last_info_ms[band]):.0f}"
+            if after_last_info_ms[band]
             else "欠測"
         )
         print(
             f"{band_label(band):<9} {len(think_ms[band]):>7} {mean_depth:>11.2f} "
             f"{statistics.median(think_ms[band]):>16.0f} {statistics.median(remaining_ms[band]):>20.0f} "
-            f"{discarded:>19}  {reasons}"
+            f"{after_last_info:>25}  {reasons}"
         )
 
     summary = {
