@@ -14,9 +14,9 @@
 ## 状態
 
 進行中。2026年9月15日に起案し、2026年9月16日に着手した。
-段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）、段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）、段階4（走り計算の減算方式とSEE逆引きの近傍走査、[bench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)、親比1.1205倍）、および段階5（静止探索の候補処理の簡素化、[bench比較](../measurements/movegen-speedup-2-stage5-bench-depth5.md)、親比1.0443倍）は完了して採用し、累積は基準比1.2636倍で最低受入条件の1.15倍を超えた。
-段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手しない。段階4の減少方向の書き換えと在席マスクは増分が親の幅を超えず採用しない。
-次の一手は段階6の主探索の手生成と探索ノードの固定費である。
+段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）、段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）、段階4（走り計算の減算方式とSEE逆引きの近傍走査、[bench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)、親比1.1205倍）、段階5（静止探索の候補処理の簡素化、[bench比較](../measurements/movegen-speedup-2-stage5-bench-depth5.md)、親比1.0443倍）、および段階6（主探索の手生成と探索ノードの固定費、[bench比較](../measurements/movegen-speedup-2-stage6-bench-depth5.md)、段階5比約1.09倍）は完了して採用し、累積は基準比1.3854倍で目標の1.3倍を超えた。
+段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手しない。段階4の減少方向の書き換えと在席マスク、段階6のSEE作業領域、ノード数の一括反映、および履歴の`HashSet`は効果を確認できず採用しない。
+次の一手は段階10の前半、すなわち段階6までの採用版と第1期の採用版のSTCである。
 
 ## 目的
 
@@ -280,6 +280,8 @@ SEEの逆引きの固定利きも本段階に含める。
 各項目の見込みは1%前後で交互測定の幅に近いため、単独では採否を判定できず、1単位にまとめて合計で探索時間の3%から5%を見込む。
 作業領域や集合など状態を追加する項目は、対象処理の実行頻度と費用を確認してから着手し、一括測定で採用候補になった後にその項目だけを外した比較を行い、効果を確認できない状態は残さない。
 検証は、着手の復元が観測可能な全成分を戻すテスト、累算値と全再計算の一致テスト、SEEの参照実装との一致、ノード上限のテスト、固定ノード数の探索結果の一致、および局面別一致による。
+結果は[段階6のbench比較](../measurements/movegen-speedup-2-stage6-bench-depth5.md)にあり、SEEの作業領域、ノード数の一括反映、および対局履歴の`HashSet`は、その項目だけを外した比較（履歴は300手の履歴を与えた探索の経過を含む）で効果を確認できず外した。
+
 ### 段階7　静止探索における静的評価の先行打ち切り（探索木を変える）
 
 静止探索は現在、置換表を照合してから静的評価を求め、静的評価が探索上限β以上なら下限として保存して返す。

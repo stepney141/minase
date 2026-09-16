@@ -42,6 +42,14 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: M
     let mut gains = [0_i32; MAX_GAINS];
     gains[0] = pst.piece_value(captured_piece) + pst.piece_value(piece_after_move)
         - pst.piece_value(moving_piece);
+    // 同「段階6」: 成り益の上限で最初の取り返しも損をしないと分かる。
+    if gains[0] >= 0
+        && pst.piece_value(moving_piece) - pst.piece_value(captured_piece)
+            + pst.max_promotion_gain()
+            <= 0
+    {
+        return false;
+    }
     let mut piece_value = pst.piece_value(piece_after_move);
     let mut lion_on_square =
         moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
@@ -336,6 +344,54 @@ mod tests {
                 }
             }
             assert!(checked > 0);
+        }
+    }
+
+    /// 「段階6」（movegen-speedup-2.md）の上限の両側と等号で逆引きの省略を検査する。
+    #[test]
+    fn see_prunes_skips_lookup_at_the_promotion_gain_bound() {
+        use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
+        use sha2::{Digest, Sha256};
+
+        for captured_value in [999_i32, 1000, 1001] {
+            // MNPTの駒価値表を直接指定する。最大の成り益は歩100→金1000の900。
+            let mut bytes = include_bytes!("../../nets/pst-init.bin").to_vec();
+            let base = bytes.len() - PIECE_STATE_COUNT * 4;
+            for state in 0..PIECE_STATE_COUNT {
+                bytes[base + state * 4..base + state * 4 + 4]
+                    .copy_from_slice(&1000_i32.to_le_bytes());
+            }
+            let mover = unpromoted(Color::Black, PieceKind::Pawn);
+            let victim = unpromoted(Color::White, PieceKind::FreeKing);
+            let royal_value = captured_value.max(1000) + 100;
+            for (state, value) in [
+                (piece_state_of(mover), 100),
+                (piece_state_of(victim), captured_value),
+                (PieceKind::King.index(), royal_value),
+                (PieceKind::CrownPrince.index(), royal_value),
+            ] {
+                bytes[base + state * 4..base + state * 4 + 4].copy_from_slice(&value.to_le_bytes());
+            }
+            let checksum = Sha256::digest(&bytes[80..]);
+            bytes[48..80].copy_from_slice(&checksum);
+            let pst = Pst::decode(&bytes).unwrap();
+            assert_eq!(pst.max_promotion_gain(), 900);
+            let board = position(
+                Color::Black,
+                &[
+                    (sq(5, 4), mover),
+                    (sq(5, 5), victim),
+                    (sq(5, 6), unpromoted(Color::White, PieceKind::Pawn)),
+                ],
+            );
+            let counts = assert_prune_contract(
+                &board,
+                MoveRules::standard(),
+                &pst,
+                capture(sq(5, 4), sq(5, 5)),
+                Some(captured_value - 100),
+            );
+            assert_eq!(counts, (usize::from(captured_value < 1000), 2));
         }
     }
 

@@ -462,7 +462,7 @@ fn run_quiesce(
         started: Instant::now(),
         hard_limit: None,
     };
-    let history = [];
+    let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
     let pst = crate::eval::weights().unwrap();
     let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
@@ -491,7 +491,7 @@ fn run_negamax(
         started: Instant::now(),
         hard_limit: None,
     };
-    let history = [];
+    let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
     let pst = crate::eval::weights().unwrap();
     let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
@@ -849,7 +849,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     };
 
     for (tt_move, expected_capture) in [(capture, true), (quiet, false)] {
-        assert!(generator.is_legal_move(&position, tt_move));
+        assert!(generator.is_legal_move(&position, tt_move, &mut Vec::new(), &mut Vec::new()));
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
         let picked = picker.next(&position, &pst, &generator, &history).unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
@@ -2987,5 +2987,309 @@ fn malformed_atomic_tt_entries_are_probe_misses() {
         let invalid_advisory = (advisory & !ADVISORY_MOVE_MASK) | u64::from(invalid_move);
         table.write_raw(key, critical, invalid_advisory);
         assert!(table.probe(key, 0).is_none());
+    }
+}
+
+// movegen-speedup-2.md「段階6」: 変更前の全出力列を契約の参照にする。
+struct ReferenceMovePicker {
+    stage: MovePickerStage,
+    tt_move: Option<Move>,
+    killers: [Option<Move>; KILLER_COUNT],
+    captures: Vec<(Move, MoveOrderKey)>,
+    capture_index: usize,
+    captures_generated: bool,
+    quiets: Vec<Move>,
+    quiet_index: usize,
+    quiets_generated: bool,
+}
+
+impl ReferenceMovePicker {
+    /// 助言手を保持した空の手選択器を作る。
+    fn new(tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) -> Self {
+        Self {
+            stage: MovePickerStage::Tt,
+            tt_move,
+            killers,
+            captures: Vec::new(),
+            capture_index: 0,
+            captures_generated: false,
+            quiets: Vec::new(),
+            quiet_index: 0,
+            quiets_generated: false,
+        }
+    }
+
+    /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
+    fn next(
+        &mut self,
+        position: &Position,
+        pst: &Pst,
+        generator: &MoveGenerator,
+        history: &HistoryTable,
+    ) -> Option<(Move, bool)> {
+        loop {
+            match self.stage {
+                MovePickerStage::Tt => {
+                    self.stage = MovePickerStage::Captures;
+                    if let Some(tt_move) = self.tt_move
+                        && {
+                            let mut moves = Vec::new();
+                            generator.generate_moves(position, &mut moves);
+                            moves.contains(&tt_move)
+                        }
+                    {
+                        return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
+                    }
+                }
+                MovePickerStage::Captures => {
+                    if !self.captures_generated {
+                        let mut moves = Vec::new();
+                        generator.generate_captures(position, &mut moves);
+                        self.captures.extend(
+                            moves
+                                .into_iter()
+                                .filter(|&mv| Some(mv) != self.tt_move)
+                                .map(|mv| {
+                                    let key = move_order_key(position, pst, mv)
+                                        .expect("capture generator must not return a quiet move");
+                                    (mv, key)
+                                }),
+                        );
+                        self.captures.sort_by_key(|&(_, key)| {
+                            (Reverse(key.captured_value), key.attacker_value)
+                        });
+                        self.captures_generated = true;
+                    }
+                    if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
+                        self.capture_index += 1;
+                        return Some((mv, true));
+                    }
+                    self.stage = MovePickerStage::Killer0;
+                }
+                MovePickerStage::Killer0 | MovePickerStage::Killer1 => {
+                    if !self.quiets_generated {
+                        generator.generate_moves(position, &mut self.quiets);
+                        self.quiets.retain(|&mv| {
+                            position
+                                .captured_squares(mv)
+                                .into_iter()
+                                .all(|sq| sq.is_none())
+                        });
+                        self.quiets.retain(|&mv| Some(mv) != self.tt_move);
+                        self.quiets_generated = true;
+                    }
+                    let killer_index = usize::from(matches!(self.stage, MovePickerStage::Killer1));
+                    self.stage = if killer_index == 0 {
+                        MovePickerStage::Killer1
+                    } else {
+                        MovePickerStage::Quiets
+                    };
+                    if let Some(killer) = self.killers[killer_index]
+                        && let Some(index) = self.quiets.iter().position(|&mv| mv == killer)
+                    {
+                        return Some((self.quiets.remove(index), false));
+                    }
+                }
+                MovePickerStage::Quiets => {
+                    let color = position.side_to_move().index();
+                    self.quiets.sort_by_cached_key(|&mv| {
+                        Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()])
+                    });
+                    self.stage = MovePickerStage::Done;
+                }
+                MovePickerStage::Done => {
+                    if let Some(&mv) = self.quiets.get(self.quiet_index) {
+                        self.quiet_index += 1;
+                        return Some((mv, false));
+                    }
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+/// 「段階6」（movegen-speedup-2.md）の全出力列を同点・重複・履歴更新込みで照合する。
+#[test]
+fn staged_picker_matches_reference_sequence_with_changing_history() {
+    let pst = weights().unwrap();
+    let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
+    for rules in crate::core::movegen::tests::capture_test_rules() {
+        let generator = MoveGenerator::new(rules);
+        let positions = std::iter::once(staged_picker_fixture())
+            .chain(crate::test_util::sampled_random_positions(rules));
+        for position in positions {
+            let mut all = Vec::new();
+            generator.generate_moves(&position, &mut all);
+            if all.is_empty() {
+                continue;
+            }
+            let quiets: Vec<_> = all
+                .iter()
+                .copied()
+                .filter(|&mv| move_order_key(&position, &pst, mv).is_none())
+                .collect();
+            let first = quiets.first().copied();
+            let last = quiets.last().copied();
+            let illegal = Move {
+                from: sq(0, 0),
+                to: sq(11, 11),
+                mid: Some(sq(4, 4)),
+                promote: true,
+            };
+            for (tt, killers) in [
+                (None, [None, None]),
+                (first, [first, last]),
+                (Some(all[all.len() / 2]), [first, first]),
+                (Some(illegal), [Some(illegal), last]),
+            ] {
+                let mut history =
+                    Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+                let mut reference = ReferenceMovePicker::new(tt, killers);
+                picker.reset(tt, killers);
+                let mut ordinal = 0;
+                loop {
+                    let expected = reference.next(&position, &pst, &generator, &history);
+                    let actual = picker.next(&position, &pst, &generator, &history);
+                    assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
+                    let Some((mv, _)) = expected else {
+                        break;
+                    };
+                    // 子探索から戻るたびに履歴が変わる。少数の値を使い同点も保つ。
+                    history[position.side_to_move().index()][mv.from.dense_index()]
+                        [mv.to.dense_index()] = ordinal % 3 - 1;
+                    ordinal += 1;
+                }
+            }
+        }
+    }
+}
+
+/// 「段階6」（movegen-speedup-2.md）の300手の履歴で、変更前の探索結果を固定する。
+#[test]
+fn stage6_long_history_search_contract() {
+    let rules = engine_rules();
+    let generator = MoveGenerator::new(rules);
+    let mut root = Position::initial();
+    let mut history = vec![search_key(&root)];
+    let mut rng = crate::rng::XorShift64::new(NonZeroU64::new(0x5354_4147_4536_0001).unwrap());
+    for _ in 0..300 {
+        let mut moves = Vec::new();
+        generator.generate_moves(&root, &mut moves);
+        moves.retain(|&mv| !captures_last_royal(&root, mv));
+        let mv = moves[rng.next() as usize % moves.len()];
+        root.make_move_unchecked(mv, rules);
+        history.push(search_key(&root));
+    }
+    let moves = legal_moves(&root);
+    let result = run_search(
+        &root,
+        rules,
+        &moves,
+        &history,
+        &depth_limits(5),
+        DEFAULT_THREADS,
+        &mut small_tt(),
+    );
+    assert_eq!(
+        result,
+        SearchResult {
+            best_move: Move {
+                from: sq(5, 3),
+                mid: None,
+                to: sq(5, 2),
+                promote: false
+            },
+            score: 2860,
+            depth: 5,
+            nodes: 55817,
+        }
+    );
+    // null moveは経路にキーを追加しない。パス後の実着手による反復も参照に含める。
+    let mut after_null = root.clone();
+    after_null.make_null_move();
+    let reply = legal_moves(&after_null)
+        .into_iter()
+        .find(|&mv| !captures_last_royal(&after_null, mv))
+        .unwrap();
+    let mut repeated = after_null.clone();
+    repeated.make_move_unchecked(reply, rules);
+    history[1] = search_key(&repeated);
+    with_root_searcher(&root, &history, |searcher| {
+        searcher.null_move_ply = Some(1);
+        searcher.accumulators[1] = searcher.pst.refresh_accumulator(&after_null);
+        let path = searcher.path_keys.clone();
+        let score =
+            searcher.search_move(&mut after_null, reply, 2, -INFINITY, INFINITY, 1, true, 0);
+        assert_eq!(score, Some(DRAW_SCORE));
+        assert_eq!(searcher.path_keys, path);
+        assert_eq!(searcher.nodes, 1);
+    });
+    with_root_searcher(&root, &history, |searcher| {
+        let score = searcher.negamax(&mut root.clone(), 5, -1, 0, 0);
+        assert_eq!(score, Some(2435));
+        assert_eq!(searcher.nodes, 49);
+        assert_eq!(
+            searcher.pv[0],
+            [
+                Move {
+                    from: sq(4, 1),
+                    mid: None,
+                    to: sq(5, 2),
+                    promote: false
+                },
+                Move {
+                    from: sq(8, 7),
+                    mid: None,
+                    to: sq(10, 7),
+                    promote: false
+                },
+                Move {
+                    from: sq(3, 2),
+                    mid: None,
+                    to: sq(11, 10),
+                    promote: false
+                },
+            ]
+        );
+    });
+}
+
+/// 「段階6」（movegen-speedup-2.md）の固定ノード数で変更前の完了結果を固定する。
+#[test]
+fn stage6_fixed_node_search_contract() {
+    let root = Position::initial();
+    for nodes in [
+        1,
+        STOP_CHECK_INTERVAL - 1,
+        STOP_CHECK_INTERVAL,
+        STOP_CHECK_INTERVAL + 1,
+        10_000,
+    ] {
+        let result = run_search(
+            &root,
+            engine_rules(),
+            &legal_moves(&root),
+            &[search_key(&root)],
+            &nodes_limits(nodes),
+            DEFAULT_THREADS,
+            &mut small_tt(),
+        );
+        let (from, to, score, depth) = if nodes == 1 {
+            (sq(0, 3), sq(0, 4), 33, 0)
+        } else {
+            (sq(4, 0), sq(3, 1), 5, 3)
+        };
+        assert_eq!(
+            result.best_move,
+            Move {
+                from,
+                mid: None,
+                to,
+                promote: false
+            }
+        );
+        assert_eq!((result.score, result.depth), (score, depth));
+        assert_eq!(result.nodes, nodes);
     }
 }

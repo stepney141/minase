@@ -103,16 +103,18 @@ impl MoveGenerator {
             });
         }
         match special {
-            SpecialMovement::Lion => generate_lion_double_and_jumps::<true>(
+            SpecialMovement::Lion => generate_lion_double_and_jumps::<true, false>(
                 self.tables(),
                 position,
                 color,
                 from,
                 &mut emit,
             ),
-            SpecialMovement::LionLike(profile) => generate_lion_like_double_and_jumps::<true>(
-                position, color, from, profile, &mut emit,
-            ),
+            SpecialMovement::LionLike(profile) => {
+                generate_lion_like_double_and_jumps::<true, false>(
+                    position, color, from, profile, &mut emit,
+                )
+            }
             SpecialMovement::None => {
                 unreachable!("special capture generator requires a special piece")
             }

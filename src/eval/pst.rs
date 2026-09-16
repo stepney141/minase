@@ -34,12 +34,14 @@ const EVALUATION_LIMIT: i32 = 28_999;
 
 /// 学習PSTの量子化重みと勝率尺度。
 pub struct Pst {
-    /// 序中盤、終盤の順に保持する1/8センチポーン単位の特徴重み。
-    weights: [[i16; FEATURE_COUNT]; 2],
+    /// 「段階6」（movegen-speedup-2.md）に従い、特徴ごとに序中盤と終盤を隣接させる。
+    weights: [[i16; 2]; FEATURE_COUNT],
     /// 駒状態ごとのセンチポーン単位の駒価値。
     piece_values: [i32; PIECE_STATE_COUNT],
     /// 静止探索で小さな捕獲を残すための余裕値。
     delta_margin: i32,
+    /// SEEの逆引き前の判定に使う全駒種の成り益の非負上限（同「段階6」）。
+    max_promotion_gain: i32,
     /// 学習時に使ったセンチポーンから勝率ロジットへの尺度。
     k: f32,
     /// 重み本体のSHA-256。学習データのヘッダに生成元のネットとして記録する。
@@ -97,14 +99,16 @@ impl Pst {
             return Err(Error::ChecksumMismatch);
         }
 
-        let mut weights = [[0_i16; FEATURE_COUNT]; 2];
-        for (index, weight) in weights.iter_mut().flatten().enumerate() {
-            let offset = index * 2;
-            *weight = i16::from_le_bytes(
-                body[offset..offset + 2]
-                    .try_into()
-                    .expect("slice length is fixed"),
-            );
+        let mut weights = [[0_i16; 2]; FEATURE_COUNT];
+        for (feature, pair) in weights.iter_mut().enumerate() {
+            for (endpoint, weight) in pair.iter_mut().enumerate() {
+                let offset = (endpoint * FEATURE_COUNT + feature) * 2;
+                *weight = i16::from_le_bytes(
+                    body[offset..offset + 2]
+                        .try_into()
+                        .expect("slice length is fixed"),
+                );
+            }
         }
         let mut piece_values = [0_i32; PIECE_STATE_COUNT];
         for (state, value) in piece_values.iter_mut().enumerate() {
@@ -116,7 +120,17 @@ impl Pst {
             );
         }
         let delta_margin = validate_piece_values(&piece_values)?;
+        let max_promotion_gain = PieceKind::ALL
+            .into_iter()
+            .filter_map(|kind| PieceCode::new(Color::Black, kind))
+            .filter_map(|piece| {
+                piece.promote().map(|promoted| {
+                    piece_values[piece_state(promoted)] - piece_values[piece_state(piece)]
+                })
+            })
+            .fold(0, i32::max);
         Ok(Self {
+            max_promotion_gain,
             weights,
             piece_values,
             delta_margin,
@@ -163,6 +177,18 @@ impl Pst {
         self.delta_margin
     }
 
+    /// 「段階6」（movegen-speedup-2.md）の取り返しで得られる成り益の上限を返す。
+    pub(crate) const fn max_promotion_gain(&self) -> i32 {
+        self.max_promotion_gain
+    }
+
+    /// 同「段階6」の隣接した端点重みを読み、両方の累算値へ加える。
+    fn add_feature(&self, sums: &mut [i32; 2], feature: usize, sign: i32) {
+        let pair = self.weights[feature];
+        sums[0] += sign * i32::from(pair[0]);
+        sums[1] += sign * i32::from(pair[1]);
+    }
+
     /// 学習時に使った勝率尺度Kを返す。
     pub const fn k(&self) -> f32 {
         self.k
@@ -181,12 +207,7 @@ impl Pst {
         };
         for perspective in Color::ALL {
             active_features_for(perspective, position, |feature| {
-                for (sum, weights) in accumulator.sums[perspective.index()]
-                    .iter_mut()
-                    .zip(&self.weights)
-                {
-                    *sum += i32::from(weights[feature]);
-                }
+                self.add_feature(&mut accumulator.sums[perspective.index()], feature, 1);
             });
         }
         accumulator
@@ -206,26 +227,29 @@ impl Pst {
 
         after.piece_count -= undo.captured.iter().flatten().count() as u32;
         for perspective in Color::ALL {
-            for (sum, weights) in after.sums[perspective.index()]
-                .iter_mut()
-                .zip(&self.weights)
-            {
-                *sum -= i32::from(
-                    weights[feature_index(perspective, undo.moved_piece_before, undo.mv.from)],
+            let sums = &mut after.sums[perspective.index()];
+            self.add_feature(
+                sums,
+                feature_index(perspective, undo.moved_piece_before, undo.mv.from),
+                -1,
+            );
+            for captured in undo.captured.into_iter().flatten() {
+                self.add_feature(
+                    sums,
+                    feature_index(perspective, captured.piece, captured.square),
+                    -1,
                 );
-                for captured in undo.captured.into_iter().flatten() {
-                    *sum -= i32::from(
-                        weights[feature_index(perspective, captured.piece, captured.square)],
-                    );
-                }
-                if let Some(trigger) = undo.previous_lion_taken {
-                    *sum -= i32::from(weights[lion_feature_index(perspective, trigger.square)]);
-                }
-                *sum +=
-                    i32::from(weights[feature_index(perspective, moved_piece_after, undo.mv.to)]);
-                if let Some(trigger) = position_after.lion_taken_by_non_lion() {
-                    *sum += i32::from(weights[lion_feature_index(perspective, trigger.square)]);
-                }
+            }
+            if let Some(trigger) = undo.previous_lion_taken {
+                self.add_feature(sums, lion_feature_index(perspective, trigger.square), -1);
+            }
+            self.add_feature(
+                sums,
+                feature_index(perspective, moved_piece_after, undo.mv.to),
+                1,
+            );
+            if let Some(trigger) = position_after.lion_taken_by_non_lion() {
+                self.add_feature(sums, lion_feature_index(perspective, trigger.square), 1);
             }
         }
         after
@@ -240,12 +264,11 @@ impl Pst {
         let mut after = before;
         if let Some(square) = lion_before {
             for perspective in Color::ALL {
-                for (sum, weights) in after.sums[perspective.index()]
-                    .iter_mut()
-                    .zip(&self.weights)
-                {
-                    *sum -= i32::from(weights[lion_feature_index(perspective, square)]);
-                }
+                self.add_feature(
+                    &mut after.sums[perspective.index()],
+                    lion_feature_index(perspective, square),
+                    -1,
+                );
             }
         }
         after
@@ -443,9 +466,7 @@ fn interpolate(sums: [i32; 2], piece_count: u32) -> i32 {
 pub fn evaluate(pst: &Pst, position: &Position) -> i32 {
     let mut sums = [0_i32; 2];
     active_features(position, |feature| {
-        for (sum, weights) in sums.iter_mut().zip(&pst.weights) {
-            *sum += i32::from(weights[feature]);
-        }
+        pst.add_feature(&mut sums, feature, 1);
     });
     interpolate(sums, position.occupied().popcount())
 }
@@ -882,13 +903,13 @@ mod tests {
     #[test]
     fn identical_endpoints_match_single_table_evaluation() {
         let pst = Pst::decode(&valid_bytes()).unwrap();
-        assert_eq!(pst.weights[0], pst.weights[1]);
+        assert!(pst.weights.iter().all(|pair| pair[0] == pair[1]));
         for count in [2, 47, 92] {
             let mut position = position_with_count(count, Color::Black);
             position.set_lion_capture(Some(sq(3, 9))).unwrap();
             let mut sum = 0_i32;
             active_features(&position, |feature| {
-                sum += i32::from(pst.weights[0][feature])
+                sum += i32::from(pst.weights[feature][0])
             });
             assert_evaluation(&pst, &position, (sum / 8).clamp(-28_999, 28_999));
         }
@@ -919,8 +940,8 @@ mod tests {
             }
             let mut sums = [0_i64; 2];
             active_features(&position, |feature| {
-                sums[0] += i64::from(pst.weights[0][feature]);
-                sums[1] += i64::from(pst.weights[1][feature]);
+                sums[0] += i64::from(pst.weights[feature][0]);
+                sums[1] += i64::from(pst.weights[feature][1]);
             });
             let expected = ((q * sums[0] + (90 - q) * sums[1]) / 720).clamp(-28_999, 28_999) as i32;
             assert_evaluation(&pst, &position, expected);

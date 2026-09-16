@@ -422,7 +422,7 @@ fn playout_capture_generation(rules: MoveRules, seed: u64, plies: usize) {
             .filter(|&mv| expected_captures(&position, mv).is_empty())
             .collect();
         let mut quiets = Vec::new();
-        generator.generate_quiets(&position, &mut quiets);
+        generator.generate_quiets(&position, &mut Vec::new(), &mut quiets);
         assert_eq!(quiets, expected_quiets);
         if moves.is_empty() {
             break;
@@ -503,4 +503,88 @@ fn mc_make_unmake_round_trips_every_generated_move() {
         0x5255_4c45_5345_5404,
         64,
     );
+}
+
+/// 「段階6」（movegen-speedup-2.md）の非捕獲列は、全規則で全手列の部分列と一致する。
+#[test]
+fn quiet_generation_preserves_order_for_special_moves_and_all_rules() {
+    for rules in super::capture_test_rules() {
+        let generator = MoveGenerator::new(rules);
+        let mut base = Vec::new();
+        let mut quiets = Vec::new();
+        for kind in [
+            PieceKind::Lion,
+            PieceKind::HornedFalcon,
+            PieceKind::SoaringEagle,
+        ] {
+            let code = if kind == PieceKind::Lion {
+                PieceCode::new(Color::Black, kind).unwrap()
+            } else {
+                PieceCode::new_promoted(Color::Black, kind).unwrap()
+            };
+            let from = Square::new(5, 5).unwrap();
+            let mid = Square::new(
+                if kind == PieceKind::SoaringEagle {
+                    4
+                } else {
+                    5
+                },
+                6,
+            )
+            .unwrap();
+            let to = Square::new(
+                if kind == PieceKind::SoaringEagle {
+                    3
+                } else {
+                    5
+                },
+                7,
+            )
+            .unwrap();
+            let mut builder = PositionBuilder::new(Color::Black);
+            builder.put(from, code).unwrap();
+            builder
+                .put(mid, PieceCode::new(Color::White, PieceKind::Pawn).unwrap())
+                .unwrap();
+            let position = builder.finish().unwrap();
+            let all = generated_with(&generator, &position);
+            let expected: Vec<_> = all
+                .iter()
+                .copied()
+                .filter(|&mv| expected_captures(&position, mv).is_empty())
+                .collect();
+            let jump = Move {
+                from,
+                mid: None,
+                to,
+                promote: false,
+            };
+            let double = Move {
+                mid: Some(mid),
+                ..jump
+            };
+            let jitto = Move { to: from, ..jump };
+            assert!(all.contains(&double), "{kind:?}");
+            assert!(expected.contains(&jump), "{kind:?}");
+            let empty = single_piece(Color::Black, from, code);
+            quiets.clear();
+            generator.generate_quiets(&empty, &mut base, &mut quiets);
+            assert!(quiets.contains(&jitto), "{kind:?}");
+            assert_eq!(quiets, generated_with(&generator, &empty));
+            quiets.clear();
+            quiets.push(jump);
+            generator.generate_quiets(&position, &mut base, &mut quiets);
+            assert_eq!(quiets[0], jump);
+            assert_eq!(quiets[1..], expected);
+        }
+        for position in crate::test_util::sampled_random_positions(rules) {
+            let expected: Vec<_> = generated_with(&generator, &position)
+                .into_iter()
+                .filter(|&mv| expected_captures(&position, mv).is_empty())
+                .collect();
+            quiets.clear();
+            generator.generate_quiets(&position, &mut base, &mut quiets);
+            assert_eq!(quiets, expected);
+        }
+    }
 }

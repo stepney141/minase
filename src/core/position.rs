@@ -450,7 +450,23 @@ impl Position {
     }
 
     /// 駒を置き、占有集合とzobristハッシュを増分更新する。
-    fn put_piece(&mut self, square: Square, piece: PieceCode) -> Result<(), PositionBuildError> {
+    fn put_piece(
+        &mut self,
+        square: Square,
+        piece: PieceCode,
+        keys: &ZobristKeys,
+    ) -> Result<(), PositionBuildError> {
+        self.put_piece_without_hash(square, piece)?;
+        self.zobrist ^= keys.piece(square, piece);
+        Ok(())
+    }
+
+    /// 「段階6」（movegen-speedup-2.md）の復元用に、盤面と占有集合だけを更新する。
+    fn put_piece_without_hash(
+        &mut self,
+        square: Square,
+        piece: PieceCode,
+    ) -> Result<(), PositionBuildError> {
         if piece.is_empty() || piece.is_wall() {
             return Err(PositionBuildError::EmptyOrWallPiece);
         }
@@ -464,12 +480,18 @@ impl Position {
         self.occupied.set(square);
         self.by_color[color.index()].set(square);
         self.by_kind[color.index()][kind.index()].set(square);
-        self.zobrist ^= zobrist_keys().piece(square, piece);
         Ok(())
     }
 
     /// 駒を取り除き、占有集合とzobristハッシュを増分更新して駒を返す。
-    fn remove_piece(&mut self, square: Square) -> PieceCode {
+    fn remove_piece(&mut self, square: Square, keys: &ZobristKeys) -> PieceCode {
+        let piece = self.remove_piece_without_hash(square);
+        self.zobrist ^= keys.piece(square, piece);
+        piece
+    }
+
+    /// 「段階6」（movegen-speedup-2.md）の復元用に、ハッシュを変更せず駒を除く。
+    fn remove_piece_without_hash(&mut self, square: Square) -> PieceCode {
         let piece = self.board[square.raw_index()];
         debug_assert!(!piece.is_empty() && !piece.is_wall());
         let color = piece.color().expect("occupied square must have a color");
@@ -479,15 +501,14 @@ impl Position {
         self.occupied.clear(square);
         self.by_color[color.index()].clear(square);
         self.by_kind[color.index()][kind.index()].clear(square);
-        self.zobrist ^= zobrist_keys().piece(square, piece);
         piece
     }
 
     /// 手番を反転し、zobristハッシュを更新する。
     #[inline]
-    fn flip_side_to_move(&mut self) {
+    fn flip_side_to_move(&mut self, keys: &ZobristKeys) {
         self.side_to_move = self.side_to_move.opposite();
-        self.zobrist ^= zobrist_keys().side_to_move;
+        self.zobrist ^= keys.side_to_move;
     }
 
     /// 探索用の手番パスを適用し、巻き戻し用トークンを返す。
@@ -496,8 +517,8 @@ impl Position {
     /// 直後の1手だけに適用される先獅子状態を消滅させる(第15条第4・5項)。
     pub(crate) fn make_null_move(&mut self) -> NullUndo {
         let previous_lion_taken = self.lion_taken_by_non_lion;
-        self.flip_side_to_move();
         let keys = zobrist_keys();
+        self.flip_side_to_move(keys);
         self.zobrist ^=
             keys.lion_trigger_state(previous_lion_taken) ^ keys.lion_trigger_state(None);
         self.lion_taken_by_non_lion = None;
@@ -511,8 +532,8 @@ impl Position {
     /// トークンはこの局面に対する[`Position::make_null_move`]が返した
     /// ものでなければならず、適用と逆の順序で巻き戻す必要がある。
     pub(crate) fn unmake_null_move(&mut self, undo: NullUndo) {
-        self.flip_side_to_move();
         let keys = zobrist_keys();
+        self.flip_side_to_move(keys);
         self.zobrist ^= keys.lion_trigger_state(self.lion_taken_by_non_lion)
             ^ keys.lion_trigger_state(undo.previous_lion_taken);
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
@@ -526,7 +547,7 @@ impl Position {
     pub(crate) fn clone_with_side_to_move(&self, side_to_move: Color) -> Self {
         let mut position = self.clone();
         if position.side_to_move != side_to_move {
-            position.flip_side_to_move();
+            position.flip_side_to_move(zobrist_keys());
         }
         position
     }
@@ -550,18 +571,18 @@ impl Position {
     }
 
     /// 成り権保留(P1・P2・P5)のビットを立て、権利ハッシュを更新する。
-    fn set_promotion_deferred(&mut self, square: Square) {
+    fn set_promotion_deferred(&mut self, square: Square, keys: &ZobristKeys) {
         if !self.promotion_deferred.contains(square) {
             self.promotion_deferred.set(square);
-            self.rights_zobrist ^= zobrist_keys().promotion_deferred(square);
+            self.rights_zobrist ^= keys.promotion_deferred(square);
         }
     }
 
     /// 成り権保留(P1・P2・P5)のビットを消し、権利ハッシュを更新する。
-    fn clear_promotion_deferred(&mut self, square: Square) {
+    fn clear_promotion_deferred(&mut self, square: Square, keys: &ZobristKeys) {
         if self.promotion_deferred.contains(square) {
             self.promotion_deferred.clear(square);
-            self.rights_zobrist ^= zobrist_keys().promotion_deferred(square);
+            self.rights_zobrist ^= keys.promotion_deferred(square);
         }
     }
 
@@ -682,6 +703,7 @@ impl Position {
         rules: MoveRules,
         capture_squares: [Option<Square>; 2],
     ) -> Undo {
+        let keys = zobrist_keys();
         let previous_zobrist = self.zobrist;
         let previous_promotion_deferred = self.promotion_deferred;
         let previous_rights_zobrist = self.rights_zobrist;
@@ -691,22 +713,23 @@ impl Position {
             .kind()
             .expect("move origin must contain a valid piece");
         let moving_color = self.side_to_move;
-        let promotion_choice = rules.promotion_choice_for(
-            moving_color,
-            moving_kind,
-            moving_piece.is_promoted(),
-            mv.from,
-            mv.to,
-            capture_squares.iter().any(Option::is_some),
-            self.promotion_deferred.contains(mv.from),
-        );
-        let had_promotion_chance = promotion_choice != PromotionChoice::NoPromotion;
-        let was_deferred = self.promotion_deferred.contains(mv.from);
         let tracks_promotion_deferred = rules.promotion != PromotionRule::P0 || rules.p5;
+        // 「段階6」: 権利を追跡する規則でだけ成りの選択肢を調べる。
+        let had_promotion_chance = tracks_promotion_deferred
+            && rules.promotion_choice_for(
+                moving_color,
+                moving_kind,
+                moving_piece.is_promoted(),
+                mv.from,
+                mv.to,
+                capture_squares.iter().any(Option::is_some),
+                self.promotion_deferred.contains(mv.from),
+            ) != PromotionChoice::NoPromotion;
+        let was_deferred = self.promotion_deferred.contains(mv.from);
         if tracks_promotion_deferred {
-            self.clear_promotion_deferred(mv.from);
+            self.clear_promotion_deferred(mv.from, keys);
             for square in capture_squares.into_iter().flatten() {
-                self.clear_promotion_deferred(square);
+                self.clear_promotion_deferred(square, keys);
             }
         }
         if rules.promotion == PromotionRule::P2 {
@@ -717,17 +740,17 @@ impl Position {
                 let is_p5_pawn = rules.p5
                     && self.piece_at(square).and_then(PieceCode::kind) == Some(PieceKind::Pawn);
                 if !is_p5_pawn {
-                    self.clear_promotion_deferred(square);
+                    self.clear_promotion_deferred(square, keys);
                 }
             }
         }
-        let moved_piece_before = self.remove_piece(mv.from);
+        let moved_piece_before = self.remove_piece(mv.from, keys);
         debug_assert_eq!(moved_piece_before.color(), Some(self.side_to_move));
 
         let mut captured = [None; 2];
         for (index, square) in capture_squares.into_iter().enumerate() {
             if let Some(square) = square {
-                let piece = self.remove_piece(square);
+                let piece = self.remove_piece(square, keys);
                 debug_assert_eq!(piece.color(), Some(self.side_to_move.opposite()));
                 captured[index] = Some(CapturedPiece { square, piece });
             }
@@ -740,7 +763,7 @@ impl Position {
         } else {
             moved_piece_before
         };
-        self.put_piece(mv.to, moved_piece_after)
+        self.put_piece(mv.to, moved_piece_after, keys)
             .expect("generated move must end on an empty square");
         let to_in_zone = in_promotion_zone(moving_color, mv.to);
         let enters_zone = !in_promotion_zone(moving_color, mv.from) && to_in_zone;
@@ -758,9 +781,9 @@ impl Position {
             && (was_deferred || had_promotion_chance);
         if defer_for_p1 || defer_for_p2 || defer_for_p5 {
             debug_assert!(self.promotion_deferred_is_valid(mv.to));
-            self.set_promotion_deferred(mv.to);
+            self.set_promotion_deferred(mv.to, keys);
         }
-        self.flip_side_to_move();
+        self.flip_side_to_move(keys);
         let by_kirin_promotion = moved_piece_before.kind() == Some(PieceKind::Kirin) && mv.promote;
         self.lion_taken_by_non_lion = (moved_piece_before.kind() != Some(PieceKind::Lion))
             .then(|| {
@@ -775,7 +798,6 @@ impl Position {
                     .next_back()
             })
             .flatten();
-        let keys = zobrist_keys();
         self.zobrist ^= keys.lion_trigger_state(previous_lion_taken)
             ^ keys.lion_trigger_state(self.lion_taken_by_non_lion);
 
@@ -796,20 +818,17 @@ impl Position {
     /// ものでなければならず、着手は適用と逆の順序で巻き戻す必要がある。
     /// どちらかの前提を破ると、panicするか局面を静かに壊すことがある。
     pub(crate) fn unmake_move(&mut self, undo: Undo) {
-        self.flip_side_to_move();
-        self.remove_piece(undo.mv.to);
-        self.put_piece(undo.mv.from, undo.moved_piece_before)
+        self.side_to_move = self.side_to_move.opposite();
+        self.remove_piece_without_hash(undo.mv.to);
+        self.put_piece_without_hash(undo.mv.from, undo.moved_piece_before)
             .expect("move origin must be empty while unmaking");
         for captured in undo.captured.into_iter().flatten() {
-            self.put_piece(captured.square, captured.piece)
+            self.put_piece_without_hash(captured.square, captured.piece)
                 .expect("capture square must be empty while unmaking");
         }
-        let keys = zobrist_keys();
-        self.zobrist ^= keys.lion_trigger_state(self.lion_taken_by_non_lion)
-            ^ keys.lion_trigger_state(undo.previous_lion_taken);
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
-        debug_assert_eq!(self.zobrist, undo.previous_zobrist);
         self.zobrist = undo.previous_zobrist;
+        debug_assert_eq!(self.zobrist, self.recompute_zobrist());
         debug_assert_eq!(self.rights_zobrist, self.recompute_rights_zobrist());
         self.promotion_deferred = undo.previous_promotion_deferred;
         debug_assert_eq!(
@@ -836,7 +855,7 @@ impl PositionBuilder {
 
     /// 指定升へ駒を置く。
     pub fn put(&mut self, square: Square, piece: PieceCode) -> Result<(), PositionBuildError> {
-        self.position.put_piece(square, piece)
+        self.position.put_piece(square, piece, zobrist_keys())
     }
 
     /// 指定升の駒を成り権保留中(P1・P2・P5)として記録する。
@@ -846,7 +865,7 @@ impl PositionBuilder {
                 PositionError::InvalidPromotionDeferred { square },
             ));
         }
-        self.position.set_promotion_deferred(square);
+        self.position.set_promotion_deferred(square, zobrist_keys());
         Ok(())
     }
 
@@ -1686,9 +1705,9 @@ mod tests {
         let mut position = pristine.clone();
         for square in Square::all() {
             for &code in &codes {
-                position.put_piece(square, code).unwrap();
+                position.put_piece(square, code, zobrist_keys()).unwrap();
                 assert!(position.occupied().contains(square));
-                assert_eq!(position.remove_piece(square), code);
+                assert_eq!(position.remove_piece(square, zobrist_keys()), code);
                 assert_eq!(position, pristine, "{square:?} {code:?}");
             }
         }

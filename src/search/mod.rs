@@ -741,11 +741,7 @@ impl SharedSearch<'_> {
     }
 
     /// ノードを1個予約する。上限を超える予約は拒否する。
-    fn reserve_node(&self) -> bool {
-        let Some(limit) = self.node_limit else {
-            self.total_nodes.fetch_add(1, AtomicOrdering::Relaxed);
-            return true;
-        };
+    fn reserve_node(&self, limit: u64) -> bool {
         let mut current = self.total_nodes.load(AtomicOrdering::Relaxed);
         loop {
             if current >= limit {
@@ -822,6 +818,7 @@ fn run_search_team(
         hard_limit: time_budget.map(|budget| budget.hard),
     };
 
+    let history_keys: Vec<u64> = history_keys.to_vec();
     let worker_outcomes = run_worker_team(threads, &shared, |worker_index| {
         if worker_index == 0 {
             run_main_worker(
@@ -829,7 +826,7 @@ fn run_search_team(
                 position,
                 rules,
                 root_moves,
-                history_keys,
+                &history_keys,
                 depth_limit,
                 time_budget,
                 &shared,
@@ -842,7 +839,7 @@ fn run_search_team(
                 position,
                 rules,
                 root_moves,
-                history_keys,
+                &history_keys,
                 depth_limit,
                 worker_index,
                 &shared,
@@ -968,6 +965,9 @@ fn new_searcher<'a>(
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
         capture_ranks: CaptureRanks::new(pst),
+        move_pickers: (0..=MAX_PLY)
+            .map(|_| MovePicker::new(None, [None; KILLER_COUNT]))
+            .collect(),
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: [root_accumulator; MAX_PLY as usize + 1],
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
@@ -1117,6 +1117,8 @@ struct Searcher<'a> {
     pv: Vec<Vec<Move>>,
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
     qsearch: Vec<QsearchBuffers>,
+    /// 「段階6」（movegen-speedup-2.md）の主探索用領域を深さごとに再利用する。
+    move_pickers: Vec<MovePicker>,
     /// ワーカー内で共有する捕獲価値の順位。
     capture_ranks: CaptureRanks,
     /// plyごとのPST生重み和。
@@ -1308,13 +1310,13 @@ impl Searcher<'_> {
                 static_eval + margin
             });
         let mut royal_attacked = None;
-        let mut picker = MovePicker::new(tt_move, self.killers[ply as usize]);
+        self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
         let mut index = 0;
         while let Some((mv, capture)) =
-            picker.next(position, self.pst, &self.generator, &self.history)
+            self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
         {
             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
@@ -1563,9 +1565,15 @@ impl Searcher<'_> {
             self.stop_reason = Some(StopReason::HardLimit);
             return false;
         }
-        if !self.shared.reserve_node() {
-            self.stop_reason = Some(self.shared.reason());
-            return false;
+        if let Some(limit) = self.shared.node_limit {
+            if !self.shared.reserve_node(limit) {
+                self.stop_reason = Some(self.shared.reason());
+                return false;
+            }
+        } else {
+            self.shared
+                .total_nodes
+                .fetch_add(1, AtomicOrdering::Relaxed);
         }
         self.nodes += 1;
         true
@@ -2172,6 +2180,9 @@ struct MovePicker {
     captures_generated: bool,
     quiets: Vec<Move>,
     quiet_index: usize,
+    base_moves: Vec<Move>,
+    quiet_order: Vec<(Reverse<i32>, usize)>,
+    used_quiets: [Option<usize>; KILLER_COUNT],
     quiets_generated: bool,
 }
 
@@ -2187,8 +2198,26 @@ impl MovePicker {
             captures_generated: false,
             quiets: Vec::new(),
             quiet_index: 0,
+            base_moves: Vec::new(),
+            quiet_order: Vec::new(),
+            used_quiets: [None; KILLER_COUNT],
             quiets_generated: false,
         }
+    }
+
+    /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
+    fn reset(&mut self, tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) {
+        self.stage = MovePickerStage::Tt;
+        self.tt_move = tt_move;
+        self.killers = killers;
+        self.captures.clear();
+        self.capture_index = 0;
+        self.captures_generated = false;
+        self.quiets.clear();
+        self.quiet_index = 0;
+        self.quiets_generated = false;
+        self.quiet_order.clear();
+        self.used_quiets = [None; KILLER_COUNT];
     }
 
     /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
@@ -2204,18 +2233,27 @@ impl MovePicker {
                 MovePickerStage::Tt => {
                     self.stage = MovePickerStage::Captures;
                     if let Some(tt_move) = self.tt_move
-                        && generator.is_legal_move(position, tt_move)
+                        && generator.is_legal_move(
+                            position,
+                            tt_move,
+                            &mut self.base_moves,
+                            &mut self.quiets,
+                        )
                     {
                         return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
                     }
                 }
                 MovePickerStage::Captures => {
                     if !self.captures_generated {
-                        let mut moves = Vec::new();
-                        generator.generate_captures(position, &mut moves);
+                        self.quiets.clear();
+                        generator.generate_captures_with_scratch(
+                            position,
+                            &mut self.base_moves,
+                            &mut self.quiets,
+                        );
                         self.captures.extend(
-                            moves
-                                .into_iter()
+                            self.quiets
+                                .drain(..)
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
                                     let key = move_order_key(position, pst, mv)
@@ -2236,7 +2274,7 @@ impl MovePicker {
                 }
                 MovePickerStage::Killer0 | MovePickerStage::Killer1 => {
                     if !self.quiets_generated {
-                        generator.generate_quiets(position, &mut self.quiets);
+                        generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
                         self.quiets.retain(|&mv| Some(mv) != self.tt_move);
                         self.quiets_generated = true;
                     }
@@ -2247,22 +2285,39 @@ impl MovePicker {
                         MovePickerStage::Quiets
                     };
                     if let Some(killer) = self.killers[killer_index]
-                        && let Some(index) = self.quiets.iter().position(|&mv| mv == killer)
+                        && let Some(index) =
+                            self.quiets.iter().enumerate().find_map(|(index, &mv)| {
+                                (mv == killer && !self.used_quiets.contains(&Some(index)))
+                                    .then_some(index)
+                            })
                     {
-                        return Some((self.quiets.remove(index), false));
+                        self.used_quiets[killer_index] = Some(index);
+                        return Some((self.quiets[index], false));
                     }
                 }
                 MovePickerStage::Quiets => {
                     let color = position.side_to_move().index();
-                    self.quiets.sort_by_cached_key(|&mv| {
-                        Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()])
-                    });
+                    self.quiet_order.extend(
+                        self.quiets
+                            .iter()
+                            .enumerate()
+                            .filter(|(index, _)| !self.used_quiets.contains(&Some(*index)))
+                            .map(|(index, mv)| {
+                                (
+                                    Reverse(
+                                        history[color][mv.from.dense_index()][mv.to.dense_index()],
+                                    ),
+                                    index,
+                                )
+                            }),
+                    );
+                    self.quiet_order.sort_unstable();
                     self.stage = MovePickerStage::Done;
                 }
                 MovePickerStage::Done => {
-                    if let Some(&mv) = self.quiets.get(self.quiet_index) {
+                    if let Some(&(_, index)) = self.quiet_order.get(self.quiet_index) {
                         self.quiet_index += 1;
-                        return Some((mv, false));
+                        return Some((self.quiets[index], false));
                     }
                     return None;
                 }
