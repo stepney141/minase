@@ -6,7 +6,7 @@ use crate::eval::weights;
 use crate::test_util::{position, sq};
 
 /// 離れた王2枚の局面を使い、必要なら全子局面を反復による引き分けにする。
-fn with_root_results(
+pub(super) fn with_root_results(
     repeated: bool,
     node_limit: Option<u64>,
     test: impl FnOnce(&Position, &[Move], &mut Searcher<'_>),
@@ -67,7 +67,8 @@ fn root_results_record_bounds_pv_and_nodes_without_reordering() {
                 && entry.nodes == 0));
             let (best, score) = searcher
                 .search_root(position, moves, 1, alpha, beta)
-                .unwrap();
+                .unwrap()
+                .value;
             assert_eq!(score, DRAW_SCORE);
             let results = searcher.root_results.as_ref().unwrap();
             assert_eq!(
@@ -107,7 +108,10 @@ fn root_results_record_bounds_pv_and_nodes_without_reordering() {
 #[test]
 fn root_results_preserve_the_best_moves_full_pv() {
     with_root_results(false, None, |position, moves, searcher| {
-        let (best, score) = searcher.search_iteration(position, moves, 3, None).unwrap();
+        let (best, score) = searcher
+            .search_iteration(position, moves, 3, None)
+            .unwrap()
+            .value;
         let results = searcher.root_results.as_ref().unwrap();
         let entry = results
             .entries
@@ -136,7 +140,8 @@ fn root_results_carry_previous_iteration_across_aspiration_research() {
         let delta = searcher.pst.pawn_value() / 2;
         let (best, _) = searcher
             .search_iteration(position, moves, 5, Some(-delta))
-            .unwrap();
+            .unwrap()
+            .value;
         let results = searcher.root_results.as_ref().unwrap();
         for entry in &results.entries {
             assert_eq!(entry.previous_score, Some(DRAW_SCORE));

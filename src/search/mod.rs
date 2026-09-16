@@ -7,6 +7,8 @@ mod search_captures_tests;
 mod see;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod time_management_tests;
 mod tt;
 
 pub use tt::{DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError};
@@ -501,7 +503,7 @@ pub enum SearchEvent {
         search_id: u64,
         /// 選んだ着手。
         best_move: Move,
-        /// 最後まで完了した深さの評価値。
+        /// 採用した着手の評価値。途中結果を含む。
         score: i32,
         /// 最後まで完了した深さ。
         depth: u32,
@@ -509,10 +511,14 @@ pub enum SearchEvent {
         nodes: u64,
         /// 探索開始からの経過時間。
         elapsed: Duration,
-        /// 最後まで完了した深さの主変化。
+        /// 採用した着手の主変化。途中結果を含む。
         pv: Vec<Move>,
         /// 探索を停止した条件。
         stop_reason: StopReason,
+        /// 中断した反復の途中結果を採用したか。
+        partial: bool,
+        /// 時間制限下で唯一の合法手を深さ1で返したか。
+        forced: bool,
     },
 }
 
@@ -624,6 +630,8 @@ pub fn start_search(
             elapsed: outcome.elapsed,
             pv: outcome.pv,
             stop_reason: outcome.stop_reason,
+            partial: outcome.partial,
+            forced: outcome.forced,
         });
         tt
     });
@@ -676,20 +684,26 @@ struct SearchOutcome {
     result: SearchResult,
     /// 探索開始からの経過時間。
     elapsed: Duration,
-    /// 最後まで完了した深さの主変化。
+    /// 採用した着手の主変化。途中結果を含む。
     pv: Vec<Move>,
     /// 探索を停止した条件。
     stop_reason: StopReason,
+    /// 中断した反復の途中結果を採用したか。
+    partial: bool,
+    /// 唯一の合法手を深さ1で返したか。
+    forced: bool,
 }
 
-/// 1ワーカーが最後まで完了した反復と実訪問ノード数。
+/// 1ワーカーの採用結果、完了深さ、および実訪問ノード数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct WorkerOutcome {
+    /// 中断した反復の途中結果を採用したか。主ワーカーだけが持つ。
+    partial: bool,
     /// 探索チーム内のワーカー番号。主ワーカーは0。
     worker_index: usize,
-    /// 最後まで完了した反復の結果。
+    /// 採用した着手と評価値、最後まで完了した深さ。
     result: SearchResult,
-    /// 最後まで完了した反復の主変化。
+    /// 採用した着手の主変化。
     pv: Vec<Move>,
     /// このワーカーが実際に訪問したノード数。
     nodes: u64,
@@ -810,6 +824,8 @@ fn run_search_team(
     let depth_limit = finite_limits
         .and_then(|limits| limits.depth)
         .map_or(MAX_PLY, NonZeroU32::get);
+    let forced = time_budget.is_some() && root_moves.len() == 1;
+    let depth_limit = if forced { 1 } else { depth_limit };
     let node_limit = finite_limits
         .and_then(|limits| limits.nodes)
         .map(NonZeroU64::get);
@@ -868,6 +884,8 @@ fn run_search_team(
         elapsed: started.elapsed(),
         pv: adopted.pv.clone(),
         stop_reason: shared.reason(),
+        partial: adopted.partial,
+        forced: forced && result.depth == 1 && shared.reason() == StopReason::SoftLimit,
     }
 }
 
@@ -922,7 +940,7 @@ fn run_worker_guarded<T>(
     outcome
 }
 
-/// 完了深さが最大のワーカーを選び、同じ深さなら番号が最小のものを選ぶ。
+/// 完了深さ、途中結果の有無、番号の小ささの順でワーカーを選ぶ。
 ///
 /// 深さ0は採用候補から除き、全ワーカーが深さ0なら主ワーカーの既定結果を
 /// 返す。
@@ -934,7 +952,13 @@ fn select_worker_outcome(worker_outcomes: &[WorkerOutcome]) -> &WorkerOutcome {
     worker_outcomes
         .iter()
         .filter(|outcome| outcome.result.depth > 0)
-        .max_by_key(|outcome| (outcome.result.depth, Reverse(outcome.worker_index)))
+        .max_by_key(|outcome| {
+            (
+                outcome.result.depth,
+                outcome.partial,
+                Reverse(outcome.worker_index),
+            )
+        })
         .unwrap_or(main_outcome)
 }
 
@@ -958,6 +982,8 @@ fn new_searcher<'a>(
     let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
         root_results: None,
+        #[cfg(test)]
+        interrupt_at: None,
         pst,
         rules,
         generator: MoveGenerator::new(rules),
@@ -997,12 +1023,15 @@ struct RootMove {
 struct RootMoves {
     /// 探索開始時の合法手順に並ぶ記録。
     entries: Vec<RootMove>,
+    /// 直前に完了した反復の最善手。
+    previous_best: Option<Move>,
 }
 
 impl RootMoves {
     /// 各合法手を未探索として登録する。
     fn new(moves: &[Move]) -> Self {
         Self {
+            previous_best: None,
             entries: moves
                 .iter()
                 .map(|&mv| RootMove {
@@ -1018,10 +1047,46 @@ impl RootMoves {
 
     /// 反復開始時に評価値を繰り越し、ノード数を初期化する。
     fn begin_iteration(&mut self) {
+        self.previous_best = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                entry
+                    .score
+                    .map(|(score, bound)| (score, bound == Bound::Exact, entry.mv))
+            })
+            .max_by_key(|&(score, exact, _)| (score, exact))
+            .map(|(_, _, mv)| mv);
         for entry in &mut self.entries {
             entry.previous_score = entry.score.map(|(score, _)| score);
             entry.nodes = 0;
         }
+    }
+
+    /// 直前に完了した反復の最善手を返す。
+    fn previous_best(&self) -> Option<Move> {
+        self.previous_best
+    }
+
+    /// 中断した窓の完了済みの手だけから途中結果を選ぶ。
+    fn partial_result(&self, original_alpha: i32) -> Option<&RootMove> {
+        let previous = self.previous_best()?;
+        self.entries
+            .iter()
+            .find(|entry| entry.mv == previous)?
+            .score?;
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                entry
+                    .score
+                    .filter(|&(_, bound)| bound != Bound::Upper)
+                    .map(|(score, _)| (score, Reverse(index), entry))
+            })
+            .max_by_key(|&(score, index, _)| (score, index))
+            .filter(|&(score, _, _)| score > original_alpha)
+            .map(|(_, _, entry)| entry)
     }
 
     /// 窓ごとの結果を消去し、前の窓の境界値が残ることを防ぐ。
@@ -1088,14 +1153,22 @@ fn run_main_worker(
     };
     let mut completed_pv = vec![root_moves[0]];
     let mut completed_bests = Vec::new();
+    let mut partial = false;
 
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some(result.score);
-        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
-        else {
+        let Some(root_result) = searcher.search_iteration(position, root_moves, depth, prev) else {
             debug_assert!(searcher.stop_reason.is_some());
             break;
         };
+        let (best_move, score) = root_result.value;
+        if root_result.partial {
+            result.best_move = best_move;
+            result.score = score;
+            completed_pv.clone_from(&searcher.pv[0]);
+            partial = true;
+            break;
+        }
         completed_bests.push(best_move);
         let stable = stable_signal(&completed_bests);
         result.best_move = best_move;
@@ -1120,7 +1193,9 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget, stable)) {
+        if time_budget.is_some_and(|budget| {
+            root_moves.len() == 1 || !should_start_next_iteration(elapsed, budget, stable)
+        }) {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1131,6 +1206,7 @@ fn run_main_worker(
     }
     let nodes = searcher.nodes;
     WorkerOutcome {
+        partial,
         worker_index: 0,
         result,
         pv: completed_pv,
@@ -1161,20 +1237,24 @@ fn run_auxiliary_worker(
     let mut completed_pv = vec![root_moves[0]];
     for depth in auxiliary_depths(worker_index, depth_limit) {
         let prev = (result.depth > 0).then_some(result.score);
-        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
-        else {
+        let Some(root_result) = searcher.search_iteration(position, root_moves, depth, prev) else {
             break;
         };
+        let (best_move, score) = root_result.value;
         result.best_move = best_move;
         result.score = score;
         result.depth = depth;
         completed_pv.clone_from(&searcher.pv[0]);
         if depth == depth_limit {
+            if shared.hard_limit.is_some() && root_moves.len() == 1 {
+                shared.stop(StopReason::SoftLimit);
+            }
             break;
         }
     }
     let nodes = searcher.nodes;
     WorkerOutcome {
+        partial: false,
         worker_index,
         result,
         pv: completed_pv,
@@ -1184,7 +1264,10 @@ fn run_auxiliary_worker(
 
 /// 1回の探索実行の可変状態。
 struct Searcher<'a> {
-    /// 主ワーカーが所有する根の表。探索結果の記録にだけ使う。
+    /// 実時間に依存せず中断境界を検査するテスト用の停止条件。
+    #[cfg(test)]
+    interrupt_at: Option<(u64, StopReason)>,
+    /// 主ワーカーが所有する根の表。探索順序と途中結果の採用にも使う。
     root_results: Option<&'a mut RootMoves>,
     /// 探索中に使う検証済み学習PST。
     pst: &'a Pst,
@@ -1220,31 +1303,39 @@ struct Searcher<'a> {
     tt: &'a TranspositionTable,
 }
 
+/// 根の探索結果。途中結果の深さは完了深さとして数えない。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RootResult {
+    value: (Move, i32),
+    partial: bool,
+}
+
 impl Searcher<'_> {
-    /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
-    ///
-    /// `docs/plans/strength-stage6.md`の「aspiration windows」節に従い、
-    /// 主・補助ワーカーが共有する。読み直し中の中断も`None`を返す。
+    /// 窓を広げて同じ深さを読み直す。hard中断時は採用可能な途中結果を返す。
     fn search_iteration(
         &mut self,
         position: &Position,
         root_moves: &[Move],
         depth: u32,
         prev: Option<i32>,
-    ) -> Option<(Move, i32)> {
+    ) -> Option<RootResult> {
         if let Some(results) = &mut self.root_results {
             results.begin_iteration();
         }
         let mut window = AspirationWindow::initial(depth, prev, self.pst.pawn_value() / 2);
         loop {
-            let (best_move, score) =
+            let result =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
+            if result.partial {
+                return Some(result);
+            }
+            let (_, score) = result.value;
             if score <= window.alpha {
                 window.widen_low();
             } else if score >= window.beta {
                 window.widen_high();
             } else {
-                return Some((best_move, score));
+                return Some(result);
             }
         }
     }
@@ -1253,7 +1344,7 @@ impl Searcher<'_> {
     ///
     /// `docs/plans/strength-stage6.md`の「根の探索の窓化」節に従い、
     /// β以上で打ち切り、入力時の窓に対する上界・下界・正確な値を記録する。
-    /// 中断された場合は`None`を返し、停止条件を記録する。
+    /// hard中断時は同じ窓の採用可能な途中結果を返し、それ以外は`None`を返す。
     fn search_root(
         &mut self,
         position: &Position,
@@ -1261,7 +1352,7 @@ impl Searcher<'_> {
         depth: u32,
         mut alpha: i32,
         beta: i32,
-    ) -> Option<(Move, i32)> {
+    ) -> Option<RootResult> {
         if let Some(results) = &mut self.root_results {
             results.begin_window();
         }
@@ -1275,6 +1366,17 @@ impl Searcher<'_> {
         let key = search_key(&position);
         let tt_move = self.tt.probe(key, 0).and_then(|hit| hit.best_move);
         self.order_moves(&position, &mut moves, tt_move, 0);
+        if let Some(previous) = self
+            .root_results
+            .as_ref()
+            .and_then(|results| results.previous_best())
+        {
+            let index = moves
+                .iter()
+                .position(|&mv| mv == previous)
+                .expect("previous best must be a legal root move");
+            moves[..=index].rotate_right(1);
+        }
         let original_alpha = alpha;
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
@@ -1291,7 +1393,17 @@ impl Searcher<'_> {
                     self.nodes - nodes_before,
                 );
             }
-            let score = score?;
+            let Some(score) = score else {
+                if self.stop_reason == Some(StopReason::HardLimit) {
+                    let entry = self.root_results.as_ref()?.partial_result(original_alpha)?;
+                    self.pv[0].clone_from(&entry.pv);
+                    return Some(RootResult {
+                        value: (entry.mv, entry.score.expect("partial result is complete").0),
+                        partial: true,
+                    });
+                }
+                return None;
+            };
             if score > best_score {
                 best_score = score;
                 best_move = mv;
@@ -1311,7 +1423,10 @@ impl Searcher<'_> {
         };
         self.tt
             .store(key, depth, best_score, bound, Some(best_move), 0);
-        Some((best_move, best_score))
+        Some(RootResult {
+            value: (best_move, best_score),
+            partial: false,
+        })
     }
 
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
@@ -1643,6 +1758,12 @@ impl Searcher<'_> {
 
     /// ノードへ入る前に停止条件を検査し、続行可能ならノード数を数える。
     fn enter_node(&mut self) -> bool {
+        #[cfg(test)]
+        if let Some((nodes, reason)) = self.interrupt_at
+            && self.nodes >= nodes
+        {
+            self.shared.stop(reason);
+        }
         if self.shared.observe_external_stop() {
             self.stop_reason = Some(StopReason::ExternalStop);
             return false;
@@ -1778,16 +1899,15 @@ fn stable_signal(bests: &[Move]) -> bool {
 ///
 /// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従い、
 /// `stable`が真なら経過時間に固定比を掛けた予測完了時刻がsoft以下であることを、
-/// 偽なら経過時間がsoft未満であることを要求し、hardの予測による上限は常に守る。
+/// 偽なら経過時間がsoft未満であることを要求する。hardは探索中に検査する。
 /// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
 fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget, stable: bool) -> bool {
     let predicted = elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR;
-    predicted <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
-        && if stable {
-            predicted <= budget.soft.as_nanos() * ITERATION_RATIO_DENOMINATOR
-        } else {
-            elapsed < budget.soft
-        }
+    if stable {
+        predicted <= budget.soft.as_nanos() * ITERATION_RATIO_DENOMINATOR
+    } else {
+        elapsed < budget.soft
+    }
 }
 
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
@@ -1797,27 +1917,26 @@ fn moves_to_go(ply: u32) -> u128 {
 
 /// 持ち時間制の予算式を1箇所に集約する。
 ///
-/// `moves_to_go = max(MIN_MOVES, EXPECTED_PLIES.saturating_sub(ply) / 2)`、
-/// `soft_raw = remaining / moves_to_go + 0.7 * increment + 0.8 * byoyomi`、
-/// `safe_hard = max(1ms, (remaining + byoyomi).saturating_sub(30ms))`、
-/// `hard = max(1ms, min(4 * soft_raw, remaining / 4 + 0.8 * byoyomi, safe_hard))`、
-/// `soft = min(soft_raw, hard)`とする。
-/// 係数を変更する場合は自己対局で採否を判定する。
+/// `raw = remaining / moves_to_go + 0.7 * increment + 0.8 * byoyomi`を整数msで計算し、
+/// 残り時間が正なら序盤の係数`min(40, ply + 4) / 40`を掛ける。
+/// ただし`0 < remaining < 1.2 * byoyomi`では安全上限まで使う。
+/// `soft = hard = max(1ms, min(target, safe_hard))`とし、
+/// `safe_hard = max(1ms, remaining + byoyomi - 30ms)`で抑える。
 fn clock_budget(clock: ClockLimits) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);
     let byoyomi = u128::from(clock.byoyomi_ms);
-    let byoyomi_share = byoyomi * 8 / 10;
-    let soft_raw = remaining / moves_to_go(clock.ply) + increment * 7 / 10 + byoyomi_share;
-    let safe_hard = remaining.saturating_add(byoyomi).saturating_sub(30).max(1);
-    let hard = (soft_raw * 4)
-        .min(remaining / 4 + byoyomi_share)
-        .min(safe_hard)
-        .max(1);
-    TimeBudget {
-        soft: Duration::from_millis(to_u64_ms(soft_raw.min(hard))),
-        hard: Duration::from_millis(to_u64_ms(hard)),
-    }
+    let raw = remaining / moves_to_go(clock.ply) + increment * 7 / 10 + byoyomi * 8 / 10;
+    let safe_hard = (remaining + byoyomi).saturating_sub(30).max(1);
+    let target = if remaining > 0 && remaining * 10 < byoyomi * 12 {
+        safe_hard
+    } else if remaining > 0 {
+        raw * u128::from(clock.ply.saturating_add(4).min(40)) / 40
+    } else {
+        raw
+    };
+    let hard = Duration::from_millis(to_u64_ms(target.min(safe_hard).max(1)));
+    TimeBudget { soft: hard, hard }
 }
 
 /// 探索制限から時間予算を求める。`movetime`と時計の併用時は小さい方を採る。

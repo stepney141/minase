@@ -203,7 +203,8 @@ fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
         with_root_searcher(&position, &history, |searcher| {
             let (best_move, score) = searcher
                 .search_root(&position, &moves, 1, alpha, beta)
-                .unwrap();
+                .unwrap()
+                .value;
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, expected_nodes);
             let hit = searcher.tt.probe(search_key(&position), 0).unwrap();
@@ -225,7 +226,8 @@ fn aspiration_researches_scores_equal_to_either_edge() {
         with_root_searcher(&position, &history, |searcher| {
             let (_, score) = searcher
                 .search_iteration(&position, &moves, 5, Some(prev))
-                .unwrap();
+                .unwrap()
+                .value;
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, first_nodes + 1 + moves.len() as u64);
             assert_eq!(
@@ -261,7 +263,8 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
             .store(key, 0, DRAW_SCORE, Bound::Exact, Some(quiet), 0);
         let (best_move, score) = searcher
             .search_root(&position, &moves, 1, MATE, INFINITY)
-            .unwrap();
+            .unwrap()
+            .value;
         assert_eq!(score, MATE);
         assert!(captures_last_royal(&position, best_move));
         let hit = searcher.tt.probe(key, 0).unwrap();
@@ -270,7 +273,10 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
         let before = searcher.nodes;
         assert_eq!(
             searcher.search_root(&position, &moves, 1, -1, 0),
-            Some((best_move, MATE))
+            Some(RootResult {
+                value: (best_move, MATE),
+                partial: false
+            })
         );
         assert_eq!(searcher.nodes - before, 2);
         assert_eq!(searcher.tt.probe(key, 0).unwrap().bound, Bound::Lower);
@@ -293,16 +299,17 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
                 &position,
                 &moves,
                 depth,
-                completed.map(|(_, score)| score),
+                completed.map(|result: RootResult| result.value.1),
             );
             assert!(completed.is_some());
         }
         completed_pv.clone_from(&searcher.pv[0]);
-        let (_, prev) = completed.unwrap();
+        let (_, prev) = completed.unwrap().value;
         let delta = searcher.pst.pawn_value() / 2;
         let (_, score) = searcher
             .search_root(&position, &moves, 5, prev - delta, prev + delta)
-            .unwrap();
+            .unwrap()
+            .value;
         assert!(
             score >= prev + delta,
             "fixture must fail high before the interruption"
@@ -328,7 +335,10 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
         vec![1, 2, 3, 4]
     );
     assert_eq!(finished.depth, 4);
-    assert_eq!((finished.best_move, finished.score), completed.unwrap());
+    assert_eq!(
+        (finished.best_move, finished.score),
+        completed.unwrap().value
+    );
     assert_eq!(finished.pv, completed_pv);
     assert_eq!(finished.nodes, node_limit);
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
@@ -1877,40 +1887,35 @@ fn infinite_limits_stop_only_on_external_request() {
 // D7-TIME　時間予算
 // ---------------------------------------------------------------------------
 
-// D7-TIME-01。search.md「時間管理」節の予算式。数値例は整数演算による
-// 切り捨てを含めて同節から導出する。
+// D7-TIME-01。time-management-efficiency.mdの第1段階に従う。
 #[test]
 fn clock_budget_matches_the_normative_formula() {
-    // (a) 残り60000・加算1000・秒読み0・ply=0:
-    //     moves_to_go=max(100, (450-0)/2)=225、soft_raw=60000/225+700=966、
-    //     safe_hard=59970、hard=min(3864, 15000, 59970)=3864、soft=966。
-    let budget = clock_budget(clock_at_ply(60_000, 1_000, 0, 0));
-    assert_eq!(budget.soft, Duration::from_millis(966));
-    assert_eq!(budget.hard, Duration::from_millis(3_864));
-
-    // (b) 残り10000・加算0・秒読み200・ply=0:
-    //     moves_to_go=225、soft_raw=10000/225+160=204、safe_hard=10170、
-    //     hard=min(816, 2660, 10170)=816、soft=204。
-    let budget = clock_budget(clock_at_ply(10_000, 0, 200, 0));
-    assert_eq!(budget.soft, Duration::from_millis(204));
-    assert_eq!(budget.hard, Duration::from_millis(816));
-
-    // (c) 旧式でhard<softになった入力。残り200・加算100・秒読み0・ply=300:
-    //     moves_to_go=100、soft_raw=2+70=72、safe_hard=170、
-    //     hard=min(288, 50, 170)=50、soft=min(72, 50)=50。
-    let budget = clock_budget(clock_at_ply(200, 100, 0, 300));
-    assert_eq!(budget.soft, Duration::from_millis(50));
-    assert_eq!(budget.hard, Duration::from_millis(50));
-
-    // (d) 時計合計30ms以下ではsafe_hard=1となり、softもhard以下へ縮む。
-    let budget = clock_budget(clock_at_ply(20, 0, 0, 0));
-    assert_eq!(budget.hard, Duration::from_millis(1));
-    assert!(budget.soft <= budget.hard);
-
-    // 主時間0・秒読み100ではsoft_raw=80、safe_hard=70、hard=soft=70。
-    let budget = clock_budget(clock_at_ply(0, 0, 100, 0));
-    assert_eq!(budget.soft, Duration::from_millis(70));
-    assert_eq!(budget.hard, Duration::from_millis(70));
+    for (remaining, increment, byoyomi, ply, expected) in [
+        (60_000, 1_000, 0, 0, 96),
+        (10_000, 0, 200, 0, 20),
+        (200, 100, 0, 300, 72),
+        (20, 0, 0, 0, 1),
+        (0, 0, 100, 0, 70),
+        (300_000, 0, 10_000, 0, 933),
+        (300_000, 0, 10_000, 36, 9_449),
+        (0, 0, 10_000, 0, 8_000),
+        (10_000, 100, 0, 0, 11),
+        (200, 100, 0, 36, 70),
+        (10_000, 0, 10_000, 0, 19_970),
+        (60_000, 200, 0, 0, 40),
+        (11_999, 0, 10_000, 0, 21_969),
+        (12_000, 0, 10_000, 0, 805),
+        (300_000, 0, 10_000, 35, 9_212),
+        (300_000, 0, 10_000, u32::MAX, 11_000),
+    ] {
+        let budget = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
+        assert_eq!(
+            budget.soft,
+            Duration::from_millis(expected),
+            "clock=({remaining}, {increment}, {byoyomi}, {ply})"
+        );
+        assert_eq!(budget.hard, budget.soft);
+    }
 }
 
 // D7-TIME-01。search.md「時間管理」節: 残り手数の見積りは手数について
@@ -1964,121 +1969,44 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
     assert_eq!(budget.hard, Duration::from_millis(500));
 }
 
-// D7-TIME-03。search.md「時間管理」節: 固定時間と時計の併用時の予算は、
-// softとhardのそれぞれで両者の小さい方を採る（一括minではない独立比較）。
+// D7-TIME-03。序盤の係数を適用してからmovetimeとの小さい方を採る。
 #[test]
 fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
-    // 時計単独ならsoft=966、hard=3864（D7-TIME-01(a)）。
     let base = clock(60_000, 1_000, 0);
-    let with_movetime =
-        |milliseconds: u64| SearchLimits::new(None, None, Some(milliseconds), Some(base)).unwrap();
-
-    // (a) 交差例: softは時計側、hardはmovetime側が勝つ。独立比較の固定。
-    let budget = time_budget(&with_movetime(2_000)).unwrap();
-    assert_eq!(budget.soft, Duration::from_millis(966));
-    assert_eq!(budget.hard, Duration::from_millis(2_000));
-
-    // (b) movetimeが両方で勝つ。
-    let budget = time_budget(&with_movetime(500)).unwrap();
-    assert_eq!(budget.soft, Duration::from_millis(500));
-    assert_eq!(budget.hard, Duration::from_millis(500));
-
-    // (c) 時計側が両方で勝つ。
-    let budget = time_budget(&with_movetime(5_000)).unwrap();
-    assert_eq!(budget.soft, Duration::from_millis(966));
-    assert_eq!(budget.hard, Duration::from_millis(3_864));
+    for (movetime, expected) in [(2_000, 96), (50, 50), (96, 96)] {
+        let limits = SearchLimits::new(None, None, Some(movetime), Some(base)).unwrap();
+        let budget = time_budget(&limits).unwrap();
+        assert_eq!(budget.soft, Duration::from_millis(expected));
+        assert_eq!(budget.hard, budget.soft);
+    }
 }
 
-// D7-TIME-05。search.md「時間管理」節: elapsed < softかつ
-// elapsed×2.5 <= hardの場合だけ次の反復を開始する。
+// D7-TIME-05。通常時はsoft未満なら継続し、hardの予測では止めない。
 #[test]
-fn next_iteration_requires_both_time_conditions() {
-    let budget = |soft, hard| TimeBudget {
-        soft: Duration::from_millis(soft),
-        hard: Duration::from_millis(hard),
+fn next_iteration_uses_soft_without_a_hard_prediction() {
+    let budget = TimeBudget {
+        soft: Duration::from_millis(100),
+        hard: Duration::from_millis(100),
     };
-
-    // soft境界は未満だけを継続する。
-    assert!(!should_start_next_iteration(
-        Duration::from_millis(100),
-        budget(100, 250),
-        false
-    ));
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
-        budget(100, 248),
-        false
-    ));
-
-    // 予測完了時刻のhard境界は等号を含む。
-    assert!(should_start_next_iteration(
-        Duration::from_millis(100),
-        budget(101, 250),
+        budget,
         false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
-        budget(101, 249),
-        false
-    ));
-
-    // movetime相当のsoft=hardでは、hardの40%までは継続できる。
-    assert!(should_start_next_iteration(
-        Duration::from_millis(40),
-        budget(100, 100),
-        false
-    ));
-    assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
-        budget(100, 100),
-        false
-    ));
-}
-
-// docs/plans/strength-stage6.md「最善手安定時の早期終了」「検証」。
-// 安定時は予測完了時刻がsoft以下のときだけ続け、hardの条件は緩めない。
-#[test]
-fn next_iteration_stable_requires_the_prediction_within_soft() {
-    let budget = |soft, hard| TimeBudget {
-        soft: Duration::from_millis(soft),
-        hard: Duration::from_millis(hard),
-    };
-    // soft 100ms、hard 400ms: 通常は99msまで続け、安定時は40msまでしか続けない。
-    assert!(should_start_next_iteration(
-        Duration::from_millis(99),
-        budget(100, 400),
+        budget,
         false
     ));
     assert!(should_start_next_iteration(
         Duration::from_millis(40),
-        budget(100, 400),
+        budget,
         true
     ));
     assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
-        budget(100, 400),
+        Duration::from_nanos(40_000_001),
+        budget,
         true
-    ));
-    assert!(!should_start_next_iteration(
-        Duration::from_millis(99),
-        budget(100, 400),
-        true
-    ));
-    // hardの予測が先に拘束する場合は安定の有無で変わらない。
-    assert!(should_start_next_iteration(
-        Duration::from_millis(40),
-        budget(400, 100),
-        true
-    ));
-    assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
-        budget(400, 100),
-        true
-    ));
-    assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
-        budget(400, 100),
-        false
     ));
 }
 
@@ -2110,7 +2038,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     let history_keys = [search_key(&position)];
     let external_stop = AtomicBool::new(false);
     let budget = TimeBudget {
-        soft: Duration::from_secs(1),
+        soft: Duration::from_millis(400),
         hard: Duration::from_secs(1),
     };
     let shared = SharedSearch {
@@ -2231,8 +2159,8 @@ fn progress_depths_start_at_one_and_increase_by_one() {
 fn clock_driven_searches_stop_with_a_time_limit_reason() {
     let initial = Position::initial();
 
-    // (3) soft≪hardの時計設定（残り6000ms・加算100ms・ply=0 → soft=96ms、
-    //     hard=384ms）。原則はsoftリミットで停止する。
+    // (3) 時計設定（残り6000ms・加算100ms・ply=0 → soft=hard=9ms）。
+    //     反復境界ならsoft、探索中の時計検査ならhardで停止する。
     let limits = SearchLimits::new(None, None, None, Some(clock(6_000, 100, 0))).unwrap();
     let handle = start(
         snapshot_for(&initial),
@@ -2351,6 +2279,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                 }
                 completed.fetch_add(1, AtomicOrdering::Release);
                 WorkerOutcome {
+                    partial: false,
                     worker_index,
                     result: SearchResult {
                         best_move: fallback,
@@ -2520,6 +2449,7 @@ fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
 fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
     let moves = legal_moves(&Position::initial());
     let outcome = |worker_index: usize, depth: u32, move_index: usize| WorkerOutcome {
+        partial: false,
         worker_index,
         result: SearchResult {
             best_move: moves[move_index],

@@ -453,6 +453,8 @@ impl UsiProtocol {
                 elapsed,
                 pv,
                 stop_reason,
+                partial,
+                forced,
                 ..
             } => {
                 let Some(ActiveSearch::Running {
@@ -463,7 +465,7 @@ impl UsiProtocol {
                     unreachable!();
                 };
                 self.transposition_table = Some(join_search(handle)?);
-                write_final_info_if_deeper(
+                write_final_info(
                     output,
                     &mut context,
                     depth,
@@ -471,7 +473,11 @@ impl UsiProtocol {
                     nodes,
                     elapsed,
                     &pv,
+                    partial,
                 )?;
+                if forced {
+                    writeln!(output, "info string forced")?;
+                }
                 if context.infinite {
                     *active = Some(ActiveSearch::AwaitingStop {
                         context,
@@ -548,9 +554,11 @@ impl UsiProtocol {
                             elapsed,
                             pv,
                             stop_reason,
+                            partial,
+                            forced,
                             ..
                         } => {
-                            write_final_info_if_deeper(
+                            write_final_info(
                                 output,
                                 &mut context,
                                 depth,
@@ -558,7 +566,11 @@ impl UsiProtocol {
                                 nodes,
                                 elapsed,
                                 &pv,
+                                partial,
                             )?;
+                            if forced {
+                                writeln!(output, "info string forced")?;
+                            }
                             break (best_move, stop_reason);
                         }
                     }
@@ -1128,9 +1140,9 @@ fn write_info(
     output.flush()
 }
 
-/// 採用深さが最後の進捗出力を超える場合だけ、採用結果を`info`として出す。
+/// 途中結果は印と最終`info`を出し、完了結果は未報告の深さだけ出す。
 #[allow(clippy::too_many_arguments)]
-fn write_final_info_if_deeper(
+fn write_final_info(
     output: &mut dyn Write,
     context: &mut SearchContext,
     depth: u32,
@@ -1138,8 +1150,11 @@ fn write_final_info_if_deeper(
     nodes: u64,
     elapsed: Duration,
     pv: &[Move],
+    partial: bool,
 ) -> io::Result<()> {
-    if depth <= context.last_info_depth.unwrap_or(0) {
+    if partial {
+        writeln!(output, "info string partial")?;
+    } else if depth <= context.last_info_depth.unwrap_or(0) {
         return Ok(());
     }
     write_info(output, context, depth, score, nodes, elapsed, pv)?;
@@ -2166,6 +2181,109 @@ mod tests {
                     mv.chars()
                         .all(|c| c.is_ascii_digit() || ('a'..='l').contains(&c) || c == '+')
                 );
+            }
+        }
+    }
+
+    // 第1段階: 同じ完了深さで着手が変わらなくても途中結果を報告する。
+    #[test]
+    fn partial_info_reports_same_depth_and_move_with_interruption_time() {
+        let engine = make_engine(&[RuleCode::R1]);
+        let mut context = SearchContext {
+            id: 1,
+            position: Position::initial(),
+            rules: engine.active_rules(),
+            infinite: false,
+            last_info_depth: Some(3),
+        };
+        let mut moves = Vec::new();
+        crate::MoveGenerator::new(context.rules.moves)
+            .generate_moves(&context.position, &mut moves);
+        for mv in [moves[0], moves[1]] {
+            let mut output = Vec::new();
+            write_final_info(
+                &mut output,
+                &mut context,
+                3,
+                42,
+                5000,
+                Duration::from_millis(123),
+                &[mv],
+                true,
+            )
+            .unwrap();
+            let output = String::from_utf8(output).unwrap();
+            let lines: Vec<_> = output.lines().collect();
+            assert_eq!(lines.len(), 2);
+            assert_eq!(lines[0], "info string partial");
+            assert!(lines[1].starts_with("info depth 3 score cp 42 nodes 5000 "));
+            assert!(lines[1].contains(" time 123 pv "));
+            assert!(lines[1].ends_with(&usi::text_generated(&context.position, mv)));
+        }
+        let mut output = Vec::new();
+        write_final_info(
+            &mut output,
+            &mut context,
+            3,
+            42,
+            5000,
+            Duration::from_millis(123),
+            &moves[..1],
+            false,
+        )
+        .unwrap();
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn timed_forced_move_reports_marker_before_soft_stop() {
+        let position = crate::test_util::position(
+            crate::Color::Black,
+            &[
+                (
+                    crate::test_util::sq(0, 11),
+                    crate::Color::Black,
+                    crate::PieceKind::King,
+                ),
+                (
+                    crate::test_util::sq(1, 11),
+                    crate::Color::Black,
+                    crate::PieceKind::Pawn,
+                ),
+                (
+                    crate::test_util::sq(1, 10),
+                    crate::Color::Black,
+                    crate::PieceKind::Pawn,
+                ),
+                (
+                    crate::test_util::sq(5, 0),
+                    crate::Color::White,
+                    crate::PieceKind::King,
+                ),
+                (
+                    crate::test_util::sq(8, 0),
+                    crate::Color::White,
+                    crate::PieceKind::Rook,
+                ),
+            ],
+        );
+        for threads in [1, 4] {
+            for go in ["movetime 10000", "btime 300000 wtime 300000 byoyomi 10000"] {
+                let output = session(
+                    &[RuleCode::R1],
+                    &format!(
+                        "setoption name Threads value {threads}\nposition sfen {} - 1\ngo {go}\n",
+                        to_sfen(&position)
+                    ),
+                );
+                assert!(error_lines(&output).is_empty(), "{output}");
+                assert_eq!(bestmoves(&output).len(), 1);
+                assert!(output.contains("info depth 1 "), "{output}");
+                assert!(
+                    output.contains("info string forced\ninfo string stop soft\nbestmove "),
+                    "{output}"
+                );
+                assert!(!output.contains("info string partial"));
             }
         }
     }
