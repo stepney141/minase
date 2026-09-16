@@ -2790,6 +2790,35 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
 // 置換表をクリアする。wire連動はD6の領域であり、ここではクリア契約だけを
 // 検証する。クリア後の探索は空の置換表から正常に再構築される。
 #[test]
+fn tt_clear_is_skipped_until_a_search_uses_the_table() {
+    // 対局開始直後の`go`が消去の完了を待たされないよう、作成または消去の後に
+    // 探索が始まっていない置換表の消去は何もしない（time-management-efficiency.md）。
+    let best_move = Move {
+        from: sq(0, 0),
+        mid: None,
+        to: sq(0, 1),
+        promote: false,
+    };
+    let key = 0x4444_4444_0000_0004_u64;
+    let mut table = small_tt();
+    table.new_search();
+    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
+    table.clear();
+    assert!(table.probe(key, 0).is_none());
+    assert_eq!(table.generation(), 0);
+
+    // 消去後に探索を始めずに書いた内容は、次の消去で消えない。
+    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
+    table.clear();
+    assert!(table.probe(key, 0).is_some());
+
+    // 探索を始めた後の消去は空にする。
+    table.new_search();
+    table.clear();
+    assert!(table.probe(key, 0).is_none());
+}
+
+#[test]
 fn tt_clear_empties_all_entries_and_search_restarts() {
     let best_move = Move {
         from: sq(0, 0),
