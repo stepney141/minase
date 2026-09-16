@@ -16,8 +16,8 @@
 進行中。2026年9月15日に起案し、2026年9月16日に着手した。
 段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）、段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）、段階4（走り計算の減算方式とSEE逆引きの近傍走査、[bench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)、親比1.1205倍）、段階5（静止探索の候補処理の簡素化、[bench比較](../measurements/movegen-speedup-2-stage5-bench-depth5.md)、親比1.0443倍）、および段階6（主探索の手生成と探索ノードの固定費、[bench比較](../measurements/movegen-speedup-2-stage6-bench-depth5.md)、段階5比約1.09倍）は完了して採用し、累積は基準比1.3854倍で目標の1.3倍を超えた。
 段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手しない。段階4の減少方向の書き換えと在席マスク、段階6のSEE作業領域、ノード数の一括反映、および履歴の`HashSet`は効果を確認できず採用しない。
-段階10の前半では、段階6までの採用版と第1期の採用版の[STC](../measurements/movegen-speedup-2-stage6-stc.md)が`H1`かつ異常0件で通過し、LTC（測定名`movegen-speedup-2-stage6-ltc`）を実行中である。
-次の一手はLTCの判定と記録である。
+段階10の前半では、段階6までの採用版と第1期の採用版の[STC](../measurements/movegen-speedup-2-stage6-stc.md)と[LTC](../measurements/movegen-speedup-2-stage6-ltc.md)がいずれも`H1`かつ異常0件で、段階6までの採用版を採用した。
+次の一手は段階7から段階9の実装と固定深さの経過時間による事前選別である。
 
 ## 目的
 
