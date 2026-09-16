@@ -1,0 +1,282 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..45e8c9b 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -270,6 +270,14 @@ fn main() {
+             &mut transposition_table,
+             true,
+         );
++        eprintln!(
++            "diag {}",
++            minase::search::diagnostics::take()
++                .into_iter()
++                .map(|(k, v)| format!("{k}={v}"))
++                .collect::<Vec<_>>()
++                .join(" ")
++        );
+         println!(
+             "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
+             BENCH_POSITIONS.len(),
+diff --git a/src/core/movegen/mod.rs b/src/core/movegen/mod.rs
+index 93b74c5..f473332 100644
+--- a/src/core/movegen/mod.rs
++++ b/src/core/movegen/mod.rs
+@@ -156,8 +156,11 @@ fn ordinary_attackers_to(
+     square: Square,
+     occupied: Bitboard,
+ ) -> Bitboard {
++    use crate::search::diagnostics::{self as dg, add as dcount};
++    dcount(&dg::ATT_CALLS, 1);
+     let mut attackers = Bitboard::EMPTY;
+     for from in tables.neighbourhood(square) & position.pieces_of(color) {
++        dcount(&dg::ATT_NEIGHBOUR_PIECES, 1);
+         let kind = position
+             .piece_at(from)
+             .and_then(|piece| piece.kind())
+@@ -166,16 +169,34 @@ fn ordinary_attackers_to(
+             .fixed(color, movement_profile(kind), from)
+             .contains(square)
+         {
++            dcount(&dg::ATT_FIXED_HITS, 1);
+             attackers.set(from);
+         }
+     }
+     let own = position.pieces_of(color) & occupied;
+     for direction in Direction::ALL {
++        {
++            // 診断: この方向の逆へ走る自駒（占有内）の集合と利き線の交差。
++            let reverse = direction.opposite();
++            let mut sliders = Bitboard::EMPTY;
++            for kind in PieceKind::ALL {
++                if (tables.slide_directions(color, movement_profile(kind)) >> reverse.index()) & 1 != 0 {
++                    sliders |= position.pieces_of_kind(color, kind);
++                }
++            }
++            sliders &= occupied;
++            if sliders.is_empty() {
++                dcount(&dg::ATT_DIRS_NO_SLIDER, 1);
++            } else if (tables.ray(square, direction) & sliders).is_empty() {
++                dcount(&dg::ATT_DIRS_RAY_MISS, 1);
++            }
++        }
+         // 利き線は最初の遮蔽駒までしか含まないので、`ray & own`は空か1升である。
+         let ray = tables.sliding_control(square, direction, occupied);
+         let Some(blocker) = (ray & own).lsb() else {
+             continue;
+         };
++        dcount(&dg::ATT_DIRS_OWN_BLOCKER, 1);
+         let kind = position
+             .piece_at(blocker)
+             .and_then(|piece| piece.kind())
+@@ -183,6 +204,7 @@ fn ordinary_attackers_to(
+         let mask = tables.slide_directions(color, movement_profile(kind));
+         let reverse = direction.opposite();
+         if (mask >> reverse.index()) & 1 != 0 {
++            dcount(&dg::ATT_DIRS_SLIDER_HIT, 1);
+             attackers.set(blocker);
+         }
+     }
+diff --git a/src/core/movegen/search_captures.rs b/src/core/movegen/search_captures.rs
+index 0527588..c3b04ee 100644
+--- a/src/core/movegen/search_captures.rs
++++ b/src/core/movegen/search_captures.rs
+@@ -2,6 +2,8 @@
+ 
+ use super::*;
+ use crate::core::piece::PieceCode;
++use crate::search::diagnostics::{self, add as dcount};
++use std::sync::atomic::Ordering::Relaxed;
+ 
+ #[cfg(test)]
+ #[path = "tests/ordinary_capturer.rs"]
+@@ -166,17 +168,22 @@ impl MoveGenerator {
+         let kind = piece.kind().expect("capture origin has a kind");
+         let tables = self.tables();
+         let profile_id = movement_profile(kind);
++        let diag = diagnostics::IN_COLLECT.load(Relaxed);
++        if diag { dcount(&diagnostics::INIT_OWN_SCANNED, 1); }
+         if (tables.reach(color, profile_id, from) & allowed).is_empty() {
+             return None;
+         }
++        if diag { dcount(&diagnostics::INIT_REACH_PASS, 1); }
+         let mut captures = tables.fixed(color, profile_id, from) & allowed;
+         let profile = movement_profile_data(profile_id);
+         for slide in profile.slides {
+             let direction = slide.direction.for_color(color);
+             if !(tables.ray(from, direction) & allowed).is_empty() {
++                if diag { dcount(&diagnostics::INIT_SLIDES, 1); }
+                 captures |= tables.sliding_control(from, direction, position.occupied()) & allowed;
+             }
+         }
++        if diag && !captures.is_empty() { dcount(&diagnostics::INIT_REACHING, 1); }
+         (!captures.is_empty()).then_some(OrdinaryCapturer {
+             from,
+             kind,
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 30d3802..6df4f06 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -33,6 +33,28 @@ use crate::eval::pst::{PIECE_STATE_COUNT, PstAccumulator, piece_state_of};
+ use see::see_prunes;
+ use tt::Bound;
+ 
++/// 第3期起案時の件数診断（一時的）。
++pub mod diagnostics {
++    use std::sync::atomic::{AtomicBool, AtomicU64};
++    macro_rules! counters { ($($n:ident),+ $(,)?) => {
++        $(#[allow(missing_docs)] pub static $n: AtomicU64 = AtomicU64::new(0);)+
++        /// 全カウンタを固定順で返してゼロへ戻す。
++        pub fn take() -> Vec<(&'static str, u64)> { vec![$((stringify!($n), $n.swap(0, std::sync::atomic::Ordering::Relaxed)),)+] }
++    }; }
++    counters!(NEGAMAX_NODES, MAIN_PROBE, MAIN_HIT, Q_NODES, Q_STANDPAT, Q_EMPTY, Q_PROBE, Q_HIT,
++        INIT_NODES, INIT_SPECIAL_PRESENT, INIT_SPECIAL_GENERATED, INIT_SPECIAL_EXCLUDED, INIT_SPECIAL_KEPT,
++        INIT_TARGETS_SUM, INIT_OWN_SCANNED, INIT_REACH_PASS, INIT_REACHING, INIT_SLIDES,
++        ATT_CALLS, ATT_NEIGHBOUR_PIECES, ATT_FIXED_HITS, ATT_DIRS_OWN_BLOCKER, ATT_DIRS_SLIDER_HIT,
++        ATT_DIRS_NO_SLIDER, ATT_DIRS_RAY_MISS,
++        PICK_NODES, PICK_CAPTURE_NODES, PICK_CAPTURES_GENERATED, PICK_CAPTURES_RETURNED,
++        PICK_QUIET_NODES, PICK_QUIETS_GENERATED, PICK_KILLERS_RETURNED, PICK_QUIETS_RETURNED, PICK_QUIET_SORTED);
++    /// 静止探索の初期化中かを表す。
++    pub static IN_COLLECT: AtomicBool = AtomicBool::new(false);
++    /// カウンタへ加算する。
++    pub fn add(c: &AtomicU64, n: u64) { c.fetch_add(n, std::sync::atomic::Ordering::Relaxed); }
++}
++use diagnostics::add as dcount;
++
+ /// 詰みを表す評価値。
+ pub const MATE: i32 = 30_000;
+ /// 探索が扱う最大ply。
+@@ -1235,7 +1257,10 @@ impl Searcher<'_> {
+         let mut tt_move = None;
+         // 深さが足りるヒットは即時カットオフだけに使い、探索窓は狭めない。
+         // 窓を狭めると、格納時のバウンド分類が実際に探索した窓と食い違う。
++        dcount(&diagnostics::NEGAMAX_NODES, 1);
++        dcount(&diagnostics::MAIN_PROBE, 1);
+         if let Some(hit) = self.tt.probe(key, ply) {
++            dcount(&diagnostics::MAIN_HIT, 1);
+             tt_move = hit.best_move;
+             if u32::from(hit.depth) >= depth {
+                 let cutoff = match hit.bound {
+@@ -1399,7 +1424,9 @@ impl Searcher<'_> {
+         let stand_pat = self
+             .pst
+             .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
++        dcount(&diagnostics::Q_NODES, 1);
+         if stand_pat >= beta {
++            dcount(&diagnostics::Q_STANDPAT, 1);
+             return Some(stand_pat);
+         }
+ 
+@@ -1415,12 +1442,15 @@ impl Searcher<'_> {
+             &self.capture_ranks,
+             threshold,
+         ) {
++            dcount(&diagnostics::Q_EMPTY, 1);
+             return Some(stand_pat);
+         }
+ 
+         let key = search_key(position);
+         let mut tt_move = None;
++        dcount(&diagnostics::Q_PROBE, 1);
+         if let Some(hit) = self.tt.probe(key, ply) {
++            dcount(&diagnostics::Q_HIT, 1);
+             tt_move = hit.best_move;
+             let cutoff = match hit.bound {
+                 Bound::Exact => true,
+@@ -1929,8 +1959,18 @@ impl QsearchBuffers {
+         let opponent = position.side_to_move().opposite();
+         let royals = self.royals;
+         let royal_count = self.royal_count;
++        dcount(&diagnostics::INIT_NODES, 1);
++        {
++            let me = position.side_to_move();
++            let present = [PieceKind::Lion, PieceKind::HornedFalcon, PieceKind::SoaringEagle]
++                .into_iter()
++                .any(|k| !position.pieces_of_kind(me, k).is_empty());
++            dcount(&diagnostics::INIT_SPECIAL_PRESENT, u64::from(present));
++        }
+         generator.generate_special_captures(position, &mut |capture| {
++            dcount(&diagnostics::INIT_SPECIAL_GENERATED, 1);
+             if MoveGenerator::is_excluded_lion_capture(position, capture.mv) {
++                dcount(&diagnostics::INIT_SPECIAL_EXCLUDED, 1);
+                 return;
+             }
+             let captured_value = capture
+@@ -1946,6 +1986,7 @@ impl QsearchBuffers {
+             }
+             let mut candidate = QsearchCapture::new(pst, capture, captured_value);
+             candidate.seq = self.special.len() as u16;
++            dcount(&diagnostics::INIT_SPECIAL_KEPT, 1);
+             self.special.push(candidate);
+         });
+         self.special
+@@ -1974,7 +2015,10 @@ impl QsearchBuffers {
+                 }
+             }
+         }
++        dcount(&diagnostics::INIT_TARGETS_SUM, u64::from(allowed.popcount()));
++        diagnostics::IN_COLLECT.store(true, AtomicOrdering::Relaxed);
+         generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
++        diagnostics::IN_COLLECT.store(false, AtomicOrdering::Relaxed);
+         !self.special.is_empty()
+             || self.capturers.iter().any(|capturer| {
+                 let mut present = false;
+@@ -2188,6 +2232,7 @@ impl MovePicker {
+ 
+     /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
+     fn reset(&mut self, tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) {
++        dcount(&diagnostics::PICK_NODES, 1);
+         self.stage = MovePickerStage::Tt;
+         self.tt_move = tt_move;
+         self.killers = killers;
+@@ -2226,6 +2271,7 @@ impl MovePicker {
+                 }
+                 MovePickerStage::Captures => {
+                     if !self.captures_generated {
++                        dcount(&diagnostics::PICK_CAPTURE_NODES, 1);
+                         self.quiets.clear();
+                         generator.generate_captures_with_scratch(
+                             position,
+@@ -2245,10 +2291,12 @@ impl MovePicker {
+                         self.captures.sort_by_key(|&(_, key)| {
+                             (Reverse(key.captured_value), key.attacker_value)
+                         });
++                        dcount(&diagnostics::PICK_CAPTURES_GENERATED, self.captures.len() as u64);
+                         self.captures_generated = true;
+                     }
+                     if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
+                         self.capture_index += 1;
++                        dcount(&diagnostics::PICK_CAPTURES_RETURNED, 1);
+                         return Some((mv, true));
+                     }
+                     self.stage = MovePickerStage::Killer0;
+@@ -2257,6 +2305,8 @@ impl MovePicker {
+                     if !self.quiets_generated {
+                         generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
+                         self.quiets.retain(|&mv| Some(mv) != self.tt_move);
++                        dcount(&diagnostics::PICK_QUIET_NODES, 1);
++                        dcount(&diagnostics::PICK_QUIETS_GENERATED, self.quiets.len() as u64);
+                         self.quiets_generated = true;
+                     }
+                     let killer_index = usize::from(matches!(self.stage, MovePickerStage::Killer1));
+@@ -2273,6 +2323,7 @@ impl MovePicker {
+                             })
+                     {
+                         self.used_quiets[killer_index] = Some(index);
++                        dcount(&diagnostics::PICK_KILLERS_RETURNED, 1);
+                         return Some((self.quiets[index], false));
+                     }
+                 }
+@@ -2293,11 +2344,13 @@ impl MovePicker {
+                             }),
+                     );
+                     self.quiet_order.sort_unstable();
++                    dcount(&diagnostics::PICK_QUIET_SORTED, self.quiet_order.len() as u64);
+                     self.stage = MovePickerStage::Done;
+                 }
+                 MovePickerStage::Done => {
+                     if let Some(&(_, index)) = self.quiet_order.get(self.quiet_index) {
+                         self.quiet_index += 1;
++                        dcount(&diagnostics::PICK_QUIETS_RETURNED, 1);
+                         return Some((self.quiets[index], false));
+                     }
+                     return None;
