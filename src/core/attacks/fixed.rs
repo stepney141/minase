@@ -91,8 +91,6 @@ impl RelativeDirection {
 pub(crate) struct SlideSpec {
     /// 走る方向。
     pub(crate) direction: RelativeDirection,
-    /// 進める最大升数。`None`は盤端まで無制限。
-    pub(crate) max_steps: Option<u8>,
 }
 
 /// 角鷹・飛鷲が2段階移動(第11条)を行える方向の集合。
@@ -131,10 +129,7 @@ const fn delta(file: i8, rank: i8) -> RelativeDelta {
 
 /// 盤端まで無制限の走り指定を作る。
 const fn slide(direction: RelativeDirection) -> SlideSpec {
-    SlideSpec {
-        direction,
-        max_steps: None,
-    }
+    SlideSpec { direction }
 }
 
 /// 固定利きなし。

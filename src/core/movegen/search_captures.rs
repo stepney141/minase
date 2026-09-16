@@ -152,9 +152,7 @@ impl MoveGenerator {
         for slide in profile.slides {
             let direction = slide.direction.for_color(color);
             if !(tables.ray(from, direction) & allowed).is_empty() {
-                captures |=
-                    tables.sliding_control(from, direction, slide.max_steps, position.occupied())
-                        & allowed;
+                captures |= tables.sliding_control(from, direction, position.occupied()) & allowed;
             }
         }
         (!captures.is_empty()).then_some(OrdinaryCapturer {

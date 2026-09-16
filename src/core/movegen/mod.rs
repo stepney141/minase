@@ -139,7 +139,8 @@ impl Position {
 
 /// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
 ///
-/// 固定利きは駒種ごとの逆引き表で求める。走りは`square`から8方向の利き線を引き、
+/// 固定利きは5×5近傍の自駒の固定利き表で判定する
+/// (`movegen-speedup-2.md`「段階4」)。走りは`square`から8方向の利き線を引き、
 /// 最初の遮蔽駒がその逆方向へ走るプロファイルを持つかだけを調べる。全プロファイルの
 /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
 fn ordinary_attackers_to(
@@ -150,17 +151,22 @@ fn ordinary_attackers_to(
     occupied: Bitboard,
 ) -> Bitboard {
     let mut attackers = Bitboard::EMPTY;
-    for kind in PieceKind::ALL {
-        let pieces = position.pieces_of_kind(color, kind);
-        if pieces.is_empty() {
-            continue;
+    for from in tables.neighbourhood(square) & position.pieces_of(color) {
+        let kind = position
+            .piece_at(from)
+            .and_then(|piece| piece.kind())
+            .expect("own square must contain a piece");
+        if tables
+            .fixed(color, movement_profile(kind), from)
+            .contains(square)
+        {
+            attackers.set(from);
         }
-        attackers |= tables.fixed(color.opposite(), movement_profile(kind), square) & pieces;
     }
     let own = position.pieces_of(color) & occupied;
     for direction in Direction::ALL {
         // 利き線は最初の遮蔽駒までしか含まないので、`ray & own`は空か1升である。
-        let ray = tables.sliding_control(square, direction, None, occupied);
+        let ray = tables.sliding_control(square, direction, occupied);
         let Some(blocker) = (ray & own).lsb() else {
             continue;
         };
@@ -168,13 +174,9 @@ fn ordinary_attackers_to(
             .piece_at(blocker)
             .and_then(|piece| piece.kind())
             .expect("blocker must be a piece");
-        let profile = movement_profile_data(movement_profile(kind));
+        let mask = tables.slide_directions(color, movement_profile(kind));
         let reverse = direction.opposite();
-        if profile
-            .slides
-            .iter()
-            .any(|slide| slide.direction.for_color(color) == reverse)
-        {
+        if (mask >> reverse.index()) & 1 != 0 {
             attackers.set(blocker);
         }
     }
@@ -402,12 +404,7 @@ fn piece_control_without_special(
     let profile = movement_profile_data(profile_id);
     let mut result = tables.fixed(color, profile_id, from);
     for slide in profile.slides {
-        result |= tables.sliding_control(
-            from,
-            slide.direction.for_color(color),
-            slide.max_steps,
-            occupied,
-        );
+        result |= tables.sliding_control(from, slide.direction.for_color(color), occupied);
     }
     result
 }

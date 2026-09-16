@@ -784,6 +784,7 @@ fn lion_capture_is_legal(
 /// 歩兵または仲人が唯一の足である場合、第1段階でその駒を取っても足が消滅したとは扱わない
 /// (第16条第8項から第10項)。L3採用時は、これらの規定を適用せず、着手適用後の
 /// 仮想盤面だけで足を判定する(第29条L3)。
+/// 残る足は利きを逆引きして求める(`movegen-speedup-2.md`「段階4」)。
 fn lion_has_foot_after_capture(
     rules: MoveRules,
     position: &Position,
@@ -815,25 +816,9 @@ fn lion_has_foot_after_capture(
     debug_assert!(board.own.contains(mv.to));
     debug_assert!(!board.enemy.contains(mv.to));
     captured_pawn_or_go_between_had_foot
-        || square_is_controlled(position, board, defending_color, mv.to)
-}
-
-/// 仮想盤面上で、指定した対局者のいずれかの駒が対象升に利きを持つかどうかを返す。
-fn square_is_controlled(
-    position: &Position,
-    board: VirtualBoard,
-    color: Color,
-    target: Square,
-) -> bool {
-    for kind in PieceKind::ALL {
-        let remaining = position.pieces_of_kind(color, kind) & board.enemy;
-        for from in remaining {
-            if piece_control_with_occupancy(board.occupied, color, kind, from).contains(target) {
-                return true;
-            }
-        }
-    }
-    false
+        || !position
+            .attackers_to_by(defending_color, mv.to, board.occupied)
+            .is_empty()
 }
 
 #[cfg(test)]

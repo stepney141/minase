@@ -14,9 +14,9 @@
 ## 状態
 
 進行中。2026年9月15日に起案し、2026年9月16日に着手した。
-段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）と段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）は完了して採用し、累積は基準比1.0781倍である。
-段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で逆引きの演算数がどの対象升数でも現行を上回り閾値が1未満になったので、着手せず採用しない。
-次の一手は段階4の走り計算の書き換えであり、まず添字が増える4方向の減算方式だけを1変種として測る。
+段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）、段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）、および段階4（走り計算の減算方式とSEE逆引きの近傍走査、[bench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)、親比1.1205倍）は完了して採用し、累積は基準比1.1944倍で最低受入条件の1.15倍を超えた。
+段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手しない。段階4の減少方向の書き換えと在席マスクは増分が親の幅を超えず採用しない。
+次の一手は段階5の静止探索の候補処理の簡素化である。
 
 ## 目的
 
@@ -225,6 +225,8 @@ SEEの逆引きの固定利きも本段階に含める。
 `lion_has_foot_after_capture`が使う`square_is_controlled`は、獅子を取った駒の升に対して、取られた側（獅子の所有者）の全駒の利きを仮想盤面で順方向に計算しているので、仮想盤面の占有と取られた側を与えた`attackers_to_by`へ置き換える。
 見込みは、逆引きの自己時間9.1ポイントのうち固定利きの逆引きに当たる部分の半分、探索時間の1%から3%である。
 検証は`src/core/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`src/search/see.rs`の参照実装との枝刈り判断の一致、および獅子規則のテストによる。
+変種ごとの測定と採否は[段階4のbench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)にあり、減算方式は親比1.0904倍、近傍走査と足判定の逆引き化は1.0507倍で採用し、減少方向の`leading_zeros`と番兵表への書き換え（1.0039倍）と在席マスク（0.9952倍）は親の幅内で採用しなかった。
+
 ### 段階5　静止探索の候補処理の簡素化
 
 `QsearchBuffers::initialize`は、相手の全駒を1升ずつ取り出し、盤面から駒コードを読んで駒状態（駒種と成否の組、47種類）を求め、既存の駒状態別の価値表と順位表を引いている。
