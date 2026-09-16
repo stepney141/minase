@@ -14,9 +14,9 @@
 ## 状態
 
 進行中。2026年9月15日に起案し、2026年9月16日に着手した。
-段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）、段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）、および段階4（走り計算の減算方式とSEE逆引きの近傍走査、[bench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)、親比1.1205倍）は完了して採用し、累積は基準比1.1944倍で最低受入条件の1.15倍を超えた。
+段階1（計測基盤と`codegen-units = 1`、[件数診断](../measurements/movegen-speedup-2-stage1-counts.md)、[bench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)）、段階2（利き線の事前選別、[bench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)、親比1.0492倍）、段階4（走り計算の減算方式とSEE逆引きの近傍走査、[bench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)、親比1.1205倍）、および段階5（静止探索の候補処理の簡素化、[bench比較](../measurements/movegen-speedup-2-stage5-bench-depth5.md)、親比1.0443倍）は完了して採用し、累積は基準比1.2636倍で最低受入条件の1.15倍を超えた。
 段階3は[測り直し](../measurements/movegen-speedup-2-stage3-counts.md)で閾値が1未満になり着手しない。段階4の減少方向の書き換えと在席マスクは増分が親の幅を超えず採用しない。
-次の一手は段階5の静止探索の候補処理の簡素化である。
+次の一手は段階6の主探索の手生成と探索ノードの固定費である。
 
 ## 目的
 
@@ -250,6 +250,8 @@ SEEの逆引きの固定利きも本段階に含める。
 主探索の整列キーは、捕獲生成が返した順に捕獲升を1回だけ求めて保持し、整列の比較ごとに再計算しない。
 候補ごとの重複計算の見込みは探索時間の2%から3%であり、初期化とグループ構築の見込みと合わせて段階全体を一括で測る。
 検証は、`captured_squares`の新旧実装の一致を全規則セットの固定シード局面の全合法手で検査し、残存手順一致と局面別一致で確かめる。
+結果は[段階5のbench比較](../measurements/movegen-speedup-2-stage5-bench-depth5.md)にある。
+
 ### 段階6　主探索の手生成と探索ノードの固定費
 
 `generate_quiets`は全手を生成してから捕獲を捨てているため、主探索の各ノードで捕獲が2回生成され、`captured_squares`で1手ずつ判別している。

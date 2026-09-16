@@ -434,17 +434,19 @@ impl Position {
     /// 捕獲升とは、着手で実際に相手駒を取る升をいう。獅子、角鷹および
     /// 飛鷲の2段階移動では、1手で最大2升の相手駒を取る(第11条第3項・
     /// 第12条第4項)。
+    /// 設計書movegen-speedup-2.md「段階5」に従い、盤面の駒コードを直接調べる。
     pub(crate) fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
-        let moving_color = self
-            .piece_at(mv.from)
-            .and_then(PieceCode::color)
-            .expect("move origin must contain a piece");
-        mv.capture_candidates().map(|candidate| {
-            candidate.filter(|&square| {
-                self.piece_at(square)
-                    .is_some_and(|piece| piece.color() == Some(moving_color.opposite()))
-            })
-        })
+        let enemy = self.board[mv.from.raw_index()]
+            .color()
+            .expect("move origin must contain a piece")
+            .opposite();
+        let mid = match mv.mid {
+            Some(square) if self.board[square.raw_index()].color() == Some(enemy) => Some(square),
+            _ => None,
+        };
+        // 移動元は自駒なので、居喰いの到達升もこの比較だけで除外できる。
+        let to = (self.board[mv.to.raw_index()].color() == Some(enemy)).then_some(mv.to);
+        [mid, to]
     }
 
     /// 駒を置き、占有集合とzobristハッシュを増分更新する。
@@ -667,17 +669,37 @@ impl Position {
     /// 壊すことがある。合法性検査付きの適用には
     /// [`Position::try_make_move`]を使う。
     pub(crate) fn make_move_unchecked(&mut self, mv: Move, rules: MoveRules) -> Undo {
+        self.make_move_with_captures_unchecked(mv, rules, self.captured_squares(mv))
+    }
+
+    /// 生成済みの捕獲升で合法手を適用する。
+    ///
+    /// 設計書movegen-speedup-2.md「段階5」に従い、成り判定にも受け取った捕獲升を使う。
+    /// 呼び出し側は、この局面の合法手と、それが実際に取る升を渡す必要がある。
+    pub(crate) fn make_move_with_captures_unchecked(
+        &mut self,
+        mv: Move,
+        rules: MoveRules,
+        capture_squares: [Option<Square>; 2],
+    ) -> Undo {
         let previous_zobrist = self.zobrist;
         let previous_promotion_deferred = self.promotion_deferred;
         let previous_rights_zobrist = self.rights_zobrist;
         let previous_lion_taken = self.lion_taken_by_non_lion;
-        let capture_squares = self.captured_squares(mv);
-        let moving_kind = self
-            .piece_at(mv.from)
-            .and_then(PieceCode::kind)
+        let moving_piece = self.board[mv.from.raw_index()];
+        let moving_kind = moving_piece
+            .kind()
             .expect("move origin must contain a valid piece");
         let moving_color = self.side_to_move;
-        let promotion_choice = rules.promotion_choice(self, &mv, moving_kind);
+        let promotion_choice = rules.promotion_choice_for(
+            moving_color,
+            moving_kind,
+            moving_piece.is_promoted(),
+            mv.from,
+            mv.to,
+            capture_squares.iter().any(Option::is_some),
+            self.promotion_deferred.contains(mv.from),
+        );
         let had_promotion_chance = promotion_choice != PromotionChoice::NoPromotion;
         let was_deferred = self.promotion_deferred.contains(mv.from);
         let tracks_promotion_deferred = rules.promotion != PromotionRule::P0 || rules.p5;
@@ -2032,5 +2054,51 @@ mod tests {
             double_moves_seen > 0,
             "2段階移動が出現しないシードは検査力が弱い"
         );
+    }
+
+    /// 設計書movegen-speedup-2.md「段階5」「検証」で指定された旧実装の参照。
+    fn reference_captured_squares(position: &Position, mv: Move) -> [Option<Square>; 2] {
+        let moving_color = position
+            .piece_at(mv.from)
+            .and_then(PieceCode::color)
+            .unwrap();
+        mv.capture_candidates().map(|candidate| {
+            candidate.filter(|&square| {
+                position
+                    .piece_at(square)
+                    .is_some_and(|piece| piece.color() == Some(moving_color.opposite()))
+            })
+        })
+    }
+
+    // 同節: 全規則セットの固定シード局面と特殊移動の境界局面の全合法手で、
+    // 捕獲升の順序、成り、居喰い、2枚取り、および適用・復元の同値性を守る。
+    #[test]
+    fn captured_squares_match_reference_for_all_rules_and_seeded_positions() {
+        use crate::core::movegen::tests::{capture_test_positions, capture_test_rules};
+        for rules in capture_test_rules() {
+            let generator = crate::MoveGenerator::new(rules);
+            let positions = capture_test_positions()
+                .into_iter()
+                .chain(crate::test_util::sampled_random_positions(rules));
+            for position in positions {
+                let mut moves = Vec::new();
+                generator.generate_moves(&position, &mut moves);
+                for mv in moves {
+                    let expected = reference_captured_squares(&position, mv);
+                    let actual = position.captured_squares(mv);
+                    assert_eq!(actual, expected, "rules={rules:?}, mv={mv:?}");
+                    let mut with_captures = position.clone();
+                    let mut ordinary = position.clone();
+                    let undo_with_captures =
+                        with_captures.make_move_with_captures_unchecked(mv, rules, expected);
+                    let undo_ordinary = ordinary.make_move_unchecked(mv, rules);
+                    assert_eq!(with_captures, ordinary, "rules={rules:?}, mv={mv:?}");
+                    assert_eq!(undo_with_captures, undo_ordinary);
+                    with_captures.unmake_move(undo_with_captures);
+                    assert_eq!(with_captures, position);
+                }
+            }
+        }
     }
 }

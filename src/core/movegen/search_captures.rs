@@ -25,12 +25,21 @@ pub(crate) struct OrdinaryCapturer {
     pub(crate) captures: Bitboard,
 }
 
+/// 設計書movegen-speedup-2.md「段階5」に従い、置換表の検証で得た利きを保存する。
+#[derive(Default)]
+pub(crate) struct CaptureCache {
+    pub(crate) ordinary: Option<OrdinaryCapturer>,
+    special_from: Option<Square>,
+    captures: Vec<CaptureCandidate>,
+}
+
 impl MoveGenerator {
     /// 特殊駒の全捕獲を公開生成と同じ相対順序で追加する。
     pub(crate) fn generate_special_captures(
         &self,
         position: &Position,
-        output: &mut Vec<CaptureCandidate>,
+        cache: &CaptureCache,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         let color = position.side_to_move();
         for kind in [
@@ -40,7 +49,13 @@ impl MoveGenerator {
         ] {
             for from in position.pieces_of_kind(color, kind) {
                 let piece = position.piece_at(from).expect("capture origin has a piece");
-                self.generate_special_piece_captures(position, from, piece, output);
+                if cache.special_from == Some(from) {
+                    for &candidate in &cache.captures {
+                        output(candidate);
+                    }
+                } else {
+                    self.generate_special_piece_captures(position, from, piece, output);
+                }
             }
         }
     }
@@ -51,7 +66,7 @@ impl MoveGenerator {
         position: &Position,
         from: Square,
         piece: PieceCode,
-        output: &mut Vec<CaptureCandidate>,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         let color = position.side_to_move();
         let kind = piece.kind().expect("capture origin has a kind");
@@ -109,6 +124,7 @@ impl MoveGenerator {
         &self,
         position: &Position,
         allowed: Bitboard,
+        cached: Option<OrdinaryCapturer>,
         output: &mut Vec<OrdinaryCapturer>,
     ) {
         if allowed.is_empty() {
@@ -124,7 +140,14 @@ impl MoveGenerator {
             }
             for from in position.pieces_of_kind(color, kind) {
                 let piece = position.piece_at(from).expect("capture origin has a piece");
-                if let Some(capturer) = self.ordinary_capturer(position, from, piece, allowed) {
+                if let Some(mut capturer) = cached.filter(|c| c.from == from) {
+                    capturer.captures &= allowed;
+                    if !capturer.captures.is_empty() {
+                        output.push(capturer);
+                    }
+                } else if let Some(capturer) =
+                    self.ordinary_capturer(position, from, piece, allowed)
+                {
                     output.push(capturer);
                 }
             }
@@ -169,7 +192,7 @@ impl MoveGenerator {
         position: &Position,
         capturers: &[OrdinaryCapturer],
         targets: Bitboard,
-        output: &mut Vec<CaptureCandidate>,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         let lions = position.pieces_of_kind(position.side_to_move().opposite(), PieceKind::Lion);
         for capturer in capturers {
@@ -195,14 +218,15 @@ impl MoveGenerator {
         }
     }
 
-    /// 再利用バッファへ1駒分の捕獲だけを生成し、置換表の手を検査する。
+    /// 1駒分の捕獲で置換表の手を検査し、利きを初期化へ引き継ぐ。
+    /// 設計書movegen-speedup-2.md「段階5」に従う。
     pub(crate) fn is_legal_capture(
         &self,
         position: &Position,
         mv: Move,
-        output: &mut Vec<CaptureCandidate>,
+        cache: &mut CaptureCache,
     ) -> bool {
-        output.clear();
+        cache.clear();
         let Some(piece) = position.piece_at(mv.from) else {
             return false;
         };
@@ -223,20 +247,31 @@ impl MoveGenerator {
                 return false;
             }
             let enemy = position.pieces_of(position.side_to_move().opposite());
-            if let Some(capturer) = self.ordinary_capturer(position, mv.from, piece, enemy)
+            cache.ordinary = self.ordinary_capturer(position, mv.from, piece, enemy);
+            if let Some(capturer) = cache.ordinary
                 && capturer.captures.contains(mv.to)
             {
-                let mut target = Bitboard::EMPTY;
-                target.set(mv.to);
-                self.emit_ordinary_captures(position, &[capturer], target, output);
+                let mut legal = false;
+                self.emit_ordinary_captures(
+                    position,
+                    &[capturer],
+                    Bitboard::from_squares([mv.to]),
+                    &mut |candidate| legal |= candidate.mv == mv,
+                );
+                return legal;
             }
+            false
         } else {
-            self.generate_special_piece_captures(position, mv.from, piece, output);
+            cache.special_from = Some(mv.from);
+            self.generate_special_piece_captures(position, mv.from, piece, &mut |candidate| {
+                cache.captures.push(candidate)
+            });
+            cache.captures.iter().any(|candidate| candidate.mv == mv)
         }
-        output.iter().any(|candidate| candidate.mv == mv)
     }
 
     /// 獅子捕獲のときだけ規則を検査し、成りを展開して直接出力する。
+    /// 設計書movegen-speedup-2.md「段階5」に従い、生成済みの駒コードと捕獲升を使う。
     fn push_capture(
         &self,
         position: &Position,
@@ -244,7 +279,7 @@ impl MoveGenerator {
         piece: PieceCode,
         lions: Bitboard,
         candidate: CaptureCandidate,
-        output: &mut Vec<CaptureCandidate>,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         if candidate
             .captured
@@ -258,16 +293,37 @@ impl MoveGenerator {
         let choice = if piece.is_promoted() || !kind.can_promote() {
             PromotionChoice::NoPromotion
         } else {
-            self.rules().promotion_choice(position, &candidate.mv, kind)
+            self.rules().promotion_choice_for(
+                position.side_to_move(),
+                kind,
+                piece.is_promoted(),
+                candidate.mv.from,
+                candidate.mv.to,
+                candidate.captured.iter().any(Option::is_some),
+                position.promotion_deferred().contains(candidate.mv.from),
+            )
         };
         if !matches!(choice, PromotionChoice::PromotionForced) {
-            output.push(candidate);
+            output(candidate);
         }
         if !matches!(choice, PromotionChoice::NoPromotion) {
-            output.push(CaptureCandidate {
+            output(CaptureCandidate {
                 mv: promoting_variant(candidate.mv),
                 ..candidate
             });
         }
+    }
+}
+
+impl CaptureCache {
+    pub(crate) fn clear(&mut self) {
+        self.ordinary = None;
+        self.special_from = None;
+        self.captures.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn capacity(&self) -> usize {
+        self.captures.capacity()
     }
 }

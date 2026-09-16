@@ -4,7 +4,7 @@
 pub(crate) mod tests;
 
 mod search_captures;
-pub(crate) use search_captures::{CaptureCandidate, OrdinaryCapturer};
+pub(crate) use search_captures::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 
 use core::fmt;
 

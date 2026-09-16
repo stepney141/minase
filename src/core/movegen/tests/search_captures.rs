@@ -1,7 +1,7 @@
 //! 設計書movegen-speedup.md「捕獲対象を生成前に除外する」の契約テスト。
 use super::*;
 use crate::Bitboard;
-use crate::core::movegen::CaptureCandidate;
+use crate::core::movegen::{CaptureCache, CaptureCandidate};
 
 // 公開捕獲の集合・順序・捕獲升を保存する。期待値は公開APIの契約による。
 #[test]
@@ -12,9 +12,11 @@ fn split_captures_preserve_public_order_and_captured_squares() {
             let mut split = Vec::new();
             let enemy = position.pieces_of(position.side_to_move().opposite());
             let mut capturers = Vec::new();
-            generator.collect_ordinary_capturers(&position, enemy, &mut capturers);
-            generator.emit_ordinary_captures(&position, &capturers, enemy, &mut split);
-            generator.generate_special_captures(&position, &mut split);
+            generator.collect_ordinary_capturers(&position, enemy, None, &mut capturers);
+            generator.emit_ordinary_captures(&position, &capturers, enemy, &mut |c| split.push(c));
+            generator.generate_special_captures(&position, &CaptureCache::default(), &mut |c| {
+                split.push(c)
+            });
             // 安定整列は公開生成順を表すキーによる、テスト専用の独立したマージ。
             split.sort_by_key(|c| {
                 (
@@ -52,8 +54,8 @@ fn ordinary_targets_select_exactly_the_public_subsequence() {
             let enemy = position.pieces_of(position.side_to_move().opposite());
             let mut all = Vec::new();
             let mut capturers = Vec::new();
-            generator.collect_ordinary_capturers(&position, enemy, &mut capturers);
-            generator.emit_ordinary_captures(&position, &capturers, enemy, &mut all);
+            generator.collect_ordinary_capturers(&position, enemy, None, &mut capturers);
+            generator.emit_ordinary_captures(&position, &capturers, enemy, &mut |c| all.push(c));
             let mut masks = vec![Bitboard::EMPTY, enemy];
             masks.extend(enemy.into_iter().map(|s| Bitboard::from_squares([s])));
             for _ in 0..8 {
@@ -66,11 +68,15 @@ fn ordinary_targets_select_exactly_the_public_subsequence() {
             }
             for targets in masks {
                 let mut actual = Vec::new();
-                generator.emit_ordinary_captures(&position, &capturers, targets, &mut actual);
+                generator.emit_ordinary_captures(&position, &capturers, targets, &mut |c| {
+                    actual.push(c)
+                });
                 let mut restricted = Vec::new();
-                generator.collect_ordinary_capturers(&position, targets, &mut restricted);
+                generator.collect_ordinary_capturers(&position, targets, None, &mut restricted);
                 let mut recollected = Vec::new();
-                generator.emit_ordinary_captures(&position, &restricted, targets, &mut recollected);
+                generator.emit_ordinary_captures(&position, &restricted, targets, &mut |c| {
+                    recollected.push(c)
+                });
                 assert_eq!(
                     actual, recollected,
                     "collecting a subset preserves its captures"
@@ -92,7 +98,7 @@ fn ordinary_targets_select_exactly_the_public_subsequence() {
 fn tt_capture_validation_matches_public_captures() {
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
-        let mut raw = Vec::new();
+        let mut raw = CaptureCache::default();
         for position in capture_test_positions() {
             let mut captures = Vec::new();
             generator.generate_captures(&position, &mut captures);

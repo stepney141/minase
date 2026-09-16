@@ -110,13 +110,6 @@ fn stopping_in_first_group_leaves_later_groups_ungenerated() {
             assert!(ranks.values[rank] < first_value);
         }
     }
-    assert!(!buffers.raw.is_empty());
-    assert!(buffers.raw.iter().all(|c| {
-        move_order_key(&position, &pst, c.mv)
-            .unwrap()
-            .captured_value
-            == first_value
-    }));
     assert!(
         buffers
             .group
@@ -201,7 +194,6 @@ fn tt_capture_is_returned_before_generating_groups() {
     assert!(!buffers.initialized);
     assert_eq!(buffers.present_ranks, 0);
     assert!(buffers.special.is_empty());
-    assert!(buffers.raw.is_empty());
 }
 
 // 「捕獲対象を生成前に除外する」: 同じ標本を再走査してもバッファを再確保しない。
@@ -214,7 +206,7 @@ fn warmed_buffers_retain_capacity_across_nodes() {
     let mut buffers = QsearchBuffers::default();
     let capacities = |b: &QsearchBuffers| {
         [
-            b.raw.capacity(),
+            b.validation.capacity(),
             b.capturers.capacity(),
             b.special.capacity(),
             b.group.capacity(),
@@ -288,6 +280,134 @@ fn reset_discards_targets_from_partially_consumed_node() {
                 .map(|(mv, _)| mv)
                 .collect();
             assert_eq!(actual, expected);
+        }
+    }
+}
+
+// 設計書movegen-speedup-2.md「段階5」: 居喰いと複数の空升への移動を含む
+// 圧縮候補を展開し、どの展開手が置換表にあっても公開生成の安定整列に一致する。
+#[test]
+fn compressed_lion_captures_preserve_every_tt_variant() {
+    let pst = crate::eval::weights().unwrap();
+    let ranks = CaptureRanks::new(&pst);
+    let position = crate::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
+    for rules in capture_test_rules() {
+        let generator = MoveGenerator::new(rules);
+        let ordered = reference(&position, &generator, &pst, None);
+        let single_mid: Vec<_> = ordered
+            .iter()
+            .map(|&(mv, _)| mv)
+            .filter(|&mv| matches!(position.captured_squares(mv), [Some(_), None]))
+            .collect();
+        assert!(single_mid.len() > 2);
+        assert!(single_mid.iter().any(|mv| mv.from == mv.to));
+        let mut buffers = QsearchBuffers::default();
+        buffers.reset(&position, &generator, None);
+        buffers.initialize(&position, &generator, &pst, &ranks, -1);
+        assert_eq!(
+            buffers
+                .special
+                .iter()
+                .filter(|c| c.lion_destinations != 0)
+                .count(),
+            1
+        );
+        assert_eq!(
+            buffers
+                .special
+                .iter()
+                .map(|c| c.lion_destinations.count_ones() as usize)
+                .sum::<usize>(),
+            single_mid.len()
+        );
+        let invalid = Move {
+            promote: true,
+            ..single_mid[0]
+        };
+        for tt_move in ordered
+            .iter()
+            .map(|&(mv, _)| Some(mv))
+            .chain([None, Some(invalid)])
+        {
+            for threshold in [-1, pst.pawn_value(), i32::MAX / 2] {
+                buffers.reset(&position, &generator, tt_move);
+                let mut actual = Vec::new();
+                while let Some(candidate) =
+                    buffers.next(&position, &generator, &pst, &ranks, threshold)
+                {
+                    if candidate.captured_value > threshold
+                        || captures_last_royal(&position, candidate.capture.mv)
+                    {
+                        actual.push(candidate.capture.mv);
+                    }
+                }
+                let expected: Vec<_> = reference(&position, &generator, &pst, tt_move)
+                    .into_iter()
+                    .filter(|&(mv, key)| {
+                        key.captured_value > threshold || captures_last_royal(&position, mv)
+                    })
+                    .map(|(mv, _)| mv)
+                    .collect();
+                assert_eq!(
+                    actual, expected,
+                    "rules={rules:?}, tt={tt_move:?}, threshold={threshold}"
+                );
+            }
+        }
+    }
+}
+
+// 設計書movegen-speedup-2.md「段階5」: 駒種別の成否2通りの順位が、
+// 全ての有効な駒コードについて従来の47状態の順位に一致する。
+#[test]
+fn kind_capture_ranks_match_all_piece_codes() {
+    let pst = crate::eval::weights().unwrap();
+    let ranks = CaptureRanks::new(&pst);
+    for color in crate::Color::ALL {
+        for kind in PieceKind::ALL {
+            for piece in [
+                PieceCode::new(color, kind),
+                PieceCode::new_promoted(color, kind),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert_eq!(
+                    ranks.ranks_of_kind[kind.index()][usize::from(piece.is_promoted())],
+                    ranks.rank_of_state[piece_state_of(piece)]
+                );
+            }
+        }
+    }
+}
+
+// 設計書movegen-speedup-2.md「段階5」: 主探索のキー前計算は、同点時の
+// 安定性と置換表の手の扱いを含めて、公開捕獲列の安定整列と一致する。
+#[test]
+fn main_picker_captures_match_stable_reference_for_all_rules() {
+    let pst = crate::eval::weights().unwrap();
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    for rules in capture_test_rules() {
+        let generator = MoveGenerator::new(rules);
+        for position in capture_test_positions() {
+            let ordered = reference(&position, &generator, &pst, None);
+            for tt_move in [None, ordered.get(ordered.len() / 2).map(|&(mv, _)| mv)] {
+                let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
+                let mut actual = Vec::new();
+                while let Some((mv, is_capture)) =
+                    picker.next(&position, &pst, &generator, &history)
+                {
+                    if !is_capture {
+                        break;
+                    }
+                    actual.push(mv);
+                }
+                let expected: Vec<_> = reference(&position, &generator, &pst, tt_move)
+                    .into_iter()
+                    .map(|(mv, _)| mv)
+                    .collect();
+                assert_eq!(actual, expected, "rules={rules:?}, tt={tt_move:?}");
+            }
         }
     }
 }
