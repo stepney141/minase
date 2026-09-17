@@ -46,9 +46,7 @@
 | 合法手生成と利き計算の高速化（第2期） | [plans/movegen-speedup-2.md](plans/movegen-speedup-2.md) | 完了 | 2026年9月17日 |
 | 合法手生成と利き計算の高速化（第3期） | [plans/movegen-speedup-3.md](plans/movegen-speedup-3.md) | 起案 | |
 | 棋力向上段階8（前向き枝刈りの第3層） | [plans/strength-stage8.md](plans/strength-stage8.md) | 起案 | |
-| 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了（不採用） | 2026年9月18日 |
-| 時間管理の変更の分解測定 | [plans/time-management-decomposition.md](plans/time-management-decomposition.md) | 完了 | 2026年9月18日 |
-| 秒読みの予算に序盤の係数を加える | [plans/time-management-opening-coefficient.md](plans/time-management-opening-coefficient.md) | 完了 | 2026年9月18日 |
+| 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了 | 2026年9月18日 |
 
 ## 現在地
 
@@ -78,7 +76,7 @@ HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの�
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 lishogi Bot接続（plans/lishogi-bot.md）は2026年9月12日に着手し、規則R1へlishogiの反復裁定の前提条件を取り込み、Lishogi-Botとminaseを1つのDockerイメージにまとめる配備手段を整えた。
 次の一手は、利用者がBotアカウントを作成してイメージを運用機で起動し、非レート対局の公開運用へ進むことである。
-[持ち時間の効率的な使用](plans/time-management-efficiency.md)は2026年9月18日に不採用で完了した。根の探索結果の表、途中結果の採用と予算の再定義（序盤の係数を含む）、Stockfish式の局面適応の係数を積んだ最終コミットは、時計の診断（初手1.5秒、秒読み利用率0.81、hardの超過最大14 ms）を満たしたがSTCで`H0`となり、加算つきの時間制御で候補側に2件の時間切れが出た。原因はhardが残り時間の割合で抑えられず持ち時間を使い切ることにあり、教訓に出した。深さの抑制は事前判定で空費と判定して見送った。STCの事後分析で、主因は係数つきの予算が持ち時間を200手目までに使い切らせ中終盤で浅くなることと分かった。第1段階だけの構成の採否は[時間管理の変更の分解測定](plans/time-management-decomposition.md)として起案した（第3段階の配分を直す案も起案したが、分解測定の結論を受けて取り下げた）。分解測定は同日に完了し、第1段階だけの構成も序盤の係数を外した構成もSTCで`H0`となって残せる構成はなく、原因は分担そのものの予算と探索中の中断が旧式の反復完了による超過分の時間を使い残すことにあると分かった。この結論と、人間向けの変更で棋力を落とさないという利用者の制約を受け、現行の機構を変えずに秒読みの項にだけ序盤の係数を掛け、秒読みのない時間制御では式を現行と同一に保つ[秒読みの予算に序盤の係数を加える](plans/time-management-opening-coefficient.md)を起案した。同日に時計の診断で採用した（初手11.9秒から4.0秒、時間切れ0件）。成果は統合ブランチ`time-management`にあり、masterへのマージを待つ。
+[持ち時間の効率的な使用](plans/time-management-efficiency.md)は2026年9月18日に完了した。StockfishとYaneuraOuに倣った時間管理の再構成（根の探索結果の表、途中結果の採用と予算の再定義、局面適応の係数）は、時計の診断を満たしたがSTCで`H0`となり、加算つきの時間制御で候補側に2件の時間切れが出て不採用となった。構成要素を分けて測る分解測定でも残せる構成はなく、予算を分担そのものにして探索中の中断で止める方式が旧式より総思考時間を約14%使い残すために劣ると分かった。この結論と、人間向けの変更で棋力を落とさないという利用者の制約を受け、現行の機構を変えずに秒読みの項にだけ序盤の係数を掛ける方式を時計の診断で採用した（issueの条件の初手が11.9秒から4.0秒、時間切れ0件、秒読みのない時間制御では式が現行と同一）。採用したのはこの係数と、探索を変えない置換表の2修正である。成果は統合ブランチ`time-management`にあり、masterへのマージを待つ。
 
 ## 横断的な記録済みの決定
 

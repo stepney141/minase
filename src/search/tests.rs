@@ -1957,7 +1957,7 @@ fn clock_budget_matches_the_normative_formula() {
     assert_eq!(budget.hard, Duration::from_millis(70));
 }
 
-// time-management-opening-coefficient.mdの「予算値」。秒読みの項にだけ序盤の係数を掛け、
+// time-management-efficiency.mdの「予算値」。秒読みの項にだけ序盤の係数を掛け、
 // 秒読みのない時計では式が現行と一致する。
 #[test]
 fn opening_coefficient_scales_only_the_byoyomi_term() {

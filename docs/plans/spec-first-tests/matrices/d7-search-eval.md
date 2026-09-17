@@ -203,7 +203,7 @@
 
 ## D7-TIME　時間予算
 
-予算式（search.md「時間管理」節。秒読みの項の序盤の係数はtime-management-opening-coefficient.md「変更の範囲」）:
+予算式（search.md「時間管理」節。秒読みの項の序盤の係数はtime-management-efficiency.md「採用した方式」）:
 
 ```text
 moves_to_go = max(100, 450.saturating_sub(ply) / 2)

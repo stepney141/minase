@@ -56,7 +56,7 @@ def budget_ms(
             hard_raw = soft_raw
         return max(1, min(soft_raw, safe_hard)), max(1, min(hard_raw, safe_hard))
     if formula == "byoyomi-opening":
-        # 秒読みの項にだけ序盤の係数を掛ける（time-management-opening-coefficient.md）。
+        # 秒読みの項にだけ序盤の係数を掛ける（time-management-efficiency.md）。
         weight = min(40, ply + 4) if remaining_ms > 0 else 40
         soft_raw = main + byoyomi_ms * 8 * weight // 400
     ceiling = 4 * main + byoyomi if formula == "quadruple-main" else 4 * soft_raw

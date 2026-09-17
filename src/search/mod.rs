@@ -1725,7 +1725,7 @@ fn moves_to_go(ply: u32) -> u128 {
 /// `soft = min(soft_raw, hard)`とする。
 /// `w = min(1, (ply + 4) / 40)`は序盤の係数で、残り時間が正の手の秒読みの項にだけ掛け、
 /// 対局開始直後の数手が秒読み相当の長考を使うことを防ぐ
-/// （`docs/plans/time-management-opening-coefficient.md`）。
+/// （`docs/plans/time-management-efficiency.md`の「採用した方式」）。
 /// 秒読みのない時計では式は係数のない形と一致する。
 /// 係数を変更する場合は自己対局で採否を判定する。
 fn clock_budget(clock: ClockLimits) -> TimeBudget {

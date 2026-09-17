@@ -2,7 +2,7 @@
 
 ## 目的
 
-[持ち時間の効率的な使用](../plans/time-management-efficiency.md)の「フェーズ7」が定める最終診断である。
+[持ち時間の効率的な使用](../plans/time-management-efficiency.md)の「フェーズ2」が定める再構成の最終診断である。
 最終コミット3087d1dについて、[time-management-efficiency-diag](time-management-efficiency-diag.md)と同じ2つの実行（`time=9000+0,byoyomi=300`の10ペア自己対局と、issueの条件の先手60手自己対局）と、`time=10000+100,byoyomi=200`の10ペア煙試験を行い、「診断の指標」の判定を確かめる。
 
 ## コマンドライン

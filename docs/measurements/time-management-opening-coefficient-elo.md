@@ -2,7 +2,7 @@
 
 ## 目的
 
-[秒読みの予算に序盤の係数を加える](../plans/time-management-opening-coefficient.md)で採用した係数について、利用者の求めにより秒読みつきの条件で棋力の変化がないことを確かめる参考測定である。
+[持ち時間の効率的な使用](../plans/time-management-efficiency.md)で採用した序盤の係数について、利用者の求めにより秒読みつきの条件で棋力の変化がないことを確かめる参考測定である。
 秒読みのない時間制御では式が現行と一致するので、棋力が変わり得るのは秒読みつきの対局だけである。
 採否の根拠は時計の診断（[time-management-opening-coefficient-diag](time-management-opening-coefficient-diag.md)）であり、本測定は採否を変える判定には使わない。
 

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[時間管理の変更の分解測定](../plans/time-management-decomposition.md)の「フェーズ3」が定める候補D2（D1から序盤の係数を外した構成）の段階ゲートのSTCである。
+[持ち時間の効率的な使用](../plans/time-management-efficiency.md)の「分解測定」が定める候補D2（D1から序盤の係数を外した構成）の段階ゲートのSTCである。
 比較対象は共通基準B′である。
 
 ## コマンドライン

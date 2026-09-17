@@ -2,7 +2,7 @@
 
 ## 症状
 
-時間管理の候補のうち、予算を公平な分担そのものにして探索中の中断で止める構成（[分解測定](../plans/time-management-decomposition.md)のD1とD2）は、各手の思考時間の中央値が基準と同等以上で、時計の診断（初手、hardの超過、時間切れ）をすべて満たしたが、STCで基準に有意に劣った。
+時間管理の候補のうち、予算を公平な分担そのものにして探索中の中断で止める構成（[持ち時間の効率的な使用](../plans/time-management-efficiency.md)の「分解測定」のD1とD2）は、各手の思考時間の中央値が基準と同等以上で、時計の診断（初手、hardの超過、時間切れ）をすべて満たしたが、STCで基準に有意に劣った。
 保存記録を手数帯ごとに比べると、候補は1局の総思考時間を基準より約14%使い残し（終局時の残り時間の中央値6.4秒対2.6秒）、同じ思考時間で完了深さが約0.5浅かった。
 
 ## 原因
@@ -18,5 +18,5 @@
 
 ## 出典
 
-- [時間管理の変更の分解測定](../plans/time-management-decomposition.md)。
+- [持ち時間の効率的な使用](../plans/time-management-efficiency.md)の「分解測定」。
 - [time-management-decomposition-d1-stc](../measurements/time-management-decomposition-d1-stc.md)、[time-management-decomposition-d2-stc](../measurements/time-management-decomposition-d2-stc.md)。
