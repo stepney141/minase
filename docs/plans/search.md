@@ -225,13 +225,15 @@ USIとCECPは`ClockLimits`の構築時にこの値を渡し、探索履歴の長
 
 ```text
 moves_to_go = max(MIN_MOVES, EXPECTED_PLIES.saturating_sub(ply) / 2)
-soft_raw    = remaining / moves_to_go + 0.7·increment + 0.8·byoyomi
+w           = min(1, (ply + 4) / 40)   （remaining > 0 のとき。remaining = 0 では 1）
+soft_raw    = remaining / moves_to_go + 0.7·increment + 0.8·byoyomi·w
 safe_hard   = max(1ms, (remaining + byoyomi).saturating_sub(30ms))
 hard        = max(1ms, min(4·soft_raw, remaining / 4 + 0.8·byoyomi, safe_hard))
 soft        = min(soft_raw, hard)
 ```
 
 `EXPECTED_PLIES`は450、`MIN_MOVES`は100とし、整数演算の除算は切り捨てる。
+`w`は序盤の係数で、秒読みの項にだけ掛ける（[持ち時間の効率的な使用](time-management-efficiency.md)の「採用した方式」）。対局開始直後の数手が秒読み相当の長考を使うことを防ぐためのもので、秒読みのない時計では式は係数のない形と一致し、残り時間0の手には掛けない。
 softは1手の標準予算である。
 主ワーカーは反復深化の各イテレーション完了時に経過時間を照合し、経過時間がsoft未満で、かつ経過時間に固定比2.5を掛けた予測完了時刻がhard以下の場合だけ次の深さへ入る。
 直近4反復の最善手が同じ場合は、[棋力向上段階6](strength-stage6.md)の最善手安定時の早期終了に従い、softの条件を「予測完了時刻がsoft以下」に置き換える。

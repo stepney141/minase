@@ -1926,11 +1926,17 @@ fn clock_budget_matches_the_normative_formula() {
     assert_eq!(budget.hard, Duration::from_millis(3_864));
 
     // (b) 残り10000・加算0・秒読み200・ply=0:
-    //     moves_to_go=225、soft_raw=10000/225+160=204、safe_hard=10170、
-    //     hard=min(816, 2660, 10170)=816、soft=204。
+    //     moves_to_go=225、序盤の係数w=4/40、soft_raw=10000/225+200*8*4/400=44+16=60、
+    //     safe_hard=10170、hard=min(240, 2660, 10170)=240、soft=60。
     let budget = clock_budget(clock_at_ply(10_000, 0, 200, 0));
-    assert_eq!(budget.soft, Duration::from_millis(204));
-    assert_eq!(budget.hard, Duration::from_millis(816));
+    assert_eq!(budget.soft, Duration::from_millis(60));
+    assert_eq!(budget.hard, Duration::from_millis(240));
+
+    // (b') 同じ時計でply=36以降は係数が1になり、moves_to_go=207、
+    //     soft_raw=10000/207+160=208、hard=min(832, 2660, 10170)=832。
+    let budget = clock_budget(clock_at_ply(10_000, 0, 200, 36));
+    assert_eq!(budget.soft, Duration::from_millis(208));
+    assert_eq!(budget.hard, Duration::from_millis(832));
 
     // (c) 旧式でhard<softになった入力。残り200・加算100・秒読み0・ply=300:
     //     moves_to_go=100、soft_raw=2+70=72、safe_hard=170、
@@ -1945,9 +1951,37 @@ fn clock_budget_matches_the_normative_formula() {
     assert!(budget.soft <= budget.hard);
 
     // 主時間0・秒読み100ではsoft_raw=80、safe_hard=70、hard=soft=70。
+    // 残り時間0の手には序盤の係数を掛けない。
     let budget = clock_budget(clock_at_ply(0, 0, 100, 0));
     assert_eq!(budget.soft, Duration::from_millis(70));
     assert_eq!(budget.hard, Duration::from_millis(70));
+}
+
+// time-management-efficiency.mdの「予算値」。秒読みの項にだけ序盤の係数を掛け、
+// 秒読みのない時計では式が現行と一致する。
+#[test]
+fn opening_coefficient_scales_only_the_byoyomi_term() {
+    for (remaining, increment, byoyomi, ply, soft, hard) in [
+        (300_000, 0, 10_000, 0, 2_133, 8_532),
+        (300_000, 0, 10_000, 36, 9_449, 37_796),
+        (1_800_000, 0, 40_000, 0, 11_200, 44_800),
+        (10_000, 100, 0, 0, 114, 456),
+        (60_000, 200, 0, 0, 406, 1_624),
+        (0, 0, 10_000, 0, 8_000, 8_000),
+        (0, 100, 10_000, 0, 8_000, 8_000),
+    ] {
+        let budget = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
+        assert_eq!(
+            budget.soft,
+            Duration::from_millis(soft),
+            "soft clock=({remaining}, {increment}, {byoyomi}, {ply})"
+        );
+        assert_eq!(
+            budget.hard,
+            Duration::from_millis(hard),
+            "hard clock=({remaining}, {increment}, {byoyomi}, {ply})"
+        );
+    }
 }
 
 // D7-TIME-01。search.md「時間管理」節: 残り手数の見積りは手数について
@@ -2896,6 +2930,35 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
 // D7-TT-05。search.md「置換表」節: 規則セットの変更時と新規対局の開始時には
 // 置換表をクリアする。wire連動はD6の領域であり、ここではクリア契約だけを
 // 検証する。クリア後の探索は空の置換表から正常に再構築される。
+#[test]
+fn tt_clear_is_skipped_until_a_search_uses_the_table() {
+    // 対局開始直後の`go`が消去の完了を待たされないよう、作成または消去の後に
+    // 探索が始まっていない置換表の消去は何もしない（time-management-efficiency.md）。
+    let best_move = Move {
+        from: sq(0, 0),
+        mid: None,
+        to: sq(0, 1),
+        promote: false,
+    };
+    let key = 0x4444_4444_0000_0004_u64;
+    let mut table = small_tt();
+    table.new_search();
+    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
+    table.clear();
+    assert!(table.probe(key, 0).is_none());
+    assert_eq!(table.generation(), 0);
+
+    // 消去後に探索を始めずに書いた内容は、次の消去で消えない。
+    table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
+    table.clear();
+    assert!(table.probe(key, 0).is_some());
+
+    // 探索を始めた後の消去は空にする。
+    table.new_search();
+    table.clear();
+    assert!(table.probe(key, 0).is_none());
+}
+
 #[test]
 fn tt_clear_empties_all_entries_and_search_restarts() {
     let best_move = Move {

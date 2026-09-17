@@ -1,7 +1,7 @@
 //! 探索局面の置換表。
 
 use core::mem::size_of;
-use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::fmt;
 
 #[cfg(not(target_has_atomic = "64"))]
@@ -143,6 +143,8 @@ pub struct TranspositionTable {
     mask: usize,
     /// 現在の探索の世代。
     generation: AtomicU8,
+    /// 作成または消去の後に探索で使われたか。未使用なら消去を省く。
+    used: AtomicBool,
 }
 
 impl TranspositionTable {
@@ -163,15 +165,24 @@ impl TranspositionTable {
             entries,
             mask: entry_count - 1,
             generation: AtomicU8::new(0),
+            used: AtomicBool::new(false),
         })
     }
 
     /// 全エントリを空にし、世代を初期化する。
+    ///
+    /// 作成または前回の消去の後に探索で使われていなければ内容は空のままなので、
+    /// 何もしない。`usinewgame`のたびに容量分のメモリを書き直すと、対局開始直後の
+    /// `go`が消去の完了を待たされ、その時間が時計上の思考時間に数えられるためである。
     pub fn clear(&mut self) {
+        if !*self.used.get_mut() {
+            return;
+        }
         for entry in &mut self.entries {
             *entry = Entry::empty();
         }
         *self.generation.get_mut() = 0;
+        *self.used.get_mut() = false;
     }
 
     /// 探索中でない置換表を指定容量(MB)へ作り直す。
@@ -189,6 +200,7 @@ impl TranspositionTable {
     /// 新しい探索の開始を記録し、既存エントリを置換候補として古びさせる。
     pub(super) fn new_search(&self) {
         self.generation.fetch_add(1, Ordering::Relaxed);
+        self.used.store(true, Ordering::Relaxed);
     }
 
     /// テスト用に現在の世代カウンタを返す。

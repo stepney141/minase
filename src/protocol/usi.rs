@@ -137,7 +137,17 @@ impl UsiProtocol {
 
         match command {
             "usi" => self.write_handshake(output)?,
-            "isready" => writeln!(output, "readyok")?,
+            "isready" => {
+                // 置換表の確保と初期化を最初の`go`の前に済ませ、対局開始直後の手の
+                // 思考時間に数えられないようにする（time-management-efficiency.md）。
+                // 確保に失敗した場合は`go`で改めて試み、そこで報告する。
+                if self.transposition_table.is_none()
+                    && let Ok(table) = TranspositionTable::new(search::DEFAULT_TT_SIZE_MB)
+                {
+                    self.transposition_table = Some(table);
+                }
+                writeln!(output, "readyok")?;
+            }
             "setoption" => self.handle_setoption(engine, &tokens[1..], output)?,
             "usinewgame" => {
                 self.apply_silent(engine, EngineCommand::NewGame, output)?;
@@ -1452,6 +1462,18 @@ mod tests {
             )
         );
         assert_eq!(protocol.threads.get(), 1);
+    }
+
+    #[test]
+    fn isready_allocates_the_default_transposition_table_before_the_first_go() {
+        // 対局開始直後の手が置換表の確保を待たないよう、isreadyで既定容量の
+        // 置換表を作る（time-management-efficiency.md「診断の指標」1）。
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        assert!(protocol.transposition_table.is_none());
+        let output = run(&mut protocol, &mut engine, "isready\n");
+        assert_eq!(output, "readyok\n");
+        assert!(protocol.transposition_table.is_some());
     }
 
     #[test]
