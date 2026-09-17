@@ -203,11 +203,12 @@
 
 ## D7-TIME　時間予算
 
-予算式（search.md「時間管理」節）:
+予算式（search.md「時間管理」節。秒読みの項の序盤の係数はtime-management-opening-coefficient.md「変更の範囲」）:
 
 ```text
 moves_to_go = max(100, 450.saturating_sub(ply) / 2)
-soft_raw    = 残り時間 / moves_to_go + 加算×0.7 + 秒読み×0.8
+w           = min(1, (ply + 4) / 40)   （残り時間 > 0 のとき。残り時間0では1）
+soft_raw    = 残り時間 / moves_to_go + 加算×0.7 + 秒読み×0.8×w
 safe_hard   = max(1ms, (残り時間 + 秒読み).saturating_sub(30ms))
 hard        = max(1ms, min(soft_raw×4, 残り時間/4 + 秒読み×0.8, safe_hard))
 soft        = min(soft_raw, hard)
@@ -222,7 +223,7 @@ hardは常に1ms以上であり、時計合計が30msを超える場合は「残
 |---|---|
 | 典拠 | 上掲の予算式（search.md） |
 | 前提 | 予算計算を単体で呼べること（到達手段は実装読解フェーズで確定） |
-| 操作と期待観測 | (a) 残り60000ms・加算1000ms・秒読み0・ply 0では、moves_to_go = 225、soft_raw = 60000/225 + 700 = **966ms**、hard = min(3864, 15000, 59970) = **3864ms**、soft = **966ms**。 (b) 残り10000ms・加算0・秒読み200ms・ply 0では、moves_to_go = 225、soft_raw = 10000/225 + 160 = **204ms**、hard = min(816, 2660, 10170) = **816ms**、soft = **204ms**。 (c) 残り200ms・加算100ms・秒読み0・ply 300では、moves_to_go = 100、soft_raw = 2 + 70 = **72ms**、hard = min(288, 50, 170) = **50ms**、soft = **50ms**。 (d) 残り0ms・加算0・秒読み100ms・ply 0では、soft_raw = 80ms、安全上限 = 70msによりsoft = hard = **70ms** |
+| 操作と期待観測 | (a) 残り60000ms・加算1000ms・秒読み0・ply 0では、moves_to_go = 225、soft_raw = 60000/225 + 700 = **966ms**、hard = min(3864, 15000, 59970) = **3864ms**、soft = **966ms**。 (b) 残り10000ms・加算0・秒読み200ms・ply 0では、moves_to_go = 225、w = 4/40、soft_raw = 10000/225 + 200×0.8×4/40 = 44 + 16 = **60ms**、hard = min(240, 2660, 10170) = **240ms**、soft = **60ms**。同じ時計でply 36以降はw = 1、moves_to_go = 207でsoft_raw = 48 + 160 = **208ms**、hard = **832ms**。issueの条件（残り300000ms・秒読み10000ms・ply 0）ではsoft_raw = 1333 + 800 = **2133ms**、hard = min(8532, 83000, 309970) = **8532ms**。 (旧b) 残り10000ms・加算0・秒読み200ms・ply 0では、moves_to_go = 225、soft_raw = 10000/225 + 160 = **204ms**、hard = min(816, 2660, 10170) = **816ms**、soft = **204ms**。 (c) 残り200ms・加算100ms・秒読み0・ply 300では、moves_to_go = 100、soft_raw = 2 + 70 = **72ms**、hard = min(288, 50, 170) = **50ms**、soft = **50ms**。 (d) 残り0ms・加算0・秒読み100ms・ply 0では、soft_raw = 80ms、安全上限 = 70msによりsoft = hard = **70ms** |
 | 境界・不正事例 | 残り20ms・加算0・秒読み0ではsafe_hardとhardが**1ms**になり、softはhard以下へ縮む。plyが450または1000ならmoves_to_goは**100**である |
 | 性質 | 任意の入力でsoft ≤ hardかつhard ≥ 1msである。時計合計が30msを超える入力ではhard ≤ 残り時間＋秒読み−30msである。moves_to_goはplyについて単調非増加であり、ply ≥ 450では100に固定される |
 

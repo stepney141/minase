@@ -1691,17 +1691,27 @@ fn moves_to_go(ply: u32) -> u128 {
 /// 持ち時間制の予算式を1箇所に集約する。
 ///
 /// `moves_to_go = max(MIN_MOVES, EXPECTED_PLIES.saturating_sub(ply) / 2)`、
-/// `soft_raw = remaining / moves_to_go + 0.7 * increment + 0.8 * byoyomi`、
+/// `soft_raw = remaining / moves_to_go + 0.7 * increment + 0.8 * byoyomi * w`、
 /// `safe_hard = max(1ms, (remaining + byoyomi).saturating_sub(30ms))`、
 /// `hard = max(1ms, min(4 * soft_raw, remaining / 4 + 0.8 * byoyomi, safe_hard))`、
 /// `soft = min(soft_raw, hard)`とする。
+/// `w = min(1, (ply + 4) / 40)`は序盤の係数で、残り時間が正の手の秒読みの項にだけ掛け、
+/// 対局開始直後の数手が秒読み相当の長考を使うことを防ぐ
+/// （`docs/plans/time-management-opening-coefficient.md`）。
+/// 秒読みのない時計では式は係数のない形と一致する。
 /// 係数を変更する場合は自己対局で採否を判定する。
 fn clock_budget(clock: ClockLimits) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);
     let byoyomi = u128::from(clock.byoyomi_ms);
     let byoyomi_share = byoyomi * 8 / 10;
-    let soft_raw = remaining / moves_to_go(clock.ply) + increment * 7 / 10 + byoyomi_share;
+    let opening = if remaining > 0 {
+        u128::from(clock.ply.saturating_add(4).min(40))
+    } else {
+        40
+    };
+    let soft_raw =
+        remaining / moves_to_go(clock.ply) + increment * 7 / 10 + byoyomi * 8 * opening / 400;
     let safe_hard = remaining.saturating_add(byoyomi).saturating_sub(30).max(1);
     let hard = (soft_raw * 4)
         .min(remaining / 4 + byoyomi_share)

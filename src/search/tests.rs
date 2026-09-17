@@ -1889,11 +1889,17 @@ fn clock_budget_matches_the_normative_formula() {
     assert_eq!(budget.hard, Duration::from_millis(3_864));
 
     // (b) 残り10000・加算0・秒読み200・ply=0:
-    //     moves_to_go=225、soft_raw=10000/225+160=204、safe_hard=10170、
-    //     hard=min(816, 2660, 10170)=816、soft=204。
+    //     moves_to_go=225、序盤の係数w=4/40、soft_raw=10000/225+200*8*4/400=44+16=60、
+    //     safe_hard=10170、hard=min(240, 2660, 10170)=240、soft=60。
     let budget = clock_budget(clock_at_ply(10_000, 0, 200, 0));
-    assert_eq!(budget.soft, Duration::from_millis(204));
-    assert_eq!(budget.hard, Duration::from_millis(816));
+    assert_eq!(budget.soft, Duration::from_millis(60));
+    assert_eq!(budget.hard, Duration::from_millis(240));
+
+    // (b') 同じ時計でply=36以降は係数が1になり、moves_to_go=207、
+    //     soft_raw=10000/207+160=208、hard=min(832, 2660, 10170)=832。
+    let budget = clock_budget(clock_at_ply(10_000, 0, 200, 36));
+    assert_eq!(budget.soft, Duration::from_millis(208));
+    assert_eq!(budget.hard, Duration::from_millis(832));
 
     // (c) 旧式でhard<softになった入力。残り200・加算100・秒読み0・ply=300:
     //     moves_to_go=100、soft_raw=2+70=72、safe_hard=170、
@@ -1908,9 +1914,37 @@ fn clock_budget_matches_the_normative_formula() {
     assert!(budget.soft <= budget.hard);
 
     // 主時間0・秒読み100ではsoft_raw=80、safe_hard=70、hard=soft=70。
+    // 残り時間0の手には序盤の係数を掛けない。
     let budget = clock_budget(clock_at_ply(0, 0, 100, 0));
     assert_eq!(budget.soft, Duration::from_millis(70));
     assert_eq!(budget.hard, Duration::from_millis(70));
+}
+
+// time-management-opening-coefficient.mdの「予算値」。秒読みの項にだけ序盤の係数を掛け、
+// 秒読みのない時計では式が現行と一致する。
+#[test]
+fn opening_coefficient_scales_only_the_byoyomi_term() {
+    for (remaining, increment, byoyomi, ply, soft, hard) in [
+        (300_000, 0, 10_000, 0, 2_133, 8_532),
+        (300_000, 0, 10_000, 36, 9_449, 37_796),
+        (1_800_000, 0, 40_000, 0, 11_200, 44_800),
+        (10_000, 100, 0, 0, 114, 456),
+        (60_000, 200, 0, 0, 406, 1_624),
+        (0, 0, 10_000, 0, 8_000, 8_000),
+        (0, 100, 10_000, 0, 8_000, 8_000),
+    ] {
+        let budget = clock_budget(clock_at_ply(remaining, increment, byoyomi, ply));
+        assert_eq!(
+            budget.soft,
+            Duration::from_millis(soft),
+            "soft clock=({remaining}, {increment}, {byoyomi}, {ply})"
+        );
+        assert_eq!(
+            budget.hard,
+            Duration::from_millis(hard),
+            "hard clock=({remaining}, {increment}, {byoyomi}, {ply})"
+        );
+    }
 }
 
 // D7-TIME-01。search.md「時間管理」節: 残り手数の見積りは手数について
