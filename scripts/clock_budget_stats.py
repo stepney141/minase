@@ -6,7 +6,7 @@ from typing import Any
 
 NS_PER_MS = 1_000_000
 COLORS = ("black", "white")
-FORMULAS = ("quadruple-soft", "quadruple-main", "target", "total")
+FORMULAS = ("quadruple-soft", "quadruple-main", "target", "total", "byoyomi-opening")
 STOP_REASONS = ("depth", "nodes", "soft", "hard", "external")
 
 
@@ -32,6 +32,8 @@ def budget_ms(
     [(40, 40), (40, 203)]
     >>> [budget_ms(0, 100, 10000, 0, f) for f in ("target", "total")]
     [(8070, 8070), (8070, 8070)]
+    >>> [budget_ms(*c, "byoyomi-opening") for c in ((300000, 0, 10000, 0), (300000, 0, 10000, 36), (10000, 100, 0, 0), (0, 0, 10000, 0))]
+    [(2133, 8532), (9449, 37796), (114, 456), (8000, 8000)]
     """
     if formula not in FORMULAS:
         raise ValueError(f"未知の予算式: {formula}")
@@ -53,7 +55,11 @@ def budget_ms(
         else:
             hard_raw = soft_raw
         return max(1, min(soft_raw, safe_hard)), max(1, min(hard_raw, safe_hard))
-    ceiling = 4 * soft_raw if formula == "quadruple-soft" else 4 * main + byoyomi
+    if formula == "byoyomi-opening":
+        # 秒読みの項にだけ序盤の係数を掛ける（time-management-opening-coefficient.md）。
+        weight = min(40, ply + 4) if remaining_ms > 0 else 40
+        soft_raw = main + byoyomi_ms * 8 * weight // 400
+    ceiling = 4 * main + byoyomi if formula == "quadruple-main" else 4 * soft_raw
     hard = max(1, min(ceiling, remaining_ms // 4 + byoyomi, safe_hard))
     return min(soft_raw, hard), hard
 
