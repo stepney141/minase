@@ -41,3 +41,4 @@
 - [段階生成の固定費は件数の削減率から見積もらない](staged-generation-fixed-cost.md) — 段階化した生成はperfでノードごとの固定費を包含時間で測り、探索中に不変な順位や表は探索開始時に前計算する。
 - [PGOのプロファイルはrustcラッパーで対象クレートにだけ適用する](pgo-profile-path-via-wrapper.md) — コンパイラへ渡すファイルは`build.rustc-wrapper`で`--crate-name`を見て対象クレートにだけ付け、パスはラッパーの位置から解決する。
 - [採否の判定条件は候補の式にも事前に当てて試算する](simulate-acceptance-criteria-on-the-candidate.md) — 判定条件を固定する前に各指標の期待値を候補の式か短い模擬から試算し、候補が構造上満たせない条件があれば候補か条件を診断前に改める。
+- [打ち切り上限は残り時間の割合でも抑える](cap-hard-limit-by-remaining-fraction.md) — hardには残り時間の一定割合の項を必ず残し、時間管理の変更は採否測定と同じ負荷の煙試験で時間切れ0件を確かめてから測定へ進む。

@@ -44,7 +44,8 @@
 | 棋力向上段階7 | [plans/strength-stage7.md](plans/strength-stage7.md) | 完了 | 2026年9月14日 |
 | 合法手生成と利き計算の高速化 | [plans/movegen-speedup.md](plans/movegen-speedup.md) | 完了 | 2026年9月15日 |
 | 合法手生成と利き計算の高速化（第2期） | [plans/movegen-speedup-2.md](plans/movegen-speedup-2.md) | 起案 | |
-| 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 進行中 | |
+| 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了（不採用） | 2026年9月18日 |
+| 時間管理の変更の分解測定 | [plans/time-management-decomposition.md](plans/time-management-decomposition.md) | 起案 | |
 
 ## 現在地
 
@@ -74,7 +75,7 @@ PGOはNPS約1.19倍の効果を確認したが、運用の複雑さを理由に�
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 lishogi Bot接続（plans/lishogi-bot.md）は2026年9月12日に着手し、規則R1へlishogiの反復裁定の前提条件を取り込み、Lishogi-Botとminaseを1つのDockerイメージにまとめる配備手段を整えた。
 次の一手は、利用者がBotアカウントを作成してイメージを運用機で起動し、非レート対局の公開運用へ進むことである。
-[持ち時間の効率的な使用](plans/time-management-efficiency.md)は2026年9月16日にissue #7の再開を受けて起案した。原因は予算softが反復開始の門でしかなく最後の反復が完了まで走ること、および秒読み局面で予測規則が秒読みの4〜6割しか使わせないことである。StockfishとYaneuraOuとの比較で欠けている3機構（根の探索結果の保持と途中結果の採用、深さの抑制、局面適応の係数）を1段階1コミットで積み、最終コミットと着手前のコミットを1組の標準のSTCとLTCで判定する。持ち時間の温存はYaneuraOuと同じ配分を採る利用者の決定で不採用とし、最初の数手の消費は既存エンジンの調査（[research/time-management-byoyomi-survey.md](research/time-management-byoyomi-survey.md)）に倣った序盤の係数で絞る。次の一手はフェーズ1の診断基盤の復元である。
+[持ち時間の効率的な使用](plans/time-management-efficiency.md)は2026年9月18日に不採用で完了した。根の探索結果の表、途中結果の採用と予算の再定義（序盤の係数を含む）、Stockfish式の局面適応の係数を積んだ最終コミットは、時計の診断（初手1.5秒、秒読み利用率0.81、hardの超過最大14 ms）を満たしたがSTCで`H0`となり、加算つきの時間制御で候補側に2件の時間切れが出た。原因はhardが残り時間の割合で抑えられず持ち時間を使い切ることにあり、教訓に出した。深さの抑制は事前判定で空費と判定して見送った。段階ごとの効果の切り分けは[時間管理の変更の分解測定](plans/time-management-decomposition.md)として起案し、着手は利用者の承認を待つ。
 
 ## 横断的な記録済みの決定
 

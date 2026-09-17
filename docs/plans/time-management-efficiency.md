@@ -12,12 +12,13 @@ StockfishとYaneuraOuも標準予算と上限の二段構えだが、探索途�
 第1段階で各手の思考時間は予算を超えなくなり、序盤の係数により初手は約0.9秒、自分の19手目以降で満額（issueの条件で約9.3秒）になり、秒読み局面は秒読みの8割を使う。
 持ち時間が序盤で尽きること自体は、既存エンジンの調査（[秒読みつき時間制御における既存エンジンの持ち時間配分](../research/time-management-byoyomi-survey.md)）で確認した参照実装と同じ配分の帰結として受け入れ、温存する配分は採用しない（毎手予算どおりに使う計算では自分の43手目に尽き、実際の手数は診断で数える）。
 秒読みつきの挙動は時計の診断と煙試験で確認してGSPRTは行わず、完了条件は、最終コミットのLTCの採用、issueの条件での初手が予算内に収まること、全手が予算の許容幅内に収まること、および時間切れ0件である。
+結果は不採用であった。時計の診断は全項目を満たしたが、最終コミットはSTCで`H0`となり、加算つきの時間制御で候補側に2件の時間切れが出た（[STC](../measurements/time-management-efficiency-stc.md)）。
 
 ## 状態
 
-進行中。2026年9月16日に起案し、2026年9月17日に着手した。
-フェーズ1から5までを完了し、第2段階は事前判定で見送り、第3段階は正規化定数を1回見直して確定した。詰まっている点はない。
-次の一手は、フェーズ6のSTC（最終コミット3087d1dと着手前コミットee3fd60）の判定である。
+完了（不採用）。2026年9月16日に起案し、2026年9月17日に着手し、2026年9月18日に完了した。
+最終コミット3087d1dはSTCで`H0`となり不採用である（[time-management-efficiency-stc](../measurements/time-management-efficiency-stc.md)）。時計の診断は全項目を満たし（[time-management-efficiency-after](../measurements/time-management-efficiency-after.md)）、第2段階は事前判定で見送った（[stage2-bench](../measurements/time-management-efficiency-stage2-bench.md)）。
+残すのは第0段階の根の表（コミット0dd134c）と、探索を変えない置換表の2修正（0a3a9b3と3087d1dの`isready`での確保）であり、masterへの統合は利用者の判断に委ねる。原因の切り分けは[時間管理の変更の分解測定](time-management-decomposition.md)として起案した。issue #7への報告は利用者の指示により行わない。
 
 ## 目的
 
