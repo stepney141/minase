@@ -1,0 +1,137 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..45e8c9b 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -270,6 +270,14 @@ fn main() {
+             &mut transposition_table,
+             true,
+         );
++        eprintln!(
++            "diag {}",
++            minase::search::diagnostics::take()
++                .into_iter()
++                .map(|(k, v)| format!("{k}={v}"))
++                .collect::<Vec<_>>()
++                .join(" ")
++        );
+         println!(
+             "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
+             BENCH_POSITIONS.len(),
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 30d3802..81a0e43 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -33,6 +33,26 @@ use crate::eval::pst::{PIECE_STATE_COUNT, PstAccumulator, piece_state_of};
+ use see::see_prunes;
+ use tt::Bound;
+ 
++/// 枝刈り第3層の起案時診断（一時的）。
++pub mod diagnostics {
++    use std::sync::atomic::AtomicU64;
++    macro_rules! counters { ($($n:ident),+ $(,)?) => {
++        $(#[allow(missing_docs)] pub static $n: AtomicU64 = AtomicU64::new(0);)+
++        /// 全カウンタを固定順で返してゼロへ戻す。
++        pub fn take() -> Vec<(&'static str, u64)> { vec![$((stringify!($n), $n.swap(0, std::sync::atomic::Ordering::Relaxed)),)+] }
++    }; }
++    counters!(NODES, NODES_NONPV, NODES_SHALLOW_NONPV, NODES_FUT_ELIGIBLE, NODES_IMPROVING, NODES_NOT_IMPROVING, NODES_NO_PREV,
++        NODES_ROYAL_ATTACKED, NODES_PROBCUT_ELIGIBLE, NODES_PROBCUT_EVAL_ABOVE,
++        MOVES, MOVES_QUIET, MOVES_QUIET_LION, MOVES_QUIET_LION_TWOSTEP, MOVES_QUIET_LION_JITTO,
++        MOVES_SHALLOW_QUIET, MOVES_SHALLOW_QUIET_HISTNEG, MOVES_SHALLOW_QUIET_HISTNEG_LATE, MOVES_SHALLOW_QUIET_LION_TWOSTEP,
++        MOVES_SHALLOW_CAPTURE, MOVES_SHALLOW_CAPTURE_SEE_NEG, MOVES_FUT_SKIPPED,
++        TT_EXACT_STORES, TT_EXACT_DIFF_OVER_HALF_PAWN, TT_EXACT_DIFF_ABS_SUM,
++        SQ_HIST0, SQ_HIST_LT32, SQ_HIST_LT128, SQ_LATE8, SQ_LATE8_HIST0, SQ_D1, SQ_D2, SQ_D3, SC_D1, SC_D2, SC_D3, SC_NEG_D1, SC_NEG_D2, SC_NEG_D3, LION_JITTO, PAWN_VALUE);
++    /// カウンタへ加算する。
++    pub fn add(c: &AtomicU64, n: u64) { c.fetch_add(n, std::sync::atomic::Ordering::Relaxed); }
++}
++use diagnostics::add as dcount;
++
+ /// 詰みを表す評価値。
+ pub const MATE: i32 = 30_000;
+ /// 探索が扱う最大ply。
+@@ -1310,6 +1330,24 @@ impl Searcher<'_> {
+                 static_eval + margin
+             });
+         let mut royal_attacked = None;
++        {
++            use diagnostics as dg;
++            dcount(&dg::NODES, 1);
++            let non_pv = beta - alpha == 1;
++            if non_pv { dcount(&dg::NODES_NONPV, 1); }
++            if non_pv && depth <= 3 { dcount(&dg::NODES_SHALLOW_NONPV, 1); }
++            if futility_bound.is_some() { dcount(&dg::NODES_FUT_ELIGIBLE, 1); }
++            let now = self.pst.evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
++            if ply >= 2 {
++                let before = self.pst.evaluate_accumulator(self.accumulators[(ply - 2) as usize], position.side_to_move());
++                if now > before { dcount(&dg::NODES_IMPROVING, 1); } else { dcount(&dg::NODES_NOT_IMPROVING, 1); }
++            } else { dcount(&dg::NODES_NO_PREV, 1); }
++            if royal_under_attack(position) { dcount(&dg::NODES_ROYAL_ATTACKED, 1); }
++            if non_pv && depth >= 5 && beta.abs() < MATE_THRESHOLD && self.null_move_ply != Some(ply) {
++                dcount(&dg::NODES_PROBCUT_ELIGIBLE, 1);
++                if now + self.pst.pawn_value() * 2 >= beta { dcount(&dg::NODES_PROBCUT_EVAL_ABOVE, 1); }
++            }
++        }
+         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
+         let mut best_move = None;
+         let mut best_score = -INFINITY;
+@@ -1327,9 +1365,46 @@ impl Searcher<'_> {
+                 && !capture
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                dcount(&diagnostics::MOVES_FUT_SKIPPED, 1);
+                 index += 1;
+                 continue;
+             }
++            {
++                use diagnostics as dg;
++                dcount(&dg::MOVES, 1);
++                let shallow = depth <= 3 && beta - alpha == 1;
++                if !capture {
++                    dcount(&dg::MOVES_QUIET, 1);
++                    let lion = position.piece_at(mv.from).and_then(|p| p.kind()) == Some(crate::PieceKind::Lion);
++                    if lion {
++                        dcount(&dg::MOVES_QUIET_LION, 1);
++                        if mv.to == mv.from { dcount(&dg::LION_JITTO, 1); }
++                        dg::PAWN_VALUE.store(self.pst.pawn_value() as u64, AtomicOrdering::Relaxed);
++                        if mv.mid.is_some() {
++                            dcount(&dg::MOVES_QUIET_LION_TWOSTEP, 1);
++                            if mv.to == mv.from { dcount(&dg::MOVES_QUIET_LION_JITTO, 1); }
++                            if shallow { dcount(&dg::MOVES_SHALLOW_QUIET_LION_TWOSTEP, 1); }
++                        }
++                    }
++                    if shallow && Some(mv) != tt_move && !self.killers[ply as usize][..].contains(&Some(mv)) {
++                        dcount(&dg::MOVES_SHALLOW_QUIET, 1);
++                        let h = self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()];
++                        if h == 0 { dcount(&dg::SQ_HIST0, 1); }
++                        if h < 32 { dcount(&dg::SQ_HIST_LT32, 1); }
++                        if h < 128 { dcount(&dg::SQ_HIST_LT128, 1); }
++                        if index >= 8 { dcount(&dg::SQ_LATE8, 1); if h == 0 { dcount(&dg::SQ_LATE8_HIST0, 1); } }
++                        match depth { 1 => dcount(&dg::SQ_D1, 1), 2 => dcount(&dg::SQ_D2, 1), _ => dcount(&dg::SQ_D3, 1) }
++                        if h <= -LMR_HISTORY_THRESHOLD {
++                            dcount(&dg::MOVES_SHALLOW_QUIET_HISTNEG, 1);
++                            if index >= 8 { dcount(&dg::MOVES_SHALLOW_QUIET_HISTNEG_LATE, 1); }
++                        }
++                    }
++                } else if shallow && Some(mv) != tt_move {
++                    dcount(&dg::MOVES_SHALLOW_CAPTURE, 1);
++                    match depth { 1 => dcount(&dg::SC_D1, 1), 2 => dcount(&dg::SC_D2, 1), _ => dcount(&dg::SC_D3, 1) }
++                    if see_prunes(position, self.rules, self.pst, mv) { dcount(&dg::MOVES_SHALLOW_CAPTURE_SEE_NEG, 1); match depth { 1 => dcount(&dg::SC_NEG_D1, 1), 2 => dcount(&dg::SC_NEG_D2, 1), _ => dcount(&dg::SC_NEG_D3, 1) } }
++                }
++            }
+             let reduction = if Some(mv) != tt_move
+                 && !capture
+                 && !self.killers[ply as usize][..].contains(&Some(mv))
+@@ -1367,6 +1442,14 @@ impl Searcher<'_> {
+         } else {
+             Bound::Exact
+         };
++        if bound == Bound::Exact && best_score.abs() < MATE_THRESHOLD {
++            use diagnostics as dg;
++            let s = self.pst.evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
++            let d = (best_score - s).abs();
++            dcount(&dg::TT_EXACT_STORES, 1);
++            dcount(&dg::TT_EXACT_DIFF_ABS_SUM, d as u64);
++            if d > self.pst.pawn_value() / 2 { dcount(&dg::TT_EXACT_DIFF_OVER_HALF_PAWN, 1); }
++        }
+         self.tt
+             .store(key, depth, best_score, bound, Some(best_move), ply);
+         Some(best_score)

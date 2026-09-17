@@ -38,7 +38,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 
 次の項目は対象外とする。
 
-- ponder。Lishogi-Botの設定で無効にする。導入は[棋力向上の段階計画](strength-stages.md)の段階10が扱う。
+- ponder。Lishogi-Botの設定で無効にする。導入は[棋力向上の段階計画](strength-stages.md)の段階11が扱う。
 - 通信対局（correspondence）。Lishogi-Botの設定で受け付けない。
 - 自前のブリッジの実装、Lishogi-Botの改変、およびminaseへのBot API対応の組み込み。
 - 探索、評価、時間管理の予算式の変更。時間管理に欠陥が見つかった場合は、本マイルストーンを待機中にして段階計画側で修正する。
