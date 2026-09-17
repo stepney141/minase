@@ -18,7 +18,7 @@ StockfishとYaneuraOuも標準予算と上限の二段構えだが、探索途�
 
 完了（不採用）。2026年9月16日に起案し、2026年9月17日に着手し、2026年9月18日に完了した。
 最終コミット3087d1dはSTCで`H0`となり不採用である（[time-management-efficiency-stc](../measurements/time-management-efficiency-stc.md)）。時計の診断は全項目を満たし（[time-management-efficiency-after](../measurements/time-management-efficiency-after.md)）、第2段階は事前判定で見送った（[stage2-bench](../measurements/time-management-efficiency-stage2-bench.md)）。
-残すのは第0段階の根の表（コミット0dd134c）と、探索を変えない置換表の2修正（0a3a9b3と3087d1dの`isready`での確保）であり、masterへの統合は利用者の判断に委ねる。原因の切り分けは[時間管理の変更の分解測定](time-management-decomposition.md)として起案した。issue #7への報告は利用者の指示により行わない。
+残すのは探索を変えない置換表の2修正（未使用の置換表の消去の省略と、`isready`での既定容量の確保）だけである。第0段階の根の表は、途中結果の採用が不採用となった後は使う機構がなく、未使用コードを温存しない方針に従って統合ブランチには含めない。原因の切り分けは[時間管理の変更の分解測定](time-management-decomposition.md)として起案した。issue #7への報告は利用者の指示により行わない。
 
 ## 目的
 
