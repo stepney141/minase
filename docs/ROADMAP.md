@@ -45,8 +45,8 @@
 | 合法手生成と利き計算の高速化 | [plans/movegen-speedup.md](plans/movegen-speedup.md) | 完了 | 2026年9月15日 |
 | 合法手生成と利き計算の高速化（第2期） | [plans/movegen-speedup-2.md](plans/movegen-speedup-2.md) | 起案 | |
 | 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了（不採用） | 2026年9月18日 |
-| 時間管理の変更の分解測定 | [plans/time-management-decomposition.md](plans/time-management-decomposition.md) | 進行中 | |
-| 局面適応の予算に残り時間の歯止めを戻す | [plans/time-management-budget-cap.md](plans/time-management-budget-cap.md) | 起案 | |
+| 時間管理の変更の分解測定 | [plans/time-management-decomposition.md](plans/time-management-decomposition.md) | 完了 | 2026年9月18日 |
+| 局面適応の予算に残り時間の歯止めを戻す | [plans/time-management-budget-cap.md](plans/time-management-budget-cap.md) | 待機中 | |
 
 ## 現在地
 
@@ -76,7 +76,7 @@ PGOはNPS約1.19倍の効果を確認したが、運用の複雑さを理由に�
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 lishogi Bot接続（plans/lishogi-bot.md）は2026年9月12日に着手し、規則R1へlishogiの反復裁定の前提条件を取り込み、Lishogi-Botとminaseを1つのDockerイメージにまとめる配備手段を整えた。
 次の一手は、利用者がBotアカウントを作成してイメージを運用機で起動し、非レート対局の公開運用へ進むことである。
-[持ち時間の効率的な使用](plans/time-management-efficiency.md)は2026年9月18日に不採用で完了した。根の探索結果の表、途中結果の採用と予算の再定義（序盤の係数を含む）、Stockfish式の局面適応の係数を積んだ最終コミットは、時計の診断（初手1.5秒、秒読み利用率0.81、hardの超過最大14 ms）を満たしたがSTCで`H0`となり、加算つきの時間制御で候補側に2件の時間切れが出た。原因はhardが残り時間の割合で抑えられず持ち時間を使い切ることにあり、教訓に出した。深さの抑制は事前判定で空費と判定して見送った。STCの事後分析で、主因は係数つきの予算が持ち時間を200手目までに使い切らせ中終盤で浅くなることと分かった。第1段階だけの構成の採否は[時間管理の変更の分解測定](plans/time-management-decomposition.md)、第3段階の配分の修正は[局面適応の予算に残り時間の歯止めを戻す](plans/time-management-budget-cap.md)として起案し、分解測定に2026年9月18日に着手した。
+[持ち時間の効率的な使用](plans/time-management-efficiency.md)は2026年9月18日に不採用で完了した。根の探索結果の表、途中結果の採用と予算の再定義（序盤の係数を含む）、Stockfish式の局面適応の係数を積んだ最終コミットは、時計の診断（初手1.5秒、秒読み利用率0.81、hardの超過最大14 ms）を満たしたがSTCで`H0`となり、加算つきの時間制御で候補側に2件の時間切れが出た。原因はhardが残り時間の割合で抑えられず持ち時間を使い切ることにあり、教訓に出した。深さの抑制は事前判定で空費と判定して見送った。STCの事後分析で、主因は係数つきの予算が持ち時間を200手目までに使い切らせ中終盤で浅くなることと分かった。第1段階だけの構成の採否は[時間管理の変更の分解測定](plans/time-management-decomposition.md)、第3段階の配分の修正は[局面適応の予算に残り時間の歯止めを戻す](plans/time-management-budget-cap.md)として起案した。分解測定は同日に完了し、第1段階だけの構成も序盤の係数を外した構成もSTCで`H0`となって残せる構成はなく、原因は分担そのものの予算と探索中の中断が旧式の反復完了による超過分の時間を使い残すことにあると分かった。歯止めの計画はこの結論を受けて待機中であり、旧式の機構を土台にした改訂には利用者の承認を要する。
 
 ## 横断的な記録済みの決定
 
