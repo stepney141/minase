@@ -43,7 +43,7 @@ impl Bitboard {
     pub fn from_square(square: Square) -> Self {
         let raw = square.raw_index();
         let mut words = [0; 3];
-        words[raw / 64] = 1_u64 << (raw % 64);
+        words[(raw / 64).min(2)] = 1_u64 << (raw % 64);
         Self(words)
     }
 
@@ -72,21 +72,21 @@ impl Bitboard {
     #[inline]
     pub fn contains(self, square: Square) -> bool {
         let raw = square.raw_index();
-        self.0[raw / 64] & (1_u64 << (raw % 64)) != 0
+        self.0[(raw / 64).min(2)] & (1_u64 << (raw % 64)) != 0
     }
 
     /// 指定升を集合へ加える。
     #[inline]
     pub fn set(&mut self, square: Square) {
         let raw = square.raw_index();
-        self.0[raw / 64] |= 1_u64 << (raw % 64);
+        self.0[(raw / 64).min(2)] |= 1_u64 << (raw % 64);
     }
 
     /// 指定升を集合から除く。
     #[inline]
     pub fn clear(&mut self, square: Square) {
         let raw = square.raw_index();
-        self.0[raw / 64] &= !(1_u64 << (raw % 64));
+        self.0[(raw / 64).min(2)] &= !(1_u64 << (raw % 64));
     }
 
     /// 含まれる升の数を返す。

@@ -4,7 +4,7 @@
 pub(crate) mod tests;
 
 mod search_captures;
-pub(crate) use search_captures::{CaptureCandidate, OrdinaryCapturer};
+pub(crate) use search_captures::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 
 use core::fmt;
 
@@ -45,35 +45,43 @@ impl MoveGenerator {
 
     /// `position`の手番側の全合法手を`output`へ追加する。
     pub fn generate_moves(&self, position: &Position, output: &mut Vec<Move>) {
-        generate_moves::<false>(self, position, output);
+        generate_moves::<false, false>(self, position, &mut Vec::new(), output);
     }
 
     /// `position`の手番側の捕獲を伴う合法手を`output`へ追加する。
     pub fn generate_captures(&self, position: &Position, output: &mut Vec<Move>) {
-        generate_moves::<true>(self, position, output);
+        self.generate_captures_with_scratch(position, &mut Vec::new(), output);
     }
 
-    /// `position`の手番側の捕獲を伴わない合法手を`output`へ追加する。
-    pub(crate) fn generate_quiets(&self, position: &Position, output: &mut Vec<Move>) {
-        let start = output.len();
-        generate_moves::<false>(self, position, output);
-        let mut write = start;
-        for read in start..output.len() {
-            let mv = output[read];
-            if position
-                .captured_squares(mv)
-                .into_iter()
-                .all(|square| square.is_none())
-            {
-                output[write] = mv;
-                write += 1;
-            }
-        }
-        output.truncate(write);
+    /// 「段階6」（movegen-speedup-2.md）の捕獲生成用領域を再利用する。
+    pub(crate) fn generate_captures_with_scratch(
+        &self,
+        position: &Position,
+        base_moves: &mut Vec<Move>,
+        output: &mut Vec<Move>,
+    ) {
+        generate_moves::<true, false>(self, position, base_moves, output);
+    }
+
+    /// 「段階6」（movegen-speedup-2.md）の非捕獲だけを全手生成と同じ順で追加する。
+    pub(crate) fn generate_quiets(
+        &self,
+        position: &Position,
+        base_moves: &mut Vec<Move>,
+        output: &mut Vec<Move>,
+    ) {
+        generate_moves::<false, true>(self, position, base_moves, output);
     }
 
     /// 候補手が`position`で手番側の合法手かを返す。
-    pub(crate) fn is_legal_move(&self, position: &Position, candidate: Move) -> bool {
+    pub(crate) fn is_legal_move(
+        &self,
+        position: &Position,
+        candidate: Move,
+        base_moves: &mut Vec<Move>,
+        moves: &mut Vec<Move>,
+    ) -> bool {
+        moves.clear();
         let Some(piece) = position.piece_at(candidate.from) else {
             return false;
         };
@@ -81,16 +89,14 @@ impl MoveGenerator {
             return false;
         }
         let kind = piece.kind().expect("board piece must have a valid kind");
-        let mut base_moves = Vec::new();
-        let mut moves = Vec::new();
-        generate_piece_moves::<false>(
+        generate_piece_moves::<false, false>(
             self,
             position,
             position.side_to_move(),
             kind,
             candidate.from,
-            &mut base_moves,
-            &mut moves,
+            base_moves,
+            moves,
         );
         moves.contains(&candidate)
     }
@@ -139,7 +145,8 @@ impl Position {
 
 /// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
 ///
-/// 固定利きは駒種ごとの逆引き表で求める。走りは`square`から8方向の利き線を引き、
+/// 固定利きは5×5近傍の自駒の固定利き表で判定する
+/// (`movegen-speedup-2.md`「段階4」)。走りは`square`から8方向の利き線を引き、
 /// 最初の遮蔽駒がその逆方向へ走るプロファイルを持つかだけを調べる。全プロファイルの
 /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
 fn ordinary_attackers_to(
@@ -150,17 +157,22 @@ fn ordinary_attackers_to(
     occupied: Bitboard,
 ) -> Bitboard {
     let mut attackers = Bitboard::EMPTY;
-    for kind in PieceKind::ALL {
-        let pieces = position.pieces_of_kind(color, kind);
-        if pieces.is_empty() {
-            continue;
+    for from in tables.neighbourhood(square) & position.pieces_of(color) {
+        let kind = position
+            .piece_at(from)
+            .and_then(|piece| piece.kind())
+            .expect("own square must contain a piece");
+        if tables
+            .fixed(color, movement_profile(kind), from)
+            .contains(square)
+        {
+            attackers.set(from);
         }
-        attackers |= tables.fixed(color.opposite(), movement_profile(kind), square) & pieces;
     }
     let own = position.pieces_of(color) & occupied;
     for direction in Direction::ALL {
         // 利き線は最初の遮蔽駒までしか含まないので、`ray & own`は空か1升である。
-        let ray = tables.sliding_control(square, direction, None, occupied);
+        let ray = tables.sliding_control(square, direction, occupied);
         let Some(blocker) = (ray & own).lsb() else {
             continue;
         };
@@ -168,13 +180,9 @@ fn ordinary_attackers_to(
             .piece_at(blocker)
             .and_then(|piece| piece.kind())
             .expect("blocker must be a piece");
-        let profile = movement_profile_data(movement_profile(kind));
+        let mask = tables.slide_directions(color, movement_profile(kind));
         let reverse = direction.opposite();
-        if profile
-            .slides
-            .iter()
-            .any(|slide| slide.direction.for_color(color) == reverse)
-        {
+        if (mask >> reverse.index()) & 1 != 0 {
             attackers.set(blocker);
         }
     }
@@ -290,30 +298,24 @@ fn push_with_promotion(
 }
 
 /// 手番側の全駒について合法手を生成する。
-fn generate_moves<const CAPTURES_ONLY: bool>(
+fn generate_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
     generator: &MoveGenerator,
     position: &Position,
+    base_moves: &mut Vec<Move>,
     output: &mut Vec<Move>,
 ) {
     let color = position.side_to_move();
-    let mut base_moves = Vec::new();
     for kind in PieceKind::ALL {
         for from in position.pieces_of_kind(color, kind) {
-            generate_piece_moves::<CAPTURES_ONLY>(
-                generator,
-                position,
-                color,
-                kind,
-                from,
-                &mut base_moves,
-                output,
+            generate_piece_moves::<CAPTURES_ONLY, QUIETS_ONLY>(
+                generator, position, color, kind, from, base_moves, output,
             );
         }
     }
 }
 
 /// 指定した1枚の駒について合法手を生成する。
-fn generate_piece_moves<const CAPTURES_ONLY: bool>(
+fn generate_piece_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
     generator: &MoveGenerator,
     position: &Position,
     color: Color,
@@ -325,7 +327,13 @@ fn generate_piece_moves<const CAPTURES_ONLY: bool>(
     let profile = movement_profile_data(movement_profile(kind));
     let own = position.pieces_of(color);
     let enemy = position.pieces_of(color.opposite());
-    let destinations = if CAPTURES_ONLY { enemy } else { !own };
+    let destinations = if CAPTURES_ONLY {
+        enemy
+    } else if QUIETS_ONLY {
+        !position.occupied()
+    } else {
+        !own
+    };
     base_moves.clear();
     let step_destinations =
         (piece_control_without_special(generator.tables(), position.occupied(), color, kind, from)
@@ -343,7 +351,7 @@ fn generate_piece_moves<const CAPTURES_ONLY: bool>(
     match profile.special {
         SpecialMovement::None => {}
         SpecialMovement::Lion => {
-            generate_lion_double_and_jumps::<CAPTURES_ONLY>(
+            generate_lion_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY>(
                 generator.tables(),
                 position,
                 color,
@@ -352,7 +360,7 @@ fn generate_piece_moves<const CAPTURES_ONLY: bool>(
             );
         }
         SpecialMovement::LionLike(profile) => {
-            generate_lion_like_double_and_jumps::<CAPTURES_ONLY>(
+            generate_lion_like_double_and_jumps::<CAPTURES_ONLY, QUIETS_ONLY>(
                 position,
                 color,
                 from,
@@ -402,12 +410,7 @@ fn piece_control_without_special(
     let profile = movement_profile_data(profile_id);
     let mut result = tables.fixed(color, profile_id, from);
     for slide in profile.slides {
-        result |= tables.sliding_control(
-            from,
-            slide.direction.for_color(color),
-            slide.max_steps,
-            occupied,
-        );
+        result |= tables.sliding_control(from, slide.direction.for_color(color), occupied);
     }
     result
 }
@@ -470,7 +473,7 @@ impl VirtualBoard {
 
 /// 獅子の2段階移動・跳び・じっと(第12条)を生成する。1升移動で停止する着手は
 /// 通常経路で生成済みのため含めない。
-fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
+fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
     tables: &AttackTables,
     position: &Position,
     color: Color,
@@ -481,7 +484,7 @@ fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
     let enemy = position.pieces_of(color.opposite());
     let adjacent = tables.king_steps(from);
 
-    for mid in adjacent & enemy {
+    for mid in adjacent & if QUIETS_ONLY { Bitboard::EMPTY } else { enemy } {
         let local = VirtualBoard::new(position, color, from).move_to(mid);
         let second = tables.king_steps(mid) & !local.own;
         for to in second {
@@ -494,7 +497,13 @@ fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
         }
     }
 
-    let jump_destinations = if CAPTURES_ONLY { enemy } else { !own };
+    let jump_destinations = if CAPTURES_ONLY {
+        enemy
+    } else if QUIETS_ONLY {
+        !position.occupied()
+    } else {
+        !own
+    };
     for to in tables.lion_jumps(from) & jump_destinations {
         output(Move {
             from,
@@ -516,7 +525,7 @@ fn generate_lion_double_and_jumps<const CAPTURES_ONLY: bool>(
 
 /// 角鷹・飛鷲の2段階移動・居喰い・じっと(第11条)を生成する。1升移動で停止する
 /// 着手は通常経路で生成済みのため含めない。
-fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
+fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
     position: &Position,
     color: Color,
     from: Square,
@@ -534,7 +543,7 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
         };
         if !CAPTURES_ONLY && !position.occupied().contains(first) {
             can_jitto = true;
-        } else if enemy.contains(first) {
+        } else if !QUIETS_ONLY && enemy.contains(first) {
             output(Move {
                 from,
                 mid: Some(first),
@@ -549,7 +558,9 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
         if own.contains(second) {
             continue;
         }
-        if !CAPTURES_ONLY || enemy.contains(second) {
+        if (!CAPTURES_ONLY || enemy.contains(second))
+            && (!QUIETS_ONLY || !position.occupied().contains(second))
+        {
             output(Move {
                 from,
                 mid: None,
@@ -557,7 +568,7 @@ fn generate_lion_like_double_and_jumps<const CAPTURES_ONLY: bool>(
                 promote: false,
             });
         }
-        if enemy.contains(first) {
+        if !QUIETS_ONLY && enemy.contains(first) {
             output(Move {
                 from,
                 mid: Some(first),

@@ -3,6 +3,10 @@
 use super::*;
 use crate::core::piece::PieceCode;
 
+#[cfg(test)]
+#[path = "tests/ordinary_capturer.rs"]
+mod tests;
+
 /// 生成時に得た捕獲升を持つ探索専用の候補。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct CaptureCandidate {
@@ -21,12 +25,32 @@ pub(crate) struct OrdinaryCapturer {
     pub(crate) captures: Bitboard,
 }
 
+/// 設計書movegen-speedup-2.md「段階9」に従う、置換表の特殊捕獲の検証用領域。
+#[derive(Default)]
+pub(crate) struct CaptureCache {
+    captures: Vec<CaptureCandidate>,
+}
+
 impl MoveGenerator {
+    /// 設計書movegen-speedup-2.md「段階8」に従い、獅子が経由升で取って空升へ進む手を除く。
+    pub(crate) fn is_excluded_lion_capture(position: &Position, mv: Move) -> bool {
+        position
+            .piece_at(mv.from)
+            .is_some_and(|piece| piece.kind() == Some(PieceKind::Lion))
+            && mv.mid.is_some_and(|mid| {
+                position
+                    .piece_at(mid)
+                    .is_some_and(|piece| piece.color() == Some(position.side_to_move().opposite()))
+            })
+            && position.piece_at(mv.to).is_none()
+            && mv.to != mv.from
+    }
+
     /// 特殊駒の全捕獲を公開生成と同じ相対順序で追加する。
     pub(crate) fn generate_special_captures(
         &self,
         position: &Position,
-        output: &mut Vec<CaptureCandidate>,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         let color = position.side_to_move();
         for kind in [
@@ -47,7 +71,7 @@ impl MoveGenerator {
         position: &Position,
         from: Square,
         piece: PieceCode,
-        output: &mut Vec<CaptureCandidate>,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         let color = position.side_to_move();
         let kind = piece.kind().expect("capture origin has a kind");
@@ -84,16 +108,18 @@ impl MoveGenerator {
             });
         }
         match special {
-            SpecialMovement::Lion => generate_lion_double_and_jumps::<true>(
+            SpecialMovement::Lion => generate_lion_double_and_jumps::<true, false>(
                 self.tables(),
                 position,
                 color,
                 from,
                 &mut emit,
             ),
-            SpecialMovement::LionLike(profile) => generate_lion_like_double_and_jumps::<true>(
-                position, color, from, profile, &mut emit,
-            ),
+            SpecialMovement::LionLike(profile) => {
+                generate_lion_like_double_and_jumps::<true, false>(
+                    position, color, from, profile, &mut emit,
+                )
+            }
             SpecialMovement::None => {
                 unreachable!("special capture generator requires a special piece")
             }
@@ -128,6 +154,7 @@ impl MoveGenerator {
     }
 
     /// 通常駒1枚について、対象升へ実際に届く利きを求める。
+    /// 設計書movegen-speedup-2.md「段階2」に従い、対象升と交わる利き線だけを調べる。
     fn ordinary_capturer(
         &self,
         position: &Position,
@@ -137,12 +164,19 @@ impl MoveGenerator {
     ) -> Option<OrdinaryCapturer> {
         let color = position.side_to_move();
         let kind = piece.kind().expect("capture origin has a kind");
-        if (self.tables().reach(color, movement_profile(kind), from) & allowed).is_empty() {
+        let tables = self.tables();
+        let profile_id = movement_profile(kind);
+        if (tables.reach(color, profile_id, from) & allowed).is_empty() {
             return None;
         }
-        let captures =
-            piece_control_without_special(self.tables(), position.occupied(), color, kind, from)
-                & allowed;
+        let mut captures = tables.fixed(color, profile_id, from) & allowed;
+        let profile = movement_profile_data(profile_id);
+        for slide in profile.slides {
+            let direction = slide.direction.for_color(color);
+            if !(tables.ray(from, direction) & allowed).is_empty() {
+                captures |= tables.sliding_control(from, direction, position.occupied()) & allowed;
+            }
+        }
         (!captures.is_empty()).then_some(OrdinaryCapturer {
             from,
             kind,
@@ -157,7 +191,7 @@ impl MoveGenerator {
         position: &Position,
         capturers: &[OrdinaryCapturer],
         targets: Bitboard,
-        output: &mut Vec<CaptureCandidate>,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         let lions = position.pieces_of_kind(position.side_to_move().opposite(), PieceKind::Lion);
         for capturer in capturers {
@@ -183,18 +217,20 @@ impl MoveGenerator {
         }
     }
 
-    /// 再利用バッファへ1駒分の捕獲だけを生成し、置換表の手を検査する。
+    /// 1駒分の捕獲で置換表の手を検査する。
+    /// 設計書movegen-speedup-2.md「段階9」に従い、初期化への利きの引き継ぎは行わない。
     pub(crate) fn is_legal_capture(
         &self,
         position: &Position,
         mv: Move,
-        output: &mut Vec<CaptureCandidate>,
+        cache: &mut CaptureCache,
     ) -> bool {
-        output.clear();
+        cache.clear();
         let Some(piece) = position.piece_at(mv.from) else {
             return false;
         };
-        if piece.color() != Some(position.side_to_move())
+        if Self::is_excluded_lion_capture(position, mv)
+            || piece.color() != Some(position.side_to_move())
             || position
                 .captured_squares(mv)
                 .into_iter()
@@ -214,17 +250,26 @@ impl MoveGenerator {
             if let Some(capturer) = self.ordinary_capturer(position, mv.from, piece, enemy)
                 && capturer.captures.contains(mv.to)
             {
-                let mut target = Bitboard::EMPTY;
-                target.set(mv.to);
-                self.emit_ordinary_captures(position, &[capturer], target, output);
+                let mut legal = false;
+                self.emit_ordinary_captures(
+                    position,
+                    &[capturer],
+                    Bitboard::from_squares([mv.to]),
+                    &mut |candidate| legal |= candidate.mv == mv,
+                );
+                return legal;
             }
+            false
         } else {
-            self.generate_special_piece_captures(position, mv.from, piece, output);
+            self.generate_special_piece_captures(position, mv.from, piece, &mut |candidate| {
+                cache.captures.push(candidate)
+            });
+            cache.captures.iter().any(|candidate| candidate.mv == mv)
         }
-        output.iter().any(|candidate| candidate.mv == mv)
     }
 
     /// 獅子捕獲のときだけ規則を検査し、成りを展開して直接出力する。
+    /// 設計書movegen-speedup-2.md「段階5」に従い、生成済みの駒コードと捕獲升を使う。
     fn push_capture(
         &self,
         position: &Position,
@@ -232,7 +277,7 @@ impl MoveGenerator {
         piece: PieceCode,
         lions: Bitboard,
         candidate: CaptureCandidate,
-        output: &mut Vec<CaptureCandidate>,
+        output: &mut impl FnMut(CaptureCandidate),
     ) {
         if candidate
             .captured
@@ -246,16 +291,35 @@ impl MoveGenerator {
         let choice = if piece.is_promoted() || !kind.can_promote() {
             PromotionChoice::NoPromotion
         } else {
-            self.rules().promotion_choice(position, &candidate.mv, kind)
+            self.rules().promotion_choice_for(
+                position.side_to_move(),
+                kind,
+                piece.is_promoted(),
+                candidate.mv.from,
+                candidate.mv.to,
+                candidate.captured.iter().any(Option::is_some),
+                position.promotion_deferred().contains(candidate.mv.from),
+            )
         };
         if !matches!(choice, PromotionChoice::PromotionForced) {
-            output.push(candidate);
+            output(candidate);
         }
         if !matches!(choice, PromotionChoice::NoPromotion) {
-            output.push(CaptureCandidate {
+            output(CaptureCandidate {
                 mv: promoting_variant(candidate.mv),
                 ..candidate
             });
         }
+    }
+}
+
+impl CaptureCache {
+    pub(crate) fn clear(&mut self) {
+        self.captures.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn capacity(&self) -> usize {
+        self.captures.capacity()
     }
 }

@@ -21,9 +21,9 @@ use std::time::{Duration, Instant};
 use crate::MoveGenerator;
 use crate::core::bitboard::Bitboard;
 use crate::core::game::{Game, GameStatus};
-use crate::core::movegen::{CaptureCandidate, OrdinaryCapturer};
+use crate::core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 use crate::core::mv::Move;
-use crate::core::piece::{COLOR_COUNT, PieceCode};
+use crate::core::piece::{COLOR_COUNT, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
@@ -741,11 +741,7 @@ impl SharedSearch<'_> {
     }
 
     /// ノードを1個予約する。上限を超える予約は拒否する。
-    fn reserve_node(&self) -> bool {
-        let Some(limit) = self.node_limit else {
-            self.total_nodes.fetch_add(1, AtomicOrdering::Relaxed);
-            return true;
-        };
+    fn reserve_node(&self, limit: u64) -> bool {
         let mut current = self.total_nodes.load(AtomicOrdering::Relaxed);
         loop {
             if current >= limit {
@@ -822,6 +818,7 @@ fn run_search_team(
         hard_limit: time_budget.map(|budget| budget.hard),
     };
 
+    let history_keys: Vec<u64> = history_keys.to_vec();
     let worker_outcomes = run_worker_team(threads, &shared, |worker_index| {
         if worker_index == 0 {
             run_main_worker(
@@ -829,7 +826,7 @@ fn run_search_team(
                 position,
                 rules,
                 root_moves,
-                history_keys,
+                &history_keys,
                 depth_limit,
                 time_budget,
                 &shared,
@@ -842,7 +839,7 @@ fn run_search_team(
                 position,
                 rules,
                 root_moves,
-                history_keys,
+                &history_keys,
                 depth_limit,
                 worker_index,
                 &shared,
@@ -968,6 +965,9 @@ fn new_searcher<'a>(
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
         capture_ranks: CaptureRanks::new(pst),
+        move_pickers: (0..=MAX_PLY)
+            .map(|_| MovePicker::new(None, [None; KILLER_COUNT]))
+            .collect(),
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: [root_accumulator; MAX_PLY as usize + 1],
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
@@ -1117,6 +1117,8 @@ struct Searcher<'a> {
     pv: Vec<Vec<Move>>,
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
     qsearch: Vec<QsearchBuffers>,
+    /// 「段階6」（movegen-speedup-2.md）の主探索用領域を深さごとに再利用する。
+    move_pickers: Vec<MovePicker>,
     /// ワーカー内で共有する捕獲価値の順位。
     capture_ranks: CaptureRanks,
     /// plyごとのPST生重み和。
@@ -1308,13 +1310,13 @@ impl Searcher<'_> {
                 static_eval + margin
             });
         let mut royal_attacked = None;
-        let mut picker = MovePicker::new(tt_move, self.killers[ply as usize]);
+        self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut beta_cutoff = false;
         let mut index = 0;
         while let Some((mv, capture)) =
-            picker.next(position, self.pst, &self.generator, &self.history)
+            self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
         {
             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
@@ -1372,6 +1374,7 @@ impl Searcher<'_> {
 
     /// stand-patと捕獲手だけを使う静止探索で局面を評価する。
     ///
+    /// 設計書movegen-speedup-2.md「段階7」に従い、静的評価で打ち切るときは置換表に触れない。
     /// 静止探索内の手は主変化へ含めず、反復検出は行わない。
     /// 中断された場合は`None`を返す。
     fn quiesce(
@@ -1393,7 +1396,28 @@ impl Searcher<'_> {
             );
         }
 
+        let stand_pat = self
+            .pst
+            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+        if stand_pat >= beta {
+            return Some(stand_pat);
+        }
+
         let original_alpha = alpha;
+        alpha = alpha.max(stand_pat);
+        let threshold = alpha - stand_pat - self.pst.delta_margin();
+        let buffers = &mut self.qsearch[ply as usize];
+        buffers.reset(position);
+        if !buffers.initialize(
+            position,
+            &self.generator,
+            self.pst,
+            &self.capture_ranks,
+            threshold,
+        ) {
+            return Some(stand_pat);
+        }
+
         let key = search_key(position);
         let mut tt_move = None;
         if let Some(hit) = self.tt.probe(key, ply) {
@@ -1401,35 +1425,29 @@ impl Searcher<'_> {
             let cutoff = match hit.bound {
                 Bound::Exact => true,
                 Bound::Lower => hit.score >= beta,
-                Bound::Upper => hit.score <= alpha,
+                Bound::Upper => hit.score <= original_alpha,
             };
             if cutoff {
                 return Some(hit.score);
             }
         }
 
-        let stand_pat = self
-            .pst
-            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
-        if stand_pat >= beta {
-            self.tt.store(key, 0, stand_pat, Bound::Lower, None, ply);
-            return Some(stand_pat);
-        }
         let mut best = stand_pat;
         let mut best_move = None;
-        alpha = alpha.max(stand_pat);
-
-        let threshold = alpha - stand_pat - self.pst.delta_margin();
-        self.qsearch[ply as usize].reset(position, &self.generator, tt_move);
+        self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
         while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
             &self.generator,
             self.pst,
             &self.capture_ranks,
-            threshold,
         ) {
             let mv = candidate.capture.mv;
-            let is_last_royal_capture = captured_last_royal(position, candidate.capture.captured);
+            let buffers = &self.qsearch[ply as usize];
+            let is_last_royal_capture = captures_all_royals(
+                buffers.royals,
+                buffers.royal_count,
+                candidate.capture.captured,
+            );
             if !is_last_royal_capture
                 && stand_pat + candidate.captured_value + self.pst.delta_margin() <= alpha
             {
@@ -1443,7 +1461,11 @@ impl Searcher<'_> {
             let score = if is_last_royal_capture {
                 self.enter_node().then_some(MATE - ply as i32)?
             } else {
-                let undo = position.make_move_unchecked(mv, self.rules);
+                let undo = position.make_move_with_captures_unchecked(
+                    mv,
+                    self.rules,
+                    candidate.capture.captured,
+                );
                 self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
                     self.accumulators[ply as usize],
                     position,
@@ -1554,9 +1576,15 @@ impl Searcher<'_> {
             self.stop_reason = Some(StopReason::HardLimit);
             return false;
         }
-        if !self.shared.reserve_node() {
-            self.stop_reason = Some(self.shared.reason());
-            return false;
+        if let Some(limit) = self.shared.node_limit {
+            if !self.shared.reserve_node(limit) {
+                self.stop_reason = Some(self.shared.reason());
+                return false;
+            }
+        } else {
+            self.shared
+                .total_nodes
+                .fetch_add(1, AtomicOrdering::Relaxed);
         }
         self.nodes += 1;
         true
@@ -1765,13 +1793,17 @@ fn royal_under_attack(position: &Position) -> bool {
 }
 
 /// 静止探索の捕獲価値と、同順位で生成順を保つ連番。
+/// 設計書movegen-speedup-2.md「段階5」に従い、順序キーを圧縮する。
 #[derive(Clone, Copy)]
 struct QsearchCapture {
     capture: CaptureCandidate,
     captured_value: i32,
     attacker_value: i32,
-    origin_key: (usize, usize),
-    seq: usize,
+    // 駒種の添字は0..29、升の生値は最大187（16×11+11）なのでu8に収まる。
+    origin_key: (u8, u8),
+    // 1駒につき通常到達升143個と2段階移動8×8個、成否2通りを上界に取ると、
+    // 144×(143+64)×2 = 59,616候補なので連番はu16に収まる。
+    seq: u16,
 }
 
 impl QsearchCapture {
@@ -1781,8 +1813,8 @@ impl QsearchCapture {
             captured_value,
             attacker_value: pst.piece_value(piece),
             origin_key: (
-                piece.kind().expect("capture origin has a kind").index(),
-                capture.mv.from.raw_index(),
+                piece.kind().expect("capture origin has a kind").index() as u8,
+                capture.mv.from.raw(),
             ),
             capture,
             seq: 0,
@@ -1793,6 +1825,7 @@ impl QsearchCapture {
 /// 捕獲価値の降順の順位。等しい値の駒状態は同じ順位を共有する。
 struct CaptureRanks {
     rank_of_state: [u8; PIECE_STATE_COUNT],
+    ranks_of_kind: [[u8; 2]; PIECE_KIND_COUNT],
     values: Vec<i32>,
 }
 
@@ -1802,6 +1835,7 @@ impl CaptureRanks {
         states.sort_unstable_by_key(|&state| Reverse(pst.piece_value_of_state(state)));
         let mut ranks = Self {
             rank_of_state: [0; PIECE_STATE_COUNT],
+            ranks_of_kind: [[0; 2]; PIECE_KIND_COUNT],
             values: Vec::with_capacity(PIECE_STATE_COUNT),
         };
         for state in states {
@@ -1811,21 +1845,37 @@ impl CaptureRanks {
             }
             ranks.rank_of_state[state] = (ranks.values.len() - 1) as u8;
         }
+        for kind in PieceKind::ALL {
+            let unpromoted = match PieceCode::new(crate::Color::Black, kind) {
+                Some(piece) => piece_state_of(piece),
+                None => kind.index(), // 成駒としてのみ存在する駒種。
+            };
+            let promoted = if kind.unpromoted().is_some() {
+                kind.index()
+            } else {
+                unpromoted
+            };
+            ranks.ranks_of_kind[kind.index()] = [
+                ranks.rank_of_state[unpromoted],
+                ranks.rank_of_state[promoted],
+            ];
+        }
         ranks
     }
 }
 
 /// 静止探索の1深さ分の領域。対象升の配列は使用する順位だけを初期化する。
 struct QsearchBuffers {
-    raw: Vec<CaptureCandidate>,
+    validation: CaptureCache,
     capturers: Vec<OrdinaryCapturer>,
     special: Vec<QsearchCapture>,
     group: Vec<QsearchCapture>,
     targets_by_rank: [Bitboard; PIECE_STATE_COUNT],
     present_ranks: u64,
+    royals: Bitboard,
+    royal_count: u32,
     tt_move: Option<Move>,
     tt_pending: bool,
-    initialized: bool,
     special_cursor: usize,
     cursor: usize,
 }
@@ -1833,15 +1883,16 @@ struct QsearchBuffers {
 impl Default for QsearchBuffers {
     fn default() -> Self {
         Self {
-            raw: Vec::new(),
+            validation: CaptureCache::default(),
             capturers: Vec::new(),
             special: Vec::new(),
             group: Vec::new(),
             targets_by_rank: [Bitboard::EMPTY; PIECE_STATE_COUNT],
             present_ranks: 0,
+            royals: Bitboard::EMPTY,
+            royal_count: 0,
             tt_move: None,
             tt_pending: false,
-            initialized: false,
             special_cursor: 0,
             cursor: 0,
         }
@@ -1849,22 +1900,34 @@ impl Default for QsearchBuffers {
 }
 
 impl QsearchBuffers {
-    fn reset(&mut self, position: &Position, generator: &MoveGenerator, tt_move: Option<Move>) {
-        self.raw.clear();
+    fn reset(&mut self, position: &Position) {
+        self.validation.clear();
         self.special.clear();
         self.group.clear();
         self.present_ranks = 0;
+        self.royals = position.royal_pieces(position.side_to_move().opposite());
+        self.royal_count = self.royals.popcount();
         self.capturers.clear();
-        self.tt_move =
-            tt_move.filter(|&mv| generator.is_legal_capture(position, mv, &mut self.raw));
-        self.raw.clear();
-        self.tt_pending = self.tt_move.is_some();
-        self.initialized = false;
+        self.tt_move = None;
+        self.tt_pending = false;
         self.special_cursor = 0;
         self.cursor = 0;
     }
 
+    /// 設計書movegen-speedup-2.md「段階9」に従い、初期化後に置換表の手を設定する。
+    fn set_tt_move(
+        &mut self,
+        position: &Position,
+        generator: &MoveGenerator,
+        tt_move: Option<Move>,
+    ) {
+        self.tt_move =
+            tt_move.filter(|&mv| generator.is_legal_capture(position, mv, &mut self.validation));
+        self.tt_pending = self.tt_move.is_some();
+    }
+
     /// 入口で残す対象と価値グループを決め、通常駒の利きを保存する。
+    /// 設計書movegen-speedup-2.md「段階9」に従い、入口の枝刈り後に合法な候補があるかを返す。
     fn initialize(
         &mut self,
         position: &Position,
@@ -1872,44 +1935,81 @@ impl QsearchBuffers {
         pst: &Pst,
         ranks: &CaptureRanks,
         threshold: i32,
-    ) {
-        generator.generate_special_captures(position, &mut self.raw);
-        for &capture in &self.raw {
+    ) -> bool {
+        let opponent = position.side_to_move().opposite();
+        let royals = self.royals;
+        let royal_count = self.royal_count;
+        generator.generate_special_captures(position, &mut |capture| {
+            if MoveGenerator::is_excluded_lion_capture(position, capture.mv) {
+                return;
+            }
             let captured_value = capture
                 .captured
                 .into_iter()
                 .flatten()
-                .map(|s| pst.piece_value(piece_at_for_ordering(position, s)))
+                .map(|square| pst.piece_value(piece_at_for_ordering(position, square)))
                 .sum();
-            let mut candidate = QsearchCapture::new(pst, capture, captured_value);
-            if candidate.captured_value > threshold
-                || captured_last_royal(position, capture.captured)
+            if captured_value <= threshold
+                && !captures_all_royals(royals, royal_count, capture.captured)
             {
-                candidate.seq = self.special.len();
-                self.special.push(candidate);
+                return;
             }
-        }
+            let mut candidate = QsearchCapture::new(pst, capture, captured_value);
+            candidate.seq = self.special.len() as u16;
+            self.special.push(candidate);
+        });
         self.special
             .sort_unstable_by_key(|c| (Reverse(c.captured_value), c.seq));
-        let opponent = position.side_to_move().opposite();
-        let royals = position.royal_pieces(opponent);
         let mut allowed = Bitboard::EMPTY;
-        for square in position.pieces_of(opponent) {
-            let state = piece_state_of(piece_at_for_ordering(position, square));
-            let value = pst.piece_value_of_state(state);
-            if value > threshold || royals.contains(square) {
-                let rank = ranks.rank_of_state[state] as usize;
-                let bit = 1_u64 << rank;
-                if self.present_ranks & bit == 0 {
-                    self.targets_by_rank[rank] = Bitboard::EMPTY;
-                    self.present_ranks |= bit;
+        for kind in PieceKind::ALL {
+            let pieces = position.pieces_of_kind(opponent, kind);
+            let [unpromoted, promoted] = ranks.ranks_of_kind[kind.index()];
+            if unpromoted == promoted {
+                let targets = if ranks.values[unpromoted as usize] > threshold {
+                    pieces
+                } else {
+                    pieces & royals
+                };
+                self.add_targets(targets, unpromoted, &mut allowed);
+            } else {
+                for square in pieces {
+                    let rank = if piece_at_for_ordering(position, square).is_promoted() {
+                        promoted
+                    } else {
+                        unpromoted
+                    };
+                    if ranks.values[rank as usize] > threshold || royals.contains(square) {
+                        self.add_targets(Bitboard::from_squares([square]), rank, &mut allowed);
+                    }
                 }
-                self.targets_by_rank[rank].set(square);
-                allowed.set(square);
             }
         }
         generator.collect_ordinary_capturers(position, allowed, &mut self.capturers);
-        self.initialized = true;
+        !self.special.is_empty()
+            || self.capturers.iter().any(|capturer| {
+                let mut present = false;
+                generator.emit_ordinary_captures(position, &[*capturer], allowed, &mut |capture| {
+                    let value = pst.piece_value(piece_at_for_ordering(position, capture.mv.to));
+                    present |= value > threshold
+                        || captures_all_royals(royals, royal_count, capture.captured);
+                });
+                present
+            })
+    }
+
+    /// 設計書movegen-speedup-2.md「段階5」に従い、同価値の対象升を集合のまま登録する。
+    fn add_targets(&mut self, targets: Bitboard, rank: u8, allowed: &mut Bitboard) {
+        if targets.is_empty() {
+            return;
+        }
+        let bit = 1_u64 << rank;
+        if self.present_ranks & bit == 0 {
+            self.targets_by_rank[rank as usize] = targets;
+            self.present_ranks |= bit;
+        } else {
+            self.targets_by_rank[rank as usize] |= targets;
+        }
+        *allowed |= targets;
     }
 
     /// 価値順の2列から次の値を選び、その通常捕獲と特殊捕獲を生成順でマージする。
@@ -1941,36 +2041,24 @@ impl QsearchBuffers {
         {
             self.special_cursor += 1;
         }
-        self.raw.clear();
         self.group.clear();
         self.cursor = 0;
-        generator.emit_ordinary_captures(position, &self.capturers, targets, &mut self.raw);
-        let mut ordinary = self
-            .raw
-            .iter()
-            .copied()
-            .map(|capture| QsearchCapture::new(pst, capture, value))
-            .peekable();
-        let mut special = self.special[special_start..self.special_cursor]
-            .iter()
-            .copied()
-            .peekable();
-        while ordinary.peek().is_some() || special.peek().is_some() {
-            let take_ordinary = match (ordinary.peek(), special.peek()) {
-                (Some(a), Some(b)) => a.origin_key < b.origin_key,
-                (Some(_), None) => true,
-                _ => false,
-            };
-            let mut candidate = if take_ordinary {
-                ordinary.next().expect("ordinary candidate exists")
-            } else {
-                special.next().expect("special candidate exists")
-            };
-            candidate.seq = self.group.len();
+        generator.emit_ordinary_captures(position, &self.capturers, targets, &mut |capture| {
+            let mut candidate = QsearchCapture::new(pst, capture, value);
+            candidate.seq = self.group.len() as u16;
             self.group.push(candidate);
+        });
+        if special_start == self.special_cursor {
+            self.group
+                .sort_unstable_by_key(|c| (c.attacker_value, c.seq));
+        } else {
+            self.group
+                .extend_from_slice(&self.special[special_start..self.special_cursor]);
+            // 駒種と移動元は通常駒・特殊駒で重ならない。各列の連番と合わせると、
+            // 公開生成順で合流してから安定整列した順序に一致する。
+            self.group
+                .sort_unstable_by_key(|c| (c.attacker_value, c.origin_key, c.seq));
         }
-        self.group
-            .sort_unstable_by_key(|c| (c.attacker_value, c.seq));
         Some(())
     }
 
@@ -1981,7 +2069,6 @@ impl QsearchBuffers {
         generator: &MoveGenerator,
         pst: &Pst,
         ranks: &CaptureRanks,
-        threshold: i32,
     ) -> Option<QsearchCapture> {
         if self.tt_pending {
             self.tt_pending = false;
@@ -2001,9 +2088,6 @@ impl QsearchBuffers {
                 },
                 captured_value,
             ));
-        }
-        if !self.initialized {
-            self.initialize(position, generator, pst, ranks, threshold);
         }
         loop {
             while let Some(&candidate) = self.group.get(self.cursor) {
@@ -2026,7 +2110,15 @@ fn captures_last_royal(position: &Position, mv: Move) -> bool {
 fn captured_last_royal(position: &Position, captured: [Option<crate::Square>; 2]) -> bool {
     let opponent = position.side_to_move().opposite();
     let royals = position.royal_pieces(opponent);
-    let royal_count = royals.popcount();
+    captures_all_royals(royals, royals.popcount(), captured)
+}
+
+/// 設計書movegen-speedup-2.md「段階5」に従い、ノードで求めた王駒集合を使う。
+fn captures_all_royals(
+    royals: Bitboard,
+    royal_count: u32,
+    captured: [Option<crate::Square>; 2],
+) -> bool {
     royal_count > 0
         && captured
             .into_iter()
@@ -2074,11 +2166,14 @@ struct MovePicker {
     stage: MovePickerStage,
     tt_move: Option<Move>,
     killers: [Option<Move>; KILLER_COUNT],
-    captures: Vec<Move>,
+    captures: Vec<(Move, MoveOrderKey)>,
     capture_index: usize,
     captures_generated: bool,
     quiets: Vec<Move>,
     quiet_index: usize,
+    base_moves: Vec<Move>,
+    quiet_order: Vec<(Reverse<i32>, usize)>,
+    used_quiets: [Option<usize>; KILLER_COUNT],
     quiets_generated: bool,
 }
 
@@ -2094,8 +2189,26 @@ impl MovePicker {
             captures_generated: false,
             quiets: Vec::new(),
             quiet_index: 0,
+            base_moves: Vec::new(),
+            quiet_order: Vec::new(),
+            used_quiets: [None; KILLER_COUNT],
             quiets_generated: false,
         }
+    }
+
+    /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
+    fn reset(&mut self, tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) {
+        self.stage = MovePickerStage::Tt;
+        self.tt_move = tt_move;
+        self.killers = killers;
+        self.captures.clear();
+        self.capture_index = 0;
+        self.captures_generated = false;
+        self.quiets.clear();
+        self.quiet_index = 0;
+        self.quiets_generated = false;
+        self.quiet_order.clear();
+        self.used_quiets = [None; KILLER_COUNT];
     }
 
     /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
@@ -2111,23 +2224,40 @@ impl MovePicker {
                 MovePickerStage::Tt => {
                     self.stage = MovePickerStage::Captures;
                     if let Some(tt_move) = self.tt_move
-                        && generator.is_legal_move(position, tt_move)
+                        && generator.is_legal_move(
+                            position,
+                            tt_move,
+                            &mut self.base_moves,
+                            &mut self.quiets,
+                        )
                     {
                         return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
                     }
                 }
                 MovePickerStage::Captures => {
                     if !self.captures_generated {
-                        generator.generate_captures(position, &mut self.captures);
-                        self.captures.retain(|&mv| Some(mv) != self.tt_move);
-                        self.captures.sort_by_key(|&mv| {
-                            let key = move_order_key(position, pst, mv)
-                                .expect("capture generator must not return a quiet move");
+                        self.quiets.clear();
+                        generator.generate_captures_with_scratch(
+                            position,
+                            &mut self.base_moves,
+                            &mut self.quiets,
+                        );
+                        self.captures.extend(
+                            self.quiets
+                                .drain(..)
+                                .filter(|&mv| Some(mv) != self.tt_move)
+                                .map(|mv| {
+                                    let key = move_order_key(position, pst, mv)
+                                        .expect("capture generator must not return a quiet move");
+                                    (mv, key)
+                                }),
+                        );
+                        self.captures.sort_by_key(|&(_, key)| {
                             (Reverse(key.captured_value), key.attacker_value)
                         });
                         self.captures_generated = true;
                     }
-                    if let Some(&mv) = self.captures.get(self.capture_index) {
+                    if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
                         self.capture_index += 1;
                         return Some((mv, true));
                     }
@@ -2135,7 +2265,7 @@ impl MovePicker {
                 }
                 MovePickerStage::Killer0 | MovePickerStage::Killer1 => {
                     if !self.quiets_generated {
-                        generator.generate_quiets(position, &mut self.quiets);
+                        generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
                         self.quiets.retain(|&mv| Some(mv) != self.tt_move);
                         self.quiets_generated = true;
                     }
@@ -2146,22 +2276,39 @@ impl MovePicker {
                         MovePickerStage::Quiets
                     };
                     if let Some(killer) = self.killers[killer_index]
-                        && let Some(index) = self.quiets.iter().position(|&mv| mv == killer)
+                        && let Some(index) =
+                            self.quiets.iter().enumerate().find_map(|(index, &mv)| {
+                                (mv == killer && !self.used_quiets.contains(&Some(index)))
+                                    .then_some(index)
+                            })
                     {
-                        return Some((self.quiets.remove(index), false));
+                        self.used_quiets[killer_index] = Some(index);
+                        return Some((self.quiets[index], false));
                     }
                 }
                 MovePickerStage::Quiets => {
                     let color = position.side_to_move().index();
-                    self.quiets.sort_by_cached_key(|&mv| {
-                        Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()])
-                    });
+                    self.quiet_order.extend(
+                        self.quiets
+                            .iter()
+                            .enumerate()
+                            .filter(|(index, _)| !self.used_quiets.contains(&Some(*index)))
+                            .map(|(index, mv)| {
+                                (
+                                    Reverse(
+                                        history[color][mv.from.dense_index()][mv.to.dense_index()],
+                                    ),
+                                    index,
+                                )
+                            }),
+                    );
+                    self.quiet_order.sort_unstable();
                     self.stage = MovePickerStage::Done;
                 }
                 MovePickerStage::Done => {
-                    if let Some(&mv) = self.quiets.get(self.quiet_index) {
+                    if let Some(&(_, index)) = self.quiet_order.get(self.quiet_index) {
                         self.quiet_index += 1;
-                        return Some((mv, false));
+                        return Some((self.quiets[index], false));
                     }
                     return None;
                 }

@@ -462,7 +462,7 @@ fn run_quiesce(
         started: Instant::now(),
         hard_limit: None,
     };
-    let history = [];
+    let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
     let pst = crate::eval::weights().unwrap();
     let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
@@ -491,7 +491,7 @@ fn run_negamax(
         started: Instant::now(),
         hard_limit: None,
     };
-    let history = [];
+    let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
     let pst = crate::eval::weights().unwrap();
     let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
@@ -849,7 +849,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     };
 
     for (tt_move, expected_capture) in [(capture, true), (quiet, false)] {
-        assert!(generator.is_legal_move(&position, tt_move));
+        assert!(generator.is_legal_move(&position, tt_move, &mut Vec::new(), &mut Vec::new()));
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
         let picked = picker.next(&position, &pst, &generator, &history).unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
@@ -1372,6 +1372,28 @@ fn quiescence_stand_pat_declines_a_losing_capture() {
     assert_eq!(score, stand_pat);
 }
 
+// 設計書movegen-speedup-2.md「段階7」: β以上の静的評価は置換表を照合も保存もしない。
+#[test]
+fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
+    let position = Position::initial();
+    let stand_pat = evaluate(&weights().unwrap(), &position);
+    let key = search_key(&position);
+    for beta in [stand_pat, stand_pat - 1] {
+        let table = small_tt();
+        let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        assert!(table.probe(key, 0).is_none());
+        table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
+        let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        let hit = table.probe(key, 0).unwrap();
+        assert_eq!(
+            (hit.score, hit.depth, hit.bound),
+            (stand_pat + 123, 4, Bound::Exact)
+        );
+    }
+}
+
 // D7-SRCH-11。search.md「静止探索」節の2026年8月22日改訂: Exact、
 // score >= betaのLower、score <= alphaのUpperは深さ条件なしで返す。
 #[test]
@@ -1381,13 +1403,26 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
         &[
             (fs(6, 12), Color::Black, PieceKind::King),
             (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
         ],
     );
     let key = search_key(&position);
+    let stand_pat = evaluate(&weights().unwrap(), &position);
     let cases = [
-        (Bound::Exact, 17, -10, 10),
-        (Bound::Lower, 50, -100, 50),
-        (Bound::Upper, -50, -50, 100),
+        (Bound::Exact, stand_pat + 17, stand_pat - 10, stand_pat + 10),
+        (
+            Bound::Lower,
+            stand_pat + 50,
+            stand_pat - 100,
+            stand_pat + 50,
+        ),
+        (
+            Bound::Upper,
+            stand_pat - 50,
+            stand_pat - 50,
+            stand_pat + 100,
+        ),
     ];
 
     for (bound, score, alpha, beta) in cases {
@@ -1435,8 +1470,8 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     assert!(second_nodes < first_nodes);
 }
 
-// D7-SRCH-12。stand-pat即時β超過と通常出口のUpper・Exactを経路別に
-// 深さ0で記録し、stand-patが最善なら手なしとする。
+// D7-SRCH-12。通常出口のUpper・Exactを深さ0で記録し、
+// stand-patが最善なら手なしとする。
 #[test]
 fn quiescence_records_bounds_and_no_move_by_exit_path() {
     let position = position(
@@ -1444,12 +1479,14 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
         &[
             (fs(6, 12), Color::Black, PieceKind::King),
             (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+            (fs(3, 1), Color::White, PieceKind::Rook),
         ],
     );
     let key = search_key(&position);
     let stand_pat = evaluate(&crate::eval::weights().unwrap(), &position);
     let cases = [
-        (-INFINITY, stand_pat, Bound::Lower),
         (stand_pat, INFINITY, Bound::Upper),
         (stand_pat - 1, stand_pat + 1, Bound::Exact),
     ];
@@ -3051,4 +3088,379 @@ fn malformed_atomic_tt_entries_are_probe_misses() {
         table.write_raw(key, critical, invalid_advisory);
         assert!(table.probe(key, 0).is_none());
     }
+}
+
+// movegen-speedup-2.md「段階6」: 変更前の全出力列を契約の参照にする。
+struct ReferenceMovePicker {
+    stage: MovePickerStage,
+    tt_move: Option<Move>,
+    killers: [Option<Move>; KILLER_COUNT],
+    captures: Vec<(Move, MoveOrderKey)>,
+    capture_index: usize,
+    captures_generated: bool,
+    quiets: Vec<Move>,
+    quiet_index: usize,
+    quiets_generated: bool,
+}
+
+impl ReferenceMovePicker {
+    /// 助言手を保持した空の手選択器を作る。
+    fn new(tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) -> Self {
+        Self {
+            stage: MovePickerStage::Tt,
+            tt_move,
+            killers,
+            captures: Vec::new(),
+            capture_index: 0,
+            captures_generated: false,
+            quiets: Vec::new(),
+            quiet_index: 0,
+            quiets_generated: false,
+        }
+    }
+
+    /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
+    fn next(
+        &mut self,
+        position: &Position,
+        pst: &Pst,
+        generator: &MoveGenerator,
+        history: &HistoryTable,
+    ) -> Option<(Move, bool)> {
+        loop {
+            match self.stage {
+                MovePickerStage::Tt => {
+                    self.stage = MovePickerStage::Captures;
+                    if let Some(tt_move) = self.tt_move
+                        && {
+                            let mut moves = Vec::new();
+                            generator.generate_moves(position, &mut moves);
+                            moves.contains(&tt_move)
+                        }
+                    {
+                        return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
+                    }
+                }
+                MovePickerStage::Captures => {
+                    if !self.captures_generated {
+                        let mut moves = Vec::new();
+                        generator.generate_captures(position, &mut moves);
+                        self.captures.extend(
+                            moves
+                                .into_iter()
+                                .filter(|&mv| Some(mv) != self.tt_move)
+                                .map(|mv| {
+                                    let key = move_order_key(position, pst, mv)
+                                        .expect("capture generator must not return a quiet move");
+                                    (mv, key)
+                                }),
+                        );
+                        self.captures.sort_by_key(|&(_, key)| {
+                            (Reverse(key.captured_value), key.attacker_value)
+                        });
+                        self.captures_generated = true;
+                    }
+                    if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
+                        self.capture_index += 1;
+                        return Some((mv, true));
+                    }
+                    self.stage = MovePickerStage::Killer0;
+                }
+                MovePickerStage::Killer0 | MovePickerStage::Killer1 => {
+                    if !self.quiets_generated {
+                        generator.generate_moves(position, &mut self.quiets);
+                        self.quiets.retain(|&mv| {
+                            position
+                                .captured_squares(mv)
+                                .into_iter()
+                                .all(|sq| sq.is_none())
+                        });
+                        self.quiets.retain(|&mv| Some(mv) != self.tt_move);
+                        self.quiets_generated = true;
+                    }
+                    let killer_index = usize::from(matches!(self.stage, MovePickerStage::Killer1));
+                    self.stage = if killer_index == 0 {
+                        MovePickerStage::Killer1
+                    } else {
+                        MovePickerStage::Quiets
+                    };
+                    if let Some(killer) = self.killers[killer_index]
+                        && let Some(index) = self.quiets.iter().position(|&mv| mv == killer)
+                    {
+                        return Some((self.quiets.remove(index), false));
+                    }
+                }
+                MovePickerStage::Quiets => {
+                    let color = position.side_to_move().index();
+                    self.quiets.sort_by_cached_key(|&mv| {
+                        Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()])
+                    });
+                    self.stage = MovePickerStage::Done;
+                }
+                MovePickerStage::Done => {
+                    if let Some(&mv) = self.quiets.get(self.quiet_index) {
+                        self.quiet_index += 1;
+                        return Some((mv, false));
+                    }
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+/// 「段階6」（movegen-speedup-2.md）の全出力列を同点・重複・履歴更新込みで照合する。
+#[test]
+fn staged_picker_matches_reference_sequence_with_changing_history() {
+    let pst = weights().unwrap();
+    let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
+    for rules in crate::core::movegen::tests::capture_test_rules() {
+        let generator = MoveGenerator::new(rules);
+        let positions = std::iter::once(staged_picker_fixture())
+            .chain(crate::test_util::sampled_random_positions(rules));
+        for position in positions {
+            let mut all = Vec::new();
+            generator.generate_moves(&position, &mut all);
+            if all.is_empty() {
+                continue;
+            }
+            let quiets: Vec<_> = all
+                .iter()
+                .copied()
+                .filter(|&mv| move_order_key(&position, &pst, mv).is_none())
+                .collect();
+            let first = quiets.first().copied();
+            let last = quiets.last().copied();
+            let illegal = Move {
+                from: sq(0, 0),
+                to: sq(11, 11),
+                mid: Some(sq(4, 4)),
+                promote: true,
+            };
+            for (tt, killers) in [
+                (None, [None, None]),
+                (first, [first, last]),
+                (Some(all[all.len() / 2]), [first, first]),
+                (Some(illegal), [Some(illegal), last]),
+            ] {
+                let mut history =
+                    Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+                let mut reference = ReferenceMovePicker::new(tt, killers);
+                picker.reset(tt, killers);
+                let mut ordinal = 0;
+                loop {
+                    let expected = reference.next(&position, &pst, &generator, &history);
+                    let actual = picker.next(&position, &pst, &generator, &history);
+                    assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
+                    let Some((mv, _)) = expected else {
+                        break;
+                    };
+                    // 子探索から戻るたびに履歴が変わる。少数の値を使い同点も保つ。
+                    history[position.side_to_move().index()][mv.from.dense_index()]
+                        [mv.to.dense_index()] = ordinal % 3 - 1;
+                    ordinal += 1;
+                }
+            }
+        }
+    }
+}
+
+/// 「段階6」（movegen-speedup-2.md）の300手の履歴と反復判定を検証する。
+/// 「段階7」以降は探索木が変わるため、結果の再現性と合法性を確かめる。
+#[test]
+fn stage6_long_history_search_contract() {
+    let rules = engine_rules();
+    let generator = MoveGenerator::new(rules);
+    let mut root = Position::initial();
+    let mut history = vec![search_key(&root)];
+    let mut rng = crate::rng::XorShift64::new(NonZeroU64::new(0x5354_4147_4536_0001).unwrap());
+    for _ in 0..300 {
+        let mut moves = Vec::new();
+        generator.generate_moves(&root, &mut moves);
+        moves.retain(|&mv| !captures_last_royal(&root, mv));
+        let mv = moves[rng.next() as usize % moves.len()];
+        root.make_move_unchecked(mv, rules);
+        history.push(search_key(&root));
+    }
+    let moves = legal_moves(&root);
+    let result = run_search(
+        &root,
+        rules,
+        &moves,
+        &history,
+        &depth_limits(5),
+        DEFAULT_THREADS,
+        &mut small_tt(),
+    );
+    assert!(moves.contains(&result.best_move));
+    assert_eq!(result.depth, 5);
+    assert!(result.nodes > 0);
+    assert_eq!(
+        result,
+        run_search(
+            &root,
+            rules,
+            &moves,
+            &history,
+            &depth_limits(5),
+            DEFAULT_THREADS,
+            &mut small_tt(),
+        )
+    );
+    // null moveは経路にキーを追加しない。パス後の実着手による反復も参照に含める。
+    let mut after_null = root.clone();
+    after_null.make_null_move();
+    let reply = legal_moves(&after_null)
+        .into_iter()
+        .find(|&mv| !captures_last_royal(&after_null, mv))
+        .unwrap();
+    let mut repeated = after_null.clone();
+    repeated.make_move_unchecked(reply, rules);
+    history[1] = search_key(&repeated);
+    with_root_searcher(&root, &history, |searcher| {
+        searcher.null_move_ply = Some(1);
+        searcher.accumulators[1] = searcher.pst.refresh_accumulator(&after_null);
+        let path = searcher.path_keys.clone();
+        let score =
+            searcher.search_move(&mut after_null, reply, 2, -INFINITY, INFINITY, 1, true, 0);
+        assert_eq!(score, Some(DRAW_SCORE));
+        assert_eq!(searcher.path_keys, path);
+        assert_eq!(searcher.nodes, 1);
+    });
+    with_root_searcher(&root, &history, |searcher| {
+        let score = searcher.negamax(&mut root.clone(), 5, -1, 0, 0);
+        assert_eq!(score, Some(2435));
+        assert_eq!(searcher.nodes, 49);
+        assert_eq!(
+            searcher.pv[0],
+            [
+                Move {
+                    from: sq(4, 1),
+                    mid: None,
+                    to: sq(5, 2),
+                    promote: false
+                },
+                Move {
+                    from: sq(8, 7),
+                    mid: None,
+                    to: sq(10, 7),
+                    promote: false
+                },
+                Move {
+                    from: sq(3, 2),
+                    mid: None,
+                    to: sq(11, 10),
+                    promote: false
+                },
+            ]
+        );
+    });
+}
+
+/// 「段階6」（movegen-speedup-2.md）のノード上限を境界の両側で検証する。
+/// 「段階8」では探索木が変わるため、完了深さの旧値ではなく上限と再現性を固定する。
+#[test]
+fn stage6_fixed_node_search_contract() {
+    let root = Position::initial();
+    for nodes in [
+        1,
+        STOP_CHECK_INTERVAL - 1,
+        STOP_CHECK_INTERVAL,
+        STOP_CHECK_INTERVAL + 1,
+        10_000,
+    ] {
+        let result = run_search(
+            &root,
+            engine_rules(),
+            &legal_moves(&root),
+            &[search_key(&root)],
+            &nodes_limits(nodes),
+            DEFAULT_THREADS,
+            &mut small_tt(),
+        );
+        assert!(legal_moves(&root).contains(&result.best_move));
+        assert_eq!(
+            result,
+            run_search(
+                &root,
+                engine_rules(),
+                &legal_moves(&root),
+                &[search_key(&root)],
+                &nodes_limits(nodes),
+                DEFAULT_THREADS,
+                &mut small_tt(),
+            )
+        );
+        assert_eq!(result.nodes, nodes);
+    }
+}
+
+// 設計書movegen-speedup-2.md「段階9」: 合法な捕獲がない場合と、入口の閾値で
+// 全捕獲が消える場合は、既存の置換表の値にかかわらず静的評価を返す。
+#[test]
+fn quiescence_empty_candidates_do_not_probe_or_store() {
+    let pst = weights().unwrap();
+    let capture_position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let stand_pat = evaluate(&pst, &capture_position);
+    for (position, alpha) in [
+        (Position::initial(), -INFINITY),
+        (
+            capture_position,
+            stand_pat + pst.delta_margin() + pst.pawn_value(),
+        ),
+    ] {
+        let key = search_key(&position);
+        let stand_pat = evaluate(&pst, &position);
+        let table = small_tt();
+        let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        assert!(table.probe(key, 0).is_none());
+        table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
+        let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
+        assert_eq!((score, nodes), (stand_pat, 1));
+        let hit = table.probe(key, 0).unwrap();
+        assert_eq!((hit.score, hit.depth), (stand_pat + 123, 4));
+    }
+}
+
+// 設計書movegen-speedup-2.md「段階9」: 候補があり、SEEで全て捨てるノードは保存する。
+#[test]
+fn quiescence_see_pruned_candidates_still_store() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+            (fs(3, 10), Color::Black, PieceKind::Rook),
+            (fs(3, 4), Color::White, PieceKind::Pawn),
+            (fs(3, 1), Color::White, PieceKind::Rook),
+        ],
+    );
+    let pst = weights().unwrap();
+    let mut captures = Vec::new();
+    MoveGenerator::standard().generate_captures(&position, &mut captures);
+    assert!(!captures.is_empty());
+    assert!(captures.iter().all(|&mv| capture_is_pruned_by_see(
+        &position,
+        engine_rules(),
+        &pst,
+        mv
+    )));
+    let table = small_tt();
+    let stand_pat = evaluate(&pst, &position);
+    let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
+    assert_eq!((score, nodes), (stand_pat, 1));
+    let hit = table.probe(search_key(&position), 0).unwrap();
+    assert_eq!(
+        (hit.score, hit.bound, hit.best_move),
+        (stand_pat, Bound::Exact, None)
+    );
 }

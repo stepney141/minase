@@ -43,7 +43,9 @@
 | 棋力向上段階6 | [plans/strength-stage6.md](plans/strength-stage6.md) | 完了 | 2026年9月12日 |
 | 棋力向上段階7 | [plans/strength-stage7.md](plans/strength-stage7.md) | 完了 | 2026年9月14日 |
 | 合法手生成と利き計算の高速化 | [plans/movegen-speedup.md](plans/movegen-speedup.md) | 完了 | 2026年9月15日 |
-| 合法手生成と利き計算の高速化（第2期） | [plans/movegen-speedup-2.md](plans/movegen-speedup-2.md) | 起案 | |
+| 合法手生成と利き計算の高速化（第2期） | [plans/movegen-speedup-2.md](plans/movegen-speedup-2.md) | 完了 | 2026年9月17日 |
+| 合法手生成と利き計算の高速化（第3期） | [plans/movegen-speedup-3.md](plans/movegen-speedup-3.md) | 起案 | |
+| 棋力向上段階8（前向き枝刈りの第3層） | [plans/strength-stage8.md](plans/strength-stage8.md) | 起案 | |
 | 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了（不採用） | 2026年9月18日 |
 | 時間管理の変更の分解測定 | [plans/time-management-decomposition.md](plans/time-management-decomposition.md) | 完了 | 2026年9月18日 |
 | 秒読みの予算に序盤の係数を加える | [plans/time-management-opening-coefficient.md](plans/time-management-opening-coefficient.md) | 完了 | 2026年9月18日 |
@@ -61,17 +63,17 @@
 HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの証拠を得たが、不正着手1件は生の応答が保存されておらず原因未特定であり、どちらも規約どおり反則負けとして集計した。
 旧構成で中断した段階開始版との37ペアは保持し、最終構成の集計へは含めない。
 
-直近に完了したマイルストーンは[合法手生成と利き計算の高速化](plans/movegen-speedup.md)であり、利き逆引きの片側化、静止探索の段階的な捕獲生成、およびSEEの早期終了でbenchのNPSを基準比1.500倍にした。
-PGOはNPS約1.19倍の効果を確認したが、運用の複雑さを理由に利用者の判断で採用しなかった。
-[第2期](plans/movegen-speedup-2.md)は2026年9月15日に起案し、第1期の採用版を基準に10段階で1.3倍を目標とする。利用者の決定により`unsafe`は使わず、探索木を変える変更は段階7から段階9に置き、事前選別を通過した段階を1コミットに固定して1組のSTCとLTCで判定する。着手前の判断はすべて確定しており、次の一手は段階1の計測基盤の更新である。起案時の診断は measurements/movegen-speedup-2-diagnostics-depth5.md にある。
+直近に完了したマイルストーンは[合法手生成と利き計算の高速化（第2期）](plans/movegen-speedup-2.md)であり、走り計算の減算方式、SEE逆引きの近傍走査、利き線の事前選別、静止探索の候補処理の簡素化、非捕獲生成とノードの固定費の削減でbenchのNPSを第1期の採用版比1.385倍にし、探索木を変える3段階（静的評価の先行打ち切り、静止探索の獅子候補の絞り込み、候補が空のノードでの置換表アクセスの省略）をSPRTで採用した。最終の採用版は第1期の採用版に対して固定200ペアで+117 Eloである。
+第1期は利き逆引きの片側化、静止探索の段階的な捕獲生成、およびSEEの早期終了でNPSをmaster比1.500倍にした。PGOはNPS約1.19倍の効果を確認したが、運用の複雑さを理由に利用者の判断で採用しなかった。
+[第3期](plans/movegen-speedup-3.md)は2026年9月17日に起案し、第2期の最終の採用版を基準にSEE逆引きの走り方向の事前選別、特殊駒候補の生成前の対象絞り、初期化の自駒走査の逆到達表による絞りで1.15倍を目標とし、静止探索の置換表の全廃を探索木を変える段階としてSPRTで判定する。着手前の判断は、第2期のブランチをmasterへ取り込んでから第3期のブランチを切ることの1点である。起案時の診断は measurements/movegen-speedup-3-diagnostics-depth5.md にある。
 進行中のマイルストーンは、上位計画の[棋力向上の段階計画](plans/strength-stages.md)である。
-10段階のうち段階7までが完了し、次の段階は採用構成と世代2のデータを起点に進められる。
+11段階のうち段階7までが完了し、次の段階は採用構成と世代2のデータを起点に進められる。
 
 待機中のマイルストーンは2件である。
 直前局面生成器（plans/predecessor-generator.md）は設計済みだが、2026年8月10日に探索部を先行させると決定してから待機している。`Position`のAPI再編を含むため、着手時期は別途決める。順方向の探索部と評価関数はその完了を前提とせず、いつ再開しても手戻りがない。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
-次期候補は、棋力向上段階8（利きマップと評価特徴の拡張）であり、段階7の採用構成と世代2のデータを起点にする。
+次期候補は、起案済みの棋力向上段階8（前向き枝刈りの第3層、plans/strength-stage8.md）と、その後の段階9（利きマップと評価特徴の拡張）である。
 隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
 `Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
 lishogi Bot接続（plans/lishogi-bot.md）は2026年9月12日に着手し、規則R1へlishogiの反復裁定の前提条件を取り込み、Lishogi-Botとminaseを1つのDockerイメージにまとめる配備手段を整えた。
