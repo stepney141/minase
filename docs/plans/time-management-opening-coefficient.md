@@ -12,9 +12,9 @@
 
 ## 状態
 
-進行中。2026年9月18日に起案し、同日に利用者の承認を得て着手した。
-フェーズ1の実装（ブランチ`time-management-opening-coefficient`）を終え、詰まっている点はない。
-次の一手は、フェーズ2の時計の診断である。
+完了（採用）。2026年9月18日に起案し、同日に着手して完了した。
+時計の診断で、issueの条件の初手は11.9秒から4.0秒になり、hardの超過は最大14 ms、時間切れは0件であった（[time-management-opening-coefficient-diag](../measurements/time-management-opening-coefficient-diag.md)）。秒読みのない時計では式が現行と一致し、benchの総ノード数もB′と一致する。
+成果はブランチ`time-management-opening-coefficient`（B′に相当する置換表の2修正と係数の計3コミット）にあり、masterへの統合は利用者の判断に委ねる。
 
 ## 目的
 
