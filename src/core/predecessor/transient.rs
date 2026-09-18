@@ -1,6 +1,6 @@
 //! 候補盤面の成り権保留と先獅子の記録升を具体的な値として列挙する。
 
-use super::lion_membership;
+use super::lion_record_squares;
 use crate::core::bitboard::Bitboard;
 use crate::core::mv::Move;
 use crate::core::piece::{PieceCode, PieceKind};
@@ -81,20 +81,30 @@ pub(super) fn candidates(
     result
 }
 
-/// 検査済み基底のクローンへ先獅子の記録升を設定し、その局所条件だけを再検査する。
-pub(super) fn lion_records(base: &Position, missing_lion: bool, mut visit: impl FnMut(Position)) {
+/// 検査済み基底のクローンへ、局所条件を満たす先獅子の記録升を設定して渡す。
+///
+/// 記録升の候補は[`lion_record_squares`]で先に絞る。計測記録
+/// predecessor-generator-profile.mdのとおり、全144升へ設定してから検査する方式では
+/// 構成した候補の大半が記録升の条件で棄却され、そのクローンが処理時間を支配した。
+/// 戻り値は構成した候補数(基底を含む)。
+pub(super) fn lion_records(
+    base: &Position,
+    missing_lion: bool,
+    mut visit: impl FnMut(Position),
+) -> usize {
     visit(base.clone());
     if !missing_lion {
-        return;
+        return 1;
     }
-    for square in Square::all() {
+    let squares = lion_record_squares(base);
+    for square in squares.iter() {
         let mut candidate = base.clone();
-        if candidate.set_lion_capture(Some(square)).is_ok()
-            && lion_membership(&candidate, missing_lion).is_ok()
-        {
-            visit(candidate);
-        }
+        candidate
+            .set_lion_capture(Some(square))
+            .expect("record squares never hold a piece of the side to move");
+        visit(candidate);
     }
+    1 + squares.popcount() as usize
 }
 
 /// 採用規則の下で成り権保留状態を持てる配置かを返す(第30条)。

@@ -156,12 +156,16 @@ fn l2_allows_recapture_of_just_promoted_kirin() {
 fn l3_removes_pawn_support_between_stages() {
     // RULES.md第16条8〜10項・第29条L3: 歩兵は価値ある付け喰い駒にはならない。
     // 後手歩兵は南へ利くため、獅子を南側に置き、先手獅子は北から近づく。
-    let pieces = [
-        (sq(5, 7), Color::Black, PieceKind::Lion),
-        (sq(5, 6), Color::White, PieceKind::Pawn),
-        (sq(5, 5), Color::White, PieceKind::Lion),
-    ];
-    let p = position(Color::Black, &pieces);
+    // 両獅子と盤端の後手歩兵1枚を初期配置から動かし、後手獅子の足を歩兵だけにする。
+    let p = initial_with(
+        Color::Black,
+        &[sq(5, 2), sq(6, 9), sq(0, 8)],
+        &[
+            (sq(5, 7), piece(Color::Black, PieceKind::Lion)),
+            (sq(5, 6), piece(Color::White, PieceKind::Pawn)),
+            (sq(5, 5), piece(Color::White, PieceKind::Lion)),
+        ],
+    );
     rule_difference(
         &p,
         Move {
@@ -182,12 +186,15 @@ fn l3_removes_pawn_support_between_stages() {
 #[test]
 fn l4_allows_lion_recapture_under_prior_record() {
     // RULES.md第15条9項・第29条L4: 足のある隣接獅子への取り返し。
-    let base = position(
+    // 記録升のある局面では手番側の獅子在庫が欠けている必要があるため、
+    // 先手の麒麟を除き、両獅子と盤端の後手歩兵1枚を初期配置から動かす。
+    let base = initial_with(
         Color::Black,
+        &[sq(5, 2), sq(5, 1), sq(6, 9), sq(0, 8)],
         &[
-            (sq(5, 5), Color::Black, PieceKind::Lion),
-            (sq(5, 6), Color::White, PieceKind::Lion),
-            (sq(5, 7), Color::White, PieceKind::Pawn),
+            (sq(5, 5), piece(Color::Black, PieceKind::Lion)),
+            (sq(5, 6), piece(Color::White, PieceKind::Lion)),
+            (sq(5, 7), piece(Color::White, PieceKind::Pawn)),
         ],
     );
     let p = with_state(&base, &[], Some(sq(5, 7)));

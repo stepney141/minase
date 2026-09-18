@@ -17,7 +17,7 @@
 | プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 完了 | 2026年8月10日 |
 | ブラウザGUI向けUSI照会 | [plans/browser-gui.md](plans/browser-gui.md) | 完了 | 2026年8月11日 |
 | 対局ハーネスのバイナリ対戦化 | [plans/match-harness.md](plans/match-harness.md) | 完了 | 2026年8月11日 |
-| 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 進行中 | ― |
+| 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 完了 | 2026年9月18日 |
 | 探索部 | [plans/search.md](plans/search.md) | 完了 | 2026年8月22日 |
 | 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 完了 | 2026年8月14日 |
 | Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 完了 | 2026年8月23日 |
@@ -67,7 +67,7 @@ HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの�
 進行中のマイルストーンは、上位計画の[棋力向上の段階計画](plans/strength-stages.md)である。
 11段階のうち段階7までが完了し、次の段階は採用構成と世代2のデータを起点に進められる。
 
-直前局面生成器（plans/predecessor-generator.md）は2026年9月18日に着手した。`Position`の内部表現とエンジンの探索経路は変えず、公開アクセサと`Hash`の追加を準備として、規則集合と対象局面から直前局面をすべて列挙する外部プログラム向けのライブラリ機能をブランチpredecessor-generatorで実装している。
+[直前局面生成器](plans/predecessor-generator.md)は2026年9月18日に着手し、同日に完了した。`Position`に一時状態の公開アクセサと`Hash`を加え、規則集合と対象局面から直前局面をすべて列挙する`PredecessorGenerator`を、全移動形式の固定テスト、全順方向辺の逆包含テスト、有限状態オラクルとの集合一致、および公開APIだけを使う深さ2の逆方向探索で検証した。[固定コーパスの計測](measurements/predecessor-generator-profile.md)では自己時間が最大の処理はなく、追加の最適化は行わなかった。直前局面の集合は不足在庫が多い局面で数百万局面に達するため、後続の逆方向探索を設計する際はこの規模を前提にする。成果はブランチpredecessor-generatorにあり、masterへの統合は利用者の判断を待つ。
 待機中のマイルストーンは1件である。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 

@@ -8,6 +8,7 @@ mod transient;
 
 use std::fmt;
 
+use crate::core::bitboard::Bitboard;
 use crate::core::movegen::MoveGenerator;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::{Position, PositionError};
@@ -168,35 +169,38 @@ fn lion_missing(found: &material::Inventory, side: Color) -> bool {
     })
 }
 
-/// 先獅子の記録升だけに依存する集合Aの条件を検査する。
+/// 設計書predecessor-generator.md「直前局面の定義」の局所条件を満たす
+/// 先獅子の記録升の集合を返す。
 ///
-/// 盤面・在庫・保留集合を検査済みの変種では、この検査だけを再適用する。
-fn lion_membership(position: &Position, missing: bool) -> Result<(), PredecessorError> {
-    if let Some(square) = position.lion_capture_square() {
-        let side = position.side_to_move();
-        let previous = side.opposite();
-        let piece = position.piece_at(square);
-        if piece.is_some_and(|piece| {
-            piece.color() != Some(previous)
-                || (piece.kind() == Some(PieceKind::Lion) && !piece.is_promoted())
-        }) {
-            return Err(PredecessorError::InvalidLionState);
-        }
-        if !missing {
-            return Err(PredecessorError::InvalidLionState);
-        }
-        if piece.is_none()
-            && position
-                .pieces_of_kind(previous, PieceKind::HornedFalcon)
-                .is_empty()
-            && position
-                .pieces_of_kind(previous, PieceKind::SoaringEagle)
-                .is_empty()
-        {
-            return Err(PredecessorError::InvalidLionState);
+/// 記録升は、直前着手側(`side_to_move().opposite()`)の非獅子駒または麒麟由来の
+/// 成獅子がある升か、直前着手側に角鷹または飛鷲がある場合の空升である(第15条)。
+/// 手番側の獅子在庫の条件は含めず、呼び出し側が[`lion_missing`]で判定する。
+fn lion_record_squares(position: &Position) -> Bitboard {
+    let previous = position.side_to_move().opposite();
+    let mut squares = Bitboard::EMPTY;
+    for square in position.pieces_of(previous).iter() {
+        let piece = position.piece_at(square).expect("own square has a piece");
+        if piece.kind() != Some(PieceKind::Lion) || piece.is_promoted() {
+            squares.set(square);
         }
     }
-    Ok(())
+    let lion_like = position.pieces_of_kind(previous, PieceKind::HornedFalcon)
+        | position.pieces_of_kind(previous, PieceKind::SoaringEagle);
+    if !lion_like.is_empty() {
+        squares |= !position.occupied();
+    }
+    squares
+}
+
+/// 先獅子の記録升だけに依存する集合Aの条件を検査する。
+///
+/// 盤面・在庫・保留集合を検査済みの局面では、この検査だけを再適用する。
+fn lion_membership(position: &Position, missing: bool) -> Result<(), PredecessorError> {
+    match position.lion_capture_square() {
+        None => Ok(()),
+        Some(square) if missing && lion_record_squares(position).contains(square) => Ok(()),
+        Some(_) => Err(PredecessorError::InvalidLionState),
+    }
 }
 
 /// 生成器の共有に必要な自動トレイトを常時検査する。

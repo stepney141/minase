@@ -14,12 +14,25 @@ use crate::core::square::Square;
 
 /// 集合Aに属する対象局面へ到達する直前局面を返す。
 pub(super) fn generate(forward: &MoveGenerator, target: &Position) -> Vec<Position> {
+    verify_candidates(forward, target, |visit| {
+        enumerate_candidates(forward, target, visit);
+    })
+}
+
+/// 集合Aの検査を通った着手と候補局面の組を列挙する。
+/// 基底での検査と記録升の検査の順序を保ち、組をコールバックへ逐次渡す。
+/// 全候補を保持せず、計測時も従来と同じ作業領域で再適用する。
+/// 戻り値は集合Aの検査で棄却した局面も含む候補構成数。
+pub(super) fn enumerate_candidates(
+    forward: &MoveGenerator,
+    target: &Position,
+    mut visit: impl FnMut(Move, Position),
+) -> usize {
+    let mut constructed = 0;
     let mover = target.side_to_move().opposite();
     let mut missing = material::missing(target);
     // 着手側の由来別在庫は移動・成り・相手駒の復元では変わらない。
     let missing_lion = lion_missing(&material::count(target), mover);
-    let mut seen = HashSet::new();
-    let mut result = Vec::new();
     for to in target.pieces_of(mover).iter() {
         let arrived = target.piece_at(to).expect("mover square has a piece");
         let mut before_choices = vec![(arrived, false)];
@@ -42,22 +55,38 @@ pub(super) fn generate(forward: &MoveGenerator, target: &Position) -> Vec<Positi
                     {
                         // validate・在庫・保留集合は記録升に依存しないので基底で1回検査する。
                         if base_membership(forward.rules(), &candidate).is_err() {
+                            constructed += 1;
                             continue;
                         }
-                        transient::lion_records(&candidate, missing_lion, |candidate| {
-                            let mut replayed = candidate.clone();
-                            if replayed.try_make_move(mv, forward).is_ok()
-                                && replayed == *target
-                                && seen.insert(candidate.clone())
-                            {
-                                result.push(candidate);
-                            }
-                        });
+                        constructed +=
+                            transient::lion_records(&candidate, missing_lion, |candidate| {
+                                visit(mv, candidate);
+                            });
                     }
                 });
             }
         }
     }
+    constructed
+}
+
+/// 列挙済み候補を順方向に再適用し、一致する局面を重複なく返す。
+pub(super) fn verify_candidates(
+    forward: &MoveGenerator,
+    target: &Position,
+    enumerate: impl FnOnce(&mut dyn FnMut(Move, Position)),
+) -> Vec<Position> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    enumerate(&mut |mv, candidate| {
+        let mut replayed = candidate.clone();
+        if replayed.try_make_move(mv, forward).is_ok()
+            && replayed == *target
+            && seen.insert(candidate.clone())
+        {
+            result.push(candidate);
+        }
+    });
     result
 }
 

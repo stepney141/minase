@@ -1,13 +1,15 @@
 //! 設計書predecessor-generator.md「検証」の固定テストと順方向辺の逆包含。
 
+mod completeness;
 mod deferred;
 mod input;
 mod lion_movement;
 mod lion_state;
 mod material;
 mod movement;
+mod oracle;
+mod profile;
 mod promotion;
-mod properties;
 
 use std::collections::HashSet;
 
@@ -27,7 +29,7 @@ fn mv(from: Square, to: Square, promote: bool) -> Move {
     }
 }
 
-/// 設計書「検証」の健全性・一意性・入力不変性を公開APIだけで検査する。
+/// 設計書「検証」の健全性・一意性・入力不変性を順方向生成器で検査する。
 fn checked(rules: MoveRules, target: &Position) -> Vec<Position> {
     let saved = target.clone();
     let result = PredecessorGenerator::new(rules)
@@ -46,7 +48,9 @@ fn checked(rules: MoveRules, target: &Position) -> Vec<Position> {
         assert!(
             moves.into_iter().any(|mv| {
                 let mut replayed = predecessor.clone();
-                replayed.try_make_move(mv, &forward).unwrap();
+                // この局面・規則の全合法手を上で生成済みなので、そのまま適用できる。
+                // 全辺の検査でも、着手ごとに同じ合法手集合を再生成しない。
+                replayed.make_move_unchecked(mv, rules);
                 replayed == *target
             }),
             "returned predecessor has no legal edge to target"
@@ -117,6 +121,23 @@ fn stocked_position(side: Color, pieces: &[(Square, PieceCode)]) -> Position {
         all.push((squares.next().expect("stock fits in four ranks"), piece));
     }
     position_from_codes(side, &all)
+}
+
+/// 初期配置から指定升の駒を除き、指定した駒を置いた局面を作る。
+///
+/// 両対局者の在庫をほぼ満たしたまま試験駒だけを動かすことで、復元する捕獲駒と
+/// 記録升の変種を少数に保つ。初期配置の走り駒は歩兵の列に遮られるため、除いた
+/// 歩兵が盤端の筋である限り、中央の試験駒へ利きが届かない。
+fn initial_with(side: Color, removed: &[Square], placed: &[(Square, PieceCode)]) -> Position {
+    let initial = Position::initial();
+    let mut pieces: Vec<_> = initial
+        .occupied()
+        .iter()
+        .filter(|square| !removed.contains(square))
+        .map(|square| (square, initial.piece_at(square).unwrap()))
+        .collect();
+    pieces.extend_from_slice(placed);
+    position_from_codes(side, &pieces)
 }
 
 /// 試験局面の盤面を保ち、指定した保留集合と先獅子記録で再構築する。
