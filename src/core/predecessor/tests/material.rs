@@ -104,3 +104,82 @@ fn full_initial_stock_allows_no_capture_restoration() {
         .unwrap();
     assert!(!result.contains(&builder.finish().unwrap()));
 }
+
+/// 同一由来の2枚復元は、不成と成駒の組でも不足在庫の範囲に限る。
+#[test]
+fn double_capture_respects_shared_origin_stock() {
+    // 設計書「捕獲駒の復元」「駒在庫」: 歩兵と成金は同じ歩兵在庫から2枚引く。
+    let from = sq(5, 5);
+    let mid = sq(6, 5);
+    let to = sq(7, 5);
+    let pawn = piece(Color::White, PieceKind::Pawn);
+    let promoted = PieceCode::new_promoted(Color::White, PieceKind::GoldGeneral).unwrap();
+    let base = stocked_position(
+        Color::Black,
+        &[
+            (from, piece(Color::Black, PieceKind::Lion)),
+            (sq(11, 6), piece(Color::Black, PieceKind::Kirin)),
+            (mid, pawn),
+            (to, promoted),
+        ],
+    );
+    let capture = Move {
+        from,
+        mid: Some(mid),
+        to,
+        promote: false,
+    };
+    let result = round_trip(MoveRules::standard(), &base, capture);
+    for first in [pawn, promoted] {
+        for second in [pawn, promoted] {
+            let pieces: Vec<_> = base
+                .occupied()
+                .iter()
+                .map(|s| {
+                    (
+                        s,
+                        if s == mid {
+                            first
+                        } else if s == to {
+                            second
+                        } else {
+                            base.piece_at(s).unwrap()
+                        },
+                    )
+                })
+                .collect();
+            assert!(result.contains(&position_from_codes(Color::Black, &pieces)));
+        }
+    }
+    let mut target = base.clone();
+    target
+        .try_make_move(capture, &MoveGenerator::standard())
+        .unwrap();
+    let extra = sq(11, 4);
+    let mut pieces: Vec<_> = target
+        .occupied()
+        .iter()
+        .map(|s| (s, target.piece_at(s).unwrap()))
+        .collect();
+    pieces.push((extra, pawn));
+    let target = position_from_codes(Color::White, &pieces);
+    let result = checked(MoveRules::standard(), &target);
+    let mut invalid_pieces: Vec<_> = base
+        .occupied()
+        .iter()
+        .map(|s| (s, base.piece_at(s).unwrap()))
+        .collect();
+    invalid_pieces.push((extra, pawn));
+    assert!(!result.contains(&position_from_codes(Color::Black, &invalid_pieces)));
+    for p in result {
+        let count = p
+            .occupied()
+            .iter()
+            .filter(|&s| {
+                let pc = p.piece_at(s).unwrap();
+                pc.color() == Some(Color::White) && (pc == pawn || pc == promoted)
+            })
+            .count();
+        assert!(count <= 12);
+    }
+}

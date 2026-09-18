@@ -4,6 +4,7 @@
 
 mod material;
 mod reverse;
+mod transient;
 
 use std::fmt;
 
@@ -37,9 +38,7 @@ impl PredecessorGenerator {
     /// 対象局面へ1手で到達する直前局面を、重複なく返す。
     ///
     /// 返却順序は保証しない。入力は変更しない。
-    /// 現段階では固定移動・走り・固定跳びと0枚または1枚の捕獲を扱う。
-    /// 獅子力の特殊移動、直前局面の先獅子記録、およびP2の非移動駒の
-    /// 待機状態の復元は未対応である。
+    /// 獅子力を含む全移動形式、最大2枚の捕獲、および一時状態を復元する。
     ///
     /// # Errors
     ///
@@ -111,6 +110,15 @@ impl std::error::Error for PredecessorError {
 
 /// 設計書predecessor-generator.md「直前局面の定義」の集合Aへの所属を検査する。
 fn membership(rules: MoveRules, position: &Position) -> Result<(), PredecessorError> {
+    let found = base_membership(rules, position)?;
+    lion_membership(position, lion_missing(&found, position.side_to_move()))
+}
+
+/// 記録升に依存しない盤面・在庫・成り権保留の条件を基底候補で検査する。
+fn base_membership(
+    rules: MoveRules,
+    position: &Position,
+) -> Result<material::Inventory, PredecessorError> {
     position
         .validate()
         .map_err(PredecessorError::InvalidPosition)?;
@@ -150,6 +158,20 @@ fn membership(rules: MoveRules, position: &Position) -> Result<(), PredecessorEr
         }
     }
 
+    Ok(found)
+}
+
+/// 手番側の獅子由来または麒麟由来の駒が初期在庫から欠けているかを返す。
+fn lion_missing(found: &material::Inventory, side: Color) -> bool {
+    [PieceKind::Lion, PieceKind::Kirin].iter().any(|kind| {
+        found[side.index()][kind.index()] < material::initial()[side.index()][kind.index()]
+    })
+}
+
+/// 先獅子の記録升だけに依存する集合Aの条件を検査する。
+///
+/// 盤面・在庫・保留集合を検査済みの変種では、この検査だけを再適用する。
+fn lion_membership(position: &Position, missing: bool) -> Result<(), PredecessorError> {
     if let Some(square) = position.lion_capture_square() {
         let side = position.side_to_move();
         let previous = side.opposite();
@@ -160,16 +182,7 @@ fn membership(rules: MoveRules, position: &Position) -> Result<(), PredecessorEr
         }) {
             return Err(PredecessorError::InvalidLionState);
         }
-        let lion_origins = [PieceKind::Lion, PieceKind::Kirin];
-        let present: u8 = lion_origins
-            .iter()
-            .map(|kind| found[side.index()][kind.index()])
-            .sum();
-        let maximum: u8 = lion_origins
-            .iter()
-            .map(|kind| initial[side.index()][kind.index()])
-            .sum();
-        if present >= maximum {
+        if !missing {
             return Err(PredecessorError::InvalidLionState);
         }
         if piece.is_none()
