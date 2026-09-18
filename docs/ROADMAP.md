@@ -17,7 +17,7 @@
 | プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 完了 | 2026年8月10日 |
 | ブラウザGUI向けUSI照会 | [plans/browser-gui.md](plans/browser-gui.md) | 完了 | 2026年8月11日 |
 | 対局ハーネスのバイナリ対戦化 | [plans/match-harness.md](plans/match-harness.md) | 完了 | 2026年8月11日 |
-| 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
+| 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 進行中 | ― |
 | 探索部 | [plans/search.md](plans/search.md) | 完了 | 2026年8月22日 |
 | 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 完了 | 2026年8月14日 |
 | Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 完了 | 2026年8月23日 |
@@ -67,8 +67,8 @@ HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの�
 進行中のマイルストーンは、上位計画の[棋力向上の段階計画](plans/strength-stages.md)である。
 11段階のうち段階7までが完了し、次の段階は採用構成と世代2のデータを起点に進められる。
 
-待機中のマイルストーンは2件である。
-直前局面生成器（plans/predecessor-generator.md）は設計済みで、2026年9月18日に現行コードと「エンジン内部からは呼ばれない外部プログラム向けライブラリ機能」という前提に合わせて設計書を全面改訂した。`Position`の内部表現とエンジンの探索経路は変えず、公開アクセサと`Hash`の追加だけを準備とする。順方向の探索部と評価関数はその完了を前提とせず、いつ着手しても手戻りがない。
+直前局面生成器（plans/predecessor-generator.md）は2026年9月18日に着手した。`Position`の内部表現とエンジンの探索経路は変えず、公開アクセサと`Hash`の追加を準備として、規則集合と対象局面から直前局面をすべて列挙する外部プログラム向けのライブラリ機能をブランチpredecessor-generatorで実装している。
+待機中のマイルストーンは1件である。
 早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
 
 次期候補は、起案済みの棋力向上段階8（前向き枝刈りの第3層、plans/strength-stage8.md）と、その後の段階9（利きマップと評価特徴の拡張）である。

@@ -1,6 +1,7 @@
 //! 局面の表現と、着手の適用・巻き戻し。
 
 use core::fmt;
+use core::hash::{Hash, Hasher};
 use core::num::NonZeroU64;
 use std::sync::OnceLock;
 
@@ -139,6 +140,16 @@ pub struct Position {
     rights_zobrist: u64,
 }
 
+/// 通常Zobrist値と成り権保留Zobrist値をハッシュに用いる。衝突時の同一性は`Eq`が
+/// 確定し、反復判定や探索キーの契約とは無関係である
+/// (設計書predecessor-generator.md「Positionのハッシュ」)。
+impl Hash for Position {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.zobrist.hash(state);
+        self.rights_zobrist.hash(state);
+    }
+}
+
 /// [`Position`]の操作または[`Position::validate`]が検出する不正な状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PositionError {
@@ -190,6 +201,10 @@ pub enum PositionError {
         /// 問題の升。
         square: Square,
     },
+    /// 通常Zobrist値が盤面・手番・先獅子状態からの再計算値と一致しない。
+    ZobristMismatch,
+    /// 成り権保留Zobrist値が成り権保留集合からの再計算値と一致しない。
+    RightsZobristMismatch,
 }
 
 impl fmt::Display for PositionError {
@@ -358,6 +373,12 @@ impl Position {
         self.side_to_move
     }
 
+    /// 直前の着手で獅子以外の駒が相手獅子を取った升を返す。
+    #[inline]
+    pub fn lion_capture_square(&self) -> Option<Square> {
+        self.lion_taken_by_non_lion.map(|trigger| trigger.square)
+    }
+
     /// 拡張SFENの獅子捕獲升から先獅子状態を設定する。
     ///
     /// 空升は、角鷹または飛鷲が経由升で獅子を取った状態として受理する。
@@ -414,7 +435,7 @@ impl Position {
 
     /// 成り権を保留中(P1・P2・P5)の駒がある升の集合を返す。
     #[inline]
-    pub(crate) const fn promotion_deferred(&self) -> Bitboard {
+    pub const fn promotion_deferred(&self) -> Bitboard {
         self.promotion_deferred
     }
 
@@ -598,7 +619,7 @@ impl Position {
         })
     }
 
-    /// 盤面配列とビットボード集計の整合など、内部不変条件を検査する。
+    /// 盤面配列・ビットボード集計・両Zobrist値の整合など、内部不変条件を検査する。
     pub fn validate(&self) -> Result<(), PositionError> {
         let union = self.by_color[0] | self.by_color[1];
         if union != self.occupied {
@@ -677,6 +698,12 @@ impl Position {
             if !self.promotion_deferred_is_valid(square) {
                 return Err(PositionError::InvalidPromotionDeferred { square });
             }
+        }
+        if self.zobrist != self.recompute_zobrist() {
+            return Err(PositionError::ZobristMismatch);
+        }
+        if self.rights_zobrist != self.recompute_rights_zobrist() {
+            return Err(PositionError::RightsZobristMismatch);
         }
         Ok(())
     }
@@ -869,13 +896,11 @@ impl PositionBuilder {
         Ok(())
     }
 
-    /// 不変条件を検査し、zobristハッシュを計算し直して局面を返す。
-    pub fn finish(mut self) -> Result<Position, PositionBuildError> {
+    /// 両Zobrist値を含む不変条件を検査して局面を返す。
+    pub fn finish(self) -> Result<Position, PositionBuildError> {
         self.position
             .validate()
             .map_err(PositionBuildError::InvalidPosition)?;
-        self.position.zobrist = self.position.recompute_zobrist();
-        self.position.rights_zobrist = self.position.recompute_rights_zobrist();
         Ok(self.position)
     }
 }
@@ -883,10 +908,237 @@ impl PositionBuilder {
 #[cfg(test)]
 mod tests {
     use core::num::NonZeroU64;
+    use std::collections::HashSet;
+    use std::hash::{BuildHasherDefault, DefaultHasher};
 
     use super::*;
     use crate::MoveGenerator;
-    use crate::test_util::{position as position_with_pieces, position_from_codes, sq};
+    use crate::test_util::{
+        bench_positions, position as position_with_pieces, position_from_codes,
+        sampled_random_positions, sq,
+    };
+
+    #[test]
+    fn lion_capture_square_tracks_explicit_state() {
+        // 設計書predecessor-generator.md「Positionの公開面」
+        let mut position = Position::empty(Color::Black);
+        assert_eq!(position.lion_capture_square(), None);
+        position.set_lion_capture(Some(sq(3, 3))).unwrap();
+        assert_eq!(position.lion_capture_square(), Some(sq(3, 3)));
+        position.set_lion_capture(None).unwrap();
+        assert_eq!(position.lion_capture_square(), None);
+    }
+
+    #[test]
+    fn lion_capture_square_distinguishes_non_lion_and_lion_captures() {
+        // 設計書predecessor-generator.md「Positionの公開面」
+        let (non_lion_capture, captured_square) = position_after_non_lion_captures_lion();
+        assert_eq!(
+            non_lion_capture.lion_capture_square(),
+            Some(captured_square)
+        );
+
+        let mut lion_capture = position_with_pieces(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::Lion),
+                (captured_square, Color::White, PieceKind::Lion),
+            ],
+        );
+        lion_capture
+            .try_make_move(
+                Move {
+                    from: sq(0, 0),
+                    mid: None,
+                    to: captured_square,
+                    promote: false,
+                },
+                &MoveGenerator::standard(),
+            )
+            .unwrap();
+        assert_eq!(lion_capture.lion_capture_square(), None);
+    }
+
+    #[test]
+    fn promotion_deferred_returns_the_marked_square_set() {
+        // 設計書predecessor-generator.md「Positionの公開面」
+        let mut builder = PositionBuilder::new(Color::Black);
+        for (square, color) in [
+            (sq(4, 9), Color::Black),
+            (sq(5, 2), Color::White),
+            (sq(6, 9), Color::Black),
+        ] {
+            builder
+                .put(
+                    square,
+                    PieceCode::new(color, PieceKind::SilverGeneral).unwrap(),
+                )
+                .unwrap();
+        }
+        let mut expected = Bitboard::EMPTY;
+        for square in [sq(4, 9), sq(5, 2)] {
+            builder.mark_promotion_deferred(square).unwrap();
+            expected.set(square);
+        }
+        assert_eq!(builder.finish().unwrap().promotion_deferred(), expected);
+        assert_eq!(Position::initial().promotion_deferred(), Bitboard::EMPTY);
+    }
+
+    /// 同じ盤面に、手番・先獅子状態・成り権保留の全組み合わせを設定する。
+    fn positions_with_distinct_temporary_states() -> Vec<Position> {
+        let mut positions = Vec::new();
+        for side in Color::ALL {
+            for lion_capture in [None, Some(sq(3, 3))] {
+                for deferred in [false, true] {
+                    let mut builder = PositionBuilder::new(side);
+                    builder
+                        .put(
+                            sq(4, 9),
+                            PieceCode::new(Color::Black, PieceKind::SilverGeneral).unwrap(),
+                        )
+                        .unwrap();
+                    if deferred {
+                        builder.mark_promotion_deferred(sq(4, 9)).unwrap();
+                    }
+                    let mut position = builder.finish().unwrap();
+                    position.set_lion_capture(lion_capture).unwrap();
+                    positions.push(position);
+                }
+            }
+        }
+        positions
+    }
+
+    #[test]
+    fn equal_positions_have_equal_hashes() {
+        // 設計書predecessor-generator.md「Positionのハッシュ」
+        let first = positions_with_distinct_temporary_states();
+        let second = positions_with_distinct_temporary_states();
+        let (first_capture, _) = position_after_non_lion_captures_lion();
+        let (second_capture, _) = position_after_non_lion_captures_lion();
+        for (first, second) in first
+            .into_iter()
+            .zip(second)
+            .chain([(first_capture, second_capture)])
+        {
+            assert_eq!(first, second);
+            let mut first_hasher = DefaultHasher::new();
+            let mut second_hasher = DefaultHasher::new();
+            first.hash(&mut first_hasher);
+            second.hash(&mut second_hasher);
+            assert_eq!(first_hasher.finish(), second_hasher.finish());
+        }
+    }
+
+    #[test]
+    fn hash_set_distinguishes_side_and_temporary_states() {
+        // 設計書predecessor-generator.md「Positionのハッシュ」
+        let mut positions = HashSet::new();
+        for position in positions_with_distinct_temporary_states() {
+            assert!(positions.insert(position));
+        }
+        assert_eq!(positions.len(), 8);
+        for position in positions_with_distinct_temporary_states() {
+            assert!(positions.contains(&position));
+            assert!(!positions.insert(position));
+        }
+    }
+
+    #[test]
+    fn hash_set_preserves_distinct_positions_under_collisions() {
+        // 設計書predecessor-generator.md「Positionのハッシュ」
+        #[derive(Default)]
+        struct ConstantHasher;
+
+        impl Hasher for ConstantHasher {
+            fn finish(&self) -> u64 {
+                0
+            }
+
+            fn write(&mut self, _bytes: &[u8]) {}
+        }
+
+        let mut positions = HashSet::<Position, BuildHasherDefault<ConstantHasher>>::default();
+        for position in positions_with_distinct_temporary_states() {
+            assert!(positions.insert(position));
+        }
+        assert_eq!(positions.len(), 8);
+        for position in positions_with_distinct_temporary_states() {
+            assert!(positions.contains(&position));
+            assert!(!positions.insert(position));
+        }
+    }
+
+    #[test]
+    fn validate_rejects_corrupted_zobrist_values() {
+        // 設計書predecessor-generator.md「Positionの公開面」
+        let position = Position::initial();
+        assert_eq!(position.validate(), Ok(()));
+        let mut corrupted = position.clone();
+        corrupted.zobrist ^= 1;
+        assert_eq!(corrupted.validate(), Err(PositionError::ZobristMismatch));
+        let mut corrupted = position;
+        corrupted.rights_zobrist ^= 1;
+        assert_eq!(
+            corrupted.validate(),
+            Err(PositionError::RightsZobristMismatch)
+        );
+    }
+
+    #[test]
+    fn builder_finish_preserves_consistent_incremental_zobrist_values() {
+        // 設計書predecessor-generator.md「実装フェーズ > フェーズ1」
+        for position in positions_with_distinct_temporary_states()
+            .into_iter()
+            .chain([Position::initial()])
+        {
+            assert_eq!(position.zobrist(), position.recompute_zobrist());
+            assert_eq!(
+                position.rights_zobrist(),
+                position.recompute_rights_zobrist()
+            );
+            assert_eq!(position.validate(), Ok(()));
+        }
+        for side in Color::ALL {
+            assert_eq!(
+                PositionBuilder::new(side).finish().unwrap().validate(),
+                Ok(())
+            );
+        }
+    }
+
+    #[test]
+    fn builder_finish_rejects_corrupted_zobrist_values() {
+        // 設計書predecessor-generator.md「Positionの公開面」
+        let mut builder = PositionBuilder::new(Color::Black);
+        builder.position.zobrist ^= 1;
+        assert_eq!(
+            builder.finish(),
+            Err(PositionBuildError::InvalidPosition(
+                PositionError::ZobristMismatch
+            ))
+        );
+        let mut builder = PositionBuilder::new(Color::White);
+        builder.position.rights_zobrist ^= 1;
+        assert_eq!(
+            builder.finish(),
+            Err(PositionBuildError::InvalidPosition(
+                PositionError::RightsZobristMismatch
+            ))
+        );
+    }
+
+    #[test]
+    fn bench_and_sampled_random_positions_validate() {
+        // 設計書predecessor-generator.md「実装フェーズ > フェーズ1」
+        for (index, position) in bench_positions()
+            .into_iter()
+            .chain(sampled_random_positions(MoveRules::standard()))
+            .enumerate()
+        {
+            assert_eq!(position.validate(), Ok(()), "corpus position {index}");
+        }
+    }
 
     /// 既存局面と同じ盤面を、指定手番・先獅子状態なしで直接構築し直す。
     fn rebuild_board_with_side(source: &Position, side_to_move: Color) -> Position {
