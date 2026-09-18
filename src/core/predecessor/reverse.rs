@@ -71,23 +71,32 @@ pub(super) fn enumerate_candidates(
 }
 
 /// 列挙済み候補を順方向に再適用し、一致する局面を重複なく返す。
+///
+/// 合法性は、動かす駒の合法手だけを生成する[`MoveGenerator::is_legal_move`]で判定する。
+/// 全合法手の生成と同じ駒別の生成関数を使うので、判定結果は
+/// [`Position::try_make_move`]と一致する。再適用は候補局面をその場で進めて巻き戻し、
+/// 局面の複製を作らない。採用した局面は重複排除の集合へ移し、最後に集合から返却する
+/// (計測記録predecessor-generator-profile.md)。
 pub(super) fn verify_candidates(
     forward: &MoveGenerator,
     target: &Position,
     enumerate: impl FnOnce(&mut dyn FnMut(Move, Position)),
 ) -> Vec<Position> {
     let mut seen = HashSet::new();
-    let mut result = Vec::new();
-    enumerate(&mut |mv, candidate| {
-        let mut replayed = candidate.clone();
-        if replayed.try_make_move(mv, forward).is_ok()
-            && replayed == *target
-            && seen.insert(candidate.clone())
-        {
-            result.push(candidate);
+    let mut base_moves = Vec::new();
+    let mut legal_moves = Vec::new();
+    enumerate(&mut |mv, mut candidate| {
+        if !forward.is_legal_move(&candidate, mv, &mut base_moves, &mut legal_moves) {
+            return;
+        }
+        let undo = candidate.make_move_unchecked(mv, forward.rules());
+        let reaches_target = candidate == *target;
+        candidate.unmake_move(undo);
+        if reaches_target {
+            seen.insert(candidate);
         }
     });
-    result
+    seen.into_iter().collect()
 }
 
 /// 通常移動と獅子力の幾何を反転し、捕獲復元前に候補着手を重複排除する。
