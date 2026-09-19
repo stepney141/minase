@@ -1,0 +1,101 @@
+{
+  "runs": [
+    {
+      "name": "baseline",
+      "command": "target/diag/release/bench --depth 6 --threads 1 --repetitions 1",
+      "nodes": 2040262,
+      "position_results_match_baseline": true,
+      "output": "docs/measurements/strength-stage8-pruning-bench/baseline.txt",
+      "exit_code": 0
+    },
+    {
+      "name": "passive",
+      "command": "MINASE_STAGE8_DIAG=data/experiments/stage8-diag/passive target/diag/release/bench --depth 6 --threads 1 --repetitions 1",
+      "nodes": 2040262,
+      "position_results_match_baseline": true,
+      "output": "docs/measurements/strength-stage8-pruning-bench/passive.txt",
+      "exit_code": 0
+    },
+    {
+      "name": "verified",
+      "command": "MINASE_STAGE8_DIAG=data/experiments/stage8-diag/verified MINASE_STAGE8_VERIFY=1 target/diag/release/bench --depth 6 --threads 1 --repetitions 1",
+      "nodes": 2040262,
+      "position_results_match_baseline": true,
+      "output": "docs/measurements/strength-stage8-pruning-bench/verified.txt",
+      "exit_code": 0
+    },
+    {
+      "name": "lmr",
+      "command": "MINASE_STAGE8_LMR_DIAG=data/experiments/stage8-diag/lmr.txt target/diag/release/bench --depth 6 --threads 1 --repetitions 1",
+      "nodes": 2040262,
+      "position_results_match_baseline": true,
+      "output": "docs/measurements/strength-stage8-pruning-bench/lmr.txt",
+      "exit_code": 0
+    }
+  ],
+  "hashes": {
+    "captures.txt": {
+      "bytes": 12054412,
+      "sha256": "e268018c10871d980d8a37086e4a43b0be68e54ba52f92503435ade143a56494",
+      "byte_identical": true
+    },
+    "quiets.txt": {
+      "bytes": 9972421,
+      "sha256": "2a5d78810967f932442761a893564002444c814d6f094e38b084ceeaff67135c",
+      "byte_identical": true
+    },
+    "nodes.txt": {
+      "bytes": 6920437,
+      "sha256": "bc56e6890b479a8e9004045e4a7816063d049cb315ff51303216c9356451f454",
+      "byte_identical": true
+    },
+    "correction.json": {
+      "bytes": 3383,
+      "sha256": "c85bca5817e404d95f18d6584b9ca064de9488585c214426fed3943ac0284bbf",
+      "byte_identical": true
+    }
+  },
+  "sample_rows": {
+    "captures": 600640,
+    "quiets": 397591,
+    "nodes": 291857,
+    "verify": 15597
+  },
+  "checks": {
+    "build": {
+      "log": "data/experiments/stage8-diag/build.log",
+      "success": true
+    },
+    "clippy": {
+      "log": "data/experiments/stage8-diag/clippy.log",
+      "success": true
+    },
+    "fmt": {
+      "log": "data/experiments/stage8-diag/fmt.log",
+      "success": true
+    },
+    "tests": {
+      "log": "data/experiments/stage8-diag/tests.log",
+      "success": true,
+      "passed": 642,
+      "ignored": 11
+    }
+  },
+  "commands": {
+    "build": "CARGO_TARGET_DIR=target/diag cargo build --release --bin bench",
+    "clippy": "CARGO_TARGET_DIR=target/diag cargo clippy --release --all-targets",
+    "tests": "CARGO_TARGET_DIR=target/diag cargo test --release",
+    "fmt": "cargo fmt --check",
+    "self_test": "python3 docs/measurements/strength-stage8-pruning-bench/evaluate.py --self-test",
+    "evaluation": "python3 docs/measurements/strength-stage8-pruning-bench/evaluate.py --samples data/experiments/stage8-diag/verified --lmr data/experiments/stage8-diag/lmr.txt --json docs/measurements/strength-stage8-pruning-bench/results.json --text docs/measurements/strength-stage8-pruning-bench/results.txt"
+  },
+  "verification_passes": true,
+  "decisions": [
+    "発動率の分母は設計書を優先し、捕獲手は適用ノードで検査した全捕獲手、非捕獲手はfutility通過後の全非捕獲手とした。候補表には追加条件を満たす対象内の比率も併記した。",
+    "設計書に従い、捕獲分類に加えて成り、最後の王駒の捕獲、王駒への利きも独立に照合し、静的評価は置換表で即時打ち切りするノードと静止探索でも全再計算と照合した。",
+    "補正の参照率は指示書の具体的な定義どおり適用ノードを分母とした。現行LMRは静的評価を参照しない。",
+    "ノード標本のLMR件数は指示書の列定義どおり判断関数を呼ぶ手を数え、手番号0も含めた。実行Bは指定どおり手番号1以上とした。",
+    "LMR集計の全体は深さ3以上の和とした。深さ1と2で上限に達する手などの除外件数はlmr_exclusions_by_depthにも保存した。",
+    "参照探索は退避・復元の代わりに独立したSearcherと共有停止状態へ履歴などを複製した。各参照の直前に1 MBの置換表をクリアし、本来の探索状態を変更しない。"
+  ]
+}

@@ -1,0 +1,1 @@
+self-test: passed (loss, eligibility, ties, strict thresholds, activation, LMR, verification mutation)
