@@ -27,6 +27,7 @@ pub use crate::core::movegen::{IllegalMove, MoveGenerator};
 pub use crate::core::mv::Move;
 pub use crate::core::piece::{Color, PieceCode, PieceKind};
 pub use crate::core::position::{Position, PositionBuildError, PositionBuilder, PositionError};
+pub use crate::core::predecessor::{PredecessorError, PredecessorGenerator};
 pub use crate::core::rules::{
     ExhaustionRule, LionRule, MoveRules, PromotionChoice, PromotionRule, RepetitionRule, RuleCode,
     RuleCodeParseError, RuleGroup, RuleSetParseError, Rules, RulesError,
