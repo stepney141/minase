@@ -23,7 +23,7 @@ use crate::core::bitboard::Bitboard;
 use crate::core::game::{Game, GameStatus};
 use crate::core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 use crate::core::mv::Move;
-use crate::core::piece::{COLOR_COUNT, PIECE_KIND_COUNT, PieceCode, PieceKind};
+use crate::core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
@@ -117,10 +117,10 @@ const LMR_HISTORY_THRESHOLD: i32 = 128;
 const LMR_MAX_REDUCTION: u32 = 3;
 /// LMRの減深量表に保持する手番号の列数。
 const LMR_MOVE_COUNT: usize = 256;
-/// 深さ1〜3のfutility pruningの余裕値を半歩兵単位で表した倍率。
+/// 深さ1〜3のfutility pruningの余裕値を歩兵の1/8単位で表した倍率。
 ///
-/// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
-const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
+/// 行はimprovingの偽、真の順。`docs/plans/strength-stage8.md`の「採用した閾値」節に従う。
+const FUTILITY_MARGIN_EIGHTH_PAWNS: [[i32; 3]; 2] = [[1, 6, 6], [4, 12, 12]];
 /// 深さ1〜3の捕獲手のSEE余裕値を歩兵単位で表した倍率。
 ///
 /// `docs/plans/strength-stage8.md`の「採用した閾値」節に従う。
@@ -1210,6 +1210,19 @@ impl Searcher<'_> {
         Some((best_move, best_score))
     }
 
+    /// 同じ手番の2手前より補正前の静的評価が上がったかを返す。
+    ///
+    /// 2手前がない場合と比較区間にnull moveを含む場合は追加の枝刈りを行わない。
+    fn improving(&self, static_eval: i32, side: Color, ply: u32) -> bool {
+        ply < 2
+            || self.null_move_ply == Some(ply)
+            || self.null_move_ply == Some(ply - 1)
+            || static_eval
+                > self
+                    .pst
+                    .evaluate_accumulator(self.accumulators[(ply - 2) as usize], side)
+    }
+
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
     ///
     /// 深さ0では静止探索へ移り、合法手のない局面は詰みとして
@@ -1303,8 +1316,10 @@ impl Searcher<'_> {
                 let static_eval = self
                     .pst
                     .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
-                let margin =
-                    self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
+                let improving = self.improving(static_eval, side, ply);
+                let margin = self.pst.pawn_value()
+                    * FUTILITY_MARGIN_EIGHTH_PAWNS[usize::from(improving)][depth as usize - 1]
+                    / 8;
                 static_eval + margin
             });
         let mut royal_attacked = None;
