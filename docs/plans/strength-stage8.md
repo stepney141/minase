@@ -20,7 +20,8 @@
 履歴による非捕獲手の後方枝刈りは、失う良い結果の割合が10%以下の候補がどの深さにもなかったので見送り、フェーズ4は実行しない。これにより、段階4のlate move pruningと別の主張として扱ってよいかという利用者の判断は不要になった。
 improvingフラグは、発動の指標を手の単位へ改める利用者の決定（設計判断の「発動の事前確認」）によりフェーズ3を実行する。採用構成の[再診断](../measurements/strength-stage8-improving-bench.md)で倍率が残り深さ順に1/4、1/2、1/2と決まり、LMRの追加減深は損失の増分が基準を超えたので外した。手の単位の発動率は10.93%である。
 フェーズ2（SEEによる捕獲手の枝刈り）は、[STC](../measurements/strength-stage8-see-capture-stc.md)が470ペア、[LTC](../measurements/strength-stage8-see-capture-ltc.md)が791ペアでともに`H1`かつ異常0件となり、採用した。
-次の一手は、フェーズ3の実装とSTCである。
+フェーズ3は実装を終え（bench深さ6の総ノード数は1,556,722から1,356,811）、[STC](../measurements/strength-stage8-improving-stc.md)を実行中である。
+次の一手は、STCの判定の記録と、通過した場合のLTCである。
 
 ## 目的
 
@@ -71,7 +72,7 @@ futility pruningの対象ノードの条件と余裕値の決め方は[段階4](
 
 `negamax`の入口で静的評価を求め、2手前の同じ手番の静的評価と比べて`improving`を決める。
 futility pruningの余裕値は、improvingでないノードで診断の倍率（1未満）を掛ける。
-LMRの減深量は、improvingでないノードの殺し手でも置換表の手でもない非捕獲手について1増やし、上限は現行の`LMR_MAX_REDUCTION`と`depth − 2`の小さい方を保つ。
+LMRの減深量をimprovingでないノードで1増やす変更は、採用構成の再診断で失う割合の増分が基準を超えたので実装しない（「採用した閾値」節）。実装する場合の上限は、現行の`LMR_MAX_REDUCTION`と`depth − 2`の小さい方である。
 
 ### 履歴による非捕獲手の後方枝刈り
 
