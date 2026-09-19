@@ -70,6 +70,7 @@
 
 HaChuとの対等な時間制御の固定局数Eloは−111である（[measurements/hachu-pst-gen1.md](../measurements/hachu-pst-gen1.md)）。
 同一持ち時間での探索実測（[measurements/hachu-vs-search-nps.md](../measurements/hachu-vs-search-nps.md)）では、minaseが公称深さ（全幅で読み切る手数）8〜11、約140万〜270万NPS、HaChuが全幅相当の深さ10〜11、約80万〜95万NPSであり、探索量ではminaseが劣っていない。
+このminaseのNPSは2026年9月19日より前の定義のノード数に基づき、現行の定義では約0.66倍（約90万〜180万NPS）に相当するが、換算後もHaChuを下回らない（[research/node-count-definition.md](../research/node-count-definition.md)）。
 minaseの持ち時間だけを4倍にした固定局数Eloは統計的に互角に達した（[measurements/hachu-vs-search-tc-handicap-4x.md](../measurements/hachu-vs-search-tc-handicap-4x.md)）。
 対局ハーネス設計書はこの差の主因を、HaChuが全ノードで計算する利きマップ由来の評価知識（モビリティすなわち駒が動ける升の数、王安全度すなわち王駒の周辺に届く利きの数、および獅子関連項）による1ノードあたりの質と位置づけている。
 
