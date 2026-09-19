@@ -121,6 +121,10 @@ const LMR_MOVE_COUNT: usize = 256;
 ///
 /// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
 const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
+/// 深さ1〜3の捕獲手のSEE余裕値を歩兵単位で表した倍率。
+///
+/// `docs/plans/strength-stage8.md`の「採用した閾値」節に従う。
+const SEE_MARGIN_PAWNS: [i32; 3] = [0, 2, 0];
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
@@ -1324,6 +1328,25 @@ impl Searcher<'_> {
                 index += 1;
                 continue;
             }
+            // docs/plans/strength-stage8.md「SEEによる捕獲手の枝刈り」節。
+            // futilityと対象ノードおよび王駒への利きの遅延評価を共有する。
+            if futility_bound.is_some()
+                && best_score > -MATE_THRESHOLD
+                && capture
+                && Some(mv) != tt_move
+                && !captures_last_royal(position, mv)
+                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+                && see_prunes(
+                    position,
+                    self.rules,
+                    self.pst,
+                    mv,
+                    self.pst.pawn_value() * SEE_MARGIN_PAWNS[depth as usize - 1],
+                )
+            {
+                index += 1;
+                continue;
+            }
             let reduction = if Some(mv) != tt_move
                 && !capture
                 && !self.killers[ply as usize][..].contains(&Some(mv))
@@ -2347,5 +2370,5 @@ fn piece_at_for_ordering(position: &Position, square: crate::Square) -> PieceCod
 
 /// 静的交換評価で損と判定できる捕獲手かを返す。
 fn capture_is_pruned_by_see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
-    see_prunes(position, rules, pst, mv)
+    see_prunes(position, rules, pst, mv, 0)
 }
