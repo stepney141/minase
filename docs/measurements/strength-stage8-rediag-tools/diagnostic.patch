@@ -1,0 +1,887 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..c427fa2 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -252,6 +252,7 @@ fn main() {
+         std::process::exit(1);
+     });
+     let arguments = Arguments::parse();
++    minase::search::diagnostics::initialize(arguments.threads.get(), arguments.repetitions.get());
+     let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
+     let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
+     let limits = SearchLimits::new(Some(arguments.depth), None, None, None)
+@@ -278,6 +279,7 @@ fn main() {
+             result.elapsed,
+             result.nps()
+         );
++        minase::search::diagnostics::finish();
+         return;
+     }
+ 
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 3675d37..6b1788e 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -977,6 +977,7 @@ fn new_searcher<'a>(
+         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
+         tt,
++        diag: None,
+     }
+ }
+ 
+@@ -995,6 +996,7 @@ fn run_main_worker(
+     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
+ ) -> WorkerOutcome {
+     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
++    searcher.diag = diagnostics::Worker::new(pst.pawn_value());
+     let mut result = SearchResult {
+         best_move: root_moves[0],
+         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+@@ -1067,6 +1069,7 @@ fn run_auxiliary_worker(
+     tt: &TranspositionTable,
+ ) -> WorkerOutcome {
+     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
++    searcher.diag = diagnostics::Worker::new(pst.pawn_value());
+     let mut result = SearchResult {
+         best_move: root_moves[0],
+         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+@@ -1133,6 +1136,7 @@ struct Searcher<'a> {
+     killers: KillerTable,
+     /// 置換表。
+     tt: &'a TranspositionTable,
++    diag: Option<diagnostics::Worker>,
+ }
+ 
+ impl Searcher<'_> {
+@@ -1223,6 +1227,13 @@ impl Searcher<'_> {
+         ply: u32,
+     ) -> Option<i32> {
+         self.pv[ply as usize].clear();
++        if self.diag.is_some() {
++            assert_eq!(
++                self.pst
++                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
++                crate::eval::pst::evaluate(self.pst, position)
++            );
++        }
+ 
+         if depth == 0 {
+             return self.quiesce(position, alpha, beta, ply);
+@@ -1255,6 +1266,32 @@ impl Searcher<'_> {
+             depth
+         };
+ 
++        let mut diag_node = self.diag.as_ref().map(|_| {
++            let eval = self
++                .pst
++                .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
++            let improving = if ply < 2
++                || self.null_move_ply == Some(ply)
++                || self.null_move_ply == Some(ply - 1)
++            {
++                "-"
++            } else if eval
++                > self.pst.evaluate_accumulator(
++                    self.accumulators[(ply - 2) as usize],
++                    position.side_to_move(),
++                )
++            {
++                "1"
++            } else {
++                "0"
++            };
++            diagnostics::Node::new(position, depth, alpha, beta, eval, improving)
++        });
++        if let (Some(worker), Some(node)) = (&mut self.diag, &diag_node)
++            && node.eligible
++        {
++            worker.reference(position);
++        }
+         let side = position.side_to_move();
+         let has_non_royal_piece =
+             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
+@@ -1285,6 +1322,9 @@ impl Searcher<'_> {
+             position.unmake_null_move(undo);
+             let score = score?;
+             if score >= beta {
++                if let Some(node) = &diag_node {
++                    node.write();
++                }
+                 return Some(if score.abs() >= MATE_THRESHOLD {
+                     beta
+                 } else {
+@@ -1307,7 +1347,10 @@ impl Searcher<'_> {
+                     self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
+                 static_eval + margin
+             });
+-        let mut royal_attacked = None;
++        let mut royal_attacked = diag_node
++            .as_ref()
++            .filter(|n| n.eligible)
++            .map(|n| n.attacked);
+         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
+         let mut best_move = None;
+         let mut best_score = -INFINITY;
+@@ -1316,6 +1359,12 @@ impl Searcher<'_> {
+         while let Some((mv, capture)) =
+             self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
+         {
++            if self.diag.is_some() {
++                diagnostics::check_move(position, mv, capture, self.rules);
++                if capture && diag_node.as_ref().unwrap().eligible {
++                    diagnostics::count("capture_inspected", depth);
++                }
++            }
+             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
+             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
+             if best_score > -MATE_THRESHOLD
+@@ -1325,6 +1374,9 @@ impl Searcher<'_> {
+                 && !capture
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                if self.diag.is_some() {
++                    diagnostics::count("futility_skipped", depth);
++                }
+                 index += 1;
+                 continue;
+             }
+@@ -1344,6 +1396,14 @@ impl Searcher<'_> {
+                     self.pst.pawn_value() * SEE_MARGIN_PAWNS[depth as usize - 1],
+                 )
+             {
++                if diagnostics::passive_enabled() && self.diag.is_some() {
++                    let node = diag_node.as_ref().unwrap();
++                    let prefix = diagnostics::capture_prefix(
++                        position, self.rules, self.pst, mv, node, index, best_score,
++                    );
++                    diagnostics::line("captures", format!("{prefix} 1 -"));
++                    diagnostics::count("see_skipped", depth);
++                }
+                 index += 1;
+                 continue;
+             }
+@@ -1357,8 +1417,117 @@ impl Searcher<'_> {
+             } else {
+                 0
+             };
++            if !capture && diag_node.as_ref().is_some_and(|n| n.eligible) {
++                diagnostics::count("quiet_expanded", depth);
++            }
++            let mut diag_sample = None;
++            let mut verification = None;
++            if let Some(node) = &mut diag_node {
++                let history =
++                    self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()];
++                let killer = self.killers[ply as usize].contains(&Some(mv));
++                let lmr = Some(mv) != tt_move && !capture && !killer;
++                let upper = LMR_MAX_REDUCTION.min(depth.saturating_sub(2));
++                if lmr {
++                    node.lmr += 1;
++                    node.changed += u64::from(index >= 1 && reduction < upper);
++                    // Sample 2 already contains eligible non-TT quiets. Count only
++                    // its complement here, including PV and depth >= 4 nodes.
++                    if !node.eligible {
++                        diagnostics::count("lmr_outside_quiets", depth);
++                        if node.improving == "0" && index >= 1 && reduction < upper {
++                            diagnostics::count("lmr_changed_outside_quiets", depth);
++                        }
++                    }
++                    if diagnostics::lmr_enabled() && index >= 1 {
++                        if node.improving != "0" {
++                            diagnostics::count(
++                                if node.improving == "1" {
++                                    "lmr_improving"
++                                } else {
++                                    "lmr_undefined"
++                                },
++                                depth,
++                            );
++                        } else if reduction == upper {
++                            diagnostics::count("lmr_capped", depth);
++                        } else {
++                            let new = reduction + 1;
++                            let res_new = self.diagnostic_search(
++                                position, mv, depth, alpha, beta, ply, false, new, true,
++                            );
++                            let res_cur = if reduction == 0 {
++                                None
++                            } else {
++                                Some(self.diagnostic_search(
++                                    position, mv, depth, alpha, beta, ply, false, reduction, true,
++                                ))
++                            };
++                            let res_full = self.diagnostic_search(
++                                position, mv, depth, alpha, beta, ply, false, 0, true,
++                            );
++                            diagnostics::line(
++                                "lmr",
++                                format!(
++                                    "{depth} {index} {history} {reduction} {new} {} {} {} {}",
++                                    res_new as u8,
++                                    res_cur.unwrap_or(res_full) as u8,
++                                    res_full as u8,
++                                    node.eligible as u8
++                                ),
++                            );
++                        }
++                    }
++                }
++                if diagnostics::passive_enabled()
++                    && node.eligible
++                    && Some(mv) != tt_move
++                    && (!capture || !captures_last_royal(position, mv))
++                {
++                    let best_ok = u8::from(best_score > -MATE_THRESHOLD);
++                    let royal_ok = u8::from(!node.attacked);
++                    let prefix = if capture {
++                        let prefix = diagnostics::capture_prefix(
++                            position, self.rules, self.pst, mv, node, index, best_score,
++                        );
++                        format!("{prefix} 0")
++                    } else {
++                        format!(
++                            "{depth} {index} {history} {} {} {best_ok} {royal_ok} {} {} {reduction}",
++                            killer as u8,
++                            mv.promote as u8,
++                            node.improving,
++                            alpha - node.eval
++                        )
++                    };
++                    if diagnostics::verify_next() {
++                        verification = Some(self.diagnostic_search(
++                            position,
++                            mv,
++                            depth,
++                            alpha,
++                            beta,
++                            ply,
++                            index == 0,
++                            reduction,
++                            false,
++                        ));
++                    }
++                    diag_sample = Some((if capture { "captures" } else { "quiets" }, prefix));
++                }
++            }
+             let score =
+                 self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
++            if let Some((kind, prefix)) = diag_sample {
++                let good = score > alpha;
++                let row = diagnostics::line(kind, format!("{prefix} {}", good as u8));
++                if let Some(reference) = verification {
++                    diagnostics::line(
++                        "verify",
++                        format!("{kind} {row} {} {}", good as u8, reference as u8),
++                    );
++                }
++            }
+             if score > best_score {
+                 best_score = score;
+                 best_move = Some(mv);
+@@ -1374,6 +1543,9 @@ impl Searcher<'_> {
+             }
+             index += 1;
+         }
++        if let Some(node) = &diag_node {
++            node.write();
++        }
+         let Some(best_move) = best_move else {
+             return Some(-MATE + ply as i32);
+         };
+@@ -1384,6 +1556,17 @@ impl Searcher<'_> {
+         } else {
+             Bound::Exact
+         };
++        if let (Some(worker), Some(node)) = (&mut self.diag, &diag_node) {
++            worker.observe(
++                position,
++                depth,
++                best_score,
++                node.eval,
++                bound,
++                best_move,
++                node.attacked,
++            );
++        }
+         self.tt
+             .store(key, depth, best_score, bound, Some(best_move), ply);
+         Some(best_score)
+@@ -1402,6 +1585,13 @@ impl Searcher<'_> {
+         ply: u32,
+     ) -> Option<i32> {
+         self.pv[ply as usize].clear();
++        if self.diag.is_some() {
++            assert_eq!(
++                self.pst
++                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
++                crate::eval::pst::evaluate(self.pst, position)
++            );
++        }
+ 
+         if ply >= MAX_PLY {
+             return Some(
+@@ -1573,6 +1763,67 @@ impl Searcher<'_> {
+         score
+     }
+ 
++    #[allow(clippy::too_many_arguments)]
++    fn diagnostic_search(
++        &mut self,
++        position: &Position,
++        mv: Move,
++        depth: u32,
++        alpha: i32,
++        beta: i32,
++        ply: u32,
++        first: bool,
++        reduction: u32,
++        raw: bool,
++    ) -> bool {
++        let mut tt = self.diag.as_mut().unwrap().reference_tt.take().unwrap();
++        tt.clear();
++        let stop = AtomicBool::new(false);
++        let shared = SharedSearch {
++            external_stop: &stop,
++            team_stop: AtomicBool::new(false),
++            stop_reason: AtomicU8::new(0),
++            total_nodes: AtomicU64::new(0),
++            node_limit: None,
++            started: Instant::now(),
++            hard_limit: None,
++        };
++        let mut reference = new_searcher(
++            self.pst,
++            position,
++            self.rules,
++            self.history_keys,
++            &shared,
++            &tt,
++        );
++        reference.history.clone_from(&self.history);
++        reference.killers = self.killers;
++        reference.accumulators = self.accumulators;
++        reference.path_keys.clone_from(&self.path_keys);
++        reference.null_move_ply = self.null_move_ply;
++        reference.pv.clone_from(&self.pv);
++        let mut board = position.clone();
++        let score = if raw {
++            // A first move with a zero window performs exactly one child search.
++            reference.search_move(
++                &mut board,
++                mv,
++                depth - reduction,
++                alpha,
++                alpha + 1,
++                ply,
++                true,
++                0,
++            )
++        } else {
++            reference.search_move(&mut board, mv, depth, alpha, beta, ply, first, reduction)
++        }
++        .expect("unlimited reference search completes");
++        drop(reference);
++        self.diag.as_mut().unwrap().reference_tt = Some(tt);
++        score > alpha
++    }
++
+     /// 実着手の適用直前に停止条件を検査し、続行可能なら適用回数を数える。
+     fn enter_node(&mut self) -> bool {
+         if self.shared.observe_external_stop() {
+@@ -2372,3 +2623,468 @@ fn piece_at_for_ordering(position: &Position, square: crate::Square) -> PieceCod
+ fn capture_is_pruned_by_see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
+     see_prunes(position, rules, pst, mv, 0)
+ }
++
++/// 段階8再診断専用の一時診断。benchだけが初期化する。
++pub mod diagnostics {
++    use super::*;
++    use serde::Serialize;
++    use std::collections::{BTreeMap, HashMap};
++    use std::fs::{File, create_dir_all};
++    use std::io::{BufWriter, Write};
++    use std::path::PathBuf;
++    use std::sync::Mutex;
++
++    static OUTPUT: OnceLock<Mutex<Output>> = OnceLock::new();
++    struct Output {
++        directory: Option<PathBuf>,
++        lmr_path: Option<PathBuf>,
++        verify: bool,
++        sample_count: u64,
++        files: BTreeMap<String, BufWriter<File>>,
++        lines: BTreeMap<String, u64>,
++        counts: BTreeMap<String, BTreeMap<u32, u64>>,
++        totals: Vec<Stats>,
++        pawn: Option<i32>,
++        observation_types: BTreeMap<String, u64>,
++    }
++    #[derive(Clone, Default, Serialize)]
++    struct Stats {
++        observations: u64,
++        absolute_error: u64,
++        corrected_error: u64,
++        reuse: u64,
++        keys: u64,
++        eligible_nodes: u64,
++        nonzero: u64,
++        exact: u64,
++        upper: u64,
++        lower: u64,
++        common_observations: u64,
++        common_absolute_error: u64,
++        common_corrected_error: u64,
++        common_nonzero: u64,
++        updates: u64,
++    }
++    impl Stats {
++        fn add(&mut self, other: &Self) {
++            self.observations += other.observations;
++            self.absolute_error += other.absolute_error;
++            self.corrected_error += other.corrected_error;
++            self.reuse += other.reuse;
++            self.keys += other.keys;
++            self.eligible_nodes += other.eligible_nodes;
++            self.nonzero += other.nonzero;
++            self.exact += other.exact;
++            self.upper += other.upper;
++            self.lower += other.lower;
++            self.common_observations += other.common_observations;
++            self.common_absolute_error += other.common_absolute_error;
++            self.common_corrected_error += other.common_corrected_error;
++            self.common_nonzero += other.common_nonzero;
++            self.updates += other.updates;
++        }
++    }
++    /// 診断出力を新規作成する。実行AとBの併用・並列benchは禁止。
++    pub fn initialize(threads: usize, repetitions: usize) {
++        let directory = std::env::var_os("MINASE_STAGE8_DIAG").map(PathBuf::from);
++        let lmr_path = std::env::var_os("MINASE_STAGE8_LMR_DIAG").map(PathBuf::from);
++        let verify = match std::env::var("MINASE_STAGE8_VERIFY") {
++            Ok(value) => {
++                assert_eq!(value, "1");
++                true
++            }
++            Err(std::env::VarError::NotPresent) => false,
++            Err(error) => panic!("{error}"),
++        };
++        assert!(!verify || directory.is_some());
++        if directory.is_none() && lmr_path.is_none() {
++            return;
++        }
++        assert_eq!(threads, 1);
++        assert_eq!(repetitions, 1);
++        assert!(directory.is_none() || lmr_path.is_none());
++        let mut files = BTreeMap::new();
++        if let Some(dir) = &directory {
++            create_dir_all(dir).unwrap();
++            for name in ["captures", "quiets", "nodes", "verify"] {
++                files.insert(
++                    name.to_owned(),
++                    BufWriter::new(File::create(dir.join(format!("{name}.txt"))).unwrap()),
++                );
++            }
++        }
++        if let Some(path) = &lmr_path {
++            files.insert(
++                "lmr".to_owned(),
++                BufWriter::new(File::create(path).unwrap()),
++            );
++        }
++        assert!(
++            OUTPUT
++                .set(Mutex::new(Output {
++                    directory,
++                    lmr_path,
++                    verify,
++                    sample_count: 0,
++                    files,
++                    lines: BTreeMap::new(),
++                    counts: BTreeMap::new(),
++                    totals: vec![Stats::default(); 18],
++                    observation_types: BTreeMap::new(),
++                    pawn: None
++                }))
++                .is_ok()
++        );
++    }
++    pub(super) fn passive_enabled() -> bool {
++        OUTPUT
++            .get()
++            .is_some_and(|o| o.lock().unwrap().directory.is_some())
++    }
++    pub(super) fn lmr_enabled() -> bool {
++        OUTPUT
++            .get()
++            .is_some_and(|o| o.lock().unwrap().lmr_path.is_some())
++    }
++    pub(super) fn verify_next() -> bool {
++        let mut out = OUTPUT.get().unwrap().lock().unwrap();
++        out.sample_count += 1;
++        out.verify && out.sample_count.is_multiple_of(64)
++    }
++    pub(super) fn count(name: &str, depth: u32) {
++        let mut out = OUTPUT.get().unwrap().lock().unwrap();
++        *out.counts
++            .entry(name.into())
++            .or_default()
++            .entry(depth)
++            .or_default() += 1;
++    }
++    pub(super) fn line(name: &str, text: String) -> u64 {
++        let mut out = OUTPUT.get().unwrap().lock().unwrap();
++        writeln!(out.files.get_mut(name).unwrap(), "{text}").unwrap();
++        let n = out.lines.entry(name.into()).or_default();
++        *n += 1;
++        *n
++    }
++    /// 全探索の集計をJSONへ書き、標本ファイルをflushする。
++    pub fn finish() {
++        let Some(output) = OUTPUT.get() else {
++            return;
++        };
++        let mut out = output.lock().unwrap();
++        for file in out.files.values_mut() {
++            file.flush().unwrap();
++        }
++        if let Some(dir) = &out.directory {
++            let tables: Vec<_> = out.totals.iter().enumerate().map(|(i, stats)| {
++                serde_json::json!({"variant": (["A", "B"][i / 9]), "key": (["royals", "material", "combined"][(i % 9) / 3]), "denominator": ([32, 64, 128][i % 3]), "stats": stats})
++            }).collect();
++            serde_json::to_writer_pretty(
++                File::create(dir.join("correction.json")).unwrap(),
++                &serde_json::json!({"pawn_value": out.pawn.unwrap(), "tables": tables, "observation_types": out.observation_types}),
++            )
++            .unwrap();
++            serde_json::to_writer_pretty(
++                File::create(dir.join("counts.json")).unwrap(),
++                &serde_json::json!({"counts": out.counts, "lines": out.lines}),
++            )
++            .unwrap();
++        }
++        if let Some(path) = &out.lmr_path {
++            serde_json::to_writer_pretty(
++                File::create(path.with_extension("counts.json")).unwrap(),
++                &out.counts,
++            )
++            .unwrap();
++        }
++    }
++    pub(super) struct Worker {
++        tables: [HashMap<Vec<u8>, i64>; 18],
++        stats: [Stats; 18],
++        pawn: i32,
++        pub reference_tt: Option<TranspositionTable>,
++    }
++    impl Worker {
++        pub fn new(pawn: i32) -> Option<Self> {
++            let out = OUTPUT.get()?;
++            let mut out = out.lock().unwrap();
++            if let Some(previous) = out.pawn {
++                assert_eq!(previous, pawn);
++            }
++            out.pawn = Some(pawn);
++            Some(Self {
++                tables: std::array::from_fn(|_| HashMap::new()),
++                stats: std::array::from_fn(|_| Stats::default()),
++                pawn,
++                reference_tt: Some(TranspositionTable::new(1).unwrap()),
++            })
++        }
++        pub fn reference(&mut self, position: &Position) {
++            if !passive_enabled() {
++                return;
++            }
++            let keys = keys(position);
++            for i in 0..18 {
++                self.stats[i].eligible_nodes += 1;
++                let prediction =
++                    self.tables[i].get(&keys[(i % 9) / 3]).copied().unwrap_or(0) / 1024;
++                self.stats[i].nonzero += u64::from(prediction != 0);
++            }
++        }
++        #[allow(clippy::too_many_arguments)]
++        pub fn observe(
++            &mut self,
++            position: &Position,
++            depth: u32,
++            score: i32,
++            eval: i32,
++            bound: Bound,
++            best_move: Move,
++            attacked: bool,
++        ) {
++            if !passive_enabled()
++                || score.abs() >= MATE_THRESHOLD
++                || !(bound == Bound::Exact
++                    || (bound == Bound::Upper && score < eval)
++                    || (bound == Bound::Lower && score > eval))
++            {
++                return;
++            }
++            let keys = keys(position);
++            // Classify from the restored position and move, never picker metadata.
++            let capture = reference_capture(position, best_move);
++            let common = !capture && !attacked;
++            let boundary = match bound {
++                Bound::Exact => "exact",
++                Bound::Upper => "upper",
++                Bound::Lower => "lower",
++            };
++            {
++                let mut out = OUTPUT.get().unwrap().lock().unwrap();
++                *out.observation_types
++                    .entry(format!(
++                        "{boundary}:capture={}:attacked={}",
++                        capture as u8, attacked as u8
++                    ))
++                    .or_default() += 1;
++            }
++            let difference = i64::from(score - eval);
++            let cap = i64::from(2 * self.pawn);
++            for i in 0..18 {
++                let old = self.tables[i].get(&keys[(i % 9) / 3]).copied();
++                let fixed = old.unwrap_or(0);
++                let prediction = (fixed / 1024).clamp(-cap, cap);
++                let stats = &mut self.stats[i];
++                stats.observations += 1;
++                stats.absolute_error += difference.unsigned_abs();
++                stats.corrected_error += (difference - prediction).unsigned_abs();
++                stats.reuse += u64::from(old.is_some());
++                if common {
++                    stats.common_observations += 1;
++                    stats.common_absolute_error += difference.unsigned_abs();
++                    stats.common_corrected_error += (difference - prediction).unsigned_abs();
++                    stats.common_nonzero += u64::from(prediction != 0);
++                }
++                match bound {
++                    Bound::Exact => stats.exact += 1,
++                    Bound::Upper => stats.upper += 1,
++                    Bound::Lower => stats.lower += 1,
++                }
++                if i < 9 || common {
++                    stats.updates += 1;
++                    let updated = fixed
++                        + (difference * 1024 - fixed) * i64::from(depth.min(8))
++                            / [32, 64, 128][i % 3];
++                    self.tables[i].insert(
++                        keys[(i % 9) / 3].clone(),
++                        updated.clamp(-cap * 1024, cap * 1024),
++                    );
++                }
++            }
++        }
++    }
++    impl Drop for Worker {
++        fn drop(&mut self) {
++            let mut out = OUTPUT.get().unwrap().lock().unwrap();
++            for i in 0..18 {
++                self.stats[i].keys = self.tables[i].len() as u64;
++                out.totals[i].add(&self.stats[i]);
++            }
++        }
++    }
++    fn keys(position: &Position) -> [Vec<u8>; 3] {
++        let mut royal = vec![0; 1 + 2 * BOARD_SQUARE_COUNT];
++        let mut material = vec![0; 1 + COLOR_COUNT * PIECE_KIND_COUNT * 2];
++        royal[0] = position.side_to_move().index() as u8;
++        material[0] = royal[0];
++        for square in crate::Square::all() {
++            if let Some(piece) = position.piece_at(square) {
++                let color = piece.color().unwrap().index();
++                let kind = piece.kind().unwrap();
++                material[1
++                    + (color * PIECE_KIND_COUNT + kind.index()) * 2
++                    + usize::from(piece.is_promoted())] += 1;
++                if matches!(kind, PieceKind::King | PieceKind::CrownPrince) {
++                    royal[1 + color * BOARD_SQUARE_COUNT + square.dense_index()] = 1;
++                }
++            }
++        }
++        let combined = [royal.as_slice(), material.as_slice()].concat();
++        [royal, material, combined]
++    }
++    pub(super) struct Node {
++        depth: u32,
++        nonpv: bool,
++        pub eligible: bool,
++        pub improving: &'static str,
++        pub eval: i32,
++        alpha: i32,
++        pub attacked: bool,
++        pub lmr: u64,
++        pub changed: u64,
++    }
++    impl Node {
++        pub fn new(
++            position: &Position,
++            depth: u32,
++            alpha: i32,
++            beta: i32,
++            eval: i32,
++            improving: &'static str,
++        ) -> Self {
++            let nonpv = beta - alpha == 1;
++            let eligible =
++                depth <= 3 && nonpv && alpha.abs() < MATE_THRESHOLD && beta.abs() < MATE_THRESHOLD;
++            let attacked = royal_under_attack(position);
++            {
++                let royals: Vec<_> = crate::Square::all()
++                    .filter(|&sq| {
++                        position.piece_at(sq).is_some_and(|p| {
++                            p.color() == Some(position.side_to_move())
++                                && matches!(
++                                    p.kind(),
++                                    Some(PieceKind::King | PieceKind::CrownPrince)
++                                )
++                        })
++                    })
++                    .collect();
++                let reference = crate::Square::all().any(|sq| {
++                    position.piece_at(sq).is_some_and(|p| {
++                        p.color() == Some(position.side_to_move().opposite())
++                            && royals.iter().any(|&target| {
++                                crate::core::movegen::piece_control_with_occupancy(
++                                    position.occupied(),
++                                    p.color().unwrap(),
++                                    p.kind().unwrap(),
++                                    sq,
++                                )
++                                .contains(target)
++                            })
++                    })
++                });
++                assert_eq!(attacked, reference);
++            }
++            Self {
++                depth,
++                nonpv,
++                eligible,
++                improving,
++                eval,
++                alpha,
++                attacked,
++                lmr: 0,
++                changed: 0,
++            }
++        }
++        pub fn write(&self) {
++            if passive_enabled() {
++                line(
++                    "nodes",
++                    format!(
++                        "{} {} {} {} {} {} {} {} {}",
++                        self.depth,
++                        self.nonpv as u8,
++                        self.eligible as u8,
++                        self.improving,
++                        self.eval,
++                        self.alpha,
++                        if self.eligible {
++                            if self.attacked { "1" } else { "0" }
++                        } else {
++                            "-"
++                        },
++                        self.lmr,
++                        self.changed
++                    ),
++                );
++            }
++        }
++    }
++    #[allow(clippy::too_many_arguments)]
++    pub(super) fn capture_prefix(
++        position: &Position,
++        rules: MoveRules,
++        pst: &Pst,
++        mv: Move,
++        node: &Node,
++        index: usize,
++        best_score: i32,
++    ) -> String {
++        let value = see::see_reference(position, rules, pst, mv);
++        let prunes = see_prunes(position, rules, pst, mv, 0);
++        assert_eq!(prunes, value.is_some_and(|v| v < 0));
++        let margin = pst.pawn_value() * SEE_MARGIN_PAWNS[node.depth as usize - 1];
++        assert_eq!(
++            see_prunes(position, rules, pst, mv, margin),
++            value.is_some_and(|v| v < -margin)
++        );
++        format!(
++            "{} {index} {} {} {} {} {} {}",
++            node.depth,
++            u8::from(best_score > -MATE_THRESHOLD),
++            u8::from(!node.attacked),
++            node.improving,
++            value.map_or("-".to_owned(), |v| v.to_string()),
++            prunes as u8,
++            mv.promote as u8
++        )
++    }
++    fn reference_capture(position: &Position, mv: Move) -> bool {
++        [Some(mv.to), mv.mid].into_iter().flatten().any(|sq| {
++            position
++                .piece_at(sq)
++                .is_some_and(|p| p.color() == Some(position.side_to_move().opposite()))
++        })
++    }
++    pub(super) fn check_move(position: &Position, mv: Move, capture: bool, rules: MoveRules) {
++        let enemy = position.side_to_move().opposite();
++        let captured: Vec<_> = [Some(mv.to), mv.mid]
++            .into_iter()
++            .flatten()
++            .filter(|&sq| {
++                position
++                    .piece_at(sq)
++                    .is_some_and(|p| p.color() == Some(enemy))
++            })
++            .collect();
++        assert_eq!(capture, !captured.is_empty());
++        let royals: Vec<_> = crate::Square::all()
++            .filter(|&sq| {
++                position.piece_at(sq).is_some_and(|p| {
++                    p.color() == Some(enemy)
++                        && matches!(p.kind(), Some(PieceKind::King | PieceKind::CrownPrince))
++                })
++            })
++            .collect();
++        assert_eq!(
++            captures_last_royal(position, mv),
++            !royals.is_empty() && royals.iter().all(|sq| captured.contains(sq))
++        );
++        let mut after = position.clone();
++        after.make_move_unchecked(mv, rules);
++        assert_eq!(
++            mv.promote,
++            position.piece_at(mv.from).unwrap().kind() != after.piece_at(mv.to).unwrap().kind()
++        );
++    }
++}
+diff --git a/src/search/see.rs b/src/search/see.rs
+index 1a07711..e707571 100644
+--- a/src/search/see.rs
++++ b/src/search/see.rs
+@@ -143,8 +143,12 @@ pub(super) fn see_prunes(
+ /// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
+ /// その他の捕獲は、`docs/plans/strength-stage3.md`「静的交換評価」に従い、
+ /// 規則に依存しない通常の交換列として評価する。
+-#[cfg(test)]
+-fn see_reference(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> Option<i32> {
++pub(super) fn see_reference(
++    position: &Position,
++    rules: MoveRules,
++    pst: &Pst,
++    mv: Move,
++) -> Option<i32> {
+     if mv.mid.is_some() {
+         return None;
+     }
+@@ -179,6 +183,7 @@ fn see_reference(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) ->
+     let mut depth = 0_usize;
+ 
+     loop {
++        #[cfg(test)]
+         tests::LOOKUPS.set(tests::LOOKUPS.get() + 1);
+         let attackers = position.attackers_to_by(side, mv.to, occupied);
+         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
