@@ -1,0 +1,10 @@
+games 24 plies [596, 395, 591, 4096, 205, 567, 262, 482, 323, 515, 619, 363, 245, 226, 374, 459, 644, 329, 2642, 387, 1000, 365, 516, 799]
+status ['draw repetition', 'ongoing', 'win black mate', 'win black repetition', 'win white mate', 'win white repetition']
+moves 16742 predicted 16423 (98.1%) hits 7931 hit/moves 47.4% hit/predicted 48.3%
+pv[0]!=bestmove 0
+ply 0-100: moves 2166 predicted 97.9% hit/moves 63.9%
+ply 100-200: moves 2400 predicted 97.5% hit/moves 58.8%
+ply 200-400: moves 3863 predicted 96.8% hit/moves 53.3%
+ply 400-1000000000: moves 8313 predicted 98.9% hit/moves 37.0%
+per-game hit/moves min 36.3% median 55.5% max 66.4%
+elapsed_ms median 91.0 depth median 9.0

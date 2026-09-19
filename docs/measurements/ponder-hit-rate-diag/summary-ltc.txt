@@ -1,0 +1,10 @@
+games 8 plies [394, 425, 999, 342, 699, 279, 439, 491]
+status ['win black mate', 'win white mate']
+moves 3981 predicted 3922 (98.5%) hits 2227 hit/moves 55.9% hit/predicted 56.8%
+pv[0]!=bestmove 0
+ply 0-100: moves 721 predicted 98.6% hit/moves 63.1%
+ply 100-200: moves 800 predicted 97.9% hit/moves 59.8%
+ply 200-400: moves 1412 predicted 98.9% hit/moves 58.4%
+ply 400-1000000000: moves 1048 predicted 98.5% hit/moves 44.8%
+per-game hit/moves min 50.5% median 56.8% max 61.1%
+elapsed_ms median 325 depth median 9
