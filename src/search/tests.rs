@@ -189,6 +189,7 @@ fn repeated_root_children(position: &Position, moves: &[Move]) -> Vec<u64> {
 }
 
 // 同「根の探索の窓化」。引き分け値0を境界に置き、等号とβ打ち切りを検査する。
+// 反復までに適用する着手は、全手探索なら合法手数、β打ち切りなら最初の1手となる。
 #[test]
 fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
     let position = quiet_midgame();
@@ -196,9 +197,9 @@ fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
     assert!(moves.len() > 1);
     let history = repeated_root_children(&position, &moves);
     for (alpha, beta, bound, expected_nodes) in [
-        (0, 1, Bound::Upper, 1 + moves.len() as u64),
-        (-1, 0, Bound::Lower, 2),
-        (-1, 1, Bound::Exact, 1 + moves.len() as u64),
+        (0, 1, Bound::Upper, moves.len() as u64),
+        (-1, 0, Bound::Lower, 1),
+        (-1, 1, Bound::Exact, moves.len() as u64),
     ] {
         with_root_searcher(&position, &history, |searcher| {
             let (best_move, score) = searcher
@@ -215,19 +216,20 @@ fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
 }
 
 // 同「aspiration windows」。s == α、s == βのどちらも再探索を要する。
+// 再探索では全合法手を適用するため、初回に適用した着手数へ合法手数を加える。
 #[test]
 fn aspiration_researches_scores_equal_to_either_edge() {
     let position = quiet_midgame();
     let moves = legal_moves(&position);
     let history = repeated_root_children(&position, &moves);
     let delta = weights().unwrap().pawn_value() / 2;
-    for (prev, first_nodes) in [(delta, 1 + moves.len() as u64), (-delta, 2)] {
+    for (prev, first_nodes) in [(delta, moves.len() as u64), (-delta, 1)] {
         with_root_searcher(&position, &history, |searcher| {
             let (_, score) = searcher
                 .search_iteration(&position, &moves, 5, Some(prev))
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
-            assert_eq!(searcher.nodes, first_nodes + 1 + moves.len() as u64);
+            assert_eq!(searcher.nodes, first_nodes + moves.len() as u64);
             assert_eq!(
                 searcher.tt.probe(search_key(&position), 0).unwrap().bound,
                 Bound::Exact
@@ -237,7 +239,7 @@ fn aspiration_researches_scores_equal_to_either_edge() {
 }
 
 // 同「根の探索の窓化」。fail-lowでもαの更新と独立に最善手を保存し、
-// 読み直しではその記録手を先頭に使う。
+// 読み直しではその記録手を先頭に使う。王駒捕獲は適用しないので0ノードとなる。
 #[test]
 fn root_fail_low_keeps_the_best_bound_move_for_research() {
     let position = position(
@@ -272,13 +274,13 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
             searcher.search_root(&position, &moves, 1, -1, 0),
             Some((best_move, MATE))
         );
-        assert_eq!(searcher.nodes - before, 2);
+        assert_eq!(searcher.nodes - before, 0);
         assert_eq!(searcher.tt.probe(key, 0).unwrap().bound, Bound::Lower);
     });
 }
 
 // 同「窓外れの報告」「検証」。深さ5の最初の窓外れを実測してノード予算を
-// 決め、読み直しの根へ入った直後に中断させる。経過時間やスケジューリングに依存しない。
+// 決め、読み直しで1手を適用した後に中断させる。経過時間やスケジューリングに依存しない。
 #[test]
 fn aspiration_interruption_preserves_the_last_completed_iteration() {
     let position = quiet_midgame();
@@ -444,7 +446,7 @@ fn invalid_table_sizes_are_reported_without_panicking() {
     assert_eq!(hit.best_move, Some(stored_move));
 }
 
-/// 静止探索を直接実行し、評価値と当該Searcherの訪問ノード数を返す。
+/// 静止探索を直接実行し、評価値と当該Searcherの実着手の適用回数を返す。
 fn run_quiesce(
     position: &Position,
     alpha: i32,
@@ -472,7 +474,7 @@ fn run_quiesce(
     (score, searcher.nodes)
 }
 
-/// 通常探索を直接実行し、評価値と当該Searcherの訪問ノード数を返す。
+/// 通常探索を直接実行し、評価値と当該Searcherの実着手の適用回数を返す。
 fn run_negamax(
     position: &Position,
     depth: u32,
@@ -518,7 +520,7 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
     for depth in 1..=3 {
         let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
         let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, 0, &small_tt());
-        assert!(pruned_nodes > 1, "最初の手は探索する: depth={depth}");
+        assert!(pruned_nodes > 0, "最初の手は探索する: depth={depth}");
         assert!(
             pruned_nodes < full_nodes,
             "depth={depth}: {pruned_nodes} >= {full_nodes}"
@@ -620,7 +622,7 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
             score < alpha,
             "全対象手を調べる窓: score={score}, alpha={alpha}"
         );
-        assert!(nodes > 3, "記録手の後にも探索する");
+        assert!(nodes > 1, "記録手の後にも探索する");
     }
 }
 
@@ -1334,6 +1336,8 @@ fn quiescence_without_captures_matches_static_evaluation() {
     );
 
     assert_eq!(result.score, expected);
+    // 各合法手を1回適用し、子の静止探索では捕獲がないので追加の適用はない。
+    assert_eq!(result.nodes, moves.len() as u64);
 }
 
 // D7-SRCH-10。search.md「静止探索」: stand-patは損な捕獲より優先される
@@ -1381,11 +1385,11 @@ fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
     for beta in [stand_pat, stand_pat - 1] {
         let table = small_tt();
         let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 1));
+        assert_eq!((score, nodes), (stand_pat, 0));
         assert!(table.probe(key, 0).is_none());
         table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
         let (score, nodes) = run_quiesce(&position, -INFINITY, beta, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 1));
+        assert_eq!((score, nodes), (stand_pat, 0));
         let hit = table.probe(key, 0).unwrap();
         assert_eq!(
             (hit.score, hit.depth, hit.bound),
@@ -1588,6 +1592,25 @@ fn iir_reduces_depth_when_tt_entry_has_no_move() {
     assert_eq!(table.probe(key, 0).unwrap().depth, 2);
 }
 
+// null moveの子が捕獲なしの静止探索で打ち切られる場合、実着手の適用回数は0となる。
+#[test]
+fn null_move_cutoff_without_captures_counts_no_nodes() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 10), Color::Black, PieceKind::GoldGeneral),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let mut after_null = position.clone();
+    after_null.make_null_move();
+    let expected = -evaluate(&weights().unwrap(), &after_null);
+    let table = small_tt();
+    let (score, nodes) = run_negamax(&position, 4, expected - 1, expected, 0, &table);
+    assert_eq!((score, nodes), (expected, 0));
+}
+
 // docs/plans/strength-stage6.md「設計判断」のinternal iterative reduction。
 // 即時打ち切りは減深前の要求深さで判定し、深さが足りる場合は減深より先に返す。
 #[test]
@@ -1599,7 +1622,7 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
         table.store(key, stored_depth, 28_000, Bound::Exact, None, 0);
         let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
         if stored_depth == 3 {
-            assert_eq!((score, nodes), (28_000, 1));
+            assert_eq!((score, nodes), (28_000, 0));
             assert!(table.probe(key, 0).unwrap().best_move.is_none());
         } else {
             assert_ne!(score, 28_000);
@@ -1632,7 +1655,8 @@ fn quiescence_mate_score_round_trips_through_the_tt() {
 
     let table = small_tt();
     let ply = 5;
-    let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, ply, &table);
+    let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, ply, &table);
+    assert_eq!(nodes, 0);
     let hit = table.probe(search_key(&position), ply).unwrap();
     assert_eq!(score, MATE - ply as i32);
     assert_eq!(hit.score, score);
@@ -3330,7 +3354,7 @@ fn stage6_long_history_search_contract() {
     with_root_searcher(&root, &history, |searcher| {
         let score = searcher.negamax(&mut root.clone(), 5, -1, 0, 0);
         assert_eq!(score, Some(2435));
-        assert_eq!(searcher.nodes, 49);
+        assert_eq!(searcher.nodes, 26);
         assert_eq!(
             searcher.pv[0],
             [
@@ -3421,11 +3445,11 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
         let stand_pat = evaluate(&pst, &position);
         let table = small_tt();
         let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 1));
+        assert_eq!((score, nodes), (stand_pat, 0));
         assert!(table.probe(key, 0).is_none());
         table.store(key, 4, stand_pat + 123, Bound::Exact, None, 0);
         let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
-        assert_eq!((score, nodes), (stand_pat, 1));
+        assert_eq!((score, nodes), (stand_pat, 0));
         let hit = table.probe(key, 0).unwrap();
         assert_eq!((hit.score, hit.depth), (stand_pat + 123, 4));
     }
@@ -3457,7 +3481,7 @@ fn quiescence_see_pruned_candidates_still_store() {
     let table = small_tt();
     let stand_pat = evaluate(&pst, &position);
     let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
-    assert_eq!((score, nodes), (stand_pat, 1));
+    assert_eq!((score, nodes), (stand_pat, 0));
     let hit = table.probe(search_key(&position), 0).unwrap();
     assert_eq!(
         (hit.score, hit.bound, hit.best_move),

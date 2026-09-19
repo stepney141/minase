@@ -161,7 +161,7 @@ fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
 struct FiniteSearchLimits {
     /// 反復深化で完了を目指す最大深さ。
     depth: Option<NonZeroU32>,
-    /// 探索するノード数の上限。
+    /// 探索中に実際の着手を盤面へ適用する回数の上限。
     nodes: Option<NonZeroU64>,
     /// 1手に使う固定時間(ms)。
     movetime_ms: Option<NonZeroU64>,
@@ -246,7 +246,7 @@ impl SearchLimits {
         }
     }
 
-    /// 有限探索のノード数上限を返す。
+    /// 有限探索で実際の着手を盤面へ適用する回数の上限を返す。
     pub const fn nodes(self) -> Option<u64> {
         match self.kind {
             SearchLimitKind::Finite(limits) => match limits.nodes {
@@ -486,7 +486,7 @@ pub enum SearchEvent {
         depth: u32,
         /// その深さでの評価値。
         score: i32,
-        /// 探索開始から訪問したノード数。
+        /// 探索開始から実際の着手を盤面へ適用した回数。
         nodes: u64,
         /// 探索開始からの経過時間。
         elapsed: Duration,
@@ -503,7 +503,7 @@ pub enum SearchEvent {
         score: i32,
         /// 最後まで完了した深さ。
         depth: u32,
-        /// 探索開始から訪問したノード数。
+        /// 探索開始から実際の着手を盤面へ適用した回数。
         nodes: u64,
         /// 探索開始からの経過時間。
         elapsed: Duration,
@@ -578,7 +578,7 @@ pub struct SearchResult {
     pub score: i32,
     /// 最後まで完了した反復深化の深さ。
     pub depth: u32,
-    /// 探索開始から訪問したノード数。
+    /// 探索開始から実際の着手を盤面へ適用した回数。
     pub nodes: u64,
 }
 
@@ -680,7 +680,7 @@ struct SearchOutcome {
     stop_reason: StopReason,
 }
 
-/// 1ワーカーが最後まで完了した反復と実訪問ノード数。
+/// 1ワーカーが最後まで完了した反復と実着手の適用回数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct WorkerOutcome {
     /// 探索チーム内のワーカー番号。主ワーカーは0。
@@ -689,7 +689,7 @@ struct WorkerOutcome {
     result: SearchResult,
     /// 最後まで完了した反復の主変化。
     pv: Vec<Move>,
-    /// このワーカーが実際に訪問したノード数。
+    /// このワーカーが実際の着手を盤面へ適用した回数。
     nodes: u64,
 }
 
@@ -701,9 +701,9 @@ struct SharedSearch<'a> {
     team_stop: AtomicBool,
     /// 優先順位を反映した停止理由。
     stop_reason: AtomicU8,
-    /// 全ワーカーが訪問したノード数。
+    /// 全ワーカーが実際の着手を盤面へ適用した合計回数。
     total_nodes: AtomicU64,
-    /// 探索チーム全体のノード数上限。
+    /// 探索チーム全体で実着手を適用する回数の上限。
     node_limit: Option<u64>,
     /// 補助ワーカー生成前に記録した探索開始時刻。
     started: Instant,
@@ -729,7 +729,7 @@ impl SharedSearch<'_> {
         }
     }
 
-    /// 現在までに探索チームが訪問した総ノード数を返す。
+    /// 現在までに探索チームが実際の着手を盤面へ適用した合計回数を返す。
     fn nodes(&self) -> u64 {
         self.total_nodes.load(AtomicOrdering::Relaxed)
     }
@@ -740,7 +740,7 @@ impl SharedSearch<'_> {
             .expect("a completed search team must record a stop reason")
     }
 
-    /// ノードを1個予約する。上限を超える予約は拒否する。
+    /// 実着手の適用1回分を予約する。上限を超える予約は拒否する。
     fn reserve_node(&self, limit: u64) -> bool {
         let mut current = self.total_nodes.load(AtomicOrdering::Relaxed);
         loop {
@@ -1107,7 +1107,7 @@ struct Searcher<'a> {
     path_keys: Vec<u64>,
     /// null moveで到達した直後のノードのply。
     null_move_ply: Option<u32>,
-    /// 訪問したノード数。
+    /// 実際の着手を盤面へ適用した回数。
     nodes: u64,
     /// 探索チームで共有する停止状態と予算。
     shared: &'a SharedSearch<'a>,
@@ -1170,9 +1170,6 @@ impl Searcher<'_> {
         mut alpha: i32,
         beta: i32,
     ) -> Option<(Move, i32)> {
-        if !self.enter_node() {
-            return None;
-        }
         self.pv[0].clear();
 
         let mut position = position.clone();
@@ -1221,9 +1218,6 @@ impl Searcher<'_> {
         beta: i32,
         ply: u32,
     ) -> Option<i32> {
-        if !self.enter_node() {
-            return None;
-        }
         self.pv[ply as usize].clear();
 
         if depth == 0 {
@@ -1384,9 +1378,6 @@ impl Searcher<'_> {
         beta: i32,
         ply: u32,
     ) -> Option<i32> {
-        if !self.enter_node() {
-            return None;
-        }
         self.pv[ply as usize].clear();
 
         if ply >= MAX_PLY {
@@ -1459,8 +1450,9 @@ impl Searcher<'_> {
                 continue;
             }
             let score = if is_last_royal_capture {
-                self.enter_node().then_some(MATE - ply as i32)?
+                MATE - ply as i32
             } else {
+                self.enter_node().then_some(())?;
                 let undo = position.make_move_with_captures_unchecked(
                     mv,
                     self.rules,
@@ -1516,16 +1508,18 @@ impl Searcher<'_> {
     ) -> Option<i32> {
         self.pv[(ply + 1) as usize].clear();
         if captures_last_royal(position, mv) {
-            return self.enter_node().then_some(MATE - ply as i32);
+            return Some(MATE - ply as i32);
         }
 
+        if !self.enter_node() {
+            return None;
+        }
         let undo = position.make_move_unchecked(mv, self.rules);
         let key = search_key(position);
         let repeated = self.history_keys.contains(&key) || self.path_keys.contains(&key);
         if repeated {
-            let score = self.enter_node().then_some(DRAW_SCORE);
             position.unmake_move(undo);
-            return score;
+            return Some(DRAW_SCORE);
         }
 
         self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
@@ -1556,7 +1550,7 @@ impl Searcher<'_> {
         score
     }
 
-    /// ノードへ入る前に停止条件を検査し、続行可能ならノード数を数える。
+    /// 実着手の適用直前に停止条件を検査し、続行可能なら適用回数を数える。
     fn enter_node(&mut self) -> bool {
         if self.shared.observe_external_stop() {
             self.stop_reason = Some(StopReason::ExternalStop);
