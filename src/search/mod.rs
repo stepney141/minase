@@ -1,5 +1,8 @@
 //! 評価関数と静止探索を使って着手を選ぶ探索。
 
+mod correction;
+#[cfg(test)]
+mod correction_tests;
 #[cfg(test)]
 mod search_captures_tests;
 mod see;
@@ -30,6 +33,7 @@ use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::Pst;
 use crate::eval::pst::{PIECE_STATE_COUNT, PstAccumulator, piece_state_of};
 
+use correction::{CorrectionTable, key_after_move, material_key};
 use see::see_prunes;
 use tt::Bound;
 
@@ -974,6 +978,8 @@ fn new_searcher<'a>(
             .collect(),
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
         accumulators: [root_accumulator; MAX_PLY as usize + 1],
+        material_keys: [material_key(position); MAX_PLY as usize + 1],
+        correction: CorrectionTable::new(pst.pawn_value()),
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
@@ -1127,6 +1133,10 @@ struct Searcher<'a> {
     capture_ranks: CaptureRanks,
     /// plyごとのPST生重み和。
     accumulators: [PstAccumulator; MAX_PLY as usize + 1],
+    /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
+    material_keys: [u64; MAX_PLY as usize + 1],
+    /// 反復深化の間で共有する、このワーカー専用の補正表。
+    correction: CorrectionTable,
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     history: Box<HistoryTable>,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
@@ -1271,6 +1281,7 @@ impl Searcher<'_> {
             self.accumulators[(ply + 1) as usize] = self
                 .pst
                 .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
+            self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
             let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
             let score = self
                 .negamax(
@@ -1305,12 +1316,13 @@ impl Searcher<'_> {
                     .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
                 let margin =
                     self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
-                static_eval + margin
+                static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
             });
         let mut royal_attacked = None;
         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
         let mut best_score = -INFINITY;
+        let mut best_capture = false;
         let mut beta_cutoff = false;
         let mut index = 0;
         while let Some((mv, capture)) =
@@ -1362,6 +1374,7 @@ impl Searcher<'_> {
             if score > best_score {
                 best_score = score;
                 best_move = Some(mv);
+                best_capture = capture;
                 self.update_pv(ply, mv);
             }
             alpha = alpha.max(score);
@@ -1384,6 +1397,24 @@ impl Searcher<'_> {
         } else {
             Bound::Exact
         };
+        // 段階8の変種B。補正前の評価と保存値が補正の向きを確定するときだけ学習する。
+        if best_score.abs() < MATE_THRESHOLD && !best_capture {
+            let static_eval = self
+                .pst
+                .evaluate_accumulator(self.accumulators[ply as usize], side);
+            if (bound == Bound::Exact
+                || (bound == Bound::Upper && best_score < static_eval)
+                || (bound == Bound::Lower && best_score > static_eval))
+                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+            {
+                self.correction.update(
+                    side,
+                    self.material_keys[ply as usize],
+                    best_score - static_eval,
+                    depth,
+                );
+            }
+        }
         self.tt
             .store(key, depth, best_score, bound, Some(best_move), ply);
         Some(best_score)
@@ -1550,6 +1581,8 @@ impl Searcher<'_> {
             position,
             &undo,
         );
+        self.material_keys[(ply + 1) as usize] =
+            key_after_move(self.material_keys[ply as usize], &undo);
         self.path_keys.push(key);
         let mut score = if first {
             self.negamax(position, depth - 1, -beta, -alpha, ply + 1)
