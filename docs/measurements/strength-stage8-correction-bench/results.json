@@ -1,0 +1,1597 @@
+{
+  "pawn_value": 100,
+  "definitions": {
+    "correction_reference_population": "eligible nodes; the 5% gate is nonzero / eligible_nodes; current LMR does not use static evaluation",
+    "correction_common_population": "direction-confirming non-mate observations with a noncapture best move and no royal attack; predictions read before update",
+    "correction_variant_c_population": "direction-confirming non-mate observations with no royal attack and either an upper bound or a noncapture best move; reference only, never used for selection",
+    "correction_selection": "maximize common error improvement; require at least 10% common improvement and 5% eligible-node nonzero references; preserve existing exact ties: A/B/C, royals/material/combined, then 32/64/128"
+  },
+  "correction": {
+    "tables": [
+      {
+        "denominator": 32,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 12177819,
+          "common_nonzero": 33818,
+          "common_observations": 33967,
+          "corrected_error": 155300074,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 207,
+          "lower": 150357,
+          "nonzero": 235183,
+          "observations": 157576,
+          "reuse": 157369,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 14024443,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 20286666,
+          "denominator": 175586740,
+          "ratio": 0.11553643515449971
+        },
+        "common_improvement": {
+          "numerator": -53508,
+          "denominator": 12124311,
+          "ratio": -0.00441328171143086
+        },
+        "variant_c_improvement": {
+          "numerator": -295998,
+          "denominator": 13728445,
+          "ratio": -0.02156092696587268
+        },
+        "reuse_rate": {
+          "numerator": 157369,
+          "denominator": 157576,
+          "ratio": 0.9986863481748489
+        },
+        "nonzero_rate": {
+          "numerator": 235183,
+          "denominator": 235779,
+          "ratio": 0.9974722091450045
+        },
+        "common_nonzero_rate": {
+          "numerator": 33818,
+          "denominator": 33967,
+          "ratio": 0.9956133894662467
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 12491887,
+          "common_nonzero": 33840,
+          "common_observations": 33967,
+          "corrected_error": 155667167,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 207,
+          "lower": 150357,
+          "nonzero": 235165,
+          "observations": 157576,
+          "reuse": 157369,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 14392563,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 19919573,
+          "denominator": 175586740,
+          "ratio": 0.11344577044940865
+        },
+        "common_improvement": {
+          "numerator": -367576,
+          "denominator": 12124311,
+          "ratio": -0.030317269162759022
+        },
+        "variant_c_improvement": {
+          "numerator": -664118,
+          "denominator": 13728445,
+          "ratio": -0.04837532582896315
+        },
+        "reuse_rate": {
+          "numerator": 157369,
+          "denominator": 157576,
+          "ratio": 0.9986863481748489
+        },
+        "nonzero_rate": {
+          "numerator": 235165,
+          "denominator": 235779,
+          "ratio": 0.9973958664681757
+        },
+        "common_nonzero_rate": {
+          "numerator": 33840,
+          "denominator": 33967,
+          "ratio": 0.9962610769276062
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 12711296,
+          "common_nonzero": 33828,
+          "common_observations": 33967,
+          "corrected_error": 155983066,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 207,
+          "lower": 150357,
+          "nonzero": 235044,
+          "observations": 157576,
+          "reuse": 157369,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 14660370,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 19603674,
+          "denominator": 175586740,
+          "ratio": 0.11164666534614175
+        },
+        "common_improvement": {
+          "numerator": -586985,
+          "denominator": 12124311,
+          "ratio": -0.0484138851271631
+        },
+        "variant_c_improvement": {
+          "numerator": -931925,
+          "denominator": 13728445,
+          "ratio": -0.06788277914942296
+        },
+        "reuse_rate": {
+          "numerator": 157369,
+          "denominator": 157576,
+          "ratio": 0.9986863481748489
+        },
+        "nonzero_rate": {
+          "numerator": 235044,
+          "denominator": 235779,
+          "ratio": 0.9968826740294937
+        },
+        "common_nonzero_rate": {
+          "numerator": 33828,
+          "denominator": 33967,
+          "ratio": 0.9959077928577738
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 11882743,
+          "common_nonzero": 33455,
+          "common_observations": 33967,
+          "corrected_error": 155865426,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 4087,
+          "lower": 150357,
+          "nonzero": 220715,
+          "observations": 157576,
+          "reuse": 153489,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 13487680,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 19721314,
+          "denominator": 175586740,
+          "ratio": 0.11231664760106601
+        },
+        "common_improvement": {
+          "numerator": 241568,
+          "denominator": 12124311,
+          "ratio": 0.01992426621191093
+        },
+        "variant_c_improvement": {
+          "numerator": 240765,
+          "denominator": 13728445,
+          "ratio": 0.017537674514484344
+        },
+        "reuse_rate": {
+          "numerator": 153489,
+          "denominator": 157576,
+          "ratio": 0.9740633091333706
+        },
+        "nonzero_rate": {
+          "numerator": 220715,
+          "denominator": 235779,
+          "ratio": 0.9361096620140047
+        },
+        "common_nonzero_rate": {
+          "numerator": 33455,
+          "denominator": 33967,
+          "ratio": 0.984926546353814
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 12191411,
+          "common_nonzero": 33389,
+          "common_observations": 33967,
+          "corrected_error": 156743705,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 4087,
+          "lower": 150357,
+          "nonzero": 220675,
+          "observations": 157576,
+          "reuse": 153489,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 13841103,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 18843035,
+          "denominator": 175586740,
+          "ratio": 0.10731468105165572
+        },
+        "common_improvement": {
+          "numerator": -67100,
+          "denominator": 12124311,
+          "ratio": -0.005534335105722709
+        },
+        "variant_c_improvement": {
+          "numerator": -112658,
+          "denominator": 13728445,
+          "ratio": -0.008206173386716413
+        },
+        "reuse_rate": {
+          "numerator": 153489,
+          "denominator": 157576,
+          "ratio": 0.9740633091333706
+        },
+        "nonzero_rate": {
+          "numerator": 220675,
+          "denominator": 235779,
+          "ratio": 0.9359400116210519
+        },
+        "common_nonzero_rate": {
+          "numerator": 33389,
+          "denominator": 33967,
+          "ratio": 0.9829834839697353
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 12418530,
+          "common_nonzero": 33302,
+          "common_observations": 33967,
+          "corrected_error": 157825101,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 4087,
+          "lower": 150357,
+          "nonzero": 219628,
+          "observations": 157576,
+          "reuse": 153489,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 14110172,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 17761639,
+          "denominator": 175586740,
+          "ratio": 0.10115592441661597
+        },
+        "common_improvement": {
+          "numerator": -294219,
+          "denominator": 12124311,
+          "ratio": -0.024266863494346196
+        },
+        "variant_c_improvement": {
+          "numerator": -381727,
+          "denominator": 13728445,
+          "ratio": -0.02780555263178022
+        },
+        "reuse_rate": {
+          "numerator": 153489,
+          "denominator": 157576,
+          "ratio": 0.9740633091333706
+        },
+        "nonzero_rate": {
+          "numerator": 219628,
+          "denominator": 235779,
+          "ratio": 0.9314994125855144
+        },
+        "common_nonzero_rate": {
+          "numerator": 33302,
+          "denominator": 33967,
+          "ratio": 0.9804221744634498
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 11903077,
+          "common_nonzero": 33249,
+          "common_observations": 33967,
+          "corrected_error": 156078995,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 4917,
+          "lower": 150357,
+          "nonzero": 218123,
+          "observations": 157576,
+          "reuse": 152659,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 13508747,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 19507745,
+          "denominator": 175586740,
+          "ratio": 0.11110033138037645
+        },
+        "common_improvement": {
+          "numerator": 221234,
+          "denominator": 12124311,
+          "ratio": 0.0182471399818101
+        },
+        "variant_c_improvement": {
+          "numerator": 219698,
+          "denominator": 13728445,
+          "ratio": 0.01600312344187561
+        },
+        "reuse_rate": {
+          "numerator": 152659,
+          "denominator": 157576,
+          "ratio": 0.9687960095446007
+        },
+        "nonzero_rate": {
+          "numerator": 218123,
+          "denominator": 235779,
+          "ratio": 0.9251163165506682
+        },
+        "common_nonzero_rate": {
+          "numerator": 33249,
+          "denominator": 33967,
+          "ratio": 0.9788618364883563
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 12202158,
+          "common_nonzero": 33177,
+          "common_observations": 33967,
+          "corrected_error": 156976213,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 4917,
+          "lower": 150357,
+          "nonzero": 218032,
+          "observations": 157576,
+          "reuse": 152659,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 13850437,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 18610527,
+          "denominator": 175586740,
+          "ratio": 0.10599050361092187
+        },
+        "common_improvement": {
+          "numerator": -77847,
+          "denominator": 12124311,
+          "ratio": -0.00642073599068846
+        },
+        "variant_c_improvement": {
+          "numerator": -121992,
+          "denominator": 13728445,
+          "ratio": -0.008886075589769999
+        },
+        "reuse_rate": {
+          "numerator": 152659,
+          "denominator": 157576,
+          "ratio": 0.9687960095446007
+        },
+        "nonzero_rate": {
+          "numerator": 218032,
+          "denominator": 235779,
+          "ratio": 0.9247303619067008
+        },
+        "common_nonzero_rate": {
+          "numerator": 33177,
+          "denominator": 33967,
+          "ratio": 0.9767421320693614
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 12422772,
+          "common_nonzero": 33049,
+          "common_observations": 33967,
+          "corrected_error": 158082187,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 4917,
+          "lower": 150357,
+          "nonzero": 216900,
+          "observations": 157576,
+          "reuse": 152659,
+          "updates": 157576,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 14111159,
+          "variant_c_observations": 36850
+        },
+        "variant": "A",
+        "improvement": {
+          "numerator": 17504553,
+          "denominator": 175586740,
+          "ratio": 0.09969177057447505
+        },
+        "common_improvement": {
+          "numerator": -298461,
+          "denominator": 12124311,
+          "ratio": -0.02461673904603734
+        },
+        "variant_c_improvement": {
+          "numerator": -382714,
+          "denominator": 13728445,
+          "ratio": -0.02787744715443009
+        },
+        "reuse_rate": {
+          "numerator": 152659,
+          "denominator": 157576,
+          "ratio": 0.9687960095446007
+        },
+        "nonzero_rate": {
+          "numerator": 216900,
+          "denominator": 235779,
+          "ratio": 0.9199292557861387
+        },
+        "common_nonzero_rate": {
+          "numerator": 33049,
+          "denominator": 33967,
+          "ratio": 0.9729737686578149
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10273100,
+          "common_nonzero": 33573,
+          "common_observations": 33967,
+          "corrected_error": 167025029,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 133,
+          "lower": 150357,
+          "nonzero": 229861,
+          "observations": 157576,
+          "reuse": 156528,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12034966,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 8561711,
+          "denominator": 175586740,
+          "ratio": 0.048760578389917146
+        },
+        "common_improvement": {
+          "numerator": 1851211,
+          "denominator": 12124311,
+          "ratio": 0.15268587221162505
+        },
+        "variant_c_improvement": {
+          "numerator": 1693479,
+          "denominator": 13728445,
+          "ratio": 0.12335548563584586
+        },
+        "reuse_rate": {
+          "numerator": 156528,
+          "denominator": 157576,
+          "ratio": 0.9933492410011677
+        },
+        "nonzero_rate": {
+          "numerator": 229861,
+          "denominator": 235779,
+          "ratio": 0.9749002243626447
+        },
+        "common_nonzero_rate": {
+          "numerator": 33573,
+          "denominator": 33967,
+          "ratio": 0.9884005063738335
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10382496,
+          "common_nonzero": 33504,
+          "common_observations": 33967,
+          "corrected_error": 166716589,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 133,
+          "lower": 150357,
+          "nonzero": 230030,
+          "observations": 157576,
+          "reuse": 156528,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12168403,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 8870151,
+          "denominator": 175586740,
+          "ratio": 0.05051720306442275
+        },
+        "common_improvement": {
+          "numerator": 1741815,
+          "denominator": 12124311,
+          "ratio": 0.14366300897428316
+        },
+        "variant_c_improvement": {
+          "numerator": 1560042,
+          "denominator": 13728445,
+          "ratio": 0.11363573951747631
+        },
+        "reuse_rate": {
+          "numerator": 156528,
+          "denominator": 157576,
+          "ratio": 0.9933492410011677
+        },
+        "nonzero_rate": {
+          "numerator": 230030,
+          "denominator": 235779,
+          "ratio": 0.9756169972728699
+        },
+        "common_nonzero_rate": {
+          "numerator": 33504,
+          "denominator": 33967,
+          "ratio": 0.9863691229722966
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10475630,
+          "common_nonzero": 33496,
+          "common_observations": 33967,
+          "corrected_error": 166392652,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 133,
+          "lower": 150357,
+          "nonzero": 230369,
+          "observations": 157576,
+          "reuse": 156528,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12285530,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 9194088,
+          "denominator": 175586740,
+          "ratio": 0.052362086111969505
+        },
+        "common_improvement": {
+          "numerator": 1648681,
+          "denominator": 12124311,
+          "ratio": 0.13598141783067094
+        },
+        "variant_c_improvement": {
+          "numerator": 1442915,
+          "denominator": 13728445,
+          "ratio": 0.10510403763864007
+        },
+        "reuse_rate": {
+          "numerator": 156528,
+          "denominator": 157576,
+          "ratio": 0.9933492410011677
+        },
+        "nonzero_rate": {
+          "numerator": 230369,
+          "denominator": 235779,
+          "ratio": 0.9770547843531443
+        },
+        "common_nonzero_rate": {
+          "numerator": 33496,
+          "denominator": 33967,
+          "ratio": 0.986133600259075
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10256304,
+          "common_nonzero": 32931,
+          "common_observations": 33967,
+          "corrected_error": 169480039,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 648,
+          "lower": 150357,
+          "nonzero": 157818,
+          "observations": 157576,
+          "reuse": 107747,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 11932022,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 6106701,
+          "denominator": 175586740,
+          "ratio": 0.03477882783175996
+        },
+        "common_improvement": {
+          "numerator": 1868007,
+          "denominator": 12124311,
+          "ratio": 0.15407118804524234
+        },
+        "variant_c_improvement": {
+          "numerator": 1796423,
+          "denominator": 13728445,
+          "ratio": 0.13085407706408117
+        },
+        "reuse_rate": {
+          "numerator": 107747,
+          "denominator": 157576,
+          "ratio": 0.6837779864954054
+        },
+        "nonzero_rate": {
+          "numerator": 157818,
+          "denominator": 235779,
+          "ratio": 0.6693471428753197
+        },
+        "common_nonzero_rate": {
+          "numerator": 32931,
+          "denominator": 33967,
+          "ratio": 0.9694998086377955
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10408724,
+          "common_nonzero": 32848,
+          "common_observations": 33967,
+          "corrected_error": 169865679,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 648,
+          "lower": 150357,
+          "nonzero": 156403,
+          "observations": 157576,
+          "reuse": 107747,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12092752,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 5721061,
+          "denominator": 175586740,
+          "ratio": 0.03258253442144891
+        },
+        "common_improvement": {
+          "numerator": 1715587,
+          "denominator": 12124311,
+          "ratio": 0.14149975202714613
+        },
+        "variant_c_improvement": {
+          "numerator": 1635693,
+          "denominator": 13728445,
+          "ratio": 0.11914626893286166
+        },
+        "reuse_rate": {
+          "numerator": 107747,
+          "denominator": 157576,
+          "ratio": 0.6837779864954054
+        },
+        "nonzero_rate": {
+          "numerator": 156403,
+          "denominator": 235779,
+          "ratio": 0.6633457602246171
+        },
+        "common_nonzero_rate": {
+          "numerator": 32848,
+          "denominator": 33967,
+          "ratio": 0.9670562604881209
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10547661,
+          "common_nonzero": 32599,
+          "common_observations": 33967,
+          "corrected_error": 170339552,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 648,
+          "lower": 150357,
+          "nonzero": 152915,
+          "observations": 157576,
+          "reuse": 107747,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12236819,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 5247188,
+          "denominator": 175586740,
+          "ratio": 0.029883737234372026
+        },
+        "common_improvement": {
+          "numerator": 1576650,
+          "denominator": 12124311,
+          "ratio": 0.13004037920175424
+        },
+        "variant_c_improvement": {
+          "numerator": 1491626,
+          "denominator": 13728445,
+          "ratio": 0.10865221807713837
+        },
+        "reuse_rate": {
+          "numerator": 107747,
+          "denominator": 157576,
+          "ratio": 0.6837779864954054
+        },
+        "nonzero_rate": {
+          "numerator": 152915,
+          "denominator": 235779,
+          "ratio": 0.6485522459591397
+        },
+        "common_nonzero_rate": {
+          "numerator": 32599,
+          "denominator": 33967,
+          "ratio": 0.9597256160390968
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10308500,
+          "common_nonzero": 32670,
+          "common_observations": 33967,
+          "corrected_error": 169676501,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 900,
+          "lower": 150357,
+          "nonzero": 153850,
+          "observations": 157576,
+          "reuse": 106527,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 11983797,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 5910239,
+          "denominator": 175586740,
+          "ratio": 0.033659939241425636
+        },
+        "common_improvement": {
+          "numerator": 1815811,
+          "denominator": 12124311,
+          "ratio": 0.1497661186685165
+        },
+        "variant_c_improvement": {
+          "numerator": 1744648,
+          "denominator": 13728445,
+          "ratio": 0.12708271038708316
+        },
+        "reuse_rate": {
+          "numerator": 106527,
+          "denominator": 157576,
+          "ratio": 0.676035690714322
+        },
+        "nonzero_rate": {
+          "numerator": 153850,
+          "denominator": 235779,
+          "ratio": 0.6525178238944096
+        },
+        "common_nonzero_rate": {
+          "numerator": 32670,
+          "denominator": 33967,
+          "ratio": 0.9618158801189389
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10467563,
+          "common_nonzero": 32560,
+          "common_observations": 33967,
+          "corrected_error": 170082359,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 900,
+          "lower": 150357,
+          "nonzero": 152120,
+          "observations": 157576,
+          "reuse": 106527,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12150533,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 5504381,
+          "denominator": 175586740,
+          "ratio": 0.031348500461936935
+        },
+        "common_improvement": {
+          "numerator": 1656748,
+          "denominator": 12124311,
+          "ratio": 0.1366467752270624
+        },
+        "variant_c_improvement": {
+          "numerator": 1577912,
+          "denominator": 13728445,
+          "ratio": 0.11493741643718572
+        },
+        "reuse_rate": {
+          "numerator": 106527,
+          "denominator": 157576,
+          "ratio": 0.676035690714322
+        },
+        "nonzero_rate": {
+          "numerator": 152120,
+          "denominator": 235779,
+          "ratio": 0.6451804443992043
+        },
+        "common_nonzero_rate": {
+          "numerator": 32560,
+          "denominator": 33967,
+          "ratio": 0.9585774428121412
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10613618,
+          "common_nonzero": 32261,
+          "common_observations": 33967,
+          "corrected_error": 170570940,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 900,
+          "lower": 150357,
+          "nonzero": 148439,
+          "observations": 157576,
+          "reuse": 106527,
+          "updates": 33967,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12301241,
+          "variant_c_observations": 36850
+        },
+        "variant": "B",
+        "improvement": {
+          "numerator": 5015800,
+          "denominator": 175586740,
+          "ratio": 0.02856593840742188
+        },
+        "common_improvement": {
+          "numerator": 1510693,
+          "denominator": 12124311,
+          "ratio": 0.12460031749433019
+        },
+        "variant_c_improvement": {
+          "numerator": 1427204,
+          "denominator": 13728445,
+          "ratio": 0.1039596254346359
+        },
+        "reuse_rate": {
+          "numerator": 106527,
+          "denominator": 157576,
+          "ratio": 0.676035690714322
+        },
+        "nonzero_rate": {
+          "numerator": 148439,
+          "denominator": 235779,
+          "ratio": 0.62956836698773
+        },
+        "common_nonzero_rate": {
+          "numerator": 32261,
+          "denominator": 33967,
+          "ratio": 0.9497747814054818
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10423822,
+          "common_nonzero": 33252,
+          "common_observations": 33967,
+          "corrected_error": 170783278,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 139,
+          "lower": 150357,
+          "nonzero": 231091,
+          "observations": 157576,
+          "reuse": 156586,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 11941981,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4803462,
+          "denominator": 175586740,
+          "ratio": 0.02735663296670352
+        },
+        "common_improvement": {
+          "numerator": 1700489,
+          "denominator": 12124311,
+          "ratio": 0.1402544853889017
+        },
+        "variant_c_improvement": {
+          "numerator": 1786464,
+          "denominator": 13728445,
+          "ratio": 0.1301286489474955
+        },
+        "reuse_rate": {
+          "numerator": 156586,
+          "denominator": 157576,
+          "ratio": 0.9937173173579733
+        },
+        "nonzero_rate": {
+          "numerator": 231091,
+          "denominator": 235779,
+          "ratio": 0.9801169739459409
+        },
+        "common_nonzero_rate": {
+          "numerator": 33252,
+          "denominator": 33967,
+          "ratio": 0.9789501575058145
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10518674,
+          "common_nonzero": 33036,
+          "common_observations": 33967,
+          "corrected_error": 170770186,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 139,
+          "lower": 150357,
+          "nonzero": 228899,
+          "observations": 157576,
+          "reuse": 156586,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12057754,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4816554,
+          "denominator": 175586740,
+          "ratio": 0.02743119440568234
+        },
+        "common_improvement": {
+          "numerator": 1605637,
+          "denominator": 12124311,
+          "ratio": 0.1324311954716437
+        },
+        "variant_c_improvement": {
+          "numerator": 1670691,
+          "denominator": 13728445,
+          "ratio": 0.12169557440773518
+        },
+        "reuse_rate": {
+          "numerator": 156586,
+          "denominator": 157576,
+          "ratio": 0.9937173173579733
+        },
+        "nonzero_rate": {
+          "numerator": 228899,
+          "denominator": 235779,
+          "ratio": 0.9708201324121317
+        },
+        "common_nonzero_rate": {
+          "numerator": 33036,
+          "denominator": 33967,
+          "ratio": 0.9725910442488297
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "royals",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10599691,
+          "common_nonzero": 32967,
+          "common_observations": 33967,
+          "corrected_error": 170235609,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 139,
+          "lower": 150357,
+          "nonzero": 226047,
+          "observations": 157576,
+          "reuse": 156586,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12164165,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 5351131,
+          "denominator": 175586740,
+          "ratio": 0.03047571245983609
+        },
+        "common_improvement": {
+          "numerator": 1524620,
+          "denominator": 12124311,
+          "ratio": 0.12574900132469383
+        },
+        "variant_c_improvement": {
+          "numerator": 1564280,
+          "denominator": 13728445,
+          "ratio": 0.11394444163195468
+        },
+        "reuse_rate": {
+          "numerator": 156586,
+          "denominator": 157576,
+          "ratio": 0.9937173173579733
+        },
+        "nonzero_rate": {
+          "numerator": 226047,
+          "denominator": 235779,
+          "ratio": 0.9587240593946026
+        },
+        "common_nonzero_rate": {
+          "numerator": 32967,
+          "denominator": 33967,
+          "ratio": 0.970559660847293
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10278377,
+          "common_nonzero": 32797,
+          "common_observations": 33967,
+          "corrected_error": 170817980,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 944,
+          "lower": 150357,
+          "nonzero": 162807,
+          "observations": 157576,
+          "reuse": 110341,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 11736280,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4768760,
+          "denominator": 175586740,
+          "ratio": 0.027158998452844446
+        },
+        "common_improvement": {
+          "numerator": 1845934,
+          "denominator": 12124311,
+          "ratio": 0.15225063098430913
+        },
+        "variant_c_improvement": {
+          "numerator": 1992165,
+          "denominator": 13728445,
+          "ratio": 0.14511221045063735
+        },
+        "reuse_rate": {
+          "numerator": 110341,
+          "denominator": 157576,
+          "ratio": 0.7002398842463319
+        },
+        "nonzero_rate": {
+          "numerator": 162807,
+          "denominator": 235779,
+          "ratio": 0.690506788136348
+        },
+        "common_nonzero_rate": {
+          "numerator": 32797,
+          "denominator": 33967,
+          "ratio": 0.9655548031913328
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10412483,
+          "common_nonzero": 32633,
+          "common_observations": 33967,
+          "corrected_error": 170981007,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 944,
+          "lower": 150357,
+          "nonzero": 160844,
+          "observations": 157576,
+          "reuse": 110341,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 11908441,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4605733,
+          "denominator": 175586740,
+          "ratio": 0.026230528569526377
+        },
+        "common_improvement": {
+          "numerator": 1711828,
+          "denominator": 12124311,
+          "ratio": 0.14118971379074655
+        },
+        "variant_c_improvement": {
+          "numerator": 1820004,
+          "denominator": 13728445,
+          "ratio": 0.13257175157128137
+        },
+        "reuse_rate": {
+          "numerator": 110341,
+          "denominator": 157576,
+          "ratio": 0.7002398842463319
+        },
+        "nonzero_rate": {
+          "numerator": 160844,
+          "denominator": 235779,
+          "ratio": 0.6821811951021931
+        },
+        "common_nonzero_rate": {
+          "numerator": 32633,
+          "denominator": 33967,
+          "ratio": 0.9607265875702888
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "material",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10546205,
+          "common_nonzero": 32263,
+          "common_observations": 33967,
+          "corrected_error": 171224291,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 944,
+          "lower": 150357,
+          "nonzero": 157468,
+          "observations": 157576,
+          "reuse": 110341,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12086728,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4362449,
+          "denominator": 175586740,
+          "ratio": 0.02484497975188787
+        },
+        "common_improvement": {
+          "numerator": 1578106,
+          "denominator": 12124311,
+          "ratio": 0.13016046850002447
+        },
+        "variant_c_improvement": {
+          "numerator": 1641717,
+          "denominator": 13728445,
+          "ratio": 0.11958506589784931
+        },
+        "reuse_rate": {
+          "numerator": 110341,
+          "denominator": 157576,
+          "ratio": 0.7002398842463319
+        },
+        "nonzero_rate": {
+          "numerator": 157468,
+          "denominator": 235779,
+          "ratio": 0.6678627019369834
+        },
+        "common_nonzero_rate": {
+          "numerator": 32263,
+          "denominator": 33967,
+          "ratio": 0.9498336620837872
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 32,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10330206,
+          "common_nonzero": 32561,
+          "common_observations": 33967,
+          "corrected_error": 170923907,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 1221,
+          "lower": 150357,
+          "nonzero": 158963,
+          "observations": 157576,
+          "reuse": 109135,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 11795998,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4662833,
+          "denominator": 175586740,
+          "ratio": 0.02655572396867782
+        },
+        "common_improvement": {
+          "numerator": 1794105,
+          "denominator": 12124311,
+          "ratio": 0.1479758313688918
+        },
+        "variant_c_improvement": {
+          "numerator": 1932447,
+          "denominator": 13728445,
+          "ratio": 0.14076226404374276
+        },
+        "reuse_rate": {
+          "numerator": 109135,
+          "denominator": 157576,
+          "ratio": 0.6925864344824085
+        },
+        "nonzero_rate": {
+          "numerator": 158963,
+          "denominator": 235779,
+          "ratio": 0.6742033853735914
+        },
+        "common_nonzero_rate": {
+          "numerator": 32561,
+          "denominator": 33967,
+          "ratio": 0.9586068831512939
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 64,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10470177,
+          "common_nonzero": 32352,
+          "common_observations": 33967,
+          "corrected_error": 171129230,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 1221,
+          "lower": 150357,
+          "nonzero": 156535,
+          "observations": 157576,
+          "reuse": 109135,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 11972843,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4457510,
+          "denominator": 175586740,
+          "ratio": 0.025386370291970793
+        },
+        "common_improvement": {
+          "numerator": 1654134,
+          "denominator": 12124311,
+          "ratio": 0.13643117534678878
+        },
+        "variant_c_improvement": {
+          "numerator": 1755602,
+          "denominator": 13728445,
+          "ratio": 0.12788061575801193
+        },
+        "reuse_rate": {
+          "numerator": 109135,
+          "denominator": 157576,
+          "ratio": 0.6925864344824085
+        },
+        "nonzero_rate": {
+          "numerator": 156535,
+          "denominator": 235779,
+          "ratio": 0.6639056065213611
+        },
+        "common_nonzero_rate": {
+          "numerator": 32352,
+          "denominator": 33967,
+          "ratio": 0.9524538522683781
+        },
+        "at_least_5_percent": true
+      },
+      {
+        "denominator": 128,
+        "key": "combined",
+        "stats": {
+          "absolute_error": 175586740,
+          "common_absolute_error": 12124311,
+          "common_corrected_error": 10609906,
+          "common_nonzero": 31891,
+          "common_observations": 33967,
+          "corrected_error": 171409688,
+          "eligible_nodes": 235779,
+          "exact": 579,
+          "keys": 1221,
+          "lower": 150357,
+          "nonzero": 153050,
+          "observations": 157576,
+          "reuse": 109135,
+          "updates": 36850,
+          "upper": 6640,
+          "variant_c_absolute_error": 13728445,
+          "variant_c_corrected_error": 12155263,
+          "variant_c_observations": 36850
+        },
+        "variant": "C",
+        "improvement": {
+          "numerator": 4177052,
+          "denominator": 175586740,
+          "ratio": 0.02378910844862203
+        },
+        "common_improvement": {
+          "numerator": 1514405,
+          "denominator": 12124311,
+          "ratio": 0.12490647922178835
+        },
+        "variant_c_improvement": {
+          "numerator": 1573182,
+          "denominator": 13728445,
+          "ratio": 0.11459287632357489
+        },
+        "reuse_rate": {
+          "numerator": 109135,
+          "denominator": 157576,
+          "ratio": 0.6925864344824085
+        },
+        "nonzero_rate": {
+          "numerator": 153050,
+          "denominator": 235779,
+          "ratio": 0.6491248160353551
+        },
+        "common_nonzero_rate": {
+          "numerator": 31891,
+          "denominator": 33967,
+          "ratio": 0.9388818559189802
+        },
+        "at_least_5_percent": true
+      }
+    ],
+    "best": {
+      "denominator": 32,
+      "key": "material",
+      "stats": {
+        "absolute_error": 175586740,
+        "common_absolute_error": 12124311,
+        "common_corrected_error": 10256304,
+        "common_nonzero": 32931,
+        "common_observations": 33967,
+        "corrected_error": 169480039,
+        "eligible_nodes": 235779,
+        "exact": 579,
+        "keys": 648,
+        "lower": 150357,
+        "nonzero": 157818,
+        "observations": 157576,
+        "reuse": 107747,
+        "updates": 33967,
+        "upper": 6640,
+        "variant_c_absolute_error": 13728445,
+        "variant_c_corrected_error": 11932022,
+        "variant_c_observations": 36850
+      },
+      "variant": "B",
+      "improvement": {
+        "numerator": 6106701,
+        "denominator": 175586740,
+        "ratio": 0.03477882783175996
+      },
+      "common_improvement": {
+        "numerator": 1868007,
+        "denominator": 12124311,
+        "ratio": 0.15407118804524234
+      },
+      "variant_c_improvement": {
+        "numerator": 1796423,
+        "denominator": 13728445,
+        "ratio": 0.13085407706408117
+      },
+      "reuse_rate": {
+        "numerator": 107747,
+        "denominator": 157576,
+        "ratio": 0.6837779864954054
+      },
+      "nonzero_rate": {
+        "numerator": 157818,
+        "denominator": 235779,
+        "ratio": 0.6693471428753197
+      },
+      "common_nonzero_rate": {
+        "numerator": 32931,
+        "denominator": 33967,
+        "ratio": 0.9694998086377955
+      },
+      "at_least_5_percent": true
+    },
+    "decision": "candidate",
+    "reasons": [],
+    "observation_types": {
+      "exact:capture=0:attacked=0": 420,
+      "exact:capture=0:attacked=1": 10,
+      "exact:capture=1:attacked=0": 146,
+      "exact:capture=1:attacked=1": 3,
+      "upper:capture=0:attacked=0": 3639,
+      "upper:capture=0:attacked=1": 108,
+      "upper:capture=1:attacked=0": 2883,
+      "upper:capture=1:attacked=1": 10,
+      "lower:capture=0:attacked=0": 29908,
+      "lower:capture=0:attacked=1": 41,
+      "lower:capture=1:attacked=0": 118222,
+      "lower:capture=1:attacked=1": 2186
+    }
+  }
+}
