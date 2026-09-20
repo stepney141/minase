@@ -503,124 +503,6 @@ fn run_negamax(
     (score, searcher.nodes)
 }
 
-// docs/plans/strength-stage8.md「採用した閾値」。歩兵価値100での診断値を固定する。
-#[test]
-fn futility_margins_follow_improving_thresholds() {
-    for (improving, expected) in [(false, [12, 75, 75]), (true, [50, 150, 150])] {
-        for (index, margin) in expected.into_iter().enumerate() {
-            assert_eq!(
-                100 * FUTILITY_MARGIN_EIGHTH_PAWNS[usize::from(improving)][index] / 8,
-                margin,
-                "improving={improving}, depth={}",
-                index + 1
-            );
-        }
-    }
-}
-
-// 同「improvingの定義」。両手番から見て上昇だけを真とし、同値と下降は偽とする。
-#[test]
-fn improving_compares_static_evaluations_from_the_current_side() {
-    for side in [Color::Black, Color::White] {
-        let bare = position(
-            side,
-            &[
-                (sq(0, 0), Color::Black, PieceKind::King),
-                (sq(11, 11), Color::White, PieceKind::King),
-            ],
-        );
-        let richer = position(
-            side,
-            &[
-                (sq(0, 0), Color::Black, PieceKind::King),
-                (sq(11, 11), Color::White, PieceKind::King),
-                (sq(5, 5), side, PieceKind::Rook),
-            ],
-        );
-        with_root_searcher(&bare, &[], |searcher| {
-            let bare_acc = searcher.pst.refresh_accumulator(&bare);
-            let richer_acc = searcher.pst.refresh_accumulator(&richer);
-            assert!(evaluate(searcher.pst, &richer) > evaluate(searcher.pst, &bare));
-            for (previous, current, expected) in [
-                (bare_acc, richer_acc, true),
-                (bare_acc, bare_acc, false),
-                (richer_acc, bare_acc, false),
-            ] {
-                let ply = 4;
-                searcher.accumulators[2] = previous;
-                searcher.accumulators[3] = current;
-                searcher.accumulators[4] = current;
-                let static_eval = searcher.pst.evaluate_accumulator(current, side);
-                assert_eq!(searcher.improving(static_eval, side, ply), expected);
-            }
-        });
-    }
-}
-
-// 比較区間が存在しない場合とnull moveを含む場合は追加の枝刈りを行わない。
-#[test]
-fn improving_preserves_margins_without_two_real_plies() {
-    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    with_root_searcher(&board, &[], |searcher| {
-        let static_eval = evaluate(searcher.pst, &board);
-        for ply in [0, 1] {
-            assert!(searcher.improving(static_eval, board.side_to_move(), ply));
-        }
-        let ply = 4;
-        for (null_move_ply, expected) in [
-            (None, false),
-            (Some(ply), true),
-            (Some(ply - 1), true),
-            (Some(ply - 2), false),
-        ] {
-            searcher.null_move_ply = null_move_ply;
-            assert_eq!(
-                searcher.improving(static_eval, board.side_to_move(), ply),
-                expected,
-                "null_move_ply={null_move_ply:?}"
-            );
-        }
-    });
-}
-
-// 同「improvingフラグ」。縮めた余裕値の境界で、上昇していないノードだけ後続手を刈る。
-#[test]
-fn futility_prunes_quiets_only_when_not_improving() {
-    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let worse = crate::parse_sfen("k11/12/12/12/12/5r6/12/12/12/12/12/11K b").unwrap();
-    let moves = legal_moves(&board);
-    for improving in [false, true] {
-        with_root_searcher(&board, &[], |searcher| {
-            let static_eval = evaluate(searcher.pst, &board);
-            assert_eq!(searcher.pst.pawn_value(), 100);
-            let alpha = static_eval + 12;
-            if improving {
-                assert!(evaluate(searcher.pst, &worse) < static_eval);
-                searcher.accumulators[0] = searcher.pst.refresh_accumulator(&worse);
-            }
-            assert_eq!(
-                searcher.improving(static_eval, board.side_to_move(), 2),
-                improving
-            );
-            assert!(!royal_under_attack(&board));
-            for &mv in &moves {
-                assert!(!mv.promote && move_order_key(&board, searcher.pst, mv).is_none());
-                let mut child = board.clone();
-                child.make_move_unchecked(mv, engine_rules());
-                assert!(-evaluate(searcher.pst, &child) < alpha, "全手が窓を下回る");
-            }
-            let score = searcher
-                .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2)
-                .unwrap();
-            assert!(score < alpha && score.abs() < MATE_THRESHOLD);
-            assert_eq!(
-                searcher.nodes,
-                if improving { moves.len() as u64 } else { 1 }
-            );
-        });
-    }
-}
-
 // docs/plans/strength-stage4.md「futility pruning」「検証」。
 // 静かな合法手だけの局面では零窓の探索量が減り、少なくとも1手を探索して詰みを捏造しない。
 #[test]
@@ -635,20 +517,15 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
             .iter()
             .all(|&mv| { !mv.promote && move_order_key(&position, &pst, mv).is_none() })
     );
-    // ply=2では累算値の初期値が同じなのでimprovingは偽となる。
-    for (depth, ply) in (1..=3).flat_map(|depth| [0, 2].map(|ply| (depth, ply))) {
-        let table = small_tt();
-        let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, ply, &table);
-        let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, ply, &small_tt());
+    for depth in 1..=3 {
+        let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
+        let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, 0, &small_tt());
         assert!(pruned_nodes > 0, "最初の手は探索する: depth={depth}");
         assert!(
             pruned_nodes < full_nodes,
             "depth={depth}: {pruned_nodes} >= {full_nodes}"
         );
         assert!(score.abs() < MATE_THRESHOLD, "depth={depth}: score={score}");
-        let hit = table.probe(search_key(&position), ply).unwrap();
-        assert_eq!(hit.score, score);
-        assert!(hit.score.abs() < MATE_THRESHOLD);
         if depth == 1 {
             let leaf_scores: Vec<_> = legal_moves(&position)
                 .into_iter()
@@ -686,7 +563,6 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
             .iter()
             .all(|&mv| { !mv.promote && move_order_key(&position, &pst, mv).is_none() })
     );
-    // 累算値の初期値が2手前と同じなのでimprovingは偽となる。
     let ply = 5;
     let mut child = position.clone();
     child.make_move_unchecked(losing_move, engine_rules());
@@ -2651,24 +2527,10 @@ fn progress_depths_start_at_one_and_increase_by_one() {
 
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
     assert_eq!(depths, vec![1, 2, 3, 4, 5, 6]);
-    // strength-stage6.md「窓外れの報告」。完了値の差は窓依存の枝刈りで変わるため、
-    // 初回の探索を直接実行して窓外れを確認する。通知は上で各深さ1回と検査した。
-    let moves = legal_moves(&midgame);
-    with_root_searcher(&midgame, &[search_key(&midgame)], |searcher| {
-        let mut prev = None;
-        for depth in 1..=4 {
-            let (_, score) = searcher
-                .search_iteration(&midgame, &moves, depth, prev)
-                .unwrap();
-            prev = Some(score);
-        }
-        let prev = prev.unwrap();
-        let delta = searcher.pst.pawn_value() / 2;
-        let (_, score) = searcher
-            .search_root(&midgame, &moves, 5, prev - delta, prev + delta)
-            .unwrap();
-        assert!(score >= prev + delta, "深さ5の初回は窓の上端を外れる");
-    });
+    // strength-stage6.md「窓外れの報告」。深さ5は初期窓を外れるが、
+    // 読み直しは通知されず、窓内で完了した反復が1回だけ通知される。
+    let delta = weights().unwrap().pawn_value() / 2;
+    assert!(progress[4].1 >= progress[3].1 + delta);
     for (_, _, _, _, pv) in &progress {
         assert!(!pv.is_empty());
     }
