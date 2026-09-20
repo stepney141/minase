@@ -21,8 +21,8 @@
 フェーズ2（SEEによる捕獲手の枝刈り）は、[STC](../measurements/strength-stage8-see-capture-stc.md)が470ペア、[LTC](../measurements/strength-stage8-see-capture-ltc.md)が791ペアでともに`H1`かつ異常0件となり、採用した。
 フェーズ3（improvingフラグ）は、発動の指標を手の単位へ改める利用者の決定（設計判断の「発動の事前確認」）により実行した。採用構成の[再診断](../measurements/strength-stage8-improving-bench.md)で倍率を残り深さ順に1/4、1/2、1/2と決め、LMRの追加減深を外して実装したが、[STC](../measurements/strength-stage8-improving-stc.md)が694ペアで`H0`となり不採用とした。実装はコードから外した。
 フェーズ5（静的評価の補正）は、採用構成の[再診断](../measurements/strength-stage8-correction-bench.md)で更新の条件、鍵、および重みを決めた（「採用した閾値」節）。
-フェーズ5は実装を終え、[STC](../measurements/strength-stage8-correction-stc.md)が398ペアで`H1`かつ異常0件となり、LTCを実行中である。補正値は正へ偏るのでfutilityの枝刈りが減り、bench深さ6の総ノード数は1,556,722から1,813,911へ16.5%増える。
-次の一手は、LTCの判定の記録と、フェーズ6（進捗指標の記録）である。
+フェーズ5は実装し、[STC](../measurements/strength-stage8-correction-stc.md)が398ペア、[LTC](../measurements/strength-stage8-correction-ltc.md)が679ペアでともに`H1`かつ異常0件となり、採用した。補正値は正へ偏るのでfutilityの枝刈りが減り、bench深さ6の総ノード数は1,556,722から1,813,911へ16.5%増える。
+次の一手は、フェーズ6（段階開始版とHaChuに対する固定200ペアのElo、およびLTCの到達深さでのProbCutの対象ノードの割合の記録）である。
 
 ## 目的
 
