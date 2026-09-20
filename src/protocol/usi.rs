@@ -61,6 +61,8 @@ enum PositionHistoryUpdate<'a> {
     },
     /// 差分適用後に追加分だけを連結する。
     Extend(&'a [&'a str]),
+    /// 末尾のトークンだけを交換する。
+    Last(&'a str),
 }
 
 /// 実行中の探索に対応する局面と設定。
@@ -73,6 +75,8 @@ struct SearchContext {
     rules: crate::Rules,
     /// `go infinite`による探索かどうか。
     infinite: bool,
+    /// 的中または停止まで結果を保留する先読みか。
+    ponder: bool,
     /// 最後に`info`として出力した完了深さ。
     last_info_depth: Option<u32>,
 }
@@ -86,12 +90,14 @@ enum ActiveSearch {
         /// 探索スレッドへのハンドル。
         handle: SearchHandle,
     },
-    /// `go infinite`の探索が完了し、`stop`を待って`bestmove`を返す状態。
+    /// 無限探索または先読みが完了し、停止または的中まで結果を保留する状態。
     AwaitingStop {
         /// 探索の局面と設定。
         context: SearchContext,
         /// `stop`受信時に返す最善手。
         best_move: Move,
+        /// 完了したPVから検査済みの予想手表記。
+        ponder_move: Option<String>,
         /// 探索を停止した条件。
         stop_reason: StopReason,
     },
@@ -158,10 +164,7 @@ impl UsiProtocol {
             }
             "moves" => self.handle_moves(engine, output)?,
             "state" => self.handle_state(engine, output)?,
-            "ponderhit" => write_error(output, "ponderhit is not supported")?,
-            "go" if tokens[1..].contains(&"ponder") => {
-                write_error(output, "go ponder is not supported")?;
-            }
+            "ponderhit" => write_error(output, "ponderhit requires an active ponder search")?,
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
             }
@@ -244,6 +247,7 @@ impl UsiProtocol {
             search_id,
             self.threads,
             transposition_table,
+            tokens.contains(&"ponder"),
         );
         Ok(Some(ActiveSearch::Running {
             context: SearchContext {
@@ -251,6 +255,7 @@ impl UsiProtocol {
                 position,
                 rules,
                 infinite,
+                ponder: tokens.contains(&"ponder"),
                 last_info_depth: None,
             },
             handle,
@@ -297,6 +302,7 @@ impl UsiProtocol {
                 match input.try_recv() {
                     Ok(Ok(line)) => {
                         self.handle_searching_line(
+                            engine,
                             &mut active,
                             &mut pending,
                             line.trim_end(),
@@ -313,7 +319,7 @@ impl UsiProtocol {
                 }
             }
 
-            self.poll_search(&mut active, output)?;
+            self.poll_search(engine, &mut active, output)?;
             if active.is_none() {
                 continue;
             }
@@ -322,6 +328,7 @@ impl UsiProtocol {
             if input_open {
                 match input.recv_timeout(Duration::from_millis(10)) {
                     Ok(Ok(line)) => self.handle_searching_line(
+                        engine,
                         &mut active,
                         &mut pending,
                         line.trim_end(),
@@ -334,11 +341,14 @@ impl UsiProtocol {
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => input_open = false,
                 }
-            } else if active.as_ref().is_some_and(ActiveSearch::is_infinite) {
-                // 入力が閉じると`stop`は届かないため、無限探索は破棄する。
+            } else if active
+                .as_ref()
+                .is_some_and(ActiveSearch::withholds_bestmove)
+            {
+                // 入力が閉じると停止も的中も届かないため、結果を保留する探索は破棄する。
                 self.discard_search(&mut active)?;
             } else {
-                self.wait_search_event(&mut active, output)?;
+                self.wait_search_event(engine, &mut active, output)?;
             }
         }
 
@@ -354,6 +364,7 @@ impl UsiProtocol {
     /// コマンドは探索終了後に処理するため`pending`へ積む。
     fn handle_searching_line(
         &mut self,
+        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         pending: &mut VecDeque<String>,
         line: &str,
@@ -361,13 +372,13 @@ impl UsiProtocol {
     ) -> io::Result<()> {
         let command = line.split_whitespace().next();
         match command {
-            Some("stop") => self.stop_search(active, output)?,
+            Some("stop") => self.stop_search(engine, active, output)?,
             Some("gameover" | "quit") => {
                 pending.push_back(line.to_owned());
                 self.discard_search(active)?;
             }
             Some("go") => write_error(output, "go is already running")?,
-            Some("ponderhit") => write_error(output, "ponderhit is not supported")?,
+            Some("ponderhit") => self.ponderhit(engine, active, output)?,
             _ => pending.push_back(line.to_owned()),
         }
         output.flush()
@@ -376,6 +387,7 @@ impl UsiProtocol {
     /// 溜まっている探索イベントをブロックせずにすべて処理する。
     fn poll_search(
         &mut self,
+        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
@@ -390,20 +402,21 @@ impl UsiProtocol {
                 },
                 Some(ActiveSearch::AwaitingStop { .. }) | None => return Ok(()),
             };
-            self.handle_search_event(active, event, output)?;
+            self.handle_search_event(engine, active, event, output)?;
         }
     }
 
     /// 探索イベントを短時間だけ待って処理する。入力が閉じた後の待機に使う。
     fn wait_search_event(
         &mut self,
+        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
         match active.as_ref() {
             Some(ActiveSearch::Running { handle, .. }) => {
                 match handle.events().recv_timeout(Duration::from_millis(50)) {
-                    Ok(event) => self.handle_search_event(active, event, output)?,
+                    Ok(event) => self.handle_search_event(engine, active, event, output)?,
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => {
                         self.handle_search_disconnect(active)?;
@@ -430,6 +443,7 @@ impl UsiProtocol {
     /// `bestmove`を保留する。
     fn handle_search_event(
         &mut self,
+        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         event: SearchEvent,
         output: &mut dyn Write,
@@ -482,27 +496,56 @@ impl UsiProtocol {
                     elapsed,
                     &pv,
                 )?;
-                if context.infinite {
+                let ponder_move = validated_ponder_move(engine.game(), best_move, &pv);
+                if context.infinite || context.ponder {
                     *active = Some(ActiveSearch::AwaitingStop {
                         context,
                         best_move,
+                        ponder_move,
                         stop_reason,
                     });
                     Ok(())
                 } else {
-                    write_bestmove(output, &context.position, best_move, stop_reason)
+                    write_bestmove(
+                        output,
+                        &context.position,
+                        best_move,
+                        ponder_move.as_deref(),
+                        stop_reason,
+                    )
                 }
             }
+        }
+    }
+
+    /// 先読みの結果保留を解除する。探索は作り直さない。
+    fn ponderhit(
+        &mut self,
+        engine: &Engine,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        match active.as_mut() {
+            Some(ActiveSearch::Running { context, handle }) if context.ponder => {
+                handle.ponderhit();
+                context.ponder = false;
+                Ok(())
+            }
+            Some(ActiveSearch::AwaitingStop { context, .. }) if context.ponder => {
+                self.finish_search(engine, active, output, false)
+            }
+            _ => write_error(output, "ponderhit requires an active ponder search"),
         }
     }
 
     /// `stop`に応じて探索を打ち切り、`bestmove`を返す。
     fn stop_search(
         &mut self,
+        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
     ) -> io::Result<()> {
-        self.finish_search(active, output, true)
+        self.finish_search(engine, active, output, true)
     }
 
     /// 探索の完了を待ち切って`bestmove`を出力する。
@@ -510,6 +553,7 @@ impl UsiProtocol {
     /// 完了までの進捗イベントも順に`info`行として出力する。
     fn finish_search(
         &mut self,
+        engine: &Engine,
         active: &mut Option<ActiveSearch>,
         output: &mut dyn Write,
         request_stop: bool,
@@ -521,8 +565,15 @@ impl UsiProtocol {
             ActiveSearch::AwaitingStop {
                 context,
                 best_move,
+                ponder_move,
                 stop_reason,
-            } => write_bestmove(output, &context.position, best_move, stop_reason),
+            } => write_bestmove(
+                output,
+                &context.position,
+                best_move,
+                ponder_move.as_deref(),
+                stop_reason,
+            ),
             ActiveSearch::Running {
                 mut context,
                 handle,
@@ -530,7 +581,7 @@ impl UsiProtocol {
                 if request_stop {
                     handle.request_stop();
                 }
-                let (best_move, stop_reason) = loop {
+                let (best_move, ponder_move, stop_reason) = loop {
                     let event = handle
                         .events()
                         .recv()
@@ -569,12 +620,22 @@ impl UsiProtocol {
                                 elapsed,
                                 &pv,
                             )?;
-                            break (best_move, stop_reason);
+                            break (
+                                best_move,
+                                validated_ponder_move(engine.game(), best_move, &pv),
+                                stop_reason,
+                            );
                         }
                     }
                 };
                 self.transposition_table = Some(join_search(handle)?);
-                write_bestmove(output, &context.position, best_move, stop_reason)
+                write_bestmove(
+                    output,
+                    &context.position,
+                    best_move,
+                    ponder_move.as_deref(),
+                    stop_reason,
+                )
             }
         }
     }
@@ -703,6 +764,36 @@ impl UsiProtocol {
         let move_tokens = moves_index.map(|index| &tokens[index + 1..]).unwrap_or(&[]);
         let position_tokens = &tokens[..moves_index.unwrap_or(tokens.len())];
 
+        if engine.lifecycle() == EngineLifecycle::InGame
+            && let Some(accepted) = &self.accepted_position
+            && !move_tokens.is_empty()
+            && move_tokens.len() == accepted.move_tokens.len()
+            && accepted
+                .setup_tokens
+                .iter()
+                .map(String::as_str)
+                .eq(position_tokens.iter().copied())
+            && accepted.move_tokens[..move_tokens.len() - 1]
+                .iter()
+                .map(String::as_str)
+                .eq(move_tokens[..move_tokens.len() - 1].iter().copied())
+            && accepted.move_tokens.last().map(String::as_str) != move_tokens.last().copied()
+            && let Some(previous) = engine.before_last_move()
+        {
+            let text = move_tokens[move_tokens.len() - 1];
+            let mv = match usi::parse(previous.position(), text) {
+                Ok(mv) => mv,
+                Err(error) => return write_error(output, &error.to_string()),
+            };
+            return self.apply_position(
+                engine,
+                EngineCommand::ReplaceLastMove(mv),
+                Some(text),
+                PositionHistoryUpdate::Last(text),
+                output,
+            );
+        }
+
         let extension_start = position_extension_start(
             self.accepted_position.as_ref(),
             engine.lifecycle(),
@@ -801,6 +892,15 @@ impl UsiProtocol {
                                 .map(|token| (*token).to_owned())
                                 .collect(),
                         });
+                    }
+                    PositionHistoryUpdate::Last(text) => {
+                        *self
+                            .accepted_position
+                            .as_mut()
+                            .expect("replacement requires a position")
+                            .move_tokens
+                            .last_mut()
+                            .expect("replacement requires a move") = text.to_owned();
                     }
                     PositionHistoryUpdate::Extend(move_tokens) => self
                         .accepted_position
@@ -932,6 +1032,7 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<Sea
     let mut winc = None;
     let mut byoyomi = None;
     let mut infinite = false;
+    let mut ponder = false;
     let mut index = 0;
     while index < tokens.len() {
         let name = tokens[index];
@@ -971,6 +1072,14 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<Sea
             "byoyomi" => {
                 byoyomi = Some(parse_go_milliseconds(name, value, byoyomi)?);
             }
+            "ponder" => {
+                if ponder {
+                    return Err("go ponder must be specified once".to_owned());
+                }
+                ponder = true;
+                index += 1;
+                continue;
+            }
             "infinite" => {
                 if infinite {
                     return Err("go infinite must be specified once".to_owned());
@@ -998,7 +1107,8 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<Sea
         .map_err(|error| error.to_string())?;
 
     if infinite {
-        if depth.is_some() || nodes.is_some() || movetime_ms.is_some() || clock.is_some() {
+        if ponder || depth.is_some() || nodes.is_some() || movetime_ms.is_some() || clock.is_some()
+        {
             return Err("go infinite cannot be combined with finite limits".to_owned());
         }
         Ok(SearchLimits::infinite())
@@ -1053,8 +1163,14 @@ impl Protocol for UsiProtocol {
             };
 
             if active.is_some() {
-                self.handle_searching_line(&mut active, &mut pending, &command, output)?;
-                self.poll_search(&mut active, output)?;
+                self.handle_searching_line(engine, &mut active, &mut pending, &command, output)?;
+                self.poll_search(engine, &mut active, output)?;
+                if active
+                    .as_ref()
+                    .is_some_and(|search| !search.withholds_bestmove())
+                {
+                    self.finish_search(engine, &mut active, output, false)?;
+                }
                 continue;
             }
 
@@ -1062,8 +1178,11 @@ impl Protocol for UsiProtocol {
                 LineAction::Continue => {}
                 LineAction::Start(search) => {
                     active = Some(*search);
-                    if !active.as_ref().is_some_and(ActiveSearch::is_infinite) {
-                        self.finish_search(&mut active, output, false)?;
+                    if !active
+                        .as_ref()
+                        .is_some_and(ActiveSearch::withholds_bestmove)
+                    {
+                        self.finish_search(engine, &mut active, output, false)?;
                     }
                 }
                 LineAction::Quit => return Ok(()),
@@ -1074,10 +1193,12 @@ impl Protocol for UsiProtocol {
 }
 
 impl ActiveSearch {
-    /// `go infinite`による探索かどうかを返す。
-    fn is_infinite(&self) -> bool {
+    /// 停止または的中まで結果を保留するかを返す。
+    fn withholds_bestmove(&self) -> bool {
         match self {
-            Self::Running { context, .. } | Self::AwaitingStop { context, .. } => context.infinite,
+            Self::Running { context, .. } | Self::AwaitingStop { context, .. } => {
+                context.infinite || context.ponder
+            }
         }
     }
 }
@@ -1089,15 +1210,30 @@ fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
         .map_err(|_| io::Error::other("search thread panicked"))
 }
 
+/// 最終結果の2手目を対局履歴と終局規則で検査する。
+fn validated_ponder_move(game: &Game, best_move: Move, pv: &[Move]) -> Option<String> {
+    let &prediction = pv.get(1)?;
+    let mut game = game.clone();
+    game.play(best_move).ok()?;
+    let position = game.position().clone();
+    (game.play(prediction).ok()? == GameStatus::Ongoing)
+        .then(|| usi::text_generated(&position, prediction))
+}
+
 /// 停止理由と`bestmove`行を出力する。
 fn write_bestmove(
     output: &mut dyn Write,
     position: &Position,
     mv: Move,
+    ponder_move: Option<&str>,
     stop_reason: StopReason,
 ) -> io::Result<()> {
     writeln!(output, "info string stop {}", stop_reason_text(stop_reason))?;
-    writeln!(output, "bestmove {}", usi::text_generated(position, mv))?;
+    write!(output, "bestmove {}", usi::text_generated(position, mv))?;
+    if let Some(prediction) = ponder_move {
+        write!(output, " ponder {prediction}")?;
+    }
+    writeln!(output)?;
     output.flush()
 }
 
@@ -1419,7 +1555,7 @@ mod tests {
         );
         // LS「プロトコル設定」: Threadsの宣言はdefaultを探索層の既定値から表示する（D6-USI-35）。
         assert!(lines.contains(&"option name Threads type spin default 1 min 1 max 256"));
-        // EC適用範囲: ponder非対応のためUSI_Ponderは宣言しない（D6-USI-18）。
+        // ponder.md設計判断「USI_Ponder」: 時間管理が値に依存しないため宣言しない（D6-USI-18）。
         assert!(!output.contains("USI_Ponder"));
     }
 
@@ -1978,8 +2114,8 @@ mod tests {
     }
 
     #[test]
-    fn ponder_commands_are_rejected_without_bestmove() {
-        // EC「探索とbestmove」: go ponderとponderhitはエラー情報行のみでbestmoveを返さない（D6-USI-18）。
+    fn ponder_without_limits_and_idle_ponderhit_are_rejected() {
+        // ponder.md設計判断「go ponderの受理」「先読み中のその他の入力」（D6-USI-18、D6-USI-44）。
         let output = session(&[RuleCode::R1], "position startpos\ngo ponder\nponderhit\n");
 
         assert_eq!(error_lines(&output).len(), 2);
@@ -2421,5 +2557,584 @@ mod tests {
         assert_eq!(lines[1], MOVES_ERROR);
         // pendingは失敗をまたいで保持され、次の成功したcommitで反映される。
         assert_eq!(state_rules(lines[2]), "L0,P0,R2,E2");
+    }
+    // ponder.md設計判断「go ponderの受理」「USI_Ponder」（D6-USI-18）。
+    #[test]
+    fn ponder_accepts_finite_limits_and_ignores_usi_ponder_option() {
+        for args in [
+            "ponder depth 1",
+            "ponder nodes 100",
+            "ponder btime 1000 wtime 1000 byoyomi 0",
+            "ponder movetime 20",
+            "depth 2 ponder nodes 100 movetime 20 btime 1000",
+        ] {
+            assert!(
+                parse_go_config(
+                    &args.split_whitespace().collect::<Vec<_>>(),
+                    Color::Black,
+                    0
+                )
+                .is_ok(),
+                "{args}"
+            );
+        }
+        for args in ["ponder", "ponder infinite", "ponder infinite depth 1"] {
+            let output = session(
+                &[RuleCode::R1],
+                &format!("position startpos\ngo {args}\ngo depth 1\n"),
+            );
+            assert_eq!(error_lines(&output).len(), 1, "{output}");
+            assert_eq!(bestmoves(&output).len(), 1);
+        }
+        for option in ["true", "false"] {
+            let output = session(
+                &[RuleCode::R1],
+                &format!(
+                    "usi\nsetoption name USI_Ponder value {option}\nposition startpos\ngo depth 2\n"
+                ),
+            );
+            assert!(!output.contains("option name USI_Ponder"));
+            assert!(error_lines(&output).is_empty());
+            assert!(bestmoves(&output)[0].contains(" ponder "));
+        }
+    }
+
+    /// 既存の観測用ライターで入力と出力を1行ずつ往復させる。
+    fn ponder_dialogue(
+        drive: impl FnOnce(&std::sync::mpsc::Sender<io::Result<String>>, &Receiver<String>),
+    ) {
+        let (commands, input) = std::sync::mpsc::channel();
+        let (lines, output) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(move || {
+                let mut engine = make_engine(&[RuleCode::R1]);
+                let mut protocol = UsiProtocol::new(&engine);
+                protocol
+                    .run_channel(
+                        &mut engine,
+                        &input,
+                        &mut LineWriter {
+                            sender: lines,
+                            bytes: Vec::new(),
+                        },
+                    )
+                    .unwrap();
+            });
+            drive(&commands, &output);
+            drop(commands);
+            worker.join().unwrap();
+            assert!(output.try_iter().all(|line| !line.starts_with("bestmove ")));
+        });
+    }
+
+    fn receive_line(lines: &Receiver<String>) -> String {
+        lines.recv_timeout(Duration::from_secs(5)).unwrap()
+    }
+
+    // ponder.md「USI層の契約」、設計判断「bestmoveの保留」「停止理由」
+    // （D6-USI-39、D6-USI-41、D6-USI-42、D6-USI-43）。
+    #[test]
+    fn ponder_channel_withholds_completed_result_until_hit_or_stop() {
+        for trigger in ["ponderhit", "stop"] {
+            ponder_dialogue(|commands, lines| {
+                commands.send(Ok("position startpos".into())).unwrap();
+                commands.send(Ok("go ponder depth 2".into())).unwrap();
+                let final_pv = loop {
+                    let line = receive_line(lines);
+                    assert!(!line.starts_with("bestmove "));
+                    assert!(!line.starts_with("info string error:"));
+                    if line.starts_with("info depth 2 ") {
+                        break line;
+                    }
+                };
+                commands.send(Ok("isready".into())).unwrap();
+                // 重複goのエラーを入力処理の目印にする。readyokとbestmoveはまだ出ない。
+                commands.send(Ok("go depth 1".into())).unwrap();
+                let marker = receive_line(lines);
+                assert!(marker.starts_with("info string error:"), "{marker}");
+                commands.send(Ok(trigger.into())).unwrap();
+                assert_eq!(receive_line(lines), "info string stop depth\n");
+                let best = receive_line(lines);
+                let words: Vec<_> = best.split_whitespace().collect();
+                let pv: Vec<_> = final_pv
+                    .split(" pv ")
+                    .nth(1)
+                    .unwrap()
+                    .split_whitespace()
+                    .collect();
+                assert_eq!(words, ["bestmove", pv[0], "ponder", pv[1]]);
+                assert_eq!(receive_line(lines), "readyok\n");
+                // 外形でも予想手の合法性を確認する。
+                commands
+                    .send(Ok(format!("position startpos moves {}", words[1])))
+                    .unwrap();
+                commands.send(Ok("moves".into())).unwrap();
+                assert!(
+                    receive_line(lines)
+                        .split_whitespace()
+                        .any(|word| word == words[3])
+                );
+                commands.send(Ok("ponderhit".into())).unwrap();
+                assert!(receive_line(lines).starts_with("info string error:"));
+            });
+        }
+    }
+
+    // ponder.md「USI層の契約」、設計判断「停止理由」「先読み中のその他の入力」
+    // （D6-USI-42、D6-USI-43、D6-USI-44）。時計に依存せず有限ノードで終了させる。
+    #[test]
+    fn ponder_channel_hit_continues_search_and_miss_recovers() {
+        for trigger in ["ponderhit", "stop"] {
+            ponder_dialogue(|commands, lines| {
+                commands.send(Ok("position startpos".into())).unwrap();
+                commands
+                    .send(Ok("go ponder depth 256 nodes 50000".into()))
+                    .unwrap();
+                let line = receive_line(lines);
+                assert!(line.starts_with("info depth 1 "), "{line}");
+                commands.send(Ok(trigger.into())).unwrap();
+                let mut stop = String::new();
+                loop {
+                    let line = receive_line(lines);
+                    if line.starts_with("info string stop ") {
+                        stop = line.clone();
+                    }
+                    if line.starts_with("bestmove ") {
+                        break;
+                    }
+                }
+                assert_eq!(
+                    stop,
+                    if trigger == "ponderhit" {
+                        "info string stop nodes\n"
+                    } else {
+                        "info string stop external\n"
+                    }
+                );
+                commands
+                    .send(Ok("position startpos moves 6i6h".into()))
+                    .unwrap();
+                commands.send(Ok("go depth 1".into())).unwrap();
+                loop {
+                    let line = receive_line(lines);
+                    assert!(!line.starts_with("info string error:"));
+                    if line.starts_with("bestmove ") {
+                        break;
+                    }
+                }
+            });
+        }
+    }
+
+    // ponder.md設計判断「bestmoveの保留」「先読み中のその他の入力」
+    // （D6-USI-41、D6-USI-42、D6-USI-43、D6-USI-44、D6-USI-45）。
+    // 完了イベントを明示的に消費して保留状態に入り、スケジューリングに依存せず全遷移を通す。
+    #[test]
+    fn ponder_held_results_release_once_or_are_discarded() {
+        for command in ["ponderhit", "stop", "gameover win", "quit", "eof"] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = UsiProtocol::new(&engine);
+            let (sender, lines) = std::sync::mpsc::channel();
+            let mut output = LineWriter {
+                sender,
+                bytes: Vec::new(),
+            };
+            protocol
+                .handle_idle_line(&mut engine, "position startpos", &mut output)
+                .unwrap();
+            let mut active = protocol
+                .start_go(&engine, &["ponder", "depth", "2"], &mut output)
+                .unwrap();
+            while matches!(active, Some(ActiveSearch::Running { .. })) {
+                protocol
+                    .wait_search_event(&engine, &mut active, &mut output)
+                    .unwrap();
+            }
+            assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
+            assert!(lines.try_iter().all(|line| !line.starts_with("bestmove ")));
+            let mut pending = VecDeque::new();
+            if command == "eof" {
+                protocol.discard_search(&mut active).unwrap();
+            } else {
+                protocol
+                    .handle_searching_line(&engine, &mut active, &mut pending, command, &mut output)
+                    .unwrap();
+            }
+            assert!(active.is_none());
+            let result: String = lines.try_iter().collect();
+            if matches!(command, "ponderhit" | "stop") {
+                assert_eq!(bestmoves(&result).len(), 1);
+                assert!(result.contains("info string stop depth\n"));
+                assert!(bestmoves(&result)[0].contains(" ponder "));
+            } else {
+                assert!(bestmoves(&result).is_empty());
+            }
+        }
+    }
+
+    // ponder.md設計判断「先読み中のその他の入力」（D6-USI-44、D6-USI-45）。
+    #[test]
+    fn ponder_invalid_hits_and_discard_commands_preserve_lifecycle_contracts() {
+        let output = session(
+            &[RuleCode::R1],
+            "position startpos\ngo infinite\nponderhit\nstop\n",
+        );
+        assert_eq!(error_lines(&output).len(), 1);
+        assert_eq!(bestmoves(&output).len(), 1);
+        let output = session(
+            &[RuleCode::R1],
+            "position startpos\ngo ponder depth 256 nodes 10000\nponderhit\nponderhit\n",
+        );
+        assert_eq!(error_lines(&output).len(), 1);
+        assert_eq!(bestmoves(&output).len(), 1);
+        for tail in ["gameover win\nmoves\n", "quit\n", ""] {
+            let output = session(
+                &[RuleCode::R1],
+                &format!("position startpos\ngo ponder depth 256\n{tail}"),
+            );
+            assert!(bestmoves(&output).is_empty());
+            if tail.starts_with("gameover") {
+                assert_eq!(error_lines(&output), [MOVES_ERROR]);
+            }
+        }
+        let output = session(
+            &[RuleCode::R1],
+            "position startpos\ngo ponder depth 256\nposition startpos moves 6i6h\nstop\nstate\nquit\n",
+        );
+        assert_eq!(bestmoves(&output).len(), 1);
+        assert_eq!(
+            state_lines(&output),
+            state_lines(&session(
+                &[RuleCode::R1],
+                "position startpos moves 6i6h\nstate\n"
+            ))
+        );
+        assert!(output.find("bestmove ").unwrap() < output.find("state rules ").unwrap());
+    }
+
+    // ponder.md設計判断「逐次経路」（D6-USI-46、D6-USI-45）。
+    // 次の入力を読もうとする時点でbestmoveが既に出力済みであることを観測する。
+    #[test]
+    fn ponder_sequential_hit_finishes_before_reading_another_command() {
+        struct Input {
+            lines: std::collections::VecDeque<&'static str>,
+            output: Receiver<String>,
+        }
+        impl std::io::Read for Input {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                unreachable!()
+            }
+        }
+        impl BufRead for Input {
+            fn fill_buf(&mut self) -> io::Result<&[u8]> {
+                unreachable!()
+            }
+            fn consume(&mut self, _: usize) {
+                unreachable!()
+            }
+            fn read_line(&mut self, buffer: &mut String) -> io::Result<usize> {
+                let Some(line) = self.lines.pop_front() else {
+                    return Ok(0);
+                };
+                if line == "isready\n" {
+                    let output: String = self.output.try_iter().collect();
+                    assert_eq!(bestmoves(&output).len(), 1, "{output}");
+                }
+                buffer.push_str(line);
+                Ok(line.len())
+            }
+        }
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        let (sender, output) = std::sync::mpsc::channel();
+        let mut input = Input {
+            lines: [
+                "position startpos\n",
+                "go ponder depth 2\n",
+                "ponderhit\n",
+                "isready\n",
+            ]
+            .into(),
+            output,
+        };
+        protocol
+            .run(
+                &mut engine,
+                &mut input,
+                &mut LineWriter {
+                    sender,
+                    bytes: Vec::new(),
+                },
+            )
+            .unwrap();
+        let output: String = input.output.try_iter().collect();
+        assert_eq!(output, "readyok\n");
+        let mut output = Vec::new();
+        protocol
+            .run(
+                &mut engine,
+                &mut std::io::Cursor::new("go ponder depth 2\n"),
+                &mut output,
+            )
+            .unwrap();
+        assert!(bestmoves(&String::from_utf8(output).unwrap()).is_empty());
+    }
+
+    // ponder.md設計判断「予想手の出所」「予想手の検査」（D6-USI-39、D6-USI-40）。
+    #[test]
+    fn ponder_prediction_uses_adopted_pv_and_rejects_illegal_or_finishing_moves() {
+        for threads in [1, 2] {
+            let output = session(
+                &[RuleCode::R1],
+                &format!("setoption name Threads value {threads}\nposition startpos\ngo depth 2\n"),
+            );
+            let best: Vec<_> = bestmoves(&output)[0].split_whitespace().collect();
+            let pv: Vec<_> = output
+                .lines()
+                .filter_map(|line| line.split_once(" pv ").map(|(_, pv)| pv))
+                .next_back()
+                .unwrap()
+                .split_whitespace()
+                .collect();
+            assert_eq!(best, ["bestmove", pv[0], "ponder", pv[1]]);
+        }
+        let output = session(&[RuleCode::R1], "position startpos\ngo depth 1\n");
+        assert_eq!(bestmoves(&output)[0].split_whitespace().count(), 2);
+        use crate::PieceKind;
+        use crate::test_util::{position, sq};
+        let step = |from, to| Move {
+            from,
+            to,
+            mid: None,
+            promote: false,
+        };
+        let kings = position(
+            Color::Black,
+            &[
+                (sq(3, 3), Color::Black, PieceKind::King),
+                (sq(8, 8), Color::White, PieceKind::King),
+            ],
+        );
+        for rule in [RuleCode::R2, RuleCode::R3] {
+            let rules =
+                Rules::from_codes(&[RuleCode::L0, RuleCode::P0, rule, RuleCode::E2]).unwrap();
+            let mut game = Game::from_position(rules, kings.clone());
+            if rule == RuleCode::R3 {
+                for _ in 0..2 {
+                    for mv in [
+                        step(sq(3, 3), sq(3, 4)),
+                        step(sq(8, 8), sq(8, 7)),
+                        step(sq(3, 4), sq(3, 3)),
+                        step(sq(8, 7), sq(8, 8)),
+                    ] {
+                        game.play(mv).unwrap();
+                    }
+                }
+            }
+            game.play(step(sq(3, 3), sq(3, 4))).unwrap();
+            game.play(step(sq(8, 8), sq(8, 7))).unwrap();
+            let x = step(sq(3, 4), sq(3, 3));
+            let y = step(sq(8, 7), sq(8, 8));
+            assert_eq!(validated_ponder_move(&game, x, &[x, y]), None);
+        }
+        let board = position(
+            Color::Black,
+            &[
+                (sq(0, 0), Color::Black, PieceKind::King),
+                (sq(8, 8), Color::White, PieceKind::King),
+                (sq(1, 8), Color::White, PieceKind::Rook),
+            ],
+        );
+        let game = Game::from_position(
+            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap(),
+            board,
+        );
+        let x = step(sq(0, 0), sq(1, 0));
+        let y = step(sq(1, 8), sq(1, 0));
+        assert_eq!(validated_ponder_move(&game, x, &[x, y]), None);
+        assert_eq!(validated_ponder_move(&game, y, &[y, x]), None); // Xが不合法。
+        assert_eq!(validated_ponder_move(&game, x, &[x, x]), None); // Yが不合法。
+    }
+
+    // ponder.md設計判断「外れからの復帰」（D6-ENG-08、D6-USI-11、D6-ENG-05）。
+    #[test]
+    fn ponder_last_move_replacement_matches_replay_and_is_atomic() {
+        let mut engine = make_engine(&[RuleCode::R2, RuleCode::E2]);
+        let mut protocol = UsiProtocol::new(&engine);
+        for moves in [
+            "6i6h",
+            "5i5h",
+            "6i6h",
+            "6i6h 6d6e",
+            "6i6h 5d5e",
+            "6i6h 6d6e",
+            "6i6h 6d6e 5i5h",
+            "5i5h 5d5e 6i6h",
+        ] {
+            let input = format!("position startpos moves {moves}\nstate\nmoves\n");
+            let actual = run(&mut protocol, &mut engine, &input);
+            assert_eq!(actual, session(&[RuleCode::R2, RuleCode::E2], &input));
+            assert!(error_lines(&actual).is_empty());
+        }
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "state\nposition startpos moves 5i5h 5d5e 1a1b\nstate\ngo depth 1\n",
+        );
+        assert_eq!(state_lines(&output)[0], state_lines(&output)[1]);
+        assert_eq!(error_lines(&output).len(), 2);
+        assert!(bestmoves(&output).is_empty());
+        // 反復禁止の履歴も、末尾の交換とその後の延長を通じて全再生と一致する。
+        let base = "12/12/12/8k3/12/12/12/12/3K8/12/12/12 b - 41";
+        let mut engine = make_engine(&[RuleCode::R2, RuleCode::E2]);
+        let mut protocol = UsiProtocol::new(&engine);
+        for moves in ["9i9h 4d4e", "9i9h 4d5d", "9i9h 4d4e", "9i9h 4d4e 9h9i"] {
+            let input = format!("position sfen {base} moves {moves}\nstate\nmoves\n");
+            let actual = run(&mut protocol, &mut engine, &input);
+            assert_eq!(actual, session(&[RuleCode::R2, RuleCode::E2], &input));
+            assert!(error_lines(&actual).is_empty(), "{actual}");
+            if moves.ends_with("9h9i") {
+                assert!(!moves_sets(&actual)[0].contains("4e4d"));
+            }
+        }
+    }
+    /// 固定シードで非捕獲手を選び、終局を避けて4,000手の履歴を作る。
+    /// 捕獲を避けるのは、終盤の合法手枯渇で標本が短くなるのを防ぐため。
+    fn ponder_long_position() -> (Engine, UsiProtocol) {
+        let rules = Rules::ENGINE_DEFAULT;
+        let mut game = Game::new(rules);
+        let mut rng = crate::rng::XorShift64::new(std::num::NonZeroU64::new(20260920).unwrap());
+        let mut tokens = Vec::new();
+        for _ in 0..4000 {
+            let candidates: Vec<_> = game
+                .legal_moves()
+                .into_iter()
+                .filter(|&mv| {
+                    game.position()
+                        .captured_squares(mv)
+                        .iter()
+                        .all(Option::is_none)
+                })
+                .collect();
+            assert!(
+                !candidates.is_empty(),
+                "long-game fixture exhausted its quiet moves"
+            );
+            let start = rng.index(NonZeroUsize::new(candidates.len()).unwrap());
+            let (mv, next) = (0..candidates.len())
+                .find_map(|offset| {
+                    let mv = candidates[(start + offset) % candidates.len()];
+                    let mut next = game.clone();
+                    (next.play(mv).unwrap() == GameStatus::Ongoing).then_some((mv, next))
+                })
+                .expect("long-game fixture must continue");
+            tokens.push(usi::text_generated(game.position(), mv));
+            game = next;
+        }
+        let mut engine = Engine::new(parse_rule_set("engine-default").unwrap()).unwrap();
+        let mut protocol = UsiProtocol::new(&engine);
+        let mut output = Vec::new();
+        protocol
+            .handle_idle_line(
+                &mut engine,
+                &format!("position startpos moves {}", tokens.join(" ")),
+                &mut output,
+            )
+            .unwrap();
+        assert!(output.is_empty());
+        assert_eq!(engine.ply(), 4000);
+        assert_eq!(engine.game().position(), game.position());
+        (engine, protocol)
+    }
+
+    // ponder.md「検証」の固定費（D6-USI-39、D6-USI-40、D6-ENG-08）。
+    #[test]
+    #[ignore = "releaseで4,000手の履歴に対する固定費を測る"]
+    fn ponder_long_game_output_and_replacement_stay_within_three_ms() {
+        let (mut engine, mut protocol) = ponder_long_position();
+        let x = engine
+            .game()
+            .legal_moves()
+            .into_iter()
+            .find(|&mv| {
+                let mut next = engine.game().clone();
+                next.play(mv).unwrap() == GameStatus::Ongoing
+            })
+            .unwrap();
+        let mut after_x = engine.game().clone();
+        after_x.play(x).unwrap();
+        let y = after_x
+            .legal_moves()
+            .into_iter()
+            .find(|&mv| {
+                let mut next = after_x.clone();
+                next.play(mv).unwrap() == GameStatus::Ongoing
+            })
+            .unwrap();
+        let mut output = Vec::new();
+        let started = std::time::Instant::now();
+        let prediction = validated_ponder_move(engine.game(), x, &[x, y]);
+        write_bestmove(
+            &mut output,
+            engine.game().position(),
+            x,
+            prediction.as_deref(),
+            StopReason::DepthCompleted,
+        )
+        .unwrap();
+        let output_time = started.elapsed();
+        assert!(prediction.is_some());
+        assert!(String::from_utf8(output).unwrap().contains(" ponder "));
+
+        let previous = engine.before_last_move().unwrap();
+        let replacement = previous
+            .legal_moves()
+            .into_iter()
+            .find(|&mv| {
+                let text = usi::text_generated(previous.position(), mv);
+                if Some(&text)
+                    == protocol
+                        .accepted_position
+                        .as_ref()
+                        .unwrap()
+                        .move_tokens
+                        .last()
+                {
+                    return false;
+                }
+                let mut next = previous.clone();
+                next.play(mv).unwrap() == GameStatus::Ongoing
+            })
+            .unwrap();
+        let text = usi::text_generated(previous.position(), replacement);
+        let mut tokens = protocol
+            .accepted_position
+            .as_ref()
+            .unwrap()
+            .move_tokens
+            .clone();
+        *tokens.last_mut().unwrap() = text;
+        let input = format!("position startpos moves {}", tokens.join(" "));
+        let mut expected = previous.clone();
+        expected.play(replacement).unwrap();
+        let mut output = Vec::new();
+        let started = std::time::Instant::now();
+        protocol
+            .handle_idle_line(&mut engine, &input, &mut output)
+            .unwrap();
+        let replacement_time = started.elapsed();
+        assert!(output.is_empty());
+        assert_eq!(engine.game().position(), expected.position());
+        assert_eq!(engine.ply(), 4000);
+        eprintln!(
+            "4000 plies: bestmove including prediction {:.3} ms; last-move position {:.3} ms",
+            output_time.as_secs_f64() * 1000.0,
+            replacement_time.as_secs_f64() * 1000.0
+        );
+        assert!(output_time <= Duration::from_millis(3), "{output_time:?}");
+        assert!(
+            replacement_time <= Duration::from_millis(3),
+            "{replacement_time:?}"
+        );
     }
 }

@@ -537,6 +537,10 @@ impl SearchEvent {
 pub struct SearchHandle {
     /// 探索イベントの受信端。
     events: mpsc::Receiver<SearchEvent>,
+    /// スレッド生成前に取得した起点。
+    started: Instant,
+    /// 的中までのナノ秒数。先読み中はu64::MAX。
+    hit_ns: Arc<AtomicU64>,
     /// 探索チームと共有する外部停止フラグ。
     stop: Arc<AtomicBool>,
     /// 全ワーカーの終了後に置換表を返す調整役のハンドル。
@@ -547,6 +551,21 @@ impl SearchHandle {
     /// 探索イベントの受信端を返す。
     pub fn events(&self) -> &mpsc::Receiver<SearchEvent> {
         &self.events
+    }
+
+    /// 先読みを的中の時点から計時する。重複した通知は無視する。
+    pub fn ponderhit(&self) {
+        let elapsed = self
+            .started
+            .elapsed()
+            .as_nanos()
+            .min(u128::from(u64::MAX - 1)) as u64;
+        let _ = self.hit_ns.compare_exchange(
+            u64::MAX,
+            elapsed,
+            AtomicOrdering::Relaxed,
+            AtomicOrdering::Relaxed,
+        );
     }
 
     /// 探索チーム全体へ停止を要求する。
@@ -591,7 +610,7 @@ pub struct SearchResult {
 }
 
 /// 所有権を移した評価重み、入力および置換表を使い、別スレッドで探索チームを
-/// 開始する。
+/// 開始する。`ponder`が真なら時間制限は的中の通知まで無効とする。
 ///
 /// 探索ワーカーがパニックした場合は残るワーカーへ停止を通知する。その後、
 /// [`SearchHandle::join`]がパニックのペイロードを返し、
@@ -603,7 +622,11 @@ pub fn start_search(
     search_id: u64,
     threads: NonZeroUsize,
     tt: TranspositionTable,
+    ponder: bool,
 ) -> SearchHandle {
+    let started = Instant::now();
+    let hit_ns = Arc::new(AtomicU64::new(if ponder { u64::MAX } else { 0 }));
+    let thread_hit_ns = Arc::clone(&hit_ns);
     let (sender, events) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
@@ -619,6 +642,9 @@ pub fn start_search(
             threads,
             &tt,
             Some((&sender, search_id)),
+            started,
+            &thread_hit_ns,
+            ponder,
         );
         let result = outcome.result;
         let _ = sender.send(SearchEvent::Finished {
@@ -634,6 +660,8 @@ pub fn start_search(
         tt
     });
     SearchHandle {
+        started,
+        hit_ns,
         events,
         stop,
         thread: Some(thread),
@@ -672,6 +700,9 @@ pub fn search(
         threads,
         tt,
         None,
+        Instant::now(),
+        &AtomicU64::new(0),
+        false,
     )
     .result)
 }
@@ -716,7 +747,14 @@ struct SharedSearch<'a> {
     /// 補助ワーカー生成前に記録した探索開始時刻。
     started: Instant,
     /// 探索途中でも打ち切る時間制限。
-    hard_limit: Option<Duration>,
+    hard_limit: Option<HardLimit<'a>>,
+}
+
+/// 時間の上限と、同じ起点から測った的中時刻。
+#[derive(Clone, Copy)]
+struct HardLimit<'a> {
+    duration: Duration,
+    hit_ns: &'a AtomicU64,
 }
 
 impl SharedSearch<'_> {
@@ -805,8 +843,10 @@ fn run_search_team(
     threads: NonZeroUsize,
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
+    started: Instant,
+    hit_ns: &AtomicU64,
+    ponder: bool,
 ) -> SearchOutcome {
-    let started = Instant::now();
     let time_budget = time_budget(limits);
     let finite_limits = limits.finite();
     let depth_limit = finite_limits
@@ -823,7 +863,10 @@ fn run_search_team(
         total_nodes: AtomicU64::new(0),
         node_limit,
         started,
-        hard_limit: time_budget.map(|budget| budget.hard),
+        hard_limit: time_budget.map(|budget| HardLimit {
+            duration: budget.hard,
+            hit_ns,
+        }),
     };
 
     let history_keys: Vec<u64> = history_keys.to_vec();
@@ -840,6 +883,7 @@ fn run_search_team(
                 &shared,
                 tt,
                 events,
+                ponder,
             )
         } else {
             run_auxiliary_worker(
@@ -969,6 +1013,7 @@ fn new_searcher<'a>(
         nodes: 0,
         shared,
         stop_reason: None,
+        ponder_iteration: None,
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
@@ -999,6 +1044,7 @@ fn run_main_worker(
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
+    ponder: bool,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
@@ -1012,6 +1058,34 @@ fn run_main_worker(
 
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some(result.score);
+        if ponder && let Some(budget) = time_budget {
+            let iteration_started = shared.started.elapsed();
+            let stable = stable_signal(&completed_bests);
+            // 前の境界の検査後やワーカー生成前に的中した場合も、開始条件を通す。
+            // tを先に記録するので、このhの読み取りより後の的中は必ずtより後になる。
+            let hit_ns = shared
+                .hard_limit
+                .expect("a timed search has a hard limit")
+                .hit_ns
+                .load(AtomicOrdering::Relaxed);
+            if hit_ns != u64::MAX
+                && !should_start_next_iteration(
+                    shared.started.elapsed(),
+                    Duration::from_nanos(hit_ns),
+                    budget,
+                    stable,
+                )
+            {
+                shared.stop(StopReason::SoftLimit);
+                break;
+            }
+            searcher.ponder_iteration = Some(PonderIteration {
+                started: iteration_started,
+                stable,
+                checked: false,
+                budget,
+            });
+        }
         let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
         else {
             debug_assert!(searcher.stop_reason.is_some());
@@ -1041,7 +1115,20 @@ fn run_main_worker(
             shared.stop(StopReason::NodeLimit);
             break;
         }
-        if time_budget.is_some_and(|budget| !should_start_next_iteration(elapsed, budget, stable)) {
+        if time_budget.is_some_and(|budget| {
+            let hit_ns = shared
+                .hard_limit
+                .expect("a timed search has a hard limit")
+                .hit_ns
+                .load(AtomicOrdering::Relaxed);
+            hit_ns != u64::MAX
+                && !should_start_next_iteration(
+                    shared.started.elapsed(),
+                    Duration::from_nanos(hit_ns),
+                    budget,
+                    stable,
+                )
+        }) {
             shared.stop(StopReason::SoftLimit);
             break;
         }
@@ -1103,6 +1190,14 @@ fn run_auxiliary_worker(
     }
 }
 
+/// 主ワーカーが先読みから継続した反復の判定材料。
+struct PonderIteration {
+    started: Duration,
+    stable: bool,
+    checked: bool,
+    budget: TimeBudget,
+}
+
 /// 1回の探索実行の可変状態。
 struct Searcher<'a> {
     /// 探索中に使う検証済み学習PST。
@@ -1123,6 +1218,8 @@ struct Searcher<'a> {
     shared: &'a SharedSearch<'a>,
     /// 中断時に記録する停止条件。
     stop_reason: Option<StopReason>,
+    /// 先読みで始めた主ワーカーだけが記録する反復。
+    ponder_iteration: Option<PonderIteration>,
     /// plyごとの主変化。行plyは、その深さ以降の最善応手列を保持する。
     pv: Vec<Vec<Move>>,
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
@@ -1616,14 +1713,7 @@ impl Searcher<'_> {
             self.stop_reason = Some(self.shared.reason());
             return false;
         }
-        if self.nodes.is_multiple_of(STOP_CHECK_INTERVAL)
-            && self
-                .shared
-                .hard_limit
-                .is_some_and(|limit| self.shared.started.elapsed() >= limit)
-        {
-            self.shared.stop(StopReason::HardLimit);
-            self.stop_reason = Some(StopReason::HardLimit);
+        if self.nodes.is_multiple_of(STOP_CHECK_INTERVAL) && !self.check_time() {
             return false;
         }
         if let Some(limit) = self.shared.node_limit {
@@ -1637,6 +1727,43 @@ impl Searcher<'_> {
                 .fetch_add(1, AtomicOrdering::Relaxed);
         }
         self.nodes += 1;
+        true
+    }
+
+    /// hを先に読み、hardを当て直しより先に検査する。
+    fn check_time(&mut self) -> bool {
+        let Some(limit) = self.shared.hard_limit else {
+            return true;
+        };
+        let hit_ns = limit.hit_ns.load(AtomicOrdering::Relaxed);
+        if hit_ns == u64::MAX {
+            return true;
+        }
+        let hit = Duration::from_nanos(hit_ns);
+        let elapsed = self.shared.started.elapsed();
+        let reason = if elapsed.saturating_sub(hit) >= limit.duration {
+            Some(StopReason::HardLimit)
+        } else if let Some(iteration) = &mut self.ponder_iteration {
+            if iteration.checked {
+                return true;
+            }
+            iteration.checked = true;
+            (iteration.started < hit
+                && !iteration_prediction_fits(
+                    iteration.started,
+                    hit,
+                    iteration.budget,
+                    iteration.stable,
+                ))
+            .then_some(StopReason::SoftLimit)
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            self.shared.stop(reason);
+            self.stop_reason = Some(reason);
+            return false;
+        }
         true
     }
 
@@ -1751,14 +1878,27 @@ fn stable_signal(bests: &[Move]) -> bool {
 /// `stable`が真なら経過時間に固定比を掛けた予測完了時刻がsoft以下であることを、
 /// 偽なら経過時間がsoft未満であることを要求し、hardの予測による上限は常に守る。
 /// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
-fn should_start_next_iteration(elapsed: Duration, budget: TimeBudget, stable: bool) -> bool {
-    let predicted = elapsed.as_nanos() * ITERATION_RATIO_NUMERATOR;
-    predicted <= budget.hard.as_nanos() * ITERATION_RATIO_DENOMINATOR
-        && if stable {
-            predicted <= budget.soft.as_nanos() * ITERATION_RATIO_DENOMINATOR
-        } else {
-            elapsed < budget.soft
-        }
+fn should_start_next_iteration(
+    elapsed: Duration,
+    hit: Duration,
+    budget: TimeBudget,
+    stable: bool,
+) -> bool {
+    iteration_prediction_fits(elapsed, hit, budget, stable)
+        && (stable || elapsed.saturating_sub(hit) < budget.soft)
+}
+
+/// 的中から予測した完了時刻が、開始時の安定性に応じた予算に収まるか。
+fn iteration_prediction_fits(
+    started: Duration,
+    hit: Duration,
+    budget: TimeBudget,
+    stable: bool,
+) -> bool {
+    let predicted = started.as_nanos() * ITERATION_RATIO_NUMERATOR;
+    predicted <= (hit.as_nanos() + budget.hard.as_nanos()) * ITERATION_RATIO_DENOMINATOR
+        && (!stable
+            || predicted <= (hit.as_nanos() + budget.soft.as_nanos()) * ITERATION_RATIO_DENOMINATOR)
 }
 
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
