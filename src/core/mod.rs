@@ -9,6 +9,7 @@ pub mod movegen;
 pub mod mv;
 pub mod piece;
 pub mod position;
+pub mod predecessor;
 pub(crate) mod repetition;
 pub mod rules;
 pub mod square;

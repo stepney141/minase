@@ -15,11 +15,18 @@ use crate::eval::Pst;
 /// 交換列で保持できる利得の数。中将棋の盤上の駒は最大92枚である。
 const MAX_GAINS: usize = 93;
 
-/// 捕獲の交換評価が負で、規則依存による判定不能でもない場合に枝刈りする。
+/// 捕獲の交換評価が`-margin`未満で、規則依存による判定不能でもない場合に枝刈りする。
 ///
-/// 最初の取り返しで損をしないと確定したら、残る逆引きと逆算を省く。
+/// 最初の取り返しで損が余裕値以下と確定したら、残る逆引きと逆算を省く。
 /// 正確な評価値との契約は`docs/plans/movegen-speedup.md`「SEEの不要な反復を省く」。
-pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
+/// 余裕値は`docs/plans/strength-stage8.md`「SEEの余裕値」に従う。
+pub(super) fn see_prunes(
+    position: &Position,
+    rules: MoveRules,
+    pst: &Pst,
+    mv: Move,
+    margin: i32,
+) -> bool {
     if mv.mid.is_some() {
         return false;
     }
@@ -42,11 +49,11 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: M
     let mut gains = [0_i32; MAX_GAINS];
     gains[0] = pst.piece_value(captured_piece) + pst.piece_value(piece_after_move)
         - pst.piece_value(moving_piece);
-    // 同「段階6」: 成り益の上限で最初の取り返しも損をしないと分かる。
-    if gains[0] >= 0
+    // 同「段階6」: 成り益の上限でも損が余裕値以下なら取り返しを省く。
+    if gains[0] >= -margin
         && pst.piece_value(moving_piece) - pst.piece_value(captured_piece)
             + pst.max_promotion_gain()
-            <= 0
+            <= margin
     {
         return false;
     }
@@ -109,9 +116,10 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: M
             }
         }
         // movegen-speedup.md「SEEの不要な反復を省く」:
-        // 逆算結果は min(g0, max(-g1, X))。成り益を含むg1で判定する。
+        // 逆算結果は min(g0, max(-g1, X))。g0 >= -marginかつg1 <= marginなら
+        // -margin以上である。成り益を含むg1で判定する。
         // 後続が獅子規則に依存しても枝刈りしないので、この終了は安全である。
-        if depth == 1 && gains[0] >= 0 && gains[1] <= 0 {
+        if depth == 1 && gains[0] >= -margin && gains[1] <= margin {
             return false;
         }
         lion_on_square = next_kind == PieceKind::Lion
@@ -125,7 +133,7 @@ pub(super) fn see_prunes(position: &Position, rules: MoveRules, pst: &Pst, mv: M
         gains[depth - 1] = -(-gains[depth - 1]).max(gains[depth]);
         depth -= 1;
     }
-    gains[0] < 0
+    gains[0] < -margin
 }
 
 /// 捕獲手について、到達升での駒の取り合いを手番側視点で見積もる。
@@ -298,7 +306,7 @@ mod tests {
         pub(super) static LOOKUPS: Cell<usize> = const { Cell::new(0) };
     }
 
-    /// 参照値と枝刈り契約を検査し、両経路の逆引き回数を返す。
+    /// 余裕値0・200で契約を検査し、余裕値0の判定と参照実装の逆引き回数を返す。
     fn assert_prune_contract(
         board: &Position,
         rules: MoveRules,
@@ -310,13 +318,19 @@ mod tests {
         let reference = see_reference(board, rules, pst, mv);
         let reference_lookups = LOOKUPS.get();
         assert_eq!(reference, expected, "move={mv:?}");
-        LOOKUPS.set(0);
-        assert_eq!(
-            see_prunes(board, rules, pst, mv),
-            reference.is_some_and(|v| v < 0),
-            "move={mv:?}"
-        );
-        (LOOKUPS.get(), reference_lookups)
+        let mut zero_margin_lookups = 0;
+        for margin in [0, 200] {
+            LOOKUPS.set(0);
+            assert_eq!(
+                see_prunes(board, rules, pst, mv, margin),
+                reference.is_some_and(|v| v < -margin),
+                "move={mv:?}, margin={margin}"
+            );
+            if margin == 0 {
+                zero_margin_lookups = LOOKUPS.get();
+            }
+        }
+        (zero_margin_lookups, reference_lookups)
     }
 
     // movegen-speedup.md「SEEの不要な反復を省く」: 全捕獲の枝刈り判断を
@@ -335,15 +349,41 @@ mod tests {
                 let mut captures = Vec::new();
                 generator.generate_captures(&board, &mut captures);
                 for mv in captures {
-                    assert_eq!(
-                        see_prunes(&board, rules, &pst, mv),
-                        see_reference(&board, rules, &pst, mv).is_some_and(|v| v < 0),
-                        "rules={rules:?}, position={index}, move={mv:?}"
-                    );
+                    for margin in [0, 200] {
+                        assert_eq!(
+                            see_prunes(&board, rules, &pst, mv, margin),
+                            see_reference(&board, rules, &pst, mv).is_some_and(|v| v < -margin),
+                            "rules={rules:?}, position={index}, move={mv:?}, margin={margin}"
+                        );
+                    }
                     checked += 1;
                 }
             }
             assert!(checked > 0);
+        }
+    }
+
+    // strength-stage8.md「SEEの余裕値」。飛車750で角行625を取り、歩兵に
+    // 取り返される損125は、余裕値0では枝刈りし、200では展開する。
+    #[test]
+    fn see_prunes_respects_margin_and_strict_boundary() {
+        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+        let board = position(
+            Color::Black,
+            &[
+                (sq(5, 4), unpromoted(Color::Black, PieceKind::Rook)),
+                (sq(5, 5), unpromoted(Color::White, PieceKind::Bishop)),
+                (sq(5, 6), unpromoted(Color::White, PieceKind::Pawn)),
+            ],
+        );
+        let mv = capture(sq(5, 4), sq(5, 5));
+        let rules = MoveRules::standard();
+        assert_prune_contract(&board, rules, &pst, mv, Some(-125));
+        for (margin, prunes) in [(0, true), (124, true), (125, false), (200, false)] {
+            LOOKUPS.set(0);
+            assert_eq!(see_prunes(&board, rules, &pst, mv, margin), prunes);
+            // 境界以上の余裕値では最初の取り返しだけで終了できる。
+            assert_eq!(LOOKUPS.get(), if prunes { 2 } else { 1 });
         }
     }
 
@@ -353,7 +393,7 @@ mod tests {
         use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
         use sha2::{Digest, Sha256};
 
-        for captured_value in [999_i32, 1000, 1001] {
+        for captured_value in [799_i32, 800, 801, 999, 1000, 1001] {
             // MNPTの駒価値表を直接指定する。最大の成り益は歩100→金1000の900。
             let mut bytes = include_bytes!("../../nets/pst-init.bin").to_vec();
             let base = bytes.len() - PIECE_STATE_COUNT * 4;
@@ -392,6 +432,15 @@ mod tests {
                 Some(captured_value - 100),
             );
             assert_eq!(counts, (usize::from(captured_value < 1000), 2));
+            LOOKUPS.set(0);
+            assert!(!see_prunes(
+                &board,
+                MoveRules::standard(),
+                &pst,
+                capture(sq(5, 4), sq(5, 5)),
+                200,
+            ));
+            assert_eq!(LOOKUPS.get(), usize::from(captured_value < 800));
         }
     }
 

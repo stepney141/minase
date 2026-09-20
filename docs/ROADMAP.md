@@ -17,7 +17,7 @@
 | プロトコル層 | [plans/protocol-layer.md](plans/protocol-layer.md) | 完了 | 2026年8月10日 |
 | ブラウザGUI向けUSI照会 | [plans/browser-gui.md](plans/browser-gui.md) | 完了 | 2026年8月11日 |
 | 対局ハーネスのバイナリ対戦化 | [plans/match-harness.md](plans/match-harness.md) | 完了 | 2026年8月11日 |
-| 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 待機中 | ― |
+| 直前局面生成器 | [plans/predecessor-generator.md](plans/predecessor-generator.md) | 完了 | 2026年9月18日 |
 | 探索部 | [plans/search.md](plans/search.md) | 完了 | 2026年8月22日 |
 | 外部対局接続 | [plans/engine-connectivity.md](plans/engine-connectivity.md) | 完了 | 2026年8月14日 |
 | Lazy SMP | [plans/lazy-smp.md](plans/lazy-smp.md) | 完了 | 2026年8月23日 |
@@ -45,40 +45,9 @@
 | 合法手生成と利き計算の高速化 | [plans/movegen-speedup.md](plans/movegen-speedup.md) | 完了 | 2026年9月15日 |
 | 合法手生成と利き計算の高速化（第2期） | [plans/movegen-speedup-2.md](plans/movegen-speedup-2.md) | 完了 | 2026年9月17日 |
 | 合法手生成と利き計算の高速化（第3期） | [plans/movegen-speedup-3.md](plans/movegen-speedup-3.md) | 起案 | |
-| 棋力向上段階8（前向き枝刈りの第3層） | [plans/strength-stage8.md](plans/strength-stage8.md) | 起案 | |
+| 棋力向上段階8（前向き枝刈りの第3層） | [plans/strength-stage8.md](plans/strength-stage8.md) | 完了 | 2026年9月21日 |
 | 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了 | 2026年9月18日 |
 | USI先読み（ponder） | [plans/ponder.md](plans/ponder.md) | 起案 | |
-
-## 現在地
-
-直近に完了したマイルストーンは、2026年9月14日に完了した[棋力向上段階7](plans/strength-stage7.md)である。
-鏡映による重み共有と世代2の再学習重みを、個別の短時間・長時間測定で採用した。
-再学習には更新後の射影と[片側絶対値型の追加損失](measurements/strength-stage7-removal-absolute.md)を用い、6代表局面の352件の駒除去診断で新しい符号反転が0件となった。
-試行で選んだ手数上限4,000手を生成器へ反映し、[世代2の14,057,872局面](measurements/strength-stage7-gen2-generation.md)を次世代でも使える形で保存した。
-[最終重みから再導出した駒価値](measurements/strength-stage7-gen2-values-diag.md)は固定値との差が最大8%で更新基準の20%を超えず、固定駒価値と探索の余裕値を維持する。
-
-最終構成の[段階開始版との固定200ペア](measurements/strength-stage7-gen2-elo200.md)は+113.19 Elo、95%信頼区間[+77.64, +151.19]となり、全400局の異常は0件だった。
-[HaChuとの固定200ペア](measurements/strength-stage7-hachu-elo200.md)は+391.57 Elo、95%信頼区間[+339.80, +460.03]となった。
-HaChu側のクラッシュ1件は履歴配列によるカウンタ上書きの証拠を得たが、不正着手1件は生の応答が保存されておらず原因未特定であり、どちらも規約どおり反則負けとして集計した。
-旧構成で中断した段階開始版との37ペアは保持し、最終構成の集計へは含めない。
-
-直近に完了したマイルストーンは[合法手生成と利き計算の高速化（第2期）](plans/movegen-speedup-2.md)であり、走り計算の減算方式、SEE逆引きの近傍走査、利き線の事前選別、静止探索の候補処理の簡素化、非捕獲生成とノードの固定費の削減でbenchのNPSを第1期の採用版比1.385倍にし、探索木を変える3段階（静的評価の先行打ち切り、静止探索の獅子候補の絞り込み、候補が空のノードでの置換表アクセスの省略）をSPRTで採用した。最終の採用版は第1期の採用版に対して固定200ペアで+117 Eloである。
-第1期は利き逆引きの片側化、静止探索の段階的な捕獲生成、およびSEEの早期終了でNPSをmaster比1.500倍にした。PGOはNPS約1.19倍の効果を確認したが、運用の複雑さを理由に利用者の判断で採用しなかった。
-[第3期](plans/movegen-speedup-3.md)は2026年9月17日に起案し、第2期の最終の採用版を基準にSEE逆引きの走り方向の事前選別、特殊駒候補の生成前の対象絞り、初期化の自駒走査の逆到達表による絞りで1.15倍を目標とし、静止探索の置換表の全廃を探索木を変える段階としてSPRTで判定する。着手前の判断は、第2期のブランチをmasterへ取り込んでから第3期のブランチを切ることの1点である。起案時の診断は measurements/movegen-speedup-3-diagnostics-depth5.md にある。
-進行中のマイルストーンは、上位計画の[棋力向上の段階計画](plans/strength-stages.md)である。
-11段階のうち段階7までが完了し、次の段階は採用構成と世代2のデータを起点に進められる。
-
-待機中のマイルストーンは2件である。
-直前局面生成器（plans/predecessor-generator.md）は設計済みで、2026年9月18日に現行コードと「エンジン内部からは呼ばれない外部プログラム向けライブラリ機能」という前提に合わせて設計書を全面改訂した。`Position`の内部表現とエンジンの探索経路は変えず、公開アクセサと`Hash`の追加だけを準備とする。順方向の探索部と評価関数はその完了を前提とせず、いつ着手しても手戻りがない。
-早期投了の導入判定（plans/match-early-resignation.md）は、仮想投了が3,000回以上発火する検証群を確保できる記録量に達し、統計契約が確定するまで待機する。
-
-次期候補は、起案済みの棋力向上段階8（前向き枝刈りの第3層、plans/strength-stage8.md）と、その後の段階9（利きマップと評価特徴の拡張）である。
-[USI先読み（ponder）](plans/ponder.md)は2026年9月19日に起案し、段階計画の段階11から独立のマイルストーンへ切り出した。探索を止めずに的中の時点から時間予算を測り始める方式と、予想手を返したエンジンにだけ`go ponder`を送る対局ハーネスの対局進行を定め、採否は標準の2段階のGSPRTで判定する。[起案時の診断](measurements/ponder-hit-rate-diag.md)では、読み筋の2手目が相手の実着手と一致する割合が自己対局のSTCで47.4%、LTCで55.9%であり、発動の基準の5%を大きく超えた。上流のLishogi-Botは中将棋の先読みが機能しなかったが、`minase-lishogi-bot`はこれを直したフォークを既に固定している。フォークには秒読みの消化中に`go ponder`の残り時間が過大になる不具合が残るので、lishogiでの有効化は、この修正、配備環境での通信の確認、および設定の切り替えを行う最後のフェーズとして範囲に含め、LTCで採用と判定された後にだけ着手する。
-隣接シードで対局が重複する`rng::derive_seed`の修正は利用者の判断を待つ。
-`Threads=4`対2の測定は必要になった時点で plans/lazy-smp.md の手順で実施し、進行中の測定には着手時点のハーネスと測定条件を使って段階ゲートを遡及適用しない。
-lishogi Bot接続（plans/lishogi-bot.md）は2026年9月12日に着手し、規則R1へlishogiの反復裁定の前提条件を取り込み、Lishogi-Botとminaseを1つのDockerイメージにまとめる配備手段を整えた。
-次の一手は、利用者がBotアカウントを作成してイメージを運用機で起動し、非レート対局の公開運用へ進むことである。
-[持ち時間の効率的な使用](plans/time-management-efficiency.md)は2026年9月18日に完了した。StockfishとYaneuraOuに倣った時間管理の再構成（根の探索結果の表、途中結果の採用と予算の再定義、局面適応の係数）は、時計の診断を満たしたがSTCで`H0`となり、加算つきの時間制御で候補側に2件の時間切れが出て不採用となった。構成要素を分けて測る分解測定でも残せる構成はなく、予算を分担そのものにして探索中の中断で止める方式が旧式より総思考時間を約14%使い残すために劣ると分かった。この結論と、人間向けの変更で棋力を落とさないという利用者の制約を受け、現行の機構を変えずに秒読みの項にだけ序盤の係数を掛ける方式を時計の診断で採用した（issueの条件の初手が11.9秒から4.0秒、時間切れ0件、秒読みのない時間制御では式が現行と同一）。採用したのはこの係数と、探索を変えない置換表の2修正である。秒読みつきの条件でmasterを候補にした非劣性のGSPRTは`H0`で、10 Elo規模の低下は検出されなかった。成果は2026年9月18日にmasterへ統合した。
 
 ## 横断的な記録済みの決定
 
