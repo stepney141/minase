@@ -1,4 +1,6 @@
-//! 駒種別の枚数を鍵にした、探索ワーカー内の静的評価の補正。
+//! 駒種別の枚数を鍵にした、探索ワーカー内の静的評価の補正（correction history）。
+//!
+//! 設計は`docs/plans/strength-stage8.md`「静的評価の補正（correction history）」に従う。
 
 use crate::core::mv::Undo;
 use crate::core::piece::{COLOR_COUNT, Color, PieceCode};

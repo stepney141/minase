@@ -4,7 +4,7 @@
 
 [棋力向上段階8](../plans/strength-stage8.md)が扱う4項目について、StockfishとYaneuraOuのソースを調べた結論は次のとおりである。
 
-- 静的評価の補正は、両エンジンとも「王手を受けているノード」と「最善手が捕獲手であるノード」では更新しない。捕獲手による駒得は評価の偏りではなく戦術上の利得であり、これを取り込むと補正が駒得の期待値を学習してしまうためである。段階8の起案時の設計にはこの除外がなく、フェーズ1の診断で観測した差の平均絶対値が歩兵12枚分と大きいことと符合する。
+- 静的評価の補正（correction history）は、両エンジンとも「王手を受けているノード」と「最善手が捕獲手であるノード」では更新しない。捕獲手による駒得は評価の偏りではなく戦術上の利得であり、これを取り込むと補正が駒得の期待値を学習してしまうためである。段階8の起案時の設計にはこの除外がなく、フェーズ1の診断で観測した差の平均絶対値が歩兵12枚分と大きいことと符合する。
 - 更新の向きの条件は段階8の設計と同じである。最善手がある（下限または正確な値）ノードは探索値が静的評価より高いときだけ、最善手がない（上限）ノードは探索値が静的評価以下のときだけ更新する。
 - 置換表へ保存する静的評価は補正前の値であり、`improving`の比較には補正後の値を使う。段階8は`improving`の比較に補正前の値を使うと決めており、この点は異なる。
 - `improving`は2手前の静的評価との比較であり、王手を受けているノードでは2手前の値を継承して偽とする。効果は、子ノードのfutility（reverse futility）の余裕値、null moveの前提条件、ProbCutの閾値、LMRの基礎値、および手数による枝刈りの閾値`(3 + depth²) / (2 − improving)`に及ぶ。親ノードのfutilityの余裕値には使わない。
@@ -17,7 +17,7 @@ Stockfishはmasterのコミット`17a6c8f`（2026年9月19日に取得）の`src
 YaneuraOuはローカルの複製（コミット`1308ab3`、2026年7月10日）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`である。
 以下の行番号はこれらの版のものであり、数値定数は調整で頻繁に変わるので値はこの版に固有である。
 
-## 静的評価の補正
+## 静的評価の補正（correction history）
 
 Stockfishの更新条件は`search.cpp`の1654行から1661行にある。
 
@@ -61,7 +61,7 @@ YaneuraOuは同じ継承に加えて`improving = false`を明示的に代入す�
 
 razoringは`improving`を使わない（1008行）。
 
-## 捕獲手のSEEによる枝刈り
+## 捕獲手のSEEによる枝刈り（SEE pruning）
 
 外側の条件は`!rootNode && pos.non_pawn_material(us) && !is_loss(bestValue)`（1190行）であり、対象は捕獲手と王手の手である（1199行）。
 
@@ -75,7 +75,7 @@ if ((alpha >= VALUE_DRAW || pos.non_pawn_material(us) != PieceValue[movedPiece])
 この直前に捕獲手のfutility（1205行から1211行）があり、`staticEval + 234 + 247 × lmrDepth + PieceValue[captured] + 134 × captHist / 1024 <= alpha`の手を展開しない。
 YaneuraOuの余裕値は`max(167 × depth + captHist × 34 / 1024, 0)`で、条件は`alpha >= VALUE_DRAW`だけである（3312行から）。
 
-## 手数と履歴による静かな手の枝刈り
+## 手数と履歴による静かな手の枝刈り（late move pruningとhistory pruning）
 
 手数の閾値を超えると、以後の静かな手の生成を打ち切る（1193行から1194行）。
 履歴による枝刈りは`contHist[0] + contHist[1] + pawnHistory < −4136 × depth`を条件とする（1228行）。
