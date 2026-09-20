@@ -200,3 +200,101 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
     assert!(resumed.contains("pair 3: loaded from saved record"));
     std::fs::remove_dir_all(run_dir).unwrap();
 }
+
+// D8-HARN-21（ponder.md「対局ハーネスの対局進行」）。条件違反はmkdirより前に拒否する。
+#[test]
+fn ponder_invalid_conditions_do_not_create_run_directory() {
+    for extra in [
+        vec!["--each", "depth=4"],
+        vec!["--each", "nodes=1000"],
+        vec!["--each", "time=1000+10", "--baseline-limit", "depth=1"],
+        vec![
+            "--each",
+            "time=1000+10",
+            "--baseline",
+            "cecp:missing-engine",
+        ],
+    ] {
+        let run_dir = run_directory();
+        let output = Command::new(env!("CARGO_BIN_EXE_match_runner"))
+            .arg("--run-dir")
+            .arg(&run_dir)
+            .arg("--ponder")
+            .args(extra)
+            .args(["--concurrency", "2", "elo", "--pairs", "1"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("--ponder"));
+        assert!(!run_dir.exists());
+    }
+}
+
+// D8-HARN-21/26（ponder.md保存形式と再開）。再開集計は既存ペアを含む。
+#[test]
+fn ponder_resume_preserves_pairs_and_replays_all_counts() {
+    let run_dir = run_directory();
+    let run = |operation, pairs, ponder| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_match_runner"));
+        command.arg(operation).arg(&run_dir).args([
+            "--seed",
+            "1234",
+            "--each",
+            "time=10000+100",
+            "--max-ply",
+            "16",
+            "--concurrency",
+            "1",
+        ]);
+        if ponder {
+            command.arg("--ponder");
+        }
+        command.args(["elo", "--pairs", pairs]).output().unwrap()
+    };
+    let first = run("--run-dir", "1", true);
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let pair_dir = run_dir.join("pairs");
+    let first_path = std::fs::read_dir(&pair_dir)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let before = std::fs::read(&first_path).unwrap();
+    let resumed = run("--resume", "2", true);
+    assert!(
+        resumed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&resumed.stderr)
+    );
+    assert_eq!(std::fs::read(first_path).unwrap(), before);
+    let mut moves = [0_u64; 2];
+    for path in std::fs::read_dir(&pair_dir).unwrap() {
+        let record: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path.unwrap().path()).unwrap()).unwrap();
+        for game in record["games"].as_array().unwrap() {
+            for turn in game["turns"].as_array().unwrap() {
+                assert!(turn.as_object().unwrap().contains_key("ponder"));
+                assert!(turn["ponder"].is_null());
+                if turn["response"]["kind"] == "move" {
+                    moves[usize::from(turn["side"] != game["candidate_color"])] += 1;
+                }
+            }
+        }
+    }
+    let text = String::from_utf8(resumed.stdout).unwrap();
+    for (name, count) in ["candidate", "baseline"].into_iter().zip(moves) {
+        assert!(count > 0);
+        assert!(text.contains(&format!(
+            "ponder {name}: predictions=0 illegal_predictions=0 go_ponder=0 hits=0 moves={count}"
+        )));
+    }
+    let mismatch = run("--resume", "2", false);
+    assert!(!mismatch.status.success());
+    assert!(String::from_utf8_lossy(&mismatch.stderr).contains("manifest does not match"));
+    std::fs::remove_dir_all(run_dir).unwrap();
+}

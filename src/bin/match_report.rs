@@ -10,7 +10,7 @@ use minase::stats::estimate_elo;
 use serde::{Deserialize, Serialize};
 
 /// 集計対象の実行記録形式。
-const FORMAT_VERSION: u32 = 3;
+const FORMAT_VERSION: u32 = 4;
 
 /// 校正指標集計器のコマンドライン引数。
 #[derive(Parser)]
@@ -27,7 +27,6 @@ struct Arguments {
 /// 実行条件から集計に必要な部分。
 #[derive(Deserialize)]
 struct Manifest {
-    format_version: u32,
     candidate: EngineRecord,
     baseline: EngineRecord,
     mode: Mode,
@@ -301,6 +300,15 @@ fn report(run_dir: &Path) -> io::Result<Report> {
         )
     })?;
     let mut comparison_manifest: serde_json::Value = read_json(&run_dir.join("manifest.json"))?;
+    if comparison_manifest["format_version"].as_u64() != Some(u64::from(FORMAT_VERSION)) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "match_report requires format version {FORMAT_VERSION}, found {}",
+                comparison_manifest["format_version"]
+            ),
+        ));
+    }
     let manifest: Manifest =
         serde_json::from_value(comparison_manifest.clone()).map_err(|error| {
             io::Error::new(
@@ -308,15 +316,6 @@ fn report(run_dir: &Path) -> io::Result<Report> {
                 format!("invalid calibration manifest: {error}"),
             )
         })?;
-    if manifest.format_version != FORMAT_VERSION {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "match_report requires format version {FORMAT_VERSION}, found {}",
-                manifest.format_version
-            ),
-        ));
-    }
     for pointer in [
         "/candidate/identity",
         "/baseline/identity",
@@ -1031,6 +1030,21 @@ mod tests {
         )
         .unwrap();
         assert!(report(&run_dir).is_err());
+        std::fs::remove_dir_all(run_dir).unwrap();
+    }
+    // D8-HARN-26（ponder.md保存形式）。旧版を互換解釈せず版の明示エラーにする。
+    #[test]
+    fn report_rejects_version_three_before_decoding_new_fields() {
+        let run_dir = std::env::temp_dir().join(format!("minase-report-v3-{}", std::process::id()));
+        std::fs::create_dir(&run_dir).unwrap();
+        File::create(run_dir.join(".match_runner.lock")).unwrap();
+        std::fs::write(run_dir.join("manifest.json"), br#"{"format_version":3}"#).unwrap();
+        let error = report(&run_dir).err().unwrap();
+        assert!(
+            error
+                .to_string()
+                .contains("requires format version 4, found 3")
+        );
         std::fs::remove_dir_all(run_dir).unwrap();
     }
 }

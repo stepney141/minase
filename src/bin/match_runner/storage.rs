@@ -9,7 +9,7 @@ use fs2::FileExt;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// 現行の実行記録形式。
-pub(super) const FORMAT_VERSION: u32 = 3;
+pub(super) const FORMAT_VERSION: u32 = 4;
 
 const MANIFEST_FILE: &str = "manifest.json";
 const MANIFEST_TEMP_FILE: &str = ".manifest.json.tmp";
@@ -157,6 +157,8 @@ pub(super) enum ManifestMode {
 pub(super) struct RunManifest {
     /// 記録形式の版。
     pub(super) format_version: u32,
+    /// 両エンジンに適用する先読みの対局条件。
+    pub(super) ponder: bool,
     /// 候補エンジンの設定。
     pub(super) candidate: EngineRecord,
     /// 基準エンジンの設定。
@@ -317,6 +319,9 @@ pub(super) struct TurnRecord {
     /// 最後に完了した反復の経過時間(ms)。報告がない場合は`None`。
     #[serde(deserialize_with = "deserialize_required_option")]
     pub(super) completed_time_ms: Option<u64>,
+    /// 応答に付いた予想手。欄は必須で、予想手がなければnull。
+    #[serde(deserialize_with = "deserialize_required_option")]
+    pub(super) ponder: Option<String>,
     /// エンジンの応答。
     pub(super) response: TurnResponse,
 }
@@ -498,13 +503,14 @@ impl RunStore {
         }
         let lock = lock_run_directory(path)?;
 
-        let manifest: RunManifest = read_json(&path.join(MANIFEST_FILE))?;
-        if manifest.format_version != FORMAT_VERSION {
+        let value: serde_json::Value = read_json(&path.join(MANIFEST_FILE))?;
+        if value["format_version"].as_u64() != Some(u64::from(FORMAT_VERSION)) {
             return Err(invalid_data(format!(
                 "unsupported manifest format version {}",
-                manifest.format_version
+                value["format_version"]
             )));
         }
+        let manifest: RunManifest = serde_json::from_value(value).map_err(json_error)?;
         if &manifest != expected {
             return Err(invalid_data(
                 "run manifest does not match the requested experiment",
@@ -531,6 +537,11 @@ impl RunStore {
             },
             records,
         ))
+    }
+
+    /// ロック保持中の確定ペアを読み直す。
+    pub(super) fn records(&self, target_pairs: u64) -> io::Result<BTreeMap<u64, PairRecord>> {
+        load_pairs(&self.pairs, target_pairs)
     }
 
     /// 実行ディレクトリを返す。
@@ -813,6 +824,7 @@ mod tests {
     fn manifest() -> RunManifest {
         RunManifest {
             format_version: FORMAT_VERSION,
+            ponder: false,
             candidate: EngineRecord {
                 identity: EngineIdentity::Commit {
                     hash: "a".repeat(40),
@@ -887,6 +899,7 @@ mod tests {
                 }),
                 stop_reason: Some(StopReasonRecord::Hard),
                 completed_time_ms: Some(40),
+                ponder: None,
                 response: TurnResponse::Resigned,
             }],
             termination: TerminationRecord::Resigned {
@@ -1139,5 +1152,53 @@ mod tests {
             .unwrap()
             .insert("unexpected".to_owned(), serde_json::Value::Bool(true));
         assert!(serde_json::from_value::<PairRecord>(value).is_err());
+    }
+    // D8-HARN-21/26（ponder.md「対局ハーネスの対局進行」）。
+    #[test]
+    fn ponder_manifest_and_prediction_fields_are_required_and_round_trip() {
+        for ponder in [false, true] {
+            let path = temporary_directory("ponder-manifest");
+            let mut expected = manifest();
+            expected.ponder = ponder;
+            let store = RunStore::create(&path, expected.clone()).unwrap();
+            let value: serde_json::Value = read_json(&path.join(MANIFEST_FILE)).unwrap();
+            assert_eq!(value["ponder"], ponder);
+            assert_eq!(value["format_version"], 4);
+            drop(store);
+            let (store, _) = RunStore::resume(&path, &expected, 1).unwrap();
+            drop(store);
+            expected.ponder = !ponder;
+            assert!(RunStore::resume(&path, &expected, 1).is_err());
+            fs::remove_dir_all(path).unwrap();
+        }
+        let mut turn = game(StoredColor::Black).turns.remove(0);
+        for prediction in [None, Some("7d7e".to_owned()), Some("bad-token".to_owned())] {
+            turn.ponder = prediction.clone();
+            let value = serde_json::to_value(&turn).unwrap();
+            assert_eq!(value["ponder"], serde_json::to_value(prediction).unwrap());
+            assert_eq!(serde_json::from_value::<TurnRecord>(value).unwrap(), turn);
+        }
+        let mut value = serde_json::to_value(&turn).unwrap();
+        value.as_object_mut().unwrap().remove("ponder");
+        assert!(serde_json::from_value::<TurnRecord>(value).is_err());
+        let mut value = serde_json::to_value(manifest()).unwrap();
+        value.as_object_mut().unwrap().remove("ponder");
+        assert!(serde_json::from_value::<RunManifest>(value).is_err());
+    }
+
+    // D8-HARN-26（ponder.md保存形式）: 旧版は新しい必須欄がなくても版で拒否する。
+    #[test]
+    fn resume_rejects_version_three_before_decoding_new_fields() {
+        let path = temporary_directory("version-three");
+        let expected = manifest();
+        drop(RunStore::create(&path, expected.clone()).unwrap());
+        fs::write(path.join(MANIFEST_FILE), br#"{"format_version":3}"#).unwrap();
+        let error = RunStore::resume(&path, &expected, 1).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported manifest format version 3")
+        );
+        fs::remove_dir_all(path).unwrap();
     }
 }

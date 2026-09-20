@@ -115,9 +115,35 @@ struct Arguments {
     /// 同時に実行するペア数。省略時は物理コア数から自動計算する。
     #[arg(long, value_parser = parse_positive_usize)]
     concurrency: Option<usize>,
+    /// USIの予想手に従って両エンジンの先読みを進行する。
+    #[arg(long)]
+    ponder: bool,
     /// 実行する統計モード。
     #[command(subcommand)]
     mode: Mode,
+}
+
+impl Arguments {
+    /// 先読みを利用できない対局条件を、プロセス起動前に拒否する。
+    fn validate_ponder(&self) -> Result<(), String> {
+        if self.ponder {
+            if !matches!(
+                self.candidate_limit.unwrap_or(self.each),
+                SearchLimit::Time(_)
+            ) || !matches!(
+                self.baseline_limit.unwrap_or(self.each),
+                SearchLimit::Time(_)
+            ) {
+                return Err("--ponder requires time= limits for both engines".to_owned());
+            }
+            if matches!(self.candidate.kind, PlayerKind::Cecp { .. })
+                || matches!(self.baseline.kind, PlayerKind::Cecp { .. })
+            {
+                return Err("--ponder does not support cecp: engines".to_owned());
+            }
+        }
+        Ok(())
+    }
 }
 
 /// 対局結果の集計方法。
@@ -346,6 +372,7 @@ impl Clock {
 }
 
 /// 1局で両色に割り当てた時計。
+#[derive(Clone, Copy)]
 struct GameClocks {
     /// 先手の時計。固定制限の側は`None`。
     black: Option<Clock>,
@@ -556,7 +583,9 @@ enum EngineScore {
 struct ThinkResult {
     /// エンジンが返した着手または投了。
     response: EngineResponse,
-    /// `go`から応答までの実測時間。
+    /// 着手とともに返された予想手。
+    ponder: Option<String>,
+    /// `go`、`ponderhit`または`stop`から応答までの実測時間。
     elapsed: Duration,
     /// 最後の有効な`info score`。報告がなければ`None`。
     evaluation: Option<EngineEvaluation>,
@@ -694,6 +723,8 @@ struct EngineProcess {
     protocol: Protocol,
     /// CECPエンジンへ送信済みとして扱う着手数。
     sent_moves: usize,
+    /// 待機中はNone、先読み中は予想した相手の着手。
+    pondering: Option<Move>,
 }
 
 /// 終局時に読み取る1エンジンの資源使用量。
@@ -788,6 +819,7 @@ impl EngineProcess {
             timeout,
             protocol: config.protocol,
             sent_moves: 0,
+            pondering: None,
         })
     }
 
@@ -867,37 +899,104 @@ impl EngineProcess {
             .map(|_| ())
     }
 
-    /// 現局面と思考指示を送り、着手または投了と実測思考時間を受け取る。
+    /// 現局面の応答を得る。外れた先読みの停止も同じ時計と期限に含める。
     fn bestmove(
         &mut self,
         usi_history: &[String],
         move_history: &[Move],
-        request: &ThinkRequest,
+        clocks: &GameClocks,
+        side: Color,
+        limit: SearchLimit,
     ) -> Result<ThinkResult, EngineFailure> {
-        match self.protocol {
-            Protocol::Usi => self.bestmove_usi(usi_history, &request.go_text),
-            Protocol::Cecp => self.bestmove_cecp(move_history, request),
+        if self.protocol == Protocol::Cecp {
+            return self.bestmove_cecp(move_history, &clocks.think_request(side, limit));
+        }
+        let start;
+        if let Some(predicted) = self.pondering.take() {
+            start = Instant::now();
+            if move_history.last() == Some(&predicted) {
+                self.send("ponderhit")?;
+            } else {
+                self.send("stop")?;
+                self.discard_bestmove(start)?;
+                self.send_position(usi_history)?;
+                let mut adjusted = *clocks;
+                if let Some(clock) = adjusted.get_mut(side) {
+                    clock.remaining = clock.remaining.saturating_sub(start.elapsed());
+                }
+                let request = adjusted.think_request(side, limit);
+                self.send(&format!("go {}", request.go_text))?;
+            }
+        } else {
+            self.send_position(usi_history)?;
+            let request = clocks.think_request(side, limit);
+            start = Instant::now();
+            self.send(&format!("go {}", request.go_text))?;
+        }
+        self.receive_bestmove(start)
+    }
+
+    /// 初期局面からのUSI着手列を送る。
+    fn send_position(&mut self, history: &[String]) -> Result<(), EngineFailure> {
+        if history.is_empty() {
+            self.send("position startpos")
+        } else {
+            self.send(&format!("position startpos moves {}", history.join(" ")))
         }
     }
 
-    /// USIの既存送信列で`bestmove`を受け取る。
-    fn bestmove_usi(
+    /// 合法で終局しない予想手だけを使い、次の相手番の間に先読みする。
+    fn start_ponder(
         &mut self,
+        game: &Game,
         history: &[String],
-        go_text: &str,
-    ) -> Result<ThinkResult, EngineFailure> {
-        if history.is_empty() {
-            self.send("position startpos")?;
-        } else {
-            self.send(&format!("position startpos moves {}", history.join(" ")))?;
+        prediction: Option<&str>,
+        request: &ThinkRequest,
+    ) {
+        let Some(Ok((predicted, true))) = prediction.map(|text| ponder_move(game, text)) else {
+            return;
+        };
+        let mut history = history.to_vec();
+        history.push(
+            usi::text(
+                game.position(),
+                predicted,
+                &MoveGenerator::new(game.rules().moves),
+            )
+            .expect("a legal prediction must be renderable"),
+        );
+        if self.send_position(&history).is_ok()
+            && self.send(&format!("go ponder {}", request.go_text)).is_ok()
+        {
+            self.pondering = Some(predicted);
         }
-        let start = Instant::now();
-        self.send(&format!("go {go_text}"))?;
+    }
+
+    /// 先読みの出力を探索情報も含めて捨てる。
+    fn discard_bestmove(&self, start: Instant) -> Result<(), EngineFailure> {
+        receive_until_deadline(&self.lines, start, self.timeout, |line| {
+            line.split_whitespace().next() == Some("bestmove")
+        })
+        .map(|_| ())
+    }
+
+    /// 終局時の停止は結果を変更せず、資源を読む前に同期する。
+    fn stop_ponder(&mut self) {
+        if self.pondering.take().is_some() {
+            let start = Instant::now();
+            if self.send("stop").is_ok() {
+                let _ = self.discard_bestmove(start);
+            }
+        }
+    }
+
+    /// 的中時には先読み中のinfoも同じ探索の情報として読む。
+    fn receive_bestmove(&self, start: Instant) -> Result<ThinkResult, EngineFailure> {
         let mut evaluation = None;
         let mut stop_reason = None;
         let mut completed_time_ms = None;
         let mut observation_error = None;
-        let line = self.receive_until(|line| {
+        let line = receive_until_deadline(&self.lines, start, self.timeout, |line| {
             observe_usi_evaluation(&mut evaluation, line);
             if observation_error.is_none()
                 && let Err(reason) =
@@ -914,9 +1013,20 @@ impl EngineProcess {
             "resign" => EngineResponse::Resigned,
             bestmove => EngineResponse::Move(bestmove.to_owned()),
         };
+        let tokens = line.split_whitespace().collect::<Vec<_>>();
+        let ponder = if tokens.get(2) == Some(&"ponder") {
+            tokens.get(3).map(|text| (*text).to_owned())
+        } else {
+            None
+        };
+        let elapsed = start.elapsed();
+        if elapsed > self.timeout {
+            return Err(EngineFailure::Timeout);
+        }
         Ok(ThinkResult {
             response,
-            elapsed: start.elapsed(),
+            ponder,
+            elapsed,
             evaluation,
             stop_reason,
             completed_time_ms,
@@ -948,6 +1058,7 @@ impl EngineProcess {
         Ok(ThinkResult {
             response,
             elapsed,
+            ponder: None,
             evaluation: None,
             stop_reason: None,
             completed_time_ms: None,
@@ -1101,9 +1212,18 @@ fn receive_cecp_response(
 fn receive_until(
     lines: &Receiver<io::Result<String>>,
     timeout: Duration,
+    predicate: impl FnMut(&str) -> bool,
+) -> Result<String, EngineFailure> {
+    receive_until_deadline(lines, Instant::now(), timeout, predicate)
+}
+
+/// 複数の応答を読む場合も、同じ起点から期限を測る。
+fn receive_until_deadline(
+    lines: &Receiver<io::Result<String>>,
+    start: Instant,
+    timeout: Duration,
     mut predicate: impl FnMut(&str) -> bool,
 ) -> Result<String, EngineFailure> {
-    let start = Instant::now();
     loop {
         let remaining = timeout
             .checked_sub(start.elapsed())
@@ -1121,6 +1241,7 @@ fn receive_until(
 
 impl Drop for EngineProcess {
     fn drop(&mut self) {
+        self.stop_ponder();
         // 標準入力を先に閉じる。ラッパースクリプト経由で起動したエンジンは
         // killでは止まらず、入力のEOFで終了して初めて出力パイプが閉じるため、
         // この順序でないと読み取りスレッドの回収が止まる。
@@ -1272,13 +1393,21 @@ fn recorded_game(
     baseline_seed: NonZeroU64,
     turns: Vec<TurnRecord>,
     started: Instant,
-    candidate_process: Option<&EngineProcess>,
-    baseline_process: Option<&EngineProcess>,
+    mut candidate_process: Option<&mut EngineProcess>,
+    mut baseline_process: Option<&mut EngineProcess>,
 ) -> RecordedGame {
-    let candidate_usage =
-        candidate_process.map_or_else(EngineResourceUsage::default, EngineProcess::resource_usage);
-    let baseline_usage =
-        baseline_process.map_or_else(EngineResourceUsage::default, EngineProcess::resource_usage);
+    if let Some(process) = candidate_process.as_mut() {
+        process.stop_ponder();
+    }
+    if let Some(process) = baseline_process.as_mut() {
+        process.stop_ponder();
+    }
+    let candidate_usage = candidate_process.map_or_else(EngineResourceUsage::default, |process| {
+        process.resource_usage()
+    });
+    let baseline_usage = baseline_process.map_or_else(EngineResourceUsage::default, |process| {
+        process.resource_usage()
+    });
     RecordedGame {
         played,
         record: GameRecord {
@@ -1928,6 +2057,7 @@ fn default_concurrency(
     physical_cores: Option<usize>,
     candidate_threads: Option<u32>,
     baseline_threads: Option<u32>,
+    ponder: bool,
 ) -> Result<usize, String> {
     let physical_cores = physical_cores.ok_or_else(|| {
         "physical core count is unavailable; specify --concurrency explicitly".to_owned()
@@ -1949,7 +2079,8 @@ fn default_concurrency(
     })?;
     let engine_threads = usize::try_from(engine_threads)
         .map_err(|_| "engine Threads is too large; specify --concurrency explicitly".to_owned())?;
-    let concurrency = available_cores / engine_threads;
+    let engines = if ponder { 2 } else { 1 };
+    let concurrency = available_cores / engine_threads / engines;
     if concurrency == 0 {
         return Err(
             "automatic concurrency is less than 1; specify --concurrency explicitly".to_owned(),
@@ -2012,6 +2143,7 @@ fn run_manifest(
     max_ply: u32,
     response_timeout_secs: u64,
     concurrency: Option<usize>,
+    ponder: bool,
 ) -> io::Result<RunManifest> {
     let timeout = Duration::from_secs(response_timeout_secs);
     let candidate_defaults = probe_engine_defaults(candidate, timeout)?;
@@ -2023,11 +2155,13 @@ fn run_manifest(
             physical_cores,
             candidate_defaults.threads,
             baseline_defaults.threads,
+            ponder,
         )
         .map_err(io::Error::other)?,
     };
     Ok(RunManifest {
         format_version: FORMAT_VERSION,
+        ponder,
         candidate: EngineRecord {
             identity: candidate.identity.clone(),
             limit: stored_search_limit(candidate.limit),
@@ -2174,6 +2308,94 @@ fn validate_bestmove(game: &Game, text: &str, protocol: Protocol) -> Result<Move
     }
 }
 
+/// 予想手の合法性と、その手で対局が続くかを審判層で判定する。
+fn ponder_move(game: &Game, text: &str) -> Result<(Move, bool), EngineFailure> {
+    let selected = validate_bestmove(game, text, Protocol::Usi)?;
+    let mut predicted = game.clone();
+    let status = predicted
+        .play(selected)
+        .expect("a legal prediction must be accepted");
+    Ok((selected, !matches!(status, GameStatus::Finished(_))))
+}
+
+/// 保存済みの応答列から再計算するエンジン別の先読み件数。
+#[derive(Default, Debug, PartialEq, Eq)]
+struct PonderCounts {
+    predictions: u64,
+    illegal_predictions: u64,
+    starts: u64,
+    hits: u64,
+    moves: u64,
+}
+
+/// 候補・基準に同じ審判規則を適用し、通信を再現する。
+fn count_ponder_game(
+    record: &GameRecord,
+    mut game: Game,
+    ponder: bool,
+    max_ply: u32,
+    counts: &mut [PonderCounts; 2],
+) -> io::Result<()> {
+    let mut pending = [None; 2];
+    for turn in &record.turns {
+        let side = game.position().side_to_move();
+        let index = usize::from(turn.side != record.candidate_color);
+        counts[index].predictions += u64::from(turn.ponder.is_some());
+        let TurnResponse::Move { usi: text } = &turn.response else {
+            continue;
+        };
+        counts[index].moves += 1;
+        let selected = validate_bestmove(&game, text, Protocol::Usi)
+            .map_err(|_| invalid_pair_record("cannot replay saved move for ponder counts"))?;
+        let status = game
+            .play(selected)
+            .map_err(|_| invalid_pair_record("cannot apply saved move for ponder counts"))?;
+        if matches!(status, GameStatus::Finished(_)) {
+            continue;
+        }
+        if pending[1 - index].take() == Some(selected) && game.ply_count() < max_ply {
+            counts[1 - index].hits += 1;
+        }
+        if let Some(text) = &turn.ponder {
+            match ponder_move(&game, text) {
+                Err(_) => counts[index].illegal_predictions += 1,
+                Ok((predicted, true)) if ponder => {
+                    counts[index].starts += 1;
+                    pending[index] = Some(predicted);
+                }
+                Ok(_) => {}
+            }
+        }
+        debug_assert_eq!(game.position().side_to_move(), side.opposite());
+    }
+    Ok(())
+}
+
+/// 再開以前の確定ペアも含め、保存記録の全件から件数を得る。
+fn ponder_summary(
+    store: &RunStore,
+    rules: Rules,
+    ponder: bool,
+    max_ply: u32,
+    target_pairs: u64,
+) -> io::Result<[PonderCounts; 2]> {
+    let mut counts = [PonderCounts::default(), PonderCounts::default()];
+    for record in store.records(target_pairs)?.values() {
+        let mut opening = Game::new(rules);
+        for text in &record.opening.moves {
+            let selected = validate_bestmove(&opening, text, Protocol::Usi)
+                .map_err(|_| invalid_pair_record("cannot replay saved opening"))?;
+            opening
+                .play(selected)
+                .map_err(|_| invalid_pair_record("cannot apply saved opening"))?;
+        }
+        for game in &record.games {
+            count_ponder_game(game, opening.clone(), ponder, max_ply, &mut counts)?;
+        }
+    }
+    Ok(counts)
+}
+
 /// 1局を既存の対局管理層で進行する。
 #[allow(clippy::too_many_arguments)]
 fn play_game(
@@ -2187,6 +2409,7 @@ fn play_game(
     player_b: &PlayerConfig,
     player_b_seed: NonZeroU64,
     timeout: Duration,
+    ponder: bool,
     stop: &AtomicBool,
 ) -> Option<RecordedGame> {
     let started = Instant::now();
@@ -2237,7 +2460,7 @@ fn play_game(
                 player_b_seed,
                 turns,
                 started,
-                Some(&player_a_process),
+                Some(&mut player_a_process),
                 None,
             ));
         }
@@ -2258,8 +2481,8 @@ fn play_game(
                 player_b_seed,
                 turns,
                 started,
-                Some(&player_a_process),
-                Some(&player_b_process),
+                Some(&mut player_a_process),
+                Some(&mut player_b_process),
             ));
         }
 
@@ -2269,14 +2492,14 @@ fn play_game(
         } else {
             (&mut player_b_process, player_b.limit)
         };
-        let request = clocks.think_request(side_to_move, limit);
         let ThinkResult {
             response,
             elapsed,
             evaluation,
             stop_reason,
             completed_time_ms,
-        } = match process.bestmove(&usi_history, &move_history, &request) {
+            ponder: prediction,
+        } = match process.bestmove(&usi_history, &move_history, &clocks, side_to_move, limit) {
             Ok(response) => response,
             Err(reason) => {
                 return Some(recorded_game(
@@ -2286,8 +2509,8 @@ fn play_game(
                     player_b_seed,
                     turns,
                     started,
-                    Some(&player_a_process),
-                    Some(&player_b_process),
+                    Some(&mut player_a_process),
+                    Some(&mut player_b_process),
                 ));
             }
         };
@@ -2303,6 +2526,7 @@ fn play_game(
                 evaluation: evaluation_record(evaluation, side_to_move),
                 stop_reason,
                 completed_time_ms,
+                ponder: prediction.clone(),
                 response: TurnResponse::Failure {
                     reason: stored_failure(reason),
                 },
@@ -2314,8 +2538,8 @@ fn play_game(
                 player_b_seed,
                 turns,
                 started,
-                Some(&player_a_process),
-                Some(&player_b_process),
+                Some(&mut player_a_process),
+                Some(&mut player_b_process),
             ));
         }
         let EngineResponse::Move(response) = response else {
@@ -2325,6 +2549,7 @@ fn play_game(
                 evaluation: evaluation_record(evaluation, side_to_move),
                 stop_reason,
                 completed_time_ms,
+                ponder: prediction.clone(),
                 response: TurnResponse::Resigned,
             });
             return Some(recorded_game(
@@ -2339,8 +2564,8 @@ fn play_game(
                 player_b_seed,
                 turns,
                 started,
-                Some(&player_a_process),
-                Some(&player_b_process),
+                Some(&mut player_a_process),
+                Some(&mut player_b_process),
             ));
         };
         let selected = match validate_bestmove(&game, &response, process.protocol) {
@@ -2352,6 +2577,7 @@ fn play_game(
                     evaluation: evaluation_record(evaluation, side_to_move),
                     stop_reason,
                     completed_time_ms,
+                    ponder: prediction.clone(),
                     response: TurnResponse::Failure {
                         reason: stored_failure(reason),
                     },
@@ -2363,8 +2589,8 @@ fn play_game(
                     player_b_seed,
                     turns,
                     started,
-                    Some(&player_a_process),
-                    Some(&player_b_process),
+                    Some(&mut player_a_process),
+                    Some(&mut player_b_process),
                 ));
             }
         };
@@ -2380,6 +2606,7 @@ fn play_game(
             evaluation: evaluation_record(evaluation, side_to_move),
             stop_reason,
             completed_time_ms,
+            ponder: prediction.clone(),
             response: TurnResponse::Move {
                 usi: canonical.clone(),
             },
@@ -2400,9 +2627,17 @@ fn play_game(
                 player_b_seed,
                 turns,
                 started,
-                Some(&player_a_process),
-                Some(&player_b_process),
+                Some(&mut player_a_process),
+                Some(&mut player_b_process),
             ));
+        }
+        if ponder {
+            process.start_ponder(
+                &game,
+                &usi_history,
+                prediction.as_deref(),
+                &clocks.think_request(side_to_move, limit),
+            );
         }
     }
 }
@@ -2558,10 +2793,18 @@ fn validate_saved_game(
         if protocol == Protocol::Cecp
             && (turn.evaluation.is_some()
                 || turn.stop_reason.is_some()
-                || turn.completed_time_ms.is_some())
+                || turn.completed_time_ms.is_some()
+                || turn.ponder.is_some())
         {
             return Err(invalid_pair_record(
                 "CECP turn must not contain USI search information",
+            ));
+        }
+        if turn.ponder.as_ref().is_some_and(|text| {
+            text.is_empty() || text.split_whitespace().count() != 1 || text.trim() != text
+        }) {
+            return Err(invalid_pair_record(
+                "saved prediction must be one USI token",
             ));
         }
         let expects_time_forfeit = matches!(
@@ -2794,6 +3037,7 @@ fn run_pair(
     candidate: &PlayerConfig,
     baseline: &PlayerConfig,
     timeout: Duration,
+    ponder: bool,
     stop: &AtomicBool,
 ) -> Option<CompletedPair> {
     if stop.load(Ordering::Acquire) {
@@ -2846,6 +3090,7 @@ fn run_pair(
         baseline,
         game1_b_seed,
         timeout,
+        ponder,
         stop,
     )?;
     writeln!(
@@ -2871,6 +3116,7 @@ fn run_pair(
         baseline,
         game2_b_seed,
         timeout,
+        ponder,
         stop,
     )?;
     writeln!(
@@ -3052,6 +3298,11 @@ fn main() {
         process::exit(1);
     }
     let arguments = Arguments::parse();
+    if let Err(error) = arguments.validate_ponder() {
+        Arguments::command()
+            .error(ErrorKind::ValueValidation, error)
+            .exit();
+    }
     let rules = match Rules::from_codes(&arguments.rules.codes) {
         Ok(rules) => rules,
         Err(error) => Arguments::command()
@@ -3125,6 +3376,7 @@ fn main() {
         arguments.max_ply,
         arguments.response_timeout,
         arguments.concurrency,
+        arguments.ponder,
     ) {
         Ok(manifest) => manifest,
         Err(error) => {
@@ -3242,6 +3494,7 @@ fn main() {
                             candidate,
                             baseline,
                             response_timeout,
+                            arguments.ponder,
                             stop,
                         );
                         let Some(pair) = pair else {
@@ -3343,6 +3596,30 @@ fn main() {
         process::exit(1);
     }
 
+    let ponder_counts = match ponder_summary(
+        &store,
+        rules,
+        arguments.ponder,
+        arguments.max_ply,
+        target_pairs,
+    ) {
+        Ok(counts) => counts,
+        Err(error) => {
+            eprintln!("failed to replay ponder statistics: {error}");
+            process::exit(1);
+        }
+    };
+    for (name, counts) in ["candidate", "baseline"].into_iter().zip(ponder_counts) {
+        println!(
+            "ponder {name}: predictions={} illegal_predictions={} go_ponder={} hits={} moves={}",
+            counts.predictions,
+            counts.illegal_predictions,
+            counts.starts,
+            counts.hits,
+            counts.moves
+        );
+    }
+
     if use_gsprt {
         print_gsprt_summary(
             &results,
@@ -3363,35 +3640,41 @@ mod tests {
 
     #[test]
     fn default_concurrency_uses_available_cores_and_larger_thread_count() {
-        assert_eq!(default_concurrency(Some(20), Some(1), Some(1)), Ok(19));
-        assert_eq!(default_concurrency(Some(20), Some(4), Some(2)), Ok(4));
+        assert_eq!(
+            default_concurrency(Some(20), Some(1), Some(1), false),
+            Ok(19)
+        );
+        assert_eq!(
+            default_concurrency(Some(20), Some(4), Some(2), false),
+            Ok(4)
+        );
     }
 
     #[test]
     fn default_concurrency_requires_resource_counts() {
-        let error = default_concurrency(None, Some(1), Some(1)).unwrap_err();
+        let error = default_concurrency(None, Some(1), Some(1), false).unwrap_err();
         assert!(error.contains("physical core count"));
         assert!(error.contains("--concurrency"));
 
-        let error = default_concurrency(Some(20), None, Some(1)).unwrap_err();
+        let error = default_concurrency(Some(20), None, Some(1), false).unwrap_err();
         assert!(error.contains("candidate engine Threads"));
         assert!(error.contains("--concurrency"));
 
-        let error = default_concurrency(Some(20), Some(1), None).unwrap_err();
+        let error = default_concurrency(Some(20), Some(1), None, false).unwrap_err();
         assert!(error.contains("baseline engine Threads"));
         assert!(error.contains("--concurrency"));
     }
 
     #[test]
     fn default_concurrency_rejects_values_below_one() {
-        let error = default_concurrency(Some(1), Some(1), Some(1)).unwrap_err();
+        let error = default_concurrency(Some(1), Some(1), Some(1), false).unwrap_err();
         assert!(error.contains("--concurrency"));
 
-        let error = default_concurrency(Some(20), Some(0), Some(1)).unwrap_err();
+        let error = default_concurrency(Some(20), Some(0), Some(1), false).unwrap_err();
         assert!(error.contains("Threads must be at least 1"));
         assert!(error.contains("--concurrency"));
 
-        let error = default_concurrency(Some(20), Some(1), Some(0)).unwrap_err();
+        let error = default_concurrency(Some(20), Some(1), Some(0), false).unwrap_err();
         assert!(error.contains("Threads must be at least 1"));
         assert!(error.contains("--concurrency"));
     }
@@ -3606,6 +3889,7 @@ mod tests {
                 evaluation: None,
                 stop_reason: None,
                 completed_time_ms: None,
+                ponder: None,
                 response: TurnResponse::Move { usi: text },
             }],
             termination: TerminationRecord::Forfeit {
@@ -3680,6 +3964,7 @@ mod tests {
                 }),
                 stop_reason: None,
                 completed_time_ms: None,
+                ponder: None,
                 response: TurnResponse::Resigned,
             }],
             termination: TerminationRecord::Resigned { loser: side },
@@ -4251,6 +4536,7 @@ mod tests {
                 4096,
                 120,
                 Some(1),
+                false,
             )
             .unwrap();
             assert_eq!(manifest.hash_mb.candidate, expected_candidate);
@@ -4776,3 +5062,7 @@ mod tests {
         assert!(all_moves.windows(2).any(|pair| pair[0] != pair[1]));
     }
 }
+
+#[cfg(test)]
+#[path = "match_runner/ponder_tests.rs"]
+mod ponder_tests;
