@@ -1,0 +1,52 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..5d9ad36 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -270,6 +270,11 @@ fn main() {
+             &mut transposition_table,
+             true,
+         );
++        {
++            use std::sync::atomic::Ordering::Relaxed;
++            use minase::search::probcut_diag as d;
++            eprintln!("probcut_diag nodes={} eligible={} eval_above={}", d::NODES.load(Relaxed), d::ELIGIBLE.load(Relaxed), d::EVAL_ABOVE.load(Relaxed));
++        }
+         println!(
+             "summary: positions={} depth={} nodes={} elapsed={:.6}s nps={:.0}",
+             BENCH_POSITIONS.len(),
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index c36e368..7f55b39 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -37,6 +37,13 @@ use correction::{CorrectionTable, key_after_move, material_key};
+ use see::see_prunes;
+ use tt::Bound;
+ 
++#[allow(missing_docs)]
++pub mod probcut_diag {
++    use std::sync::atomic::AtomicU64;
++    pub static NODES: AtomicU64 = AtomicU64::new(0);
++    pub static ELIGIBLE: AtomicU64 = AtomicU64::new(0);
++    pub static EVAL_ABOVE: AtomicU64 = AtomicU64::new(0);
++}
+ /// 詰みを表す評価値。
+ pub const MATE: i32 = 30_000;
+ /// 探索が扱う最大ply。
+@@ -1265,6 +1272,17 @@ impl Searcher<'_> {
+             depth
+         };
+ 
++        {
++            use std::sync::atomic::Ordering::Relaxed;
++            probcut_diag::NODES.fetch_add(1, Relaxed);
++            if beta - alpha == 1 && depth >= 5 && beta.abs() < MATE_THRESHOLD && self.null_move_ply != Some(ply) {
++                probcut_diag::ELIGIBLE.fetch_add(1, Relaxed);
++                let eval = self.pst.evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
++                if eval + 2 * self.pst.pawn_value() >= beta {
++                    probcut_diag::EVAL_ABOVE.fetch_add(1, Relaxed);
++                }
++            }
++        }
+         let side = position.side_to_move();
+         let has_non_royal_piece =
+             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
