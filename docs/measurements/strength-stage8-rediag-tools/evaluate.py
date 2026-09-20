@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage 8 rediagnosis: loss means lost good moves / all eligible good moves.
 
-Apply the adjacent diagnostic.patch to 30b84bced326ad0f1dc25a915b83daeed5093a44.
+Apply the adjacent diagnostic.patch to 7784ef0c0757d2d7c80cc8793aa6c3202c932828.
 Build only with:
   nice -n 19 env CARGO_TARGET_DIR=target/diag cargo build --release --bin bench -j 2
 Run each bench separately with nice -n 19, --depth 6 --threads 1. Run A sets
@@ -17,8 +17,10 @@ history, current_reduction, new_reduction, new_good, current_good, full_good,
 overlaps_sample2. '-' denotes undefined improving, SEE, or an unsearched outcome.
 Ratios with zero denominators are null, never zero. Move activation counts
 unions once, including the separately counted LMR population outside sample 2.
-Correction selection uses the common observation set's pre-update errors and
-nonzero predictions. Eligible-node references remain as the phase-1 metric.
+Correction selection uses the common observation set's pre-update errors.
+The nonzero gate uses eligible-node references; common nonzero predictions and
+variant-C-population errors are reference metrics only. For correction alone,
+use --correction-only with correction.json, --json and --text.
 Quantiles use the nearest-rank convention. No third-party packages are needed.
 """
 import argparse
@@ -270,40 +272,49 @@ def improving_move_report(quiets, futility, margins, counts, lmr_rows, lmr_count
 
 def correction_report(raw):
     identities = {(t['variant'], t['key'], t['denominator']) for t in raw['tables']}
-    expected = {(v, k, d) for v in ('A', 'B') for k in ('royals', 'material', 'combined') for d in (32, 64, 128)}
-    if identities != expected or len(raw['tables']) != 18:
-        raise ValueError('expected exactly 18 correction tables')
+    expected = {(v, k, d) for v in ('A', 'B', 'C') for k in ('royals', 'material', 'combined') for d in (32, 64, 128)}
+    if identities != expected or len(raw['tables']) != 27:
+        raise ValueError('expected exactly 27 correction tables')
     populations = {(t['stats']['observations'], t['stats']['absolute_error'],
-                    t['stats']['common_observations'], t['stats']['common_absolute_error']) for t in raw['tables']}
+                    t['stats']['common_observations'], t['stats']['common_absolute_error'],
+                    t['stats']['variant_c_observations'], t['stats']['variant_c_absolute_error']) for t in raw['tables']}
     if len(populations) != 1:
         raise ValueError('correction tables must share evaluation populations')
     types = {f'{b}:capture={c}:attacked={a}': raw['observation_types'].get(f'{b}:capture={c}:attacked={a}', 0)
              for b in ('exact', 'upper', 'lower') for c in (0, 1) for a in (0, 1)}
-    observations, _, common, _ = next(iter(populations))
+    observations, _, common, _, variant_c, _ = next(iter(populations))
     if sum(types.values()) != observations or sum(types[f'{b}:capture=0:attacked=0'] for b in ('exact', 'upper', 'lower')) != common:
         raise ValueError('observation breakdown disagrees with correction population')
+    if variant_c != common + types['upper:capture=1:attacked=0']:
+        raise ValueError('observation breakdown disagrees with variant C population')
     tables = []
     for table in raw['tables']:
         s = table['stats']
-        if s['updates'] != (s['observations'] if table['variant'] == 'A' else s['common_observations']):
+        if s['updates'] != {'A': observations, 'B': common, 'C': variant_c}[table['variant']]:
             raise ValueError('correction update population disagrees with variant')
         improvement = ratio(s['absolute_error'] - s['corrected_error'], s['absolute_error'])
         common_improvement = ratio(s['common_absolute_error'] - s['common_corrected_error'], s['common_absolute_error'])
+        variant_c_improvement = ratio(s['variant_c_absolute_error'] - s['variant_c_corrected_error'], s['variant_c_absolute_error'])
         nonzero = ratio(s['nonzero'], s['eligible_nodes'])
         common_nonzero = ratio(s['common_nonzero'], s['common_observations'])
         tables.append(dict(table, improvement=improvement, common_improvement=common_improvement,
+                           variant_c_improvement=variant_c_improvement,
                            reuse_rate=ratio(s['reuse'], s['observations']), nonzero_rate=nonzero,
                            common_nonzero_rate=common_nonzero, at_least_5_percent=rate_pass(nonzero)))
     defined = [t for t in tables if t['common_improvement']['denominator']]
-    best = max(defined, key=lambda t: Fraction(t['common_improvement']['numerator'], t['common_improvement']['denominator'])) if defined else None
+    best = max(defined, key=lambda t: (
+        Fraction(t['common_improvement']['numerator'], t['common_improvement']['denominator']),
+        -('A', 'B', 'C').index(t['variant']),
+        -('royals', 'material', 'combined').index(t['key']),
+        -t['denominator'])) if defined else None
     reasons = []
     if best is None:
         reasons.append('no_common_error_population')
     else:
         if not rate_pass(best['common_improvement'], 0.1):
             reasons.append('common_improvement_below_10_percent')
-        if not rate_pass(best['common_nonzero_rate']):
-            reasons.append('common_nonzero_rate_below_5_percent')
+        if not rate_pass(best['nonzero_rate']):
+            reasons.append('nonzero_reference_rate_below_5_percent')
     return {'tables': tables, 'best': best, 'decision': '見送り' if reasons else 'candidate',
             'reasons': reasons, 'observation_types': types}
 
@@ -355,9 +366,7 @@ def evaluate(samples, lmr):
                 definitions={'loss': 'lost good results / all eligible good results',
                              'activation': 'selected per-depth candidates / pre-exclusion design population',
                              'quantiles': 'nearest rank',
-                             'correction_reference_population': 'eligible nodes (phase-1 reference metric); current LMR does not use static evaluation',
-                             'correction_common_population': 'direction-confirming non-mate observations with a noncapture best move and no royal attack; predictions read before update',
-                             'correction_selection': 'maximize common error improvement; apply 10% improvement and 5% nonzero gates on that common population; exact ties use A before B, then royals/material/combined, then 32/64/128',
+                             **correction_definitions(),
                              'improving_moves': 'quiet_expanded + LMR outside sample 2; numerator=futility + LMR - both; overlapping moves count once',
                              'improving_population_overlap': 'all eligible-node LMR quiets occur in sample 2; protected TT quiets counted by quiet_expanded; PV/deep/mate-window LMR quiets counted separately by depth',
                              'improving_first_moves': 'LMR judgments on first moves and capped moves count in the denominator, but never as reduction changes',
@@ -440,19 +449,49 @@ def human_text(report):
     lines.extend(['Improving activation per node (reference only)', ''])
     table(['Depth', 'Union', 'Futility only', 'LMR only', 'Both', 'At least 5%'],
           [[d, fmt(g['activation']), fmt(g['futility_only']), fmt(g['lmr_only']), fmt(g['both']), g['at_least_5_percent']] for d, g in report['improving'].items()])
-    lines.extend(['Static evaluation correction', ''])
-    table(['Variant', 'Key', 'D', 'Common error improvement', 'Common nonzero predictions', 'All error improvement', 'Reuse', 'Eligible-node nonzero references', 'Keys', 'Exact', 'Upper', 'Lower'],
-          [[g['variant'], g['key'], g['denominator'], fmt(g['common_improvement']), fmt(g['common_nonzero_rate']), fmt(g['improvement']), fmt(g['reuse_rate']), fmt(g['nonzero_rate']),
-            g['stats']['keys'], g['stats']['exact'], g['stats']['upper'], g['stats']['lower']] for g in report['correction']['tables']])
-    best = report['correction']['best']
-    lines.append(f"Best variant={best['variant']}, key={best['key']}, D={best['denominator']}; decision={report['correction']['decision']}." if best else 'No correction observations.')
-    lines.append(f"Deferral reasons: {report['correction']['reasons']}.")
-    lines.extend(['', report['definitions']['correction_common_population'], '', 'Correction observation breakdown', ''])
-    table(['Boundary / capture / royal attack', 'Observations'], report['correction']['observation_types'].items())
+    lines.append(correction_text(report))
     lines.extend(['', 'Search verification', ''])
     table(['Group', 'Samples', 'Reference good / recorded good', 'Recorded good / reference good', 'Passes 80%'],
           [[d, g['samples'], fmt(g['reference_given_recorded_good']), fmt(g['recorded_given_reference_good']), g['passes']]
            for d, g in report['verification'].items()])
+    return '\n'.join(lines) + '\n'
+
+
+def correction_definitions():
+    return {
+        'correction_reference_population': 'eligible nodes; the 5% gate is nonzero / eligible_nodes; current LMR does not use static evaluation',
+        'correction_common_population': 'direction-confirming non-mate observations with a noncapture best move and no royal attack; predictions read before update',
+        'correction_variant_c_population': 'direction-confirming non-mate observations with no royal attack and either an upper bound or a noncapture best move; reference only, never used for selection',
+        'correction_selection': 'maximize common error improvement; require at least 10% common improvement and 5% eligible-node nonzero references; preserve existing exact ties: A/B/C, royals/material/combined, then 32/64/128',
+    }
+
+
+def correction_text(report):
+    correction = report['correction']
+    lines = ['Static evaluation correction', '']
+    lines.extend(correction_definitions().values())
+    lines.extend(['', 'Variant | Key | D | Common improvement (%) | Common nonzero (%) | Eligible-node nonzero (%) | Common count | Common absolute error | Common corrected error | C count | C absolute error | C corrected error | C improvement (%)',
+                  '--- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---'])
+    def percent(value):
+        return 'undefined' if value['ratio'] is None else f"{100 * value['ratio']:.6f}"
+    for t in correction['tables']:
+        stats = t['stats']
+        lines.append(' | '.join(map(str, [
+            t['variant'], t['key'], t['denominator'], percent(t['common_improvement']),
+            percent(t['common_nonzero_rate']), percent(t['nonzero_rate']),
+            stats['common_observations'], stats['common_absolute_error'], stats['common_corrected_error'],
+            stats['variant_c_observations'], stats['variant_c_absolute_error'], stats['variant_c_corrected_error'],
+            percent(t['variant_c_improvement'])])))
+    best = correction['best']
+    if best:
+        rate = best['nonzero_rate']
+        lines.extend(['', f"Best variant={best['variant']}, key={best['key']}, D={best['denominator']}; decision={correction['decision']}.",
+                      f"Nonzero references: {rate['numerator']}/{rate['denominator']} ({percent(rate)}%)."])
+    else:
+        lines.extend(['', 'No correction observations.'])
+    lines.append(f"Deferral reasons: {correction['reasons']}.")
+    lines.extend(['', 'Boundary / capture / royal attack | Observations', '--- | ---'])
+    lines.extend(f'{kind} | {count}' for kind, count in correction['observation_types'].items())
     return '\n'.join(lines) + '\n'
 
 
@@ -508,39 +547,65 @@ def rediagnosis_self_test():
     empty = improving_move_report([], futility, margins, {}, [], {}, True)['all']
     assert empty['activation'] == ratio(0, 0) and not empty['at_least_5_percent']
 
-    # Instructions 3/4: all 18 tables share exactly the same common population.
-    # A has better all-observation error; B must win on common error alone.
+    # Variant C instructions: common evaluation is B's set; C adds only
+    # unattacked upper-bound captures to its updates and reference population.
     raw = {'tables': [], 'observation_types': {
-        'lower:capture=0:attacked=0': 20, 'lower:capture=1:attacked=0': 20}}
-    for v in ('A', 'B'):
+        'lower:capture=0:attacked=0': 20, 'lower:capture=1:attacked=0': 10,
+        'upper:capture=1:attacked=0': 7, 'upper:capture=1:attacked=1': 3}}
+    for v in ('A', 'B', 'C'):
         for k in ('royals', 'material', 'combined'):
             for d in (32, 64, 128):
                 raw['tables'].append(dict(variant=v, key=k, denominator=d, stats=dict(
                     observations=40, absolute_error=2000, corrected_error=100 if v == 'A' else 1900,
                     common_observations=20, common_absolute_error=1000, common_corrected_error=1100,
-                    common_nonzero=1, nonzero=19, eligible_nodes=20, reuse=30,
-                    updates=40 if v == 'A' else 20)))
-    winner = next(t for t in raw['tables'] if (t['variant'], t['key'], t['denominator']) == ('B', 'material', 64))
+                    variant_c_observations=27, variant_c_absolute_error=1500,
+                    variant_c_corrected_error=0 if v == 'A' else 1600,
+                    common_nonzero=0, nonzero=5, eligible_nodes=100, reuse=30,
+                    updates={'A': 40, 'B': 20, 'C': 27}[v])))
+    winner = next(t for t in raw['tables'] if (t['variant'], t['key'], t['denominator']) == ('C', 'material', 64))
     winner['stats']['common_corrected_error'] = 900
     report = correction_report(raw)
-    assert len(report['tables']) == 18 and len(report['observation_types']) == 12
-    assert (report['best']['variant'], report['best']['key'], report['best']['denominator']) == ('B', 'material', 64)
+    assert len(report['tables']) == 27 and len(report['observation_types']) == 12
+    assert (report['best']['variant'], report['best']['key'], report['best']['denominator']) == ('C', 'material', 64)
     assert report['best']['common_improvement'] == ratio(100, 1000)
-    assert report['best']['common_nonzero_rate'] == ratio(1, 20)
-    assert report['decision'] == 'candidate'  # inclusive 10% and 5% gates
+    assert report['best']['variant_c_improvement'] == ratio(-100, 1500)
+    assert report['best']['common_nonzero_rate'] == ratio(0, 20)
+    assert report['best']['nonzero_rate'] == ratio(5, 100)
+    assert report['decision'] == 'candidate'  # inclusive 10% and 5%; common zero is irrelevant
     winner['stats']['common_corrected_error'] = 901
     assert correction_report(raw)['reasons'] == ['common_improvement_below_10_percent']
     winner['stats']['common_corrected_error'] = 900
-    winner['stats']['common_nonzero'] = 0
-    assert correction_report(raw)['reasons'] == ['common_nonzero_rate_below_5_percent']
+    winner['stats']['nonzero'] = 4
+    winner['stats']['common_nonzero'] = 20
+    assert correction_report(raw)['reasons'] == ['nonzero_reference_rate_below_5_percent']
+    winner['stats']['eligible_nodes'] = 0
+    winner['stats']['nonzero'] = 0
+    assert correction_report(raw)['reasons'] == ['nonzero_reference_rate_below_5_percent']
     winner['stats']['common_observations'] = 19
     rejects(lambda: correction_report(raw))
     winner['stats']['common_observations'] = 20
-    winner['stats']['updates'] = 40
+    winner['stats']['variant_c_observations'] = 28
     rejects(lambda: correction_report(raw))
+    winner['stats']['variant_c_observations'] = 27
+    raw['observation_types']['upper:capture=1:attacked=0'] = 6
+    raw['observation_types']['upper:capture=1:attacked=1'] = 4
+    rejects(lambda: correction_report(raw))
+    raw['observation_types']['upper:capture=1:attacked=0'] = 7
+    raw['observation_types']['upper:capture=1:attacked=1'] = 3
     winner['stats']['updates'] = 20
+    rejects(lambda: correction_report(raw))
+    winner['stats']['updates'] = 27
     rejects(lambda: correction_report(dict(raw, tables=raw['tables'][:-1])))
-    raw['observation_types']['lower:capture=1:attacked=0'] = 21
+    # The existing tie rule (32 before 64 before 128) must not depend on file order.
+    for t in raw['tables']:
+        t['stats']['common_corrected_error'] = 900
+    tied = correction_report(dict(raw, tables=list(reversed(raw['tables']))))['best']
+    assert (tied['variant'], tied['key'], tied['denominator']) == ('A', 'royals', 32)
+    for t in raw['tables']:
+        t['stats']['common_absolute_error'] = 0
+        t['stats']['common_corrected_error'] = 0
+    assert correction_report(raw)['reasons'] == ['no_common_error_population']
+    raw['observation_types']['lower:capture=1:attacked=0'] = 11
     rejects(lambda: correction_report(raw))
 
 
@@ -585,7 +650,7 @@ def self_test():
         assert subprocess.run(command, capture_output=True).returncode == 0
         path.write_text('captures 1 1 0\nquiets 1 0 1\n')
         assert subprocess.run(command, capture_output=True).returncode == 1
-    print('self-test: passed (loss, eligibility, ties, strict thresholds, activation union, 18 correction tables, common-population gates, LMR, verification mutation)')
+    print('self-test: passed (loss, eligibility, ties, strict thresholds, activation union, 27 correction tables, common improvement and eligible-node reference gates, LMR, verification mutation)')
 
 
 def main():
@@ -596,6 +661,7 @@ def main():
     parser.add_argument('--text', type=Path)
     parser.add_argument('--verify-only', type=Path)
     parser.add_argument('--self-test', action='store_true')
+    parser.add_argument('--correction-only', type=Path, metavar='CORRECTION_JSON')
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -604,6 +670,16 @@ def main():
         result = verification_report(args.verify_only)
         print(json.dumps(result, indent=2))
         return 0 if result['all']['passes'] else 1
+    if args.correction_only:
+        if args.json is None or args.text is None:
+            parser.error('--correction-only requires --json and --text')
+        raw = json.loads(args.correction_only.read_text())
+        result = dict(pawn_value=raw['pawn_value'], definitions=correction_definitions(),
+                      correction=correction_report(raw))
+        args.json.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n')
+        args.text.write_text(correction_text(result))
+        print(f'results: {args.json}, {args.text}')
+        return 0
     if any(value is None for value in (args.samples, args.lmr, args.json, args.text)):
         parser.error('--samples, --lmr, --json and --text are required')
     result = evaluate(args.samples, args.lmr)

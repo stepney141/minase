@@ -20,7 +20,8 @@
 履歴による非捕獲手の後方枝刈りは、失う良い結果の割合が10%以下の候補がどの深さにもなかったので見送り、フェーズ4は実行しない。これにより、段階4のlate move pruningと別の主張として扱ってよいかという利用者の判断は不要になった。
 フェーズ2（SEEによる捕獲手の枝刈り）は、[STC](../measurements/strength-stage8-see-capture-stc.md)が470ペア、[LTC](../measurements/strength-stage8-see-capture-ltc.md)が791ペアでともに`H1`かつ異常0件となり、採用した。
 フェーズ3（improvingフラグ）は、発動の指標を手の単位へ改める利用者の決定（設計判断の「発動の事前確認」）により実行した。採用構成の[再診断](../measurements/strength-stage8-improving-bench.md)で倍率を残り深さ順に1/4、1/2、1/2と決め、LMRの追加減深を外して実装したが、[STC](../measurements/strength-stage8-improving-stc.md)が694ペアで`H0`となり不採用とした。実装はコードから外した。
-次の一手は、フェーズ5（静的評価の補正）の再診断である。
+フェーズ5（静的評価の補正）は、採用構成の[再診断](../measurements/strength-stage8-correction-bench.md)で更新の条件、鍵、および重みを決めた（「採用した閾値」節）。
+次の一手は、フェーズ5の実装とSTCである。
 
 ## 目的
 
@@ -87,7 +88,7 @@ futility pruningが展開しないと決めた手は本項目の対象に数え�
 
 ## 採用した閾値
 
-SEEによる捕獲手の枝刈りの値はフェーズ1の[診断](../measurements/strength-stage8-pruning-bench.md)（段階開始版、bench深さ6）で、improvingの値はSEEによる捕獲手の枝刈りを採用した構成の[再診断](../measurements/strength-stage8-improving-bench.md)で確定した。静的評価の補正の値はフェーズ1の暫定値であり、フェーズ5の再診断で書き換える。
+SEEによる捕獲手の枝刈りの値はフェーズ1の[診断](../measurements/strength-stage8-pruning-bench.md)（段階開始版、bench深さ6）で、improvingの値はSEEによる捕獲手の枝刈りを採用した構成の[再診断](../measurements/strength-stage8-improving-bench.md)で確定した。静的評価の補正の値も同じ採用構成の再診断で確定した。
 
 | 項目 | 残り深さ1 | 残り深さ2 | 残り深さ3 | 発動率 |
 |---|---|---|---|---|
@@ -97,7 +98,7 @@ SEEによる捕獲手の枝刈りの値はフェーズ1の[診断](../measuremen
 
 improvingでないノードのfutility余裕値は、現行の50、150、150に倍率を掛けて端数を切り捨てた12、75、75である。
 LMRの追加減深は、再診断で失う割合の増分が15.0ポイント（3／20から6／20）となり基準の10ポイントを超えたので外し、improvingフラグは余裕値の変更だけで測った。
-静的評価の補正の暫定値は、鍵が双方の王駒の升の組と手番側、重みが`min(depth, 8) / 32`である（予測誤差の改善率12.0%、非ゼロ補正の参照率99.7%）。
+静的評価の補正は、採用構成の[再診断](../measurements/strength-stage8-correction-bench.md)で、更新の条件を変種B（最善手が捕獲手でなく、手番側の王駒に相手の利きが届かない）、鍵を双方の駒種別の枚数の組と手番側、重みを`min(depth, 8) / 32`と決めた（共通の評価集合での改善率15.41%、非ゼロ補正の参照率66.9%）。全観測点で更新する変種Aの改善率は−4.84%から1.99%であった。
 
 ## 実装フェーズ
 

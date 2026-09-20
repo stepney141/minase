@@ -19,7 +19,7 @@ index b677635..c427fa2 100644
      }
  
 diff --git a/src/search/mod.rs b/src/search/mod.rs
-index 3675d37..6b1788e 100644
+index 3675d37..acaefad 100644
 --- a/src/search/mod.rs
 +++ b/src/search/mod.rs
 @@ -977,6 +977,7 @@ fn new_searcher<'a>(
@@ -389,7 +389,7 @@ index 3675d37..6b1788e 100644
      /// 実着手の適用直前に停止条件を検査し、続行可能なら適用回数を数える。
      fn enter_node(&mut self) -> bool {
          if self.shared.observe_external_stop() {
-@@ -2372,3 +2623,468 @@ fn piece_at_for_ordering(position: &Position, square: crate::Square) -> PieceCod
+@@ -2372,3 +2623,486 @@ fn piece_at_for_ordering(position: &Position, square: crate::Square) -> PieceCod
  fn capture_is_pruned_by_see(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> bool {
      see_prunes(position, rules, pst, mv, 0)
  }
@@ -433,6 +433,9 @@ index 3675d37..6b1788e 100644
 +        common_absolute_error: u64,
 +        common_corrected_error: u64,
 +        common_nonzero: u64,
++        variant_c_observations: u64,
++        variant_c_absolute_error: u64,
++        variant_c_corrected_error: u64,
 +        updates: u64,
 +    }
 +    impl Stats {
@@ -451,6 +454,9 @@ index 3675d37..6b1788e 100644
 +            self.common_absolute_error += other.common_absolute_error;
 +            self.common_corrected_error += other.common_corrected_error;
 +            self.common_nonzero += other.common_nonzero;
++            self.variant_c_observations += other.variant_c_observations;
++            self.variant_c_absolute_error += other.variant_c_absolute_error;
++            self.variant_c_corrected_error += other.variant_c_corrected_error;
 +            self.updates += other.updates;
 +        }
 +    }
@@ -499,7 +505,7 @@ index 3675d37..6b1788e 100644
 +                    files,
 +                    lines: BTreeMap::new(),
 +                    counts: BTreeMap::new(),
-+                    totals: vec![Stats::default(); 18],
++                    totals: vec![Stats::default(); 27],
 +                    observation_types: BTreeMap::new(),
 +                    pawn: None
 +                }))
@@ -547,7 +553,7 @@ index 3675d37..6b1788e 100644
 +        }
 +        if let Some(dir) = &out.directory {
 +            let tables: Vec<_> = out.totals.iter().enumerate().map(|(i, stats)| {
-+                serde_json::json!({"variant": (["A", "B"][i / 9]), "key": (["royals", "material", "combined"][(i % 9) / 3]), "denominator": ([32, 64, 128][i % 3]), "stats": stats})
++                serde_json::json!({"variant": (["A", "B", "C"][i / 9]), "key": (["royals", "material", "combined"][(i % 9) / 3]), "denominator": ([32, 64, 128][i % 3]), "stats": stats})
 +            }).collect();
 +            serde_json::to_writer_pretty(
 +                File::create(dir.join("correction.json")).unwrap(),
@@ -569,8 +575,8 @@ index 3675d37..6b1788e 100644
 +        }
 +    }
 +    pub(super) struct Worker {
-+        tables: [HashMap<Vec<u8>, i64>; 18],
-+        stats: [Stats; 18],
++        tables: [HashMap<Vec<u8>, i64>; 27],
++        stats: [Stats; 27],
 +        pawn: i32,
 +        pub reference_tt: Option<TranspositionTable>,
 +    }
@@ -594,7 +600,7 @@ index 3675d37..6b1788e 100644
 +                return;
 +            }
 +            let keys = keys(position);
-+            for i in 0..18 {
++            for i in 0..27 {
 +                self.stats[i].eligible_nodes += 1;
 +                let prediction =
 +                    self.tables[i].get(&keys[(i % 9) / 3]).copied().unwrap_or(0) / 1024;
@@ -624,6 +630,7 @@ index 3675d37..6b1788e 100644
 +            // Classify from the restored position and move, never picker metadata.
 +            let capture = reference_capture(position, best_move);
 +            let common = !capture && !attacked;
++            let variant_c = !attacked && (bound == Bound::Upper || !capture);
 +            let boundary = match bound {
 +                Bound::Exact => "exact",
 +                Bound::Upper => "upper",
@@ -640,7 +647,7 @@ index 3675d37..6b1788e 100644
 +            }
 +            let difference = i64::from(score - eval);
 +            let cap = i64::from(2 * self.pawn);
-+            for i in 0..18 {
++            for i in 0..27 {
 +                let old = self.tables[i].get(&keys[(i % 9) / 3]).copied();
 +                let fixed = old.unwrap_or(0);
 +                let prediction = (fixed / 1024).clamp(-cap, cap);
@@ -655,12 +662,23 @@ index 3675d37..6b1788e 100644
 +                    stats.common_corrected_error += (difference - prediction).unsigned_abs();
 +                    stats.common_nonzero += u64::from(prediction != 0);
 +                }
++                if variant_c {
++                    stats.variant_c_observations += 1;
++                    stats.variant_c_absolute_error += difference.unsigned_abs();
++                    stats.variant_c_corrected_error += (difference - prediction).unsigned_abs();
++                }
 +                match bound {
 +                    Bound::Exact => stats.exact += 1,
 +                    Bound::Upper => stats.upper += 1,
 +                    Bound::Lower => stats.lower += 1,
 +                }
-+                if i < 9 || common {
++                let update = match i / 9 {
++                    0 => true,
++                    1 => common,
++                    2 => variant_c,
++                    _ => unreachable!(),
++                };
++                if update {
 +                    stats.updates += 1;
 +                    let updated = fixed
 +                        + (difference * 1024 - fixed) * i64::from(depth.min(8))
@@ -676,7 +694,7 @@ index 3675d37..6b1788e 100644
 +    impl Drop for Worker {
 +        fn drop(&mut self) {
 +            let mut out = OUTPUT.get().unwrap().lock().unwrap();
-+            for i in 0..18 {
++            for i in 0..27 {
 +                self.stats[i].keys = self.tables[i].len() as u64;
 +                out.totals[i].add(&self.stats[i]);
 +            }
