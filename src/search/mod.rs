@@ -3,6 +3,7 @@
 mod correction;
 #[cfg(test)]
 mod correction_tests;
+pub(crate) mod params;
 #[cfg(test)]
 mod search_captures_tests;
 mod see;
@@ -74,22 +75,22 @@ impl AspirationWindow {
         window
     }
 
-    /// 下側だけを広げ、次の拡大量を2倍にする。
+    /// 下側だけを広げ、次の拡大量に調整係数を掛ける。
     fn widen_low(&mut self) {
         if self.alpha != -INFINITY {
             self.alpha -= self.delta;
         }
         self.normalize();
-        self.delta = self.delta.saturating_mul(2);
+        self.delta = grow_aspiration_delta(self.delta);
     }
 
-    /// 上側だけを広げ、次の拡大量を2倍にする。
+    /// 上側だけを広げ、次の拡大量に調整係数を掛ける。
     fn widen_high(&mut self) {
         if self.beta != INFINITY {
             self.beta += self.delta;
         }
         self.normalize();
-        self.delta = self.delta.saturating_mul(2);
+        self.delta = grow_aspiration_delta(self.delta);
     }
 
     /// 詰み帯の閾値へ達した端を無限へ置き換える。
@@ -105,30 +106,12 @@ impl AspirationWindow {
 
 /// 停止要求と時間切れを検査するノード数間隔。
 const STOP_CHECK_INTERVAL: u64 = 4096;
-/// History値を全体の半減で抑える上限。
-const HISTORY_LIMIT: i32 = 1 << 14;
 /// 1つのplyに記録するkiller手の数。
 const KILLER_COUNT: usize = 2;
-/// LMRの対数積を割る係数。
-///
-/// `docs/plans/strength-stage5.md`の「採用した係数」節を参照。
-const LMR_DIVISOR: f64 = 2.0;
-/// LMRの減深量を1増減するhistory値の閾値。
-///
-/// `docs/plans/strength-stage5.md`の「採用した係数」節を参照。
-const LMR_HISTORY_THRESHOLD: i32 = 128;
 /// LMRの減深量の上限。
 const LMR_MAX_REDUCTION: u32 = 3;
 /// LMRの減深量表に保持する手番号の列数。
 const LMR_MOVE_COUNT: usize = 256;
-/// 深さ1〜3のfutility pruningの余裕値を半歩兵単位で表した倍率。
-///
-/// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
-const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
-/// 深さ1〜3の捕獲手のSEE余裕値を歩兵単位で表した倍率。
-///
-/// `docs/plans/strength-stage8.md`の「採用した閾値」節に従う。
-const SEE_MARGIN_PAWNS: [i32; 3] = [0, 2, 0];
 /// 手番側・移動元・移動先で参照するhistory表。
 type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 /// plyごとに新しい順で保持するkiller表。
@@ -138,14 +121,58 @@ type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 fn lmr_table() -> &'static [[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 1] {
     static TABLE: OnceLock<[[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 1]> = OnceLock::new();
     TABLE.get_or_init(|| {
+        let divisor = params::lmr_divisor();
         let mut table = [[0; LMR_MOVE_COUNT]; MAX_PLY as usize + 1];
         for (depth, row) in table.iter_mut().enumerate().skip(1) {
             for (index, value) in row.iter_mut().enumerate().skip(1) {
-                *value = ((depth as f64).ln() * (index as f64).ln() / LMR_DIVISOR).floor() as u8;
+                *value = lmr_base(depth, index, divisor);
             }
         }
         table
     })
+}
+
+/// LMR表の1要素を、百分率の除数から計算する。
+fn lmr_base(depth: usize, index: usize, divisor: i32) -> u8 {
+    ((depth as f64).ln() * (index as f64).ln() / (f64::from(divisor) / 100.0)).floor() as u8
+}
+
+/// 深さ1〜3のfutility余裕値を求める。
+fn futility_margin(pawn: i32, depth: u32) -> i32 {
+    let percent = match depth {
+        1 => params::futility_margin1(),
+        2 => params::futility_margin2(),
+        3 => params::futility_margin3(),
+        _ => unreachable!("futility applies only at depths 1 to 3"),
+    };
+    pawn * percent / 100
+}
+
+/// 深さ1〜3のSEE余裕値を求める。
+fn see_margin(pawn: i32, depth: u32) -> i32 {
+    let percent = match depth {
+        1 => params::see_margin1(),
+        2 => params::see_margin2(),
+        3 => params::see_margin3(),
+        _ => unreachable!("SEE pruning applies only at depths 1 to 3"),
+    };
+    pawn * percent / 100
+}
+
+/// 直前の評価値から上下に取る初期窓幅を求める。
+fn aspiration_delta(pawn: i32) -> i32 {
+    pawn * params::aspiration_delta() / 100
+}
+
+/// 窓幅の拡大を広い整数型で計算してから飽和させる。
+fn grow_aspiration_delta(delta: i32) -> i32 {
+    let grown = i64::from(delta) * i64::from(params::aspiration_growth()) / 100;
+    i32::try_from(grown).unwrap_or(i32::MAX)
+}
+
+/// 探索深さからnull moveの減深量を求める。
+fn null_move_reduction(depth: u32) -> u32 {
+    (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200
 }
 
 /// history値で補正し、減深後の深さを1以上に保つLMR減深量を求める。
@@ -153,9 +180,10 @@ fn lmr_table() -> &'static [[u8; LMR_MOVE_COUNT]; MAX_PLY as usize + 1] {
 /// 深さ2未満では減深せず、手番号が表の列数以上なら最後の列を使う。
 fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
     let base = i32::from(lmr_table()[depth as usize][index.min(LMR_MOVE_COUNT - 1)]);
-    let adjustment = if history >= LMR_HISTORY_THRESHOLD {
+    let threshold = params::lmr_history_threshold();
+    let adjustment = if history >= threshold {
         -1
-    } else if history <= -LMR_HISTORY_THRESHOLD {
+    } else if history <= -threshold {
         1
     } else {
         0
@@ -1025,6 +1053,7 @@ fn new_searcher<'a>(
         accumulators: [root_accumulator; MAX_PLY as usize + 1],
         material_keys: [material_key(position); MAX_PLY as usize + 1],
         correction: CorrectionTable::new(pst.pawn_value()),
+        delta_margin: pst.pawn_value() * params::delta_margin() / 100,
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
@@ -1234,6 +1263,8 @@ struct Searcher<'a> {
     material_keys: [u64; MAX_PLY as usize + 1],
     /// 反復深化の間で共有する、このワーカー専用の補正表。
     correction: CorrectionTable,
+    /// 静止探索で小さな捕獲を残すための余裕値。
+    delta_margin: i32,
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     history: Box<HistoryTable>,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
@@ -1254,7 +1285,8 @@ impl Searcher<'_> {
         depth: u32,
         prev: Option<i32>,
     ) -> Option<(Move, i32)> {
-        let mut window = AspirationWindow::initial(depth, prev, self.pst.pawn_value() / 2);
+        let mut window =
+            AspirationWindow::initial(depth, prev, aspiration_delta(self.pst.pawn_value()));
         loop {
             let (best_move, score) =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
@@ -1370,7 +1402,7 @@ impl Searcher<'_> {
             && beta.abs() < MATE_THRESHOLD
             && has_non_royal_piece
         {
-            let reduction = 2 + depth / 6;
+            let reduction = null_move_reduction(depth);
             let lion_before = position
                 .lion_taken_by_non_lion()
                 .map(|trigger| trigger.square);
@@ -1411,8 +1443,7 @@ impl Searcher<'_> {
                 let static_eval = self
                     .pst
                     .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
-                let margin =
-                    self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
+                let margin = futility_margin(self.pst.pawn_value(), depth);
                 static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
             });
         let mut royal_attacked = None;
@@ -1450,7 +1481,7 @@ impl Searcher<'_> {
                     self.rules,
                     self.pst,
                     mv,
-                    self.pst.pawn_value() * SEE_MARGIN_PAWNS[depth as usize - 1],
+                    see_margin(self.pst.pawn_value(), depth),
                 )
             {
                 index += 1;
@@ -1547,7 +1578,7 @@ impl Searcher<'_> {
 
         let original_alpha = alpha;
         alpha = alpha.max(stand_pat);
-        let threshold = alpha - stand_pat - self.pst.delta_margin();
+        let threshold = alpha - stand_pat - self.delta_margin;
         let buffers = &mut self.qsearch[ply as usize];
         buffers.reset(position);
         if !buffers.initialize(
@@ -1591,7 +1622,7 @@ impl Searcher<'_> {
                 candidate.capture.captured,
             );
             if !is_last_royal_capture
-                && stand_pat + candidate.captured_value + self.pst.delta_margin() <= alpha
+                && stand_pat + candidate.captured_value + self.delta_margin <= alpha
             {
                 continue;
             }
@@ -1823,7 +1854,7 @@ impl Searcher<'_> {
         let from = mv.from.dense_index();
         let to = mv.to.dense_index();
         self.history[color][from][to] += (depth * depth) as i32;
-        if self.history[color][from][to] > HISTORY_LIMIT {
+        if self.history[color][from][to] > params::history_limit() {
             for color_history in self.history.iter_mut() {
                 for from_history in color_history.iter_mut() {
                     for value in from_history.iter_mut() {
@@ -1843,15 +1874,6 @@ struct TimeBudget {
     /// 探索途中でも打ち切る上限時間。
     hard: Duration,
 }
-
-/// 1局の開始から終局までに見込む手数。
-const EXPECTED_PLIES: u32 = 450;
-/// 1局面で見込む残り手数の下限。
-const MIN_MOVES: u32 = 100;
-/// 次の反復の予測時間に使う固定比2.5の分子。
-const ITERATION_RATIO_NUMERATOR: u128 = 5;
-/// 次の反復の予測時間に使う固定比2.5の分母。
-const ITERATION_RATIO_DENOMINATOR: u128 = 2;
 
 /// 最善手の安定を判定する直近の完了反復数。
 ///
@@ -1877,7 +1899,7 @@ fn stable_signal(bests: &[Move]) -> bool {
 /// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従い、
 /// `stable`が真なら経過時間に固定比を掛けた予測完了時刻がsoft以下であることを、
 /// 偽なら経過時間がsoft未満であることを要求し、hardの予測による上限は常に守る。
-/// 固定比2.5は、段階1の候補バイナリで測定した深さ5以上の累積時間比の中央値に基づく。
+/// 比の既定値は`params`の表に定める。
 fn should_start_next_iteration(
     elapsed: Duration,
     hit: Duration,
@@ -1895,20 +1917,21 @@ fn iteration_prediction_fits(
     budget: TimeBudget,
     stable: bool,
 ) -> bool {
-    let predicted = started.as_nanos() * ITERATION_RATIO_NUMERATOR;
-    predicted <= (hit.as_nanos() + budget.hard.as_nanos()) * ITERATION_RATIO_DENOMINATOR
-        && (!stable
-            || predicted <= (hit.as_nanos() + budget.soft.as_nanos()) * ITERATION_RATIO_DENOMINATOR)
+    let predicted = started.as_nanos() * params::iteration_ratio() as u128;
+    predicted <= (hit.as_nanos() + budget.hard.as_nanos()) * 100
+        && (!stable || predicted <= (hit.as_nanos() + budget.soft.as_nanos()) * 100)
 }
 
 /// 現在の手数から、手番側が今後指すと見込む手数を返す。
 fn moves_to_go(ply: u32) -> u128 {
-    u128::from(MIN_MOVES.max(EXPECTED_PLIES.saturating_sub(ply) / 2))
+    (params::min_moves() as u128)
+        .max((params::expected_plies() as u128).saturating_sub(u128::from(ply)) / 2)
 }
 
 /// 持ち時間制の予算式を1箇所に集約する。
 ///
-/// `moves_to_go = max(MIN_MOVES, EXPECTED_PLIES.saturating_sub(ply) / 2)`、
+/// 既定係数では、以下の式と一致する。
+/// `moves_to_go = max(100, 450.saturating_sub(ply) / 2)`、
 /// `soft_raw = remaining / moves_to_go + 0.7 * increment + 0.8 * byoyomi * w`、
 /// `safe_hard = max(1ms, (remaining + byoyomi).saturating_sub(30ms))`、
 /// `hard = max(1ms, min(4 * soft_raw, remaining / 4 + 0.8 * byoyomi, safe_hard))`、
@@ -1928,11 +1951,12 @@ fn clock_budget(clock: ClockLimits) -> TimeBudget {
     } else {
         40
     };
-    let soft_raw =
-        remaining / moves_to_go(clock.ply) + increment * 7 / 10 + byoyomi * 8 * opening / 400;
+    let soft_raw = remaining / moves_to_go(clock.ply)
+        + increment * params::increment_share() as u128 / 100
+        + byoyomi * 8 * opening / 400;
     let safe_hard = remaining.saturating_add(byoyomi).saturating_sub(30).max(1);
-    let hard = (soft_raw * 4)
-        .min(remaining / 4 + byoyomi_share)
+    let hard = (soft_raw * params::hard_soft_ratio() as u128 / 100)
+        .min(remaining * params::hard_remaining_share() as u128 / 100 + byoyomi_share)
         .min(safe_hard)
         .max(1);
     TimeBudget {

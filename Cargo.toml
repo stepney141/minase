@@ -12,6 +12,9 @@ unsafe_code = "forbid"
 [lints.clippy]
 all = "warn"
 
+[features]
+tuning = []
+
 [dependencies]
 clap = { version = "4.6.4", features = ["derive"] }
 fs2 = "0.4.3"

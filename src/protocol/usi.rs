@@ -3,6 +3,8 @@
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
 use std::num::NonZeroUsize;
+#[cfg(feature = "tuning")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
@@ -25,6 +27,10 @@ use super::engine::{
 
 /// USIから設定できる置換表容量の上限(MiB)。
 const MAX_HASH_SIZE_MB: usize = 65_536;
+
+/// プロセス内で一度でもgoを受信したら調整係数を固定する。
+#[cfg(feature = "tuning")]
+static TUNING_LOCKED: AtomicBool = AtomicBool::new(false);
 
 /// lishogi系拡張を含むUSIプロトコル。
 pub struct UsiProtocol {
@@ -140,6 +146,11 @@ impl UsiProtocol {
         let Some(command) = tokens.first().copied() else {
             return Ok(LineAction::Continue);
         };
+
+        #[cfg(feature = "tuning")]
+        if command == "go" {
+            TUNING_LOCKED.store(true, Ordering::Relaxed);
+        }
 
         match command {
             "usi" => self.write_handshake(output)?,
@@ -676,6 +687,13 @@ impl UsiProtocol {
             "option name Threads type spin default {} min 1 max 256",
             search::DEFAULT_THREADS
         )?;
+        #[cfg(feature = "tuning")]
+        for &(name, default, min, max) in search::params::PARAMETERS {
+            writeln!(
+                output,
+                "option name Tune_{name} type spin default {default} min {min} max {max}"
+            )?;
+        }
         writeln!(output, "usiok")
     }
 
@@ -692,6 +710,23 @@ impl UsiProtocol {
         let Some(name) = name else {
             return Ok(());
         };
+
+        #[cfg(feature = "tuning")]
+        if let Some(parameter) = name.strip_prefix("Tune_") {
+            if TUNING_LOCKED.load(Ordering::Relaxed) {
+                return write_error(output, "tuning parameters cannot change after go");
+            }
+            let Some(value) = value else {
+                return write_error(output, &format!("{name} requires a value"));
+            };
+            let Ok(value) = value.parse::<i32>() else {
+                return write_error(output, &format!("{name} must be an integer"));
+            };
+            return match search::params::set(parameter, value) {
+                Ok(()) => Ok(()),
+                Err(error) => write_error(output, &error.to_string()),
+            };
+        }
 
         if name.eq_ignore_ascii_case("RuleSet") {
             let Some(value) = value else {
@@ -1446,6 +1481,19 @@ mod tests {
 
     /// stateのAwaitingStartエラー行（BG「stateコマンド」、台本完全一致）。
     const STATE_ERROR: &str = "info string error: state requires an active or finished game";
+
+    /// 通常版では調整用オプションを宣言せず、未知オプションとして無視する。
+    #[cfg(not(feature = "tuning"))]
+    #[test]
+    fn normal_build_does_not_expose_tuning_options() {
+        let output = lishogi_session("usi\nsetoption name Tune_DeltaMargin value nope\n");
+        assert!(
+            !output
+                .lines()
+                .any(|line| line.starts_with("option name Tune_"))
+        );
+        assert!(error_lines(&output).is_empty());
+    }
 
     fn make_engine(codes: &[RuleCode]) -> Engine {
         let mut complete = codes.to_vec();
