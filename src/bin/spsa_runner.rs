@@ -273,8 +273,11 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
         |record| {
             store.save(record)?;
             println!(
-                "iteration {} applied {}: D={} failures={:?}",
-                record.k, record.application, record.d, record.failures
+                "iteration {} applied {}: D={} {}",
+                record.k,
+                record.application,
+                record.d,
+                failure_text(record.failures)
             );
             if record.application % 100 == 0 {
                 print_theta(settings, &record.theta);
@@ -294,14 +297,24 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     println!(
-        "summary: applied={} valid_pairs={} discarded_pairs={} failures={:?} elapsed={:.6} s",
-        summary.applied,
-        summary.valid_pairs,
-        summary.discarded_pairs,
-        summary.failures,
-        start.elapsed().as_secs_f64()
+        "summary: applied={} valid_pairs={} discarded_pairs={}",
+        summary.applied, summary.valid_pairs, summary.discarded_pairs
     );
+    println!("engine_failures: {}", failure_text(summary.failures));
+    println!("elapsed: {:.6} s", start.elapsed().as_secs_f64());
     Ok(())
+}
+
+/// 異常の理由別件数を`match_runner`の最終サマリと同じ書式で表す。
+fn failure_text(failures: FailureCounts) -> String {
+    format!(
+        "illegal_moves={} crashes={} timeouts={} time_forfeits={} rejected_moves={}",
+        failures.illegal_moves,
+        failures.crashes,
+        failures.timeouts,
+        failures.time_forfeits,
+        failures.rejected_moves
+    )
 }
 
 fn main() {
