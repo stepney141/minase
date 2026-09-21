@@ -39,6 +39,8 @@ pub enum EngineCommand {
         /// 現局から追加する着手列。
         moves: Vec<Move>,
     },
+    /// 最後に受理した1手を原子的に置き換える。
+    ReplaceLastMove(Move),
     /// 現局へ1手を適用する。
     ApplyMove(Move),
     /// GUI発の終局通知を受け、次局の開始待ちへ戻る。
@@ -70,6 +72,8 @@ pub enum RejectReason {
     InvalidPosition(PositionError),
     /// 開始局面を受信する前に着手が送られた。
     GameNotStarted,
+    /// 置き換える直前の着手がない。
+    NoPreviousMove,
     /// 駒の動きまたは反復禁止規則により着手を適用できない。
     IllegalMove {
         /// 拒否された着手。
@@ -86,6 +90,7 @@ impl fmt::Display for RejectReason {
         match self {
             Self::InvalidRules(error) => error.fmt(formatter),
             Self::InvalidPosition(error) => error.fmt(formatter),
+            Self::NoPreviousMove => formatter.write_str("there is no previous move to replace"),
             Self::GameNotStarted => formatter.write_str("the game has not started"),
             Self::IllegalMove { mv, cause } => write!(formatter, "illegal move {mv:?}: {cause}"),
             Self::GameAlreadyOver => formatter.write_str("the game is already over"),
@@ -98,7 +103,10 @@ impl std::error::Error for RejectReason {
         match self {
             Self::InvalidRules(error) => Some(error),
             Self::InvalidPosition(error) => Some(error),
-            Self::GameNotStarted | Self::IllegalMove { .. } | Self::GameAlreadyOver => None,
+            Self::GameNotStarted
+            | Self::NoPreviousMove
+            | Self::IllegalMove { .. }
+            | Self::GameAlreadyOver => None,
         }
     }
 }
@@ -116,6 +124,8 @@ struct RuleSelection {
 pub struct Engine {
     /// 現在保持している対局。
     game: Game,
+    /// 最後の着手を適用する直前の対局。
+    before_last_move: Option<Game>,
     /// 現在の対局を再構成した基底局面までの絶対手数。
     base_ply: u32,
     /// 現局に適用中の規則。
@@ -136,6 +146,7 @@ impl Engine {
         let game = Game::new(selection.rules);
         Ok(Self {
             game,
+            before_last_move: None,
             base_ply: 0,
             active: selection.clone(),
             pending: selection,
@@ -161,8 +172,10 @@ impl Engine {
             EngineCommand::NewGame => self.new_game(),
             EngineCommand::SetPosition { setup, moves } => self.set_position(setup, &moves),
             EngineCommand::ExtendPosition { moves } => self.extend_position(&moves),
+            EngineCommand::ReplaceLastMove(mv) => self.replace_last_move(mv),
             EngineCommand::ApplyMove(mv) => self.apply_move(mv),
             EngineCommand::EndGame => {
+                self.before_last_move = None;
                 self.base_ply = 0;
                 self.lifecycle = EngineLifecycle::AwaitingStart;
                 self.accepted(None)
@@ -190,6 +203,11 @@ impl Engine {
     }
 
     #[inline]
+    /// 末尾1手の置き換えの解析に使う直前の対局を返す。
+    pub(crate) fn before_last_move(&self) -> Option<&Game> {
+        self.before_last_move.as_ref()
+    }
+
     /// 開始局面から現局面までの絶対手数を返す。
     pub const fn ply(&self) -> u32 {
         self.base_ply + self.game.ply_count()
@@ -233,6 +251,7 @@ impl Engine {
         let game = Game::new(self.pending.rules);
         self.active = self.pending.clone();
         self.game = game;
+        self.before_last_move = None;
         self.base_ply = 0;
         self.lifecycle = EngineLifecycle::AwaitingStart;
         self.accepted(None)
@@ -258,7 +277,11 @@ impl Engine {
         }
         let mut game = Game::from_position(selection.rules, position);
 
-        for &mv in moves {
+        let mut before_last_move = None;
+        for (index, &mv) in moves.iter().enumerate() {
+            if index + 1 == moves.len() {
+                before_last_move = Some(game.clone());
+            }
             if let Err(error) = game.play(mv) {
                 return EngineReply::Rejected(reject_game_error(error));
             }
@@ -273,6 +296,7 @@ impl Engine {
             self.active = self.pending.clone();
         }
         self.game = game;
+        self.before_last_move = before_last_move;
         self.base_ply = base_ply;
         self.lifecycle = match status {
             GameStatus::Ongoing => EngineLifecycle::InGame,
@@ -297,7 +321,11 @@ impl Engine {
         }
 
         let mut game = self.game.clone();
-        for &mv in moves {
+        let mut before_last_move = None;
+        for (index, &mv) in moves.iter().enumerate() {
+            if index + 1 == moves.len() {
+                before_last_move = Some(game.clone());
+            }
             if let Err(error) = game.play(mv) {
                 return EngineReply::Rejected(reject_game_error(error));
             }
@@ -309,9 +337,45 @@ impl Engine {
             GameStatus::Finished(result) => Some(result),
         };
         self.game = game;
+        if !moves.is_empty() {
+            self.before_last_move = before_last_move;
+        }
         self.lifecycle = match status {
             GameStatus::Ongoing => EngineLifecycle::InGame,
             GameStatus::Finished(_) => EngineLifecycle::Finished,
+        };
+        EngineReply::Accepted {
+            status,
+            newly_finished,
+        }
+    }
+
+    /// 保存した直前の対局から1手だけを適用し、成功時だけ交換する。
+    fn replace_last_move(&mut self, mv: Move) -> EngineReply {
+        match self.lifecycle {
+            EngineLifecycle::AwaitingStart => {
+                return EngineReply::Rejected(RejectReason::GameNotStarted);
+            }
+            EngineLifecycle::Finished => {
+                return EngineReply::Rejected(RejectReason::GameAlreadyOver);
+            }
+            EngineLifecycle::InGame => {}
+        }
+        let Some(previous) = &self.before_last_move else {
+            return EngineReply::Rejected(RejectReason::NoPreviousMove);
+        };
+        let mut game = previous.clone();
+        let status = match game.play(mv) {
+            Ok(status) => status,
+            Err(error) => return EngineReply::Rejected(reject_game_error(error)),
+        };
+        self.game = game;
+        let newly_finished = match status {
+            GameStatus::Ongoing => None,
+            GameStatus::Finished(result) => {
+                self.lifecycle = EngineLifecycle::Finished;
+                Some(result)
+            }
         };
         EngineReply::Accepted {
             status,
@@ -333,6 +397,8 @@ impl Engine {
 
         match self.game.play(mv) {
             Ok(status) => {
+                // 1手ずつの適用は置き換えの対象にしないので、古い状態を残さない。
+                self.before_last_move = None;
                 let newly_finished = match status {
                     GameStatus::Ongoing => None,
                     GameStatus::Finished(result) => {
@@ -756,5 +822,66 @@ mod tests {
                 cause: IllegalMoveCause::Repetition,
             })
         );
+    }
+    // ponder.md設計判断「外れからの復帰」（D6-ENG-08、D6-ENG-05）。
+    #[test]
+    fn ponder_replacement_preserves_history_and_failed_extensions_are_atomic() {
+        let mut engine =
+            Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R2, RuleCode::E2]).unwrap();
+        let cycle = kings_cycle();
+        assert_eq!(
+            engine.handle(EngineCommand::ReplaceLastMove(cycle[0])),
+            EngineReply::Rejected(RejectReason::GameNotStarted)
+        );
+        assert!(matches!(
+            engine.handle(EngineCommand::SetPosition {
+                setup: SetupPosition::new(kings_position(), None, 41).unwrap(),
+                moves: vec![],
+            }),
+            EngineReply::Accepted { .. }
+        ));
+        assert_eq!(
+            engine.handle(EngineCommand::ReplaceLastMove(cycle[0])),
+            EngineReply::Rejected(RejectReason::NoPreviousMove)
+        );
+        assert!(matches!(
+            engine.handle(EngineCommand::ExtendPosition {
+                moves: cycle[..2].to_vec()
+            }),
+            EngineReply::Accepted { .. }
+        ));
+        let alternate = step(sq(8, 8), sq(7, 8));
+        assert!(matches!(
+            engine.handle(EngineCommand::ReplaceLastMove(alternate)),
+            EngineReply::Accepted { .. }
+        ));
+        assert_eq!(engine.ply(), 42);
+        // 途中の1手が成功して末尾で失敗しても、置換に使う履歴まで不変である。
+        assert!(matches!(
+            engine.handle(EngineCommand::ExtendPosition {
+                moves: vec![cycle[2], cycle[2]]
+            }),
+            EngineReply::Rejected(_)
+        ));
+        assert!(matches!(
+            engine.handle(EngineCommand::ReplaceLastMove(cycle[1])),
+            EngineReply::Accepted { .. }
+        ));
+        assert!(matches!(
+            engine.handle(EngineCommand::ExtendPosition {
+                moves: vec![cycle[2]]
+            }),
+            EngineReply::Accepted { .. }
+        ));
+        assert_eq!(
+            engine.handle(EngineCommand::ExtendPosition {
+                moves: vec![cycle[3]]
+            }),
+            EngineReply::Rejected(RejectReason::IllegalMove {
+                mv: cycle[3],
+                cause: IllegalMoveCause::Repetition
+            })
+        );
+        assert_eq!(engine.ply(), 43);
     }
 }

@@ -14,6 +14,7 @@
 | UL | docs/research/protocols/usi-lishogi.md（USI原典・lishogi系調査文書、minase固有拡張の節を含む） |
 | R33 | RULES.md 第33条（規則セット名の受理） |
 | LS | docs/plans/lazy-smp.md（「プロトコル設定」節） |
+| PO | docs/plans/ponder.md（USI先読みの契約。2026年9月20日に追加） |
 
 規範性の順位はspec-first-tests.mdの原則に従う。設計書（PL・EC・BG・LS）の確定事項は規範文書であり、調査文書（CE・HA・UL）は外部仕様の典拠である。調査文書が「未確認」と明記する事項を期待値の根拠にしてはならない。
 
@@ -147,12 +148,12 @@
 - 境界・不正: 引数の有無・値によらず同一応答。
 - 性質: 状態は変化しない。
 
-### D6-USI-18 `go ponder`・`ponderhit`の拒否
-- 典拠: EC「探索とbestmove」（`go ponder`と`ponderhit`は対象外であり、受信した場合は`info string error: ...`を出力し`bestmove`を返さない）。EC適用範囲（`USI_Ponder`は宣言しない）。
+### D6-USI-18 `go ponder`の受理条件と`USI_Ponder`の非宣言
+- 典拠: PO設計判断「`go ponder`の受理」（時計引数、`movetime`、`depth`、`nodes`と併用でき、`infinite`との併用と制限を1つも持たない`go ponder`はエラーとする。探索の根は`position`で受け取った局面とする）、「`USI_Ponder`」（宣言せず、受信しても黙って無視する）。2026年9月20日に、`go ponder`と`ponderhit`の拒否を定めていた旧項をPOの契約へ書き換えた。
 - 前提: 対局中。
-- 操作と期待観測: `go ponder` → エラー行のみ。`ponderhit` → エラー行のみ。`usi`応答に`USI_Ponder`宣言が現れない。
-- 境界・不正: なし。
-- 性質: ponder系は完全な非対応であり部分動作しない。
+- 操作と期待観測: `go ponder depth 1`、`go ponder nodes 100`、`go ponder btime 1000 wtime 1000 byoyomi 0`はいずれもエラー行を出さずに探索を始める。`go ponder infinite` → `info string error: ...`行のみで`bestmove`なし。`go ponder`（制限なし） → 同様。`usi`応答に`USI_Ponder`宣言が現れず、`setoption name USI_Ponder value true`は無応答で無視される。
+- 境界・不正: 拒否された`go ponder`は探索を始めないので、直後の`go depth 1`は重複`go`の拒否（D6-USI-21）に当たらず`bestmove`を返す。エラー本文の完全形は契約にしない（SU-12）。
+- 性質: 探索制限が定まらない`go ponder`は、裸の`go`（D6-USI-15）と同じく暗黙の既定値で補わない。
 
 ### D6-USI-19 `go infinite`は`stop`まで`bestmove`を保留
 - 典拠: EC「思考情報」（`go infinite`では停止指示（`stop`）まで`bestmove`を出さない）。EC実施状況フェーズ1煙試験（`go infinite`→`stop`の単一bestmove）。
@@ -293,6 +294,62 @@
 - 操作と期待観測: `Finished.depth`が最後に出力済みの深さを超える場合、`Finished`のdepth、score、nodes、elapsed、およびpvを使った`info`を1行出し、その直後に`bestmove`を1回だけ出す。超えない場合は追加の`info`を出さない。
 - 境界・不正: `Threads=1`では`Finished.depth`が最後の`Progress.depth`を超えないため、出力列は従来と同一である。`Threads>=2`の探索順は非決定的なので、統合テストは最終`info`の追加有無や深さの値を固定せず、`info`行の後に`bestmove`が1回だけ続く構造を確認する。
 - 性質: 最終`info`を出す場合もD6-USI-26と同じ書式を使い、`bestmove`より後には`info`を出さない。
+
+### D6-USI-39 予想手つき`bestmove`の出力
+- 典拠: PO設計判断「予想手の出所」（採用した最終結果の主要変化の2手目）、「予想手を常に出力する」（設定によらず出力する）。PO「USI層の契約」（`bestmove X ponder Y`）。UL［U1］（`bestmove <move1> [ponder <move2>]`）。
+- 前提: 対局中。主要変化が2手以上になる固定深さの探索（初期局面の`go depth 2`以上）。
+- 操作と期待観測: `go depth 2` → `bestmove X ponder Y`1行。Yは、直前の最終`info`行の`pv`の2手目と一致する。Xを着手列へ加えた`position`の後の`moves`応答にYが含まれる（合法性の外形検証）。`go ponder`で始めた探索が返す`bestmove`にも同じ規則で予想手が付く。
+- 境界・不正: 予想手の有無は`USI_Ponder`の受信に依存しない。`Threads`が2以上の探索は採用結果が非決定的なので、Yの値を固定せず、最終`info`の`pv`との一致だけを検証する。
+- 性質: 予想手は`bestmove`行の第3語以降にだけ現れ、第2語（実際の着手）の契約（D6-USI-16、D6-USI-24）を変えない。
+
+### D6-USI-40 予想手の抑止
+- 典拠: PO設計判断「予想手の出所」（主要変化が1手しかない場合は予想手を付けない）、「予想手の検査」（対局管理層の複製にXとYを順に適用し、両方が受理され、かつYの後も対局が続く場合にだけ出力する）。RULES.md第31条（R2、R3）。
+- 前提: 対局中。(a) 主要変化が1手になる探索（`go depth 1`）。(b) 規則R2の下で、探索の主要変化の2手目が既出局面を再現する手になる構成局面。(c) 主要変化の2手目で終局する構成局面（Yが最後の王駒を取る手）。
+- 操作と期待観測: (a)(b)(c)のいずれでも`bestmove X`だけが返り、`ponder`以降が付かない。
+- 境界・不正: (b)と(c)は、探索が当該のYを主要変化の2手目に選ぶことが前提になる。探索の選択を固定できない場合は、検査の関数を単体で呼び、XとYを与えて抑止されることを固定してよい（到達手段は実装読解フェーズで確定）。
+- 性質: minaseが出力した予想手Yに対して、GUIが送る`position ... X Y`と`go ponder`をminase自身が拒否することはない。
+
+### D6-USI-41 `go ponder`中の`bestmove`保留
+- 典拠: PO設計判断「`bestmove`の保留」（`go ponder`で始めた探索は`stop`か`ponderhit`を受けるまで`bestmove`を出さない。先に終わった探索は保留状態へ入り、保持していた着手と予想手を出す）。UL［U1］（先読み中は詰みを見つけても探索を抜けてはならない）。将棋所「USIプロトコルとは」。
+- 前提: 対局中。`go ponder depth 1`（探索が直ちに深さ上限で終わる）。
+- 操作と期待観測: `go ponder depth 1`→`isready`→`stop`の順に送ると、`stop`より前に`bestmove`が現れず、`stop`の後に`bestmove`がちょうど1行現れる。`isready`への`readyok`は`bestmove`の後に出る（D6-USI-22のキュー順序）。
+- 境界・不正: 探索が実行中のまま`stop`を受けた場合も`bestmove`はちょうど1行である（D6-USI-20）。
+- 性質: `bestmove`は`go`1回につきちょうど1回という性質（D6-USI-19、D6-USI-20）を`go ponder`でも保つ。
+
+### D6-USI-42 的中（`ponderhit`）
+- 典拠: PO設計判断「`bestmove`の保留」「停止理由」、PO「USI層の契約」（探索が実行中なら先読み中を解除して以後の完了で直ちに`bestmove`を出し、保留状態にあるなら保持していた着手と予想手をその場で出す）。
+- 前提: 対局中。(a) `go ponder depth 1`で探索が先に終わった保留状態。(b) `go ponder depth <大> nodes <有限>`で探索が実行中の状態。
+- 操作と期待観測: (a) `ponderhit` → `info string stop depth`と`bestmove X`（主要変化が2手以上なら`ponder Y`つき）が直ちに出る。(b) `ponderhit` → 探索はそのまま続き、ノード上限または深さ上限で終わった時点で`info string stop <理由>`と`bestmove`が1回出る。どちらも`ponderhit`より前に`bestmove`は現れない。
+- 境界・不正: `ponderhit`の後に届いた`stop`は通常の探索への`stop`と同じ扱いになる。`ponderhit`を2回受けても`bestmove`は1行である。
+- 性質: 的中した探索の停止理由は`soft`、`hard`、`depth`、`nodes`のいずれかであり、先読みのための理由の上書きはない。
+
+### D6-USI-43 外れ（先読み中の`stop`）と停止理由
+- 典拠: PO設計判断「停止理由」（外れた探索は、実行中に`stop`で止まれば`external`、先に終わって保留されていればその終了理由になる）。UL［U1］（`stop`には先読み中でも`bestmove`を返す）。
+- 前提: 対局中。(a) `go ponder depth <大>`で探索が実行中の状態。(b) `go ponder depth 1`の保留状態。
+- 操作と期待観測: (a) `stop` → `info string stop external`と`bestmove`1行。(b) `stop` → `info string stop depth`と`bestmove`1行。いずれの後も、別の`position`と通常の`go depth 1`が`bestmove`をちょうど1行返す（外れた後のやり直しの系列）。
+- 境界・不正: 外れた先読みの`bestmove`はGUIが捨てる値であるが、合法手であること（D7のINV-1）は保たれる。
+- 性質: 系列全体で、`go`の回数と`bestmove`の行数が一致する。
+
+### D6-USI-44 先読み中でないときの`ponderhit`
+- 典拠: PO設計判断「先読み中のその他の入力」（先読み中でないときの`ponderhit`は、エラーの情報行だけを返す）。
+- 前提: (a) 探索していない待機中。(b) 通常の`go infinite`による探索中。
+- 操作と期待観測: (a) `ponderhit` → `info string error: ...`行のみ。(b) `ponderhit` → エラー行のみで、実行中の探索は影響を受けず、`stop`で`bestmove`を1行返す。
+- 境界・不正: 的中した後の2回目の`ponderhit`は、探索が既に通常の探索へ移っているのでエラー行を返す。
+- 性質: `ponderhit`はそれ自体では`bestmove`を生まない。
+
+### D6-USI-45 先読み中の`gameover`・`quit`・入力の切断
+- 典拠: PO設計判断「先読み中のその他の入力」（`gameover`と`quit`は`bestmove`を出さずに探索を破棄し、入力が切断された場合は無限探索と同じく破棄する）。PO「USI層の契約」（Lishogi-Botは終局を知ると先読みの探索中に`position`、`stop`、`quit`の順に送る）。
+- 前提: `go ponder depth <大>`で探索中、または`go ponder depth 1`の保留状態。
+- 操作と期待観測: `gameover win` → `bestmove`なし、AwaitingStartへ移る（後続の`moves`がエラーを返すことで観測）。`quit` → 無応答で終了。入力の終端 → `bestmove`なしで終了。`position <次の局面>`→`stop`→`quit`の系列 → `bestmove`が1行出た後に`position`が適用され、無応答で終了する。
+- 境界・不正: なし。
+- 性質: D6-USI-23と同じ破棄の契約が先読みにも及ぶ。
+
+### D6-USI-46 逐次経路での先読み
+- 典拠: PO設計判断「逐次経路」（`go ponder`は`go infinite`と同じく探索を持ち越して次の入力を読み、`ponderhit`を受けたら有限の`go`と同じくその場で完了まで待って`bestmove`を出す）。
+- 前提: `Protocol::run`による逐次の台本。
+- 操作と期待観測: `go ponder depth 2`→`ponderhit`→`isready`の台本で、出力は`bestmove ...`、`readyok`の順になり、`ponderhit`の後に追加の入力を待たずに`bestmove`が出る。
+- 境界・不正: `go ponder`の直後に台本が終わる場合は、入力の切断として探索を破棄する（D6-USI-45）。
+- 性質: 逐次経路とチャネル駆動の経路で、同じ入力列に対する出力行の列が一致する。
 
 ---
 
@@ -591,6 +648,13 @@
 - 境界・不正: なし（メタ契約）。
 - 性質: テストの実装カップリング排除（spec-first-tests.mdの原則の本領域への具体化）。
 
+### D6-ENG-08 末尾の1手が異なる`position`の差分適用
+- 典拠: PO設計判断「外れからの復帰」（受理した着手列の最後の1手を適用する前の対局状態を保持し、前回の着手列と末尾の1手だけが異なる`position`を、その状態からの差分適用で処理する。先読みに限らない一般の規則とする）。PO検証「固定費の確認」（4,000手の着手列で3 ms以内）。教訓「手数に比例する固定費は超長手数の対局で時間切れを起こす」。
+- 前提: `position <初期> moves <列A> X Y`適用済み。
+- 操作と期待観測: `position <初期> moves <列A> X Z` → エラーなし。直後の`state`と`moves`は、新しいエンジンへ同じ`position`を最初から与えた場合と一致する。反復の履歴も一致する（規則R2の下で、列Aの途中の局面を再現する手が`moves`に現れないことで観測する）。Zが不合法な場合は`info string error: ...`を返し、`state`は`... X Y`適用後のまま変わらない（D6-USI-11の原子性）。
+- 境界・不正: 着手列が1手だけの場合（列Aが空でXもない）、初期局面の表記が前回と異なる場合、および末尾の2手以上が異なる場合は、全手の再適用と同じ結果になる。差分適用の後にさらに末尾の1手だけを替えた`position`も同じ結果になる。
+- 性質: 差分適用は結果を変えない最適化であり、観測できる差は所要時間だけである。所要時間は着手列の長さに比例しない。
+
 ---
 
 ## 4. CLI規則引数（D6-CLI）
@@ -665,5 +729,5 @@
 
 ## 集計
 
-- 仕様化した挙動: 85件（USI 38、CECP 34、ENG 7、CLI 6）
+- 仕様化した挙動: 94件（USI 46、CECP 34、ENG 8、CLI 6）
 - SPEC_UNCLEAR: 14件（うち文書補修対象2件: SU-01、SU-02。SU-11は補修時の併合候補）

@@ -245,6 +245,7 @@ impl CecpProtocol {
             search_id,
             self.threads,
             transposition_table,
+            false,
         );
         Ok(Some(ActiveSearch {
             context: SearchContext { id: search_id },
