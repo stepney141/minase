@@ -5,8 +5,10 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use fs2::FileExt;
-use minase::harness::{EngineIdentity, PairRecord};
+use minase::harness::{
+    CpuRecord, EngineIdentity, HarnessRecord, PairRecord, RunLock, atomic_write_json,
+    lock_run_directory,
+};
 use serde::{Deserialize, Serialize};
 
 /// 現行の実行記録形式。
@@ -17,30 +19,6 @@ const MANIFEST_TEMP_FILE: &str = ".manifest.json.tmp";
 const PAIRS_DIRECTORY: &str = "pairs";
 const SUMMARY_FILE: &str = "summary.json";
 const SUMMARY_TEMP_FILE: &str = ".summary.json.tmp";
-
-/// 実行バイナリの識別情報。
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct HarnessRecord {
-    /// Cargoパッケージの版。
-    pub(super) version: String,
-    /// 実行ファイル全体のSHA-256。
-    pub(super) sha256: String,
-}
-
-/// 測定に使うCPUの識別情報。
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CpuRecord {
-    /// CPUの機種名。
-    pub(super) model: String,
-    /// 取得できた場合の物理コア数。
-    pub(super) physical_cores: Option<usize>,
-    /// OSが報告した論理コア数。
-    pub(super) logical_cores: usize,
-    /// OSが報告した実メモリ容量(byte)。
-    pub(super) physical_memory_bytes: Option<u64>,
-}
 
 /// 1エンジンの実効設定。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -169,16 +147,6 @@ pub(super) struct RunStore {
     active_wall_time_ns: u64,
     interrupted: bool,
     _lock: RunLock,
-}
-
-/// 生存中だけ保持する実行ディレクトリの排他ロック。
-#[derive(Debug)]
-struct RunLock(File);
-
-impl Drop for RunLock {
-    fn drop(&mut self) {
-        let _ = FileExt::unlock(&self.0);
-    }
 }
 
 impl RunStore {
@@ -348,23 +316,6 @@ impl RunStore {
     }
 }
 
-/// 実行ディレクトリをプロセス間で排他的にロックする。
-fn lock_run_directory(path: &Path) -> io::Result<RunLock> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path.join(".match_runner.lock"))?;
-    file.try_lock_exclusive().map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::WouldBlock,
-            format!("run directory is already in use: {error}"),
-        )
-    })?;
-    Ok(RunLock(file))
-}
-
 /// ディレクトリ内の確定済みペアを厳密に読み込む。
 fn load_pairs(directory: &Path, target_pairs: u64) -> io::Result<BTreeMap<u64, PairRecord>> {
     let mut records = BTreeMap::new();
@@ -425,39 +376,6 @@ fn validate_record_header(record: &PairRecord, target_pairs: u64) -> io::Result<
         )));
     }
     Ok(())
-}
-
-/// 値を同一ディレクトリの一時ファイルへ同期後、renameで確定する。
-fn atomic_write_json<T: Serialize>(
-    directory: &Path,
-    temporary_path: &Path,
-    final_path: &Path,
-    value: &T,
-) -> io::Result<()> {
-    let write_result = (|| {
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(temporary_path)?;
-        let mut writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(&mut writer, value).map_err(json_error)?;
-        writer.write_all(b"\n")?;
-        writer.flush()?;
-        writer.get_ref().sync_all()?;
-        drop(writer);
-        if final_path.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("record already exists: {}", final_path.display()),
-            ));
-        }
-        fs::rename(temporary_path, final_path)?;
-        File::open(directory)?.sync_all()
-    })();
-    if write_result.is_err() {
-        let _ = fs::remove_file(temporary_path);
-    }
-    write_result
 }
 
 /// 既存JSONを同一ディレクトリの一時ファイルから原子的に置き換える。

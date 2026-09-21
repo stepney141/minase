@@ -4,7 +4,6 @@
 //! 統計的契約はdocs/guides/sprt.mdを参照。
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::process;
@@ -25,8 +24,8 @@ use minase::{Color, Game, GameResult, GameStatus, MoveGenerator, RuleCode, Rules
 #[path = "match_runner/storage.rs"]
 mod storage;
 use storage::{
-    CpuRecord, EngineHashSizes, EngineRecord, EngineThreadCounts, FORMAT_VERSION, HarnessRecord,
-    ManifestMode, RunManifest, RunStore, StoredSearchLimit,
+    EngineHashSizes, EngineRecord, EngineThreadCounts, FORMAT_VERSION, ManifestMode, RunManifest,
+    RunStore, StoredSearchLimit,
 };
 
 /// 1局を打ち切る手数上限の既定値。
@@ -258,67 +257,6 @@ const fn stored_search_limit(limit: SearchLimit) -> StoredSearchLimit {
     }
 }
 
-/// Linuxで取得できるCPU機種名を返す。
-fn cpu_model() -> String {
-    fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|contents| {
-            contents.lines().find_map(|line| {
-                line.strip_prefix("model name")
-                    .and_then(|line| line.split_once(':'))
-                    .map(|(_, value)| value.trim().to_owned())
-            })
-        })
-        .unwrap_or_else(|| "unreported".to_owned())
-}
-
-/// Linuxがオンラインと報告する論理CPU番号を展開する。
-#[cfg(target_os = "linux")]
-fn online_cpu_indices() -> Option<BTreeSet<usize>> {
-    let text = fs::read_to_string("/sys/devices/system/cpu/online").ok()?;
-    let mut indices = BTreeSet::new();
-    for range in text.trim().split(',') {
-        let (start, end) = range
-            .split_once('-')
-            .map_or((range, range), |(start, end)| (start, end));
-        let start = start.parse::<usize>().ok()?;
-        let end = end.parse::<usize>().ok()?;
-        if start > end {
-            return None;
-        }
-        indices.extend(start..=end);
-    }
-    Some(indices)
-}
-
-/// LinuxのCPUトポロジーからオンライン物理コア数を得る。
-#[cfg(target_os = "linux")]
-fn physical_core_count() -> Option<usize> {
-    let online = online_cpu_indices()?;
-    let mut cores = BTreeSet::new();
-    for cpu in online {
-        let topology = PathBuf::from(format!("/sys/devices/system/cpu/cpu{cpu}/topology"));
-        let package = fs::read_to_string(topology.join("physical_package_id"))
-            .ok()?
-            .trim()
-            .parse::<u32>()
-            .ok()?;
-        let core = fs::read_to_string(topology.join("core_id"))
-            .ok()?
-            .trim()
-            .parse::<u32>()
-            .ok()?;
-        cores.insert((package, core));
-    }
-    (!cores.is_empty()).then_some(cores.len())
-}
-
-/// CPUトポロジーを提供しないOSでは物理コア数を欠測とする。
-#[cfg(not(target_os = "linux"))]
-const fn physical_core_count() -> Option<usize> {
-    None
-}
-
 /// 省略時の同時対局数を物理コア数と両エンジンのスレッド数から計算する。
 fn default_concurrency(
     physical_cores: Option<usize>,
@@ -354,34 +292,6 @@ fn default_concurrency(
         );
     }
     Ok(concurrency)
-}
-
-/// Linuxの`MemTotal`から実メモリ容量を得る。
-#[cfg(target_os = "linux")]
-fn physical_memory_bytes() -> Option<u64> {
-    fs::read_to_string("/proc/meminfo")
-        .ok()?
-        .lines()
-        .find_map(|line| line.strip_prefix("MemTotal:"))?
-        .split_whitespace()
-        .next()?
-        .parse::<u64>()
-        .ok()?
-        .checked_mul(1024)
-}
-
-/// 実メモリ容量を提供しないOSでは欠測とする。
-#[cfg(not(target_os = "linux"))]
-const fn physical_memory_bytes() -> Option<u64> {
-    None
-}
-
-/// 現在の対局ハーネス実行ファイルをSHA-256で識別する。
-fn harness_record() -> io::Result<HarnessRecord> {
-    Ok(HarnessRecord {
-        version: env!("CARGO_PKG_VERSION").to_owned(),
-        sha256: sha256_file(&std::env::current_exe()?)?,
-    })
 }
 
 /// CLIから再開時に完全一致させる実行条件記録を構成する。
@@ -486,17 +396,6 @@ const fn color_from_stored(color: StoredColor) -> Color {
     match color {
         StoredColor::Black => Color::Black,
         StoredColor::White => Color::White,
-    }
-}
-
-/// 保存形式の異常分類を集計用の分類へ戻す。
-const fn failure_from_stored(reason: FailureKind) -> EngineFailure {
-    match reason {
-        FailureKind::IllegalMove => EngineFailure::IllegalMove,
-        FailureKind::Crash => EngineFailure::Crash,
-        FailureKind::Timeout => EngineFailure::Timeout,
-        FailureKind::TimeForfeit => EngineFailure::TimeForfeit,
-        FailureKind::RejectedMove => EngineFailure::RejectedMove,
     }
 }
 

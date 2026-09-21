@@ -20,6 +20,10 @@ use fs2::FileExt;
 use procfs::process::Process;
 use sha2::{Digest, Sha256};
 
+mod environment;
+pub use environment::*;
+mod storage;
+pub use storage::*;
 mod records;
 pub use records::*;
 
@@ -307,6 +311,7 @@ fn zero_clock() -> Clock {
 }
 
 /// 起動に必要な解決済みプレイヤー設定。
+#[derive(Clone)]
 pub struct PlayerConfig {
     /// 入力された指定の原文。表示に使う。
     pub text: String,
@@ -353,7 +358,8 @@ pub enum EngineFailure {
 }
 
 /// 異常理由別の発生件数。
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FailureCounts {
     /// 不正着手の件数。
     pub illegal_moves: u64,
@@ -1183,6 +1189,17 @@ const fn stored_failure(failure: EngineFailure) -> FailureKind {
     }
 }
 
+/// 保存形式の異常分類を集計用の分類へ戻す。
+pub const fn failure_from_stored(reason: FailureKind) -> EngineFailure {
+    match reason {
+        FailureKind::IllegalMove => EngineFailure::IllegalMove,
+        FailureKind::Crash => EngineFailure::Crash,
+        FailureKind::Timeout => EngineFailure::Timeout,
+        FailureKind::TimeForfeit => EngineFailure::TimeForfeit,
+        FailureKind::RejectedMove => EngineFailure::RejectedMove,
+    }
+}
+
 /// エンジン評価値へ視点を付けて保存形式へ変換する。
 fn evaluation_record(
     evaluation: Option<EngineEvaluation>,
@@ -1535,7 +1552,14 @@ pub fn resolve_commit(
     feature: Option<&str>,
 ) -> io::Result<(PathBuf, String, String)> {
     let repository = std::env::current_dir()?;
-    println!("resolving commit {revision}...");
+    let report = |message: String| {
+        if feature.is_some() {
+            eprintln!("{message}");
+        } else {
+            println!("{message}");
+        }
+    };
+    report(format!("resolving commit {revision}..."));
     let hash = normalize_commit(&repository, revision)?;
     let cache_root = repository.join("target/match-cache");
     let binary_name = format!("minase{}", std::env::consts::EXE_SUFFIX);
@@ -1576,11 +1600,11 @@ pub fn resolve_commit(
             .expect("the preceding condition requires a digest")
             .trim()
             .to_owned();
-        println!("cached: {}", cache_path.display());
+        report(format!("cached: {}", cache_path.display()));
         return Ok((cache_path, hash, sha256));
     }
 
-    println!("building commit {hash}...");
+    report(format!("building commit {hash}..."));
     fs::create_dir_all(&cache_root)?;
     let source_tree = cache_root.join(format!(".source-{key}-{}", process::id()));
     let archive_path = cache_root.join(format!(".source-{key}-{}.tar", process::id()));
@@ -1647,7 +1671,7 @@ pub fn resolve_commit(
     build_result?;
     archive_remove_result?;
     source_remove_result?;
-    println!("cached: {}", cache_path.display());
+    report(format!("cached: {}", cache_path.display()));
     let sha256 = sha256_file(&cache_path)?;
     Ok((cache_path, hash, sha256))
 }
@@ -2440,3 +2464,27 @@ pub fn run_pair(
 mod ponder_tests;
 #[cfg(test)]
 mod tests;
+
+/// USI握手で宣言されたoption行を、期限つきの既存通信経路で取得する。
+pub fn probe_usi_options(
+    player: &PlayerConfig,
+    timeout: Duration,
+) -> Result<Vec<String>, EngineFailure> {
+    let mut process = EngineProcess::spawn(player, timeout)?;
+    process.send("usi")?;
+    let mut options = Vec::new();
+    process.receive_until(|line| {
+        if line.starts_with("option ") {
+            options.push(line.to_owned());
+        }
+        line.trim() == "usiok"
+    })?;
+    Ok(options)
+}
+
+impl std::fmt::Display for EngineFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl std::error::Error for EngineFailure {}
