@@ -1,0 +1,129 @@
+diff --git a/src/core/attacks/sliding.rs b/src/core/attacks/sliding.rs
+index 33726a4..ff69384 100644
+--- a/src/core/attacks/sliding.rs
++++ b/src/core/attacks/sliding.rs
+@@ -7,6 +7,29 @@ use crate::core::square::{RAW_SQUARE_COUNT, Square};
+ /// 方向×升ごとに、その升から盤端まで伸びる利き線を持つテーブル。
+ pub(crate) type RayTable = [[Bitboard; RAW_SQUARE_COUNT]; DIRECTION_COUNT];
+ 
++/// 始点の筋×内側10升の占有ごとの、左右を合わせた12ビットの利き。
++pub(crate) type HorizontalAttackTable = [[u16; 1024]; 12];
++
++/// 端の占有は利きを変えないため、内側10升だけを添字とする。
++pub(crate) fn build_horizontal_attack_table() -> HorizontalAttackTable {
++    let mut table = [[0; 1024]; 12];
++    for (file, entries) in table.iter_mut().enumerate() {
++        for (key, attack) in entries.iter_mut().enumerate() {
++            let occupied = (key as u16) << 1;
++            let lower = occupied & ((1 << file) - 1);
++            let upper = occupied >> (file + 1);
++            let first = if lower == 0 { 0 } else { lower.ilog2() };
++            let last = if upper == 0 {
++                11
++            } else {
++                file as u32 + 1 + upper.trailing_zeros()
++            };
++            *attack = (((1 << (last + 1)) - 1) ^ ((1 << first) - 1)) & !(1 << file);
++        }
++    }
++    table
++}
++
+ /// 各升から各方向へ盤端まで伸びる利き線を構築して返す。
+ pub(crate) fn build_ray_table() -> RayTable {
+     let mut rays = [[Bitboard::EMPTY; RAW_SQUARE_COUNT]; DIRECTION_COUNT];
+diff --git a/src/core/attacks/tables.rs b/src/core/attacks/tables.rs
+index 011521d..02f0904 100644
+--- a/src/core/attacks/tables.rs
++++ b/src/core/attacks/tables.rs
+@@ -10,7 +10,9 @@ use crate::core::square::{RAW_SQUARE_COUNT, Square};
+ use super::fixed::{
+     MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile_data,
+ };
+-use super::sliding::{RayTable, build_ray_table};
++use super::sliding::{
++    HorizontalAttackTable, RayTable, build_horizontal_attack_table, build_ray_table,
++};
+ 
+ /// 色×プロファイル×升ごとの固定利きテーブル。
+ type FixedAttackTable = Box<[Bitboard]>;
+@@ -19,6 +21,8 @@ type FixedAttackTable = Box<[Bitboard]>;
+ pub(crate) struct AttackTables {
+     /// 方向×升ごとの盤端までの利き線。
+     rays: Box<RayTable>,
++    /// 全段で共有する、筋×内側10升の占有ごとの横方向の利き。
++    horizontal: Box<HorizontalAttackTable>,
+     /// 色×プロファイル×升ごとの固定利き。
+     fixed: FixedAttackTable,
+     /// 遮蔽のない盤面での固定利きと走りの和。
+@@ -35,6 +39,7 @@ impl AttackTables {
+     /// 全テーブルを構築する。
+     fn build() -> Self {
+         let rays = Box::new(build_ray_table());
++        let horizontal = Box::new(build_horizontal_attack_table());
+         let mut fixed =
+             vec![Bitboard::EMPTY; COLOR_COUNT * MOVEMENT_PROFILE_COUNT * RAW_SQUARE_COUNT]
+                 .into_boxed_slice();
+@@ -84,6 +89,7 @@ impl AttackTables {
+         let mut tables = Self {
+             reach,
+             rays,
++            horizontal,
+             fixed,
+             slide_directions,
+             lion_jumps,
+@@ -170,6 +176,15 @@ impl AttackTables {
+         occupied: Bitboard,
+     ) -> Bitboard {
+         let candidates = self.ray(from, direction);
++        if matches!(direction, Direction::East | Direction::West) {
++            let word_index = from.raw_index() / 64;
++            let shift = usize::from(from.rank() % 4) * 16;
++            let key = ((occupied.words()[word_index] >> (shift + 1)) & 0x3ff) as usize;
++            let attack = u64::from(self.horizontal[usize::from(from.file())][key]) << shift;
++            let mut words = [0; 3];
++            words[word_index] = attack & candidates.words()[word_index];
++            return Bitboard::from_words(words);
++        }
+         let blockers = candidates & occupied;
+         if direction.increases_raw_index() {
+             // movegen-speedup-2.md「段階4」: 3語を192ビット整数として1を引く。
+@@ -200,6 +215,38 @@ mod tests {
+     use super::*;
+     use crate::core::direction::step_square;
+ 
++    // 第7条4項・5項: 最初の遮蔽升を含み、その先へは進まない。
++    // 全始点・各段の全12ビット占有で、盤端・始点・語境界も含めて確認する。
++    #[test]
++    fn horizontal_control_matches_rule_walk_for_every_rank_occupancy() {
++        let tables = attack_tables();
++        for from in Square::all() {
++            for pattern in 0_u16..(1 << 12) {
++                let occupied = Bitboard::from_squares(
++                    (0..12)
++                        .filter(|file| pattern & (1 << file) != 0)
++                        .map(|file| Square::new(file, from.rank()).unwrap()),
++                );
++                for direction in [Direction::East, Direction::West] {
++                    let mut expected = Bitboard::EMPTY;
++                    let mut current = from;
++                    while let Some(next) = step_square(current, direction) {
++                        expected.set(next);
++                        if occupied.contains(next) {
++                            break;
++                        }
++                        current = next;
++                    }
++                    assert_eq!(
++                        tables.sliding_control(from, direction, occupied),
++                        expected,
++                        "from {from:?} {direction:?} occupied={pattern:#05x}",
++                    );
++                }
++            }
++        }
++    }
++
+     // movegen-speedup.md「捕獲対象を生成前に除外する」: 遮蔽なしの範囲は
+     // 全色・全プロファイル・全升で固定利きと盤端までの走りの和になる。
+     #[test]

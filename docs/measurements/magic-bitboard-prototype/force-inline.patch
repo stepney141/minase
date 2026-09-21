@@ -1,0 +1,12 @@
+diff --git a/src/core/attacks/tables.rs b/src/core/attacks/tables.rs
+index 011521d..bcb3a32 100644
+--- a/src/core/attacks/tables.rs
++++ b/src/core/attacks/tables.rs
+@@ -163,6 +163,7 @@ impl AttackTables {
+ 
+     /// 遮る駒を考慮した走りの利きを返す。進行方向の最初の駒がある升までを含む
+     /// (第7条第4項・第5項)。
++    #[inline(always)]
+     pub(crate) fn sliding_control(
+         &self,
+         from: Square,

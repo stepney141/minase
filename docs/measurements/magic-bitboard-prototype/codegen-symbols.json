@@ -1,0 +1,22 @@
+{
+  "baseline": [
+    "00000000000bb630 00000000000003b0 t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7movegen15search_capturesNtB4_13MoveGenerator17ordinary_capturer"
+  ],
+  "horizontal": [
+    "00000000000b4900 00000000000001d9 t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7attacks6tablesNtB2_12AttackTables15sliding_control",
+    "00000000000bb820 00000000000002de t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7movegen15search_capturesNtB4_13MoveGenerator17ordinary_capturer"
+  ],
+  "diagonal": [
+    "00000000000b6260 00000000000001d8 t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7attacks6tablesNtB2_12AttackTables15sliding_control",
+    "00000000000bdac0 00000000000002d9 t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7movegen15search_capturesNtB4_13MoveGenerator17ordinary_capturer"
+  ],
+  "baseline-inline": [
+    "00000000000bb610 0000000000000398 t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7movegen15search_capturesNtB4_13MoveGenerator17ordinary_capturer"
+  ],
+  "horizontal-inline": [
+    "00000000000bbd30 00000000000004f9 t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7movegen15search_capturesNtB4_13MoveGenerator17ordinary_capturer"
+  ],
+  "diagonal-inline": [
+    "00000000000bdea0 0000000000000467 t _RNvMNtNtNtCsfbIe77BO1sG_6minase4core7movegen15search_capturesNtB4_13MoveGenerator17ordinary_capturer"
+  ]
+}

@@ -1,0 +1,26 @@
+
+running 1 test
+test core::attacks::tables::prototype_probe::prototype_replay_queries ... prototype_init_us=262.947
+prototype_probe group=all round=1 queries=420119 loops=31 ns_per_query=6.213227 checksum=[663733366849931151, 336374176550752126, 643455176968113800]
+prototype_probe group=all round=2 queries=420119 loops=31 ns_per_query=6.204398 checksum=[663733366849931151, 336374176550752126, 643455176968113800]
+prototype_probe group=all round=3 queries=420119 loops=31 ns_per_query=6.228722 checksum=[663733366849931151, 336374176550752126, 643455176968113800]
+prototype_probe group=all round=4 queries=420119 loops=31 ns_per_query=6.208143 checksum=[663733366849931151, 336374176550752126, 643455176968113800]
+prototype_probe group=all round=5 queries=420119 loops=31 ns_per_query=6.205685 checksum=[663733366849931151, 336374176550752126, 643455176968113800]
+prototype_probe group=horizontal round=1 queries=98384 loops=31 ns_per_query=5.720513 checksum=[975605291766382645, 716924329340636137, 491739305718056032]
+prototype_probe group=horizontal round=2 queries=98384 loops=31 ns_per_query=5.653715 checksum=[975605291766382645, 716924329340636137, 491739305718056032]
+prototype_probe group=horizontal round=3 queries=98384 loops=31 ns_per_query=5.554320 checksum=[975605291766382645, 716924329340636137, 491739305718056032]
+prototype_probe group=horizontal round=4 queries=98384 loops=31 ns_per_query=5.595980 checksum=[975605291766382645, 716924329340636137, 491739305718056032]
+prototype_probe group=horizontal round=5 queries=98384 loops=31 ns_per_query=5.594444 checksum=[975605291766382645, 716924329340636137, 491739305718056032]
+prototype_probe group=vertical round=1 queries=134359 loops=31 ns_per_query=5.675867 checksum=[1099453298058004857, 426155124802326200, 306820386352203103]
+prototype_probe group=vertical round=2 queries=134359 loops=31 ns_per_query=5.667214 checksum=[1099453298058004857, 426155124802326200, 306820386352203103]
+prototype_probe group=vertical round=3 queries=134359 loops=31 ns_per_query=5.662254 checksum=[1099453298058004857, 426155124802326200, 306820386352203103]
+prototype_probe group=vertical round=4 queries=134359 loops=31 ns_per_query=5.657642 checksum=[1099453298058004857, 426155124802326200, 306820386352203103]
+prototype_probe group=vertical round=5 queries=134359 loops=31 ns_per_query=5.659544 checksum=[1099453298058004857, 426155124802326200, 306820386352203103]
+prototype_probe group=diagonal round=1 queries=187376 loops=31 ns_per_query=5.706345 checksum=[864142266027019971, 626578403638446639, 756335202449559479]
+prototype_probe group=diagonal round=2 queries=187376 loops=31 ns_per_query=5.700666 checksum=[864142266027019971, 626578403638446639, 756335202449559479]
+prototype_probe group=diagonal round=3 queries=187376 loops=31 ns_per_query=5.701242 checksum=[864142266027019971, 626578403638446639, 756335202449559479]
+prototype_probe group=diagonal round=4 queries=187376 loops=31 ns_per_query=5.701210 checksum=[864142266027019971, 626578403638446639, 756335202449559479]
+prototype_probe group=diagonal round=5 queries=187376 loops=31 ns_per_query=5.695667 checksum=[864142266027019971, 626578403638446639, 756335202449559479]
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 595 filtered out; finished in 0.97s
