@@ -1,0 +1,315 @@
+{
+  "depth": 6,
+  "rounds": 6,
+  "repetitions": 5,
+  "cpu": 0,
+  "orders": [
+    [
+      "baseline",
+      "baseline_force",
+      "diagonal_force"
+    ],
+    [
+      "baseline",
+      "diagonal_force",
+      "baseline_force"
+    ],
+    [
+      "diagonal_force",
+      "baseline",
+      "baseline_force"
+    ],
+    [
+      "diagonal_force",
+      "baseline_force",
+      "baseline"
+    ],
+    [
+      "baseline_force",
+      "diagonal_force",
+      "baseline"
+    ],
+    [
+      "baseline_force",
+      "baseline",
+      "diagonal_force"
+    ]
+  ],
+  "binaries": {
+    "baseline": "/tmp/minase-magic-prototype.rdcKvQ/target-baseline/release/bench",
+    "baseline_force": "/tmp/minase-magic-prototype.rdcKvQ/target-baseline-inline/release/bench",
+    "diagonal_force": "/tmp/minase-magic-prototype.rdcKvQ/target-diagonal-inline/release/bench"
+  },
+  "sha256": {
+    "baseline": "2ced94da36738177f1e3ec42489b7e6955aa0bd3d1e030ec52446f32bb4ddb7c",
+    "baseline_force": "42b5cde0216ab42bc72656c08c3d1b7f409afeb3e05af221c8dcc36423f38afc",
+    "diagonal_force": "61a072433bf70a8e19749ec1adb38e97651b2b59350ca8d46d8fd801931ee7ce"
+  },
+  "positions_equal": true,
+  "positions": [
+    {
+      "name": "initial",
+      "depth": 6,
+      "nodes": 78697,
+      "best": "7j7h",
+      "score": 22
+    },
+    {
+      "name": "game-2-ply-40",
+      "depth": 6,
+      "nodes": 156038,
+      "best": "3d2d",
+      "score": 966
+    },
+    {
+      "name": "game-2-ply-60",
+      "depth": 6,
+      "nodes": 77162,
+      "best": "3d3e",
+      "score": 6586
+    },
+    {
+      "name": "game-3-ply-310",
+      "depth": 6,
+      "nodes": 316656,
+      "best": "10k10j",
+      "score": -2449
+    },
+    {
+      "name": "game-3-ply-465",
+      "depth": 6,
+      "nodes": 103377,
+      "best": "8g8i",
+      "score": 4942
+    },
+    {
+      "name": "game-4-ply-164",
+      "depth": 6,
+      "nodes": 41759,
+      "best": "3i4j3i",
+      "score": -1524
+    },
+    {
+      "name": "game-4-ply-246",
+      "depth": 6,
+      "nodes": 138422,
+      "best": "5h7h",
+      "score": -1865
+    },
+    {
+      "name": "game-5-ply-170",
+      "depth": 6,
+      "nodes": 165796,
+      "best": "6e7f7e",
+      "score": 2474
+    },
+    {
+      "name": "game-5-ply-255",
+      "depth": 6,
+      "nodes": 35301,
+      "best": "2b1a",
+      "score": -5383
+    },
+    {
+      "name": "game-6-ply-51",
+      "depth": 6,
+      "nodes": 225522,
+      "best": "5a4b",
+      "score": 56
+    },
+    {
+      "name": "game-6-ply-77",
+      "depth": 6,
+      "nodes": 189536,
+      "best": "8a7b",
+      "score": 94
+    },
+    {
+      "name": "game-8-ply-183",
+      "depth": 6,
+      "nodes": 70376,
+      "best": "9b8c",
+      "score": 201
+    },
+    {
+      "name": "game-8-ply-275",
+      "depth": 6,
+      "nodes": 28378,
+      "best": "5e2e",
+      "score": -196
+    },
+    {
+      "name": "game-10-ply-277",
+      "depth": 6,
+      "nodes": 52453,
+      "best": "5b12i+",
+      "score": 1885
+    },
+    {
+      "name": "game-10-ply-416",
+      "depth": 6,
+      "nodes": 134438,
+      "best": "6l10h",
+      "score": -1766
+    }
+  ],
+  "samples": {
+    "baseline": [
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.872784,
+        "nps": 2078305
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.869516,
+        "nps": 2086117
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.871284,
+        "nps": 2081882
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.871227,
+        "nps": 2082018
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.874306,
+        "nps": 2074686
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.873194,
+        "nps": 2077330
+      }
+    ],
+    "baseline_force": [
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.878885,
+        "nps": 2063877
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.875329,
+        "nps": 2072262
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.879164,
+        "nps": 2063222
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.87575,
+        "nps": 2071265
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.877101,
+        "nps": 2068076
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.879798,
+        "nps": 2061735
+      }
+    ],
+    "diagonal_force": [
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.888927,
+        "nps": 2040563
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.890009,
+        "nps": 2038082
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.893125,
+        "nps": 2030970
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.887532,
+        "nps": 2043770
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.890363,
+        "nps": 2037271
+      },
+      {
+        "depth": 6,
+        "nodes": 1813911,
+        "elapsed": 0.892054,
+        "nps": 2033410
+      }
+    ]
+  },
+  "summary": {
+    "baseline": {
+      "depth": 6,
+      "nodes": 1813911,
+      "elapsed": 0.872034,
+      "nps": 2080093.5,
+      "nps_width": 0.00549542604695414
+    },
+    "baseline_force": {
+      "depth": 6,
+      "nodes": 1813911,
+      "elapsed": 0.877993,
+      "nps": 2065976.5,
+      "nps_width": 0.005095411298240807
+    },
+    "diagonal_force": {
+      "depth": 6,
+      "nodes": 1813911,
+      "elapsed": 0.890186,
+      "nps": 2037676.5,
+      "nps_width": 0.0062816644349581495
+    }
+  },
+  "ratios": {
+    "baseline": {
+      "median_nps_ratio": 1.0,
+      "paired_median_ratio": 1.0,
+      "paired_min_ratio": 1.0,
+      "paired_max_ratio": 1.0
+    },
+    "baseline_force": {
+      "median_nps_ratio": 0.9932132858450834,
+      "paired_median_ratio": 0.9932081392288449,
+      "paired_min_ratio": 0.9910369559850174,
+      "paired_max_ratio": 0.9968139757052392
+    },
+    "diagonal_force": {
+      "median_nps_ratio": 0.9796081281923145,
+      "paired_median_ratio": 0.980243418607834,
+      "paired_min_ratio": 0.9755452038107827,
+      "paired_max_ratio": 0.9819659456900948
+    }
+  }
+}

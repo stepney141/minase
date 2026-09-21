@@ -1,0 +1,315 @@
+{
+  "depth": 5,
+  "rounds": 6,
+  "repetitions": 5,
+  "cpu": 0,
+  "orders": [
+    [
+      "baseline",
+      "horizontal",
+      "diagonal"
+    ],
+    [
+      "baseline",
+      "diagonal",
+      "horizontal"
+    ],
+    [
+      "diagonal",
+      "baseline",
+      "horizontal"
+    ],
+    [
+      "diagonal",
+      "horizontal",
+      "baseline"
+    ],
+    [
+      "horizontal",
+      "diagonal",
+      "baseline"
+    ],
+    [
+      "horizontal",
+      "baseline",
+      "diagonal"
+    ]
+  ],
+  "binaries": {
+    "baseline": "/tmp/minase-magic-prototype.rdcKvQ/target-baseline/release/bench",
+    "horizontal": "/tmp/minase-magic-prototype.rdcKvQ/target-horizontal/release/bench",
+    "diagonal": "/tmp/minase-magic-prototype.rdcKvQ/target-diagonal/release/bench"
+  },
+  "sha256": {
+    "baseline": "2ced94da36738177f1e3ec42489b7e6955aa0bd3d1e030ec52446f32bb4ddb7c",
+    "horizontal": "410f93caaa44e9310b8d38a458cb2ba778c1a8ac2c76d06ccf1b5c309ffe0d8b",
+    "diagonal": "8c5fc3bb7a839c59d01ccf2f0f84109485f234332ce2888bf01f436d22d974e0"
+  },
+  "positions_equal": true,
+  "positions": [
+    {
+      "name": "initial",
+      "depth": 5,
+      "nodes": 34914,
+      "best": "7j7h",
+      "score": 20
+    },
+    {
+      "name": "game-2-ply-40",
+      "depth": 5,
+      "nodes": 15751,
+      "best": "3d2d",
+      "score": 1077
+    },
+    {
+      "name": "game-2-ply-60",
+      "depth": 5,
+      "nodes": 18514,
+      "best": "3d3e",
+      "score": 6593
+    },
+    {
+      "name": "game-3-ply-310",
+      "depth": 5,
+      "nodes": 79594,
+      "best": "10k12i",
+      "score": -2339
+    },
+    {
+      "name": "game-3-ply-465",
+      "depth": 5,
+      "nodes": 44999,
+      "best": "8g8i",
+      "score": 4875
+    },
+    {
+      "name": "game-4-ply-164",
+      "depth": 5,
+      "nodes": 9438,
+      "best": "3i4j3i",
+      "score": -1539
+    },
+    {
+      "name": "game-4-ply-246",
+      "depth": 5,
+      "nodes": 59957,
+      "best": "12e11e",
+      "score": -1844
+    },
+    {
+      "name": "game-5-ply-170",
+      "depth": 5,
+      "nodes": 89644,
+      "best": "6e7f7e",
+      "score": 2458
+    },
+    {
+      "name": "game-5-ply-255",
+      "depth": 5,
+      "nodes": 23757,
+      "best": "2b1a",
+      "score": -5383
+    },
+    {
+      "name": "game-6-ply-51",
+      "depth": 5,
+      "nodes": 90568,
+      "best": "9e9f",
+      "score": 30
+    },
+    {
+      "name": "game-6-ply-77",
+      "depth": 5,
+      "nodes": 55930,
+      "best": "8a7b",
+      "score": 85
+    },
+    {
+      "name": "game-8-ply-183",
+      "depth": 5,
+      "nodes": 19291,
+      "best": "9b8c",
+      "score": 246
+    },
+    {
+      "name": "game-8-ply-275",
+      "depth": 5,
+      "nodes": 4525,
+      "best": "5e2e",
+      "score": 102
+    },
+    {
+      "name": "game-10-ply-277",
+      "depth": 5,
+      "nodes": 17278,
+      "best": "5b12i+",
+      "score": 1822
+    },
+    {
+      "name": "game-10-ply-416",
+      "depth": 5,
+      "nodes": 33854,
+      "best": "4k11k",
+      "score": -1128
+    }
+  ],
+  "samples": {
+    "baseline": [
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.278361,
+        "nps": 2148338
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.281796,
+        "nps": 2122149
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.283002,
+        "nps": 2113112
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.280901,
+        "nps": 2128910
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.281196,
+        "nps": 2126678
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.28388,
+        "nps": 2106573
+      }
+    ],
+    "horizontal": [
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.316604,
+        "nps": 1888838
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.317332,
+        "nps": 1884508
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.316254,
+        "nps": 1890930
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.317524,
+        "nps": 1883368
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.317092,
+        "nps": 1885931
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.319291,
+        "nps": 1872944
+      }
+    ],
+    "diagonal": [
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.310319,
+        "nps": 1927094
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.309166,
+        "nps": 1934284
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.309469,
+        "nps": 1932389
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.310554,
+        "nps": 1925636
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.315971,
+        "nps": 1892622
+      },
+      {
+        "depth": 5,
+        "nodes": 598014,
+        "elapsed": 0.310125,
+        "nps": 1928303
+      }
+    ]
+  },
+  "summary": {
+    "baseline": {
+      "depth": 5,
+      "nodes": 598014,
+      "elapsed": 0.28149599999999997,
+      "nps": 2124413.5,
+      "nps_width": 0.019659543681114812
+    },
+    "horizontal": {
+      "depth": 5,
+      "nodes": 598014,
+      "elapsed": 0.317212,
+      "nps": 1885219.5,
+      "nps_width": 0.009540533608951107
+    },
+    "diagonal": {
+      "depth": 5,
+      "nodes": 598014,
+      "elapsed": 0.310222,
+      "nps": 1927698.5,
+      "nps_width": 0.02161230088626411
+    }
+  },
+  "ratios": {
+    "baseline": {
+      "median_nps_ratio": 1.0,
+      "paired_median_ratio": 1.0,
+      "paired_min_ratio": 1.0,
+      "paired_max_ratio": 1.0
+    },
+    "horizontal": {
+      "median_nps_ratio": 0.8874070419906482,
+      "paired_median_ratio": 0.8874076932898255,
+      "paired_min_ratio": 0.8792089512916497,
+      "paired_max_ratio": 0.8948555495402042
+    },
+    "diagonal": {
+      "median_nps_ratio": 0.9074026784333653,
+      "paired_median_ratio": 0.9079957529600817,
+      "paired_min_ratio": 0.8899429062603742,
+      "paired_max_ratio": 0.9153744019314782
+    }
+  }
+}

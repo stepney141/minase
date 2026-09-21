@@ -2,6 +2,7 @@
 //!
 //! 設計は`docs/plans/strength-stage8.md`「静的評価の補正（correction history）」に従う。
 
+use super::params;
 use crate::core::mv::Undo;
 use crate::core::piece::{COLOR_COUNT, Color, PieceCode};
 use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
@@ -20,7 +21,7 @@ impl CorrectionTable {
     pub(super) fn new(pawn: i32) -> Self {
         Self {
             values: Box::new([[0; ENTRY_COUNT]; COLOR_COUNT]),
-            cap: 2 * i64::from(pawn),
+            cap: i64::from(pawn) * i64::from(params::correction_cap()) / 100,
         }
     }
 
@@ -31,7 +32,10 @@ impl CorrectionTable {
 
     pub(super) fn update(&mut self, side: Color, key: u64, difference: i32, depth: u32) {
         let fixed = &mut self.values[side.index()][key as usize & (ENTRY_COUNT - 1)];
-        *fixed += (i64::from(difference) * SCALE - *fixed) * i64::from(depth.min(8)) / 32;
+        *fixed += (i64::from(difference) * SCALE - *fixed)
+            * i64::from(depth.min(8))
+            * i64::from(params::correction_weight())
+            / 1024;
         *fixed = (*fixed).clamp(-self.cap * SCALE, self.cap * SCALE);
     }
 }

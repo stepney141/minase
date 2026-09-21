@@ -1,0 +1,120 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..1f0c159 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -209,10 +209,12 @@ fn run_bench(
+         let game = Game::from_position(rules, position);
+         let snapshot = SearchSnapshot::from_game(&game).expect("bench position must have moves");
+         transposition_table.clear();
++        minase::magic_trace::enable(true);
+         let position_start = Instant::now();
+         let result = search(pst, &snapshot, limits, threads, transposition_table)
+             .expect("bench search input must be valid");
+         let elapsed = position_start.elapsed();
++        minase::magic_trace::enable(false);
+         reached_depth = reached_depth.min(result.depth);
+         total_elapsed += elapsed.as_secs_f64();
+         total_nodes = total_nodes
+@@ -254,6 +256,7 @@ fn main() {
+     let arguments = Arguments::parse();
+     let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
+     let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
++    let _ = MoveGenerator::new(rules.moves);
+     let limits = SearchLimits::new(Some(arguments.depth), None, None, None)
+         .expect("the CLI parser accepts only valid search depths");
+     // 確保時のページフォルトとクリアのmemsetが計測へ混入しないよう、
+@@ -278,6 +281,7 @@ fn main() {
+             result.elapsed,
+             result.nps()
+         );
++        minase::magic_trace::save();
+         return;
+     }
+ 
+diff --git a/src/core/attacks/tables.rs b/src/core/attacks/tables.rs
+index 011521d..914ab1d 100644
+--- a/src/core/attacks/tables.rs
++++ b/src/core/attacks/tables.rs
+@@ -169,6 +169,7 @@ impl AttackTables {
+         direction: Direction,
+         occupied: Bitboard,
+     ) -> Bitboard {
++        crate::magic_trace::record(from, direction, occupied);
+         let candidates = self.ray(from, direction);
+         let blockers = candidates & occupied;
+         if direction.increases_raw_index() {
+diff --git a/src/lib.rs b/src/lib.rs
+index f7a7da4..59a2b43 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -6,6 +6,7 @@
+ //! 評価(`eval`)はその外に置く。
+ 
+ pub mod core;
++pub mod magic_trace;
+ pub mod eval;
+ pub mod notation;
+ pub mod protocol;
+diff --git a/src/magic_trace.rs b/src/magic_trace.rs
+new file mode 100644
+index 0000000..4f6feb8
+--- /dev/null
++++ b/src/magic_trace.rs
+@@ -0,0 +1,57 @@
++//! PROTOTYPE: sample real sliding queries; never use this build for timing.
++use std::cell::RefCell;
++
++use crate::{Bitboard, Direction, Square};
++
++#[derive(Default)]
++struct Trace {
++    enabled: bool,
++    count: [u64; 8],
++    sampled: [u64; 8],
++    sequence: u64,
++    data: Vec<u8>,
++}
++
++thread_local! {
++    static TRACE: RefCell<Trace> = RefCell::new(Trace::default());
++}
++
++/// Restrict collection to the measured search calls on this one worker.
++pub fn enable(value: bool) {
++    TRACE.with_borrow_mut(|trace| trace.enabled = value);
++}
++
++/// Sample one in 32 queries using a fixed, mixed sequence number.
++pub(crate) fn record(from: Square, direction: Direction, occupied: Bitboard) {
++    TRACE.with_borrow_mut(|trace| {
++        if !trace.enabled {
++            return;
++        }
++        trace.count[direction.index()] += 1;
++        trace.sequence += 1;
++        let mut z = trace.sequence.wrapping_add(0x9e37_79b9_7f4a_7c15);
++        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
++        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
++        z ^= z >> 31;
++        if z >> 59 != 0 {
++            return;
++        }
++        trace.sampled[direction.index()] += 1;
++        let tag = u64::from(from.raw()) | ((direction.index() as u64) << 8);
++        trace.data.extend_from_slice(&tag.to_le_bytes());
++        for word in occupied.words() {
++            trace.data.extend_from_slice(&word.to_le_bytes());
++        }
++    });
++}
++
++/// Save the sampled input records and exact direction counts.
++pub fn save() {
++    TRACE.with_borrow(|trace| {
++        assert_eq!(trace.count.iter().sum::<u64>(), trace.sequence);
++        assert_eq!(trace.sampled.iter().sum::<u64>() as usize * 32, trace.data.len());
++        let path = std::env::var("MAGIC_TRACE_OUTPUT").expect("MAGIC_TRACE_OUTPUT is required");
++        std::fs::write(&path, &trace.data).expect("write sampled queries");
++        eprintln!("calls={:?} sampled={:?} bytes={}", trace.count, trace.sampled, trace.data.len());
++    });
++}

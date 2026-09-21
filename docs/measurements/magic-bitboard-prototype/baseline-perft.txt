@@ -1,0 +1,6 @@
+perft(1): 36
+perft(2): 1296
+perft(3): 48315
+total nodes: 48315
+elapsed: 1.840 ms
+nodes/second: 26256426

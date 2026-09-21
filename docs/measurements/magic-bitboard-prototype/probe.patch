@@ -1,0 +1,89 @@
+diff --git a/src/core/attacks/prototype_probe.rs b/src/core/attacks/prototype_probe.rs
+new file mode 100644
+index 0000000..c48f01d
+--- /dev/null
++++ b/src/core/attacks/prototype_probe.rs
+@@ -0,0 +1,68 @@
++//! PROTOTYPE: replay sampled search queries against one compiled variant.
++use super::*;
++use std::hint::black_box;
++use std::time::Instant;
++
++#[derive(Clone, Copy)]
++struct Query {
++    from: Square,
++    direction: Direction,
++    occupied: Bitboard,
++}
++
++#[test]
++#[ignore = "PROTOTYPE: requires MAGIC_TRACE_INPUT and a quiet CPU"]
++fn prototype_replay_queries() {
++    let path = std::env::var("MAGIC_TRACE_INPUT").expect("MAGIC_TRACE_INPUT is required");
++    let bytes = std::fs::read(path).expect("read query trace");
++    assert_eq!(bytes.len() % 32, 0);
++    let queries: Vec<_> = bytes.chunks_exact(32).map(|record| {
++        let tag = u64::from_le_bytes(record[0..8].try_into().unwrap());
++        Query {
++            from: Square::from_raw(tag as u8).unwrap(),
++            direction: Direction::ALL[(tag >> 8) as usize],
++            occupied: Bitboard::from_words([
++                u64::from_le_bytes(record[8..16].try_into().unwrap()),
++                u64::from_le_bytes(record[16..24].try_into().unwrap()),
++                u64::from_le_bytes(record[24..32].try_into().unwrap()),
++            ]),
++        }
++    }).collect();
++    let start = Instant::now();
++    let tables = attack_tables();
++    println!("prototype_init_us={:.3}", start.elapsed().as_secs_f64() * 1e6);
++    for (group, allowed) in [("all", 0xff_u8), ("horizontal", 0x03), ("vertical", 0x0c), ("diagonal", 0xf0)] {
++        let inputs: Vec<_> = queries.iter().copied().filter(|q| allowed & (1 << q.direction.index()) != 0).collect();
++        assert!(!inputs.is_empty());
++        // Independent rule oracle, also validating the trace's actual occupancies.
++        let mut expected = [0_u64; 3];
++        for query in &inputs {
++            let mut reference = Bitboard::EMPTY;
++            let mut square = query.from;
++            while let Some(next) = crate::core::direction::step_square(square, query.direction) {
++                let bit = Bitboard::from_square(next);
++                reference |= bit;
++                for (sum, word) in expected.iter_mut().zip(bit.words()) { *sum ^= word; }
++                if query.occupied.contains(next) { break; }
++                square = next;
++            }
++            assert_eq!(tables.sliding_control(query.from, query.direction, query.occupied), reference);
++        }
++        for round in 0..6 {
++            let start = Instant::now();
++            let mut checksum = [0_u64; 3];
++            for _ in 0..31 {
++                for query in black_box(&inputs) {
++                    let output = tables.sliding_control(query.from, query.direction, query.occupied);
++                    for (sum, word) in checksum.iter_mut().zip(output.words()) { *sum ^= word; }
++                }
++            }
++            black_box(checksum);
++            let nanos = start.elapsed().as_secs_f64() * 1e9;
++            assert_eq!(checksum, expected);
++            if round != 0 {
++                println!("prototype_probe group={group} round={round} queries={} loops=31 ns_per_query={:.6} checksum={checksum:?}", inputs.len(), nanos / (31 * inputs.len()) as f64);
++            }
++        }
++    }
++}
+diff --git a/src/core/attacks/tables.rs b/src/core/attacks/tables.rs
+index 011521d..a7a01b9 100644
+--- a/src/core/attacks/tables.rs
++++ b/src/core/attacks/tables.rs
+@@ -190,6 +190,10 @@ impl AttackTables {
+ 
+ static ATTACK_TABLES: OnceLock<AttackTables> = OnceLock::new();
+ 
++#[cfg(test)]
++#[path = "prototype_probe.rs"]
++mod prototype_probe;
++
+ /// プロセス全体で共有する利きテーブルを返す。初回呼び出し時に構築する。
+ pub(crate) fn attack_tables() -> &'static AttackTables {
+     ATTACK_TABLES.get_or_init(AttackTables::build)

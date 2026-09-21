@@ -1,0 +1,11 @@
+run=1 depth=5 nodes=598014 elapsed=0.289573s nps=2065157
+run=2 depth=5 nodes=598014 elapsed=0.326498s nps=1831599
+run=3 depth=5 nodes=598014 elapsed=0.297181s nps=2012287
+run=4 depth=5 nodes=598014 elapsed=0.297241s nps=2011880
+run=5 depth=5 nodes=598014 elapsed=0.290661s nps=2057426
+run=6 depth=5 nodes=598014 elapsed=0.290878s nps=2055893
+run=7 depth=5 nodes=598014 elapsed=0.290353s nps=2059609
+run=8 depth=5 nodes=598014 elapsed=0.290374s nps=2059460
+run=9 depth=5 nodes=598014 elapsed=0.289956s nps=2062431
+run=10 depth=5 nodes=598014 elapsed=0.290668s nps=2057380
+median: depth=5 nodes=598014 elapsed=0.290664s nps=2057403

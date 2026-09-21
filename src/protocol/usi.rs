@@ -3,6 +3,8 @@
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
 use std::num::NonZeroUsize;
+#[cfg(feature = "tuning")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
@@ -25,6 +27,10 @@ use super::engine::{
 
 /// USIから設定できる置換表容量の上限(MiB)。
 const MAX_HASH_SIZE_MB: usize = 65_536;
+
+/// プロセス内で一度でもgoを受信したら調整係数を固定する。
+#[cfg(feature = "tuning")]
+static TUNING_LOCKED: AtomicBool = AtomicBool::new(false);
 
 /// lishogi系拡張を含むUSIプロトコル。
 pub struct UsiProtocol {
@@ -140,6 +146,11 @@ impl UsiProtocol {
         let Some(command) = tokens.first().copied() else {
             return Ok(LineAction::Continue);
         };
+
+        #[cfg(feature = "tuning")]
+        if command == "go" {
+            TUNING_LOCKED.store(true, Ordering::Relaxed);
+        }
 
         match command {
             "usi" => self.write_handshake(output)?,
@@ -676,6 +687,13 @@ impl UsiProtocol {
             "option name Threads type spin default {} min 1 max 256",
             search::DEFAULT_THREADS
         )?;
+        #[cfg(feature = "tuning")]
+        for &(name, default, min, max) in search::params::PARAMETERS {
+            writeln!(
+                output,
+                "option name Tune_{name} type spin default {default} min {min} max {max}"
+            )?;
+        }
         writeln!(output, "usiok")
     }
 
@@ -692,6 +710,23 @@ impl UsiProtocol {
         let Some(name) = name else {
             return Ok(());
         };
+
+        #[cfg(feature = "tuning")]
+        if let Some(parameter) = name.strip_prefix("Tune_") {
+            if TUNING_LOCKED.load(Ordering::Relaxed) {
+                return write_error(output, "tuning parameters cannot change after go");
+            }
+            let Some(value) = value else {
+                return write_error(output, &format!("{name} requires a value"));
+            };
+            let Ok(value) = value.parse::<i32>() else {
+                return write_error(output, &format!("{name} must be an integer"));
+            };
+            return match search::params::set(parameter, value) {
+                Ok(()) => Ok(()),
+                Err(error) => write_error(output, &error.to_string()),
+            };
+        }
 
         if name.eq_ignore_ascii_case("RuleSet") {
             let Some(value) = value else {
@@ -1446,6 +1481,19 @@ mod tests {
 
     /// stateのAwaitingStartエラー行（BG「stateコマンド」、台本完全一致）。
     const STATE_ERROR: &str = "info string error: state requires an active or finished game";
+
+    /// 通常版では調整用オプションを宣言せず、未知オプションとして無視する。
+    #[cfg(not(feature = "tuning"))]
+    #[test]
+    fn normal_build_does_not_expose_tuning_options() {
+        let output = lishogi_session("usi\nsetoption name Tune_DeltaMargin value nope\n");
+        assert!(
+            !output
+                .lines()
+                .any(|line| line.starts_with("option name Tune_"))
+        );
+        assert!(error_lines(&output).is_empty());
+    }
 
     fn make_engine(codes: &[RuleCode]) -> Engine {
         let mut complete = codes.to_vec();
@@ -2888,7 +2936,9 @@ mod tests {
                 &[RuleCode::R1],
                 &format!("setoption name Threads value {threads}\nposition startpos\ngo depth 2\n"),
             );
-            let best: Vec<_> = bestmoves(&output)[0].split_whitespace().collect();
+            let best = bestmoves(&output);
+            assert_eq!(best.len(), 1, "{output}");
+            let best: Vec<_> = best[0].split_whitespace().collect();
             let pv: Vec<_> = output
                 .lines()
                 .filter_map(|line| line.split_once(" pv ").map(|(_, pv)| pv))
@@ -2896,7 +2946,14 @@ mod tests {
                 .unwrap()
                 .split_whitespace()
                 .collect();
-            assert_eq!(best, ["bestmove", pv[0], "ponder", pv[1]]);
+            // 共有置換表による打ち切りでは、深さ2でもPVが1手になり得る。
+            match pv.as_slice() {
+                [first] => assert_eq!(best, ["bestmove", *first], "{output}"),
+                [first, second, ..] => {
+                    assert_eq!(best, ["bestmove", *first, "ponder", *second], "{output}");
+                }
+                [] => panic!("empty PV: {output}"),
+            }
         }
         let output = session(&[RuleCode::R1], "position startpos\ngo depth 1\n");
         assert_eq!(bestmoves(&output)[0].split_whitespace().count(), 2);
@@ -2915,6 +2972,18 @@ mod tests {
                 (sq(8, 8), Color::White, PieceKind::King),
             ],
         );
+        // 探索のスケジュールによらず、2手のPVと1手のPVを両方検査する。
+        let game = Game::from_position(
+            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap(),
+            kings.clone(),
+        );
+        let x = step(sq(3, 3), sq(3, 4));
+        let y = step(sq(8, 8), sq(8, 7));
+        assert_eq!(
+            validated_ponder_move(&game, x, &[x, y]).as_deref(),
+            Some("4d4e")
+        );
+        assert_eq!(validated_ponder_move(&game, x, &[x]), None);
         for rule in [RuleCode::R2, RuleCode::R3] {
             let rules =
                 Rules::from_codes(&[RuleCode::L0, RuleCode::P0, rule, RuleCode::E2]).unwrap();

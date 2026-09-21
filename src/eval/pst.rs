@@ -39,8 +39,6 @@ pub struct Pst {
     weights: [[i16; 2]; FEATURE_COUNT],
     /// 駒状態ごとのセンチポーン単位の駒価値。
     piece_values: [i32; PIECE_STATE_COUNT],
-    /// 静止探索で小さな捕獲を残すための余裕値。
-    delta_margin: i32,
     /// SEEの逆引き前の判定に使う全駒種の成り益の非負上限（同「段階6」）。
     max_promotion_gain: i32,
     /// 学習時に使ったセンチポーンから勝率ロジットへの尺度。
@@ -120,7 +118,7 @@ impl Pst {
                     .expect("slice length is fixed"),
             );
         }
-        let delta_margin = validate_piece_values(&piece_values)?;
+        validate_piece_values(&piece_values)?;
         let max_promotion_gain = PieceKind::ALL
             .into_iter()
             .filter_map(|kind| PieceCode::new(Color::Black, kind))
@@ -134,7 +132,6 @@ impl Pst {
             max_promotion_gain,
             weights,
             piece_values,
-            delta_margin,
             k,
             checksum,
         })
@@ -170,12 +167,6 @@ impl Pst {
         let pawn = PieceCode::new(Color::Black, PieceKind::Pawn)
             .expect("pawn must have an unpromoted code");
         self.piece_value(pawn)
-    }
-
-    /// 静止探索で小さな捕獲を残すための余裕値を返す。
-    #[inline]
-    pub const fn delta_margin(&self) -> i32 {
-        self.delta_margin
     }
 
     /// 「段階6」（movegen-speedup-2.md）の取り返しで得られる成り益の上限を返す。
@@ -407,8 +398,8 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// 格納された駒価値を検査し、静止探索の余裕値を返す。
-fn validate_piece_values(values: &[i32; PIECE_STATE_COUNT]) -> Result<i32, Error> {
+/// 格納された駒価値を検査する。
+fn validate_piece_values(values: &[i32; PIECE_STATE_COUNT]) -> Result<(), Error> {
     for (state, &value) in values.iter().enumerate() {
         if !(0..=EVALUATION_LIMIT).contains(&value) {
             return Err(Error::PieceValueOutOfRange { state, value });
@@ -444,7 +435,7 @@ fn validate_piece_values(values: &[i32; PIECE_STATE_COUNT]) -> Result<i32, Error
             });
         }
     }
-    Ok(2 * pawn_value)
+    Ok(())
 }
 
 /// 盤上に現れ得る非王駒の値を検査し、最大値を更新する。
@@ -1052,7 +1043,6 @@ mod tests {
         assert_eq!(pst.piece_value(king), max_non_royal + pst.pawn_value());
         assert_eq!(pst.piece_value(prince), max_non_royal + pst.pawn_value());
         assert_eq!(pst.pawn_value(), pst.piece_value(pawn));
-        assert_eq!(pst.delta_margin(), 2 * pst.piece_value(pawn));
     }
 
     /// 同一端点では駒数によらず生重み和を8で割った値に一致する。
@@ -1252,7 +1242,6 @@ mod tests {
         let initial = Pst::decode(&valid_bytes()).unwrap();
         let distinct = distinct_pst();
         assert_eq!(initial.piece_values, distinct.piece_values);
-        assert_eq!(initial.delta_margin(), distinct.delta_margin());
         for piece in reachable_piece_states() {
             if matches!(piece.kind(), Some(PieceKind::King | PieceKind::CrownPrince)) {
                 continue;

@@ -1,0 +1,16 @@
+position=initial depth=5 nodes=34914 best=7j7h score=20 elapsed=0.010865s
+position=game-2-ply-40 depth=5 nodes=15751 best=3d2d score=1077 elapsed=0.008344s
+position=game-2-ply-60 depth=5 nodes=18514 best=3d3e score=6593 elapsed=0.010918s
+position=game-3-ply-310 depth=5 nodes=79594 best=10k12i score=-2339 elapsed=0.039190s
+position=game-3-ply-465 depth=5 nodes=44999 best=8g8i score=4875 elapsed=0.019170s
+position=game-4-ply-164 depth=5 nodes=9438 best=3i4j3i score=-1539 elapsed=0.004769s
+position=game-4-ply-246 depth=5 nodes=59957 best=12e11e score=-1844 elapsed=0.019958s
+position=game-5-ply-170 depth=5 nodes=89644 best=6e7f7e score=2458 elapsed=0.049325s
+position=game-5-ply-255 depth=5 nodes=23757 best=2b1a score=-5383 elapsed=0.011998s
+position=game-6-ply-51 depth=5 nodes=90568 best=9e9f score=30 elapsed=0.044458s
+position=game-6-ply-77 depth=5 nodes=55930 best=8a7b score=85 elapsed=0.036160s
+position=game-8-ply-183 depth=5 nodes=19291 best=9b8c score=246 elapsed=0.008910s
+position=game-8-ply-275 depth=5 nodes=4525 best=5e2e score=102 elapsed=0.001743s
+position=game-10-ply-277 depth=5 nodes=17278 best=5b12i+ score=1822 elapsed=0.008578s
+position=game-10-ply-416 depth=5 nodes=33854 best=4k11k score=-1128 elapsed=0.010089s
+summary: positions=15 depth=5 nodes=598014 elapsed=0.284476s nps=2102160

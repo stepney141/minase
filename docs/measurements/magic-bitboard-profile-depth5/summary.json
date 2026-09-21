@@ -1,0 +1,374 @@
+{
+  "all_samples": 15889,
+  "search_samples": 12809,
+  "search_period_sum": 16497917882,
+  "sliding_samples": 546,
+  "sliding_period_sum": 703305590,
+  "sliding_percent": 4.262996064293296,
+  "functions": [
+    {
+      "symbol": "<minase::search::Searcher>::quiesce",
+      "samples": 2269,
+      "percent": 17.71706817736723,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::position::Position>::attackers_to_by",
+      "samples": 1843,
+      "percent": 14.402752074505688,
+      "sliding_samples": 324,
+      "sliding_percent": 2.531609606662485
+    },
+    {
+      "symbol": "<minase::core::movegen::MoveGenerator>::ordinary_capturer",
+      "samples": 1634,
+      "percent": 12.759711298458747,
+      "sliding_samples": 70,
+      "sliding_percent": 0.546792429476344
+    },
+    {
+      "symbol": "<minase::search::tt::TranspositionTable>::probe",
+      "samples": 1370,
+      "percent": 10.687026372725887,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::search::Searcher>::negamax",
+      "samples": 1363,
+      "percent": 10.635035442346979,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::core::movegen::piece_control_without_special",
+      "samples": 757,
+      "percent": 5.909181200760204,
+      "sliding_samples": 152,
+      "sliding_percent": 1.1845940281544673
+    },
+    {
+      "symbol": "<minase::eval::pst::Pst>::update_accumulator_after_move",
+      "samples": 446,
+      "percent": 3.4826476232305446,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::search::see::see_prunes",
+      "samples": 369,
+      "percent": 2.8849825135770426,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::core::movegen::push_with_promotion",
+      "samples": 367,
+      "percent": 2.868098376924628,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::position::Position>::captured_squares",
+      "samples": 318,
+      "percent": 2.482126289686426,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::rules::MoveRules>::special_move_is_legal",
+      "samples": 235,
+      "percent": 1.8352274157597848,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::movegen::MoveGenerator>::generate_special_piece_captures::<<minase::search::QsearchBuffers>::initialize::{closure#0}>::{closure#0}",
+      "samples": 187,
+      "percent": 1.461901657682163,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::position::Position>::make_move_with_captures_unchecked",
+      "samples": 179,
+      "percent": 1.396989708934472,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::search::QsearchBuffers>::initialize::{closure#0}",
+      "samples": 171,
+      "percent": 1.33363713271997,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::search::Searcher>::search_move",
+      "samples": 156,
+      "percent": 1.214981177829092,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::search::Searcher>::enter_node",
+      "samples": 154,
+      "percent": 1.2030740449772352,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::rules::MoveRules>::promotion_choice_for",
+      "samples": 153,
+      "percent": 1.19454027113941,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::unstable::quicksort::quicksort::<(core::cmp::Reverse<i32>, usize), <(core::cmp::Reverse<i32>, usize) as core::cmp::PartialOrd>::lt>",
+      "samples": 127,
+      "percent": 0.9942894804863353,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::movegen::MoveGenerator>::is_excluded_lion_capture",
+      "samples": 105,
+      "percent": 0.819758092913994,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::position::Position>::unmake_move",
+      "samples": 97,
+      "percent": 0.7568222965652412,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::position::Position>::remove_piece_without_hash",
+      "samples": 96,
+      "percent": 0.7498934828314355,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::core::position::Position>::put_piece",
+      "samples": 58,
+      "percent": 0.4521604091713226,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::search::tt::TranspositionTable>::store",
+      "samples": 48,
+      "percent": 0.37547891463071353,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::shared::smallsort::sort8_stable::<(core::cmp::Reverse<i32>, usize), <(core::cmp::Reverse<i32>, usize) as core::cmp::PartialOrd>::lt>",
+      "samples": 41,
+      "percent": 0.3208547671203641,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<(minase::core::mv::Move, minase::search::MoveOrderKey), <[(minase::core::mv::Move, minase::search::MoveOrderKey)]>::sort_by_key<(core::cmp::Reverse<i32>, i32), <minase::search::MovePicker>::next::{closure#2}>::{closure#0}>",
+      "samples": 35,
+      "percent": 0.2718164153849193,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::search::move_order_key",
+      "samples": 34,
+      "percent": 0.2653108247541706,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::core::movegen::generate_piece_moves::<false, false>",
+      "samples": 22,
+      "percent": 0.17199797697477714,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "[unknown]",
+      "samples": 22,
+      "percent": 0.16688364675423106,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<minase::search::QsearchCapture, <[minase::search::QsearchCapture]>::sort_unstable_by_key<(core::cmp::Reverse<i32>, u16), <minase::search::QsearchBuffers>::initialize::{closure#1}>::{closure#0}>",
+      "samples": 21,
+      "percent": 0.16350885119528685,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::core::rules::lion_has_foot_after_capture",
+      "samples": 19,
+      "percent": 0.1484822156056844,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<minase::search::QsearchCapture, <[minase::search::QsearchCapture]>::sort_unstable_by_key<(i32, (u8, u8), u16), <minase::search::QsearchBuffers>::generate_group::{closure#5}>::{closure#0}>",
+      "samples": 18,
+      "percent": 0.14080497409521534,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::stable::quicksort::quicksort::<(minase::core::mv::Move, minase::search::MoveOrderKey), <[(minase::core::mv::Move, minase::search::MoveOrderKey)]>::sort_by_key<(core::cmp::Reverse<i32>, i32), <minase::search::MovePicker>::next::{closure#2}>::{closure#0}>",
+      "samples": 18,
+      "percent": 0.14065299128029687,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::core::rules::is_tsukegui",
+      "samples": 17,
+      "percent": 0.1326699536059674,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::unstable::ipnsort::<(core::cmp::Reverse<i32>, usize), <(core::cmp::Reverse<i32>, usize) as core::cmp::PartialOrd>::lt>",
+      "samples": 14,
+      "percent": 0.10936176994604342,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::shared::smallsort::insertion_sort_shift_left::<minase::search::QsearchCapture, <[minase::search::QsearchCapture]>::sort_unstable_by_key<(i32, u16), <minase::search::QsearchBuffers>::generate_group::{closure#4}>::{closure#0}>",
+      "samples": 14,
+      "percent": 0.10887918177601219,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::shared::smallsort::sort8_stable::<(minase::core::mv::Move, minase::search::MoveOrderKey), <[(minase::core::mv::Move, minase::search::MoveOrderKey)]>::sort_by_key<(core::cmp::Reverse<i32>, i32), <minase::search::MovePicker>::next::{closure#2}>::{closure#0}>",
+      "samples": 5,
+      "percent": 0.03913524146610248,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::shared::pivot::median3_rec::<(core::cmp::Reverse<i32>, usize), <(core::cmp::Reverse<i32>, usize) as core::cmp::PartialOrd>::lt>",
+      "samples": 5,
+      "percent": 0.039129016438148374,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::search::Searcher>::search_iteration",
+      "samples": 3,
+      "percent": 0.02338147775731546,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "_mi_page_malloc_zero",
+      "samples": 3,
+      "percent": 0.02327948912989989,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::search::new_searcher",
+      "samples": 2,
+      "percent": 0.015669092418143484,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "mi_free",
+      "samples": 2,
+      "percent": 0.015664103909860883,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::stable::drift::sort::<(minase::core::mv::Move, minase::search::MoveOrderKey), <[(minase::core::mv::Move, minase::search::MoveOrderKey)]>::sort_by_key<(core::cmp::Reverse<i32>, i32), <minase::search::MovePicker>::next::{closure#2}>::{closure#0}>",
+      "samples": 2,
+      "percent": 0.015656496889332742,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::ptr::drop_glue::<alloc::vec::Vec<minase::search::MovePicker>>",
+      "samples": 1,
+      "percent": 0.007836085797290187,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "minase::core::movegen::special_step_destinations",
+      "samples": 1,
+      "percent": 0.007833849151413785,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<alloc::raw_vec::RawVecInner>::finish_grow",
+      "samples": 1,
+      "percent": 0.007832921761660155,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<minase::search::correction::CorrectionTable>::update",
+      "samples": 1,
+      "percent": 0.007831715548843342,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "_mi_theap_realloc_zero",
+      "samples": 1,
+      "percent": 0.007830757852235018,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "core::slice::sort::unstable::quicksort::quicksort::<(minase::search::OrderedMoveKey, usize), <(minase::search::OrderedMoveKey, usize) as core::cmp::PartialOrd>::lt>",
+      "samples": 1,
+      "percent": 0.007830194144737712,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "mi_bbitmap_setN",
+      "samples": 1,
+      "percent": 0.007830042610464244,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "mi_theap_malloc_zero_aligned_at_overalloc",
+      "samples": 1,
+      "percent": 0.007828012051199758,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "<std::sync::once::Once>::call_once_force::<<std::sync::once_lock::OnceLock<[[u8; 256]; 257]>>::initialize<<std::sync::once_lock::OnceLock<[[u8; 256]; 257]>>::get_or_init<minase::search::lmr_table::{closure#0}>::{closure#0}, !>::{closure#0}>::{closure#0}",
+      "samples": 1,
+      "percent": 0.0034127579251336704,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    },
+    {
+      "symbol": "mi_theap_umalloc",
+      "samples": 1,
+      "percent": 0.003411721430703143,
+      "sliding_samples": 0,
+      "sliding_percent": 0.0
+    }
+  ]
+}
