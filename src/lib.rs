@@ -7,6 +7,8 @@
 
 pub mod core;
 pub mod eval;
+#[doc(hidden)]
+pub mod harness;
 pub mod notation;
 pub mod protocol;
 #[doc(hidden)]
