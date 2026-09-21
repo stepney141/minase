@@ -560,6 +560,13 @@ fn resume_rejects_double_updates_missing_applications_and_manifest_changes() {
     duplicate.application = 1;
     fs::write(&file, serde_json::to_vec(&duplicate).unwrap()).unwrap();
     assert!(Store::resume(&directory.0, &m).is_err());
+    // 打ち切りの局を含むペアが分類を持つ記録は、破棄の規則と矛盾する。
+    let mut cutoff = records[&2].clone();
+    cutoff.pairs[0].terminations[0] = TerminationRecord::Cutoff;
+    fs::write(&file, serde_json::to_vec(&cutoff).unwrap()).unwrap();
+    assert!(Store::resume(&directory.0, &m).is_err());
+    fs::write(&file, serde_json::to_vec(&records[&2]).unwrap()).unwrap();
+    assert!(Store::resume(&directory.0, &m).is_ok());
 }
 
 // 後発反復も発行時のθを使い、完了時には最新のθへ加算する。

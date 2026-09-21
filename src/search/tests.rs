@@ -4324,6 +4324,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     let scenario = std::env::var(CHILD);
     if scenario.is_err() {
         for scenario in [
+            "lmr table",
             "parameters",
             "go depth 1",
             "go ponder depth 1",
@@ -4361,6 +4362,21 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     }
     fn engine() -> Engine {
         Engine::new(crate::core::rules::parse_rule_set("engine-default").unwrap()).unwrap()
+    }
+    if scenario == "lmr table" {
+        // 探索が引く減深量表はプロセス内で1回だけ生成されるので、表の生成より前に
+        // 設定した除数が表へ反映されることを、表を経由する`lmr_reduction`で調べる。
+        // ln4 × ln4 ≈ 1.92は、既定の除数2.0では0、除数1.0では1に切り捨てられる。
+        let mut engine = engine();
+        let mut protocol = UsiProtocol::new(&engine);
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "setoption name Tune_LmrDivisor value 100\n",
+        );
+        assert_eq!(output, "");
+        assert_eq!(lmr_reduction(4, 4, 0), 1);
+        return;
     }
     fn correction(difference: i32) -> i64 {
         let mut table = CorrectionTable::new(100);

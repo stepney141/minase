@@ -168,6 +168,14 @@ pub(super) fn validate_chain(
                     return Err(invalid("saved integer outside parameter range"));
                 }
             }
+            // 手数上限で打ち切った局を含むペアだけが破棄され、分類を持たない。
+            let cutoff = pair
+                .terminations
+                .iter()
+                .any(|t| matches!(t, TerminationRecord::Cutoff));
+            if cutoff != pair.category.is_none() {
+                return Err(invalid("pair category does not match cutoff terminations"));
+            }
             let mut observed = FailureCounts::default();
             for termination in &pair.terminations {
                 if let TerminationRecord::Forfeit { reason, .. } = termination {
