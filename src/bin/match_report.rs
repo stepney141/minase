@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use fs2::FileExt;
+use minase::harness::{FailureKind, GameRecord, PairRecord, StoredColor, TerminationRecord};
 use minase::stats::estimate_elo;
 use serde::{Deserialize, Serialize};
 
@@ -84,71 +85,6 @@ struct RunSummary {
     active_wall_time_ns: u64,
     interrupted: bool,
     invocation_active: bool,
-}
-
-/// 1ペアから集計に必要な部分。
-#[derive(Deserialize)]
-struct PairRecord {
-    pair_number: u64,
-    category: Option<u8>,
-    games: [GameRecord; 2],
-}
-
-/// 1局から集計に必要な部分。
-#[derive(Deserialize)]
-struct GameRecord {
-    candidate_color: StoredColor,
-    wall_time_ns: u64,
-    candidate_cpu_time_ns: Option<u64>,
-    baseline_cpu_time_ns: Option<u64>,
-    candidate_peak_rss_bytes: Option<u64>,
-    baseline_peak_rss_bytes: Option<u64>,
-    termination: Termination,
-}
-
-/// 終局理由から異常分類に必要な部分。
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum Termination {
-    AdjudicatedWin {
-        #[serde(rename = "winner")]
-        winner: StoredColor,
-        #[serde(rename = "reason")]
-        _reason: String,
-    },
-    AdjudicatedDraw {
-        #[serde(rename = "reason")]
-        _reason: String,
-    },
-    Resigned {
-        #[serde(rename = "loser")]
-        loser: StoredColor,
-    },
-    Forfeit {
-        #[serde(rename = "loser")]
-        loser: StoredColor,
-        reason: FailureKind,
-    },
-    Cutoff,
-}
-
-/// 保存された手番。
-#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum StoredColor {
-    Black,
-    White,
-}
-
-/// 保存されたエンジン異常の分類。
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum FailureKind {
-    IllegalMove,
-    Crash,
-    Timeout,
-    TimeForfeit,
-    RejectedMove,
 }
 
 /// 主指標と監査用の補助指標。
@@ -276,13 +212,15 @@ fn elo_text(value: f64) -> String {
 /// 候補側から見た1局の得点を半点単位で返す。
 fn candidate_half_points(game: &GameRecord) -> Option<u8> {
     let winner = match game.termination {
-        Termination::AdjudicatedWin { winner, .. } => Some(winner),
-        Termination::AdjudicatedDraw { .. } => return Some(1),
-        Termination::Resigned { loser } | Termination::Forfeit { loser, .. } => Some(match loser {
-            StoredColor::Black => StoredColor::White,
-            StoredColor::White => StoredColor::Black,
-        }),
-        Termination::Cutoff => return None,
+        TerminationRecord::AdjudicatedWin { winner, .. } => Some(winner),
+        TerminationRecord::AdjudicatedDraw { .. } => return Some(1),
+        TerminationRecord::Resigned { loser } | TerminationRecord::Forfeit { loser, .. } => {
+            Some(match loser {
+                StoredColor::Black => StoredColor::White,
+                StoredColor::White => StoredColor::Black,
+            })
+        }
+        TerminationRecord::Cutoff => return None,
     };
     Some(u8::from(winner == Some(game.candidate_color)) * 2)
 }
@@ -501,8 +439,8 @@ fn report(run_dir: &Path) -> io::Result<Report> {
                 maximum_game_peak_rss_bytes = None;
             }
             match game.termination {
-                Termination::Cutoff => cutoffs += 1,
-                Termination::Forfeit { reason, .. } => {
+                TerminationRecord::Cutoff => cutoffs += 1,
+                TerminationRecord::Forfeit { reason, .. } => {
                     record_failure(&mut engine_failures, reason);
                 }
                 _ => {}
@@ -875,6 +813,9 @@ mod tests {
             let game = |candidate_color: &str, loser: &str| {
                 serde_json::json!({
                     "candidate_color": candidate_color,
+                    "candidate_seed": 1,
+                    "baseline_seed": 2,
+                    "turns": [],
                     "wall_time_ns": 2_000_000_000_u64,
                     "candidate_cpu_time_ns": 250_000_000_u64,
                     "baseline_cpu_time_ns": 250_000_000_u64,
@@ -894,6 +835,8 @@ mod tests {
                     .join(format!("{:020}.json", number + 1)),
                 serde_json::to_vec(&serde_json::json!({
                     "pair_number": number + 1,
+                    "pair_seed": 1,
+                    "opening": {"seed": 1, "moves": []},
                     "category": category,
                     "games": games
                 }))

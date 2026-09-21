@@ -3694,10 +3694,7 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
     let stand_pat = evaluate(&pst, &capture_position);
     for (position, alpha) in [
         (Position::initial(), -INFINITY),
-        (
-            capture_position,
-            stand_pat + pst.delta_margin() + pst.pawn_value(),
-        ),
+        (capture_position, stand_pat + 3 * pst.pawn_value()),
     ] {
         let key = search_key(&position);
         let stand_pat = evaluate(&pst, &position);
@@ -4189,4 +4186,441 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
     assert_eq!(outcome.result.depth, 0);
     assert_eq!(outcome.result.nodes, 0);
     assert_eq!(outcome.result.best_move, snapshot.root_moves[0]);
+}
+
+// docs/plans/spsa.md「整数表現」「フェーズ1」の既定値での一致契約。
+#[test]
+fn tuning_default_null_move_and_aspiration_match_reference() {
+    for depth in 0..=256 {
+        assert_eq!(null_move_reduction(depth), 2 + depth / 6);
+    }
+    for delta in [
+        0,
+        1,
+        49,
+        50,
+        51,
+        i32::MAX / 2 - 1,
+        i32::MAX / 2,
+        i32::MAX / 2 + 1,
+        i32::MAX - 1,
+        i32::MAX,
+    ] {
+        assert_eq!(grow_aspiration_delta(delta), delta.saturating_mul(2));
+    }
+    with_root_searcher(&Position::initial(), &[], |searcher| {
+        assert_eq!(searcher.delta_margin, 2 * searcher.pst.pawn_value());
+    });
+}
+
+/// 固定深さbenchが通らない時間管理を、仕様に定めた変更前の式と照合する。
+#[test]
+fn tuning_default_clock_budget_matches_reference_grid() {
+    fn reference(clock: ClockLimits) -> TimeBudget {
+        let remaining = u128::from(clock.remaining_ms);
+        let increment = u128::from(clock.increment_ms);
+        let byoyomi = u128::from(clock.byoyomi_ms);
+        let moves = u128::from(100_u32.max(450_u32.saturating_sub(clock.ply) / 2));
+        let opening = if remaining > 0 {
+            u128::from(clock.ply.saturating_add(4).min(40))
+        } else {
+            40
+        };
+        let soft = remaining / moves + increment * 7 / 10 + byoyomi * 8 * opening / 400;
+        let hard = (soft * 4)
+            .min(remaining / 4 + byoyomi * 8 / 10)
+            .min((remaining + byoyomi).saturating_sub(30).max(1))
+            .max(1);
+        TimeBudget {
+            soft: Duration::from_millis(soft.min(hard).min(u128::from(u64::MAX)) as u64),
+            hard: Duration::from_millis(hard.min(u128::from(u64::MAX)) as u64),
+        }
+    }
+    for remaining in [
+        0,
+        1,
+        3,
+        4,
+        29,
+        30,
+        31,
+        99,
+        100,
+        101,
+        224,
+        225,
+        226,
+        10_000,
+        u64::MAX,
+    ] {
+        for increment in [0, 1, 9, 10, 11, 100, u64::MAX] {
+            for byoyomi in [0, 1, 4, 5, 6, 30, 31, 1000, u64::MAX] {
+                for ply in [0, 1, 35, 36, 37, 249, 250, 251, 449, 450, 451, u32::MAX] {
+                    if remaining == 0 && increment == 0 && byoyomi == 0 {
+                        continue;
+                    }
+                    let clock = clock_at_ply(remaining, increment, byoyomi, ply);
+                    assert_eq!(clock_budget(clock), reference(clock), "{clock:?}");
+                }
+            }
+        }
+    }
+}
+
+/// 予測の交差積はナノ秒単位の等号境界と最大Durationでも一致する。
+#[test]
+fn tuning_default_iteration_prediction_matches_reference_grid() {
+    for started in [
+        Duration::ZERO,
+        Duration::from_nanos(1),
+        Duration::from_nanos(39),
+        Duration::from_nanos(40),
+        Duration::from_nanos(41),
+        Duration::from_nanos(99),
+        Duration::from_nanos(100),
+        Duration::from_nanos(101),
+        Duration::MAX,
+    ] {
+        for hit in [
+            Duration::ZERO,
+            Duration::from_nanos(1),
+            Duration::from_nanos(10),
+            Duration::MAX,
+        ] {
+            for soft in [Duration::ZERO, Duration::from_nanos(100), Duration::MAX] {
+                for hard in [
+                    soft,
+                    soft.saturating_add(Duration::from_nanos(150)),
+                    Duration::MAX,
+                ] {
+                    for stable in [false, true] {
+                        let expected = started.as_nanos() * 5
+                            <= (hit.as_nanos() + hard.as_nanos()) * 2
+                            && (!stable
+                                || started.as_nanos() * 5
+                                    <= (hit.as_nanos() + soft.as_nanos()) * 2);
+                        assert_eq!(
+                            iteration_prediction_fits(
+                                started,
+                                hit,
+                                TimeBudget { soft, hard },
+                                stable
+                            ),
+                            expected
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 全22係数の反映とUSIの入力契約を直列に検査する。
+/// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
+#[cfg(feature = "tuning")]
+#[test]
+fn tuning_parameters_and_usi_contract_in_isolated_process() {
+    const CHILD: &str = "MINASE_TUNING_TEST_CHILD";
+    let scenario = std::env::var(CHILD);
+    if scenario.is_err() {
+        for scenario in [
+            "lmr table",
+            "parameters",
+            "go depth 1",
+            "go ponder depth 1",
+            "go depth nope",
+            "go mate 1",
+            "go",
+        ] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "search::tests::tuning_parameters_and_usi_contract_in_isolated_process",
+                    "--nocapture",
+                ])
+                .env(CHILD, scenario)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{scenario}: {}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        return;
+    }
+    let scenario = scenario.unwrap();
+
+    use crate::protocol::{Protocol, engine::Engine, usi::UsiProtocol};
+    fn run(protocol: &mut UsiProtocol, engine: &mut Engine, input: &str) -> String {
+        let mut output = Vec::new();
+        protocol
+            .run(engine, &mut std::io::Cursor::new(input), &mut output)
+            .unwrap();
+        String::from_utf8(output).unwrap()
+    }
+    fn engine() -> Engine {
+        Engine::new(crate::core::rules::parse_rule_set("engine-default").unwrap()).unwrap()
+    }
+    if scenario == "lmr table" {
+        // 探索が引く減深量表はプロセス内で1回だけ生成されるので、表の生成より前に
+        // 設定した除数が表へ反映されることを、表を経由する`lmr_reduction`で調べる。
+        // ln4 × ln4 ≈ 1.92は、既定の除数2.0では0、除数1.0では1に切り捨てられる。
+        let mut engine = engine();
+        let mut protocol = UsiProtocol::new(&engine);
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "setoption name Tune_LmrDivisor value 100\n",
+        );
+        assert_eq!(output, "");
+        assert_eq!(lmr_reduction(4, 4, 0), 1);
+        return;
+    }
+    fn correction(difference: i32) -> i64 {
+        let mut table = CorrectionTable::new(100);
+        table.update(Color::Black, 7, difference, 8);
+        i64::from(table.read(Color::Black, 7))
+    }
+    fn history() -> i64 {
+        let board = Position::initial();
+        let mv = legal_moves(&board)[0];
+        let mut result = 0;
+        with_root_searcher(&board, &[], |searcher| {
+            let (side, from, to) = (
+                board.side_to_move().index(),
+                mv.from.dense_index(),
+                mv.to.dense_index(),
+            );
+            searcher.history[side][from][to] = 16_384;
+            searcher.record_quiet_beta_cutoff(&board, mv, 1, 0);
+            result = i64::from(searcher.history[side][from][to]);
+        });
+        result
+    }
+    fn delta() -> i64 {
+        let mut result = 0;
+        with_root_searcher(&Position::initial(), &[], |searcher| {
+            result = i64::from(searcher.delta_margin);
+        });
+        result
+    }
+    fn prediction() -> i64 {
+        i64::from(iteration_prediction_fits(
+            Duration::from_millis(50),
+            Duration::ZERO,
+            TimeBudget {
+                soft: Duration::from_millis(100),
+                hard: Duration::from_millis(200),
+            },
+            true,
+        ))
+    }
+
+    // goの各種入力をそれぞれ新しいプロセスで検査し、先行するgoの固定状態に依存させない。
+    if scenario != "parameters" {
+        let mut engine = engine();
+        let mut protocol = UsiProtocol::new(&engine);
+        assert!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name Tune_DeltaMargin value 200\n"
+            )
+            .is_empty()
+        );
+        run(
+            &mut protocol,
+            &mut engine,
+            "setoption name USI_Hash value 1\n",
+        );
+        if scenario != "go" {
+            run(&mut protocol, &mut engine, "position startpos\n");
+        }
+        run(&mut protocol, &mut engine, &format!("{scenario}\nstop\n"));
+        for prefix in ["", "usinewgame\n"] {
+            let output = run(
+                &mut protocol,
+                &mut engine,
+                &format!("{prefix}setoption name Tune_DeltaMargin value 300\n"),
+            );
+            assert!(
+                output.starts_with("info string error: "),
+                "{scenario}: {output}"
+            );
+            assert_eq!(params::delta_margin(), 200);
+        }
+        // USIアダプターを作り直しても、プロセス内の固定状態を解除しない。
+        let mut protocol = UsiProtocol::new(&engine);
+        assert!(
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name Tune_DeltaMargin value 300\n"
+            )
+            .starts_with("info string error: ")
+        );
+        assert_eq!(params::delta_margin(), 200);
+        return;
+    }
+
+    // 指示書の22行を、宣言順・既定値・範囲の独立した参照値とする。
+    let expected = [
+        ("LmrDivisor", 200, 100, 400),
+        ("LmrHistoryThreshold", 128, 0, 512),
+        ("FutilityMargin1", 50, 0, 400),
+        ("FutilityMargin2", 150, 0, 400),
+        ("FutilityMargin3", 150, 0, 400),
+        ("SeeMargin1", 0, 0, 400),
+        ("SeeMargin2", 200, 0, 400),
+        ("SeeMargin3", 0, 0, 400),
+        ("AspirationDelta", 50, 10, 200),
+        ("AspirationGrowth", 200, 125, 400),
+        ("NullMoveBase", 2400, 1200, 4800),
+        ("NullMoveSlope", 200, 100, 400),
+        ("HistoryLimit", 16384, 4096, 65536),
+        ("CorrectionCap", 200, 50, 400),
+        ("CorrectionWeight", 32, 8, 128),
+        ("DeltaMargin", 200, 50, 500),
+        ("ExpectedPlies", 450, 250, 700),
+        ("MinMoves", 100, 40, 200),
+        ("IncrementShare", 70, 30, 100),
+        ("HardSoftRatio", 400, 150, 800),
+        ("HardRemainingShare", 25, 10, 50),
+        ("IterationRatio", 250, 150, 400),
+    ];
+    assert_eq!(params::PARAMETERS, expected);
+    let mut engine = engine();
+    let mut protocol = UsiProtocol::new(&engine);
+    let handshake = run(&mut protocol, &mut engine, "usi\n");
+    let declarations: Vec<_> = handshake
+        .lines()
+        .filter(|line| line.starts_with("option name Tune_"))
+        .collect();
+    let expected_declarations: Vec<_> = expected
+        .iter()
+        .map(|(name, default, min, max)| {
+            format!("option name Tune_{name} type spin default {default} min {min} max {max}")
+        })
+        .collect();
+    assert_eq!(declarations, expected_declarations);
+
+    // 既に復号したPSTにも調整値が反映されることを含めて調べる。
+    let _pst = weights().unwrap();
+    type Case = (&'static str, i32, fn() -> i64);
+    let cases: [Case; 22] = [
+        ("LmrDivisor", 400, || {
+            i64::from(lmr_base(8, 16, params::lmr_divisor()))
+        }),
+        ("LmrHistoryThreshold", 512, || {
+            i64::from(lmr_reduction(4, 8, 128))
+        }),
+        ("FutilityMargin1", 100, || {
+            i64::from(futility_margin(101, 1))
+        }),
+        ("FutilityMargin2", 100, || {
+            i64::from(futility_margin(101, 2))
+        }),
+        ("FutilityMargin3", 100, || {
+            i64::from(futility_margin(101, 3))
+        }),
+        ("SeeMargin1", 100, || i64::from(see_margin(101, 1))),
+        ("SeeMargin2", 100, || i64::from(see_margin(101, 2))),
+        ("SeeMargin3", 100, || i64::from(see_margin(101, 3))),
+        ("AspirationDelta", 100, || i64::from(aspiration_delta(101))),
+        ("AspirationGrowth", 300, || {
+            i64::from(grow_aspiration_delta(101))
+        }),
+        ("NullMoveBase", 3600, || i64::from(null_move_reduction(12))),
+        ("NullMoveSlope", 400, || i64::from(null_move_reduction(12))),
+        ("HistoryLimit", 65536, history),
+        ("CorrectionCap", 400, || correction(100_000)),
+        ("CorrectionWeight", 64, || correction(100)),
+        ("DeltaMargin", 300, delta),
+        ("ExpectedPlies", 250, || {
+            clock_budget(clock(100_000, 0, 0)).soft.as_millis() as i64
+        }),
+        ("MinMoves", 40, || {
+            clock_budget(clock_at_ply(100_000, 0, 0, 500))
+                .soft
+                .as_millis() as i64
+        }),
+        ("IncrementShare", 100, || {
+            clock_budget(clock(100_000, 100, 0)).soft.as_millis() as i64
+        }),
+        ("HardSoftRatio", 800, || {
+            clock_budget(clock(100_000, 0, 0)).hard.as_millis() as i64
+        }),
+        ("HardRemainingShare", 50, || {
+            clock_budget(clock(1000, 1000, 0)).hard.as_millis() as i64
+        }),
+        ("IterationRatio", 150, prediction),
+    ];
+    for ((name, value, observe), &(expected_name, default, min, max)) in
+        cases.into_iter().zip(&expected)
+    {
+        assert_eq!(name, expected_name);
+        let before = observe();
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            &format!("setoption name Tune_{name} value {value}\n"),
+        );
+        assert!(output.is_empty(), "{output}");
+        assert_ne!(observe(), before, "{name} must affect its calculation");
+        for invalid in [
+            format!("value {}", min - 1),
+            format!("value {}", max + 1),
+            "value nope".into(),
+            "value 2147483648".into(),
+            "value".into(),
+            String::new(),
+        ] {
+            let changed = observe();
+            let output = run(
+                &mut protocol,
+                &mut engine,
+                &format!("setoption name Tune_{name} {invalid}\n"),
+            );
+            assert!(
+                output.starts_with("info string error: "),
+                "{name}: {output}"
+            );
+            assert_eq!(observe(), changed, "rejected setting changed {name}");
+        }
+        assert!(matches!(
+            params::set(name, min - 1),
+            Err(params::Error::OutOfRange { .. })
+        ));
+        assert!(matches!(
+            params::set(name, max + 1),
+            Err(params::Error::OutOfRange { .. })
+        ));
+        params::set(name, min).unwrap();
+        params::set(name, max).unwrap();
+        params::set(name, default).unwrap();
+        assert_eq!(observe(), before);
+    }
+    assert!(
+        matches!(params::set("Unknown", 0), Err(params::Error::UnknownName(name)) if name == "Unknown")
+    );
+    assert!(
+        run(
+            &mut protocol,
+            &mut engine,
+            "setoption name Tune_Unknown value 0\n"
+        )
+        .starts_with("info string error: ")
+    );
+    assert!(
+        run(
+            &mut protocol,
+            &mut engine,
+            "setoption name Tune_DeltaMargin value 300\n"
+        )
+        .is_empty()
+    );
+    assert_eq!(params::delta_margin(), 300);
+    params::set("DeltaMargin", 200).unwrap();
 }
