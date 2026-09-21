@@ -48,6 +48,7 @@
 | 棋力向上段階8（前向き枝刈りの第3層） | [plans/strength-stage8.md](plans/strength-stage8.md) | 完了 | 2026年9月21日 |
 | 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了 | 2026年9月18日 |
 | USI先読み（ponder） | [plans/ponder.md](plans/ponder.md) | 完了 | 2026年9月21日 |
+| 棋力向上段階9（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴） | [plans/strength-stage9.md](plans/strength-stage9.md) | 進行中 | ― |
 
 ## 横断的な記録済みの決定
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import json
 import math
 from pathlib import Path
 import resource
@@ -28,7 +29,7 @@ from features import (
     feature_indices,
     mirror,
 )
-from mnsd import Dataset, NO_LION_SQUARE
+from mnsd import COLUMN_COUNT, Dataset, NO_LION_SQUARE, hash64
 from taper import PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
 
 
@@ -82,18 +83,29 @@ def validate_piece_values(values: NDArray[np.int32], source: str) -> None:
         raise ValueError(f"{source}: royal piece values must equal {royal}")
 
 
+def _rule_field(rule_set: bytes) -> bytes:
+    """規則セット名のUTF-8とNUL埋めの規約を検査する。"""
+    if len(rule_set) > 32 or b"\0" in rule_set:
+        raise ValueError("invalid rule-set name")
+    rule_set.decode("utf-8")
+    return rule_set.ljust(32, b"\0")
+
+
 def write_mnpt(
     path: str | Path,
     middlegame: NDArray[np.int16],
     endgame: NDArray[np.int16],
     piece_values: NDArray[np.int32],
     k: float,
+    *,
+    feature_count: int = FEATURE_COUNT,
+    rule_set: bytes = RULE_SET,
 ) -> None:
     """両端点の量子化重みと固定駒価値を検査和付きMNPTファイルへ書く。"""
     middlegame = np.asarray(middlegame, dtype="<i2")
     endgame = np.asarray(endgame, dtype="<i2")
-    if middlegame.shape != (FEATURE_COUNT,) or endgame.shape != (FEATURE_COUNT,):
-        raise ValueError(f"weights must have shape ({FEATURE_COUNT},)")
+    if middlegame.shape != (feature_count,) or endgame.shape != (feature_count,):
+        raise ValueError(f"weights must have shape ({feature_count},)")
     if not math.isfinite(k) or k <= 0.0:
         raise ValueError("K must be finite and positive")
     validate_piece_values(piece_values, str(path))
@@ -102,43 +114,53 @@ def write_mnpt(
         + endgame.tobytes()
         + np.asarray(piece_values, dtype="<i4").tobytes()
     )
-    rule_field = RULE_SET.ljust(32, b"\0")
+    rule_field = _rule_field(rule_set)
     header = (
         b"MNPT"
-        + struct.pack("<II f", FORMAT_VERSION, FEATURE_COUNT, k)
+        + struct.pack("<II f", FORMAT_VERSION, feature_count, k)
         + rule_field
         + hashlib.sha256(body).digest()
     )
-    if len(header) != HEADER_LENGTH or len(body) != BODY_LENGTH:
+    if len(header) != HEADER_LENGTH or len(body) != feature_count * 4 + PIECE_STATE_COUNT * 4:
         raise AssertionError("MNPT layout is inconsistent")
     Path(path).write_bytes(header + body)
 
 
 def read_mnpt(
     path: str | Path,
+    *,
+    feature_count: int | None = FEATURE_COUNT,
+    rule_set: bytes = RULE_SET,
 ) -> tuple[NDArray[np.int16], NDArray[np.int16], NDArray[np.int32], float]:
     """MNPTファイルを完全検証し、両端点の量子化重み、駒価値、Kを返す。"""
     source = Path(path)
     raw = source.read_bytes()
-    if len(raw) != FILE_LENGTH:
-        raise ValueError(f"{source}: length must be {FILE_LENGTH}, got {len(raw)}")
-    magic, version, feature_count, k = struct.unpack_from("<4sII f", raw)
+    if len(raw) < HEADER_LENGTH:
+        raise ValueError(f"{source}: truncated MNPT header")
+    if feature_count is None:
+        feature_count = struct.unpack_from("<I", raw, 8)[0]
+        if feature_count < FEATURE_COUNT:
+            raise ValueError(f"{source}: feature count must be at least {FEATURE_COUNT}")
+    file_length = HEADER_LENGTH + feature_count * 4 + PIECE_STATE_COUNT * 4
+    if len(raw) != file_length:
+        raise ValueError(f"{source}: length must be {file_length}, got {len(raw)}")
+    magic, version, stored_feature_count, k = struct.unpack_from("<4sII f", raw)
     if magic != b"MNPT":
         raise ValueError(f"{source}: invalid MNPT magic {magic!r}")
     if version != FORMAT_VERSION:
         raise ValueError(f"{source}: unsupported MNPT version {version}")
-    if feature_count != FEATURE_COUNT:
-        raise ValueError(f"{source}: feature count must be {FEATURE_COUNT}")
+    if stored_feature_count != feature_count:
+        raise ValueError(f"{source}: feature count must be {feature_count}")
     if not math.isfinite(k) or k <= 0.0:
         raise ValueError(f"{source}: K must be finite and positive")
     rule_field = raw[16:48]
-    if rule_field != RULE_SET.ljust(32, b"\0"):
+    if rule_field != _rule_field(rule_set):
         raise ValueError(f"{source}: unexpected rule-set field")
     body = raw[HEADER_LENGTH:]
     if hashlib.sha256(body).digest() != raw[48:80]:
         raise ValueError(f"{source}: SHA-256 mismatch")
-    weights = np.frombuffer(body[: FEATURE_COUNT * 4], dtype="<i2").reshape(2, FEATURE_COUNT)
-    piece_values = np.frombuffer(body[FEATURE_COUNT * 4 :], dtype="<i4").copy()
+    weights = np.frombuffer(body[: feature_count * 4], dtype="<i2").reshape(2, feature_count)
+    piece_values = np.frombuffer(body[feature_count * 4 :], dtype="<i4").copy()
     validate_piece_values(piece_values, str(source))
     return weights[0].copy(), weights[1].copy(), piece_values, float(k)
 
@@ -217,7 +239,43 @@ class MirroredEmbedding(nn.Embedding):
         return super().forward(self.canonical_indices[indices.long()])
 
 
-def make_model(initial: Tensor, device: torch.device, kind: str) -> nn.Embedding:
+class ExtraModel(nn.Module):
+    """PSTと、鏡映共有しない追加特徴の2端点を別々に保持する。"""
+
+    def __init__(self, pst: nn.Embedding, extra: Tensor, train_extra: Sequence[int]) -> None:
+        super().__init__()
+        self.pst = pst
+        self.extra = nn.Parameter(extra.clone())
+        mask = torch.zeros_like(extra, dtype=torch.bool)
+        mask[list(train_extra)] = True
+        self.register_buffer("train_extra_mask", mask)
+
+    def forward(self, indices: Tensor) -> Tensor:
+        return self.pst(indices)
+
+    def extra_weights(self) -> Tensor:
+        return torch.where(self.train_extra_mask, self.extra, self.extra.detach())
+
+
+def parse_ranges(value: str, limit: int) -> list[int]:
+    """重複のない半開区間を、記述順を保った列番号へ展開する。"""
+    result = []
+    for interval in value.split(","):
+        bounds = interval.split(":")
+        if len(bounds) != 2 or not all(part.isascii() and part.isdigit() for part in bounds):
+            raise ValueError("ranges must be comma-separated half-open intervals, e.g. 0:24,62:68")
+        start, stop = map(int, bounds)
+        if not 0 <= start < stop <= limit:
+            raise ValueError(f"range {interval} is outside 0:{limit}")
+        result.extend(range(start, stop))
+    if len(set(result)) != len(result):
+        raise ValueError("ranges must not overlap")
+    return result
+
+
+def make_model(initial: Tensor, device: torch.device, kind: str, *,
+               extra_initial: Tensor | None = None, train_extra: Sequence[int] | None = None,
+               freeze_pst: bool = False) -> nn.Module:
     """指定種別と初期値(特徴数×端点数)からpadding行付き線形PSTモデルを作る。"""
     if kind not in MODEL_KINDS:
         raise ValueError(f"unknown model kind: {kind}")
@@ -225,16 +283,32 @@ def make_model(initial: Tensor, device: torch.device, kind: str) -> nn.Embedding
     if initial.shape != (FEATURE_COUNT, columns):
         raise ValueError(f"{kind} initial weights must have shape ({FEATURE_COUNT}, {columns})")
     if kind == "mirrored":
-        return MirroredEmbedding(initial, device)
-    model = nn.Embedding(FEATURE_COUNT + 1, columns, padding_idx=PADDING_INDEX, device=device)
-    with torch.no_grad():
-        model.weight.zero_()
-        model.weight[:FEATURE_COUNT].copy_(initial)
+        if freeze_pst:
+            tables = initial.reshape(-1, 12, 12, columns)
+            if not torch.equal(tables, tables.flip(2)):
+                raise ValueError("frozen mirrored PST requires exactly mirrored initial weights")
+        model = MirroredEmbedding(initial, device)
+    else:
+        model = nn.Embedding(FEATURE_COUNT + 1, columns, padding_idx=PADDING_INDEX, device=device)
+        with torch.no_grad():
+            model.weight.zero_()
+            model.weight[:FEATURE_COUNT].copy_(initial)
+    model.weight.requires_grad_(not freeze_pst)
+    if extra_initial is not None:
+        if extra_initial.ndim != 2 or extra_initial.shape[1] != 2:
+            raise ValueError("extra initial weights must have two endpoints")
+        selected = range(len(extra_initial)) if train_extra is None else train_extra
+        return ExtraModel(model, extra_initial, selected)
     return model
 
 
-def expanded_model_weights(model: nn.Embedding) -> Tensor:
-    """学習パラメータを量子化前の全13,680特徴の重みへ展開する。"""
+def expanded_model_weights(model: nn.Module) -> Tensor:
+    """PSTを全13,680特徴へ展開し、追加特徴を連結する。"""
+    if isinstance(model, ExtraModel):
+        pst = expanded_model_weights(model.pst)
+        if pst.shape[1] == 1:
+            pst = pst.expand(-1, 2)
+        return torch.cat((pst, model.extra_weights()), dim=0)
     if isinstance(model, MirroredEmbedding):
         return model.weight[model.canonical_indices[:FEATURE_COUNT]]
     return model.weight[:FEATURE_COUNT]
@@ -249,15 +323,27 @@ def phase_weights(phi: Tensor, columns: int) -> Tensor:
     raise ValueError("model must have 1 or 2 columns")
 
 
-def model_logits(model: nn.Embedding, features: Tensor, phi: Tensor, k: float) -> Tensor:
+def model_logits(model: nn.Module, features: Tensor, phi: Tensor, k: float,
+                 extra: Tensor | None = None) -> Tensor:
     """特徴番号バッチと補間係数から勝率ロジットを計算する。"""
     sums = model(features).sum(dim=1)
+    if isinstance(model, ExtraModel):
+        if extra is None or extra.shape != (features.shape[0], model.extra.shape[0]):
+            raise ValueError("extra feature values must match the model")
+        sums = sums + extra @ model.extra_weights()
+    elif extra is not None:
+        raise ValueError("extra features supplied to a PST-only model")
     return (sums * phase_weights(phi, sums.shape[1])).sum(dim=1) / k
 
 
-def model_columns(model: nn.Embedding) -> int:
+def batch_extra(dataset: Dataset, indices: np.ndarray, device: torch.device) -> Tensor | None:
+    values = dataset.gather_extra(indices)
+    return None if values is None else torch.as_tensor(values, dtype=torch.float32, device=device)
+
+
+def model_columns(model: nn.Module) -> int:
     """モデルの列数(端点数)を返す。"""
-    return model.weight.shape[1]
+    return 2 if isinstance(model, ExtraModel) else model.weight.shape[1]
 
 
 def _selected_indices(dataset: Dataset, indices: NDArray[np.int64]) -> NDArray[np.int64]:
@@ -306,7 +392,7 @@ def estimate_generation_ks(
 
 
 def validation_loss(
-    model: nn.Embedding,
+    model: nn.Module,
     dataset: Dataset,
     teacher_ks: NDArray[np.float64],
     k: float,
@@ -315,11 +401,14 @@ def validation_loss(
     device: torch.device,
     *,
     indices: NDArray[np.int64],
+    breakdown: dict | None = None,
 ) -> tuple[float, NDArray[np.float64]]:
     """明示した局面集合の純粋なBCEを計算し、全体値と世代別値を返す。"""
     indices = _selected_indices(dataset, indices)
     generation_sums = np.zeros(dataset.generation_count, dtype=np.float64)
     generation_counts = np.zeros(dataset.generation_count, dtype=np.int64)
+    group_sums = np.zeros(3)
+    group_counts = np.zeros(3, dtype=np.int64)
     with torch.no_grad():
         for start in range(0, indices.size, batch):
             global_indices = indices[start : start + batch]
@@ -335,7 +424,8 @@ def validation_loss(
                 phase_ratios(records["board"]).astype(np.float32), device=device
             )
             losses = torch_functional.binary_cross_entropy_with_logits(
-                model_logits(model, device_features, device_phi, k),
+                model_logits(model, device_features, device_phi, k,
+                             batch_extra(dataset, global_indices, device)),
                 device_targets,
                 reduction="none",
             ).cpu().numpy().astype(np.float64)
@@ -345,12 +435,33 @@ def validation_loss(
             generation_counts += np.bincount(
                 generations, minlength=dataset.generation_count
             )
+            if breakdown is not None:
+                files = np.searchsorted(dataset.offsets[1:], global_indices, side="right")
+                game_half = np.zeros(len(records), dtype=np.bool_)
+                for file in np.unique(files):
+                    selected = files == file
+                    game_half[selected] = hash64(dataset.headers[file].seed, records["game"][selected]) % np.uint64(40) == 0
+                board = records["board"].astype(np.int16)
+                kind = (board % 64 - 1) % 29
+                royal = (board != 0) & ((kind == 11) | (kind == 21))
+                two = ((np.count_nonzero(royal & (board < 65), axis=1) == 2)
+                       | (np.count_nonzero(royal & (board >= 65), axis=1) == 2))
+                for group, mask in enumerate((game_half, two, ~two)):
+                    group_sums[group] += losses[mask].sum()
+                    group_counts[group] += np.count_nonzero(mask)
     generation_losses = np.divide(
         generation_sums,
         generation_counts,
         out=np.full(dataset.generation_count, np.nan, dtype=np.float64),
         where=generation_counts != 0,
     )
+    if breakdown is not None:
+        breakdown.update({
+            name: {"positions": int(count), "loss": float(total / count) if count else None}
+            for name, count, total in zip(
+                ("game_half", "two_royals", "other_royals"), group_counts, group_sums
+            )
+        })
     return (
         float(generation_sums.sum() / generation_counts.sum()),
         generation_losses,
@@ -445,7 +556,7 @@ class TrainEpochResult:
 
 
 def train_epoch(
-    model: nn.Embedding,
+    model: nn.Module,
     optimizer: torch.optim.Optimizer,
     dataset: Dataset,
     teacher_ks: NDArray[np.float64],
@@ -465,7 +576,7 @@ def train_epoch(
     if not math.isfinite(removal_penalty) or removal_penalty < 0.0:
         raise ValueError("removal penalty must be finite and nonnegative")
     if removal_penalty > 0.0:
-        if not isinstance(model, MirroredEmbedding):
+        if not isinstance(model.pst if isinstance(model, ExtraModel) else model, MirroredEmbedding):
             raise ValueError("positive removal penalty requires model mirrored")
         if removal_reference is None:
             raise ValueError("positive removal penalty requires a reference")
@@ -486,7 +597,7 @@ def train_epoch(
             active = normal[normal != PADDING_INDEX]
             observations += np.bincount(active, minlength=FEATURE_COUNT)
         selected = normal
-        if not isinstance(model, MirroredEmbedding):
+        if not isinstance(model.pst if isinstance(model, ExtraModel) else model, MirroredEmbedding):
             mirrored_board, mirrored_lion = mirror(records["board"], records["lion"])
             reflected = feature_indices(mirrored_board, records["stm"], mirrored_lion)
             choose_reflected = torch.rand(
@@ -504,7 +615,8 @@ def train_epoch(
         )
         optimizer.zero_grad(set_to_none=True)
         bce = torch_functional.binary_cross_entropy_with_logits(
-            model_logits(model, device_features, device_phi, k), device_targets
+            model_logits(model, device_features, device_phi, k,
+                         batch_extra(dataset, global_indices, device)), device_targets
         )
         if removal_penalty > 0.0:
             device_counts = torch.as_tensor(piece_counts(records["board"]), device=device)
@@ -519,9 +631,10 @@ def train_epoch(
         optimizer.step()
         # MNPTの1/8センチポーン単位のi16に収まる範囲で学習する。
         with torch.no_grad():
-            if not bool(torch.isfinite(model.weight).all()):
+            if any(not bool(torch.isfinite(parameter).all()) for parameter in model.parameters()):
                 raise ValueError("trained weights contain a non-finite value")
-            model.weight.clamp_(min=-4096.0, max=4095.875)
+            for parameter in model.parameters():
+                parameter.clamp_(min=-4096.0, max=4095.875)
         bce_total += float(bce.item()) * positions.shape[0]
         removal_total += float(penalty.item()) * positions.shape[0]
         total += float(loss.item()) * positions.shape[0]
@@ -565,11 +678,24 @@ def quantize(weights: NDArray[np.float32]) -> NDArray[np.int16]:
     return rounded.astype("<i2")
 
 
+def validate_extra_values(middlegame: np.ndarray, endgame: np.ndarray,
+                          count: int, extra: np.ndarray | None) -> None:
+    if middlegame.ndim != 1 or middlegame.shape != endgame.shape or len(middlegame) < FEATURE_COUNT:
+        raise ValueError("endpoints must have matching lengths of at least 13680")
+    columns = len(middlegame) - FEATURE_COUNT
+    if extra is None:
+        if columns:
+            raise ValueError("additional weights require extra feature values")
+    elif extra.shape != (count, columns):
+        raise ValueError("extra feature column count does not match weights")
+
+
 def integer_evaluate(
     middlegame: NDArray[np.int16],
     endgame: NDArray[np.int16],
     features: NDArray[np.int32],
     numerators: NDArray[np.int64],
+    extra: np.ndarray | None = None,
 ) -> NDArray[np.int32]:
     """設計書「整数評価と差分更新」の式で量子化重みにより局面バッチを評価する。
 
@@ -580,11 +706,14 @@ def integer_evaluate(
         raise ValueError("numerators must have one value per position")
     if np.any(numerators < 0) or np.any(numerators > PHASE_DIVISOR):
         raise ValueError("phase numerator is outside 0..90")
+    validate_extra_values(middlegame, endgame, features.shape[0], extra)
     sums = np.empty((features.shape[0], 2), dtype=np.int64)
     for column, weights in enumerate((middlegame, endgame)):
         extended = np.zeros(FEATURE_COUNT + 1, dtype=np.int64)
-        extended[:FEATURE_COUNT] = weights.astype(np.int64)
+        extended[:FEATURE_COUNT] = weights[:FEATURE_COUNT].astype(np.int64)
         sums[:, column] = extended[features].sum(axis=1, dtype=np.int64)
+    if extra is not None:
+        sums += extra.astype(np.int64) @ np.column_stack((middlegame[FEATURE_COUNT:], endgame[FEATURE_COUNT:])).astype(np.int64)
     blended = numerators * sums[:, 0] + (PHASE_DIVISOR - numerators) * sums[:, 1]
     values = np.sign(blended) * (np.abs(blended) // (PHASE_DIVISOR * 8))
     return np.clip(values, -EVALUATION_LIMIT, EVALUATION_LIMIT).astype(np.int32)
@@ -595,13 +724,17 @@ def float_evaluate(
     endgame: NDArray[np.float32],
     features: NDArray[np.int32],
     phi: NDArray[np.float64],
+    extra: np.ndarray | None = None,
 ) -> NDArray[np.float32]:
     """浮動小数点重みで局面バッチを補間評価する。"""
+    validate_extra_values(middlegame, endgame, features.shape[0], extra)
     sums = np.empty((features.shape[0], 2), dtype=np.float32)
     for column, weights in enumerate((middlegame, endgame)):
         extended = np.zeros(FEATURE_COUNT + 1, dtype=np.float32)
-        extended[:FEATURE_COUNT] = weights
+        extended[:FEATURE_COUNT] = weights[:FEATURE_COUNT]
         sums[:, column] = extended[features].sum(axis=1, dtype=np.float32)
+    if extra is not None:
+        sums += extra.astype(np.float32) @ np.column_stack((middlegame[FEATURE_COUNT:], endgame[FEATURE_COUNT:]))
     phi = np.asarray(phi, dtype=np.float32)
     return phi * sums[:, 0] + (1.0 - phi) * sums[:, 1]
 
@@ -699,13 +832,27 @@ def command_train(arguments: argparse.Namespace) -> None:
     if arguments.removal_penalty > 0.0 and arguments.model != "mirrored":
         raise ValueError("positive --removal-penalty requires --model mirrored")
 
+    if arguments.freeze_pst and arguments.removal_penalty != 0:
+        raise ValueError("--freeze-pst requires --removal-penalty 0")
+    if arguments.king_features is None:
+        if arguments.extra_columns is not None or arguments.train_extra is not None or arguments.freeze_pst:
+            raise ValueError("extra training options require --king-features")
+        extra_columns = None
+        train_extra = None
+    else:
+        if arguments.extra_columns is None:
+            raise ValueError("--king-features requires --extra-columns")
+        extra_columns = parse_ranges(arguments.extra_columns, COLUMN_COUNT)
+        train_extra = (list(range(len(extra_columns))) if arguments.train_extra is None
+                       else parse_ranges(arguments.train_extra, len(extra_columns)))
+
     torch.manual_seed(arguments.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(arguments.seed)
     device = torch.device(arguments.device)
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
-    dataset = Dataset(arguments.data)
+    dataset = Dataset(arguments.data, king_features=arguments.king_features, extra_columns=extra_columns)
     if dataset.training_indices.size == 0 or dataset.validation_indices.size == 0:
         raise ValueError("game split produced an empty training or validation set")
 
@@ -721,7 +868,19 @@ def command_train(arguments: argparse.Namespace) -> None:
         f"validation={dataset.validation_indices.size}"
     )
 
-    initial_middlegame, initial_endgame, piece_values, _ = read_mnpt(arguments.init)
+    base_mg, base_eg, piece_values, base_k = read_mnpt(arguments.init, feature_count=None)
+    extra_count = 0 if extra_columns is None else len(extra_columns)
+    if len(base_mg) > FEATURE_COUNT + extra_count:
+        raise ValueError("initial MNPT has more additional features than the model")
+    initial_middlegame, initial_endgame = base_mg[:FEATURE_COUNT], base_eg[:FEATURE_COUNT]
+    initial_extra = np.zeros((extra_count, 2), dtype=np.float32)
+    initial_extra[:len(base_mg) - FEATURE_COUNT] = np.column_stack((base_mg[FEATURE_COUNT:], base_eg[FEATURE_COUNT:])) / 8.0
+    if arguments.freeze_pst and arguments.k != base_k:
+        raise ValueError("--freeze-pst requires --k equal to the initial MNPT K")
+    model_options = dict(
+        extra_initial=(None if extra_columns is None else torch.as_tensor(initial_extra, device=device)),
+        train_extra=train_extra, freeze_pst=arguments.freeze_pst,
+    )
     removal_reference = (
         make_removal_reference(initial_middlegame, initial_endgame, device)
         if arguments.removal_penalty > 0.0 else None
@@ -743,7 +902,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     if len(arguments.lr) > 1:
         candidates: list[tuple[float, float]] = []
         for rate in arguments.lr:
-            model = make_model(initial, device, arguments.model)
+            model = make_model(initial, device, arguments.model, **model_options)
             optimizer = torch.optim.Adam(model.parameters(), lr=rate)
             generator = torch.Generator(device=device).manual_seed(arguments.seed)
             training = train_epoch(
@@ -779,9 +938,11 @@ def command_train(arguments: argparse.Namespace) -> None:
         selected_rate = min(candidates)[1]
     print(f"selected learning rate: {selected_rate:g}")
 
-    model = make_model(initial, device, arguments.model)
+    model = make_model(initial, device, arguments.model, **model_options)
     optimizer = torch.optim.Adam(model.parameters(), lr=selected_rate)
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
+    breakdown = {}
+    history = []
     best_loss, generation_losses = validation_loss(
         model,
         dataset,
@@ -790,11 +951,20 @@ def command_train(arguments: argparse.Namespace) -> None:
         arguments.lambda_value,
         arguments.batch,
         device,
-        indices=dataset.validation_indices,
+        indices=dataset.validation_indices, breakdown=breakdown,
     )
     best_epoch = 0
     best_weights = expanded_model_weights(model).detach().cpu().clone()
-    print(f"epoch 0: {_format_validation_loss(best_loss, generation_losses)}")
+
+    def log_validation(epoch: int, loss: float, generations: np.ndarray, groups: dict) -> None:
+        entry = {"epoch": epoch, "loss": loss,
+                 "generations": [float(v) if np.isfinite(v) else None for v in generations],
+                 **groups}
+        history.append(entry)
+        print(f"epoch {epoch}: {_format_validation_loss(loss, generations)}")
+        print(f"epoch {epoch}: validation_groups={json.dumps(groups, allow_nan=False)}")
+
+    log_validation(0, best_loss, generation_losses, breakdown)
     for epoch in range(1, arguments.epochs + 1):
         started = time.perf_counter()
         training = train_epoch(
@@ -814,6 +984,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         )
         elapsed = time.perf_counter() - started
         positions_per_second = dataset.training_indices.size / elapsed
+        breakdown = {}
         loss, generation_losses = validation_loss(
             model,
             dataset,
@@ -822,14 +993,14 @@ def command_train(arguments: argparse.Namespace) -> None:
             arguments.lambda_value,
             arguments.batch,
             device,
-            indices=dataset.validation_indices,
+            indices=dataset.validation_indices, breakdown=breakdown,
         )
         print(
             f"epoch {epoch}: train_loss={training.bce_loss:.9f} "
             f"removal_loss={training.removal_loss:.9f} total_loss={training.total_loss:.9f} "
             f"positions_per_second={positions_per_second:.3f}"
         )
-        print(f"epoch {epoch}: {_format_validation_loss(loss, generation_losses)}")
+        log_validation(epoch, loss, generation_losses, breakdown)
         if training.observations is not None:
             _print_feature_observations(training.observations)
         if should_replace_best_epoch(loss, best_loss):
@@ -852,15 +1023,17 @@ def command_train(arguments: argparse.Namespace) -> None:
     sample_count = min(arguments.validation_sample, validation_count)
     random = np.random.default_rng(arguments.seed)
     sample_indices = random.choice(validation_count, size=sample_count, replace=False)
-    sample_records = dataset.gather(dataset.validation_indices[sample_indices])
+    selected_indices = dataset.validation_indices[sample_indices]
+    sample_records = dataset.gather(selected_indices)
+    sample_extra = dataset.gather_extra(selected_indices)
     sample_features = feature_indices(
         sample_records["board"], sample_records["stm"], sample_records["lion"]
     )
     floating_scores = float_evaluate(
-        float_middlegame, float_endgame, sample_features, phase_ratios(sample_records["board"])
+        float_middlegame, float_endgame, sample_features, phase_ratios(sample_records["board"]), sample_extra
     )
     integer_scores = integer_evaluate(
-        middlegame, endgame, sample_features, phase_numerators(sample_records["board"])
+        middlegame, endgame, sample_features, phase_numerators(sample_records["board"]), sample_extra
     )
     errors = np.abs(floating_scores - integer_scores.astype(np.float32))
     mean_absolute_error = float(errors.mean())
@@ -869,11 +1042,29 @@ def command_train(arguments: argparse.Namespace) -> None:
         raise ValueError(
             f"quantization mean absolute error {mean_absolute_error} exceeds {QUANTIZATION_ERROR_LIMIT} cp"
         )
-    write_mnpt(arguments.output, middlegame, endgame, piece_values, arguments.k)
+    if arguments.freeze_pst:
+        frozen = np.ones(FEATURE_COUNT + extra_count, dtype=np.bool_)
+        frozen[FEATURE_COUNT + np.asarray(train_extra)] = False
+        for result, baseline in ((middlegame, base_mg), (endgame, base_eg)):
+            expected = np.zeros_like(result)
+            expected[:len(baseline)] = baseline
+            if result[frozen].tobytes() != expected[frozen].tobytes():
+                raise ValueError("frozen weights changed before export")
+    write_mnpt(arguments.output, middlegame, endgame, piece_values,
+               base_k if arguments.freeze_pst else arguments.k,
+               feature_count=len(middlegame))
     # 診断が共通標本で量子化誤差を測れるよう、量子化前の重みも保存する。
     with float_weights_path(arguments.output).open("xb") as stream:
         np.savez(stream, middlegame=float_middlegame, endgame=float_endgame)
-    print(f"initial position evaluation: {initial_position_score(middlegame, endgame)} cp")
+    if extra_count == 0:
+        print(f"initial position evaluation: {initial_position_score(middlegame, endgame)} cp")
+    else:
+        print(f"extra weights (cp): {float_columns[FEATURE_COUNT:].tolist()}")
+    with Path(arguments.output).with_suffix(".training.json").open("x") as stream:
+        json.dump({"validation": history, "best_epoch": best_epoch,
+                   "extra_columns": extra_columns, "train_extra": train_extra,
+                   "freeze_pst": arguments.freeze_pst}, stream, indent=2, allow_nan=False)
+        stream.write("\n")
     max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     print(f"resource usage: max_rss={max_rss} KiB")
     if device.type == "cuda":
@@ -899,6 +1090,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     train_parser = commands.add_parser("train", help="学習PSTを訓練する")
     train_parser.add_argument("--data", required=True, nargs="+")
+    train_parser.add_argument("--king-features", nargs="+")
+    train_parser.add_argument("--extra-columns")
+    train_parser.add_argument("--train-extra")
+    train_parser.add_argument("--freeze-pst", action="store_true")
     train_parser.add_argument("--output", required=True)
     train_parser.add_argument("--init", required=True)
     train_parser.add_argument("--model", required=True, choices=MODEL_KINDS)

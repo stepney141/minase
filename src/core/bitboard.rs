@@ -12,6 +12,18 @@ use crate::core::square::Square;
 #[must_use]
 pub struct Bitboard([u64; 3]);
 
+/// 各筋の12升の集合。添字は内部座標の筋番号(0から11)。
+/// 段階9の王の遮蔽特徴で、筋と前方の範囲の交差を求めるために使う。
+pub const FILE_MASKS: [Bitboard; 12] = {
+    let mut files = [Bitboard::EMPTY; 12];
+    let mut file = 0;
+    while file < 12 {
+        files[file] = Bitboard::from_words([0x0001_0001_0001_0001 << file; 3]);
+        file += 1;
+    }
+    files
+};
+
 const _: [(); 24] = [(); core::mem::size_of::<Bitboard>()];
 
 impl Bitboard {
@@ -265,6 +277,21 @@ impl IntoIterator for &Bitboard {
 mod tests {
     use super::*;
     use crate::core::square::BOARD_SQUARE_COUNT;
+
+    #[test]
+    fn file_masks_partition_the_board_into_twelve_files() {
+        // 第4条の12筋×12段。各集合は指定筋の12升だけを含み、和は全盤。
+        let mut all = Bitboard::EMPTY;
+        for (file, mask) in FILE_MASKS.into_iter().enumerate() {
+            assert_eq!(mask.popcount(), 12);
+            for square in Square::all() {
+                assert_eq!(mask.contains(square), square.file() as usize == file);
+            }
+            assert!(!all.intersects(mask));
+            all |= mask;
+        }
+        assert_eq!(all, Bitboard::FULL);
+    }
 
     /// 決定的に構成した検査用の升集合標本を返す。空集合・全集合・単升・
     /// 構造的な部分集合を含む。

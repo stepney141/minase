@@ -1,7 +1,7 @@
 //! 中将棋のドメインロジックを担う中核モジュール。RULES.mdだけから正しさを検証できるコードのみを置く。
 
 pub(crate) mod adjudication;
-mod attacks;
+pub(crate) mod attacks;
 pub mod bitboard;
 pub mod direction;
 pub(crate) mod game;

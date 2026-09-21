@@ -442,6 +442,53 @@ class WorkflowTest(unittest.TestCase):
         inputs = json.loads((run / "training/inputs.json").read_text())
         self.assertEqual(inputs["options"]["removal_penalty"], 0)
 
+    def test_extra_config_requires_complete_consistent_options(self) -> None:
+        extra = ('king_features = ["data/old.mnkf"]\nextra_columns = "0:24,62:68"\n'
+                 'train_extra = "24:30"\nfreeze_pst = true\n')
+        configured = CONFIG.replace("seeds = [100, 110]", "seeds = []").replace("[diagnose]", extra + "[diagnose]")
+        self.config_path.write_text(configured)
+        result = workflow.load_config(self.config_path, self.root)["train"]
+        self.assertEqual(result["king_features"], [str(self.root / "data/old.mnkf")])
+        self.assertEqual(result["extra_columns"], "0:24,62:68")
+        self.assertEqual(result["train_extra"], "24:30")
+        self.assertTrue(result["freeze_pst"])
+        for before, after in (
+            ('train_extra = "24:30"\n', ''),
+            ('train_extra = "24:30"', 'train_extra = "24:31"'),
+            ('extra_columns = "0:24,62:68"', 'extra_columns = "0:69"'),
+            ('freeze_pst = true', 'freeze_pst = 1'),
+            ('king_features = ["data/old.mnkf"]', 'king_features = []'),
+            ('removal_penalty = 0', 'removal_penalty = 1'),
+        ):
+            with self.subTest(after=after), self.assertRaises(ValueError):
+                self.config_path.write_text(configured.replace(before, after))
+                workflow.load_config(self.config_path, self.root)
+
+    def test_training_forwards_extra_options_and_records_feature_checksum(self) -> None:
+        from mnsd import HEADER, map_records
+        data = self.root / "data/old.bin"
+        write_mnsd(data, seed=0, checksum=b"a" * 32, games=list(range(80)))
+        feature_path = self.root / "data/old.mnkf"
+        values = np.zeros((len(map_records(data)), 68), dtype=np.uint8)
+        feature_path.write_bytes(HEADER.pack(b"MNKF", 1, 1, 68, len(values),
+                                            hashlib.sha256(data.read_bytes()).digest()) + values.tobytes())
+        self.config["generate"]["seeds"] = []
+        self.config["train"].update(king_features=[str(feature_path)], extra_columns="0:24,62:68",
+                                    train_extra="24:30", freeze_pst=True, k=1000)
+        run, stack = self.prepared()
+        execute = stack.enter_context(patch.object(
+            workflow, "run_command", side_effect=subprocess.CalledProcessError(1, "train")))
+        with self.assertRaises(subprocess.CalledProcessError):
+            workflow.train(run)
+        command = execute.call_args.args[2]
+        for flag, expected in (("--king-features", str(feature_path)),
+                               ("--extra-columns", "0:24,62:68"), ("--train-extra", "24:30")):
+            self.assertEqual(command[command.index(flag) + 1], expected)
+        self.assertIn("--freeze-pst", command)
+        inputs = json.loads((run / "training/inputs.json").read_text())
+        self.assertEqual(inputs["king_features"], [{"path": str(feature_path),
+                                                   "sha256": workflow.digest(feature_path)}])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1049,7 +1049,7 @@ fn run_main_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+        score: pst.evaluate_accumulator(searcher.accumulators[0], position),
         depth: 0,
         nodes: 0,
     };
@@ -1162,7 +1162,7 @@ fn run_auxiliary_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+        score: pst.evaluate_accumulator(searcher.accumulators[0], position),
         depth: 0,
         nodes: 0,
     };
@@ -1410,7 +1410,7 @@ impl Searcher<'_> {
             .then(|| {
                 let static_eval = self
                     .pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+                    .evaluate_accumulator(self.accumulators[ply as usize], position);
                 let margin =
                     self.pst.pawn_value() * FUTILITY_MARGIN_HALF_PAWNS[depth as usize - 1] / 2;
                 static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
@@ -1498,7 +1498,7 @@ impl Searcher<'_> {
         if best_score.abs() < MATE_THRESHOLD && !best_capture {
             let static_eval = self
                 .pst
-                .evaluate_accumulator(self.accumulators[ply as usize], side);
+                .evaluate_accumulator(self.accumulators[ply as usize], position);
             if (bound == Bound::Exact
                 || (bound == Bound::Upper && best_score < static_eval)
                 || (bound == Bound::Lower && best_score > static_eval))
@@ -1534,13 +1534,13 @@ impl Searcher<'_> {
         if ply >= MAX_PLY {
             return Some(
                 self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
+                    .evaluate_accumulator(self.accumulators[ply as usize], position),
             );
         }
 
         let stand_pat = self
             .pst
-            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+            .evaluate_accumulator(self.accumulators[ply as usize], position);
         if stand_pat >= beta {
             return Some(stand_pat);
         }

@@ -76,6 +76,9 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     }
     if set(config) != set(fields):
         raise ValueError(f"config sections must be {sorted(fields)}")
+    extra_fields = {"king_features", "extra_columns", "train_extra", "freeze_pst"}
+    if isinstance(config["train"], dict) and extra_fields & set(config["train"]):
+        fields["train"] |= extra_fields
     for section, expected in fields.items():
         if not isinstance(config[section], dict) or set(config[section]) != expected:
             raise ValueError(f"{section} fields must be {sorted(expected)}")
@@ -119,6 +122,26 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
         raise ValueError("train.model must explicitly be single, tapered, or mirrored")
     if training["removal_penalty"] > 0 and training["model"] != "mirrored":
         raise ValueError("positive train.removal_penalty requires train.model = mirrored")
+    if "king_features" in training:
+        from mnsd import COLUMN_COUNT
+        from train_pst import parse_ranges
+        if type(training["freeze_pst"]) is not bool:
+            raise ValueError("train.freeze_pst must be boolean")
+        if not isinstance(training["king_features"], list):
+            raise ValueError("train.king_features must be a list")
+        if not all(isinstance(training[key], str) for key in ("extra_columns", "train_extra")):
+            raise ValueError("extra column ranges must be strings")
+        if training["king_features"]:
+            if len(training["king_features"]) != len(run["data"]) + len(seeds):
+                raise ValueError("train.king_features must match all existing and generated MNSD files")
+            training["king_features"] = [str(path_value(p, "train.king_features", root))
+                                         for p in training["king_features"]]
+            columns = parse_ranges(training["extra_columns"], COLUMN_COUNT)
+            parse_ranges(training["train_extra"], len(columns))
+        elif training["extra_columns"] or training["train_extra"] or training["freeze_pst"]:
+            raise ValueError("extra training options require train.king_features")
+        if training["freeze_pst"] and training["removal_penalty"] != 0:
+            raise ValueError("train.freeze_pst requires train.removal_penalty = 0")
     integer(config["diagnose"]["seed"], "diagnose.seed", 0, 2**63 - 1)
     integer(config["diagnose"]["sample_size"], "diagnose.sample_size", 1, 2**31 - 1)
     return config
@@ -186,7 +209,7 @@ def prepare(config_path: Path) -> None:
         generator = run / "generator"
         run_command(run, "worktree", ["git", "worktree", "add", "--detach", str(generator), base], ROOT)
         shutil.copyfile(generator / "nets/pst.bin", run / "pst-base.bin")
-        read_mnpt(run / "pst-base.bin")
+        read_mnpt(run / "pst-base.bin", feature_count=None)
         run_command(run, "build", ["cargo", "build", "--release", "--locked", "--target-dir",
                     str(generator / "target"), "--bin", "selfplay_gen"], generator)
         probe = run / "probe"
@@ -281,6 +304,16 @@ def training_data(run: Path, state: dict) -> list[dict]:
     return files
 
 
+def training_dataset(paths: list[str], config: dict) -> Dataset:
+    """追加特徴を使う設定では、学習と診断に同じ列の対応を与える。"""
+    if "king_features" in config and config["king_features"]:
+        from mnsd import COLUMN_COUNT
+        from train_pst import parse_ranges
+        return Dataset(paths, king_features=config["king_features"],
+                       extra_columns=parse_ranges(config["extra_columns"], COLUMN_COUNT))
+    return Dataset(paths)
+
+
 def train(run: Path) -> None:
     state = load_prepared(run)
     destination = run / "training"
@@ -293,7 +326,9 @@ def train(run: Path) -> None:
         raise ValueError("CUDA unavailable; run training on a GPU host")
     files = training_data(run, state)
     paths = [item["path"] for item in files]
-    dataset = Dataset(paths)
+    dataset = training_dataset(paths, config)
+    king_inputs = ([] if dataset.king_features is None else
+                   [{"path": p, "sha256": digest(Path(p))} for p in config["king_features"]])
     training_count, validation_count = dataset.training_indices.size, dataset.validation_indices.size
     if not training_count or not validation_count:
         raise ValueError("training and validation records must both be nonempty")
@@ -304,7 +339,7 @@ def train(run: Path) -> None:
     destination.mkdir()
     steps = (int(training_count) + config["batch"] - 1) // config["batch"]
     write_json(destination / "inputs.json", {
-        "data": files,
+        "data": files, "king_features": king_inputs,
         "teacher_ks": teacher_ks.tolist(), "k": k, "mixed_k": mixed_k,
         "training_records": int(training_count),
         "validation_records": int(validation_count), "steps_per_epoch": steps,
@@ -325,8 +360,13 @@ def train(run: Path) -> None:
                         ("removal_penalty", "removal-penalty"), ("device", "device"),
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
+    if king_inputs:
+        command += ["--king-features", *config["king_features"],
+                    "--extra-columns", config["extra_columns"], "--train-extra", config["train_extra"]]
+        if config["freeze_pst"]:
+            command.append("--freeze-pst")
     run_command(run, "train", command, ROOT)
-    read_mnpt(destination / "pst.bin")
+    read_mnpt(destination / "pst.bin", feature_count=None)
     if (destination / "pst.bin").read_bytes()[-PIECE_VALUE_BYTES:] != (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]:
         raise ValueError("trained weights changed the fixed piece values")
     write_json(destination / "complete.json", {
@@ -358,7 +398,12 @@ def diagnose(run: Path) -> None:
     destination = run / "diagnostics"
     destination.mkdir()
     config = state["config"]["diagnose"]
-    report = diagnose_weights(Dataset(paths), run / "pst-base.bin", candidate, float_weights_path(candidate),
+    training_config = state["config"]["train"]
+    if "king_features" in training_config and training_config["king_features"]:
+        inputs = json.loads((run / "training/inputs.json").read_text())
+        for item in inputs["king_features"]:
+            verify_file(Path(item["path"]), item["sha256"])
+    report = diagnose_weights(training_dataset(paths, training_config), run / "pst-base.bin", candidate, float_weights_path(candidate),
                               destination, config["sample_size"], config["seed"],
                               state["config"]["train"]["lambda"], diagnose_probe(binary))
     write_json(destination / "report.json", report)

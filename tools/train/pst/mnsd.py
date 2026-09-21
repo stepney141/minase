@@ -1,9 +1,10 @@
-"""自己対局学習データ形式MNSDを検証し、NumPy配列として読む。"""
+"""MNSDと対応する追加特徴MNKFを検証し、同じ大域番号で読む。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import hashlib
 import struct
 from typing import Sequence
 
@@ -151,7 +152,9 @@ def map_records(path: str | Path) -> np.memmap:
         offset=HEADER_LENGTH,
         shape=(header.record_count,),
     )
-    _validate_records(resolved, records)
+    # 大規模な診断でも盤面全体の一時配列を作らず、同じ検査を一定件数ずつ行う。
+    for start in range(0, header.record_count, 65536):
+        _validate_records(resolved, records[start:start + 65536])
     return records
 
 
@@ -172,7 +175,9 @@ def hash64(seed: int, games: NDArray[np.uint32]) -> NDArray[np.uint64]:
 class Dataset:
     """複数MNSDをメモリマップのまま保持し、大域番号で参照する。"""
 
-    def __init__(self, paths: Sequence[str | Path]) -> None:
+    def __init__(self, paths: Sequence[str | Path], *,
+                 king_features: Sequence[str | Path] | None = None,
+                 extra_columns: Sequence[int] | None = None) -> None:
         if not paths:
             raise ValueError("at least one MNSD path is required")
 
@@ -233,6 +238,17 @@ class Dataset:
         self.validation_indices_by_file = tuple(validation_indices_by_file)
         self.training_indices = np.concatenate(training_indices_by_file)
         self.validation_indices = np.concatenate(validation_indices_by_file)
+        if (king_features is None) != (extra_columns is None):
+            raise ValueError("king features and extra columns must be specified together")
+        self.extra_columns = None if extra_columns is None else np.asarray(extra_columns, dtype=np.int64)
+        self.king_features = (None if king_features is None
+                              else KingFeatures(self, king_features, self.extra_columns))
+
+    def gather_extra(self, indices: NDArray[np.int64]) -> np.ndarray | None:
+        """モデルが使う追加特徴を、指定した列順と大域局面番号で読む。"""
+        if self.king_features is None:
+            return None
+        return self.king_features.gather(indices)
 
     @property
     def record_count(self) -> int:
@@ -312,3 +328,82 @@ def write_mnsd(
     header[84:116] = network_checksum
     struct.pack_into("<IQQ", header, 116, teacher_nodes, seed, records.shape[0])
     path.write_bytes(bytes(header) + records.tobytes())
+
+
+DEFINITION_ID = 1
+# 定義ID 1の全列数。候補が書き出すMNKFの列数はヘッダから読む。
+COLUMN_COUNT = 68
+HEADER = struct.Struct("<4sIIIQ32s")
+
+
+def sha256_file(path: Path) -> bytes:
+    """MNSDヘッダを含むファイル全体を一定サイズのバッファでハッシュする。"""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+    return digest.digest()
+
+
+class KingFeatures:
+    """MNSDと対応を検証したMNKFを、同じ大域番号で取り出す。"""
+
+    def __init__(self, dataset: Dataset, paths: Sequence[str | Path],
+                 extra_columns: Sequence[int] | None = None) -> None:
+        if len(paths) != len(dataset.paths):
+            raise ValueError("one MNKF file is required for each MNSD file")
+        self.dataset = dataset
+        self.records = []
+        self.columns = None if extra_columns is None else np.asarray(extra_columns, dtype=np.int64)
+        if self.columns is not None and (
+            self.columns.ndim != 1 or self.columns.size == 0
+            or np.any(self.columns < 0) or np.any(self.columns >= COLUMN_COUNT)
+            or np.unique(self.columns).size != self.columns.size
+        ):
+            raise ValueError("extra columns must be distinct MNKF column indices")
+        for source, header, path in zip(dataset.paths, dataset.headers, map(Path, paths)):
+            with path.open("rb") as stream:
+                raw = stream.read(HEADER.size)
+            if len(raw) != HEADER.size:
+                raise ValueError(f"{path}: truncated MNKF header")
+            magic, version, definition, columns, count, checksum = HEADER.unpack(raw)
+            if magic != b"MNKF":
+                raise ValueError(f"{path}: invalid MNKF magic")
+            if version != 1:
+                raise ValueError(f"{path}: unsupported MNKF version {version}")
+            if definition != DEFINITION_ID:
+                raise ValueError(f"{path}: definition ID mismatch")
+            if not 0 < columns <= COLUMN_COUNT:
+                raise ValueError(f"{path}: invalid column count")
+            if self.columns is None:
+                self.columns = np.arange(columns)
+            if extra_columns is None and columns != self.columns.size:
+                raise ValueError(f"{path}: column count mismatch; select extra columns explicitly")
+            if np.any(self.columns >= columns):
+                raise ValueError(f"{path}: selected columns exceed MNKF column count {columns}")
+            if count != header.record_count:
+                raise ValueError(f"{path}: position count mismatch")
+            if path.stat().st_size != HEADER.size + count * columns:
+                raise ValueError(f"{path}: MNKF file length mismatch")
+            if checksum != sha256_file(source):
+                raise ValueError(f"{path}: MNSD SHA-256 mismatch")
+            self.records.append(np.memmap(
+                path, mode="r", dtype=np.uint8, offset=HEADER.size,
+                shape=(count, columns),
+            ))
+
+    def gather(self, indices: np.ndarray) -> np.ndarray:
+        """MNSDと同じ通し番号を任意順に読む。"""
+        indices = np.asarray(indices)
+        if indices.ndim != 1 or indices.dtype.kind not in "iu":
+            raise ValueError("indices must be a one-dimensional integer array")
+        if np.any(indices < 0) or np.any(indices >= self.dataset.record_count):
+            raise IndexError("record index is outside the dataset")
+        indices = indices.astype(np.int64, copy=False)
+        files = np.searchsorted(self.dataset.offsets[1:], indices, side="right")
+        rows = np.empty((indices.size, self.columns.size), dtype=np.uint8)
+        for file_index, mapped in enumerate(self.records):
+            selected = np.flatnonzero(files == file_index)
+            rows[selected] = mapped[np.ix_(indices[selected] - self.dataset.offsets[file_index],
+                                          self.columns)]
+        return rows

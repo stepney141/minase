@@ -228,6 +228,11 @@ class DiagnosticsTest(unittest.TestCase):
                     diagnose(dataset, self.base, self.candidate, self.float_path, output,
                              5, 19, 0.75, wrong_promotion)
 
+    def test_pst_removal_sign_reversal_is_rejected(self) -> None:
+        self.write_candidate(-self.weights, -self.weights)
+        with self.assertRaisesRegex(ValueError, "PST removal delta"):
+            self.run_diagnose(self.dataset(), self.root / "reversed")
+
     def test_derived_values_round_half_away_from_zero(self) -> None:
         weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
         weights[:144] = 8  # own state 0: 1152/2304 = 0.5 → 1
