@@ -2936,7 +2936,9 @@ mod tests {
                 &[RuleCode::R1],
                 &format!("setoption name Threads value {threads}\nposition startpos\ngo depth 2\n"),
             );
-            let best: Vec<_> = bestmoves(&output)[0].split_whitespace().collect();
+            let best = bestmoves(&output);
+            assert_eq!(best.len(), 1, "{output}");
+            let best: Vec<_> = best[0].split_whitespace().collect();
             let pv: Vec<_> = output
                 .lines()
                 .filter_map(|line| line.split_once(" pv ").map(|(_, pv)| pv))
@@ -2944,7 +2946,14 @@ mod tests {
                 .unwrap()
                 .split_whitespace()
                 .collect();
-            assert_eq!(best, ["bestmove", pv[0], "ponder", pv[1]]);
+            // 共有置換表による打ち切りでは、深さ2でもPVが1手になり得る。
+            match pv.as_slice() {
+                [first] => assert_eq!(best, ["bestmove", *first], "{output}"),
+                [first, second, ..] => {
+                    assert_eq!(best, ["bestmove", *first, "ponder", *second], "{output}");
+                }
+                [] => panic!("empty PV: {output}"),
+            }
         }
         let output = session(&[RuleCode::R1], "position startpos\ngo depth 1\n");
         assert_eq!(bestmoves(&output)[0].split_whitespace().count(), 2);
@@ -2963,6 +2972,18 @@ mod tests {
                 (sq(8, 8), Color::White, PieceKind::King),
             ],
         );
+        // 探索のスケジュールによらず、2手のPVと1手のPVを両方検査する。
+        let game = Game::from_position(
+            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap(),
+            kings.clone(),
+        );
+        let x = step(sq(3, 3), sq(3, 4));
+        let y = step(sq(8, 8), sq(8, 7));
+        assert_eq!(
+            validated_ponder_move(&game, x, &[x, y]).as_deref(),
+            Some("4d4e")
+        );
+        assert_eq!(validated_ponder_move(&game, x, &[x]), None);
         for rule in [RuleCode::R2, RuleCode::R3] {
             let rules =
                 Rules::from_codes(&[RuleCode::L0, RuleCode::P0, rule, RuleCode::E2]).unwrap();
