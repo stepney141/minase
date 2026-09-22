@@ -150,6 +150,51 @@ def _band_losses(
     return result
 
 
+def outcome_metrics(dataset: Dataset, models: dict[str, Weights]) -> dict:
+    """全検証局面の対局結果への交差エントロピーと符号一致率を返す。"""
+    reports = {}
+    validation = dataset.validation_indices
+    for name, model in models.items():
+        games = {}
+        loss_sum = 0.0
+        draws = zeros = excluded = eligible = matches = 0
+        for start in range(0, validation.size, BATCH):
+            chunk = validation[start:start + BATCH]
+            records = dataset.gather(chunk)
+            scores = model.evaluate(records, dataset.gather_extra(chunk)).astype(np.float64)
+            results = records["result"].astype(np.float64) / 2
+            logits = scores / model.k
+            losses = np.logaddexp(0.0, logits) - results * logits
+            loss_sum += float(losses.sum())
+            for key, loss in zip(dataset.game_keys(chunk), losses):
+                if key not in games:
+                    games[key] = [0.0, 0]
+                games[key][0] += float(loss)
+                games[key][1] += 1
+            draw = results == 0.5
+            zero = scores == 0
+            included = ~(draw | zero)
+            draws += int(draw.sum())
+            zeros += int(zero.sum())
+            excluded += int((draw | zero).sum())
+            eligible += int(included.sum())
+            matches += int((included & ((scores > 0) == (results == 1))).sum())
+        reports[name] = {
+            "records": int(validation.size),
+            "games": len(games),
+            "output_k": model.k,
+            "bce_position_mean": loss_sum / validation.size if validation.size else None,
+            "bce_game_mean": float(np.mean([total / count for total, count in games.values()])) if games else None,
+            "sign_agreement": matches / eligible if eligible else None,
+            "sign_matches": matches,
+            "sign_records": eligible,
+            "sign_excluded": excluded,
+            "draw_records": draws,
+            "zero_score_records": zeros,
+        }
+    return reports
+
+
 def _error_summary(predicted: NDArray, scaled: NDArray, raw: NDArray) -> dict:
     """標本の平均絶対誤差(換算と生)と相関を返し、定義できない相関には理由を付ける。"""
     reason = None
@@ -290,6 +335,8 @@ def diagnose(
         "seed": seed,
         "teacher_classes": dataset.class_metadata(),
         "lookahead": dataset.lookahead,
+        "lambda_override": dataset.lambda_override,
+        "outcome_metrics": outcome_metrics(dataset, models),
         "rescore_exclusions": dataset.exclusions,
         "teacher_comparison_excluded": int(validation_counts[dataset.teacher_lambdas == 0].sum()),
         "k": {name: model.k for name, model in models.items()},
@@ -440,6 +487,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", nargs="+", required=True)
     parser.add_argument("--rescore", nargs="+")
+    parser.add_argument("--lambda-override", type=float)
     parser.add_argument("--lookahead-gamma", type=float)
     parser.add_argument("--lookahead-plies", type=int)
     parser.add_argument("--king-features", nargs="+")
@@ -454,6 +502,7 @@ def main() -> None:
     try:
         columns = None if args.extra_columns is None else parse_ranges(args.extra_columns, None)
         dataset = Dataset(args.data, rescore=args.rescore, king_features=args.king_features,
+                          lambda_override=args.lambda_override,
                           extra_columns=columns,
                           lookahead=lookahead_options(args.lookahead_gamma, args.lookahead_plies))
         args.output_dir.mkdir()
