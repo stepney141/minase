@@ -15,22 +15,15 @@
 
 ## 状態
 
-進行中。2026年9月21日に起案して同日に着手し、本書は2026年9月22日時点の計画である。
-前提とする測定は、[発火率の診断](../measurements/strength-stage9-activation-diag.md)、[逆引きの費用の測定](../measurements/strength-stage9-cost-bench.md)、[項目1の学習と診断](../measurements/strength-stage9-shelter-training.md)、および[教師値の成分ごとの残差の診断](../measurements/teacher-quality-residual-diag.md)の4つであり、完了している。
-教師の構成を自己対局の検定ではなく診断の基準で確定すること、速度の条件（土台は0.90倍、項目は0.85倍）、および項目の順序は、利用者の決定により確定した。
-フェーズ1からフェーズ3まで、フェーズ4、およびフェーズ5の道具の実装は完了している。
-評価の償却は探索木を変えずに入り、[土台の費用の診断](../measurements/strength-stage9-foundation-diag.md)は全駒の利き集合の構成が償却後の0.357倍、近傍25升の構成が0.293倍であることを記録した。
-[利き数の表の速度](../measurements/strength-stage9-table-bench.md)は、更新の費用を下げた後も段階開始版の0.816倍であり、土台の条件0.90倍を満たさない。
-速度の条件の規則に従い、利き数の表は見送り、代替の近傍の構成も項目の条件を満たさないので、項目2から項目7は見送りとする。表の実装はブランチ `strength-stage9-table` に残し、masterへは入れない。
-この判断は事前に固定した条件によるものであり、条件の見直しは利用者の判断に委ねる。
-[118列の発火率診断](../measurements/strength-stage9-activation-diag-b.md)は、後続の設計の入力として保持する。
-教師の診断は、[診断A](../measurements/strength-stage9-depth-sensitivity.md)、[診断B](../measurements/strength-stage9-human-signal.md)、[診断C](../measurements/strength-stage9-human-start-signal.md)のいずれも基準を満たさず、[教師の構成](../measurements/strength-stage9-teacher-composition.md)は基本の教師のままと確定した。
-項目1の候補は、基本の教師で学習した重みを `data/strength-stage9/shelter2-basic-training` に記録済みである。
-教師の構成が基本のままとなったので、「項目と順序」の決定に従い、項目1を測るかどうかは利用者の判断を待つ。
-利用者の指示で[先読み教師値](lookahead-teacher.md)を診断したが、項目1の寄与は事前の基準に届かず、先読み教師での項目1は見送りとなった。
-項目1の短時間測定 `strength-stage9-shelter-stc` は、測定機のメモリの枯渇により218ペアで停止しており、その結果は本書の判定に使わない。
-いま詰まっている点は、項目1を測るかどうかの利用者の判断である。
-次の一手は、測る場合は項目1の候補のコミットの作成と短時間および長時間の測定、測らない場合は見送りの記録と完了処理である。
+進行中（完了処理中）。2026年9月21日に起案して同日に着手し、2026年9月23日に完了処理へ入った。
+結論は、7項目のいずれも採用せず、教師の構成は基本の教師のままとし、後続の[先読み教師値](lookahead-teacher.md)の学習PSTの再学習を利用者の決定で採用した、である。
+土台は、[土台の費用の診断](../measurements/strength-stage9-foundation-diag.md)と[利き数の表の速度](../measurements/strength-stage9-table-bench.md)により、更新の費用を下げた後も段階開始版の0.816倍で条件0.90倍を満たさず見送りとし、代替の近傍の構成も0.293倍で項目の条件を満たさないので、項目2から項目7は見送りとした。表の実装はブランチ `strength-stage9-table`、118列の診断は `strength-stage9-diag-b` に保持し、masterへは入れない。
+教師は、[診断A](../measurements/strength-stage9-depth-sensitivity.md)、[診断B](../measurements/strength-stage9-human-signal.md)、[診断C](../measurements/strength-stage9-human-start-signal.md)のいずれも基準を満たさず、[教師の構成](../measurements/strength-stage9-teacher-composition.md)は基本の教師のままと確定した。
+項目1は、基本の教師と[先読み教師](../measurements/lookahead-teacher-shelter-training.md)のどちらでも露出局面への寄与が事前の基準に届かず、見送りとした。
+評価の償却は探索木を変えずに採用し、フェーズ4とフェーズ5の道具（付け直し、来歴ファイル、実戦棋譜の変換、実戦開始の生成）と、先読み教師値および混合比の上書きの学習器の変更は、後続の設計の基盤として残す。
+見送った項目1の評価側の実装と追加特徴の学習経路はコードから外した。
+フェーズ7（世代3の生成と同時学習）は、採用した項目がないので実行しない。
+残る作業は、[118列の発火率診断](../measurements/strength-stage9-activation-diag-b.md)を含む記録の保持の確認と、フェーズ8の進捗指標（段階開始版とHaChuに対する固定200ペア）の測定である。進捗指標は、先読み教師の重みとSPSAの係数を含む現在のmasterで測る。
 
 ## 目的
 
