@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufReader, Seek, SeekFrom, Write};
+use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
@@ -15,7 +15,9 @@ use std::time::Instant;
 use clap::{Parser, Subcommand};
 use minase::core::rules::parse_rule_set;
 use minase::eval::Pst;
-use minase::eval::provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher};
+use minase::eval::provenance::{
+    GameOrigin, Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher,
+};
 use minase::eval::rescore::{self, RescoreEntry, RescoreHeader, RescoreReader, RescoreStatus};
 use minase::eval::training_data::{
     Error as TrainingDataError, Header, Outcome, Reader, Record, Writer, best_move_is_tactical,
@@ -38,7 +40,7 @@ const DEFAULT_MAX_PLY: u16 = 4_000;
 /// ワーカーごとの既定置換表容量。
 const DEFAULT_HASH_MB: NonZeroUsize = NonZeroUsize::new(16).unwrap();
 /// 詰み帯として除外する探索値の絶対値下限。
-const MATE_BAND_START: u32 = 29_000;
+pub(crate) const MATE_BAND_START: u32 = 29_000;
 /// ランダム着手を配置する序盤終了後の手数幅。
 const INJECTION_WINDOW: usize = 80;
 /// 注入オフセットのヒストグラム区間数。
@@ -99,25 +101,25 @@ struct RescoreArguments {
 
 /// 既存MNSDの来歴作成の引数。
 #[derive(clap::Args)]
-struct ProvenanceArguments {
+pub(crate) struct ProvenanceArguments {
     /// 元のMNSD。
     #[arg(long)]
-    input: PathBuf,
+    pub(crate) input: PathBuf,
     /// 新規作成する来歴JSON。
     #[arg(long)]
-    output: PathBuf,
+    pub(crate) output: PathBuf,
     /// 対局結果の由来。本操作ではselfplayだけを扱う。
     #[arg(long, value_enum)]
-    result_origin: ResultOrigin,
+    pub(crate) result_origin: ResultOrigin,
     /// 開始局面の由来。本操作ではrandomだけを扱う。
     #[arg(long, value_enum)]
-    start_origin: StartOrigin,
+    pub(crate) start_origin: StartOrigin,
     /// 教師値に占める探索値の割合。
     #[arg(long)]
-    lambda: f64,
+    pub(crate) lambda: f64,
     /// 教師の探索条件。
     #[arg(long, value_enum, default_value = "in-game")]
-    search_condition: SearchCondition,
+    pub(crate) search_condition: SearchCondition,
 }
 
 /// `generate`サブコマンドの引数。
@@ -127,8 +129,11 @@ struct GenerateArguments {
     #[arg(long, required = true)]
     output: PathBuf,
     /// 生成する対局数。
-    #[arg(long, required = true, value_parser = parse_positive_u32)]
-    games: u32,
+    #[arg(long, required_unless_present = "openings", conflicts_with = "openings", value_parser = parse_positive_u32)]
+    games: Option<u32>,
+    /// 実戦開始の局面一覧。1行につき1局を生成する。
+    #[arg(long)]
+    openings: Option<PathBuf>,
     /// 対局シードの派生元。
     #[arg(long, required = true)]
     seed: u64,
@@ -165,6 +170,109 @@ struct PlaySettings {
     max_ply: u16,
 }
 
+/// 実戦開始の局面と、元棋譜での位置。
+struct Opening {
+    origin: GameOrigin,
+    position: Position,
+    ply: u32,
+}
+
+/// 開始局面一覧または生成引数の不整合。
+#[derive(Debug)]
+enum OpeningError {
+    RandomMoves,
+    MissingGames,
+    Empty,
+    Line {
+        line: usize,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    InvalidFields,
+    InvalidPosition,
+}
+
+impl std::fmt::Display for OpeningError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RandomMoves => f.write_str("--openings requires --random-moves 0"),
+            Self::MissingGames => f.write_str("--games is required without --openings"),
+            Self::Empty => f.write_str("opening list is empty"),
+            Self::Line { line, source } => write!(f, "opening line {line}: {source}"),
+            Self::InvalidFields => {
+                f.write_str("expected <id> <ply> <extended SFEN>, with matching move number")
+            }
+            Self::InvalidPosition => {
+                f.write_str("opening must have both royals, legal moves, and no deferred promotion")
+            }
+        }
+    }
+}
+
+impl std::error::Error for OpeningError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Line { source, .. } => Some(source.as_ref()),
+            _ => None,
+        }
+    }
+}
+
+/// 一覧の全行を検査し、先獅子の状態を含めて復元する。
+fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
+    use minase::notation::sfen::parse_extended_sfen;
+    let mut openings = Vec::new();
+    for (index, line) in BufReader::new(File::open(path)?).lines().enumerate() {
+        let parse = || -> Result<Opening, Box<dyn std::error::Error + Send + Sync>> {
+            let line = line?;
+            let mut fields = line.split_whitespace();
+            let id = fields.next().ok_or(OpeningError::InvalidFields)?;
+            let ply: u32 = fields.next().ok_or(OpeningError::InvalidFields)?.parse()?;
+            let sfen = fields.collect::<Vec<_>>().join(" ");
+            let setup = parse_extended_sfen(&sfen, Rules::ENGINE_DEFAULT.moves)?;
+            if ply >= u32::from(u16::MAX) || setup.next_move_number() != ply + 1 {
+                return Err(OpeningError::InvalidFields.into());
+            }
+            let (mut position, lion, _) = setup.into_parts();
+            position.set_lion_capture(lion)?;
+            let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
+            if !position.promotion_deferred().is_empty()
+                || game.legal_moves().is_empty()
+                || position.royal_pieces(Color::Black).is_empty()
+                || position.royal_pieces(Color::White).is_empty()
+            {
+                return Err(OpeningError::InvalidPosition.into());
+            }
+            Ok(Opening {
+                origin: GameOrigin {
+                    game: u32::try_from(index + 1)?,
+                    id: id.to_owned(),
+                    ply: Some(ply),
+                },
+                position,
+                ply,
+            })
+        };
+        openings.push(parse().map_err(|source| {
+            data_error(OpeningError::Line {
+                line: index + 1,
+                source,
+            })
+        })?);
+    }
+    if openings.is_empty() {
+        return Err(data_error(OpeningError::Empty));
+    }
+    Ok(openings)
+}
+
+/// 生成の最初の探索に渡す局面を返す。
+fn starting_game(rules: Rules, seed: NonZeroU64, opening: Option<&Opening>) -> io::Result<Game> {
+    match opening {
+        Some(opening) => Ok(Game::from_position(rules, opening.position.clone())),
+        None => generate_opening(rules, seed),
+    }
+}
+
 /// `inspect`サブコマンドの引数。
 #[derive(clap::Args)]
 struct InspectArguments {
@@ -190,27 +298,27 @@ struct Candidate {
 
 /// 探索キーを伴う書き出し対象レコード。
 #[derive(Clone, PartialEq, Eq, Debug)]
-struct CompletedRecord {
+pub(crate) struct CompletedRecord {
     /// 固定長形式へ書き出すレコード。
-    record: Record,
+    pub(crate) record: Record,
     /// 対局間の局面重複を判定する探索キー。
-    search_key: u64,
+    pub(crate) search_key: u64,
 }
 
 /// 1局分のレコードと統計。
 #[derive(PartialEq, Eq, Debug)]
-struct CompletedGame {
+pub(crate) struct CompletedGame {
     /// 1から始まる対局番号。
-    game_number: u32,
+    pub(crate) game_number: u32,
     /// 終局対局から採用したレコード。
-    records: Vec<CompletedRecord>,
+    pub(crate) records: Vec<CompletedRecord>,
     /// 打ち切り対局を含む生成統計。
-    stats: Statistics,
+    pub(crate) stats: Statistics,
 }
 
 /// データ生成全体または1局分の統計。
 #[derive(Default, PartialEq, Eq, Debug)]
-struct Statistics {
+pub(crate) struct Statistics {
     /// 手数上限で破棄した対局数。
     discarded_games: u64,
     /// 先手勝ちの対局数。
@@ -246,13 +354,13 @@ struct Statistics {
     /// 記録境界以後に探索した局面数。
     recordable_positions: u64,
     /// ファイルへ記録した局面数。
-    recorded_positions: u64,
+    pub(crate) recorded_positions: u64,
     /// 詰み帯の探索値による除外数。
-    excluded_mate_band: u64,
+    pub(crate) excluded_mate_band: u64,
     /// 捕獲または成りの最善手による除外数。
-    excluded_tactical: u64,
+    pub(crate) excluded_tactical: u64,
     /// 現局面の再出現による除外数。
-    excluded_repetition: u64,
+    pub(crate) excluded_repetition: u64,
     /// ランダム手を含む全対局の総手数。
     total_plies: u64,
     /// 探索で指した総手数。
@@ -346,7 +454,7 @@ struct InjectionPlan {
 }
 
 /// 書き出したレコードから対局横断で求める統計。
-struct RecordedStatistics {
+pub(crate) struct RecordedStatistics {
     /// i16の全探索値に対応する度数表。
     score_frequencies: Vec<u64>,
     /// 既出局面の探索キー。
@@ -453,6 +561,20 @@ fn run() -> io::Result<()> {
 
 /// 来歴を確定して出力ファイルを作り、生成が失敗すれば出力を削除する。
 fn generate(arguments: &GenerateArguments) -> io::Result<()> {
+    let openings = arguments
+        .openings
+        .as_ref()
+        .map(|path| read_openings(path))
+        .transpose()?;
+    if openings.is_some() && arguments.random_moves != 0 {
+        return Err(data_error(OpeningError::RandomMoves));
+    }
+    let games = match &openings {
+        Some(openings) => u32::try_from(openings.len()).map_err(data_error)?,
+        None => arguments
+            .games
+            .ok_or_else(|| data_error(OpeningError::MissingGames))?,
+    };
     let rules = engine_default_rules()?;
     let rule_set = rules.to_string();
     let generation_commit = git_output(&["rev-parse", "HEAD"])?;
@@ -468,7 +590,15 @@ fn generate(arguments: &GenerateArguments) -> io::Result<()> {
         .write(true)
         .create_new(true)
         .open(&arguments.output)?;
-    let result = write_training_data(file, arguments, rules, &rule_set, &generation_commit);
+    let result = write_training_data(
+        file,
+        arguments,
+        rules,
+        &rule_set,
+        &generation_commit,
+        openings.as_deref(),
+        games,
+    );
     // 失敗した出力を残すと、Readerが受理する空ファイルや破損ファイルが最終パスに
     // 残り、同じコマンドの再実行もcreate_newで拒否されるため、失敗時は削除する。
     if result.is_err()
@@ -482,14 +612,21 @@ fn generate(arguments: &GenerateArguments) -> io::Result<()> {
     result?;
     let mut provenance_path = arguments.output.as_os_str().to_owned();
     provenance_path.push(".provenance.json");
-    write_provenance(&ProvenanceArguments {
-        input: arguments.output.clone(),
-        output: provenance_path.into(),
-        result_origin: ResultOrigin::Selfplay,
-        start_origin: StartOrigin::Random,
-        lambda: 0.75,
-        search_condition: SearchCondition::InGame,
-    })
+    write_mapped_provenance(
+        &ProvenanceArguments {
+            input: arguments.output.clone(),
+            output: provenance_path.into(),
+            result_origin: ResultOrigin::Selfplay,
+            start_origin: if openings.is_some() {
+                StartOrigin::HumanGame
+            } else {
+                StartOrigin::Random
+            },
+            lambda: 0.75,
+            search_condition: SearchCondition::InGame,
+        },
+        openings.map(|openings| openings.into_iter().map(|opening| opening.origin).collect()),
+    )
 }
 
 /// 自己対局を並列実行し、対局番号順にレコードを書き出して要約を表示する。
@@ -499,6 +636,8 @@ fn write_training_data(
     rules: Rules,
     rule_set: &str,
     generation_commit: &str,
+    openings: Option<&[Opening]>,
+    games: u32,
 ) -> io::Result<()> {
     // 探索は埋め込み学習PSTで着手するので、その重み本体の検査和を生成元として残す。
     let pst = minase::eval::weights().map_err(|error| invalid_data(error.to_string()))?;
@@ -516,7 +655,7 @@ fn write_training_data(
     let next_game = AtomicU64::new(1);
     let (sender, receiver) = mpsc::channel::<io::Result<CompletedGame>>();
     let start = Instant::now();
-    let progress_interval = u64::from(arguments.games).div_ceil(20).max(1);
+    let progress_interval = u64::from(games).div_ceil(20).max(1);
     let play_settings = PlaySettings {
         base_seed: arguments.seed,
         nodes: arguments.nodes,
@@ -539,7 +678,7 @@ fn write_training_data(
                 };
                 loop {
                     let game_number = next_game.fetch_add(1, Ordering::Relaxed);
-                    if game_number > u64::from(arguments.games) {
+                    if game_number > u64::from(games) {
                         break;
                     }
                     let game_number = match u32::try_from(game_number) {
@@ -549,8 +688,16 @@ fn write_training_data(
                             break;
                         }
                     };
-                    let completed = match catch_unwind(AssertUnwindSafe(|| {
-                        play_game(pst, rules, game_number, play_settings, &mut table)
+                    let completed = match catch_unwind(AssertUnwindSafe(|| match openings {
+                        Some(items) => play_game_from_opening(
+                            pst,
+                            rules,
+                            game_number,
+                            play_settings,
+                            &mut table,
+                            Some(&items[game_number as usize - 1]),
+                        ),
+                        None => play_game(pst, rules, game_number, play_settings, &mut table),
                     })) {
                         Ok(completed) => completed,
                         Err(_) => Err(invalid_data(format!(
@@ -566,23 +713,18 @@ fn write_training_data(
         }
         drop(sender);
 
-        merge_completed_games(
-            receiver,
-            &mut writer,
-            arguments.games,
-            |completed_count, total| {
-                if completed_count.is_multiple_of(progress_interval)
-                    || completed_count == u64::from(arguments.games)
-                {
-                    eprintln!(
-                        "progress: games={completed_count}/{} records={} elapsed_seconds={:.3}",
-                        arguments.games,
-                        total.recorded_positions,
-                        start.elapsed().as_secs_f64()
-                    );
-                }
-            },
-        )
+        merge_completed_games(receiver, &mut writer, games, |completed_count, total| {
+            if completed_count.is_multiple_of(progress_interval)
+                || completed_count == u64::from(games)
+            {
+                eprintln!(
+                    "progress: games={completed_count}/{} records={} elapsed_seconds={:.3}",
+                    games,
+                    total.recorded_positions,
+                    start.elapsed().as_secs_f64()
+                );
+            }
+        })
     })?;
 
     let (total, recorded) = total;
@@ -601,7 +743,7 @@ fn write_training_data(
 }
 
 /// 任意の到着順の対局を対局番号順に書き出して集計する。
-fn merge_completed_games<I, W, F>(
+pub(crate) fn merge_completed_games<I, W, F>(
     messages: I,
     writer: &mut Writer<W>,
     games: u32,
@@ -651,11 +793,27 @@ fn play_game(
     settings: PlaySettings,
     table: &mut TranspositionTable,
 ) -> io::Result<CompletedGame> {
+    play_game_from_opening(pst, rules, game_number, settings, table, None)
+}
+
+/// 実戦の開始局面では乱数手を入れず、次の局面から記録する。
+fn play_game_from_opening(
+    pst: &Pst,
+    rules: Rules,
+    game_number: u32,
+    settings: PlaySettings,
+    table: &mut TranspositionTable,
+    opening: Option<&Opening>,
+) -> io::Result<CompletedGame> {
     let game_seed = derive_seed(settings.base_seed, u64::from(game_number));
-    let mut game = generate_opening(rules, game_seed)?;
+    let mut game = starting_game(rules, game_seed, opening)?;
+    let ply_offset = opening.map_or(0, |opening| opening.ply);
     let opening_ply = game.ply_count();
-    let (injection_plan, mut injection_rng) =
+    let (mut injection_plan, mut injection_rng) =
         plan_injections(game_seed, opening_ply, settings.random_moves);
+    if opening.is_some() {
+        injection_plan.record_from = 1;
+    }
     table.clear();
     let limits = SearchLimits::new(None, Some(u64::from(settings.nodes)), None, None)
         .expect("the CLI parser accepts only non-zero node limits");
@@ -667,7 +825,7 @@ fn play_game(
     };
     let generator = MoveGenerator::new(rules.moves);
 
-    while game.result().is_none() && game.ply_count() < u32::from(settings.max_ply) {
+    while game.result().is_none() && game.ply_count() + ply_offset < u32::from(settings.max_ply) {
         if injection_plan
             .plies
             .binary_search(&game.ply_count())
@@ -733,7 +891,7 @@ fn play_game(
                     search_result.score
                 ))
             })?;
-            let ply = u16::try_from(game.ply_count()).map_err(|_| {
+            let ply = u16::try_from(game.ply_count() + ply_offset).map_err(|_| {
                 invalid_data(format!(
                     "game {game_number} ply {} does not fit in u16",
                     game.ply_count()
@@ -756,7 +914,7 @@ fn play_game(
         stats.searched_plies += 1;
     }
 
-    stats.total_plies = u64::from(game.ply_count());
+    stats.total_plies = u64::from(game.ply_count() + ply_offset);
     let records = match game.result() {
         Some(result) => {
             stats.record_result(result);
@@ -868,7 +1026,7 @@ fn generate_opening(rules: Rules, game_seed: NonZeroU64) -> io::Result<Game> {
 }
 
 /// 現局面の探索キーが同じ対局の過去に現れているかを返す。
-fn current_position_is_repeated(game: &Game) -> bool {
+pub(crate) fn current_position_is_repeated(game: &Game) -> bool {
     let history = game.search_key_history();
     let Some((current, previous)) = history.split_last() else {
         return false;
@@ -940,7 +1098,8 @@ fn print_generation_summary(
     recorded: &RecordedStatistics,
     elapsed_seconds: f64,
 ) {
-    let games = f64::from(arguments.games);
+    let game_count = stats.black_wins + stats.white_wins + stats.draws + stats.discarded_games;
+    let games = game_count as f64;
     let per_second = |count: u64| {
         if elapsed_seconds == 0.0 {
             0.0
@@ -951,7 +1110,7 @@ fn print_generation_summary(
 
     println!("summary:");
     println!("seed: {}", arguments.seed);
-    println!("games: {}", arguments.games);
+    println!("games: {game_count}");
     println!("nodes: {}", arguments.nodes);
     println!("concurrency: {}", arguments.concurrency);
     println!("max_ply: {}", arguments.max_ply);
@@ -959,7 +1118,7 @@ fn print_generation_summary(
     println!("random_moves_max: {}", arguments.random_moves);
     println!("rules: {rule_set}");
     println!("commit: {generation_commit}");
-    println!("games_completed: {}", arguments.games);
+    println!("games_completed: {game_count}");
     println!("games_discarded_max_ply: {}", stats.discarded_games);
     println!("win_reason_royal_capture: {}", stats.royal_capture_wins);
     println!("win_reason_mate: {}", stats.mate_wins);
@@ -1142,7 +1301,7 @@ fn print_record(index: u64, record: &Record, position: &Position) {
 }
 
 /// 下位エラーの型を保持してコマンドの不正データエラーへ変換する。
-fn data_error(error: impl std::error::Error + Send + Sync + 'static) -> io::Error {
+pub(crate) fn data_error(error: impl std::error::Error + Send + Sync + 'static) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error)
 }
 
@@ -1179,6 +1338,14 @@ fn write_provenance(arguments: &ProvenanceArguments) -> io::Result<()> {
     {
         return Err(data_error(RescoreCommandError::UnsupportedOrigin));
     }
+    write_mapped_provenance(arguments, None)
+}
+
+/// 対局番号と実戦棋譜の対応を含めて来歴を書く。
+pub(crate) fn write_mapped_provenance(
+    arguments: &ProvenanceArguments,
+    games: Option<Vec<GameOrigin>>,
+) -> io::Result<()> {
     let mut input = File::open(&arguments.input)?;
     let checksum = rescore::sha256(&mut input)?;
     let reader = Reader::new(BufReader::new(input)).map_err(data_error)?;
@@ -1197,7 +1364,7 @@ fn write_provenance(arguments: &ProvenanceArguments) -> io::Result<()> {
         result_origin: arguments.result_origin,
         start_origin: arguments.start_origin,
         lambda: arguments.lambda,
-        games: None,
+        games,
     };
     provenance.validate().map_err(data_error)?;
     let mut output = OpenOptions::new()
@@ -1465,7 +1632,7 @@ fn engine_default_rules() -> io::Result<Rules> {
 }
 
 /// gitサブコマンドを実行し、末尾の改行を除いた標準出力を返す。
-fn git_output(arguments: &[&str]) -> io::Result<String> {
+pub(crate) fn git_output(arguments: &[&str]) -> io::Result<String> {
     let output = Command::new("git").args(arguments).output()?;
     if !output.status.success() {
         return Err(invalid_data(format!(
@@ -1481,7 +1648,7 @@ fn git_output(arguments: &[&str]) -> io::Result<String> {
 }
 
 /// 生成コミットが40桁の16進ASCIIであることを検査する。
-fn validate_commit_hash(commit: &str) -> io::Result<()> {
+pub(crate) fn validate_commit_hash(commit: &str) -> io::Result<()> {
     if commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         Ok(())
     } else {
@@ -1787,7 +1954,8 @@ mod tests {
         let fixture = RescoreFixture::new();
         let arguments = GenerateArguments {
             output: fixture.directory.join("generated.mnsd"),
-            games: 1,
+            games: Some(1),
+            openings: None,
             seed: 42,
             nodes: 1,
             random_moves: 0,
@@ -1815,6 +1983,63 @@ mod tests {
         assert_eq!(provenance.teacher.search_condition, SearchCondition::InGame);
         assert_eq!(provenance.result_origin, ResultOrigin::Selfplay);
         assert_eq!(provenance.start_origin, StartOrigin::Random);
+    }
+
+    // フェーズ5: 一覧を最初の探索へそのまま渡し、開始局面だけは記録しない。
+    #[test]
+    fn human_opening_is_exact_and_records_start_after_its_original_ply() {
+        use minase::notation::{
+            sfen::{SetupPosition, to_extended_sfen},
+            usi,
+        };
+        let fixture = RescoreFixture::new();
+        let input: serde_json::Value =
+            include_str!("../../tests/fixtures/lishogi_import_cases.ndjson")
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .find(|game| game["id"] == "opening-prefix-2u7dwJf9")
+                .unwrap();
+        let mut original = Game::new(Rules::ENGINE_DEFAULT);
+        for text in input["moves"].as_str().unwrap().split_whitespace().take(60) {
+            original
+                .play(usi::parse(original.position(), text).unwrap())
+                .unwrap();
+        }
+        let setup = SetupPosition::new(
+            original.position().clone(),
+            original.position().lion_capture_square(),
+            61,
+        )
+        .unwrap();
+        let path = fixture.directory.join("openings.txt");
+        fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
+        let openings = read_openings(&path).unwrap();
+        let start = starting_game(
+            Rules::ENGINE_DEFAULT,
+            derive_seed(42, 1),
+            Some(&openings[0]),
+        )
+        .unwrap();
+        assert_eq!(start.position(), original.position());
+        assert_eq!(start.ply_count(), 0);
+        let completed = play_game_from_opening(
+            &minase::eval::weights().unwrap(),
+            Rules::ENGINE_DEFAULT,
+            1,
+            PlaySettings {
+                base_seed: 42,
+                nodes: 200,
+                random_moves: 0,
+                max_ply: 4000,
+            },
+            &mut test_table(),
+            Some(&openings[0]),
+        )
+        .unwrap();
+        assert_eq!(completed.stats.discarded_games, 0);
+        assert_eq!(completed.stats.planned_injections, 0);
+        assert!(!completed.records.is_empty());
+        assert!(completed.records.iter().all(|r| r.record.ply() > 60));
     }
 
     /// テスト用の小さい置換表を作る。
