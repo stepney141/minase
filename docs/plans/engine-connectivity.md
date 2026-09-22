@@ -42,7 +42,8 @@ USIとCECPの両経路で対局進行を実装し、XBoard仲介のMinase対Mina
 
 - 探索アルゴリズム、評価関数、`SearchLimits`の予算式、停止機構と探索スレッドの内部実装。探索部（search.md）が所有する。
 - ponder。本マイルストーンでは実装せず、完了時点では`go ponder`と`ponderhit`をエラーとした。先読みは後続の[USI先読み](ponder.md)が実装し、`go ponder`、`ponderhit`、および予想手つきの`bestmove`の契約は同書が所有する。`USI_Ponder`は現在も宣言しない。
-- 評価値による任意投了と引き分け提案。CECPの`feature draw=0`は維持する。
+- 評価値による任意投了。USI層の契約は[USI投了](usi-resignation.md)が定める。
+- 引き分け提案。CECPの`feature draw=0`は維持する。
 - USI拡張`moves`と`state`。自作ブラウザGUI専用であり、browser-gui.mdが所有する。
 - WinBoard/XBoardのhighlight機構による人間の対話入力支援。人間との対局は自作ブラウザGUIが担うため実装しない。
 - 実lishogiサーバへの接続。lishogiのBot対局は非レートでも公開サーバ上で閲覧可能であり、未完成のエンジンを公開の場へ出さない方針から、本マイルストーンではLishogi-Botの実送信系列を再現した台本テストまでを検証範囲とする。実接続は探索・評価の成熟後に別マイルストーンとして計画する。
@@ -126,7 +127,8 @@ Lishogi-Bot経路は`--rules lishogi`を必須とし、他の規則セットと�
 
 `InGame`で`go`を受けた局面には、常に1手以上のルート合法手がある。
 審判層が着手適用時に第23条（合法手がない場合の敗北）を裁定するため、合法手のない局面は`SetPosition`または`ApplyMove`の時点で`Finished`になっているからである。
-したがって`bestmove resign`を送出する経路は本マイルストーンには存在せず、評価値による任意投了も対象外である。
+評価値による任意投了の現行実装は、[USI投了](usi-resignation.md)の「USI層の契約」が定める。
+合法手がある局面でも、採用結果の完了した深さと評価値が投了条件を満たせば`bestmove resign`を返す。
 
 `go ponder`と`ponderhit`は本マイルストーンの対象外であり、完了時点では`info string error: ...`を出力して`bestmove`を返さなかった。
 現行の実装は先読みに対応しており、`bestmove X ponder Y`の出力、`go ponder`中の`bestmove`の保留、的中と外れの処理、および先読み中でないときの`ponderhit`のエラーは、[USI先読み](ponder.md)の「USI層の契約」が定める。
