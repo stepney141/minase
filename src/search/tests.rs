@@ -811,7 +811,9 @@ fn see_pruning_searches_rule_dependent_capture() {
     assert!(legal_moves(&board).contains(&capture));
     assert!(!see_prunes(&board, engine_rules(), &pst, capture, 200));
     assert!(!royal_under_attack(&board));
-    let alpha = evaluate(&pst, &board) + 10 * pst.pawn_value();
+    // 捕獲後の評価の上がり幅は重みに依存する（先読み教師の重みでは約10歩分）ので、
+    // 窓は捕獲の利得より十分に高い位置に置き、ノードが必ず下限で失敗するようにする。
+    let alpha = evaluate(&pst, &board) + 30 * pst.pawn_value();
     let table = small_tt();
     table.store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), 0);
     let (score, _) = run_negamax(&board, 2, alpha, alpha + 1, 0, &table);
