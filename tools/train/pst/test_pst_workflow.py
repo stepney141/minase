@@ -246,6 +246,7 @@ class WorkflowTest(unittest.TestCase):
         state = {
             "config": self.config,
             "lookahead": self.config["train"].get("lookahead"),
+            "lambda_override": self.config["train"].get("lambda_override"),
             "existing_data": workflow.check_existing_data(self.config),
             "rescores": [{"path": p, "sha256": workflow.digest(Path(p))} for p in self.config["train"]["rescore"] if p != "-"],
             "sources": workflow.source_hashes(),
@@ -282,6 +283,7 @@ class WorkflowTest(unittest.TestCase):
 
     def test_prepare_records_lookahead_and_rejects_changed_setting(self):
         self.config['train']['lookahead'] = {'gamma': .9, 'plies': 40}
+        self.config['train']['lambda_override'] = 1.0
         def command(run, label, argv, cwd):
             if argv[:3] == ['git', 'worktree', 'add']:
                 destination = Path(argv[-2])
@@ -302,6 +304,7 @@ class WorkflowTest(unittest.TestCase):
             run = self.root / 'data/run'
             state = workflow.load_prepared(run)
             self.assertEqual(state['lookahead'], {'gamma': .9, 'plies': 40})
+            self.assertEqual(state['lambda_override'], 1.0)
             state['config']['train']['lookahead']['gamma'] = .7
             (run / 'prepared.json').write_text(json.dumps(state))
             with self.assertRaisesRegex(ValueError, 'lookahead'):
@@ -351,6 +354,104 @@ class WorkflowTest(unittest.TestCase):
                 with self.subTest(name=name, operation=operation), self.assertRaisesRegex(ValueError, 'lookahead'):
                     operation(run)
             path.write_text(json.dumps(record))
+
+    def test_lambda_override_config_validation(self):
+        self.assertNotIn('lambda_override', self.config['train'])
+        for value in ('0', '0.5', '1.0'):
+            self.config_path.write_text(CONFIG.replace('[train]', '[train]\nlambda_override = ' + value))
+            config = workflow.load_config(self.config_path, self.root)
+            self.assertEqual(config['train']['lambda_override'], float(value))
+        for value in ('-0.01', '1.01', 'nan', 'inf', '-inf', 'true', '"0"'):
+            self.config_path.write_text(CONFIG.replace('[train]', '[train]\nlambda_override = ' + value))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                workflow.load_config(self.config_path, self.root)
+
+    def test_lambda_override_prepare_mismatch_blocks_all_operations(self):
+        self.config['train']['lambda_override'] = 0
+        run, _ = self.prepared()
+        original = (run / 'prepared.json').read_text()
+        changes = [lambda state: state.update(lambda_override=None),
+                   lambda state: state['config']['train'].pop('lambda_override'),
+                   lambda state: state['config']['train'].update(lambda_override=1)]
+        for change in changes:
+            state = json.loads(original)
+            change(state)
+            (run / 'prepared.json').write_text(json.dumps(state))
+            for operation in (workflow.load_prepared, workflow.train, workflow.diagnose):
+                with self.subTest(operation=operation), self.assertRaisesRegex(ValueError, 'lambda_override'):
+                    operation(run)
+        (run / 'prepared.json').write_text(original)
+        self.assertEqual(workflow.load_prepared(run)['lambda_override'], 0)
+
+    def test_lambda_override_training_diagnosis_and_record_mismatches(self):
+        from mnsd import Dataset
+        from test_train_pst import write_provenance
+        from train_pst import estimate_generation_ks
+        source = self.root / 'data/old.bin'
+        write_mnsd(source, seed=0, checksum=b'a' * 32,
+                   games=np.repeat(np.arange(1, 81), 3).tolist(), scores=[100, 200, -400] * 80)
+        human = self.root / 'data/human.bin'
+        write_mnsd(human, seed=1, checksum=b'b' * 32, games=list(range(1, 81)))
+        write_provenance(human, result_origin='human', **{'lambda': 0,
+                         'games': [{'game': i, 'id': str(i)} for i in range(1, 81)]})
+        self.config['run']['data'].append(str(human))
+        self.config['generate']['seeds'] = []
+        self.config['train'].update(rescore=['-', '-'], epochs=1, batch=64, validation_sample=16,
+                                    lookahead={'gamma': .9, 'plies': 3}, lambda_override=1)
+        run, _ = self.prepared()
+        with redirect_stdout(io.StringIO()):
+            workflow.train(run)
+        with patch.object(workflow, 'diagnose_probe', return_value=python_probe):
+            workflow.diagnose(run)
+        paths = [run / 'training/inputs.json', run / 'training/pst.training.json',
+                 run / 'diagnostics/report.json']
+        reference = Dataset([source, human], lookahead={'gamma': .9, 'plies': 3})
+        expected_ks, _ = estimate_generation_ks(reference, indices=reference.training_indices)
+        for path in paths:
+            record = json.loads(path.read_text())
+            self.assertEqual(record['lambda_override'], 1)
+            self.assertEqual([c['lambda_override'] for c in record['teacher_classes']], [1, None])
+            self.assertEqual([c['lambda'] for c in record['teacher_classes']], [1, 0])
+            self.assertEqual(record['teacher_classes'][0]['lookahead_gamma'], .9)
+            self.assertEqual(record['teacher_ks'], [expected_ks[0], None])
+            original = path.read_text()
+            changes = [lambda item: item.update(lambda_override=0),
+                       lambda item: item['teacher_classes'][0].update(lambda_override=None),
+                       lambda item: item['teacher_classes'][0].update(**{'lambda': .75})]
+            if path.name == 'inputs.json':
+                changes.append(lambda item: item['options'].update(lambda_override=0))
+            for change in changes:
+                changed = json.loads(original)
+                change(changed)
+                path.write_text(json.dumps(changed))
+                for operation in (workflow.load_prepared, workflow.train, workflow.diagnose):
+                    with self.subTest(path=path, operation=operation), self.assertRaises(ValueError):
+                        operation(run)
+            path.write_text(original)
+        workflow.load_prepared(run)
+        report = json.loads(paths[-1].read_text())
+        self.assertEqual(report['outcome_metrics']['candidate']['records'],
+                         len(reference.validation_indices))
+        commands = [json.loads(line) for line in (run / 'commands.jsonl').read_text().splitlines()]
+        argv = next(row['argv'] for row in commands if 'argv' in row)
+        self.assertEqual(argv[argv.index('--lambda-override') + 1], '1')
+
+    def test_lambda_override_explicit_zero_is_forwarded_and_recorded(self):
+        write_mnsd(self.root / 'data/old.bin', seed=0, checksum=b'a' * 32, games=list(range(1, 81)))
+        self.config['generate']['seeds'] = []
+        self.config['train'].update(rescore=['-'], lambda_override=0, epochs=1, batch=64)
+        run, _ = self.prepared()
+        with redirect_stdout(io.StringIO()):
+            workflow.train(run)
+        commands = [json.loads(line) for line in (run / 'commands.jsonl').read_text().splitlines()]
+        argv = next(row['argv'] for row in commands if 'argv' in row)
+        self.assertEqual(argv[argv.index('--lambda-override') + 1], '0')
+        for name in ('inputs.json', 'pst.training.json'):
+            record = json.loads((run / 'training' / name).read_text())
+            self.assertEqual(record['lambda_override'], 0)
+            self.assertEqual(record['teacher_ks'], [None])
+            self.assertEqual(record['teacher_classes'][0]['lambda'], 0)
+        workflow.load_prepared(run)
 
     def test_human_games_do_not_reserve_generator_seed_ranges(self):
         from test_train_pst import write_provenance

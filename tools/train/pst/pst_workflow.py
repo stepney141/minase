@@ -19,7 +19,7 @@ import time
 import tomllib
 
 from lookahead import validate_lookahead
-from mnsd import Dataset, read_header, provenance_path
+from mnsd import Dataset, read_header, provenance_path, validate_lambda_override
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCES = Path(__file__).resolve().parent
@@ -84,6 +84,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
         fields["train"].add("rescore")
     if isinstance(config["train"], dict) and "lookahead" in config["train"]:
         fields["train"].add("lookahead")
+    if isinstance(config["train"], dict) and "lambda_override" in config["train"]:
+        fields["train"].add("lambda_override")
     for section, expected in fields.items():
         if not isinstance(config[section], dict) or set(config[section]) != expected:
             raise ValueError(f"{section} fields must be {sorted(expected)}")
@@ -114,6 +116,7 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
         if right - left < generation["games"]:
             raise ValueError("generation seed ranges overlap")
     training = config["train"]
+    validate_lambda_override(training.get("lambda_override"))
     if "rescore" in training:
         if not isinstance(training["rescore"], list) or len(training["rescore"]) != len(run["data"]) + len(seeds):
             raise ValueError("train.rescore must match all existing and generated MNSD files")
@@ -165,7 +168,10 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
 
 
 def check_existing_data(config: dict) -> list[dict]:
-    dataset = Dataset(config["run"]["data"], lookahead=config["train"].get("lookahead"), rescore=config["train"]["rescore"][:len(config["run"]["data"])])
+    dataset = Dataset(config["run"]["data"],
+                      lambda_override=config["train"].get("lambda_override"),
+                      lookahead=config["train"].get("lookahead"),
+                      rescore=config["train"]["rescore"][:len(config["run"]["data"])])
     files = []
     for path, header, records, provenance in zip(config["run"]["data"], dataset.headers, dataset.records, dataset.provenance):
         if header.rule_set != RULES or len(records) == 0:
@@ -248,7 +254,9 @@ def prepare(config_path: Path) -> None:
         run_command(run, "probe-build", ["cargo", "build", "--release", "--locked", "--target-dir",
                     str(probe / "target"), "--bin", "pst_probe"], probe)
         write_json(run / "prepared.json", {
-            "config": config, "lookahead": config["train"].get("lookahead"), "existing_data": existing, "rescores": rescores, "sources": source_hashes(),
+            "config": config, "lambda_override": config["train"].get("lambda_override"),
+            "lookahead": config["train"].get("lookahead"), "existing_data": existing,
+            "rescores": rescores, "sources": source_hashes(),
             "base_sha256": digest(run / "pst-base.bin"),
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
@@ -264,6 +272,9 @@ def load_prepared(run: Path) -> dict:
     state = json.loads((run / "prepared.json").read_text())
     if state["repository"] != str(ROOT) or state["config"]["run"]["directory"] != str(run):
         raise ValueError("run directory belongs to a different repository or path")
+    validate_lambda_override(state["lambda_override"])
+    if state["lambda_override"] != state["config"]["train"].get("lambda_override"):
+        raise ValueError("lambda_override changed since prepare")
     if state["lookahead"] != state["config"]["train"].get("lookahead"):
         raise ValueError("lookahead changed since prepare")
     if source_hashes() != state["sources"]:
@@ -280,6 +291,9 @@ def load_prepared(run: Path) -> dict:
     inputs_path = run / "training/inputs.json"
     if inputs_path.exists():
         inputs = json.loads(inputs_path.read_text())
+        if (inputs["lambda_override"] != state["lambda_override"]
+                or inputs["options"].get("lambda_override") != state["lambda_override"]):
+            raise ValueError("lambda_override changed since training")
         if (inputs["lookahead"] != state["lookahead"]
                 or inputs["options"].get("lookahead") != state["lookahead"]):
             raise ValueError("lookahead changed since training")
@@ -289,8 +303,16 @@ def load_prepared(run: Path) -> dict:
         trained_path = run / "training/pst.training.json"
         if trained_path.exists():
             trained = json.loads(trained_path.read_text())
+            if trained["lambda_override"] != state["lambda_override"]:
+                raise ValueError("lambda_override differs in training result")
             if trained["lookahead"] != state["lookahead"] or trained["teacher_classes"] != inputs["teacher_classes"]:
                 raise ValueError("lookahead or teacher classes differ in training result")
+        report_path = run / "diagnostics/report.json"
+        if report_path.exists():
+            report = json.loads(report_path.read_text())
+            if (report["lambda_override"] != state["lambda_override"]
+                    or report["teacher_classes"] != inputs["teacher_classes"]):
+                raise ValueError("lambda_override or teacher classes differ in diagnostics")
     if inputs_path.parent.exists() and state["config"]["train"].get("king_features"):
         inputs = json.loads(inputs_path.read_text())
         config = state["config"]["train"]
@@ -374,9 +396,12 @@ def training_dataset(paths: list[str], config: dict) -> Dataset:
     """追加特徴を使う設定では、学習と診断に同じ列の対応を与える。"""
     if "king_features" in config and config["king_features"]:
         from train_pst import parse_ranges
-        return Dataset(paths, lookahead=config.get("lookahead"), rescore=config["rescore"], king_features=config["king_features"],
+        return Dataset(paths, lambda_override=config.get("lambda_override"),
+                       lookahead=config.get("lookahead"), rescore=config["rescore"],
+                       king_features=config["king_features"],
                        extra_columns=parse_ranges(config["extra_columns"], None))
-    return Dataset(paths, lookahead=config.get("lookahead"), rescore=config["rescore"])
+    return Dataset(paths, lambda_override=config.get("lambda_override"),
+                   lookahead=config.get("lookahead"), rescore=config["rescore"])
 
 
 def train(run: Path) -> None:
@@ -408,7 +433,8 @@ def train(run: Path) -> None:
     destination.mkdir()
     steps = (int(training_count) + config["batch"] - 1) // config["batch"]
     write_json(destination / "inputs.json", {
-        "data": files, "king_features": king_inputs, "lookahead": config.get("lookahead"),
+        "data": files, "king_features": king_inputs,
+        "lambda_override": config.get("lambda_override"), "lookahead": config.get("lookahead"),
         "mnkf_definition_id": mnkf_definition_id, "mnkf_column_count": mnkf_column_count,
         "teacher_ks": [float(k) if math.isfinite(k) else None for k in teacher_ks],
         "teacher_classes": classes, "rescore_exclusions": exclusions, "rescores": state["rescores"], "k": k, "mixed_k": mixed_k,
@@ -432,6 +458,8 @@ def train(run: Path) -> None:
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
     command += ["--rescore", *config["rescore"]]
+    if config.get("lambda_override") is not None:
+        command += ["--lambda-override", str(config["lambda_override"])]
     if config.get("lookahead") is not None:
         command += ["--lookahead-gamma", str(config["lookahead"]["gamma"]),
                     "--lookahead-plies", str(config["lookahead"]["plies"])]

@@ -33,7 +33,8 @@ learning_rate = 3.0
 epochs = 10
 batch = 16384
 seed = 1
-# 教師の混合率lambdaは各MNSDの来歴ファイルで指定する。
+# 省略時は来歴のλを使う。自己対局だけを上書きする場合は0以上1以下の有限値を指定する。
+# lambda_override = 1.0
 # 全modelで必須。0は追加損失なし。正値はmirroredだけで使える。
 # 係数は未選定のため0を例示する。実験では予備比較で採用した係数を転記する。
 removal_penalty = 0

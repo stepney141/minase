@@ -195,6 +195,7 @@ class TeacherClass:
     start_origin: str
     lookahead_gamma: float | None = None
     lookahead_plies: int | None = None
+    lambda_override: float | None = None
 
     @property
     def origin(self) -> str:
@@ -303,6 +304,12 @@ def read_rescore(path: Path, checksum: bytes, count: int, original: TeacherClass
     return teacher, records
 
 
+def validate_lambda_override(value: float | None) -> None:
+    if value is not None and (
+            type(value) not in (int, float) or not np.isfinite(value) or not 0 <= value <= 1):
+        raise ValueError("lambda_override must be finite and in 0..1")
+
+
 class Dataset:
     """複数MNSDをメモリマップのまま保持し、大域番号で参照する。"""
 
@@ -310,7 +317,8 @@ class Dataset:
                  king_features: Sequence[str | Path] | None = None,
                  extra_columns: Sequence[int] | None = None,
                  rescore: Sequence[str | Path] | None = None,
-                 lookahead: dict | None = None) -> None:
+                 lookahead: dict | None = None,
+                 lambda_override: float | None = None) -> None:
         if not paths:
             raise ValueError("at least one MNSD path is required")
 
@@ -320,6 +328,8 @@ class Dataset:
             validate_lookahead(**lookahead)
             if rescore is not None and any(str(path) != "-" for path in rescore):
                 raise ValueError("lookahead and rescore cannot be combined")
+        validate_lambda_override(lambda_override)
+        self.lambda_override = lambda_override
         self.lookahead = None if lookahead is None else dict(lookahead)
         resolved_paths = tuple(Path(path).resolve() for path in paths)
         if len(set(resolved_paths)) != len(resolved_paths):
@@ -342,6 +352,9 @@ class Dataset:
         classes = []
         lambdas = []
         def register(teacher, mix):
+            if lambda_override is not None and teacher.result_origin == "selfplay":
+                teacher = replace(teacher, lambda_override=lambda_override)
+                mix = lambda_override
             if teacher in classes:
                 index = classes.index(teacher)
                 if lambdas[index] != mix:

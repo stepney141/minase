@@ -30,7 +30,7 @@ from features import (
     mirror,
 )
 from lookahead import lookahead_options
-from mnsd import ORIGINS, Dataset, NO_LION_SQUARE, hash64
+from mnsd import ORIGINS, Dataset, NO_LION_SQUARE, hash64, validate_lambda_override
 from taper import BAND_COUNT, band_indices, band_label, PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
 
 
@@ -806,6 +806,7 @@ def command_init(arguments: argparse.Namespace) -> None:
 def command_estimate_k(arguments: argparse.Namespace) -> None:
     """estimate-kサブコマンドを実行する。"""
     dataset = Dataset(arguments.data, rescore=arguments.rescore,
+                      lambda_override=arguments.lambda_override,
                       lookahead=lookahead_options(arguments.lookahead_gamma, arguments.lookahead_plies))
     generation_ks, generation_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
     for generation, (checksum, k, count) in enumerate(
@@ -864,6 +865,7 @@ def should_replace_best_epoch(candidate_loss: float, best_loss: float) -> bool:
 
 def command_train(arguments: argparse.Namespace) -> None:
     """trainサブコマンドを実行する。"""
+    validate_lambda_override(arguments.lambda_override)
     if arguments.epochs <= 0 or arguments.batch <= 0 or arguments.validation_sample <= 0:
         raise ValueError("--epochs, --batch, and --validation-sample must be positive")
     if any(rate <= 0.0 or not math.isfinite(rate) for rate in arguments.lr):
@@ -896,6 +898,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     dataset = Dataset(arguments.data, rescore=arguments.rescore,
+                      lambda_override=arguments.lambda_override,
                       king_features=arguments.king_features, extra_columns=extra_columns,
                       lookahead=lookahead_options(arguments.lookahead_gamma, arguments.lookahead_plies))
     if dataset.training_indices.size == 0 or dataset.validation_indices.size == 0:
@@ -1105,6 +1108,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         json.dump({"validation": history, "best_epoch": best_epoch,
                    "teacher_classes": dataset.class_metadata(),
                    "lookahead": dataset.lookahead,
+                   "lambda_override": dataset.lambda_override,
                    "teacher_ks": [float(k) if np.isfinite(k) else None for k in teacher_ks],
                    "rescore_exclusions": dataset.exclusions,
                    "mnkf_definition_id": None if dataset.king_features is None else dataset.king_features.definition_id,
@@ -1134,6 +1138,7 @@ def build_parser() -> argparse.ArgumentParser:
     estimate_parser = commands.add_parser("estimate-k", help="探索値の勝率尺度Kを推定する")
     estimate_parser.add_argument("--data", required=True, nargs="+")
     estimate_parser.add_argument("--rescore", nargs="+")
+    estimate_parser.add_argument("--lambda-override", type=float)
     estimate_parser.add_argument("--lookahead-gamma", type=float)
     estimate_parser.add_argument("--lookahead-plies", type=int)
     estimate_parser.set_defaults(handler=command_estimate_k)
@@ -1141,6 +1146,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser = commands.add_parser("train", help="学習PSTを訓練する")
     train_parser.add_argument("--data", required=True, nargs="+")
     train_parser.add_argument("--rescore", nargs="+")
+    train_parser.add_argument("--lambda-override", type=float)
     train_parser.add_argument("--lookahead-gamma", type=float)
     train_parser.add_argument("--lookahead-plies", type=int)
     train_parser.add_argument("--king-features", nargs="+")
