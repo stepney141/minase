@@ -20,9 +20,10 @@
 2026年9月21日に[段階8](strength-stage8.md)（前向き枝刈りの第3層）を完了し、段階1から段階8までの採否が確定した。
 段階8ではSEE pruningとcorrection historyを採用し、improvingフラグはSTCで`H0`となり不採用、history pruningは診断で適格な候補がなく見送った。
 最終構成の固定200ペアによる進捗指標は、[段階開始版](../measurements/strength-stage8-elo200.md)に対して+65.57 Elo、[HaChu](../measurements/strength-stage8-hachu-elo200.md)に対して+541.10 Eloであり、どちらも異常0件であった。
-2026年9月23日に[段階9](strength-stage9.md)（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴）の完了処理に入った。
+2026年9月23日に[段階9](strength-stage9.md)（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴）を完了した。
 段階9では、利き数の表が速度の条件を満たさず、3つの教師の追加もいずれも診断の基準を満たさなかったので、7項目のいずれも採用せず、評価の償却と教師の道具だけを残した。
 その後、教師値を同じ対局の後続の探索値の幾何加重平均に置き換える[先読み教師値](lookahead-teacher.md)で学習PSTを再学習した候補が短時間測定で`H1`となり、利用者の決定で採用した。
+最終構成の固定200ペアによる進捗指標は、[段階開始版](../measurements/strength-stage9-elo200.md)に対して+16.7 Elo、[HaChu](../measurements/strength-stage9-hachu-elo200.md)に対して+449.4 Eloであり、HaChu側の異常5件は反則負けとして含めた。
 次の対象は、[教師の混合比λ=1.0](teacher-mixing-ratio.md)の候補と、段階10以降である。
 
 ## 目的

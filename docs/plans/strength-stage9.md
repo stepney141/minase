@@ -15,7 +15,7 @@
 
 ## 状態
 
-進行中（完了処理中）。2026年9月21日に起案して同日に着手し、2026年9月23日に完了処理へ入った。
+完了。2026年9月21日に起案して同日に着手し、2026年9月23日に完了した。
 結論は、7項目のいずれも採用せず、教師の構成は基本の教師のままとし、後続の[先読み教師値](lookahead-teacher.md)の学習PSTの再学習を利用者の決定で採用した、である。
 土台は、[土台の費用の診断](../measurements/strength-stage9-foundation-diag.md)と[利き数の表の速度](../measurements/strength-stage9-table-bench.md)により、更新の費用を下げた後も段階開始版の0.816倍で条件0.90倍を満たさず見送りとし、代替の近傍の構成も0.293倍で項目の条件を満たさないので、項目2から項目7は見送りとした。表の実装はブランチ `strength-stage9-table`、118列の診断は `strength-stage9-diag-b` に保持し、masterへは入れない。
 教師は、[診断A](../measurements/strength-stage9-depth-sensitivity.md)、[診断B](../measurements/strength-stage9-human-signal.md)、[診断C](../measurements/strength-stage9-human-start-signal.md)のいずれも基準を満たさず、[教師の構成](../measurements/strength-stage9-teacher-composition.md)は基本の教師のままと確定した。
@@ -23,7 +23,8 @@
 評価の償却は探索木を変えずに採用し、フェーズ4とフェーズ5の道具（付け直し、来歴ファイル、実戦棋譜の変換、実戦開始の生成）と、先読み教師値および混合比の上書きの学習器の変更は、後続の設計の基盤として残す。
 見送った項目1の評価側の実装と追加特徴の学習経路はコードから外した。
 フェーズ7（世代3の生成と同時学習）は、採用した項目がないので実行しない。
-残る作業は、[118列の発火率診断](../measurements/strength-stage9-activation-diag-b.md)を含む記録の保持の確認と、フェーズ8の進捗指標（段階開始版とHaChuに対する固定200ペア）の測定である。進捗指標は、先読み教師の重みとSPSAの係数を含む現在のmasterで測る。
+進捗指標は、先読み教師の重みとSPSAの係数を含む最終構成で、[段階開始版](../measurements/strength-stage9-elo200.md)に対して+16.7 Elo（95%区間[−16.9, +50.7]）、[HaChu](../measurements/strength-stage9-hachu-elo200.md)に対して+449.4 Elo（95%区間[+389.6, +534.7]、HaChu側の異常5件は反則負けとして算入）であった。
+[118列の発火率診断](../measurements/strength-stage9-activation-diag-b.md)と教師データ（`data/strength-stage9/`）は後続の研究の入力として保持する。
 
 ## 目的
 
