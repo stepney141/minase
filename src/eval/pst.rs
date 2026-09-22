@@ -6,10 +6,9 @@ use std::sync::{Arc, OnceLock};
 use sha2::{Digest, Sha256};
 
 use super::features::{
-    FEATURE_COUNT, PST_FEATURE_COUNT, active_features, active_features_for, feature_index,
-    lion_feature_index, piece_state,
+    FEATURE_COUNT, active_features, active_features_for, feature_index, lion_feature_index,
+    piece_state,
 };
-use super::king_features;
 use crate::core::mv::Undo;
 use crate::{Color, PieceCode, PieceKind, Position, Square};
 
@@ -266,27 +265,16 @@ impl Pst {
         after
     }
 
-    /// 手番側のPST累算値の写しへ追加特徴を加え、最後に補間する。
+    /// 指定手番の視点からPST累算値をセンチポーン評価へ変換する。
     pub(crate) fn evaluate_accumulator(
         &self,
         accumulator: PstAccumulator,
-        position: &Position,
+        side_to_move: Color,
     ) -> i32 {
-        let mut sums = accumulator.sums[position.side_to_move().index()];
-        self.add_extra_features(&mut sums, position);
-        let score = interpolate(sums, accumulator.piece_count);
-        debug_assert_eq!(score, evaluate(self, position));
-        score
-    }
-
-    /// 重みが0でも特徴を計算し、端点ごとの生重み和へ加える。
-    fn add_extra_features(&self, sums: &mut [i32; 2], position: &Position) {
-        for (column, value) in king_features::extract(position, position.side_to_move())
-            .into_iter()
-            .enumerate()
-        {
-            self.add_feature(sums, PST_FEATURE_COUNT + column, i32::from(value));
-        }
+        interpolate(
+            accumulator.sums[side_to_move.index()],
+            accumulator.piece_count,
+        )
     }
 }
 
@@ -465,20 +453,12 @@ fn interpolate(sums: [i32; 2], piece_count: u32) -> i32 {
     (numerator / 720).clamp(-i64::from(EVALUATION_LIMIT), i64::from(EVALUATION_LIMIT)) as i32
 }
 
-/// 学習PSTと王の安全度で局面を手番側の視点からセンチポーン評価する。
+/// 学習PSTで局面を手番側の視点からセンチポーン評価する。
 pub fn evaluate(pst: &Pst, position: &Position) -> i32 {
     let mut sums = [0_i32; 2];
     active_features(position, |feature| {
         pst.add_feature(&mut sums, feature, 1);
     });
-    pst.add_extra_features(&mut sums, position);
-    interpolate(sums, position.occupied().popcount())
-}
-
-/// 追加特徴を含めず、学習PSTだけの評価値を診断用に返す。
-pub fn evaluate_pst(pst: &Pst, position: &Position) -> i32 {
-    let mut sums = [0_i32; 2];
-    active_features(position, |feature| pst.add_feature(&mut sums, feature, 1));
     interpolate(sums, position.occupied().popcount())
 }
 
@@ -510,7 +490,7 @@ mod tests {
     use crate::Move;
     use crate::eval::features::{PIECE_STATE_COUNT, piece_state};
     use crate::eval::handcrafted::piece_value;
-    use crate::test_util::{position, position_from_codes, sq};
+    use crate::test_util::{position_from_codes, sq};
     use crate::{Color, MoveRules, PieceCode, PieceKind, Square};
 
     /// 検査用の正しいMNPTバイト列を返す。
@@ -554,147 +534,11 @@ mod tests {
     /// 全特徴で端点が異なり、升と駒状態の差分も検出できる重みを作る。
     fn distinct_pst() -> Pst {
         let mut bytes = valid_bytes();
-        for feature in 0..PST_FEATURE_COUNT {
+        for feature in 0..FEATURE_COUNT {
             set_weight(&mut bytes, 1, feature, (feature % 997) as i16 - 498);
         }
         refresh_checksum(&mut bytes);
         Pst::decode(&bytes).unwrap()
-    }
-
-    /// 追加特徴を両端点、両視点で異なる非0の係数にする。
-    fn with_extra_weights(mut pst: Pst) -> Pst {
-        for (column, pair) in pst.weights[PST_FEATURE_COUNT..].iter_mut().enumerate() {
-            *pair = [3 * column as i16 + 7, -5 * column as i16 - 11];
-        }
-        pst
-    }
-
-    /// 指示書の変換契約: 追加重み0なら固定シードの局面でも学習PSTだけと等しい。
-    #[test]
-    fn zero_extra_weights_preserve_pst_evaluation_on_seeded_positions() {
-        // 埋め込み重みは学習済みの追加特徴を持つので、追加特徴だけを0にした写しで検査する。
-        let mut adopted = Pst::decode(EMBEDDED).unwrap();
-        for pair in &mut adopted.weights[PST_FEATURE_COUNT..] {
-            *pair = [0; 2];
-        }
-        let initial = Pst::decode(&valid_bytes()).unwrap();
-        for pst in [&adopted, &initial] {
-            assert!(
-                pst.weights[PST_FEATURE_COUNT..]
-                    .iter()
-                    .all(|pair| *pair == [0; 2])
-            );
-            for position in crate::test_util::sampled_random_positions(MoveRules::standard()) {
-                assert_evaluation(pst, &position, evaluate_pst(pst, &position));
-            }
-        }
-    }
-
-    /// PSTと追加特徴を別々に丸めると失われる1センチポーンを検査する。
-    #[test]
-    fn extra_features_join_raw_sums_before_the_only_division() {
-        // 駒3枚ならq=1。黒王(0,0)の筋に前方の歩はなく、追加列3は1。
-        let position = position_with_count(3, Color::Black);
-        let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
-        for sign in [-1, 1] {
-            let mut pst = Pst::decode(&valid_bytes()).unwrap();
-            pst.weights.fill([0; 2]);
-            pst.weights[feature_index(Color::Black, king, sq(0, 0))] = [sign * 7, 0];
-            pst.weights[PST_FEATURE_COUNT + 3] = [sign, sign * 8];
-            // 7 + (1 + 89*8) = 720。どちらの項を先に除算しても0となる。
-            assert_evaluation(&pst, &position, i32::from(sign));
-        }
-    }
-
-    /// 設計書の検証契約: 非0の追加重みでも陣営・段・手番の同時交換と左右鏡映は不変。
-    #[test]
-    fn nonzero_extra_weights_preserve_evaluation_symmetries() {
-        let pst = with_extra_weights(Pst::decode(EMBEDDED).unwrap());
-        for position in crate::test_util::sampled_random_positions(MoveRules::standard()) {
-            for reflect_rank in [false, true] {
-                let map_square = |square: Square| {
-                    if reflect_rank {
-                        sq(square.file(), 11 - square.rank())
-                    } else {
-                        sq(11 - square.file(), square.rank())
-                    }
-                };
-                let pieces: Vec<_> = position
-                    .occupied()
-                    .into_iter()
-                    .map(|square| {
-                        let piece = position.piece_at(square).unwrap();
-                        let color = if reflect_rank {
-                            piece.color().unwrap().opposite()
-                        } else {
-                            piece.color().unwrap()
-                        };
-                        let mapped = if piece.is_promoted() {
-                            PieceCode::new_promoted(color, piece.kind().unwrap())
-                        } else {
-                            PieceCode::new(color, piece.kind().unwrap())
-                        }
-                        .unwrap();
-                        (map_square(square), mapped)
-                    })
-                    .collect();
-                let side = if reflect_rank {
-                    position.side_to_move().opposite()
-                } else {
-                    position.side_to_move()
-                };
-                let mut transformed = position_from_codes(side, &pieces);
-                if let Some(trigger) = position.lion_taken_by_non_lion() {
-                    transformed
-                        .set_lion_capture(Some(map_square(trigger.square)))
-                        .unwrap();
-                }
-                assert_evaluation(&pst, &transformed, evaluate(&pst, &position));
-            }
-        }
-    }
-
-    /// 非0の追加重みで主・補助ワーカーを動かし、各静的評価で全再計算と照合する。
-    #[test]
-    fn search_evaluations_with_extra_weights_match_full_recomputation() {
-        use crate::search::{SearchLimits, SearchSnapshot, TranspositionTable, search};
-        use std::num::NonZeroUsize;
-
-        let pst = with_extra_weights(Pst::decode(EMBEDDED).unwrap());
-        let codes = crate::core::rules::parse_rule_set("engine-default").unwrap();
-        let rules = crate::Rules::from_codes(&codes).unwrap();
-        let limits = SearchLimits::new(Some(4), Some(3_000), None, None).unwrap();
-        let mut table = TranspositionTable::new(1).unwrap();
-        // 王の前方に歩がない局面では項目1が発火する。初期局面は歩で遮蔽されている。
-        let exposed = position(
-            Color::Black,
-            &[
-                (sq(0, 0), Color::Black, PieceKind::King),
-                (sq(11, 11), Color::White, PieceKind::King),
-                (sq(5, 4), Color::Black, PieceKind::Rook),
-                (sq(6, 7), Color::White, PieceKind::Rook),
-            ],
-        );
-        assert_ne!(evaluate(&pst, &exposed), evaluate_pst(&pst, &exposed));
-        for position in
-            std::iter::once(exposed).chain(crate::test_util::bench_positions().into_iter().take(3))
-        {
-            let game = crate::Game::from_position(rules, position);
-            let snapshot = SearchSnapshot::from_game(&game).unwrap();
-            for threads in [1, 2] {
-                table.clear();
-                let result = search(
-                    &pst,
-                    &snapshot,
-                    &limits,
-                    NonZeroUsize::new(threads).unwrap(),
-                    &mut table,
-                )
-                .unwrap();
-                assert!(result.nodes > 0);
-                assert!(result.depth > 0);
-            }
-        }
     }
 
     /// 盤面全体を指定数の駒で埋め、最初の2枚を王にする。
@@ -718,7 +562,7 @@ mod tests {
     fn assert_evaluation(pst: &Pst, position: &Position, expected: i32) {
         assert_eq!(evaluate(pst, position), expected);
         assert_eq!(
-            pst.evaluate_accumulator(pst.refresh_accumulator(position), position),
+            pst.evaluate_accumulator(pst.refresh_accumulator(position), position.side_to_move()),
             expected
         );
     }
@@ -752,7 +596,7 @@ mod tests {
         let after = pst.update_accumulator_after_move(before, position, &undo);
         assert_eq!(after, pst.refresh_accumulator(position));
         assert_eq!(
-            pst.evaluate_accumulator(after, position),
+            pst.evaluate_accumulator(after, position.side_to_move()),
             evaluate(pst, position)
         );
         position.unmake_move(undo);
@@ -762,7 +606,7 @@ mod tests {
     /// 差分累算値が通常手、特殊移動、先獅子状態、およびnull moveで完全再計算と一致する。
     #[test]
     fn accumulator_updates_match_full_refresh_across_move_shapes() {
-        let pst = &with_extra_weights(distinct_pst());
+        let pst = &distinct_pst();
         let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
         let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
         let black_pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
@@ -875,7 +719,7 @@ mod tests {
         assert_eq!(after.piece_count, 3);
         assert!(lion_capture.lion_taken_by_non_lion().is_some());
         assert_eq!(
-            pst.evaluate_accumulator(after, &lion_capture),
+            pst.evaluate_accumulator(after, lion_capture.side_to_move()),
             evaluate(pst, &lion_capture)
         );
 
@@ -899,7 +743,7 @@ mod tests {
         assert_eq!(after_null, pst.refresh_accumulator(&lion_capture));
         assert_eq!(after_null.piece_count, 3);
         assert_eq!(
-            pst.evaluate_accumulator(after_null, &lion_capture),
+            pst.evaluate_accumulator(after_null, lion_capture.side_to_move()),
             evaluate(pst, &lion_capture)
         );
         lion_capture.unmake_null_move(null_undo);
@@ -907,7 +751,7 @@ mod tests {
         assert_eq!(after.piece_count, 3);
         assert!(lion_capture.lion_taken_by_non_lion().is_some());
         assert_eq!(
-            pst.evaluate_accumulator(after, &lion_capture),
+            pst.evaluate_accumulator(after, lion_capture.side_to_move()),
             evaluate(pst, &lion_capture)
         );
         lion_capture.unmake_move(undo);
@@ -917,11 +761,11 @@ mod tests {
     /// 固定長と異なるMNPTが拒否されることを検査する。
     #[test]
     fn decode_rejects_invalid_length() {
-        for length in [0, 79, 55_083, 55_085] {
+        for length in [0, 79, 54_987, 54_989] {
             let mut bytes = valid_bytes();
             bytes.resize(length, 0);
             assert!(
-                matches!(Pst::decode(&bytes), Err(Error::InvalidLength { expected: 55_084, actual }) if actual == length)
+                matches!(Pst::decode(&bytes), Err(Error::InvalidLength { expected: 54_988, actual }) if actual == length)
             );
         }
     }
@@ -1162,7 +1006,7 @@ mod tests {
         reflected.set_lion_capture(Some(sq(3, 6))).unwrap();
         let expected = evaluate(&pst, &position);
         assert_eq!(
-            pst.evaluate_accumulator(pst.refresh_accumulator(&position), &position),
+            pst.evaluate_accumulator(pst.refresh_accumulator(&position), Color::White),
             expected
         );
         assert_evaluation(&pst, &reflected, expected);
@@ -1213,7 +1057,7 @@ mod tests {
     #[test]
     fn checksum_covers_both_endpoints_and_piece_values() {
         let bytes = valid_bytes();
-        assert_eq!(bytes.len(), 55_084);
+        assert_eq!(bytes.len(), 54_988);
         let pst = Pst::decode(&bytes).unwrap();
         let expected: [u8; 32] = Sha256::digest(&bytes[80..]).into();
         assert_eq!(pst.checksum(), &expected);
@@ -1221,12 +1065,7 @@ mod tests {
             pst.k(),
             f32::from_le_bytes(bytes[12..16].try_into().unwrap())
         );
-        for offset in [
-            80,
-            80 + FEATURE_COUNT * 2,
-            80 + FEATURE_COUNT * 4,
-            bytes.len() - 1,
-        ] {
+        for offset in [80, 80 + 13_680 * 2, 80 + 13_680 * 4, bytes.len() - 1] {
             let mut corrupt = bytes.clone();
             corrupt[offset] ^= 1;
             assert!(matches!(

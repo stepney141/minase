@@ -186,16 +186,15 @@ class HumanSignalTests(unittest.TestCase):
         self.assertEqual(len(report['models']['candidate']['cv_failures']), 5)
         self.assertGreater(report['models']['candidate']['alpha'], 0)
 
-    def test_pst_uses_output_k_taper_and_ignores_extra_weights(self):
+    def test_pst_uses_output_k_and_taper(self):
         records = np.zeros(3, dtype=RECORD_DTYPE)
         records['lion'] = 255
         for row, count in zip(records, [2, 47, 92]):
             row['board'][:count] = 1
         # 全升mg=1cp、eg=3cp、φ=0,1/2,1より、評価値は6,94,92cp。
-        mg = np.full(FEATURE_COUNT + 1, 8, dtype=np.int16)
-        eg = np.full(FEATURE_COUNT + 1, 24, dtype=np.int16)
-        mg[-1] = eg[-1] = 30000
-        write_mnpt(self.pst, mg, eg, initial_piece_values(), 1000., feature_count=len(mg))
+        mg = np.full(FEATURE_COUNT, 8, dtype=np.int16)
+        eg = np.full(FEATURE_COUNT, 24, dtype=np.int16)
+        write_mnpt(self.pst, mg, eg, initial_piece_values(), 1000.)
         np.testing.assert_allclose(diag.pst_logits(records, self.pst, 10.), [.6, 9.4, 9.2], rtol=1e-6)
 
     def test_empty_validation_reports_insufficient_without_nonfinite_json(self):

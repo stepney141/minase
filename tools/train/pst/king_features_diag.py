@@ -18,8 +18,27 @@ from features import feature_indices
 from mnsd import COLUMN_COUNT, DEFINITION_ID, Dataset, KingFeatures
 from taper import phase_ratios
 from train_pst import (
-    build_targets, estimate_generation_ks, make_model, model_logits, parse_ranges, read_mnpt,
+    build_targets, estimate_generation_ks, make_model, model_logits, read_mnpt,
 )
+
+
+def parse_ranges(value: str, limit: int) -> list[int]:
+    """半開区間を列番号へ展開し、診断対象の列数に収まることを検査する。"""
+    result = []
+    for interval in value.split(","):
+        bounds = interval.split(":")
+        if len(bounds) != 2 or not all(part.isascii() and part.isdigit() for part in bounds):
+            raise ValueError("ranges must be comma-separated half-open intervals, e.g. 0:24,62:68")
+        start, stop = map(int, bounds)
+        if not 0 <= start < stop:
+            raise ValueError(f"range {interval} must be nonempty and increasing")
+        if stop > limit:
+            raise ValueError(f"range {interval} is outside 0:{limit}")
+        result.extend(range(start, stop))
+    if len(set(result)) != len(result):
+        raise ValueError("ranges must not overlap")
+    return result
+
 
 def column_names() -> list[str]:
     """定義ID 1の列順を、人が検査できる形で返す。"""

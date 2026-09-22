@@ -314,8 +314,6 @@ class Dataset:
     """複数MNSDをメモリマップのまま保持し、大域番号で参照する。"""
 
     def __init__(self, paths: Sequence[str | Path], *,
-                 king_features: Sequence[str | Path] | None = None,
-                 extra_columns: Sequence[int] | None = None,
                  rescore: Sequence[str | Path] | None = None,
                  lookahead: dict | None = None,
                  lambda_override: float | None = None) -> None:
@@ -441,17 +439,6 @@ class Dataset:
         self.validation_indices_by_file = tuple(validation_indices_by_file)
         self.training_indices = np.concatenate(training_indices_by_file)
         self.validation_indices = np.concatenate(validation_indices_by_file)
-        if (king_features is None) != (extra_columns is None):
-            raise ValueError("king features and extra columns must be specified together")
-        self.extra_columns = None if extra_columns is None else np.asarray(extra_columns, dtype=np.int64)
-        self.king_features = (None if king_features is None
-                              else KingFeatures(self, king_features, self.extra_columns))
-
-    def gather_extra(self, indices: NDArray[np.int64]) -> np.ndarray | None:
-        """モデルが使う追加特徴を、指定した列順と大域局面番号で読む。"""
-        if self.king_features is None:
-            return None
-        return self.king_features.gather(indices)
 
     @property
     def record_count(self) -> int:

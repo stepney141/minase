@@ -44,15 +44,6 @@ validation_sample = 10000
 # lookahead = { gamma = 0.9, plies = 40 }
 # 付け直しはrun.data、生成シードの順。なしは"-"。項目の省略は全てなし。
 rescore = ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"]
-# 追加特徴を使わない場合は以下の4項目をまとめて省略してもよい。
-# 使用時は全MNSD（run.data、生成シード順）に対応するMNKFを同順で指定する。
-king_features = []
-# 使用例: "0:24,62:68"。MNKFの列をこの順にモデルへ並べる。
-extra_columns = ""
-# 使用例: "24:30"。上で選んだモデルの追加特徴内の番号で指定する。
-train_extra = ""
-# trueならPSTを固定し、removal_penalty = 0、kは基準MNPTと同値にする。
-freeze_pst = false
 
 [diagnose]
 sample_size = 10000

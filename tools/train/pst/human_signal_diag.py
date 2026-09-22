@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from features import FEATURE_COUNT, feature_indices
+from features import feature_indices
 from king_features_diag import column_names
 from mnsd import HEADER, hash64, map_records, read_header, read_provenance, sha256_file
 from taper import phase_ratios
@@ -34,8 +34,8 @@ def id_hash(identifier: str) -> int:
 def pst_logits(records: np.ndarray, pst: Path, output_k: float) -> np.ndarray:
     if not np.isfinite(output_k) or output_k <= 0:
         raise ValueError('output K must be finite and positive')
-    mg, eg, _, _ = read_mnpt(pst, feature_count=None)
-    initial = torch.as_tensor(np.column_stack((mg[:FEATURE_COUNT], eg[:FEATURE_COUNT])).astype(np.float32) / 8)
+    mg, eg, _, _ = read_mnpt(pst)
+    initial = torch.as_tensor(np.column_stack((mg, eg)).astype(np.float32) / 8)
     model = make_model(initial, torch.device('cpu'), 'tapered').eval()
     result = np.empty(len(records))
     with torch.no_grad():

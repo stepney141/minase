@@ -1078,7 +1078,7 @@ fn run_main_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position),
+        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -1191,7 +1191,7 @@ fn run_auxiliary_worker(
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position),
+        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -1444,8 +1444,10 @@ impl Searcher<'_> {
             && beta.abs() < MATE_THRESHOLD)
             .then(|| {
                 let static_eval = *static_eval.get_or_insert_with(|| {
-                    self.pst
-                        .evaluate_accumulator(self.accumulators[ply as usize], position)
+                    self.pst.evaluate_accumulator(
+                        self.accumulators[ply as usize],
+                        position.side_to_move(),
+                    )
                 });
                 let margin = futility_margin(self.pst.pawn_value(), depth);
                 static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
@@ -1533,7 +1535,7 @@ impl Searcher<'_> {
         if best_score.abs() < MATE_THRESHOLD && !best_capture {
             let static_eval = *static_eval.get_or_insert_with(|| {
                 self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position)
+                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move())
             });
             if (bound == Bound::Exact
                 || (bound == Bound::Upper && best_score < static_eval)
@@ -1570,13 +1572,13 @@ impl Searcher<'_> {
         if ply >= MAX_PLY {
             return Some(
                 self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position),
+                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
             );
         }
 
         let stand_pat = self
             .pst
-            .evaluate_accumulator(self.accumulators[ply as usize], position);
+            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
         if stand_pat >= beta {
             return Some(stand_pat);
         }

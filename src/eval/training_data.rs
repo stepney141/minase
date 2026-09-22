@@ -3,10 +3,6 @@
 use core::fmt;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
-use sha2::{Digest, Sha256};
-
-use super::king_features;
-
 use crate::core::piece::PIECE_KIND_COUNT;
 use crate::{
     BOARD_SQUARE_COUNT, Color, GameResult, IllegalMove, Move, MoveGenerator, PieceCode, PieceKind,
@@ -21,39 +17,6 @@ pub const FORMAT_VERSION: u32 = 1;
 pub const HEADER_LEN: usize = 136;
 /// 学習データレコードのバイト数。
 pub const RECORD_LEN: usize = 160;
-
-/// MNSD全体のSHA-256と王の安全度特徴をMNKF形式で逐次書き出す。
-///
-/// 段階9フェーズ0の交換形式。入力は先頭から2回読み、局面は1件ずつ復元する。
-/// 入出力には呼出側でバッファを付ける。完了時には出力をflushする。
-pub fn write_king_features<R: Read + Seek, W: Write>(
-    mut input: R,
-    mut output: W,
-) -> Result<(), Error> {
-    input.seek(SeekFrom::Start(0))?;
-    let mut hash = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = input.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-    }
-    let mut reader = Reader::new(input)?;
-    output.write_all(b"MNKF")?;
-    output.write_all(&1_u32.to_le_bytes())?;
-    output.write_all(&king_features::DEFINITION_ID.to_le_bytes())?;
-    output.write_all(&(king_features::COLUMN_COUNT as u32).to_le_bytes())?;
-    output.write_all(&reader.header().record_count().to_le_bytes())?;
-    output.write_all(&hash.finalize())?;
-    while let Some(record) = reader.read_record()? {
-        let position = record.to_position()?;
-        output.write_all(&king_features::extract(&position, position.side_to_move()))?;
-    }
-    output.flush()?;
-    Ok(())
-}
 
 /// 規則セット名欄のバイト数。
 const RULE_SET_LEN: usize = 32;

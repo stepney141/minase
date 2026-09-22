@@ -4,11 +4,7 @@ use crate::core::piece::PIECE_KIND_COUNT;
 use crate::{Color, PieceCode, PieceKind, Position, Square};
 
 /// 学習評価関数が使う特徴の総数。
-pub(super) const FEATURE_COUNT: usize = PST_FEATURE_COUNT + EXTRA_FEATURE_COUNT;
-/// 駒と升、および先獅子に基づく学習PSTの特徴数。
-pub(super) const PST_FEATURE_COUNT: usize = 13_680;
-/// 局面から毎回計算する王の安全度の特徴数。
-pub(super) const EXTRA_FEATURE_COUNT: usize = super::king_features::COLUMN_COUNT;
+pub(super) const FEATURE_COUNT: usize = 13_680;
 /// 駒種と現在の成り可否を区別した駒状態の総数。
 pub(super) const PIECE_STATE_COUNT: usize = 47;
 /// 駒と升の組からなる特徴の総数。

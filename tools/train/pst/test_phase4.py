@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 from features import FEATURE_COUNT, INITIAL_BOARD
-from mnsd import Dataset, HEADER, RECORD_DTYPE, provenance_path, write_mnsd
+from mnsd import Dataset, HEADER, KingFeatures, RECORD_DTYPE, provenance_path, write_mnsd
 from test_train_pst import write_provenance
 from train_pst import build_targets, estimate_generation_ks, make_model, validation_loss
 
@@ -181,12 +181,13 @@ class Phase4Test(unittest.TestCase):
         write_rescore(self.sidecar, self.source, rows)
         features = self.root / "features.bin"
         features.write_bytes(HEADER.pack(b"MNKF", 1, 1, 1, 100, hashlib.sha256(before).digest()) + bytes(range(100)))
-        replaced = Dataset([self.source], rescore=[self.sidecar], king_features=[features], extra_columns=[0])
+        replaced = Dataset([self.source], rescore=[self.sidecar])
+        mapped_features = KingFeatures(replaced, [features], [0])
         expected_kept = np.array([0, 1, *range(7, 100)])
         self.assertEqual(replaced.exclusions, {"mate_band": 3, "tactical": 2, "depth_incomplete": 1, "total": 5})
         kept = np.sort(np.concatenate((replaced.training_indices, replaced.validation_indices)))
         np.testing.assert_array_equal(kept, expected_kept)
-        np.testing.assert_array_equal(replaced.gather_extra(kept)[:, 0], expected_kept)
+        np.testing.assert_array_equal(mapped_features.gather(kept)[:, 0], expected_kept)
         direct_rows = self.rows[expected_kept].copy()
         direct_rows["score"][1:] = [rows[i][2] for i in expected_kept[1:]]
         direct = self.root / "direct.bin"

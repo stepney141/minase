@@ -12,7 +12,6 @@ from numpy.typing import NDArray
 
 from features import (
     BOARD_SQUARE_COUNT,
-    FEATURE_COUNT,
     COLOR_BY_BYTE,
     INITIAL_BOARD,
     PIECE_STATE_BY_BYTE,
@@ -42,7 +41,6 @@ from train_pst import (
     float_evaluate,
     integer_evaluate,
     read_mnpt,
-    write_mnpt,
 )
 
 # (MNPTのパス, MNSDのパス, 成り手を列挙するか) を受け、Rustの評価結果をレコード順に返す。
@@ -53,29 +51,13 @@ class Weights:
     """MNPTから読んだ両端点、駒価値、およびKを保持する。"""
 
     def __init__(self, path: Path) -> None:
-        self.middlegame, self.endgame, self.piece_values, self.k = read_mnpt(path, feature_count=None)
+        self.middlegame, self.endgame, self.piece_values, self.k = read_mnpt(path)
 
-    def evaluate(self, records: np.ndarray, extra: np.ndarray | None = None) -> NDArray[np.int32]:
+    def evaluate(self, records: np.ndarray) -> NDArray[np.int32]:
         features = feature_indices(records["board"], records["stm"], records["lion"])
         return integer_evaluate(
-            self.middlegame, self.endgame, features, phase_numerators(records["board"]), extra
+            self.middlegame, self.endgame, features, phase_numerators(records["board"])
         )
-
-    def evaluate_pst(self, records: np.ndarray) -> NDArray[np.int32]:
-        features = feature_indices(records["board"], records["stm"], records["lion"])
-        return integer_evaluate(self.middlegame[:FEATURE_COUNT], self.endgame[:FEATURE_COUNT],
-                                features, phase_numerators(records["board"]))
-
-    def probe_features(self, rows: list[dict]) -> np.ndarray | None:
-        columns = len(self.middlegame) - FEATURE_COUNT
-        if not columns:
-            if any("king_features" in row and len(row["king_features"]) != 0 for row in rows):
-                raise ValueError("probe king_features column count does not match weights")
-            return None
-        values = np.asarray([row["king_features"] for row in rows], dtype=np.int64)
-        if values.shape != (len(rows), columns):
-            raise ValueError("probe king_features column count does not match weights")
-        return values
 
 
 def check_probe(model: Weights, records: np.ndarray, rows: list[dict], name: str) -> np.ndarray:
@@ -83,7 +65,7 @@ def check_probe(model: Weights, records: np.ndarray, rows: list[dict], name: str
         raise ValueError(f"Rust probe omitted records for {name}")
     if [row["index"] for row in rows] != list(range(len(records))):
         raise ValueError(f"Rust probe record order differs for {name}")
-    scores = model.evaluate(records, model.probe_features(rows))
+    scores = model.evaluate(records)
     if not np.array_equal(scores, [row["eval"] for row in rows]):
         raise ValueError(f"Rust evaluation disagrees with the Python reference for {name}")
     return scores
@@ -141,7 +123,7 @@ def _band_losses(
                                 scores=dataset.teacher_scores(chunk)).astype(np.float64)
         np.add.at(counts, (generations, bands), 1)
         for name, model in models.items():
-            logits = model.evaluate(records, dataset.gather_extra(chunk)).astype(np.float64) / model.k
+            logits = model.evaluate(records).astype(np.float64) / model.k
             losses = np.logaddexp(0.0, logits) - targets * logits
             np.add.at(sums[name], (generations, bands), losses)
     result = {}
@@ -161,7 +143,7 @@ def outcome_metrics(dataset: Dataset, models: dict[str, Weights]) -> dict:
         for start in range(0, validation.size, BATCH):
             chunk = validation[start:start + BATCH]
             records = dataset.gather(chunk)
-            scores = model.evaluate(records, dataset.gather_extra(chunk)).astype(np.float64)
+            scores = model.evaluate(records).astype(np.float64)
             results = records["result"].astype(np.float64) / 2
             logits = scores / model.k
             losses = np.logaddexp(0.0, logits) - results * logits
@@ -236,7 +218,7 @@ def _removal_report(records: np.ndarray, models: dict[str, Weights]) -> list[dic
             "evaluations": {},
             "removals": [],
         }
-        scores = {name: model.evaluate_pst(variants) for name, model in models.items()}
+        scores = {name: model.evaluate(variants) for name, model in models.items()}
         for name in models:
             entry["evaluations"][name] = int(scores[name][0])
         for offset, square in enumerate(squares, start=1):
@@ -283,7 +265,7 @@ def _total_removal_report(records: np.ndarray, reports: list[dict], models: dict
                 removal["skipped"][name] = row["skipped"]
                 skipped += 1
                 continue
-            score = model.evaluate(variants[index:index + 1], model.probe_features([row]))[0]
+            score = model.evaluate(variants[index:index + 1])[0]
             if int(score) != row["eval"]:
                 raise ValueError(f"Rust removal evaluation disagrees for {name}")
             removal["total_delta_cp"][name] = int(score) - int(before[name][position])
@@ -310,17 +292,7 @@ def diagnose(
     models = {"base": Weights(base_path), "candidate": Weights(candidate_path)}
     if not np.array_equal(models["base"].piece_values, models["candidate"].piece_values):
         raise ValueError("candidate piece values differ from the base")
-    base, candidate = models["base"], models["candidate"]
-    if len(base.middlegame) > len(candidate.middlegame):
-        raise ValueError("base has more features than candidate")
-    if len(base.middlegame) < len(candidate.middlegame):
-        # 設計書の明示的な変換: 新しい列だけを0にし、候補バイナリで基準を評価する。
-        padding = len(candidate.middlegame) - len(base.middlegame)
-        base.middlegame = np.pad(base.middlegame, (0, padding))
-        base.endgame = np.pad(base.endgame, (0, padding))
-        base_path = output_dir / "diagnostic-base.bin"
-        write_mnpt(base_path, base.middlegame, base.endgame, base.piece_values, base.k,
-                   feature_count=len(base.middlegame))
+    candidate = models["candidate"]
     float_weights = np.load(candidate_float_path)
     if any(float_weights[key].shape != candidate.middlegame.shape for key in ("middlegame", "endgame")):
         raise ValueError("float weights do not match candidate feature count")
@@ -384,7 +356,7 @@ def diagnose(
                 raw = dataset.teacher_scores(indices)
                 scaled = raw * (models["candidate"].k / teacher_ks[generation])
                 for name, model in models.items():
-                    entry[name] = _error_summary(model.evaluate(records, dataset.gather_extra(indices)).astype(np.float64), scaled, raw)
+                    entry[name] = _error_summary(model.evaluate(records).astype(np.float64), scaled, raw)
         report["bands"].append(entry)
 
     if not sample_chunks:
@@ -401,13 +373,9 @@ def diagnose(
         report["rust_agreement"][name] = len(checked)
         if name == "candidate":
             integer = checked
-            extra = models[name].probe_features(probed)
-            stored_extra = dataset.gather_extra(union)
-            if extra is not None and not np.array_equal(extra, stored_extra):
-                raise ValueError("MNKF selected columns disagree with candidate probe")
     floating = float_evaluate(
         float_weights["middlegame"], float_weights["endgame"], features,
-        phase_ratios(union_records["board"]), extra,
+        phase_ratios(union_records["board"]),
     )
     errors = np.abs(floating - integer.astype(np.float32))
     report["quantization"] = {
@@ -457,7 +425,7 @@ def diagnose(
                 for field in ("board", "stm", "lion"):
                     after[field] = [move["after"][field] for move in moves]
                 after_rows = [move["after"] for move in moves]
-                after_scores = models[name].evaluate(after, models[name].probe_features(after_rows)).astype(np.int64)
+                after_scores = models[name].evaluate(after).astype(np.int64)
                 if any("eval" in row for row in after_rows) and not np.array_equal(
                     after_scores, [row["eval"] for row in after_rows]
                 ):
@@ -483,15 +451,13 @@ def diagnose(
 
 def main() -> None:
     import argparse
-    from train_pst import float_weights_path, parse_ranges
+    from train_pst import float_weights_path
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", nargs="+", required=True)
     parser.add_argument("--rescore", nargs="+")
     parser.add_argument("--lambda-override", type=float)
     parser.add_argument("--lookahead-gamma", type=float)
     parser.add_argument("--lookahead-plies", type=int)
-    parser.add_argument("--king-features", nargs="+")
-    parser.add_argument("--extra-columns")
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--probe", type=Path, required=True)
@@ -500,10 +466,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
     try:
-        columns = None if args.extra_columns is None else parse_ranges(args.extra_columns, None)
-        dataset = Dataset(args.data, rescore=args.rescore, king_features=args.king_features,
+        dataset = Dataset(args.data, rescore=args.rescore,
                           lambda_override=args.lambda_override,
-                          extra_columns=columns,
                           lookahead=lookahead_options(args.lookahead_gamma, args.lookahead_plies))
         args.output_dir.mkdir()
         report = diagnose(dataset, args.base, args.candidate, float_weights_path(args.candidate),
