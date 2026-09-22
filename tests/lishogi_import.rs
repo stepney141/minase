@@ -128,7 +128,7 @@ fn games_filter_in_specified_order_and_preserve_provenance_and_records() {
         ]
     );
     let mut reader = Reader::new(File::open(dir.path("one.mnsd")).unwrap()).unwrap();
-    assert_eq!(reader.header().rule_set(), "engine-default");
+    assert_eq!(reader.header().rule_set(), "L0,P0,R1,E0");
     assert_eq!(reader.header().teacher_nodes(), 200);
     let mut counts = [0; 3];
     let mut last_game = 1;

@@ -609,8 +609,13 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
         created.push(common.output.clone());
         let (mut text_output, mut writer) = if let Some((seed, _)) = generation {
             let pst = minase::eval::weights().map_err(data_error)?;
+            // MNSDの規則セット名は selfplay_gen と同じく規則コードの列挙で書く。
             let header = Header::new(
-                "engine-default".to_owned(),
+                minase::Rules::from_codes(
+                    &minase::core::rules::parse_rule_set("engine-default").map_err(data_error)?,
+                )
+                .map_err(data_error)?
+                .to_string(),
                 commit.clone(),
                 *pst.checksum(),
                 common.nodes.get(),
