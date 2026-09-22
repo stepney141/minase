@@ -65,44 +65,19 @@ impl Store {
         expected: &Manifest,
     ) -> io::Result<(Self, BTreeMap<u64, IterationRecord>)> {
         let lock = lock_run_directory(root)?;
-        let manifest: Manifest = read_json(&root.join("manifest.json"))?;
+        let manifest = read_manifest(root)?;
         if &manifest != expected {
             return Err(invalid("manifest does not match requested session"));
         }
-        let mut records = BTreeMap::new();
-        let directory = root.join("iterations");
-        for entry in fs::read_dir(&directory)? {
+        let records = read_iterations(root, expected.settings.iterations)?;
+        validate_chain(&expected.settings, &records)?;
+        // 書きかけの記録を削除するのは、再開するときだけである。
+        for entry in fs::read_dir(root.join("iterations"))? {
             let entry = entry?;
-            if !entry.file_type()?.is_file() {
-                return Err(invalid("unexpected non-file in iterations"));
-            }
-            let name = entry
-                .file_name()
-                .into_string()
-                .map_err(|_| invalid("non-UTF-8 iteration filename"))?;
-            if let Some(digits) = name
-                .strip_prefix('.')
-                .and_then(|s| s.strip_suffix(".json.tmp"))
-                && digits.len() == 20
-                && digits.bytes().all(|b| b.is_ascii_digit())
-            {
+            if entry.file_name().to_str().is_some_and(is_temporary) {
                 fs::remove_file(entry.path())?;
-                continue;
-            }
-            let k = name
-                .strip_suffix(".json")
-                .filter(|s| s.len() == 20 && s.bytes().all(|b| b.is_ascii_digit()))
-                .and_then(|s| s.parse::<u64>().ok())
-                .ok_or_else(|| invalid("invalid iteration filename"))?;
-            let record: IterationRecord = read_json(&entry.path())?;
-            if record.k != k || k == 0 || k > expected.settings.iterations {
-                return Err(invalid("iteration filename or number mismatch"));
-            }
-            if records.insert(k, record).is_some() {
-                return Err(invalid("duplicate iteration"));
             }
         }
-        validate_chain(&expected.settings, &records)?;
         Ok((
             Self {
                 root: root.to_owned(),
@@ -215,4 +190,50 @@ pub(super) fn validate_chain(
         }
     }
     Ok(theta)
+}
+
+/// ロックを保持する呼び出し側へ、保存された実行条件を返す。
+pub(super) fn read_manifest(root: &Path) -> io::Result<Manifest> {
+    read_json(&root.join("manifest.json"))
+}
+
+fn is_temporary(name: &str) -> bool {
+    name.strip_prefix('.')
+        .and_then(|s| s.strip_suffix(".json.tmp"))
+        .is_some_and(|s| s.len() == 20 && s.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// 反復記録を読む。一時ファイルは変更せずに無視する。
+pub(super) fn read_iterations(
+    root: &Path,
+    iterations: u64,
+) -> io::Result<BTreeMap<u64, IterationRecord>> {
+    let mut records = BTreeMap::new();
+    let directory = root.join("iterations");
+    for entry in fs::read_dir(&directory)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            return Err(invalid("unexpected non-file in iterations"));
+        }
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| invalid("non-UTF-8 iteration filename"))?;
+        if is_temporary(&name) {
+            continue;
+        }
+        let k = name
+            .strip_suffix(".json")
+            .filter(|s| s.len() == 20 && s.bytes().all(|b| b.is_ascii_digit()))
+            .and_then(|s| s.parse::<u64>().ok())
+            .ok_or_else(|| invalid("invalid iteration filename"))?;
+        let record: IterationRecord = read_json(&entry.path())?;
+        if record.k != k || k == 0 || k > iterations {
+            return Err(invalid("iteration filename or number mismatch"));
+        }
+        if records.insert(k, record).is_some() {
+            return Err(invalid("duplicate iteration"));
+        }
+    }
+    Ok(records)
 }

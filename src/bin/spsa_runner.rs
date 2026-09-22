@@ -9,6 +9,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "spsa_runner/apply.rs"]
+mod apply;
 #[path = "spsa_runner/model.rs"]
 mod model;
 #[path = "spsa_runner/params.rs"]
@@ -67,6 +69,15 @@ struct Arguments {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 完了した調整結果を係数表の既定値へ反映する。
+    Apply {
+        /// 完了したセッションの実行ディレクトリ。
+        #[arg(long)]
+        run_dir: PathBuf,
+        /// 書き換える係数表のソースファイル。
+        #[arg(long)]
+        source: PathBuf,
+    },
     /// USIのTune_宣言から係数ファイルを標準出力へ生成する。
     Params {
         #[arg(long, value_parser = tuning_spec)]
@@ -168,6 +179,15 @@ fn print_theta(settings: &Settings, theta: &[f64]) {
 }
 
 fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(Command::Apply { run_dir, source }) = &arguments.command {
+        let report = apply::apply(run_dir, source)?;
+        use std::io::Write;
+        io::stdout()
+            .lock()
+            .write_all(report.as_bytes())
+            .map_err(apply::ApplyError::AfterWrite)?;
+        return Ok(());
+    }
     if let Some(Command::Params { engine, rules }) = arguments.command {
         Rules::from_codes(&parse_rule_set(&rules)?)?;
         let player = resolve_engine(

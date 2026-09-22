@@ -941,3 +941,412 @@ fn session_rejects_counter_overflow_and_nonfinite_schedule() {
     s.parameters[0].c_end = f64::MIN_POSITIVE;
     assert!(validate_settings(&s).is_err());
 }
+
+// spsa-apply.md「検証」: 保存記録は既存の構築手順で作り、エンジンを起動しない。
+const APPLY_TABLE: &str = "// outside X(x): 250, 100, 400;\nparameters! {\n    /// X の説明。250 は変更しない。\n    X(x): +250, 100, 400;\n    Y(y): -2, -10, 10;\n    Z(z): 9, 0, 20;\n}\n// end\n";
+
+fn apply_session(s: Settings, completed: u64, signs: [i8; 2]) -> Directory {
+    let directory = Directory::new();
+    let m = manifest(s);
+    let store = Store::create(&directory.0, &m).unwrap();
+    let mut theta = m.settings.initial_theta();
+    for k in 1..=completed {
+        let mut issued = issue(&m.settings, &theta, k);
+        while let Some(values) = issued.pending.pop_front() {
+            let observation = pair(values.number, signs);
+            issued
+                .finished
+                .push(PairObservation::from_completed(values, observation));
+        }
+        let record = issued.complete(&m.settings, &theta, k);
+        store.save(&record).unwrap();
+        theta = record.theta;
+    }
+    directory
+}
+
+fn apply_source(directory: &Directory, text: &str) -> PathBuf {
+    let source = directory.0.join("params.rs");
+    fs::write(&source, text).unwrap();
+    source
+}
+
+fn apply_error(directory: &Directory, text: &str) -> apply::ApplyError {
+    let source = apply_source(directory, text);
+    let result = apply::apply(&directory.0, &source).unwrap_err();
+    assert_eq!(fs::read(&source).unwrap(), text.as_bytes());
+    result
+}
+
+#[test]
+fn apply_changes_only_default_literals_and_preserves_all_session_files() {
+    let mut s = settings(1, 1, 1);
+    s.alpha = 0.0;
+    s.gamma = 0.0;
+    s.parameters = vec![
+        Parameter {
+            c_end: 1.0,
+            r_end: 0.25,
+            ..parameter()
+        },
+        Parameter {
+            name: "Y".to_owned(),
+            start: -2.0,
+            min: -10,
+            max: 10,
+            c_end: 1.0,
+            r_end: 0.25,
+        },
+        Parameter {
+            name: "Z".to_owned(),
+            start: 9.0,
+            min: 0,
+            max: 20,
+            c_end: 1.0,
+            r_end: 0.125,
+        },
+    ];
+    s.seed = (1..1000)
+        .find(|seed| {
+            let candidate = Settings {
+                seed: *seed,
+                ..s.clone()
+            };
+            flips(&candidate, 1) == [1, -1, 1]
+        })
+        .unwrap();
+    let directory = apply_session(s, 1, [1, 1]);
+    let source = apply_source(&directory, APPLY_TABLE);
+    let temporary = directory
+        .0
+        .join("iterations/.00000000000000000002.json.tmp");
+    fs::write(&temporary, b"{partial\r\n").unwrap();
+    let saved: Vec<_> = [
+        directory.0.join("manifest.json"),
+        directory.0.join("iterations/00000000000000000001.json"),
+        temporary,
+    ]
+    .into_iter()
+    .map(|path| {
+        let bytes = fs::read(&path).unwrap();
+        (path, bytes)
+    })
+    .collect();
+    let report = apply::apply(&directory.0, &source).unwrap();
+    let expected = APPLY_TABLE
+        .replace("X(x): +250", "X(x): 251")
+        .replace("Y(y): -2", "Y(y): -3");
+    assert_eq!(fs::read(&source).unwrap(), expected.as_bytes());
+    assert_eq!(
+        report,
+        format!(
+            "X: start=250 final=250.5 integer=251 changed\nY: start=-2 final=-2.5 integer=-3 changed\nZ: start=9 final=9.25 integer=9 unchanged\nchanged=2 unchanged=1 source={}\n",
+            source.display()
+        )
+    );
+    for (path, bytes) in saved {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn apply_rejects_empty_and_truncated_sessions_before_chain_validation() {
+    for completed in [0, 2] {
+        let directory = apply_session(settings(3, 1, 1), completed, [0, 0]);
+        assert!(
+            matches!(apply_error(&directory, APPLY_TABLE), apply::ApplyError::Incomplete { completed: actual, total: 3 } if actual == completed)
+        );
+    }
+}
+
+#[test]
+fn apply_rejects_a_complete_session_with_corrupted_theta() {
+    let directory = apply_session(settings(2, 1, 1), 2, [0, 0]);
+    let path = directory.0.join("iterations/00000000000000000002.json");
+    let mut record: IterationRecord = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    record.theta[0] = 251.0;
+    fs::write(path, serde_json::to_vec(&record).unwrap()).unwrap();
+    assert!(matches!(
+        apply_error(&directory, APPLY_TABLE),
+        apply::ApplyError::Chain(_)
+    ));
+}
+
+#[test]
+fn apply_validates_manifest_settings_before_reading_iterations() {
+    let base = settings(1, 1, 1);
+    let mut invalid = Vec::new();
+    let mut s = base.clone();
+    s.pairs_per_iteration = 0;
+    invalid.push(s);
+    let mut s = base.clone();
+    s.parameters[0].min = 401;
+    invalid.push(s);
+    let mut s = base.clone();
+    s.parameters.clear();
+    invalid.push(s);
+    let mut s = base.clone();
+    s.parameters.push(parameter());
+    invalid.push(s);
+    let mut s = base.clone();
+    s.parameters[0].start = 99.0;
+    invalid.push(s);
+    let mut s = base.clone();
+    s.parameters[0].c_end = 0.0;
+    invalid.push(s);
+    let mut s = base.clone();
+    s.parameters[0].r_end = -1.0;
+    invalid.push(s);
+    let mut s = base.clone();
+    s.iterations = 0;
+    invalid.push(s);
+    let mut s = base.clone();
+    s.iterations = u64::MAX;
+    invalid.push(s);
+    let mut s = base.clone();
+    s.concurrency = 0;
+    invalid.push(s);
+    let mut s = base;
+    s.parameters[0].r_end = f64::MAX;
+    invalid.push(s);
+    for s in invalid {
+        let directory = apply_session(s, 0, [0, 0]);
+        // 実行条件が壊れていれば、反復ディレクトリの読み込みまで進まない。
+        fs::remove_dir(directory.0.join("iterations")).unwrap();
+        let error = apply_error(&directory, APPLY_TABLE);
+        assert!(
+            matches!(error, apply::ApplyError::InvalidSettings(_)),
+            "{error:?}"
+        );
+        assert!(std::error::Error::source(&error).is_some());
+    }
+}
+
+#[test]
+fn apply_rejects_missing_and_duplicate_table_parameters() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    assert!(
+        matches!(apply_error(&directory, &APPLY_TABLE.replace("X(x):", "Other(x):")), apply::ApplyError::MissingParameter(name) if name == "X")
+    );
+    assert!(
+        matches!(apply_error(&directory, &APPLY_TABLE.replace("Y(y):", "X(y):")), apply::ApplyError::DuplicateParameter(name) if name == "X")
+    );
+}
+
+#[test]
+fn apply_requires_contained_ranges_and_exact_start_values() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    for text in [
+        APPLY_TABLE.replace("+250, 100", "+250, 101"),
+        APPLY_TABLE.replace("+250, 100, 400", "+250, 100, 399"),
+    ] {
+        assert!(
+            matches!(apply_error(&directory, &text), apply::ApplyError::RangeMismatch(name) if name == "X")
+        );
+    }
+    assert!(
+        matches!(apply_error(&directory, &APPLY_TABLE.replace("+250", "251")), apply::ApplyError::StartMismatch { name, .. } if name == "X")
+    );
+    let mut s = settings(1, 1, 1);
+    s.parameters[0].start = 250.25;
+    let fractional = apply_session(s, 1, [0, 0]);
+    assert!(matches!(
+        apply_error(&fractional, APPLY_TABLE),
+        apply::ApplyError::StartMismatch { .. }
+    ));
+    let wider = APPLY_TABLE.replace("+250, 100, 400", "+250, 0, 500");
+    let source = apply_source(&directory, &wider);
+    assert!(apply::apply(&directory.0, &source).is_ok());
+    assert_eq!(
+        fs::read_to_string(source).unwrap(),
+        wider.replace("+250", "250")
+    );
+}
+
+#[test]
+fn apply_rejects_unrecognized_table_lines_without_writing() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    for declaration in [
+        "/* X(x): 250, 100, 400; */",
+        "X(x): 250,\n100, 400;",
+        "#[doc = \"X\"]",
+        "X(x): 250_0, 100, 400;",
+        "X(x): 0xfa, 100, 400;",
+        "X(x): 2147483648, 100, 400;",
+        "X(x): 250 , 100, 400;",
+        "X(x): 250, 100, 400; // comment",
+        "🦀(x): 250, 100, 400;",
+    ] {
+        let text = format!("parameters! {{\n{declaration}\n}}\n");
+        assert!(
+            matches!(
+                apply_error(&directory, &text),
+                apply::ApplyError::InvalidLine { line: 2, .. }
+            ),
+            "{declaration}"
+        );
+    }
+}
+
+#[test]
+fn apply_requires_one_start_line_and_a_closing_line() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    assert!(matches!(
+        apply_error(&directory, "// no invocation\n"),
+        apply::ApplyError::InvocationCount(0)
+    ));
+    assert!(matches!(
+        apply_error(&directory, &format!("{APPLY_TABLE}{APPLY_TABLE}")),
+        apply::ApplyError::InvocationCount(2)
+    ));
+    assert!(matches!(
+        apply_error(&directory, "parameters! {\nX(x): 250, 100, 400;\n"),
+        apply::ApplyError::MissingEnd
+    ));
+}
+
+#[test]
+fn apply_preserves_indentation_trailing_space_and_crlf() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    let text = "outside\r\n    parameters! { \r\n/// 説明\r\n X(x): +0250, +100, 400; \t\r\n \r\n  } \r\noutside\r\n";
+    let source = apply_source(&directory, text);
+    apply::apply(&directory.0, &source).unwrap();
+    assert_eq!(
+        fs::read(source).unwrap(),
+        text.replace("+0250", "250").as_bytes()
+    );
+}
+
+#[test]
+fn apply_rejects_locked_sessions_and_keeps_io_sources() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    let _lock = lock_run_directory(&directory.0).unwrap();
+    let error = apply_error(&directory, APPLY_TABLE);
+    assert!(
+        matches!(error, apply::ApplyError::Lock(ref e) if e.kind() == io::ErrorKind::WouldBlock)
+    );
+    assert!(std::error::Error::source(&error).is_some());
+}
+
+#[test]
+fn apply_reports_and_preserves_parameters_not_in_session() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    let source = apply_source(&directory, APPLY_TABLE);
+    let report = apply::apply(&directory.0, &source).unwrap();
+    assert_eq!(
+        fs::read(source.clone()).unwrap(),
+        APPLY_TABLE.replace("+250", "250").as_bytes()
+    );
+    assert_eq!(
+        report,
+        format!(
+            "X: start=250 final=250 integer=250 unchanged\nY: not in session\nZ: not in session\nchanged=0 unchanged=1 source={}\n",
+            source.display()
+        )
+    );
+}
+
+#[test]
+fn apply_rounds_half_values_away_from_zero_including_negative_values() {
+    for (start, delta, expected_final, integer) in [
+        (2, 0.5, 2.5, 3),
+        (-2, -0.5, -2.5, -3),
+        (0, -0.5, -0.5, -1),
+        (-2, 0.5, -1.5, -2),
+        (-2, -0.25, -2.25, -2),
+    ] {
+        let mut s = settings(1, 1, 1);
+        s.alpha = 0.0;
+        s.gamma = 0.0;
+        s.parameters = vec![Parameter {
+            start: f64::from(start),
+            min: -10,
+            max: 10,
+            c_end: 1.0,
+            r_end: f64::abs(delta) / 2.0,
+            ..parameter()
+        }];
+        let sign = if delta > 0.0 {
+            flips(&s, 1)[0]
+        } else {
+            -flips(&s, 1)[0]
+        };
+        let directory = apply_session(s, 1, [sign, sign]);
+        let text = format!("parameters! {{\nX(x): {start}, -10, 10;\n}}");
+        let source = apply_source(&directory, &text);
+        let report = apply::apply(&directory.0, &source).unwrap();
+        assert_eq!(
+            fs::read_to_string(source).unwrap(),
+            format!("parameters! {{\nX(x): {integer}, -10, 10;\n}}")
+        );
+        assert!(report.contains(&format!(
+            "start={start} final={expected_final} integer={integer} "
+        )));
+    }
+}
+
+#[test]
+fn apply_parses_actual_search_parameter_table_and_valid_defaults() {
+    let entries = apply::parse_table(include_str!("../../search/params.rs")).unwrap();
+    assert!(!entries.is_empty());
+    for entry in entries {
+        assert!(
+            (entry.min..=entry.max).contains(&entry.default),
+            "{}",
+            entry.name
+        );
+    }
+}
+
+#[test]
+fn apply_cli_requires_both_paths_and_executes_without_engine_arguments() {
+    for args in [
+        vec!["spsa_runner", "apply", "--run-dir", "run"],
+        vec!["spsa_runner", "apply", "--source", "params.rs"],
+    ] {
+        assert!(Arguments::try_parse_from(args).is_err());
+    }
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    let source = apply_source(&directory, APPLY_TABLE);
+    let arguments = Arguments::try_parse_from([
+        "spsa_runner",
+        "apply",
+        "--run-dir",
+        directory.0.to_str().unwrap(),
+        "--source",
+        source.to_str().unwrap(),
+    ])
+    .unwrap();
+    execute(arguments).unwrap();
+    assert_eq!(
+        fs::read(source).unwrap(),
+        APPLY_TABLE.replace("+250", "250").as_bytes()
+    );
+}
+
+#[test]
+fn apply_rejects_unknown_manifest_fields_without_writing() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    let path = directory.0.join("manifest.json");
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    value["unexpected"] = serde_json::json!(true);
+    fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(matches!(
+        apply_error(&directory, APPLY_TABLE),
+        apply::ApplyError::Read(_)
+    ));
+}
+
+#[test]
+fn apply_preserves_source_and_existing_temporary_file_on_write_failure() {
+    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+    let temporary = directory
+        .0
+        .join(format!(".params.rs.{}.tmp", std::process::id()));
+    fs::write(&temporary, b"existing temporary file").unwrap();
+    assert!(matches!(
+        apply_error(&directory, APPLY_TABLE),
+        apply::ApplyError::Write(_)
+    ));
+    assert_eq!(fs::read(temporary).unwrap(), b"existing temporary file");
+}
