@@ -45,8 +45,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 - 定跡と引き分け提案。
 - チャットへの応答機能の拡張。Lishogi-Botの既定の挨拶文を設定するにとどめる。
 
-評価値による任意投了のUSI層の契約は、[USI投了](usi-resignation.md)が定める。
-lishogiで投了を成立させるブリッジの改修は、同設計書のフェーズ4で扱い、未実施である。
+評価値による任意投了のUSI層の契約と、`bestmove resign`を対局APIの投了へ写すブリッジの改修は、[USI投了](usi-resignation.md)が定める。
 
 ## 依存関係
 
