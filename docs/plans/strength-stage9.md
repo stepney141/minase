@@ -27,6 +27,7 @@
 教師の診断は、[診断A](../measurements/strength-stage9-depth-sensitivity.md)、[診断B](../measurements/strength-stage9-human-signal.md)、[診断C](../measurements/strength-stage9-human-start-signal.md)のいずれも基準を満たさず、[教師の構成](../measurements/strength-stage9-teacher-composition.md)は基本の教師のままと確定した。
 項目1の候補は、基本の教師で学習した重みを `data/strength-stage9/shelter2-basic-training` に記録済みである。
 教師の構成が基本のままとなったので、「項目と順序」の決定に従い、項目1を測るかどうかは利用者の判断を待つ。
+利用者の指示で[先読み教師値](lookahead-teacher.md)を診断したが、項目1の寄与は事前の基準に届かず、先読み教師での項目1は見送りとなった。
 項目1の短時間測定 `strength-stage9-shelter-stc` は、測定機のメモリの枯渇により218ペアで停止しており、その結果は本書の判定に使わない。
 いま詰まっている点は、項目1を測るかどうかの利用者の判断である。
 次の一手は、測る場合は項目1の候補のコミットの作成と短時間および長時間の測定、測らない場合は見送りの記録と完了処理である。
