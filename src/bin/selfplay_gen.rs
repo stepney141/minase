@@ -1584,7 +1584,8 @@ fn rescore(arguments: &RescoreArguments) -> io::Result<()> {
         target_count: targets.len() as u64,
         network_checksum: *pst.checksum(),
         nodes: arguments.nodes,
-        rule_set: "engine-default".to_owned(),
+        // MNSDのヘッダと同じ表記（規則コードの列挙）で書く。
+        rule_set: engine_default_rules()?.to_string(),
         hash_mb: u32::try_from(arguments.hash_mb.get()).map_err(data_error)?,
         generation_commit,
         binary_sha256: rescore::sha256(File::open(std::env::current_exe()?)?)?,
@@ -1810,7 +1811,7 @@ mod tests {
             reader.header().network_checksum,
             *minase::eval::weights().unwrap().checksum()
         );
-        assert_eq!(reader.header().rule_set, "engine-default");
+        assert_eq!(reader.header().rule_set, "L0,P0,R1,E0");
         let entries: Vec<_> = (0..5)
             .map(|_| reader.read_entry().unwrap().unwrap())
             .collect();
