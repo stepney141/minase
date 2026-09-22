@@ -48,7 +48,13 @@
 | 棋力向上段階8（前向き枝刈りの第3層） | [plans/strength-stage8.md](plans/strength-stage8.md) | 完了 | 2026年9月21日 |
 | 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了 | 2026年9月18日 |
 | USI先読み（ponder） | [plans/ponder.md](plans/ponder.md) | 完了 | 2026年9月21日 |
-| SPSAによる探索係数と時間管理係数の調整 | [plans/spsa.md](plans/spsa.md) | 進行中 | ― |
+| SPSAによる探索係数と時間管理係数の調整 | [plans/spsa.md](plans/spsa.md) | 待機中 | ― |
+| SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 起案 | |
+
+## 現在地
+
+棋力向上段階9を優先し、SPSAの調整は段階9の採用構成が確定するまで待機する。
+SPSAの実行基盤は完成しており、次回は確定した構成の既定値から新しいセッションを開始する。
 
 ## 横断的な記録済みの決定
 
