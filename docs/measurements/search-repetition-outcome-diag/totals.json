@@ -1,0 +1,903 @@
+{
+  "run_count": 87,
+  "total": {
+    "games": 94466,
+    "repetition_draws": 2276,
+    "repetition_losses": 3938,
+    "other_draws": 15,
+    "cutoffs": 1170,
+    "loser_is_candidate": 1982,
+    "loser_last_score_is_zero": 3938,
+    "loser_made_final_move": 2374
+  },
+  "loser_score_before_repetition_loss": {
+    "count": 3923,
+    "median": -34,
+    "share_at_most_minus_300": 0.18302319653326535,
+    "share_at_least_plus_300": 0.022686719347438183
+  },
+  "winner_score_before_repetition_loss": {
+    "count": 3924,
+    "median": 42.0,
+    "share_at_most_minus_300": 0.018858307849133536,
+    "share_at_least_plus_300": 0.20361875637104995
+  },
+  "score_before_repetition_draw": {
+    "count": 4519,
+    "median": 3,
+    "share_at_most_minus_300": 0.03474219960168179,
+    "share_at_least_plus_300": 0.04403629121487054
+  },
+  "runs": {
+    "fm-quarter-vs-original-stc": {
+      "games": 336,
+      "repetition_draws": 0,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 0
+    },
+    "fm-quarter-vs-pst-ltc": {
+      "games": 1652,
+      "repetition_draws": 25,
+      "repetition_losses": 50,
+      "other_draws": 1,
+      "cutoffs": 10,
+      "loser_is_candidate": 23,
+      "loser_last_score_is_zero": 50,
+      "loser_made_final_move": 34
+    },
+    "fm-quarter-vs-pst-stc": {
+      "games": 1222,
+      "repetition_draws": 9,
+      "repetition_losses": 28,
+      "other_draws": 0,
+      "cutoffs": 12,
+      "loser_is_candidate": 12,
+      "loser_last_score_is_zero": 28,
+      "loser_made_final_move": 22
+    },
+    "lazy-smp-threads4-vs2-20260906-ltc": {
+      "games": 278,
+      "repetition_draws": 9,
+      "repetition_losses": 16,
+      "other_draws": 0,
+      "cutoffs": 2,
+      "loser_is_candidate": 4,
+      "loser_last_score_is_zero": 16,
+      "loser_made_final_move": 12
+    },
+    "match-cost-ltc-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 1,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 1
+    },
+    "movegen-speedup-2-elo200": {
+      "games": 400,
+      "repetition_draws": 14,
+      "repetition_losses": 22,
+      "other_draws": 0,
+      "cutoffs": 9,
+      "loser_is_candidate": 11,
+      "loser_last_score_is_zero": 22,
+      "loser_made_final_move": 11
+    },
+    "movegen-speedup-2-stage6-ltc": {
+      "games": 556,
+      "repetition_draws": 14,
+      "repetition_losses": 28,
+      "other_draws": 0,
+      "cutoffs": 12,
+      "loser_is_candidate": 14,
+      "loser_last_score_is_zero": 28,
+      "loser_made_final_move": 16
+    },
+    "movegen-speedup-2-stage6-stc": {
+      "games": 562,
+      "repetition_draws": 16,
+      "repetition_losses": 27,
+      "other_draws": 0,
+      "cutoffs": 18,
+      "loser_is_candidate": 12,
+      "loser_last_score_is_zero": 27,
+      "loser_made_final_move": 19
+    },
+    "movegen-speedup-2-stage7-9-ltc": {
+      "games": 3188,
+      "repetition_draws": 110,
+      "repetition_losses": 184,
+      "other_draws": 1,
+      "cutoffs": 68,
+      "loser_is_candidate": 91,
+      "loser_last_score_is_zero": 184,
+      "loser_made_final_move": 126
+    },
+    "movegen-speedup-2-stage7-9-stc": {
+      "games": 2212,
+      "repetition_draws": 73,
+      "repetition_losses": 130,
+      "other_draws": 0,
+      "cutoffs": 63,
+      "loser_is_candidate": 65,
+      "loser_last_score_is_zero": 130,
+      "loser_made_final_move": 71
+    },
+    "nnue-gen1-nodes100k": {
+      "games": 2324,
+      "repetition_draws": 22,
+      "repetition_losses": 48,
+      "other_draws": 0,
+      "cutoffs": 8,
+      "loser_is_candidate": 26,
+      "loser_last_score_is_zero": 48,
+      "loser_made_final_move": 30
+    },
+    "nnue-gen1-tc": {
+      "games": 562,
+      "repetition_draws": 9,
+      "repetition_losses": 9,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 6,
+      "loser_last_score_is_zero": 9,
+      "loser_made_final_move": 7
+    },
+    "pst-gen1-nodes100k": {
+      "games": 506,
+      "repetition_draws": 0,
+      "repetition_losses": 4,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 1,
+      "loser_last_score_is_zero": 4,
+      "loser_made_final_move": 3
+    },
+    "pst-gen1-tc": {
+      "games": 414,
+      "repetition_draws": 1,
+      "repetition_losses": 3,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 3,
+      "loser_last_score_is_zero": 3,
+      "loser_made_final_move": 3
+    },
+    "pst-tapered-adoption-ltc": {
+      "games": 384,
+      "repetition_draws": 2,
+      "repetition_losses": 5,
+      "other_draws": 0,
+      "cutoffs": 4,
+      "loser_is_candidate": 2,
+      "loser_last_score_is_zero": 5,
+      "loser_made_final_move": 2
+    },
+    "pst-tapered-adoption-stc": {
+      "games": 362,
+      "repetition_draws": 3,
+      "repetition_losses": 6,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 2,
+      "loser_last_score_is_zero": 6,
+      "loser_made_final_move": 3
+    },
+    "sensitivity-time2x": {
+      "games": 400,
+      "repetition_draws": 2,
+      "repetition_losses": 12,
+      "other_draws": 0,
+      "cutoffs": 3,
+      "loser_is_candidate": 4,
+      "loser_last_score_is_zero": 12,
+      "loser_made_final_move": 9
+    },
+    "strength-stage1-elo200": {
+      "games": 400,
+      "repetition_draws": 13,
+      "repetition_losses": 25,
+      "other_draws": 1,
+      "cutoffs": 1,
+      "loser_is_candidate": 13,
+      "loser_last_score_is_zero": 25,
+      "loser_made_final_move": 16
+    },
+    "strength-stage1-final-ltc": {
+      "games": 438,
+      "repetition_draws": 14,
+      "repetition_losses": 12,
+      "other_draws": 0,
+      "cutoffs": 5,
+      "loser_is_candidate": 8,
+      "loser_last_score_is_zero": 12,
+      "loser_made_final_move": 11
+    },
+    "strength-stage1-final-stc": {
+      "games": 528,
+      "repetition_draws": 7,
+      "repetition_losses": 13,
+      "other_draws": 0,
+      "cutoffs": 2,
+      "loser_is_candidate": 6,
+      "loser_last_score_is_zero": 13,
+      "loser_made_final_move": 10
+    },
+    "strength-stage1-staged-picker-ltc": {
+      "games": 778,
+      "repetition_draws": 21,
+      "repetition_losses": 30,
+      "other_draws": 1,
+      "cutoffs": 5,
+      "loser_is_candidate": 14,
+      "loser_last_score_is_zero": 30,
+      "loser_made_final_move": 22
+    },
+    "strength-stage1-staged-picker-smoke": {
+      "games": 4,
+      "repetition_draws": 0,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "strength-stage1-staged-picker-stc": {
+      "games": 1084,
+      "repetition_draws": 26,
+      "repetition_losses": 27,
+      "other_draws": 0,
+      "cutoffs": 8,
+      "loser_is_candidate": 11,
+      "loser_last_score_is_zero": 27,
+      "loser_made_final_move": 15
+    },
+    "strength-stage2-budget-ltc": {
+      "games": 1058,
+      "repetition_draws": 29,
+      "repetition_losses": 47,
+      "other_draws": 1,
+      "cutoffs": 7,
+      "loser_is_candidate": 25,
+      "loser_last_score_is_zero": 47,
+      "loser_made_final_move": 27
+    },
+    "strength-stage2-budget-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "strength-stage2-budget-stc": {
+      "games": 896,
+      "repetition_draws": 16,
+      "repetition_losses": 33,
+      "other_draws": 0,
+      "cutoffs": 2,
+      "loser_is_candidate": 10,
+      "loser_last_score_is_zero": 33,
+      "loser_made_final_move": 17
+    },
+    "strength-stage2-byoyomi-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "strength-stage2-elo200": {
+      "games": 400,
+      "repetition_draws": 4,
+      "repetition_losses": 8,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 5,
+      "loser_last_score_is_zero": 8,
+      "loser_made_final_move": 5
+    },
+    "strength-stage2-iteration-ltc": {
+      "games": 3164,
+      "repetition_draws": 84,
+      "repetition_losses": 130,
+      "other_draws": 0,
+      "cutoffs": 25,
+      "loser_is_candidate": 78,
+      "loser_last_score_is_zero": 130,
+      "loser_made_final_move": 75
+    },
+    "strength-stage2-iteration-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "strength-stage2-iteration-stc": {
+      "games": 2314,
+      "repetition_draws": 40,
+      "repetition_losses": 78,
+      "other_draws": 0,
+      "cutoffs": 20,
+      "loser_is_candidate": 40,
+      "loser_last_score_is_zero": 78,
+      "loser_made_final_move": 46
+    },
+    "strength-stage2-phase1-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "strength-stage3-elo200": {
+      "games": 400,
+      "repetition_draws": 10,
+      "repetition_losses": 14,
+      "other_draws": 0,
+      "cutoffs": 8,
+      "loser_is_candidate": 5,
+      "loser_last_score_is_zero": 14,
+      "loser_made_final_move": 9
+    },
+    "strength-stage3-see-ltc": {
+      "games": 1984,
+      "repetition_draws": 45,
+      "repetition_losses": 91,
+      "other_draws": 0,
+      "cutoffs": 12,
+      "loser_is_candidate": 54,
+      "loser_last_score_is_zero": 91,
+      "loser_made_final_move": 52
+    },
+    "strength-stage3-see-stc": {
+      "games": 2250,
+      "repetition_draws": 43,
+      "repetition_losses": 75,
+      "other_draws": 0,
+      "cutoffs": 17,
+      "loser_is_candidate": 38,
+      "loser_last_score_is_zero": 75,
+      "loser_made_final_move": 44
+    },
+    "strength-stage3-values-ltc": {
+      "games": 620,
+      "repetition_draws": 10,
+      "repetition_losses": 24,
+      "other_draws": 0,
+      "cutoffs": 5,
+      "loser_is_candidate": 13,
+      "loser_last_score_is_zero": 24,
+      "loser_made_final_move": 14
+    },
+    "strength-stage3-values-stc": {
+      "games": 1240,
+      "repetition_draws": 19,
+      "repetition_losses": 34,
+      "other_draws": 1,
+      "cutoffs": 10,
+      "loser_is_candidate": 17,
+      "loser_last_score_is_zero": 34,
+      "loser_made_final_move": 21
+    },
+    "strength-stage4-elo200": {
+      "games": 400,
+      "repetition_draws": 8,
+      "repetition_losses": 14,
+      "other_draws": 0,
+      "cutoffs": 5,
+      "loser_is_candidate": 6,
+      "loser_last_score_is_zero": 14,
+      "loser_made_final_move": 10
+    },
+    "strength-stage4-futility-ltc": {
+      "games": 440,
+      "repetition_draws": 18,
+      "repetition_losses": 18,
+      "other_draws": 0,
+      "cutoffs": 2,
+      "loser_is_candidate": 11,
+      "loser_last_score_is_zero": 18,
+      "loser_made_final_move": 11
+    },
+    "strength-stage4-futility-stc": {
+      "games": 544,
+      "repetition_draws": 7,
+      "repetition_losses": 21,
+      "other_draws": 0,
+      "cutoffs": 2,
+      "loser_is_candidate": 11,
+      "loser_last_score_is_zero": 21,
+      "loser_made_final_move": 11
+    },
+    "strength-stage4-lmp-stc": {
+      "games": 228,
+      "repetition_draws": 4,
+      "repetition_losses": 8,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 3,
+      "loser_last_score_is_zero": 8,
+      "loser_made_final_move": 5
+    },
+    "strength-stage4-nmp-r-stc": {
+      "games": 4650,
+      "repetition_draws": 98,
+      "repetition_losses": 159,
+      "other_draws": 1,
+      "cutoffs": 34,
+      "loser_is_candidate": 74,
+      "loser_last_score_is_zero": 159,
+      "loser_made_final_move": 105
+    },
+    "strength-stage4-razoring-stc": {
+      "games": 344,
+      "repetition_draws": 8,
+      "repetition_losses": 11,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 7,
+      "loser_last_score_is_zero": 11,
+      "loser_made_final_move": 5
+    },
+    "strength-stage4-rfp-stc": {
+      "games": 652,
+      "repetition_draws": 14,
+      "repetition_losses": 15,
+      "other_draws": 0,
+      "cutoffs": 4,
+      "loser_is_candidate": 12,
+      "loser_last_score_is_zero": 15,
+      "loser_made_final_move": 7
+    },
+    "strength-stage5-elo200": {
+      "games": 400,
+      "repetition_draws": 13,
+      "repetition_losses": 10,
+      "other_draws": 0,
+      "cutoffs": 4,
+      "loser_is_candidate": 7,
+      "loser_last_score_is_zero": 10,
+      "loser_made_final_move": 6
+    },
+    "strength-stage5-lmr-ltc": {
+      "games": 2272,
+      "repetition_draws": 66,
+      "repetition_losses": 93,
+      "other_draws": 1,
+      "cutoffs": 13,
+      "loser_is_candidate": 49,
+      "loser_last_score_is_zero": 93,
+      "loser_made_final_move": 53
+    },
+    "strength-stage5-lmr-stc": {
+      "games": 820,
+      "repetition_draws": 10,
+      "repetition_losses": 29,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 17,
+      "loser_last_score_is_zero": 29,
+      "loser_made_final_move": 21
+    },
+    "strength-stage5-malus-stc": {
+      "games": 6000,
+      "repetition_draws": 121,
+      "repetition_losses": 248,
+      "other_draws": 0,
+      "cutoffs": 45,
+      "loser_is_candidate": 120,
+      "loser_last_score_is_zero": 248,
+      "loser_made_final_move": 156
+    },
+    "strength-stage5-piece-history-stc": {
+      "games": 3558,
+      "repetition_draws": 62,
+      "repetition_losses": 139,
+      "other_draws": 0,
+      "cutoffs": 27,
+      "loser_is_candidate": 71,
+      "loser_last_score_is_zero": 139,
+      "loser_made_final_move": 92
+    },
+    "strength-stage6-aspiration-ltc": {
+      "games": 422,
+      "repetition_draws": 12,
+      "repetition_losses": 19,
+      "other_draws": 0,
+      "cutoffs": 5,
+      "loser_is_candidate": 8,
+      "loser_last_score_is_zero": 19,
+      "loser_made_final_move": 10
+    },
+    "strength-stage6-aspiration-stc": {
+      "games": 488,
+      "repetition_draws": 10,
+      "repetition_losses": 17,
+      "other_draws": 0,
+      "cutoffs": 7,
+      "loser_is_candidate": 11,
+      "loser_last_score_is_zero": 17,
+      "loser_made_final_move": 10
+    },
+    "strength-stage6-bmchange-stc": {
+      "games": 1490,
+      "repetition_draws": 24,
+      "repetition_losses": 55,
+      "other_draws": 0,
+      "cutoffs": 18,
+      "loser_is_candidate": 26,
+      "loser_last_score_is_zero": 55,
+      "loser_made_final_move": 36
+    },
+    "strength-stage6-byoyomi-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "strength-stage6-coefficients-stc": {
+      "games": 2852,
+      "repetition_draws": 76,
+      "repetition_losses": 104,
+      "other_draws": 0,
+      "cutoffs": 39,
+      "loser_is_candidate": 48,
+      "loser_last_score_is_zero": 104,
+      "loser_made_final_move": 55
+    },
+    "strength-stage6-elo200": {
+      "games": 400,
+      "repetition_draws": 12,
+      "repetition_losses": 7,
+      "other_draws": 0,
+      "cutoffs": 6,
+      "loser_is_candidate": 3,
+      "loser_last_score_is_zero": 7,
+      "loser_made_final_move": 4
+    },
+    "strength-stage6-faillow-stc": {
+      "games": 658,
+      "repetition_draws": 14,
+      "repetition_losses": 26,
+      "other_draws": 0,
+      "cutoffs": 10,
+      "loser_is_candidate": 14,
+      "loser_last_score_is_zero": 26,
+      "loser_made_final_move": 20
+    },
+    "strength-stage6-iir-ltc": {
+      "games": 5782,
+      "repetition_draws": 150,
+      "repetition_losses": 273,
+      "other_draws": 3,
+      "cutoffs": 60,
+      "loser_is_candidate": 147,
+      "loser_last_score_is_zero": 273,
+      "loser_made_final_move": 160
+    },
+    "strength-stage6-iir-stc": {
+      "games": 2964,
+      "repetition_draws": 58,
+      "repetition_losses": 127,
+      "other_draws": 0,
+      "cutoffs": 26,
+      "loser_is_candidate": 59,
+      "loser_last_score_is_zero": 127,
+      "loser_made_final_move": 77
+    },
+    "strength-stage6-stable-ltc": {
+      "games": 1228,
+      "repetition_draws": 37,
+      "repetition_losses": 65,
+      "other_draws": 1,
+      "cutoffs": 11,
+      "loser_is_candidate": 32,
+      "loser_last_score_is_zero": 65,
+      "loser_made_final_move": 39
+    },
+    "strength-stage6-stable-stc": {
+      "games": 568,
+      "repetition_draws": 12,
+      "repetition_losses": 19,
+      "other_draws": 0,
+      "cutoffs": 6,
+      "loser_is_candidate": 10,
+      "loser_last_score_is_zero": 19,
+      "loser_made_final_move": 14
+    },
+    "strength-stage7-elo200": {
+      "games": 74,
+      "repetition_draws": 1,
+      "repetition_losses": 2,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 1,
+      "loser_last_score_is_zero": 2,
+      "loser_made_final_move": 1
+    },
+    "strength-stage7-gen2-elo200": {
+      "games": 400,
+      "repetition_draws": 6,
+      "repetition_losses": 11,
+      "other_draws": 0,
+      "cutoffs": 3,
+      "loser_is_candidate": 3,
+      "loser_last_score_is_zero": 11,
+      "loser_made_final_move": 4
+    },
+    "strength-stage7-gen2-ltc": {
+      "games": 698,
+      "repetition_draws": 9,
+      "repetition_losses": 17,
+      "other_draws": 0,
+      "cutoffs": 7,
+      "loser_is_candidate": 8,
+      "loser_last_score_is_zero": 17,
+      "loser_made_final_move": 12
+    },
+    "strength-stage7-gen2-stc": {
+      "games": 636,
+      "repetition_draws": 9,
+      "repetition_losses": 28,
+      "other_draws": 1,
+      "cutoffs": 7,
+      "loser_is_candidate": 14,
+      "loser_last_score_is_zero": 28,
+      "loser_made_final_move": 17
+    },
+    "strength-stage7-mirror-ltc": {
+      "games": 3414,
+      "repetition_draws": 96,
+      "repetition_losses": 156,
+      "other_draws": 1,
+      "cutoffs": 45,
+      "loser_is_candidate": 75,
+      "loser_last_score_is_zero": 156,
+      "loser_made_final_move": 90
+    },
+    "strength-stage7-mirror-stc": {
+      "games": 1964,
+      "repetition_draws": 49,
+      "repetition_losses": 88,
+      "other_draws": 0,
+      "cutoffs": 30,
+      "loser_is_candidate": 46,
+      "loser_last_score_is_zero": 88,
+      "loser_made_final_move": 48
+    },
+    "strength-stage8-correction-ltc": {
+      "games": 1020,
+      "repetition_draws": 48,
+      "repetition_losses": 60,
+      "other_draws": 0,
+      "cutoffs": 32,
+      "loser_is_candidate": 34,
+      "loser_last_score_is_zero": 60,
+      "loser_made_final_move": 37
+    },
+    "strength-stage8-correction-stc": {
+      "games": 884,
+      "repetition_draws": 25,
+      "repetition_losses": 55,
+      "other_draws": 0,
+      "cutoffs": 18,
+      "loser_is_candidate": 29,
+      "loser_last_score_is_zero": 55,
+      "loser_made_final_move": 31
+    },
+    "strength-stage8-improving-stc": {
+      "games": 1494,
+      "repetition_draws": 49,
+      "repetition_losses": 89,
+      "other_draws": 0,
+      "cutoffs": 32,
+      "loser_is_candidate": 50,
+      "loser_last_score_is_zero": 89,
+      "loser_made_final_move": 46
+    },
+    "strength-stage8-see-capture-ltc": {
+      "games": 1678,
+      "repetition_draws": 61,
+      "repetition_losses": 111,
+      "other_draws": 0,
+      "cutoffs": 36,
+      "loser_is_candidate": 63,
+      "loser_last_score_is_zero": 111,
+      "loser_made_final_move": 61
+    },
+    "strength-stage8-see-capture-stc": {
+      "games": 1030,
+      "repetition_draws": 35,
+      "repetition_losses": 68,
+      "other_draws": 0,
+      "cutoffs": 27,
+      "loser_is_candidate": 37,
+      "loser_last_score_is_zero": 68,
+      "loser_made_final_move": 39
+    },
+    "time-management-decomposition-d1-smoke-byoyomi": {
+      "games": 20,
+      "repetition_draws": 2,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 1
+    },
+    "time-management-decomposition-d1-smoke-inc": {
+      "games": 20,
+      "repetition_draws": 2,
+      "repetition_losses": 2,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 2,
+      "loser_last_score_is_zero": 2,
+      "loser_made_final_move": 1
+    },
+    "time-management-decomposition-d1-stc": {
+      "games": 612,
+      "repetition_draws": 18,
+      "repetition_losses": 20,
+      "other_draws": 0,
+      "cutoffs": 19,
+      "loser_is_candidate": 12,
+      "loser_last_score_is_zero": 20,
+      "loser_made_final_move": 14
+    },
+    "time-management-decomposition-d2-smoke-byoyomi": {
+      "games": 20,
+      "repetition_draws": 1,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 2,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "time-management-decomposition-d2-smoke-inc": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 1
+    },
+    "time-management-decomposition-d2-stc": {
+      "games": 568,
+      "repetition_draws": 16,
+      "repetition_losses": 37,
+      "other_draws": 0,
+      "cutoffs": 6,
+      "loser_is_candidate": 18,
+      "loser_last_score_is_zero": 37,
+      "loser_made_final_move": 24
+    },
+    "time-management-efficiency-after-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 2,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 2,
+      "loser_last_score_is_zero": 2,
+      "loser_made_final_move": 0
+    },
+    "time-management-efficiency-after": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 0
+    },
+    "time-management-efficiency-diag": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 1
+    },
+    "time-management-efficiency-stage1-smoke-c1": {
+      "games": 20,
+      "repetition_draws": 2,
+      "repetition_losses": 0,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 0,
+      "loser_last_score_is_zero": 0,
+      "loser_made_final_move": 0
+    },
+    "time-management-efficiency-stage1-smoke-c1v2": {
+      "games": 20,
+      "repetition_draws": 1,
+      "repetition_losses": 2,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 2,
+      "loser_last_score_is_zero": 2,
+      "loser_made_final_move": 2
+    },
+    "time-management-efficiency-stage1-smoke": {
+      "games": 20,
+      "repetition_draws": 0,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 0,
+      "loser_is_candidate": 1,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 0
+    },
+    "time-management-efficiency-stc": {
+      "games": 1400,
+      "repetition_draws": 42,
+      "repetition_losses": 70,
+      "other_draws": 0,
+      "cutoffs": 35,
+      "loser_is_candidate": 27,
+      "loser_last_score_is_zero": 70,
+      "loser_made_final_move": 37
+    },
+    "time-management-opening-coefficient-elo": {
+      "games": 600,
+      "repetition_draws": 12,
+      "repetition_losses": 28,
+      "other_draws": 1,
+      "cutoffs": 10,
+      "loser_is_candidate": 10,
+      "loser_last_score_is_zero": 28,
+      "loser_made_final_move": 17
+    },
+    "time-management-opening-coefficient-noninferiority": {
+      "games": 7578,
+      "repetition_draws": 266,
+      "repetition_losses": 394,
+      "other_draws": 0,
+      "cutoffs": 193,
+      "loser_is_candidate": 187,
+      "loser_last_score_is_zero": 394,
+      "loser_made_final_move": 230
+    },
+    "time-management-opening-coefficient-smoke": {
+      "games": 20,
+      "repetition_draws": 2,
+      "repetition_losses": 1,
+      "other_draws": 0,
+      "cutoffs": 1,
+      "loser_is_candidate": 1,
+      "loser_last_score_is_zero": 1,
+      "loser_made_final_move": 0
+    }
+  }
+}
