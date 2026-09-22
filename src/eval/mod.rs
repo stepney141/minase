@@ -3,7 +3,9 @@
 pub(crate) mod features;
 pub mod handcrafted;
 pub(crate) mod king_features;
+pub mod provenance;
 pub mod pst;
+pub mod rescore;
 pub mod training_data;
 
 pub use king_features::{COLUMN_COUNT, DEFINITION_ID, extract as king_feature_values};
