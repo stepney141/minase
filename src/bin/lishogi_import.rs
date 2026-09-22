@@ -130,6 +130,21 @@ struct InputGame {
     clock: Option<Value>,
     days_per_turn: Option<Value>,
 }
+/// 持ち時間の区分を返す。lishogiの書き出しは`speed`欄を省くことが多いので、
+/// `clock`（リアルタイム）または`daysPerTurn`（通信対局）からも導く。どちらもなければ`None`。
+fn time_control(game: &InputGame) -> Option<String> {
+    if let Some(speed) = game.speed.as_ref().filter(|s| !s.is_empty()) {
+        return Some(speed.clone());
+    }
+    if game.clock.as_ref().is_some_and(Value::is_object) {
+        return Some("realTime".to_owned());
+    }
+    if game.days_per_turn.as_ref().is_some_and(|v| !v.is_null()) {
+        return Some("correspondence".to_owned());
+    }
+    None
+}
+
 /// nullを含め、欄が存在すること自体を保持する。
 fn present_field<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
@@ -299,7 +314,7 @@ fn metadata_exclusion(
         if game.rated != Some(true) {
             return Some(Unrated);
         }
-        if game.speed.as_ref().is_none_or(|s| s.is_empty()) {
+        if time_control(game).is_none() {
             return Some(MissingSpeed);
         }
         if players
@@ -656,7 +671,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                             .and_then(|p| p.sente.as_ref())
                             .and_then(|p| p.rating),
                         gote_rating: players.and_then(|p| p.gote.as_ref()).and_then(|p| p.rating),
-                        speed: job.input.speed.clone(),
+                        speed: time_control(&job.input),
                         clock: job.input.clock.clone(),
                         days_per_turn: job.input.days_per_turn.clone(),
                         status: job.input.status.clone(),
