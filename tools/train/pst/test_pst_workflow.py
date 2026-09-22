@@ -245,6 +245,7 @@ class WorkflowTest(unittest.TestCase):
         write_mnpt(run / "pst-base.bin", zeros, zeros, initial_piece_values(), 1000)
         state = {
             "config": self.config,
+            "lookahead": self.config["train"].get("lookahead"),
             "existing_data": workflow.check_existing_data(self.config),
             "rescores": [{"path": p, "sha256": workflow.digest(Path(p))} for p in self.config["train"]["rescore"] if p != "-"],
             "sources": workflow.source_hashes(),
@@ -264,6 +265,92 @@ class WorkflowTest(unittest.TestCase):
                                         ("1" if repo == run / "probe" else "0") * 40
                                         if args == ("rev-parse", "HEAD") else ""))
         return run, stack
+
+    def test_lookahead_config_domains_and_rescore_rejection(self):
+        for value in ('{ gamma = 0.9, plies = 40 }', '{ gamma = 0.7, plies = 1 }'):
+            self.config_path.write_text(CONFIG.replace('[train]', '[train]\nlookahead = ' + value))
+            self.assertIn('lookahead', workflow.load_config(self.config_path, self.root)['train'])
+        for value in ('{ gamma = 0.9 }', '{ gamma = 1.0, plies = 40 }',
+                      '{ gamma = 0.9, plies = 4097 }', '{ gamma = 0.9, plies = 1.5 }',
+                      '{ gamma = 0.9, plies = 40, extra = 1 }', 'false'):
+            self.config_path.write_text(CONFIG.replace('[train]', '[train]\nlookahead = ' + value))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                workflow.load_config(self.config_path, self.root)
+        self.config_path.write_text(CONFIG.replace('[train]', '[train]\nlookahead = { gamma = 0.9, plies = 40 }\nrescore = ["a", "-", "-"]'))
+        with self.assertRaisesRegex(ValueError, 'lookahead.*rescore'):
+            workflow.load_config(self.config_path, self.root)
+
+    def test_prepare_records_lookahead_and_rejects_changed_setting(self):
+        self.config['train']['lookahead'] = {'gamma': .9, 'plies': 40}
+        def command(run, label, argv, cwd):
+            if argv[:3] == ['git', 'worktree', 'add']:
+                destination = Path(argv[-2])
+                (destination / 'nets').mkdir(parents=True)
+                weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
+                write_mnpt(destination / 'nets/pst.bin', weights, weights, initial_piece_values(), 1000)
+            elif argv[:2] == ['cargo', 'build']:
+                target = Path(argv[argv.index('--target-dir') + 1]) / 'release'
+                target.mkdir(parents=True)
+                (target / argv[argv.index('--bin') + 1]).write_bytes(b'fixture')
+            else:
+                raise AssertionError(argv)
+        with patch.object(workflow, 'ROOT', self.root), \
+                patch.object(workflow, 'load_config', return_value=self.config), \
+                patch.object(workflow, 'git', return_value='0' * 40), \
+                patch.object(workflow, 'run_command', side_effect=command):
+            workflow.prepare(self.config_path)
+            run = self.root / 'data/run'
+            state = workflow.load_prepared(run)
+            self.assertEqual(state['lookahead'], {'gamma': .9, 'plies': 40})
+            state['config']['train']['lookahead']['gamma'] = .7
+            (run / 'prepared.json').write_text(json.dumps(state))
+            with self.assertRaisesRegex(ValueError, 'lookahead'):
+                workflow.load_prepared(run)
+
+    def test_lookahead_cpu_training_diagnosis_and_receipt_checks(self):
+        source = self.root / 'data/old.bin'
+        write_mnsd(source, seed=0, checksum=b'a' * 32,
+                   games=np.repeat(np.arange(1, 81), 3).tolist(), scores=[100, 200, -400] * 80)
+        self.config['generate']['seeds'] = []
+        self.config['train'].update(rescore=['-'], epochs=1, batch=64, validation_sample=16,
+                                    lookahead={'gamma': .9, 'plies': 3})
+        run, _ = self.prepared()
+        with redirect_stdout(io.StringIO()):
+            workflow.train(run)
+        inputs = json.loads((run / 'training/inputs.json').read_text())
+        trained = json.loads((run / 'training/pst.training.json').read_text())
+        self.assertEqual(inputs['lookahead'], {'gamma': .9, 'plies': 3})
+        self.assertEqual(trained['lookahead'], inputs['lookahead'])
+        self.assertEqual(inputs['teacher_classes'], trained['teacher_classes'])
+        self.assertEqual(trained['teacher_classes'][0]['lookahead_gamma'], .9)
+        commands = [json.loads(line) for line in (run / 'commands.jsonl').read_text().splitlines()]
+        argv = next(row['argv'] for row in commands if 'argv' in row)
+        self.assertEqual(argv[argv.index('--lookahead-gamma') + 1], '0.9')
+        self.assertEqual(argv[argv.index('--lookahead-plies') + 1], '3')
+        with patch.object(workflow, 'diagnose_probe', return_value=python_probe):
+            workflow.diagnose(run)
+        report = json.loads((run / 'diagnostics/report.json').read_text())
+        self.assertEqual(report['lookahead'], inputs['lookahead'])
+        from mnsd import Dataset
+        from pst_diagnostics import Weights
+        dataset = Dataset([source])
+        model = Weights(run / 'training/pst.bin')
+        expected_scores = np.tile([-560 / 1.9, 400, -400], 80)
+        for band in report['bands']:
+            indices = np.load(run / 'diagnostics' / band['indices_file'])
+            if not len(indices):
+                continue
+            predicted = model.evaluate(dataset.gather(indices))
+            self.assertAlmostEqual(band['candidate']['mae_raw_cp'],
+                                   float(np.mean(np.abs(predicted - expected_scores[indices]))))
+        for name, record in (('inputs.json', inputs), ('pst.training.json', trained)):
+            changed = dict(record, lookahead={'gamma': .7, 'plies': 3})
+            path = run / 'training' / name
+            path.write_text(json.dumps(changed))
+            for operation in (workflow.load_prepared, workflow.train, workflow.diagnose):
+                with self.subTest(name=name, operation=operation), self.assertRaisesRegex(ValueError, 'lookahead'):
+                    operation(run)
+            path.write_text(json.dumps(record))
 
     def test_human_games_do_not_reserve_generator_seed_ranges(self):
         from test_train_pst import write_provenance

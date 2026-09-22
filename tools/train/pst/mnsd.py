@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 import hashlib
 import json
@@ -12,6 +12,8 @@ from typing import Sequence
 
 import numpy as np
 from numpy.typing import NDArray
+
+from lookahead import compute_lookahead, validate_lookahead
 
 
 HEADER_LENGTH = 136
@@ -191,6 +193,8 @@ class TeacherClass:
     search_condition: str
     result_origin: str
     start_origin: str
+    lookahead_gamma: float | None = None
+    lookahead_plies: int | None = None
 
     @property
     def origin(self) -> str:
@@ -305,10 +309,18 @@ class Dataset:
     def __init__(self, paths: Sequence[str | Path], *,
                  king_features: Sequence[str | Path] | None = None,
                  extra_columns: Sequence[int] | None = None,
-                 rescore: Sequence[str | Path] | None = None) -> None:
+                 rescore: Sequence[str | Path] | None = None,
+                 lookahead: dict | None = None) -> None:
         if not paths:
             raise ValueError("at least one MNSD path is required")
 
+        if lookahead is not None:
+            if not isinstance(lookahead, dict) or set(lookahead) != {"gamma", "plies"}:
+                raise ValueError("lookahead requires exactly gamma and plies")
+            validate_lookahead(**lookahead)
+            if rescore is not None and any(str(path) != "-" for path in rescore):
+                raise ValueError("lookahead and rescore cannot be combined")
+        self.lookahead = None if lookahead is None else dict(lookahead)
         resolved_paths = tuple(Path(path).resolve() for path in paths)
         if len(set(resolved_paths)) != len(resolved_paths):
             raise ValueError("the same MNSD file was specified more than once")
@@ -357,6 +369,9 @@ class Dataset:
         row_generations = []
         exclusions = {"mate_band": 0, "tactical": 0, "depth_incomplete": 0, "total": 0}
         for file_index, (header, mapped, (teacher, mix, games)) in enumerate(zip(headers, records, provenance)):
+            if lookahead is not None:
+                teacher = replace(teacher, lookahead_gamma=lookahead["gamma"],
+                                  lookahead_plies=lookahead["plies"])
             if games is None:
                 validation = hash64(header.seed, mapped["game"]) % np.uint64(20) == 0
             else:
@@ -396,6 +411,10 @@ class Dataset:
         self.paths = resolved_paths
         self.headers = headers
         self.records = records
+        self.lookahead_scores = (None if lookahead is None else tuple(
+            compute_lookahead(rows["game"], rows["ply"], rows["score"], **lookahead)
+            for rows in records
+        ))
         self.offsets = offsets
         self.teacher_classes = tuple(classes)
         self.teacher_lambdas = np.asarray(lambdas)
@@ -493,6 +512,18 @@ class Dataset:
                 changed = rows["status"] == 1
                 gathered["score"][ordered[changed]] = rows["score"][changed]
         return gathered
+
+    def teacher_scores(self, indices: NDArray[np.int64]) -> NDArray[np.float64]:
+        """教師K、学習、検証、診断に渡す実数の教師探索値を集める。"""
+        normalized = self._normalize_indices(indices)
+        if self.lookahead_scores is None:
+            return self.gather(normalized)["score"].astype(np.float64)
+        files = np.searchsorted(self.offsets[1:], normalized, side="right")
+        result = np.empty(normalized.size, dtype=np.float64)
+        for file, scores in enumerate(self.lookahead_scores):
+            selected = files == file
+            result[selected] = scores[normalized[selected] - self.offsets[file]]
+        return result
 
     def _normalize_indices(self, indices: NDArray[np.int64]) -> NDArray[np.int64]:
         """大域レコード番号を検証してint64配列に揃える。"""

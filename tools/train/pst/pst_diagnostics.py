@@ -19,6 +19,7 @@ from features import (
     PIECE_STATE_COUNT,
     feature_indices,
 )
+from lookahead import lookahead_options
 from mnsd import NO_LION_SQUARE, RECORD_DTYPE, Dataset, write_mnsd
 from taper import (
     BAND_COUNT,
@@ -136,7 +137,8 @@ def _band_losses(
         records = dataset.gather(chunk)
         generations = dataset.generations(chunk)
         bands = band_indices(phase_ratios(records["board"]))
-        targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas).astype(np.float64)
+        targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas,
+                                scores=dataset.teacher_scores(chunk)).astype(np.float64)
         np.add.at(counts, (generations, bands), 1)
         for name, model in models.items():
             logits = model.evaluate(records, dataset.gather_extra(chunk)).astype(np.float64) / model.k
@@ -287,6 +289,7 @@ def diagnose(
         "sample_size": sample_size,
         "seed": seed,
         "teacher_classes": dataset.class_metadata(),
+        "lookahead": dataset.lookahead,
         "rescore_exclusions": dataset.exclusions,
         "teacher_comparison_excluded": int(validation_counts[dataset.teacher_lambdas == 0].sum()),
         "k": {name: model.k for name, model in models.items()},
@@ -331,7 +334,7 @@ def diagnose(
                 for name in models:
                     entry[name] = None
             else:
-                raw = records["score"].astype(np.float64)
+                raw = dataset.teacher_scores(indices)
                 scaled = raw * (models["candidate"].k / teacher_ks[generation])
                 for name, model in models.items():
                     entry[name] = _error_summary(model.evaluate(records, dataset.gather_extra(indices)).astype(np.float64), scaled, raw)
@@ -437,6 +440,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", nargs="+", required=True)
     parser.add_argument("--rescore", nargs="+")
+    parser.add_argument("--lookahead-gamma", type=float)
+    parser.add_argument("--lookahead-plies", type=int)
     parser.add_argument("--king-features", nargs="+")
     parser.add_argument("--extra-columns")
     parser.add_argument("--base", type=Path, required=True)
@@ -448,7 +453,9 @@ def main() -> None:
     args = parser.parse_args()
     try:
         columns = None if args.extra_columns is None else parse_ranges(args.extra_columns, None)
-        dataset = Dataset(args.data, rescore=args.rescore, king_features=args.king_features, extra_columns=columns)
+        dataset = Dataset(args.data, rescore=args.rescore, king_features=args.king_features,
+                          extra_columns=columns,
+                          lookahead=lookahead_options(args.lookahead_gamma, args.lookahead_plies))
         args.output_dir.mkdir()
         report = diagnose(dataset, args.base, args.candidate, float_weights_path(args.candidate),
                           args.output_dir, args.sample_size, args.seed, rust_probe(args.probe))

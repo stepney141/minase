@@ -29,6 +29,7 @@ from features import (
     feature_indices,
     mirror,
 )
+from lookahead import lookahead_options
 from mnsd import ORIGINS, Dataset, NO_LION_SQUARE, hash64
 from taper import BAND_COUNT, band_indices, band_label, PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
 
@@ -182,14 +183,14 @@ def initial_piece_values() -> NDArray[np.int32]:
     return PIECE_VALUES[STATE_KIND].astype(np.int32)
 
 
-def binary_cross_entropy_sum(scores: NDArray[np.int16], results: NDArray[np.uint8], k: float) -> float:
+def binary_cross_entropy_sum(scores: np.ndarray, results: NDArray[np.uint8], k: float) -> float:
     """探索値から最終結果を予測する二値交差エントロピー合計を返す。"""
     logits = scores.astype(np.float64) / k
     targets = results.astype(np.float64) / 2.0
     return float(np.sum(np.logaddexp(0.0, logits) - targets * logits, dtype=np.float64))
 
 
-def estimate_k(scores: NDArray[np.int16], results: NDArray[np.uint8]) -> float:
+def estimate_k(scores: np.ndarray, results: NDArray[np.uint8]) -> float:
     """区間50から4000で損失を最小化するKを黄金分割探索で求める。"""
     lower = 50.0
     upper = 4000.0
@@ -360,13 +361,13 @@ def _selected_indices(dataset: Dataset, indices: NDArray[np.int64]) -> NDArray[n
 
 def _selected_scores_results(
     dataset: Dataset, indices: NDArray[np.int64]
-) -> tuple[NDArray[np.int16], NDArray[np.uint8]]:
-    """明示した局面集合から付け直し後の探索値と結果を集める。"""
+) -> tuple[NDArray[np.float64], NDArray[np.uint8]]:
+    """明示した局面集合から変換後の教師探索値と結果を集める。"""
     scores, results = [], []
     for start in range(0, indices.size, 65536):
         chunk = indices[start:start + 65536]
         records = dataset.gather(chunk)
-        scores.append(records["score"].copy())
+        scores.append(dataset.teacher_scores(chunk))
         results.append(records["result"].copy())
     return np.concatenate(scores), np.concatenate(results)
 
@@ -420,7 +421,8 @@ def validation_loss(
             features = feature_indices(
                 records["board"], records["stm"], records["lion"]
             )
-            targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas)
+            targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas,
+                                    scores=dataset.teacher_scores(global_indices))
             device_features = torch.as_tensor(features, device=device)
             device_targets = torch.as_tensor(targets, device=device)
             device_phi = torch.as_tensor(
@@ -637,7 +639,8 @@ def train_epoch(
             selected = normal.copy()
             reflected_rows = choose_reflected.cpu().numpy()
             selected[reflected_rows] = reflected[reflected_rows]
-        targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas)
+        targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas,
+                                scores=dataset.teacher_scores(global_indices))
         device_features = torch.as_tensor(selected, device=device)
         device_targets = torch.as_tensor(targets, device=device)
         # 鏡映は駒数を変えないので、補間係数は鏡映前の盤面から計算してよい。
@@ -679,6 +682,7 @@ def build_targets(
     teacher_ks: NDArray[np.float64],
     generations: NDArray[np.int64],
     teacher_lambdas: NDArray[np.float64],
+    *, scores: NDArray[np.float64] | None = None,
 ) -> NDArray[np.float32]:
     """分類ごとのλで混ぜ、λ=0のKと探索値は参照しない。"""
     teacher_ks = np.asarray(teacher_ks, dtype=np.float64)
@@ -695,8 +699,11 @@ def build_targets(
     scales = teacher_ks[generations[active]]
     if np.any(scales <= 0) or np.any(~np.isfinite(scales)):
         raise ValueError("active teacher K values must be finite and positive")
+    scores = records["score"].astype(np.float64) if scores is None else np.asarray(scores, dtype=np.float64)
+    if scores.shape != (len(records),) or np.any(~np.isfinite(scores[active])):
+        raise ValueError("teacher scores must match records and be finite for active classes")
     targets = records["result"].astype(np.float64) / 2
-    targets[active] = (mix[active] / (1 + np.exp(-records["score"][active].astype(np.float64) / scales))
+    targets[active] = (mix[active] / (1 + np.exp(-scores[active] / scales))
                        + (1 - mix[active]) * targets[active])
     return targets.astype(np.float32)
 
@@ -798,7 +805,8 @@ def command_init(arguments: argparse.Namespace) -> None:
 
 def command_estimate_k(arguments: argparse.Namespace) -> None:
     """estimate-kサブコマンドを実行する。"""
-    dataset = Dataset(arguments.data, rescore=arguments.rescore)
+    dataset = Dataset(arguments.data, rescore=arguments.rescore,
+                      lookahead=lookahead_options(arguments.lookahead_gamma, arguments.lookahead_plies))
     generation_ks, generation_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
     for generation, (checksum, k, count) in enumerate(
         zip(dataset.generation_checksums, generation_ks, generation_counts)
@@ -887,7 +895,9 @@ def command_train(arguments: argparse.Namespace) -> None:
     device = torch.device(arguments.device)
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
-    dataset = Dataset(arguments.data, rescore=arguments.rescore, king_features=arguments.king_features, extra_columns=extra_columns)
+    dataset = Dataset(arguments.data, rescore=arguments.rescore,
+                      king_features=arguments.king_features, extra_columns=extra_columns,
+                      lookahead=lookahead_options(arguments.lookahead_gamma, arguments.lookahead_plies))
     if dataset.training_indices.size == 0 or dataset.validation_indices.size == 0:
         raise ValueError("game split produced an empty training or validation set")
 
@@ -1094,6 +1104,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     with Path(arguments.output).with_suffix(".training.json").open("x") as stream:
         json.dump({"validation": history, "best_epoch": best_epoch,
                    "teacher_classes": dataset.class_metadata(),
+                   "lookahead": dataset.lookahead,
                    "teacher_ks": [float(k) if np.isfinite(k) else None for k in teacher_ks],
                    "rescore_exclusions": dataset.exclusions,
                    "mnkf_definition_id": None if dataset.king_features is None else dataset.king_features.definition_id,
@@ -1123,11 +1134,15 @@ def build_parser() -> argparse.ArgumentParser:
     estimate_parser = commands.add_parser("estimate-k", help="探索値の勝率尺度Kを推定する")
     estimate_parser.add_argument("--data", required=True, nargs="+")
     estimate_parser.add_argument("--rescore", nargs="+")
+    estimate_parser.add_argument("--lookahead-gamma", type=float)
+    estimate_parser.add_argument("--lookahead-plies", type=int)
     estimate_parser.set_defaults(handler=command_estimate_k)
 
     train_parser = commands.add_parser("train", help="学習PSTを訓練する")
     train_parser.add_argument("--data", required=True, nargs="+")
     train_parser.add_argument("--rescore", nargs="+")
+    train_parser.add_argument("--lookahead-gamma", type=float)
+    train_parser.add_argument("--lookahead-plies", type=int)
     train_parser.add_argument("--king-features", nargs="+")
     train_parser.add_argument("--extra-columns")
     train_parser.add_argument("--train-extra")

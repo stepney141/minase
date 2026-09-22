@@ -18,6 +18,7 @@ import sys
 import time
 import tomllib
 
+from lookahead import validate_lookahead
 from mnsd import Dataset, read_header, provenance_path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -81,6 +82,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
         fields["train"] |= extra_fields
     if isinstance(config["train"], dict) and "rescore" in config["train"]:
         fields["train"].add("rescore")
+    if isinstance(config["train"], dict) and "lookahead" in config["train"]:
+        fields["train"].add("lookahead")
     for section, expected in fields.items():
         if not isinstance(config[section], dict) or set(config[section]) != expected:
             raise ValueError(f"{section} fields must be {sorted(expected)}")
@@ -118,6 +121,13 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
                               for p in training["rescore"]]
     else:
         training["rescore"] = ["-"] * (len(run["data"]) + len(seeds))
+    if "lookahead" in training:
+        lookahead = training["lookahead"]
+        if not isinstance(lookahead, dict) or set(lookahead) != {"gamma", "plies"}:
+            raise ValueError("train.lookahead requires exactly gamma and plies")
+        validate_lookahead(**lookahead)
+        if any(path != "-" for path in training["rescore"]):
+            raise ValueError("lookahead and rescore cannot be combined")
     for key in ("epochs", "batch", "validation_sample"):
         integer(training[key], f"train.{key}", 1, 2**31 - 1)
     integer(training["seed"], "train.seed", 0, 2**63 - 1)
@@ -155,7 +165,7 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
 
 
 def check_existing_data(config: dict) -> list[dict]:
-    dataset = Dataset(config["run"]["data"], rescore=config["train"]["rescore"][:len(config["run"]["data"])])
+    dataset = Dataset(config["run"]["data"], lookahead=config["train"].get("lookahead"), rescore=config["train"]["rescore"][:len(config["run"]["data"])])
     files = []
     for path, header, records, provenance in zip(config["run"]["data"], dataset.headers, dataset.records, dataset.provenance):
         if header.rule_set != RULES or len(records) == 0:
@@ -238,7 +248,7 @@ def prepare(config_path: Path) -> None:
         run_command(run, "probe-build", ["cargo", "build", "--release", "--locked", "--target-dir",
                     str(probe / "target"), "--bin", "pst_probe"], probe)
         write_json(run / "prepared.json", {
-            "config": config, "existing_data": existing, "rescores": rescores, "sources": source_hashes(),
+            "config": config, "lookahead": config["train"].get("lookahead"), "existing_data": existing, "rescores": rescores, "sources": source_hashes(),
             "base_sha256": digest(run / "pst-base.bin"),
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
@@ -254,6 +264,8 @@ def load_prepared(run: Path) -> dict:
     state = json.loads((run / "prepared.json").read_text())
     if state["repository"] != str(ROOT) or state["config"]["run"]["directory"] != str(run):
         raise ValueError("run directory belongs to a different repository or path")
+    if state["lookahead"] != state["config"]["train"].get("lookahead"):
+        raise ValueError("lookahead changed since prepare")
     if source_hashes() != state["sources"]:
         raise ValueError("training tools changed since prepare; start a new run")
     verify_file(run / "pst-base.bin", state["base_sha256"])
@@ -266,6 +278,19 @@ def load_prepared(run: Path) -> dict:
         if receipt.exists():
             verify_input(json.loads(receipt.read_text()))
     inputs_path = run / "training/inputs.json"
+    if inputs_path.exists():
+        inputs = json.loads(inputs_path.read_text())
+        if (inputs["lookahead"] != state["lookahead"]
+                or inputs["options"].get("lookahead") != state["lookahead"]):
+            raise ValueError("lookahead changed since training")
+        dataset = training_dataset([item["path"] for item in training_data(run, state)], state["config"]["train"])
+        if inputs["teacher_classes"] != dataset.class_metadata():
+            raise ValueError("teacher classes changed since training")
+        trained_path = run / "training/pst.training.json"
+        if trained_path.exists():
+            trained = json.loads(trained_path.read_text())
+            if trained["lookahead"] != state["lookahead"] or trained["teacher_classes"] != inputs["teacher_classes"]:
+                raise ValueError("lookahead or teacher classes differ in training result")
     if inputs_path.parent.exists() and state["config"]["train"].get("king_features"):
         inputs = json.loads(inputs_path.read_text())
         config = state["config"]["train"]
@@ -273,7 +298,6 @@ def load_prepared(run: Path) -> dict:
             raise ValueError("MNKF inputs changed since training")
         for item in inputs["king_features"]:
             verify_file(Path(item["path"]), item["sha256"])
-        dataset = training_dataset([item["path"] for item in training_data(run, state)], config)
         if (inputs["mnkf_definition_id"] != dataset.king_features.definition_id
                 or inputs["mnkf_column_count"] != dataset.king_features.column_count):
             raise ValueError("MNKF definition ID or column count changed since training")
@@ -350,9 +374,9 @@ def training_dataset(paths: list[str], config: dict) -> Dataset:
     """追加特徴を使う設定では、学習と診断に同じ列の対応を与える。"""
     if "king_features" in config and config["king_features"]:
         from train_pst import parse_ranges
-        return Dataset(paths, rescore=config["rescore"], king_features=config["king_features"],
+        return Dataset(paths, lookahead=config.get("lookahead"), rescore=config["rescore"], king_features=config["king_features"],
                        extra_columns=parse_ranges(config["extra_columns"], None))
-    return Dataset(paths, rescore=config["rescore"])
+    return Dataset(paths, lookahead=config.get("lookahead"), rescore=config["rescore"])
 
 
 def train(run: Path) -> None:
@@ -384,7 +408,7 @@ def train(run: Path) -> None:
     destination.mkdir()
     steps = (int(training_count) + config["batch"] - 1) // config["batch"]
     write_json(destination / "inputs.json", {
-        "data": files, "king_features": king_inputs,
+        "data": files, "king_features": king_inputs, "lookahead": config.get("lookahead"),
         "mnkf_definition_id": mnkf_definition_id, "mnkf_column_count": mnkf_column_count,
         "teacher_ks": [float(k) if math.isfinite(k) else None for k in teacher_ks],
         "teacher_classes": classes, "rescore_exclusions": exclusions, "rescores": state["rescores"], "k": k, "mixed_k": mixed_k,
@@ -408,6 +432,9 @@ def train(run: Path) -> None:
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
     command += ["--rescore", *config["rescore"]]
+    if config.get("lookahead") is not None:
+        command += ["--lookahead-gamma", str(config["lookahead"]["gamma"]),
+                    "--lookahead-plies", str(config["lookahead"]["plies"])]
     if king_inputs:
         command += ["--king-features", *config["king_features"],
                     "--extra-columns", config["extra_columns"], "--train-extra", config["train_extra"]]
