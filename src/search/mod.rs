@@ -1433,6 +1433,9 @@ impl Searcher<'_> {
             }
         }
 
+        // docs/plans/strength-stage9.md「評価の償却」節。
+        // 静的評価は必要時にだけ計算し、補正履歴の更新でも再利用する。
+        let mut static_eval = None;
         // docs/plans/strength-stage4.mdの「適用するノード」「futility pruning」節。
         // 静的評価と余裕値の和は対象ノードで1回だけ求める。
         let futility_bound = (depth <= 3
@@ -1440,9 +1443,10 @@ impl Searcher<'_> {
             && alpha.abs() < MATE_THRESHOLD
             && beta.abs() < MATE_THRESHOLD)
             .then(|| {
-                let static_eval = self
-                    .pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position);
+                let static_eval = *static_eval.get_or_insert_with(|| {
+                    self.pst
+                        .evaluate_accumulator(self.accumulators[ply as usize], position)
+                });
                 let margin = futility_margin(self.pst.pawn_value(), depth);
                 static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
             });
@@ -1527,9 +1531,10 @@ impl Searcher<'_> {
         };
         // 段階8の変種B。補正前の評価と保存値が補正の向きを確定するときだけ学習する。
         if best_score.abs() < MATE_THRESHOLD && !best_capture {
-            let static_eval = self
-                .pst
-                .evaluate_accumulator(self.accumulators[ply as usize], position);
+            let static_eval = *static_eval.get_or_insert_with(|| {
+                self.pst
+                    .evaluate_accumulator(self.accumulators[ply as usize], position)
+            });
             if (bound == Bound::Exact
                 || (bound == Bound::Upper && best_score < static_eval)
                 || (bound == Bound::Lower && best_score > static_eval))
