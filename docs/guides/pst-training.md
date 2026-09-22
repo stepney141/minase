@@ -81,8 +81,12 @@ git rev-parse HEAD
 段階7の[片側絶対値型の予備比較](../measurements/strength-stage7-removal-absolute.md)では、学習率0.03で係数1000を選び、本学習でもこの組を用いる。
 
 段階9では、Rustが書き出す追加特徴の形式MNKFを学習器へ渡す。
-MNKFの読み込みは、magic、版1、定義ID 1、68列、局面数、入力MNSD全体のSHA-256を検査する。
-列数68は交換形式の定義であり、モデルの追加特徴数は`extra_columns`で選んだ列数になる。
+MNKFの読み込みは、magic、版1、局面数、入力MNSD全体のSHA-256を検査する。
+定義IDと列数はヘッダから読み、同じ学習に渡す全MNKFで一致することを検査する。
+`extra_columns`の半開区間はファイルの列番号で解釈し、列数の範囲外なら拒否する。
+モデルの追加特徴数は選んだ列数となり、項目1の列0〜23は定義1と定義2で共通である。
+定義IDとファイルの列数は`training/inputs.json`の`mnkf_definition_id`と`mnkf_column_count`に記録し、後続段階と再開時に照合する。
+学習器の`<出力名>.training.json`にも同じ2項目と、選んだ列番号を`extra_columns`として記録する。
 たとえば項目1だけなら`extra_columns = "0:24"`、`train_extra = "0:24"`、`freeze_pst = true`を指定する。
 MNKFは次のように生成し、ワークフローの学習を始める前に全入力分をそろえる。
 生成後のMNSDについては、生成を終えてから対応するMNKFを作る。
@@ -156,7 +160,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config ps
 基準PST、その探索用駒価値、設定、既存データ、来歴ファイル、付け直しファイル、および学習スクリプトの検査和を保存し、`prepared.json`に診断器のコミット`probe_commit`とバイナリの検査和`probe_sha256`も記録する。
 `pst_probe`の変更は準備前にコミットする。
 追加特徴を使う候補では、このツリーの特徴列と候補MNPTの追加特徴の数と順序をそろえる。
-MNKFは68列を持つ診断用バイナリで生成し、診断時のJSONは候補用バイナリが持つ列で照合する。
+MNKFは対象の定義に対応する診断用バイナリで生成し、診断時のJSONは候補用バイナリが持つ列で照合する。
 元の作業ブランチに未コミットの変更があっても、各バイナリに使うのはそれぞれ固定したコミットである。
 
 準備後は、元のTOMLファイルを編集しても実験の設定は変わらない。

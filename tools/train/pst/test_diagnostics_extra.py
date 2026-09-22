@@ -123,8 +123,8 @@ class ExtraDiagnosticsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'quantization'):
             self.run_diagnose(self.root / 'drift')
 
-    def test_shelter_candidate_diagnostics_accept_both_mnkf_widths(self):
-        # 同じ24特徴を68列から選んでも24列から読んでも、候補診断の整数照合は一致する。
+    def test_shelter_candidate_diagnostics_accept_mnkf_definitions_and_widths(self):
+        # 共通の24特徴が同じなら、定義1と定義2の候補診断の整数照合は一致する。
         mg = np.zeros(13680 + 24, dtype=np.int16)
         eg = mg.copy()
         mg[-1], eg[-1] = 16, 8
@@ -146,15 +146,16 @@ class ExtraDiagnosticsTests(unittest.TestCase):
         reports = []
         data = self.root / 'data.bin'
         features = self.root / 'shelter.mnkf'
-        for width in (68, 24):
+        for definition, width in ((1, 24), (1, 68), (2, 118)):
             values = np.zeros((200, width), dtype=np.uint8)
             values[:, 23] = 45
-            features.write_bytes(HEADER.pack(b'MNKF', 1, 1, width, 200,
+            features.write_bytes(HEADER.pack(b'MNKF', 1, definition, width, 200,
                                              hashlib.sha256(data.read_bytes()).digest()) + values.tobytes())
             self.dataset = Dataset([data], king_features=[features], extra_columns=range(24))
             reports.append(self.run_diagnose(self.root / f'shelter-{width}', probe))
         for key in ('rust_agreement', 'rust_promotion_agreement', 'rust_removal_agreement', 'quantization'):
             self.assertEqual(reports[0][key], reports[1][key])
+            self.assertEqual(reports[0][key], reports[2][key])
         self.assertGreater(reports[0]['rust_agreement']['candidate'], 0)
 
 

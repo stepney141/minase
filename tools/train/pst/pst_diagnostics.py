@@ -434,7 +434,6 @@ def diagnose(
 def main() -> None:
     import argparse
     from train_pst import float_weights_path, parse_ranges
-    from mnsd import COLUMN_COUNT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", nargs="+", required=True)
     parser.add_argument("--rescore", nargs="+")
@@ -448,7 +447,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
     try:
-        columns = None if args.extra_columns is None else parse_ranges(args.extra_columns, COLUMN_COUNT)
+        columns = None if args.extra_columns is None else parse_ranges(args.extra_columns, None)
         dataset = Dataset(args.data, rescore=args.rescore, king_features=args.king_features, extra_columns=columns)
         args.output_dir.mkdir()
         report = diagnose(dataset, args.base, args.candidate, float_weights_path(args.candidate),

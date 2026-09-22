@@ -55,6 +55,18 @@ class KingFeaturesTests(unittest.TestCase):
             b"MNKF", 1, 1, self.values.shape[1], len(self.values), hashlib.sha256(self.data.read_bytes()).digest(),
         ) + self.values.tobytes())
 
+    def test_reads_all_columns_from_header(self):
+        for definition, width in ((1, 24), (1, 68), (2, 118)):
+            values = np.tile(np.arange(width, dtype=np.uint8), (4, 1))
+            self.features.write_bytes(HEADER.pack(
+                b"MNKF", 1, definition, width, 4, hashlib.sha256(self.data.read_bytes()).digest()
+            ) + values.tobytes())
+            with self.subTest(definition=definition, width=width):
+                mapped = KingFeatures(self.dataset, [self.features])
+                np.testing.assert_array_equal(mapped.gather(np.array([3, 0])), values[[3, 0]])
+                self.assertEqual(mapped.definition_id, definition)
+                self.assertEqual(mapped.column_count, width)
+
     def test_rejects_input_sha256_mismatch(self):
         # 交換形式の契約: 入力全体に結び付くので、盤面以外の教師値の変更も拒否する。
         changed = self.records.copy()
@@ -65,9 +77,9 @@ class KingFeaturesTests(unittest.TestCase):
             KingFeatures(Dataset([self.data]), [self.features])
 
     def test_rejects_each_header_mismatch_and_body_length(self):
-        # magic・版・定義・列数・局面数を、それ以外を維持したまま1つずつ変える。
+        # magic・版・列数・局面数を、それ以外を維持したまま1つずつ変える。
         original = self.features.read_bytes()
-        for offset, fmt, value in [(0, "4s", b"BAD!"), (4, "I", 2), (8, "I", 2),
+        for offset, fmt, value in [(0, "4s", b"BAD!"), (4, "I", 2),
                                    (12, "I", 67), (16, "Q", 3)]:
             with self.subTest(offset=offset):
                 changed = bytearray(original)
@@ -156,12 +168,6 @@ class KingFeaturesTests(unittest.TestCase):
                 self.assertEqual(actual['column_count'], 24)
                 self.assertEqual(len(actual['columns']), 24)
                 self.assertTrue(all(column['name'].startswith('shelter.') for column in actual['columns']))
-        # 列数が有効でも、定義の識別値が異なるファイルは拒否する。
-        invalid = bytearray(self.features.read_bytes())
-        struct.pack_into('<I', invalid, 8, 2)
-        self.features.write_bytes(invalid)
-        with self.assertRaisesRegex(ValueError, 'definition ID'):
-            KingFeatures(self.dataset, [self.features], range(24))
 
 
 if __name__ == "__main__":

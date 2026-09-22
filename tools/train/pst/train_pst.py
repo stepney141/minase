@@ -29,7 +29,7 @@ from features import (
     feature_indices,
     mirror,
 )
-from mnsd import ORIGINS, COLUMN_COUNT, Dataset, NO_LION_SQUARE, hash64
+from mnsd import ORIGINS, Dataset, NO_LION_SQUARE, hash64
 from taper import BAND_COUNT, band_indices, band_label, PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
 
 
@@ -257,15 +257,17 @@ class ExtraModel(nn.Module):
         return torch.where(self.train_extra_mask, self.extra, self.extra.detach())
 
 
-def parse_ranges(value: str, limit: int) -> list[int]:
-    """重複のない半開区間を、記述順を保った列番号へ展開する。"""
+def parse_ranges(value: str, limit: int | None) -> list[int]:
+    """半開区間を列番号へ展開する。limitがNoneなら上限はファイル読み込み時に検査する。"""
     result = []
     for interval in value.split(","):
         bounds = interval.split(":")
         if len(bounds) != 2 or not all(part.isascii() and part.isdigit() for part in bounds):
             raise ValueError("ranges must be comma-separated half-open intervals, e.g. 0:24,62:68")
         start, stop = map(int, bounds)
-        if not 0 <= start < stop <= limit:
+        if not 0 <= start < stop:
+            raise ValueError(f"range {interval} must be nonempty and increasing")
+        if limit is not None and stop > limit:
             raise ValueError(f"range {interval} is outside 0:{limit}")
         result.extend(range(start, stop))
     if len(set(result)) != len(result):
@@ -875,7 +877,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     else:
         if arguments.extra_columns is None:
             raise ValueError("--king-features requires --extra-columns")
-        extra_columns = parse_ranges(arguments.extra_columns, COLUMN_COUNT)
+        extra_columns = parse_ranges(arguments.extra_columns, None)
         train_extra = (list(range(len(extra_columns))) if arguments.train_extra is None
                        else parse_ranges(arguments.train_extra, len(extra_columns)))
 
@@ -1094,6 +1096,8 @@ def command_train(arguments: argparse.Namespace) -> None:
                    "teacher_classes": dataset.class_metadata(),
                    "teacher_ks": [float(k) if np.isfinite(k) else None for k in teacher_ks],
                    "rescore_exclusions": dataset.exclusions,
+                   "mnkf_definition_id": None if dataset.king_features is None else dataset.king_features.definition_id,
+                   "mnkf_column_count": None if dataset.king_features is None else dataset.king_features.column_count,
                    "extra_columns": extra_columns, "train_extra": train_extra,
                    "freeze_pst": arguments.freeze_pst}, stream, indent=2, allow_nan=False)
         stream.write("\n")

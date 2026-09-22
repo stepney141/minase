@@ -512,7 +512,7 @@ class WorkflowTest(unittest.TestCase):
         for before, after in (
             ('train_extra = "24:30"\n', ''),
             ('train_extra = "24:30"', 'train_extra = "24:31"'),
-            ('extra_columns = "0:24,62:68"', 'extra_columns = "0:69"'),
+            ('extra_columns = "0:24,62:68"', 'extra_columns = "0:24,23:68"'),
             ('freeze_pst = true', 'freeze_pst = 1'),
             ('king_features = ["data/old.mnkf"]', 'king_features = []'),
             ('removal_penalty = 0', 'removal_penalty = 1'),
@@ -526,12 +526,12 @@ class WorkflowTest(unittest.TestCase):
         data = self.root / "data/old.bin"
         write_mnsd(data, seed=0, checksum=b"a" * 32, games=list(range(80)))
         feature_path = self.root / "data/old.mnkf"
-        values = np.zeros((len(map_records(data)), 68), dtype=np.uint8)
-        feature_path.write_bytes(HEADER.pack(b"MNKF", 1, 1, 68, len(values),
+        values = np.zeros((len(map_records(data)), 118), dtype=np.uint8)
+        feature_path.write_bytes(HEADER.pack(b"MNKF", 1, 2, 118, len(values),
                                             hashlib.sha256(data.read_bytes()).digest()) + values.tobytes())
         self.config["generate"]["seeds"] = []
         self.config["train"]["rescore"] = ["-"]
-        self.config["train"].update(king_features=[str(feature_path)], extra_columns="0:24,62:68",
+        self.config["train"].update(king_features=[str(feature_path)], extra_columns="0:24,112:118",
                                     train_extra="24:30", freeze_pst=True, k=1000)
         run, stack = self.prepared()
         execute = stack.enter_context(patch.object(
@@ -540,12 +540,26 @@ class WorkflowTest(unittest.TestCase):
             workflow.train(run)
         command = execute.call_args.args[2]
         for flag, expected in (("--king-features", str(feature_path)),
-                               ("--extra-columns", "0:24,62:68"), ("--train-extra", "24:30")):
+                               ("--extra-columns", "0:24,112:118"), ("--train-extra", "24:30")):
             self.assertEqual(command[command.index(flag) + 1], expected)
         self.assertIn("--freeze-pst", command)
         inputs = json.loads((run / "training/inputs.json").read_text())
         self.assertEqual(inputs["king_features"], [{"path": str(feature_path),
                                                    "sha256": workflow.digest(feature_path)}])
+        self.assertEqual(inputs["mnkf_definition_id"], 2)
+        self.assertEqual(inputs["mnkf_column_count"], 118)
+        workflow.load_prepared(run)
+        for field, changed in (("mnkf_definition_id", 1), ("mnkf_column_count", 68)):
+            altered = dict(inputs, **{field: changed})
+            (run / "training/inputs.json").write_text(json.dumps(altered))
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "MNKF"):
+                workflow.load_prepared(run)
+        (run / "training/inputs.json").write_text(json.dumps(inputs))
+        damaged = bytearray(feature_path.read_bytes())
+        damaged[-1] = 1
+        feature_path.write_bytes(damaged)
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            workflow.load_prepared(run)
 
 
 if __name__ == "__main__":

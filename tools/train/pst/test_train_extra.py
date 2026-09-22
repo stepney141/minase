@@ -44,9 +44,9 @@ class ExtraTrainingTests(unittest.TestCase):
         self.write_features()
         self.device = torch.device('cpu')
 
-    def write_features(self):
+    def write_features(self, definition=1):
         self.mnkf.write_bytes(HEADER.pack(
-            b'MNKF', 1, 1, self.values.shape[1], len(self.records), hashlib.sha256(self.data.read_bytes()).digest()
+            b'MNKF', 1, definition, self.values.shape[1], len(self.records), hashlib.sha256(self.data.read_bytes()).digest()
         ) + self.values.tobytes())
 
     def dataset(self, columns=(0, 1, 62)):
@@ -134,14 +134,14 @@ class ExtraTrainingTests(unittest.TestCase):
                 parse_ranges(value, 68)
 
     def test_shelter_training_matches_for_full_and_selected_mnkf_files(self):
-        # 項目1は定義ID 1の列0〜23。同じ値なら68列から選んでも24列でも学習結果は同じ。
+        # 項目1の列0〜23は定義1と定義2で共通なので、同じ値なら学習結果も一致する。
         zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
         write_mnpt(self.initial, zeros, zeros, initial_piece_values(), 1000)
         exported = []
-        for width in (68, 24):
-            with self.subTest(width=width):
-                self.values = self.values[:, :width]
-                self.write_features()
+        for definition, width in ((1, 24), (1, 68), (2, 118)):
+            with self.subTest(definition=definition, width=width):
+                self.values = np.tile(np.arange(width, dtype=np.uint8), (200, 1)) % 3 + 1
+                self.write_features(definition)
                 args = self.arguments()
                 output = self.root / f'output-{width}.bin'
                 args[args.index('--output') + 1] = str(output)
@@ -149,6 +149,10 @@ class ExtraTrainingTests(unittest.TestCase):
                 args[args.index('--train-extra') + 1] = '0:24'
                 with redirect_stdout(StringIO()):
                     main(args)
+                report = json.loads(output.with_suffix('.training.json').read_text())
+                self.assertEqual(report['mnkf_definition_id'], definition)
+                self.assertEqual(report['mnkf_column_count'], width)
+                self.assertEqual(report['extra_columns'], list(range(24)))
                 exported.append(output.read_bytes())
                 mg, eg, values, k = read_mnpt(output, feature_count=13680 + 24)
                 np.testing.assert_array_equal(mg[:13680], zeros)
@@ -157,25 +161,46 @@ class ExtraTrainingTests(unittest.TestCase):
                 self.assertEqual(values.tobytes(), initial_piece_values().tobytes())
                 self.assertEqual(k, 1000)
         self.assertEqual(exported[0], exported[1])
+        self.assertEqual(exported[0], exported[2])
 
-    def test_selected_columns_must_exist_in_every_mnkf_file(self):
-        # ファイル境界を越えて68列と24列を同じ列0〜23で読む。
+    def test_mixed_definitions_and_widths_are_rejected(self):
+        # 選択した列が共通でも、入力ファイルの定義と列数は一致しなければならない。
         other = self.root / 'shelter.bin'
         other_features = self.root / 'shelter.mnkf'
         write_mnsd(other, self.records[:2], seed=5, network_checksum=b'a' * 32)
         write_provenance(other)
-        rows = np.full((2, 24), 7, dtype=np.uint8)
-        other_features.write_bytes(HEADER.pack(
-            b'MNKF', 1, 1, 24, 2, hashlib.sha256(other.read_bytes()).digest()
-        ) + rows.tobytes())
-        dataset = Dataset([self.data, other], king_features=[self.mnkf, other_features],
-                          extra_columns=range(24))
-        np.testing.assert_array_equal(dataset.gather_extra(np.array([201, 0, 200, 1])),
-                                      np.vstack((rows[1], self.values[0, :24], rows[0], self.values[1, :24])))
-        for columns in (range(25), [24], [62]):
-            with self.subTest(columns=columns), self.assertRaisesRegex(ValueError, 'selected columns'):
+        for definition, width in ((1, 24), (2, 68), (2, 118)):
+            rows = np.full((2, width), 7, dtype=np.uint8)
+            other_features.write_bytes(HEADER.pack(
+                b'MNKF', 1, definition, width, 2, hashlib.sha256(other.read_bytes()).digest()
+            ) + rows.tobytes())
+            with self.subTest(definition=definition, width=width), self.assertRaises(ValueError):
                 Dataset([self.data, other], king_features=[self.mnkf, other_features],
-                        extra_columns=columns)
+                        extra_columns=range(24))
+
+    def test_selected_columns_use_file_width(self):
+        for definition, width in ((1, 24), (1, 68), (2, 118)):
+            self.values = np.tile(np.arange(width, dtype=np.uint8), (200, 1))
+            self.write_features(definition)
+            dataset = self.dataset([width - 1, 0])
+            np.testing.assert_array_equal(dataset.gather_extra(np.array([0])), [[width - 1, 0]])
+            for columns in ([width], [-1], range(width + 1)):
+                with self.subTest(width=width, columns=columns), self.assertRaises(ValueError):
+                    self.dataset(columns)
+
+    def test_training_accepts_columns_above_68(self):
+        self.values = np.ones((200, 118), dtype=np.uint8)
+        self.write_features(2)
+        zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
+        write_mnpt(self.initial, zeros, zeros, initial_piece_values(), 1000)
+        args = self.arguments()
+        args[args.index('--extra-columns') + 1] = '116:118'
+        with redirect_stdout(StringIO()):
+            main(args)
+        report = json.loads((self.root / 'output.training.json').read_text())
+        self.assertEqual(report['mnkf_definition_id'], 2)
+        self.assertEqual(report['mnkf_column_count'], 118)
+        self.assertEqual(report['extra_columns'], [116, 117])
 
     def test_frozen_mirrored_model_rejects_averaging_baseline(self):
         initial = torch.zeros((FEATURE_COUNT, 2))

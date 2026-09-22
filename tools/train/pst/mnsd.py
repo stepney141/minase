@@ -555,7 +555,7 @@ class KingFeatures:
         self.columns = None if extra_columns is None else np.asarray(extra_columns, dtype=np.int64)
         if self.columns is not None and (
             self.columns.ndim != 1 or self.columns.size == 0
-            or np.any(self.columns < 0) or np.any(self.columns >= COLUMN_COUNT)
+            or np.any(self.columns < 0)
             or np.unique(self.columns).size != self.columns.size
         ):
             raise ValueError("extra columns must be distinct MNKF column indices")
@@ -569,14 +569,15 @@ class KingFeatures:
                 raise ValueError(f"{path}: invalid MNKF magic")
             if version != 1:
                 raise ValueError(f"{path}: unsupported MNKF version {version}")
-            if definition != DEFINITION_ID:
-                raise ValueError(f"{path}: definition ID mismatch")
-            if not 0 < columns <= COLUMN_COUNT:
+            if columns == 0:
                 raise ValueError(f"{path}: invalid column count")
+            if not self.records:
+                self.definition_id = definition
+                self.column_count = columns
+            elif definition != self.definition_id or columns != self.column_count:
+                raise ValueError(f"{path}: MNKF definition ID or column count mismatch")
             if self.columns is None:
                 self.columns = np.arange(columns)
-            if extra_columns is None and columns != self.columns.size:
-                raise ValueError(f"{path}: column count mismatch; select extra columns explicitly")
             if np.any(self.columns >= columns):
                 raise ValueError(f"{path}: selected columns exceed MNKF column count {columns}")
             if count != header.record_count:
