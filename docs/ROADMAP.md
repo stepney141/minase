@@ -50,7 +50,7 @@
 | USI先読み（ponder） | [plans/ponder.md](plans/ponder.md) | 完了 | 2026年9月21日 |
 | 棋力向上段階9（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴） | [plans/strength-stage9.md](plans/strength-stage9.md) | 進行中 | ― |
 | SPSAによる探索係数と時間管理係数の調整 | [plans/spsa.md](plans/spsa.md) | 進行中 | ― |
-| 先読み教師値（将来の探索値の幾何加重平均） | [plans/lookahead-teacher.md](plans/lookahead-teacher.md) | 完了 | 2026年9月22日 |
+| 先読み教師値（将来の探索値の幾何加重平均） | [plans/lookahead-teacher.md](plans/lookahead-teacher.md) | 進行中 | ― |
 
 ## 横断的な記録済みの決定
 
