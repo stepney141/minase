@@ -695,6 +695,9 @@ impl EngineProcess {
                 {
                     process.send(&format!("setoption name USI_Hash value {hash_mb}"))?;
                 }
+                // 測定の対局は規則上の終局まで指させる（docs/plans/usi-resignation.md
+                // 「棋力測定での無効化」）。オプションを持たないエンジンはこの行を無視する。
+                process.send("setoption name ResignValue value 99999")?;
                 if config.is_random {
                     process.send(&format!("setoption name Seed value {seed}"))?;
                 }
