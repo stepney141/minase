@@ -16,7 +16,7 @@
 完了。2026年9月22日に起案し、2026年9月23日に完了した。
 結論は採用である。項目1の候補は[事前の判定](../measurements/lookahead-teacher-shelter-training.md)で見送ったが、利用者の指示で学習PSTを先読み教師（γ=0.9、n=40）で学習し直した候補（項目1を含まない）を測り、[STC](../measurements/lookahead-teacher-pst-stc.md)はH1（有効325ペア、五分類[44, 10, 166, 14, 91]、LLR 2.96、異常0件）だった。
 LTC（`lookahead-teacher-pst-ltc`）の完了を待たずに採用したのは利用者の決定であり、[SPRTの手引き](../guides/sprt.md)が定める採用の手順（LTCのH1）からの逸脱として記す。LTCは記録のために完走させ、結果は測定記録へ残す。
-採用した重みは `lookahead-pst` の `a7e32a8` としてmasterへ入れた。
+採用した重みは `lookahead-pst` の `a7e32a8` としてmasterへ入れた。統合の時点でmasterには[SPSAの結果の適用](spsa.md)が先に入っており、候補の測定は段階開始版 `6c5c559` に対するものなので、SPSAの係数と本重みの組合せは測っていない。
 第2の候補（学習PSTと項目1の同時学習）は測らない。項目1は事前の判定で見送ったためである。
 
 ## 目的
