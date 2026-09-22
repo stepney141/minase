@@ -139,6 +139,17 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(state["stats"]["errors"], 2)
         self.assertIn("HTTP 429", self.stderr.getvalue())
 
+    def test_read_timeout_retries_same_request_after_60_seconds(self):
+        # A TimeoutError raised while streaming is transient: retry like a 429.
+        path = games_path("alice")
+        mock = MockHTTP({path: [TimeoutError("The read operation timed out"), []]})
+        state = self.run_fetch(mock)
+        self.assertEqual(mock.events, [
+            ("request", path), ("sleep", 60), ("request", path),
+        ])
+        self.assertEqual(state["stats"]["errors"], 1)
+        self.assertIn("timed out", self.stderr.getvalue())
+
     def test_interval_above_60_is_respected_on_retry(self):
         mock = MockHTTP({games_path("alice"): [429, []]})
         self.run_fetch(mock, "--interval", "75")

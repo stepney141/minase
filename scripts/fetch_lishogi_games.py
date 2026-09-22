@@ -59,6 +59,7 @@ class Client:
                                 yield json.loads(line)
                     else:
                         yield from json.load(response)["users"]
+                self._transient_attempts = 0
                 return
             except urllib.error.HTTPError as error:
                 self.stats["errors"] += 1
@@ -67,9 +68,21 @@ class Client:
                     raise
                 delay = max(60, self.interval)
                 print(f"HTTP 429: {path}; retrying in {delay:g}s", file=sys.stderr)
-            except urllib.error.URLError:
+            except (urllib.error.URLError, TimeoutError) as error:
+                # Read timeouts and connection resets are transient; retry a few
+                # times after the same pause as a 429 before giving up on the path.
+                # Other connection failures are reported to the caller at once.
                 self.stats["errors"] += 1
-                raise
+                reason = getattr(error, "reason", error)
+                if not isinstance(reason, (TimeoutError, ConnectionResetError)):
+                    raise
+                attempts = getattr(self, "_transient_attempts", 0) + 1
+                self._transient_attempts = attempts
+                if attempts > 5:
+                    self._transient_attempts = 0
+                    raise
+                delay = max(60, self.interval)
+                print(f"{error}: {path}; retrying in {delay:g}s", file=sys.stderr)
 
 
 def csv_ids(value):
@@ -210,7 +223,7 @@ def collect(args, *, http=open_http, sleep=time.sleep):
                             player = game["players"][side]
                             if "user" in player and "id" in player["user"]:
                                 enqueue(player["user"]["id"])
-            except urllib.error.URLError as error:
+            except (urllib.error.URLError, TimeoutError) as error:
                 record_failure(f"user:{user_id}", error)
             visited.add(user_id)
             state["queue"].pop(0)
