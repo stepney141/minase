@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 
 from features import FEATURE_COUNT
+from test_train_pst import write_provenance
 from mnsd import Dataset, HEADER, RECORD_DTYPE, map_records, write_mnsd
 from pst_diagnostics import diagnose
 from train_pst import initial_piece_values, read_mnpt, write_mnpt
@@ -37,6 +38,7 @@ class ExtraDiagnosticsTests(unittest.TestCase):
         records['result'] = 2
         data = self.root / 'data.bin'
         write_mnsd(data, records, seed=0, network_checksum=bytes(32))
+        write_provenance(data)
         features = self.root / 'data.mnkf'
         values = np.zeros((200, 68), dtype=np.uint8)
         values[:, 62] = 45
@@ -79,7 +81,7 @@ class ExtraDiagnosticsTests(unittest.TestCase):
     def run_diagnose(self, output, probe=None):
         output.mkdir()
         return diagnose(self.dataset, self.base, self.candidate, self.floating,
-                        output, 10, 1, .75, self.probe if probe is None else probe)
+                        output, 10, 1, self.probe if probe is None else probe)
 
     def test_extra_evaluation_promotions_removals_and_explicit_base_conversion(self):
         output = self.root / 'ok'

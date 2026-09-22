@@ -6,6 +6,8 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 import re
+import json
+import hashlib
 import struct
 import tempfile
 import unittest
@@ -75,6 +77,25 @@ def write_mnsd(
     header[84:116] = checksum
     struct.pack_into("<IQQ", header, 116, 100_000, seed, count)
     path.write_bytes(bytes(header) + records.tobytes())
+    write_provenance(path)
+
+
+def write_provenance(path: Path, **changes):
+    """契約第3節の明示的なテスト来歴を書く。"""
+    from mnsd import read_header
+    header = read_header(path)
+    value = {
+        "format": "minase-provenance", "version": 1,
+        "mnsd_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "teacher": {"generation_commit": header.generation_commit,
+                    "network_checksum": header.network_checksum.hex(),
+                    "nodes": header.teacher_nodes, "rule_set": header.rule_set,
+                    "search_condition": "in-game"},
+        "result_origin": "selfplay", "start_origin": "random", "lambda": 0.75, "games": None,
+    }
+    value.update(changes)
+    Path(str(path) + ".provenance.json").write_text(json.dumps(value))
+    return value
 
 
 class DatasetTest(unittest.TestCase):
@@ -200,7 +221,7 @@ class TeacherScaleTest(unittest.TestCase):
                 records,
                 np.array(generation_ks, dtype=np.float64),
                 np.array([0, 1], dtype=np.int64),
-                1.0,
+                np.ones(2),
             )
             expected = 1.0 / (
                 1.0 + np.exp(-1000.0 / np.array(generation_ks))
@@ -300,8 +321,6 @@ class TrainingPathTest(unittest.TestCase):
                         "single",
                         "--k",
                         "200",
-                        "--lambda",
-                        "0.75",
                         "--lr",
                         "10",
                         "--epochs",
@@ -582,7 +601,7 @@ class MirroredModelTest(unittest.TestCase):
             with patch("train_pst.mirror", wraps=mirror) as augment:
                 train_epoch(
                     model, torch.optim.SGD(model.parameters(), lr=0.1), dataset,
-                    np.array([200.0]), 200.0, 0.75, 64,
+                    np.array([200.0]), 200.0, 64,
                     torch.Generator().manual_seed(1), device,
                     indices=dataset.training_indices, removal_penalty=0.0, removal_reference=None,
                 )
@@ -621,7 +640,7 @@ class WeightProjectionTest(unittest.TestCase):
     def run_epoch(self, model, optimizer, dataset) -> None:
         train_epoch(
             model, optimizer, dataset, np.array([1072.6529541015625]),
-            1072.6529541015625, 0.75, 1,
+            1072.6529541015625, 1,
             torch.Generator().manual_seed(1), torch.device("cpu"),
             indices=dataset.training_indices, removal_penalty=0.0, removal_reference=None,
         )

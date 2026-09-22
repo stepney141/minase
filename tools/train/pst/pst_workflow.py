@@ -18,7 +18,7 @@ import sys
 import time
 import tomllib
 
-from mnsd import Dataset, read_header
+from mnsd import Dataset, read_header, provenance_path
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCES = Path(__file__).resolve().parent
@@ -70,7 +70,7 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     fields = {
         "run": {"directory", "base_commit", "data"},
         "generate": {"seeds", "games", "nodes", "concurrency", "max_ply", "hash_mb", "random_moves"},
-        "train": {"model", "k", "learning_rate", "epochs", "batch", "seed", "lambda",
+        "train": {"model", "k", "learning_rate", "epochs", "batch", "seed",
                   "removal_penalty", "device", "validation_sample"},
         "diagnose": {"sample_size", "seed"},
     }
@@ -79,6 +79,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
     extra_fields = {"king_features", "extra_columns", "train_extra", "freeze_pst"}
     if isinstance(config["train"], dict) and extra_fields & set(config["train"]):
         fields["train"] |= extra_fields
+    if isinstance(config["train"], dict) and "rescore" in config["train"]:
+        fields["train"].add("rescore")
     for section, expected in fields.items():
         if not isinstance(config[section], dict) or set(config[section]) != expected:
             raise ValueError(f"{section} fields must be {sorted(expected)}")
@@ -109,12 +111,18 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
         if right - left < generation["games"]:
             raise ValueError("generation seed ranges overlap")
     training = config["train"]
+    if "rescore" in training:
+        if not isinstance(training["rescore"], list) or len(training["rescore"]) != len(run["data"]) + len(seeds):
+            raise ValueError("train.rescore must match all existing and generated MNSD files")
+        training["rescore"] = ["-" if p == "-" else str(path_value(p, "train.rescore", root))
+                              for p in training["rescore"]]
+    else:
+        training["rescore"] = ["-"] * (len(run["data"]) + len(seeds))
     for key in ("epochs", "batch", "validation_sample"):
         integer(training[key], f"train.{key}", 1, 2**31 - 1)
     integer(training["seed"], "train.seed", 0, 2**63 - 1)
     number(training["k"], "train.k", sys.float_info.min, sys.float_info.max)
     number(training["learning_rate"], "train.learning_rate", sys.float_info.min, sys.float_info.max)
-    number(training["lambda"], "train.lambda", 0, 1)
     number(training["removal_penalty"], "train.removal_penalty", 0, sys.float_info.max)
     if training["device"] not in ("cpu", "cuda"):
         raise ValueError("train.device must explicitly be cpu or cuda")
@@ -148,22 +156,34 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
 
 
 def check_existing_data(config: dict) -> list[dict]:
-    dataset = Dataset(config["run"]["data"])
+    dataset = Dataset(config["run"]["data"], rescore=config["train"]["rescore"][:len(config["run"]["data"])])
     files = []
-    for path, header, records in zip(config["run"]["data"], dataset.headers, dataset.records):
+    for path, header, records, provenance in zip(config["run"]["data"], dataset.headers, dataset.records, dataset.provenance):
         if header.rule_set != RULES or len(records) == 0:
             raise ValueError(f"{path}: requires nonempty data with rules {RULES}")
-        # src/rng.rs::derive_seed の base_seed + game_number に依存する。
-        # 記録されていない破棄対局まで復元はできない。過去ログとの照合も必要。
-        start = header.seed + 1
-        end = header.seed + int(records["game"].max()) + 1
-        if end > 2**64:
-            raise ValueError(f"{path}: historical seed range wraps")
-        for seed in config["generate"]["seeds"]:
-            if max(start, seed + 1) < min(end, seed + config["generate"]["games"] + 1):
-                raise ValueError(f"new generation seed overlaps {path}")
-        files.append({"path": path, "sha256": digest(Path(path))})
+        if provenance[0].result_origin == "selfplay":
+            # src/rng.rs::derive_seed の base_seed + game_number に依存する。
+            # 記録されていない破棄対局まで復元はできない。過去ログとの照合も必要。
+            start = header.seed + 1
+            end = header.seed + int(records["game"].max()) + 1
+            if end > 2**64:
+                raise ValueError(f"{path}: historical seed range wraps")
+            for seed in config["generate"]["seeds"]:
+                if max(start, seed + 1) < min(end, seed + config["generate"]["games"] + 1):
+                    raise ValueError(f"new generation seed overlaps {path}")
+        files.append(input_receipt(Path(path)))
     return files
+
+
+def input_receipt(path: Path) -> dict:
+    provenance = provenance_path(path)
+    return {"path": str(path), "sha256": digest(path),
+            "provenance": {"path": str(provenance), "sha256": digest(provenance)}}
+
+
+def verify_input(item: dict) -> None:
+    verify_file(Path(item["path"]), item["sha256"])
+    verify_file(Path(item["provenance"]["path"]), item["provenance"]["sha256"])
 
 
 @contextmanager
@@ -201,6 +221,8 @@ def prepare(config_path: Path) -> None:
     probe_commit = git(ROOT, "rev-parse", "HEAD")
     config["run"]["base_commit"] = base
     existing = check_existing_data(config)
+    rescores = [{"path": path, "sha256": digest(Path(path))}
+                for path in config["train"]["rescore"] if path != "-"]
     run = Path(config["run"]["directory"])
     run.mkdir()  # 新規実験だけを作り、既存結果を消さない。
     with locked(run):
@@ -217,7 +239,7 @@ def prepare(config_path: Path) -> None:
         run_command(run, "probe-build", ["cargo", "build", "--release", "--locked", "--target-dir",
                     str(probe / "target"), "--bin", "pst_probe"], probe)
         write_json(run / "prepared.json", {
-            "config": config, "existing_data": existing, "sources": source_hashes(),
+            "config": config, "existing_data": existing, "rescores": rescores, "sources": source_hashes(),
             "base_sha256": digest(run / "pst-base.bin"),
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
@@ -236,6 +258,14 @@ def load_prepared(run: Path) -> dict:
     if source_hashes() != state["sources"]:
         raise ValueError("training tools changed since prepare; start a new run")
     verify_file(run / "pst-base.bin", state["base_sha256"])
+    for item in state["existing_data"]:
+        verify_input(item)
+    for item in state["rescores"]:
+        verify_file(Path(item["path"]), item["sha256"])
+    for seed in state["config"]["generate"]["seeds"]:
+        receipt = run / f"generated-{seed}.json"
+        if receipt.exists():
+            verify_input(json.loads(receipt.read_text()))
     return state
 
 
@@ -249,6 +279,7 @@ def generated_path(run: Path, seed: int) -> Path:
 
 
 def validate_generated(path: Path, state: dict, seed: int, run: Path) -> None:
+    Dataset([path])
     header = read_header(path)
     expected = state["config"]
     # MNPTヘッダの重み本体検査和。ファイル全体のSHA-256とは別。
@@ -275,7 +306,7 @@ def generate(run: Path, selected_seed: int | None) -> None:
         output = generated_path(run, seed)
         receipt = run / f"generated-{seed}.json"
         if receipt.exists():
-            verify_file(output, json.loads(receipt.read_text())["sha256"])
+            verify_input(json.loads(receipt.read_text()))
             validate_generated(output, state, seed, run)
             print(f"Already verified: {output}")
             continue
@@ -287,20 +318,20 @@ def generate(run: Path, selected_seed: int | None) -> None:
         run_command(run, f"generate-{seed}", command, generator)
         run_command(run, f"inspect-{seed}", [str(binary), "inspect", str(output)], generator)
         validate_generated(output, state, seed, run)
-        write_json(receipt, {"sha256": digest(output), "records": read_header(output).record_count})
+        write_json(receipt, {**input_receipt(output), "records": read_header(output).record_count})
 
 
 def training_data(run: Path, state: dict) -> list[dict]:
     files = []
     for item in state["existing_data"]:
-        verify_file(Path(item["path"]), item["sha256"])
+        verify_input(item)
         files.append(item)
     for seed in state["config"]["generate"]["seeds"]:
         path = generated_path(run, seed)
         receipt = json.loads((run / f"generated-{seed}.json").read_text())
-        verify_file(path, receipt["sha256"])
+        verify_input(receipt)
         validate_generated(path, state, seed, run)
-        files.append({"path": str(path), "sha256": receipt["sha256"]})
+        files.append(receipt)
     return files
 
 
@@ -309,9 +340,9 @@ def training_dataset(paths: list[str], config: dict) -> Dataset:
     if "king_features" in config and config["king_features"]:
         from mnsd import COLUMN_COUNT
         from train_pst import parse_ranges
-        return Dataset(paths, king_features=config["king_features"],
+        return Dataset(paths, rescore=config["rescore"], king_features=config["king_features"],
                        extra_columns=parse_ranges(config["extra_columns"], COLUMN_COUNT))
-    return Dataset(paths)
+    return Dataset(paths, rescore=config["rescore"])
 
 
 def train(run: Path) -> None:
@@ -335,12 +366,15 @@ def train(run: Path) -> None:
     teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
     mixed_k = estimate_mixed_k(dataset, indices=dataset.training_indices)
     k = config["k"]
+    classes = dataset.class_metadata()
+    exclusions = dataset.exclusions
     del dataset
     destination.mkdir()
     steps = (int(training_count) + config["batch"] - 1) // config["batch"]
     write_json(destination / "inputs.json", {
         "data": files, "king_features": king_inputs,
-        "teacher_ks": teacher_ks.tolist(), "k": k, "mixed_k": mixed_k,
+        "teacher_ks": [float(k) if math.isfinite(k) else None for k in teacher_ks],
+        "teacher_classes": classes, "rescore_exclusions": exclusions, "rescores": state["rescores"], "k": k, "mixed_k": mixed_k,
         "training_records": int(training_count),
         "validation_records": int(validation_count), "steps_per_epoch": steps,
         "total_steps": steps * config["epochs"], "options": config,
@@ -356,10 +390,11 @@ def train(run: Path) -> None:
     command = [sys.executable, str(SOURCES / "train_pst.py"), "train", "--data", *paths,
                "--init", str(run / "pst-base.bin"), "--output", str(destination / "pst.bin"), "--k", repr(k)]
     for key, option in (("model", "model"), ("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
-                        ("seed", "seed"), ("lambda", "lambda"),
+                        ("seed", "seed"),
                         ("removal_penalty", "removal-penalty"), ("device", "device"),
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
+    command += ["--rescore", *config["rescore"]]
     if king_inputs:
         command += ["--king-features", *config["king_features"],
                     "--extra-columns", config["extra_columns"], "--train-extra", config["train_extra"]]
@@ -405,7 +440,7 @@ def diagnose(run: Path) -> None:
             verify_file(Path(item["path"]), item["sha256"])
     report = diagnose_weights(training_dataset(paths, training_config), run / "pst-base.bin", candidate, float_weights_path(candidate),
                               destination, config["sample_size"], config["seed"],
-                              state["config"]["train"]["lambda"], diagnose_probe(binary))
+                              diagnose_probe(binary))
     write_json(destination / "report.json", report)
     print(f"Diagnostics: {destination / 'report.json'}")
 

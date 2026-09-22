@@ -33,12 +33,14 @@ learning_rate = 3.0
 epochs = 10
 batch = 16384
 seed = 1
-lambda = 0.75
+# 教師の混合率lambdaは各MNSDの来歴ファイルで指定する。
 # 全modelで必須。0は追加損失なし。正値はmirroredだけで使える。
 # 係数は未選定のため0を例示する。実験では予備比較で採用した係数を転記する。
 removal_penalty = 0
 device = "cuda"
 validation_sample = 10000
+# 付け直しはrun.data、生成シードの順。なしは"-"。項目の省略は全てなし。
+rescore = ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"]
 # 追加特徴を使わない場合は以下の4項目をまとめて省略してもよい。
 # 使用時は全MNSD（run.data、生成シード順）に対応するMNKFを同順で指定する。
 king_features = []

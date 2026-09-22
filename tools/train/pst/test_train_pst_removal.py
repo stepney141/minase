@@ -14,7 +14,7 @@ import torch
 
 from features import FEATURE_COUNT, PADDING_INDEX, feature_indices, mirror
 from mnsd import Dataset, RECORD_DTYPE
-from test_train_pst import PIECE_VALUES, write_mnsd
+from test_train_pst import PIECE_VALUES, write_mnsd, write_provenance
 import train_pst as train
 
 
@@ -370,6 +370,7 @@ class RemovalApiTest(unittest.TestCase):
             board = records_with([[(0, 1), (142, 12), (143, 76)]])[0]["board"]
             write_mnsd(path, seed=5, checksum=b"v" * 32, games=list(range(4)),
                        scores=[-100, 300, 400, 200], results=[0, 1, 1, 2], board=board)
+            write_provenance(path, **{"lambda": 0.0})
             dataset = Dataset([path])
             base = constant_base()
             model = train.make_model(torch.from_numpy(-base.astype(np.float32) / 8), CPU, "mirrored")
@@ -378,7 +379,7 @@ class RemovalApiTest(unittest.TestCase):
             expected = float(np.logaddexp(0, -.5) + .25)
             with patch("train_pst.removal_loss", side_effect=AssertionError("validation must not add removal loss")):
                 overall, by_generation = train.validation_loss(
-                    model, dataset, np.array([2.0]), 2.0, 0.0, 1, CPU, indices=calibration,
+                    model, dataset, np.array([2.0]), 2.0, 1, CPU, indices=calibration,
                 )
             self.assertAlmostEqual(overall, expected, delta=1e-7)
             np.testing.assert_allclose(by_generation, [expected], atol=1e-7, rtol=0)
@@ -389,6 +390,7 @@ class RemovalApiTest(unittest.TestCase):
             records = records_with([[(0, 1), (142, 12), (143, 76)]])
             write_mnsd(path, seed=5, checksum=b"u" * 32, games=[0, 1],
                        scores=[0, 32767], results=[1, 2], board=records[0]["board"])
+            write_provenance(path, **{"lambda": 0.0})
             dataset = Dataset([path])
             base = constant_base()
             candidate = -base.astype(np.float32) / 8
@@ -401,7 +403,7 @@ class RemovalApiTest(unittest.TestCase):
                     reference = train.make_removal_reference(base[:, 0], base[:, 1], CPU) if rho else None
                     result = train.train_epoch(
                         model, torch.optim.SGD(model.parameters(), lr=step_size), dataset,
-                        np.array([2.0]), 2.0, 0.0, 1, torch.Generator().manual_seed(7), CPU,
+                        np.array([2.0]), 2.0, 1, torch.Generator().manual_seed(7), CPU,
                         count_features=True, indices=np.array([0]), removal_penalty=rho, removal_reference=reference,
                     )
                     expanded = train.expanded_model_weights(model).detach().numpy()

@@ -38,7 +38,6 @@ learning_rate = 3
 epochs = 10
 batch = 16384
 seed = 1
-lambda = 0.75
 removal_penalty = 0
 device = "cpu"
 validation_sample = 10000
@@ -154,8 +153,6 @@ class WorkflowTest(unittest.TestCase):
             ("k = 1072.6529541015625", "k = inf"),
             ("k = 1072.6529541015625", "k = true"),
             ('model = "single"', 'model = "dual"'),
-            ("lambda = 0.75", "lambda = 1.01"),
-            ("lambda = 0.75", "lambda = -0.01"),
             ("sample_size = 10000", "sample_size = 0"),
             ("seeds = [100, 110]", "seeds = [100, 100]"),
             ("seeds = [100, 110]", "seeds = [100, 109]"),
@@ -186,6 +183,11 @@ class WorkflowTest(unittest.TestCase):
         tools_commit = "1" * 40
         checkouts = {}
         builds = {}
+        from test_phase4 import write_rescore
+        source = self.root / "data/old.bin"
+        sidecar = self.root / "prepare-rescore.bin"
+        write_rescore(sidecar, source, [(1, 0, 20, 1, 100)] * workflow.read_header(source).record_count)
+        self.config["train"]["rescore"][0] = str(sidecar)
 
         def fake_git(repository, *arguments):
             if arguments == ("rev-parse", base + "^{commit}"):
@@ -218,6 +220,9 @@ class WorkflowTest(unittest.TestCase):
                 patch.object(workflow, "run_command", side_effect=fake_command):
             workflow.prepare(self.config_path)
         state = json.loads((run / "prepared.json").read_text())
+        self.assertEqual(state["rescores"], [{"path": str(sidecar), "sha256": workflow.digest(sidecar)}])
+        provenance = Path(str(source) + ".provenance.json")
+        self.assertEqual(state["existing_data"][0]["provenance"]["sha256"], workflow.digest(provenance))
         self.assertEqual(checkouts, {run / "generator": base, run / "probe": tools_commit})
         self.assertEqual(builds, {run / "generator": ["selfplay_gen"], run / "probe": ["pst_probe"]})
         self.assertEqual(state["config"]["run"]["base_commit"], base)
@@ -241,6 +246,7 @@ class WorkflowTest(unittest.TestCase):
         state = {
             "config": self.config,
             "existing_data": workflow.check_existing_data(self.config),
+            "rescores": [{"path": p, "sha256": workflow.digest(Path(p))} for p in self.config["train"]["rescore"] if p != "-"],
             "sources": workflow.source_hashes(),
             "base_sha256": workflow.digest(run / "pst-base.bin"),
             "base_piece_values_sha256": hashlib.sha256(
@@ -259,6 +265,54 @@ class WorkflowTest(unittest.TestCase):
                                         if args == ("rev-parse", "HEAD") else ""))
         return run, stack
 
+    def test_human_games_do_not_reserve_generator_seed_ranges(self):
+        from test_train_pst import write_provenance
+        write_provenance(self.root / "data/old.bin", result_origin="human", **{
+            "lambda": 0, "games": [{"game": 1, "id": "a"}, {"game": 10, "id": "b"}]})
+        self.config["generate"]["seeds"] = [0]
+        self.assertEqual(len(workflow.check_existing_data(self.config)), 1)
+
+    def test_provenance_change_blocks_generate_train_and_diagnose(self):
+        run, stack = self.prepared()
+        path = Path(str(self.root / "data/old.bin") + ".provenance.json")
+        value = json.loads(path.read_text())
+        value["lambda"] = 0.5
+        path.write_text(json.dumps(value))
+        execute = stack.enter_context(patch.object(workflow, "run_command"))
+        for command in (lambda: workflow.generate(run, 100), lambda: workflow.train(run), lambda: workflow.diagnose(run)):
+            with self.assertRaisesRegex(ValueError, "checksum changed"):
+                command()
+        execute.assert_not_called()
+
+    def test_rescore_change_blocks_all_later_stages(self):
+        from test_phase4 import write_rescore
+        source = self.root / "data/old.bin"
+        sidecar = self.root / "replacement.bin"
+        count = workflow.read_header(source).record_count
+        write_rescore(sidecar, source, [(1, 0, 10, 1, 20)] * count)
+        self.config["train"]["rescore"][0] = str(sidecar)
+        run, stack = self.prepared()
+        raw = bytearray(sidecar.read_bytes())
+        raw[242] ^= 1
+        sidecar.write_bytes(raw)
+        execute = stack.enter_context(patch.object(workflow, "run_command"))
+        for command in (lambda: workflow.generate(run, 100), lambda: workflow.train(run), lambda: workflow.diagnose(run)):
+            with self.assertRaisesRegex(ValueError, "checksum changed"):
+                command()
+        execute.assert_not_called()
+
+    def test_generated_provenance_change_blocks_reuse(self):
+        run, stack = self.prepared()
+        output = run / "generated-100.bin"
+        write_mnsd(output, seed=100, checksum=(run / "pst-base.bin").read_bytes()[48:80], games=[1])
+        (run / "generated-100.json").write_text(json.dumps(workflow.input_receipt(output)))
+        provenance = Path(str(output) + ".provenance.json")
+        provenance.write_text(provenance.read_text() + "\n")
+        execute = stack.enter_context(patch.object(workflow, "run_command"))
+        with self.assertRaisesRegex(ValueError, "checksum changed"):
+            workflow.generate(run, 100)
+        execute.assert_not_called()
+
     def test_existing_output_without_completion_is_not_reused(self) -> None:
         run, stack = self.prepared()
         output = run / "generated-100.bin"
@@ -275,7 +329,7 @@ class WorkflowTest(unittest.TestCase):
         output = run / "generated-100.bin"
         write_mnsd(output, seed=100,
                    checksum=(run / "pst-base.bin").read_bytes()[48:80], games=[0])
-        (run / "generated-100.json").write_text(json.dumps({"sha256": workflow.digest(output)}))
+        (run / "generated-100.json").write_text(json.dumps(workflow.input_receipt(output)))
         modified = bytearray(output.read_bytes())
         modified[136 + 147] ^= 1  # 探索値だけを変え、MNSD構造は有効に保つ。
         output.write_bytes(modified)
@@ -301,7 +355,7 @@ class WorkflowTest(unittest.TestCase):
         output = run / "generated-100.bin"
         checksum = (run / "pst-base.bin").read_bytes()[48:80]
         write_mnsd(output, seed=100, checksum=checksum, games=[0])
-        (run / "generated-100.json").write_text(json.dumps({"sha256": workflow.digest(output)}))
+        (run / "generated-100.json").write_text(json.dumps(workflow.input_receipt(output)))
         execute = stack.enter_context(patch.object(workflow, "run_command"))
         workflow.generate(run, 100)
         execute.assert_not_called()
@@ -352,6 +406,7 @@ class WorkflowTest(unittest.TestCase):
         write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
                    games=games)
         self.config["generate"]["seeds"] = [100, 200]
+        self.config["train"]["rescore"] = ["-"] * 3
         self.config["generate"]["games"] = 80
         self.config["train"].update(epochs=1, batch=32, validation_sample=16)
         self.config["diagnose"]["sample_size"] = 16
@@ -361,7 +416,7 @@ class WorkflowTest(unittest.TestCase):
             output = run / f"generated-{seed}.bin"
             write_mnsd(output, seed=seed, checksum=checksum, games=games)
             (run / f"generated-{seed}.json").write_text(
-                json.dumps({"sha256": workflow.digest(output)}))
+                json.dumps(workflow.input_receipt(output)))
 
         stdout = io.StringIO()
         with patch("train_pst.estimate_mixed_k", return_value=321.25), redirect_stdout(stdout):
@@ -403,6 +458,7 @@ class WorkflowTest(unittest.TestCase):
         write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
                    games=list(range(1, 81)))
         self.config["generate"]["seeds"] = []
+        self.config["train"]["rescore"] = ["-"]
         self.config["train"].update(model="mirrored", k=1500.5, removal_penalty=2.5)
         run, stack = self.prepared()
         generation_ks = stack.enter_context(patch(
@@ -429,6 +485,7 @@ class WorkflowTest(unittest.TestCase):
         write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
                    games=list(range(1, 81)))
         self.config["generate"]["seeds"] = []
+        self.config["train"]["rescore"] = ["-"]
         run, stack = self.prepared()
         stack.enter_context(patch(
             "train_pst.estimate_generation_ks", return_value=(np.array([777.0]), None)))
@@ -473,6 +530,7 @@ class WorkflowTest(unittest.TestCase):
         feature_path.write_bytes(HEADER.pack(b"MNKF", 1, 1, 68, len(values),
                                             hashlib.sha256(data.read_bytes()).digest()) + values.tobytes())
         self.config["generate"]["seeds"] = []
+        self.config["train"]["rescore"] = ["-"]
         self.config["train"].update(king_features=[str(feature_path)], extra_columns="0:24,62:68",
                                     train_extra="24:30", freeze_pst=True, k=1000)
         run, stack = self.prepared()

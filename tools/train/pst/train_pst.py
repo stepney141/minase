@@ -29,8 +29,8 @@ from features import (
     feature_indices,
     mirror,
 )
-from mnsd import COLUMN_COUNT, Dataset, NO_LION_SQUARE, hash64
-from taper import PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
+from mnsd import ORIGINS, COLUMN_COUNT, Dataset, NO_LION_SQUARE, hash64
+from taper import BAND_COUNT, band_indices, band_label, PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
 
 
 HEADER_LENGTH = 80
@@ -357,37 +357,34 @@ def _selected_indices(dataset: Dataset, indices: NDArray[np.int64]) -> NDArray[n
 
 
 def _selected_scores_results(
-    dataset: Dataset, indices: NDArray[np.int64], generation: int | None
+    dataset: Dataset, indices: NDArray[np.int64]
 ) -> tuple[NDArray[np.int16], NDArray[np.uint8]]:
-    """明示した局面集合から、指定世代または全世代の探索値と結果を集める。"""
-    score_chunks: list[NDArray[np.int16]] = []
-    result_chunks: list[NDArray[np.uint8]] = []
-    for file_index, (file_generation, records) in enumerate(zip(dataset.file_generations, dataset.records)):
-        if generation is not None and file_generation != generation:
-            continue
-        start, end = dataset.offsets[file_index:file_index + 2]
-        local = indices[(indices >= start) & (indices < end)] - start
-        score_chunks.append(np.asarray(records["score"][local], dtype=np.int16))
-        result_chunks.append(np.asarray(records["result"][local], dtype=np.uint8))
-    scores = np.concatenate(score_chunks)
-    results = np.concatenate(result_chunks)
-    if scores.size == 0:
-        scope = "dataset" if generation is None else f"generation {generation}"
-        raise ValueError(f"{scope} has no selected records")
-    return scores, results
+    """明示した局面集合から付け直し後の探索値と結果を集める。"""
+    scores, results = [], []
+    for start in range(0, indices.size, 65536):
+        chunk = indices[start:start + 65536]
+        records = dataset.gather(chunk)
+        scores.append(records["score"].copy())
+        results.append(records["result"].copy())
+    return np.concatenate(scores), np.concatenate(results)
 
 
 def estimate_generation_ks(
     dataset: Dataset, *, indices: NDArray[np.int64]
 ) -> tuple[NDArray[np.float64], list[int]]:
-    """明示した局面集合だけから各世代の教師Kと件数を求める。"""
+    """教師の分類ごとに指定した訓練局面からKを推定する。λ=0はNaN。"""
     indices = _selected_indices(dataset, indices)
-    values = np.empty(dataset.generation_count, dtype=np.float64)
-    counts: list[int] = []
-    for generation in range(dataset.generation_count):
-        scores, results = _selected_scores_results(dataset, indices, generation)
-        values[generation] = estimate_k(scores, results)
-        counts.append(int(scores.size))
+    values = np.full(dataset.generation_count, np.nan, dtype=np.float64)
+    counts = []
+    classes = dataset.generations(indices)
+    for generation, mix in enumerate(dataset.teacher_lambdas):
+        selected = indices[classes == generation]
+        counts.append(int(selected.size))
+        if mix == 0:
+            continue
+        if not selected.size:
+            raise ValueError(f"teacher class {generation} has no selected training records")
+        values[generation] = estimate_k(*_selected_scores_results(dataset, selected))
     return values, counts
 
 
@@ -396,7 +393,6 @@ def validation_loss(
     dataset: Dataset,
     teacher_ks: NDArray[np.float64],
     k: float,
-    lambda_value: float,
     batch: int,
     device: torch.device,
     *,
@@ -409,6 +405,11 @@ def validation_loss(
     generation_counts = np.zeros(dataset.generation_count, dtype=np.int64)
     group_sums = np.zeros(3)
     group_counts = np.zeros(3, dtype=np.int64)
+    origin_sums, origin_counts = np.zeros(3), np.zeros(3, dtype=np.int64)
+    band_sums, band_counts = np.zeros(BAND_COUNT), np.zeros(BAND_COUNT, dtype=np.int64)
+    sign_matches, decisive_counts = np.zeros(3, dtype=np.int64), np.zeros(3, dtype=np.int64)
+    class_origins = np.array([ORIGINS.index(c.origin) for c in dataset.teacher_classes])
+    games = {}
     with torch.no_grad():
         for start in range(0, indices.size, batch):
             global_indices = indices[start : start + batch]
@@ -417,15 +418,16 @@ def validation_loss(
             features = feature_indices(
                 records["board"], records["stm"], records["lion"]
             )
-            targets = build_targets(records, teacher_ks, generations, lambda_value)
+            targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas)
             device_features = torch.as_tensor(features, device=device)
             device_targets = torch.as_tensor(targets, device=device)
             device_phi = torch.as_tensor(
                 phase_ratios(records["board"]).astype(np.float32), device=device
             )
+            logits = model_logits(model, device_features, device_phi, k,
+                                  batch_extra(dataset, global_indices, device))
             losses = torch_functional.binary_cross_entropy_with_logits(
-                model_logits(model, device_features, device_phi, k,
-                             batch_extra(dataset, global_indices, device)),
+                logits,
                 device_targets,
                 reduction="none",
             ).cpu().numpy().astype(np.float64)
@@ -436,6 +438,21 @@ def validation_loss(
                 generations, minlength=dataset.generation_count
             )
             if breakdown is not None:
+                origins = class_origins[generations]
+                bands = band_indices(phase_ratios(records["board"]))
+                origin_sums += np.bincount(origins, weights=losses, minlength=3)
+                origin_counts += np.bincount(origins, minlength=3)
+                band_sums += np.bincount(bands, weights=losses, minlength=BAND_COUNT)
+                band_counts += np.bincount(bands, minlength=BAND_COUNT)
+                decisive = records["result"] != 1
+                signs = np.sign(logits.cpu().numpy())
+                matches = signs == (records["result"].astype(np.int16) - 1)
+                sign_matches += np.bincount(origins[decisive & matches], minlength=3)
+                decisive_counts += np.bincount(origins[decisive], minlength=3)
+                human = origins == ORIGINS.index("human-game")
+                for key, loss in zip(dataset.game_keys(global_indices[human]), losses[human]):
+                    total, count = games.get(key, (0.0, 0))
+                    games[key] = (total + float(loss), count + 1)
                 files = np.searchsorted(dataset.offsets[1:], global_indices, side="right")
                 game_half = np.zeros(len(records), dtype=np.bool_)
                 for file in np.unique(files):
@@ -456,6 +473,19 @@ def validation_loss(
         where=generation_counts != 0,
     )
     if breakdown is not None:
+        def summaries(names, counts, sums):
+            return {name: {"positions": int(count), "loss": float(total / count) if count else None}
+                    for name, count, total in zip(names, counts, sums)}
+        breakdown["origins"] = summaries(ORIGINS, origin_counts, origin_sums)
+        breakdown["piece_bands"] = summaries([band_label(i) for i in range(BAND_COUNT)], band_counts, band_sums)
+        breakdown["sign_agreement"] = {
+            name: {"positions": int(count), "agreement": float(matches / count) if count else None}
+            for name, count, matches in zip(ORIGINS, decisive_counts, sign_matches)
+        }
+        breakdown["human_game_mean"] = {
+            "games": len(games), "positions": sum(count for _, count in games.values()),
+            "loss": float(np.mean([total / count for total, count in games.values()])) if games else None,
+        }
         breakdown.update({
             name: {"positions": int(count), "loss": float(total / count) if count else None}
             for name, count, total in zip(
@@ -561,7 +591,6 @@ def train_epoch(
     dataset: Dataset,
     teacher_ks: NDArray[np.float64],
     k: float,
-    lambda_value: float,
     batch: int,
     generator: torch.Generator,
     device: torch.device,
@@ -606,7 +635,7 @@ def train_epoch(
             selected = normal.copy()
             reflected_rows = choose_reflected.cpu().numpy()
             selected[reflected_rows] = reflected[reflected_rows]
-        targets = build_targets(records, teacher_ks, generations, lambda_value)
+        targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas)
         device_features = torch.as_tensor(selected, device=device)
         device_targets = torch.as_tensor(targets, device=device)
         # 鏡映は駒数を変えないので、補間係数は鏡映前の盤面から計算してよい。
@@ -647,25 +676,27 @@ def build_targets(
     records: np.ndarray,
     teacher_ks: NDArray[np.float64],
     generations: NDArray[np.int64],
-    lambda_value: float,
+    teacher_lambdas: NDArray[np.float64],
 ) -> NDArray[np.float32]:
-    """世代別Kで探索値を変換し、最終結果と混合した教師勝率を作る。"""
+    """分類ごとのλで混ぜ、λ=0のKと探索値は参照しない。"""
     teacher_ks = np.asarray(teacher_ks, dtype=np.float64)
+    teacher_lambdas = np.broadcast_to(np.asarray(teacher_lambdas, dtype=np.float64), teacher_ks.shape)
     generations = np.asarray(generations, dtype=np.int64)
-    if generations.shape != (records.shape[0],):
-        raise ValueError("generations must have one value per record")
-    if np.any(generations < 0) or np.any(generations >= teacher_ks.size):
-        raise ValueError("generation is outside teacher K values")
-    scales = teacher_ks[generations]
-    if np.any(scales <= 0.0) or not np.all(np.isfinite(scales)):
-        raise ValueError("teacher K values must be finite and positive")
-    score_probability = 1.0 / (
-        1.0 + np.exp(-records["score"].astype(np.float64) / scales)
-    )
-    result_probability = records["result"].astype(np.float64) / 2.0
-    return (
-        lambda_value * score_probability + (1.0 - lambda_value) * result_probability
-    ).astype(np.float32)
+    if teacher_ks.ndim != 1 or teacher_lambdas.shape != teacher_ks.shape:
+        raise ValueError("one lambda and K are required per teacher class")
+    if np.any(~np.isfinite(teacher_lambdas)) or np.any((teacher_lambdas < 0) | (teacher_lambdas > 1)):
+        raise ValueError("teacher lambdas must be finite and in 0..1")
+    if generations.shape != (len(records),) or np.any(generations < 0) or np.any(generations >= teacher_ks.size):
+        raise ValueError("invalid teacher class indices")
+    mix = teacher_lambdas[generations]
+    active = mix != 0
+    scales = teacher_ks[generations[active]]
+    if np.any(scales <= 0) or np.any(~np.isfinite(scales)):
+        raise ValueError("active teacher K values must be finite and positive")
+    targets = records["result"].astype(np.float64) / 2
+    targets[active] = (mix[active] / (1 + np.exp(-records["score"][active].astype(np.float64) / scales))
+                       + (1 - mix[active]) * targets[active])
+    return targets.astype(np.float32)
 
 
 def quantize(weights: NDArray[np.float32]) -> NDArray[np.int16]:
@@ -765,24 +796,28 @@ def command_init(arguments: argparse.Namespace) -> None:
 
 def command_estimate_k(arguments: argparse.Namespace) -> None:
     """estimate-kサブコマンドを実行する。"""
-    dataset = Dataset(arguments.data)
+    dataset = Dataset(arguments.data, rescore=arguments.rescore)
     generation_ks, generation_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
     for generation, (checksum, k, count) in enumerate(
         zip(dataset.generation_checksums, generation_ks, generation_counts)
     ):
-        file_count = int(np.count_nonzero(dataset.file_generations == generation))
+        file_count = sum(np.any(rows == generation) for rows in dataset.row_generations)
         print(
             f"generation {generation}: files={file_count} checksum={checksum.hex()} "
             f"training_records={count} K={k:.9f}"
         )
     mixed_k = estimate_mixed_k(dataset, indices=dataset.training_indices)
-    print(f"mixed: training_records={dataset.training_indices.size} K={mixed_k:.9f}")
+    print(f"mixed: training_records={dataset.training_indices.size} K={mixed_k}")
 
 
-def estimate_mixed_k(dataset: Dataset, *, indices: NDArray[np.int64]) -> float:
+def estimate_mixed_k(dataset: Dataset, *, indices: NDArray[np.int64]) -> float | None:
     """明示した全世代の局面集合から参考用の混合Kを求める。"""
     indices = _selected_indices(dataset, indices)
-    return estimate_k(*_selected_scores_results(dataset, indices, None))
+    classes = dataset.generations(indices)
+    indices = indices[dataset.teacher_lambdas[classes] != 0]
+    if not indices.size:
+        return None
+    return estimate_k(*_selected_scores_results(dataset, indices))
 
 
 def _format_validation_loss(
@@ -819,8 +854,6 @@ def should_replace_best_epoch(candidate_loss: float, best_loss: float) -> bool:
 
 def command_train(arguments: argparse.Namespace) -> None:
     """trainサブコマンドを実行する。"""
-    if not 0.0 <= arguments.lambda_value <= 1.0:
-        raise ValueError("--lambda must be in 0..1")
     if arguments.epochs <= 0 or arguments.batch <= 0 or arguments.validation_sample <= 0:
         raise ValueError("--epochs, --batch, and --validation-sample must be positive")
     if any(rate <= 0.0 or not math.isfinite(rate) for rate in arguments.lr):
@@ -852,7 +885,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     device = torch.device(arguments.device)
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
-    dataset = Dataset(arguments.data, king_features=arguments.king_features, extra_columns=extra_columns)
+    dataset = Dataset(arguments.data, rescore=arguments.rescore, king_features=arguments.king_features, extra_columns=extra_columns)
     if dataset.training_indices.size == 0 or dataset.validation_indices.size == 0:
         raise ValueError("game split produced an empty training or validation set")
 
@@ -862,6 +895,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         for generation, k in enumerate(teacher_ks)
     )
     print(f"teacher K: {teacher_k_log}")
+    print(f"rescore exclusions: {json.dumps(dataset.exclusions)}")
     print(
         f"records: total={dataset.record_count} "
         f"training={dataset.training_indices.size} "
@@ -911,7 +945,6 @@ def command_train(arguments: argparse.Namespace) -> None:
                 dataset,
                 teacher_ks,
                 arguments.k,
-                arguments.lambda_value,
                 arguments.batch,
                 generator,
                 device,
@@ -924,7 +957,6 @@ def command_train(arguments: argparse.Namespace) -> None:
                 dataset,
                 teacher_ks,
                 arguments.k,
-                arguments.lambda_value,
                 arguments.batch,
                 device,
                 indices=dataset.validation_indices,
@@ -948,7 +980,6 @@ def command_train(arguments: argparse.Namespace) -> None:
         dataset,
         teacher_ks,
         arguments.k,
-        arguments.lambda_value,
         arguments.batch,
         device,
         indices=dataset.validation_indices, breakdown=breakdown,
@@ -973,7 +1004,6 @@ def command_train(arguments: argparse.Namespace) -> None:
             dataset,
             teacher_ks,
             arguments.k,
-            arguments.lambda_value,
             arguments.batch,
             generator,
             device,
@@ -990,7 +1020,6 @@ def command_train(arguments: argparse.Namespace) -> None:
             dataset,
             teacher_ks,
             arguments.k,
-            arguments.lambda_value,
             arguments.batch,
             device,
             indices=dataset.validation_indices, breakdown=breakdown,
@@ -1062,6 +1091,9 @@ def command_train(arguments: argparse.Namespace) -> None:
         print(f"extra weights (cp): {float_columns[FEATURE_COUNT:].tolist()}")
     with Path(arguments.output).with_suffix(".training.json").open("x") as stream:
         json.dump({"validation": history, "best_epoch": best_epoch,
+                   "teacher_classes": dataset.class_metadata(),
+                   "teacher_ks": [float(k) if np.isfinite(k) else None for k in teacher_ks],
+                   "rescore_exclusions": dataset.exclusions,
                    "extra_columns": extra_columns, "train_extra": train_extra,
                    "freeze_pst": arguments.freeze_pst}, stream, indent=2, allow_nan=False)
         stream.write("\n")
@@ -1086,10 +1118,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     estimate_parser = commands.add_parser("estimate-k", help="探索値の勝率尺度Kを推定する")
     estimate_parser.add_argument("--data", required=True, nargs="+")
+    estimate_parser.add_argument("--rescore", nargs="+")
     estimate_parser.set_defaults(handler=command_estimate_k)
 
     train_parser = commands.add_parser("train", help="学習PSTを訓練する")
     train_parser.add_argument("--data", required=True, nargs="+")
+    train_parser.add_argument("--rescore", nargs="+")
     train_parser.add_argument("--king-features", nargs="+")
     train_parser.add_argument("--extra-columns")
     train_parser.add_argument("--train-extra")
@@ -1099,7 +1133,6 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--model", required=True, choices=MODEL_KINDS)
     train_parser.add_argument("--k", required=True, type=float)
     train_parser.add_argument("--removal-penalty", required=True, type=float)
-    train_parser.add_argument("--lambda", dest="lambda_value", type=float, default=0.75)
     train_parser.add_argument("--lr", type=float, nargs="+", required=True)
     train_parser.add_argument("--epochs", type=int, default=10)
     train_parser.add_argument("--batch", type=int, default=16384)

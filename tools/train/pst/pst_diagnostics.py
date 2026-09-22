@@ -125,7 +125,6 @@ def _band_losses(
     dataset: Dataset,
     models: dict[str, Weights],
     teacher_ks: NDArray[np.float64],
-    lambda_value: float,
 ) -> dict[str, NDArray[np.float64]]:
     """全検証局面について、世代と帯ごとの検証損失をモデル別に返す。"""
     shape = (dataset.generation_count, BAND_COUNT)
@@ -137,7 +136,7 @@ def _band_losses(
         records = dataset.gather(chunk)
         generations = dataset.generations(chunk)
         bands = band_indices(phase_ratios(records["board"]))
-        targets = build_targets(records, teacher_ks, generations, lambda_value).astype(np.float64)
+        targets = build_targets(records, teacher_ks, generations, dataset.teacher_lambdas).astype(np.float64)
         np.add.at(counts, (generations, bands), 1)
         for name, model in models.items():
             logits = model.evaluate(records, dataset.gather_extra(chunk)).astype(np.float64) / model.k
@@ -254,7 +253,6 @@ def diagnose(
     output_dir: Path,
     sample_size: int,
     seed: int,
-    lambda_value: float,
     probe: Probe,
 ) -> dict:
     """帯別の教師誤差、量子化誤差、駒の除去、および成りの診断を返す。
@@ -281,16 +279,18 @@ def diagnose(
         raise ValueError("float weights do not match candidate feature count")
     teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
     samples = band_samples(dataset, sample_size, seed)
-    losses = _band_losses(dataset, models, teacher_ks, lambda_value)
+    losses = _band_losses(dataset, models, teacher_ks)
     training_counts = band_counts(dataset, dataset.training_indices)
     validation_counts = band_counts(dataset, dataset.validation_indices)
 
     report = {
         "sample_size": sample_size,
         "seed": seed,
-        "lambda": lambda_value,
+        "teacher_classes": dataset.class_metadata(),
+        "rescore_exclusions": dataset.exclusions,
+        "teacher_comparison_excluded": int(validation_counts[dataset.teacher_lambdas == 0].sum()),
         "k": {name: model.k for name, model in models.items()},
-        "teacher_ks": teacher_ks.tolist(),
+        "teacher_ks": [float(k) if np.isfinite(k) else None for k in teacher_ks],
         "generation_checksums": [c.hex() for c in dataset.generation_checksums],
         "piece_values": models["base"].piece_values.tolist(),
         "bands": [],
@@ -325,10 +325,16 @@ def diagnose(
             representative_candidates[band] = min(
                 representative_candidates.get(band, int(indices[0])), int(indices[0])
             )
-            raw = records["score"].astype(np.float64)
-            scaled = raw * (models["candidate"].k / teacher_ks[generation])
-            for name, model in models.items():
-                entry[name] = _error_summary(model.evaluate(records, dataset.gather_extra(indices)).astype(np.float64), scaled, raw)
+            entry["teacher_comparison_excluded"] = int(indices.size) if dataset.teacher_lambdas[generation] == 0 else 0
+            if dataset.teacher_lambdas[generation] == 0:
+                entry["teacher_comparison_reason"] = "lambda is zero"
+                for name in models:
+                    entry[name] = None
+            else:
+                raw = records["score"].astype(np.float64)
+                scaled = raw * (models["candidate"].k / teacher_ks[generation])
+                for name, model in models.items():
+                    entry[name] = _error_summary(model.evaluate(records, dataset.gather_extra(indices)).astype(np.float64), scaled, raw)
         report["bands"].append(entry)
 
     if not sample_chunks:
@@ -423,3 +429,34 @@ def diagnose(
             derived = derived_piece_values(model.middlegame, model.endgame, phi)
             report["derived_piece_values"][f"{name}_{endpoint}"] = [derived[s] for s in REACHABLE_NON_ROYAL_STATES]
     return report
+
+
+def main() -> None:
+    import argparse
+    from train_pst import float_weights_path, parse_ranges
+    from mnsd import COLUMN_COUNT
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data", nargs="+", required=True)
+    parser.add_argument("--rescore", nargs="+")
+    parser.add_argument("--king-features", nargs="+")
+    parser.add_argument("--extra-columns")
+    parser.add_argument("--base", type=Path, required=True)
+    parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--probe", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--sample-size", type=int, default=10000)
+    parser.add_argument("--seed", type=int, default=1)
+    args = parser.parse_args()
+    try:
+        columns = None if args.extra_columns is None else parse_ranges(args.extra_columns, COLUMN_COUNT)
+        dataset = Dataset(args.data, rescore=args.rescore, king_features=args.king_features, extra_columns=columns)
+        args.output_dir.mkdir()
+        report = diagnose(dataset, args.base, args.candidate, float_weights_path(args.candidate),
+                          args.output_dir, args.sample_size, args.seed, rust_probe(args.probe))
+        (args.output_dir / "report.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
+    except (ValueError, OSError) as error:
+        parser.exit(1, f"error: {error}\n")
+
+
+if __name__ == "__main__":
+    main()

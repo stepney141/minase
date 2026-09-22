@@ -13,6 +13,7 @@ import numpy as np
 import torch
 
 from features import FEATURE_COUNT, PADDING_INDEX, feature_indices
+from test_train_pst import write_provenance
 from mnsd import HEADER, Dataset, RECORD_DTYPE, write_mnsd
 from train_pst import (
     expanded_model_weights, float_evaluate, initial_piece_values, integer_evaluate,
@@ -38,6 +39,7 @@ class ExtraTrainingTests(unittest.TestCase):
         self.records['score'] = 1000
         self.records['result'] = 2
         write_mnsd(self.data, self.records, seed=0, network_checksum=bytes(32))
+        write_provenance(self.data)
         self.values = np.tile(np.arange(68, dtype=np.uint8), (200, 1)) % 3 + 1
         self.write_features()
         self.device = torch.device('cpu')
@@ -115,6 +117,7 @@ class ExtraTrainingTests(unittest.TestCase):
         other = self.root / 'other.bin'
         other_features = self.root / 'other.mnkf'
         write_mnsd(other, self.records[:2], seed=5, network_checksum=b'a' * 32)
+        write_provenance(other)
         other_values = np.full((2, 68), 7, dtype=np.uint8)
         other_features.write_bytes(HEADER.pack(
             b'MNKF', 1, 1, 68, 2, hashlib.sha256(other.read_bytes()).digest()
@@ -160,6 +163,7 @@ class ExtraTrainingTests(unittest.TestCase):
         other = self.root / 'shelter.bin'
         other_features = self.root / 'shelter.mnkf'
         write_mnsd(other, self.records[:2], seed=5, network_checksum=b'a' * 32)
+        write_provenance(other)
         rows = np.full((2, 24), 7, dtype=np.uint8)
         other_features.write_bytes(HEADER.pack(
             b'MNKF', 1, 1, 24, 2, hashlib.sha256(other.read_bytes()).digest()
@@ -211,7 +215,7 @@ class ExtraTrainingTests(unittest.TestCase):
                            extra_initial=torch.tensor([[7., -3.], [0., 0.], [0., 0.]]),
                            train_extra=[1], freeze_pst=True)
         optimizer = torch.optim.SGD(model.parameters(), lr=1e9)
-        train_epoch(model, optimizer, dataset, np.array([1000.]), 1000., 0.75, 200,
+        train_epoch(model, optimizer, dataset, np.array([1000.]), 1000., 200,
                     torch.Generator().manual_seed(1), self.device, indices=dataset.training_indices,
                     removal_penalty=0, removal_reference=None)
         self.assertIsNone(model.pst.weight.grad)

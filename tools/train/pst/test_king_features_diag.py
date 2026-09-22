@@ -11,6 +11,7 @@ import unittest
 import numpy as np
 
 from king_features_diag import Statistics, diagnose
+from test_train_pst import write_provenance
 from mnsd import COLUMN_COUNT, HEADER, KingFeatures
 from mnsd import Dataset, RECORD_DTYPE, hash64, write_mnsd
 from train_pst import FEATURE_COUNT, initial_piece_values, write_mnpt
@@ -39,6 +40,7 @@ class KingFeaturesTests(unittest.TestCase):
         self.records["board"][2, 2:4] = [51, 115]  # 双方の太子。
         self.records["stm"][2] = 1
         write_mnsd(self.data, self.records, seed=17, network_checksum=bytes(32))
+        write_provenance(self.data)
         self.values = np.zeros((4, COLUMN_COUNT), dtype=np.uint8)
         self.values[:, 0] = [0, 1, 2, 255]
         self.values[:, 1] = [2, 1, 0, 255]
@@ -58,6 +60,7 @@ class KingFeaturesTests(unittest.TestCase):
         changed = self.records.copy()
         changed["score"][0] = 1
         write_mnsd(self.data, changed, seed=17, network_checksum=bytes(32))
+        write_provenance(self.data)
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             KingFeatures(Dataset([self.data]), [self.features])
 
@@ -106,6 +109,7 @@ class KingFeaturesTests(unittest.TestCase):
         second_data = self.directory / "second.bin"
         second_features = self.directory / "second-features.bin"
         write_mnsd(second_data, self.records[:2], seed=18, network_checksum=bytes(32))
+        write_provenance(second_data)
         rows = np.full((2, 68), 7, dtype=np.uint8)
         rows[1] = 8
         second_features.write_bytes(HEADER.pack(

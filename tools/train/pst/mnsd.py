@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 import hashlib
+import json
+import re
 import struct
 from typing import Sequence
 
@@ -172,12 +174,138 @@ def hash64(seed: int, games: NDArray[np.uint32]) -> NDArray[np.uint64]:
     return values ^ (values >> np.uint64(31))
 
 
+MNRS_HEADER_LENGTH = 240
+MNRS_DTYPE = np.dtype([
+    ("status", "u1"), ("tactical", "u1"), ("score", "<i2"),
+    ("depth", "<u4"), ("nodes", "<u8"),
+])
+ORIGINS = ("random-selfplay", "human-start-selfplay", "human-game")
+
+
+@dataclass(frozen=True)
+class TeacherClass:
+    generation_commit: str
+    network_checksum: str
+    nodes: int
+    rule_set: str
+    search_condition: str
+    result_origin: str
+    start_origin: str
+
+    @property
+    def origin(self) -> str:
+        if self.result_origin == "human":
+            return "human-game"
+        return "random-selfplay" if self.start_origin == "random" else "human-start-selfplay"
+
+
+def provenance_path(path: Path) -> Path:
+    return Path(str(path) + ".provenance.json")
+
+
+def _hex(value: object, length: int, name: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]{%d}" % length, value):
+        raise ValueError(f"{name} must contain {length} hexadecimal digits")
+    return value.lower()
+
+
+def read_provenance(path: Path, checksum: bytes) -> tuple[TeacherClass, float, dict | None]:
+    """交換形式第3節の来歴を検証する。既存データからの推測は行わない。"""
+    raw = json.loads(provenance_path(path).read_text(encoding="utf-8"))
+    required = {"format", "version", "mnsd_sha256", "teacher", "result_origin", "start_origin", "lambda", "games"}
+    if not isinstance(raw, dict) or not required <= raw.keys():
+        raise ValueError(f"{path}: missing provenance fields")
+    if raw["format"] != "minase-provenance" or type(raw["version"]) is not int or raw["version"] != 1:
+        raise ValueError(f"{path}: unsupported provenance format/version")
+    if _hex(raw["mnsd_sha256"], 64, "mnsd_sha256") != checksum.hex():
+        raise ValueError(f"{path}: provenance MNSD SHA-256 mismatch")
+    teacher = raw["teacher"]
+    if not isinstance(teacher, dict) or not {"generation_commit", "network_checksum", "nodes", "rule_set", "search_condition"} <= teacher.keys():
+        raise ValueError(f"{path}: missing teacher fields")
+    commit = _hex(teacher["generation_commit"], 40, "generation_commit")
+    network = _hex(teacher["network_checksum"], 64, "network_checksum")
+    if type(teacher["nodes"]) is not int or not 0 <= teacher["nodes"] < 2**32:
+        raise ValueError(f"{path}: invalid teacher nodes")
+    if not isinstance(teacher["rule_set"], str) or not teacher["rule_set"] or "\0" in teacher["rule_set"] or len(teacher["rule_set"].encode("utf-8")) > 32:
+        raise ValueError(f"{path}: invalid rule_set")
+    if (teacher["search_condition"] not in ("in-game", "standalone")
+            or raw["result_origin"] not in ("selfplay", "human")
+            or raw["start_origin"] not in ("random", "human-game")):
+        raise ValueError(f"{path}: invalid provenance enumeration")
+    mix = raw["lambda"]
+    if type(mix) not in (int, float) or not np.isfinite(mix) or not 0 <= mix <= 1:
+        raise ValueError(f"{path}: lambda must be finite and in 0..1")
+    games = raw["games"]
+    if raw["result_origin"] == "selfplay" and raw["start_origin"] == "random":
+        if games is not None:
+            raise ValueError(f"{path}: random selfplay games must be null")
+    else:
+        if not isinstance(games, list):
+            raise ValueError(f"{path}: games mapping is required")
+        mapping = {}
+        for game in games:
+            if (not isinstance(game, dict) or not {"game", "id"} <= game.keys()
+                    or type(game["game"]) is not int or not 1 <= game["game"] < 2**32
+                    or not isinstance(game["id"], str) or not game["id"]):
+                raise ValueError(f"{path}: invalid game mapping")
+            if game["game"] in mapping:
+                raise ValueError(f"{path}: duplicate game number")
+            if raw["start_origin"] == "human-game" and (
+                    "ply" not in game or type(game["ply"]) is not int or game["ply"] < 0):
+                raise ValueError(f"{path}: human-game start requires ply")
+            mapping[game["game"]] = game["id"]
+        games = mapping
+    return TeacherClass(commit, network, teacher["nodes"], teacher["rule_set"],
+                        teacher["search_condition"], raw["result_origin"], raw["start_origin"]), float(mix), games
+
+
+def read_rescore(path: Path, checksum: bytes, count: int, original: TeacherClass) -> tuple[TeacherClass, np.ndarray]:
+    """完成したMNRSだけを読み、対象一覧の検査和まで照合する。"""
+    with path.open("rb") as stream:
+        raw = stream.read(MNRS_HEADER_LENGTH)
+    if len(raw) != MNRS_HEADER_LENGTH or path.stat().st_size != MNRS_HEADER_LENGTH + 16 * count:
+        raise ValueError(f"{path}: MNRS file length mismatch (possibly incomplete)")
+    if struct.unpack_from("<4sI", raw) != (b"MNRS", 1):
+        raise ValueError(f"{path}: unsupported MNRS format/version")
+    if raw[8:40] != checksum or struct.unpack_from("<Q", raw, 40)[0] != count:
+        raise ValueError(f"{path}: MNRS source SHA-256 or record count mismatch")
+    if raw[160] != 0 or any(raw[161:164]) or any(raw[236:240]):
+        raise ValueError(f"{path}: invalid MNRS search condition or reserved bytes")
+    try:
+        commit = _hex(raw[164:204].decode("ascii"), 40, "MNRS commit")
+    except UnicodeDecodeError as error:
+        raise ValueError(f"{path}: invalid MNRS commit") from error
+    rule = _decode_nul_padded(raw[124:156], "MNRS rule set")
+    if not rule:
+        raise ValueError(f"{path}: empty MNRS rule set")
+    teacher = TeacherClass(commit, raw[88:120].hex(), struct.unpack_from("<I", raw, 120)[0],
+                           rule, "standalone", original.result_origin, original.start_origin)
+    records = np.memmap(path, mode="r", dtype=MNRS_DTYPE, offset=MNRS_HEADER_LENGTH, shape=(count,))
+    selected = hashlib.sha256()
+    selected_count = 0
+    for start in range(0, count, 65536):
+        rows = records[start:start + 65536]
+        status = rows["status"]
+        if (np.any(status > 2) or np.any(rows["tactical"] > 1)
+                or np.any((status != 1) & ((rows["tactical"] != 0) | (rows["score"] != 0) | (rows["depth"] != 0)))
+                or np.any((status == 1) & (rows["depth"] == 0))
+                or np.any((status == 0) & (rows["nodes"] != 0))):
+            raise ValueError(f"{path}: invalid MNRS record")
+        targets = np.flatnonzero(status != 0).astype("<u8") + start
+        selected.update(targets.tobytes())
+        selected_count += targets.size
+    if selected_count != struct.unpack_from("<Q", raw, 80)[0] or selected.digest() != raw[48:80]:
+        raise ValueError(f"{path}: MNRS target list mismatch")
+    return teacher, records
+
+
 class Dataset:
     """複数MNSDをメモリマップのまま保持し、大域番号で参照する。"""
 
     def __init__(self, paths: Sequence[str | Path], *,
                  king_features: Sequence[str | Path] | None = None,
-                 extra_columns: Sequence[int] | None = None) -> None:
+                 extra_columns: Sequence[int] | None = None,
+                 rescore: Sequence[str | Path] | None = None) -> None:
         if not paths:
             raise ValueError("at least one MNSD path is required")
 
@@ -186,9 +314,30 @@ class Dataset:
             raise ValueError("the same MNSD file was specified more than once")
 
         headers = tuple(read_header(path) for path in resolved_paths)
-        seeds = [header.seed for header in headers]
+        checksums = tuple(sha256_file(path) for path in resolved_paths)
+        if len(set(checksums)) != len(checksums):
+            raise ValueError("the same MNSD file content was specified more than once")
+        provenance = tuple(read_provenance(path, checksum) for path, checksum in zip(resolved_paths, checksums))
+        seeds = [header.seed for header, (teacher, _, _) in zip(headers, provenance)
+                 if teacher.origin == "random-selfplay"]
         if len(set(seeds)) != len(seeds):
-            raise ValueError("MNSD file seeds must be unique")
+            raise ValueError("random selfplay MNSD file seeds must be unique")
+        if rescore is None:
+            rescore = ["-"] * len(paths)
+        if len(rescore) != len(paths):
+            raise ValueError("one rescore path or '-' is required for each MNSD file")
+        rescores = []
+        classes = []
+        lambdas = []
+        def register(teacher, mix):
+            if teacher in classes:
+                index = classes.index(teacher)
+                if lambdas[index] != mix:
+                    raise ValueError("the same teacher class has conflicting lambda values")
+                return index
+            classes.append(teacher)
+            lambdas.append(mix)
+            return len(classes) - 1
 
         counts = np.fromiter(
             (header.record_count for header in headers), dtype=np.uint64
@@ -196,17 +345,6 @@ class Dataset:
         total = sum(header.record_count for header in headers)
         if total > np.iinfo(np.int64).max:
             raise OverflowError("combined record count exceeds i64")
-
-        checksums: list[bytes] = []
-        checksum_generations: dict[bytes, int] = {}
-        file_generations = np.empty(len(headers), dtype=np.int64)
-        for file_index, header in enumerate(headers):
-            generation = checksum_generations.get(header.network_checksum)
-            if generation is None:
-                generation = len(checksums)
-                checksum_generations[header.network_checksum] = generation
-                checksums.append(header.network_checksum)
-            file_generations[file_index] = generation
 
         offsets = np.empty(len(headers) + 1, dtype=np.int64)
         offsets[0] = 0
@@ -216,23 +354,56 @@ class Dataset:
         validation_masks: list[NDArray[np.bool_]] = []
         training_indices_by_file: list[NDArray[np.int64]] = []
         validation_indices_by_file: list[NDArray[np.int64]] = []
-        for file_index, (header, mapped) in enumerate(zip(headers, records)):
-            validation = hash64(header.seed, mapped["game"]) % np.uint64(20) == 0
-            validation_masks.append(validation)
+        row_generations = []
+        exclusions = {"mate_band": 0, "tactical": 0, "depth_incomplete": 0, "total": 0}
+        for file_index, (header, mapped, (teacher, mix, games)) in enumerate(zip(headers, records, provenance)):
+            if games is None:
+                validation = hash64(header.seed, mapped["game"]) % np.uint64(20) == 0
+            else:
+                numbers, inverse = np.unique(mapped["game"], return_inverse=True)
+                if any(int(game) not in games for game in numbers):
+                    raise ValueError(f"{resolved_paths[file_index]}: missing game ID mapping")
+                split = [int.from_bytes(hashlib.sha256(games[int(game)].encode("utf-8")).digest()[:8], "little") % 20 == 0 for game in numbers]
+                validation = np.asarray(split, dtype=np.bool_)[inverse]
+            eligible = np.ones(header.record_count, dtype=np.bool_)
+            rescored = None
+            changed = np.zeros(header.record_count, dtype=np.bool_)
+            if str(rescore[file_index]) != "-":
+                new_teacher, rescored = read_rescore(Path(rescore[file_index]), checksums[file_index], header.record_count, teacher)
+                changed = rescored["status"] == 1
+                reasons = {
+                    "mate_band": changed & (np.abs(rescored["score"].astype(np.int32)) >= 29000),
+                    "tactical": changed & (rescored["tactical"] == 1),
+                    "depth_incomplete": rescored["status"] == 2,
+                }
+                for reason, mask in reasons.items():
+                    exclusions[reason] += int(np.count_nonzero(mask))
+                    eligible &= ~mask
+                exclusions["total"] += int(np.count_nonzero(~eligible))
+            # 除外だけの分類には推定対象がないため番号を割り当てない。
+            generations = np.full(header.record_count, -1, dtype=np.int64)
+            if np.any(eligible & ~changed):
+                generations[eligible & ~changed] = register(teacher, mix)
+            if np.any(eligible & changed):
+                generations[eligible & changed] = register(new_teacher, mix)
+            row_generations.append(generations)
+            rescores.append(rescored)
+            validation_masks.append(validation & eligible)
             offset = offsets[file_index]
-            training_indices_by_file.append(
-                np.flatnonzero(~validation).astype(np.int64) + offset
-            )
-            validation_indices_by_file.append(
-                np.flatnonzero(validation).astype(np.int64) + offset
-            )
+            training_indices_by_file.append(np.flatnonzero(~validation & eligible).astype(np.int64) + offset)
+            validation_indices_by_file.append(np.flatnonzero(validation & eligible).astype(np.int64) + offset)
 
         self.paths = resolved_paths
         self.headers = headers
         self.records = records
         self.offsets = offsets
-        self.file_generations = file_generations
-        self.generation_checksums = tuple(checksums)
+        self.teacher_classes = tuple(classes)
+        self.teacher_lambdas = np.asarray(lambdas)
+        self.generation_checksums = tuple(bytes.fromhex(c.network_checksum) for c in classes)
+        self.row_generations = tuple(row_generations)
+        self.provenance = provenance
+        self.rescores = tuple(rescores)
+        self.exclusions = exclusions
         self.validation_masks = tuple(validation_masks)
         self.training_indices_by_file = tuple(training_indices_by_file)
         self.validation_indices_by_file = tuple(validation_indices_by_file)
@@ -257,27 +428,47 @@ class Dataset:
 
     @property
     def generation_count(self) -> int:
-        """ネット検査和で識別した世代数を返す。"""
+        """教師の分類数（診断のgeneration軸）を返す。"""
         return len(self.generation_checksums)
+
+    @property
+    def file_generations(self) -> NDArray[np.int64]:
+        """ファイル単位の診断には、各ファイルが単一分類であることを要求する。"""
+        classes = [np.unique(rows[rows >= 0]) for rows in self.row_generations]
+        if any(len(values) != 1 for values in classes):
+            raise ValueError("file-level classification requires one teacher class per file")
+        return np.array([values[0] for values in classes], dtype=np.int64)
 
     def generation_training_indices(self, generation: int) -> NDArray[np.int64]:
         """指定世代に属する訓練レコードの大域番号を返す。"""
         if not 0 <= generation < self.generation_count:
             raise IndexError("generation is outside the dataset")
-        chunks = [
-            indices
-            for file_generation, indices in zip(
-                self.file_generations, self.training_indices_by_file
-            )
-            if file_generation == generation
-        ]
-        return np.concatenate(chunks)
+        return self.training_indices[self.generations(self.training_indices) == generation]
 
     def generations(self, indices: NDArray[np.int64]) -> NDArray[np.int64]:
-        """大域レコード番号に対応する世代番号を返す。"""
+        """大域番号に対応する教師の分類番号を返す。除外行は-1。"""
         normalized = self._normalize_indices(indices)
         files = np.searchsorted(self.offsets[1:], normalized, side="right")
-        return self.file_generations[files]
+        result = np.empty(normalized.size, dtype=np.int64)
+        for file, rows in enumerate(self.row_generations):
+            selected = files == file
+            result[selected] = rows[normalized[selected] - self.offsets[file]]
+        return result
+
+    def class_metadata(self) -> list[dict]:
+        return [dict(asdict(teacher), **{"lambda": float(mix)})
+                for teacher, mix in zip(self.teacher_classes, self.teacher_lambdas)]
+
+    def game_keys(self, indices: NDArray[np.int64]) -> list[tuple]:
+        """実戦棋譜由来では全ファイルを通して棋譜IDを対局単位にする。"""
+        normalized = self._normalize_indices(indices)
+        files = np.searchsorted(self.offsets[1:], normalized, side="right")
+        keys = []
+        for file, index in zip(files, normalized):
+            game = int(self.records[file]["game"][index - self.offsets[file]])
+            mapping = self.provenance[file][2]
+            keys.append(("random", self.headers[file].seed, game) if mapping is None else ("human", mapping[game]))
+        return keys
 
     def gather(self, indices: NDArray[np.int64]) -> np.ndarray:
         """任意順の大域レコード番号を同じ順序の構造化配列へ集める。"""
@@ -293,7 +484,14 @@ class Dataset:
                 continue
             local = normalized[positions] - self.offsets[file_index]
             local_order = np.argsort(local, kind="stable")
-            gathered[positions[local_order]] = mapped[local[local_order]]
+            ordered = positions[local_order]
+            local = local[local_order]
+            gathered[ordered] = mapped[local]
+            rescored = self.rescores[file_index]
+            if rescored is not None:
+                rows = rescored[local]
+                changed = rows["status"] == 1
+                gathered["score"][ordered[changed]] = rows["score"][changed]
         return gathered
 
     def _normalize_indices(self, indices: NDArray[np.int64]) -> NDArray[np.int64]:

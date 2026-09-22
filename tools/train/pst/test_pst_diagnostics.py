@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -11,7 +12,7 @@ from features import BOARD_FEATURE_COUNT, FEATURE_COUNT
 from mnsd import NO_LION_SQUARE, RECORD_DTYPE, Dataset, read_header, map_records
 from pst_diagnostics import Weights, derived_piece_values, diagnose
 from taper import BAND_COUNT
-from test_train_pst import write_mnsd
+from test_train_pst import write_mnsd, write_provenance
 from train_pst import initial_piece_values, write_mnpt
 
 PIECE_VALUES = initial_piece_values()
@@ -79,7 +80,25 @@ class DiagnosticsTest(unittest.TestCase):
     def run_diagnose(self, dataset: Dataset, output: Path, sample_size: int = 5) -> dict:
         output.mkdir()
         return diagnose(dataset, self.base, self.candidate, self.float_path, output,
-                        sample_size, 19, 0.75, python_probe)
+                        sample_size, 19, python_probe)
+
+    def test_zero_lambda_omits_teacher_comparisons_but_keeps_other_diagnostics(self):
+        original = self.dataset()
+        for path in original.paths:
+            write_provenance(path, **{"lambda": 0})
+        dataset = Dataset(original.paths)
+        with patch("train_pst.estimate_k", side_effect=AssertionError("unexpected K estimate")):
+            report = self.run_diagnose(dataset, self.root / "results-only")
+        json.dumps(report, allow_nan=False)
+        self.assertEqual(report["teacher_ks"], [None, None])
+        self.assertEqual(report["teacher_comparison_excluded"], len(dataset.validation_indices))
+        self.assertGreater(report["quantization"]["samples"], 0)
+        for entry in report["bands"]:
+            self.assertIsNone(entry["candidate"])
+            self.assertIsNone(entry["base"])
+            if entry["samples"]:
+                self.assertEqual(entry["teacher_comparison_excluded"], entry["samples"])
+                self.assertIsNotNone(entry["validation_loss"]["candidate"])
 
     def test_same_saved_samples_compare_both_weights_and_report_empty_bands(self) -> None:
         dataset = self.dataset()
@@ -190,7 +209,7 @@ class DiagnosticsTest(unittest.TestCase):
         output = self.root / "mismatch"
         output.mkdir()
         with self.assertRaises(ValueError):
-            diagnose(self.dataset(), self.base, self.candidate, self.float_path, output, 5, 19, 0.75, wrong_probe)
+            diagnose(self.dataset(), self.base, self.candidate, self.float_path, output, 5, 19, wrong_probe)
 
     def test_rejects_changed_piece_values_and_quantization_drift(self) -> None:
         dataset = self.dataset()
@@ -201,7 +220,7 @@ class DiagnosticsTest(unittest.TestCase):
         output = self.root / "values"
         output.mkdir()
         with self.assertRaises(ValueError):
-            diagnose(dataset, self.base, self.candidate, self.float_path, output, 5, 19, 0.75, python_probe)
+            diagnose(dataset, self.base, self.candidate, self.float_path, output, 5, 19, python_probe)
         write_mnpt(self.candidate, self.weights, self.weights, PIECE_VALUES, 1000)
         with self.float_path.open("wb") as stream:
             np.savez(stream, middlegame=self.weights.astype(np.float32) / 8 + 3,
@@ -209,7 +228,7 @@ class DiagnosticsTest(unittest.TestCase):
         drift = self.root / "drift"
         drift.mkdir()
         with self.assertRaises(ValueError):
-            diagnose(dataset, self.base, self.candidate, self.float_path, drift, 5, 19, 0.75, python_probe)
+            diagnose(dataset, self.base, self.candidate, self.float_path, drift, 5, 19, python_probe)
 
     def test_promotion_delta_mismatch_is_rejected_when_before_evaluations_agree(self) -> None:
         """strength-stage7.md: 成りの評価差もRustとPython整数評価で一致しなければ停止する。"""
@@ -226,7 +245,7 @@ class DiagnosticsTest(unittest.TestCase):
                 output.mkdir()
                 with self.assertRaises(ValueError):
                     diagnose(dataset, self.base, self.candidate, self.float_path, output,
-                             5, 19, 0.75, wrong_promotion)
+                             5, 19, wrong_promotion)
 
     def test_pst_removal_sign_reversal_is_rejected(self) -> None:
         self.write_candidate(-self.weights, -self.weights)
