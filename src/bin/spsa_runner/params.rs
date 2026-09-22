@@ -140,7 +140,6 @@ pub(super) fn parse_parameters(
         return Err(ParameterError::NoDeclarations);
     }
     let mut parameters = Vec::new();
-    let mut names = BTreeSet::new();
     for (index, row) in text.lines().enumerate() {
         let row = row.trim();
         if row.is_empty() || row.starts_with('#') {
@@ -159,9 +158,6 @@ pub(super) fn parse_parameters(
             .iter()
             .find(|d| d.name == name)
             .ok_or_else(|| ParameterError::UnknownName(name.clone()))?;
-        if !names.insert(name.clone()) {
-            return Err(ParameterError::Duplicate(name));
-        }
         let float = |text: &str| {
             text.parse::<f64>()
                 .map_err(|source| ParameterError::Float { line, source })
@@ -178,22 +174,35 @@ pub(super) fn parse_parameters(
             c_end: float(fields[4])?,
             r_end: float(fields[5])?,
         };
+        if p.min < declaration.min || p.max > declaration.max {
+            return Err(ParameterError::Range(p.name));
+        }
+        parameters.push(p);
+    }
+    validate_parameters(&parameters)?;
+    Ok(parameters)
+}
+
+/// 係数ファイルと保存された実行条件に共通する妥当性を検査する。
+pub(super) fn validate_parameters(parameters: &[Parameter]) -> Result<(), ParameterError> {
+    if parameters.is_empty() {
+        return Err(ParameterError::Empty);
+    }
+    let mut names = BTreeSet::new();
+    for p in parameters {
+        if !names.insert(&p.name) {
+            return Err(ParameterError::Duplicate(p.name.clone()));
+        }
         if !p.start.is_finite()
             || p.min > p.max
             || p.start < f64::from(p.min)
             || p.start > f64::from(p.max)
-            || p.min < declaration.min
-            || p.max > declaration.max
         {
-            return Err(ParameterError::Range(p.name));
+            return Err(ParameterError::Range(p.name.clone()));
         }
         if !p.c_end.is_finite() || !p.r_end.is_finite() || p.c_end <= 0.0 || p.r_end <= 0.0 {
-            return Err(ParameterError::NonPositiveRate(p.name));
+            return Err(ParameterError::NonPositiveRate(p.name.clone()));
         }
-        parameters.push(p);
     }
-    if parameters.is_empty() {
-        return Err(ParameterError::Empty);
-    }
-    Ok(parameters)
+    Ok(())
 }
