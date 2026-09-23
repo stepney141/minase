@@ -55,6 +55,7 @@
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了 | 2026年9月22日 |
 | 探索部の反復負け回避 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 進行中 | |
+| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 起案 | |
 
 ## 現在地
 
