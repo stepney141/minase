@@ -826,6 +826,7 @@ expected = [
     'usi',
     'setoption name RuleSet value R1',
     'setoption name USI_Hash value 64',
+    'setoption name ResignValue value 99999',
     'setoption name Tune_First value 17',
     'setoption name Tune_Second value -3',
     'setoption name Tune_First value 19',

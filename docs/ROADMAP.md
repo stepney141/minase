@@ -54,9 +54,11 @@
 | 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 起案 | ― |
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了 | 2026年9月22日 |
 | 探索部の反復負け回避 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
+| USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 進行中 | |
 
 ## 現在地
 
+USI投了（issue #6）は、診断、USI層の実装、棋力測定での無効化、およびブリッジのフォークの改修まで完了し、配備環境での確認と公開対局での投了の成立を残す。
 直近では、SPSAの調整結果を係数表へ自動で反映する `spsa_runner apply` を2026年9月22日に完了し、次のセッションの最終値はこのコマンドで候補のコミットにする。
 棋力向上段階9を優先し、SPSAの調整は段階9の採用構成が確定するまで待機する。
 SPSAの実行基盤は完成しており、次回は確定した構成の既定値から新しいセッションを開始する。
