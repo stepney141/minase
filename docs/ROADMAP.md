@@ -55,6 +55,7 @@
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了 | 2026年9月22日 |
 | 探索部の反復負け回避 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
+| 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 起案 | |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 進行中 | |
 
 ## 現在地
