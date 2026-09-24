@@ -24,6 +24,7 @@ data/worktrees/spsa-stage9-20260923-runner/target/release/match_runner \
 測定機はIntel Core Ultra 7 265KF（物理20コア、論理20コア）、両エンジンは`Threads=1`、`USI_Hash=256 MB`、同時対局数は16である。
 実行ディレクトリは`data/matches/spsa-stage9-20260923-ltc`、ログは`data/matches/spsa-stage9-20260923-ltc.log`である。
 2026年9月25日00時28分にユーザーサービス`minase-spsa-stage9-ltc.service`として開始した。
+測定中の2026年9月25日に、同じ測定機で20スレッドの模擬計算（[spsa-gain-simulation](spsa-gain-simulation.md)）を約13分間実行した。この間の対局は高負荷の下で指されたが、時間切れとエンジン異常は、その時点までの226ペアで0件だった。
 
 ## 結果
 
