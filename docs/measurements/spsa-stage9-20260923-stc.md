@@ -20,7 +20,7 @@ data/worktrees/spsa-stage9-20260923-runner/target/release/match_runner \
 `decision: H1`ならLTCへ進み、`decision: H0`なら不採用とする。
 上限3,000ペアで判定保留なら、その時点のLLRが0以上の場合に限りLTCへ進む。
 2026年9月24日にユーザーサービス`minase-spsa-stage9-transition.service`を起動し、STCの終了後にこの規則でLTCへの移行を自動判定するようにした。
-監視プログラムは`data/spsa/stage9-20260923-transition.py`（SHA-256 `45851c9ac4ef1a24672712e1f33840b7b3c45fa98e384b713fb9be82b14cd1dc`）で、状態は`data/spsa/stage9-20260923-transition.json`、ログは`data/spsa/stage9-20260923-transition.log`に置く。
+監視プログラムは`data/spsa/stage9-20260923-transition.py`（SHA-256 `bb4150356abee26e65a1966c3a21ed57fc25906293fa0ca3ac573d8a072aa6eb`）で、状態は`data/spsa/stage9-20260923-transition.json`、ログは`data/spsa/stage9-20260923-transition.log`に置く。
 監視は新しい対局記録にエンジン異常を見つけた時点でSTCを停止し、手動調査を求める。
 正常終了後は最終集計と保存記録を照合し、通過時だけシード`76200000`と固定済みrunnerを使って`data/matches/spsa-stage9-20260923-ltc`にLTCのGSPRTを起動する。
 LTCの採用判定は、その測定が終了してから別に行う。
