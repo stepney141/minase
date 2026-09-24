@@ -1,5 +1,8 @@
 //! phase3.mdおよびspsa.mdの参照値、符号、丸め、再開契約の検証。
 
+#[path = "tests/simulation.rs"]
+mod simulation;
+
 use super::*;
 use minase::rng::{XorShift64, derive_seed};
 use minase::{Color, DrawReason, GameResult};
