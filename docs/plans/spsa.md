@@ -24,7 +24,7 @@ SPSA中の対局結果は採用の根拠にしない。
 フェーズ3では、`spsa_runner` が合成目的関数の試験（20本のシードのすべてで平均距離が0.20から0.164〜0.181へ縮小）、符号の検査、再開の検査、および[煙試験](../measurements/spsa-runner-smoke.md)を通り、[LMRの除数の向きの診断](../measurements/spsa-lmr-direction-diagnostic.md)を記録した。
 手引き [docs/guides/spsa.md](../guides/spsa.md) は作成済みである。
 最終値を反映した候補コミット`2ec3a5e`を作り、[事前対局](../measurements/spsa-stage9-20260923-smoke.md)では32ペアで時間切れとエンジン異常が0件だった。
-[STCの採否測定](../measurements/spsa-stage9-20260923-stc.md)を開始しており、結果が出たら標準の振分け規則に従ってLTCへの進行または不採用を判定する。
+[STCの採否測定](../measurements/spsa-stage9-20260923-stc.md)は2026年9月25日に`H1`で終了し、[LTCの採否測定](../measurements/spsa-stage9-20260923-ltc.md)を開始した。
 
 ## 目的
 

@@ -1,12 +1,10 @@
-# 段階9SPSA候補のSTC採否測定
+# 段階9のSPSA候補の短時間測定
 
-[事前対局](spsa-stage9-20260923-smoke.md)で時間切れとエンジン異常が0件だったため、2026年9月24日にSTCのGSPRTを開始した。
-候補コミットは`2ec3a5e563f998afed7bb33961d59bfdae0c1218`、調整前の基準コミットは`7a5a0e3b219d41cacdd69cab4fd5406a217205a1`である。
-基本シードは`76100000`、同時対局数は16、上限は3,000ペアである。
-固定worktreeのrunnerのSHA-256は`06fe712111f3a19fdfc63b9d3a66a9bc768d9bdcc2ca8b2c7a27c46302f15bd0`である。
+## 目的
 
-実行ディレクトリは`data/matches/spsa-stage9-20260923-stc`、ログは`data/matches/spsa-stage9-20260923-stc.log`である。
-測定は次のコマンドでユーザーサービス`minase-spsa-stage9-stc.service`として起動した。
+[最初の調整セッション](spsa-stage9-20260923.md)の最終値を反映した候補を調整前の基準と比較し、長時間測定へ進めるか判定する。
+
+## コマンドライン
 
 ```console
 data/worktrees/spsa-stage9-20260923-runner/target/release/match_runner \
@@ -16,12 +14,25 @@ data/worktrees/spsa-stage9-20260923-runner/target/release/match_runner \
   --each time=10000+100 --concurrency 16 gsprt --max-pairs 3000
 ```
 
-判定には[標準の振分け規則](../guides/sprt.md#機能採否の段階ゲートstcとltc)を使う。
-`decision: H1`ならLTCへ進み、`decision: H0`なら不採用とする。
-上限3,000ペアで判定保留なら、その時点のLLRが0以上の場合に限りLTCへ進む。
-2026年9月24日にユーザーサービス`minase-spsa-stage9-transition.service`を起動し、STCの終了後にこの規則でLTCへの移行を自動判定するようにした。
-監視プログラムは`data/spsa/stage9-20260923-transition.py`（SHA-256 `bb4150356abee26e65a1966c3a21ed57fc25906293fa0ca3ac573d8a072aa6eb`）で、状態は`data/spsa/stage9-20260923-transition.json`、ログは`data/spsa/stage9-20260923-transition.log`に置く。
-監視は新しい対局記録にエンジン異常を見つけた時点でSTCを停止し、手動調査を求める。
-正常終了後は最終集計と保存記録を照合し、通過時だけシード`76200000`と固定済みrunnerを使って`data/matches/spsa-stage9-20260923-ltc`にLTCのGSPRTを起動する。
-LTCの採用判定は、その測定が終了してから別に行う。
-測定結果は終了後に記録する。
+## エンジン
+
+候補はコミット`2ec3a5e563f998afed7bb33961d59bfdae0c1218`、基準はコミット`7a5a0e3b219d41cacdd69cab4fd5406a217205a1`である。
+規則は`engine-default`（`L0,P0,R1,E0`）を用い、固定runnerのSHA-256は`06fe712111f3a19fdfc63b9d3a66a9bc768d9bdcc2ca8b2c7a27c46302f15bd0`である。
+
+## 環境
+
+測定機はIntel Core Ultra 7 265KF（物理20コア、論理20コア）、両エンジンは`Threads=1`、`USI_Hash=256 MB`、同時対局数は16である。
+実行ディレクトリは`data/matches/spsa-stage9-20260923-stc`、ログは`data/matches/spsa-stage9-20260923-stc.log`である。
+2026年9月24日にユーザーサービス`minase-spsa-stage9-stc.service`として開始し、2026年9月25日に終了した。
+
+## 結果
+
+判定には735ペアを取り込み、688ペアが有効、47ペアが破棄された。
+ペンタノミアル度数は`[114, 21, 365, 19, 169]`、LLRは`+2.9921660090`、判定は`H1`である。
+エンジン異常、時間切れ、および拒否着手はすべて0件で、経過時間は7,177.803385秒だった。
+
+## 結論
+
+[標準の振分け規則](../guides/sprt.md#機能採否の段階ゲートstcとltc)に従い、候補を[長時間測定](spsa-stage9-20260923-ltc.md)へ進めた。
+ユーザーサービス`minase-spsa-stage9-transition.service`は最終集計と保存記録を照合し、2026年9月25日00時28分にLTCを自動起動した。
+監視プログラムは`data/spsa/stage9-20260923-transition.py`（SHA-256 `bb4150356abee26e65a1966c3a21ed57fc25906293fa0ca3ac573d8a072aa6eb`）で、判定結果は`data/spsa/stage9-20260923-transition.json`に残した。
