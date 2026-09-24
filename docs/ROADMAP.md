@@ -57,6 +57,7 @@
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 起案 | |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 進行中 | |
+| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 起案 | |
 
 ## 現在地
 
