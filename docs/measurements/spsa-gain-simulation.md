@@ -59,6 +59,7 @@ cargo test --release --bin spsa_runner -- --ignored --exact tests::simulation::g
 Intel Core Ultra 7 265KF（20コア）上のreleaseビルドで、シードごとの実行を20スレッドへ分担した。
 各実行の`runner::run`は同時対局数1で動く。
 所要時間は2回の実行でそれぞれ389秒と366秒だった。
+2回の実行中、同じ測定機では同時対局数16のLTC採否測定[spsa-stage9-20260923-ltc](spsa-stage9-20260923-ltc.md)が進行していた。模擬比較の結果は計算機の負荷に依存しないが、LTC側の対局は約13分間高負荷の下で指された（[教訓](../lessons/check-running-measurements-before-cpu-load.md)）。
 
 ## 結果
 
