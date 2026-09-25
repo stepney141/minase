@@ -155,6 +155,37 @@ fn pair(number: u64, signs: [i8; 2]) -> CompletedPair {
     }
 }
 
+// spsa-gain-calibration.mdのC2: c = c_end、a = r_end・c_end²を全反復で保つ。
+#[test]
+fn calibrated_default_rates_are_constant() {
+    let mut s = Settings {
+        alpha: ALPHA,
+        gamma: GAMMA,
+        ..settings(1500, 8, 1)
+    };
+    s.parameters[0].c_end = 12.5;
+    for k in [1, s.iterations / 2, s.iterations] {
+        assert_eq!(rates(&s, &s.parameters[0], k), (12.5, 0.3125));
+    }
+}
+
+#[test]
+fn params_generate_calibrated_defaults() {
+    // spsa-gain-calibration.mdのC2: c_endは範囲の1/6、r_endは0.002。
+    for (min, max, default, expected) in [
+        (100, 400, 250, "X, 250, 100, 400, 50, 0.002"),
+        (-20, 55, 10, "X, 10, -20, 55, 12.5, 0.002"),
+    ] {
+        let declaration = Declaration {
+            name: "X".to_owned(),
+            default,
+            min,
+            max,
+        };
+        assert_eq!(parameter_line(&declaration), expected);
+    }
+}
+
 #[test]
 fn rates_match_independent_fishtest_reference() {
     for (n, c, r, k, expected_c, expected_a, expected_ratio) in [

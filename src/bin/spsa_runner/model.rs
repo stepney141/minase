@@ -5,8 +5,9 @@ use minase::harness::{CompletedPair, FailureCounts, GameRecord, OpeningRecord, T
 use minase::rng::{XorShift64, derive_seed, splitmix64};
 use serde::{Deserialize, Serialize};
 
-pub(super) const ALPHA: f64 = 0.602;
-pub(super) const GAMMA: f64 = 0.101;
+// docs/plans/spsa-gain-calibration.mdで選定した一定の利得。
+pub(super) const ALPHA: f64 = 0.0;
+pub(super) const GAMMA: f64 = 0.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
