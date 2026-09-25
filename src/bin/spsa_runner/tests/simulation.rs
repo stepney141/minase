@@ -7,13 +7,15 @@ use super::{
     runner,
 };
 use minase::rng::{XorShift64, derive_seed, splitmix64};
-use std::{collections::BTreeMap, sync::Mutex, thread, time::Instant};
+use std::{collections::BTreeMap, env, num::NonZeroUsize, sync::Mutex, thread, time::Instant};
 
 const BUDGETS: [u64; 3] = [375, 750, 1500];
 const PAIRS: usize = 8;
 const MARGIN: f64 = 0.5;
 const MIN_SEEDS: usize = 200;
 const PILOT_SEEDS: usize = 20;
+// docs/measurements/spsa-gain-simulation.mdの事前検査3で確定した本数。
+const DECAY_DIAGNOSTIC_SEEDS: usize = 1843;
 const COUNTS: [f64; 5] = [2363.0, 391.0, 5961.0, 348.0, 2381.0];
 const SIGNS: [[i8; 2]; 5] = [[-1, -1], [-1, 0], [1, -1], [1, 0], [1, 1]];
 // model.rsの摂動系列とは異なる用途の定数。
@@ -84,6 +86,28 @@ const CANDIDATES: [Candidate; 5] = [
         width_divisor: 6.0,
         r_end: 0.001,
     },
+];
+
+// 選定規則には含めず、C2と同じ終了時の摂動幅で減衰を比べる。
+const DECAY_CANDIDATES: [(usize, Candidate); 2] = [
+    (
+        5,
+        Candidate {
+            alpha: 0.602,
+            gamma: 0.101,
+            width_divisor: 6.0,
+            r_end: 0.002,
+        },
+    ),
+    (
+        6,
+        Candidate {
+            alpha: 1.0,
+            gamma: 1.0 / 6.0,
+            width_divisor: 6.0,
+            r_end: 0.002,
+        },
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -399,8 +423,18 @@ fn simulate(scenario: &Scenario, candidate: Candidate, iterations: u64, seed: u6
 }
 
 /// シードの連続区間を分担し、完了順によらずシード順に連結する。
-fn run_seeds(scenario: &Scenario, candidate: usize, iterations: u64, seeds: usize) -> Vec<Run> {
-    let workers = thread::available_parallelism().unwrap().get().min(seeds);
+fn run_seeds(scenario: &Scenario, candidate: Candidate, iterations: u64, seeds: usize) -> Vec<Run> {
+    let workers = match env::var("SPSA_SIM_THREADS") {
+        Ok(value) => value
+            .parse::<NonZeroUsize>()
+            .expect("SPSA_SIM_THREADS must be a positive integer")
+            .get(),
+        Err(env::VarError::NotPresent) => thread::available_parallelism().unwrap().get(),
+        Err(env::VarError::NotUnicode(_)) => {
+            panic!("SPSA_SIM_THREADS must be a positive integer (invalid Unicode)")
+        }
+    }
+    .min(seeds);
     let chunk = seeds.div_ceil(workers);
     thread::scope(|scope| {
         let handles: Vec<_> = (0..seeds)
@@ -408,9 +442,7 @@ fn run_seeds(scenario: &Scenario, candidate: usize, iterations: u64, seeds: usiz
             .map(|start| {
                 scope.spawn(move || {
                     (start..(start + chunk).min(seeds))
-                        .map(|i| {
-                            simulate(scenario, CANDIDATES[candidate], iterations, i as u64 + 1)
-                        })
+                        .map(|i| simulate(scenario, candidate, iterations, i as u64 + 1))
                         .collect::<Vec<_>>()
                 })
             })
@@ -439,7 +471,7 @@ fn mean_and_sd(values: &[f64]) -> (f64, f64) {
 /// 分散、収縮率、必要なシード数を本実験の前に検査する。
 fn prechecks(ranges: &[Parameter], scenarios: &[Scenario]) -> usize {
     let zero = Scenario::new("zero", Shape::Quadratic, 0.0, ranges);
-    let runs = run_seeds(&zero, 0, 1500, MIN_SEEDS);
+    let runs = run_seeds(&zero, CANDIDATES[0], 1500, MIN_SEEDS);
     let single = &runs[0].differences;
     let pooled = runs
         .iter()
@@ -460,7 +492,7 @@ fn prechecks(ranges: &[Parameter], scenarios: &[Scenario]) -> usize {
     assert!((single.variance() - reference).abs() <= tolerance);
 
     let q20 = scenarios.iter().find(|s| s.name == "Q20").unwrap();
-    let runs = run_seeds(q20, 0, 1500, MIN_SEEDS);
+    let runs = run_seeds(q20, CANDIDATES[0], 1500, MIN_SEEDS);
     let movement = mean(runs.iter().flat_map(|run| {
         run.theta
             .iter()
@@ -475,8 +507,8 @@ fn prechecks(ranges: &[Parameter], scenarios: &[Scenario]) -> usize {
 
     let mut max_sd: f64 = 0.0;
     for scenario in scenarios {
-        let current = run_seeds(scenario, 0, 1500, PILOT_SEEDS);
-        let candidate = run_seeds(scenario, 2, 1500, PILOT_SEEDS);
+        let current = run_seeds(scenario, CANDIDATES[0], 1500, PILOT_SEEDS);
+        let candidate = run_seeds(scenario, CANDIDATES[2], 1500, PILOT_SEEDS);
         let differences: Vec<_> = candidate
             .iter()
             .zip(&current)
@@ -506,16 +538,21 @@ struct Comparison {
     clip_fraction: f64,
 }
 
-fn compare(runs: &[Run], current: &[Run], estimator: usize) -> Comparison {
+fn compare(
+    runs: &[Run],
+    current: &[Run],
+    estimator: usize,
+    reference_estimator: usize,
+) -> Comparison {
     assert_eq!(runs.len(), current.len());
     let differences: Vec<_> = runs
         .iter()
         .zip(current)
-        .map(|(x, y)| x.losses[estimator] - y.losses[0])
+        .map(|(x, y)| x.losses[estimator] - y.losses[reference_estimator])
         .collect();
     let (mean_diff, sd) = mean_and_sd(&differences);
     let mean_loss = mean(runs.iter().map(|run| run.losses[estimator]));
-    let current_loss = mean(current.iter().map(|run| run.losses[0]));
+    let current_loss = mean(current.iter().map(|run| run.losses[reference_estimator]));
     // 設計書のゼロ損失の規約は、どちらかの平均が0なら比を1とする。
     let ratio = if mean_loss == 0.0 || current_loss == 0.0 {
         1.0
@@ -531,6 +568,31 @@ fn compare(runs: &[Run], current: &[Run], estimator: usize) -> Comparison {
     }
 }
 
+/// 比較先の推定量を区別し、同じシードの差から標準誤差を求める。
+#[test]
+fn comparison_uses_paired_seeds_and_reference_estimator() {
+    let run = |losses| Run {
+        theta: Vec::new(),
+        losses,
+        clip_fraction: 0.25,
+        signal_sums: Vec::new(),
+        differences: DifferenceMoments::default(),
+    };
+    let runs = [run([2.0, 6.0]), run([4.0, 10.0]), run([6.0, 14.0])];
+    let reference = [run([1.0, 5.0]), run([1.0, 7.0]), run([1.0, 9.0])];
+    // 後半平均どうしの差は[1, 3, 5]、現行の最終値との差は[5, 9, 13]。
+    let same_estimator = compare(&runs, &reference, 1, 1);
+    assert_eq!(same_estimator.mean_loss, 10.0);
+    assert_eq!(same_estimator.mean_diff, 3.0);
+    assert!((same_estimator.se_diff - (4.0_f64 / 3.0).sqrt()).abs() < 1e-12);
+    assert!((same_estimator.ratio - 10.0 / 7.0).abs() < 1e-12);
+    assert_eq!(same_estimator.clip_fraction, 0.25);
+    let current = compare(&runs, &reference, 1, 0);
+    assert_eq!(current.mean_diff, 9.0);
+    assert!((current.se_diff - (16.0_f64 / 3.0).sqrt()).abs() < 1e-12);
+    assert_eq!(current.ratio, 10.0);
+}
+
 fn print_losses(results: &Results, scenarios: &[Scenario]) {
     println!(
         "candidate\tscenario\tbudget_pairs\testimator\tmean_loss\tstart_loss\tmean_diff_vs_current\tse_diff\tclip_fraction"
@@ -543,6 +605,7 @@ fn print_losses(results: &Results, scenarios: &[Scenario]) {
                         &results[&(candidate, i, budget)],
                         &results[&(0, i, 1500)],
                         estimator,
+                        0,
                     );
                     println!(
                         "C{candidate}\t{}\t{}\t{name}\t{:.12}\t{:.12}\t{:.12}\t{:.12}\t{:.12}",
@@ -598,6 +661,7 @@ fn assess(
             &results[&(candidate, i, budget)],
             &results[&(0, i, 1500)],
             estimator,
+            0,
         );
         eligible &= c.mean_diff + 2.0 * c.se_diff <= MARGIN;
         log_sum += c.ratio.ln();
@@ -651,7 +715,7 @@ fn gain_simulation_timing() {
     println!("timing_candidate\tscenario\tbudget_pairs\tseeds\twall_seconds");
     for budget in BUDGETS {
         let start = Instant::now();
-        let runs = run_seeds(&scenario, 0, budget, PILOT_SEEDS);
+        let runs = run_seeds(&scenario, CANDIDATES[0], budget, PILOT_SEEDS);
         let seconds = start.elapsed().as_secs_f64();
         assert_eq!(runs.len(), PILOT_SEEDS);
         println!(
@@ -685,12 +749,12 @@ fn gain_simulation() {
     let scenarios = scenarios(&ranges);
     let seeds = prechecks(&ranges, &scenarios);
     let mut results = Results::new();
-    for candidate in 0..CANDIDATES.len() {
+    for (candidate, &settings) in CANDIDATES.iter().enumerate() {
         for (i, scenario) in scenarios.iter().enumerate() {
             for budget in BUDGETS {
                 results.insert(
                     (candidate, i, budget),
-                    run_seeds(scenario, candidate, budget, seeds),
+                    run_seeds(scenario, settings, budget, seeds),
                 );
             }
         }
@@ -698,4 +762,81 @@ fn gain_simulation() {
     print_losses(&results, &scenarios);
     print_calibration(&results, &scenarios);
     print_selection(&results, scenarios.len());
+}
+
+/// 選定済みのC2と減衰候補を、固定したシードで診断する。
+#[test]
+#[ignore]
+fn gain_decay_diagnostic() {
+    let start = Instant::now();
+    let scenarios = scenarios(&ranges());
+    let candidates = [
+        (0, CANDIDATES[0]),
+        (2, CANDIDATES[2]),
+        DECAY_CANDIDATES[0],
+        DECAY_CANDIDATES[1],
+    ];
+    let mut results = Results::new();
+    for (candidate, settings) in candidates {
+        for (i, scenario) in scenarios.iter().enumerate() {
+            for budget in BUDGETS {
+                results.insert(
+                    (candidate, i, budget),
+                    run_seeds(scenario, settings, budget, DECAY_DIAGNOSTIC_SEEDS),
+                );
+            }
+        }
+    }
+    println!(
+        "candidate\tscenario\tbudget_pairs\testimator\tmean_loss\tmean_diff_vs_C2_same_budget_same_estimator\tse_diff\tmean_diff_vs_current\tse_diff_current\tclip_fraction"
+    );
+    for (candidate, _) in candidates {
+        for (i, scenario) in scenarios.iter().enumerate() {
+            for budget in BUDGETS {
+                for (estimator, name) in ESTIMATORS.iter().enumerate() {
+                    let runs = &results[&(candidate, i, budget)];
+                    let c2 = compare(runs, &results[&(2, i, budget)], estimator, estimator);
+                    let current = compare(runs, &results[&(0, i, 1500)], estimator, 0);
+                    println!(
+                        "C{candidate}\t{}\t{}\t{name}\t{:.12}\t{:.12}\t{:.12}\t{:.12}\t{:.12}\t{:.12}",
+                        scenario.name,
+                        budget * PAIRS as u64,
+                        c2.mean_loss,
+                        c2.mean_diff,
+                        c2.se_diff,
+                        current.mean_diff,
+                        current.se_diff,
+                        c2.clip_fraction
+                    );
+                }
+            }
+        }
+    }
+    println!(
+        "diagnostic_candidate\tbudget_pairs\testimator\tnon_inferior_vs_current\tgeometric_mean_vs_current\tgeometric_mean_vs_C2_same_budget_same_estimator"
+    );
+    for (candidate, _) in DECAY_CANDIDATES {
+        for budget in BUDGETS {
+            for (estimator, name) in ESTIMATORS.iter().enumerate() {
+                let (eligible, current_ratio) =
+                    assess(&results, scenarios.len(), candidate, budget, estimator);
+                let c2_ratio = mean((0..scenarios.len()).map(|i| {
+                    compare(
+                        &results[&(candidate, i, budget)],
+                        &results[&(2, i, budget)],
+                        estimator,
+                        estimator,
+                    )
+                    .ratio
+                    .ln()
+                }))
+                .exp();
+                println!(
+                    "C{candidate}\t{}\t{name}\t{eligible}\t{current_ratio:.12}\t{c2_ratio:.12}",
+                    budget * PAIRS as u64
+                );
+            }
+        }
+    }
+    println!("elapsed_wall_seconds\t{:.6}", start.elapsed().as_secs_f64());
 }
