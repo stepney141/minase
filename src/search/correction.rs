@@ -93,29 +93,29 @@ mod tests {
         let mut table = CorrectionTable::new(100);
         assert_eq!(table.read(Color::Black, 7), 0);
         table.update(Color::Black, 7, 31, 1);
-        assert_eq!(table.values[0][7], 992);
-        assert_eq!(table.read(Color::Black, 7), 0);
-        table.update(Color::Black, 7, 31, 1);
-        assert_eq!(table.values[0][7], 1953);
+        assert_eq!(table.values[0][7], 1085);
         assert_eq!(table.read(Color::Black, 7), 1);
+        table.update(Color::Black, 7, 31, 1);
+        assert_eq!(table.values[0][7], 2132);
+        assert_eq!(table.read(Color::Black, 7), 2);
         table.update(Color::White, 7, -31, 1);
-        assert_eq!(table.values[1][7], -992);
-        assert_eq!(table.read(Color::White, 7), 0);
-        table.update(Color::White, 7, -31, 1);
-        assert_eq!(table.values[1][7], -1953);
+        assert_eq!(table.values[1][7], -1085);
         assert_eq!(table.read(Color::White, 7), -1);
+        table.update(Color::White, 7, -31, 1);
+        assert_eq!(table.values[1][7], -2132);
+        assert_eq!(table.read(Color::White, 7), -2);
         for depth in [8, 9, 256] {
             table.update(Color::Black, depth as u64, 100, depth);
-            assert_eq!(table.read(Color::Black, depth as u64), 25);
+            assert_eq!(table.read(Color::Black, depth as u64), 27);
         }
         table.update(Color::Black, 0, 100_000, 1);
         table.update(Color::White, 0, -100_000, 1);
-        assert_eq!(table.read(Color::Black, 0), 200);
-        assert_eq!(table.read(Color::White, 0), -200);
-        assert_eq!(table.values[0][0], 204_800);
-        assert_eq!(table.values[1][0], -204_800);
+        assert_eq!(table.read(Color::Black, 0), 202);
+        assert_eq!(table.read(Color::White, 0), -202);
+        assert_eq!(table.values[0][0], 206_848);
+        assert_eq!(table.values[1][0], -206_848);
         // 下位12ビットだけで引く。
-        assert_eq!(table.read(Color::Black, 4096), 200);
+        assert_eq!(table.read(Color::Black, 4096), 202);
     }
 
     #[test]

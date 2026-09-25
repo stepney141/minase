@@ -52,50 +52,50 @@ macro_rules! parameters {
 
 parameters! {
     /// LMRの除数の百分率。`docs/plans/strength-stage5.md`「採用した係数」。
-    LmrDivisor(lmr_divisor): 200, 100, 400;
+    LmrDivisor(lmr_divisor): 186, 100, 400;
     /// LMRのhistory閾値。`docs/plans/strength-stage5.md`「採用した係数」。
-    LmrHistoryThreshold(lmr_history_threshold): 128, 0, 512;
+    LmrHistoryThreshold(lmr_history_threshold): 117, 0, 512;
     /// 深さ1の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
-    FutilityMargin1(futility_margin1): 50, 0, 400;
+    FutilityMargin1(futility_margin1): 51, 0, 400;
     /// 深さ2の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
-    FutilityMargin2(futility_margin2): 150, 0, 400;
+    FutilityMargin2(futility_margin2): 158, 0, 400;
     /// 深さ3の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
-    FutilityMargin3(futility_margin3): 150, 0, 400;
+    FutilityMargin3(futility_margin3): 175, 0, 400;
     /// 深さ1のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
     SeeMargin1(see_margin1): 0, 0, 400;
     /// 深さ2のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
-    SeeMargin2(see_margin2): 200, 0, 400;
+    SeeMargin2(see_margin2): 195, 0, 400;
     /// 深さ3のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
-    SeeMargin3(see_margin3): 0, 0, 400;
+    SeeMargin3(see_margin3): 10, 0, 400;
     /// 初期窓幅の百分率。`docs/plans/strength-stage6.md`「窓の適用条件と拡大」。
-    AspirationDelta(aspiration_delta): 50, 10, 200;
+    AspirationDelta(aspiration_delta): 53, 10, 200;
     /// 窓幅の拡大率の百分率。`docs/plans/strength-stage6.md`「窓の適用条件と拡大」。
-    AspirationGrowth(aspiration_growth): 200, 125, 400;
+    AspirationGrowth(aspiration_growth): 193, 125, 400;
     /// null moveの減深量の切片を1,200分率で表す。
-    NullMoveBase(null_move_base): 2400, 1200, 4800;
+    NullMoveBase(null_move_base): 2888, 1200, 4800;
     /// null moveの減深量の傾きを1,200分率で表す。
-    NullMoveSlope(null_move_slope): 200, 100, 400;
+    NullMoveSlope(null_move_slope): 210, 100, 400;
     /// History値を全体の半減で抑える上限。
-    HistoryLimit(history_limit): 16384, 4096, 65536;
+    HistoryLimit(history_limit): 19403, 4096, 65536;
     /// 補正値の上限の百分率。`docs/plans/strength-stage8.md`「静的評価の補正」。
-    CorrectionCap(correction_cap): 200, 50, 400;
+    CorrectionCap(correction_cap): 202, 50, 400;
     /// 補正更新の重みを1,024分率で表す。`docs/plans/strength-stage8.md`「静的評価の補正」。
-    CorrectionWeight(correction_weight): 32, 8, 128;
+    CorrectionWeight(correction_weight): 35, 8, 128;
     /// delta pruningの余裕値を歩兵価値に対する百分率で表す。
-    DeltaMargin(delta_margin): 200, 50, 500;
+    DeltaMargin(delta_margin): 212, 50, 500;
     /// 1局の開始から終局までに見込む手数。
-    ExpectedPlies(expected_plies): 450, 250, 700;
+    ExpectedPlies(expected_plies): 435, 250, 700;
     /// 1局面で見込む残り手数の下限。
-    MinMoves(min_moves): 100, 40, 200;
+    MinMoves(min_moves): 94, 40, 200;
     /// 加算時間の使用率。`docs/plans/time-management-efficiency.md`「採用した方式」。
-    IncrementShare(increment_share): 70, 30, 100;
+    IncrementShare(increment_share): 73, 30, 100;
     /// hardとsoftの比の百分率。`docs/plans/time-management-efficiency.md`「採用した方式」。
-    HardSoftRatio(hard_soft_ratio): 400, 150, 800;
+    HardSoftRatio(hard_soft_ratio): 394, 150, 800;
     /// hardに使える残り時間の百分率。`docs/plans/time-management-efficiency.md`「採用した方式」。
     HardRemainingShare(hard_remaining_share): 25, 10, 50;
     /// 次の反復の予測時間比の百分率。`docs/plans/strength-stage6.md`「最善手安定時の早期終了」。
-    /// 既定比2.5は、段階1の候補で測定した深さ5以上の累積時間比の中央値に基づく。
-    IterationRatio(iteration_ratio): 250, 150, 400;
+    /// 初期値2.5は、段階1の候補で測定した深さ5以上の累積時間比の中央値に基づく。
+    IterationRatio(iteration_ratio): 244, 150, 400;
 }
 
 /// 調整係数の設定時のエラー。

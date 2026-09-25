@@ -49,7 +49,7 @@
 | 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了 | 2026年9月18日 |
 | USI先読み（ponder） | [plans/ponder.md](plans/ponder.md) | 完了 | 2026年9月21日 |
 | 棋力向上段階9（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴） | [plans/strength-stage9.md](plans/strength-stage9.md) | 完了 | 2026年9月23日 |
-| SPSAによる探索係数と時間管理係数の調整 | [plans/spsa.md](plans/spsa.md) | 待機中 | ― |
+| SPSAによる探索係数と時間管理係数の調整 | [plans/spsa.md](plans/spsa.md) | 完了 | 2026年9月25日 |
 | 先読み教師値（将来の探索値の幾何加重平均） | [plans/lookahead-teacher.md](plans/lookahead-teacher.md) | 完了 | 2026年9月23日 |
 | 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 起案 | ― |
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了 | 2026年9月22日 |
@@ -62,9 +62,8 @@
 ## 現在地
 
 USI投了（issue #6）は、診断、USI層の実装、棋力測定での無効化、およびブリッジのフォークの改修まで完了し、配備環境での確認と公開対局での投了の成立を残す。
-直近では、SPSAの調整結果を係数表へ自動で反映する `spsa_runner apply` を2026年9月22日に完了し、次のセッションの最終値はこのコマンドで候補のコミットにする。
-棋力向上段階9を優先し、SPSAの調整は段階9の採用構成が確定するまで待機する。
-SPSAの実行基盤は完成しており、次回は確定した構成の既定値から新しいセッションを開始する。
+SPSAで調整した20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と[LTC](measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となり、2026年9月25日に採用した。
+探索部と関係する設計書の現行値へ反映済みである。
 
 ## 横断的な記録済みの決定
 
