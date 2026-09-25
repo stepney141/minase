@@ -11,7 +11,7 @@ docs/ 直下に置くファイルは、本書と [ROADMAP.md](ROADMAP.md) の2�
 | [lessons/](lessons/) | 作業で詰まった箇所から得た汎用的な教訓。1教訓1ファイルで、[lessons/README.md](lessons/README.md) を索引とする。 | plans/README.md の「教訓」節に従う。 |
 | [guides/](guides/) | 人間とエージェントが手順どおりに実行する手引き。棋力測定の手引き [sprt.md](guides/sprt.md)、PSTの学習手順 [pst-training.md](guides/pst-training.md)、およびSPSAによる係数調整の手引き [spsa.md](guides/spsa.md) を置く。 | 手順を実行順に書き、判断規則と標準コマンドを本文に含める。 |
 | [audits/](audits/) | ある時点のコード、テスト、または文書を対象にした監査報告。ファイル名に監査日を含める。 | 冒頭に基準コミットと範囲を明記する。報告は監査後に更新せず、修正は設計書として起案する。 |
-| [research/](research/) | 外部資料や保存棋譜を調べた調査メモ。設計書が方式の根拠として参照する。通信プロトコル（USI、CECP）と外部エンジンの調査は [research/protocols/](research/protocols/) にまとめ、[research/protocols/README.md](research/protocols/README.md) を索引とする。 | 結論を先に書き、一次資料へリンクする。 |
+| [research/](research/) | 外部資料や保存棋譜を調べた調査メモ。設計書が方式の根拠として参照し、[research/README.md](research/README.md) を索引とする。通信プロトコル（USI、CECP）と外部エンジンの調査は [research/protocols/](research/protocols/) にまとめ、[research/protocols/README.md](research/protocols/README.md) を索引とする。 | 結論を先に書き、一次資料へリンクする。 |
 
 分類に迷う文書は、次の順で判定する。
 将来の作業に適用できる1文の規則を持つなら教訓であり、ある時点の状態を報告して以後は凍結するなら監査報告であり、設計の根拠として参照され続けるなら調査メモである。
