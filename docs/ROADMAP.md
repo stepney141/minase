@@ -57,15 +57,16 @@
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 起案 | |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了 | 2026年9月25日 |
-| SPSAの摂動幅と学習率の較正 | [plans/spsa-gain-calibration.md](plans/spsa-gain-calibration.md) | 進行中 | |
+| SPSAの摂動幅と学習率の較正 | [plans/spsa-gain-calibration.md](plans/spsa-gain-calibration.md) | 完了 | 2026年9月26日 |
 | 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 起案 | |
 
 ## 現在地
 
 USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
 SPSAで調整した20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と[LTC](measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となり、2026年9月25日に採用して、探索部と関係する設計書の現行値へ反映した。
-続いて、SPSAの摂動幅と学習率の較正をブランチ`spsa-gain-calibration`で進めており、fishtestの既定の指数で利得を減衰させる構成による3,000ペアの実セッションが測定機で動いている。
-次の対象は[棋力向上段階12](plans/strength-stage12.md)であり、診断benchと自己対局が時間計測を乱さないよう、このセッションの終了後に着手する。
+SPSAの摂動幅と学習率の較正は2026年9月26日に完了し、`spsa_runner`の既定値を、終了時の摂動幅を範囲の1/6とする減衰する利得へ改め、標準の規模を3,000ペアとした。
+この設定による2回目の調整で得た22係数は[STC](measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、採用した。
+次の対象は[棋力向上段階12](plans/strength-stage12.md)である。
 
 ## 横断的な記録済みの決定
 
