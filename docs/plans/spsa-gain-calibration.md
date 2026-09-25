@@ -21,7 +21,8 @@ SPSAは、全係数を正負へ少しずらした2つの設定θ+とθ−を対�
 その後の追加の診断で、同じ終了時の摂動幅でfishtestの既定の指数により減衰させるC5のほうが、8通りの場面のうち6通りで損失が小さく、現行構成にも劣らなかったので、利用者の決定によりC5を既定値とした。
 C2で開始した[実セッション](../measurements/spsa-stage9-20260925.md)は30反復で中止した。
 C5の[時間切れ事前確認](../measurements/spsa-stage9-20260925-c5-safety.md)を異常0件で終え、[3,000ペアの実セッション](../measurements/spsa-stage9-20260925-c5.md)を異常0件で完了した。
-22係数すべてを書き換えた候補は[事前対局](../measurements/spsa-stage9-20260925-c5-smoke.md)で異常0件となり、[STCの採否測定](../measurements/spsa-stage9-20260925-c5-stc.md)を実行している。
+22係数すべてを書き換えた候補は[事前対局](../measurements/spsa-stage9-20260925-c5-smoke.md)で異常0件となり、[STCの採否測定](../measurements/spsa-stage9-20260925-c5-stc.md)は1,123ペアで`H1`となった。
+[LTCの採否測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を実行している。
 
 ## 目的
 
