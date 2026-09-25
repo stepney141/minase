@@ -70,7 +70,7 @@ fn correction_negamax_update_conditions() {
         let mut searcher = new_searcher(&pst, &board, rules, &[], &shared, &table);
         // 更新しないケースも非ゼロの初期値を保持することを確認する。
         searcher.correction.update(Color::Black, key, 64, 8);
-        assert_eq!(searcher.correction.read(Color::Black, key), 16);
+        assert_eq!(searcher.correction.read(Color::Black, key), 17);
         assert_eq!(
             searcher.negamax(&mut board, depth, alpha, beta, 0),
             Some(score)
@@ -88,9 +88,9 @@ fn correction_negamax_update_conditions() {
         );
         assert_eq!(royal_under_attack(&board), sfen == ATTACKED);
         let expected = if update {
-            (16 * 1024 + (delta * 1024 - 16 * 1024) * 2 / 32) / 1024
+            (17_920 + (delta * 1024 - 17_920) * 2 * 35 / 1024) / 1024
         } else {
-            16
+            17
         };
         assert_eq!(
             searcher.correction.read(Color::Black, key),
@@ -123,7 +123,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
             Some(score)
         );
-        assert_eq!(searcher.correction.read(Color::Black, key), 16);
+        assert_eq!(searcher.correction.read(Color::Black, key), 17);
     }
     for interrupted in [false, true] {
         let stop = AtomicBool::new(interrupted);
@@ -140,7 +140,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
             if interrupted { None } else { Some(320) }
         );
-        assert_eq!(searcher.correction.read(Color::Black, key), 16);
+        assert_eq!(searcher.correction.read(Color::Black, key), 17);
     }
 }
 
@@ -155,11 +155,11 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
     let mut b = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
     let key = material_key(&board);
     a.correction.update(Color::Black, key, 100, 8);
-    assert_eq!(a.correction.read(Color::Black, key), 25);
+    assert_eq!(a.correction.read(Color::Black, key), 27);
     assert_eq!(b.correction.read(Color::Black, key), 0);
     b.correction.update(Color::Black, key, -100, 8);
-    assert_eq!(a.correction.read(Color::Black, key), 25);
-    assert_eq!(b.correction.read(Color::Black, key), -25);
+    assert_eq!(a.correction.read(Color::Black, key), 27);
+    assert_eq!(b.correction.read(Color::Black, key), -27);
     let c = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
     assert_eq!(c.correction.read(Color::Black, key), 0);
 }
@@ -173,7 +173,7 @@ fn correction_changes_futility_expansion_at_boundary() {
     for correction in [0, 1] {
         let mut board = crate::parse_sfen(QUIET).unwrap();
         let table = TranspositionTable::new(1).unwrap();
-        let alpha = evaluate(&pst, &board) + pst.pawn_value() / 2;
+        let alpha = evaluate(&pst, &board) + pst.pawn_value() * 51 / 100;
         let mut searcher = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
         searcher
             .correction

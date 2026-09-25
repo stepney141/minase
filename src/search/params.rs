@@ -94,7 +94,7 @@ parameters! {
     /// hardに使える残り時間の百分率。`docs/plans/time-management-efficiency.md`「採用した方式」。
     HardRemainingShare(hard_remaining_share): 25, 10, 50;
     /// 次の反復の予測時間比の百分率。`docs/plans/strength-stage6.md`「最善手安定時の早期終了」。
-    /// 既定比2.5は、段階1の候補で測定した深さ5以上の累積時間比の中央値に基づく。
+    /// 初期値2.5は、段階1の候補で測定した深さ5以上の累積時間比の中央値に基づく。
     IterationRatio(iteration_ratio): 244, 150, 400;
 }
 
