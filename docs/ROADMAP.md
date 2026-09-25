@@ -51,20 +51,42 @@
 | 棋力向上段階9（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴） | [plans/strength-stage9.md](plans/strength-stage9.md) | 完了 | 2026年9月23日 |
 | SPSAによる探索係数と時間管理係数の調整 | [plans/spsa.md](plans/spsa.md) | 完了 | 2026年9月25日 |
 | 先読み教師値（将来の探索値の幾何加重平均） | [plans/lookahead-teacher.md](plans/lookahead-teacher.md) | 完了 | 2026年9月23日 |
-| 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 起案 | ― |
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了 | 2026年9月22日 |
 | 探索部の反復負け回避 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 起案 | |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了 | 2026年9月25日 |
-| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 起案 | |
+| 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 進行中 | ― |
+| 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 待機中 | ― |
+| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 待機中 | ― |
 
 ## 現在地
 
 USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
 SPSAで調整した20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と[LTC](measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となり、2026年9月25日に採用して、探索部と関係する設計書の現行値へ反映した。
 続いて、SPSAの摂動幅と学習率の較正をブランチ`spsa-gain-calibration`で進めており、fishtestの既定の指数で利得を減衰させる構成による3,000ペアの実セッションが測定機で動いている。
-次の対象は[棋力向上段階12](plans/strength-stage12.md)であり、診断benchと自己対局が時間計測を乱さないよう、このセッションの終了後に着手する。
+探索部の次の対象は[棋力向上段階12](plans/strength-stage12.md)であり、診断benchと自己対局が時間計測を乱さないよう、このセッションの終了後に着手する。
+評価関数では、[教師の混合比](plans/teacher-mixing-ratio.md)の採否を最初に確定する。
+比率の上書きと共通診断は実装済みで、候補の学習と採否測定は未着手である。
+[探索局面を用いた学習](plans/search-aware-evaluation.md)はその判定待ち、[相対2駒評価](plans/relative-pair-eval.md)は教師診断と残存誤りの確認待ちである。
+実施順序と、各判定からの進み先は次節に定める。
+
+## 評価関数の進め方
+
+評価関数の3計画は、混合比の採否、教師の診断、学習分布の比較、必要に応じた相対2駒評価の順に進める。
+分岐、基点と教師の引き継ぎ、および費用の見積りの規則は[棋力向上段階の設計書](plans/strength-stages.md#評価関数の後続計画の順序)が定め、各実験の設定と判定条件は個別の計画書を正とする。
+本節の表はそれらの要約であり、規則の正ではない。
+
+| 順序 | 計画と段階 | 開始条件と次の判断 |
+|---|---|---|
+| 1 | [混合比の計画](plans/teacher-mixing-ratio.md)で、既存データによるλ=1のPST再学習を判定する。 | 準備開始時の採用版を基点にする。採否にかかわらず、その時点の採用PSTを持って2へ進む。 |
+| 2 | [探索局面の計画](plans/search-aware-evaluation.md)のフェーズ1と2で、深い教師を診断する。 | 1の確定後に教師を固定する。通過すれば3へ進み、不合格なら今回の教師構成を見送る。 |
+| 3 | 同計画のフェーズ3から5で、通常局面だけのAと、半数を探索局面へ置き換えたBを比較する。 | 事前登録した比較を順に測り、採用PSTと残存誤りの記録を4の準備へ渡す。 |
+| 4 | [相対2駒の計画](plans/relative-pair-eval.md)で、関係項の必要性を確認してから実装する。 | 配置に依存する誤りが残る場合に、最後に採用されたPSTを固定して進む。根拠が得られなければ着手を見送る。 |
+
+1の不採用は2と3の不採用を意味せず、3の成功は4の必須条件ではない。
+各計画は着手時のmasterから専用ブランチを作り、実験中に他計画の変更を取り込まない。
+教師ラベルの生成と自己対局は測定機を混合比のSTCとLTC、SPSAの較正、および段階12と共有するため、着手前に所要時間の桁を確認して直列に予定する。
 
 ## 横断的な記録済みの決定
 
