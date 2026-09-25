@@ -1341,10 +1341,10 @@ fn write_info(
     elapsed: Duration,
     pv: &[Move],
 ) -> io::Result<()> {
-    let (score_kind, score_value) = score_text(score);
+    let score = score_text(score);
     write!(
         output,
-        "info depth {depth} score {score_kind} {score_value} nodes {nodes} nps {} time {} pv",
+        "info depth {depth} score {score} nodes {nodes} nps {} time {} pv",
         nodes_per_second(nodes, elapsed),
         elapsed.as_millis()
     )?;
@@ -1376,14 +1376,21 @@ fn write_final_info_if_deeper(
     Ok(())
 }
 
-/// 評価値を`info score`の種別(`cp`または`mate`)と値へ変換する。
-fn score_text(score: i32) -> (&'static str, i32) {
+/// 評価値を`info score`用の文字列へ変換する。
+/// 詰み帯は終局までの手数から2を引いて0以上にし、0にも勝敗の符号を付ける。
+fn score_text(score: i32) -> String {
     if score >= search::MATE_THRESHOLD {
-        ("mate", search::MATE - score)
+        let moves = (search::MATE - score - 2).max(0);
+        if moves == 0 {
+            "mate +0".to_owned()
+        } else {
+            format!("mate {moves}")
+        }
     } else if score <= -search::MATE_THRESHOLD {
-        ("mate", -(search::MATE + score))
+        let moves = (search::MATE + score - 2).max(0);
+        format!("mate -{moves}")
     } else {
-        ("cp", score)
+        format!("cp {score}")
     }
 }
 
@@ -1529,6 +1536,37 @@ mod tests {
 
     /// stateのAwaitingStartエラー行（BG「stateコマンド」、台本完全一致）。
     const STATE_ERROR: &str = "info string error: state requires an active or finished game";
+
+    // search.md「探索内の終局と規則処理」の表示例と詰み帯の境界。
+    #[test]
+    fn score_text_displays_mate_distance_with_signed_zero() {
+        for (score, expected) in [
+            (search::MATE - 1, "mate +0"),
+            (search::MATE - 3, "mate 1"),
+            (search::MATE - 5, "mate 3"),
+            (-search::MATE, "mate -0"),
+            (-search::MATE + 2, "mate -0"),
+            (-search::MATE + 4, "mate -2"),
+            (search::MATE_THRESHOLD, "mate 254"),
+            (-search::MATE_THRESHOLD, "mate -254"),
+        ] {
+            assert_eq!(score_text(score), expected, "score={score}");
+        }
+    }
+
+    // 表示変換は詰み帯だけに適用し、通常評価値と詰み帯直前のcpはそのまま出す。
+    #[test]
+    fn score_text_preserves_cp_values_outside_mate_band() {
+        for (score, expected) in [
+            (0, "cp 0"),
+            (100, "cp 100"),
+            (-100, "cp -100"),
+            (search::MATE_THRESHOLD - 1, "cp 29743"),
+            (-search::MATE_THRESHOLD + 1, "cp -29743"),
+        ] {
+            assert_eq!(score_text(score), expected, "score={score}");
+        }
+    }
 
     /// 通常版では調整用オプションを宣言せず、未知オプションとして無視する。
     #[cfg(not(feature = "tuning"))]
@@ -1872,13 +1910,13 @@ mod tests {
     // RS設計判断「閾値の与え方」（D6-USI-51、D6-USI-53）。
     #[test]
     fn resignation_mate_thresholds_and_winning_scores_use_signed_comparison() {
-        for threshold in [29744, 29999, 30000, 99999] {
+        for threshold in [29744, 29998, 29999, 30000, 99999] {
             let output = lishogi_session(&format!(
                 "setoption name USI_Hash value 1\nsetoption name ResignValue value {threshold}\nposition sfen {RESIGN_MATE_SFEN}\nmoves\ngo depth 2\n"
             ));
             assert!(error_lines(&output).is_empty(), "{output}");
-            assert!(output.contains(" score mate -1 "), "{output}");
-            if threshold < 30000 {
+            assert!(output.contains(" score mate -0 "), "{output}");
+            if threshold <= 29998 {
                 assert_eq!(bestmoves(&output), ["bestmove resign"]);
             } else {
                 assert_legal_bestmove(&output, &moves_sets(&output)[0]);
@@ -1890,7 +1928,7 @@ mod tests {
                 "setoption name USI_Hash value 1\nsetoption name ResignValue value 1\nposition sfen {ROYAL_SFEN}\nmoves\ngo depth 1\n"
             ),
         );
-        assert!(output.contains(" score mate 0 "), "{output}");
+        assert!(output.contains(" score mate +0 "), "{output}");
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
     }
 

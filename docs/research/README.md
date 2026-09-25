@@ -35,6 +35,8 @@
 - [手作り評価項目の係数を自己対局から学ぶ先行研究](handcrafted-evaluation-selfplay.md)は、Texelと、BealとSmithの1999年の論文を中心に、手作りの評価項目の係数を自己対局から学ぶ先例を確認する。
 - [チェス評価関数の教師と混合比](chess-evaluation-targets.md)は、教師評価値と対局結果の混合比について、Stockfish、Texel、Ethereal、およびViridithasの設定と比較記録を調べる。
 - [将棋の教師生成と学習ツールの調査（GenSfenとtatara）](teacher-generation-prior-art.md)は、やねうら王のGenSfenとNNUE学習ツールtataraのソースから、将棋の教師の質を作る要素を整理する。
+- [探索で使う局面に合わせた評価関数の学習](search-aware-evaluation.md)は、過去のNNUEの不採用を踏まえ、候補自身が選ぶ局面の再評価を先に検証し、利きの補助学習とモデル構造を条件付きで比較する案を示す。
+- [複数駒の関係と探索結果を学ぶ評価関数の一次資料](relational-evaluation-primary-sources.md)は、Stockfishとやねうら王の関係特徴、探索内部を教師にする研究、および学習時だけ高価な特徴を使う方法の根拠と限界を確認する。
 
 ## 合法手生成の高速化
 

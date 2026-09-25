@@ -264,7 +264,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
         let (best_move, score) = searcher
             .search_root(&position, &moves, 1, MATE, INFINITY)
             .unwrap();
-        assert_eq!(score, MATE);
+        assert_eq!(score, MATE - 1);
         assert!(captures_last_royal(&position, best_move));
         let hit = searcher.tt.probe(key, 0).unwrap();
         assert_eq!(hit.bound, Bound::Upper);
@@ -272,7 +272,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
         let before = searcher.nodes;
         assert_eq!(
             searcher.search_root(&position, &moves, 1, -1, 0),
-            Some((best_move, MATE))
+            Some((best_move, MATE - 1))
         );
         assert_eq!(searcher.nodes - before, 0);
         assert_eq!(searcher.tt.probe(key, 0).unwrap().bound, Bound::Lower);
@@ -861,7 +861,7 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
         ply,
         &table,
     );
-    assert_eq!(score, MATE - ply as i32);
+    assert_eq!(score, MATE - (ply + 1) as i32);
     let hit = table.probe(search_key(&board), ply).unwrap();
     assert_eq!(hit.score, score);
     assert_eq!(hit.best_move, Some(capture));
@@ -1260,7 +1260,7 @@ fn assert_pv_is_legal(root: &Position, pv: &[Move]) {
 // ---------------------------------------------------------------------------
 
 // D7-SRCH-01。search.md「探索内の終局と規則処理」: 相手の最後の王駒を取る
-// 着手はMATE−ply。根ply=0のためMATE=30000。RULES.md第21条第1項。
+// 着手はMATE−(ply+1)。根ply=0のためMATE−1=29999。RULES.md第21条第1項。
 #[test]
 fn depth_one_capture_of_the_last_royal_scores_mate() {
     // 後手: 玉将6一（唯一の王駒）。先手: 飛車6十、王将6十二。先手番。
@@ -1285,11 +1285,11 @@ fn depth_one_capture_of_the_last_royal_scores_mate() {
     );
 
     // 捕獲升は敵陣のため成・不成の2通りがあるが、いずれも同じ捕獲で
-    // 同値のMATEになる。移動元と到達升だけを固定する（SPEC_UNCLEAR-07）。
+    // 同値のMATE−1になる。移動元と到達升だけを固定する（SPEC_UNCLEAR-07）。
     assert_eq!(result.best_move.from, fs(6, 10));
     assert_eq!(result.best_move.to, fs(6, 1));
     assert_eq!(result.best_move.mid, None);
-    assert_eq!(result.score, MATE);
+    assert_eq!(result.score, MATE - 1);
 }
 
 // D7-SRCH-02。search.md「探索内の終局と規則処理」: 王駒を2枚持つ側の
@@ -1327,7 +1327,7 @@ fn capture_of_the_first_of_two_royals_scores_as_material_gain() {
 }
 
 // D7-SRCH-03境界。履歴が空なら反復は検出されず、評価は詰み帯の負値
-// （全変化が次手の王駒捕獲でMATE−1、根から見て−(MATE−1)）へ落ちる。
+// （全変化が次の相手の着手で王駒捕獲となり、根から見て−(MATE−2)）へ落ちる。
 // 履歴が探索入力であることの確認。
 #[test]
 fn without_history_the_repetition_fixture_scores_a_mate_band_loss() {
@@ -1344,7 +1344,7 @@ fn without_history_the_repetition_fixture_scores_a_mate_band_loss() {
         &mut small_tt(),
     );
 
-    assert_eq!(result.score, -(MATE - 1));
+    assert_eq!(result.score, -(MATE - 2));
 }
 
 // D7-SRCH-04。search.md「評価関数v0」（獅子=2500）とMVV-LVA。RULES.md
@@ -1416,7 +1416,7 @@ fn lion_double_capture_of_both_royals_scores_mate() {
     );
 
     assert_eq!(result.best_move, expected);
-    assert_eq!(result.score, MATE);
+    assert_eq!(result.score, MATE - 1);
 }
 
 // D7-SRCH-06。search.md「探索内の終局と規則処理」: 合法手が1つもない場合は
@@ -1875,8 +1875,8 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
     }
 }
 
-// D7-SRCH-13。静止探索で最後の王駒を取ったMATE-plyは、現在plyを渡した
-// 置換表の既存変換で往復する。
+// D7-SRCH-13。静止探索で最後の王駒を取ったMATE−(ply+1)は、現在plyを渡した
+// 置換表の変換で往復する。捕獲を評価する最大plyでも詰み帯に収まる。
 #[test]
 fn quiescence_mate_score_round_trips_through_the_tt() {
     let position = position(
@@ -1895,15 +1895,22 @@ fn quiescence_mate_score_round_trips_through_the_tt() {
     };
     assert!(legal_moves(&position).contains(&mate_move));
 
-    let table = small_tt();
-    let ply = 5;
-    let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, ply, &table);
-    assert_eq!(nodes, 0);
-    let hit = table.probe(search_key(&position), ply).unwrap();
-    assert_eq!(score, MATE - ply as i32);
-    assert_eq!(hit.score, score);
-    assert_eq!(hit.depth, 0);
-    assert_eq!(hit.best_move, Some(mate_move));
+    for ply in [0, 5, MAX_PLY - 1] {
+        let table = small_tt();
+        let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, ply, &table);
+        assert_eq!(nodes, 0);
+        let hit = table.probe(search_key(&position), ply).unwrap();
+        assert_eq!(score, MATE - (ply + 1) as i32);
+        assert!(score >= MATE_THRESHOLD);
+        assert_eq!(hit.score, score);
+        assert_eq!(hit.depth, 0);
+        assert_eq!(hit.best_move, Some(mate_move));
+        // 同じ局面を根から評価すると、捕獲までの距離は1手になる。
+        assert_eq!(
+            table.probe(search_key(&position), 0).unwrap().score,
+            MATE - 1
+        );
+    }
 }
 
 // D7-SRCH-13。最大ply葉は置換表照会より先に静的評価を返し、既存の
