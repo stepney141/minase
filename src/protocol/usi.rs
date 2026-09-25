@@ -1872,13 +1872,13 @@ mod tests {
     // RS設計判断「閾値の与え方」（D6-USI-51、D6-USI-53）。
     #[test]
     fn resignation_mate_thresholds_and_winning_scores_use_signed_comparison() {
-        for threshold in [29744, 29999, 30000, 99999] {
+        for threshold in [29744, 29998, 29999, 30000, 99999] {
             let output = lishogi_session(&format!(
                 "setoption name USI_Hash value 1\nsetoption name ResignValue value {threshold}\nposition sfen {RESIGN_MATE_SFEN}\nmoves\ngo depth 2\n"
             ));
             assert!(error_lines(&output).is_empty(), "{output}");
-            assert!(output.contains(" score mate -1 "), "{output}");
-            if threshold < 30000 {
+            assert!(output.contains(" score mate -2 "), "{output}");
+            if threshold <= 29998 {
                 assert_eq!(bestmoves(&output), ["bestmove resign"]);
             } else {
                 assert_legal_bestmove(&output, &moves_sets(&output)[0]);
@@ -1890,7 +1890,7 @@ mod tests {
                 "setoption name USI_Hash value 1\nsetoption name ResignValue value 1\nposition sfen {ROYAL_SFEN}\nmoves\ngo depth 1\n"
             ),
         );
-        assert!(output.contains(" score mate 0 "), "{output}");
+        assert!(output.contains(" score mate 1 "), "{output}");
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
     }
 

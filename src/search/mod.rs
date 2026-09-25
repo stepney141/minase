@@ -1639,7 +1639,7 @@ impl Searcher<'_> {
                 continue;
             }
             let score = if is_last_royal_capture {
-                MATE - ply as i32
+                MATE - (ply + 1) as i32
             } else {
                 self.enter_node().then_some(())?;
                 let undo = position.make_move_with_captures_unchecked(
@@ -1680,9 +1680,10 @@ impl Searcher<'_> {
 
     /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。
     ///
-    /// 王駒をすべて取る手は即詰みの値を返す。対局履歴または探索経路と
-    /// 同一の局面は引き分け値とする。2手目以降は零窓で探索する。減深した
-    /// 探索がαを超えた場合は通常深さの零窓、さらに窓内なら全窓で再探索する。
+    /// 王駒をすべて取る手は子局面での終局値`MATE - (ply + 1)`を返す。
+    /// 対局履歴または探索経路と同一の局面は引き分け値とする。
+    /// 2手目以降は零窓で探索する。減深した探索がαを超えた場合は通常深さの零窓、
+    /// さらに窓内なら全窓で再探索する。
     #[allow(clippy::too_many_arguments)]
     fn search_move(
         &mut self,
@@ -1697,7 +1698,7 @@ impl Searcher<'_> {
     ) -> Option<i32> {
         self.pv[(ply + 1) as usize].clear();
         if captures_last_royal(position, mv) {
-            return Some(MATE - ply as i32);
+            return Some(MATE - (ply + 1) as i32);
         }
 
         if !self.enter_node() {
