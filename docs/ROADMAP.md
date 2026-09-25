@@ -57,8 +57,8 @@
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 起案 | |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了 | 2026年9月25日 |
 | SPSAの摂動幅と学習率の較正 | [plans/spsa-gain-calibration.md](plans/spsa-gain-calibration.md) | 完了 | 2026年9月26日 |
-| 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 進行中 | ― |
-| 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 待機中 | ― |
+| 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 完了 | 2026年9月26日 |
+| 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 起案 | |
 | 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 待機中 | ― |
 
 ## 現在地
@@ -68,9 +68,8 @@ SPSAで調整した20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と
 SPSAの摂動幅と学習率の較正は2026年9月26日に完了し、`spsa_runner`の既定値を、終了時の摂動幅を範囲の1/6とする減衰する利得へ改め、標準の規模を3,000ペアとした。
 この設定による2回目の調整で得た22係数は[STC](measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、採用した。
 探索部の次の対象は[棋力向上段階12](plans/strength-stage12.md)である。
-評価関数では、[教師の混合比](plans/teacher-mixing-ratio.md)の採否を最初に確定する。
-比率の上書きと共通診断は実装済みで、候補の学習と採否測定は未着手である。
-[探索局面を用いた学習](plans/search-aware-evaluation.md)はその判定待ち、[相対2駒評価](plans/relative-pair-eval.md)は教師診断と残存誤りの確認待ちである。
+評価関数では、[教師の混合比](plans/teacher-mixing-ratio.md)のλ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となり、2026年9月26日に不採用で完了した。
+評価関数の次の対象は、従来の採用PSTを基点とする[探索局面を用いた学習](plans/search-aware-evaluation.md)であり、[相対2駒評価](plans/relative-pair-eval.md)は教師診断と残存誤りの確認待ちである。
 実施順序と、各判定からの進み先は次節に定める。
 
 ## 評価関数の進め方

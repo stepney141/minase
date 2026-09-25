@@ -18,7 +18,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 
 ## エンジン
 
-候補の重みは、ブランチ `teacher-mixing-ratio-100` の `16a2257`（`622a879` に `nets/pst.bin` の差し替えだけを加えたコミット）に置いた。
+候補の重みは、ブランチ `teacher-mixing-ratio-100-candidate` の `16a2257`（`622a879` に `nets/pst.bin` の差し替えだけを加えたコミット）に置いた。
 重みのSHA-256は `c6d6ef46a78d9a00547d1235da79b19ed686e9ea6af92cdec8bb5dc794683abc` である。
 重みに依存する2件の単体テスト（初期局面の評価値、深さ5の窓外れ）は、候補コミットでは失敗する。
 [先読み教師値](../plans/lookahead-teacher.md)の前例に従い、候補コミットの差分を重みファイルだけに保つため、これらのテストは採用時に更新する。
