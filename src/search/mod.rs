@@ -1938,10 +1938,10 @@ fn moves_to_go(ply: u32) -> u128 {
 /// 持ち時間制の予算式を1箇所に集約する。
 ///
 /// 既定係数では、以下の式と一致する。
-/// `moves_to_go = max(94, 435.saturating_sub(ply) / 2)`、
-/// `soft_raw = remaining / moves_to_go + 0.73 * increment + 0.8 * byoyomi * w`、
+/// `moves_to_go = max(88, 432.saturating_sub(ply) / 2)`、
+/// `soft_raw = remaining / moves_to_go + 0.76 * increment + 0.8 * byoyomi * w`、
 /// `safe_hard = max(1ms, (remaining + byoyomi).saturating_sub(30ms))`、
-/// `hard = max(1ms, min(3.94 * soft_raw, remaining / 4 + 0.8 * byoyomi, safe_hard))`、
+/// `hard = max(1ms, min(4.51 * soft_raw, 0.27 * remaining + 0.8 * byoyomi, safe_hard))`、
 /// `soft = min(soft_raw, hard)`とする。
 /// `w = min(1, (ply + 4) / 40)`は序盤の係数で、残り時間が正の手の秒読みの項にだけ掛け、
 /// 対局開始直後の数手が秒読み相当の長考を使うことを防ぐ

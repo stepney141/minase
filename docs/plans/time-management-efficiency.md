@@ -56,11 +56,12 @@ minaseの探索は反復深化（深さ1から1ずつ読みを深める外殻）
 plyは初形を0とする局面の手数である。
 
 以下の表は2026年9月18日にissue #7の対策を採用したときの判断と測定値を記録する。
-[SPSAの長時間測定](../measurements/spsa-stage9-20260923-ltc.md)を通過した後の現行値は、`EXPECTED_PLIES = 435`、`MIN_MOVES = 94`、加算の使用率73%、hardとsoftの比394%である。
-現行の予算式では、`moves_to_go = max(94, 435.saturating_sub(ply) / 2)`、`soft_raw = remaining / moves_to_go + increment × 73 / 100 + byoyomi × 8 × opening / 400`、`hard = max(1 ms, min(soft_raw × 394 / 100, remaining × 25 / 100 + byoyomi × 8 / 10, safe_hard))`、`soft = min(soft_raw, hard)`とし、各整数除算の端数を切り捨てる。
+[最初のSPSAの長時間測定](../measurements/spsa-stage9-20260923-ltc.md)を通過した後の値は、`EXPECTED_PLIES = 435`、`MIN_MOVES = 94`、加算の使用率73%、hardとsoftの比394%、反復継続の予測比2.44であった。
+[2回目のSPSAの長時間測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の現行値は、`EXPECTED_PLIES = 432`、`MIN_MOVES = 88`、加算の使用率76%、hardとsoftの比451%、hardに使える残り時間の割合27%である。
+現行の予算式では、`moves_to_go = max(88, 432.saturating_sub(ply) / 2)`、`soft_raw = remaining / moves_to_go + increment × 76 / 100 + byoyomi × 8 × opening / 400`、`hard = max(1 ms, min(soft_raw × 451 / 100, remaining × 27 / 100 + byoyomi × 8 / 10, safe_hard))`、`soft = min(soft_raw, hard)`とし、各整数除算の端数を切り捨てる。
 `opening`は残り時間が正なら`min(40, ply.saturating_add(4))`、残り時間が0なら40であり、`safe_hard`は本マイルストーンで採用した定義を保つ。
-反復継続の予測比は2.44である。
-例えば残り300,000 ms、秒読み10,000 ms、加算0、ply 0の予算はsoft 2,182 ms、hard 8,597 msとなる。
+反復継続の予測比は2.63である。
+例えば残り300,000 ms、秒読み10,000 ms、加算0、ply 0の予算はsoft 2,188 ms、hard 9,867 msとなる。
 
 | 判断 | 内容 |
 |---|---|
