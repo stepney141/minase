@@ -178,6 +178,17 @@ fn print_theta(settings: &Settings, theta: &[f64]) {
     }
 }
 
+fn parameter_line(d: &params::Declaration) -> String {
+    format!(
+        "{}, {}, {}, {}, {}, 0.002",
+        d.name,
+        d.default,
+        d.min,
+        d.max,
+        (f64::from(d.max) - f64::from(d.min)) / 6.0
+    )
+}
+
 fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(Command::Apply { run_dir, source }) = &arguments.command {
         let report = apply::apply(run_dir, source)?;
@@ -199,14 +210,7 @@ fn execute(arguments: Arguments) -> Result<(), Box<dyn std::error::Error>> {
             &rules,
         )?;
         for d in declarations(&probe_usi_options(&player, Duration::from_secs(120))?)? {
-            println!(
-                "{}, {}, {}, {}, {}, 0.002",
-                d.name,
-                d.default,
-                d.min,
-                d.max,
-                (f64::from(d.max) - f64::from(d.min)) / 20.0
-            );
+            println!("{}", parameter_line(&d));
         }
         return Ok(());
     }

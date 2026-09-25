@@ -112,22 +112,22 @@ fn aspiration_initial_window_uses_only_eligible_previous_scores() {
 fn aspiration_widens_only_the_failed_side() {
     let mut low = AspirationWindow::initial(5, Some(100), 50);
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, 96));
+    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, 100));
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-96, 150, 185));
+    assert_eq!((low.alpha, low.beta, low.delta), (-100, 150, 201));
 
     let mut high = AspirationWindow::initial(5, Some(100), 50);
     high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, 96));
+    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, 100));
     high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 296, 185));
+    assert_eq!((high.alpha, high.beta, high.delta), (50, 300, 201));
 
     low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-96, 335, 357));
+    assert_eq!((low.alpha, low.beta, low.delta), (-100, 351, 404));
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-453, 335, 689));
+    assert_eq!((low.alpha, low.beta, low.delta), (-504, 351, 812));
     low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-453, 1024, 1329));
+    assert_eq!((low.alpha, low.beta, low.delta), (-504, 1163, 1632));
     for _ in 0..4 {
         low.widen_low();
         low.widen_high();
@@ -341,7 +341,7 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
 }
 
 // docs/plans/strength-stage5.md「LMRの減深量」「検証」とフェーズ6指示書。
-// c = 2.00、H = 128の生成規則と、補正後の切り詰めを個別に固定する。
+// c = 1.66、H = 111の生成規則と、補正後の切り詰めを個別に固定する。
 #[test]
 fn lmr_table_follows_logarithmic_rule() {
     let table = lmr_table();
@@ -352,20 +352,20 @@ fn lmr_table_follows_logarithmic_rule() {
     }
     assert_eq!(table[3][3], 0);
     assert_eq!(table[4][8], 1);
-    assert_eq!(table[5][255], 4);
+    assert_eq!(table[5][255], 5);
 }
 
 #[test]
 fn lmr_history_adjustment_precedes_clamping() {
     for (history, expected) in [
         (i32::MIN, 2),
-        (-118, 2),
-        (-117, 2),
-        (-116, 1),
+        (-112, 2),
+        (-111, 2),
+        (-110, 1),
         (0, 1),
-        (116, 1),
-        (117, 0),
-        (118, 0),
+        (110, 1),
+        (111, 0),
+        (112, 0),
         (i32::MAX, 0),
     ] {
         assert_eq!(lmr_reduction(4, 8, history), expected);
@@ -373,15 +373,15 @@ fn lmr_history_adjustment_precedes_clamping() {
     assert_eq!(lmr_reduction(5, 255, i32::MIN), 3);
     assert_eq!(lmr_reduction(5, 255, i32::MAX), 3);
     // 表の値が0でも負のhistoryなら減深し、負の補正結果は0で切る。
-    assert_eq!(lmr_reduction(4, 1, -117), 1);
-    assert_eq!(lmr_reduction(4, 1, 117), 0);
+    assert_eq!(lmr_reduction(4, 1, -111), 1);
+    assert_eq!(lmr_reduction(4, 1, 111), 0);
 }
 
 #[test]
 fn lmr_reduction_preserves_remaining_depth() {
     for depth in [0, 1, 2, 3, 4, MAX_PLY] {
         for index in [0, 1, 8, 255] {
-            for history in [i32::MIN, -128, -127, 0, 127, 128, i32::MAX] {
+            for history in [i32::MIN, -111, -110, 0, 110, 111, i32::MAX] {
                 let reduction = lmr_reduction(depth, index, history);
                 assert!(reduction <= 3);
                 match depth {
@@ -2193,31 +2193,31 @@ fn infinite_limits_stop_only_on_external_request() {
 #[test]
 fn clock_budget_matches_the_normative_formula() {
     // (a) 残り60000・加算1000・秒読み0・ply=0:
-    //     moves_to_go=max(94, (435-0)/2)=217、soft_raw=60000/217+730=1006、
-    //     safe_hard=59970、hard=min(3963, 15000, 59970)=3963、soft=1006。
+    //     moves_to_go=max(88, (432-0)/2)=216、soft_raw=60000/216+760=1037、
+    //     safe_hard=59970、hard=min(4676, 16200, 59970)=4676、soft=1037。
     let budget = clock_budget(clock_at_ply(60_000, 1_000, 0, 0));
-    assert_eq!(budget.soft, Duration::from_millis(1_006));
-    assert_eq!(budget.hard, Duration::from_millis(3_963));
+    assert_eq!(budget.soft, Duration::from_millis(1_037));
+    assert_eq!(budget.hard, Duration::from_millis(4_676));
 
     // (b) 残り10000・加算0・秒読み200・ply=0:
-    //     moves_to_go=217、序盤の係数w=4/40、soft_raw=10000/217+200*8*4/400=46+16=62、
-    //     safe_hard=10170、hard=min(244, 2660, 10170)=244、soft=62。
+    //     moves_to_go=216、序盤の係数w=4/40、soft_raw=10000/216+200*8*4/400=46+16=62、
+    //     safe_hard=10170、hard=min(279, 2860, 10170)=279、soft=62。
     let budget = clock_budget(clock_at_ply(10_000, 0, 200, 0));
     assert_eq!(budget.soft, Duration::from_millis(62));
-    assert_eq!(budget.hard, Duration::from_millis(244));
+    assert_eq!(budget.hard, Duration::from_millis(279));
 
-    // (b') 同じ時計でply=36以降は係数が1になり、moves_to_go=199、
-    //     soft_raw=10000/199+160=210、hard=min(827, 2660, 10170)=827。
+    // (b') 同じ時計でply=36以降は係数が1になり、moves_to_go=198、
+    //     soft_raw=10000/198+160=210、hard=min(947, 2860, 10170)=947。
     let budget = clock_budget(clock_at_ply(10_000, 0, 200, 36));
     assert_eq!(budget.soft, Duration::from_millis(210));
-    assert_eq!(budget.hard, Duration::from_millis(827));
+    assert_eq!(budget.hard, Duration::from_millis(947));
 
     // (c) 旧式でhard<softになった入力。残り200・加算100・秒読み0・ply=300:
-    //     moves_to_go=94、soft_raw=2+73=75、safe_hard=170、
-    //     hard=min(295, 50, 170)=50、soft=min(75, 50)=50。
+    //     moves_to_go=88、soft_raw=2+76=78、safe_hard=170、
+    //     hard=min(351, 54, 170)=54、soft=min(78, 54)=54。
     let budget = clock_budget(clock_at_ply(200, 100, 0, 300));
-    assert_eq!(budget.soft, Duration::from_millis(50));
-    assert_eq!(budget.hard, Duration::from_millis(50));
+    assert_eq!(budget.soft, Duration::from_millis(54));
+    assert_eq!(budget.hard, Duration::from_millis(54));
 
     // (d) 時計合計30ms以下ではsafe_hard=1となり、softもhard以下へ縮む。
     let budget = clock_budget(clock_at_ply(20, 0, 0, 0));
@@ -2236,11 +2236,11 @@ fn clock_budget_matches_the_normative_formula() {
 #[test]
 fn opening_coefficient_scales_only_the_byoyomi_term() {
     for (remaining, increment, byoyomi, ply, soft, hard) in [
-        (300_000, 0, 10_000, 0, 2_182, 8_597),
-        (300_000, 0, 10_000, 36, 9_507, 37_457),
-        (1_800_000, 0, 40_000, 0, 11_494, 45_286),
-        (10_000, 100, 0, 0, 119, 468),
-        (60_000, 200, 0, 0, 422, 1_662),
+        (300_000, 0, 10_000, 0, 2_188, 9_867),
+        (300_000, 0, 10_000, 36, 9_515, 42_912),
+        (1_800_000, 0, 40_000, 0, 11_533, 52_013),
+        (10_000, 100, 0, 0, 122, 550),
+        (60_000, 200, 0, 0, 429, 1_934),
         (0, 0, 10_000, 0, 8_000, 8_000),
         (0, 100, 10_000, 0, 8_000, 8_000),
     ] {
@@ -2262,12 +2262,12 @@ fn opening_coefficient_scales_only_the_byoyomi_term() {
 // 単調非増加で、plyがEXPECTED_PLIES以上ならMIN_MOVESに固定される。
 #[test]
 fn moves_to_go_decreases_monotonically_to_the_documented_floor() {
-    let plys = [0, 1, 100, 299, 300, 449, 450, 1_000, u32::MAX];
+    let plys = [0, 1, 100, 254, 255, 256, 431, 432, 1_000, u32::MAX];
     let estimates: Vec<u128> = plys.into_iter().map(moves_to_go).collect();
 
     assert!(estimates.windows(2).all(|pair| pair[0] >= pair[1]));
-    assert_eq!(moves_to_go(435), 94);
-    assert_eq!(moves_to_go(1_000), 94);
+    assert_eq!(moves_to_go(432), 88);
+    assert_eq!(moves_to_go(1_000), 88);
 }
 
 // D7-TIME-01。search.md「時間管理」節が規定する予算の不変条件を、代表値の
@@ -2277,7 +2277,7 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
     let remaining_values = [0, 20, 31, 200, 10_000, 60_000, u64::MAX];
     let increment_values = [0, 100, 1_000, u64::MAX];
     let byoyomi_values = [0, 100, 200, u64::MAX];
-    let ply_values = [0, 100, 300, 449, 450, 1_000, u32::MAX];
+    let ply_values = [0, 100, 300, 431, 432, 1_000, u32::MAX];
 
     for remaining in remaining_values {
         for increment in increment_values {
@@ -2313,14 +2313,14 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
 // softとhardのそれぞれで両者の小さい方を採る（一括minではない独立比較）。
 #[test]
 fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
-    // 時計単独ならsoft=1006、hard=3963（D7-TIME-01(a)）。
+    // 時計単独ならsoft=1037、hard=4676（D7-TIME-01(a)）。
     let base = clock(60_000, 1_000, 0);
     let with_movetime =
         |milliseconds: u64| SearchLimits::new(None, None, Some(milliseconds), Some(base)).unwrap();
 
     // (a) 交差例: softは時計側、hardはmovetime側が勝つ。独立比較の固定。
     let budget = time_budget(&with_movetime(2_000)).unwrap();
-    assert_eq!(budget.soft, Duration::from_millis(1_006));
+    assert_eq!(budget.soft, Duration::from_millis(1_037));
     assert_eq!(budget.hard, Duration::from_millis(2_000));
 
     // (b) movetimeが両方で勝つ。
@@ -2330,12 +2330,12 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
 
     // (c) 時計側が両方で勝つ。
     let budget = time_budget(&with_movetime(5_000)).unwrap();
-    assert_eq!(budget.soft, Duration::from_millis(1_006));
-    assert_eq!(budget.hard, Duration::from_millis(3_963));
+    assert_eq!(budget.soft, Duration::from_millis(1_037));
+    assert_eq!(budget.hard, Duration::from_millis(4_676));
 }
 
 // D7-TIME-05。search.md「時間管理」節: elapsed < softかつ
-// elapsed×2.44 <= hardの場合だけ次の反復を開始する。
+// elapsed×2.63 <= hardの場合だけ次の反復を開始する。
 #[test]
 fn next_iteration_requires_both_time_conditions() {
     let budget = |soft, hard| TimeBudget {
@@ -2347,13 +2347,13 @@ fn next_iteration_requires_both_time_conditions() {
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
         Duration::ZERO,
-        budget(100, 244),
+        budget(100, 263),
         false
     ));
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
         Duration::ZERO,
-        budget(100, 242),
+        budget(100, 261),
         false
     ));
 
@@ -2361,25 +2361,25 @@ fn next_iteration_requires_both_time_conditions() {
     assert!(should_start_next_iteration(
         Duration::from_millis(100),
         Duration::ZERO,
-        budget(101, 244),
+        budget(101, 263),
         false
     ));
     assert!(!should_start_next_iteration(
         Duration::from_millis(100),
         Duration::ZERO,
-        budget(101, 243),
+        budget(101, 262),
         false
     ));
 
-    // movetime相当のsoft=hardでは、経過時間がhardの100/244以下なら継続できる。
+    // movetime相当のsoft=hardでは、経過時間がhardの100/263以下なら継続できる。
     assert!(should_start_next_iteration(
-        Duration::from_millis(40),
+        Duration::from_millis(38),
         Duration::ZERO,
         budget(100, 100),
         false
     ));
     assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
+        Duration::from_millis(39),
         Duration::ZERO,
         budget(100, 100),
         false
@@ -2394,7 +2394,7 @@ fn next_iteration_stable_requires_the_prediction_within_soft() {
         soft: Duration::from_millis(soft),
         hard: Duration::from_millis(hard),
     };
-    // soft 100ms、hard 400ms: 通常は99msまで続け、安定時は40msまでしか続けない。
+    // soft 100ms、hard 400ms: 通常は99msまで続け、安定時は38msまでしか続けない。
     assert!(should_start_next_iteration(
         Duration::from_millis(99),
         Duration::ZERO,
@@ -2402,13 +2402,13 @@ fn next_iteration_stable_requires_the_prediction_within_soft() {
         false
     ));
     assert!(should_start_next_iteration(
-        Duration::from_millis(40),
+        Duration::from_millis(38),
         Duration::ZERO,
         budget(100, 400),
         true
     ));
     assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
+        Duration::from_millis(39),
         Duration::ZERO,
         budget(100, 400),
         true
@@ -2421,19 +2421,19 @@ fn next_iteration_stable_requires_the_prediction_within_soft() {
     ));
     // hardの予測が先に拘束する場合は安定の有無で変わらない。
     assert!(should_start_next_iteration(
-        Duration::from_millis(40),
+        Duration::from_millis(38),
         Duration::ZERO,
         budget(400, 100),
         true
     ));
     assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
+        Duration::from_millis(39),
         Duration::ZERO,
         budget(400, 100),
         true
     ));
     assert!(!should_start_next_iteration(
-        Duration::from_millis(41),
+        Duration::from_millis(39),
         Duration::ZERO,
         budget(400, 100),
         false
@@ -3764,7 +3764,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     };
     for (elapsed, hit, stable, expected) in [
         (1040, 1000, true, false),
-        (40, 0, true, true),
+        (38, 0, true, true),
         (150, 100, false, true),
         (150, 100, true, false),
         (1099, 1000, false, false),
@@ -3776,25 +3776,25 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
         );
     }
     let exact_soft = TimeBudget {
-        soft: ms(61),
+        soft: ms(263),
         hard: ms(400),
     };
     assert!(should_start_next_iteration(
-        ms(25),
+        ms(100),
         Duration::ZERO,
         exact_soft,
         true
     ));
     assert!(!should_start_next_iteration(
-        ms(25) + Duration::from_nanos(1),
+        ms(100) + Duration::from_nanos(1),
         Duration::ZERO,
         exact_soft,
         true
     ));
-    // h=100ms、hard=388msなら予測上限はT=200ms。softは境界を隠さない値にする。
+    // h=100ms、hard=426msなら予測上限はT=200ms。softは境界を隠さない値にする。
     let wide_soft = TimeBudget {
-        soft: ms(388),
-        hard: ms(388),
+        soft: ms(426),
+        hard: ms(426),
     };
     assert!(should_start_next_iteration(
         ms(200),
@@ -4211,7 +4211,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
 #[test]
 fn tuning_default_null_move_and_aspiration_match_reference() {
     for depth in 0..=256 {
-        assert_eq!(null_move_reduction(depth), (2_888 + depth * 210) / 1_200);
+        assert_eq!(null_move_reduction(depth), (3_529 + depth * 238) / 1_200);
     }
     for delta in [
         0,
@@ -4219,19 +4219,19 @@ fn tuning_default_null_move_and_aspiration_match_reference() {
         49,
         50,
         51,
-        i32::MAX / 2 - 1,
-        i32::MAX / 2,
-        i32::MAX / 2 + 1,
+        1_068_399_824,
+        1_068_399_825,
+        1_068_399_826,
         i32::MAX - 1,
         i32::MAX,
     ] {
         assert_eq!(
             grow_aspiration_delta(delta),
-            (i64::from(delta) * 193 / 100).min(i64::from(i32::MAX)) as i32
+            (i64::from(delta) * 201 / 100).min(i64::from(i32::MAX)) as i32
         );
     }
     with_root_searcher(&Position::initial(), &[], |searcher| {
-        assert_eq!(searcher.delta_margin, 212 * searcher.pst.pawn_value() / 100);
+        assert_eq!(searcher.delta_margin, 258 * searcher.pst.pawn_value() / 100);
     });
 }
 
@@ -4242,15 +4242,15 @@ fn tuning_default_clock_budget_matches_reference_grid() {
         let remaining = u128::from(clock.remaining_ms);
         let increment = u128::from(clock.increment_ms);
         let byoyomi = u128::from(clock.byoyomi_ms);
-        let moves = u128::from(94_u32.max(435_u32.saturating_sub(clock.ply) / 2));
+        let moves = u128::from(88_u32.max(432_u32.saturating_sub(clock.ply) / 2));
         let opening = if remaining > 0 {
             u128::from(clock.ply.saturating_add(4).min(40))
         } else {
             40
         };
-        let soft = remaining / moves + increment * 73 / 100 + byoyomi * 8 * opening / 400;
-        let hard = (soft * 394 / 100)
-            .min(remaining / 4 + byoyomi * 8 / 10)
+        let soft = remaining / moves + increment * 76 / 100 + byoyomi * 8 * opening / 400;
+        let hard = (soft * 451 / 100)
+            .min(remaining * 27 / 100 + byoyomi * 8 / 10)
             .min((remaining + byoyomi).saturating_sub(30).max(1))
             .max(1);
         TimeBudget {
@@ -4269,15 +4269,15 @@ fn tuning_default_clock_budget_matches_reference_grid() {
         99,
         100,
         101,
-        224,
-        225,
-        226,
+        215,
+        216,
+        217,
         10_000,
         u64::MAX,
     ] {
         for increment in [0, 1, 9, 10, 11, 100, u64::MAX] {
             for byoyomi in [0, 1, 4, 5, 6, 30, 31, 1000, u64::MAX] {
-                for ply in [0, 1, 35, 36, 37, 249, 250, 251, 449, 450, 451, u32::MAX] {
+                for ply in [0, 1, 35, 36, 37, 254, 255, 256, 431, 432, 433, u32::MAX] {
                     if remaining == 0 && increment == 0 && byoyomi == 0 {
                         continue;
                     }
@@ -4295,9 +4295,9 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
     for started in [
         Duration::ZERO,
         Duration::from_nanos(1),
+        Duration::from_nanos(37),
+        Duration::from_nanos(38),
         Duration::from_nanos(39),
-        Duration::from_nanos(40),
-        Duration::from_nanos(41),
         Duration::from_nanos(99),
         Duration::from_nanos(100),
         Duration::from_nanos(101),
@@ -4309,17 +4309,22 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
             Duration::from_nanos(10),
             Duration::MAX,
         ] {
-            for soft in [Duration::ZERO, Duration::from_nanos(100), Duration::MAX] {
+            for soft in [
+                Duration::ZERO,
+                Duration::from_nanos(100),
+                Duration::from_nanos(263),
+                Duration::MAX,
+            ] {
                 for hard in [
                     soft,
                     soft.saturating_add(Duration::from_nanos(150)),
                     Duration::MAX,
                 ] {
                     for stable in [false, true] {
-                        let expected = started.as_nanos() * 244
+                        let expected = started.as_nanos() * 263
                             <= (hit.as_nanos() + hard.as_nanos()) * 100
                             && (!stable
-                                || started.as_nanos() * 244
+                                || started.as_nanos() * 263
                                     <= (hit.as_nanos() + soft.as_nanos()) * 100);
                         assert_eq!(
                             iteration_prediction_fits(
@@ -4388,7 +4393,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     if scenario == "lmr table" {
         // 探索が引く減深量表はプロセス内で1回だけ生成されるので、表の生成より前に
         // 設定した除数が表へ反映されることを、表を経由する`lmr_reduction`で調べる。
-        // ln4 × ln3 ≈ 1.52は、既定の除数1.86では0、除数1.0では1に切り捨てられる。
+        // ln4 × ln3 ≈ 1.52は、既定の除数1.66では0、除数1.0では1に切り捨てられる。
         let mut engine = engine();
         let mut protocol = UsiProtocol::new(&engine);
         let output = run(
@@ -4415,7 +4420,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
                 mv.from.dense_index(),
                 mv.to.dense_index(),
             );
-            searcher.history[side][from][to] = 19_403;
+            searcher.history[side][from][to] = 20_755;
             searcher.record_quiet_beta_cutoff(&board, mv, 1, 0);
             result = i64::from(searcher.history[side][from][to]);
         });
@@ -4489,28 +4494,28 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
 
     // 指示書の22行を、宣言順・既定値・範囲の独立した参照値とする。
     let expected = [
-        ("LmrDivisor", 186, 100, 400),
-        ("LmrHistoryThreshold", 117, 0, 512),
-        ("FutilityMargin1", 51, 0, 400),
-        ("FutilityMargin2", 158, 0, 400),
-        ("FutilityMargin3", 175, 0, 400),
-        ("SeeMargin1", 0, 0, 400),
-        ("SeeMargin2", 195, 0, 400),
-        ("SeeMargin3", 10, 0, 400),
-        ("AspirationDelta", 53, 10, 200),
-        ("AspirationGrowth", 193, 125, 400),
-        ("NullMoveBase", 2888, 1200, 4800),
-        ("NullMoveSlope", 210, 100, 400),
-        ("HistoryLimit", 19403, 4096, 65536),
-        ("CorrectionCap", 202, 50, 400),
-        ("CorrectionWeight", 35, 8, 128),
-        ("DeltaMargin", 212, 50, 500),
-        ("ExpectedPlies", 435, 250, 700),
-        ("MinMoves", 94, 40, 200),
-        ("IncrementShare", 73, 30, 100),
-        ("HardSoftRatio", 394, 150, 800),
-        ("HardRemainingShare", 25, 10, 50),
-        ("IterationRatio", 244, 150, 400),
+        ("LmrDivisor", 166, 100, 400),
+        ("LmrHistoryThreshold", 111, 0, 512),
+        ("FutilityMargin1", 101, 0, 400),
+        ("FutilityMargin2", 196, 0, 400),
+        ("FutilityMargin3", 207, 0, 400),
+        ("SeeMargin1", 2, 0, 400),
+        ("SeeMargin2", 210, 0, 400),
+        ("SeeMargin3", 7, 0, 400),
+        ("AspirationDelta", 46, 10, 200),
+        ("AspirationGrowth", 201, 125, 400),
+        ("NullMoveBase", 3529, 1200, 4800),
+        ("NullMoveSlope", 238, 100, 400),
+        ("HistoryLimit", 20755, 4096, 65536),
+        ("CorrectionCap", 193, 50, 400),
+        ("CorrectionWeight", 33, 8, 128),
+        ("DeltaMargin", 258, 50, 500),
+        ("ExpectedPlies", 432, 250, 700),
+        ("MinMoves", 88, 40, 200),
+        ("IncrementShare", 76, 30, 100),
+        ("HardSoftRatio", 451, 150, 800),
+        ("HardRemainingShare", 27, 10, 50),
+        ("IterationRatio", 263, 150, 400),
     ];
     assert_eq!(params::PARAMETERS, expected);
     let mut engine = engine();
@@ -4554,7 +4559,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("AspirationGrowth", 300, || {
             i64::from(grow_aspiration_delta(101))
         }),
-        ("NullMoveBase", 3600, || i64::from(null_move_reduction(12))),
+        ("NullMoveBase", 4800, || i64::from(null_move_reduction(12))),
         ("NullMoveSlope", 400, || i64::from(null_move_reduction(12))),
         ("HistoryLimit", 65536, history),
         ("CorrectionCap", 400, || correction(100_000)),
@@ -4644,5 +4649,5 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         .is_empty()
     );
     assert_eq!(params::delta_margin(), 300);
-    params::set("DeltaMargin", 212).unwrap();
+    params::set("DeltaMargin", 258).unwrap();
 }

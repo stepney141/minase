@@ -38,8 +38,9 @@ target/release/spsa_runner params \
 ```
 
 1行は `名前, 開始値, 最小, 最大, c_end, r_end` の6欄であり、fishtestの入力形式と同じである。
-`c_end` は最後の反復での摂動幅であり、既定は範囲の1/20である。
+`c_end` は最後の反復での摂動幅であり、既定は範囲の1/6である。
 `r_end` は最後の反復での学習率を `c_end²` に対する比で表した値であり、既定は0.002である。
+摂動幅と学習率は反復とともに縮み、最後の反復でこの値になる（既定値の選定は [plans/spsa-gain-calibration.md](../plans/spsa-gain-calibration.md)）。
 空行と `#` で始まる行は無視される。
 ファイルから行を削除した係数は調整されず、エンジンの既定値のまま動く。
 秒読みを使わない時間制御では、秒読みの項の係数は勝敗に影響しないので調整の対象にしない（理由は設計書の「対象の係数」）。
@@ -60,7 +61,7 @@ target/release/spsa_runner \
   --run-dir data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 1500 --pairs-per-iteration 8
+  --iterations 375 --pairs-per-iteration 8
 ```
 
 `--engine` の `commit:` 形式は、当該コミットを `git archive` で展開して `--features tuning` つきでビルドし、通常ビルドとは別のキーで `target/match-cache/` へキャッシュする。
@@ -87,7 +88,7 @@ target/release/spsa_runner \
   --resume data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 1500 --pairs-per-iteration 8
+  --iterations 375 --pairs-per-iteration 8
 ```
 
 実行ディレクトリは、実行条件の `manifest.json` と、完了した反復を1反復1ファイルで置く `iterations/` からなる。

@@ -18,6 +18,9 @@
 - [探索内の反復の扱いに関する既存実装の調査](search-repetition-prior-art.md)は、13本の実装が探索木の中で同一局面の再現を検出して返す値と、置換表との折り合いの付け方を比較する。
 - [探索ノード数の定義と既存エンジンとの照合](node-count-definition.md)は、minaseが末端局面を二重に数えていたことを示し、Stockfishとやねうらおうに合わせたノード数の定義の根拠を記す。
 - [SPSAで調整した係数をソースへ反映する先行例](spsa-parameter-application.md)は、やねうら王、fishutils、およびapeironが調整結果をソースの定数へ自動転記する方法を確認する。
+- [SPSAの対局数を減らす手法の調査](spsa-acceleration-methods.md)は、雑音のある零次最適化の収束の下界と、2SPSA、Adam、CLOP、ベイズ最適化などの改良手法を一次資料で比べ、minaseの雑音の水準では摂動幅と学習率の較正に改善の余地があると結論する。
+- [SPSAの反復予算の決め方](spsa-iteration-budget.md)は、対局予算から反復数を決め、停止後に原因と採否を分けて扱う方法をまとめる。
+- [チェスエンジンのSPSA調整で使われた対局数](chess-engine-spsa-session-sizes.md)は、StockfishとOpenBench上の公開記録から係数の数と実績局数を集める。
 - [AlphaZero型の深層強化学習の先行実装調査](alphazero-prior-art.md)は、lc0とdlshogiを中心に、学習アルゴリズム、MCTSの実装、Rustからの推論ランタイム、および複数の探索方式の共存方法を調べる。
 
 ## 評価関数と教師データ

@@ -1,5 +1,8 @@
 //! phase3.mdおよびspsa.mdの参照値、符号、丸め、再開契約の検証。
 
+#[path = "tests/simulation.rs"]
+mod simulation;
+
 use super::*;
 use minase::rng::{XorShift64, derive_seed};
 use minase::{Color, DrawReason, GameResult};
@@ -149,6 +152,45 @@ fn pair(number: u64, signs: [i8; 2]) -> CompletedPair {
             games,
             category,
         },
+    }
+}
+
+// spsa-gain-calibration.mdのC5: 初回と最終回の利得を独立に計算して照合する。
+#[test]
+fn calibrated_default_rates_match_c5_endpoints() {
+    let mut s = Settings {
+        alpha: ALPHA,
+        gamma: GAMMA,
+        a: 0.1 * 1500.0,
+        ..settings(1500, 8, 1)
+    };
+    s.parameters[0].c_end = 12.5;
+    s.parameters[0].r_end = 0.002;
+    let c_end = 12.5_f64;
+    let a_end = 0.002 * c_end.powi(2);
+    let c_first = c_end * 1500.0_f64.powf(0.101);
+    let a_first = a_end * ((150.0_f64 + 1500.0) / (150.0 + 1.0)).powf(0.602);
+    for (k, expected_c, expected_a) in [(1, c_first, a_first), (1500, c_end, a_end)] {
+        let (c, a) = rates(&s, &s.parameters[0], k);
+        assert!((c - expected_c).abs() <= 1e-12 * expected_c.abs());
+        assert!((a - expected_a).abs() <= 1e-12 * expected_a.abs());
+    }
+}
+
+#[test]
+fn params_generate_calibrated_defaults() {
+    // spsa-gain-calibration.mdのC5: c_endは範囲の1/6、r_endは0.002。
+    for (min, max, default, expected) in [
+        (100, 400, 250, "X, 250, 100, 400, 50, 0.002"),
+        (-20, 55, 10, "X, 10, -20, 55, 12.5, 0.002"),
+    ] {
+        let declaration = Declaration {
+            name: "X".to_owned(),
+            default,
+            min,
+            max,
+        };
+        assert_eq!(parameter_line(&declaration), expected);
     }
 }
 
