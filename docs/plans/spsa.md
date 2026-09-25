@@ -101,7 +101,7 @@ cargo featureは、Rustのビルド時にコードの一部を有効または無
 | 調整ループの置き場 | 新しいコマンド`spsa_runner`とする。`match_runner`にSPSAのモードや側ごとの`setoption`の引数を足す案は採らない。`match_runner`は採否を判定する計器であり、採否の測定が係数を注入した状態で実行される余地を、CLIの段階で残さないためである。 |
 | 対局実行部の共有 | `match_runner.rs`のうち、エンジンプロセスの起動と通信、1局の進行、1ペアの実行、開始局面の生成、コミットのビルドとキャッシュを、これらが使うプレイヤーの設定と対局記録の型とともに、ライブラリのモジュール`harness`へ移す。`rng`と`stats`と同じく`#[doc(hidden)]`を付けた`pub`モジュールとし、公開APIとは扱わない。`missing_docs`の警告の下にあるので、移す項目には文書コメントを付ける。プレイヤーの設定には、握手の後に送る`setoption`の列を加える。`match_runner`はこの列を常に空で使う。2つのbinが同じファイルを`#[path]`で取り込む案も成立するが、ライブラリに置けば単体テストの実行が1回で済み、`rng`と`stats`の置き方とも揃うので採らない。 |
 | 対局の構成 | 各反復で、同じ調整用ビルドのバイナリにθ+とθ−を与えて直接対局させる。1反復は8ペアとし、各ペアは既存のペア構造（同一開始局面の先後入替）をそのまま使う。1反復8ペアはOpenBenchの既定値であり、反復番号を8ペアごとに1つ進める数え方もOpenBenchと同じである。fishtestは反復番号をペアごとに進めるが、総ペア数が同じなら、学習率の総和に結果を掛けた移動量の期待値は両者でほぼ等しい。dlshogiの調整スクリプトは基準エンジンとの対局も併用するが、θ+とθ−の差だけが更新に必要な情報なので採らない。 |
-| 更新則 | fishtestとOpenBenchに共通する式を使う（「更新則」の節）。ハイパーパラメーターは両者の既定値に合わせ、α = 0.602、γ = 0.101、A = 反復数の0.1倍、`r_end` = 0.002、`c_end` = 係数の範囲の1/20とする。`c_end`と`r_end`は係数ごとにパラメーターファイルで上書きできる。 |
+| 更新則 | fishtestとOpenBenchに共通する式を使う（「更新則」の節）。既定のハイパーパラメーターは、[利得の較正](spsa-gain-calibration.md)の模擬比較で選んだ定数の利得であり、α = γ = 0、`c_end` = 係数の範囲の1/6、`r_end` = 0.002とする。最初のセッションは、fishtestとOpenBenchの既定値（α = 0.602、γ = 0.101、A = 反復数の0.1倍、`c_end` = 範囲の1/20）で実行した。`c_end`と`r_end`は係数ごとにパラメーターファイルで上書きできる。 |
 | 整数への丸め | θは実数で保持し、対局へ渡すときだけ`floor(x + u)`で確率的に丸める。`u`は区間[0, 1)の一様乱数であり、ペアごとに係数ごとに1つ引いて、θ+とθ−に同じ値を使う。θ+とθ−に同じ乱数を使う点はOpenBenchと同じである。OpenBenchは整数の係数の摂動幅に下限0.5も設けるが、確率的な丸めだけで勾配の情報は保たれるので、この下限は採らない。単純な四捨五入では、摂動幅が1未満になった係数でθ+とθ−が同じ整数になり、その係数の勾配の情報が失われる。 |
 | 並列実行と更新の順序 | 同時対局数の範囲で複数の反復を並走させ、反復が完了した順にθを更新する。後から発行する反復は、発行の時点のθを使う。fishtestと同じ非同期の更新である。時間制御の対局はもともと完全再現の対象外なので、更新の順序が実行ごとに変わることは新しい制約にならない。 |
 | 乱数とシード | 対局のシードは、1つの基本シードの下で「反復番号×1反復のペア数＋ペア番号」を通し番号として派生させる。摂動の符号と丸めの乱数は、基本シードと反復番号から決定的に作る反復ごとの乱数列から引く。対局の通し番号とは重ならない番号の空間から派生させる。乱数が反復番号だけで決まるので、保存する乱数の状態はなく、中断した反復をやり直しても同じ符号と同じ開始局面になる。基本シードを複数使わないので、隣接シードの衝突は起こらない。 |
@@ -197,32 +197,22 @@ D     = 反復内の全局にわたる（θ+側の勝ち数 − θ+側の負け�
 `flip`は、係数ごとに独立に引いた+1または−1を並べた組であり、反復ごとに引き直す。
 `∘`は係数ごとの積を表す。
 `clip`は係数ごとの範囲への切り詰めである。
-摂動幅は反復の最初に`c_end`の約2.1倍（N = 1,500のとき）から始まり、最後に`c_end`へ縮む。
+既定のα = γ = 0では、摂動幅と学習率は全反復で一定であり、`c_i,k = c_end_i`、`a_i,k = r_end × c_end_i²`となる。
+α、γ、およびAは`manifest.json`に記録される。
 引き分けと、手数上限で破棄したペアはDに寄与しない。
 1反復は8ペアの16局なので、Dは−16から16までの整数である。
 
 ## 調整セッションの規模と所要時間
 
-最初のセッションは、総ペア数12,000（1,500反復×8ペア）、時間制御STC、`Threads=1`、`USI_Hash`は既定の256 MB、同時対局数16とする。
-所要時間は約32時間と見積もる。
+標準のセッションは、総ペア数3,000（375反復×8ペア）、時間制御STC、`Threads=1`、`USI_Hash`は既定の256 MB、同時対局数16とする。
+所要時間は約8時間と見積もる。
 根拠は、[strength-stage8-see-capture-stc](../measurements/strength-stage8-see-capture-stc.md)が同じ測定機の同時対局数16で496ペアに4,697秒を要したことであり、1時間あたり約380ペアになる。
-fishtestの既定の60,000局（30,000ペア）では約79時間になる。
 総ペア数は開始時に固定し、途中で延長しない。
 
-この規模で期待できる移動量を、更新則から概算する。
-係数の範囲の幅をWとすると、1反復の更新量は終了時に`0.0001 × W × D`であり、全反復の学習率を合計すると、Dの期待値が一定の場合の移動量は`0.2226 × W × E[D]`になる。
-ある係数を有利な向きへ摂動した側が一定のElo差だけ強いと仮定すると、結果は次のとおりである。
-
-| 有利な摂動によるElo差 | 12,000ペアの期待移動量 | 30,000ペアの期待移動量 |
-|---|---|---|
-| 1 Elo | 範囲の約1.0% | 範囲の約2.6% |
-| 5 Elo | 範囲の約5.1% | 範囲の約12.8% |
-| 10 Elo | 範囲の約10.3% | 範囲の約25.6% |
-
-勾配がない係数が勝敗の偶然だけで動く量の標準偏差は、引き分けのない独立な16局を仮定すると、12,000ペアで範囲の約2.4%、30,000ペアで約3.8%である。
-実際の値は、ペア内の相関、引き分け、範囲の端での切り詰め、および他の係数との相互作用で変わる。
-したがって12,000ペアのセッションは、現行値の近傍で数Elo以上の勾配を持つ係数を動かす規模であり、範囲の全体を探索する規模でも、22個の係数の収束を保証する規模でもない。
-最初のセッションはこの規模で実行し、得られた移動量と採否の結果から次のセッションの規模を決める。
+この規模は、[利得の模擬比較](../measurements/spsa-gain-simulation.md)で選定規則が選んだ予算である。
+定数の利得で3,000ペアのセッションは、模擬比較の8通りの場面のすべてで、旧設定（fishtestの既定値）の12,000ペアに劣らなかった。
+最初のセッションは旧設定の12,000ペアで実行し、約30時間を要した。
+模擬比較の損失は、2次関数と実測の信号を仮定した目的関数での値であり、22個の係数の収束を保証しない。
 θの履歴が終盤に動かないことだけを、収束の証拠として扱わない。
 
 セッションの実行コマンドは次の形とする。
@@ -232,7 +222,7 @@ cargo run --release --bin spsa_runner -- \
   --run-dir data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 1500 --pairs-per-iteration 8
+  --iterations 375 --pairs-per-iteration 8
 ```
 
 `--engine`の`commit:`は、`match_runner`と同じ手順で当該コミットを展開し、`--features tuning`を付けてビルドして、通常ビルドとは別のキーでキャッシュする。
@@ -306,7 +296,7 @@ null moveの減深量は深さ0から256までの全値で、時間予算の式�
 
 - [fishtestのSPSAの更新式](https://github.com/official-stockfish/fishtest/blob/master/server/fishtest/spsa_workflow.py)と[ワーカー側の確率的な丸め](https://github.com/official-stockfish/fishtest/blob/master/worker/games.py)（コミット0fbfea4）。
 - [fishtestの手引きのSPSAの節](https://github.com/official-stockfish/fishtest/wiki/Creating-my-first-test#tuning-with-spsa)。
-- [Stockfishの`tune.cpp`](https://github.com/official-stockfish/Stockfish/blob/master/src/tune.cpp)（コミット17a6c8f）。`c_end`を範囲の1/20、`r_end`を0.002とする既定値の出所である。
+- [Stockfishの`tune.cpp`](https://github.com/official-stockfish/Stockfish/blob/master/src/tune.cpp)（コミット17a6c8f）。最初のセッションで使った、`c_end`を範囲の1/20、`r_end`を0.002とする値の出所である。
 - [OpenBenchのSPSAの実装](https://github.com/AndyGrant/OpenBench/blob/master/OpenBench/spsa_utils.py)と[手引き](https://github.com/AndyGrant/OpenBench/wiki/SPSA-Tuning-Workloads)（コミット6b63eb0）。
 - [Hobbesの`tunable_params!`マクロ](https://github.com/kelseyde/hobbes-chess-engine/blob/master/src/tools/utils.rs)（コミット1f3e466）と、その原型である[akimboの`util.rs`](https://github.com/jw1912/akimbo/blob/main/src/util.rs)（コミットf7dd767）。
 - [Recklessの`parameters.rs`](https://github.com/codedeliveryservice/Reckless/blob/main/src/parameters.rs)（コミット31d9cd6）と[Viridithasの`parameters.rs`](https://github.com/cosmobobak/viridithas/blob/master/src/search/parameters.rs)（コミット13a3fe1）。

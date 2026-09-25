@@ -38,8 +38,9 @@ target/release/spsa_runner params \
 ```
 
 1行は `名前, 開始値, 最小, 最大, c_end, r_end` の6欄であり、fishtestの入力形式と同じである。
-`c_end` は最後の反復での摂動幅であり、既定は範囲の1/20である。
-`r_end` は最後の反復での学習率を `c_end²` に対する比で表した値であり、既定は0.002である。
+`c_end` は摂動幅であり、既定は範囲の1/6である。
+`r_end` は学習率を `c_end²` に対する比で表した値であり、既定は0.002である。
+既定の利得は一定なので、摂動幅と学習率は全反復で変わらない（[plans/spsa-gain-calibration.md](../plans/spsa-gain-calibration.md)）。
 空行と `#` で始まる行は無視される。
 ファイルから行を削除した係数は調整されず、エンジンの既定値のまま動く。
 秒読みを使わない時間制御では、秒読みの項の係数は勝敗に影響しないので調整の対象にしない（理由は設計書の「対象の係数」）。
@@ -60,14 +61,14 @@ target/release/spsa_runner \
   --run-dir data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 1500 --pairs-per-iteration 8
+  --iterations 375 --pairs-per-iteration 8
 ```
 
 `--engine` の `commit:` 形式は、当該コミットを `git archive` で展開して `--features tuning` つきでビルドし、通常ビルドとは別のキーで `target/match-cache/` へキャッシュする。
 起動コマンド（パスと空白区切りの引数）も指定でき、作業ツリーの調整用ビルドの煙試験に使う。
 θ+とθ−は同じバイナリを同じ思考制限で動かし、`Threads` と `USI_Hash` はエンジンの既定値を使う。
 総ペア数は `--iterations` と `--pairs-per-iteration` の積であり、開始時に固定する。
-総反復数は摂動幅と学習率の式に入るので、セッションの途中で変更できない。
+総反復数は `manifest.json` の一致検査の対象なので、セッションの途中で変更できない。
 標準の規模と所要時間の見積もりは設計書の「調整セッションの規模と所要時間」が定める。
 
 各ペアは `match_runner` と同じ構造であり、同一の開始局面で先後を入れ替えて2局を指す。
@@ -87,7 +88,7 @@ target/release/spsa_runner \
   --resume data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 1500 --pairs-per-iteration 8
+  --iterations 375 --pairs-per-iteration 8
 ```
 
 実行ディレクトリは、実行条件の `manifest.json` と、完了した反復を1反復1ファイルで置く `iterations/` からなる。
