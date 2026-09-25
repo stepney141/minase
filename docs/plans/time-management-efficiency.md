@@ -43,7 +43,7 @@ minaseの探索は反復深化（深さ1から1ずつ読みを深める外殻）
 ## 依存関係
 
 - [探索部](search.md)の「時間管理」節が現行の予算式の正であり、係数と残り手数の見積りの根拠もそこにある。本書の完了時に、同節へ秒読みの項の序盤の係数を追記した。
-- [棋力向上段階6](strength-stage6.md)の最善手安定時の早期終了（直近4反復の最善手が同じなら、経過時間に固定比2.5を掛けた次の反復の予測完了時刻がsoft以下の場合に限って次の反復を始める規則）は現行のまま維持する。
+- [棋力向上段階6](strength-stage6.md)の最善手安定時の早期終了（直近4反復の最善手が同じなら、経過時間に当時の固定比2.5を掛けた次の反復の予測完了時刻がsoft以下の場合に限って次の反復を始める規則）は、本マイルストーンでは維持した。
 - [lishogi Bot接続](lishogi-bot.md)は時間管理の変更を本書へ委ね、本書の完了後に端到端の時計の実測を行う。
 - 序盤の係数の根拠は[秒読みつき時間制御における既存エンジンの持ち時間配分](../research/time-management-byoyomi-survey.md)にある。
 - 採否測定は[docs/guides/sprt.md](../guides/sprt.md)の段階ゲートに従う。
@@ -51,8 +51,16 @@ minaseの探索は反復深化（深さ1から1ずつ読みを深める外殻）
 ## 設計判断
 
 用語は[探索部](search.md)の「時間管理」節に従う。
-`remaining`は着手前の残り時間、`increment`は加算、`byoyomi`は秒読み、`moves_to_go = max(100, (450 − ply) / 2)`は残り手数の見積り、`safe_hard = max(1 ms, remaining + byoyomi − 30 ms)`は安全上限である。
+`remaining`は着手前の残り時間、`increment`は加算、`byoyomi`は秒読みを表す。
+採用当時の`moves_to_go = max(100, (450 − ply) / 2)`は残り手数の見積り、`safe_hard = max(1 ms, remaining + byoyomi − 30 ms)`は安全上限である。
 plyは初形を0とする局面の手数である。
+
+以下の表は2026年9月18日にissue #7の対策を採用したときの判断と測定値を記録する。
+[SPSAの長時間測定](../measurements/spsa-stage9-20260923-ltc.md)を通過した後の現行値は、`EXPECTED_PLIES = 435`、`MIN_MOVES = 94`、加算の使用率73%、hardとsoftの比394%である。
+現行の予算式では、`moves_to_go = max(94, 435.saturating_sub(ply) / 2)`、`soft_raw = remaining / moves_to_go + increment × 73 / 100 + byoyomi × 8 × opening / 400`、`hard = max(1 ms, min(soft_raw × 394 / 100, remaining × 25 / 100 + byoyomi × 8 / 10, safe_hard))`、`soft = min(soft_raw, hard)`とし、各整数除算の端数を切り捨てる。
+`opening`は残り時間が正なら`min(40, ply.saturating_add(4))`、残り時間が0なら40であり、`safe_hard`は本マイルストーンで採用した定義を保つ。
+反復継続の予測比は2.44である。
+例えば残り300,000 ms、秒読み10,000 ms、加算0、ply 0の予算はsoft 2,182 ms、hard 8,597 msとなる。
 
 | 判断 | 内容 |
 |---|---|
