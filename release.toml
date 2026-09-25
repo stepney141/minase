@@ -1,0 +1,6 @@
+allow-branch = ["master"]
+pre-release-commit-message = "chore(release): v{{version}}"
+tag-message = "{{crate_name}} v{{version}}"
+# The dry run only prints the release notes; the real run prepends them to CHANGELOG.md.
+pre-release-hook = ["sh", "-c", 'if [ "$DRY_RUN" = true ]; then git cliff --unreleased --tag "v$NEW_VERSION"; else git cliff --unreleased --tag "v$NEW_VERSION" --prepend CHANGELOG.md; fi']
+push = false
