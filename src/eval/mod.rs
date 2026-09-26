@@ -1,10 +1,7 @@
 //! 中将棋の静的評価関数。
 
 pub mod handcrafted;
-pub mod provenance;
 pub mod pst;
-pub mod rescore;
-pub mod training_data;
 
 pub use pst::{Pst, weights};
 

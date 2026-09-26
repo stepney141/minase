@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use minase::eval::provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin};
-use minase::eval::training_data::{Outcome, Reader};
 use minase::notation::{sfen::parse_extended_sfen, usi};
+use minase::training::provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin};
+use minase::training::records::{Outcome, Reader};
 use minase::{Color, Game, Rules};
 use serde_json::{Value, json};
 
