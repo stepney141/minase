@@ -15,10 +15,10 @@ mod search_captures;
 use std::collections::BTreeSet;
 
 use super::MoveGenerator;
+use crate::core::board::Square;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
-use crate::core::square::Square;
 
 /// マトリクスの升表記 (筋f, 段r)（各1〜12、段1=後手側最奥、段12=先手側最奥）を
 /// 盤座標へ写す。先手の「前」は段が減る方向である（第3条3号）。

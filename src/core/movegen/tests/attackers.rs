@@ -3,12 +3,12 @@
 //! 期待値は`docs/plans/strength-stage3.md`「升への疑似利き集合」が定める、
 //! 既存の駒別利きとの同値関係から導く。
 
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
+use crate::core::board::Square;
 use crate::core::movegen::piece_control_with_occupancy;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
-use crate::core::square::Square;
 use crate::test_util::{bench_positions, position_from_codes, sampled_random_positions, sq};
 
 fn assert_attackers_match_piece_controls(position: &Position, occupied: Bitboard) {

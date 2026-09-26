@@ -4,13 +4,13 @@ use std::collections::HashSet;
 
 use super::{base_membership, lion_missing, material, transient};
 use crate::core::attacks::{SpecialMovement, movement_profile, movement_profile_data};
-use crate::core::bitboard::Bitboard;
-use crate::core::direction::step_square;
+use crate::core::board::Bitboard;
+use crate::core::board::Square;
+use crate::core::board::step_square;
 use crate::core::movegen::MoveGenerator;
 use crate::core::mv::Move;
 use crate::core::piece::PieceCode;
 use crate::core::position::Position;
-use crate::core::square::Square;
 
 /// 集合Aに属する対象局面へ到達する直前局面を返す。
 pub(super) fn generate(forward: &MoveGenerator, target: &Position) -> Vec<Position> {

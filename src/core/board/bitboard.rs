@@ -3,7 +3,7 @@
 use core::iter::FusedIterator;
 use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
-use crate::core::square::Square;
+use super::square::Square;
 
 /// 盤上の升の集合。ビット位置は[`Square`]の生値に対応し、各`u64`が4段分(16ビット×4)を受け持つ。
 /// 筋12〜15にあたる番兵ビットは常に0とする。
@@ -275,8 +275,8 @@ impl IntoIterator for &Bitboard {
 
 #[cfg(test)]
 mod tests {
+    use super::super::square::BOARD_SQUARE_COUNT;
     use super::*;
-    use crate::core::square::BOARD_SQUARE_COUNT;
 
     #[test]
     fn file_masks_partition_the_board_into_twelve_files() {

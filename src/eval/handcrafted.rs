@@ -2,9 +2,9 @@
 //!
 //! 学習評価関数との比較用に残す。
 
+use crate::core::board::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, Square};
 use crate::core::piece::{Color, PIECE_KIND_COUNT, PieceKind};
 use crate::core::position::Position;
-use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, Square};
 
 /// 静的評価値の絶対値上限。
 const EVALUATION_LIMIT: i32 = 28_999;

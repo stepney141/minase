@@ -1,9 +1,9 @@
 //! 着手の表現と、その巻き戻しに必要な記録。
 
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
+use crate::core::board::Square;
 use crate::core::piece::PieceCode;
 use crate::core::position::LionTrigger;
-use crate::core::square::Square;
 
 /// 1回の着手(第3条)。獅子・角鷹・飛鷲の2段階移動(第11条・第12条)も1つの値で表す。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

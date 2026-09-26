@@ -5,7 +5,7 @@
 //! 取る手、獅子が非獅子を取る手、および角鷹と飛鷲が到達升だけで取る手は
 //! 通常の交換として評価する。
 
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;

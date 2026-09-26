@@ -3,11 +3,11 @@
 use core::fmt;
 use core::str::FromStr;
 
+use crate::core::board::{BOARD_RANKS, Square};
 use crate::core::movegen::{VirtualBoard, piece_control_with_occupancy};
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
-use crate::core::square::{BOARD_RANKS, Square};
 
 /// 第10章のローカルルールコード。
 #[repr(u8)]

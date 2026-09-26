@@ -8,7 +8,7 @@ mod transient;
 
 use std::fmt;
 
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
 use crate::core::movegen::MoveGenerator;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::{Position, PositionError};

@@ -1,12 +1,12 @@
 //! 候補盤面の成り権保留と先獅子の記録升を具体的な値として列挙する。
 
 use super::lion_record_squares;
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
+use crate::core::board::Square;
 use crate::core::mv::Move;
 use crate::core::piece::{PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuilder};
 use crate::core::rules::{MoveRules, PromotionRule, in_promotion_zone};
-use crate::core::square::Square;
 
 /// 盤面を復元し、捕獲駒の保留と着手側の保留・待機を列挙する。
 pub(super) fn candidates(

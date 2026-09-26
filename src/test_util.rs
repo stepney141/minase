@@ -1,10 +1,10 @@
 use core::num::NonZeroU64;
 
 use crate::MoveGenerator;
+use crate::core::board::Square;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuilder};
 use crate::core::rules::MoveRules;
-use crate::core::square::Square;
 use crate::rng::XorShift64;
 
 /// `bench`の15局面の2欄SFEN。局面別の照合標本として複数のテストが共有する。

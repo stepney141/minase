@@ -5,11 +5,11 @@ use core::hash::{Hash, Hasher};
 use core::num::NonZeroU64;
 use std::sync::OnceLock;
 
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
+use crate::core::board::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 use crate::core::mv::{CapturedPiece, Move, Undo};
 use crate::core::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use crate::core::rules::{MoveRules, PromotionChoice, PromotionRule, in_promotion_zone};
-use crate::core::square::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square};
 use crate::rng::XorShift64;
 
 /// 1升あたりのzobrist駒キー数(色×駒種×成否)。

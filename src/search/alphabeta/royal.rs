@@ -1,6 +1,6 @@
 //! 王駒の捕獲と利きの判定。
 
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
 use crate::core::mv::Move;
 use crate::core::position::Position;
 

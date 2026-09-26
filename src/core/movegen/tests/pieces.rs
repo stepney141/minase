@@ -7,9 +7,9 @@ use std::collections::BTreeSet;
 
 use super::dir::{B, BL, BR, F, FL, FR, L, R};
 use super::{direct_destinations, generated, moves_from, msq, ray_squares, step_squares, union};
+use crate::core::board::Square;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
-use crate::core::square::Square;
 use crate::test_util::{position, position_from_codes};
 
 /// マトリクスの単駒配置（先手駒を(6,6)へ）。

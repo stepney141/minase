@@ -12,13 +12,13 @@ use crate::core::attacks::{
     AttackTables, LionLikeProfile, SpecialMovement, attack_tables, movement_profile,
     movement_profile_data,
 };
-use crate::core::bitboard::Bitboard;
-use crate::core::direction::{Direction, step_square};
+use crate::core::board::Bitboard;
+use crate::core::board::Square;
+use crate::core::board::{Direction, step_square};
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::{MoveRules, PromotionChoice};
-use crate::core::square::Square;
 
 /// 採用ルールの下で合法手を列挙する生成器。
 #[derive(Clone)]
@@ -260,9 +260,9 @@ fn piece_control_with_tables(
         SpecialMovement::LionLike(lion_like) => {
             for direction in lion_like.directions {
                 let direction = direction.for_color(color);
-                if let Some(first) = crate::core::direction::step_square(from, direction) {
+                if let Some(first) = crate::core::board::step_square(from, direction) {
                     result.set(first);
-                    if let Some(second) = crate::core::direction::step_square(first, direction) {
+                    if let Some(second) = crate::core::board::step_square(first, direction) {
                         result.set(second);
                     }
                 }
@@ -388,7 +388,7 @@ fn special_step_destinations(
             let mut destinations = Bitboard::EMPTY;
             for relative in profile.directions {
                 if let Some(first) =
-                    crate::core::direction::step_square(from, relative.for_color(color))
+                    crate::core::board::step_square(from, relative.for_color(color))
                 {
                     destinations.set(first);
                 }

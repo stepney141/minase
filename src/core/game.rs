@@ -332,9 +332,9 @@ mod tests {
     use std::num::NonZeroU64;
 
     use super::*;
+    use crate::core::board::Square;
     use crate::core::piece::{PieceCode, PieceKind};
     use crate::core::rules::{ExhaustionRule, RepetitionRule, RuleCode, RuleGroup, RulesError};
-    use crate::core::square::Square;
     use crate::rng::XorShift64;
     use crate::test_util::{position_from_codes as position, sq};
 

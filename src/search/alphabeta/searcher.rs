@@ -4,11 +4,11 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::time::Duration;
 
 use crate::MoveGenerator;
+use crate::core::board::BOARD_SQUARE_COUNT;
 use crate::core::mv::Move;
 use crate::core::piece::COLOR_COUNT;
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
-use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::Pst;
 use crate::eval::pst::accumulator::PstAccumulator;
 use crate::search::events::StopReason;
