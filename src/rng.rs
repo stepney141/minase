@@ -58,3 +58,19 @@ impl XorShift64 {
             .expect("an index below a usize length must fit in usize")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // random-play.md: 乱数系列を停止させる0の派生値は非零定数へ置換する。
+    #[test]
+    fn pair_seed_replaces_the_zero_output() {
+        // 派生値が0になる入力でも非ゼロへ置換される(random-play.mdの
+        // 仕様式の逆算により、splitmix64の出力0の原像は0x61C8_8646_80B5_83EB)
+        assert_eq!(
+            derive_seed(0x61C8_8646_80B5_83EB - 5, 5).get(),
+            0x9E37_79B9_7F4A_7C15
+        );
+    }
+}

@@ -1,5 +1,8 @@
 //! 対局の実体、各応答、および終局結果の保存形式。
 
+pub(in crate::harness) mod convert;
+pub use convert::{RecordedGame, failure_from_stored, stored_color};
+
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 

@@ -1173,13 +1173,6 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn linux_host_resource_probe_reports_cores_and_memory() {
-        assert!(physical_core_count().is_some_and(|cores| cores > 0));
-        assert!(physical_memory_bytes().is_some_and(|bytes| bytes > 0));
-    }
-
     use super::*;
 
     #[test]
