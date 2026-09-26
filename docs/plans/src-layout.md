@@ -34,7 +34,7 @@ workspace化は次のいずれかの実害をトリガーとして後日実施�
 
 ### 探索部・評価関数はcoreの外にトップレベルで並べる
 
-探索部は`src/search/`、評価関数は`src/eval/`、評価関数の学習データの交換形式は`src/training/`として、`core`・`notation`・`protocol`の隣に置く。依存方向はsearch → eval → coreの一方向とし、trainingはcoreだけに依存する。各モジュールの内部の配置は[探索部と評価関数のモジュール再編](search-eval-layout.md)が定める。傘モジュール`src/engine/`は、`protocol/engine.rs`（プロトコル非依存の対局状態機械）と名前が衝突するため採らない。モジュールの作成は探索部マイルストーンの着手時に行い、本作業では方針の記録だけを行う。
+探索部は`src/search/`、評価関数は`src/eval/`、評価関数の学習データの交換形式は`src/training/`として、`core`・`notation`・`protocol`の隣に置く。依存方向はsearch → eval → coreの一方向とし、trainingはcoreだけに依存する。各モジュールの内部の配置は[探索部と評価関数のモジュール再編](search-eval-layout.md)が定める。複数の実行ファイルが共有する支援処理もライブラリのトップレベルに`#[doc(hidden)]`で置き、対局ハーネスを`src/harness/`、学習局面の生成と棋譜取り込みの共有処理を`src/datagen/`（trainingとcoreに依存する）とする。両者の内部の配置は[実行ファイルと対局ハーネスのモジュール再編](bin-harness-layout.md)が定める。傘モジュール`src/engine/`は、`protocol/engine.rs`（プロトコル非依存の対局状態機械）と名前が衝突するため採らない。モジュールの作成は探索部マイルストーンの着手時に行い、本作業では方針の記録だけを行う。
 
 ### core内部はフラット構成を維持する
 

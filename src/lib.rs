@@ -3,9 +3,12 @@
 //! 準拠する競技規則とローカルルールはRULES.mdが定める。`core`は
 //! RULES.mdだけから正しさを検証できる盤・駒・合法手・裁定を提供し、
 //! 表記(`notation`)、プロトコル(`protocol`)、探索(`search`)、
-//! 評価(`eval`)、評価関数の学習データの形式(`training`)はその外に置く。
+//! 評価(`eval`)、評価関数の学習データの形式(`training`)、
+//! 学習局面の生成支援(`datagen`)はその外に置く。
 
 pub mod core;
+#[doc(hidden)]
+pub mod datagen;
 pub mod eval;
 #[doc(hidden)]
 pub mod harness;

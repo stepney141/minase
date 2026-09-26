@@ -32,7 +32,7 @@ minaseが、USIの`bestmove resign`によって自ら投了できるようにす
 本マイルストーンでは、次の作業を行う。
 
 - `src/protocol/usi.rs`に、USIオプション`ResignValue`の宣言と受理、および`bestmove`送出時の投了判定を実装する。
-- `src/harness.rs`のUSIエンジンの起動手順に`setoption name ResignValue value 99999`を加え、棋力測定の対局を規則上の終局まで指させる。[docs/guides/sprt.md](../guides/sprt.md)にこの条件を記す。
+- `src/harness/engine/process.rs`のUSIエンジンの起動手順に`setoption name ResignValue value 99999`を加え、棋力測定の対局を規則上の終局まで指させる。[docs/guides/sprt.md](../guides/sprt.md)にこの条件を記す。
 - 保存済み対局記録へ仮想的な投了条件を当てる診断スクリプト`scripts/resign_diagnosis.py`を置き、結果を[調査メモ](../research/usi-resignation-diagnosis.md)に残して`ResignValue`の既定値を確定する。
 - 挙動とその典拠を先に定めてからテストを書く方式（spec-first、[設計書](spec-first-tests.md)）のマトリクス[D6-USI](spec-first-tests/matrices/d6-protocol.md)へ投了の挙動を追加し、台帳を改訂する。
 - [外部対局接続](engine-connectivity.md)の「`bestmove resign`を送出する経路は本マイルストーンには存在せず」の段落と、[lishogi Bot接続](lishogi-bot.md)の対象外の項目「評価値による任意投了」を、採用時に本書への参照へ書き換える。
@@ -130,7 +130,7 @@ bestmove resign
 
 ### フェーズ3　棋力測定での無効化
 
-`src/harness.rs`のUSIエンジンの起動手順に`setoption name ResignValue value 99999`を加え、偽のエンジン台本でこの行が候補と基準の両方へ送られることをテストで固定する。
+`src/harness/engine/process.rs`のUSIエンジンの起動手順に`setoption name ResignValue value 99999`を加え、偽のエンジン台本でこの行が候補と基準の両方へ送られることをテストで固定する。
 完了条件は、テストが通り、[docs/guides/sprt.md](../guides/sprt.md)に無効化の条件が記され、既存の測定の保存形式が変わっていないことである。
 
 ### フェーズ4　lishogiのブリッジ改修と有効化

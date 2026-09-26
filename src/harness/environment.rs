@@ -116,3 +116,15 @@ pub fn harness_record() -> io::Result<HarnessRecord> {
         sha256: sha256_file(&std::env::current_exe()?)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_host_resource_probe_reports_cores_and_memory() {
+        assert!(physical_core_count().is_some_and(|cores| cores > 0));
+        assert!(physical_memory_bytes().is_some_and(|bytes| bytes > 0));
+    }
+}

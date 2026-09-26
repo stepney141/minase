@@ -1,4 +1,24 @@
-use super::*;
+//! エンジンの先読みと初期化順序の試験。
+
+use crate::harness::clock::GameClocks;
+use crate::harness::engine::process::EngineProcess;
+use crate::harness::engine::{EngineResponse, EngineScore};
+use crate::harness::failure::EngineFailure;
+use crate::harness::game::{PlayedGame, play_game};
+use crate::harness::limit::parse_search_limit;
+use crate::harness::player::{PlayerConfig, Protocol, parse_player_spec, resolve_player};
+use crate::harness::ponder_stats::{PonderCounts, count_ponder_game};
+use crate::harness::records::convert::recorded_game;
+use crate::harness::records::{
+    EngineIdentity, FailureKind, ScoreRecord, StopReasonRecord, StoredColor, TerminationRecord,
+};
+use crate::harness::referee::ponder_move;
+use crate::notation::usi;
+use crate::{Color, Game, GameStatus, Move, MoveGenerator, Rules};
+use std::num::NonZeroU64;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::time::{Duration, Instant};
 
 // 台本の各要素は受信行の接頭辞、応答前の遅延(ms)、出力行、CPU消費(ms)。
 fn fake(steps: Vec<(&str, u64, String, u64)>, limit: &str) -> PlayerConfig {
@@ -697,4 +717,52 @@ fn predictions_are_saved_when_ponder_is_disabled() {
             moves: 1
         }
     );
+}
+
+// phase2.md §4: 握手後、isreadyより前に、重複する名前も含め列順で送る。
+#[test]
+fn usi_options_are_sent_in_order_before_isready() {
+    let mut player = resolve_player(
+        parse_player_spec("python3").unwrap(),
+        parse_search_limit("depth=1").unwrap(),
+        Some(64),
+        "R1",
+        vec![
+            ("Tune_First".to_owned(), "17".to_owned()),
+            ("Tune_Second".to_owned(), "-3".to_owned()),
+            ("Tune_First".to_owned(), "19".to_owned()),
+        ],
+    )
+    .unwrap();
+    player.args = vec![
+        "-u".to_owned(),
+        "-c".to_owned(),
+        r#"
+import sys
+expected = [
+    'usi',
+    'setoption name RuleSet value R1',
+    'setoption name USI_Hash value 64',
+    'setoption name ResignValue value 99999',
+    'setoption name Tune_First value 17',
+    'setoption name Tune_Second value -3',
+    'setoption name Tune_First value 19',
+    'isready',
+    'usinewgame',
+]
+for command in expected:
+    actual = sys.stdin.readline().strip()
+    assert actual == command, (command, actual)
+    if command == 'usi':
+        print('usiok', flush=True)
+    elif command == 'isready':
+        print('readyok', flush=True)
+print('initialized', flush=True)
+for _ in sys.stdin:
+    pass
+"#
+        .to_owned(),
+    ];
+    let process = EngineProcess::start(&player, 1, Duration::from_secs(2)).unwrap();
+    process.wait_for("initialized").unwrap();
 }

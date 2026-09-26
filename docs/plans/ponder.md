@@ -67,7 +67,7 @@ lishogiでの有効化（フェーズ5）は、利用者が2026年9月19日に�
 
 - `src/protocol/usi.rs`と`src/protocol/engine.rs`に、予想手つきの`bestmove`、`go ponder`、`ponderhit`、先読み中の`stop`の契約、および外れた先読みからの差分復帰を実装する。
 - `src/search/`に、探索を止めずに「時間制限なし」から「的中の時点を起点とする時間予算」へ切り替える仕組みを追加する。
-- `src/bin/match_runner.rs`とその保存形式に、先読みの対局進行、予想手の記録、的中率の集計、および同時対局数の計算式の変更を追加する。
+- `src/bin/match_runner/`とその保存形式に、先読みの対局進行、予想手の記録、的中率の集計、および同時対局数の計算式の変更を追加する。
 - 挙動とその典拠を先に定めてからテストを書く方式（spec-first、[設計書](spec-first-tests.md)）の挙動一覧であるマトリクスの[D6-USI-18](spec-first-tests/matrices/d6-protocol.md)は、現在`go ponder`と`ponderhit`の拒否を定めている。これと対応する台帳を改訂する。
 - 先読みを対象外と書いている設計書（外部対局接続、探索部、Lazy SMP、lishogi Bot接続）と測定の手引き（docs/guides/sprt.md）を、採用時に現行の実装へ合わせて改訂する。
 - 採用と判定された場合に、フォークstepney141/lishogi-botの`go ponder`の時計引数を直し、`minase-lishogi-bot`の配備環境で先読みの通信を確かめて、設定を有効にする（フェーズ5）。

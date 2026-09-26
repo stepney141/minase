@@ -4,6 +4,7 @@ use super::params::Parameter;
 use minase::harness::{CompletedPair, FailureCounts, GameRecord, OpeningRecord, TerminationRecord};
 use minase::rng::{XorShift64, derive_seed, splitmix64};
 use serde::{Deserialize, Serialize};
+use std::io;
 
 // docs/plans/spsa-gain-calibration.mdのC5として選定した減衰する利得。
 // paramsサブコマンドのc_endは範囲の1/6。
@@ -27,6 +28,43 @@ impl Settings {
     pub fn initial_theta(&self) -> Vec<f64> {
         self.parameters.iter().map(|p| p.start).collect()
     }
+}
+
+pub(super) fn validate_settings(settings: &Settings) -> io::Result<()> {
+    let total = settings
+        .iterations
+        .checked_mul(settings.pairs_per_iteration as u64)
+        .and_then(|n| n.checked_mul(2));
+    if settings.iterations == 0
+        || settings.iterations == u64::MAX
+        || settings.pairs_per_iteration == 0
+        || settings.concurrency == 0
+        || total.is_none_or(|n| n > i64::MAX as u64)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "session size is zero or exceeds supported counters",
+        ));
+    }
+    for p in &settings.parameters {
+        for k in [1, settings.iterations] {
+            let (c, a) = rates(settings, p, k);
+            if !c.is_finite()
+                || c <= 0.0
+                || !a.is_finite()
+                || a <= 0.0
+                || !(a / c).is_finite()
+                || a / c <= 0.0
+                || !((a / c) * (2.0 * settings.pairs_per_iteration as f64)).is_finite()
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("non-finite or underflowing SPSA rates: {}", p.name),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn rates(settings: &Settings, p: &Parameter, k: u64) -> (f64, f64) {
