@@ -3,8 +3,8 @@
 //! 設計は`docs/plans/strength-stage8.md`「静的評価の補正（correction history）」に従う。
 
 use super::params;
-use crate::core::mv::Undo;
 use crate::core::piece::{COLOR_COUNT, Color, PieceCode};
+use crate::core::position::Undo;
 use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
 use crate::{Position, Square};
 

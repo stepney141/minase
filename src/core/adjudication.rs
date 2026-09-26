@@ -4,9 +4,10 @@ use crate::core::board::Bitboard;
 use crate::core::board::{BOARD_RANKS, Square};
 use crate::core::game::{DrawReason, GameResult, WinReason};
 use crate::core::movegen::MoveGenerator;
-use crate::core::mv::{Move, Undo};
+use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
+use crate::core::position::Undo;
 use crate::core::repetition::{RepetitionHistory, retain_repetition_allowed_moves};
 use crate::core::rules::{ExhaustionRule, RepetitionRule, Rules};
 

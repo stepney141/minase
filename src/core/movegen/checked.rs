@@ -34,7 +34,7 @@ impl Position {
         &mut self,
         mv: Move,
         generator: &MoveGenerator,
-    ) -> Result<crate::core::mv::Undo, IllegalMove> {
+    ) -> Result<crate::core::position::Undo, IllegalMove> {
         let mut moves = Vec::new();
         generator.generate_moves(self, &mut moves);
         if moves.contains(&mv) {
