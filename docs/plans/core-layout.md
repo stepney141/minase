@@ -12,9 +12,11 @@
 
 ## 状態
 
-起案。
-2026年9月27日に起案し、盤の座標系を`board/`へまとめることと、成りの判定を`promotion.rs`へ移す互換性を壊す変更を利用者が決定した。
-次の一手は、masterから`core-layout`ブランチを切ってフェーズ1へ着手することである。
+進行中。
+2026年9月27日に起案および着手し、同日に実装フェーズの1から7を`core-layout`ブランチで終えた。
+各コミットで、深さ6のbenchの出力、試験の件数と名前、および全試験の結果が基点と一致した。
+benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側へ約0.15%外れたが、benchのバイナリに含まれるminaseの関数の集合と各関数の機械語のバイト数（`nm --size-sort`の値）が基点と一致し、生成コードは変わっていない。
+次の一手は、ブランチをmasterへ統合することである。
 
 ## 目的
 
@@ -23,7 +25,7 @@
 
 ## 適用範囲
 
-対象は`src/core/`の全体、`src/core/`の項目を参照する`src/lib.rs`、`src/eval/`、`src/search/`の`use`文、および`docs/`にある`src/core/`のパスの参照である。
+対象は`src/core/`の全体、`src/core/`の項目を参照する`src/lib.rs`、`src/eval/`、`src/notation/`、`src/search/`、`src/test_util.rs`の`use`文、および`docs/`にある`src/core/`のパスの参照である。
 
 関数、型、定数、および試験の名前は変えない。
 処理の内容、引数、処理の順序、およびインライン属性（`#[inline]`）も変えない。
@@ -253,15 +255,17 @@ crateルートの再公開（`minase::PromotionChoice`、`minase::Square`など�
 
 | 項目 | 可視性 | 理由 |
 |---|---|---|
-| `ZobristKeys`、そのメソッド、欄`side_to_move`、`zobrist_keys` | `pub(super)` | `make_move.rs`の`flip_side_to_move`が欄`side_to_move`を直接読み、`placement.rs`、`lion_trigger.rs`、`promotion_rights.rs`、`setup.rs`、`builder.rs`がハッシュ値を更新する。 |
+| `ZobristKeys`、そのメソッド（`build`を除く）、欄`side_to_move`、`zobrist_keys` | `pub(super)` | `make_move.rs`の`flip_side_to_move`が欄`side_to_move`を直接読み、`placement.rs`、`lion_trigger.rs`、`promotion_rights.rs`、`setup.rs`、`builder.rs`がハッシュ値を更新する。 |
 | `put_piece`、`put_piece_without_hash`、`remove_piece`、`remove_piece_without_hash` | `pub(super)` | `setup.rs`、`builder.rs`、`make_move.rs`が使う。 |
 | `set_promotion_deferred`、`clear_promotion_deferred`、`promotion_deferred_is_valid` | `pub(super)` | `builder.rs`と`make_move.rs`が使う。 |
 | `validate` | `pub`のまま | 公開APIである。 |
+| `PositionBuilder`の欄`position` | `pub(super)` | `position/tests/builder.rs`が欄のハッシュ値を書き換えて`finish`の検査を確かめる。試験は`builder.rs`の子孫ではないので、親の`position`まで広げる。 |
 | `Undo` | `pub(crate)`のまま、`position/mod.rs`から`pub(crate) use`で公開する | `eval/pst/accumulator.rs`、`search/alphabeta/correction.rs`、および`movegen/checked.rs`が使う。参照を`crate::core::position::Undo`へ書き換える。 |
 | `CapturedPiece`、`NullUndo`、`LionTrigger` | `pub(crate)`のまま、再公開しない | `position/`の外から名前で参照されない。`search/alphabeta/negamax.rs`などは`LionTrigger`を返すメソッドを呼ぶだけで、型の名前を書かない。再公開すると`unused_imports`の警告が出る。`position/`の中の兄弟は`super::lion_trigger::LionTrigger`のパスで参照する。 |
 | `movegen`の子へ移す自由関数（`piece_control_without_special`、`special_step_destinations`、`generate_lion_double_and_jumps`、`generate_lion_like_double_and_jumps`、`promoting_variant`など） | `pub(super)` | 兄弟のファイルと`search_captures.rs`が使う。`search_captures.rs`の`use super::*;`は、移動先の子モジュールの項目を明示的に`use`する形へ改める。 |
 | `VirtualBoard::move_to` | `pub(super)` | `lion.rs`が使う。 |
 | `game/adjudication/`の子で定義し、`adjudication/mod.rs`または兄弟が使う項目 | `pub(super)` | `bare_king.rs`の`is_last_rank`の参照、`mod.rs`の`adjudicate_after_move`と`candidate_is_immediate_win`からの参照など。 |
+| `PieceExhaustionTransition`とその欄、`piece_exhaustion_transition` | `pub(super)` | `adjudication/mod.rs`の`adjudicate_after_move`が遷移を作って欄を読む。 |
 | `R1History::new`、`R2History::new`、`R3History::new` | `pub(super)` | `repetition/mod.rs`の`RepetitionHistory::new`が呼ぶ。 |
 | `PieceKind::can_exist_unpromoted` | `pub(super)` | `piece/tests.rs`が使う。 |
 
@@ -276,7 +280,9 @@ crateルートの再公開（`minase::PromotionChoice`、`minase::Square`など�
 `src/core/square.rs`、`src/core/direction.rs`、および`src/core/bitboard.rs`への参照は、`src/core/board/`の下の同名のファイルへ改める。
 `src/core/rules.rs`、`src/core/position.rs`、`src/core/game.rs`、`src/core/adjudication.rs`、`src/core/repetition.rs`、`src/core/piece.rs`、および`src/core/movegen/mod.rs`への参照は、同じ文にある関数名、型名、または試験名から「再編後の配置」の表に従って移動先のファイルを決める。
 関数名などの手がかりがなく、モジュール全体を指す参照は、ディレクトリ（`src/core/position/`など）へ改める。
-現在存在しないファイル（`src/core/movegen/tests/invariants.rs`、`src/core/movegen/tests/articles.rs`など）への参照は、書かれた時点の記録として残す。
+現在存在しないファイル（`src/core/movegen/tests/invariants.rs`、`src/core/movegen/tests/articles.rs`など）への参照と、特定のコミットに固定した引用（`docs/research/protocols/usi-lishogi.md`の［M1］など）は、書かれた時点の記録として残す。
+`src/core/`を前置せずファイル名だけを書いた言及（`rules.rs`、`position.rs`など）も、試験の再構築の台帳（`docs/plans/spec-first-tests/`）の旧テストの所在のように、書かれた時点の文脈での略記として残す。
+ただし、現行の配置を述べる文（`docs/plans/movegen.md`の「着手生成の構成」の節、`docs/plans/move-canonicalization.md`の`is_tsukegui`の所在など）は新しい配置へ改める。
 行番号の付いた参照（`docs/research/movegen-speedup-ideas.md`の`src/core/movegen/mod.rs#L297`）は、同じ文の関数名から移動先の行を特定できれば新しい行番号へ改め、特定できなければ行番号を削ってパスだけを残す。
 
 [src構成の整理](src-layout.md)の「core内部はフラット構成を維持する」の節は、本書の配置の方針（1関心事1ファイル、非公開の範囲を表す必要がある型はディレクトリへ昇格し、定義を`mod.rs`に置く）に書き換え、配置の詳細は本書を参照させる。
@@ -315,7 +321,7 @@ codexへの指示には、名前の変更、シグネチャの変更、処理の
 再編後の中央値が、基点の3回の最小値から最大値までの範囲に収まることを確かめる。
 収まらない場合は、benchのバイナリに含まれるminaseの関数の集合と各関数の機械語のバイト数（`nm --size-sort`の値）を基点と比べ、[呼び出し元の機械語を比較する教訓](../lessons/check-caller-codegen-for-local-optimizations.md)に従ってインライン化が変わった関数を調べる。
 
-文書の書き換えの後に、`docs/`（`docs/measurements/`と`docs/audits/`を除く）とリポジトリ直下の文書に、再編で消えたパス（`src/core/square.rs`、`src/core/direction.rs`、`src/core/bitboard.rs`、`src/core/rules.rs`、`src/core/position.rs`、`src/core/game.rs`、`src/core/adjudication.rs`、`src/core/repetition.rs`、`src/core/piece.rs`）への参照が残っていないことを`grep`で確かめる。
+文書の書き換えの後に、`docs/`（`docs/measurements/`と`docs/audits/`を除く）とリポジトリ直下の文書に、再編で消えたパス（`src/core/square.rs`、`src/core/direction.rs`、`src/core/bitboard.rs`、`src/core/rules.rs`、`src/core/position.rs`、`src/core/game.rs`、`src/core/adjudication.rs`、`src/core/repetition.rs`、`src/core/piece.rs`）への参照が、「文書のパス参照」の節で記録として残すと定めたもの（旧テストの所在を記す台帳と、コミットに固定した引用）を除いて残っていないことを`grep`で確かめる。
 `src/core/movegen/mod.rs`への参照は残り得るので、残った参照が`MoveGenerator`の定義を指していることを目で確かめる。
 
 ## 完了条件

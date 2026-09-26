@@ -58,7 +58,7 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 したがって、盤面を走査する項を1つでも加えると、評価の費用の性質が「定数時間」から「盤面に依存する時間」へ変わる。
 
 利きを計算する部品は既にある。
-`piece_control_with_occupancy` は駒からの疑似利きを、`attackers_to_by` は升へ届く駒の逆引きを返す（[movegen/mod.rs](../../src/core/movegen/mod.rs) 115行から232行）。
+`piece_control_with_occupancy` は駒からの疑似利きを、`attackers_to_by` は升へ届く駒の逆引きを返す（[movegen/control.rs](../../src/core/movegen/control.rs) 10行から128行）。
 一方、全升の利き数を局面に保持する表はなく、HaChuの `attacks` 配列ややねうら王の `board_effect` に当たるものは存在しない。
 疑似利きは合法な捕獲の集合ではなく、獅子の捕獲制限は反映しない。
 ただし王駒への利きは、王手放置が合法であるため、疑似利きと捕獲可能性が一致する（search/alphabeta/royal.rs 7行から18行）。

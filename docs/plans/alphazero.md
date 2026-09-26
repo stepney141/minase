@@ -288,7 +288,7 @@ lc0も探索をUCIオプションで切り替えない。
 94面は、手番側と相手側のそれぞれについて47種類の駒の状態を1面ずつ割り当てたものである。
 47種類は、PSTの特徴が使う区別（`src/eval/pst/features.rs`の`piece_state`）と同じく、29の駒種に、成れる18の駒種の「まだ成れる」状態を加えたものである。
 残る1面は、先獅子（RULES.md第15条）で直後に取れない獅子の升を示す。
-規則セット`engine-default`（P0でP5なし）では成り権の保留状態を追跡しないので（`src/core/position.rs`の`make_move_unchecked`）、この95面で次の合法手が決まる。
+規則セット`engine-default`（P0でP5なし）では成り権の保留状態を追跡しないので（`src/core/position/make_move.rs`の`make_move_unchecked`）、この95面で次の合法手が決まる。
 保留状態を追跡するP1、P2、またはP5の規則セットで学習する場合は、`Position::promotion_deferred`の升を示す面を足す必要がある。
 
 入力は局面だけから決まり、過去の局面の履歴も反復の回数も含めない。

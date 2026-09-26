@@ -235,8 +235,8 @@ pub struct MoveRules {
 
 ## 8. 着手生成の構成
 
-- 合法手生成に関わるモジュール（square、bitboard、direction、piece、mv、position、rules、attacks、movegen）は `src/core/` 配下に置く。対局管理（game、adjudication）、SFEN入出力（sfen）、検証ツール（perft）はクレート直下に残す。
-- `core/movegen/mod.rs` は実装の単一ファイルであり、`MoveGenerator`、1段階移動の生成、獅子・角鷹・飛鷲の2段階移動と直接跳びの生成（第2段階は `LocalOccupancy` による局所占有）、`IllegalMove` と `try_make_move` をこの順で収める。normal.rs、lion.rs、legal.rs の3ファイル分割は2026年7月31日の再編で廃止した（11節）。
+- 合法手生成に関わるモジュール（board、piece、mv、position、promotion、rules、attacks、movegen）は `src/core/` 配下に置く。各モジュールの内部の配置は[中核モジュールの再編](core-layout.md)が定める。
+- `core/movegen/` は、`MoveGenerator` を `mod.rs` に置き、生成の駆動（`generate.rs`）、候補手の登録と成りの展開（`expand.rs`）、利きと逆引き（`control.rs`）、着手後の仮想盤面（`virtual_board.rs`）、獅子と角鷹・飛鷲の2段階移動（`lion.rs`、`lion_like.rs`）、獅子の捕獲制限（`lion_capture.rs`）、合法性を検査した着手の適用（`checked.rs`）、および静止探索の捕獲生成（`search_captures.rs`）に分ける。
 - テストは `core/movegen/tests/` に置き、条文対応（articles.rs）と不変量・乱数（invariants.rs）の内容種別で分ける。局面構築ヘルパはクレート共通の `test_util` モジュールに置く。
 - 獅子規則の検査（6節）は生成中に適用する。足判定に使う `square_is_controlled` は規則層に置く。
 

@@ -7,7 +7,7 @@
 本マイルストーンは探索部の実装より先に完結させる。
 
 同2026年8月11日に両段階の実装を完了した。
-第1段階では`WinReason`と`DrawReason`へ`BareKing`を新設し、`src/core/adjudication.rs`の`bare_king_result`だけがこれを返すよう分割した。
+第1段階では`WinReason`と`DrawReason`へ`BareKing`を新設し、`src/core/game/adjudication/bare_king.rs`の`bare_king_result`だけがこれを返すよう分割した。
 CECPの終局文字列はenumとの1対1写像へ単純化し、`PieceExhaustion`へ"piece exhaustion"、`BareKing`へ"bare king"/"bare kings"を当てた。
 E3経路の既存テスト5件とlishogi棋譜リプレイの期待値、`random_play`の理由集計を`BareKing`へ追従させた。
 第2段階では`src/protocol/usi.rs`へ`moves`と`state`を追加し、テスト方針の全ケース（集合比較、単一行完全一致、開始前エラー、`gameover`後の規則切替）をインラインテストとして実装した。

@@ -52,7 +52,7 @@
 
 ## 乱数モジュールの分離
 
-XorShift64は現在、`src/core/position.rs`のZobristキー生成用（非公開、`next`のみ）と、`src/core/movegen/tests/invariants.rs`のテスト用コピー（`index`付き）の2箇所に重複している。
+XorShift64は現在、`src/core/position/zobrist.rs`のZobristキー生成用（非公開、`next`のみ）と、`src/core/movegen/tests/invariants.rs`のテスト用コピー（`index`付き）の2箇所に重複している。
 これを`src/rng.rs`の単一実装へ統合し、`next`と`index`の両方を備える。
 乱数生成器は中将棋のドメイン概念ではないため、`core/`配下ではなくクレート直下へ置く。
 

@@ -178,7 +178,7 @@ impl Position {
 一時状態を持つ局面の構築には、既存の公開経路をそのまま利用する。
 メソッドの呼び出し順序は、まず`PositionBuilder::new`で手番を決定し、`put`で駒を配置し、`mark_promotion_deferred`で成り権保留集合を設定する。続いて`finish()`で`Position`のインスタンスを取得した後に、`set_lion_capture`で先獅子状態を設定する。
 `set_lion_capture`は記録升に手番側の駒が配置されている入力を拒否し、記録升の駒情報から麒麟成りフラグを導出した上で、Zobrist値を増分更新する。
-各関数の契約は`src/core/position.rs`のrustdocおよび[protocol-layer.md](protocol-layer.md)「局面設定」に定められており、本書では変更しない。
+各関数の契約は`src/core/position/`のrustdocおよび[protocol-layer.md](protocol-layer.md)「局面設定」に定められており、本書では変更しない。
 記録升に不成の獅子が存在する状態は、現行の拡張SFENにおいて受理されており、テストコードでも受理されることが固定されている。そのため、既存の構築経路ではこれを拒否しない。
 その状態を除外する役割は、「直前局面の定義」節で定義した集合`A`の条件が担い、生成器側でのみ制限を課す。
 規則に依存する条件のうち、P0を採用しP5を採用しない場合の空集合判定は、現行の拡張SFENの解析処理で既に検査されており、これをそのまま維持する。
