@@ -1,15 +1,15 @@
 //! phase3.mdおよびspsa.mdの参照値、符号、丸め、再開契約の検証。
 
-#[path = "tests/simulation.rs"]
 mod simulation;
 
+use super::engine::tuning_spec;
 use super::*;
 use minase::rng::{XorShift64, derive_seed};
 use minase::{Color, DrawReason, GameResult};
 use model::*;
 use params::{Declaration, Parameter, ParameterError};
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Mutex,
         atomic::{AtomicU64, Ordering},

@@ -1,10 +1,9 @@
 //! 完了した調整記録を検査し、係数表の既定値だけを書き換える。
 
 use super::{
-    model::Settings,
+    model::{Settings, validate_settings},
     params::{ParameterError, validate_parameters},
     storage::{read_iterations, read_manifest, validate_chain},
-    validate_settings,
 };
 use minase::harness::lock_run_directory;
 use std::{
