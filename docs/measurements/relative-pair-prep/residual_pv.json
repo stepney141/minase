@@ -1,0 +1,592 @@
+[
+ {
+  "id": "202610280-278-r",
+  "sfen": "l5kh1cfl/a3s2s3a/m3to1qr3/p7m1px/2N3p4p/5n6/12/3P8/P2M2P5/4DGT1RME1/A3S6A/LFT1HK2S2L b - 279 -",
+  "moves_prefix_len": 278,
+  "loss_S0": 235,
+  "d0": 6,
+  "best": "8j11j",
+  "s0": "4j5j",
+  "lines": {
+   "8j11j": {
+    "score_root_view": -500,
+    "recorded": {
+     "kind": "cp",
+     "value": -500
+    },
+    "depth": 14,
+    "pv": [
+     "5c5l",
+     "7l7k",
+     "5l5g",
+     "11j11g",
+     "5g10b",
+     "10e9g",
+     "7f5e",
+     "11g10f",
+     "10b11b",
+     "4j5j",
+     "5e6g",
+     "7k6l",
+     "4c4a",
+     "9g8f"
+    ],
+    "material_by_ply": [
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527,
+     -527
+    ],
+    "boards_after_1_7_end": [
+     "l5kh1cfl/a3s2s3a/m3to1qr3/p7m1px/2N3p4p/5n6/12/3P8/P2M2P5/1D3GT1RME1/A3S6A/LFT1HK2S2L w",
+     "l5kh1cfl/a1q1s2s3a/m3to2r3/p7m1px/6p4p/5n6/1D1N8/3P8/P2M2P5/5GT1RME1/A3SK5A/LFT1H3S2L w",
+     "l5khrcfl/aq2s2s3a/m3to6/p7m1px/6p4p/2D1N7/6n5/3P8/P2M2P5/5GTR1ME1/A3S6A/LFT1H1K1S2L w"
+    ]
+   },
+   "4j5j": {
+    "score_root_view": -735,
+    "recorded": {
+     "kind": "cp",
+     "value": -735
+    },
+    "depth": 15,
+    "pv": [
+     "5c10h",
+     "10e11f",
+     "10h10l",
+     "11f9g",
+     "7f6g",
+     "6i6h",
+     "6g6h",
+     "8j10j",
+     "10l11l",
+     "10j10a+",
+     "7c7a"
+    ],
+    "material_by_ply": [
+     -527,
+     -527,
+     -527,
+     -527,
+     -887,
+     -887,
+     -887,
+     -887,
+     -987,
+     -987,
+     -1332,
+     -832,
+     -832
+    ],
+    "boards_after_1_7_end": [
+     "l5kh1cfl/a3s2s3a/m3to1qr3/p7m1px/2N3p4p/5n6/12/3P8/P2M2P5/4DGTR1ME1/A3S6A/LFT1HK2S2L w",
+     "l5kh1cfl/a3s2s3a/m3to2r3/p7m1px/6p4p/12/3N2n5/3P2P5/P2M8/4DGTR1ME1/A3S6A/LFq1HK2S2L w",
+     "l1+D2okh1cfl/a3s2s3a/m3t3r3/p7m1px/6p4p/12/3N8/3P2n5/P2M8/5GTR1ME1/A3S6A/Lq2HK2S2L b"
+    ]
+   }
+  }
+ },
+ {
+  "id": "202610489-236-r",
+  "sfen": "l1csh1kdstfl/a1+b2t4ca/1e3o2m3/3m2p1p2p/p7ipp1/3p8/7S1P1P/P5G3P1/3F2P1P1FM/5TT3E1/A3S1G1D2A/L1C2K1H1CBL b - 237 -",
+  "moves_prefix_len": 236,
+  "loss_S0": 391,
+  "d0": 6,
+  "best": "4k5k",
+  "s0": "9i8h",
+  "lines": {
+   "4k5k": {
+    "score_root_view": -462,
+    "recorded": {
+     "kind": "cp",
+     "value": -462
+    },
+    "depth": 12,
+    "pv": [
+     "5a5e",
+     "10l11k",
+     "9f9g",
+     "9i10j",
+     "9a9b",
+     "6k6l",
+     "9g9h",
+     "7j8i",
+     "5e7e",
+     "7l8l",
+     "3e3f",
+     "8i9h"
+    ],
+    "material_by_ply": [
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -280
+    ],
+    "boards_after_1_7_end": [
+     "l1csh1kdstfl/a1+b2t4ca/1e3o2m3/3m2p1p2p/p7ipp1/3p8/7S1P1P/P5G3P1/3F2P1P1FM/5TT3E1/A3S1GD3A/L1C2K1H1CBL w",
+     "l1c1h1k1stfl/a1+bs1t4ca/1e3o2m3/3m2p1p2p/p6dipp1/12/3p3S1P1P/P5G3P1/6P1P1FM/2F2TT3E1/AC2S2D3A/L4KGH1CBL w",
+     "l1c1h1k1stfl/a1+bs1t4ca/1e3o2m3/3m2p1p2p/p4d2i1p1/9p2/7S1P1P/P2T2G3P1/6P1P1FM/2F3T3E1/AC2S2D3A/L3K1GH1CBL w"
+    ]
+   },
+   "9i8h": {
+    "score_root_view": -853,
+    "recorded": {
+     "kind": "cp",
+     "value": -853
+    },
+    "depth": 16,
+    "pv": [
+     "5a5e",
+     "8k9j",
+     "5e11e",
+     "9j10k",
+     "11e11i+",
+     "6k6l",
+     "11i8f",
+     "4k8k",
+     "8f2f",
+     "2l5i",
+     "2f1g2f",
+     "8h7g",
+     "9f9g",
+     "8k8f",
+     "4e4f",
+     "8f9g"
+    ],
+    "material_by_ply": [
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -380,
+     -880,
+     -880,
+     -880,
+     -880,
+     -880,
+     -880,
+     -980,
+     -980,
+     -980,
+     -980,
+     -980,
+     -880
+    ],
+    "boards_after_1_7_end": [
+     "l1csh1kdstfl/a1+b2t4ca/1e3o2m3/3m2p1p2p/p7ipp1/3p8/7S1P1P/P3F1G3P1/6P1P1FM/5TT3E1/A3S1G1D2A/L1C2K1H1CBL w",
+     "l1csh1k1stfl/a1+b2t4ca/1e3o2m3/3m2p1p2p/p7ipp1/3p8/7S1P1P/P3F1G3P1/1+d4P1P1FM/5TT3E1/A1S5D2A/L1C2KGH1CBL w",
+     "l1csh1k1stfl/a1+b2t4ca/1e3o2m3/3m2p1p2p/p8pp1/8i1+d1/3D1F1S1P2/P5G3P1/6PBP1FM/5TT3E1/A1S8A/L1C2KGH1C1L w"
+    ]
+   }
+  }
+ },
+ {
+  "id": "202612388-210-r",
+  "sfen": "2csh1k1sobl/l1f1vx3c1a/ae1d5f1m/pp4q1tpp1/8p3/3N2n5/2P6P2/1P3G6/P4PPO2HP/M4TT3EM/A1D1V1G2F1A/LFCSHK3C1L b - 211 -",
+  "moves_prefix_len": 210,
+  "loss_S0": 384,
+  "d0": 6,
+  "best": "9f10e",
+  "s0": "8k8b+",
+  "lines": {
+   "9f10e": {
+    "score_root_view": -297,
+    "recorded": {
+     "kind": "cp",
+     "value": -297
+    },
+    "depth": 11,
+    "pv": [
+     "6f5h",
+     "8k8b",
+     "9a8b",
+     "5i5k",
+     "6d5e",
+     "10e10f",
+     "9c10c",
+     "10f8d",
+     "5e6f",
+     "8d7d",
+     "5h6i5h"
+    ],
+    "material_by_ply": [
+     -249,
+     -249,
+     -249,
+     324,
+     -249,
+     -249,
+     -249,
+     -249,
+     -249,
+     -249,
+     -249,
+     -249,
+     -349
+    ],
+    "boards_after_1_7_end": [
+     "2csh1k1sobl/l1f1vx3c1a/ae1d5f1m/pp4q1tpp1/2N5p3/6n5/2P6P2/1P3G6/P4PPO2HP/M4TT3EM/A1D1V1G2F1A/LFCSHK3C1L w",
+     "2c1h1k1sobl/l1f1sx3c1a/ae1d5f1m/pp6tpp1/7qp3/2N9/2P6P2/1P3G1n4/P4PP3HP/M4TT3EM/A1D3GO1F1A/LFCSHK3C1L w",
+     "2c1h1k1sobl/l1f1sx3c1a/aed6f1m/pp3N2tpp1/8p3/6q5/2P6P2/1P3G1n4/P4P4HP/M4TT3EM/A1D3GO1F1A/LFCSHK3C1L b"
+    ]
+   },
+   "8k8b+": {
+    "score_root_view": -681,
+    "recorded": {
+     "kind": "cp",
+     "value": -681
+    },
+    "depth": 14,
+    "pv": [
+     "9c9f",
+     "8b8a",
+     "9a8b",
+     "10k8k",
+     "6a7a",
+     "2i3i",
+     "6f4f",
+     "8a7b",
+     "7a7b",
+     "3i8d+",
+     "9f9i+",
+     "8d6d",
+     "4f6d",
+     "5i5g"
+    ],
+    "material_by_ply": [
+     -249,
+     967,
+     -1555,
+     -540,
+     -540,
+     -540,
+     -540,
+     -540,
+     -540,
+     -88,
+     -1304,
+     -716,
+     -1216,
+     492,
+     -1111,
+     -1111
+    ],
+    "boards_after_1_7_end": [
+     "2csh1k1sobl/l1f1+Vx3c1a/ae1d5f1m/pp4q1tpp1/8p3/3N2n5/2P6P2/1P3G6/P4PPO2HP/M4TT3EM/A1D3G2F1A/LFCSHK3C1L w",
+     "2c1+Vk2sobl/l1f1sx3c1a/ae7f1m/pp4q1tpp1/8p3/3d2n5/2P6P2/1P3G6/P4PPO1H1P/M4TT3EM/A3D1G2F1A/LFCSHK3C1L w",
+     "2c5sobl/l1f1sk3c1a/ae7f1m/pp4n1tpp1/8p3/12/2P4O1P2/1P3G6/P2+d1PP4P/M4TT3EM/A3D1G2F1A/LFCSHK3C1L w"
+    ]
+   }
+  }
+ },
+ {
+  "id": "202612852-212-r",
+  "sfen": "l1c2rkgsc2/af1bt1ov1d1+B/me4tr4/p1pqg1p3p1/6h1p1n1/1s7p2/3PXQG4D/1P6N3/PM4P3F1/C4T1T1S2/A3VDG5/LFOS1K1H1C1+V b - 213 -",
+  "moves_prefix_len": 212,
+  "loss_S0": 241,
+  "d0": 6,
+  "best": "1g2h",
+  "s0": "7g6h",
+  "lines": {
+   "1g2h": {
+    "score_root_view": 1546,
+    "recorded": {
+     "kind": "cp",
+     "value": 1546
+    },
+    "depth": 12,
+    "pv": [
+     "7a7g",
+     "2h2e",
+     "7g8g",
+     "2e2d+",
+     "9d6g",
+     "8k8g",
+     "6g8g",
+     "1b4e",
+     "8g9h",
+     "6i6h",
+     "6e7e",
+     "4h6g"
+    ],
+    "material_by_ply": [
+     1051,
+     1051,
+     -657,
+     1865,
+     1413,
+     2013,
+     1649,
+     2502,
+     1929,
+     2029,
+     2029,
+     2029,
+     2029,
+     2029
+    ],
+    "boards_after_1_7_end": [
+     "l1c2rkgsc2/af1bt1ov1d1+B/me4tr4/p1pqg1p3p1/6h1p1n1/1s7p2/3PXQG5/1P6N1D1/PM4P3F1/C4T1T1S2/A3VDG5/LFOS1K1H1C1+V w",
+     "l1c3kgsc2/af1bt1ov1d1+B/me4tr4/p1p1g1p3+D1/6h1p3/1s7p2/3PV1q5/1P6N3/PM4P3F1/C4T1T1S2/A4DG5/LFOS1K1H1C1+V w",
+     "l1c3kgsc2/af1bt1ov1d2/me4tr4/p1p1g1p3+D1/5h2+B3/1s7p2/3P2N5/1P1q2P5/PM8F1/C4T1T1S2/A4DG5/LFOS1K1H1C1+V w"
+    ]
+   },
+   "7g6h": {
+    "score_root_view": 1305,
+    "recorded": {
+     "kind": "cp",
+     "value": 1305
+    },
+    "depth": 11,
+    "pv": [
+     "6e5e",
+     "1g2g",
+     "2e4c",
+     "6k6j",
+     "5e4f",
+     "6g5g",
+     "5c5g",
+     "4h5g6f",
+     "4f6h",
+     "6i6h",
+     "4c5d"
+    ],
+    "material_by_ply": [
+     1051,
+     1051,
+     1051,
+     1051,
+     1051,
+     1051,
+     1051,
+     1051,
+     687,
+     1540,
+     -168,
+     847,
+     847
+    ],
+    "boards_after_1_7_end": [
+     "l1c2rkgsc2/af1bt1ov1d1+B/me4tr4/p1pqg1p3p1/6h1p1n1/1s7p2/3PX1G4D/1P4Q1N3/PM4P3F1/C4T1T1S2/A3VDG5/LFOS1K1H1C1+V w",
+     "l1c2rkgsc2/af1bt1ov1d1+B/me4trn3/p1pqg1p3p1/8p3/1s6hp2/3PX2G2D1/1P4Q1N3/PM4P3F1/C4TGT1S2/A3VD6/LFOS1K1H1C1+V w",
+     "l1c2rkgsc2/af1bt1ov1d1+B/me4t5/p1pqg1pn2p1/8p3/1s4N2p2/3PX5D1/1P4P5/PM8F1/C4TGT1S2/A3VD6/LFOS1K1H1C1+V b"
+    ]
+   }
+  }
+ },
+ {
+  "id": "202613669-264-r",
+  "sfen": "l1cf2k2c1l/a2s1v+v3fa/me10/p11/3p8/2pi4N3/5nP5/1pPI7P/F2P1P1PF3/1MR2TO2S2/A3VETV3A/L1CS1K3C1L b - 265 -",
+  "moves_prefix_len": 264,
+  "loss_S0": 171,
+  "d0": 6,
+  "best": "8k8d+",
+  "s0": "4f3d",
+  "lines": {
+   "8k8d+": {
+    "score_root_view": 2553,
+    "recorded": {
+     "kind": "cp",
+     "value": 2553
+    },
+    "depth": 13,
+    "pv": [
+     "6b8d",
+     "4f6d",
+     "11c10b",
+     "6d8d",
+     "7g8h",
+     "8d9e10e",
+     "8h9i9h",
+     "10e12g",
+     "10b11c",
+     "12g11h",
+     "9h10h9g",
+     "10j8j",
+     "7b8b"
+    ],
+    "material_by_ply": [
+     1810,
+     2453,
+     1237,
+     1237,
+     1237,
+     2453,
+     2453,
+     2553,
+     2336,
+     2336,
+     2336,
+     2436,
+     2336,
+     2336,
+     2336
+    ],
+    "boards_after_1_7_end": [
+     "l1cf2k2c1l/a2s1v+v3fa/me10/p3+V7/3p8/2pi4N3/5nP5/1pPI7P/F2P1P1PF3/1MR2TO2S2/A4ETV3A/L1CS1K3C1L w",
+     "l1cf2k2c1l/a1es1v4fa/m11/p11/2N9/2pi8/6P5/1pPIn6P/F2P1P1PF3/1MR2TO2S2/A4ETV3A/L1CS1K3C1L w",
+     "l1cf2k2c1l/a2sv5fa/me10/p11/12/2pi8/3n2P5/1N9P/F4P1PF3/1M2RTO2S2/A4ETV3A/L1CS1K3C1L b"
+    ]
+   },
+   "4f3d": {
+    "score_root_view": 2382,
+    "recorded": {
+     "kind": "cp",
+     "value": 2382
+    },
+    "depth": 12,
+    "pv": [
+     "11c10d",
+     "4i5h",
+     "9f9g",
+     "10j9j",
+     "12c9c",
+     "12i11h",
+     "10d11c",
+     "11h11g",
+     "7g6g7g",
+     "3d5d",
+     "7g7f",
+     "5d4e"
+    ],
+    "material_by_ply": [
+     1810,
+     1810,
+     1810,
+     1810,
+     1810,
+     1810,
+     1810,
+     1910,
+     1910,
+     1910,
+     1810,
+     1810,
+     1810,
+     1810
+    ],
+    "boards_after_1_7_end": [
+     "l1cf2k2c1l/a2s1v+v3fa/me10/p8N2/3p8/2pi8/5nP5/1pPI7P/F2P1P1PF3/1MR2TO2S2/A3VETV3A/L1CS1K3C1L w",
+     "l1cf2k2c1l/a2s1v+v3fa/3m8/p1e6N2/3p8/2p9/3i1nP5/1FPI3F3P/3P1P1P4/1M1R1TO2S2/A3VETV3A/L1CS1K3C1L w",
+     "l1cf2k2c1l/a2s1v+v3fa/1e1m8/p11/3p4N3/2p2n6/1F1i8/2PI3F3P/3P1P1P4/1M1R1TO2S2/A3VETV3A/L1CS1K3C1L w"
+    ]
+   }
+  }
+ },
+ {
+  "id": "202614203-172-r",
+  "sfen": "lftrh1kqscfl/ac2v1ov3a/de3gtd1r1m/mpn1bppbph1x/p1pp1g2ippp/12/3Q4N3/P4GPRIPPP/1O2T2PP3/D2M1B1DTRBM/A3V3EV1A/LFCSHK1HSCFL b - 173 -",
+  "moves_prefix_len": 172,
+  "loss_S0": 171,
+  "d0": 5,
+  "best": "9j9i",
+  "s0": "8i9h",
+  "lines": {
+   "9j9i": {
+    "score_root_view": -1293,
+    "recorded": {
+     "kind": "cp",
+     "value": -1293
+    },
+    "depth": 12,
+    "pv": [
+     "5c4b",
+     "4g3g",
+     "5d7f",
+     "5h5b",
+     "4a5b",
+     "9g5k",
+     "7f9d",
+     "3g5e",
+     "10d9f",
+     "5k6l",
+     "9f11h",
+     "9i9h"
+    ],
+    "material_by_ply": [
+     -884,
+     -884,
+     -884,
+     -884,
+     -884,
+     -311,
+     -1164,
+     -1164,
+     -1164,
+     -1164,
+     -1164,
+     -1164,
+     -1164,
+     -1164
+    ],
+    "boards_after_1_7_end": [
+     "lftrh1kqscfl/ac2v1ov3a/de3gtd1r1m/mpn1bppbph1x/p1pp1g2ippp/12/3Q4N3/P4GPRIPPP/1O1MT2PP3/D4B1DTRBM/A3V3EV1A/LFCSHK1HSCFL w",
+     "lftrh1kq1cfl/ac2v1osd2a/de3gt2r1m/mpn1bpp1ph1x/p1pp1g2ippp/5b6/9N2/P4GP1IPPP/1O1MT2PP3/D4B1DTRBM/A3V2QEV1A/LFCSHK1HSCFL w",
+     "lftrh1kq1cfl/ac2v1osd2a/de3gt2r1m/mp1bbpp1ph1x/p1pp1g1Nippp/12/12/Pn1M1GP1IPPP/1O2T2PP3/D4B1DTRBM/A3V3EV1A/LFCSHKQHSCFL w"
+    ]
+   },
+   "8i9h": {
+    "score_root_view": -1464,
+    "recorded": {
+     "kind": "cp",
+     "value": -1464
+    },
+    "depth": 13,
+    "pv": [
+     "4e4f",
+     "4g6i",
+     "1d3f",
+     "5h5d+",
+     "6c5d",
+     "1j1i",
+     "8d10b",
+     "5j6k",
+     "8b8k",
+     "6k8k"
+    ],
+    "material_by_ply": [
+     -884,
+     -884,
+     -884,
+     -884,
+     -884,
+     97,
+     -1066,
+     -1066,
+     -1066,
+     -1066,
+     -1639,
+     -1066
+    ],
+    "boards_after_1_7_end": [
+     "lftrh1kqscfl/ac2v1ov3a/de3gtd1r1m/mpn1bppbph1x/p1pp1g2ippp/12/3Q4N3/P2T1GPRIPPP/1O5PP3/D2M1B1DTRBM/A3V3EV1A/LFCSHK1HSCFL w",
+     "lftrh1kqscfl/ac2v1ov3a/de3g1d1r1m/mpn1bpptph2/p1pp1g3ppp/8ix2/3Q8/P2T1GP1IPPP/1O4NPP2M/D2M1B1DTRB1/A3V3EV1A/LFCSHK1HSCFL w",
+     "lftrh1kqscfl/acb3ov3a/de3g1d1r1m/mpn2pptph2/p1pp1g3ppp/8ix2/3Q8/P2T1GP1IPPP/1O4NPP2M/D2M1B2TRB1/A3D3EV1A/LFCSHK1HSCFL w"
+    ]
+   }
+  }
+ }
+]

@@ -59,7 +59,7 @@
 | SPSAの摂動幅と学習率の較正 | [plans/spsa-gain-calibration.md](plans/spsa-gain-calibration.md) | 完了 | 2026年9月26日 |
 | 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 完了 | 2026年9月26日 |
 | 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 完了 | 2026年9月26日 |
-| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 起案 | |
+| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 完了 | 2026年9月26日 |
 | Descentによる評価関数の強化学習 | [plans/descent.md](plans/descent.md) | 起案 | |
 
 ## 現在地
@@ -73,7 +73,9 @@ SPSAの摂動幅と学習率の較正は2026年9月26日に完了し、`spsa_run
 続く[探索局面を用いた学習](plans/search-aware-evaluation.md)も、同日に不採用で完了した。
 探索局面を半数混ぜて学んだ候補Bは対照Aに対して、深い教師で通常局面だけを学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
 採用PSTは従来の重みのままである。
-評価関数で次に着手できるのは、[相対2駒評価](plans/relative-pair-eval.md)の準備段階（駒の配置に依存する残存誤りの確認）と、[Descentによる強化学習](plans/descent.md)である。
+[相対2駒評価](plans/relative-pair-eval.md)は、準備段階の事前登録した判定で配置に依存する残存誤りの根拠が得られず、同日に未実装の見送りで完了した。
+前段の最終診断で大きな着手の誤りを示した6根は、いずれも100,000ノードの探索がその名目の深さの内側にある駒の損得を見落とした型であった（[準備記録](measurements/relative-pair-prep.md)）。
+評価関数で次に着手できるのは、[Descentによる強化学習](plans/descent.md)である。
 実施順序と、各判定からの進み先は次節に定める。
 Descentによる強化学習は2026年9月26日に起案し、同日に利用者の決定で、採用PSTを初期値とし、対照を置かず、同時16対局で48時間を予算とすることを確定した。
 着手の条件だった探索局面の計画の完了は満たされたが、次節の表にはまだ含めない。
@@ -89,7 +91,7 @@ Descentによる強化学習は2026年9月26日に起案し、同日に利用者
 | 1 | [混合比の計画](plans/teacher-mixing-ratio.md)で、既存データによるλ=1のPST再学習を判定する。 | 準備開始時の採用版を基点にする。採否にかかわらず、その時点の採用PSTを持って2へ進む。2026年9月26日に不採用で完了した。 |
 | 2 | [探索局面の計画](plans/search-aware-evaluation.md)のフェーズ1と2で、深い教師を診断する。 | 1の確定後に教師を固定する。通過すれば3へ進み、不合格なら今回の教師構成を見送る。2026年9月26日に通過した。 |
 | 3 | 同計画のフェーズ3から5で、通常局面だけのAと、半数を探索局面へ置き換えたBを比較する。 | 事前登録した比較を順に測り、採用PSTと残存誤りの記録を4の準備へ渡す。2026年9月26日に、学習前に訓練の受理条件を総更新回数の下限へ改めて比較し、AとBをともに不採用とした。 |
-| 4 | [相対2駒の計画](plans/relative-pair-eval.md)で、関係項の必要性を確認してから実装する。 | 配置に依存する誤りが残る場合に、最後に採用されたPSTを固定して進む。根拠が得られなければ着手を見送る。 |
+| 4 | [相対2駒の計画](plans/relative-pair-eval.md)で、関係項の必要性を確認してから実装する。 | 配置に依存する誤りが残る場合に、最後に採用されたPSTを固定して進む。根拠が得られなければ着手を見送る。2026年9月26日に、根拠が得られず未実装の見送りで完了した。 |
 
 1の不採用は2と3の不採用を意味せず、3の成功は4の必須条件ではない。
 各計画は着手時のmasterから専用ブランチを作り、実験中に他計画の変更を取り込まない。
