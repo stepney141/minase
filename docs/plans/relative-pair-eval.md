@@ -69,7 +69,7 @@ PSTの教師局面の分布を変えるA/B比較が不採用でも、本書の�
 この待機は、関係評価一般を否定する結論ではない。
 
 [評価関数](evaluation.md)、[評価関数の世代反復](evaluation-gen1.md)、および[PSTの序中盤と終盤の補間](tapered-pst.md)が定めるPSTの特徴と評価式を引き継ぐ。
-駒状態の番号と手番側視点の変換は、`src/eval/features.rs` と `tools/train/pst/features.py` の定義をそのまま使う。
+駒状態の番号と手番側視点の変換は、`src/eval/pst/features.rs` と `tools/train/pst/features.py` の定義をそのまま使う。
 探索との接続は、[棋力向上段階1](strength-stage1.md)で採用した累算器の差分更新（`PstAccumulator` と `update_accumulator_after_move`）を拡張する。
 従来の11ファイル、先読み教師値、教師の分類ごとの換算尺度、および検証分割は自動的には引き継がず、準備段階で採否の根拠を確認する。
 
@@ -149,7 +149,7 @@ Stockfishは、全ての歩の対で学習したネットの重要度が筋差1�
 E(s)=\operatorname{clip}_{\pm28{,}999}\!\left(\operatorname{trunc}_0\frac{q\,M(s)+(90-q)\,L(s)+90\,S(s)}{720}\right).
 \]
 
-\(M\) と \(L\) は手番側の序中盤と終盤の重みの和、\(q=\min(90,N-2)\) は盤上総駒数 \(N\) から決まる補間係数、\(\operatorname{trunc}_0\) は0方向への切り捨て、\(\operatorname{clip}\) は範囲への切り詰めである（`src/eval/pst.rs` 450行）。
+\(M\) と \(L\) は手番側の序中盤と終盤の重みの和、\(q=\min(90,N-2)\) は盤上総駒数 \(N\) から決まる補間係数、\(\operatorname{trunc}_0\) は0方向への切り捨て、\(\operatorname{clip}\) は範囲への切り詰めである（`src/eval/pst/mod.rs`）。
 重みの単位は学習PSTと同じ1/8センチポーンである。
 関係項の係数90は、序中盤の和と終盤の和の両方に同じ \(S\) を加えたときの \(q\,S+(90-q)\,S\) であり、関係項は局面段階によらず \(90S/720=S/8\) センチポーンだけ評価を動かす。
 したがって、累算器の両端点の和に同じ \(S\) を加えれば除算の前に上式の分子になり、累算器の構造は変えずに済む。

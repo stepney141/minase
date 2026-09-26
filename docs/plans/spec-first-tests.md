@@ -95,7 +95,7 @@ cargo-mutantsが利用可能なら補助に使うが、判定の主体は手選�
 | D4 局面表現と基盤 | position.rs（20）、piece・bitboard・square・direction・attacks（13） | RULES.md第4〜5条・24条、性質ベース | 33 |
 | D5 表記 | notation/{sfen,usi,cecp}.rs | usi-lishogi.md、cecp.md、hachu.md、move-canonicalization.md、protocol-layer.md拡張SFEN節 | 36 |
 | D6 プロトコル | protocol/{usi,cecp,engine}.rs、bin/{minase,usi_random}.rs | protocol-layer.md、engine-connectivity.md、browser-gui.md、cecp.md、hachu.md | 66 |
-| D7 探索と評価 | search/tests.rs（17）、eval/mod.rs（2） | search.md | 19 |
+| D7 探索と評価 | search/alphabeta/tests/（17）、eval/mod.rs（2） | search.md | 19 |
 | D8 統計とハーネス | stats.rs（6）、bin/{match_runner,bench,random_play}.rs（19） | sprt.md、match-harness.md、random-play.md | 25 |
 
 旧件数の合計は354（lib 329＋bin 25）であり、統合テスト3件は監査のみの対象として表に含めない。

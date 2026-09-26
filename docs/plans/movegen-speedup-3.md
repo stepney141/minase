@@ -35,7 +35,7 @@ NPSは基準比1.15倍以上を目標とし、1.08倍以上を最低受入条件
 - `src/core/movegen/search_captures.rs`の探索専用の捕獲生成（特殊駒の候補生成、`collect_ordinary_capturers`）。
 - `src/core/attacks/tables.rs`の前計算表（逆到達表と近傍の固定利き表を加える候補）。
 - `src/core/position.rs`の駒種別のビットボードと着手の適用（方向ごとの走り駒集合を加える候補）。
-- `src/search/mod.rs`の静止探索（`QsearchBuffers`と`quiesce`）。
+- `src/search/alphabeta/quiesce.rs`の静止探索（`QsearchBuffers`と`quiesce`）。
 
 本書の用語は第1期と第2期の設計書の定義に従う。
 **入口の閾値**は静止探索の入口で決まる値`alpha − stand_pat − delta_margin`（αは最善値の下限、`stand_pat`は静的評価値、`delta_margin`は既存の枝刈りの余裕値）であり、取る駒の価値がこれ以下の捕獲は探索しても最善値を更新できない。駒価値は正の整数なので閾値が負なら相手の全駒が対象になる。
@@ -50,7 +50,7 @@ PGOと`unsafe`を要する先読みは利用者の決定により再提案しな
 ## 依存関係
 
 利き逆引きの契約は[棋力向上段階3](strength-stage3.md)が、捕獲専用生成の契約は[棋力向上段階1](strength-stage1.md)が、探索専用生成の残存手順（段階8の除外条件を適用した参照列）とSEEの判定契約は[第1期](movegen-speedup.md)と[第2期](movegen-speedup-2.md)の設計書が定める。
-本マイルストーンはこれらの契約を変えず、契約テスト（`src/core/movegen/tests/`、`src/search/search_captures_tests.rs`、`src/search/see.rs`のテスト）を各段階の検証に使う。
+本マイルストーンはこれらの契約を変えず、契約テスト（`src/core/movegen/tests/`、`src/search/alphabeta/tests/captures.rs`、`src/search/alphabeta/see.rs`のテスト）を各段階の検証に使う。
 計測基盤は第2期で整備した`scripts/bench_compare.py`（`--reference`、`--baseline`、`--parent`）をそのまま使い、照合参照コミットと速度の基準はいずれも第2期の最終の採用版とする。第2期の段階7から段階9で探索木が変わったので、第1期の照合参照コミットは使えない。
 計測区間は[大容量メモリの確保を速度指標に含めない方針](../lessons/bench-allocation-outside-timing.md)に、診断の件数は[独立した参照値と照合する規則](../lessons/compare-diagnostics-with-independent-reference.md)に、プロファイルの読み方は[ハイブリッドCPUの正規化](../lessons/perf-hybrid-cpu-normalize-search-samples.md)に従う。
 最終のSPRTは[SPRTの手引き](../guides/sprt.md)に従う。
@@ -120,14 +120,14 @@ STCの前には所要時間の見積もりを利用者へ示す。
 固定利きの近傍走査は、対象升ごとに「いずれかの動きの定義の固定利きで届き得る出発升」の表を引いて自駒と交差させ、候補の升だけ駒種を読んで判定する。
 走り駒集合は局面の等価性とzobristに含めず、着手の適用と復元で維持されることをテストで固定する。
 見込みは、逆引きの自己時間11.3%のうち走りの逆引きに当たる部分の9割から、集合の維持と交差検査の費用を引いた値であり、探索時間の5%から7%とする。走りの逆引きの割合は第1期の[単位Eの記録](../measurements/movegen-speedup-unit-e-bench-depth5.md)（逆引きの包含時間9.3%のうち走り7.3%）に基づく旧版の値なので、着手時に`perf`の行単位の標本で測り直す。
-検証は`src/core/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`src/search/see.rs`の参照実装との枝刈り判断の一致、走り駒集合と駒種別ビットボードから再構成した集合の一致、および局面別一致とNPSによる。
+検証は`src/core/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`src/search/alphabeta/see.rs`の参照実装との枝刈り判断の一致、走り駒集合と駒種別ビットボードから再構成した集合の一致、および局面別一致とNPSによる。
 
 ### 段階2　特殊駒の候補の生成前の対象絞り
 
 `generate_special_captures`の探索専用の経路に、第2期の段階8の除外（獅子が経由升で相手駒を取って空升へ進む手）を生成の内側で適用する分岐と、`2v > T`を満たす相手駒の升と王駒の升の集合を受け取って、第1段階と第2段階のどちらの捕獲升もこの集合に含まれない手を生成しない分岐を加える。
 公開生成の経路は変えない。
 生成後の閾値と王駒の判定は残す（`2v > T`は必要条件であり、閾値の判定を置き換えない）。
-候補の集合と順序は現行と同一でなければならず、その一致を`src/search/search_captures_tests.rs`の残存手順一致で、閾値が負、0、合計価値が閾値と等しい場合、および奇数の閾値を含めて検査する。
+候補の集合と順序は現行と同一でなければならず、その一致を`src/search/alphabeta/tests/captures.rs`の残存手順一致で、閾値が負、0、合計価値が閾値と等しい場合、および奇数の閾値を含めて検査する。
 着手時に、生成の内側の除外と対象絞りで生成せずに済む手の数を数える。
 見込みは、特殊駒の生成に属する自己時間（`generate_special_piece_captures`1.9%、初期化の閉包1.1%、`special_move_is_legal`1.7%の一部）に生成せずに済む手の割合を掛けた値であり、段階8の除外分だけで33%なので探索時間の1%から2%とし、対象絞りの効果は数えてから加える。
 

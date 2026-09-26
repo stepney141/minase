@@ -27,8 +27,8 @@ minaseの探索は反復深化（深さ1から1ずつ読みを深める外殻）
 
 対象は次のとおりである。
 
-- `src/search/mod.rs`の`clock_budget`における秒読みの項。
-- `src/search/tt.rs`の`clear`（未使用の置換表の消去の省略）と、`src/protocol/usi.rs`の`isready`（既定容量の置換表の確保）。
+- `src/search/alphabeta/time.rs`の`clock_budget`における秒読みの項。
+- `src/search/alphabeta/tt.rs`の`clear`（未使用の置換表の消去の省略）と、`src/protocol/usi.rs`の`isready`（既定容量の置換表の確保）。
 - `docs/plans/spec-first-tests/matrices/d7-search-eval.md`のD7-TIME群の期待値。
 - 診断スクリプト`scripts/clock_budget_stats.py`、`scripts/byoyomi_game_profile.py`、および`scripts/clock_profile.py`。
 

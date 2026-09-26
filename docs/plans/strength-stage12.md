@@ -28,7 +28,7 @@
 
 ## 適用範囲
 
-対象は`src/search/mod.rs`の通常探索（`search_iteration`、`negamax`、`quiesce`、`MovePicker`、手の成績の表の更新）、`src/search/correction.rs`、`src/search/params.rs`、および探索の間で表を受け渡す入口（`start_search`、`SearchHandle`、およびUSI層の新規対局と規則変更の処理）である。
+対象は`src/search/alphabeta/`の通常探索（`search_iteration`、`negamax`、`quiesce`、`MovePicker`、手の成績の表の更新）、`src/search/alphabeta/correction.rs`、`src/search/alphabeta/params.rs`、および探索の間で表を受け渡す入口（`start_search`、`SearchHandle`、およびUSI層の新規対局と規則変更の処理）である。
 評価関数、時間管理、合法手生成、規則の解釈、SEEの判定契約は変えない。
 新しい数値係数は`params.rs`の表に定義し、次のSPSAの調整セッションの対象に加えられる形にする。
 不採用または見送りとなった項目はコードに残さず、設計だけを本書に保持する。

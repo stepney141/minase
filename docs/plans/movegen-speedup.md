@@ -40,8 +40,8 @@
 - `src/core/attacks/`は駒種ごとの動きの定義と利きの前計算表を実装する。
 - `src/core/bitboard.rs`は144升の集合を3個の64ビット整数で表し、走り計算の代替方式に着手する場合だけ対象になる。
 - `src/core/rules.rs`は獅子捕獲後の足と成りを判定する。
-- `src/search/see.rs`は交換列を評価し、探索で捕獲手を捨てるかを判定する。
-- `src/search/mod.rs`の静止探索が生成器を呼び、置換表の手を先頭へ移す。
+- `src/search/alphabeta/see.rs`は交換列を評価し、探索で捕獲手を捨てるかを判定する。
+- `src/search/alphabeta/quiesce.rs`の静止探索が生成器を呼び、置換表の手を先頭へ移す。
 - PGOの比較は`Cargo.toml`、`.cargo/`、およびプロファイルの生成手順を対象とする。
 
 本書では次の用語を使う。
