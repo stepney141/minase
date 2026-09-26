@@ -72,8 +72,46 @@ pub(super) fn grow_aspiration_delta(delta: i32) -> i32 {
     i32::try_from(grown).unwrap_or(i32::MAX)
 }
 
+/// 窓の内側で確定した最善手、評価値、および探索深さ。
+pub(super) struct IterationResult {
+    pub(super) best_move: Move,
+    pub(super) score: i32,
+    pub(super) depth: u32,
+}
+
+/// docs/plans/strength-stage12.md「項目1」に従い、主ワーカーだけ読み直しを減深する。
+pub(super) fn search_with_aspiration(
+    depth: u32,
+    mut window: AspirationWindow,
+    is_main_worker: bool,
+    mut search_root: impl FnMut(u32, i32, i32) -> Option<(Move, i32)>,
+) -> Option<IterationResult> {
+    let mut fail_highs = 0;
+    loop {
+        let search_depth = if is_main_worker {
+            depth.saturating_sub(fail_highs).max(1)
+        } else {
+            depth
+        };
+        let (best_move, score) = search_root(search_depth, window.alpha, window.beta)?;
+        if score <= window.alpha {
+            fail_highs = 0;
+            window.widen_low();
+        } else if score >= window.beta {
+            fail_highs += 1;
+            window.widen_high();
+        } else {
+            return Some(IterationResult {
+                best_move,
+                score,
+                depth: search_depth,
+            });
+        }
+    }
+}
+
 impl Searcher<'_> {
-    /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
+    /// 窓を広げながら読み直し、窓内で完了した結果とその探索深さだけを返す。
     ///
     /// `docs/plans/strength-stage6.md`の「aspiration windows」節に従い、
     /// 主・補助ワーカーが共有する。読み直し中の中断も`None`を返す。
@@ -83,20 +121,18 @@ impl Searcher<'_> {
         root_moves: &[Move],
         depth: u32,
         prev: Option<i32>,
-    ) -> Option<(Move, i32)> {
-        let mut window =
+        is_main_worker: bool,
+    ) -> Option<IterationResult> {
+        let window =
             AspirationWindow::initial(depth, prev, aspiration_delta(self.pst.pawn_value()));
-        loop {
-            let (best_move, score) =
-                self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
-            if score <= window.alpha {
-                window.widen_low();
-            } else if score >= window.beta {
-                window.widen_high();
-            } else {
-                return Some((best_move, score));
-            }
-        }
+        search_with_aspiration(
+            depth,
+            window,
+            is_main_worker,
+            |search_depth, alpha, beta| {
+                self.search_root(position, root_moves, search_depth, alpha, beta)
+            },
+        )
     }
 
     /// ルート局面を指定深さで探索し、最善手と評価値を返す。

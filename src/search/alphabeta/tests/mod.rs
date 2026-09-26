@@ -44,7 +44,7 @@ use crate::eval::{Pst, evaluate, weights};
 use crate::search::alphabeta::INFINITY;
 use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
-    auxiliary_depths, run_auxiliary_worker, run_main_worker,
+    auxiliary_depths, run_auxiliary_worker, run_main_iterations, run_main_worker,
 };
 use crate::search::alphabeta::ordering::{
     MoveOrderKey, MovePicker, MovePickerStage, move_order_key, order_captures,
@@ -53,7 +53,10 @@ use crate::search::alphabeta::pruning::{
     capture_is_pruned_by_see, lmr_reduction, lmr_table, null_move_reduction,
 };
 use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
-use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta, grow_aspiration_delta};
+use crate::search::alphabeta::root::{
+    AspirationWindow, IterationResult, aspiration_delta, grow_aspiration_delta,
+    search_with_aspiration,
+};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
     HistoryTable, KILLER_COUNT, PonderIteration, STOP_CHECK_INTERVAL, Searcher, new_searcher,

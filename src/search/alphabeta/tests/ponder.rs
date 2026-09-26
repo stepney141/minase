@@ -249,8 +249,8 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
                 hard: Duration::from_secs(4),
             },
         });
-        let (_, score) = searcher
-            .search_iteration(&position, &legal_moves(&position), 5, Some(20_000))
+        let IterationResult { score, .. } = searcher
+            .search_iteration(&position, &legal_moves(&position), 5, Some(20_000), true)
             .unwrap();
         assert!(score < 20_000 - searcher.pst.pawn_value() / 2);
         let iteration = searcher.ponder_iteration.as_ref().unwrap();
@@ -268,36 +268,36 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             SearchLimits::new(None, None, Some(70), None).unwrap(),
             threads,
         );
-        let mut completed_depth = 0;
-        loop {
+        let mut completed_depth = loop {
             let event = handle
                 .events()
                 .recv_timeout(Duration::from_secs(20))
                 .unwrap();
             match event {
                 SearchEvent::Progress { depth, elapsed, .. } => {
-                    completed_depth = completed_depth.max(depth);
                     if elapsed >= Duration::from_millis(700) {
-                        break;
+                        break depth;
                     }
                 }
                 event => panic!("ponder ended before hit: {event:?}"),
             }
-        }
+        };
         // 次の反復が開始済みになるまで進捗を観測する。新しい完了が来たら
         // その反復から同じ間隔を取り直すため、時計の絶対値は仮定しない。
         loop {
             match handle.events().recv_timeout(Duration::from_millis(15)) {
-                Ok(SearchEvent::Progress { depth, .. }) => {
-                    completed_depth = completed_depth.max(depth)
-                }
+                Ok(SearchEvent::Progress { depth, .. }) => completed_depth = depth,
                 Err(mpsc::RecvTimeoutError::Timeout) => break,
                 event => panic!("unexpected ponder event: {event:?}"),
             }
         }
         let hit = Instant::now();
         handle.ponderhit();
-        let (_, result) = event_reports(drain_raw(&handle));
+        let (progress, result) = event_reports(drain_raw(&handle));
+        // 減深後は過去の最大深さではなく、最後の完了反復を採用候補とする。
+        if let Some(last) = progress.last() {
+            completed_depth = last.0;
+        }
         assert_eq!(result.stop_reason, StopReason::SoftLimit);
         assert!(result.depth >= completed_depth);
         assert!(
@@ -379,7 +379,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
         hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
         assert!(
             searcher
-                .search_iteration(&position, &roots, 1, None)
+                .search_iteration(&position, &roots, 1, None, true)
                 .is_none()
         );
         assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));

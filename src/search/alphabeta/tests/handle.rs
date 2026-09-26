@@ -210,11 +210,10 @@ fn infinite_limits_stop_only_on_external_request() {
 // D7-API　探索呼び出し境界
 // ---------------------------------------------------------------------------
 
-// D7-API-01。search.md「探索骨格」節（深さ1から1ずつ深める）・「スレッド
-// 構成」節・「検証」節（単調な深さ）。ノード数の単調非減少は累積からの
-// 導出であり実装契約としてassertする。
+// D7-API-01、docs/plans/strength-stage12.md「項目1」。目標深さは1ずつ進み、
+// 進捗は確定した深さで反復ごとに通知する。累積ノード数は単調非減少となる。
 #[test]
-fn progress_depths_start_at_one_and_increase_by_one() {
+fn progress_reports_each_iteration_with_its_completed_depth() {
     let midgame = quiet_midgame();
     let handle = start(
         snapshot_for(&midgame),
@@ -229,17 +228,14 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     handle.join().expect("search thread must not panic");
 
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
-    assert_eq!(depths, vec![1, 2, 3, 4, 5, 6]);
-    // strength-stage6.md「窓外れの報告」。深さ5は初期窓を外れるが、
-    // 読み直しは通知されず、窓内で完了した反復が1回だけ通知される。
-    let delta = weights().unwrap().pawn_value() / 2;
-    assert!(progress[4].1 >= progress[3].1 + delta);
+    // 目標5と6はfail-high後に深さ4で確定する。読み直し自体は通知しない。
+    assert_eq!(depths, vec![1, 2, 3, 4, 4, 4]);
     for (_, _, _, _, pv) in &progress {
         assert!(!pv.is_empty());
     }
     let nodes: Vec<u64> = progress.iter().map(|entry| entry.2).collect();
     assert!(nodes.windows(2).all(|pair| pair[0] <= pair[1]));
-    assert_eq!(finished.depth, 6);
+    assert_eq!(finished.depth, 4);
     assert_eq!(finished.stop_reason, StopReason::DepthCompleted);
     assert_eq!(finished.pv.first(), Some(&finished.best_move));
     assert_pv_is_legal(&midgame, &finished.pv);
