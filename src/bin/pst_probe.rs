@@ -15,8 +15,8 @@ use clap::Parser;
 use minase::core::rules::parse_rule_set;
 use minase::eval::Pst;
 use minase::eval::pst::evaluate;
-use minase::eval::training_data::{Outcome, Reader, Record};
 use minase::notation::usi;
+use minase::training::records::{Outcome, Reader, Record};
 use minase::{BOARD_SQUARE_COUNT, Game, MoveGenerator, Rules};
 use serde::Serialize;
 

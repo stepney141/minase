@@ -391,7 +391,7 @@ PST部分の厳密な符号反転は`pst_removal_sign_reversals`へ集計し、1
 診断を確認した後、基準コミットから候補ブランチを作り、`training/pst.bin` を候補の `nets/pst.bin` へコピーする。
 対局時の動作の変更はPSTに限定し、ほかの探索改良は混ぜない。
 
-`src/eval/pst.rs` の `embedded_pst_matches_python_initial_position_evaluation` は、初期局面の評価を固定値で検査している。
+`src/eval/pst/tests.rs` の `embedded_pst_matches_python_initial_position_evaluation` は、初期局面の評価を固定値で検査している。
 その期待値を、Python診断の `representatives` の初期配置の候補評価と学習ログで独立に確認した値へ更新する。
 候補で `cargo test --locked` を実行し、重みと参照値の更新をコミットする。
 ほかのテストが失敗した場合は、期待値を一括変更せず原因を調べる。

@@ -53,15 +53,15 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 
 ## 現行の評価と前提
 
-現行の静的評価は、47種類の駒状態と144升の組に先獅子の対象升を加えた13,680特徴の2端点PSTである（[features.rs](../../src/eval/features.rs) 6行から65行）。
-探索は着手ごとに累算器を差分更新し、評価の呼び出しは累算器の補間だけで済む（[search/mod.rs](../../src/search/mod.rs) 1413行）。
+現行の静的評価は、47種類の駒状態と144升の組に先獅子の対象升を加えた13,680特徴の2端点PSTである（[features.rs](../../src/eval/pst/features.rs)）。
+探索は着手ごとに累算器を差分更新し、評価の呼び出しは累算器の補間だけで済む（[search/alphabeta/negamax.rs](../../src/search/alphabeta/negamax.rs) 112行）。
 したがって、盤面を走査する項を1つでも加えると、評価の費用の性質が「定数時間」から「盤面に依存する時間」へ変わる。
 
 利きを計算する部品は既にある。
 `piece_control_with_occupancy` は駒からの疑似利きを、`attackers_to_by` は升へ届く駒の逆引きを返す（[movegen/mod.rs](../../src/core/movegen/mod.rs) 115行から232行）。
 一方、全升の利き数を局面に保持する表はなく、HaChuの `attacks` 配列ややねうら王の `board_effect` に当たるものは存在しない。
 疑似利きは合法な捕獲の集合ではなく、獅子の捕獲制限は反映しない。
-ただし王駒への利きは、王手放置が合法であるため、疑似利きと捕獲可能性が一致する（search/mod.rs 1971行から1982行）。
+ただし王駒への利きは、王手放置が合法であるため、疑似利きと捕獲可能性が一致する（search/alphabeta/royal.rs 7行から18行）。
 
 学習パイプラインは、特徴番号から引いた表の和をシグモイドへ通す線形モデルである（[train_pst.py](../../tools/train/pst/train_pst.py) 252行から255行）。
 数値特徴や区間表を加えるには、RustとPythonの特徴抽出、重み形式、整数参照評価、診断器の拡張が必要になり、設定の変更だけでは済まない。

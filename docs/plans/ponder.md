@@ -66,7 +66,7 @@ lishogiでの有効化（フェーズ5）は、利用者が2026年9月19日に�
 本マイルストーンでは、次の作業を行う。
 
 - `src/protocol/usi.rs`と`src/protocol/engine.rs`に、予想手つきの`bestmove`、`go ponder`、`ponderhit`、先読み中の`stop`の契約、および外れた先読みからの差分復帰を実装する。
-- `src/search/mod.rs`に、探索を止めずに「時間制限なし」から「的中の時点を起点とする時間予算」へ切り替える仕組みを追加する。
+- `src/search/`に、探索を止めずに「時間制限なし」から「的中の時点を起点とする時間予算」へ切り替える仕組みを追加する。
 - `src/bin/match_runner.rs`とその保存形式に、先読みの対局進行、予想手の記録、的中率の集計、および同時対局数の計算式の変更を追加する。
 - 挙動とその典拠を先に定めてからテストを書く方式（spec-first、[設計書](spec-first-tests.md)）の挙動一覧であるマトリクスの[D6-USI-18](spec-first-tests/matrices/d6-protocol.md)は、現在`go ponder`と`ponderhit`の拒否を定めている。これと対応する台帳を改訂する。
 - 先読みを対象外と書いている設計書（外部対局接続、探索部、Lazy SMP、lishogi Bot接続）と測定の手引き（docs/guides/sprt.md）を、採用時に現行の実装へ合わせて改訂する。
@@ -82,7 +82,7 @@ lishogiでの有効化（フェーズ5）は、利用者が2026年9月19日に�
 
 本書の用語は次のとおりである。
 **時間予算**は1手に使う時間の目安であり、反復（反復深化の1回分、深さを1つ増やした探索）の境界で止まる目安の**soft**と、反復の途中でも打ち切る上限の**hard**の2つからなる。
-時間予算は、`go`の時計引数である残り時間、**加算**（1手ごとに残り時間へ足される時間、`binc`と`winc`）、および**秒読み**（残り時間が尽きた後も1手ごとに使える時間、`byoyomi`）から、`src/search/mod.rs`の関数`clock_budget`が計算する。
+時間予算は、`go`の時計引数である残り時間、**加算**（1手ごとに残り時間へ足される時間、`binc`と`winc`）、および**秒読み**（残り時間が尽きた後も1手ごとに使える時間、`byoyomi`）から、`src/search/alphabeta/time.rs`の関数`clock_budget`が計算する。
 `go`に1手の固定時間`movetime`も付いている場合は、同じファイルの関数`time_budget`が、時計から求めた予算と`movetime`とを比べて、softとhardのそれぞれで小さい方を採る。
 **T**は探索の起点からの経過時間、**h**は探索の起点から的中までの時間であり、先読みでない探索ではh = 0である。
 **消費時間**は、対局ハーネスがエンジンの時計から引く時間をいう。
@@ -97,7 +97,7 @@ USI層の状態機械、`go`のライフサイクル契約、および`go infini
 時間予算の式と反復開始の判定は[棋力向上段階6](strength-stage6.md)と[持ち時間の効率的な使用](time-management-efficiency.md)が定め、本書は式を変えずに起点だけを変える。
 測定手順は[docs/guides/sprt.md](../guides/sprt.md)に、Lishogi-Botの配備は[lishogi Bot接続](lishogi-bot.md)に従う。
 本書が前提とするのは完了済みのマイルストーンだけであり、未完了の段階8から段階10までのどれにも依存しないので、いつ着手してもよい。
-基準は着手時のmasterの先頭とし、`src/search/mod.rs`を同時に変える他のマイルストーンが進行中なら、測定の前に基準をそのマイルストーンの採用版へ付け替える。
+基準は着手時のmasterの先頭とし、`src/search/`を同時に変える他のマイルストーンが進行中なら、測定の前に基準をそのマイルストーンの採用版へ付け替える。
 従う教訓は、[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../lessons/compare-total-time-usage-before-sprt.md)、[採否の判定条件は候補の式にも事前に当てて試算する](../lessons/simulate-acceptance-criteria-on-the-candidate.md)、[手数に比例する固定費は超長手数の対局で時間切れを起こす](../lessons/per-move-overhead-grows-with-game-length.md)、[打ち切り上限は残り時間の割合でも抑える](../lessons/cap-hard-limit-by-remaining-fraction.md)、[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)、[並行処理の回帰テストは連続実行で確認する](../lessons/repeat-concurrency-regression-tests.md)、および[ブリッジ経由のエンジン起動は設定どおりに起動されることを実際に確かめる](../lessons/verify-bridge-launch-path.md)である。
 
 ## 設計判断

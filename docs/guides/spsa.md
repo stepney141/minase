@@ -17,7 +17,7 @@
 
 調整対象は、評価関数と探索の構成が確定したコミットとする。
 評価関数が変わると探索係数の最適値も動くので、採否の測定が進行中の構成を調整しない。
-係数の表は `src/search/params.rs` にあり、表の既定値が調整の開始値になる。
+係数の表は `src/search/alphabeta/params.rs` にあり、表の既定値が調整の開始値になる。
 
 セッションは、runnerのコミットを固定したworktreeから実行する（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)）。
 `spsa_runner` は、再開時にrunnerのバイナリのSHA-256が保存済みの値と一致することを検査する。
@@ -108,12 +108,12 @@ target/release/spsa_runner \
 
 ## 7. 値の採否を判定する
 
-1. 調整対象のコミットからブランチを切り、`apply` サブコマンドで最終値を `src/search/params.rs` の表の既定値へ書き込む（設計は [plans/spsa-apply.md](../plans/spsa-apply.md)）。`apply` は、実行ディレクトリの保存記録に再開時と同じ検査をかけて最終値を復元し、`f64::round` で丸めた整数で表の既定値だけを書き換える。実行中のセッションと未完了のセッションは拒否し、表の係数の名前がセッションと合わない場合、セッションの範囲が表の範囲に収まらない場合、および表の既定値がセッションの開始値と一致しない場合も、何も書かずにエラーで終了する。
+1. 調整対象のコミットからブランチを切り、`apply` サブコマンドで最終値を `src/search/alphabeta/params.rs` の表の既定値へ書き込む（設計は [plans/spsa-apply.md](../plans/spsa-apply.md)）。`apply` は、実行ディレクトリの保存記録に再開時と同じ検査をかけて最終値を復元し、`f64::round` で丸めた整数で表の既定値だけを書き換える。実行中のセッションと未完了のセッションは拒否し、表の係数の名前がセッションと合わない場合、セッションの範囲が表の範囲に収まらない場合、および表の既定値がセッションの開始値と一致しない場合も、何も書かずにエラーで終了する。
 
    ```console
    git switch -c <候補ブランチ> <調整対象コミット>
    target/release/spsa_runner apply \
-     --run-dir data/spsa/<セッション名> --source src/search/params.rs
+     --run-dir data/spsa/<セッション名> --source src/search/alphabeta/params.rs
    ```
 
    `git diff` で既定値だけが変わったことを確かめ、セッションの実行ディレクトリ名と調整対象のコミットを書いたメッセージで1つのコミットにする。続いて次のコマンドで候補の調整用ビルドの宣言を出力し、既定値の欄が `apply` の出力した整数と一致することを確かめる。

@@ -34,14 +34,14 @@ minaseの探索係数は、各段階の設計書が診断から1つずつ決め�
 
 時間管理の係数も対象に含める。
 2026年9月21日の利用者の決定による。
-`src/search/mod.rs`の`clock_budget`のコメントも、係数の変更は自己対局で採否を判定すると定めている。
+`src/search/alphabeta/time.rs`の`clock_budget`のコメントも、係数の変更は自己対局で採否を判定すると定めている。
 
 ## 適用範囲
 
 本マイルストーンでは、次の作業を行う。
 
-- `src/search/params.rs`を新設し、調整対象の係数を1つの表で定義するマクロと、cargo feature `tuning`を追加する。
-- `src/search/mod.rs`と`src/search/correction.rs`の対象係数を、表が生成するアクセサ関数の呼び出しへ置き換える。`src/eval/pst.rs`がPSTの復号時に計算しているdelta pruningの余裕値は、探索側で計算する形へ移す。
+- `src/search/alphabeta/params.rs`を新設し、調整対象の係数を1つの表で定義するマクロと、cargo feature `tuning`を追加する。
+- `src/search/alphabeta/`と`src/search/alphabeta/correction.rs`の対象係数を、表が生成するアクセサ関数の呼び出しへ置き換える。`src/eval/pst/format.rs`がPSTの復号時に計算しているdelta pruningの余裕値は、探索側で計算する形へ移す。
 - `src/protocol/usi.rs`に、調整用ビルドでだけ働く調整用オプションの宣言と受理を追加する。
 - `src/bin/match_runner.rs`の対局実行部を、ライブラリのモジュール`harness`へ移す。別のbinから使うので`pub`とし、`#[doc(hidden)]`を付けて公開APIの文書には載せない。
 - 新しいコマンド`src/bin/spsa_runner.rs`を追加する。
@@ -91,7 +91,7 @@ cargo featureは、Rustのビルド時にコードの一部を有効または無
 
 | 項目 | 決定 |
 |---|---|
-| 係数の公開方式 | 係数を`src/search/params.rs`の1つの表に定義し、マクロが係数ごとにアクセサ関数を2通り生成する。通常ビルドの関数は既定値のリテラルを返すだけの`#[inline]`関数であり、調整用ビルドの関数は`static`な`AtomicI32`を読む。Rust製チェスエンジンのHobbesとakimboがこの形を採る。`unsafe`を使わないので、`Cargo.toml`の`unsafe_code = "forbid"`と両立する。Recklessは調整用ビルドで`static mut`を使うので採らない。 |
+| 係数の公開方式 | 係数を`src/search/alphabeta/params.rs`の1つの表に定義し、マクロが係数ごとにアクセサ関数を2通り生成する。通常ビルドの関数は既定値のリテラルを返すだけの`#[inline]`関数であり、調整用ビルドの関数は`static`な`AtomicI32`を読む。Rust製チェスエンジンのHobbesとakimboがこの形を採る。`unsafe`を使わないので、`Cargo.toml`の`unsafe_code = "forbid"`と両立する。Recklessは調整用ビルドで`static mut`を使うので採らない。 |
 | 棄却する代案：ソースへの一時パッチ | やねうら王の`tune.py`は、調整の開始時にC++ソースの定数を変数とUSIオプションへ書き換え、終了時に定数へ書き戻す。目的は通常版のソースを調整用の変数で汚さないことである。Rustではマクロとfeatureで同じ目的を達成できるので、周辺のコードを照合してパッチを当てる道具を別に保守する理由がない。 |
 | 棄却する代案：常時USIオプション | dlshogiは探索係数を平時からUSIオプションとして公開し、SPSAのスクリプトは`setoption`を送るだけで済む。Viridithasも実行時の構造体に係数を常時保持する。minaseでこの形を採ると、通常ビルドの探索の内側に実行時の読み出しが常駐し、lishogiのBotやGUIに20個を超える調整用オプションが見える。通常ビルドは定数のままとする。 |
 | 棄却する代案：外部の調整サーバー | fishtestとOpenBenchはチェス用の対局管理ツールで対局を実行するので、中将棋の規則を判定するminaseの審判層を使えない。更新則だけを借りる。 |
@@ -233,7 +233,7 @@ cargo run --release --bin spsa_runner -- \
 
 ### フェーズ1　係数の表とマクロ
 
-`src/search/params.rs`、feature `tuning`、および調整用オプションを実装し、対象の係数をアクセサ関数へ置き換える。
+`src/search/alphabeta/params.rs`、feature `tuning`、および調整用オプションを実装し、対象の係数をアクセサ関数へ置き換える。
 完了条件は次のとおりである。
 通常ビルドと、既定値のままの調整用ビルドの両方で、深さ6のbenchの局面ごとのノード数、最善手、および評価値が変更前と一致する。
 benchの既定の深さ3では、深さ5から働くaspiration windowの書き換えを検査できないので、深さ6を使う。

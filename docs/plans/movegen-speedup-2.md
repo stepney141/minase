@@ -37,9 +37,9 @@
 - `src/core/bitboard.rs`は144升の集合を3個の64ビット整数で表し、段階4の走り計算の書き換えでだけ対象になる。
 - `src/core/position.rs`は着手の適用と復元、駒種別のビットボード、およびzobristハッシュを保持する。
 - `src/core/rules.rs`は獅子捕獲後の足と成りを判定する。
-- `src/search/mod.rs`の静止探索、主探索の手選択器、およびノード計数を対象とする。
-- `src/search/see.rs`は交換列を評価する。
-- `src/eval/pst.rs`は駒位置評価の累算値を差分更新する。
+- `src/search/alphabeta/`の静止探索、主探索の手選択器、およびノード計数を対象とする。
+- `src/search/alphabeta/see.rs`は交換列を評価する。
+- `src/eval/pst/accumulator.rs`は駒位置評価の累算値を差分更新する。
 - `Cargo.toml`のreleaseプロファイルを対象とする。
 
 本書の用語は第1期の設計書の定義に従う。
@@ -55,7 +55,7 @@
 ## 依存関係
 
 利き逆引きの契約は[棋力向上段階3](strength-stage3.md)が、捕獲専用生成の契約は[棋力向上段階1](strength-stage1.md)が定め、探索専用生成の残存手順とSEEの判定契約は[第1期の設計書](movegen-speedup.md)が定める。
-本マイルストーンはこれらの契約を変えず、契約テスト（`src/core/movegen/tests/`、`src/core/attacks/tables.rs`のテスト、`src/search/search_captures_tests.rs`、`src/search/see.rs`のテスト）を各段階の検証に使う。
+本マイルストーンはこれらの契約を変えず、契約テスト（`src/core/movegen/tests/`、`src/core/attacks/tables.rs`のテスト、`src/search/alphabeta/tests/captures.rs`、`src/search/alphabeta/see.rs`のテスト）を各段階の検証に使う。
 計測区間は[大容量メモリの確保を速度指標に含めない方針](../lessons/bench-allocation-outside-timing.md)に従い、診断の件数は[独立した参照値と照合する規則](../lessons/compare-diagnostics-with-independent-reference.md)に従う。
 段階ごとの固定費は[段階生成の固定費の教訓](../lessons/staged-generation-fixed-cost.md)のとおり包含時間で測る。
 最終のSPRTは[SPRTの手引き](../guides/sprt.md)に従う。
@@ -193,7 +193,7 @@ SEEの早期終了の件数は、条件を満たす呼出しで参照実装の�
 固定利きだけの駒では走りの検査自体を省き、走りを持つ駒でも固定利きと対象升の積を先に取る。
 見込みは、走り計算の自己時間のうち静止探索の初期化に属する約11ポイントに、段階1で数える「対象升と交わらない方向」の割合を掛け、選別の費用を差し引いた値とする。
 参考として、届かない駒に属する走り計算の割合77.7%をそのまま当てはめると約8.6ポイントになるが、これは方向単位の値ではないので見込みには使わない。
-検証は、`src/search/search_captures_tests.rs`の残存手順一致、`src/core/movegen/tests/properties.rs`の捕獲生成一致、および局面別一致とNPSによる。
+検証は、`src/search/alphabeta/tests/captures.rs`の残存手順一致、`src/core/movegen/tests/properties.rs`の捕獲生成一致、および局面別一致とNPSによる。
 結果は[段階2のbench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)にある。
 
 ### 段階3　対象升が少ないノードの逆引き生成
@@ -226,7 +226,7 @@ SEEの逆引きの固定利きも本段階に含める。
 在席マスク（各対局者について盤上に存在する駒種の集合）は、近傍走査の採用後に駒種の走査が残る箇所（特殊駒3種の検査など）を測り、維持費（`put_piece`と`remove_piece`での更新）を含めて増分がある場合にだけ加える。
 `lion_has_foot_after_capture`が使う`square_is_controlled`は、獅子を取った駒の升に対して、取られた側（獅子の所有者）の全駒の利きを仮想盤面で順方向に計算しているので、仮想盤面の占有と取られた側を与えた`attackers_to_by`へ置き換える。
 見込みは、逆引きの自己時間9.1ポイントのうち固定利きの逆引きに当たる部分の半分、探索時間の1%から3%である。
-検証は`src/core/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`src/search/see.rs`の参照実装との枝刈り判断の一致、および獅子規則のテストによる。
+検証は`src/core/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`src/search/alphabeta/see.rs`の参照実装との枝刈り判断の一致、および獅子規則のテストによる。
 変種ごとの測定と採否は[段階4のbench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)にあり、減算方式は親比1.0904倍、近傍走査と足判定の逆引き化は1.0507倍で採用し、減少方向の`leading_zeros`と番兵表への書き換え（1.0039倍）と在席マスク（0.9952倍）は親の幅内で採用しなかった。
 
 ### 段階5　静止探索の候補処理の簡素化

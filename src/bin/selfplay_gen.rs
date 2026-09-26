@@ -15,15 +15,15 @@ use std::time::Instant;
 use clap::{Parser, Subcommand};
 use minase::core::rules::parse_rule_set;
 use minase::eval::Pst;
-use minase::eval::provenance::{
-    GameOrigin, Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher,
-};
-use minase::eval::rescore::{self, RescoreEntry, RescoreHeader, RescoreReader, RescoreStatus};
-use minase::eval::training_data::{
-    Error as TrainingDataError, Header, Outcome, Reader, Record, Writer, best_move_is_tactical,
-};
 use minase::rng::{XorShift64, derive_seed};
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
+use minase::training::provenance::{
+    GameOrigin, Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher,
+};
+use minase::training::records::{
+    Error as TrainingDataError, Header, Outcome, Reader, Record, Writer, best_move_is_tactical,
+};
+use minase::training::rescore::{self, RescoreEntry, RescoreHeader, RescoreReader, RescoreStatus};
 use minase::{
     Color, DrawReason, Game, GameResult, GameStatus, MoveGenerator, Position, Rules, WinReason,
     to_sfen,
@@ -1217,9 +1217,9 @@ fn inspect(arguments: &InspectArguments) -> io::Result<()> {
     println!("magic: MNSD");
     println!(
         "format_version: {}",
-        minase::eval::training_data::FORMAT_VERSION
+        minase::training::records::FORMAT_VERSION
     );
-    println!("record_length: {}", minase::eval::training_data::RECORD_LEN);
+    println!("record_length: {}", minase::training::records::RECORD_LEN);
     println!("rule_set: {}", header.rule_set());
     println!("generation_commit: {}", header.generation_commit());
     println!("network_checksum: {}", hex(header.network_checksum()));

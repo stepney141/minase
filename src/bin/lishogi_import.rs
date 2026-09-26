@@ -14,13 +14,13 @@ use std::path::{Path, PathBuf};
 use std::thread;
 
 use clap::{Parser, Subcommand};
-use minase::eval::provenance::{GameOrigin, ResultOrigin, SearchCondition, StartOrigin};
-use minase::eval::training_data::{Header, Outcome, Record, Writer, best_move_is_tactical};
 use minase::notation::{
     sfen::{SetupPosition, to_extended_sfen},
     usi,
 };
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
+use minase::training::provenance::{GameOrigin, ResultOrigin, SearchCondition, StartOrigin};
+use minase::training::records::{Header, Outcome, Record, Writer, best_move_is_tactical};
 use minase::{Color, Game, GameResult, MoveGenerator, Position, Rules};
 use selfplay::{CompletedGame, CompletedRecord, Statistics, data_error};
 use serde::{Deserialize, Serialize};

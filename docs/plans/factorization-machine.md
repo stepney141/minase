@@ -58,7 +58,7 @@ FMは利きや可動性を入力に持たないので、これらの知識の代
 ## 依存関係
 
 [評価関数](evaluation.md)、[評価関数の世代反復](evaluation-gen1.md)、および[PSTの序中盤と終盤の補間](tapered-pst.md)が定める特徴、教師値、検証分割、およびMNPTバージョン2を前提とする。
-特徴番号は`src/eval/features.rs`と`tools/train/pst/features.py`の13,680特徴（47駒状態×2陣営×144升と先獅子対象升144個）をそのまま使う。
+特徴番号は`src/eval/pst/features.rs`と`tools/train/pst/features.py`の13,680特徴（47駒状態×2陣営×144升と先獅子対象升144個）をそのまま使う。
 探索との接続は、[棋力向上段階1](strength-stage1.md)で採用した評価値の差分更新（`PstAccumulator`と`update_accumulator_after_move`）を拡張する。
 学習には[PSTの学習手順](../guides/pst-training.md)のワークフローを使い、生成シードを空配列にして既存の6ファイル（`data/gen0.bin`と`data/gen1-s{100000,200000,300000,400000,500000}.bin`、重複を除いた11,062,811局面）だけで学習する。
 GPU学習はGPUを利用できるホストで実行し、codexへは委任しない（[GPUを要する学習はcodexへ委任しない](../lessons/run-gpu-training-outside-codex-sandbox.md)）。

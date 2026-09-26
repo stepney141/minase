@@ -10,7 +10,7 @@ compile_error!("the transposition table requires 64-bit atomic integers");
 use crate::Square;
 use crate::core::mv::Move;
 
-use super::{MATE_THRESHOLD, MAX_PLY};
+use crate::search::{MATE_THRESHOLD, MAX_PLY};
 
 /// 置換表の既定容量(MB)。
 pub const DEFAULT_SIZE_MB: usize = 256;

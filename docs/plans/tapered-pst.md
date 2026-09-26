@@ -162,7 +162,7 @@ E_{\mathrm{int}}=
 
 公開の `evaluate(pst, position)` と探索用駒価値の取得関数は、引数を変更しない。
 全再計算は盤面から独立に集計し、差分更新の照合にも使う。
-変更の中心は [PST評価](../../src/eval/pst.rs)と[学習器](../../tools/train/pst/train_pst.py)であり、補間処理を探索の各呼出箇所へ分散させない。
+変更の中心は [PST評価](../../src/eval/pst/)と[学習器](../../tools/train/pst/train_pst.py)であり、補間処理を探索の各呼出箇所へ分散させない。
 
 ### MNPT形式を更新する
 
