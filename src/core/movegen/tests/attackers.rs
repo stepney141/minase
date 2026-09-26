@@ -5,7 +5,7 @@
 
 use crate::core::board::Bitboard;
 use crate::core::board::Square;
-use crate::core::movegen::piece_control_with_occupancy;
+use crate::core::movegen::control::piece_control_with_occupancy;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;

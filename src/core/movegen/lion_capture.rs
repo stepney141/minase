@@ -1,6 +1,7 @@
 //! 獅子の捕獲制限と先獅子・付け喰いの判定。
 
-use super::{VirtualBoard, piece_control_with_occupancy};
+use super::control::piece_control_with_occupancy;
+use super::virtual_board::VirtualBoard;
 use crate::core::board::Square;
 use crate::core::mv::Move;
 use crate::core::piece::{PieceCode, PieceKind};

@@ -2,9 +2,12 @@
 
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use super::*;
+use crate::core::board::Bitboard;
+use crate::core::movegen::MoveGenerator;
+use crate::core::movegen::control::piece_control_without_special;
 use crate::core::movegen::tests::{TWO_STAGE_KINDS, capture_test_positions};
-use crate::core::rules::{LionRule, PromotionRule, Rules};
+use crate::core::position::Position;
+use crate::core::rules::{LionRule, MoveRules, PromotionRule, Rules};
 use crate::rng::XorShift64;
 
 /// 空集合、王駒、全相手駒、各1升、および固定シードの部分集合で利きを照合する。
