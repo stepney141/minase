@@ -1,131 +1,51 @@
-//! 保存済み対局から時間制御校正の指標を再計算する。
+//! 保存済み対局から時間制御校正の指標を集計する。
 
-use std::fs::{File, OpenOptions};
-use std::io;
-use std::path::{Path, PathBuf};
-
-use clap::Parser;
+use crate::run_dir::{FORMAT_VERSION, Manifest, Mode, RunSummary, SearchLimit, read_json};
 use fs2::FileExt;
 use minase::harness::{FailureKind, GameRecord, PairRecord, StoredColor, TerminationRecord};
 use minase::stats::estimate_elo;
-use serde::{Deserialize, Serialize};
-
-/// 集計対象の実行記録形式。
-const FORMAT_VERSION: u32 = 4;
-
-/// 校正指標集計器のコマンドライン引数。
-#[derive(Parser)]
-#[command(name = "match_report")]
-struct Arguments {
-    /// 集計するmatch_runner実行ディレクトリ。
-    #[arg(long)]
-    run_dir: PathBuf,
-    /// 第1、第2主指標の比較基準とする実行ディレクトリ。
-    #[arg(long)]
-    compare_to: Option<PathBuf>,
-}
-
-/// 実行条件から集計に必要な部分。
-#[derive(Deserialize)]
-struct Manifest {
-    candidate: EngineRecord,
-    baseline: EngineRecord,
-    mode: Mode,
-    concurrency: usize,
-    engine_threads: ThreadCounts,
-    cpu: CpuRecord,
-}
-
-/// 集計対象エンジンの探索制限。
-#[derive(Deserialize)]
-struct EngineRecord {
-    limit: SearchLimit,
-}
-
-/// 校正で許可する固定ペア数Eloモード。
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum Mode {
-    Elo,
-    Gsprt,
-}
-
-/// 保存された探索制限。
-#[derive(Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum SearchLimit {
-    Fixed {
-        depth: Option<u32>,
-        nodes: Option<u64>,
-    },
-    Time {
-        base_ms: u64,
-        increment_ms: u64,
-        byoyomi_ms: u64,
-    },
-}
-
-/// 両エンジンの探索ワーカー数。
-#[derive(Deserialize)]
-struct ThreadCounts {
-    candidate: Option<u32>,
-    baseline: Option<u32>,
-}
-
-/// 測定機の資源量。
-#[derive(Deserialize)]
-struct CpuRecord {
-    physical_cores: Option<usize>,
-    physical_memory_bytes: Option<u64>,
-}
-
-/// 再開を含む有効実行時間。
-#[derive(Deserialize)]
-struct RunSummary {
-    active_wall_time_ns: u64,
-    interrupted: bool,
-    invocation_active: bool,
-}
+use serde::Serialize;
+use std::{fs::OpenOptions, io, path::Path};
 
 /// 主指標と監査用の補助指標。
 #[derive(Serialize)]
-struct Report {
-    pentanomial: [u64; 5],
-    valid_pairs: u64,
-    discarded_pairs: u64,
-    normalized_mean_score: f64,
-    normalized_pair_variance: f64,
-    standard_error: f64,
-    elo: String,
-    elo_ci95: [String; 2],
-    total_cpu_time_ns: Option<u64>,
-    average_cpu_time_per_valid_pair_ns: Option<f64>,
-    variance_time_product: Option<f64>,
-    evidence_per_cpu_second: Option<f64>,
-    active_wall_time_ns: u64,
-    valid_pairs_per_hour: f64,
-    game_wall_time_median_ns: u64,
-    game_wall_time_p95_ns: u64,
-    cutoffs: u64,
-    engine_failures: FailureCounts,
-    missing_resource_observations: MissingResourceCounts,
-    maximum_game_peak_rss_bytes: Option<u64>,
-    conservative_concurrent_peak_rss_bytes: Option<u64>,
-    physical_memory_bytes: u64,
-    conservative_memory_fraction: Option<f64>,
-    physical_cores: usize,
-    missing_engine_threads: MissingEngineThreads,
-    maximum_engine_threads: Option<u32>,
-    leaves_one_physical_core: Option<bool>,
+pub(super) struct Report {
+    pub(super) pentanomial: [u64; 5],
+    pub(super) valid_pairs: u64,
+    pub(super) discarded_pairs: u64,
+    pub(super) normalized_mean_score: f64,
+    pub(super) normalized_pair_variance: f64,
+    pub(super) standard_error: f64,
+    pub(super) elo: String,
+    pub(super) elo_ci95: [String; 2],
+    pub(super) total_cpu_time_ns: Option<u64>,
+    pub(super) average_cpu_time_per_valid_pair_ns: Option<f64>,
+    pub(super) variance_time_product: Option<f64>,
+    pub(super) evidence_per_cpu_second: Option<f64>,
+    pub(super) active_wall_time_ns: u64,
+    pub(super) valid_pairs_per_hour: f64,
+    pub(super) game_wall_time_median_ns: u64,
+    pub(super) game_wall_time_p95_ns: u64,
+    pub(super) cutoffs: u64,
+    pub(super) engine_failures: FailureCounts,
+    pub(super) missing_resource_observations: MissingResourceCounts,
+    pub(super) maximum_game_peak_rss_bytes: Option<u64>,
+    pub(super) conservative_concurrent_peak_rss_bytes: Option<u64>,
+    pub(super) physical_memory_bytes: u64,
+    pub(super) conservative_memory_fraction: Option<f64>,
+    pub(super) physical_cores: usize,
+    pub(super) missing_engine_threads: MissingEngineThreads,
+    pub(super) maximum_engine_threads: Option<u32>,
+    pub(super) leaves_one_physical_core: Option<bool>,
     #[serde(skip)]
-    comparison_manifest: serde_json::Value,
+    pub(super) comparison_manifest: serde_json::Value,
     #[serde(skip)]
-    pair_numbers: Vec<u64>,
+    pub(super) pair_numbers: Vec<u64>,
 }
 
 /// 異常理由別の件数。
 #[derive(Default, Serialize)]
-struct FailureCounts {
+pub(super) struct FailureCounts {
     illegal_moves: u64,
     crashes: u64,
     timeouts: u64,
@@ -135,7 +55,7 @@ struct FailureCounts {
 
 /// エンジン別、資源別の欠測数。
 #[derive(Default, Serialize)]
-struct MissingResourceCounts {
+pub(super) struct MissingResourceCounts {
     candidate_cpu_time: u64,
     baseline_cpu_time: u64,
     candidate_peak_rss: u64,
@@ -144,26 +64,9 @@ struct MissingResourceCounts {
 
 /// エンジン別の探索ワーカー数の欠測状態。
 #[derive(Serialize)]
-struct MissingEngineThreads {
-    candidate: bool,
-    baseline: bool,
-}
-
-/// 現行条件に対する候補条件の指標比。
-#[derive(Serialize)]
-struct Comparison {
-    variance_time_reduction_percent: f64,
-    evidence_per_cpu_ratio: f64,
-}
-
-/// JSONファイルを型付きで読む。
-fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> io::Result<T> {
-    serde_json::from_reader(File::open(path)?).map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid JSON in {}: {error}", path.display()),
-        )
-    })
+pub(super) struct MissingEngineThreads {
+    pub(super) candidate: bool,
+    pub(super) baseline: bool,
 }
 
 /// 最近傍順位によるパーセンタイルを返す。
@@ -226,7 +129,7 @@ fn candidate_half_points(game: &GameRecord) -> Option<u8> {
 }
 
 /// 1つの実行ディレクトリを校正指標へ集計する。
-fn report(run_dir: &Path) -> io::Result<Report> {
+pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
     let lock = OpenOptions::new()
         .read(true)
         .write(true)
@@ -572,90 +475,14 @@ fn report(run_dir: &Path) -> io::Result<Report> {
     })
 }
 
-/// 2条件の主指標を比較する。
-fn compare(candidate: &Report, current: &Report) -> io::Result<Comparison> {
-    if candidate.comparison_manifest != current.comparison_manifest {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "comparison manifests differ outside the time control",
-        ));
-    }
-    if candidate.pair_numbers != current.pair_numbers {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "comparison runs do not contain the same pair numbers",
-        ));
-    }
-    let candidate_variance_time_product = candidate.variance_time_product.ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "candidate variance-time product is unavailable",
-        )
-    })?;
-    let current_variance_time_product = current.variance_time_product.ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "current variance-time product is unavailable",
-        )
-    })?;
-    let candidate_evidence_per_cpu_second = candidate.evidence_per_cpu_second.ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "candidate evidence per CPU second is unavailable",
-        )
-    })?;
-    let current_evidence_per_cpu_second = current.evidence_per_cpu_second.ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "current evidence per CPU second is unavailable",
-        )
-    })?;
-    if current_variance_time_product == 0.0 || current_evidence_per_cpu_second == 0.0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "current condition has an indeterminate metric ratio",
-        ));
-    }
-    Ok(Comparison {
-        variance_time_reduction_percent: 100.0
-            * (1.0 - candidate_variance_time_product / current_variance_time_product),
-        evidence_per_cpu_ratio: candidate_evidence_per_cpu_second / current_evidence_per_cpu_second,
-    })
-}
-
-fn main() {
-    let arguments = Arguments::parse();
-    let run_report = report(&arguments.run_dir).unwrap_or_else(|error| {
-        eprintln!("failed to report {}: {error}", arguments.run_dir.display());
-        std::process::exit(1);
-    });
-    let comparison = arguments.compare_to.as_deref().map(|path| {
-        let current = report(path).unwrap_or_else(|error| {
-            eprintln!(
-                "failed to report comparison run {}: {error}",
-                path.display()
-            );
-            std::process::exit(1);
-        });
-        compare(&run_report, &current).unwrap_or_else(|error| {
-            eprintln!("failed to compare calibration metrics: {error}");
-            std::process::exit(1);
-        })
-    });
-    let output = serde_json::json!({
-        "run": run_report,
-        "comparison_to_current": comparison,
-    });
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&output).expect("finite report values serialize as JSON")
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use crate::compare::compare;
+    use std::{
+        fs::File,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn percentile_and_median_follow_fixed_rank_rules() {
@@ -669,51 +496,6 @@ mod tests {
             ),
             94
         );
-    }
-
-    #[test]
-    fn comparison_accepts_exact_threshold_boundaries() {
-        let make = |m1, m2| Report {
-            pentanomial: [0; 5],
-            valid_pairs: 1,
-            discarded_pairs: 0,
-            normalized_mean_score: 0.5,
-            normalized_pair_variance: 0.1,
-            standard_error: 0.1,
-            elo: "0".to_owned(),
-            elo_ci95: ["-1".to_owned(), "1".to_owned()],
-            total_cpu_time_ns: Some(1),
-            average_cpu_time_per_valid_pair_ns: Some(1.0),
-            variance_time_product: Some(m1),
-            evidence_per_cpu_second: Some(m2),
-            active_wall_time_ns: 1,
-            valid_pairs_per_hour: 1.0,
-            game_wall_time_median_ns: 1,
-            game_wall_time_p95_ns: 1,
-            cutoffs: 0,
-            engine_failures: FailureCounts::default(),
-            missing_resource_observations: MissingResourceCounts::default(),
-            maximum_game_peak_rss_bytes: Some(1),
-            conservative_concurrent_peak_rss_bytes: Some(1),
-            physical_memory_bytes: 10,
-            conservative_memory_fraction: Some(0.1),
-            physical_cores: 2,
-            missing_engine_threads: MissingEngineThreads {
-                candidate: false,
-                baseline: false,
-            },
-            maximum_engine_threads: Some(1),
-            leaves_one_physical_core: Some(true),
-            comparison_manifest: serde_json::json!({"experiment": 1}),
-            pair_numbers: vec![1],
-        };
-        let current = make(10.0, 4.0);
-        let mut candidate = make(7.0, 4.0);
-        let comparison = compare(&candidate, &current).unwrap();
-        assert!((comparison.variance_time_reduction_percent - 30.0).abs() < 1e-12);
-        assert_eq!(comparison.evidence_per_cpu_ratio, 1.0);
-        candidate.comparison_manifest = serde_json::json!({"experiment": 2});
-        assert!(compare(&candidate, &current).is_err());
     }
 
     #[test]
@@ -975,6 +757,7 @@ mod tests {
         assert!(report(&run_dir).is_err());
         std::fs::remove_dir_all(run_dir).unwrap();
     }
+
     // D8-HARN-26（ponder.md保存形式）。旧版を互換解釈せず版の明示エラーにする。
     #[test]
     fn report_rejects_version_three_before_decoding_new_fields() {
