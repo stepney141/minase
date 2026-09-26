@@ -18,7 +18,8 @@
 フェーズ1の診断（[strength-stage12-activation-diag](../measurements/strength-stage12-activation-diag.md)）を完了した。
 項目1、2、3、4、5、7、8は発動率の基準5%を満たし、項目6は予測誤差が悪化したので見送った。
 項目4の手数の上限は`N=1`、項目5で持ち越す表はbutterfly historyだけとした。
-次の一手は、フェーズ2として項目1を実装し、STCにかけることである。
+フェーズ2の項目1を実装し、煙試験（[strength-stage12-aspiration-smoke](../measurements/strength-stage12-aspiration-smoke.md)）で時間切れと異常が0件であることを確かめた。
+次の一手は、項目1のSTCを実行することである。
 
 ## 目的
 
