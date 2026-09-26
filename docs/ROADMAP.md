@@ -58,8 +58,8 @@
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了 | 2026年9月25日 |
 | SPSAの摂動幅と学習率の較正 | [plans/spsa-gain-calibration.md](plans/spsa-gain-calibration.md) | 完了 | 2026年9月26日 |
 | 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 完了 | 2026年9月26日 |
-| 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 起案 | |
-| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 待機中 | ― |
+| 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 完了 | 2026年9月26日 |
+| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 起案 | |
 | Descentによる評価関数の強化学習 | [plans/descent.md](plans/descent.md) | 起案 | |
 
 ## 現在地
@@ -70,10 +70,13 @@ SPSAの摂動幅と学習率の較正は2026年9月26日に完了し、`spsa_run
 この設定による2回目の調整で得た22係数は[STC](measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、採用した。
 探索部の次の対象は[棋力向上段階12](plans/strength-stage12.md)である。
 評価関数では、[教師の混合比](plans/teacher-mixing-ratio.md)のλ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となり、2026年9月26日に不採用で完了した。
-評価関数の次の対象は、従来の採用PSTを基点とする[探索局面を用いた学習](plans/search-aware-evaluation.md)であり、[相対2駒評価](plans/relative-pair-eval.md)は教師診断と残存誤りの確認待ちである。
+続く[探索局面を用いた学習](plans/search-aware-evaluation.md)も、同日に不採用で完了した。
+探索局面を半数混ぜて学んだ候補Bは対照Aに対して、深い教師で通常局面だけを学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
+採用PSTは従来の重みのままである。
+評価関数で次に着手できるのは、[相対2駒評価](plans/relative-pair-eval.md)の準備段階（駒の配置に依存する残存誤りの確認）と、[Descentによる強化学習](plans/descent.md)である。
 実施順序と、各判定からの進み先は次節に定める。
-[Descentによる強化学習](plans/descent.md)は2026年9月26日に起案し、同日に利用者の決定で、採用PSTを初期値とし、対照を置かず、同時16対局で48時間を予算とすることを確定した。
-着手は探索局面の計画の完了後であり、次節の表にはまだ含めない。
+Descentによる強化学習は2026年9月26日に起案し、同日に利用者の決定で、採用PSTを初期値とし、対照を置かず、同時16対局で48時間を予算とすることを確定した。
+着手の条件だった探索局面の計画の完了は満たされたが、次節の表にはまだ含めない。
 
 ## 評価関数の進め方
 
@@ -83,9 +86,9 @@ SPSAの摂動幅と学習率の較正は2026年9月26日に完了し、`spsa_run
 
 | 順序 | 計画と段階 | 開始条件と次の判断 |
 |---|---|---|
-| 1 | [混合比の計画](plans/teacher-mixing-ratio.md)で、既存データによるλ=1のPST再学習を判定する。 | 準備開始時の採用版を基点にする。採否にかかわらず、その時点の採用PSTを持って2へ進む。 |
-| 2 | [探索局面の計画](plans/search-aware-evaluation.md)のフェーズ1と2で、深い教師を診断する。 | 1の確定後に教師を固定する。通過すれば3へ進み、不合格なら今回の教師構成を見送る。 |
-| 3 | 同計画のフェーズ3から5で、通常局面だけのAと、半数を探索局面へ置き換えたBを比較する。 | 事前登録した比較を順に測り、採用PSTと残存誤りの記録を4の準備へ渡す。 |
+| 1 | [混合比の計画](plans/teacher-mixing-ratio.md)で、既存データによるλ=1のPST再学習を判定する。 | 準備開始時の採用版を基点にする。採否にかかわらず、その時点の採用PSTを持って2へ進む。2026年9月26日に不採用で完了した。 |
+| 2 | [探索局面の計画](plans/search-aware-evaluation.md)のフェーズ1と2で、深い教師を診断する。 | 1の確定後に教師を固定する。通過すれば3へ進み、不合格なら今回の教師構成を見送る。2026年9月26日に通過した。 |
+| 3 | 同計画のフェーズ3から5で、通常局面だけのAと、半数を探索局面へ置き換えたBを比較する。 | 事前登録した比較を順に測り、採用PSTと残存誤りの記録を4の準備へ渡す。2026年9月26日に、学習前に訓練の受理条件を総更新回数の下限へ改めて比較し、AとBをともに不採用とした。 |
 | 4 | [相対2駒の計画](plans/relative-pair-eval.md)で、関係項の必要性を確認してから実装する。 | 配置に依存する誤りが残る場合に、最後に採用されたPSTを固定して進む。根拠が得られなければ着手を見送る。 |
 
 1の不採用は2と3の不採用を意味せず、3の成功は4の必須条件ではない。
