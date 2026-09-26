@@ -9,5 +9,6 @@ pub mod mv;
 pub mod piece;
 pub mod position;
 pub mod predecessor;
+pub mod promotion;
 pub(crate) mod repetition;
 pub mod rules;

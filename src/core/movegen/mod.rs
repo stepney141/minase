@@ -3,6 +3,7 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
+mod lion_capture;
 mod search_captures;
 pub(crate) use search_captures::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 
@@ -18,7 +19,8 @@ use crate::core::board::{Direction, step_square};
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
-use crate::core::rules::{MoveRules, PromotionChoice};
+use crate::core::promotion::PromotionChoice;
+use crate::core::rules::MoveRules;
 
 /// 採用ルールの下で合法手を列挙する生成器。
 #[derive(Clone)]

@@ -9,7 +9,8 @@ use crate::core::board::Bitboard;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
-use crate::core::rules::{MoveRules, PromotionChoice};
+use crate::core::promotion::PromotionChoice;
+use crate::core::rules::MoveRules;
 use crate::eval::Pst;
 
 /// 交換列で保持できる利得の数。中将棋の盤上の駒は最大92枚である。

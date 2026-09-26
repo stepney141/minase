@@ -2,9 +2,10 @@
 //!
 //! 期待値の根拠はRULES.md第12版（第6〜12条・第17〜19条・第30条）と
 //! docs/plans/move-canonicalization.md だけである。獅子の捕獲制限
-//! （第13〜16条・第29条L系）は領域D2（rules.rs側）が検証する。
+//! （第13〜16条・第29条L系）はtests/lion_capture.rsが検証する。
 
 mod attackers;
+mod lion_capture;
 mod lion_moves;
 mod movement;
 mod pieces;

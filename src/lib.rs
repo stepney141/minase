@@ -37,8 +37,9 @@ pub use crate::core::mv::Move;
 pub use crate::core::piece::{Color, PieceCode, PieceKind};
 pub use crate::core::position::{Position, PositionBuildError, PositionBuilder, PositionError};
 pub use crate::core::predecessor::{PredecessorError, PredecessorGenerator};
+pub use crate::core::promotion::PromotionChoice;
 pub use crate::core::rules::{
-    ExhaustionRule, LionRule, MoveRules, PromotionChoice, PromotionRule, RepetitionRule, RuleCode,
+    ExhaustionRule, LionRule, MoveRules, PromotionRule, RepetitionRule, RuleCode,
     RuleCodeParseError, RuleGroup, RuleSetParseError, Rules, RulesError,
 };
 pub use notation::sfen::{SfenError, parse_sfen, to_sfen};

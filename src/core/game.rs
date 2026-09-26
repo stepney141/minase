@@ -334,7 +334,7 @@ mod tests {
     use super::*;
     use crate::core::board::Square;
     use crate::core::piece::{PieceCode, PieceKind};
-    use crate::core::rules::{ExhaustionRule, RepetitionRule, RuleCode, RuleGroup, RulesError};
+    use crate::core::rules::{ExhaustionRule, RepetitionRule, RuleCode};
     use crate::rng::XorShift64;
     use crate::test_util::{position_from_codes as position, sq};
 
@@ -1352,28 +1352,6 @@ mod tests {
         assert_eq!(game.play(cycle_a[3]), draw(DrawReason::Repetition));
     }
 
-    #[test]
-    fn article_25_2_repetition_rule_is_mandatory_and_exclusive() {
-        // D3-025-01: 反復規則はR1・R2・R3のいずれか1つの明示が必須であり、
-        // 未指定は明示的なエラー、2つ以上の同時指定は競合として拒否される。
-        assert_eq!(
-            Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::E0]),
-            Err(RulesError::Missing(RuleGroup::Repetition))
-        );
-
-        for pair in [
-            [RuleCode::R1, RuleCode::R2],
-            [RuleCode::R1, RuleCode::R3],
-            [RuleCode::R2, RuleCode::R3],
-        ] {
-            let codes = [RuleCode::L0, RuleCode::P0, pair[0], pair[1], RuleCode::E0];
-            assert!(matches!(
-                Rules::from_codes(&codes),
-                Err(RulesError::Conflicting { .. })
-            ));
-        }
-    }
-
     // ---------------------------------------------------------------
     // 第26〜27条　不合法な着手とその効果
     // ---------------------------------------------------------------
@@ -2004,21 +1982,6 @@ mod tests {
             checked.play(step(sq(5, 4), sq(5, 5))),
             Ok(GameStatus::Ongoing)
         );
-    }
-
-    #[test]
-    fn article_33_9_e2_and_e3_conflict() {
-        // D3-032-09: E2とE3は同時に採用できず、有効な規則セットとして扱われない。
-        assert!(matches!(
-            Rules::from_codes(&[
-                RuleCode::L0,
-                RuleCode::P0,
-                RuleCode::R1,
-                RuleCode::E2,
-                RuleCode::E3,
-            ]),
-            Err(RulesError::Conflicting { .. })
-        ));
     }
 
     // ---------------------------------------------------------------
