@@ -2,10 +2,10 @@
 
 use core::fmt;
 
+use crate::core::board::{BOARD_FILES, BOARD_RANKS, Square};
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuildError, PositionBuilder};
 use crate::core::rules::{MoveRules, PromotionRule};
-use crate::core::square::{BOARD_FILES, BOARD_RANKS, Square};
 
 /// 拡張SFENが表す対局開始局面。
 #[derive(Clone, PartialEq, Eq, Debug)]

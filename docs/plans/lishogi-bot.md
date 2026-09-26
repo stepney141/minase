@@ -30,7 +30,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 
 本マイルストーンでは、次の作業を行う。
 
-- 規則R1の反復裁定へ、lishogiの規則ライブラリscalashogiが実装する前提条件を取り込み、RULES.md、`src/core/repetition.rs`、`src/core/adjudication.rs`、および`src/core/game.rs`を更新する。
+- 規則R1の反復裁定へ、lishogiの規則ライブラリscalashogiが実装する前提条件を取り込み、RULES.md、`src/core/game/repetition/r1.rs`、`src/core/game/adjudication/`、および`src/core/game/referee.rs`を更新する。
 - lishogiの実対局のうち、この前提条件で裁定が分かれる対局をリプレイ照合のフィクスチャへ追加し、取得スクリプト`scripts/fetch_lishogi_replays.py`の初期局面の扱いを直す。
 - 固定した版のLishogi-Botとminaseのmasterを1つのDockerイメージにまとめるDockerfile、ビルドと起動を行うcompose定義、minase用の設定ファイル、および運用手順を、別リポジトリ`minase-lishogi-bot`に置く。
 - Botアカウントの作成と昇格、認証トークンの管理、およびエンジンバイナリの固定手順を定める。
@@ -84,7 +84,7 @@ scalashogiは、反復の裁定に2つの条件を課す（`History.scala`の`is
 したがって第2の条件は、対局開始または直前の不可逆手の直後から、可逆手が先後合計で12手以上続いていることと同じである。
 中将棋の不可逆手は、捕獲、成り、および歩兵または香車の着手である（`variant/Chushogi.scala`の`isIrreversible`）。
 
-取り込み前のRULES.md第31条のR1と`src/core/repetition.rs`は、第1の条件だけで裁定していた。
+取り込み前のRULES.md第31条のR1と`src/core/game/repetition/r1.rs`は、第1の条件だけで裁定していた。
 そのため、不可逆手の直後から双方がじっと（RULES.md第3条、駒を動かさずに手番を渡す着手）を繰り返す2手周期の反復では、不可逆手の直後の局面を1回目として2手ごとに同じ局面が現れるので、minaseは6手後の4回目で裁定するのに対し、lishogiは12手後まで裁定しない。
 lishogiの全棋譜との照合（2026年8月26日、GitHub issue #5）で現存した差異はこの1種類だけであり、その実例が対局uy7y6mP6、EHUTJJu4、およびA4EO2swaの3局である。
 
@@ -104,8 +104,8 @@ R1はLishogiの規則として定義されたコードであり、変更の目�
 R2とR3は変えない。
 
 実装の境界は次のとおりである。
-着手が不可逆かどうかは、`src/core/adjudication.rs`の`move_is_irreversible`が着手の巻き戻し情報`Undo`（移動前の駒種と捕獲した駒）から判定する。
-`Game::play`は`Undo`を`AdjudicationState::record_move`へ渡し、そこから`src/core/repetition.rs`のR1の履歴へ不可逆かどうかを伝える。
+着手が不可逆かどうかは、`src/core/game/repetition/r1.rs`の`move_is_irreversible`が着手の巻き戻し情報`Undo`（移動前の駒種と捕獲した駒）から判定する。
+`Game::play`は`Undo`を`AdjudicationState::record_move`へ渡し、そこから同じファイルのR1の履歴へ不可逆かどうかを伝える。
 R1の履歴は、直前の不可逆手からの可逆手の数を持ち、対局開始時は0、不可逆手のたびに0へ戻し、裁定の判定に前提条件を加える。
 詰み判定が仮想着手を評価する経路（`candidate_is_immediate_win`）も同じ関数で判定し、仮想着手が不可逆手なら反復は成立しない。
 
@@ -178,7 +178,7 @@ Lishogi-Botは、途中局面から始まる対局では`initialSfen`をその�
 
 ### フェーズ1　反復裁定の整合
 
-RULES.md第31条のR1へ前提条件を追記し、`src/core/game.rs`、`src/core/adjudication.rs`、および`src/core/repetition.rs`を更新し、単体テストとリプレイ照合の対局を追加する。
+RULES.md第31条のR1へ前提条件を追記し、`src/core/game/referee.rs`、`src/core/game/adjudication/`、および`src/core/game/repetition/r1.rs`を更新し、単体テストとリプレイ照合の対局を追加する。
 単体テストは、対局開始直後、不可逆手の直後、および仮想着手の判定経路の3つの境界を含める。
 完了条件は、`cargo test`が通り、追加した対局の終局裁定がlishogiと一致し、既存の全フィクスチャの結果が変わらないことである。
 着手前に、R1の条文変更とSPRT対象外の扱いについて利用者の裁定を得る。

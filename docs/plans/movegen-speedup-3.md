@@ -31,10 +31,10 @@ NPSは基準比1.15倍以上を目標とし、1.08倍以上を最低受入条件
 
 対象は次のコードである。
 
-- `src/core/movegen/mod.rs`の利き逆引き（`attackers_to_by`、`ordinary_attackers_to`）。
+- `src/core/movegen/control.rs`の利き逆引き（`attackers_to_by`、`ordinary_attackers_to`）。
 - `src/core/movegen/search_captures.rs`の探索専用の捕獲生成（特殊駒の候補生成、`collect_ordinary_capturers`）。
 - `src/core/attacks/tables.rs`の前計算表（逆到達表と近傍の固定利き表を加える候補）。
-- `src/core/position.rs`の駒種別のビットボードと着手の適用（方向ごとの走り駒集合を加える候補）。
+- `src/core/position/`の駒種別のビットボード（`mod.rs`）と着手の適用（`make_move.rs`）。方向ごとの走り駒集合を加える候補である。
 - `src/search/alphabeta/quiesce.rs`の静止探索（`QsearchBuffers`と`quiesce`）。
 
 本書の用語は第1期と第2期の設計書の定義に従う。

@@ -155,4 +155,4 @@ R0を含む記録用の規則集合の表現、拡張SFENへの規則の埋め�
 ## 進め方
 
 設計書に対してcodexのレビューを求め、指摘を反映したうえで実装をcodexに委譲する。
-実装は`core/rules.rs`の型定義と解析、`Position`・手生成・SFEN・探索の`MoveRules`化、`Game`・審判層・プロトコル層・バイナリの`Rules`化、`match_runner`の原文転送、テストの書換えの順で進め、各段階で`cargo test`を通す。
+実装は`core/rules/`の型定義と解析、`Position`・手生成・SFEN・探索の`MoveRules`化、`Game`・審判層・プロトコル層・バイナリの`Rules`化、`match_runner`の原文転送、テストの書換えの順で進め、各段階で`cargo test`を通す。

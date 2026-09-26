@@ -23,7 +23,7 @@ fn modifier_rules(p3: bool, p4: bool, p5: bool, p6: bool) -> MoveRules {
         ..MoveRules::standard()
     }
 }
-use crate::core::square::Square;
+use crate::core::board::Square;
 use crate::test_util::{position, position_from_codes};
 
 /// (from, to) が一致する着手を成り選択別に数える。

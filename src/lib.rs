@@ -24,8 +24,11 @@ pub mod training;
 #[cfg(test)]
 mod test_util;
 
-pub use crate::core::bitboard::Bitboard;
-pub use crate::core::direction::Direction;
+pub use crate::core::board::Bitboard;
+pub use crate::core::board::Direction;
+pub use crate::core::board::{
+    BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square,
+};
 pub use crate::core::game::{
     DrawReason, Game, GameError, GameResult, GameStatus, IllegalMoveCause, WinReason,
 };
@@ -34,11 +37,9 @@ pub use crate::core::mv::Move;
 pub use crate::core::piece::{Color, PieceCode, PieceKind};
 pub use crate::core::position::{Position, PositionBuildError, PositionBuilder, PositionError};
 pub use crate::core::predecessor::{PredecessorError, PredecessorGenerator};
+pub use crate::core::promotion::PromotionChoice;
 pub use crate::core::rules::{
-    ExhaustionRule, LionRule, MoveRules, PromotionChoice, PromotionRule, RepetitionRule, RuleCode,
+    ExhaustionRule, LionRule, MoveRules, PromotionRule, RepetitionRule, RuleCode,
     RuleCodeParseError, RuleGroup, RuleSetParseError, Rules, RulesError,
-};
-pub use crate::core::square::{
-    BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, RAW_SQUARE_COUNT, Square,
 };
 pub use notation::sfen::{SfenError, parse_sfen, to_sfen};

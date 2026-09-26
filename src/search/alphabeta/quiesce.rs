@@ -3,7 +3,7 @@
 use core::cmp::Reverse;
 
 use crate::MoveGenerator;
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
 use crate::core::movegen::{CaptureCache, CaptureCandidate, OrdinaryCapturer};
 use crate::core::mv::Move;
 use crate::core::piece::{PIECE_KIND_COUNT, PieceCode, PieceKind};

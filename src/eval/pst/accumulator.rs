@@ -2,7 +2,7 @@
 
 use super::features::{active_features_for, feature_index, lion_feature_index};
 use super::{Pst, interpolate};
-use crate::core::mv::Undo;
+use crate::core::position::Undo;
 use crate::{Color, Position, Square};
 
 /// 先手視点と後手視点で集計したPSTの生重み和。

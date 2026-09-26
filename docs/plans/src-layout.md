@@ -30,17 +30,15 @@ workspace化は次のいずれかの実害をトリガーとして後日実施�
 
 ### 対局進行3モジュールをcoreへ移動する
 
-責務基準に従い、`src/game.rs`（審判層）、`src/adjudication.rs`（終局・反復の裁定。RULES.md第21〜23条・第31〜32条）、`src/repetition.rs`（同一局面の判定。第24条）を`src/core/`直下へ移動する。3モジュールは`core/mod.rs`で`pub(crate)`と宣言する。移動前はcrateルートの私的modであり可視性の実質はcrate内全域なので、`pub(crate)`が等価であり、`minase::core::game`のような新しい公開パスを作らない。公開APIは`lib.rs`のre-exportのパス書き換えだけで吸収し、一切変えない。
+責務基準に従い、`src/game.rs`（審判層）、`src/adjudication.rs`（終局・反復の裁定。RULES.md第21〜23条・第31〜32条）、`src/repetition.rs`（同一局面の判定。第24条）を`src/core/`へ移動する。3モジュールはcrateの中だけに公開し、`core/mod.rs`で`game`を`pub(crate)`と宣言して、`adjudication`と`repetition`をその子に置く（「core内部は目的別のディレクトリで構成する」の節）。移動前はcrateルートの私的modであり可視性の実質はcrate内全域なので、`pub(crate)`が等価であり、`minase::core::game`のような新しい公開パスを作らない。公開APIは`lib.rs`のre-exportのパス書き換えだけで吸収し、一切変えない。
 
 ### 探索部・評価関数はcoreの外にトップレベルで並べる
 
 探索部は`src/search/`、評価関数は`src/eval/`、評価関数の学習データの交換形式は`src/training/`として、`core`・`notation`・`protocol`の隣に置く。依存方向はsearch → eval → coreの一方向とし、trainingはcoreだけに依存する。各モジュールの内部の配置は[探索部と評価関数のモジュール再編](search-eval-layout.md)が定める。複数の実行ファイルが共有する支援処理もライブラリのトップレベルに`#[doc(hidden)]`で置き、対局ハーネスを`src/harness/`、学習局面の生成と棋譜取り込みの共有処理を`src/datagen/`（trainingとcoreに依存する）とする。両者の内部の配置は[実行ファイルと対局ハーネスのモジュール再編](bin-harness-layout.md)が定める。傘モジュール`src/engine/`は、`protocol/engine.rs`（プロトコル非依存の対局状態機械）と名前が衝突するため採らない。モジュールの作成は探索部マイルストーンの着手時に行い、本作業では方針の記録だけを行う。
 
-### core内部はフラット構成を維持する
+### core内部は目的別のディレクトリで構成する
 
-移動後のcoreはフラット10ファイル（bitboard、direction、mv、piece、position、rules、square、game、adjudication、repetition）とサブディレクトリ2つ（attacks、movegen）になる。この規模では「1関心事1ファイル、複数ファイルに膨れたものだけディレクトリ昇格」という既存の運用（attacksとmovegenがその産物）を続ける。
-
-ディレクトリ化のトリガーは「フラットファイルが15を超えた」または「特定の塊に依存制約の機械検査が必要になった」のいずれかとする。その際の自然な塊は、幾何の基盤（square・direction・bitboard）と対局進行（game・adjudication・repetition）の2つである。それ以外のファイルは1ファイル1関心事であり、無理に束ねない。
+coreは1関心事1ファイルを原則とし、非公開の欄を参照してよい範囲を親子関係で表す必要がある型と、同じ目的を持つ複数のファイルをディレクトリへまとめる。直下には、盤の座標系（board。square、direction、bitboardを子に持つ）、駒（piece）、着手（mv）、局面（position）、駒の動き（attacks）、合法手生成（movegen）、成り（promotion）、規則セット（rules）、審判（game。終局裁定のadjudicationと反復のrepetitionを子に持つ）、および直前局面（predecessor）を置く。各ディレクトリの内部の配置と可視性の規則は[中核モジュールの再編](core-layout.md)が定める。
 
 ### rngモジュールは現状維持とする
 
@@ -58,7 +56,7 @@ adjudicationはRULES.mdの公式語彙「裁定」（第25条の反復の裁定�
 
 **coreを盤・駒・合法手の静的な語彙に限定し対局進行をトップレベルに残す現状維持案**は、「局面の物理」と「対局の審判」の区別がRULES.mdの章立てに存在せず、境界の根拠が弱いため棄却した。
 
-**core内部のサブディレクトリ化（core/geometry/とcore/referee/の2塊）**は、グループ化が割に合う条件（ファイル数による見通しの悪化、機械検査したい境界）が現状どちらも成立せず、公開APIも依存方向も変えない純粋な見た目の工事になるため、トリガー成立まで見送った。
+**core内部のフラット構成の維持**は、局面、規則セット、および審判の各ファイルが2,000行を超え、非公開の欄を参照してよい範囲（局面の欄、終局裁定の文脈の欄、反復の履歴の欄）をファイル単位では表せなくなったため棄却した（[中核モジュールの再編](core-layout.md)）。
 
 **adjudicationのrename**は維持の決定に伴い棄却した。rename候補の優劣は、outcome（shakmaty/python-chess系の最有力だが、反復履歴と駒枯れ猶予フラグを持つAdjudicationStateの実態に不自然）、termination（終局のみを示唆しR1途中の反復追跡状態と合わない）、ruling/verdict（ライブラリ慣習に前例なし）の順であった。
 

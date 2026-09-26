@@ -5,11 +5,12 @@
 //! 取る手、獅子が非獅子を取る手、および角鷹と飛鷲が到達升だけで取る手は
 //! 通常の交換として評価する。
 
-use crate::core::bitboard::Bitboard;
+use crate::core::board::Bitboard;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
-use crate::core::rules::{MoveRules, PromotionChoice};
+use crate::core::promotion::PromotionChoice;
+use crate::core::rules::MoveRules;
 use crate::eval::Pst;
 
 /// 交換列で保持できる利得の数。中将棋の盤上の駒は最大92枚である。

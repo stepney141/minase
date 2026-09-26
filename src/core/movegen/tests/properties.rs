@@ -12,11 +12,11 @@ use super::{
     MoveGenerator, PROMOTION_PAIRS, TWO_STAGE_KINDS, forward_rank_delta, generated_captures_with,
     generated_with, msq, same_board,
 };
+use crate::core::board::Square;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::{Position, PositionBuilder};
 use crate::core::rules::{LionRule, MoveRules, PromotionRule, Rules};
-use crate::core::square::Square;
 use crate::rng::XorShift64;
 
 /// 盤の180度回転写像（第5条の盤は12×12）。

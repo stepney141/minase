@@ -1,9 +1,6 @@
 //! 着手の表現と、その巻き戻しに必要な記録。
 
-use crate::core::bitboard::Bitboard;
-use crate::core::piece::PieceCode;
-use crate::core::position::LionTrigger;
-use crate::core::square::Square;
+use crate::core::board::Square;
 
 /// 1回の着手(第3条)。獅子・角鷹・飛鷲の2段階移動(第11条・第12条)も1つの値で表す。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -30,32 +27,4 @@ impl Move {
             },
         ]
     }
-}
-
-/// 着手で取られた駒の記録。
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub(crate) struct CapturedPiece {
-    /// 駒が取られた升。
-    pub square: Square,
-    /// 取られた駒。
-    pub piece: PieceCode,
-}
-
-/// [`Position::make_move_unchecked`](crate::Position::make_move_unchecked)の巻き戻しに必要な情報。
-#[derive(PartialEq, Eq, Debug)]
-pub(crate) struct Undo {
-    /// 適用した着手。
-    pub(crate) mv: Move,
-    /// 移動前(成る前)の駒。
-    pub(crate) moved_piece_before: PieceCode,
-    /// 取られた駒の記録(最大2枚)。
-    pub(crate) captured: [Option<CapturedPiece>; 2],
-    /// 着手前の先獅子トリガー(獅子捕獲升と麒麟成りフラグ)。
-    pub(crate) previous_lion_taken: Option<LionTrigger>,
-    /// 着手前のzobristハッシュ。
-    pub(crate) previous_zobrist: u64,
-    /// 着手前の成り権保留中の駒の集合。
-    pub(crate) previous_promotion_deferred: Bitboard,
-    /// 着手前のP1成り権保留状態のzobristハッシュ。
-    pub(crate) previous_rights_zobrist: u64,
 }

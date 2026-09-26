@@ -2,12 +2,12 @@
 
 use core::fmt;
 
-use crate::core::direction::Direction;
+use crate::core::board::Direction;
+use crate::core::board::Square;
 use crate::core::movegen::{IllegalMove, MoveGenerator};
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
-use crate::core::square::Square;
 
 use super::sfen::{parse_square, square_to_text};
 

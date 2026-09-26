@@ -34,9 +34,9 @@
 
 - `src/core/movegen/`は合法手の生成、探索専用の捕獲生成、および利きの逆引きを実装する。
 - `src/core/attacks/`は駒種ごとの動きの定義、固定利きの表、および走り計算を実装する。
-- `src/core/bitboard.rs`は144升の集合を3個の64ビット整数で表し、段階4の走り計算の書き換えでだけ対象になる。
-- `src/core/position.rs`は着手の適用と復元、駒種別のビットボード、およびzobristハッシュを保持する。
-- `src/core/rules.rs`は獅子捕獲後の足と成りを判定する。
+- `src/core/board/bitboard.rs`は144升の集合を3個の64ビット整数で表し、段階4の走り計算の書き換えでだけ対象になる。
+- `src/core/position/`は着手の適用と復元（`make_move.rs`）、駒種別のビットボード（`mod.rs`）、およびzobristハッシュ（`zobrist.rs`）を保持する。
+- `src/core/movegen/lion_capture.rs`は獅子捕獲後の足を、`src/core/promotion.rs`は成りを判定する。
 - `src/search/alphabeta/`の静止探索、主探索の手選択器、およびノード計数を対象とする。
 - `src/search/alphabeta/see.rs`は交換列を評価する。
 - `src/eval/pst/accumulator.rs`は駒位置評価の累算値を差分更新する。

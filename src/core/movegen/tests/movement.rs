@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 
 use super::dir::{B, FL, FR, L, R};
 use super::{direct_destinations, generated, msq, mv, step_squares};
+use crate::core::board::Square;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::rules::MoveRules;
-use crate::core::square::Square;
 use crate::test_util::position;
 
 // ---------------------------------------------------------------------------

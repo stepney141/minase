@@ -2,9 +2,10 @@
 //!
 //! 期待値の根拠はRULES.md第12版（第6〜12条・第17〜19条・第30条）と
 //! docs/plans/move-canonicalization.md だけである。獅子の捕獲制限
-//! （第13〜16条・第29条L系）は領域D2（rules.rs側）が検証する。
+//! （第13〜16条・第29条L系）はtests/lion_capture.rsが検証する。
 
 mod attackers;
+mod lion_capture;
 mod lion_moves;
 mod movement;
 mod pieces;
@@ -15,10 +16,10 @@ mod search_captures;
 use std::collections::BTreeSet;
 
 use super::MoveGenerator;
+use crate::core::board::Square;
 use crate::core::mv::Move;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::position::Position;
-use crate::core::square::Square;
 
 /// マトリクスの升表記 (筋f, 段r)（各1〜12、段1=後手側最奥、段12=先手側最奥）を
 /// 盤座標へ写す。先手の「前」は段が減る方向である（第3条3号）。

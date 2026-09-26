@@ -7,10 +7,10 @@ use std::collections::BTreeSet;
 
 use super::dir::{B, BL, BR, F, FL, FR, L, R};
 use super::{generated, jitto_moves, moves_from, msq, mv, same_board, step_squares};
+use crate::core::board::Square;
 use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
-use crate::core::square::Square;
 use crate::test_util::{position, position_from_codes};
 
 /// 先手の角鷹または飛鷲を含む局面を作る（成駒コードで配置する）。

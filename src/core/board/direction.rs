@@ -1,6 +1,6 @@
 //! 盤座標系での絶対8方向。
 
-use crate::core::square::Square;
+use super::square::Square;
 
 /// 方向の総数(8)。
 pub const DIRECTION_COUNT: usize = 8;

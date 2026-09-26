@@ -1,13 +1,11 @@
-//! 反復規則R1・R2・R3(第31条)の局面出現履歴と裁定。
+//! 反復規則R1の履歴と裁定、および不可逆手と攻撃的着手の判定。
 
-use std::collections::{HashMap, HashSet};
-
-use crate::core::game::{DrawReason, GameResult, WinReason};
+use super::super::result::{DrawReason, GameResult, WinReason};
 use crate::core::movegen::MoveGenerator;
 use crate::core::mv::Move;
-use crate::core::piece::Color;
-use crate::core::position::Position;
-use crate::core::rules::RepetitionRule;
+use crate::core::piece::{Color, PieceKind};
+use crate::core::position::{Position, Undo};
+use std::collections::HashMap;
 
 /// 第31条R1の裁定に必要な連続可逆手数。
 ///
@@ -37,21 +35,6 @@ impl R1Key {
     }
 }
 
-/// R2とR3で同一局面を判定するキー。
-///
-/// P1成り権保留状態を除外し、局面本体のZobrist値だけを保持する
-/// (第24条第1項d)。値の衝突は実用上無視できるものとし、完全な局面署名とは
-/// 照合しない。
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-struct R2R3Key(u64);
-
-impl R2R3Key {
-    /// 局面からR2・R3の同一局面キーを作る。
-    fn from_position(position: &Position) -> Self {
-        Self(position.zobrist())
-    }
-}
-
 /// R1で追跡する1局面の出現状態。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct R1PositionState {
@@ -77,7 +60,7 @@ pub(crate) struct R1History {
 
 impl R1History {
     /// 開始局面を第1回として記録した履歴を作る。
-    fn new(position: &Position) -> Self {
+    pub(super) fn new(position: &Position) -> Self {
         Self {
             positions: HashMap::from([(
                 R1Key::from_position(position),
@@ -162,112 +145,6 @@ impl R1History {
     }
 }
 
-/// R2の既出局面集合。
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) struct R2History {
-    /// 出現済み局面のキー集合。
-    positions: HashSet<R2R3Key>,
-}
-
-impl R2History {
-    /// 開始局面を既出として記録した履歴を作る。
-    fn new(position: &Position) -> Self {
-        Self {
-            positions: HashSet::from([R2R3Key::from_position(position)]),
-        }
-    }
-
-    /// 着手後の局面を既出集合へ記録する。
-    pub(crate) fn record(&mut self, position: &Position) {
-        let inserted = self.positions.insert(R2R3Key::from_position(position));
-        debug_assert!(inserted, "R2 must reject repeated positions");
-    }
-}
-
-/// R3の局面出現回数。
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) struct R3History {
-    /// 出現済み局面ごとの出現回数。
-    positions: HashMap<R2R3Key, u8>,
-}
-
-impl R3History {
-    /// 開始局面を第1回として記録した履歴を作る。
-    fn new(position: &Position) -> Self {
-        Self {
-            positions: HashMap::from([(R2R3Key::from_position(position), 1)]),
-        }
-    }
-
-    /// 着手後の局面の出現回数を1増やす。
-    pub(crate) fn record(&mut self, position: &Position) {
-        let occurrences = self
-            .positions
-            .entry(R2R3Key::from_position(position))
-            .or_insert(0);
-        *occurrences = occurrences
-            .checked_add(1)
-            .expect("a position cannot occur more than u8::MAX times");
-    }
-}
-
-/// 採用中の反復規則に必要な履歴だけを保持する内部状態。
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum RepetitionHistory {
-    /// R1の出現履歴。
-    R1(R1History),
-    /// R2の既出集合。
-    R2(R2History),
-    /// R3の出現回数。
-    R3(R3History),
-}
-
-impl RepetitionHistory {
-    /// 採用規則に対応する履歴を、開始局面を第1回として作る。
-    pub(crate) fn new(rule: RepetitionRule, position: &Position) -> Self {
-        match rule {
-            RepetitionRule::R1 => Self::R1(R1History::new(position)),
-            RepetitionRule::R2 => Self::R2(R2History::new(position)),
-            RepetitionRule::R3 => Self::R3(R3History::new(position)),
-        }
-    }
-}
-
-/// 着手後の局面が採用中のR2またはR3で禁止されるかを返す。
-pub(crate) fn repetition_is_forbidden(history: &RepetitionHistory, position: &Position) -> bool {
-    match history {
-        RepetitionHistory::R1(_) => false,
-        RepetitionHistory::R2(history) => history
-            .positions
-            .contains(&R2R3Key::from_position(position)),
-        RepetitionHistory::R3(history) => history
-            .positions
-            .get(&R2R3Key::from_position(position))
-            .is_some_and(|&occurrences| occurrences >= 3),
-    }
-}
-
-/// R2またはR3が禁止する着手を候補列から除く。
-///
-/// 各候補を一時的に適用して同一の禁止判定を呼び、判定後に局面を復元する。
-pub(crate) fn retain_repetition_allowed_moves(
-    position: &mut Position,
-    generator: &MoveGenerator,
-    history: &RepetitionHistory,
-    moves: &mut Vec<Move>,
-) {
-    if matches!(history, RepetitionHistory::R1(_)) {
-        return;
-    }
-
-    moves.retain(|candidate| {
-        let undo = position.make_move_unchecked(*candidate, generator.rules());
-        let allowed = !repetition_is_forbidden(history, position);
-        position.unmake_move(undo);
-        allowed
-    });
-}
-
 /// 4回目以降の同一局面出現に対するR1の裁定結果を返す(第31条R1)。
 ///
 /// 最初の出現から裁定時までの自分の全着手が攻撃的着手であった対局者が
@@ -324,9 +201,145 @@ fn moves_by_color_through(ply: u32, color: Color) -> u32 {
     }
 }
 
+/// 成り、捕獲、不成の歩兵・香車の着手を不可逆手と判定する(第31条R1)。
+pub(crate) fn move_is_irreversible(mv: Move, undo: &Undo) -> bool {
+    mv.promote
+        || undo.captured.iter().any(Option::is_some)
+        || matches!(
+            undo.moved_piece_before.kind(),
+            Some(PieceKind::Pawn | PieceKind::Lance)
+        )
+}
+
+/// 着手後の局面で、着手側の攻撃が継続しているかを返す。
+pub(crate) fn move_was_attacking(
+    position: &Position,
+    generator: &MoveGenerator,
+    mover: Color,
+    played: Move,
+) -> bool {
+    let probe = position.clone_with_side_to_move(mover);
+    let opponent_royals = probe.royal_pieces(mover.opposite());
+    let destination = played.to;
+    let mut moves = Vec::new();
+    generator.generate_moves(&probe, &mut moves);
+
+    moves.into_iter().any(|candidate| {
+        let captures = probe.captured_squares(candidate);
+        captures
+            .into_iter()
+            .flatten()
+            .any(|square| opponent_royals.contains(square))
+            || (candidate.from == destination
+                && captures.into_iter().any(|capture| capture.is_some()))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::board::Square;
+    use crate::core::piece::PieceCode;
+    use crate::core::rules::Rules;
+    use crate::test_util::{position_from_codes as position, sq};
+
+    fn piece(color: Color, kind: PieceKind) -> PieceCode {
+        PieceCode::new(color, kind).expect("fixture uses an unpromoted-capable kind")
+    }
+
+    fn step(from: Square, to: Square) -> Move {
+        Move {
+            from,
+            mid: None,
+            to,
+            promote: false,
+        }
+    }
+
+    #[test]
+    fn article_31_r1_irreversible_moves_are_promotions_captures_and_unpromoted_pawn_or_lance_steps()
+    {
+        // D3-031-12: 成り・捕獲・不成の歩兵と香車の着手だけを不可逆手とする
+        // (第31条R1、scalashogi variant/Chushogi.scala isIrreversible)。
+        let rules = Rules::ENGINE_DEFAULT;
+        let generator = MoveGenerator::new(rules.moves);
+        let cases = [
+            (
+                "unpromoted pawn step",
+                piece(Color::Black, PieceKind::Pawn),
+                step(sq(5, 4), sq(5, 5)),
+                false,
+                true,
+            ),
+            (
+                "unpromoted lance advance",
+                piece(Color::Black, PieceKind::Lance),
+                step(sq(5, 4), sq(5, 6)),
+                false,
+                true,
+            ),
+            (
+                "silver promotion entering enemy camp",
+                piece(Color::Black, PieceKind::SilverGeneral),
+                Move {
+                    promote: true,
+                    ..step(sq(5, 7), sq(5, 8))
+                },
+                false,
+                true,
+            ),
+            (
+                "rook capture",
+                piece(Color::Black, PieceKind::Rook),
+                step(sq(5, 4), sq(5, 5)),
+                true,
+                true,
+            ),
+            (
+                "promoted pawn noncapture",
+                PieceCode::new_promoted(Color::Black, PieceKind::GoldGeneral).unwrap(),
+                step(sq(5, 4), sq(5, 5)),
+                false,
+                false,
+            ),
+            (
+                "promoted lance noncapture",
+                PieceCode::new_promoted(Color::Black, PieceKind::WhiteHorse).unwrap(),
+                step(sq(5, 4), sq(5, 6)),
+                false,
+                false,
+            ),
+            (
+                "lion pass",
+                piece(Color::Black, PieceKind::Lion),
+                step(sq(5, 4), sq(5, 4)),
+                false,
+                false,
+            ),
+            (
+                "king step",
+                piece(Color::Black, PieceKind::King),
+                step(sq(5, 4), sq(5, 5)),
+                false,
+                false,
+            ),
+        ];
+        for (name, mover, mv, captures, irreversible) in cases {
+            let mut pieces = vec![
+                (mv.from, mover),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ];
+            if mover.kind() != Some(PieceKind::King) {
+                pieces.push((sq(0, 0), piece(Color::Black, PieceKind::King)));
+            }
+            if captures {
+                pieces.push((mv.to, piece(Color::White, PieceKind::SilverGeneral)));
+            }
+            let mut position = position(Color::Black, &pieces);
+            let undo = position.try_make_move_with_undo(mv, &generator).unwrap();
+            assert_eq!(move_is_irreversible(mv, &undo), irreversible, "{name}");
+        }
+    }
 
     #[test]
     fn article_31_r1_attacking_moves_extend_the_run_and_others_reset_it() {

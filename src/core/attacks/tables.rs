@@ -2,10 +2,10 @@
 
 use std::sync::OnceLock;
 
-use crate::core::bitboard::Bitboard;
-use crate::core::direction::Direction;
+use crate::core::board::Bitboard;
+use crate::core::board::Direction;
+use crate::core::board::{RAW_SQUARE_COUNT, Square};
 use crate::core::piece::{COLOR_COUNT, Color};
-use crate::core::square::{RAW_SQUARE_COUNT, Square};
 
 use super::fixed::{
     MOVEMENT_PROFILE_COUNT, MovementProfileId, all_profiles, movement_profile_data,
@@ -198,7 +198,7 @@ pub(crate) fn attack_tables() -> &'static AttackTables {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::direction::step_square;
+    use crate::core::board::step_square;
 
     // movegen-speedup.md「捕獲対象を生成前に除外する」: 遮蔽なしの範囲は
     // 全色・全プロファイル・全升で固定利きと盤端までの走りの和になる。

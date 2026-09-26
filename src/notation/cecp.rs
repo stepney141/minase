@@ -4,9 +4,9 @@
 
 use core::fmt;
 
+use crate::core::board::Square;
 use crate::core::mv::Move;
 use crate::core::position::Position;
-use crate::core::square::Square;
 
 /// CECP指し手の解析エラー(第3条・第11条・第12条)。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

@@ -1,6 +1,6 @@
 //! 駒種ごとの動き(固定利き・走り・特殊移動)の定義テーブル。
 
-use crate::core::direction::Direction;
+use crate::core::board::Direction;
 use crate::core::piece::{Color, PieceKind};
 
 /// 動きプロファイルの識別子。王将と太子のように動きが同じ駒種は1つのプロファイルを共有する。

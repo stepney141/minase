@@ -34,11 +34,11 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::core::board::BOARD_SQUARE_COUNT;
 use crate::core::mv::Move;
 use crate::core::piece::{COLOR_COUNT, Color, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
-use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
 use crate::eval::{Pst, evaluate, weights};
 use crate::search::alphabeta::INFINITY;
