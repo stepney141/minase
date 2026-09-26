@@ -10,7 +10,7 @@ use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::core::square::BOARD_SQUARE_COUNT;
 use crate::eval::Pst;
-use crate::eval::pst::PstAccumulator;
+use crate::eval::pst::accumulator::PstAccumulator;
 use crate::search::events::StopReason;
 use crate::search::snapshot::search_key;
 use crate::search::{MAX_PLY, TranspositionTable};

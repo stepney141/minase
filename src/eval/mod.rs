@@ -1,6 +1,5 @@
 //! 中将棋の静的評価関数。
 
-pub(crate) mod features;
 pub mod handcrafted;
 pub mod provenance;
 pub mod pst;
