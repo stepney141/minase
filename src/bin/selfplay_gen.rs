@@ -1,12 +1,12 @@
 //! 評価関数の学習に使う自己対局データの生成と検査。
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::process::{self, Command};
+use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
@@ -14,20 +14,20 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use minase::core::rules::parse_rule_set;
+use minase::datagen::game::{CompletedGame, CompletedRecord, merge_completed_games};
+use minase::datagen::git::{git_output, validate_commit_hash};
+use minase::datagen::provenance::{ProvenanceArguments, hex, write_mapped_provenance};
+use minase::datagen::statistics::{RecordedStatistics, Statistics};
+use minase::datagen::{
+    MATE_BAND_START, current_position_is_repeated, data_error, invalid_data, training_error,
+};
 use minase::eval::Pst;
 use minase::rng::{XorShift64, derive_seed};
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
-use minase::training::provenance::{
-    GameOrigin, Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher,
-};
-use minase::training::records::{
-    Error as TrainingDataError, Header, Outcome, Reader, Record, Writer, best_move_is_tactical,
-};
+use minase::training::provenance::{GameOrigin, ResultOrigin, SearchCondition, StartOrigin};
+use minase::training::records::{Header, Outcome, Reader, Record, Writer, best_move_is_tactical};
 use minase::training::rescore::{self, RescoreEntry, RescoreHeader, RescoreReader, RescoreStatus};
-use minase::{
-    Color, DrawReason, Game, GameResult, GameStatus, MoveGenerator, Position, Rules, WinReason,
-    to_sfen,
-};
+use minase::{Color, Game, GameStatus, MoveGenerator, Position, Rules, to_sfen};
 
 /// グローバルアロケータ。探索を行う既存バイナリと同じくmimallocを使う。
 #[global_allocator]
@@ -39,15 +39,8 @@ const DEFAULT_NODES: u32 = 100_000;
 const DEFAULT_MAX_PLY: u16 = 4_000;
 /// ワーカーごとの既定置換表容量。
 const DEFAULT_HASH_MB: NonZeroUsize = NonZeroUsize::new(16).unwrap();
-/// 詰み帯として除外する探索値の絶対値下限。
-pub(crate) const MATE_BAND_START: u32 = 29_000;
 /// ランダム着手を配置する序盤終了後の手数幅。
 const INJECTION_WINDOW: usize = 80;
-/// 注入オフセットのヒストグラム区間数。
-const INJECTION_HISTOGRAM_BINS: usize = 8;
-/// 探索値の取り得る値の数。
-const SCORE_VALUE_COUNT: usize = 65_536;
-
 /// 自己対局データ生成器のコマンドライン引数。
 #[derive(Parser)]
 #[command(name = "selfplay_gen")]
@@ -97,29 +90,6 @@ struct RescoreArguments {
     /// 変更のある作業ツリーでの実行を許可する。
     #[arg(long)]
     allow_dirty: bool,
-}
-
-/// 既存MNSDの来歴作成の引数。
-#[derive(clap::Args)]
-pub(crate) struct ProvenanceArguments {
-    /// 元のMNSD。
-    #[arg(long)]
-    pub(crate) input: PathBuf,
-    /// 新規作成する来歴JSON。
-    #[arg(long)]
-    pub(crate) output: PathBuf,
-    /// 対局結果の由来。本操作ではselfplayだけを扱う。
-    #[arg(long, value_enum)]
-    pub(crate) result_origin: ResultOrigin,
-    /// 開始局面の由来。本操作ではrandomだけを扱う。
-    #[arg(long, value_enum)]
-    pub(crate) start_origin: StartOrigin,
-    /// 教師値に占める探索値の割合。
-    #[arg(long)]
-    pub(crate) lambda: f64,
-    /// 教師の探索条件。
-    #[arg(long, value_enum, default_value = "in-game")]
-    pub(crate) search_condition: SearchCondition,
 }
 
 /// `generate`サブコマンドの引数。
@@ -296,154 +266,6 @@ struct Candidate {
     search_key: u64,
 }
 
-/// 探索キーを伴う書き出し対象レコード。
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) struct CompletedRecord {
-    /// 固定長形式へ書き出すレコード。
-    pub(crate) record: Record,
-    /// 対局間の局面重複を判定する探索キー。
-    pub(crate) search_key: u64,
-}
-
-/// 1局分のレコードと統計。
-#[derive(PartialEq, Eq, Debug)]
-pub(crate) struct CompletedGame {
-    /// 1から始まる対局番号。
-    pub(crate) game_number: u32,
-    /// 終局対局から採用したレコード。
-    pub(crate) records: Vec<CompletedRecord>,
-    /// 打ち切り対局を含む生成統計。
-    pub(crate) stats: Statistics,
-}
-
-/// データ生成全体または1局分の統計。
-#[derive(Default, PartialEq, Eq, Debug)]
-pub(crate) struct Statistics {
-    /// 手数上限で破棄した対局数。
-    discarded_games: u64,
-    /// 先手勝ちの対局数。
-    black_wins: u64,
-    /// 後手勝ちの対局数。
-    white_wins: u64,
-    /// 引き分けの対局数。
-    draws: u64,
-    /// 王駒捕獲による勝利数。
-    royal_capture_wins: u64,
-    /// 反復裁定による勝利数。
-    repetition_wins: u64,
-    /// 駒枯れによる勝利数。
-    piece_exhaustion_wins: u64,
-    /// 裸玉による勝利数。
-    bare_king_wins: u64,
-    /// 合法手なしによる勝利数。
-    stalemate_wins: u64,
-    /// 詰みによる勝利数。
-    mate_wins: u64,
-    /// 投了による勝利数。
-    resignation_wins: u64,
-    /// 反復裁定による引き分け数。
-    repetition_draws: u64,
-    /// 駒枯れによる引き分け数。
-    piece_exhaustion_draws: u64,
-    /// 裸玉による引き分け数。
-    bare_king_draws: u64,
-    /// 合意による引き分け数。
-    agreement_draws: u64,
-    /// 探索した局面数。
-    searched_positions: u64,
-    /// 記録境界以後に探索した局面数。
-    recordable_positions: u64,
-    /// ファイルへ記録した局面数。
-    pub(crate) recorded_positions: u64,
-    /// 詰み帯の探索値による除外数。
-    pub(crate) excluded_mate_band: u64,
-    /// 捕獲または成りの最善手による除外数。
-    pub(crate) excluded_tactical: u64,
-    /// 現局面の再出現による除外数。
-    pub(crate) excluded_repetition: u64,
-    /// ランダム手を含む全対局の総手数。
-    total_plies: u64,
-    /// 探索で指した総手数。
-    searched_plies: u64,
-    /// 探索が訪問したノード合計。
-    searched_nodes: u64,
-    /// 予定したランダム着手の合計。
-    planned_injections: u64,
-    /// 実施したランダム着手の合計。
-    performed_injections: u64,
-    /// 実施した注入オフセットを10手幅で数えた度数。
-    injection_offset_histogram: [u64; INJECTION_HISTOGRAM_BINS],
-}
-
-impl Statistics {
-    /// 1局分の統計を合計へ加える。
-    fn merge(&mut self, other: &Self) {
-        self.discarded_games += other.discarded_games;
-        self.black_wins += other.black_wins;
-        self.white_wins += other.white_wins;
-        self.draws += other.draws;
-        self.royal_capture_wins += other.royal_capture_wins;
-        self.repetition_wins += other.repetition_wins;
-        self.piece_exhaustion_wins += other.piece_exhaustion_wins;
-        self.bare_king_wins += other.bare_king_wins;
-        self.stalemate_wins += other.stalemate_wins;
-        self.mate_wins += other.mate_wins;
-        self.resignation_wins += other.resignation_wins;
-        self.repetition_draws += other.repetition_draws;
-        self.piece_exhaustion_draws += other.piece_exhaustion_draws;
-        self.bare_king_draws += other.bare_king_draws;
-        self.agreement_draws += other.agreement_draws;
-        self.searched_positions += other.searched_positions;
-        self.recordable_positions += other.recordable_positions;
-        self.recorded_positions += other.recorded_positions;
-        self.excluded_mate_band += other.excluded_mate_band;
-        self.excluded_tactical += other.excluded_tactical;
-        self.excluded_repetition += other.excluded_repetition;
-        self.total_plies += other.total_plies;
-        self.searched_plies += other.searched_plies;
-        self.searched_nodes += other.searched_nodes;
-        self.planned_injections += other.planned_injections;
-        self.performed_injections += other.performed_injections;
-        for (total, count) in self
-            .injection_offset_histogram
-            .iter_mut()
-            .zip(other.injection_offset_histogram)
-        {
-            *total += count;
-        }
-    }
-
-    /// 終局理由と勝敗を集計する。
-    fn record_result(&mut self, result: GameResult) {
-        match result {
-            GameResult::Win { winner, reason } => {
-                match winner {
-                    Color::Black => self.black_wins += 1,
-                    Color::White => self.white_wins += 1,
-                }
-                match reason {
-                    WinReason::RoyalCapture => self.royal_capture_wins += 1,
-                    WinReason::Repetition => self.repetition_wins += 1,
-                    WinReason::PieceExhaustion => self.piece_exhaustion_wins += 1,
-                    WinReason::BareKing => self.bare_king_wins += 1,
-                    WinReason::Stalemate => self.stalemate_wins += 1,
-                    WinReason::Mate => self.mate_wins += 1,
-                    WinReason::Resignation => self.resignation_wins += 1,
-                }
-            }
-            GameResult::Draw { reason } => {
-                self.draws += 1;
-                match reason {
-                    DrawReason::Repetition => self.repetition_draws += 1,
-                    DrawReason::PieceExhaustion => self.piece_exhaustion_draws += 1,
-                    DrawReason::BareKing => self.bare_king_draws += 1,
-                    DrawReason::Agreement => self.agreement_draws += 1,
-                }
-            }
-        }
-    }
-}
-
 /// 1局のランダム着手予定と記録開始手数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct InjectionPlan {
@@ -451,42 +273,6 @@ struct InjectionPlan {
     plies: Vec<u32>,
     /// 記録対象とする最初の手数。
     record_from: u32,
-}
-
-/// 書き出したレコードから対局横断で求める統計。
-pub(crate) struct RecordedStatistics {
-    /// i16の全探索値に対応する度数表。
-    score_frequencies: Vec<u64>,
-    /// 既出局面の探索キー。
-    search_keys: HashSet<u64>,
-    /// 以前の対局にも現れた局面数。
-    duplicate_positions: u64,
-}
-
-impl Default for RecordedStatistics {
-    fn default() -> Self {
-        Self {
-            score_frequencies: vec![0; SCORE_VALUE_COUNT],
-            search_keys: HashSet::new(),
-            duplicate_positions: 0,
-        }
-    }
-}
-
-impl RecordedStatistics {
-    /// 対局番号順に書き出す1レコードを集計する。
-    fn record(&mut self, completed: &CompletedRecord) {
-        self.score_frequencies[score_index(completed.record.score())] += 1;
-        if !self.search_keys.insert(completed.search_key) {
-            self.duplicate_positions += 1;
-        }
-    }
-}
-
-/// i16の探索値を昇順の度数表添字へ変換する。
-fn score_index(score: i16) -> usize {
-    usize::try_from(i32::from(score) - i32::from(i16::MIN))
-        .expect("an i16 score index must be non-negative")
 }
 
 /// 学習データ検査時の集計。
@@ -742,49 +528,6 @@ fn write_training_data(
     Ok(())
 }
 
-/// 任意の到着順の対局を対局番号順に書き出して集計する。
-pub(crate) fn merge_completed_games<I, W, F>(
-    messages: I,
-    writer: &mut Writer<W>,
-    games: u32,
-    mut on_completed: F,
-) -> io::Result<(Statistics, RecordedStatistics)>
-where
-    I: IntoIterator<Item = io::Result<CompletedGame>>,
-    W: Write + Seek,
-    F: FnMut(u64, &Statistics),
-{
-    let mut pending = BTreeMap::new();
-    let mut next_to_write = 1_u64;
-    let mut completed_count = 0_u64;
-    let mut total = Statistics::default();
-    let mut recorded = RecordedStatistics::default();
-    for message in messages {
-        let completed = message?;
-        pending.insert(completed.game_number, completed);
-        while let Some(completed) = pending.remove(&(next_to_write as u32)) {
-            for record in &completed.records {
-                writer
-                    .write_record(&record.record)
-                    .map_err(training_error)?;
-                recorded.record(record);
-            }
-            total.merge(&completed.stats);
-            completed_count += 1;
-            on_completed(completed_count, &total);
-            next_to_write += 1;
-        }
-    }
-    if next_to_write != u64::from(games) + 1 {
-        return Err(invalid_data(format!(
-            "worker channel closed after {} of {} games",
-            next_to_write - 1,
-            games
-        )));
-    }
-    Ok((total, recorded))
-}
-
 /// 1局をランダム序盤から終局まで進め、採用レコードを返す。
 fn play_game(
     pst: &Pst,
@@ -1023,15 +766,6 @@ fn generate_opening(rules: Rules, game_seed: NonZeroU64) -> io::Result<Game> {
         }
         opening_seed = derive_seed(opening_seed.get(), 0);
     }
-}
-
-/// 現局面の探索キーが同じ対局の過去に現れているかを返す。
-pub(crate) fn current_position_is_repeated(game: &Game) -> bool {
-    let history = game.search_key_history();
-    let Some((current, previous)) = history.split_last() else {
-        return false;
-    };
-    previous.contains(current)
 }
 
 /// 探索値の度数表から平均と母標準偏差を返す。
@@ -1300,11 +1034,6 @@ fn print_record(index: u64, record: &Record, position: &Position) {
     println!("ply: {}", record.ply());
 }
 
-/// 下位エラーの型を保持してコマンドの不正データエラーへ変換する。
-pub(crate) fn data_error(error: impl std::error::Error + Send + Sync + 'static) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, error)
-}
-
 /// 付け直しコマンドの進行に関する失敗。
 #[derive(Debug)]
 enum RescoreCommandError {
@@ -1339,40 +1068,6 @@ fn write_provenance(arguments: &ProvenanceArguments) -> io::Result<()> {
         return Err(data_error(RescoreCommandError::UnsupportedOrigin));
     }
     write_mapped_provenance(arguments, None)
-}
-
-/// 対局番号と実戦棋譜の対応を含めて来歴を書く。
-pub(crate) fn write_mapped_provenance(
-    arguments: &ProvenanceArguments,
-    games: Option<Vec<GameOrigin>>,
-) -> io::Result<()> {
-    let mut input = File::open(&arguments.input)?;
-    let checksum = rescore::sha256(&mut input)?;
-    let reader = Reader::new(BufReader::new(input)).map_err(data_error)?;
-    let header = reader.header();
-    let provenance = Provenance {
-        format: "minase-provenance".to_owned(),
-        version: 1,
-        mnsd_sha256: hex(&checksum),
-        teacher: Teacher {
-            generation_commit: header.generation_commit().to_owned(),
-            network_checksum: hex(header.network_checksum()),
-            nodes: header.teacher_nodes(),
-            rule_set: header.rule_set().to_owned(),
-            search_condition: arguments.search_condition,
-        },
-        result_origin: arguments.result_origin,
-        start_origin: arguments.start_origin,
-        lambda: arguments.lambda,
-        games,
-    };
-    provenance.validate().map_err(data_error)?;
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&arguments.output)?;
-    provenance.write(&mut output).map_err(data_error)?;
-    output.flush()
 }
 
 /// 付け直し全体の集計。再開前の記録も合計に含める。
@@ -1632,44 +1327,6 @@ fn engine_default_rules() -> io::Result<Rules> {
     Rules::from_codes(&codes).map_err(|error| invalid_data(error.to_string()))
 }
 
-/// gitサブコマンドを実行し、末尾の改行を除いた標準出力を返す。
-pub(crate) fn git_output(arguments: &[&str]) -> io::Result<String> {
-    let output = Command::new("git").args(arguments).output()?;
-    if !output.status.success() {
-        return Err(invalid_data(format!(
-            "git {} failed with status {}: {}",
-            arguments.join(" "),
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
-    }
-    String::from_utf8(output.stdout)
-        .map(|text| text.trim_end_matches(['\r', '\n']).to_owned())
-        .map_err(|error| invalid_data(format!("git output is not UTF-8: {error}")))
-}
-
-/// 生成コミットが40桁の16進ASCIIであることを検査する。
-pub(crate) fn validate_commit_hash(commit: &str) -> io::Result<()> {
-    if commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        Ok(())
-    } else {
-        Err(invalid_data(format!(
-            "git rev-parse HEAD returned an invalid full hash: {commit:?}"
-        )))
-    }
-}
-
-/// バイト列を小文字16進文字列へ変換する。
-fn hex(bytes: &[u8]) -> String {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let mut text = String::with_capacity(bytes.len() * 2);
-    for &byte in bytes {
-        text.push(DIGITS[usize::from(byte >> 4)] as char);
-        text.push(DIGITS[usize::from(byte & 0x0f)] as char);
-    }
-    text
-}
-
 /// 0より大きい`u32`を解析する。
 fn parse_positive_u32(text: &str) -> Result<u32, String> {
     let value = text
@@ -1702,19 +1359,11 @@ fn parse_positive_usize(text: &str) -> Result<NonZeroUsize, String> {
     NonZeroUsize::new(value).ok_or_else(|| "value must be greater than zero".to_owned())
 }
 
-/// 学習データエラーをコマンドの不正データエラーへ変換する。
-fn training_error(error: TrainingDataError) -> io::Error {
-    invalid_data(error.to_string())
-}
-
-/// 説明を`InvalidData`の入出力エラーへ変換する。
-fn invalid_data(error: impl Into<String>) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, error.into())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minase::datagen::statistics::{INJECTION_HISTOGRAM_BINS, SCORE_VALUE_COUNT, score_index};
+    use minase::training::provenance::Provenance;
     use std::io::Cursor;
 
     /// 小さなMNSDを含む一時ディレクトリ。各テストの入出力を分離する。

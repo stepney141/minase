@@ -1,11 +1,5 @@
 //! lishogiのゲームNDJSONを教師データまたは実戦開始の局面一覧へ変換する。
 
-// 編集範囲をバイナリ2本に限定し、既存の順序付き書き出しと来歴実装を共有する。
-// 別バイナリのCLIなど、この変換器が使わない部分だけは未使用を許す。
-#[allow(dead_code)]
-#[path = "selfplay_gen.rs"]
-mod selfplay;
-
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
@@ -14,6 +8,10 @@ use std::path::{Path, PathBuf};
 use std::thread;
 
 use clap::{Parser, Subcommand};
+use minase::datagen;
+use minase::datagen::data_error;
+use minase::datagen::game::{CompletedGame, CompletedRecord};
+use minase::datagen::statistics::Statistics;
 use minase::notation::{
     sfen::{SetupPosition, to_extended_sfen},
     usi,
@@ -22,9 +20,12 @@ use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, Transpositio
 use minase::training::provenance::{GameOrigin, ResultOrigin, SearchCondition, StartOrigin};
 use minase::training::records::{Header, Outcome, Record, Writer, best_move_is_tactical};
 use minase::{Color, Game, GameResult, MoveGenerator, Position, Rules};
-use selfplay::{CompletedGame, CompletedRecord, Statistics, data_error};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// グローバルアロケータ。探索を行う既存バイナリと同じくmimallocを使う。
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[derive(Parser)]
 #[command(name = "lishogi_import")]
@@ -393,7 +394,7 @@ fn replay(input: &InputGame, openings: bool) -> Result<Replay, Exclusion> {
             positions.push(ReplayPosition {
                 position: game.position().clone(),
                 ply: u16::try_from(ply).map_err(|_| Exclusion::IllegalDefaultRules)?,
-                repeated: selfplay::current_position_is_repeated(&game),
+                repeated: datagen::current_position_is_repeated(&game),
             });
         }
         let Some(text) = moves.next() else {
@@ -492,7 +493,7 @@ fn process_job(
             )
             .map_err(data_error)?;
             retained.push((u32::from(candidate.ply), to_extended_sfen(&setup)));
-        } else if result.score.unsigned_abs() >= selfplay::MATE_BAND_START {
+        } else if result.score.unsigned_abs() >= datagen::MATE_BAND_START {
             stats.excluded_mate_band += 1;
         } else if best_move_is_tactical(
             position,
@@ -595,10 +596,10 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
         }
     }
     report.accepted = jobs.len();
-    let commit = selfplay::git_output(&["rev-parse", "HEAD"])?;
-    selfplay::validate_commit_hash(&commit)?;
+    let commit = datagen::git::git_output(&["rev-parse", "HEAD"])?;
+    datagen::git::validate_commit_hash(&commit)?;
     if let Some((_, false)) = generation
-        && !selfplay::git_output(&["status", "--porcelain"])?.is_empty()
+        && !datagen::git::git_output(&["status", "--porcelain"])?.is_empty()
     {
         return Err(data_error(ImportError::DirtyTree));
     }
@@ -696,7 +697,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                 completed.push(Ok(result.completed));
             }
             if let Some(writer) = &mut writer {
-                selfplay::merge_completed_games(
+                datagen::game::merge_completed_games(
                     completed,
                     writer,
                     u32::try_from(batch.len()).map_err(data_error)?,
@@ -715,8 +716,8 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
             write_json(&path, &details)?;
             created.push(path);
             let path = sidecar(&common.output, ".provenance.json");
-            selfplay::write_mapped_provenance(
-                &selfplay::ProvenanceArguments {
+            datagen::provenance::write_mapped_provenance(
+                &datagen::provenance::ProvenanceArguments {
                     input: common.output.clone(),
                     output: path.clone(),
                     result_origin: ResultOrigin::Human,
