@@ -60,6 +60,7 @@
 | 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 完了 | 2026年9月26日 |
 | 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 起案 | |
 | 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 待機中 | ― |
+| Descentによる評価関数の強化学習 | [plans/descent.md](plans/descent.md) | 起案 | |
 
 ## 現在地
 
@@ -71,6 +72,8 @@ SPSAの摂動幅と学習率の較正は2026年9月26日に完了し、`spsa_run
 評価関数では、[教師の混合比](plans/teacher-mixing-ratio.md)のλ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となり、2026年9月26日に不採用で完了した。
 評価関数の次の対象は、従来の採用PSTを基点とする[探索局面を用いた学習](plans/search-aware-evaluation.md)であり、[相対2駒評価](plans/relative-pair-eval.md)は教師診断と残存誤りの確認待ちである。
 実施順序と、各判定からの進み先は次節に定める。
+[Descentによる強化学習](plans/descent.md)は2026年9月26日に起案し、同日に利用者の決定で、採用PSTを初期値とし、対照を置かず、同時16対局で48時間を予算とすることを確定した。
+着手は探索局面の計画の完了後であり、次節の表にはまだ含めない。
 
 ## 評価関数の進め方
 
