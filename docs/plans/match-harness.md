@@ -161,7 +161,7 @@ GSPRTのLLR取り込みは完了順ではなくペア番号順に整列して行
 
 ### CLIの形
 
-バイナリは`selfplay`を置き換える形で改名する（`src/bin/match_runner.rs`、名称は起案時提案でありレビューで確定する）。
+バイナリは`selfplay`を置き換える形で改名する（`src/bin/match_runner/`、名称は起案時提案でありレビューで確定する）。
 サブコマンド`gsprt`と`elo`、`--rules`、`--max-ply`、`--seed`、ペア再現情報の出力形式は現行selfplayから引き継ぐ。`--rules`省略時の入力原文は`engine-default`とし、審判層ではL0＋P0＋R1＋E0として検証する。
 
 使用例（提案）:

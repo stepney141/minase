@@ -29,7 +29,7 @@ NPSは再編後の中央値が基点の3回の計測の揺れの範囲を上側�
 関数、型、定数、および試験の名前は変えず、学習データのモジュール名`training_data`だけを`records`へ改める（「設計判断」の節）。
 処理の内容、引数、処理の順序、およびインライン属性は変えない。
 ただし、移動に伴って次の3種類の記述は書き換える。
-1つ目は、`use`文ではなく式の中に直接書かれたモジュールパス（`src/bin/selfplay_gen.rs`の`minase::eval::training_data::FORMAT_VERSION`など）である。
+1つ目は、`use`文ではなく式の中に直接書かれたモジュールパス（`src/bin/selfplay_gen/`の`minase::eval::training_data::FORMAT_VERSION`など）である。
 2つ目は、`include_bytes!`が埋め込むファイルの相対パス（`nets/pst.bin`と`nets/pst-init.bin`）であり、ファイルの階層が深くなった分だけ`../`を増やす。
 3つ目は、試験が子プロセスへ渡す試験の完全修飾名（`tuning_parameters_and_usi_contract_in_isolated_process`が`--exact`で指定する`search::tests::…`）であり、移動後の完全修飾名へ改める。
 

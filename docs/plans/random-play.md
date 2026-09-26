@@ -31,7 +31,7 @@
 - `position.rs`と`movegen/tests/invariants.rs`に重複しているXorShift64乱数生成器を`src/rng.rs`へ分離し、3箇所目の利用者として新バイナリを加える。
 - `sfen.rs`へ`to_sfen`（`Position`からSFEN文字列への出力）を追加し、`parse_sfen`とのラウンドトリップテストを付ける。
 - `Game`へ`Clone`を追加し、全数検証で複製した対局に着手を適用できるようにする。
-- 検証ハーネス`src/bin/random_play.rs`を新設する。
+- 検証ハーネス`src/bin/random_play/`を新設する。
 
 探索部、評価関数、USIおよびCECPのプロトコル本体、拡張SFEN、性能最適化は対象外とする。
 

@@ -13,9 +13,11 @@
 
 ## 状態
 
-起案。
-2026年9月27日に起案し、共有コードの置き場所と分割する実行ファイルの範囲を同日に利用者が決定した。
-codexによる本書のレビューを反映済みであり、次の一手はmasterから`bin-harness-layout`ブランチを切って第1フェーズに着手することである。
+進行中。
+2026年9月27日に起案および着手し、共有コードの置き場所と分割する実行ファイルの範囲を同日に利用者が決定した。
+実装フェーズの1から7までを`bin-harness-layout`ブランチで完了し、各コードのコミットで「検証」の節の確認（fmt、clippyの警告0件、既定と`tuning`機能の全試験、および固定シードの出力の一致）がすべて通った。
+試験の件数は788件から772件になったが、差の16件は`lishogi_import`の試験バイナリで重複実行されていた`selfplay_gen`の試験であり、試験名の末尾の集合は再編前と一致する。
+次の一手はmasterへの統合である。
 
 ## 目的
 
@@ -332,12 +334,14 @@ Rustでは、非公開の項目と欄は、定義したモジュールとその�
 ## 文書のパス参照
 
 `docs/`（`docs/measurements/`と`docs/audits/`を除く）、`AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`、`README.md`、`RULES.md`、およびコードのdocコメントにある、移動したファイルへの参照を新しい配置へ書き換える。
-調査時点で参照を持つ文書は、`src/harness.rs`について`docs/plans/usi-resignation.md`と`docs/plans/alphazero.md`、実行ファイルについて`docs/plans/`の`match-harness.md`、`ponder.md`、`spsa.md`、`spsa-apply.md`、`spsa-gain-calibration.md`、`random-play.md`、`search-eval-layout.md`、`strength-stage9.md`、`spec-first-tests.md`、`spec-first-tests/ledgers/d6.md`と`d8.md`、および`docs/research/`の数件である。
+起案時点で書き換えの対象となる参照を持つ文書は、`src/harness.rs`について`docs/plans/usi-resignation.md`と`docs/plans/alphazero.md`、実行ファイルについて`docs/plans/`の`match-harness.md`、`ponder.md`、`spsa.md`、`random-play.md`、`search-eval-layout.md`、`strength-stage9.md`、および`spec-first-tests/ledgers/d8.md`、ならびに`docs/research/`の3件である。
+`src/bin/spsa_runner/`の下の`tests.rs`、`model.rs`、および`tests/simulation.rs`は再編後もパスが変わらないので、これらへの参照は書き換えない。
 参照先のファイルは、同じ文にある関数名、型名、または試験名から「再編後の配置」の表に従って決める。
 行番号の付いた参照は、移動先の行を特定できれば新しい行番号へ改め、特定できなければ行番号を削ってパスだけを残す。
 
 `docs/plans/spec-first-tests/ledgers/d8.md`は、再編の前から先読みの試験の大半を`src/bin/match_runner/ponder_tests.rs`にあると記しているが、実際には`src/harness/ponder_tests.rs`にある。
 この参照も、再編後の実際の置き場所（`src/harness/engine/tests.rs`）へ改める。
+一方、同じ台帳の冒頭と各節の見出しにある`src/bin/match_runner.rs`と`src/bin/random_play.rs`は、台帳を作成した2026年8月15日に旧テストが置かれていた場所の記録なので、書き換えない。
 
 [src構成の整理](src-layout.md)の「探索部・評価関数はcoreの外にトップレベルで並べる」の節に、`datagen`の追加と依存の向きを反映する。
 
@@ -362,7 +366,7 @@ Rustでは、非公開の項目と欄は、定義したモジュールとその�
 
 ## 実装フェーズ
 
-利用者の決定の後、masterから`bin-harness-layout`ブランチを切り、次の順にコミットする。
+masterから`bin-harness-layout`ブランチを切り、次の順にコミットする。
 各コミットは単独でビルドと試験が通る状態にする。
 
 1. `refactor(harness): split the harness module by purpose`。ハーネスを「対局ハーネス」の表の配置へ移し、`pair_seed_replaces_the_zero_output`を`src/rng.rs`へ、`linux_host_resource_probe_reports_cores_and_memory`を`src/harness/environment.rs`へ移す。
@@ -412,7 +416,7 @@ codexへの指示には、名前の変更、シグネチャの変更、処理の
 各コマンドの正確な引数は、基点で実行できることを確かめてから確定し、同じ引数を各コミットで使う。
 
 `src/bin/`と`src/harness/`から`#[path]`が消えたこと（`grep -rn '#\[path' src/bin src/harness`が0件）を確かめる。`src/core/movegen/search_captures.rs`の`#[path]`は本書の対象外なので残る。
-文書の書き換えの後に、`docs/`（`docs/measurements/`と`docs/audits/`を除く）とリポジトリ直下の文書に、再編で消えたパス（`src/harness.rs`、`src/harness/tests.rs`、`src/harness/ponder_tests.rs`、`src/harness/records.rs`、および`src/bin/`の`match_runner.rs`、`match_runner/ponder_tests.rs`、`match_report.rs`、`selfplay_gen.rs`、`lishogi_import.rs`、`spsa_runner.rs`、`random_play.rs`）への参照が残っていないことを`grep`で確かめる。
+文書の書き換えの後に、`docs/`（`docs/measurements/`と`docs/audits/`を除く）とリポジトリ直下の文書に、再編で消えたパス（`src/harness.rs`、`src/harness/tests.rs`、`src/harness/ponder_tests.rs`、`src/harness/records.rs`、および`src/bin/`の`match_runner.rs`、`match_runner/ponder_tests.rs`、`match_report.rs`、`selfplay_gen.rs`、`lishogi_import.rs`、`spsa_runner.rs`、`random_play.rs`）への参照が、前節で記録として残すと定めた台帳d8.mdの3か所を除いて残っていないことを`grep`で確かめる。
 
 ## 完了条件
 

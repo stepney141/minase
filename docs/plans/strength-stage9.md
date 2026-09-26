@@ -63,7 +63,7 @@ minaseにはこのどれもない。
 
 ## 適用範囲
 
-対象は、`src/eval/`（特徴の定義、重み形式、評価値の計算）、`src/search/alphabeta/`（静的評価の呼び出し、王手の判定、探索の深さ方向の位置であるplyごとの状態の前送り）、`src/search/alphabeta/see.rs`、`src/core/attacks/`（利きの表）、`src/bin/pst_probe.rs`、`src/bin/selfplay_gen.rs`（保存済みの局面の付け直しと、開始局面の一覧からの生成）、教師データの来歴を記す付随ファイル、lishogiの棋譜を教師データへ変換する道具、および `tools/train/pst/` の学習器と診断器である。
+対象は、`src/eval/`（特徴の定義、重み形式、評価値の計算）、`src/search/alphabeta/`（静的評価の呼び出し、王手の判定、探索の深さ方向の位置であるplyごとの状態の前送り）、`src/search/alphabeta/see.rs`、`src/core/attacks/`（利きの表）、`src/bin/pst_probe.rs`、`src/bin/selfplay_gen/`（保存済みの局面の付け直しと、開始局面の一覧からの生成）、教師データの来歴を記す付随ファイル、lishogiの棋譜を教師データへ変換する道具、および `tools/train/pst/` の学習器と診断器である。
 本書の用語は[PSTの序中盤と終盤の補間](tapered-pst.md)、[評価関数](evaluation.md)、および[段階7](strength-stage7.md)の定義に従い、次の語を加える。
 
 - **王駒**は、王将、玉将、太子を指す。
