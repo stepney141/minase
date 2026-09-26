@@ -134,7 +134,7 @@ struct Scenario {
 
 /// 既存の合成試験と同じ宣言表から範囲だけを読む。
 fn ranges() -> Vec<Parameter> {
-    let table = include_str!("../../../search/params.rs")
+    let table = include_str!("../../../search/alphabeta/params.rs")
         .split_once("parameters! {")
         .unwrap()
         .1

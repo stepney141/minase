@@ -716,7 +716,7 @@ impl UsiProtocol {
             "option name ResignValue type spin default {DEFAULT_RESIGN_VALUE} min 1 max 99999"
         )?;
         #[cfg(feature = "tuning")]
-        for &(name, default, min, max) in search::params::PARAMETERS {
+        for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
             writeln!(
                 output,
                 "option name Tune_{name} type spin default {default} min {min} max {max}"
@@ -750,7 +750,7 @@ impl UsiProtocol {
             let Ok(value) = value.parse::<i32>() else {
                 return write_error(output, &format!("{name} must be an integer"));
             };
-            return match search::params::set(parameter, value) {
+            return match search::alphabeta::params::set(parameter, value) {
                 Ok(()) => Ok(()),
                 Err(error) => write_error(output, &error.to_string()),
             };

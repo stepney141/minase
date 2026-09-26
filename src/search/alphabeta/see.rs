@@ -297,7 +297,7 @@ mod tests {
     use crate::core::position::PositionBuilder;
     use crate::core::rules::Rules;
     use crate::eval::weights;
-    use crate::search::capture_is_pruned_by_see;
+    use crate::search::alphabeta::pruning::capture_is_pruned_by_see;
     use crate::test_util::{bench_positions, position_from_codes, sampled_random_positions, sq};
 
     use core::cell::Cell;
@@ -367,7 +367,7 @@ mod tests {
     // 取り返される損125は、余裕値0では枝刈りし、200では展開する。
     #[test]
     fn see_prunes_respects_margin_and_strict_boundary() {
-        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+        let pst = Pst::decode(include_bytes!("../../../nets/pst-init.bin")).unwrap();
         let board = position(
             Color::Black,
             &[
@@ -395,7 +395,7 @@ mod tests {
 
         for captured_value in [799_i32, 800, 801, 999, 1000, 1001] {
             // MNPTの駒価値表を直接指定する。最大の成り益は歩100→金1000の900。
-            let mut bytes = include_bytes!("../../nets/pst-init.bin").to_vec();
+            let mut bytes = include_bytes!("../../../nets/pst-init.bin").to_vec();
             let base = bytes.len() - PIECE_STATE_COUNT * 4;
             for state in 0..PIECE_STATE_COUNT {
                 bytes[base + state * 4..base + state * 4 + 4]
@@ -471,7 +471,7 @@ mod tests {
     // 加えてから判定する。同価値の捕獲でも成り益分の損を枝刈りする。
     #[test]
     fn see_prunes_includes_recapture_promotion_before_early_exit() {
-        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+        let pst = Pst::decode(include_bytes!("../../../nets/pst-init.bin")).unwrap();
         let mover = unpromoted(Color::White, PieceKind::Rook);
         let attacker = unpromoted(Color::Black, PieceKind::DragonHorse);
         let bonus =
@@ -509,7 +509,7 @@ mod tests {
         use sha2::{Digest, Sha256};
 
         // evaluation.mdのMNPT形式に従い、成香の価値だけを1へ下げる。
-        let mut bytes = include_bytes!("../../nets/pst-init.bin").to_vec();
+        let mut bytes = include_bytes!("../../../nets/pst-init.bin").to_vec();
         let promoted_lance = promoted(Color::Black, PieceKind::WhiteHorse);
         let offset = bytes.len() - PIECE_STATE_COUNT * 4 + piece_state_of(promoted_lance) * 4;
         bytes[offset..offset + 4].copy_from_slice(&1_i32.to_le_bytes());
@@ -731,7 +731,7 @@ mod tests {
     // および王駒による取り返しを手計算した交換列と照合する。
     #[test]
     fn see_values_match_hand_calculated_exchange_sequences() {
-        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+        let pst = Pst::decode(include_bytes!("../../../nets/pst-init.bin")).unwrap();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
 
@@ -820,7 +820,7 @@ mod tests {
     // 非獅子の取り返しと獅子による取り返しの価値を反映する。
     #[test]
     fn see_values_lion_captures_of_non_lions() {
-        let pst = Pst::decode(include_bytes!("../../nets/pst-init.bin")).unwrap();
+        let pst = Pst::decode(include_bytes!("../../../nets/pst-init.bin")).unwrap();
         let rules = MoveRules::standard();
         let target = sq(5, 5);
         let black_lion = unpromoted(Color::Black, PieceKind::Lion);
