@@ -1,0 +1,384 @@
+diff --git a/src/search/alphabeta/mod.rs b/src/search/alphabeta/mod.rs
+index b2ae371..68510b6 100644
+--- a/src/search/alphabeta/mod.rs
++++ b/src/search/alphabeta/mod.rs
+@@ -2,6 +2,7 @@
+ 
+ mod correction;
+ mod deepening;
++mod diag;
+ mod negamax;
+ mod ordering;
+ pub(crate) mod params;
+diff --git a/src/search/alphabeta/negamax.rs b/src/search/alphabeta/negamax.rs
+index 9772e5b..2340b84 100644
+--- a/src/search/alphabeta/negamax.rs
++++ b/src/search/alphabeta/negamax.rs
+@@ -76,6 +76,9 @@ impl Searcher<'_> {
+                 .pst
+                 .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
+             self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
++            if let Some(diag) = &mut self.diag {
++                diag.after_null(ply, position);
++            }
+             let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
+             let score = self
+                 .negamax(
+@@ -103,6 +106,7 @@ impl Searcher<'_> {
+         let mut static_eval = None;
+         // docs/plans/strength-stage4.mdの「適用するノード」「futility pruning」節。
+         // 静的評価と余裕値の和は対象ノードで1回だけ求める。
++        let mut diag_bounds = None;
+         let futility_bound = (depth <= 3
+             && beta - alpha == 1
+             && alpha.abs() < MATE_THRESHOLD
+@@ -115,7 +119,11 @@ impl Searcher<'_> {
+                     )
+                 });
+                 let margin = futility_margin(self.pst.pawn_value(), depth);
+-                static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
++                let material = self.correction.read(side, self.material_keys[ply as usize]);
++                if let Some(diag) = &mut self.diag {
++                    diag_bounds = Some(diag.reference(side, ply, material, static_eval + margin));
++                }
++                static_eval + material + margin
+             });
+         let mut royal_attacked = None;
+         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
+@@ -127,6 +135,16 @@ impl Searcher<'_> {
+         while let Some((mv, capture)) =
+             self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
+         {
++            if let (Some(diag), Some(current), Some(candidates)) =
++                (&mut self.diag, futility_bound, diag_bounds)
++                && best_score > -MATE_THRESHOLD
++                && Some(mv) != tt_move
++                && !mv.promote
++                && !capture
++                && !royal_under_attack(position)
++            {
++                diag.quiet(current, candidates, alpha);
++            }
+             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
+             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
+             if best_score > -MATE_THRESHOLD
+@@ -207,6 +225,16 @@ impl Searcher<'_> {
+                 || (bound == Bound::Lower && best_score > static_eval))
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                if let Some(diag) = &mut self.diag {
++                    diag.observe(
++                        side,
++                        ply,
++                        self.correction.read(side, self.material_keys[ply as usize]),
++                        best_score - static_eval,
++                        depth,
++                        bound,
++                    );
++                }
+                 self.correction.update(
+                     side,
+                     self.material_keys[ply as usize],
+@@ -261,6 +289,9 @@ impl Searcher<'_> {
+         );
+         self.material_keys[(ply + 1) as usize] =
+             key_after_move(self.material_keys[ply as usize], &undo);
++        if let Some(diag) = &mut self.diag {
++            diag.after_move(ply, position, &undo);
++        }
+         self.path_keys.push(key);
+         let mut score = if first {
+             self.negamax(position, depth - 1, -beta, -alpha, ply + 1)
+diff --git a/src/search/alphabeta/searcher.rs b/src/search/alphabeta/searcher.rs
+index f78be89..d91160c 100644
+--- a/src/search/alphabeta/searcher.rs
++++ b/src/search/alphabeta/searcher.rs
+@@ -66,6 +66,7 @@ pub(super) fn new_searcher<'a>(
+         accumulators: [root_accumulator; MAX_PLY as usize + 1],
+         material_keys: [material_key(position); MAX_PLY as usize + 1],
+         correction: CorrectionTable::new(pst.pawn_value()),
++        diag: super::diag::Worker::new(position, pst.pawn_value()),
+         delta_margin: pst.pawn_value() * params::delta_margin() / 100,
+         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
+@@ -117,6 +118,8 @@ pub(super) struct Searcher<'a> {
+     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
+     /// 反復深化の間で共有する、このワーカー専用の補正表。
+     pub(super) correction: CorrectionTable,
++    /// 環境変数が設定されたときだけ確保する受動診断。
++    pub(super) diag: Option<Box<super::diag::Worker>>,
+     /// 静止探索で小さな捕獲を残すための余裕値。
+     pub(super) delta_margin: i32,
+     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
+diff --git a/src/search/alphabeta/diag.rs b/src/search/alphabeta/diag.rs
+new file mode 100644
+index 0000000..815f047
+--- /dev/null
++++ b/src/search/alphabeta/diag.rs
+@@ -0,0 +1,266 @@
++//! 段階12項目6の受動診断。表と計数器は探索ワーカー内だけに保持する。
++
++use std::fs::OpenOptions;
++use std::io::{Read, Seek, SeekFrom, Write};
++use std::path::PathBuf;
++
++use serde::Serialize;
++
++use super::correction::CorrectionTable;
++use super::{params, tt::Bound};
++use crate::core::board::BOARD_SQUARE_COUNT;
++use crate::core::piece::{COLOR_COUNT, Color, PieceCode, PieceKind};
++use crate::core::position::Undo;
++use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
++use crate::search::{MAX_PLY, snapshot::search_key};
++use crate::{Position, Square};
++
++#[derive(Default, Serialize)]
++struct Counts {
++    observations: u64,
++    // exact, upper, lower。すべて現行の変種Bの更新条件を満たす観測。
++    observation_bounds: [u64; 3],
++    uncorrected_absolute_error: u64,
++    material_absolute_error: u64,
++    candidate_absolute_error: [u64; 4],
++    reference_nodes: u64,
++    material_nonzero: u64,
++    table_nonzero: [u64; 3],
++    combined_added_sum_nonzero: u64,
++    blended_nonzero: [u64; 4],
++    futility_quiets: u64,
++    current_pruned: u64,
++    changed: [u64; 4],
++    newly_pruned: [u64; 4],
++    newly_retained: [u64; 4],
++    move_key_updates: u64,
++    move_key_checks: u64,
++    null_key_checks: u64,
++    capture_key_checks: u64,
++    promotion_key_checks: u64,
++    return_key_checks: u64,
++    igui_key_checks: u64,
++    double_capture_key_checks: u64,
++}
++
++#[derive(Serialize)]
++struct Report {
++    root_key: u64,
++    pawn: i32,
++    correction_weight: i32,
++    correction_cap: i32,
++    counts: Counts,
++}
++
++/// 探索終了時に指定JSON配列へ1ワーカー分を追記する。
++pub(super) struct Worker {
++    path: PathBuf,
++    tables: [CorrectionTable; 3],
++    keys: [[u64; 3]; MAX_PLY as usize + 1],
++    report: Report,
++}
++
++impl Worker {
++    pub(super) fn new(position: &Position, pawn: i32) -> Option<Box<Self>> {
++        let path = std::env::var_os("MINASE_STAGE12_DIAG")?;
++        assert!(!path.is_empty(), "MINASE_STAGE12_DIAG needs a JSON path");
++        Some(Box::new(Self {
++            path: path.into(),
++            tables: std::array::from_fn(|_| CorrectionTable::new(pawn)),
++            keys: [position_keys(position); MAX_PLY as usize + 1],
++            report: Report {
++                root_key: search_key(position),
++                pawn,
++                correction_weight: params::correction_weight(),
++                correction_cap: params::correction_cap(),
++                counts: Counts::default(),
++            },
++        }))
++    }
++
++    pub(super) fn after_move(&mut self, ply: u32, position: &Position, undo: &Undo) {
++        let mut keys = self.keys[ply as usize];
++        toggle(&mut keys, undo.moved_piece_before, undo.mv.from);
++        let moved = if undo.mv.promote {
++            undo.moved_piece_before.promote().expect("合法な成り")
++        } else {
++            undo.moved_piece_before
++        };
++        toggle(&mut keys, moved, undo.mv.to);
++        let captures = undo.captured.iter().flatten().count();
++        for captured in undo.captured.iter().flatten() {
++            toggle(&mut keys, captured.piece, captured.square);
++        }
++        self.keys[(ply + 1) as usize] = keys;
++        let counts = &mut self.report.counts;
++        counts.move_key_updates += 1;
++        // 通常手は1024回ごと。捕獲、成り、元の升への復帰は全件を照合する。
++        if counts.move_key_updates.is_multiple_of(1024)
++            || captures > 0
++            || undo.mv.promote
++            || undo.mv.from == undo.mv.to
++        {
++            assert_eq!(keys, position_keys(position), "incremental keys: {undo:?}");
++            counts.move_key_checks += 1;
++            counts.capture_key_checks += u64::from(captures > 0);
++            counts.promotion_key_checks += u64::from(undo.mv.promote);
++            counts.return_key_checks += u64::from(undo.mv.from == undo.mv.to);
++            counts.igui_key_checks += u64::from(captures > 0 && undo.mv.from == undo.mv.to);
++            counts.double_capture_key_checks += u64::from(captures == 2);
++        }
++    }
++
++    pub(super) fn after_null(&mut self, ply: u32, position: &Position) {
++        self.keys[(ply + 1) as usize] = self.keys[ply as usize];
++        assert_eq!(self.keys[(ply + 1) as usize], position_keys(position));
++        self.report.counts.null_key_checks += 1;
++    }
++
++    fn read(&self, side: Color, ply: u32) -> [i32; 3] {
++        std::array::from_fn(|i| self.tables[i].read(side, self.keys[ply as usize][i]))
++    }
++
++    /// 現行と同じ時点で候補の境界を固定し、適用ノードの参照を数える。
++    pub(super) fn reference(
++        &mut self,
++        side: Color,
++        ply: u32,
++        material: i32,
++        uncorrected_bound: i32,
++    ) -> [i32; 4] {
++        let values = self.read(side, ply);
++        let blended = blend(material, values);
++        let counts = &mut self.report.counts;
++        counts.reference_nodes += 1;
++        counts.material_nonzero += u64::from(material != 0);
++        for (count, value) in counts.table_nonzero.iter_mut().zip(values) {
++            *count += u64::from(value != 0);
++        }
++        counts.combined_added_sum_nonzero += u64::from(values.iter().sum::<i32>() != 0);
++        for (count, value) in counts.blended_nonzero.iter_mut().zip(blended) {
++            *count += u64::from(value != 0);
++        }
++        blended.map(|value| uncorrected_bound + value)
++    }
++
++    /// bound以外の現行futility条件を満たす静かな手についてだけ呼ぶ。
++    pub(super) fn quiet(&mut self, current: i32, candidates: [i32; 4], alpha: i32) {
++        let counts = &mut self.report.counts;
++        counts.futility_quiets += 1;
++        let pruned = current <= alpha;
++        counts.current_pruned += u64::from(pruned);
++        for (i, bound) in candidates.into_iter().enumerate() {
++            let candidate_pruned = bound <= alpha;
++            counts.changed[i] += u64::from(candidate_pruned != pruned);
++            counts.newly_pruned[i] += u64::from(candidate_pruned && !pruned);
++            counts.newly_retained[i] += u64::from(!candidate_pruned && pruned);
++        }
++    }
++
++    /// 現行表の更新直前に予測誤差を数え、その観測で候補表を更新する。
++    pub(super) fn observe(
++        &mut self,
++        side: Color,
++        ply: u32,
++        material: i32,
++        difference: i32,
++        depth: u32,
++        bound: Bound,
++    ) {
++        let predictions = blend(material, self.read(side, ply));
++        let counts = &mut self.report.counts;
++        counts.observations += 1;
++        counts.observation_bounds[match bound {
++            Bound::Exact => 0,
++            Bound::Upper => 1,
++            Bound::Lower => 2,
++        }] += 1;
++        counts.uncorrected_absolute_error += u64::from(difference.unsigned_abs());
++        counts.material_absolute_error += u64::from((difference - material).unsigned_abs());
++        for (count, prediction) in counts.candidate_absolute_error.iter_mut().zip(predictions) {
++            *count += u64::from((difference - prediction).unsigned_abs());
++        }
++        for (table, key) in self.tables.iter_mut().zip(self.keys[ply as usize]) {
++            table.update(side, key, difference, depth);
++        }
++    }
++}
++
++impl Drop for Worker {
++    fn drop(&mut self) {
++        if std::thread::panicking() {
++            return;
++        }
++        // 計測中には共有状態を使わない。JSON追記の衝突は黙認せず失敗させる。
++        let mut file = OpenOptions::new()
++            .read(true)
++            .write(true)
++            .create(true)
++            .truncate(false)
++            .open(&self.path)
++            .expect("open stage12 diagnostic JSON");
++        fs2::FileExt::try_lock_exclusive(&file).expect("diagnostic output is already in use");
++        let mut bytes = Vec::new();
++        file.read_to_end(&mut bytes).expect("read diagnostic JSON");
++        let mut reports: Vec<serde_json::Value> = if bytes.is_empty() {
++            Vec::new()
++        } else {
++            serde_json::from_slice(&bytes).expect("diagnostic output must be a JSON array")
++        };
++        reports.push(serde_json::to_value(&self.report).expect("serialize diagnostic report"));
++        let bytes = serde_json::to_vec_pretty(&reports).expect("serialize diagnostic JSON");
++        file.seek(SeekFrom::Start(0))
++            .expect("rewind diagnostic JSON");
++        file.write_all(&bytes).expect("write diagnostic JSON");
++        file.set_len(bytes.len() as u64)
++            .expect("truncate diagnostic JSON");
++    }
++}
++
++// 読み出した整数値を等分し、Rustの整数除算で0方向へ丸める。
++fn blend(material: i32, values: [i32; 3]) -> [i32; 4] {
++    [
++        (material + values[0]) / 2,
++        (material + values[1]) / 2,
++        (material + values[2]) / 2,
++        (material + values.iter().sum::<i32>()) / 4,
++    ]
++}
++
++fn position_keys(position: &Position) -> [u64; 3] {
++    let mut keys = [0; 3];
++    for square in Square::all() {
++        if let Some(piece) = position.piece_at(square) {
++            toggle(&mut keys, piece, square);
++        }
++    }
++    keys
++}
++
++fn toggle(keys: &mut [u64; 3], piece: PieceCode, square: Square) {
++    let color = piece.color().expect("盤上の駒").index();
++    // 成歩と成仲人は現在の駒種で(b)(c)へ分類し、王駒も除外しない。
++    let group = if matches!(piece.kind(), Some(PieceKind::Pawn | PieceKind::GoBetween)) {
++        0
++    } else {
++        1 + color
++    };
++    let index = (color * PIECE_STATE_COUNT + piece_state_of(piece)) * BOARD_SQUARE_COUNT
++        + square.dense_index();
++    keys[group] ^= PIECE_SQUARE_KEYS[index];
++}
++
++static PIECE_SQUARE_KEYS: [u64; COLOR_COUNT * PIECE_STATE_COUNT * BOARD_SQUARE_COUNT] = {
++    let mut keys = [0; COLOR_COUNT * PIECE_STATE_COUNT * BOARD_SQUARE_COUNT];
++    let mut state = 0x6d69_6e61_7365_0012_u64;
++    let mut i = 0;
++    while i < keys.len() {
++        state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
++        let mut z = state;
++        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
++        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
++        keys[i] = z ^ (z >> 31);
++        i += 1;
++    }
++    keys
++};

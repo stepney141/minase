@@ -1,0 +1,424 @@
+diff --git a/src/protocol/usi.rs b/src/protocol/usi.rs
+index 24d0f50..3d6f95a 100644
+--- a/src/protocol/usi.rs
++++ b/src/protocol/usi.rs
+@@ -804,6 +804,9 @@ impl UsiProtocol {
+             let Some(threads) = parse_threads(value) else {
+                 return write_error(output, "Threads must be an integer from 1 to 256");
+             };
++            if self.threads != threads {
++                search::alphabeta::diag::reset();
++            }
+             self.threads = threads;
+             Ok(())
+         } else if name.eq_ignore_ascii_case("ResignValue") {
+@@ -1057,6 +1060,9 @@ impl UsiProtocol {
+                 if clears_position_history {
+                     self.accepted_position = None;
+                 }
++                if clears_transposition_table {
++                    search::alphabeta::diag::reset();
++                }
+                 if clears_transposition_table
+                     && let Some(transposition_table) = &mut self.transposition_table
+                 {
+@@ -1308,6 +1314,7 @@ fn write_bestmove(
+     resign: bool,
+ ) -> io::Result<()> {
+     writeln!(output, "info string stop {}", stop_reason_text(stop_reason))?;
++    search::alphabeta::diag::write_info(output)?;
+     if resign {
+         writeln!(output, "bestmove resign")?;
+     } else {
+diff --git a/src/search/alphabeta/deepening.rs b/src/search/alphabeta/deepening.rs
+index c1bb82a..f775b8e 100644
+--- a/src/search/alphabeta/deepening.rs
++++ b/src/search/alphabeta/deepening.rs
+@@ -39,6 +39,7 @@ pub(super) fn run_main_worker(
+     ponder: bool,
+ ) -> WorkerOutcome {
+     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
++    searcher.diag = super::diag::begin(pst.pawn_value());
+     let mut result = SearchResult {
+         best_move: root_moves[0],
+         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+@@ -129,6 +130,7 @@ pub(super) fn run_main_worker(
+             break;
+         }
+     }
++    super::diag::finish(searcher.diag.take());
+     let nodes = searcher.nodes;
+     WorkerOutcome {
+         worker_index: 0,
+diff --git a/src/search/alphabeta/mod.rs b/src/search/alphabeta/mod.rs
+index b2ae371..d79bf48 100644
+--- a/src/search/alphabeta/mod.rs
++++ b/src/search/alphabeta/mod.rs
+@@ -2,6 +2,7 @@
+ 
+ mod correction;
+ mod deepening;
++pub(crate) mod diag;
+ mod negamax;
+ mod ordering;
+ pub(crate) mod params;
+diff --git a/src/search/alphabeta/negamax.rs b/src/search/alphabeta/negamax.rs
+index 9772e5b..ef4baf8 100644
+--- a/src/search/alphabeta/negamax.rs
++++ b/src/search/alphabeta/negamax.rs
+@@ -117,6 +117,13 @@ impl Searcher<'_> {
+                 let margin = futility_margin(self.pst.pawn_value(), depth);
+                 static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
+             });
++        let carried_futility_bound = futility_bound.and_then(|_| {
++            self.diag.as_mut().map(|diag| {
++                static_eval.expect("futility computed static evaluation")
++                    + diag.correction_value(side, self.material_keys[ply as usize])
++                    + futility_margin(self.pst.pawn_value(), depth)
++            })
++        });
+         let mut royal_attacked = None;
+         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
+         let mut best_move = None;
+@@ -124,9 +131,27 @@ impl Searcher<'_> {
+         let mut best_capture = false;
+         let mut beta_cutoff = false;
+         let mut index = 0;
+-        while let Some((mv, capture)) =
+-            self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
+-        {
++        loop {
++            let picked = self.move_pickers[ply as usize].next(
++                position,
++                self.pst,
++                &self.generator,
++                &self.history,
++            );
++            if let Some(diag) = &mut self.diag {
++                self.move_pickers[ply as usize].observe_diag(side, diag);
++            }
++            let Some((mv, capture)) = picked else { break };
++            if let (Some(diag), Some(current), Some(carried)) =
++                (&mut self.diag, futility_bound, carried_futility_bound)
++                && best_score > -MATE_THRESHOLD
++                && Some(mv) != tt_move
++                && !mv.promote
++                && !capture
++                && !royal_under_attack(position)
++            {
++                diag.observe_futility(current, carried, alpha);
++            }
+             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
+             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
+             if best_score > -MATE_THRESHOLD
+@@ -164,7 +189,11 @@ impl Searcher<'_> {
+             {
+                 let history =
+                     self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()];
+-                lmr_reduction(depth, index, history)
++                let reduction = lmr_reduction(depth, index, history);
++                if let Some(diag) = &mut self.diag {
++                    diag.observe_lmr(side, mv, depth, index, reduction);
++                }
++                reduction
+             } else {
+                 0
+             };
+@@ -207,6 +236,14 @@ impl Searcher<'_> {
+                 || (bound == Bound::Lower && best_score > static_eval))
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                if let Some(diag) = &mut self.diag {
++                    diag.correction.update(
++                        side,
++                        self.material_keys[ply as usize],
++                        best_score - static_eval,
++                        depth,
++                    );
++                }
+                 self.correction.update(
+                     side,
+                     self.material_keys[ply as usize],
+diff --git a/src/search/alphabeta/ordering.rs b/src/search/alphabeta/ordering.rs
+index 4c2b5be..d167a69 100644
+--- a/src/search/alphabeta/ordering.rs
++++ b/src/search/alphabeta/ordering.rs
+@@ -58,6 +58,9 @@ impl Searcher<'_> {
+             killers[0] = Some(mv);
+         }
+ 
++        if let Some(diag) = &mut self.diag {
++            diag.quiet_cutoff(position.side_to_move(), mv, depth);
++        }
+         let color = position.side_to_move().index();
+         let from = mv.from.dense_index();
+         let to = mv.to.dense_index();
+@@ -121,6 +124,7 @@ pub(super) struct MovePicker {
+     quiet_order: Vec<(Reverse<i32>, usize)>,
+     used_quiets: [Option<usize>; KILLER_COUNT],
+     quiets_generated: bool,
++    diag_observation: super::diag::PickerObservation,
+ }
+ 
+ impl MovePicker {
+@@ -139,11 +143,13 @@ impl MovePicker {
+             quiet_order: Vec::new(),
+             used_quiets: [None; KILLER_COUNT],
+             quiets_generated: false,
++            diag_observation: super::diag::PickerObservation::default(),
+         }
+     }
+ 
+     /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
+     pub(super) fn reset(&mut self, tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) {
++        self.diag_observation = super::diag::PickerObservation::default();
+         self.stage = MovePickerStage::Tt;
+         self.tt_move = tt_move;
+         self.killers = killers;
+@@ -157,6 +163,23 @@ impl MovePicker {
+         self.used_quiets = [None; KILLER_COUNT];
+     }
+ 
++    /// next直後、静かな手の整列と到達位置だけを観測する。
++    pub(super) fn observe_diag(
++        &mut self,
++        side: crate::Color,
++        diag: &mut super::diag::HistoryCarry,
++    ) {
++        if matches!(self.stage, MovePickerStage::Done) {
++            diag.observe_order(
++                &mut self.diag_observation,
++                side,
++                &self.quiets,
++                &self.quiet_order,
++                self.quiet_index,
++            );
++        }
++    }
++
+     /// 現在の段階で次に探索する合法手と、捕獲手かどうかの組を返す。
+     pub(super) fn next(
+         &mut self,
+diff --git a/src/search/alphabeta/searcher.rs b/src/search/alphabeta/searcher.rs
+index f78be89..56ae206 100644
+--- a/src/search/alphabeta/searcher.rs
++++ b/src/search/alphabeta/searcher.rs
+@@ -65,6 +65,7 @@ pub(super) fn new_searcher<'a>(
+         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
+         accumulators: [root_accumulator; MAX_PLY as usize + 1],
+         material_keys: [material_key(position); MAX_PLY as usize + 1],
++        diag: None,
+         correction: CorrectionTable::new(pst.pawn_value()),
+         delta_margin: pst.pawn_value() * params::delta_margin() / 100,
+         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+@@ -115,6 +116,8 @@ pub(super) struct Searcher<'a> {
+     pub(super) accumulators: [PstAccumulator; MAX_PLY as usize + 1],
+     /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
+     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
++    /// 計測専用の持ち越し表。探索判断には使わない。
++    pub(super) diag: Option<super::diag::HistoryCarry>,
+     /// 反復深化の間で共有する、このワーカー専用の補正表。
+     pub(super) correction: CorrectionTable,
+     /// 静止探索で小さな捕獲を残すための余裕値。
+diff --git a/src/search/alphabeta/team.rs b/src/search/alphabeta/team.rs
+index 9482d8e..74d38d3 100644
+--- a/src/search/alphabeta/team.rs
++++ b/src/search/alphabeta/team.rs
+@@ -159,6 +159,9 @@ pub(in crate::search) fn run_search_team(
+     hit_ns: &AtomicU64,
+     ponder: bool,
+ ) -> SearchOutcome {
++    if super::diag::enabled() {
++        assert_eq!(threads.get(), 1, "MINASE_STAGE12_DIAG requires Threads=1");
++    }
+     let time_budget = time_budget(limits);
+     let finite_limits = limits.finite();
+     let depth_limit = finite_limits
+diff --git a/src/search/alphabeta/diag.rs b/src/search/alphabeta/diag.rs
+new file mode 100644
+index 0000000..d94dc97
+--- /dev/null
++++ b/src/search/alphabeta/diag.rs
+@@ -0,0 +1,182 @@
++//! 段階12項目5の受動的な再生診断。探索中は主ワーカーだけが表と計数器を所有する。
++
++use std::cmp::Reverse;
++use std::io::{self, Write};
++use std::sync::Mutex;
++
++use crate::Move;
++use crate::core::board::BOARD_SQUARE_COUNT;
++use crate::core::piece::{COLOR_COUNT, Color};
++
++use super::correction::CorrectionTable;
++use super::params;
++use super::pruning::lmr_reduction;
++use super::searcher::HistoryTable;
++
++static STORED: Mutex<Option<HistoryCarry>> = Mutex::new(None);
++
++pub(crate) fn enabled() -> bool {
++    std::env::var_os("MINASE_STAGE12_DIAG").is_some()
++}
++
++pub(crate) fn reset() {
++    if enabled() {
++        *STORED.lock().expect("diagnostic storage poisoned") = None;
++    }
++}
++
++pub(super) fn begin(pawn: i32) -> Option<HistoryCarry> {
++    if !enabled() {
++        return None;
++    }
++    let mut carry = match STORED.lock().expect("diagnostic storage poisoned").take() {
++        Some(carry) => carry,
++        None => HistoryCarry {
++            history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
++            correction: CorrectionTable::new(pawn),
++            counts: Counts::default(),
++        },
++    };
++    for value in carry.history.iter_mut().flatten().flatten() {
++        *value = *value * 3 / 4;
++    }
++    carry.counts.searches += 1;
++    Some(carry)
++}
++
++pub(super) fn finish(carry: Option<HistoryCarry>) {
++    if let Some(carry) = carry {
++        *STORED.lock().expect("diagnostic storage poisoned") = Some(carry);
++    }
++}
++
++pub(crate) fn write_info(output: &mut dyn Write) -> io::Result<()> {
++    if enabled() {
++        let stored = STORED.lock().expect("diagnostic storage poisoned");
++        // 合法手のない局面など、ワーカーを起動しないgoも累計を出力する。
++        let counts = stored
++            .as_ref()
++            .map_or(Counts::default(), |carry| carry.counts);
++        writeln!(
++            output,
++            "info string diag scope=game searches={} bf_order_nodes={} bf_order_changed={} bf_order_reached={} lmr_moves={} lmr_changed={} corr_moves={} corr_changed={} bf_refs={} bf_nonzero={} corr_refs={} corr_nonzero={}",
++            counts.searches,
++            counts.bf_order_nodes,
++            counts.bf_order_changed,
++            counts.bf_order_reached,
++            counts.lmr_moves,
++            counts.lmr_changed,
++            counts.corr_moves,
++            counts.corr_changed,
++            counts.bf_refs,
++            counts.bf_nonzero,
++            counts.corr_refs,
++            counts.corr_nonzero
++        )?;
++    }
++    Ok(())
++}
++
++#[derive(Default, Clone, Copy)]
++struct Counts {
++    searches: u64,
++    bf_order_nodes: u64,
++    bf_order_changed: u64,
++    bf_order_reached: u64,
++    lmr_moves: u64,
++    lmr_changed: u64,
++    corr_moves: u64,
++    corr_changed: u64,
++    bf_refs: u64,
++    bf_nonzero: u64,
++    corr_refs: u64,
++    corr_nonzero: u64,
++}
++
++#[derive(Default)]
++pub(super) struct PickerObservation {
++    sorted: bool,
++    first_difference: Option<usize>,
++}
++
++pub(super) struct HistoryCarry {
++    history: Box<HistoryTable>,
++    pub(super) correction: CorrectionTable,
++    counts: Counts,
++}
++
++impl HistoryCarry {
++    fn history_value(&mut self, side: Color, mv: Move) -> i32 {
++        let value = self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()];
++        self.counts.bf_refs += 1;
++        self.counts.bf_nonzero += u64::from(value != 0);
++        value
++    }
++
++    pub(super) fn quiet_cutoff(&mut self, side: Color, mv: Move, depth: u32) {
++        let value = &mut self.history[side.index()][mv.from.dense_index()][mv.to.dense_index()];
++        *value += (depth * depth) as i32;
++        if *value > params::history_limit() {
++            for value in self.history.iter_mut().flatten().flatten() {
++                *value /= 2;
++            }
++        }
++    }
++
++    pub(super) fn observe_order(
++        &mut self,
++        observation: &mut PickerObservation,
++        side: Color,
++        quiets: &[Move],
++        order: &[(Reverse<i32>, usize)],
++        returned: usize,
++    ) {
++        if !observation.sorted {
++            observation.sorted = true;
++            self.counts.bf_order_nodes += 1;
++            let mut candidate: Vec<_> = order
++                .iter()
++                .map(|&(_, index)| (Reverse(self.history_value(side, quiets[index])), index))
++                .collect();
++            // 生成順の添字で同点を解決する点も現行の整列と同じ。
++            candidate.sort_unstable();
++            observation.first_difference = order
++                .iter()
++                .zip(&candidate)
++                .position(|(current, carried)| current.1 != carried.1);
++            self.counts.bf_order_changed += u64::from(observation.first_difference.is_some());
++        }
++        if observation
++            .first_difference
++            .is_some_and(|index| returned > index)
++        {
++            self.counts.bf_order_reached += 1;
++            observation.first_difference = None;
++        }
++    }
++
++    pub(super) fn observe_lmr(
++        &mut self,
++        side: Color,
++        mv: Move,
++        depth: u32,
++        index: usize,
++        current: u32,
++    ) {
++        let history = self.history_value(side, mv);
++        self.counts.lmr_moves += 1;
++        self.counts.lmr_changed += u64::from(lmr_reduction(depth, index, history) != current);
++    }
++
++    pub(super) fn correction_value(&mut self, side: Color, key: u64) -> i32 {
++        let value = self.correction.read(side, key);
++        self.counts.corr_refs += 1;
++        self.counts.corr_nonzero += u64::from(value != 0);
++        value
++    }
++
++    pub(super) fn observe_futility(&mut self, current: i32, carried: i32, alpha: i32) {
++        self.counts.corr_moves += 1;
++        self.counts.corr_changed += u64::from((current <= alpha) != (carried <= alpha));
++    }
++}

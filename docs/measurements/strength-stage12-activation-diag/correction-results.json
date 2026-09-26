@@ -1,0 +1,296 @@
+{
+  "workers": 15,
+  "pawn": 100,
+  "correction_weight": 33,
+  "correction_cap": 193,
+  "counts": {
+    "blended_nonzero": [
+      208541,
+      169112,
+      168045,
+      211780
+    ],
+    "candidate_absolute_error": [
+      8482226,
+      8987485,
+      9122437,
+      8969298
+    ],
+    "capture_key_checks": 378750,
+    "changed": [
+      13019,
+      28705,
+      26797,
+      30278
+    ],
+    "combined_added_sum_nonzero": 215399,
+    "current_pruned": 1481025,
+    "double_capture_key_checks": 24786,
+    "futility_quiets": 1796646,
+    "igui_key_checks": 12290,
+    "material_absolute_error": 8464906,
+    "material_nonzero": 157318,
+    "move_key_checks": 423992,
+    "move_key_updates": 986936,
+    "newly_pruned": [
+      6464,
+      26055,
+      23816,
+      25379
+    ],
+    "newly_retained": [
+      6555,
+      2650,
+      2981,
+      4899
+    ],
+    "null_key_checks": 16301,
+    "observation_bounds": [
+      450,
+      2183,
+      39665
+    ],
+    "observations": 42298,
+    "promotion_key_checks": 48867,
+    "reference_nodes": 225790,
+    "return_key_checks": 17069,
+    "table_nonzero": [
+      202078,
+      107604,
+      116468
+    ],
+    "uncorrected_absolute_error": 12109284
+  },
+  "baseline_mean_absolute_error": 200.12544328337037,
+  "candidates": [
+    {
+      "name": "a",
+      "mean_absolute_error": 200.53491890869546,
+      "improvement": {
+        "numerator": -17320,
+        "denominator": 8464906,
+        "percent": -0.2046094782387424
+      },
+      "added_table_references": {
+        "a": {
+          "numerator": 202078,
+          "denominator": 225790,
+          "percent": 89.49820629788742
+        }
+      },
+      "activation": {
+        "numerator": 13019,
+        "denominator": 1796646,
+        "percent": 0.7246280012868422
+      },
+      "newly_pruned": 6464,
+      "newly_retained": 6555,
+      "prediction_gate": false,
+      "reference_gate": true,
+      "activation_gate": false,
+      "eligible": false
+    },
+    {
+      "name": "b",
+      "mean_absolute_error": 212.48014090500732,
+      "improvement": {
+        "numerator": -522579,
+        "denominator": 8464906,
+        "percent": -6.173476704880125
+      },
+      "added_table_references": {
+        "b": {
+          "numerator": 107604,
+          "denominator": 225790,
+          "percent": 47.6566721289694
+        }
+      },
+      "activation": {
+        "numerator": 28705,
+        "denominator": 1796646,
+        "percent": 1.5976992685259088
+      },
+      "newly_pruned": 26055,
+      "newly_retained": 2650,
+      "prediction_gate": false,
+      "reference_gate": true,
+      "activation_gate": false,
+      "eligible": false
+    },
+    {
+      "name": "c",
+      "mean_absolute_error": 215.67064636625844,
+      "improvement": {
+        "numerator": -657531,
+        "denominator": 8464906,
+        "percent": -7.767729493983749
+      },
+      "added_table_references": {
+        "c": {
+          "numerator": 116468,
+          "denominator": 225790,
+          "percent": 51.58244386376722
+        }
+      },
+      "activation": {
+        "numerator": 26797,
+        "denominator": 1796646,
+        "percent": 1.491501386472349
+      },
+      "newly_pruned": 23816,
+      "newly_retained": 2981,
+      "prediction_gate": false,
+      "reference_gate": true,
+      "activation_gate": false,
+      "eligible": false
+    },
+    {
+      "name": "a+b+c",
+      "mean_absolute_error": 212.05016785663625,
+      "improvement": {
+        "numerator": -504392,
+        "denominator": 8464906,
+        "percent": -5.9586249392491775
+      },
+      "added_table_references": {
+        "a": {
+          "numerator": 202078,
+          "denominator": 225790,
+          "percent": 89.49820629788742
+        },
+        "b": {
+          "numerator": 107604,
+          "denominator": 225790,
+          "percent": 47.6566721289694
+        },
+        "c": {
+          "numerator": 116468,
+          "denominator": 225790,
+          "percent": 51.58244386376722
+        }
+      },
+      "activation": {
+        "numerator": 30278,
+        "denominator": 1796646,
+        "percent": 1.6852512960260397
+      },
+      "newly_pruned": 25379,
+      "newly_retained": 4899,
+      "prediction_gate": false,
+      "reference_gate": true,
+      "activation_gate": false,
+      "eligible": false
+    }
+  ],
+  "passivity": {
+    "passed": true,
+    "total_nodes": 1677944,
+    "positions": [
+      {
+        "position": "initial",
+        "depth": "6",
+        "nodes": "33574",
+        "best": "8k9k",
+        "score": "30"
+      },
+      {
+        "position": "game-2-ply-40",
+        "depth": "6",
+        "nodes": "39553",
+        "best": "3d2d",
+        "score": "1093"
+      },
+      {
+        "position": "game-2-ply-60",
+        "depth": "6",
+        "nodes": "66029",
+        "best": "3d3e",
+        "score": "6720"
+      },
+      {
+        "position": "game-3-ply-310",
+        "depth": "6",
+        "nodes": "453721",
+        "best": "10k10j",
+        "score": "-2502"
+      },
+      {
+        "position": "game-3-ply-465",
+        "depth": "6",
+        "nodes": "51559",
+        "best": "8g8i",
+        "score": "5084"
+      },
+      {
+        "position": "game-4-ply-164",
+        "depth": "6",
+        "nodes": "31729",
+        "best": "3i4j3i",
+        "score": "-1426"
+      },
+      {
+        "position": "game-4-ply-246",
+        "depth": "6",
+        "nodes": "163919",
+        "best": "5h7h",
+        "score": "-1946"
+      },
+      {
+        "position": "game-5-ply-170",
+        "depth": "6",
+        "nodes": "173807",
+        "best": "4g5f",
+        "score": "2594"
+      },
+      {
+        "position": "game-5-ply-255",
+        "depth": "6",
+        "nodes": "76962",
+        "best": "2b3c",
+        "score": "-5686"
+      },
+      {
+        "position": "game-6-ply-51",
+        "depth": "6",
+        "nodes": "224551",
+        "best": "5a4b",
+        "score": "38"
+      },
+      {
+        "position": "game-6-ply-77",
+        "depth": "6",
+        "nodes": "139201",
+        "best": "8a7b",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-183",
+        "depth": "6",
+        "nodes": "76930",
+        "best": "9b8c",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-275",
+        "depth": "6",
+        "nodes": "26405",
+        "best": "5e2e",
+        "score": "-179"
+      },
+      {
+        "position": "game-10-ply-277",
+        "depth": "6",
+        "nodes": "69819",
+        "best": "5b12i+",
+        "score": "1953"
+      },
+      {
+        "position": "game-10-ply-416",
+        "depth": "6",
+        "nodes": "50185",
+        "best": "4k11k",
+        "score": "-1322"
+      }
+    ]
+  }
+}

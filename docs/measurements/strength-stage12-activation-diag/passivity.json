@@ -1,0 +1,338 @@
+{
+  "baseline": "/home/stepney141/board-games/minase/data/worktrees/strength-stage12/target/release/bench",
+  "binary": "/home/stepney141/board-games/minase/data/worktrees/strength-stage12-diag-bench/target/diag/release/bench",
+  "positions": 15,
+  "total_nodes": 1677944,
+  "matching_fields": [
+    "position",
+    "depth",
+    "nodes",
+    "best",
+    "score"
+  ],
+  "all_equal": true,
+  "counter_invariants": "passed",
+  "rows": {
+    "baseline": [
+      {
+        "position": "initial",
+        "depth": "6",
+        "nodes": "33574",
+        "best": "8k9k",
+        "score": "30"
+      },
+      {
+        "position": "game-2-ply-40",
+        "depth": "6",
+        "nodes": "39553",
+        "best": "3d2d",
+        "score": "1093"
+      },
+      {
+        "position": "game-2-ply-60",
+        "depth": "6",
+        "nodes": "66029",
+        "best": "3d3e",
+        "score": "6720"
+      },
+      {
+        "position": "game-3-ply-310",
+        "depth": "6",
+        "nodes": "453721",
+        "best": "10k10j",
+        "score": "-2502"
+      },
+      {
+        "position": "game-3-ply-465",
+        "depth": "6",
+        "nodes": "51559",
+        "best": "8g8i",
+        "score": "5084"
+      },
+      {
+        "position": "game-4-ply-164",
+        "depth": "6",
+        "nodes": "31729",
+        "best": "3i4j3i",
+        "score": "-1426"
+      },
+      {
+        "position": "game-4-ply-246",
+        "depth": "6",
+        "nodes": "163919",
+        "best": "5h7h",
+        "score": "-1946"
+      },
+      {
+        "position": "game-5-ply-170",
+        "depth": "6",
+        "nodes": "173807",
+        "best": "4g5f",
+        "score": "2594"
+      },
+      {
+        "position": "game-5-ply-255",
+        "depth": "6",
+        "nodes": "76962",
+        "best": "2b3c",
+        "score": "-5686"
+      },
+      {
+        "position": "game-6-ply-51",
+        "depth": "6",
+        "nodes": "224551",
+        "best": "5a4b",
+        "score": "38"
+      },
+      {
+        "position": "game-6-ply-77",
+        "depth": "6",
+        "nodes": "139201",
+        "best": "8a7b",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-183",
+        "depth": "6",
+        "nodes": "76930",
+        "best": "9b8c",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-275",
+        "depth": "6",
+        "nodes": "26405",
+        "best": "5e2e",
+        "score": "-179"
+      },
+      {
+        "position": "game-10-ply-277",
+        "depth": "6",
+        "nodes": "69819",
+        "best": "5b12i+",
+        "score": "1953"
+      },
+      {
+        "position": "game-10-ply-416",
+        "depth": "6",
+        "nodes": "50185",
+        "best": "4k11k",
+        "score": "-1322"
+      }
+    ],
+    "disabled": [
+      {
+        "position": "initial",
+        "depth": "6",
+        "nodes": "33574",
+        "best": "8k9k",
+        "score": "30"
+      },
+      {
+        "position": "game-2-ply-40",
+        "depth": "6",
+        "nodes": "39553",
+        "best": "3d2d",
+        "score": "1093"
+      },
+      {
+        "position": "game-2-ply-60",
+        "depth": "6",
+        "nodes": "66029",
+        "best": "3d3e",
+        "score": "6720"
+      },
+      {
+        "position": "game-3-ply-310",
+        "depth": "6",
+        "nodes": "453721",
+        "best": "10k10j",
+        "score": "-2502"
+      },
+      {
+        "position": "game-3-ply-465",
+        "depth": "6",
+        "nodes": "51559",
+        "best": "8g8i",
+        "score": "5084"
+      },
+      {
+        "position": "game-4-ply-164",
+        "depth": "6",
+        "nodes": "31729",
+        "best": "3i4j3i",
+        "score": "-1426"
+      },
+      {
+        "position": "game-4-ply-246",
+        "depth": "6",
+        "nodes": "163919",
+        "best": "5h7h",
+        "score": "-1946"
+      },
+      {
+        "position": "game-5-ply-170",
+        "depth": "6",
+        "nodes": "173807",
+        "best": "4g5f",
+        "score": "2594"
+      },
+      {
+        "position": "game-5-ply-255",
+        "depth": "6",
+        "nodes": "76962",
+        "best": "2b3c",
+        "score": "-5686"
+      },
+      {
+        "position": "game-6-ply-51",
+        "depth": "6",
+        "nodes": "224551",
+        "best": "5a4b",
+        "score": "38"
+      },
+      {
+        "position": "game-6-ply-77",
+        "depth": "6",
+        "nodes": "139201",
+        "best": "8a7b",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-183",
+        "depth": "6",
+        "nodes": "76930",
+        "best": "9b8c",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-275",
+        "depth": "6",
+        "nodes": "26405",
+        "best": "5e2e",
+        "score": "-179"
+      },
+      {
+        "position": "game-10-ply-277",
+        "depth": "6",
+        "nodes": "69819",
+        "best": "5b12i+",
+        "score": "1953"
+      },
+      {
+        "position": "game-10-ply-416",
+        "depth": "6",
+        "nodes": "50185",
+        "best": "4k11k",
+        "score": "-1322"
+      }
+    ],
+    "enabled": [
+      {
+        "position": "initial",
+        "depth": "6",
+        "nodes": "33574",
+        "best": "8k9k",
+        "score": "30"
+      },
+      {
+        "position": "game-2-ply-40",
+        "depth": "6",
+        "nodes": "39553",
+        "best": "3d2d",
+        "score": "1093"
+      },
+      {
+        "position": "game-2-ply-60",
+        "depth": "6",
+        "nodes": "66029",
+        "best": "3d3e",
+        "score": "6720"
+      },
+      {
+        "position": "game-3-ply-310",
+        "depth": "6",
+        "nodes": "453721",
+        "best": "10k10j",
+        "score": "-2502"
+      },
+      {
+        "position": "game-3-ply-465",
+        "depth": "6",
+        "nodes": "51559",
+        "best": "8g8i",
+        "score": "5084"
+      },
+      {
+        "position": "game-4-ply-164",
+        "depth": "6",
+        "nodes": "31729",
+        "best": "3i4j3i",
+        "score": "-1426"
+      },
+      {
+        "position": "game-4-ply-246",
+        "depth": "6",
+        "nodes": "163919",
+        "best": "5h7h",
+        "score": "-1946"
+      },
+      {
+        "position": "game-5-ply-170",
+        "depth": "6",
+        "nodes": "173807",
+        "best": "4g5f",
+        "score": "2594"
+      },
+      {
+        "position": "game-5-ply-255",
+        "depth": "6",
+        "nodes": "76962",
+        "best": "2b3c",
+        "score": "-5686"
+      },
+      {
+        "position": "game-6-ply-51",
+        "depth": "6",
+        "nodes": "224551",
+        "best": "5a4b",
+        "score": "38"
+      },
+      {
+        "position": "game-6-ply-77",
+        "depth": "6",
+        "nodes": "139201",
+        "best": "8a7b",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-183",
+        "depth": "6",
+        "nodes": "76930",
+        "best": "9b8c",
+        "score": "89"
+      },
+      {
+        "position": "game-8-ply-275",
+        "depth": "6",
+        "nodes": "26405",
+        "best": "5e2e",
+        "score": "-179"
+      },
+      {
+        "position": "game-10-ply-277",
+        "depth": "6",
+        "nodes": "69819",
+        "best": "5b12i+",
+        "score": "1953"
+      },
+      {
+        "position": "game-10-ply-416",
+        "depth": "6",
+        "nodes": "50185",
+        "best": "4k11k",
+        "score": "-1322"
+      }
+    ]
+  }
+}
