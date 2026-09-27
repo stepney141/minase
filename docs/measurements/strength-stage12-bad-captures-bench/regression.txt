@@ -1,0 +1,42 @@
+
+running 1 test
+test search::alphabeta::tests::ordering::staged_picker_defers_negative_captures_in_stable_mvv_lva_order ... FAILED
+
+failures:
+
+failures:
+    search::alphabeta::tests::ordering::staged_picker_defers_negative_captures_in_stable_mvv_lva_order
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 670 filtered out; finished in 0.00s
+
+   Compiling minase v1.2.0 (/home/stepney141/board-games/minase/data/worktrees/strength-stage12)
+warning: unused import: `PieceKind`
+ --> src/search/alphabeta/ordering.rs:7:37
+  |
+7 | use crate::core::piece::{PieceCode, PieceKind};
+  |                                     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `super::royal::captures_last_royal`
+  --> src/search/alphabeta/ordering.rs:12:5
+   |
+12 | use super::royal::captures_last_royal;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::see::see_prunes`
+  --> src/search/alphabeta/ordering.rs:14:5
+   |
+14 | use super::see::see_prunes;
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `minase` (lib test) generated 3 warnings (run `cargo fix --lib -p minase --tests` to apply 3 suggestions)
+    Finished `test` profile [optimized + debuginfo] target(s) in 2.67s
+     Running unittests src/lib.rs (target/debug/deps/minase-2d20b6a2e80818af)
+
+thread 'search::alphabeta::tests::ordering::staged_picker_defers_negative_captures_in_stable_mvv_lva_order' (308) panicked at src/search/alphabeta/tests/ordering.rs:460:5:
+assertion `left == right` failed
+  left: (Move { from: Square(67), mid: None, to: Square(115), promote: false }, true)
+ right: (Move { from: Square(107), mid: None, to: Square(123), promote: false }, true)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `--lib`
