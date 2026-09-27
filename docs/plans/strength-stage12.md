@@ -22,13 +22,10 @@
 項目2は、STC（[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)）が430有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目3は、STC（[strength-stage12-capture-history-stc](../measurements/strength-stage12-capture-history-stc.md)）が750有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目4は、STC（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）が147有効ペア、得点率27.0%で`H0`となったので採用せず、実装をコードから外した。
+項目5は、STC（[strength-stage12-history-carry-stc](../measurements/strength-stage12-history-carry-stc.md)）が2,539有効ペアで`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
-基準の構成が段階開始版のままなので、項目5の発動率はフェーズ1の値をそのまま使った。
-フェーズ6の項目5はbutterfly historyだけを持ち越す形で実装した。
-表は置換表と同じ経路で受け渡し、置換表を初期化する時点（新規対局、受理された規則変更、受理された`USI_Hash`の変更）とワーカー数の変更で初期化する。
-減衰率は`params.rs`の係数`HistoryDecay`（百分率、初期値75）とした。
-benchは局面ごとに表を初期化するので、深さ6の総ノード数は段階開始版と同じ1,677,944であり、各局面の最善手も一致した。
-次の一手は、項目5の煙試験とSTCによる採否測定である。
+次の一手は、フェーズ7として項目7（null move pruningの前提条件）を実装することである。
+基準の構成が段階開始版のままなので、項目7の発動率はフェーズ1の値（37.00%）がそのまま使える。
 
 ## 目的
 
@@ -212,6 +209,10 @@ butterfly historyは、静かな手の段を整列したノードの順序と、
 フェーズ1の再生診断では、butterfly historyが静かな手の段の順序を変えたノードがSTC相当で96.35%、LTC相当で99.43%であり、基準を満たした。
 補正表が枝刈りの可否を変えた手は0.69%と0.80%で基準に届かないので、補正表は持ち越さず、現行どおり探索ごとに初期化する。
 捕獲履歴の持ち越しは、項目3の採否が決まった後に同じ再生診断で判定する。
+
+butterfly historyだけを持ち越す形で実装し、表は置換表と同じ経路で受け渡して、置換表を初期化する時点（新規対局、受理された規則変更、受理された`USI_Hash`の変更）とワーカー数の変更で初期化した。
+STCは2,539有効ペアで`H0`（得点率49.8%、LLR −3.00）となったので、本項目は採用しない（[strength-stage12-history-carry-stc](../measurements/strength-stage12-history-carry-stc.md)）。
+項目5を採用しなかったので、counter move historyとcontinuation historyの持ち越し状態での再生診断（フェーズ10）は行わない。
 
 ### 項目6　補正表の鍵の追加（multi-key correction history）
 
