@@ -160,7 +160,7 @@ trait Protocol {
 
 プロトコル固有の制御コマンドは`EngineCommand`へ変換せず、プロトコルモジュール内で処理する。対応は次のとおりとする。USIでは、`usi`に`id name minase <バージョン>`、`id author stepney141`、`option`宣言（`RuleSet`、`USI_Variant`の順）、`usiok`を返す。`isready`には`readyok`を返す（同期実装では即時）。`go mate`には`checkmate notimplemented`を返し、その他の`go`は後述のエラー情報行とする。`quit`は無応答で終了する。CECPでは、`xboard`は無視、`protover`にfeature宣言列を返す。`accepted`と`rejected`は記録し、必須feature（`setboard`、`usermove`、`ping`）が拒否された場合は`tellusererror`を出して終了する。`variant`は`chu`だけを受理し、他は`Error (unsupported variant): ...`とする。`ping N`は先行コマンドの処理完了後に`pong N`を返す（同期実装では受信順の処理により自動的に満たされる）。`force`は無視する（探索がなく自発着手しないため、モードの区別が存在しない）。`quit`は無応答で終了する。
 
-USIの未知入力は原典準拠とする。未知のコマンド行と既知コマンド内の未知トークンは無視する。既知コマンドの意味的な不正（不正なSFEN、不合法手、不正なオプション値）は`info string error: ...`で通知し、当該コマンドを適用しない。fail-fastの厳格性は`EngineReply::Rejected`としてエンジン境界で保ち、wire上の寛容はプロトコルモジュールに閉じる。
+USIの未知入力は、既知コマンド内の未知トークンを原典準拠で無視する。未知のコマンド行には`info string error: unknown command <第1トークン>`を返す（[デバッグ機能の整備](debugging-tools.md)の利用者の決定。打ち間違えた独自コマンドが無応答にならないようにするため）。ただし原典の既知コマンド`debug`と`register`、および探索していないときの`stop`は応答なしで無視する。既知コマンドの意味的な不正（不正なSFEN、不合法手、不正なオプション値）は`info string error: ...`で通知し、当該コマンドを適用しない。fail-fastの厳格性は`EngineReply::Rejected`としてエンジン境界で保ち、wire上の寛容はプロトコルモジュールに閉じる。
 
 ### 規則オプション
 
@@ -296,7 +296,7 @@ cargo test
 cargo clippy --all-targets
 cargo fmt --all -- --check
 git diff --check
-cargo run --quiet --bin perft -- 4
+cargo run --quiet --bin perft -- 4 --rules engine-default
 ```
 
 ## 完了条件

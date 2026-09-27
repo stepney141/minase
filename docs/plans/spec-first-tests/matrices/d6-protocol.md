@@ -226,11 +226,11 @@
 - 境界・不正: `gameover`後の`state`は応答しない（D6-USI-33）。
 - 性質: 3経路（USI無通知・CECPのRESULT・自作GUIのstate応答）の通知独立性（EC「終局状態の通知経路の対比」）。
 
-### D6-USI-29 未知コマンド・未知トークンの無視と`quit`の無応答
-- 典拠: PL「USIの未知入力は原典準拠」（未知コマンド行と既知コマンド内の未知トークンは無視。意味的な不正だけを`info string error: ...`で通知）。UL（未知のコマンド・トークンを無視して残りの解釈を続ける原典規則）。PL（`quit`は無応答で終了）。
+### D6-USI-29 未知コマンドのエラー応答、未知トークンの無視、および`quit`の無応答
+- 典拠: PL「USIの未知入力」（既知コマンド内の未知トークンは無視し、未知コマンド行には`info string error: unknown command <第1トークン>`を返す。[debugging-tools.md](../../debugging-tools.md)の利用者の決定1）。UL（未知のコマンド・トークンを無視して残りの解釈を続ける原典規則）。PL（`quit`は無応答で終了）。
 - 前提: 任意の状態。
-- 操作と期待観測: `foobar baz` → 出力なし、状態不変。`position startpos unknown_token`のような既知コマンド内未知トークン → トークンを無視して解釈が続く（結果は`position startpos`と同一。`state`で観測）。`quit` → 何も出力せず`run`が正常終了する。
-- 境界・不正: `debug`・`register`（原典の既知コマンド）への具体的挙動は規範文書に明文がない → SPEC_UNCLEAR-14。テスト化するなら「無視」を実装契約として明示する。
+- 操作と期待観測: `foobar baz` → `info string error: unknown command foobar`1行、状態不変。`position startpos unknown_token`のような既知コマンド内未知トークン → トークンを無視して解釈が続く（結果は`position startpos`と同一。`state`で観測）。`quit` → 何も出力せず`run`が正常終了する。
+- 境界・不正: `debug`と`register`（原典の既知コマンド）は応答なしで無視する（debugging-tools.mdの利用者の決定1。SPEC_UNCLEAR-14をこの決定で解消した）。
 - 性質: wire上の寛容はプロトコルモジュールに閉じ、fail-fastはエンジン境界（`Rejected`）で保つ（PL）。
 
 ### D6-USI-30 `moves`照会（合法手集合、順序非固定）
@@ -647,7 +647,7 @@
 - 典拠: PL「コマンド対応の残余」（明示対応にも無視リストにも該当しない行は`Error (unknown command): <第1トークン>`）。CE第3章（正典の未知コマンド応答）。
 - 前提: 任意の状態。
 - 操作と期待観測: `foobar baz qux` → `Error (unknown command): foobar`1行（第1トークンのみ反響。台本完全一致）。状態不変。
-- 境界・不正: USIが未知行を無視する（D6-USI-29）のと対照的な、プロトコル別の意図的な差。
+- 境界・不正: USIの未知行への応答（D6-USI-29）は`info string error:`の形であり、CECPの`Error (unknown command)`とはプロトコルごとに形式が異なる。
 - 性質: 3分類（明示対応／無視／unknown）の全域性。
 
 ### D6-CECP-29 `xboard`の無視と`quit`の無応答終了

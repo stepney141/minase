@@ -177,7 +177,7 @@ cargo test
 cargo clippy --all-targets
 cargo fmt --all -- --check
 git diff --check
-cargo run --quiet --bin perft -- 4
+cargo run --quiet --bin perft -- 4 --rules engine-default
 cargo run --release --bin random_play -- --games 500 --seed 1 --rules engine-default
 ```
 

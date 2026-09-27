@@ -22,8 +22,7 @@ minaseの道具の多くは、この照合の形をとる（差分更新と全�
 **局面の再現**：USIの`position sfen`は、盤面と手番の2欄に先獅子の升と手数を加えた4欄、または成り権の保留を加えた5欄の拡張SFENだけを受理し、2欄SFENを拒否する。
 先獅子の状態がない局面は、2欄SFENの末尾に`- 1`を付けて4欄にする（例：`position sfen <盤面> b - 1`）。
 着手列が分かっている場合は、`position startpos moves ...`または`position sfen ... moves ...`で局面を作る。
-一方、`bin/perft`の`--sfen`は2欄SFENだけを受理し、先獅子の状態と成り権の保留を持たない。
-これらが関係する不具合は、USIの拡張SFENか着手列で再現する。
+`bin/perft`の`--sfen`も、2欄SFENに加えて同じ拡張SFENを受理する。
 
 **ランダム対局**：`random_play`は、ランダムな合法手で対局を進め、毎手`Position::validate`で局面の不変条件（ビットボードと盤配列の一致、Zobristキーと全再計算の一致など）を検査する。
 失敗すると、規則、シード、局番号、手数、問題の手、直前の局面のSFEN、および全手順を標準エラーへ出して終了コード1で終わる。
@@ -62,10 +61,11 @@ cargo run --release --bin random_play -- --rules engine-default --seed 1 --game 
 4. 条文から数えた期待値と食い違う手を1手進め、深さを1減らして`--divide`を繰り返し、誤りのある局面と手まで絞り込む。
 
 ```console
-cargo run --release --bin perft -- 3 --sfen "<2欄SFEN>" --divide
+cargo run --release --bin perft -- 3 --rules engine-default --sfen "<拡張SFEN>" --divide
 ```
 
-`bin/perft`の`--sfen`は2欄SFENだけを受理する。
+`--rules`は必須であり、不具合が出た対局と同じ規則セットを与える。
+`--sfen`には、USIの独自コマンド`d`が表示する拡張SFENをそのまま与えられ、先獅子の状態と成り権の保留も復元される。
 perftの数値は、テストの正しさの基準にしない（[movegen.md](../plans/movegen.md)の9節）。
 perftはdivideによる絞り込みと速度の計測に使う。
 
@@ -125,8 +125,8 @@ printf 'usi\nisready\nposition startpos\nmoves\nstate\ngo depth 4\n' \
 
 独自コマンド`moves`は現局面の全合法手を返し、`state`は規則、局面、対局の状態を返す（[ブラウザGUI向けUSI照会](../plans/browser-gui.md)）。
 エラーは`info string error:`で始まる行で返り、探索の停止理由は`info string stop`の行で返る。
-USI層は未知のコマンドに応答しないので、打ち間違えたコマンドは黙って無視される。
-応答がないときは、まずコマンドの綴りを確かめる。
+未知のコマンドには`info string error: unknown command <語>`が返る。
+ただしUSI原典の`debug`と`register`は応答なしで無視される。
 
 対局ハーネスは子エンジンの標準エラーを端末へそのまま流すが、プロトコルの送受信は保存しない。
 外部との接続の不具合は、次の教訓の手順で切り分ける。
