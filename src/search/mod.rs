@@ -6,7 +6,13 @@ mod events;
 mod handle;
 mod limits;
 mod snapshot;
+#[cfg(feature = "search-stats")]
+mod stats;
 
+#[cfg(feature = "search-stats")]
+pub use stats::SearchStats;
+
+pub(crate) use alphabeta::tt::{Bound, Hit};
 pub use alphabeta::tt::{
     DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError,
 };

@@ -316,7 +316,7 @@ cargo test
 cargo clippy --all-targets
 cargo fmt --all -- --check
 git diff --check
-cargo run --quiet --bin perft -- 4
+cargo run --quiet --bin perft -- 4 --rules engine-default
 ```
 
 テスト件数はR0用テストの削除と新規回帰テストの追加で変化するため、固定しない。

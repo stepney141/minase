@@ -386,6 +386,8 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
         WorkerOutcome {
             worker_index: 0,
             result: SearchResult {
+                #[cfg(feature = "search-stats")]
+                stats: crate::search::SearchStats::default(),
                 best_move: roots[0],
                 score: 0,
                 depth: 0,

@@ -70,6 +70,9 @@ impl SearchEvent {
 /// 完了した探索の結果。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SearchResult {
+    /// 全ワーカーの探索終了時点の統計を合算した値。
+    #[cfg(feature = "search-stats")]
+    pub stats: super::SearchStats,
     /// 選んだ着手。
     pub best_move: Move,
     /// 選んだ着手の評価値。

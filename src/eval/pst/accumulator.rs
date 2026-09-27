@@ -109,3 +109,37 @@ impl Pst {
         )
     }
 }
+
+#[cfg(feature = "invariants")]
+impl Pst {
+    /// 探索の差分累算値を両視点とも全再計算と照合する。
+    pub(crate) fn assert_accumulator(
+        &self,
+        position: &Position,
+        incremental: PstAccumulator,
+        ply: u32,
+    ) {
+        use crate::notation::sfen::{SetupPosition, to_extended_sfen};
+        use std::fmt::Write;
+
+        let recomputed = self.refresh_accumulator(position);
+        if incremental == recomputed {
+            return;
+        }
+        let mut diagnostic = format!(
+            "PST accumulator mismatch: zobrist={:#018x}, ply={ply}\nincremental: {incremental:?}\nrecomputed: {recomputed:?}",
+            position.zobrist(),
+        );
+        if let Ok(setup) = SetupPosition::new(
+            position.clone(),
+            position
+                .lion_taken_by_non_lion()
+                .map(|trigger| trigger.square),
+            1,
+        ) {
+            write!(diagnostic, "\nextended SFEN: {}", to_extended_sfen(&setup))
+                .expect("writing to a String cannot fail");
+        }
+        panic!("{diagnostic}");
+    }
+}

@@ -8,7 +8,7 @@ use super::format::HEADER_LENGTH;
 use super::*;
 use crate::Move;
 use crate::eval::handcrafted::piece_value;
-use crate::test_util::{position_from_codes, sq};
+use crate::test_util::{position_from_codes, reflect_ranks_and_swap_colors, sq};
 use crate::{Color, MoveRules, PieceCode, PieceKind, Square};
 
 /// 検査用の正しいMNPTバイト列を返す。
@@ -506,22 +506,7 @@ fn evaluation_matches_rank_reflection_with_colors_swapped() {
     // 46枚なら補間係数は44と46であり、白番だけの端点交換も区別できる。
     let mut position = position_with_count(46, Color::White);
     position.set_lion_capture(Some(sq(3, 5))).unwrap();
-    let pieces: Vec<_> = Square::all()
-        .filter_map(|square| {
-            position.piece_at(square).map(|piece| {
-                let color = piece.color().unwrap().opposite();
-                let kind = piece.kind().unwrap();
-                let reflected_piece = if piece.is_promoted() {
-                    PieceCode::new_promoted(color, kind).unwrap()
-                } else {
-                    PieceCode::new(color, kind).unwrap()
-                };
-                (sq(square.file(), 11 - square.rank()), reflected_piece)
-            })
-        })
-        .collect();
-    let mut reflected = position_from_codes(Color::Black, &pieces);
-    reflected.set_lion_capture(Some(sq(3, 6))).unwrap();
+    let reflected = reflect_ranks_and_swap_colors(&position);
     let expected = evaluate(&pst, &position);
     assert_eq!(
         pst.evaluate_accumulator(pst.refresh_accumulator(&position), Color::White),
@@ -619,4 +604,156 @@ fn stored_piece_values_are_validated_independently_of_weights() {
 fn embedded_pst_matches_python_initial_position_evaluation() {
     // lookahead-teacher-pst-training の診断（Python整数参照評価）による値。
     assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 24);
+}
+
+/// debugging-tools.md「eval」: 特徴別の分子和、全計算評価、720での除算と上下限制限が一致する。
+#[test]
+fn diagnostic_numerators_match_independent_feature_sum_and_clamping() {
+    for endpoints in [[8_i16, -24_i16], [i16::MAX; 2], [i16::MIN; 2]] {
+        let mut pst = Pst::decode(&valid_bytes()).unwrap();
+        pst.weights.fill(endpoints);
+        // 先獅子を盤上の駒とは異なる寄与にして、欠落や二重計上を検出する。
+        pst.weights[super::features::BOARD_FEATURE_COUNT..].fill([31, -57]);
+        for count in [0, 1, 2, 3, 47, 92, 100] {
+            for side in Color::ALL {
+                let mut position = position_with_count(count, side);
+                let trigger = if count < 2 {
+                    sq(11, 11)
+                } else if side == Color::Black {
+                    Square::from_dense(1).unwrap()
+                } else {
+                    Square::from_dense(0).unwrap()
+                };
+                position.set_lion_capture(Some(trigger)).unwrap();
+                let detail = breakdown(&pst, &position);
+                let q = (count as i64 - 2).clamp(0, 90);
+                let per_piece = q * i64::from(endpoints[0]) + (90 - q) * i64::from(endpoints[1]);
+                let lion = q * 31 + (90 - q) * -57;
+                let numerator = count as i64 * per_piece + lion;
+                assert_eq!(detail.q, q);
+                assert_eq!(detail.board.iter().sum::<i64>() + detail.lion, numerator);
+                assert_eq!(detail.lion, lion);
+                for square in Square::all() {
+                    assert_eq!(
+                        detail.board[square.dense_index()],
+                        if position.piece_at(square).is_some() {
+                            per_piece
+                        } else {
+                            0
+                        }
+                    );
+                }
+                let expected = (numerator / 720).clamp(-28_999, 28_999) as i32;
+                assert_eq!(evaluate(&pst, &position), expected);
+                assert_eq!(detail.score, expected);
+            }
+        }
+    }
+}
+
+/// debugging-tools.md「eval」: 升ごとの寄与は手番視点の特徴に対応し、先獅子と区別する。
+#[test]
+fn diagnostic_contributions_use_the_correct_square_and_perspective() {
+    let pst = distinct_pst();
+    for side in Color::ALL {
+        let mut position = position_with_count(47, side);
+        position.set_lion_capture(Some(sq(11, 11))).unwrap();
+        let detail = breakdown(&pst, &position);
+        let mut sums = [0_i64; 2];
+        for square in Square::all() {
+            let expected = if let Some(piece) = position.piece_at(square) {
+                let weights = pst.weights[feature_index(side, piece, square)];
+                sums[0] += i64::from(weights[0]);
+                sums[1] += i64::from(weights[1]);
+                45 * i64::from(weights[0]) + 45 * i64::from(weights[1])
+            } else {
+                0
+            };
+            assert_eq!(detail.board[square.dense_index()], expected);
+        }
+        let weights = pst.weights[super::features::lion_feature_index(side, sq(11, 11))];
+        sums[0] += i64::from(weights[0]);
+        sums[1] += i64::from(weights[1]);
+        let numerator = 45 * sums[0] + 45 * sums[1];
+        assert_eq!(detail.board.iter().sum::<i64>() + detail.lion, numerator);
+        assert_eq!(detail.score, evaluate(&pst, &position));
+        assert_eq!(
+            detail.score,
+            (numerator / 720).clamp(-28_999, 28_999) as i32
+        );
+    }
+}
+
+/// debugging-tools.md「適用範囲」「棄却した代案」: 段反転と陣営交換は手番側評価を保存する。
+#[test]
+fn random_legal_positions_preserve_evaluation_under_rank_and_color_reflection() {
+    use crate::MoveGenerator;
+    use crate::rng::{XorShift64, derive_seed};
+
+    let learned = weights().unwrap();
+    let distinct = distinct_pst();
+    let rules = MoveRules::standard();
+    let generator = MoveGenerator::new(rules);
+    for game in 0..24 {
+        let mut rng = XorShift64::new(derive_seed(0x5245_464c_4543_5431, game));
+        let mut position = Position::initial();
+        let mut moves = Vec::new();
+        for ply in 1..=160 {
+            if Color::ALL
+                .into_iter()
+                .any(|side| position.royal_pieces(side).is_empty())
+            {
+                break;
+            }
+            moves.clear();
+            generator.generate_moves(&position, &mut moves);
+            if moves.is_empty() {
+                break;
+            }
+            let mv = moves[rng.next() as usize % moves.len()];
+            position.make_move_unchecked(mv, rules);
+            if ply % 17 == 0 {
+                // 成り権の保留は評価特徴に含まれず、反転後は保留なしでよい。
+                let reflected = reflect_ranks_and_swap_colors(&position);
+                for pst in [&*learned, &distinct] {
+                    assert_eq!(
+                        evaluate(pst, &position),
+                        evaluate(pst, &reflected),
+                        "game={game}, ply={ply}, move={mv:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// debugging-tools.md「整合検査の内容」: 全再計算と一致する累算値は検査を通過する。
+#[cfg(feature = "invariants")]
+#[test]
+fn accumulator_invariants_accept_full_refresh() {
+    let pst = distinct_pst();
+    let position = Position::initial();
+    pst.assert_accumulator(&position, pst.refresh_accumulator(&position), 0);
+}
+
+/// debugging-tools.md「整合検査の内容」: 1項の不一致を検出し、局面と両累算値を診断する。
+#[cfg(feature = "invariants")]
+#[test]
+fn accumulator_invariants_report_mismatch() {
+    let pst = distinct_pst();
+    let position = Position::initial();
+    let recomputed = pst.refresh_accumulator(&position);
+    // 手番ではない視点の1だけの差も、丸められた評価値ではなく中間値で検出する。
+    let mut incremental = recomputed;
+    incremental.sums[Color::White.index()][1] += 1;
+    let panic = std::panic::catch_unwind(|| pst.assert_accumulator(&position, incremental, 7))
+        .expect_err("an inconsistent accumulator must panic");
+    let message = panic.downcast_ref::<String>().unwrap();
+    assert!(message.contains("PST accumulator mismatch"));
+    assert!(message.contains(&format!("zobrist={:#018x}", position.zobrist())));
+    assert!(message.contains("ply=7"));
+    assert!(message.contains(&format!("incremental: {incremental:?}")));
+    assert!(message.contains(&format!("recomputed: {recomputed:?}")));
+    let setup = crate::notation::sfen::SetupPosition::new(position, None, 1).unwrap();
+    assert!(message.contains(&crate::notation::sfen::to_extended_sfen(&setup)));
 }

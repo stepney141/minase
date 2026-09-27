@@ -4,7 +4,9 @@ use std::process;
 use std::time::{Duration, Instant};
 
 use clap::{CommandFactory, Parser, error::ErrorKind};
-use minase::{Move, MoveGenerator, Position, Square, parse_sfen};
+use minase::core::rules::parse_rule_set;
+use minase::notation::sfen::parse_extended_sfen;
+use minase::{Move, MoveGenerator, Position, Rules, Square, parse_sfen};
 
 /// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
 #[global_allocator]
@@ -16,12 +18,33 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 struct Arguments {
     /// 数える最大深さ。
     depth: u32,
-    /// 開始局面のSFEN。省略時は初期局面。
+    /// 採用するローカルルールコード列または規則セット名。
+    #[arg(long, value_parser = parse_rules)]
+    rules: Rules,
+    /// 開始局面の2欄SFENまたは拡張SFEN。省略時は初期局面。
     #[arg(long)]
     sfen: Option<String>,
     /// ルート合法手ごとの内訳を出力するかどうか。
     #[arg(long)]
     divide: bool,
+}
+
+/// 規則セット名またはコード列を着手規則へ変換する。
+fn parse_rules(input: &str) -> Result<Rules, String> {
+    let codes = parse_rule_set(input).map_err(|error| error.to_string())?;
+    Rules::from_codes(&codes).map_err(|error| error.to_string())
+}
+
+/// 2欄SFENまたは拡張SFENから着手生成に必要な状態を復元する。
+fn parse_position(input: &str, rules: Rules) -> Result<Position, String> {
+    if input.split_whitespace().count() == 2 {
+        parse_sfen(input).map_err(|error| error.to_string())
+    } else {
+        parse_extended_sfen(input, rules.moves)
+            .map_err(|error| error.to_string())?
+            .restore_position()
+            .map_err(|error| error.to_string())
+    }
 }
 
 /// 升を0始まりの`(筋,段)`表記へ変換する。
@@ -135,7 +158,7 @@ fn main() {
             .exit();
     }
     let mut position = match arguments.sfen {
-        Some(sfen) => match parse_sfen(&sfen) {
+        Some(sfen) => match parse_position(&sfen, arguments.rules) {
             Ok(position) => position,
             Err(error) => {
                 eprintln!("failed to parse SFEN: {error}");
@@ -144,7 +167,7 @@ fn main() {
         },
         None => Position::initial(),
     };
-    let generator = MoveGenerator::standard();
+    let generator = MoveGenerator::new(arguments.rules.moves);
     let start = Instant::now();
     let counts = if arguments.divide {
         match run_divide(&generator, &position, arguments.depth) {

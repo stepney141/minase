@@ -154,12 +154,63 @@ fn parse_repetitions(text: &str) -> Result<NonZeroUsize, String> {
 
 /// bench 1回分の集計。
 struct BenchRun {
+    /// 計測した全局面の探索統計。
+    #[cfg(feature = "search-stats")]
+    stats: minase::search::SearchStats,
     /// 全局面が到達した深さ。
     depth: u32,
     /// 全局面の総ノード数。
     nodes: u64,
     /// 各局面の探索時間の合計。
     elapsed: f64,
+}
+
+/// 回数と、分母が正の項目の比だけを1行に整形する。
+#[cfg(feature = "search-stats")]
+fn format_stats(stats: &minase::search::SearchStats) -> String {
+    use std::fmt::Write;
+
+    let mut line = stats.to_string();
+    let nodes = stats.normal_nodes + stats.quiesce_nodes;
+    let ranked = stats.best_move_rank_1
+        + stats.best_move_rank_2
+        + stats.best_move_rank_3
+        + stats.best_move_rank_4_plus;
+    for (name, numerator, denominator) in [
+        ("normal_node_fraction", stats.normal_nodes, nodes),
+        ("quiesce_node_fraction", stats.quiesce_nodes, nodes),
+        ("tt_hit_rate", stats.tt_hits, stats.tt_probes),
+        ("tt_cutoff_per_hit", stats.tt_cutoffs, stats.tt_hits),
+        (
+            "quiesce_tt_hit_rate",
+            stats.quiesce_tt_hits,
+            stats.quiesce_tt_probes,
+        ),
+        (
+            "quiesce_tt_cutoff_per_hit",
+            stats.quiesce_tt_cutoffs,
+            stats.quiesce_tt_hits,
+        ),
+        (
+            "first_move_beta_fraction",
+            stats.first_move_beta_cutoffs,
+            stats.beta_cutoffs,
+        ),
+        ("best_move_rank_1_fraction", stats.best_move_rank_1, ranked),
+        ("best_move_rank_2_fraction", stats.best_move_rank_2, ranked),
+        ("best_move_rank_3_fraction", stats.best_move_rank_3, ranked),
+        (
+            "best_move_rank_4_plus_fraction",
+            stats.best_move_rank_4_plus,
+            ranked,
+        ),
+    ] {
+        if denominator != 0 {
+            write!(line, " {name}={:.6}", numerator as f64 / denominator as f64)
+                .expect("writing to a String cannot fail");
+        }
+    }
+    line
 }
 
 impl BenchRun {
@@ -203,6 +254,8 @@ fn run_bench(
     let mut reached_depth = u32::MAX;
     let mut total_nodes = 0_u64;
     let mut total_elapsed = 0.0_f64;
+    #[cfg(feature = "search-stats")]
+    let mut stats = minase::search::SearchStats::default();
 
     for bench_position in BENCH_POSITIONS {
         let position = parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
@@ -213,6 +266,10 @@ fn run_bench(
         let result = search(pst, &snapshot, limits, threads, transposition_table)
             .expect("bench search input must be valid");
         let elapsed = position_start.elapsed();
+        #[cfg(feature = "search-stats")]
+        {
+            stats += result.stats;
+        }
         reached_depth = reached_depth.min(result.depth);
         total_elapsed += elapsed.as_secs_f64();
         total_nodes = total_nodes
@@ -235,10 +292,14 @@ fn run_bench(
                 result.score,
                 elapsed.as_secs_f64()
             );
+            #[cfg(feature = "search-stats")]
+            println!("{}", format_stats(&result.stats));
         }
     }
 
     BenchRun {
+        #[cfg(feature = "search-stats")]
+        stats,
         depth: reached_depth,
         nodes: total_nodes,
         elapsed: total_elapsed,
@@ -278,6 +339,8 @@ fn main() {
             result.elapsed,
             result.nps()
         );
+        #[cfg(feature = "search-stats")]
+        println!("{}", format_stats(&result.stats));
         return;
     }
 
@@ -306,6 +369,8 @@ fn main() {
             result.elapsed,
             result.nps()
         );
+        #[cfg(feature = "search-stats")]
+        println!("{}", format_stats(&result.stats));
         runs.push(result);
     }
     let mut depths: Vec<_> = runs.iter().map(|run| u64::from(run.depth)).collect();
@@ -319,11 +384,40 @@ fn main() {
         median_f64(&mut elapsed),
         median_f64(&mut nps)
     );
+    #[cfg(feature = "search-stats")]
+    {
+        let mut stats = minase::search::SearchStats::default();
+        for run in &runs {
+            stats += run.stats;
+        }
+        // 中央値の回数ではなく、ウォームアップを除く全計測反復の合計。
+        println!("{} scope=all_measured_runs", format_stats(&stats));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// debugging-tools.md「探索統計の項目」: 分母0では比を省き、回数を残す。
+    #[cfg(feature = "search-stats")]
+    #[test]
+    fn stats_omit_ratios_with_zero_denominators() {
+        let mut stats = minase::search::SearchStats::default();
+        let zero = format_stats(&stats);
+        assert!(zero.starts_with("stats: "));
+        assert!(zero.contains("tt_probes=0"));
+        assert!(!zero.contains("_rate="));
+        assert!(!zero.contains("_fraction="));
+        assert!(!zero.contains("_per_hit="));
+        stats.tt_probes = 4;
+        stats.tt_hits = 2;
+        stats.tt_cutoffs = 1;
+        let nonzero = format_stats(&stats);
+        assert!(nonzero.contains("tt_hit_rate=0.500000"));
+        assert!(nonzero.contains("tt_cutoff_per_hit=0.500000"));
+        assert!(!nonzero.contains("quiesce_tt_hit_rate="));
+    }
 
     #[test]
     fn arguments_accept_thread_and_repetition_boundaries() {
