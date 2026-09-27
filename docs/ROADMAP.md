@@ -64,6 +64,7 @@
 | 静止探索の出力を学ぶPSTの学習 | [plans/qsearch-output-training.md](plans/qsearch-output-training.md) | 起案 | |
 | 浅い探索の手の順位を学ぶ損失 | [plans/rank-loss-training.md](plans/rank-loss-training.md) | 起案 | |
 | 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 起案 | |
+| 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 
 ## 現在地
 
@@ -88,6 +89,7 @@
   - その完了後は[順位の損失の計画](plans/rank-loss-training.md)、[関係補正項の計画](plans/relational-correction.md)の順に進む。関係補正項では、新しい局面群で探索の追跡と機構ごとの介入を行い、解消を確認できなかった誤りを分類する。選んだ関係が件数の基準を満たした場合だけ、採用中の教師値と学習方式を固定して補正項を比較する。
   - 総論が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
   - 静止探索の計画のフェーズ0が特定した探索の機構は、固定時間での測定を含めて段階12または探索の後続計画へ引き渡す。
+- [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
 - 評価関数の計画と段階12は測定機を共有するので、着手の順序は利用者が決める。
 
 ## 横断的な記録済みの決定
