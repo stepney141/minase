@@ -15,6 +15,7 @@ use crate::search::events::StopReason;
 use crate::search::snapshot::search_key;
 use crate::search::{MAX_PLY, TranspositionTable};
 
+use super::capture_history::CaptureHistory;
 use super::correction::{CorrectionTable, material_key};
 use super::ordering::MovePicker;
 use super::params;
@@ -68,6 +69,7 @@ pub(super) fn new_searcher<'a>(
         correction: CorrectionTable::new(pst.pawn_value()),
         delta_margin: pst.pawn_value() * params::delta_margin() / 100,
         history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        capture_history: CaptureHistory::new(),
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
     }
@@ -121,6 +123,8 @@ pub(super) struct Searcher<'a> {
     pub(super) delta_margin: i32,
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     pub(super) history: Box<HistoryTable>,
+    /// docs/plans/strength-stage12.md「項目3　捕獲履歴」。探索ごとに初期化する。
+    pub(super) capture_history: CaptureHistory,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
     pub(super) killers: KillerTable,
     /// 置換表。

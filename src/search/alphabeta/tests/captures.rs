@@ -393,6 +393,7 @@ fn kind_capture_ranks_match_all_piece_codes() {
 // 安定性と置換表の手の扱いを含めて、公開捕獲列の安定整列と一致する。
 #[test]
 fn main_picker_captures_match_stable_reference_for_all_rules() {
+    let capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let pst = crate::eval::weights().unwrap();
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     for rules in capture_test_rules() {
@@ -403,7 +404,7 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
                 let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
                 let mut actual = Vec::new();
                 while let Some((mv, is_capture)) =
-                    picker.next(&position, &pst, &generator, &history)
+                    picker.next(&position, &pst, &generator, &history, &capture_history)
                 {
                     if !is_capture {
                         break;

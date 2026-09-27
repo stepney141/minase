@@ -1,5 +1,6 @@
 //! αβ探索の実装。
 
+mod capture_history;
 mod correction;
 mod deepening;
 mod negamax;
