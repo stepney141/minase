@@ -143,7 +143,7 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
     }
 }
 
-/// 全22係数の反映とUSIの入力契約を直列に検査する。
+/// 全係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -293,7 +293,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
 
-    // 指示書の22行を、宣言順・既定値・範囲の独立した参照値とする。
+    // 設計書と指示書の係数を、宣言順・既定値・範囲の独立した参照値とする。
     let expected = [
         ("LmrDivisor", 166, 100, 400),
         ("LmrHistoryThreshold", 111, 0, 512),
@@ -311,6 +311,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("CorrectionCap", 193, 50, 400),
         ("CorrectionWeight", 33, 8, 128),
         ("DeltaMargin", 258, 50, 500),
+        ("QsearchMoveLimit", 1, 1, 16),
         ("ExpectedPlies", 432, 250, 700),
         ("MinMoves", 88, 40, 200),
         ("IncrementShare", 76, 30, 100),
@@ -337,7 +338,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 22] = [
+    let cases: [Case; 23] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -366,6 +367,19 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("CorrectionCap", 400, || correction(100_000)),
         ("CorrectionWeight", 64, || correction(100)),
         ("DeltaMargin", 300, delta),
+        ("QsearchMoveLimit", 16, || {
+            let board = position(
+                Color::Black,
+                &[
+                    (sq(11, 0), Color::Black, PieceKind::King),
+                    (sq(11, 11), Color::White, PieceKind::King),
+                    (sq(5, 5), Color::Black, PieceKind::Rook),
+                    (sq(5, 7), Color::White, PieceKind::Pawn),
+                    (sq(7, 5), Color::White, PieceKind::Pawn),
+                ],
+            );
+            run_quiesce(&board, -INFINITY, INFINITY, MAX_PLY - 1, &small_tt()).1 as i64
+        }),
         ("ExpectedPlies", 250, || {
             clock_budget(clock(100_000, 0, 0)).soft.as_millis() as i64
         }),
