@@ -8,9 +8,8 @@ use crate::core::piece::PieceCode;
 use crate::core::position::Position;
 use crate::eval::Pst;
 
-use super::history::HistoryTable;
 use super::params;
-use super::searcher::{KILLER_COUNT, Searcher};
+use super::searcher::{HistoryTable, KILLER_COUNT, Searcher};
 
 impl Searcher<'_> {
     /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。

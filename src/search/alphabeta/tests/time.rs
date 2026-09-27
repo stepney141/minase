@@ -314,7 +314,6 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         Some(budget),
         &shared,
         &tt,
-        &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         None,
         false,
     );

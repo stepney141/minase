@@ -12,7 +12,6 @@ mod captures;
 mod contracts;
 mod correction;
 mod handle;
-mod history;
 mod limits;
 mod negamax;
 mod ordering;
@@ -47,7 +46,6 @@ use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
     auxiliary_depths, run_auxiliary_worker, run_main_worker,
 };
-use crate::search::alphabeta::history::HistoryTable;
 use crate::search::alphabeta::ordering::{
     MoveOrderKey, MovePicker, MovePickerStage, move_order_key, order_captures,
 };
@@ -58,7 +56,7 @@ use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
 use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta, grow_aspiration_delta};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
-    KILLER_COUNT, PonderIteration, STOP_CHECK_INTERVAL, Searcher, new_searcher,
+    HistoryTable, KILLER_COUNT, PonderIteration, STOP_CHECK_INTERVAL, Searcher, new_searcher,
 };
 use crate::search::alphabeta::see::see_prunes;
 use crate::search::alphabeta::team::{
@@ -166,17 +164,7 @@ fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&m
     };
     let pst = weights().unwrap();
     let table = small_tt();
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut searcher = new_searcher(
-        &pst,
-        position,
-        engine_rules(),
-        history,
-        &shared,
-        &table,
-        &mut butterfly_history,
-    );
+    let mut searcher = new_searcher(&pst, position, engine_rules(), history, &shared, &table);
     test(&mut searcher);
 }
 
@@ -213,17 +201,7 @@ fn run_quiesce(
     let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
     let pst = crate::eval::weights().unwrap();
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut searcher = new_searcher(
-        &pst,
-        position,
-        engine_rules(),
-        &history,
-        &shared,
-        table,
-        &mut butterfly_history,
-    );
+    let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
         .expect("unlimited quiescence search must complete");
@@ -252,17 +230,7 @@ fn run_negamax(
     let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
     let pst = crate::eval::weights().unwrap();
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut searcher = new_searcher(
-        &pst,
-        position,
-        engine_rules(),
-        &history,
-        &shared,
-        table,
-        &mut butterfly_history,
-    );
+    let mut searcher = new_searcher(&pst, position, engine_rules(), &history, &shared, table);
     let score = searcher
         .negamax(&mut current, depth, alpha, beta, ply)
         .expect("unlimited negamax search must complete");
@@ -288,7 +256,6 @@ fn start(
         search_id,
         threads,
         tt,
-        crate::search::HistoryTables::new(threads),
         false,
     )
 }
@@ -312,15 +279,8 @@ fn run_search(
     )
     .expect("test root moves must not be empty");
     let pst = crate::eval::weights().unwrap();
-    crate::search::search(
-        &pst,
-        &snapshot,
-        limits,
-        threads,
-        tt,
-        &mut crate::search::HistoryTables::new(threads),
-    )
-    .expect("valid test input must be searchable")
+    crate::search::search(&pst, &snapshot, limits, threads, tt)
+        .expect("valid test input must be searchable")
 }
 
 fn snapshot_for(position: &Position) -> SearchSnapshot {
@@ -484,7 +444,6 @@ fn start_ponder(limits: SearchLimits, threads: usize) -> SearchHandle {
         700,
         worker_count(threads),
         small_tt(),
-        crate::search::HistoryTables::new(worker_count(threads)),
         true,
     )
 }

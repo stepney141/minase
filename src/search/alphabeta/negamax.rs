@@ -125,7 +125,7 @@ impl Searcher<'_> {
         let mut beta_cutoff = false;
         let mut index = 0;
         while let Some((mv, capture)) =
-            self.move_pickers[ply as usize].next(position, self.pst, &self.generator, self.history)
+            self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
         {
             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。

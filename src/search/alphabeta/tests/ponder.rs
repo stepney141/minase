@@ -148,7 +148,6 @@ fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
                 701,
                 DEFAULT_THREADS,
                 small_tt(),
-                crate::search::HistoryTables::new(DEFAULT_THREADS),
                 ponder,
             );
             handle.ponderhit();
@@ -207,17 +206,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
                 hit_ns: &hit_ns,
             }),
         };
-        let mut butterfly_history =
-            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut searcher = new_searcher(
-            &pst,
-            &position,
-            engine_rules(),
-            &[],
-            &shared,
-            &table,
-            &mut butterfly_history,
-        );
+        let mut searcher = new_searcher(&pst, &position, engine_rules(), &[], &shared, &table);
         searcher.ponder_iteration = Some(PonderIteration {
             started: ms(t),
             stable,
@@ -360,67 +349,52 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
         }),
     };
     let completed = std::sync::Barrier::new(2);
-    let outcomes = run_worker_team(
-        &mut crate::search::HistoryTables::new(worker_count(2)).workers,
-        &shared,
-        |worker_index, _history| {
-            if worker_index == 1 {
-                let outcome = run_auxiliary_worker(
-                    &pst,
-                    &position,
-                    engine_rules(),
-                    &roots,
-                    &[],
-                    2,
-                    1,
-                    &shared,
-                    &table,
-                    &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
-                );
-                completed.wait();
-                return outcome;
-            }
-            let mut butterfly_history =
-                Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-            let mut searcher = new_searcher(
+    let outcomes = run_worker_team(worker_count(2), &shared, |worker_index| {
+        if worker_index == 1 {
+            let outcome = run_auxiliary_worker(
                 &pst,
                 &position,
                 engine_rules(),
+                &roots,
                 &[],
+                2,
+                1,
                 &shared,
                 &table,
-                &mut butterfly_history,
             );
-            searcher.ponder_iteration = Some(PonderIteration {
-                started: Duration::from_millis(600),
-                stable: false,
-                checked: false,
-                budget: TimeBudget {
-                    soft: Duration::from_millis(100),
-                    hard: Duration::from_millis(400),
-                },
-            });
             completed.wait();
-            hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
-            assert!(
-                searcher
-                    .search_iteration(&position, &roots, 1, None)
-                    .is_none()
-            );
-            assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
-            WorkerOutcome {
-                worker_index: 0,
-                result: SearchResult {
-                    best_move: roots[0],
-                    score: 0,
-                    depth: 0,
-                    nodes: 0,
-                },
-                pv: vec![roots[0]],
-                nodes: searcher.nodes,
-            }
-        },
-    );
+            return outcome;
+        }
+        let mut searcher = new_searcher(&pst, &position, engine_rules(), &[], &shared, &table);
+        searcher.ponder_iteration = Some(PonderIteration {
+            started: Duration::from_millis(600),
+            stable: false,
+            checked: false,
+            budget: TimeBudget {
+                soft: Duration::from_millis(100),
+                hard: Duration::from_millis(400),
+            },
+        });
+        completed.wait();
+        hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
+        assert!(
+            searcher
+                .search_iteration(&position, &roots, 1, None)
+                .is_none()
+        );
+        assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
+        WorkerOutcome {
+            worker_index: 0,
+            result: SearchResult {
+                best_move: roots[0],
+                score: 0,
+                depth: 0,
+                nodes: 0,
+            },
+            pv: vec![roots[0]],
+            nodes: searcher.nodes,
+        }
+    });
     let adopted = select_worker_outcome(&outcomes);
     assert_eq!(adopted.worker_index, 1);
     assert_eq!(adopted.result.depth, 2);
@@ -446,7 +420,6 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
         &stop,
         DEFAULT_THREADS,
         &table,
-        &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
         None,
         Instant::now() - Duration::from_secs(1),
         &hit_ns,

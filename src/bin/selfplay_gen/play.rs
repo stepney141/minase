@@ -82,7 +82,6 @@ pub(super) fn play_game_from_opening(
         injection_plan.record_from = 1;
     }
     table.clear();
-    let mut histories = minase::search::HistoryTables::new(DEFAULT_THREADS);
     let limits = SearchLimits::new(None, Some(u64::from(settings.nodes)), None, None)
         .expect("the CLI parser accepts only non-zero node limits");
     let mut candidates = Vec::new();
@@ -123,15 +122,8 @@ pub(super) fn play_game_from_opening(
                 "game {game_number} is ongoing but has no legal moves"
             ))
         })?;
-        let search_result = search(
-            pst,
-            &snapshot,
-            &limits,
-            DEFAULT_THREADS,
-            table,
-            &mut histories,
-        )
-        .map_err(|error| invalid_data(error.to_string()))?;
+        let search_result = search(pst, &snapshot, &limits, DEFAULT_THREADS, table)
+            .map_err(|error| invalid_data(error.to_string()))?;
         stats.searched_positions += 1;
         stats.searched_nodes = stats
             .searched_nodes

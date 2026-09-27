@@ -67,17 +67,7 @@ fn correction_negamax_update_conditions() {
             table.store(search_key(&board), 8, -score, Bound::Exact, None, 1);
             board.unmake_move(undo);
         }
-        let mut butterfly_history =
-            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut searcher = new_searcher(
-            &pst,
-            &board,
-            rules,
-            &[],
-            &shared,
-            &table,
-            &mut butterfly_history,
-        );
+        let mut searcher = new_searcher(&pst, &board, rules, &[], &shared, &table);
         // 更新しないケースも非ゼロの初期値を保持することを確認する。
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(searcher.correction.read(Color::Black, key), 16);
@@ -127,17 +117,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             board.unmake_move(undo);
         }
         let key = material_key(&board);
-        let mut butterfly_history =
-            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut searcher = new_searcher(
-            &pst,
-            &board,
-            rules,
-            &[],
-            &shared,
-            &table,
-            &mut butterfly_history,
-        );
+        let mut searcher = new_searcher(&pst, &board, rules, &[], &shared, &table);
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
@@ -154,17 +134,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             table.store(search_key(&board), 2, 320, Bound::Exact, None, 0);
         }
         let key = material_key(&board);
-        let mut butterfly_history =
-            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut searcher = new_searcher(
-            &pst,
-            &board,
-            MoveRules::standard(),
-            &[],
-            &shared,
-            &table,
-            &mut butterfly_history,
-        );
+        let mut searcher = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
@@ -181,28 +151,8 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
     let shared = shared(&stop);
     let board = crate::parse_sfen(QUIET).unwrap();
     let table = TranspositionTable::new(1).unwrap();
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut a = new_searcher(
-        &pst,
-        &board,
-        MoveRules::standard(),
-        &[],
-        &shared,
-        &table,
-        &mut butterfly_history,
-    );
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut b = new_searcher(
-        &pst,
-        &board,
-        MoveRules::standard(),
-        &[],
-        &shared,
-        &table,
-        &mut butterfly_history,
-    );
+    let mut a = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
+    let mut b = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
     let key = material_key(&board);
     a.correction.update(Color::Black, key, 100, 8);
     assert_eq!(a.correction.read(Color::Black, key), 25);
@@ -210,17 +160,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
     b.correction.update(Color::Black, key, -100, 8);
     assert_eq!(a.correction.read(Color::Black, key), 25);
     assert_eq!(b.correction.read(Color::Black, key), -25);
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let c = new_searcher(
-        &pst,
-        &board,
-        MoveRules::standard(),
-        &[],
-        &shared,
-        &table,
-        &mut butterfly_history,
-    );
+    let c = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
     assert_eq!(c.correction.read(Color::Black, key), 0);
 }
 
@@ -234,17 +174,7 @@ fn correction_changes_futility_expansion_at_boundary() {
         let mut board = crate::parse_sfen(QUIET).unwrap();
         let table = TranspositionTable::new(1).unwrap();
         let alpha = evaluate(&pst, &board) + pst.pawn_value() * 101 / 100;
-        let mut butterfly_history =
-            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut searcher = new_searcher(
-            &pst,
-            &board,
-            MoveRules::standard(),
-            &[],
-            &shared,
-            &table,
-            &mut butterfly_history,
-        );
+        let mut searcher = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
         searcher
             .correction
             .update(Color::Black, material_key(&board), correction * 4, 8);
@@ -273,17 +203,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     let mut changed = 0;
     for mut board in crate::test_util::bench_positions() {
         let root_key = material_key(&board);
-        let mut butterfly_history =
-            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-        let mut searcher = new_searcher(
-            &pst,
-            &board,
-            rules,
-            &[],
-            &shared,
-            &table,
-            &mut butterfly_history,
-        );
+        let mut searcher = new_searcher(&pst, &board, rules, &[], &shared, &table);
         assert_eq!(searcher.material_keys[0], root_key);
         let mut moves = Vec::new();
         MoveGenerator::new(rules).generate_moves(&board, &mut moves);
@@ -309,17 +229,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     assert!(changed > 0);
     let mut board = crate::parse_sfen(CAPTURE).unwrap();
     let root_key = material_key(&board);
-    let mut butterfly_history =
-        Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-    let mut searcher = new_searcher(
-        &pst,
-        &board,
-        rules,
-        &[],
-        &shared,
-        &table,
-        &mut butterfly_history,
-    );
+    let mut searcher = new_searcher(&pst, &board, rules, &[], &shared, &table);
     searcher.material_keys[1] = !root_key;
     let score = searcher
         .negamax(&mut board, 4, -10_001, -10_000, 0)

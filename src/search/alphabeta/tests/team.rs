@@ -21,30 +21,26 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
         };
         let completed = AtomicU64::new(0);
         let outcome = catch_unwind(AssertUnwindSafe(|| {
-            run_worker_team(
-                &mut crate::search::HistoryTables::new(worker_count(3)).workers,
-                &shared,
-                |worker_index, _history| {
-                    if worker_index == panicking_worker {
-                        panic!("injected worker {worker_index} panic");
-                    }
-                    while !shared.team_stop.load(AtomicOrdering::Acquire) {
-                        thread::yield_now();
-                    }
-                    completed.fetch_add(1, AtomicOrdering::Release);
-                    WorkerOutcome {
-                        worker_index,
-                        result: SearchResult {
-                            best_move: fallback,
-                            score: 0,
-                            depth: 0,
-                            nodes: 0,
-                        },
-                        pv: vec![fallback],
+            run_worker_team(worker_count(3), &shared, |worker_index| {
+                if worker_index == panicking_worker {
+                    panic!("injected worker {worker_index} panic");
+                }
+                while !shared.team_stop.load(AtomicOrdering::Acquire) {
+                    thread::yield_now();
+                }
+                completed.fetch_add(1, AtomicOrdering::Release);
+                WorkerOutcome {
+                    worker_index,
+                    result: SearchResult {
+                        best_move: fallback,
+                        score: 0,
+                        depth: 0,
                         nodes: 0,
-                    }
-                },
-            )
+                    },
+                    pv: vec![fallback],
+                    nodes: 0,
+                }
+            })
         }));
 
         assert!(outcome.is_err());
@@ -91,7 +87,7 @@ fn multi_worker_teams_finish_once_and_return_the_shared_table() {
             handle.events().recv_timeout(Duration::from_secs(1)),
             Err(mpsc::RecvTimeoutError::Disconnected)
         ));
-        let (table, _) = handle.join().expect("search team must not panic");
+        let table = handle.join().expect("search team must not panic");
         assert_eq!(table.generation(), 1);
     }
 }
@@ -115,7 +111,7 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
         handle.events().recv_timeout(Duration::from_secs(1)),
         Err(mpsc::RecvTimeoutError::Disconnected)
     ));
-    let (table, _) = handle.join().expect("search team must not panic");
+    let table = handle.join().expect("search team must not panic");
     assert_eq!(table.generation(), 1);
 
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
@@ -151,7 +147,6 @@ fn external_stop_takes_priority_over_the_node_limit() {
         &external_stop,
         worker_count(4),
         &table,
-        &mut crate::search::HistoryTables::new(worker_count(4)),
         None,
         Instant::now(),
         &AtomicU64::new(0),
@@ -241,7 +236,7 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
         handle.events().recv_timeout(Duration::from_secs(1)),
         Err(mpsc::RecvTimeoutError::Disconnected)
     ));
-    let (table, _) = handle.join().expect("search team must not panic");
+    let table = handle.join().expect("search team must not panic");
     assert_eq!(table.generation(), 1);
 
     let depths: Vec<_> = progress.iter().map(|entry| entry.0).collect();
