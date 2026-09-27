@@ -60,12 +60,23 @@ impl Searcher<'_> {
         };
 
         let side = position.side_to_move();
+        // docs/plans/strength-stage9.md「評価の償却」節。
+        // 静的評価は必要時にだけ計算し、補正履歴の更新でも再利用する。
+        let mut static_eval = None;
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
+        // docs/plans/strength-stage12.md「項目7　null move pruningの前提条件」節。
+        // 非PVノードで補正後の静的評価がβ以上のときだけ試す。
         if depth >= 3
             && self.null_move_ply != Some(ply)
             && beta.abs() < MATE_THRESHOLD
             && has_non_royal_piece
+            && beta - alpha == 1
+            && *static_eval.get_or_insert_with(|| {
+                self.pst
+                    .evaluate_accumulator(self.accumulators[ply as usize], side)
+            }) + self.correction.read(side, self.material_keys[ply as usize])
+                >= beta
         {
             let reduction = null_move_reduction(depth);
             let lion_before = position
@@ -98,9 +109,6 @@ impl Searcher<'_> {
             }
         }
 
-        // docs/plans/strength-stage9.md「評価の償却」節。
-        // 静的評価は必要時にだけ計算し、補正履歴の更新でも再利用する。
-        let mut static_eval = None;
         // docs/plans/strength-stage4.mdの「適用するノード」「futility pruning」節。
         // 静的評価と余裕値の和は対象ノードで1回だけ求める。
         let futility_bound = (depth <= 3
