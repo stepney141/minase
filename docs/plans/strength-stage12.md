@@ -22,8 +22,9 @@
 項目2は、STC（[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)）が430有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目3は、STC（[strength-stage12-capture-history-stc](../measurements/strength-stage12-capture-history-stc.md)）が750有効ペアで`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
-次の一手は、フェーズ5として項目4を`N=1`で実装することである。
-基準の構成が段階開始版のままなので、項目4の発動率と失う良い結果の割合はフェーズ1の値がそのまま使える。
+基準の構成が段階開始版のままなので、項目4の発動率と失う良い結果の割合はフェーズ1の値をそのまま使った。
+フェーズ5の項目4は`N=1`で実装し、bench深さ6のノード数は21.03%減、探索時間は15.9%減だった（[strength-stage12-qsearch-limit-bench](../measurements/strength-stage12-qsearch-limit-bench.md)）。
+次の一手は、項目4の煙試験とSTCによる採否測定である。
 
 ## 目的
 
