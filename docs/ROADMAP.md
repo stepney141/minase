@@ -65,12 +65,13 @@
 | 浅い探索の手の順位を学ぶ損失 | [plans/rank-loss-training.md](plans/rank-loss-training.md) | 起案 | |
 | 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 起案 | |
 | 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
-| デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 進行中 | |
+| デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 完了 | 2026年9月27日 |
 
 ## 現在地
 
 ### 直近の完了
 
+- [デバッグ機能の整備](plans/debugging-tools.md)は2026年9月27日に完了した。USIの独自コマンド`d`、`eval`、`tt`、入出力のログ`--io-log`、`cargo test`で常に有効な整合検査（フィーチャ`invariants`）、および`bench`が出力する探索統計（フィーチャ`search-stats`）を追加し、使い方を[デバッグの手引き](guides/debugging.md)にまとめた。探索統計の初回の実行では、深さ5の`bench`でβカットのうち最初に探索した手によるものが59%であり、手の順序付けを見直すときの出発点になる。
 - USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
 - SPSAによる調整は2回とも採用した。
   - 1回目の20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と[LTC](measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となり、2026年9月25日に採用して、探索部と関係する設計書の現行値へ反映した。
@@ -92,7 +93,6 @@
   - 静止探索の計画のフェーズ0が特定した探索の機構は、固定時間での測定を含めて段階12または探索の後続計画へ引き渡す。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
 - 評価関数の計画と段階12は測定機を共有するので、着手の順序は利用者が決める。
-- [デバッグ機能の整備](plans/debugging-tools.md)は、局面、評価値、置換表を表示するUSIの独自コマンド、入出力のログ、既定では無効の整合検査と探索統計を追加する。既定のビルドの探索木を変えないので測定機を使わず、他の計画と並行できる。2026年9月27日に着手し、ブランチ`debugging-tools`でフェーズ1を実装中である。
 
 ## 横断的な記録済みの決定
 
