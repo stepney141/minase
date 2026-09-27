@@ -72,8 +72,6 @@ impl Searcher<'_> {
                 .lion_taken_by_non_lion()
                 .map(|trigger| trigger.square);
             let undo = position.make_null_move();
-            // 設計書strength-stage12.md「項目4」: null moveは取り返しの対象を持たない。
-            self.previous_capture[(ply + 1) as usize] = None;
             self.accumulators[(ply + 1) as usize] = self
                 .pst
                 .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
@@ -241,11 +239,6 @@ impl Searcher<'_> {
         reduction: u32,
     ) -> Option<i32> {
         self.pv[(ply + 1) as usize].clear();
-        self.previous_capture[(ply + 1) as usize] = position
-            .captured_squares(mv)
-            .iter()
-            .any(Option::is_some)
-            .then_some(mv.to);
         if captures_last_royal(position, mv) {
             return Some(MATE - (ply + 1) as i32);
         }

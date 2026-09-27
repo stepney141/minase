@@ -83,8 +83,6 @@ parameters! {
     CorrectionWeight(correction_weight): 33, 8, 128;
     /// delta pruningの余裕値を歩兵価値に対する百分率で表す。
     DeltaMargin(delta_margin): 258, 50, 500;
-    /// 静止探索の捕獲手数の上限。`docs/plans/strength-stage12.md`「項目4」。
-    QsearchMoveLimit(qsearch_move_limit): 1, 1, 16;
     /// 1局の開始から終局までに見込む手数。
     ExpectedPlies(expected_plies): 432, 250, 700;
     /// 1局面で見込む残り手数の下限。

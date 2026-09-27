@@ -14,7 +14,6 @@ use crate::search::snapshot::search_key;
 use crate::search::{MATE, MAX_PLY};
 
 use super::ordering::piece_at_for_ordering;
-use super::params;
 use super::pruning::capture_is_pruned_by_see;
 use super::royal::captures_all_royals;
 use super::searcher::Searcher;
@@ -80,7 +79,6 @@ impl Searcher<'_> {
 
         let mut best = stand_pat;
         let mut best_move = None;
-        let mut searched_captures = 0;
         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
         while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
@@ -105,26 +103,10 @@ impl Searcher<'_> {
             {
                 continue;
             }
-            // 設計書strength-stage12.md「項目4」: 既存の枝刈りを通過した捕獲を数え、
-            // 最後の王駒の捕獲、取り返し、獅子の2枚取りは上限を超えても読む。
-            if searched_captures >= params::qsearch_move_limit()
-                && !is_last_royal_capture
-                && !self.previous_capture[ply as usize]
-                    .is_some_and(|square| candidate.capture.captured.contains(&Some(square)))
-                && !(candidate.capture.piece.kind() == Some(PieceKind::Lion)
-                    && candidate.capture.captured.iter().all(Option::is_some))
-            {
-                continue;
-            }
-            if !is_last_royal_capture {
-                self.enter_node().then_some(())?;
-            }
-            // 置換表の手と例外の手も、実際に探索した捕獲手数に含める。
-            searched_captures += 1;
-            self.previous_capture[(ply + 1) as usize] = Some(mv.to);
             let score = if is_last_royal_capture {
                 MATE - (ply + 1) as i32
             } else {
+                self.enter_node().then_some(())?;
                 let undo = position.make_move_with_captures_unchecked(
                     mv,
                     self.rules,

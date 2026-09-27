@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::time::Duration;
 
 use crate::MoveGenerator;
-use crate::core::board::{BOARD_SQUARE_COUNT, Square};
+use crate::core::board::BOARD_SQUARE_COUNT;
 use crate::core::mv::Move;
 use crate::core::piece::COLOR_COUNT;
 use crate::core::position::Position;
@@ -51,7 +51,6 @@ pub(super) fn new_searcher<'a>(
         history_keys,
         path_keys: vec![search_key(position)],
         null_move_ply: None,
-        previous_capture: [None; MAX_PLY as usize + 1],
         nodes: 0,
         shared,
         stop_reason: None,
@@ -96,10 +95,6 @@ pub(super) struct Searcher<'a> {
     pub(super) path_keys: Vec<u64>,
     /// null moveで到達した直後のノードのply。
     pub(super) null_move_ply: Option<u32>,
-    /// 直前の着手が捕獲手なら到達升を保持する。根とnull moveの直後はNone。
-    /// 設計書strength-stage12.md「項目4」に従い、居喰い・経由升だけの捕獲でも
-    /// 取り返す駒の最終位置と照合するため、捕獲升ではなく到達升を記録する。
-    pub(super) previous_capture: [Option<Square>; MAX_PLY as usize + 1],
     /// 実際の着手を盤面へ適用した回数。
     pub(super) nodes: u64,
     /// 探索チームで共有する停止状態と予算。

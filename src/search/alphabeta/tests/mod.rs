@@ -17,7 +17,6 @@ mod negamax;
 mod ordering;
 mod ponder;
 mod pruning;
-mod qsearch_move_limit;
 mod quiesce;
 mod root;
 mod royal;
