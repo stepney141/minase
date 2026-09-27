@@ -23,8 +23,12 @@
 項目3は、STC（[strength-stage12-capture-history-stc](../measurements/strength-stage12-capture-history-stc.md)）が750有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目4は、STC（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）が147有効ペア、得点率27.0%で`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
-次の一手は、フェーズ6として項目5（butterfly historyの持ち越し）を実装することである。
-基準の構成が段階開始版のままなので、項目5の発動率はフェーズ1の値がそのまま使える。
+基準の構成が段階開始版のままなので、項目5の発動率はフェーズ1の値をそのまま使った。
+フェーズ6の項目5はbutterfly historyだけを持ち越す形で実装した。
+表は置換表と同じ経路で受け渡し、置換表を初期化する時点（新規対局、受理された規則変更、受理された`USI_Hash`の変更）とワーカー数の変更で初期化する。
+減衰率は`params.rs`の係数`HistoryDecay`（百分率、初期値75）とした。
+benchは局面ごとに表を初期化するので、深さ6の総ノード数は段階開始版と同じ1,677,944であり、各局面の最善手も一致した。
+次の一手は、項目5の煙試験とSTCによる採否測定である。
 
 ## 目的
 
