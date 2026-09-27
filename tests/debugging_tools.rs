@@ -27,7 +27,7 @@ fn perft_accepts_d_output_with_lion_and_deferred_promotion() {
         assert!(!output.contains("error:"), "{output}");
         let sfen = output
             .lines()
-            .find_map(|line| line.strip_prefix("info string sfen "))
+            .find_map(|line| line.strip_prefix("sfen "))
             .unwrap();
         let moves = output
             .lines()
