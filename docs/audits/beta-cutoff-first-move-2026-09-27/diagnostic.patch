@@ -1,0 +1,224 @@
+diff --git a/src/search/alphabeta/negamax.rs b/src/search/alphabeta/negamax.rs
+index 550d106..600811b 100644
+--- a/src/search/alphabeta/negamax.rs
++++ b/src/search/alphabeta/negamax.rs
+@@ -13,6 +13,17 @@ use super::searcher::Searcher;
+ use super::see::see_prunes;
+ use super::tt::Bound;
+ 
++/// 探索前の局面とkiller表による診断用の手の分類。
++#[cfg(feature = "search-stats")]
++#[derive(Clone, Copy)]
++enum CutMoveKind {
++    Tt,
++    GoodCapture,
++    BadCapture,
++    Killer,
++    Quiet,
++}
++
+ impl Searcher<'_> {
+     /// ネガマックス形式のアルファベータ探索で局面を評価する。
+     ///
+@@ -148,6 +159,8 @@ impl Searcher<'_> {
+         let mut searched_moves = 0;
+         #[cfg(feature = "search-stats")]
+         let mut best_move_rank = 0;
++        #[cfg(feature = "search-stats")]
++        let mut first_move_kind = None;
+         while let Some((mv, capture)) =
+             self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
+         {
+@@ -182,6 +195,27 @@ impl Searcher<'_> {
+                 index += 1;
+                 continue;
+             }
++            // 枝刈りを通過した手だけを、探索で局面やkiller表が変わる前に分類する。
++            #[cfg(feature = "search-stats")]
++            let move_kind = {
++                let kind = if Some(mv) == tt_move {
++                    CutMoveKind::Tt
++                } else if capture {
++                    if see_prunes(position, self.rules, self.pst, mv, 0) {
++                        CutMoveKind::BadCapture
++                    } else {
++                        CutMoveKind::GoodCapture
++                    }
++                } else if self.killers[ply as usize].contains(&Some(mv)) {
++                    CutMoveKind::Killer
++                } else {
++                    CutMoveKind::Quiet
++                };
++                if searched_moves == 0 {
++                    first_move_kind = Some(kind);
++                }
++                kind
++            };
+             let reduction = if Some(mv) != tt_move
+                 && !capture
+                 && !self.killers[ply as usize][..].contains(&Some(mv))
+@@ -215,6 +249,81 @@ impl Searcher<'_> {
+                     if searched_moves == 1 {
+                         self.stats.first_move_beta_cutoffs += 1;
+                     }
++                    match move_kind {
++                        CutMoveKind::Tt => self.stats.cut_by_tt += 1,
++                        CutMoveKind::GoodCapture => self.stats.cut_by_good_capture += 1,
++                        CutMoveKind::BadCapture => self.stats.cut_by_bad_capture += 1,
++                        CutMoveKind::Killer => self.stats.cut_by_killer += 1,
++                        CutMoveKind::Quiet => self.stats.cut_by_quiet += 1,
++                    }
++                    let (first_kind_count, late_kind_count) =
++                        match first_move_kind.expect("a beta cutoff has a first searched move") {
++                            CutMoveKind::Tt => (
++                                &mut self.stats.cut_node_first_tt,
++                                &mut self.stats.late_cut_first_tt,
++                            ),
++                            CutMoveKind::GoodCapture => (
++                                &mut self.stats.cut_node_first_good_capture,
++                                &mut self.stats.late_cut_first_good_capture,
++                            ),
++                            CutMoveKind::BadCapture => (
++                                &mut self.stats.cut_node_first_bad_capture,
++                                &mut self.stats.late_cut_first_bad_capture,
++                            ),
++                            CutMoveKind::Killer => (
++                                &mut self.stats.cut_node_first_killer,
++                                &mut self.stats.late_cut_first_killer,
++                            ),
++                            CutMoveKind::Quiet => (
++                                &mut self.stats.cut_node_first_quiet,
++                                &mut self.stats.late_cut_first_quiet,
++                            ),
++                        };
++                    *first_kind_count += 1;
++                    if searched_moves > 1 {
++                        *late_kind_count += 1;
++                    }
++                    let first_cut = u64::from(searched_moves == 1);
++                    if tt_move.is_some() {
++                        self.stats.cut_node_with_tt += 1;
++                        self.stats.first_move_cut_with_tt += first_cut;
++                    } else {
++                        self.stats.cut_node_without_tt += 1;
++                        self.stats.first_move_cut_without_tt += first_cut;
++                    }
++                    match searched_moves {
++                        1 => self.stats.cut_move_rank_1 += 1,
++                        2 => self.stats.cut_move_rank_2 += 1,
++                        3 => self.stats.cut_move_rank_3 += 1,
++                        4..=7 => self.stats.cut_move_rank_4_to_7 += 1,
++                        _ => self.stats.cut_move_rank_8_plus += 1,
++                    }
++                    // depthはIIR後、original_alphaとbetaはノード入口の値。
++                    match depth {
++                        1 => {
++                            self.stats.cut_depth_1 += 1;
++                            self.stats.first_move_cut_depth_1 += first_cut;
++                        }
++                        2 => {
++                            self.stats.cut_depth_2 += 1;
++                            self.stats.first_move_cut_depth_2 += first_cut;
++                        }
++                        3..=4 => {
++                            self.stats.cut_depth_3_to_4 += 1;
++                            self.stats.first_move_cut_depth_3_to_4 += first_cut;
++                        }
++                        _ => {
++                            self.stats.cut_depth_5_plus += 1;
++                            self.stats.first_move_cut_depth_5_plus += first_cut;
++                        }
++                    }
++                    if beta - original_alpha == 1 {
++                        self.stats.cut_zero_window += 1;
++                        self.stats.first_move_cut_zero_window += first_cut;
++                    } else {
++                        self.stats.cut_wide_window += 1;
++                        self.stats.first_move_cut_wide_window += first_cut;
++                    }
+                 }
+                 beta_cutoff = true;
+                 if !capture {
+diff --git a/src/search/stats.rs b/src/search/stats.rs
+index 4f2e0ea..e2c4311 100644
+--- a/src/search/stats.rs
++++ b/src/search/stats.rs
+@@ -58,6 +58,78 @@ search_stats! {
+     best_move_rank_3,
+     /// 全手の走査を完了し、最後の下限更新が探索した4手目以降だったノード数。
+     best_move_rank_4_plus,
++    /// 通常探索でβカットを起こした手が置換表の手だった回数。
++    cut_by_tt,
++    /// 通常探索でβカットを起こした手が交換評価が負と確定しない捕獲手だった回数。
++    cut_by_good_capture,
++    /// 通常探索でβカットを起こした手が交換評価が負と確定した捕獲手だった回数。
++    cut_by_bad_capture,
++    /// 通常探索でβカットを起こした手がkiller手だった回数。
++    cut_by_killer,
++    /// 通常探索でβカットを起こした手がその他の静かな手だった回数。
++    cut_by_quiet,
++    /// 通常探索のβカットノードで、最初に探索した手が置換表の手だった回数。
++    cut_node_first_tt,
++    /// 通常探索のβカットノードで、最初に探索した手が交換評価が負と確定しない捕獲手だった回数。
++    cut_node_first_good_capture,
++    /// 通常探索のβカットノードで、最初に探索した手が交換評価が負と確定した捕獲手だった回数。
++    cut_node_first_bad_capture,
++    /// 通常探索のβカットノードで、最初に探索した手がkiller手だった回数。
++    cut_node_first_killer,
++    /// 通常探索のβカットノードで、最初に探索した手がその他の静かな手だった回数。
++    cut_node_first_quiet,
++    /// 通常探索の2手目以降でβカットしたノードで、最初に探索した手が置換表の手だった回数。
++    late_cut_first_tt,
++    /// 通常探索の2手目以降でβカットしたノードで、最初に探索した手が交換評価が負と確定しない捕獲手だった回数。
++    late_cut_first_good_capture,
++    /// 通常探索の2手目以降でβカットしたノードで、最初に探索した手が交換評価が負と確定した捕獲手だった回数。
++    late_cut_first_bad_capture,
++    /// 通常探索の2手目以降でβカットしたノードで、最初に探索した手がkiller手だった回数。
++    late_cut_first_killer,
++    /// 通常探索の2手目以降でβカットしたノードで、最初に探索した手がその他の静かな手だった回数。
++    late_cut_first_quiet,
++    /// 通常探索で置換表の手があるノードのβカット数。
++    cut_node_with_tt,
++    /// 通常探索で置換表の手があるノードの最初の手によるβカット数。
++    first_move_cut_with_tt,
++    /// 通常探索で置換表の手がないノードのβカット数。
++    cut_node_without_tt,
++    /// 通常探索で置換表の手がないノードの最初の手によるβカット数。
++    first_move_cut_without_tt,
++    /// 通常探索でβカットを起こした手の探索順位が1だった回数。
++    cut_move_rank_1,
++    /// 通常探索でβカットを起こした手の探索順位が2だった回数。
++    cut_move_rank_2,
++    /// 通常探索でβカットを起こした手の探索順位が3だった回数。
++    cut_move_rank_3,
++    /// 通常探索でβカットを起こした手の探索順位が4〜7だった回数。
++    cut_move_rank_4_to_7,
++    /// 通常探索でβカットを起こした手の探索順位が8以上だった回数。
++    cut_move_rank_8_plus,
++    /// 通常探索で減深後の残り深さが1のβカット数。
++    cut_depth_1,
++    /// 通常探索で減深後の残り深さが1の最初の手によるβカット数。
++    first_move_cut_depth_1,
++    /// 通常探索で減深後の残り深さが2のβカット数。
++    cut_depth_2,
++    /// 通常探索で減深後の残り深さが2の最初の手によるβカット数。
++    first_move_cut_depth_2,
++    /// 通常探索で減深後の残り深さが3〜4のβカット数。
++    cut_depth_3_to_4,
++    /// 通常探索で減深後の残り深さが3〜4の最初の手によるβカット数。
++    first_move_cut_depth_3_to_4,
++    /// 通常探索で減深後の残り深さが5以上のβカット数。
++    cut_depth_5_plus,
++    /// 通常探索で減深後の残り深さが5以上の最初の手によるβカット数。
++    first_move_cut_depth_5_plus,
++    /// 通常探索で入口の窓幅が1のβカット数。
++    cut_zero_window,
++    /// 通常探索で入口の窓幅が1の最初の手によるβカット数。
++    first_move_cut_zero_window,
++    /// 通常探索で入口の窓幅が1以外のβカット数。
++    cut_wide_window,
++    /// 通常探索で入口の窓幅が1以外の最初の手によるβカット数。
++    first_move_cut_wide_window,
+ }
+ 
+ impl SearchStats {
