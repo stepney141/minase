@@ -11,8 +11,7 @@ use crate::eval::Pst;
 use crate::search::TranspositionTable;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 
-use super::root::IterationResult;
-use super::searcher::{PonderIteration, Searcher, new_searcher};
+use super::searcher::{PonderIteration, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{TimeBudget, should_start_next_iteration, stable_signal};
 
@@ -39,34 +38,7 @@ pub(super) fn run_main_worker(
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     ponder: bool,
 ) -> WorkerOutcome {
-    let searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
-    run_main_iterations(
-        searcher,
-        position,
-        root_moves,
-        depth_limit,
-        time_budget,
-        events,
-        ponder,
-        |searcher, depth, prev| searcher.search_iteration(position, root_moves, depth, prev, true),
-    )
-}
-
-/// 目標深さを進め、完了した反復ごとに結果、進捗、および時間管理を更新する。
-/// docs/plans/strength-stage12.md「項目1」。探索処理を分けて減深時の反復も検査する。
-#[allow(clippy::too_many_arguments)]
-pub(super) fn run_main_iterations<'a>(
-    mut searcher: Searcher<'a>,
-    position: &Position,
-    root_moves: &[Move],
-    depth_limit: u32,
-    time_budget: Option<TimeBudget>,
-    events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
-    ponder: bool,
-    mut search_iteration: impl FnMut(&mut Searcher<'a>, u32, Option<i32>) -> Option<IterationResult>,
-) -> WorkerOutcome {
-    let shared = searcher.shared;
-    let pst = searcher.pst;
+    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
@@ -106,11 +78,7 @@ pub(super) fn run_main_iterations<'a>(
                 budget,
             });
         }
-        let Some(IterationResult {
-            best_move,
-            score,
-            depth: completed_depth,
-        }) = search_iteration(&mut searcher, depth, prev)
+        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
         else {
             debug_assert!(searcher.stop_reason.is_some());
             break;
@@ -119,14 +87,13 @@ pub(super) fn run_main_iterations<'a>(
         let stable = stable_signal(&completed_bests);
         result.best_move = best_move;
         result.score = score;
-        // docs/plans/strength-stage12.md「項目1」。反復回数と確定深さを分ける。
-        result.depth = completed_depth;
+        result.depth = depth;
         completed_pv.clone_from(&searcher.pv[0]);
         let elapsed = shared.started.elapsed();
         if let Some((sender, search_id)) = events {
             let _ = sender.send(SearchEvent::Progress {
                 search_id,
-                depth: completed_depth,
+                depth,
                 score,
                 nodes: shared.nodes(),
                 elapsed,
@@ -194,17 +161,13 @@ pub(super) fn run_auxiliary_worker(
     let mut completed_pv = vec![root_moves[0]];
     for depth in auxiliary_depths(worker_index, depth_limit) {
         let prev = (result.depth > 0).then_some(result.score);
-        let Some(IterationResult {
-            best_move,
-            score,
-            depth: completed_depth,
-        }) = searcher.search_iteration(position, root_moves, depth, prev, false)
+        let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
         else {
             break;
         };
         result.best_move = best_move;
         result.score = score;
-        result.depth = completed_depth;
+        result.depth = depth;
         completed_pv.clone_from(&searcher.pv[0]);
         if depth == depth_limit {
             break;

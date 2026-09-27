@@ -30,8 +30,7 @@ fn stage6_long_history_search_contract() {
         &mut small_tt(),
     );
     assert!(moves.contains(&result.best_move));
-    // docs/plans/strength-stage12.md「項目1」。確定深さは減深により目標以下になる。
-    assert!((1..=5).contains(&result.depth));
+    assert_eq!(result.depth, 5);
     assert!(result.nodes > 0);
     assert_eq!(
         result,
