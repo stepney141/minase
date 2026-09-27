@@ -203,7 +203,8 @@ mod tests {
             1,
             PlaySettings {
                 base_seed: 42,
-                nodes: 200,
+                // 手数上限による破棄を避け、終局後の記録開始手数を検査するための探索予算。
+                nodes: 1_000,
                 random_moves: 0,
                 max_ply: 4000,
             },

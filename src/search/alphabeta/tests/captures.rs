@@ -405,15 +405,19 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
                 while let Some((mv, is_capture)) =
                     picker.next(&position, &pst, &generator, &history)
                 {
-                    if !is_capture {
-                        break;
+                    if is_capture {
+                        actual.push(mv);
                     }
-                    actual.push(mv);
                 }
-                let expected: Vec<_> = public_reference(&position, &generator, &pst, tt_move)
+                let mut expected: Vec<_> = public_reference(&position, &generator, &pst, tt_move)
                     .into_iter()
                     .map(|(mv, _)| mv)
                     .collect();
+                // strength-stage12.md「項目2」: 各段で安定なMVV-LVA順を保つ。
+                expected.sort_by_key(|&mv| {
+                    Some(mv) != tt_move
+                        && super::ordering::deferred_capture(&position, rules, &pst, mv)
+                });
                 assert_eq!(actual, expected, "rules={rules:?}, tt={tt_move:?}");
             }
         }
