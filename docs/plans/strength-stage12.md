@@ -21,10 +21,10 @@
 項目1は、STC（[strength-stage12-aspiration-stc](../measurements/strength-stage12-aspiration-stc.md)）が1,360有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目2は、STC（[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)）が430有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目3は、STC（[strength-stage12-capture-history-stc](../measurements/strength-stage12-capture-history-stc.md)）が750有効ペアで`H0`となったので採用せず、実装をコードから外した。
+項目4は、STC（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）が147有効ペア、得点率27.0%で`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
-基準の構成が段階開始版のままなので、項目4の発動率と失う良い結果の割合はフェーズ1の値をそのまま使った。
-フェーズ5の項目4は`N=1`で実装し、bench深さ6のノード数は21.03%減、探索時間は15.9%減だった（[strength-stage12-qsearch-limit-bench](../measurements/strength-stage12-qsearch-limit-bench.md)）。
-次の一手は、項目4の煙試験とSTCによる採否測定である。
+次の一手は、フェーズ6として項目5（butterfly historyの持ち越し）を実装することである。
+基準の構成が段階開始版のままなので、項目5の発動率はフェーズ1の値がそのまま使える。
 
 ## 目的
 
@@ -167,6 +167,11 @@ null moveの直後は記録を空にする。
 最後の王駒を取る手、居喰いと経由升だけで取る手への取り返し、および2枚取りの手を読み落とさないことを、手数の上限を超えた位置にそれらの手がある局面のテストで固定する。
 
 フェーズ1の診断で、`N=1`は失う良い結果の割合が4.83%、発動率が14.42%であり、基準を満たす最小の候補だったので、`N=1`とする（[strength-stage12-activation-diag](../measurements/strength-stage12-activation-diag.md)）。
+
+`N=1`の実装はbench深さ6のノード数を21.03%、探索時間を15.9%減らした（[strength-stage12-qsearch-limit-bench](../measurements/strength-stage12-qsearch-limit-bench.md)）。
+しかしSTCは147有効ペアで`H0`となり、得点率27.0%（約−173 Elo）だったので、本項目は採用しない（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）。
+診断が示した失う良い結果の割合（4.83%）は、自己対局での損失の大きさを予測しなかった。
+閾値はSTCの前に固定する規則なので、`N`を変えた再測定は本段階では行わない。
 
 ### 項目5　手の成績の表と補正表の対局内の持ち越し（history aging）
 
