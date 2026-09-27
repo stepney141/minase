@@ -10,12 +10,12 @@ use std::time::Duration;
 
 use crate::core::game::{DrawReason, Game, GameResult, GameStatus, WinReason};
 use crate::core::mv::Move;
-use crate::core::piece::Color;
+use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
 use crate::eval::pst;
 use crate::notation::sfen::{
-    SetupPosition, parse_extended_sfen, piece_text, square_to_text, to_extended_sfen, to_sfen,
+    SetupPosition, parse_extended_sfen, square_to_text, to_extended_sfen, to_sfen,
 };
 use crate::notation::usi;
 use crate::search::{
@@ -1061,6 +1061,12 @@ impl UsiProtocol {
             _ => unreachable!("only diagnostic commands are dispatched here"),
         };
         match lines {
+            Ok(lines) if command == "d" => {
+                for line in lines {
+                    writeln!(output, "{line}")?;
+                }
+                Ok(())
+            }
             Ok(lines) => {
                 for line in lines {
                     writeln!(output, "info string {line}")?;
@@ -1528,6 +1534,84 @@ fn diagnostic_grid(width: usize, mut cell: impl FnMut(Square) -> String) -> Vec<
     lines
 }
 
+/// RULES.md第5条・第9条・第10条に従い、現在の駒種を漢字1文字にする。
+fn diagnostic_piece_kanji(piece: PieceCode) -> char {
+    match piece.kind().expect("a board piece must have a kind") {
+        PieceKind::Pawn => '歩',
+        PieceKind::GoBetween => '仲',
+        PieceKind::Lance => '香',
+        PieceKind::ReverseChariot => '反',
+        PieceKind::SideMover => '横',
+        PieceKind::VerticalMover => '竪',
+        PieceKind::Bishop => '角',
+        PieceKind::Rook => '飛',
+        PieceKind::DragonHorse => '馬',
+        PieceKind::DragonKing => '龍',
+        PieceKind::FreeKing => '奔',
+        PieceKind::King => match piece.color().expect("a board piece must have a color") {
+            Color::Black => '王',
+            Color::White => '玉',
+        },
+        PieceKind::DrunkElephant => '醉',
+        PieceKind::FerociousLeopard => '猛',
+        PieceKind::BlindTiger => '盲',
+        PieceKind::CopperGeneral => '銅',
+        PieceKind::SilverGeneral => '銀',
+        PieceKind::GoldGeneral => '金',
+        PieceKind::Kirin => '麒',
+        PieceKind::Phoenix => '鳳',
+        PieceKind::Lion => '獅',
+        PieceKind::CrownPrince => '太',
+        PieceKind::WhiteHorse => '白',
+        PieceKind::Whale => '鯨',
+        PieceKind::FlyingOx => '牛',
+        PieceKind::FreeBoar => '猪',
+        PieceKind::FlyingStag => '鹿',
+        PieceKind::HornedFalcon => '鷹',
+        PieceKind::SoaringEagle => '鷲',
+    }
+}
+
+/// `d`用に、漢字の駒と筋・段の見出しを持つ罫線付きの盤を作る。
+fn diagnostic_board(position: &Position) -> Vec<String> {
+    let border = format!("{}+", "+----".repeat(12));
+    let mut lines = vec![
+        format!(
+            " {}",
+            (1..=12)
+                .rev()
+                .map(|file| format!("{file:>4}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        border.clone(),
+    ];
+    for rank in (0..12).rev() {
+        let mut row = String::from("|");
+        for file in 0..12 {
+            let square = Square::new(file, rank).expect("board coordinates must be valid");
+            if let Some(piece) = position.piece_at(square) {
+                row.push(
+                    match piece.color().expect("a board piece must have a color") {
+                        Color::Black => ' ',
+                        Color::White => '^',
+                    },
+                );
+                row.push(if piece.is_promoted() { '+' } else { ' ' });
+                row.push(diagnostic_piece_kanji(piece));
+            } else {
+                row.push_str("  ・");
+            }
+            row.push('|');
+        }
+        row.push(' ');
+        row.push(char::from(b'a' + 11 - rank));
+        lines.push(row);
+        lines.push(border.clone());
+    }
+    lines
+}
+
 /// 検証済みの盤面、拡張SFEN、対局状態とキーを表示用の行へ変換する。
 fn diagnostic_position(engine: &Engine) -> Result<Vec<String>, String> {
     let position = engine.game().position();
@@ -1539,11 +1623,8 @@ fn diagnostic_position(engine: &Engine) -> Result<Vec<String>, String> {
     let setup = SetupPosition::new(position.clone(), position.lion_capture_square(), next_move)
         .map_err(|error| error.to_string())?;
     let status = state_status_text(engine.status())?;
-    let mut lines = diagnostic_grid(2, |square| {
-        position
-            .piece_at(square)
-            .map_or_else(|| ".".to_owned(), piece_text)
-    });
+    let mut lines = diagnostic_board(position);
+    lines.push(String::new());
     lines.push(format!("sfen {}", to_extended_sfen(&setup)));
     lines.push(format!(
         "side {}",
@@ -3375,7 +3456,7 @@ mod tests {
         );
     }
 
-    /// debugging-tools.md「独自コマンドの契約」: 成功は全行に接頭辞と終端を持つ。
+    /// debugging-tools.md「d」「独自コマンドの契約」: d以外の成功は接頭辞と終端を持つ。
     #[test]
     fn diagnostics_frame_success_and_reject_uncommitted_positions() {
         for command in ["d", "eval", "tt"] {
@@ -3395,9 +3476,20 @@ mod tests {
             );
             let before = engine.game().position().clone();
             let output = run(&mut protocol, &mut engine, &format!("{command}\n"));
-            assert!(output.lines().all(|line| line.starts_with("info string ")));
-            assert_eq!(output.lines().last(), Some("info string end"));
-            assert!(!output.contains("error:"));
+            if command == "d" {
+                assert!(output.lines().all(|line| !line.starts_with("info string")));
+                assert!(
+                    output
+                        .lines()
+                        .last()
+                        .unwrap()
+                        .starts_with("rights-zobrist ")
+                );
+            } else {
+                assert!(output.lines().all(|line| line.starts_with("info string ")));
+                assert_eq!(output.lines().last(), Some("info string end"));
+            }
+            assert!(!output.contains("error"));
             assert_eq!(engine.game().position(), &before);
         }
         let output = session(&[RuleCode::R1], "position startpos\ntt\n");
@@ -3416,11 +3508,7 @@ mod tests {
             ),
         );
         let bestmove = output.find("bestmove ").unwrap();
-        for marker in [
-            "info string sfen ",
-            "info string evaluation ",
-            "info string current ",
-        ] {
+        for marker in ["\nsfen ", "info string evaluation ", "info string current "] {
             assert!(bestmove < output.find(marker).unwrap(), "{output}");
         }
         assert_eq!(
@@ -3428,7 +3516,7 @@ mod tests {
                 .lines()
                 .filter(|line| *line == "info string end")
                 .count(),
-            3
+            2
         );
         assert!(!output.contains("error:"));
     }
@@ -3446,24 +3534,21 @@ mod tests {
         );
         assert!(!output.contains("error:"), "{output}");
         let original = engine.game().position().clone();
+        assert!(output.contains(&format!("zobrist {:016x}\n", original.zobrist())));
         assert!(output.contains(&format!(
-            "info string zobrist {:016x}\n",
-            original.zobrist()
-        )));
-        assert!(output.contains(&format!(
-            "info string rights-zobrist {:016x}\n",
+            "rights-zobrist {:016x}\n",
             original.rights_zobrist()
         )));
         assert!(!original.promotion_deferred().is_empty());
         assert!(original.lion_capture_square().is_some());
         let emitted = output
             .lines()
-            .find_map(|line| line.strip_prefix("info string sfen "))
+            .find_map(|line| line.strip_prefix("sfen "))
             .unwrap();
         assert_eq!(emitted, sfen);
-        assert!(output.contains("info string move 41\n"));
-        assert!(output.contains("info string lion 7f\n"));
-        assert!(output.contains("info string promotion-deferred 8c\n"));
+        assert!(output.contains("\nmove 41\n"));
+        assert!(output.contains("\nlion 7f\n"));
+        assert!(output.contains("\npromotion-deferred 8c\n"));
         assert!(output.contains("+o"));
         assert_eq!(
             run(
@@ -3477,12 +3562,63 @@ mod tests {
         assert_eq!(original, *restored);
         assert_eq!(original.zobrist(), restored.zobrist());
         assert_eq!(original.rights_zobrist(), restored.rights_zobrist());
-        let rows: Vec<_> = output.lines().skip(1).take(12).collect();
+        let rows: Vec<_> = output.lines().skip(2).step_by(2).take(12).collect();
         for (index, row) in rows.iter().enumerate() {
-            let tokens: Vec<_> = row.split_whitespace().collect();
-            assert_eq!(tokens.len(), 15);
-            assert_eq!(tokens[2], char::from(b'a' + index as u8).to_string());
+            assert_eq!(row.matches('|').count(), 13);
+            assert!(row.ends_with(&format!("| {}", char::from(b'a' + index as u8))));
         }
+    }
+
+    /// debugging-tools.md「d」: RULES.md第5条の初期配置を26行の盤として表示する。
+    #[test]
+    fn diagnostic_startpos_board_matches_rules() {
+        let output = session(&[RuleCode::R1], "position startpos\nd\n");
+        let expected = concat!(
+            "   12   11   10    9    8    7    6    5    4    3    2    1\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 香|^ 猛|^ 銅|^ 銀|^ 金|^ 醉|^ 玉|^ 金|^ 銀|^ 銅|^ 猛|^ 香| a\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 反|  ・|^ 角|  ・|^ 盲|^ 鳳|^ 麒|^ 盲|  ・|^ 角|  ・|^ 反| b\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 横|^ 竪|^ 飛|^ 馬|^ 龍|^ 奔|^ 獅|^ 龍|^ 馬|^ 飛|^ 竪|^ 横| c\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩| d\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|^ 仲|  ・|  ・|  ・|  ・|^ 仲|  ・|  ・|  ・| e\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| f\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| g\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|  仲|  ・|  ・|  ・|  ・|  仲|  ・|  ・|  ・| h\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩| i\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  横|  竪|  飛|  馬|  龍|  獅|  奔|  龍|  馬|  飛|  竪|  横| j\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  反|  ・|  角|  ・|  盲|  麒|  鳳|  盲|  ・|  角|  ・|  反| k\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  香|  猛|  銅|  銀|  金|  王|  醉|  金|  銀|  銅|  猛|  香| l\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+        );
+        let (board, metadata) = output.split_once("\n\n").unwrap();
+        assert_eq!(board.lines().count(), 26);
+        assert_eq!(format!("{board}\n"), expected);
+        assert!(metadata.starts_with("sfen "));
+    }
+
+    /// debugging-tools.md「d」: 成駒はRULES.md第9条・第10条の駒種と成り印で表示する。
+    #[test]
+    fn diagnostic_board_shows_promoted_kinds_and_owners() {
+        let output = session(
+            &[RuleCode::R1],
+            "position sfen k11/12/12/12/12/+G+p+E+i8/12/12/12/12/12/11K b - 1\nd\n",
+        );
+        assert!(!output.contains("error"), "{output}");
+        assert_eq!(
+            output.lines().nth(12),
+            Some("| +飛|^+金| +太|^+醉|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| f")
+        );
     }
 
     /// debugging-tools.md「eval」: 表示評価は全計算と一致し、制限の有無と両手番を扱う。
