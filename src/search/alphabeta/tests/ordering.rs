@@ -1,14 +1,12 @@
 //! 着手の順序付けを検査する。
 
 use super::*;
-use crate::search::alphabeta::capture_history::CaptureHistory;
 
 /// 段階的手選択が助言手の合法性と重複を処理し、全合法手を1回ずつ返す。
 #[test]
 fn staged_picker_yields_every_legal_move_exactly_once() {
     let position = staged_picker_fixture();
     let pst = weights().unwrap();
-    let capture_history = CaptureHistory::new();
     let legal = legal_moves(&position);
     let capture = legal
         .iter()
@@ -40,7 +38,6 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
             &pst,
             &MoveGenerator::new(engine_rules()),
             &history,
-            &capture_history,
         ) {
             actual.push(mv);
         }
@@ -61,7 +58,6 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
 fn staged_picker_respects_advisory_precedence() {
     let position = staged_picker_fixture();
     let pst = weights().unwrap();
-    let capture_history = CaptureHistory::new();
     let legal = legal_moves(&position);
     let capture = legal
         .iter()
@@ -82,7 +78,6 @@ fn staged_picker_respects_advisory_precedence() {
         &pst,
         &MoveGenerator::new(engine_rules()),
         &history,
-        &capture_history,
     ) {
         actual.push(mv);
     }
@@ -103,7 +98,6 @@ fn staged_picker_respects_advisory_precedence() {
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let position = staged_picker_fixture();
     let pst = weights().unwrap();
-    let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture = Move {
@@ -124,9 +118,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     for (tt_move, expected_capture) in [(capture, true), (quiet, false)] {
         assert!(generator.is_legal_move(&position, tt_move, &mut Vec::new(), &mut Vec::new()));
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
-        let picked = picker
-            .next(&position, &pst, &generator, &history, &capture_history)
-            .unwrap();
+        let picked = picker.next(&position, &pst, &generator, &history).unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
     }
 }
@@ -135,7 +127,6 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
 #[test]
 fn staged_picker_classifies_all_generated_captures() {
     let pst = weights().unwrap();
-    let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let lion_position = position(
@@ -160,9 +151,7 @@ fn staged_picker_classifies_all_generated_captures() {
         assert!(!captures.is_empty());
         let mut picker = MovePicker::new(None, [None, None]);
         let mut picked_captures = Vec::new();
-        while let Some((mv, capture)) =
-            picker.next(&position, &pst, &generator, &history, &capture_history)
-        {
+        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history) {
             assert_eq!(capture, captures.contains(&mv));
             assert_eq!(capture, move_order_key(&position, &pst, mv).is_some());
             if capture {
@@ -302,7 +291,6 @@ impl ReferenceMovePicker {
 #[test]
 fn staged_picker_matches_reference_sequence_with_changing_history() {
     let pst = weights().unwrap();
-    let capture_history = CaptureHistory::new();
     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
     for rules in crate::core::movegen::tests::capture_test_rules() {
         let generator = MoveGenerator::new(rules);
@@ -340,8 +328,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
                 let mut ordinal = 0;
                 loop {
                     let expected = reference.next(&position, &pst, &generator, &history);
-                    let actual =
-                        picker.next(&position, &pst, &generator, &history, &capture_history);
+                    let actual = picker.next(&position, &pst, &generator, &history);
                     assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
                     let Some((mv, _)) = expected else {
                         break;

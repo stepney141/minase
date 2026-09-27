@@ -143,7 +143,7 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
     }
 }
 
-/// 全24係数の反映とUSIの入力契約を直列に検査する。
+/// 全22係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -227,19 +227,6 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         });
         result
     }
-    fn capture_history_adjustment() -> i64 {
-        let board = staged_picker_fixture();
-        let mv = Move {
-            from: fs(6, 8),
-            to: fs(6, 5),
-            mid: None,
-            promote: false,
-        };
-        let pst = weights().unwrap();
-        let mut history = crate::search::alphabeta::capture_history::CaptureHistory::new();
-        history.record_cutoff(&board, &pst, mv, &[], 100);
-        i64::from(history.adjustment(&board, &pst, mv))
-    }
     fn delta() -> i64 {
         let mut result = 0;
         with_root_searcher(&Position::initial(), &[], |searcher| {
@@ -306,7 +293,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
 
-    // 既存係数と段階12の捕獲履歴係数を、宣言順・既定値・範囲の独立した参照値とする。
+    // 指示書の22行を、宣言順・既定値・範囲の独立した参照値とする。
     let expected = [
         ("LmrDivisor", 166, 100, 400),
         ("LmrHistoryThreshold", 111, 0, 512),
@@ -321,8 +308,6 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("NullMoveBase", 3529, 1200, 4800),
         ("NullMoveSlope", 238, 100, 400),
         ("HistoryLimit", 20755, 4096, 65536),
-        ("CaptureHistoryLimit", 20755, 1, 32767),
-        ("CaptureHistoryScale", 100, 0, 400),
         ("CorrectionCap", 193, 50, 400),
         ("CorrectionWeight", 33, 8, 128),
         ("DeltaMargin", 258, 50, 500),
@@ -352,7 +337,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 24] = [
+    let cases: [Case; 22] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -378,8 +363,6 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("NullMoveBase", 4800, || i64::from(null_move_reduction(12))),
         ("NullMoveSlope", 400, || i64::from(null_move_reduction(12))),
         ("HistoryLimit", 65536, history),
-        ("CaptureHistoryLimit", 1, capture_history_adjustment),
-        ("CaptureHistoryScale", 200, capture_history_adjustment),
         ("CorrectionCap", 400, || correction(100_000)),
         ("CorrectionWeight", 64, || correction(100)),
         ("DeltaMargin", 300, delta),

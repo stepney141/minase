@@ -8,7 +8,6 @@
 // 座標はマトリクスの筋段表記（筋1=先手から見て右端、段1=後手側最奥）を
 // `fs`ヘルパで内部座標へ写して使う。
 
-mod capture_history;
 mod captures;
 mod contracts;
 mod correction;
