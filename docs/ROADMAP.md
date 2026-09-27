@@ -39,7 +39,7 @@
 | 棋力向上段階5 | [plans/strength-stage5.md](plans/strength-stage5.md) | 完了 | 2026年9月7日 |
 | PSTの序中盤と終盤の補間 | [plans/tapered-pst.md](plans/tapered-pst.md) | 完了 | 2026年9月8日 |
 | HaChu対minaseの条件格子測定 | [plans/hachu-condition-grid.md](plans/hachu-condition-grid.md) | 完了 | 2026年9月9日 |
-| Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了 | 2026年9月9日 |
+| Factorization Machineによる2駒関係評価 | [plans/factorization-machine.md](plans/factorization-machine.md) | 完了（不採用） | 2026年9月9日 |
 | 棋力向上段階6 | [plans/strength-stage6.md](plans/strength-stage6.md) | 完了 | 2026年9月12日 |
 | 棋力向上段階7 | [plans/strength-stage7.md](plans/strength-stage7.md) | 完了 | 2026年9月14日 |
 | 合法手生成と利き計算の高速化 | [plans/movegen-speedup.md](plans/movegen-speedup.md) | 完了 | 2026年9月15日 |
@@ -48,7 +48,7 @@
 | 棋力向上段階8（前向き枝刈りの第3層） | [plans/strength-stage8.md](plans/strength-stage8.md) | 完了 | 2026年9月21日 |
 | 持ち時間の効率的な使用（issue #7） | [plans/time-management-efficiency.md](plans/time-management-efficiency.md) | 完了 | 2026年9月18日 |
 | USI先読み（ponder） | [plans/ponder.md](plans/ponder.md) | 完了 | 2026年9月21日 |
-| 棋力向上段階9（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴） | [plans/strength-stage9.md](plans/strength-stage9.md) | 完了 | 2026年9月23日 |
+| 棋力向上段階9（利きの土台、教師データの改善、王の安全度と利きに基づく評価特徴） | [plans/strength-stage9.md](plans/strength-stage9.md) | 完了（不採用） | 2026年9月23日 |
 | SPSAによる探索係数と時間管理係数の調整 | [plans/spsa.md](plans/spsa.md) | 完了 | 2026年9月25日 |
 | 先読み教師値（将来の探索値の幾何加重平均） | [plans/lookahead-teacher.md](plans/lookahead-teacher.md) | 完了 | 2026年9月23日 |
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了 | 2026年9月22日 |
@@ -57,45 +57,38 @@
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 起案 | |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了 | 2026年9月25日 |
 | SPSAの摂動幅と学習率の較正 | [plans/spsa-gain-calibration.md](plans/spsa-gain-calibration.md) | 完了 | 2026年9月26日 |
-| 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 完了 | 2026年9月26日 |
-| 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 完了 | 2026年9月26日 |
-| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 完了 | 2026年9月26日 |
+| 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 完了（不採用） | 2026年9月26日 |
+| 探索局面を用いた評価関数の学習 | [plans/search-aware-evaluation.md](plans/search-aware-evaluation.md) | 完了（不採用） | 2026年9月26日 |
+| 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 完了（不採用） | 2026年9月26日 |
 | Descentによる評価関数の強化学習 | [plans/descent.md](plans/descent.md) | 起案 | |
+| 静止探索の出力を学ぶPSTの学習 | [plans/qsearch-output-training.md](plans/qsearch-output-training.md) | 起案 | |
+| 浅い探索の手の順位を学ぶ損失 | [plans/rank-loss-training.md](plans/rank-loss-training.md) | 起案 | |
+| 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 起案 | |
 
 ## 現在地
 
-USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
-SPSAで調整した20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と[LTC](measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となり、2026年9月25日に採用して、探索部と関係する設計書の現行値へ反映した。
-SPSAの摂動幅と学習率の較正は2026年9月26日に完了し、`spsa_runner`の既定値を、終了時の摂動幅を範囲の1/6とする減衰する利得へ改め、標準の規模を3,000ペアとした。
-この設定による2回目の調整で得た22係数は[STC](measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、採用した。
-探索部の次の対象は[棋力向上段階12](plans/strength-stage12.md)である。
-評価関数では、[教師の混合比](plans/teacher-mixing-ratio.md)のλ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となり、2026年9月26日に不採用で完了した。
-続く[探索局面を用いた学習](plans/search-aware-evaluation.md)も、同日に不採用で完了した。
-探索局面を半数混ぜて学んだ候補Bは対照Aに対して、深い教師で通常局面だけを学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
-採用PSTは従来の重みのままである。
-[相対2駒評価](plans/relative-pair-eval.md)は、準備段階の事前登録した判定で配置に依存する残存誤りの根拠が得られず、同日に未実装の見送りで完了した。
-前段の最終診断で大きな着手の誤りを示した6根は、いずれも100,000ノードの探索がその名目の深さの内側にある駒の損得を見落とした型であった（[準備記録](measurements/relative-pair-prep.md)）。
-評価関数で次に着手できるのは、[Descentによる強化学習](plans/descent.md)である。
-実施順序と、各判定からの進み先は次節に定める。
-Descentによる強化学習は2026年9月26日に起案し、同日に利用者の決定で、採用PSTを初期値とし、対照を置かず、同時16対局で48時間を予算とすることを確定した。
-着手の条件だった探索局面の計画の完了は満たされたが、次節の表にはまだ含めない。
+### 直近の完了
 
-## 評価関数の進め方
+- USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
+- SPSAによる調整は2回とも採用した。
+  - 1回目の20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と[LTC](measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となり、2026年9月25日に採用して、探索部と関係する設計書の現行値へ反映した。
+  - 2026年9月26日の較正で、`spsa_runner`の既定値を終了時の摂動幅が範囲の1/6となる減衰する利得へ改め、標準の規模を3,000ペアとした。
+  - この設定による2回目の22係数も[STC](measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、採用した。
+- 評価関数の3計画は2026年9月26日にいずれも不採用で完了し、採用PSTは従来の重みのままである。
+  - [教師の混合比](plans/teacher-mixing-ratio.md)では、λ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となった。
+  - [探索局面を用いた学習](plans/search-aware-evaluation.md)では、探索局面を半数混ぜた候補Bは対照Aに対して、通常局面だけを深い教師で学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
+  - [相対2駒評価](plans/relative-pair-eval.md)は、事前登録した判定で配置に依存する残存誤りの根拠が得られず、未実装で見送った。大きな着手の誤りを示した6根は、いずれも100,000ノードの探索の名目深さ内に駒の損得の差が現れる型だったが、各枝の到達深さと原因は追跡で確かめる必要がある（[準備記録](measurements/relative-pair-prep.md)）。
 
-評価関数の3計画は、混合比の採否、教師の診断、学習分布の比較、必要に応じた相対2駒評価の順に進める。
-分岐、基点と教師の引き継ぎ、および費用の見積りの規則は[棋力向上段階の設計書](plans/strength-stages.md#評価関数の後続計画の順序)が定め、各実験の設定と判定条件は個別の計画書を正とする。
-本節の表はそれらの要約であり、規則の正ではない。
+### 次の候補
 
-| 順序 | 計画と段階 | 開始条件と次の判断 |
-|---|---|---|
-| 1 | [混合比の計画](plans/teacher-mixing-ratio.md)で、既存データによるλ=1のPST再学習を判定する。 | 準備開始時の採用版を基点にする。採否にかかわらず、その時点の採用PSTを持って2へ進む。2026年9月26日に不採用で完了した。 |
-| 2 | [探索局面の計画](plans/search-aware-evaluation.md)のフェーズ1と2で、深い教師を診断する。 | 1の確定後に教師を固定する。通過すれば3へ進み、不合格なら今回の教師構成を見送る。2026年9月26日に通過した。 |
-| 3 | 同計画のフェーズ3から5で、通常局面だけのAと、半数を探索局面へ置き換えたBを比較する。 | 事前登録した比較を順に測り、採用PSTと残存誤りの記録を4の準備へ渡す。2026年9月26日に、学習前に訓練の受理条件を総更新回数の下限へ改めて比較し、AとBをともに不採用とした。 |
-| 4 | [相対2駒の計画](plans/relative-pair-eval.md)で、関係項の必要性を確認してから実装する。 | 配置に依存する誤りが残る場合に、最後に採用されたPSTを固定して進む。根拠が得られなければ着手を見送る。2026年9月26日に、根拠が得られず未実装の見送りで完了した。 |
-
-1の不採用は2と3の不採用を意味せず、3の成功は4の必須条件ではない。
-各計画は着手時のmasterから専用ブランチを作り、実験中に他計画の変更を取り込まない。
-教師ラベルの生成と自己対局は測定機を混合比のSTCとLTC、SPSAの較正、および段階12と共有するため、着手前に所要時間の桁を確認して直列に予定する。
+- 探索部の次の対象は[棋力向上段階12](plans/strength-stage12.md)である。
+- 評価関数で次に着手できるのは、[Descentによる強化学習](plans/descent.md)と[静止探索の出力を学ぶPSTの学習](plans/qsearch-output-training.md)である。
+  - Descentは採用PSTを初期値とし、対照を置かず、同時16対局で48時間を予算とする。着手の条件は満たしている。
+  - 静止探索の出力を学ぶ計画は、[評価改善の総論](research/evaluation-improvement-strategy.md)に基づき、6根の探索の追跡と末端抽出の小標本を先に行う。同じ静かな局面で学習目標だけを変える比較と、捕獲局面を追加する比較を分け、選んだ1候補を採用版と対局させる。
+  - その完了後は[順位の損失の計画](plans/rank-loss-training.md)、[関係補正項の計画](plans/relational-correction.md)の順に進む。関係補正項では、新しい局面群で探索の追跡と機構ごとの介入を行い、解消を確認できなかった誤りを分類する。選んだ関係が件数の基準を満たした場合だけ、採用中の教師値と学習方式を固定して補正項を比較する。
+  - 総論が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
+  - 静止探索の計画のフェーズ0が特定した探索の機構は、固定時間での測定を含めて段階12または探索の後続計画へ引き渡す。
+- 評価関数の計画と段階12は測定機を共有するので、着手の順序は利用者が決める。
 
 ## 横断的な記録済みの決定
 
