@@ -21,8 +21,10 @@
 項目1は、STC（[strength-stage12-aspiration-stc](../measurements/strength-stage12-aspiration-stc.md)）が1,360有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目2は、STC（[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)）が430有効ペアで`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
-次の一手は、フェーズ4として項目3を現行の全捕獲手の段に適用して実装することである。
-基準の構成が段階開始版のままなので、項目3の発動率はフェーズ1の値（12.29%）がそのまま使える。
+基準の構成が段階開始版のままなので、項目3の発動率はフェーズ1の値（12.29%）をそのまま使った。
+フェーズ4の項目3は現行の全捕獲手の段に適用して実装し、bench深さ6のノード数は4.41%減、NPSは1.93%減だった（[strength-stage12-capture-history-bench](../measurements/strength-stage12-capture-history-bench.md)）。
+煙試験（[strength-stage12-capture-history-smoke](../measurements/strength-stage12-capture-history-smoke.md)）では時間切れと異常が0件だった。
+次の一手は、項目3のSTCによる採否測定である。
 
 ## 目的
 
