@@ -11,6 +11,7 @@ use crate::eval::Pst;
 use crate::search::TranspositionTable;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 
+use super::history::HistoryTable;
 use super::searcher::{PonderIteration, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{TimeBudget, should_start_next_iteration, stable_signal};
@@ -35,10 +36,11 @@ pub(super) fn run_main_worker(
     time_budget: Option<TimeBudget>,
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
+    history: &mut HistoryTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     ponder: bool,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt, history);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
@@ -150,8 +152,9 @@ pub(super) fn run_auxiliary_worker(
     worker_index: usize,
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
+    history: &mut HistoryTable,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt, history);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),

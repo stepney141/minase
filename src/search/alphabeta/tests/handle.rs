@@ -88,6 +88,7 @@ fn search_apis_use_the_supplied_pst() {
         &depth_limits(1),
         DEFAULT_THREADS,
         &mut small_tt(),
+        &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
     )
     .unwrap();
     assert_eq!(synchronous.score, expected);
@@ -99,6 +100,7 @@ fn search_apis_use_the_supplied_pst() {
         7,
         DEFAULT_THREADS,
         small_tt(),
+        crate::search::HistoryTables::new(DEFAULT_THREADS),
         false,
     );
     let (_, asynchronous) = event_reports(drain_raw(&handle));
@@ -276,7 +278,7 @@ fn join_returns_the_transposition_table_for_reuse() {
         small_tt(),
     );
     let (_, first) = event_reports(drain_raw(&handle));
-    let mut returned_tt = handle.join().expect("search thread must not panic");
+    let (mut returned_tt, _) = handle.join().expect("search thread must not panic");
 
     // ルート探索ごとに世代が進む(search.md「置換表」節)。世代が進まないと、
     // 前回探索の同深度エントリが異キーの新規格納を探索をまたいで阻止し続ける。
@@ -315,7 +317,10 @@ fn dropping_search_handle_requests_stop_and_joins_the_thread() {
             thread::yield_now();
         }
         finished.store(true, AtomicOrdering::Release);
-        small_tt()
+        (
+            small_tt(),
+            crate::search::HistoryTables::new(DEFAULT_THREADS),
+        )
     });
     let handle = SearchHandle {
         started: Instant::now(),
@@ -340,9 +345,11 @@ fn search_handle_join_returns_the_coordinator_panic() {
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop: Arc::new(AtomicBool::new(false)),
-        thread: Some(thread::spawn(|| -> TranspositionTable {
-            panic!("injected coordinator panic")
-        })),
+        thread: Some(thread::spawn(
+            || -> (TranspositionTable, crate::search::HistoryTables) {
+                panic!("injected coordinator panic")
+            },
+        )),
     };
 
     assert!(handle.join().is_err());

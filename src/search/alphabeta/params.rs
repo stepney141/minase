@@ -77,6 +77,8 @@ parameters! {
     NullMoveSlope(null_move_slope): 238, 100, 400;
     /// History値を全体の半減で抑える上限。
     HistoryLimit(history_limit): 20755, 4096, 65536;
+    /// 根ごとに保持するhistory値の百分率。`docs/plans/strength-stage12.md`「項目5」。
+    HistoryDecay(history_decay): 75, 0, 100;
     /// 補正値の上限の百分率。`docs/plans/strength-stage8.md`「静的評価の補正」。
     CorrectionCap(correction_cap): 193, 50, 400;
     /// 補正更新の重みを1,024分率で表す。`docs/plans/strength-stage8.md`「静的評価の補正」。

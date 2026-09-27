@@ -32,6 +32,8 @@ pub struct CecpProtocol {
     play_mode: PlayMode,
     /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出し中は`None`。
     transposition_table: Option<TranspositionTable>,
+    /// strength-stage12.md「項目5」のワーカー別history。探索中はNone。
+    histories: Option<search::HistoryTables>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
     /// 次の探索に使うワーカー数。
@@ -95,6 +97,7 @@ impl CecpProtocol {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
             play_mode: PlayMode::Force,
             transposition_table: None,
+            histories: Some(search::HistoryTables::new(search::DEFAULT_THREADS)),
             next_search_id: 1,
             threads: search::DEFAULT_THREADS,
             time_control: TimeControl::default(),
@@ -245,6 +248,9 @@ impl CecpProtocol {
             search_id,
             self.threads,
             transposition_table,
+            self.histories
+                .take()
+                .expect("idle protocol must own history tables"),
             false,
         );
         Ok(Some(ActiveSearch {
@@ -410,7 +416,9 @@ impl CecpProtocol {
         let Some(search) = active.take() else {
             return Ok(());
         };
-        self.transposition_table = Some(join_search(search.handle)?);
+        let (table, histories) = join_search(search.handle)?;
+        self.transposition_table = Some(table);
+        self.histories = Some(histories);
         Err(io::Error::other("search ended without a finished event"))
     }
 
@@ -432,7 +440,9 @@ impl CecpProtocol {
             SearchEvent::Progress { .. } => Ok(()),
             SearchEvent::Finished { best_move, .. } => {
                 let search = active.take().expect("active search must exist");
-                self.transposition_table = Some(join_search(search.handle)?);
+                let (table, histories) = join_search(search.handle)?;
+                self.transposition_table = Some(table);
+                self.histories = Some(histories);
                 self.apply_engine_move(engine, best_move, output)
             }
         }
@@ -465,7 +475,9 @@ impl CecpProtocol {
                 break best_move;
             }
         };
-        self.transposition_table = Some(join_search(search.handle)?);
+        let (table, histories) = join_search(search.handle)?;
+        self.transposition_table = Some(table);
+        self.histories = Some(histories);
         self.apply_engine_move(engine, best_move, output)
     }
 
@@ -475,7 +487,9 @@ impl CecpProtocol {
             return Ok(());
         };
         search.handle.request_stop();
-        self.transposition_table = Some(join_search(search.handle)?);
+        let (table, histories) = join_search(search.handle)?;
+        self.transposition_table = Some(table);
+        self.histories = Some(histories);
         Ok(())
     }
 
@@ -554,6 +568,10 @@ impl CecpProtocol {
             self.play_mode = PlayMode::Playing {
                 engine_side: Color::White,
             };
+            self.histories
+                .as_mut()
+                .expect("idle protocol must own history tables")
+                .clear();
             if let Some(transposition_table) = &mut self.transposition_table {
                 transposition_table.clear();
             }
@@ -682,6 +700,10 @@ impl CecpProtocol {
             )
         });
         if accepted {
+            self.histories
+                .as_mut()
+                .expect("idle protocol must own history tables")
+                .clear();
             if let Some(transposition_table) = &mut self.transposition_table {
                 transposition_table.clear();
             }
@@ -709,6 +731,10 @@ impl CecpProtocol {
         if result.is_err() {
             return writeln!(output, "Error (cannot allocate memory): {size_mb}");
         }
+        self.histories
+            .as_mut()
+            .expect("idle protocol must own history tables")
+            .clear();
         Ok(())
     }
 
@@ -717,7 +743,13 @@ impl CecpProtocol {
         let Some(threads) = tokens.first().and_then(|value| parse_cores(value)) else {
             return writeln!(output, "Error (invalid command): cores");
         };
-        self.threads = threads;
+        if self.threads != threads {
+            self.histories = Some(search::HistoryTables::new(threads));
+            if let Some(table) = &mut self.transposition_table {
+                table.clear();
+            }
+            self.threads = threads;
+        }
         Ok(())
     }
 
@@ -843,8 +875,8 @@ impl Protocol for CecpProtocol {
     }
 }
 
-/// 探索スレッドの終了を待ち、貸し出した置換表を回収する。
-fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
+/// 探索スレッドの終了を待ち、貸し出した置換表とhistory表を回収する。
+fn join_search(handle: SearchHandle) -> io::Result<(TranspositionTable, search::HistoryTables)> {
     handle
         .join()
         .map_err(|_| io::Error::other("search thread panicked"))

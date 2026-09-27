@@ -143,7 +143,7 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
     }
 }
 
-/// 全22係数の反映とUSIの入力契約を直列に検査する。
+/// 全23係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -293,7 +293,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
 
-    // 指示書の22行を、宣言順・既定値・範囲の独立した参照値とする。
+    // SPSAと段階12の指示書を、宣言順・既定値・範囲の独立した参照値とする。
     let expected = [
         ("LmrDivisor", 166, 100, 400),
         ("LmrHistoryThreshold", 111, 0, 512),
@@ -308,6 +308,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("NullMoveBase", 3529, 1200, 4800),
         ("NullMoveSlope", 238, 100, 400),
         ("HistoryLimit", 20755, 4096, 65536),
+        ("HistoryDecay", 75, 0, 100),
         ("CorrectionCap", 193, 50, 400),
         ("CorrectionWeight", 33, 8, 128),
         ("DeltaMargin", 258, 50, 500),
@@ -337,7 +338,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 22] = [
+    let cases: [Case; 23] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -363,6 +364,28 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("NullMoveBase", 4800, || i64::from(null_move_reduction(12))),
         ("NullMoveSlope", 400, || i64::from(null_move_reduction(12))),
         ("HistoryLimit", 65536, history),
+        ("HistoryDecay", 50, || {
+            let snapshot = snapshot_for(&Position::initial());
+            let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+            histories.workers[0][0][60][60] = 100;
+            run_search_team(
+                &weights().unwrap(),
+                &snapshot.position,
+                snapshot.rules,
+                &snapshot.root_moves,
+                &snapshot.history_keys,
+                &depth_limits(1),
+                &AtomicBool::new(true),
+                DEFAULT_THREADS,
+                &small_tt(),
+                &mut histories,
+                None,
+                Instant::now(),
+                &AtomicU64::new(0),
+                false,
+            );
+            i64::from(histories.workers[0][0][60][60])
+        }),
         ("CorrectionCap", 400, || correction(100_000)),
         ("CorrectionWeight", 64, || correction(100)),
         ("DeltaMargin", 300, delta),

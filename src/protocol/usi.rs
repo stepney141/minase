@@ -41,6 +41,8 @@ pub struct UsiProtocol {
     startup_rules_text: String,
     /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出している間は`None`。
     transposition_table: Option<TranspositionTable>,
+    /// strength-stage12.md「項目5」のワーカー別history。探索中はNone。
+    histories: Option<search::HistoryTables>,
     /// 最後の`position`コマンドが受理され、局面が同期済みかどうか。
     position_synchronized: bool,
     /// 最後に受理した`position`の開始局面と着手のトークン列。
@@ -137,6 +139,7 @@ impl UsiProtocol {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
             transposition_table: None,
+            histories: Some(search::HistoryTables::new(search::DEFAULT_THREADS)),
             position_synchronized: false,
             accepted_position: None,
             next_search_id: 1,
@@ -268,6 +271,9 @@ impl UsiProtocol {
             search_id,
             self.threads,
             transposition_table,
+            self.histories
+                .take()
+                .expect("idle protocol must own history tables"),
             tokens.contains(&"ponder"),
         );
         Ok(Some(ActiveSearch::Running {
@@ -454,7 +460,9 @@ impl UsiProtocol {
         let Some(ActiveSearch::Running { handle, .. }) = active.take() else {
             return Ok(());
         };
-        self.transposition_table = Some(join_search(handle)?);
+        let (table, histories) = join_search(handle)?;
+        self.transposition_table = Some(table);
+        self.histories = Some(histories);
         Err(io::Error::other("search ended without a finished event"))
     }
 
@@ -507,7 +515,9 @@ impl UsiProtocol {
                 else {
                     unreachable!();
                 };
-                self.transposition_table = Some(join_search(handle)?);
+                let (table, histories) = join_search(handle)?;
+                self.transposition_table = Some(table);
+                self.histories = Some(histories);
                 write_final_info_if_deeper(
                     output,
                     &mut context,
@@ -657,7 +667,9 @@ impl UsiProtocol {
                         }
                     }
                 };
-                self.transposition_table = Some(join_search(handle)?);
+                let (table, histories) = join_search(handle)?;
+                self.transposition_table = Some(table);
+                self.histories = Some(histories);
                 write_bestmove(
                     output,
                     &context.position,
@@ -682,7 +694,9 @@ impl UsiProtocol {
         };
         if let ActiveSearch::Running { handle, .. } = search {
             handle.request_stop();
-            self.transposition_table = Some(join_search(handle)?);
+            let (table, histories) = join_search(handle)?;
+            self.transposition_table = Some(table);
+            self.histories = Some(histories);
         }
         Ok(())
     }
@@ -796,6 +810,10 @@ impl UsiProtocol {
             if let Err(error) = result {
                 return write_error(output, &error.to_string());
             }
+            self.histories
+                .as_mut()
+                .expect("idle protocol must own history tables")
+                .clear();
             Ok(())
         } else if name.eq_ignore_ascii_case("Threads") {
             let Some(value) = value else {
@@ -804,7 +822,10 @@ impl UsiProtocol {
             let Some(threads) = parse_threads(value) else {
                 return write_error(output, "Threads must be an integer from 1 to 256");
             };
-            self.threads = threads;
+            if self.threads != threads {
+                self.histories = Some(search::HistoryTables::new(threads));
+                self.threads = threads;
+            }
             Ok(())
         } else if name.eq_ignore_ascii_case("ResignValue") {
             let Some(value) = value else {
@@ -1057,6 +1078,12 @@ impl UsiProtocol {
                 if clears_position_history {
                     self.accepted_position = None;
                 }
+                if clears_transposition_table {
+                    self.histories
+                        .as_mut()
+                        .expect("idle protocol must own history tables")
+                        .clear();
+                }
                 if clears_transposition_table
                     && let Some(transposition_table) = &mut self.transposition_table
                 {
@@ -1281,8 +1308,8 @@ impl ActiveSearch {
     }
 }
 
-/// 探索スレッドの終了を待ち、貸し出していた置換表を回収する。
-fn join_search(handle: SearchHandle) -> io::Result<TranspositionTable> {
+/// 探索スレッドの終了を待ち、貸し出していた置換表とhistory表を回収する。
+fn join_search(handle: SearchHandle) -> io::Result<(TranspositionTable, search::HistoryTables)> {
     handle
         .join()
         .map_err(|_| io::Error::other("search thread panicked"))
@@ -1516,6 +1543,7 @@ fn write_error(output: &mut dyn Write, message: &str) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    mod history;
     use std::collections::HashSet;
 
     use super::*;

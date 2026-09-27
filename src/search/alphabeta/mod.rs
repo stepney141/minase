@@ -2,6 +2,7 @@
 
 mod correction;
 mod deepening;
+pub(crate) mod history;
 mod negamax;
 mod ordering;
 pub(crate) mod params;

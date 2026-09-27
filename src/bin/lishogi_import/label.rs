@@ -57,6 +57,7 @@ pub(super) fn process_job(
     let mut score_exclusions = 0;
     let mut no_legal_moves = 0;
     let replay = replay(&job.input, openings).map_err(data_error)?;
+    let mut histories = minase::search::HistoryTables::new(DEFAULT_THREADS);
     for candidate in &replay.positions {
         let position = &candidate.position;
         let game = Game::from_position(Rules::ENGINE_DEFAULT, position.clone());
@@ -66,8 +67,16 @@ pub(super) fn process_job(
         }
         let snapshot = SearchSnapshot::from_game(&game).map_err(data_error)?;
         table.clear();
-        let result =
-            search(&pst, &snapshot, &limits, DEFAULT_THREADS, table).map_err(data_error)?;
+        histories.clear();
+        let result = search(
+            &pst,
+            &snapshot,
+            &limits,
+            DEFAULT_THREADS,
+            table,
+            &mut histories,
+        )
+        .map_err(data_error)?;
         if openings {
             if result.score.unsigned_abs() > 500 {
                 score_exclusions += 1;

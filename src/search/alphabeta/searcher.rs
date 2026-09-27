@@ -4,9 +4,7 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::time::Duration;
 
 use crate::MoveGenerator;
-use crate::core::board::BOARD_SQUARE_COUNT;
 use crate::core::mv::Move;
-use crate::core::piece::COLOR_COUNT;
 use crate::core::position::Position;
 use crate::core::rules::MoveRules;
 use crate::eval::Pst;
@@ -16,6 +14,7 @@ use crate::search::snapshot::search_key;
 use crate::search::{MAX_PLY, TranspositionTable};
 
 use super::correction::{CorrectionTable, material_key};
+use super::history::HistoryTable;
 use super::ordering::MovePicker;
 use super::params;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
@@ -28,9 +27,6 @@ pub(super) const STOP_CHECK_INTERVAL: u64 = 4096;
 /// 1つのplyに記録するkiller手の数。
 pub(super) const KILLER_COUNT: usize = 2;
 
-/// 手番側・移動元・移動先で参照するhistory表。
-pub(super) type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
-
 /// plyごとに新しい順で保持するkiller表。
 type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 
@@ -42,6 +38,7 @@ pub(super) fn new_searcher<'a>(
     history_keys: &'a [u64],
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
+    history: &'a mut HistoryTable,
 ) -> Searcher<'a> {
     let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
@@ -67,7 +64,7 @@ pub(super) fn new_searcher<'a>(
         material_keys: [material_key(position); MAX_PLY as usize + 1],
         correction: CorrectionTable::new(pst.pawn_value()),
         delta_margin: pst.pawn_value() * params::delta_margin() / 100,
-        history: Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+        history,
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
     }
@@ -120,7 +117,7 @@ pub(super) struct Searcher<'a> {
     /// 静止探索で小さな捕獲を残すための余裕値。
     pub(super) delta_margin: i32,
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
-    pub(super) history: Box<HistoryTable>,
+    pub(super) history: &'a mut HistoryTable,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
     pub(super) killers: KillerTable,
     /// 置換表。

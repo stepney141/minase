@@ -200,6 +200,7 @@ fn run_bench(
     transposition_table: &mut TranspositionTable,
     print_positions: bool,
 ) -> BenchRun {
+    let mut histories = minase::search::HistoryTables::new(threads);
     let mut reached_depth = u32::MAX;
     let mut total_nodes = 0_u64;
     let mut total_elapsed = 0.0_f64;
@@ -209,9 +210,18 @@ fn run_bench(
         let game = Game::from_position(rules, position);
         let snapshot = SearchSnapshot::from_game(&game).expect("bench position must have moves");
         transposition_table.clear();
+        // strength-stage12.md「項目5」: benchは局面ごとに持ち越し表も初期化する。
+        histories.clear();
         let position_start = Instant::now();
-        let result = search(pst, &snapshot, limits, threads, transposition_table)
-            .expect("bench search input must be valid");
+        let result = search(
+            pst,
+            &snapshot,
+            limits,
+            threads,
+            transposition_table,
+            &mut histories,
+        )
+        .expect("bench search input must be valid");
         let elapsed = position_start.elapsed();
         reached_depth = reached_depth.min(result.depth);
         total_elapsed += elapsed.as_secs_f64();
