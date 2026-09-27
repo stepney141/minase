@@ -32,6 +32,8 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                 WorkerOutcome {
                     worker_index,
                     result: SearchResult {
+                        #[cfg(feature = "search-stats")]
+                        stats: crate::search::SearchStats::default(),
                         best_move: fallback,
                         score: 0,
                         depth: 0,
@@ -188,6 +190,8 @@ fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
     let outcome = |worker_index: usize, depth: u32, move_index: usize| WorkerOutcome {
         worker_index,
         result: SearchResult {
+            #[cfg(feature = "search-stats")]
+            stats: crate::search::SearchStats::default(),
             best_move: moves[move_index],
             score: worker_index as i32 * 10,
             depth,

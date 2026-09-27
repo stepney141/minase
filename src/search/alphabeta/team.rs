@@ -21,6 +21,9 @@ use super::time::time_budget;
 
 /// 探索の内部実行が返す結果一式。
 pub(in crate::search) struct SearchOutcome {
+    /// 合算前の値を検査するためにテスト時だけ保持する各ワーカーの統計。
+    #[cfg(all(test, feature = "search-stats"))]
+    pub(super) worker_stats: Vec<crate::search::SearchStats>,
     /// 完了した探索の結果。
     pub(in crate::search) result: SearchResult,
     /// 探索開始からの経過時間。
@@ -222,7 +225,19 @@ pub(in crate::search) fn run_search_team(
     let adopted = select_worker_outcome(&worker_outcomes);
     let mut result = adopted.result;
     result.nodes = total_nodes;
+    #[cfg(feature = "search-stats")]
+    {
+        result.stats = crate::search::SearchStats::default();
+        for outcome in &worker_outcomes {
+            result.stats += outcome.result.stats;
+        }
+    }
     SearchOutcome {
+        #[cfg(all(test, feature = "search-stats"))]
+        worker_stats: worker_outcomes
+            .iter()
+            .map(|outcome| outcome.result.stats)
+            .collect(),
         result,
         elapsed: started.elapsed(),
         pv: adopted.pv.clone(),

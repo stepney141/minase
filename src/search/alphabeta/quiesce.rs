@@ -32,6 +32,10 @@ impl Searcher<'_> {
         beta: i32,
         ply: u32,
     ) -> Option<i32> {
+        #[cfg(feature = "search-stats")]
+        {
+            self.stats.quiesce_nodes += 1;
+        }
         self.pv[ply as usize].clear();
 
         if ply >= MAX_PLY {
@@ -71,7 +75,15 @@ impl Searcher<'_> {
 
         let key = search_key(position);
         let mut tt_move = None;
+        #[cfg(feature = "search-stats")]
+        {
+            self.stats.quiesce_tt_probes += 1;
+        }
         if let Some(hit) = self.tt.probe(key, ply) {
+            #[cfg(feature = "search-stats")]
+            {
+                self.stats.quiesce_tt_hits += 1;
+            }
             tt_move = hit.best_move;
             let cutoff = match hit.bound {
                 Bound::Exact => true,
@@ -79,6 +91,10 @@ impl Searcher<'_> {
                 Bound::Upper => hit.score <= original_alpha,
             };
             if cutoff {
+                #[cfg(feature = "search-stats")]
+                {
+                    self.stats.quiesce_tt_cutoffs += 1;
+                }
                 return Some(hit.score);
             }
         }

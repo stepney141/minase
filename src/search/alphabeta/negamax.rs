@@ -31,13 +31,25 @@ impl Searcher<'_> {
         if depth == 0 {
             return self.quiesce(position, alpha, beta, ply);
         }
+        #[cfg(feature = "search-stats")]
+        {
+            self.stats.normal_nodes += 1;
+        }
 
         let key = search_key(position);
         let original_alpha = alpha;
         let mut tt_move = None;
         // 深さが足りるヒットは即時カットオフだけに使い、探索窓は狭めない。
         // 窓を狭めると、格納時のバウンド分類が実際に探索した窓と食い違う。
+        #[cfg(feature = "search-stats")]
+        {
+            self.stats.tt_probes += 1;
+        }
         if let Some(hit) = self.tt.probe(key, ply) {
+            #[cfg(feature = "search-stats")]
+            {
+                self.stats.tt_hits += 1;
+            }
             tt_move = hit.best_move;
             if u32::from(hit.depth) >= depth {
                 let cutoff = match hit.bound {
@@ -46,6 +58,10 @@ impl Searcher<'_> {
                     Bound::Upper => hit.score <= alpha,
                 };
                 if cutoff {
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.tt_cutoffs += 1;
+                    }
                     return Some(hit.score);
                 }
             }
@@ -127,6 +143,11 @@ impl Searcher<'_> {
         let mut best_capture = false;
         let mut beta_cutoff = false;
         let mut index = 0;
+        // 枝刈りされた候補は探索順位に含めない。
+        #[cfg(feature = "search-stats")]
+        let mut searched_moves = 0;
+        #[cfg(feature = "search-stats")]
+        let mut best_move_rank = 0;
         while let Some((mv, capture)) =
             self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
         {
@@ -173,6 +194,13 @@ impl Searcher<'_> {
             };
             let score =
                 self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
+            #[cfg(feature = "search-stats")]
+            {
+                searched_moves += 1;
+                if score > alpha {
+                    best_move_rank = searched_moves;
+                }
+            }
             if score > best_score {
                 best_score = score;
                 best_move = Some(mv);
@@ -181,6 +209,13 @@ impl Searcher<'_> {
             }
             alpha = alpha.max(score);
             if alpha >= beta {
+                #[cfg(feature = "search-stats")]
+                {
+                    self.stats.beta_cutoffs += 1;
+                    if searched_moves == 1 {
+                        self.stats.first_move_beta_cutoffs += 1;
+                    }
+                }
                 beta_cutoff = true;
                 if !capture {
                     self.record_quiet_beta_cutoff(position, mv, depth, ply);
@@ -188,6 +223,10 @@ impl Searcher<'_> {
                 break;
             }
             index += 1;
+        }
+        #[cfg(feature = "search-stats")]
+        if !beta_cutoff {
+            self.stats.record_best_move_rank(best_move_rank);
         }
         let Some(best_move) = best_move else {
             return Some(-MATE + ply as i32);
