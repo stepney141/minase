@@ -24,8 +24,9 @@
 項目4は、STC（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）が147有効ペア、得点率27.0%で`H0`となったので採用せず、実装をコードから外した。
 項目5は、STC（[strength-stage12-history-carry-stc](../measurements/strength-stage12-history-carry-stc.md)）が2,539有効ペアで`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
-次の一手は、フェーズ7として項目7（null move pruningの前提条件）を実装することである。
-基準の構成が段階開始版のままなので、項目7の発動率はフェーズ1の値（37.00%）がそのまま使える。
+基準の構成が段階開始版のままなので、項目7の発動率はフェーズ1の値（37.00%）をそのまま使った。
+フェーズ7の項目7を実装し、bench深さ6の総ノード数は1,666,755（段階開始版比0.67%減）、NPSは段階開始版と同程度だった。
+次の一手は、項目7の煙試験とSTCによる採否測定である。
 
 ## 目的
 
