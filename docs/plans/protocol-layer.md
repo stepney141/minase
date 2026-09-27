@@ -54,7 +54,7 @@ HaChu互換規則セットの検証は不成立であり、フェーズ5の規�
 | 項目 | 決定 |
 |---|---|
 | アーキテクチャ | Rusticからは「プロトコル非依存の状態機械と表記分離」の構造だけを踏襲する。エンジン本体はstdin/stdoutに触れず、プロトコル非依存のコマンドenumだけを扱う。スレッド構成は採らない（フェーズ2の確定設計で決定）。 |
-| バイナリ構成 | 既存クレートに単一バイナリ`src/bin/minase.rs`を追加する。workspace分割やプロトコル別バイナリは行わない。 |
+| バイナリ構成 | 既存クレートに単一バイナリ`src/bin/minase/`（入口は`main.rs`）を追加する。workspace分割やプロトコル別バイナリは行わない。 |
 | プロトコル選択 | `--protocol usi\|cecp`の明示指定を必須とし、既定値と自動判別は設けない。 |
 | 規則指定 | `--rules`起動フラグでの明示指定を必須とし、既定値を設けない。加えて、同一の規則セットをUSI `setoption`とCECP `feature option`のオプションとして公開し、GUIがエンジンを再起動せずに変更できるようにする。変更は次の対局開始時に反映するlatch方式とし、不正なコード列は受信時点でエラー応答する。この構成により、エンジンは起動時点から常に規則確定状態を保ち、「未確定のまま対局開始」という状態が存在しない。 |
 | 拡張SFEN | shogiopsの中将棋SFENを基底形式として採用し、lishogiが表現できない状態だけを追加フィールドで拡張する。 |
@@ -199,7 +199,7 @@ USIにはエンジン発の裁定通知手段がないため出力せず、USI�
 
 ### モジュールと名称
 
-表記変換層は`src/notation/`（`sfen.rs`移設、`usi.rs`、`cecp.rs`）、通信層は`src/protocol/`（`mod.rs`にtrait、`engine.rs`、`usi.rs`、`cecp.rs`）とする。単一バイナリ`src/bin/minase.rs`は`--protocol usi|cecp`と`--rules`の明示指定を必須とする。
+表記変換層は`src/notation/`（`sfen.rs`移設、`usi.rs`、`cecp.rs`）、通信層は`src/protocol/`（`mod.rs`にtrait、`engine.rs`、`usi.rs`、`cecp.rs`）とする。単一バイナリ`src/bin/minase/`は`--protocol usi|cecp`と`--rules`の明示指定を必須とする。
 
 ## フェーズ5の確定設計
 

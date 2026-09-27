@@ -1,10 +1,17 @@
 //! 中将棋エンジン本体の実行ファイル。プロトコルと規則を指定して起動する。
 
 use std::error::Error;
-use std::io::{self, BufRead};
+use std::fs::OpenOptions;
+use std::io;
+use std::path::PathBuf;
 use std::process;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread;
+use std::time::Instant;
+
+mod io_log;
+
+use io_log::{IoLog, LoggedOutput, read_input};
 
 use clap::{Parser, ValueEnum};
 use minase::RuleCode;
@@ -25,6 +32,9 @@ struct Arguments {
     /// 採用するローカルルールコード列。
     #[arg(long, required = true, value_parser = parse_rule_set_argument)]
     rules: RuleSetArgument,
+    /// 入出力のログを新規作成するパス。
+    #[arg(long)]
+    io_log: Option<PathBuf>,
 }
 
 /// 解析済みの`--rules`引数。
@@ -49,11 +59,12 @@ enum ProtocolKind {
 
 /// エラーを標準エラーへ報告して終了コード1で終わる入口。
 fn main() {
+    let started = Instant::now();
     if let Err(error) = minase::eval::weights() {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         process::exit(1);
     }
-    if let Err(error) = run() {
+    if let Err(error) = run(started) {
         eprintln!("error: {error}");
         process::exit(1);
     }
@@ -63,64 +74,45 @@ fn main() {
 ///
 /// USIとCECPは探索中もコマンドを受けるため、標準入力を
 /// reader threadで読んでチャネル経由で処理する。
-fn run() -> Result<(), Box<dyn Error>> {
+fn run(started: Instant) -> Result<(), Box<dyn Error>> {
     let arguments = Arguments::parse();
+    let log = arguments
+        .io_log
+        .map(|path| {
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .map(|file| Arc::new(IoLog::new(started, file)))
+        })
+        .transpose()?;
     let mut engine = Engine::new(arguments.rules.0)
         .map_err(|reason| format!("invalid --rules value: {reason}"))?;
+
+    let (sender, receiver) = mpsc::channel();
+    let input_log = log.clone();
+    thread::spawn(move || {
+        read_input(io::stdin().lock(), sender, input_log.as_deref());
+    });
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    let mut logged_output;
+    let output: &mut dyn io::Write = if let Some(log) = log {
+        logged_output = LoggedOutput::new(&mut stdout, log);
+        &mut logged_output
+    } else {
+        &mut stdout
+    };
 
     match arguments.protocol {
         ProtocolKind::Usi => {
             let mut protocol = UsiProtocol::new(&engine);
-            let (sender, receiver) = mpsc::channel();
-            thread::spawn(move || {
-                let stdin = io::stdin();
-                let mut input = stdin.lock();
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    match input.read_line(&mut line) {
-                        Ok(0) => break,
-                        Ok(_) => {
-                            if sender.send(Ok(line.trim_end().to_owned())).is_err() {
-                                break;
-                            }
-                        }
-                        Err(error) => {
-                            let _ = sender.send(Err(error));
-                            break;
-                        }
-                    }
-                }
-            });
-            let stdout = io::stdout();
-            protocol.run_channel(&mut engine, &receiver, &mut stdout.lock())?;
+            protocol.run_channel(&mut engine, &receiver, output)?;
             Ok(())
         }
         ProtocolKind::Cecp => {
             let mut protocol = CecpProtocol::new(&engine);
-            let (sender, receiver) = mpsc::channel();
-            thread::spawn(move || {
-                let stdin = io::stdin();
-                let mut input = stdin.lock();
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    match input.read_line(&mut line) {
-                        Ok(0) => break,
-                        Ok(_) => {
-                            if sender.send(Ok(line.trim_end().to_owned())).is_err() {
-                                break;
-                            }
-                        }
-                        Err(error) => {
-                            let _ = sender.send(Err(error));
-                            break;
-                        }
-                    }
-                }
-            });
-            let stdout = io::stdout();
-            protocol.run_channel(&mut engine, &receiver, &mut stdout.lock())?;
+            protocol.run_channel(&mut engine, &receiver, output)?;
             Ok(())
         }
     }
@@ -149,6 +141,30 @@ mod tests {
         assert!(
             Arguments::try_parse_from(["minase", "--protocol", "cecp", "--rules", "R1"]).is_ok()
         );
+    }
+
+    /// debugging-tools.md「入出力のログの形式」: --io-logは省略可能で、指定時はパスを要する。
+    #[test]
+    fn cli_io_log_is_optional_and_accepts_a_path() {
+        for protocol in ["usi", "cecp"] {
+            let base = [
+                "minase",
+                "--protocol",
+                protocol,
+                "--rules",
+                "engine-default",
+            ];
+            assert!(Arguments::try_parse_from(base).unwrap().io_log.is_none());
+            let arguments = Arguments::try_parse_from(
+                base.into_iter().chain(["--io-log", "logs/session log.txt"]),
+            )
+            .unwrap();
+            assert_eq!(
+                arguments.io_log,
+                Some(PathBuf::from("logs/session log.txt"))
+            );
+            assert!(Arguments::try_parse_from(base.into_iter().chain(["--io-log"])).is_err());
+        }
     }
 
     #[test]
