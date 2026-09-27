@@ -35,12 +35,18 @@ impl Searcher<'_> {
         self.pv[ply as usize].clear();
 
         if ply >= MAX_PLY {
+            #[cfg(feature = "invariants")]
+            self.pst
+                .assert_accumulator(position, self.accumulators[ply as usize], ply);
             return Some(
                 self.pst
                     .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
             );
         }
 
+        #[cfg(feature = "invariants")]
+        self.pst
+            .assert_accumulator(position, self.accumulators[ply as usize], ply);
         let stand_pat = self
             .pst
             .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());

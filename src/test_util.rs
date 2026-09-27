@@ -81,3 +81,31 @@ pub(crate) fn position_from_codes(side_to_move: Color, pieces: &[(Square, PieceC
     }
     builder.finish().unwrap()
 }
+
+/// 評価の対称性の契約に従い、段を反転し、駒の陣営と手番を交換する。
+pub(crate) fn reflect_ranks_and_swap_colors(position: &Position) -> Position {
+    let pieces: Vec<_> = Square::all()
+        .filter_map(|square| {
+            position.piece_at(square).map(|piece| {
+                let color = piece.color().unwrap().opposite();
+                let kind = piece.kind().unwrap();
+                let reflected = if piece.is_promoted() {
+                    PieceCode::new_promoted(color, kind).unwrap()
+                } else {
+                    PieceCode::new(color, kind).unwrap()
+                };
+                (sq(square.file(), 11 - square.rank()), reflected)
+            })
+        })
+        .collect();
+    // 成り権の保留は評価特徴に含まれないため、反転後は保留なしとする。
+    let mut reflected = position_from_codes(position.side_to_move().opposite(), &pieces);
+    reflected
+        .set_lion_capture(
+            position
+                .lion_taken_by_non_lion()
+                .map(|trigger| sq(trigger.square.file(), 11 - trigger.square.rank())),
+        )
+        .unwrap();
+    reflected
+}

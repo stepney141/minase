@@ -174,24 +174,7 @@ mod tests {
             assert_eq!(white_features.len(), expected_count);
             white_features.sort_unstable();
 
-            let reflected_pieces: Vec<_> = Square::all()
-                .filter_map(|square| {
-                    position.piece_at(square).map(|piece| {
-                        let color = piece.color().unwrap().opposite();
-                        let kind = piece.kind().unwrap();
-                        let reflected_piece = if piece.is_promoted() {
-                            PieceCode::new_promoted(color, kind).unwrap()
-                        } else {
-                            PieceCode::new(color, kind).unwrap()
-                        };
-                        (sq(square.file(), 11 - square.rank()), reflected_piece)
-                    })
-                })
-                .collect();
-            let mut reflected = position_from_codes(Color::Black, &reflected_pieces);
-            if position.lion_taken_by_non_lion().is_some() {
-                reflected.set_lion_capture(Some(sq(3, 6))).unwrap();
-            }
+            let reflected = crate::test_util::reflect_ranks_and_swap_colors(&position);
             let mut black_features = Vec::new();
             active_features(&reflected, |feature| black_features.push(feature));
             black_features.sort_unstable();

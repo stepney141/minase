@@ -13,6 +13,7 @@ unsafe_code = "forbid"
 all = "warn"
 
 [features]
+invariants = []
 tuning = []
 
 [dependencies]

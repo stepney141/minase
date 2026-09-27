@@ -109,6 +109,9 @@ impl Searcher<'_> {
             && beta.abs() < MATE_THRESHOLD)
             .then(|| {
                 let static_eval = *static_eval.get_or_insert_with(|| {
+                    #[cfg(feature = "invariants")]
+                    self.pst
+                        .assert_accumulator(position, self.accumulators[ply as usize], ply);
                     self.pst.evaluate_accumulator(
                         self.accumulators[ply as usize],
                         position.side_to_move(),
@@ -199,6 +202,9 @@ impl Searcher<'_> {
         // 段階8の変種B。補正前の評価と保存値が補正の向きを確定するときだけ学習する。
         if best_score.abs() < MATE_THRESHOLD && !best_capture {
             let static_eval = *static_eval.get_or_insert_with(|| {
+                #[cfg(feature = "invariants")]
+                self.pst
+                    .assert_accumulator(position, self.accumulators[ply as usize], ply);
                 self.pst
                     .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move())
             });

@@ -39,6 +39,8 @@ pub(super) fn run_main_worker(
     ponder: bool,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    #[cfg(feature = "invariants")]
+    pst.assert_accumulator(position, searcher.accumulators[0], 0);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
@@ -152,6 +154,8 @@ pub(super) fn run_auxiliary_worker(
     tt: &TranspositionTable,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    #[cfg(feature = "invariants")]
+    pst.assert_accumulator(position, searcher.accumulators[0], 0);
     let mut result = SearchResult {
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
