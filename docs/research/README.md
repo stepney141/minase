@@ -66,6 +66,12 @@ lishogiでの実戦と外部エンジンとの対局棋譜から、minaseの弱�
 - [lishogi対局 WPgmFqSa の時間配分](lishogi-game-WPgmFqSa-time-management.md)は、160手目で本時間を使い切った対局のログから、反復の開始条件と序盤の配分を見直す根拠を示す。
 - [HaChuとMinaseの勝ち方・負け方](hachu-minase-playing-style-analysis.md)は、HaChuとの400局の保存棋譜から、両エンジンが勝つ局と負ける局の典型的な経過を比較する。
 
+## 開発の道具
+
+エンジン開発の道具について、外部資料と他エンジンの実装を調べた調査である。
+
+- [エンジン開発のデバッグ手法の調査](engine-debugging-survey.md)は、Chess Programming Wikiの「Debugging」頁と関連投稿、およびStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースから、デバッグ手法を照合、表示、統計、記録の4種類に整理し、minaseへの適用の可否を示す。
+
 ## 通信プロトコルと外部エンジン
 
 USI、CECP、およびHaChuの仕様調査は[protocols/](protocols/)にまとめ、[protocols/README.md](protocols/README.md)を索引とする。
