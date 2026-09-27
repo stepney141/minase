@@ -21,6 +21,7 @@
 項目1は、STC（[strength-stage12-aspiration-stc](../measurements/strength-stage12-aspiration-stc.md)）が1,360有効ペアで`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
 フェーズ3の項目2は実装とテスト、[除外件数とbenchの確認](../measurements/strength-stage12-bad-captures-bench.md)を完了した。
+煙試験（[strength-stage12-bad-captures-smoke](../measurements/strength-stage12-bad-captures-smoke.md)）では時間切れと異常が0件だった。
 次の一手は、項目2のSTCによる採否測定である。
 項目2の発動率はフェーズ1で段階開始版に対して測った値がそのまま使える。
 
