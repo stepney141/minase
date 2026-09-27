@@ -2,7 +2,7 @@
 
 本書は、minaseの不具合を調べる開発者（人間とエージェント）が、症状を再現し、原因の局面と処理まで絞り込み、修正を確かめるまでの標準手順を定める。
 各手順が使う道具の出典と、他のエンジンとの比較は[エンジン開発のデバッグ手法の調査](../research/engine-debugging-survey.md)にあり、道具を追加する計画は[デバッグ機能の整備](../plans/debugging-tools.md)にある。
-本書は、現在のmasterにある道具だけを記す。
+本書は、リポジトリに実装済みの道具だけを記す。
 
 ## 原則
 
@@ -52,7 +52,7 @@ cargo run --release --bin random_play -- --rules engine-default --seed 1 --games
 cargo run --release --bin random_play -- --rules engine-default --seed 1 --game 4213 --verify-all --verbose
 ```
 
-`--verify-all`は、毎手、全合法手を複製した対局に適用して検査する。
+`--verify-all`を付けると、ランダムに選んだ1手だけでなく、各手番の全合法手を1手ずつ対局の複製へ適用し、生成した合法手が着手として拒否されないことを確かめる。
 規則による差を疑うときは、`--rules`に該当するコード列を与える。
 `--features invariants`を付けてビルドすると、着手の実行と取消しの内部でも毎回局面を検査する。
 この場合は、不変条件が壊れた最初の着手の直後に、理由、手、差分更新と全再計算の両方のZobristキー、および升ごとの駒コードの生データを出して止まる。
@@ -102,7 +102,8 @@ HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己
 
 **挙動の変化の検出**：探索木を変えないはずの変更（高速化、リファクタリング）は、`bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
 `bench`は、`Threads=1`の固定深さの探索であり、同じバイナリでは実行のたびに同じノード数を返す。
-`scripts/bench_compare.py`は、作業ツリーのbenchを参照コミットのbenchと全行で照合し、不一致があれば終了コード1で報告する。
+`scripts/bench_compare.py`は、作業ツリーのbenchを参照コミット（`--reference`）のbenchと全行で照合し、不一致があれば終了コード1で報告する。
+`--baseline`と`--parent`は速度の比を求める比較先であり、挙動の一致だけを確かめるときは3つとも同じ比較先のコミットを与える。
 
 ```console
 scripts/bench_compare.py --reference master --baseline master --parent master --depth 5
@@ -118,7 +119,7 @@ scripts/bench_compare.py --reference master --baseline master --parent master --
 **置換表による木の閲覧**：ある手が選ばれなかった理由は、探索の後に置換表を辿って調べる。
 置換表は探索の後もエンジンが保持しているので、同じプロセスで次の手順を繰り返す。
 
-1. `setoption name Threads value 1`を送り、`usinewgame`と`position`で局面を与えて、`go depth N`で探索する。
+1. `usinewgame`と`position`で局面を与えて、`go depth N`で探索する。`Threads`は既定の1のままにする。2以上でも閲覧はできるが、表の内容がワーカーの実行順に依存し、同じ手順を繰り返しても同じ表にならない。
 2. `tt`を送り、現局面の項目と、合法手ごとの子局面の項目（深さ、境界の種類、子局面の手番側から見た評価値、最善手）を読む。選ばれなかった手の子局面の値と深さを、選ばれた手のものと比べる。
 3. 調べたい手を`position ... moves`の末尾に足して1手進め、再び`tt`を送る。子局面の最善手（反駁手）を辿ると、その手の評価を決めた変化まで下りられる。
 
