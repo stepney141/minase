@@ -172,6 +172,8 @@ null moveの直後は記録を空にする。
 しかしSTCは147有効ペアで`H0`となり、得点率27.0%（約−173 Elo）だったので、本項目は採用しない（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）。
 診断が示した失う良い結果の割合（4.83%）は、自己対局での損失の大きさを予測しなかった。
 閾値はSTCの前に固定する規則なので、`N`を変えた再測定は本段階では行わない。
+この結果から、閾値の選び方の規則を静止探索に使えないことを教訓にした（[失う良手の割合は深さの上限のない再帰での枝刈りの損失を抑えない](../lessons/recall-loss-does-not-bound-recursive-pruning.md)）。
+Stockfishと同じく生成した全捕獲手を数えて`N=2`とする方式は、別の主張として後の段階の候補に残す。
 
 ### 項目5　手の成績の表と補正表の対局内の持ち越し（history aging）
 
