@@ -19,11 +19,10 @@
 項目1、2、3、4、5、7、8は発動率の基準5%を満たし、項目6は予測誤差が悪化したので見送った。
 項目4の手数の上限は`N=1`、項目5で持ち越す表はbutterfly historyだけとした。
 項目1は、STC（[strength-stage12-aspiration-stc](../measurements/strength-stage12-aspiration-stc.md)）が1,360有効ペアで`H0`となったので採用せず、実装をコードから外した。
+項目2は、STC（[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)）が430有効ペアで`H0`となったので採用せず、実装をコードから外した。
 次の項目の基準は段階開始版のままである。
-フェーズ3の項目2は実装とテスト、[除外件数とbenchの確認](../measurements/strength-stage12-bad-captures-bench.md)を完了した。
-煙試験（[strength-stage12-bad-captures-smoke](../measurements/strength-stage12-bad-captures-smoke.md)）では時間切れと異常が0件だった。
-次の一手は、項目2のSTCによる採否測定である。
-項目2の発動率はフェーズ1で段階開始版に対して測った値がそのまま使える。
+次の一手は、フェーズ4として項目3を現行の全捕獲手の段に適用して実装することである。
+基準の構成が段階開始版のままなので、項目3の発動率はフェーズ1の値（12.29%）がそのまま使える。
 
 ## 目的
 
@@ -111,6 +110,9 @@ SEEの計算は、現行では浅い非PVノードの枝刈りでだけ行うの
 この費用は採否測定の結果に含まれるので別のゲートは設けないが、実装後にbenchの毎秒探索ノード数（NPS）を記録する。
 発動率の分母は、通常探索で捕獲手の段を開いたノード、分子は、そのうちSEEが負の捕獲手の後ろに、静かな手またはSEEが負でない捕獲手が1手以上あり、返す順序が現行と変わるノードとする。
 手選択器が各合法手を正確に1回だけ返すことは、既存のテストの対象に新しい段を加えて固定する。
+
+STCで`H0`（430有効ペア、得点率45.7%、LLR −2.95）となったので、本項目は採用しない（[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)）。
+bench深さ6ではノード数が3.54%減った一方で、全捕獲手へのSEEの計算によりNPSが約9.7%下がっていた（[strength-stage12-bad-captures-bench](../measurements/strength-stage12-bad-captures-bench.md)）。
 
 ### 項目3　捕獲履歴（capture history）
 
