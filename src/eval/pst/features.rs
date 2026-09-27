@@ -8,7 +8,7 @@ pub(super) const FEATURE_COUNT: usize = 13_680;
 /// 駒種と現在の成り可否を区別した駒状態の総数。
 pub(super) const PIECE_STATE_COUNT: usize = 47;
 /// 駒と升の組からなる特徴の総数。
-const BOARD_FEATURE_COUNT: usize = 2 * PIECE_STATE_COUNT * 144;
+pub(super) const BOARD_FEATURE_COUNT: usize = 2 * PIECE_STATE_COUNT * 144;
 /// 成っていない駒の駒種番号から状態番号への表。成れる駒種は29以降の
 /// 「成れる」状態、それ以外は駒種番号そのものへ写す。
 const UNPROMOTED_STATES: [u8; PIECE_KIND_COUNT] = build_unpromoted_states();

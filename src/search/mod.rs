@@ -7,6 +7,7 @@ mod handle;
 mod limits;
 mod snapshot;
 
+pub(crate) use alphabeta::tt::{Bound, Hit};
 pub use alphabeta::tt::{
     DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError,
 };

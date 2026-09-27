@@ -60,6 +60,17 @@ impl SetupPosition {
         self.next_move_number
     }
 
+    /// 先獅子と成り権保留を含め、着手生成に使う局面を復元する。
+    ///
+    /// # Errors
+    ///
+    /// 先獅子の復元後に局面の不変条件を満たさない場合はエラーを返す。
+    pub fn restore_position(&self) -> Result<Position, crate::core::position::PositionError> {
+        let mut position = self.position.clone();
+        position.set_lion_capture(self.lion_capture)?;
+        Ok(position)
+    }
+
     /// 局面、獅子捕獲升および次の手数へ分解する。
     pub fn into_parts(self) -> (Position, Option<Square>, u32) {
         (self.position, self.lion_capture, self.next_move_number)
@@ -276,54 +287,7 @@ pub fn to_sfen(position: &Position) -> String {
                 sfen.push_str(&empty_count.to_string());
                 empty_count = 0;
             }
-            if piece.is_promoted() {
-                sfen.push('+');
-            }
-
-            let kind = piece.kind().expect("a board piece must have a kind");
-            let base_kind = if piece.is_promoted() {
-                kind.unpromoted()
-                    .expect("a promoted piece must have an unpromoted kind")
-            } else {
-                kind
-            };
-            let mut letter = match base_kind {
-                PieceKind::King => 'K',
-                PieceKind::Pawn => 'P',
-                PieceKind::Lance => 'L',
-                PieceKind::SilverGeneral => 'S',
-                PieceKind::GoldGeneral => 'G',
-                PieceKind::Bishop => 'B',
-                PieceKind::Rook => 'R',
-                PieceKind::FerociousLeopard => 'F',
-                PieceKind::CopperGeneral => 'C',
-                PieceKind::DrunkElephant => 'E',
-                PieceKind::ReverseChariot => 'A',
-                PieceKind::BlindTiger => 'T',
-                PieceKind::Kirin => 'O',
-                PieceKind::Phoenix => 'X',
-                PieceKind::SideMover => 'M',
-                PieceKind::VerticalMover => 'V',
-                PieceKind::DragonHorse => 'H',
-                PieceKind::DragonKing => 'D',
-                PieceKind::Lion => 'N',
-                PieceKind::FreeKing => 'Q',
-                PieceKind::GoBetween => 'I',
-                PieceKind::CrownPrince
-                | PieceKind::WhiteHorse
-                | PieceKind::Whale
-                | PieceKind::FlyingOx
-                | PieceKind::FreeBoar
-                | PieceKind::FlyingStag
-                | PieceKind::HornedFalcon
-                | PieceKind::SoaringEagle => {
-                    unreachable!("an unpromoted piece must have an SFEN letter")
-                }
-            };
-            if piece.color() == Some(Color::White) {
-                letter = letter.to_ascii_lowercase();
-            }
-            sfen.push(letter);
+            sfen.push_str(&piece_text(piece));
         }
 
         if empty_count != 0 {
@@ -337,6 +301,60 @@ pub fn to_sfen(position: &Position) -> String {
         Color::White => 'w',
     });
     sfen
+}
+
+/// 駒コードをSFENの駒記号へ変換する。検証済み局面の駒に使う。
+pub(crate) fn piece_text(piece: PieceCode) -> String {
+    let mut text = String::new();
+    if piece.is_promoted() {
+        text.push('+');
+    }
+
+    let kind = piece.kind().expect("a board piece must have a kind");
+    let base_kind = if piece.is_promoted() {
+        kind.unpromoted()
+            .expect("a promoted piece must have an unpromoted kind")
+    } else {
+        kind
+    };
+    let mut letter = match base_kind {
+        PieceKind::King => 'K',
+        PieceKind::Pawn => 'P',
+        PieceKind::Lance => 'L',
+        PieceKind::SilverGeneral => 'S',
+        PieceKind::GoldGeneral => 'G',
+        PieceKind::Bishop => 'B',
+        PieceKind::Rook => 'R',
+        PieceKind::FerociousLeopard => 'F',
+        PieceKind::CopperGeneral => 'C',
+        PieceKind::DrunkElephant => 'E',
+        PieceKind::ReverseChariot => 'A',
+        PieceKind::BlindTiger => 'T',
+        PieceKind::Kirin => 'O',
+        PieceKind::Phoenix => 'X',
+        PieceKind::SideMover => 'M',
+        PieceKind::VerticalMover => 'V',
+        PieceKind::DragonHorse => 'H',
+        PieceKind::DragonKing => 'D',
+        PieceKind::Lion => 'N',
+        PieceKind::FreeKing => 'Q',
+        PieceKind::GoBetween => 'I',
+        PieceKind::CrownPrince
+        | PieceKind::WhiteHorse
+        | PieceKind::Whale
+        | PieceKind::FlyingOx
+        | PieceKind::FreeBoar
+        | PieceKind::FlyingStag
+        | PieceKind::HornedFalcon
+        | PieceKind::SoaringEagle => {
+            unreachable!("an unpromoted piece must have an SFEN letter")
+        }
+    };
+    if piece.color() == Some(Color::White) {
+        letter = letter.to_ascii_lowercase();
+    }
+    text.push(letter);
+    text
 }
 
 /// 対局開始局面を先獅子と成り権保留(P1・P2・P5)を含む5欄の拡張SFENへ書き出す。
@@ -395,7 +413,7 @@ pub fn parse_extended_sfen(sfen: &str, rules: MoveRules) -> Result<SetupPosition
 }
 
 /// 升を筋数字と段英字の表記(例: `6f`)へ変換する。
-pub(super) fn square_to_text(square: Square) -> String {
+pub(crate) fn square_to_text(square: Square) -> String {
     let file = BOARD_FILES - square.file();
     let rank = char::from(b'a' + (BOARD_RANKS - 1 - square.rank()));
     format!("{file}{rank}")

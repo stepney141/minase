@@ -41,7 +41,7 @@ impl std::error::Error for TranspositionTableError {}
 /// 格納された評価値と探索窓の関係。0は空エントリの目印に予約する。
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum Bound {
+pub(crate) enum Bound {
     /// 窓内で確定した正確な値。
     Exact = 1,
     /// ベータカットによる下界。
@@ -117,19 +117,19 @@ struct CriticalFields {
 
 /// 置換表の照合に成功したエントリの内容。
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Hit {
+pub(crate) struct Hit {
     /// 手順序付けに使う助言手。
     ///
     /// 記録手の有無は減深判断にも使う（strength-stage6.md「internal iterative reduction」節）。
     /// 並行書込み時は検証キーおよび評価値と同じ格納操作に由来する保証がない。
     /// 生成済み合法手との一致を確認せず、着手や枝刈りに使ってはならない。
-    pub(super) best_move: Option<Move>,
+    pub(crate) best_move: Option<Move>,
     /// 現在の手数基準へ戻した評価値。
-    pub(super) score: i32,
+    pub(crate) score: i32,
     /// 格納時の残り深さ。
-    pub(super) depth: u8,
+    pub(crate) depth: u8,
     /// 評価値と探索窓の関係。
-    pub(super) bound: Bound,
+    pub(crate) bound: Bound,
 }
 
 /// 1スロット1エントリの直接マップ型置換表。
@@ -207,6 +207,11 @@ impl TranspositionTable {
     #[cfg(test)]
     pub(super) fn generation(&self) -> u8 {
         self.generation.load(Ordering::Relaxed)
+    }
+
+    /// 探索と同じキーと照合処理で、表示対象局面の項目を読み取る。
+    pub(crate) fn inspect(&self, position: &crate::Position, ply: u32) -> Option<Hit> {
+        self.probe(crate::search::snapshot::search_key(position), ply)
     }
 
     /// 局面キーに対応するエントリを照合して返す。
@@ -411,3 +416,60 @@ fn score_from_tt(score: i16, ply: u32) -> i32 {
 }
 
 const _: () = assert!(MAX_PLY == 256);
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    use crate::notation::sfen::parse_extended_sfen;
+    use crate::search::snapshot::search_key;
+    use crate::{MoveGenerator, Rules};
+
+    /// debugging-tools.md「tt」: 同じ照合関数で有無、全欄、手数0・1の詰み補正を読み、表を変更しない。
+    #[test]
+    fn diagnostic_probe_preserves_entries_and_corrects_mate_distance() {
+        let rules =
+            Rules::from_codes(&crate::core::rules::parse_rule_set("L1,L2,P1,R1,E2").unwrap())
+                .unwrap();
+        let position = parse_extended_sfen(
+            "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c",
+            rules.moves,
+        )
+        .unwrap()
+        .restore_position()
+        .unwrap();
+        let generator = MoveGenerator::new(rules.moves);
+        let mut moves = Vec::new();
+        generator.generate_moves(&position, &mut moves);
+        let best = moves[0];
+        let mut child = position.clone();
+        child.try_make_move(best, &generator).unwrap();
+        for (board, ply) in [(&position, 0), (&child, 1)] {
+            for bound in [Bound::Exact, Bound::Lower, Bound::Upper] {
+                for best_move in [Some(best), None] {
+                    for (score, expected) in [
+                        (123, 123),
+                        (29_992, 29_997 - ply as i32),
+                        (-29_992, -29_997 + ply as i32),
+                    ] {
+                        let table = TranspositionTable::new(1).unwrap();
+                        let key = search_key(board);
+                        assert!(table.inspect(board, ply).is_none());
+                        table.store(key, 7, score, bound, best_move, 5);
+                        let raw = table.raw_entry(key);
+                        let generation = table.generation();
+                        let hit = table.inspect(board, ply).unwrap();
+                        assert_eq!(hit.depth, 7);
+                        assert_eq!(hit.bound, bound);
+                        assert_eq!(hit.best_move, best_move);
+                        assert_eq!(hit.score, expected);
+                        assert_eq!(table.raw_entry(key), raw);
+                        assert_eq!(table.generation(), generation);
+                        // 同じスロットでも検証キーが違えば項目なしになる。
+                        table.store(key ^ (1_u64 << 32), 8, 456, bound, None, 0);
+                        assert!(table.inspect(board, ply).is_none());
+                    }
+                }
+            }
+        }
+    }
+}
