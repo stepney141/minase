@@ -4,14 +4,12 @@ use core::cmp::Reverse;
 
 use crate::MoveGenerator;
 use crate::core::mv::Move;
-use crate::core::piece::{PieceCode, PieceKind};
+use crate::core::piece::PieceCode;
 use crate::core::position::Position;
 use crate::eval::Pst;
 
 use super::params;
-use super::royal::captures_last_royal;
 use super::searcher::{HistoryTable, KILLER_COUNT, Searcher};
-use super::see::see_prunes;
 
 impl Searcher<'_> {
     /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。
@@ -106,19 +104,16 @@ pub(super) enum MovePickerStage {
     Killer0,
     Killer1,
     Quiets,
-    BadCaptures,
     Done,
 }
 
-/// TT手、良い捕獲手、killer手、静かな手、負の捕獲手の順に合法手を1回ずつ返す。
+/// TT手、捕獲手、killer手、静かな手の順に合法手を1回ずつ返す。
 pub(super) struct MovePicker {
     stage: MovePickerStage,
     tt_move: Option<Move>,
     killers: [Option<Move>; KILLER_COUNT],
     captures: Vec<(Move, MoveOrderKey)>,
     capture_index: usize,
-    bad_captures: Vec<Move>,
-    bad_capture_index: usize,
     captures_generated: bool,
     quiets: Vec<Move>,
     quiet_index: usize,
@@ -137,8 +132,6 @@ impl MovePicker {
             killers,
             captures: Vec::new(),
             capture_index: 0,
-            bad_captures: Vec::new(),
-            bad_capture_index: 0,
             captures_generated: false,
             quiets: Vec::new(),
             quiet_index: 0,
@@ -156,8 +149,6 @@ impl MovePicker {
         self.killers = killers;
         self.captures.clear();
         self.capture_index = 0;
-        self.bad_captures.clear();
-        self.bad_capture_index = 0;
         self.captures_generated = false;
         self.quiets.clear();
         self.quiet_index = 0;
@@ -210,23 +201,6 @@ impl MovePicker {
                         self.captures.sort_by_key(|&(_, key)| {
                             (Reverse(key.captured_value), key.attacker_value)
                         });
-                        // docs/plans/strength-stage12.md「項目2」「規則依存の除外」。
-                        // 安定整列後に分け、両方の段でMVV-LVAと同点時の生成順を保つ。
-                        self.captures.retain(|&(mv, _)| {
-                            let double_lion_capture = piece_at_for_ordering(position, mv.from)
-                                .kind()
-                                == Some(PieceKind::Lion)
-                                && position.captured_squares(mv).iter().all(Option::is_some);
-                            if !captures_last_royal(position, mv)
-                                && !double_lion_capture
-                                && see_prunes(position, generator.rules(), pst, mv, 0)
-                            {
-                                self.bad_captures.push(mv);
-                                false
-                            } else {
-                                true
-                            }
-                        });
                         self.captures_generated = true;
                     }
                     if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
@@ -259,39 +233,31 @@ impl MovePicker {
                     }
                 }
                 MovePickerStage::Quiets => {
-                    if self.quiet_order.is_empty() {
-                        let color = position.side_to_move().index();
-                        self.quiet_order.extend(
-                            self.quiets
-                                .iter()
-                                .enumerate()
-                                .filter(|(index, _)| !self.used_quiets.contains(&Some(*index)))
-                                .map(|(index, mv)| {
-                                    (
-                                        Reverse(
-                                            history[color][mv.from.dense_index()]
-                                                [mv.to.dense_index()],
-                                        ),
-                                        index,
-                                    )
-                                }),
-                        );
-                        self.quiet_order.sort_unstable();
-                    }
+                    let color = position.side_to_move().index();
+                    self.quiet_order.extend(
+                        self.quiets
+                            .iter()
+                            .enumerate()
+                            .filter(|(index, _)| !self.used_quiets.contains(&Some(*index)))
+                            .map(|(index, mv)| {
+                                (
+                                    Reverse(
+                                        history[color][mv.from.dense_index()][mv.to.dense_index()],
+                                    ),
+                                    index,
+                                )
+                            }),
+                    );
+                    self.quiet_order.sort_unstable();
+                    self.stage = MovePickerStage::Done;
+                }
+                MovePickerStage::Done => {
                     if let Some(&(_, index)) = self.quiet_order.get(self.quiet_index) {
                         self.quiet_index += 1;
                         return Some((self.quiets[index], false));
                     }
-                    self.stage = MovePickerStage::BadCaptures;
+                    return None;
                 }
-                MovePickerStage::BadCaptures => {
-                    if let Some(&mv) = self.bad_captures.get(self.bad_capture_index) {
-                        self.bad_capture_index += 1;
-                        return Some((mv, true));
-                    }
-                    self.stage = MovePickerStage::Done;
-                }
-                MovePickerStage::Done => return None,
             }
         }
     }
