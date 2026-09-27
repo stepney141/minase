@@ -18,8 +18,10 @@
 フェーズ1の診断（[strength-stage12-activation-diag](../measurements/strength-stage12-activation-diag.md)）を完了した。
 項目1、2、3、4、5、7、8は発動率の基準5%を満たし、項目6は予測誤差が悪化したので見送った。
 項目4の手数の上限は`N=1`、項目5で持ち越す表はbutterfly historyだけとした。
-フェーズ2の項目1を実装し、煙試験（[strength-stage12-aspiration-smoke](../measurements/strength-stage12-aspiration-smoke.md)）で時間切れと異常が0件であることを確かめた。
-次の一手は、項目1のSTCを実行することである。
+項目1は、STC（[strength-stage12-aspiration-stc](../measurements/strength-stage12-aspiration-stc.md)）が1,360有効ペアで`H0`となったので採用せず、実装をコードから外した。
+次の項目の基準は段階開始版のままである。
+次の一手は、フェーズ3として項目2を実装することである。
+項目2の発動率はフェーズ1で段階開始版に対して測った値がそのまま使える。
 
 ## 目的
 
@@ -91,6 +93,8 @@ Stockfishは複数スレッドでの退行を避けるためにこの限定を�
 
 発動率の分母は、aspiration windowsの窓を実際に使った反復（深さ5以上で、詰み帯のため全窓になった反復を除く）、分子はその中でfail-highによる読み直しが1回以上起きた反復とする。
 読み直しは`info`出力に現れないので、[段階6](strength-stage6.md)の標準の時間制御の予算での計数と同じく、一時的な計数器で数える。
+
+STCで`H0`（1,360有効ペア、得点率49.1%、LLR −2.97）となったので、本項目は採用しない（[strength-stage12-aspiration-stc](../measurements/strength-stage12-aspiration-stc.md)）。
 
 ### 項目2　負の捕獲手を後回しにする段（bad-capture stage）
 
