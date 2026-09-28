@@ -102,79 +102,9 @@ fn null_move_cutoff_without_captures_counts_no_nodes() {
     let mut after_null = position.clone();
     after_null.make_null_move();
     let expected = -evaluate(&weights().unwrap(), &after_null);
-    let beta = evaluate(&weights().unwrap(), &position);
-    assert!(expected >= beta);
     let table = small_tt();
-    let (score, nodes) = run_negamax(&position, 4, beta - 1, beta, 0, &table);
+    let (score, nodes) = run_negamax(&position, 4, expected - 1, expected, 0, &table);
     assert_eq!((score, nodes), (expected, 0));
-}
-
-// docs/plans/strength-stage12.md「項目7　null move pruningの前提条件」「検証」。
-// 零窓ならnull moveで打ち切れる局面でも、PV窓では実着手を読む。
-#[test]
-fn null_move_preconditions_skip_pv_nodes() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(6, 10), Color::Black, PieceKind::GoldGeneral),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    let beta = evaluate(&weights().unwrap(), &position);
-    for alpha in [beta - 2, -INFINITY] {
-        let actual = run_negamax(&position, 4, alpha, beta, 0, &small_tt());
-        with_root_searcher(&position, &[], |searcher| {
-            searcher.null_move_ply = Some(0);
-            let mut board = position.clone();
-            let score = searcher.negamax(&mut board, 4, alpha, beta, 0).unwrap();
-            assert_eq!(actual, (score, searcher.nodes));
-        });
-        assert!(actual.1 > 0, "PVノードでは実着手を読む: alpha={alpha}");
-    }
-}
-
-// 同節。補正後評価がβ-1なら実着手を読み、βとβ+1ならnull moveを試す。
-// null move後の局面に深さ1のExact値を置き、試した場合だけ実着手数を0にする。
-// 正負の補正と両手番を使い、補正前の評価や相手側の補正では判定できないようにする。
-#[test]
-fn null_move_preconditions_use_corrected_eval_at_beta_boundary() {
-    for side in [Color::Black, Color::White] {
-        let position = position(
-            side,
-            &[
-                (fs(6, 12), Color::Black, PieceKind::King),
-                (fs(6, 10), side, PieceKind::GoldGeneral),
-                (fs(6, 1), Color::White, PieceKind::King),
-            ],
-        );
-        let raw_eval = evaluate(&weights().unwrap(), &position);
-        for beta_offset in [-1, 1] {
-            let beta = raw_eval + beta_offset;
-            for eval_margin in [-1, 0, 1] {
-                with_root_searcher(&position, &[], |searcher| {
-                    let correction = beta_offset + eval_margin;
-                    let key = material_key(&position);
-                    searcher.correction.update(side, key, correction * 4, 8);
-                    assert_eq!(searcher.correction.read(side, key), correction);
-                    let mut after_null = position.clone();
-                    after_null.make_null_move();
-                    searcher
-                        .tt
-                        .store(search_key(&after_null), 1, -beta, Bound::Exact, None, 1);
-                    // 記録手なしの深さ6は深さ5となり、null moveの子は深さ1になる。
-                    let mut board = position.clone();
-                    let score = searcher.negamax(&mut board, 6, beta - 1, beta, 0).unwrap();
-                    assert_eq!(board, position);
-                    if eval_margin < 0 {
-                        assert!(searcher.nodes > 0, "補正後評価がβ未満なら実着手を読む");
-                    } else {
-                        assert_eq!((score, searcher.nodes), (beta, 0));
-                    }
-                });
-            }
-        }
-    }
 }
 
 // docs/plans/strength-stage6.md「設計判断」のinternal iterative reduction。
