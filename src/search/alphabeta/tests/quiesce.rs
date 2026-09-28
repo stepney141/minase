@@ -2,6 +2,14 @@
 
 use super::*;
 
+// search-bug-fixes.md「フェーズ2」: 捕獲と同時に成る利益をdelta pruningに含める。
+#[test]
+fn quiescence_delta_pruning_includes_promotion_gain() {
+    let position = crate::parse_sfen("11k/12/6p5/12/6O5/12/12/12/12/12/12/K11 b").unwrap();
+    let (score, _) = run_quiesce(&position, 1300, 1301, 0, &small_tt());
+    assert!(score >= 1301, "捕獲成りでβ以上になる局面: score={score}");
+}
+
 // D7-SRCH-08。search.md「静止探索」: 深さ0ではstand-patと捕獲手を探索する。
 // 守られた歩兵を飛車で取る損な交換は静止探索で見抜かれ、最善手にならない。
 #[test]
@@ -320,7 +328,10 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
     let stand_pat = evaluate(&pst, &capture_position);
     for (position, alpha) in [
         (Position::initial(), -INFINITY),
-        (capture_position, stand_pat + 4 * pst.pawn_value()),
+        (
+            capture_position,
+            stand_pat + 4 * pst.pawn_value() + pst.max_promotion_gain(),
+        ),
     ] {
         let key = search_key(&position);
         let stand_pat = evaluate(&pst, &position);

@@ -16,6 +16,18 @@ use crate::eval::Pst;
 /// 交換列で保持できる利得の数。中将棋の盤上の駒は最大92枚である。
 const MAX_GAINS: usize = 93;
 
+/// 着手に伴う駒価値の増減。強制成りでは負になる場合もある。
+pub(super) fn promotion_gain(pst: &Pst, piece: PieceCode, promote: bool) -> i32 {
+    if promote {
+        let promoted = piece
+            .promote()
+            .expect("a promoting move must move a promotable piece");
+        pst.piece_value(promoted) - pst.piece_value(piece)
+    } else {
+        0
+    }
+}
+
 /// 捕獲の交換評価が`-margin`未満で、規則依存による判定不能でもない場合に枝刈りする。
 ///
 /// 最初の取り返しで損が余裕値以下と確定したら、残る逆引きと逆算を省く。
@@ -40,16 +52,9 @@ pub(super) fn see_prunes(
         return false;
     }
 
-    let piece_after_move = if mv.promote {
-        moving_piece
-            .promote()
-            .expect("a promoting capture must move a promotable piece")
-    } else {
-        moving_piece
-    };
+    let gain = promotion_gain(pst, moving_piece, mv.promote);
     let mut gains = [0_i32; MAX_GAINS];
-    gains[0] = pst.piece_value(captured_piece) + pst.piece_value(piece_after_move)
-        - pst.piece_value(moving_piece);
+    gains[0] = pst.piece_value(captured_piece) + gain;
     // 同「段階6」: 成り益の上限でも損が余裕値以下なら取り返しを省く。
     if gains[0] >= -margin
         && pst.piece_value(moving_piece) - pst.piece_value(captured_piece)
@@ -58,7 +63,7 @@ pub(super) fn see_prunes(
     {
         return false;
     }
-    let mut piece_value = pst.piece_value(piece_after_move);
+    let mut piece_value = pst.piece_value(moving_piece) + gain;
     let mut lion_on_square =
         moving_kind == PieceKind::Lion || (moving_kind == PieceKind::Kirin && mv.promote);
     let mut side = moving_piece

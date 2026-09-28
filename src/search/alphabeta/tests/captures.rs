@@ -34,6 +34,105 @@ fn reference(
     captures
 }
 
+// search-bug-fixes.md「第1の修正の判定式」から直接求める。探索側の関数は使わない。
+fn reference_gain(position: &Position, pst: &Pst, mv: Move) -> i32 {
+    let captured: i32 = position
+        .captured_squares(mv)
+        .into_iter()
+        .flatten()
+        .map(|square| pst.piece_value(position.piece_at(square).unwrap()))
+        .sum();
+    let piece = position.piece_at(mv.from).unwrap();
+    captured
+        + if mv.promote {
+            pst.piece_value(piece.promote().unwrap()) - pst.piece_value(piece)
+        } else {
+            0
+        }
+}
+
+fn delta_thresholds(position: &Position, pst: &Pst, ordered: &[(Move, MoveOrderKey)]) -> Vec<i32> {
+    let mut thresholds = vec![-1, i32::MAX / 2];
+    for &(mv, key) in ordered {
+        let gain = reference_gain(position, pst, mv);
+        thresholds.extend([key.captured_value, gain - 1, gain, gain + 1]);
+    }
+    thresholds.sort_unstable();
+    thresholds.dedup();
+    thresholds
+}
+
+// search-bug-fixes.md「フェーズ2」: P6の強制成りによる価値の減少も含めて枝刈りする。
+#[test]
+fn delta_pruning_accounts_for_value_loss_on_forced_promotion() {
+    use sha2::{Digest, Sha256};
+
+    let mut bytes = include_bytes!("../../../../nets/pst-init.bin").to_vec();
+    let promoted = PieceCode::new_promoted(Color::Black, PieceKind::WhiteHorse).unwrap();
+    let offset = bytes.len() - PIECE_STATE_COUNT * 4 + piece_state_of(promoted) * 4;
+    bytes[offset..offset + 4].copy_from_slice(&1_i32.to_le_bytes());
+    let checksum = Sha256::digest(&bytes[80..]);
+    bytes[48..80].copy_from_slice(&checksum);
+    let pst = Pst::decode(&bytes).unwrap();
+    let ranks = CaptureRanks::new(&pst);
+    let generator = MoveGenerator::new(MoveRules {
+        p6: true,
+        ..engine_rules()
+    });
+    let mv = Move {
+        from: sq(5, 10),
+        mid: None,
+        to: sq(5, 11),
+        promote: true,
+    };
+    for other_capture in [false, true] {
+        let mut pieces = vec![
+            (mv.from, Color::Black, PieceKind::Lance),
+            (mv.to, Color::White, PieceKind::Pawn),
+        ];
+        if other_capture {
+            pieces.extend([
+                (sq(8, 5), Color::Black, PieceKind::Rook),
+                (sq(8, 7), Color::White, PieceKind::Pawn),
+            ]);
+        }
+        let position = position(Color::Black, &pieces);
+        let mut captures = Vec::new();
+        generator.generate_captures(&position, &mut captures);
+        assert!(captures.contains(&mv));
+        assert!(!captures.contains(&Move {
+            promote: false,
+            ..mv
+        }));
+        let gain = reference_gain(&position, &pst, mv);
+        assert!(gain < 0);
+        for threshold in [gain - 1, gain, gain + 1, 0, pst.pawn_value() - 1] {
+            for tt_move in [None, Some(mv)] {
+                let mut buffers = QsearchBuffers::default();
+                buffers.reset(&position);
+                assert_eq!(
+                    buffers.initialize(&position, &generator, &pst, &ranks, threshold),
+                    other_capture || gain > threshold,
+                );
+                buffers.set_tt_move(&position, &generator, tt_move);
+                let mut surviving = Vec::new();
+                while let Some(candidate) = buffers.next(&position, &generator, &pst, &ranks) {
+                    if candidate.exceeds_delta_threshold(&pst, threshold) {
+                        surviving.push(candidate.capture.mv);
+                    }
+                }
+                assert_eq!(surviving.contains(&mv), gain > threshold);
+                let expected: Vec<_> = reference(&position, &generator, &pst, tt_move)
+                    .into_iter()
+                    .filter(|&(mv, _)| reference_gain(&position, &pst, mv) > threshold)
+                    .map(|(mv, _)| mv)
+                    .collect();
+                assert_eq!(surviving, expected);
+            }
+        }
+    }
+}
+
 // 同節と「捕獲対象を生成前に除外する」: 公開生成・安定整列・回転から
 // 得た列を閾値で除いた結果に、段階生成の残存手順が一致する。
 #[test]
@@ -46,10 +145,7 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
         let mut buffers = QsearchBuffers::default();
         for position in &positions {
             let ordered = reference(position, &generator, &pst, None);
-            let mut thresholds = vec![-1, i32::MAX / 2];
-            thresholds.extend(ordered.iter().map(|(_, key)| key.captured_value));
-            thresholds.sort_unstable();
-            thresholds.dedup();
+            let thresholds = delta_thresholds(position, &pst, &ordered);
             let mut all = Vec::new();
             generator.generate_moves(position, &mut all);
             let quiet = all.into_iter().find(|&mv| {
@@ -66,16 +162,18 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
                     quiet,
                     ordered
                         .iter()
-                        .find(|&&(mv, key)| {
-                            key.captured_value <= threshold && !captures_last_royal(position, mv)
+                        .find(|&&(mv, _)| {
+                            reference_gain(position, &pst, mv) <= threshold
+                                && !captures_last_royal(position, mv)
                         })
                         .map(|&(mv, _)| mv),
                 ];
                 for tt_move in tt_moves {
                     let expected: Vec<_> = reference(position, &generator, &pst, tt_move)
                         .into_iter()
-                        .filter(|&(mv, key)| {
-                            key.captured_value > threshold || captures_last_royal(position, mv)
+                        .filter(|&(mv, _)| {
+                            reference_gain(position, &pst, mv) > threshold
+                                || captures_last_royal(position, mv)
                         })
                         .map(|(mv, _)| mv)
                         .collect();
@@ -84,7 +182,7 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
                     buffers.set_tt_move(position, &generator, tt_move);
                     let mut actual = Vec::new();
                     while let Some(candidate) = buffers.next(position, &generator, &pst, &ranks) {
-                        if candidate.captured_value > threshold
+                        if candidate.exceeds_delta_threshold(&pst, threshold)
                             || captures_last_royal(position, candidate.capture.mv)
                         {
                             actual.push(candidate.capture.mv);
@@ -142,7 +240,7 @@ fn double_capture_survives_when_each_victim_is_at_the_threshold() {
     buffers.set_tt_move(&position, &generator, None);
     let mut surviving = Vec::new();
     while let Some(c) = buffers.next(&position, &generator, &pst, &ranks) {
-        if c.captured_value > threshold {
+        if c.exceeds_delta_threshold(&pst, threshold) {
             surviving.push(c);
         }
     }
@@ -166,10 +264,11 @@ fn rising_threshold_preserves_the_surviving_sequence() {
         let tt_move = ordered.get(ordered.len() / 2).map(|&(mv, _)| mv);
         let mut threshold = -1;
         let mut expected = Vec::new();
-        for (mv, key) in reference(&position, &generator, &pst, tt_move) {
-            if key.captured_value > threshold || captures_last_royal(&position, mv) {
+        for (mv, _) in reference(&position, &generator, &pst, tt_move) {
+            if reference_gain(&position, &pst, mv) > threshold || captures_last_royal(&position, mv)
+            {
                 expected.push(mv);
-                threshold = threshold.max(key.captured_value);
+                threshold = threshold.max(reference_gain(&position, &pst, mv));
             }
         }
         buffers.reset(&position);
@@ -178,9 +277,11 @@ fn rising_threshold_preserves_the_surviving_sequence() {
         threshold = -1;
         let mut actual = Vec::new();
         while let Some(c) = buffers.next(&position, &generator, &pst, &ranks) {
-            if c.captured_value > threshold || captures_last_royal(&position, c.capture.mv) {
+            if c.exceeds_delta_threshold(&pst, threshold)
+                || captures_last_royal(&position, c.capture.mv)
+            {
                 actual.push(c.capture.mv);
-                threshold = threshold.max(c.captured_value);
+                threshold = threshold.max(reference_gain(&position, &pst, c.capture.mv));
             }
         }
         assert_eq!(actual, expected);
@@ -343,7 +444,7 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
                 buffers.set_tt_move(&position, &generator, tt_move);
                 let mut actual = Vec::new();
                 while let Some(candidate) = buffers.next(&position, &generator, &pst, &ranks) {
-                    if candidate.captured_value > threshold
+                    if candidate.exceeds_delta_threshold(&pst, threshold)
                         || captures_last_royal(&position, candidate.capture.mv)
                     {
                         actual.push(candidate.capture.mv);
@@ -351,8 +452,9 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
                 }
                 let expected: Vec<_> = reference(&position, &generator, &pst, tt_move)
                     .into_iter()
-                    .filter(|&(mv, key)| {
-                        key.captured_value > threshold || captures_last_royal(&position, mv)
+                    .filter(|&(mv, _)| {
+                        reference_gain(&position, &pst, mv) > threshold
+                            || captures_last_royal(&position, mv)
                     })
                     .map(|(mv, _)| mv)
                     .collect();
@@ -431,13 +533,11 @@ fn initialized_candidate_presence_matches_filtered_reference() {
         let generator = MoveGenerator::new(rules);
         for position in capture_test_positions() {
             let ordered = reference(&position, &generator, &pst, None);
-            let mut thresholds = vec![-1, i32::MAX / 2];
-            thresholds.extend(ordered.iter().map(|(_, key)| key.captured_value));
-            thresholds.sort_unstable();
-            thresholds.dedup();
+            let thresholds = delta_thresholds(&position, &pst, &ordered);
             for threshold in thresholds {
-                let expected = ordered.iter().any(|&(mv, key)| {
-                    key.captured_value > threshold || captures_last_royal(&position, mv)
+                let expected = ordered.iter().any(|&(mv, _)| {
+                    reference_gain(&position, &pst, mv) > threshold
+                        || captures_last_royal(&position, mv)
                 });
                 buffers.reset(&position);
                 assert_eq!(
