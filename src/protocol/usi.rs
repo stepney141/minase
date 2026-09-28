@@ -10,15 +10,19 @@ use std::time::Duration;
 
 use crate::core::game::{DrawReason, Game, GameResult, GameStatus, WinReason};
 use crate::core::mv::Move;
-use crate::core::piece::Color;
+use crate::core::piece::{Color, PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::rules::parse_rule_set;
-use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_sfen};
+use crate::eval::pst;
+use crate::notation::sfen::{
+    SetupPosition, parse_extended_sfen, square_to_text, to_extended_sfen, to_sfen,
+};
 use crate::notation::usi;
 use crate::search::{
     self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, StopReason,
     TranspositionTable,
 };
+use crate::{MoveGenerator, Square};
 
 use super::Protocol;
 use super::engine::{
@@ -185,6 +189,7 @@ impl UsiProtocol {
             }
             "moves" => self.handle_moves(engine, output)?,
             "state" => self.handle_state(engine, output)?,
+            "d" | "eval" | "tt" => self.handle_diagnostic(engine, command, output)?,
             "ponderhit" => write_error(output, "ponderhit requires an active ponder search")?,
             "go" if tokens[1..].contains(&"mate") => {
                 writeln!(output, "checkmate notimplemented")?;
@@ -201,7 +206,8 @@ impl UsiProtocol {
                 let _ = engine.handle(EngineCommand::Quit);
                 return Ok(LineAction::Quit);
             }
-            _ => {}
+            "debug" | "register" | "stop" => {}
+            _ => write_error(output, &format!("unknown command {command}"))?,
         }
         output.flush()?;
         Ok(LineAction::Continue)
@@ -1031,6 +1037,46 @@ impl UsiProtocol {
         )
     }
 
+    /// 表示を最後まで構築してから出力し、失敗時はエラー1行だけを返す。
+    fn handle_diagnostic(
+        &self,
+        engine: &Engine,
+        command: &str,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
+        if engine.lifecycle() == EngineLifecycle::AwaitingStart {
+            return write_error(
+                output,
+                &format!("{command} requires an active or finished game"),
+            );
+        }
+        let lines = match command {
+            "d" => diagnostic_position(engine),
+            "eval" => diagnostic_evaluation(engine.game().position()),
+            "tt" => self
+                .transposition_table
+                .as_ref()
+                .ok_or_else(|| "tt requires an allocated transposition table".to_owned())
+                .and_then(|table| diagnostic_table(engine, table)),
+            _ => unreachable!("only diagnostic commands are dispatched here"),
+        };
+        match lines {
+            Ok(lines) if command == "d" => {
+                for line in lines {
+                    writeln!(output, "{line}")?;
+                }
+                Ok(())
+            }
+            Ok(lines) => {
+                for line in lines {
+                    writeln!(output, "info string {line}")?;
+                }
+                writeln!(output, "info string end")
+            }
+            Err(error) => write_error(output, &error),
+        }
+    }
+
     /// 受理時に何も出力しないコマンドを状態機械へ渡す。
     fn apply_silent(
         &mut self,
@@ -1429,9 +1475,8 @@ fn parse_moves(
     rules: crate::Rules,
     move_tokens: &[&str],
 ) -> Result<ParsedMoves, String> {
-    let mut position = setup.position().clone();
-    position
-        .set_lion_capture(setup.lion_capture())
+    let position = setup
+        .restore_position()
         .map_err(|error| error.to_string())?;
     let game = Game::from_position(rules, position);
     parse_moves_from_game(&game, move_tokens)
@@ -1464,6 +1509,228 @@ struct ParsedMoves {
     moves: Vec<Move>,
     /// 最初に拒否された指し手の入力表記。
     first_rejected_text: Option<String>,
+}
+
+/// 筋と段の見出しを付け、SFENと同じ向きの12行12列を作る。
+fn diagnostic_grid(width: usize, mut cell: impl FnMut(Square) -> String) -> Vec<String> {
+    let mut lines = vec![format!(
+        "  {}",
+        (1..=12)
+            .rev()
+            .map(|file| format!("{file:>width$}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )];
+    for rank in (0..12).rev() {
+        let cells = (0..12)
+            .map(|file| {
+                let square = Square::new(file, rank).expect("board coordinates must be valid");
+                format!("{:>width$}", cell(square))
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        lines.push(format!("{} {cells}", char::from(b'a' + 11 - rank)));
+    }
+    lines
+}
+
+/// RULES.md第5条・第9条・第10条に従い、現在の駒種を漢字1文字にする。
+fn diagnostic_piece_kanji(piece: PieceCode) -> char {
+    match piece.kind().expect("a board piece must have a kind") {
+        PieceKind::Pawn => '歩',
+        PieceKind::GoBetween => '仲',
+        PieceKind::Lance => '香',
+        PieceKind::ReverseChariot => '反',
+        PieceKind::SideMover => '横',
+        PieceKind::VerticalMover => '竪',
+        PieceKind::Bishop => '角',
+        PieceKind::Rook => '飛',
+        PieceKind::DragonHorse => '馬',
+        PieceKind::DragonKing => '龍',
+        PieceKind::FreeKing => '奔',
+        PieceKind::King => match piece.color().expect("a board piece must have a color") {
+            Color::Black => '王',
+            Color::White => '玉',
+        },
+        PieceKind::DrunkElephant => '醉',
+        PieceKind::FerociousLeopard => '猛',
+        PieceKind::BlindTiger => '盲',
+        PieceKind::CopperGeneral => '銅',
+        PieceKind::SilverGeneral => '銀',
+        PieceKind::GoldGeneral => '金',
+        PieceKind::Kirin => '麒',
+        PieceKind::Phoenix => '鳳',
+        PieceKind::Lion => '獅',
+        PieceKind::CrownPrince => '太',
+        PieceKind::WhiteHorse => '白',
+        PieceKind::Whale => '鯨',
+        PieceKind::FlyingOx => '牛',
+        PieceKind::FreeBoar => '猪',
+        PieceKind::FlyingStag => '鹿',
+        PieceKind::HornedFalcon => '鷹',
+        PieceKind::SoaringEagle => '鷲',
+    }
+}
+
+/// `d`用に、漢字の駒と筋・段の見出しを持つ罫線付きの盤を作る。
+fn diagnostic_board(position: &Position) -> Vec<String> {
+    let border = format!("{}+", "+----".repeat(12));
+    let mut lines = vec![
+        format!(
+            " {}",
+            (1..=12)
+                .rev()
+                .map(|file| format!("{file:>4}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        border.clone(),
+    ];
+    for rank in (0..12).rev() {
+        let mut row = String::from("|");
+        for file in 0..12 {
+            let square = Square::new(file, rank).expect("board coordinates must be valid");
+            if let Some(piece) = position.piece_at(square) {
+                row.push(
+                    match piece.color().expect("a board piece must have a color") {
+                        Color::Black => ' ',
+                        Color::White => '^',
+                    },
+                );
+                row.push(if piece.is_promoted() { '+' } else { ' ' });
+                row.push(diagnostic_piece_kanji(piece));
+            } else {
+                row.push_str("  ・");
+            }
+            row.push('|');
+        }
+        row.push(' ');
+        row.push(char::from(b'a' + 11 - rank));
+        lines.push(row);
+        lines.push(border.clone());
+    }
+    lines
+}
+
+/// 検証済みの盤面、拡張SFEN、対局状態とキーを表示用の行へ変換する。
+fn diagnostic_position(engine: &Engine) -> Result<Vec<String>, String> {
+    let position = engine.game().position();
+    position.validate().map_err(|error| error.to_string())?;
+    let next_move = engine
+        .ply()
+        .checked_add(1)
+        .ok_or_else(|| "move number overflow".to_owned())?;
+    let setup = SetupPosition::new(position.clone(), position.lion_capture_square(), next_move)
+        .map_err(|error| error.to_string())?;
+    let status = state_status_text(engine.status())?;
+    let mut lines = diagnostic_board(position);
+    lines.push(String::new());
+    lines.push(format!("sfen {}", to_extended_sfen(&setup)));
+    lines.push(format!(
+        "side {}",
+        match position.side_to_move() {
+            Color::Black => "black",
+            Color::White => "white",
+        }
+    ));
+    lines.push(format!("move {next_move}"));
+    lines.push(format!("status {status}"));
+    lines.push(format!(
+        "lion {}",
+        position
+            .lion_capture_square()
+            .map_or_else(|| "none".to_owned(), square_to_text)
+    ));
+    let deferred = Square::all()
+        .filter(|&square| position.promotion_deferred().contains(square))
+        .map(square_to_text)
+        .collect::<Vec<_>>();
+    lines.push(format!(
+        "promotion-deferred {}",
+        if deferred.is_empty() {
+            "none".to_owned()
+        } else {
+            deferred.join(",")
+        }
+    ));
+    lines.push(format!("zobrist {:016x}", position.zobrist()));
+    lines.push(format!("rights-zobrist {:016x}", position.rights_zobrist()));
+    Ok(lines)
+}
+
+/// 手番側の全計算評価と各特徴の寄与をセンチポーン単位で表示する。
+fn diagnostic_evaluation(position: &Position) -> Result<Vec<String>, String> {
+    position.validate().map_err(|error| error.to_string())?;
+    let weights = pst::weights().map_err(|error| error.to_string())?;
+    let detail = pst::breakdown(&weights, position);
+    let mut lines = vec![
+        format!("evaluation {}", detail.score),
+        format!("q {}", detail.q),
+    ];
+    lines.extend(diagnostic_grid(7, |square| {
+        format!(
+            "{:.1}",
+            detail.board[square.dense_index()] as f64 / pst::INTERPOLATION_DIVISOR as f64
+        )
+    }));
+    lines.push(format!(
+        "lion {:.1}",
+        detail.lion as f64 / pst::INTERPOLATION_DIVISOR as f64
+    ));
+    lines.push("note contributions are rounded to 0.1 cp; evaluation divides the total numerator by 720 once (integer truncation) and clamps to +/-28999 cp".to_owned());
+    Ok(lines)
+}
+
+/// 置換表の項目を、詰み手数補正後の値と記録手のUSI表記へ変換する。
+fn diagnostic_hit(
+    position: &Position,
+    generator: &MoveGenerator,
+    hit: Option<search::Hit>,
+) -> Result<String, String> {
+    let Some(hit) = hit else {
+        return Ok("none".to_owned());
+    };
+    let best_move = match hit.best_move {
+        None => "none".to_owned(),
+        Some(mv) if mv.from == mv.to && mv.mid.is_none() => {
+            // 助言手は別の保存操作に由来し得る。じっとの中間升を補う前に検証する。
+            usi::text(position, mv, generator).map_err(|error| error.to_string())?
+        }
+        Some(mv) => usi::text_generated(position, mv),
+    };
+    let bound = match hit.bound {
+        search::Bound::Exact => "exact",
+        search::Bound::Lower => "lower",
+        search::Bound::Upper => "upper",
+    };
+    Ok(format!(
+        "depth {} bound {bound} score {} bestmove {best_move}",
+        hit.depth, hit.score
+    ))
+}
+
+/// 現局面と全合法手の子局面を、根からの手数0と1で照会する。
+fn diagnostic_table(engine: &Engine, table: &TranspositionTable) -> Result<Vec<String>, String> {
+    let game = engine.game();
+    let position = game.position();
+    let generator = MoveGenerator::new(game.rules().moves);
+    let mut lines = vec![format!(
+        "current {}",
+        diagnostic_hit(position, &generator, table.inspect(position, 0))?
+    )];
+    for mv in game.legal_moves() {
+        let mut child = position.clone();
+        child
+            .try_make_move(mv, &generator)
+            .map_err(|error| error.to_string())?;
+        lines.push(format!(
+            "{} {}",
+            usi::text_generated(position, mv),
+            diagnostic_hit(&child, &generator, table.inspect(&child, 1))?
+        ));
+    }
+    lines.push("note bestmove may come from a different store operation than the score".to_owned());
+    Ok(lines)
 }
 
 /// `position`拒否の理由文を、拒否された指し手の表記を添えて作る。
@@ -3173,9 +3440,9 @@ mod tests {
         );
     }
 
+    /// debugging-tools.md「利用者の決定」1: 未知コマンドは先頭語つきのエラーを返す。
     #[test]
-    fn unknown_commands_are_ignored_and_quit_is_silent() {
-        // PL「USIの未知入力は原典準拠」: 未知コマンド行は無視する（D6-USI-29）。
+    fn unknown_commands_report_errors_and_quit_is_silent() {
         let noisy = session(
             &[RuleCode::R1],
             "foobar baz\nposition startpos\nstate\nquit\nusi\n",
@@ -3183,7 +3450,288 @@ mod tests {
         let clean = session(&[RuleCode::R1], "position startpos\nstate\n");
 
         // 未知入力は解釈へ影響せず、quit後の入力（usi）は処理されない。
-        assert_eq!(noisy, clean);
+        assert_eq!(
+            noisy,
+            format!("info string error: unknown command foobar\n{clean}")
+        );
+    }
+
+    /// debugging-tools.md「d」「独自コマンドの契約」: d以外の成功は接頭辞と終端を持つ。
+    #[test]
+    fn diagnostics_frame_success_and_reject_uncommitted_positions() {
+        for command in ["d", "eval", "tt"] {
+            let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
+            let mut protocol = UsiProtocol::new(&engine);
+            let error = run(&mut protocol, &mut engine, &format!("{command}\n"));
+            assert_eq!(error.lines().count(), 1);
+            assert!(error.starts_with("info string error: "));
+            assert!(!error.contains("info string end"));
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    &mut engine,
+                    "setoption name USI_Hash value 1\nposition startpos\n"
+                ),
+                ""
+            );
+            let before = engine.game().position().clone();
+            let output = run(&mut protocol, &mut engine, &format!("{command}\n"));
+            if command == "d" {
+                assert!(output.lines().all(|line| !line.starts_with("info string")));
+                assert!(
+                    output
+                        .lines()
+                        .last()
+                        .unwrap()
+                        .starts_with("rights-zobrist ")
+                );
+            } else {
+                assert!(output.lines().all(|line| line.starts_with("info string ")));
+                assert_eq!(output.lines().last(), Some("info string end"));
+            }
+            assert!(!output.contains("error"));
+            assert_eq!(engine.game().position(), &before);
+        }
+        let output = session(&[RuleCode::R1], "position startpos\ntt\n");
+        assert_eq!(output.lines().count(), 1);
+        assert!(output.starts_with("info string error: "));
+    }
+
+    /// debugging-tools.md「独自コマンドの契約」: 探索中の3コマンドは探索終了後に処理する。
+    #[test]
+    fn diagnostics_queued_during_search_follow_bestmove() {
+        let output = session(
+            &[RuleCode::R1],
+            concat!(
+                "setoption name USI_Hash value 1\nposition startpos\n",
+                "go ponder depth 1\nd\neval\ntt\nstop\n"
+            ),
+        );
+        let bestmove = output.find("bestmove ").unwrap();
+        for marker in ["\nsfen ", "info string evaluation ", "info string current "] {
+            assert!(bestmove < output.find(marker).unwrap(), "{output}");
+        }
+        assert_eq!(
+            output
+                .lines()
+                .filter(|line| *line == "info string end")
+                .count(),
+            2
+        );
+        assert!(!output.contains("error:"));
+    }
+
+    /// debugging-tools.md「d」: 成り権保留と先獅子を含む拡張SFENがキーまで往復する。
+    #[test]
+    fn diagnostic_sfen_round_trips_all_position_state() {
+        let mut engine = Engine::new(parse_rule_set("L1,L2,P1,R1,E2").unwrap()).unwrap();
+        let mut protocol = UsiProtocol::new(&engine);
+        let sfen = "k11/12/4P7/12/9g2/5+o3n2/12/9R2/12/12/12/11K b 7f 41 8c";
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            &format!("position sfen {sfen}\nd\n"),
+        );
+        assert!(!output.contains("error:"), "{output}");
+        let original = engine.game().position().clone();
+        assert!(output.contains(&format!("zobrist {:016x}\n", original.zobrist())));
+        assert!(output.contains(&format!(
+            "rights-zobrist {:016x}\n",
+            original.rights_zobrist()
+        )));
+        assert!(!original.promotion_deferred().is_empty());
+        assert!(original.lion_capture_square().is_some());
+        let emitted = output
+            .lines()
+            .find_map(|line| line.strip_prefix("sfen "))
+            .unwrap();
+        assert_eq!(emitted, sfen);
+        assert!(output.contains("\nmove 41\n"));
+        assert!(output.contains("\nlion 7f\n"));
+        assert!(output.contains("\npromotion-deferred 8c\n"));
+        assert!(output.contains("+o"));
+        assert_eq!(
+            run(
+                &mut protocol,
+                &mut engine,
+                &format!("position sfen {emitted}\n")
+            ),
+            ""
+        );
+        let restored = engine.game().position();
+        assert_eq!(original, *restored);
+        assert_eq!(original.zobrist(), restored.zobrist());
+        assert_eq!(original.rights_zobrist(), restored.rights_zobrist());
+        let rows: Vec<_> = output.lines().skip(2).step_by(2).take(12).collect();
+        for (index, row) in rows.iter().enumerate() {
+            assert_eq!(row.matches('|').count(), 13);
+            assert!(row.ends_with(&format!("| {}", char::from(b'a' + index as u8))));
+        }
+    }
+
+    /// debugging-tools.md「d」: RULES.md第5条の初期配置を26行の盤として表示する。
+    #[test]
+    fn diagnostic_startpos_board_matches_rules() {
+        let output = session(&[RuleCode::R1], "position startpos\nd\n");
+        let expected = concat!(
+            "   12   11   10    9    8    7    6    5    4    3    2    1\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 香|^ 猛|^ 銅|^ 銀|^ 金|^ 醉|^ 玉|^ 金|^ 銀|^ 銅|^ 猛|^ 香| a\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 反|  ・|^ 角|  ・|^ 盲|^ 鳳|^ 麒|^ 盲|  ・|^ 角|  ・|^ 反| b\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 横|^ 竪|^ 飛|^ 馬|^ 龍|^ 奔|^ 獅|^ 龍|^ 馬|^ 飛|^ 竪|^ 横| c\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩|^ 歩| d\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|^ 仲|  ・|  ・|  ・|  ・|^ 仲|  ・|  ・|  ・| e\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| f\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| g\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  ・|  ・|  ・|  仲|  ・|  ・|  ・|  ・|  仲|  ・|  ・|  ・| h\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩|  歩| i\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  横|  竪|  飛|  馬|  龍|  獅|  奔|  龍|  馬|  飛|  竪|  横| j\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  反|  ・|  角|  ・|  盲|  麒|  鳳|  盲|  ・|  角|  ・|  反| k\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+            "|  香|  猛|  銅|  銀|  金|  王|  醉|  金|  銀|  銅|  猛|  香| l\n",
+            "+----+----+----+----+----+----+----+----+----+----+----+----+\n",
+        );
+        let (board, metadata) = output.split_once("\n\n").unwrap();
+        assert_eq!(board.lines().count(), 26);
+        assert_eq!(format!("{board}\n"), expected);
+        assert!(metadata.starts_with("sfen "));
+    }
+
+    /// debugging-tools.md「d」: 成駒はRULES.md第9条・第10条の駒種と成り印で表示する。
+    #[test]
+    fn diagnostic_board_shows_promoted_kinds_and_owners() {
+        let output = session(
+            &[RuleCode::R1],
+            "position sfen k11/12/12/12/12/+G+p+E+i8/12/12/12/12/12/11K b - 1\nd\n",
+        );
+        assert!(!output.contains("error"), "{output}");
+        assert_eq!(
+            output.lines().nth(12),
+            Some("| +飛|^+金| +太|^+醉|  ・|  ・|  ・|  ・|  ・|  ・|  ・|  ・| f")
+        );
+    }
+
+    /// debugging-tools.md「eval」: 表示評価は全計算と一致し、制限の有無と両手番を扱う。
+    #[test]
+    fn diagnostic_evaluation_matches_full_evaluation_with_and_without_clamping() {
+        let dense = std::iter::repeat_n("QQQQQQQQQQQQ", 11)
+            .collect::<Vec<_>>()
+            .join("/");
+        let weights = pst::weights().unwrap();
+        for (board, clamped) in [
+            (INITIAL_BOARD.to_owned(), false),
+            (format!("{dense}/K10k b"), true),
+            (format!("{dense}/K10k w"), true),
+        ] {
+            let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
+            let mut protocol = UsiProtocol::new(&engine);
+            let output = run(
+                &mut protocol,
+                &mut engine,
+                &format!("position sfen {board} - 1\neval\n"),
+            );
+            let score = pst::evaluate(&weights, engine.game().position());
+            assert_eq!(score.abs() == 28_999, clamped, "{board}");
+            assert!(
+                output.contains(&format!("info string evaluation {score}\n")),
+                "{output}"
+            );
+            assert!(output.contains("integer truncation"));
+            assert!(output.contains("info string lion "));
+            let rows: Vec<_> = output.lines().skip(3).take(12).collect();
+            assert_eq!(rows.len(), 12);
+            for row in rows {
+                assert_eq!(row.split_whitespace().count(), 15);
+            }
+        }
+    }
+
+    /// debugging-tools.md「tt」: 空項目と全合法手を列挙し、終局後は現局面だけを表示する。
+    #[test]
+    fn diagnostic_table_lists_legal_children_and_no_finished_children() {
+        let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
+        let mut protocol = UsiProtocol::new(&engine);
+        run(
+            &mut protocol,
+            &mut engine,
+            "setoption name USI_Hash value 1\nposition startpos\n",
+        );
+        let expected: HashSet<_> = engine
+            .game()
+            .legal_moves()
+            .iter()
+            .map(|&mv| {
+                format!(
+                    "info string {} none",
+                    usi::text_generated(engine.game().position(), mv)
+                )
+            })
+            .collect();
+        let output = run(&mut protocol, &mut engine, "tt\n");
+        assert_eq!(output.lines().next(), Some("info string current none"));
+        let actual: HashSet<_> = output
+            .lines()
+            .skip(1)
+            .take(expected.len())
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(actual, expected);
+        assert_eq!(output.lines().count(), expected.len() + 3);
+        assert_eq!(output, run(&mut protocol, &mut engine, "tt\n"));
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            &format!("position sfen {ROYAL_SFEN} moves 7g7d\nd\neval\ntt\n"),
+        );
+        assert!(!output.contains("error:"));
+        let tail = output.split("info string current none\n").nth(1).unwrap();
+        assert_eq!(tail.lines().count(), 2);
+    }
+
+    /// debugging-tools.md「tt」: 境界、深さ、最善手と項目なしを指定語彙で表示する。
+    #[test]
+    fn diagnostic_hit_formats_all_fields() {
+        let position = Position::initial();
+        let generator = MoveGenerator::standard();
+        let mv = usi::parse(&position, "6i6h").unwrap();
+        for (bound, text) in [
+            (search::Bound::Exact, "exact"),
+            (search::Bound::Lower, "lower"),
+            (search::Bound::Upper, "upper"),
+        ] {
+            for best_move in [Some(mv), None] {
+                let hit = search::Hit {
+                    best_move,
+                    score: 123,
+                    depth: 7,
+                    bound,
+                };
+                assert_eq!(
+                    diagnostic_hit(&position, &generator, Some(hit)).unwrap(),
+                    format!(
+                        "depth 7 bound {text} score 123 bestmove {}",
+                        if best_move.is_some() { "6i6h" } else { "none" }
+                    )
+                );
+            }
+        }
+        assert_eq!(diagnostic_hit(&position, &generator, None).unwrap(), "none");
+    }
+
+    /// debugging-tools.md「利用者の決定」1: USI原典の既知コマンドは無応答を保つ。
+    #[test]
+    fn debug_and_register_are_silent() {
+        assert_eq!(session(&[RuleCode::R1], "debug on\nregister later\n"), "");
     }
 
     #[test]

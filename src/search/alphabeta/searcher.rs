@@ -45,6 +45,8 @@ pub(super) fn new_searcher<'a>(
 ) -> Searcher<'a> {
     let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
+        #[cfg(feature = "search-stats")]
+        stats: crate::search::SearchStats::default(),
         pst,
         rules,
         generator: MoveGenerator::new(rules),
@@ -83,6 +85,9 @@ pub(super) struct PonderIteration {
 
 /// 1回の探索実行の可変状態。
 pub(super) struct Searcher<'a> {
+    /// このワーカーだけが更新する探索統計。
+    #[cfg(feature = "search-stats")]
+    pub(super) stats: crate::search::SearchStats,
     /// 探索中に使う検証済み学習PST。
     pub(super) pst: &'a Pst,
     /// 探索内の着手適用に使う規則。

@@ -11,7 +11,7 @@ pub use format::Error;
 use std::sync::{Arc, OnceLock};
 
 use self::features::{FEATURE_COUNT, active_features, piece_state};
-use crate::{Color, PieceCode, PieceKind, Position};
+use crate::{Color, PieceCode, PieceKind, Position, Square};
 
 /// 駒種と現在の成り可否を区別した駒状態の総数。
 pub const PIECE_STATE_COUNT: usize = features::PIECE_STATE_COUNT;
@@ -92,11 +92,73 @@ impl Pst {
     }
 }
 
+/// 補間係数の上限。
+const PHASE_MAX: i64 = 90;
+/// 量子化重みからセンチポーンへ換算する除数。
+pub(crate) const INTERPOLATION_DIVISOR: i64 = 720;
+
+/// 盤上総駒数から補間係数を求める。
+fn phase(piece_count: u32) -> i64 {
+    i64::from(piece_count.saturating_sub(2)).min(PHASE_MAX)
+}
+
+/// 序中盤・終盤の重みを除算前の整数へ補間する。
+fn interpolation_numerator(sums: [i32; 2], q: i64) -> i64 {
+    q * i64::from(sums[0]) + (PHASE_MAX - q) * i64::from(sums[1])
+}
+
+/// 分子を整数除算でセンチポーンへ換算し、静的評価の範囲に制限する。
+fn evaluation_from_numerator(numerator: i64) -> i32 {
+    (numerator / INTERPOLATION_DIVISOR)
+        .clamp(-i64::from(EVALUATION_LIMIT), i64::from(EVALUATION_LIMIT)) as i32
+}
+
 /// 盤上総駒数に応じて生重み和を補間し、最後に1回だけ整数除算する。
 fn interpolate(sums: [i32; 2], piece_count: u32) -> i32 {
-    let q = i64::from(piece_count.saturating_sub(2).min(90));
-    let numerator = q * i64::from(sums[0]) + (90 - q) * i64::from(sums[1]);
-    (numerator / 720).clamp(-i64::from(EVALUATION_LIMIT), i64::from(EVALUATION_LIMIT)) as i32
+    evaluation_from_numerator(interpolation_numerator(sums, phase(piece_count)))
+}
+
+/// 静的評価を表示するための、除算前の特徴別寄与。
+pub(crate) struct Breakdown {
+    /// 手番側視点の全計算評価値。
+    pub(crate) score: i32,
+    /// 序中盤の補間係数。
+    pub(crate) q: i64,
+    /// 升の密番号順に並べた駒の寄与。
+    pub(crate) board: [i64; 144],
+    /// 先獅子特徴の寄与。
+    pub(crate) lion: i64,
+}
+
+/// 全計算と同じ特徴列挙と補間式で、表示用の内訳を得る。
+pub(crate) fn breakdown(pst: &Pst, position: &Position) -> Breakdown {
+    let q = phase(position.occupied().popcount());
+    let mut result = Breakdown {
+        score: 0,
+        q,
+        board: [0; 144],
+        lion: 0,
+    };
+    let mut sums = [0_i32; 2];
+    active_features(position, |feature| {
+        pst.add_feature(&mut sums, feature, 1);
+        let contribution = interpolation_numerator(pst.weights[feature].map(i32::from), q);
+        if feature < features::BOARD_FEATURE_COUNT {
+            let relative = feature % 144;
+            let rank = relative / 12;
+            let rank = match position.side_to_move() {
+                Color::Black => rank,
+                Color::White => 11 - rank,
+            };
+            let square = Square::new((relative % 12) as u8, rank as u8)
+                .expect("feature coordinates must be on the board");
+            result.board[square.dense_index()] = contribution;
+        } else {
+            result.lion += contribution;
+        }
+    });
+    result.score = interpolate(sums, position.occupied().popcount());
+    result
 }
 
 /// 学習PSTで局面を手番側の視点からセンチポーン評価する。

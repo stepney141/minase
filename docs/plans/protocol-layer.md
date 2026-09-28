@@ -54,7 +54,7 @@ HaChu互換規則セットの検証は不成立であり、フェーズ5の規�
 | 項目 | 決定 |
 |---|---|
 | アーキテクチャ | Rusticからは「プロトコル非依存の状態機械と表記分離」の構造だけを踏襲する。エンジン本体はstdin/stdoutに触れず、プロトコル非依存のコマンドenumだけを扱う。スレッド構成は採らない（フェーズ2の確定設計で決定）。 |
-| バイナリ構成 | 既存クレートに単一バイナリ`src/bin/minase.rs`を追加する。workspace分割やプロトコル別バイナリは行わない。 |
+| バイナリ構成 | 既存クレートに単一バイナリ`src/bin/minase/`（入口は`main.rs`）を追加する。workspace分割やプロトコル別バイナリは行わない。 |
 | プロトコル選択 | `--protocol usi\|cecp`の明示指定を必須とし、既定値と自動判別は設けない。 |
 | 規則指定 | `--rules`起動フラグでの明示指定を必須とし、既定値を設けない。加えて、同一の規則セットをUSI `setoption`とCECP `feature option`のオプションとして公開し、GUIがエンジンを再起動せずに変更できるようにする。変更は次の対局開始時に反映するlatch方式とし、不正なコード列は受信時点でエラー応答する。この構成により、エンジンは起動時点から常に規則確定状態を保ち、「未確定のまま対局開始」という状態が存在しない。 |
 | 拡張SFEN | shogiopsの中将棋SFENを基底形式として採用し、lishogiが表現できない状態だけを追加フィールドで拡張する。 |
@@ -160,7 +160,7 @@ trait Protocol {
 
 プロトコル固有の制御コマンドは`EngineCommand`へ変換せず、プロトコルモジュール内で処理する。対応は次のとおりとする。USIでは、`usi`に`id name minase <バージョン>`、`id author stepney141`、`option`宣言（`RuleSet`、`USI_Variant`の順）、`usiok`を返す。`isready`には`readyok`を返す（同期実装では即時）。`go mate`には`checkmate notimplemented`を返し、その他の`go`は後述のエラー情報行とする。`quit`は無応答で終了する。CECPでは、`xboard`は無視、`protover`にfeature宣言列を返す。`accepted`と`rejected`は記録し、必須feature（`setboard`、`usermove`、`ping`）が拒否された場合は`tellusererror`を出して終了する。`variant`は`chu`だけを受理し、他は`Error (unsupported variant): ...`とする。`ping N`は先行コマンドの処理完了後に`pong N`を返す（同期実装では受信順の処理により自動的に満たされる）。`force`は無視する（探索がなく自発着手しないため、モードの区別が存在しない）。`quit`は無応答で終了する。
 
-USIの未知入力は原典準拠とする。未知のコマンド行と既知コマンド内の未知トークンは無視する。既知コマンドの意味的な不正（不正なSFEN、不合法手、不正なオプション値）は`info string error: ...`で通知し、当該コマンドを適用しない。fail-fastの厳格性は`EngineReply::Rejected`としてエンジン境界で保ち、wire上の寛容はプロトコルモジュールに閉じる。
+USIの未知入力は、既知コマンド内の未知トークンを原典準拠で無視する。未知のコマンド行には`info string error: unknown command <第1トークン>`を返す（[デバッグ機能の整備](debugging-tools.md)の利用者の決定。打ち間違えた独自コマンドが無応答にならないようにするため）。ただし原典の既知コマンド`debug`と`register`、および探索していないときの`stop`は応答なしで無視する。既知コマンドの意味的な不正（不正なSFEN、不合法手、不正なオプション値）は`info string error: ...`で通知し、当該コマンドを適用しない。fail-fastの厳格性は`EngineReply::Rejected`としてエンジン境界で保ち、wire上の寛容はプロトコルモジュールに閉じる。
 
 ### 規則オプション
 
@@ -199,7 +199,7 @@ USIにはエンジン発の裁定通知手段がないため出力せず、USI�
 
 ### モジュールと名称
 
-表記変換層は`src/notation/`（`sfen.rs`移設、`usi.rs`、`cecp.rs`）、通信層は`src/protocol/`（`mod.rs`にtrait、`engine.rs`、`usi.rs`、`cecp.rs`）とする。単一バイナリ`src/bin/minase.rs`は`--protocol usi|cecp`と`--rules`の明示指定を必須とする。
+表記変換層は`src/notation/`（`sfen.rs`移設、`usi.rs`、`cecp.rs`）、通信層は`src/protocol/`（`mod.rs`にtrait、`engine.rs`、`usi.rs`、`cecp.rs`）とする。単一バイナリ`src/bin/minase/`は`--protocol usi|cecp`と`--rules`の明示指定を必須とする。
 
 ## フェーズ5の確定設計
 
@@ -296,7 +296,7 @@ cargo test
 cargo clippy --all-targets
 cargo fmt --all -- --check
 git diff --check
-cargo run --quiet --bin perft -- 4
+cargo run --quiet --bin perft -- 4 --rules engine-default
 ```
 
 ## 完了条件

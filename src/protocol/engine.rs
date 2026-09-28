@@ -271,10 +271,10 @@ impl Engine {
             EngineLifecycle::Finished => unreachable!(),
         };
         let base_ply = setup.next_move_number() - 1;
-        let mut position = setup.position().clone();
-        if let Err(error) = position.set_lion_capture(setup.lion_capture()) {
-            return EngineReply::Rejected(RejectReason::InvalidPosition(error));
-        }
+        let position = match setup.restore_position() {
+            Ok(position) => position,
+            Err(error) => return EngineReply::Rejected(RejectReason::InvalidPosition(error)),
+        };
         let mut game = Game::from_position(selection.rules, position);
 
         let mut before_last_move = None;

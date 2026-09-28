@@ -26,8 +26,12 @@
 ## 評価関数と教師データ
 
 評価関数の構成、追加する評価項目、および学習に使う教師の作り方を扱う調査である。
-評価項目の3文書は、項目の候補、計算の土台、係数の学習方法の順に読むとつながる。
+全体の方針は3つの観点で整理した総論から読み、必要に応じて構成案と一次資料を参照する。
+個別の評価項目については、追加候補、計算の土台、係数の学習方法の順に読むとつながる。
 
+- [評価関数を改善する3つの観点](evaluation-improvement-strategy.md)は、評価モデルの表現、教師局面と教師値、学習目標と更新方法ごとに、確認された問題、有望な方法、次の検証を整理する。
+- [評価関数の表現と更新費用の候補](evaluation-architecture-candidates.md)は、局所2駒表、低ランク分解、王駒の射線表、小型NNUEの入力、数式、容量、差分更新を具体化する。
+- [評価モデル、教師生成、学習方法の一次資料](evaluation-learning-primary-sources-2026-09.md)は、Bonanza、Stockfish、やねうら王、elmo、NineDayFever、およびRootStrapなどの研究を3つの観点で整理する。
 - [局面の進行度に応じた駒位置評価](tapered-pst.md)は、PSTを序中盤用と終盤用に分けて補間する方式の先例を、HaChuを含む一次資料で確認する。
 - [評価項目の追加候補の調査](evaluation-terms-survey.md)は、lishogi対局yO464dzlの敗因を受けて、王の遮蔽と開いた筋から王基準の関係表までの評価項目を導入の優先順に10段階へ分ける。
 - [評価項目が依存する土台の調査](evaluation-infrastructure-survey.md)は、先行エンジンが評価項目をどのデータ構造の上でどの時点の費用として得ているかを調べ、段階9でNPSが82.2%下がった原因と照合する。
@@ -61,6 +65,12 @@ lishogiでの実戦と外部エンジンとの対局棋譜から、minaseの弱�
 - [lishogi対局 yO464dzl の敗因分析](lishogi-game-yO464dzl-loss-analysis.md)は、517手で負けた対局の敗因を、評価関数が王の安全度を測れないことに求める。
 - [lishogi対局 WPgmFqSa の時間配分](lishogi-game-WPgmFqSa-time-management.md)は、160手目で本時間を使い切った対局のログから、反復の開始条件と序盤の配分を見直す根拠を示す。
 - [HaChuとMinaseの勝ち方・負け方](hachu-minase-playing-style-analysis.md)は、HaChuとの400局の保存棋譜から、両エンジンが勝つ局と負ける局の典型的な経過を比較する。
+
+## 開発の道具
+
+エンジン開発の道具について、外部資料と他エンジンの実装を調べた調査である。
+
+- [エンジン開発のデバッグ手法の調査](engine-debugging-survey.md)は、Chess Programming Wikiの「Debugging」頁と関連投稿、およびStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースから、デバッグ手法を照合、表示、統計、記録の4種類に整理し、minaseへの適用の可否を示す。
 
 ## 通信プロトコルと外部エンジン
 

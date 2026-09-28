@@ -39,7 +39,11 @@ pub(super) fn run_main_worker(
     ponder: bool,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    #[cfg(feature = "invariants")]
+    pst.assert_accumulator(position, searcher.accumulators[0], 0);
     let mut result = SearchResult {
+        #[cfg(feature = "search-stats")]
+        stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
         depth: 0,
@@ -129,6 +133,10 @@ pub(super) fn run_main_worker(
             break;
         }
     }
+    #[cfg(feature = "search-stats")]
+    {
+        result.stats = searcher.stats;
+    }
     let nodes = searcher.nodes;
     WorkerOutcome {
         worker_index: 0,
@@ -152,7 +160,11 @@ pub(super) fn run_auxiliary_worker(
     tt: &TranspositionTable,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt);
+    #[cfg(feature = "invariants")]
+    pst.assert_accumulator(position, searcher.accumulators[0], 0);
     let mut result = SearchResult {
+        #[cfg(feature = "search-stats")]
+        stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
         score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
         depth: 0,
@@ -172,6 +184,10 @@ pub(super) fn run_auxiliary_worker(
         if depth == depth_limit {
             break;
         }
+    }
+    #[cfg(feature = "search-stats")]
+    {
+        result.stats = searcher.stats;
     }
     let nodes = searcher.nodes;
     WorkerOutcome {

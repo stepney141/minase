@@ -62,6 +62,8 @@ impl Position {
         self.zobrist ^=
             keys.lion_trigger_state(previous_lion_taken) ^ keys.lion_trigger_state(None);
         self.lion_taken_by_non_lion = None;
+        #[cfg(feature = "invariants")]
+        self.assert_invariants("make null move", None);
         NullUndo {
             previous_lion_taken,
         }
@@ -77,6 +79,8 @@ impl Position {
         self.zobrist ^= keys.lion_trigger_state(self.lion_taken_by_non_lion)
             ^ keys.lion_trigger_state(undo.previous_lion_taken);
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
+        #[cfg(feature = "invariants")]
+        self.assert_invariants("unmake null move", None);
     }
 
     /// 手番を指定した複製を返す。
@@ -212,6 +216,9 @@ impl Position {
         self.zobrist ^= keys.lion_trigger_state(previous_lion_taken)
             ^ keys.lion_trigger_state(self.lion_taken_by_non_lion);
 
+        #[cfg(feature = "invariants")]
+        self.assert_invariants("make move", Some(mv));
+
         Undo {
             mv,
             moved_piece_before,
@@ -239,13 +246,54 @@ impl Position {
         }
         self.lion_taken_by_non_lion = undo.previous_lion_taken;
         self.zobrist = undo.previous_zobrist;
+        #[cfg(not(feature = "invariants"))]
         debug_assert_eq!(self.zobrist, self.recompute_zobrist());
+        #[cfg(not(feature = "invariants"))]
         debug_assert_eq!(self.rights_zobrist, self.recompute_rights_zobrist());
         self.promotion_deferred = undo.previous_promotion_deferred;
+        #[cfg(not(feature = "invariants"))]
         debug_assert_eq!(
             undo.previous_rights_zobrist,
             self.recompute_rights_zobrist()
         );
         self.rights_zobrist = undo.previous_rights_zobrist;
+        #[cfg(feature = "invariants")]
+        self.assert_invariants("unmake move", Some(undo.mv));
+    }
+}
+
+#[cfg(feature = "invariants")]
+impl Position {
+    /// 着手後の全不変条件を検査し、失敗時は変換に依存しない診断を残す。
+    fn assert_invariants(&self, operation: &str, mv: Option<Move>) {
+        use crate::notation::sfen::{SetupPosition, to_extended_sfen};
+        use std::fmt::Write;
+
+        let Err(error) = self.validate() else {
+            return;
+        };
+        let mut diagnostic = format!(
+            "position invariant failed after {operation}: {error}\nmove: {mv:?}\nside to move: {:?}\nzobrist: incremental={:#018x}, recomputed={:#018x}\nrights zobrist: incremental={:#018x}, recomputed={:#018x}\nboard raw codes (rank 0..11, file 0..11):\n",
+            self.side_to_move,
+            self.zobrist,
+            self.recompute_zobrist(),
+            self.rights_zobrist,
+            self.recompute_rights_zobrist(),
+        );
+        // PieceCodeのDebug表現は内部のu8をそのまま表示する。
+        // 空升・番兵も失わないようにpiece_atではなく盤面配列を読む。
+        for rank in 0..12 {
+            writeln!(diagnostic, "{:?}", &self.board[rank * 16..rank * 16 + 12])
+                .expect("writing to a String cannot fail");
+        }
+        if let Ok(setup) = SetupPosition::new(
+            self.clone(),
+            self.lion_taken_by_non_lion.map(|trigger| trigger.square),
+            1,
+        ) {
+            writeln!(diagnostic, "extended SFEN: {}", to_extended_sfen(&setup))
+                .expect("writing to a String cannot fail");
+        }
+        panic!("{diagnostic}");
     }
 }

@@ -21,6 +21,8 @@ mod quiesce;
 mod root;
 mod royal;
 mod scoring;
+#[cfg(feature = "search-stats")]
+mod stats;
 mod team;
 mod time;
 mod tt;

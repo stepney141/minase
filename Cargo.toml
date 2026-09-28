@@ -13,6 +13,8 @@ unsafe_code = "forbid"
 all = "warn"
 
 [features]
+invariants = []
+search-stats = []
 tuning = []
 
 [dependencies]
@@ -28,6 +30,10 @@ procfs = { version = "0.18.0", default-features = false }
 
 [dev-dependencies]
 flate2 = "1"
+# `cargo test`では整合検査を常に有効にする（docs/plans/debugging-tools.md「利用者の決定」の2）。
+# Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
+# `cargo build`と`cargo run`のバイナリには検査が入らない。
+minase = { path = ".", features = ["invariants"] }
 
 [profile.dev]
 opt-level = 3

@@ -12,23 +12,25 @@
 
 ## 状態
 
-進行中。2026年9月27日に着手し、段階開始版をコミット`df0c75e`に固定した。
-段階開始版は、SPSAの2回目の調整結果（22係数）を採用した後のmasterの先頭であり、その後のコミットはモジュールの再編と詰み距離の報告の修正だけである。
-利用者の決定により、本段階は[棋力向上の段階計画](strength-stages.md)の段階12とし、8項目をすべて範囲に含め、[探索部の反復負け回避](search-repetition.md)より先に測る。
-フェーズ1の診断（[strength-stage12-activation-diag](../measurements/strength-stage12-activation-diag.md)）を完了した。
-項目1、2、3、4、5、7、8は発動率の基準5%を満たし、項目6は予測誤差が悪化したので見送った。
-項目4の手数の上限は`N=1`、項目5で持ち越す表はbutterfly historyだけとした。
-項目1は、STC（[strength-stage12-aspiration-stc](../measurements/strength-stage12-aspiration-stc.md)）が1,360有効ペアで`H0`となったので採用せず、実装をコードから外した。
-項目2は、STC（[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)）が430有効ペアで`H0`となったので採用せず、実装をコードから外した。
-項目3は、STC（[strength-stage12-capture-history-stc](../measurements/strength-stage12-capture-history-stc.md)）が750有効ペアで`H0`となったので採用せず、実装をコードから外した。
-項目4は、STC（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）が147有効ペア、得点率27.0%で`H0`となったので採用せず、実装をコードから外した。
-項目5は、STC（[strength-stage12-history-carry-stc](../measurements/strength-stage12-history-carry-stc.md)）が2,539有効ペアで`H0`となったので採用せず、実装をコードから外した。
-項目7は、STC（[strength-stage12-null-move-stc](../measurements/strength-stage12-null-move-stc.md)）が上限の3,000ペアでLLR −2.81の`pending`となったので、LTCへ進めず採用しない。実装はコードから外した。
-項目8は、STC（[strength-stage12-pv-tt-cutoff-stc](../measurements/strength-stage12-pv-tt-cutoff-stc.md)）が1,346有効ペアで`H0`となったので採用せず、実装をコードから外した。
-採用した項目はなく、探索コードは段階開始版と同一である。
-次の一手は、フェーズ10の進捗指標の扱いを決めることである。
-最終構成が段階開始版と同じバイナリなので、段階開始版に対する固定200ペアのElo（`strength-stage12-elo200`）は測っても意味を持たない。
-HaChuに対する固定200ペアのEloは、SPSAの2回の調整を採用した後の版をHaChuと測った記録がまだないので、進捗指標として意味を持つ。
+完了（不採用）。2026年9月27日に段階開始版をコミット`df0c75e`に固定して着手し、2026年9月28日に完了した。
+段階開始版は、SPSAの2回目の調整結果（22係数）を採用した後のmasterの先頭である。
+フェーズ1の診断（[strength-stage12-activation-diag](../measurements/strength-stage12-activation-diag.md)）では、項目6を除く7項目が発動率の基準5%を満たし、項目6は予測誤差が悪化したので見送った。
+7項目はいずれも採用しなかった。
+
+| 項目 | STCの判定 | 有効ペア | 得点率 |
+|---|---|---:|---:|
+| 1　aspiration windowsのfail-high時の減深 | [`H0`](../measurements/strength-stage12-aspiration-stc.md) | 1,360 | 49.1% |
+| 2　負の捕獲手を後回しにする段 | [`H0`](../measurements/strength-stage12-bad-captures-stc.md) | 430 | 45.7% |
+| 3　捕獲履歴 | [`H0`](../measurements/strength-stage12-capture-history-stc.md) | 750 | 47.6% |
+| 4　静止探索の手数制限（`N=1`） | [`H0`](../measurements/strength-stage12-qsearch-limit-stc.md) | 147 | 27.0% |
+| 5　butterfly historyの持ち越し | [`H0`](../measurements/strength-stage12-history-carry-stc.md) | 2,539 | 49.8% |
+| 7　null move pruningの前提条件 | [上限到達時にLLRが負](../measurements/strength-stage12-null-move-stc.md) | 2,853 | 50.0% |
+| 8　PVノードでの置換表の打ち切りの停止 | [`H0`](../measurements/strength-stage12-pv-tt-cutoff-stc.md) | 1,346 | 49.1% |
+
+いずれもLTCへは進まず、実装はコードから外したので、探索コードは段階開始版と同一である。
+項目4の大敗から、失う良手の割合で閾値を選ぶ規則を深さの上限のない再帰に使えないことを[教訓](../lessons/recall-loss-does-not-bound-recursive-pruning.md)にした。
+フェーズ10の進捗指標のうち、段階開始版に対する固定200ペアは、最終構成が段階開始版と同じバイナリなので測らない。
+HaChuに対する固定200ペアは、利用者の決定により段階12の完了とは切り離し、SPSAの調整を採用した後の版の進捗指標として別に記録する。
 
 ## 目的
 

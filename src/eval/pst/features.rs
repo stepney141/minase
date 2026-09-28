@@ -8,7 +8,7 @@ pub(super) const FEATURE_COUNT: usize = 13_680;
 /// 駒種と現在の成り可否を区別した駒状態の総数。
 pub(super) const PIECE_STATE_COUNT: usize = 47;
 /// 駒と升の組からなる特徴の総数。
-const BOARD_FEATURE_COUNT: usize = 2 * PIECE_STATE_COUNT * 144;
+pub(super) const BOARD_FEATURE_COUNT: usize = 2 * PIECE_STATE_COUNT * 144;
 /// 成っていない駒の駒種番号から状態番号への表。成れる駒種は29以降の
 /// 「成れる」状態、それ以外は駒種番号そのものへ写す。
 const UNPROMOTED_STATES: [u8; PIECE_KIND_COUNT] = build_unpromoted_states();
@@ -174,24 +174,7 @@ mod tests {
             assert_eq!(white_features.len(), expected_count);
             white_features.sort_unstable();
 
-            let reflected_pieces: Vec<_> = Square::all()
-                .filter_map(|square| {
-                    position.piece_at(square).map(|piece| {
-                        let color = piece.color().unwrap().opposite();
-                        let kind = piece.kind().unwrap();
-                        let reflected_piece = if piece.is_promoted() {
-                            PieceCode::new_promoted(color, kind).unwrap()
-                        } else {
-                            PieceCode::new(color, kind).unwrap()
-                        };
-                        (sq(square.file(), 11 - square.rank()), reflected_piece)
-                    })
-                })
-                .collect();
-            let mut reflected = position_from_codes(Color::Black, &reflected_pieces);
-            if position.lion_taken_by_non_lion().is_some() {
-                reflected.set_lion_capture(Some(sq(3, 6))).unwrap();
-            }
+            let reflected = crate::test_util::reflect_ranks_and_swap_colors(&position);
             let mut black_features = Vec::new();
             active_features(&reflected, |feature| black_features.push(feature));
             black_features.sort_unstable();
