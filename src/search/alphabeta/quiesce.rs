@@ -72,7 +72,8 @@ impl Searcher<'_> {
                 Bound::Lower => hit.score >= beta,
                 Bound::Upper => hit.score <= original_alpha,
             };
-            if cutoff {
+            // docs/plans/strength-stage12.md「項目8」。PV判定はstand-pat前の窓を使う。
+            if beta - original_alpha <= 1 && cutoff {
                 return Some(hit.score);
             }
         }
