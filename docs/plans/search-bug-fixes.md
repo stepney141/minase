@@ -16,8 +16,8 @@
 進行中。2026年9月28日に起案し、同日に着手した。
 監査の基準コミット（監査報告の冒頭に記載）から分岐したブランチ`search-bug-fixes`で、当初は3件の修正を積み、1組の非劣性のSTCで不合格（[search-bug-fixes-noninferiority-stc](../measurements/search-bug-fixes-noninferiority-stc.md)、masterの得点率69.1%）となった。
 原因の診断では、stand-patの件の修正がその親コミットより有意に弱く（[search-bug-fixes-qsearch-evasion-diag-stc](../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)、親の得点率67.0%）、利用者の決定により、この件を不具合ではなく静止探索の近似と分類し直して本計画から外し、修正をブランチから取り除いた。
-残る2件の修正の診断（delta pruningの件、続いてnull moveの件）を実行している。
-次の一手は、2件の診断がいずれも`H1`でなければ、2件だけを積んだ版で非劣性のSTCをやり直すことである。
+delta pruningの件の診断は、3,000ペアの上限で判定が出ず、LLRは0.93（親コミットの得点率51.0%）だった（[search-bug-fixes-delta-promotion-diag-stc](../measurements/search-bug-fixes-delta-promotion-diag-stc.md)）。
+利用者の決定により、上限で判定が出なかったので、null moveの件の診断へ進む前に、delta pruningの件の修正を組に残すかどうかの判断を利用者に仰いでいる。
 
 ## 目的
 
