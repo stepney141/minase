@@ -24,10 +24,11 @@
 項目4は、STC（[strength-stage12-qsearch-limit-stc](../measurements/strength-stage12-qsearch-limit-stc.md)）が147有効ペア、得点率27.0%で`H0`となったので採用せず、実装をコードから外した。
 項目5は、STC（[strength-stage12-history-carry-stc](../measurements/strength-stage12-history-carry-stc.md)）が2,539有効ペアで`H0`となったので採用せず、実装をコードから外した。
 項目7は、STC（[strength-stage12-null-move-stc](../measurements/strength-stage12-null-move-stc.md)）が上限の3,000ペアでLLR −2.81の`pending`となったので、LTCへ進めず採用しない。実装はコードから外した。
-次の項目の基準は段階開始版のままである。
-基準の構成が段階開始版のままなので、項目8の発動率はフェーズ1の値（23.73%）をそのまま使った。
-フェーズ8の項目8を実装し、bench深さ6の総ノード数は1,653,278（段階開始版比1.47%減）、NPSは段階開始版と同程度だった。
-次の一手は、項目8の煙試験とSTCによる採否測定である。
+項目8は、STC（[strength-stage12-pv-tt-cutoff-stc](../measurements/strength-stage12-pv-tt-cutoff-stc.md)）が1,346有効ペアで`H0`となったので採用せず、実装をコードから外した。
+採用した項目はなく、探索コードは段階開始版と同一である。
+次の一手は、フェーズ10の進捗指標の扱いを決めることである。
+最終構成が段階開始版と同じバイナリなので、段階開始版に対する固定200ペアのElo（`strength-stage12-elo200`）は測っても意味を持たない。
+HaChuに対する固定200ペアのEloは、SPSAの2回の調整を採用した後の版をHaChuと測った記録がまだないので、進捗指標として意味を持つ。
 
 ## 目的
 
@@ -266,6 +267,9 @@ StockfishとYaneuraOuは打ち切りを非PVノードに限っている。
 分離した測定値はないが、変更が小さく、採否は本段階の自己対局そのものが判定するので項目に含め、最後に置く。
 
 発動率の分母はPVノード、分子は置換表の値で打ち切っていたPVノードとする。
+
+実装はbench深さ6の総ノード数を1.47%減らし、NPSは段階開始版と同程度だった。
+STCは1,346有効ペアで`H0`（得点率49.1%、LLR −2.95）となったので、本項目は採用しない（[strength-stage12-pv-tt-cutoff-stc](../measurements/strength-stage12-pv-tt-cutoff-stc.md)）。
 
 ## 測定の所要時間
 
