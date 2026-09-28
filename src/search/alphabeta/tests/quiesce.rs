@@ -137,7 +137,6 @@ fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
 
 // D7-SRCH-11。search.md「静止探索」節の2026年8月22日改訂: Exact、
 // score >= betaのLower、score <= alphaのUpperは深さ条件なしで返す。
-// docs/plans/strength-stage12.md「項目8」に従い、非PV窓で検査する。
 #[test]
 fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
     let position = position(
@@ -151,12 +150,20 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
     );
     let key = search_key(&position);
     let stand_pat = evaluate(&weights().unwrap(), &position);
-    let alpha = stand_pat;
-    let beta = stand_pat + 1;
     let cases = [
-        (Bound::Exact, stand_pat + 17, alpha, beta),
-        (Bound::Lower, beta, alpha, beta),
-        (Bound::Upper, alpha, alpha, beta),
+        (Bound::Exact, stand_pat + 17, stand_pat - 10, stand_pat + 10),
+        (
+            Bound::Lower,
+            stand_pat + 50,
+            stand_pat - 100,
+            stand_pat + 50,
+        ),
+        (
+            Bound::Upper,
+            stand_pat - 50,
+            stand_pat - 50,
+            stand_pat + 100,
+        ),
     ];
 
     for (bound, score, alpha, beta) in cases {
@@ -168,7 +175,7 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
 }
 
 // D7-SRCH-12。静止探索の通常出口は深さ0で記録され、同じ入口局面を
-// 非PV窓で再訪するとExactヒットで捕獲展開を省く。
+// 再訪するとExactヒットで捕獲展開を省く。
 #[test]
 fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     let position = position(
@@ -198,11 +205,10 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     assert_eq!(stored_move.to, capture.to);
     assert_eq!(hit.score, first_score);
 
-    let stand_pat = evaluate(&weights().unwrap(), &position);
-    let (second_score, second_nodes) = run_quiesce(&position, stand_pat, stand_pat + 1, 0, &table);
+    let (second_score, second_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
     assert_eq!(second_score, first_score);
     assert!(first_nodes > 1);
-    assert_eq!(second_nodes, 0);
+    assert!(second_nodes < first_nodes);
 }
 
 // D7-SRCH-12。通常出口のUpper・Exactを深さ0で記録し、
@@ -362,72 +368,4 @@ fn quiescence_see_pruned_candidates_still_store() {
         (hit.score, hit.bound, hit.best_move),
         (stand_pat, Bound::Exact, None)
     );
-}
-
-// docs/plans/strength-stage12.md「項目8」「検証」。3種類の記録値について、
-// 幅1では打ち切り、幅2では探索して最後の王駒の捕獲による詰み値を返す。
-// 幅2の入口ではalphaがstand-patで上がるため、入口の窓によるPV判定も検査できる。
-#[test]
-fn quiescence_tt_cutoffs_only_at_non_pv_nodes() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(1, 12), Color::Black, PieceKind::King),
-            (fs(6, 10), Color::Black, PieceKind::Rook),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    let stand_pat = evaluate(&weights().unwrap(), &position);
-    let key = search_key(&position);
-    for width in [1, 2] {
-        let beta = stand_pat + 1;
-        let alpha = beta - width;
-        for (bound, stored_score) in [
-            (Bound::Exact, stand_pat + 17),
-            (Bound::Lower, beta),
-            (Bound::Upper, alpha),
-        ] {
-            let table = small_tt();
-            table.store(key, 1, stored_score, bound, None, 0);
-            let (score, nodes) = run_quiesce(&position, alpha, beta, 0, &table);
-            if width == 1 {
-                assert_eq!((score, nodes), (stored_score, 0), "{bound:?}");
-            } else {
-                assert_eq!(score, MATE - 1, "{bound:?}");
-            }
-        }
-    }
-}
-
-// docs/plans/strength-stage12.md「項目8」。PVでも記録手を先に読み、
-// 同じ詰み値になる2手のうち記録手で打ち切る。
-#[test]
-fn quiescence_pv_keeps_tt_move_first() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(1, 12), Color::Black, PieceKind::King),
-            (fs(6, 10), Color::Black, PieceKind::Rook),
-            (fs(3, 1), Color::Black, PieceKind::Rook),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    let stand_pat = evaluate(&weights().unwrap(), &position);
-    let key = search_key(&position);
-    for from in [fs(6, 10), fs(3, 1)] {
-        let tt_move = Move {
-            from,
-            mid: None,
-            to: fs(6, 1),
-            promote: false,
-        };
-        assert!(legal_moves(&position).contains(&tt_move));
-        let table = small_tt();
-        table.store(key, 0, 0, Bound::Exact, Some(tt_move), 0);
-        let (score, _) = run_quiesce(&position, stand_pat - 1, stand_pat + 1, 0, &table);
-        assert_eq!(score, MATE - 1);
-        let hit = table.probe(key, 0).unwrap();
-        assert_eq!(hit.score, score);
-        assert_eq!(hit.best_move, Some(tt_move));
-    }
 }

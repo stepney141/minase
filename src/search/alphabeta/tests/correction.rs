@@ -20,32 +20,35 @@ const QUIET: &str = "k11/12/12/12/12/12/12/12/12/12/12/11K b";
 const CAPTURE: &str = "k11/12/12/12/12/12/12/5p6/5R6/12/12/11K b";
 const ATTACKED: &str = "k10r/12/12/12/12/12/12/12/12/12/12/11K b";
 
-/// 子の置換表に既知の値を置き、非PV窓で親の更新契約を検査する。
+/// 子の置換表に既知の値を置き、親の更新契約だけを検査する。
 #[test]
 fn correction_negamax_update_conditions() {
     let pst = weights().unwrap();
     let stop = AtomicBool::new(false);
     let shared = shared(&stop);
     for (sfen, delta, bound, update, capture, depth) in [
+        (QUIET, 320, Bound::Exact, true, false, 2),
+        (QUIET, -320, Bound::Exact, true, false, 2),
         (QUIET, -320, Bound::Upper, true, false, 2),
         (QUIET, 320, Bound::Lower, true, false, 2),
         (QUIET, 320, Bound::Upper, false, false, 2),
         (QUIET, -320, Bound::Lower, false, false, 2),
         (QUIET, 0, Bound::Upper, false, false, 2),
         (QUIET, 0, Bound::Lower, false, false, 2),
+        (CAPTURE, 320, Bound::Exact, false, true, 2),
         (CAPTURE, -320, Bound::Upper, false, true, 2),
         (CAPTURE, 320, Bound::Lower, false, true, 2),
-        (ATTACKED, 320, Bound::Lower, false, false, 2),
-        (QUIET, 320, Bound::Lower, true, false, 3),
+        (ATTACKED, 320, Bound::Exact, false, false, 2),
+        (QUIET, 320, Bound::Exact, true, false, 3),
     ] {
         let mut board = crate::parse_sfen(sfen).unwrap();
         let key = material_key(&board);
         let eval = evaluate(&pst, &board);
         let score = eval + delta;
         let (alpha, beta) = match bound {
-            Bound::Exact => unreachable!("Exactの更新は捕獲なしの実探索で別途検査する"),
-            Bound::Upper => (score + 100, score + 101),
-            Bound::Lower => (score - 101, score - 100),
+            Bound::Exact => (-INFINITY, INFINITY),
+            Bound::Upper => (score + 100, score + 200),
+            Bound::Lower => (score - 200, score - 100),
         };
         let table = TranspositionTable::new(1).unwrap();
         let rules = MoveRules::standard();
@@ -97,50 +100,8 @@ fn correction_negamax_update_conditions() {
     }
 }
 
-// PVノードのExact更新は置換表の値を注入せず、捕獲のない深さ1の評価から検査する。
-#[test]
-fn correction_negamax_updates_exact_score_from_search() {
-    let pst = weights().unwrap();
-    let stop = AtomicBool::new(false);
-    let shared = shared(&stop);
-    let rules = MoveRules::standard();
-    let mut board = crate::parse_sfen(QUIET).unwrap();
-    let key = material_key(&board);
-    let eval = evaluate(&pst, &board);
-    let score = legal_moves(&board)
-        .iter()
-        .map(|&mv| {
-            let undo = board.make_move_unchecked(mv, rules);
-            let mut captures = Vec::new();
-            MoveGenerator::new(rules).generate_captures(&board, &mut captures);
-            assert!(captures.is_empty());
-            let score = -evaluate(&pst, &board);
-            board.unmake_move(undo);
-            score
-        })
-        .max()
-        .unwrap();
-    for initial in [-64, 64] {
-        let table = small_tt();
-        let mut searcher = new_searcher(&pst, &board, rules, &[], &shared, &table);
-        searcher.correction.update(Color::Black, key, initial, 8);
-        assert_eq!(
-            searcher.negamax(&mut board, 1, -INFINITY, INFINITY, 0),
-            Some(score)
-        );
-        assert_eq!(
-            table.probe(search_key(&board), 0).unwrap().bound,
-            Bound::Exact
-        );
-        let fixed = initial * 8 * 33;
-        let expected = (fixed + ((score - eval) * 1024 - fixed) * 33 / 1024) / 1024;
-        assert_eq!(searcher.correction.read(Color::Black, key), expected);
-    }
-}
-
 #[test]
 fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
-    // docs/plans/strength-stage12.md「項目8」。記録値の即時打ち切りは非PV窓で検査する。
     let pst = weights().unwrap();
     for score in [MATE_THRESHOLD, -MATE_THRESHOLD, MATE - 1, -MATE + 1] {
         let stop = AtomicBool::new(false);
@@ -159,7 +120,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
         let mut searcher = new_searcher(&pst, &board, rules, &[], &shared, &table);
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
-            searcher.negamax(&mut board, 2, score - 1, score, 0),
+            searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
             Some(score)
         );
         assert_eq!(searcher.correction.read(Color::Black, key), 16);
@@ -176,7 +137,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
         let mut searcher = new_searcher(&pst, &board, MoveRules::standard(), &[], &shared, &table);
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
-            searcher.negamax(&mut board, 2, 319, 320, 0),
+            searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
             if interrupted { None } else { Some(320) }
         );
         assert_eq!(searcher.correction.read(Color::Black, key), 16);

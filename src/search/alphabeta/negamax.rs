@@ -39,8 +39,7 @@ impl Searcher<'_> {
         // 窓を狭めると、格納時のバウンド分類が実際に探索した窓と食い違う。
         if let Some(hit) = self.tt.probe(key, ply) {
             tt_move = hit.best_move;
-            // docs/plans/strength-stage12.md「項目8」。PVノードでは記録手だけを使う。
-            if beta - original_alpha <= 1 && u32::from(hit.depth) >= depth {
+            if u32::from(hit.depth) >= depth {
                 let cutoff = match hit.bound {
                     Bound::Exact => true,
                     Bound::Lower => hit.score >= beta,

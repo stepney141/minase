@@ -20,10 +20,10 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
     table.store(key, 0, 28_000, Bound::Exact, None, 0);
     assert_eq!(table.probe(key, 0).unwrap().depth, 0);
 
-    let (score, nodes) = run_negamax(&position, 1, -1, 0, 0, &table);
+    let (score, nodes) = run_negamax(&position, 1, -INFINITY, INFINITY, 0, &table);
     assert_ne!(score, 28_000);
     assert!(score.abs() < 29_000);
-    assert!(nodes > 0, "深さ1の子を探索しなければならない");
+    assert!(nodes > 1, "深さ1の子を探索しなければならない");
     assert_eq!(table.probe(key, 0).unwrap().depth, 1);
 }
 
@@ -108,7 +108,7 @@ fn null_move_cutoff_without_captures_counts_no_nodes() {
 }
 
 // docs/plans/strength-stage6.md「設計判断」のinternal iterative reduction。
-// 非PVノードの即時打ち切りは減深前の要求深さで判定し、深さが足りれば減深より先に返す。
+// 即時打ち切りは減深前の要求深さで判定し、深さが足りる場合は減深より先に返す。
 #[test]
 fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -116,7 +116,7 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
     for stored_depth in [2, 3] {
         let table = small_tt();
         table.store(key, stored_depth, 28_000, Bound::Exact, None, 0);
-        let (score, nodes) = run_negamax(&position, 3, -1, 0, 0, &table);
+        let (score, nodes) = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
         if stored_depth == 3 {
             assert_eq!((score, nodes), (28_000, 0));
             assert!(table.probe(key, 0).unwrap().best_move.is_none());
@@ -126,72 +126,5 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
             assert!(table.probe(key, 0).unwrap().best_move.is_some());
         }
         assert_eq!(u32::from(table.probe(key, 0).unwrap().depth), stored_depth);
-    }
-}
-
-// docs/plans/strength-stage12.md「項目8」「検証」。3種類の記録値について、
-// 幅1では打ち切り、幅2では探索して最後の王駒の捕獲による詰み値を返す。
-#[test]
-fn negamax_tt_cutoffs_only_at_non_pv_nodes() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(1, 12), Color::Black, PieceKind::King),
-            (fs(6, 10), Color::Black, PieceKind::Rook),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    let stand_pat = evaluate(&weights().unwrap(), &position);
-    let key = search_key(&position);
-    for width in [1, 2] {
-        let beta = stand_pat + 1;
-        let alpha = beta - width;
-        for (bound, stored_score) in [
-            (Bound::Exact, stand_pat + 17),
-            (Bound::Lower, beta),
-            (Bound::Upper, alpha),
-        ] {
-            let table = small_tt();
-            table.store(key, 1, stored_score, bound, None, 0);
-            let (score, nodes) = run_negamax(&position, 1, alpha, beta, 0, &table);
-            if width == 1 {
-                assert_eq!((score, nodes), (stored_score, 0), "{bound:?}");
-            } else {
-                assert_eq!(score, MATE - 1, "{bound:?}");
-            }
-        }
-    }
-}
-
-// docs/plans/strength-stage12.md「項目8」。PVでも記録手を先に読み、
-// 同じ詰み値になる2手のうち記録手で打ち切る。
-#[test]
-fn negamax_pv_keeps_tt_move_first() {
-    let position = position(
-        Color::Black,
-        &[
-            (fs(1, 12), Color::Black, PieceKind::King),
-            (fs(6, 10), Color::Black, PieceKind::Rook),
-            (fs(3, 1), Color::Black, PieceKind::Rook),
-            (fs(6, 1), Color::White, PieceKind::King),
-        ],
-    );
-    let stand_pat = evaluate(&weights().unwrap(), &position);
-    let key = search_key(&position);
-    for from in [fs(6, 10), fs(3, 1)] {
-        let tt_move = Move {
-            from,
-            mid: None,
-            to: fs(6, 1),
-            promote: false,
-        };
-        assert!(legal_moves(&position).contains(&tt_move));
-        let table = small_tt();
-        table.store(key, 1, 0, Bound::Exact, Some(tt_move), 0);
-        let (score, _) = run_negamax(&position, 1, stand_pat - 1, stand_pat + 1, 0, &table);
-        assert_eq!(score, MATE - 1);
-        let hit = table.probe(key, 0).unwrap();
-        assert_eq!(hit.score, score);
-        assert_eq!(hit.best_move, Some(tt_move));
     }
 }
