@@ -66,6 +66,7 @@
 | 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 起案 | |
 | 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 | デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 完了（採用） | 2026年9月27日 |
+| 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 起案 | |
 
 ## 現在地
 
@@ -82,6 +83,10 @@
   - [教師の混合比](plans/teacher-mixing-ratio.md)では、λ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となった。
   - [探索局面を用いた学習](plans/search-aware-evaluation.md)では、探索局面を半数混ぜた候補Bは対照Aに対して、通常局面だけを深い教師で学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
   - [相対2駒評価](plans/relative-pair-eval.md)は、事前登録した判定で配置に依存する残存誤りの根拠が得られず、未実装で見送った。大きな着手の誤りを示した6根は、いずれも100,000ノードの探索の名目深さ内に駒の損得の差が現れる型だったが、各枝の到達深さと原因は追跡で確かめる必要がある（[準備記録](measurements/relative-pair-prep.md)）。
+
+### 進行中
+
+- [探索部の不具合修正](plans/search-bug-fixes.md)は、[探索部の不具合監査](audits/search-bugs-2026-09-28.md)が確認した3件（静止探索のdelta pruningが成り益を無視すること、王駒がすべて狙われている静止探索の局面でstand-patを使うこと、反復の検出がnull moveをまたぐこと）を修正し、masterに対する非劣性で採否を判定する。2026年9月28日に起案し、非劣性の測定はHaChuとの固定200ペアの測定の終了後に始める。
 
 ### 次の候補
 

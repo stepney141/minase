@@ -1,0 +1,268 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index 62af21c..ae7a599 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -292,6 +292,8 @@ fn run_bench(
+                 result.score,
+                 elapsed.as_secs_f64()
+             );
++            println!("probe cumulative [null_tries, null_cuts, cross_null_reps, immediate_reps] = {:?}", minase::search::probe_counters());
++            println!("probeq cumulative [q_nodes(after standpat), q_nodes_with_missed_capture_promotion, standpat_cuts, standpat_cuts_with_all_royals_attacked, noncut_q_nodes_with_all_royals_attacked] = {:?}", minase::search::probe_q_counters());
+             #[cfg(feature = "search-stats")]
+             println!("{}", format_stats(&result.stats));
+         }
+diff --git a/src/search/alphabeta/mod.rs b/src/search/alphabeta/mod.rs
+index b2ae371..5eda63b 100644
+--- a/src/search/alphabeta/mod.rs
++++ b/src/search/alphabeta/mod.rs
+@@ -21,3 +21,26 @@ use crate::search::MATE;
+ 
+ /// 探索窓の初期値。全評価値より大きい。
+ const INFINITY: i32 = MATE + 1;
++
++/// PROBE: null move診断の累積カウンタ。
++pub fn probe_counters() -> [u64; 4] {
++    use core::sync::atomic::Ordering::Relaxed;
++    [
++        searcher::PROBE_NULL_TRIES.load(Relaxed),
++        searcher::PROBE_NULL_CUTS.load(Relaxed),
++        searcher::PROBE_CROSS_NULL_REPS.load(Relaxed),
++        searcher::PROBE_IMMEDIATE_REPS.load(Relaxed),
++    ]
++}
++
++/// PROBE: 静止探索診断のカウンタ。
++pub fn probe_q_counters() -> [u64; 5] {
++    use core::sync::atomic::Ordering::Relaxed;
++    [
++        searcher::PROBE_Q_NODES.load(Relaxed),
++        searcher::PROBE_Q_PROMO_MISSED_NODES.load(Relaxed),
++        searcher::PROBE_SP_CUT.load(Relaxed),
++        searcher::PROBE_SP_CUT_LASTROYAL_ATTACKED.load(Relaxed),
++        searcher::PROBE_SP_NOCUT_LASTROYAL_ATTACKED.load(Relaxed),
++    ]
++}
+diff --git a/src/search/alphabeta/negamax.rs b/src/search/alphabeta/negamax.rs
+index 550d106..79cc250 100644
+--- a/src/search/alphabeta/negamax.rs
++++ b/src/search/alphabeta/negamax.rs
+@@ -93,6 +93,8 @@ impl Searcher<'_> {
+                 .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
+             self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
+             let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
++            let previous_null_path_len = self.null_path_len.replace(self.path_keys.len());
++            super::searcher::PROBE_NULL_TRIES.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+             let score = self
+                 .negamax(
+                     position,
+@@ -103,9 +105,11 @@ impl Searcher<'_> {
+                 )
+                 .map(|value| -value);
+             self.null_move_ply = previous_null_move_ply;
++            self.null_path_len = previous_null_path_len;
+             position.unmake_null_move(undo);
+             let score = score?;
+             if score >= beta {
++                super::searcher::PROBE_NULL_CUTS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                 return Some(if score.abs() >= MATE_THRESHOLD {
+                     beta
+                 } else {
+@@ -293,7 +297,21 @@ impl Searcher<'_> {
+         }
+         let undo = position.make_move_unchecked(mv, self.rules);
+         let key = search_key(position);
+-        let repeated = self.history_keys.contains(&key) || self.path_keys.contains(&key);
++        let repeated = match self.null_path_len {
++            None => self.history_keys.contains(&key) || self.path_keys.contains(&key),
++            Some(boundary) => {
++                let after_null = self.path_keys[boundary..].contains(&key);
++                let cross = !after_null
++                    && (self.history_keys.contains(&key) || self.path_keys[..boundary].contains(&key));
++                if cross {
++                    super::searcher::PROBE_CROSS_NULL_REPS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
++                    if self.path_keys.len() == boundary {
++                        super::searcher::PROBE_IMMEDIATE_REPS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
++                    }
++                }
++                after_null || (cross && !super::searcher::probe_skip())
++            }
++        };
+         if repeated {
+             position.unmake_move(undo);
+             return Some(DRAW_SCORE);
+diff --git a/src/search/alphabeta/quiesce.rs b/src/search/alphabeta/quiesce.rs
+index b19b298..f257afa 100644
+--- a/src/search/alphabeta/quiesce.rs
++++ b/src/search/alphabeta/quiesce.rs
+@@ -55,12 +55,15 @@ impl Searcher<'_> {
+             .pst
+             .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+         if stand_pat >= beta {
++            super::searcher::probe_standpat(position, true);
+             return Some(stand_pat);
+         }
++        super::searcher::probe_standpat(position, false);
+ 
+         let original_alpha = alpha;
+         alpha = alpha.max(stand_pat);
+         let threshold = alpha - stand_pat - self.delta_margin;
++        super::searcher::probe_qsearch(self, position, threshold);
+         let buffers = &mut self.qsearch[ply as usize];
+         buffers.reset(position);
+         if !buffers.initialize(
+diff --git a/src/search/alphabeta/searcher.rs b/src/search/alphabeta/searcher.rs
+index 348715d..5c86375 100644
+--- a/src/search/alphabeta/searcher.rs
++++ b/src/search/alphabeta/searcher.rs
+@@ -53,6 +53,7 @@ pub(super) fn new_searcher<'a>(
+         history_keys,
+         path_keys: vec![search_key(position)],
+         null_move_ply: None,
++        null_path_len: None,
+         nodes: 0,
+         shared,
+         stop_reason: None,
+@@ -100,6 +101,8 @@ pub(super) struct Searcher<'a> {
+     pub(super) path_keys: Vec<u64>,
+     /// null moveで到達した直後のノードのply。
+     pub(super) null_move_ply: Option<u32>,
++    /// PROBE: 直近のnull move時点のpath_keys長。
++    pub(super) null_path_len: Option<usize>,
+     /// 実際の着手を盤面へ適用した回数。
+     pub(super) nodes: u64,
+     /// 探索チームで共有する停止状態と予算。
+@@ -209,3 +212,56 @@ impl Searcher<'_> {
+         }
+     }
+ }
++
++pub static PROBE_NULL_TRIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_NULL_CUTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_CROSS_NULL_REPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_IMMEDIATE_REPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub fn probe_skip() -> bool { std::env::var_os("PROBE_SKIP_CROSS_NULL").is_some() }
++
++pub static PROBE_Q_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_Q_PROMO_MISSED_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_Q_PROMO_MISSED_BETA: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_SP_CUT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_SP_CUT_LASTROYAL_ATTACKED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static PROBE_SP_NOCUT_LASTROYAL_ATTACKED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++
++fn all_royals_attacked(position: &Position) -> bool {
++    let side = position.side_to_move();
++    let royals = position.royal_pieces(side);
++    !royals.is_empty() && royals.into_iter().all(|square| {
++        !position.attackers_to_by(side.opposite(), square, position.occupied()).is_empty()
++    })
++}
++
++pub(super) fn probe_standpat(position: &Position, cut: bool) {
++    if std::env::var_os("PROBE_Q").is_none() { return; }
++    use std::sync::atomic::Ordering::Relaxed;
++    let attacked = all_royals_attacked(position);
++    if cut {
++        PROBE_SP_CUT.fetch_add(1, Relaxed);
++        if attacked { PROBE_SP_CUT_LASTROYAL_ATTACKED.fetch_add(1, Relaxed); }
++    } else if attacked {
++        PROBE_SP_NOCUT_LASTROYAL_ATTACKED.fetch_add(1, Relaxed);
++    }
++}
++
++pub(super) fn probe_qsearch(searcher: &Searcher<'_>, position: &Position, threshold: i32) {
++    if std::env::var_os("PROBE_Q").is_none() { return; }
++    use std::sync::atomic::Ordering::Relaxed;
++    PROBE_Q_NODES.fetch_add(1, Relaxed);
++    let mut moves = Vec::new();
++    searcher.generator.generate_captures(position, &mut moves);
++    let mut missed = false;
++    for mv in moves {
++        if !mv.promote || MoveGenerator::is_excluded_lion_capture(position, mv) { continue; }
++        let captured: i32 = position.captured_squares(mv).into_iter().flatten()
++            .map(|sq| searcher.pst.piece_value(position.piece_at(sq).unwrap())).sum();
++        let piece = position.piece_at(mv.from).unwrap();
++        let gain = searcher.pst.piece_value(piece.promote().unwrap()) - searcher.pst.piece_value(piece);
++        if captured <= threshold && captured + gain > threshold {
++            missed = true;
++        }
++    }
++    if missed { PROBE_Q_PROMO_MISSED_NODES.fetch_add(1, Relaxed); }
++}
+diff --git a/src/search/alphabeta/tests/mod.rs b/src/search/alphabeta/tests/mod.rs
+index 785a84f..c39d1fb 100644
+--- a/src/search/alphabeta/tests/mod.rs
++++ b/src/search/alphabeta/tests/mod.rs
+@@ -462,3 +462,4 @@ fn assert_ponder_running(handle: &SearchHandle, duration: Duration) {
+         }
+     }
+ }
++mod probe_bugs;
+diff --git a/src/search/alphabeta/tests/probe_bugs.rs b/src/search/alphabeta/tests/probe_bugs.rs
+new file mode 100644
+index 0000000..364d070
+--- /dev/null
++++ b/src/search/alphabeta/tests/probe_bugs.rs
+@@ -0,0 +1,51 @@
++//! PROBE: バグ調査用の一時テスト（コミットしない）。
++
++use super::*;
++
++#[test]
++fn probe_delta_pruning_ignores_capture_promotion_gain() {
++    let position = crate::parse_sfen("11k/12/6p5/12/6O5/12/12/12/12/12/12/K11 b").unwrap();
++    let pst = weights().unwrap();
++    let stand_pat = crate::eval::evaluate(&pst, &position);
++    let moves = legal_moves(&position);
++    let mut best_capture = None;
++    for &mv in &moves {
++        let mut child = position.clone();
++        let undo = child.make_move_unchecked(mv, engine_rules());
++        if undo.captured.iter().flatten().next().is_some() {
++            let score = -crate::eval::evaluate(&pst, &child);
++            println!("capture {mv:?} promote={} child_score={score}", mv.promote);
++            best_capture = best_capture.max(Some(score));
++        }
++    }
++    println!("stand_pat={stand_pat} best_capture_static={best_capture:?}");
++    for (alpha, beta) in [(-INFINITY, INFINITY), (1300, 1301), (stand_pat + 200, stand_pat + 201)] {
++        with_root_searcher(&position, &[], |searcher| {
++            let mut current = position.clone();
++            let value = searcher.quiesce(&mut current, alpha, beta, 0).unwrap();
++            println!("quiesce window=({alpha},{beta}) -> {value}");
++        });
++    }
++}
++
++#[test]
++fn probe_stand_pat_with_last_royal_attacked() {
++    // codexの再現局面: 後手12j12kで先手の最後の王駒に王手。
++    let mut position =
++        crate::parse_sfen("11k/12/12/12/12/12/12/3b8/12/r2n8/P11/KP10 w").unwrap();
++    let pst = weights().unwrap();
++    for depth in 1..=3 {
++        let result = run_search(
++            &position,
++            engine_rules(),
++            &legal_moves(&position),
++            &[search_key(&position)],
++            &depth_limits(depth),
++            DEFAULT_THREADS,
++            &mut small_tt(),
++        );
++        println!("depth={depth} score={} best={:?}", result.score, result.best_move);
++    }
++    let _ = &mut position;
++    let _ = pst;
++}
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index baa7339..187f603 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -17,6 +17,7 @@ pub use alphabeta::tt::{
+     DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError,
+ };
+ pub use error::SearchError;
++pub use alphabeta::{probe_counters, probe_q_counters};
+ pub use events::{SearchEvent, SearchResult, StopReason};
+ pub use handle::{SearchHandle, search, start_search};
+ pub use limits::{ClockLimits, SearchLimits};
