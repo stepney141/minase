@@ -1,15 +1,15 @@
 # Minase
 
 Minase is a legal-move generation library and playing engine for chu shogi, written in Rust.
-It follows the rules of the Japan Chu Shogi Federation by default, and the local rules used by lishogi, HaChu, and other sources can be selected through rule codes.
+It follows the rules of [Japan Chu Shogi Association](https://www.chushogi-renmei.com/) by default, and the local rules used by lishogi, [HaChu](https://salsa.debian.org/debian/hachu), and other sources can be selected through rule codes.
 The supported rules and their sources are documented in [RULES.md](RULES.md) (Japanese).
 
 ## Overview
 
-- Rules. The implementation covers the lion's two-step move (igui and jitto), the sente-lion restriction, protection of the lion (including indirect protection through a discovered attack), promotion rights, repetition, and bare-king endings. Local rules are selected with rule codes (groups L, P, R, and E) or with the presets `engine-default` and `lishogi`.
-- Protocols. The engine speaks USI (including the lishogi extensions) and CECP (XBoard).
-- Search and evaluation. The search uses alpha-beta, quiescence search, iterative deepening, a transposition table, and Lazy SMP for parallel search. The evaluation is a piece-square table interpolated by game phase.
-- Verification. The repository includes unit tests, perft, replay checks against real game records, and an SPRT self-play harness.
+- Rules: The implementation covers the lion's two-step move (igui and jitto), the sente-lion restriction, protection of the lion (including indirect protection through a discovered attack), promotion rights, repetition, and bare-king endings. Local rules are selected with rule codes (groups L, P, R, and E) or with the presets `engine-default` and `lishogi`.
+- Protocols: The engine speaks USI (including the lishogi extensions) and CECP (XBoard).
+- Search and evaluation: The search uses alpha-beta, quiescence search, iterative deepening, a transposition table, and Lazy SMP for parallel search. The evaluation is a piece-square table interpolated by game phase.
+- Verification: The repository includes unit tests, perft, replay checks against real game records, and an SPRT self-play harness.
 - `unsafe` code is forbidden across the crate through the lint settings in Cargo.toml.
 
 ## Requirements
@@ -48,11 +48,6 @@ Both `--protocol` and `--rules` are required.
 - `engine-default`: the standard rules (L0,P0,R1,E0)
 - `lishogi`: the rules used on lishogi (L1,L2,P0,P3,R1,E1,E3)
 - A comma-separated list of rule codes. The list must contain exactly one code from each of the groups L, P, R, and E (RULES.md, Article 33).
-
-### GUIs and bots
-
-In a USI-compatible GUI, register the engine path with the arguments `--protocol usi --rules engine-default`.
-A development GUI lives in the separate repository minase-gui, and the setup for running the engine as a bot on lishogi lives in minase-lishogi-bot.
 
 ## Using Minase as a library
 
