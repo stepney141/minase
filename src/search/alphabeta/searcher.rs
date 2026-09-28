@@ -53,6 +53,7 @@ pub(super) fn new_searcher<'a>(
         history_keys,
         path_keys: vec![search_key(position)],
         null_move_ply: None,
+        null_move_boundary: None,
         nodes: 0,
         shared,
         stop_reason: None,
@@ -100,6 +101,9 @@ pub(super) struct Searcher<'a> {
     pub(super) path_keys: Vec<u64>,
     /// null moveで到達した直後のノードのply。
     pub(super) null_move_ply: Option<u32>,
+    /// 直近のnull move直後の局面キーが探索経路に占める位置。
+    /// 部分木内の反復判定はこの境界以降だけを参照する。
+    pub(super) null_move_boundary: Option<usize>,
     /// 実際の着手を盤面へ適用した回数。
     pub(super) nodes: u64,
     /// 探索チームで共有する停止状態と予算。
@@ -133,6 +137,14 @@ pub(super) struct Searcher<'a> {
 }
 
 impl Searcher<'_> {
+    /// null moveの部分木では境界以降だけ、それ以外では対局履歴と全経路を照合する。
+    pub(super) fn is_repetition(&self, key: u64) -> bool {
+        match self.null_move_boundary {
+            Some(boundary) => self.path_keys[boundary..].contains(&key),
+            None => self.history_keys.contains(&key) || self.path_keys.contains(&key),
+        }
+    }
+
     /// 実着手の適用直前に停止条件を検査し、続行可能なら適用回数を数える。
     pub(super) fn enter_node(&mut self) -> bool {
         if self.shared.observe_external_stop() {

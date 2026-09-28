@@ -84,27 +84,8 @@ impl Searcher<'_> {
             && has_non_royal_piece
         {
             let reduction = null_move_reduction(depth);
-            let lion_before = position
-                .lion_taken_by_non_lion()
-                .map(|trigger| trigger.square);
-            let undo = position.make_null_move();
-            self.accumulators[(ply + 1) as usize] = self
-                .pst
-                .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
-            self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
-            let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
-            let score = self
-                .negamax(
-                    position,
-                    depth.saturating_sub(1 + reduction),
-                    -beta,
-                    -beta + 1,
-                    ply + 1,
-                )
-                .map(|value| -value);
-            self.null_move_ply = previous_null_move_ply;
-            position.unmake_null_move(undo);
-            let score = score?;
+            let score =
+                self.search_null_move(position, depth.saturating_sub(1 + reduction), beta, ply)?;
             if score >= beta {
                 return Some(if score.abs() >= MATE_THRESHOLD {
                     beta
@@ -265,10 +246,41 @@ impl Searcher<'_> {
         Some(best_score)
     }
 
+    /// null moveの部分木を探索し、局面と探索状態を復元してから値を返す。
+    pub(super) fn search_null_move(
+        &mut self,
+        position: &mut Position,
+        depth: u32,
+        beta: i32,
+        ply: u32,
+    ) -> Option<i32> {
+        let lion_before = position
+            .lion_taken_by_non_lion()
+            .map(|trigger| trigger.square);
+        let undo = position.make_null_move();
+        self.accumulators[(ply + 1) as usize] = self
+            .pst
+            .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
+        self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
+        let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
+        let previous_null_move_boundary = self.null_move_boundary.replace(self.path_keys.len());
+        // このキー自体では反復を判定せず、部分木内の実着手からの参照点にする。
+        self.path_keys.push(search_key(position));
+        let score = self
+            .negamax(position, depth, -beta, -beta + 1, ply + 1)
+            .map(|value| -value);
+        self.path_keys.pop();
+        self.null_move_boundary = previous_null_move_boundary;
+        self.null_move_ply = previous_null_move_ply;
+        position.unmake_null_move(undo);
+        score
+    }
+
     /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。
     ///
     /// 王駒をすべて取る手は子局面での終局値`MATE - (ply + 1)`を返す。
-    /// 対局履歴または探索経路と同一の局面は引き分け値とする。
+    /// 対局履歴または探索経路との反復は引き分け値とする。
+    /// null moveの部分木では、直近のnull move直後以降の経路だけを参照する。
     /// 2手目以降は零窓で探索する。減深した探索がαを超えた場合は通常深さの零窓、
     /// さらに窓内なら全窓で再探索する。
     #[allow(clippy::too_many_arguments)]
@@ -293,8 +305,7 @@ impl Searcher<'_> {
         }
         let undo = position.make_move_unchecked(mv, self.rules);
         let key = search_key(position);
-        let repeated = self.history_keys.contains(&key) || self.path_keys.contains(&key);
-        if repeated {
+        if self.is_repetition(key) {
             position.unmake_move(undo);
             return Some(DRAW_SCORE);
         }
