@@ -18,18 +18,6 @@ pub(super) fn royal_under_attack(position: &Position) -> bool {
     })
 }
 
-/// 手番側に王駒があり、そのすべてに相手駒の利きが届くかを返す。
-pub(super) fn all_royals_under_attack(position: &Position) -> bool {
-    let side = position.side_to_move();
-    let royals = position.royal_pieces(side);
-    !royals.is_empty()
-        && royals.into_iter().all(|square| {
-            !position
-                .attackers_to_by(side.opposite(), square, position.occupied())
-                .is_empty()
-        })
-}
-
 /// 着手が相手の残存王駒をすべて取るかを返す(第21条第1項)。
 pub(super) fn captures_last_royal(position: &Position, mv: Move) -> bool {
     captured_last_royal(position, position.captured_squares(mv))
