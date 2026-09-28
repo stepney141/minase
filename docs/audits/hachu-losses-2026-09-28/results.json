@@ -1,0 +1,998 @@
+[
+ {
+  "pair": 19,
+  "game": 1,
+  "color": "white",
+  "ply": 235,
+  "plies": 351,
+  "eval_before": -114,
+  "depth_before": 11,
+  "eval_after": -1964,
+  "depth_after": 12,
+  "minase_move": "4a4b",
+  "hachu_reply": "7h7j",
+  "minase_royals": [
+   "6a:^ 玉"
+  ],
+  "deep_p0": {
+   "best": "5b4b",
+   "score": [
+    "cp",
+    -720
+   ],
+   "depth": 12,
+   "pv": [
+    "5b4b",
+    "7h7j",
+    "4b3b",
+    "4h3g",
+    "3b3g",
+    "3i3g",
+    "3l2k",
+    "10j10l"
+   ]
+  },
+  "deep_p1": {
+   "best": "7h7j",
+   "score": [
+    "cp",
+    2096
+   ],
+   "depth": 18,
+   "pv": [
+    "7h7j",
+    "7c6c",
+    "3i4j",
+    "3l5l",
+    "6k5l",
+    "6c7d"
+   ]
+  },
+  "deep_p2": {
+   "best": "7c6c",
+   "score": [
+    "cp",
+    -2096
+   ],
+   "depth": 18,
+   "pv": [
+    "7c6c"
+   ]
+  },
+  "static_p0": -70,
+  "static_p2": 28
+ },
+ {
+  "pair": 24,
+  "game": 1,
+  "color": "white",
+  "ply": 417,
+  "plies": 467,
+  "eval_before": -291,
+  "depth_before": 10,
+  "eval_after": -651,
+  "depth_after": 12,
+  "minase_move": "3k5i",
+  "hachu_reply": "5k6j",
+  "minase_royals": [
+   "8a:^ 玉"
+  ],
+  "deep_p0": {
+   "best": "3k5i",
+   "score": [
+    "cp",
+    -402
+   ],
+   "depth": 13,
+   "pv": [
+    "3k5i",
+    "7j6j",
+    "5i11i",
+    "7e8e",
+    "8c7d",
+    "7k8k",
+    "11i4i",
+    "9j8i"
+   ]
+  },
+  "deep_p1": {
+   "best": "5k6j",
+   "score": [
+    "cp",
+    987
+   ],
+   "depth": 17,
+   "pv": [
+    "5k6j",
+    "5i11i",
+    "12a12e",
+    "10l10c",
+    "7e8e",
+    "8c9c",
+    "7j7i",
+    "11i11h"
+   ]
+  },
+  "deep_p2": {
+   "best": "5i11i",
+   "score": [
+    "cp",
+    -1161
+   ],
+   "depth": 17,
+   "pv": [
+    "5i11i",
+    "12a12e",
+    "10l10c",
+    "7e8e",
+    "8c7d",
+    "12e12j",
+    "11i11k",
+    "9j8k"
+   ]
+  },
+  "static_p0": 50,
+  "static_p2": 57
+ },
+ {
+  "pair": 26,
+  "game": 1,
+  "color": "white",
+  "ply": 397,
+  "plies": 447,
+  "eval_before": 2005,
+  "depth_before": 11,
+  "eval_after": 1416,
+  "depth_after": 10,
+  "minase_move": "8e7f",
+  "hachu_reply": "11g10h",
+  "minase_royals": [
+   "5a:^ 玉"
+  ],
+  "deep_p0": {
+   "best": "8e7f",
+   "score": [
+    "cp",
+    1753
+   ],
+   "depth": 14,
+   "pv": [
+    "8e7f",
+    "7e5c",
+    "6c5c",
+    "11g11h",
+    "9e8e",
+    "4b4e",
+    "6b7b",
+    "4e5e"
+   ]
+  },
+  "deep_p1": {
+   "best": "11g10h",
+   "score": [
+    "cp",
+    -1192
+   ],
+   "depth": 17,
+   "pv": [
+    "11g10h",
+    "6b4b",
+    "5f6f",
+    "7f8e",
+    "6f8d+",
+    "8e8d",
+    "7e8d",
+    "5a6a"
+   ]
+  },
+  "deep_p2": {
+   "best": "6b4b",
+   "score": [
+    "cp",
+    1192
+   ],
+   "depth": 16,
+   "pv": [
+    "6b4b",
+    "5f6f",
+    "7f8e",
+    "6f8d+",
+    "8e8d",
+    "7e8d",
+    "5a6a",
+    "8d9e"
+   ]
+  },
+  "static_p0": 2539,
+  "static_p2": 2476
+ },
+ {
+  "pair": 35,
+  "game": 0,
+  "color": "black",
+  "ply": 700,
+  "plies": 870,
+  "eval_before": 1522,
+  "depth_before": 13,
+  "eval_after": 1084,
+  "depth_after": 12,
+  "minase_move": "5j5g",
+  "hachu_reply": "6f5g",
+  "minase_royals": [
+   "5l:王"
+  ],
+  "deep_p0": {
+   "best": "7k8k",
+   "score": [
+    "cp",
+    924
+   ],
+   "depth": 17,
+   "pv": [
+    "7k8k",
+    "5g5j",
+    "7j5j",
+    "1h1i+",
+    "2j1i",
+    "1d1i+",
+    "2k2j"
+   ]
+  },
+  "deep_p1": {
+   "best": "6f5g",
+   "score": [
+    "cp",
+    -777
+   ],
+   "depth": 16,
+   "pv": [
+    "6f5g",
+    "7j6j",
+    "1h1i+",
+    "2j1i",
+    "1d1i+",
+    "2k3j",
+    "8d9d",
+    "3j3i"
+   ]
+  },
+  "deep_p2": {
+   "best": "7k6j",
+   "score": [
+    "cp",
+    749
+   ],
+   "depth": 15,
+   "pv": [
+    "7k6j",
+    "1h1k+",
+    "2j1k",
+    "1d1k+",
+    "2k3j",
+    "1k1h",
+    "3l4k",
+    "8d9d"
+   ]
+  },
+  "static_p0": 2472,
+  "static_p2": 1962
+ },
+ {
+  "pair": 44,
+  "game": 0,
+  "color": "black",
+  "ply": 272,
+  "plies": 348,
+  "eval_before": 1219,
+  "depth_before": 9,
+  "eval_after": 135,
+  "depth_after": 11,
+  "minase_move": "5l5h",
+  "hachu_reply": "9e9c",
+  "minase_royals": [
+   "7l:王"
+  ],
+  "deep_p0": {
+   "best": "11b10b",
+   "score": [
+    "cp",
+    985
+   ],
+   "depth": 12,
+   "pv": [
+    "11b10b",
+    "8c7b",
+    "5l5h",
+    "8f8e",
+    "5h5k",
+    "9e10g",
+    "12i12h",
+    "12e12h"
+   ]
+  },
+  "deep_p1": {
+   "best": "9e9c",
+   "score": [
+    "cp",
+    730
+   ],
+   "depth": 16,
+   "pv": [
+    "9e9c",
+    "4l4k",
+    "8f9e",
+    "4k9k",
+    "9e9d",
+    "9k9d",
+    "8c9d",
+    "5h9d"
+   ]
+  },
+  "deep_p2": {
+   "best": "3g3f",
+   "score": [
+    "cp",
+    -853
+   ],
+   "depth": 15,
+   "pv": [
+    "3g3f",
+    "8a9b",
+    "4l4k"
+   ]
+  },
+  "static_p0": 904,
+  "static_p2": 1259
+ },
+ {
+  "pair": 45,
+  "game": 0,
+  "color": "black",
+  "ply": 276,
+  "plies": 888,
+  "eval_before": -227,
+  "depth_before": 9,
+  "eval_after": -692,
+  "depth_after": 13,
+  "minase_move": "9f9e",
+  "hachu_reply": "7h7l+",
+  "minase_royals": [
+   "8l:王"
+  ],
+  "deep_p0": {
+   "best": "8k7k",
+   "score": [
+    "cp",
+    -270
+   ],
+   "depth": 12,
+   "pv": [
+    "8k7k",
+    "7h7k",
+    "8j7k",
+    "12g11f",
+    "2i3h",
+    "11f10g10f",
+    "7k8k",
+    "10f9f10f"
+   ]
+  },
+  "deep_p1": {
+   "best": "7h7l",
+   "score": [
+    "cp",
+    732
+   ],
+   "depth": 18,
+   "pv": [
+    "7h7l",
+    "8l9k",
+    "7l5l",
+    "4l5l",
+    "12g10g",
+    "5l9l",
+    "10g10f",
+    "10l10k"
+   ]
+  },
+  "deep_p2": {
+   "best": "8l9k",
+   "score": [
+    "cp",
+    -750
+   ],
+   "depth": 18,
+   "pv": [
+    "8l9k",
+    "7l5l",
+    "4l5l",
+    "12g10g",
+    "9k8l",
+    "10g10f",
+    "8j7k",
+    "12d4d"
+   ]
+  },
+  "static_p0": 113,
+  "static_p2": -263
+ },
+ {
+  "pair": 78,
+  "game": 0,
+  "color": "black",
+  "ply": 50,
+  "plies": 402,
+  "eval_before": 1120,
+  "depth_before": 10,
+  "eval_after": -332,
+  "depth_after": 10,
+  "minase_move": "2l2k",
+  "hachu_reply": "7e9e",
+  "minase_royals": [
+   "7l:王"
+  ],
+  "deep_p0": {
+   "best": "11b12a12b",
+   "score": [
+    "cp",
+    -40
+   ],
+   "depth": 12,
+   "pv": [
+    "11b12a12b",
+    "2k2l",
+    "1j4j",
+    "9c10b",
+    "12b10d",
+    "7e9f",
+    "10d11e12f",
+    "2l2k"
+   ]
+  },
+  "deep_p1": {
+   "best": "7e9e",
+   "score": [
+    "cp",
+    368
+   ],
+   "depth": 18,
+   "pv": [
+    "7e9e",
+    "11b12b11b",
+    "9e10d",
+    "11b10a",
+    "10d12c",
+    "10a9b8c",
+    "6c8c",
+    "11j11k"
+   ]
+  },
+  "deep_p2": {
+   "best": "11b12b11b",
+   "score": [
+    "cp",
+    -368
+   ],
+   "depth": 18,
+   "pv": [
+    "11b12b11b"
+   ]
+  },
+  "static_p0": -509,
+  "static_p2": 451
+ },
+ {
+  "pair": 81,
+  "game": 0,
+  "color": "black",
+  "ply": 220,
+  "plies": 276,
+  "eval_before": 1353,
+  "depth_before": 9,
+  "eval_after": -568,
+  "depth_after": 12,
+  "minase_move": "6l7l",
+  "hachu_reply": "5d4e",
+  "minase_royals": [
+   "10l:王"
+  ],
+  "deep_p0": {
+   "best": "3k2j",
+   "score": [
+    "cp",
+    1231
+   ],
+   "depth": 12,
+   "pv": [
+    "3k2j",
+    "2e4f",
+    "4i5h",
+    "6i10i",
+    "9l10k",
+    "5d4e",
+    "3b2b",
+    "10i11i"
+   ]
+  },
+  "deep_p1": {
+   "best": "5d4e",
+   "score": [
+    "cp",
+    760
+   ],
+   "depth": 19,
+   "pv": [
+    "5d4e",
+    "9l10k",
+    "2e1c",
+    "3b5c"
+   ]
+  },
+  "deep_p2": {
+   "best": "9l10k",
+   "score": [
+    "cp",
+    -790
+   ],
+   "depth": 19,
+   "pv": [
+    "9l10k",
+    "2e1c",
+    "3b5c",
+    "6b5c",
+    "7l7d+"
+   ]
+  },
+  "static_p0": 1611,
+  "static_p2": 1601
+ },
+ {
+  "pair": 90,
+  "game": 1,
+  "color": "white",
+  "ply": 163,
+  "plies": 549,
+  "eval_before": -133,
+  "depth_before": 10,
+  "eval_after": -1044,
+  "depth_after": 10,
+  "minase_move": "6e5f",
+  "hachu_reply": "5g5f",
+  "minase_royals": [
+   "6a:^ 玉"
+  ],
+  "deep_p0": {
+   "best": "6e5f",
+   "score": [
+    "cp",
+    -301
+   ],
+   "depth": 14,
+   "pv": [
+    "6e5f",
+    "5g5f",
+    "10b10e",
+    "4i4h",
+    "2k2l",
+    "2h3f",
+    "6c5d",
+    "3f3d"
+   ]
+  },
+  "deep_p1": {
+   "best": "5g5f",
+   "score": [
+    "cp",
+    1126
+   ],
+   "depth": 15,
+   "pv": [
+    "5g5f",
+    "4d4e",
+    "4i4h",
+    "2k3l",
+    "2h3j",
+    "3l4j",
+    "3j4j4i",
+    "4e4f"
+   ]
+  },
+  "deep_p2": {
+   "best": "5a2d",
+   "score": [
+    "cp",
+    -1360
+   ],
+   "depth": 14,
+   "pv": [
+    "5a2d"
+   ]
+  },
+  "static_p0": 908,
+  "static_p2": 408
+ },
+ {
+  "pair": 119,
+  "game": 1,
+  "color": "white",
+  "ply": 275,
+  "plies": 331,
+  "eval_before": 1014,
+  "depth_before": 11,
+  "eval_after": 301,
+  "depth_after": 13,
+  "minase_move": "6d3d",
+  "hachu_reply": "3e3d",
+  "minase_royals": [
+   "6a:^ 玉"
+  ],
+  "deep_p0": {
+   "best": "6e6f",
+   "score": [
+    "cp",
+    774
+   ],
+   "depth": 16,
+   "pv": [
+    "6e6f",
+    "4k3j",
+    "6f5g",
+    "5j11j",
+    "9k6h",
+    "5i5j",
+    "6h7h",
+    "5j6j"
+   ]
+  },
+  "deep_p1": {
+   "best": "3e3d",
+   "score": [
+    "cp",
+    -57
+   ],
+   "depth": 17,
+   "pv": [
+    "3e3d",
+    "6a7b",
+    "4i6g",
+    "6e7f",
+    "4k3j"
+   ]
+  },
+  "deep_p2": {
+   "best": "4a5b",
+   "score": [
+    "cp",
+    -184
+   ],
+   "depth": 18,
+   "pv": [
+    "4a5b"
+   ]
+  },
+  "static_p0": 1932,
+  "static_p2": 1357
+ },
+ {
+  "pair": 124,
+  "game": 0,
+  "color": "black",
+  "ply": 488,
+  "plies": 764,
+  "eval_before": 2111,
+  "depth_before": 8,
+  "eval_after": 1161,
+  "depth_after": 13,
+  "minase_move": "9j8i",
+  "hachu_reply": "3l3d",
+  "minase_royals": [
+   "8l:王"
+  ],
+  "deep_p0": {
+   "best": "5c4c",
+   "score": [
+    "cp",
+    1923
+   ],
+   "depth": 13,
+   "pv": [
+    "5c4c",
+    "3l3d",
+    "4e10e",
+    "3d3e",
+    "4c4e",
+    "1d4d",
+    "4e2g",
+    "7a6b"
+   ]
+  },
+  "deep_p1": {
+   "best": "3l3d",
+   "score": [
+    "cp",
+    -970
+   ],
+   "depth": 19,
+   "pv": [
+    "3l3d",
+    "4e1h"
+   ]
+  },
+  "deep_p2": {
+   "best": "4e1h",
+   "score": [
+    "cp",
+    933
+   ],
+   "depth": 19,
+   "pv": [
+    "4e1h",
+    "3d3f",
+    "5c5e",
+    "3f1h",
+    "1i1h",
+    "1d4d",
+    "5e5g",
+    "6c6b"
+   ]
+  },
+  "static_p0": 2861,
+  "static_p2": 2853
+ },
+ {
+  "pair": 125,
+  "game": 0,
+  "color": "black",
+  "ply": 454,
+  "plies": 618,
+  "eval_before": 4325,
+  "depth_before": 8,
+  "eval_after": 3334,
+  "depth_after": 10,
+  "minase_move": "8k7j",
+  "hachu_reply": "11g11a",
+  "minase_royals": [
+   "8l:王"
+  ],
+  "deep_p0": {
+   "best": "5k6k",
+   "score": [
+    "cp",
+    4222
+   ],
+   "depth": 13,
+   "pv": [
+    "5k6k",
+    "11g11d",
+    "10c10a",
+    "11d11h",
+    "3h2i",
+    "11h10g",
+    "10a11b",
+    "10g10k"
+   ]
+  },
+  "deep_p1": {
+   "best": "11g11a",
+   "score": [
+    "cp",
+    -3054
+   ],
+   "depth": 18,
+   "pv": [
+    "11g11a",
+    "12h12g",
+    "8c9c",
+    "10c9b",
+    "7c8b",
+    "10k5f",
+    "5e5f",
+    "9b5f"
+   ]
+  },
+  "deep_p2": {
+   "best": "12h12g",
+   "score": [
+    "cp",
+    3054
+   ],
+   "depth": 17,
+   "pv": [
+    "12h12g",
+    "8c9c"
+   ]
+  },
+  "static_p0": 4682,
+  "static_p2": 4673
+ },
+ {
+  "pair": 152,
+  "game": 1,
+  "color": "white",
+  "ply": 323,
+  "plies": 499,
+  "eval_before": 1876,
+  "depth_before": 11,
+  "eval_after": 168,
+  "depth_after": 13,
+  "minase_move": "3b4a",
+  "hachu_reply": "11h10i",
+  "minase_royals": [
+   "7a:^ 玉"
+  ],
+  "deep_p0": {
+   "best": "3a3c",
+   "score": [
+    "cp",
+    1114
+   ],
+   "depth": 15,
+   "pv": [
+    "3a3c",
+    "11h10i",
+    "3c3e",
+    "11i10j",
+    "3e2f"
+   ]
+  },
+  "deep_p1": {
+   "best": "11h10i",
+   "score": [
+    "cp",
+    -147
+   ],
+   "depth": 17,
+   "pv": [
+    "11h10i",
+    "11l10l",
+    "11i9j",
+    "10l8k",
+    "7k8k",
+    "11c10b",
+    "10i11j",
+    "12c9c"
+   ]
+  },
+  "deep_p2": {
+   "best": "11l10l",
+   "score": [
+    "cp",
+    92
+   ],
+   "depth": 18,
+   "pv": [
+    "11l10l",
+    "11i10j",
+    "10l8k",
+    "7k8k",
+    "11c10b",
+    "10i11j",
+    "6c5b",
+    "10j11k"
+   ]
+  },
+  "static_p0": 2034,
+  "static_p2": 2172
+ },
+ {
+  "pair": 175,
+  "game": 0,
+  "color": "black",
+  "ply": 218,
+  "plies": 512,
+  "eval_before": 1992,
+  "depth_before": 8,
+  "eval_after": 0,
+  "depth_after": 13,
+  "minase_move": "10a12c",
+  "hachu_reply": "9d10d",
+  "minase_royals": [
+   "7l:王"
+  ],
+  "deep_p0": {
+   "best": "10a12c",
+   "score": [
+    "cp",
+    2052
+   ],
+   "depth": 11,
+   "pv": [
+    "10a12c"
+   ]
+  },
+  "deep_p1": {
+   "best": "9d10d",
+   "score": [
+    "cp",
+    0
+   ],
+   "depth": 19,
+   "pv": [
+    "9d10d"
+   ]
+  },
+  "deep_p2": {
+   "best": "12c10a",
+   "score": [
+    "cp",
+    -115
+   ],
+   "depth": 15,
+   "pv": [
+    "12c10a",
+    "2c3d",
+    "6k5l",
+    "10d10c",
+    "10a8b",
+    "10c8b",
+    "10l10k",
+    "7d10d"
+   ]
+  },
+  "static_p0": 2274,
+  "static_p2": 2204
+ },
+ {
+  "pair": 195,
+  "game": 1,
+  "color": "white",
+  "ply": 245,
+  "plies": 383,
+  "eval_before": 457,
+  "depth_before": 8,
+  "eval_after": -1469,
+  "depth_after": 11,
+  "minase_move": "2k4j",
+  "hachu_reply": "3g4h",
+  "minase_royals": [
+   "4a:^ 玉"
+  ],
+  "deep_p0": {
+   "best": "2k4j",
+   "score": [
+    "cp",
+    363
+   ],
+   "depth": 11,
+   "pv": [
+    "2k4j"
+   ]
+  },
+  "deep_p1": {
+   "best": "3g4h",
+   "score": [
+    "cp",
+    1732
+   ],
+   "depth": 20,
+   "pv": [
+    "3g4h",
+    "4j2k",
+    "4h3i",
+    "2k3l",
+    "6f5g",
+    "1e1f"
+   ]
+  },
+  "deep_p2": {
+   "best": "4j2k",
+   "score": [
+    "cp",
+    -1716
+   ],
+   "depth": 22,
+   "pv": [
+    "4j2k",
+    "6f5g",
+    "1e1f",
+    "4h3i",
+    "2k1l",
+    "3i2j",
+    "1f1g",
+    "2j1l"
+   ]
+  },
+  "static_p0": 631,
+  "static_p2": 783
+ }
+]
