@@ -1,0 +1,45 @@
+--- a/src/search/alphabeta/ordering.rs
++++ b/src/search/alphabeta/ordering.rs
+@@ -112,6 +112,7 @@
+ 
+ /// TT手、良い捕獲手、killer手、静かな手、負の捕獲手の順に合法手を1回ずつ返す。
+ pub(super) struct MovePicker {
++    diag_counts: [u64; 6],
+     stage: MovePickerStage,
+     tt_move: Option<Move>,
+     killers: [Option<Move>; KILLER_COUNT],
+@@ -132,6 +133,7 @@
+     /// 助言手を保持した空の手選択器を作る。
+     pub(super) fn new(tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) -> Self {
+         Self {
++            diag_counts: [0; 6],
+             stage: MovePickerStage::Tt,
+             tt_move,
+             killers,
+@@ -217,6 +219,14 @@
+                                 .kind()
+                                 == Some(PieceKind::Lion)
+                                 && position.captured_squares(mv).iter().all(Option::is_some);
++                            let royal = captures_last_royal(position, mv);
++                            let negative = see_prunes(position, generator.rules(), pst, mv, 0);
++                            for (count, applies) in self.diag_counts.iter_mut().zip([
++                                true, negative, royal && negative, double_lion_capture && negative,
++                                royal, double_lion_capture,
++                            ]) {
++                                *count += u64::from(applies);
++                            }
+                             if !captures_last_royal(position, mv)
+                                 && !double_lion_capture
+                                 && see_prunes(position, generator.rules(), pst, mv, 0)
+@@ -330,3 +340,11 @@
+         .piece_at(square)
+         .expect("move ordering square must contain a piece")
+ }
++
++impl Drop for MovePicker {
++    fn drop(&mut self) {
++        if self.diag_counts[0] != 0 {
++            eprintln!("bad_capture_counts {:?}", self.diag_counts);
++        }
++    }
++}

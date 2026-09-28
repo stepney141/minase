@@ -54,7 +54,7 @@
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了（採用） | 2026年9月22日 |
 | 探索部の反復負け回避 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
-| 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 起案 | |
+| 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了（採用） | 2026年9月25日 |
 | SPSAの摂動幅と学習率の較正 | [plans/spsa-gain-calibration.md](plans/spsa-gain-calibration.md) | 完了（採用） | 2026年9月26日 |
 | 教師の混合比λ=1.0（探索値だけの教師） | [plans/teacher-mixing-ratio.md](plans/teacher-mixing-ratio.md) | 完了（不採用） | 2026年9月26日 |
@@ -71,6 +71,7 @@
 
 ### 直近の完了
 
+- [棋力向上段階12](plans/strength-stage12.md)は2026年9月28日に、採用項目なしで完了した。発動率の診断で基準を満たした7項目（aspiration windowsのfail-high時の減深、負の捕獲手の後回し、捕獲履歴、静止探索の手数制限、butterfly historyの持ち越し、null moveの前提条件、PVノードでの置換表の打ち切りの停止）は、いずれもSTCで`H0`または上限到達時にLLRが負となり、補正表の鍵の追加は診断で見送った。静止探索の手数制限は約−173 Eloと大きく負け、失う良手の割合で閾値を選ぶ規則を深さの上限のない再帰に使えないことを[教訓](lessons/recall-loss-does-not-bound-recursive-pruning.md)にした。探索コードは段階開始版から変わっていない。
 - [デバッグ機能の整備](plans/debugging-tools.md)は2026年9月27日に完了した。USIの独自コマンド`d`、`eval`、`tt`、入出力のログ`--io-log`、`cargo test`で常に有効な整合検査（フィーチャ`invariants`）、および`bench`が出力する探索統計（フィーチャ`search-stats`）を追加し、使い方を[デバッグの手引き](guides/debugging.md)にまとめた。探索統計の初回の実行では、深さ5の`bench`でβカットのうち最初に探索した手によるものが59%であり、手の順序付けを見直すときの出発点になる。
 - USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
 - SPSAによる調整は2回とも採用した。
@@ -84,15 +85,15 @@
 
 ### 次の候補
 
-- 探索部の次の対象は[棋力向上段階12](plans/strength-stage12.md)である。
+- 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。段階12で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
 - 評価関数で次に着手できるのは、[Descentによる強化学習](plans/descent.md)と[静止探索の出力を学ぶPSTの学習](plans/qsearch-output-training.md)である。
   - Descentは採用PSTを初期値とし、対照を置かず、同時16対局で48時間を予算とする。着手の条件は満たしている。
   - 静止探索の出力を学ぶ計画は、[評価改善の総論](research/evaluation-improvement-strategy.md)に基づき、6根の探索の追跡と末端抽出の小標本を先に行う。同じ静かな局面で学習目標だけを変える比較と、捕獲局面を追加する比較を分け、選んだ1候補を採用版と対局させる。
   - その完了後は[順位の損失の計画](plans/rank-loss-training.md)、[関係補正項の計画](plans/relational-correction.md)の順に進む。関係補正項では、新しい局面群で探索の追跡と機構ごとの介入を行い、解消を確認できなかった誤りを分類する。選んだ関係が件数の基準を満たした場合だけ、採用中の教師値と学習方式を固定して補正項を比較する。
   - 総論が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
-  - 静止探索の計画のフェーズ0が特定した探索の機構は、固定時間での測定を含めて段階12または探索の後続計画へ引き渡す。
+  - 静止探索の計画のフェーズ0が特定した探索の機構は、固定時間での測定を含めて探索の後続計画へ引き渡す。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
-- 評価関数の計画と段階12は測定機を共有するので、着手の順序は利用者が決める。
+- 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 
 ## 横断的な記録済みの決定
 

@@ -1,0 +1,4 @@
+run=1 depth=6 nodes=1618614 elapsed=0.874724s nps=1850428
+run=2 depth=6 nodes=1618614 elapsed=0.876775s nps=1846100
+run=3 depth=6 nodes=1618614 elapsed=0.872894s nps=1854308
+median: depth=6 nodes=1618614 elapsed=0.874724s nps=1850428

@@ -1,0 +1,1409 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index b677635..facaa01 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -8,7 +8,8 @@ use minase::core::rules::parse_rule_set;
+ use minase::eval::Pst;
+ use minase::notation::usi;
+ use minase::search::{
+-    DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search,
++    DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, Stage12Counters, TranspositionTable,
++    search_with_diagnostics,
+ };
+ use minase::{Game, MoveGenerator, Rules, parse_sfen};
+ 
+@@ -156,6 +157,8 @@ fn parse_repetitions(text: &str) -> Result<NonZeroUsize, String> {
+ struct BenchRun {
+     /// 全局面が到達した深さ。
+     depth: u32,
++    /// 全局面の診断計数。
++    diag: Stage12Counters,
+     /// 全局面の総ノード数。
+     nodes: u64,
+     /// 各局面の探索時間の合計。
+@@ -200,6 +203,7 @@ fn run_bench(
+     transposition_table: &mut TranspositionTable,
+     print_positions: bool,
+ ) -> BenchRun {
++    let mut diag = Stage12Counters::default();
+     let mut reached_depth = u32::MAX;
+     let mut total_nodes = 0_u64;
+     let mut total_elapsed = 0.0_f64;
+@@ -210,9 +214,13 @@ fn run_bench(
+         let snapshot = SearchSnapshot::from_game(&game).expect("bench position must have moves");
+         transposition_table.clear();
+         let position_start = Instant::now();
+-        let result = search(pst, &snapshot, limits, threads, transposition_table)
+-            .expect("bench search input must be valid");
++        let (result, counts) =
++            search_with_diagnostics(pst, &snapshot, limits, threads, transposition_table)
++                .expect("bench search input must be valid");
+         let elapsed = position_start.elapsed();
++        if let Some(counts) = counts {
++            diag.add(&counts);
++        }
+         reached_depth = reached_depth.min(result.depth);
+         total_elapsed += elapsed.as_secs_f64();
+         total_nodes = total_nodes
+@@ -239,6 +247,7 @@ fn run_bench(
+     }
+ 
+     BenchRun {
++        diag,
+         depth: reached_depth,
+         nodes: total_nodes,
+         elapsed: total_elapsed,
+@@ -278,6 +287,7 @@ fn main() {
+             result.elapsed,
+             result.nps()
+         );
++        write_diag(&result.diag);
+         return;
+     }
+ 
+@@ -308,6 +318,11 @@ fn main() {
+         );
+         runs.push(result);
+     }
++    let mut diag = Stage12Counters::default();
++    for run in &runs {
++        diag.add(&run.diag);
++    }
++    write_diag(&diag);
+     let mut depths: Vec<_> = runs.iter().map(|run| u64::from(run.depth)).collect();
+     let mut nodes: Vec<_> = runs.iter().map(|run| run.nodes).collect();
+     let mut elapsed: Vec<_> = runs.iter().map(|run| run.elapsed).collect();
+@@ -321,6 +336,14 @@ fn main() {
+     );
+ }
+ 
++/// ウォームアップを含めず、計測反復の合計を指定パスへ書く。
++fn write_diag(diag: &Stage12Counters) {
++    if let Some(path) = std::env::var_os("MINASE_STAGE12_DIAG") {
++        let file = std::fs::File::create(&path).expect("create diagnostic JSON");
++        serde_json::to_writer_pretty(file, diag).expect("write diagnostic JSON");
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/src/protocol/usi.rs b/src/protocol/usi.rs
+index 24d0f50..038a521 100644
+--- a/src/protocol/usi.rs
++++ b/src/protocol/usi.rs
+@@ -78,6 +78,8 @@ enum PositionHistoryUpdate<'a> {
+ 
+ /// 実行中の探索に対応する局面と設定。
+ struct SearchContext {
++    /// 完了した探索の診断。保留されたbestmoveと一緒に保持する。
++    diag: Option<Box<search::Stage12Counters>>,
+     /// 探索イベントの照合に使う探索識別子。
+     id: u64,
+     /// 探索開始時の局面。`bestmove`と`info`の指し手表記に使う。
+@@ -272,6 +274,7 @@ impl UsiProtocol {
+         );
+         Ok(Some(ActiveSearch::Running {
+             context: SearchContext {
++                diag: None,
+                 id: search_id,
+                 position,
+                 rules,
+@@ -491,6 +494,7 @@ impl UsiProtocol {
+                 Ok(())
+             }
+             SearchEvent::Finished {
++                diag,
+                 best_move,
+                 score,
+                 depth,
+@@ -508,6 +512,7 @@ impl UsiProtocol {
+                     unreachable!();
+                 };
+                 self.transposition_table = Some(join_search(handle)?);
++                context.diag = diag;
+                 write_final_info_if_deeper(
+                     output,
+                     &mut context,
+@@ -536,6 +541,7 @@ impl UsiProtocol {
+                         ponder_move.as_deref(),
+                         stop_reason,
+                         self.should_resign(score, depth),
++                        context.diag.as_deref(),
+                     )
+                 }
+             }
+@@ -600,6 +606,7 @@ impl UsiProtocol {
+                 ponder_move.as_deref(),
+                 stop_reason,
+                 self.should_resign(score, depth),
++                context.diag.as_deref(),
+             ),
+             ActiveSearch::Running {
+                 mut context,
+@@ -629,6 +636,7 @@ impl UsiProtocol {
+                             context.last_info_depth = Some(depth);
+                         }
+                         SearchEvent::Finished {
++                            diag,
+                             best_move,
+                             score,
+                             depth,
+@@ -638,6 +646,7 @@ impl UsiProtocol {
+                             stop_reason,
+                             ..
+                         } => {
++                            context.diag = diag;
+                             write_final_info_if_deeper(
+                                 output,
+                                 &mut context,
+@@ -665,6 +674,7 @@ impl UsiProtocol {
+                     ponder_move.as_deref(),
+                     stop_reason,
+                     self.should_resign(score, depth),
++                    context.diag.as_deref(),
+                 )
+             }
+         }
+@@ -1306,8 +1316,14 @@ fn write_bestmove(
+     ponder_move: Option<&str>,
+     stop_reason: StopReason,
+     resign: bool,
++    diag: Option<&search::Stage12Counters>,
+ ) -> io::Result<()> {
+     writeln!(output, "info string stop {}", stop_reason_text(stop_reason))?;
++    if std::env::var_os("MINASE_STAGE12_DIAG").is_some_and(|value| value == "1")
++        && let Some(diag) = diag
++    {
++        writeln!(output, "info string diag {}", diag.info())?;
++    }
+     if resign {
+         writeln!(output, "bestmove resign")?;
+     } else {
+@@ -3874,6 +3890,7 @@ mod tests {
+             prediction.as_deref(),
+             StopReason::DepthCompleted,
+             false,
++            None,
+         )
+         .unwrap();
+         let output_time = started.elapsed();
+diff --git a/src/search/alphabeta/deepening.rs b/src/search/alphabeta/deepening.rs
+index c1bb82a..8954718 100644
+--- a/src/search/alphabeta/deepening.rs
++++ b/src/search/alphabeta/deepening.rs
+@@ -131,6 +131,7 @@ pub(super) fn run_main_worker(
+     }
+     let nodes = searcher.nodes;
+     WorkerOutcome {
++        diag: searcher.diag.map(|diag| Box::new(diag.counts)),
+         worker_index: 0,
+         result,
+         pv: completed_pv,
+@@ -159,6 +160,9 @@ pub(super) fn run_auxiliary_worker(
+         nodes: 0,
+     };
+     let mut completed_pv = vec![root_moves[0]];
++    if let Some(diag) = &mut searcher.diag {
++        diag.main_worker = false;
++    }
+     for depth in auxiliary_depths(worker_index, depth_limit) {
+         let prev = (result.depth > 0).then_some(result.score);
+         let Some((best_move, score)) = searcher.search_iteration(position, root_moves, depth, prev)
+@@ -175,6 +179,7 @@ pub(super) fn run_auxiliary_worker(
+     }
+     let nodes = searcher.nodes;
+     WorkerOutcome {
++        diag: searcher.diag.map(|diag| Box::new(diag.counts)),
+         worker_index,
+         result,
+         pv: completed_pv,
+diff --git a/src/search/alphabeta/mod.rs b/src/search/alphabeta/mod.rs
+index b2ae371..d79bf48 100644
+--- a/src/search/alphabeta/mod.rs
++++ b/src/search/alphabeta/mod.rs
+@@ -2,6 +2,7 @@
+ 
+ mod correction;
+ mod deepening;
++pub(crate) mod diag;
+ mod negamax;
+ mod ordering;
+ pub(crate) mod params;
+diff --git a/src/search/alphabeta/negamax.rs b/src/search/alphabeta/negamax.rs
+index 9772e5b..738edae 100644
+--- a/src/search/alphabeta/negamax.rs
++++ b/src/search/alphabeta/negamax.rs
+@@ -32,6 +32,9 @@ impl Searcher<'_> {
+             return self.quiesce(position, alpha, beta, ply);
+         }
+ 
++        if let Some(diag) = &mut self.diag {
++            diag.counts.pv_nodes_negamax += u64::from(beta - alpha > 1);
++        }
+         let key = search_key(position);
+         let original_alpha = alpha;
+         let mut tt_move = None;
+@@ -46,6 +49,9 @@ impl Searcher<'_> {
+                     Bound::Upper => hit.score <= alpha,
+                 };
+                 if cutoff {
++                    if let Some(diag) = &mut self.diag {
++                        diag.counts.pv_tt_cut_negamax += u64::from(beta - alpha > 1);
++                    }
+                     return Some(hit.score);
+                 }
+             }
+@@ -67,6 +73,18 @@ impl Searcher<'_> {
+             && beta.abs() < MATE_THRESHOLD
+             && has_non_royal_piece
+         {
++            if let Some(diag) = &mut self.diag {
++                let pv = beta - alpha > 1;
++                let corrected = self
++                    .pst
++                    .evaluate_accumulator(self.accumulators[ply as usize], side)
++                    + self.correction.read(side, self.material_keys[ply as usize]);
++                diag.counts.null_tried += 1;
++                diag.counts.null_skip_pv += u64::from(pv);
++                diag.counts.null_skip_eval += u64::from(corrected < beta);
++                diag.counts.null_skip_any += u64::from(pv || corrected < beta);
++                diag.previous[(ply + 1) as usize] = None;
++            }
+             let reduction = null_move_reduction(depth);
+             let lion_before = position
+                 .lion_taken_by_non_lion()
+@@ -124,9 +142,14 @@ impl Searcher<'_> {
+         let mut best_capture = false;
+         let mut beta_cutoff = false;
+         let mut index = 0;
+-        while let Some((mv, capture)) =
+-            self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
+-        {
++        let mut searched_captures = Vec::new();
++        while let Some((mv, capture)) = self.move_pickers[ply as usize].next(
++            position,
++            self.pst,
++            &self.generator,
++            &self.history,
++            self.diag.as_deref_mut(),
++        ) {
+             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
+             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
+             if best_score > -MATE_THRESHOLD
+@@ -181,9 +204,14 @@ impl Searcher<'_> {
+                 beta_cutoff = true;
+                 if !capture {
+                     self.record_quiet_beta_cutoff(position, mv, depth, ply);
++                } else if let Some(diag) = &mut self.diag {
++                    diag.capture_cutoff(position, self.pst, mv, &searched_captures, depth);
+                 }
+                 break;
+             }
++            if self.diag.is_some() && capture {
++                searched_captures.push(mv);
++            }
+             index += 1;
+         }
+         let Some(best_move) = best_move else {
+@@ -246,6 +274,9 @@ impl Searcher<'_> {
+         if !self.enter_node() {
+             return None;
+         }
++        if let Some(diag) = &mut self.diag {
++            diag.record_move(position, mv, ply);
++        }
+         let undo = position.make_move_unchecked(mv, self.rules);
+         let key = search_key(position);
+         let repeated = self.history_keys.contains(&key) || self.path_keys.contains(&key);
+diff --git a/src/search/alphabeta/ordering.rs b/src/search/alphabeta/ordering.rs
+index 4c2b5be..c37cf43 100644
+--- a/src/search/alphabeta/ordering.rs
++++ b/src/search/alphabeta/ordering.rs
+@@ -109,6 +109,7 @@ pub(super) enum MovePickerStage {
+ 
+ /// TT手、捕獲手、killer手、静かな手の順に合法手を1回ずつ返す。
+ pub(super) struct MovePicker {
++    diag: Option<super::diag::CaptureObservation>,
+     stage: MovePickerStage,
+     tt_move: Option<Move>,
+     killers: [Option<Move>; KILLER_COUNT],
+@@ -127,6 +128,7 @@ impl MovePicker {
+     /// 助言手を保持した空の手選択器を作る。
+     pub(super) fn new(tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) -> Self {
+         Self {
++            diag: None,
+             stage: MovePickerStage::Tt,
+             tt_move,
+             killers,
+@@ -144,6 +146,7 @@ impl MovePicker {
+ 
+     /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
+     pub(super) fn reset(&mut self, tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) {
++        self.diag = None;
+         self.stage = MovePickerStage::Tt;
+         self.tt_move = tt_move;
+         self.killers = killers;
+@@ -164,6 +167,7 @@ impl MovePicker {
+         pst: &Pst,
+         generator: &MoveGenerator,
+         history: &HistoryTable,
++        mut diag: Option<&mut super::diag::Diagnostics>,
+     ) -> Option<(Move, bool)> {
+         loop {
+             match self.stage {
+@@ -198,12 +202,24 @@ impl MovePicker {
+                                     (mv, key)
+                                 }),
+                         );
++                        if let Some(diag) = diag.as_deref_mut() {
++                            self.diag = Some(diag.captures(
++                                position,
++                                pst,
++                                generator,
++                                self.tt_move,
++                                &self.captures,
++                            ));
++                        }
+                         self.captures.sort_by_key(|&(_, key)| {
+                             (Reverse(key.captured_value), key.attacker_value)
+                         });
+                         self.captures_generated = true;
+                     }
+                     if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
++                        if let (Some(observation), Some(diag)) = (&self.diag, diag.as_deref_mut()) {
++                            observation.returned(self.capture_index, &mut diag.counts);
++                        }
+                         self.capture_index += 1;
+                         return Some((mv, true));
+                     }
+diff --git a/src/search/alphabeta/quiesce.rs b/src/search/alphabeta/quiesce.rs
+index 25830a5..d64b11e 100644
+--- a/src/search/alphabeta/quiesce.rs
++++ b/src/search/alphabeta/quiesce.rs
+@@ -63,6 +63,11 @@ impl Searcher<'_> {
+             return Some(stand_pat);
+         }
+ 
++        // TTのUpper判定はstand-pat前のalphaを使うので、同じ窓でPVを判定する。
++        let pv_node = beta - original_alpha > 1;
++        if let Some(diag) = &mut self.diag {
++            diag.counts.pv_nodes_quiesce += u64::from(pv_node);
++        }
+         let key = search_key(position);
+         let mut tt_move = None;
+         if let Some(hit) = self.tt.probe(key, ply) {
+@@ -73,10 +78,14 @@ impl Searcher<'_> {
+                 Bound::Upper => hit.score <= original_alpha,
+             };
+             if cutoff {
++                if let Some(diag) = &mut self.diag {
++                    diag.counts.pv_tt_cut_quiesce += u64::from(pv_node);
++                }
+                 return Some(hit.score);
+             }
+         }
+ 
++        let mut diag_node = super::diag::QNode::default();
+         let mut best = stand_pat;
+         let mut best_move = None;
+         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
+@@ -103,10 +112,18 @@ impl Searcher<'_> {
+             {
+                 continue;
+             }
++            // 中断判定を通った手だけを通し番号へ含める。
++            if !is_last_royal_capture {
++                self.enter_node().then_some(())?;
++            }
++            let exempt = self.diag.as_mut().is_some_and(|diag| {
++                let exempt = diag.q_start(&mut diag_node, position, mv, ply, is_last_royal_capture);
++                diag.record_move(position, mv, ply);
++                exempt
++            });
+             let score = if is_last_royal_capture {
+                 MATE - (ply + 1) as i32
+             } else {
+-                self.enter_node().then_some(())?;
+                 let undo = position.make_move_with_captures_unchecked(
+                     mv,
+                     self.rules,
+@@ -123,6 +140,9 @@ impl Searcher<'_> {
+                 position.unmake_move(undo);
+                 score?
+             };
++            if let Some(diag) = &mut self.diag {
++                diag.q_result(&diag_node, exempt, score > alpha);
++            }
+             if score > best {
+                 best = score;
+                 best_move = Some(mv);
+diff --git a/src/search/alphabeta/root.rs b/src/search/alphabeta/root.rs
+index 23c7524..51c826e 100644
+--- a/src/search/alphabeta/root.rs
++++ b/src/search/alphabeta/root.rs
+@@ -86,14 +86,39 @@ impl Searcher<'_> {
+     ) -> Option<(Move, i32)> {
+         let mut window =
+             AspirationWindow::initial(depth, prev, aspiration_delta(self.pst.pawn_value()));
++        let observe = self.diag.as_ref().is_some_and(|diag| diag.main_worker)
++            && (window.alpha != -INFINITY || window.beta != INFINITY);
++        let mut consecutive = 0;
++        let mut maximum = 0;
+         loop {
+-            let (best_move, score) =
+-                self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
++            let result = self.search_root(position, root_moves, depth, window.alpha, window.beta);
++            let Some((best_move, score)) = result else {
++                if observe {
++                    self.diag
++                        .as_mut()
++                        .expect("enabled")
++                        .aspiration(maximum, true);
++                }
++                return None;
++            };
+             if score <= window.alpha {
++                if observe {
++                    consecutive = 0;
++                }
+                 window.widen_low();
+             } else if score >= window.beta {
++                if observe {
++                    consecutive += 1;
++                    maximum = maximum.max(consecutive);
++                }
+                 window.widen_high();
+             } else {
++                if observe {
++                    self.diag
++                        .as_mut()
++                        .expect("enabled")
++                        .aspiration(maximum, false);
++                }
+                 return Some((best_move, score));
+             }
+         }
+diff --git a/src/search/alphabeta/searcher.rs b/src/search/alphabeta/searcher.rs
+index f78be89..539c2b6 100644
+--- a/src/search/alphabeta/searcher.rs
++++ b/src/search/alphabeta/searcher.rs
+@@ -45,6 +45,8 @@ pub(super) fn new_searcher<'a>(
+ ) -> Searcher<'a> {
+     let root_accumulator = pst.refresh_accumulator(position);
+     Searcher {
++        diag: std::env::var_os("MINASE_STAGE12_DIAG")
++            .map(|_| Box::new(super::diag::Diagnostics::new(rules))),
+         pst,
+         rules,
+         generator: MoveGenerator::new(rules),
+@@ -83,6 +85,8 @@ pub(super) struct PonderIteration {
+ 
+ /// 1回の探索実行の可変状態。
+ pub(super) struct Searcher<'a> {
++    /// 環境変数で有効にした受動的計測。
++    pub(super) diag: Option<Box<super::diag::Diagnostics>>,
+     /// 探索中に使う検証済み学習PST。
+     pub(super) pst: &'a Pst,
+     /// 探索内の着手適用に使う規則。
+diff --git a/src/search/alphabeta/see.rs b/src/search/alphabeta/see.rs
+index 0da2170..34fd3fc 100644
+--- a/src/search/alphabeta/see.rs
++++ b/src/search/alphabeta/see.rs
+@@ -144,8 +144,12 @@ pub(super) fn see_prunes(
+ /// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
+ /// その他の捕獲は、`docs/plans/strength-stage3.md`「静的交換評価」に従い、
+ /// 規則に依存しない通常の交換列として評価する。
+-#[cfg(test)]
+-fn see_reference(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) -> Option<i32> {
++pub(super) fn see_reference(
++    position: &Position,
++    rules: MoveRules,
++    pst: &Pst,
++    mv: Move,
++) -> Option<i32> {
+     if mv.mid.is_some() {
+         return None;
+     }
+@@ -180,6 +184,7 @@ fn see_reference(position: &Position, rules: MoveRules, pst: &Pst, mv: Move) ->
+     let mut depth = 0_usize;
+ 
+     loop {
++        #[cfg(test)]
+         tests::LOOKUPS.set(tests::LOOKUPS.get() + 1);
+         let attackers = position.attackers_to_by(side, mv.to, occupied);
+         if lion_on_square && lion_capture_is_rule_dependent(position, rules, mv.to, side, attackers)
+diff --git a/src/search/alphabeta/team.rs b/src/search/alphabeta/team.rs
+index 9482d8e..d5f7587 100644
+--- a/src/search/alphabeta/team.rs
++++ b/src/search/alphabeta/team.rs
+@@ -21,6 +21,8 @@ use super::time::time_budget;
+ 
+ /// 探索の内部実行が返す結果一式。
+ pub(in crate::search) struct SearchOutcome {
++    /// 全ワーカーの診断計数。
++    pub(in crate::search) diag: Option<Box<super::diag::Counters>>,
+     /// 完了した探索の結果。
+     pub(in crate::search) result: SearchResult,
+     /// 探索開始からの経過時間。
+@@ -34,6 +36,8 @@ pub(in crate::search) struct SearchOutcome {
+ /// 1ワーカーが最後まで完了した反復と実着手の適用回数。
+ #[derive(Clone, PartialEq, Eq, Debug)]
+ pub(super) struct WorkerOutcome {
++    /// このワーカーの診断計数。
++    pub(super) diag: Option<Box<super::diag::Counters>>,
+     /// 探索チーム内のワーカー番号。主ワーカーは0。
+     pub(super) worker_index: usize,
+     /// 最後まで完了した反復の結果。
+@@ -222,7 +226,16 @@ pub(in crate::search) fn run_search_team(
+     let adopted = select_worker_outcome(&worker_outcomes);
+     let mut result = adopted.result;
+     result.nodes = total_nodes;
++    let diag = worker_outcomes
++        .iter()
++        .filter_map(|worker| worker.diag.as_deref())
++        .fold(None, |total, counts| {
++            let mut total = total.unwrap_or_else(|| Box::new(super::diag::Counters::default()));
++            total.add(counts);
++            Some(total)
++        });
+     SearchOutcome {
++        diag,
+         result,
+         elapsed: started.elapsed(),
+         pv: adopted.pv.clone(),
+diff --git a/src/search/alphabeta/tests/captures.rs b/src/search/alphabeta/tests/captures.rs
+index 15b2a62..370bfc3 100644
+--- a/src/search/alphabeta/tests/captures.rs
++++ b/src/search/alphabeta/tests/captures.rs
+@@ -403,7 +403,7 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
+                 let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
+                 let mut actual = Vec::new();
+                 while let Some((mv, is_capture)) =
+-                    picker.next(&position, &pst, &generator, &history)
++                    picker.next(&position, &pst, &generator, &history, None)
+                 {
+                     if !is_capture {
+                         break;
+diff --git a/src/search/alphabeta/tests/ordering.rs b/src/search/alphabeta/tests/ordering.rs
+index 74c140d..28b6d57 100644
+--- a/src/search/alphabeta/tests/ordering.rs
++++ b/src/search/alphabeta/tests/ordering.rs
+@@ -38,6 +38,7 @@ fn staged_picker_yields_every_legal_move_exactly_once() {
+             &pst,
+             &MoveGenerator::new(engine_rules()),
+             &history,
++            None,
+         ) {
+             actual.push(mv);
+         }
+@@ -78,6 +79,7 @@ fn staged_picker_respects_advisory_precedence() {
+         &pst,
+         &MoveGenerator::new(engine_rules()),
+         &history,
++        None,
+     ) {
+         actual.push(mv);
+     }
+@@ -118,7 +120,9 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
+     for (tt_move, expected_capture) in [(capture, true), (quiet, false)] {
+         assert!(generator.is_legal_move(&position, tt_move, &mut Vec::new(), &mut Vec::new()));
+         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
+-        let picked = picker.next(&position, &pst, &generator, &history).unwrap();
++        let picked = picker
++            .next(&position, &pst, &generator, &history, None)
++            .unwrap();
+         assert_eq!(picked, (tt_move, expected_capture));
+     }
+ }
+@@ -151,7 +155,7 @@ fn staged_picker_classifies_all_generated_captures() {
+         assert!(!captures.is_empty());
+         let mut picker = MovePicker::new(None, [None, None]);
+         let mut picked_captures = Vec::new();
+-        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history) {
++        while let Some((mv, capture)) = picker.next(&position, &pst, &generator, &history, None) {
+             assert_eq!(capture, captures.contains(&mv));
+             assert_eq!(capture, move_order_key(&position, &pst, mv).is_some());
+             if capture {
+@@ -328,7 +332,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
+                 let mut ordinal = 0;
+                 loop {
+                     let expected = reference.next(&position, &pst, &generator, &history);
+-                    let actual = picker.next(&position, &pst, &generator, &history);
++                    let actual = picker.next(&position, &pst, &generator, &history, None);
+                     assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
+                     let Some((mv, _)) = expected else {
+                         break;
+diff --git a/src/search/alphabeta/tests/ponder.rs b/src/search/alphabeta/tests/ponder.rs
+index 16f5f0c..6e3a183 100644
+--- a/src/search/alphabeta/tests/ponder.rs
++++ b/src/search/alphabeta/tests/ponder.rs
+@@ -384,6 +384,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
+         );
+         assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
+         WorkerOutcome {
++            diag: None,
+             worker_index: 0,
+             result: SearchResult {
+                 best_move: roots[0],
+diff --git a/src/search/alphabeta/tests/team.rs b/src/search/alphabeta/tests/team.rs
+index 6e47472..55b7f02 100644
+--- a/src/search/alphabeta/tests/team.rs
++++ b/src/search/alphabeta/tests/team.rs
+@@ -30,6 +30,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
+                 }
+                 completed.fetch_add(1, AtomicOrdering::Release);
+                 WorkerOutcome {
++                    diag: None,
+                     worker_index,
+                     result: SearchResult {
+                         best_move: fallback,
+@@ -186,6 +187,7 @@ fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
+ fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
+     let moves = legal_moves(&Position::initial());
+     let outcome = |worker_index: usize, depth: u32, move_index: usize| WorkerOutcome {
++        diag: None,
+         worker_index,
+         result: SearchResult {
+             best_move: moves[move_index],
+diff --git a/src/search/events.rs b/src/search/events.rs
+index 0fe22f4..8c26a21 100644
+--- a/src/search/events.rs
++++ b/src/search/events.rs
+@@ -39,6 +39,8 @@ pub enum SearchEvent {
+     },
+     /// 探索が停止した。
+     Finished {
++        /// 有効にした場合だけ付く段階12の診断計数。
++        diag: Option<Box<super::Stage12Counters>>,
+         /// 通知元の探索ID。
+         search_id: u64,
+         /// 選んだ着手。
+diff --git a/src/search/handle.rs b/src/search/handle.rs
+index 285d454..fac462f 100644
+--- a/src/search/handle.rs
++++ b/src/search/handle.rs
+@@ -118,6 +118,7 @@ pub fn start_search(
+         );
+         let result = outcome.result;
+         let _ = sender.send(SearchEvent::Finished {
++            diag: outcome.diag,
+             search_id,
+             best_move: result.best_move,
+             score: result.score,
+@@ -155,11 +156,25 @@ pub fn search(
+     threads: NonZeroUsize,
+     tt: &mut TranspositionTable,
+ ) -> Result<SearchResult, SearchError> {
++    search_with_diagnostics(pst, snapshot, limits, threads, tt).map(|(result, _)| result)
++}
++
++/// 同期探索の結果と、環境変数で有効にした診断計数を返す。
++///
++/// # Errors
++/// 無期限探索は同期版では実行できない。
++pub fn search_with_diagnostics(
++    pst: &Pst,
++    snapshot: &SearchSnapshot,
++    limits: &SearchLimits,
++    threads: NonZeroUsize,
++    tt: &mut TranspositionTable,
++) -> Result<(SearchResult, Option<Box<super::Stage12Counters>>), SearchError> {
+     if limits.is_infinite() {
+         return Err(SearchError::InfiniteSynchronousSearch);
+     }
+     let stop = AtomicBool::new(false);
+-    Ok(run_search_team(
++    let outcome = run_search_team(
+         pst,
+         &snapshot.position,
+         snapshot.rules,
+@@ -173,6 +188,6 @@ pub fn search(
+         Instant::now(),
+         &AtomicU64::new(0),
+         false,
+-    )
+-    .result)
++    );
++    Ok((outcome.result, outcome.diag))
+ }
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 1e77376..de1ecfa 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -7,12 +7,13 @@ mod handle;
+ mod limits;
+ mod snapshot;
+ 
++pub use alphabeta::diag::Counters as Stage12Counters;
+ pub use alphabeta::tt::{
+     DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError,
+ };
+ pub use error::SearchError;
+ pub use events::{SearchEvent, SearchResult, StopReason};
+-pub use handle::{SearchHandle, search, start_search};
++pub use handle::{SearchHandle, search, search_with_diagnostics, start_search};
+ pub use limits::{ClockLimits, SearchLimits};
+ pub use snapshot::SearchSnapshot;
+ 
+diff --git a/src/search/alphabeta/diag.rs b/src/search/alphabeta/diag.rs
+new file mode 100644
+index 0000000..5c8d60c
+--- /dev/null
++++ b/src/search/alphabeta/diag.rs
+@@ -0,0 +1,317 @@
++//! 段階12の受動的診断。影の値を探索の判断へ返さない。
++
++use super::ordering::{MoveOrderKey, piece_at_for_ordering};
++use super::royal::captures_last_royal;
++use super::see::{see_prunes, see_reference};
++use crate::core::piece::PieceKind;
++use crate::core::rules::MoveRules;
++use crate::eval::Pst;
++use crate::search::MAX_PLY;
++use crate::{Move, MoveGenerator, Position, Square};
++use core::cmp::Reverse;
++
++const D: i32 = 20_755;
++const Q_LIMITS: [usize; 5] = [1, 2, 3, 4, 6];
++
++macro_rules! counters {
++    ($($name:ident),* $(,)?) => {
++        /// 段階12診断の計数。探索ワーカー終了後にのみ合算する。
++        #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
++        pub struct Counters {
++            $(pub(super) $name: u64,)*
++        }
++        impl Counters {
++            /// 別のワーカーまたは局面の計数を加える。
++            pub fn add(&mut self, other: &Self) {
++                $(self.$name += other.$name;)*
++            }
++            /// USIのinfo string diagへ渡す整数の列。
++            pub fn info(&self) -> String {
++                [$(format!("{}={}", stringify!($name), self.$name),)*].join(" ")
++            }
++        }
++    };
++}
++
++counters! {
++    asp_iterations,
++    asp_failhigh_iterations,
++    asp_failhigh_hist_1,
++    asp_failhigh_hist_2,
++    asp_failhigh_hist_3,
++    asp_failhigh_hist_4plus,
++    asp_iterations_aborted,
++    capture_stage_nodes,
++    bad_capture_order_changed,
++    bad_capture_reached,
++    bad_capture_excluded_royal,
++    bad_capture_excluded_double,
++    bad_capture_see_unknown,
++    capture_history_nodes,
++    capture_history_order_changed,
++    capture_history_reached,
++    capture_history_refs,
++    capture_history_nonzero_refs,
++    q_nodes,
++    q_searched,
++    q_good,
++    q_exempt_royal,
++    q_exempt_recapture,
++    q_exempt_double,
++    null_tried,
++    null_skip_pv,
++    null_skip_eval,
++    null_skip_any,
++    pv_nodes_negamax,
++    pv_tt_cut_negamax,
++    pv_nodes_quiesce,
++    pv_tt_cut_quiesce,
++    q_lost_1,
++    q_lost_2,
++    q_lost_3,
++    q_lost_4,
++    q_lost_6,
++    q_prune_nodes_1,
++    q_prune_nodes_2,
++    q_prune_nodes_3,
++    q_prune_nodes_4,
++    q_prune_nodes_6,
++    q_pruned_moves_1,
++    q_pruned_moves_2,
++    q_pruned_moves_3,
++    q_pruned_moves_4,
++    q_pruned_moves_6,
++}
++
++/// 1回のgoの中だけ存続するワーカー固有の状態。
++pub(super) struct Diagnostics {
++    pub(super) counts: Counters,
++    pub(super) main_worker: bool,
++    rules: MoveRules,
++    history: Vec<i16>,
++    // Someは直前の手が捕獲手だったことと、その到達升を同時に表す。
++    pub(super) previous: [Option<Square>; MAX_PLY as usize + 1],
++}
++
++impl Diagnostics {
++    pub(super) fn new(rules: MoveRules) -> Self {
++        Self {
++            counts: Counters::default(),
++            main_worker: true,
++            rules,
++            history: vec![0; 58 * 144 * 29],
++            previous: [None; MAX_PLY as usize + 1],
++        }
++    }
++
++    pub(super) fn aspiration(&mut self, maximum: usize, aborted: bool) {
++        self.counts.asp_iterations += 1;
++        self.counts.asp_iterations_aborted += u64::from(aborted);
++        self.counts.asp_failhigh_iterations += u64::from(maximum > 0);
++        match maximum {
++            0 => {}
++            1 => self.counts.asp_failhigh_hist_1 += 1,
++            2 => self.counts.asp_failhigh_hist_2 += 1,
++            3 => self.counts.asp_failhigh_hist_3 += 1,
++            _ => self.counts.asp_failhigh_hist_4plus += 1,
++        }
++    }
++
++    fn history_index(position: &Position, pst: &Pst, mv: Move) -> usize {
++        let mover = piece_at_for_ordering(position, mv.from);
++        let victim = position
++            .captured_squares(mv)
++            .into_iter()
++            .flatten()
++            .map(|sq| piece_at_for_ordering(position, sq))
++            .max_by_key(|&piece| pst.piece_value(piece))
++            .expect("history indexes captures only");
++        let code = mover.color().expect("mover color").index() * 29
++            + mover.kind().expect("mover kind").index();
++        (code * 144 + mv.to.dense_index()) * 29 + victim.kind().expect("victim kind").index()
++    }
++
++    pub(super) fn capture_cutoff(
++        &mut self,
++        position: &Position,
++        pst: &Pst,
++        mv: Move,
++        earlier: &[Move],
++        depth: u32,
++    ) {
++        let bonus = (depth * depth).min(D as u32) as i32;
++        for (mv, bonus) in
++            core::iter::once((mv, bonus)).chain(earlier.iter().map(|&mv| (mv, -bonus)))
++        {
++            let value = &mut self.history[Self::history_index(position, pst, mv)];
++            let old = i32::from(*value);
++            *value = (old + bonus - old * bonus.abs() / D) as i16;
++        }
++    }
++
++    /// 生成順の配列を読み、順序が変わる最初の位置だけを保持する。
++    pub(super) fn captures(
++        &mut self,
++        position: &Position,
++        pst: &Pst,
++        generator: &MoveGenerator,
++        tt_move: Option<Move>,
++        captures: &[(Move, MoveOrderKey)],
++    ) -> CaptureObservation {
++        self.counts.capture_stage_nodes += 1;
++        let mut negative = Vec::with_capacity(captures.len());
++        let mut candidate = Vec::with_capacity(captures.len());
++        for &(mv, key) in captures {
++            let royal = captures_last_royal(position, mv);
++            let double = double_lion_capture(position, mv);
++            // 除外件数はSEEの符号と独立に数える。2枚取りはSEE判定不能でもある。
++            self.counts.bad_capture_excluded_royal += u64::from(royal);
++            self.counts.bad_capture_excluded_double += u64::from(double);
++            self.counts.bad_capture_see_unknown +=
++                u64::from(see_reference(position, self.rules, pst, mv).is_none());
++            let see_negative = see_prunes(position, self.rules, pst, mv, 0);
++            negative.push((mv, (!royal && !double && see_negative, see_negative)));
++            let value = i32::from(self.history[Self::history_index(position, pst, mv)]);
++            self.counts.capture_history_refs += 1;
++            self.counts.capture_history_nonzero_refs += u64::from(value != 0);
++            candidate.push((
++                mv,
++                (
++                    Reverse(key.captured_value + value * pst.pawn_value() / D),
++                    key.attacker_value,
++                ),
++            ));
++        }
++        // どちらも生成順から安定整列する。探索が使う配列には触れない。
++        candidate.sort_by_key(|&(_, key)| key);
++        let mut actual = captures.to_vec();
++        actual.sort_by_key(|&(_, key)| (Reverse(key.captured_value), key.attacker_value));
++        let negative: Vec<_> = actual
++            .iter()
++            .map(|(mv, _)| {
++                negative
++                    .iter()
++                    .find(|(observed, _)| observed == mv)
++                    .expect("observed capture")
++                    .1
++            })
++            .collect();
++        let first_difference = actual
++            .iter()
++            .zip(&candidate)
++            .position(|(actual, shadow)| actual.0 != shadow.0);
++        if captures.len() >= 2 {
++            self.counts.capture_history_nodes += 1;
++            self.counts.capture_history_order_changed += u64::from(first_difference.is_some());
++        }
++        let mut has_quiet = false;
++        if negative.iter().any(|&(eligible, _)| eligible) {
++            let mut scratch = Vec::new();
++            let mut quiets = Vec::new();
++            generator.generate_quiets(position, &mut scratch, &mut quiets);
++            has_quiet = quiets.iter().any(|&mv| Some(mv) != tt_move);
++        }
++        let first_bad = negative.iter().enumerate().position(|(i, &(eligible, _))| {
++            eligible
++                && (has_quiet
++                    || negative[i + 1..]
++                        .iter()
++                        .any(|&(_, see_negative)| !see_negative))
++        });
++        self.counts.bad_capture_order_changed += u64::from(first_bad.is_some());
++        CaptureObservation {
++            first_bad,
++            first_difference,
++        }
++    }
++
++    pub(super) fn record_move(&mut self, position: &Position, mv: Move, ply: u32) {
++        self.previous[(ply + 1) as usize] = position
++            .captured_squares(mv)
++            .iter()
++            .any(Option::is_some)
++            .then_some(mv.to);
++    }
++
++    pub(super) fn q_start(
++        &mut self,
++        node: &mut QNode,
++        position: &Position,
++        mv: Move,
++        ply: u32,
++        royal: bool,
++    ) -> bool {
++        node.k += 1;
++        self.counts.q_nodes += u64::from(node.k == 1);
++        self.counts.q_searched += 1;
++        let captured = position.captured_squares(mv);
++        let recapture = self.previous[ply as usize].is_some_and(|sq| captured.contains(&Some(sq)));
++        let double = double_lion_capture(position, mv);
++        if node.k > 2 {
++            self.counts.q_exempt_royal += u64::from(royal);
++            self.counts.q_exempt_recapture += u64::from(recapture);
++            self.counts.q_exempt_double += u64::from(double);
++        }
++        let exempt = royal || recapture || double;
++        if !exempt {
++            let counts = &mut self.counts;
++            let slots = [
++                (&mut counts.q_prune_nodes_1, &mut counts.q_pruned_moves_1),
++                (&mut counts.q_prune_nodes_2, &mut counts.q_pruned_moves_2),
++                (&mut counts.q_prune_nodes_3, &mut counts.q_pruned_moves_3),
++                (&mut counts.q_prune_nodes_4, &mut counts.q_pruned_moves_4),
++                (&mut counts.q_prune_nodes_6, &mut counts.q_pruned_moves_6),
++            ];
++            for (i, (nodes, moves)) in slots.into_iter().enumerate() {
++                if node.k > Q_LIMITS[i] {
++                    *moves += 1;
++                    *nodes += u64::from(!node.pruned[i]);
++                    node.pruned[i] = true;
++                }
++            }
++        }
++        exempt
++    }
++
++    pub(super) fn q_result(&mut self, node: &QNode, exempt: bool, good: bool) {
++        if !good {
++            return;
++        }
++        self.counts.q_good += 1;
++        if !exempt {
++            let counts = &mut self.counts;
++            for (limit, lost) in Q_LIMITS.into_iter().zip([
++                &mut counts.q_lost_1,
++                &mut counts.q_lost_2,
++                &mut counts.q_lost_3,
++                &mut counts.q_lost_4,
++                &mut counts.q_lost_6,
++            ]) {
++                *lost += u64::from(node.k > limit);
++            }
++        }
++    }
++}
++
++#[derive(Default)]
++pub(super) struct QNode {
++    k: usize,
++    pruned: [bool; 5],
++}
++
++pub(super) struct CaptureObservation {
++    first_bad: Option<usize>,
++    first_difference: Option<usize>,
++}
++
++impl CaptureObservation {
++    pub(super) fn returned(&self, index: usize, counts: &mut Counters) {
++        counts.bad_capture_reached += u64::from(self.first_bad == Some(index));
++        counts.capture_history_reached += u64::from(self.first_difference == Some(index));
++    }
++}
++
++fn double_lion_capture(position: &Position, mv: Move) -> bool {
++    piece_at_for_ordering(position, mv.from).kind() == Some(PieceKind::Lion)
++        && position.captured_squares(mv).iter().all(Option::is_some)
++}
+diff --git a/diag-out/tc_diag.py b/diag-out/tc_diag.py
+new file mode 100644
+index 0000000..17e997a
+--- /dev/null
++++ b/diag-out/tc_diag.py
+@@ -0,0 +1,181 @@
++#!/usr/bin/env python3
++"""C5の保存記録から局面を抽出し、標準時間制御で段階12の計数を集計する。"""
++
++import argparse
++import bisect
++from collections import Counter
++import json
++import os
++from pathlib import Path
++import random
++import selectors
++import subprocess
++import time
++
++BANDS = [50, 100, 150, 200, 300, 400]
++REMAINING = {
++    "stc": [9690, 8745, 7524, 6173, 4101, 2025, 2654],
++    "ltc": [57782, 51999, 44835, 37079, 25269, 13534, 7523],
++}
++INCREMENT = {"stc": 100, "ltc": 200}
++MATCH_ROOT = Path("/home/stepney141/board-games/minase/data/matches")
++
++
++def sample_positions(run_dir, count, seed):
++    """適格な全対局から非復元抽出し、各対局の[10, 最終手数-1]から一様抽出する。"""
++    files = sorted((run_dir / "pairs").glob("*.json"))
++    if not files:
++        raise ValueError(f"pair records not found: {run_dir}")
++    # 対局の候補は識別子だけ保持し、選ばれた棋譜を後で読み直す。
++    games = []
++    for path in files:
++        pair = json.loads(path.read_text())
++        for index, game in enumerate(pair["games"]):
++            total = len(pair["opening"]["moves"]) + sum(
++                turn["response"]["kind"] == "move" for turn in game["turns"]
++            )
++            if total > 10:
++                games.append((path, index, total))
++    rng = random.Random(seed)
++    selected = rng.sample(games, count)
++    positions = []
++    for path, index, total in selected:
++        pair = json.loads(path.read_text())
++        ply = rng.randint(10, total - 1)
++        moves = list(pair["opening"]["moves"]) + [
++            turn["response"]["usi"]
++            for turn in pair["games"][index]["turns"]
++            if turn["response"]["kind"] == "move"
++        ]
++        assert len(moves) == total
++        positions.append({"pair": pair["pair_number"], "game": index,
++                          "record": str(path), "ply": ply, "moves": moves[:ply]})
++    return positions
++
++
++class Engine:
++    """期限つきのUSI入出力。文字列バッファ内の行をselectで取りこぼさない。"""
++
++    def __init__(self, binary):
++        self.proc = subprocess.Popen(
++            [str(binary), "--protocol", "usi", "--rules", "L0,P0,R1,E0"],
++            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
++            env={**os.environ, "MINASE_STAGE12_DIAG": "1"},
++        )
++        self.selector = selectors.DefaultSelector()
++        self.selector.register(self.proc.stdout, selectors.EVENT_READ)
++        self.buffer = b""
++        self.transcript = []
++
++    def send(self, command):
++        self.transcript.append("> " + command)
++        self.proc.stdin.write((command + "\n").encode())
++        self.proc.stdin.flush()
++
++    def line(self, deadline):
++        while b"\n" not in self.buffer:
++            seconds = deadline - time.monotonic()
++            if seconds <= 0 or not self.selector.select(seconds):
++                raise TimeoutError("engine response timeout")
++            chunk = os.read(self.proc.stdout.fileno(), 65536)
++            if not chunk:
++                raise RuntimeError("engine closed stdout")
++            self.buffer += chunk
++        line, self.buffer = self.buffer.split(b"\n", 1)
++        text = line.decode().strip()
++        self.transcript.append("< " + text)
++        if text.startswith("info string error"):
++            raise RuntimeError(text)
++        return text
++
++    def handshake(self, command, token):
++        self.send(command)
++        deadline = time.monotonic() + 15
++        while self.line(deadline) != token:
++            pass
++
++    def close(self):
++        self.selector.close()
++        if self.proc.poll() is None:
++            self.proc.kill()
++        self.proc.communicate(timeout=10)
++
++
++def run_position(binary, position, tc):
++    engine = Engine(binary)
++    try:
++        engine.handshake("usi", "usiok")
++        engine.handshake("isready", "readyok")
++        engine.send("usinewgame")
++        engine.send("position startpos moves " + " ".join(position["moves"]))
++        remaining = REMAINING[tc][bisect.bisect_right(BANDS, position["ply"])]
++        increment = INCREMENT[tc]
++        engine.send(f"go btime {remaining} wtime {remaining} binc {increment} winc {increment}")
++        deadline = time.monotonic() + 30
++        diag = None
++        depth = 0
++        stop = None
++        previous_line = None
++        while True:
++            line = engine.line(deadline)
++            if line.startswith("info string diag "):
++                if diag is not None:
++                    raise RuntimeError("duplicate diagnostic line")
++                diag = dict((key, int(value)) for key, value in
++                            (token.split("=", 1) for token in line.split()[3:]))
++            elif line.startswith("info depth "):
++                depth = int(line.split()[2])
++            elif line.startswith("info string stop "):
++                stop = line.split()[3]
++            elif line.startswith("bestmove "):
++                if diag is None or not previous_line.startswith("info string diag "):
++                    raise RuntimeError("diagnostic line must immediately precede bestmove")
++                bestmove = line.split()[1]
++                break
++            previous_line = line
++        if stop is None:
++            raise RuntimeError("missing stop reason")
++        engine.send("quit")
++        _, stderr = engine.proc.communicate(timeout=10)
++        if engine.proc.returncode != 0:
++            raise RuntimeError(stderr.decode())
++        return {**position, "remaining_ms": remaining, "increment_ms": increment,
++                "depth": depth, "stop": stop, "bestmove": bestmove, "diag": diag,
++                "transcript": engine.transcript}
++    finally:
++        engine.close()
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--binary", type=Path, required=True)
++    parser.add_argument("--tc", choices=REMAINING, required=True)
++    parser.add_argument("--count", type=int, required=True)
++    parser.add_argument("--seed", type=int, default=20260927)
++    parser.add_argument("--run-dir", type=Path)
++    parser.add_argument("--out", type=Path, required=True)
++    args = parser.parse_args()
++    if args.count < 1:
++        parser.error("--count must be positive")
++    run_dir = args.run_dir if args.run_dir is not None else MATCH_ROOT / f"spsa-stage9-20260925-c5-{args.tc}"
++    positions = sample_positions(run_dir, args.count, args.seed)
++    results = []
++    for index, position in enumerate(positions, 1):
++        result = run_position(args.binary.resolve(), position, args.tc)
++        results.append(result)
++        print(f"{index}/{len(positions)} pair={position['pair']} game={position['game']} "
++              f"ply={position['ply']} depth={result['depth']} stop={result['stop']}", flush=True)
++    keys = results[0]["diag"].keys()
++    if any(result["diag"].keys() != keys for result in results):
++        raise RuntimeError("diagnostic key sets differ between searches")
++    totals = {key: sum(result["diag"][key] for result in results) for key in keys}
++    report = {"tc": args.tc, "seed": args.seed, "rules": "L0,P0,R1,E0", "threads": 1,
++              "run_dir": str(run_dir), "binary": str(args.binary.resolve()),
++              "totals": totals, "positions": results}
++    args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
++    print("stops", dict(Counter(result["stop"] for result in results)))
++    print("totals", json.dumps(totals, sort_keys=True))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/diag-out/verify.py b/diag-out/verify.py
+new file mode 100644
+index 0000000..20fe051
+--- /dev/null
++++ b/diag-out/verify.py
+@@ -0,0 +1,77 @@
++#!/usr/bin/env python3
++"""基準と計測の有効/無効を局面ごとに照合し、診断計数の包含関係を検査する。"""
++
++import argparse
++import json
++import os
++from pathlib import Path
++import subprocess
++
++
++def check_counts(counts):
++    assert all(isinstance(value, int) and value >= 0 for value in counts.values())
++    assert counts["asp_failhigh_iterations"] == sum(
++        counts[f"asp_failhigh_hist_{n}"] for n in [1, 2, 3, "4plus"]
++    )
++    assert counts["asp_failhigh_iterations"] <= counts["asp_iterations"]
++    assert counts["asp_iterations_aborted"] <= counts["asp_iterations"]
++    for prefix, denominator in [("bad_capture", "capture_stage_nodes"),
++                                ("capture_history", "capture_history_nodes")]:
++        assert counts[f"{prefix}_reached"] <= counts[f"{prefix}_order_changed"] <= counts[denominator]
++    assert counts["capture_history_nonzero_refs"] <= counts["capture_history_refs"]
++    assert counts["capture_history_nodes"] <= counts["capture_stage_nodes"]
++    assert counts["q_good"] <= counts["q_searched"]
++    assert counts["q_nodes"] <= counts["q_searched"]
++    previous = None
++    for limit in [1, 2, 3, 4, 6]:
++        lost = counts[f"q_lost_{limit}"]
++        nodes = counts[f"q_prune_nodes_{limit}"]
++        moves = counts[f"q_pruned_moves_{limit}"]
++        assert lost <= counts["q_good"]
++        assert nodes <= counts["q_nodes"]
++        assert max(lost, nodes) <= moves <= counts["q_searched"]
++        if previous is not None:
++            assert all(current <= earlier for current, earlier in zip((lost, nodes, moves), previous))
++        previous = (lost, nodes, moves)
++    assert max(counts["null_skip_pv"], counts["null_skip_eval"]) <= counts["null_skip_any"] <= counts["null_tried"]
++    assert counts["null_skip_any"] <= counts["null_skip_pv"] + counts["null_skip_eval"]
++    for kind in ["negamax", "quiesce"]:
++        assert counts[f"pv_tt_cut_{kind}"] <= counts[f"pv_nodes_{kind}"]
++
++
++def rows(text):
++    return [dict(token.split("=", 1) for token in line.split() if not token.startswith("elapsed="))
++            for line in text.splitlines() if line.startswith("position=")]
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--baseline", type=Path, required=True)
++    parser.add_argument("--binary", type=Path, required=True)
++    parser.add_argument("--out-dir", type=Path, required=True)
++    args = parser.parse_args()
++    args.out_dir.mkdir(parents=True, exist_ok=True)
++    environment = {key: value for key, value in os.environ.items() if key != "MINASE_STAGE12_DIAG"}
++    outputs = {}
++    for name, binary in [("baseline", args.baseline), ("disabled", args.binary), ("enabled", args.binary)]:
++        env = dict(environment)
++        if name == "enabled":
++            env["MINASE_STAGE12_DIAG"] = str((args.out_dir / "bench-counters.json").resolve())
++        result = subprocess.run([str(binary.resolve()), "--depth", "6", "--threads", "1", "--repetitions", "1"],
++                                env=env, text=True, capture_output=True, check=True, timeout=60)
++        (args.out_dir / f"bench-{name}.txt").write_text(result.stdout)
++        outputs[name] = rows(result.stdout)
++    assert len(outputs["baseline"]) == 15
++    assert outputs["baseline"] == outputs["disabled"] == outputs["enabled"]
++    total = sum(int(row["nodes"]) for row in outputs["baseline"])
++    assert total == 1677944, total
++    check_counts(json.loads((args.out_dir / "bench-counters.json").read_text()))
++    report = {"baseline": str(args.baseline.resolve()), "binary": str(args.binary.resolve()),
++              "positions": 15, "total_nodes": total, "matching_fields": list(outputs["baseline"][0]),
++              "all_equal": True, "counter_invariants": "passed", "rows": outputs}
++    (args.out_dir / "passivity.json").write_text(json.dumps(report, indent=2) + "\n")
++    print(f"15 positions: baseline == disabled == enabled; nodes={total}; counter invariants passed")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/diag-out/README.md b/diag-out/README.md
+new file mode 100644
+index 0000000..08700c9
+--- /dev/null
++++ b/diag-out/README.md
+@@ -0,0 +1,62 @@
++# 段階12の探索診断
++
++`bench-counters.patch` はコミット `17f592f3e315bf3970d9a1585014f9c492d63197` に対する診断用の差分である。
++項目1、2、3、4、7、8を対象とし、計測は `MINASE_STAGE12_DIAG` を設定した探索だけで有効になる。
++計数器の定義と試走結果は [REPORT.md](REPORT.md)、全計数値は [bench-counters.json](bench-counters.json) と [tc-stc-20.json](tc-stc-20.json) に記録した。
++
++## ビルドとbench
++
++作業ツリーのルートで次を実行する。
++`bench` は環境変数の値をJSONの出力先として扱い、全局面の計数を合算する。
++反復回数が2以上の場合は、ウォームアップを除いた計測反復の合計になる。
++
++```sh
++CARGO_TARGET_DIR=target/diag cargo build --release --bin bench --bin minase
++MINASE_STAGE12_DIAG=diag-out/bench-counters.json \
++  target/diag/release/bench --depth 6 --threads 1 --repetitions 1
++```
++
++受動性の照合には次を使う。
++このスクリプトは基準バイナリと計測バイナリを実行し、各局面の深さ、ノード数、最善手、評価値を比較する。
++計数器間の包含関係も検査し、結果を `passivity.json` に残す。
++
++```sh
++python3 diag-out/verify.py \
++  --baseline /home/stepney141/board-games/minase/data/worktrees/strength-stage12/target/release/bench \
++  --binary target/diag/release/bench --out-dir diag-out
++```
++
++## 時間制御による計測
++
++`tc_diag.py` はC5の保存記録から対局を固定シードで非復元抽出し、各対局の10手目から最終手数の1手前までの局面を一様に1つ選ぶ。
++10手目以降に探索可能な局面を持たない対局は母集団から除く。
++局面ごとにエンジンを起動し、規則を `L0,P0,R1,E0` に設定する。
++`Threads` は既定の1のまま、複数局面の計測も逐次実行する。
++
++```sh
++python3 diag-out/tc_diag.py --binary target/diag/release/minase \
++  --tc stc --count 20 --seed 20260927 --out diag-out/tc-stc-20.json
++python3 diag-out/tc_diag.py --binary target/diag/release/minase \
++  --tc ltc --count 200 --seed 20260927 --out diag-out/tc-ltc-200.json
++```
++
++既定の入力は `/home/stepney141/board-games/minase/data/matches/spsa-stage9-20260925-c5-stc` または同名末尾が `-ltc` のディレクトリである。
++別の保存記録を使う場合は `--run-dir` を指定する。
++残り時間は手数帯 `[0,50)`, `[50,100)`, `[100,150)`, `[150,200)`, `[200,300)`, `[300,400)`, `[400,∞)` に応じて選び、先後に同じ値を渡す。
++短時間制御（STC）では残り時間が順に 9690, 8745, 7524, 6173, 4101, 2025, 2654 ms、加算が100 msとなる。
++長時間制御（LTC）では残り時間が順に 57782, 51999, 44835, 37079, 25269, 13534, 7523 ms、加算が200 msとなる。
++
++USIで直接利用する場合は `MINASE_STAGE12_DIAG=1 target/diag/release/minase --protocol usi --rules L0,P0,R1,E0` で起動する。
++探索終了時には `info string diag k=v ...` が `bestmove` の直前に1行出る。
++先読みや無期限探索で結果が保留された場合も、診断行は対応する `bestmove` と一緒に出る。
++
++出力JSONは合計 `totals` と局面ごとの `positions` を持つ。
++後者には出典対局、手数、着手列、時間予算、完了深さ、停止理由、全計数器、USI入出力を含める。
++診断行の欠落、重複、`bestmove` 直前以外への出力、キー集合の不一致はエラーとする。
++
++## 計測値の扱い
++
++計測時には追加の静的交換評価（SEE）と静かな手の生成を行うため、時間制御下では完了深さや着手が計測無効時と変わり得る。
++受動性の検証は時間制限のない固定深さで行い、診断ビルドの速度は改良の採否に使わない。
++影の捕獲履歴は探索ワーカーごとに確保し、各 `go` で0に戻す。
++計数器の合算は全ワーカーの探索終了後に行う。
