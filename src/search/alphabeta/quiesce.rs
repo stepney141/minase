@@ -11,20 +11,25 @@ use crate::core::position::Position;
 use crate::eval::Pst;
 use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::snapshot::search_key;
-use crate::search::{MATE, MAX_PLY};
+use crate::search::{DRAW_SCORE, MATE, MAX_PLY};
 
-use super::ordering::piece_at_for_ordering;
+use super::INFINITY;
+use super::ordering::{move_order_key, piece_at_for_ordering};
 use super::pruning::capture_is_pruned_by_see;
-use super::royal::captures_all_royals;
+use super::royal::{all_royals_under_attack, captured_last_royal, captures_all_royals};
 use super::searcher::Searcher;
 use super::see::promotion_gain;
 use super::tt::Bound;
 
+/// 1本の静止探索の経路で許す、捕獲以外の逃げる手の回数。
+pub(super) const QSEARCH_QUIET_EVASION_LIMIT: u32 = 3;
+
 impl Searcher<'_> {
-    /// stand-patと捕獲手だけを使う静止探索で局面を評価する。
+    /// 全王駒への脅威がある間は、回数を限って捕獲以外の逃げる手も読む。
     ///
     /// 設計書movegen-speedup-2.md「段階7」に従い、静的評価で打ち切るときは置換表に触れない。
-    /// 静止探索内の手は主変化へ含めず、反復検出は行わない。
+    /// 静止探索内の手は主変化へ含めず、捕獲以外の逃げる手で反復を検出する。
+    /// 逃げる手を既に指した部分木では置換表を照会・格納しない。
     /// 中断された場合は`None`を返す。
     pub(super) fn quiesce(
         &mut self,
@@ -55,95 +60,187 @@ impl Searcher<'_> {
         let stand_pat = self
             .pst
             .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
-        if stand_pat >= beta {
-            return Some(stand_pat);
-        }
-
+        let evading =
+            self.quiet_evasions < QSEARCH_QUIET_EVASION_LIMIT && all_royals_under_attack(position);
         let original_alpha = alpha;
-        alpha = alpha.max(stand_pat);
-        let threshold = alpha - stand_pat - self.delta_margin;
-        let buffers = &mut self.qsearch[ply as usize];
-        buffers.reset(position);
-        if !buffers.initialize(
-            position,
-            &self.generator,
-            self.pst,
-            &self.capture_ranks,
-            threshold,
-        ) {
-            return Some(stand_pat);
+        if !evading {
+            if stand_pat >= beta {
+                return Some(stand_pat);
+            }
+            alpha = alpha.max(stand_pat);
+            let threshold = alpha - stand_pat - self.delta_margin;
+            let buffers = &mut self.qsearch[ply as usize];
+            buffers.reset(position);
+            if !buffers.initialize(
+                position,
+                &self.generator,
+                self.pst,
+                &self.capture_ranks,
+                threshold,
+            ) {
+                return Some(stand_pat);
+            }
         }
 
         let key = search_key(position);
         let mut tt_move = None;
-        #[cfg(feature = "search-stats")]
-        {
-            self.stats.quiesce_tt_probes += 1;
-        }
-        if let Some(hit) = self.tt.probe(key, ply) {
+        if self.quiet_evasions == 0 {
             #[cfg(feature = "search-stats")]
             {
-                self.stats.quiesce_tt_hits += 1;
+                self.stats.quiesce_tt_probes += 1;
             }
-            tt_move = hit.best_move;
-            let cutoff = match hit.bound {
-                Bound::Exact => true,
-                Bound::Lower => hit.score >= beta,
-                Bound::Upper => hit.score <= original_alpha,
-            };
-            if cutoff {
+            if let Some(hit) = self.tt.probe(key, ply) {
                 #[cfg(feature = "search-stats")]
                 {
-                    self.stats.quiesce_tt_cutoffs += 1;
+                    self.stats.quiesce_tt_hits += 1;
                 }
-                return Some(hit.score);
+                tt_move = hit.best_move;
+                let cutoff = match hit.bound {
+                    Bound::Exact => true,
+                    Bound::Lower => hit.score >= beta,
+                    Bound::Upper => hit.score <= original_alpha,
+                };
+                if cutoff {
+                    #[cfg(feature = "search-stats")]
+                    {
+                        self.stats.quiesce_tt_cutoffs += 1;
+                    }
+                    return Some(hit.score);
+                }
             }
         }
 
-        let mut best = stand_pat;
+        let (best, best_move) = if evading {
+            self.quiesce_evasions(position, alpha, beta, ply, tt_move)?
+        } else {
+            let mut best = stand_pat;
+            let mut best_move = None;
+            self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
+            while let Some(candidate) = self.qsearch[ply as usize].next(
+                position,
+                &self.generator,
+                self.pst,
+                &self.capture_ranks,
+            ) {
+                let mv = candidate.capture.mv;
+                let buffers = &self.qsearch[ply as usize];
+                let is_last_royal_capture = captures_all_royals(
+                    buffers.royals,
+                    buffers.royal_count,
+                    candidate.capture.captured,
+                );
+                if !is_last_royal_capture
+                    && !candidate
+                        .exceeds_delta_threshold(self.pst, alpha - stand_pat - self.delta_margin)
+                {
+                    continue;
+                }
+                if !is_last_royal_capture
+                    && capture_is_pruned_by_see(position, self.rules, self.pst, mv)
+                {
+                    continue;
+                }
+                let score = if is_last_royal_capture {
+                    MATE - (ply + 1) as i32
+                } else {
+                    self.enter_node().then_some(())?;
+                    let undo = position.make_move_with_captures_unchecked(
+                        mv,
+                        self.rules,
+                        candidate.capture.captured,
+                    );
+                    self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
+                        self.accumulators[ply as usize],
+                        position,
+                        &undo,
+                    );
+                    let score = self
+                        .quiesce(position, -beta, -alpha, ply + 1)
+                        .map(|value| -value);
+                    position.unmake_move(undo);
+                    score?
+                };
+                if score > best {
+                    best = score;
+                    best_move = Some(mv);
+                }
+                alpha = alpha.max(score);
+                if alpha >= beta {
+                    break;
+                }
+            }
+            (best, best_move)
+        };
+        let bound = if best >= beta {
+            Bound::Lower
+        } else if best <= original_alpha {
+            Bound::Upper
+        } else {
+            Bound::Exact
+        };
+        if self.quiet_evasions == 0 {
+            self.tt.store(key, 0, best, bound, best_move, ply);
+        }
+        Some(best)
+    }
+
+    /// stand-patと枝刈りを使わず、置換表の手、捕獲手、非捕獲手の順に読む。
+    fn quiesce_evasions(
+        &mut self,
+        position: &mut Position,
+        mut alpha: i32,
+        beta: i32,
+        ply: u32,
+        tt_move: Option<Move>,
+    ) -> Option<(i32, Option<Move>)> {
+        let moves = &mut self.qsearch[ply as usize].evasions;
+        moves.clear();
+        self.generator.generate_moves(position, moves);
+        moves.sort_by_cached_key(|&mv| {
+            let capture = move_order_key(position, self.pst, mv);
+            (
+                Some(mv) != tt_move,
+                capture.is_none(),
+                capture.map(|key| (Reverse(key.captured_value), key.attacker_value)),
+            )
+        });
+        if moves.is_empty() {
+            return Some((-MATE + ply as i32, None));
+        }
+        let mut best = -INFINITY;
         let mut best_move = None;
-        self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
-        while let Some(candidate) = self.qsearch[ply as usize].next(
-            position,
-            &self.generator,
-            self.pst,
-            &self.capture_ranks,
-        ) {
-            let mv = candidate.capture.mv;
-            let buffers = &self.qsearch[ply as usize];
-            let is_last_royal_capture = captures_all_royals(
-                buffers.royals,
-                buffers.royal_count,
-                candidate.capture.captured,
-            );
-            if !is_last_royal_capture
-                && !candidate
-                    .exceeds_delta_threshold(self.pst, alpha - stand_pat - self.delta_margin)
-            {
-                continue;
-            }
-            if !is_last_royal_capture
-                && capture_is_pruned_by_see(position, self.rules, self.pst, mv)
-            {
-                continue;
-            }
-            let score = if is_last_royal_capture {
+        for index in 0..moves.len() {
+            let mv = self.qsearch[ply as usize].evasions[index];
+            let captured = position.captured_squares(mv);
+            let capture = move_order_key(position, self.pst, mv).is_some();
+            let score = if captured_last_royal(position, captured) {
                 MATE - (ply + 1) as i32
             } else {
                 self.enter_node().then_some(())?;
-                let undo = position.make_move_with_captures_unchecked(
-                    mv,
-                    self.rules,
-                    candidate.capture.captured,
-                );
+                let undo = position.make_move_with_captures_unchecked(mv, self.rules, captured);
                 self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
                     self.accumulators[ply as usize],
                     position,
                     &undo,
                 );
-                let score = self
-                    .quiesce(position, -beta, -alpha, ply + 1)
-                    .map(|value| -value);
+                let score = if capture {
+                    self.quiesce(position, -beta, -alpha, ply + 1)
+                        .map(|value| -value)
+                } else {
+                    let key = search_key(position);
+                    if self.is_repetition(key) {
+                        Some(DRAW_SCORE)
+                    } else {
+                        self.path_keys.push(key);
+                        self.quiet_evasions += 1;
+                        let score = self
+                            .quiesce(position, -beta, -alpha, ply + 1)
+                            .map(|value| -value);
+                        self.quiet_evasions -= 1;
+                        self.path_keys.pop();
+                        score
+                    }
+                };
                 position.unmake_move(undo);
                 score?
             };
@@ -156,15 +253,7 @@ impl Searcher<'_> {
                 break;
             }
         }
-        let bound = if best >= beta {
-            Bound::Lower
-        } else if best <= original_alpha {
-            Bound::Upper
-        } else {
-            Bound::Exact
-        };
-        self.tt.store(key, 0, best, bound, best_move, ply);
-        Some(best)
+        Some((best, best_move))
     }
 }
 
@@ -248,6 +337,7 @@ impl CaptureRanks {
 
 /// 静止探索の1深さ分の領域。対象升の配列は使用する順位だけを初期化する。
 pub(super) struct QsearchBuffers {
+    evasions: Vec<Move>,
     pub(super) validation: CaptureCache,
     pub(super) capturers: Vec<OrdinaryCapturer>,
     pub(super) special: Vec<QsearchCapture>,
@@ -265,6 +355,7 @@ pub(super) struct QsearchBuffers {
 impl Default for QsearchBuffers {
     fn default() -> Self {
         Self {
+            evasions: Vec::new(),
             validation: CaptureCache::default(),
             capturers: Vec::new(),
             special: Vec::new(),

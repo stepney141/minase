@@ -54,6 +54,7 @@ pub(super) fn new_searcher<'a>(
         path_keys: vec![search_key(position)],
         null_move_ply: None,
         null_move_boundary: None,
+        quiet_evasions: 0,
         nodes: 0,
         shared,
         stop_reason: None,
@@ -104,6 +105,8 @@ pub(super) struct Searcher<'a> {
     /// 直近のnull move直後の局面キーが探索経路に占める位置。
     /// 部分木内の反復判定はこの境界以降だけを参照する。
     pub(super) null_move_boundary: Option<usize>,
+    /// 現在の静止探索の経路で指した、捕獲以外の逃げる手の回数。
+    pub(super) quiet_evasions: u32,
     /// 実際の着手を盤面へ適用した回数。
     pub(super) nodes: u64,
     /// 探索チームで共有する停止状態と予算。

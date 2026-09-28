@@ -11,6 +11,7 @@
 mod captures;
 mod contracts;
 mod correction;
+mod evasions;
 mod handle;
 mod limits;
 mod negamax;

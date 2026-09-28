@@ -2,6 +2,14 @@
 
 use super::*;
 
+// search-bug-fixes.md「フェーズ3」: 末端の王駒への脅威を深さ1でも読む。
+#[test]
+fn quiescence_quiet_evasion_detects_audit_mate_at_depth_one() {
+    let position = crate::parse_sfen("11k/12/12/12/12/12/12/3b8/12/r2n8/P11/KP10 w").unwrap();
+    let (score, _) = run_negamax(&position, 1, -INFINITY, INFINITY, 0, &small_tt());
+    assert!(score >= MATE_THRESHOLD, "深さ1で詰みを読む: score={score}");
+}
+
 // search-bug-fixes.md「フェーズ2」: 捕獲と同時に成る利益をdelta pruningに含める。
 #[test]
 fn quiescence_delta_pruning_includes_promotion_gain() {
