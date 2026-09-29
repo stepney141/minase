@@ -17,7 +17,6 @@ use super::ordering::piece_at_for_ordering;
 use super::pruning::capture_is_pruned_by_see;
 use super::royal::captures_all_royals;
 use super::searcher::Searcher;
-use super::see::promotion_gain;
 use super::tt::Bound;
 
 impl Searcher<'_> {
@@ -117,8 +116,7 @@ impl Searcher<'_> {
                 candidate.capture.captured,
             );
             if !is_last_royal_capture
-                && !candidate
-                    .exceeds_delta_threshold(self.pst, alpha - stand_pat - self.delta_margin)
+                && stand_pat + candidate.captured_value + self.delta_margin <= alpha
             {
                 continue;
             }
@@ -183,12 +181,6 @@ pub(super) struct QsearchCapture {
 }
 
 impl QsearchCapture {
-    /// 置換表の手を含め、現在のαから求めた閾値を捕獲価値と成り益の和が超えるか。
-    pub(super) fn exceeds_delta_threshold(&self, pst: &Pst, threshold: i32) -> bool {
-        self.captured_value + promotion_gain(pst, self.capture.piece, self.capture.mv.promote)
-            > threshold
-    }
-
     fn new(pst: &Pst, capture: CaptureCandidate, captured_value: i32) -> Self {
         let piece = capture.piece;
         Self {
@@ -331,12 +323,12 @@ impl QsearchBuffers {
                 .flatten()
                 .map(|square| pst.piece_value(piece_at_for_ordering(position, square)))
                 .sum();
-            let mut candidate = QsearchCapture::new(pst, capture, captured_value);
-            if !candidate.exceeds_delta_threshold(pst, threshold)
+            if captured_value <= threshold
                 && !captures_all_royals(royals, royal_count, capture.captured)
             {
                 return;
             }
+            let mut candidate = QsearchCapture::new(pst, capture, captured_value);
             candidate.seq = self.special.len() as u16;
             self.special.push(candidate);
         });
@@ -347,12 +339,11 @@ impl QsearchBuffers {
             let pieces = position.pieces_of_kind(opponent, kind);
             let [unpromoted, promoted] = ranks.ranks_of_kind[kind.index()];
             if unpromoted == promoted {
-                let targets =
-                    if ranks.values[unpromoted as usize] + pst.max_promotion_gain() > threshold {
-                        pieces
-                    } else {
-                        pieces & royals
-                    };
+                let targets = if ranks.values[unpromoted as usize] > threshold {
+                    pieces
+                } else {
+                    pieces & royals
+                };
                 self.add_targets(targets, unpromoted, &mut allowed);
             } else {
                 for square in pieces {
@@ -361,9 +352,7 @@ impl QsearchBuffers {
                     } else {
                         unpromoted
                     };
-                    if ranks.values[rank as usize] + pst.max_promotion_gain() > threshold
-                        || royals.contains(square)
-                    {
+                    if ranks.values[rank as usize] > threshold || royals.contains(square) {
                         self.add_targets(Bitboard::from_squares([square]), rank, &mut allowed);
                     }
                 }
@@ -375,8 +364,7 @@ impl QsearchBuffers {
                 let mut present = false;
                 generator.emit_ordinary_captures(position, &[*capturer], allowed, &mut |capture| {
                     let value = pst.piece_value(piece_at_for_ordering(position, capture.mv.to));
-                    present |= QsearchCapture::new(pst, capture, value)
-                        .exceeds_delta_threshold(pst, threshold)
+                    present |= value > threshold
                         || captures_all_royals(royals, royal_count, capture.captured);
                 });
                 present
