@@ -51,3 +51,4 @@
 - [先行実装から評価項目を借りるときは計算経路と土台も調べる](survey-computation-path-of-borrowed-terms.md) — 先行実装の機能ごとに、依存するデータ構造、費用を払う時点、他の処理との共有を一次情報で調べてminaseの土台と照合し、土台がなければ土台を先に作る案と安い定式化へ変える案の費用を実装前に試算する。
 - [参照実装の手元の複製は未コミットの改変を確認してから引用する](verify-reference-checkout-is-pristine.md) — 参照実装を手元の複製から引用するときは`git status --short`で改変がないことを確かめ、改変があれば`git show <コミット>:<パス>`で当該コミットの内容を読む。
 - [測定機で重い計算を始める前に進行中の測定を確認する](check-running-measurements-before-cpu-load.md) — CPUを多く使う処理の前に`pgrep -a match_runner`と`pgrep -a spsa_runner`で進行中の測定を確かめ、走っていればスレッド数を空きコア数以内に抑えるか終了を待つ。
+- [探索の不具合は手法の契約違反に限って分類する](classify-bugs-by-method-contract.md) — 探索の監査で不具合とするのは実装が手法自身の契約に反する場合に限り、近似が真の値を外す例は改良の候補として通常の段階ゲートにかける。

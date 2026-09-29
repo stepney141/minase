@@ -44,7 +44,7 @@ fn stage6_long_history_search_contract() {
             &mut small_tt(),
         )
     );
-    // null moveは経路にキーを追加しない。パス後の実着手による反復も参照に含める。
+    // null moveの前にある対局履歴は反復として参照せず、履歴なしの場合と同じ結果を返す。
     let mut after_null = root.clone();
     after_null.make_null_move();
     let reply = legal_moves(&after_null)
@@ -54,16 +54,27 @@ fn stage6_long_history_search_contract() {
     let mut repeated = after_null.clone();
     repeated.make_move_unchecked(reply, rules);
     history[1] = search_key(&repeated);
-    with_root_searcher(&root, &history, |searcher| {
-        searcher.null_move_ply = Some(1);
-        searcher.accumulators[1] = searcher.pst.refresh_accumulator(&after_null);
-        let path = searcher.path_keys.clone();
-        let score =
-            searcher.search_move(&mut after_null, reply, 2, -INFINITY, INFINITY, 1, true, 0);
-        assert_eq!(score, Some(DRAW_SCORE));
-        assert_eq!(searcher.path_keys, path);
-        assert_eq!(searcher.nodes, 1);
-    });
+    let mut null_outcomes = Vec::new();
+    for keys in [&[][..], history.as_slice()] {
+        with_root_searcher(&root, keys, |searcher| {
+            searcher.null_move_ply = Some(1);
+            searcher.null_move_boundary = Some(searcher.path_keys.len());
+            searcher.path_keys.push(search_key(&after_null));
+            searcher.accumulators[1] = searcher.pst.refresh_accumulator(&after_null);
+            let path = searcher.path_keys.clone();
+            let score = searcher
+                .search_move(&mut after_null, reply, 2, -INFINITY, INFINITY, 1, true, 0)
+                .expect("unlimited search after null move must complete");
+            assert_eq!(searcher.path_keys, path);
+            assert_eq!(searcher.null_move_boundary, Some(1));
+            assert!(
+                searcher.nodes > 1,
+                "履歴との一致で探索を打ち切ってはならない"
+            );
+            null_outcomes.push((score, searcher.nodes));
+        });
+    }
+    assert_eq!(null_outcomes[0], null_outcomes[1]);
     // 探索木を変える枝刈りでも、同じ履歴からの零窓探索は再現でき、
     // 局面と経路を復元し、主変化には合法手だけを保持する。
     let mut outcomes = Vec::new();
