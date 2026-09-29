@@ -71,4 +71,5 @@ taskset -c 3 ./target/release/bench --depth 9 --repetitions 3
 フェーズ1と2はノード数を合計で4.8%減らし、フェーズ3は全合法手を読む分だけ深さ9のノード数を83%、所要時間を39%増やした。
 `K`は事前の規則により3とした。
 フェーズ3の修正（静止探索の逃げる手）は、非劣性のSTCと親コミットに対する診断のSTCで大きく負けたので、ブランチから取り除いた（[search-bug-fixes-qsearch-evasion-diag-stc](search-bug-fixes-qsearch-evasion-diag-stc.md)）。
-取り除いた後のソースはフェーズ2の完了時点と同一であり、深さ9の総ノード数は15,721,681である。
+その後、フェーズ2の修正（delta pruningの成り益）も、親コミットに対する診断のSTCで修正前の版がわずかに強い方向の結果となったので取り除いた（[search-bug-fixes-delta-promotion-diag-stc](search-bug-fixes-delta-promotion-diag-stc.md)）。
+取り除いた後のソースはフェーズ1の完了時点と同一であり、深さ9の総ノード数は15,195,794である。
