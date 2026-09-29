@@ -19,7 +19,8 @@ null moveの件は探索の正しさの修正なので、利用者の決定に�
 原因の診断では、stand-patの件の修正がその親コミットより有意に弱く（[search-bug-fixes-qsearch-evasion-diag-stc](../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)、親の得点率67.0%）、利用者の決定により、この件を不具合ではなく静止探索の近似と分類し直して対象から外した。
 delta pruningの件の修正は、診断のSTCが3,000ペアの上限で判定に達せず、LLRが0.93（親の得点率51.0%）だった（[search-bug-fixes-delta-promotion-diag-stc](../measurements/search-bug-fixes-delta-promotion-diag-stc.md)）。利用者の決定により、この修正も取り込まない。
 2件の修正はブランチから取り除き、ソースはnull moveの件の修正だけを加えた状態にした。
-次の一手は、null moveの件の修正で非劣性のSTCを行うことである。
+null moveの件の修正の非劣性のSTCは、有効480ペアで`H0`となり（[search-bug-fixes-null-move-noninferiority-stc](../measurements/search-bug-fixes-null-move-noninferiority-stc.md)、masterの得点率45.7%）、非劣性を通過した。
+次の一手は、利用者の確認を経て非劣性のLTCを行うことである。
 
 ## 目的
 
