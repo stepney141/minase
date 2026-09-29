@@ -66,12 +66,13 @@
 | 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 起案 | |
 | 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 | デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 完了（採用） | 2026年9月27日 |
-| 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 起案 | |
+| 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 完了（一部不採用） | 2026年9月29日 |
 
 ## 現在地
 
 ### 直近の完了
 
+- [探索部の不具合修正](plans/search-bug-fixes.md)は2026年9月29日に完了した。[探索部の不具合監査](audits/search-bugs-2026-09-28.md)の指摘のうち、反復の検出がnull moveをまたぎ、null move直後のじっとを実在しない引き分けとしていた不具合を直し、非劣性のSTCとLTCをともに通過して採用した（masterの得点率はSTC 45.7%、LTC 48.0%）。静止探索のdelta pruningが成り益を無視する不具合は、修正の診断で修正前の版がわずかに強い方向となったので取り込まず、不具合は残る。王駒がすべて狙われた静止探索の局面で全合法手を読む修正は約120 Elo弱く、不具合ではなく静止探索の近似と分類し直して、探索の不具合は手法の契約違反に限って分類するという[教訓](lessons/classify-bugs-by-method-contract.md)にした。
 - [棋力向上段階12](plans/strength-stage12.md)は2026年9月28日に、採用項目なしで完了した。発動率の診断で基準を満たした7項目（aspiration windowsのfail-high時の減深、負の捕獲手の後回し、捕獲履歴、静止探索の手数制限、butterfly historyの持ち越し、null moveの前提条件、PVノードでの置換表の打ち切りの停止）は、いずれもSTCで`H0`または上限到達時にLLRが負となり、補正表の鍵の追加は診断で見送った。静止探索の手数制限は約−173 Eloと大きく負け、失う良手の割合で閾値を選ぶ規則を深さの上限のない再帰に使えないことを[教訓](lessons/recall-loss-does-not-bound-recursive-pruning.md)にした。探索コードは段階開始版から変わっていない。
 - [デバッグ機能の整備](plans/debugging-tools.md)は2026年9月27日に完了した。USIの独自コマンド`d`、`eval`、`tt`、入出力のログ`--io-log`、`cargo test`で常に有効な整合検査（フィーチャ`invariants`）、および`bench`が出力する探索統計（フィーチャ`search-stats`）を追加し、使い方を[デバッグの手引き](guides/debugging.md)にまとめた。探索統計の初回の実行では、深さ5の`bench`でβカットのうち最初に探索した手によるものが59%であり、手の順序付けを見直すときの出発点になる。
 - USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
@@ -83,10 +84,6 @@
   - [教師の混合比](plans/teacher-mixing-ratio.md)では、λ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となった。
   - [探索局面を用いた学習](plans/search-aware-evaluation.md)では、探索局面を半数混ぜた候補Bは対照Aに対して、通常局面だけを深い教師で学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
   - [相対2駒評価](plans/relative-pair-eval.md)は、事前登録した判定で配置に依存する残存誤りの根拠が得られず、未実装で見送った。大きな着手の誤りを示した6根は、いずれも100,000ノードの探索の名目深さ内に駒の損得の差が現れる型だったが、各枝の到達深さと原因は追跡で確かめる必要がある（[準備記録](measurements/relative-pair-prep.md)）。
-
-### 進行中
-
-- [探索部の不具合修正](plans/search-bug-fixes.md)は、[探索部の不具合監査](audits/search-bugs-2026-09-28.md)の指摘のうち、反復の検出がnull moveをまたぐ不具合を修正し、masterに対する非劣性で採否を判定する。静止探索のdelta pruningが成り益を無視する不具合は、修正の診断で修正前の版がわずかに強い方向（約+7 Elo、判定なし）となったので取り込まず、王駒がすべて狙われた静止探索の局面で全合法手を読む修正は約120 Elo弱く、不具合ではなく静止探索の近似と分類し直して対象から外した。
 
 ### 次の候補
 

@@ -10,17 +10,14 @@ null move pruningは、手番を仮に相手へ渡して浅く読む枝刈りで
 もう1件は、王駒がすべて狙われている静止探索の局面で、何も指さずに現局面の評価値を確保できるとみなす下限（stand-pat）を使うことである。これは静止探索の近似の一例であり不具合ではないと分類し直し、対象から外した。全合法手を読む修正は約120 Elo弱かった。
 null moveの件は探索の正しさの修正なので、利用者の決定により、採否は棋力の向上ではなく非劣性で判定する。
 非劣性の判定は、masterを候補、修正のコミットを基準にした標準のGSPRT（勝敗から強さの差を逐次判定する統計検定、[棋力測定の手引き](../guides/sprt.md)）を、短時間と長時間の2条件で1回ずつ行う。どちらも「masterが10 Elo強い」という仮説が棄却されれば（判定`H0`）修正を採用する。
-完了条件は、修正がテストで固定され、非劣性の測定記録とともに採否が確定していることである。
+2026年9月29日に、null moveの件の修正が短時間と長時間の両条件で非劣性を通過し、採用してmasterへ統合した。
 
 ## 状態
 
-進行中。2026年9月28日に起案し、同日に着手した。
-監査の基準コミット（監査報告の冒頭に記載）から分岐したブランチ`search-bug-fixes`で、当初は3件の修正を積み、1組の非劣性のSTCで不合格（[search-bug-fixes-noninferiority-stc](../measurements/search-bug-fixes-noninferiority-stc.md)、masterの得点率69.1%）となった。
-原因の診断では、stand-patの件の修正がその親コミットより有意に弱く（[search-bug-fixes-qsearch-evasion-diag-stc](../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)、親の得点率67.0%）、利用者の決定により、この件を不具合ではなく静止探索の近似と分類し直して対象から外した。
-delta pruningの件の修正は、診断のSTCが3,000ペアの上限で判定に達せず、LLRが0.93（親の得点率51.0%）だった（[search-bug-fixes-delta-promotion-diag-stc](../measurements/search-bug-fixes-delta-promotion-diag-stc.md)）。利用者の決定により、この修正も取り込まない。
-2件の修正はブランチから取り除き、ソースはnull moveの件の修正だけを加えた状態にした。
-null moveの件の修正の非劣性のSTCは、有効480ペアで`H0`となり（[search-bug-fixes-null-move-noninferiority-stc](../measurements/search-bug-fixes-null-move-noninferiority-stc.md)、masterの得点率45.7%）、非劣性を通過した。
-次の一手は、利用者の確認を経て非劣性のLTCを行うことである。
+完了（一部不採用）。2026年9月28日に起案して着手し、2026年9月29日に完了した。
+null moveをまたぐ反復の修正は、非劣性のSTC（[search-bug-fixes-null-move-noninferiority-stc](../measurements/search-bug-fixes-null-move-noninferiority-stc.md)、masterの得点率45.7%）とLTC（[search-bug-fixes-null-move-noninferiority-ltc](../measurements/search-bug-fixes-null-move-noninferiority-ltc.md)、masterの得点率48.0%）でともに`H0`となり、採用してmasterへ統合した。
+delta pruningの件の修正は、診断のSTCで修正前の版がわずかに強い方向の結果（[search-bug-fixes-delta-promotion-diag-stc](../measurements/search-bug-fixes-delta-promotion-diag-stc.md)、判定なし）となり、利用者の決定により取り込まなかった。
+stand-patの件の修正は、3件を積んだ組の非劣性のSTC（[search-bug-fixes-noninferiority-stc](../measurements/search-bug-fixes-noninferiority-stc.md)）の不合格の主因であり（[search-bug-fixes-qsearch-evasion-diag-stc](../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)）、不具合ではなく静止探索の近似と分類し直して対象から外した。
 
 ## 目的
 
@@ -73,7 +70,7 @@ LTCへ進む前に、STCの結果とこの見積りを利用者へ示して進�
 null moveの直後に相手がじっとを指してnull moveの前の局面へ戻る場合は引き分けとしないこと、部分木の中で双方がじっとを指してnull move直後の局面へ戻る場合は引き分けとすること、null moveの外の反復検出が変わらないこと、および入れ子のnull moveから戻る場合と中断した場合に探索経路と境界が元に戻ることを、テストで固定した。
 `bench`の深さ9の総ノード数は16,519,597から15,195,794へ8.0%減った（[search-bug-fixes-bench](../measurements/search-bug-fixes-bench.md)）。
 
-### フェーズ2　非劣性の測定
+### フェーズ2　非劣性の測定（完了）
 
 null moveの件の修正を加えたコミットを修正のコミットとし、監査の基準コミットと比べる。
 3件を積んだ最初の組の測定と診断は、状態の節に挙げた測定記録に残してある。
@@ -107,8 +104,8 @@ data/worktrees/search-bug-fixes-runner/target/release/match_runner \
 - フェーズ1に挙げたテストが通る。
 - `cargo test`、`cargo clippy --all-targets`、`cargo fmt --check`が通る。
 - 修正は探索の挙動を変えるので、`bench`の総ノード数の不変は採否の条件にしない。
-- [探索部の設計書](search.md)の「静止探索」節では、王手中のstand-patについて、他の脅威を無視するのと同じ種類の近似であることと、全合法手を読む方式が測定で約120 Elo弱かったことを記す。この改訂は採否によらず行い、済んでいる。
-- 採用した場合は、[探索部の設計書](search.md)の「探索内の終局と規則処理」節の反復の記述を修正後の挙動へ書き直し、[探索内の反復負け回避](search-repetition.md)の「周回の区間と攻撃側の判定」の行と検証の節にある、null moveを含む区間を引き分けとする記述を、null moveより前の局面の再現は反復として検出しないという記述へ改める。
+- [探索部の設計書](search.md)の「静止探索」節には、王手中のstand-patが他の脅威を無視するのと同じ種類の近似であることと、全合法手を読む方式が測定で約120 Elo弱かったことを記した。
+- [探索部の設計書](search.md)の「探索内の終局と規則処理」節の反復の記述と、[探索内の反復負け回避](search-repetition.md)の「周回の区間と攻撃側の判定」の行および検証の節を、null moveより前の局面の再現は反復として検出しないという記述へ改めた。
 
 ## 完了条件
 
