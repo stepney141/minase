@@ -1,0 +1,8317 @@
+{
+  "conditions": {
+    "output_k": 1072.6529541015625,
+    "teacher_k": 765.5582022541896,
+    "teacher_k_records": 81867,
+    "lambda": 0.75,
+    "gamma": 0.9,
+    "plies": 40,
+    "average_kind": "quiet",
+    "split": "all records",
+    "model": "mirrored",
+    "endpoints": 2,
+    "gradient": "integer prediction; continuous PST derivative; no rounding/clipping derivative"
+  },
+  "by_kind": {
+    "quiet": {
+      "count": 81867,
+      "leaf_kinds": {
+        "static": 81867,
+        "max_ply": 0,
+        "mate": 0
+      },
+      "k": {
+        "histogram": {
+          "0": 73811,
+          "1": 5268,
+          "2": 1801,
+          "3": 591,
+          "4": 219,
+          "5": 118,
+          "6": 30,
+          "7": 19,
+          "8": 7,
+          "9": 3
+        },
+        "count": 81867,
+        "mean": 0.1527477493984145,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 9.0,
+        "p95": 1.0,
+        "abs_p95": 1.0,
+        "nonzero_fraction": 0.09840350812903856
+      },
+      "output_difference_cp": {
+        "count": 81867,
+        "mean": 17.296053354831617,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 3071.0,
+        "p95": 93.0,
+        "abs_p95": 93.0,
+        "nonzero_fraction": 0.09840350812903856
+      },
+      "feature_comparison_count": 81867,
+      "feature_changed_fraction": 0.09840350812903856,
+      "regression_count": 81867,
+      "loss_difference": {
+        "count": 81867,
+        "mean": 2.4638721796010423e-05,
+        "median": 0.0,
+        "min": -0.9659791561643758,
+        "max": 1.4135607487010518,
+        "p95": 0.0,
+        "abs_p95": 0.008022877953262971,
+        "nonzero_fraction": 0.09840350812903856
+      },
+      "gradient_changed_fraction": 0.09840350812903856,
+      "gradient_ratio": {
+        "count": 81867,
+        "mean": 0.15277499963635066,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 163.22683673139505,
+        "p95": 1.6322460333668356,
+        "abs_p95": 1.6322460333668356,
+        "nonzero_fraction": 0.09840350812903856
+      },
+      "zero_static_gradient_count": 0,
+      "gradient_difference_norm": {
+        "count": 81867,
+        "mean": 0.00011330839256787725,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.007023657846912397,
+        "p95": 0.0009932701133357968,
+        "abs_p95": 0.0009932701133357968,
+        "nonzero_fraction": 0.09840350812903856
+      },
+      "gradient_sum_cosine": 0.8402150865572343
+    },
+    "capture": {
+      "count": 12678,
+      "leaf_kinds": {
+        "static": 12678,
+        "max_ply": 0,
+        "mate": 0
+      },
+      "k": {
+        "histogram": {
+          "0": 2774,
+          "1": 6206,
+          "2": 2164,
+          "3": 936,
+          "4": 352,
+          "5": 159,
+          "6": 59,
+          "7": 19,
+          "8": 7,
+          "9": 2
+        },
+        "count": 12678,
+        "mean": 1.2703896513645685,
+        "median": 1.0,
+        "min": 0.0,
+        "max": 9.0,
+        "p95": 3.0,
+        "abs_p95": 3.0,
+        "nonzero_fraction": 0.7811957722038176
+      },
+      "output_difference_cp": {
+        "count": 12678,
+        "mean": 391.56830730399116,
+        "median": 161.0,
+        "min": 0.0,
+        "max": 3409.0,
+        "p95": 1506.1499999999996,
+        "abs_p95": 1506.1499999999996,
+        "nonzero_fraction": 0.7811957722038176
+      },
+      "feature_comparison_count": 12678,
+      "feature_changed_fraction": 0.7811957722038176,
+      "regression_count": 12678,
+      "loss_difference": {
+        "count": 12678,
+        "mean": -0.030071226274518994,
+        "median": 0.0,
+        "min": -2.1256593739352105,
+        "max": 1.105752632793416,
+        "p95": 0.05234500639969748,
+        "abs_p95": 0.24858870265170896,
+        "nonzero_fraction": 0.7811957722038176
+      },
+      "gradient_changed_fraction": 0.7811957722038176,
+      "gradient_ratio": {
+        "count": 12678,
+        "mean": 2.456734328529348,
+        "median": 1.2556619618860136,
+        "min": 0.0,
+        "max": 2351.54752783373,
+        "p95": 4.266579671216389,
+        "abs_p95": 4.266579671216389,
+        "nonzero_fraction": 0.7811957722038176
+      },
+      "zero_static_gradient_count": 0,
+      "gradient_difference_norm": {
+        "count": 12678,
+        "mean": 0.0009376370892384475,
+        "median": 0.0005775751953342488,
+        "min": 0.0,
+        "max": 0.009873252418617088,
+        "p95": 0.0029879161235144384,
+        "abs_p95": 0.0029879161235144384,
+        "nonzero_fraction": 0.7811957722038176
+      },
+      "gradient_sum_cosine": -0.6868119672889316
+    },
+    "promotion": {
+      "count": 1211,
+      "leaf_kinds": {
+        "static": 1211,
+        "max_ply": 0,
+        "mate": 0
+      },
+      "k": {
+        "histogram": {
+          "0": 919,
+          "1": 170,
+          "2": 78,
+          "3": 25,
+          "4": 8,
+          "5": 11
+        },
+        "count": 1211,
+        "mean": 0.402972749793559,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 5.0,
+        "p95": 2.0,
+        "abs_p95": 2.0,
+        "nonzero_fraction": 0.24112303881090008
+      },
+      "output_difference_cp": {
+        "count": 1211,
+        "mean": 60.73740710156895,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 1781.0,
+        "p95": 361.5,
+        "abs_p95": 361.5,
+        "nonzero_fraction": 0.24112303881090008
+      },
+      "feature_comparison_count": 1211,
+      "feature_changed_fraction": 0.24112303881090008,
+      "regression_count": 1211,
+      "loss_difference": {
+        "count": 1211,
+        "mean": -0.005745970220308609,
+        "median": 0.0,
+        "min": -0.41238382597992096,
+        "max": 0.16144057198573702,
+        "p95": 0.002657616952482289,
+        "abs_p95": 0.04437908441072269,
+        "nonzero_fraction": 0.24112303881090008
+      },
+      "gradient_changed_fraction": 0.24112303881090008,
+      "gradient_ratio": {
+        "count": 1211,
+        "mean": 0.39828733188420906,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 41.779303487792426,
+        "p95": 1.7424390697115286,
+        "abs_p95": 1.7424390697115286,
+        "nonzero_fraction": 0.24112303881090008
+      },
+      "zero_static_gradient_count": 0,
+      "gradient_difference_norm": {
+        "count": 1211,
+        "mean": 0.00023546974250069093,
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.004104171419929948,
+        "p95": 0.0016619319487918148,
+        "abs_p95": 0.0016619319487918148,
+        "nonzero_fraction": 0.24112303881090008
+      },
+      "gradient_sum_cosine": 0.9833510987171619
+    }
+  },
+  "cost": {
+    "cpu_seconds_per_node": 4.818042029728344e-06,
+    "sample_games": 200,
+    "target_games": 15000,
+    "training_fraction": 0.95,
+    "extractions": 10,
+    "concurrency": 16,
+    "by_kind": {
+      "quiet": {
+        "count": 81867,
+        "nodes": 388773,
+        "cpu_seconds": 1.8731246540235775,
+        "cpu_seconds_per_root": 2.2880093981990028e-05,
+        "estimated_training_records": 5833023.75
+      },
+      "capture": {
+        "count": 12678,
+        "nodes": 284859,
+        "cpu_seconds": 1.3724626345463864,
+        "cpu_seconds_per_root": 0.00010825545311140452,
+        "estimated_training_records": 903307.5
+      },
+      "promotion": {
+        "count": 1211,
+        "nodes": 9218,
+        "cpu_seconds": 0.044412711430035876,
+        "cpu_seconds_per_root": 3.667441075973235e-05,
+        "estimated_training_records": 86283.75
+      }
+    },
+    "minutes": {
+      "Q": 1.390209704158124,
+      "Qc": 2.40883431573552,
+      "combined": 3.7990440198936444
+    },
+    "within_budget": {
+      "Q": true,
+      "Qc": true,
+      "combined": true
+    },
+    "qc_available": true,
+    "budget_pass": true
+  },
+  "phase2_conditions": {
+    "leaf_value_consistency": true,
+    "trainable_quiet": true,
+    "cost_within_budget": true
+  },
+  "proceed_phase2": true,
+  "independent_search": {
+    "seed": 1,
+    "limit": 256,
+    "nodes_per_search": 10000000,
+    "hash_mib": 64,
+    "threads": 1,
+    "jobs": 3,
+    "comparable": true,
+    "count": 256,
+    "by_kind": {
+      "all": {
+        "difference_cp": {
+          "count": 256,
+          "mean": 547.55078125,
+          "median": 30.5,
+          "min": -25790.0,
+          "max": 30859.0,
+          "p95": 686.5,
+          "abs_p95": 749.0,
+          "nonzero_fraction": 0.98828125
+        },
+        "mate_roots": 6
+      },
+      "quiet": {
+        "difference_cp": {
+          "count": 114,
+          "mean": 956.4736842105264,
+          "median": 90.0,
+          "min": -605.0,
+          "max": 30859.0,
+          "p95": 1130.199999999998,
+          "abs_p95": 1130.199999999998,
+          "nonzero_fraction": 1.0
+        },
+        "mate_roots": 3
+      },
+      "capture": {
+        "difference_cp": {
+          "count": 142,
+          "mean": 219.2605633802817,
+          "median": 20.5,
+          "min": -25790.0,
+          "max": 26398.0,
+          "p95": 425.4999999999992,
+          "abs_p95": 471.4999999999999,
+          "nonzero_fraction": 0.9788732394366197
+        },
+        "mate_roots": 3
+      }
+    },
+    "roots": [
+      {
+        "index": 496,
+        "kind": "capture",
+        "k": 2,
+        "game": 2,
+        "ply": 128,
+        "root": {
+          "value": -340,
+          "score_usi": [
+            "cp",
+            "-340"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6983284,
+          "bestmove": "7h12c+"
+        },
+        "leaf": {
+          "value": -383,
+          "score_usi": [
+            "cp",
+            "-383"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7182904,
+          "bestmove": "5i4h"
+        },
+        "difference_cp": 43,
+        "contains_mate": false
+      },
+      {
+        "index": 537,
+        "kind": "quiet",
+        "k": 1,
+        "game": 2,
+        "ply": 169,
+        "root": {
+          "value": 136,
+          "score_usi": [
+            "cp",
+            "136"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6026687,
+          "bestmove": "2c4e"
+        },
+        "leaf": {
+          "value": -112,
+          "score_usi": [
+            "cp",
+            "-112"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9393616,
+          "bestmove": "7j6i"
+        },
+        "difference_cp": 24,
+        "contains_mate": false
+      },
+      {
+        "index": 4439,
+        "kind": "quiet",
+        "k": 1,
+        "game": 4,
+        "ply": 225,
+        "root": {
+          "value": 29995,
+          "score_usi": [
+            "mate",
+            "5"
+          ],
+          "mate": true,
+          "depth": 8,
+          "nodes": 5632862,
+          "bestmove": "8h9j"
+        },
+        "leaf": {
+          "value": 864,
+          "score_usi": [
+            "cp",
+            "864"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 6708434,
+          "bestmove": "7j8j"
+        },
+        "difference_cp": 30859,
+        "contains_mate": true
+      },
+      {
+        "index": 4673,
+        "kind": "capture",
+        "k": 1,
+        "game": 5,
+        "ply": 244,
+        "root": {
+          "value": -1351,
+          "score_usi": [
+            "cp",
+            "-1351"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7976324,
+          "bestmove": "3i3h"
+        },
+        "leaf": {
+          "value": 1305,
+          "score_usi": [
+            "cp",
+            "1305"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3605890,
+          "bestmove": "2f2g"
+        },
+        "difference_cp": -46,
+        "contains_mate": false
+      },
+      {
+        "index": 4678,
+        "kind": "quiet",
+        "k": 2,
+        "game": 5,
+        "ply": 249,
+        "root": {
+          "value": 1612,
+          "score_usi": [
+            "cp",
+            "1612"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9027424,
+          "bestmove": "5f6g"
+        },
+        "leaf": {
+          "value": 1992,
+          "score_usi": [
+            "cp",
+            "1992"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6543077,
+          "bestmove": "3h3i+"
+        },
+        "difference_cp": -380,
+        "contains_mate": false
+      },
+      {
+        "index": 4881,
+        "kind": "capture",
+        "k": 1,
+        "game": 5,
+        "ply": 453,
+        "root": {
+          "value": 1226,
+          "score_usi": [
+            "cp",
+            "1226"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 4925103,
+          "bestmove": "10f8f"
+        },
+        "leaf": {
+          "value": -1229,
+          "score_usi": [
+            "cp",
+            "-1229"
+          ],
+          "mate": false,
+          "depth": 19,
+          "nodes": 9268105,
+          "bestmove": "9l8l"
+        },
+        "difference_cp": -3,
+        "contains_mate": false
+      },
+      {
+        "index": 5365,
+        "kind": "quiet",
+        "k": 2,
+        "game": 6,
+        "ply": 260,
+        "root": {
+          "value": 1431,
+          "score_usi": [
+            "cp",
+            "1431"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9401087,
+          "bestmove": "6j6k"
+        },
+        "leaf": {
+          "value": 1386,
+          "score_usi": [
+            "cp",
+            "1386"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5984617,
+          "bestmove": "4l5k"
+        },
+        "difference_cp": 45,
+        "contains_mate": false
+      },
+      {
+        "index": 5589,
+        "kind": "capture",
+        "k": 1,
+        "game": 7,
+        "ply": 125,
+        "root": {
+          "value": 218,
+          "score_usi": [
+            "cp",
+            "218"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5202434,
+          "bestmove": "4g4h"
+        },
+        "leaf": {
+          "value": -197,
+          "score_usi": [
+            "cp",
+            "-197"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7135574,
+          "bestmove": "6g7g"
+        },
+        "difference_cp": 21,
+        "contains_mate": false
+      },
+      {
+        "index": 5867,
+        "kind": "capture",
+        "k": 1,
+        "game": 7,
+        "ply": 403,
+        "root": {
+          "value": -957,
+          "score_usi": [
+            "cp",
+            "-957"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 2059873,
+          "bestmove": "11l10l"
+        },
+        "leaf": {
+          "value": 1061,
+          "score_usi": [
+            "cp",
+            "1061"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9859143,
+          "bestmove": "10f10e"
+        },
+        "difference_cp": 104,
+        "contains_mate": false
+      },
+      {
+        "index": 6069,
+        "kind": "capture",
+        "k": 1,
+        "game": 8,
+        "ply": 146,
+        "root": {
+          "value": -3171,
+          "score_usi": [
+            "cp",
+            "-3171"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7316662,
+          "bestmove": "6i6h"
+        },
+        "leaf": {
+          "value": 3357,
+          "score_usi": [
+            "cp",
+            "3357"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6137421,
+          "bestmove": "12d5k"
+        },
+        "difference_cp": 186,
+        "contains_mate": false
+      },
+      {
+        "index": 6229,
+        "kind": "capture",
+        "k": 1,
+        "game": 8,
+        "ply": 306,
+        "root": {
+          "value": -5796,
+          "score_usi": [
+            "cp",
+            "-5796"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7115338,
+          "bestmove": "1k1j"
+        },
+        "leaf": {
+          "value": 5951,
+          "score_usi": [
+            "cp",
+            "5951"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 9019134,
+          "bestmove": "7j6k"
+        },
+        "difference_cp": 155,
+        "contains_mate": false
+      },
+      {
+        "index": 7252,
+        "kind": "quiet",
+        "k": 3,
+        "game": 10,
+        "ply": 350,
+        "root": {
+          "value": 3052,
+          "score_usi": [
+            "cp",
+            "3052"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6745071,
+          "bestmove": "2d3b"
+        },
+        "leaf": {
+          "value": -1663,
+          "score_usi": [
+            "cp",
+            "-1663"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6288083,
+          "bestmove": "8g8j"
+        },
+        "difference_cp": 1389,
+        "contains_mate": false
+      },
+      {
+        "index": 7945,
+        "kind": "capture",
+        "k": 4,
+        "game": 12,
+        "ply": 235,
+        "root": {
+          "value": -2917,
+          "score_usi": [
+            "cp",
+            "-2917"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7027000,
+          "bestmove": "7e7f"
+        },
+        "leaf": {
+          "value": -2455,
+          "score_usi": [
+            "cp",
+            "-2455"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6587113,
+          "bestmove": "10e9d"
+        },
+        "difference_cp": -462,
+        "contains_mate": false
+      },
+      {
+        "index": 7954,
+        "kind": "capture",
+        "k": 3,
+        "game": 12,
+        "ply": 244,
+        "root": {
+          "value": 3051,
+          "score_usi": [
+            "cp",
+            "3051"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6880391,
+          "bestmove": "12l12b+"
+        },
+        "leaf": {
+          "value": -2942,
+          "score_usi": [
+            "cp",
+            "-2942"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4159174,
+          "bestmove": "9e7g"
+        },
+        "difference_cp": 109,
+        "contains_mate": false
+      },
+      {
+        "index": 7997,
+        "kind": "quiet",
+        "k": 1,
+        "game": 12,
+        "ply": 287,
+        "root": {
+          "value": -4115,
+          "score_usi": [
+            "cp",
+            "-4115"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8152596,
+          "bestmove": "6c9f"
+        },
+        "leaf": {
+          "value": 4140,
+          "score_usi": [
+            "cp",
+            "4140"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7209409,
+          "bestmove": "11c10b"
+        },
+        "difference_cp": 25,
+        "contains_mate": false
+      },
+      {
+        "index": 8408,
+        "kind": "capture",
+        "k": 1,
+        "game": 14,
+        "ply": 73,
+        "root": {
+          "value": -14,
+          "score_usi": [
+            "cp",
+            "-14"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6876573,
+          "bestmove": "9d8e8d"
+        },
+        "leaf": {
+          "value": 41,
+          "score_usi": [
+            "cp",
+            "41"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6229270,
+          "bestmove": "10k6g"
+        },
+        "difference_cp": 27,
+        "contains_mate": false
+      },
+      {
+        "index": 8419,
+        "kind": "capture",
+        "k": 1,
+        "game": 14,
+        "ply": 84,
+        "root": {
+          "value": 11,
+          "score_usi": [
+            "cp",
+            "11"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8168615,
+          "bestmove": "5k6j"
+        },
+        "leaf": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7140718,
+          "bestmove": "9c8b"
+        },
+        "difference_cp": 11,
+        "contains_mate": false
+      },
+      {
+        "index": 8663,
+        "kind": "capture",
+        "k": 1,
+        "game": 14,
+        "ply": 328,
+        "root": {
+          "value": -2505,
+          "score_usi": [
+            "cp",
+            "-2505"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8600007,
+          "bestmove": "7e8e"
+        },
+        "leaf": {
+          "value": 2977,
+          "score_usi": [
+            "cp",
+            "2977"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7383256,
+          "bestmove": "11k10l"
+        },
+        "difference_cp": 472,
+        "contains_mate": false
+      },
+      {
+        "index": 8672,
+        "kind": "capture",
+        "k": 1,
+        "game": 14,
+        "ply": 337,
+        "root": {
+          "value": 29995,
+          "score_usi": [
+            "mate",
+            "5"
+          ],
+          "mate": true,
+          "depth": 9,
+          "nodes": 4545810,
+          "bestmove": "12h8l"
+        },
+        "leaf": {
+          "value": -3597,
+          "score_usi": [
+            "cp",
+            "-3597"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7904077,
+          "bestmove": "6g6h"
+        },
+        "difference_cp": 26398,
+        "contains_mate": true
+      },
+      {
+        "index": 8919,
+        "kind": "capture",
+        "k": 1,
+        "game": 16,
+        "ply": 43,
+        "root": {
+          "value": 2731,
+          "score_usi": [
+            "cp",
+            "2731"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8825736,
+          "bestmove": "8c7b"
+        },
+        "leaf": {
+          "value": -2689,
+          "score_usi": [
+            "cp",
+            "-2689"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5853421,
+          "bestmove": "2j2k"
+        },
+        "difference_cp": 42,
+        "contains_mate": false
+      },
+      {
+        "index": 9344,
+        "kind": "capture",
+        "k": 1,
+        "game": 16,
+        "ply": 468,
+        "root": {
+          "value": -6704,
+          "score_usi": [
+            "cp",
+            "-6704"
+          ],
+          "mate": false,
+          "depth": 19,
+          "nodes": 8143016,
+          "bestmove": "11k10l"
+        },
+        "leaf": {
+          "value": 6703,
+          "score_usi": [
+            "cp",
+            "6703"
+          ],
+          "mate": false,
+          "depth": 19,
+          "nodes": 9287664,
+          "bestmove": "3k2k"
+        },
+        "difference_cp": -1,
+        "contains_mate": false
+      },
+      {
+        "index": 9570,
+        "kind": "quiet",
+        "k": 2,
+        "game": 17,
+        "ply": 196,
+        "root": {
+          "value": 33,
+          "score_usi": [
+            "cp",
+            "33"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 5275398,
+          "bestmove": "12j9j"
+        },
+        "leaf": {
+          "value": -22,
+          "score_usi": [
+            "cp",
+            "-22"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6549249,
+          "bestmove": "5l2i"
+        },
+        "difference_cp": 55,
+        "contains_mate": false
+      },
+      {
+        "index": 9625,
+        "kind": "quiet",
+        "k": 1,
+        "game": 17,
+        "ply": 251,
+        "root": {
+          "value": 265,
+          "score_usi": [
+            "cp",
+            "265"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9643729,
+          "bestmove": "2e2f"
+        },
+        "leaf": {
+          "value": -98,
+          "score_usi": [
+            "cp",
+            "-98"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 8528816,
+          "bestmove": "10k10j"
+        },
+        "difference_cp": 167,
+        "contains_mate": false
+      },
+      {
+        "index": 10131,
+        "kind": "capture",
+        "k": 1,
+        "game": 18,
+        "ply": 253,
+        "root": {
+          "value": 897,
+          "score_usi": [
+            "cp",
+            "897"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4508887,
+          "bestmove": "9a8a"
+        },
+        "leaf": {
+          "value": -926,
+          "score_usi": [
+            "cp",
+            "-926"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6270478,
+          "bestmove": "7i9g"
+        },
+        "difference_cp": -29,
+        "contains_mate": false
+      },
+      {
+        "index": 11141,
+        "kind": "quiet",
+        "k": 2,
+        "game": 21,
+        "ply": 165,
+        "root": {
+          "value": -2085,
+          "score_usi": [
+            "cp",
+            "-2085"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 5699542,
+          "bestmove": "3l2l"
+        },
+        "leaf": {
+          "value": -1980,
+          "score_usi": [
+            "cp",
+            "-1980"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9950082,
+          "bestmove": "4d4e"
+        },
+        "difference_cp": -105,
+        "contains_mate": false
+      },
+      {
+        "index": 11453,
+        "kind": "quiet",
+        "k": 1,
+        "game": 22,
+        "ply": 177,
+        "root": {
+          "value": -1109,
+          "score_usi": [
+            "cp",
+            "-1109"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 7787221,
+          "bestmove": "5c6d"
+        },
+        "leaf": {
+          "value": 1203,
+          "score_usi": [
+            "cp",
+            "1203"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4696734,
+          "bestmove": "10g9f"
+        },
+        "difference_cp": 94,
+        "contains_mate": false
+      },
+      {
+        "index": 11872,
+        "kind": "capture",
+        "k": 1,
+        "game": 23,
+        "ply": 97,
+        "root": {
+          "value": 269,
+          "score_usi": [
+            "cp",
+            "269"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7926465,
+          "bestmove": "6b7c"
+        },
+        "leaf": {
+          "value": -272,
+          "score_usi": [
+            "cp",
+            "-272"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 4852631,
+          "bestmove": "12g12f"
+        },
+        "difference_cp": -3,
+        "contains_mate": false
+      },
+      {
+        "index": 12006,
+        "kind": "quiet",
+        "k": 1,
+        "game": 23,
+        "ply": 231,
+        "root": {
+          "value": -556,
+          "score_usi": [
+            "cp",
+            "-556"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5374822,
+          "bestmove": "12g12c"
+        },
+        "leaf": {
+          "value": 766,
+          "score_usi": [
+            "cp",
+            "766"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6665817,
+          "bestmove": "5i4h"
+        },
+        "difference_cp": 210,
+        "contains_mate": false
+      },
+      {
+        "index": 12516,
+        "kind": "quiet",
+        "k": 3,
+        "game": 25,
+        "ply": 91,
+        "root": {
+          "value": -3058,
+          "score_usi": [
+            "cp",
+            "-3058"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6228559,
+          "bestmove": "4f11f"
+        },
+        "leaf": {
+          "value": 3261,
+          "score_usi": [
+            "cp",
+            "3261"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8787165,
+          "bestmove": "10k3d+"
+        },
+        "difference_cp": 203,
+        "contains_mate": false
+      },
+      {
+        "index": 12543,
+        "kind": "capture",
+        "k": 3,
+        "game": 25,
+        "ply": 118,
+        "root": {
+          "value": 3426,
+          "score_usi": [
+            "cp",
+            "3426"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9099099,
+          "bestmove": "4g2g"
+        },
+        "leaf": {
+          "value": -2997,
+          "score_usi": [
+            "cp",
+            "-2997"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9571379,
+          "bestmove": "5b5i+"
+        },
+        "difference_cp": 429,
+        "contains_mate": false
+      },
+      {
+        "index": 13298,
+        "kind": "capture",
+        "k": 1,
+        "game": 26,
+        "ply": 89,
+        "root": {
+          "value": -467,
+          "score_usi": [
+            "cp",
+            "-467"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4852594,
+          "bestmove": "10c9c"
+        },
+        "leaf": {
+          "value": 483,
+          "score_usi": [
+            "cp",
+            "483"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 4342184,
+          "bestmove": "5i5h"
+        },
+        "difference_cp": 16,
+        "contains_mate": false
+      },
+      {
+        "index": 13357,
+        "kind": "capture",
+        "k": 1,
+        "game": 26,
+        "ply": 148,
+        "root": {
+          "value": 583,
+          "score_usi": [
+            "cp",
+            "583"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9614901,
+          "bestmove": "8f6g"
+        },
+        "leaf": {
+          "value": -562,
+          "score_usi": [
+            "cp",
+            "-562"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8423091,
+          "bestmove": "8c7b"
+        },
+        "difference_cp": 21,
+        "contains_mate": false
+      },
+      {
+        "index": 13548,
+        "kind": "quiet",
+        "k": 1,
+        "game": 26,
+        "ply": 339,
+        "root": {
+          "value": -370,
+          "score_usi": [
+            "cp",
+            "-370"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5818488,
+          "bestmove": "5b4c"
+        },
+        "leaf": {
+          "value": 1048,
+          "score_usi": [
+            "cp",
+            "1048"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5419493,
+          "bestmove": "9h2a+"
+        },
+        "difference_cp": 678,
+        "contains_mate": false
+      },
+      {
+        "index": 14460,
+        "kind": "capture",
+        "k": 2,
+        "game": 28,
+        "ply": 277,
+        "root": {
+          "value": 2769,
+          "score_usi": [
+            "cp",
+            "2769"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6597233,
+          "bestmove": "8b8i+"
+        },
+        "leaf": {
+          "value": 2753,
+          "score_usi": [
+            "cp",
+            "2753"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7031234,
+          "bestmove": "4h3i+"
+        },
+        "difference_cp": 16,
+        "contains_mate": false
+      },
+      {
+        "index": 14608,
+        "kind": "capture",
+        "k": 1,
+        "game": 28,
+        "ply": 425,
+        "root": {
+          "value": 202,
+          "score_usi": [
+            "cp",
+            "202"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 6944614,
+          "bestmove": "8i9j"
+        },
+        "leaf": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 7573231,
+          "bestmove": "10k11k"
+        },
+        "difference_cp": 202,
+        "contains_mate": false
+      },
+      {
+        "index": 14674,
+        "kind": "capture",
+        "k": 1,
+        "game": 29,
+        "ply": 71,
+        "root": {
+          "value": -50,
+          "score_usi": [
+            "cp",
+            "-50"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6294717,
+          "bestmove": "9f9g9f"
+        },
+        "leaf": {
+          "value": 54,
+          "score_usi": [
+            "cp",
+            "54"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9315935,
+          "bestmove": "9j8i"
+        },
+        "difference_cp": 4,
+        "contains_mate": false
+      },
+      {
+        "index": 14720,
+        "kind": "capture",
+        "k": 2,
+        "game": 29,
+        "ply": 117,
+        "root": {
+          "value": 23,
+          "score_usi": [
+            "cp",
+            "23"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6995566,
+          "bestmove": "10b7e"
+        },
+        "leaf": {
+          "value": 14,
+          "score_usi": [
+            "cp",
+            "14"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9368135,
+          "bestmove": "6d6e"
+        },
+        "difference_cp": 9,
+        "contains_mate": false
+      },
+      {
+        "index": 14740,
+        "kind": "capture",
+        "k": 1,
+        "game": 29,
+        "ply": 137,
+        "root": {
+          "value": 115,
+          "score_usi": [
+            "cp",
+            "115"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8480557,
+          "bestmove": "5g4h5g"
+        },
+        "leaf": {
+          "value": -118,
+          "score_usi": [
+            "cp",
+            "-118"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8121875,
+          "bestmove": "10k11j"
+        },
+        "difference_cp": -3,
+        "contains_mate": false
+      },
+      {
+        "index": 15021,
+        "kind": "quiet",
+        "k": 1,
+        "game": 29,
+        "ply": 418,
+        "root": {
+          "value": -3515,
+          "score_usi": [
+            "cp",
+            "-3515"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6880307,
+          "bestmove": "9i10h"
+        },
+        "leaf": {
+          "value": 4339,
+          "score_usi": [
+            "cp",
+            "4339"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 6402733,
+          "bestmove": "10g10l"
+        },
+        "difference_cp": 824,
+        "contains_mate": false
+      },
+      {
+        "index": 15858,
+        "kind": "quiet",
+        "k": 1,
+        "game": 31,
+        "ply": 485,
+        "root": {
+          "value": 3273,
+          "score_usi": [
+            "cp",
+            "3273"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7272405,
+          "bestmove": "9d8d"
+        },
+        "leaf": {
+          "value": -3002,
+          "score_usi": [
+            "cp",
+            "-3002"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6680336,
+          "bestmove": "9k9d"
+        },
+        "difference_cp": 271,
+        "contains_mate": false
+      },
+      {
+        "index": 16129,
+        "kind": "capture",
+        "k": 1,
+        "game": 32,
+        "ply": 249,
+        "root": {
+          "value": -551,
+          "score_usi": [
+            "cp",
+            "-551"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 3524738,
+          "bestmove": "3f3g"
+        },
+        "leaf": {
+          "value": 1275,
+          "score_usi": [
+            "cp",
+            "1275"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6634763,
+          "bestmove": "4i5j"
+        },
+        "difference_cp": 724,
+        "contains_mate": false
+      },
+      {
+        "index": 17001,
+        "kind": "quiet",
+        "k": 1,
+        "game": 34,
+        "ply": 165,
+        "root": {
+          "value": 245,
+          "score_usi": [
+            "cp",
+            "245"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8390194,
+          "bestmove": "5b5g"
+        },
+        "leaf": {
+          "value": -220,
+          "score_usi": [
+            "cp",
+            "-220"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 7016650,
+          "bestmove": "9k10j"
+        },
+        "difference_cp": 25,
+        "contains_mate": false
+      },
+      {
+        "index": 17507,
+        "kind": "capture",
+        "k": 1,
+        "game": 35,
+        "ply": 276,
+        "root": {
+          "value": 891,
+          "score_usi": [
+            "cp",
+            "891"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9300160,
+          "bestmove": "11l11h"
+        },
+        "leaf": {
+          "value": -823,
+          "score_usi": [
+            "cp",
+            "-823"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7905430,
+          "bestmove": "9e9f"
+        },
+        "difference_cp": 68,
+        "contains_mate": false
+      },
+      {
+        "index": 18225,
+        "kind": "capture",
+        "k": 1,
+        "game": 37,
+        "ply": 306,
+        "root": {
+          "value": 740,
+          "score_usi": [
+            "cp",
+            "740"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8804452,
+          "bestmove": "3j8e"
+        },
+        "leaf": {
+          "value": -559,
+          "score_usi": [
+            "cp",
+            "-559"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8285581,
+          "bestmove": "4g6g"
+        },
+        "difference_cp": 181,
+        "contains_mate": false
+      },
+      {
+        "index": 18256,
+        "kind": "capture",
+        "k": 2,
+        "game": 37,
+        "ply": 337,
+        "root": {
+          "value": -462,
+          "score_usi": [
+            "cp",
+            "-462"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7202756,
+          "bestmove": "8k7k+"
+        },
+        "leaf": {
+          "value": -473,
+          "score_usi": [
+            "cp",
+            "-473"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8074787,
+          "bestmove": "12g12h"
+        },
+        "difference_cp": 11,
+        "contains_mate": false
+      },
+      {
+        "index": 18764,
+        "kind": "capture",
+        "k": 2,
+        "game": 38,
+        "ply": 434,
+        "root": {
+          "value": 734,
+          "score_usi": [
+            "cp",
+            "734"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 7602410,
+          "bestmove": "9i4i"
+        },
+        "leaf": {
+          "value": 676,
+          "score_usi": [
+            "cp",
+            "676"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7403703,
+          "bestmove": "11j12i"
+        },
+        "difference_cp": 58,
+        "contains_mate": false
+      },
+      {
+        "index": 19181,
+        "kind": "capture",
+        "k": 4,
+        "game": 39,
+        "ply": 378,
+        "root": {
+          "value": 6032,
+          "score_usi": [
+            "cp",
+            "6032"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8136817,
+          "bestmove": "10k2c+"
+        },
+        "leaf": {
+          "value": 5924,
+          "score_usi": [
+            "cp",
+            "5924"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7893035,
+          "bestmove": "2c3c"
+        },
+        "difference_cp": 108,
+        "contains_mate": false
+      },
+      {
+        "index": 19369,
+        "kind": "quiet",
+        "k": 1,
+        "game": 40,
+        "ply": 177,
+        "root": {
+          "value": 477,
+          "score_usi": [
+            "cp",
+            "477"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7279259,
+          "bestmove": "6f6h"
+        },
+        "leaf": {
+          "value": -481,
+          "score_usi": [
+            "cp",
+            "-481"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 8220939,
+          "bestmove": "4l5k"
+        },
+        "difference_cp": -4,
+        "contains_mate": false
+      },
+      {
+        "index": 22162,
+        "kind": "capture",
+        "k": 2,
+        "game": 41,
+        "ply": 194,
+        "root": {
+          "value": -477,
+          "score_usi": [
+            "cp",
+            "-477"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5221945,
+          "bestmove": "9j8j"
+        },
+        "leaf": {
+          "value": -474,
+          "score_usi": [
+            "cp",
+            "-474"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6061278,
+          "bestmove": "8j6j"
+        },
+        "difference_cp": -3,
+        "contains_mate": false
+      },
+      {
+        "index": 22283,
+        "kind": "capture",
+        "k": 2,
+        "game": 41,
+        "ply": 315,
+        "root": {
+          "value": -1952,
+          "score_usi": [
+            "cp",
+            "-1952"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7039793,
+          "bestmove": "6f6g"
+        },
+        "leaf": {
+          "value": -1572,
+          "score_usi": [
+            "cp",
+            "-1572"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6677139,
+          "bestmove": "4c4j+"
+        },
+        "difference_cp": -380,
+        "contains_mate": false
+      },
+      {
+        "index": 22372,
+        "kind": "quiet",
+        "k": 4,
+        "game": 42,
+        "ply": 84,
+        "root": {
+          "value": 519,
+          "score_usi": [
+            "cp",
+            "519"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7229236,
+          "bestmove": "4j2h"
+        },
+        "leaf": {
+          "value": 703,
+          "score_usi": [
+            "cp",
+            "703"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6912659,
+          "bestmove": "11d8a"
+        },
+        "difference_cp": -184,
+        "contains_mate": false
+      },
+      {
+        "index": 22736,
+        "kind": "quiet",
+        "k": 1,
+        "game": 42,
+        "ply": 449,
+        "root": {
+          "value": -719,
+          "score_usi": [
+            "cp",
+            "-719"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6188715,
+          "bestmove": "6b5b"
+        },
+        "leaf": {
+          "value": 782,
+          "score_usi": [
+            "cp",
+            "782"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6468890,
+          "bestmove": "10j9k"
+        },
+        "difference_cp": 63,
+        "contains_mate": false
+      },
+      {
+        "index": 23042,
+        "kind": "capture",
+        "k": 1,
+        "game": 43,
+        "ply": 71,
+        "root": {
+          "value": 292,
+          "score_usi": [
+            "cp",
+            "292"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6074791,
+          "bestmove": "3f5h"
+        },
+        "leaf": {
+          "value": -189,
+          "score_usi": [
+            "cp",
+            "-189"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 4830532,
+          "bestmove": "8i6g"
+        },
+        "difference_cp": 103,
+        "contains_mate": false
+      },
+      {
+        "index": 24817,
+        "kind": "quiet",
+        "k": 1,
+        "game": 47,
+        "ply": 256,
+        "root": {
+          "value": 1916,
+          "score_usi": [
+            "cp",
+            "1916"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3476514,
+          "bestmove": "6e6h"
+        },
+        "leaf": {
+          "value": -1842,
+          "score_usi": [
+            "cp",
+            "-1842"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4293066,
+          "bestmove": "3g3h"
+        },
+        "difference_cp": 74,
+        "contains_mate": false
+      },
+      {
+        "index": 24955,
+        "kind": "quiet",
+        "k": 1,
+        "game": 47,
+        "ply": 394,
+        "root": {
+          "value": 4788,
+          "score_usi": [
+            "cp",
+            "4788"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 6601247,
+          "bestmove": "10a10f"
+        },
+        "leaf": {
+          "value": -4591,
+          "score_usi": [
+            "cp",
+            "-4591"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8460291,
+          "bestmove": "7f7g"
+        },
+        "difference_cp": 197,
+        "contains_mate": false
+      },
+      {
+        "index": 25171,
+        "kind": "capture",
+        "k": 1,
+        "game": 48,
+        "ply": 135,
+        "root": {
+          "value": -203,
+          "score_usi": [
+            "cp",
+            "-203"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 4358824,
+          "bestmove": "7g8h7g"
+        },
+        "leaf": {
+          "value": 204,
+          "score_usi": [
+            "cp",
+            "204"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 6345105,
+          "bestmove": "10e11e11d"
+        },
+        "difference_cp": 1,
+        "contains_mate": false
+      },
+      {
+        "index": 25512,
+        "kind": "capture",
+        "k": 1,
+        "game": 49,
+        "ply": 90,
+        "root": {
+          "value": 2630,
+          "score_usi": [
+            "cp",
+            "2630"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7120675,
+          "bestmove": "5g6f6g"
+        },
+        "leaf": {
+          "value": -2604,
+          "score_usi": [
+            "cp",
+            "-2604"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5320921,
+          "bestmove": "7e7f"
+        },
+        "difference_cp": 26,
+        "contains_mate": false
+      },
+      {
+        "index": 25735,
+        "kind": "quiet",
+        "k": 2,
+        "game": 49,
+        "ply": 313,
+        "root": {
+          "value": -950,
+          "score_usi": [
+            "cp",
+            "-950"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5526516,
+          "bestmove": "12e12f"
+        },
+        "leaf": {
+          "value": -1010,
+          "score_usi": [
+            "cp",
+            "-1010"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7007666,
+          "bestmove": "12e12f"
+        },
+        "difference_cp": 60,
+        "contains_mate": false
+      },
+      {
+        "index": 25840,
+        "kind": "quiet",
+        "k": 1,
+        "game": 49,
+        "ply": 418,
+        "root": {
+          "value": 458,
+          "score_usi": [
+            "cp",
+            "458"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8439032,
+          "bestmove": "10c9d"
+        },
+        "leaf": {
+          "value": -520,
+          "score_usi": [
+            "cp",
+            "-520"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8564124,
+          "bestmove": "7b7a"
+        },
+        "difference_cp": -62,
+        "contains_mate": false
+      },
+      {
+        "index": 25898,
+        "kind": "capture",
+        "k": 2,
+        "game": 49,
+        "ply": 476,
+        "root": {
+          "value": 4209,
+          "score_usi": [
+            "cp",
+            "4209"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 2925431,
+          "bestmove": "8f4b"
+        },
+        "leaf": {
+          "value": 29999,
+          "score_usi": [
+            "mate",
+            "1"
+          ],
+          "mate": true,
+          "depth": 12,
+          "nodes": 8694018,
+          "bestmove": "4b9b"
+        },
+        "difference_cp": -25790,
+        "contains_mate": true
+      },
+      {
+        "index": 25961,
+        "kind": "capture",
+        "k": 2,
+        "game": 49,
+        "ply": 539,
+        "root": {
+          "value": -6580,
+          "score_usi": [
+            "cp",
+            "-6580"
+          ],
+          "mate": false,
+          "depth": 23,
+          "nodes": 8902335,
+          "bestmove": "1f1g"
+        },
+        "leaf": {
+          "value": -6605,
+          "score_usi": [
+            "cp",
+            "-6605"
+          ],
+          "mate": false,
+          "depth": 21,
+          "nodes": 7760441,
+          "bestmove": "1e1g"
+        },
+        "difference_cp": 25,
+        "contains_mate": false
+      },
+      {
+        "index": 26139,
+        "kind": "capture",
+        "k": 1,
+        "game": 51,
+        "ply": 87,
+        "root": {
+          "value": -107,
+          "score_usi": [
+            "cp",
+            "-107"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6123932,
+          "bestmove": "4g3h4h"
+        },
+        "leaf": {
+          "value": 107,
+          "score_usi": [
+            "cp",
+            "107"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3014671,
+          "bestmove": "5j4k"
+        },
+        "difference_cp": 0,
+        "contains_mate": false
+      },
+      {
+        "index": 26340,
+        "kind": "capture",
+        "k": 1,
+        "game": 51,
+        "ply": 288,
+        "root": {
+          "value": 1435,
+          "score_usi": [
+            "cp",
+            "1435"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4297743,
+          "bestmove": "2e2a"
+        },
+        "leaf": {
+          "value": -1435,
+          "score_usi": [
+            "cp",
+            "-1435"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5595630,
+          "bestmove": "3c3b"
+        },
+        "difference_cp": 0,
+        "contains_mate": false
+      },
+      {
+        "index": 27969,
+        "kind": "capture",
+        "k": 2,
+        "game": 52,
+        "ply": 246,
+        "root": {
+          "value": -2483,
+          "score_usi": [
+            "cp",
+            "-2483"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6818519,
+          "bestmove": "7g7e"
+        },
+        "leaf": {
+          "value": -2220,
+          "score_usi": [
+            "cp",
+            "-2220"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7485261,
+          "bestmove": "5h5b+"
+        },
+        "difference_cp": -263,
+        "contains_mate": false
+      },
+      {
+        "index": 28055,
+        "kind": "quiet",
+        "k": 1,
+        "game": 52,
+        "ply": 332,
+        "root": {
+          "value": -3236,
+          "score_usi": [
+            "cp",
+            "-3236"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7184071,
+          "bestmove": "8e11h"
+        },
+        "leaf": {
+          "value": 3231,
+          "score_usi": [
+            "cp",
+            "3231"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 4868609,
+          "bestmove": "4h4i+"
+        },
+        "difference_cp": -5,
+        "contains_mate": false
+      },
+      {
+        "index": 28252,
+        "kind": "capture",
+        "k": 1,
+        "game": 52,
+        "ply": 529,
+        "root": {
+          "value": 5443,
+          "score_usi": [
+            "cp",
+            "5443"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 3969125,
+          "bestmove": "5c5i"
+        },
+        "leaf": {
+          "value": -5471,
+          "score_usi": [
+            "cp",
+            "-5471"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 7972241,
+          "bestmove": "3j2j"
+        },
+        "difference_cp": -28,
+        "contains_mate": false
+      },
+      {
+        "index": 28471,
+        "kind": "capture",
+        "k": 1,
+        "game": 53,
+        "ply": 196,
+        "root": {
+          "value": -885,
+          "score_usi": [
+            "cp",
+            "-885"
+          ],
+          "mate": false,
+          "depth": 9,
+          "nodes": 3899965,
+          "bestmove": "8f9e10f"
+        },
+        "leaf": {
+          "value": 947,
+          "score_usi": [
+            "cp",
+            "947"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6603102,
+          "bestmove": "8c6e"
+        },
+        "difference_cp": 62,
+        "contains_mate": false
+      },
+      {
+        "index": 28625,
+        "kind": "capture",
+        "k": 4,
+        "game": 53,
+        "ply": 350,
+        "root": {
+          "value": -1491,
+          "score_usi": [
+            "cp",
+            "-1491"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9855052,
+          "bestmove": "4i7i"
+        },
+        "leaf": {
+          "value": -1489,
+          "score_usi": [
+            "cp",
+            "-1489"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7450096,
+          "bestmove": "10j8h"
+        },
+        "difference_cp": -2,
+        "contains_mate": false
+      },
+      {
+        "index": 28925,
+        "kind": "quiet",
+        "k": 4,
+        "game": 54,
+        "ply": 149,
+        "root": {
+          "value": -178,
+          "score_usi": [
+            "cp",
+            "-178"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7834890,
+          "bestmove": "8c8f"
+        },
+        "leaf": {
+          "value": -254,
+          "score_usi": [
+            "cp",
+            "-254"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9715100,
+          "bestmove": "8h8i+"
+        },
+        "difference_cp": 76,
+        "contains_mate": false
+      },
+      {
+        "index": 29109,
+        "kind": "quiet",
+        "k": 1,
+        "game": 54,
+        "ply": 333,
+        "root": {
+          "value": 3715,
+          "score_usi": [
+            "cp",
+            "3715"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5339840,
+          "bestmove": "5l4l3l"
+        },
+        "leaf": {
+          "value": -3356,
+          "score_usi": [
+            "cp",
+            "-3356"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5210069,
+          "bestmove": "3f3e"
+        },
+        "difference_cp": 359,
+        "contains_mate": false
+      },
+      {
+        "index": 29221,
+        "kind": "capture",
+        "k": 1,
+        "game": 55,
+        "ply": 26,
+        "root": {
+          "value": 2423,
+          "score_usi": [
+            "cp",
+            "2423"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9873759,
+          "bestmove": "5f4e4f"
+        },
+        "leaf": {
+          "value": -2358,
+          "score_usi": [
+            "cp",
+            "-2358"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5565136,
+          "bestmove": "5a3a"
+        },
+        "difference_cp": 65,
+        "contains_mate": false
+      },
+      {
+        "index": 29900,
+        "kind": "capture",
+        "k": 2,
+        "game": 58,
+        "ply": 151,
+        "root": {
+          "value": 217,
+          "score_usi": [
+            "cp",
+            "217"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6912206,
+          "bestmove": "5c5e"
+        },
+        "leaf": {
+          "value": 240,
+          "score_usi": [
+            "cp",
+            "240"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5841034,
+          "bestmove": "5c5e"
+        },
+        "difference_cp": -23,
+        "contains_mate": false
+      },
+      {
+        "index": 30545,
+        "kind": "capture",
+        "k": 1,
+        "game": 59,
+        "ply": 366,
+        "root": {
+          "value": -2450,
+          "score_usi": [
+            "cp",
+            "-2450"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 3835204,
+          "bestmove": "2e1d2e"
+        },
+        "leaf": {
+          "value": 2479,
+          "score_usi": [
+            "cp",
+            "2479"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7178063,
+          "bestmove": "6d6e"
+        },
+        "difference_cp": 29,
+        "contains_mate": false
+      },
+      {
+        "index": 31480,
+        "kind": "capture",
+        "k": 3,
+        "game": 61,
+        "ply": 104,
+        "root": {
+          "value": 114,
+          "score_usi": [
+            "cp",
+            "114"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7100356,
+          "bestmove": "8h8g"
+        },
+        "leaf": {
+          "value": -82,
+          "score_usi": [
+            "cp",
+            "-82"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7461568,
+          "bestmove": "4g5g6h"
+        },
+        "difference_cp": 32,
+        "contains_mate": false
+      },
+      {
+        "index": 31522,
+        "kind": "capture",
+        "k": 2,
+        "game": 61,
+        "ply": 146,
+        "root": {
+          "value": -213,
+          "score_usi": [
+            "cp",
+            "-213"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6147232,
+          "bestmove": "6h6f"
+        },
+        "leaf": {
+          "value": -166,
+          "score_usi": [
+            "cp",
+            "-166"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4967829,
+          "bestmove": "7j6j"
+        },
+        "difference_cp": -47,
+        "contains_mate": false
+      },
+      {
+        "index": 31733,
+        "kind": "capture",
+        "k": 1,
+        "game": 61,
+        "ply": 357,
+        "root": {
+          "value": 1916,
+          "score_usi": [
+            "cp",
+            "1916"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 4905065,
+          "bestmove": "6h2h"
+        },
+        "leaf": {
+          "value": -1896,
+          "score_usi": [
+            "cp",
+            "-1896"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6796194,
+          "bestmove": "7k6k"
+        },
+        "difference_cp": 20,
+        "contains_mate": false
+      },
+      {
+        "index": 32033,
+        "kind": "quiet",
+        "k": 1,
+        "game": 62,
+        "ply": 78,
+        "root": {
+          "value": 317,
+          "score_usi": [
+            "cp",
+            "317"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5452927,
+          "bestmove": "6l5l"
+        },
+        "leaf": {
+          "value": -265,
+          "score_usi": [
+            "cp",
+            "-265"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 6161582,
+          "bestmove": "9b8b"
+        },
+        "difference_cp": 52,
+        "contains_mate": false
+      },
+      {
+        "index": 32189,
+        "kind": "capture",
+        "k": 1,
+        "game": 62,
+        "ply": 234,
+        "root": {
+          "value": 1594,
+          "score_usi": [
+            "cp",
+            "1594"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 8127849,
+          "bestmove": "9c7e"
+        },
+        "leaf": {
+          "value": -747,
+          "score_usi": [
+            "cp",
+            "-747"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8863541,
+          "bestmove": "9a10b"
+        },
+        "difference_cp": 847,
+        "contains_mate": false
+      },
+      {
+        "index": 32190,
+        "kind": "capture",
+        "k": 1,
+        "game": 62,
+        "ply": 235,
+        "root": {
+          "value": -1594,
+          "score_usi": [
+            "cp",
+            "-1594"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 7815199,
+          "bestmove": "7c7e"
+        },
+        "leaf": {
+          "value": 1575,
+          "score_usi": [
+            "cp",
+            "1575"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 7475294,
+          "bestmove": "8e8d"
+        },
+        "difference_cp": -19,
+        "contains_mate": false
+      },
+      {
+        "index": 32701,
+        "kind": "quiet",
+        "k": 1,
+        "game": 63,
+        "ply": 149,
+        "root": {
+          "value": -196,
+          "score_usi": [
+            "cp",
+            "-196"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6588790,
+          "bestmove": "3c3d"
+        },
+        "leaf": {
+          "value": 329,
+          "score_usi": [
+            "cp",
+            "329"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7428419,
+          "bestmove": "5g3e"
+        },
+        "difference_cp": 133,
+        "contains_mate": false
+      },
+      {
+        "index": 33192,
+        "kind": "quiet",
+        "k": 1,
+        "game": 64,
+        "ply": 321,
+        "root": {
+          "value": -669,
+          "score_usi": [
+            "cp",
+            "-669"
+          ],
+          "mate": false,
+          "depth": 9,
+          "nodes": 5605219,
+          "bestmove": "4a4b"
+        },
+        "leaf": {
+          "value": 765,
+          "score_usi": [
+            "cp",
+            "765"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7346976,
+          "bestmove": "10g10f"
+        },
+        "difference_cp": 96,
+        "contains_mate": false
+      },
+      {
+        "index": 34492,
+        "kind": "quiet",
+        "k": 2,
+        "game": 67,
+        "ply": 195,
+        "root": {
+          "value": -145,
+          "score_usi": [
+            "cp",
+            "-145"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6124553,
+          "bestmove": "8f3f"
+        },
+        "leaf": {
+          "value": -128,
+          "score_usi": [
+            "cp",
+            "-128"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9570539,
+          "bestmove": "9d9f"
+        },
+        "difference_cp": -17,
+        "contains_mate": false
+      },
+      {
+        "index": 34517,
+        "kind": "capture",
+        "k": 1,
+        "game": 67,
+        "ply": 220,
+        "root": {
+          "value": 220,
+          "score_usi": [
+            "cp",
+            "220"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6776418,
+          "bestmove": "5f5g"
+        },
+        "leaf": {
+          "value": -234,
+          "score_usi": [
+            "cp",
+            "-234"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 9794296,
+          "bestmove": "1c1d"
+        },
+        "difference_cp": -14,
+        "contains_mate": false
+      },
+      {
+        "index": 34598,
+        "kind": "capture",
+        "k": 1,
+        "game": 67,
+        "ply": 301,
+        "root": {
+          "value": 112,
+          "score_usi": [
+            "cp",
+            "112"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5617699,
+          "bestmove": "1f5b"
+        },
+        "leaf": {
+          "value": -86,
+          "score_usi": [
+            "cp",
+            "-86"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8888309,
+          "bestmove": "8k9k"
+        },
+        "difference_cp": 26,
+        "contains_mate": false
+      },
+      {
+        "index": 35796,
+        "kind": "capture",
+        "k": 2,
+        "game": 70,
+        "ply": 172,
+        "root": {
+          "value": -404,
+          "score_usi": [
+            "cp",
+            "-404"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6940472,
+          "bestmove": "12i12h"
+        },
+        "leaf": {
+          "value": -420,
+          "score_usi": [
+            "cp",
+            "-420"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8215621,
+          "bestmove": "4l4k"
+        },
+        "difference_cp": 16,
+        "contains_mate": false
+      },
+      {
+        "index": 36177,
+        "kind": "capture",
+        "k": 1,
+        "game": 72,
+        "ply": 27,
+        "root": {
+          "value": -30,
+          "score_usi": [
+            "cp",
+            "-30"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7116740,
+          "bestmove": "10b3i+"
+        },
+        "leaf": {
+          "value": 60,
+          "score_usi": [
+            "cp",
+            "60"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8409703,
+          "bestmove": "2j3j"
+        },
+        "difference_cp": 30,
+        "contains_mate": false
+      },
+      {
+        "index": 36435,
+        "kind": "quiet",
+        "k": 3,
+        "game": 72,
+        "ply": 285,
+        "root": {
+          "value": 3270,
+          "score_usi": [
+            "cp",
+            "3270"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9022504,
+          "bestmove": "4c1c"
+        },
+        "leaf": {
+          "value": -1924,
+          "score_usi": [
+            "cp",
+            "-1924"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6471456,
+          "bestmove": "3d3c"
+        },
+        "difference_cp": 1346,
+        "contains_mate": false
+      },
+      {
+        "index": 36576,
+        "kind": "quiet",
+        "k": 2,
+        "game": 73,
+        "ply": 70,
+        "root": {
+          "value": 33,
+          "score_usi": [
+            "cp",
+            "33"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5943448,
+          "bestmove": "5i5h"
+        },
+        "leaf": {
+          "value": -38,
+          "score_usi": [
+            "cp",
+            "-38"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8227751,
+          "bestmove": "8j7j"
+        },
+        "difference_cp": 71,
+        "contains_mate": false
+      },
+      {
+        "index": 36593,
+        "kind": "quiet",
+        "k": 1,
+        "game": 73,
+        "ply": 87,
+        "root": {
+          "value": 95,
+          "score_usi": [
+            "cp",
+            "95"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7920921,
+          "bestmove": "7c3c"
+        },
+        "leaf": {
+          "value": 68,
+          "score_usi": [
+            "cp",
+            "68"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9542757,
+          "bestmove": "2h1g"
+        },
+        "difference_cp": 163,
+        "contains_mate": false
+      },
+      {
+        "index": 36777,
+        "kind": "quiet",
+        "k": 4,
+        "game": 73,
+        "ply": 271,
+        "root": {
+          "value": 588,
+          "score_usi": [
+            "cp",
+            "588"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6972135,
+          "bestmove": "10f9e"
+        },
+        "leaf": {
+          "value": 5,
+          "score_usi": [
+            "cp",
+            "5"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7413643,
+          "bestmove": "5e3e"
+        },
+        "difference_cp": 583,
+        "contains_mate": false
+      },
+      {
+        "index": 37083,
+        "kind": "capture",
+        "k": 1,
+        "game": 74,
+        "ply": 268,
+        "root": {
+          "value": 2359,
+          "score_usi": [
+            "cp",
+            "2359"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5896556,
+          "bestmove": "4k4d+"
+        },
+        "leaf": {
+          "value": -2290,
+          "score_usi": [
+            "cp",
+            "-2290"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6563651,
+          "bestmove": "5b6b"
+        },
+        "difference_cp": 69,
+        "contains_mate": false
+      },
+      {
+        "index": 37303,
+        "kind": "capture",
+        "k": 2,
+        "game": 75,
+        "ply": 60,
+        "root": {
+          "value": 163,
+          "score_usi": [
+            "cp",
+            "163"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5843878,
+          "bestmove": "2i2h"
+        },
+        "leaf": {
+          "value": 182,
+          "score_usi": [
+            "cp",
+            "182"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5432924,
+          "bestmove": "4j3i"
+        },
+        "difference_cp": -19,
+        "contains_mate": false
+      },
+      {
+        "index": 37472,
+        "kind": "capture",
+        "k": 1,
+        "game": 75,
+        "ply": 229,
+        "root": {
+          "value": -1738,
+          "score_usi": [
+            "cp",
+            "-1738"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5172901,
+          "bestmove": "11f9g"
+        },
+        "leaf": {
+          "value": 1726,
+          "score_usi": [
+            "cp",
+            "1726"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4732171,
+          "bestmove": "6f4d"
+        },
+        "difference_cp": -12,
+        "contains_mate": false
+      },
+      {
+        "index": 37497,
+        "kind": "quiet",
+        "k": 1,
+        "game": 76,
+        "ply": 20,
+        "root": {
+          "value": 901,
+          "score_usi": [
+            "cp",
+            "901"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 3692284,
+          "bestmove": "5k4j"
+        },
+        "leaf": {
+          "value": -861,
+          "score_usi": [
+            "cp",
+            "-861"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 3949014,
+          "bestmove": "5d5e"
+        },
+        "difference_cp": 40,
+        "contains_mate": false
+      },
+      {
+        "index": 38896,
+        "kind": "capture",
+        "k": 2,
+        "game": 79,
+        "ply": 68,
+        "root": {
+          "value": 1036,
+          "score_usi": [
+            "cp",
+            "1036"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8508996,
+          "bestmove": "6i6h"
+        },
+        "leaf": {
+          "value": 1016,
+          "score_usi": [
+            "cp",
+            "1016"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 8169534,
+          "bestmove": "6i6h"
+        },
+        "difference_cp": 20,
+        "contains_mate": false
+      },
+      {
+        "index": 39269,
+        "kind": "capture",
+        "k": 1,
+        "game": 79,
+        "ply": 441,
+        "root": {
+          "value": -225,
+          "score_usi": [
+            "cp",
+            "-225"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 7831783,
+          "bestmove": "7f8f"
+        },
+        "leaf": {
+          "value": 253,
+          "score_usi": [
+            "cp",
+            "253"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 4424486,
+          "bestmove": "9g4g"
+        },
+        "difference_cp": 28,
+        "contains_mate": false
+      },
+      {
+        "index": 40602,
+        "kind": "quiet",
+        "k": 1,
+        "game": 80,
+        "ply": 358,
+        "root": {
+          "value": -442,
+          "score_usi": [
+            "cp",
+            "-442"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9116488,
+          "bestmove": "6i5g"
+        },
+        "leaf": {
+          "value": 538,
+          "score_usi": [
+            "cp",
+            "538"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3912088,
+          "bestmove": "2h2i+"
+        },
+        "difference_cp": 96,
+        "contains_mate": false
+      },
+      {
+        "index": 41190,
+        "kind": "capture",
+        "k": 1,
+        "game": 81,
+        "ply": 337,
+        "root": {
+          "value": 29995,
+          "score_usi": [
+            "mate",
+            "5"
+          ],
+          "mate": true,
+          "depth": 10,
+          "nodes": 8317551,
+          "bestmove": "2g6k"
+        },
+        "leaf": {
+          "value": -4520,
+          "score_usi": [
+            "cp",
+            "-4520"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8495531,
+          "bestmove": "3a5a"
+        },
+        "difference_cp": 25475,
+        "contains_mate": true
+      },
+      {
+        "index": 41743,
+        "kind": "capture",
+        "k": 1,
+        "game": 82,
+        "ply": 563,
+        "root": {
+          "value": 5981,
+          "score_usi": [
+            "cp",
+            "5981"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 8137315,
+          "bestmove": "11i9i"
+        },
+        "leaf": {
+          "value": -6204,
+          "score_usi": [
+            "cp",
+            "-6204"
+          ],
+          "mate": false,
+          "depth": 20,
+          "nodes": 9832043,
+          "bestmove": "12f12g"
+        },
+        "difference_cp": -223,
+        "contains_mate": false
+      },
+      {
+        "index": 41841,
+        "kind": "capture",
+        "k": 1,
+        "game": 83,
+        "ply": 108,
+        "root": {
+          "value": 129,
+          "score_usi": [
+            "cp",
+            "129"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6948980,
+          "bestmove": "5f4g3f"
+        },
+        "leaf": {
+          "value": -17,
+          "score_usi": [
+            "cp",
+            "-17"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 3500974,
+          "bestmove": "1e2g"
+        },
+        "difference_cp": 112,
+        "contains_mate": false
+      },
+      {
+        "index": 42018,
+        "kind": "quiet",
+        "k": 1,
+        "game": 83,
+        "ply": 285,
+        "root": {
+          "value": -2384,
+          "score_usi": [
+            "cp",
+            "-2384"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8627098,
+          "bestmove": "12c9c"
+        },
+        "leaf": {
+          "value": 2747,
+          "score_usi": [
+            "cp",
+            "2747"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 5706758,
+          "bestmove": "5h3i"
+        },
+        "difference_cp": 363,
+        "contains_mate": false
+      },
+      {
+        "index": 42066,
+        "kind": "quiet",
+        "k": 1,
+        "game": 83,
+        "ply": 333,
+        "root": {
+          "value": -2320,
+          "score_usi": [
+            "cp",
+            "-2320"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5199386,
+          "bestmove": "3b4c"
+        },
+        "leaf": {
+          "value": 2874,
+          "score_usi": [
+            "cp",
+            "2874"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8603733,
+          "bestmove": "7e9c+"
+        },
+        "difference_cp": 554,
+        "contains_mate": false
+      },
+      {
+        "index": 42070,
+        "kind": "capture",
+        "k": 3,
+        "game": 83,
+        "ply": 337,
+        "root": {
+          "value": -2412,
+          "score_usi": [
+            "cp",
+            "-2412"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6991010,
+          "bestmove": "8b8g"
+        },
+        "leaf": {
+          "value": 2692,
+          "score_usi": [
+            "cp",
+            "2692"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5708743,
+          "bestmove": "7e9c+"
+        },
+        "difference_cp": 280,
+        "contains_mate": false
+      },
+      {
+        "index": 42094,
+        "kind": "quiet",
+        "k": 2,
+        "game": 83,
+        "ply": 361,
+        "root": {
+          "value": -2115,
+          "score_usi": [
+            "cp",
+            "-2115"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8291228,
+          "bestmove": "9e8e"
+        },
+        "leaf": {
+          "value": -2263,
+          "score_usi": [
+            "cp",
+            "-2263"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 8017889,
+          "bestmove": "9e2l+"
+        },
+        "difference_cp": 148,
+        "contains_mate": false
+      },
+      {
+        "index": 42805,
+        "kind": "capture",
+        "k": 1,
+        "game": 84,
+        "ply": 103,
+        "root": {
+          "value": 40,
+          "score_usi": [
+            "cp",
+            "40"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7908705,
+          "bestmove": "1d1e"
+        },
+        "leaf": {
+          "value": -33,
+          "score_usi": [
+            "cp",
+            "-33"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5292104,
+          "bestmove": "4j5i"
+        },
+        "difference_cp": 7,
+        "contains_mate": false
+      },
+      {
+        "index": 43263,
+        "kind": "quiet",
+        "k": 1,
+        "game": 85,
+        "ply": 138,
+        "root": {
+          "value": 1264,
+          "score_usi": [
+            "cp",
+            "1264"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 8773443,
+          "bestmove": "5e5j"
+        },
+        "leaf": {
+          "value": -1084,
+          "score_usi": [
+            "cp",
+            "-1084"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9633936,
+          "bestmove": "9a10b"
+        },
+        "difference_cp": 180,
+        "contains_mate": false
+      },
+      {
+        "index": 44661,
+        "kind": "quiet",
+        "k": 1,
+        "game": 88,
+        "ply": 361,
+        "root": {
+          "value": 2839,
+          "score_usi": [
+            "cp",
+            "2839"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 8069069,
+          "bestmove": "4l4f"
+        },
+        "leaf": {
+          "value": -2746,
+          "score_usi": [
+            "cp",
+            "-2746"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 7871004,
+          "bestmove": "7i9i"
+        },
+        "difference_cp": 93,
+        "contains_mate": false
+      },
+      {
+        "index": 44710,
+        "kind": "capture",
+        "k": 4,
+        "game": 88,
+        "ply": 410,
+        "root": {
+          "value": -4339,
+          "score_usi": [
+            "cp",
+            "-4339"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 7661132,
+          "bestmove": "12k12b"
+        },
+        "leaf": {
+          "value": -4344,
+          "score_usi": [
+            "cp",
+            "-4344"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 9404993,
+          "bestmove": "9i7i"
+        },
+        "difference_cp": 5,
+        "contains_mate": false
+      },
+      {
+        "index": 44771,
+        "kind": "capture",
+        "k": 1,
+        "game": 88,
+        "ply": 471,
+        "root": {
+          "value": 5172,
+          "score_usi": [
+            "cp",
+            "5172"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 7123901,
+          "bestmove": "3h11h"
+        },
+        "leaf": {
+          "value": -5146,
+          "score_usi": [
+            "cp",
+            "-5146"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 7166358,
+          "bestmove": "7i4i"
+        },
+        "difference_cp": 26,
+        "contains_mate": false
+      },
+      {
+        "index": 45067,
+        "kind": "capture",
+        "k": 1,
+        "game": 89,
+        "ply": 176,
+        "root": {
+          "value": 2933,
+          "score_usi": [
+            "cp",
+            "2933"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8809494,
+          "bestmove": "2h4i"
+        },
+        "leaf": {
+          "value": -2760,
+          "score_usi": [
+            "cp",
+            "-2760"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9935855,
+          "bestmove": "5g5i+"
+        },
+        "difference_cp": 173,
+        "contains_mate": false
+      },
+      {
+        "index": 45075,
+        "kind": "quiet",
+        "k": 1,
+        "game": 89,
+        "ply": 184,
+        "root": {
+          "value": 2815,
+          "score_usi": [
+            "cp",
+            "2815"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6270597,
+          "bestmove": "4j4i"
+        },
+        "leaf": {
+          "value": -2806,
+          "score_usi": [
+            "cp",
+            "-2806"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9762944,
+          "bestmove": "8f7g"
+        },
+        "difference_cp": 9,
+        "contains_mate": false
+      },
+      {
+        "index": 45249,
+        "kind": "quiet",
+        "k": 3,
+        "game": 89,
+        "ply": 358,
+        "root": {
+          "value": 7056,
+          "score_usi": [
+            "cp",
+            "7056"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 9813345,
+          "bestmove": "5j5b"
+        },
+        "leaf": {
+          "value": -6726,
+          "score_usi": [
+            "cp",
+            "-6726"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5326528,
+          "bestmove": "6b5c"
+        },
+        "difference_cp": 330,
+        "contains_mate": false
+      },
+      {
+        "index": 45467,
+        "kind": "capture",
+        "k": 1,
+        "game": 90,
+        "ply": 217,
+        "root": {
+          "value": 578,
+          "score_usi": [
+            "cp",
+            "578"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6943571,
+          "bestmove": "7c7g"
+        },
+        "leaf": {
+          "value": -582,
+          "score_usi": [
+            "cp",
+            "-582"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7644912,
+          "bestmove": "6g7g"
+        },
+        "difference_cp": -4,
+        "contains_mate": false
+      },
+      {
+        "index": 45469,
+        "kind": "capture",
+        "k": 1,
+        "game": 90,
+        "ply": 219,
+        "root": {
+          "value": 583,
+          "score_usi": [
+            "cp",
+            "583"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7738446,
+          "bestmove": "6e7g"
+        },
+        "leaf": {
+          "value": -579,
+          "score_usi": [
+            "cp",
+            "-579"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 5354224,
+          "bestmove": "6l6i"
+        },
+        "difference_cp": 4,
+        "contains_mate": false
+      },
+      {
+        "index": 45531,
+        "kind": "capture",
+        "k": 4,
+        "game": 90,
+        "ply": 281,
+        "root": {
+          "value": 2789,
+          "score_usi": [
+            "cp",
+            "2789"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 5577220,
+          "bestmove": "7f6g"
+        },
+        "leaf": {
+          "value": 2651,
+          "score_usi": [
+            "cp",
+            "2651"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8385450,
+          "bestmove": "6g5h"
+        },
+        "difference_cp": 138,
+        "contains_mate": false
+      },
+      {
+        "index": 45786,
+        "kind": "quiet",
+        "k": 2,
+        "game": 92,
+        "ply": 176,
+        "root": {
+          "value": -1095,
+          "score_usi": [
+            "cp",
+            "-1095"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8462540,
+          "bestmove": "7k6j"
+        },
+        "leaf": {
+          "value": -1147,
+          "score_usi": [
+            "cp",
+            "-1147"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9985789,
+          "bestmove": "7k6j"
+        },
+        "difference_cp": 52,
+        "contains_mate": false
+      },
+      {
+        "index": 46046,
+        "kind": "quiet",
+        "k": 2,
+        "game": 93,
+        "ply": 79,
+        "root": {
+          "value": 45,
+          "score_usi": [
+            "cp",
+            "45"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5725389,
+          "bestmove": "1a1c"
+        },
+        "leaf": {
+          "value": 82,
+          "score_usi": [
+            "cp",
+            "82"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 3888559,
+          "bestmove": "8d8e"
+        },
+        "difference_cp": -37,
+        "contains_mate": false
+      },
+      {
+        "index": 46393,
+        "kind": "quiet",
+        "k": 1,
+        "game": 94,
+        "ply": 69,
+        "root": {
+          "value": -218,
+          "score_usi": [
+            "cp",
+            "-218"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9530104,
+          "bestmove": "7c9c"
+        },
+        "leaf": {
+          "value": 466,
+          "score_usi": [
+            "cp",
+            "466"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5771567,
+          "bestmove": "10e10d+"
+        },
+        "difference_cp": 248,
+        "contains_mate": false
+      },
+      {
+        "index": 46411,
+        "kind": "quiet",
+        "k": 1,
+        "game": 94,
+        "ply": 87,
+        "root": {
+          "value": 423,
+          "score_usi": [
+            "cp",
+            "423"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9184589,
+          "bestmove": "8f8g"
+        },
+        "leaf": {
+          "value": 42,
+          "score_usi": [
+            "cp",
+            "42"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8841744,
+          "bestmove": "5i5h"
+        },
+        "difference_cp": 465,
+        "contains_mate": false
+      },
+      {
+        "index": 46507,
+        "kind": "quiet",
+        "k": 3,
+        "game": 94,
+        "ply": 183,
+        "root": {
+          "value": 514,
+          "score_usi": [
+            "cp",
+            "514"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5419475,
+          "bestmove": "4b5b"
+        },
+        "leaf": {
+          "value": -400,
+          "score_usi": [
+            "cp",
+            "-400"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8783051,
+          "bestmove": "10k9k"
+        },
+        "difference_cp": 114,
+        "contains_mate": false
+      },
+      {
+        "index": 47211,
+        "kind": "capture",
+        "k": 1,
+        "game": 95,
+        "ply": 370,
+        "root": {
+          "value": 1838,
+          "score_usi": [
+            "cp",
+            "1838"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8303402,
+          "bestmove": "5f4e5f"
+        },
+        "leaf": {
+          "value": -1843,
+          "score_usi": [
+            "cp",
+            "-1843"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7202355,
+          "bestmove": "6c5d"
+        },
+        "difference_cp": -5,
+        "contains_mate": false
+      },
+      {
+        "index": 47460,
+        "kind": "capture",
+        "k": 1,
+        "game": 96,
+        "ply": 219,
+        "root": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7455526,
+          "bestmove": "10c10e"
+        },
+        "leaf": {
+          "value": -21,
+          "score_usi": [
+            "cp",
+            "-21"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5072260,
+          "bestmove": "9j10j"
+        },
+        "difference_cp": -21,
+        "contains_mate": false
+      },
+      {
+        "index": 47462,
+        "kind": "capture",
+        "k": 1,
+        "game": 96,
+        "ply": 221,
+        "root": {
+          "value": 16,
+          "score_usi": [
+            "cp",
+            "16"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 3177363,
+          "bestmove": "10c10e"
+        },
+        "leaf": {
+          "value": 51,
+          "score_usi": [
+            "cp",
+            "51"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6434881,
+          "bestmove": "11l10k"
+        },
+        "difference_cp": 67,
+        "contains_mate": false
+      },
+      {
+        "index": 47479,
+        "kind": "capture",
+        "k": 1,
+        "game": 96,
+        "ply": 238,
+        "root": {
+          "value": 285,
+          "score_usi": [
+            "cp",
+            "285"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7801607,
+          "bestmove": "2j3i"
+        },
+        "leaf": {
+          "value": -304,
+          "score_usi": [
+            "cp",
+            "-304"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7580152,
+          "bestmove": "3e4g"
+        },
+        "difference_cp": -19,
+        "contains_mate": false
+      },
+      {
+        "index": 48386,
+        "kind": "capture",
+        "k": 1,
+        "game": 98,
+        "ply": 19,
+        "root": {
+          "value": -115,
+          "score_usi": [
+            "cp",
+            "-115"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 4403724,
+          "bestmove": "6f7g6f"
+        },
+        "leaf": {
+          "value": 134,
+          "score_usi": [
+            "cp",
+            "134"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8565571,
+          "bestmove": "6k6j"
+        },
+        "difference_cp": 19,
+        "contains_mate": false
+      },
+      {
+        "index": 48935,
+        "kind": "quiet",
+        "k": 2,
+        "game": 99,
+        "ply": 38,
+        "root": {
+          "value": -183,
+          "score_usi": [
+            "cp",
+            "-183"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9187270,
+          "bestmove": "10h10g11h"
+        },
+        "leaf": {
+          "value": -118,
+          "score_usi": [
+            "cp",
+            "-118"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5801053,
+          "bestmove": "9j7h"
+        },
+        "difference_cp": -65,
+        "contains_mate": false
+      },
+      {
+        "index": 49268,
+        "kind": "capture",
+        "k": 1,
+        "game": 99,
+        "ply": 371,
+        "root": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 5591389,
+          "bestmove": "6j7k"
+        },
+        "leaf": {
+          "value": 341,
+          "score_usi": [
+            "cp",
+            "341"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9583957,
+          "bestmove": "3l3e"
+        },
+        "difference_cp": 341,
+        "contains_mate": false
+      },
+      {
+        "index": 49486,
+        "kind": "capture",
+        "k": 2,
+        "game": 100,
+        "ply": 218,
+        "root": {
+          "value": -503,
+          "score_usi": [
+            "cp",
+            "-503"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 4879662,
+          "bestmove": "8f8d+"
+        },
+        "leaf": {
+          "value": -499,
+          "score_usi": [
+            "cp",
+            "-499"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9696720,
+          "bestmove": "6l9i"
+        },
+        "difference_cp": -4,
+        "contains_mate": false
+      },
+      {
+        "index": 49774,
+        "kind": "quiet",
+        "k": 1,
+        "game": 101,
+        "ply": 130,
+        "root": {
+          "value": -322,
+          "score_usi": [
+            "cp",
+            "-322"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6816731,
+          "bestmove": "5k6j"
+        },
+        "leaf": {
+          "value": 436,
+          "score_usi": [
+            "cp",
+            "436"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 3163258,
+          "bestmove": "3b4b"
+        },
+        "difference_cp": 114,
+        "contains_mate": false
+      },
+      {
+        "index": 49870,
+        "kind": "quiet",
+        "k": 2,
+        "game": 101,
+        "ply": 226,
+        "root": {
+          "value": 4,
+          "score_usi": [
+            "cp",
+            "4"
+          ],
+          "mate": false,
+          "depth": 9,
+          "nodes": 3589238,
+          "bestmove": "12j8j"
+        },
+        "leaf": {
+          "value": -510,
+          "score_usi": [
+            "cp",
+            "-510"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8599365,
+          "bestmove": "11i12h"
+        },
+        "difference_cp": 514,
+        "contains_mate": false
+      },
+      {
+        "index": 49878,
+        "kind": "capture",
+        "k": 1,
+        "game": 101,
+        "ply": 234,
+        "root": {
+          "value": 158,
+          "score_usi": [
+            "cp",
+            "158"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7176208,
+          "bestmove": "11l11g"
+        },
+        "leaf": {
+          "value": -150,
+          "score_usi": [
+            "cp",
+            "-150"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9176347,
+          "bestmove": "10a10b"
+        },
+        "difference_cp": 8,
+        "contains_mate": false
+      },
+      {
+        "index": 49955,
+        "kind": "quiet",
+        "k": 1,
+        "game": 101,
+        "ply": 311,
+        "root": {
+          "value": 2313,
+          "score_usi": [
+            "cp",
+            "2313"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6601914,
+          "bestmove": "12c12j+"
+        },
+        "leaf": {
+          "value": -1729,
+          "score_usi": [
+            "cp",
+            "-1729"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6938899,
+          "bestmove": "11i3a+"
+        },
+        "difference_cp": 584,
+        "contains_mate": false
+      },
+      {
+        "index": 50598,
+        "kind": "quiet",
+        "k": 1,
+        "game": 103,
+        "ply": 68,
+        "root": {
+          "value": 210,
+          "score_usi": [
+            "cp",
+            "210"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9365371,
+          "bestmove": "10g9g"
+        },
+        "leaf": {
+          "value": -160,
+          "score_usi": [
+            "cp",
+            "-160"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 4324162,
+          "bestmove": "10d10e"
+        },
+        "difference_cp": 50,
+        "contains_mate": false
+      },
+      {
+        "index": 51567,
+        "kind": "capture",
+        "k": 1,
+        "game": 105,
+        "ply": 330,
+        "root": {
+          "value": 1009,
+          "score_usi": [
+            "cp",
+            "1009"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 8622169,
+          "bestmove": "4b1b"
+        },
+        "leaf": {
+          "value": -990,
+          "score_usi": [
+            "cp",
+            "-990"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7689921,
+          "bestmove": "4e3c"
+        },
+        "difference_cp": 19,
+        "contains_mate": false
+      },
+      {
+        "index": 52413,
+        "kind": "capture",
+        "k": 1,
+        "game": 107,
+        "ply": 36,
+        "root": {
+          "value": 88,
+          "score_usi": [
+            "cp",
+            "88"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 5930186,
+          "bestmove": "10i10h"
+        },
+        "leaf": {
+          "value": -71,
+          "score_usi": [
+            "cp",
+            "-71"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9950187,
+          "bestmove": "5d5e"
+        },
+        "difference_cp": 17,
+        "contains_mate": false
+      },
+      {
+        "index": 52719,
+        "kind": "quiet",
+        "k": 1,
+        "game": 107,
+        "ply": 342,
+        "root": {
+          "value": -3027,
+          "score_usi": [
+            "cp",
+            "-3027"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8180631,
+          "bestmove": "2h2g"
+        },
+        "leaf": {
+          "value": 3672,
+          "score_usi": [
+            "cp",
+            "3672"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5784679,
+          "bestmove": "11j10j"
+        },
+        "difference_cp": 645,
+        "contains_mate": false
+      },
+      {
+        "index": 53074,
+        "kind": "quiet",
+        "k": 8,
+        "game": 109,
+        "ply": 285,
+        "root": {
+          "value": -66,
+          "score_usi": [
+            "cp",
+            "-66"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9441024,
+          "bestmove": "5e8e"
+        },
+        "leaf": {
+          "value": 180,
+          "score_usi": [
+            "cp",
+            "180"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5213721,
+          "bestmove": "12d12e"
+        },
+        "difference_cp": -246,
+        "contains_mate": false
+      },
+      {
+        "index": 53309,
+        "kind": "capture",
+        "k": 1,
+        "game": 109,
+        "ply": 520,
+        "root": {
+          "value": 4973,
+          "score_usi": [
+            "cp",
+            "4973"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 9338751,
+          "bestmove": "2a2d"
+        },
+        "leaf": {
+          "value": -4899,
+          "score_usi": [
+            "cp",
+            "-4899"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 4388777,
+          "bestmove": "11a10b"
+        },
+        "difference_cp": 74,
+        "contains_mate": false
+      },
+      {
+        "index": 53320,
+        "kind": "capture",
+        "k": 2,
+        "game": 109,
+        "ply": 531,
+        "root": {
+          "value": -5270,
+          "score_usi": [
+            "cp",
+            "-5270"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 5184045,
+          "bestmove": "1b1f"
+        },
+        "leaf": {
+          "value": -5355,
+          "score_usi": [
+            "cp",
+            "-5355"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7652375,
+          "bestmove": "11c12c"
+        },
+        "difference_cp": 85,
+        "contains_mate": false
+      },
+      {
+        "index": 53976,
+        "kind": "quiet",
+        "k": 1,
+        "game": 111,
+        "ply": 232,
+        "root": {
+          "value": -936,
+          "score_usi": [
+            "cp",
+            "-936"
+          ],
+          "mate": false,
+          "depth": 9,
+          "nodes": 2453359,
+          "bestmove": "8f8e"
+        },
+        "leaf": {
+          "value": 894,
+          "score_usi": [
+            "cp",
+            "894"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8393227,
+          "bestmove": "5f4g3g"
+        },
+        "difference_cp": -42,
+        "contains_mate": false
+      },
+      {
+        "index": 54043,
+        "kind": "capture",
+        "k": 1,
+        "game": 111,
+        "ply": 299,
+        "root": {
+          "value": 1928,
+          "score_usi": [
+            "cp",
+            "1928"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9041237,
+          "bestmove": "10h9i10h"
+        },
+        "leaf": {
+          "value": -1901,
+          "score_usi": [
+            "cp",
+            "-1901"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7810097,
+          "bestmove": "7h8g"
+        },
+        "difference_cp": 27,
+        "contains_mate": false
+      },
+      {
+        "index": 54451,
+        "kind": "quiet",
+        "k": 1,
+        "game": 112,
+        "ply": 372,
+        "root": {
+          "value": 7025,
+          "score_usi": [
+            "cp",
+            "7025"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 7868064,
+          "bestmove": "6c7c"
+        },
+        "leaf": {
+          "value": -6845,
+          "score_usi": [
+            "cp",
+            "-6845"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 9134674,
+          "bestmove": "10d11c"
+        },
+        "difference_cp": 180,
+        "contains_mate": false
+      },
+      {
+        "index": 55383,
+        "kind": "quiet",
+        "k": 1,
+        "game": 115,
+        "ply": 89,
+        "root": {
+          "value": 80,
+          "score_usi": [
+            "cp",
+            "80"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6088769,
+          "bestmove": "2e2d"
+        },
+        "leaf": {
+          "value": 471,
+          "score_usi": [
+            "cp",
+            "471"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5476137,
+          "bestmove": "10k3d+"
+        },
+        "difference_cp": 551,
+        "contains_mate": false
+      },
+      {
+        "index": 55392,
+        "kind": "capture",
+        "k": 1,
+        "game": 115,
+        "ply": 98,
+        "root": {
+          "value": -382,
+          "score_usi": [
+            "cp",
+            "-382"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8780291,
+          "bestmove": "3j1j"
+        },
+        "leaf": {
+          "value": 378,
+          "score_usi": [
+            "cp",
+            "378"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6381996,
+          "bestmove": "8c1c"
+        },
+        "difference_cp": -4,
+        "contains_mate": false
+      },
+      {
+        "index": 55401,
+        "kind": "quiet",
+        "k": 1,
+        "game": 115,
+        "ply": 107,
+        "root": {
+          "value": 273,
+          "score_usi": [
+            "cp",
+            "273"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9469074,
+          "bestmove": "3g4h3g"
+        },
+        "leaf": {
+          "value": -266,
+          "score_usi": [
+            "cp",
+            "-266"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 6598456,
+          "bestmove": "10j3j"
+        },
+        "difference_cp": 7,
+        "contains_mate": false
+      },
+      {
+        "index": 55414,
+        "kind": "quiet",
+        "k": 2,
+        "game": 115,
+        "ply": 120,
+        "root": {
+          "value": -660,
+          "score_usi": [
+            "cp",
+            "-660"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9081250,
+          "bestmove": "7h5f"
+        },
+        "leaf": {
+          "value": -778,
+          "score_usi": [
+            "cp",
+            "-778"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9525424,
+          "bestmove": "10j3j"
+        },
+        "difference_cp": 118,
+        "contains_mate": false
+      },
+      {
+        "index": 55695,
+        "kind": "capture",
+        "k": 1,
+        "game": 116,
+        "ply": 30,
+        "root": {
+          "value": -35,
+          "score_usi": [
+            "cp",
+            "-35"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7781406,
+          "bestmove": "5k4j"
+        },
+        "leaf": {
+          "value": 46,
+          "score_usi": [
+            "cp",
+            "46"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8963598,
+          "bestmove": "9c8b"
+        },
+        "difference_cp": 11,
+        "contains_mate": false
+      },
+      {
+        "index": 56637,
+        "kind": "capture",
+        "k": 3,
+        "game": 118,
+        "ply": 471,
+        "root": {
+          "value": 5065,
+          "score_usi": [
+            "cp",
+            "5065"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 8740977,
+          "bestmove": "9f2f"
+        },
+        "leaf": {
+          "value": -4979,
+          "score_usi": [
+            "cp",
+            "-4979"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 2836382,
+          "bestmove": "7j7i"
+        },
+        "difference_cp": 86,
+        "contains_mate": false
+      },
+      {
+        "index": 56638,
+        "kind": "capture",
+        "k": 2,
+        "game": 118,
+        "ply": 472,
+        "root": {
+          "value": -4965,
+          "score_usi": [
+            "cp",
+            "-4965"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 1692841,
+          "bestmove": "3e2f"
+        },
+        "leaf": {
+          "value": -4979,
+          "score_usi": [
+            "cp",
+            "-4979"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 2836382,
+          "bestmove": "7j7i"
+        },
+        "difference_cp": 14,
+        "contains_mate": false
+      },
+      {
+        "index": 57850,
+        "kind": "capture",
+        "k": 1,
+        "game": 119,
+        "ply": 122,
+        "root": {
+          "value": -36,
+          "score_usi": [
+            "cp",
+            "-36"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8614698,
+          "bestmove": "10f7f"
+        },
+        "leaf": {
+          "value": 77,
+          "score_usi": [
+            "cp",
+            "77"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4982788,
+          "bestmove": "11b10b"
+        },
+        "difference_cp": 41,
+        "contains_mate": false
+      },
+      {
+        "index": 59109,
+        "kind": "quiet",
+        "k": 2,
+        "game": 122,
+        "ply": 93,
+        "root": {
+          "value": -149,
+          "score_usi": [
+            "cp",
+            "-149"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6647927,
+          "bestmove": "6c6e"
+        },
+        "leaf": {
+          "value": -167,
+          "score_usi": [
+            "cp",
+            "-167"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7685853,
+          "bestmove": "6c6e"
+        },
+        "difference_cp": 18,
+        "contains_mate": false
+      },
+      {
+        "index": 59165,
+        "kind": "quiet",
+        "k": 1,
+        "game": 122,
+        "ply": 149,
+        "root": {
+          "value": -197,
+          "score_usi": [
+            "cp",
+            "-197"
+          ],
+          "mate": false,
+          "depth": 9,
+          "nodes": 1052933,
+          "bestmove": "10c9c"
+        },
+        "leaf": {
+          "value": 216,
+          "score_usi": [
+            "cp",
+            "216"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 5006104,
+          "bestmove": "6e9h"
+        },
+        "difference_cp": 19,
+        "contains_mate": false
+      },
+      {
+        "index": 59516,
+        "kind": "capture",
+        "k": 1,
+        "game": 124,
+        "ply": 21,
+        "root": {
+          "value": -98,
+          "score_usi": [
+            "cp",
+            "-98"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8065321,
+          "bestmove": "8e9f9g"
+        },
+        "leaf": {
+          "value": 162,
+          "score_usi": [
+            "cp",
+            "162"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8191092,
+          "bestmove": "6j6l"
+        },
+        "difference_cp": 64,
+        "contains_mate": false
+      },
+      {
+        "index": 59788,
+        "kind": "quiet",
+        "k": 5,
+        "game": 124,
+        "ply": 293,
+        "root": {
+          "value": -446,
+          "score_usi": [
+            "cp",
+            "-446"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6204113,
+          "bestmove": "8e10g"
+        },
+        "leaf": {
+          "value": 781,
+          "score_usi": [
+            "cp",
+            "781"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5962023,
+          "bestmove": "3l4k"
+        },
+        "difference_cp": 335,
+        "contains_mate": false
+      },
+      {
+        "index": 60839,
+        "kind": "quiet",
+        "k": 2,
+        "game": 127,
+        "ply": 74,
+        "root": {
+          "value": 51,
+          "score_usi": [
+            "cp",
+            "51"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8666454,
+          "bestmove": "3j2j"
+        },
+        "leaf": {
+          "value": 47,
+          "score_usi": [
+            "cp",
+            "47"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9349040,
+          "bestmove": "5h5g"
+        },
+        "difference_cp": 4,
+        "contains_mate": false
+      },
+      {
+        "index": 60891,
+        "kind": "capture",
+        "k": 1,
+        "game": 127,
+        "ply": 126,
+        "root": {
+          "value": -50,
+          "score_usi": [
+            "cp",
+            "-50"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6736623,
+          "bestmove": "11f10e10f"
+        },
+        "leaf": {
+          "value": 80,
+          "score_usi": [
+            "cp",
+            "80"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9230287,
+          "bestmove": "2a2b"
+        },
+        "difference_cp": 30,
+        "contains_mate": false
+      },
+      {
+        "index": 60994,
+        "kind": "quiet",
+        "k": 1,
+        "game": 127,
+        "ply": 229,
+        "root": {
+          "value": 8,
+          "score_usi": [
+            "cp",
+            "8"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8792176,
+          "bestmove": "8f9g9f"
+        },
+        "leaf": {
+          "value": 68,
+          "score_usi": [
+            "cp",
+            "68"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6891950,
+          "bestmove": "12j9j"
+        },
+        "difference_cp": 76,
+        "contains_mate": false
+      },
+      {
+        "index": 61345,
+        "kind": "quiet",
+        "k": 1,
+        "game": 128,
+        "ply": 74,
+        "root": {
+          "value": 55,
+          "score_usi": [
+            "cp",
+            "55"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9871787,
+          "bestmove": "9e7g"
+        },
+        "leaf": {
+          "value": -24,
+          "score_usi": [
+            "cp",
+            "-24"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5339033,
+          "bestmove": "8c8d"
+        },
+        "difference_cp": 31,
+        "contains_mate": false
+      },
+      {
+        "index": 61347,
+        "kind": "quiet",
+        "k": 1,
+        "game": 128,
+        "ply": 76,
+        "root": {
+          "value": 23,
+          "score_usi": [
+            "cp",
+            "23"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8437697,
+          "bestmove": "3k4k"
+        },
+        "leaf": {
+          "value": 56,
+          "score_usi": [
+            "cp",
+            "56"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6887129,
+          "bestmove": "3f3g"
+        },
+        "difference_cp": 79,
+        "contains_mate": false
+      },
+      {
+        "index": 61364,
+        "kind": "quiet",
+        "k": 2,
+        "game": 128,
+        "ply": 93,
+        "root": {
+          "value": -598,
+          "score_usi": [
+            "cp",
+            "-598"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5145531,
+          "bestmove": "9b8b"
+        },
+        "leaf": {
+          "value": -1992,
+          "score_usi": [
+            "cp",
+            "-1992"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6164649,
+          "bestmove": "2h3i2j"
+        },
+        "difference_cp": 1394,
+        "contains_mate": false
+      },
+      {
+        "index": 61800,
+        "kind": "capture",
+        "k": 1,
+        "game": 128,
+        "ply": 529,
+        "root": {
+          "value": 7803,
+          "score_usi": [
+            "cp",
+            "7803"
+          ],
+          "mate": false,
+          "depth": 23,
+          "nodes": 8835656,
+          "bestmove": "1a1e"
+        },
+        "leaf": {
+          "value": -7836,
+          "score_usi": [
+            "cp",
+            "-7836"
+          ],
+          "mate": false,
+          "depth": 20,
+          "nodes": 9050223,
+          "bestmove": "11g10h"
+        },
+        "difference_cp": -33,
+        "contains_mate": false
+      },
+      {
+        "index": 62575,
+        "kind": "quiet",
+        "k": 1,
+        "game": 130,
+        "ply": 356,
+        "root": {
+          "value": -355,
+          "score_usi": [
+            "cp",
+            "-355"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6422075,
+          "bestmove": "7j8j"
+        },
+        "leaf": {
+          "value": 932,
+          "score_usi": [
+            "cp",
+            "932"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8674626,
+          "bestmove": "6c7c"
+        },
+        "difference_cp": 577,
+        "contains_mate": false
+      },
+      {
+        "index": 62939,
+        "kind": "quiet",
+        "k": 5,
+        "game": 131,
+        "ply": 298,
+        "root": {
+          "value": 4255,
+          "score_usi": [
+            "cp",
+            "4255"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6921914,
+          "bestmove": "6j6k"
+        },
+        "leaf": {
+          "value": -3647,
+          "score_usi": [
+            "cp",
+            "-3647"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6630907,
+          "bestmove": "11j9h"
+        },
+        "difference_cp": 608,
+        "contains_mate": false
+      },
+      {
+        "index": 63434,
+        "kind": "quiet",
+        "k": 1,
+        "game": 133,
+        "ply": 253,
+        "root": {
+          "value": -34,
+          "score_usi": [
+            "cp",
+            "-34"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 5397289,
+          "bestmove": "4f4g"
+        },
+        "leaf": {
+          "value": 168,
+          "score_usi": [
+            "cp",
+            "168"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7012078,
+          "bestmove": "7g5h"
+        },
+        "difference_cp": 134,
+        "contains_mate": false
+      },
+      {
+        "index": 63528,
+        "kind": "capture",
+        "k": 3,
+        "game": 133,
+        "ply": 347,
+        "root": {
+          "value": 541,
+          "score_usi": [
+            "cp",
+            "541"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6494629,
+          "bestmove": "9i7i"
+        },
+        "leaf": {
+          "value": -593,
+          "score_usi": [
+            "cp",
+            "-593"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7309660,
+          "bestmove": "10l11l"
+        },
+        "difference_cp": -52,
+        "contains_mate": false
+      },
+      {
+        "index": 63710,
+        "kind": "capture",
+        "k": 2,
+        "game": 134,
+        "ply": 181,
+        "root": {
+          "value": -821,
+          "score_usi": [
+            "cp",
+            "-821"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 5579552,
+          "bestmove": "7c8d"
+        },
+        "leaf": {
+          "value": -846,
+          "score_usi": [
+            "cp",
+            "-846"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7567106,
+          "bestmove": "2f3g"
+        },
+        "difference_cp": 25,
+        "contains_mate": false
+      },
+      {
+        "index": 63837,
+        "kind": "quiet",
+        "k": 1,
+        "game": 134,
+        "ply": 308,
+        "root": {
+          "value": 1577,
+          "score_usi": [
+            "cp",
+            "1577"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4704750,
+          "bestmove": "10g9f"
+        },
+        "leaf": {
+          "value": -1518,
+          "score_usi": [
+            "cp",
+            "-1518"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6067261,
+          "bestmove": "7e6f"
+        },
+        "difference_cp": 59,
+        "contains_mate": false
+      },
+      {
+        "index": 66042,
+        "kind": "capture",
+        "k": 1,
+        "game": 136,
+        "ply": 251,
+        "root": {
+          "value": -186,
+          "score_usi": [
+            "cp",
+            "-186"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3774109,
+          "bestmove": "10d10c"
+        },
+        "leaf": {
+          "value": 240,
+          "score_usi": [
+            "cp",
+            "240"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6025534,
+          "bestmove": "3i4h"
+        },
+        "difference_cp": 54,
+        "contains_mate": false
+      },
+      {
+        "index": 66129,
+        "kind": "capture",
+        "k": 1,
+        "game": 136,
+        "ply": 338,
+        "root": {
+          "value": -1784,
+          "score_usi": [
+            "cp",
+            "-1784"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4816444,
+          "bestmove": "5k4j"
+        },
+        "leaf": {
+          "value": 1806,
+          "score_usi": [
+            "cp",
+            "1806"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5894385,
+          "bestmove": "5c5f"
+        },
+        "difference_cp": 22,
+        "contains_mate": false
+      },
+      {
+        "index": 66856,
+        "kind": "capture",
+        "k": 1,
+        "game": 138,
+        "ply": 285,
+        "root": {
+          "value": 253,
+          "score_usi": [
+            "cp",
+            "253"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3337104,
+          "bestmove": "8b9b"
+        },
+        "leaf": {
+          "value": -241,
+          "score_usi": [
+            "cp",
+            "-241"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9373158,
+          "bestmove": "12j9j"
+        },
+        "difference_cp": 12,
+        "contains_mate": false
+      },
+      {
+        "index": 66962,
+        "kind": "capture",
+        "k": 1,
+        "game": 138,
+        "ply": 391,
+        "root": {
+          "value": -487,
+          "score_usi": [
+            "cp",
+            "-487"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6093706,
+          "bestmove": "10l9l"
+        },
+        "leaf": {
+          "value": 530,
+          "score_usi": [
+            "cp",
+            "530"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7279711,
+          "bestmove": "5k6l"
+        },
+        "difference_cp": 43,
+        "contains_mate": false
+      },
+      {
+        "index": 67842,
+        "kind": "quiet",
+        "k": 1,
+        "game": 140,
+        "ply": 79,
+        "root": {
+          "value": -140,
+          "score_usi": [
+            "cp",
+            "-140"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9139485,
+          "bestmove": "5c5d"
+        },
+        "leaf": {
+          "value": 146,
+          "score_usi": [
+            "cp",
+            "146"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7805027,
+          "bestmove": "10h11g"
+        },
+        "difference_cp": 6,
+        "contains_mate": false
+      },
+      {
+        "index": 67937,
+        "kind": "capture",
+        "k": 1,
+        "game": 140,
+        "ply": 174,
+        "root": {
+          "value": 194,
+          "score_usi": [
+            "cp",
+            "194"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 8991033,
+          "bestmove": "5g6f"
+        },
+        "leaf": {
+          "value": -193,
+          "score_usi": [
+            "cp",
+            "-193"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 5056504,
+          "bestmove": "11d11e"
+        },
+        "difference_cp": 1,
+        "contains_mate": false
+      },
+      {
+        "index": 68682,
+        "kind": "capture",
+        "k": 1,
+        "game": 142,
+        "ply": 250,
+        "root": {
+          "value": 3866,
+          "score_usi": [
+            "cp",
+            "3866"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8187484,
+          "bestmove": "10k10j10i"
+        },
+        "leaf": {
+          "value": -3839,
+          "score_usi": [
+            "cp",
+            "-3839"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 4733084,
+          "bestmove": "5a3c"
+        },
+        "difference_cp": 27,
+        "contains_mate": false
+      },
+      {
+        "index": 69139,
+        "kind": "capture",
+        "k": 5,
+        "game": 143,
+        "ply": 208,
+        "root": {
+          "value": -117,
+          "score_usi": [
+            "cp",
+            "-117"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5821818,
+          "bestmove": "9k8k"
+        },
+        "leaf": {
+          "value": 373,
+          "score_usi": [
+            "cp",
+            "373"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8851995,
+          "bestmove": "4d6f"
+        },
+        "difference_cp": 256,
+        "contains_mate": false
+      },
+      {
+        "index": 69242,
+        "kind": "capture",
+        "k": 2,
+        "game": 143,
+        "ply": 311,
+        "root": {
+          "value": 4168,
+          "score_usi": [
+            "cp",
+            "4168"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 9801887,
+          "bestmove": "6b5a"
+        },
+        "leaf": {
+          "value": 4183,
+          "score_usi": [
+            "cp",
+            "4183"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9250184,
+          "bestmove": "5a6a"
+        },
+        "difference_cp": -15,
+        "contains_mate": false
+      },
+      {
+        "index": 69371,
+        "kind": "quiet",
+        "k": 1,
+        "game": 144,
+        "ply": 109,
+        "root": {
+          "value": 4,
+          "score_usi": [
+            "cp",
+            "4"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6371689,
+          "bestmove": "11a10b"
+        },
+        "leaf": {
+          "value": 70,
+          "score_usi": [
+            "cp",
+            "70"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6672459,
+          "bestmove": "2k3k"
+        },
+        "difference_cp": 74,
+        "contains_mate": false
+      },
+      {
+        "index": 71955,
+        "kind": "capture",
+        "k": 1,
+        "game": 145,
+        "ply": 128,
+        "root": {
+          "value": 85,
+          "score_usi": [
+            "cp",
+            "85"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8783344,
+          "bestmove": "9k8k"
+        },
+        "leaf": {
+          "value": -70,
+          "score_usi": [
+            "cp",
+            "-70"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5713762,
+          "bestmove": "9b8c"
+        },
+        "difference_cp": 15,
+        "contains_mate": false
+      },
+      {
+        "index": 72081,
+        "kind": "quiet",
+        "k": 1,
+        "game": 145,
+        "ply": 254,
+        "root": {
+          "value": 3376,
+          "score_usi": [
+            "cp",
+            "3376"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 3556240,
+          "bestmove": "5c8f"
+        },
+        "leaf": {
+          "value": -3097,
+          "score_usi": [
+            "cp",
+            "-3097"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8295712,
+          "bestmove": "8a9b"
+        },
+        "difference_cp": 279,
+        "contains_mate": false
+      },
+      {
+        "index": 73489,
+        "kind": "quiet",
+        "k": 1,
+        "game": 148,
+        "ply": 310,
+        "root": {
+          "value": 185,
+          "score_usi": [
+            "cp",
+            "185"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5176287,
+          "bestmove": "7f10f"
+        },
+        "leaf": {
+          "value": -84,
+          "score_usi": [
+            "cp",
+            "-84"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9101503,
+          "bestmove": "9b8d"
+        },
+        "difference_cp": 101,
+        "contains_mate": false
+      },
+      {
+        "index": 73541,
+        "kind": "capture",
+        "k": 1,
+        "game": 148,
+        "ply": 362,
+        "root": {
+          "value": -1784,
+          "score_usi": [
+            "cp",
+            "-1784"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 8673749,
+          "bestmove": "6e7e6f"
+        },
+        "leaf": {
+          "value": 1896,
+          "score_usi": [
+            "cp",
+            "1896"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8601584,
+          "bestmove": "10k9j9k"
+        },
+        "difference_cp": 112,
+        "contains_mate": false
+      },
+      {
+        "index": 73550,
+        "kind": "capture",
+        "k": 1,
+        "game": 148,
+        "ply": 371,
+        "root": {
+          "value": 2243,
+          "score_usi": [
+            "cp",
+            "2243"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 2255333,
+          "bestmove": "9k11l"
+        },
+        "leaf": {
+          "value": -2232,
+          "score_usi": [
+            "cp",
+            "-2232"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7900561,
+          "bestmove": "12k12i"
+        },
+        "difference_cp": 11,
+        "contains_mate": false
+      },
+      {
+        "index": 73710,
+        "kind": "quiet",
+        "k": 1,
+        "game": 149,
+        "ply": 126,
+        "root": {
+          "value": 2639,
+          "score_usi": [
+            "cp",
+            "2639"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6094084,
+          "bestmove": "11e12d11e"
+        },
+        "leaf": {
+          "value": -2645,
+          "score_usi": [
+            "cp",
+            "-2645"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7419015,
+          "bestmove": "4c5d"
+        },
+        "difference_cp": -6,
+        "contains_mate": false
+      },
+      {
+        "index": 73823,
+        "kind": "quiet",
+        "k": 1,
+        "game": 149,
+        "ply": 239,
+        "root": {
+          "value": -2642,
+          "score_usi": [
+            "cp",
+            "-2642"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8825693,
+          "bestmove": "12b11c"
+        },
+        "leaf": {
+          "value": 3144,
+          "score_usi": [
+            "cp",
+            "3144"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9051646,
+          "bestmove": "11e9g"
+        },
+        "difference_cp": 502,
+        "contains_mate": false
+      },
+      {
+        "index": 73997,
+        "kind": "quiet",
+        "k": 4,
+        "game": 149,
+        "ply": 413,
+        "root": {
+          "value": -4704,
+          "score_usi": [
+            "cp",
+            "-4704"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9534313,
+          "bestmove": "9c7c"
+        },
+        "leaf": {
+          "value": -4798,
+          "score_usi": [
+            "cp",
+            "-4798"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 5595591,
+          "bestmove": "12b10b"
+        },
+        "difference_cp": 94,
+        "contains_mate": false
+      },
+      {
+        "index": 74376,
+        "kind": "quiet",
+        "k": 1,
+        "game": 151,
+        "ply": 18,
+        "root": {
+          "value": 2588,
+          "score_usi": [
+            "cp",
+            "2588"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6386680,
+          "bestmove": "7k7i"
+        },
+        "leaf": {
+          "value": -2574,
+          "score_usi": [
+            "cp",
+            "-2574"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7127445,
+          "bestmove": "7b5d"
+        },
+        "difference_cp": 14,
+        "contains_mate": false
+      },
+      {
+        "index": 74494,
+        "kind": "capture",
+        "k": 1,
+        "game": 151,
+        "ply": 136,
+        "root": {
+          "value": 2733,
+          "score_usi": [
+            "cp",
+            "2733"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5500144,
+          "bestmove": "9g11e"
+        },
+        "leaf": {
+          "value": -2731,
+          "score_usi": [
+            "cp",
+            "-2731"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6763878,
+          "bestmove": "7e7f"
+        },
+        "difference_cp": 2,
+        "contains_mate": false
+      },
+      {
+        "index": 74720,
+        "kind": "capture",
+        "k": 1,
+        "game": 151,
+        "ply": 362,
+        "root": {
+          "value": 4602,
+          "score_usi": [
+            "cp",
+            "4602"
+          ],
+          "mate": false,
+          "depth": 19,
+          "nodes": 7165826,
+          "bestmove": "12k12h"
+        },
+        "leaf": {
+          "value": -4585,
+          "score_usi": [
+            "cp",
+            "-4585"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 4183556,
+          "bestmove": "12c12h"
+        },
+        "difference_cp": 17,
+        "contains_mate": false
+      },
+      {
+        "index": 75568,
+        "kind": "quiet",
+        "k": 1,
+        "game": 152,
+        "ply": 401,
+        "root": {
+          "value": 2845,
+          "score_usi": [
+            "cp",
+            "2845"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 6841804,
+          "bestmove": "4f4h"
+        },
+        "leaf": {
+          "value": -2874,
+          "score_usi": [
+            "cp",
+            "-2874"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 9363762,
+          "bestmove": "3i11i"
+        },
+        "difference_cp": -29,
+        "contains_mate": false
+      },
+      {
+        "index": 75749,
+        "kind": "capture",
+        "k": 2,
+        "game": 152,
+        "ply": 582,
+        "root": {
+          "value": -7137,
+          "score_usi": [
+            "cp",
+            "-7137"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 9280970,
+          "bestmove": "12k12a+"
+        },
+        "leaf": {
+          "value": -7167,
+          "score_usi": [
+            "cp",
+            "-7167"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 5465873,
+          "bestmove": "12a12g"
+        },
+        "difference_cp": 30,
+        "contains_mate": false
+      },
+      {
+        "index": 75953,
+        "kind": "quiet",
+        "k": 1,
+        "game": 153,
+        "ply": 180,
+        "root": {
+          "value": -905,
+          "score_usi": [
+            "cp",
+            "-905"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8736053,
+          "bestmove": "3d10k"
+        },
+        "leaf": {
+          "value": 1137,
+          "score_usi": [
+            "cp",
+            "1137"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6407326,
+          "bestmove": "8a4e"
+        },
+        "difference_cp": 232,
+        "contains_mate": false
+      },
+      {
+        "index": 75976,
+        "kind": "quiet",
+        "k": 1,
+        "game": 153,
+        "ply": 203,
+        "root": {
+          "value": 951,
+          "score_usi": [
+            "cp",
+            "951"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8152281,
+          "bestmove": "6b6d"
+        },
+        "leaf": {
+          "value": -421,
+          "score_usi": [
+            "cp",
+            "-421"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5333404,
+          "bestmove": "8k8c+"
+        },
+        "difference_cp": 530,
+        "contains_mate": false
+      },
+      {
+        "index": 76309,
+        "kind": "quiet",
+        "k": 1,
+        "game": 154,
+        "ply": 54,
+        "root": {
+          "value": 26,
+          "score_usi": [
+            "cp",
+            "26"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4755908,
+          "bestmove": "5i5h"
+        },
+        "leaf": {
+          "value": -24,
+          "score_usi": [
+            "cp",
+            "-24"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9995980,
+          "bestmove": "2a2b"
+        },
+        "difference_cp": 2,
+        "contains_mate": false
+      },
+      {
+        "index": 76319,
+        "kind": "quiet",
+        "k": 1,
+        "game": 154,
+        "ply": 64,
+        "root": {
+          "value": 16,
+          "score_usi": [
+            "cp",
+            "16"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6919157,
+          "bestmove": "2f3e2f"
+        },
+        "leaf": {
+          "value": -20,
+          "score_usi": [
+            "cp",
+            "-20"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9121779,
+          "bestmove": "9b9c"
+        },
+        "difference_cp": -4,
+        "contains_mate": false
+      },
+      {
+        "index": 76507,
+        "kind": "capture",
+        "k": 2,
+        "game": 154,
+        "ply": 252,
+        "root": {
+          "value": 2250,
+          "score_usi": [
+            "cp",
+            "2250"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 8825594,
+          "bestmove": "6j7j"
+        },
+        "leaf": {
+          "value": 2442,
+          "score_usi": [
+            "cp",
+            "2442"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 5344246,
+          "bestmove": "7l6l"
+        },
+        "difference_cp": -192,
+        "contains_mate": false
+      },
+      {
+        "index": 77000,
+        "kind": "quiet",
+        "k": 2,
+        "game": 156,
+        "ply": 37,
+        "root": {
+          "value": -157,
+          "score_usi": [
+            "cp",
+            "-157"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7816084,
+          "bestmove": "4g4h"
+        },
+        "leaf": {
+          "value": -256,
+          "score_usi": [
+            "cp",
+            "-256"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9759695,
+          "bestmove": "7b5d"
+        },
+        "difference_cp": 99,
+        "contains_mate": false
+      },
+      {
+        "index": 77131,
+        "kind": "capture",
+        "k": 2,
+        "game": 156,
+        "ply": 168,
+        "root": {
+          "value": 30,
+          "score_usi": [
+            "cp",
+            "30"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9638820,
+          "bestmove": "3f3b+"
+        },
+        "leaf": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7343098,
+          "bestmove": "4e3d+"
+        },
+        "difference_cp": 30,
+        "contains_mate": false
+      },
+      {
+        "index": 77914,
+        "kind": "quiet",
+        "k": 6,
+        "game": 158,
+        "ply": 222,
+        "root": {
+          "value": 3476,
+          "score_usi": [
+            "cp",
+            "3476"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5312210,
+          "bestmove": "10f9f"
+        },
+        "leaf": {
+          "value": 3083,
+          "score_usi": [
+            "cp",
+            "3083"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7588648,
+          "bestmove": "4l5k"
+        },
+        "difference_cp": 393,
+        "contains_mate": false
+      },
+      {
+        "index": 78111,
+        "kind": "capture",
+        "k": 3,
+        "game": 159,
+        "ply": 169,
+        "root": {
+          "value": 1297,
+          "score_usi": [
+            "cp",
+            "1297"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7552477,
+          "bestmove": "7f6g"
+        },
+        "leaf": {
+          "value": -1277,
+          "score_usi": [
+            "cp",
+            "-1277"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8822735,
+          "bestmove": "6l6k"
+        },
+        "difference_cp": 20,
+        "contains_mate": false
+      },
+      {
+        "index": 78298,
+        "kind": "quiet",
+        "k": 2,
+        "game": 159,
+        "ply": 356,
+        "root": {
+          "value": -2586,
+          "score_usi": [
+            "cp",
+            "-2586"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9910889,
+          "bestmove": "9j6j"
+        },
+        "leaf": {
+          "value": -1981,
+          "score_usi": [
+            "cp",
+            "-1981"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4995323,
+          "bestmove": "11l10k"
+        },
+        "difference_cp": -605,
+        "contains_mate": false
+      },
+      {
+        "index": 78547,
+        "kind": "capture",
+        "k": 1,
+        "game": 160,
+        "ply": 129,
+        "root": {
+          "value": -2571,
+          "score_usi": [
+            "cp",
+            "-2571"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7636432,
+          "bestmove": "8g8f"
+        },
+        "leaf": {
+          "value": 3119,
+          "score_usi": [
+            "cp",
+            "3119"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7006070,
+          "bestmove": "4h5g4f"
+        },
+        "difference_cp": 548,
+        "contains_mate": false
+      },
+      {
+        "index": 78965,
+        "kind": "quiet",
+        "k": 2,
+        "game": 161,
+        "ply": 326,
+        "root": {
+          "value": 993,
+          "score_usi": [
+            "cp",
+            "993"
+          ],
+          "mate": false,
+          "depth": 18,
+          "nodes": 9649491,
+          "bestmove": "10d8f"
+        },
+        "leaf": {
+          "value": 942,
+          "score_usi": [
+            "cp",
+            "942"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6387270,
+          "bestmove": "10e8e"
+        },
+        "difference_cp": 51,
+        "contains_mate": false
+      },
+      {
+        "index": 79065,
+        "kind": "capture",
+        "k": 1,
+        "game": 162,
+        "ply": 18,
+        "root": {
+          "value": 82,
+          "score_usi": [
+            "cp",
+            "82"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6289028,
+          "bestmove": "5k6j"
+        },
+        "leaf": {
+          "value": -20,
+          "score_usi": [
+            "cp",
+            "-20"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8141577,
+          "bestmove": "8b7c"
+        },
+        "difference_cp": 62,
+        "contains_mate": false
+      },
+      {
+        "index": 79305,
+        "kind": "capture",
+        "k": 1,
+        "game": 162,
+        "ply": 258,
+        "root": {
+          "value": 6854,
+          "score_usi": [
+            "cp",
+            "6854"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8556418,
+          "bestmove": "11j11g"
+        },
+        "leaf": {
+          "value": -6772,
+          "score_usi": [
+            "cp",
+            "-6772"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9125762,
+          "bestmove": "5b6c"
+        },
+        "difference_cp": 82,
+        "contains_mate": false
+      },
+      {
+        "index": 79342,
+        "kind": "quiet",
+        "k": 2,
+        "game": 163,
+        "ply": 41,
+        "root": {
+          "value": 25,
+          "score_usi": [
+            "cp",
+            "25"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7242780,
+          "bestmove": "4c5b"
+        },
+        "leaf": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 3938310,
+          "bestmove": "6d7e"
+        },
+        "difference_cp": 25,
+        "contains_mate": false
+      },
+      {
+        "index": 79676,
+        "kind": "quiet",
+        "k": 1,
+        "game": 163,
+        "ply": 375,
+        "root": {
+          "value": 324,
+          "score_usi": [
+            "cp",
+            "324"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7409155,
+          "bestmove": "7e7f"
+        },
+        "leaf": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5143447,
+          "bestmove": "9l8l"
+        },
+        "difference_cp": 324,
+        "contains_mate": false
+      },
+      {
+        "index": 80261,
+        "kind": "quiet",
+        "k": 2,
+        "game": 164,
+        "ply": 213,
+        "root": {
+          "value": 808,
+          "score_usi": [
+            "cp",
+            "808"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5503436,
+          "bestmove": "8f9g"
+        },
+        "leaf": {
+          "value": 814,
+          "score_usi": [
+            "cp",
+            "814"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6840736,
+          "bestmove": "8f9g"
+        },
+        "difference_cp": -6,
+        "contains_mate": false
+      },
+      {
+        "index": 80279,
+        "kind": "capture",
+        "k": 1,
+        "game": 164,
+        "ply": 231,
+        "root": {
+          "value": 1347,
+          "score_usi": [
+            "cp",
+            "1347"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7623474,
+          "bestmove": "4e4f"
+        },
+        "leaf": {
+          "value": -1337,
+          "score_usi": [
+            "cp",
+            "-1337"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5885783,
+          "bestmove": "2f4h"
+        },
+        "difference_cp": 10,
+        "contains_mate": false
+      },
+      {
+        "index": 80622,
+        "kind": "quiet",
+        "k": 1,
+        "game": 165,
+        "ply": 272,
+        "root": {
+          "value": -1648,
+          "score_usi": [
+            "cp",
+            "-1648"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7629778,
+          "bestmove": "8e6g"
+        },
+        "leaf": {
+          "value": 1972,
+          "score_usi": [
+            "cp",
+            "1972"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5098709,
+          "bestmove": "8h6h"
+        },
+        "difference_cp": 324,
+        "contains_mate": false
+      },
+      {
+        "index": 80632,
+        "kind": "quiet",
+        "k": 1,
+        "game": 165,
+        "ply": 282,
+        "root": {
+          "value": -2268,
+          "score_usi": [
+            "cp",
+            "-2268"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8942345,
+          "bestmove": "11k11j"
+        },
+        "leaf": {
+          "value": 29999,
+          "score_usi": [
+            "mate",
+            "1"
+          ],
+          "mate": true,
+          "depth": 11,
+          "nodes": 7745337,
+          "bestmove": "8h7j"
+        },
+        "difference_cp": 27731,
+        "contains_mate": true
+      },
+      {
+        "index": 80844,
+        "kind": "capture",
+        "k": 1,
+        "game": 166,
+        "ply": 153,
+        "root": {
+          "value": 652,
+          "score_usi": [
+            "cp",
+            "652"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8675174,
+          "bestmove": "10g11f"
+        },
+        "leaf": {
+          "value": -622,
+          "score_usi": [
+            "cp",
+            "-622"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7988533,
+          "bestmove": "9g11i"
+        },
+        "difference_cp": 30,
+        "contains_mate": false
+      },
+      {
+        "index": 81100,
+        "kind": "quiet",
+        "k": 1,
+        "game": 167,
+        "ply": 125,
+        "root": {
+          "value": 209,
+          "score_usi": [
+            "cp",
+            "209"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3779393,
+          "bestmove": "6b4b"
+        },
+        "leaf": {
+          "value": -181,
+          "score_usi": [
+            "cp",
+            "-181"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 6872765,
+          "bestmove": "11l11k"
+        },
+        "difference_cp": 28,
+        "contains_mate": false
+      },
+      {
+        "index": 81175,
+        "kind": "quiet",
+        "k": 1,
+        "game": 167,
+        "ply": 200,
+        "root": {
+          "value": -223,
+          "score_usi": [
+            "cp",
+            "-223"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8738280,
+          "bestmove": "7f7h"
+        },
+        "leaf": {
+          "value": 239,
+          "score_usi": [
+            "cp",
+            "239"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8148528,
+          "bestmove": "2a10i+"
+        },
+        "difference_cp": 16,
+        "contains_mate": false
+      },
+      {
+        "index": 81582,
+        "kind": "capture",
+        "k": 1,
+        "game": 168,
+        "ply": 61,
+        "root": {
+          "value": -196,
+          "score_usi": [
+            "cp",
+            "-196"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4847596,
+          "bestmove": "7f8g9f"
+        },
+        "leaf": {
+          "value": 253,
+          "score_usi": [
+            "cp",
+            "253"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5325716,
+          "bestmove": "4f6g"
+        },
+        "difference_cp": 57,
+        "contains_mate": false
+      },
+      {
+        "index": 81590,
+        "kind": "quiet",
+        "k": 1,
+        "game": 168,
+        "ply": 69,
+        "root": {
+          "value": 123,
+          "score_usi": [
+            "cp",
+            "123"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9973011,
+          "bestmove": "6i7i8h"
+        },
+        "leaf": {
+          "value": 891,
+          "score_usi": [
+            "cp",
+            "891"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7388901,
+          "bestmove": "6e4g"
+        },
+        "difference_cp": 1014,
+        "contains_mate": false
+      },
+      {
+        "index": 81996,
+        "kind": "capture",
+        "k": 3,
+        "game": 169,
+        "ply": 171,
+        "root": {
+          "value": 147,
+          "score_usi": [
+            "cp",
+            "147"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4404484,
+          "bestmove": "12b12c"
+        },
+        "leaf": {
+          "value": -93,
+          "score_usi": [
+            "cp",
+            "-93"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4491976,
+          "bestmove": "2d2j"
+        },
+        "difference_cp": 54,
+        "contains_mate": false
+      },
+      {
+        "index": 82204,
+        "kind": "quiet",
+        "k": 1,
+        "game": 169,
+        "ply": 379,
+        "root": {
+          "value": 225,
+          "score_usi": [
+            "cp",
+            "225"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 8266008,
+          "bestmove": "7b8a"
+        },
+        "leaf": {
+          "value": 487,
+          "score_usi": [
+            "cp",
+            "487"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 9288767,
+          "bestmove": "9e7e"
+        },
+        "difference_cp": 712,
+        "contains_mate": false
+      },
+      {
+        "index": 82953,
+        "kind": "capture",
+        "k": 1,
+        "game": 171,
+        "ply": 140,
+        "root": {
+          "value": -74,
+          "score_usi": [
+            "cp",
+            "-74"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 4505939,
+          "bestmove": "10j9j"
+        },
+        "leaf": {
+          "value": 77,
+          "score_usi": [
+            "cp",
+            "77"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8621743,
+          "bestmove": "4c3d"
+        },
+        "difference_cp": 3,
+        "contains_mate": false
+      },
+      {
+        "index": 82974,
+        "kind": "quiet",
+        "k": 2,
+        "game": 171,
+        "ply": 161,
+        "root": {
+          "value": 198,
+          "score_usi": [
+            "cp",
+            "198"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7495531,
+          "bestmove": "9e9f"
+        },
+        "leaf": {
+          "value": 230,
+          "score_usi": [
+            "cp",
+            "230"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7544877,
+          "bestmove": "10d12f"
+        },
+        "difference_cp": -32,
+        "contains_mate": false
+      },
+      {
+        "index": 83112,
+        "kind": "capture",
+        "k": 1,
+        "game": 171,
+        "ply": 299,
+        "root": {
+          "value": 798,
+          "score_usi": [
+            "cp",
+            "798"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7195721,
+          "bestmove": "10c9d"
+        },
+        "leaf": {
+          "value": -763,
+          "score_usi": [
+            "cp",
+            "-763"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 2586323,
+          "bestmove": "9g9f"
+        },
+        "difference_cp": 35,
+        "contains_mate": false
+      },
+      {
+        "index": 83729,
+        "kind": "capture",
+        "k": 1,
+        "game": 172,
+        "ply": 331,
+        "root": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 5702647,
+          "bestmove": "8j5j"
+        },
+        "leaf": {
+          "value": 268,
+          "score_usi": [
+            "cp",
+            "268"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9008130,
+          "bestmove": "7d9f"
+        },
+        "difference_cp": 268,
+        "contains_mate": false
+      },
+      {
+        "index": 83895,
+        "kind": "capture",
+        "k": 1,
+        "game": 172,
+        "ply": 497,
+        "root": {
+          "value": 2576,
+          "score_usi": [
+            "cp",
+            "2576"
+          ],
+          "mate": false,
+          "depth": 17,
+          "nodes": 8406083,
+          "bestmove": "3a1a"
+        },
+        "leaf": {
+          "value": -2617,
+          "score_usi": [
+            "cp",
+            "-2617"
+          ],
+          "mate": false,
+          "depth": 19,
+          "nodes": 9603858,
+          "bestmove": "8i9j"
+        },
+        "difference_cp": -41,
+        "contains_mate": false
+      },
+      {
+        "index": 84091,
+        "kind": "capture",
+        "k": 3,
+        "game": 173,
+        "ply": 141,
+        "root": {
+          "value": 2775,
+          "score_usi": [
+            "cp",
+            "2775"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 7561054,
+          "bestmove": "9e9f"
+        },
+        "leaf": {
+          "value": -2750,
+          "score_usi": [
+            "cp",
+            "-2750"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7386048,
+          "bestmove": "10g10f"
+        },
+        "difference_cp": 25,
+        "contains_mate": false
+      },
+      {
+        "index": 84174,
+        "kind": "capture",
+        "k": 2,
+        "game": 173,
+        "ply": 224,
+        "root": {
+          "value": -3102,
+          "score_usi": [
+            "cp",
+            "-3102"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 3538232,
+          "bestmove": "5j4i"
+        },
+        "leaf": {
+          "value": -3095,
+          "score_usi": [
+            "cp",
+            "-3095"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 4395021,
+          "bestmove": "7i7h"
+        },
+        "difference_cp": -7,
+        "contains_mate": false
+      },
+      {
+        "index": 84303,
+        "kind": "capture",
+        "k": 4,
+        "game": 173,
+        "ply": 353,
+        "root": {
+          "value": -5998,
+          "score_usi": [
+            "cp",
+            "-5998"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 5184217,
+          "bestmove": "2a3b"
+        },
+        "leaf": {
+          "value": -4521,
+          "score_usi": [
+            "cp",
+            "-4521"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7713770,
+          "bestmove": "2c3b"
+        },
+        "difference_cp": -1477,
+        "contains_mate": false
+      },
+      {
+        "index": 84465,
+        "kind": "quiet",
+        "k": 1,
+        "game": 174,
+        "ply": 156,
+        "root": {
+          "value": -773,
+          "score_usi": [
+            "cp",
+            "-773"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 7580152,
+          "bestmove": "8k7j"
+        },
+        "leaf": {
+          "value": 828,
+          "score_usi": [
+            "cp",
+            "828"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6512042,
+          "bestmove": "7e8e"
+        },
+        "difference_cp": 55,
+        "contains_mate": false
+      },
+      {
+        "index": 85100,
+        "kind": "capture",
+        "k": 1,
+        "game": 176,
+        "ply": 190,
+        "root": {
+          "value": -2907,
+          "score_usi": [
+            "cp",
+            "-2907"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5300827,
+          "bestmove": "5k5j"
+        },
+        "leaf": {
+          "value": 2905,
+          "score_usi": [
+            "cp",
+            "2905"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6639363,
+          "bestmove": "3e3f"
+        },
+        "difference_cp": -2,
+        "contains_mate": false
+      },
+      {
+        "index": 85104,
+        "kind": "quiet",
+        "k": 2,
+        "game": 176,
+        "ply": 194,
+        "root": {
+          "value": -2926,
+          "score_usi": [
+            "cp",
+            "-2926"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7861242,
+          "bestmove": "3j4i"
+        },
+        "leaf": {
+          "value": -2928,
+          "score_usi": [
+            "cp",
+            "-2928"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9314125,
+          "bestmove": "3j4i"
+        },
+        "difference_cp": 2,
+        "contains_mate": false
+      },
+      {
+        "index": 85334,
+        "kind": "quiet",
+        "k": 3,
+        "game": 176,
+        "ply": 424,
+        "root": {
+          "value": -5478,
+          "score_usi": [
+            "cp",
+            "-5478"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 3012063,
+          "bestmove": "9e3k"
+        },
+        "leaf": {
+          "value": 5495,
+          "score_usi": [
+            "cp",
+            "5495"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6308997,
+          "bestmove": "9a9b"
+        },
+        "difference_cp": 17,
+        "contains_mate": false
+      },
+      {
+        "index": 85487,
+        "kind": "capture",
+        "k": 1,
+        "game": 177,
+        "ply": 35,
+        "root": {
+          "value": -2547,
+          "score_usi": [
+            "cp",
+            "-2547"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 4771407,
+          "bestmove": "9d7f"
+        },
+        "leaf": {
+          "value": 2571,
+          "score_usi": [
+            "cp",
+            "2571"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6771851,
+          "bestmove": "9k8k"
+        },
+        "difference_cp": 24,
+        "contains_mate": false
+      },
+      {
+        "index": 85750,
+        "kind": "quiet",
+        "k": 1,
+        "game": 177,
+        "ply": 298,
+        "root": {
+          "value": 3883,
+          "score_usi": [
+            "cp",
+            "3883"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5718261,
+          "bestmove": "7i7c"
+        },
+        "leaf": {
+          "value": -3881,
+          "score_usi": [
+            "cp",
+            "-3881"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 6397624,
+          "bestmove": "3d3e"
+        },
+        "difference_cp": 2,
+        "contains_mate": false
+      },
+      {
+        "index": 85752,
+        "kind": "capture",
+        "k": 1,
+        "game": 177,
+        "ply": 300,
+        "root": {
+          "value": 3818,
+          "score_usi": [
+            "cp",
+            "3818"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8075650,
+          "bestmove": "8k8i"
+        },
+        "leaf": {
+          "value": -3732,
+          "score_usi": [
+            "cp",
+            "-3732"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6887659,
+          "bestmove": "6f6b"
+        },
+        "difference_cp": 86,
+        "contains_mate": false
+      },
+      {
+        "index": 86053,
+        "kind": "capture",
+        "k": 4,
+        "game": 178,
+        "ply": 234,
+        "root": {
+          "value": -139,
+          "score_usi": [
+            "cp",
+            "-139"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 9835433,
+          "bestmove": "8l8k"
+        },
+        "leaf": {
+          "value": -200,
+          "score_usi": [
+            "cp",
+            "-200"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8429398,
+          "bestmove": "11e11c+"
+        },
+        "difference_cp": 61,
+        "contains_mate": false
+      },
+      {
+        "index": 86381,
+        "kind": "quiet",
+        "k": 1,
+        "game": 179,
+        "ply": 100,
+        "root": {
+          "value": -171,
+          "score_usi": [
+            "cp",
+            "-171"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6850794,
+          "bestmove": "6f4g"
+        },
+        "leaf": {
+          "value": 201,
+          "score_usi": [
+            "cp",
+            "201"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8379242,
+          "bestmove": "8b7c"
+        },
+        "difference_cp": 30,
+        "contains_mate": false
+      },
+      {
+        "index": 87188,
+        "kind": "quiet",
+        "k": 3,
+        "game": 181,
+        "ply": 178,
+        "root": {
+          "value": -394,
+          "score_usi": [
+            "cp",
+            "-394"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8828587,
+          "bestmove": "9i4i"
+        },
+        "leaf": {
+          "value": 500,
+          "score_usi": [
+            "cp",
+            "500"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7193178,
+          "bestmove": "8j8c"
+        },
+        "difference_cp": 106,
+        "contains_mate": false
+      },
+      {
+        "index": 87779,
+        "kind": "capture",
+        "k": 1,
+        "game": 182,
+        "ply": 174,
+        "root": {
+          "value": -63,
+          "score_usi": [
+            "cp",
+            "-63"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8747310,
+          "bestmove": "5j5b+"
+        },
+        "leaf": {
+          "value": 501,
+          "score_usi": [
+            "cp",
+            "501"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 9206270,
+          "bestmove": "8a7b"
+        },
+        "difference_cp": 438,
+        "contains_mate": false
+      },
+      {
+        "index": 87873,
+        "kind": "quiet",
+        "k": 1,
+        "game": 182,
+        "ply": 268,
+        "root": {
+          "value": 1888,
+          "score_usi": [
+            "cp",
+            "1888"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9467596,
+          "bestmove": "4i4h"
+        },
+        "leaf": {
+          "value": -1321,
+          "score_usi": [
+            "cp",
+            "-1321"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6298013,
+          "bestmove": "2c3b"
+        },
+        "difference_cp": 567,
+        "contains_mate": false
+      },
+      {
+        "index": 87905,
+        "kind": "quiet",
+        "k": 1,
+        "game": 182,
+        "ply": 300,
+        "root": {
+          "value": 2736,
+          "score_usi": [
+            "cp",
+            "2736"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9547453,
+          "bestmove": "5h5j"
+        },
+        "leaf": {
+          "value": -2431,
+          "score_usi": [
+            "cp",
+            "-2431"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8969033,
+          "bestmove": "10c9d"
+        },
+        "difference_cp": 305,
+        "contains_mate": false
+      },
+      {
+        "index": 88276,
+        "kind": "capture",
+        "k": 2,
+        "game": 183,
+        "ply": 312,
+        "root": {
+          "value": -450,
+          "score_usi": [
+            "cp",
+            "-450"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 5159166,
+          "bestmove": "4i4h"
+        },
+        "leaf": {
+          "value": 0,
+          "score_usi": [
+            "cp",
+            "0"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8911249,
+          "bestmove": "4h9h"
+        },
+        "difference_cp": -450,
+        "contains_mate": false
+      },
+      {
+        "index": 89580,
+        "kind": "capture",
+        "k": 1,
+        "game": 187,
+        "ply": 258,
+        "root": {
+          "value": 1174,
+          "score_usi": [
+            "cp",
+            "1174"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 6287958,
+          "bestmove": "1l1k"
+        },
+        "leaf": {
+          "value": -1174,
+          "score_usi": [
+            "cp",
+            "-1174"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 3008488,
+          "bestmove": "10c1l+"
+        },
+        "difference_cp": 0,
+        "contains_mate": false
+      },
+      {
+        "index": 89741,
+        "kind": "capture",
+        "k": 1,
+        "game": 187,
+        "ply": 419,
+        "root": {
+          "value": 75,
+          "score_usi": [
+            "cp",
+            "75"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 5250652,
+          "bestmove": "7h7g"
+        },
+        "leaf": {
+          "value": -112,
+          "score_usi": [
+            "cp",
+            "-112"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 8674496,
+          "bestmove": "12l12k"
+        },
+        "difference_cp": -37,
+        "contains_mate": false
+      },
+      {
+        "index": 90461,
+        "kind": "capture",
+        "k": 3,
+        "game": 189,
+        "ply": 126,
+        "root": {
+          "value": 195,
+          "score_usi": [
+            "cp",
+            "195"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 3802348,
+          "bestmove": "10j10d"
+        },
+        "leaf": {
+          "value": -260,
+          "score_usi": [
+            "cp",
+            "-260"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 7541827,
+          "bestmove": "11d8g"
+        },
+        "difference_cp": -65,
+        "contains_mate": false
+      },
+      {
+        "index": 91183,
+        "kind": "quiet",
+        "k": 3,
+        "game": 189,
+        "ply": 848,
+        "root": {
+          "value": 2781,
+          "score_usi": [
+            "cp",
+            "2781"
+          ],
+          "mate": false,
+          "depth": 23,
+          "nodes": 9136628,
+          "bestmove": "6a2e"
+        },
+        "leaf": {
+          "value": -2694,
+          "score_usi": [
+            "cp",
+            "-2694"
+          ],
+          "mate": false,
+          "depth": 22,
+          "nodes": 7737106,
+          "bestmove": "1k1l"
+        },
+        "difference_cp": 87,
+        "contains_mate": false
+      },
+      {
+        "index": 92026,
+        "kind": "capture",
+        "k": 1,
+        "game": 191,
+        "ply": 91,
+        "root": {
+          "value": 227,
+          "score_usi": [
+            "cp",
+            "227"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 8154325,
+          "bestmove": "3h4h4g"
+        },
+        "leaf": {
+          "value": -148,
+          "score_usi": [
+            "cp",
+            "-148"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9435203,
+          "bestmove": "1i1h"
+        },
+        "difference_cp": 79,
+        "contains_mate": false
+      },
+      {
+        "index": 92176,
+        "kind": "quiet",
+        "k": 1,
+        "game": 191,
+        "ply": 241,
+        "root": {
+          "value": 788,
+          "score_usi": [
+            "cp",
+            "788"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 6025673,
+          "bestmove": "10e10f"
+        },
+        "leaf": {
+          "value": -604,
+          "score_usi": [
+            "cp",
+            "-604"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7169368,
+          "bestmove": "6j6h"
+        },
+        "difference_cp": 184,
+        "contains_mate": false
+      },
+      {
+        "index": 92382,
+        "kind": "quiet",
+        "k": 2,
+        "game": 192,
+        "ply": 69,
+        "root": {
+          "value": 1115,
+          "score_usi": [
+            "cp",
+            "1115"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9220986,
+          "bestmove": "3c5c"
+        },
+        "leaf": {
+          "value": 1177,
+          "score_usi": [
+            "cp",
+            "1177"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 7541815,
+          "bestmove": "3b8g"
+        },
+        "difference_cp": -62,
+        "contains_mate": false
+      },
+      {
+        "index": 92564,
+        "kind": "capture",
+        "k": 1,
+        "game": 192,
+        "ply": 251,
+        "root": {
+          "value": 1383,
+          "score_usi": [
+            "cp",
+            "1383"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 6329736,
+          "bestmove": "5b5g"
+        },
+        "leaf": {
+          "value": -1408,
+          "score_usi": [
+            "cp",
+            "-1408"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 6569399,
+          "bestmove": "3f6f"
+        },
+        "difference_cp": -25,
+        "contains_mate": false
+      },
+      {
+        "index": 93175,
+        "kind": "capture",
+        "k": 1,
+        "game": 193,
+        "ply": 175,
+        "root": {
+          "value": -286,
+          "score_usi": [
+            "cp",
+            "-286"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 8953649,
+          "bestmove": "1d3f"
+        },
+        "leaf": {
+          "value": 298,
+          "score_usi": [
+            "cp",
+            "298"
+          ],
+          "mate": false,
+          "depth": 10,
+          "nodes": 2625554,
+          "bestmove": "6g5i"
+        },
+        "difference_cp": 12,
+        "contains_mate": false
+      },
+      {
+        "index": 93301,
+        "kind": "quiet",
+        "k": 1,
+        "game": 193,
+        "ply": 301,
+        "root": {
+          "value": 769,
+          "score_usi": [
+            "cp",
+            "769"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 5294428,
+          "bestmove": "12k12g"
+        },
+        "leaf": {
+          "value": -542,
+          "score_usi": [
+            "cp",
+            "-542"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 6346039,
+          "bestmove": "11e12d+"
+        },
+        "difference_cp": 227,
+        "contains_mate": false
+      },
+      {
+        "index": 93407,
+        "kind": "quiet",
+        "k": 1,
+        "game": 194,
+        "ply": 69,
+        "root": {
+          "value": 78,
+          "score_usi": [
+            "cp",
+            "78"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 7611314,
+          "bestmove": "7g9f"
+        },
+        "leaf": {
+          "value": -37,
+          "score_usi": [
+            "cp",
+            "-37"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 5567257,
+          "bestmove": "11i11h"
+        },
+        "difference_cp": 41,
+        "contains_mate": false
+      },
+      {
+        "index": 94748,
+        "kind": "capture",
+        "k": 1,
+        "game": 197,
+        "ply": 487,
+        "root": {
+          "value": -4357,
+          "score_usi": [
+            "cp",
+            "-4357"
+          ],
+          "mate": false,
+          "depth": 16,
+          "nodes": 3469316,
+          "bestmove": "6g6h"
+        },
+        "leaf": {
+          "value": 4716,
+          "score_usi": [
+            "cp",
+            "4716"
+          ],
+          "mate": false,
+          "depth": 21,
+          "nodes": 9533085,
+          "bestmove": "5b6a"
+        },
+        "difference_cp": 359,
+        "contains_mate": false
+      },
+      {
+        "index": 95085,
+        "kind": "quiet",
+        "k": 5,
+        "game": 198,
+        "ply": 177,
+        "root": {
+          "value": -174,
+          "score_usi": [
+            "cp",
+            "-174"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 9809774,
+          "bestmove": "4c5b"
+        },
+        "leaf": {
+          "value": 29999,
+          "score_usi": [
+            "mate",
+            "1"
+          ],
+          "mate": true,
+          "depth": 10,
+          "nodes": 8649876,
+          "bestmove": "6e5c"
+        },
+        "difference_cp": 29825,
+        "contains_mate": true
+      },
+      {
+        "index": 95191,
+        "kind": "capture",
+        "k": 1,
+        "game": 199,
+        "ply": 92,
+        "root": {
+          "value": 48,
+          "score_usi": [
+            "cp",
+            "48"
+          ],
+          "mate": false,
+          "depth": 13,
+          "nodes": 9604067,
+          "bestmove": "5j5h"
+        },
+        "leaf": {
+          "value": 26,
+          "score_usi": [
+            "cp",
+            "26"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 9784475,
+          "bestmove": "3c2c"
+        },
+        "difference_cp": 74,
+        "contains_mate": false
+      },
+      {
+        "index": 95290,
+        "kind": "capture",
+        "k": 2,
+        "game": 199,
+        "ply": 191,
+        "root": {
+          "value": -793,
+          "score_usi": [
+            "cp",
+            "-793"
+          ],
+          "mate": false,
+          "depth": 11,
+          "nodes": 7420153,
+          "bestmove": "8b8j+"
+        },
+        "leaf": {
+          "value": -765,
+          "score_usi": [
+            "cp",
+            "-765"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 6691893,
+          "bestmove": "6e5f"
+        },
+        "difference_cp": -28,
+        "contains_mate": false
+      },
+      {
+        "index": 95436,
+        "kind": "capture",
+        "k": 1,
+        "game": 200,
+        "ply": 104,
+        "root": {
+          "value": -2645,
+          "score_usi": [
+            "cp",
+            "-2645"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8941345,
+          "bestmove": "8j9k"
+        },
+        "leaf": {
+          "value": 2710,
+          "score_usi": [
+            "cp",
+            "2710"
+          ],
+          "mate": false,
+          "depth": 15,
+          "nodes": 9481289,
+          "bestmove": "8f8g"
+        },
+        "difference_cp": 65,
+        "contains_mate": false
+      },
+      {
+        "index": 95461,
+        "kind": "quiet",
+        "k": 1,
+        "game": 200,
+        "ply": 129,
+        "root": {
+          "value": 3342,
+          "score_usi": [
+            "cp",
+            "3342"
+          ],
+          "mate": false,
+          "depth": 14,
+          "nodes": 8425699,
+          "bestmove": "7f9h"
+        },
+        "leaf": {
+          "value": -3343,
+          "score_usi": [
+            "cp",
+            "-3343"
+          ],
+          "mate": false,
+          "depth": 12,
+          "nodes": 8444105,
+          "bestmove": "7k5k"
+        },
+        "difference_cp": -1,
+        "contains_mate": false
+      }
+    ]
+  },
+  "inputs": {
+    "sample": {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase1/sample.bin",
+      "sha256": "7b9a17ff3d9edb6c61264e7a408a1231d3921542b58c8dfb623595efd4aa8c16"
+    },
+    "kinds": {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase1/sample.kinds",
+      "sha256": "c77071389206980711f33a0713fcc9a6569214206071b4262933f750baeeb9e4"
+    },
+    "history": {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase1/sample.history.jsonl",
+      "sha256": "b2488e0a40e4a1de77ecb1a04cd9cf6e080d1c7ead7034ca2d51e581bb188dd0"
+    },
+    "leaves": {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase1/leaves.bin",
+      "sha256": "d37f173626154e69506588870c784e8719ca5f42f45c233cadc756aaf317b2bb"
+    },
+    "info": {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase1/leaves.jsonl",
+      "sha256": "e4258d60c939d204ad4b733b75642372e44cc07ced25a9b86673c754ce818bef"
+    },
+    "log": {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase1/leaves.log",
+      "sha256": "5fa623c4c9699613c2c2e467ab9b05f53ad4451be4c67fdc04f24446d18a7f0f"
+    },
+    "engine": {
+      "path": "/home/stepney141/board-games/minase/data/worktrees/qsearch-output-training/target/release/minase",
+      "sha256": "aceb99632410b7262b98b772fc02dfe945d6ed58c16121db93928c984df420aa"
+    },
+    "weights": {
+      "path": "/home/stepney141/board-games/minase/data/worktrees/qsearch-output-training/nets/pst.bin",
+      "sha256": "72d7aee949e7672a2b4fb2e7b98ddaed76b352112187bfbcc7e2d772224fb67b"
+    },
+    "script": {
+      "path": "/home/stepney141/board-games/minase/data/worktrees/qsearch-output-training/docs/measurements/qsearch-output-leaf-sample/leaf_sample.py",
+      "sha256": "1860973e9240d2a94df06306fa99d1cc69f25365d352b56dbc32959775abcb1e"
+    }
+  }
+}

@@ -15,12 +15,14 @@ QとQcは、その時点の重みで静止探索の値を決めた末端を区�
 
 ## 状態
 
-起案。2026年9月27日に起案した。
-方式の根拠は[評価関数を改善する3つの観点](../research/evaluation-improvement-strategy.md)（以下「総論」）の実施順1、2、3、5である。
-浅い探索の手の順位を学ぶ損失は[順位の損失の計画](rank-loss-training.md)、総論の実施順4にある関係を表すモデルの比較は[関係補正項の計画](relational-correction.md)として別に起案し、どちらも本書の完了後に着手する。
-Q対RのSTCは省かず、[探索局面の計画](search-aware-evaluation.md)の診断器はmasterへ統合しない。
-残る判断は、[Descentによる強化学習](descent.md)および[段階12](strength-stage12.md)と測定機を使う順序である。
-次の一手は、順序の決定を受けてmasterから専用ブランチ`qsearch-output-training`とそのworktreeを作り、フェーズ0の探索の追跡を実装することである。
+完了（不採用）。2026年9月27日に起案し、9月28日に着手して、9月30日に完了した。
+学習目標を静止探索の出力へ変えた候補Qは[Q対RのSTC](../measurements/qsearch-output-q-vs-r-stc.md)で`H0`となり、捕獲局面を加えた候補Qcは[Qc対QのSTC](../measurements/qsearch-output-qc-vs-q-stc.md)で上限3,000ペアに達した時点のLLRが負だったので、どちらもS0との採否測定へ進まず、採用候補なしとして完了した。
+QとQcは、[整合性の検査と採否前の診断](../measurements/qsearch-output-diagnostics.md)では除外されておらず、比較用のSTCで除外された。
+新しい世代のデータで学んだ対照RがS0より強いかは測っていない。
+フェーズ0の[探索の追跡](../measurements/qsearch-output-search-trace.md)では、6根の誤りはいずれも特定の枝刈りに帰属できず、探索の後続計画への引き渡しはない。
+取り出しの費用は[小標本](../measurements/qsearch-output-leaf-sample.md)と[学習](../measurements/qsearch-output-training.md)の両方で基準を大きく下回った。
+本書のコードと測定用のコミットはブランチ`qsearch-output-training`、`qsearch-output-r`、`qsearch-output-q`、`qsearch-output-qc`に残し、masterへは入れない。
+[順位の損失の計画](rank-loss-training.md)には、[15,000局のデータ](../measurements/qsearch-output-data.md)全体と元の分割を渡し、値の回帰には採用PSTの学習と同じ静的値の回帰を使う。
 
 ## 目的
 
@@ -89,8 +91,9 @@ MNSD形式の記録は局面と先獅子状態だけを持ち、着手の履歴�
 候補集合にR、Q、Qcの提案手を加え、安定した根の集合とS0の値を同じ実行の中で計算し直して、各候補とS0を同じ根の対として比べる。
 Qcを実施しない場合は、以後の診断と比較からQcを除く。
 S0、A、Bの既存の値は参考として並べ、比較の基準にはしない。
-根を履歴ごと復元し、候補手の子局面を独立に探索する診断器`search_aware_diagnostic`は、探索局面の計画のブランチ`search-aware-evaluation`にある。
-診断器は本書のブランチへ移し、R、Q、Qcの提案手を共通の候補集合へ含められるように拡張する。
+根を履歴ごと復元し、候補手の子局面を独立に探索する診断器`search_aware_diagnostic`は、探索局面の計画のブランチ`search-aware-evaluation`にあるが、再編前のコード構成と採取機能つきの探索に依存する。
+本書はこれを移さず、同じ手順を、候補ごとに`nets/pst.bin`だけを差し替えた実行ファイルをUSIで呼ぶ駆動スクリプト（`docs/measurements/qsearch-output-diagnostics/`）として実装し、R、Q、Qcの提案手を共通の候補集合へ含める。
+手順の同一性は、元の最終診断のS0、A、Bの値を256根で再現することで確かめてから、R、Q、Qcの診断に使う。
 教師にはS0の探索と重みを使い、診断器は採否にかかわらずmasterへ統合しない。
 
 測定機は、Descentによる強化学習の本学習（同時16対局で48時間）、段階12の自己対局、および本書のフェーズ2と4で共有する。

@@ -1,0 +1,66 @@
+{
+  "planned_roots": 256,
+  "evaluated_roots": 248,
+  "include_phase0_roots": true,
+  "counts": {
+    "incomparable": 3,
+    "stable": 203,
+    "unstable": 42
+  },
+  "engines": {
+    "A": {
+      "loss_difference": {
+        "mean_cp": 1.7142857142857142,
+        "game_se_cp": 5.132361113885414,
+        "independent_root_se_cp": 5.120251819977333,
+        "lower_cp": -8.345142068929698,
+        "roots": 203,
+        "games": 172,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "absolute_error_difference": {
+        "mean_cp": -5.423387096774194,
+        "game_se_cp": 5.837799345018276,
+        "independent_root_se_cp": null,
+        "lower_cp": -16.865473813010013,
+        "roots": 248,
+        "games": 204,
+        "eligible": true,
+        "significantly_positive": false,
+        "independent_root_se_unavailable_reason": "report.json contains game sums but no within-game paired second moments; roots.jsonl contains no static scores"
+      },
+      "excluded_from_s0": false
+    },
+    "B": {
+      "loss_difference": {
+        "mean_cp": 24.098522167487683,
+        "game_se_cp": 8.59222322610855,
+        "independent_root_se_cp": 8.572541386511723,
+        "lower_cp": 7.257764644314928,
+        "roots": 203,
+        "games": 172,
+        "eligible": true,
+        "significantly_positive": true
+      },
+      "absolute_error_difference": {
+        "mean_cp": 166.02822580645162,
+        "game_se_cp": 16.631439765300442,
+        "independent_root_se_cp": null,
+        "lower_cp": 133.43060386646275,
+        "roots": 248,
+        "games": 204,
+        "eligible": true,
+        "significantly_positive": true,
+        "independent_root_se_unavailable_reason": "report.json contains game sums but no within-game paired second moments; roots.jsonl contains no static scores"
+      },
+      "excluded_from_s0": true
+    }
+  },
+  "files": {
+    "/home/stepney141/board-games/minase/data/search-aware-evaluation/phase4/final/report.json": "b739951b1052eca2fd992c832f8d67ac748d7604598a5aa03ad9db431de28bf7",
+    "/home/stepney141/board-games/minase/data/search-aware-evaluation/phase4/final/roots.jsonl": "f8851152091db05679496bdd4bab40b0f4047243b1b37f20a42e68277562be7c"
+  },
+  "se_formula": "sqrt(G/(G-1) * sum((S_g - n_g * mean)^2)) / N",
+  "reference_values_reproduced": true
+}

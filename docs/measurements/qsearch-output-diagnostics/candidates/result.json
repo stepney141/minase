@@ -1,0 +1,279 @@
+{
+  "smoke": false,
+  "planned_roots": 250,
+  "roots": 242,
+  "excluded_roots": [
+    {
+      "id": "202610479-370-r",
+      "game": 202610479,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": 29993
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    },
+    {
+      "id": "202610531-391-r",
+      "game": 202610531,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": 29997
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    },
+    {
+      "id": "202610542-394-r",
+      "game": 202610542,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": 29993
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    },
+    {
+      "id": "202610602-368-r",
+      "game": 202610602,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": 29991
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    },
+    {
+      "id": "202610634-285-r",
+      "game": 202610634,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": -29994
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    },
+    {
+      "id": "202610938-321-r",
+      "game": 202610938,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": -29990
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    },
+    {
+      "id": "202613360-251-r",
+      "game": 202613360,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": 29997
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    },
+    {
+      "id": "202615418-483-r",
+      "game": 202615418,
+      "exclusion": {
+        "reason": "source_teacher_non_cp",
+        "score": {
+          "kind": "mate",
+          "value": 29995
+        }
+      },
+      "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78"
+    }
+  ],
+  "margin_cp": "142.1",
+  "counts": {
+    "unstable": 44,
+    "stable": 196,
+    "incomparable": 2
+  },
+  "engines": {
+    "S0": {
+      "stable_roots": 196,
+      "mean_loss_cp": 20.112244897959183,
+      "normal_roots": 242,
+      "mean_error_cp": -106.09917355371901,
+      "mae_cp": 229.8595041322314,
+      "promotions": {
+        "positions": 262,
+        "moves": 368,
+        "negative": 1,
+        "median_delta_cp": 477.0
+      },
+      "loss_difference": {
+        "mean_cp": 0.0,
+        "game_se_cp": 0.0,
+        "independent_root_se_cp": 0.0,
+        "lower_cp": 0.0,
+        "roots": 196,
+        "games": 168,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "absolute_error_difference": {
+        "mean_cp": 0.0,
+        "game_se_cp": 0.0,
+        "independent_root_se_cp": 0.0,
+        "lower_cp": 0.0,
+        "roots": 242,
+        "games": 202,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "judged": false,
+      "excluded_from_s0": null,
+      "k_distribution": {},
+      "leaf_kinds": {}
+    },
+    "R": {
+      "stable_roots": 196,
+      "mean_loss_cp": 24.551020408163264,
+      "normal_roots": 242,
+      "mean_error_cp": -107.97520661157024,
+      "mae_cp": 239.39669421487602,
+      "promotions": {
+        "positions": 262,
+        "moves": 368,
+        "negative": 1,
+        "median_delta_cp": 497.0
+      },
+      "loss_difference": {
+        "mean_cp": 4.438775510204081,
+        "game_se_cp": 2.5382465772589637,
+        "independent_root_se_cp": 2.472508526170629,
+        "lower_cp": -0.5361877812234876,
+        "roots": 196,
+        "games": 168,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "absolute_error_difference": {
+        "mean_cp": 9.537190082644628,
+        "game_se_cp": 8.819786228541226,
+        "independent_root_se_cp": 8.676677499981755,
+        "lower_cp": -7.749590925296175,
+        "roots": 242,
+        "games": 202,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "judged": false,
+      "excluded_from_s0": null,
+      "k_distribution": {},
+      "leaf_kinds": {}
+    },
+    "Q": {
+      "stable_roots": 196,
+      "mean_loss_cp": 17.494897959183675,
+      "normal_roots": 242,
+      "mean_error_cp": -124.73553719008264,
+      "mae_cp": 243.72727272727272,
+      "promotions": {
+        "positions": 262,
+        "moves": 368,
+        "negative": 1,
+        "median_delta_cp": 542.0
+      },
+      "loss_difference": {
+        "mean_cp": -2.61734693877551,
+        "game_se_cp": 3.2514896302104805,
+        "independent_root_se_cp": 3.2251395948207886,
+        "lower_cp": -8.990266613988052,
+        "roots": 196,
+        "games": 168,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "absolute_error_difference": {
+        "mean_cp": 13.867768595041323,
+        "game_se_cp": 8.910453847791848,
+        "independent_root_se_cp": 8.781982039502589,
+        "lower_cp": -3.596720946630697,
+        "roots": 242,
+        "games": 202,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "judged": true,
+      "excluded_from_s0": false,
+      "k_distribution": {
+        "0": 187,
+        "1": 35,
+        "2": 14,
+        "3": 3,
+        "4": 1,
+        "5": 2
+      },
+      "leaf_kinds": {
+        "static": 242
+      }
+    },
+    "Qc": {
+      "stable_roots": 196,
+      "mean_loss_cp": 26.668367346938776,
+      "normal_roots": 242,
+      "mean_error_cp": -129.0785123966942,
+      "mae_cp": 245.56611570247935,
+      "promotions": {
+        "positions": 262,
+        "moves": 368,
+        "negative": 1,
+        "median_delta_cp": 557.0
+      },
+      "loss_difference": {
+        "mean_cp": 6.5561224489795915,
+        "game_se_cp": 6.015510687698155,
+        "independent_root_se_cp": 5.939240549153404,
+        "lower_cp": -5.234278498908793,
+        "roots": 196,
+        "games": 168,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "absolute_error_difference": {
+        "mean_cp": 15.706611570247935,
+        "game_se_cp": 8.827433966559523,
+        "independent_root_se_cp": 8.715949063110475,
+        "lower_cp": -1.59515900420873,
+        "roots": 242,
+        "games": 202,
+        "eligible": true,
+        "significantly_positive": false
+      },
+      "judged": true,
+      "excluded_from_s0": false,
+      "k_distribution": {
+        "0": 187,
+        "1": 35,
+        "2": 14,
+        "3": 3,
+        "4": 1,
+        "5": 2
+      },
+      "leaf_kinds": {
+        "static": 242
+      }
+    }
+  },
+  "conditions_sha256": "a3e9fff5d8399dbf0b4dc962f8fc60fa166cb18a65e8ab2742a3a7f40136cb78",
+  "roots_sha256": "ee496191859eb00eb8472611fa237ce6ecd43aea5fb745cb6075995510710672"
+}

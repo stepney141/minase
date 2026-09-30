@@ -1,0 +1,1334 @@
+{
+  "status": "complete",
+  "test_mode": false,
+  "candidates": [
+    "R",
+    "Q",
+    "Qc"
+  ],
+  "model": "mirrored",
+  "seed": 1,
+  "optimizer": "Adam",
+  "learning_rate": 0.03,
+  "removal_penalty": 1000,
+  "teacher_k": 767.491528450171,
+  "k": 1072.6529541015625,
+  "teacher_classes": [
+    {
+      "generation_commit": "70e6cd0f936cf7d816222e659c48beedd2bb70ba",
+      "network_checksum": "8125a343e93c3f69fa41c7940500f5de41c0864cbd693884c918aa1b3b677586",
+      "nodes": 100000,
+      "rule_set": "L0,P0,R1,E0",
+      "search_condition": "in-game",
+      "result_origin": "selfplay",
+      "start_origin": "random",
+      "lookahead_gamma": 0.9,
+      "lookahead_plies": 40,
+      "lambda_override": null,
+      "lambda": 0.75
+    }
+  ],
+  "lookahead": {
+    "gamma": 0.9,
+    "plies": 40
+  },
+  "generation_commits": [
+    "70e6cd0f936cf7d816222e659c48beedd2bb70ba",
+    "8b4d3cd0c877bdc56a2cc63585e9323a6386a870"
+  ],
+  "average_kind": "quiet",
+  "quiet_training": 5788833,
+  "capture_training": 875477,
+  "quiet_validation": 291035,
+  "quiet_batch": 16384,
+  "capture_batch": 2478,
+  "production_updates_per_interval": 354,
+  "production_total_updates": 3540,
+  "interval_count": 10,
+  "updates_per_interval": 354,
+  "total_updates": 3540,
+  "weight_selection": "final_update",
+  "leaf_jobs": 16,
+  "init": {
+    "path": "/home/stepney141/board-games/minase/data/worktrees/qsearch-output-training/nets/pst.bin",
+    "sha256": "72d7aee949e7672a2b4fb2e7b98ddaed76b352112187bfbcc7e2d772224fb67b"
+  },
+  "inputs": [
+    {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase2/generated-92000000.bin",
+      "sha256": "ae5afadd47affeb16e34513eb791312bd7501727abed415bcfab47f19509303e",
+      "kinds_sha256": "6d24e0cf5c925e43a93ca7b8b203324c01f91f1906350297fa945d77e37a43ec"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/qsearch-output-training/phase2/generated-92100000.bin",
+      "sha256": "1b441ced3cbd062264d7d72fbd62e0b9bc8e5f0495da219b94574f49322c2a98",
+      "kinds_sha256": "a5d673700e62c77040b22eac8cdca5389952abeb6cb759a25c2873da4f52248c"
+    }
+  ],
+  "intervals": [
+    {
+      "interval": 1,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 27832104,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 40.933446,
+            "cpu_seconds": 216.61,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 27832104,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 40.864623,
+            "cpu_seconds": 216.94,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 22710548,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 16.570763,
+            "cpu_seconds": 60.81,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-01/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.42033596454703875,
+          "removal_loss": 9.146355852950833e-11,
+          "total_loss": 0.420336056010597,
+          "validation_loss": 0.4181274372417995,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "e2c57d3dd65288aeabea3deea87b1bda9ddd06e95bbe48dc2a842f5c3ec59e82",
+          "quiet_batch_sha256": "e2c57d3dd65288aeabea3deea87b1bda9ddd06e95bbe48dc2a842f5c3ec59e82",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.4204185022472662,
+          "removal_loss": 9.618212866927143e-11,
+          "total_loss": 0.4204185984293949,
+          "validation_loss": 0.4181466584491777,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "e2c57d3dd65288aeabea3deea87b1bda9ddd06e95bbe48dc2a842f5c3ec59e82",
+          "quiet_batch_sha256": "e2c57d3dd65288aeabea3deea87b1bda9ddd06e95bbe48dc2a842f5c3ec59e82",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.42750771621526296,
+          "removal_loss": 1.1265636786735047e-10,
+          "total_loss": 0.42750782887163086,
+          "validation_loss": 0.4181465484990013,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "9e9064fc373144ede457348d549f3953083047420e573f5b403f6d7706bca473",
+          "quiet_batch_sha256": "e2c57d3dd65288aeabea3deea87b1bda9ddd06e95bbe48dc2a842f5c3ec59e82",
+          "capture_batch_sha256": "e8f3089358e8b148e9b7a429525799e9aab8f2fc0c088ec09bebf95c286fd0de"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 2,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30083434,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 43.082663,
+            "cpu_seconds": 218.22,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30502463,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 111.061722,
+            "cpu_seconds": 249.83,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 25994685,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 29.637994,
+            "cpu_seconds": 65.1,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-02/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.4198543377178537,
+          "removal_loss": 2.821199164646119e-10,
+          "total_loss": 0.41985461983777017,
+          "validation_loss": 0.4176411682173479,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "0913f1432f29e0c5e6e44637cdaede4ff864468e37b164dbc47cc472fd5a1a37",
+          "quiet_batch_sha256": "0913f1432f29e0c5e6e44637cdaede4ff864468e37b164dbc47cc472fd5a1a37",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.4199284833703337,
+          "removal_loss": 2.79996668788339e-10,
+          "total_loss": 0.41992876336700274,
+          "validation_loss": 0.4176669618310767,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "0913f1432f29e0c5e6e44637cdaede4ff864468e37b164dbc47cc472fd5a1a37",
+          "quiet_batch_sha256": "0913f1432f29e0c5e6e44637cdaede4ff864468e37b164dbc47cc472fd5a1a37",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.427021988536005,
+          "removal_loss": 2.752063395065092e-10,
+          "total_loss": 0.42702226374234475,
+          "validation_loss": 0.41766467695260207,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "ee6737b0fa91feb12308614bee825b58255430c81a91003d52cb9db242c0e498",
+          "quiet_batch_sha256": "0913f1432f29e0c5e6e44637cdaede4ff864468e37b164dbc47cc472fd5a1a37",
+          "capture_batch_sha256": "02ba9448b059504cb23ef24dd64ca82ccb6d0227dab9f67691132c66ba04f109"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 3,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30672598,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 44.550374,
+            "cpu_seconds": 220.82,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 31048779,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 44.331929,
+            "cpu_seconds": 221.53,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26530585,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.12196,
+            "cpu_seconds": 65.15,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-03/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.41947586767080813,
+          "removal_loss": 4.904974680356597e-10,
+          "total_loss": 0.4194763581682762,
+          "validation_loss": 0.41726539238721866,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "bfa35178fead7ef79b0778c0e7efc21f71a0b1fb3a6a20eaa0dc6e9156c246b1",
+          "quiet_batch_sha256": "bfa35178fead7ef79b0778c0e7efc21f71a0b1fb3a6a20eaa0dc6e9156c246b1",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.419542368859221,
+          "removal_loss": 4.88029414975838e-10,
+          "total_loss": 0.41954285688863596,
+          "validation_loss": 0.4172848991710618,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "bfa35178fead7ef79b0778c0e7efc21f71a0b1fb3a6a20eaa0dc6e9156c246b1",
+          "quiet_batch_sha256": "bfa35178fead7ef79b0778c0e7efc21f71a0b1fb3a6a20eaa0dc6e9156c246b1",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.42664664242900696,
+          "removal_loss": 4.6227290484962256e-10,
+          "total_loss": 0.4266471047019118,
+          "validation_loss": 0.41727703678992356,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "9d2777d901e0de2ad08535b7739e5999fb292fec842dad426676805be9e215cb",
+          "quiet_batch_sha256": "bfa35178fead7ef79b0778c0e7efc21f71a0b1fb3a6a20eaa0dc6e9156c246b1",
+          "capture_batch_sha256": "819ec0a18a8dc76435b2d01868696d75b449df4deed6d8dc38a7539f26c64961"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 4,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30451790,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 106.390613,
+            "cpu_seconds": 246.58,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30777235,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 82.251967,
+            "cpu_seconds": 244.47,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26197612,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.184597,
+            "cpu_seconds": 64.35,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-04/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.419177510896645,
+          "removal_loss": 7.978555477743025e-10,
+          "total_loss": 0.4191783087521927,
+          "validation_loss": 0.4169590487098535,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "029cdecdcb1231b2e78b3d58b348ba7a21d84d87e5bf3dfcd609d9aeb59f58b6",
+          "quiet_batch_sha256": "029cdecdcb1231b2e78b3d58b348ba7a21d84d87e5bf3dfcd609d9aeb59f58b6",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.4192396074870212,
+          "removal_loss": 7.741388637322656e-10,
+          "total_loss": 0.4192403816258848,
+          "validation_loss": 0.4169765588659957,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "029cdecdcb1231b2e78b3d58b348ba7a21d84d87e5bf3dfcd609d9aeb59f58b6",
+          "quiet_batch_sha256": "029cdecdcb1231b2e78b3d58b348ba7a21d84d87e5bf3dfcd609d9aeb59f58b6",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.4263530787775072,
+          "removal_loss": 7.680230896430164e-10,
+          "total_loss": 0.4263538468005967,
+          "validation_loss": 0.41696561779431035,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "e9361ac91de745dd278c2fcab056372516a339fb16e9197a5cfcb79b2e8276ae",
+          "quiet_batch_sha256": "029cdecdcb1231b2e78b3d58b348ba7a21d84d87e5bf3dfcd609d9aeb59f58b6",
+          "capture_batch_sha256": "655871732ba9b2d2b5d175867a0cefd7fff0f31186d7340fc2d7dcb1b5029ead"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 5,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30515455,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 45.700166,
+            "cpu_seconds": 220.92,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30731244,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 43.457479,
+            "cpu_seconds": 220.24,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26056166,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.073846,
+            "cpu_seconds": 64.48,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-05/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.4189052355323134,
+          "removal_loss": 1.147903353877343e-09,
+          "total_loss": 0.4189063834356675,
+          "validation_loss": 0.4166968104134068,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "56b873c5e50bb99e6d5ab70116a3ea8c37f9ce1db0ca314af674af30c05ab630",
+          "quiet_batch_sha256": "56b873c5e50bb99e6d5ab70116a3ea8c37f9ce1db0ca314af674af30c05ab630",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.41896277809210414,
+          "removal_loss": 1.1287046510833e-09,
+          "total_loss": 0.41896390679675527,
+          "validation_loss": 0.4167096405169218,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "56b873c5e50bb99e6d5ab70116a3ea8c37f9ce1db0ca314af674af30c05ab630",
+          "quiet_batch_sha256": "56b873c5e50bb99e6d5ab70116a3ea8c37f9ce1db0ca314af674af30c05ab630",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.4260866084678025,
+          "removal_loss": 1.105664329648622e-09,
+          "total_loss": 0.42608771413213214,
+          "validation_loss": 0.4166983820981963,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "5e2e277d783c8bc71274ed56017bdba7c271b48f464e5909d0b77b8c7226a0d9",
+          "quiet_batch_sha256": "56b873c5e50bb99e6d5ab70116a3ea8c37f9ce1db0ca314af674af30c05ab630",
+          "capture_batch_sha256": "8fd1aeaa3defaa3efa2967a39fda05377b48bbd2c5e7c9d5938ac71580134051"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 6,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30374917,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 45.332614,
+            "cpu_seconds": 220.71,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30836335,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 44.655195,
+            "cpu_seconds": 220.69,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26107828,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.209302,
+            "cpu_seconds": 64.62,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-06/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.41867632751410966,
+          "removal_loss": 1.468671242188441e-09,
+          "total_loss": 0.41867779618535195,
+          "validation_loss": 0.4164707589254334,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "c306d6bace2a1fef6407a3d981bd9c950deb4a28a6c112ef3f5dba93a161a52a",
+          "quiet_batch_sha256": "c306d6bace2a1fef6407a3d981bd9c950deb4a28a6c112ef3f5dba93a161a52a",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.4187310905443073,
+          "removal_loss": 1.4374024806765422e-09,
+          "total_loss": 0.41873252794678795,
+          "validation_loss": 0.41648580216332526,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "c306d6bace2a1fef6407a3d981bd9c950deb4a28a6c112ef3f5dba93a161a52a",
+          "quiet_batch_sha256": "c306d6bace2a1fef6407a3d981bd9c950deb4a28a6c112ef3f5dba93a161a52a",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.42585756777033296,
+          "removal_loss": 1.4541670613677e-09,
+          "total_loss": 0.4258590219373944,
+          "validation_loss": 0.41647323967828564,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "e470f4b02642161c0ba7425fecd11b9e6d9f9e4fc42f694fd834f2bcaefd0a68",
+          "quiet_batch_sha256": "c306d6bace2a1fef6407a3d981bd9c950deb4a28a6c112ef3f5dba93a161a52a",
+          "capture_batch_sha256": "7efbf176097ade5723376736be856ba2f045450cfcf77de384b6c00eb246ffa2"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 7,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30535567,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 46.451829,
+            "cpu_seconds": 221.7,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30979449,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 45.280607,
+            "cpu_seconds": 221.77,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26285499,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.18669,
+            "cpu_seconds": 64.7,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-07/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.41847080295368777,
+          "removal_loss": 1.859245343668476e-09,
+          "total_loss": 0.41847266219903145,
+          "validation_loss": 0.41626869118569804,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "52b5ac6140424598c601166aa0d80e911d5a7e08186616a473e0520b35d3148e",
+          "quiet_batch_sha256": "52b5ac6140424598c601166aa0d80e911d5a7e08186616a473e0520b35d3148e",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.41852318567071256,
+          "removal_loss": 1.8598722817483444e-09,
+          "total_loss": 0.4185250455429941,
+          "validation_loss": 0.4162803483193251,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "52b5ac6140424598c601166aa0d80e911d5a7e08186616a473e0520b35d3148e",
+          "quiet_batch_sha256": "52b5ac6140424598c601166aa0d80e911d5a7e08186616a473e0520b35d3148e",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.4256573924742176,
+          "removal_loss": 1.880176200830288e-09,
+          "total_loss": 0.42565927265041875,
+          "validation_loss": 0.4162677769073618,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "10b0e0f8e25da96e01508f7f2e2409b130d439a05248091e92ff009185f4c800",
+          "quiet_batch_sha256": "52b5ac6140424598c601166aa0d80e911d5a7e08186616a473e0520b35d3148e",
+          "capture_batch_sha256": "bc7757ce870d226879284863caadb3d20c161124529d6e1e580150fe18970a43"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 8,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30319590,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 45.057842,
+            "cpu_seconds": 219.3,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30848151,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 42.402045,
+            "cpu_seconds": 222.26,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26136806,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.15718,
+            "cpu_seconds": 64.93,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-08/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.41828868011970305,
+          "removal_loss": 2.348967618773436e-09,
+          "total_loss": 0.4182910290873219,
+          "validation_loss": 0.41608818046359386,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "3de7e60416ca6c047bcc880b2f916c34723f6c07d3bebf5106856e0191e231db",
+          "quiet_batch_sha256": "3de7e60416ca6c047bcc880b2f916c34723f6c07d3bebf5106856e0191e231db",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.41833862653896636,
+          "removal_loss": 2.3573207465626312e-09,
+          "total_loss": 0.41834098385971275,
+          "validation_loss": 0.4161030736417979,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "3de7e60416ca6c047bcc880b2f916c34723f6c07d3bebf5106856e0191e231db",
+          "quiet_batch_sha256": "3de7e60416ca6c047bcc880b2f916c34723f6c07d3bebf5106856e0191e231db",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.42548144208846117,
+          "removal_loss": 2.443520839796572e-09,
+          "total_loss": 0.4254838856093005,
+          "validation_loss": 0.41609082206368686,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "92f4849fba4001adf6bdc599f9d105383fab1ff9d9d6aa3fb59d9fc15e252d73",
+          "quiet_batch_sha256": "3de7e60416ca6c047bcc880b2f916c34723f6c07d3bebf5106856e0191e231db",
+          "capture_batch_sha256": "a09e89b8103627f4b17f059218793494008693af02483cf659490937b78fc5d1"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 9,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30727589,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 45.15835,
+            "cpu_seconds": 222.61,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 31185750,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 44.929387,
+            "cpu_seconds": 219.89,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26491046,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.16716,
+            "cpu_seconds": 64.95,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-09/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.4180986390443845,
+          "removal_loss": 2.7470366840861152e-09,
+          "total_loss": 0.4181013860810687,
+          "validation_loss": 0.41592258721477915,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "40a4212346f4810d733045fcdb208a5a998333e60e1a49e9f184436341e46ecd",
+          "quiet_batch_sha256": "40a4212346f4810d733045fcdb208a5a998333e60e1a49e9f184436341e46ecd",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.4181469836309131,
+          "removal_loss": 2.7263880954083774e-09,
+          "total_loss": 0.41814971001900825,
+          "validation_loss": 0.4159393375888033,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "40a4212346f4810d733045fcdb208a5a998333e60e1a49e9f184436341e46ecd",
+          "quiet_batch_sha256": "40a4212346f4810d733045fcdb208a5a998333e60e1a49e9f184436341e46ecd",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.42529451240927485,
+          "removal_loss": 2.790604067914734e-09,
+          "total_loss": 0.42529730301334245,
+          "validation_loss": 0.41592523205576654,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "e453d4b9d1aa5f886458b6fb164707c35ff3920eaefa254fc249e9745dce3dd3",
+          "quiet_batch_sha256": "40a4212346f4810d733045fcdb208a5a998333e60e1a49e9f184436341e46ecd",
+          "capture_batch_sha256": "e7b73ef206de82ccf0e126fe152c54855bceb14c681100560f8f838da8f0e03c"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    },
+    {
+      "interval": 10,
+      "extraction": {
+        "Q": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 30702228,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 44.59142,
+            "cpu_seconds": 221.84,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Q-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Q-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Q.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "Qc": {
+          "quiet": {
+            "records": 5788833,
+            "nodes": 31110716,
+            "kinds": {
+              "static": 5788833,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 45.566187,
+            "cpu_seconds": 221.59,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/quiet.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Qc-quiet/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Qc-quiet/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "capture": {
+            "records": 875477,
+            "nodes": 26485119,
+            "kinds": {
+              "static": 875477,
+              "max_ply": 0,
+              "mate": 0
+            },
+            "elapsed_seconds": 18.074837,
+            "cpu_seconds": 64.43,
+            "command": [
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/bin/qsearch_leaf",
+              "--input",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/capture.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Qc-capture/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Qc-capture/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/qsearch-output-training/phase3/training/interval-10/Qc.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "R": {
+          "train_loss": 0.4179483034179709,
+          "removal_loss": 3.3203327617289325e-09,
+          "total_loss": 0.41795162375073264,
+          "validation_loss": 0.415772872153855,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "6e5d1fb60d278e177dd3e2321f6595551354238d20491cf61538b05d87d76b3a",
+          "quiet_batch_sha256": "6e5d1fb60d278e177dd3e2321f6595551354238d20491cf61538b05d87d76b3a",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Q": {
+          "train_loss": 0.4179958578220195,
+          "removal_loss": 3.2542189920208777e-09,
+          "total_loss": 0.4179991120410114,
+          "validation_loss": 0.4157881514300109,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 0,
+          "batch_sha256": "6e5d1fb60d278e177dd3e2321f6595551354238d20491cf61538b05d87d76b3a",
+          "quiet_batch_sha256": "6e5d1fb60d278e177dd3e2321f6595551354238d20491cf61538b05d87d76b3a",
+          "capture_batch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "Qc": {
+          "train_loss": 0.4251503233855727,
+          "removal_loss": 3.331937415841419e-09,
+          "total_loss": 0.42515365532298854,
+          "validation_loss": 0.4157741523238338,
+          "updates": 354,
+          "quiet_draws": 5799936,
+          "capture_draws": 877212,
+          "batch_sha256": "17f038d0404e31844e33d65f135df257b4dfeac91bc2643dfbd298575a6f8ace",
+          "quiet_batch_sha256": "6e5d1fb60d278e177dd3e2321f6595551354238d20491cf61538b05d87d76b3a",
+          "capture_batch_sha256": "d7d9ed6900ed8bc769aa1c16c3a8de7591cec0840b9e9367661bc1d2a8ac331b"
+        }
+      },
+      "accepted_quiet": 5788833,
+      "excluded_quiet": 0,
+      "accepted_capture": 875477,
+      "excluded_capture": 0
+    }
+  ],
+  "totals": {
+    "R": {
+      "updates": 3540,
+      "quiet_draws": 57999360,
+      "capture_draws": 0
+    },
+    "Q": {
+      "updates": 3540,
+      "quiet_draws": 57999360,
+      "capture_draws": 0
+    },
+    "Qc": {
+      "updates": 3540,
+      "quiet_draws": 57999360,
+      "capture_draws": 8772120
+    }
+  },
+  "quantization": {
+    "R": {
+      "samples": 10000,
+      "mean_absolute_cp": 0.5122182030677795,
+      "max_cp": 1.6640625
+    },
+    "Q": {
+      "samples": 10000,
+      "mean_absolute_cp": 0.5112248232841492,
+      "max_cp": 1.684326171875
+    },
+    "Qc": {
+      "samples": 10000,
+      "mean_absolute_cp": 0.5800281067490578,
+      "max_cp": 2.136474609375
+    }
+  }
+}
