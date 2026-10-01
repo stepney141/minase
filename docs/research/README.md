@@ -50,6 +50,7 @@
 - [合法手生成の高速化計画への追加候補](movegen-speedup-ideas.md)は、2026年9月13日時点の高速化計画に対して、静止探索で不要な捕獲を生成前に除く案と段階的に生成する案を、処理件数の診断から提案する。
 - [Magic bitboardの一次資料](magic-bitboard-primary-sources.md)は、Stockfish、やねうら王、およびFairy-Stockfishの利きの求め方を調べ、12×12盤では方向ごとに表を分割する方式を先に比較する価値があると示す。
 - [12×12盤へのmagic bitboardの適用](magic-bitboard-feasibility.md)は、斜線のmagicと横線の小表の試作がいずれも現行の算術方式を上回らなかった結果を記録する。付属の計算スクリプトは[magic-bitboard-feasibility/](magic-bitboard-feasibility/)にある。
+- [既存エンジンとminaseのビットボードの比較](bitboard-comparison.md)は、Stockfishとやねうら王のビットボードを語構成、走りの利きの算法、および局面の派生構造の3点でminaseと比べ、王手とピンの機構がないことが規則の帰結であることと、未測定の改善案3件を示す。
 
 ## 時間管理と投了
 
