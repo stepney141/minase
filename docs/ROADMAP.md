@@ -62,7 +62,7 @@
 | 相対位置の局所2駒関係による評価の補正 | [plans/relative-pair-eval.md](plans/relative-pair-eval.md) | 完了（一部不採用） | 2026年9月26日 |
 | Athénanによる評価関数の強化学習と対局探索 | [plans/athenan.md](plans/athenan.md) | 起案 | |
 | 静止探索の出力を学ぶPSTの学習 | [plans/qsearch-output-training.md](plans/qsearch-output-training.md) | 完了（不採用） | 2026年9月30日 |
-| 浅い探索の手の順位を学ぶ損失 | [plans/rank-loss-training.md](plans/rank-loss-training.md) | 起案 | |
+| 浅い探索の手の順位を学ぶ損失 | [plans/rank-loss-training.md](plans/rank-loss-training.md) | 完了（不採用） | 2026年10月1日 |
 | 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 起案 | |
 | 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 | デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 完了（採用） | 2026年9月27日 |
@@ -72,6 +72,7 @@
 
 ### 直近の完了
 
+- [浅い探索の手の順位を学ぶ損失](plans/rank-loss-training.md)は2026年10月1日に、βの選択で候補を選ばずに完了した。探索が変わったので15,000局を生成し直し、判定の差mを117.7センチポーンに測り直したうえで、[小標本](measurements/rank-loss-pilot.md)は2つの判定を満たした。S0の深さ1の値は、教師が安定して区別する手の組の約3分の2で順位を逆にしていた。[学習](measurements/rank-loss-training.md)では、順位の損失が検証の組の正答率を対照Cの0.33から0.48〜0.51へ上げた一方、静的評価と教師値の平均絶対誤差をCの1.18〜1.28倍に悪化させ、3通りのβがすべて事前に定めた上限の1.05倍を超えた。採否前の診断と棋力の測定は行っていない。
 - [静止探索の出力を学ぶPSTの学習](plans/qsearch-output-training.md)は2026年9月30日に、採用候補なしで完了した。静かな局面で学習目標を静止探索の出力へ変えた候補Qは、同じ条件で静的値を学んだ対照Rに対して[STC](measurements/qsearch-output-q-vs-r-stc.md)で`H0`（得点率47.2%）となり、捕獲局面を加えた候補QcはQに対して[STC](measurements/qsearch-output-qc-vs-q-stc.md)の上限3,000ペアでLLRが負（得点率50.4%）だった。採否前の診断ではどちらも除外されておらず、比較用のSTCで除外された。フェーズ0の[探索の追跡](measurements/qsearch-output-search-trace.md)では、段階12の7項目と同じく、6根の誤りを特定の枝刈りに帰属できなかった。
 - [探索部の不具合修正](plans/search-bug-fixes.md)は2026年9月29日に完了した。[探索部の不具合監査](audits/search-bugs-2026-09-28.md)の指摘のうち、反復の検出がnull moveをまたぎ、null move直後のじっとを実在しない引き分けとしていた不具合を直し、非劣性のSTCとLTCをともに通過して採用した（masterの得点率はSTC 45.7%、LTC 48.0%）。静止探索のdelta pruningが成り益を無視する不具合は、修正の診断で修正前の版がわずかに強い方向となったので取り込まず、不具合は残る。王駒がすべて狙われた静止探索の局面で全合法手を読む修正は約120 Elo弱く、不具合ではなく静止探索の近似と分類し直して、探索の不具合は手法の契約違反に限って分類するという[教訓](lessons/classify-bugs-by-method-contract.md)にした。
 - [棋力向上段階12](plans/strength-stage12.md)は2026年9月28日に、採用項目なしで完了した。発動率の診断で基準を満たした7項目（aspiration windowsのfail-high時の減深、負の捕獲手の後回し、捕獲履歴、静止探索の手数制限、butterfly historyの持ち越し、null moveの前提条件、PVノードでの置換表の打ち切りの停止）は、いずれもSTCで`H0`または上限到達時にLLRが負となり、補正表の鍵の追加は診断で見送った。静止探索の手数制限は約−173 Eloと大きく負け、失う良手の割合で閾値を選ぶ規則を深さの上限のない再帰に使えないことを[教訓](lessons/recall-loss-does-not-bound-recursive-pruning.md)にした。探索コードは段階開始版から変わっていない。
@@ -89,9 +90,9 @@
 ### 次の候補
 
 - 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。段階12で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
-- 評価関数で次に着手できるのは、[順位の損失の計画](plans/rank-loss-training.md)と[Athénanの計画](plans/athenan.md)である。
+- 評価関数で次に着手できるのは、[関係補正項の計画](plans/relational-correction.md)と[Athénanの計画](plans/athenan.md)である。
   - Athénanの計画は、学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
-  - 順位の損失の計画は、静止探索の計画の15,000局のデータと分割を引き継ぎ、値の回帰には静的値の回帰を使う。その完了後は[関係補正項の計画](plans/relational-correction.md)へ進む。関係補正項では、新しい局面群で探索の追跡と機構ごとの介入を行い、解消を確認できなかった誤りを分類する。選んだ関係が件数の基準を満たした場合だけ、採用中の教師値と学習方式を固定して補正項を比較する。
+  - 関係補正項の計画では、新しい局面群で探索の追跡と機構ごとの介入を行い、解消を確認できなかった誤りを分類する。選んだ関係が件数の基準を満たした場合だけ、採用中の教師値と学習方式を固定して補正項を比較する。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画の結果を見て別に起案する。
   - 総論が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。

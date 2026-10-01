@@ -1,0 +1,696 @@
+{
+  "m": 117.7,
+  "tau": 117.7,
+  "summaries": {
+    "train": {
+      "roots": 128,
+      "candidate_count": {
+        "count": 128,
+        "mean": 3.78125,
+        "median": 4.0,
+        "max": 5.0,
+        "quantiles": {
+          "0": 3.0,
+          "0.05": 3.0,
+          "0.25": 3.0,
+          "0.5": 4.0,
+          "0.75": 4.0,
+          "0.95": 5.0,
+          "1": 5.0
+        }
+      },
+      "stable_pairs_per_root": {
+        "count": 128,
+        "mean": 1.2890625,
+        "median": 0.0,
+        "max": 6.0,
+        "quantiles": {
+          "0": 0.0,
+          "0.05": 0.0,
+          "0.25": 0.0,
+          "0.5": 0.0,
+          "0.75": 3.0,
+          "0.95": 4.6499999999999915,
+          "1": 6.0
+        }
+      },
+      "pairs": 705,
+      "stable_pairs": 165,
+      "pair_types": [
+        {
+          "supported_sources": [
+            "q1_top3",
+            "s0_proposal",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 29
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 10
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "count": 1
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 6
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "s0_proposal"
+          ],
+          "count": 1
+        },
+        {
+          "supported_sources": [
+            "q1_top3"
+          ],
+          "other_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "count": 2
+        },
+        {
+          "supported_sources": [
+            "q1_top3"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 50
+        },
+        {
+          "supported_sources": [
+            "s0_proposal",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 11
+        },
+        {
+          "supported_sources": [
+            "s0_proposal"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 24
+        },
+        {
+          "supported_sources": [
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "count": 3
+        },
+        {
+          "supported_sources": [
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 28
+        }
+      ],
+      "excluded_pairs": 23,
+      "exclusion_reasons": {
+        "mate": 23
+      },
+      "exclusion_combinations": {
+        "mate": 23
+      },
+      "mate_children": 15,
+      "elapsed_total_s": {
+        "count": 128,
+        "mean": 29.15149302171094,
+        "median": 28.595526106,
+        "max": 62.207238741000005,
+        "quantiles": {
+          "0": 11.144302746,
+          "0.05": 13.8849377852,
+          "0.25": 21.746504055499997,
+          "0.5": 28.595526106,
+          "0.75": 35.436902328749994,
+          "0.95": 47.112368434199986,
+          "1": 62.207238741000005
+        }
+      },
+      "reversed_pairs": 111,
+      "reversed_fraction": 0.6727272727272727,
+      "q1_ties": 6,
+      "reversed_q1_delta": {
+        "count": 111,
+        "mean": -124.90090090090091,
+        "median": -66.0,
+        "max": -2.0,
+        "quantiles": {
+          "0": -1197.0,
+          "0.05": -448.5,
+          "0.25": -141.0,
+          "0.5": -66.0,
+          "0.75": -26.5,
+          "0.95": -8.0,
+          "1": -2.0
+        }
+      },
+      "q1_delta": {
+        "count": 165,
+        "mean": -9.224242424242425,
+        "median": -28.0,
+        "max": 1287.0,
+        "quantiles": {
+          "0": -1197.0,
+          "0.05": -370.4,
+          "0.25": -105.0,
+          "0.5": -28.0,
+          "0.75": 17.0,
+          "0.95": 509.99999999999966,
+          "1": 1287.0
+        }
+      },
+      "loss": {
+        "count": 165,
+        "mean": 1.096158256731638,
+        "median": 0.8191511680482296,
+        "max": 10.169961838928225,
+        "quantiles": {
+          "0": 1.7830709139395202e-05,
+          "0.05": 0.013072583360083434,
+          "0.25": 0.623535098718232,
+          "0.5": 0.8191511680482296,
+          "0.75": 1.235542768904088,
+          "0.95": 3.189254403772471,
+          "1": 10.169961838928225
+        }
+      },
+      "gradient_magnitude": {
+        "count": 165,
+        "mean": 0.004624376125075799,
+        "median": 0.0047510138854649445,
+        "max": 0.008495851284748494,
+        "quantiles": {
+          "0": 1.5149150529520678e-07,
+          "0.05": 0.00011034056234222041,
+          "0.25": 0.003941834254285701,
+          "0.5": 0.0047510138854649445,
+          "0.75": 0.006026533992059961,
+          "0.95": 0.008144595273307133,
+          "1": 0.008495851284748494
+        }
+      }
+    },
+    "validation": {
+      "roots": 128,
+      "candidate_count": {
+        "count": 128,
+        "mean": 3.8203125,
+        "median": 4.0,
+        "max": 5.0,
+        "quantiles": {
+          "0": 3.0,
+          "0.05": 3.0,
+          "0.25": 3.0,
+          "0.5": 4.0,
+          "0.75": 4.0,
+          "0.95": 5.0,
+          "1": 5.0
+        }
+      },
+      "stable_pairs_per_root": {
+        "count": 128,
+        "mean": 0.953125,
+        "median": 0.0,
+        "max": 8.0,
+        "quantiles": {
+          "0": 0.0,
+          "0.05": 0.0,
+          "0.25": 0.0,
+          "0.5": 0.0,
+          "0.75": 1.25,
+          "0.95": 4.6499999999999915,
+          "1": 8.0
+        }
+      },
+      "pairs": 725,
+      "stable_pairs": 122,
+      "pair_types": [
+        {
+          "supported_sources": [
+            "q1_top3",
+            "s0_proposal",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 22
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 10
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 9
+        },
+        {
+          "supported_sources": [
+            "q1_top3"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 27
+        },
+        {
+          "supported_sources": [
+            "s0_proposal",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 5
+        },
+        {
+          "supported_sources": [
+            "s0_proposal"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 20
+        },
+        {
+          "supported_sources": [
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 28
+        },
+        {
+          "supported_sources": [
+            "teacher_best"
+          ],
+          "other_sources": [
+            "s0_proposal"
+          ],
+          "count": 1
+        }
+      ],
+      "excluded_pairs": 29,
+      "exclusion_reasons": {
+        "mate": 29
+      },
+      "exclusion_combinations": {
+        "mate": 29
+      },
+      "mate_children": 10,
+      "elapsed_total_s": {
+        "count": 128,
+        "mean": 28.86637230797656,
+        "median": 28.121945671499997,
+        "max": 61.07391472600001,
+        "quantiles": {
+          "0": 12.143137939999999,
+          "0.05": 15.9419293745,
+          "0.25": 21.383623337499998,
+          "0.5": 28.121945671499997,
+          "0.75": 33.59288080275,
+          "0.95": 45.78535501244999,
+          "1": 61.07391472600001
+        }
+      },
+      "reversed_pairs": 82,
+      "reversed_fraction": 0.6721311475409836,
+      "q1_ties": 2,
+      "reversed_q1_delta": {
+        "count": 82,
+        "mean": -98.46341463414635,
+        "median": -74.5,
+        "max": -1.0,
+        "quantiles": {
+          "0": -499.0,
+          "0.05": -307.4,
+          "0.25": -130.5,
+          "0.5": -74.5,
+          "0.75": -41.25,
+          "0.95": -3.1499999999999915,
+          "1": -1.0
+        }
+      },
+      "q1_delta": {
+        "count": 122,
+        "mean": -0.6147540983606558,
+        "median": -41.5,
+        "max": 1253.0,
+        "quantiles": {
+          "0": -499.0,
+          "0.05": -178.65,
+          "0.25": -101.0,
+          "0.5": -41.5,
+          "0.75": 22.25,
+          "0.95": 419.5499999999981,
+          "1": 1253.0
+        }
+      },
+      "loss": {
+        "count": 122,
+        "mean": 0.9590619340107429,
+        "median": 0.8849052785993472,
+        "max": 4.253902765628911,
+        "quantiles": {
+          "0": 2.3802466885350832e-05,
+          "0.05": 0.02995813331988085,
+          "0.25": 0.6031026881040105,
+          "0.5": 0.8849052785993472,
+          "0.75": 1.211647231212125,
+          "0.95": 1.7160365971172218,
+          "1": 4.253902765628911
+        }
+      },
+      "gradient_magnitude": {
+        "count": 122,
+        "mean": 0.004658440497796945,
+        "median": 0.004989341101466696,
+        "max": 0.00837545732846731,
+        "quantiles": {
+          "0": 2.0222755827428633e-07,
+          "0.05": 0.0002495602640347606,
+          "0.25": 0.003847762509687022,
+          "0.5": 0.004989341101466696,
+          "0.75": 0.005966270767712126,
+          "0.95": 0.0069686705418230445,
+          "1": 0.00837545732846731
+        }
+      }
+    },
+    "all": {
+      "roots": 256,
+      "candidate_count": {
+        "count": 256,
+        "mean": 3.80078125,
+        "median": 4.0,
+        "max": 5.0,
+        "quantiles": {
+          "0": 3.0,
+          "0.05": 3.0,
+          "0.25": 3.0,
+          "0.5": 4.0,
+          "0.75": 4.0,
+          "0.95": 5.0,
+          "1": 5.0
+        }
+      },
+      "stable_pairs_per_root": {
+        "count": 256,
+        "mean": 1.12109375,
+        "median": 0.0,
+        "max": 8.0,
+        "quantiles": {
+          "0": 0.0,
+          "0.05": 0.0,
+          "0.25": 0.0,
+          "0.5": 0.0,
+          "0.75": 2.0,
+          "0.95": 5.0,
+          "1": 8.0
+        }
+      },
+      "pairs": 1430,
+      "stable_pairs": 287,
+      "pair_types": [
+        {
+          "supported_sources": [
+            "q1_top3",
+            "s0_proposal",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 51
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 20
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "count": 1
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 15
+        },
+        {
+          "supported_sources": [
+            "q1_top3",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "s0_proposal"
+          ],
+          "count": 1
+        },
+        {
+          "supported_sources": [
+            "q1_top3"
+          ],
+          "other_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "count": 2
+        },
+        {
+          "supported_sources": [
+            "q1_top3"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 77
+        },
+        {
+          "supported_sources": [
+            "s0_proposal",
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 16
+        },
+        {
+          "supported_sources": [
+            "s0_proposal"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 44
+        },
+        {
+          "supported_sources": [
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3",
+            "s0_proposal"
+          ],
+          "count": 3
+        },
+        {
+          "supported_sources": [
+            "teacher_best"
+          ],
+          "other_sources": [
+            "q1_top3"
+          ],
+          "count": 56
+        },
+        {
+          "supported_sources": [
+            "teacher_best"
+          ],
+          "other_sources": [
+            "s0_proposal"
+          ],
+          "count": 1
+        }
+      ],
+      "excluded_pairs": 52,
+      "exclusion_reasons": {
+        "mate": 52
+      },
+      "exclusion_combinations": {
+        "mate": 52
+      },
+      "mate_children": 25,
+      "elapsed_total_s": {
+        "count": 256,
+        "mean": 29.008932664843748,
+        "median": 28.311476388000003,
+        "max": 62.207238741000005,
+        "quantiles": {
+          "0": 11.144302746,
+          "0.05": 14.349788791000002,
+          "0.25": 21.4483938845,
+          "0.5": 28.311476388000003,
+          "0.75": 35.2793891465,
+          "0.95": 46.57835662025,
+          "1": 62.207238741000005
+        }
+      },
+      "reversed_pairs": 193,
+      "reversed_fraction": 0.6724738675958188,
+      "q1_ties": 8,
+      "reversed_q1_delta": {
+        "count": 193,
+        "mean": -113.66839378238342,
+        "median": -73.0,
+        "max": -1.0,
+        "quantiles": {
+          "0": -1197.0,
+          "0.05": -393.59999999999997,
+          "0.25": -135.0,
+          "0.5": -73.0,
+          "0.75": -34.0,
+          "0.95": -6.600000000000023,
+          "1": -1.0
+        }
+      },
+      "q1_delta": {
+        "count": 287,
+        "mean": -5.564459930313589,
+        "median": -36.0,
+        "max": 1287.0,
+        "quantiles": {
+          "0": -1197.0,
+          "0.05": -326.8,
+          "0.25": -104.5,
+          "0.5": -36.0,
+          "0.75": 19.5,
+          "0.95": 482.8999999999996,
+          "1": 1287.0
+        }
+      },
+      "loss": {
+        "count": 287,
+        "mean": 1.0378803773868672,
+        "median": 0.8577270338709342,
+        "max": 10.169961838928225,
+        "quantiles": {
+          "0": 1.7830709139395202e-05,
+          "0.05": 0.01656435509105518,
+          "0.25": 0.6137388252288344,
+          "0.5": 0.8577270338709342,
+          "0.75": 1.2325332271607392,
+          "0.95": 2.8369492766758952,
+          "1": 10.169961838928225
+        }
+      },
+      "gradient_magnitude": {
+        "count": 287,
+        "mean": 0.0046388564507621405,
+        "median": 0.0048927356896037565,
+        "max": 0.008495851284748494,
+        "quantiles": {
+          "0": 1.5149150529520678e-07,
+          "0.05": 0.00013954839724819284,
+          "0.25": 0.003896990690639733,
+          "0.5": 0.0048927356896037565,
+          "0.75": 0.00601907908583335,
+          "0.95": 0.007998211563136516,
+          "1": 0.008495851284748494
+        }
+      }
+    }
+  },
+  "decision": {
+    "preregistered_sample": true,
+    "c_bar": 29.008932664843748,
+    "hours": 12,
+    "jobs": 16,
+    "validation_roots": 1000,
+    "N12": 23827,
+    "N_train": 22827,
+    "r": 1.2890625,
+    "estimated_training_pairs": 29425.4296875,
+    "reversed_fraction": 0.6724738675958188,
+    "minimum_training_pairs": 20000,
+    "minimum_reversed_fraction": 0.1,
+    "first": true,
+    "second": true,
+    "both": true
+  }
+}

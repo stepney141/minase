@@ -1,0 +1,2877 @@
+{
+  "status": "complete",
+  "test_mode": false,
+  "betas": {
+    "C": 0.0,
+    "B0.1": 0.1,
+    "B0.3": 0.3,
+    "B1.0": 1.0
+  },
+  "tau": 117.7,
+  "teacher_k": 763.9876650061155,
+  "k": 1072.6529541015625,
+  "seed": 1,
+  "model": "mirrored",
+  "optimizer": "Adam",
+  "learning_rate": 0.03,
+  "removal_penalty": 1000,
+  "quiet_batch": 16384,
+  "pair_batch": 4096,
+  "pair_stream": 314159,
+  "interval_count": 10,
+  "updates_per_interval": 352,
+  "total_updates": 3520,
+  "weight_selection": "final_update",
+  "lookahead": {
+    "gamma": 0.9,
+    "plies": 40
+  },
+  "teacher_classes": [
+    {
+      "generation_commit": "c8e6fc262cdcbf3151c7249649e16fd4770ec1d6",
+      "network_checksum": "8125a343e93c3f69fa41c7940500f5de41c0864cbd693884c918aa1b3b677586",
+      "nodes": 100000,
+      "rule_set": "L0,P0,R1,E0",
+      "search_condition": "in-game",
+      "result_origin": "selfplay",
+      "start_origin": "random",
+      "lookahead_gamma": 0.9,
+      "lookahead_plies": 40,
+      "lambda_override": null,
+      "lambda": 0.75
+    }
+  ],
+  "leaf_jobs": 16,
+  "quiet_training": 5753831,
+  "quiet_validation": 294572,
+  "stable_pairs": {
+    "train": 26353,
+    "validation": 1154
+  },
+  "inputs": {
+    "init": {
+      "path": "/home/stepney141/board-games/minase/data/worktrees/rank-loss-training/nets/pst.bin",
+      "sha256": "72d7aee949e7672a2b4fb2e7b98ddaed76b352112187bfbcc7e2d772224fb67b"
+    },
+    "data-0": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/data/generated-94000000.bin",
+      "sha256": "428e52f391088583f7410ba66038d7c138d086fb45169b6bf46ea3afbf8f276f"
+    },
+    "data-1": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/data/generated-94100000.bin",
+      "sha256": "5a94d8c54e3716768630d8694ef0a65c80cf51403ea8eb9b03a82b185a0ce323"
+    },
+    "train-roots": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase2/roots-train.jsonl",
+      "sha256": "bc0a7d7fd9b7c36dea9081859152091d9f909b26ad05ae84ebcbb61e47f20671"
+    },
+    "train-results": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase2/results-train.jsonl",
+      "sha256": "53ef6243a7c4bd1a53fbd91892f975ac8e4f4c0b913a2ef6955dd8f3b93ac718"
+    },
+    "train-children": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+      "sha256": "0fd0c6466df2053635dba68769093559bcc806746ba0d885c64716004b1a598c"
+    },
+    "train-index": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.jsonl",
+      "sha256": "c8e9cf620ec16cab775a5c514598ed9b69bbb338bcbd0bf5bc080b105861b4b8"
+    },
+    "validation-roots": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase2/roots-validation.jsonl",
+      "sha256": "4557020a17fed47ae96f9d2c2b926b3c1ce72c4f447ea39c3e09a71aed19020e"
+    },
+    "validation-results": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase2/results-validation.jsonl",
+      "sha256": "1d8eac48aa2ecb46a413d37c7108087b75ff194b9308c987ee5ffa27690d2e80"
+    },
+    "validation-children": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+      "sha256": "62811d543d4927aec48148c6b90fcb5036ae234b4abe8ad4197da6d0b18d5054"
+    },
+    "validation-index": {
+      "path": "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.jsonl",
+      "sha256": "2e018e393a65f9bd7d0d287eb0425bbeb28ad2066e7c5700f84b2eeb4f5bc676"
+    }
+  },
+  "initial_checks": {
+    "train": {
+      "checked_children": 87414,
+      "extraction": {
+        "records": 87414,
+        "nodes": 715740,
+        "kinds": {
+          "static": 87178,
+          "max_ply": 0,
+          "mate": 236
+        },
+        "elapsed_seconds": 0.881958,
+        "cpu_seconds": 3.95,
+        "command": [
+          "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+          "--input",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+          "--output",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/S0-train/leaves.bin",
+          "--info",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/S0-train/leaves.jsonl",
+          "--weights",
+          "nets/pst.bin",
+          "--jobs",
+          "16"
+        ]
+      }
+    },
+    "validation": {
+      "checked_children": 3827,
+      "extraction": {
+        "records": 3827,
+        "nodes": 21951,
+        "kinds": {
+          "static": 3819,
+          "max_ply": 0,
+          "mate": 8
+        },
+        "elapsed_seconds": 0.043279,
+        "cpu_seconds": 0.2,
+        "command": [
+          "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+          "--input",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+          "--output",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/S0-validation/leaves.bin",
+          "--info",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/S0-validation/leaves.jsonl",
+          "--weights",
+          "nets/pst.bin",
+          "--jobs",
+          "16"
+        ]
+      }
+    }
+  },
+  "intervals": [
+    {
+      "interval": 1,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 715740,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.8518,
+          "cpu_seconds": 3.92,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 715740,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.796696,
+          "cpu_seconds": 3.8,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 715740,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.812695,
+          "cpu_seconds": 3.8,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.41892213526774535,
+          "removal_loss": 1.5401732269217648e-10,
+          "total_loss": 0.418922289285068,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "0df8b6df66cb4ca761d227684f31c57ad170ecf3103dcfae0a2df641e438da69",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.32582322357019067,
+          "static_mae": 0.052549363502611676,
+          "validation_loss": 0.43576853223264495
+        },
+        "B0.1": {
+          "train_loss": 0.4194121171127666,
+          "removal_loss": 1.1602504105999735e-09,
+          "total_loss": 0.5317830376626168,
+          "rank_loss": 1.1236975890668957,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "0df8b6df66cb4ca761d227684f31c57ad170ecf3103dcfae0a2df641e438da69",
+          "pair_batch_sha256": "349da80a41b653f767869bb8216e624b8f6ac2fa12021ad732d93caa6830f28a",
+          "rank_accuracy": 0.35181975736568455,
+          "static_mae": 0.05392448861019723,
+          "validation_loss": 0.4365451713224464
+        },
+        "B0.3": {
+          "train_loss": 0.4194763390008699,
+          "removal_loss": 2.4854793500172366e-09,
+          "total_loss": 0.7562846193762695,
+          "rank_loss": 1.1226859424601903,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "0df8b6df66cb4ca761d227684f31c57ad170ecf3103dcfae0a2df641e438da69",
+          "pair_batch_sha256": "349da80a41b653f767869bb8216e624b8f6ac2fa12021ad732d93caa6830f28a",
+          "rank_accuracy": 0.35181975736568455,
+          "static_mae": 0.05415149364604366,
+          "validation_loss": 0.436656422516583
+        },
+        "B1.0": {
+          "train_loss": 0.41950200955298816,
+          "removal_loss": 4.60601234134962e-09,
+          "total_loss": 1.5419036891945588,
+          "rank_loss": 1.1223970736292275,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "0df8b6df66cb4ca761d227684f31c57ad170ecf3103dcfae0a2df641e438da69",
+          "pair_batch_sha256": "349da80a41b653f767869bb8216e624b8f6ac2fa12021ad732d93caa6830f28a",
+          "rank_accuracy": 0.35268630849220106,
+          "static_mae": 0.05425673833096816,
+          "validation_loss": 0.4367010563766979
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 22431,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.049318,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 17471,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.042668,
+            "cpu_seconds": 0.21,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 17379,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.041542,
+            "cpu_seconds": 0.22,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 17345,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.039129,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-01/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.32582322357019067,
+            "static_mae": 0.052549363502611676,
+            "validation_loss": 0.43576853223264495
+          },
+          "B0.1": {
+            "rank_accuracy": 0.35181975736568455,
+            "static_mae": 0.05392448861019723,
+            "validation_loss": 0.4365451713224464
+          },
+          "B0.3": {
+            "rank_accuracy": 0.35181975736568455,
+            "static_mae": 0.05415149364604366,
+            "validation_loss": 0.436656422516583
+          },
+          "B1.0": {
+            "rank_accuracy": 0.35268630849220106,
+            "static_mae": 0.05425673833096816,
+            "validation_loss": 0.4367010563766979
+          }
+        }
+      }
+    },
+    {
+      "interval": 2,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 505247,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.636838,
+          "cpu_seconds": 3.59,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 488477,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.688349,
+          "cpu_seconds": 3.59,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 483626,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.73451,
+          "cpu_seconds": 3.6,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.4184610526162115,
+          "removal_loss": 2.7736166666925196e-10,
+          "total_loss": 0.41846132997787805,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cb0a5f4771f89ad2ca3f16bc06672e4f949096bac48ccdcbe6bebd7efb742e88",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.3275563258232236,
+          "static_mae": 0.05217959625840854,
+          "validation_loss": 0.4354607536204082
+        },
+        "B0.1": {
+          "train_loss": 0.4197589327496561,
+          "removal_loss": 1.4596164622963416e-09,
+          "total_loss": 0.5268755230259884,
+          "rank_loss": 1.0711512904275546,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cb0a5f4771f89ad2ca3f16bc06672e4f949096bac48ccdcbe6bebd7efb742e88",
+          "pair_batch_sha256": "db51f77165e94a7deb5d9075a53e29c913ba6538034d52d20839ded3bf8fd89d",
+          "rank_accuracy": 0.3700173310225303,
+          "static_mae": 0.05487273290274817,
+          "validation_loss": 0.4369373771763038
+        },
+        "B0.3": {
+          "train_loss": 0.42004954984242265,
+          "removal_loss": 3.797139651480943e-09,
+          "total_loss": 0.7400941275250005,
+          "rank_loss": 1.0668025602671234,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cb0a5f4771f89ad2ca3f16bc06672e4f949096bac48ccdcbe6bebd7efb742e88",
+          "pair_batch_sha256": "db51f77165e94a7deb5d9075a53e29c913ba6538034d52d20839ded3bf8fd89d",
+          "rank_accuracy": 0.3717504332755633,
+          "static_mae": 0.05563538392606652,
+          "validation_loss": 0.4373009355622336
+        },
+        "B1.0": {
+          "train_loss": 0.4201863414015282,
+          "removal_loss": 1.1950859184492586e-08,
+          "total_loss": 1.4856006229220744,
+          "rank_loss": 1.0654023306613618,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cb0a5f4771f89ad2ca3f16bc06672e4f949096bac48ccdcbe6bebd7efb742e88",
+          "pair_batch_sha256": "db51f77165e94a7deb5d9075a53e29c913ba6538034d52d20839ded3bf8fd89d",
+          "rank_accuracy": 0.37694974003466203,
+          "static_mae": 0.05606431871907455,
+          "validation_loss": 0.43748073249324043
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 22434,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.043771,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 17240,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.033552,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16794,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.034321,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 16589,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.035793,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-02/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.3275563258232236,
+            "static_mae": 0.05217959625840854,
+            "validation_loss": 0.4354607536204082
+          },
+          "B0.1": {
+            "rank_accuracy": 0.3700173310225303,
+            "static_mae": 0.05487273290274817,
+            "validation_loss": 0.4369373771763038
+          },
+          "B0.3": {
+            "rank_accuracy": 0.3717504332755633,
+            "static_mae": 0.05563538392606652,
+            "validation_loss": 0.4373009355622336
+          },
+          "B1.0": {
+            "rank_accuracy": 0.37694974003466203,
+            "static_mae": 0.05606431871907455,
+            "validation_loss": 0.43748073249324043
+          }
+        }
+      }
+    },
+    {
+      "interval": 3,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 470149,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.653355,
+          "cpu_seconds": 3.54,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 448966,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.69341,
+          "cpu_seconds": 3.54,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 430390,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.69686,
+          "cpu_seconds": 3.53,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.41811020426790824,
+          "removal_loss": 5.131739458656692e-10,
+          "total_loss": 0.41811071744185396,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "db476fdb5d1d09f0df0eb493e1680a704bbe2716a27dcf8412c83e91c948b13c",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.3275563258232236,
+          "static_mae": 0.05186439871249093,
+          "validation_loss": 0.43520409314794584
+        },
+        "B0.1": {
+          "train_loss": 0.4199954070658846,
+          "removal_loss": 2.538190348033651e-09,
+          "total_loss": 0.5232342261247402,
+          "rank_loss": 1.032362793826244,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "db476fdb5d1d09f0df0eb493e1680a704bbe2716a27dcf8412c83e91c948b13c",
+          "pair_batch_sha256": "1dbc2e54587d2c73b41011c870549dfa8385e2230fe19c628da27fb8555b6d12",
+          "rank_accuracy": 0.3882149046793761,
+          "static_mae": 0.05552364683107873,
+          "validation_loss": 0.4372010144309953
+        },
+        "B0.3": {
+          "train_loss": 0.42047543163326656,
+          "removal_loss": 5.422846615899963e-09,
+          "total_loss": 0.7282946368941352,
+          "rank_loss": 1.0260459013621916,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "db476fdb5d1d09f0df0eb493e1680a704bbe2716a27dcf8412c83e91c948b13c",
+          "pair_batch_sha256": "1dbc2e54587d2c73b41011c870549dfa8385e2230fe19c628da27fb8555b6d12",
+          "rank_accuracy": 0.3934142114384749,
+          "static_mae": 0.05661142934313685,
+          "validation_loss": 0.43772193737965537
+        },
+        "B1.0": {
+          "train_loss": 0.4207499389621345,
+          "removal_loss": 1.9150556165076982e-08,
+          "total_loss": 1.4446754577725598,
+          "rank_loss": 1.0239063682542606,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "db476fdb5d1d09f0df0eb493e1680a704bbe2716a27dcf8412c83e91c948b13c",
+          "pair_batch_sha256": "1dbc2e54587d2c73b41011c870549dfa8385e2230fe19c628da27fb8555b6d12",
+          "rank_accuracy": 0.38908145580589254,
+          "static_mae": 0.05741759624517694,
+          "validation_loss": 0.43805127703468344
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 22426,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.041965,
+            "cpu_seconds": 0.19,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 17223,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.036029,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16447,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.037023,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 16383,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.040222,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-03/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.3275563258232236,
+            "static_mae": 0.05186439871249093,
+            "validation_loss": 0.43520409314794584
+          },
+          "B0.1": {
+            "rank_accuracy": 0.3882149046793761,
+            "static_mae": 0.05552364683107873,
+            "validation_loss": 0.4372010144309953
+          },
+          "B0.3": {
+            "rank_accuracy": 0.3934142114384749,
+            "static_mae": 0.05661142934313685,
+            "validation_loss": 0.43772193737965537
+          },
+          "B1.0": {
+            "rank_accuracy": 0.38908145580589254,
+            "static_mae": 0.05741759624517694,
+            "validation_loss": 0.43805127703468344
+          }
+        }
+      }
+    },
+    {
+      "interval": 4,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 466418,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.691149,
+          "cpu_seconds": 3.57,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 434266,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.709467,
+          "cpu_seconds": 3.56,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 427143,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.666656,
+          "cpu_seconds": 3.51,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.4178165950050408,
+          "removal_loss": 8.303662842972743e-10,
+          "total_loss": 0.4178174253713248,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "d27970129edd93a7298eb66f99b7ec0c0798c4a491ea57e6f03da089927f2e34",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.32842287694974004,
+          "static_mae": 0.0515832386805687,
+          "validation_loss": 0.4349805185227557
+        },
+        "B0.1": {
+          "train_loss": 0.4201657058332454,
+          "removal_loss": 3.2983675033334494e-09,
+          "total_loss": 0.5199521853924249,
+          "rank_loss": 0.9978317953646183,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "d27970129edd93a7298eb66f99b7ec0c0798c4a491ea57e6f03da089927f2e34",
+          "pair_batch_sha256": "0f5873c71e200e195842b2c8d1b92449c5eaaf89cdca34769fdc7ba44011394d",
+          "rank_accuracy": 0.41161178509532065,
+          "static_mae": 0.05611760027399982,
+          "validation_loss": 0.43743277876456715
+        },
+        "B0.3": {
+          "train_loss": 0.4208131463859569,
+          "removal_loss": 7.94836816943032e-09,
+          "total_loss": 0.7177475941832001,
+          "rank_loss": 0.9897549558769573,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "d27970129edd93a7298eb66f99b7ec0c0798c4a491ea57e6f03da089927f2e34",
+          "pair_batch_sha256": "0f5873c71e200e195842b2c8d1b92449c5eaaf89cdca34769fdc7ba44011394d",
+          "rank_accuracy": 0.40814558058925476,
+          "static_mae": 0.05747666930600689,
+          "validation_loss": 0.43811569326831357
+        },
+        "B1.0": {
+          "train_loss": 0.42120036465877836,
+          "removal_loss": 2.326667989467579e-08,
+          "total_loss": 1.4084528605437074,
+          "rank_loss": 0.987229229205034,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "d27970129edd93a7298eb66f99b7ec0c0798c4a491ea57e6f03da089927f2e34",
+          "pair_batch_sha256": "0f5873c71e200e195842b2c8d1b92449c5eaaf89cdca34769fdc7ba44011394d",
+          "rank_accuracy": 0.41767764298093585,
+          "static_mae": 0.05835928229510211,
+          "validation_loss": 0.4385347306443464
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 22451,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.037554,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 16587,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.046745,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16201,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.038895,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 15856,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.033002,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-04/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.32842287694974004,
+            "static_mae": 0.0515832386805687,
+            "validation_loss": 0.4349805185227557
+          },
+          "B0.1": {
+            "rank_accuracy": 0.41161178509532065,
+            "static_mae": 0.05611760027399982,
+            "validation_loss": 0.43743277876456715
+          },
+          "B0.3": {
+            "rank_accuracy": 0.40814558058925476,
+            "static_mae": 0.05747666930600689,
+            "validation_loss": 0.43811569326831357
+          },
+          "B1.0": {
+            "rank_accuracy": 0.41767764298093585,
+            "static_mae": 0.05835928229510211,
+            "validation_loss": 0.4385347306443464
+          }
+        }
+      }
+    },
+    {
+      "interval": 5,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 450390,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.75125,
+          "cpu_seconds": 3.57,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 419366,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.67731,
+          "cpu_seconds": 3.59,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 409619,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.630203,
+          "cpu_seconds": 3.52,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.4175671546465971,
+          "removal_loss": 1.1913746952470908e-09,
+          "total_loss": 0.4175683460212925,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cc494fc5c205bf5c9c0f5c0c6fffb434c9188c5054f7a7d7eb0b75cd07702e65",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.32495667244367415,
+          "static_mae": 0.05131448611803634,
+          "validation_loss": 0.4347755737415442
+        },
+        "B0.1": {
+          "train_loss": 0.4203631937165152,
+          "removal_loss": 3.8271761398584e-09,
+          "total_loss": 0.5172111199948581,
+          "rank_loss": 0.9684409749778834,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cc494fc5c205bf5c9c0f5c0c6fffb434c9188c5054f7a7d7eb0b75cd07702e65",
+          "pair_batch_sha256": "079433d2a19e1945c8ae5fa57b50c1002185f21aa5288aeb2da3152c01be7a78",
+          "rank_accuracy": 0.4220103986135182,
+          "static_mae": 0.05672058881502103,
+          "validation_loss": 0.43768107549041796
+        },
+        "B0.3": {
+          "train_loss": 0.4211646986447952,
+          "removal_loss": 1.0464222892432643e-08,
+          "total_loss": 0.7086732782602586,
+          "rank_loss": 0.9583270097659393,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cc494fc5c205bf5c9c0f5c0c6fffb434c9188c5054f7a7d7eb0b75cd07702e65",
+          "pair_batch_sha256": "079433d2a19e1945c8ae5fa57b50c1002185f21aa5288aeb2da3152c01be7a78",
+          "rank_accuracy": 0.4254766031195841,
+          "static_mae": 0.058379084174719126,
+          "validation_loss": 0.4385340827911566
+        },
+        "B1.0": {
+          "train_loss": 0.42163903393190016,
+          "removal_loss": 2.803195435836409e-08,
+          "total_loss": 1.376514247948799,
+          "rank_loss": 0.9548471820625392,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "cc494fc5c205bf5c9c0f5c0c6fffb434c9188c5054f7a7d7eb0b75cd07702e65",
+          "pair_batch_sha256": "079433d2a19e1945c8ae5fa57b50c1002185f21aa5288aeb2da3152c01be7a78",
+          "rank_accuracy": 0.4324090121317158,
+          "static_mae": 0.05954949238152015,
+          "validation_loss": 0.439031899658483
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 23019,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.053078,
+            "cpu_seconds": 0.19,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 16822,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.036512,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16133,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.035576,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 16040,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.041856,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-05/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.32495667244367415,
+            "static_mae": 0.05131448611803634,
+            "validation_loss": 0.4347755737415442
+          },
+          "B0.1": {
+            "rank_accuracy": 0.4220103986135182,
+            "static_mae": 0.05672058881502103,
+            "validation_loss": 0.43768107549041796
+          },
+          "B0.3": {
+            "rank_accuracy": 0.4254766031195841,
+            "static_mae": 0.058379084174719126,
+            "validation_loss": 0.4385340827911566
+          },
+          "B1.0": {
+            "rank_accuracy": 0.4324090121317158,
+            "static_mae": 0.05954949238152015,
+            "validation_loss": 0.439031899658483
+          }
+        }
+      }
+    },
+    {
+      "interval": 6,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 448928,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.801909,
+          "cpu_seconds": 3.63,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 414195,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.583733,
+          "cpu_seconds": 3.54,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 415170,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.61082,
+          "cpu_seconds": 3.53,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.4173303520814939,
+          "removal_loss": 1.3233006711496554e-09,
+          "total_loss": 0.41733167538216487,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "4103de6d3e5ab5c0ef2c1a66ebfca2dd818ebca0282bf68ab1ef34ce4eefc1f2",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.3275563258232236,
+          "static_mae": 0.05106573559716872,
+          "validation_loss": 0.43458817940444455
+        },
+        "B0.1": {
+          "train_loss": 0.42052201156250457,
+          "removal_loss": 3.6168374878895945e-09,
+          "total_loss": 0.5146631469820113,
+          "rank_loss": 0.9413751724430106,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "4103de6d3e5ab5c0ef2c1a66ebfca2dd818ebca0282bf68ab1ef34ce4eefc1f2",
+          "pair_batch_sha256": "dde8f01c6e0cdfd394b7115e826fdaab11905bb3087a91feb0eb5cf056cc8073",
+          "rank_accuracy": 0.43327556325823224,
+          "static_mae": 0.05721190348973455,
+          "validation_loss": 0.43785359832660126
+        },
+        "B0.3": {
+          "train_loss": 0.42145888854495506,
+          "removal_loss": 1.1785872594331025e-08,
+          "total_loss": 0.7005148498534232,
+          "rank_loss": 0.9301472116600383,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "4103de6d3e5ab5c0ef2c1a66ebfca2dd818ebca0282bf68ab1ef34ce4eefc1f2",
+          "pair_batch_sha256": "dde8f01c6e0cdfd394b7115e826fdaab11905bb3087a91feb0eb5cf056cc8073",
+          "rank_accuracy": 0.4393414211438475,
+          "static_mae": 0.059090608737704164,
+          "validation_loss": 0.4388032175413665
+        },
+        "B1.0": {
+          "train_loss": 0.42207635803656146,
+          "removal_loss": 3.5724498500678346e-08,
+          "total_loss": 1.3480572866250518,
+          "rank_loss": 0.9259452040899884,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "4103de6d3e5ab5c0ef2c1a66ebfca2dd818ebca0282bf68ab1ef34ce4eefc1f2",
+          "pair_batch_sha256": "dde8f01c6e0cdfd394b7115e826fdaab11905bb3087a91feb0eb5cf056cc8073",
+          "rank_accuracy": 0.4410745233968804,
+          "static_mae": 0.06041456892094637,
+          "validation_loss": 0.43943888700249745
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 22974,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.070074,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 16736,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.036959,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16211,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.05444,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 15993,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.055692,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-06/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.3275563258232236,
+            "static_mae": 0.05106573559716872,
+            "validation_loss": 0.43458817940444455
+          },
+          "B0.1": {
+            "rank_accuracy": 0.43327556325823224,
+            "static_mae": 0.05721190348973455,
+            "validation_loss": 0.43785359832660126
+          },
+          "B0.3": {
+            "rank_accuracy": 0.4393414211438475,
+            "static_mae": 0.059090608737704164,
+            "validation_loss": 0.4388032175413665
+          },
+          "B1.0": {
+            "rank_accuracy": 0.4410745233968804,
+            "static_mae": 0.06041456892094637,
+            "validation_loss": 0.43943888700249745
+          }
+        }
+      }
+    },
+    {
+      "interval": 7,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 454542,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.976924,
+          "cpu_seconds": 3.53,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 424276,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.965175,
+          "cpu_seconds": 3.47,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 417412,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.614351,
+          "cpu_seconds": 3.49,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.41714211485602637,
+          "removal_loss": 1.6707892344292691e-09,
+          "total_loss": 0.4171437856452606,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "859b7880e287370be3000f57bd0a36a94926a1cb52a331d63358072379445784",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.3310225303292894,
+          "static_mae": 0.050830968362172116,
+          "validation_loss": 0.43441328219692543
+        },
+        "B0.1": {
+          "train_loss": 0.42075144524940034,
+          "removal_loss": 5.190315187502957e-09,
+          "total_loss": 0.5124573336654652,
+          "rank_loss": 0.9170069674199278,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "859b7880e287370be3000f57bd0a36a94926a1cb52a331d63358072379445784",
+          "pair_batch_sha256": "6662104c1aa16c7fe7b903371f78d38552f6a55a0c07b1402caec912411017fb",
+          "rank_accuracy": 0.451473136915078,
+          "static_mae": 0.05781609083084187,
+          "validation_loss": 0.4381291790019099
+        },
+        "B0.3": {
+          "train_loss": 0.4218641309575601,
+          "removal_loss": 1.3581664046615839e-08,
+          "total_loss": 0.6931496898565771,
+          "rank_loss": 0.9042398831383749,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "859b7880e287370be3000f57bd0a36a94926a1cb52a331d63358072379445784",
+          "pair_batch_sha256": "6662104c1aa16c7fe7b903371f78d38552f6a55a0c07b1402caec912411017fb",
+          "rank_accuracy": 0.4540727902946274,
+          "static_mae": 0.06005972688338705,
+          "validation_loss": 0.43927465191160114
+        },
+        "B1.0": {
+          "train_loss": 0.42255141577598726,
+          "removal_loss": 4.897522643787731e-08,
+          "total_loss": 1.321498729393448,
+          "rank_loss": 0.8988983383910223,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "859b7880e287370be3000f57bd0a36a94926a1cb52a331d63358072379445784",
+          "pair_batch_sha256": "6662104c1aa16c7fe7b903371f78d38552f6a55a0c07b1402caec912411017fb",
+          "rank_accuracy": 0.45753899480069327,
+          "static_mae": 0.06149337828845191,
+          "validation_loss": 0.439995504538243
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 22971,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.049984,
+            "cpu_seconds": 0.23,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 16803,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.047986,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16046,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.036154,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 15494,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.042344,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-07/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.3310225303292894,
+            "static_mae": 0.050830968362172116,
+            "validation_loss": 0.43441328219692543
+          },
+          "B0.1": {
+            "rank_accuracy": 0.451473136915078,
+            "static_mae": 0.05781609083084187,
+            "validation_loss": 0.4381291790019099
+          },
+          "B0.3": {
+            "rank_accuracy": 0.4540727902946274,
+            "static_mae": 0.06005972688338705,
+            "validation_loss": 0.43927465191160114
+          },
+          "B1.0": {
+            "rank_accuracy": 0.45753899480069327,
+            "static_mae": 0.06149337828845191,
+            "validation_loss": 0.439995504538243
+          }
+        }
+      }
+    },
+    {
+      "interval": 8,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 446439,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.663324,
+          "cpu_seconds": 3.59,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 416924,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.580256,
+          "cpu_seconds": 3.49,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 404768,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.71243,
+          "cpu_seconds": 3.58,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.4169430591335351,
+          "removal_loss": 2.011271154202716e-09,
+          "total_loss": 0.4169450704046891,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "6b2c2eb545f2b2e7bb19f4d21a3ed4c594a26580aa86d7da092c28dd70b3850f",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.33535528596187175,
+          "static_mae": 0.050610235853689,
+          "validation_loss": 0.4342494289964677
+        },
+        "B0.1": {
+          "train_loss": 0.42085066090591927,
+          "removal_loss": 4.759142664090102e-09,
+          "total_loss": 0.5102913970632114,
+          "rank_loss": 0.8943597559224475,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "6b2c2eb545f2b2e7bb19f4d21a3ed4c594a26580aa86d7da092c28dd70b3850f",
+          "pair_batch_sha256": "1c65e0ea7a9f3ce8bff9e660b64d4301e43493adb3c8ba3ba642e001e0140096",
+          "rank_accuracy": 0.464471403812825,
+          "static_mae": 0.058153665740028615,
+          "validation_loss": 0.4382395943235202
+        },
+        "B0.3": {
+          "train_loss": 0.42213349289853463,
+          "removal_loss": 1.571547096550194e-08,
+          "total_loss": 0.685986738731835,
+          "rank_loss": 0.8794583935629238,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "6b2c2eb545f2b2e7bb19f4d21a3ed4c594a26580aa86d7da092c28dd70b3850f",
+          "pair_batch_sha256": "1c65e0ea7a9f3ce8bff9e660b64d4301e43493adb3c8ba3ba642e001e0140096",
+          "rank_accuracy": 0.4662045060658579,
+          "static_mae": 0.06070799216461998,
+          "validation_loss": 0.43953497391642044
+        },
+        "B1.0": {
+          "train_loss": 0.4229077859358354,
+          "removal_loss": 6.052896274361957e-08,
+          "total_loss": 1.2966703284250292,
+          "rank_loss": 0.8737020135264505,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "6b2c2eb545f2b2e7bb19f4d21a3ed4c594a26580aa86d7da092c28dd70b3850f",
+          "pair_batch_sha256": "1c65e0ea7a9f3ce8bff9e660b64d4301e43493adb3c8ba3ba642e001e0140096",
+          "rank_accuracy": 0.47227036395147315,
+          "static_mae": 0.06233196832380971,
+          "validation_loss": 0.4403175249524393
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 23462,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.048994,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 16725,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.040258,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16138,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.038441,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 15991,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.032751,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-08/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.33535528596187175,
+            "static_mae": 0.050610235853689,
+            "validation_loss": 0.4342494289964677
+          },
+          "B0.1": {
+            "rank_accuracy": 0.464471403812825,
+            "static_mae": 0.058153665740028615,
+            "validation_loss": 0.4382395943235202
+          },
+          "B0.3": {
+            "rank_accuracy": 0.4662045060658579,
+            "static_mae": 0.06070799216461998,
+            "validation_loss": 0.43953497391642044
+          },
+          "B1.0": {
+            "rank_accuracy": 0.47227036395147315,
+            "static_mae": 0.06233196832380971,
+            "validation_loss": 0.4403175249524393
+          }
+        }
+      }
+    },
+    {
+      "interval": 9,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 460584,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.733186,
+          "cpu_seconds": 3.61,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 425245,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.53946,
+          "cpu_seconds": 3.51,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 426083,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.701189,
+          "cpu_seconds": 3.52,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.4167832146314057,
+          "removal_loss": 2.3535054886433742e-09,
+          "total_loss": 0.41678556813689477,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "35640b01b3b5ad5eab9e18a01ec0d675811204b5c239f5cb3835606e4f94fb11",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.3310225303292894,
+          "static_mae": 0.0504046757788385,
+          "validation_loss": 0.434095530098674
+        },
+        "B0.1": {
+          "train_loss": 0.42111843621188944,
+          "removal_loss": 6.617645210540168e-09,
+          "total_loss": 0.5083822199750373,
+          "rank_loss": 0.872571645473892,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "35640b01b3b5ad5eab9e18a01ec0d675811204b5c239f5cb3835606e4f94fb11",
+          "pair_batch_sha256": "f272aab20e15b7639f7c1dc7bf64173a5366a0de6eeaf9a9fb6746dbc5f6dc65",
+          "rank_accuracy": 0.4731369150779896,
+          "static_mae": 0.05879499320862501,
+          "validation_loss": 0.4385429550096689
+        },
+        "B0.3": {
+          "train_loss": 0.42255369760096073,
+          "removal_loss": 1.9399158852661046e-08,
+          "total_loss": 0.6794494555221973,
+          "rank_loss": 0.8562544921243732,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "35640b01b3b5ad5eab9e18a01ec0d675811204b5c239f5cb3835606e4f94fb11",
+          "pair_batch_sha256": "f272aab20e15b7639f7c1dc7bf64173a5366a0de6eeaf9a9fb6746dbc5f6dc65",
+          "rank_accuracy": 0.4826689774696707,
+          "static_mae": 0.06158256679724875,
+          "validation_loss": 0.43996734562921586
+        },
+        "B1.0": {
+          "train_loss": 0.42345027888024395,
+          "removal_loss": 7.550468691931845e-08,
+          "total_loss": 1.273809985083509,
+          "rank_loss": 0.8502842015163465,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "35640b01b3b5ad5eab9e18a01ec0d675811204b5c239f5cb3835606e4f94fb11",
+          "pair_batch_sha256": "f272aab20e15b7639f7c1dc7bf64173a5366a0de6eeaf9a9fb6746dbc5f6dc65",
+          "rank_accuracy": 0.49740034662045063,
+          "static_mae": 0.06345646665649438,
+          "validation_loss": 0.4409207449235606
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 23267,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.044931,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 16642,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.035844,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16000,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.042395,
+            "cpu_seconds": 0.16,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 15611,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.046426,
+            "cpu_seconds": 0.21,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-09/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.3310225303292894,
+            "static_mae": 0.0504046757788385,
+            "validation_loss": 0.434095530098674
+          },
+          "B0.1": {
+            "rank_accuracy": 0.4731369150779896,
+            "static_mae": 0.05879499320862501,
+            "validation_loss": 0.4385429550096689
+          },
+          "B0.3": {
+            "rank_accuracy": 0.4826689774696707,
+            "static_mae": 0.06158256679724875,
+            "validation_loss": 0.43996734562921586
+          },
+          "B1.0": {
+            "rank_accuracy": 0.49740034662045063,
+            "static_mae": 0.06345646665649438,
+            "validation_loss": 0.4409207449235606
+          }
+        }
+      }
+    },
+    {
+      "interval": 10,
+      "accepted_pairs": 26353,
+      "excluded_pairs": 0,
+      "extraction": {
+        "B0.1": {
+          "records": 87414,
+          "nodes": 442145,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.656691,
+          "cpu_seconds": 3.54,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B0.1/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B0.1/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B0.1.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B0.3": {
+          "records": 87414,
+          "nodes": 418543,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.637797,
+          "cpu_seconds": 3.41,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B0.3/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B0.3/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B0.3.bin",
+            "--jobs",
+            "16"
+          ]
+        },
+        "B1.0": {
+          "records": 87414,
+          "nodes": 405476,
+          "kinds": {
+            "static": 87178,
+            "max_ply": 0,
+            "mate": 236
+          },
+          "elapsed_seconds": 0.676573,
+          "cpu_seconds": 3.43,
+          "command": [
+            "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+            "--input",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-train.bin",
+            "--output",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B1.0/leaves.bin",
+            "--info",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B1.0/leaves.jsonl",
+            "--weights",
+            "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/B1.0.bin",
+            "--jobs",
+            "16"
+          ]
+        }
+      },
+      "models": {
+        "C": {
+          "train_loss": 0.4166257699782198,
+          "removal_loss": 2.6914120260253703e-09,
+          "total_loss": 0.416628461390246,
+          "rank_loss": 0.0,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "1269b12c6c3332387a5b77f21f7018d2a3a34afbd095f748bf018cdac69dd532",
+          "pair_batch_sha256": null,
+          "rank_accuracy": 0.3327556325823224,
+          "static_mae": 0.05020546269848129,
+          "validation_loss": 0.43394985837675004
+        },
+        "B0.1": {
+          "train_loss": 0.42118514744056895,
+          "removal_loss": 6.393390788329694e-09,
+          "total_loss": 0.5065507568005772,
+          "rank_loss": 0.8535921461880207,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "1269b12c6c3332387a5b77f21f7018d2a3a34afbd095f748bf018cdac69dd532",
+          "pair_batch_sha256": "9000f97fcc1a70066bf689c8589ed416f359d3643e3ce7ee4ea4750f4f974d68",
+          "rank_accuracy": 0.47920277296360486,
+          "static_mae": 0.0590720799171328,
+          "validation_loss": 0.43863711407799627
+        },
+        "B0.3": {
+          "train_loss": 0.4228122092106126,
+          "removal_loss": 2.0971227076949495e-08,
+          "total_loss": 0.6733345827104474,
+          "rank_loss": 0.8350046400658109,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "1269b12c6c3332387a5b77f21f7018d2a3a34afbd095f748bf018cdac69dd532",
+          "pair_batch_sha256": "9000f97fcc1a70066bf689c8589ed416f359d3643e3ce7ee4ea4750f4f974d68",
+          "rank_accuracy": 0.49220103986135183,
+          "static_mae": 0.062222142059259196,
+          "validation_loss": 0.44026638989353495
+        },
+        "B1.0": {
+          "train_loss": 0.42379943069747905,
+          "removal_loss": 8.709846470967483e-08,
+          "total_loss": 1.2519279141747832,
+          "rank_loss": 0.8280413850125942,
+          "updates": 352,
+          "quiet_draws": 5767168,
+          "quiet_batch_sha256": "1269b12c6c3332387a5b77f21f7018d2a3a34afbd095f748bf018cdac69dd532",
+          "pair_batch_sha256": "9000f97fcc1a70066bf689c8589ed416f359d3643e3ce7ee4ea4750f4f974d68",
+          "rank_accuracy": 0.5051993067590987,
+          "static_mae": 0.0642606920497263,
+          "validation_loss": 0.4412475456848196
+        }
+      },
+      "validation": {
+        "accepted_pairs": 1154,
+        "excluded_pairs": 0,
+        "extraction": {
+          "C": {
+            "records": 3827,
+            "nodes": 23394,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.045061,
+            "cpu_seconds": 0.2,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/C/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/C/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/C.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.1": {
+            "records": 3827,
+            "nodes": 16798,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.036239,
+            "cpu_seconds": 0.17,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.1/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.1/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.1.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B0.3": {
+            "records": 3827,
+            "nodes": 16235,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.038716,
+            "cpu_seconds": 0.18,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.3/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.3/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.3.bin",
+              "--jobs",
+              "16"
+            ]
+          },
+          "B1.0": {
+            "records": 3827,
+            "nodes": 16281,
+            "kinds": {
+              "static": 3819,
+              "max_ply": 0,
+              "mate": 8
+            },
+            "elapsed_seconds": 0.040238,
+            "cpu_seconds": 0.19,
+            "command": [
+              "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+              "--input",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+              "--output",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B1.0/leaves.bin",
+              "--info",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B1.0/leaves.jsonl",
+              "--weights",
+              "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B1.0.bin",
+              "--jobs",
+              "16"
+            ]
+          }
+        },
+        "models": {
+          "C": {
+            "rank_accuracy": 0.3327556325823224,
+            "static_mae": 0.05020546269848129,
+            "validation_loss": 0.43394985837675004
+          },
+          "B0.1": {
+            "rank_accuracy": 0.47920277296360486,
+            "static_mae": 0.0590720799171328,
+            "validation_loss": 0.43863711407799627
+          },
+          "B0.3": {
+            "rank_accuracy": 0.49220103986135183,
+            "static_mae": 0.062222142059259196,
+            "validation_loss": 0.44026638989353495
+          },
+          "B1.0": {
+            "rank_accuracy": 0.5051993067590987,
+            "static_mae": 0.0642606920497263,
+            "validation_loss": 0.4412475456848196
+          }
+        }
+      }
+    }
+  ],
+  "final_validation": {
+    "accepted_pairs": 1154,
+    "excluded_pairs": 0,
+    "extraction": {
+      "C": {
+        "records": 3827,
+        "nodes": 23394,
+        "kinds": {
+          "static": 3819,
+          "max_ply": 0,
+          "mate": 8
+        },
+        "elapsed_seconds": 0.045061,
+        "cpu_seconds": 0.2,
+        "command": [
+          "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+          "--input",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+          "--output",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/C/leaves.bin",
+          "--info",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/C/leaves.jsonl",
+          "--weights",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/C.bin",
+          "--jobs",
+          "16"
+        ]
+      },
+      "B0.1": {
+        "records": 3827,
+        "nodes": 16798,
+        "kinds": {
+          "static": 3819,
+          "max_ply": 0,
+          "mate": 8
+        },
+        "elapsed_seconds": 0.036239,
+        "cpu_seconds": 0.17,
+        "command": [
+          "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+          "--input",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+          "--output",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.1/leaves.bin",
+          "--info",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.1/leaves.jsonl",
+          "--weights",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.1.bin",
+          "--jobs",
+          "16"
+        ]
+      },
+      "B0.3": {
+        "records": 3827,
+        "nodes": 16235,
+        "kinds": {
+          "static": 3819,
+          "max_ply": 0,
+          "mate": 8
+        },
+        "elapsed_seconds": 0.038716,
+        "cpu_seconds": 0.18,
+        "command": [
+          "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+          "--input",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+          "--output",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.3/leaves.bin",
+          "--info",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.3/leaves.jsonl",
+          "--weights",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B0.3.bin",
+          "--jobs",
+          "16"
+        ]
+      },
+      "B1.0": {
+        "records": 3827,
+        "nodes": 16281,
+        "kinds": {
+          "static": 3819,
+          "max_ply": 0,
+          "mate": 8
+        },
+        "elapsed_seconds": 0.040238,
+        "cpu_seconds": 0.19,
+        "command": [
+          "/home/stepney141/board-games/minase/data/rank-loss-training/bin/qsearch_leaf-f060e35",
+          "--input",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/children-validation.bin",
+          "--output",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B1.0/leaves.bin",
+          "--info",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B1.0/leaves.jsonl",
+          "--weights",
+          "/home/stepney141/board-games/minase/data/rank-loss-training/phase3/training/interval-10/validation/B1.0.bin",
+          "--jobs",
+          "16"
+        ]
+      }
+    },
+    "models": {
+      "C": {
+        "rank_accuracy": 0.3327556325823224,
+        "static_mae": 0.05020546269848129,
+        "validation_loss": 0.43394985837675004
+      },
+      "B0.1": {
+        "rank_accuracy": 0.47920277296360486,
+        "static_mae": 0.0590720799171328,
+        "validation_loss": 0.43863711407799627
+      },
+      "B0.3": {
+        "rank_accuracy": 0.49220103986135183,
+        "static_mae": 0.062222142059259196,
+        "validation_loss": 0.44026638989353495
+      },
+      "B1.0": {
+        "rank_accuracy": 0.5051993067590987,
+        "static_mae": 0.0642606920497263,
+        "validation_loss": 0.4412475456848196
+      }
+    }
+  },
+  "selection": {
+    "status": "\u898b\u9001\u308a",
+    "model": null,
+    "beta": null,
+    "eligible": []
+  },
+  "quantization": {
+    "C": {
+      "samples": 10000,
+      "mean_absolute_cp": 0.5101535757303238,
+      "max_cp": 1.6148681640625
+    },
+    "B0.1": {
+      "samples": 10000,
+      "mean_absolute_cp": 0.5001025810837746,
+      "max_cp": 1.6607666015625
+    },
+    "B0.3": {
+      "samples": 10000,
+      "mean_absolute_cp": 0.5017523673921823,
+      "max_cp": 1.61944580078125
+    },
+    "B1.0": {
+      "samples": 10000,
+      "mean_absolute_cp": 0.5092911754608155,
+      "max_cp": 1.9802703857421875
+    }
+  }
+}
