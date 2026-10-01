@@ -1,0 +1,68 @@
+{
+  "batches": [
+    {
+      "batch": 1,
+      "counts": {
+        "games": 1024,
+        "discarded": 40,
+        "no_records": 3,
+        "roots": 981,
+        "comparable": 968,
+        "stable": 853,
+        "large_error": 43,
+        "S": 19,
+        "H": 12,
+        "P": 12,
+        "resolved": 18,
+        "unresolved": 25,
+        "root_time_cap": 0,
+        "batch_time_cap": 0
+      },
+      "complete": true,
+      "incomplete": false
+    },
+    {
+      "batch": 2,
+      "counts": {
+        "games": 1024,
+        "discarded": 29,
+        "no_records": 2,
+        "roots": 993,
+        "comparable": 976,
+        "stable": 870,
+        "large_error": 49,
+        "S": 32,
+        "H": 13,
+        "P": 4,
+        "resolved": 12,
+        "unresolved": 37,
+        "root_time_cap": 3,
+        "batch_time_cap": 0
+      },
+      "complete": true,
+      "incomplete": false
+    }
+  ],
+  "total": {
+    "games": 2048,
+    "discarded": 69,
+    "no_records": 5,
+    "roots": 1974,
+    "comparable": 1944,
+    "stable": 1723,
+    "large_error": 92,
+    "S": 51,
+    "H": 25,
+    "P": 16,
+    "resolved": 30,
+    "unresolved": 62,
+    "root_time_cap": 3,
+    "batch_time_cap": 0
+  },
+  "N": 62,
+  "stop": true,
+  "stop_reasons": [
+    "N>=30"
+  ],
+  "incomplete": false
+}
