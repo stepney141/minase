@@ -1,0 +1,11 @@
+{
+  "python": "3.14.7",
+  "node": "v25.8.2",
+  "git": "git version 2.55.0",
+  "pygments": "2.21.0",
+  "tree_sitter_wasm_package": "0.3.1",
+  "grammar_pin": "tools/tree-sitter/sha256.json",
+  "JPlag": "6.2.0 download failed; not installed",
+  "Dolos": "package lookup failed; not installed",
+  "java": "openjdk version \"27\" 2026-09-15"
+}

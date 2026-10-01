@@ -1,0 +1,36 @@
+commit	date	file	blob	on_master_a05478a	note
+5a1c7bb	2026-09-26	nets/pst.bin	fde4bca8b59506d8bc29b8aaab7af29b94a9ee2f	no	feat(eval): search-aware PST candidate A (weights only)
+89c2737	2026-09-26	nets/pst.bin	3afa8921444844d522521a9c0da4e60b76d81548	no	feat(eval): search-aware PST candidate B (weights only)
+16a2257	2026-09-26	nets/pst.bin	79e9f3ec250631a27be4419f54dbaa1f55402a44	no	feat(eval): retrain the PST with the lambda=1.0 lookahead teacher
+a7e32a8	2026-09-22	nets/pst.bin	0ed0d32a2624e1eb98345fa0e273da6b7f930e49	yes	Retrain the PST on the lookahead teacher (candidate for the lookahead teacher SPRT)
+b3027b5	2026-09-22	nets/pst.bin	40089169149c5edf9068e952bc4494531265c768	no	Pin the teacher tools to the stage-start PST with zero extra-feature weights
+ad15b4f	2026-09-22	nets/pst.bin	8bb2f846705c274011f8e0fe6275dfb53dec6d27	yes	Start stage 9: king shelter term, extra-feature plumbing, and the rebuilt plan
+ba5f792	2026-09-21	nets/pst.bin	8bb2f846705c274011f8e0fe6275dfb53dec6d27	no	Embed the learned king shelter weights
+001b551	2026-09-21	nets/pst.bin	40089169149c5edf9068e952bc4494531265c768	no	Reduce the candidate to the king shelter and open-file term
+cf8f6b1	2026-09-21	nets/pst.bin	689932a511e665d3bd9d473b208438eb91ba67f8	no	Integrate the king-safety features into the evaluation for cost diagnosis
+240fbfd	2026-09-14	nets/pst.bin	9abd67bb9360a1fde54cfc73c7451d605a4c340b	yes	Train generation-two weights with the absolute removal penalty
+960c56b	2026-09-12	nets/pst.bin	c06f6a8c7d35afc544f0c59a8b1294f9065db945	yes	eval: add stage 7 mirrored PST candidate
+4629871	2026-09-09	nets/pst.bin	095d0c4fd8c3d5d85244b9d30d69a0f0236cc3f2	no	Test quarter-strength FM correction against original model
+ffeedb3	2026-09-09	nets/pst.bin	0d5136f7fcc8827f2df96b10a77d45cb5fedc49f	no	eval: embed the FM candidate with residual regularization 1e-4
+b88379f	2026-09-09	nets/pst.bin	2e24d3e98369058b928191ae5594439e4e3d74cf	no	eval: embed the rank-32 FM candidate chosen by the validation-loss rule
+e760119	2026-09-09	nets/pst.bin	15948c891f8406f6069c303bd4a744a18e3a3c2a	no	eval: add the Factorization Machine correction (learner, MNPT v3, integer evaluation)
+77fe8c0	2026-09-07	nets/pst.bin	ddf382761abba647ff7d751158fc7316d83f0ce2	yes	eval: embed the tapered PST learned on the generation 0 and 1 data
+b687022	2026-09-07	nets/pst.bin	c4b60fecee99deaa9e9a265b46b38ec2f99e6edd	yes	eval: interpolate two PST endpoints by board piece count (MNPT version 2)
+af200b4	2026-08-28	nets/pst.bin	1e8a6a3dc72dc8a312a21bc59e0dcfd483170490	yes	学習PSTを世代0と世代1の1,106万局面で再学習した重みに置き換える
+588363a	2026-08-26	nets/pst.bin	db349cdc9f48e18c515cdc0bc2e0b0dd0819b5ec	yes	学習PST（段階1）を実装し、探索の評価関数を自己対局データから学習した重みに置き換える
+e80cbf4	2026-09-23	nets/pst-init.bin	48805c0d3b1e917c06be10c02b8d5ae3ff86732b	yes	Remove the skipped item 1 evaluation code and the extra-feature training path
+ad15b4f	2026-09-22	nets/pst-init.bin	ce724ec7677959d9bd5f44ad51894dfbf9ba9de1	yes	Start stage 9: king shelter term, extra-feature plumbing, and the rebuilt plan
+001b551	2026-09-21	nets/pst-init.bin	ce724ec7677959d9bd5f44ad51894dfbf9ba9de1	no	Reduce the candidate to the king shelter and open-file term
+cf8f6b1	2026-09-21	nets/pst-init.bin	ce0823d7ff6ac6abebf96fe4ad56ba4fe7ae7707	no	Integrate the king-safety features into the evaluation for cost diagnosis
+b88379f	2026-09-09	nets/pst-init.bin	a36e6de8cfdbdb5bf2ea2a44c986340033e3e44e	no	eval: embed the rank-32 FM candidate chosen by the validation-loss rule
+e760119	2026-09-09	nets/pst-init.bin	1ec85824919b5533c53597bfd0f49749258a61b2	no	eval: add the Factorization Machine correction (learner, MNPT v3, integer evaluation)
+b687022	2026-09-07	nets/pst-init.bin	48805c0d3b1e917c06be10c02b8d5ae3ff86732b	yes	eval: interpolate two PST endpoints by board piece count (MNPT version 2)
+588363a	2026-08-26	nets/pst-init.bin	128d99e9fdf1c82e2c6d5ebe92be05cf517deebe	yes	学習PST（段階1）を実装し、探索の評価関数を自己対局データから学習した重みに置き換える
+e0b8314	2026-08-28	nets/nnue.bin	70c8e61bc2bcb7f8e057d2ab16eaf9799744252a	no	世代1の1,106万局面で学習した残差線形項つきNNUEを埋め込む
+d67dc92	2026-08-27	nets/nnue.bin	23e997aa4301b66920d4f676036e450f1eeab4a9	no	NNUE（残差線形項つきP型）を設計監査後のAPIへ適合させて復元し、学習器をストリーミング化する
+510fcde	2026-08-26	nets/nnue.bin	66b990d24a1e9b0364fa95d6425ee35a9f70d4a5	no	NNUEに学習PSTで初期化する残差線形項を加える（次期マイルストーンの起点、masterには含めない）
+9dd535f	2026-08-26	nets/nnue.bin	deleted	yes	探索の評価関数を学習PSTへ戻し、NNUEの実装をツリーから外す
+05362b1	2026-08-26	nets/nnue.bin	8cd7d915337ccc8d2735ba19b935e102efeb1773	yes	P型NNUEの整数推論と差分更新を実装し、世代0データで学習したネットを評価関数にする
+e80cbf4	2026-09-23	nets/pst.bin	9abd67bb9360a1fde54cfc73c7451d605a4c340b	yes	reverted stage-9 shelter weights to 240fbfd blob (log simplification hides it)
+e80cbf4	2026-09-23	nets/pst-init.bin	48805c0d3b1e917c06be10c02b8d5ae3ff86732b	yes	reverted to b687022 blob
+4f946d4	2026-09-23	nets/pst.bin	0ed0d32a2624e1eb98345fa0e273da6b7f930e49	yes	merge bringing a7e32a8 into master; equals HEAD

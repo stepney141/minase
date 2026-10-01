@@ -1,0 +1,38 @@
+H = ["id", "区分", "文書:行", "再現量", "形態", "出典リポジトリ", "版", "出典ファイル:行", "出典ライセンス", "出所明示(文書側)", "ライセンス明示", "明瞭区別", "主従(文書全体に対する比)", "必然性・用途", "備考"]
+R = [
+    ["A1", "コード", "docs/research/forward-pruning-prior-art.md:24-31", "6行", "逐語（改行位置のみ変更、閉じ括弧省略）", "official-stockfish/Stockfish", "17a6c8f1（2026-09-19）", "src/search.cpp:1654-1660", "GPL-3.0-or-later", "リポジトリ名＋コミット（16行）＋ファイル＋行。URLなし", "なし", "cpp囲みブロック、直前に出典行", "文書88行中、囲みコード計12行＋インライン式約9か所", "correction historyの更新条件を段階8設計と比較する論拠", "行番号は正確"],
+    ["A2", "コード", "docs/research/forward-pruning-prior-art.md:46-49", "2行", "逐語", "official-stockfish/Stockfish", "17a6c8f1", "src/search.cpp:876-877", "GPL-3.0-or-later", "同上", "なし", "cpp囲みブロック", "同上", "improvingの定義の提示", ""],
+    ["A3", "コード", "docs/research/forward-pruning-prior-art.md:68-73", "4行", "逐語", "official-stockfish/Stockfish", "17a6c8f1", "src/search.cpp:1216-1219", "GPL-3.0-or-later", "ファイル名のみ。本文は「1190行」「1199行」を示し、実際の該当行1216-1219と一致しない", "なし", "cpp囲みブロック", "同上", "SEE pruningの余裕値の比較", "出所の行番号が不正確"],
+    ["A4", "コード（インライン式）", "docs/research/forward-pruning-prior-art.md:51,56,57,58,60,66,75,76,81,82", "各1式（計約9式）", "一部逐語（51,66）、他は×記号などへ書き換えた式", "Stockfish／YaneuraOu", "17a6c8f1／1308ab3", "search.cpp:843,1016-1021,1029,1081-1087,1190,1193,1205-1211,1228,1252／yaneuraou-search.cpp:3631,3653", "GPL-3.0-or-later／GPL-3.0-only", "行番号あり、URLなし", "なし", "インラインコード表記", "同上", "定数と条件の比較", "式単位の短い再現"],
+    ["A5", "コード出力（文字列）", "docs/research/protocols/hachu.md:21-33", "11行", "エンジン出力（printf文字列）の逐語", "ddugovic/hachu（HaChuのフォーク）", "649ef114", "hachu.c:1253-1267", "CC0-1.0（フォークのLICENSE、4f8b975で追加）。原作者版はパブリックドメイン", "コミット＋ファイル＋行、参考文献にURL", "なし", "text囲みブロック", "文書202行中11行", "protover応答の仕様との照合", "ライセンス上の制約は実質なし"],
+    ["A6", "コード", "docs/research/protocols/hachu.md:142（行内）", "1行", "逐語", "ddugovic/hachu", "649ef114", "hachu.c:741", "CC0-1.0／PD", "同上", "なし", "インラインコード", "同上", "獅子捕獲禁止則の判定式", ""],
+    ["A7", "データ文字列", "docs/research/protocols/cecp.md:119-122", "2行", "逐語（1行を2行に分割）", "ddugovic/hachu", "649ef114", "内蔵FEN（hachu.c／variant.c）", "CC0-1.0／PD", "［C6］＋URL", "なし", "text囲みブロック", "文書226行中2行", "初期局面の実例", "初期配置の事実表記で、創作性は乏しい"],
+    ["A8", "仕様文", "docs/research/protocols/cecp.md:140-151", "10行", "逐語", "GNU XBoard文書 engine-intf.html（Tim Mann, H. G. Muller）", "2026-09-28取得版（文書の参照日2026-08-10）", "engine-intf.html:1618-1636", "© FSF、CC BY-ND 4.0（ページ末尾の表示）", "［C1］＋URL", "なし", "text囲みブロック", "文書226行中10行", "option featureの構文定義", "プロトコル構文の列挙"],
+    ["A9", "コード", "docs/research/protocols/usi-lishogi.md:81-83", "1行", "逐語（正規表現本体）", "WandererXII/shogiops", "e295794f", "src/util.ts:105 usiMoveRegex", "GPL-3.0-only", "［S1］＋ファイル＋識別子、参考文献にURL＋コミット", "なし", "text囲みブロック", "文書251行中1行", "USI指し手構文の典拠", ""],
+    ["A10", "データ文字列", "docs/research/protocols/usi-lishogi.md:128-130", "1行", "逐語", "shogiops／scalashogi", "e295794f／9a1c2c3a", "src/sfen.ts initialSfen／Chushogi.scala initialSfen", "GPL-3.0-only／MIT", "識別子＋URL＋コミット", "なし", "text囲みブロック", "同上", "初期局面SFEN", "事実表記"],
+    ["A11", "コード", "docs/research/search-repetition-prior-art.md:100（行内）", "1文（原文2行）", "逐語（2行を1行に連結）", "yaneurao/YaneuraOu", "1308ab3", "source/position.cpp:2852-2853", "GPL-3.0-only", "コミット＋ファイル＋行範囲（2834-2909）。URLなし", "なし", "インラインコード", "文書195行中、逐語コードは短式3か所（57,100,107行）", "反復判定の方式比較", ""],
+    ["A12", "コード（短式）", "docs/research/node-count-definition.md:54", "1式", "逐語", "Stockfish／YaneuraOu", "sf_16／v6.00", "Position::do_move内", "GPL-3.0", "タグ名、末尾にURL（master）", "なし", "インラインコード", "文書110行中1式", "ノード数の数え方の比較", "単一の短い式で対象外に近い"],
+    ["B1", "文（翻訳）", "docs/research/search-repetition-prior-art.md:57", "1文", "英文コメントの和訳", "official-stockfish/Stockfish", "17a6c8f1", "src/position.cpp:1504-1505", "GPL-3.0-or-later", "ファイル＋行（1504-1506）。URLなし", "なし", "「」で区別", "短文", "判定式の意図の説明", ""],
+    ["B2", "文（翻訳）", "docs/research/search-repetition-prior-art.md:65,70", "各1句", "英文コメントの和訳", "official-stockfish/Stockfish", "17a6c8f1", "src/search.cpp:137, 905", "GPL-3.0-or-later", "ファイル＋行。URLなし", "なし", "「」で区別", "短文", "", ""],
+    ["B3", "文（翻訳）", "docs/research/search-repetition-prior-art.md:88", "2文", "英文の和訳", "Chessprogramming Wiki「Repetitions」", "2026-09-28取得", "Repetitions項", "CC BY-SA 3.0", "項目名のみ。URLなし", "なし", "「」で区別", "短文", "反復の標準方式の典拠", ""],
+    ["B4", "文", "docs/research/search-repetition-prior-art.md:104,105,109,110", "短句5つ", "日本語原文の逐語（一部を「…」で省略）", "yaneurao/YaneuraOu", "コミットメッセージ7d152dfe、1c328b65、61efd45f／1308ab3", "config.h:315、yaneuraou-search.cpp:2760", "GPL-3.0-only（コード部分。コミットメッセージへの適用は別途判断）", "コミットハッシュ＋日付＋ファイル＋行。URLなし", "なし", "「」で区別", "短文", "作者の実測の典拠", ""],
+    ["B5", "文", "docs/research/search-repetition-prior-art.md:115", "1句", "日本語コメントの逐語", "HiraokaTakuya/apery", "d14471f", "src/position.cpp:1836-1872", "GPL-3.0-or-later", "ファイル＋行、版は表（22行）。URLなし", "なし", "「」で区別", "短文", "", ""],
+    ["B6", "文（翻訳）", "docs/research/search-repetition-prior-art.md:158", "1文", "中国語仕様の和訳", "UCCIプロトコル仕様", "未特定", "未特定", "未確認", "仕様名のみ", "なし", "「」で区別", "短文", "", "ローカル複製なし、原文未照合"],
+    ["B7", "文", "docs/research/protocols/usi-lishogi.md:13", "1文", "英文の逐語", "Tord Romstad「The Universal Shogi Interface」（hgm.nubati.net掲載版）", "取得日2026-08-10", "usi.html", "ページにライセンス表示なし（2026-09-28確認）", "［U1］＋URL", "なし", "「」で区別", "短文", "仕様の出自の説明", ""],
+    ["B8", "文", "docs/research/protocols/usi-lishogi.md:136（行内）", "1コメント行", "英文コメントの逐語", "WandererXII/shogiops", "e295794f", "src/position/rules/chushogi.ts:156", "GPL-3.0-only", "ファイル＋関数名、参考文献にURL＋コミット", "なし", "「」で区別", "短文", "L2相当の例外の典拠", ""],
+    ["B9", "文", "docs/research/time-management-byoyomi-survey.md:39,42", "3句", "日本語コメントの引用（語尾を省略・調整）", "yaneurao/YaneuraOu", "版の記載なし（URLはmaster）", "source/timeman.cpp:199付近（1308ab3で照合）", "GPL-3.0-only", "ファイル＋URL（master）。コミットなし", "なし", "「」で区別", "文書97行中、短句のみ", "時間配分の先例", ""],
+    ["B10", "文（翻訳）", "docs/research/time-management-byoyomi-survey.md:79-80", "2文", "英文コメントの和訳", "lightvector/KataGo", "版の記載なし（URLはmaster）", "cpp/search/timecontrols.cpp:236付近", "MIT（corpus manifest）", "関数名＋URL（master）", "なし", "「」で区別", "短文", "秒読み配分の理論の典拠", ""],
+    ["B11", "文（翻訳）", "docs/research/spsa-acceleration-methods.md:115", "2文", "英文の和訳", "official-stockfish/fishtest issue #535（vdberghの投稿、2020-05-13）", "—", "issuecomment-627790030", "リポジトリはライセンス表示なし（manifest: none）。投稿はリポジトリのライセンスの対象外", "投稿者、日付、URL", "なし", "「」で区別", "文書203行中2行", "モーメンタム不採用の論拠", ""],
+    ["B12", "文", "docs/research/protocols/hachu.md:9,52,146／RULES.md:431", "短句6つ", "英文の逐語（コミット件名、エラー文字列、man pageの句）とREADME.podの和訳", "ddugovic/hachu／HaChu man page", "649ef114", "move.c:151-153、README.pod:50-51、hachu.pod", "CC0-1.0／PD", "ファイル＋行またはman page", "なし", "「」または“”で区別", "短文", "", ""],
+    ["B13", "文", "docs/plans/relative-pair-eval.md:464", "1句", "日本語の逐語", "Apery作者のブログ（2014-12-07）", "—", "—", "未確認", "日付のみ。URLなし", "なし", "「」で区別", "短文", "", "原文未照合"],
+    ["C1", "境界例", "docs/plans/strength-stage4.md:155", "1式", "minase独自の表記による式", "（Stockfish型のnull move減深式に類似）", "—", "—", "—", "—", "—", "インラインコード", "—", "不採用案の記録", "再現ではなく設計式として記録"],
+    ["C2", "境界例", "docs/plans/strength-stage8.md:86", "1式", "minase独自の設計式", "（correction historyの更新式に類似）", "—", "—", "—", "—", "—", "インラインコード", "—", "", "再現ではない"],
+    ["C3", "範囲外の指摘", "docs/measurements/magic-bitboard-prototype/diagonal.patch（tools/generate_diagonal_magics.rs）", "関数1つ", "minase自身へのパッチ", "—", "—", "—", "—", "—", "—", "—", "—", "", "xorshift64*（乗数0x2545F4914F6CDD1D）とrand&rand&randによるmagic探索。Stockfishと共通の定型であり、M3／M5で対照すべき"],
+    ["C4", "除外", "RULES.md（［J1］［J2］［J3］の短い引用）", "短句数か所", "規則文書の逐語", "日本中将棋連盟ほか", "—", "—", "—", "典拠番号", "—", "「」", "—", "", "実装ではないためM6の対象外"],
+]
+with open("quotes.tsv", "w", encoding="utf-8") as f:
+    f.write("\t".join(H) + "\n")
+    for r in R:
+        assert len(r) == len(H), r[0]
+        f.write("\t".join(r) + "\n")
+print(len(R))

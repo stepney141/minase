@@ -1,0 +1,16 @@
+{
+  "LICENSE": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+  "package.json": "3773c325392fbd572180c856039b6c75c31c71b6110f277d6c1ae9ede157c05d",
+  "tree-sitter-bash.wasm": "8292919c88a0f7d3fb31d0cd0253ca5a9531bc1ede82b0537f2c63dd8abe6a7a",
+  "tree-sitter-c.wasm": "c852c2a85ebf2beb636aa3b0ef7f7e70458684d74f6741b20dcb296885bed9f9",
+  "tree-sitter-c_sharp.wasm": "6f69e1cae44e1c32c1eccc170dc5a9778fb94ff716f71113fe1f8c4299aa2f40",
+  "tree-sitter-cpp.wasm": "174eb0deb75b2ec7881bcacda9f995648d8e683956e5c2267e69ab6dc503fcbf",
+  "tree-sitter-java.wasm": "4fdeac4ca6ca089f06c6f7e562abcac1733cd465728cc7031ebb73c2019122c4",
+  "tree-sitter-javascript.wasm": "5fb488d0cabb4775a594bab85682de5ad6ce83c0d6ac997a9f82dd084d571240",
+  "tree-sitter-python.wasm": "16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47",
+  "tree-sitter-rust.wasm": "f65f354215611fd94ad34134b3427eb3d58cbb745df7b6509ba722184db73d57",
+  "tree-sitter-scala.wasm": "b7ec2bb29c19827abcefd18ed5cb5a43596009f96a5d53c5b9d1f9676d7521c3",
+  "tree-sitter-typescript.wasm": "778025db5a8be0e70f8ccc3671e486dfeddd048c25d9e8a70c26de2e1bf6f97d",
+  "tree-sitter.js": "874f4a37c4beddef04d8eb9a8dbd28a65b63111f2d2123a38fd3f5333ee046dd",
+  "tree-sitter.wasm": "3a31af706ffdf4a7116b064cdd4988df6791823298615009fc5b6bccbd42909b"
+}

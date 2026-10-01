@@ -1,0 +1,22 @@
+{
+  "M1": {
+    "rows": 1006656,
+    "candidates": 820797,
+    "flagged_false_positive_rows": 105794
+  },
+  "M2": {
+    "rows": 492346,
+    "candidates": 492346,
+    "flagged_false_positive_rows": 249505
+  },
+  "M3": {
+    "rows": 199405,
+    "candidates": 199405,
+    "flagged_false_positive_rows": 188112
+  },
+  "M4": {
+    "rows": 5034236,
+    "candidates": 5034236,
+    "flagged_false_positive_rows": 3166259
+  }
+}

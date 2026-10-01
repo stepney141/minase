@@ -1,0 +1,14 @@
+........F
+======================================================================
+FAIL: test_winnowing_boundaries_and_locality (test_checks.SpecTests.test_winnowing_boundaries_and_locality)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<work-dir>/test_checks.py", line 31, in test_winnowing_boundaries_and_locality
+    copied=[str(i) for i in range(threshold)];self.assertTrue(local_matches(['prefix']+copied+['suffix'],['other']+copied+['end'],threshold));self.assertFalse(local_matches(copied[:-1],copied[:-1],threshold))
+                                              ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: [] is not true
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.003s
+
+FAILED (failures=1)

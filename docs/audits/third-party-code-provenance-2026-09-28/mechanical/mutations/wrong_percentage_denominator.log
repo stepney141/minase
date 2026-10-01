@@ -1,0 +1,25 @@
+.......F.
+======================================================================
+FAIL: test_units (test_checks.SpecTests.test_units)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<work-dir>/test_checks.py", line 20, in test_units
+    self.assertEqual(unit_value(Q(250),'百分率'),(Q(5,2),'ratio'))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: (Fraction(1, 4), 'ratio') != (Fraction(5, 2), 'ratio')
+
+First differing element 0:
+Fraction(1, 4)
+Fraction(5, 2)
+
+- (Fraction(1, 4), 'ratio')
+?           ^  ^
+
++ (Fraction(5, 2), 'ratio')
+?           ^  ^
+
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.004s
+
+FAILED (failures=1)

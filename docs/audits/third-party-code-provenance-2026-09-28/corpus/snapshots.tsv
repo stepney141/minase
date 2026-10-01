@@ -1,0 +1,20 @@
+repo	snapshot_dir	path	sha256
+official-stockfish/Stockfish (file snapshot)	<corpus-dir>/snapshots/stockfish-files	nnue_accumulator.cpp	5f7928ccdd5ba0ef393f833209fd0c06843ea49a567d8dcc6c137a7713f03a80
+official-stockfish/Stockfish (file snapshot)	<corpus-dir>/snapshots/stockfish-files	nnue_architecture.h	00870050cb0c7c8862b76ed0ee65da2fd0118343432bcebbdb896f885283bc8e
+official-stockfish/Stockfish (file snapshot)	<corpus-dir>/snapshots/stockfish-files	position.cpp	9761cba4d15e763141bcf0c45316e0926264df3f2b20ec2bcccdd88125a66324
+official-stockfish/Stockfish (file snapshot)	<corpus-dir>/snapshots/stockfish-files	position.h	3fddd346a1289b7e8879b76f9c6d694cb0000c0047ac142564c0255c37edc7a1
+yaneurao/YaneuraOu (file snapshot)	<corpus-dir>/snapshots/yaneuraou-files	half_kpe9.cpp	08b2c63b276040a8c0199e3a77d98700e6512cf61a99f2cf386edc714fe286fa
+yaneurao/YaneuraOu (file snapshot)	<corpus-dir>/snapshots/yaneuraou-files	half_kpe9.h	724f4fae7172eeb32160fa2ad9f23ce880ac0edff242fa20550692ccad91850f
+yaneurao/YaneuraOu (file snapshot)	<corpus-dir>/snapshots/yaneuraou-files	halfkp_256x2-32-32.h	663203051f47ecccbb06c53cd6d16a30a4f8cf43002e91b9052445fac541409d
+yaneurao/YaneuraOu (file snapshot)	<corpus-dir>/snapshots/yaneuraou-files	nnue_architecture.h	ae16cc968ec9cc4b6b29c63ab32fa8d45b5321fe1b5e29e4adbb6bb46a54d459
+yaneurao/YaneuraOu (file snapshot)	<corpus-dir>/snapshots/yaneuraou-files	nnue_feature_transformer.h	4d88ac9f069bcc842113321f9ac300c36ee8295d697fb09cf45ecefa698f12e9
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	Reckless/src/parameters.rs	2755ce085429d821e1f69faeeee384c5bd283b175d58332160afab4d22438a35
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	YaneuraOu-ScriptCollection/SPSA/ParamLib.py	dcaa21dbf226f97dfa2662e4a08acfd6b2bf1005755657ad874dc52c59b7f86c
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	YaneuraOu-ScriptCollection/SPSA/tune.py	c97075500e4a7d2abb29c9447ed97c1e92f11b275bd23d46cae360e9eac7c94c
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	akimbo/src/util.rs	902f41a409b4c874b9fc8f24ff674c1172b45adc77ebb528b504712b8b3d2f0d
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	apeiron/src/bin/spsa.rs	7c7e8968b26b80a8ce5ffc5e26d670055c217bef8aac55ca20e30261f800e5b7
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	fishutils/fishutils.py	a8301b1c2d34f2b794a74bad534587268d9d7e7007282a01b54f776441ef6c68
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	hobbes-chess-engine/src/tools/utils.rs	3e34ab90487421544a6629cae537e44646b3d34d6b5577ad5c5645a7321e87e6
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	viridithas/scripts/tune-resume.sh	d6b329d000ff9611abb6c695c0941d56b11067ea88a1d03e3828bdb30126ec16
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	viridithas/scripts/tune.sh	5a4854d8706f1cad0d291df66458f9286f2770bf86b371e452439d3410066ca1
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	<corpus-dir>/snapshots/spsa-precedents	viridithas/src/search/parameters.rs	d923946ec22e513b63e24e5694cc31a4f22154f0972d0f72b5b7c74b96fa6903

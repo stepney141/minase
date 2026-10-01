@@ -1,0 +1,58 @@
+repo	manifest_license	category	attribution_review	evidence_scope
+official-stockfish/Stockfish	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+official-stockfish/Stockfish (research clone)	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+yaneurao/YaneuraOu	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+AndyGrant/Ethereal	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+official-stockfish/fishtest	none	none	許諾を確認できない。帰属表示だけで利用条件が満たされるとは判断しない。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+codedeliveryservice/Reckless	AGPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+cosmobobak/viridithas	AGPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+fairy-stockfish/Fairy-Stockfish	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+yaneurao/YaneuraOu-ScriptCollection	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+LeelaChessZero/lczero-training	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+AndyGrant/OpenBench	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+gab8192/Obsidian	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+vondele/nettest	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+TadaoYamaoka/DeepLearningShogi	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+PGG106/Alexandria	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+peterosterlund2/texel	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+Witek902/Caissa	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+WandererXII/scalashogi	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+official-stockfish/nnue-pytorch	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+Naviary2/apeiron	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+mk-takizawa/elmo_for_learn	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+kelseyde/hobbes-chess-engine	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+jw1912/akimbo	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+ianfab/fishutils	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+vdbergh/spsa_simul	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+TheYoBots/Lishogi-Bot	AGPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+LeelaChessZero/lc0	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+LeelaChessZero/lc0	GNU General Public License v3.0 or later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+jw1912/bullet	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+Yoshie2000/PlentyChess	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+WandererXII/shogiops	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+lightvector/KataGo	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+kiudee/chess-tuning-tools	Apache-2.0	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+HiraokaTakuya/apery	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+deepmind/mctx	Apache-2.0	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+TerjeKir/weiss	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+jhonnold/berserk	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+gikou-official/Gikou	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+lithander/Leorik	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+SH11235/tatara	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+u-tokyo-gps-tanaka-lab/shogilib	Apache-2.0	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+tugajin/cpp_animal_shogi	none	none	許諾を確認できない。帰属表示だけで利用条件が満たされるとは判断しない。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+tugajin/cpp_animal_shogi	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+leela-zero/leela-zero	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+Plaaasma/Claustrophobia	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+cutechess/cutechess	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+HiraokaTakuya/apery_rust	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+SH11235/rshogi	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+SH11235/rshogi	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+niklasf/shakmaty	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+gunyarakun/python-shogi	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+Disservin/fastchess	MIT	permissive	取り込みを認定した場合、著作権表示とライセンス本文の保持条件を原文で確認する。Apache-2.0ではNOTICEと変更表示も確認対象。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+HaChu (salsa.debian.org/debian/hachu)	LicenseRef-public-domain	public-domain	manifestはpublic-domainと記録。ライセンスによる帰属表示条件は記録されていない。由来はHaChuとして保持。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+official-stockfish/Stockfish (file snapshot)	GPL-3.0-or-later	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+yaneurao/YaneuraOu (file snapshot)	GPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	mixed	mixed	出典ごとのライセンスに分けて確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
+mixed SPSA snapshots (akimbo, apeiron, fishutils, hobbes-chess-engine, Reckless, viridithas, YaneuraOu-ScriptCollection)	AGPL-3.0-only	copyleft	取り込みを認定した場合、参照版の著作権表示とライセンス条件を確認する。	manifest.tsv; rshogi-csa exception applied; historical per-file license not independently adjudicated
