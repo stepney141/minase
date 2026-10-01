@@ -1,0 +1,227 @@
+{
+  "radius": 1,
+  "representatives": 22137,
+  "observed": 12892,
+  "minimum_positions": 200,
+  "frozen": 14152,
+  "frozen_fraction": 0.6392916836066315,
+  "at_least_half_frozen": true,
+  "form": "lowrank",
+  "dataset": {
+    "files": [
+      {
+        "path": "/home/stepney141/board-games/minase/data/gen0.bin",
+        "sha256": "9a6f8239819d2767c4351caaa7a3bcd27750df724d6470060ebb35a9bac1f023",
+        "provenance_sha256": "3e58271bf9eaf0b195d340003c87af8cb15bc7a0b965da2134ccabb4ba7843ea",
+        "records": 924415
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/gen1-s100000.bin",
+        "sha256": "2e2b2cacf47f04ce455bb948362034f778646c813e2ef95fc758977ecc287213",
+        "provenance_sha256": "c475b5e410156f106ecf608161d9776663389437133df5028cb13705655517fb",
+        "records": 2033330
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/gen1-s200000.bin",
+        "sha256": "b06ba9c4279290aa10c3722f00edbd9d7ac10cde473bde559c65b6da9d33cd32",
+        "provenance_sha256": "fbb38e39c0d0921cb8a2812ccf35291138aef69eb15b89b24865bcf73fcf1391",
+        "records": 2021485
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/gen1-s300000.bin",
+        "sha256": "9505864e256eebebc12fe70deec230ad4b2e06cc562b98b59898c01f2008e619",
+        "provenance_sha256": "dc9ef9c6e14f5234a292a5e23b67c68349ee907166fc33d05004743ce52b7027",
+        "records": 2035797
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/gen1-s400000.bin",
+        "sha256": "ed306f5f5c97569d895be3eed6134b584d183f18207e2a1a3aebf981f6e88811",
+        "provenance_sha256": "a0bdd8fbee353aa451a62c57707003adfcd72671fe38682f80574651650c2509",
+        "records": 2017014
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/gen1-s500000.bin",
+        "sha256": "af0b58bc9a1043a9c6a795b881e47a94e9a383e424b3a04181e0d828d9905861",
+        "provenance_sha256": "29f2e8476be9a3223bfceadf08f97c0052f864d92abcc67fb75f56b003baf794",
+        "records": 2030770
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/strength-stage7/gen2/generated-600000.bin",
+        "sha256": "2f29579a170462a820c8174f1db348306bd6d586aaa33914cc79ba07d380e4c5",
+        "provenance_sha256": "71fd96ff6a691c47792d59b63b35f9a5c29a3df64debcca911399fd1d41d16c3",
+        "records": 2855537
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/strength-stage7/gen2/generated-700000.bin",
+        "sha256": "a6d737ca4ecc14667c8f61c015ac3388f933dd4f9ccc43110970c67c20db2634",
+        "provenance_sha256": "6bd31738dfa02218dd420d43e96e04e6222872761ee81499eec12173d046b265",
+        "records": 2774271
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/strength-stage7/gen2/generated-800000.bin",
+        "sha256": "927099f80058d5dc8636d9ae3bcb4be02cc5fa693520e527135828a050ac2bdb",
+        "provenance_sha256": "c0ce2f61cb8fe9507f47bb0e0e5fffe2a7de07bc68e04407de32f6362f41387f",
+        "records": 2840035
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/strength-stage7/gen2/generated-900000.bin",
+        "sha256": "13c67d4c7a1c3503cdac315f3db4ba0f801e1e9b20d873f4034e593ec249eca6",
+        "provenance_sha256": "ea046be1ba7056746db85d194ed3c0d21d4bb6db445b93f21037a845bb61ac5f",
+        "records": 2785129
+      },
+      {
+        "path": "/home/stepney141/board-games/minase/data/strength-stage7/gen2/generated-1000000.bin",
+        "sha256": "cf52ea8499292d56c83fb3c5e67857ac9a6cf400c140a7f6308fc61a9546aea5",
+        "provenance_sha256": "ec6edb243e65e72625296755a2a117604b2929686e844e858a3e54f3c4d90bcb",
+        "records": 2802900
+      }
+    ],
+    "training_records": 23879611,
+    "validation_records": 1241072,
+    "training_indices_sha256": "5466b9da97b28f910948769508f3c26ccca0f31d13a42aa43f4de79c1a080b87",
+    "validation_indices_sha256": "06e70439a32acec5a9df8cf8ac4cb5dff56b583587cdd32e49461d48fc04d0ab",
+    "lookahead": {
+      "gamma": 0.9,
+      "plies": 40
+    },
+    "teacher_classes": [
+      {
+        "generation_commit": "6bc33e133861faaa1fd1d55e6c0ec1152e1bed38",
+        "network_checksum": "0000000000000000000000000000000000000000000000000000000000000000",
+        "nodes": 100000,
+        "rule_set": "L0,P0,R1,E0",
+        "search_condition": "in-game",
+        "result_origin": "selfplay",
+        "start_origin": "random",
+        "lookahead_gamma": 0.9,
+        "lookahead_plies": 40,
+        "lambda_override": null,
+        "lambda": 0.75
+      },
+      {
+        "generation_commit": "dd46d1e47952e7137ec054420374279fb48daf8e",
+        "network_checksum": "2d5877d954e58e98dcdde293d389608088a1279278f485e9aa3c31898b7decf2",
+        "nodes": 100000,
+        "rule_set": "L0,P0,R1,E0",
+        "search_condition": "in-game",
+        "result_origin": "selfplay",
+        "start_origin": "random",
+        "lookahead_gamma": 0.9,
+        "lookahead_plies": 40,
+        "lambda_override": null,
+        "lambda": 0.75
+      },
+      {
+        "generation_commit": "960c56bcbb6088d0f0466d670ceea36dffeda5b7",
+        "network_checksum": "3000ae5c53f68742a7dad0ce48aab02dc3c6a8416cbbb8265e9aa0087713dc4a",
+        "nodes": 100000,
+        "rule_set": "L0,P0,R1,E0",
+        "search_condition": "in-game",
+        "result_origin": "selfplay",
+        "start_origin": "random",
+        "lookahead_gamma": 0.9,
+        "lookahead_plies": 40,
+        "lambda_override": null,
+        "lambda": 0.75
+      }
+    ]
+  },
+  "teacher_ks": [
+    768.4523026705419,
+    1068.2095835706539,
+    758.3508759385775
+  ],
+  "base_sha256": "bb5bd642d129dddf3ae912f48ffb82200713ac0f529fe7b698134e20f46d0aec",
+  "k_out": 1072.6529541015625,
+  "seed": 1,
+  "batch": 16384,
+  "learning_rate": 0.001,
+  "optimizer": "Adam",
+  "regularization": 0.0001,
+  "max_epochs": 10,
+  "patience": 2,
+  "device": "cuda",
+  "history": [
+    {
+      "epoch": 0,
+      "validation_bce": 0.47340526785013326,
+      "reference_bce": 0.473405,
+      "reference_delta": 2.67850133239822e-07,
+      "matches_reference_at_6_decimals": true
+    },
+    {
+      "epoch": 1,
+      "training_bce": 0.4665489965957582,
+      "training_regularization": 1.1708918129494767e-08,
+      "training_total": 0.4665490083046763,
+      "validation_bce": 0.4733822324464587
+    },
+    {
+      "epoch": 2,
+      "training_bce": 0.46651570006919374,
+      "training_regularization": 4.780196803345126e-08,
+      "training_total": 0.4665157478711618,
+      "validation_bce": 0.473361662363401
+    },
+    {
+      "epoch": 3,
+      "training_bce": 0.46649441252859325,
+      "training_regularization": 7.265608072751793e-08,
+      "training_total": 0.46649448518467396,
+      "validation_bce": 0.4733385119655453
+    },
+    {
+      "epoch": 4,
+      "training_bce": 0.4664721117581635,
+      "training_regularization": 9.745913704797017e-08,
+      "training_total": 0.46647220921730054,
+      "validation_bce": 0.47331314869036234
+    },
+    {
+      "epoch": 5,
+      "training_bce": 0.46645218680866923,
+      "training_regularization": 1.227029729224845e-07,
+      "training_total": 0.4664523095116422,
+      "validation_bce": 0.47329466986431623
+    },
+    {
+      "epoch": 6,
+      "training_bce": 0.4664374553981735,
+      "training_regularization": 1.449693843203473e-07,
+      "training_total": 0.4664376003675578,
+      "validation_bce": 0.47328082156015794
+    },
+    {
+      "epoch": 7,
+      "training_bce": 0.46642512333521774,
+      "training_regularization": 1.6202915224275059e-07,
+      "training_total": 0.46642528536437,
+      "validation_bce": 0.47326685078073355
+    },
+    {
+      "epoch": 8,
+      "training_bce": 0.46641329444502616,
+      "training_regularization": 1.7923965795008905e-07,
+      "training_total": 0.4664134736846841,
+      "validation_bce": 0.47325802158280855
+    },
+    {
+      "epoch": 9,
+      "training_bce": 0.4664010935773676,
+      "training_regularization": 1.9699514070014283e-07,
+      "training_total": 0.4664012905725083,
+      "validation_bce": 0.47324094675637185
+    },
+    {
+      "epoch": 10,
+      "training_bce": 0.4663892268583406,
+      "training_regularization": 2.1546672200636784e-07,
+      "training_total": 0.46638944232506263,
+      "validation_bce": 0.4732272390816565
+    }
+  ],
+  "best_epoch": 10,
+  "best_validation_bce": 0.4732272390816565,
+  "improved_over_initial": true,
+  "stop_reason": "max_epochs"
+}

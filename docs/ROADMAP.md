@@ -63,7 +63,7 @@
 | Athénanによる評価関数の強化学習と対局探索 | [plans/athenan.md](plans/athenan.md) | 起案 | |
 | 静止探索の出力を学ぶPSTの学習 | [plans/qsearch-output-training.md](plans/qsearch-output-training.md) | 完了（不採用） | 2026年9月30日 |
 | 浅い探索の手の順位を学ぶ損失 | [plans/rank-loss-training.md](plans/rank-loss-training.md) | 完了（不採用） | 2026年10月1日 |
-| 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 完了（見送り） | 2026年10月1日 |
+| 残存誤りに対応する関係補正項 | [plans/relational-correction.md](plans/relational-correction.md) | 完了（不採用） | 2026年10月2日 |
 | 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 | デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 完了（採用） | 2026年9月27日 |
 | 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 完了（一部不採用） | 2026年9月29日 |
@@ -72,7 +72,7 @@
 
 ### 直近の完了
 
-- [残存誤りに対応する関係補正項](plans/relational-correction.md)は2026年10月1日に、フェーズ0の分類による見送りで完了した。新しい自己対局2,048局の1,974根で、教師の判定が安定した大きな誤りは92根あり、探索の追跡と機構ごとの介入で解消を確認できなかった62根を、独立した2者が駒の関係の種類に分類した。一致した根は近接2駒15、多駒12、不明11、王駒射線3、不一致21で、最多の近接2駒もNの3分の1（21根）に届かず、補正項は実装していない（[準備記録](measurements/relational-correction-prep.md)）。探索の変更で解消した30根では、null move、aspiration window、およびLMRの単独の介入がそれぞれ12〜14根の誤りを解消したが、1根で複数の機構が選択を変えることが多かった。
+- [残存誤りに対応する関係補正項](plans/relational-correction.md)は2026年10月2日に、不採用で完了した。フェーズ0では、新しい自己対局の1,974根で探索の変更で解消を確認できなかった大きな誤り62根を独立した2者が分類し、一致した根は近接2駒15、多駒12、不明11、王駒射線3で、最多の近接2駒も基準の21根に届かず見送りとなった（[準備記録](measurements/relational-correction-prep.md)）。利用者の指示で基準を外して半径1の局所2駒表を実装して測ったところ、零の表でも探索速度がS0の0.775倍に落ち（[速度](measurements/relational-correction-speed.md)）、学習した表は検証損失を0.000178下げたものの、S0との[STC](measurements/relational-correction-stc.md)は`H0`（得点率39.3%、約−75 Elo）だった。[固定ノード数の200ペア](measurements/relational-correction-nodes200.md)はElo +9.4（95%信頼区間 −26.4〜+45.4）であり、損失は主に速度の低下による。
 - [浅い探索の手の順位を学ぶ損失](plans/rank-loss-training.md)は2026年10月1日に、不採用で完了した。探索が変わったので15,000局を生成し直し、判定の差mを117.7センチポーンに測り直したうえで、[小標本](measurements/rank-loss-pilot.md)は2つの判定を満たした。S0の深さ1の値は、教師が安定して区別する手の組の約3分の2で順位を逆にしていた。[学習](measurements/rank-loss-training.md)では、順位の損失が検証の組の正答率を対照Cの0.33から0.48〜0.51へ上げた一方、静的評価と教師値の平均絶対誤差をCの1.18〜1.28倍に悪化させ、3通りのβがすべて事前に定めた上限の1.05倍を超えた。利用者の判断で、誤差の上限だけを外して選ばれるβ=1.0を対照Cと対局させた[STC](measurements/rank-loss-vs-control-stc.md)は、得点率38.5%（約−81 Elo）で`H0`となり、S0との対局へは進まなかった。
 - [静止探索の出力を学ぶPSTの学習](plans/qsearch-output-training.md)は2026年9月30日に、採用候補なしで完了した。静かな局面で学習目標を静止探索の出力へ変えた候補Qは、同じ条件で静的値を学んだ対照Rに対して[STC](measurements/qsearch-output-q-vs-r-stc.md)で`H0`（得点率47.2%）となり、捕獲局面を加えた候補QcはQに対して[STC](measurements/qsearch-output-qc-vs-q-stc.md)の上限3,000ペアでLLRが負（得点率50.4%）だった。採否前の診断ではどちらも除外されておらず、比較用のSTCで除外された。フェーズ0の[探索の追跡](measurements/qsearch-output-search-trace.md)では、段階12の7項目と同じく、6根の誤りを特定の枝刈りに帰属できなかった。
 - [探索部の不具合修正](plans/search-bug-fixes.md)は2026年9月29日に完了した。[探索部の不具合監査](audits/search-bugs-2026-09-28.md)の指摘のうち、反復の検出がnull moveをまたぎ、null move直後のじっとを実在しない引き分けとしていた不具合を直し、非劣性のSTCとLTCをともに通過して採用した（masterの得点率はSTC 45.7%、LTC 48.0%）。静止探索のdelta pruningが成り益を無視する不具合は、修正の診断で修正前の版がわずかに強い方向となったので取り込まず、不具合は残る。王駒がすべて狙われた静止探索の局面で全合法手を読む修正は約120 Elo弱く、不具合ではなく静止探索の近似と分類し直して、探索の不具合は手法の契約違反に限って分類するという[教訓](lessons/classify-bugs-by-method-contract.md)にした。

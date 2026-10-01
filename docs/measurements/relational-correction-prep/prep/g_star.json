@@ -1,0 +1,302 @@
+{
+  "candidate_commit": "3143b082ac15efceb889ba35ce79ed37abe8594d",
+  "fm_tools_commit": "01aedf589696fe228b72a6bfa98576ee06cd8ef6",
+  "probe_worktree": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+  "G_FM_quarter_cp": 88.25442880689863,
+  "G_star_cp": 88.25442880689863,
+  "definition": "G_FM_quarter is measured with quarter weights; do not divide G again",
+  "coverage": {
+    "saved": 0.9522544397382433,
+    "match": 1.0
+  },
+  "sample_counts": {
+    "saved": 91841,
+    "match": 7398
+  },
+  "common_counts": {
+    "saved": 87456,
+    "match": 7398
+  },
+  "common_stratum_count": 116,
+  "match_weighted_mean_cp": 90.44701270613679,
+  "teacher_weighted_mean_cp": 2.192583899238152,
+  "coverage_at_least_90_percent": true,
+  "strata": "5 phase bands x floor(PST-only evaluation / 500 cp); full range",
+  "correction": "final clamped evaluation minus PST-only evaluation, side-to-move cp",
+  "weights": "match frequencies normalized within common strata",
+  "inputs": [
+    {
+      "path": "/home/stepney141/board-games/minase/data/fm-eval-archive/fm-cand-lam1e-4/diagnostics/diagnostic-samples.bin",
+      "sha256": "eb120fad9e90bc1f302ee3702f7fd4d854b5a79ae2a69b3e56c1952e3734d0b5"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/manifest.json",
+      "sha256": "ea646e1c79d350f1575d3b9abb1874f7153ff3c1324713f72e6262afc4fad99d"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/fm-quarter-pst.bin",
+      "sha256": "d781bc0466451ccf7b14494916e72c8086dbac6681d9b464a03b02c7d6dab0ba"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-positions/positions.mnsd",
+      "sha256": "5334ad7818a07802ee9c028aba7aac1e9fe19ed63f093915bfdd6cbd3ea74c67"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-positions/metadata.json",
+      "sha256": "f01ae4215b09e0b07ca7aef42cf2e4a2c9001ff7efc0989c267afb3159549c83"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000001.json",
+      "sha256": "50452f605bfd796328c22876703a66eb2f65ce52f5d0b0394b748860f2707399"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000002.json",
+      "sha256": "c27851a90828bf792b7d7503ec1742f32d509bd91f8c9067ee8d56c0c6c41bb9"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000003.json",
+      "sha256": "594290f9fe87db211809bff4f4e413bc4f928a54c958e79e678d7a6dd26874fb"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000004.json",
+      "sha256": "4afe901b95f23bcc6c288a7047d1bb378931ba2cc9b904f43afdbd7288e2620e"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000005.json",
+      "sha256": "7988ed3cd78240057c909a8ebf651beeb19279d6b0273cf73161bcd09486fb10"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000006.json",
+      "sha256": "6cfeb94fcf09419d947b86c9f2c97055a9be7aaf66bd126622f0dd2bb64834c3"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000007.json",
+      "sha256": "423236fa9835e18a10a760ffcc26a8488278f691db712a435b8a8197a60565d2"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000008.json",
+      "sha256": "ae7c58bd3f7843ff53e6d55097a6615bc73a5616d039c77f866765933b4e7975"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000009.json",
+      "sha256": "039ef461d0f5abeede548b8dac771e930519bc831478f7f4fb829823b2c7b528"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000010.json",
+      "sha256": "c615c03b986d27d6ba1804a2f87ed3795cd4b50302bfb2f5a9f862b1101c9eee"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000011.json",
+      "sha256": "fad26f724cc0a41f3eec2d44356f96ffdc9a81a00ad49f9337b11c5d06438adc"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000012.json",
+      "sha256": "25f4bfdd215337860d5886d49c6652d67f74ab14ad766940fd7f3833f1be6dc1"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000013.json",
+      "sha256": "5c9805a0421f7e7d1d66131b787ff44a97f9c2ebab50ec9100fd65cbb7f51dd0"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000014.json",
+      "sha256": "5a5d62f9c78e40b26062d74ae40833e187571211b8529ef52562072b6248c24c"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000015.json",
+      "sha256": "b584fd58cbb19c29709197eb7d5c2c1390801430119ffed8ae1d5fa838de0ef5"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc/pairs/00000000000000000016.json",
+      "sha256": "66b06eb39fe2ada148e12ef9e34925c2d81258d8a44a3b37af01ec2df068a932"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/saved-static-all/sample.bin",
+      "sha256": "eb120fad9e90bc1f302ee3702f7fd4d854b5a79ae2a69b3e56c1952e3734d0b5"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/saved-static-all/probe.json",
+      "sha256": "b6ac28bd3c3cefd001bcc790aff3e3f8c79a9467f53ec8d47620b783ba6d46c2"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/saved-static-all/report.json",
+      "sha256": "5443d167f201743cf5997cf1dc9f704dff5de0ced348bca3b30e275eef48ddf4"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-static-all/sample.bin",
+      "sha256": "5334ad7818a07802ee9c028aba7aac1e9fe19ed63f093915bfdd6cbd3ea74c67"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-static-all/probe.json",
+      "sha256": "1dccd0f101ff175223560a78724959809859296c8bdf9b342b037dc3481a8b3b"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-static-all/report.json",
+      "sha256": "558b1882b8d3a9d85cdfdd6b1b4916d0d4791d72e030c531a767201950528c88"
+    }
+  ],
+  "tools": [
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/target/release/pst_probe",
+      "sha256": "b1817b5f1946702ed92e814dd96687ca4b06522f305ccd340c4994a1b9033aeb"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/target/release/match_positions",
+      "sha256": "b834d9dda09edf4ac456c2d34903e00c34b5691ba26c1ba11e6809b149c7650d"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/tools/train/pst/fm_strength_diagnostics.py",
+      "sha256": "a42caf6feb8fb822f8839258788f6b6e813344469737b530dbaf29496d7a9b6b"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/tools/train/pst/fm_distribution_comparison.py",
+      "sha256": "e9c2a27aeab1a65f83e144462590a60fedbabbc6fa5db105c3cfada572631c8e"
+    },
+    {
+      "path": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/tools/train/pst/taper.py",
+      "sha256": "1ea4e4a807275566ab85e9c14d45d9ad0e86b5de05e0b2c0518643ebe127d97d"
+    }
+  ],
+  "evaluator_checksums": {
+    "pst": "d781bc0466451ccf7b14494916e72c8086dbac6681d9b464a03b02c7d6dab0ba",
+    "probe": "b1817b5f1946702ed92e814dd96687ca4b06522f305ccd340c4994a1b9033aeb"
+  },
+  "command": {
+    "cwd": "/home/stepney141/board-games/minase/data/worktrees/relational-correction",
+    "argv": [
+      "/usr/bin/python3",
+      "-B",
+      "docs/measurements/relational-correction-prep/prep/g_star.py"
+    ]
+  },
+  "commands": [
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-00.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-00.stderr"
+    },
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "git",
+        "status",
+        "--porcelain",
+        "--untracked-files=no"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-01.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-01.stderr"
+    },
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "git",
+        "show",
+        "3143b082ac15efceb889ba35ce79ed37abe8594d:nets/pst.bin"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-02.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-02.stderr"
+    },
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "cargo",
+        "build",
+        "--offline",
+        "--release",
+        "--target-dir",
+        "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/target",
+        "--bin",
+        "pst_probe",
+        "--bin",
+        "match_positions"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-03.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-03.stderr"
+    },
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/target/release/pst_probe",
+        "--pst",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/fm-quarter-pst.bin",
+        "--positions",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/compatibility-sample.bin"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-04.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-04.stderr"
+    },
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/target/release/match_positions",
+        "--run-dir",
+        "/home/stepney141/board-games/minase/data/matches/fm-quarter-vs-pst-stc",
+        "--max-pairs",
+        "16",
+        "--pst",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/fm-quarter-pst.bin",
+        "--output-dir",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-positions"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-05.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-05.stderr"
+    },
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "/usr/bin/python3",
+        "-B",
+        "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/tools/train/pst/fm_strength_diagnostics.py",
+        "--positions",
+        "/home/stepney141/board-games/minase/data/fm-eval-archive/fm-cand-lam1e-4/diagnostics/diagnostic-samples.bin",
+        "--probe",
+        "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/target/release/pst_probe",
+        "--pst",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/fm-quarter-pst.bin",
+        "--output-dir",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/saved-static-all",
+        "--sample-size",
+        "91841",
+        "--seed",
+        "1"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-06.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-06.stderr"
+    },
+    {
+      "cwd": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools",
+      "argv": [
+        "/usr/bin/python3",
+        "-B",
+        "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/tools/train/pst/fm_strength_diagnostics.py",
+        "--positions",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-positions/positions.mnsd",
+        "--probe",
+        "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/target/release/pst_probe",
+        "--pst",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/fm-quarter-pst.bin",
+        "--output-dir",
+        "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/match-static-all",
+        "--sample-size",
+        "7398",
+        "--seed",
+        "1"
+      ],
+      "returncode": 0,
+      "stdout": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-07.stdout",
+      "stderr": "/home/stepney141/board-games/minase/data/relational-correction/prep/g-star/command-07.stderr"
+    }
+  ],
+  "comparison_call": "fm_distribution_comparison.compare(saved, match, center_only=False)"
+}

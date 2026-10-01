@@ -1,0 +1,314 @@
+{
+ "G_cp": 46.74655247799694,
+ "G_star_cp": 88.25442880689863,
+ "G_le_G_star": true,
+ "coverage_at_least_90_percent": true,
+ "determinate_at_90_percent": true,
+ "coverage_threshold": 0.9,
+ "baseline_coverage_rule_applied": false,
+ "determinate": true,
+ "meets_criterion": true,
+ "reason": null,
+ "strict_90_percent_reason": null,
+ "coverage": {
+  "saved": 0.95874,
+  "match": 1.0
+ },
+ "sample_counts": {
+  "saved": 100000,
+  "match": 8668
+ },
+ "selection": {
+  "baseline": {
+   "candidate_commit": "d7447b78f5c6d29ad15cc0d35c16393a7cbb0d88",
+   "candidate_weights_verified_from_git": true,
+   "diagnostic_only": true,
+   "manifest_sha256": "5bd294036a04aee9f9f41200c07ba86ffcb0e9a78fcf1b7096266c36a061e6ac",
+   "max_pairs": 16,
+   "missing_evaluation": 0,
+   "mnsd_sha256": "4376c14da4524789371316833848283cf60f2be2830c74d710afa2b39246a217",
+   "non_cp": 90,
+   "pst_checksum": "47cedc87732ad3623978532e9c2af80d8da0a6ceaa94443142d53e5f2d06a0a0",
+   "pst_sha256": "c207372c9557f82177830429c10447005cc352efb80a497c73c71b4d0ed4ed53",
+   "records": 8667,
+   "score_source": "Selected engine recorded search score at its actual turn; not independent teacher labels.",
+   "selected_engine": "baseline",
+   "selection": "First max_pairs complete pairs in pair-number order, all selected engine turns with cp scores; no outcome selection.",
+   "sources": [
+    {
+     "file": "pairs/00000000000000000001.json",
+     "sha256": "8a132dde419f5ea26e5ccdaf1995829c3f2bed6b23fa3c57d3d4054668bb4e61"
+    },
+    {
+     "file": "pairs/00000000000000000002.json",
+     "sha256": "54553453b4ea2f5ce705c769fee293b44211de8fe7e4b382ca07a3361f00b7ee"
+    },
+    {
+     "file": "pairs/00000000000000000003.json",
+     "sha256": "dffed05585b8c3f455643cb45d0c97daecc136e5ef0f1524c98e3b6d907d65dd"
+    },
+    {
+     "file": "pairs/00000000000000000004.json",
+     "sha256": "6dc49cf90435936e1e828dc4e5052f2e5719d5efe6621c983daada921eee7e02"
+    },
+    {
+     "file": "pairs/00000000000000000005.json",
+     "sha256": "d5563120ad9f753e24beaf8cca75c87431605e349de254d6a2173cf072226295"
+    },
+    {
+     "file": "pairs/00000000000000000006.json",
+     "sha256": "53ca6d38480a98db9f0d42452cfefadfde903cce7029ffd2992ca6ee3a4d8f49"
+    },
+    {
+     "file": "pairs/00000000000000000007.json",
+     "sha256": "6df0a4a4061b8840329aa9011ba8709fb232530de290e72a2a12f21bd31b3ff6"
+    },
+    {
+     "file": "pairs/00000000000000000008.json",
+     "sha256": "f3247c39318662cf940aaa142f98e8ea3d32666f0f41e24dc23393cbe0dc310b"
+    },
+    {
+     "file": "pairs/00000000000000000009.json",
+     "sha256": "deaa17ef0a33389aa7557b63466fcc4be620f01aea212e0155d29ed366140fcd"
+    },
+    {
+     "file": "pairs/00000000000000000010.json",
+     "sha256": "bb663d0676791f385967d076c2f53aca7bb2b5d53f1f68fe65532c9d2d2cdc9b"
+    },
+    {
+     "file": "pairs/00000000000000000011.json",
+     "sha256": "ef064141347ad28873801c2b6a76060edcb9b04ee3a3b5d45d2d8c597e4d3a86"
+    },
+    {
+     "file": "pairs/00000000000000000012.json",
+     "sha256": "f6b9cc84100ffef6ffb3dddfff5850897d1f3dd7eae1d4a192db3e269f784208"
+    },
+    {
+     "file": "pairs/00000000000000000013.json",
+     "sha256": "fe7854df6e237a9e322c99c6ee75aada97bd5b69f4a4249507db58409bdfe1ef"
+    },
+    {
+     "file": "pairs/00000000000000000014.json",
+     "sha256": "373803684205106df16b1c0b3cf494474288cc0bd4c2269a3c25b2f2ec82f15c"
+    },
+    {
+     "file": "pairs/00000000000000000015.json",
+     "sha256": "799494285dd3653c7a9bcecdd3a2c7c3ad76134dd9724aefa089ad175c36f3df"
+    },
+    {
+     "file": "pairs/00000000000000000016.json",
+     "sha256": "d383e42a654b4f65e9f98376bd94e3b72417a9b3219302764b1372c0fadcc670"
+    }
+   ],
+   "teacher_error_comparison_allowed": false,
+   "teacher_nodes": 0,
+   "teacher_nodes_reason": "Archive uses time control; 0 does not indicate a teacher search budget."
+  },
+  "candidate": {
+   "candidate_commit": "d7447b78f5c6d29ad15cc0d35c16393a7cbb0d88",
+   "candidate_weights_verified_from_git": true,
+   "diagnostic_only": true,
+   "manifest_sha256": "5bd294036a04aee9f9f41200c07ba86ffcb0e9a78fcf1b7096266c36a061e6ac",
+   "max_pairs": 16,
+   "missing_evaluation": 0,
+   "mnsd_sha256": "8e7cb179de7596f25bbb3c03fb05bada5510aa6b8a05a6705b5358d325ca15a8",
+   "non_cp": 87,
+   "pst_checksum": "47cedc87732ad3623978532e9c2af80d8da0a6ceaa94443142d53e5f2d06a0a0",
+   "pst_sha256": "c207372c9557f82177830429c10447005cc352efb80a497c73c71b4d0ed4ed53",
+   "records": 8668,
+   "score_source": "Selected engine recorded search score at its actual turn; not independent teacher labels.",
+   "selected_engine": "candidate",
+   "selection": "First max_pairs complete pairs in pair-number order, all selected engine turns with cp scores; no outcome selection.",
+   "sources": [
+    {
+     "file": "pairs/00000000000000000001.json",
+     "sha256": "8a132dde419f5ea26e5ccdaf1995829c3f2bed6b23fa3c57d3d4054668bb4e61"
+    },
+    {
+     "file": "pairs/00000000000000000002.json",
+     "sha256": "54553453b4ea2f5ce705c769fee293b44211de8fe7e4b382ca07a3361f00b7ee"
+    },
+    {
+     "file": "pairs/00000000000000000003.json",
+     "sha256": "dffed05585b8c3f455643cb45d0c97daecc136e5ef0f1524c98e3b6d907d65dd"
+    },
+    {
+     "file": "pairs/00000000000000000004.json",
+     "sha256": "6dc49cf90435936e1e828dc4e5052f2e5719d5efe6621c983daada921eee7e02"
+    },
+    {
+     "file": "pairs/00000000000000000005.json",
+     "sha256": "d5563120ad9f753e24beaf8cca75c87431605e349de254d6a2173cf072226295"
+    },
+    {
+     "file": "pairs/00000000000000000006.json",
+     "sha256": "53ca6d38480a98db9f0d42452cfefadfde903cce7029ffd2992ca6ee3a4d8f49"
+    },
+    {
+     "file": "pairs/00000000000000000007.json",
+     "sha256": "6df0a4a4061b8840329aa9011ba8709fb232530de290e72a2a12f21bd31b3ff6"
+    },
+    {
+     "file": "pairs/00000000000000000008.json",
+     "sha256": "f3247c39318662cf940aaa142f98e8ea3d32666f0f41e24dc23393cbe0dc310b"
+    },
+    {
+     "file": "pairs/00000000000000000009.json",
+     "sha256": "deaa17ef0a33389aa7557b63466fcc4be620f01aea212e0155d29ed366140fcd"
+    },
+    {
+     "file": "pairs/00000000000000000010.json",
+     "sha256": "bb663d0676791f385967d076c2f53aca7bb2b5d53f1f68fe65532c9d2d2cdc9b"
+    },
+    {
+     "file": "pairs/00000000000000000011.json",
+     "sha256": "ef064141347ad28873801c2b6a76060edcb9b04ee3a3b5d45d2d8c597e4d3a86"
+    },
+    {
+     "file": "pairs/00000000000000000012.json",
+     "sha256": "f6b9cc84100ffef6ffb3dddfff5850897d1f3dd7eae1d4a192db3e269f784208"
+    },
+    {
+     "file": "pairs/00000000000000000013.json",
+     "sha256": "fe7854df6e237a9e322c99c6ee75aada97bd5b69f4a4249507db58409bdfe1ef"
+    },
+    {
+     "file": "pairs/00000000000000000014.json",
+     "sha256": "373803684205106df16b1c0b3cf494474288cc0bd4c2269a3c25b2f2ec82f15c"
+    },
+    {
+     "file": "pairs/00000000000000000015.json",
+     "sha256": "799494285dd3653c7a9bcecdd3a2c7c3ad76134dd9724aefa089ad175c36f3df"
+    },
+    {
+     "file": "pairs/00000000000000000016.json",
+     "sha256": "d383e42a654b4f65e9f98376bd94e3b72417a9b3219302764b1372c0fadcc670"
+    }
+   ],
+   "teacher_error_comparison_allowed": false,
+   "teacher_nodes": 0,
+   "teacher_nodes_reason": "Archive uses time control; 0 does not indicate a teacher search budget."
+  }
+ },
+ "tools": [
+  {
+   "path": "/home/stepney141/board-games/minase/data/worktrees/relational-correction/target/release/pst_probe",
+   "sha256": "2b9376074e799a62cc436c9c79efc0450544e58d1495f94a7baef9328e9eb7c9"
+  },
+  {
+   "path": "/home/stepney141/board-games/minase/data/worktrees/relational-correction/target/release/match_positions",
+   "sha256": "1a3b68938d8f8e66bc380c60055545378ed92b4ec62321f9b3a4a4bcabde3c98"
+  },
+  {
+   "path": "/home/stepney141/board-games/minase/data/worktrees/relational-correction/docs/measurements/relational-correction-prep/prep/g_candidate.py",
+   "sha256": "7bf29aa3268bedf8543d0c1dd079aa91159041b8353e2261459507f5e4216b59"
+  },
+  {
+   "path": "/home/stepney141/board-games/minase/data/worktrees/relational-correction/docs/measurements/relational-correction-prep/prep/phase3_common.py",
+   "sha256": "e488a10915fc1fec97a9ecc68224e5ca08aa4fdc4b5b6956bb74c744c911ed8f"
+  },
+  {
+   "path": "/home/stepney141/board-games/minase/data/relational-correction/fm-eval-tools/tools/train/pst/fm_distribution_comparison.py",
+   "sha256": "e9c2a27aeab1a65f83e144462590a60fedbabbc6fa5db105c3cfada572631c8e"
+  },
+  {
+   "path": "/home/stepney141/board-games/minase/data/worktrees/relational-correction/tools/train/pst/taper.py",
+   "sha256": "9cee6e886fad452dcae046d06cd64ad1b643860ef6b76e64507f65e333d9e7d6"
+  }
+ ],
+ "comparison_call": "g_star.compare(saved, match, center_only=False)",
+ "correction": "final clamped evaluation minus PST-only evaluation, side-to-move cp",
+ "command": {
+  "cwd": "/home/stepney141/board-games/minase/data/worktrees/relational-correction",
+  "argv": [
+   "/home/stepney141/board-games/minase/tools/train/.venv/bin/python",
+   "-B",
+   "docs/measurements/relational-correction-prep/prep/g_candidate.py",
+   "--run-dir",
+   "/home/stepney141/board-games/minase/data/matches/relational-pair-1-gdiag",
+   "--weights",
+   "/home/stepney141/board-games/minase/data/relational-correction/phase2/pair-1.bin",
+   "--teacher",
+   "/home/stepney141/board-games/minase/data/relational-correction/prep/samples/teacher.json",
+   "--probe",
+   "target/release/pst_probe",
+   "--extractor",
+   "target/release/match_positions",
+   "--max-pairs",
+   "16",
+   "--output-dir",
+   "/home/stepney141/board-games/minase/data/relational-correction/phase3/g-pair-1"
+  ]
+ },
+ "extraction_commands": [
+  {
+   "argv": [
+    "/home/stepney141/board-games/minase/data/worktrees/relational-correction/target/release/match_positions",
+    "--run-dir",
+    "/home/stepney141/board-games/minase/data/matches/relational-pair-1-gdiag",
+    "--pst",
+    "/home/stepney141/board-games/minase/data/relational-correction/phase2/pair-1.bin",
+    "--max-pairs",
+    "16",
+    "--output-dir",
+    "/home/stepney141/board-games/minase/data/relational-correction/phase3/g-pair-1/baseline-positions",
+    "--baseline"
+   ],
+   "stdout": "8667 positions, 0 missing evaluations, 90 non-cp exclusions\n",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "/home/stepney141/board-games/minase/data/worktrees/relational-correction/target/release/match_positions",
+    "--run-dir",
+    "/home/stepney141/board-games/minase/data/matches/relational-pair-1-gdiag",
+    "--pst",
+    "/home/stepney141/board-games/minase/data/relational-correction/phase2/pair-1.bin",
+    "--max-pairs",
+    "16",
+    "--output-dir",
+    "/home/stepney141/board-games/minase/data/relational-correction/phase3/g-pair-1/candidate-positions"
+   ],
+   "stdout": "8668 positions, 0 missing evaluations, 87 non-cp exclusions\n",
+   "stderr": ""
+  }
+ ],
+ "candidate": {
+  "pst_window": "all",
+  "source_counts": {
+   "saved": 100000,
+   "match": 8668
+  },
+  "common_counts": {
+   "saved": 95874,
+   "match": 8668
+  },
+  "coverage": {
+   "saved": 0.95874,
+   "match": 1.0
+  },
+  "common_stratum_count": 116,
+  "saved_standardized_mean": -1.7060587078077423,
+  "match_common_mean": 45.0404937701892,
+  "difference": 46.74655247799694
+ },
+ "baseline": {
+  "pst_window": "all",
+  "source_counts": {
+   "saved": 100000,
+   "match": 8667
+  },
+  "common_counts": {
+   "saved": 96805,
+   "match": 8667
+  },
+  "coverage": {
+   "saved": 0.96805,
+   "match": 1.0
+  },
+  "common_stratum_count": 117,
+  "saved_standardized_mean": 0.0,
+  "match_common_mean": 0.0,
+  "difference": 0.0
+ }
+}

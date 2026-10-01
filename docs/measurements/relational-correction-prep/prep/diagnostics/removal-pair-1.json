@@ -1,0 +1,31 @@
+{
+ "attempted": 352,
+ "checked": 352,
+ "skipped": 0,
+ "sign_reversals": 0,
+ "seed": 1,
+ "sample_size_per_generation_band": 10000,
+ "selection": "pst_diagnostics: initial plus minimum sampled global index per band across generations",
+ "delta": "evaluation after removal minus before removal, unchanged side-to-move cp",
+ "reversal": "delta_pst_cp * delta_candidate_cp < 0; zero is not a reversal",
+ "command": {
+  "cwd": "/home/stepney141/board-games/minase/data/worktrees/relational-correction",
+  "argv": [
+   "/home/stepney141/board-games/minase/tools/train/.venv/bin/python",
+   "-B",
+   "docs/measurements/relational-correction-prep/prep/removal.py",
+   "--weights",
+   "/home/stepney141/board-games/minase/data/relational-correction/phase2/pair-1.bin",
+   "--config",
+   "/home/stepney141/board-games/minase/data/strength-stage9/lookahead-pst.toml",
+   "--probe",
+   "target/release/pst_probe",
+   "--seed",
+   "1",
+   "--sample-size",
+   "10000",
+   "--output-dir",
+   "/home/stepney141/board-games/minase/data/relational-correction/phase3/removal-pair-1"
+  ]
+ }
+}
