@@ -1,0 +1,20 @@
+
+running 1 test
+test search::alphabeta::tests::control_audit_20260929::audit_positive_pawn_values_allow_depth_five_to_complete ... pawn=100: depth=5, nodes=132, delta=46, widened=(-92, 138, 184)
+pawn=1: depth=4, nodes=10000, delta=0, widened=(0, 0, 0)
+pawn=2: depth=4, nodes=10000, delta=0, widened=(0, 0, 0)
+
+thread 'search::alphabeta::tests::control_audit_20260929::audit_positive_pawn_values_allow_depth_five_to_complete' (300) panicked at src/search/alphabeta/tests/control_audit_20260929.rs:58:5:
+assertion `left == right` failed: valid small pawn values must not prevent completion
+  left: [5, 4, 4]
+ right: [5, 5, 5]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    search::alphabeta::tests::control_audit_20260929::audit_positive_pawn_values_allow_depth_five_to_complete
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 695 filtered out; finished in 0.46s
+

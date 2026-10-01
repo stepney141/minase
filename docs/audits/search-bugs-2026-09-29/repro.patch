@@ -1,0 +1,316 @@
+diff --git a/src/search/alphabeta/tests/mod.rs b/src/search/alphabeta/tests/mod.rs
+--- a/src/search/alphabeta/tests/mod.rs
++++ b/src/search/alphabeta/tests/mod.rs
+@@ -9,6 +9,7 @@
+ // `fs`ヘルパで内部座標へ写して使う。
+ 
+ mod captures;
++mod audit_20260929;
+ mod contracts;
+ mod correction;
+ mod handle;
+diff --git a/src/search/alphabeta/tests/audit_20260929.rs b/src/search/alphabeta/tests/audit_20260929.rs
+new file mode 100644
+--- /dev/null
++++ b/src/search/alphabeta/tests/audit_20260929.rs
+@@ -0,0 +1,300 @@
++//! Independent reproductions for the review of master 64da461.
++
++use super::*;
++use sha2::{Digest, Sha256};
++
++// search.md requires capture-promotions to be included in quiescence.
++// This undefended pawn capture promotes a kirin to a lion, exceeding beta.
++#[test]
++fn audit_delta_pruning_must_keep_a_profitable_capture_promotion() {
++    let root = crate::parse_sfen("11k/12/6p5/12/6O5/12/12/12/12/12/12/K11 b").unwrap();
++    let mv = Move {
++        from: fs(6, 5),
++        mid: None,
++        to: fs(6, 3),
++        promote: true,
++    };
++    assert!(legal_moves(&root).contains(&mv));
++    let mut child = root.clone();
++    child.make_move_unchecked(mv, engine_rules());
++    let value_after_capture = -evaluate(&weights().unwrap(), &child);
++    assert!(value_after_capture >= 1301);
++    let full = run_quiesce(&root, -INFINITY, INFINITY, 0, &small_tt());
++    let narrow = run_quiesce(&root, 1300, 1301, 0, &small_tt());
++    eprintln!(
++        "promotion: static={}, capture_value={value_after_capture}, full={full:?}, narrow={narrow:?}",
++        evaluate(&weights().unwrap(), &root)
++    );
++    assert!(
++        narrow.0 >= 1301,
++        "a capture above beta must not be reported as fail-low"
++    );
++}
++
++// A hypothetical null move is not a real game move and cannot complete a repetition.
++// Both lions are distant and Black has an extra free king; a White jitto cannot draw.
++#[test]
++fn audit_null_move_jitto_must_not_draw_against_pre_null_history() {
++    let root = position(
++        Color::Black,
++        &[
++            (fs(1, 12), Color::Black, PieceKind::King),
++            (fs(4, 10), Color::Black, PieceKind::Lion),
++            (fs(6, 11), Color::Black, PieceKind::FreeKing),
++            (fs(12, 1), Color::White, PieceKind::King),
++            (fs(9, 3), Color::White, PieceKind::Lion),
++        ],
++    );
++    assert!(evaluate(&weights().unwrap(), &root) > 0);
++    let mut after_null = root.clone();
++    after_null.make_null_move();
++    let reply = legal_moves(&after_null)
++        .into_iter()
++        .find(|mv| mv.from == mv.to)
++        .unwrap();
++    let mut returned = after_null.clone();
++    returned.make_move_unchecked(reply, engine_rules());
++    assert_eq!(search_key(&returned), search_key(&root));
++    let expected = -run_quiesce(&root, -INFINITY, INFINITY, 0, &small_tt()).0;
++    assert!(expected < 0);
++    with_root_searcher(&root, &[search_key(&root)], |searcher| {
++        // Enter the state reached by the existing null-move branch.
++        searcher.null_move_ply = Some(1);
++        searcher.accumulators[1] = searcher.pst.refresh_accumulator(&after_null);
++        searcher.material_keys[1] = material_key(&after_null);
++        let actual = searcher
++            .search_move(&mut after_null, reply, 1, -INFINITY, INFINITY, 1, true, 0)
++            .unwrap();
++        eprintln!(
++            "null then jitto: expected={expected}, actual={actual}, nodes={}",
++            searcher.nodes
++        );
++        assert_eq!(
++            actual, expected,
++            "null move cannot count toward a repetition"
++        );
++    });
++}
++
++// MNPT permits every positive pawn value. Update its royal values and checksum
++// as required by the independent format contract before using the public API.
++fn pst_with_pawn_value(value: i32) -> Pst {
++    let mut bytes = include_bytes!("../../../../nets/pst.bin").to_vec();
++    let values_start = bytes.len() - PIECE_STATE_COUNT * 4;
++    let pawn = piece_state_of(PieceCode::new(Color::Black, PieceKind::Pawn).unwrap());
++    let pawn_offset = values_start + pawn * 4;
++    bytes[pawn_offset..pawn_offset + 4].copy_from_slice(&value.to_le_bytes());
++    let max_non_royal = (0..PIECE_STATE_COUNT)
++        .filter(|&state| {
++            state != PieceKind::King.index() && state != PieceKind::CrownPrince.index()
++        })
++        .map(|state| {
++            let offset = values_start + state * 4;
++            i32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
++        })
++        .max()
++        .unwrap();
++    for kind in [PieceKind::King, PieceKind::CrownPrince] {
++        let offset = values_start + kind.index() * 4;
++        bytes[offset..offset + 4].copy_from_slice(&(max_non_royal + value).to_le_bytes());
++    }
++    let checksum: [u8; 32] = Sha256::digest(&bytes[80..]).into();
++    bytes[48..80].copy_from_slice(&checksum);
++    let pst = Pst::decode(&bytes).expect("positive pawn value satisfies the MNPT contract");
++    assert_eq!(pst.pawn_value(), value);
++    pst
++}
++
++// SearchLimits allows depth 5, and a finite completed iteration must be reachable
++// for every validated Pst. The node cap prevents a broken search from hanging.
++#[test]
++fn audit_positive_pawn_values_allow_depth_five_to_complete() {
++    let root = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
++    let snapshot = snapshot_for(&root);
++    let limits = SearchLimits::new(Some(5), Some(10_000), None, None).unwrap();
++    let mut depths = Vec::new();
++    for pawn in [100, 1, 2] {
++        let pst = pst_with_pawn_value(pawn);
++        let result =
++            crate::search::search(&pst, &snapshot, &limits, DEFAULT_THREADS, &mut small_tt())
++                .unwrap();
++        let delta = aspiration_delta(pawn);
++        let mut window = AspirationWindow::initial(5, Some(0), delta);
++        window.widen_low();
++        window.widen_high();
++        eprintln!(
++            "pawn={pawn}: depth={}, nodes={}, delta={delta}, widened=({}, {}, {})",
++            result.depth, result.nodes, window.alpha, window.beta, window.delta
++        );
++        depths.push(result.depth);
++    }
++    assert_eq!(
++        depths,
++        vec![5, 5, 5],
++        "valid small pawn values must not prevent completion"
++    );
++}
++
++#[test]
++fn audit_no_legal_move_remains_a_loss_under_null_pruning() {
++    // RULES.md article 23: no legal move loses, independently of depth/window.
++    let position = position(
++        Color::Black,
++        &[
++            (sq(0, 11), Color::Black, PieceKind::King),
++            (sq(1, 11), Color::Black, PieceKind::Pawn),
++            (sq(0, 10), Color::Black, PieceKind::Pawn),
++            (sq(1, 10), Color::Black, PieceKind::Pawn),
++            (sq(11, 0), Color::White, PieceKind::King),
++        ],
++    );
++    assert!(legal_moves(&position).is_empty());
++    let exact = run_negamax(&position, 1, -INFINITY, INFINITY, 0, &small_tt());
++    assert_eq!(exact.0, -MATE);
++    let mut after_null = position.clone();
++    after_null.make_null_move();
++    let beta = -evaluate(&weights().unwrap(), &after_null);
++    let actual = run_negamax(&position, 4, beta - 1, beta, 0, &small_tt());
++    eprintln!("exact={exact:?}, beta={beta}, depth4={actual:?}");
++    assert_eq!(
++        actual.0, -MATE,
++        "a terminal loss cannot become a null-move lower bound"
++    );
++}
++
++// docs/plans/lazy-smp.md:118-119 requires any worker that completes the requested
++// depth to stop the team. The main worker is deliberately delayed until the
++// auxiliary completes, to make this permitted scheduling deterministic.
++#[test]
++fn audit_auxiliary_depth_completion_stops_later_main_work() {
++    let position = Position::initial();
++    let roots = legal_moves(&position);
++    let pst = weights().unwrap();
++    let table = small_tt();
++    let external_stop = AtomicBool::new(false);
++    let shared = SharedSearch {
++        external_stop: &external_stop,
++        team_stop: AtomicBool::new(false),
++        stop_reason: AtomicU8::new(0),
++        total_nodes: AtomicU64::new(0),
++        node_limit: None,
++        started: Instant::now(),
++        hard_limit: None,
++    };
++    let auxiliary_completed = std::sync::Barrier::new(2);
++    let outcomes = run_worker_team(worker_count(2), &shared, |worker_index| {
++        if worker_index == 1 {
++            let outcome = run_auxiliary_worker(
++                &pst,
++                &position,
++                engine_rules(),
++                &roots,
++                &[],
++                1,
++                1,
++                &shared,
++                &table,
++            );
++            assert_eq!(outcome.result.depth, 1);
++            auxiliary_completed.wait();
++            outcome
++        } else {
++            auxiliary_completed.wait();
++            run_main_worker(
++                &pst,
++                &position,
++                engine_rules(),
++                &roots,
++                &[],
++                1,
++                None,
++                &shared,
++                &table,
++                None,
++                false,
++            )
++        }
++    });
++    let main = outcomes
++        .iter()
++        .find(|outcome| outcome.worker_index == 0)
++        .unwrap();
++    let adopted = select_worker_outcome(&outcomes);
++    eprintln!(
++        "main_depth={} main_nodes={} adopted_worker={} adopted_depth={} total_nodes={}",
++        main.result.depth,
++        main.nodes,
++        adopted.worker_index,
++        adopted.result.depth,
++        shared.nodes()
++    );
++    assert_eq!(
++        main.result.depth, 0,
++        "main must stop when an auxiliary has completed depth 1"
++    );
++    assert_eq!(
++        main.nodes, 0,
++        "no main work may start after the depth limit was reached"
++    );
++    assert_eq!(adopted.worker_index, 1);
++    assert_eq!(shared.reason(), StopReason::DepthCompleted);
++}
++
++// docs/plans/lazy-smp.md:94-99: partial spawn failure must fail the team and
++// collect its existing workers. Run only with the EAGAIN injector at spawn 3:
++// test harness thread, first auxiliary, then failed second auxiliary.
++#[test]
++#[ignore = "requires the process-local pthread_create failure injector"]
++fn audit_partial_spawn_failure_stops_existing_auxiliary() {
++    assert_eq!(std::env::var("MINASE_REVIEW_FAIL_PTHREAD_AT").unwrap(), "3");
++    let fallback = legal_moves(&Position::initial())[0];
++    let external_stop = AtomicBool::new(false);
++    let shared = SharedSearch {
++        external_stop: &external_stop,
++        team_stop: AtomicBool::new(false),
++        stop_reason: AtomicU8::new(0),
++        total_nodes: AtomicU64::new(0),
++        node_limit: None,
++        started: Instant::now(),
++        hard_limit: None,
++    };
++    let timed_out = AtomicBool::new(false);
++    let outcome = catch_unwind(AssertUnwindSafe(|| {
++        run_worker_team(worker_count(3), &shared, |worker_index| {
++            // This deadline belongs only to the probe, so a missing stop cannot
++            // leave a test worker alive indefinitely.
++            let deadline = Instant::now() + Duration::from_millis(100);
++            while !shared.team_stop.load(AtomicOrdering::Acquire) {
++                if Instant::now() >= deadline {
++                    timed_out.store(true, AtomicOrdering::Release);
++                    break;
++                }
++                thread::sleep(Duration::from_millis(1));
++            }
++            WorkerOutcome {
++                worker_index,
++                result: SearchResult {
++                    #[cfg(feature = "search-stats")]
++                    stats: crate::search::SearchStats::default(),
++                    best_move: fallback,
++                    score: 0,
++                    depth: 0,
++                    nodes: 0,
++                },
++                pv: vec![fallback],
++                nodes: 0,
++            }
++        })
++    }));
++    eprintln!(
++        "spawn_failed={} team_stop={} watchdog_expired={}",
++        outcome.is_err(),
++        shared.team_stop.load(AtomicOrdering::Acquire),
++        timed_out.load(AtomicOrdering::Acquire)
++    );
++    assert!(outcome.is_err(), "injected spawn failure must propagate");
++    assert!(
++        !timed_out.load(AtomicOrdering::Acquire),
++        "existing auxiliary must receive a stop instead of needing the probe watchdog"
++    );
++}

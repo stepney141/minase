@@ -1,0 +1,20 @@
+
+running 1 test
+test search::alphabeta::tests::audit_20260929::audit_partial_spawn_failure_stops_existing_auxiliary ... review: injecting pthread_create EAGAIN at call 3
+
+thread 'search::alphabeta::tests::audit_20260929::audit_partial_spawn_failure_stops_existing_auxiliary' (137169) panicked at /home/stepney141/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/scoped.rs:206:46:
+failed to spawn thread: Os { code: 11, kind: WouldBlock, message: "Resource temporarily unavailable" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+spawn_failed=true team_stop=false watchdog_expired=true
+
+thread 'search::alphabeta::tests::audit_20260929::audit_partial_spawn_failure_stops_existing_auxiliary' (137169) panicked at src/search/alphabeta/tests/audit_20260929.rs:296:5:
+existing auxiliary must receive a stop instead of needing the probe watchdog
+FAILED
+
+failures:
+
+failures:
+    search::alphabeta::tests::audit_20260929::audit_partial_spawn_failure_stops_existing_auxiliary
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 693 filtered out; finished in 0.10s
+

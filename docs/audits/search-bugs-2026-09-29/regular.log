@@ -1,0 +1,51 @@
+
+running 6 tests
+test search::alphabeta::tests::audit_20260929::audit_auxiliary_depth_completion_stops_later_main_work ... main_depth=1 main_nodes=36 adopted_worker=0 adopted_depth=1 total_nodes=72
+
+thread 'search::alphabeta::tests::audit_20260929::audit_auxiliary_depth_completion_stops_later_main_work' (137088) panicked at src/search/alphabeta/tests/audit_20260929.rs:231:5:
+assertion `left == right` failed: main must stop when an auxiliary has completed depth 1
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test search::alphabeta::tests::audit_20260929::audit_delta_pruning_must_keep_a_profitable_capture_promotion ... promotion: static=874, capture_value=2846, full=(2846, 2), narrow=(874, 0)
+
+thread 'search::alphabeta::tests::audit_20260929::audit_delta_pruning_must_keep_a_profitable_capture_promotion' (137092) panicked at src/search/alphabeta/tests/audit_20260929.rs:28:5:
+a capture above beta must not be reported as fail-low
+FAILED
+test search::alphabeta::tests::audit_20260929::audit_no_legal_move_remains_a_loss_under_null_pruning ... exact=(-30000, 0), beta=487, depth4=(487, 0)
+
+thread 'search::alphabeta::tests::audit_20260929::audit_no_legal_move_remains_a_loss_under_null_pruning' (137093) panicked at src/search/alphabeta/tests/audit_20260929.rs:159:5:
+assertion `left == right` failed: a terminal loss cannot become a null-move lower bound
+  left: 487
+ right: -30000
+FAILED
+test search::alphabeta::tests::audit_20260929::audit_null_move_jitto_must_not_draw_against_pre_null_history ... null then jitto: expected=-2081, actual=0, nodes=1
+
+thread 'search::alphabeta::tests::audit_20260929::audit_null_move_jitto_must_not_draw_against_pre_null_history' (137094) panicked at src/search/alphabeta/tests/audit_20260929.rs:72:9:
+assertion `left == right` failed: null move cannot count toward a repetition
+  left: 0
+ right: -2081
+FAILED
+test search::alphabeta::tests::audit_20260929::audit_partial_spawn_failure_stops_existing_auxiliary ... ignored, requires the process-local pthread_create failure injector
+test search::alphabeta::tests::audit_20260929::audit_positive_pawn_values_allow_depth_five_to_complete ... pawn=100: depth=5, nodes=132, delta=46, widened=(-92, 138, 184)
+pawn=1: depth=4, nodes=10000, delta=0, widened=(0, 0, 0)
+pawn=2: depth=4, nodes=10000, delta=0, widened=(0, 0, 0)
+
+thread 'search::alphabeta::tests::audit_20260929::audit_positive_pawn_values_allow_depth_five_to_complete' (137095) panicked at src/search/alphabeta/tests/audit_20260929.rs:131:5:
+assertion `left == right` failed: valid small pawn values must not prevent completion
+  left: [5, 4, 4]
+ right: [5, 5, 5]
+FAILED
+
+failures:
+
+failures:
+    search::alphabeta::tests::audit_20260929::audit_auxiliary_depth_completion_stops_later_main_work
+    search::alphabeta::tests::audit_20260929::audit_delta_pruning_must_keep_a_profitable_capture_promotion
+    search::alphabeta::tests::audit_20260929::audit_no_legal_move_remains_a_loss_under_null_pruning
+    search::alphabeta::tests::audit_20260929::audit_null_move_jitto_must_not_draw_against_pre_null_history
+    search::alphabeta::tests::audit_20260929::audit_positive_pawn_values_allow_depth_five_to_complete
+
+test result: FAILED. 0 passed; 5 failed; 1 ignored; 0 measured; 688 filtered out; finished in 0.49s
+
