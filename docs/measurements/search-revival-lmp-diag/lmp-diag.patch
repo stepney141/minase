@@ -1,0 +1,129 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index 0ce28d2..7ac35f0 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -268,6 +268,7 @@ fn main() {
+             result.elapsed,
+             result.nps()
+         );
++        minase::search::print_lmp_diagnostics();
+         return;
+     }
+ 
+@@ -309,6 +310,7 @@ fn main() {
+         median_f64(&mut elapsed),
+         median_f64(&mut nps)
+     );
++    minase::search::print_lmp_diagnostics();
+ }
+ 
+ #[cfg(test)]
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 0457b07..de94516 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -56,6 +56,40 @@ const FUTILITY_MARGIN_HALF_PAWNS: [i32; 3] = [1, 3, 3];
+ ///
+ /// `docs/plans/strength-stage4.md`の「採用した余裕値」節に従う。
+ const LATE_MOVE_LIMITS: [usize; 3] = [12, 23, 13];
++
++// 診断用の累積計数。添字0〜2はnegamaxの残り深さ1〜3に対応する。
++static FUTILITY_PRUNED: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++static LMP_PRUNED: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++static LMP_PRUNED_KILLER: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++static LMP_NODES: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++static SEARCHED_CAPTURES_BEFORE: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++static SEARCHED_QUIETS_BEFORE: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++static NODES_ZERO_QUIET_BEFORE: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++static ELIGIBLE_NODES: [AtomicU64; 3] = [const { AtomicU64::new(0) }; 3];
++
++/// プロセス起動後の枝刈り診断の累積計数を、残り深さごとに標準エラーへ出力する。
++pub fn print_lmp_diagnostics() {
++    for depth_index in 0..3 {
++        eprint!("depth={}", depth_index + 1);
++        for (name, counters) in [
++            ("futility_pruned", &FUTILITY_PRUNED),
++            ("lmp_pruned", &LMP_PRUNED),
++            ("lmp_pruned_killer", &LMP_PRUNED_KILLER),
++            ("lmp_nodes", &LMP_NODES),
++            ("searched_captures_before", &SEARCHED_CAPTURES_BEFORE),
++            ("searched_quiets_before", &SEARCHED_QUIETS_BEFORE),
++            ("nodes_zero_quiet_before", &NODES_ZERO_QUIET_BEFORE),
++            ("eligible_nodes", &ELIGIBLE_NODES),
++        ] {
++            eprint!(
++                " {name}={}",
++                counters[depth_index].load(AtomicOrdering::Relaxed)
++            );
++        }
++        eprintln!();
++    }
++}
++
+ /// 手番側・移動元・移動先で参照するhistory表。
+ type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
+ /// plyごとに新しい順で保持するkiller表。
+@@ -1145,6 +1179,9 @@ impl Searcher<'_> {
+             && beta - alpha == 1
+             && alpha.abs() < MATE_THRESHOLD
+             && beta.abs() < MATE_THRESHOLD;
++        if prune_quiets {
++            ELIGIBLE_NODES[depth as usize - 1].fetch_add(1, AtomicOrdering::Relaxed);
++        }
+         // 同「futility pruning」節。
+         // 静的評価と余裕値の和は対象ノードで1回だけ求める。
+         let futility_bound = prune_quiets.then(|| {
+@@ -1160,6 +1197,9 @@ impl Searcher<'_> {
+         let mut best_score = -INFINITY;
+         let mut beta_cutoff = false;
+         let mut index = 0;
++        let mut lmp_recorded = false;
++        let mut searched_captures_before = 0_u64;
++        let mut searched_quiets_before = 0_u64;
+         while let Some(mv) = picker.next(position, self.pst, &self.generator, &self.history) {
+             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
+             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
+@@ -1172,6 +1212,28 @@ impl Searcher<'_> {
+                 && move_order_key(position, self.pst, mv).is_none()
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                let depth_index = depth as usize - 1;
++                // 両方の条件を満たす手はfutility側だけに数える。
++                if futility_bound.is_some_and(|bound| bound <= alpha) {
++                    FUTILITY_PRUNED[depth_index].fetch_add(1, AtomicOrdering::Relaxed);
++                } else {
++                    LMP_PRUNED[depth_index].fetch_add(1, AtomicOrdering::Relaxed);
++                    if self.killers[ply as usize].contains(&Some(mv)) {
++                        LMP_PRUNED_KILLER[depth_index].fetch_add(1, AtomicOrdering::Relaxed);
++                    }
++                    if !lmp_recorded {
++                        lmp_recorded = true;
++                        LMP_NODES[depth_index].fetch_add(1, AtomicOrdering::Relaxed);
++                        SEARCHED_CAPTURES_BEFORE[depth_index]
++                            .fetch_add(searched_captures_before, AtomicOrdering::Relaxed);
++                        SEARCHED_QUIETS_BEFORE[depth_index]
++                            .fetch_add(searched_quiets_before, AtomicOrdering::Relaxed);
++                        if searched_quiets_before == 0 {
++                            NODES_ZERO_QUIET_BEFORE[depth_index]
++                                .fetch_add(1, AtomicOrdering::Relaxed);
++                        }
++                    }
++                }
+                 index += 1;
+                 continue;
+             }
+@@ -1182,6 +1244,14 @@ impl Searcher<'_> {
+                     && move_order_key(position, self.pst, mv).is_none()
+                     && !self.killers[ply as usize][..].contains(&Some(mv)),
+             );
++            // search_moveを呼ぶ手だけを数える。置換表の手と成る手も同じ基準で分類する。
++            if prune_quiets && !lmp_recorded {
++                if move_order_key(position, self.pst, mv).is_some() {
++                    searched_captures_before += 1;
++                } else {
++                    searched_quiets_before += 1;
++                }
++            }
+             let score =
+                 self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
+             if score > best_score {
