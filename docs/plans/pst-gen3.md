@@ -17,7 +17,8 @@
 半分割の診断は完了した。A対Bは+8.3 Elo（95%信頼区間 −5.0〜+21.6）で、差が10 Eloを超えるとは示されず、大差（30 Elo）にも達しなかった（[A対B](../measurements/pst-data-split-ab-nodes.md)）。参考のA対S0は−25.5 Elo、B対S0は−15.0 Eloだった（[A対S0](../measurements/pst-data-split-a-nodes.md)、[B対S0](../measurements/pst-data-split-b-nodes.md)）。
 世代3の5ファイルの生成は10月3日に完了した（[生成の記録](../measurements/pst-gen3-generation.md)）。
 候補G3とG23は学習後の診断を通過した（[学習の記録](../measurements/pst-gen3-training.md)）。
-次の一手は、G3とG23のS0に対するSTCである。
+S0に対するSTCは、G3（[記録](../measurements/pst-gen3-g3-stc.md)）とG23（[記録](../measurements/pst-gen3-g23-stc.md)）がともに`H1`だった。
+次の一手は、LTCへ進める1候補を決めるG23対G3のSTCである。
 
 ## 目的
 
