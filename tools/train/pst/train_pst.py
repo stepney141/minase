@@ -790,6 +790,13 @@ def command_train(arguments: argparse.Namespace) -> None:
     if dataset.training_indices.size == 0 or dataset.validation_indices.size == 0:
         raise ValueError("game split produced an empty training or validation set")
 
+    training_halves = dataset.training_halves()
+    training_half_counts = [int(indices.size) for indices in training_halves]
+    training_indices = (dataset.training_indices if arguments.train_half is None
+                        else training_halves[arguments.train_half])
+    if training_indices.size == 0:
+        raise ValueError("--train-half selected an empty training set")
+    # 教師Kと先読み教師は、選択した半分にかかわらず全体から計算する。
     teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
     teacher_k_log = ", ".join(
         f"generation {generation} = {k:.9f}"
@@ -799,7 +806,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     print(f"rescore exclusions: {json.dumps(dataset.exclusions)}")
     print(
         f"records: total={dataset.record_count} "
-        f"training={dataset.training_indices.size} "
+        f"training={training_indices.size} "
         f"validation={dataset.validation_indices.size}"
     )
 
@@ -822,6 +829,8 @@ def command_train(arguments: argparse.Namespace) -> None:
     print(f"removal penalty: coefficient={arguments.removal_penalty:g} margin_cp={REMOVAL_MARGIN_CP:g}")
 
     selected_rate = arguments.lr[0]
+    updates_per_epoch = (training_indices.size + arguments.batch - 1) // arguments.batch
+    total_updates = 0
     if len(arguments.lr) > 1:
         candidates: list[tuple[float, float]] = []
         for rate in arguments.lr:
@@ -837,10 +846,12 @@ def command_train(arguments: argparse.Namespace) -> None:
                 arguments.batch,
                 generator,
                 device,
-                indices=dataset.training_indices,
+                indices=training_indices,
                 removal_penalty=arguments.removal_penalty,
                 removal_reference=removal_reference,
             )
+            # 学習率候補の試行で実行した更新も総更新回数に含める。
+            total_updates += updates_per_epoch
             loss, _ = validation_loss(
                 model,
                 dataset,
@@ -897,12 +908,13 @@ def command_train(arguments: argparse.Namespace) -> None:
             generator,
             device,
             count_features=epoch == 1,
-            indices=dataset.training_indices,
+            indices=training_indices,
             removal_penalty=arguments.removal_penalty,
             removal_reference=removal_reference,
         )
+        total_updates += updates_per_epoch
         elapsed = time.perf_counter() - started
-        positions_per_second = dataset.training_indices.size / elapsed
+        positions_per_second = training_indices.size / elapsed
         breakdown = {}
         loss, generation_losses = validation_loss(
             model,
@@ -969,6 +981,9 @@ def command_train(arguments: argparse.Namespace) -> None:
                    "teacher_classes": dataset.class_metadata(),
                    "lookahead": dataset.lookahead,
                    "lambda_override": dataset.lambda_override,
+                   "train_half": arguments.train_half,
+                   "training_half_counts": training_half_counts,
+                   "total_updates": total_updates,
                    "teacher_ks": [float(k) if np.isfinite(k) else None for k in teacher_ks],
                    "rescore_exclusions": dataset.exclusions}, stream, indent=2, allow_nan=False)
         stream.write("\n")
@@ -1001,6 +1016,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     train_parser = commands.add_parser("train", help="学習PSTを訓練する")
     train_parser.add_argument("--data", required=True, nargs="+")
+    train_parser.add_argument("--train-half", type=int, choices=(0, 1),
+                              help="対局単位で2分割した訓練データの一方だけを使う")
     train_parser.add_argument("--rescore", nargs="+")
     train_parser.add_argument("--lambda-override", type=float)
     train_parser.add_argument("--lookahead-gamma", type=float)
