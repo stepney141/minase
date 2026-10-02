@@ -67,6 +67,7 @@
 | 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 | デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 完了（採用） | 2026年9月27日 |
 | 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 完了（一部不採用） | 2026年9月29日 |
+| 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 進行中 | |
 
 ## 現在地
 
