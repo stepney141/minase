@@ -15,7 +15,8 @@
 進行中。2026年10月2日に起案と着手をした。
 世代3の5ファイルの生成を同日に開始した（所要は約19時間）。
 現行の学習器が採用PSTを再現することを確かめ（[再現の記録](../measurements/pst-gen3-trainer-reproduction.md)）、半分割のAとBを学習して診断と前提条件を通した（[学習の記録](../measurements/pst-data-split-training.md)）。
-次の一手は、生成と並行して同時3対局で行う、半分割の対局測定である。
+半分割の診断は完了した。A対Bは+8.3 Elo（95%信頼区間 −5.0〜+21.6）で、差が10 Eloを超えるとは示されず、大差（30 Elo）にも達しなかった（[A対B](../measurements/pst-data-split-ab-nodes.md)）。参考のA対S0は−25.5 Elo、B対S0は−15.0 Eloだった（[A対S0](../measurements/pst-data-split-a-nodes.md)、[B対S0](../measurements/pst-data-split-b-nodes.md)）。
+次の一手は、世代3の生成の完了後に行う、候補G3とG23の学習である。
 
 ## 目的
 
