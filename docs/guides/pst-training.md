@@ -60,16 +60,11 @@ git rev-parse HEAD
 | `train.removal_penalty` | 駒の除去差分への追加損失の係数を有限の非負値で明示する。正値は`mirrored`だけで使え、`single`と`tapered`は0に限る。設定例は係数未選定のため0とする。 |
 | `train.seed` | 学習の乱数シードを1とする。検証分割の指定ではない。 |
 | `train.device` | GPU実行は `cuda`、明示的なCPU実行は `cpu` を指定する。 |
-| `train.king_features` | 各MNSDに対応するMNKFを、`run.data`、生成シードの順に列挙する。使わない場合は`[]`とする。 |
-| `train.extra_columns` | モデルへ取り込むMNKFの列を半開区間で指定する。`"0:24,62:68"`は30列を記述順に取り込む。使わない場合は空文字列とする。 |
-| `train.train_extra` | 更新する追加特徴を、モデル内の番号で指定する。前述の30列のうち最後の6列だけなら`"24:30"`とする。使わない場合は空文字列とする。 |
-| `train.freeze_pst` | `true`ならPSTを固定する。この場合、`train.removal_penalty`は0、`train.k`は基準MNPTと同値にする。 |
 | `train.validation_sample` | 量子化誤差の確認に最大10,000検証局面を使う。 |
 | `diagnose.sample_size` | 教師評価との比較に各教師分類の各局面帯で最大10,000検証局面を使う。 |
 | `diagnose.seed` | 診断用標本の抽出シードを1とする。 |
 
 パスは設定ファイルの場所によらず、リポジトリのルートから解釈する。
-追加特徴用の4項目は、使わない場合にまとめて省略できる。
 `train.rescore`と`train.lookahead`も省略でき、それぞれ付け直しなし、先読みなしとなる。
 `train.lambda_override`を省略した場合は、各来歴の混合比を保持する。
 それ以外の項目の省略と、未知の項目はエラーになる。
@@ -83,34 +78,6 @@ git rev-parse HEAD
 設定例の0は追加損失を無効にする明示値であり、段階7の再学習で採用する係数を決定したものではない。
 再学習の準備前に、訓練集合内の予備比較で採用した係数と、その比較で固定した学習率を一組として設定へ転記する。
 段階7の[片側絶対値型の予備比較](../measurements/strength-stage7-removal-absolute.md)では、学習率0.03で係数1000を選び、本学習でもこの組を用いる。
-
-段階9では、Rustが書き出す追加特徴の形式MNKFを学習器へ渡す。
-MNKFの読み込みは、magic、版1、局面数、入力MNSD全体のSHA-256を検査する。
-定義IDと列数はヘッダから読み、同じ学習に渡す全MNKFで一致することを検査する。
-`extra_columns`の半開区間はファイルの列番号で解釈し、列数の範囲外なら拒否する。
-モデルの追加特徴数は選んだ列数となり、項目1の列0〜23は定義1と定義2で共通である。
-定義IDとファイルの列数は`training/inputs.json`の`mnkf_definition_id`と`mnkf_column_count`に記録し、後続段階と再開時に照合する。
-学習器の`<出力名>.training.json`にも同じ2項目と、選んだ列番号を`extra_columns`として記録する。
-たとえば項目1だけなら`extra_columns = "0:24"`、`train_extra = "0:24"`、`freeze_pst = true`を指定する。
-MNKFは次のように生成し、ワークフローの学習を始める前に全入力分をそろえる。
-生成後のMNSDについては、生成を終えてから対応するMNKFを作る。
-
-```bash
-target/release/pst_probe --pst nets/pst.bin --positions data/gen0.bin \
-  --king-features data/gen0.mnkf
-```
-
-学習器を直接呼ぶ場合は、`--king-features`、`--extra-columns`、`--train-extra`、`--freeze-pst`を使う。
-`--train-extra`を省略すると、選んだ追加特徴の全列を更新する。
-既存の`--init`は13,680特徴以上のMNPTを受け取り、既存の追加重みをモデルの先頭へ順に引き継ぎ、新しい列を0で初期化する。
-引き継ぐ列の意味と順序は利用者が対応させ、基準の追加特徴が候補より多ければ停止する。
-`single`のPSTは1端点のままだが、追加特徴は2端点を独立に持つ。
-
-固定学習では、PSTと更新範囲外の追加特徴の勾配を止め、保存直前に量子化した固定部分が基準とバイト単位で一致することを確認する。
-`mirrored`の固定学習には、両端点が厳密に鏡映対称のPSTを渡す。
-対称でない基準を平均化すると固定部分が変わるため、学習前に拒否する。
-探索用駒価値47個と出力Kも基準から保持する。
-量子化前の全重みは従来の`-float.npz`に、端点ごとにPSTと追加特徴を連結して保存する。
 
 由来別、教師の分類別、駒数帯別、および王駒が2枚の側を含むかどうかによる検証損失を、初期状態のエポック0から毎エポック記録する。
 駒数帯は既存の補間係数φの5等分を使い、空の区分の損失は`null`とする。
@@ -204,8 +171,6 @@ uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
 診断用の`pst_probe`は、準備時の学習ツール側の`HEAD`を固定した別のworktree `data/pst-gen2/probe`でビルドするため、生成基準が古いコミットでも現在の診断形式を使える。
 基準PST、その探索用駒価値、設定、既存データ、来歴ファイル、付け直しファイル、および学習スクリプトの検査和を保存し、`prepared.json`に診断器のコミット`probe_commit`とバイナリの検査和`probe_sha256`も記録する。
 `pst_probe`の変更は準備前にコミットする。
-追加特徴を使う候補では、このツリーの特徴列と候補MNPTの追加特徴の数と順序をそろえる。
-MNKFは対象の定義に対応する診断用バイナリで生成し、診断時のJSONは候補用バイナリが持つ列で照合する。
 元の作業ブランチに未コミットの変更があっても、各バイナリに使うのはそれぞれ固定したコミットである。
 
 準備後は、元のTOMLファイルを編集しても実験の設定は変わらない。
@@ -366,11 +331,6 @@ uv run --project tools/train pst-workflow diagnose --run-dir data/pst-gen2
 駒を除くと補間係数も変わるため、評価差をその駒固有の価値と同一視しない。
 同じ代表局面の合法な成り手は `pst_probe` が実際に適用し、着手前の手番側視点の評価差を `promotions` に記録する。成り手がない局面は `promotion_reason` にその旨を残す。
 `after`の着手後局面からPythonで計算した評価差がRustの値と異なると停止し、一致した成り手の件数を`rust_promotion_agreement`に記録する。
-追加特徴を使う診断では、元局面、成り後、駒除去後について、Rustの`king_features`と重みからPythonが独立に整数評価を計算する。
-PSTの和と追加特徴の積の和を端点ごとに足し、補間後に1回だけ除算して0方向へ切り捨て、評価範囲へ制限する。
-量子化誤差にも追加特徴を含める。
-基準の特徴数が候補より少ない場合は、新しい列を0にした`diagnostic-base.bin`を明示的に作り、候補バイナリで両方を評価する。
-元の基準MNPTは変更しない。
 
 駒除去の`evaluations`と`delta_cp`はPST部分を表し、追加の`total_evaluations`と`total_delta_cp`は評価全体を表す。
 PST部分の厳密な符号反転は`pst_removal_sign_reversals`へ集計し、1件でもあれば停止する。
