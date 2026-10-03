@@ -3,24 +3,28 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
 
-from features import (
-    BOARD_SQUARE_COUNT,
+from minase_train.data.features import (
     COLOR_BY_BYTE,
     INITIAL_BOARD,
+    NO_LION_SQUARE,
+    PAWN_STATE,
     PIECE_STATE_BY_BYTE,
     PIECE_STATE_COUNT,
+    REACHABLE_NON_ROYAL_STATES,
+    ROYAL_STATES,
     feature_indices,
 )
-from lookahead import lookahead_options
-from mnsd import NO_LION_SQUARE, RECORD_DTYPE, Dataset, write_mnsd
-from taper import (
+from minase_train.data.lookahead import lookahead_options
+from minase_train.data.mnpt import read_mnpt
+from minase_train.data.mnsd import Dataset, RECORD_DTYPE, write_mnsd
+from minase_train.data.taper import (
     BAND_COUNT,
     BATCH,
     band_counts,
@@ -31,17 +35,9 @@ from taper import (
     phase_ratios,
     piece_counts,
 )
-from train_pst import (
-    QUANTIZATION_ERROR_LIMIT,
-    PAWN_STATE,
-    REACHABLE_NON_ROYAL_STATES,
-    ROYAL_STATES,
-    build_targets,
-    estimate_generation_ks,
-    float_evaluate,
-    integer_evaluate,
-    read_mnpt,
-)
+from minase_train.pst.evaluate import QUANTIZATION_ERROR_LIMIT, float_evaluate, integer_evaluate
+from minase_train.pst.teacher import build_targets, estimate_generation_ks
+
 
 # (MNPTのパス, MNSDのパス, 成り手を列挙するか) を受け、Rustの評価結果をレコード順に返す。
 Probe = Callable[[Path, Path, bool], list[dict]]
@@ -451,7 +447,7 @@ def diagnose(
 
 def main() -> None:
     import argparse
-    from train_pst import float_weights_path
+    from minase_train.data.mnpt import float_weights_path
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", nargs="+", required=True)
     parser.add_argument("--rescore", nargs="+")

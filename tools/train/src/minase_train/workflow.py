@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
 import fcntl
 import hashlib
-from importlib.metadata import distributions
 import json
 import math
-from pathlib import Path
 import platform
 import re
 import shutil
@@ -17,20 +14,22 @@ import subprocess
 import sys
 import time
 import tomllib
+from contextlib import contextmanager
+from importlib.metadata import distributions
+from pathlib import Path
 
-from lookahead import validate_lookahead
-from mnsd import Dataset, read_header, provenance_path, validate_lambda_override
+from minase_train.checksum import sha256_file
+from minase_train.data.lookahead import validate_lookahead
+from minase_train.data.mnpt import PIECE_VALUE_BYTES, RULE_SET
+from minase_train.data.mnsd import Dataset, provenance_path, read_header, validate_lambda_override
 
-ROOT = Path(__file__).resolve().parents[3]
+
+ROOT = Path(__file__).resolve().parents[4]
+if not (ROOT / "Cargo.toml").is_file():
+    raise RuntimeError(f"repository root does not contain Cargo.toml: {ROOT}")
 SOURCES = Path(__file__).resolve().parent
-RULES = "L0,P0,R1,E0"
-# MNPT本体末尾の探索用駒価値(47個のi32)。
-PIECE_VALUE_BYTES = 47 * 4
 
 
-def digest(path: Path) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def write_json(path: Path, value: object) -> None:
@@ -152,8 +151,8 @@ def check_existing_data(config: dict) -> list[dict]:
                       rescore=config["train"]["rescore"][:len(config["run"]["data"])])
     files = []
     for path, header, records, provenance in zip(config["run"]["data"], dataset.headers, dataset.records, dataset.provenance):
-        if header.rule_set != RULES or len(records) == 0:
-            raise ValueError(f"{path}: requires nonempty data with rules {RULES}")
+        if header.rule_set != RULE_SET.decode("utf-8") or len(records) == 0:
+            raise ValueError(f"{path}: requires nonempty data with rules {RULE_SET.decode('utf-8')}")
         if provenance[0].result_origin == "selfplay":
             # src/rng.rs::derive_seed の base_seed + game_number に依存する。
             # 記録されていない破棄対局まで復元はできない。過去ログとの照合も必要。
@@ -170,8 +169,8 @@ def check_existing_data(config: dict) -> list[dict]:
 
 def input_receipt(path: Path) -> dict:
     provenance = provenance_path(path)
-    return {"path": str(path), "sha256": digest(path),
-            "provenance": {"path": str(provenance), "sha256": digest(provenance)}}
+    return {"path": str(path), "sha256": sha256_file(path).hex(),
+            "provenance": {"path": str(provenance), "sha256": sha256_file(provenance).hex()}}
 
 
 def verify_input(item: dict) -> None:
@@ -204,17 +203,17 @@ def run_command(run: Path, label: str, command: list[str], cwd: Path) -> None:
 
 
 def source_hashes() -> dict[str, str]:
-    return {p.name: digest(p) for p in sorted(SOURCES.glob("*.py")) if not p.name.startswith("test_")}
+    return {p.relative_to(SOURCES).as_posix(): sha256_file(p).hex() for p in sorted(SOURCES.rglob("*.py"))}
 
 
 def prepare(config_path: Path) -> None:
-    from train_pst import read_mnpt
+    from minase_train.data.mnpt import read_mnpt
     config = load_config(config_path)
     base = git(ROOT, "rev-parse", config["run"]["base_commit"] + "^{commit}")
     probe_commit = git(ROOT, "rev-parse", "HEAD")
     config["run"]["base_commit"] = base
     existing = check_existing_data(config)
-    rescores = [{"path": path, "sha256": digest(Path(path))}
+    rescores = [{"path": path, "sha256": sha256_file(Path(path)).hex()}
                 for path in config["train"]["rescore"] if path != "-"]
     run = Path(config["run"]["directory"])
     run.mkdir()  # 新規実験だけを作り、既存結果を消さない。
@@ -235,12 +234,12 @@ def prepare(config_path: Path) -> None:
             "config": config, "lambda_override": config["train"].get("lambda_override"),
             "lookahead": config["train"].get("lookahead"), "existing_data": existing,
             "rescores": rescores, "sources": source_hashes(),
-            "base_sha256": digest(run / "pst-base.bin"),
+            "base_sha256": sha256_file(run / "pst-base.bin").hex(),
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
-            "generator_sha256": digest(generator / "target/release/selfplay_gen"),
+            "generator_sha256": sha256_file(generator / "target/release/selfplay_gen").hex(),
             "probe_commit": probe_commit,
-            "probe_sha256": digest(probe / "target/release/pst_probe"),
+            "probe_sha256": sha256_file(probe / "target/release/pst_probe").hex(),
             "repository": str(ROOT),
         })
     print(f"Prepared {run}")
@@ -295,7 +294,7 @@ def load_prepared(run: Path) -> dict:
 
 
 def verify_file(path: Path, checksum: str) -> None:
-    if digest(path) != checksum:
+    if sha256_file(path).hex() != checksum:
         raise ValueError(f"checksum changed: {path}")
 
 
@@ -310,7 +309,7 @@ def validate_generated(path: Path, state: dict, seed: int, run: Path) -> None:
     # MNPTヘッダの重み本体検査和。ファイル全体のSHA-256とは別。
     checksum = (run / "pst-base.bin").read_bytes()[48:80]
     if (header.generation_commit != expected["run"]["base_commit"]
-            or header.network_checksum != checksum or header.rule_set != RULES
+            or header.network_checksum != checksum or header.rule_set != RULE_SET.decode("utf-8")
             or header.teacher_nodes != expected["generate"]["nodes"] or header.seed != seed
             or header.record_count == 0):
         raise ValueError(f"unexpected or empty generated data: {path}")
@@ -372,7 +371,8 @@ def train(run: Path) -> None:
     if destination.exists():
         raise ValueError(f"training already started; use a new run or isolate {destination} before retrying")
     import torch
-    from train_pst import estimate_generation_ks, estimate_mixed_k, float_weights_path, read_mnpt
+    from minase_train.pst.teacher import estimate_generation_ks, estimate_mixed_k
+    from minase_train.data.mnpt import float_weights_path, read_mnpt
     config = state["config"]["train"]
     if config["device"] == "cuda" and not torch.cuda.is_available():
         raise ValueError("CUDA unavailable; run training on a GPU host")
@@ -407,7 +407,7 @@ def train(run: Path) -> None:
     })
     print(f"K={k}, mixed K={mixed_k} (reference), training={training_count}, "
           f"validation={validation_count}, steps/epoch={steps}", flush=True)
-    command = [sys.executable, str(SOURCES / "train_pst.py"), "train", "--data", *paths,
+    command = [sys.executable, "-m", "minase_train.pst.train", "train", "--data", *paths,
                "--init", str(run / "pst-base.bin"), "--output", str(destination / "pst.bin"), "--k", repr(k)]
     for key, option in (("model", "model"), ("learning_rate", "lr"), ("epochs", "epochs"), ("batch", "batch"),
                         ("seed", "seed"),
@@ -425,20 +425,20 @@ def train(run: Path) -> None:
     if (destination / "pst.bin").read_bytes()[-PIECE_VALUE_BYTES:] != (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]:
         raise ValueError("trained weights changed the fixed piece values")
     write_json(destination / "complete.json", {
-        "sha256": digest(destination / "pst.bin"),
-        "float_sha256": digest(float_weights_path(destination / "pst.bin")),
+        "sha256": sha256_file(destination / "pst.bin").hex(),
+        "float_sha256": sha256_file(float_weights_path(destination / "pst.bin")).hex(),
     })
 
 
 def diagnose_probe(binary: Path):
     """診断で使うRustの探査関数を返す。テストではPythonの参照実装へ差し替える。"""
-    from pst_diagnostics import rust_probe
+    from minase_train.diagnostics.comparison import rust_probe
     return rust_probe(binary)
 
 
 def diagnose(run: Path) -> None:
-    from pst_diagnostics import diagnose as diagnose_weights
-    from train_pst import float_weights_path
+    from minase_train.diagnostics.comparison import diagnose as diagnose_weights
+    from minase_train.data.mnpt import float_weights_path
     state = load_prepared(run)
     candidate = run / "training/pst.bin"
     completion = json.loads((run / "training/complete.json").read_text())

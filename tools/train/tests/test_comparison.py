@@ -1,45 +1,92 @@
-"""帯別標本、量子化誤差、駒の除去、成りの診断を独立した駒得で検証する。"""
+"""基準PSTと候補PSTの評価、駒除去、および成りの比較を検証する。"""
 
-from pathlib import Path
+from __future__ import annotations
+
+import hashlib
 import json
+import math
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 
-from features import BOARD_FEATURE_COUNT, FEATURE_COUNT
-from mnsd import NO_LION_SQUARE, RECORD_DTYPE, Dataset, read_header, map_records
-from pst_diagnostics import Weights, derived_piece_values, diagnose
-from taper import BAND_COUNT
-from test_train_pst import write_mnsd, write_provenance
-from train_pst import initial_piece_values, write_mnpt
+from helpers import PIECE_VALUES, python_probe, write_mnsd, write_provenance
+from minase_train.data.features import BOARD_FEATURE_COUNT, FEATURE_COUNT
+from minase_train.data.mnpt import initial_piece_values, write_mnpt
+from minase_train.data.mnsd import Dataset, read_header
+from minase_train.data.taper import BAND_COUNT
+from minase_train.diagnostics.comparison import (
+    Weights,
+    derived_piece_values,
+    diagnose,
+    outcome_metrics,
+)
 
-PIECE_VALUES = initial_piece_values()
 
+class OutcomeMetricsTest(unittest.TestCase):
 
-def python_probe(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
-    """参照評価で応答し、成り後の応答には先手の成金1枚だけの固定局面を使う。"""
-    weights = Weights(mnpt)
-    records = map_records(mnsd)
-    scores = weights.evaluate(records)
-    after = np.zeros(len(records), dtype=RECORD_DTYPE)
-    after["board"][:, 0] = 47  # MNSD: 1 + 成駒29 + 金将17。
-    after["stm"] = 1 - records["stm"]
-    after["lion"] = NO_LION_SQUARE
-    after_scores = weights.evaluate(after)
-    return [
-        {"index": index, "eval": int(score),
-         **({"promotions": [{
-             "move": "1a1b+", "delta": -int(after_scores[index]) - int(score),
-             "after": {"board": after[index]["board"].tolist(),
-                       "stm": int(after[index]["stm"]), "lion": int(after[index]["lion"])},
-         }]} if promotions else {})}
-        for index, score in enumerate(scores)
-    ]
+    def test_hand_computed_means_signs_and_cross_file_game_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            ids = [str(i) for i in range(200)
+                   if int.from_bytes(hashlib.sha256(str(i).encode()).digest()[:8], 'little') % 20 == 0]
+            train_id = next(str(i) for i in range(200)
+                            if int.from_bytes(hashlib.sha256(str(i).encode()).digest()[:8], 'little') % 20 != 0)
+            paths = []
+            for file, (squares, results, games) in enumerate((
+                    ([0, 1, 4, 0], [2, 0, 2, 0], [1, 1, 2, 3]),
+                    ([2, 3, 5], [0, 1, 1], [1, 1, 2]))):
+                boards = np.zeros((len(squares), 144), dtype='u1')
+                boards[np.arange(len(squares)), squares] = 1
+                path = root / f'{file}.bin'
+                write_mnsd(path, seed=file, checksum=b'a' * 32, games=games,
+                           results=results, board=boards)
+                write_provenance(path, result_origin='human', **{'lambda': 0, 'games': [
+                    {'game': 1, 'id': ids[0]}, {'game': 2, 'id': ids[1]},
+                    {'game': 3, 'id': train_id}]})
+                paths.append(path)
+            weights = np.zeros(FEATURE_COUNT, dtype='i2')
+            # 未成の歩は駒状態29。1枚で±100cpまたは0cpにする。
+            weights[29 * 144:29 * 144 + 6] = [800, -800, 800, 0, 0, -800]
+            mnpt = root / 'pst.bin'
+            write_mnpt(mnpt, weights, weights, initial_piece_values(), 100)
+            dataset = Dataset(paths, lambda_override=1)
+            # バッチ境界とファイル境界を越えて同じ対局にまとめる。
+            with patch('minase_train.diagnostics.comparison.BATCH', 2):
+                report = outcome_metrics(dataset, {'base': Weights(mnpt)})['base']
+            a = math.log(1 + math.exp(-1))
+            b = math.log(1 + math.exp(1))
+            c = (a + b) / 2
+            self.assertAlmostEqual(report['bce_position_mean'], (2*a+b+2*math.log(2)+c)/6)
+            self.assertAlmostEqual(report['bce_game_mean'], ((2*a+b+math.log(2))/4 + (math.log(2)+c)/2)/2)
+            self.assertEqual(report['records'], 6)
+            self.assertEqual(report['games'], 2)
+            self.assertEqual(report['sign_agreement'], 2/3)
+            self.assertEqual(report['sign_matches'], 2)
+            self.assertEqual(report['sign_records'], 3)
+            self.assertEqual(report['sign_excluded'], 3)
+            self.assertEqual(report['draw_records'], 2)
+            self.assertEqual(report['zero_score_records'], 2)
+            self.assertEqual(report['output_k'], 100)
+            json.dumps(report, allow_nan=False)
+            unchanged = outcome_metrics(Dataset(paths), {'base': Weights(mnpt)})['base']
+            for key in report:
+                if isinstance(report[key], float):
+                    self.assertAlmostEqual(report[key], unchanged[key])
+                else:
+                    self.assertEqual(report[key], unchanged[key])
+            weights[:] = 0
+            write_mnpt(root / 'zero.bin', weights, weights, initial_piece_values(), 100)
+            empty = outcome_metrics(dataset, {'zero': Weights(root / 'zero.bin')})['zero']
+            self.assertIsNone(empty['sign_agreement'])
+            self.assertEqual(empty['sign_excluded'], 6)
+            self.assertAlmostEqual(empty['bce_position_mean'], math.log(2))
 
 
 class DiagnosticsTest(unittest.TestCase):
+
     """自駒1枚800/8=100cpの基準に対し、倍額の候補と端点の異なる候補を検査する。"""
 
     def setUp(self) -> None:
@@ -87,7 +134,7 @@ class DiagnosticsTest(unittest.TestCase):
         for path in original.paths:
             write_provenance(path, **{"lambda": 0})
         dataset = Dataset(original.paths)
-        with patch("train_pst.estimate_k", side_effect=AssertionError("unexpected K estimate")):
+        with patch('minase_train.pst.teacher.estimate_k', side_effect=AssertionError("unexpected K estimate")):
             report = self.run_diagnose(dataset, self.root / "results-only")
         json.dumps(report, allow_nan=False)
         self.assertEqual(report["teacher_ks"], [None, None])

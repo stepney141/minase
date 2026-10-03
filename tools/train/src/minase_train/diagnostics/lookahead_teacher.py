@@ -10,11 +10,14 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from features import feature_indices
-from lookahead import validate_lookahead, window_statistics
-from mnsd import Dataset, KingFeatures, sha256_file
-from taper import phase_ratios
-from train_pst import build_targets, estimate_generation_ks, make_model, model_logits, read_mnpt
+from minase_train.checksum import sha256_file
+from minase_train.data.features import feature_indices
+from minase_train.data.lookahead import validate_lookahead, window_statistics
+from minase_train.data.mnpt import read_mnpt
+from minase_train.data.mnsd import Dataset, KingFeatures
+from minase_train.data.taper import phase_ratios
+from minase_train.pst.model import make_model, model_logits
+from minase_train.pst.teacher import build_targets, estimate_generation_ks
 
 
 def distribution(values: np.ndarray) -> dict:

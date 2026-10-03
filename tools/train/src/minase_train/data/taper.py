@@ -5,11 +5,16 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
-from features import (
-    BOARD_SQUARE_COUNT, FEATURE_COUNT, MIRRORED_FEATURE_COUNT, PADDING_INDEX,
-    canonical_feature_indices, feature_indices,
+from minase_train.data.features import (
+    BOARD_SQUARE_COUNT,
+    FEATURE_COUNT,
+    MIRRORED_FEATURE_COUNT,
+    PADDING_INDEX,
+    canonical_feature_indices,
+    feature_indices,
 )
-from mnsd import Dataset
+from minase_train.data.mnsd import Dataset
+
 
 # 設計書「盤上総駒数で補間する」: q = min(90, max(0, N - 2)), φ = q / 90。
 PHASE_DIVISOR = 90

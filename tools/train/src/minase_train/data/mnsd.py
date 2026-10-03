@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
-from pathlib import Path
 import hashlib
 import json
 import re
 import struct
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 from numpy.typing import NDArray
 
-from lookahead import compute_lookahead, validate_lookahead
+from minase_train.checksum import sha256_file
+from minase_train.data.features import NO_LION_SQUARE
+from minase_train.data.lookahead import compute_lookahead, validate_lookahead
 
 
 HEADER_LENGTH = 136
 RECORD_LENGTH = 160
-NO_LION_SQUARE = 255
 
 RECORD_DTYPE = np.dtype(
     [
@@ -585,13 +586,6 @@ def write_mnsd(
 HEADER = struct.Struct("<4sIIIQ32s")
 
 
-def sha256_file(path: Path) -> bytes:
-    """MNSDヘッダを含むファイル全体を一定サイズのバッファでハッシュする。"""
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1 << 20):
-            digest.update(chunk)
-    return digest.digest()
 
 
 class KingFeatures:

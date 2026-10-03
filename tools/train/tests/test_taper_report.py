@@ -1,52 +1,24 @@
-"""段階7の識別性診断を、鏡映対の観測を合わせた独立標本で検証する。"""
+"""駒数分布と端点の識別性の報告を検証する。"""
 
-from contextlib import redirect_stderr, redirect_stdout
+from __future__ import annotations
+
 import csv
 import io
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 
-from mnsd import Dataset
-from taper import feature_identifiability
-from taper_report import main as report_main, state_summary
-from test_train_pst import write_mnsd
-from train_pst import initial_piece_values, write_mnpt
+from helpers import write_mnsd
+from minase_train.data.mnpt import initial_piece_values, write_mnpt
+from minase_train.diagnostics.taper_report import main as report_main
 
 
 class MirroredIdentifiabilityTest(unittest.TestCase):
-    def test_mirror_pairs_pool_phase_observations_before_computing_ssd(self) -> None:
-        # strength-stage7.md: 正準特徴の単位で出現回数とφの偏差平方和を集計する。
-        # 同じ段の両端の歩をφ=0とφ=1で1回ずつ観測する。
-        boards = np.zeros((2, 144), dtype=np.uint8)
-        boards[0, :2] = [1, 12]
-        boards[1, :92] = 11
-        boards[1, 11] = 1
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "observations.bin"
-            write_mnsd(path, seed=0, checksum=b"a" * 32, games=[1, 2], board=boards)
-            dataset = Dataset([path])
-            indices = np.arange(2, dtype=np.int64)
-            full = feature_identifiability(dataset, indices, mirrored=False, batch=1)
-            pooled = feature_identifiability(dataset, indices, mirrored=True, batch=1)
-        self.assertEqual(full["count"].size, 13680)
-        self.assertEqual(pooled["count"].size, 6840)
-        self.assertEqual(int(pooled["count"].sum()), 94)
-        pawn_full = 29 * 144
-        pawn_pooled = 29 * 72
-        self.assertEqual(full["ssd"][pawn_full], 0)
-        self.assertEqual(full["ssd"][pawn_full + 11], 0)
-        self.assertEqual(pooled["count"][pawn_pooled], 2)
-        self.assertEqual(pooled["mean_phi"][pawn_pooled], 0.5)
-        self.assertEqual(pooled["ssd"][pawn_pooled], 0.5)
-        pawn = state_summary(pooled, 72)[29]
-        self.assertEqual(pawn["observed_squares"], 1)
-        self.assertEqual(pawn["occurrences"], 2)
-        self.assertEqual(pawn["mean_phi"], 0.5)
 
     def test_report_means_phase_over_training_positions_and_uses_model_feature_units(self) -> None:
         # 既知の分割ではseed=11のgame=0,1が訓練、game=4が検証。

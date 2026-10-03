@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 from pathlib import Path
 
 import numpy as np
 
-from features import PIECE_STATE_COUNT, feature_indices
-from mnsd import Dataset
-from taper import (
+from minase_train.checksum import sha256_file
+from minase_train.data.features import PIECE_STATE_COUNT, feature_indices
+from minase_train.data.mnpt import read_mnpt
+from minase_train.data.mnsd import Dataset
+from minase_train.data.taper import (
     BAND_COUNT,
+    BATCH,
     PHASE_DIVISOR,
     PHASE_OFFSET,
-    BATCH,
     band_counts,
     band_indices,
     band_label,
@@ -26,12 +27,9 @@ from taper import (
     phase_ratios,
     piece_count_histogram,
 )
-from train_pst import MODEL_KINDS, build_targets, estimate_generation_ks, integer_evaluate, read_mnpt
-
-
-def digest(path: Path) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+from minase_train.pst.evaluate import integer_evaluate
+from minase_train.pst.model import MODEL_KINDS
+from minase_train.pst.teacher import build_targets, estimate_generation_ks
 
 
 def band_diagnostics(dataset: Dataset, middlegame: np.ndarray, endgame: np.ndarray, k: float, teacher_ks: np.ndarray,
@@ -160,10 +158,10 @@ def main() -> None:
     report = {
         "model": arguments.model,
         "training_mean_phi": mean_phi,
-        "data": [{"path": str(Path(p).resolve()), "sha256": digest(Path(p)),
+        "data": [{"path": str(Path(p).resolve()), "sha256": sha256_file(Path(p)).hex(),
                   "seed": h.seed, "records": h.record_count, "generation": int(g)}
                  for p, h, g in zip(arguments.data, dataset.headers, dataset.file_generations)],
-        "pst": {"path": str(Path(arguments.pst).resolve()), "sha256": digest(Path(arguments.pst)),
+        "pst": {"path": str(Path(arguments.pst).resolve()), "sha256": sha256_file(Path(arguments.pst)).hex(),
                 "body_sha256": Path(arguments.pst).read_bytes()[48:80].hex(), "k": k},
         "validation_split": "hash64(seed, game) % 20 == 0 (mnsd.py)",
         "records": {"training": int(training.size), "validation": int(validation.size)},

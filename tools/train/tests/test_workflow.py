@@ -1,22 +1,25 @@
 """明示した設定と完了記録だけで学習工程を進める契約を検証する。"""
 
-from contextlib import ExitStack, redirect_stdout
+from __future__ import annotations
+
 import hashlib
 import io
 import json
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+from contextlib import ExitStack, redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 
-from features import FEATURE_COUNT
-import pst_workflow as workflow
-from test_pst_diagnostics import python_probe
-from test_train_pst import write_mnsd
-from train_pst import initial_piece_values, read_mnpt, write_mnpt
+import minase_train.workflow as workflow
+from helpers import python_probe, write_mnsd, write_provenance, write_rescore
+from minase_train.checksum import sha256_file
+from minase_train.data.features import FEATURE_COUNT
+from minase_train.data.mnpt import initial_piece_values, read_mnpt, write_mnpt
 
 
 CONFIG = '''[run]
@@ -48,7 +51,9 @@ seed = 1
 
 
 class WorkflowTest(unittest.TestCase):
+
     def setUp(self) -> None:
+        self.enterContext(patch.dict("os.environ", {"PYTHONPATH": str(workflow.SOURCES.parent)}))
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
@@ -133,7 +138,7 @@ class WorkflowTest(unittest.TestCase):
 
     def test_example_explicitly_disables_unselected_removal_penalty(self) -> None:
         """未選定の係数を設定例で仮定せず、必須項目をすべて明示する。"""
-        example = Path(__file__).with_name("pst.example.toml").read_text()
+        example = (Path(__file__).resolve().parents[1] / "pst.example.toml").read_text()
         self.config_path.write_text(example.replace("REPLACE_WITH_FULL_COMMIT_HASH", "0" * 40))
         config = workflow.load_config(self.config_path, self.root)
         self.assertEqual(config["train"]["model"], "mirrored")
@@ -183,7 +188,7 @@ class WorkflowTest(unittest.TestCase):
         tools_commit = "1" * 40
         checkouts = {}
         builds = {}
-        from test_phase4 import write_rescore
+        from helpers import write_rescore
         source = self.root / "data/old.bin"
         sidecar = self.root / "prepare-rescore.bin"
         write_rescore(sidecar, source, [(1, 0, 20, 1, 100)] * workflow.read_header(source).record_count)
@@ -220,16 +225,16 @@ class WorkflowTest(unittest.TestCase):
                 patch.object(workflow, "run_command", side_effect=fake_command):
             workflow.prepare(self.config_path)
         state = json.loads((run / "prepared.json").read_text())
-        self.assertEqual(state["rescores"], [{"path": str(sidecar), "sha256": workflow.digest(sidecar)}])
+        self.assertEqual(state["rescores"], [{"path": str(sidecar), "sha256": sha256_file(sidecar).hex()}])
         provenance = Path(str(source) + ".provenance.json")
-        self.assertEqual(state["existing_data"][0]["provenance"]["sha256"], workflow.digest(provenance))
+        self.assertEqual(state["existing_data"][0]["provenance"]["sha256"], sha256_file(provenance).hex())
         self.assertEqual(checkouts, {run / "generator": base, run / "probe": tools_commit})
         self.assertEqual(builds, {run / "generator": ["selfplay_gen"], run / "probe": ["pst_probe"]})
         self.assertEqual(state["config"]["run"]["base_commit"], base)
         self.assertEqual(state["config"]["train"]["removal_penalty"], 0)
         self.assertEqual(state["probe_commit"], tools_commit)
-        self.assertEqual(state["generator_sha256"], workflow.digest(run / "generator/target/release/selfplay_gen"))
-        self.assertEqual(state["probe_sha256"], workflow.digest(run / "probe/target/release/pst_probe"))
+        self.assertEqual(state["generator_sha256"], sha256_file(run / "generator/target/release/selfplay_gen").hex())
+        self.assertEqual(state["probe_sha256"], sha256_file(run / "probe/target/release/pst_probe").hex())
 
     def prepared(self) -> tuple[Path, ExitStack]:
         """外部git操作だけを置換し、完了記録とファイル検証は実際に通す。"""
@@ -248,14 +253,14 @@ class WorkflowTest(unittest.TestCase):
             "lookahead": self.config["train"].get("lookahead"),
             "lambda_override": self.config["train"].get("lambda_override"),
             "existing_data": workflow.check_existing_data(self.config),
-            "rescores": [{"path": p, "sha256": workflow.digest(Path(p))} for p in self.config["train"]["rescore"] if p != "-"],
+            "rescores": [{"path": p, "sha256": sha256_file(Path(p)).hex()} for p in self.config["train"]["rescore"] if p != "-"],
             "sources": workflow.source_hashes(),
-            "base_sha256": workflow.digest(run / "pst-base.bin"),
+            "base_sha256": sha256_file(run / "pst-base.bin").hex(),
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-workflow.PIECE_VALUE_BYTES:]).hexdigest(),
-            "generator_sha256": workflow.digest(binary),
+            "generator_sha256": sha256_file(binary).hex(),
             "probe_commit": "1" * 40,
-            "probe_sha256": workflow.digest(probe),
+            "probe_sha256": sha256_file(probe).hex(),
             "repository": str(self.root),
         }
         (run / "prepared.json").write_text(json.dumps(state))
@@ -334,8 +339,8 @@ class WorkflowTest(unittest.TestCase):
             workflow.diagnose(run)
         report = json.loads((run / 'diagnostics/report.json').read_text())
         self.assertEqual(report['lookahead'], inputs['lookahead'])
-        from mnsd import Dataset
-        from pst_diagnostics import Weights
+        from minase_train.data.mnsd import Dataset
+        from minase_train.diagnostics.comparison import Weights
         dataset = Dataset([source])
         model = Weights(run / 'training/pst.bin')
         expected_scores = np.tile([-560 / 1.9, 400, -400], 80)
@@ -384,9 +389,9 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(workflow.load_prepared(run)['lambda_override'], 0)
 
     def test_lambda_override_training_diagnosis_and_record_mismatches(self):
-        from mnsd import Dataset
-        from test_train_pst import write_provenance
-        from train_pst import estimate_generation_ks
+        from minase_train.data.mnsd import Dataset
+        from helpers import write_provenance
+        from minase_train.pst.teacher import estimate_generation_ks
         source = self.root / 'data/old.bin'
         write_mnsd(source, seed=0, checksum=b'a' * 32,
                    games=np.repeat(np.arange(1, 81), 3).tolist(), scores=[100, 200, -400] * 80)
@@ -454,7 +459,7 @@ class WorkflowTest(unittest.TestCase):
         workflow.load_prepared(run)
 
     def test_human_games_do_not_reserve_generator_seed_ranges(self):
-        from test_train_pst import write_provenance
+        from helpers import write_provenance
         write_provenance(self.root / "data/old.bin", result_origin="human", **{
             "lambda": 0, "games": [{"game": 1, "id": "a"}, {"game": 10, "id": "b"}]})
         self.config["generate"]["seeds"] = [0]
@@ -473,7 +478,7 @@ class WorkflowTest(unittest.TestCase):
         execute.assert_not_called()
 
     def test_rescore_change_blocks_all_later_stages(self):
-        from test_phase4 import write_rescore
+        from helpers import write_rescore
         source = self.root / "data/old.bin"
         sidecar = self.root / "replacement.bin"
         count = workflow.read_header(source).record_count
@@ -556,7 +561,7 @@ class WorkflowTest(unittest.TestCase):
         float_path = training / "pst-float.npz"
         float_path.write_bytes(b"fixture")
         (training / "complete.json").write_text(json.dumps({
-            "sha256": workflow.digest(candidate), "float_sha256": workflow.digest(float_path)}))
+            "sha256": sha256_file(candidate).hex(), "float_sha256": sha256_file(float_path).hex()}))
         return candidate
 
     def test_diagnosis_rejects_modified_completed_weights(self) -> None:
@@ -607,7 +612,7 @@ class WorkflowTest(unittest.TestCase):
                 json.dumps(workflow.input_receipt(output)))
 
         stdout = io.StringIO()
-        with patch("train_pst.estimate_mixed_k", return_value=321.25), redirect_stdout(stdout):
+        with patch('minase_train.pst.teacher.estimate_mixed_k', return_value=321.25), redirect_stdout(stdout):
             workflow.train(run)
         candidate = run / "training/pst.bin"
         inputs = json.loads((run / "training/inputs.json").read_text())
@@ -615,14 +620,14 @@ class WorkflowTest(unittest.TestCase):
         middlegame, endgame, piece_values, saved_k = read_mnpt(candidate)
         np.testing.assert_array_equal(middlegame, endgame)
         np.testing.assert_array_equal(piece_values, initial_piece_values())
-        self.assertEqual(completion["float_sha256"], workflow.digest(run / "training/pst-float.npz"))
+        self.assertEqual(completion["float_sha256"], sha256_file(run / "training/pst-float.npz").hex())
         # 設定値は段階7の基準MNPTヘッダと同じfloat32の正確な値である。
         self.assertEqual(saved_k, 1072.6529541015625)
         self.assertEqual(inputs["k"], self.config["train"]["k"])
         self.assertEqual(inputs["mixed_k"], 321.25)
         self.assertIn("321.25", stdout.getvalue())
         self.assertIn("reference", stdout.getvalue())
-        self.assertEqual(completion["sha256"], workflow.digest(candidate))
+        self.assertEqual(completion["sha256"], sha256_file(candidate).hex())
         self.assertEqual(inputs["training_records"] + inputs["validation_records"], 240)
         self.assertEqual(inputs["options"]["device"], "cpu")
         self.assertEqual(inputs["options"]["removal_penalty"], 0)
@@ -650,8 +655,8 @@ class WorkflowTest(unittest.TestCase):
         self.config["train"].update(model="mirrored", k=1500.5, removal_penalty=2.5)
         run, stack = self.prepared()
         generation_ks = stack.enter_context(patch(
-            "train_pst.estimate_generation_ks", return_value=(np.array([777.0]), None)))
-        mixed_k = stack.enter_context(patch("train_pst.estimate_mixed_k", return_value=888.0))
+            'minase_train.pst.teacher.estimate_generation_ks', return_value=(np.array([777.0]), None)))
+        mixed_k = stack.enter_context(patch('minase_train.pst.teacher.estimate_mixed_k', return_value=888.0))
         execute = stack.enter_context(patch.object(
             workflow, "run_command", side_effect=subprocess.CalledProcessError(1, "train")))
         with self.assertRaises(subprocess.CalledProcessError):
@@ -676,8 +681,8 @@ class WorkflowTest(unittest.TestCase):
         self.config["train"]["rescore"] = ["-"]
         run, stack = self.prepared()
         stack.enter_context(patch(
-            "train_pst.estimate_generation_ks", return_value=(np.array([777.0]), None)))
-        stack.enter_context(patch("train_pst.estimate_mixed_k", return_value=888.0))
+            'minase_train.pst.teacher.estimate_generation_ks', return_value=(np.array([777.0]), None)))
+        stack.enter_context(patch('minase_train.pst.teacher.estimate_mixed_k', return_value=888.0))
         execute = stack.enter_context(patch.object(
             workflow, "run_command", side_effect=subprocess.CalledProcessError(1, "train")))
         with self.assertRaises(subprocess.CalledProcessError):
@@ -687,6 +692,92 @@ class WorkflowTest(unittest.TestCase):
         inputs = json.loads((run / "training/inputs.json").read_text())
         self.assertEqual(inputs["options"]["removal_penalty"], 0)
 
+
+    def test_source_hashes_include_nested_sources_and_distinct_relative_paths(self):
+        package = self.root / "tools/train/src/minase_train"
+        contents = {
+            "__init__.py": b"",
+            "data/__init__.py": b"",
+            "data/shared.py": b"value = 1\n",
+            "pst/shared.py": b"value = 2\n",
+            "data/test_source.py": b"value = 3\n",
+            "notes.txt": b"not a Python source\n",
+        }
+        for name, content in contents.items():
+            path = package / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        expected = {name: hashlib.sha256(content).hexdigest()
+                    for name, content in contents.items() if name.endswith(".py")}
+        with patch.object(workflow, "SOURCES", package):
+            self.assertEqual(workflow.source_hashes(), expected)
+
+    def test_source_changes_additions_and_deletions_block_all_later_stages(self):
+        package = self.root / "tools/train/src/minase_train"
+        source = package / "data/mnsd.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("value = 1\n")
+        (package / "__init__.py").write_text("")
+        with patch.object(workflow, "SOURCES", package):
+            run, _ = self.prepared()
+            added = package / "data/added.py"
+            for change in ("modify", "add", "delete"):
+                with self.subTest(change=change):
+                    if change == "modify":
+                        source.write_text("value = 2\n")
+                    elif change == "add":
+                        added.write_text("value = 3\n")
+                    else:
+                        source.unlink()
+                    for operation, args in ((workflow.generate, (run, None)),
+                                            (workflow.train, (run,)), (workflow.diagnose, (run,))):
+                        with self.subTest(operation=operation.__name__):
+                            with self.assertRaisesRegex(ValueError, "training tools changed"):
+                                operation(*args)
+                    source.write_text("value = 1\n")
+                    if added.exists():
+                        added.unlink()
+                    workflow.load_prepared(run)
+            tests = self.root / "tools/train/tests"
+            tests.mkdir()
+            test_source = tests / "test_mnsd.py"
+            for content in ("value = 1\n", "value = 2\n"):
+                test_source.write_text(content)
+                workflow.load_prepared(run)
+            test_source.unlink()
+            workflow.load_prepared(run)
+            self.assertFalse((run / "training").exists())
+            self.assertFalse((run / "diagnostics").exists())
+            self.assertFalse((run / "generated-100.bin").exists())
+
+    def test_root_matches_actual_worktree(self):
+        expected = Path(subprocess.check_output(
+            ["git", "-C", str(Path(__file__).resolve().parent), "rev-parse", "--show-toplevel"],
+            text=True,
+        ).strip()).resolve()
+        self.assertEqual(workflow.ROOT, expected)
+        self.assertTrue((workflow.ROOT / "Cargo.toml").is_file())
+
+    def test_import_rejects_root_without_cargo_manifest(self):
+        import runpy
+        misplaced = self.root / "tools/train/src/minase_train/workflow.py"
+        misplaced.parent.mkdir(parents=True)
+        misplaced.write_text(Path(workflow.__file__).read_text())
+        with self.assertRaisesRegex(RuntimeError, "Cargo.toml"):
+            runpy.run_path(str(misplaced))
+
+    def test_training_subprocess_uses_package_module(self):
+        write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
+                   games=list(range(1, 81)))
+        self.config["generate"]["seeds"] = []
+        self.config["train"]["rescore"] = ["-"]
+        run, stack = self.prepared()
+        execute = stack.enter_context(patch.object(
+            workflow, "run_command", side_effect=subprocess.CalledProcessError(1, "train")))
+        with self.assertRaises(subprocess.CalledProcessError):
+            workflow.train(run)
+        self.assertEqual(execute.call_args.args[2][:4],
+                         [sys.executable, "-m", "minase_train.pst.train", "train"])
 
 
 if __name__ == "__main__":

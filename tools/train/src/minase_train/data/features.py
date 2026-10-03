@@ -20,6 +20,15 @@ PROMOTABLE_KINDS = np.array(
 )
 
 
+
+PAWN_STATE = 29
+ROYAL_STATES = (11, 21)
+# 盤上に現れ得る非王駒の状態: 成れる駒の未成状態と、成りの結果になる駒種または成れない駒種。
+REACHABLE_NON_ROYAL_STATES = tuple(range(29, 47)) + (
+    4, 5, 6, 7, 8, 9, 10, 12, 17, 20, 22, 23, 24, 25, 26, 27, 28,
+)
+
+
 def _build_piece_tables() -> tuple[NDArray[np.int16], NDArray[np.int8]]:
     """盤面バイトから駒状態と陣営を得る256要素の表を作る。"""
     states = np.full(256, -1, dtype=np.int16)

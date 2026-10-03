@@ -3,315 +3,59 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-import hashlib
 import json
 import math
-from pathlib import Path
 import resource
-import struct
 import time
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
-from numpy.typing import NDArray
 import torch
+from numpy.typing import NDArray
 from torch import Tensor, nn
 from torch.nn import functional as torch_functional
 
-from features import (
-    BOARD_FEATURE_COUNT,
-    FEATURE_COUNT,
-    INITIAL_BOARD,
-    MIRRORED_FEATURE_COUNT,
-    PADDING_INDEX,
-    canonical_feature_indices,
-    feature_indices,
-    mirror,
+from minase_train.data.features import FEATURE_COUNT, PADDING_INDEX, feature_indices, mirror
+from minase_train.data.lookahead import lookahead_options
+from minase_train.data.mnpt import (
+    float_weights_path,
+    initial_piece_values,
+    initial_weights,
+    quantize,
+    read_mnpt,
+    write_mnpt,
 )
-from lookahead import lookahead_options
-from mnsd import ORIGINS, Dataset, NO_LION_SQUARE, hash64, validate_lambda_override
-from taper import BAND_COUNT, band_indices, band_label, PHASE_DIVISOR, phase_numerators, phase_ratios, piece_counts
-
-
-HEADER_LENGTH = 80
-FORMAT_VERSION = 2
-RULE_SET = b"L0,P0,R1,E0"
-PIECE_STATE_COUNT = 47
-# 設計書「MNPT形式を更新する」: 序中盤13,680 i16、終盤13,680 i16、探索用駒価値47 i32。
-BODY_LENGTH = FEATURE_COUNT * 2 * 2 + PIECE_STATE_COUNT * 4
-FILE_LENGTH = HEADER_LENGTH + BODY_LENGTH
-EVALUATION_LIMIT = 28_999
-# 設計書「量子化と整数推論」の合格条件: 浮動小数点評価との平均絶対誤差2センチポーン以下。
-QUANTIZATION_ERROR_LIMIT = 2.0
-REMOVAL_MARGIN_CP = 0.25
-MODEL_KINDS = ("single", "tapered", "mirrored")
-PIECE_VALUES = np.array(
-    [
-        100, 125, 375, 375, 500, 500, 625, 750, 875, 1000,
-        1500, 2600, 503, 375, 380, 250, 250, 378, 385, 383,
-        2500, 2600, 875, 625, 1000, 1000, 750, 1250, 1375,
-    ],
-    dtype=np.int32,
+from minase_train.data.mnsd import Dataset, ORIGINS, hash64, validate_lambda_override
+from minase_train.data.taper import (
+    BAND_COUNT,
+    band_indices,
+    band_label,
+    phase_numerators,
+    phase_ratios,
+    piece_counts,
 )
-PROMOTABLE_KINDS = np.array(
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19],
-    dtype=np.int32,
+from minase_train.pst.evaluate import (
+    QUANTIZATION_ERROR_LIMIT,
+    float_evaluate,
+    initial_position_score,
+    integer_evaluate,
 )
-# 駒状態番号: 成駒または成れない駒は駒種番号(0..28)、成れる駒は29以降。
-STATE_KIND = np.arange(PIECE_STATE_COUNT, dtype=np.int32)
-STATE_KIND[29:] = PROMOTABLE_KINDS
-PAWN_STATE = 29
-ROYAL_STATES = (11, 21)
-# 盤上に現れ得る非王駒の状態: 成れる駒の未成状態と、成りの結果になる駒種または成れない駒種。
-REACHABLE_NON_ROYAL_STATES = tuple(range(29, 47)) + (
-    4, 5, 6, 7, 8, 9, 10, 12, 17, 20, 22, 23, 24, 25, 26, 27, 28,
+from minase_train.pst.model import (
+    MODEL_KINDS,
+    MirroredEmbedding,
+    expanded_model_weights,
+    make_model,
+    model_logits,
 )
-
-
-def validate_piece_values(values: NDArray[np.int32], source: str) -> None:
-    """探索用駒価値の正値、王駒の整合、および範囲を検査する。"""
-    values = np.asarray(values)
-    if values.shape != (PIECE_STATE_COUNT,):
-        raise ValueError(f"{source}: piece values must have shape ({PIECE_STATE_COUNT},)")
-    if np.any(values < 0) or np.any(values > EVALUATION_LIMIT):
-        raise ValueError(f"{source}: piece values must be in 0..{EVALUATION_LIMIT}")
-    reachable = values[list(REACHABLE_NON_ROYAL_STATES)]
-    if np.any(reachable <= 0):
-        raise ValueError(f"{source}: reachable non-royal piece value is not positive")
-    royal = int(reachable.max()) + int(values[PAWN_STATE])
-    if any(int(values[state]) != royal for state in ROYAL_STATES):
-        raise ValueError(f"{source}: royal piece values must equal {royal}")
-
-
-def _rule_field(rule_set: bytes) -> bytes:
-    """規則セット名のUTF-8とNUL埋めの規約を検査する。"""
-    if len(rule_set) > 32 or b"\0" in rule_set:
-        raise ValueError("invalid rule-set name")
-    rule_set.decode("utf-8")
-    return rule_set.ljust(32, b"\0")
-
-
-def write_mnpt(
-    path: str | Path,
-    middlegame: NDArray[np.int16],
-    endgame: NDArray[np.int16],
-    piece_values: NDArray[np.int32],
-    k: float,
-    *,
-    rule_set: bytes = RULE_SET,
-) -> None:
-    """両端点の量子化重みと固定駒価値を検査和付きMNPTファイルへ書く。"""
-    middlegame = np.asarray(middlegame, dtype="<i2")
-    endgame = np.asarray(endgame, dtype="<i2")
-    if middlegame.shape != (FEATURE_COUNT,) or endgame.shape != (FEATURE_COUNT,):
-        raise ValueError(f"weights must have shape ({FEATURE_COUNT},)")
-    if not math.isfinite(k) or k <= 0.0:
-        raise ValueError("K must be finite and positive")
-    validate_piece_values(piece_values, str(path))
-    body = (
-        middlegame.tobytes()
-        + endgame.tobytes()
-        + np.asarray(piece_values, dtype="<i4").tobytes()
-    )
-    rule_field = _rule_field(rule_set)
-    header = (
-        b"MNPT"
-        + struct.pack("<II f", FORMAT_VERSION, FEATURE_COUNT, k)
-        + rule_field
-        + hashlib.sha256(body).digest()
-    )
-    if len(header) != HEADER_LENGTH or len(body) != BODY_LENGTH:
-        raise AssertionError("MNPT layout is inconsistent")
-    Path(path).write_bytes(header + body)
-
-
-def read_mnpt(
-    path: str | Path,
-    *,
-    rule_set: bytes = RULE_SET,
-) -> tuple[NDArray[np.int16], NDArray[np.int16], NDArray[np.int32], float]:
-    """MNPTファイルを完全検証し、両端点の量子化重み、駒価値、Kを返す。"""
-    source = Path(path)
-    raw = source.read_bytes()
-    if len(raw) < HEADER_LENGTH:
-        raise ValueError(f"{source}: truncated MNPT header")
-    if len(raw) != FILE_LENGTH:
-        raise ValueError(f"{source}: length must be {FILE_LENGTH}, got {len(raw)}")
-    magic, version, stored_feature_count, k = struct.unpack_from("<4sII f", raw)
-    if magic != b"MNPT":
-        raise ValueError(f"{source}: invalid MNPT magic {magic!r}")
-    if version != FORMAT_VERSION:
-        raise ValueError(f"{source}: unsupported MNPT version {version}")
-    if stored_feature_count != FEATURE_COUNT:
-        raise ValueError(f"{source}: feature count must be {FEATURE_COUNT}")
-    if not math.isfinite(k) or k <= 0.0:
-        raise ValueError(f"{source}: K must be finite and positive")
-    rule_field = raw[16:48]
-    if rule_field != _rule_field(rule_set):
-        raise ValueError(f"{source}: unexpected rule-set field")
-    body = raw[HEADER_LENGTH:]
-    if hashlib.sha256(body).digest() != raw[48:80]:
-        raise ValueError(f"{source}: SHA-256 mismatch")
-    weights = np.frombuffer(body[: FEATURE_COUNT * 4], dtype="<i2").reshape(2, FEATURE_COUNT)
-    piece_values = np.frombuffer(body[FEATURE_COUNT * 4 :], dtype="<i4").copy()
-    validate_piece_values(piece_values, str(source))
-    return weights[0].copy(), weights[1].copy(), piece_values, float(k)
-
-
-def initial_weights() -> NDArray[np.int16]:
-    """v0駒価値を全升へ配置した量子化初期重みを作る。"""
-    weights = np.zeros(FEATURE_COUNT, dtype=np.int32)
-    for relative_color, sign in ((0, 1), (1, -1)):
-        for state, kind in enumerate(STATE_KIND):
-            start = (relative_color * PIECE_STATE_COUNT + state) * 144
-            weights[start : start + 144] = sign * PIECE_VALUES[kind] * 8
-    if np.any((weights < np.iinfo(np.int16).min) | (weights > np.iinfo(np.int16).max)):
-        raise OverflowError("initial weights do not fit i16")
-    return weights.astype("<i2")
-
-
-def initial_piece_values() -> NDArray[np.int32]:
-    """v0駒価値を駒状態番号順に並べた探索用駒価値を作る。"""
-    return PIECE_VALUES[STATE_KIND].astype(np.int32)
-
-
-def binary_cross_entropy_sum(scores: np.ndarray, results: NDArray[np.uint8], k: float) -> float:
-    """探索値から最終結果を予測する二値交差エントロピー合計を返す。"""
-    logits = scores.astype(np.float64) / k
-    targets = results.astype(np.float64) / 2.0
-    return float(np.sum(np.logaddexp(0.0, logits) - targets * logits, dtype=np.float64))
-
-
-def estimate_k(scores: np.ndarray, results: NDArray[np.uint8]) -> float:
-    """区間50から4000で損失を最小化するKを黄金分割探索で求める。"""
-    lower = 50.0
-    upper = 4000.0
-    ratio = (math.sqrt(5.0) - 1.0) / 2.0
-    left = upper - ratio * (upper - lower)
-    right = lower + ratio * (upper - lower)
-    left_loss = binary_cross_entropy_sum(scores, results, left)
-    right_loss = binary_cross_entropy_sum(scores, results, right)
-    for _ in range(64):
-        if left_loss <= right_loss:
-            upper = right
-            right = left
-            right_loss = left_loss
-            left = upper - ratio * (upper - lower)
-            left_loss = binary_cross_entropy_sum(scores, results, left)
-        else:
-            lower = left
-            left = right
-            left_loss = right_loss
-            right = lower + ratio * (upper - lower)
-            right_loss = binary_cross_entropy_sum(scores, results, right)
-    return (lower + upper) / 2.0
-
-
-class MirroredEmbedding(nn.Embedding):
-    """左右の鏡映対が序中盤・終盤の2端点を共有するPSTモデル。"""
-
-    def __init__(self, initial: Tensor, device: torch.device) -> None:
-        super().__init__(
-            MIRRORED_FEATURE_COUNT + 1, 2,
-            padding_idx=MIRRORED_FEATURE_COUNT, device=device,
-        )
-        self.register_buffer(
-            "canonical_indices",
-            torch.as_tensor(
-                canonical_feature_indices(np.arange(FEATURE_COUNT + 1)),
-                dtype=torch.long, device=device,
-            ),
-        )
-        tables = initial.reshape(-1, 12, 12, 2)
-        shared = (tables[:, :, :6] + tables[:, :, 6:].flip(2)) / 2.0
-        with torch.no_grad():
-            self.weight.zero_()
-            self.weight[:MIRRORED_FEATURE_COUNT].copy_(shared.reshape(-1, 2))
-
-    def forward(self, indices: Tensor) -> Tensor:
-        return super().forward(self.canonical_indices[indices.long()])
-
-
-def make_model(initial: Tensor, device: torch.device, kind: str) -> nn.Module:
-    """指定種別と初期値(特徴数×端点数)からpadding行付き線形PSTモデルを作る。"""
-    if kind not in MODEL_KINDS:
-        raise ValueError(f"unknown model kind: {kind}")
-    columns = 1 if kind == "single" else 2
-    if initial.shape != (FEATURE_COUNT, columns):
-        raise ValueError(f"{kind} initial weights must have shape ({FEATURE_COUNT}, {columns})")
-    if kind == "mirrored":
-        model = MirroredEmbedding(initial, device)
-    else:
-        model = nn.Embedding(FEATURE_COUNT + 1, columns, padding_idx=PADDING_INDEX, device=device)
-        with torch.no_grad():
-            model.weight.zero_()
-            model.weight[:FEATURE_COUNT].copy_(initial)
-    return model
-
-
-def expanded_model_weights(model: nn.Module) -> Tensor:
-    """PSTを全13,680特徴へ展開する。"""
-    if isinstance(model, MirroredEmbedding):
-        return model.weight[model.canonical_indices[:FEATURE_COUNT]]
-    return model.weight[:FEATURE_COUNT]
-
-
-def phase_weights(phi: Tensor, columns: int) -> Tensor:
-    """列ごとの補間係数を返す。単一PSTは1、2端点は(φ, 1−φ)。"""
-    if columns == 1:
-        return torch.ones((phi.shape[0], 1), dtype=phi.dtype, device=phi.device)
-    if columns == 2:
-        return torch.stack((phi, 1.0 - phi), dim=1)
-    raise ValueError("model must have 1 or 2 columns")
-
-
-def model_logits(model: nn.Module, features: Tensor, phi: Tensor, k: float) -> Tensor:
-    """特徴番号バッチと補間係数から勝率ロジットを計算する。"""
-    sums = model(features).sum(dim=1)
-    return (sums * phase_weights(phi, sums.shape[1])).sum(dim=1) / k
-
-
-def _selected_indices(dataset: Dataset, indices: NDArray[np.int64]) -> NDArray[np.int64]:
-    """呼出側が明示した局面集合を検証する。訓練・検証の分割は変更しない。"""
-    indices = np.asarray(indices)
-    if indices.ndim != 1 or indices.dtype.kind not in "iu" or indices.size == 0:
-        raise ValueError("indices must be a nonempty one-dimensional integer array")
-    if np.any(indices < 0) or np.any(indices >= dataset.record_count):
-        raise ValueError("indices are outside the dataset")
-    return indices.astype(np.int64, copy=False)
-
-
-def _selected_scores_results(
-    dataset: Dataset, indices: NDArray[np.int64]
-) -> tuple[NDArray[np.float64], NDArray[np.uint8]]:
-    """明示した局面集合から変換後の教師探索値と結果を集める。"""
-    scores, results = [], []
-    for start in range(0, indices.size, 65536):
-        chunk = indices[start:start + 65536]
-        records = dataset.gather(chunk)
-        scores.append(dataset.teacher_scores(chunk))
-        results.append(records["result"].copy())
-    return np.concatenate(scores), np.concatenate(results)
-
-
-def estimate_generation_ks(
-    dataset: Dataset, *, indices: NDArray[np.int64]
-) -> tuple[NDArray[np.float64], list[int]]:
-    """教師の分類ごとに指定した訓練局面からKを推定する。λ=0はNaN。"""
-    indices = _selected_indices(dataset, indices)
-    values = np.full(dataset.generation_count, np.nan, dtype=np.float64)
-    counts = []
-    classes = dataset.generations(indices)
-    for generation, mix in enumerate(dataset.teacher_lambdas):
-        selected = indices[classes == generation]
-        counts.append(int(selected.size))
-        if mix == 0:
-            continue
-        if not selected.size:
-            raise ValueError(f"teacher class {generation} has no selected training records")
-        values[generation] = estimate_k(*_selected_scores_results(dataset, selected))
-    return values, counts
+from minase_train.pst.removal import REMOVAL_MARGIN_CP, make_removal_reference, removal_loss
+from minase_train.pst.teacher import (
+    _selected_indices,
+    build_targets,
+    estimate_generation_ks,
+    estimate_mixed_k,
+)
 
 
 def validation_loss(
@@ -424,83 +168,6 @@ def validation_loss(
     )
 
 
-def make_removal_reference(
-    middlegame: NDArray[np.int16], endgame: NDArray[np.int16], device: torch.device
-) -> Tensor:
-    """完全鏡映対称の初期MNPTを、padding付きの整数基準表へ変換する。"""
-    columns = (np.asarray(middlegame), np.asarray(endgame))
-    if any(column.shape != (FEATURE_COUNT,) or column.dtype != np.dtype("int16")
-           for column in columns):
-        raise ValueError("removal reference endpoints must be i16 arrays of length 13680")
-    original = np.stack(columns, axis=1)
-    squares = original.reshape(95, 12, 12, 2)
-    if not np.array_equal(squares, squares[:, :, ::-1, :]):
-        raise ValueError("positive removal penalty requires exactly mirrored initial i16 weights")
-    reference = torch.zeros((FEATURE_COUNT + 1, 2), dtype=torch.int64, device=device)
-    reference[:FEATURE_COUNT] = torch.as_tensor(original.astype(np.int64), device=device)
-    return reference
-
-
-def removal_loss(
-    feature_weights: Tensor, features: Tensor, reference: Tensor, counts: Tensor, k: float
-) -> Tensor:
-    """元局面等重み・対象除去等重みで、基準符号と悪化上限の片側絶対値損失を返す。"""
-    if not math.isfinite(k) or k <= 0.0:
-        raise ValueError("K must be finite and positive")
-    if features.ndim != 2 or features.shape[1] != 145 or features.shape[0] == 0:
-        raise ValueError("removal features must have shape (B, 145) with B > 0")
-    if feature_weights.shape != (*features.shape, 2):
-        raise ValueError("removal weights must have shape (B, 145, 2)")
-    if reference.shape != (FEATURE_COUNT + 1, 2) or reference.dtype != torch.int64:
-        raise ValueError("removal reference must be an i64 table of shape (13681, 2)")
-    if counts.shape != (features.shape[0],) or counts.dtype != torch.int64:
-        raise ValueError("removal counts must be an i64 vector with one value per position")
-    if not bool(torch.isfinite(feature_weights).all()):
-        raise ValueError("removal weights contain a non-finite value")
-
-    q = (counts - 2).clamp(0, PHASE_DIVISOR)
-    after_q = (counts - 3).clamp(0, PHASE_DIVISOR)
-
-    def numerators(weights: Tensor) -> tuple[Tensor, Tensor]:
-        sums = weights.sum(dim=1)
-        before = q * sums[:, 0] + (PHASE_DIVISOR - q) * sums[:, 1]
-        remaining = sums[:, None, :] - weights[:, :144, :]
-        after = (after_q[:, None] * remaining[:, :, 0]
-                 + (PHASE_DIVISOR - after_q[:, None]) * remaining[:, :, 1])
-        return before, after
-
-    # 先獅子と王駒も端点和に残す。基準はi16整数、候補は倍精度で差分を求める。
-    base_before, base_after = numerators(reference[features.long()])
-    divisor = PHASE_DIVISOR * 8
-    integer_before = (base_before.sign() * (base_before.abs() // divisor)).clamp(
-        -EVALUATION_LIMIT, EVALUATION_LIMIT
-    )
-    integer_after = (base_after.sign() * (base_after.abs() // divisor)).clamp(
-        -EVALUATION_LIMIT, EVALUATION_LIMIT
-    )
-    base_sign = (integer_after - integer_before[:, None]).sign()
-    base_delta = (base_after - base_before[:, None]).to(torch.float64) / divisor
-    before, after = numerators(feature_weights.to(torch.float64))
-    signed_delta = base_sign * ((after - before[:, None]) / PHASE_DIVISOR)
-
-    board_features = features[:, :144]
-    states = (board_features // 144) % PIECE_STATE_COUNT
-    relative_color = board_features // (PIECE_STATE_COUNT * 144)
-    eligible = ((board_features < BOARD_FEATURE_COUNT) & (states != ROYAL_STATES[0])
-                & (states != ROYAL_STATES[1]) & (base_sign != 0))
-    wrong_direction = (((relative_color == 0) & (base_sign > 0))
-                       | ((relative_color == 1) & (base_sign < 0)))
-    magnitude = base_delta.abs()
-    lower = torch_functional.relu(magnitude.clamp(max=REMOVAL_MARGIN_CP) - signed_delta)
-    upper = torch_functional.relu(signed_delta - magnitude)
-    penalties = lower + wrong_direction * upper
-    per_position = torch.where(eligible, penalties, 0.0).sum(dim=1) / eligible.sum(dim=1).clamp_min(1)
-    loss = per_position.mean() / k
-    if not bool(torch.isfinite(loss)):
-        raise ValueError("removal loss is non-finite")
-    return loss
-
-
 @dataclass(frozen=True)
 class TrainEpochResult:
     """同じ更新前バッチで測った純BCE、係数適用前の除去損失、総損失を保持する。"""
@@ -598,105 +265,6 @@ def train_epoch(
     )
 
 
-def build_targets(
-    records: np.ndarray,
-    teacher_ks: NDArray[np.float64],
-    generations: NDArray[np.int64],
-    teacher_lambdas: NDArray[np.float64],
-    *, scores: NDArray[np.float64] | None = None,
-) -> NDArray[np.float32]:
-    """分類ごとのλで混ぜ、λ=0のKと探索値は参照しない。"""
-    teacher_ks = np.asarray(teacher_ks, dtype=np.float64)
-    teacher_lambdas = np.broadcast_to(np.asarray(teacher_lambdas, dtype=np.float64), teacher_ks.shape)
-    generations = np.asarray(generations, dtype=np.int64)
-    if teacher_ks.ndim != 1 or teacher_lambdas.shape != teacher_ks.shape:
-        raise ValueError("one lambda and K are required per teacher class")
-    if np.any(~np.isfinite(teacher_lambdas)) or np.any((teacher_lambdas < 0) | (teacher_lambdas > 1)):
-        raise ValueError("teacher lambdas must be finite and in 0..1")
-    if generations.shape != (len(records),) or np.any(generations < 0) or np.any(generations >= teacher_ks.size):
-        raise ValueError("invalid teacher class indices")
-    mix = teacher_lambdas[generations]
-    active = mix != 0
-    scales = teacher_ks[generations[active]]
-    if np.any(scales <= 0) or np.any(~np.isfinite(scales)):
-        raise ValueError("active teacher K values must be finite and positive")
-    scores = records["score"].astype(np.float64) if scores is None else np.asarray(scores, dtype=np.float64)
-    if scores.shape != (len(records),) or np.any(~np.isfinite(scores[active])):
-        raise ValueError("teacher scores must match records and be finite for active classes")
-    targets = records["result"].astype(np.float64) / 2
-    targets[active] = (mix[active] / (1 + np.exp(-scores[active] / scales))
-                       + (1 - mix[active]) * targets[active])
-    return targets.astype(np.float32)
-
-
-def quantize(weights: NDArray[np.float32]) -> NDArray[np.int16]:
-    """センチポーン重みを1/8センチポーン単位のi16へ量子化する。"""
-    if not np.all(np.isfinite(weights)):
-        raise ValueError("trained weights contain a non-finite value")
-    rounded = np.rint(weights.astype(np.float64) * 8.0)
-    if np.any((rounded < np.iinfo(np.int16).min) | (rounded > np.iinfo(np.int16).max)):
-        raise OverflowError("trained weight does not fit i16")
-    return rounded.astype("<i2")
-
-
-def integer_evaluate(
-    middlegame: NDArray[np.int16],
-    endgame: NDArray[np.int16],
-    features: NDArray[np.int32],
-    numerators: NDArray[np.int64],
-) -> NDArray[np.int32]:
-    """設計書「整数評価と差分更新」の式で量子化重みにより局面バッチを評価する。
-
-    numeratorsは局面ごとの q = min(90, max(0, N − 2)) である。
-    """
-    numerators = np.asarray(numerators, dtype=np.int64)
-    if numerators.shape != (features.shape[0],):
-        raise ValueError("numerators must have one value per position")
-    if np.any(numerators < 0) or np.any(numerators > PHASE_DIVISOR):
-        raise ValueError("phase numerator is outside 0..90")
-    sums = np.empty((features.shape[0], 2), dtype=np.int64)
-    for column, weights in enumerate((middlegame, endgame)):
-        extended = np.zeros(FEATURE_COUNT + 1, dtype=np.int64)
-        extended[:FEATURE_COUNT] = weights.astype(np.int64)
-        sums[:, column] = extended[features].sum(axis=1, dtype=np.int64)
-    blended = numerators * sums[:, 0] + (PHASE_DIVISOR - numerators) * sums[:, 1]
-    values = np.sign(blended) * (np.abs(blended) // (PHASE_DIVISOR * 8))
-    return np.clip(values, -EVALUATION_LIMIT, EVALUATION_LIMIT).astype(np.int32)
-
-
-def float_evaluate(
-    middlegame: NDArray[np.float32],
-    endgame: NDArray[np.float32],
-    features: NDArray[np.int32],
-    phi: NDArray[np.float64],
-) -> NDArray[np.float32]:
-    """浮動小数点重みで局面バッチを補間評価する。"""
-    sums = np.empty((features.shape[0], 2), dtype=np.float32)
-    for column, weights in enumerate((middlegame, endgame)):
-        extended = np.zeros(FEATURE_COUNT + 1, dtype=np.float32)
-        extended[:FEATURE_COUNT] = weights
-        sums[:, column] = extended[features].sum(axis=1, dtype=np.float32)
-    phi = np.asarray(phi, dtype=np.float32)
-    return phi * sums[:, 0] + (1.0 - phi) * sums[:, 1]
-
-
-def float_weights_path(output: str | Path) -> Path:
-    """MNPT出力に併置する量子化前の重みファイルのパスを返す。"""
-    output = Path(output)
-    return output.with_name(output.stem + "-float.npz")
-
-
-def initial_position_score(middlegame: NDArray[np.int16], endgame: NDArray[np.int16]) -> int:
-    """量子化重みで中将棋初期局面を先手視点から評価する。"""
-    board = INITIAL_BOARD[None, :]
-    features = feature_indices(
-        board,
-        np.array([0], dtype=np.uint8),
-        np.array([NO_LION_SQUARE], dtype=np.uint8),
-    )
-    return int(integer_evaluate(middlegame, endgame, features, phase_numerators(board))[0])
-
-
 def command_init(arguments: argparse.Namespace) -> None:
     """initサブコマンドを実行する。両端点にv0駒価値を置き、探索用駒価値もv0に固定する。"""
     weights = initial_weights()
@@ -720,16 +288,6 @@ def command_estimate_k(arguments: argparse.Namespace) -> None:
         )
     mixed_k = estimate_mixed_k(dataset, indices=dataset.training_indices)
     print(f"mixed: training_records={dataset.training_indices.size} K={mixed_k}")
-
-
-def estimate_mixed_k(dataset: Dataset, *, indices: NDArray[np.int64]) -> float | None:
-    """明示した全世代の局面集合から参考用の混合Kを求める。"""
-    indices = _selected_indices(dataset, indices)
-    classes = dataset.generations(indices)
-    indices = indices[dataset.teacher_lambdas[classes] != 0]
-    if not indices.size:
-        return None
-    return estimate_k(*_selected_scores_results(dataset, indices))
 
 
 def _format_validation_loss(
