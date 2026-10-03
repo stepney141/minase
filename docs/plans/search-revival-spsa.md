@@ -15,13 +15,17 @@ late move pruningだけは、元の実装が捕獲手も数えてkiller手まで
 調整した版は、まず現行のmasterと対局させて強いかを判定する。
 次に、調整した版から8項目だけを取り除き、既存の係数は調整後の値のまま残した版と対局させ、向上が8項目によるのか既存の係数の調整し直しによるのかを切り分ける。
 完了条件は、8項目の一括採用、または不採用が、測定記録とともに確定することである。
+2026年10月4日に、STCとLTCの判定と帰属の判定をすべて通過し、8項目を一括で採用した。
 
 ## 状態
 
-進行中。2026年10月2日に起案し、2026年10月3日に着手した。
-着手前の判断は2026年10月3日に確定した。既存の探索係数も新しい係数と一緒に調整し、調整の規模は標準の3,000ペアとし、[反復負け回避](search-repetition.md)より先に実行する。
-late move pruningは、元の実装の[診断](../measurements/search-revival-lmp-diag.md)に基づいて定義を改めた。
-フェーズ1では8項目を移植し、新しい係数の範囲を[測って](../measurements/search-revival-ranges.md)開始値を定めた。2026年10月3日に、評価関数のPSTを新しい重みG23とした master が測定の開始前に入ったので、Mをその master とし、処置群Tを載せ直して範囲を測り直した。[開始点の確認](../measurements/search-revival-start-check.md)は得点率54.2%で基準の40%を満たし、2026年10月3日に処置群Tの調整セッション（`data/spsa/search-revival-t`、3,000ペア）を開始した。[調整セッション](../measurements/search-revival-t.md)は2026年10月4日に375反復で終わり、T\*（539bc27）とT\*′（2d5b60e）を作った。段階2の[T\*対MのSTC](../measurements/search-revival-tstar-vs-m-stc.md)は`H1`（得点率67.5%）、段階3の[T\*対T\*′のSTC](../measurements/search-revival-tstar-vs-tprime-stc.md)も`H1`（得点率62.7%）であり、いずれも異常0件だった。現在は段階4のT\*対MのLTC（`data/matches/search-revival-tstar-vs-m-ltc`）を実行している。最終値を書き込んだことで古い既定値を固定していたテストが失敗しており、測定の終了後に直す。
+完了（採用）。2026年10月2日に起案し、2026年10月3日に着手して、2026年10月4日に完了した。
+8項目を戻して29係数を[調整](../measurements/search-revival-t.md)した候補T\*（539bc27）は、Mに対して[STC](../measurements/search-revival-tstar-vs-m-stc.md)と[LTC](../measurements/search-revival-tstar-vs-m-ltc.md)でともに`H1`（得点率67.5%と67.4%）となり、8項目を取り除いたT\*′に対しても[STC](../measurements/search-revival-tstar-vs-tprime-stc.md)で`H1`（得点率62.7%）となったので、T\*を採用した。
+すべての測定で異常は0件だった。
+厳密な無効値に達した係数はなく、取り除いた項目はない。
+Mは評価関数のPSTに重みG23を採用した master（b96a931）であり、測定の開始前にG23が入ったので、処置群Tを載せ直して[範囲](../measurements/search-revival-ranges.md)を測り直した。
+late move pruningは、元の実装の[診断](../measurements/search-revival-lmp-diag.md)に基づいて定義を改めて戻した。
+後続の候補は、範囲の上限まで動いた項目の削除の非劣性測定（該当なし）、late move pruningの全深さへの適用、および8項目を含めずに既存の係数だけを調整し直した版との比較である。
 
 ## 目的
 
@@ -130,22 +134,23 @@ late move pruningの基数と傾きには元の値がないので、下限を定
 フェーズ1で測った範囲と、規則から定めた開始値および摂動幅は次のとおりである（[範囲の測定](../measurements/search-revival-ranges.md)）。
 発動率は深さ5の`bench`で、その項目の条件を満たしたノードのうち改良が発動したノードの割合である。
 摂動幅`c_end`は「設計判断」の節の「摂動幅」の規則による。
+採用値は、[調整セッション](../measurements/search-revival-t.md)の最終値を整数へ丸めた現行の既定値である。
 
-| 係数 | 元の値 | 開始値 | 範囲 | 範囲の上限での発動率 | `c_end` |
-|---|---:|---:|---|---:|---:|
-| `ReverseFutilityMargin` | 50 | 994 | 0〜1,938 | 0.997% | 323.0 |
-| `LmpBase` | ― | 300 | 0〜8,600 | 0.982% | 164.9 |
-| `LmpSlope` | ― | 100 | 0〜3,600 | 0.993% | 55.0 |
-| `NullMoveEvalScale` | 100 | 50 | 0〜400 | ― | 27.5 |
-| `RazoringMargin1` | 400 | 1,534 | 0〜2,668 | 0.997% | 444.7 |
-| `RazoringMargin2` | 400 | 1,643 | 0〜2,885 | 0.955% | 480.8 |
-| `NonImprovingFutility1` | 25 | 63 | 0〜100 | ― | 16.7 |
-| `NonImprovingFutility2` | 50 | 75 | 0〜100 | ― | 13.7 |
-| `NonImprovingFutility3` | 50 | 75 | 0〜100 | ― | 13.7 |
-| `CaptureHistoryLimit` | 20,755 | 20,755 | 4,096〜65,536 | ― | 9,155.3 |
-| `CaptureHistoryScale` | 100 | 50 | 0〜400 | ― | 27.5 |
-| `QsearchMoveLimit` | 1 | 4 | 1〜7 | 0.444% | 1.0 |
-| `HistoryDecay` | 75 | 37 | 0〜100 | ― | 16.7 |
+| 係数 | 元の値 | 開始値 | 範囲 | 範囲の上限での発動率 | `c_end` | 採用値 |
+|---|---:|---:|---|---:|---:|---:|
+| `ReverseFutilityMargin` | 50 | 994 | 0〜1,938 | 0.997% | 323.0 | 428 |
+| `LmpBase` | ― | 300 | 0〜8,600 | 0.982% | 164.9 | 382 |
+| `LmpSlope` | ― | 100 | 0〜3,600 | 0.993% | 55.0 | 133 |
+| `NullMoveEvalScale` | 100 | 50 | 0〜400 | ― | 27.5 | 56 |
+| `RazoringMargin1` | 400 | 1,534 | 0〜2,668 | 0.997% | 444.7 | 1,606 |
+| `RazoringMargin2` | 400 | 1,643 | 0〜2,885 | 0.955% | 480.8 | 2,015 |
+| `NonImprovingFutility1` | 25 | 63 | 0〜100 | ― | 16.7 | 71 |
+| `NonImprovingFutility2` | 50 | 75 | 0〜100 | ― | 13.7 | 72 |
+| `NonImprovingFutility3` | 50 | 75 | 0〜100 | ― | 13.7 | 86 |
+| `CaptureHistoryLimit` | 20,755 | 20,755 | 4,096〜65,536 | ― | 9,155.3 | 16,950 |
+| `CaptureHistoryScale` | 100 | 50 | 0〜400 | ― | 27.5 | 49 |
+| `QsearchMoveLimit` | 1 | 4 | 1〜7 | 0.444% | 1.0 | 4 |
+| `HistoryDecay` | 75 | 37 | 0〜100 | ― | 16.7 | 23 |
 
 元の値での発動率は、reverse futility pruningが56.0%、razoringが残り深さ1で4.9%と残り深さ2で11.3%、静止探索の手数制限が14.2%であり、改めたlate move pruningは開始値で4.8%である。
 厳密な無効値を持つ項目のうち、null moveの加算、improving、および捕獲履歴は、無効値で発動回数が0になることを確かめた。

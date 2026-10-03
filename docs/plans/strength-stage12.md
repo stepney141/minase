@@ -29,6 +29,7 @@
 | 8　PVノードでの置換表の打ち切りの停止 | [`H0`](../measurements/strength-stage12-pv-tt-cutoff-stc.md) | 1,346 | 49.1% |
 
 いずれもLTCへは進まず、実装はコードから外したので、探索コードは段階開始版と同一である。
+このうち捕獲履歴、静止探索の手数制限、およびbutterfly historyの持ち越しは、2026年10月4日に[不採用だった探索部の改良の再調整](search-revival-spsa.md)が係数をSPSAで調整し直して採用した。
 項目4の大敗から、失う良手の割合で閾値を選ぶ規則を深さの上限のない再帰に使えないことを[教訓](../lessons/recall-loss-does-not-bound-recursive-pruning.md)にした。
 フェーズ10の進捗指標のうち、段階開始版に対する固定200ペアは、最終構成が段階開始版と同じバイナリなので測らない。
 HaChuに対する固定200ペアは、利用者の決定により段階12の完了とは切り離して測り、SPSAの調整を採用した後の版として+530.7 Elo（95%信頼区間[+463.6, +635.2]）だった（[strength-stage12-hachu-elo200](../measurements/strength-stage12-hachu-elo200.md)）。

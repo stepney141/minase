@@ -21,7 +21,8 @@ fail-lowによる延長（[STC](../measurements/strength-stage6-faillow-stc.md)�
 置換表のクラスタ化は実装後の[固定深さの対局再生](../measurements/strength-stage6-tt-cluster-replay.md)で効果が基準に届かず外し、静的評価の置換表保存とmate distance pruningは着手時の診断で見送った。
 最終構成（コミット8f4e41c）は、[秒読みの煙試験](../measurements/strength-stage6-byoyomi-smoke.md)が時間切れ0件、[固定自己対局](../measurements/strength-stage6-elo200.md)が段階開始版に対してSTCで+129.2 Elo、[HaChu戦](../measurements/strength-stage6-hachu-elo200.md)が+334.1 Elo（段階5完了時の+188.5 Eloと信頼区間が重ならない）であった。
 [最初のSPSAの長時間測定](../measurements/spsa-stage9-20260923-ltc.md)を通過した後の値は、aspiration windowsの初期半幅が歩兵価値の53%、窓外れ時の拡大率が193%、次の反復の所要時間を見積もる比が2.44であった。
-[2回目のSPSAの長時間測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の現行値は、初期半幅が歩兵価値の46%、拡大率が201%、所要時間を見積もる比が2.63である。
+[2回目のSPSAの長時間測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の値は、初期半幅が歩兵価値の46%、拡大率が201%、所要時間を見積もる比が2.63であった。
+[不採用だった探索部の改良の再調整の長時間測定](../measurements/search-revival-tstar-vs-m-ltc.md)を通過した後の現行値は、初期半幅が歩兵価値の55%、拡大率が190%であり、所要時間を見積もる比は2.63のまま変わらない。
 以下の設計判断、診断値、および採否結果は、段階6の採用時点の係数に基づく記録である。
 
 ## 目的

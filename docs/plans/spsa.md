@@ -75,7 +75,7 @@ cargo featureは、Rustのビルド時にコードの一部を有効または無
 
 対局の進行、異常時の裁定、開始局面の生成、およびエンジンのビルドとキャッシュは[対局ハーネスのバイナリ対戦化](match-harness.md)と[棋力測定ハーネス基盤の効率化](match-harness-efficiency.md)が定める。
 採否の手順は[棋力測定の段階ゲート](match-staged-gate.md)と[docs/guides/sprt.md](../guides/sprt.md)に従う。
-対象の係数の現行値と意味は、[棋力向上段階4](strength-stage4.md)、[段階5](strength-stage5.md)、[段階6](strength-stage6.md)、[段階8](strength-stage8.md)、および[持ち時間の効率的な使用](time-management-efficiency.md)が定める。
+対象の係数の現行値と意味は、[棋力向上段階4](strength-stage4.md)、[段階5](strength-stage5.md)、[段階6](strength-stage6.md)、[段階8](strength-stage8.md)、および[持ち時間の効率的な使用](time-management-efficiency.md)が定める。後から加えた13係数の意味と現行値は、[不採用だった探索部の改良の再調整](search-revival-spsa.md)が定める。
 セッションで値を採用した場合は、これらの設計書の係数の記述を現行の値へ合わせて改訂する。
 
 フェーズ1からフェーズ3までは、完了済みのマイルストーンだけを前提とするので、いつ着手してもよい。
@@ -128,18 +128,18 @@ delta pruningは、静止探索（捕獲手だけを読む末端の探索）で�
 
 | 群 | 係数 | 現行値 | 範囲 |
 |---|---|---|---|
-| LMR（late move reductions、後順位の手の減深） | 対数積を割る除数の百分率 | 166 | 100〜400 |
-| LMR | 減深量を増減するhistory値の閾値 | 111 | 0〜512 |
-| futility pruning | 残り深さ1、2、3の余裕値の百分率 | 101、196、207 | 各0〜400 |
-| SEE pruning（静的交換評価による枝刈り） | 残り深さ1、2、3の余裕値の百分率 | 2、210、7 | 各0〜400 |
-| aspiration window | 初期の窓幅の百分率 | 46 | 10〜200 |
-| aspiration window | 失敗時の拡大率の百分率 | 201 | 125〜400 |
-| null move pruning | 減深量の切片（1,200分率） | 3,529 | 1,200〜4,800 |
-| null move pruning | 減深量の傾き（1,200分率） | 238 | 100〜400 |
-| history | 全体を半減する上限 | 20,755 | 4,096〜65,536 |
-| correction history（静的評価の補正） | 補正値の上限の百分率 | 193 | 50〜400 |
-| correction history | 更新の重み（1,024分率） | 33 | 8〜128 |
-| 静止探索 | delta pruningの余裕値の百分率 | 258 | 50〜500 |
+| LMR（late move reductions、後順位の手の減深） | 対数積を割る除数の百分率 | 156 | 100〜400 |
+| LMR | 減深量を増減するhistory値の閾値 | 146 | 0〜512 |
+| futility pruning | 残り深さ1、2、3の余裕値の百分率 | 165、239、283 | 各0〜400 |
+| SEE pruning（静的交換評価による枝刈り） | 残り深さ1、2、3の余裕値の百分率 | 10、192、13 | 各0〜400 |
+| aspiration window | 初期の窓幅の百分率 | 55 | 10〜200 |
+| aspiration window | 失敗時の拡大率の百分率 | 190 | 125〜400 |
+| null move pruning | 減深量の切片（1,200分率） | 3,617 | 1,200〜4,800 |
+| null move pruning | 減深量の傾き（1,200分率） | 257 | 100〜400 |
+| history | 全体を半減する上限 | 17,408 | 4,096〜65,536 |
+| correction history（静的評価の補正） | 補正値の上限の百分率 | 220 | 50〜400 |
+| correction history | 更新の重み（1,024分率） | 37 | 8〜128 |
+| 静止探索 | delta pruningの余裕値の百分率 | 355 | 50〜500 |
 | 時間管理 | 1局に見込む手数`EXPECTED_PLIES` | 432 | 250〜700 |
 | 時間管理 | 残り手数の下限`MIN_MOVES` | 88 | 40〜200 |
 | 時間管理 | 加算のうち1手に使う割合の百分率 | 76 | 30〜100 |
@@ -147,7 +147,8 @@ delta pruningは、静止探索（捕獲手だけを読む末端の探索）で�
 | 時間管理 | hardを残り時間の何%までとするか | 27 | 10〜50 |
 | 時間管理 | 次の反復の所要時間を見積もる比の百分率 | 263 | 150〜400 |
 
-現行値の欄は、[2回目の調整セッションのLTCの採否測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の値である。
+現行値の欄は、[不採用だった探索部の改良の再調整のLTCの採否測定](../measurements/search-revival-tstar-vs-m-ltc.md)を通過した後の値である。
+`params.rs`の係数の表には、本節の22係数のほかに[不採用だった探索部の改良の再調整](search-revival-spsa.md)が加えた13係数があり（合計35係数）、その意味、範囲、および現行値は同書が定める。
 百分率で表す余裕値は、埋め込みPSTの歩兵価値に対する割合である。
 historyの更新量`depth²`は対象にしない。
 更新量、LMRの閾値、および半減の上限の3つは、全体を定数倍しても探索がほぼ変わらないという近似的な冗長性を持つ。
