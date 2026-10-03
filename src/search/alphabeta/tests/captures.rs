@@ -393,6 +393,7 @@ fn kind_capture_ranks_match_all_piece_codes() {
 // 安定性と置換表の手の扱いを含めて、公開捕獲列の安定整列と一致する。
 #[test]
 fn main_picker_captures_match_stable_reference_for_all_rules() {
+    let capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let pst = crate::eval::weights().unwrap();
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     for rules in capture_test_rules() {
@@ -403,7 +404,7 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
                 let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
                 let mut actual = Vec::new();
                 while let Some((mv, is_capture)) =
-                    picker.next(&position, &pst, &generator, &history)
+                    picker.next(&position, &pst, &generator, &history, &capture_history)
                 {
                     if !is_capture {
                         break;
@@ -445,6 +446,43 @@ fn initialized_candidate_presence_matches_filtered_reference() {
                     expected,
                     "rules={rules:?}, threshold={threshold}, position={position:?}",
                 );
+            }
+        }
+    }
+}
+
+/// search-revival-spsa.md「戻す8項目」: 尺度0は基準版の安定順序と一致する。
+#[cfg(feature = "tuning")]
+pub(super) fn zero_capture_scale_preserves_reference_order() {
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
+    let pst = crate::eval::weights().unwrap();
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    for rules in capture_test_rules() {
+        let generator = MoveGenerator::new(rules);
+        for position in capture_test_positions() {
+            let ordered = public_reference(&position, &generator, &pst, None);
+            // 同順位も含む基準列に、正負の非ゼロ履歴を付けてから比較する。
+            for pair in ordered.chunks(2) {
+                let earlier: Vec<_> = pair.iter().skip(1).map(|&(mv, _)| mv).collect();
+                capture_history.record_cutoff(&position, &pst, pair[0].0, &earlier, 256);
+                assert_ne!(capture_history.read(&position, &pst, pair[0].0), 0);
+            }
+            for tt_move in [None, ordered.get(ordered.len() / 2).map(|&(mv, _)| mv)] {
+                let mut picker = MovePicker::new(tt_move, [None; KILLER_COUNT]);
+                let mut actual = Vec::new();
+                while let Some((mv, is_capture)) =
+                    picker.next(&position, &pst, &generator, &history, &capture_history)
+                {
+                    if !is_capture {
+                        break;
+                    }
+                    actual.push(mv);
+                }
+                let expected: Vec<_> = public_reference(&position, &generator, &pst, tt_move)
+                    .into_iter()
+                    .map(|(mv, _)| mv)
+                    .collect();
+                assert_eq!(actual, expected, "rules={rules:?}, tt={tt_move:?}");
             }
         }
     }

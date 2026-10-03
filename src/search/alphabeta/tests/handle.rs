@@ -88,6 +88,7 @@ fn search_apis_use_the_supplied_pst() {
         &depth_limits(1),
         DEFAULT_THREADS,
         &mut small_tt(),
+        &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
     )
     .unwrap();
     assert_eq!(synchronous.score, expected);
@@ -99,6 +100,7 @@ fn search_apis_use_the_supplied_pst() {
         7,
         DEFAULT_THREADS,
         small_tt(),
+        crate::search::HistoryTables::new(DEFAULT_THREADS),
         false,
     );
     let (_, asynchronous) = event_reports(drain_raw(&handle));
@@ -216,12 +218,22 @@ fn infinite_limits_stop_only_on_external_request() {
 #[test]
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
+    let delta = aspiration_delta(weights().unwrap().pawn_value());
+    let previous = -MATE_THRESHOLD + 2 * delta + 1;
+    let table = small_tt();
+    // 深さ2〜4の値を詰み帯の外で固定し、深さ5で窓の拡大を必要にする。
+    // 深さ3の子の記録は、深さ5の反復では打ち切りに使えない。
+    for mv in legal_moves(&midgame) {
+        let mut child = midgame.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        table.store(search_key(&child), 3, -previous, Bound::Exact, None, 1);
+    }
     let handle = start(
         snapshot_for(&midgame),
         depth_limits(6),
         81,
         DEFAULT_THREADS,
-        small_tt(),
+        table,
     );
     let events = drain_raw(&handle);
     assert!(events.iter().all(|event| event.search_id() == 81));
@@ -232,7 +244,7 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     assert_eq!(depths, vec![1, 2, 3, 4, 5, 6]);
     // strength-stage6.md「窓外れの報告」。深さ5は初期窓を外れるが、
     // 読み直しは通知されず、窓内で完了した反復が1回だけ通知される。
-    let delta = weights().unwrap().pawn_value() / 2;
+    assert_eq!(progress[3].1, previous);
     assert!(progress[4].1 >= progress[3].1 + delta);
     for (_, _, _, _, pv) in &progress {
         assert!(!pv.is_empty());
@@ -276,7 +288,7 @@ fn join_returns_the_transposition_table_for_reuse() {
         small_tt(),
     );
     let (_, first) = event_reports(drain_raw(&handle));
-    let mut returned_tt = handle.join().expect("search thread must not panic");
+    let (mut returned_tt, _) = handle.join().expect("search thread must not panic");
 
     // ルート探索ごとに世代が進む(search.md「置換表」節)。世代が進まないと、
     // 前回探索の同深度エントリが異キーの新規格納を探索をまたいで阻止し続ける。
@@ -315,7 +327,10 @@ fn dropping_search_handle_requests_stop_and_joins_the_thread() {
             thread::yield_now();
         }
         finished.store(true, AtomicOrdering::Release);
-        small_tt()
+        (
+            small_tt(),
+            crate::search::HistoryTables::new(DEFAULT_THREADS),
+        )
     });
     let handle = SearchHandle {
         started: Instant::now(),
@@ -340,9 +355,11 @@ fn search_handle_join_returns_the_coordinator_panic() {
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop: Arc::new(AtomicBool::new(false)),
-        thread: Some(thread::spawn(|| -> TranspositionTable {
-            panic!("injected coordinator panic")
-        })),
+        thread: Some(thread::spawn(
+            || -> (TranspositionTable, crate::search::HistoryTables) {
+                panic!("injected coordinator panic")
+            },
+        )),
     };
 
     assert!(handle.join().is_err());

@@ -54,7 +54,7 @@
 | 先読み教師値（将来の探索値の幾何加重平均） | [plans/lookahead-teacher.md](plans/lookahead-teacher.md) | 完了（一部不採用） | 2026年9月23日 |
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了（採用） | 2026年9月22日 |
 | 探索部の反復負け回避 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
-| 不採用だった探索部の改良のSPSAによる再調整（issue #10） | [plans/search-revival-spsa.md](plans/search-revival-spsa.md) | 進行中 | |
+| 不採用だった探索部の改良のSPSAによる再調整（issue #10） | [plans/search-revival-spsa.md](plans/search-revival-spsa.md) | 完了（採用） | 2026年10月4日 |
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了（採用） | 2026年9月25日 |
@@ -78,17 +78,13 @@
 
 ### 直近の完了
 
+- [不採用だった探索部の改良のSPSAによる再調整](plans/search-revival-spsa.md)は2026年10月4日に、採用で完了した（issue #10）。過去にSTCで不採用となった探索部の改良のうち数値係数を持つ8項目（reverse futility pruning、late move pruning、null moveの減深の加算、razoring、improving、捕獲履歴、静止探索の手数制限、butterfly historyの持ち越し）を戻し、既存の探索係数16個とまとめた29係数をSPSAで[調整](measurements/search-revival-t.md)した。候補は評価関数G23のmasterに対して[STC](measurements/search-revival-tstar-vs-m-stc.md)と[LTC](measurements/search-revival-tstar-vs-m-ltc.md)でともに`H1`（得点率67.5%と67.4%）となり、8項目だけを取り除いた版にも[STC](measurements/search-revival-tstar-vs-tprime-stc.md)で`H1`（得点率62.7%）となったので、向上には8項目が寄与している。late move pruningは、元の実装が捕獲手も数えてkiller手まで切っていたことを[診断](measurements/search-revival-lmp-diag.md)で確かめ、静かな手だけを数える定義に改めて戻した。負けた枝刈りは数え方を点検し、係数を調整し直してから捨てることを[教訓](lessons/retune-rejected-pruning-before-discarding.md)にした。
 - [世代3の教師データによるPSTの再学習](plans/pst-gen3.md)は2026年10月3日に、採用で完了した。世代2と世代3の教師データだけで学習し直したPST（G23）は、従来の採用PSTに対してSTCとLTCでともに`H1`となった（[LTC](measurements/pst-gen3-g23-ltc.md)、得点率61.3%）。同じ計画の診断では、訓練データを対局単位で2分して学習した2本のPSTの差は+8.3 Elo（95%信頼区間 −5.0〜+21.6）であり、大差を認めなかった（[A対B](measurements/pst-data-split-ab-nodes.md)）。
 - [残存誤りに対応する関係補正項](plans/relational-correction.md)は2026年10月2日に、不採用で完了した。フェーズ0の誤りの分類は着手の基準に届かなかったが（[準備記録](measurements/relational-correction-prep.md)）、利用者の指示で半径1の局所2駒表を実装し、各計画の着手時のmaster（S0）と対局させた。[STC](measurements/relational-correction-stc.md)は`H0`（得点率39.3%、約−75 Elo）であり、[固定ノード数の200ペア](measurements/relational-correction-nodes200.md)が+9.4 Elo（95%信頼区間 −26.4〜+45.4）だったので、損失は主に探索速度がS0の0.775倍へ落ちたことによる。
-- [浅い探索の手の順位を学ぶ損失](plans/rank-loss-training.md)は2026年10月1日に、不採用で完了した。順位の損失は、検証の手の組での順位の正答率を、順位の損失を使わない対照Cの0.33から0.48〜0.51へ上げた一方、静的評価と教師値の誤差を事前に定めた上限より悪化させた（[学習](measurements/rank-loss-training.md)）。利用者の判断で誤差の上限を外して選んだ候補も、対照Cとの[STC](measurements/rank-loss-vs-control-stc.md)で得点率38.5%（約−81 Elo）の`H0`となった。
-
-### 進行中
-
-- [不採用だった探索部の改良のSPSAによる再調整](plans/search-revival-spsa.md)は2026年10月3日に着手し、フェーズ1（移植と範囲）を進めている。過去にSTCで不採用となった探索部の改良のうち数値係数を持つ8項目を戻し、既存の探索係数とまとめてSPSAで調整し直して採否を測る。調整した版から8項目だけを取り除いた版とも対局させ、向上が8項目によるのか既存の係数の調整し直しによるのかを切り分ける。late move pruningは、元の実装が捕獲手も数えてkiller手まで切っていたことを[診断](measurements/search-revival-lmp-diag.md)で確かめたので、静かな手だけを数える定義に改めて戻す。測定機の時間は段階2で終われば約10〜17時間、採用まで進めば約16〜55時間である。
 
 ### 次の候補
 
-- 探索部で再調整の計画の次に実行するのは[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
+- 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
 - 評価関数では、失敗の原因を切り分ける2計画を起案した。
   - [共適応の検証](plans/eval-search-coadaptation.md)は、[教師の混合比の計画](plans/teacher-mixing-ratio.md)でλ=1.0のPSTがSTCで約−164 Elo負けた原因が、S0に合わせて調整された探索係数との不整合でどれだけ説明できるかを、探索係数をSPSAで調整し直す前後の固定局数Eloで判定する。回復が大きい場合だけ、S0の係数を調整し直した対照を加える。測定機の時間は約10〜18.5時間である。
   - [補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)は、ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直して採否を測る。測定機の時間は約2〜39時間である。

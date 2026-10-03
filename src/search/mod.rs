@@ -12,6 +12,7 @@ mod stats;
 #[cfg(feature = "search-stats")]
 pub use stats::SearchStats;
 
+pub use alphabeta::history::HistoryTables;
 pub(crate) use alphabeta::tt::{Bound, Hit};
 pub use alphabeta::tt::{
     DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError,

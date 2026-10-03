@@ -27,25 +27,44 @@ fn aspiration_initial_window_uses_only_eligible_previous_scores() {
 
 #[test]
 fn aspiration_widens_only_the_failed_side() {
+    let growth = crate::search::alphabeta::params::aspiration_growth();
+    let delta1 = 50 * growth / 100;
+    let delta2 = delta1 * growth / 100;
+    let delta3 = delta2 * growth / 100;
+    let delta4 = delta3 * growth / 100;
+    let delta5 = delta4 * growth / 100;
     let mut low = AspirationWindow::initial(5, Some(100), 50);
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, 100));
+    assert_eq!((low.alpha, low.beta, low.delta), (0, 150, delta1));
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-100, 150, 201));
+    assert_eq!((low.alpha, low.beta, low.delta), (-delta1, 150, delta2));
 
     let mut high = AspirationWindow::initial(5, Some(100), 50);
     high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, 100));
+    assert_eq!((high.alpha, high.beta, high.delta), (50, 200, delta1));
     high.widen_high();
-    assert_eq!((high.alpha, high.beta, high.delta), (50, 300, 201));
+    assert_eq!(
+        (high.alpha, high.beta, high.delta),
+        (50, 200 + delta1, delta2)
+    );
 
     low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-100, 351, 404));
+    assert_eq!(
+        (low.alpha, low.beta, low.delta),
+        (-delta1, 150 + delta2, delta3)
+    );
     low.widen_low();
-    assert_eq!((low.alpha, low.beta, low.delta), (-504, 351, 812));
+    assert_eq!(
+        (low.alpha, low.beta, low.delta),
+        (-delta1 - delta3, 150 + delta2, delta4)
+    );
     low.widen_high();
-    assert_eq!((low.alpha, low.beta, low.delta), (-504, 1163, 1632));
-    for _ in 0..4 {
+    assert_eq!(
+        (low.alpha, low.beta, low.delta),
+        (-delta1 - delta3, 150 + delta2 + delta4, delta5)
+    );
+    // 最小の拡大率でも詰み帯を越える回数だけ両側を広げる。
+    for _ in 0..32 {
         low.widen_low();
         low.widen_high();
     }

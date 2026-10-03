@@ -17,6 +17,7 @@ futility pruningだけをSTCとLTCがともに`H1`で採用し、reverse futilit
 futility pruningを採用し、reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringは不採用、verification searchは見送った。
 futility pruningは段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件であり、不採用の4項目は[reverse futility](../measurements/strength-stage4-rfp-stc.md)、[late move pruning](../measurements/strength-stage4-lmp-stc.md)、[null move pruningの減深量](../measurements/strength-stage4-nmp-r-stc.md)、[razoring](../measurements/strength-stage4-razoring-stc.md)のSTCがいずれも`H0`であった。
 verification searchは[診断bench](../measurements/strength-stage4-nmp-verify-bench.md)で矛盾率が0%であった。
+不採用の4項目は、2026年10月4日に[不採用だった探索部の改良の再調整](search-revival-spsa.md)が係数をSPSAで調整し直して採用し、late move pruningは数える手の定義を改めて戻した。
 [固定自己対局](../measurements/strength-stage4-elo200.md)は段階開始版に対してSTCで+86.4 Elo、[HaChu戦](../measurements/strength-stage4-hachu-elo200.md)は+200.2 Eloを進捗指標として記録した。
 
 ## 目的
@@ -120,8 +121,10 @@ LMRは、深さ3以上で、置換表の記録手、捕獲手、killer手を除�
 
 この表と以下の発動率は、段階4の診断と採否測定で用いた値を記録する。
 [最初のSPSAの長時間測定](../measurements/spsa-stage9-20260923-ltc.md)を通過した後のfutility余裕値は、残り深さ1、2、3の順に歩兵価値の51%、158%、175%であった。
-[2回目のSPSAの長時間測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の現行のfutility余裕値は、同じ順に歩兵価値の101%、196%、207%である。
-null moveの減深量は、最初のSPSAの後に切片2,888、傾き210となり、現行は切片3,529、傾き238を1,200分率で表して、`R = (3529 + depth × 238) / 1200`を整数除算で求める。
+[2回目のSPSAの長時間測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後のfutility余裕値は、同じ順に歩兵価値の101%、196%、207%であった。
+[不採用だった探索部の改良の再調整の長時間測定](../measurements/search-revival-tstar-vs-m-ltc.md)を通過した後の現行のfutility余裕値は、同じ順に歩兵価値の165%、239%、283%である。
+null moveの減深量は、最初のSPSAの後に切片2,888、傾き210、2回目のSPSAの後に切片3,529、傾き238となり、現行は切片3,617、傾き257を1,200分率で表して、`R = (3617 + depth × 257) / 1200`を整数除算で求める。
+現行の減深量には、[不採用だった探索部の改良の再調整](search-revival-spsa.md)が戻した静的評価の余裕による加算をさらに足す。
 
 発動率はreverse futilityが深さ順に67.6%、55.4%、38.2%、futilityが91.7%、63.0%、65.1%、late move pruningが92.3%、80.5%、93.4%であり、いずれも5%以上である。
 王駒への利きの判定による除外率は1.6%から3.0%で、いずれかの王駒に利きが届けば枝刈りを控える方式を採用した。

@@ -183,7 +183,16 @@ fn null_move_jitto_does_not_repeat_pre_null_position() {
 
 #[test]
 fn null_move_two_jittos_repeat_post_null_position() {
-    let root = null_repetition_fixture();
+    // 対称な駒配置で評価差を小さく保ち、静的評価による枝刈りより先に反復を読ませる。
+    let root = position(
+        Color::Black,
+        &[
+            (fs(1, 12), Color::Black, PieceKind::King),
+            (fs(4, 10), Color::Black, PieceKind::Lion),
+            (fs(12, 1), Color::White, PieceKind::King),
+            (fs(9, 3), Color::White, PieceKind::Lion),
+        ],
+    );
     let mut after_null = root.clone();
     after_null.make_null_move();
     let black_jitto = jitto(&root);
@@ -194,6 +203,17 @@ fn null_move_two_jittos_repeat_post_null_position() {
     assert_eq!(search_key(&returned), search_key(&after_null));
 
     with_root_searcher(&root, &[], |searcher| {
+        // じっと以外の応手は後手から見て負と固定し、反復の引き分けを最善にする。
+        for mv in legal_moves(&after_null) {
+            if mv != white_jitto {
+                let mut child = after_null.clone();
+                child.make_move_unchecked(mv, engine_rules());
+                searcher
+                    .tt
+                    .store(search_key(&child), 1, 1, Bound::Exact, None, 2);
+            }
+        }
+
         // 双方のじっとを先に読む。後手のじっと後の先手の窓は[-1, 0]なので、
         // 2手目が反復ならその引き分け値で打ち切り、先手局面に下界0が残る。
         searcher.tt.store(
@@ -320,7 +340,17 @@ fn interrupted_null_move_restores_repetition_scope() {
             hard_limit: None,
         };
         let table = small_tt();
-        let mut searcher = new_searcher(&pst, &root, engine_rules(), &[], &shared, &table);
+        let mut butterfly_history =
+            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut searcher = new_searcher(
+            &pst,
+            &root,
+            engine_rules(),
+            &[],
+            &shared,
+            &table,
+            &mut butterfly_history,
+        );
         if nested {
             set_outer_null_path(&mut searcher, &root);
         }
@@ -328,9 +358,10 @@ fn interrupted_null_move_restores_repetition_scope() {
         let null_ply = searcher.null_move_ply;
         let boundary = searcher.null_move_boundary;
         let mut current = root.clone();
-        // 実着手を1手積んだ後、次の実着手でノード上限に達して中断する。
+        // 静的評価付近の窓で枝刈りを避け、実着手を1手積んだ後にノード上限で中断する。
+        let beta = evaluate(&pst, &root);
         assert_eq!(
-            searcher.search_null_move(&mut current, 2, 0, if nested { 2 } else { 0 }),
+            searcher.search_null_move(&mut current, 2, beta, if nested { 2 } else { 0 }),
             None
         );
         assert_eq!(searcher.stop_reason, Some(StopReason::NodeLimit));

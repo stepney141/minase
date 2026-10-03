@@ -1,38 +1,49 @@
 //! 探索係数の既定値と設定を検査する。
 
 use super::*;
+use crate::search::alphabeta::params;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::{
     correction::CorrectionTable,
-    params,
-    pruning::{futility_margin, lmr_base, see_margin},
+    pruning::{
+        futility_margin, late_move_limit, lmr_base, razoring_margin, reverse_futility_margin,
+        see_margin,
+    },
 };
 
-// docs/plans/spsa.md「対象の係数」の採用値での一致契約。
+// docs/plans/spsa.md「整数表現」の式と丸めを係数から照合する。
 #[test]
 fn tuning_default_null_move_and_aspiration_match_reference() {
     for depth in 0..=256 {
-        assert_eq!(null_move_reduction(depth), (3_529 + depth * 238) / 1_200);
+        assert_eq!(
+            null_move_reduction(depth, 0, 0, 100),
+            (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1_200
+        );
     }
+    let growth = i64::from(params::aspiration_growth());
+    let saturation = (i64::from(i32::MAX) * 100 / growth) as i32;
     for delta in [
         0,
         1,
         49,
         50,
         51,
-        1_068_399_824,
-        1_068_399_825,
-        1_068_399_826,
+        saturation - 1,
+        saturation,
+        saturation + 1,
         i32::MAX - 1,
         i32::MAX,
     ] {
         assert_eq!(
             grow_aspiration_delta(delta),
-            (i64::from(delta) * 201 / 100).min(i64::from(i32::MAX)) as i32
+            (i64::from(delta) * growth / 100).min(i64::from(i32::MAX)) as i32
         );
     }
     with_root_searcher(&Position::initial(), &[], |searcher| {
-        assert_eq!(searcher.delta_margin, 258 * searcher.pst.pawn_value() / 100);
+        assert_eq!(
+            searcher.delta_margin,
+            params::delta_margin() * searcher.pst.pawn_value() / 100
+        );
     });
 }
 
@@ -143,7 +154,7 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
     }
 }
 
-/// 全22係数の反映とUSIの入力契約を直列に検査する。
+/// 全35係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -154,6 +165,19 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         for scenario in [
             "lmr table",
             "parameters",
+            "disabled capture history",
+            "disabled history decay",
+            "non improving futility 1",
+            "non improving futility 2",
+            "non improving futility 3",
+            "lmp base",
+            "lmp slope",
+            "lmp zero limit",
+            "reverse futility margin",
+            "razoring margin 1",
+            "razoring margin 2",
+            "null move eval scale",
+            "disabled null move eval scale",
             "go depth 1",
             "go ponder depth 1",
             "go depth nope",
@@ -179,6 +203,71 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
     let scenario = scenario.unwrap();
+    if scenario == "disabled capture history" {
+        params::set("CaptureHistoryScale", 0).unwrap();
+        super::captures::zero_capture_scale_preserves_reference_order();
+        return;
+    }
+    if scenario == "disabled history decay" {
+        params::set("HistoryDecay", 0).unwrap();
+        super::history::zero_decay_clears_history_between_searches();
+        return;
+    }
+
+    match scenario.as_str() {
+        "non improving futility 1" => {
+            non_improving_parameter_changes_search(1, "NonImprovingFutility1");
+            return;
+        }
+        "non improving futility 2" => {
+            non_improving_parameter_changes_search(2, "NonImprovingFutility2");
+            return;
+        }
+        "non improving futility 3" => {
+            non_improving_parameter_changes_search(3, "NonImprovingFutility3");
+            return;
+        }
+        "lmp base" => {
+            late_move_parameter_changes_search("LmpBase");
+            return;
+        }
+        "lmp slope" => {
+            late_move_parameter_changes_search("LmpSlope");
+            return;
+        }
+        "lmp zero limit" => {
+            params::set("LmpBase", 0).unwrap();
+            params::set("LmpSlope", 0).unwrap();
+            super::late_move::check_late_move_protected_moves(0);
+            super::late_move::late_move_pruning_searches_safe_quiets_after_losing_tt_move();
+            let board = super::late_move::quiet_board();
+            let (score, nodes) = super::late_move::search_quiet_board(&board);
+            assert_eq!(nodes, 1, "上限0でも最初の安全な手は読む");
+            assert!(score.abs() < MATE_THRESHOLD);
+            return;
+        }
+        "reverse futility margin" => {
+            reverse_futility_parameter_changes_search();
+            return;
+        }
+        "razoring margin 1" => {
+            razoring_parameter_changes_search(1, "RazoringMargin1");
+            return;
+        }
+        "razoring margin 2" => {
+            razoring_parameter_changes_search(2, "RazoringMargin2");
+            return;
+        }
+        "null move eval scale" => {
+            null_move_eval_scale_changes_search();
+            return;
+        }
+        "disabled null move eval scale" => {
+            zero_null_move_eval_scale_matches_base_reduction_search();
+            return;
+        }
+        _ => {}
+    }
 
     use crate::protocol::{Protocol, engine::Engine, usi::UsiProtocol};
     fn run(protocol: &mut UsiProtocol, engine: &mut Engine, input: &str) -> String {
@@ -194,7 +283,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     if scenario == "lmr table" {
         // 探索が引く減深量表はプロセス内で1回だけ生成されるので、表の生成より前に
         // 設定した除数が表へ反映されることを、表を経由する`lmr_reduction`で調べる。
-        // ln4 × ln3 ≈ 1.52は、既定の除数1.66では0、除数1.0では1に切り捨てられる。
+        // 除数1.0ならln4 × ln3 ≈ 1.52を切り捨てた1が表へ入る。
         let mut engine = engine();
         let mut protocol = UsiProtocol::new(&engine);
         let output = run(
@@ -221,11 +310,68 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
                 mv.from.dense_index(),
                 mv.to.dense_index(),
             );
-            searcher.history[side][from][to] = 20_755;
+            // 宣言範囲の上端なら半減せず、既定の上限なら半減する値を置く。
+            searcher.history[side][from][to] = 65_535;
             searcher.record_quiet_beta_cutoff(&board, mv, 1, 0);
             result = i64::from(searcher.history[side][from][to]);
         });
         result
+    }
+    fn capture_history_adjustment() -> i64 {
+        let board = staged_picker_fixture();
+        let mv = Move {
+            from: fs(6, 8),
+            to: fs(6, 5),
+            mid: None,
+            promote: false,
+        };
+        let mut result = 0;
+        with_root_searcher(&board, &[], |searcher| {
+            searcher
+                .capture_history
+                .record_cutoff(&board, searcher.pst, mv, &[], 100);
+            result = i64::from(
+                searcher
+                    .capture_history
+                    .adjustment(&board, searcher.pst, mv),
+            );
+        });
+        result
+    }
+    fn history_decay() -> i64 {
+        let snapshot = snapshot_for(&Position::initial());
+        let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+        histories.workers[0][0][60][60] = 100;
+        run_search_team(
+            &weights().unwrap(),
+            &snapshot.position,
+            snapshot.rules,
+            &snapshot.root_moves,
+            &snapshot.history_keys,
+            &depth_limits(1),
+            &AtomicBool::new(true),
+            DEFAULT_THREADS,
+            &small_tt(),
+            &mut histories,
+            None,
+            Instant::now(),
+            &AtomicU64::new(0),
+            false,
+        );
+        i64::from(histories.workers[0][0][60][60])
+    }
+    fn qsearch_limit() -> i64 {
+        let board = position(
+            Color::Black,
+            &[
+                (sq(11, 0), Color::Black, PieceKind::King),
+                (sq(11, 11), Color::White, PieceKind::King),
+                (sq(5, 5), Color::Black, PieceKind::Rook),
+                (sq(5, 7), Color::White, PieceKind::Pawn),
+                (sq(7, 5), Color::White, PieceKind::Pawn),
+            ],
+        );
+        run_quiesce(&board, -INFINITY, INFINITY, MAX_PLY - 1, &small_tt()).1 as i64
     }
     fn delta() -> i64 {
         let mut result = 0;
@@ -293,24 +439,37 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
 
-    // 指示書の22行を、宣言順・既定値・範囲の独立した参照値とする。
+    // 宣言順と範囲、および採用済みの既定値をUSIの契約として固定する。
     let expected = [
-        ("LmrDivisor", 166, 100, 400),
-        ("LmrHistoryThreshold", 111, 0, 512),
-        ("FutilityMargin1", 101, 0, 400),
-        ("FutilityMargin2", 196, 0, 400),
-        ("FutilityMargin3", 207, 0, 400),
-        ("SeeMargin1", 2, 0, 400),
-        ("SeeMargin2", 210, 0, 400),
-        ("SeeMargin3", 7, 0, 400),
-        ("AspirationDelta", 46, 10, 200),
-        ("AspirationGrowth", 201, 125, 400),
-        ("NullMoveBase", 3529, 1200, 4800),
-        ("NullMoveSlope", 238, 100, 400),
-        ("HistoryLimit", 20755, 4096, 65536),
-        ("CorrectionCap", 193, 50, 400),
-        ("CorrectionWeight", 33, 8, 128),
-        ("DeltaMargin", 258, 50, 500),
+        ("LmrDivisor", 156, 100, 400),
+        ("LmrHistoryThreshold", 146, 0, 512),
+        ("FutilityMargin1", 165, 0, 400),
+        ("FutilityMargin2", 239, 0, 400),
+        ("FutilityMargin3", 283, 0, 400),
+        ("NonImprovingFutility1", 71, 0, 100),
+        ("NonImprovingFutility2", 72, 0, 100),
+        ("NonImprovingFutility3", 86, 0, 100),
+        ("LmpBase", 382, 0, 8600),
+        ("LmpSlope", 133, 0, 3600),
+        ("ReverseFutilityMargin", 428, 0, 1938),
+        ("RazoringMargin1", 1606, 0, 2668),
+        ("RazoringMargin2", 2015, 0, 2885),
+        ("SeeMargin1", 10, 0, 400),
+        ("SeeMargin2", 192, 0, 400),
+        ("SeeMargin3", 13, 0, 400),
+        ("AspirationDelta", 55, 10, 200),
+        ("AspirationGrowth", 190, 125, 400),
+        ("NullMoveBase", 3617, 1200, 4800),
+        ("NullMoveSlope", 257, 100, 400),
+        ("NullMoveEvalScale", 56, 0, 400),
+        ("HistoryLimit", 17408, 4096, 65536),
+        ("HistoryDecay", 23, 0, 100),
+        ("CaptureHistoryLimit", 16950, 4096, 65536),
+        ("CaptureHistoryScale", 49, 0, 400),
+        ("CorrectionCap", 220, 50, 400),
+        ("CorrectionWeight", 37, 8, 128),
+        ("DeltaMargin", 355, 50, 500),
+        ("QsearchMoveLimit", 4, 1, 7),
         ("ExpectedPlies", 432, 250, 700),
         ("MinMoves", 88, 40, 200),
         ("IncrementShare", 76, 30, 100),
@@ -337,21 +496,41 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 22] = [
+    let cases: [Case; 35] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
         ("LmrHistoryThreshold", 512, || {
-            i64::from(lmr_reduction(4, 8, 128))
+            i64::from(lmr_reduction(4, 8, 256))
         }),
         ("FutilityMargin1", 100, || {
-            i64::from(futility_margin(101, 1))
+            i64::from(futility_margin(101, 1, true))
         }),
         ("FutilityMargin2", 100, || {
-            i64::from(futility_margin(101, 2))
+            i64::from(futility_margin(101, 2, true))
         }),
         ("FutilityMargin3", 100, || {
-            i64::from(futility_margin(101, 3))
+            i64::from(futility_margin(101, 3, true))
+        }),
+        ("NonImprovingFutility1", 100, || {
+            i64::from(futility_margin(101, 1, false))
+        }),
+        ("NonImprovingFutility2", 100, || {
+            i64::from(futility_margin(101, 2, false))
+        }),
+        ("NonImprovingFutility3", 100, || {
+            i64::from(futility_margin(101, 3, false))
+        }),
+        ("LmpBase", 600, || i64::from(late_move_limit(1))),
+        ("LmpSlope", 400, || i64::from(late_move_limit(1))),
+        ("ReverseFutilityMargin", 100, || {
+            i64::from(reverse_futility_margin(101))
+        }),
+        ("RazoringMargin1", 100, || {
+            i64::from(razoring_margin(101, 1))
+        }),
+        ("RazoringMargin2", 100, || {
+            i64::from(razoring_margin(101, 2))
         }),
         ("SeeMargin1", 100, || i64::from(see_margin(101, 1))),
         ("SeeMargin2", 100, || i64::from(see_margin(101, 2))),
@@ -360,12 +539,23 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("AspirationGrowth", 300, || {
             i64::from(grow_aspiration_delta(101))
         }),
-        ("NullMoveBase", 4800, || i64::from(null_move_reduction(12))),
-        ("NullMoveSlope", 400, || i64::from(null_move_reduction(12))),
+        ("NullMoveBase", 4800, || {
+            i64::from(null_move_reduction(12, 0, 0, 100))
+        }),
+        ("NullMoveSlope", 400, || {
+            i64::from(null_move_reduction(12, 0, 0, 100))
+        }),
+        ("NullMoveEvalScale", 0, || {
+            i64::from(null_move_reduction(12, 800, 0, 100))
+        }),
         ("HistoryLimit", 65536, history),
+        ("HistoryDecay", 50, history_decay),
+        ("CaptureHistoryLimit", 65536, capture_history_adjustment),
+        ("CaptureHistoryScale", 200, capture_history_adjustment),
         ("CorrectionCap", 400, || correction(100_000)),
         ("CorrectionWeight", 64, || correction(100)),
         ("DeltaMargin", 300, delta),
+        ("QsearchMoveLimit", 1, qsearch_limit),
         ("ExpectedPlies", 250, || {
             clock_budget(clock(100_000, 0, 0)).soft.as_millis() as i64
         }),
@@ -441,6 +631,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         )
         .starts_with("info string error: ")
     );
+    let default_delta = params::delta_margin();
     assert!(
         run(
             &mut protocol,
@@ -450,5 +641,183 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         .is_empty()
     );
     assert_eq!(params::delta_margin(), 300);
-    params::set("DeltaMargin", 258).unwrap();
+    params::set("DeltaMargin", default_delta).unwrap();
+}
+
+// フェーズ1-B指示書。実際の探索で各係数の境界をまたぎ、係数の読み出し忘れを検出する。
+#[cfg(feature = "tuning")]
+fn reverse_futility_parameter_changes_search() {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let value = evaluate(&pst, &board);
+    let percent = params::reverse_futility_margin();
+    let beta = value - pst.pawn_value() * percent / 100;
+    assert_eq!(
+        run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()),
+        (value, 0)
+    );
+    params::set("ReverseFutilityMargin", percent + 100).unwrap();
+    assert!(run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()).1 > 0);
+    assert_eq!(
+        reverse_futility_margin(137),
+        137 * (percent + 100) / 100,
+        "百分率は乗算してから割る"
+    );
+}
+
+#[cfg(feature = "tuning")]
+fn razoring_parameter_changes_search(depth: u32, name: &str) {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let value = evaluate(&pst, &board);
+    let percent = match depth {
+        1 => params::razoring_margin1(),
+        2 => params::razoring_margin2(),
+        _ => unreachable!(),
+    };
+    let alpha = value + pst.pawn_value() * percent / 100;
+    assert_eq!(
+        run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()),
+        (value, 0)
+    );
+    params::set(name, percent + 100).unwrap();
+    assert!(run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()).1 > 0);
+    assert_eq!(
+        razoring_margin(137, depth),
+        137 * (percent + 100) / 100,
+        "百分率は乗算してから割る"
+    );
+}
+
+#[cfg(feature = "tuning")]
+fn null_move_eval_scale_changes_search() {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let scale = params::null_move_eval_scale();
+    assert!(scale > 0);
+    let beta = evaluate(&pst, &board) - (2 * pst.pawn_value() * 100 + scale - 1) / scale;
+    let (_, default_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
+    params::set("NullMoveEvalScale", 0).unwrap();
+    let (score, changed_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
+    assert!(score >= beta);
+    assert!(changed_nodes > default_nodes);
+    params::set("NullMoveEvalScale", 50).unwrap();
+    let base = (params::null_move_base() as u32 + 6 * params::null_move_slope() as u32) / 1200;
+    // 2pの境界と上限を、百分率の除算に余りが出る歩兵価値でも検査する。
+    assert_eq!(null_move_reduction(6, 147, 0, 37), base);
+    assert_eq!(null_move_reduction(6, 148, 0, 37), base + 1);
+    params::set("NullMoveEvalScale", 400).unwrap();
+    assert_eq!(null_move_reduction(6, 19, 0, 37), base + 1);
+    assert_eq!(null_move_reduction(6, i32::MAX, i32::MIN, 37), base + 3);
+}
+
+#[cfg(feature = "tuning")]
+fn zero_null_move_eval_scale_matches_base_reduction_search() {
+    params::set("NullMoveEvalScale", 0).unwrap();
+    // 尺度0では、静的評価とβにかかわらず基本の減深量になる。
+    for depth in 0..=MAX_PLY {
+        for value in [i32::MIN, -1000, 0, 1000, i32::MAX] {
+            for beta in [-MATE_THRESHOLD + 1, 0, MATE_THRESHOLD - 1] {
+                assert_eq!(
+                    null_move_reduction(depth, value, beta, 37),
+                    (params::null_move_base() as u32 + depth * params::null_move_slope() as u32)
+                        / 1200
+                );
+            }
+        }
+    }
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let beta = evaluate(&pst, &board) - 2 * pst.pawn_value();
+    // 記録手なしの深さ7は6となる。基本の減深量から子の深さを求める。
+    let reduction = (params::null_move_base() as u32 + 6 * params::null_move_slope() as u32) / 1200;
+    let child_depth = 6_u32.saturating_sub(1 + reduction);
+    let mut passed = board.clone();
+    passed.make_null_move();
+    let (reply, nodes) = run_negamax(&passed, child_depth, -beta, -beta + 1, 1, &small_tt());
+    assert!(-reply >= beta);
+    assert!(nodes > 0);
+    let table = small_tt();
+    assert_eq!(
+        run_negamax(&board, 7, beta - 1, beta, 0, &table),
+        (-reply, nodes)
+    );
+    assert!(table.probe(search_key(&board), 0).is_none());
+}
+
+// フェーズ1-C指示書。子を反復引き分けに固定し、親の枝刈りだけを観測する。
+#[cfg(feature = "tuning")]
+fn non_improving_parameter_changes_search(depth: u32, name: &str) {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    let pst = weights().unwrap();
+    let (percent, scale) = [
+        (
+            params::futility_margin1(),
+            params::non_improving_futility1(),
+        ),
+        (
+            params::futility_margin2(),
+            params::non_improving_futility2(),
+        ),
+        (
+            params::futility_margin3(),
+            params::non_improving_futility3(),
+        ),
+    ][depth as usize - 1];
+    let alpha = evaluate(&pst, &board) + pst.pawn_value() * percent / 100 * scale / 100;
+    let search = || {
+        let mut nodes = 0;
+        with_root_searcher(&board, &history, |searcher| {
+            searcher
+                .tt
+                .store(search_key(&board), 0, 0, Bound::Upper, Some(moves[0]), 2);
+            assert!(!searcher.improving(evaluate(&pst, &board), board.side_to_move(), 2));
+            assert_eq!(
+                searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 2),
+                Some(DRAW_SCORE)
+            );
+            nodes = searcher.nodes;
+        });
+        nodes
+    };
+    assert_eq!(search(), 1);
+    params::set(name, 100).unwrap();
+    assert_eq!(search(), moves.len() as u64);
+    // 尺度100では、端数を含めて現行の余裕値と完全に一致する。
+    for pawn in [1, 37, 100, 137, 999] {
+        assert_eq!(futility_margin(pawn, depth, false), pawn * percent / 100);
+        assert_eq!(
+            futility_margin(pawn, depth, false),
+            futility_margin(pawn, depth, true)
+        );
+    }
+    params::set(name, 0).unwrap();
+    assert_eq!(futility_margin(137, depth, false), 0);
+    assert_eq!(search(), 1);
+}
+
+#[cfg(feature = "tuning")]
+fn late_move_parameter_changes_search(name: &str) {
+    let board = super::late_move::quiet_board();
+    let limit = (params::lmp_base() + params::lmp_slope()) / 100;
+    assert_eq!(super::late_move::search_quiet_board(&board).1, limit as u64);
+    let other = match name {
+        "LmpBase" => params::lmp_slope(),
+        "LmpSlope" => params::lmp_base(),
+        _ => unreachable!(),
+    };
+    let boundary = (limit + 1) * 100 - other;
+    params::set(name, boundary).unwrap();
+    assert_eq!(
+        super::late_move::search_quiet_board(&board).1,
+        (limit + 1) as u64
+    );
+    params::set(name, boundary - 1).unwrap();
+    assert_eq!(
+        super::late_move::search_quiet_board(&board).1,
+        limit as u64,
+        "整数除算で端数を切り捨てる"
+    );
 }

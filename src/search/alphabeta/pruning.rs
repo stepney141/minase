@@ -38,14 +38,31 @@ pub(super) fn lmr_base(depth: usize, index: usize, divisor: i32) -> u8 {
 }
 
 /// 深さ1〜3のfutility余裕値を求める。
-pub(super) fn futility_margin(pawn: i32, depth: u32) -> i32 {
+pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
     let percent = match depth {
         1 => params::futility_margin1(),
         2 => params::futility_margin2(),
         3 => params::futility_margin3(),
         _ => unreachable!("futility applies only at depths 1 to 3"),
     };
-    pawn * percent / 100
+    let margin = pawn * percent / 100;
+    if improving {
+        return margin;
+    }
+    let scale = match depth {
+        1 => params::non_improving_futility1(),
+        2 => params::non_improving_futility2(),
+        3 => params::non_improving_futility3(),
+        _ => unreachable!("futility applies only at depths 1 to 3"),
+    };
+    // 百分率の余裕値を求めてから縮め、尺度100では丸めも含めて同じ値にする。
+    margin * scale / 100
+}
+
+/// 深さ1〜3で数える静かな手の上限。`docs/plans/search-revival-spsa.md`に従う。
+pub(super) fn late_move_limit(depth: u32) -> i32 {
+    let depth = depth as i32;
+    (params::lmp_base() + params::lmp_slope() * depth * depth) / 100
 }
 
 /// 深さ1〜3のSEE余裕値を求める。
@@ -59,9 +76,32 @@ pub(super) fn see_margin(pawn: i32, depth: u32) -> i32 {
     pawn * percent / 100
 }
 
-/// 探索深さからnull moveの減深量を求める。
-pub(super) fn null_move_reduction(depth: u32) -> u32 {
-    (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200
+/// 深さ1〜3共通のreverse futility余裕値を求める。
+pub(super) fn reverse_futility_margin(pawn: i32) -> i32 {
+    pawn * params::reverse_futility_margin() / 100
+}
+
+/// 深さ1〜2のrazoring余裕値を求める。
+pub(super) fn razoring_margin(pawn: i32, depth: u32) -> i32 {
+    let percent = match depth {
+        1 => params::razoring_margin1(),
+        2 => params::razoring_margin2(),
+        _ => unreachable!("razoring applies only at depths 1 to 2"),
+    };
+    pawn * percent / 100
+}
+
+/// 深さと静的評価のβに対する余裕からnull moveの減深量を求める。
+///
+/// `docs/plans/search-revival-spsa.md`「戻す8項目」に従い、尺度を掛けてから
+/// 100と歩兵価値の2倍で順に割り、加算を0〜3に制限する。尺度0では基本量と一致する。
+pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn: i32) -> u32 {
+    let extra = (((i64::from(static_eval) - i64::from(beta))
+        * i64::from(params::null_move_eval_scale())
+        / 100)
+        / (2 * i64::from(pawn)))
+    .clamp(0, 3) as u32;
+    (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200 + extra
 }
 
 /// history値で補正し、減深後の深さを1以上に保つLMR減深量を求める。

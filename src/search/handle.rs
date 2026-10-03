@@ -7,12 +7,12 @@ use std::thread;
 use std::time::Instant;
 
 use crate::eval::Pst;
-use crate::search::TranspositionTable;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult};
 use crate::search::limits::SearchLimits;
 use crate::search::snapshot::SearchSnapshot;
+use crate::search::{HistoryTables, TranspositionTable};
 
 /// 実行中の探索チームを操作するハンドル。
 ///
@@ -26,8 +26,8 @@ pub struct SearchHandle {
     pub(super) hit_ns: Arc<AtomicU64>,
     /// 探索チームと共有する外部停止フラグ。
     pub(super) stop: Arc<AtomicBool>,
-    /// 全ワーカーの終了後に置換表を返す調整役のハンドル。
-    pub(super) thread: Option<thread::JoinHandle<TranspositionTable>>,
+    /// 全ワーカーの終了後に置換表とhistory表を返す調整役のハンドル。
+    pub(super) thread: Option<thread::JoinHandle<(TranspositionTable, HistoryTables)>>,
 }
 
 impl SearchHandle {
@@ -57,17 +57,17 @@ impl SearchHandle {
     }
 
     /// 探索チームへ停止を要求して全ワーカーの終了を待ち、共有していた
-    /// 置換表を返す。
+    /// 置換表とワーカー別のhistory表を返す。
     ///
     /// 探索ワーカーがパニックした場合は、そのペイロードを`Err`で返す。
     /// この場合、探索イベントの[`SearchEvent::Finished`]は送信されない。
-    pub fn join(mut self) -> thread::Result<TranspositionTable> {
+    pub fn join(mut self) -> thread::Result<(TranspositionTable, HistoryTables)> {
         self.stop_and_join()
             .expect("a live SearchHandle must own its search thread")
     }
 
     /// 停止要求と探索スレッドの回収を1回だけ行う。
-    fn stop_and_join(&mut self) -> Option<thread::Result<TranspositionTable>> {
+    fn stop_and_join(&mut self) -> Option<thread::Result<(TranspositionTable, HistoryTables)>> {
         self.request_stop();
         self.thread.take().map(thread::JoinHandle::join)
     }
@@ -79,12 +79,14 @@ impl Drop for SearchHandle {
     }
 }
 
-/// 所有権を移した評価重み、入力および置換表を使い、別スレッドで探索チームを
+/// 所有権を移した評価重み、入力、置換表およびhistory表を使い、別スレッドで探索チームを
 /// 開始する。`ponder`が真なら時間制限は的中の通知まで無効とする。
+/// `histories`は`threads`と同じワーカー数で作成する。
 ///
 /// 探索ワーカーがパニックした場合は残るワーカーへ停止を通知する。その後、
 /// [`SearchHandle::join`]がパニックのペイロードを返し、
 /// [`SearchEvent::Finished`]は送信されない。
+#[allow(clippy::too_many_arguments)]
 pub fn start_search(
     pst: Arc<Pst>,
     snapshot: SearchSnapshot,
@@ -92,6 +94,7 @@ pub fn start_search(
     search_id: u64,
     threads: NonZeroUsize,
     tt: TranspositionTable,
+    mut histories: HistoryTables,
     ponder: bool,
 ) -> SearchHandle {
     let started = Instant::now();
@@ -111,6 +114,7 @@ pub fn start_search(
             &thread_stop,
             threads,
             &tt,
+            &mut histories,
             Some((&sender, search_id)),
             started,
             &thread_hit_ns,
@@ -127,7 +131,7 @@ pub fn start_search(
             pv: outcome.pv,
             stop_reason: outcome.stop_reason,
         });
-        tt
+        (tt, histories)
     });
     SearchHandle {
         started,
@@ -139,6 +143,7 @@ pub fn start_search(
 }
 
 /// 指定局面を呼び出しスレッド上で反復深化探索する。
+/// `histories`は`threads`と同じワーカー数で作成し、次の探索へ持ち越す。
 ///
 /// ノード上限によって反復深化が中断された場合は、直前に完了した深さの
 /// 結果を返す。深さ1の完了前に中断された場合も、スナップショットが保持する
@@ -154,6 +159,7 @@ pub fn search(
     limits: &SearchLimits,
     threads: NonZeroUsize,
     tt: &mut TranspositionTable,
+    histories: &mut HistoryTables,
 ) -> Result<SearchResult, SearchError> {
     if limits.is_infinite() {
         return Err(SearchError::InfiniteSynchronousSearch);
@@ -169,6 +175,7 @@ pub fn search(
         &stop,
         threads,
         tt,
+        histories,
         None,
         Instant::now(),
         &AtomicU64::new(0),

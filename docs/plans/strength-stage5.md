@@ -128,7 +128,8 @@ historyの最終構成はbutterfly表だけである。
 
 この表の係数と診断値は、段階5の測定時点の値を示す。
 [最初のSPSAの長時間測定](../measurements/spsa-stage9-20260923-ltc.md)を通過した後の値は、LMRの除数が1.86、history値の閾値が117、history表を半減する上限が19,403であった。
-[2回目のSPSAの長時間測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の現行値は、LMRの除数が1.66、history値の閾値が111、history表を半減する上限が20,755である。
+[2回目のSPSAの長時間測定](../measurements/spsa-stage9-20260925-c5-ltc.md)を通過した後の値は、LMRの除数が1.66、history値の閾値が111、history表を半減する上限が20,755であった。
+[不採用だった探索部の改良の再調整の長時間測定](../measurements/search-revival-tstar-vs-m-ltc.md)を通過した後の現行値は、LMRの除数が1.56、history値の閾値が146、history表を半減する上限が17,408である。
 減深量の式とhistory値による増減の規則は変わらない。
 
 段階5の診断で残り深さごとの失う割合は3、4、5の順に19.5%、40.5%、32.0%であり、いずれも当時の規則（31.5%、41.1%、40.0%）以下であった。

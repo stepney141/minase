@@ -17,6 +17,8 @@ use crate::search::limits::SearchLimits;
 use crate::search::{MAX_PLY, TranspositionTable};
 
 use super::deepening::{run_auxiliary_worker, run_main_worker};
+use super::history::{HistoryTable, HistoryTables};
+use super::params;
 use super::time::time_budget;
 
 /// 探索の内部実行が返す結果一式。
@@ -157,6 +159,7 @@ pub(in crate::search) fn run_search_team(
     external_stop: &AtomicBool,
     threads: NonZeroUsize,
     tt: &TranspositionTable,
+    histories: &mut HistoryTables,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     started: Instant,
     hit_ns: &AtomicU64,
@@ -170,6 +173,16 @@ pub(in crate::search) fn run_search_team(
     let node_limit = finite_limits
         .and_then(|limits| limits.nodes)
         .map(NonZeroU64::get);
+    if histories.workers.len() != threads.get() {
+        *histories = HistoryTables::new(threads);
+    }
+    // 新しい根で1回だけ減衰する。0なら前回の履歴をすべて消す。
+    let decay = params::history_decay();
+    for history in &mut histories.workers {
+        for value in history.iter_mut().flatten().flatten() {
+            *value = *value * decay / 100;
+        }
+    }
     tt.new_search();
     let shared = SharedSearch {
         external_stop,
@@ -185,35 +198,38 @@ pub(in crate::search) fn run_search_team(
     };
 
     let history_keys: Vec<u64> = history_keys.to_vec();
-    let worker_outcomes = run_worker_team(threads, &shared, |worker_index| {
-        if worker_index == 0 {
-            run_main_worker(
-                pst,
-                position,
-                rules,
-                root_moves,
-                &history_keys,
-                depth_limit,
-                time_budget,
-                &shared,
-                tt,
-                events,
-                ponder,
-            )
-        } else {
-            run_auxiliary_worker(
-                pst,
-                position,
-                rules,
-                root_moves,
-                &history_keys,
-                depth_limit,
-                worker_index,
-                &shared,
-                tt,
-            )
-        }
-    });
+    let worker_outcomes =
+        run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
+            if worker_index == 0 {
+                run_main_worker(
+                    pst,
+                    position,
+                    rules,
+                    root_moves,
+                    &history_keys,
+                    depth_limit,
+                    time_budget,
+                    &shared,
+                    tt,
+                    history,
+                    events,
+                    ponder,
+                )
+            } else {
+                run_auxiliary_worker(
+                    pst,
+                    position,
+                    rules,
+                    root_moves,
+                    &history_keys,
+                    depth_limit,
+                    worker_index,
+                    &shared,
+                    tt,
+                    history,
+                )
+            }
+        });
     let total_nodes = shared.nodes();
     debug_assert_eq!(
         total_nodes,
@@ -247,19 +263,26 @@ pub(in crate::search) fn run_search_team(
 
 /// 主ワーカーと補助ワーカーを実行し、パニック時も全ワーカーを回収する。
 pub(super) fn run_worker_team(
-    threads: NonZeroUsize,
+    histories: &mut [Box<HistoryTable>],
     shared: &SharedSearch<'_>,
-    worker: impl Fn(usize) -> WorkerOutcome + Sync,
+    worker: impl Fn(usize, &mut HistoryTable) -> WorkerOutcome + Sync,
 ) -> Vec<WorkerOutcome> {
+    let worker_count = histories.len();
+    let (main_history, auxiliary_histories) = histories
+        .split_first_mut()
+        .expect("search team must have a main worker");
     thread::scope(|scope| {
-        let auxiliary_workers: Vec<_> = (1..threads.get())
-            .map(|worker_index| {
+        let auxiliary_workers: Vec<_> = auxiliary_histories
+            .iter_mut()
+            .enumerate()
+            .map(|(index, history)| {
+                let worker_index = index + 1;
                 let worker = &worker;
-                scope.spawn(move || run_worker_guarded(shared, || worker(worker_index)))
+                scope.spawn(move || run_worker_guarded(shared, || worker(worker_index, history)))
             })
             .collect();
-        let main_outcome = run_worker_guarded(shared, || worker(0));
-        let mut worker_outcomes = Vec::with_capacity(threads.get());
+        let main_outcome = run_worker_guarded(shared, || worker(0, main_history));
+        let mut worker_outcomes = Vec::with_capacity(worker_count);
         let mut panic_payload = match main_outcome {
             Ok(outcome) => {
                 worker_outcomes.push(outcome);

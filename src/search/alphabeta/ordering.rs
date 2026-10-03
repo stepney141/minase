@@ -8,8 +8,10 @@ use crate::core::piece::PieceCode;
 use crate::core::position::Position;
 use crate::eval::Pst;
 
+use super::capture_history::CaptureHistory;
+use super::history::HistoryTable;
 use super::params;
-use super::searcher::{HistoryTable, KILLER_COUNT, Searcher};
+use super::searcher::{KILLER_COUNT, Searcher};
 
 impl Searcher<'_> {
     /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。
@@ -164,6 +166,7 @@ impl MovePicker {
         pst: &Pst,
         generator: &MoveGenerator,
         history: &HistoryTable,
+        capture_history: &CaptureHistory,
     ) -> Option<(Move, bool)> {
         loop {
             match self.stage {
@@ -193,8 +196,10 @@ impl MovePicker {
                                 .drain(..)
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
-                                    let key = move_order_key(position, pst, mv)
+                                    let mut key = move_order_key(position, pst, mv)
                                         .expect("capture generator must not return a quiet move");
+                                    key.captured_value +=
+                                        capture_history.adjustment(position, pst, mv);
                                     (mv, key)
                                 }),
                         );

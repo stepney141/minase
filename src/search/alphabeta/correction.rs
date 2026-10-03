@@ -91,31 +91,42 @@ mod tests {
     #[test]
     fn correction_fixed_point_weights_rounding_caps_and_sides() {
         let mut table = CorrectionTable::new(100);
+        let weight = i64::from(params::correction_weight());
+        // 初回は1未満、2回目は1以上となる差を選び、正負とも端数を保持する。
+        let difference = (1023 / weight) as i32;
+        let first = i64::from(difference) * weight;
+        let second = first + (i64::from(difference) * 1024 - first) * weight / 1024;
+        assert!(first > 0 && first < 1024);
+        assert!((1024..2048).contains(&second));
         assert_eq!(table.read(Color::Black, 7), 0);
-        table.update(Color::Black, 7, 31, 1);
-        assert_eq!(table.values[0][7], 1023);
+        table.update(Color::Black, 7, difference, 1);
+        assert_eq!(table.values[0][7], first);
         assert_eq!(table.read(Color::Black, 7), 0);
-        table.update(Color::Black, 7, 31, 1);
-        assert_eq!(table.values[0][7], 2013);
+        table.update(Color::Black, 7, difference, 1);
+        assert_eq!(table.values[0][7], second);
         assert_eq!(table.read(Color::Black, 7), 1);
-        table.update(Color::White, 7, -31, 1);
-        assert_eq!(table.values[1][7], -1023);
+        table.update(Color::White, 7, -difference, 1);
+        assert_eq!(table.values[1][7], -first);
         assert_eq!(table.read(Color::White, 7), 0);
-        table.update(Color::White, 7, -31, 1);
-        assert_eq!(table.values[1][7], -2013);
+        table.update(Color::White, 7, -difference, 1);
+        assert_eq!(table.values[1][7], -second);
         assert_eq!(table.read(Color::White, 7), -1);
         for depth in [8, 9, 256] {
             table.update(Color::Black, depth as u64, 100, depth);
-            assert_eq!(table.read(Color::Black, depth as u64), 25);
+            assert_eq!(
+                table.read(Color::Black, depth as u64),
+                (100 * 8 * weight / 1024) as i32
+            );
         }
         table.update(Color::Black, 0, 100_000, 1);
         table.update(Color::White, 0, -100_000, 1);
-        assert_eq!(table.read(Color::Black, 0), 193);
-        assert_eq!(table.read(Color::White, 0), -193);
-        assert_eq!(table.values[0][0], 197_632);
-        assert_eq!(table.values[1][0], -197_632);
+        let cap = params::correction_cap();
+        assert_eq!(table.read(Color::Black, 0), cap);
+        assert_eq!(table.read(Color::White, 0), -cap);
+        assert_eq!(table.values[0][0], i64::from(cap) * 1024);
+        assert_eq!(table.values[1][0], -i64::from(cap) * 1024);
         // 下位12ビットだけで引く。
-        assert_eq!(table.read(Color::Black, 4096), 193);
+        assert_eq!(table.read(Color::Black, 4096), cap);
     }
 
     #[test]

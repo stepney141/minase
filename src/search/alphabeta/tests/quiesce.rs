@@ -178,19 +178,20 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
 // 再訪するとExactヒットで捕獲展開を省く。
 #[test]
 fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
+    // 項目4の手数制限でも捕獲が最善になるよう、成否の分岐を持たない局面を使う。
     let position = position(
         Color::Black,
         &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(3, 10), Color::Black, PieceKind::Rook),
-            (fs(3, 4), Color::White, PieceKind::Pawn),
-            (fs(6, 1), Color::White, PieceKind::King),
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 0), Color::Black, PieceKind::Rook),
+            (sq(0, 2), Color::White, PieceKind::Pawn),
+            (sq(11, 11), Color::White, PieceKind::King),
         ],
     );
     let capture = Move {
-        from: fs(3, 10),
+        from: sq(0, 0),
         mid: None,
-        to: fs(3, 4),
+        to: sq(0, 2),
         promote: false,
     };
     assert!(legal_moves(&position).contains(&capture));
@@ -207,8 +208,8 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
 
     let (second_score, second_nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
     assert_eq!(second_score, first_score);
-    assert!(first_nodes > 1);
-    assert!(second_nodes < first_nodes);
+    assert_eq!(first_nodes, 1);
+    assert_eq!(second_nodes, 0);
 }
 
 // D7-SRCH-12。通常出口のUpper・Exactを深さ0で記録し、
@@ -320,7 +321,12 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
     let stand_pat = evaluate(&pst, &capture_position);
     for (position, alpha) in [
         (Position::initial(), -INFINITY),
-        (capture_position, stand_pat + 4 * pst.pawn_value()),
+        (
+            capture_position,
+            stand_pat
+                + pst.pawn_value()
+                + pst.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100,
+        ),
     ] {
         let key = search_key(&position);
         let stand_pat = evaluate(&pst, &position);
