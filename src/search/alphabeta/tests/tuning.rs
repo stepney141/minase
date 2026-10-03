@@ -5,14 +5,17 @@ use super::*;
 use crate::search::alphabeta::{
     correction::CorrectionTable,
     params,
-    pruning::{futility_margin, lmr_base, see_margin},
+    pruning::{futility_margin, lmr_base, razoring_margin, reverse_futility_margin, see_margin},
 };
 
 // docs/plans/spsa.md「対象の係数」の採用値での一致契約。
 #[test]
 fn tuning_default_null_move_and_aspiration_match_reference() {
     for depth in 0..=256 {
-        assert_eq!(null_move_reduction(depth), (3_529 + depth * 238) / 1_200);
+        assert_eq!(
+            null_move_reduction(depth, 0, 0, 100),
+            (3_529 + depth * 238) / 1_200
+        );
     }
     for delta in [
         0,
@@ -143,7 +146,7 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
     }
 }
 
-/// 全26係数の反映とUSIの入力契約を直列に検査する。
+/// 全30係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -156,6 +159,11 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             "parameters",
             "disabled capture history",
             "disabled history decay",
+            "reverse futility margin",
+            "razoring margin 1",
+            "razoring margin 2",
+            "null move eval scale",
+            "disabled null move eval scale",
             "go depth 1",
             "go ponder depth 1",
             "go depth nope",
@@ -190,6 +198,30 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         params::set("HistoryDecay", 0).unwrap();
         super::history::zero_decay_clears_history_between_searches();
         return;
+    }
+
+    match scenario.as_str() {
+        "reverse futility margin" => {
+            reverse_futility_parameter_changes_search();
+            return;
+        }
+        "razoring margin 1" => {
+            razoring_parameter_changes_search(1, "RazoringMargin1");
+            return;
+        }
+        "razoring margin 2" => {
+            razoring_parameter_changes_search(2, "RazoringMargin2");
+            return;
+        }
+        "null move eval scale" => {
+            null_move_eval_scale_changes_search();
+            return;
+        }
+        "disabled null move eval scale" => {
+            zero_null_move_eval_scale_matches_master_search();
+            return;
+        }
+        _ => {}
     }
 
     use crate::protocol::{Protocol, engine::Engine, usi::UsiProtocol};
@@ -368,6 +400,9 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("FutilityMargin1", 101, 0, 400),
         ("FutilityMargin2", 196, 0, 400),
         ("FutilityMargin3", 207, 0, 400),
+        ("ReverseFutilityMargin", 50, 0, 1000),
+        ("RazoringMargin1", 400, 0, 2000),
+        ("RazoringMargin2", 400, 0, 2000),
         ("SeeMargin1", 2, 0, 400),
         ("SeeMargin2", 210, 0, 400),
         ("SeeMargin3", 7, 0, 400),
@@ -375,6 +410,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("AspirationGrowth", 201, 125, 400),
         ("NullMoveBase", 3529, 1200, 4800),
         ("NullMoveSlope", 238, 100, 400),
+        ("NullMoveEvalScale", 100, 0, 400),
         ("HistoryLimit", 20755, 4096, 65536),
         ("HistoryDecay", 75, 0, 100),
         ("CaptureHistoryLimit", 20755, 4096, 65536),
@@ -409,7 +445,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 26] = [
+    let cases: [Case; 30] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -425,6 +461,15 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("FutilityMargin3", 100, || {
             i64::from(futility_margin(101, 3))
         }),
+        ("ReverseFutilityMargin", 100, || {
+            i64::from(reverse_futility_margin(101))
+        }),
+        ("RazoringMargin1", 100, || {
+            i64::from(razoring_margin(101, 1))
+        }),
+        ("RazoringMargin2", 100, || {
+            i64::from(razoring_margin(101, 2))
+        }),
         ("SeeMargin1", 100, || i64::from(see_margin(101, 1))),
         ("SeeMargin2", 100, || i64::from(see_margin(101, 2))),
         ("SeeMargin3", 100, || i64::from(see_margin(101, 3))),
@@ -432,8 +477,15 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("AspirationGrowth", 300, || {
             i64::from(grow_aspiration_delta(101))
         }),
-        ("NullMoveBase", 4800, || i64::from(null_move_reduction(12))),
-        ("NullMoveSlope", 400, || i64::from(null_move_reduction(12))),
+        ("NullMoveBase", 4800, || {
+            i64::from(null_move_reduction(12, 0, 0, 100))
+        }),
+        ("NullMoveSlope", 400, || {
+            i64::from(null_move_reduction(12, 0, 0, 100))
+        }),
+        ("NullMoveEvalScale", 0, || {
+            i64::from(null_move_reduction(12, 200, 0, 100))
+        }),
         ("HistoryLimit", 65536, history),
         ("HistoryDecay", 50, history_decay),
         ("CaptureHistoryLimit", 65536, capture_history_adjustment),
@@ -527,4 +579,85 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     );
     assert_eq!(params::delta_margin(), 300);
     params::set("DeltaMargin", 258).unwrap();
+}
+
+// フェーズ1-B指示書。実際の探索で各係数の境界をまたぎ、係数の読み出し忘れを検出する。
+#[cfg(feature = "tuning")]
+fn reverse_futility_parameter_changes_search() {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let value = evaluate(&pst, &board);
+    let beta = value - pst.pawn_value() / 2;
+    assert_eq!(
+        run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()),
+        (value, 0)
+    );
+    params::set("ReverseFutilityMargin", 51).unwrap();
+    assert!(run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()).1 > 0);
+    assert_eq!(reverse_futility_margin(137), 69, "百分率は乗算してから割る");
+}
+
+#[cfg(feature = "tuning")]
+fn razoring_parameter_changes_search(depth: u32, name: &str) {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let pst = weights().unwrap();
+    let value = evaluate(&pst, &board);
+    let alpha = value + 4 * pst.pawn_value();
+    assert_eq!(
+        run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()),
+        (value, 0)
+    );
+    params::set(name, 401).unwrap();
+    assert!(run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()).1 > 0);
+    assert_eq!(razoring_margin(137, depth), 549, "百分率は乗算してから割る");
+}
+
+#[cfg(feature = "tuning")]
+fn null_move_eval_scale_changes_search() {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let beta = evaluate(&pst, &board) - 2 * pst.pawn_value();
+    let (_, default_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
+    params::set("NullMoveEvalScale", 50).unwrap();
+    let (score, changed_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
+    assert!(score >= beta);
+    assert!(changed_nodes > default_nodes);
+    // 2pの境界と上限を、百分率の除算に余りが出る歩兵価値でも検査する。
+    assert_eq!(null_move_reduction(6, 147, 0, 37), 4);
+    assert_eq!(null_move_reduction(6, 148, 0, 37), 5);
+    params::set("NullMoveEvalScale", 400).unwrap();
+    assert_eq!(null_move_reduction(6, 19, 0, 37), 5);
+    assert_eq!(null_move_reduction(6, i32::MAX, i32::MIN, 37), 7);
+}
+
+#[cfg(feature = "tuning")]
+fn zero_null_move_eval_scale_matches_master_search() {
+    params::set("NullMoveEvalScale", 0).unwrap();
+    // Mの式は指示書にある切片3,529・傾き238から独立に計算する。
+    for depth in 0..=MAX_PLY {
+        for value in [i32::MIN, -1000, 0, 1000, i32::MAX] {
+            for beta in [-MATE_THRESHOLD + 1, 0, MATE_THRESHOLD - 1] {
+                assert_eq!(
+                    null_move_reduction(depth, value, beta, 37),
+                    (3529 + depth * 238) / 1200
+                );
+            }
+        }
+    }
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
+    let pst = weights().unwrap();
+    let beta = evaluate(&pst, &board) - 2 * pst.pawn_value();
+    // 記録手なしの深さ7は6となる。MのR=4でnull move後は深さ1。
+    // この子では他の復活項目は発動せず、捕獲もないのでMと同じ探索になる。
+    let mut passed = board.clone();
+    passed.make_null_move();
+    let (reply, nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &small_tt());
+    assert!(-reply >= beta);
+    assert!(nodes > 0);
+    let table = small_tt();
+    assert_eq!(
+        run_negamax(&board, 7, beta - 1, beta, 0, &table),
+        (-reply, nodes)
+    );
+    assert!(table.probe(search_key(&board), 0).is_none());
 }

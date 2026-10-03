@@ -61,6 +61,12 @@ parameters! {
     FutilityMargin2(futility_margin2): 196, 0, 400;
     /// 深さ3の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
     FutilityMargin3(futility_margin3): 207, 0, 400;
+    /// 深さ1〜3共通の逆futility余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    ReverseFutilityMargin(reverse_futility_margin): 50, 0, 1000;
+    /// 深さ1のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    RazoringMargin1(razoring_margin1): 400, 0, 2000;
+    /// 深さ2のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    RazoringMargin2(razoring_margin2): 400, 0, 2000;
     /// 深さ1のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
     SeeMargin1(see_margin1): 2, 0, 400;
     /// 深さ2のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
@@ -75,6 +81,8 @@ parameters! {
     NullMoveBase(null_move_base): 3529, 1200, 4800;
     /// null moveの減深量の傾きを1,200分率で表す。
     NullMoveSlope(null_move_slope): 238, 100, 400;
+    /// 静的評価の余裕によるnull moveの減深加算の尺度を百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    NullMoveEvalScale(null_move_eval_scale): 100, 0, 400;
     /// History値を全体の半減で抑える上限。
     HistoryLimit(history_limit): 20755, 4096, 65536;
     /// 探索間に残す履歴の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。

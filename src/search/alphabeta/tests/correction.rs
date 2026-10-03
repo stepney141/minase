@@ -322,7 +322,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     );
     searcher.material_keys[1] = !root_key;
     let score = searcher
-        .negamax(&mut board, 4, -10_001, -10_000, 0)
+        .negamax(&mut board, 4, -INFINITY, -10_000, 0)
         .unwrap();
     assert!(score >= -10_000);
     assert_eq!(searcher.material_keys[1], root_key);

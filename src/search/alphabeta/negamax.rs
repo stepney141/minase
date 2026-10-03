@@ -7,7 +7,10 @@ use crate::search::{DRAW_SCORE, MATE, MATE_THRESHOLD};
 
 use super::INFINITY;
 use super::correction::key_after_move;
-use super::pruning::{futility_margin, lmr_reduction, null_move_reduction, see_margin};
+use super::pruning::{
+    futility_margin, lmr_reduction, null_move_reduction, razoring_margin, reverse_futility_margin,
+    see_margin,
+};
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::Searcher;
 use super::see::see_prunes;
@@ -75,6 +78,39 @@ impl Searcher<'_> {
             depth
         };
 
+        // docs/plans/strength-stage4.md「適用するノード」「静的評価の取得」。
+        // 元の3項目はevaluate_accumulatorの補正前の値を使っていたので、
+        // 同じ累算評価を使う。futilityと補正履歴の更新にも再利用する。
+        let pruning_node = depth <= 3
+            && beta - alpha == 1
+            && alpha.abs() < MATE_THRESHOLD
+            && beta.abs() < MATE_THRESHOLD;
+        let mut static_eval = pruning_node.then(|| {
+            #[cfg(feature = "invariants")]
+            self.pst
+                .assert_accumulator(position, self.accumulators[ply as usize], ply);
+            self.pst
+                .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move())
+        });
+        let mut royal_attacked = None;
+        // 王駒への利きは他の条件が成立してから調べ、返す静的評価は置換表に保存しない。
+        if let Some(value) = static_eval {
+            if value - reverse_futility_margin(self.pst.pawn_value()) >= beta
+                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+            {
+                return Some(value);
+            }
+            if depth <= 2
+                && value + razoring_margin(self.pst.pawn_value(), depth) <= alpha
+                && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+            {
+                let value = self.quiesce(position, alpha, beta, ply)?;
+                if value <= alpha {
+                    return Some(value);
+                }
+            }
+        }
+
         let side = position.side_to_move();
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
@@ -83,7 +119,14 @@ impl Searcher<'_> {
             && beta.abs() < MATE_THRESHOLD
             && has_non_royal_piece
         {
-            let reduction = null_move_reduction(depth);
+            let value = *static_eval.get_or_insert_with(|| {
+                #[cfg(feature = "invariants")]
+                self.pst
+                    .assert_accumulator(position, self.accumulators[ply as usize], ply);
+                self.pst
+                    .evaluate_accumulator(self.accumulators[ply as usize], side)
+            });
+            let reduction = null_move_reduction(depth, value, beta, self.pst.pawn_value());
             let score =
                 self.search_null_move(position, depth.saturating_sub(1 + reduction), beta, ply)?;
             if score >= beta {
@@ -95,29 +138,12 @@ impl Searcher<'_> {
             }
         }
 
-        // docs/plans/strength-stage9.md「評価の償却」節。
-        // 静的評価は必要時にだけ計算し、補正履歴の更新でも再利用する。
-        let mut static_eval = None;
-        // docs/plans/strength-stage4.mdの「適用するノード」「futility pruning」節。
-        // 静的評価と余裕値の和は対象ノードで1回だけ求める。
-        let futility_bound = (depth <= 3
-            && beta - alpha == 1
-            && alpha.abs() < MATE_THRESHOLD
-            && beta.abs() < MATE_THRESHOLD)
-            .then(|| {
-                let static_eval = *static_eval.get_or_insert_with(|| {
-                    #[cfg(feature = "invariants")]
-                    self.pst
-                        .assert_accumulator(position, self.accumulators[ply as usize], ply);
-                    self.pst.evaluate_accumulator(
-                        self.accumulators[ply as usize],
-                        position.side_to_move(),
-                    )
-                });
-                let margin = futility_margin(self.pst.pawn_value(), depth);
-                static_eval + self.correction.read(side, self.material_keys[ply as usize]) + margin
-            });
-        let mut royal_attacked = None;
+        // futilityだけは現行どおり履歴補正を加え、余裕値との和を1回だけ求める。
+        let futility_bound = pruning_node.then(|| {
+            static_eval.expect("eligible pruning node has a static evaluation")
+                + self.correction.read(side, self.material_keys[ply as usize])
+                + futility_margin(self.pst.pawn_value(), depth)
+        });
         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
         let mut best_score = -INFINITY;
