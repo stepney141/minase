@@ -1,3 +1,42 @@
+## v1.3.0 (2026-10-03)
+
+### Features
+
+- Add d, eval, and tt USI commands and rule-aware perft (**breaking**)
+
+  `perft` now requires `--rules` (for example `--rules engine-default`), and unknown USI commands are no longer silently ignored.
+
+- **usi:** Record protocol I/O with --io-log
+- Add the invariants feature for full consistency checks
+- **search:** Add the search-stats feature for search statistics
+- **usi:** Show the d board in kanji like Stockfish and YaneuraOu
+- **eval:** Adopt the PST retrained on generations 2 and 3 (G23)
+
+### Bug fixes
+
+- **search:** Stop repetition detection at the latest null move
+
+### Refactoring
+
+- **harness:** Split the harness module by purpose
+- **datagen:** Move code shared by selfplay_gen and lishogi_import into the library
+- **selfplay:** Split selfplay_gen and lishogi_import by purpose
+- **match:** Split match_runner and match_report by purpose
+- **spsa:** Move spsa_runner into its own directory
+- **random_play:** Split random_play by purpose
+- **core:** Group square, direction, and bitboard under board (**breaking**)
+
+  The items of `minase::core::square`, `minase::core::direction`, and `minase::core::bitboard` are now available only as `minase::core::board::*`.
+
+- **core:** Move promotion and lion capture rules out of rules (**breaking**)
+
+  `minase::core::rules::PromotionChoice` and `minase::core::rules::in_promotion_zone` are now `minase::core::promotion::PromotionChoice` and `minase::core::promotion::in_promotion_zone`.
+
+- **movegen:** Split the move generator by purpose
+- **core:** Split the position module by purpose
+- **core:** Nest adjudication and repetition under game
+- **core:** Split the piece module by type
+
 ## v1.2.0 (2026-09-26)
 
 ### Features
