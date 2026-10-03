@@ -19,12 +19,15 @@ import sys
 import numpy as np
 
 WT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(WT / "tools/train/pst"))
-from features import MIRRORED_FEATURE_COUNT, canonical_feature_indices, feature_indices
-from lookahead import compute_lookahead
-from mnsd import map_records, read_header, sha256_file
-from taper import phase_numerators, phase_ratios
-from train_pst import build_targets, estimate_k, integer_evaluate, read_mnpt
+sys.path.insert(0, str(WT / "tools/train/src"))
+from minase_train.checksum import sha256_file
+from minase_train.data.features import MIRRORED_FEATURE_COUNT, canonical_feature_indices, feature_indices
+from minase_train.data.lookahead import compute_lookahead
+from minase_train.data.mnpt import read_mnpt
+from minase_train.data.mnsd import map_records, read_header
+from minase_train.data.taper import phase_numerators, phase_ratios
+from minase_train.pst.evaluate import integer_evaluate
+from minase_train.pst.teacher import build_targets, estimate_k
 
 DEFAULT_DIR = Path("/home/stepney141/board-games/minase/data/qsearch-output-training/phase1")
 OUTPUT_K = 1072.6529541015625

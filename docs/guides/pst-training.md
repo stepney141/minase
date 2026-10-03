@@ -1,10 +1,10 @@
 # PSTの学習手順
 
-PST（駒の種類と位置に応じた評価表）の学習には、専用スクリプト [pst_workflow.py](../../tools/train/pst/pst_workflow.py) を使う。
+PST（駒の種類と位置に応じた評価表）の学習には、学習ツールのコマンド`pst-workflow`（[workflow.py](../../tools/train/src/minase_train/workflow.py)）を使う。
 条件を設定ファイルへ記入し、「準備」「生成」「学習」「診断」の順に実行する。
-スクリプトが教師尺度Kの推定、ログの保存、入力と重みの検査和の記録を行い、モデル出力の尺度Kには設定ファイルで指定した値を使う。
-学習の計算は既存の [train_pst.py](../../tools/train/pst/train_pst.py) が担当する。
-PSTの学習コード、診断コード、テスト、設定例は `tools/train/pst/` にまとめている。
+このコマンドが教師尺度Kの推定、ログの保存、入力と重みの検査和の記録を行い、モデル出力の尺度Kには設定ファイルで指定した値を使う。
+学習の計算は学習器`train-pst`（[train.py](../../tools/train/src/minase_train/pst/train.py)）が担当する。
+PSTの学習コード、診断コード、テスト、設定例は `tools/train/` にまとめており、各ソースの役割は [学習ツールのREADME](../../tools/train/README.md) が説明する。
 
 以下では、世代1までのデータに、新たな自己対局データを加えて世代2を学習する。
 学習を始める際は、[設計書の型](../plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md) に状態を登録する。
@@ -12,20 +12,20 @@ PSTの学習コード、診断コード、テスト、設定例は `tools/train/
 
 ## 1. 設定ファイルを用意する
 
-Python 3.12以上と、NumPy、PyTorchが入った `tools/train/.venv` を用意する。
+学習環境は [uv](https://docs.astral.sh/uv/) で管理しており、`uv sync --project tools/train` で `uv.lock` に固定した版のPython 3.12以上、NumPy、PyTorchが入った `tools/train/.venv` を作る。
 GPUで学習する場合は、その環境からCUDAを利用できる必要がある。
 すべてのコマンドはリポジトリのルートで実行する。
 
 学習環境を用意したら、次のコマンドでPST関連のテストを実行する。
 
 ```bash
-tools/train/.venv/bin/python -m unittest discover -s tools/train/pst -p 'test_*.py'
+uv run --project tools/train python -m unittest discover -s tools/train/tests
 ```
 
-まず、[設定例](../../tools/train/pst/pst.example.toml) をコピーする。
+まず、[設定例](../../tools/train/pst.example.toml) をコピーする。
 
 ```bash
-cp tools/train/pst/pst.example.toml pst-gen2.toml
+cp tools/train/pst.example.toml pst-gen2.toml
 ```
 
 `pst-gen2.toml` を開き、`run.base_commit` を採用済みコミットの完全なハッシュに置き換える。
@@ -135,7 +135,7 @@ target/release/pst_probe --pst nets/pst.bin --positions data/gen0.bin \
 教師の分類には`lambda_override`を加え、適用しない分類では`null`、適用する分類では指定値を記録し、`lambda`には実効値を記録する。
 先読みと併用した分類は、先読みの属性と上書きの値を両方持つ。
 上書きの設定は準備記録、`training/inputs.json`、`<出力名>.training.json`、診断結果に保存し、学習、診断、再開時に照合する。
-学習器の`train`と`estimate-k`、および`pst_diagnostics.py`を直接呼ぶ場合は、`--lambda-override 1.0`で指定する。
+学習器の`train`と`estimate-k`、および`pst-diagnostics`を直接呼ぶ場合は、`--lambda-override 1.0`で指定する。
 λ=1でも教師Kは訓練分割の対局結果から推定し、探索値または先読み値の勝率への換算に使う。
 実効λが0ならKを推定せず、教師値には対局結果だけを使う。
 
@@ -149,14 +149,14 @@ target/release/pst_probe --pst nets/pst.bin --positions data/gen0.bin \
 来歴ファイル自体は変更せず、先読みなしの分類ではこの2項目を`null`として記録する。
 `train.lookahead`は準備記録、`training/inputs.json`、`<出力名>.training.json`、診断結果に保存し、学習、診断、再開時に照合する。
 `train.rescore`に`"-"`以外が1つでもあれば先読みとの併用を拒否する。
-学習器の`train`と`estimate-k`、および`pst_diagnostics.py`を直接呼ぶ場合は、`--lookahead-gamma 0.9 --lookahead-plies 40`を両方指定する。
+学習器の`train`と`estimate-k`、および`pst-diagnostics`を直接呼ぶ場合は、`--lookahead-gamma 0.9 --lookahead-plies 40`を両方指定する。
 両方を省略した場合は先読みなしとし、片方だけの指定は拒否する。
 
 先読みの事前診断には、基本の教師のMNSD、対応する定義2の118列MNKF、追加特徴を含まない学習PST、および診断Aの予備標本を渡す。
 次の`<...>`は実際のパスへ置き換える。
 
 ```bash
-tools/train/.venv/bin/python tools/train/pst/lookahead_diag.py \
+uv run --project tools/train lookahead-diag \
   --data <MNSD...> --king-features <MNKF...> --pst <MNPT> \
   --output-k 1072.6529541015625 --gammas 0.9,0.7,0.95 --plies 40 \
   --exposed-sample data/strength-stage9/diag-a/pilot/sample.json \
@@ -178,7 +178,7 @@ tools/train/.venv/bin/python tools/train/pst/lookahead_diag.py \
 これにより、同じ棋譜の局面と、その棋譜から始めた自己対局は全ファイルを通して同じ側に入る。
 
 付け直しファイルMNRSはMNSDごとに1つまで指定できる。
-学習器の`train`と`estimate-k`、および`pst_diagnostics.py`の`--rescore`には、`--data`と同じ個数と順序でパスを渡し、付け直さないファイルには`-`を渡す。
+学習器の`train`と`estimate-k`、および`pst-diagnostics`の`--rescore`には、`--data`と同じ個数と順序でパスを渡し、付け直さないファイルには`-`を渡す。
 項目を省略した場合は全ファイルを付け直しなしとする。
 元のMNSDの検査和、記録数、対象一覧の検査和、および固定長240バイトのヘッダに16バイト×記録数を加えたファイル長を照合し、書きかけのファイルは拒否する。
 
@@ -197,7 +197,7 @@ tools/train/.venv/bin/python tools/train/pst/lookahead_diag.py \
 設定を確定したら、次を実行する。
 
 ```bash
-tools/train/.venv/bin/python tools/train/pst/pst_workflow.py prepare --config pst-gen2.toml
+uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
 ```
 
 この操作は基準コミットを固定したworktreeを `data/pst-gen2/generator` に作り、生成器`selfplay_gen`をビルドする。
@@ -216,7 +216,7 @@ MNKFは対象の定義に対応する診断用バイナリで生成し、診断�
 学習スクリプトの変更も検出して停止するので、実行中はその版を維持する。
 
 学習器を変更して再学習する場合は、既存の実験を保持し、変更後のツールを新しい実行ディレクトリへ固定する。
-現行の[設定例](../../tools/train/pst/pst.example.toml)から全必須項目を含む設定を用意し、`run.directory`には未使用の保存先を指定する。
+現行の[設定例](../../tools/train/pst.example.toml)から全必須項目を含む設定を用意し、`run.directory`には未使用の保存先を指定する。
 段階7の生成済みデータで再学習する場合、`run.data`には世代0と世代1の6ファイル、および`data/strength-stage7/gen2/generated-<seed>.bin`の全5ファイルを列挙し、`generate.seeds = []`としてデータを再生成しない。
 現在の採用PSTは、[世代3の計画](../plans/pst-gen3.md)で世代2の5ファイルと世代3の`data/gen3/generated-<seed>.bin`の5ファイル（基本シード1100000から1500000）だけを`run.data`に列挙し、世代0と世代1を除いて学習したものである。
 
@@ -231,7 +231,7 @@ MNKFは対象の定義に対応する診断用バイナリで生成し、診断�
 生成シードが空配列の場合は、生成するファイルがないので何もしない。
 
 ```bash
-tools/train/.venv/bin/python tools/train/pst/pst_workflow.py generate --run-dir data/pst-gen2
+uv run --project tools/train pst-workflow generate --run-dir data/pst-gen2
 ```
 
 生成器は固定したworktree内で起動し、完成したファイルを `selfplay_gen inspect` で検査する。
@@ -249,7 +249,7 @@ tail -f data/pst-gen2/generate-600000.log
 1ファイルだけ実行したい場合は、設定内のシードを指定する。
 
 ```bash
-tools/train/.venv/bin/python tools/train/pst/pst_workflow.py generate --run-dir data/pst-gen2 --seed 600000
+uv run --project tools/train pst-workflow generate --run-dir data/pst-gen2 --seed 600000
 ```
 
 再度 `generate` を実行すると、検査済みの完成ファイルは検査和を照合して再利用する。
@@ -263,12 +263,12 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py generate --run-dir 
 
 ## 4. PSTを学習する
 
-すべての生成ファイルが完成したら、学習前に`taper_report.py`で訓練集合の駒数分布と端点の識別性を集計する。
+すべての生成ファイルが完成したら、学習前に`taper-report`で訓練集合の駒数分布と端点の識別性を集計する。
 `--model`は必須であり、設定ファイルの`train.model`と同じモデルを指定する。
 次の例は、設定例と同じく鏡映の重み共有を使う`mirrored`を指定している。
 
 ```bash
-tools/train/.venv/bin/python tools/train/pst/taper_report.py \
+uv run --project tools/train taper-report \
   --data data/gen0.bin \
     data/gen1-s{100000,200000,300000,400000,500000}.bin \
     data/pst-gen2/generated-{600000,700000,800000,900000,1000000}.bin \
@@ -284,7 +284,7 @@ tools/train/.venv/bin/python tools/train/pst/taper_report.py \
 診断を記録したら、GPUを利用できるホスト側で次を実行する。
 
 ```bash
-tools/train/.venv/bin/python tools/train/pst/pst_workflow.py train --run-dir data/pst-gen2
+uv run --project tools/train pst-workflow train --run-dir data/pst-gen2
 ```
 
 スクリプトは既存データと生成データを検証し、訓練集合の添字を明示して教師の分類ごとの教師尺度Kを推定する。
@@ -341,7 +341,7 @@ Python、PyTorch、CUDA、導入パッケージの版は `training/environment.j
 正常終了した重みを、次のコマンドで基準PSTと比較する。
 
 ```bash
-tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir data/pst-gen2
+uv run --project tools/train pst-workflow diagnose --run-dir data/pst-gen2
 ```
 
 結果は `diagnostics/report.json` に保存される。

@@ -7,11 +7,11 @@ import sys
 
 from common import WT, write_json
 
-sys.path.insert(0, str(WT / 'tools/train/pst'))
+sys.path.insert(0, str(WT / 'tools/train/src'))
 import numpy as np
 from mnpt_v3 import decode
-from mnsd import RECORD_DTYPE, map_records, write_mnsd
-from taper import band_indices, phase_ratios
+from minase_train.data.mnsd import RECORD_DTYPE, map_records, write_mnsd
+from minase_train.data.taper import band_indices, phase_ratios
 
 
 def zero_weights(source, destination):

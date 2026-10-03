@@ -28,7 +28,7 @@ L(w)=-\frac1N\sum_i\{z_i\log p_w(x_i)+(1-z_i)\log[1-p_w(x_i)]\}.
 
 これは「手作り特徴の係数を自己対局結果から学ぶ」という方式に該当する。
 ただし、Texel原法は学習中の評価関数による静止探索の出力と対局結果の二乗誤差を最小化し、Etherealの公開方式も二乗誤差を用いる。
-したがって、現行学習器で結果の割合を100%にする実験と、Texel原法をそのまま再現する実験は区別する。[Texel作者の説明](https://www.talkchess.com/forum/viewtopic.php?start=26&t=50823)、[Etherealの損失](https://github.com/AndyGrant/Ethereal/blob/0e47e9b67f345c75eb965d9fb3e2493b6a11d09a/src/tuner.c#L343-L358)、[現行の学習更新](../../tools/train/pst/train_pst.py)
+したがって、現行学習器で結果の割合を100%にする実験と、Texel原法をそのまま再現する実験は区別する。[Texel作者の説明](https://www.talkchess.com/forum/viewtopic.php?start=26&t=50823)、[Etherealの損失](https://github.com/AndyGrant/Ethereal/blob/0e47e9b67f345c75eb965d9fb3e2493b6a11d09a/src/tuner.c#L343-L358)、[現行の学習更新](../../tools/train/src/minase_train/pst/train.py)
 
 この定式化では、既存の探索評価がある危険を認識していることは必須ではない。
 他の特徴を考慮しても、その危険を表す特徴が実際の敗北と結び付いていれば、対局結果から減点を学ぶ経路がある。
@@ -72,7 +72,7 @@ Texel原法の局所探索は勾配を要さず、Etherealの解説は非線形�
 Python学習器の `build_targets` は、混合係数 \(\lambda=0\) なら探索値と教師の尺度を参照せず、対局結果だけを返す。
 追加特徴の重みだけを学習し、既存の位置評価表を固定する機構もある。
 ただし、Rustの来歴検証は自己対局の \(\lambda\) を0.75に固定しており、自己対局の結果100%という設定を拒否する。
-正式な生成と準備の経路で実験するには、混合比の設計と来歴検証を整合させる変更が必要になる。[教師の作成](../../tools/train/pst/train_pst.py)、[来歴の検証](../../src/training/provenance.rs)、[現行の混合比の設計](../plans/strength-stage9.md)
+正式な生成と準備の経路で実験するには、混合比の設計と来歴検証を整合させる変更が必要になる。[教師の作成](../../tools/train/src/minase_train/pst/teacher.py)、[来歴の検証](../../src/training/provenance.rs)、[現行の混合比の設計](../plans/strength-stage9.md)
 
 既存の自己対局データには終局結果が保存されているので、結果100%の比較のためだけに全局を生成し直す必要はない。
 現行の生成器は、終局した対局について各保存局面へ結果を付け、手数上限で未終局の対局は記録対象から除く。

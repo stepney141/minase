@@ -355,7 +355,7 @@ class RootWorkflowTests(unittest.TestCase):
                     sfen='+o11/12/12/12/12/12/12/12/12/12/12/12 b 12a 3 -')
 
         def extractor(command, **kwargs):
-            from mnsd import map_records, read_header
+            from minase_train.data.mnsd import map_records, read_header
             path = Path(command[command.index('--input') + 1])
             record = map_records(path)[0]
             self.assertEqual(int(record['board'][132]), 114)

@@ -19,4 +19,4 @@ Rustから受け取る成りの情報は着手と評価差に限られ、参照�
 ## 出典
 
 起点は[棋力向上段階7](../plans/strength-stage7.md)の成り診断である。
-修正後の[pst_diagnostics.py](../../tools/train/pst/pst_diagnostics.py)は着手後局面からPythonで評価差を再計算し、[回帰テスト](../../tools/train/pst/test_pst_diagnostics.py)は着手前の評価を保ったまま成りの評価差だけを変えた入力を拒否することを確認する。
+修正後の[comparison.py](../../tools/train/src/minase_train/diagnostics/comparison.py)は着手後局面からPythonで評価差を再計算し、[回帰テスト](../../tools/train/tests/test_comparison.py)は着手前の評価を保ったまま成りの評価差だけを変えた入力を拒否することを確認する。

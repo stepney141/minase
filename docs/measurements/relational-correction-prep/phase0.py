@@ -43,8 +43,8 @@ _spec = importlib.util.spec_from_file_location(
 trace = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(trace)
 trace.M = M
-sys.path.insert(0, str(WT / 'tools/train/pst'))
-import mnsd  # noqa: E402
+sys.path.insert(0, str(WT / 'tools/train/src'))
+from minase_train.data import mnsd  # noqa: E402
 
 KIND = dict(zip('PILAMVBRHDQKEFTCSGOXN', range(21)))
 PROMOTE = {0: 17, 1: 12, 2: 22, 3: 23, 4: 25, 5: 24, 6: 8, 7: 9,
