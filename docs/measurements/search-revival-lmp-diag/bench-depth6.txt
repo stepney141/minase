@@ -1,0 +1,16 @@
+position=initial depth=6 nodes=81062 elapsed=0.056377s
+position=game-2-ply-40 depth=6 nodes=441763 elapsed=0.364590s
+position=game-2-ply-60 depth=6 nodes=181128 elapsed=0.103261s
+position=game-3-ply-310 depth=6 nodes=667504 elapsed=0.694130s
+position=game-3-ply-465 depth=6 nodes=205746 elapsed=0.102120s
+position=game-4-ply-164 depth=6 nodes=147145 elapsed=0.097880s
+position=game-4-ply-246 depth=6 nodes=468824 elapsed=0.208750s
+position=game-5-ply-170 depth=6 nodes=899991 elapsed=0.951612s
+position=game-5-ply-255 depth=6 nodes=418123 elapsed=0.377186s
+position=game-6-ply-51 depth=6 nodes=849478 elapsed=8.660921s
+position=game-6-ply-77 depth=6 nodes=368788 elapsed=0.525297s
+position=game-8-ply-183 depth=6 nodes=484382 elapsed=0.272424s
+position=game-8-ply-275 depth=6 nodes=26233 elapsed=0.009305s
+position=game-10-ply-277 depth=6 nodes=625644 elapsed=0.523830s
+position=game-10-ply-416 depth=6 nodes=182683 elapsed=0.064873s
+summary: positions=15 depth=6 nodes=6048494 elapsed=13.012555s nps=464820

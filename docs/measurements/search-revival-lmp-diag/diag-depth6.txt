@@ -1,0 +1,3 @@
+depth=1 futility_pruned=7772257 lmp_pruned=571161 lmp_pruned_killer=4438 lmp_nodes=7783 searched_captures_before=64408 searched_quiets_before=34920 nodes_zero_quiet_before=2824 eligible_nodes=407884
+depth=2 futility_pruned=836260 lmp_pruned=142990 lmp_pruned_killer=433 lmp_nodes=2224 searched_captures_before=20073 searched_quiets_before=32098 nodes_zero_quiet_before=246 eligible_nodes=116740
+depth=3 futility_pruned=148758 lmp_pruned=117376 lmp_pruned_killer=811 lmp_nodes=1547 searched_captures_before=15169 searched_quiets_before=7184 nodes_zero_quiet_before=284 eligible_nodes=14999

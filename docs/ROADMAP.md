@@ -53,7 +53,7 @@
 | 先読み教師値（将来の探索値の幾何加重平均） | [plans/lookahead-teacher.md](plans/lookahead-teacher.md) | 完了（一部不採用） | 2026年9月23日 |
 | SPSAの調整結果をソースへ反映するコマンド | [plans/spsa-apply.md](plans/spsa-apply.md) | 完了（採用） | 2026年9月22日 |
 | 探索部の反復負け回避 | [plans/search-repetition.md](plans/search-repetition.md) | 起案 | |
-| 不採用だった探索部の改良のSPSAによる再調整（issue #10） | [plans/search-revival-spsa.md](plans/search-revival-spsa.md) | 起案 | |
+| 不採用だった探索部の改良のSPSAによる再調整（issue #10） | [plans/search-revival-spsa.md](plans/search-revival-spsa.md) | 進行中 | |
 | AlphaZero型探索と深層強化学習 | [plans/alphazero.md](plans/alphazero.md) | 起案 | |
 | 棋力向上段階12（探索の小改良と表の寿命） | [plans/strength-stage12.md](plans/strength-stage12.md) | 完了（不採用） | 2026年9月28日 |
 | USI投了（issue #6） | [plans/usi-resignation.md](plans/usi-resignation.md) | 完了（採用） | 2026年9月25日 |
@@ -91,10 +91,13 @@
   - [探索局面を用いた学習](plans/search-aware-evaluation.md)では、探索局面を半数混ぜた候補Bは対照Aに対して、通常局面だけを深い教師で学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
   - [相対2駒評価](plans/relative-pair-eval.md)は、事前登録した判定で配置に依存する残存誤りの根拠が得られず、未実装で見送った。大きな着手の誤りを示した6根は、いずれも100,000ノードの探索の名目深さ内に駒の損得の差が現れる型だったが、各枝の到達深さと原因は追跡で確かめる必要がある（[準備記録](measurements/relative-pair-prep.md)）。
 
+### 進行中
+
+- [不採用だった探索部の改良のSPSAによる再調整](plans/search-revival-spsa.md)は2026年10月3日に着手し、フェーズ1（移植と範囲）を進めている。過去にSTCで不採用となった探索部の改良のうち数値係数を持つ8項目を戻し、既存の探索係数とまとめてSPSAで調整し直して採否を測る。調整した版から8項目だけを取り除いた版とも対局させ、向上が8項目によるのか既存の係数の調整し直しによるのかを切り分ける。late move pruningは、元の実装が捕獲手も数えてkiller手まで切っていたことを[診断](measurements/search-revival-lmp-diag.md)で確かめたので、静かな手だけを数える定義に改めて戻す。測定機の時間は段階2で終われば約10〜17時間、採用まで進めば約16〜55時間である。
+
 ### 次の候補
 
-- 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。段階12で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
-- [不採用だった探索部の改良のSPSAによる再調整](plans/search-revival-spsa.md)は、過去にSTCで不採用となった探索部の改良のうち数値係数を持つ8項目を戻し、既存の探索係数とまとめてSPSAで調整し直して採否を測る。調整した版から8項目だけを取り除いた版とも対局させ、向上が8項目によるのか既存の係数の調整し直しによるのかを切り分ける。測定機の時間は段階2で終われば約10〜17時間、採用まで進めば約16〜55時間であり、着手は利用者の判断による。
+- 探索部で再調整の計画の次に実行するのは[探索部の反復負け回避](plans/search-repetition.md)である。段階12で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
 - 評価関数では、失敗の原因を切り分ける2計画を起案した。
   - [共適応の検証](plans/eval-search-coadaptation.md)は、λ=1.0のPSTの約−164 Eloの負けが、S0に合わせて調整された探索係数との不整合でどれだけ説明できるかを、探索係数をSPSAで調整し直す前後の固定局数Eloで判定する。回復が大きい場合だけ、S0の係数を調整し直した対照を加える。測定機の時間は約10〜18.5時間である。
   - [補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)は、ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直して採否を測る。測定機の時間は約2〜39時間である。
