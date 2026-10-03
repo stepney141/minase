@@ -91,6 +91,7 @@ fn synchronous_search_rejects_infinite_limits_without_panicking() {
         &SearchLimits::infinite(),
         DEFAULT_THREADS,
         &mut small_tt(),
+        &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
     );
     assert!(matches!(
         result,

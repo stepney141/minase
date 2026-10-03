@@ -124,14 +124,19 @@ impl Searcher<'_> {
         let mut best_capture = false;
         let mut beta_cutoff = false;
         let mut index = 0;
+        let mut searched_captures = Vec::new();
         // 枝刈りされた候補は探索順位に含めない。
         #[cfg(feature = "search-stats")]
         let mut searched_moves = 0;
         #[cfg(feature = "search-stats")]
         let mut best_move_rank = 0;
-        while let Some((mv, capture)) =
-            self.move_pickers[ply as usize].next(position, self.pst, &self.generator, &self.history)
-        {
+        while let Some((mv, capture)) = self.move_pickers[ply as usize].next(
+            position,
+            self.pst,
+            &self.generator,
+            self.history,
+            &self.capture_history,
+        ) {
             // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
             if best_score > -MATE_THRESHOLD
@@ -198,10 +203,21 @@ impl Searcher<'_> {
                     }
                 }
                 beta_cutoff = true;
-                if !capture {
+                if capture {
+                    self.capture_history.record_cutoff(
+                        position,
+                        self.pst,
+                        mv,
+                        &searched_captures,
+                        depth,
+                    );
+                } else {
                     self.record_quiet_beta_cutoff(position, mv, depth, ply);
                 }
                 break;
+            }
+            if capture {
+                searched_captures.push(mv);
             }
             index += 1;
         }
@@ -258,6 +274,7 @@ impl Searcher<'_> {
             .lion_taken_by_non_lion()
             .map(|trigger| trigger.square);
         let undo = position.make_null_move();
+        self.previous_capture[(ply + 1) as usize] = None;
         self.accumulators[(ply + 1) as usize] = self
             .pst
             .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
@@ -296,6 +313,11 @@ impl Searcher<'_> {
         reduction: u32,
     ) -> Option<i32> {
         self.pv[(ply + 1) as usize].clear();
+        self.previous_capture[(ply + 1) as usize] = position
+            .captured_squares(mv)
+            .iter()
+            .any(Option::is_some)
+            .then_some(mv.to);
         if captures_last_royal(position, mv) {
             return Some(MATE - (ply + 1) as i32);
         }

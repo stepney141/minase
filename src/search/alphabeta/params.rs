@@ -77,12 +77,20 @@ parameters! {
     NullMoveSlope(null_move_slope): 238, 100, 400;
     /// History値を全体の半減で抑える上限。
     HistoryLimit(history_limit): 20755, 4096, 65536;
+    /// 探索間に残す履歴の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    HistoryDecay(history_decay): 75, 0, 100;
+    /// 捕獲履歴の上限。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    CaptureHistoryLimit(capture_history_limit): 20755, 4096, 65536;
+    /// 捕獲履歴の尺度を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    CaptureHistoryScale(capture_history_scale): 100, 0, 400;
     /// 補正値の上限の百分率。`docs/plans/strength-stage8.md`「静的評価の補正」。
     CorrectionCap(correction_cap): 193, 50, 400;
     /// 補正更新の重みを1,024分率で表す。`docs/plans/strength-stage8.md`「静的評価の補正」。
     CorrectionWeight(correction_weight): 33, 8, 128;
     /// delta pruningの余裕値を歩兵価値に対する百分率で表す。
     DeltaMargin(delta_margin): 258, 50, 500;
+    /// 静止探索で読む捕獲手数の上限。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    QsearchMoveLimit(qsearch_move_limit): 1, 1, 16;
     /// 1局の開始から終局までに見込む手数。
     ExpectedPlies(expected_plies): 432, 250, 700;
     /// 1局面で見込む残り手数の下限。

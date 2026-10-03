@@ -320,7 +320,17 @@ fn interrupted_null_move_restores_repetition_scope() {
             hard_limit: None,
         };
         let table = small_tt();
-        let mut searcher = new_searcher(&pst, &root, engine_rules(), &[], &shared, &table);
+        let mut butterfly_history =
+            Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut searcher = new_searcher(
+            &pst,
+            &root,
+            engine_rules(),
+            &[],
+            &shared,
+            &table,
+            &mut butterfly_history,
+        );
         if nested {
             set_outer_null_path(&mut searcher, &root);
         }

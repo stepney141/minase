@@ -1,7 +1,9 @@
 //! αβ探索の実装。
 
+mod capture_history;
 mod correction;
 mod deepening;
+pub(crate) mod history;
 mod negamax;
 mod ordering;
 pub(crate) mod params;

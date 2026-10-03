@@ -296,6 +296,7 @@ fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
         &AtomicBool::new(false),
         worker_count(2),
         &small_tt(),
+        &mut crate::search::HistoryTables::new(worker_count(2)),
         None,
         Instant::now(),
         &AtomicU64::new(0),
@@ -337,6 +338,7 @@ fn single_worker_fixed_depth_stats_are_reproducible() {
             &depth_limits(4),
             DEFAULT_THREADS,
             &mut small_tt(),
+            &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
         )
         .unwrap()
         .stats

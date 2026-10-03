@@ -122,7 +122,16 @@ fn rescore_record(
     let game = Game::from_position(rules, position);
     let snapshot = SearchSnapshot::from_game(&game).map_err(data_error)?;
     table.clear();
-    let result = search(pst, &snapshot, limits, DEFAULT_THREADS, table).map_err(data_error)?;
+    let mut histories = minase::search::HistoryTables::new(DEFAULT_THREADS);
+    let result = search(
+        pst,
+        &snapshot,
+        limits,
+        DEFAULT_THREADS,
+        table,
+        &mut histories,
+    )
+    .map_err(data_error)?;
     if result.depth == 0 {
         return Ok(RescoreEntry::incomplete(result.nodes));
     }
