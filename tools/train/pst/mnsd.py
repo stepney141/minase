@@ -464,6 +464,29 @@ class Dataset:
             raise IndexError("generation is outside the dataset")
         return self.training_indices[self.generations(self.training_indices) == generation]
 
+    def training_halves(self) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+        """訓練の添字を対局単位で2群に分け、元の順序を保って返す。"""
+        halves = ([], [])
+        # 検証用ハッシュの下位ビットは %20 の分割と相関するので再利用しない。
+        # 固定ソルトで別のハッシュにし、学習シード・ファイル順に依存させない。
+        salt = b"train-half\0"
+        seed_salt = int.from_bytes(salt[:8], "little")
+        for file, indices in enumerate(self.training_indices_by_file):
+            games = self.records[file]["game"][indices - self.offsets[file]]
+            mapping = self.provenance[file][2]
+            if mapping is None:
+                groups = hash64(self.headers[file].seed ^ seed_salt, games) % np.uint64(2)
+            else:
+                numbers, inverse = np.unique(games, return_inverse=True)
+                # 同じ棋譜IDはファイルやローカル対局番号が異なっても同じ群にする。
+                groups = np.asarray([
+                    hashlib.sha256(salt + mapping[int(game)].encode("utf-8")).digest()[0] % 2
+                    for game in numbers
+                ], dtype=np.uint8)[inverse]
+            for half in (0, 1):
+                halves[half].append(indices[groups == half])
+        return np.concatenate(halves[0]), np.concatenate(halves[1])
+
     def generations(self, indices: NDArray[np.int64]) -> NDArray[np.int64]:
         """大域番号に対応する教師の分類番号を返す。除外行は-1。"""
         normalized = self._normalize_indices(indices)
