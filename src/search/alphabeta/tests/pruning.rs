@@ -87,15 +87,20 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
             .iter()
             .all(|&mv| { !mv.promote && move_order_key(&position, &pst, mv).is_none() })
     );
-    for depth in 1..=3 {
-        let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
-        let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, 0, &small_tt());
+    // ply=2では2手前と同じ評価なので、良化していないノードの保護も検査する。
+    for (depth, ply) in (1..=3).flat_map(|depth| [0, 2].map(|ply| (depth, ply))) {
+        let table = small_tt();
+        let (score, pruned_nodes) = run_negamax(&position, depth, alpha, alpha + 1, ply, &table);
+        let (_, full_nodes) = run_negamax(&position, depth, alpha, alpha + 2, ply, &small_tt());
         assert!(pruned_nodes > 0, "最初の手は探索する: depth={depth}");
         assert!(
             pruned_nodes < full_nodes,
             "depth={depth}: {pruned_nodes} >= {full_nodes}"
         );
         assert!(score.abs() < MATE_THRESHOLD, "depth={depth}: score={score}");
+        let hit = table.probe(search_key(&position), ply).unwrap();
+        assert_eq!(hit.score, score);
+        assert!(hit.score.abs() < MATE_THRESHOLD);
         if depth == 1 {
             let leaf_scores: Vec<_> = legal_moves(&position)
                 .into_iter()

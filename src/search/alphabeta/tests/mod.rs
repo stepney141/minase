@@ -14,6 +14,8 @@ mod contracts;
 mod correction;
 mod handle;
 mod history;
+mod improving;
+mod late_move;
 mod limits;
 mod negamax;
 mod ordering;

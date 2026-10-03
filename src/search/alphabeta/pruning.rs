@@ -38,14 +38,31 @@ pub(super) fn lmr_base(depth: usize, index: usize, divisor: i32) -> u8 {
 }
 
 /// 深さ1〜3のfutility余裕値を求める。
-pub(super) fn futility_margin(pawn: i32, depth: u32) -> i32 {
+pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
     let percent = match depth {
         1 => params::futility_margin1(),
         2 => params::futility_margin2(),
         3 => params::futility_margin3(),
         _ => unreachable!("futility applies only at depths 1 to 3"),
     };
-    pawn * percent / 100
+    let margin = pawn * percent / 100;
+    if improving {
+        return margin;
+    }
+    let scale = match depth {
+        1 => params::non_improving_futility1(),
+        2 => params::non_improving_futility2(),
+        3 => params::non_improving_futility3(),
+        _ => unreachable!("futility applies only at depths 1 to 3"),
+    };
+    // 百分率の余裕値を求めてから縮め、尺度100では丸めも含めて同じ値にする。
+    margin * scale / 100
+}
+
+/// 深さ1〜3で数える静かな手の上限。`docs/plans/search-revival-spsa.md`に従う。
+pub(super) fn late_move_limit(depth: u32) -> i32 {
+    let depth = depth as i32;
+    (params::lmp_base() + params::lmp_slope() * depth * depth) / 100
 }
 
 /// 深さ1〜3のSEE余裕値を求める。

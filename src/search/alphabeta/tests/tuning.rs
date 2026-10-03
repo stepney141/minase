@@ -5,7 +5,10 @@ use super::*;
 use crate::search::alphabeta::{
     correction::CorrectionTable,
     params,
-    pruning::{futility_margin, lmr_base, razoring_margin, reverse_futility_margin, see_margin},
+    pruning::{
+        futility_margin, late_move_limit, lmr_base, razoring_margin, reverse_futility_margin,
+        see_margin,
+    },
 };
 
 // docs/plans/spsa.md「対象の係数」の採用値での一致契約。
@@ -159,6 +162,12 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             "parameters",
             "disabled capture history",
             "disabled history decay",
+            "non improving futility 1",
+            "non improving futility 2",
+            "non improving futility 3",
+            "lmp base",
+            "lmp slope",
+            "lmp zero limit",
             "reverse futility margin",
             "razoring margin 1",
             "razoring margin 2",
@@ -201,6 +210,37 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     }
 
     match scenario.as_str() {
+        "non improving futility 1" => {
+            non_improving_parameter_changes_search(1, "NonImprovingFutility1");
+            return;
+        }
+        "non improving futility 2" => {
+            non_improving_parameter_changes_search(2, "NonImprovingFutility2");
+            return;
+        }
+        "non improving futility 3" => {
+            non_improving_parameter_changes_search(3, "NonImprovingFutility3");
+            return;
+        }
+        "lmp base" => {
+            late_move_parameter_changes_search("LmpBase", 400);
+            return;
+        }
+        "lmp slope" => {
+            late_move_parameter_changes_search("LmpSlope", 200);
+            return;
+        }
+        "lmp zero limit" => {
+            params::set("LmpBase", 0).unwrap();
+            params::set("LmpSlope", 0).unwrap();
+            super::late_move::check_late_move_protected_moves(0);
+            super::late_move::late_move_pruning_searches_safe_quiets_after_losing_tt_move();
+            let board = super::late_move::quiet_board();
+            let (score, nodes) = super::late_move::search_quiet_board(&board);
+            assert_eq!(nodes, 1, "上限0でも最初の安全な手は読む");
+            assert!(score.abs() < MATE_THRESHOLD);
+            return;
+        }
         "reverse futility margin" => {
             reverse_futility_parameter_changes_search();
             return;
@@ -400,6 +440,11 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("FutilityMargin1", 101, 0, 400),
         ("FutilityMargin2", 196, 0, 400),
         ("FutilityMargin3", 207, 0, 400),
+        ("NonImprovingFutility1", 25, 0, 100),
+        ("NonImprovingFutility2", 50, 0, 100),
+        ("NonImprovingFutility3", 50, 0, 100),
+        ("LmpBase", 300, 0, 2000),
+        ("LmpSlope", 100, 0, 2000),
         ("ReverseFutilityMargin", 50, 0, 1000),
         ("RazoringMargin1", 400, 0, 2000),
         ("RazoringMargin2", 400, 0, 2000),
@@ -445,7 +490,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 30] = [
+    let cases: [Case; 35] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -453,14 +498,25 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             i64::from(lmr_reduction(4, 8, 128))
         }),
         ("FutilityMargin1", 100, || {
-            i64::from(futility_margin(101, 1))
+            i64::from(futility_margin(101, 1, true))
         }),
         ("FutilityMargin2", 100, || {
-            i64::from(futility_margin(101, 2))
+            i64::from(futility_margin(101, 2, true))
         }),
         ("FutilityMargin3", 100, || {
-            i64::from(futility_margin(101, 3))
+            i64::from(futility_margin(101, 3, true))
         }),
+        ("NonImprovingFutility1", 100, || {
+            i64::from(futility_margin(101, 1, false))
+        }),
+        ("NonImprovingFutility2", 100, || {
+            i64::from(futility_margin(101, 2, false))
+        }),
+        ("NonImprovingFutility3", 100, || {
+            i64::from(futility_margin(101, 3, false))
+        }),
+        ("LmpBase", 400, || i64::from(late_move_limit(1))),
+        ("LmpSlope", 200, || i64::from(late_move_limit(1))),
         ("ReverseFutilityMargin", 100, || {
             i64::from(reverse_futility_margin(101))
         }),
@@ -660,4 +716,60 @@ fn zero_null_move_eval_scale_matches_master_search() {
         (-reply, nodes)
     );
     assert!(table.probe(search_key(&board), 0).is_none());
+}
+
+// フェーズ1-C指示書。子を反復引き分けに固定し、親の枝刈りだけを観測する。
+#[cfg(feature = "tuning")]
+fn non_improving_parameter_changes_search(depth: u32, name: &str) {
+    let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
+    let moves = legal_moves(&board);
+    let history = repeated_root_children(&board, &moves);
+    let pst = weights().unwrap();
+    let alpha = evaluate(&pst, &board) + [25, 98, 103][depth as usize - 1];
+    let search = || {
+        let mut nodes = 0;
+        with_root_searcher(&board, &history, |searcher| {
+            searcher
+                .tt
+                .store(search_key(&board), 0, 0, Bound::Upper, Some(moves[0]), 2);
+            assert!(!searcher.improving(evaluate(&pst, &board), board.side_to_move(), 2));
+            assert_eq!(
+                searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 2),
+                Some(DRAW_SCORE)
+            );
+            nodes = searcher.nodes;
+        });
+        nodes
+    };
+    assert_eq!(search(), 1);
+    params::set(name, 100).unwrap();
+    assert_eq!(search(), moves.len() as u64);
+    // 尺度100では、端数を含めて現行の余裕値と完全に一致する。
+    for pawn in [1, 37, 100, 137, 999] {
+        assert_eq!(
+            futility_margin(pawn, depth, false),
+            pawn * [101, 196, 207][depth as usize - 1] / 100
+        );
+        assert_eq!(
+            futility_margin(pawn, depth, false),
+            futility_margin(pawn, depth, true)
+        );
+    }
+    params::set(name, 0).unwrap();
+    assert_eq!(futility_margin(137, depth, false), 0);
+    assert_eq!(search(), 1);
+}
+
+#[cfg(feature = "tuning")]
+fn late_move_parameter_changes_search(name: &str, value: i32) {
+    let board = super::late_move::quiet_board();
+    assert_eq!(super::late_move::search_quiet_board(&board).1, 4);
+    params::set(name, value).unwrap();
+    assert_eq!(super::late_move::search_quiet_board(&board).1, 5);
+    params::set(name, value - 1).unwrap();
+    assert_eq!(
+        super::late_move::search_quiet_board(&board).1,
+        4,
+        "整数除算で端数を切り捨てる"
+    );
 }

@@ -61,6 +61,16 @@ parameters! {
     FutilityMargin2(futility_margin2): 196, 0, 400;
     /// 深さ3の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
     FutilityMargin3(futility_margin3): 207, 0, 400;
+    /// 良化していない深さ1のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    NonImprovingFutility1(non_improving_futility1): 25, 0, 100;
+    /// 良化していない深さ2のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    NonImprovingFutility2(non_improving_futility2): 50, 0, 100;
+    /// 良化していない深さ3のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    NonImprovingFutility3(non_improving_futility3): 50, 0, 100;
+    /// 静かな手の上限の基数を100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
+    LmpBase(lmp_base): 300, 0, 2000;
+    /// 残り深さの2乗に掛ける傾きを100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
+    LmpSlope(lmp_slope): 100, 0, 2000;
     /// 深さ1〜3共通の逆futility余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
     ReverseFutilityMargin(reverse_futility_margin): 50, 0, 1000;
     /// 深さ1のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。

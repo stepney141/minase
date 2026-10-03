@@ -1,6 +1,7 @@
 //! 内部ノードのαβ探索。
 
 use crate::core::mv::Move;
+use crate::core::piece::Color;
 use crate::core::position::Position;
 use crate::search::snapshot::search_key;
 use crate::search::{DRAW_SCORE, MATE, MATE_THRESHOLD};
@@ -8,8 +9,8 @@ use crate::search::{DRAW_SCORE, MATE, MATE_THRESHOLD};
 use super::INFINITY;
 use super::correction::key_after_move;
 use super::pruning::{
-    futility_margin, lmr_reduction, null_move_reduction, razoring_margin, reverse_futility_margin,
-    see_margin,
+    futility_margin, late_move_limit, lmr_reduction, null_move_reduction, razoring_margin,
+    reverse_futility_margin, see_margin,
 };
 use super::royal::{captures_last_royal, royal_under_attack};
 use super::searcher::Searcher;
@@ -17,6 +18,19 @@ use super::see::see_prunes;
 use super::tt::Bound;
 
 impl Searcher<'_> {
+    /// 同じ手番の2手前より補正前の静的評価が上がったかを返す。
+    ///
+    /// 2手前がない場合と比較区間にnull moveを含む場合は余裕値を縮めない。
+    pub(super) fn improving(&self, static_eval: i32, side: Color, ply: u32) -> bool {
+        ply < 2
+            || self.null_move_ply == Some(ply)
+            || self.null_move_ply == Some(ply - 1)
+            || static_eval
+                > self
+                    .pst
+                    .evaluate_accumulator(self.accumulators[(ply - 2) as usize], side)
+    }
+
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
     ///
     /// 深さ0では静止探索へ移り、合法手のない局面は詰みとして
@@ -140,16 +154,23 @@ impl Searcher<'_> {
 
         // futilityだけは現行どおり履歴補正を加え、余裕値との和を1回だけ求める。
         let futility_bound = pruning_node.then(|| {
-            static_eval.expect("eligible pruning node has a static evaluation")
+            let value = static_eval.expect("eligible pruning node has a static evaluation");
+            value
                 + self.correction.read(side, self.material_keys[ply as usize])
-                + futility_margin(self.pst.pawn_value(), depth)
+                + futility_margin(
+                    self.pst.pawn_value(),
+                    depth,
+                    self.improving(value, side, ply),
+                )
         });
+        let late_move_limit = pruning_node.then(|| late_move_limit(depth));
         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
         let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut best_capture = false;
         let mut beta_cutoff = false;
         let mut index = 0;
+        let mut counted_quiets = 0;
         let mut searched_captures = Vec::new();
         // 枝刈りされた候補は探索順位に含めない。
         #[cfg(feature = "search-stats")]
@@ -163,10 +184,20 @@ impl Searcher<'_> {
             self.history,
             &self.capture_history,
         ) {
-            // 同「展開しない手の範囲」。負の詰み帯を脱するまでは安全な手を探す。
+            // docs/plans/search-revival-spsa.md「late move pruningの定義の変更」。
+            // 枝刈りした手も数え、判定には現在の手より前の数を使う。
+            let counted_quiet = Some(mv) != tt_move
+                && !capture
+                && !mv.promote
+                && !self.killers[ply as usize].contains(&Some(mv));
+            let late_move_pruned =
+                counted_quiet && late_move_limit.is_some_and(|limit| counted_quiets >= limit);
+            counted_quiets += i32::from(counted_quiet);
+            // docs/plans/strength-stage4.md「展開しない手の範囲」。
+            // 負の詰み帯を脱するまでは安全な手を探す。
             // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
             if best_score > -MATE_THRESHOLD
-                && futility_bound.is_some_and(|bound| bound <= alpha)
+                && (futility_bound.is_some_and(|bound| bound <= alpha) || late_move_pruned)
                 && Some(mv) != tt_move
                 && !mv.promote
                 && !capture
