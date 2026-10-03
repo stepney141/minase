@@ -19,8 +19,9 @@ nice -n 19 cargo run --release --bin bench -- --depth 5 --threads 1
 
 ## エンジン
 
-コミット015cdc8（8項目を暫定の既定値で移植した版）に計数のパッチを当てたビルドである。
-1つの係数を測るとき、他の係数は015cdc8の既定値のままにした。
+コミットfe7d874（8項目を移植し、評価関数のPSTを新しい重みG23とした master b96a931 の上へ載せ直した版）に計数のパッチを当てたビルドである。
+新しい13係数は、測定中は元の値（`NonImprovingFutility1`〜`3` = 25、50、50、`LmpBase` = 300、`LmpSlope` = 100、`ReverseFutilityMargin` = 50、`RazoringMargin1`〜`2` = 400、`NullMoveEvalScale` = 100、`HistoryDecay` = 75、`CaptureHistoryLimit` = 20,755、`CaptureHistoryScale` = 100、`QsearchMoveLimit` = 1）に置いた。
+1つの係数を測るとき、他の係数はこの値のままにした。
 ただし`LmpBase`は`LmpSlope`を100に、`LmpSlope`は`LmpBase`を300に固定した。
 規則セットは`bench`の既定である。
 
@@ -38,22 +39,22 @@ late move pruningでは、ノードの条件（残り深さ3以下、零窓、�
 静止探索の手数制限では、捕獲手を1手以上取り出したノードである。
 発動は、その改良で打ち切ったノード、または1手以上を読まなかったノードである。
 
-| 係数 | 015cdc8の既定値 | 既定値での発動率 | 範囲の上限 | 上限での発動率 | 上限より1小さい値での発動率 |
+| 係数 | 元の値 | 元の値での発動率 | 範囲の上限 | 上限での発動率 | 上限より1小さい値での発動率 |
 |---|---:|---:|---:|---:|---:|
-| `ReverseFutilityMargin` | 50 | 51.8% | 2,331 | 0.995% | 1.000% |
-| `RazoringMargin1` | 400 | 5.7% | 2,484 | 0.995% | 1.001% |
-| `RazoringMargin2` | 400 | 10.1% | 2,709 | 0.991% | 1.003% |
-| `LmpBase` | 300 | 5.6% | 9,300 | 0.946% | 1.023% |
-| `LmpSlope` | 100 | 5.6% | 7,800 | 0.979% | 1.011% |
-| `QsearchMoveLimit` | 1 | 15.4% | 7 | 0.337% | 1.196% |
+| `ReverseFutilityMargin` | 50 | 56.0% | 1,938 | 0.997% | 1.007% |
+| `RazoringMargin1` | 400 | 4.9% | 2,668 | 0.997% | 1.005% |
+| `RazoringMargin2` | 400 | 11.3% | 2,885 | 0.955% | 1.016% |
+| `LmpBase` | 300 | 4.8% | 8,600 | 0.982% | 1.025% |
+| `LmpSlope` | 100 | 4.8% | 3,600 | 0.993% | 1.003% |
+| `QsearchMoveLimit` | 1 | 14.2% | 7 | 0.444% | 1.344% |
 
 試したすべての点で、発動率は係数の値に対して増えなかった。
 
-015cdc8の既定値では、null moveの加算が正だった回数は226、improvingで余裕値を縮めた回数は6,272、捕獲履歴の寄与が0でない捕獲手を順序付けた回数は2,707であった。
+元の値では、null moveの加算が正だった回数は383、improvingで余裕値を縮めた回数は4,292、捕獲履歴の寄与が0でない捕獲手を順序付けた回数は359であった。
 `NullMoveEvalScale` = 0、`NonImprovingFutility1`〜`3` = 100、`CaptureHistoryScale` = 0にすると、3つとも0になった。
 
 ## 結論
 
 上限を無効側の端とする6係数の範囲の上限を上の表の値に定め、設計書の規則で開始値と摂動幅を決めた。
-reverse futility pruningとrazoringは余裕値を歩兵価値の23〜27倍まで広げないと発動率が1%を下回らず、改めたlate move pruningは開始値でも発動率が5.6%と小さい。
+reverse futility pruningとrazoringは余裕値を歩兵価値の19〜29倍まで広げないと発動率が1%を下回らず、改めたlate move pruningは開始値でも発動率が4.8%と小さい。
 厳密な無効値を持つ3項目は、無効値で1回も発動しない。

@@ -19,15 +19,15 @@ index 6d5eae1..2dc32ce 100644
  
  #[cfg(test)]
 diff --git a/src/search/alphabeta/mod.rs b/src/search/alphabeta/mod.rs
-index 025ca8a..32d8ced 100644
+index 31689b9..8dd86d1 100644
 --- a/src/search/alphabeta/mod.rs
 +++ b/src/search/alphabeta/mod.rs
-@@ -23,3 +23,43 @@ use crate::search::MATE;
- 
- /// 探索窓の初期値。全評価値より大きい。
- const INFINITY: i32 = MATE + 1;
+@@ -29,3 +29,43 @@ const INFINITY: i32 = MATE + 1;
+ pub(crate) fn history_decay_for_test() -> i32 {
+     params::history_decay()
+ }
 +
-+/// フェーズ1-Dの診断計数。benchの1プロセス全体を集計する。
++/// フェーズ1-Gの診断計数。benchの1プロセス全体を集計する。
 +mod range_counters {
 +    use std::sync::atomic::{AtomicU64, Ordering};
 +

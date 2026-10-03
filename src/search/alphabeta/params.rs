@@ -68,15 +68,15 @@ parameters! {
     /// 良化していない深さ3のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
     NonImprovingFutility3(non_improving_futility3): 75, 0, 100;
     /// 静かな手の上限の基数を100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
-    LmpBase(lmp_base): 300, 0, 9300;
+    LmpBase(lmp_base): 300, 0, 8600;
     /// 残り深さの2乗に掛ける傾きを100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
-    LmpSlope(lmp_slope): 100, 0, 7800;
+    LmpSlope(lmp_slope): 100, 0, 3600;
     /// 深さ1〜3共通の逆futility余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    ReverseFutilityMargin(reverse_futility_margin): 1191, 0, 2331;
+    ReverseFutilityMargin(reverse_futility_margin): 994, 0, 1938;
     /// 深さ1のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    RazoringMargin1(razoring_margin1): 1442, 0, 2484;
+    RazoringMargin1(razoring_margin1): 1534, 0, 2668;
     /// 深さ2のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    RazoringMargin2(razoring_margin2): 1555, 0, 2709;
+    RazoringMargin2(razoring_margin2): 1643, 0, 2885;
     /// 深さ1のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
     SeeMargin1(see_margin1): 2, 0, 400;
     /// 深さ2のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
