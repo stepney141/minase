@@ -2,6 +2,7 @@
 
 本書は、minaseの各マイルストーンの状態と次の計画を一覧するダッシュボードである。
 各マイルストーンの設計の正は plans/ 配下の設計書、測定記録は measurements/、教訓は lessons/ であり（docs/ 全体の配置は [README.md](README.md)）、本書は状態表、現在地、次期候補、および横断的な決定だけを保持する。状態表と現在地は追記せず、マイルストーンの完了時または待機理由の変化時に書き直す。
+「直近の完了」には完了日の新しい順に3件だけを置き、件数の規則と削除する項目の扱いは [plans/README.md](plans/README.md#上書きの規則) が定める。
 
 ## マイルストーン状態表
 
@@ -77,22 +78,9 @@
 
 ### 直近の完了
 
-- [世代3の教師データによるPSTの再学習](plans/pst-gen3.md)は2026年10月3日に、採用で完了した。採用構成の生成器で世代3の教師データ37,500局を生成し（[生成の記録](measurements/pst-gen3-generation.md)）、世代2と世代3だけで学習し直したPST（G23）を採用した。G23は従来の採用PSTに対してSTCとLTCでともに`H1`となり（[LTC](measurements/pst-gen3-g23-ltc.md)、得点率61.3%）、世代0から世代3の全データで学習したG3にも絞り込みのSTCで`H1`だった（[G23対G3](measurements/pst-gen3-g23-vs-g3-stc.md)）。同じ計画のデータ半分割の診断では、訓練データを対局単位で分けて学習した2本のPSTは検証損失がほぼ等しく、固定ノード数の差は+8.3 Elo（95%信頼区間 −5.0〜+21.6）で大差を認めなかった（[A対B](measurements/pst-data-split-ab-nodes.md)）。
-- [残存誤りに対応する関係補正項](plans/relational-correction.md)は2026年10月2日に、不採用で完了した。フェーズ0では、新しい自己対局の1,974根で探索の変更で解消を確認できなかった大きな誤り62根を独立した2者が分類し、一致した根は近接2駒15、多駒12、不明11、王駒射線3で、最多の近接2駒も基準の21根に届かず見送りとなった（[準備記録](measurements/relational-correction-prep.md)）。利用者の指示で基準を外して半径1の局所2駒表を実装して測ったところ、零の表でも探索速度がS0の0.775倍に落ち（[速度](measurements/relational-correction-speed.md)）、学習した表は検証損失を0.000178下げたものの、S0との[STC](measurements/relational-correction-stc.md)は`H0`（得点率39.3%、約−75 Elo）だった。[固定ノード数の200ペア](measurements/relational-correction-nodes200.md)はElo +9.4（95%信頼区間 −26.4〜+45.4）であり、損失は主に速度の低下による。
-- [浅い探索の手の順位を学ぶ損失](plans/rank-loss-training.md)は2026年10月1日に、不採用で完了した。探索が変わったので15,000局を生成し直し、判定の差mを117.7センチポーンに測り直したうえで、[小標本](measurements/rank-loss-pilot.md)は2つの判定を満たした。S0の深さ1の値は、教師が安定して区別する手の組の約3分の2で順位を逆にしていた。[学習](measurements/rank-loss-training.md)では、順位の損失が検証の組の正答率を対照Cの0.33から0.48〜0.51へ上げた一方、静的評価と教師値の平均絶対誤差をCの1.18〜1.28倍に悪化させ、3通りのβがすべて事前に定めた上限の1.05倍を超えた。利用者の判断で、誤差の上限だけを外して選ばれるβ=1.0を対照Cと対局させた[STC](measurements/rank-loss-vs-control-stc.md)は、得点率38.5%（約−81 Elo）で`H0`となり、S0との対局へは進まなかった。
-- [静止探索の出力を学ぶPSTの学習](plans/qsearch-output-training.md)は2026年9月30日に、採用候補なしで完了した。静かな局面で学習目標を静止探索の出力へ変えた候補Qは、同じ条件で静的値を学んだ対照Rに対して[STC](measurements/qsearch-output-q-vs-r-stc.md)で`H0`（得点率47.2%）となり、捕獲局面を加えた候補QcはQに対して[STC](measurements/qsearch-output-qc-vs-q-stc.md)の上限3,000ペアでLLRが負（得点率50.4%）だった。採否前の診断ではどちらも除外されておらず、比較用のSTCで除外された。フェーズ0の[探索の追跡](measurements/qsearch-output-search-trace.md)では、段階12の7項目と同じく、6根の誤りを特定の枝刈りに帰属できなかった。
-- [探索部の不具合修正](plans/search-bug-fixes.md)は2026年9月29日に完了した。[探索部の不具合監査](audits/search-bugs-2026-09-28.md)の指摘のうち、反復の検出がnull moveをまたぎ、null move直後のじっとを実在しない引き分けとしていた不具合を直し、非劣性のSTCとLTCをともに通過して採用した（masterの得点率はSTC 45.7%、LTC 48.0%）。静止探索のdelta pruningが成り益を無視する不具合は、修正の診断で修正前の版がわずかに強い方向となったので取り込まず、不具合は残る。王駒がすべて狙われた静止探索の局面で全合法手を読む修正は約120 Elo弱く、不具合ではなく静止探索の近似と分類し直して、探索の不具合は手法の契約違反に限って分類するという[教訓](lessons/classify-bugs-by-method-contract.md)にした。
-- [棋力向上段階12](plans/strength-stage12.md)は2026年9月28日に、採用項目なしで完了した。発動率の診断で基準を満たした7項目（aspiration windowsのfail-high時の減深、負の捕獲手の後回し、捕獲履歴、静止探索の手数制限、butterfly historyの持ち越し、null moveの前提条件、PVノードでの置換表の打ち切りの停止）は、いずれもSTCで`H0`または上限到達時にLLRが負となり、補正表の鍵の追加は診断で見送った。静止探索の手数制限は約−173 Eloと大きく負け、失う良手の割合で閾値を選ぶ規則を深さの上限のない再帰に使えないことを[教訓](lessons/recall-loss-does-not-bound-recursive-pruning.md)にした。探索コードは段階開始版から変わっていない。
-- [デバッグ機能の整備](plans/debugging-tools.md)は2026年9月27日に完了した。USIの独自コマンド`d`、`eval`、`tt`、入出力のログ`--io-log`、`cargo test`で常に有効な整合検査（フィーチャ`invariants`）、および`bench`が出力する探索統計（フィーチャ`search-stats`）を追加し、使い方を[デバッグの手引き](guides/debugging.md)にまとめた。探索統計の初回の実行では、深さ5の`bench`でβカットのうち最初に探索した手によるものが59%であり、手の順序付けを見直すときの出発点になる。
-- USI投了（issue #6）は、2026年9月25日にlishogiの公開対局で投了の成立を確認して完了した。
-- SPSAによる調整は2回とも採用した。
-  - 1回目の20係数は[STC](measurements/spsa-stage9-20260923-stc.md)と[LTC](measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となり、2026年9月25日に採用して、探索部と関係する設計書の現行値へ反映した。
-  - 2026年9月26日の較正で、`spsa_runner`の既定値を終了時の摂動幅が範囲の1/6となる減衰する利得へ改め、標準の規模を3,000ペアとした。
-  - この設定による2回目の22係数も[STC](measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、採用した。
-- 評価関数の3計画は2026年9月26日に完了した。2計画は不採用、相対2駒評価は未実装の見送りであり、採用PSTは従来の重みのままである。
-  - [教師の混合比](plans/teacher-mixing-ratio.md)では、λ=1.0の候補が[STC](measurements/teacher-mixing-ratio-100-stc.md)で`H0`となった。
-  - [探索局面を用いた学習](plans/search-aware-evaluation.md)では、探索局面を半数混ぜた候補Bは対照Aに対して、通常局面だけを深い教師で学び直した対照Aは基点に対して、ともにSTCで`H0`となった（[B対A](measurements/search-aware-pst-b-vs-a-stc.md)、[A対基点](measurements/search-aware-pst-a-vs-base-stc.md)）。
-  - [相対2駒評価](plans/relative-pair-eval.md)は、事前登録した判定で配置に依存する残存誤りの根拠が得られず、未実装で見送った。大きな着手の誤りを示した6根は、いずれも100,000ノードの探索の名目深さ内に駒の損得の差が現れる型だったが、各枝の到達深さと原因は追跡で確かめる必要がある（[準備記録](measurements/relative-pair-prep.md)）。
+- [世代3の教師データによるPSTの再学習](plans/pst-gen3.md)は2026年10月3日に、採用で完了した。世代2と世代3の教師データだけで学習し直したPST（G23）は、従来の採用PSTに対してSTCとLTCでともに`H1`となった（[LTC](measurements/pst-gen3-g23-ltc.md)、得点率61.3%）。同じ計画の診断では、訓練データを対局単位で2分して学習した2本のPSTの差は+8.3 Elo（95%信頼区間 −5.0〜+21.6）であり、大差を認めなかった（[A対B](measurements/pst-data-split-ab-nodes.md)）。
+- [残存誤りに対応する関係補正項](plans/relational-correction.md)は2026年10月2日に、不採用で完了した。フェーズ0の誤りの分類は着手の基準に届かなかったが（[準備記録](measurements/relational-correction-prep.md)）、利用者の指示で半径1の局所2駒表を実装し、各計画の着手時のmaster（S0）と対局させた。[STC](measurements/relational-correction-stc.md)は`H0`（得点率39.3%、約−75 Elo）であり、[固定ノード数の200ペア](measurements/relational-correction-nodes200.md)が+9.4 Elo（95%信頼区間 −26.4〜+45.4）だったので、損失は主に探索速度がS0の0.775倍へ落ちたことによる。
+- [浅い探索の手の順位を学ぶ損失](plans/rank-loss-training.md)は2026年10月1日に、不採用で完了した。順位の損失は、検証の手の組での順位の正答率を、順位の損失を使わない対照Cの0.33から0.48〜0.51へ上げた一方、静的評価と教師値の誤差を事前に定めた上限より悪化させた（[学習](measurements/rank-loss-training.md)）。利用者の判断で誤差の上限を外して選んだ候補も、対照Cとの[STC](measurements/rank-loss-vs-control-stc.md)で得点率38.5%（約−81 Elo）の`H0`となった。
 
 ### 進行中
 
@@ -100,15 +88,14 @@
 
 ### 次の候補
 
-- 探索部で再調整の計画の次に実行するのは[探索部の反復負け回避](plans/search-repetition.md)である。段階12で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
+- 探索部で再調整の計画の次に実行するのは[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
 - 評価関数では、失敗の原因を切り分ける2計画を起案した。
-  - [共適応の検証](plans/eval-search-coadaptation.md)は、λ=1.0のPSTの約−164 Eloの負けが、S0に合わせて調整された探索係数との不整合でどれだけ説明できるかを、探索係数をSPSAで調整し直す前後の固定局数Eloで判定する。回復が大きい場合だけ、S0の係数を調整し直した対照を加える。測定機の時間は約10〜18.5時間である。
+  - [共適応の検証](plans/eval-search-coadaptation.md)は、[教師の混合比の計画](plans/teacher-mixing-ratio.md)でλ=1.0のPSTがSTCで約−164 Elo負けた原因が、S0に合わせて調整された探索係数との不整合でどれだけ説明できるかを、探索係数をSPSAで調整し直す前後の固定局数Eloで判定する。回復が大きい場合だけ、S0の係数を調整し直した対照を加える。測定機の時間は約10〜18.5時間である。
   - [補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)は、ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直して採否を測る。測定機の時間は約2〜39時間である。
   - 両計画の設計書は、共適応の検証を先に実行することを推す。
   - 両計画の起案後に[世代3の計画](plans/pst-gen3.md)で採用PSTが変わったので、両計画の基点S0と、PSTに依存する期待値は着手時に新しい採用PSTで固定し直す。
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
-  - 評価関数の後続3計画（静止探索の出力、順位の損失、関係補正項）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。
-  - 総論が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
+- 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習を外部のレンタルGPUサーバ（総額2万円、強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。着手は利用者の許可を待ち、SPSAの調整セッションが完了しても許可があるまでは始めない。
