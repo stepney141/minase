@@ -582,9 +582,6 @@ def write_mnsd(
     path.write_bytes(bytes(header) + records.tobytes())
 
 
-DEFINITION_ID = 1
-# 定義ID 1の全列数。候補が書き出すMNKFの列数はヘッダから読む。
-COLUMN_COUNT = 68
 HEADER = struct.Struct("<4sIIIQ32s")
 
 
@@ -600,19 +597,11 @@ def sha256_file(path: Path) -> bytes:
 class KingFeatures:
     """MNSDと対応を検証したMNKFを、同じ大域番号で取り出す。"""
 
-    def __init__(self, dataset: Dataset, paths: Sequence[str | Path],
-                 extra_columns: Sequence[int] | None = None) -> None:
+    def __init__(self, dataset: Dataset, paths: Sequence[str | Path]) -> None:
         if len(paths) != len(dataset.paths):
             raise ValueError("one MNKF file is required for each MNSD file")
         self.dataset = dataset
         self.records = []
-        self.columns = None if extra_columns is None else np.asarray(extra_columns, dtype=np.int64)
-        if self.columns is not None and (
-            self.columns.ndim != 1 or self.columns.size == 0
-            or np.any(self.columns < 0)
-            or np.unique(self.columns).size != self.columns.size
-        ):
-            raise ValueError("extra columns must be distinct MNKF column indices")
         for source, header, path in zip(dataset.paths, dataset.headers, map(Path, paths)):
             with path.open("rb") as stream:
                 raw = stream.read(HEADER.size)
@@ -630,10 +619,6 @@ class KingFeatures:
                 self.column_count = columns
             elif definition != self.definition_id or columns != self.column_count:
                 raise ValueError(f"{path}: MNKF definition ID or column count mismatch")
-            if self.columns is None:
-                self.columns = np.arange(columns)
-            if np.any(self.columns >= columns):
-                raise ValueError(f"{path}: selected columns exceed MNKF column count {columns}")
             if count != header.record_count:
                 raise ValueError(f"{path}: position count mismatch")
             if path.stat().st_size != HEADER.size + count * columns:
@@ -654,9 +639,8 @@ class KingFeatures:
             raise IndexError("record index is outside the dataset")
         indices = indices.astype(np.int64, copy=False)
         files = np.searchsorted(self.dataset.offsets[1:], indices, side="right")
-        rows = np.empty((indices.size, self.columns.size), dtype=np.uint8)
+        rows = np.empty((indices.size, self.column_count), dtype=np.uint8)
         for file_index, mapped in enumerate(self.records):
             selected = np.flatnonzero(files == file_index)
-            rows[selected] = mapped[np.ix_(indices[selected] - self.dataset.offsets[file_index],
-                                          self.columns)]
+            rows[selected] = mapped[indices[selected] - self.dataset.offsets[file_index]]
         return rows

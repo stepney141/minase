@@ -182,7 +182,8 @@ class Phase4Test(unittest.TestCase):
         features = self.root / "features.bin"
         features.write_bytes(HEADER.pack(b"MNKF", 1, 1, 1, 100, hashlib.sha256(before).digest()) + bytes(range(100)))
         replaced = Dataset([self.source], rescore=[self.sidecar])
-        mapped_features = KingFeatures(replaced, [features], [0])
+        mapped_features = KingFeatures(replaced, [features])
+        self.assertEqual(mapped_features.column_count, 1)
         expected_kept = np.array([0, 1, *range(7, 100)])
         self.assertEqual(replaced.exclusions, {"mate_band": 3, "tactical": 2, "depth_incomplete": 1, "total": 5})
         kept = np.sort(np.concatenate((replaced.training_indices, replaced.validation_indices)))
