@@ -12,14 +12,12 @@
 
 ## 状態
 
-進行中。2026年10月2日に起案と着手をした。
-現行の学習器が採用PSTを再現することを確かめ（[再現の記録](../measurements/pst-gen3-trainer-reproduction.md)）、半分割のAとBを学習して診断と前提条件を通した（[学習の記録](../measurements/pst-data-split-training.md)）。
-半分割の診断は完了した。A対Bは+8.3 Elo（95%信頼区間 −5.0〜+21.6）で、差が10 Eloを超えるとは示されず、大差（30 Elo）にも達しなかった（[A対B](../measurements/pst-data-split-ab-nodes.md)）。参考のA対S0は−25.5 Elo、B対S0は−15.0 Eloだった（[A対S0](../measurements/pst-data-split-a-nodes.md)、[B対S0](../measurements/pst-data-split-b-nodes.md)）。
-世代3の5ファイルの生成は10月3日に完了した（[生成の記録](../measurements/pst-gen3-generation.md)）。
-候補G3とG23は学習後の診断を通過した（[学習の記録](../measurements/pst-gen3-training.md)）。
-S0に対するSTCは、G3（[記録](../measurements/pst-gen3-g3-stc.md)）とG23（[記録](../measurements/pst-gen3-g23-stc.md)）がともに`H1`だった。
-絞り込みのG23対G3のSTCは`H1`となり、G23をLTCへ進めた（[記録](../measurements/pst-gen3-g23-vs-g3-stc.md)）。
-次の一手は、G23のS0に対するLTC（`pst-gen3-g23-ltc`）の判定である。
+完了（採用）。2026年10月2日に起案と着手をし、10月3日に完了した。
+世代3の教師データを5ファイル生成し（[生成の記録](../measurements/pst-gen3-generation.md)）、世代2と世代3だけで学習し直した候補G23を採用した。
+G23は、S0に対するSTC（[記録](../measurements/pst-gen3-g23-stc.md)）、全世代で学習したG3との絞り込みのSTC（[記録](../measurements/pst-gen3-g23-vs-g3-stc.md)）、およびS0に対するLTC（[記録](../measurements/pst-gen3-g23-ltc.md)、得点率61.3%）でいずれも`H1`となった。
+G3もS0に対するSTCは`H1`だった（[記録](../measurements/pst-gen3-g3-stc.md)）。
+データ半分割の診断では、検証損失がほぼ等しいAとBの差は+8.3 Elo（95%信頼区間 −5.0〜+21.6）で、10 Eloを超えるとは示されず、大差（30 Elo）にも達しなかった（[A対B](../measurements/pst-data-split-ab-nodes.md)）。
+参考のA対S0は−25.5 Elo、B対S0は−15.0 Eloであり、データ量と更新回数を半分にした工程はS0より弱い方向だった（[A対S0](../measurements/pst-data-split-a-nodes.md)、[B対S0](../measurements/pst-data-split-b-nodes.md)）。
 
 ## 目的
 
