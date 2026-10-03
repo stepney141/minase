@@ -1,0 +1,258 @@
+diff --git a/src/bin/bench.rs b/src/bin/bench.rs
+index 6d5eae1..2dc32ce 100644
+--- a/src/bin/bench.rs
++++ b/src/bin/bench.rs
+@@ -350,6 +350,7 @@ fn main() {
+         );
+         #[cfg(feature = "search-stats")]
+         println!("{}", format_stats(&result.stats));
++        minase::search::print_range_counters();
+         return;
+     }
+ 
+@@ -402,6 +403,7 @@ fn main() {
+         // 中央値の回数ではなく、ウォームアップを除く全計測反復の合計。
+         println!("{} scope=all_measured_runs", format_stats(&stats));
+     }
++    minase::search::print_range_counters();
+ }
+ 
+ #[cfg(test)]
+diff --git a/src/search/alphabeta/mod.rs b/src/search/alphabeta/mod.rs
+index 025ca8a..32d8ced 100644
+--- a/src/search/alphabeta/mod.rs
++++ b/src/search/alphabeta/mod.rs
+@@ -23,3 +23,43 @@ use crate::search::MATE;
+ 
+ /// 探索窓の初期値。全評価値より大きい。
+ const INFINITY: i32 = MATE + 1;
++
++/// フェーズ1-Dの診断計数。benchの1プロセス全体を集計する。
++mod range_counters {
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    macro_rules! counters {
++        ($($name:ident),* $(,)?) => {
++            $(pub(super) static $name: AtomicU64 = AtomicU64::new(0);)*
++
++            pub(super) fn print() {
++                $(eprintln!("range_counter {}={}", stringify!($name), $name.load(Ordering::Relaxed));)*
++            }
++        };
++    }
++
++    counters!(
++        RFP_ELIGIBLE,
++        RFP_ACTIVE,
++        RAZOR1_ELIGIBLE,
++        RAZOR1_ACTIVE,
++        RAZOR2_ELIGIBLE,
++        RAZOR2_ACTIVE,
++        LMP_ELIGIBLE,
++        LMP_ACTIVE,
++        QSEARCH_ELIGIBLE,
++        QSEARCH_ACTIVE,
++        NULL_EXTRA_POSITIVE,
++        IMPROVING_REDUCED,
++        CAPTURE_HISTORY_NONZERO,
++    );
++
++    pub(super) fn increment(counter: &AtomicU64) {
++        counter.fetch_add(1, Ordering::Relaxed);
++    }
++}
++
++/// bench終了時に診断計数を標準エラーへ出力する。
++pub fn print_range_counters() {
++    range_counters::print();
++}
+diff --git a/src/search/alphabeta/negamax.rs b/src/search/alphabeta/negamax.rs
+index cfe04b4..2c66071 100644
+--- a/src/search/alphabeta/negamax.rs
++++ b/src/search/alphabeta/negamax.rs
+@@ -12,6 +12,7 @@ use super::pruning::{
+     futility_margin, late_move_limit, lmr_reduction, null_move_reduction, razoring_margin,
+     reverse_futility_margin, see_margin,
+ };
++use super::range_counters::{self as counters, increment};
+ use super::royal::{captures_last_royal, royal_under_attack};
+ use super::searcher::Searcher;
+ use super::see::see_prunes;
+@@ -99,6 +100,21 @@ impl Searcher<'_> {
+             && beta - alpha == 1
+             && alpha.abs() < MATE_THRESHOLD
+             && beta.abs() < MATE_THRESHOLD;
++        // 適格性は余裕値と王駒への利きから独立に数える。
++        // 先行する枝刈りが返る場合も、同じノード条件を満たす項目の分母に含める。
++        if pruning_node {
++            increment(&counters::RFP_ELIGIBLE);
++            // LMPのノード条件には王駒への利きの除外も含む。
++            // 診断のためだけに照会し、探索側の遅延評価は変えない。
++            if !royal_under_attack(position) {
++                increment(&counters::LMP_ELIGIBLE);
++            }
++            match depth {
++                1 => increment(&counters::RAZOR1_ELIGIBLE),
++                2 => increment(&counters::RAZOR2_ELIGIBLE),
++                _ => {}
++            }
++        }
+         let mut static_eval = pruning_node.then(|| {
+             #[cfg(feature = "invariants")]
+             self.pst
+@@ -112,6 +128,7 @@ impl Searcher<'_> {
+             if value - reverse_futility_margin(self.pst.pawn_value()) >= beta
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                increment(&counters::RFP_ACTIVE);
+                 return Some(value);
+             }
+             if depth <= 2
+@@ -120,6 +137,11 @@ impl Searcher<'_> {
+             {
+                 let value = self.quiesce(position, alpha, beta, ply)?;
+                 if value <= alpha {
++                    increment(if depth == 1 {
++                        &counters::RAZOR1_ACTIVE
++                    } else {
++                        &counters::RAZOR2_ACTIVE
++                    });
+                     return Some(value);
+                 }
+             }
+@@ -171,6 +193,7 @@ impl Searcher<'_> {
+         let mut beta_cutoff = false;
+         let mut index = 0;
+         let mut counted_quiets = 0;
++        let mut lmp_counted = false;
+         let mut searched_captures = Vec::new();
+         // 枝刈りされた候補は探索順位に含めない。
+         #[cfg(feature = "search-stats")]
+@@ -203,6 +226,11 @@ impl Searcher<'_> {
+                 && !capture
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                // futilityと同時に成立した手も含め、1ノードを1回だけ数える。
++                if late_move_pruned && !lmp_counted {
++                    increment(&counters::LMP_ACTIVE);
++                    lmp_counted = true;
++                }
+                 index += 1;
+                 continue;
+             }
+diff --git a/src/search/alphabeta/ordering.rs b/src/search/alphabeta/ordering.rs
+index f864364..fd02fad 100644
+--- a/src/search/alphabeta/ordering.rs
++++ b/src/search/alphabeta/ordering.rs
+@@ -11,6 +11,7 @@ use crate::eval::Pst;
+ use super::capture_history::CaptureHistory;
+ use super::history::HistoryTable;
+ use super::params;
++use super::range_counters::{self as counters, increment};
+ use super::searcher::{KILLER_COUNT, Searcher};
+ 
+ impl Searcher<'_> {
+@@ -198,8 +199,11 @@ impl MovePicker {
+                                 .map(|mv| {
+                                     let mut key = move_order_key(position, pst, mv)
+                                         .expect("capture generator must not return a quiet move");
+-                                    key.captured_value +=
+-                                        capture_history.adjustment(position, pst, mv);
++                                    let adjustment = capture_history.adjustment(position, pst, mv);
++                                    if adjustment != 0 {
++                                        increment(&counters::CAPTURE_HISTORY_NONZERO);
++                                    }
++                                    key.captured_value += adjustment;
+                                     (mv, key)
+                                 }),
+                         );
+diff --git a/src/search/alphabeta/pruning.rs b/src/search/alphabeta/pruning.rs
+index 5670ad1..7e59d34 100644
+--- a/src/search/alphabeta/pruning.rs
++++ b/src/search/alphabeta/pruning.rs
+@@ -9,6 +9,7 @@ use crate::eval::Pst;
+ use crate::search::MAX_PLY;
+ 
+ use super::params;
++use super::range_counters::{self as counters, increment};
+ use super::see::see_prunes;
+ 
+ /// LMRの減深量の上限。
+@@ -56,7 +57,11 @@ pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
+         _ => unreachable!("futility applies only at depths 1 to 3"),
+     };
+     // 百分率の余裕値を求めてから縮め、尺度100では丸めも含めて同じ値にする。
+-    margin * scale / 100
++    let reduced = margin * scale / 100;
++    if reduced < margin {
++        increment(&counters::IMPROVING_REDUCED);
++    }
++    reduced
+ }
+ 
+ /// 深さ1〜3で数える静かな手の上限。`docs/plans/search-revival-spsa.md`に従う。
+@@ -101,6 +106,9 @@ pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn:
+         / 100)
+         / (2 * i64::from(pawn)))
+     .clamp(0, 3) as u32;
++    if extra > 0 {
++        increment(&counters::NULL_EXTRA_POSITIVE);
++    }
+     (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200 + extra
+ }
+ 
+diff --git a/src/search/alphabeta/quiesce.rs b/src/search/alphabeta/quiesce.rs
+index e92b695..a961e50 100644
+--- a/src/search/alphabeta/quiesce.rs
++++ b/src/search/alphabeta/quiesce.rs
+@@ -16,6 +16,7 @@ use crate::search::{MATE, MAX_PLY};
+ use super::ordering::piece_at_for_ordering;
+ use super::params;
+ use super::pruning::capture_is_pruned_by_see;
++use super::range_counters::{self as counters, increment};
+ use super::royal::captures_all_royals;
+ use super::searcher::Searcher;
+ use super::tt::Bound;
+@@ -103,6 +104,8 @@ impl Searcher<'_> {
+         let mut best = stand_pat;
+         let mut best_move = None;
+         let mut searched_captures = 0;
++        let mut capture_picked = false;
++        let mut limit_counted = false;
+         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
+         while let Some(candidate) = self.qsearch[ply as usize].next(
+             position,
+@@ -110,6 +113,10 @@ impl Searcher<'_> {
+             self.pst,
+             &self.capture_ranks,
+         ) {
++            if !capture_picked {
++                increment(&counters::QSEARCH_ELIGIBLE);
++                capture_picked = true;
++            }
+             let mv = candidate.capture.mv;
+             let buffers = &self.qsearch[ply as usize];
+             let is_last_royal_capture = captures_all_royals(
+@@ -135,6 +142,10 @@ impl Searcher<'_> {
+                 && !(candidate.capture.piece.kind() == Some(PieceKind::Lion)
+                     && candidate.capture.captured.iter().all(Option::is_some))
+             {
++                if !limit_counted {
++                    increment(&counters::QSEARCH_ACTIVE);
++                    limit_counted = true;
++                }
+                 continue;
+             }
+             if !is_last_royal_capture {
+diff --git a/src/search/mod.rs b/src/search/mod.rs
+index 5d8c55b..147b82a 100644
+--- a/src/search/mod.rs
++++ b/src/search/mod.rs
+@@ -13,6 +13,7 @@ mod stats;
+ pub use stats::SearchStats;
+ 
+ pub use alphabeta::history::HistoryTables;
++pub use alphabeta::print_range_counters;
+ pub(crate) use alphabeta::tt::{Bound, Hit};
+ pub use alphabeta::tt::{
+     DEFAULT_SIZE_MB as DEFAULT_TT_SIZE_MB, TranspositionTable, TranspositionTableError,

@@ -1,0 +1,138 @@
+フェーズ1-Dの範囲測定
+
+基準コミット: 015cdc80f2ccea300860d1111f4cf32b818d37aa
+実行: nice -n 19 cargo run --release --bin bench -- --depth 5 --threads 1
+各実行はparams.rsのコミット済み内容を起点とし、記載した係数の既定値だけを変更して再ビルドした。
+Reverse futilityとrazoringの分母は深さ・零窓・詰み帯の条件を満たすノード。先行する枝刈りによる打ち切りも分母に含める。
+Razoringは残り深さ別に集計する。王駒への利きと余裕値の比較は分母から除外する。
+LMPの分母は深さ3以下・零窓・詰み帯外・王駒に利きがないノード。分子は実際に1手以上を除外したノード。futilityとLMPが同時に成立する手も含める。
+静止探索の分母は捕獲候補を1手以上取り出したノード。分子は他の枝刈りを通過後、手数制限で1手以上を除外したノード。
+比率の判定は整数比較 active * 100 <= eligible とし、表示上の丸めは判定に使わない。
+既定値で計数追加前後の15局面の深さ・ノード数・最善手・評価値の完全一致を確認した。
+二分探索は定義域の下限と表の暫定上限から開始し、上限が不合格なら倍増する。既定値での測定も一覧に含める。
+測った点で発動率の単調減少が崩れた場合、二分探索の境界は全定義域での最小値を保証しない。
+
+parameter	value	active	eligible	rate_percent	log_prefix
+ReverseFutilityMargin	50	21605	41725	51.779508688	instrumented-default
+ReverseFutilityMargin	0	23229	35386	65.644605211	ReverseFutilityMargin-0
+ReverseFutilityMargin	1000	2813	41255	6.818567446	ReverseFutilityMargin-1000
+ReverseFutilityMargin	2000	569	41938	1.356764748	ReverseFutilityMargin-2000
+ReverseFutilityMargin	4000	0	41742	0.000000000	ReverseFutilityMargin-4000
+ReverseFutilityMargin	3000	44	41761	0.105361462	ReverseFutilityMargin-3000
+ReverseFutilityMargin	2500	383	41878	0.914561345	ReverseFutilityMargin-2500
+ReverseFutilityMargin	2250	442	41908	1.054691228	ReverseFutilityMargin-2250
+ReverseFutilityMargin	2375	410	41892	0.978707152	ReverseFutilityMargin-2375
+ReverseFutilityMargin	2312	420	41892	1.002578058	ReverseFutilityMargin-2312
+ReverseFutilityMargin	2343	416	41893	0.993005991	ReverseFutilityMargin-2343
+ReverseFutilityMargin	2327	419	41893	1.000167092	ReverseFutilityMargin-2327
+ReverseFutilityMargin	2335	417	41892	0.995416786	ReverseFutilityMargin-2335
+ReverseFutilityMargin	2331	417	41892	0.995416786	ReverseFutilityMargin-2331
+ReverseFutilityMargin	2329	419	41893	1.000167092	ReverseFutilityMargin-2329
+ReverseFutilityMargin	2330	419	41893	1.000167092	ReverseFutilityMargin-2330
+RazoringMargin1	400	1854	32324	5.735676278	instrumented-default
+RazoringMargin1	0	5931	36229	16.370863121	RazoringMargin1-0
+RazoringMargin1	2000	779	51046	1.526074521	RazoringMargin1-2000
+RazoringMargin1	4000	3	50292	0.005965163	RazoringMargin1-4000
+RazoringMargin1	3000	34	50284	0.067615941	RazoringMargin1-3000
+RazoringMargin1	2500	470	51069	0.920323484	RazoringMargin1-2500
+RazoringMargin1	2250	728	51047	1.426136698	RazoringMargin1-2250
+RazoringMargin1	2375	648	51050	1.269343781	RazoringMargin1-2375
+RazoringMargin1	2437	602	51053	1.179166748	RazoringMargin1-2437
+RazoringMargin1	2468	540	51067	1.057434351	RazoringMargin1-2468
+RazoringMargin1	2484	508	51067	0.994771575	RazoringMargin1-2484
+RazoringMargin1	2476	524	51067	1.026102963	RazoringMargin1-2476
+RazoringMargin1	2480	516	51067	1.010437269	RazoringMargin1-2480
+RazoringMargin1	2482	513	51067	1.004562633	RazoringMargin1-2482
+RazoringMargin1	2483	511	51067	1.000646210	RazoringMargin1-2483
+RazoringMargin2	400	734	7285	10.075497598	instrumented-default
+RazoringMargin2	0	1224	6678	18.328840970	RazoringMargin2-0
+RazoringMargin2	2000	219	7923	2.764104506	RazoringMargin2-2000
+RazoringMargin2	4000	0	8095	0.000000000	RazoringMargin2-4000
+RazoringMargin2	3000	15	8093	0.185345360	RazoringMargin2-3000
+RazoringMargin2	2500	140	7950	1.761006289	RazoringMargin2-2500
+RazoringMargin2	2750	71	7980	0.889724311	RazoringMargin2-2750
+RazoringMargin2	2625	104	7966	1.305548581	RazoringMargin2-2625
+RazoringMargin2	2687	88	7969	1.104279081	RazoringMargin2-2687
+RazoringMargin2	2718	79	7973	0.990844099	RazoringMargin2-2718
+RazoringMargin2	2702	80	7973	1.003386429	RazoringMargin2-2702
+RazoringMargin2	2710	79	7973	0.990844099	RazoringMargin2-2710
+RazoringMargin2	2706	80	7973	1.003386429	RazoringMargin2-2706
+RazoringMargin2	2708	80	7973	1.003386429	RazoringMargin2-2708
+RazoringMargin2	2709	79	7973	0.990844099	RazoringMargin2-2709
+LmpBase	300	2305	41390	5.568978014	instrumented-default
+LmpBase	0	2995	46607	6.426073337	LmpBase-0
+LmpBase	2000	2309	49568	4.658247256	LmpBase-2000
+LmpBase	4000	2233	62630	3.565384001	LmpBase-4000
+LmpBase	8000	1252	68930	1.816335413	LmpBase-8000
+LmpBase	16000	0	73843	0.000000000	LmpBase-16000
+LmpBase	12000	178	73670	0.241618026	LmpBase-12000
+LmpBase	10000	342	72893	0.469180854	LmpBase-10000
+LmpBase	9000	843	72116	1.168950025	LmpBase-9000
+LmpBase	9500	589	72520	0.812189741	LmpBase-9500
+LmpBase	9250	738	72128	1.023181012	LmpBase-9250
+LmpBase	9375	685	72386	0.946315586	LmpBase-9375
+LmpBase	9312	685	72386	0.946315586	LmpBase-9312
+LmpBase	9281	738	72128	1.023181012	LmpBase-9281
+LmpBase	9296	738	72128	1.023181012	LmpBase-9296
+LmpBase	9304	685	72386	0.946315586	LmpBase-9304
+LmpBase	9300	685	72386	0.946315586	LmpBase-9300
+LmpBase	9298	738	72128	1.023181012	LmpBase-9298
+LmpBase	9299	738	72128	1.023181012	LmpBase-9299
+LmpSlope	100	2305	41390	5.568978014	instrumented-default
+LmpSlope	0	2354	40771	5.773711707	LmpSlope-0
+LmpSlope	2000	1552	67962	2.283629087	LmpSlope-2000
+LmpSlope	4000	970	71367	1.359171606	LmpSlope-4000
+LmpSlope	8000	678	73844	0.918151779	LmpSlope-8000
+LmpSlope	6000	824	70493	1.168910388	LmpSlope-6000
+LmpSlope	7000	799	70465	1.133896261	LmpSlope-7000
+LmpSlope	7500	762	70470	1.081311196	LmpSlope-7500
+LmpSlope	7750	746	73784	1.011059308	LmpSlope-7750
+LmpSlope	7875	722	73784	0.978531931	LmpSlope-7875
+LmpSlope	7812	722	73784	0.978531931	LmpSlope-7812
+LmpSlope	7781	746	73784	1.011059308	LmpSlope-7781
+LmpSlope	7796	746	73784	1.011059308	LmpSlope-7796
+LmpSlope	7804	722	73784	0.978531931	LmpSlope-7804
+LmpSlope	7800	722	73784	0.978531931	LmpSlope-7800
+LmpSlope	7798	746	73784	1.011059308	LmpSlope-7798
+LmpSlope	7799	746	73784	1.011059308	LmpSlope-7799
+QsearchMoveLimit	1	6553	42623	15.374328414	instrumented-default
+QsearchMoveLimit	16	6	73385	0.008176058	QsearchMoveLimit-16
+QsearchMoveLimit	8	142	89933	0.157895322	QsearchMoveLimit-8
+QsearchMoveLimit	4	2451	66759	3.671415090	QsearchMoveLimit-4
+QsearchMoveLimit	6	834	69751	1.195681782	QsearchMoveLimit-6
+QsearchMoveLimit	7	260	77242	0.336604438	QsearchMoveLimit-7
+
+探索結果
+{"parameter": "ReverseFutilityMargin", "boundary": 2331, "rate_percent": 0.9954167860211973, "monotonic_at_measured_points": true, "increasing_pairs": []}
+{"parameter": "RazoringMargin1", "boundary": 2484, "rate_percent": 0.9947715745980771, "monotonic_at_measured_points": true, "increasing_pairs": []}
+{"parameter": "RazoringMargin2", "boundary": 2709, "rate_percent": 0.9908440988335633, "monotonic_at_measured_points": true, "increasing_pairs": []}
+{"parameter": "LmpBase", "boundary": 9300, "rate_percent": 0.9463155858867737, "monotonic_at_measured_points": true, "increasing_pairs": []}
+{"parameter": "LmpSlope", "boundary": 7800, "rate_percent": 0.9785319310419603, "monotonic_at_measured_points": true, "increasing_pairs": []}
+{"parameter": "QsearchMoveLimit", "boundary": 7, "rate_percent": 0.3366044380000518, "monotonic_at_measured_points": true, "increasing_pairs": []}
+
+確認用計数
+{"label": "instrumented-default", "overrides": {}, "counters": {"RFP_ELIGIBLE": 41725, "RFP_ACTIVE": 21605, "RAZOR1_ELIGIBLE": 32324, "RAZOR1_ACTIVE": 1854, "RAZOR2_ELIGIBLE": 7285, "RAZOR2_ACTIVE": 734, "LMP_ELIGIBLE": 41390, "LMP_ACTIVE": 2305, "QSEARCH_ELIGIBLE": 42623, "QSEARCH_ACTIVE": 6553, "NULL_EXTRA_POSITIVE": 226, "IMPROVING_REDUCED": 6272, "CAPTURE_HISTORY_NONZERO": 2707}}
+{"label": "disabled", "overrides": {"NullMoveEvalScale": 0, "NonImprovingFutility1": 100, "NonImprovingFutility2": 100, "NonImprovingFutility3": 100, "CaptureHistoryScale": 0}, "counters": {"RFP_ELIGIBLE": 35289, "RFP_ACTIVE": 17695, "RAZOR1_ELIGIBLE": 26774, "RAZOR1_ACTIVE": 1266, "RAZOR2_ELIGIBLE": 6508, "RAZOR2_ACTIVE": 712, "LMP_ELIGIBLE": 34918, "LMP_ACTIVE": 2007, "QSEARCH_ELIGIBLE": 38576, "QSEARCH_ACTIVE": 5722, "NULL_EXTRA_POSITIVE": 0, "IMPROVING_REDUCED": 0, "CAPTURE_HISTORY_NONZERO": 0}}
+
+最終検証
+保存済みの標準出力・標準エラーと集計を照合した。
+全測定で15局面の深さ5完了とノード数の合計を確認した。
+全計数で0 <= 発動数 <= 適格数を確認した。
+各係数の測定では、指定した1係数だけが既定値から変更されていた。
+
+係数 | 二分探索の境界 | 発動数/適格数 | 発動率 | 直前の整数の発動率 | 測定点で単調非増加
+ReverseFutilityMargin | 2331 | 417/41892 | 0.995416786% | 1.000167092% | True
+RazoringMargin1 | 2484 | 508/51067 | 0.994771575% | 1.000646210% | True
+RazoringMargin2 | 2709 | 79/7973 | 0.990844099% | 1.003386429% | True
+LmpBase | 9300 | 685/72386 | 0.946315586% | 1.023181012% | True
+LmpSlope | 7800 | 722/73784 | 0.978531931% | 1.011059308% | True
+QsearchMoveLimit | 7 | 260/77242 | 0.336604438% | 1.195681782% | True
+無効値で確認用の3計数はすべて0。既定値ではすべて正。
+診断パッチには既定値の変更を含まず、測定後のparams.rsはコミット済み内容と一致。
+
+復元
+git checkout -- srcは共有Git管理領域のindex.lockが読み取り専用のため失敗した。
+代わりに変更した7ファイルをgit show HEAD:<path>の出力で復元した。
+git diff HEAD -- srcは空。
+git status --short:
+?? .codex-tasks/
