@@ -1,6 +1,7 @@
 //! 静かな手だけを数えるlate move pruningを検査する。
 
 use super::*;
+use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{futility_margin, late_move_limit};
 
 // 双方の金将を離して置き、捕獲を生まずに静かな手の上限だけを観測する。
@@ -36,17 +37,17 @@ pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
 fn late_move_limits_follow_quadratic_depth_rule() {
     assert_eq!(
         [late_move_limit(1), late_move_limit(2), late_move_limit(3)],
-        [4, 7, 12]
+        [1, 2, 3].map(|depth| (params::lmp_base() + params::lmp_slope() * depth * depth) / 100)
     );
 }
 
-// docs/plans/strength-stage4.md「検証」の第1局面。5手目以降を切っても詰みにしない。
+// docs/plans/strength-stage4.md「検証」の第1局面。上限を超えた静かな手を切っても詰みにしない。
 #[test]
 fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
     let board = quiet_board();
     let pst = weights().unwrap();
     let moves = legal_moves(&board);
-    assert!(moves.len() > 12);
+    assert!(moves.len() > late_move_limit(3) as usize);
     assert!(!royal_under_attack(&board));
     assert!(
         moves
@@ -54,7 +55,7 @@ fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
             .all(|&mv| !mv.promote && move_order_key(&board, &pst, mv).is_none())
     );
     let (score, nodes) = search_quiet_board(&board);
-    assert_eq!(nodes, 4);
+    assert_eq!(nodes, late_move_limit(1) as u64);
     let leaf_scores: Vec<_> = moves
         .iter()
         .map(|&mv| {
@@ -100,7 +101,7 @@ fn late_move_pruning_exclusions_search_all_quiets() {
 // 保護する手は静かな手の枠を消費しない。上限0の調整テストでも同じ保護を確かめる。
 #[test]
 fn late_move_pruning_preserves_protected_moves_and_quiet_allowance() {
-    check_late_move_protected_moves(4);
+    check_late_move_protected_moves(late_move_limit(1) as u64);
 }
 
 pub(super) fn check_late_move_protected_moves(limit: u64) {
@@ -118,7 +119,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                 .copied()
                 .filter(|&mv| !mv.promote && move_order_key(&board, searcher.pst, mv).is_none())
                 .collect();
-            assert!(quiets.len() > 7);
+            assert!(quiets.len() > 3 + limit as usize);
             let tt_move = quiets[0];
             let killers = [Some(quiets[1]), Some(quiets[2])];
             searcher.killers[0] = killers;
@@ -147,11 +148,12 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             ) {
                 ordered.push((mv, capture));
             }
-            assert!(ordered.iter().skip(4).any(|&(mv, capture)| if promotion {
-                mv.promote
-            } else {
-                capture
-            }));
+            assert!(
+                ordered
+                    .iter()
+                    .skip(limit as usize)
+                    .any(|&(mv, capture)| if promotion { mv.promote } else { capture })
+            );
             let alpha = evaluate(searcher.pst, &board) + 1;
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
@@ -197,7 +199,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
                 .any(|reply| captures_last_royal(&child, reply))
         })
         .count();
-    assert!(safe_moves > 7);
+    assert!(safe_moves > late_move_limit(2) as usize);
     let ply = 5;
     let mut child = board.clone();
     child.make_move_unchecked(losing_move, engine_rules());
@@ -231,7 +233,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
 
 // 数だけでなく順序も検査する。対象手以外の子を引き分けに固定し、対象手を読んだかを値で識別する。
 #[test]
-fn late_move_pruning_searches_exactly_the_first_four_counted_quiets() {
+fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
     let board = quiet_board();
     let mut ordered = Vec::new();
     with_root_searcher(&board, &[], |searcher| {
@@ -247,7 +249,8 @@ fn late_move_pruning_searches_exactly_the_first_four_counted_quiets() {
             ordered.push(mv);
         }
     });
-    assert!(ordered.len() > 4);
+    let limit = late_move_limit(1) as usize;
+    assert!(ordered.len() > limit);
     for (index, &target) in ordered.iter().enumerate() {
         let other_moves: Vec<_> = ordered.iter().copied().filter(|&mv| mv != target).collect();
         let history = repeated_root_children(&board, &other_moves);
@@ -262,10 +265,14 @@ fn late_move_pruning_searches_exactly_the_first_four_counted_quiets() {
                 .unwrap();
             assert_eq!(
                 score,
-                if index < 4 { target_score } else { DRAW_SCORE },
+                if index < limit {
+                    target_score
+                } else {
+                    DRAW_SCORE
+                },
                 "index={index}"
             );
-            assert_eq!(searcher.nodes, 4);
+            assert_eq!(searcher.nodes, limit as u64);
         });
     }
 }

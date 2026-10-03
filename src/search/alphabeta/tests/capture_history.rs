@@ -285,7 +285,7 @@ fn capture_history_is_zero_for_each_new_searcher() {
     });
 }
 
-/// 歩兵1枚未満の補正は、正負とも0方向へ丸める。
+/// 評価値1未満の補正は、正負とも0方向へ丸める。
 #[test]
 fn capture_history_adjustment_truncates_toward_zero() {
     let board = capture_fixture();
@@ -294,7 +294,9 @@ fn capture_history_adjustment_truncates_toward_zero() {
     let loser = capture(sq(5, 5), sq(3, 5));
     let mut history = CaptureHistory::new();
     history.record_cutoff(&board, &pst, winner, &[loser], 1);
-    assert!(pst.pawn_value() < 20_755);
+    assert!(
+        pst.pawn_value() * params::capture_history_scale() < 100 * params::capture_history_limit()
+    );
     assert_eq!(history.adjustment(&board, &pst, winner), 0);
     assert_eq!(history.adjustment(&board, &pst, loser), 0);
 }

@@ -1,44 +1,49 @@
 //! 探索係数の既定値と設定を検査する。
 
 use super::*;
+use crate::search::alphabeta::params;
 #[cfg(feature = "tuning")]
 use crate::search::alphabeta::{
     correction::CorrectionTable,
-    params,
     pruning::{
         futility_margin, late_move_limit, lmr_base, razoring_margin, reverse_futility_margin,
         see_margin,
     },
 };
 
-// docs/plans/spsa.md「対象の係数」の採用値での一致契約。
+// docs/plans/spsa.md「整数表現」の式と丸めを係数から照合する。
 #[test]
 fn tuning_default_null_move_and_aspiration_match_reference() {
     for depth in 0..=256 {
         assert_eq!(
             null_move_reduction(depth, 0, 0, 100),
-            (3_529 + depth * 238) / 1_200
+            (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1_200
         );
     }
+    let growth = i64::from(params::aspiration_growth());
+    let saturation = (i64::from(i32::MAX) * 100 / growth) as i32;
     for delta in [
         0,
         1,
         49,
         50,
         51,
-        1_068_399_824,
-        1_068_399_825,
-        1_068_399_826,
+        saturation - 1,
+        saturation,
+        saturation + 1,
         i32::MAX - 1,
         i32::MAX,
     ] {
         assert_eq!(
             grow_aspiration_delta(delta),
-            (i64::from(delta) * 201 / 100).min(i64::from(i32::MAX)) as i32
+            (i64::from(delta) * growth / 100).min(i64::from(i32::MAX)) as i32
         );
     }
     with_root_searcher(&Position::initial(), &[], |searcher| {
-        assert_eq!(searcher.delta_margin, 258 * searcher.pst.pawn_value() / 100);
+        assert_eq!(
+            searcher.delta_margin,
+            params::delta_margin() * searcher.pst.pawn_value() / 100
+        );
     });
 }
 
@@ -223,11 +228,11 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             return;
         }
         "lmp base" => {
-            late_move_parameter_changes_search("LmpBase", 400);
+            late_move_parameter_changes_search("LmpBase");
             return;
         }
         "lmp slope" => {
-            late_move_parameter_changes_search("LmpSlope", 200);
+            late_move_parameter_changes_search("LmpSlope");
             return;
         }
         "lmp zero limit" => {
@@ -258,7 +263,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             return;
         }
         "disabled null move eval scale" => {
-            zero_null_move_eval_scale_matches_master_search();
+            zero_null_move_eval_scale_matches_base_reduction_search();
             return;
         }
         _ => {}
@@ -278,7 +283,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     if scenario == "lmr table" {
         // 探索が引く減深量表はプロセス内で1回だけ生成されるので、表の生成より前に
         // 設定した除数が表へ反映されることを、表を経由する`lmr_reduction`で調べる。
-        // ln4 × ln3 ≈ 1.52は、既定の除数1.66では0、除数1.0では1に切り捨てられる。
+        // 除数1.0ならln4 × ln3 ≈ 1.52を切り捨てた1が表へ入る。
         let mut engine = engine();
         let mut protocol = UsiProtocol::new(&engine);
         let output = run(
@@ -305,7 +310,8 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
                 mv.from.dense_index(),
                 mv.to.dense_index(),
             );
-            searcher.history[side][from][to] = 20_755;
+            // 宣言範囲の上端なら半減せず、既定の上限なら半減する値を置く。
+            searcher.history[side][from][to] = 65_535;
             searcher.record_quiet_beta_cutoff(&board, mv, 1, 0);
             result = i64::from(searcher.history[side][from][to]);
         });
@@ -433,67 +439,37 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
 
-    // 宣言順と範囲は設計書および範囲測定に従い、開始値はアクセサと照合する。
+    // 宣言順と範囲、および採用済みの既定値をUSIの契約として固定する。
     let expected = [
-        ("LmrDivisor", 166, 100, 400),
-        ("LmrHistoryThreshold", 111, 0, 512),
-        ("FutilityMargin1", 101, 0, 400),
-        ("FutilityMargin2", 196, 0, 400),
-        ("FutilityMargin3", 207, 0, 400),
-        (
-            "NonImprovingFutility1",
-            params::non_improving_futility1(),
-            0,
-            100,
-        ),
-        (
-            "NonImprovingFutility2",
-            params::non_improving_futility2(),
-            0,
-            100,
-        ),
-        (
-            "NonImprovingFutility3",
-            params::non_improving_futility3(),
-            0,
-            100,
-        ),
-        ("LmpBase", params::lmp_base(), 0, 8600),
-        ("LmpSlope", params::lmp_slope(), 0, 3600),
-        (
-            "ReverseFutilityMargin",
-            params::reverse_futility_margin(),
-            0,
-            1938,
-        ),
-        ("RazoringMargin1", params::razoring_margin1(), 0, 2668),
-        ("RazoringMargin2", params::razoring_margin2(), 0, 2885),
-        ("SeeMargin1", 2, 0, 400),
-        ("SeeMargin2", 210, 0, 400),
-        ("SeeMargin3", 7, 0, 400),
-        ("AspirationDelta", 46, 10, 200),
-        ("AspirationGrowth", 201, 125, 400),
-        ("NullMoveBase", 3529, 1200, 4800),
-        ("NullMoveSlope", 238, 100, 400),
-        ("NullMoveEvalScale", params::null_move_eval_scale(), 0, 400),
-        ("HistoryLimit", 20755, 4096, 65536),
-        ("HistoryDecay", params::history_decay(), 0, 100),
-        (
-            "CaptureHistoryLimit",
-            params::capture_history_limit(),
-            4096,
-            65536,
-        ),
-        (
-            "CaptureHistoryScale",
-            params::capture_history_scale(),
-            0,
-            400,
-        ),
-        ("CorrectionCap", 193, 50, 400),
-        ("CorrectionWeight", 33, 8, 128),
-        ("DeltaMargin", 258, 50, 500),
-        ("QsearchMoveLimit", params::qsearch_move_limit(), 1, 7),
+        ("LmrDivisor", 156, 100, 400),
+        ("LmrHistoryThreshold", 146, 0, 512),
+        ("FutilityMargin1", 165, 0, 400),
+        ("FutilityMargin2", 239, 0, 400),
+        ("FutilityMargin3", 283, 0, 400),
+        ("NonImprovingFutility1", 71, 0, 100),
+        ("NonImprovingFutility2", 72, 0, 100),
+        ("NonImprovingFutility3", 86, 0, 100),
+        ("LmpBase", 382, 0, 8600),
+        ("LmpSlope", 133, 0, 3600),
+        ("ReverseFutilityMargin", 428, 0, 1938),
+        ("RazoringMargin1", 1606, 0, 2668),
+        ("RazoringMargin2", 2015, 0, 2885),
+        ("SeeMargin1", 10, 0, 400),
+        ("SeeMargin2", 192, 0, 400),
+        ("SeeMargin3", 13, 0, 400),
+        ("AspirationDelta", 55, 10, 200),
+        ("AspirationGrowth", 190, 125, 400),
+        ("NullMoveBase", 3617, 1200, 4800),
+        ("NullMoveSlope", 257, 100, 400),
+        ("NullMoveEvalScale", 56, 0, 400),
+        ("HistoryLimit", 17408, 4096, 65536),
+        ("HistoryDecay", 23, 0, 100),
+        ("CaptureHistoryLimit", 16950, 4096, 65536),
+        ("CaptureHistoryScale", 49, 0, 400),
+        ("CorrectionCap", 220, 50, 400),
+        ("CorrectionWeight", 37, 8, 128),
+        ("DeltaMargin", 355, 50, 500),
+        ("QsearchMoveLimit", 4, 1, 7),
         ("ExpectedPlies", 432, 250, 700),
         ("MinMoves", 88, 40, 200),
         ("IncrementShare", 76, 30, 100),
@@ -525,7 +501,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
         ("LmrHistoryThreshold", 512, || {
-            i64::from(lmr_reduction(4, 8, 128))
+            i64::from(lmr_reduction(4, 8, 256))
         }),
         ("FutilityMargin1", 100, || {
             i64::from(futility_margin(101, 1, true))
@@ -545,8 +521,8 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("NonImprovingFutility3", 100, || {
             i64::from(futility_margin(101, 3, false))
         }),
-        ("LmpBase", 400, || i64::from(late_move_limit(1))),
-        ("LmpSlope", 200, || i64::from(late_move_limit(1))),
+        ("LmpBase", 600, || i64::from(late_move_limit(1))),
+        ("LmpSlope", 400, || i64::from(late_move_limit(1))),
         ("ReverseFutilityMargin", 100, || {
             i64::from(reverse_futility_margin(101))
         }),
@@ -655,6 +631,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         )
         .starts_with("info string error: ")
     );
+    let default_delta = params::delta_margin();
     assert!(
         run(
             &mut protocol,
@@ -664,7 +641,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         .is_empty()
     );
     assert_eq!(params::delta_margin(), 300);
-    params::set("DeltaMargin", 258).unwrap();
+    params::set("DeltaMargin", default_delta).unwrap();
 }
 
 // フェーズ1-B指示書。実際の探索で各係数の境界をまたぎ、係数の読み出し忘れを検出する。
@@ -725,24 +702,26 @@ fn null_move_eval_scale_changes_search() {
     assert!(score >= beta);
     assert!(changed_nodes > default_nodes);
     params::set("NullMoveEvalScale", 50).unwrap();
+    let base = (params::null_move_base() as u32 + 6 * params::null_move_slope() as u32) / 1200;
     // 2pの境界と上限を、百分率の除算に余りが出る歩兵価値でも検査する。
-    assert_eq!(null_move_reduction(6, 147, 0, 37), 4);
-    assert_eq!(null_move_reduction(6, 148, 0, 37), 5);
+    assert_eq!(null_move_reduction(6, 147, 0, 37), base);
+    assert_eq!(null_move_reduction(6, 148, 0, 37), base + 1);
     params::set("NullMoveEvalScale", 400).unwrap();
-    assert_eq!(null_move_reduction(6, 19, 0, 37), 5);
-    assert_eq!(null_move_reduction(6, i32::MAX, i32::MIN, 37), 7);
+    assert_eq!(null_move_reduction(6, 19, 0, 37), base + 1);
+    assert_eq!(null_move_reduction(6, i32::MAX, i32::MIN, 37), base + 3);
 }
 
 #[cfg(feature = "tuning")]
-fn zero_null_move_eval_scale_matches_master_search() {
+fn zero_null_move_eval_scale_matches_base_reduction_search() {
     params::set("NullMoveEvalScale", 0).unwrap();
-    // Mの式は指示書にある切片3,529・傾き238から独立に計算する。
+    // 尺度0では、静的評価とβにかかわらず基本の減深量になる。
     for depth in 0..=MAX_PLY {
         for value in [i32::MIN, -1000, 0, 1000, i32::MAX] {
             for beta in [-MATE_THRESHOLD + 1, 0, MATE_THRESHOLD - 1] {
                 assert_eq!(
                     null_move_reduction(depth, value, beta, 37),
-                    (3529 + depth * 238) / 1200
+                    (params::null_move_base() as u32 + depth * params::null_move_slope() as u32)
+                        / 1200
                 );
             }
         }
@@ -750,11 +729,12 @@ fn zero_null_move_eval_scale_matches_master_search() {
     let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
     let pst = weights().unwrap();
     let beta = evaluate(&pst, &board) - 2 * pst.pawn_value();
-    // 記録手なしの深さ7は6となる。MのR=4でnull move後は深さ1。
-    // この子では他の復活項目は発動せず、捕獲もないのでMと同じ探索になる。
+    // 記録手なしの深さ7は6となる。基本の減深量から子の深さを求める。
+    let reduction = (params::null_move_base() as u32 + 6 * params::null_move_slope() as u32) / 1200;
+    let child_depth = 6_u32.saturating_sub(1 + reduction);
     let mut passed = board.clone();
     passed.make_null_move();
-    let (reply, nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &small_tt());
+    let (reply, nodes) = run_negamax(&passed, child_depth, -beta, -beta + 1, 1, &small_tt());
     assert!(-reply >= beta);
     assert!(nodes > 0);
     let table = small_tt();
@@ -819,15 +799,25 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
 }
 
 #[cfg(feature = "tuning")]
-fn late_move_parameter_changes_search(name: &str, value: i32) {
+fn late_move_parameter_changes_search(name: &str) {
     let board = super::late_move::quiet_board();
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 4);
-    params::set(name, value).unwrap();
-    assert_eq!(super::late_move::search_quiet_board(&board).1, 5);
-    params::set(name, value - 1).unwrap();
+    let limit = (params::lmp_base() + params::lmp_slope()) / 100;
+    assert_eq!(super::late_move::search_quiet_board(&board).1, limit as u64);
+    let other = match name {
+        "LmpBase" => params::lmp_slope(),
+        "LmpSlope" => params::lmp_base(),
+        _ => unreachable!(),
+    };
+    let boundary = (limit + 1) * 100 - other;
+    params::set(name, boundary).unwrap();
     assert_eq!(
         super::late_move::search_quiet_board(&board).1,
-        4,
+        (limit + 1) as u64
+    );
+    params::set(name, boundary - 1).unwrap();
+    assert_eq!(
+        super::late_move::search_quiet_board(&board).1,
+        limit as u64,
         "整数除算で端数を切り捨てる"
     );
 }

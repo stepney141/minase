@@ -3,6 +3,7 @@
 use super::*;
 use crate::Color;
 use crate::eval::{evaluate, weights};
+use crate::search::alphabeta::params;
 
 fn shared(stop: &AtomicBool) -> SharedSearch<'_> {
     SharedSearch {
@@ -80,7 +81,10 @@ fn correction_negamax_update_conditions() {
         );
         // 更新しないケースも非ゼロの初期値を保持することを確認する。
         searcher.correction.update(Color::Black, key, 64, 8);
-        assert_eq!(searcher.correction.read(Color::Black, key), 16);
+        assert_eq!(
+            searcher.correction.read(Color::Black, key),
+            64 * 8 * params::correction_weight() / 1024
+        );
         assert_eq!(
             searcher.negamax(&mut board, depth, alpha, beta, 0),
             Some(score)
@@ -97,10 +101,12 @@ fn correction_negamax_update_conditions() {
             capture
         );
         assert_eq!(royal_under_attack(&board), sfen == ATTACKED);
+        let weight = params::correction_weight();
+        let initial = 64 * 8 * weight;
         let expected = if update {
-            (16_896 + (delta * 1024 - 16_896) * 2 * 33 / 1024) / 1024
+            (initial + (delta * 1024 - initial) * 2 * weight / 1024) / 1024
         } else {
-            16
+            initial / 1024
         };
         assert_eq!(
             searcher.correction.read(Color::Black, key),
@@ -143,7 +149,10 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
             Some(score)
         );
-        assert_eq!(searcher.correction.read(Color::Black, key), 16);
+        assert_eq!(
+            searcher.correction.read(Color::Black, key),
+            64 * 8 * params::correction_weight() / 1024
+        );
     }
     for interrupted in [false, true] {
         let stop = AtomicBool::new(interrupted);
@@ -170,7 +179,10 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             searcher.negamax(&mut board, 2, -INFINITY, INFINITY, 0),
             if interrupted { None } else { Some(320) }
         );
-        assert_eq!(searcher.correction.read(Color::Black, key), 16);
+        assert_eq!(
+            searcher.correction.read(Color::Black, key),
+            64 * 8 * params::correction_weight() / 1024
+        );
     }
 }
 
@@ -204,12 +216,13 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         &mut butterfly_history,
     );
     let key = material_key(&board);
+    let expected = 100 * 8 * params::correction_weight() / 1024;
     a.correction.update(Color::Black, key, 100, 8);
-    assert_eq!(a.correction.read(Color::Black, key), 25);
+    assert_eq!(a.correction.read(Color::Black, key), expected);
     assert_eq!(b.correction.read(Color::Black, key), 0);
     b.correction.update(Color::Black, key, -100, 8);
-    assert_eq!(a.correction.read(Color::Black, key), 25);
-    assert_eq!(b.correction.read(Color::Black, key), -25);
+    assert_eq!(a.correction.read(Color::Black, key), expected);
+    assert_eq!(b.correction.read(Color::Black, key), -expected);
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let c = new_searcher(
@@ -233,7 +246,7 @@ fn correction_changes_futility_expansion_at_boundary() {
     for correction in [0, 1] {
         let mut board = crate::parse_sfen(QUIET).unwrap();
         let table = TranspositionTable::new(1).unwrap();
-        let alpha = evaluate(&pst, &board) + pst.pawn_value() * 101 / 100;
+        let alpha = evaluate(&pst, &board) + pst.pawn_value() * params::futility_margin1() / 100;
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut searcher = new_searcher(
@@ -245,9 +258,13 @@ fn correction_changes_futility_expansion_at_boundary() {
             &table,
             &mut butterfly_history,
         );
-        searcher
-            .correction
-            .update(Color::Black, material_key(&board), correction * 4, 8);
+        searcher.correction.update(
+            Color::Black,
+            material_key(&board),
+            correction * (1024 + 8 * params::correction_weight() - 1)
+                / (8 * params::correction_weight()),
+            8,
+        );
         assert_eq!(
             searcher.correction.read(Color::Black, material_key(&board)),
             correction

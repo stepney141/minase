@@ -4,7 +4,7 @@ use super::*;
 use crate::search::alphabeta::params;
 
 // docs/plans/strength-stage5.md「LMRの減深量」「検証」とフェーズ6指示書。
-// c = 1.66、H = 111の生成規則と、補正後の切り詰めを個別に固定する。
+// LmrDivisorによる生成規則と、履歴補正後の切り詰めを個別に固定する。
 #[test]
 fn lmr_table_follows_logarithmic_rule() {
     let table = lmr_table();
@@ -13,38 +13,56 @@ fn lmr_table_follows_logarithmic_rule() {
         assert_eq!(row[0], 0);
         assert_eq!(row[1], 0);
     }
-    assert_eq!(table[3][3], 0);
-    assert_eq!(table[4][8], 1);
-    assert_eq!(table[5][255], 5);
+    for (depth, index) in [(3, 3), (4, 8), (5, 255)] {
+        let expected = ((depth as f64).ln() * (index as f64).ln()
+            / (f64::from(params::lmr_divisor()) / 100.0))
+            .floor() as u8;
+        assert_eq!(table[depth][index], expected);
+    }
+    assert!(table[5][255] > 3);
 }
 
 #[test]
 fn lmr_history_adjustment_precedes_clamping() {
-    for (history, expected) in [
-        (i32::MIN, 2),
-        (-112, 2),
-        (-111, 2),
-        (-110, 1),
-        (0, 1),
-        (110, 1),
-        (111, 0),
-        (112, 0),
-        (i32::MAX, 0),
+    let threshold = params::lmr_history_threshold();
+    let base = i32::from(lmr_table()[4][8]);
+    for (history, adjustment) in [
+        (i32::MIN, 1),
+        (-threshold - 1, 1),
+        (-threshold, 1),
+        (-threshold + 1, 0),
+        (0, 0),
+        (threshold - 1, 0),
+        (threshold, -1),
+        (threshold + 1, -1),
+        (i32::MAX, -1),
     ] {
-        assert_eq!(lmr_reduction(4, 8, history), expected);
+        assert_eq!(
+            lmr_reduction(4, 8, history),
+            (base + adjustment).clamp(0, 2) as u32
+        );
     }
     assert_eq!(lmr_reduction(5, 255, i32::MIN), 3);
     assert_eq!(lmr_reduction(5, 255, i32::MAX), 3);
     // 表の値が0でも負のhistoryなら減深し、負の補正結果は0で切る。
-    assert_eq!(lmr_reduction(4, 1, -111), 1);
-    assert_eq!(lmr_reduction(4, 1, 111), 0);
+    assert_eq!(lmr_reduction(4, 1, -threshold), 1);
+    assert_eq!(lmr_reduction(4, 1, threshold), 0);
 }
 
 #[test]
 fn lmr_reduction_preserves_remaining_depth() {
+    let threshold = params::lmr_history_threshold();
     for depth in [0, 1, 2, 3, 4, MAX_PLY] {
         for index in [0, 1, 8, 255] {
-            for history in [i32::MIN, -111, -110, 0, 110, 111, i32::MAX] {
+            for history in [
+                i32::MIN,
+                -threshold,
+                -threshold + 1,
+                0,
+                threshold - 1,
+                threshold,
+                i32::MAX,
+            ] {
                 let reduction = lmr_reduction(depth, index, history);
                 assert!(reduction <= 3);
                 match depth {
@@ -63,7 +81,11 @@ fn lmr_reduction_preserves_remaining_depth() {
 #[test]
 fn lmr_large_move_indices_use_last_column() {
     for depth in [0, 1, 2, 3, 4, MAX_PLY] {
-        for history in [-128, 0, 128] {
+        for history in [
+            -params::lmr_history_threshold(),
+            0,
+            params::lmr_history_threshold(),
+        ] {
             for index in [256, usize::MAX] {
                 assert_eq!(
                     lmr_reduction(depth, index, history),

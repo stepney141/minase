@@ -321,7 +321,12 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
     let stand_pat = evaluate(&pst, &capture_position);
     for (position, alpha) in [
         (Position::initial(), -INFINITY),
-        (capture_position, stand_pat + 4 * pst.pawn_value()),
+        (
+            capture_position,
+            stand_pat
+                + pst.pawn_value()
+                + pst.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100,
+        ),
     ] {
         let key = search_key(&position);
         let stand_pat = evaluate(&pst, &position);
