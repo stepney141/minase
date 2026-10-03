@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::search::HistoryTables;
+use crate::search::alphabeta::params;
 
 // 停止済みでも根の開始は1回。全要素、両手番、各ワーカーで0方向に丸める。
 #[test]
@@ -9,7 +10,7 @@ fn history_carry_ages_every_worker_once_before_the_first_iteration() {
     let snapshot = snapshot_for(&Position::initial());
     let mut histories = HistoryTables::new(worker_count(4));
     let values = [-7, -4, -3, -1, 0, 1, 3, 4, 7, 100];
-    let expected = [-5, -3, -2, 0, 0, 0, 2, 3, 5, 75];
+    let expected = values.map(|value| value * params::history_decay() / 100);
     for (worker, history) in histories.workers.iter_mut().enumerate() {
         for (i, value) in history.iter_mut().flatten().flatten().enumerate() {
             *value = values[(i + worker) % values.len()];
@@ -48,7 +49,13 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             history[0][60][60] = 160 + worker as i32 * 16;
         }
         let mut table = small_tt();
-        for (search_id, expected) in [(801, 120), (802, 90)] {
+        let mut expected: Vec<_> = (0..threads.get())
+            .map(|worker| 160 + worker as i32 * 16)
+            .collect();
+        for search_id in [801, 802] {
+            for value in &mut expected {
+                *value = *value * params::history_decay() / 100;
+            }
             let handle = crate::search::start_search(
                 weights().unwrap(),
                 snapshot_for(&Position::initial()),
@@ -63,8 +70,7 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             assert_eq!(result.depth, 3);
             (table, histories) = handle.join().unwrap();
             for (worker, history) in histories.workers.iter().enumerate() {
-                let increment = if search_id == 801 { 12 } else { 9 };
-                assert_eq!(history[0][60][60], expected + worker as i32 * increment);
+                assert_eq!(history[0][60][60], expected[worker]);
             }
         }
     }

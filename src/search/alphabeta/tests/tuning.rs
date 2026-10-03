@@ -149,7 +149,7 @@ fn tuning_default_iteration_prediction_matches_reference_grid() {
     }
 }
 
-/// 全30係数の反映とUSIの入力契約を直列に検査する。
+/// 全35係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -433,21 +433,41 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
 
-    // 設計書と指示書の係数を、宣言順・既定値・範囲の独立した参照値とする。
+    // 宣言順と範囲は設計書および範囲測定に従い、開始値はアクセサと照合する。
     let expected = [
         ("LmrDivisor", 166, 100, 400),
         ("LmrHistoryThreshold", 111, 0, 512),
         ("FutilityMargin1", 101, 0, 400),
         ("FutilityMargin2", 196, 0, 400),
         ("FutilityMargin3", 207, 0, 400),
-        ("NonImprovingFutility1", 25, 0, 100),
-        ("NonImprovingFutility2", 50, 0, 100),
-        ("NonImprovingFutility3", 50, 0, 100),
-        ("LmpBase", 300, 0, 2000),
-        ("LmpSlope", 100, 0, 2000),
-        ("ReverseFutilityMargin", 50, 0, 1000),
-        ("RazoringMargin1", 400, 0, 2000),
-        ("RazoringMargin2", 400, 0, 2000),
+        (
+            "NonImprovingFutility1",
+            params::non_improving_futility1(),
+            0,
+            100,
+        ),
+        (
+            "NonImprovingFutility2",
+            params::non_improving_futility2(),
+            0,
+            100,
+        ),
+        (
+            "NonImprovingFutility3",
+            params::non_improving_futility3(),
+            0,
+            100,
+        ),
+        ("LmpBase", params::lmp_base(), 0, 9300),
+        ("LmpSlope", params::lmp_slope(), 0, 7800),
+        (
+            "ReverseFutilityMargin",
+            params::reverse_futility_margin(),
+            0,
+            2331,
+        ),
+        ("RazoringMargin1", params::razoring_margin1(), 0, 2484),
+        ("RazoringMargin2", params::razoring_margin2(), 0, 2709),
         ("SeeMargin1", 2, 0, 400),
         ("SeeMargin2", 210, 0, 400),
         ("SeeMargin3", 7, 0, 400),
@@ -455,15 +475,25 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("AspirationGrowth", 201, 125, 400),
         ("NullMoveBase", 3529, 1200, 4800),
         ("NullMoveSlope", 238, 100, 400),
-        ("NullMoveEvalScale", 100, 0, 400),
+        ("NullMoveEvalScale", params::null_move_eval_scale(), 0, 400),
         ("HistoryLimit", 20755, 4096, 65536),
-        ("HistoryDecay", 75, 0, 100),
-        ("CaptureHistoryLimit", 20755, 4096, 65536),
-        ("CaptureHistoryScale", 100, 0, 400),
+        ("HistoryDecay", params::history_decay(), 0, 100),
+        (
+            "CaptureHistoryLimit",
+            params::capture_history_limit(),
+            4096,
+            65536,
+        ),
+        (
+            "CaptureHistoryScale",
+            params::capture_history_scale(),
+            0,
+            400,
+        ),
         ("CorrectionCap", 193, 50, 400),
         ("CorrectionWeight", 33, 8, 128),
         ("DeltaMargin", 258, 50, 500),
-        ("QsearchMoveLimit", 1, 1, 16),
+        ("QsearchMoveLimit", params::qsearch_move_limit(), 1, 7),
         ("ExpectedPlies", 432, 250, 700),
         ("MinMoves", 88, 40, 200),
         ("IncrementShare", 76, 30, 100),
@@ -540,7 +570,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             i64::from(null_move_reduction(12, 0, 0, 100))
         }),
         ("NullMoveEvalScale", 0, || {
-            i64::from(null_move_reduction(12, 200, 0, 100))
+            i64::from(null_move_reduction(12, 800, 0, 100))
         }),
         ("HistoryLimit", 65536, history),
         ("HistoryDecay", 50, history_decay),
@@ -549,7 +579,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         ("CorrectionCap", 400, || correction(100_000)),
         ("CorrectionWeight", 64, || correction(100)),
         ("DeltaMargin", 300, delta),
-        ("QsearchMoveLimit", 16, qsearch_limit),
+        ("QsearchMoveLimit", 1, qsearch_limit),
         ("ExpectedPlies", 250, || {
             clock_budget(clock(100_000, 0, 0)).soft.as_millis() as i64
         }),
@@ -643,14 +673,19 @@ fn reverse_futility_parameter_changes_search() {
     let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
     let pst = weights().unwrap();
     let value = evaluate(&pst, &board);
-    let beta = value - pst.pawn_value() / 2;
+    let percent = params::reverse_futility_margin();
+    let beta = value - pst.pawn_value() * percent / 100;
     assert_eq!(
         run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()),
         (value, 0)
     );
-    params::set("ReverseFutilityMargin", 51).unwrap();
+    params::set("ReverseFutilityMargin", percent + 100).unwrap();
     assert!(run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()).1 > 0);
-    assert_eq!(reverse_futility_margin(137), 69, "百分率は乗算してから割る");
+    assert_eq!(
+        reverse_futility_margin(137),
+        137 * (percent + 100) / 100,
+        "百分率は乗算してから割る"
+    );
 }
 
 #[cfg(feature = "tuning")]
@@ -658,26 +693,38 @@ fn razoring_parameter_changes_search(depth: u32, name: &str) {
     let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     let pst = weights().unwrap();
     let value = evaluate(&pst, &board);
-    let alpha = value + 4 * pst.pawn_value();
+    let percent = match depth {
+        1 => params::razoring_margin1(),
+        2 => params::razoring_margin2(),
+        _ => unreachable!(),
+    };
+    let alpha = value + pst.pawn_value() * percent / 100;
     assert_eq!(
         run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()),
         (value, 0)
     );
-    params::set(name, 401).unwrap();
+    params::set(name, percent + 100).unwrap();
     assert!(run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()).1 > 0);
-    assert_eq!(razoring_margin(137, depth), 549, "百分率は乗算してから割る");
+    assert_eq!(
+        razoring_margin(137, depth),
+        137 * (percent + 100) / 100,
+        "百分率は乗算してから割る"
+    );
 }
 
 #[cfg(feature = "tuning")]
 fn null_move_eval_scale_changes_search() {
     let board = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
     let pst = weights().unwrap();
-    let beta = evaluate(&pst, &board) - 2 * pst.pawn_value();
+    let scale = params::null_move_eval_scale();
+    assert!(scale > 0);
+    let beta = evaluate(&pst, &board) - (2 * pst.pawn_value() * 100 + scale - 1) / scale;
     let (_, default_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
-    params::set("NullMoveEvalScale", 50).unwrap();
+    params::set("NullMoveEvalScale", 0).unwrap();
     let (score, changed_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
     assert!(score >= beta);
     assert!(changed_nodes > default_nodes);
+    params::set("NullMoveEvalScale", 50).unwrap();
     // 2pの境界と上限を、百分率の除算に余りが出る歩兵価値でも検査する。
     assert_eq!(null_move_reduction(6, 147, 0, 37), 4);
     assert_eq!(null_move_reduction(6, 148, 0, 37), 5);
@@ -725,7 +772,21 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
     let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &board) + [25, 98, 103][depth as usize - 1];
+    let (percent, scale) = [
+        (
+            params::futility_margin1(),
+            params::non_improving_futility1(),
+        ),
+        (
+            params::futility_margin2(),
+            params::non_improving_futility2(),
+        ),
+        (
+            params::futility_margin3(),
+            params::non_improving_futility3(),
+        ),
+    ][depth as usize - 1];
+    let alpha = evaluate(&pst, &board) + pst.pawn_value() * percent / 100 * scale / 100;
     let search = || {
         let mut nodes = 0;
         with_root_searcher(&board, &history, |searcher| {
@@ -746,10 +807,7 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
     assert_eq!(search(), moves.len() as u64);
     // 尺度100では、端数を含めて現行の余裕値と完全に一致する。
     for pawn in [1, 37, 100, 137, 999] {
-        assert_eq!(
-            futility_margin(pawn, depth, false),
-            pawn * [101, 196, 207][depth as usize - 1] / 100
-        );
+        assert_eq!(futility_margin(pawn, depth, false), pawn * percent / 100);
         assert_eq!(
             futility_margin(pawn, depth, false),
             futility_margin(pawn, depth, true)

@@ -1,6 +1,7 @@
 //! 枝刈りと深さの削減を検査する。
 
 use super::*;
+use crate::search::alphabeta::params;
 
 // docs/plans/strength-stage5.md「LMRの減深量」「検証」とフェーズ6指示書。
 // c = 1.66、H = 111の生成規則と、補正後の切り詰めを個別に固定する。
@@ -469,13 +470,13 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
 }
 
 // docs/plans/strength-stage4.md「採用した余裕値」「検証」。
-// 深さ1〜3で差がちょうどp/2なら静的評価を返し、置換表には保存しない。
+// 深さ1〜3で差がちょうど係数から求めた余裕値なら静的評価を返し、置換表には保存しない。
 #[test]
 fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
     let pst = weights().unwrap();
     let static_eval = evaluate(&pst, &position);
-    let beta = static_eval - pst.pawn_value() / 2;
+    let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
     for depth in 1..=3 {
         let table = small_tt();
         let tt_move = legal_moves(&position)[0];
@@ -496,7 +497,7 @@ fn reverse_futility_exclusions_search_children() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     let pst = weights().unwrap();
     let static_eval = evaluate(&pst, &position);
-    let beta = static_eval - pst.pawn_value() / 2;
+    let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
     let cases = [
         (1, beta - 2, beta, "幅2のPV窓"),
         (1, -MATE_THRESHOLD - 1, -MATE_THRESHOLD, "βが負の詰み帯"),
@@ -526,7 +527,7 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
     let pst = weights().unwrap();
     let static_eval = evaluate(&pst, &position);
-    let beta = static_eval - pst.pawn_value() / 2;
+    let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
     let table = small_tt();
     table.store(search_key(&position), 1, beta - 1, Bound::Exact, None, 0);
     let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &table);
@@ -544,7 +545,7 @@ fn reverse_futility_does_not_prune_when_royal_is_attacked() {
         .unwrap();
         let pst = weights().unwrap();
         let static_eval = evaluate(&pst, &position);
-        let beta = static_eval - pst.pawn_value() / 2;
+        let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
         assert_eq!(royal_under_attack(&position), attacked);
         let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &small_tt());
         if attacked {
@@ -557,16 +558,19 @@ fn reverse_futility_does_not_prune_when_royal_is_attacked() {
 }
 
 // docs/plans/strength-stage4.md「razoring」「採用した余裕値」。
-// 捕獲のない局面では静止探索が静的評価を返し、4pの境界から通常探索を省く。
+// 捕獲のない局面では静止探索が静的評価を返し、係数から求めた余裕値の境界から通常探索を省く。
 #[test]
 fn razoring_returns_quiescence_at_the_margin_boundary() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     let pst = weights().unwrap();
     let static_eval = evaluate(&pst, &position);
     assert!(!royal_under_attack(&position));
-    for depth in 1..=2 {
+    for (depth, percent) in [
+        (1, params::razoring_margin1()),
+        (2, params::razoring_margin2()),
+    ] {
         for excess in [0, pst.pawn_value()] {
-            let alpha = static_eval + 4 * pst.pawn_value() + excess;
+            let alpha = static_eval + pst.pawn_value() * percent / 100 + excess;
             let (quiet_score, quiet_nodes) =
                 run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
             assert_eq!(quiet_score, static_eval);
@@ -581,7 +585,7 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
                 "捕獲のない静止探索は置換表に保存しない"
             );
         }
-        let alpha = static_eval + 4 * pst.pawn_value() - 1;
+        let alpha = static_eval + pst.pawn_value() * percent / 100 - 1;
         let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
         let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
         assert!(nodes > quiet_nodes, "余裕値に1足りなければ通常探索する");
@@ -591,10 +595,13 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
 // 同「razoring」とsearch.md「静止探索」。静止探索の上界がαと等しい場合も打ち切る。
 #[test]
 fn razoring_accepts_quiescence_equal_to_alpha() {
-    let position = crate::parse_sfen("k11/12/12/12/12/12/12/5r6/5R6/12/12/11K b").unwrap();
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
     let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
-    for depth in 1..=2 {
+    for (depth, percent) in [
+        (1, params::razoring_margin1()),
+        (2, params::razoring_margin2()),
+    ] {
+        let alpha = evaluate(&pst, &position) + pst.pawn_value() * percent / 100;
         let table = small_tt();
         table.store(search_key(&position), 0, alpha, Bound::Upper, None, 0);
         let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &table);
@@ -610,7 +617,8 @@ fn razoring_accepts_quiescence_equal_to_alpha() {
 fn razoring_excludes_pv_mate_windows_and_depth_three() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
+    let alpha = evaluate(&pst, &position)
+        + pst.pawn_value() * params::razoring_margin1().max(params::razoring_margin2()) / 100;
     for (depth, alpha, beta) in [
         (1, alpha, alpha + 2),
         (2, alpha, alpha + 2),
@@ -655,10 +663,14 @@ fn razoring_excludes_attacked_royals() {
             ],
         );
         assert_eq!(royal_under_attack(&position), rook_file == 11);
-        let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
-        let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-        assert!(quiet_score <= alpha);
-        for depth in 1..=2 {
+        for (depth, percent) in [
+            (1, params::razoring_margin1()),
+            (2, params::razoring_margin2()),
+        ] {
+            let alpha = evaluate(&pst, &position) + pst.pawn_value() * percent / 100;
+            let (quiet_score, quiet_nodes) =
+                run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
+            assert!(quiet_score <= alpha);
             let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
             if rook_file == 11 {
                 assert!(nodes > quiet_nodes, "王駒への利きがあれば通常探索する");
@@ -672,12 +684,12 @@ fn razoring_excludes_attacked_royals() {
 // 同「razoring」。捕獲でαを上回れば通常探索へ進み、PV窓の探索と同じ値を返す。
 #[test]
 fn razoring_continues_normal_search_after_recovering_capture() {
-    let position = crate::parse_sfen("k11/12/12/12/12/12/12/5r6/5R6/12/12/11K b").unwrap();
+    let position = crate::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
     let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &position) + 4 * pst.pawn_value();
+    let alpha = evaluate(&pst, &position) + pst.pawn_value() * params::razoring_margin1() / 100;
     assert!(!royal_under_attack(&position));
     let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
-    assert!(quiet_score > alpha, "無防備な飛車の捕獲で余裕値を取り戻す");
+    assert!(quiet_score > alpha, "無防備な奔王の捕獲で余裕値を取り戻す");
     // 深さ1なら子は静止探索となり、子ノードでの枝刈りの差を比較へ持ち込まない。
     let table = small_tt();
     let (score, nodes) = run_negamax(&position, 1, alpha, alpha + 1, 0, &table);
@@ -690,23 +702,28 @@ fn razoring_continues_normal_search_after_recovering_capture() {
 }
 
 // docs/plans/strength-stage4.md「null move pruningの減深量」「検証」。
-// 加算は2pごとに増えて0〜3に収まり、基本量は現行の切片3,529と傾き238に従う。
+// 尺度を考慮した各境界の直前・一致を検査し、加算を0〜3に制限する。
 #[test]
 fn null_move_reduction_scales_with_eval_surplus_and_depth() {
     let beta = 137;
     for pawn_value in [37, 100] {
-        for (depth, base) in [(3, 3), (5, 3), (6, 4), (11, 5), (12, 5)] {
+        let scale = params::null_move_eval_scale();
+        assert!(scale > 0);
+        let boundary = |extra| (extra * 2 * pawn_value * 100 + scale - 1) / scale;
+        for depth in [3, 5, 6, 11, 12] {
+            let base =
+                (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200;
             for (difference, extra) in [
                 (-6 * pawn_value, 0),
                 (-1, 0),
                 (0, 0),
-                (2 * pawn_value - 1, 0),
-                (2 * pawn_value, 1),
-                (4 * pawn_value - 1, 1),
-                (4 * pawn_value, 2),
-                (6 * pawn_value - 1, 2),
-                (6 * pawn_value, 3),
-                (8 * pawn_value, 3),
+                (boundary(1) - 1, 0),
+                (boundary(1), 1),
+                (boundary(2) - 1, 1),
+                (boundary(2), 2),
+                (boundary(3) - 1, 2),
+                (boundary(3), 3),
+                (boundary(4), 3),
             ] {
                 assert_eq!(
                     null_move_reduction(depth, beta + difference, beta, pawn_value),
@@ -724,7 +741,9 @@ fn null_move_reduction_scales_with_eval_surplus_and_depth() {
 fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
     let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
     let pst = weights().unwrap();
-    let beta = evaluate(&pst, &position) - 2 * pst.pawn_value();
+    let scale = params::null_move_eval_scale();
+    assert!(scale > 0);
+    let beta = evaluate(&pst, &position) - (2 * pst.pawn_value() * 100 + scale - 1) / scale;
     let mut passed = position.clone();
     passed.make_null_move();
     let (reply_score, reply_nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &small_tt());
@@ -752,9 +771,9 @@ fn revived_pruning_uses_uncorrected_static_evaluation() {
             assert_ne!(searcher.correction.read(side, key), 0);
             let raw = evaluate(searcher.pst, &position);
             let alpha = if reverse {
-                raw - searcher.pst.pawn_value() / 2 - 1
+                raw - searcher.pst.pawn_value() * params::reverse_futility_margin() / 100 - 1
             } else {
-                raw + 4 * searcher.pst.pawn_value()
+                raw + searcher.pst.pawn_value() * params::razoring_margin1() / 100
             };
             let mut board = position.clone();
             assert_eq!(

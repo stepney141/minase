@@ -1,19 +1,36 @@
 //! 補正前の静的評価による良化判定を検査する。
 
 use super::*;
+use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::futility_margin;
 
-// フェーズ1-C指示書。現行余裕値101%、196%、207%へ25%、50%、50%を順に掛ける。
+// 余裕値を歩兵価値から求め、その整数値に良化していない場合の倍率を掛ける。
 #[test]
 fn futility_margins_follow_improving_thresholds() {
-    for (improving, expected) in [(false, [25, 98, 103]), (true, [101, 196, 207])] {
-        for (index, margin) in expected.into_iter().enumerate() {
-            assert_eq!(futility_margin(100, index as u32 + 1, improving), margin);
+    for pawn in [37, 100, 137] {
+        for (index, (percent, scale)) in [
+            (
+                params::futility_margin1(),
+                params::non_improving_futility1(),
+            ),
+            (
+                params::futility_margin2(),
+                params::non_improving_futility2(),
+            ),
+            (
+                params::futility_margin3(),
+                params::non_improving_futility3(),
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let margin = pawn * percent / 100;
+            for (improving, expected) in [(true, margin), (false, margin * scale / 100)] {
+                assert_eq!(futility_margin(pawn, index as u32 + 1, improving), expected);
+            }
         }
     }
-    assert_eq!(futility_margin(137, 1, false), 34);
-    assert_eq!(futility_margin(137, 2, false), 134);
-    assert_eq!(futility_margin(137, 3, false), 141);
 }
 
 // docs/plans/strength-stage8.md「improvingの定義」。両手番から見て上昇だけを真とし、同値と下降は偽とする。
@@ -90,8 +107,10 @@ fn futility_prunes_quiets_only_when_not_improving() {
     for improving in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
             let static_eval = evaluate(searcher.pst, &board);
-            assert_eq!(searcher.pst.pawn_value(), 100);
-            let alpha = static_eval + 25;
+            let margin = searcher.pst.pawn_value() * params::futility_margin1() / 100;
+            let reduced = margin * params::non_improving_futility1() / 100;
+            assert!(reduced < margin);
+            let alpha = static_eval + reduced;
             if improving {
                 assert!(evaluate(searcher.pst, &worse) < static_eval);
                 searcher.accumulators[0] = searcher.pst.refresh_accumulator(&worse);
@@ -129,7 +148,11 @@ fn improving_uses_raw_evaluation_before_correction() {
         searcher.correction.update(side, key, 100, 8);
         let correction = searcher.correction.read(side, key);
         assert!(correction > 0);
-        let alpha = evaluate(searcher.pst, &board) + correction + 25;
+        let alpha = evaluate(searcher.pst, &board)
+            + correction
+            + searcher.pst.pawn_value() * params::futility_margin1() / 100
+                * params::non_improving_futility1()
+                / 100;
         let score = searcher
             .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2)
             .unwrap();

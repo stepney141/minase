@@ -62,21 +62,21 @@ parameters! {
     /// 深さ3の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
     FutilityMargin3(futility_margin3): 207, 0, 400;
     /// 良化していない深さ1のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    NonImprovingFutility1(non_improving_futility1): 25, 0, 100;
+    NonImprovingFutility1(non_improving_futility1): 63, 0, 100;
     /// 良化していない深さ2のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    NonImprovingFutility2(non_improving_futility2): 50, 0, 100;
+    NonImprovingFutility2(non_improving_futility2): 75, 0, 100;
     /// 良化していない深さ3のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    NonImprovingFutility3(non_improving_futility3): 50, 0, 100;
+    NonImprovingFutility3(non_improving_futility3): 75, 0, 100;
     /// 静かな手の上限の基数を100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
-    LmpBase(lmp_base): 300, 0, 2000;
+    LmpBase(lmp_base): 300, 0, 9300;
     /// 残り深さの2乗に掛ける傾きを100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
-    LmpSlope(lmp_slope): 100, 0, 2000;
+    LmpSlope(lmp_slope): 100, 0, 7800;
     /// 深さ1〜3共通の逆futility余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    ReverseFutilityMargin(reverse_futility_margin): 50, 0, 1000;
+    ReverseFutilityMargin(reverse_futility_margin): 1191, 0, 2331;
     /// 深さ1のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    RazoringMargin1(razoring_margin1): 400, 0, 2000;
+    RazoringMargin1(razoring_margin1): 1442, 0, 2484;
     /// 深さ2のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    RazoringMargin2(razoring_margin2): 400, 0, 2000;
+    RazoringMargin2(razoring_margin2): 1555, 0, 2709;
     /// 深さ1のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
     SeeMargin1(see_margin1): 2, 0, 400;
     /// 深さ2のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
@@ -92,15 +92,15 @@ parameters! {
     /// null moveの減深量の傾きを1,200分率で表す。
     NullMoveSlope(null_move_slope): 238, 100, 400;
     /// 静的評価の余裕によるnull moveの減深加算の尺度を百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    NullMoveEvalScale(null_move_eval_scale): 100, 0, 400;
+    NullMoveEvalScale(null_move_eval_scale): 50, 0, 400;
     /// History値を全体の半減で抑える上限。
     HistoryLimit(history_limit): 20755, 4096, 65536;
     /// 探索間に残す履歴の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    HistoryDecay(history_decay): 75, 0, 100;
+    HistoryDecay(history_decay): 37, 0, 100;
     /// 捕獲履歴の上限。`docs/plans/search-revival-spsa.md`「戻す8項目」。
     CaptureHistoryLimit(capture_history_limit): 20755, 4096, 65536;
     /// 捕獲履歴の尺度を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    CaptureHistoryScale(capture_history_scale): 100, 0, 400;
+    CaptureHistoryScale(capture_history_scale): 50, 0, 400;
     /// 補正値の上限の百分率。`docs/plans/strength-stage8.md`「静的評価の補正」。
     CorrectionCap(correction_cap): 193, 50, 400;
     /// 補正更新の重みを1,024分率で表す。`docs/plans/strength-stage8.md`「静的評価の補正」。
@@ -108,7 +108,7 @@ parameters! {
     /// delta pruningの余裕値を歩兵価値に対する百分率で表す。
     DeltaMargin(delta_margin): 258, 50, 500;
     /// 静止探索で読む捕獲手数の上限。`docs/plans/search-revival-spsa.md`「戻す8項目」。
-    QsearchMoveLimit(qsearch_move_limit): 1, 1, 16;
+    QsearchMoveLimit(qsearch_move_limit): 4, 1, 7;
     /// 1局の開始から終局までに見込む手数。
     ExpectedPlies(expected_plies): 432, 250, 700;
     /// 1局面で見込む残り手数の下限。

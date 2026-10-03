@@ -1,6 +1,7 @@
 //! strength-stage12.md「項目5」「検証」のUSIライフサイクル。
 
 use super::*;
+use crate::search::alphabeta::history_decay_for_test;
 
 fn setup() -> (Engine, UsiProtocol) {
     let mut engine = make_engine(&[RuleCode::R1]);
@@ -108,7 +109,9 @@ fn history_carry_usi_clears_new_games_accepted_rules_and_changed_threads() {
 fn history_carry_usi_keeps_history_between_go_commands() {
     let (mut engine, mut protocol) = setup();
     seed(&mut protocol);
-    for expected in [120, 90] {
+    let mut expected = 160;
+    for _ in 0..2 {
+        expected = expected * history_decay_for_test() / 100;
         let mut output = Vec::new();
         let mut active = protocol
             .start_go(&engine, &["depth", "3"], &mut output)
@@ -169,7 +172,7 @@ fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
             for (worker, history) in histories.workers.iter().enumerate() {
                 assert_eq!(
                     history[0][60][60],
-                    120 + worker as i32 * 12,
+                    (160 + worker as i32 * 16) * history_decay_for_test() / 100,
                     "held={held}, hit={hit}"
                 );
             }

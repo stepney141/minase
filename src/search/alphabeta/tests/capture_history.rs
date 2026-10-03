@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::search::alphabeta::capture_history::CaptureHistory;
+use crate::search::alphabeta::params;
 
 fn capture(from: Square, to: Square) -> Move {
     Move {
@@ -183,25 +184,25 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
             .record_cutoff(&board, searcher.pst, winner, &[captures[0]], 256);
         assert_eq!(
             searcher.capture_history.read(&board, searcher.pst, winner),
-            20_755
+            params::capture_history_limit()
         );
         assert_eq!(
             searcher
                 .capture_history
                 .read(&board, searcher.pst, captures[0]),
-            -20_755
+            -params::capture_history_limit()
         );
         assert_eq!(
             searcher
                 .capture_history
                 .adjustment(&board, searcher.pst, winner),
-            searcher.pst.pawn_value()
+            searcher.pst.pawn_value() * params::capture_history_scale() / 100
         );
         assert_eq!(
             searcher
                 .capture_history
                 .adjustment(&board, searcher.pst, captures[0]),
-            -searcher.pst.pawn_value()
+            -searcher.pst.pawn_value() * params::capture_history_scale() / 100
         );
         let after = picked(searcher, &board, None);
         assert_eq!(after[0], (winner, true));

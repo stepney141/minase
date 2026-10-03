@@ -1,6 +1,7 @@
 //! 設計書strength-stage12.md「項目4」の手数制限と適用除外。
 
 use super::*;
+use crate::search::alphabeta::params;
 
 fn ordinary(from: Square, to: Square) -> Move {
     Move {
@@ -11,6 +12,7 @@ fn ordinary(from: Square, to: Square) -> Move {
     }
 }
 
+#[cfg(feature = "tuning")]
 fn first_capture() -> Move {
     ordinary(sq(0, 0), sq(0, 2))
 }
@@ -37,24 +39,105 @@ fn two_captures(victim: PieceKind) -> Position {
     )
 }
 
+/// 上限より1手多い独立した歩兵の捕獲を用意する。
+/// 先頭は置換表で指定し、残りは全て同価値の歩兵とする。
+fn captures_over_limit() -> (Position, Vec<Move>) {
+    let count = params::qsearch_move_limit() as u8 + 1;
+    assert!(count <= 10, "王駒の筋を避けて捕獲を配置する");
+    let mut pieces = vec![
+        (sq(11, 0), Color::Black, PieceKind::King),
+        (sq(11, 11), Color::White, PieceKind::King),
+    ];
+    let mut captures = Vec::new();
+    for file in 0..count {
+        pieces.push((sq(file, 4), Color::Black, PieceKind::Pawn));
+        pieces.push((sq(file, 5), Color::White, PieceKind::Pawn));
+        captures.push(ordinary(sq(file, 4), sq(file, 5)));
+    }
+    let board = position(Color::Black, &pieces);
+    let actual: Vec<_> = legal_moves(&board)
+        .into_iter()
+        .filter(|&mv| board.captured_squares(mv).iter().any(Option::is_some))
+        .collect();
+    assert_eq!(actual.len(), captures.len());
+    assert!(captures.iter().all(|mv| actual.contains(mv)));
+    (board, captures)
+}
+
+fn capture_leaf_score(board: &Position, pst: &Pst, mv: Move) -> i32 {
+    let mut child = board.clone();
+    child.make_move_unchecked(mv, engine_rules());
+    -evaluate(pst, &child)
+}
+
+// 複雑な捕獲の例外は上限1を明示し、必ず上限到達後の経路を通す。
+// 他の並列テストへ係数を漏らさないよう、既存のtuningテストと同じく隔離する。
+#[cfg(feature = "tuning")]
+fn single_capture_limit(test: &str) -> bool {
+    const CHILD: &str = "MINASE_QSEARCH_LIMIT_TEST";
+    if std::env::var(CHILD).as_deref() == Ok(test) {
+        params::set("QsearchMoveLimit", 1).unwrap();
+        return true;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            &format!("search::alphabeta::tests::qsearch_move_limit::{test}"),
+            "--nocapture",
+        ])
+        .env(CHILD, test)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    false
+}
+
 // 最大ply直前で呼び、探索された各捕獲の子を静的評価の葉にする。
 // これにより探索ノード数は、このノードで実際に読んだ捕獲手数となる。
 #[test]
 fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
-    let board = two_captures(PieceKind::Bishop);
+    let (board, captures) = captures_over_limit();
     with_root_searcher(&board, &[], |searcher| {
         assert_eq!(searcher.previous_capture[0], None);
         let ply = MAX_PLY - 1;
-        seed_first(searcher, &board, first_capture(), ply);
-        let mut child = board.clone();
-        child.make_move_unchecked(first_capture(), engine_rules());
-        let expected = evaluate(searcher.pst, &board).max(-evaluate(searcher.pst, &child));
-        let score = searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply);
-        assert_eq!(score, Some(expected));
-        assert_eq!(searcher.nodes, 1);
+        let tt_capture = *captures.last().unwrap();
+        seed_first(searcher, &board, tt_capture, ply);
+        // 同価値の捕獲は同じ段に入り、置換表の手の後は公開されている順序規則に従う。
+        let mut ordered = captures.clone();
+        ordered.pop();
+        ordered.insert(0, tt_capture);
+        let searched = &ordered[..params::qsearch_move_limit() as usize];
+        let mut expected = evaluate(searcher.pst, &board);
+        let mut best_move = None;
+        for &mv in searched {
+            assert!(!capture_is_pruned_by_see(
+                &board,
+                engine_rules(),
+                searcher.pst,
+                mv
+            ));
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            let score = -evaluate(searcher.pst, &child);
+            if score > expected {
+                expected = score;
+                best_move = Some(mv);
+            }
+        }
+        assert!(best_move.is_some());
+        assert_eq!(
+            searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
+            Some(expected)
+        );
+        assert_eq!(searcher.nodes, params::qsearch_move_limit() as u64);
         assert_eq!(
             searcher.previous_capture[MAX_PLY as usize],
-            Some(first_capture().to)
+            Some(searched.last().unwrap().to)
         );
         assert_eq!(
             searcher
@@ -62,13 +145,17 @@ fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
                 .probe(search_key(&board), ply)
                 .unwrap()
                 .best_move,
-            Some(first_capture())
+            best_move
         );
     });
 }
 
+#[cfg(feature = "tuning")]
 #[test]
 fn qsearch_limit_reads_last_royal_after_tt_capture() {
+    if !single_capture_limit("qsearch_limit_reads_last_royal_after_tt_capture") {
+        return;
+    }
     let board = position(
         Color::Black,
         &[
@@ -100,8 +187,12 @@ fn qsearch_limit_reads_last_royal_after_tt_capture() {
     });
 }
 
+#[cfg(feature = "tuning")]
 #[test]
 fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
+    if !single_capture_limit("qsearch_limit_reads_double_lion_capture_after_tt_capture") {
+        return;
+    }
     let board = position(
         Color::Black,
         &[
@@ -149,6 +240,7 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
     });
 }
 
+#[cfg(feature = "tuning")]
 fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
     // 静止探索は獅子の経由升だけの捕獲を既存仕様で除くため、この経路では角鷹を使う。
     let falcon = !igui && quiescence_parent;
@@ -240,102 +332,176 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
     });
 }
 
+#[cfg(feature = "tuning")]
 #[test]
 fn qsearch_limit_recaptures_igui_after_normal_search() {
+    if !single_capture_limit("qsearch_limit_recaptures_igui_after_normal_search") {
+        return;
+    }
     check_lion_recapture(true, false);
 }
+#[cfg(feature = "tuning")]
 #[test]
 fn qsearch_limit_recaptures_mid_capture_after_normal_search() {
+    if !single_capture_limit("qsearch_limit_recaptures_mid_capture_after_normal_search") {
+        return;
+    }
     check_lion_recapture(false, false);
 }
+#[cfg(feature = "tuning")]
 #[test]
 fn qsearch_limit_recaptures_igui_after_quiescence() {
+    if !single_capture_limit("qsearch_limit_recaptures_igui_after_quiescence") {
+        return;
+    }
     check_lion_recapture(true, true);
 }
+#[cfg(feature = "tuning")]
 #[test]
 fn qsearch_limit_recaptures_mid_capture_after_quiescence() {
+    if !single_capture_limit("qsearch_limit_recaptures_mid_capture_after_quiescence") {
+        return;
+    }
     check_lion_recapture(false, true);
 }
 
 #[test]
 fn qsearch_limit_counts_exception_as_first_capture() {
-    let board = two_captures(PieceKind::Bishop);
+    let (board, captures) = captures_over_limit();
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
-        seed_first(searcher, &board, first_capture(), ply);
-        searcher.previous_capture[ply as usize] = Some(first_capture().to);
+        seed_first(searcher, &board, captures[0], ply);
+        searcher.previous_capture[ply as usize] = Some(captures[0].to);
         assert!(
             searcher
                 .quiesce(&mut board.clone(), -INFINITY, INFINITY, ply)
                 .is_some()
         );
-        assert_eq!(searcher.nodes, 1, "先頭が取り返しでも上限の1手に数える");
+        assert_eq!(
+            searcher.nodes,
+            params::qsearch_move_limit() as u64,
+            "先頭が取り返しでも上限に数える"
+        );
     });
 }
 
 #[test]
 fn qsearch_limit_does_not_count_see_pruned_capture() {
-    // 先頭の歩兵を守る後手飛車を追加した局面。
-    let board = position(
-        Color::Black,
-        &[
-            (sq(11, 0), Color::Black, PieceKind::King),
-            (sq(11, 11), Color::White, PieceKind::King),
-            (sq(0, 0), Color::Black, PieceKind::Rook),
-            (sq(0, 2), Color::White, PieceKind::Pawn),
-            (sq(0, 5), Color::White, PieceKind::Rook),
-            (sq(5, 0), Color::Black, PieceKind::Rook),
-            (sq(5, 3), Color::White, PieceKind::Pawn),
-        ],
-    );
+    let (board, captures) = captures_over_limit();
+    let mut pieces: Vec<_> = Square::all()
+        .filter_map(|square| board.piece_at(square).map(|piece| (square, piece)))
+        .collect();
+    for (square, piece) in &mut pieces {
+        if *square == captures[0].from {
+            *piece = PieceCode::new(Color::Black, PieceKind::Rook).unwrap();
+        }
+    }
+    pieces.push((
+        sq(0, 8),
+        PieceCode::new(Color::White, PieceKind::Rook).unwrap(),
+    ));
+    let board = position_from_codes(Color::Black, &pieces);
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
-        seed_first(searcher, &board, first_capture(), ply);
+        seed_first(searcher, &board, captures[0], ply);
         assert!(capture_is_pruned_by_see(
             &board,
             engine_rules(),
             searcher.pst,
-            first_capture()
+            captures[0]
         ));
-        assert!(
-            searcher
-                .quiesce(&mut board.clone(), -INFINITY, INFINITY, ply)
-                .is_some()
-        );
-        assert_eq!(searcher.nodes, 1);
+        let expected = captures[1..]
+            .iter()
+            .map(|&mv| {
+                assert!(!capture_is_pruned_by_see(
+                    &board,
+                    engine_rules(),
+                    searcher.pst,
+                    mv
+                ));
+                capture_leaf_score(&board, searcher.pst, mv)
+            })
+            .max()
+            .unwrap()
+            .max(evaluate(searcher.pst, &board));
         assert_eq!(
-            searcher
-                .tt
-                .probe(search_key(&board), ply)
-                .unwrap()
-                .best_move,
-            Some(ordinary(sq(5, 0), sq(5, 3)))
+            searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
+            Some(expected)
         );
+        assert_eq!(searcher.nodes, params::qsearch_move_limit() as u64);
+        let best = searcher
+            .tt
+            .probe(search_key(&board), ply)
+            .unwrap()
+            .best_move
+            .unwrap();
+        assert!(captures[1..].contains(&best));
+        assert_eq!(capture_leaf_score(&board, searcher.pst, best), expected);
     });
 }
 
 #[test]
 fn qsearch_limit_does_not_count_delta_pruned_capture() {
-    let board = two_captures(PieceKind::Rook);
+    let (board, captures) = captures_over_limit();
+    let pieces: Vec<_> = Square::all()
+        .filter_map(|square| {
+            board.piece_at(square).map(|piece| {
+                if captures[1..].iter().any(|mv| mv.to == square) {
+                    (
+                        square,
+                        PieceCode::new(Color::White, PieceKind::GoldGeneral).unwrap(),
+                    )
+                } else {
+                    (square, piece)
+                }
+            })
+        })
+        .collect();
+    let board = position_from_codes(Color::Black, &pieces);
     with_root_searcher(&board, &[], |searcher| {
         let ply = MAX_PLY - 1;
-        seed_first(searcher, &board, first_capture(), ply);
-        let alpha =
-            evaluate(searcher.pst, &board) + searcher.delta_margin + searcher.pst.pawn_value();
-        assert!(
-            searcher
-                .quiesce(&mut board.clone(), alpha, INFINITY, ply)
-                .is_some()
-        );
-        assert_eq!(searcher.nodes, 1);
+        seed_first(searcher, &board, captures[0], ply);
+        let alpha = evaluate(searcher.pst, &board)
+            + searcher.delta_margin
+            + searcher
+                .pst
+                .piece_value(board.piece_at(captures[1].to).unwrap())
+            - 1;
+        for &mv in &captures[1..] {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            assert!(
+                -evaluate(searcher.pst, &child) <= alpha,
+                "捕獲後もdeltaの閾値は変わらない: {mv:?}"
+            );
+        }
+        let expected = captures[1..]
+            .iter()
+            .map(|&mv| {
+                assert!(!capture_is_pruned_by_see(
+                    &board,
+                    engine_rules(),
+                    searcher.pst,
+                    mv
+                ));
+                capture_leaf_score(&board, searcher.pst, mv)
+            })
+            .max()
+            .unwrap()
+            .max(evaluate(searcher.pst, &board));
         assert_eq!(
-            searcher
-                .tt
-                .probe(search_key(&board), ply)
-                .unwrap()
-                .best_move,
-            Some(ordinary(sq(5, 0), sq(5, 3)))
+            searcher.quiesce(&mut board.clone(), alpha, INFINITY, ply),
+            Some(expected)
         );
+        assert_eq!(searcher.nodes, params::qsearch_move_limit() as u64);
+        let best = searcher
+            .tt
+            .probe(search_key(&board), ply)
+            .unwrap()
+            .best_move
+            .unwrap();
+        assert!(captures[1..].contains(&best));
+        assert_eq!(capture_leaf_score(&board, searcher.pst, best), expected);
     });
 }
 

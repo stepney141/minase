@@ -23,3 +23,9 @@ use crate::search::MATE;
 
 /// 探索窓の初期値。全評価値より大きい。
 const INFINITY: i32 = MATE + 1;
+
+/// USIの履歴持ち越しテストで使う減衰率。
+#[cfg(test)]
+pub(crate) fn history_decay_for_test() -> i32 {
+    params::history_decay()
+}
