@@ -21,7 +21,7 @@ late move pruningだけは、元の実装が捕獲手も数えてkiller手まで
 進行中。2026年10月2日に起案し、2026年10月3日に着手した。
 着手前の判断は2026年10月3日に確定した。既存の探索係数も新しい係数と一緒に調整し、調整の規模は標準の3,000ペアとし、[反復負け回避](search-repetition.md)より先に実行する。
 late move pruningは、元の実装の[診断](../measurements/search-revival-lmp-diag.md)に基づいて定義を改めた。
-フェーズ1では8項目を移植し、新しい係数の範囲を[測って](../measurements/search-revival-ranges.md)開始値を定めた。2026年10月3日に、評価関数のPSTを新しい重みG23とした master が測定の開始前に入ったので、Mをその master とし、処置群Tを載せ直して範囲を測り直した。[開始点の確認](../measurements/search-revival-start-check.md)は得点率54.2%で基準の40%を満たし、2026年10月3日に処置群Tの調整セッション（`data/spsa/search-revival-t`、3,000ペア）を開始した。次の一手は、セッションの終了後にT\*とT\*′を作り、T\*対MのSTCを実行することである。
+フェーズ1では8項目を移植し、新しい係数の範囲を[測って](../measurements/search-revival-ranges.md)開始値を定めた。2026年10月3日に、評価関数のPSTを新しい重みG23とした master が測定の開始前に入ったので、Mをその master とし、処置群Tを載せ直して範囲を測り直した。[開始点の確認](../measurements/search-revival-start-check.md)は得点率54.2%で基準の40%を満たし、2026年10月3日に処置群Tの調整セッション（`data/spsa/search-revival-t`、3,000ペア）を開始した。[調整セッション](../measurements/search-revival-t.md)は2026年10月4日に375反復で終わり、T\*（539bc27）とT\*′（2d5b60e）を作った。段階2の[T\*対MのSTC](../measurements/search-revival-tstar-vs-m-stc.md)は`H1`（得点率67.5%）、段階3の[T\*対T\*′のSTC](../measurements/search-revival-tstar-vs-tprime-stc.md)も`H1`（得点率62.7%）であり、いずれも異常0件だった。現在は段階4のT\*対MのLTC（`data/matches/search-revival-tstar-vs-m-ltc`）を実行している。最終値を書き込んだことで古い既定値を固定していたテストが失敗しており、測定の終了後に直す。
 
 ## 目的
 
