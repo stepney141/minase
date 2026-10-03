@@ -1,6 +1,6 @@
 //! MNPT重みファイルでMNSD局面を評価し、合法な成り手による評価変化を列挙する。
 //!
-//! PST学習の診断（`tools/train/pst/pst_diagnostics.py`）から呼ばれ、Pythonの整数参照評価と
+//! PST学習の診断（`tools/train/src/minase_train/diagnostics/comparison.py`）から呼ばれ、Pythonの整数参照評価と
 //! Rustの評価の一致確認、および代表局面の成りの診断に使う。出力はJSON配列であり、
 //! 各要素は入力レコードの順に`index`、手番側視点の`eval`、および成り手ごとの
 //! 着手前の手番側視点で測った評価差`delta`とMNSD表現の着手後局面`after`を持つ。
