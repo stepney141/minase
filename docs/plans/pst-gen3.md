@@ -18,7 +18,8 @@
 世代3の5ファイルの生成は10月3日に完了した（[生成の記録](../measurements/pst-gen3-generation.md)）。
 候補G3とG23は学習後の診断を通過した（[学習の記録](../measurements/pst-gen3-training.md)）。
 S0に対するSTCは、G3（[記録](../measurements/pst-gen3-g3-stc.md)）とG23（[記録](../measurements/pst-gen3-g23-stc.md)）がともに`H1`だった。
-次の一手は、LTCへ進める1候補を決めるG23対G3のSTCである。
+絞り込みのG23対G3のSTCは`H1`となり、G23をLTCへ進めた（[記録](../measurements/pst-gen3-g23-vs-g3-stc.md)）。
+次の一手は、G23のS0に対するLTC（`pst-gen3-g23-ltc`）の判定である。
 
 ## 目的
 
