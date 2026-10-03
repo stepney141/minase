@@ -311,11 +311,11 @@ class Journal:
 
 def training_modules():
     # Only diagnostic evaluation needs numpy/torch; the rule tests use stdlib.
-    sys.path.insert(0, str(WT / 'tools/train/pst'))
+    sys.path.insert(0, str(WT / 'tools/train/src'))
     import torch
     torch.set_num_threads(1)
-    from pst_diagnostics import Weights
-    from mnsd import RECORD_DTYPE, write_mnsd
+    from minase_train.diagnostics.comparison import Weights
+    from minase_train.data.mnsd import RECORD_DTYPE, write_mnsd
     import numpy as np
     return np, Weights, RECORD_DTYPE, write_mnsd
 
@@ -673,8 +673,10 @@ def run(args):
         roots = roots[:args.limit]
     for name in ('S0-positions.json', 'S0-promotions.json'):
         sources.append(args.data / 'phase4/diagnostics' / name)
-    sources += [WT / 'tools/train/pst' / name for name in
-                ('train_pst.py', 'pst_diagnostics.py', 'features.py', 'taper.py', 'mnsd.py')]
+    sources += [WT / 'tools/train/src/minase_train' / name for name in
+                ('data/mnpt.py', 'pst/model.py', 'pst/teacher.py', 'pst/removal.py',
+                 'pst/evaluate.py', 'pst/train.py', 'diagnostics/comparison.py',
+                 'data/features.py', 'data/taper.py', 'data/mnsd.py', 'checksum.py')]
     leaf = args.qsearch_leaf.resolve()
     if any(name in engines for name in ('Q', 'Qc')):
         sources.append(leaf)

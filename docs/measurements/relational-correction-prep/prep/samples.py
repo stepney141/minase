@@ -7,9 +7,9 @@ import tomllib
 
 from common import DATA, OUTPUT, WT, identity, invocation, write_json
 
-sys.path.insert(0, str(WT / 'tools/train/pst'))
+sys.path.insert(0, str(WT / 'tools/train/src'))
 import numpy as np
-from mnsd import Dataset
+from minase_train.data.mnsd import Dataset
 
 
 def select(dataset, size):
@@ -61,7 +61,7 @@ def main():
         'counts_match_expected': counts == {'training': 23879611, 'validation': 1241072},
         'numpy_version': np.__version__,
         'config': identity(config_path),
-        'reader': identity(WT / 'tools/train/pst/mnsd.py'),
+        'reader': identity(WT / 'tools/train/src/minase_train/data/mnsd.py'),
         'command': invocation(),
         'split': 'Dataset.validation_indices; game-level hash modulo 20 == 0',
         'teacher_lookahead': config['train']['lookahead'],

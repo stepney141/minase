@@ -6,9 +6,9 @@ import tomllib
 
 from common import WT, identity, invocation, write_json
 from phase3_common import evaluate, zero_weights, np, RECORD_DTYPE
-from features import INITIAL_BOARD, NO_LION_SQUARE, PIECE_STATE_BY_BYTE, COLOR_BY_BYTE
-from mnsd import Dataset, provenance_path
-from taper import band_samples, phase_numerators
+from minase_train.data.features import INITIAL_BOARD, NO_LION_SQUARE, PIECE_STATE_BY_BYTE, COLOR_BY_BYTE
+from minase_train.data.mnsd import Dataset, provenance_path
+from minase_train.data.taper import band_samples, phase_numerators
 
 # train_pst.ROYAL_STATESと同じ王将・太子。非零の関係表は既存のWeightsが拒否するため、
 # pst_diagnosticsの代表選択と駒選択を再現し、評価は版3対応のpst_probeで行う。
@@ -110,7 +110,7 @@ def main():
                        for label, row, q in zip(labels, before, phase_numerators(records['board']))],
                    'inputs': [identity(p) for p in inputs],
                    'tools': [identity(p) for p in (args.probe, Path(__file__),
-                       Path(__file__).with_name('phase3_common.py'), WT / 'tools/train/pst/taper.py')],
+                       Path(__file__).with_name('phase3_common.py'), WT / 'tools/train/src/minase_train/data/taper.py')],
                    'command': invocation()})
     write_json(destination / 'removal.json', report)
     print(json.dumps({k: report[k] for k in ('attempted', 'checked', 'skipped', 'sign_reversals')}, indent=2))

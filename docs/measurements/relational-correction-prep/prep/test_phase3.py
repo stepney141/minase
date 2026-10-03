@@ -9,8 +9,8 @@ import phase3_common as shared
 import g_candidate as candidate
 import g_star
 import removal
-from features import INITIAL_BOARD
-from mnsd import write_mnsd
+from minase_train.data.features import INITIAL_BOARD
+from minase_train.data.mnsd import write_mnsd
 
 np = shared.np
 

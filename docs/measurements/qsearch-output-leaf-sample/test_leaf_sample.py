@@ -12,11 +12,10 @@ import numpy as np
 import torch
 
 import leaf_sample as sample
-from features import FEATURE_COUNT
-from mnsd import RECORD_DTYPE, write_mnsd
-from train_pst import make_model, model_logits
-from features import feature_indices
-from taper import phase_ratios
+from minase_train.data.features import FEATURE_COUNT, feature_indices
+from minase_train.data.mnsd import RECORD_DTYPE, write_mnsd
+from minase_train.pst.model import make_model, model_logits
+from minase_train.data.taper import phase_ratios
 
 
 def records(count):

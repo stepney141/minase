@@ -109,7 +109,7 @@ def main():
               'tools': [identity(p) for p in (args.probe, args.extractor, Path(__file__),
                         Path(__file__).with_name('phase3_common.py'),
                         FM / 'tools/train/pst/fm_distribution_comparison.py',
-                        WT / 'tools/train/pst/taper.py')],
+                        WT / 'tools/train/src/minase_train/data/taper.py')],
               'comparison_call': 'g_star.compare(saved, match, center_only=False)',
               'correction': 'final clamped evaluation minus PST-only evaluation, side-to-move cp',
               'command': invocation(), 'extraction_commands': commands}
