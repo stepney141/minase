@@ -201,8 +201,8 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
             (sq(0, 0), Color::Black, PieceKind::Rook),
             (sq(0, 2), Color::White, PieceKind::Pawn),
             (sq(5, 5), Color::Black, PieceKind::Lion),
-            (sq(5, 6), Color::White, PieceKind::Pawn),
-            (sq(6, 6), Color::White, PieceKind::Pawn),
+            (sq(5, 6), Color::White, PieceKind::CopperGeneral),
+            (sq(6, 6), Color::White, PieceKind::CopperGeneral),
         ],
     );
     with_root_searcher(&board, &[], |searcher| {
@@ -222,6 +222,25 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
             })
             .max()
             .unwrap();
+        // 二重捕獲がαを上げた後も、もう一方をdelta pruningで切らない。
+        let stand_pat = evaluate(searcher.pst, &board);
+        let first_score = capture_leaf_score(&board, searcher.pst, first_capture());
+        assert!(expected > stand_pat.max(first_score));
+        for &mv in &doubles {
+            assert!(!capture_is_pruned_by_see(
+                &board,
+                engine_rules(),
+                searcher.pst,
+                mv
+            ));
+            let captured_value: i32 = board
+                .captured_squares(mv)
+                .into_iter()
+                .flatten()
+                .map(|square| searcher.pst.piece_value(board.piece_at(square).unwrap()))
+                .sum();
+            assert!(stand_pat + captured_value + searcher.delta_margin > expected);
+        }
         assert_eq!(
             searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
             Some(expected)

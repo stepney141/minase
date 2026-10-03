@@ -3,22 +3,31 @@
 use super::*;
 use crate::search::alphabeta::pruning::{futility_margin, late_move_limit};
 
+// 双方の金将を離して置き、捕獲を生まずに静かな手の上限だけを観測する。
 pub(super) fn quiet_board() -> Position {
-    crate::parse_sfen("k11/12/12/12/12/12/12/12/12/2G2G2G3/12/11K b").unwrap()
+    crate::parse_sfen("k11/12/1g8g1/12/12/12/12/12/12/3G2G2G2/12/11K b").unwrap()
 }
 
-pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
-    let pst = weights().unwrap();
+// 葉でβ打ち切りが起こらず、親でfutility pruningが発動しない窓を作る。
+fn quiet_alpha(board: &Position, pst: &Pst) -> i32 {
+    let static_eval = evaluate(pst, board);
     let alpha = legal_moves(board)
         .into_iter()
         .map(|mv| {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
-            -evaluate(&pst, &child)
+            -evaluate(pst, &child)
         })
         .max()
-        .unwrap();
-    assert!(alpha < evaluate(&pst, board) + futility_margin(pst.pawn_value(), 1, true));
+        .unwrap()
+        .max(static_eval)
+        + 1;
+    assert!(alpha < static_eval + futility_margin(pst.pawn_value(), 1, true));
+    alpha
+}
+
+pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
+    let alpha = quiet_alpha(board, &weights().unwrap());
     run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt())
 }
 
@@ -243,7 +252,7 @@ fn late_move_pruning_searches_exactly_the_first_four_counted_quiets() {
         let other_moves: Vec<_> = ordered.iter().copied().filter(|&mv| mv != target).collect();
         let history = repeated_root_children(&board, &other_moves);
         with_root_searcher(&board, &history, |searcher| {
-            let alpha = evaluate(searcher.pst, &board) + 100;
+            let alpha = quiet_alpha(&board, searcher.pst);
             let mut child = board.clone();
             child.make_move_unchecked(target, engine_rules());
             let target_score = -evaluate(searcher.pst, &child);

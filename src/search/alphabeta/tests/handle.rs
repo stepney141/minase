@@ -218,12 +218,22 @@ fn infinite_limits_stop_only_on_external_request() {
 #[test]
 fn progress_depths_start_at_one_and_increase_by_one() {
     let midgame = quiet_midgame();
+    let delta = aspiration_delta(weights().unwrap().pawn_value());
+    let previous = -MATE_THRESHOLD + 2 * delta + 1;
+    let table = small_tt();
+    // 深さ2〜4の値を詰み帯の外で固定し、深さ5で窓の拡大を必要にする。
+    // 深さ3の子の記録は、深さ5の反復では打ち切りに使えない。
+    for mv in legal_moves(&midgame) {
+        let mut child = midgame.clone();
+        child.make_move_unchecked(mv, engine_rules());
+        table.store(search_key(&child), 3, -previous, Bound::Exact, None, 1);
+    }
     let handle = start(
         snapshot_for(&midgame),
         depth_limits(6),
         81,
         DEFAULT_THREADS,
-        small_tt(),
+        table,
     );
     let events = drain_raw(&handle);
     assert!(events.iter().all(|event| event.search_id() == 81));
@@ -234,7 +244,7 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     assert_eq!(depths, vec![1, 2, 3, 4, 5, 6]);
     // strength-stage6.md「窓外れの報告」。深さ5は初期窓を外れるが、
     // 読み直しは通知されず、窓内で完了した反復が1回だけ通知される。
-    let delta = weights().unwrap().pawn_value() / 2;
+    assert_eq!(progress[3].1, previous);
     assert!(progress[4].1 >= progress[3].1 + delta);
     for (_, _, _, _, pv) in &progress {
         assert!(!pv.is_empty());
