@@ -125,7 +125,8 @@ k≥1の静かな根と捕獲根から乱数シード1で256根を選び、根�
 
 ### 保存物
 
-`qsearch-output-leaf-sample/`に、解析スクリプト、単体テスト、全結果`result.json`、および要約`summary.md`を置いた。
+`qsearch-output-leaf-sample/`に、解析スクリプト、全結果`result.json`、および要約`summary.md`を置いた。
+単体テスト`test_leaf_sample.py`は2026年10月4日のテスト監査で削除した。削除前の最終版はコミットa81e859に残る。
 生成物と末端の本体は`data/qsearch-output-training/phase1/`にあり、Gitの管理外である。
 
 ```text

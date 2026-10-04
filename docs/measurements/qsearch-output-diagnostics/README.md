@@ -194,6 +194,7 @@ nice -n 19 "$diagnostic_python" -B "$diagnostic_dir/diagnose.py" run \
 ```
 
 2026年9月30日に25件の単体テストが成功した。
+単体テスト`test_diagnose.py`は、計画の完了後に実行経路がなくなったため2026年10月4日のテスト監査（[docs/audits/test-audit-2026-10-04.md](../../audits/test-audit-2026-10-04.md)）で削除した。削除前の最終版はコミットa81e859に残る。
 追加した回帰テストは、修正前に投了設定の欠如、詰み値のずれ、およびノード数の定義差を検出した。
 保存済みの`data/qsearch-output-training/phase3/diagnostic-reproduction/roots.jsonl`と`data/search-aware-evaluation/phase4/final/roots.jsonl`を照合し、詰み値の差5件が換算修正で一致することも確認した。
 下表の値は根手番側であり、USIの値は保存値と修正前の換算式から逆算したもので、取得済みの生ログではない。

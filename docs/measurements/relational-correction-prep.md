@@ -258,7 +258,8 @@ python3 $S packets --out $R/phase0/packets
 
 ### 保存物
 
-`relational-correction-prep/`に、スクリプト`phase0.py`と`test_phase0.py`、連続実行の`run_batches.sh`、集計`status.json`、6根の時間`timing.json`、および`classification/`（前置き、指示、2者の回答、一致の集計）を置いた。
+`relational-correction-prep/`に、スクリプト`phase0.py`、連続実行の`run_batches.sh`、集計`status.json`、6根の時間`timing.json`、および`classification/`（前置き、指示、2者の回答、一致の集計）を置いた。
+単体テスト`test_phase0.py`は2026年10月4日のテスト監査で削除した。削除前の最終版はコミットa81e859に残る。
 対局、根、教師、追跡、および分類の資料は`data/relational-correction/phase0/`にあり、Gitの管理外である。
 
 ```text
