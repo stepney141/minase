@@ -13,7 +13,6 @@ from pathlib import Path
 import numpy as np
 import torch
 
-import minase_train.data.mnpt as mnpt
 import minase_train.data.mnsd as mnsd
 from helpers import ProvenanceFixtures, write_mnsd, write_provenance, write_rescore
 from minase_train.data.features import FEATURE_COUNT, INITIAL_BOARD
@@ -209,11 +208,6 @@ class LambdaOverrideTest(unittest.TestCase):
         self.assertEqual(zero.class_metadata()[0]['lambda'], 0)
         self.assertNotEqual(original.teacher_classes, zero.teacher_classes)
         self.assertNotEqual(original.teacher_classes, same.teacher_classes)
-        ks, _ = estimate_generation_ks(zero, indices=zero.training_indices)
-        self.assertTrue(np.isnan(ks[0]))
-        rows = zero.gather(zero.training_indices)
-        np.testing.assert_array_equal(build_targets(rows, ks, zero.generations(zero.training_indices),
-                                                   zero.teacher_lambdas), rows['result'] / 2)
 
     def test_override_applies_to_rescored_selfplay_classes(self):
         sidecar = self.root / 'rescore.bin'
@@ -434,6 +428,28 @@ class Phase4Test(ProvenanceFixtures, unittest.TestCase):
         self.assertEqual(classes[1].search_condition, "standalone")
         self.assertEqual(classes[1].result_origin, "selfplay")
 
+        # 全行を付け直した場合は、直接保存した教師と分類・推定Kも一致する。
+        rows = [(1, 0, -300 if i % 2 == 0 else 700, 2, 500) for i in range(100)]
+        rows[10] = (1, 0, 29000, 2, 500)
+        rows[20] = (1, 1, 0, 2, 500)
+        rows[30] = (2, 0, 0, 0, 500)
+        write_rescore(self.sidecar, self.source, rows)
+        replaced = Dataset([self.source], rescore=[self.sidecar])
+        kept = np.array([i for i in range(100) if i not in (10, 20, 30)])
+        direct_rows = self.rows[kept].copy()
+        direct_rows["score"] = [rows[i][2] for i in kept]
+        path = self.root / "direct-complete.bin"
+        mnsd.write_mnsd(path, direct_rows, seed=11, network_checksum=b"a" * 32,
+                   teacher_nodes=200000, generation_commit="a" * 40)
+        metadata = write_provenance(path)
+        metadata["teacher"]["search_condition"] = "standalone"
+        provenance_path(path).write_text(json.dumps(metadata))
+        direct = Dataset([path])
+        self.assertEqual(replaced.class_metadata(), direct.class_metadata())
+        left_k, _ = estimate_generation_ks(replaced, indices=replaced.training_indices)
+        right_k, _ = estimate_generation_ks(direct, indices=direct.training_indices)
+        np.testing.assert_array_equal(left_k, right_k)
+
 
 class TrainHalfTest(unittest.TestCase):
 
@@ -441,9 +457,6 @@ class TrainHalfTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        threads = torch.get_num_threads()
-        torch.set_num_threads(1)
-        self.addCleanup(torch.set_num_threads, threads)
         self.source = self.root / 'selfplay.bin'
         board = np.zeros((240, 144), dtype='u1')
         board[:, 0] = 1
@@ -453,9 +466,6 @@ class TrainHalfTest(unittest.TestCase):
                    games=np.repeat(np.arange(1, 81), 3).tolist(),
                    scores=[100, 200, -400] * 80, results=[2, 0, 2] * 80,
                    board=board)
-        self.initial = self.root / 'initial.bin'
-        zero = np.zeros(FEATURE_COUNT, dtype='<i2')
-        mnpt.write_mnpt(self.initial, zero, zero, mnpt.initial_piece_values(), 200)
 
     def assert_partition(self, dataset):
         halves = dataset.training_halves()

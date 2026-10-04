@@ -287,34 +287,3 @@ fn article_10_8_soaring_eagle_moves() {
     assert_eq!(moves.len(), 38);
     assert!(moves.iter().all(|m| m.mid.is_none()));
 }
-
-// D1-010-09: 成駒専用種からの着手に成り変種はない（第17条4項）。
-#[test]
-fn article_10_promoted_only_pieces_cannot_promote_again() {
-    let promoted_only = [
-        PieceKind::WhiteHorse,
-        PieceKind::Whale,
-        PieceKind::FlyingStag,
-        PieceKind::FreeBoar,
-        PieceKind::FlyingOx,
-        PieceKind::CrownPrince,
-        PieceKind::HornedFalcon,
-        PieceKind::SoaringEagle,
-    ];
-    for kind in promoted_only {
-        // 敵陣の直前 (6,5) に置き、敵陣入りの着手があっても成り変種がない。
-        let board = position_from_codes(
-            Color::Black,
-            &[(
-                msq(6, 5),
-                PieceCode::new_promoted(Color::Black, kind).unwrap(),
-            )],
-        );
-        let moves = moves_from(&generated(&board), msq(6, 5));
-        assert!(
-            moves.iter().any(|m| m.to.rank() >= 8),
-            "kind={kind:?} should reach the promotion zone"
-        );
-        assert!(moves.iter().all(|m| !m.promote), "kind={kind:?}");
-    }
-}

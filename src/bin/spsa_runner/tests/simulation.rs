@@ -21,30 +21,30 @@ const SIGNS: [[i8; 2]; 5] = [[-1, -1], [-1, 0], [1, -1], [1, 0], [1, 1]];
 // model.rsの摂動系列とは異なる用途の定数。
 const GAME_STREAM: u64 = 0x5350_5341_5f53_494d;
 
-// docs/measurements/spsa-gain-simulation.mdの開始値と信号の合計。
-const MEASURED: [(&str, f64, i64); 22] = [
-    ("LmrDivisor", 200.0, -315),
-    ("LmrHistoryThreshold", 128.0, -123),
-    ("FutilityMargin1", 50.0, 1),
-    ("FutilityMargin2", 150.0, 115),
-    ("FutilityMargin3", 150.0, 361),
-    ("SeeMargin1", 0.0, -223),
-    ("SeeMargin2", 200.0, -129),
-    ("SeeMargin3", 0.0, 127),
-    ("AspirationDelta", 50.0, 11),
-    ("AspirationGrowth", 200.0, -115),
-    ("NullMoveBase", 2400.0, 861),
-    ("NullMoveSlope", 200.0, 163),
-    ("HistoryLimit", 16384.0, 317),
-    ("CorrectionCap", 200.0, -17),
-    ("CorrectionWeight", 32.0, 133),
-    ("DeltaMargin", 200.0, 181),
-    ("ExpectedPlies", 450.0, -209),
-    ("MinMoves", 100.0, -213),
-    ("IncrementShare", 70.0, 283),
-    ("HardSoftRatio", 400.0, 7),
-    ("HardRemainingShare", 25.0, 51),
-    ("IterationRatio", 250.0, -175),
+// docs/measurements/spsa-gain-simulation.mdの開始値・信号の合計と測定時の範囲。
+const MEASURED: [(&str, f64, i64, i32, i32); 22] = [
+    ("LmrDivisor", 200.0, -315, 100, 400),
+    ("LmrHistoryThreshold", 128.0, -123, 0, 512),
+    ("FutilityMargin1", 50.0, 1, 0, 400),
+    ("FutilityMargin2", 150.0, 115, 0, 400),
+    ("FutilityMargin3", 150.0, 361, 0, 400),
+    ("SeeMargin1", 0.0, -223, 0, 400),
+    ("SeeMargin2", 200.0, -129, 0, 400),
+    ("SeeMargin3", 0.0, 127, 0, 400),
+    ("AspirationDelta", 50.0, 11, 10, 200),
+    ("AspirationGrowth", 200.0, -115, 125, 400),
+    ("NullMoveBase", 2400.0, 861, 1200, 4800),
+    ("NullMoveSlope", 200.0, 163, 100, 400),
+    ("HistoryLimit", 16384.0, 317, 4096, 65536),
+    ("CorrectionCap", 200.0, -17, 50, 400),
+    ("CorrectionWeight", 32.0, 133, 8, 128),
+    ("DeltaMargin", 200.0, 181, 50, 500),
+    ("ExpectedPlies", 450.0, -209, 250, 700),
+    ("MinMoves", 100.0, -213, 40, 200),
+    ("IncrementShare", 70.0, 283, 30, 100),
+    ("HardSoftRatio", 400.0, 7, 150, 800),
+    ("HardRemainingShare", 25.0, 51, 10, 50),
+    ("IterationRatio", 250.0, -175, 150, 400),
 ];
 
 #[derive(Clone, Copy)]
@@ -132,45 +132,19 @@ struct Scenario {
     terms: Vec<Term>,
 }
 
-/// 既存の合成試験と同じ宣言表から範囲だけを読む。
-fn ranges() -> Vec<Parameter> {
-    let table = include_str!("../../../search/alphabeta/params.rs")
-        .split_once("parameters! {")
-        .unwrap()
-        .1
-        .split_once("\n}")
-        .unwrap()
-        .0;
-    let parameters: Vec<_> = table
-        .lines()
-        .filter(|line| line.contains("): "))
-        .map(|line| {
-            let (name, rest) = line.trim().split_once('(').unwrap();
-            let (_, values) = rest.split_once("): ").unwrap();
-            let values: Vec<i32> = values
-                .trim_end_matches(';')
-                .split(',')
-                .map(|value| value.trim().parse().unwrap())
-                .collect();
-            assert_eq!(values.len(), 3);
-            let (min, max) = (values[1], values[2]);
-            assert!(min < max);
-            Parameter {
-                name: name.to_owned(),
-                start: f64::from(min),
-                min,
-                max,
-                c_end: f64::from(max - min) / 20.0,
-                r_end: 0.002,
-            }
+/// 測定記録に固定した22係数の範囲から、合成試験と模擬比較の入力を作る。
+pub(super) fn ranges() -> Vec<Parameter> {
+    MEASURED
+        .iter()
+        .map(|&(name, _, _, min, max)| Parameter {
+            name: name.to_owned(),
+            start: f64::from(min),
+            min,
+            max,
+            c_end: f64::from(max - min) / 20.0,
+            r_end: 0.002,
         })
-        .collect();
-    assert_eq!(parameters.len(), MEASURED.len());
-    for (p, &(name, start, _)) in parameters.iter().zip(&MEASURED) {
-        assert_eq!(p.name, name);
-        assert!((f64::from(p.min)..=f64::from(p.max)).contains(&start));
-    }
-    parameters
+        .collect()
 }
 
 impl Scenario {
@@ -633,7 +607,7 @@ fn print_calibration(results: &Results, scenarios: &[Scenario]) {
         .filter(|(_, s)| matches!(s.shape, Shape::Measured))
     {
         let runs = &results[&(0, i, 1500)];
-        for (j, &(name, _, signal_sum)) in MEASURED.iter().enumerate() {
+        for (j, &(name, _, signal_sum, _, _)) in MEASURED.iter().enumerate() {
             let achieved = runs.iter().map(|run| run.signal_sums[j]).sum::<i64>() as f64
                 / (runs.len() as f64 * 1500.0);
             println!(
@@ -703,42 +677,6 @@ fn print_selection(results: &Results, scenario_count: usize) {
         return;
     }
     panic!("stage 1 must provide an eligible final estimator at 12000 pairs");
-}
-
-/// 20シードの実測から、事前検査を含む本実験と再現確認の時間を外挿する。
-#[test]
-#[ignore]
-fn gain_simulation_timing() {
-    let ranges = ranges();
-    let scenario = Scenario::new("Q20", Shape::Quadratic, 20.0, &ranges);
-    let mut elapsed = Vec::new();
-    println!("timing_candidate\tscenario\tbudget_pairs\tseeds\twall_seconds");
-    for budget in BUDGETS {
-        let start = Instant::now();
-        let runs = run_seeds(&scenario, CANDIDATES[0], budget, PILOT_SEEDS);
-        let seconds = start.elapsed().as_secs_f64();
-        assert_eq!(runs.len(), PILOT_SEEDS);
-        println!(
-            "C0\tQ20\t{}\t{PILOT_SEEDS}\t{seconds:.6}",
-            budget * PAIRS as u64
-        );
-        elapsed.push(seconds);
-    }
-    let main_seconds =
-        elapsed.iter().sum::<f64>() * CANDIDATES.len() as f64 * 8.0 * MIN_SEEDS as f64
-            / PILOT_SEEDS as f64;
-    // 検査1・2は各200本、検査3は2候補×8場面×20本。すべてN=1500。
-    let precheck_runs = 2 * MIN_SEEDS + 2 * 8 * PILOT_SEEDS;
-    let precheck_seconds = elapsed[2] * precheck_runs as f64 / PILOT_SEEDS as f64;
-    let total = main_seconds + precheck_seconds;
-    println!(
-        "extrapolation\tS={MIN_SEEDS}\tmain_seconds={main_seconds:.6}\tprechecks_seconds={precheck_seconds:.6}\ttotal_seconds={total:.6}\ttwo_runs_seconds={:.6}",
-        2.0 * total
-    );
-    println!(
-        "extrapolation assumes the measured Q20/C0 throughput for every scenario and candidate; available_parallelism={}",
-        thread::available_parallelism().unwrap()
-    );
 }
 
 /// 設計書の事前検査、本実験、信号の較正、および構成の選定を順に出力する。

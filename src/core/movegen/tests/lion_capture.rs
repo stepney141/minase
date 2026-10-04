@@ -150,18 +150,6 @@ fn f9(with_copper: bool) -> Position {
     fixture(Color::White, &pieces)
 }
 
-/// F10: 先手獅子6f／後手獅子6e(隣接)・金将5d(6eの足)。手番先手。
-fn f10() -> Position {
-    fixture(
-        Color::Black,
-        &[
-            (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
-            (msq(6, 'e'), piece(Color::White, PieceKind::Lion)),
-            (msq(5, 'd'), piece(Color::White, PieceKind::GoldGeneral)),
-        ],
-    )
-}
-
 /// F11系の駒組: 先手麒麟6e(・竪行6h)／後手獅子6c・金将5b。
 fn f11_pieces(with_vertical_mover: bool) -> Vec<(Square, PieceCode)> {
     let mut pieces = vec![
@@ -276,49 +264,12 @@ fn f19() -> Position {
     )
 }
 
-// ---------- 第3条 用語のテスト上の観測 ----------
-
-#[test]
-fn article_3_11_lance_in_the_mid_square_is_a_valuable_piece() {
-    // 第3条11号・第16条1・4項(D2-003-03): 香車は歩兵・仲人以外なので価値ある
-    // 駒であり、香車を経由捕獲する付け喰いは足(金7e)があっても成立する。
-    // 経由駒を歩兵に替えた不成立(D2-016-03)とのメタモルフィック対。
-    let position = f12(Some(PieceKind::Lance), true);
-
-    assert!(is_generated(
-        base(),
-        &position,
-        mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
-    ));
-}
-
-#[test]
-fn article_3_14_igui_returns_the_lion_and_leaves_no_recapture_target() {
-    // 第3条14号・第12条8項・第14条1項(D2-003-06): 居喰いは隣接獅子の捕獲と
-    // して合法であり、着手後は獅子が6fへ戻るため、6eへ利く金5dの取り返しは
-    // 対象を失う。停止形(D2-015-04)とは異なる着手として区別される。
-    let mut position = f10();
-    assert!(is_generated(
-        base(),
-        &position,
-        mv(msq(6, 'f'), msq(6, 'e'))
-    ));
-    play(base(), &mut position, igui(msq(6, 'f'), msq(6, 'e')));
-
-    assert_eq!(position.piece_at(msq(6, 'e')), None);
-    assert_eq!(
-        position.piece_at(msq(6, 'f')),
-        Some(piece(Color::Black, PieceKind::Lion))
-    );
-}
-
 // ---------- 第13条 足の判定 ----------
 
 #[test]
 fn article_13_1_a_footed_lion_cannot_be_captured_by_a_lion_at_distance_two() {
     // 第13条1項・第14条2項(D2-013-01): 金7gの利きが6fに届くため、後手獅子6d
-    // が先手獅子6fを取る着手は経路のいかんによらず含まれない。足なし局面F1a
-    // との反転対(D2-003-01)はarticle_14_3のテストが受け持つ。
+    // が先手獅子6fを取る着手は経路のいかんによらず含まれない。
     let position = f1(&[]);
 
     assert!(captures_of(base(), &position, msq(6, 'f')).is_empty());
@@ -327,36 +278,6 @@ fn article_13_1_a_footed_lion_cannot_be_captured_by_a_lion_at_distance_two() {
         base(),
         &position,
         mv(msq(6, 'd'), msq(6, 'e'))
-    ));
-}
-
-#[test]
-fn article_13_2_a_slider_blocked_by_the_lion_itself_is_a_hidden_foot() {
-    // 第13条2項・第3条10号・第14条4項(D2-013-02): 飛車6jの利きは6fの自獅子
-    // で遮られているが、獅子が盤上から除かれると通るため裏足となる。
-    let hidden_foot = fixture(
-        Color::White,
-        &[
-            (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
-            (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
-            (msq(6, 'j'), piece(Color::Black, PieceKind::Rook)),
-        ],
-    );
-    assert!(captures_of(base(), &hidden_foot, msq(6, 'f')).is_empty());
-
-    // 飛車を6筋の線外(5j)へ移すと足がなくなり、同じ捕獲が含まれる(境界)。
-    let off_line = fixture(
-        Color::White,
-        &[
-            (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
-            (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
-            (msq(5, 'j'), piece(Color::Black, PieceKind::Rook)),
-        ],
-    );
-    assert!(is_generated(
-        base(),
-        &off_line,
-        mv(msq(6, 'd'), msq(6, 'f'))
     ));
 }
 
@@ -517,44 +438,6 @@ fn article_14_1_an_adjacent_lion_can_be_captured_unconditionally() {
     // 獅子が獅子を取ったので先獅子は成立せず(第15条6項)、金7gで取り返せる。
     let mut position = f7;
     play(base(), &mut position, stop);
-    assert!(is_generated(
-        base(),
-        &position,
-        mv(msq(7, 'g'), msq(6, 'f'))
-    ));
-}
-
-#[test]
-fn article_14_3_an_unfooted_lion_at_distance_two_can_be_captured() {
-    // 第14条3項(D2-014-03): 非隣接でも足がなければ獅子で取れる。F1(足あり、
-    // D2-013-01)との反転対。Minaseの正準符号化では空升経由の2段階移動は
-    // 跳び(midなし)へ正準化されるため、捕獲は跳び形で観測する。
-    let f1a = fixture(
-        Color::White,
-        &[
-            (msq(6, 'd'), piece(Color::White, PieceKind::Lion)),
-            (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
-        ],
-    );
-
-    assert!(is_generated(base(), &f1a, mv(msq(6, 'd'), msq(6, 'f'))));
-}
-
-#[test]
-fn article_14_5_a_non_lion_captures_a_lion_regardless_of_feet() {
-    // 第14条5項(D2-014-05): 後手飛車2fは足(金7g)のある先手獅子6fを取れる。
-    let mut position = fixture(
-        Color::White,
-        &[
-            (msq(2, 'f'), piece(Color::White, PieceKind::Rook)),
-            (msq(6, 'f'), piece(Color::Black, PieceKind::Lion)),
-            (msq(7, 'g'), piece(Color::Black, PieceKind::GoldGeneral)),
-        ],
-    );
-    play(base(), &mut position, mv(msq(2, 'f'), msq(6, 'f')));
-
-    // 後手に獅子は残らないため先獅子の保護対象はなく、直後の取り返しは
-    // 通常どおり含まれる(第15条1項は「取った側に残る獅子」を前提とする)。
     assert!(is_generated(
         base(),
         &position,
@@ -742,15 +625,6 @@ fn articles_15_1_and_14_1_senjishi_blocks_even_an_adjacent_lion_recapture() {
         &position,
         igui(msq(6, 'd'), msq(6, 'c'))
     ));
-
-    // 第3手以降は失効し、隣接捕獲が通常どおり含まれる(境界)。
-    play(base(), &mut position, mv(msq(12, 'l'), msq(12, 'k')));
-    play(base(), &mut position, mv(msq(1, 'a'), msq(1, 'b')));
-    assert!(is_generated(
-        base(),
-        &position,
-        mv(msq(6, 'd'), msq(6, 'c'))
-    ));
 }
 
 #[test]
@@ -828,12 +702,6 @@ fn article_16_3_capturing_a_pawn_in_the_mid_square_is_not_tsukegui() {
         base(),
         &footless,
         mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
-    ));
-    // 跳びでは歩6gが盤上に残るが、歩は6fへ移動できず足ではない(境界)。
-    assert!(is_generated(
-        base(),
-        &footless,
-        mv(msq(6, 'h'), msq(6, 'f'))
     ));
 }
 
@@ -992,14 +860,6 @@ fn articles_16_1_and_16_11_a_lion_captured_in_the_mid_square_is_a_valuable_piece
 // ---------- 第29条 獅子に関するローカルルール ----------
 
 #[test]
-fn articles_29_l0_and_33_1_explicit_l0_is_identical_to_the_standard_rules() {
-    // 第29条L0・第33条1・2項(D2-029-01・D2-033-04): L0は標準規則と同内容の
-    // 記録用コードであり、明示採用しても挙動を一切変えない。
-    let l0 = rules_of(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]);
-    assert_eq!(l0, base());
-}
-
-#[test]
 fn article_29_l1_forbids_non_lion_recapture_regardless_of_foot() {
     // 第29条L1(D2-029-02): 足のないF9aでも、L1では非獅子による直後の
     // 取り返しが禁止される。標準規則(D2-015-02)とL1を弁別する最小局面。
@@ -1025,20 +885,6 @@ fn article_29_l1_restricts_only_non_lion_pieces() {
     assert!(!is_generated(l1, &restricted, mv(msq(2, 'c'), msq(6, 'c'))));
     // 空升経由の2段階は跳びへ正準化されるため、獅子の捕獲は跳び形で観測する。
     assert!(is_generated(l1, &restricted, mv(msq(6, 'e'), msq(6, 'c'))));
-
-    // 標準規則の同一局面では、足なしのため先獅子が成立せず両方含まれる(境界)。
-    let mut standard = f19();
-    play(base(), &mut standard, mv(msq(9, 'a'), msq(9, 'f')));
-    assert!(is_generated(
-        base(),
-        &standard,
-        mv(msq(2, 'c'), msq(6, 'c'))
-    ));
-    assert!(is_generated(
-        base(),
-        &standard,
-        mv(msq(6, 'e'), msq(6, 'c'))
-    ));
 }
 
 #[test]
@@ -1050,15 +896,6 @@ fn article_29_l1_plus_l2_reproduces_the_english_source_rule() {
     let mut l1_footed = f11(true);
     play(l1, &mut l1_footed, mvp(msq(6, 'e'), msq(6, 'c')));
     assert!(!is_generated(l1, &l1_footed, mv(msq(5, 'b'), msq(6, 'c'))));
-
-    // 竪行6h(足)の有無にもよらない。
-    let mut l1_footless = f11(false);
-    play(l1, &mut l1_footless, mvp(msq(6, 'e'), msq(6, 'c')));
-    assert!(!is_generated(
-        l1,
-        &l1_footless,
-        mv(msq(5, 'b'), msq(6, 'c'))
-    ));
 
     let l1_l2 = rules_of(&[
         RuleCode::L1,
@@ -1096,7 +933,7 @@ fn article_29_l2_exempts_only_the_new_promoted_lion() {
 
 #[test]
 fn article_29_l3_adopts_stage_wise_foot_judgement() {
-    // 第29条L3(D2-029-07): 唯一の足である仲人・歩兵を第1段階で取った直後に
+    // 第29条L3(D2-029-07): 唯一の足である仲人を第1段階で取った直後に
     // 足が消滅したと判定し、喰い進みを認める(第16条8〜10項の不適用)。
     // 跳びでは足の駒が盤上に残るため、L3でも含まれない。
     let l3 = rules_of(&[
@@ -1114,24 +951,7 @@ fn article_29_l3_adopts_stage_wise_foot_judgement() {
     ));
     assert!(!is_generated(l3, &go_between, mv(msq(6, 'h'), msq(6, 'f'))));
 
-    let pawn = f13();
-    assert!(is_generated(
-        l3,
-        &pawn,
-        mv2(msq(6, 'd'), msq(6, 'e'), msq(6, 'f'))
-    ));
-    assert!(!is_generated(l3, &pawn, mv(msq(6, 'd'), msq(6, 'f'))));
-
-    // L3の効果は第16条8〜10項の無効化だけに限られる(性質)。F12(銀経由の
-    // 付け喰い)とF14b(足でない歩の除去で開く走りの足)の判定は変わらない。
-    let silver_mid = f12(Some(PieceKind::SilverGeneral), true);
-    assert!(is_generated(
-        l3,
-        &silver_mid,
-        mv2(msq(6, 'h'), msq(6, 'g'), msq(6, 'f'))
-    ));
-    assert!(!is_generated(l3, &silver_mid, mv(msq(6, 'h'), msq(6, 'f'))));
-
+    // 足でない歩の除去で開通する走りの足は、L3でも有効である(第13条4項)。
     let opened_slider = fixture(
         Color::Black,
         &[

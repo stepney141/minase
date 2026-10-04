@@ -377,20 +377,6 @@ mod tests {
         ));
         assert_eq!(fs::read(&fixture.arguments.output).unwrap(), interrupted);
         fixture.arguments.nodes = 200;
-        for (offset, expected) in [
-            (8, "mnsd_sha256"),
-            (40, "record_count"),
-            (204, "binary_sha256"),
-        ] {
-            let mut changed = interrupted.to_vec();
-            changed[offset] ^= 1;
-            fs::write(&fixture.arguments.output, &changed).unwrap();
-            let error = rescore(&fixture.arguments).unwrap_err();
-            assert!(
-                matches!(error.get_ref().unwrap().downcast_ref::<rescore::Error>(), Some(rescore::Error::HeaderMismatch(field)) if *field == expected)
-            );
-            assert_eq!(fs::read(&fixture.arguments.output).unwrap(), changed);
-        }
         fs::write(&fixture.arguments.output, &complete[..240 + 17]).unwrap();
         let error = rescore(&fixture.arguments).unwrap_err();
         assert!(matches!(

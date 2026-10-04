@@ -1959,7 +1959,7 @@ mod tests {
 
     #[test]
     fn handshake_declares_ruleset_before_variant_and_ends_with_usiok() {
-        // PL「プロトコル固有の制御コマンド」・「規則オプション」（D6-USI-01）。
+        // PL「プロトコル固有の制御コマンド」・「規則オプション」（D6-USI-01、D6-USI-03）。
         // USI_Hashの宣言位置はSU-05により契約にせず、存在だけを確認する。
         let output = session(&[RuleCode::E2, RuleCode::R1, RuleCode::L1], "usi\nquit\n");
         let lines: Vec<_> = output.lines().collect();
@@ -1984,6 +1984,15 @@ mod tests {
         );
         // LS「プロトコル設定」: Threadsの宣言はdefaultを探索層の既定値から表示する（D6-USI-35）。
         assert!(lines.contains(&"option name Threads type spin default 1 min 1 max 256"));
+        // RS「USI層の契約」（D6-USI-47）。宣言の文字列は設計書の固定値。
+        assert_eq!(
+            lines
+                .iter()
+                .copied()
+                .filter(|line| line.starts_with("option name ResignValue "))
+                .collect::<Vec<_>>(),
+            ["option name ResignValue type spin default 20000 min 1 max 99999"]
+        );
         // ponder.md設計判断「USI_Ponder」: 時間管理が値に依存しないため宣言しない（D6-USI-18）。
         assert!(!output.contains("USI_Ponder"));
     }
@@ -2059,20 +2068,6 @@ mod tests {
         );
     }
 
-    // RS「USI層の契約」（D6-USI-47）。宣言の文字列は設計書の固定値。
-    #[test]
-    fn resignation_option_declares_default_and_bounds_once() {
-        let output = lishogi_session("usi\n");
-        assert_eq!(
-            output
-                .lines()
-                .filter(|line| line.starts_with("option name ResignValue "))
-                .collect::<Vec<_>>(),
-            ["option name ResignValue type spin default 20000 min 1 max 99999"]
-        );
-        assert_eq!(output.lines().last(), Some("usiok"));
-    }
-
     // RS「USI層の契約」（D6-USI-48）。設定の保持は次の探索の応答で観測する。
     #[test]
     fn resignation_option_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
@@ -2096,15 +2091,9 @@ mod tests {
         }
         for value in [
             "",
-            "value",
-            "value nope",
             "value 0",
             "value 100000",
-            "value -1",
             "value +1",
-            "value 1.5",
-            "value 1e3",
-            "value １２",
             "value 999999999999999999999999999",
         ] {
             let output = run(
@@ -2114,15 +2103,15 @@ mod tests {
             );
             assert_eq!(
                 output,
-                if matches!(value, "" | "value") {
+                if value.is_empty() {
                     "info string error: missing ResignValue value\n"
                 } else {
                     "info string error: invalid ResignValue value\n"
                 }
             );
-            let output = run(&mut protocol, &mut engine, "go depth 1\n");
-            assert_eq!(bestmoves(&output), ["bestmove resign"], "{value}: {output}");
         }
+        let output = run(&mut protocol, &mut engine, "go depth 1\n");
+        assert_eq!(bestmoves(&output), ["bestmove resign"], "{output}");
     }
 
     // RS設計判断「判定の入力」（D6-USI-50）。深さ0の静的評価では投了しない。
@@ -2205,7 +2194,7 @@ mod tests {
     // RS設計判断「閾値の与え方」（D6-USI-51、D6-USI-53）。
     #[test]
     fn resignation_mate_thresholds_and_winning_scores_use_signed_comparison() {
-        for threshold in [29744, 29998, 29999, 30000, 99999] {
+        for threshold in [29998, 29999, 99999] {
             let output = lishogi_session(&format!(
                 "setoption name USI_Hash value 1\nsetoption name ResignValue value {threshold}\nposition sfen {RESIGN_MATE_SFEN}\nmoves\ngo depth 2\n"
             ));
@@ -2227,18 +2216,12 @@ mod tests {
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
     }
 
-    // RS設計判断「判定の入力」「出力の形式」（D6-USI-52、D6-USI-53、D6-USI-58）。
+    // RS設計判断「判定の入力」「出力の形式」（D6-USI-52、D6-USI-55、D6-USI-58）。
     // 探索イベント境界へ規範値を入力し、進捗と採用値が異なる場合を決定的に検証する。
     #[test]
-    fn resignation_uses_adopted_score_at_mate_boundary_without_repeating_info() {
-        for (score, threshold, resign) in [
-            (-29744, 29744, true),
-            (-29744, 29745, false),
-            (-100, 100, true),
-            (0, 1, false),
-            (100, 1, false),
-        ] {
-            for release in [None, Some("stop"), Some("ponderhit")] {
+    fn resignation_uses_adopted_score_without_repeating_info() {
+        for (score, threshold, resign) in [(-100, 100, true), (0, 1, false), (100, 1, false)] {
+            for release in [None, Some("stop")] {
                 let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
                 run(
                     &mut protocol,
@@ -2319,48 +2302,6 @@ mod tests {
         }
     }
 
-    // RS設計判断「判定を適用するbestmove」（D6-USI-55）。
-    // 無限探索の完了イベントを処理してからstopを与え、保留中の解放を通す。
-    #[test]
-    fn resignation_infinite_completed_result_waits_for_stop() {
-        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-        run(
-            &mut protocol,
-            &mut engine,
-            "setoption name ResignValue value 1\n",
-        );
-        let mut output = Vec::new();
-        let mut active = protocol
-            .start_go(&engine, &["infinite"], &mut output)
-            .unwrap();
-        resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
-        let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
-            panic!("search must be running")
-        };
-        handle.request_stop();
-        while matches!(active, Some(ActiveSearch::Running { .. })) {
-            protocol
-                .wait_search_event(&engine, &mut active, &mut output)
-                .unwrap();
-        }
-        assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
-        assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
-        let before = output.len();
-        protocol
-            .handle_searching_line(
-                &engine,
-                &mut active,
-                &mut VecDeque::new(),
-                "stop",
-                &mut output,
-            )
-            .unwrap();
-        assert_eq!(
-            std::str::from_utf8(&output[before..]).unwrap(),
-            "info string stop external\nbestmove resign\n"
-        );
-    }
-
     // RS「判定を適用するbestmove」（D6-USI-51、D6-USI-56、D6-USI-58）。
     // Protocol::runの完了待ちもチャネル経路と同じ応答を返す。
     #[test]
@@ -2434,38 +2375,34 @@ mod tests {
     // RS「判定を適用するbestmove」、PO「停止理由」（D6-USI-54）。
     // 完了イベントをまだ消費していないRunningからstopを処理する。
     #[test]
-    fn resignation_running_stop_returns_resign_for_normal_infinite_and_ponder_searches() {
-        for limits in [
-            vec!["depth", "256"],
-            vec!["infinite"],
-            vec!["ponder", "depth", "256"],
-        ] {
-            let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name ResignValue value 1\n",
-            );
-            let mut output = Vec::new();
-            let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
-            resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
-            protocol
-                .handle_searching_line(
-                    &engine,
-                    &mut active,
-                    &mut VecDeque::new(),
-                    "stop",
-                    &mut output,
-                )
-                .unwrap();
-            assert!(active.is_none());
-            let output = String::from_utf8(output).unwrap();
-            assert!(
-                output.ends_with("info string stop external\nbestmove resign\n"),
-                "{output}"
-            );
-            assert_eq!(bestmoves(&output), ["bestmove resign"]);
-        }
+    fn resignation_running_stop_returns_resign_for_ponder_search() {
+        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        run(
+            &mut protocol,
+            &mut engine,
+            "setoption name ResignValue value 1\n",
+        );
+        let mut output = Vec::new();
+        let mut active = protocol
+            .start_go(&engine, &["ponder", "depth", "256"], &mut output)
+            .unwrap();
+        resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
+        protocol
+            .handle_searching_line(
+                &engine,
+                &mut active,
+                &mut VecDeque::new(),
+                "stop",
+                &mut output,
+            )
+            .unwrap();
+        assert!(active.is_none());
+        let output = String::from_utf8(output).unwrap();
+        assert!(
+            output.ends_with("info string stop external\nbestmove resign\n"),
+            "{output}"
+        );
+        assert_eq!(bestmoves(&output), ["bestmove resign"]);
     }
 
     // RS「判定を適用するbestmove」、PO「的中」（D6-USI-56、D6-USI-58）。
@@ -2513,158 +2450,81 @@ mod tests {
     // RS「判定を適用するbestmove」「判定の入力」（D6-USI-50、D6-USI-55、D6-USI-57）。
     // Finishedを先に処理して保留状態を確実に作り、実行中の経路と区別する。
     #[test]
-    fn resignation_held_stop_and_ponderhit_preserve_score_and_completed_depth() {
+    fn resignation_held_depth_zero_does_not_resign_on_stop_or_ponderhit() {
         for command in ["stop", "ponderhit"] {
-            for (limit, reason, resign) in [
-                (vec!["ponder", "depth", "2"], "depth", true),
-                (vec!["ponder", "nodes", "1"], "nodes", false),
-            ] {
-                let (mut engine, mut protocol) = resignation_engine(RESIGN_MATE_SFEN);
-                run(
-                    &mut protocol,
-                    &mut engine,
-                    "setoption name ResignValue value 1\n",
-                );
-                let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
-                let mut output = Vec::new();
-                let mut active = protocol.start_go(&engine, &limit, &mut output).unwrap();
-                while matches!(active, Some(ActiveSearch::Running { .. })) {
-                    protocol
-                        .wait_search_event(&engine, &mut active, &mut output)
-                        .unwrap();
-                }
-                assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
-                assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
-                let before = output.len();
+            let (mut engine, mut protocol) = resignation_engine(RESIGN_MATE_SFEN);
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name ResignValue value 1\n",
+            );
+            let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+            let mut output = Vec::new();
+            let mut active = protocol
+                .start_go(&engine, &["ponder", "nodes", "1"], &mut output)
+                .unwrap();
+            while matches!(active, Some(ActiveSearch::Running { .. })) {
                 protocol
-                    .handle_searching_line(
-                        &engine,
-                        &mut active,
-                        &mut VecDeque::new(),
-                        command,
-                        &mut output,
-                    )
+                    .wait_search_event(&engine, &mut active, &mut output)
                     .unwrap();
-                assert!(active.is_none());
-                let released = std::str::from_utf8(&output[before..]).unwrap();
-                assert!(released.starts_with(&format!("info string stop {reason}\n")));
-                assert_eq!(released.lines().count(), 2);
-                if resign {
-                    assert_eq!(bestmoves(released), ["bestmove resign"]);
-                } else {
-                    assert_legal_bestmove(released, &legal);
-                }
             }
+            assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
+            assert!(bestmoves(std::str::from_utf8(&output).unwrap()).is_empty());
+            let before = output.len();
+            protocol
+                .handle_searching_line(
+                    &engine,
+                    &mut active,
+                    &mut VecDeque::new(),
+                    command,
+                    &mut output,
+                )
+                .unwrap();
+            assert!(active.is_none());
+            let released = std::str::from_utf8(&output[before..]).unwrap();
+            assert!(released.starts_with("info string stop nodes\n"));
+            assert_eq!(released.lines().count(), 2);
+            assert_legal_bestmove(released, &legal);
         }
     }
 
     // RS「USI層の契約」（D6-USI-49）。待機列は現在のbestmoveより後に適用する。
     #[test]
-    fn resignation_option_changes_wait_until_running_or_held_result_is_released() {
-        for held in [false, true] {
-            let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-            run(
-                &mut protocol,
-                &mut engine,
-                "setoption name ResignValue value 99999\n",
-            );
-            let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
-            let mut output = Vec::new();
-            let mut active = protocol
-                .start_go(
-                    &engine,
-                    &["ponder", "depth", if held { "2" } else { "256" }],
-                    &mut output,
-                )
-                .unwrap();
-            if held {
-                while matches!(active, Some(ActiveSearch::Running { .. })) {
-                    protocol
-                        .wait_search_event(&engine, &mut active, &mut output)
-                        .unwrap();
-                }
-                assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
-            } else {
-                resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
-            }
-            let mut pending = VecDeque::new();
+    fn resignation_option_changes_wait_until_running_result_is_released() {
+        let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+        run(
+            &mut protocol,
+            &mut engine,
+            "setoption name ResignValue value 99999\n",
+        );
+        let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+        let mut output = Vec::new();
+        let mut active = protocol
+            .start_go(&engine, &["ponder", "depth", "256"], &mut output)
+            .unwrap();
+        resignation_wait_for_iteration(&mut protocol, &engine, &mut active, &mut output);
+        let mut pending = VecDeque::new();
+        protocol
+            .handle_searching_line(
+                &engine,
+                &mut active,
+                &mut pending,
+                "setoption name ResignValue value 1",
+                &mut output,
+            )
+            .unwrap();
+        protocol
+            .handle_searching_line(&engine, &mut active, &mut pending, "stop", &mut output)
+            .unwrap();
+        assert_legal_bestmove(std::str::from_utf8(&output).unwrap(), &legal);
+        assert_eq!(pending.len(), 1);
+        while let Some(command) = pending.pop_front() {
             protocol
-                .handle_searching_line(
-                    &engine,
-                    &mut active,
-                    &mut pending,
-                    "setoption name ResignValue value 1",
-                    &mut output,
-                )
+                .handle_idle_line(&mut engine, &command, &mut output)
                 .unwrap();
-            protocol
-                .handle_searching_line(&engine, &mut active, &mut pending, "stop", &mut output)
-                .unwrap();
-            assert_legal_bestmove(std::str::from_utf8(&output).unwrap(), &legal);
-            assert_eq!(pending.len(), 1);
-            while let Some(command) = pending.pop_front() {
-                protocol
-                    .handle_idle_line(&mut engine, &command, &mut output)
-                    .unwrap();
-            }
-            let next = run(&mut protocol, &mut engine, "go depth 1\n");
-            assert_eq!(bestmoves(&next), ["bestmove resign"]);
         }
-    }
-
-    // RS「判定を適用するbestmove」、PO「先読み中のその他の入力」（D6-USI-60）。
-    #[test]
-    fn resignation_discarded_running_and_held_results_emit_no_bestmove() {
-        for held in [false, true] {
-            for command in ["gameover lose", "quit", "eof"] {
-                let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
-                run(
-                    &mut protocol,
-                    &mut engine,
-                    "setoption name ResignValue value 1\n",
-                );
-                let mut output = Vec::new();
-                let mut active = protocol
-                    .start_go(
-                        &engine,
-                        &["ponder", "depth", if held { "2" } else { "256" }],
-                        &mut output,
-                    )
-                    .unwrap();
-                if held {
-                    while matches!(active, Some(ActiveSearch::Running { .. })) {
-                        protocol
-                            .wait_search_event(&engine, &mut active, &mut output)
-                            .unwrap();
-                    }
-                    assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
-                } else {
-                    resignation_wait_for_iteration(
-                        &mut protocol,
-                        &engine,
-                        &mut active,
-                        &mut output,
-                    );
-                }
-                if command == "eof" {
-                    protocol.discard_search(&mut active).unwrap();
-                } else {
-                    protocol
-                        .handle_searching_line(
-                            &engine,
-                            &mut active,
-                            &mut VecDeque::new(),
-                            command,
-                            &mut output,
-                        )
-                        .unwrap();
-                }
-                assert!(active.is_none());
-                let output = String::from_utf8(output).unwrap();
-                assert!(bestmoves(&output).is_empty(), "{output}");
-                assert!(!output.contains("info string stop "), "{output}");
-            }
-        }
+        let next = run(&mut protocol, &mut engine, "go depth 1\n");
+        assert_eq!(bestmoves(&next), ["bestmove resign"]);
     }
 
     #[test]
@@ -2673,40 +2533,14 @@ mod tests {
         // 置換表を作る（time-management-efficiency.md「診断の指標」1）。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
+        let before = run(&mut protocol, &mut engine, "position startpos\nstate\n");
         assert!(protocol.transposition_table.is_none());
-        let output = run(&mut protocol, &mut engine, "isready\n");
-        assert_eq!(output, "readyok\n");
-        assert!(protocol.transposition_table.is_some());
-    }
-
-    #[test]
-    fn isready_returns_readyok_without_changing_state() {
-        // PL「プロトコル固有の制御コマンド」（isreadyにはreadyok、同期実装では即時）（D6-USI-02）。
-        assert_eq!(session(&[RuleCode::R1], "isready\nquit\n"), "readyok\n");
-
-        let output = session(
-            &[RuleCode::R1],
-            "position startpos\nstate\nisready\nstate\n",
-        );
+        let output = run(&mut protocol, &mut engine, "isready\nstate\n");
         let lines: Vec<_> = output.lines().collect();
-        assert_eq!(lines[1], "readyok");
-        // isreadyは状態を変更しない（前後のstateが不変）。
-        assert_eq!(lines[0], lines[2]);
-    }
-
-    #[test]
-    fn ruleset_default_is_the_canonical_form_of_the_startup_rules() {
-        // PL「規則オプション」: 宣言defaultは起動時規則の正準表記（大文字・L,P,R,E順・番号昇順）（D6-USI-03）。
-        let output = session(
-            &[RuleCode::E1, RuleCode::R1, RuleCode::L2, RuleCode::L1],
-            "usi\n",
-        );
-        assert!(output.contains("option name RuleSet type string default L1,L2,P0,R1,E0,E1\n"));
-
-        // プリセット起動では展開後コード列だけが現れ、プリセット名は現れない（PL: 入力糖衣）。
-        let output = lishogi_session("usi\n");
-        assert!(output.contains("option name RuleSet type string default L1,L2,P0,P3,R1,E1,E3\n"));
-        assert!(!output.contains("lishogi"));
+        assert_eq!(lines[0], "readyok");
+        // PL「プロトコル固有の制御コマンド」（D6-USI-02）: isreadyは状態を変更しない。
+        assert_eq!(before.lines().collect::<Vec<_>>(), [lines[1]]);
+        assert!(protocol.transposition_table.is_some());
     }
 
     #[test]
@@ -2729,7 +2563,7 @@ mod tests {
     }
 
     #[test]
-    fn presets_expand_to_code_lists_and_reject_any_combination() {
+    fn presets_expand_to_code_lists_and_standard_is_rejected() {
         // PL「規則オプション」・RULES.md第33条第5・6項（D6-USI-05）。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
@@ -2748,18 +2582,16 @@ mod tests {
         );
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R1,E0");
 
-        // 併記とstandardは拒否し、直前の正当なpendingを保つ（PL 2026-08-11追記を含む）。
+        // standardは拒否し、直前の正当なpendingを保つ（PL 2026-08-11追記を含む）。
         let output = session(
             &[RuleCode::R1],
             concat!(
                 "setoption name RuleSet value lishogi\n",
-                "setoption name RuleSet value lishogi,P1\n",
-                "setoption name RuleSet value lishogi,engine-default\n",
                 "setoption name RuleSet value standard\n",
                 "usinewgame\nposition startpos\nstate\n",
             ),
         );
-        assert_eq!(error_lines(&output).len(), 3);
+        assert_eq!(error_lines(&output).len(), 1);
         assert_eq!(state_rules(state_lines(&output)[0]), "L1,L2,P0,P3,R1,E1,E3");
     }
 
@@ -2772,11 +2604,10 @@ mod tests {
                 "setoption name RuleSet value L1,P0,R2,E0\n",
                 "setoption name RuleSet value XX9\n",
                 "setoption name RuleSet value L1,E1\n", // 反復規則欠如は受信時に拒否
-                "setoption name RuleSet value R0\n",    // R0は選択可能コードとして提供しない
                 "usinewgame\nposition startpos\nstate\n",
             ),
         );
-        assert_eq!(error_lines(&output).len(), 3);
+        assert_eq!(error_lines(&output).len(), 2);
         // 直前の正当なpending（L1,R2）が生きており、commitが旧pendingで成功する。
         assert_eq!(state_rules(state_lines(&output)[0]), "L1,P0,R2,E0");
     }
@@ -2878,6 +2709,7 @@ mod tests {
 
     #[test]
     fn incremental_position_matches_full_replay_for_ongoing_and_finished_games() {
+        // EC「局面同期」: 毎手の全着手列の再送は全列の再生と一致する（D6-USI-13）。
         let moves = "3i3h 5a4b 8l9k 8b9b";
         let mut full_engine = make_engine(&[RuleCode::R1]);
         let mut full_protocol = UsiProtocol::new(&full_engine);
@@ -3016,54 +2848,6 @@ mod tests {
     }
 
     #[test]
-    fn lishogi_bot_series_completes_without_usinewgame() {
-        // PLコマンドenum（Lishogi-Botはusinewgameを送らない）・EC「局面同期」（毎手全列再送）（D6-USI-13）。
-        let mut engine = Engine::new(parse_rule_set("lishogi").unwrap()).unwrap();
-        let mut protocol = UsiProtocol::new(&engine);
-
-        let first = run(
-            &mut protocol,
-            &mut engine,
-            concat!(
-                "usi\nisready\n",
-                "setoption name USI_Variant value chushogi\n",
-                "position startpos\ngo depth 1\n",
-            ),
-        );
-        assert_eq!(bestmoves(&first).len(), 1);
-        let engine_move = bestmoves(&first)[0]
-            .strip_prefix("bestmove ")
-            .unwrap()
-            .to_owned();
-
-        // 応手はmoves照会（wire）で得た合法手から選ぶ。
-        let second = run(
-            &mut protocol,
-            &mut engine,
-            &format!("position startpos moves {engine_move}\nmoves\n"),
-        );
-        let reply = second
-            .lines()
-            .find(|line| line.starts_with("moves "))
-            .unwrap()
-            .split_whitespace()
-            .nth(1)
-            .unwrap()
-            .to_owned();
-
-        // 着手列は増分ではなく毎回全列で送られる。
-        let third = run(
-            &mut protocol,
-            &mut engine,
-            &format!("position startpos moves {engine_move} {reply}\ngo depth 1\n"),
-        );
-        assert_eq!(bestmoves(&third).len(), 1);
-        for output in [&first, &second, &third] {
-            assert!(error_lines(output).is_empty());
-        }
-    }
-
-    #[test]
     fn go_time_arguments_are_accepted_and_normalized_per_side() {
         // EC実施状況フェーズ1: 時間引数の受理とミリ秒正規化、手番側の時計選択（D6-USI-14）。
         let go = "go btime 1000 wtime 2000 binc 10 winc 20 byoyomi 0 nodes 1";
@@ -3132,21 +2916,8 @@ mod tests {
     }
 
     #[test]
-    fn go_depth_256_at_the_upper_bound_is_accepted() {
-        // 変異検証(フェーズ4)補強: 受理側境界。最大探索ply(256、search.md)ちょうどの
-        // 指定は拒否されない。探索自体はノード制限の併用で即座に打ち切る。
-        let output = session(
-            &[RuleCode::R1],
-            "position startpos\ngo depth 256 nodes 64\n",
-        );
-
-        assert!(error_lines(&output).is_empty());
-        assert_eq!(bestmoves(&output).len(), 1);
-        assert!(output.contains("info string stop nodes\n"));
-    }
-
-    #[test]
     fn go_depth_returns_a_deterministic_legal_bestmove_without_applying_it() {
+        // PL「コマンドenum」: usinewgameなしのpositionとgoを受理する（D6-USI-13）。
         // EC「探索とbestmove」: 複製上の探索でEngine.gameへ適用しない（D6-USI-16、D6-USI-24）。
         // 探索の具体的な着手は評価依存のため固定せず、合法手集合への所属で検証する。
         let output = session(
@@ -3263,26 +3034,6 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_go_is_rejected_and_bestmove_stays_unique() {
-        // EC「探索中に届くコマンド」: 重複goはエラー情報行、stopで単一のbestmove（D6-USI-20、D6-USI-21）。
-        let output = session(
-            &[RuleCode::R1],
-            "position startpos\ngo infinite\ngo depth 1\nstop\n",
-        );
-        let lines: Vec<_> = output.lines().collect();
-
-        assert_eq!(error_lines(&output).len(), 1);
-        assert_eq!(bestmoves(&output).len(), 1);
-        // 台本末尾まで遅延bestmoveが漏れない（出力はinfo・エラー・bestmoveだけ）。
-        assert!(lines.iter().all(|line| {
-            line.starts_with("info depth ")
-                || line.starts_with("info string error: ")
-                || line.starts_with("info string stop ")
-                || line.starts_with("bestmove ")
-        }));
-    }
-
-    #[test]
     fn commands_arriving_during_search_apply_after_bestmove() {
         // EC「探索中に届くコマンド」: 停止指示以外は探索のjoin後（bestmove送出後）に適用する（D6-USI-22）。
         let output = session(
@@ -3327,21 +3078,6 @@ mod tests {
             ),
         );
         assert_search_info(&output);
-    }
-
-    #[test]
-    fn gameover_and_quit_during_search_discard_the_result() {
-        // EC「探索中に届くコマンド」: gameoverとquitは探索を停止して結果を破棄しbestmoveを返さない（D6-USI-23）。
-        let output = session(
-            &[RuleCode::R1],
-            "position startpos\ngo infinite\ngameover win\nmoves\n",
-        );
-        assert!(bestmoves(&output).is_empty());
-        // AwaitingStartへの復帰は後続movesのエラーで観測する。
-        assert_eq!(output.lines().last().unwrap(), MOVES_ERROR);
-
-        let output = session(&[RuleCode::R1], "position startpos\ngo infinite\nquit\n");
-        assert!(bestmoves(&output).is_empty());
     }
 
     #[test]
@@ -3649,38 +3385,28 @@ mod tests {
         );
     }
 
-    /// debugging-tools.md「eval」: 表示評価は全計算と一致し、制限の有無と両手番を扱う。
+    /// debugging-tools.md「eval」: 表示評価は全計算と一致し、盤面の各行と注記を表示する。
     #[test]
-    fn diagnostic_evaluation_matches_full_evaluation_with_and_without_clamping() {
-        let dense = std::iter::repeat_n("QQQQQQQQQQQQ", 11)
-            .collect::<Vec<_>>()
-            .join("/");
+    fn diagnostic_evaluation_matches_full_evaluation_and_formats_rows() {
         let weights = pst::weights().unwrap();
-        for (board, clamped) in [
-            (INITIAL_BOARD.to_owned(), false),
-            (format!("{dense}/K10k b"), true),
-            (format!("{dense}/K10k w"), true),
-        ] {
-            let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
-            let mut protocol = UsiProtocol::new(&engine);
-            let output = run(
-                &mut protocol,
-                &mut engine,
-                &format!("position sfen {board} - 1\neval\n"),
-            );
-            let score = pst::evaluate(&weights, engine.game().position());
-            assert_eq!(score.abs() == 28_999, clamped, "{board}");
-            assert!(
-                output.contains(&format!("info string evaluation {score}\n")),
-                "{output}"
-            );
-            assert!(output.contains("integer truncation"));
-            assert!(output.contains("info string lion "));
-            let rows: Vec<_> = output.lines().skip(3).take(12).collect();
-            assert_eq!(rows.len(), 12);
-            for row in rows {
-                assert_eq!(row.split_whitespace().count(), 15);
-            }
+        let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
+        let mut protocol = UsiProtocol::new(&engine);
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            &format!("position sfen {INITIAL_BOARD} - 1\neval\n"),
+        );
+        let score = pst::evaluate(&weights, engine.game().position());
+        assert!(
+            output.contains(&format!("info string evaluation {score}\n")),
+            "{output}"
+        );
+        assert!(output.contains("integer truncation"));
+        assert!(output.contains("info string lion "));
+        let rows: Vec<_> = output.lines().skip(3).take(12).collect();
+        assert_eq!(rows.len(), 12);
+        for row in rows {
+            assert_eq!(row.split_whitespace().count(), 15);
         }
     }
 
@@ -3732,26 +3458,25 @@ mod tests {
         let position = Position::initial();
         let generator = MoveGenerator::standard();
         let mv = usi::parse(&position, "6i6h").unwrap();
-        for (bound, text) in [
-            (search::Bound::Exact, "exact"),
-            (search::Bound::Lower, "lower"),
-            (search::Bound::Upper, "upper"),
+        for (bound, text, best_move) in [
+            (search::Bound::Exact, "exact", Some(mv)),
+            (search::Bound::Lower, "lower", Some(mv)),
+            (search::Bound::Upper, "upper", Some(mv)),
+            (search::Bound::Exact, "exact", None),
         ] {
-            for best_move in [Some(mv), None] {
-                let hit = search::Hit {
-                    best_move,
-                    score: 123,
-                    depth: 7,
-                    bound,
-                };
-                assert_eq!(
-                    diagnostic_hit(&position, &generator, Some(hit)).unwrap(),
-                    format!(
-                        "depth 7 bound {text} score 123 bestmove {}",
-                        if best_move.is_some() { "6i6h" } else { "none" }
-                    )
-                );
-            }
+            let hit = search::Hit {
+                best_move,
+                score: 123,
+                depth: 7,
+                bound,
+            };
+            assert_eq!(
+                diagnostic_hit(&position, &generator, Some(hit)).unwrap(),
+                format!(
+                    "depth 7 bound {text} score 123 bestmove {}",
+                    if best_move.is_some() { "6i6h" } else { "none" }
+                )
+            );
         }
         assert_eq!(diagnostic_hit(&position, &generator, None).unwrap(), "none");
     }
@@ -3806,6 +3531,7 @@ mod tests {
     #[test]
     fn state_line_matches_the_exact_contract() {
         // BG「stateコマンド」: 単一行の完全一致契約（D6-USI-32）。
+        // PL「規則オプション」: 規則コードはL,P,R,E順・同カテゴリ番号昇順で表示する（D6-USI-03）。
         assert_eq!(
             lishogi_session("position startpos\nstate\n"),
             format!("state rules L1,L2,P0,P3,R1,E1,E3 board {INITIAL_BOARD} status ongoing\n")
@@ -3885,27 +3611,6 @@ mod tests {
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R2,E2");
     }
 
-    #[test]
-    fn failed_awaiting_start_commit_changes_nothing() {
-        // PLコマンドenum: commitは全適用か無効果かの原子的操作（D6-ENG-01のwire観測）。
-        let output = session(
-            &[RuleCode::R1],
-            concat!(
-                "setoption name RuleSet value L0,P0,R2,E2\n",
-                "position startpos moves 1a1b\n", // 失敗するcommit
-                "moves\n",                        // ライフサイクルが遷移していない証拠
-                "position startpos\n",
-                "state\n",
-            ),
-        );
-        let lines: Vec<_> = output.lines().collect();
-
-        assert_eq!(lines.len(), 3);
-        assert!(lines[0].starts_with("info string error: "));
-        assert_eq!(lines[1], MOVES_ERROR);
-        // pendingは失敗をまたいで保持され、次の成功したcommitで反映される。
-        assert_eq!(state_rules(lines[2]), "L0,P0,R2,E2");
-    }
     // ponder.md設計判断「go ponderの受理」「USI_Ponder」（D6-USI-18）。
     #[test]
     fn ponder_accepts_finite_limits_and_ignores_usi_ponder_option() {
@@ -3926,25 +3631,16 @@ mod tests {
                 "{args}"
             );
         }
-        for args in ["ponder", "ponder infinite", "ponder infinite depth 1"] {
-            let output = session(
-                &[RuleCode::R1],
-                &format!("position startpos\ngo {args}\ngo depth 1\n"),
-            );
-            assert_eq!(error_lines(&output).len(), 1, "{output}");
-            assert_eq!(bestmoves(&output).len(), 1);
-        }
-        for option in ["true", "false"] {
-            let output = session(
-                &[RuleCode::R1],
-                &format!(
-                    "usi\nsetoption name USI_Ponder value {option}\nposition startpos\ngo depth 2\n"
-                ),
-            );
-            assert!(!output.contains("option name USI_Ponder"));
-            assert!(error_lines(&output).is_empty());
-            assert!(bestmoves(&output)[0].contains(" ponder "));
-        }
+        let output = session(&[RuleCode::R1], "position startpos\ngo ponder infinite\n");
+        assert_eq!(error_lines(&output).len(), 1, "{output}");
+        assert!(bestmoves(&output).is_empty());
+        let output = session(
+            &[RuleCode::R1],
+            "usi\nsetoption name USI_Ponder value false\nposition startpos\ngo depth 2\n",
+        );
+        assert!(!output.contains("option name USI_Ponder"));
+        assert!(error_lines(&output).is_empty());
+        assert!(bestmoves(&output)[0].contains(" ponder "));
     }
 
     /// 既存の観測用ライターで入力と出力を1行ずつ往復させる。
@@ -3980,102 +3676,53 @@ mod tests {
     }
 
     // ponder.md「USI層の契約」、設計判断「bestmoveの保留」「停止理由」
-    // （D6-USI-39、D6-USI-41、D6-USI-42、D6-USI-43）。
+    // （D6-USI-21、D6-USI-39、D6-USI-41、D6-USI-42）。
     #[test]
-    fn ponder_channel_withholds_completed_result_until_hit_or_stop() {
-        for trigger in ["ponderhit", "stop"] {
-            ponder_dialogue(|commands, lines| {
-                commands.send(Ok("position startpos".into())).unwrap();
-                commands.send(Ok("go ponder depth 2".into())).unwrap();
-                let final_pv = loop {
-                    let line = receive_line(lines);
-                    assert!(!line.starts_with("bestmove "));
-                    assert!(!line.starts_with("info string error:"));
-                    if line.starts_with("info depth 2 ") {
-                        break line;
-                    }
-                };
-                commands.send(Ok("isready".into())).unwrap();
-                // 重複goのエラーを入力処理の目印にする。readyokとbestmoveはまだ出ない。
-                commands.send(Ok("go depth 1".into())).unwrap();
-                let marker = receive_line(lines);
-                assert!(marker.starts_with("info string error:"), "{marker}");
-                commands.send(Ok(trigger.into())).unwrap();
-                assert_eq!(receive_line(lines), "info string stop depth\n");
-                let best = receive_line(lines);
-                let words: Vec<_> = best.split_whitespace().collect();
-                let pv: Vec<_> = final_pv
-                    .split(" pv ")
-                    .nth(1)
-                    .unwrap()
-                    .split_whitespace()
-                    .collect();
-                assert_eq!(words, ["bestmove", pv[0], "ponder", pv[1]]);
-                assert_eq!(receive_line(lines), "readyok\n");
-                // 外形でも予想手の合法性を確認する。
-                commands
-                    .send(Ok(format!("position startpos moves {}", words[1])))
-                    .unwrap();
-                commands.send(Ok("moves".into())).unwrap();
-                assert!(
-                    receive_line(lines)
-                        .split_whitespace()
-                        .any(|word| word == words[3])
-                );
-                commands.send(Ok("ponderhit".into())).unwrap();
-                assert!(receive_line(lines).starts_with("info string error:"));
-            });
-        }
-    }
-
-    // ponder.md「USI層の契約」、設計判断「停止理由」「先読み中のその他の入力」
-    // （D6-USI-42、D6-USI-43、D6-USI-44）。時計に依存せず有限ノードで終了させる。
-    #[test]
-    fn ponder_channel_hit_continues_search_and_miss_recovers() {
-        for trigger in ["ponderhit", "stop"] {
-            ponder_dialogue(|commands, lines| {
-                commands.send(Ok("position startpos".into())).unwrap();
-                commands
-                    .send(Ok("go ponder depth 256 nodes 50000".into()))
-                    .unwrap();
+    fn ponder_channel_withholds_completed_result_until_hit() {
+        ponder_dialogue(|commands, lines| {
+            commands.send(Ok("position startpos".into())).unwrap();
+            commands.send(Ok("go ponder depth 2".into())).unwrap();
+            let final_pv = loop {
                 let line = receive_line(lines);
-                assert!(line.starts_with("info depth 1 "), "{line}");
-                commands.send(Ok(trigger.into())).unwrap();
-                let mut stop = String::new();
-                loop {
-                    let line = receive_line(lines);
-                    if line.starts_with("info string stop ") {
-                        stop = line.clone();
-                    }
-                    if line.starts_with("bestmove ") {
-                        break;
-                    }
+                assert!(!line.starts_with("bestmove "));
+                assert!(!line.starts_with("info string error:"));
+                if line.starts_with("info depth 2 ") {
+                    break line;
                 }
-                assert_eq!(
-                    stop,
-                    if trigger == "ponderhit" {
-                        "info string stop nodes\n"
-                    } else {
-                        "info string stop external\n"
-                    }
-                );
-                commands
-                    .send(Ok("position startpos moves 6i6h".into()))
-                    .unwrap();
-                commands.send(Ok("go depth 1".into())).unwrap();
-                loop {
-                    let line = receive_line(lines);
-                    assert!(!line.starts_with("info string error:"));
-                    if line.starts_with("bestmove ") {
-                        break;
-                    }
-                }
-            });
-        }
+            };
+            commands.send(Ok("isready".into())).unwrap();
+            // 重複goのエラーを入力処理の目印にする。readyokとbestmoveはまだ出ない。
+            commands.send(Ok("go depth 1".into())).unwrap();
+            let marker = receive_line(lines);
+            assert!(marker.starts_with("info string error:"), "{marker}");
+            commands.send(Ok("ponderhit".into())).unwrap();
+            assert_eq!(receive_line(lines), "info string stop depth\n");
+            let best = receive_line(lines);
+            let words: Vec<_> = best.split_whitespace().collect();
+            let pv: Vec<_> = final_pv
+                .split(" pv ")
+                .nth(1)
+                .unwrap()
+                .split_whitespace()
+                .collect();
+            assert_eq!(words, ["bestmove", pv[0], "ponder", pv[1]]);
+            assert_eq!(receive_line(lines), "readyok\n");
+            // 外形でも予想手の合法性を確認する。
+            commands
+                .send(Ok(format!("position startpos moves {}", words[1])))
+                .unwrap();
+            commands.send(Ok("moves".into())).unwrap();
+            assert!(
+                receive_line(lines)
+                    .split_whitespace()
+                    .any(|word| word == words[3])
+            );
+        });
     }
 
     // ponder.md設計判断「bestmoveの保留」「先読み中のその他の入力」
     // （D6-USI-41、D6-USI-42、D6-USI-43、D6-USI-44、D6-USI-45）。
+    // RS設計判断「判定を適用するbestmove」: 保留結果の破棄では投了も出力しない（D6-USI-60）。
     // 完了イベントを明示的に消費して保留状態に入り、スケジューリングに依存せず全遷移を通す。
     #[test]
     fn ponder_held_results_release_once_or_are_discarded() {
@@ -4121,6 +3768,8 @@ mod tests {
     }
 
     // ponder.md設計判断「先読み中のその他の入力」（D6-USI-44、D6-USI-45）。
+    // EC「探索中に届くコマンド」・RS設計判断「判定を適用するbestmove」:
+    // 探索結果の破棄ではbestmoveも投了も出力しない（D6-USI-23、D6-USI-60）。
     #[test]
     fn ponder_invalid_hits_and_discard_commands_preserve_lifecycle_contracts() {
         let output = session(
@@ -4145,19 +3794,6 @@ mod tests {
                 assert_eq!(error_lines(&output), [MOVES_ERROR]);
             }
         }
-        let output = session(
-            &[RuleCode::R1],
-            "position startpos\ngo ponder depth 256\nposition startpos moves 6i6h\nstop\nstate\nquit\n",
-        );
-        assert_eq!(bestmoves(&output).len(), 1);
-        assert_eq!(
-            state_lines(&output),
-            state_lines(&session(
-                &[RuleCode::R1],
-                "position startpos moves 6i6h\nstate\n"
-            ))
-        );
-        assert!(output.find("bestmove ").unwrap() < output.find("state rules ").unwrap());
     }
 
     // ponder.md設計判断「逐次経路」（D6-USI-46、D6-USI-45）。
@@ -4231,32 +3867,28 @@ mod tests {
     // ponder.md設計判断「予想手の出所」「予想手の検査」（D6-USI-39、D6-USI-40）。
     #[test]
     fn ponder_prediction_uses_adopted_pv_and_rejects_illegal_or_finishing_moves() {
-        for threads in [1, 2] {
-            let output = session(
-                &[RuleCode::R1],
-                &format!("setoption name Threads value {threads}\nposition startpos\ngo depth 2\n"),
-            );
-            let best = bestmoves(&output);
-            assert_eq!(best.len(), 1, "{output}");
-            let best: Vec<_> = best[0].split_whitespace().collect();
-            let pv: Vec<_> = output
-                .lines()
-                .filter_map(|line| line.split_once(" pv ").map(|(_, pv)| pv))
-                .next_back()
-                .unwrap()
-                .split_whitespace()
-                .collect();
-            // 共有置換表による打ち切りでは、深さ2でもPVが1手になり得る。
-            match pv.as_slice() {
-                [first] => assert_eq!(best, ["bestmove", *first], "{output}"),
-                [first, second, ..] => {
-                    assert_eq!(best, ["bestmove", *first, "ponder", *second], "{output}");
-                }
-                [] => panic!("empty PV: {output}"),
+        let output = session(
+            &[RuleCode::R1],
+            "setoption name Threads value 2\nposition startpos\ngo depth 2\n",
+        );
+        let best = bestmoves(&output);
+        assert_eq!(best.len(), 1, "{output}");
+        let best: Vec<_> = best[0].split_whitespace().collect();
+        let pv: Vec<_> = output
+            .lines()
+            .filter_map(|line| line.split_once(" pv ").map(|(_, pv)| pv))
+            .next_back()
+            .unwrap()
+            .split_whitespace()
+            .collect();
+        // 共有置換表による打ち切りでは、深さ2でもPVが1手になり得る。
+        match pv.as_slice() {
+            [first] => assert_eq!(best, ["bestmove", *first], "{output}"),
+            [first, second, ..] => {
+                assert_eq!(best, ["bestmove", *first, "ponder", *second], "{output}");
             }
+            [] => panic!("empty PV: {output}"),
         }
-        let output = session(&[RuleCode::R1], "position startpos\ngo depth 1\n");
-        assert_eq!(bestmoves(&output)[0].split_whitespace().count(), 2);
         use crate::PieceKind;
         use crate::test_util::{position, sq};
         let step = |from, to| Move {

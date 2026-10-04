@@ -77,42 +77,6 @@ fn quiescence_without_captures_matches_static_evaluation() {
     assert_eq!(result.nodes, moves.len() as u64);
 }
 
-// D7-SRCH-10。search.md「静止探索」: stand-patは損な捕獲より優先される
-// fail-softの下限であり、捕獲手が存在しても選択を強制されない。
-#[test]
-fn quiescence_stand_pat_declines_a_losing_capture() {
-    let mut position = position(
-        Color::Black,
-        &[
-            (fs(6, 12), Color::Black, PieceKind::King),
-            (fs(9, 9), Color::Black, PieceKind::Pawn),
-            (fs(9, 12), Color::Black, PieceKind::Rook),
-            (fs(6, 1), Color::White, PieceKind::King),
-            (fs(9, 3), Color::White, PieceKind::Rook),
-        ],
-    );
-    let moves = legal_moves(&position);
-    let quiet_move = Move {
-        from: fs(6, 12),
-        mid: None,
-        to: fs(6, 11),
-        promote: false,
-    };
-    assert!(moves.contains(&quiet_move));
-
-    position.make_move_unchecked(quiet_move, engine_rules());
-    let losing_capture = Move {
-        from: fs(9, 3),
-        mid: None,
-        to: fs(9, 9),
-        promote: false,
-    };
-    assert!(legal_moves(&position).contains(&losing_capture));
-    let stand_pat = crate::eval::evaluate(&crate::eval::weights().unwrap(), &position);
-    let (score, _) = run_quiesce(&position, -INFINITY, INFINITY, 0, &small_tt());
-    assert_eq!(score, stand_pat);
-}
-
 // 設計書movegen-speedup-2.md「段階7」: β以上の静的評価は置換表を照合も保存もしない。
 #[test]
 fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
@@ -342,7 +306,8 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
     }
 }
 
-// 設計書movegen-speedup-2.md「段階9」: 候補があり、SEEで全て捨てるノードは保存する。
+// D7-SRCH-10。search.md「静止探索」: stand-patは損な捕獲より優先される。
+// movegen-speedup-2.md「段階9」: 候補があり、SEEで全て捨てるノードは保存する。
 #[test]
 fn quiescence_see_pruned_candidates_still_store() {
     let position = position(

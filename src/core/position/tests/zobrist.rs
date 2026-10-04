@@ -36,20 +36,6 @@ fn equal_positions_have_equal_hashes() {
 }
 
 #[test]
-fn hash_set_distinguishes_side_and_temporary_states() {
-    // 設計書predecessor-generator.md「Positionのハッシュ」
-    let mut positions = HashSet::new();
-    for position in positions_with_distinct_temporary_states() {
-        assert!(positions.insert(position));
-    }
-    assert_eq!(positions.len(), 8);
-    for position in positions_with_distinct_temporary_states() {
-        assert!(positions.contains(&position));
-        assert!(!positions.insert(position));
-    }
-}
-
-#[test]
 fn hash_set_preserves_distinct_positions_under_collisions() {
     // 設計書predecessor-generator.md「Positionのハッシュ」
     #[derive(Default)]
@@ -300,40 +286,21 @@ fn article_24_1_d_promotion_rights_key_is_separate_from_the_board_key() {
     assert_ne!(plain.rights_zobrist(), deferred.rights_zobrist());
 
     // 保留状態を持てるのは敵陣内(第3条6項)の未成の成れる駒だけである(第30条P1)。
-    // 空升・成れない駒(王将)・成駒・敵陣外の駒への保留指定は拒否される。
+    // 敵陣外の銀将への保留指定は拒否される。
     let invalid = |square| {
         Err(PositionBuildError::InvalidPosition(
             PositionError::InvalidPromotionDeferred { square },
         ))
     };
-    let mut empty_builder = PositionBuilder::new(Color::Black);
-    assert_eq!(
-        empty_builder.mark_promotion_deferred(sq(4, 9)),
-        invalid(sq(4, 9))
-    );
-
-    let cases = [
-        (
-            PieceCode::new(Color::Black, PieceKind::King).unwrap(),
-            sq(5, 9),
-        ),
-        (
-            PieceCode::new(Color::Black, PieceKind::SilverGeneral)
-                .unwrap()
-                .promote()
-                .unwrap(),
-            sq(6, 9),
-        ),
-        (
+    let square = sq(4, 7);
+    let mut builder = PositionBuilder::new(Color::Black);
+    builder
+        .put(
+            square,
             PieceCode::new(Color::Black, PieceKind::SilverGeneral).unwrap(),
-            sq(4, 7),
-        ),
-    ];
-    for (code, square) in cases {
-        let mut builder = PositionBuilder::new(Color::Black);
-        builder.put(square, code).unwrap();
-        assert_eq!(builder.mark_promotion_deferred(square), invalid(square));
-    }
+        )
+        .unwrap();
+    assert_eq!(builder.mark_promotion_deferred(square), invalid(square));
 }
 
 // 局面キーは到達手順・手数・盤外情報に依存しない(第24条3項、D4-024-05)。

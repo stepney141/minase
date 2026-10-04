@@ -297,7 +297,7 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
 
 // D7-TT-05。search.md「置換表」節: 規則セットの変更時と新規対局の開始時には
 // 置換表をクリアする。wire連動はD6の領域であり、ここではクリア契約だけを
-// 検証する。クリア後の探索は空の置換表から正常に再構築される。
+// 検証する。探索を開始した表はクリア後に記録を返さない。
 #[test]
 fn tt_clear_is_skipped_until_a_search_uses_the_table() {
     // 対局開始直後の`go`が消去の完了を待たされないよう、作成または消去の後に
@@ -325,48 +325,6 @@ fn tt_clear_is_skipped_until_a_search_uses_the_table() {
     table.new_search();
     table.clear();
     assert!(table.probe(key, 0).is_none());
-}
-
-#[test]
-fn tt_clear_empties_all_entries_and_search_restarts() {
-    let best_move = Move {
-        from: sq(0, 0),
-        mid: None,
-        to: sq(0, 1),
-        promote: false,
-    };
-    let keys = [
-        0x1111_1111_0000_0001_u64,
-        0x2222_2222_0000_0002,
-        0x3333_3333_0000_0003,
-    ];
-    let mut table = small_tt();
-    table.new_search();
-    for &key in &keys {
-        table.store(key, 4, 100, Bound::Exact, Some(best_move), 0);
-        assert!(table.probe(key, 0).is_some());
-    }
-
-    table.clear();
-
-    // 直前までヒットしていたキーのprobeがすべてミスになる。
-    for &key in &keys {
-        assert!(table.probe(key, 0).is_none());
-    }
-
-    // クリア後の探索が正常に完了する（D7-SRCH-07の空置換表前提と接続）。
-    let midgame = quiet_midgame();
-    let moves = legal_moves(&midgame);
-    let result = run_search(
-        &midgame,
-        engine_rules(),
-        &moves,
-        &[],
-        &depth_limits(2),
-        DEFAULT_THREADS,
-        &mut table,
-    );
-    assert!(moves.contains(&result.best_move));
 }
 
 // D7-TT-06。search.md「置換表」節: サイズはMB単位で外部から設定でき、

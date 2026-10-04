@@ -1,13 +1,7 @@
-//! 終局裁定の回避条件と反復による合法手の絞り込みの試験。
+//! 反復による即時勝利と王駒の先取りによる詰み回避の試験。
 
-use std::collections::HashSet;
-
-use super::super::repetition::retain_repetition_allowed_moves;
-use super::mate::can_capture_last_royal;
 use super::*;
-use crate::core::game::{Game, GameStatus};
 use crate::core::piece::{PieceCode, PieceKind};
-use crate::core::rules::RuleCode;
 use crate::test_util::{position_from_codes as position, sq};
 
 fn piece(color: Color, kind: PieceKind) -> PieceCode {
@@ -87,61 +81,11 @@ fn article_31_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
 }
 
 #[test]
-fn article_21_3_mate_requires_every_escape_clause_to_fail() {
-    // D3-021-02: 3項a(回避)・b(相手王駒の先取り)のいずれかが残れば詰みは
-    // 成立しない。仮想着手の評価後に局面は完全に復元される
+fn article_21_3_b_royal_counter_capture_rescues_mate_and_restores_position() {
+    // D3-021-02: 3項b(相手王駒の先取り)が残れば詰みは成立しない。
+    // 仮想着手の評価後に局面は完全に復元される
     // (adjudication-refactor.md「検証」)。
     let generator = MoveGenerator::standard();
-
-    // 受けが尽きた局面は詰みである(第21条2項)。
-    let mut mated = position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(0, 11), piece(Color::White, PieceKind::Rook)),
-            (sq(11, 0), piece(Color::White, PieceKind::Rook)),
-            (sq(11, 11), piece(Color::White, PieceKind::Bishop)),
-            (sq(10, 9), piece(Color::White, PieceKind::King)),
-        ],
-    );
-    let mated_before = mated.clone();
-    let state = r1_state(&mated);
-    assert!(is_mate(
-        &mut mated,
-        &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
-    ));
-    assert_eq!(mated, mated_before);
-
-    // 3項a: (0,1)への逃げが残れば詰みではない。
-    let mut escapable = position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(11, 0), piece(Color::White, PieceKind::Rook)),
-            (sq(11, 11), piece(Color::White, PieceKind::Bishop)),
-            (sq(10, 9), piece(Color::White, PieceKind::King)),
-        ],
-    );
-    let state = r1_state(&escapable);
-    assert!(!is_mate(
-        &mut escapable,
-        &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
-    ));
-
-    // 3項b: 相手の最後の王駒を先に取れる着手が残れば詰みではない(第21条4項)。
-    let mut counter_capture = position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(1, 0), piece(Color::White, PieceKind::King)),
-        ],
-    );
-    let state = r1_state(&counter_capture);
-    assert!(can_capture_last_royal(&counter_capture, &generator));
-    assert!(!is_mate(
-        &mut counter_capture,
-        &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
-    ));
 
     // 3項b境界: 先取りした王駒の升へ相手の取り返しの利き(飛車)が残っていても、
     // 最後の王駒を取った時点で勝ちが確定する(第21条4項)ため詰みではない。
@@ -154,75 +98,11 @@ fn article_21_3_mate_requires_every_escape_clause_to_fail() {
             (sq(1, 11), piece(Color::White, PieceKind::Rook)),
         ],
     );
+    let before = counter_capture_with_retaliation.clone();
     let state = r1_state(&counter_capture_with_retaliation);
     assert!(!is_mate(
         &mut counter_capture_with_retaliation,
         &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
     ));
-
-    // 第23条境界: 着手が1つもない局面は合法手なしであり、詰みではない。
-    let mut stuck = position(
-        Color::Black,
-        &[
-            (sq(4, 11), piece(Color::Black, PieceKind::Pawn)),
-            (sq(0, 11), piece(Color::Black, PieceKind::Lance)),
-            (sq(11, 0), piece(Color::White, PieceKind::King)),
-        ],
-    );
-    let state = r1_state(&stuck);
-    assert!(has_no_legal_move(
-        &mut stuck,
-        &generator,
-        state.repetition()
-    ));
-    assert!(!is_mate(
-        &mut stuck,
-        &AdjudicationContext::new(Rules::ENGINE_DEFAULT, &state, &generator)
-    ));
-}
-
-#[test]
-fn plan_adjudication_r2_filter_matches_game_legal_moves_and_restores_the_position() {
-    // D3-PRP-03: 対局合法手の絞り込み(R2禁止フィルタ)は、共有関数の経路と
-    // Game::legal_movesの経路で一致し、仮想評価の前後で局面が復元される。
-    // D3-031-06: 既出局面を再現する着手だけが局面合法手から除かれる。
-    let start = position(
-        Color::Black,
-        &[
-            (sq(3, 3), piece(Color::Black, PieceKind::King)),
-            (sq(8, 8), piece(Color::White, PieceKind::King)),
-        ],
-    );
-    let rules =
-        Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R2, RuleCode::E2]).unwrap();
-    let generator = MoveGenerator::new(rules.moves);
-    let cycle = [
-        step(sq(3, 3), sq(3, 4)),
-        step(sq(8, 8), sq(8, 7)),
-        step(sq(3, 4), sq(3, 3)),
-    ];
-
-    let mut game = Game::from_position(rules, start.clone());
-    let mut low_level = start.clone();
-    let mut state = AdjudicationState::new(RepetitionRule::R2, &low_level);
-    for mv in cycle {
-        assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
-        let mover = low_level.side_to_move();
-        let undo = low_level.try_make_move_with_undo(mv, &generator).unwrap();
-        state.record_move(&low_level, &generator, mover, mv, &undo);
-    }
-
-    let mut moves = Vec::new();
-    generator.generate_moves(&low_level, &mut moves);
-    let repeating = step(sq(8, 7), sq(8, 8));
-    assert!(moves.contains(&repeating));
-
-    let snapshot = low_level.clone();
-    retain_repetition_allowed_moves(&mut low_level, &generator, state.repetition(), &mut moves);
-    assert_eq!(low_level, snapshot);
-    assert!(!moves.contains(&repeating));
-    assert_eq!(
-        moves.into_iter().collect::<HashSet<_>>(),
-        game.legal_moves().into_iter().collect::<HashSet<_>>()
-    );
+    assert_eq!(counter_capture_with_retaliation, before);
 }

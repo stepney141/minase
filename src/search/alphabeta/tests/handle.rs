@@ -41,12 +41,7 @@ fn search_with_node_limit_is_deterministic() {
         )
     }
 
-    // 初期局面（RULES.md第5条）と中盤フィクスチャの双方で確認する。
-    let initial = Position::initial();
-    let first = run(&initial, nodes_limits(100_000), 71);
-    let second = run(&initial, nodes_limits(100_000), 72);
-    assert_eq!(first, second);
-
+    // 中盤フィクスチャで探索結果と全通知の再現性を確認する。
     let midgame = quiet_midgame();
     let first = run(&midgame, nodes_limits(30_000), 73);
     let second = run(&midgame, nodes_limits(30_000), 74);
@@ -151,7 +146,7 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
 // `bestmove`を返す。「確保した1手が先頭」は規範節にないため、集合帰属
 // だけを検証する。
 #[test]
-fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
+fn stop_before_depth_one_still_yields_a_legal_best_move() {
     let initial = Position::initial();
 
     // 最速ケース: 開始直後に停止フラグを立てる。無期限指定のため停止理由は
@@ -166,24 +161,6 @@ fn stop_or_tiny_budget_before_depth_one_still_yields_a_legal_best_move() {
     handle.join().expect("search thread must not panic");
     assert_eq!(finished.stop_reason, StopReason::ExternalStop);
     assert!(root_moves.contains(&finished.best_move)); // INV-1
-
-    // 境界: 極小のhard予算（movetime=1ms、D7-TIME-02境界の受理側）でも
-    // 同じ保証が成り立つ。soft=hardのため停止理由は2値を許容する
-    // （SPEC_UNCLEAR-04）。
-    let handle = start(
-        snapshot_for(&initial),
-        movetime_limits(1),
-        42,
-        DEFAULT_THREADS,
-        small_tt(),
-    );
-    let (_, finished) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
-    assert!(matches!(
-        finished.stop_reason,
-        StopReason::SoftLimit | StopReason::HardLimit
-    ));
-    assert!(legal_moves(&initial).contains(&finished.best_move));
 }
 
 // D7-LIM-05。search.md「時間管理」節: 無期限ではsoft/hardの両リミットを

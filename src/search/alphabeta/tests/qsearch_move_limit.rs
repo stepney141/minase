@@ -353,14 +353,6 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
 
 #[cfg(feature = "tuning")]
 #[test]
-fn qsearch_limit_recaptures_igui_after_normal_search() {
-    if !single_capture_limit("qsearch_limit_recaptures_igui_after_normal_search") {
-        return;
-    }
-    check_lion_recapture(true, false);
-}
-#[cfg(feature = "tuning")]
-#[test]
 fn qsearch_limit_recaptures_mid_capture_after_normal_search() {
     if !single_capture_limit("qsearch_limit_recaptures_mid_capture_after_normal_search") {
         return;

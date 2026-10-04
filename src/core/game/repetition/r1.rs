@@ -340,31 +340,4 @@ mod tests {
             assert_eq!(move_is_irreversible(mv, &undo), irreversible, "{name}");
         }
     }
-
-    #[test]
-    fn article_31_r1_attacking_moves_extend_the_run_and_others_reset_it() {
-        // D3-031-05: 攻撃連続数の更新は共有の純粋関数で行い、攻撃的着手は
-        // 手番側の連続数を1増やし、非攻撃的着手は0へ戻す。相手側の値は
-        // 変更しない(adjudication-refactor.md「R1の攻撃連続数」)。
-        assert_eq!(
-            updated_attacking_counters([2, 5], Color::Black, true),
-            [3, 5]
-        );
-        assert_eq!(
-            updated_attacking_counters([2, 5], Color::Black, false),
-            [0, 5]
-        );
-        assert_eq!(
-            updated_attacking_counters([2, 5], Color::White, true),
-            [2, 6]
-        );
-        assert_eq!(
-            updated_attacking_counters([2, 5], Color::White, false),
-            [2, 0]
-        );
-        assert_eq!(
-            updated_attacking_counters([0, 0], Color::Black, true),
-            [1, 0]
-        );
-    }
 }

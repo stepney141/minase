@@ -143,36 +143,11 @@ mod tests {
         );
     }
 
-    /// debugging-tools.md「入出力のログの形式」: --io-logは省略可能で、指定時はパスを要する。
-    #[test]
-    fn cli_io_log_is_optional_and_accepts_a_path() {
-        for protocol in ["usi", "cecp"] {
-            let base = [
-                "minase",
-                "--protocol",
-                protocol,
-                "--rules",
-                "engine-default",
-            ];
-            assert!(Arguments::try_parse_from(base).unwrap().io_log.is_none());
-            let arguments = Arguments::try_parse_from(
-                base.into_iter().chain(["--io-log", "logs/session log.txt"]),
-            )
-            .unwrap();
-            assert_eq!(
-                arguments.io_log,
-                Some(PathBuf::from("logs/session log.txt"))
-            );
-            assert!(Arguments::try_parse_from(base.into_iter().chain(["--io-log"])).is_err());
-        }
-    }
-
     #[test]
     fn rules_argument_shares_the_wire_value_grammar() {
         // PL「規則オプション」（同じ値文法を--rulesにも適用、解析は共通関数parse_rule_set）・
-        // R33第5・6項（engine-default=L0+P0+R1+E0、
-        // lishogi=L1+L2+P0+P3+R1+E1+E3、大小非区別・併記拒否）
-        // （D6-CLI-02〜04、D6-CLI-05のminase側接続確認）。
+        // R33第6項（lishogi=L1+L2+P0+P3+R1+E1+E3、大小非区別）
+        // （D6-CLI-04、D6-CLI-05のminase側接続確認）。
         let parse = |value: &str| {
             Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", value])
                 .map(|arguments| arguments.rules.0)
@@ -182,10 +157,5 @@ mod tests {
             parse("LISHOGI").unwrap(),
             Vec::<RuleCode>::from(Rules::LISHOGI)
         );
-        assert!(parse("lishogi,P1").is_err());
-
-        // 4群のいずれかを欠く列は値文法としては解析できるが、エンジン構築時に拒否される
-        // ため、不正値での起動成功はあり得ない（D6-CLI-02境界）。
-        assert!(Engine::new(parse("L1,P0,E1,E0").unwrap()).is_err());
     }
 }

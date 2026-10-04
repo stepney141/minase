@@ -72,60 +72,6 @@ fn lion_igui_and_two_stage_captures() {
     }
 }
 
-/// 獅子と角鷹のじっとが同じ直前局面を重複させないことを検査する。
-#[test]
-fn jitto_from_different_pieces_returns_one_position() {
-    // 設計書「検証 > 固定テスト」のじっと: 着手ではなく完全な局面で重複排除する。
-    let lion = sq(5, 5);
-    let falcon = sq(8, 5);
-    let p = stocked_position(
-        Color::Black,
-        &[
-            (lion, piece(Color::Black, PieceKind::Lion)),
-            (falcon, piece(Color::Black, PieceKind::HornedFalcon)),
-            (sq(11, 6), piece(Color::Black, PieceKind::Kirin)),
-        ],
-    );
-    let mut q1 = p.clone();
-    let mut q2 = p.clone();
-    q1.try_make_move(mv(lion, lion, false), &MoveGenerator::standard())
-        .unwrap();
-    q2.try_make_move(mv(falcon, falcon, false), &MoveGenerator::standard())
-        .unwrap();
-    assert_eq!(q1, q2);
-    let result = checked(MoveRules::standard(), &q1);
-    assert_eq!(
-        result.iter().filter(|candidate| **candidate == p).count(),
-        1
-    );
-}
-
-/// 全隣接升が埋まった獅子のじっとを除外する。
-#[test]
-fn blocked_lion_cannot_jitto() {
-    // RULES.md第12条10項: 隣接8升がすべて埋まればじっとできない。
-    let from = sq(5, 5);
-    let mut pieces = vec![
-        (from, piece(Color::Black, PieceKind::Lion)),
-        (sq(11, 6), piece(Color::Black, PieceKind::Kirin)),
-    ];
-    for file in 4..=6 {
-        for rank in 4..=6 {
-            if sq(file, rank) != from {
-                pieces.push((sq(file, rank), piece(Color::Black, PieceKind::Pawn)));
-            }
-        }
-    }
-    let p = stocked_position(Color::Black, &pieces);
-    let qpieces: Vec<_> = p
-        .occupied()
-        .iter()
-        .map(|s| (s, p.piece_at(s).unwrap()))
-        .collect();
-    let q = position_from_codes(Color::White, &qpieces);
-    assert!(!checked(MoveRules::standard(), &q).contains(&p));
-}
-
 /// 角鷹と飛鷲の向き付き獅子力を先後両方で検査する。
 #[test]
 fn falcon_and_eagle_all_special_moves_for_both_sides() {

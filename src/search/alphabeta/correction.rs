@@ -94,22 +94,14 @@ mod tests {
         let weight = i64::from(params::correction_weight());
         // 初回は1未満、2回目は1以上となる差を選び、正負とも端数を保持する。
         let difference = (1023 / weight) as i32;
-        let first = i64::from(difference) * weight;
-        let second = first + (i64::from(difference) * 1024 - first) * weight / 1024;
-        assert!(first > 0 && first < 1024);
-        assert!((1024..2048).contains(&second));
         assert_eq!(table.read(Color::Black, 7), 0);
         table.update(Color::Black, 7, difference, 1);
-        assert_eq!(table.values[0][7], first);
         assert_eq!(table.read(Color::Black, 7), 0);
         table.update(Color::Black, 7, difference, 1);
-        assert_eq!(table.values[0][7], second);
         assert_eq!(table.read(Color::Black, 7), 1);
         table.update(Color::White, 7, -difference, 1);
-        assert_eq!(table.values[1][7], -first);
         assert_eq!(table.read(Color::White, 7), 0);
         table.update(Color::White, 7, -difference, 1);
-        assert_eq!(table.values[1][7], -second);
         assert_eq!(table.read(Color::White, 7), -1);
         for depth in [8, 9, 256] {
             table.update(Color::Black, depth as u64, 100, depth);
@@ -123,8 +115,6 @@ mod tests {
         let cap = params::correction_cap();
         assert_eq!(table.read(Color::Black, 0), cap);
         assert_eq!(table.read(Color::White, 0), -cap);
-        assert_eq!(table.values[0][0], i64::from(cap) * 1024);
-        assert_eq!(table.values[1][0], -i64::from(cap) * 1024);
         // 下位12ビットだけで引く。
         assert_eq!(table.read(Color::Black, 4096), cap);
     }

@@ -131,8 +131,7 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
 
 // D7-SMP-04。lazy-smp.md「再現性」: Threads=1の固定ノード探索は、経過
 // 時間を除く結果、PV、Progress列、ノード数、停止理由が完全に一致する。
-// D7-SRCH-07のsearch_with_node_limit_is_deterministicが同じ観測を初期局面と
-// 中盤局面の双方で固定する。
+// D7-SRCH-07のsearch_with_node_limit_is_deterministicが同じ観測を中盤局面で固定する。
 
 // D7-SMP-05。lazy-smp.md「停止と探索予算」: ExternalStopはNodeLimitより
 // 優先する。開始時点で両方が成立し得る構成を直接チーム経路へ与える。

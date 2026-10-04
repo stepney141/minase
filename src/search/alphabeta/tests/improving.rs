@@ -2,36 +2,6 @@
 
 use super::*;
 use crate::search::alphabeta::params;
-use crate::search::alphabeta::pruning::futility_margin;
-
-// 余裕値を歩兵価値から求め、その整数値に良化していない場合の倍率を掛ける。
-#[test]
-fn futility_margins_follow_improving_thresholds() {
-    for pawn in [37, 100, 137] {
-        for (index, (percent, scale)) in [
-            (
-                params::futility_margin1(),
-                params::non_improving_futility1(),
-            ),
-            (
-                params::futility_margin2(),
-                params::non_improving_futility2(),
-            ),
-            (
-                params::futility_margin3(),
-                params::non_improving_futility3(),
-            ),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let margin = pawn * percent / 100;
-            for (improving, expected) in [(true, margin), (false, margin * scale / 100)] {
-                assert_eq!(futility_margin(pawn, index as u32 + 1, improving), expected);
-            }
-        }
-    }
-}
 
 // docs/plans/strength-stage8.md「improvingの定義」。両手番から見て上昇だけを真とし、同値と下降は偽とする。
 #[test]

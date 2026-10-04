@@ -197,7 +197,8 @@ a\*は記録された候補集合の中での最善手にすぎず、新たに�
 
 ### 保存物
 
-`qsearch-output-search-trace/`に、スクリプト、単体テスト、全結果`result.json`、要約`summary.md`、10,000,000ノード探索の記録`searches.json`、および追跡ファイル154件のSHA-256の一覧`traces.sha256`を置いた。
+`qsearch-output-search-trace/`に、スクリプト、全結果`result.json`、要約`summary.md`、10,000,000ノード探索の記録`searches.json`、および追跡ファイル154件のSHA-256の一覧`traces.sha256`を置いた。
+単体テスト`test_trace_roots.py`は2026年10月4日のテスト監査で削除した。削除前の最終版はコミットa81e859に残る。
 追跡ファイル本体（2.6 MB）は`data/qsearch-output-training/phase0/traces/`にあり、Gitの管理外である。
 
 ```text

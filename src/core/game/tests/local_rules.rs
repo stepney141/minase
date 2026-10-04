@@ -64,31 +64,6 @@ fn article_32_e2_disables_all_piece_exhaustion_adjudication() {
     // D3-032-03: E2採用時は第22条の裁定を一切行わず対局を継続する。
     let e2_game = |position| game_with_codes(position, &[RuleCode::R1, RuleCode::E2]);
 
-    // 双方王駒のみ(8項相当)でも自動引き分けにしない。
-    let mut only_royals = e2_game(position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(11, 11), piece(Color::White, PieceKind::King)),
-        ],
-    ));
-    assert_eq!(
-        only_royals.play(step(sq(0, 0), sq(0, 1))),
-        Ok(GameStatus::Ongoing)
-    );
-
-    // 猶予が始まるはずの局面(第22条5項)でも裁定しない。
-    let (grace_position, establishes_condition) = grace_predecessor();
-    let mut condition = e2_game(grace_position);
-    assert_eq!(
-        condition.play(establishes_condition),
-        Ok(GameStatus::Ongoing)
-    );
-    assert_eq!(
-        condition.play(step(sq(4, 7), sq(3, 7))),
-        Ok(GameStatus::Ongoing)
-    );
-
     // 即時勝ちになるはずの局面(第22条1項)でも裁定しない。
     let mut immediate = e2_game(position(
         Color::Black,

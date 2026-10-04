@@ -230,7 +230,12 @@ mod tests {
                         value["games"][0]["ply"] = json!(40);
                     }
                 }
-                for condition in ["in-game", "standalone"] {
+                let conditions: &[_] = if !human && !start_from_game {
+                    &["in-game", "standalone"]
+                } else {
+                    &["in-game"]
+                };
+                for condition in conditions {
                     value["teacher"]["search_condition"] = json!(condition);
                     let provenance = read(&value).unwrap();
                     let mut output = Vec::new();

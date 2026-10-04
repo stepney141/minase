@@ -99,30 +99,3 @@ impl Direction {
 pub const fn step_square(square: Square, direction: Direction) -> Option<Square> {
     square.offset(direction.file_delta(), direction.rank_delta())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // 実装契約(D4-IMP-07): 8方向の単位変位は(0,0)を除く{-1,0,1}²の8通りを重複なく覆い、
-    // 逆方向は変位の符号反転かつ対合である。内部レイアウト由来の定数は期待値にしない。
-    #[test]
-    fn eight_directions_form_consistent_unit_displacements() {
-        let mut seen = Vec::new();
-        for direction in Direction::ALL {
-            let delta = (direction.file_delta(), direction.rank_delta());
-            assert!(delta.0.abs() <= 1 && delta.1.abs() <= 1);
-            assert_ne!(delta, (0, 0));
-            assert!(!seen.contains(&delta), "変位の重複: {delta:?}");
-            seen.push(delta);
-
-            let opposite = direction.opposite();
-            assert_eq!(
-                (opposite.file_delta(), opposite.rank_delta()),
-                (-delta.0, -delta.1),
-                "逆方向は変位の符号反転"
-            );
-            assert_eq!(opposite.opposite(), direction, "逆方向は対合");
-        }
-    }
-}

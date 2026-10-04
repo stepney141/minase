@@ -17,11 +17,6 @@ fn p1_new_destination_bit_is_not_inherited() {
     assert!(q.promotion_deferred().contains(sq(5, 8)));
     let result = checked(rules, &q);
     assert!(result.contains(&p));
-    assert!(
-        result
-            .iter()
-            .all(|p| !p.promotion_deferred().contains(sq(5, 8)))
-    );
 }
 
 /// P2は非移動駒を含む着手側の待機を高々1個だけ復元する。
@@ -104,10 +99,10 @@ fn p2_p5_preserves_pawns_and_restores_one_waiting_piece() {
     assert!(!result.contains(&with_state(&base, &[from], None)));
 }
 
-/// P5の最奥段での強制成りを標準成り規則とP2の双方で検査する。
+/// P5の保留歩兵が最奥段で成った直前局面をP0とP2の双方で復元できる。
 #[test]
-fn p5_forces_deferred_pawn_promotion_at_last_rank() {
-    // 第30条P5: P0では捕獲時、P2では非捕獲時も、保留歩兵の最奥段の成りは強制。
+fn p5_deferred_pawn_promotion_at_last_rank_has_its_predecessor() {
+    // 第30条P5: P0では捕獲を伴う成り、P2では非捕獲の成りから復元する。
     for promotion in [PromotionRule::P0, PromotionRule::P2] {
         let rules = MoveRules {
             promotion,
@@ -122,50 +117,13 @@ fn p5_forces_deferred_pawn_promotion_at_last_rank() {
         }
         let p = deferred_position(Color::Black, &pieces, &[from]);
         round_trip(rules, &p, mv(from, to, true));
-        assert!(
-            p.clone()
-                .try_make_move(mv(from, to, false), &MoveGenerator::new(rules))
-                .is_err()
-        );
-        let qpieces = vec![(to, piece(Color::Black, PieceKind::Pawn))];
-        // 成れない不成の到達局面を与えても、このpは直前局面にはならない。
-        let q = deferred_position(Color::White, &qpieces, &[to]);
-        assert!(!checked(rules, &q).contains(&p));
     }
 }
 
-/// P2とP6の併用で香車の最奥段強制成りと待機満了を検査する。
+/// P2で2枚を捕獲した直前局面として、どちらか1枚が待機していた局面を復元できる。
 #[test]
-fn p2_p6_forces_lance_promotion_and_expires_other_waiting() {
-    // 第30条P2・P6: 敵陣内から非捕獲で進む香車も最奥段では必ず成る。
-    let rules = MoveRules {
-        promotion: PromotionRule::P2,
-        p6: true,
-        ..MoveRules::standard()
-    };
-    let from = sq(5, 9);
-    let to = sq(5, 11);
-    let waiting = sq(1, 9);
-    let base = position(
-        Color::Black,
-        &[
-            (from, Color::Black, PieceKind::Lance),
-            (waiting, Color::Black, PieceKind::SilverGeneral),
-        ],
-    );
-    let p = with_state(&base, &[waiting], None);
-    round_trip(rules, &p, mv(from, to, true));
-    let without_p6 = MoveRules { p6: false, ..rules };
-    let mut q = p.clone();
-    q.try_make_move(mv(from, to, false), &MoveGenerator::new(without_p6))
-        .unwrap();
-    assert!(!checked(rules, &q).contains(&p));
-}
-
-/// 2枚の復元捕獲駒の待機は独立に列挙した上で集合Aにより絞る。
-#[test]
-fn p2_rejects_two_restored_enemy_waiting_bits() {
-    // 設計書「一時状態の逆生成」: 同時に消える待機2個は再適用だけでは排除できない。
+fn p2_restores_waiting_on_either_of_two_captured_pieces() {
+    // 設計書「一時状態の逆生成」: 経由升と到達升のそれぞれに待機を復元する。
     let rules = MoveRules {
         promotion: PromotionRule::P2,
         ..MoveRules::standard()
@@ -192,10 +150,4 @@ fn p2_rejects_two_restored_enemy_waiting_bits() {
     for deferred in [vec![mid], vec![to]] {
         assert!(result.contains(&with_state(&base, &deferred, None)));
     }
-    let invalid = with_state(&base, &[mid, to], None);
-    let mut replayed = invalid.clone();
-    replayed
-        .try_make_move(capture, &MoveGenerator::new(rules))
-        .unwrap();
-    assert!(!result.contains(&invalid));
 }

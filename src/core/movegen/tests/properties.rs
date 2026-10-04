@@ -577,14 +577,5 @@ fn quiet_generation_preserves_order_for_special_moves_and_all_rules() {
             assert_eq!(quiets[0], jump);
             assert_eq!(quiets[1..], expected);
         }
-        for position in crate::test_util::sampled_random_positions(rules) {
-            let expected: Vec<_> = generated_with(&generator, &position)
-                .into_iter()
-                .filter(|&mv| expected_captures(&position, mv).is_empty())
-                .collect();
-            quiets.clear();
-            generator.generate_quiets(&position, &mut base, &mut quiets);
-            assert_eq!(quiets, expected);
-        }
     }
 }

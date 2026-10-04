@@ -119,7 +119,7 @@ tools/train/.venv/bin/python -m unittest discover -s tools/train/tests -p 'test_
 
 | 実行対象 | 結果 | 実測時間 |
 |---|---|---|
-| Rust全対象 | 855件が成功し、12件を `#[ignore]` で除外した。 | ビルドを含む実時間は34.4秒、各テストの実行時間の合計は28.2秒だった。 |
+| Rust全対象 | 855件が成功し、16件を `#[ignore]` で除外した。 | ビルドを含む実時間は34.4秒、各テストの実行時間の合計は28.2秒だった。 |
 | Python（tools/train/tests） | 132件が成功した。 | テスト実行は23.1秒だった。 |
 | scripts/test_fetch_lishogi_games.py | 13件が成功した。 | 0.12秒だった。 |
 | src/search/alphabeta/tests/ponder.rs の反復実行 | ponder_long_iteration_stops_on_hit_without_spending_hard_budget が15回中7回、単独10回中4回失敗した。他の9件は15回とも成功した。 | 負荷下で `nice -n 19` により実行した。 |

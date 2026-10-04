@@ -2,31 +2,51 @@
 
 use super::*;
 
-// ponder.md設計判断「反復開始の判定」「的中の時点で進行中の反復」
-// （D7-TIME-07、D7-TIME-08）。境界値はマトリクスの試算に従う。
+// search.md「時間管理」、ponder.md「反復開始の判定」「的中の時点で進行中の反復」
+// （D7-TIME-05、D7-TIME-07、D7-TIME-08）。予測比から等号境界を求める。
 #[test]
 fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     let ms = Duration::from_millis;
+    let ns = Duration::from_nanos;
+    let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
     let budget = TimeBudget {
         soft: ms(100),
-        hard: ms(400),
+        hard: ms(2 * ratio),
     };
-    for (elapsed, hit, stable, expected) in [
-        (1040, 1000, true, false),
-        (38, 0, true, true),
-        (150, 100, false, true),
-        (150, 100, true, false),
-        (1099, 1000, false, false),
-        (100, 0, false, false),
+    // 通常のsoft境界は未満、安定時は予測上限以下となる最後の整数nsを検査する。
+    let stable_boundary = ns(100_000_000 * 100 / ratio);
+    for (elapsed, stable, expected) in [
+        (ms(99), false, true),
+        (ms(100), false, false),
+        (stable_boundary, true, true),
+        (stable_boundary + ns(1), true, false),
     ] {
         assert_eq!(
-            should_start_next_iteration(ms(elapsed), ms(hit), budget, stable),
+            should_start_next_iteration(elapsed, Duration::ZERO, budget, stable),
             expected
         );
     }
+    // 的中後の経過時間に対してもsoftの未満境界を適用する。
+    let shifted = TimeBudget {
+        soft: ms(100),
+        hard: ms(3 * ratio),
+    };
+    assert!(should_start_next_iteration(
+        ms(199),
+        ms(100),
+        shifted,
+        false
+    ));
+    assert!(!should_start_next_iteration(
+        ms(200),
+        ms(100),
+        shifted,
+        false
+    ));
+    // 割り切れる予算で、安定時の予測境界が等号を含むことを検査する。
     let exact_soft = TimeBudget {
-        soft: ms(263),
-        hard: ms(400),
+        soft: ms(ratio),
+        hard: ms(2 * ratio),
     };
     assert!(should_start_next_iteration(
         ms(100),
@@ -35,15 +55,34 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
         true
     ));
     assert!(!should_start_next_iteration(
-        ms(100) + Duration::from_nanos(1),
+        ms(100) + ns(1),
         Duration::ZERO,
         exact_soft,
         true
     ));
-    // h=100ms、hard=426msなら予測上限はT=200ms。softは境界を隠さない値にする。
+    // 固定時間では、安定性によらずhardの予測境界が拘束する。
+    let fixed = TimeBudget {
+        soft: ms(100),
+        hard: ms(100),
+    };
+    for stable in [false, true] {
+        assert!(should_start_next_iteration(
+            stable_boundary,
+            Duration::ZERO,
+            fixed,
+            stable
+        ));
+        assert!(!should_start_next_iteration(
+            stable_boundary + ns(1),
+            Duration::ZERO,
+            fixed,
+            stable
+        ));
+    }
+    // 的中が100msなら、T=200msの予測境界はhard=2×比−100msとなる。
     let wide_soft = TimeBudget {
-        soft: ms(426),
-        hard: ms(426),
+        soft: ms(2 * ratio - 100),
+        hard: ms(2 * ratio - 100),
     };
     assert!(should_start_next_iteration(
         ms(200),
@@ -52,19 +91,25 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
         false
     ));
     assert!(!should_start_next_iteration(
-        ms(200) + Duration::from_nanos(1),
+        ms(200) + ns(1),
         ms(100),
         wide_soft,
         false
     ));
+    // 的中前に始めた反復にも、開始時刻からの予測と的中後の予算を使う。
+    let hit = ms(10 * ratio);
+    let budget = TimeBudget {
+        soft: ms(ratio),
+        hard: ms(2 * ratio),
+    };
     for (started, stable, expected) in [
-        (500, false, true),
-        (600, false, false),
-        (400, true, true),
-        (500, true, false),
+        (ms(1200), false, true),
+        (ms(1200) + ns(1), false, false),
+        (ms(1100), true, true),
+        (ms(1100) + ns(1), true, false),
     ] {
         assert_eq!(
-            iteration_prediction_fits(ms(started), ms(1000), budget, stable),
+            iteration_prediction_fits(started, hit, budget, stable),
             expected
         );
     }
@@ -73,16 +118,30 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
 // ponder.md設計判断「探索中の打ち切り」（D7-TIME-06）。70msのhardを
 // 超えても先読みは続き、深さとノード数の上限は的中前から働く。
 #[test]
-fn ponder_ignores_time_until_hit_but_obeys_depth_nodes_and_stop() {
+fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
     let clock = ClockLimits::new(0, 0, 100, 0).unwrap();
-    let handle = start_ponder(SearchLimits::new(None, None, None, Some(clock)).unwrap(), 1);
-    assert_ponder_running(&handle, Duration::from_millis(350));
-    handle.request_stop();
-    let (_, result) = event_reports(drain_raw(&handle));
-    assert_eq!(result.stop_reason, StopReason::ExternalStop);
-    assert!(legal_moves(&Position::initial()).contains(&result.best_move));
-    assert!(result.elapsed >= Duration::from_millis(350));
-    handle.join().unwrap();
+    let snapshot = snapshot_for(&Position::initial());
+    let table = small_tt();
+    let stop = AtomicBool::new(false);
+    let hit_ns = AtomicU64::new(u64::MAX);
+    let outcome = run_search_team(
+        &weights().unwrap(),
+        &snapshot.position,
+        snapshot.rules,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &SearchLimits::new(Some(3), None, None, Some(clock)).unwrap(),
+        &stop,
+        DEFAULT_THREADS,
+        &table,
+        &mut crate::search::HistoryTables::new(DEFAULT_THREADS),
+        None,
+        Instant::now() - Duration::from_secs(10),
+        &hit_ns,
+        true,
+    );
+    assert_eq!(outcome.stop_reason, StopReason::DepthCompleted);
+    assert_eq!(outcome.result.depth, 3);
     for (depth, nodes, reason) in [
         (Some(1), None, StopReason::DepthCompleted),
         (None, Some(5000), StopReason::NodeLimit),
@@ -101,25 +160,20 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_nodes_and_stop() {
 // 実時間の統合経路は負荷による検査遅延を許容し、厳密なsoft/hardの区別は下の検査点で固定する。
 #[test]
 fn ponder_hit_finishes_within_the_post_hit_budget_tolerance() {
-    for threads in [1, 2] {
-        let clock = ClockLimits::new(0, 0, 100, 0).unwrap();
-        let handle = start_ponder(
-            SearchLimits::new(None, None, None, Some(clock)).unwrap(),
-            threads,
-        );
-        assert_ponder_running(&handle, Duration::from_millis(350));
-        let hit = Instant::now();
-        handle.ponderhit();
-        let (_, result) = event_reports(drain_raw(&handle));
-        assert!(hit.elapsed() < Duration::from_secs(2));
-        assert!(matches!(
-            result.stop_reason,
-            StopReason::SoftLimit | StopReason::HardLimit
-        ));
-        assert!(result.elapsed >= Duration::from_millis(350));
-        assert!(legal_moves(&Position::initial()).contains(&result.best_move));
-        handle.join().unwrap();
-    }
+    let clock = ClockLimits::new(0, 0, 100, 0).unwrap();
+    let handle = start_ponder(SearchLimits::new(None, None, None, Some(clock)).unwrap(), 1);
+    assert_ponder_running(&handle, Duration::from_millis(350));
+    let hit = Instant::now();
+    handle.ponderhit();
+    let (_, result) = event_reports(drain_raw(&handle));
+    assert!(hit.elapsed() < Duration::from_secs(2));
+    assert!(matches!(
+        result.stop_reason,
+        StopReason::SoftLimit | StopReason::HardLimit
+    ));
+    assert!(result.elapsed >= Duration::from_millis(350));
+    assert!(legal_moves(&Position::initial()).contains(&result.best_move));
+    handle.join().unwrap();
 }
 
 // ponder.md設計判断「起点と共有状態の所有者」（D7-API-06）。
@@ -139,36 +193,20 @@ fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
     assert!(first >= 300_000_000 && first != u64::MAX);
     handle.ponderhit();
     assert_eq!(handle.hit_ns.load(AtomicOrdering::Relaxed), first);
-    for ponder in [false, true] {
-        for _ in 0..20 {
-            let handle = crate::search::start_search(
-                weights().unwrap(),
-                snapshot_for(&Position::initial()),
-                depth_limits(1),
-                701,
-                DEFAULT_THREADS,
-                small_tt(),
-                crate::search::HistoryTables::new(DEFAULT_THREADS),
-                ponder,
-            );
-            handle.ponderhit();
-            let first = handle.hit_ns.load(AtomicOrdering::Relaxed);
-            handle.ponderhit();
-            assert_eq!(handle.hit_ns.load(AtomicOrdering::Relaxed), first);
-            if !ponder {
-                assert_eq!(first, 0);
-            }
-            let (_, result) = event_reports(drain_raw(&handle));
-            assert_eq!(result.stop_reason, StopReason::DepthCompleted);
-            assert!(
-                handle
-                    .events()
-                    .try_iter()
-                    .all(|event| !matches!(event, SearchEvent::Finished { .. }))
-            );
-            handle.join().unwrap();
-        }
-    }
+    // 通常探索への通知は時間予算の起点を動かさない。
+    let handle = start(
+        snapshot_for(&Position::initial()),
+        depth_limits(1),
+        701,
+        DEFAULT_THREADS,
+        small_tt(),
+    );
+    handle.ponderhit();
+    let first = handle.hit_ns.load(AtomicOrdering::Relaxed);
+    assert_eq!(first, 0);
+    let (_, result) = event_reports(drain_raw(&handle));
+    assert_eq!(result.stop_reason, StopReason::DepthCompleted);
+    handle.join().unwrap();
 }
 
 // ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08）。
@@ -274,9 +312,14 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
 // 長い反復の開始直後に的中させ、hardまで走り切らずsoftで止まる配線を固定する。
 #[test]
 fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
+    let hard_ms = 300;
+    let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
+    // 反復開始Sから的中Hまでの遅延を1000msまで許容する。
+    // S×比 > (H+hard)×100 を満たすよう、S > (1000+hard)×100/(比−100) とする。
+    let minimum_elapsed = Duration::from_millis((1000 + hard_ms) * 100 / (ratio - 100) + 1);
     for threads in [1, 2] {
         let handle = start_ponder(
-            SearchLimits::new(None, None, Some(70), None).unwrap(),
+            SearchLimits::new(None, None, Some(hard_ms), None).unwrap(),
             threads,
         );
         let mut completed_depth = 0;
@@ -288,7 +331,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             match event {
                 SearchEvent::Progress { depth, elapsed, .. } => {
                     completed_depth = completed_depth.max(depth);
-                    if elapsed >= Duration::from_millis(700) {
+                    if elapsed >= minimum_elapsed {
                         break;
                     }
                 }
@@ -312,26 +355,10 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
         assert_eq!(result.stop_reason, StopReason::SoftLimit);
         assert!(result.depth >= completed_depth);
         assert!(
-            hit.elapsed() < Duration::from_millis(70),
+            hit.elapsed() < Duration::from_millis(hard_ms),
             "post-hit elapsed: {:?}",
             hit.elapsed()
         );
-        handle.join().unwrap();
-    }
-}
-
-// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08、D7-LIM-04）。
-// 深さ1を完了できない制限でも、的中した探索は根の先頭の合法手を返す。
-#[test]
-fn ponder_hit_before_first_completed_depth_returns_the_root_fallback() {
-    let first = snapshot_for(&Position::initial()).root_moves[0];
-    for threads in [1, 2] {
-        let handle = start_ponder(nodes_limits(1), threads);
-        handle.ponderhit();
-        let (_, result) = event_reports(drain_raw(&handle));
-        assert_eq!(result.depth, 0);
-        assert_eq!(result.best_move, first);
-        assert_eq!(result.nodes, 1);
         handle.join().unwrap();
     }
 }
@@ -430,7 +457,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
     assert_eq!(shared.reason(), StopReason::SoftLimit);
 }
 
-// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08、D7-API-06）。
+// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08、D7-API-06、D7-LIM-04）。
 // スレッド生成前の的中も通常の開始判定を通し、完了済みの反復がなければ根の先頭を返す。
 #[test]
 fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {

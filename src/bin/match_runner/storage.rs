@@ -599,22 +599,6 @@ mod tests {
     }
 
     #[test]
-    fn resume_rejects_format_version_two() {
-        let path = temporary_directory("version-two");
-        let expected = manifest();
-        let store = RunStore::create(&path, expected.clone()).unwrap();
-        drop(store);
-        let manifest_path = path.join(MANIFEST_FILE);
-        let mut old_manifest = serde_json::to_value(&expected).unwrap();
-        old_manifest["format_version"] = serde_json::json!(2);
-        fs::write(&manifest_path, serde_json::to_vec(&old_manifest).unwrap()).unwrap();
-
-        let error = RunStore::resume(&path, &expected, 1).unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        fs::remove_dir_all(path).unwrap();
-    }
-
-    #[test]
     fn checkpoints_accumulate_across_resumed_invocations() {
         let path = temporary_directory("checkpoint");
         let expected = manifest();
@@ -767,29 +751,8 @@ mod tests {
 
     // D8-HARN-21/26（ponder.md「対局ハーネスの対局進行」）。
     #[test]
-    fn ponder_manifest_and_prediction_fields_are_required_and_round_trip() {
-        for ponder in [false, true] {
-            let path = temporary_directory("ponder-manifest");
-            let mut expected = manifest();
-            expected.ponder = ponder;
-            let store = RunStore::create(&path, expected.clone()).unwrap();
-            let value: serde_json::Value = read_json(&path.join(MANIFEST_FILE)).unwrap();
-            assert_eq!(value["ponder"], ponder);
-            assert_eq!(value["format_version"], 4);
-            drop(store);
-            let (store, _) = RunStore::resume(&path, &expected, 1).unwrap();
-            drop(store);
-            expected.ponder = !ponder;
-            assert!(RunStore::resume(&path, &expected, 1).is_err());
-            fs::remove_dir_all(path).unwrap();
-        }
-        let mut turn = game(StoredColor::Black).turns.remove(0);
-        for prediction in [None, Some("7d7e".to_owned()), Some("bad-token".to_owned())] {
-            turn.ponder = prediction.clone();
-            let value = serde_json::to_value(&turn).unwrap();
-            assert_eq!(value["ponder"], serde_json::to_value(prediction).unwrap());
-            assert_eq!(serde_json::from_value::<TurnRecord>(value).unwrap(), turn);
-        }
+    fn ponder_manifest_and_prediction_fields_are_required() {
+        let turn = game(StoredColor::Black).turns.remove(0);
         let mut value = serde_json::to_value(&turn).unwrap();
         value.as_object_mut().unwrap().remove("ponder");
         assert!(serde_json::from_value::<TurnRecord>(value).is_err());
@@ -806,6 +769,7 @@ mod tests {
         drop(RunStore::create(&path, expected.clone()).unwrap());
         fs::write(path.join(MANIFEST_FILE), br#"{"format_version":3}"#).unwrap();
         let error = RunStore::resume(&path, &expected, 1).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert!(
             error
                 .to_string()

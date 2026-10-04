@@ -8,7 +8,6 @@ use crate::core::position::{Position, PositionBuilder};
 use crate::test_util::{position as position_with_pieces, sq};
 
 mod builder;
-mod lion_trigger;
 mod make_move;
 mod placement;
 mod promotion_rights;

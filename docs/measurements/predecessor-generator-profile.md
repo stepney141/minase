@@ -6,7 +6,7 @@
 
 ## コマンドライン
 
-計測は次のコマンドで実行した。コーパスの各局面は`src/core/predecessor/tests/profile.rs`の定数が拡張SFENで保持し、導出手順は同ファイルのテスト`predecessor_profile_corpus_has_documented_transitions`が再現する。
+計測は次のコマンドで実行した。コーパスの各局面は`src/core/predecessor/tests/profile.rs`の定数が拡張SFENで保持し、導出手順は同ファイルの`assert_documented_transitions`が再現し、計測テスト`predecessor_profile`が計測の前に呼び出す。
 
 ```console
 cargo test --release predecessor_profile -- --ignored --nocapture

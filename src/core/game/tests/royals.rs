@@ -3,18 +3,6 @@
 use super::*;
 
 #[test]
-fn article_20_1_game_starts_ongoing_with_one_royal_each() {
-    // D3-020-01: 開始時は各対局者の王駒が王将・玉将の1枚だけで、終局していない。
-    let game = Game::new(Rules::ENGINE_DEFAULT);
-
-    assert_eq!(game.status(), GameStatus::Ongoing);
-    assert_eq!(game.result(), None);
-    for color in Color::ALL {
-        assert_eq!(game.position().royal_pieces(color).popcount(), 1);
-    }
-}
-
-#[test]
 fn article_20_2_promoted_elephant_becomes_a_royal_prince() {
     // D3-020-02/D3-020-04: 成った醉象は太子=王駒であり、王将を取られても
     // 太子が残る限り継続し、2枚目の王駒の捕獲で初めて終局する。

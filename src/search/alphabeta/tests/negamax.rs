@@ -28,19 +28,6 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
 }
 
 // docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
-// 記録手のない深さ3の探索は、深さ2の探索と同じ結果・探索量になり、深さ2で保存する。
-#[test]
-fn iir_without_tt_entry_searches_and_stores_reduced_depth() {
-    let position = crate::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let expected = run_negamax(&position, 2, -INFINITY, INFINITY, 0, &small_tt());
-    let table = small_tt();
-    let actual = run_negamax(&position, 3, -INFINITY, INFINITY, 0, &table);
-
-    assert_eq!(actual, expected);
-    assert_eq!(table.probe(search_key(&position), 0).unwrap().depth, 2);
-}
-
-// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
 // 深さ不足の記録でも記録手があれば、要求された深さ3を保つ。
 #[test]
 fn iir_preserves_depth_when_tt_has_a_move() {

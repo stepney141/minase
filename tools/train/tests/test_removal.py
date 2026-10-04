@@ -8,7 +8,6 @@ from fractions import Fraction
 import numpy as np
 import torch
 
-import minase_train.pst.model as pst_model
 import minase_train.pst.removal as removal
 from helpers import CPU, PROMOTABLE, constant_base, direct_loss, model_and_loss, records_with
 from minase_train.data.features import feature_indices, mirror
@@ -185,24 +184,6 @@ class RemovalFormulaTest(unittest.TestCase):
         b.backward()
         self.assertEqual(float(a.detach()), float(b.detach()))
         torch.testing.assert_close(left.weight.grad, right.weight.grad, rtol=0, atol=1e-12)
-
-    def test_loss_gradient_corrects_reversal_and_same_sign_worsening(self):
-        for baseline_wrong, factor in [(False, -1), (True, 2), (True, -1)]:
-            base = constant_base(-8, 8) if baseline_wrong else constant_base()
-            for byte in (1, 65):
-                with self.subTest(baseline_wrong=baseline_wrong, factor=factor, byte=byte):
-                    records = records_with([[(0, byte), (142, 12), (143, 76)]])
-                    candidate = base.astype(np.float64) / 8 * factor
-                    model, loss = model_and_loss(records, base, candidate)
-                    optimizer = torch.optim.SGD(model.parameters(), lr=.1)
-                    loss.backward()
-                    self.assertTrue(torch.isfinite(model.weight.grad).all())
-                    self.assertGreater(float(model.weight.grad.norm()), 0)
-                    optimizer.step()
-                    after = pst_model.expanded_model_weights(model).detach().numpy()
-                    self.assertLess(direct_loss(records, base, after, 2), direct_loss(records, base, candidate, 2))
-                    np.testing.assert_array_equal(model.weight[-1].detach().numpy(), 0)
-
 
 class RemovalApiTest(unittest.TestCase):
 

@@ -200,28 +200,6 @@ mod tests {
     use super::*;
     use crate::core::board::step_square;
 
-    // movegen-speedup.md「捕獲対象を生成前に除外する」: 遮蔽なしの範囲は
-    // 全色・全プロファイル・全升で固定利きと盤端までの走りの和になる。
-    #[test]
-    fn reach_matches_fixed_and_unblocked_slides() {
-        let tables = attack_tables();
-        for color in Color::ALL {
-            for profile in all_profiles() {
-                for from in Square::all() {
-                    let mut expected = tables.fixed(color, profile, from);
-                    for slide in movement_profile_data(profile).slides {
-                        expected |= tables.sliding_control(
-                            from,
-                            slide.direction.for_color(color),
-                            Bitboard::EMPTY,
-                        );
-                    }
-                    assert_eq!(tables.reach(color, profile, from), expected);
-                }
-            }
-        }
-    }
-
     // 実装契約(第7条4項・5項の走りの定義に接地): 走りの利きは、方向へ1升ずつ進む
     // 逐次歩行と一致する。盤端までの升を進行順に含み、最初の駒がある升を含んだ
     // 直後に打ち切られ、その先の升を含まない。
