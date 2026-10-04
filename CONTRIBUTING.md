@@ -33,6 +33,8 @@ git cliff --include-path 'crates/minase-core/**' --tag-pattern '^minase-core-v' 
 git cliff --include-path 'crates/minase/**' --bumped-version
 ```
 
+2つのコマンドは、それぞれ`minase-core-v0.2.0`と`v2.1.0`の形でタグの名前を表示する。ライブラリのコマンドは、`minase-core-v`のタグが1つもない間は失敗するので、ライブラリの最初のリリースは0.1.0とする。
+
 次に、`--execute`を付けずに cargo-release を実行して予行する。予行では Cargo.toml と変更履歴を変更せず、今回のリリースノートを標準出力に表示するだけである。
 予行と本番は「Publishing minase-core」のような行を表示するが、release.toml の`publish = false`により`cargo publish`は呼ばれない。
 
