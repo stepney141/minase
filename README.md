@@ -4,6 +4,13 @@ Minase is a legal-move generation library and playing engine for chu shogi, writ
 It follows the rules of [Japan Chu Shogi Association](https://www.chushogi-renmei.com/) by default, and the local rules used by lishogi, [HaChu](https://salsa.debian.org/debian/hachu), and other sources can be selected through rule codes.
 The supported rules and their sources are documented in [RULES.md](docs/rules/RULES.md) (Japanese).
 
+## Name
+
+Minase is pronounced "mee-nah-seh" with three syllables, and the final "e" is sounded.
+The name comes from Minase Kanenari (水無瀬兼成, 1514–1602), a court noble known as a calligrapher who made shogi pieces, including sets for chu shogi.
+The Minase family still keeps a chu shogi set inscribed with his age, 86, and Shimamoto Town in Osaka designated the family's Minase pieces, including this set, as a cultural property in 2009.
+These facts are documented in Japanese by the [Japanese Wikipedia article on Kanenari](https://ja.wikipedia.org/wiki/%E6%B0%B4%E7%84%A1%E7%80%AC%E5%85%BC%E6%88%90) and a [Shimamoto Town cultural property bulletin](https://www.town.shimamoto.lg.jp/uploaded/attachment/3733.pdf).
+
 ## Overview
 
 - Rules: The implementation covers the lion's two-step move (igui and jitto), the sente-lion restriction, protection of the lion (including indirect protection through a discovered attack), promotion rights, repetition, and bare-king endings. Local rules are selected with rule codes (groups L, P, R, and E) or with the presets `engine-default` and `lishogi`.
