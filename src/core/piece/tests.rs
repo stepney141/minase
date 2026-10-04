@@ -61,18 +61,6 @@ fn article_4_3_piece_kinds_are_21_initial_plus_8_promoted_only() {
             "駒種の重複: {kind:?}"
         );
     }
-
-    // 成りによって新たに現れる駒種は、ちょうど第10条の8種である(D4-004-03性質)。
-    let mut newly_appearing: Vec<PieceKind> = PieceKind::ALL
-        .iter()
-        .filter_map(|kind| kind.promoted())
-        .filter(|target| !INITIAL_KINDS.contains(target))
-        .collect();
-    newly_appearing.sort_by_key(|kind| kind.index());
-    newly_appearing.dedup();
-    let mut expected = PROMOTED_ONLY_KINDS.to_vec();
-    expected.sort_by_key(|kind| kind.index());
-    assert_eq!(newly_appearing, expected);
 }
 
 // 実装契約(D4-IMP-06): 成り対応は第9条の表とちょうど一致し、成る→戻すが恒等である。

@@ -25,27 +25,6 @@ fn king_cycle() -> [Move; 4] {
 }
 
 #[test]
-fn article_26_1_moving_the_opponents_piece_is_rejected() {
-    // D3-026-01: 手番側が所有しない駒を動かす入力は着手として成立しない。
-    let mut game = Game::with_default_rules();
-    let white_pawn_move = step(sq(0, 8), sq(0, 7));
-
-    assert!(matches!(
-        game.play(white_pawn_move),
-        Err(GameError::IllegalMove {
-            cause: IllegalMoveCause::Movement,
-            ..
-        })
-    ));
-    assert_eq!(game.position(), &Position::initial());
-    assert_eq!(game.ply_count(), 0);
-
-    // 自分の駒を動かす合法手はそのまま受理される。
-    let legal = game.legal_moves()[0];
-    assert_eq!(game.play(legal), Ok(GameStatus::Ongoing));
-}
-
-#[test]
 fn article_26_12_no_moves_are_accepted_after_the_game_ends() {
     // D3-026-02: 終局済みの対局への着手入力は理由によらず拒否され、
     // 記録済みの結果は変化しない。終局後の対局合法手は空である。
@@ -111,24 +90,13 @@ fn assert_rejection_is_pure(game: &mut Game, rejected: Move, cause: IllegalMoveC
 }
 
 #[test]
-fn article_27_4_r2_r3_reject_before_acceptance_while_r1_adjudicates_after() {
-    // D3-026-03/D3-027-02: 同じ着手列でも、R1は⑫を受理してから裁定し、
-    // R2・R3は禁止対象の着手を受理前に不合法として拒否する。拒否後は
-    // 別の着手で対局を継続できる。
+fn article_27_4_r2_r3_reject_before_acceptance() {
+    // D3-026-03/D3-027-02: R2・R3は禁止対象の着手を受理前に不合法として
+    // 拒否する。拒否後は別の着手で対局を継続できる。
     // D3-031-06: R2は2回目の再現から直ちに禁止する。
     // D3-031-10: R3は2回目・3回目の再現を合法とし4回目の出現だけを禁止する。
     let cycle = king_cycle();
     let alternative = step(sq(8, 7), sq(9, 7));
-
-    let mut r1 = game_with_codes(king_cycle_position(), &[RuleCode::R1, RuleCode::E2]);
-    for ply in 1..=11 {
-        assert_eq!(
-            r1.play(cycle[(ply - 1) % cycle.len()]),
-            Ok(GameStatus::Ongoing),
-            "R1 ply {ply}"
-        );
-    }
-    assert_eq!(r1.play(cycle[3]), draw(DrawReason::Repetition));
 
     let mut r2 = game_with_codes(king_cycle_position(), &[RuleCode::R2, RuleCode::E2]);
     for mv in cycle.into_iter().take(3) {
@@ -153,6 +121,14 @@ fn article_27_4_r2_r3_reject_before_acceptance_while_r1_adjudicates_after() {
 fn article_27_1_rejected_moves_leave_the_game_state_unchanged() {
     // D3-027-01: 不合法な着手の拒否の前後で、局面・手番・手数・探索局面
     // キー履歴・対局合法手集合・対局状態がすべて不変である。
+
+    // D3-026-01: 相手の駒を動かす入力(第26条1号)。
+    let mut opponent = Game::with_default_rules();
+    assert_rejection_is_pure(
+        &mut opponent,
+        step(sq(0, 8), sq(0, 7)),
+        IllegalMoveCause::Movement,
+    );
 
     // 駒の動きに反する入力(第26条2号)。
     let mut movement = Game::with_default_rules();

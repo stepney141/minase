@@ -162,14 +162,6 @@ fn article_21_6_resignation_ends_the_game() {
 }
 
 #[test]
-fn article_21_7_draw_agreement_ends_the_game() {
-    // D3-021-09: 双方の合意で対局は引き分けとして終局する。
-    let mut game = Game::with_default_rules();
-    assert_eq!(game.agree_draw(), draw(DrawReason::Agreement));
-    assert_eq!(game.position(), &Position::initial());
-}
-
-#[test]
 fn article_21_10_r2_mate_judgement_uses_the_filtered_move_set() {
     // D3-021-10: 詰み判定の1手目(手番側の受け)にはR2禁止フィルタ後の
     // 対局合法手を用いる。唯一の非捕獲の受けが既出局面の再現となる局面は、

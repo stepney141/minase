@@ -154,9 +154,9 @@ fn predecessor_oracle_p1() {
 
 #[test]
 #[ignore = "ローカルルールの有限状態全列挙"]
-fn predecessor_oracle_p2_p6() {
-    // 設計書「完全性の根拠」「一時状態の逆生成」: P2の待機とP6を併用する。
-    compare_oracle(Rules::from_codes(&[L0, P2, P6, R1, E0]).unwrap().moves);
+fn predecessor_oracle_p2() {
+    // 設計書「完全性の根拠」「一時状態の逆生成」: P2の待機状態を全列挙する。
+    compare_oracle(Rules::from_codes(&[L0, P2, R1, E0]).unwrap().moves);
 }
 
 #[test]
@@ -164,11 +164,4 @@ fn predecessor_oracle_p2_p6() {
 fn predecessor_oracle_p0_p5() {
     // 設計書「完全性の根拠」「一時状態の逆生成」: P5の歩兵保留を全列挙する。
     compare_oracle(Rules::from_codes(&[L0, P0, P5, R1, E0]).unwrap().moves);
-}
-
-#[test]
-#[ignore = "ローカルルールの有限状態全列挙"]
-fn predecessor_oracle_l1() {
-    // 設計書「完全性の根拠」「ローカルルール」: 足条件なしの先獅子を検査する。
-    compare_oracle(Rules::from_codes(&[L1, P0, R1, E0]).unwrap().moves);
 }

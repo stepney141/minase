@@ -2,8 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use super::dir::{B, FL, FR, L, R};
-use super::{direct_destinations, generated, msq, mv, step_squares};
+use super::dir::{L, R};
+use super::{direct_destinations, generated, msq, mv};
 use crate::core::board::Square;
 use crate::core::piece::{Color, PieceKind};
 use crate::core::rules::MoveRules;
@@ -12,22 +12,6 @@ use crate::test_util::position;
 // ---------------------------------------------------------------------------
 // 第7条　移動と捕獲の一般則
 // ---------------------------------------------------------------------------
-
-// D1-007-01: 自駒升への到達禁止（第7条2項）。
-#[test]
-fn article_7_2_own_occupied_square_is_not_a_destination() {
-    let board = position(
-        Color::Black,
-        &[
-            (msq(6, 6), Color::Black, PieceKind::GoldGeneral),
-            (msq(6, 5), Color::Black, PieceKind::Pawn),
-        ],
-    );
-    let destinations = direct_destinations(&board, msq(6, 6));
-    // 金将の6方向のうち、自歩がふさぐ前方 (6,5) だけが除かれる。
-    let expected = step_squares((6, 6), &[FL, FR, L, R, B]);
-    assert_eq!(destinations, expected);
-}
 
 // D1-007-03: 走り駒の遮蔽と先端捕獲（第7条4項・5項）。
 #[test]

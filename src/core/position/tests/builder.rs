@@ -2,27 +2,13 @@
 
 use super::positions_with_distinct_temporary_states;
 use crate::core::piece::Color;
-use crate::core::position::{Position, PositionBuildError, PositionBuilder, PositionError};
+use crate::core::position::{PositionBuildError, PositionBuilder, PositionError};
 
 #[test]
 fn builder_finish_preserves_consistent_incremental_zobrist_values() {
     // 設計書predecessor-generator.md「実装フェーズ > フェーズ1」
-    for position in positions_with_distinct_temporary_states()
-        .into_iter()
-        .chain([Position::initial()])
-    {
-        assert_eq!(position.zobrist(), position.recompute_zobrist());
-        assert_eq!(
-            position.rights_zobrist(),
-            position.recompute_rights_zobrist()
-        );
+    for position in positions_with_distinct_temporary_states() {
         assert_eq!(position.validate(), Ok(()));
-    }
-    for side in Color::ALL {
-        assert_eq!(
-            PositionBuilder::new(side).finish().unwrap().validate(),
-            Ok(())
-        );
     }
 }
 

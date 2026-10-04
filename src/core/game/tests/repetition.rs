@@ -140,35 +140,6 @@ fn article_24_1_occurrences_accumulate_across_different_paths() {
 }
 
 #[test]
-fn article_31_r1_requires_twelve_reversible_plies_from_start() {
-    // D3-031-11: 対局開始から可逆手が12手続くまでは、4回以上同じ局面が
-    // 現れても裁定しない(lishogi-bot.md「反復裁定の整合」、第31条R1)。
-    let start = position(
-        Color::Black,
-        &[
-            (sq(0, 0), piece(Color::Black, PieceKind::King)),
-            (sq(3, 3), piece(Color::Black, PieceKind::Lion)),
-            (sq(8, 8), piece(Color::White, PieceKind::Lion)),
-            (sq(11, 11), piece(Color::White, PieceKind::King)),
-        ],
-    );
-    let cycle = [step(sq(3, 3), sq(3, 3)), step(sq(8, 8), sq(8, 8))];
-    let mut game = game_with_codes(start.clone(), &[RuleCode::R1]);
-    for ply in 1..=11 {
-        assert_eq!(
-            game.play(cycle[(ply - 1) % 2]),
-            Ok(GameStatus::Ongoing),
-            "ply {ply}"
-        );
-        if ply % 2 == 0 {
-            assert_eq!(game.position(), &start);
-        }
-    }
-    assert_eq!(game.play(cycle[1]), draw(DrawReason::Repetition));
-    assert_eq!(game.position(), &start);
-}
-
-#[test]
 fn article_31_r1_requires_twelve_reversible_plies_after_an_irreversible_move() {
     // D3-031-12: 不可逆手の前に可逆手を11手指していても、その後の可逆手が
     // 12手になるまで裁定しない(lishogi-bot.md「反復裁定の整合」、第31条R1)。

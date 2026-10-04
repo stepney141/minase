@@ -123,23 +123,6 @@ fn stocked_position(side: Color, pieces: &[(Square, PieceCode)]) -> Position {
     position_from_codes(side, &all)
 }
 
-/// 初期配置から指定升の駒を除き、指定した駒を置いた局面を作る。
-///
-/// 両対局者の在庫をほぼ満たしたまま試験駒だけを動かすことで、復元する捕獲駒と
-/// 記録升の変種を少数に保つ。初期配置の走り駒は歩兵の列に遮られるため、除いた
-/// 歩兵が盤端の筋である限り、中央の試験駒へ利きが届かない。
-fn initial_with(side: Color, removed: &[Square], placed: &[(Square, PieceCode)]) -> Position {
-    let initial = Position::initial();
-    let mut pieces: Vec<_> = initial
-        .occupied()
-        .iter()
-        .filter(|square| !removed.contains(square))
-        .map(|square| (square, initial.piece_at(square).unwrap()))
-        .collect();
-    pieces.extend_from_slice(placed);
-    position_from_codes(side, &pieces)
-}
-
 /// 試験局面の盤面を保ち、指定した保留集合と先獅子記録で再構築する。
 fn with_state(base: &Position, deferred: &[Square], record: Option<Square>) -> Position {
     let pieces: Vec<_> = base

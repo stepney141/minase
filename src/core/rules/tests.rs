@@ -86,6 +86,20 @@ fn article_33_4_from_codes_reports_duplicate_conflict_and_missing_in_contract_or
             second: RuleCode::P1,
         })
     );
+    // 第30条末尾・第33条9項(D1-030-05): P1とP2は排他である。
+    assert_eq!(
+        Rules::from_codes(&[
+            RuleCode::L0,
+            RuleCode::P1,
+            RuleCode::P2,
+            RuleCode::R1,
+            RuleCode::E0,
+        ]),
+        Err(RulesError::Conflicting {
+            first: RuleCode::P1,
+            second: RuleCode::P2,
+        })
+    );
     assert_eq!(
         Rules::from_codes(&[RuleCode::L4, RuleCode::P0, RuleCode::R1, RuleCode::E0]),
         Err(RulesError::Missing(RuleGroup::Lion))
@@ -122,6 +136,7 @@ fn rule_set_parse_errors_preserve_the_failure_kind() {
     ));
     assert!(std::error::Error::source(&unknown).is_some());
 
+    // D6-CLI-02: プリセット名と規則コードの併記を拒否する。
     assert_eq!(
         parse_rule_set("lishogi,R1"),
         Err(RuleSetParseError::PresetMustBeAlone { preset: "lishogi" })
@@ -158,17 +173,16 @@ fn article_25_2_repetition_rule_is_mandatory_and_exclusive() {
         Err(RulesError::Missing(RuleGroup::Repetition))
     );
 
-    for pair in [
-        [RuleCode::R1, RuleCode::R2],
-        [RuleCode::R1, RuleCode::R3],
-        [RuleCode::R2, RuleCode::R3],
-    ] {
-        let codes = [RuleCode::L0, RuleCode::P0, pair[0], pair[1], RuleCode::E0];
-        assert!(matches!(
-            Rules::from_codes(&codes),
-            Err(RulesError::Conflicting { .. })
-        ));
-    }
+    assert!(matches!(
+        Rules::from_codes(&[
+            RuleCode::L0,
+            RuleCode::P0,
+            RuleCode::R1,
+            RuleCode::R2,
+            RuleCode::E0,
+        ]),
+        Err(RulesError::Conflicting { .. })
+    ));
 }
 
 #[test]

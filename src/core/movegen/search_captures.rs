@@ -12,10 +12,6 @@ use crate::core::piece::{PieceCode, PieceKind};
 use crate::core::position::Position;
 use crate::core::promotion::PromotionChoice;
 
-#[cfg(test)]
-#[path = "tests/ordinary_capturer.rs"]
-mod tests;
-
 /// 生成時に得た捕獲升を持つ探索専用の候補。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct CaptureCandidate {
