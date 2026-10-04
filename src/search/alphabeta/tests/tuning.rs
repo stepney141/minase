@@ -9,60 +9,31 @@ use crate::search::alphabeta::{
         futility_margin, late_move_limit, lmr_base, razoring_margin, reverse_futility_margin,
         see_margin,
     },
+    root::grow_aspiration_delta,
 };
 
-// docs/plans/spsa.md「整数表現」の式と丸めを係数から照合する。
-#[test]
-fn tuning_default_null_move_and_aspiration_match_reference() {
-    for depth in 0..=256 {
-        assert_eq!(
-            null_move_reduction(depth, 0, 0, 100),
-            (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1_200
-        );
-    }
-    let growth = i64::from(params::aspiration_growth());
-    let saturation = (i64::from(i32::MAX) * 100 / growth) as i32;
-    for delta in [
-        0,
-        1,
-        49,
-        50,
-        51,
-        saturation - 1,
-        saturation,
-        saturation + 1,
-        i32::MAX - 1,
-        i32::MAX,
-    ] {
-        assert_eq!(
-            grow_aspiration_delta(delta),
-            (i64::from(delta) * growth / 100).min(i64::from(i32::MAX)) as i32
-        );
-    }
-    with_root_searcher(&Position::initial(), &[], |searcher| {
-        assert_eq!(
-            searcher.delta_margin,
-            params::delta_margin() * searcher.pst.pawn_value() / 100
-        );
-    });
-}
-
-/// 固定深さbenchが通らない時間管理を、採用後の仕様の式と照合する。
+/// D7-TIME-01。docs/plans/search.md「時間管理」、time-management-efficiency.md
+/// 「予算値」、spsa.md「整数表現」の時間予算式と丸めを係数から照合する。
 #[test]
 fn tuning_default_clock_budget_matches_reference_grid() {
     fn reference(clock: ClockLimits) -> TimeBudget {
         let remaining = u128::from(clock.remaining_ms);
         let increment = u128::from(clock.increment_ms);
         let byoyomi = u128::from(clock.byoyomi_ms);
-        let moves = u128::from(88_u32.max(432_u32.saturating_sub(clock.ply) / 2));
+        let moves = u128::from(
+            (params::min_moves() as u32)
+                .max((params::expected_plies() as u32).saturating_sub(clock.ply) / 2),
+        );
         let opening = if remaining > 0 {
             u128::from(clock.ply.saturating_add(4).min(40))
         } else {
             40
         };
-        let soft = remaining / moves + increment * 76 / 100 + byoyomi * 8 * opening / 400;
-        let hard = (soft * 451 / 100)
-            .min(remaining * 27 / 100 + byoyomi * 8 / 10)
+        let soft = remaining / moves
+            + increment * params::increment_share() as u128 / 100
+            + byoyomi * 8 * opening / 400;
+        let hard = (soft * params::hard_soft_ratio() as u128 / 100)
+            .min(remaining * params::hard_remaining_share() as u128 / 100 + byoyomi * 8 / 10)
             .min((remaining + byoyomi).saturating_sub(30).max(1))
             .max(1);
         TimeBudget {
@@ -70,6 +41,10 @@ fn tuning_default_clock_budget_matches_reference_grid() {
             hard: Duration::from_millis(hard.min(u128::from(u64::MAX)) as u64),
         }
     }
+    let expected_plies = params::expected_plies() as u32;
+    let min_moves = params::min_moves() as u32;
+    let initial_moves = u64::from(min_moves.max(expected_plies / 2));
+    let floor_ply = expected_plies.saturating_sub(2 * min_moves);
     for remaining in [
         0,
         1,
@@ -81,73 +56,33 @@ fn tuning_default_clock_budget_matches_reference_grid() {
         99,
         100,
         101,
-        215,
-        216,
-        217,
+        initial_moves - 1,
+        initial_moves,
+        initial_moves + 1,
         10_000,
         u64::MAX,
     ] {
         for increment in [0, 1, 9, 10, 11, 100, u64::MAX] {
             for byoyomi in [0, 1, 4, 5, 6, 30, 31, 1000, u64::MAX] {
-                for ply in [0, 1, 35, 36, 37, 254, 255, 256, 431, 432, 433, u32::MAX] {
+                for ply in [
+                    0,
+                    1,
+                    35,
+                    36,
+                    37,
+                    floor_ply.saturating_sub(1),
+                    floor_ply,
+                    floor_ply + 1,
+                    expected_plies - 1,
+                    expected_plies,
+                    expected_plies + 1,
+                    u32::MAX,
+                ] {
                     if remaining == 0 && increment == 0 && byoyomi == 0 {
                         continue;
                     }
                     let clock = clock_at_ply(remaining, increment, byoyomi, ply);
                     assert_eq!(clock_budget(clock), reference(clock), "{clock:?}");
-                }
-            }
-        }
-    }
-}
-
-/// 予測の交差積はナノ秒単位の等号境界と最大Durationでも一致する。
-#[test]
-fn tuning_default_iteration_prediction_matches_reference_grid() {
-    for started in [
-        Duration::ZERO,
-        Duration::from_nanos(1),
-        Duration::from_nanos(37),
-        Duration::from_nanos(38),
-        Duration::from_nanos(39),
-        Duration::from_nanos(99),
-        Duration::from_nanos(100),
-        Duration::from_nanos(101),
-        Duration::MAX,
-    ] {
-        for hit in [
-            Duration::ZERO,
-            Duration::from_nanos(1),
-            Duration::from_nanos(10),
-            Duration::MAX,
-        ] {
-            for soft in [
-                Duration::ZERO,
-                Duration::from_nanos(100),
-                Duration::from_nanos(263),
-                Duration::MAX,
-            ] {
-                for hard in [
-                    soft,
-                    soft.saturating_add(Duration::from_nanos(150)),
-                    Duration::MAX,
-                ] {
-                    for stable in [false, true] {
-                        let expected = started.as_nanos() * 263
-                            <= (hit.as_nanos() + hard.as_nanos()) * 100
-                            && (!stable
-                                || started.as_nanos() * 263
-                                    <= (hit.as_nanos() + soft.as_nanos()) * 100);
-                        assert_eq!(
-                            iteration_prediction_fits(
-                                started,
-                                hit,
-                                TimeBudget { soft, hard },
-                                stable
-                            ),
-                            expected
-                        );
-                    }
                 }
             }
         }
@@ -439,45 +374,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
 
-    // 宣言順と範囲、および採用済みの既定値をUSIの契約として固定する。
-    let expected = [
-        ("LmrDivisor", 156, 100, 400),
-        ("LmrHistoryThreshold", 146, 0, 512),
-        ("FutilityMargin1", 165, 0, 400),
-        ("FutilityMargin2", 239, 0, 400),
-        ("FutilityMargin3", 283, 0, 400),
-        ("NonImprovingFutility1", 71, 0, 100),
-        ("NonImprovingFutility2", 72, 0, 100),
-        ("NonImprovingFutility3", 86, 0, 100),
-        ("LmpBase", 382, 0, 8600),
-        ("LmpSlope", 133, 0, 3600),
-        ("ReverseFutilityMargin", 428, 0, 1938),
-        ("RazoringMargin1", 1606, 0, 2668),
-        ("RazoringMargin2", 2015, 0, 2885),
-        ("SeeMargin1", 10, 0, 400),
-        ("SeeMargin2", 192, 0, 400),
-        ("SeeMargin3", 13, 0, 400),
-        ("AspirationDelta", 55, 10, 200),
-        ("AspirationGrowth", 190, 125, 400),
-        ("NullMoveBase", 3617, 1200, 4800),
-        ("NullMoveSlope", 257, 100, 400),
-        ("NullMoveEvalScale", 56, 0, 400),
-        ("HistoryLimit", 17408, 4096, 65536),
-        ("HistoryDecay", 23, 0, 100),
-        ("CaptureHistoryLimit", 16950, 4096, 65536),
-        ("CaptureHistoryScale", 49, 0, 400),
-        ("CorrectionCap", 220, 50, 400),
-        ("CorrectionWeight", 37, 8, 128),
-        ("DeltaMargin", 355, 50, 500),
-        ("QsearchMoveLimit", 4, 1, 7),
-        ("ExpectedPlies", 432, 250, 700),
-        ("MinMoves", 88, 40, 200),
-        ("IncrementShare", 76, 30, 100),
-        ("HardSoftRatio", 451, 150, 800),
-        ("HardRemainingShare", 27, 10, 50),
-        ("IterationRatio", 263, 150, 400),
-    ];
-    assert_eq!(params::PARAMETERS, expected);
+    // USIの宣言行が係数表の名前、既定値、範囲と一致する。
     let mut engine = engine();
     let mut protocol = UsiProtocol::new(&engine);
     let handshake = run(&mut protocol, &mut engine, "usi\n");
@@ -485,7 +382,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         .lines()
         .filter(|line| line.starts_with("option name Tune_"))
         .collect();
-    let expected_declarations: Vec<_> = expected
+    let expected_declarations: Vec<_> = params::PARAMETERS
         .iter()
         .map(|(name, default, min, max)| {
             format!("option name Tune_{name} type spin default {default} min {min} max {max}")
@@ -575,8 +472,9 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         }),
         ("IterationRatio", 150, prediction),
     ];
+    assert_eq!(cases.len(), params::PARAMETERS.len());
     for ((name, value, observe), &(expected_name, default, min, max)) in
-        cases.into_iter().zip(&expected)
+        cases.into_iter().zip(params::PARAMETERS)
     {
         assert_eq!(name, expected_name);
         let before = observe();

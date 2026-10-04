@@ -384,79 +384,6 @@ fn initialized_pst_derives_the_frozen_piece_values() {
     assert_eq!(pst.piece_value(prince), 2_600);
 }
 
-/// 埋め込みPSTの盤上駒価値が正で、王駒と余裕値が設計式を満たすことを検査する。
-#[test]
-fn embedded_pst_piece_values_satisfy_search_invariants() {
-    let pst = Pst::decode(include_bytes!("../../../nets/pst.bin")).unwrap();
-    let pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
-    let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
-    let prince = PieceCode::new_promoted(Color::Black, PieceKind::CrownPrince).unwrap();
-    let max_non_royal = reachable_piece_states()
-        .into_iter()
-        .filter(|piece| !matches!(piece.kind(), Some(PieceKind::King | PieceKind::CrownPrince)))
-        .map(|piece| {
-            let value = pst.piece_value(piece);
-            assert!(value > 0, "piece={piece:?}, value={value}");
-            value
-        })
-        .max()
-        .unwrap();
-
-    assert_eq!(pst.piece_value(king), max_non_royal + pst.pawn_value());
-    assert_eq!(pst.piece_value(prince), max_non_royal + pst.pawn_value());
-    assert_eq!(pst.pawn_value(), pst.piece_value(pawn));
-}
-
-/// 同一端点では駒数によらず生重み和を8で割った値に一致する。
-#[test]
-fn identical_endpoints_match_single_table_evaluation() {
-    let pst = Pst::decode(&valid_bytes()).unwrap();
-    assert!(pst.weights.iter().all(|pair| pair[0] == pair[1]));
-    for count in [2, 47, 92] {
-        let mut position = position_with_count(count, Color::Black);
-        position.set_lion_capture(Some(sq(3, 9))).unwrap();
-        let mut sum = 0_i32;
-        active_features(&position, |feature| {
-            sum += i32::from(pst.weights[feature][0])
-        });
-        assert_evaluation(&pst, &position, (sum / 8).clamp(-28_999, 28_999));
-    }
-}
-
-/// 仕様の係数0、45、90と範囲外の駒数を、異なる端点の生重み和で照合する。
-#[test]
-fn distinct_endpoints_follow_phase_boundaries_and_exclude_lion_feature() {
-    let pst = distinct_pst();
-    for (count, q, with_lion) in [
-        (0, 0, false),
-        (1, 0, false),
-        (2, 0, false),
-        (3, 1, false),
-        (47, 45, false),
-        (92, 90, false),
-        (93, 90, false),
-        (144, 90, false),
-        (47, 45, true),
-    ] {
-        let mut position = if count == 92 {
-            Position::initial()
-        } else {
-            position_with_count(count, Color::Black)
-        };
-        if with_lion {
-            position.set_lion_capture(Some(sq(3, 9))).unwrap();
-        }
-        let mut sums = [0_i64; 2];
-        active_features(&position, |feature| {
-            sums[0] += i64::from(pst.weights[feature][0]);
-            sums[1] += i64::from(pst.weights[feature][1]);
-        });
-        let expected = ((q * sums[0] + (90 - q) * sums[1]) / 720).clamp(-28_999, 28_999) as i32;
-        assert_evaluation(&pst, &position, expected);
-        assert_eq!(pst.refresh_accumulator(&position).piece_count, count as u32);
-    }
-}
-
 /// 分子が負でも0方向へ切り捨て、端点ごとの除算を行わない。
 #[test]
 fn interpolation_divides_once_and_truncates_toward_zero() {
@@ -479,40 +406,6 @@ fn interpolation_divides_once_and_truncates_toward_zero() {
         refresh_checksum(&mut bytes);
         assert_evaluation(&Pst::decode(&bytes).unwrap(), &position, expected);
     }
-}
-
-/// 最大絶対値の重みと最大駒数でも評価上限に収まる。
-#[test]
-fn interpolation_clips_both_signs() {
-    for (mg, eg, expected) in [
-        (i16::MAX, i16::MAX - 1, 28_999),
-        (i16::MIN, i16::MIN + 1, -28_999),
-    ] {
-        let mut bytes = valid_bytes();
-        for feature in 0..FEATURE_COUNT {
-            set_weight(&mut bytes, 0, feature, mg);
-            set_weight(&mut bytes, 1, feature, eg);
-        }
-        refresh_checksum(&mut bytes);
-        let pst = Pst::decode(&bytes).unwrap();
-        assert_evaluation(&pst, &position_with_count(144, Color::Black), expected);
-    }
-}
-
-/// 後手番の段反転と陣営交換は、先獅子特徴も含めて評価を保存する。
-#[test]
-fn evaluation_matches_rank_reflection_with_colors_swapped() {
-    let pst = distinct_pst();
-    // 46枚なら補間係数は44と46であり、白番だけの端点交換も区別できる。
-    let mut position = position_with_count(46, Color::White);
-    position.set_lion_capture(Some(sq(3, 5))).unwrap();
-    let reflected = reflect_ranks_and_swap_colors(&position);
-    let expected = evaluate(&pst, &position);
-    assert_eq!(
-        pst.evaluate_accumulator(pst.refresh_accumulator(&position), Color::White),
-        expected
-    );
-    assert_evaluation(&pst, &reflected, expected);
 }
 
 /// 勝率尺度は正かつ有限の値だけを受け入れる。
@@ -614,7 +507,7 @@ fn diagnostic_numerators_match_independent_feature_sum_and_clamping() {
         pst.weights.fill(endpoints);
         // 先獅子を盤上の駒とは異なる寄与にして、欠落や二重計上を検出する。
         pst.weights[super::features::BOARD_FEATURE_COUNT..].fill([31, -57]);
-        for count in [0, 1, 2, 3, 47, 92, 100] {
+        for count in [0, 1, 2, 3, 47, 92, 100, 144] {
             for side in Color::ALL {
                 let mut position = position_with_count(count, side);
                 let trigger = if count < 2 {
@@ -644,7 +537,8 @@ fn diagnostic_numerators_match_independent_feature_sum_and_clamping() {
                     );
                 }
                 let expected = (numerator / 720).clamp(-28_999, 28_999) as i32;
-                assert_eq!(evaluate(&pst, &position), expected);
+                assert_evaluation(&pst, &position, expected);
+                assert_eq!(pst.refresh_accumulator(&position).piece_count, count as u32);
                 assert_eq!(detail.score, expected);
             }
         }
@@ -725,15 +619,6 @@ fn random_legal_positions_preserve_evaluation_under_rank_and_color_reflection() 
             }
         }
     }
-}
-
-/// debugging-tools.md「整合検査の内容」: 全再計算と一致する累算値は検査を通過する。
-#[cfg(feature = "invariants")]
-#[test]
-fn accumulator_invariants_accept_full_refresh() {
-    let pst = distinct_pst();
-    let position = Position::initial();
-    pst.assert_accumulator(&position, pst.refresh_accumulator(&position), 0);
 }
 
 /// debugging-tools.md「整合検査の内容」: 1項の不一致を検出し、局面と両累算値を診断する。

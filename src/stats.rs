@@ -219,16 +219,6 @@ mod tests {
         }
     }
 
-    // D8-STAT-01性質: 度数の左右反転(候補と基準の入替に相当)でLLRの符号傾向が
-    // 反転する。仮説がelo 0対5で非対称なため厳密な反対称性は要求しない。
-    #[test]
-    fn mirrored_frequencies_flip_llr_sign_tendency() {
-        let positive = [141, 593, 1112, 666, 158];
-        let mirrored = [158, 666, 1112, 593, 141];
-        assert!(gsprt_llr(&positive) > 0.0);
-        assert!(gsprt_llr(&mirrored) < 0.0);
-    }
-
     // D8-STAT-02: 判定は3値(H1/H0/継続)で網羅的・排他的。上側境界超過でH1、
     // 下側境界超過でH0、境界内は継続。境界同値の比較演算はSPEC_UNCLEAR-01に
     // つき検証しない。

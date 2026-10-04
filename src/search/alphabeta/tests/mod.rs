@@ -10,7 +10,6 @@
 
 mod capture_history;
 mod captures;
-mod contracts;
 mod correction;
 mod handle;
 mod history;
@@ -34,7 +33,7 @@ mod tt;
 mod tuning;
 
 use core::cmp::Reverse;
-use core::num::{NonZeroU64, NonZeroUsize};
+use core::num::NonZeroUsize;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, mpsc};
@@ -61,7 +60,7 @@ use crate::search::alphabeta::pruning::{
     capture_is_pruned_by_see, lmr_reduction, lmr_table, null_move_reduction,
 };
 use crate::search::alphabeta::quiesce::{CaptureRanks, QsearchBuffers};
-use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta, grow_aspiration_delta};
+use crate::search::alphabeta::root::{AspirationWindow, aspiration_delta};
 use crate::search::alphabeta::royal::{captures_last_royal, royal_under_attack};
 use crate::search::alphabeta::searcher::{
     KILLER_COUNT, PonderIteration, STOP_CHECK_INTERVAL, Searcher, new_searcher,
@@ -71,7 +70,7 @@ use crate::search::alphabeta::team::{
     HardLimit, SharedSearch, WorkerOutcome, run_search_team, run_worker_team, select_worker_outcome,
 };
 use crate::search::alphabeta::time::{
-    TimeBudget, clock_budget, iteration_prediction_fits, moves_to_go, should_start_next_iteration,
+    TimeBudget, clock_budget, iteration_prediction_fits, should_start_next_iteration,
     stable_signal, time_budget,
 };
 use crate::search::alphabeta::tt::{

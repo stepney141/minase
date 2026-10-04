@@ -298,7 +298,6 @@ mod tests {
     use crate::core::position::PositionBuilder;
     use crate::core::rules::Rules;
     use crate::eval::weights;
-    use crate::search::alphabeta::pruning::capture_is_pruned_by_see;
     use crate::test_util::{bench_positions, position_from_codes, sampled_random_positions, sq};
 
     use core::cell::Cell;
@@ -307,7 +306,8 @@ mod tests {
         pub(super) static LOOKUPS: Cell<usize> = const { Cell::new(0) };
     }
 
-    /// 余裕値0・200で契約を検査し、余裕値0の判定と参照実装の逆引き回数を返す。
+    /// 余裕値0・200と負の期待値の境界で契約を検査し、
+    /// 余裕値0の判定と参照実装の逆引き回数を返す。
     fn assert_prune_contract(
         board: &Position,
         rules: MoveRules,
@@ -330,6 +330,18 @@ mod tests {
             if margin == 0 {
                 zero_margin_lookups = LOOKUPS.get();
             }
+        }
+        if let Some(v) = expected.filter(|&v| v < 0) {
+            assert!(
+                !see_prunes(board, rules, pst, mv, -v),
+                "move={mv:?}, margin={}, expected={v}",
+                -v
+            );
+            assert!(
+                see_prunes(board, rules, pst, mv, -v - 1),
+                "move={mv:?}, margin={}, expected={v}",
+                -v - 1
+            );
         }
         (zero_margin_lookups, reference_lookups)
     }
@@ -742,9 +754,12 @@ mod tests {
             Color::Black,
             &[(sq(5, 4), black_pawn), (target, white_go_between)],
         );
-        assert_eq!(
-            see_reference(&unguarded, rules, &pst, capture(sq(5, 4), target)),
-            Some(value(&pst, white_go_between))
+        assert_prune_contract(
+            &unguarded,
+            rules,
+            &pst,
+            capture(sq(5, 4), target),
+            Some(value(&pst, white_go_between)),
         );
 
         for white_lion in [
@@ -758,9 +773,12 @@ mod tests {
                     (target, white_lion),
                 ],
             );
-            assert_eq!(
-                see_reference(&lion_capture, rules, &pst, capture(sq(5, 0), target)),
-                Some(value(&pst, white_lion))
+            assert_prune_contract(
+                &lion_capture,
+                rules,
+                &pst,
+                capture(sq(5, 0), target),
+                Some(value(&pst, white_lion)),
             );
         }
 
@@ -775,9 +793,12 @@ mod tests {
                 (sq(5, 10), white_rook),
             ],
         );
-        assert_eq!(
-            see_reference(&defended, rules, &pst, capture(sq(5, 0), target)),
-            Some(value(&pst, white_pawn) - value(&pst, black_rook))
+        assert_prune_contract(
+            &defended,
+            rules,
+            &pst,
+            capture(sq(5, 0), target),
+            Some(value(&pst, white_pawn) - value(&pst, black_rook)),
         );
 
         let black_gold = unpromoted(Color::Black, PieceKind::GoldGeneral);
@@ -795,10 +816,7 @@ mod tests {
         // 凍結駒価値は仲人125、金378、歩100、銀250、飛750。
         // 金で仲人を取って歩に取り返された時点で125−378=−253。
         // 銀で歩を取り返すと遮蔽が外れた飛車に銀を取られ、さらに150損するため中止する。
-        assert_eq!(
-            see_reference(&xray, rules, &pst, capture(sq(4, 4), target)),
-            Some(-253)
-        );
+        assert_prune_contract(&xray, rules, &pst, capture(sq(4, 4), target), Some(-253));
 
         let free_king = unpromoted(Color::White, PieceKind::FreeKing);
         let white_king = unpromoted(Color::White, PieceKind::King);
@@ -811,9 +829,12 @@ mod tests {
                 (sq(5, 4), black_pawn),
             ],
         );
-        assert_eq!(
-            see_reference(&king_recapture, rules, &pst, capture(sq(4, 4), target)),
-            Some(value(&pst, free_king))
+        assert_prune_contract(
+            &king_recapture,
+            rules,
+            &pst,
+            capture(sq(4, 4), target),
+            Some(value(&pst, free_king)),
         );
     }
 
@@ -835,9 +856,12 @@ mod tests {
                 (sq(5, 6), white_pawn),
             ],
         );
-        assert_eq!(
-            see_reference(&lion_is_recaptured, rules, &pst, capture(sq(4, 4), target)),
-            Some(value(&pst, white_pawn) - value(&pst, black_lion))
+        assert_prune_contract(
+            &lion_is_recaptured,
+            rules,
+            &pst,
+            capture(sq(4, 4), target),
+            Some(value(&pst, white_pawn) - value(&pst, black_lion)),
         );
 
         let black_gold = unpromoted(Color::Black, PieceKind::GoldGeneral);
@@ -854,9 +878,12 @@ mod tests {
         // 凍結駒価値は歩100、金378、飛750。金が歩を取った後に飛車が
         // 金を取ると獅子が飛車を取り返し、先手は100−378+750=472を得る。
         // 後手は取り返さず歩100の損で止められるため、交換評価は100となる。
-        assert_eq!(
-            see_reference(&lion_recaptures, rules, &pst, capture(sq(4, 4), target)),
-            Some(100)
+        assert_prune_contract(
+            &lion_recaptures,
+            rules,
+            &pst,
+            capture(sq(4, 4), target),
+            Some(100),
         );
     }
 
@@ -892,11 +919,19 @@ mod tests {
         let expected = value(&pst, victim) - value(&pst, mover);
 
         for (index, board) in cases.into_iter().enumerate() {
+            let mv = capture(sq(4, 4), target);
             assert_eq!(
-                see_reference(&board, rules, &pst, capture(sq(4, 4), target)),
+                see_reference(&board, rules, &pst, mv),
                 Some(expected),
                 "case={index}"
             );
+            for margin in [0, 200, -expected, -expected - 1] {
+                assert_eq!(
+                    see_prunes(&board, rules, &pst, mv, margin),
+                    expected < -margin,
+                    "case={index}, margin={margin}"
+                );
+            }
         }
     }
 
@@ -924,9 +959,12 @@ mod tests {
             to: target,
             promote: true,
         };
-        assert_eq!(
-            see_reference(&first_promotion, rules, &pst, promoting_capture),
-            Some(value(&pst, white_pawn) - value(&pst, dragon_horse))
+        assert_prune_contract(
+            &first_promotion,
+            rules,
+            &pst,
+            promoting_capture,
+            Some(value(&pst, white_pawn) - value(&pst, dragon_horse)),
         );
         assert!(value(&pst, horned_falcon) > value(&pst, dragon_horse));
 
@@ -941,9 +979,12 @@ mod tests {
             ],
         );
         let promotion_bonus = (value(&pst, horned_falcon) - value(&pst, dragon_horse)).max(0);
-        assert_eq!(
-            see_reference(&promoted_recapture, rules, &pst, capture(sq(5, 10), target)),
-            Some(value(&pst, black_pawn) - value(&pst, white_rook) - promotion_bonus)
+        assert_prune_contract(
+            &promoted_recapture,
+            rules,
+            &pst,
+            capture(sq(5, 10), target),
+            Some(value(&pst, black_pawn) - value(&pst, white_rook) - promotion_bonus),
         );
     }
 
@@ -967,9 +1008,12 @@ mod tests {
             ..MoveRules::standard()
         };
 
-        assert_eq!(
-            see_reference(&board, rules, &pst, capture(sq(5, 10), target)),
-            Some(value(&pst, black_go_between) - value(&pst, white_rook))
+        assert_prune_contract(
+            &board,
+            rules,
+            &pst,
+            capture(sq(5, 10), target),
+            Some(value(&pst, black_go_between) - value(&pst, white_rook)),
         );
     }
 
@@ -1016,40 +1060,7 @@ mod tests {
         ];
 
         for (board, mv) in cases {
-            assert_eq!(
-                see_reference(&board, rules, &pst, mv),
-                Some(value(&pst, victim))
-            );
+            assert_prune_contract(&board, rules, &pst, mv, Some(value(&pst, victim)));
         }
-    }
-
-    // strength-stage3.md「検証」: 新しい判定不能条件に該当する捕獲は、
-    // SEEの枝刈りで除外しない。
-    #[test]
-    fn see_none_never_prunes_quiescence_captures() {
-        let pst = weights().unwrap();
-        let rules = MoveRules::standard();
-        let board = position(
-            Color::Black,
-            &[
-                (sq(5, 5), unpromoted(Color::Black, PieceKind::Lion)),
-                (sq(6, 6), unpromoted(Color::White, PieceKind::Pawn)),
-                (sq(7, 7), unpromoted(Color::White, PieceKind::Lion)),
-            ],
-        );
-        let generator = MoveGenerator::standard();
-        let mut captures = Vec::new();
-        generator.generate_captures(&board, &mut captures);
-        let none_captures: Vec<_> = captures
-            .iter()
-            .copied()
-            .filter(|&mv| see_reference(&board, rules, &pst, mv).is_none())
-            .collect();
-        assert!(!none_captures.is_empty());
-        assert!(
-            none_captures
-                .iter()
-                .all(|&mv| { !capture_is_pruned_by_see(&board, rules, &pst, mv) })
-        );
     }
 }

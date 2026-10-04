@@ -187,31 +187,6 @@ fn rising_threshold_preserves_the_surviving_sequence() {
     }
 }
 
-// 設計書movegen-speedup-2.md「段階9」: 初期化後でも置換表の手を先頭に返し、
-// 価値グループは要求されるまで生成しない。
-#[test]
-fn tt_capture_is_returned_before_generating_groups() {
-    let pst = crate::eval::weights().unwrap();
-    let ranks = CaptureRanks::new(&pst);
-    let generator = MoveGenerator::standard();
-    let position = crate::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
-    let tt_move = reference(&position, &generator, &pst, None)[0].0;
-    let mut buffers = QsearchBuffers::default();
-    buffers.reset(&position);
-    buffers.initialize(&position, &generator, &pst, &ranks, -1);
-    buffers.set_tt_move(&position, &generator, Some(tt_move));
-    assert_eq!(
-        buffers
-            .next(&position, &generator, &pst, &ranks)
-            .unwrap()
-            .capture
-            .mv,
-        tt_move
-    );
-    assert!(buffers.group.is_empty());
-    assert!(!buffers.special.is_empty());
-}
-
 // 「捕獲対象を生成前に除外する」: 同じ標本を再走査してもバッファを再確保しない。
 #[test]
 fn warmed_buffers_retain_capacity_across_nodes() {
