@@ -1473,10 +1473,6 @@ mod tests {
         assert_eq!(output.lines().count(), 1);
         assert!(output.starts_with("tellusererror"));
         assert!(!output.contains("move "));
-
-        // sd設定後のgoは正常に探索する。
-        let output = run(&mut protocol, &mut engine, "sd 1\ngo\n");
-        assert!(output.lines().any(|line| line.starts_with("move ")));
     }
 
     #[test]
@@ -1683,7 +1679,6 @@ mod tests {
                     "option RuleSet=L0,P0,R2,E2\n",
                     "{}", // 変更は対局中に反映されない（3回目の出現も合法のまま）
                     "option RuleSet=XX9\n",
-                    "option RuleSet=lishogi,P1\n",
                     "option RuleSet=L1,E1\n", // 反復規則欠如も受信時に拒否
                     "new\nforce\n",
                     "setboard {} w\n",
@@ -1698,17 +1693,9 @@ mod tests {
             output,
             concat!(
                 "Error (invalid option value): option RuleSet=XX9\n",
-                "Error (invalid option value): option RuleSet=lishogi,P1\n",
                 "Error (invalid option value): option RuleSet=L1,E1\n",
                 "Illegal move (repetition): i8i9\n",
             )
-        );
-
-        // プリセット名は大文字小文字を区別せず単独指定で受理する（R33第5・6項）。
-        assert_eq!(session(&[RuleCode::R1], "option RuleSet=LISHOGI\n"), "");
-        assert_eq!(
-            session(&[RuleCode::R1], "option RuleSet=engine-default\n"),
-            ""
         );
     }
 

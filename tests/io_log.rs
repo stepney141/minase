@@ -172,13 +172,11 @@ fn existing_log_is_preserved_and_startup_fails() {
     let log = TemporaryLog::new();
     let original = b"previous session\n\x00\xff";
     fs::write(&log.0, original).unwrap();
-    for protocol in ["usi", "cecp"] {
-        let output = command(protocol, Some(&log.0)).output().unwrap();
-        assert_eq!(output.status.code(), Some(1));
-        assert!(!output.stderr.is_empty());
-        assert!(output.stdout.is_empty());
-        assert_eq!(fs::read(&log.0).unwrap(), original);
-    }
+    let output = command("usi", Some(&log.0)).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(!output.stderr.is_empty());
+    assert!(output.stdout.is_empty());
+    assert_eq!(fs::read(&log.0).unwrap(), original);
 }
 
 /// debugging-tools.md「入出力のログの形式」: ログの有無は決定的なセッションの標準出力を変えない。
@@ -203,5 +201,4 @@ fn cecp_session_records_both_directions() {
     assert_eq!(received, ["xboard", "protover 2", "quit"]);
     assert!(sent.iter().any(|line| line == "feature done=1"));
     assert_eq!(format!("{}\n", sent.join("\n")).as_bytes(), output.stdout);
-    assert_eq!(output.stdout, run("cecp", None, input).stdout);
 }

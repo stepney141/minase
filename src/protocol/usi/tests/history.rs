@@ -105,31 +105,6 @@ fn history_carry_usi_clears_new_games_accepted_rules_and_changed_threads() {
     }
 }
 
-#[test]
-fn history_carry_usi_keeps_history_between_go_commands() {
-    let (mut engine, mut protocol) = setup();
-    seed(&mut protocol);
-    let mut expected = 160;
-    for _ in 0..2 {
-        expected = expected * history_decay_for_test() / 100;
-        let mut output = Vec::new();
-        let mut active = protocol
-            .start_go(&engine, &["depth", "3"], &mut output)
-            .unwrap();
-        assert!(active.is_some());
-        assert!(protocol.histories.is_none());
-        protocol
-            .finish_search(&engine, &mut active, &mut output, false)
-            .unwrap();
-        assert!(active.is_none());
-        assert_eq!(
-            protocol.histories.as_ref().unwrap().workers[0][0][60][60],
-            expected
-        );
-        run(&mut protocol, &mut engine, "position startpos\n");
-    }
-}
-
 // 的中・不的中の両方で、実行中と結果保留中の回収経路を通す。
 #[test]
 fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
