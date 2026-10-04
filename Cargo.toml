@@ -1,6 +1,10 @@
 [workspace]
 members = ["crates/minase", "crates/minase-core"]
 resolver = "3"
+# Other commits are unpacked under target/ (match_runner commit: specs, bench_compare.py), and
+# other branches are checked out as worktrees under data/ and .claude/. Their Cargo projects
+# are not members of this workspace.
+exclude = ["target", "data", ".claude"]
 
 [workspace.lints.rust]
 missing_docs = "warn"

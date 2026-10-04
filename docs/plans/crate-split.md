@@ -18,6 +18,7 @@ crates.ioへの実際の登録は取り消せない操作なので、本書の�
 ルートを仮想マニフェストのワークスペースとし、ライブラリ`minase-core`（MIT）とエンジン`minase`（GPL-3.0-or-later）を`crates/`の下に分けてmasterへ統合した。
 分割前のコミット2d715e4と比べて、深さ6のbenchの全15局面の`depth`、`nodes`、`best`、`score`、`engine-default`と`lishogi`の深さ1から4までのperft、および試験の名前の集合（通常776件、全フィーチャ792件）が一致し、試験は762件が成功して14件が従来どおり無視された。
 `cargo package --workspace`は両crateのパッケージ化と検証ビルドを通し、配布物は`include`で指定したファイルとCargoが加えるファイルだけを含む。
+分割後のコミットを候補、分割前のコミットを基準とする`match_runner`の`commit:`指定の対局と`scripts/bench_compare.py`も、分割前のコミットをビルドして完走した。
 使い捨てのクローンで`cargo release --execute`を実行し、ライブラリが`chore(release): minase-core-v0.1.0`とタグ`minase-core-v0.1.0`、エンジンが`chore(release): v2.0.0`とタグ`v2.0.0`を作り、それぞれの変更履歴に自分のディレクトリに触れたコミットだけが載ることを確かめた。
 文書の引用は、利用者の決定により、出所を補ってそのまま残した（[文書にある第三者のコードと文章](#文書にある第三者のコードと文章)）。
 リリース、push、およびcrates.ioへの公開は、利用者が[CONTRIBUTING.md](../../CONTRIBUTING.md)の手順で行う。
@@ -118,6 +119,9 @@ crates/minase-core/
 `target/`はワークスペースのルートに作られるので、実行ファイルのパス`target/release/minase`は変わらない。
 仮想マニフェストのルートでパッケージを指定しない場合、`default-members`を設けなければ全てのメンバーが対象になるので、`cargo build --release --bin minase`と`cargo run --release --bin match_runner`は`-p`なしでエンジンの実行ファイルを見つける。
 `default-members`は設けない。
+ただし、`[workspace]`の`exclude`に`target`、`data`、および`.claude`を挙げる。
+対局ハーネスと`scripts/bench_compare.py`は他のコミットを`target/`の下へ展開してビルドし、他のブランチのworktreeは`data/`と`.claude/`の下に置かれる。
+分割前のコミットや旧ブランチのCargo.tomlは`[workspace]`を持たないので、`exclude`がないとCargoは親ディレクトリのワークスペースを見つけ、それらのビルドを「current package believes it's in a workspace when it's not」で拒否する。
 したがって、対局ハーネスの`commit:`指定（`src/harness/commit.rs`）は、分割前後のどちらのコミットにも同じコマンドでビルドでき、手引きの標準コマンドも変わらない。
 
 エンジンがルートから`crates/minase/`へ移ることで、次のパスが変わる。
