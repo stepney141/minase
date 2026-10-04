@@ -1,3 +1,11 @@
+## v2.0.0 (2026-10-04)
+
+### Refactoring
+
+- Split the library into the minase-core crate (**breaking**)
+
+  The rules library is now the separate crate `minase-core`. Library types moved from `minase::` to `minase_core::` (for example, `minase::Position` is now `minase_core::Position`), and `minase` no longer re-exports them.
+
 ## v1.4.0 (2026-10-04)
 
 ### Features
