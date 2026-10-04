@@ -226,13 +226,16 @@ CargoはメンバーのCargo.tomlにある`[profile]`を無視するためであ
 監査の所見F4は、`docs/`とルートの文書に第三者のコードや文章を再現した箇所を29件挙げ、そのうちGPL-3.0系のコードの再現が8件ある。
 最大のものは、`docs/research/forward-pruning-prior-art.md`がStockfishの`src/search.cpp`から計12行を逐語で転記した箇所である。
 ほかに、XBoardのエンジン仕様書（CC BY-ND 4.0）からの10行と、Chess Programming Wikiの和訳（CC BY-SA 3.0）がある。
-和訳は翻案にあたるため、CC BY-SAの条件では翻案部分に同じライセンスを付ける必要があり、無ライセンスの文書には置けない。
+和訳は翻案にあたり、CC BY-SAの許諾に頼るなら翻案部分に同じライセンスを付ける必要がある。ただし、著作権法第43条は第32条の引用に伴う翻訳を認めるので、引用の要件を満たす訳文は許諾に頼らずに置ける。
 所見F2の`docs/measurements/magic-bitboard-prototype/diagonal.patch`は、Stockfishの`init_magics`に固有の工夫を含む不採用の試作である。
 
 そこで、監査の一覧（`docs/audits/third-party-code-provenance-2026-09-28/quotes/quotes.tsv`）の29件を1件ずつ、引用の4要件（必然性、主従関係、明瞭区別、出所明示）に照らして直す。
-要件を満たす短い引用は残し、出所としてURL、版、および元のライセンスを明記する。
-要件を満たさない逐語の転記と和訳は、要旨の記述と出所へのリンクに置き換える。
-`diagonal.patch`は削除し、測定記録には試作の要旨と、Stockfishの該当箇所へのリンクだけを残す。
+利用者の決定により、調査メモと設計書の引用は、ソースコードの逐語の引用と英語の文章の訳を含めて、出所を明示すればそのまま残す。
+出所の明示には、引用元のURL（版を固定したリンク）、版、および元のライセンスを含める。
+欠けているものだけを補い、原文を照合できず出所を示せない引用は、引用符を外して要旨に改める。
+`diagonal.patch`からは、Stockfishの`init_magics`と同じ工夫を持つ生成器`tools/generate_diagonal_magics.rs`の1ファイルだけを除く。
+生成済みの定数表と残りの差分はminase自身のコードであり、測定の再現手順が適用する差分なので残す。
+測定記録には、除いた経緯とStockfishの該当箇所へのリンクを書き足す。
 測定記録は凍結する文書だが、この変更は記録の内容ではなく配布できない素材の除去なので、例外として扱う。
 
 この処置は現在のファイルにだけ及び、git履歴に残る過去の版は書き換えない。
@@ -248,9 +251,9 @@ CargoはメンバーのCargo.tomlにある`[profile]`を無視するためであ
 ## 実装フェーズ
 
 フェーズ1では、RULES.mdを`docs/rules/RULES.md`へ移し、リンクと`@RULES.md`を書き換え、docs/README.mdの分類表に行を加える。
-あわせて、[文書にある第三者のコードと文章](#文書にある第三者のコードと文章)の29件を直し、`diagonal.patch`を削除する。
+あわせて、[文書にある第三者のコードと文章](#文書にある第三者のコードと文章)の29件を直し、`diagonal.patch`から生成器を除く。
 文書だけの変更なので、Claudeが行う。
-完了条件は、`docs/`、`AGENTS.md`、`src/`、`tests/`のどこにも旧パスへのリンクが残らず、29件のそれぞれについて、残すか置き換えたかとその理由が説明できることである。
+完了条件は、`docs/`、`AGENTS.md`、`src/`、`tests/`のどこにも旧パスへのリンクが残らず、29件のそれぞれについて、出所を補ったか要旨に改めたかとその理由が説明できることである。
 
 フェーズ2では、仮想マニフェストのワークスペースを作り、`src/core/`、`src/notation/`、`src/rng.rs`、`src/test_util.rs`を`crates/minase-core/src/`へ、残りの`src/`、`nets/`、`tests/`を`crates/minase/`へ移し、エンジンの`use`文を`minase_core::`へ書き換え、`core::movegen::tests`の共有項目を`test_util`へ移し、`scripts/`と`tools/`のパスを改める。
 実装はCodexに委任する。

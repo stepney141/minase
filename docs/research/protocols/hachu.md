@@ -4,7 +4,7 @@
 
 ### 第1節　目的と対象
 
-本文書は、プロトコル層マイルストーン（docs/plans/protocol-layer.md）のフェーズ1調査として、中将棋エンジンHaChuのソースコードを調査し、CECP（Chess Engine Communication Protocol）による中将棋対局の実装例を記録する。調査対象は、RULES.mdが典拠［E5］として挙げるGitHubリポジトリddugovic/hachuであり、コミット649ef114dd5fa39d3e1be4112e63ebe2ab3d5d8b（2023年4月23日）を精査した。エンジンのバージョン文字列は0.23である（hachu.h 11行）。以下で行番号を示す引用は、すべてこのコミットのものである。
+本文書は、プロトコル層マイルストーン（docs/plans/protocol-layer.md）のフェーズ1調査として、中将棋エンジンHaChuのソースコードを調査し、CECP（Chess Engine Communication Protocol）による中将棋対局の実装例を記録する。調査対象は、RULES.mdが典拠［E5］として挙げるGitHubリポジトリddugovic/hachuであり、コミット649ef114dd5fa39d3e1be4112e63ebe2ab3d5d8b（2023年4月23日）を精査した。エンジンのバージョン文字列は0.23である（hachu.h 11行）。以下で行番号を示す引用は、すべてこのコミットのものである。原作者版のHaChuはパブリックドメインで公開されており（hachu.c 5行）、ddugovic版はCC0-1.0を付している。
 
 HaChuはH. G. MullerがC言語で書いたWinBoard用エンジンであり、中将棋のほか小将棋、大将棋、天竺将棋などの変則将棋・変則チェスに対応する。原作者版はhgm.nubati.netのgitwebで公開されており（README.pod 59行）、ddugovic版はそれを複数ファイルへ分割・整理したフォークである。フォークには「Fix setboard command」「Parse setboard side-to-move indicator」などのコミットが含まれるため、以下の記述が原作者版にそのまま当てはまるかどうかは未確認である。
 

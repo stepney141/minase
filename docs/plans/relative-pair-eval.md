@@ -461,7 +461,7 @@ LTCの判定保留は、同じ実行ディレクトリを `--resume` で再開�
 - Kunihito Hoki and Tomoyuki Kaneko, "Large-Scale Optimization for Evaluation Functions with Minimax Search," Journal of Artificial Intelligence Research 49, 2014. 静止探索の読み筋の末端での学習と正則化の典拠である。
 - Michael Buro, "Experiments with Multi-ProbCut and a New High-Quality Evaluation Function for Othello," NECI Technical Report, 1997、および "From Simple Features to Sophisticated Evaluation Functions," Computers and Games 1998, LNCS 1558, 1999. パターン評価の重み共有、出現数による抑制、段階間の平滑化、および大型パターンによる速度の損失の典拠である。
 - Wojciech Jaśkowski, "Mastering 2048 with Delayed Temporal Coherence Learning, Multistage Weight Promotion, Redundant Encoding, and Carousel Shaping," IEEE Transactions on Games, 2018. n-tupleネットワークの段階分割の弊害と、浅い読みでの過適合の典拠である。
-- Apery（GitHub、コミット 32216277e5 の `src/evaluate.hpp` 179行から225行、442行から458行、937行から1000行）。相対2駒表と、学習時の相対表から推論用の絶対表への合成の典拠である。同じ作者は2016年12月6日のコミット 8220c20 でこれらを削除し、2014年12月7日のブログで相対位置の評価について「終盤の鋭さが無くなった感がある」と記している。
+- Apery（GitHub、コミット 32216277e5 の `src/evaluate.hpp` 179行から225行、442行から458行、937行から1000行）。相対2駒表と、学習時の相対表から推論用の絶対表への合成の典拠である。同じ作者は2016年12月6日のコミット 8220c20 でこれらを削除し、2014年12月7日のブログで、相対位置の評価では終盤の鋭さが失われたように感じたと記している（ブログの原文は本書の改訂時に照合していない）。
 - やねうら王（コミット 0a6dd2cbd0 より前の `source/eval/nnue/trainer/features/factorizer_half_kp.h` 30行から36行、58行から88行）。HalfRelativeKPによる学習時の次元下げの典拠である。
 - Stockfish（コミット f4bcd404 の説明と `src/nnue/features/pp_3wide.h` 36行から41行）。歩の対の特徴を筋差1以内へ絞った根拠の典拠である。
 - tatara（コミット 752df92 の `feature_set.rs` 462行から491行）。駒種の組ごとの仮想行による階層共有の典拠である。

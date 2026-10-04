@@ -232,16 +232,16 @@ draw repetition|piece-exhaustion|bare-king
 以下のウェブ資料およびソースコードは、2026年8月10日に参照した。
 
 **［U1］Tord Romstad「The Universal Shogi Interface」（H. G. Mullerサイト掲載版）**
-USIプロトコルの原典仕様。コマンド体系、option宣言、setoption、position構文、SFENの4欄構成と予約オプション名を定める。原典の掲載元は失われており、保存版を参照した。
+USIプロトコルの原典仕様。コマンド体系、option宣言、setoption、position構文、SFENの4欄構成と予約オプション名を定める。原典の掲載元は失われており、保存版を参照した。第2章の英文はこの保存版からの引用であり、ページにライセンスの表示はない（2026年9月28日に確認）。
 <http://hgm.nubati.net/usi.html>
 
 **［S1］WandererXII/shogiops（lishogiのTypeScript規則ライブラリ、version 0.21.1、コミットe295794f792e41c9b0a28aeb30faf9b89c951876）**
-中将棋のSFEN構文と駒種文字（`src/sfen.ts`）、升名と指し手正規表現（`src/util.ts`、`src/constants.ts`）、成り判定と成駒対応（`src/position/util.ts`）、獅子捕獲制限（`src/position/rules/chushogi.ts`）、指し手表記の実例（`test/rules/chushogi.test.ts`、`test/util.test.ts`）の典拠とした。
-<https://github.com/WandererXII/shogiops>
+中将棋のSFEN構文と駒種文字（`src/sfen.ts`）、升名と指し手正規表現（`src/util.ts`、`src/constants.ts`）、成り判定と成駒対応（`src/position/util.ts`）、獅子捕獲制限（`src/position/rules/chushogi.ts`）、指し手表記の実例（`test/rules/chushogi.test.ts`、`test/util.test.ts`）の典拠とした。本文の正規表現、初期局面のSFEN、および英語のコメントは、このコミットからの引用である。ライセンスはGPL-3.0-onlyである。
+<https://github.com/WandererXII/shogiops/tree/e295794f792e41c9b0a28aeb30faf9b89c951876>
 
 **［S2］WandererXII/scalashogi（lishogiサーバのScala規則ライブラリ、コミット9a1c2c3ae9167da60f47366e922b2f84c8bcda4e）**
-USI指し手の構文（`src/main/scala/format/usi/Usi.scala`）、SFENの4欄構成と獅子捕獲升部（`src/main/scala/format/forsyth/Sfen.scala`、`SfenUtils.scala`）、獅子捕獲状態の更新規則（`src/main/scala/Situation.scala`、`History.scala`）、初期局面（`src/main/scala/variant/Chushogi.scala`）の典拠とした。shogiopsとの相互照合に用いた。
-<https://github.com/WandererXII/scalashogi>
+USI指し手の構文（`src/main/scala/format/usi/Usi.scala`）、SFENの4欄構成と獅子捕獲升部（`src/main/scala/format/forsyth/Sfen.scala`、`SfenUtils.scala`）、獅子捕獲状態の更新規則（`src/main/scala/Situation.scala`、`History.scala`）、初期局面（`src/main/scala/variant/Chushogi.scala`）の典拠とした。shogiopsとの相互照合に用いた。ライセンスはMITである。
+<https://github.com/WandererXII/scalashogi/tree/9a1c2c3ae9167da60f47366e922b2f84c8bcda4e>
 
 **［B1］TheYoBots/Lishogi-Bot（lishogi Bot APIとUSIエンジンのブリッジ、コミット17c16bc73b22fa6d56e0a412174c7c44993e619d）**
 接続経路、`usi_options`による`setoption`送信、`USI_Variant`の送信規則（`engine_ctrl/usi.py`）、初期局面の受け渡し（`model.py`、`engine_wrapper.py`）、対応変種の設定（`config.yml.default`）の典拠とした。

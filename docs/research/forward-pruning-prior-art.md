@@ -16,10 +16,11 @@
 Stockfishはmasterのコミット`17a6c8f`（2026年9月19日に取得）の`src/search.cpp`、`src/history.h`、`src/types.h`である。
 YaneuraOuはローカルの複製（コミット`1308ab3`、2026年7月10日）の`source/engine/yaneuraou-engine/yaneuraou-search.cpp`である。
 以下の行番号はこれらの版のものであり、数値定数は調整で頻繁に変わるので値はこの版に固有である。
+本書のコードの引用と式は、Stockfishの[`src/search.cpp`](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp)（GPL-3.0-or-later）と、やねうら王の[`yaneuraou-search.cpp`](https://github.com/yaneurao/YaneuraOu/blob/1308ab3803e0011979473296741e56a6981c46ba/source/engine/yaneuraou-engine/yaneuraou-search.cpp)（GPL-3.0）による。
 
 ## 静的評価の補正（correction history）
 
-Stockfishの更新条件は`search.cpp`の1654行から1661行にある。
+Stockfishの更新条件は`search.cpp`の[1654行から1661行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp#L1654-L1661)にある。
 
 ```cpp
 if (!ss->inCheck && !(bestMove && pos.capture(bestMove))
@@ -41,7 +42,7 @@ YaneuraOuは6手前の継続補正を持たない点と係数を除いて同じ�
 
 ## improving
 
-定義は`search.cpp`の876行と877行にある。
+定義は`search.cpp`の[876行と877行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp#L876-L877)にある。
 
 ```cpp
 improving         = ss->staticEval > (ss - 2)->staticEval;
@@ -64,6 +65,7 @@ razoringは`improving`を使わない（1008行）。
 ## 捕獲手のSEEによる枝刈り（SEE pruning）
 
 外側の条件は`!rootNode && pos.non_pawn_material(us) && !is_loss(bestValue)`（1190行）であり、対象は捕獲手と王手の手である（1199行）。
+余裕値の計算と枝刈りの条件は[1216行から1219行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp#L1216-L1219)にある。
 
 ```cpp
 int margin = 177 * depth + captHist * 34 / 1024;

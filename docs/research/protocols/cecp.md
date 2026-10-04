@@ -194,7 +194,7 @@ minaseは規則セット（L、P、R、Eの各コード列）をこの機構で�
 ### 仕様書
 
 **［C1］Tim Mann and H. G. Muller, "Chess Engine Communication Protocol"**
-CECPの正典仕様書。コマンド体系、feature交渉、option構文、座標表記と複数レグ指し手、変則名表（chuを含む）、盤サイズ上書き構文、setboardとedit、setupとpieceコマンド、highlight機構を定める。H. G. Mullerによる追記を含む版である。
+CECPの正典仕様書。コマンド体系、feature交渉、option構文、座標表記と複数レグ指し手、変則名表（chuを含む）、盤サイズ上書き構文、setboardとedit、setupとpieceコマンド、highlight機構を定める。H. G. Mullerによる追記を含む版である。第8章のoption featureの構文は、この文書の1618行から1636行（2026年9月28日に取得した版）からの引用である。著作権はFree Software Foundationにあり、ページ末尾の表示によりCC BY-ND 4.0で提供されている。
 [Chess Engine Communication Protocol](https://www.gnu.org/software/xboard/engine-intf.html)
 
 **［C2］H. G. Muller, "Chess-Engine Communication Protocol v2," WinBoard**
@@ -218,7 +218,7 @@ GNU Savannahのgitリポジトリ最新版を参照した。SendMoveToProgramに
 [XBoard git repository](https://git.savannah.gnu.org/cgit/xboard.git)
 
 **［C6］H. G. Muller, "HaChu"ソースコード（hachu.c、move.c、variant.c）**
-ddugovicによるGitHubミラーを参照した。feature宣言列とエンジン定義オプション、MoveToTextとParseMoveによる複数レグ・成り・不成の送受信、中将棋初期局面FENを確認した。詳細な検証はhachu.mdで行う。
+ddugovicによるGitHubミラーのコミット649ef114dd5fa39d3e1be4112e63ebe2ab3d5d8bを参照した。feature宣言列とエンジン定義オプション、MoveToTextとParseMoveによる複数レグ・成り・不成の送受信、中将棋初期局面FENを確認した。詳細な検証はhachu.mdで行う。原作者版はパブリックドメインで公開されており、ddugovic版はCC0-1.0を付している。
 [HaChu GitHub repository](https://github.com/ddugovic/hachu)
 
 **［C7］H. G. Muller, "HaChu, an AI for playing Chu Shogi," WinBoard**
