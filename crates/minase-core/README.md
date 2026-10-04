@@ -36,6 +36,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Performance
+
+Cargo applies only the profile of the crate being built, so the settings below must go in your own `Cargo.toml`.
+Legal-move generation in this crate relies on inlining across its internal functions, and Cargo's default release profile leaves much of it undone.
+
+```toml
+[profile.release]
+lto = true
+codegen-units = 1
+```
+
+With both settings, a perft of the initial position to depth 5 ran 1.63 times as fast as with the default release profile (30.1 versus 18.5 million nodes per second on one performance core of an Intel Core Ultra 7 265KF).
+LTO accounts for nearly all of the gain; `codegen-units = 1` alone does not help.
+
 ## Features
 
 - `invariants`: checks the internal consistency of positions after every move. The crate's own tests always enable it; ordinary builds leave it off.
