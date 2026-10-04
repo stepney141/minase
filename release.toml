@@ -25,3 +25,5 @@ exec git cliff "$@"
 ''']
 publish = false
 push = false
+# Release each crate in its own commit, so {{version}} renders and minase-core can name its own tag.
+consolidate-commits = false

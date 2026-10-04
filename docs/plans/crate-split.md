@@ -13,10 +13,14 @@ crates.ioへの実際の登録は取り消せない操作なので、本書の�
 
 ## 状態
 
-起案。
-2026年10月3日に起案した。
-設計判断はすべて確定し、判断待ちはない。
-次の一手は、masterから作業ブランチを切り、フェーズ1（RULES.mdの移動と文書中の引用の処置）に着手することである。
+完了（採用）。
+2026年10月3日に起案し、2026年10月4日に実行して完了した。
+ルートを仮想マニフェストのワークスペースとし、ライブラリ`minase-core`（MIT）とエンジン`minase`（GPL-3.0-or-later）を`crates/`の下に分けてmasterへ統合した。
+分割前のコミット2d715e4と比べて、深さ6のbenchの全15局面の`depth`、`nodes`、`best`、`score`、`engine-default`と`lishogi`の深さ1から4までのperft、および試験の名前の集合（通常776件、全フィーチャ792件）が一致し、試験は762件が成功して14件が従来どおり無視された。
+`cargo package --workspace`は両crateのパッケージ化と検証ビルドを通し、配布物は`include`で指定したファイルとCargoが加えるファイルだけを含む。
+使い捨てのクローンで`cargo release --execute`を実行し、ライブラリが`chore(release): minase-core-v0.1.0`とタグ`minase-core-v0.1.0`、エンジンが`chore(release): v2.0.0`とタグ`v2.0.0`を作り、それぞれの変更履歴に自分のディレクトリに触れたコミットだけが載ることを確かめた。
+文書の引用は、利用者の決定により、出所を補ってそのまま残した（[文書にある第三者のコードと文章](#文書にある第三者のコードと文章)）。
+リリース、push、およびcrates.ioへの公開は、利用者が[CONTRIBUTING.md](../../CONTRIBUTING.md)の手順で行う。
 
 ## 目的
 
@@ -165,6 +169,8 @@ cliff.tomlの`tag_pattern`は現在`v[0-9].*`であり、行頭に固定され�
 そこで、エンジンの変更履歴は`--include-path 'crates/minase/**'`、ライブラリの変更履歴は`--include-path 'crates/minase-core/**'`と`--tag-pattern '^minase-core-v'`を指定したgit-cliffで生成し、各crateの変更履歴にはそのcrateのディレクトリに触れたコミットだけを載せる。
 両方に触れたコミットは、両方の変更履歴に載る。
 release.tomlの`pre-release-hook`は、cargo-releaseが渡す環境変数`CRATE_NAME`によってこの2通りを切り替える。
+cargo-releaseは、複数のcrateを持つワークスペースでは既定でリリースのコミットを1つにまとめ、その場合はコミットの件名に`{{version}}`を使えず、crateごとの件名の設定も効かない。
+そこで`consolidate-commits = false`とし、コミットの件名はエンジンを`chore(release): v{{version}}`、ライブラリを`chore(release): minase-core-v{{version}}`とする。
 cargo-release 1.1.6の実装（`src/steps/hook.rs`）では、フックは各パッケージのディレクトリで実行されるので、出力先は環境変数`CRATE_ROOT`と`WORKSPACE_ROOT`を基準に指定する。
 
 ### 配布物の範囲
