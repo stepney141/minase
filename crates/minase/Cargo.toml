@@ -3,6 +3,14 @@ name = "minase"
 version = "1.4.0"
 edition = "2024"
 rust-version = "1.88"
+description = "A USI/CECP chu shogi engine with search and evaluation built on minase-core."
+license = "GPL-3.0-or-later"
+repository = "https://github.com/stepney141/minase"
+readme = "README.md"
+include = ["src/", "nets/", "tests/", "README.md", "COPYING"]
+
+[package.metadata.release]
+tag-prefix = ""
 
 [lints]
 workspace = true

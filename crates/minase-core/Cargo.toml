@@ -3,6 +3,11 @@ name = "minase-core"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
+description = "A chu shogi library providing boards, pieces, legal move generation, rule sets, and SFEN/USI/CECP notation."
+license = "MIT"
+repository = "https://github.com/stepney141/minase"
+readme = "README.md"
+include = ["src/", "tests/", "README.md", "CHANGELOG.md", "LICENSE-MIT"]
 
 [lints]
 workspace = true
