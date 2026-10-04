@@ -1,3 +1,11 @@
+## v2.0.1 (2026-10-04)
+
+### Bug Fixes
+
+- Build `cargo install minase` with LTO and one codegen unit
+
+  The 2.0.0 package left out the workspace release profile, so binaries installed from crates.io searched about 14% fewer nodes per second.
+
 ## v2.0.0 (2026-10-04)
 
 ### Refactoring
