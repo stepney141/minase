@@ -1,0 +1,14 @@
+diff --git a/src/search/alphabeta/negamax.rs b/src/search/alphabeta/negamax.rs
+index cfe04b4..ffd8465 100644
+--- a/src/search/alphabeta/negamax.rs
++++ b/src/search/alphabeta/negamax.rs
+@@ -386,7 +386,8 @@ impl Searcher<'_> {
+         let key = search_key(position);
+         if self.is_repetition(key) {
+             position.unmake_move(undo);
+-            return Some(DRAW_SCORE);
++            // 診断用: R2では既出局面を再現する手は不合法なので、指した側の負けとして扱う。
++            return Some(-(MATE - (ply + 1) as i32));
+         }
+ 
+         self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(

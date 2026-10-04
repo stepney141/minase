@@ -1,0 +1,2869 @@
+[
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 198,
+  "eval_before": 3343,
+  "depth_before": 13,
+  "eval_after": 2922,
+  "depth_after": 12,
+  "minase_move": "8f2f",
+  "hachu_reply": "12f8j",
+  "p0": {
+   "best": "10i10h",
+   "score": [
+    "cp",
+    3235
+   ],
+   "depth": 18,
+   "pv": [
+    "10i10h",
+    "12f12c",
+    "8f2f",
+    "2e2f",
+    "6l3i",
+    "5a4a",
+    "5g7f",
+    "7c8c",
+    "3i6f",
+    "2f3e",
+    "1j2j",
+    "1c2c",
+    "8j8e",
+    "11f11g",
+    "7f9e",
+    "10d11d",
+    "11h11g"
+   ]
+  },
+  "p1": {
+   "best": "12f8j",
+   "score": [
+    "cp",
+    -2869
+   ],
+   "depth": 18,
+   "pv": [
+    "12f8j",
+    "2f10f",
+    "8j8k",
+    "7k8k",
+    "11c12c",
+    "10f11f",
+    "12c12i+",
+    "11l11k",
+    "7c9e",
+    "6l3i",
+    "5a4a",
+    "5g6e",
+    "1c9c",
+    "3i2h",
+    "9a10b",
+    "11f8f",
+    "9c9d",
+    "11j11i"
+   ]
+  },
+  "p2": {
+   "best": "2f10f",
+   "score": [
+    "cp",
+    2868
+   ],
+   "depth": 17,
+   "pv": [
+    "2f10f",
+    "8j8k",
+    "7k8k",
+    "11c12c",
+    "10f11f",
+    "12c12i+",
+    "11j9j",
+    "12i12a",
+    "6l3i",
+    "5a4a",
+    "5g4e",
+    "11a12b",
+    "11f8f",
+    "7c8c",
+    "9j9i",
+    "9a7c"
+   ]
+  },
+  "static_p0": 3524,
+  "static_p2": 3101
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 228,
+  "eval_before": 3541,
+  "depth_before": 11,
+  "eval_after": 3123,
+  "depth_after": 11,
+  "minase_move": "4j3i",
+  "hachu_reply": "8c8d",
+  "p0": {
+   "best": "4j7g",
+   "score": [
+    "cp",
+    3318
+   ],
+   "depth": 14,
+   "pv": [
+    "4j7g",
+    "12c12e",
+    "7g5g",
+    "5d9d",
+    "5g11a",
+    "8c9c",
+    "11a10b",
+    "10f10g",
+    "6k5k",
+    "12e12j+",
+    "12k12j",
+    "10g10h",
+    "10i10h",
+    "9c7a"
+   ]
+  },
+  "p1": {
+   "best": "12c12d",
+   "score": [
+    "cp",
+    -2861
+   ],
+   "depth": 19,
+   "pv": [
+    "12c12d",
+    "9k9g",
+    "12d11d",
+    "11b10b",
+    "8c8d",
+    "3i8d",
+    "5d8d",
+    "10b8d",
+    "11d12d",
+    "10h9h",
+    "12d12a",
+    "8d7d",
+    "1c11c",
+    "5l6l",
+    "3d2c",
+    "4i4h",
+    "10d10c",
+    "9g8f"
+   ]
+  },
+  "p2": {
+   "best": "3i5g",
+   "score": [
+    "cp",
+    3077
+   ],
+   "depth": 18,
+   "pv": [
+    "3i5g",
+    "12c12j",
+    "12k12j",
+    "11e11d",
+    "11b12a",
+    "11d10c",
+    "5g12g",
+    "8d6f",
+    "10h9h",
+    "5d4d",
+    "12j12k",
+    "1c9c",
+    "12g12j",
+    "3d2c",
+    "5h5g",
+    "6f6e",
+    "4g4f"
+   ]
+  },
+  "static_p0": 3584,
+  "static_p2": 3648
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 274,
+  "eval_before": 3345,
+  "depth_before": 11,
+  "eval_after": 2655,
+  "depth_after": 11,
+  "minase_move": "7k8k",
+  "hachu_reply": "12f12e",
+  "p0": {
+   "best": "5f6g",
+   "score": [
+    "cp",
+    3178
+   ],
+   "depth": 14,
+   "pv": [
+    "5f6g",
+    "11g11h",
+    "9h8g",
+    "8f8e",
+    "6g7h",
+    "9e8f",
+    "7h11h",
+    "8f8g",
+    "12a11b",
+    "8c8b",
+    "11b11a",
+    "12f11g",
+    "11h11g",
+    "10d8f"
+   ]
+  },
+  "p1": {
+   "best": "10d11c",
+   "score": [
+    "cp",
+    -1972
+   ],
+   "depth": 20,
+   "pv": [
+    "10d11c",
+    "12k12f",
+    "8f10d",
+    "12f12e",
+    "10d10c",
+    "12e9e",
+    "11c12a",
+    "9e10f",
+    "11g11h",
+    "10f10h",
+    "8d9d",
+    "10h11h",
+    "8c8d",
+    "11h10h",
+    "10c8e",
+    "5f5g",
+    "3e3d",
+    "5g5e",
+    "8e6g",
+    "5l6k"
+   ]
+  },
+  "p2": {
+   "best": "5f6g",
+   "score": [
+    "cp",
+    2505
+   ],
+   "depth": 18,
+   "pv": [
+    "5f6g",
+    "10d11c",
+    "12k12e",
+    "11c12e",
+    "12a11b",
+    "12e10d",
+    "5l6k",
+    "11g11h",
+    "9h10h",
+    "8d9d",
+    "6g11g",
+    "8f10h",
+    "10i10h",
+    "8c8b",
+    "11b10a",
+    "10d9f",
+    "11g5g",
+    "9f10h"
+   ]
+  },
+  "static_p0": 3345,
+  "static_p2": 3350
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 276,
+  "eval_before": 2655,
+  "depth_before": 11,
+  "eval_after": 2177,
+  "depth_after": 12,
+  "minase_move": "9h9g",
+  "hachu_reply": "8f8e",
+  "p0": {
+   "best": "9h9g",
+   "score": [
+    "cp",
+    2527
+   ],
+   "depth": 17,
+   "pv": [
+    "9h9g"
+   ]
+  },
+  "p1": {
+   "best": "8f8e",
+   "score": [
+    "cp",
+    -1974
+   ],
+   "depth": 19,
+   "pv": [
+    "8f8e",
+    "4e4d+",
+    "10d10c",
+    "4d3e",
+    "10c12a",
+    "12k12e",
+    "12a10c",
+    "12e12k",
+    "11g11h",
+    "12k9k",
+    "8d9d",
+    "3e4e",
+    "8c2c",
+    "5l6k",
+    "10c8d",
+    "4e5d",
+    "2c11c",
+    "5f7h",
+    "8d6f"
+   ]
+  },
+  "p2": {
+   "best": "5f7h",
+   "score": [
+    "cp",
+    2031
+   ],
+   "depth": 18,
+   "pv": [
+    "5f7h",
+    "10d11c",
+    "12k12e",
+    "8e10c",
+    "12e9e",
+    "11c12a",
+    "5l6k",
+    "12a10b",
+    "9g10f",
+    "10c11c",
+    "9e9k",
+    "8c2c",
+    "10f11e",
+    "8d9d",
+    "4e4d+",
+    "3e4d",
+    "7h2c",
+    "11g11h"
+   ]
+  },
+  "static_p0": 3350,
+  "static_p2": 3257
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 282,
+  "eval_before": 3051,
+  "depth_before": 9,
+  "eval_after": 2159,
+  "depth_after": 11,
+  "minase_move": "12k9k",
+  "hachu_reply": "10f9e",
+  "p0": {
+   "best": "12k12h",
+   "score": [
+    "cp",
+    2122
+   ],
+   "depth": 18,
+   "pv": [
+    "12k12h",
+    "10d11c",
+    "5f10f",
+    "8d10d",
+    "12h12e",
+    "11c10a",
+    "10f10d",
+    "10a9b",
+    "10d6h",
+    "9b9d",
+    "6h3e",
+    "8c8d",
+    "4e4d+",
+    "8e10g",
+    "12e6e",
+    "11g11h",
+    "10i10h",
+    "9d8f"
+   ]
+  },
+  "p1": {
+   "best": "10d11c",
+   "score": [
+    "cp",
+    -2008
+   ],
+   "depth": 19,
+   "pv": [
+    "10d11c",
+    "5f10f",
+    "8c10c",
+    "10f5f",
+    "10c8c",
+    "10a8c",
+    "7b8c",
+    "5f5g",
+    "11c10e",
+    "5g3e",
+    "10e8f",
+    "4e4d+",
+    "8f6g",
+    "4d5c",
+    "11g11h",
+    "5c6b",
+    "5b6b",
+    "3e2e",
+    "6b5b"
+   ]
+  },
+  "p2": {
+   "best": "5f5g",
+   "score": [
+    "cp",
+    1678
+   ],
+   "depth": 18,
+   "pv": [
+    "5f5g",
+    "10d10c",
+    "10a8a"
+   ]
+  },
+  "static_p0": 3301,
+  "static_p2": 3708
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 284,
+  "eval_before": 2159,
+  "depth_before": 11,
+  "eval_after": 1567,
+  "depth_after": 11,
+  "minase_move": "4e4d+",
+  "hachu_reply": "3e4d",
+  "p0": {
+   "best": "4e4d+",
+   "score": [
+    "cp",
+    2100
+   ],
+   "depth": 17,
+   "pv": [
+    "4e4d+"
+   ]
+  },
+  "p1": {
+   "best": "3e4d",
+   "score": [
+    "cp",
+    -1231
+   ],
+   "depth": 17,
+   "pv": [
+    "3e4d",
+    "2j2i",
+    "10d11c",
+    "10a8c",
+    "7b8c",
+    "10i10h",
+    "11c9c",
+    "7l8l",
+    "8d9d",
+    "5l6k",
+    "9e10d",
+    "11j12i",
+    "10d11c",
+    "4i4h",
+    "9c10d",
+    "2i4i",
+    "8c8b"
+   ]
+  },
+  "p2": {
+   "best": "5f4g",
+   "score": [
+    "cp",
+    1208
+   ],
+   "depth": 16,
+   "pv": [
+    "5f4g",
+    "10d10c",
+    "10a8c",
+    "7b8c",
+    "4g11g",
+    "8d9d",
+    "5l6k",
+    "9e8f"
+   ]
+  },
+  "static_p0": 3708,
+  "static_p2": 3466
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 286,
+  "eval_before": 1567,
+  "depth_before": 11,
+  "eval_after": 247,
+  "depth_after": 13,
+  "minase_move": "9k9e",
+  "hachu_reply": "10d9e10d",
+  "p0": {
+   "best": "2j2i",
+   "score": [
+    "cp",
+    1297
+   ],
+   "depth": 15,
+   "pv": [
+    "2j2i",
+    "10d11c",
+    "10a8a",
+    "7b8a",
+    "5l6k",
+    "11c9c",
+    "5f5g",
+    "8c6c",
+    "4i4h",
+    "6c6d",
+    "2i4i",
+    "8a7b",
+    "5g11g",
+    "8d9d",
+    "11g7g"
+   ]
+  },
+  "p1": {
+   "best": "10d9e10d",
+   "score": [
+    "cp",
+    0
+   ],
+   "depth": 21,
+   "pv": [
+    "10d9e10d",
+    "5f3f"
+   ]
+  },
+  "p2": {
+   "best": "5f3f",
+   "score": [
+    "cp",
+    0
+   ],
+   "depth": 21,
+   "pv": [
+    "5f3f"
+   ]
+  },
+  "static_p0": 3466,
+  "static_p2": 2102
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 318,
+  "eval_before": -138,
+  "depth_before": 13,
+  "eval_after": -631,
+  "depth_after": 14,
+  "minase_move": "8i7h",
+  "hachu_reply": "6g7g",
+  "p0": {
+   "best": "8i7h",
+   "score": [
+    "cp",
+    -264
+   ],
+   "depth": 19,
+   "pv": [
+    "8i7h",
+    "6g6f",
+    "7j7i",
+    "9g7g",
+    "7h8i",
+    "7g6g",
+    "8i9i",
+    "6g5h",
+    "7l8l",
+    "8d9d",
+    "7i11e",
+    "8c8d",
+    "11e5e",
+    "5h7h",
+    "5e9a",
+    "6b7a",
+    "9a2h",
+    "7h9i",
+    "2h2f"
+   ]
+  },
+  "p1": {
+   "best": "6g6f",
+   "score": [
+    "cp",
+    222
+   ],
+   "depth": 20,
+   "pv": [
+    "6g6f",
+    "7j7i",
+    "9g7g",
+    "7h8i",
+    "7g6g",
+    "6i6h",
+    "6g5h",
+    "7k6k",
+    "8d9d",
+    "6h6g",
+    "5h6g",
+    "7i6i",
+    "6g8h",
+    "8i7j",
+    "8c8d",
+    "6i5i",
+    "2f2g",
+    "5i5h",
+    "8h7g",
+    "6j5i"
+   ]
+  },
+  "p2": {
+   "best": "7k8j",
+   "score": [
+    "cp",
+    -740
+   ],
+   "depth": 18,
+   "pv": [
+    "7k8j",
+    "7g7h",
+    "6j7i",
+    "7h7g",
+    "7j7k",
+    "9g8g",
+    "7i6h",
+    "7g7h",
+    "7k7j",
+    "8d9d",
+    "10i10h",
+    "7h8h",
+    "8j7i",
+    "8c4c",
+    "7i8h",
+    "8g8h",
+    "6h5i",
+    "4c4d"
+   ]
+  },
+  "static_p0": 46,
+  "static_p2": 79
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 556,
+  "eval_before": 0,
+  "depth_before": 10,
+  "eval_after": -427,
+  "depth_after": 11,
+  "minase_move": "5h5g",
+  "hachu_reply": "3i5j",
+  "p0": {
+   "best": "7j6j",
+   "score": [
+    "cp",
+    -330
+   ],
+   "depth": 16,
+   "pv": [
+    "7j6j",
+    "12d9d",
+    "9g9f",
+    "6a5b",
+    "5h7f",
+    "6b5a",
+    "7f2a",
+    "5b4a",
+    "2a7f",
+    "7a8b",
+    "7f5f",
+    "4a5b",
+    "5f10a",
+    "5a6b",
+    "10a2a",
+    "3i4i"
+   ]
+  },
+  "p1": {
+   "best": "3i5j",
+   "score": [
+    "cp",
+    641
+   ],
+   "depth": 17,
+   "pv": [
+    "3i5j",
+    "10i10h"
+   ]
+  },
+  "p2": {
+   "best": "9g9f",
+   "score": [
+    "cp",
+    -771
+   ],
+   "depth": 17,
+   "pv": [
+    "9g9f",
+    "5j5i4j",
+    "9f9e",
+    "7a8b",
+    "5g6g",
+    "6a5b",
+    "6g6j",
+    "4j5h",
+    "9e4e",
+    "4d4e",
+    "6j12d",
+    "5h5i",
+    "12d3d",
+    "5i7i",
+    "3d4e",
+    "7i8i7j"
+   ]
+  },
+  "static_p0": 468,
+  "static_p2": 351
+ },
+ {
+  "pair": 29,
+  "color": "black",
+  "ply": 562,
+  "eval_before": -569,
+  "depth_before": 12,
+  "eval_after": -29996,
+  "depth_after": 13,
+  "minase_move": "9l10l",
+  "hachu_reply": "7l8l",
+  "p0": {
+   "best": "9l10l",
+   "score": [
+    "mate",
+    -6
+   ],
+   "depth": 18,
+   "pv": [
+    "9l10l",
+    "7l8l",
+    "10l11k",
+    "8l9l",
+    "11k12l",
+    "9l11j",
+    "5g1c",
+    "11j12l"
+   ]
+  },
+  "p1": {
+   "best": "7l8l",
+   "score": [
+    "mate",
+    5
+   ],
+   "depth": 16,
+   "pv": [
+    "7l8l"
+   ]
+  },
+  "p2": {
+   "best": "10l11k",
+   "score": [
+    "mate",
+    -4
+   ],
+   "depth": 19,
+   "pv": [
+    "10l11k",
+    "8l9l"
+   ]
+  },
+  "static_p0": 231,
+  "static_p2": 340
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 199,
+  "eval_before": 2721,
+  "depth_before": 10,
+  "eval_after": 2288,
+  "depth_after": 15,
+  "minase_move": "1e1h",
+  "hachu_reply": "1j1i",
+  "p0": {
+   "best": "11a11b",
+   "score": [
+    "cp",
+    2587
+   ],
+   "depth": 16,
+   "pv": [
+    "11a11b",
+    "6j6i",
+    "1e1h",
+    "4h4k",
+    "3g5e",
+    "5g5f",
+    "5e5f",
+    "1j4j",
+    "1h4e",
+    "12i9i",
+    "4e6e",
+    "10j10l",
+    "5f5e",
+    "5h6g",
+    "1c2c",
+    "4j4i"
+   ]
+  },
+  "p1": {
+   "best": "1j1i",
+   "score": [
+    "cp",
+    -2181
+   ],
+   "depth": 20,
+   "pv": [
+    "1j1i",
+    "1h2g",
+    "10j10a+",
+    "8c10a",
+    "5h9d+",
+    "7e7f",
+    "6j5h",
+    "7f7g",
+    "4h4k",
+    "10a11b",
+    "9d11b",
+    "11a11b",
+    "7h7g",
+    "3g5e",
+    "1i4i",
+    "5d4d",
+    "12i9i",
+    "2g2e",
+    "5h6g",
+    "1c2c"
+   ]
+  },
+  "p2": {
+   "best": "1h2g",
+   "score": [
+    "cp",
+    2145
+   ],
+   "depth": 20,
+   "pv": [
+    "1h2g",
+    "10j10a+",
+    "8c10a",
+    "5h9d+",
+    "10a8c",
+    "9d8c",
+    "7b8c",
+    "6j5h",
+    "3g6d",
+    "4h4k",
+    "2g2e",
+    "5h4h",
+    "8c9d",
+    "1i4i",
+    "1c4c",
+    "12i9i",
+    "5d4e",
+    "5g5f",
+    "6d5c"
+   ]
+  },
+  "static_p0": 2910,
+  "static_p2": 3012
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 235,
+  "eval_before": 1176,
+  "depth_before": 11,
+  "eval_after": 752,
+  "depth_after": 10,
+  "minase_move": "10b11a",
+  "hachu_reply": "9d11c",
+  "p0": {
+   "best": "6d1i+",
+   "score": [
+    "cp",
+    1198
+   ],
+   "depth": 14,
+   "pv": [
+    "6d1i+"
+   ]
+  },
+  "p1": {
+   "best": "9d11c",
+   "score": [
+    "cp",
+    -477
+   ],
+   "depth": 17,
+   "pv": [
+    "9d11c",
+    "6d7e",
+    "4h4k",
+    "12b12c",
+    "11c12c11c"
+   ]
+  },
+  "p2": {
+   "best": "6d7e",
+   "score": [
+    "cp",
+    477
+   ],
+   "depth": 16,
+   "pv": [
+    "6d7e"
+   ]
+  },
+  "static_p0": 1689,
+  "static_p2": 1667
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 271,
+  "eval_before": 204,
+  "depth_before": 11,
+  "eval_after": -267,
+  "depth_after": 13,
+  "minase_move": "9a9b",
+  "hachu_reply": "10a10b",
+  "p0": {
+   "best": "8f11f",
+   "score": [
+    "cp",
+    0
+   ],
+   "depth": 17,
+   "pv": [
+    "8f11f"
+   ]
+  },
+  "p1": {
+   "best": "10a10b",
+   "score": [
+    "cp",
+    254
+   ],
+   "depth": 18,
+   "pv": [
+    "10a10b",
+    "8f8e",
+    "11b12b",
+    "8e9e",
+    "10b11c",
+    "9e10e",
+    "11c11a",
+    "9c11a",
+    "12b11a12b",
+    "10e7h",
+    "1i7i",
+    "7h7g",
+    "12b10b",
+    "7g10j",
+    "11i10i",
+    "10j11j",
+    "10b9b10c",
+    "11j11h"
+   ]
+  },
+  "p2": {
+   "best": "9c9d",
+   "score": [
+    "cp",
+    -122
+   ],
+   "depth": 20,
+   "pv": [
+    "9c9d",
+    "11b11d"
+   ]
+  },
+  "static_p0": -175,
+  "static_p2": -228
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 411,
+  "eval_before": 1652,
+  "depth_before": 13,
+  "eval_after": 1118,
+  "depth_after": 12,
+  "minase_move": "6f6e",
+  "hachu_reply": "12g11f",
+  "p0": {
+   "best": "10c8e",
+   "score": [
+    "cp",
+    1373
+   ],
+   "depth": 16,
+   "pv": [
+    "10c8e",
+    "7l8l"
+   ]
+  },
+  "p1": {
+   "best": "12g11f",
+   "score": [
+    "cp",
+    -943
+   ],
+   "depth": 19,
+   "pv": [
+    "12g11f",
+    "8d9c",
+    "7l8l",
+    "11d7d",
+    "11f11e",
+    "2h2i+",
+    "11i9g",
+    "10c3j",
+    "11e12d+",
+    "7d11d",
+    "12f11e",
+    "9c10d",
+    "11e12f",
+    "6e6f",
+    "7i2i",
+    "3j2i",
+    "12d10f",
+    "10d9e",
+    "10f9e"
+   ]
+  },
+  "p2": {
+   "best": "8d9c",
+   "score": [
+    "cp",
+    943
+   ],
+   "depth": 18,
+   "pv": [
+    "8d9c",
+    "7l8l"
+   ]
+  },
+  "static_p0": 1628,
+  "static_p2": 1389
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 415,
+  "eval_before": 1168,
+  "depth_before": 11,
+  "eval_after": 727,
+  "depth_after": 13,
+  "minase_move": "10c3j",
+  "hachu_reply": "7l8l",
+  "p0": {
+   "best": "11d9d",
+   "score": [
+    "cp",
+    973
+   ],
+   "depth": 19,
+   "pv": [
+    "11d9d",
+    "11i9g",
+    "10c12e",
+    "12f10f",
+    "7b8c",
+    "11e10d+",
+    "12e11d",
+    "10d12f",
+    "2i3j",
+    "6j5k",
+    "3b2a",
+    "5k4l",
+    "6e4g",
+    "10f8f",
+    "11d10e",
+    "8f8d",
+    "9d8d",
+    "12f11e",
+    "8d9d"
+   ]
+  },
+  "p1": {
+   "best": "7l8l",
+   "score": [
+    "cp",
+    -647
+   ],
+   "depth": 21,
+   "pv": [
+    "7l8l",
+    "3j3f",
+    "11i9g",
+    "6e10a",
+    "8i9i",
+    "2i3j",
+    "12f11g",
+    "11d11c",
+    "11g10f",
+    "10a10f",
+    "11e10f",
+    "3j3k",
+    "8k7j",
+    "3b2c",
+    "7k7l",
+    "3f5h",
+    "9g8f",
+    "7b6c",
+    "8f8d",
+    "6c7c"
+   ]
+  },
+  "p2": {
+   "best": "3j3f",
+   "score": [
+    "cp",
+    529
+   ],
+   "depth": 21,
+   "pv": [
+    "3j3f",
+    "11i10h",
+    "11d9d",
+    "10h9g",
+    "7b8c",
+    "9g9d",
+    "3f12f",
+    "11e12f",
+    "8c9d",
+    "7i2i",
+    "6e2i",
+    "12f11e",
+    "2i2h",
+    "11e12d+",
+    "3b2c"
+   ]
+  },
+  "static_p0": 1617,
+  "static_p2": 1854
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 529,
+  "eval_before": 2121,
+  "depth_before": 14,
+  "eval_after": 1554,
+  "depth_after": 14,
+  "minase_move": "4l11l",
+  "hachu_reply": "7f8e",
+  "p0": {
+   "best": "4l4e",
+   "score": [
+    "cp",
+    1610
+   ],
+   "depth": 19,
+   "pv": [
+    "4l4e",
+    "7f6e",
+    "5e5c",
+    "6e7e",
+    "4e6g",
+    "7e8d+",
+    "6g6h6g",
+    "8f8e",
+    "5c5f",
+    "8d8a",
+    "5a4b",
+    "9j9i",
+    "6g1l",
+    "10j10a",
+    "1l3l",
+    "8e9d",
+    "4b3a",
+    "8a7a",
+    "5f5e"
+   ]
+  },
+  "p1": {
+   "best": "7f8e",
+   "score": [
+    "cp",
+    -1309
+   ],
+   "depth": 21,
+   "pv": [
+    "7f8e",
+    "11l12k",
+    "10j10k",
+    "12k6e",
+    "8e8d+",
+    "6e6g",
+    "8d8a",
+    "5a4b",
+    "6h7i",
+    "6g7g",
+    "10k10a",
+    "4b3a",
+    "8f8e",
+    "7g12l",
+    "8e7d",
+    "12l3l",
+    "8a6a",
+    "5e5f",
+    "9j9i",
+    "5f5e"
+   ]
+  },
+  "p2": {
+   "best": "11l12k",
+   "score": [
+    "cp",
+    1299
+   ],
+   "depth": 21,
+   "pv": [
+    "11l12k",
+    "10j10k",
+    "12k9h",
+    "8e8d+",
+    "5e5f",
+    "7j8i",
+    "9h12k",
+    "8d8a",
+    "5a4b",
+    "8f8e",
+    "5f5e",
+    "8a6a",
+    "4b3a",
+    "8e7d",
+    "12k11l",
+    "10k10a",
+    "11l3l",
+    "6h7i",
+    "3a2a",
+    "9j9i"
+   ]
+  },
+  "static_p0": 3172,
+  "static_p2": 2890
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 603,
+  "eval_before": 815,
+  "depth_before": 15,
+  "eval_after": 0,
+  "depth_after": 15,
+  "minase_move": "12g12a",
+  "hachu_reply": "7f8e",
+  "p0": {
+   "best": "6a5a",
+   "score": [
+    "cp",
+    115
+   ],
+   "depth": 21,
+   "pv": [
+    "6a5a",
+    "7f8e",
+    "12g12e",
+    "8e7d+",
+    "12e5l",
+    "3e3a",
+    "5a4b",
+    "7d7a",
+    "5l5h",
+    "7h6i",
+    "5h5e",
+    "6i7h",
+    "5b6c",
+    "8g7f",
+    "6c6b",
+    "3a3k",
+    "3l3k",
+    "7f6f",
+    "3k3f",
+    "8k8l",
+    "3f6f"
+   ]
+  },
+  "p1": {
+   "best": "7f8e",
+   "score": [
+    "cp",
+    193
+   ],
+   "depth": 23,
+   "pv": [
+    "7f8e",
+    "6a6b",
+    "8e9d+",
+    "6b5c",
+    "3e3a",
+    "12a12b",
+    "9d9a",
+    "5c4b",
+    "9a4a",
+    "4b5c",
+    "4a7a",
+    "12b12g",
+    "3a6a",
+    "5d6c",
+    "8g8h",
+    "5c4b",
+    "6a3a",
+    "12g12b",
+    "9j9a",
+    "12b12g",
+    "8j9j",
+    "12g12c",
+    "3a3k"
+   ]
+  },
+  "p2": {
+   "best": "6a6b",
+   "score": [
+    "cp",
+    -269
+   ],
+   "depth": 23,
+   "pv": [
+    "6a6b",
+    "8e9d+",
+    "6b5c",
+    "3e3a",
+    "12a12b",
+    "9d9b",
+    "12b12h",
+    "3a3b",
+    "5d6c",
+    "9b10b",
+    "5c4c",
+    "3b3a",
+    "4c4b",
+    "3a7a",
+    "12h12j",
+    "9j9a",
+    "6c5d",
+    "9a10a",
+    "12j12a",
+    "8g7f",
+    "12a12g"
+   ]
+  },
+  "static_p0": 2003,
+  "static_p2": 1925
+ },
+ {
+  "pair": 70,
+  "color": "white",
+  "ply": 609,
+  "eval_before": 125,
+  "depth_before": 15,
+  "eval_after": -332,
+  "depth_after": 16,
+  "minase_move": "12a5h",
+  "hachu_reply": "8j7j",
+  "p0": {
+   "best": "12a5h",
+   "score": [
+    "cp",
+    -396
+   ],
+   "depth": 21,
+   "pv": [
+    "12a5h",
+    "7h6i",
+    "5h4i",
+    "9a6a",
+    "5c4b",
+    "3e3a",
+    "5d4c",
+    "6a4a",
+    "4b5c",
+    "9j9a",
+    "4i4f",
+    "4a6a",
+    "5c4b",
+    "8g7f",
+    "4c3b",
+    "9a10a",
+    "4b3c",
+    "7f8e",
+    "4f5g",
+    "3a1a",
+    "5g5e"
+   ]
+  },
+  "p1": {
+   "best": "7h6i",
+   "score": [
+    "cp",
+    625
+   ],
+   "depth": 27,
+   "pv": [
+    "7h6i",
+    "5h4i",
+    "9a3a",
+    "4i3j",
+    "3e3j",
+    "3k3j",
+    "8g7f",
+    "3j3k",
+    "7f8e",
+    "5c4b",
+    "3a6a",
+    "5b5a",
+    "6i7j",
+    "5a6b",
+    "6a6b",
+    "4b5a",
+    "6b6l",
+    "3l2k",
+    "6l12l",
+    "2k8e",
+    "9j9a",
+    "8e5e",
+    "9a9i",
+    "5e8h",
+    "8k8l",
+    "8h8i8h",
+    "7k8k"
+   ]
+  },
+  "p2": {
+   "best": "3l4l",
+   "score": [
+    "cp",
+    -598
+   ],
+   "depth": 22,
+   "pv": [
+    "3l4l",
+    "9a3a",
+    "3k4k",
+    "9j9a",
+    "5c6b",
+    "9a10a",
+    "4l11l",
+    "3e3b",
+    "5d4c",
+    "3b3h",
+    "11l11k",
+    "8k7l",
+    "11k11l",
+    "7k8l",
+    "11l9j",
+    "7l6l",
+    "4k5l",
+    "6l7k",
+    "5h5e",
+    "7j8j",
+    "9j11j",
+    "3a1a"
+   ]
+  },
+  "static_p0": 961,
+  "static_p2": 999
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 202,
+  "eval_before": 4339,
+  "depth_before": 9,
+  "eval_after": 3908,
+  "depth_after": 8,
+  "minase_move": "12k12e",
+  "hachu_reply": "12d12e",
+  "p0": {
+   "best": "11g12f",
+   "score": [
+    "cp",
+    3712
+   ],
+   "depth": 14,
+   "pv": [
+    "11g12f",
+    "8c9b",
+    "10a12a"
+   ]
+  },
+  "p1": {
+   "best": "12d12e",
+   "score": [
+    "cp",
+    -3185
+   ],
+   "depth": 16,
+   "pv": [
+    "12d12e",
+    "8k8d+",
+    "4d8d",
+    "6l10h",
+    "3b4a",
+    "10h7h",
+    "2c3c",
+    "7h7g",
+    "11c10c",
+    "10a10c",
+    "10d10c",
+    "5e3c",
+    "4b3c",
+    "7g3c",
+    "3e4d",
+    "3c3f"
+   ]
+  },
+  "p2": {
+   "best": "8k8d+",
+   "score": [
+    "cp",
+    3185
+   ],
+   "depth": 15,
+   "pv": [
+    "8k8d+",
+    "4d8d",
+    "6l10h"
+   ]
+  },
+  "static_p0": 4726,
+  "static_p2": 4359
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 206,
+  "eval_before": 3689,
+  "depth_before": 9,
+  "eval_after": 2906,
+  "depth_after": 11,
+  "minase_move": "5e4d",
+  "hachu_reply": "4b4d",
+  "p0": {
+   "best": "8k8d+",
+   "score": [
+    "cp",
+    3086
+   ],
+   "depth": 13,
+   "pv": [
+    "8k8d+",
+    "4d8d",
+    "6l10h",
+    "3b4a",
+    "5e5g",
+    "6b6a",
+    "5g8d",
+    "9c8d",
+    "10a10d",
+    "11c11g",
+    "4k3j",
+    "12e12l+"
+   ]
+  },
+  "p1": {
+   "best": "4b4d",
+   "score": [
+    "cp",
+    -2276
+   ],
+   "depth": 17,
+   "pv": [
+    "4b4d",
+    "4k3j",
+    "8c9b",
+    "10a12a",
+    "12e12a",
+    "11k12j",
+    "9b8b",
+    "3j2j",
+    "11c12c",
+    "10l11k",
+    "6b6a",
+    "6l9i",
+    "2c3c",
+    "6h3h",
+    "3b4a",
+    "9i7g",
+    "12c12e"
+   ]
+  },
+  "p2": {
+   "best": "11j12j",
+   "score": [
+    "cp",
+    2287
+   ],
+   "depth": 17,
+   "pv": [
+    "11j12j",
+    "8c9b",
+    "10a12a",
+    "12e12a",
+    "4k3k",
+    "6b6a",
+    "1j4j",
+    "11c12c",
+    "6l8j",
+    "9b8b",
+    "3k2j",
+    "12c12e",
+    "6h8h",
+    "2c3c",
+    "11i11h",
+    "3e4f",
+    "12j11j"
+   ]
+  },
+  "static_p0": 4482,
+  "static_p2": 4137
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 210,
+  "eval_before": 2843,
+  "depth_before": 11,
+  "eval_after": 2220,
+  "depth_after": 12,
+  "minase_move": "6k7k",
+  "hachu_reply": "8a7b",
+  "p0": {
+   "best": "6k7k",
+   "score": [
+    "cp",
+    2534
+   ],
+   "depth": 15,
+   "pv": [
+    "6k7k",
+    "12e12i+",
+    "11g12g",
+    "12a12g",
+    "4k3j",
+    "6b5a",
+    "6h5h",
+    "6c5b",
+    "6l6e",
+    "11c10c",
+    "10a11a",
+    "12i12k",
+    "6e3b",
+    "12g12i+",
+    "3b2c"
+   ]
+  },
+  "p1": {
+   "best": "4d4c",
+   "score": [
+    "cp",
+    -1692
+   ],
+   "depth": 17,
+   "pv": [
+    "4d4c",
+    "11i11h"
+   ]
+  },
+  "p2": {
+   "best": "6h6d",
+   "score": [
+    "cp",
+    1879
+   ],
+   "depth": 16,
+   "pv": [
+    "6h6d",
+    "8c9b",
+    "6d4d",
+    "3e4d",
+    "10a12a",
+    "12e12a",
+    "6l6d",
+    "3b3c",
+    "4k3j",
+    "9b8b",
+    "3j2j",
+    "2c2b",
+    "11i11h",
+    "6b6a",
+    "6d3a",
+    "6a5b"
+   ]
+  },
+  "static_p0": 3500,
+  "static_p2": 3508
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 554,
+  "eval_before": 2001,
+  "depth_before": 11,
+  "eval_after": 1265,
+  "depth_after": 12,
+  "minase_move": "8k9j",
+  "hachu_reply": "10i9j",
+  "p0": {
+   "best": "5k5j",
+   "score": [
+    "cp",
+    1805
+   ],
+   "depth": 17,
+   "pv": [
+    "5k5j",
+    "6e7d",
+    "3a3i",
+    "10i10g",
+    "1k1g",
+    "1c1g",
+    "1l1g",
+    "1a1g",
+    "3i1g",
+    "8f8g",
+    "1g5c",
+    "2g2h",
+    "5c3a",
+    "10g12i",
+    "5j5i",
+    "7g1g",
+    "3a10a"
+   ]
+  },
+  "p1": {
+   "best": "10i9j",
+   "score": [
+    "cp",
+    -1066
+   ],
+   "depth": 19,
+   "pv": [
+    "10i9j",
+    "5k4l"
+   ]
+  },
+  "p2": {
+   "best": "5k4l",
+   "score": [
+    "cp",
+    1066
+   ],
+   "depth": 18,
+   "pv": [
+    "5k4l"
+   ]
+  },
+  "static_p0": 2712,
+  "static_p2": 2116
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 582,
+  "eval_before": 1132,
+  "depth_before": 14,
+  "eval_after": 516,
+  "depth_after": 11,
+  "minase_move": "5c1g",
+  "hachu_reply": "7f8g",
+  "p0": {
+   "best": "5c1g",
+   "score": [
+    "cp",
+    832
+   ],
+   "depth": 17,
+   "pv": [
+    "5c1g",
+    "11h11b",
+    "1g5c",
+    "11b8e",
+    "2e5b",
+    "8e8d",
+    "5b4a",
+    "6h7g",
+    "3l2l",
+    "8h8i",
+    "2l1l",
+    "8f8g",
+    "5c5f",
+    "7f6g",
+    "5f10a",
+    "7e7b",
+    "5k4l"
+   ]
+  },
+  "p1": {
+   "best": "7f8g",
+   "score": [
+    "cp",
+    -172
+   ],
+   "depth": 24,
+   "pv": [
+    "7f8g",
+    "1g2f",
+    "8f9g",
+    "2f5c",
+    "8g9h",
+    "5c7e",
+    "9h9i+",
+    "7e9e",
+    "11h12i",
+    "3l4k",
+    "6h7h",
+    "4k5l",
+    "9g10g",
+    "6j7j",
+    "12i12a"
+   ]
+  },
+  "p2": {
+   "best": "1g2f",
+   "score": [
+    "cp",
+    172
+   ],
+   "depth": 21,
+   "pv": [
+    "1g2f",
+    "8f9g",
+    "2f5c",
+    "8g9h",
+    "5c7e",
+    "9h9i+",
+    "7e9e",
+    "11h12i",
+    "3l4l",
+    "6h7h",
+    "4l5l",
+    "9g10g",
+    "6j7j",
+    "12i12a"
+   ]
+  },
+  "static_p0": 1463,
+  "static_p2": 1466
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 586,
+  "eval_before": 226,
+  "depth_before": 13,
+  "eval_after": -192,
+  "depth_after": 14,
+  "minase_move": "2f2g",
+  "hachu_reply": "7e7l+",
+  "p0": {
+   "best": "2f5c",
+   "score": [
+    "cp",
+    150
+   ],
+   "depth": 20,
+   "pv": [
+    "2f5c",
+    "8g9h",
+    "5c7e",
+    "9h9i+",
+    "7e9e",
+    "9g10g",
+    "9e8f",
+    "6h7h",
+    "8f3a",
+    "7h7g",
+    "6j7j",
+    "2g2h",
+    "2i2h",
+    "8h2h",
+    "3l2l",
+    "7g7j",
+    "2e7j",
+    "10g10h",
+    "7j2e",
+    "9i8j"
+   ]
+  },
+  "p1": {
+   "best": "7e7l+",
+   "score": [
+    "cp",
+    528
+   ],
+   "depth": 20,
+   "pv": [
+    "7e7l+",
+    "2g1g",
+    "6h6d",
+    "2e7j",
+    "6d5d",
+    "1g4g",
+    "9g10h",
+    "4g1d",
+    "5d5k",
+    "1d6d",
+    "9f9g",
+    "6j5k",
+    "7l7j",
+    "5k6j",
+    "7j8i",
+    "6j5k",
+    "11h12i",
+    "6d3a",
+    "9e9f",
+    "3l2l"
+   ]
+  },
+  "p2": {
+   "best": "2g1g",
+   "score": [
+    "cp",
+    -476
+   ],
+   "depth": 21,
+   "pv": [
+    "2g1g"
+   ]
+  },
+  "static_p0": 1521,
+  "static_p2": 797
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 592,
+  "eval_before": 0,
+  "depth_before": 14,
+  "eval_after": -627,
+  "depth_after": 14,
+  "minase_move": "5c1g",
+  "hachu_reply": "7l7h",
+  "p0": {
+   "best": "5c1g",
+   "score": [
+    "cp",
+    -558
+   ],
+   "depth": 16,
+   "pv": [
+    "5c1g",
+    "7l7h",
+    "3l2l",
+    "9g10h",
+    "1g3e",
+    "8g9h",
+    "3e6h",
+    "9h9i+",
+    "6h8f",
+    "10h11h",
+    "2e8k",
+    "11h12h",
+    "8k2e",
+    "9i8j",
+    "6j7j",
+    "7h7j"
+   ]
+  },
+  "p1": {
+   "best": "9g10h",
+   "score": [
+    "cp",
+    1369
+   ],
+   "depth": 20,
+   "pv": [
+    "9g10h",
+    "6j5i",
+    "8g9h",
+    "5i6h",
+    "9h8i+",
+    "6h6i",
+    "11b8e",
+    "2e3d",
+    "8i9i",
+    "3d5b",
+    "8e8a",
+    "5k6j",
+    "7l7f",
+    "1g5c",
+    "8a5d",
+    "5c8f",
+    "9i8j",
+    "8f8h",
+    "5d3f",
+    "3l2l"
+   ]
+  },
+  "p2": {
+   "best": "3l2l",
+   "score": [
+    "cp",
+    -1087
+   ],
+   "depth": 20,
+   "pv": [
+    "3l2l",
+    "9g10h",
+    "1g3e",
+    "8g9h",
+    "3e6h",
+    "11b8e",
+    "2e5b",
+    "9h8i+",
+    "5b8e",
+    "8f8e",
+    "6h5i",
+    "7h7f",
+    "5i8i",
+    "8h8i",
+    "2l3l",
+    "8i2i",
+    "2j2i",
+    "10h11h",
+    "2i1j",
+    "8e9d"
+   ]
+  },
+  "static_p0": 1386,
+  "static_p2": 762
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 600,
+  "eval_before": -458,
+  "depth_before": 13,
+  "eval_after": -1042,
+  "depth_after": 13,
+  "minase_move": "5j6j",
+  "hachu_reply": "1b7h",
+  "p0": {
+   "best": "2g7b",
+   "score": [
+    "cp",
+    -652
+   ],
+   "depth": 17,
+   "pv": [
+    "2g7b",
+    "1b1f",
+    "7b11b",
+    "8g9h",
+    "11b10a",
+    "9g10h",
+    "10a6e",
+    "9h8i+",
+    "3l4l",
+    "8f9g",
+    "4l5l",
+    "10h11h",
+    "6e11j",
+    "11h12h",
+    "11j7f",
+    "1f1a",
+    "7f7d"
+   ]
+  },
+  "p1": {
+   "best": "9g10h",
+   "score": [
+    "cp",
+    1585
+   ],
+   "depth": 20,
+   "pv": [
+    "9g10h",
+    "1f4c",
+    "8g9h",
+    "2g2e",
+    "1b7h",
+    "3l2l",
+    "9h9i+",
+    "2e6e",
+    "7h7g",
+    "2l3l",
+    "9i8j",
+    "6e10a",
+    "11b8e",
+    "4c5b",
+    "8e8d",
+    "5b2e",
+    "8f9g",
+    "6j7j",
+    "8d8g",
+    "7j6i"
+   ]
+  },
+  "p2": {
+   "best": "6j5j",
+   "score": [
+    "cp",
+    -1387
+   ],
+   "depth": 23,
+   "pv": [
+    "6j5j",
+    "9g10h",
+    "2g2e",
+    "8g9h",
+    "2e6e",
+    "9h8i+",
+    "6e3b",
+    "7h7f",
+    "1f4c",
+    "7f2k",
+    "3l4l",
+    "11b8e",
+    "4c5b",
+    "2k7f",
+    "3b3e",
+    "8e8d",
+    "4l5l",
+    "8f8g",
+    "5b2e",
+    "8d8e",
+    "2e4c",
+    "7f5h",
+    "4c2e"
+   ]
+  },
+  "static_p0": 333,
+  "static_p2": 178
+ },
+ {
+  "pair": 75,
+  "color": "black",
+  "ply": 616,
+  "eval_before": -637,
+  "depth_before": 14,
+  "eval_after": -1141,
+  "depth_after": 13,
+  "minase_move": "4d3c",
+  "hachu_reply": "7c5e",
+  "p0": {
+   "best": "4d3c",
+   "score": [
+    "cp",
+    -928
+   ],
+   "depth": 19,
+   "pv": [
+    "4d3c",
+    "7c8d",
+    "3c2b",
+    "11b8e",
+    "2e5b",
+    "8e5h",
+    "5b2e",
+    "5h5e",
+    "3l2l",
+    "8d6f",
+    "2b3a",
+    "9h9i",
+    "2l1l",
+    "6f6g",
+    "1l2l",
+    "8g7h",
+    "7i7j",
+    "9g10h",
+    "2i2h"
+   ]
+  },
+  "p1": {
+   "best": "7c8d",
+   "score": [
+    "cp",
+    1194
+   ],
+   "depth": 20,
+   "pv": [
+    "7c8d",
+    "3l2l",
+    "11b8e",
+    "2e4g",
+    "9g10h",
+    "4g7d",
+    "8e5h",
+    "3c10j",
+    "10h11h",
+    "7d4g",
+    "5h5e",
+    "10j9j",
+    "11h10h",
+    "9j3d",
+    "8d8e",
+    "4g2e",
+    "8f9g",
+    "6j5i",
+    "10h11h"
+   ]
+  },
+  "p2": {
+   "best": "3c8c",
+   "score": [
+    "cp",
+    -1430
+   ],
+   "depth": 18,
+   "pv": [
+    "3c8c",
+    "11b8e",
+    "8c12g",
+    "10f10g",
+    "12g12j",
+    "10g10h",
+    "12j9j",
+    "8g7h",
+    "9j12g",
+    "7h7i+",
+    "6j7i",
+    "9g10f",
+    "3l2l",
+    "9h9i",
+    "7i6j",
+    "5e6f"
+   ]
+  },
+  "static_p0": 134,
+  "static_p2": -7
+ },
+ {
+  "pair": 142,
+  "color": "black",
+  "ply": 164,
+  "eval_before": 2756,
+  "depth_before": 12,
+  "eval_after": 1889,
+  "depth_after": 15,
+  "minase_move": "10c11a",
+  "hachu_reply": "5h5g",
+  "p0": {
+   "best": "10c10a",
+   "score": [
+    "cp",
+    2082
+   ],
+   "depth": 20,
+   "pv": [
+    "10c10a",
+    "9f9d",
+    "6l5k",
+    "9d9c",
+    "10a8a",
+    "8b8a",
+    "5k5h",
+    "2b3b",
+    "4h4g",
+    "12f12g",
+    "5h4h",
+    "9c9e",
+    "4g4f",
+    "12g12h",
+    "4f4e",
+    "4d4e",
+    "4h5i",
+    "9e9f",
+    "5i2f",
+    "9f11h"
+   ]
+  },
+  "p1": {
+   "best": "9f9d",
+   "score": [
+    "cp",
+    -1520
+   ],
+   "depth": 18,
+   "pv": [
+    "9f9d",
+    "6l5k",
+    "9d9c",
+    "5k5h",
+    "9c11a",
+    "4h4g",
+    "4f4g",
+    "5h4g",
+    "11a9c",
+    "4k5k",
+    "12e12b",
+    "7i6h",
+    "2b3b",
+    "4g9g",
+    "8c9d",
+    "9g10f",
+    "3b4b",
+    "10f2f"
+   ]
+  },
+  "p2": {
+   "best": "11a10a",
+   "score": [
+    "cp",
+    1809
+   ],
+   "depth": 20,
+   "pv": [
+    "11a10a",
+    "8c9b",
+    "10a9b10a",
+    "5c10c",
+    "10a10c",
+    "3c10c",
+    "7j8i",
+    "5g6f",
+    "7i6h",
+    "9f11h",
+    "9l8k",
+    "11h10h10i",
+    "4k5k",
+    "10c7c",
+    "9h9g",
+    "2b3b",
+    "6h5g",
+    "6f7e",
+    "6j7j",
+    "7e9g"
+   ]
+  },
+  "static_p0": 3138,
+  "static_p2": 2908
+ },
+ {
+  "pair": 142,
+  "color": "black",
+  "ply": 192,
+  "eval_before": 2102,
+  "depth_before": 11,
+  "eval_after": 1660,
+  "depth_after": 14,
+  "minase_move": "10a10b",
+  "hachu_reply": "7b9d",
+  "p0": {
+   "best": "10a10b",
+   "score": [
+    "cp",
+    1918
+   ],
+   "depth": 16,
+   "pv": [
+    "10a10b",
+    "12f12g",
+    "9g8h",
+    "12g12h",
+    "10b11b",
+    "12h12i+",
+    "11b12a11a",
+    "12i11i",
+    "4k5k",
+    "10e11g",
+    "11a11c",
+    "12e12i+",
+    "9h9g",
+    "12i11h",
+    "8h6f",
+    "11g10h9g"
+   ]
+  },
+  "p1": {
+   "best": "7b9d",
+   "score": [
+    "cp",
+    -1428
+   ],
+   "depth": 22,
+   "pv": [
+    "7b9d",
+    "10h10g",
+    "10e12c",
+    "9g10f",
+    "9d8d",
+    "10b10d",
+    "8d10f",
+    "10d10f",
+    "12c10c",
+    "4k5k",
+    "12f12g",
+    "10f11f",
+    "10c9d",
+    "11f12g11g",
+    "2b3b",
+    "2i2h",
+    "3c6c",
+    "4h4g",
+    "3b4b",
+    "4g4f",
+    "9d7f"
+   ]
+  },
+  "p2": {
+   "best": "10h10g",
+   "score": [
+    "cp",
+    1389
+   ],
+   "depth": 22,
+   "pv": [
+    "10h10g",
+    "10e12c",
+    "9g10f",
+    "9d8d",
+    "10b10d",
+    "8d10f",
+    "10d10f",
+    "12c10c",
+    "10f11g",
+    "12f12g",
+    "12h12g",
+    "10c9d",
+    "4k5k",
+    "2b3b",
+    "7i6h",
+    "3b4b",
+    "6h5g",
+    "9d7f",
+    "3i3h",
+    "5d6e",
+    "11g9g",
+    "12e12b"
+   ]
+  },
+  "static_p0": 2154,
+  "static_p2": 2419
+ },
+ {
+  "pair": 142,
+  "color": "black",
+  "ply": 200,
+  "eval_before": 1947,
+  "depth_before": 11,
+  "eval_after": 1168,
+  "depth_after": 12,
+  "minase_move": "10h10g",
+  "hachu_reply": "9d9e",
+  "p0": {
+   "best": "7i7h",
+   "score": [
+    "cp",
+    1133
+   ],
+   "depth": 16,
+   "pv": [
+    "7i7h",
+    "7c8b",
+    "10b10a",
+    "9d7f",
+    "7g11k",
+    "10e10c",
+    "10a11a",
+    "8b9a",
+    "11a9a",
+    "8a9a",
+    "11k9i",
+    "3c7c",
+    "7h7g",
+    "10c8e",
+    "7g7f",
+    "8e7f6g"
+   ]
+  },
+  "p1": {
+   "best": "7c8b",
+   "score": [
+    "cp",
+    -857
+   ],
+   "depth": 20,
+   "pv": [
+    "7c8b",
+    "10b10a",
+    "9d7f",
+    "7g11k",
+    "10e10c",
+    "10a11a",
+    "8b9a",
+    "11a9a",
+    "8a9a",
+    "11k9i",
+    "12e12b",
+    "11l11k",
+    "10c8e",
+    "6i6h",
+    "8e10g",
+    "7i8i",
+    "3c11c",
+    "9i8h",
+    "11c11i+",
+    "8h8d"
+   ]
+  },
+  "p2": {
+   "best": "7g8h",
+   "score": [
+    "cp",
+    867
+   ],
+   "depth": 18,
+   "pv": [
+    "7g8h",
+    "7c8b",
+    "10b8b",
+    "7b8b",
+    "8k9l",
+    "10e10g",
+    "7j8i",
+    "9e8e",
+    "8i9i",
+    "10g11i",
+    "7i8i",
+    "3c7c",
+    "8h8g",
+    "8e10g",
+    "8g8f",
+    "10g12i+",
+    "8f11i"
+   ]
+  },
+  "static_p0": 2746,
+  "static_p2": 2679
+ },
+ {
+  "pair": 142,
+  "color": "black",
+  "ply": 204,
+  "eval_before": 2138,
+  "depth_before": 12,
+  "eval_after": 1239,
+  "depth_after": 12,
+  "minase_move": "10g10f",
+  "hachu_reply": "10e10f9e",
+  "p0": {
+   "best": "7j8i",
+   "score": [
+    "cp",
+    1121
+   ],
+   "depth": 16,
+   "pv": [
+    "7j8i",
+    "7c8b",
+    "10b10a",
+    "10e9c",
+    "8h10f",
+    "11g11f",
+    "10a8b",
+    "7b8b",
+    "10f9g",
+    "8d9e",
+    "9g8h",
+    "3c8c",
+    "8h9i",
+    "9c7e",
+    "8i7h",
+    "9e8f"
+   ]
+  },
+  "p1": {
+   "best": "10e8c",
+   "score": [
+    "cp",
+    0
+   ],
+   "depth": 20,
+   "pv": [
+    "10e8c",
+    "10b11d",
+    "8c9e",
+    "11d11b",
+    "9e9c",
+    "11b12a11a",
+    "9c11a",
+    "8h11k",
+    "7c11c",
+    "11k8h",
+    "11c7c"
+   ]
+  },
+  "p2": {
+   "best": "8h10j",
+   "score": [
+    "cp",
+    985
+   ],
+   "depth": 18,
+   "pv": [
+    "8h10j",
+    "7c8b",
+    "10b10a",
+    "11g10g",
+    "10j10g",
+    "9e10g",
+    "11l10k",
+    "10g9h",
+    "5l4k",
+    "12f12g",
+    "10a11a",
+    "12a12d",
+    "4k4j",
+    "12g12h",
+    "4j10d+",
+    "12h12i+",
+    "10d11e",
+    "3c6c"
+   ]
+  },
+  "static_p0": 2772,
+  "static_p2": 2641
+ },
+ {
+  "pair": 142,
+  "color": "black",
+  "ply": 216,
+  "eval_before": 758,
+  "depth_before": 11,
+  "eval_after": 139,
+  "depth_after": 13,
+  "minase_move": "12k11k",
+  "hachu_reply": "3c11c",
+  "p0": {
+   "best": "11l10k",
+   "score": [
+    "cp",
+    0
+   ],
+   "depth": 18,
+   "pv": [
+    "11l10k",
+    "3c10c",
+    "10a11a",
+    "10c11c",
+    "11a10a",
+    "11c10c"
+   ]
+  },
+  "p1": {
+   "best": "3c10c",
+   "score": [
+    "cp",
+    658
+   ],
+   "depth": 18,
+   "pv": [
+    "3c10c",
+    "10a8b",
+    "7b8b",
+    "11k10k",
+    "12f12g",
+    "11j11a+",
+    "12g12h",
+    "11l11k",
+    "12h12i+",
+    "10k10j",
+    "2b3b",
+    "8k9l",
+    "10c11c",
+    "11a10b",
+    "8a9a",
+    "10b11c",
+    "1c11c",
+    "10j10i"
+   ]
+  },
+  "p2": {
+   "best": "8i7h",
+   "score": [
+    "cp",
+    0
+   ],
+   "depth": 17,
+   "pv": [
+    "8i7h",
+    "11c10c",
+    "10a11a",
+    "10c11c",
+    "11a10a"
+   ]
+  },
+  "static_p0": 1186,
+  "static_p2": 1056
+ },
+ {
+  "pair": 142,
+  "color": "black",
+  "ply": 226,
+  "eval_before": -452,
+  "depth_before": 13,
+  "eval_after": -1727,
+  "depth_after": 13,
+  "minase_move": "5k5e",
+  "hachu_reply": "4d5e",
+  "p0": {
+   "best": "2i2h",
+   "score": [
+    "cp",
+    -957
+   ],
+   "depth": 17,
+   "pv": [
+    "2i2h",
+    "9e9d",
+    "10b11a",
+    "9d9c",
+    "11a12a11a"
+   ]
+  },
+  "p1": {
+   "best": "4d5e",
+   "score": [
+    "cp",
+    2023
+   ],
+   "depth": 19,
+   "pv": [
+    "4d5e",
+    "10b11a",
+    "9e9c",
+    "11a12a11a",
+    "9c11a",
+    "12h12g",
+    "12e12a",
+    "12g12f",
+    "11a9c",
+    "12f12e",
+    "9c11e",
+    "12e12d+",
+    "12a12d",
+    "12l12d",
+    "11e12d12e",
+    "6k5k",
+    "12e10g",
+    "2i2h"
+   ]
+  },
+  "p2": {
+   "best": "11l11k",
+   "score": [
+    "cp",
+    -2055
+   ],
+   "depth": 19,
+   "pv": [
+    "11l11k"
+   ]
+  },
+  "static_p0": 1457,
+  "static_p2": 472
+ },
+ {
+  "pair": 142,
+  "color": "black",
+  "ply": 232,
+  "eval_before": -1137,
+  "depth_before": 12,
+  "eval_after": -1884,
+  "depth_after": 12,
+  "minase_move": "12l12g",
+  "hachu_reply": "12a12g",
+  "p0": {
+   "best": "11l12k",
+   "score": [
+    "cp",
+    -1914
+   ],
+   "depth": 16,
+   "pv": [
+    "11l12k"
+   ]
+  },
+  "p1": {
+   "best": "12a12g",
+   "score": [
+    "cp",
+    2317
+   ],
+   "depth": 22,
+   "pv": [
+    "12a12g",
+    "5l6l",
+    "12g12i+",
+    "11j11i",
+    "9e9d",
+    "11i12i",
+    "9d10b",
+    "6l10h",
+    "2b3b",
+    "12i9i",
+    "10b9d",
+    "10h9g",
+    "9d11f",
+    "7i7j",
+    "3b4b",
+    "11l10k",
+    "11f11h",
+    "9g8h",
+    "8e8f",
+    "9i7i",
+    "1c12c",
+    "7i9i"
+   ]
+  },
+  "p2": {
+   "best": "5l6l",
+   "score": [
+    "cp",
+    -2338
+   ],
+   "depth": 22,
+   "pv": [
+    "5l6l",
+    "12g12i+",
+    "11j11i",
+    "9e9d",
+    "11i12i",
+    "9d10b"
+   ]
+  },
+  "static_p0": 478,
+  "static_p2": 359
+ }
+]
