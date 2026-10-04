@@ -207,7 +207,7 @@ HaChuは受けた容量を2の冪へ丸めるため、CECPエンジンには2の
 
 判定はペンタノミアルGSPRTによる。
 同一開始局面・先後入替のペア対局は2局間に相関があるため、局単位ではなく候補側のペア得点合計（0、0.5、1、1.5、2）の5分類度数で対数尤度比（LLR）を計算する。
-LLRの計算はfishtestの`LLR_logistic`（statistic="expectation"のMLE法）と同一アルゴリズムであり、実装（`src/stats.rs`）は旧H1と現行H1についてfishtest本家で計算した参照値各5件と1e-6以内で一致することを単体テストで固定している。
+LLRの計算はfishtestの`LLR_logistic`（statistic="expectation"のMLE法）と同一アルゴリズムであり、実装（`crates/minase/src/stats.rs`）は旧H1と現行H1についてfishtest本家で計算した参照値各5件と1e-6以内で一致することを単体テストで固定している。
 
 仮説と誤り率は次のとおり固定する。
 Eloの写像はロジスティック（`s = 1/(1+10^(-elo/400))`）、H0はelo=0、H1はelo=10、α=β=0.05である。

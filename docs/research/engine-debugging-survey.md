@@ -151,5 +151,5 @@ Fairy-Stockfishの`tests/regression.sh`は、新旧2つのバイナリのbench�
 第2に、minaseはperftの数値をテストの正しさの基準にしない方針をとり、perftは`bin/perft`の計測とデバッグの道具として残している（[movegen.md](../plans/movegen.md)の9節）。
 perftの既知値照合は適用せず、divideによる絞り込みだけが使える。
 
-第3に、minaseの評価で成り立つ対称性は「段反転と陣営交換」だけであり、この性質は`src/eval/pst/tests.rs`と`src/eval/pst/features.rs`のテストが、手で置いた局面と初期局面について検査している。
+第3に、minaseの評価で成り立つ対称性は「段反転と陣営交換」だけであり、この性質は`crates/minase/src/eval/pst/tests.rs`と`crates/minase/src/eval/pst/features.rs`のテストが、手で置いた局面と初期局面について検査している。
 左右反転の対称性テストは、中将棋の初期配置が左右非対称であり、学習PSTも筋ごとに異なる重みを持つため適用できない。

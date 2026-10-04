@@ -28,10 +28,10 @@
 
 本マイルストーンでは、次の作業を行う。
 
-- `position.rs`と`movegen/tests/invariants.rs`に重複しているXorShift64乱数生成器を`src/rng.rs`へ分離し、3箇所目の利用者として新バイナリを加える。
+- `position.rs`と`movegen/tests/invariants.rs`に重複しているXorShift64乱数生成器を`crates/minase-core/src/rng.rs`へ分離し、3箇所目の利用者として新バイナリを加える。
 - `sfen.rs`へ`to_sfen`（`Position`からSFEN文字列への出力）を追加し、`parse_sfen`とのラウンドトリップテストを付ける。
 - `Game`へ`Clone`を追加し、全数検証で複製した対局に着手を適用できるようにする。
-- 検証ハーネス`src/bin/random_play/`を新設する。
+- 検証ハーネス`crates/minase/src/bin/random_play/`を新設する。
 
 探索部、評価関数、USIおよびCECPのプロトコル本体、拡張SFEN、性能最適化は対象外とする。
 
@@ -40,9 +40,9 @@
 | 項目 | 決定 |
 |---|---|
 | 役割 | N局を回して不変条件を検査する検証ハーネスとし、単局観察は`--verbose`で兼ねる。 |
-| 実行形態 | perftと同格の`src/bin/`独立バイナリとし、cargo testの実行時間を増やさない。 |
+| 実行形態 | perftと同格の`crates/minase/src/bin/`独立バイナリとし、cargo testの実行時間を増やさない。 |
 | 乱数 | 既存のXorShift64を分離して再利用し、外部クレートを追加しない。 |
-| 乱数モジュールの公開範囲 | `src/rng.rs`をクレート直下の`pub mod`とし、`#[doc(hidden)]`でrustdocから隠す。 |
+| 乱数モジュールの公開範囲 | `crates/minase-core/src/rng.rs`をクレート直下の`pub mod`とし、`#[doc(hidden)]`でrustdocから隠す。 |
 | 規則指定 | `--rules`でコード列または検証済みプリセット名を受け取り、共通の`parse_rule_set`で解決してから`Rules::from_codes`で検証する。プリセット名は単独で指定する。明示指定を必須とし、省略時の既定は設けない。値文法と必須方針はエンジンバイナリ（plans/protocol-layer.md）と統一する。 |
 | 再現性 | 各局の乱数状態を基本シードと局番号から派生させ、任意の1局を単独再実行できるようにする。 |
 | 検証深度 | 既定は軽量検証とし、`--verify-all`指定時だけ全合法手の受理を全数検証する。 |
@@ -52,8 +52,8 @@
 
 ## 乱数モジュールの分離
 
-XorShift64は現在、`src/core/position/zobrist.rs`のZobristキー生成用（非公開、`next`のみ）と、`src/core/movegen/tests/invariants.rs`のテスト用コピー（`index`付き）の2箇所に重複している。
-これを`src/rng.rs`の単一実装へ統合し、`next`と`index`の両方を備える。
+XorShift64は現在、`crates/minase-core/src/position/zobrist.rs`のZobristキー生成用（非公開、`next`のみ）と、`src/core/movegen/tests/invariants.rs`のテスト用コピー（`index`付き）の2箇所に重複している。
+これを`crates/minase-core/src/rng.rs`の単一実装へ統合し、`next`と`index`の両方を備える。
 乱数生成器は中将棋のドメイン概念ではないため、`core/`配下ではなくクレート直下へ置く。
 
 モジュールは`pub mod rng`として公開するが、ライブラリ利用者向けAPIではないため`#[doc(hidden)]`を付け、crate rootからの再公開は行わない。
@@ -142,7 +142,7 @@ XorShift64は現在、`src/core/position/zobrist.rs`のZobristキー生成用（
 
 ### フェーズ1　乱数モジュールの分離
 
-XorShift64を`src/rng.rs`へ移し、`position.rs`と`invariants.rs`の重複を解消する。
+XorShift64を`crates/minase-core/src/rng.rs`へ移し、`position.rs`と`invariants.rs`の重複を解消する。
 Zobrist値と全テストの不変を確認する。
 
 ### フェーズ2　SFEN書き出し
@@ -187,10 +187,10 @@ cargo run --release --bin random_play -- --games 500 --seed 1 --rules engine-def
 
 次の条件をすべて満たした時点で、本マイルストーンを完了とする。
 
-- XorShift64が`src/rng.rs`の単一実装になり、Zobrist値が変化していない。
+- XorShift64が`crates/minase-core/src/rng.rs`の単一実装になり、Zobrist値が変化していない。
 - `to_sfen`がラウンドトリップテストとともに実装されている。
 - `random_play`が本設計書のCLIと検証項目を備え、検証の節に定める代表規則セットのそれぞれで数百局を異常なしで完走する。
 - 異常検出時のダンプから`--seed`と`--game`だけで当該局を再現できる。
 - `--max-ply`の既定値が実測に基づいて確定している。
 - 本節の検証コマンドがすべて成功する。
-- `Cargo.toml`、`Cargo.lock`および`src/bin/perft.rs`にある既存のmimalloc実験差分を変更していない。
+- `Cargo.toml`、`Cargo.lock`および`crates/minase/src/bin/perft.rs`にある既存のmimalloc実験差分を変更していない。

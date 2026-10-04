@@ -57,7 +57,7 @@ USIとCECPの両経路で対局進行を実装し、XBoard仲介のMinase対Mina
 
 - 探索部（search.md）のフェーズ5「時間管理と探索呼び出し境界」の完了を着手条件とする。本マイルストーンは、`SearchSnapshot`（探索に渡す局面の複製）、`SearchLimits`（ミリ秒単位の時間、深さ、ノード数の探索制限）、停止フラグ、探索ID付き進捗・完了チャネルを利用する。
 - 探索部フェーズ6（第2層の逐次採否）とは独立であり、並行して進められる。
-- ブラウザGUI向けUSI照会（browser-gui.md）とは設計上独立だが、同じ`src/protocol/usi.rs`を編集するため、ROADMAPの順序（ブラウザGUI照会が先行）に従う。
+- ブラウザGUI向けUSI照会（browser-gui.md）とは設計上独立だが、同じ`crates/minase/src/protocol/usi.rs`を編集するため、ROADMAPの順序（ブラウザGUI照会が先行）に従う。
 - プロトコル層（[protocol-layer.md](protocol-layer.md)）は完了済みであり、本マイルストーンはその握手、局面設定、表記変換、規則オプションを変更せずに使う。feature宣言の変更は`time=1`と`memory=1`の2点だけである。本書が使う`Engine`の状態（対局開始前の`AwaitingStart`、対局中の`InGame`、終局後の`Finished`）と、着手の合法性と終局を裁定する審判層（`Game`）は、プロトコル層が定義する。
 
 参照の向きは一方向である。

@@ -43,7 +43,7 @@ late move pruningは、元の実装の[診断](../measurements/search-revival-lm
 
 本書の用語を次のように定める。
 **M**は、測定の開始時のmasterの先頭のコミットであり、評価関数のPSTに重みG23を採用した b96a931 である。
-**既存の探索係数**は、Mの`src/search/alphabeta/params.rs`にある22係数のうち、時間管理の6係数を除く16係数である（LMR、futility pruning、SEE pruning、aspiration windows、null move pruning、history、correction history、およびdelta pruningの係数）。
+**既存の探索係数**は、Mの`crates/minase/src/search/alphabeta/params.rs`にある22係数のうち、時間管理の6係数を除く16係数である（LMR、futility pruning、SEE pruning、aspiration windows、null move pruning、history、correction history、およびdelta pruningの係数）。
 **新しい係数**は、本書が8項目のために係数の表へ加える13係数である。
 **T**は、Mに8項目を戻したコミットであり、Tを調整した値を書き込んだコミットを**T\***とする。
 **T\*′**は、Mのコードに、T\*の既存の探索係数16個の値だけを書き込んだコミットである。T\*から8項目と新しい係数を取り除いた版に当たる。
@@ -217,7 +217,7 @@ LTCの30時間は見積りの目安であり、判定保留なら延長するの
 ### フェーズ1　移植と範囲
 
 8項目をMへ移植し、Tを作る。
-段階4と段階8の項目は係数の表の導入より前の実装なので、定数を係数の表へ置き換え、`src/search/alphabeta/`の現行の構成へ合わせる。
+段階4と段階8の項目は係数の表の導入より前の実装なので、定数を係数の表へ置き換え、`crates/minase/src/search/alphabeta/`の現行の構成へ合わせる。
 late move pruningは、元の実装のノードの条件を使い、「設計判断」の節の定義で実装し直す。
 段階12の項目は係数の表を使う実装なので、Mとの差分だけを合わせる。
 各項目の元のコミットにあった単体テストを移植し、係数を既定値から変えると探索に反映されることを係数ごとのテストで固定する。

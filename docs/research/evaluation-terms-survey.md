@@ -53,12 +53,12 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 
 ## 現行の評価と前提
 
-現行の静的評価は、47種類の駒状態と144升の組に先獅子の対象升を加えた13,680特徴の2端点PSTである（[features.rs](../../src/eval/pst/features.rs)）。
-探索は着手ごとに累算器を差分更新し、評価の呼び出しは累算器の補間だけで済む（[search/alphabeta/negamax.rs](../../src/search/alphabeta/negamax.rs) 112行）。
+現行の静的評価は、47種類の駒状態と144升の組に先獅子の対象升を加えた13,680特徴の2端点PSTである（[features.rs](../../crates/minase/src/eval/pst/features.rs)）。
+探索は着手ごとに累算器を差分更新し、評価の呼び出しは累算器の補間だけで済む（[search/alphabeta/negamax.rs](../../crates/minase/src/search/alphabeta/negamax.rs) 112行）。
 したがって、盤面を走査する項を1つでも加えると、評価の費用の性質が「定数時間」から「盤面に依存する時間」へ変わる。
 
 利きを計算する部品は既にある。
-`piece_control_with_occupancy` は駒からの疑似利きを、`attackers_to_by` は升へ届く駒の逆引きを返す（[movegen/control.rs](../../src/core/movegen/control.rs) 10行から128行）。
+`piece_control_with_occupancy` は駒からの疑似利きを、`attackers_to_by` は升へ届く駒の逆引きを返す（[movegen/control.rs](../../crates/minase-core/src/movegen/control.rs) 10行から128行）。
 一方、全升の利き数を局面に保持する表はなく、HaChuの `attacks` 配列ややねうら王の `board_effect` に当たるものは存在しない。
 疑似利きは合法な捕獲の集合ではなく、獅子の捕獲制限は反映しない。
 ただし王駒への利きは、王手放置が合法であるため、疑似利きと捕獲可能性が一致する（search/alphabeta/royal.rs 7行から18行）。
@@ -86,7 +86,7 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 検証では、生の静的評価、深さ1の値、深い探索の値を分けて記録する。
 
 敗因分析の「鯨鯢が玉と同じ段に回った」という記述は、王への直接の利きを意味しない。
-鯨鯢は前後と後斜めへ走り、横には走らない（[fixed.rs](../../src/core/attacks/fixed.rs) 282行から287行）。
+鯨鯢は前後と後斜めへ走り、横には走らない（[fixed.rs](../../crates/minase-core/src/attacks/fixed.rs) 282行から287行）。
 侵入した成駒の価値は、実際に制圧する升と、他の攻撃駒との連携で測る必要がある。
 
 ## 段階1　王の遮蔽と開いた筋

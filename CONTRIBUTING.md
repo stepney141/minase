@@ -17,41 +17,60 @@
 
 ### リリースの手順
 
-リリースには git-cliff と cargo-release を使う。Arch Linux では`sudo pacman -S git-cliff cargo-release`で導入できる。設定は cliff.toml と release.toml にあり、以下では版数を 1.2.0 として説明する。
+リリースには git-cliff と cargo-release を使う。Arch Linux では`sudo pacman -S git-cliff cargo-release`で導入できる。設定は cliff.toml と release.toml にある。
+ライブラリ`minase-core`とエンジン`minase`は別々の版数を持ち、1つずつリリースする。
+タグは、ライブラリが`minase-core-vX.Y.Z`、エンジンが`vX.Y.Z`である。
+変更履歴は、ライブラリが crates/minase-core/CHANGELOG.md、エンジンがリポジトリのルートの CHANGELOG.md であり、それぞれのcrateのディレクトリに触れたコミットだけを載せる。両方に触れたコミットは両方に載る。
+以下では、ライブラリの版数を 0.2.0、エンジンの版数を 2.1.0 として説明する。
 
-まず master を最新にして、作業ツリーがクリーンであることを確認する。次の版数は、コミットの種別から推定した値を参考に決める。`fix`だけならパッチ、`feat`があればマイナー、互換性を壊す変更があればメジャーの版数が上がる。
+まず master を最新にして、作業ツリーがクリーンであることを確認する。次の版数は、crateごとにコミットの種別から推定した値を参考に決める。`fix`だけならパッチ、`feat`があればマイナー、互換性を壊す変更があればメジャーの版数が上がる。ライブラリは0.x系なので、互換性を壊す変更ではマイナーの版数を上げる。
 
 ```console
 git switch master
 git pull
 git status
-git cliff --bumped-version
+git cliff --include-path 'crates/minase-core/**' --tag-pattern '^minase-core-v' --bumped-version
+git cliff --include-path 'crates/minase/**' --bumped-version
 ```
 
-次に、`--execute`を付けずに cargo-release を実行して予行する。予行では Cargo.toml と CHANGELOG.md を変更せず、今回のリリースノートを標準出力に表示するだけである。
+次に、`--execute`を付けずに cargo-release を実行して予行する。予行では Cargo.toml と変更履歴を変更せず、今回のリリースノートを標準出力に表示するだけである。
 
 ```console
-cargo release 1.2.0
+cargo release -p minase-core 0.2.0
 ```
 
-内容に問題がなければ、`--execute`を付けて本番を実行する。cargo-release は、Cargo.toml と Cargo.lock の版数を更新し、git-cliff で今回のリリースノートを CHANGELOG.md の先頭に追加する。そのうえで、これらを`chore(release): v1.2.0`としてコミットし、注釈付きタグ`v1.2.0`（本文は`minase v1.2.0`）を作る。pushは行わない。
+内容に問題がなければ、`--execute`を付けて本番を実行する。cargo-release は、そのcrateの Cargo.toml と Cargo.lock の版数を更新し、git-cliff で今回のリリースノートをそのcrateの変更履歴の先頭に追加する。そのうえで、これらを`chore(release): minase-core-v0.2.0`としてコミットし、注釈付きタグ`minase-core-v0.2.0`（本文は`minase-core v0.2.0`）を作る。pushと crates.io への公開は行わない。
 
 ```console
-cargo release 1.2.0 --execute
+cargo release -p minase-core 0.2.0 --execute
 git show --stat HEAD
 ```
 
-CHANGELOG.md を手で補う場合は、pushの前に編集してリリースコミットを amend し、タグを付け直す。Conventional Commits の導入前に書かれたコミットはリリースノートに載らないため、導入後の最初のリリースではこの補正が必要になる。
+エンジンも同じ手順でリリースする。コミットの件名は`chore(release): v2.1.0`、タグは`v2.1.0`（本文は`minase v2.1.0`）になる。エンジンが新しい版のライブラリを必要とする場合は、ライブラリを先にリリースする。
+
+```console
+cargo release -p minase 2.1.0
+cargo release -p minase 2.1.0 --execute
+```
+
+変更履歴を手で補う場合は、pushの前に編集してリリースコミットを amend し、タグを付け直す。
 
 ```console
 git commit -a --amend --no-edit
-git tag -f -a v1.2.0 -m "minase v1.2.0"
+git tag -f -a v2.1.0 -m "minase v2.1.0"
 ```
 
-最後に、master とタグをpushする。
+次に、master とタグをpushする。
 
 ```console
-git push origin master v1.2.0
+git push origin master minase-core-v0.2.0 v2.1.0
+```
+
+最後に、crates.io へ公開する。公開は取り消せないので、タグとpushを確認してから手で実行する。エンジンの依存はcrates.io上のライブラリの版数で解決されるので、ライブラリを先に公開する。
+
+```console
+cargo publish -p minase-core
+cargo publish -p minase
 ```
 
 ## 棋力測定

@@ -20,4 +20,4 @@
 ## 出典
 
 - [plans/evaluation-gen1.md](../plans/evaluation-gen1.md) の「学習の構成」節と「教師不足の判定の検証結果と次期候補」節。
-- `src/rng.rs` の `derive_seed`。
+- `crates/minase-core/src/rng.rs` の `derive_seed`。

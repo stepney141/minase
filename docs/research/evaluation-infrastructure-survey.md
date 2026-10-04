@@ -129,9 +129,9 @@ Cが持つのは升ごとの利きの数であり、利いている駒の識別�
 
 ### 局面と利きの部品
 
-`Position` は、番兵つきの盤配列、占有、色別と駒種別のビットボード、ハッシュ、および成り権の保留集合を持ち、利きに関する状態を持たない（src/core/position/mod.rs 23行から42行）。
-`Bitboard` は `[u64; 3]` の192ビットであり（src/core/board/bitboard.rs 13行）、演算はAND、OR、XOR、NOTだけで、シフトはない。
-走りの計算 `sliding_control` は方向ごとの算術方式であり（src/core/attacks/tables.rs 166行から188行）、駒1枚の走りは方向の数だけ繰り返す。
+`Position` は、番兵つきの盤配列、占有、色別と駒種別のビットボード、ハッシュ、および成り権の保留集合を持ち、利きに関する状態を持たない（crates/minase-core/src/position/mod.rs 23行から42行）。
+`Bitboard` は `[u64; 3]` の192ビットであり（crates/minase-core/src/board/bitboard.rs 13行）、演算はAND、OR、XOR、NOTだけで、シフトはない。
+走りの計算 `sliding_control` は方向ごとの算術方式であり（crates/minase-core/src/attacks/tables.rs 166行から188行）、駒1枚の走りは方向の数だけ繰り返す。
 獅子の到達範囲は占有に依存しない表引きで求まり、角鷹と飛鷲の2段階移動も限定方向の1升と2升の判定で求まる。
 走りはどの駒種でも距離が無制限であり、距離に上限のある走りはない。
 
@@ -149,16 +149,16 @@ Cが持つのは升ごとの利きの数であり、利いている駒の識別�
 
 ### 探索がノードごとに計算して捨てている利き
 
-主探索の非捕獲手の生成は、手番側の全駒の利きを計算し、手に変換した時点で捨てる（src/core/movegen/generate.rs 52行から55行）。
-静止探索の初期化は、手番側の通常駒について対象升へ届く利きだけを求め、ノードの中でだけ保存する（src/core/movegen/search_captures.rs 130行から186行）。
-王手の判定 `royal_under_attack` は、王駒ごとに逆引きを1回行い、真偽だけをノードの中で共有する（src/search/alphabeta/royal.rs 12行から19行）。
-静的交換評価と獅子の足の判定は、仮想の占有を与えて逆引きを行う。静的交換評価は最初の逆引きでも移動元を除いた占有を使うので（src/search/alphabeta/see.rs 67行から74行）、局面に保持した表だけでは置き換えられない。
+主探索の非捕獲手の生成は、手番側の全駒の利きを計算し、手に変換した時点で捨てる（crates/minase-core/src/movegen/generate.rs 52行から55行）。
+静止探索の初期化は、手番側の通常駒について対象升へ届く利きだけを求め、ノードの中でだけ保存する（crates/minase-core/src/movegen/search_captures.rs 130行から186行）。
+王手の判定 `royal_under_attack` は、王駒ごとに逆引きを1回行い、真偽だけをノードの中で共有する（crates/minase/src/search/alphabeta/royal.rs 12行から19行）。
+静的交換評価と獅子の足の判定は、仮想の占有を与えて逆引きを行う。静的交換評価は最初の逆引きでも移動元を除いた占有を使うので（crates/minase/src/search/alphabeta/see.rs 67行から74行）、局面に保持した表だけでは置き換えられない。
 ノードをまたいで利きを保存する仕組みはない。
 
 ### 評価の償却
 
-置換表のエントリは16バイトで、静的評価の欄を持たない（src/search/alphabeta/tt.rs 87行から118行）。
-主探索は、futility pruningの境界とcorrection historyの更新で、同じ局面の静的評価を別々に計算する（src/search/alphabeta/negamax.rs 111行から112行、201行から203行）。
+置換表のエントリは16バイトで、静的評価の欄を持たない（crates/minase/src/search/alphabeta/tt.rs 87行から118行）。
+主探索は、futility pruningの境界とcorrection historyの更新で、同じ局面の静的評価を別々に計算する（crates/minase/src/search/alphabeta/negamax.rs 111行から112行、201行から203行）。
 前者は残り深さ3以下の非PVノードで、後者は最善手が捕獲でないノードで呼ぶので、両方に当たるノードは評価を2回計算する。
 静止探索は全ノードで立ち評価を計算する（同1541行から1543行）。
 段階6は、評価1回がノードの時間の0.24%であることを理由に、静的評価の保存を見送った。

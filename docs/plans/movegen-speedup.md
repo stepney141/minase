@@ -36,12 +36,12 @@
 
 対象は次のコードとビルド手順である。
 
-- `src/core/movegen/`は合法手の生成と利きの逆引きを実装する。
-- `src/core/attacks/`は駒種ごとの動きの定義と利きの前計算表を実装する。
-- `src/core/board/bitboard.rs`は144升の集合を3個の64ビット整数で表し、走り計算の代替方式に着手する場合だけ対象になる。
-- `src/core/movegen/lion_capture.rs`は獅子捕獲後の足を、`src/core/promotion.rs`は成りを判定する。
-- `src/search/alphabeta/see.rs`は交換列を評価し、探索で捕獲手を捨てるかを判定する。
-- `src/search/alphabeta/quiesce.rs`の静止探索が生成器を呼び、置換表の手を先頭へ移す。
+- `crates/minase-core/src/movegen/`は合法手の生成と利きの逆引きを実装する。
+- `crates/minase-core/src/attacks/`は駒種ごとの動きの定義と利きの前計算表を実装する。
+- `crates/minase-core/src/board/bitboard.rs`は144升の集合を3個の64ビット整数で表し、走り計算の代替方式に着手する場合だけ対象になる。
+- `crates/minase-core/src/movegen/lion_capture.rs`は獅子捕獲後の足を、`crates/minase-core/src/promotion.rs`は成りを判定する。
+- `crates/minase/src/search/alphabeta/see.rs`は交換列を評価し、探索で捕獲手を捨てるかを判定する。
+- `crates/minase/src/search/alphabeta/quiesce.rs`の静止探索が生成器を呼び、置換表の手を先頭へ移す。
 - PGOの比較は`Cargo.toml`、`.cargo/`、およびプロファイルの生成手順を対象とする。
 
 本書では次の用語を使う。
@@ -73,8 +73,8 @@ SEEを正確な値として計算する経路には、値と判定不能を表�
 
 ## 依存関係
 
-利き逆引きの契約は[棋力向上段階3](strength-stage3.md)の「升への疑似利き集合」が定め、`src/core/movegen/tests/attackers.rs`が、逆引きの結果が駒ごとに計算した利きから導いた集合と一致することを検査する。
-捕獲専用生成の契約は[棋力向上段階1](strength-stage1.md)が定め、`src/core/movegen/tests/properties.rs`が、捕獲だけを生成した列が全手の列から捕獲を抜き出した列と順序まで一致することを検査する。
+利き逆引きの契約は[棋力向上段階3](strength-stage3.md)の「升への疑似利き集合」が定め、`crates/minase-core/src/movegen/tests/attackers.rs`が、逆引きの結果が駒ごとに計算した利きから導いた集合と一致することを検査する。
+捕獲専用生成の契約は[棋力向上段階1](strength-stage1.md)が定め、`crates/minase-core/src/movegen/tests/properties.rs`が、捕獲だけを生成した列が全手の列から捕獲を抜き出した列と順序まで一致することを検査する。
 これらの公開生成契約は維持し、探索専用の部分生成とSEEの判定契約は、該当する実装を採用するときに参照先の設計書へ反映する。
 計測区間は[大容量メモリの確保を速度指標に含めない方針](../lessons/bench-allocation-outside-timing.md)に従い、診断の件数は[独立した参照値と照合する規則](../lessons/compare-diagnostics-with-independent-reference.md)に従う。
 最終のSPRTは[SPRTの手引き](../guides/sprt.md)に従い、速度とEloの換算の目安には[持ち時間2倍の感度測定](../measurements/sensitivity-time2x.md)を使う。

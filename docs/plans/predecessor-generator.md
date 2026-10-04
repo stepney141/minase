@@ -43,7 +43,7 @@
 以下の項目は作業の対象外とする。
 
 - `Position`の内部表現（`LionTrigger`、`promotion_deferred`、`Undo`、`NullUndo`）、Zobristキー、ならびに既存の構築経路である`PositionBuilder::mark_promotion_deferred`と`Position::set_lion_capture`は変更しない。
-- 評価関数、探索、学習データ形式、拡張SFENの契約、プロトコル層、および`src/bin`配下のエンジンと補助バイナリは変更しない。
+- 評価関数、探索、学習データ形式、拡張SFENの契約、プロトコル層、および`crates/minase/src/bin`配下のエンジンと補助バイナリは変更しない。
 - `Game`全体、反復履歴、手数、駒枯れ猶予、および終局結果の逆生成は実施しない。
 - 初期局面から各直前局面への大域的な到達可能性については判定しない。
 - 集計、状態の縮約、状態数の算出、およびデータの永続化は行わない。
@@ -178,7 +178,7 @@ impl Position {
 一時状態を持つ局面の構築には、既存の公開経路をそのまま利用する。
 メソッドの呼び出し順序は、まず`PositionBuilder::new`で手番を決定し、`put`で駒を配置し、`mark_promotion_deferred`で成り権保留集合を設定する。続いて`finish()`で`Position`のインスタンスを取得した後に、`set_lion_capture`で先獅子状態を設定する。
 `set_lion_capture`は記録升に手番側の駒が配置されている入力を拒否し、記録升の駒情報から麒麟成りフラグを導出した上で、Zobrist値を増分更新する。
-各関数の契約は`src/core/position/`のrustdocおよび[protocol-layer.md](protocol-layer.md)「局面設定」に定められており、本書では変更しない。
+各関数の契約は`crates/minase-core/src/position/`のrustdocおよび[protocol-layer.md](protocol-layer.md)「局面設定」に定められており、本書では変更しない。
 記録升に不成の獅子が存在する状態は、現行の拡張SFENにおいて受理されており、テストコードでも受理されることが固定されている。そのため、既存の構築経路ではこれを拒否しない。
 その状態を除外する役割は、「直前局面の定義」節で定義した集合`A`の条件が担い、生成器側でのみ制限を課す。
 規則に依存する条件のうち、P0を採用しP5を採用しない場合の空集合判定は、現行の拡張SFENの解析処理で既に検査されており、これをそのまま維持する。
@@ -206,7 +206,7 @@ impl Position {
 
 ## 公開API
 
-実装は`src/core/predecessor/`に配置し、`src/core/mod.rs`および`src/lib.rs`から公開する。
+実装は`crates/minase-core/src/predecessor/`に配置し、`crates/minase-core/src/lib.rs`から公開する。
 公開インターフェースは次の形状とする。
 
 ```rust
@@ -421,7 +421,7 @@ L0からL4まで、およびP0からP6までの各規則は、候補局面また
 ### 移動形式と逆構成の対応
 
 順方向のすべての移動形式と逆構成の対応を次の表に示す。
-逆構成の関数はいずれも`src/core/predecessor/`にあり、`reverse::moves`が到達升から候補着手を、`reverse::restorations`が捕獲駒を、`transient::candidates`が成り権保留集合を、`transient::lion_records`が先獅子の記録升をそれぞれ列挙する。
+逆構成の関数はいずれも`crates/minase-core/src/predecessor/`にあり、`reverse::moves`が到達升から候補着手を、`reverse::restorations`が捕獲駒を、`transient::candidates`が成り権保留集合を、`transient::lion_records`が先獅子の記録升をそれぞれ列挙する。
 成りの3通り（不成、直前手での成り、既成駒の移動）は`reverse::enumerate_candidates`が到達駒から移動前の駒を決める段階で扱い、すべての移動形式に共通する。
 一時状態の列は、直前局面`p`の一時状態をどう列挙するかを示し、対象局面`q`の一時状態は順方向の再適用が着手から再現する。
 
@@ -520,7 +520,7 @@ open集合が空になるまで網羅的に探索した場合に限り、生成�
 2026年10月4日のテスト監査で、この表の事例の一部を固定テストから外した。
 返却された各出力を検査する補助関数`checked()`が、合法な辺の存在と集合`A`の条件を独立に検査するので、除外されるべき局面が返らないことを確かめる否定形の事例は、この検査が担う。
 走りの遮蔽、遮られた獅子のじっと、二重成りの拒否、敵陣外の歩兵からの成駒がこれに当たる。
-逆生成は規則コードL1〜L4とP6を参照せず、規則の意味は合法手生成のテスト（`src/core/movegen/tests/lion_capture.rs`と`promotion.rs`）が検証する。
+逆生成は規則コードL1〜L4とP6を参照せず、規則の意味は合法手生成のテスト（`crates/minase-core/src/movegen/tests/lion_capture.rs`と`promotion.rs`）が検証する。
 このため、先獅子のL1、L3、L4の事例とP2とP6を併用した事例を外し、規則が順方向の検証へ渡ることはL2とP6の各1件で確かめる。
 固定跳びの中間升は空升と味方駒の2ケースに絞った。
 異なる駒によるじっとが同一の局面へ至る場合の重複除去は、角鷹と飛鷲のテストの局面で生じる同じ重複と`checked()`の重複検査が担う。
@@ -531,7 +531,7 @@ open集合が空になるまで網羅的に探索した場合に限り、生成�
 `tests/`ディレクトリには、公開APIのみを利用した深さ2の逆方向探索テストを配置する。
 初期局面から2手進めた対象局面から手を逆に2手たどり、`HashSet<Position>`を活用して初期局面を正しく発見できることを確認する。
 対象局面の入力および直前局面の出力には拡張SFENを用い、外部プログラムが利用する経路と同一の処理で問題なく往復変換できることを確認する。
-先獅子状態や成り権保留が存在する局面の拡張SFENの書き出しと再解析は、全欄を既定値以外にした場合を含めて`src/notation/sfen.rs`の単体テストが確認する。
+先獅子状態や成り権保留が存在する局面の拡張SFENの書き出しと再解析は、全欄を既定値以外にした場合を含めて`crates/minase-core/src/notation/sfen.rs`の単体テストが確認する。
 なお、本テストのために製品コード側へ探索器を追加することはない。
 
 ### 性能測定

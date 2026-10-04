@@ -77,7 +77,7 @@ pub struct Rules {
 
 各層の利用者は次のとおりである。
 `Position::make_move_unchecked`、`MoveGenerator`、`parse_extended_sfen`、`Searcher`と`SearchSnapshot`、perft、手生成のテストは`MoveRules`を受ける。
-`Game`、審判層、プロトコル層、`bench`、`match_runner`、`random_play`、`tests/lishogi_replay.rs`は`Rules`を受け、探索とSFENへは`rules.moves`を渡す。
+`Game`、審判層、プロトコル層、`bench`、`match_runner`、`random_play`、`crates/minase-core/tests/lishogi_replay.rs`は`Rules`を受け、探索とSFENへは`rules.moves`を渡す。
 `Position`が読む規則コードはP1・P2・P5だけであり、探索と評価は反復・駒枯れ規則を参照しないことを確認済みである。
 
 `Game`は現在`MoveGenerator`だけを所有し、`Game::rules()`と`AdjudicationContext`はそこから完全な規則を復元している。

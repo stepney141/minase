@@ -25,14 +25,14 @@ HaChuの内部評価値が保存されておらず、共通の十分深い参照
 
 ```console
 git diff --quiet ce654d9..HEAD -- \
-  Cargo.toml Cargo.lock nets src/core src/eval src/search src/protocol src/bin/minase.rs
+  Cargo.toml Cargo.lock nets crates/minase-core/src crates/minase/src/eval crates/minase/src/search crates/minase/src/protocol src/bin/minase.rs
 ```
 
 保存された開始手順と全着手を、指定規則の`Game`とUniversal Shogi Interface（USI）表記解析器で初期局面から再生した。
 合法終局399局の全着手が再生時の合法手検査を通り、各局面から捕獲、成り、盤上駒価値、駒数、およびMinase評価値を集計した。
-保存形式と再読込時の検査は[対局ハーネス](../../src/bin/match_runner/storage.rs)に実装されている。
+保存形式と再読込時の検査は[対局ハーネス](../../crates/minase/src/bin/match_runner/storage.rs)に実装されている。
 
-駒価値にはMinaseの[固定駒価値表](../../src/eval/handcrafted.rs#L19)を使い、歩兵を100センチポーン、横行と竪行を各500センチポーン、獅子を2500センチポーンとした。
+駒価値にはMinaseの[固定駒価値表](../../crates/minase/src/eval/handcrafted.rs#L19)を使い、歩兵を100センチポーン、横行と竪行を各500センチポーン、獅子を2500センチポーンとした。
 この尺度は比較用であり、HaChu自身の評価値でも、現在のMinaseが使う学習済み評価値でもない。
 
 ランダム開始手順の終了時点で既に駒価値差がある対局が400局中52局あった。
@@ -81,7 +81,7 @@ HaChuが勝った119局では、Minaseが連続した詰まされる評価へ入
 Minase勝ちではHaChuが捕獲前に投了するため同じ数え方ができないが、少なくともHaChu勝ちでは獅子による接近と王追いが中心的だった。
 
 実装上も、この観測と整合する差がある。
-現在のMinaseの静的評価は、駒種、成り状態、所有者、および升を組み合わせた特徴と、先獅子状態の特徴との線形和である。[Minaseの特徴定義](../../src/eval/pst/features.rs) [評価値の計算](../../src/eval/pst/mod.rs)
+現在のMinaseの静的評価は、駒種、成り状態、所有者、および升を組み合わせた特徴と、先獅子状態の特徴との線形和である。[Minaseの特徴定義](../../crates/minase/src/eval/pst/features.rs) [評価値の計算](../../crates/minase/src/eval/pst/mod.rs)
 一方、HaChuは機動力に加え、王の安全、王周辺の守備駒、獅子に耐える囲い、終盤の王位置、麒麟の成りやすさ、および歩兵配置を明示的に評価する。[有効な評価項目](../../../hachu-debian/hachu.c#L18) [HaChuの評価関数](../../../hachu-debian/hachu.c#L1897)
 HaChuが駒損でも王を取り切る実戦傾向は、この王安全評価と整合する。
 ただし、探索と評価の両方が異なり、評価項目を個別に無効化した比較実験ではないため、王安全評価だけを原因とは断定できない。

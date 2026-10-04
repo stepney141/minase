@@ -7,10 +7,10 @@
 本マイルストーンは探索部の実装より先に完結させる。
 
 同2026年8月11日に両段階の実装を完了した。
-第1段階では`WinReason`と`DrawReason`へ`BareKing`を新設し、`src/core/game/adjudication/bare_king.rs`の`bare_king_result`だけがこれを返すよう分割した。
+第1段階では`WinReason`と`DrawReason`へ`BareKing`を新設し、`crates/minase-core/src/game/adjudication/bare_king.rs`の`bare_king_result`だけがこれを返すよう分割した。
 CECPの終局文字列はenumとの1対1写像へ単純化し、`PieceExhaustion`へ"piece exhaustion"、`BareKing`へ"bare king"/"bare kings"を当てた。
 E3経路の既存テスト5件とlishogi棋譜リプレイの期待値、`random_play`の理由集計を`BareKing`へ追従させた。
-第2段階では`src/protocol/usi.rs`へ`moves`と`state`を追加し、テスト方針の全ケース（集合比較、単一行完全一致、開始前エラー、`gameover`後の規則切替）をインラインテストとして実装した。
+第2段階では`crates/minase/src/protocol/usi.rs`へ`moves`と`state`を追加し、テスト方針の全ケース（集合比較、単一行完全一致、開始前エラー、`gameover`後の規則切替）をインラインテストとして実装した。
 `resignation`と`agreement`は設計どおりstatusを出力せず`info string error: ...`で通知する。
 検証は`cargo test`276件全緑、`cargo clippy --all-targets`警告なし、`cargo fmt --all -- --check`および`git diff --check`の通過を確認した。
 `docs/research/protocols/usi-lishogi.md`へ「minase固有のUSI拡張」の節を追加し、2コマンドの契約を記録した。
@@ -85,7 +85,7 @@ info string error: moves requires an active game
 空の合法手集合を進行中の正常状態として表す形式は設けない。
 審判層が終局を確定した後は`moves`ではなく`state`を問い合わせる。
 
-`moves`は`src/notation/usi.rs`の変換だけを使い、GUI専用の指し手表記を追加しない。
+`moves`は`crates/minase-core/src/notation/usi.rs`の変換だけを使い、GUI専用の指し手表記を追加しない。
 2段移動、居喰い、じっと、成りは既存のUSI表記と同じ文字列になる。
 
 ## `state`コマンド
@@ -139,18 +139,18 @@ GUIは終局状態を`state`で確認してから`gameover`を送る。
 
 本マイルストーンは、裁定理由enumの分割（第1段階）と2コマンドの追加（第2段階）の2段で進める。
 
-第2段階の2コマンドは`src/protocol/usi.rs`へ追加する。
+第2段階の2コマンドは`crates/minase/src/protocol/usi.rs`へ追加する。
 既存の`Engine::game()`、`Engine::active_rule_codes()`、`Game::legal_moves()`、`to_sfen`、USI指し手表記をそのまま使う。
 
 `EngineCommand`と`EngineReply`は状態変更の境界なので、読み取り専用の2コマンドのために変種を追加しない。
-`src/core/`とCECPの変更は第1段階のenum分割とその追従に限り、第2段階では変更しない。
+`crates/minase-core/src/`とCECPの変更は第1段階のenum分割とその追従に限り、第2段階では変更しない。
 
 未知コマンドを無視する既存のUSI方針は変えない。
 `moves`と`state`の意味的な不正だけを、既存と同じ`info string error: ...`で通知する。
 
 ## テスト方針
 
-既存のUSIテスト（`src/protocol/usi.rs`のインラインテスト）へ次のケースを追加する。
+既存のUSIテスト（`crates/minase/src/protocol/usi.rs`のインラインテスト）へ次のケースを追加する。
 
 - `position startpos`後の`moves`を空白で分解し、`Game::legal_moves()`のUSI表記集合と一致することを確認する。
 - 2段移動、居喰い、じっと、成りを含む既存の全合法手往復試験が、`moves`で使う表記を引き続き覆うことを確認する。
@@ -174,6 +174,6 @@ GUIは終局状態を`state`で確認してから`gameover`を送る。
 - `WinReason`と`DrawReason`の`BareKing`分割が完了し、E3の裁定だけが`bare-king`として出力される。
 - `moves`が現局面の`Game::legal_moves()`を既存USI表記で返す。
 - `state`がactive規則、表示用2欄SFEN、終局状態を1行で返す。
-- `src/core/`とCECPの変更が裁定理由enumの分割とその追従に限られ、2コマンド自体は`src/protocol/usi.rs`に閉じている。
+- `crates/minase-core/src/`とCECPの変更が裁定理由enumの分割とその追従に限られ、2コマンド自体は`crates/minase/src/protocol/usi.rs`に閉じている。
 - 既存のUSI台本とlishogi棋譜リプレイを含む全テストが成功する。
 - `docs/research/protocols/usi-lishogi.md`にminase固有拡張として記録されている。

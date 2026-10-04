@@ -37,7 +37,7 @@ Rustの将棋ライブラリyasaiも調べたが、ビットボードの定義�
 | 升番号 | 段優先（A1=0、`(r<<3)+f`） | 筋優先の縦型（1一=0） | 段優先 | 段優先の16升幅（`rank<<4 \| file`） |
 | 空けておくビット | なし | 語0のbit 63 | なし | 各段の筋12から15、計48ビット |
 
-各実装の定義は、Stockfishが[types.h 113行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/types.h#L113)、やねうら王が[bitboard.h 30行から55行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/bitboard.h#L30-L55)、Fairy-Stockfishが[types.h 113行から222行](https://github.com/fairy-stockfish/Fairy-Stockfish/blob/2e591089558a5afa72ab5a22192208e71848a30c/src/types.h#L113-L222)、minaseが[bitboard.rs](../../src/core/board/bitboard.rs)と[square.rs](../../src/core/board/square.rs)にある。
+各実装の定義は、Stockfishが[types.h 113行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/types.h#L113)、やねうら王が[bitboard.h 30行から55行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/bitboard.h#L30-L55)、Fairy-Stockfishが[types.h 113行から222行](https://github.com/fairy-stockfish/Fairy-Stockfish/blob/2e591089558a5afa72ab5a22192208e71848a30c/src/types.h#L113-L222)、minaseが[bitboard.rs](../../crates/minase-core/src/board/bitboard.rs)と[square.rs](../../crates/minase-core/src/board/square.rs)にある。
 
 やねうら王とminaseは、盤外のビットを空けておく点が共通する。
 やねうら王は、bit 63を空ける理由を「香の利きや歩の打てる場所を求めやすくする」と説明し、Aperyなどのmagic bitboard派の考案によると記す（[bitboard.h 44行から46行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/bitboard.h#L44-L46)）。
@@ -65,7 +65,7 @@ Stockfishの現行版は、PEXTで添字を作る経路を削除している（�
 
 ### 同じ算法を使う縦の利き
 
-minaseの[`sliding_control`](../../src/core/attacks/tables.rs)は、方向ごとの利き線表を引いて占有との積をとる。
+minaseの[`sliding_control`](../../crates/minase-core/src/attacks/tables.rs)は、方向ごとの利き線表を引いて占有との積をとる。
 生値が増える方向では、3語を借り伝播つきで減算して`ray & (b ^ (b - 1))`を作る。
 生値が減る方向では、最上位の遮蔽ビットを求め、その升から先の利き線を除く。
 
@@ -90,7 +90,7 @@ minaseの減る方向は、最上位ビットの探索と2回目の表引きに�
 Stockfishとやねうら王は、飛車と角の両方向を一括して計算し、合成した駒集合と掛け合わせる。
 Stockfishの`attackers_to`は`rookAttacks & pieces(ROOK, QUEEN)`の形で書かれ（[position.cpp 643行から648行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/position.cpp#L643-L648)）、やねうら王も`GOLDS`、`HDK`、`BISHOP_HORSE`、および`ROOK_DRAGON`などの合成駒種を持つ（[types.h 563行から568行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/types.h#L563-L568)）。
 中将棋では走りの方向の組合せが28通りの動きの定義に分かれるため、このような小さな合成駒種へまとめられない。
-そこでminaseは、1方向ずつ利きを計算し、最初の遮蔽駒の動きの定義を8ビットの方向マスクで照合する（[control.rs](../../src/core/movegen/control.rs)の`ordinary_attackers_to`、[tables.rs](../../src/core/attacks/tables.rs)の`slide_directions`）。
+そこでminaseは、1方向ずつ利きを計算し、最初の遮蔽駒の動きの定義を8ビットの方向マスクで照合する（[control.rs](../../crates/minase-core/src/movegen/control.rs)の`ordinary_attackers_to`、[tables.rs](../../crates/minase-core/src/attacks/tables.rs)の`slide_directions`）。
 [第3期の設計書](../plans/movegen-speedup-3.md)が起案した「方向ごとの走り駒集合」は、Stockfishの合成集合を方向単位へ一般化したものである。
 同書は、逆引きの走り計算の90%が該当する走り駒を1枚も見つけないことを根拠に挙げるが、まだ起案の段階にある。
 
@@ -106,9 +106,9 @@ minaseでも、マジックと小さな表の試作は済んでいる。
 ## 局面の表現と派生構造
 
 局面の骨格は3実装で共通する。
-いずれも、全体の占有、色別の集合、および駒種別の集合と、升ごとの駒コードの配列を二重に持ち、駒の配置と除去のたびに両方を更新する（Stockfishの[position.h 220行から221行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/position.h#L220-L221)、やねうら王の[position.h 1132行から1135行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/position.h#L1132-L1135)、minaseの[position/mod.rs](../../src/core/position/mod.rs)と[placement.rs](../../src/core/position/placement.rs)）。
+いずれも、全体の占有、色別の集合、および駒種別の集合と、升ごとの駒コードの配列を二重に持ち、駒の配置と除去のたびに両方を更新する（Stockfishの[position.h 220行から221行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/position.h#L220-L221)、やねうら王の[position.h 1132行から1135行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/position.h#L1132-L1135)、minaseの[position/mod.rs](../../crates/minase-core/src/position/mod.rs)と[placement.rs](../../crates/minase-core/src/position/placement.rs)）。
 minaseは駒種別の集合を先後別に持ち、29種×2色の配列とする。
-巻き戻しは、Stockfishの`StateInfo`の連鎖ではなく、着手ごとに返す`Undo`の値から駒を戻す方式である（[make_move.rs](../../src/core/position/make_move.rs)）。
+巻き戻しは、Stockfishの`StateInfo`の連鎖ではなく、着手ごとに返す`Undo`の値から駒を戻す方式である（[make_move.rs](../../crates/minase-core/src/position/make_move.rs)）。
 
 最も大きく異なるのは、局面に付随する派生構造である。
 Stockfishとやねうら王は、`StateInfo`に王手をかけている駒の集合`checkersBB`、ピンの関係を表す`blockersForKing`と`pinners`、および王手になる升の集合`checkSquares`を持つ（Stockfishの[position.h 60行から65行](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/position.h#L60-L65)、やねうら王の[position.h 131行から160行](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/position.h#L131-L160)）。
@@ -118,10 +118,10 @@ minaseには、これらの構造が1つもない。
 RULES.md第8条第3項から第5項は、自分の王駒を相手の利きへ移す着手と王手を解消しない着手を合法と定めるので、ピンと王手による合法性の絞り込みを要しないからである。
 代わりにminaseは、中将棋の規則が要求する次の構造を持つ。
 
-- **仮想盤面**：着手の途中と着手後の占有を差分で表す`VirtualBoard`（[virtual_board.rs](../../src/core/movegen/virtual_board.rs)）。第13条第4項が、獅子を取った直後の仮想的な盤面で足を判定すると定めるために要る。
-- **任意の占有を受け取る逆引き**：`attackers_to_by`（[control.rs](../../src/core/movegen/control.rs)）。静的交換評価と足の判定の両方が使う。
-- **獅子のための表**：獅子の跳び先`lion_jumps`と、固定利きの逆引きに使う5×5の近傍`neighbourhoods`（[tables.rs](../../src/core/attacks/tables.rs)）。
-- **成り権の保留集合**：成り権を保留している駒の升の集合`promotion_deferred`（[position/mod.rs](../../src/core/position/mod.rs)）。
+- **仮想盤面**：着手の途中と着手後の占有を差分で表す`VirtualBoard`（[virtual_board.rs](../../crates/minase-core/src/movegen/virtual_board.rs)）。第13条第4項が、獅子を取った直後の仮想的な盤面で足を判定すると定めるために要る。
+- **任意の占有を受け取る逆引き**：`attackers_to_by`（[control.rs](../../crates/minase-core/src/movegen/control.rs)）。静的交換評価と足の判定の両方が使う。
+- **獅子のための表**：獅子の跳び先`lion_jumps`と、固定利きの逆引きに使う5×5の近傍`neighbourhoods`（[tables.rs](../../crates/minase-core/src/attacks/tables.rs)）。
+- **成り権の保留集合**：成り権を保留している駒の升の集合`promotion_deferred`（[position/mod.rs](../../crates/minase-core/src/position/mod.rs)）。
 
 Stockfishの`attackers_to`も占有を引数に取り、静的交換評価で遮蔽駒の背後の攻撃者を扱う点はminaseと共通する。
 ただしminaseでは、同じ仕組みを獅子の捕獲制限という合法性の判定にも使う。

@@ -50,7 +50,7 @@ pub struct Move {
 
 ## 影響箇所
 
-`src/mv.rs` は型定義とUndo、capture_candidates。`src/movegen/normal.rs` は成り分岐ヘルパと全生成経路。`src/movegen/lion.rs` は上記生成規則への書き換え。`src/rules.rs` は `is_tsukegui`・`lion_capture_is_legal`・`VirtualBoard::after_move` のパターン更新。`src/position.rs` はapply/undo/captured_squares。`src/game.rs` はR1攻撃的着手判定とlion_taken処理。`src/sfen.rs` は局面のみを扱うため無変更。`src/bin/perft.rs` と `MoveGenerator::perft` は計測用に存続する。
+`src/mv.rs` は型定義とUndo、capture_candidates。`src/movegen/normal.rs` は成り分岐ヘルパと全生成経路。`src/movegen/lion.rs` は上記生成規則への書き換え。`src/rules.rs` は `is_tsukegui`・`lion_capture_is_legal`・`VirtualBoard::after_move` のパターン更新。`src/position.rs` はapply/undo/captured_squares。`src/game.rs` はR1攻撃的着手判定とlion_taken処理。`src/sfen.rs` は局面のみを扱うため無変更。`crates/minase/src/bin/perft.rs` と `MoveGenerator::perft` は計測用に存続する。
 
 テストの機械的移行は、`Step{f,t,p}` と `Jump{f,t,p}` を `Move{f, None, t, p}` へ、`Double{f,m,t,p}` を `Move{f, Some(m), t, p}` へ写す。ただし空midのDoubleを前提とする箇所（じっと列挙ヘルパ、経路重複を数える断定）は、条文の意味を保ったまま正準形へ書き直す。じっとの断定は「空き隣接升があるとき正確に1手」となる。
 

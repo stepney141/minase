@@ -164,7 +164,7 @@ GPUを使う学習は、[教訓](../lessons/run-gpu-training-outside-codex-sandb
 
 ## 棋力の採否
 
-測定はコミット対コミットで行い、候補とCの重みを、それぞれS0に`nets/pst.bin`の差し替えだけを加えたコミットに置く。
+測定はコミット対コミットで行い、候補とCの重みを、それぞれS0に`crates/minase/nets/pst.bin`の差し替えだけを加えたコミットに置く。
 測定名は`rank-loss-`で始め、基本シードは測定ごとにペア数以上離す。
 
 最初に、候補とCを標準のSTCで比べる（`rank-loss-vs-control-stc`）。

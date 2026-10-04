@@ -39,7 +39,7 @@
 次の文書が所有する事項は本書では変更せず、前提として参照する。
 
 - 対局ハーネスの保存、再開、および集計の各機能は[棋力測定ハーネス基盤の効率化](match-harness-efficiency.md)が所有する。
-- GSPRTの統計方式は[探索部](search.md)と`src/stats.rs`が所有する。
+- GSPRTの統計方式は[探索部](search.md)と`crates/minase/src/stats.rs`が所有する。
 - 現行の標準手順は[SPRTによる棋力測定の手引き](../guides/sprt.md)であり、フェーズ3の改訂対象である。
 
 ## 設計判断

@@ -11,7 +11,7 @@
 フェーズ2（コミットa1c5bc5）でR0のコード表現を削除して`GameBuildError`とR3を導入し、`RULES.md`を第9版へ改版した。
 フェーズ3（コミット71ee062）で反復層を`repetition`モジュールへ分離し、R1キーとR2・R3共用キーを別型化した。
 フェーズ4（コミットabcc4a8）で審判層を`adjudication`モジュールへ分離して`mate.rs`を吸収し、`AdjudicationState`と`AdjudicationContext`を導入して`Game::play`を状態遷移の確定に限定した。
-完了時点のテストは196件全緑、clippy警告なし、初期局面perft深さ1から4は`36`、`1,296`、`48,315`、`1,801,639`で自己回帰値と一致し、`Cargo.toml`・`Cargo.lock`・`src/bin/perft.rs`のmimalloc実験差分は不変更のまま保持した。
+完了時点のテストは196件全緑、clippy警告なし、初期局面perft深さ1から4は`36`、`1,296`、`48,315`、`1,801,639`で自己回帰値と一致し、`Cargo.toml`・`Cargo.lock`・`crates/minase/src/bin/perft.rs`のmimalloc実験差分は不変更のまま保持した。
 完了条件の8項目はすべて満たしている。
 
 ## 目的
@@ -332,4 +332,4 @@ cargo run --quiet --bin perft -- 4 --rules engine-default
 - L2とR1の確認済み不具合が回帰テストとともに修正されている。
 - 反復と終局の共有判定が`Game::play`から分離され、R2・R3フィルタの重複が解消されている。
 - 本節の検証コマンドがすべて成功する。
-- `Cargo.toml`、`Cargo.lock`および`src/bin/perft.rs`にある既存のmimalloc実験を変更していない。
+- `Cargo.toml`、`Cargo.lock`および`crates/minase/src/bin/perft.rs`にある既存のmimalloc実験を変更していない。
