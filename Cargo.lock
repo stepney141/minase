@@ -288,10 +288,20 @@ dependencies = [
  "fs2",
  "mimalloc",
  "minase",
+ "minase-core",
  "procfs",
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "minase-core"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "minase-core",
+ "serde_json",
 ]
 
 [[package]]

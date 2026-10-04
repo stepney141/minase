@@ -1,0 +1,20 @@
+[package]
+name = "minase-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[lints]
+workspace = true
+
+[features]
+invariants = []
+test-util = []
+
+[dev-dependencies]
+flate2 = "1"
+serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
+# `cargo test`では整合検査を常に有効にする（docs/plans/debugging-tools.md「利用者の決定」の2）。
+# Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
+# `cargo build`と`cargo run`のバイナリには検査が入らない。
+minase-core = { path = ".", features = ["invariants"] }
