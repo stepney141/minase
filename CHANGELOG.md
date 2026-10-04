@@ -1,3 +1,21 @@
+## v1.4.0 (2026-10-04)
+
+### Features
+
+- **search:** Revive capture history, qsearch move limit and history carry (**breaking**)
+
+  Carrying butterfly history between searches changes the search handle API of the library.
+
+- **search:** Revive reverse futility pruning, razoring and the null move eval term
+- **search:** Revive the improving flag and a redefined late move pruning
+- **search:** Set the revival coefficients to their session start values
+- **search:** Re-derive the revival ranges and start values on the G23 PST
+- **search:** Apply the search-revival-t SPSA values
+
+### Refactoring
+
+- **train:** Split the training tools into a package by function
+
 ## v1.3.0 (2026-10-03)
 
 ### Features
