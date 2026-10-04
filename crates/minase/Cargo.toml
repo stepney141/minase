@@ -17,6 +17,13 @@ tag-prefix = ""
 [lints]
 workspace = true
 
+# Duplicates the workspace root profile: `cargo package` includes only this manifest's profiles,
+# so `cargo install minase` builds with LTO only when they are declared here too.
+# Inside the workspace Cargo ignores this section and warns that the root profile applies.
+[profile.release]
+lto = true
+codegen-units = 1
+
 [features]
 invariants = ["minase-core/invariants"]
 search-stats = []
