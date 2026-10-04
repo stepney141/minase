@@ -2,7 +2,7 @@
 
 Minase is a legal-move generation library and playing engine for chu shogi, written in Rust.
 It follows the rules of [Japan Chu Shogi Association](https://www.chushogi-renmei.com/) by default, and the local rules used by lishogi, [HaChu](https://salsa.debian.org/debian/hachu), and other sources can be selected through rule codes.
-The supported rules and their sources are documented in [RULES.md](RULES.md) (Japanese).
+The supported rules and their sources are documented in [RULES.md](docs/rules/RULES.md) (Japanese).
 
 ## Overview
 

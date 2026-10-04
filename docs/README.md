@@ -6,6 +6,7 @@ docs/ 直下に置くファイルは、本書と [ROADMAP.md](ROADMAP.md) の2�
 
 | ディレクトリ | 置く文書 | 書き方 |
 |---|---|---|
+| [rules/](rules/) | 本プロジェクトが実装する中将棋の競技規則とローカルルールの規則書 [RULES.md](rules/RULES.md)。標準規則と規則コードの定義、および典拠の一覧を含む。 | 条文の番号と規則コードを他の文書と実装が参照するので、改版時は版数と変更点を本文に記す。 |
 | [plans/](plans/) | マイルストーンの設計書。完了後は、そのサブシステムの現行設計の正として保守する。 | [plans/README.md](plans/README.md) の型に従う。 |
 | [measurements/](measurements/) | 棋力測定の記録。1測定1ファイルで、ファイル名は `match_runner` の `--run-dir` の名前と一致させる。 | plans/README.md の「測定記録」節に従う。 |
 | [lessons/](lessons/) | 作業で詰まった箇所から得た汎用的な教訓。1教訓1ファイルで、[lessons/README.md](lessons/README.md) を索引とする。 | plans/README.md の「教訓」節に従う。 |
