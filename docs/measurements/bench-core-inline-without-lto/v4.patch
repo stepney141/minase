@@ -1,0 +1,164 @@
+diff --git a/crates/minase-core/src/attacks/tables.rs b/crates/minase-core/src/attacks/tables.rs
+index 3a29418..293cb3d 100644
+--- a/crates/minase-core/src/attacks/tables.rs
++++ b/crates/minase-core/src/attacks/tables.rs
+@@ -163,6 +163,7 @@ impl AttackTables {
+ 
+     /// 遮る駒を考慮した走りの利きを返す。進行方向の最初の駒がある升までを含む
+     /// (第7条第4項・第5項)。
++    #[inline]
+     pub(crate) fn sliding_control(
+         &self,
+         from: Square,
+diff --git a/crates/minase-core/src/board/bitboard.rs b/crates/minase-core/src/board/bitboard.rs
+index aa6fced..5c85a17 100644
+--- a/crates/minase-core/src/board/bitboard.rs
++++ b/crates/minase-core/src/board/bitboard.rs
+@@ -224,6 +224,7 @@ pub struct SquareIter {
+ impl Iterator for SquareIter {
+     type Item = Square;
+ 
++    #[inline]
+     fn next(&mut self) -> Option<Self::Item> {
+         self.remaining.pop_lsb()
+     }
+diff --git a/crates/minase-core/src/movegen/control.rs b/crates/minase-core/src/movegen/control.rs
+index c9a5184..36a7ed1 100644
+--- a/crates/minase-core/src/movegen/control.rs
++++ b/crates/minase-core/src/movegen/control.rs
+@@ -39,6 +39,7 @@ impl Position {
+ /// (`movegen-speedup-2.md`「段階4」)。走りは`square`から8方向の利き線を引き、
+ /// 最初の遮蔽駒がその逆方向へ走るプロファイルを持つかだけを調べる。全プロファイルの
+ /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
++#[inline]
+ fn ordinary_attackers_to(
+     tables: &AttackTables,
+     position: &Position,
+@@ -81,6 +82,7 @@ fn ordinary_attackers_to(
+ 
+ /// 特殊移動の到達範囲を逆引きし、`square`へ届く`color`側の駒を返す。
+ /// 特殊移動を持つ駒種は獅子、角鷹および飛鷲だけなので、その3種だけを調べる。
++#[inline]
+ fn special_attackers_to(
+     tables: &AttackTables,
+     position: &Position,
+@@ -155,6 +157,7 @@ fn piece_control_with_tables(
+ }
+ 
+ /// 特殊移動の第1段階だけで停止する場合の到達升を返す。
++#[inline]
+ pub(super) fn special_step_destinations(
+     tables: &AttackTables,
+     color: Color,
+diff --git a/crates/minase-core/src/movegen/expand.rs b/crates/minase-core/src/movegen/expand.rs
+index 0641631..de5238f 100644
+--- a/crates/minase-core/src/movegen/expand.rs
++++ b/crates/minase-core/src/movegen/expand.rs
+@@ -15,6 +15,7 @@ pub(super) fn promoting_variant(mv: Move) -> Move {
+ }
+ 
+ /// 獅子の捕獲制限を検査し、成りの選択肢(第18条)を展開して着手を追加する。
++#[inline(always)]
+ pub(super) fn push_with_promotion(
+     generator: &MoveGenerator,
+     position: &Position,
+diff --git a/crates/minase-core/src/movegen/generate.rs b/crates/minase-core/src/movegen/generate.rs
+index 9779d27..03b8659 100644
+--- a/crates/minase-core/src/movegen/generate.rs
++++ b/crates/minase-core/src/movegen/generate.rs
+@@ -12,6 +12,7 @@ use crate::piece::{Color, PieceKind};
+ use crate::position::Position;
+ 
+ /// 手番側の全駒について合法手を生成する。
++#[inline]
+ pub(super) fn generate_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
+     generator: &MoveGenerator,
+     position: &Position,
+@@ -29,6 +30,7 @@ pub(super) fn generate_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>
+ }
+ 
+ /// 指定した1枚の駒について合法手を生成する。
++#[inline]
+ pub(super) fn generate_piece_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
+     generator: &MoveGenerator,
+     position: &Position,
+diff --git a/crates/minase-core/src/movegen/lion_capture.rs b/crates/minase-core/src/movegen/lion_capture.rs
+index 0588400..5d25d14 100644
+--- a/crates/minase-core/src/movegen/lion_capture.rs
++++ b/crates/minase-core/src/movegen/lion_capture.rs
+@@ -11,6 +11,7 @@ use crate::rules::{LionRule, MoveRules};
+ impl MoveRules {
+     /// 着手が獅子の捕獲制限(第13条〜第16条)をすべて満たすかどうかを返す。
+     /// 獅子を取らない着手は常に満たす。
++    #[inline]
+     pub(crate) fn special_move_is_legal(self, position: &Position, mv: Move) -> bool {
+         let captured_lions = captured_lions(position, mv);
+         if captured_lions.into_iter().all(|lion| lion.is_none()) {
+@@ -63,6 +64,7 @@ impl MoveRules {
+ }
+ 
+ /// 着手で取られる相手獅子の升を返す。
++#[inline]
+ fn captured_lions(position: &Position, mv: Move) -> [Option<Square>; 2] {
+     position.captured_squares(mv).map(|capture| {
+         capture.filter(|&square| {
+diff --git a/crates/minase-core/src/movegen/search_captures.rs b/crates/minase-core/src/movegen/search_captures.rs
+index 66658d4..04ec31a 100644
+--- a/crates/minase-core/src/movegen/search_captures.rs
++++ b/crates/minase-core/src/movegen/search_captures.rs
+@@ -54,6 +54,7 @@ impl MoveGenerator {
+     }
+ 
+     /// 特殊駒の全捕獲を公開生成と同じ相対順序で追加する。
++    #[inline]
+     pub fn generate_special_captures(
+         &self,
+         position: &Position,
+@@ -134,6 +135,7 @@ impl MoveGenerator {
+     }
+ 
+     /// 遮蔽なしの到達範囲で絞り、通常駒の捕獲可能升を1回だけ計算する。
++    #[inline]
+     pub fn collect_ordinary_capturers(
+         &self,
+         position: &Position,
+@@ -193,6 +195,7 @@ impl MoveGenerator {
+     }
+ 
+     /// 保存済みの利きから、対象升への捕獲を公開生成と同じ相対順序で追加する。
++    #[inline]
+     pub fn emit_ordinary_captures(
+         &self,
+         position: &Position,
+diff --git a/crates/minase-core/src/position/mod.rs b/crates/minase-core/src/position/mod.rs
+index 5adf620..8a2a9de 100644
+--- a/crates/minase-core/src/position/mod.rs
++++ b/crates/minase-core/src/position/mod.rs
+@@ -85,6 +85,7 @@ impl Position {
+     /// 飛鷲の2段階移動では、1手で最大2升の相手駒を取る(第11条第3項・
+     /// 第12条第4項)。
+     /// 設計書movegen-speedup-2.md「段階5」に従い、盤面の駒コードを直接調べる。
++    #[inline(always)]
+     pub fn captured_squares(&self, mv: Move) -> [Option<Square>; 2] {
+         let enemy = self.board[mv.from.raw_index()]
+             .color()
+diff --git a/crates/minase-core/src/promotion.rs b/crates/minase-core/src/promotion.rs
+index 127f456..343a4d0 100644
+--- a/crates/minase-core/src/promotion.rs
++++ b/crates/minase-core/src/promotion.rs
+@@ -28,6 +28,7 @@ pub const fn in_promotion_zone(color: Color, square: Square) -> bool {
+ 
+ impl MoveRules {
+     /// 着手で成りを選択できるかどうかを判定して返す(第18条・第19条・第30条)。
++    #[inline]
+     pub(crate) fn promotion_choice(
+         self,
+         position: &Position,
+@@ -62,6 +63,7 @@ impl MoveRules {
+     /// 実局面に存在しない交換列からも使える規則判定であり、第18条、第19条、
+     /// および第30条P1からP6までを適用する。
+     #[allow(clippy::too_many_arguments)]
++    #[inline]
+     pub fn promotion_choice_for(
+         self,
+         color: Color,

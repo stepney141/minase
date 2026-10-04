@@ -1,0 +1,24 @@
+diff --git a/crates/minase-core/src/movegen/checked.rs b/crates/minase-core/src/movegen/checked.rs
+index fd16422..6d09ee7 100644
+--- a/crates/minase-core/src/movegen/checked.rs
++++ b/crates/minase-core/src/movegen/checked.rs
+@@ -21,6 +21,7 @@ impl std::error::Error for IllegalMove {}
+ impl Position {
+     /// 着手が合法手に含まれるか検査してから適用する。不合法なら[`IllegalMove`]を返し、
+     /// 局面は変更しない(第27条第1項)。
++    #[inline]
+     pub fn try_make_move(
+         &mut self,
+         mv: Move,
+diff --git a/crates/minase-core/src/movegen/mod.rs b/crates/minase-core/src/movegen/mod.rs
+index d7da88a..028a53d 100644
+--- a/crates/minase-core/src/movegen/mod.rs
++++ b/crates/minase-core/src/movegen/mod.rs
+@@ -45,6 +45,7 @@ impl MoveGenerator {
+     }
+ 
+     /// `position`の手番側の全合法手を`output`へ追加する。
++    #[inline]
+     pub fn generate_moves(&self, position: &Position, output: &mut Vec<Move>) {
+         generate::generate_moves::<false, false>(self, position, &mut Vec::new(), output);
+     }
