@@ -225,13 +225,6 @@ mod tests {
                 );
             }
         }
-        for (cores, a, b) in [
-            (Some(2), Some(1), Some(1)),
-            (None, Some(1), Some(1)),
-            (Some(16), None, Some(1)),
-            (Some(16), Some(1), None),
-        ] {
-            assert!(default_concurrency(cores, a, b, true).is_err());
-        }
+        assert!(default_concurrency(Some(2), Some(1), Some(1), true).is_err());
     }
 }

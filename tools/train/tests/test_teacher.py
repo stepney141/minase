@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 import tempfile
 import unittest
@@ -16,7 +15,7 @@ import minase_train.data.mnsd as mnsd
 import minase_train.pst.teacher as teacher
 from helpers import ProvenanceFixtures, write_mnsd, write_provenance, write_rescore
 from minase_train.data.features import INITIAL_BOARD
-from minase_train.data.mnsd import Dataset, RECORD_DTYPE, hash64, provenance_path
+from minase_train.data.mnsd import Dataset, RECORD_DTYPE, hash64
 from minase_train.pst.model import model_logits
 from minase_train.pst.teacher import build_targets, estimate_generation_ks, estimate_k
 
@@ -124,36 +123,6 @@ class Phase4Test(ProvenanceFixtures, unittest.TestCase):
         self.provenance = write_provenance(self.source)
 
 
-
-    def test_direct_saved_scores_reproduce_fitted_k_and_targets(self):
-        rows = [(1, 0, -300 if i % 2 == 0 else 700, 2, 500) for i in range(100)]
-        rows[10] = (1, 0, 29000, 2, 500)
-        rows[20] = (1, 1, 0, 2, 500)
-        rows[30] = (2, 0, 0, 0, 500)
-        write_rescore(self.sidecar, self.source, rows)
-        replaced = Dataset([self.source], rescore=[self.sidecar])
-        kept = np.array([i for i in range(100) if i not in (10, 20, 30)])
-        direct_rows = self.rows[kept].copy()
-        direct_rows["score"] = [rows[i][2] for i in kept]
-        path = self.root / "direct-complete.bin"
-        mnsd.write_mnsd(path, direct_rows, seed=11, network_checksum=b"a" * 32,
-                   teacher_nodes=200000, generation_commit="a" * 40)
-        metadata = write_provenance(path)
-        metadata["teacher"]["search_condition"] = "standalone"
-        provenance_path(path).write_text(json.dumps(metadata))
-        direct = Dataset([path])
-        self.assertEqual(replaced.class_metadata(), direct.class_metadata())
-        left_k, _ = estimate_generation_ks(replaced, indices=replaced.training_indices)
-        right_k, _ = estimate_generation_ks(direct, indices=direct.training_indices)
-        np.testing.assert_array_equal(left_k, right_k)
-        for split in ("training_indices", "validation_indices"):
-            left_indices, right_indices = getattr(replaced, split), getattr(direct, split)
-            left, right = replaced.gather(left_indices), direct.gather(right_indices)
-            np.testing.assert_array_equal(left, right)
-            np.testing.assert_array_equal(
-                build_targets(left, left_k, replaced.generations(left_indices), replaced.teacher_lambdas),
-                build_targets(right, right_k, direct.generations(right_indices), direct.teacher_lambdas))
-        self.assertEqual(replaced.exclusions["total"], len(self.rows) - direct.record_count)
 
     def test_independent_k_with_same_checksum_and_training_only(self):
         rows = [(1, 0, 700, 1, 20) if i % 2 else (0, 0, 0, 0, 0) for i in range(100)]

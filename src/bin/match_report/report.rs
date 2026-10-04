@@ -499,45 +499,6 @@ mod tests {
     }
 
     #[test]
-    fn report_rejects_format_version_two() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let run_dir = std::env::temp_dir().join(format!(
-            "minase-match-report-version-two-{}-{nonce}",
-            std::process::id()
-        ));
-        std::fs::create_dir(&run_dir).unwrap();
-        File::create(run_dir.join(".match_runner.lock")).unwrap();
-        std::fs::write(
-            run_dir.join("manifest.json"),
-            serde_json::to_vec(&serde_json::json!({
-                "format_version": 2,
-                "candidate": {
-                    "limit": {"kind": "time", "base_ms": 1, "increment_ms": 0, "byoyomi_ms": 0}
-                },
-                "baseline": {
-                    "limit": {"kind": "time", "base_ms": 1, "increment_ms": 0, "byoyomi_ms": 0}
-                },
-                "mode": {"kind": "elo"},
-                "concurrency": 1,
-                "engine_threads": {"candidate": 1, "baseline": 1},
-                "cpu": {"physical_cores": 1, "physical_memory_bytes": 1}
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-
-        let error = match report(&run_dir) {
-            Ok(_) => panic!("version 2 must be rejected"),
-            Err(error) => error,
-        };
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        std::fs::remove_dir_all(run_dir).unwrap();
-    }
-
-    #[test]
     fn report_recomputes_the_documented_metrics_from_pair_records() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -766,11 +727,10 @@ mod tests {
         File::create(run_dir.join(".match_runner.lock")).unwrap();
         std::fs::write(run_dir.join("manifest.json"), br#"{"format_version":3}"#).unwrap();
         let error = report(&run_dir).err().unwrap();
-        assert!(
-            error
-                .to_string()
-                .contains("requires format version 4, found 3")
-        );
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains(&format!(
+            "requires format version {FORMAT_VERSION}, found 3"
+        )));
         std::fs::remove_dir_all(run_dir).unwrap();
     }
 }

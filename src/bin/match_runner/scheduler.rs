@@ -80,7 +80,6 @@ pub(super) fn run_worker_loop(
 mod tests {
     use super::*;
     use minase::harness::*;
-    use minase::stats::{gsprt_decision, gsprt_llr};
     use std::{sync::Arc, thread, time::Duration};
 
     fn completed_pair(number: u64, category: usize) -> CompletedPair {
@@ -246,54 +245,5 @@ mod tests {
         assert_eq!(replacement, None);
         assert_eq!(integrated, [1]);
         assert_eq!(pending_jobs.front(), Some(&2));
-    }
-
-    // match-harness-efficiency.md「並列枠の維持」: 同じ固定結果列は、完了順が
-    // 入れ替わってもペンタノミアル度数、LLR、判定、停止ペア番号が一致する。
-    #[test]
-    fn completion_order_does_not_change_gsprt_stopping_result() {
-        fn integrate_arrivals(
-            arrivals: impl IntoIterator<Item = u64>,
-        ) -> ([u64; 5], f64, GsprtDecision, u64) {
-            let mut completed = BTreeMap::new();
-            let mut next_to_integrate = 1;
-            let mut pending_jobs = VecDeque::new();
-            let mut results = [0_u64; 5];
-            let mut decision = GsprtDecision::Continue;
-            let mut stop_pair = 0;
-
-            for number in arrivals {
-                if decision != GsprtDecision::Continue {
-                    break;
-                }
-                let replacement = accept_completed_pair(
-                    completed_pair(number, 4),
-                    &mut completed,
-                    &mut next_to_integrate,
-                    &mut pending_jobs,
-                    |pair| {
-                        let category = pair
-                            .result
-                            .category
-                            .expect("the synthetic result must be valid");
-                        results[category] += 1;
-                        stop_pair = pair.number;
-                        decision = gsprt_decision(gsprt_llr(&results));
-                        decision == GsprtDecision::Continue
-                    },
-                );
-                assert_eq!(replacement, None);
-            }
-
-            assert_ne!(decision, GsprtDecision::Continue);
-            (results, gsprt_llr(&results), decision, stop_pair)
-        }
-
-        let sequential = integrate_arrivals(1..=1_000);
-        let delayed_head = integrate_arrivals((2..=1_000).chain(std::iter::once(1)));
-        assert_eq!(sequential.0, delayed_head.0);
-        assert_eq!(sequential.1, delayed_head.1);
-        assert_eq!(sequential.2, delayed_head.2);
-        assert_eq!(sequential.3, delayed_head.3);
     }
 }

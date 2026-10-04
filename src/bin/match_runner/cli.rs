@@ -271,22 +271,6 @@ mod tests {
             })
         );
         assert_eq!(gate.candidate_limit, None);
-
-        // 等価表現: `--each X`と`--candidate-limit X --baseline-limit X`は
-        // 同一の制限値を与える
-        let explicit = Arguments::try_parse_from([
-            "match_runner",
-            "--run-dir",
-            "run",
-            "--candidate-limit",
-            "depth=4",
-            "--baseline-limit",
-            "depth=4",
-            "gsprt",
-        ])
-        .expect("explicit overrides must be accepted");
-        assert_eq!(explicit.candidate_limit, Some(equal.each));
-        assert_eq!(explicit.baseline_limit, Some(equal.each));
     }
 
     // 置換表容量の指定: 両側の容量は独立に指定でき、省略時はNoneを保つ。

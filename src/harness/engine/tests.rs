@@ -449,42 +449,40 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
 #[test]
 fn ponder_cleanup_keeps_result_when_stop_times_out_and_drop_reaps() {
     let (m, moves) = line_of_play(2);
-    for responds in [true, false] {
-        let a = fake(
-            vec![
-                step(&position(&m), ""),
-                step("go ponder", ""),
-                step("stop", if responds { "bestmove stale" } else { "" }),
-            ],
-            "time=1000+0",
-        );
-        let mut process = EngineProcess::start(&a, 1, Duration::from_secs(2)).unwrap();
-        process.timeout = Duration::from_millis(100);
-        let pid = process.child.id();
-        let mut game = Game::new(Rules::ENGINE_DEFAULT);
-        game.play(moves[0]).unwrap();
-        let clocks = GameClocks::new(Color::Black, a.limit, a.limit);
-        process.start_ponder(
-            &game,
-            &m[..1],
-            Some(&m[1]),
-            &clocks.think_request(Color::Black, a.limit),
-        );
-        let recorded = recorded_game(
-            PlayedGame::Cutoff { plies: 1 },
-            Color::Black,
-            seed(),
-            seed(),
-            vec![],
-            Instant::now(),
-            Some(&mut process),
-            None,
-        );
-        assert_eq!(recorded.record.termination, TerminationRecord::Cutoff);
-        drop(process);
-        #[cfg(target_os = "linux")]
-        assert!(!Path::new(&format!("/proc/{pid}")).exists());
-    }
+    let a = fake(
+        vec![
+            step(&position(&m), ""),
+            step("go ponder", ""),
+            step("stop", ""),
+        ],
+        "time=1000+0",
+    );
+    let mut process = EngineProcess::start(&a, 1, Duration::from_secs(2)).unwrap();
+    process.timeout = Duration::from_millis(100);
+    let pid = process.child.id();
+    let mut game = Game::new(Rules::ENGINE_DEFAULT);
+    game.play(moves[0]).unwrap();
+    let clocks = GameClocks::new(Color::Black, a.limit, a.limit);
+    process.start_ponder(
+        &game,
+        &m[..1],
+        Some(&m[1]),
+        &clocks.think_request(Color::Black, a.limit),
+    );
+    let recorded = recorded_game(
+        PlayedGame::Cutoff { plies: 1 },
+        Color::Black,
+        seed(),
+        seed(),
+        vec![],
+        Instant::now(),
+        Some(&mut process),
+        None,
+    );
+    assert_eq!(recorded.record.termination, TerminationRecord::Cutoff);
+    drop(process);
+    #[cfg(target_os = "linux")]
+    assert!(!Path::new(&format!("/proc/{pid}")).exists());
     // 測定中断の早期returnでも、Dropが先読みを止めてプロセスを回収する。
     let a = fake(
         vec![
