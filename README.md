@@ -2,7 +2,7 @@
 
 Minase is a legal-move generation library and playing engine for chu shogi, written in Rust.
 It follows the rules of [Japan Chu Shogi Association](https://www.chushogi-renmei.com/) by default, and the local rules used by lishogi, [HaChu](https://salsa.debian.org/debian/hachu), and other sources can be selected through rule codes.
-The supported rules and their sources are documented in [RULES.md](RULES.md) (Japanese).
+The supported rules and their sources are documented in [RULES.md](docs/rules/RULES.md) (Japanese).
 
 ## Overview
 
@@ -10,7 +10,18 @@ The supported rules and their sources are documented in [RULES.md](RULES.md) (Ja
 - Protocols: The engine speaks USI (including the lishogi extensions) and CECP (XBoard).
 - Search and evaluation: The search uses alpha-beta, quiescence search, iterative deepening, a transposition table, and Lazy SMP for parallel search. The evaluation is a piece-square table interpolated by game phase.
 - Verification: The repository includes unit tests, perft, replay checks against real game records, and an SPRT self-play harness.
-- `unsafe` code is forbidden across the crate through the lint settings in Cargo.toml.
+- `unsafe` code is forbidden in both crates through the workspace lint settings in Cargo.toml.
+
+## Repository layout
+
+The repository is a Cargo workspace with two crates.
+
+| Crate | Directory | Contents |
+|---|---|---|
+| `minase-core` | [crates/minase-core](crates/minase-core) | The rules library: board, pieces, positions, legal-move generation, rule sets, game adjudication, and SFEN/USI/CECP notation |
+| `minase` | [crates/minase](crates/minase) | The engine: search, evaluation, the USI and CECP front ends, and the development tools listed below |
+
+Development documents, including the rule book, live in [docs/](docs/) and are written in Japanese.
 
 ## Requirements
 
@@ -51,10 +62,10 @@ Both `--protocol` and `--rules` are required.
 
 ## Using Minase as a library
 
-Add the crate to Cargo.toml to use position handling and legal-move generation from Rust.
+Add `minase-core` to Cargo.toml to use position handling and legal-move generation from Rust. The library does not depend on the engine.
 
 ```rust
-use minase::{Game, MoveGenerator, Position};
+use minase_core::{Game, MoveGenerator, Position};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initial position
@@ -92,3 +103,7 @@ The following binaries are included for development and measurement.
 | `bench` | Benchmarks search and move generation |
 | `usi_random` | Random-move engine for calibrating the harness |
 | `pst_probe` | Diagnostics for PST training (cross-checks position evaluations from a weight file) |
+
+## License
+
+`crates/minase-core` is licensed under the [MIT License](crates/minase-core/LICENSE-MIT), and `crates/minase` is licensed under the [GNU General Public License, version 3 or later](crates/minase/COPYING). The engine binaries link the library, and their combination is distributed under GPL-3.0-or-later. All other files in this repository, including `docs/`, `tools/`, and `scripts/`, are not licensed, and the copyright holder reserves all rights to them.

@@ -27,7 +27,7 @@ stand-patの件の修正は、3件を積んだ組の非劣性のSTC（[search-bu
 
 ## 適用範囲
 
-対象は`src/search/alphabeta/`の`negamax.rs`と`searcher.rs`、および関係するテストである。
+対象は`crates/minase/src/search/alphabeta/`の`negamax.rs`と`searcher.rs`、および関係するテストである。
 合法手生成、評価関数、および対局管理層は変更しない。
 
 監査の指摘のうち、本計画で扱わないものと理由は次のとおりである。

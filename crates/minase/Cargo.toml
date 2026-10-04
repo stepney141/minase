@@ -1,0 +1,41 @@
+[package]
+name = "minase"
+version = "1.4.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A USI/CECP chu shogi engine with search and evaluation built on minase-core."
+license = "GPL-3.0-or-later"
+repository = "https://github.com/stepney141/minase"
+readme = "README.md"
+include = ["src/", "nets/", "tests/", "README.md", "COPYING"]
+
+[package.metadata.release]
+tag-prefix = ""
+
+[lints]
+workspace = true
+
+[features]
+invariants = ["minase-core/invariants"]
+search-stats = []
+tuning = []
+
+[dependencies]
+minase-core = { version = "0.1.0", path = "../minase-core" }
+clap = { version = "4.6.4", features = ["derive"] }
+fs2 = "0.4.3"
+mimalloc = "0.1.52"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
+sha2 = "0.10"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+procfs = { version = "0.18.0", default-features = false }
+
+[dev-dependencies]
+flate2 = "1"
+# `cargo test`では整合検査を常に有効にする（docs/plans/debugging-tools.md「利用者の決定」の2）。
+# Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
+# `cargo build`と`cargo run`のバイナリには検査が入らない。
+minase = { path = ".", features = ["invariants"] }
+minase-core = { version = "0.1.0", path = "../minase-core", features = ["test-util", "invariants"] }

@@ -15,7 +15,7 @@ RLの自己対局には、通常のAlphaZeroの手の選び方を、少数の候
 この方式は1手あたり数十回の探索でも方策を改善するように設計されており、同じGPU時間で生成できる局面数を増やせる。
 学習したネットの計算（推論）は、ネットを実行するライブラリONNX Runtimeを通じてGPUで行う。
 このライブラリはビルド時ではなく実行時に読み込むので、GPUライブラリのない環境でもminaseをビルドできる。
-コードは、探索方式に依存しない境界を`src/search/`直下に置き、既存のαβ探索の`src/search/alphabeta/`の隣に新しいMCTSを`src/search/mcts/`として並べ、起動引数`--search`で起動時に1つを選ぶ。
+コードは、探索方式に依存しない境界を`crates/minase/src/search/`直下に置き、既存のαβ探索の`crates/minase/src/search/alphabeta/`の隣に新しいMCTSを`crates/minase/src/search/mcts/`として並べ、起動引数`--search`で起動時に1つを選ぶ。
 既定はαβ探索のままであり、MCTSは本書の範囲では実験用の第2の方式として扱う。
 最初のフェーズ0で、候補のレンタル機を短時間借りてGPUの計算速度とCPUの処理費用を測り、RLの1サイクルの所要時間と全サイクルの費用を見積もる。
 レンタル機の費用は総額2万円、RLの期間は1か月を上限とし、見積もりがこれに収まらなければRLを行わず、SLまでで本書を終える。
@@ -46,8 +46,8 @@ dlshogiもNVIDIA A100を8枚使う構成で大会に臨んでいる。
 
 本マイルストーンでは、次の作業を行う。
 
-- 探索方式に依存しない境界（`src/search/`直下）に、方式を表す`SearchAlgorithm`と方式ごとの状態を包む`Searcher`を加える。
-- MCTSの探索を`src/search/mcts/`に、ネットの入力の符号化、方策のラベル、推論の抽象、およびortクレートによる推論を`src/nn/`に新設する。
+- 探索方式に依存しない境界（`crates/minase/src/search/`直下）に、方式を表す`SearchAlgorithm`と方式ごとの状態を包む`Searcher`を加える。
+- MCTSの探索を`crates/minase/src/search/mcts/`に、ネットの入力の符号化、方策のラベル、推論の抽象、およびortクレートによる推論を`crates/minase/src/nn/`に新設する。
 - 起動引数`--search alphabeta|mcts`と、MCTS用のUSIオプションを追加する。
 - ハーネスのエンジンの指定に、任意の起動引数を足せる汎用の拡張を加える（「棋力測定」の節）。
 - 学習データの形式MNZTと、αβ探索の自己対局からMNZTを書く生成機能を`selfplay_gen`に追加する。
@@ -102,7 +102,7 @@ dlshogiもNVIDIA A100を8枚使う構成で大会に臨んでいる。
 | 方策の符号化 | 移動元の升ごとの249面、計35,856出力 | 移動先基準の121面、2段の分解出力、平坦な列挙 |
 | 推論 | ortクレートのload-dynamic、TensorRT実行プロバイダのFP16 | tch、candle、burn、TensorRTの直接バインディング |
 | 学習器 | PyTorchで学習してONNXへ出力 | JAX、lczero-training（TensorFlow） |
-| 共存の構造 | `src/search/`の下に方式ごとのサブモジュール、閉じた列挙型で起動時に選択 | 別バイナリ、別クレート、`dyn`トレイト、USIオプションでの実行時切替 |
+| 共存の構造 | `crates/minase/src/search/`の下に方式ごとのサブモジュール、閉じた列挙型で起動時に選択 | 別バイナリ、別クレート、`dyn`トレイト、USIオプションでの実行時切替 |
 
 ### 計算資源の分担
 
@@ -266,7 +266,7 @@ lc0はMLHで勝ちを早く決めさせているが、Gumbel dlshogiは手数の
 ### 方策は移動元の升ごとの249面で符号化する
 
 方策の出力は、移動元の升144個のそれぞれに249種類の移動を割り当てた249面、計35,856要素とする。
-249種類は、着手の値`Move { from, mid, to, promote }`（`src/core/mv.rs`）のどの形かで次のように分ける。
+249種類は、着手の値`Move { from, mid, to, promote }`（`crates/minase-core/src/mv.rs`）のどの形かで次のように分ける。
 中継升`mid`のない着手は、移動元から移動先への8方向と距離1〜11で88種、その成りで88種、獅子の桂馬型の跳び（縦横に2升と横縦に1升ずれる升）で8種である。
 中継升のある着手は、第1段で相手駒を取ってから別の升へ進む2歩が、第1段の8方向と第2段の7方向で56種、第1段で取って元の升へ戻る居喰いが8種である。
 その場に戻るだけのじっと（`from == to`で中継升なし）は1種である。
@@ -325,12 +325,12 @@ Rustには静的初期化による登録がないので、登録表の代わり�
 
 | パス | 置くもの |
 |---|---|
-| `src/search/`直下 | 探索方式に依存しない境界。`SearchSnapshot`、`SearchLimits`、`ClockLimits`、`SearchEvent`、`StopReason`、`SearchHandle`、方式を表す`SearchAlgorithm`、および方式ごとの状態を包む`Searcher`。 |
-| `src/search/alphabeta/` | 既存のαβ探索。置換表、SEE、correction history、係数表`params`、および試験。 |
-| `src/search/mcts/` | MCTSの探索木、選択規則（PUCTとGumbel）、バッチ評価の収集、終局の判定、および時間管理。 |
-| `src/nn/` | 入力平面の符号化、方策のラベル、推論の抽象`Evaluator`、ortによる実装、試験用の一様評価器、および学習データ形式MNZT。 |
-| `src/eval/` | αβ探索の静的評価（変更なし）。 |
-| `src/bin/zero_selfplay.rs` | RLの自己対局生成器。 |
+| `crates/minase/src/search/`直下 | 探索方式に依存しない境界。`SearchSnapshot`、`SearchLimits`、`ClockLimits`、`SearchEvent`、`StopReason`、`SearchHandle`、方式を表す`SearchAlgorithm`、および方式ごとの状態を包む`Searcher`。 |
+| `crates/minase/src/search/alphabeta/` | 既存のαβ探索。置換表、SEE、correction history、係数表`params`、および試験。 |
+| `crates/minase/src/search/mcts/` | MCTSの探索木、選択規則（PUCTとGumbel）、バッチ評価の収集、終局の判定、および時間管理。 |
+| `crates/minase/src/nn/` | 入力平面の符号化、方策のラベル、推論の抽象`Evaluator`、ortによる実装、試験用の一様評価器、および学習データ形式MNZT。 |
+| `crates/minase/src/eval/` | αβ探索の静的評価（変更なし）。 |
+| `crates/minase/src/bin/zero_selfplay.rs` | RLの自己対局生成器。 |
 | `tools/train/zero/` | ネットの定義、MNZTの読み込み、学習、およびONNXへの出力。 |
 
 依存の向きは、`search::alphabeta`から`eval`と`core`へ、`search::mcts`から`nn`と`core`へ、`nn`から`core`へとし、`alphabeta`と`mcts`は互いを参照しない。
@@ -350,7 +350,7 @@ pub enum Searcher {
 `Searcher`は探索の開始、オプションの宣言と設定、および新しい対局の開始の3つの操作を持ち、各操作は列挙型の`match`で方式へ振り分ける。
 オプションの宣言は方式に依存しない記述の型で返し、USIとCECPの文字列への変換はプロトコル層に残す。
 探索の開始は`Searcher`を探索スレッドへ移し、`SearchHandle::join`が探索の終了時に`Searcher`を返す。
-現行のプロトコル層は置換表を同じ形で探索スレッドとの間で受け渡しており（`src/search/handle.rs`の`SearchHandle::join`）、この形を状態全体へ広げるだけである。
+現行のプロトコル層は置換表を同じ形で探索スレッドとの間で受け渡しており（`crates/minase/src/search/handle.rs`の`SearchHandle::join`）、この形を状態全体へ広げるだけである。
 
 MCTSは`SearchEvent`の既存の欄へ次のように写す。
 探索が勝ちまたは負けを確定させた場合（相手の最後の王駒を取る手、または全合法手が負けに至る場合）は、αβ探索と同じ詰みの帯の評価値（`MATE`から手数を引いた値）を返す。
@@ -377,9 +377,9 @@ lc0も探索をUCIオプションで切り替えない。
 
 入力は、手番側から見た12×12の盤の平面95面とする。
 94面は、手番側と相手側のそれぞれについて47種類の駒の状態を1面ずつ割り当てたものである。
-47種類は、PSTの特徴が使う区別（`src/eval/pst/features.rs`の`piece_state`）と同じく、29の駒種に、成れる18の駒種の「まだ成れる」状態を加えたものである。
+47種類は、PSTの特徴が使う区別（`crates/minase/src/eval/pst/features.rs`の`piece_state`）と同じく、29の駒種に、成れる18の駒種の「まだ成れる」状態を加えたものである。
 残る1面は、先獅子（RULES.md第15条）で直後に取れない獅子の升を示す。
-規則セット`engine-default`（P0でP5なし）では成り権の保留状態を追跡しないので（`src/core/position/make_move.rs`の`make_move_unchecked`）、この95面で次の合法手が決まる。
+規則セット`engine-default`（P0でP5なし）では成り権の保留状態を追跡しないので（`crates/minase-core/src/position/make_move.rs`の`make_move_unchecked`）、この95面で次の合法手が決まる。
 保留状態を追跡するP1、P2、またはP5の規則セットで学習する場合は、`Position::promotion_deferred`の升を示す面を足す必要がある。
 
 入力は局面だけから決まり、過去の局面の履歴も反復の回数も含めない。
@@ -408,7 +408,7 @@ KataGoが学習の最初の約1日で6ブロック96チャネルから移った�
 ## 学習データの形式
 
 学習データは新しい形式MNZTとする。
-既存の教師データ形式MNSD（`src/training/records.rs`）は探索の最善手も方策の分布も持たないので、方策の教師に使えない。
+既存の教師データ形式MNSD（`crates/minase/src/training/records.rs`）は探索の最善手も方策の分布も持たないので、方策の教師に使えない。
 MNZTはヘッダに形式の版、規則セット、生成コミット、生成に使ったネットの検査和、教師の種類（αβ探索のノード数またはMCTSの探索回数）、シード、および記録数を持ち、MNSDと同じく来歴ファイルを並べる。
 
 MNZTは固定長の局面の表と、可変長の方策の列からなる。
@@ -513,7 +513,7 @@ lc0がmockやrandomのバックエンドで探索を試験するのと同じ役�
 方策は`Evaluator`の出力のうち合法手のラベルだけを取り出してsoftmaxで正規化し、非合法手には確率を割り当てない。
 推論の出力に非有限値（NaNまたは無限大）があれば、その局面を使わずにエラーとする。
 
-学習済みのネットはONNX形式で`nets/`に置いて`include_bytes!`で埋め込み、ortのメモリからの読み込みでセッションを作る。
+学習済みのネットはONNX形式で`crates/minase/nets/`に置いて`include_bytes!`で埋め込み、ortのメモリからの読み込みでセッションを作る。
 推論のコードは学習済みの重みと同じコミットで入れる（[ランダム初期化の評価関数では探索が止まらない](../lessons/random-init-net-stalls-search.md)）。
 10ブロック128チャネルのネットは単精度で約12 MBであり、NNUEの世代1（約7 MB）と同じくgitで管理できる。
 RLの途中のネットは`data/`に置き、測定または採用に使うネットだけをコミットする。
@@ -544,7 +544,7 @@ GPUを使う分だけMCTSが多くの資源を使う非対称な条件であり�
 MCTS同士の測定は、同時対局数を2とし、両エンジンが1枚のGPUを対称に共有する。
 同時対局数の自動計算はGPUを考慮しないので、MCTSを含む測定では`--concurrency`を明示する。
 
-ハーネスの`commit:`指定は起動引数を`--protocol usi --rules <規則>`に固定しており（`src/harness/player.rs`の`resolve_player`）、このままではMCTSを選べない。
+ハーネスの`commit:`指定は起動引数を`--protocol usi --rules <規則>`に固定しており（`crates/minase/src/harness/player.rs`の`resolve_player`）、このままではMCTSを選べない。
 このため、エンジンの指定に任意の起動引数を足せる汎用の拡張（例 `--candidate-args "--search mcts"`）をハーネスに加える。
 この拡張はエンジンの起動方法の指定であり、ハーネスが差分の内容を知る機能比較のスイッチではないので、CLAUDE.mdの測定の方針に反しない。
 個々の変更の採否には、この拡張を使う場合も、従来どおりコミット対コミットのGSPRTを使う。

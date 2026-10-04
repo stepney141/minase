@@ -52,7 +52,7 @@ Aperyも絶対位置の表と相対位置の表を併用していた（参考資
 
 本マイルストーンで行う作業は次のとおりである。
 
-- 関係項の評価、整数化、差分更新、および重み形式MNPTの版3を `src/eval/` に実装し、探索の累算器へ接続する。
+- 関係項の評価、整数化、差分更新、および重み形式MNPTの版3を `crates/minase/src/eval/` に実装し、探索の累算器へ接続する。
 - MNPTの版3に合わせて、Pythonの重みの読み書き、学習器、および診断器（`tools/train/pst/train_pst.py`、`pst_diagnostics.py`）を更新する。
 - 関係項の学習器を `tools/train/pst/` に実装し、学習PSTを固定したまま関係項の表だけを学習する。
 - 速度、半径、着手差、自己選択の各診断を行い、段階ゲートのGSPRTで採否を判定する。
@@ -78,7 +78,7 @@ PSTの教師局面の分布を変えるA/B比較が不採用でも、本書の�
 この待機は、関係評価一般を否定する結論ではない。
 
 [評価関数](evaluation.md)、[評価関数の世代反復](evaluation-gen1.md)、および[PSTの序中盤と終盤の補間](tapered-pst.md)が定めるPSTの特徴と評価式を引き継ぐ。
-駒状態の番号と手番側視点の変換は、`src/eval/pst/features.rs` と `tools/train/pst/features.py` の定義をそのまま使う。
+駒状態の番号と手番側視点の変換は、`crates/minase/src/eval/pst/features.rs` と `tools/train/pst/features.py` の定義をそのまま使う。
 探索との接続は、[棋力向上段階1](strength-stage1.md)で採用した累算器の差分更新（`PstAccumulator` と `update_accumulator_after_move`）を拡張する。
 従来の11ファイル、先読み教師値、教師の分類ごとの換算尺度、および検証分割は自動的には引き継がず、準備段階で採否の根拠を確認する。
 
@@ -158,7 +158,7 @@ Stockfishは、全ての歩の対で学習したネットの重要度が筋差1�
 E(s)=\operatorname{clip}_{\pm28{,}999}\!\left(\operatorname{trunc}_0\frac{q\,M(s)+(90-q)\,L(s)+90\,S(s)}{720}\right).
 \]
 
-\(M\) と \(L\) は手番側の序中盤と終盤の重みの和、\(q=\min(90,N-2)\) は盤上総駒数 \(N\) から決まる補間係数、\(\operatorname{trunc}_0\) は0方向への切り捨て、\(\operatorname{clip}\) は範囲への切り詰めである（`src/eval/pst/mod.rs`）。
+\(M\) と \(L\) は手番側の序中盤と終盤の重みの和、\(q=\min(90,N-2)\) は盤上総駒数 \(N\) から決まる補間係数、\(\operatorname{trunc}_0\) は0方向への切り捨て、\(\operatorname{clip}\) は範囲への切り詰めである（`crates/minase/src/eval/pst/mod.rs`）。
 重みの単位は学習PSTと同じ1/8センチポーンである。
 関係項の係数90は、序中盤の和と終盤の和の両方に同じ \(S\) を加えたときの \(q\,S+(90-q)\,S\) であり、関係項は局面段階によらず \(90S/720=S/8\) センチポーンだけ評価を動かす。
 したがって、累算器の両端点の和に同じ \(S\) を加えれば除算の前に上式の分子になり、累算器の構造は変えずに済む。
@@ -461,7 +461,7 @@ LTCの判定保留は、同じ実行ディレクトリを `--resume` で再開�
 - Kunihito Hoki and Tomoyuki Kaneko, "Large-Scale Optimization for Evaluation Functions with Minimax Search," Journal of Artificial Intelligence Research 49, 2014. 静止探索の読み筋の末端での学習と正則化の典拠である。
 - Michael Buro, "Experiments with Multi-ProbCut and a New High-Quality Evaluation Function for Othello," NECI Technical Report, 1997、および "From Simple Features to Sophisticated Evaluation Functions," Computers and Games 1998, LNCS 1558, 1999. パターン評価の重み共有、出現数による抑制、段階間の平滑化、および大型パターンによる速度の損失の典拠である。
 - Wojciech Jaśkowski, "Mastering 2048 with Delayed Temporal Coherence Learning, Multistage Weight Promotion, Redundant Encoding, and Carousel Shaping," IEEE Transactions on Games, 2018. n-tupleネットワークの段階分割の弊害と、浅い読みでの過適合の典拠である。
-- Apery（GitHub、コミット 32216277e5 の `src/evaluate.hpp` 179行から225行、442行から458行、937行から1000行）。相対2駒表と、学習時の相対表から推論用の絶対表への合成の典拠である。同じ作者は2016年12月6日のコミット 8220c20 でこれらを削除し、2014年12月7日のブログで相対位置の評価について「終盤の鋭さが無くなった感がある」と記している。
+- Apery（GitHub、コミット 32216277e5 の `src/evaluate.hpp` 179行から225行、442行から458行、937行から1000行）。相対2駒表と、学習時の相対表から推論用の絶対表への合成の典拠である。同じ作者は2016年12月6日のコミット 8220c20 でこれらを削除し、2014年12月7日のブログで、相対位置の評価では終盤の鋭さが失われたように感じたと記している（ブログの原文は本書の改訂時に照合していない）。
 - やねうら王（コミット 0a6dd2cbd0 より前の `source/eval/nnue/trainer/features/factorizer_half_kp.h` 30行から36行、58行から88行）。HalfRelativeKPによる学習時の次元下げの典拠である。
 - Stockfish（コミット f4bcd404 の説明と `src/nnue/features/pp_3wide.h` 36行から41行）。歩の対の特徴を筋差1以内へ絞った根拠の典拠である。
 - tatara（コミット 752df92 の `feature_set.rs` 462行から491行）。駒種の組ごとの仮想行による階層共有の典拠である。

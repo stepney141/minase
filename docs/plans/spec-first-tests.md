@@ -32,8 +32,8 @@ core層は約149件が条番号を名前に持つSPECテストであり、条文
 ## 再構築の範囲と方針
 
 ユニットテスト全数（lib 329件＋bin 25件）を削除し、挙動マトリクスから書き直す。
-統合テスト3件（tests/lishogi_replay.rs、tests/match_runner.rs）は既に外部オラクル接地（lishogi実裁定10局、sprt.mdの再現契約）であるため削除対象とせず、実装カップリング監査だけを行う。
-`scripts/fetch_lishogi_replays.py`と`tests/fixtures/`も保全する。
+統合テスト3件（crates/minase-core/tests/lishogi_replay.rs、crates/minase/tests/match_runner.rs）は既に外部オラクル接地（lishogi実裁定10局、sprt.mdの再現契約）であるため削除対象とせず、実装カップリング監査だけを行う。
+`scripts/fetch_lishogi_replays.py`と`crates/minase/tests/fixtures/`も保全する。
 
 テストの配置と命名は現行の規約を維持する。
 すなわち、ファイル内`#[cfg(test)] mod tests`（movegenのみ分離ディレクトリ）、条番号・規範文書名を名前へ埋め込む命名（`article_14_1_...`）、`test_util`のプログラム的局面構築である。

@@ -1,39 +1,17 @@
-[package]
-name = "minase"
-version = "1.4.0"
-edition = "2024"
-rust-version = "1.88"
-publish = false
+[workspace]
+members = ["crates/minase", "crates/minase-core"]
+resolver = "3"
+# Other commits are unpacked under target/ (match_runner commit: specs, bench_compare.py), and
+# other branches are checked out as worktrees under data/ and .claude/. Their Cargo projects
+# are not members of this workspace.
+exclude = ["target", "data", ".claude"]
 
-[lints.rust]
+[workspace.lints.rust]
 missing_docs = "warn"
 unsafe_code = "forbid"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = "warn"
-
-[features]
-invariants = []
-search-stats = []
-tuning = []
-
-[dependencies]
-clap = { version = "4.6.4", features = ["derive"] }
-fs2 = "0.4.3"
-mimalloc = "0.1.52"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
-sha2 = "0.10"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-procfs = { version = "0.18.0", default-features = false }
-
-[dev-dependencies]
-flate2 = "1"
-# `cargo test`では整合検査を常に有効にする（docs/plans/debugging-tools.md「利用者の決定」の2）。
-# Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
-# `cargo build`と`cargo run`のバイナリには検査が入らない。
-minase = { path = ".", features = ["invariants"] }
 
 [profile.dev]
 opt-level = 3

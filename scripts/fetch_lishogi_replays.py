@@ -2,7 +2,7 @@
 """lishogi棋譜リプレイ照合フィクスチャの取得スクリプト。
 
 対象棋譜は下記GAME_IDSで固定する。lishogi APIから各棋譜を取得し、
-tests/fixtures/lishogi_replays.ndjson.gz を再生成する。
+crates/minase-core/tests/fixtures/lishogi_replays.ndjson.gz を再生成する。
 実行はコーパス更新時に限る（docs/plans/protocol-layer.md フェーズ4）。
 """
 
@@ -80,6 +80,8 @@ def fetch_game(game_id: str) -> dict:
 def main() -> None:
     output_path = (
         Path(__file__).resolve().parent.parent
+        / "crates"
+        / "minase-core"
         / "tests"
         / "fixtures"
         / "lishogi_replays.ndjson.gz"

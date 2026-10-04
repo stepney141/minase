@@ -72,15 +72,15 @@
 | 評価関数の候補と探索係数の共適応の検証 | [plans/eval-search-coadaptation.md](plans/eval-search-coadaptation.md) | 起案 | |
 | 補正1/4のFMの現行PSTへの再学習 | [plans/fm-quarter-current-pst.md](plans/fm-quarter-current-pst.md) | 起案 | |
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
-| ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 起案 | |
+| ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 
 ## 現在地
 
 ### 直近の完了
 
+- [ライブラリとエンジンのcrate分割](plans/crate-split.md)は2026年10月4日に、採用で完了した。リポジトリを仮想マニフェストのワークスペースとし、規則と合法手生成のライブラリ`minase-core`（MIT）と、探索、評価、プロトコル、および実行ファイルのエンジン`minase`（GPL-3.0-or-later）を`crates/`の下に分けた。分割前と比べてbench、perft、および試験の名前の集合が一致し、両crateの`cargo package`が検証ビルドまで通る。RULES.mdは[docs/rules/](rules/RULES.md)へ移した。エンジンの次の版は2.0.0、ライブラリは0.1.0から始め、リリースとcrates.ioへの公開は利用者が行う。
 - [不採用だった探索部の改良のSPSAによる再調整](plans/search-revival-spsa.md)は2026年10月4日に、採用で完了した（issue #10）。過去にSTCで不採用となった探索部の改良のうち数値係数を持つ8項目（reverse futility pruning、late move pruning、null moveの減深の加算、razoring、improving、捕獲履歴、静止探索の手数制限、butterfly historyの持ち越し）を戻し、既存の探索係数16個とまとめた29係数をSPSAで[調整](measurements/search-revival-t.md)した。候補は評価関数G23のmasterに対して[STC](measurements/search-revival-tstar-vs-m-stc.md)と[LTC](measurements/search-revival-tstar-vs-m-ltc.md)でともに`H1`（得点率67.5%と67.4%）となり、8項目だけを取り除いた版にも[STC](measurements/search-revival-tstar-vs-tprime-stc.md)で`H1`（得点率62.7%）となったので、向上には8項目が寄与している。late move pruningは、元の実装が捕獲手も数えてkiller手まで切っていたことを[診断](measurements/search-revival-lmp-diag.md)で確かめ、静かな手だけを数える定義に改めて戻した。負けた枝刈りは数え方を点検し、係数を調整し直してから捨てることを[教訓](lessons/retune-rejected-pruning-before-discarding.md)にした。
 - [世代3の教師データによるPSTの再学習](plans/pst-gen3.md)は2026年10月3日に、採用で完了した。世代2と世代3の教師データだけで学習し直したPST（G23）は、従来の採用PSTに対してSTCとLTCでともに`H1`となった（[LTC](measurements/pst-gen3-g23-ltc.md)、得点率61.3%）。同じ計画の診断では、訓練データを対局単位で2分して学習した2本のPSTの差は+8.3 Elo（95%信頼区間 −5.0〜+21.6）であり、大差を認めなかった（[A対B](measurements/pst-data-split-ab-nodes.md)）。
-- [残存誤りに対応する関係補正項](plans/relational-correction.md)は2026年10月2日に、不採用で完了した。フェーズ0の誤りの分類は着手の基準に届かなかったが（[準備記録](measurements/relational-correction-prep.md)）、利用者の指示で半径1の局所2駒表を実装し、各計画の着手時のmaster（S0）と対局させた。[STC](measurements/relational-correction-stc.md)は`H0`（得点率39.3%、約−75 Elo）であり、[固定ノード数の200ペア](measurements/relational-correction-nodes200.md)が+9.4 Elo（95%信頼区間 −26.4〜+45.4）だったので、損失は主に探索速度がS0の0.775倍へ落ちたことによる。
 
 ### 次の候補
 

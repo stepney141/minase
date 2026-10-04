@@ -9,6 +9,10 @@
 
 試作はmasterの固定コミットから作った独立cloneのブランチで行い、本体リポジトリのRustソースは変更していない。
 変更の全体は[横線の差分](magic-bitboard-prototype/horizontal.patch)、[斜線の差分](magic-bitboard-prototype/diagonal.patch)、[強制インライン化の差分](magic-bitboard-prototype/force-inline.patch)に保存した。
+斜線の差分は、当初はmagic定数の生成器`tools/generate_diagonal_magics.rs`を含んでいたが、2026年10月4日にこの1ファイルだけを差分から除いた。
+生成器は、xorshift64*の乱数から3つの論理積で疎な候補を作り、試行ごとに表を消去する代わりに試行番号を配列へ記録して衝突を判定する方式であり、後者の工夫はStockfishの[`init_magics`](https://github.com/official-stockfish/Stockfish/blob/sf_17/src/bitboard.cpp#L145)（GPL-3.0-or-later）と同じである。
+`docs/`にはライセンスを付けないため、GPLのコードと同じ工夫を持つ生成器は置かない（[第三者コード混入監査](../audits/third-party-code-provenance-2026-09-28.md)の所見F2）。
+生成済みの定数表と生成の記録は差分に残っているので、再現手順と測定結果には影響しない。
 斜線の差分には、生成器と生成した定数を含む。
 既存の計測スクリプトの出力解析を使う[比較スクリプト](magic-bitboard-prototype/compare.py)で、実装ごとに別バイナリを実行した。
 

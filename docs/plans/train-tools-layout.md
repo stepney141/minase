@@ -33,12 +33,12 @@
 | MNSD | 自己対局の局面、探索値、および対局結果を並べた教師データ。`selfplay_gen` が書き出す |
 | MNRS | MNSD の各局面に別の探索で付け直した教師値 |
 | MNKF | MNSD の各局面に対応する追加の評価特徴（王の安全度など）の列 |
-| MNPT | 学習したPSTの重みと探索用の駒価値。`nets/pst.bin` がこの形式であり、エンジンが読み込む |
+| MNPT | 学習したPSTの重みと探索用の駒価値。`crates/minase/nets/pst.bin` がこの形式であり、エンジンが読み込む |
 | 駒除去の損失 | 訓練局面から王駒以外の駒を1枚ずつ取り除いたときの評価差が、初期MNPTで計算した評価差と同じ符号になることを促す追加の損失（詳細は `docs/guides/pst-training.md`） |
 
 ## 適用範囲
 
-対象は `tools/train/` の全体、`tools/train/pst/` のパスを参照する `docs/guides/pst-training.md` と `src/bin/pst_probe.rs` の文書コメント、および `docs/measurements/` のうち作業ツリーの `tools/train/pst` を `sys.path` に差し込む測定スクリプトである。
+対象は `tools/train/` の全体、`tools/train/pst/` のパスを参照する `docs/guides/pst-training.md` と `crates/minase/src/bin/pst_probe.rs` の文書コメント、および `docs/measurements/` のうち作業ツリーの `tools/train/pst` を `sys.path` に差し込む測定スクリプトである。
 
 関数、クラス、定数、およびテストメソッドの名前は変えない。
 処理の内容と引数も変えない。
@@ -274,7 +274,7 @@ tools/train/
 
 `tools/train/README.md` は、次の内容を持つ。
 
-1. 学習ツールの目的と、本体の Rust 側（`selfplay_gen`、`pst_probe`、`nets/pst.bin`）との関係。
+1. 学習ツールの目的と、本体の Rust 側（`selfplay_gen`、`pst_probe`、`crates/minase/nets/pst.bin`）との関係。
 2. `uv sync` による環境の構築、テストの実行、およびコンソールスクリプトの呼び方。
 3. 「新しい配置」の節の表と同じ粒度で、各ソースファイルが何のためにあるかの説明。
 4. 交換するファイル形式（MNSD、MNRS、MNKF、MNPT）の一覧と、それぞれを読み書きするモジュール。
@@ -282,7 +282,7 @@ tools/train/
 
 `docs/guides/pst-training.md` は、`tools/train/.venv/bin/python tools/train/pst/<名前>.py` の形の呼び出しをすべてコンソールスクリプトへ、テストの実行コマンドを新しいディレクトリへ、ソースと設定例へのリンクを新しいパスへ書き換える。
 環境構築の段落は、`.venv` の手作業による用意から `uv sync --project tools/train` へ書き換える。
-`src/bin/pst_probe.rs` の文書コメントは、呼び出し元のパスを `tools/train/src/minase_train/diagnostics/comparison.py` へ書き換える。
+`crates/minase/src/bin/pst_probe.rs` の文書コメントは、呼び出し元のパスを `tools/train/src/minase_train/diagnostics/comparison.py` へ書き換える。
 
 ## 実装フェーズ
 

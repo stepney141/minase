@@ -65,16 +65,16 @@ lishogiでの有効化（フェーズ5）は、利用者が2026年9月19日に�
 
 本マイルストーンでは、次の作業を行う。
 
-- `src/protocol/usi.rs`と`src/protocol/engine.rs`に、予想手つきの`bestmove`、`go ponder`、`ponderhit`、先読み中の`stop`の契約、および外れた先読みからの差分復帰を実装する。
-- `src/search/`に、探索を止めずに「時間制限なし」から「的中の時点を起点とする時間予算」へ切り替える仕組みを追加する。
-- `src/bin/match_runner/`とその保存形式に、先読みの対局進行、予想手の記録、的中率の集計、および同時対局数の計算式の変更を追加する。
+- `crates/minase/src/protocol/usi.rs`と`crates/minase/src/protocol/engine.rs`に、予想手つきの`bestmove`、`go ponder`、`ponderhit`、先読み中の`stop`の契約、および外れた先読みからの差分復帰を実装する。
+- `crates/minase/src/search/`に、探索を止めずに「時間制限なし」から「的中の時点を起点とする時間予算」へ切り替える仕組みを追加する。
+- `crates/minase/src/bin/match_runner/`とその保存形式に、先読みの対局進行、予想手の記録、的中率の集計、および同時対局数の計算式の変更を追加する。
 - 挙動とその典拠を先に定めてからテストを書く方式（spec-first、[設計書](spec-first-tests.md)）の挙動一覧であるマトリクスの[D6-USI-18](spec-first-tests/matrices/d6-protocol.md)は、現在`go ponder`と`ponderhit`の拒否を定めている。これと対応する台帳を改訂する。
 - 先読みを対象外と書いている設計書（外部対局接続、探索部、Lazy SMP、lishogi Bot接続）と測定の手引き（docs/guides/sprt.md）を、採用時に現行の実装へ合わせて改訂する。
 - 採用と判定された場合に、フォークstepney141/lishogi-botの`go ponder`の時計引数を直し、`minase-lishogi-bot`の配備環境で先読みの通信を確かめて、設定を有効にする（フェーズ5）。
 
 次の項目は対象外とする。
 
-- CECP（XBoardプロトコル）の先読み（`hard`と`easy`）。`src/protocol/cecp.rs`は変更せず、`match_runner`は`cecp:`のエンジンと`--ponder`の併用を拒否する。CECPでは予想手の選択、的中の判定、および外れたときの1手戻しをすべてエンジンが行うので、USIとは対局進行が別物になる。HaChuに先読みをさせるには、現行の`force`と`ping`による進行を対局モードの進行へ作り替える必要があり、HaChuには先読み中の`ping`で予想手が壊れる不具合と、先読みの探索が先に終わると相手を待たずに着手する不具合もある。したがってHaChuとの比較は、双方が先読みをしない現行の対称な条件のまま保つ。
+- CECP（XBoardプロトコル）の先読み（`hard`と`easy`）。`crates/minase/src/protocol/cecp.rs`は変更せず、`match_runner`は`cecp:`のエンジンと`--ponder`の併用を拒否する。CECPでは予想手の選択、的中の判定、および外れたときの1手戻しをすべてエンジンが行うので、USIとは対局進行が別物になる。HaChuに先読みをさせるには、現行の`force`と`ping`による進行を対局モードの進行へ作り替える必要があり、HaChuには先読み中の`ping`で予想手が壊れる不具合と、先読みの探索が先に終わると相手を待たずに着手する不具合もある。したがってHaChuとの比較は、双方が先読みをしない現行の対称な条件のまま保つ。
 - 開発用GUI`minase-gui`の先読み対応。
 - `USI_Ponder`オプションの宣言と、その値による時間管理の変更（理由は設計判断の節）。
 - 予想手を複数持つ先読み、および相手の手番中に予想手を決め直す方式。
@@ -82,7 +82,7 @@ lishogiでの有効化（フェーズ5）は、利用者が2026年9月19日に�
 
 本書の用語は次のとおりである。
 **時間予算**は1手に使う時間の目安であり、反復（反復深化の1回分、深さを1つ増やした探索）の境界で止まる目安の**soft**と、反復の途中でも打ち切る上限の**hard**の2つからなる。
-時間予算は、`go`の時計引数である残り時間、**加算**（1手ごとに残り時間へ足される時間、`binc`と`winc`）、および**秒読み**（残り時間が尽きた後も1手ごとに使える時間、`byoyomi`）から、`src/search/alphabeta/time.rs`の関数`clock_budget`が計算する。
+時間予算は、`go`の時計引数である残り時間、**加算**（1手ごとに残り時間へ足される時間、`binc`と`winc`）、および**秒読み**（残り時間が尽きた後も1手ごとに使える時間、`byoyomi`）から、`crates/minase/src/search/alphabeta/time.rs`の関数`clock_budget`が計算する。
 `go`に1手の固定時間`movetime`も付いている場合は、同じファイルの関数`time_budget`が、時計から求めた予算と`movetime`とを比べて、softとhardのそれぞれで小さい方を採る。
 **T**は探索の起点からの経過時間、**h**は探索の起点から的中までの時間であり、先読みでない探索ではh = 0である。
 **消費時間**は、対局ハーネスがエンジンの時計から引く時間をいう。
@@ -97,7 +97,7 @@ USI層の状態機械、`go`のライフサイクル契約、および`go infini
 時間予算の式と反復開始の判定は[棋力向上段階6](strength-stage6.md)と[持ち時間の効率的な使用](time-management-efficiency.md)が定め、本書は式を変えずに起点だけを変える。
 測定手順は[docs/guides/sprt.md](../guides/sprt.md)に、Lishogi-Botの配備は[lishogi Bot接続](lishogi-bot.md)に従う。
 本書が前提とするのは完了済みのマイルストーンだけであり、未完了の段階8から段階10までのどれにも依存しないので、いつ着手してもよい。
-基準は着手時のmasterの先頭とし、`src/search/`を同時に変える他のマイルストーンが進行中なら、測定の前に基準をそのマイルストーンの採用版へ付け替える。
+基準は着手時のmasterの先頭とし、`crates/minase/src/search/`を同時に変える他のマイルストーンが進行中なら、測定の前に基準をそのマイルストーンの採用版へ付け替える。
 従う教訓は、[予算の機構を変えたら総思考時間と使い残しを現行と比べる](../lessons/compare-total-time-usage-before-sprt.md)、[採否の判定条件は候補の式にも事前に当てて試算する](../lessons/simulate-acceptance-criteria-on-the-candidate.md)、[手数に比例する固定費は超長手数の対局で時間切れを起こす](../lessons/per-move-overhead-grows-with-game-length.md)、[打ち切り上限は残り時間の割合でも抑える](../lessons/cap-hard-limit-by-remaining-fraction.md)、[採否測定の条件で改良が発動することを実装前に確認する](../lessons/measure-feature-activation-before-sprt.md)、[並行処理の回帰テストは連続実行で確認する](../lessons/repeat-concurrency-regression-tests.md)、および[ブリッジ経由のエンジン起動は設定どおりに起動されることを実際に確かめる](../lessons/verify-bridge-launch-path.md)である。
 
 ## 設計判断

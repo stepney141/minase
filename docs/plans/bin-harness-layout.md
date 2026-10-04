@@ -6,8 +6,8 @@
 実行ファイルの側も、`src/bin/match_runner.rs`（1,814行）、`src/bin/selfplay_gen.rs`（2,367行）、`src/bin/match_report.rs`（993行）が、それぞれ引数の解釈から集計の出力までを1ファイルに持つ。
 さらに`lishogi_import`は、`#[path = "selfplay_gen.rs"]`によって`selfplay_gen`の実行ファイル全体を自分の中へ取り込み、その一部の関数だけを使っている。
 本書は、コードの目的ごとにファイルとディレクトリを分け、1ファイルが1つの関心事だけを持つ配置へ移す。
-ハーネスは`src/harness/`の下に目的別の子モジュールを置き、エンジンのプロセス駆動を`src/harness/engine/`へまとめる。
-複数のファイルを持つ実行ファイルは`src/bin/<名前>/main.rs`の形に改め、`#[path]`属性をなくす。
+ハーネスは`crates/minase/src/harness/`の下に目的別の子モジュールを置き、エンジンのプロセス駆動を`crates/minase/src/harness/engine/`へまとめる。
+複数のファイルを持つ実行ファイルは`crates/minase/src/bin/<名前>/main.rs`の形に改め、`#[path]`属性をなくす。
 `selfplay_gen`と`lishogi_import`が共有するコードは、ハーネスと同じくライブラリへ移す。
 再編は処理の中身を変えない移動であり、既存の試験が全件通り、固定シードの対局ハーネスと学習局面の生成の出力が再編の前後で一致することを完了条件とする。
 
@@ -15,7 +15,7 @@
 
 完了。
 2026年9月27日に起案、着手、および完了し、共有コードの置き場所と分割する実行ファイルの範囲は同日に利用者が決定した。
-ハーネスと6つの実行ファイルを本書の配置へ移し、`selfplay_gen`と`lishogi_import`の共有コードを`src/datagen/`へ移したうえで、masterへ統合した。
+ハーネスと6つの実行ファイルを本書の配置へ移し、`selfplay_gen`と`lishogi_import`の共有コードを`crates/minase/src/datagen/`へ移したうえで、masterへ統合した。
 各コードのコミットで、fmt、clippyとrustdocの警告0件、既定と`tuning`機能の全試験、および固定シードの対局ハーネス、`match_report`、学習局面の生成、棋譜の取り込み、ならびに`random_play`の出力が再編前と一致することを確かめた。
 試験の件数は788件から772件になったが、差の16件は`lishogi_import`の試験バイナリで重複実行されていた`selfplay_gen`の試験であり、試験名の末尾の集合は再編前と一致する。
 
@@ -26,7 +26,7 @@
 
 ## 適用範囲
 
-対象は、`src/harness.rs`と`src/harness/`、`src/bin/`のうち次の6つの実行ファイル、新設するライブラリのモジュール、これらを参照する`src/lib.rs`と`src/rng.rs`、および`docs/`とリポジトリ直下の文書にあるパスの参照である。
+対象は、`src/harness.rs`と`crates/minase/src/harness/`、`crates/minase/src/bin/`のうち次の6つの実行ファイル、新設するライブラリのモジュール、これらを参照する`crates/minase/src/lib.rs`と`crates/minase-core/src/rng.rs`、および`docs/`とリポジトリ直下の文書にあるパスの参照である。
 
 | 実行ファイル | 現在の行数 | 再編 |
 |---|---|---|
@@ -45,13 +45,13 @@
 ただし、移動に伴って次の4種類の記述は書き換える。
 1つ目は、参照元が定義元の子孫でなくなる項目の可視性であり、「可視性の規則」の節に従って必要な最小の範囲へ広げる。
 2つ目は、`use`文と、式の中に直接書かれたモジュールパスである。
-3つ目は、`include_str!`が埋め込むファイルの相対パスであり、ファイルの階層が変わった分だけ`../`を増減する。対象は`selfplay_gen.rs`の`../../tests/fixtures/lishogi_import_cases.ndjson`、`spsa_runner/tests.rs`の`../../search/alphabeta/params.rs`（2か所）、および`spsa_runner/tests/simulation.rs`の`../../../search/alphabeta/params.rs`である。
+3つ目は、`include_str!`が埋め込むファイルの相対パスであり、ファイルの階層が変わった分だけ`../`を増減する。対象は`selfplay_gen.rs`の`../../crates/minase/tests/fixtures/lishogi_import_cases.ndjson`、`spsa_runner/tests.rs`の`../../search/alphabeta/params.rs`（2か所）、および`spsa_runner/tests/simulation.rs`の`../../../search/alphabeta/params.rs`である。
 4つ目は、ライブラリへ移す項目の可視性であり、`pub(crate)`を`pub`へ改め、欠けているdocコメントを補う（`Cargo.toml`の`missing_docs = "warn"`）。
 
 次の名前と文字列は、外部から参照されるので変えない。
 実行ファイル名`usi_random`、`minase`、`selfplay_gen`、`pst_probe`、`lishogi_import`、`match_runner`、`match_report`、および`spsa_runner`は、`resolve_player`の`current_exe`からの探索、`resolve_commit`の`cargo build --bin minase`、試験の`CARGO_BIN_EXE_*`、`tools/train/pst/`のPythonスクリプト、および`docs/guides/`の標準コマンドが使う。
 `spsa_runner`の試験モジュールのパス`tests::simulation`は、凍結された測定記録`docs/measurements/spsa-gain-simulation.md`が`--exact tests::simulation::gain_simulation`として記録しているので保つ。
-`match_runner/storage.rs`の`manifest does not match`という文言は、`tests/match_runner.rs`が標準エラー出力を照合する。
+`match_runner/storage.rs`の`manifest does not match`という文言は、`crates/minase/tests/match_runner.rs`が標準エラー出力を照合する。
 実行ディレクトリのファイル名（`.match_runner.lock`、`manifest.json`、`pairs/`、`summary.json`）と保存形式の版数も変えない。
 
 対象外は次のとおりである。
@@ -78,24 +78,24 @@ masterへ未統合のブランチのうち、本書の対象ファイルを変�
 
 | 論点 | 採用 | 棄却した代案 |
 |---|---|---|
-| ハーネスの形 | `src/harness.rs`を`src/harness/mod.rs`へ移し、子モジュールを目的別に並べる | `src/harness.rs`を残して子を増やす |
-| エンジンのプロセス駆動 | `src/harness/engine/`にまとめ、`EngineProcess`の`impl`を目的別のファイルに分ける | USIとCECPを別の構造体に分ける |
+| ハーネスの形 | `src/harness.rs`を`crates/minase/src/harness/mod.rs`へ移し、子モジュールを目的別に並べる | `src/harness.rs`を残して子を増やす |
+| エンジンのプロセス駆動 | `crates/minase/src/harness/engine/`にまとめ、`EngineProcess`の`impl`を目的別のファイルに分ける | USIとCECPを別の構造体に分ける |
 | ハーネスの公開パス | `minase::harness::X`の平らな公開面を`mod.rs`の`pub use`で保つ | 呼び出し側の`use`を`minase::harness::engine::X`などへ書き換える |
 | 試験の置き場所 | 1つの関心事だけを検査する試験は、検査対象のファイルの`mod tests`へ移す。先読みの試験のように複数の関心事にまたがる試験は、その関心事をまとめるディレクトリの`tests`へ置く | 現行の`tests.rs`を主題別のファイルに分けて`src/harness/tests/`へ置く |
-| 複数ファイルの実行ファイル | `src/bin/<名前>/main.rs`の形に改め、`#[path]`をなくす | `src/bin/<名前>.rs`を残し、`#[path]`で子を取り込み続ける |
-| `selfplay_gen`と`lishogi_import`の共有コード | ライブラリにトップレベルのモジュール`src/datagen/`を新設し、`#[doc(hidden)] pub mod datagen;`とする（2026年9月27日の利用者決定） | `src/bin/datagen_common/mod.rs`に置き、両方の実行ファイルから`#[path]`で取り込む |
+| 複数ファイルの実行ファイル | `crates/minase/src/bin/<名前>/main.rs`の形に改め、`#[path]`をなくす | `crates/minase/src/bin/<名前>.rs`を残し、`#[path]`で子を取り込み続ける |
+| `selfplay_gen`と`lishogi_import`の共有コード | ライブラリにトップレベルのモジュール`crates/minase/src/datagen/`を新設し、`#[doc(hidden)] pub mod datagen;`とする（2026年9月27日の利用者決定） | `src/bin/datagen_common/mod.rs`に置き、両方の実行ファイルから`#[path]`で取り込む |
 | 分割する実行ファイル | 「適用範囲」の表の6つ（2026年9月27日の利用者決定） | `#[path]`をなくすのに必要な3つと`match_report`だけを分ける |
 | 重複の統合 | 行わず、「後続の候補」に記録する | 移動と同時に統合する |
 
 ハーネスの平らな公開面を保つのは、ハーネスの外から項目を参照する9ファイルがすべて`minase::harness::X`の形か`minase::harness::*`の一括取り込みで参照しており、この形がハーネスの公開面そのものだからである。
-[探索部と評価関数のモジュール再編](search-eval-layout.md)も、境界の`src/search/mod.rs`が公開していた`minase::search::TranspositionTable`などを同じパスで公開し続けた。
+[探索部と評価関数のモジュール再編](search-eval-layout.md)も、境界の`crates/minase/src/search/mod.rs`が公開していた`minase::search::TranspositionTable`などを同じパスで公開し続けた。
 これは旧パスの互換のための再公開ではなく、現行の`src/harness.rs`が`pub use environment::*;`などで採っている形をそのまま続けるものである。
 
 試験を検査対象のファイルへ置くのは、ハーネスの試験の多くが非公開の欄や関数（`Clock`の残り時間、`EngineProcess`の応答期限、`normalize_commit`など）を直接検査しており、試験を定義元の子孫に置けば可視性を広げずに済むからである。
 前例の探索部の再編は試験を`alphabeta/tests/`へ集めたが、あちらは1つの試験が制限の構築から置換表の確認までを通して検査しており、1つのファイルに帰属させられなかった。
 ハーネスの試験の大半は1つの関心事だけを検査する。
 例外は、`EngineProcess`と対局の進行`play_game`の両方を使う先読みの試験と、`SearchLimit`と`ThinkRequest`の欄も読む時計の試験`cecp_time_requests_include_byoyomi`である。
-前者は`src/harness/engine/tests.rs`に置き、後者は`clock.rs`に置いて、読む欄を「可視性の規則」の節の範囲で広げる。
+前者は`crates/minase/src/harness/engine/tests.rs`に置き、後者は`clock.rs`に置いて、読む欄を「可視性の規則」の節の範囲で広げる。
 
 共有コードをライブラリへ置くのは、`match_runner`と`spsa_runner`が共有するコードが既にライブラリの`harness`にあり、同じ規則を学習局面の生成にも当てはめられるからである。
 この配置では`#[path]`がなくなり、共有部分の試験が1つの試験バイナリで1回だけ実行される。
@@ -108,9 +108,9 @@ clapはライブラリの通常の依存に既に含まれ、`harness`も実行�
 
 6つの実行ファイルを分割し、400行以下の5つを1ファイルのまま残すのは、`random_play`（665行）が引数、シード、表記、対局の不変条件の検査、および集計の5つの関心事を、`lishogi_import`（778行）が入力の形式、除外の判定、再生、ラベル付け、および出力の5つの関心事を持つからである。
 
-`src/bin/<名前>/main.rs`の形に改めるのは、Cargoがこの形の`main.rs`を実行ファイルの根とみなし、`mod storage;`が同じディレクトリの`storage.rs`を指すようになるからである。
-Cargoは`src/bin/<名前>.rs`と`src/bin/<名前>/main.rs`が同時にあると「found duplicate binary name」として拒否する（Cargo 1.x、空のパッケージで確認済み）ので、同じコミットで前者を削除する。
-`src/bin/`の直下に置いた`.rs`ファイルはすべて実行ファイルとして自動で検出されるので、子モジュールは必ず各実行ファイルのディレクトリの中に置く。
+`crates/minase/src/bin/<名前>/main.rs`の形に改めるのは、Cargoがこの形の`main.rs`を実行ファイルの根とみなし、`mod storage;`が同じディレクトリの`storage.rs`を指すようになるからである。
+Cargoは`crates/minase/src/bin/<名前>.rs`と`crates/minase/src/bin/<名前>/main.rs`が同時にあると「found duplicate binary name」として拒否する（Cargo 1.x、空のパッケージで確認済み）ので、同じコミットで前者を削除する。
+`crates/minase/src/bin/`の直下に置いた`.rs`ファイルはすべて実行ファイルとして自動で検出されるので、子モジュールは必ず各実行ファイルのディレクトリの中に置く。
 
 ## 再編後の配置
 
@@ -121,31 +121,31 @@ Cargoは`src/bin/<名前>.rs`と`src/bin/<名前>/main.rs`が同時にあると�
 
 | パス | 置くもの |
 |---|---|
-| `src/harness/mod.rs` | モジュールの宣言と、公開する名前の`pub use`。 |
-| `src/harness/player.rs` | エンジンの指定と構成。`PlayerSpec`、`PlayerKind`、`Protocol`、`PlayerConfig`、`parse_player_spec`、`resolve_player`。 |
-| `src/harness/commit.rs` | コミットのビルドとキャッシュ。`command_error`、`normalize_commit`、`resolve_commit`、`sha256_file`。 |
-| `src/harness/limit.rs` | 思考制限とその構文。`SearchLimit`、`TimeControl`、`parse_search_limit`、`parse_nonnegative_u64`、`parse_positive_u64`、`parse_positive_u32`、`parse_search_depth`。 |
-| `src/harness/clock.rs` | 対局時計。`Clock`、`GameClocks`、`zero_clock`。 |
-| `src/harness/failure.rs` | エンジン異常の分類と件数。`EngineFailure`、`FailureCounts`。 |
-| `src/harness/engine/mod.rs` | 子モジュールの宣言と、1回の思考の要求と応答の型。`ThinkRequest`、`EngineResponse`、`EngineEvaluation`、`EngineScore`、`ThinkResult`、`EngineDefaults`。 |
-| `src/harness/engine/process.rs` | 子プロセスの起動、送受信、および後始末。`EngineProcess`と、その`spawn`、`start`、`send`、`wait_for`、`receive_until`、`Drop`。 |
-| `src/harness/engine/think.rs` | 1手の思考。`EngineProcess`の`bestmove`、`send_position`、`receive_bestmove`。 |
-| `src/harness/engine/ponder.rs` | 先読み。`EngineProcess`の`start_ponder`、`discard_bestmove`、`stop_ponder`。 |
-| `src/harness/engine/usi.rs` | USIの`info`行と`option`行の解釈。`parse_usi_evaluation`、`observe_usi_evaluation`、`parse_usi_stop_reason`、`parse_usi_time`、`observe_usi_search_data`、`parse_usi_spin_default`、`observe_usi_default`、`EngineProcess`の`read_usi_defaults`。 |
-| `src/harness/engine/cecp.rs` | CECPの送信文と応答の解釈。`CECP_MEMORY_MB`、`CECP_FIXED_TIME_CS`、`cecp_level_text`、`cecp_fixed_time_text`、`cecp_memory_text`、`validate_cecp_limit`、`is_cecp_response_line`、`interpret_cecp_response`、`receive_cecp_response`、`canonical_jitto`、`EngineProcess`の`bestmove_cecp`。 |
-| `src/harness/engine/channel.rs` | 期限付きの行の受信。`receive_until`、`receive_until_deadline`（`EngineProcess`のメソッドではない自由関数）。 |
-| `src/harness/engine/resources.rs` | プロセスのCPU時間と最大常駐メモリ。`EngineResourceUsage`、`process_resource_usage`（Linux版とそれ以外）、`EngineProcess`の`resource_usage`。 |
-| `src/harness/engine/probe.rs` | 対局前のエンジンの既定値とオプションの確認。`probe_engine_defaults`、`probe_usi_options`。 |
-| `src/harness/engine/tests.rs` | 現行の`src/harness/ponder_tests.rs`の全体と、`EngineProcess::start`のオプション送信順を検査する`usi_options_are_sent_in_order_before_isready`。 |
-| `src/harness/referee.rs` | エンジンの着手の審判層による検査。`validate_bestmove`、`ponder_move`。 |
-| `src/harness/opening.rs` | ペアの開始局面。`Opening`、`generate_opening`。 |
-| `src/harness/game.rs` | 1局の進行。`GameOutcome`、`PlayedGame`、`play_game`。 |
-| `src/harness/pair.rs` | 先後入替ペアの実行と得点。`PairResult`、`CompletedPair`、`run_pair`、`half_points`、`record_game_failure`、`played_game_text`、`square_text`、`move_text`。 |
-| `src/harness/ponder_stats.rs` | 保存記録の再生による先読みの集計。`PonderCounts`、`count_ponder_game`。 |
-| `src/harness/records/mod.rs` | 現行の`src/harness/records.rs`の全体（保存形式の型と試験）。 |
-| `src/harness/records/convert.rs` | 対局結果から保存形式への変換。`RecordedGame`、`stored_color`、`stored_failure`、`failure_from_stored`、`evaluation_record`、`duration_ns`、`termination_record`、`recorded_game`。 |
-| `src/harness/storage.rs` | 変更しない。 |
-| `src/harness/environment.rs` | 変更しない（試験の追加を除く）。 |
+| `crates/minase/src/harness/mod.rs` | モジュールの宣言と、公開する名前の`pub use`。 |
+| `crates/minase/src/harness/player.rs` | エンジンの指定と構成。`PlayerSpec`、`PlayerKind`、`Protocol`、`PlayerConfig`、`parse_player_spec`、`resolve_player`。 |
+| `crates/minase/src/harness/commit.rs` | コミットのビルドとキャッシュ。`command_error`、`normalize_commit`、`resolve_commit`、`sha256_file`。 |
+| `crates/minase/src/harness/limit.rs` | 思考制限とその構文。`SearchLimit`、`TimeControl`、`parse_search_limit`、`parse_nonnegative_u64`、`parse_positive_u64`、`parse_positive_u32`、`parse_search_depth`。 |
+| `crates/minase/src/harness/clock.rs` | 対局時計。`Clock`、`GameClocks`、`zero_clock`。 |
+| `crates/minase/src/harness/failure.rs` | エンジン異常の分類と件数。`EngineFailure`、`FailureCounts`。 |
+| `crates/minase/src/harness/engine/mod.rs` | 子モジュールの宣言と、1回の思考の要求と応答の型。`ThinkRequest`、`EngineResponse`、`EngineEvaluation`、`EngineScore`、`ThinkResult`、`EngineDefaults`。 |
+| `crates/minase/src/harness/engine/process.rs` | 子プロセスの起動、送受信、および後始末。`EngineProcess`と、その`spawn`、`start`、`send`、`wait_for`、`receive_until`、`Drop`。 |
+| `crates/minase/src/harness/engine/think.rs` | 1手の思考。`EngineProcess`の`bestmove`、`send_position`、`receive_bestmove`。 |
+| `crates/minase/src/harness/engine/ponder.rs` | 先読み。`EngineProcess`の`start_ponder`、`discard_bestmove`、`stop_ponder`。 |
+| `crates/minase/src/harness/engine/usi.rs` | USIの`info`行と`option`行の解釈。`parse_usi_evaluation`、`observe_usi_evaluation`、`parse_usi_stop_reason`、`parse_usi_time`、`observe_usi_search_data`、`parse_usi_spin_default`、`observe_usi_default`、`EngineProcess`の`read_usi_defaults`。 |
+| `crates/minase/src/harness/engine/cecp.rs` | CECPの送信文と応答の解釈。`CECP_MEMORY_MB`、`CECP_FIXED_TIME_CS`、`cecp_level_text`、`cecp_fixed_time_text`、`cecp_memory_text`、`validate_cecp_limit`、`is_cecp_response_line`、`interpret_cecp_response`、`receive_cecp_response`、`canonical_jitto`、`EngineProcess`の`bestmove_cecp`。 |
+| `crates/minase/src/harness/engine/channel.rs` | 期限付きの行の受信。`receive_until`、`receive_until_deadline`（`EngineProcess`のメソッドではない自由関数）。 |
+| `crates/minase/src/harness/engine/resources.rs` | プロセスのCPU時間と最大常駐メモリ。`EngineResourceUsage`、`process_resource_usage`（Linux版とそれ以外）、`EngineProcess`の`resource_usage`。 |
+| `crates/minase/src/harness/engine/probe.rs` | 対局前のエンジンの既定値とオプションの確認。`probe_engine_defaults`、`probe_usi_options`。 |
+| `crates/minase/src/harness/engine/tests.rs` | 現行の`src/harness/ponder_tests.rs`の全体と、`EngineProcess::start`のオプション送信順を検査する`usi_options_are_sent_in_order_before_isready`。 |
+| `crates/minase/src/harness/referee.rs` | エンジンの着手の審判層による検査。`validate_bestmove`、`ponder_move`。 |
+| `crates/minase/src/harness/opening.rs` | ペアの開始局面。`Opening`、`generate_opening`。 |
+| `crates/minase/src/harness/game.rs` | 1局の進行。`GameOutcome`、`PlayedGame`、`play_game`。 |
+| `crates/minase/src/harness/pair.rs` | 先後入替ペアの実行と得点。`PairResult`、`CompletedPair`、`run_pair`、`half_points`、`record_game_failure`、`played_game_text`、`square_text`、`move_text`。 |
+| `crates/minase/src/harness/ponder_stats.rs` | 保存記録の再生による先読みの集計。`PonderCounts`、`count_ponder_game`。 |
+| `crates/minase/src/harness/records/mod.rs` | 現行の`src/harness/records.rs`の全体（保存形式の型と試験）。 |
+| `crates/minase/src/harness/records/convert.rs` | 対局結果から保存形式への変換。`RecordedGame`、`stored_color`、`stored_failure`、`failure_from_stored`、`evaluation_record`、`duration_ns`、`termination_record`、`recorded_game`。 |
+| `crates/minase/src/harness/storage.rs` | 変更しない。 |
+| `crates/minase/src/harness/environment.rs` | 変更しない（試験の追加を除く）。 |
 
 `HarnessRecord`と`CpuRecord`は、保存形式の型だが`environment.rs`に残す。
 2つの型は環境の調査結果を表し、`HarnessRecord`は`harness_record`が作り、`CpuRecord`は各runnerが`cpu_model`、`physical_core_count`、および`physical_memory_bytes`の調査結果から組み立てるからである。
@@ -167,21 +167,21 @@ Cargoは`src/bin/<名前>.rs`と`src/bin/<名前>/main.rs`が同時にあると�
 | `openings_stay_*` | `opening.rs` |
 | `failure_reasons_*` | `failure.rs` |
 | `game_outcomes_map_*` | `pair.rs` |
-| `pair_seed_replaces_the_zero_output` | `src/rng.rs`（`derive_seed`だけを検査しているため） |
+| `pair_seed_replaces_the_zero_output` | `crates/minase-core/src/rng.rs`（`derive_seed`だけを検査しているため） |
 
-`match_runner.rs`の試験のうち、ライブラリの`physical_core_count`と`physical_memory_bytes`だけを検査する`linux_host_resource_probe_reports_cores_and_memory`は、`src/harness/environment.rs`の`mod tests`へ移す。
+`match_runner.rs`の試験のうち、ライブラリの`physical_core_count`と`physical_memory_bytes`だけを検査する`linux_host_resource_probe_reports_cores_and_memory`は、`crates/minase/src/harness/environment.rs`の`mod tests`へ移す。
 
 ### 学習局面の生成（ライブラリ）
 
 | パス | 置くもの |
 |---|---|
-| `src/datagen/mod.rs` | モジュールの宣言、`MATE_BAND_START`、`current_position_is_repeated`、`data_error`、`invalid_data`、`training_error`。 |
-| `src/datagen/game.rs` | 生成した局面と対局のまとまり、および書き出し順の整列。`CompletedRecord`、`CompletedGame`、`merge_completed_games`。 |
-| `src/datagen/statistics.rs` | 生成の集計。`INJECTION_HISTOGRAM_BINS`、`SCORE_VALUE_COUNT`、`Statistics`、`RecordedStatistics`、`score_index`。 |
-| `src/datagen/provenance.rs` | 来歴JSONの書き出し。`ProvenanceArguments`、`write_mapped_provenance`、`hex`。 |
-| `src/datagen/git.rs` | 生成コミットの取得と検査。`git_output`、`validate_commit_hash`。 |
+| `crates/minase/src/datagen/mod.rs` | モジュールの宣言、`MATE_BAND_START`、`current_position_is_repeated`、`data_error`、`invalid_data`、`training_error`。 |
+| `crates/minase/src/datagen/game.rs` | 生成した局面と対局のまとまり、および書き出し順の整列。`CompletedRecord`、`CompletedGame`、`merge_completed_games`。 |
+| `crates/minase/src/datagen/statistics.rs` | 生成の集計。`INJECTION_HISTOGRAM_BINS`、`SCORE_VALUE_COUNT`、`Statistics`、`RecordedStatistics`、`score_index`。 |
+| `crates/minase/src/datagen/provenance.rs` | 来歴JSONの書き出し。`ProvenanceArguments`、`write_mapped_provenance`、`hex`。 |
+| `crates/minase/src/datagen/git.rs` | 生成コミットの取得と検査。`git_output`、`validate_commit_hash`。 |
 
-`src/lib.rs`に`#[doc(hidden)] pub mod datagen;`を加え、crateのdocコメントのモジュール一覧に加える。
+`crates/minase/src/lib.rs`に`#[doc(hidden)] pub mod datagen;`を加え、crateのdocコメントのモジュール一覧に加える。
 `lishogi_import`が現在`selfplay_gen`から使う項目は、`MATE_BAND_START`、`ProvenanceArguments`、`CompletedRecord`、`CompletedGame`、`Statistics`、`merge_completed_games`、`current_position_is_repeated`、`data_error`、`write_mapped_provenance`、`git_output`、および`validate_commit_hash`の11項目である。
 これらは`selfplay_gen.rs`の中で次の項目に依存しているので、依存先もあわせて`datagen`へ移す。
 `Statistics`は`INJECTION_HISTOGRAM_BINS`を、`RecordedStatistics`は`SCORE_VALUE_COUNT`と`score_index`を、`merge_completed_games`は`training_error`と`RecordedStatistics`を、`git_output`と`validate_commit_hash`は`invalid_data`を、`write_mapped_provenance`は`hex`を使う。
@@ -306,8 +306,8 @@ Cargoは`src/bin/<名前>.rs`と`src/bin/<名前>/main.rs`が同時にあると�
 Rustでは、非公開の項目と欄は、定義したモジュールとその子孫からしか見えない。
 移動によって参照元が定義元の子孫でなくなる項目は、参照に必要な最小の可視性へ広げる。
 一般の規則は次の3つである。
-`src/harness/`の直下の子モジュールで定義し、ハーネスの他の子モジュールから使う項目と欄は`pub(super)`とする。
-`src/harness/engine/`の子モジュールで定義し、`engine`の中だけで使う項目と欄は`pub(super)`、`engine`の外のハーネスから使う項目と欄は`pub(in crate::harness)`とする。
+`crates/minase/src/harness/`の直下の子モジュールで定義し、ハーネスの他の子モジュールから使う項目と欄は`pub(super)`とする。
+`crates/minase/src/harness/engine/`の子モジュールで定義し、`engine`の中だけで使う項目と欄は`pub(super)`、`engine`の外のハーネスから使う項目と欄は`pub(in crate::harness)`とする。
 実行ファイルの子モジュールで定義し、同じ実行ファイルの他の子モジュールから使う項目、欄、およびメソッドは`pub(super)`とする。たとえば`match_runner`の`RuleSetArgument`の欄`source`と`codes`、`random_play`の`CompletedGame`の欄、および`match_report`の`Report`の欄がこれに当たる。
 同じファイルの中だけで使う項目は、試験が使う場合も含めて非公開のまま残す。
 
@@ -335,12 +335,12 @@ Rustでは、非公開の項目と欄は、定義したモジュールとその�
 
 `docs/`（`docs/measurements/`と`docs/audits/`を除く）、`AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`、`README.md`、`RULES.md`、およびコードのdocコメントにある、移動したファイルへの参照を新しい配置へ書き換える。
 起案時点で書き換えの対象となる参照を持つ文書は、`src/harness.rs`について`docs/plans/usi-resignation.md`と`docs/plans/alphazero.md`、実行ファイルについて`docs/plans/`の`match-harness.md`、`ponder.md`、`spsa.md`、`random-play.md`、`search-eval-layout.md`、`strength-stage9.md`、および`spec-first-tests/ledgers/d8.md`、ならびに`docs/research/`の3件である。
-`src/bin/spsa_runner/`の下の`tests.rs`、`model.rs`、および`tests/simulation.rs`は再編後もパスが変わらないので、これらへの参照は書き換えない。
+`crates/minase/src/bin/spsa_runner/`の下の`tests.rs`、`model.rs`、および`tests/simulation.rs`は再編後もパスが変わらないので、これらへの参照は書き換えない。
 参照先のファイルは、同じ文にある関数名、型名、または試験名から「再編後の配置」の表に従って決める。
 行番号の付いた参照は、移動先の行を特定できれば新しい行番号へ改め、特定できなければ行番号を削ってパスだけを残す。
 
 `docs/plans/spec-first-tests/ledgers/d8.md`は、再編の前から先読みの試験の大半を`src/bin/match_runner/ponder_tests.rs`にあると記しているが、実際には`src/harness/ponder_tests.rs`にある。
-この参照も、再編後の実際の置き場所（`src/harness/engine/tests.rs`）へ改める。
+この参照も、再編後の実際の置き場所（`crates/minase/src/harness/engine/tests.rs`）へ改める。
 一方、同じ台帳の冒頭と各節の見出しにある`src/bin/match_runner.rs`と`src/bin/random_play.rs`は、台帳を作成した2026年8月15日に旧テストが置かれていた場所の記録なので、書き換えない。
 
 [src構成の整理](src-layout.md)の「探索部・評価関数はcoreの外にトップレベルで並べる」の節に、`datagen`の追加と依存の向きを反映する。
@@ -361,7 +361,7 @@ Rustでは、非公開の項目と欄は、定義したモジュールとその�
 9. 異常件数の1行表示が、`match_runner`と`spsa_runner`で同じ書式を別々に持つ。
 10. 開始局面のランダム生成が、ハーネス（8〜12手）と`selfplay_gen`（8〜16手）に別々にあり、シードから手数への写像も異なる。
 11. 並列実行の方式が、`match_runner`、`selfplay_gen`の生成と付け直し、`lishogi_import`、および`spsa_runner`で4通りある。
-12. `bench.rs`の固定局面と、試験用の`src/test_util.rs`の`BENCH_SFENS`が同じ15局面を別々に持つ。
+12. `bench.rs`の固定局面と、試験用の`crates/minase-core/src/test_util.rs`の`BENCH_SFENS`が同じ15局面を別々に持つ。
 13. 探索局面キーの計算が、`selfplay_gen`（`search_key_history`の末尾）と`lishogi_import`（`zobrist() ^ rights_zobrist()`）で異なる書き方をしている。
 
 ## 実装フェーズ
@@ -369,8 +369,8 @@ Rustでは、非公開の項目と欄は、定義したモジュールとその�
 masterから`bin-harness-layout`ブランチを切り、次の順にコミットする。
 各コミットは単独でビルドと試験が通る状態にする。
 
-1. `refactor(harness): split the harness module by purpose`。ハーネスを「対局ハーネス」の表の配置へ移し、`pair_seed_replaces_the_zero_output`を`src/rng.rs`へ、`linux_host_resource_probe_reports_cores_and_memory`を`src/harness/environment.rs`へ移す。
-2. `refactor(datagen): move code shared by selfplay_gen and lishogi_import into the library`。共有する項目を`src/datagen/`へ移し、`lishogi_import`の`#[path]`による取り込みをやめて`#[global_allocator]`を明示する。
+1. `refactor(harness): split the harness module by purpose`。ハーネスを「対局ハーネス」の表の配置へ移し、`pair_seed_replaces_the_zero_output`を`crates/minase-core/src/rng.rs`へ、`linux_host_resource_probe_reports_cores_and_memory`を`crates/minase/src/harness/environment.rs`へ移す。
+2. `refactor(datagen): move code shared by selfplay_gen and lishogi_import into the library`。共有する項目を`crates/minase/src/datagen/`へ移し、`lishogi_import`の`#[path]`による取り込みをやめて`#[global_allocator]`を明示する。
 3. `refactor(selfplay): split selfplay_gen and lishogi_import by purpose`。2つの実行ファイルをディレクトリへ分割する。
 4. `refactor(match): split match_runner and match_report by purpose`。
 5. `refactor(spsa): move spsa_runner into its own directory`。
@@ -407,16 +407,16 @@ codexへの指示には、名前の変更、シグネチャの変更、処理の
    得点の分散が0になった場合はシードを変えて作り直す。
    この同じ実行ディレクトリに対して、基点と各コミットの`match_report`を実行し、出力のJSONが完全に一致することを確かめる。
 3. `selfplay_gen`で、固定シード、固定ノード数、`Threads=1`の小さな生成（2局程度）を行う。
-   MNSDファイルは、ヘッダの生成コミットの欄（`src/training/records.rs`の`Header::encode`が定めるバイト位置44から83までの40バイト）を除いてバイト単位で一致することを確かめる。
+   MNSDファイルは、ヘッダの生成コミットの欄（`crates/minase/src/training/records.rs`の`Header::encode`が定めるバイト位置44から83までの40バイト）を除いてバイト単位で一致することを確かめる。
    来歴JSONは、`teacher.generation_commit`と`mnsd_sha256`を除いて一致することを確かめる。`mnsd_sha256`は生成コミットの欄を含むMNSD全体のハッシュ値だからである。
    代わりに、各実行の`mnsd_sha256`がその実行のMNSDファイルのSHA-256と一致することを別に確かめる。
    同じファイルに`inspect`を実行した出力は、生成コミットの行を除いて一致させる。
-4. `lishogi_import`を、`tests/lishogi_import.rs`が使う引数（固定シードと固定ノード数）で`tests/fixtures/lishogi_import_cases.ndjson`に対して実行し、出力のMNSD、付随ファイル、および標準出力の報告を、3と同じ欄を除いて比べる。
+4. `lishogi_import`を、`crates/minase/tests/lishogi_import.rs`が使う引数（固定シードと固定ノード数）で`crates/minase/tests/fixtures/lishogi_import_cases.ndjson`に対して実行し、出力のMNSD、付随ファイル、および標準出力の報告を、3と同じ欄を除いて比べる。
 
 各コマンドの正確な引数は、基点で実行できることを確かめてから確定し、同じ引数を各コミットで使う。
 
-`src/bin/`と`src/harness/`から`#[path]`が消えたこと（`grep -rn '#\[path' src/bin src/harness`が0件）を確かめる。`src/core/movegen/search_captures.rs`の`#[path]`は本書の対象外なので残る。
-文書の書き換えの後に、`docs/`（`docs/measurements/`と`docs/audits/`を除く）とリポジトリ直下の文書に、再編で消えたパス（`src/harness.rs`、`src/harness/tests.rs`、`src/harness/ponder_tests.rs`、`src/harness/records.rs`、および`src/bin/`の`match_runner.rs`、`match_runner/ponder_tests.rs`、`match_report.rs`、`selfplay_gen.rs`、`lishogi_import.rs`、`spsa_runner.rs`、`random_play.rs`）への参照が、前節で記録として残すと定めた台帳d8.mdの3か所を除いて残っていないことを`grep`で確かめる。
+`crates/minase/src/bin/`と`crates/minase/src/harness/`から`#[path]`が消えたこと（`grep -rn '#\[path' crates/minase/src/bin crates/minase/src/harness`が0件）を確かめる。`crates/minase-core/src/movegen/search_captures.rs`の`#[path]`は本書の対象外なので残る。
+文書の書き換えの後に、`docs/`（`docs/measurements/`と`docs/audits/`を除く）とリポジトリ直下の文書に、再編で消えたパス（`src/harness.rs`、`src/harness/tests.rs`、`src/harness/ponder_tests.rs`、`src/harness/records.rs`、および`crates/minase/src/bin/`の`match_runner.rs`、`match_runner/ponder_tests.rs`、`match_report.rs`、`selfplay_gen.rs`、`lishogi_import.rs`、`spsa_runner.rs`、`random_play.rs`）への参照が、前節で記録として残すと定めた台帳d8.mdの3か所を除いて残っていないことを`grep`で確かめる。
 
 ## 完了条件
 
@@ -426,6 +426,6 @@ codexへの指示には、名前の変更、シグネチャの変更、処理の
 ## 参考資料
 
 - [src構成の整理](src-layout.md)。crate構成、coreの責務基準、および依存の向きを定める。
-- [探索部と評価関数のモジュール再編](search-eval-layout.md)。本書と同じ方針で`src/search/`と`src/eval/`を分けた前例である。
+- [探索部と評価関数のモジュール再編](search-eval-layout.md)。本書と同じ方針で`crates/minase/src/search/`と`crates/minase/src/eval/`を分けた前例である。
 - [対局ハーネス](match-harness.md)、[SPRTの手引き](../guides/sprt.md)。ハーネスの契約と完全再現契約を定める。
-- The Cargo Book, “Target auto-discovery”。`src/bin/*.rs`と`src/bin/*/main.rs`を実行ファイルとして自動で検出する規則を定める。
+- The Cargo Book, “Target auto-discovery”。`crates/minase/src/bin/*.rs`と`crates/minase/src/bin/*/main.rs`を実行ファイルとして自動で検出する規則を定める。

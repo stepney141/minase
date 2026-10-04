@@ -26,15 +26,15 @@ workspace化は次のいずれかの実害をトリガーとして後日実施�
 
 ### coreの責務基準
 
-`src/core/`には「RULES.mdだけから正しさを検証できるコード」のみを置く。この基準は機械的に適用できる。対局進行・裁定・反復検出はYes（規則が一意に決める）、表記（SFEN・USI・CECP）は外部仕様依存でNo、プロトコルはインターフェース層でNo、探索・評価は正しさではなく強さの問題でNoである。この基準の一文はプロジェクトのCLAUDE.mdにも記載した。
+`crates/minase-core/src/`には「RULES.mdだけから正しさを検証できるコード」のみを置く。この基準は機械的に適用できる。対局進行・裁定・反復検出はYes（規則が一意に決める）、表記（SFEN・USI・CECP）は外部仕様依存でNo、プロトコルはインターフェース層でNo、探索・評価は正しさではなく強さの問題でNoである。この基準の一文はプロジェクトのCLAUDE.mdにも記載した。
 
 ### 対局進行3モジュールをcoreへ移動する
 
-責務基準に従い、`src/game.rs`（審判層）、`src/adjudication.rs`（終局・反復の裁定。RULES.md第21〜23条・第31〜32条）、`src/repetition.rs`（同一局面の判定。第24条）を`src/core/`へ移動する。3モジュールはcrateの中だけに公開し、`core/mod.rs`で`game`を`pub(crate)`と宣言して、`adjudication`と`repetition`をその子に置く（「core内部は目的別のディレクトリで構成する」の節）。移動前はcrateルートの私的modであり可視性の実質はcrate内全域なので、`pub(crate)`が等価であり、`minase::core::game`のような新しい公開パスを作らない。公開APIは`lib.rs`のre-exportのパス書き換えだけで吸収し、一切変えない。
+責務基準に従い、`src/game.rs`（審判層）、`src/adjudication.rs`（終局・反復の裁定。RULES.md第21〜23条・第31〜32条）、`src/repetition.rs`（同一局面の判定。第24条）を`crates/minase-core/src/`へ移動する。3モジュールはcrateの中だけに公開し、`core/mod.rs`で`game`を`pub(crate)`と宣言して、`adjudication`と`repetition`をその子に置く（「core内部は目的別のディレクトリで構成する」の節）。移動前はcrateルートの私的modであり可視性の実質はcrate内全域なので、`pub(crate)`が等価であり、`minase::core::game`のような新しい公開パスを作らない。公開APIは`lib.rs`のre-exportのパス書き換えだけで吸収し、一切変えない。
 
 ### 探索部・評価関数はcoreの外にトップレベルで並べる
 
-探索部は`src/search/`、評価関数は`src/eval/`、評価関数の学習データの交換形式は`src/training/`として、`core`・`notation`・`protocol`の隣に置く。依存方向はsearch → eval → coreの一方向とし、trainingはcoreだけに依存する。各モジュールの内部の配置は[探索部と評価関数のモジュール再編](search-eval-layout.md)が定める。複数の実行ファイルが共有する支援処理もライブラリのトップレベルに`#[doc(hidden)]`で置き、対局ハーネスを`src/harness/`、学習局面の生成と棋譜取り込みの共有処理を`src/datagen/`（trainingとcoreに依存する）とする。両者の内部の配置は[実行ファイルと対局ハーネスのモジュール再編](bin-harness-layout.md)が定める。傘モジュール`src/engine/`は、`protocol/engine.rs`（プロトコル非依存の対局状態機械）と名前が衝突するため採らない。モジュールの作成は探索部マイルストーンの着手時に行い、本作業では方針の記録だけを行う。
+探索部は`crates/minase/src/search/`、評価関数は`crates/minase/src/eval/`、評価関数の学習データの交換形式は`crates/minase/src/training/`として、`core`・`notation`・`protocol`の隣に置く。依存方向はsearch → eval → coreの一方向とし、trainingはcoreだけに依存する。各モジュールの内部の配置は[探索部と評価関数のモジュール再編](search-eval-layout.md)が定める。複数の実行ファイルが共有する支援処理もライブラリのトップレベルに`#[doc(hidden)]`で置き、対局ハーネスを`crates/minase/src/harness/`、学習局面の生成と棋譜取り込みの共有処理を`crates/minase/src/datagen/`（trainingとcoreに依存する）とする。両者の内部の配置は[実行ファイルと対局ハーネスのモジュール再編](bin-harness-layout.md)が定める。傘モジュール`src/engine/`は、`protocol/engine.rs`（プロトコル非依存の対局状態機械）と名前が衝突するため採らない。モジュールの作成は探索部マイルストーンの着手時に行い、本作業では方針の記録だけを行う。
 
 ### core内部は目的別のディレクトリで構成する
 
@@ -42,7 +42,7 @@ coreは1関心事1ファイルを原則とし、非公開の欄を参照して�
 
 ### rngモジュールは現状維持とする
 
-`src/rng.rs`はトップレベルの`#[doc(hidden)] pub mod`のまま維持する。責務基準ではcore行きでなく、random_playと将来のselfplayが共用する再現契約の担い手なのでsearch専用でもない。「binたちのための内部ユーティリティであり、ライブラリの公開面ではない」という現在の表現が意図と一致している。
+`crates/minase-core/src/rng.rs`はトップレベルの`#[doc(hidden)] pub mod`のまま維持する。責務基準ではcore行きでなく、random_playと将来のselfplayが共用する再現契約の担い手なのでsearch専用でもない。「binたちのための内部ユーティリティであり、ライブラリの公開面ではない」という現在の表現が意図と一致している。
 
 ### adjudicationの命名は維持する
 
@@ -62,4 +62,4 @@ adjudicationはRULES.mdの公式語彙「裁定」（第25条の反復の裁定�
 
 ## 実施記録
 
-移動作業は2026年8月10日に完了した。変更は、3ファイルの`src/core/`への移動、`lib.rs`の3宣言削除とre-exportパスの書き換え、`core/mod.rs`への`pub(crate)`宣言3件の追加とdocコメントの責務基準への更新、`protocol/`配下3ファイルのuseパス書き換えである。`src/bin/`と`tests/`は無変更であり、公開APIが変わっていないことの傍証となった。検証はcargo fmt、clippy全ターゲット警告ゼロ、テスト271件全緑（移動前の実績と同数）で、旧パス`crate::game::`等の残存参照がないことも確認した。
+移動作業は2026年8月10日に完了した。変更は、3ファイルの`crates/minase-core/src/`への移動、`lib.rs`の3宣言削除とre-exportパスの書き換え、`core/mod.rs`への`pub(crate)`宣言3件の追加とdocコメントの責務基準への更新、`protocol/`配下3ファイルのuseパス書き換えである。`crates/minase/src/bin/`と`tests/`は無変更であり、公開APIが変わっていないことの傍証となった。検証はcargo fmt、clippy全ターゲット警告ゼロ、テスト271件全緑（移動前の実績と同数）で、旧パス`crate::game::`等の残存参照がないことも確認した。

@@ -42,7 +42,7 @@ Minaseの設計書の第1段階は、序盤の係数を掛ける前の予算（`
 コメントは、40手目付近までは定跡で進み勝負どころではないので地平線を大きめに取り、「100手時点で残り60手ぐらいのつもりで指していい。これくらいしないと勝負どころを過ぎてからの持ち時間が余ってしまう」「160手目ぐらいで持ち時間を使い切って問題ない」と述べる。
 残り時間が秒読みの1.2倍未満なら残り時間と秒読みの全額を1手に使う（`isFinalPush`）。
 序盤の係数はなく、`SlowMover`は手数によらない定数である。
-[YaneuraOu timeman.cpp](https://github.com/yaneurao/YaneuraOu/blob/master/source/timeman.cpp)
+[YaneuraOu timeman.cpp](https://github.com/yaneurao/YaneuraOu/blob/master/source/timeman.cpp)（引用したコメントは[コミット1308ab3の199行と246行](https://github.com/yaneurao/YaneuraOu/blob/1308ab3803e0011979473296741e56a6981c46ba/source/timeman.cpp)と照合した。GPL-3.0）
 
 ### Apery
 
@@ -80,7 +80,7 @@ Minaseの設計書の第1段階は、序盤の係数を掛ける前の予算（`
 そのうえで「実際には中盤の十分深い局面のために時間を残す方が重要」として、使い切る手数を理論値の1.75倍まで延ばし、盤面から推定した残り手数を超えないようにする。
 さらに、1手の基礎時間が秒読みを下回らないようにし、残り時間が秒読みの1.5倍未満なら残り時間と秒読みを1手で使う。
 この理論は設計書の「持ち時間の温存を採用しない理由」の対数価値モデルと同じであり、結論はMinaseの配分より速い消費である。
-[KataGo timecontrols.cpp](https://github.com/lightvector/KataGo/blob/master/cpp/search/timecontrols.cpp)
+[KataGo timecontrols.cpp](https://github.com/lightvector/KataGo/blob/master/cpp/search/timecontrols.cpp)（上の2文は236行付近の英語のコメントの本書による訳であり、[コミットd91ea85](https://github.com/lightvector/KataGo/blob/d91ea855110dae533f0aada947b2b7d78cc8a4e1/cpp/search/timecontrols.cpp)と照合した。MIT）
 
 ### Leela Zero
 

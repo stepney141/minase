@@ -30,7 +30,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 
 本マイルストーンでは、次の作業を行う。
 
-- 規則R1の反復裁定へ、lishogiの規則ライブラリscalashogiが実装する前提条件を取り込み、RULES.md、`src/core/game/repetition/r1.rs`、`src/core/game/adjudication/`、および`src/core/game/referee.rs`を更新する。
+- 規則R1の反復裁定へ、lishogiの規則ライブラリscalashogiが実装する前提条件を取り込み、RULES.md、`crates/minase-core/src/game/repetition/r1.rs`、`crates/minase-core/src/game/adjudication/`、および`crates/minase-core/src/game/referee.rs`を更新する。
 - lishogiの実対局のうち、この前提条件で裁定が分かれる対局をリプレイ照合のフィクスチャへ追加し、取得スクリプト`scripts/fetch_lishogi_replays.py`の初期局面の扱いを直す。
 - 固定した版のLishogi-Botとminaseのmasterを1つのDockerイメージにまとめるDockerfile、ビルドと起動を行うcompose定義、minase用の設定ファイル、および運用手順を、別リポジトリ`minase-lishogi-bot`に置く。
 - Botアカウントの作成と昇格、認証トークンの管理、およびエンジンバイナリの固定手順を定める。
@@ -50,7 +50,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 ## 依存関係
 
 - [外部対局接続](engine-connectivity.md)は完了済みであり、Lishogi-Botの送信系列への対応、`--rules lishogi`の前提、および`position`失敗後の探索禁止をそのまま使う。
-- [プロトコル層](protocol-layer.md)の拡張SFEN、指し手表記、規則セット名`lishogi`、およびリプレイ照合`tests/lishogi_replay.rs`をそのまま使う。
+- [プロトコル層](protocol-layer.md)の拡張SFEN、指し手表記、規則セット名`lishogi`、およびリプレイ照合`crates/minase-core/tests/lishogi_replay.rs`をそのまま使う。
 - [棋力向上段階2](strength-stage2.md)の時間管理（秒読みを含む予算式）を前提とする。本マイルストーンはこれを変更しない。
 - [ローカルルール13コードの実装](local-rules.md)が所有するR1の実装を、本マイルストーンのフェーズ1で改める。改めた後のR1の正は本設計書ではなくRULES.md第31条である。
 - 棋力向上の段階計画とは独立に進められる。運用に使うエンジンはビルド時点のmasterのバイナリであり、段階計画の進行による差し替えは運用上の更新であって本設計書の変更を要しない。
@@ -84,7 +84,7 @@ scalashogiは、反復の裁定に2つの条件を課す（`History.scala`の`is
 したがって第2の条件は、対局開始または直前の不可逆手の直後から、可逆手が先後合計で12手以上続いていることと同じである。
 中将棋の不可逆手は、捕獲、成り、および歩兵または香車の着手である（`variant/Chushogi.scala`の`isIrreversible`）。
 
-取り込み前のRULES.md第31条のR1と`src/core/game/repetition/r1.rs`は、第1の条件だけで裁定していた。
+取り込み前のRULES.md第31条のR1と`crates/minase-core/src/game/repetition/r1.rs`は、第1の条件だけで裁定していた。
 そのため、不可逆手の直後から双方がじっと（RULES.md第3条、駒を動かさずに手番を渡す着手）を繰り返す2手周期の反復では、不可逆手の直後の局面を1回目として2手ごとに同じ局面が現れるので、minaseは6手後の4回目で裁定するのに対し、lishogiは12手後まで裁定しない。
 lishogiの全棋譜との照合（2026年8月26日、GitHub issue #5）で現存した差異はこの1種類だけであり、その実例が対局uy7y6mP6、EHUTJJu4、およびA4EO2swaの3局である。
 
@@ -104,7 +104,7 @@ R1はLishogiの規則として定義されたコードであり、変更の目�
 R2とR3は変えない。
 
 実装の境界は次のとおりである。
-着手が不可逆かどうかは、`src/core/game/repetition/r1.rs`の`move_is_irreversible`が着手の巻き戻し情報`Undo`（移動前の駒種と捕獲した駒）から判定する。
+着手が不可逆かどうかは、`crates/minase-core/src/game/repetition/r1.rs`の`move_is_irreversible`が着手の巻き戻し情報`Undo`（移動前の駒種と捕獲した駒）から判定する。
 `Game::play`は`Undo`を`AdjudicationState::record_move`へ渡し、そこから同じファイルのR1の履歴へ不可逆かどうかを伝える。
 R1の履歴は、直前の不可逆手からの可逆手の数を持ち、対局開始時は0、不可逆手のたびに0へ戻し、裁定の判定に前提条件を加える。
 詰み判定が仮想着手を評価する経路（`candidate_is_immediate_win`）も同じ関数で判定し、仮想着手が不可逆手なら反復は成立しない。
@@ -125,7 +125,7 @@ R1の履歴は、直前の不可逆手からの可逆手の数を持ち、対局
 
 上記3局をリプレイ照合のフィクスチャへ追加し、終局裁定がlishogiと一致することを確認する。
 追加は`scripts/fetch_lishogi_replays.py`の対象棋譜へ加えて再生成する。
-このスクリプトはlishogi APIの現行の欄名`initialSfen`を読んで初期局面をフィクスチャへ格納し、`tests/lishogi_replay.rs`はその局面から再生を始める。
+このスクリプトはlishogi APIの現行の欄名`initialSfen`を読んで初期局面をフィクスチャへ格納し、`crates/minase-core/tests/lishogi_replay.rs`はその局面から再生を始める。
 uy7y6mP6は標準初期局面から始まり、9手目に同一局面が4回目に現れるが可逆手が8手しかないため裁定されず、128手目の王駒捕獲で終わる。
 EHUTJJu4とA4EO2swaは4欄のSFENで与えられる途中局面から始まり、双方のじっとの往復で可逆手12手目に裁定される。
 この2局は2023年4月の対局であり、lishogiが反復による終局に`repetition`の状態名を割り当てる前（scalashogiのコミットfe9ccf8、2023年5月20日）なので、APIは`draw`を返す。
@@ -158,7 +158,7 @@ Lishogi-Botは、自分の手番で`go`を送る前に、lishogiから受け取�
 各対局の最初の1手だけは、時計の引数ではなく固定の`movetime`で探索する。
 持ち時間が残っている間は、minaseが受け取る残り時間は実際より`move_overhead`以上少なく、秒読みと加算を予算式が足し戻しても実際の上限を超えない。
 一方、持ち時間が秒読みに近いか秒読みに入っている間は、切り上げによって`btime`が0になり、`move_overhead`の減算は効かない。
-このときminaseの予算式は秒読みの8割を上限にするので（`src/search/alphabeta/time.rs`）、サーバへの送信遅延に使える余裕は秒読みの2割だけである。
+このときminaseの予算式は秒読みの8割を上限にするので（`crates/minase/src/search/alphabeta/time.rs`）、サーバへの送信遅延に使える余裕は秒読みの2割だけである。
 したがって秒読みの短い対局ほど余裕が小さく、安全性は換算式からは導けず、後述の端到端の実測で確かめる。
 lishogiの秒読みは複数回（periods）を持ち得るが、Lishogi-Botは回数を送らないので、minaseは1回として扱う（「設計判断」の節）。
 
@@ -178,7 +178,7 @@ Lishogi-Botは、途中局面から始まる対局では`initialSfen`をその�
 
 ### フェーズ1　反復裁定の整合
 
-RULES.md第31条のR1へ前提条件を追記し、`src/core/game/referee.rs`、`src/core/game/adjudication/`、および`src/core/game/repetition/r1.rs`を更新し、単体テストとリプレイ照合の対局を追加する。
+RULES.md第31条のR1へ前提条件を追記し、`crates/minase-core/src/game/referee.rs`、`crates/minase-core/src/game/adjudication/`、および`crates/minase-core/src/game/repetition/r1.rs`を更新し、単体テストとリプレイ照合の対局を追加する。
 単体テストは、対局開始直後、不可逆手の直後、および仮想着手の判定経路の3つの境界を含める。
 完了条件は、`cargo test`が通り、追加した対局の終局裁定がlishogiと一致し、既存の全フィクスチャの結果が変わらないことである。
 着手前に、R1の条文変更とSPRT対象外の扱いについて利用者の裁定を得る。
@@ -206,7 +206,7 @@ RULES.md第31条のR1へ前提条件を追記し、`src/core/game/referee.rs`、
 ## 検証
 
 - `cargo test`、`cargo clippy --all-targets`、`cargo fmt --all -- --check`、`git diff --check`をフェーズ1の完了条件とする。
-- リプレイ照合`tests/lishogi_replay.rs`が、追加した対局を含む全局で各手の合法性と終局裁定の一致を報告する。
+- リプレイ照合`crates/minase-core/tests/lishogi_replay.rs`が、追加した対局を含む全局で各手の合法性と終局裁定の一致を報告する。
 - 公開運用の事後照合は、受諾した全対局を母数とする。完走した対局は、lishogi APIから取得してminaseの`--rules lishogi`で再生し、各手の受理と終局裁定の一致を確かめる。取得と照合は、lishogi全棋譜照合で使った方式（`/api/games/user/<Bot名>?perfType=chushogi&moves=true`で取得し、USIの`state`で照合する）を踏襲する。
 - 完走しなかった対局は、無活動による中断（abort）、相手の切断、Lishogi-Botの通信例外、および対局ストリームの終了に理由を分け、minase側に起因するものが0件であることを確かめる。相手の切断と相手による中断は異常に数えない。
 - 同じ対局群について、Lishogi-Botのログから次の件数を数える。`position`の拒否、`bestmove`の欠落、エンジンプロセスの異常終了と残存、および時間切れ負け。いずれも0件であることを要する。

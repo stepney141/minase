@@ -33,7 +33,7 @@
 
 ## 既存エンジンの数え方
 
-Stockfishとやねうらおうは現行のmasterを2026年9月19日に取得し、HaChuは[RULES.md](../../RULES.md)の［E5］と同じコミットdf26f4aを参照した。
+Stockfishとやねうらおうは現行のmasterを2026年9月19日に取得し、HaChuは[RULES.md](../rules/RULES.md)の［E5］と同じコミットdf26f4aを参照した。
 以下の`do_move`は着手を盤面へ適用する関数であり、minaseの`make_move_unchecked`に相当する。
 null moveは、枝刈りの判定のために手番だけを相手へ渡す仮想の着手であり、`do_null_move`がこれを適用する。
 
@@ -108,3 +108,4 @@ hard limitと停止フラグの確認周期は4096ノードのままであり、
 - [Stockfish `src/thread.cpp`](https://github.com/official-stockfish/Stockfish/blob/master/src/thread.cpp)（`ThreadPool::nodes_searched`）
 - [やねうらおう `yaneuraou-search.cpp`](https://github.com/yaneurao/YaneuraOu/blob/master/source/engine/yaneuraou-engine/yaneuraou-search.cpp)（`YaneuraOuWorker::do_move`、`do_null_move`）
 - [HaChu（Debian収録版）](https://salsa.debian.org/debian/hachu)の`hachu.c` 2030行から2087行
+- 旧版の計数の引用元は、[Stockfish 16の`src/position.cpp` 687行](https://github.com/official-stockfish/Stockfish/blob/sf_16/src/position.cpp#L687)（GPL-3.0-or-later）と[やねうらおうv6.00の`source/position.cpp` 1147行](https://github.com/yaneurao/YaneuraOu/blob/v6.00/source/position.cpp#L1147)（GPL-3.0）である

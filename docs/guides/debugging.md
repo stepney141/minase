@@ -71,7 +71,7 @@ cargo run --release --features invariants --bin random_play -- --rules engine-de
 
 **lishogiの対局**：lishogiの対局は、棋譜の着手列を`position ... moves ...`へ与えて再現する。
 途中の局面から始まる対局の開始局面は、lishogi APIの`initialSfen`欄にある（[lishogi Bot接続](../plans/lishogi-bot.md)）。
-規則の裁定がlishogiと食い違う対局は、`scripts/fetch_lishogi_replays.py`の対局一覧へ加えて固定データを作り直すと、`tests/lishogi_replay.rs`が合法性と終局の裁定を照合する回帰テストになる。
+規則の裁定がlishogiと食い違う対局は、`scripts/fetch_lishogi_replays.py`の対局一覧へ加えて固定データを作り直すと、`crates/minase-core/tests/lishogi_replay.rs`が合法性と終局の裁定を照合する回帰テストになる。
 
 **並列探索**：`Threads`が2以上の探索は、共有置換表へのアクセス順がスケジューリングに依存するので、固定深さでも再現しない。
 まず`Threads=1`で同じ症状が出るかを確かめ、出れば単一スレッドの問題として調べる。
@@ -141,7 +141,7 @@ target/stats/release/bench --depth 5
 
 変更の前後で統計を比べるときは、同じ深さと`Threads=1`で両方の`bench`を実行し、回数の比だけを読む。
 速度は計測コードなしのバイナリで測り直す（[教訓](../lessons/shared-probe-counter-distorts-threads.md)）。
-特定の改良の発動回数のように固定項目にない回数は、`src/search/stats.rs`の項目の宣言へ項目を1つ足し、該当箇所に加算を書いたパッチで数える。
+特定の改良の発動回数のように固定項目にない回数は、`crates/minase/src/search/stats.rs`の項目の宣言へ項目を1つ足し、該当箇所に加算を書いたパッチで数える。
 合算と出力は宣言から自動で生成される。
 パッチは`docs/measurements/<測定名>/diagnostic.patch`として記録に残し、masterへは入れない。
 記録の例は[段階8の発動率の診断](../measurements/strength-stage8-activation-diag.md)にある。
@@ -159,7 +159,7 @@ target/stats/release/bench --depth 5
 失敗の診断は、局面のZobristキー、手数、差分更新と全計算の両方の中間値を含む。
 
 対称性の破れは、段反転と陣営交換を施した局面で評価が一致するかで調べる。
-`src/eval/pst/tests.rs`は、手で置いた局面と、固定シードのランダム対局から採った局面について、この不変性を検査している。
+`crates/minase/src/eval/pst/tests.rs`は、手で置いた局面と、固定シードのランダム対局から採った局面について、この不変性を検査している。
 minaseの評価で成り立つ対称性は「段反転と陣営交換」だけであり、左右反転では評価は一致しない（学習PSTは筋ごとに異なる重みを持つ）。
 
 ある局面の評価値が不自然なときは、`eval`で升ごとの寄与を読み、寄与の大きい駒から原因を探す。

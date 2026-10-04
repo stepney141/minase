@@ -1,6 +1,29 @@
 allow-branch = ["master"]
 pre-release-commit-message = "chore(release): v{{version}}"
 tag-message = "{{crate_name}} v{{version}}"
-# The dry run only prints the release notes; the real run prepends them to CHANGELOG.md.
-pre-release-hook = ["sh", "-c", 'if [ "$DRY_RUN" = true ]; then git cliff --unreleased --tag "v$NEW_VERSION"; else git cliff --unreleased --tag "v$NEW_VERSION" --prepend CHANGELOG.md; fi']
+# The dry run only prints the release notes; the real run prepends each crate's changelog.
+pre-release-hook = ["sh", "-eu", "-c", '''
+set -- --config "$WORKSPACE_ROOT/cliff.toml" --repository "$WORKSPACE_ROOT" --unreleased
+case "$CRATE_NAME" in
+    minase)
+        set -- "$@" --include-path 'crates/minase/**' --tag "v$NEW_VERSION"
+        changelog="$WORKSPACE_ROOT/CHANGELOG.md"
+        ;;
+    minase-core)
+        set -- "$@" --include-path 'crates/minase-core/**' --tag-pattern '^minase-core-v' --tag "minase-core-v$NEW_VERSION"
+        changelog="$CRATE_ROOT/CHANGELOG.md"
+        ;;
+    *)
+        printf 'Unsupported crate: %s\n' "$CRATE_NAME" >&2
+        exit 1
+        ;;
+esac
+if [ "$DRY_RUN" != true ]; then
+    set -- "$@" --prepend "$changelog"
+fi
+exec git cliff "$@"
+''']
+publish = false
 push = false
+# Release each crate in its own commit, so {{version}} renders and minase-core can name its own tag.
+consolidate-commits = false

@@ -180,9 +180,9 @@ class WorkflowTest(unittest.TestCase):
                 if command[:3] == ["git", "worktree", "add"]:
                     destination = Path(command[-2])
                     checkouts[destination] = command[-1]
-                    (destination / "nets").mkdir(parents=True)
+                    (destination / "crates/minase/nets").mkdir(parents=True)
                     weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
-                    write_mnpt(destination / "nets/pst.bin", weights, weights,
+                    write_mnpt(destination / "crates/minase/nets/pst.bin", weights, weights,
                                initial_piece_values(), 1000)
                 elif command[:2] == ["cargo", "build"]:
                     names = [command[index + 1] for index, value in enumerate(command) if value == "--bin"]
@@ -505,7 +505,7 @@ class WorkflowTest(unittest.TestCase):
     def test_diagnosis_rejects_modified_probe_worktree(self) -> None:
         run, _ = self.prepared()
         self.completed_training(run)
-        for head, status in (("0" * 40, ""), ("1" * 40, " M src/bin/pst_probe.rs")):
+        for head, status in (("0" * 40, ""), ("1" * 40, " M crates/minase/src/bin/pst_probe.rs")):
             with self.subTest(head=head, status=status), \
                     patch.object(workflow, "git", side_effect=lambda repo, *args:
                                  head if args == ("rev-parse", "HEAD") else status), \

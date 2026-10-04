@@ -32,14 +32,14 @@
 
 対象は次のコードとビルド設定である。
 
-- `src/core/movegen/`は合法手の生成、探索専用の捕獲生成、および利きの逆引きを実装する。
-- `src/core/attacks/`は駒種ごとの動きの定義、固定利きの表、および走り計算を実装する。
-- `src/core/board/bitboard.rs`は144升の集合を3個の64ビット整数で表し、段階4の走り計算の書き換えでだけ対象になる。
-- `src/core/position/`は着手の適用と復元（`make_move.rs`）、駒種別のビットボード（`mod.rs`）、およびzobristハッシュ（`zobrist.rs`）を保持する。
-- `src/core/movegen/lion_capture.rs`は獅子捕獲後の足を、`src/core/promotion.rs`は成りを判定する。
-- `src/search/alphabeta/`の静止探索、主探索の手選択器、およびノード計数を対象とする。
-- `src/search/alphabeta/see.rs`は交換列を評価する。
-- `src/eval/pst/accumulator.rs`は駒位置評価の累算値を差分更新する。
+- `crates/minase-core/src/movegen/`は合法手の生成、探索専用の捕獲生成、および利きの逆引きを実装する。
+- `crates/minase-core/src/attacks/`は駒種ごとの動きの定義、固定利きの表、および走り計算を実装する。
+- `crates/minase-core/src/board/bitboard.rs`は144升の集合を3個の64ビット整数で表し、段階4の走り計算の書き換えでだけ対象になる。
+- `crates/minase-core/src/position/`は着手の適用と復元（`make_move.rs`）、駒種別のビットボード（`mod.rs`）、およびzobristハッシュ（`zobrist.rs`）を保持する。
+- `crates/minase-core/src/movegen/lion_capture.rs`は獅子捕獲後の足を、`crates/minase-core/src/promotion.rs`は成りを判定する。
+- `crates/minase/src/search/alphabeta/`の静止探索、主探索の手選択器、およびノード計数を対象とする。
+- `crates/minase/src/search/alphabeta/see.rs`は交換列を評価する。
+- `crates/minase/src/eval/pst/accumulator.rs`は駒位置評価の累算値を差分更新する。
 - `Cargo.toml`のreleaseプロファイルを対象とする。
 
 本書の用語は第1期の設計書の定義に従う。
@@ -55,7 +55,7 @@
 ## 依存関係
 
 利き逆引きの契約は[棋力向上段階3](strength-stage3.md)が、捕獲専用生成の契約は[棋力向上段階1](strength-stage1.md)が定め、探索専用生成の残存手順とSEEの判定契約は[第1期の設計書](movegen-speedup.md)が定める。
-本マイルストーンはこれらの契約を変えず、契約テスト（`src/core/movegen/tests/`、`src/core/attacks/tables.rs`のテスト、`src/search/alphabeta/tests/captures.rs`、`src/search/alphabeta/see.rs`のテスト）を各段階の検証に使う。
+本マイルストーンはこれらの契約を変えず、契約テスト（`crates/minase-core/src/movegen/tests/`、`crates/minase-core/src/attacks/tables.rs`のテスト、`crates/minase/src/search/alphabeta/tests/captures.rs`、`crates/minase/src/search/alphabeta/see.rs`のテスト）を各段階の検証に使う。
 計測区間は[大容量メモリの確保を速度指標に含めない方針](../lessons/bench-allocation-outside-timing.md)に従い、診断の件数は[独立した参照値と照合する規則](../lessons/compare-diagnostics-with-independent-reference.md)に従う。
 段階ごとの固定費は[段階生成の固定費の教訓](../lessons/staged-generation-fixed-cost.md)のとおり包含時間で測る。
 最終のSPRTは[SPRTの手引き](../guides/sprt.md)に従う。
@@ -173,7 +173,7 @@ STC（10秒＋0.1秒）は1ペアが約136秒、同時16対局で1ペアあた�
 
 `scripts/bench_compare.py`に、段階の親コミットを指定して候補と親を交互に測る`--parent`を加え、速度の基準（`--baseline`）は第1期の採用版、参照（`--reference`）は照合参照コミットのまま使う。
 局面別一致は参照に対して、累積の速度比は基準に対して、段階の採否は親に対して報告する。
-第1期の[処理件数診断の差分](../measurements/movegen-speedup-ideas-counts/diagnostic.patch)（`src/search/mod.rs`と`src/core/movegen/`へ件数の出力を加える差分で、診断用のターゲットディレクトリにだけ当てる）へ、静止探索の初期化における対象升数、自駒の利き計算回数、走り計算回数、対象升と交わらない利き線の方向数、対象升へ届く自駒数、置換表の照合の的中率、SEEで逆引きなしに早期終了できる呼出し数（段階6）、および静止探索ノードの終わり方（静的評価の打ち切り、置換表の打ち切り、候補が空、候補あり）の分布（段階7と段階9）の集計を加える。
+第1期の[処理件数診断の差分](../measurements/movegen-speedup-ideas-counts/diagnostic.patch)（`crates/minase/src/search/mod.rs`と`crates/minase-core/src/movegen/`へ件数の出力を加える差分で、診断用のターゲットディレクトリにだけ当てる）へ、静止探索の初期化における対象升数、自駒の利き計算回数、走り計算回数、対象升と交わらない利き線の方向数、対象升へ届く自駒数、置換表の照合の的中率、SEEで逆引きなしに早期終了できる呼出し数（段階6）、および静止探索ノードの終わり方（静的評価の打ち切り、置換表の打ち切り、候補が空、候補あり）の分布（段階7と段階9）の集計を加える。
 各件数には独立した参照を定める。
 対象升数は、相手駒を独立に走査して価値の閾値と王駒の条件から再構成した集合の大きさと一致しなければならない。
 対象升へ届く自駒数は、特殊駒を除く自駒について合法性判定前の利きを独立に求め、対象升と交わる駒を数えた値と一致しなければならない。
@@ -193,7 +193,7 @@ SEEの早期終了の件数は、条件を満たす呼出しで参照実装の�
 固定利きだけの駒では走りの検査自体を省き、走りを持つ駒でも固定利きと対象升の積を先に取る。
 見込みは、走り計算の自己時間のうち静止探索の初期化に属する約11ポイントに、段階1で数える「対象升と交わらない方向」の割合を掛け、選別の費用を差し引いた値とする。
 参考として、届かない駒に属する走り計算の割合77.7%をそのまま当てはめると約8.6ポイントになるが、これは方向単位の値ではないので見込みには使わない。
-検証は、`src/search/alphabeta/tests/captures.rs`の残存手順一致、`src/core/movegen/tests/properties.rs`の捕獲生成一致、および局面別一致とNPSによる。
+検証は、`crates/minase/src/search/alphabeta/tests/captures.rs`の残存手順一致、`crates/minase-core/src/movegen/tests/properties.rs`の捕獲生成一致、および局面別一致とNPSによる。
 結果は[段階2のbench比較](../measurements/movegen-speedup-2-stage2-bench-depth5.md)にある。
 
 ### 段階3　対象升が少ないノードの逆引き生成
@@ -218,7 +218,7 @@ SEEの早期終了の件数は、条件を満たす呼出しで参照実装の�
 商を2で飽和させれば添字が常に配列の範囲内であることをコンパイラが証明でき、検査が消える。
 見込みは、走り計算の自己時間（合計17.9ポイント）のうち走査と2回目の表引きに当たる部分であり、探索時間の1%から3%とする。
 語選択の分岐除去が試作で遅くなった結果を踏まえ、まず添字が増える4方向の減算方式だけを1変種として測り、速くならなければ本段階は表の削除と方向マスクの表引きだけを残す。
-検証は`src/core/attacks/tables.rs`の逐次歩行との一致テスト（両方向、語境界、遮蔽なし、複数遮蔽、仮想占有）と、`src/core/movegen/tests/`の駒の動きのテストによる。
+検証は`crates/minase-core/src/attacks/tables.rs`の逐次歩行との一致テスト（両方向、語境界、遮蔽なし、複数遮蔽、仮想占有）と、`crates/minase-core/src/movegen/tests/`の駒の動きのテストによる。
 
 SEEの逆引きの固定利きも本段階に含める。
 `attackers_to_by`は、固定利きについて29駒種の逆引き表を順に引き、駒種ごとに空集合の検査を挟んでいる。
@@ -226,7 +226,7 @@ SEEの逆引きの固定利きも本段階に含める。
 在席マスク（各対局者について盤上に存在する駒種の集合）は、近傍走査の採用後に駒種の走査が残る箇所（特殊駒3種の検査など）を測り、維持費（`put_piece`と`remove_piece`での更新）を含めて増分がある場合にだけ加える。
 `lion_has_foot_after_capture`が使う`square_is_controlled`は、獅子を取った駒の升に対して、取られた側（獅子の所有者）の全駒の利きを仮想盤面で順方向に計算しているので、仮想盤面の占有と取られた側を与えた`attackers_to_by`へ置き換える。
 見込みは、逆引きの自己時間9.1ポイントのうち固定利きの逆引きに当たる部分の半分、探索時間の1%から3%である。
-検証は`src/core/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`src/search/alphabeta/see.rs`の参照実装との枝刈り判断の一致、および獅子規則のテストによる。
+検証は`crates/minase-core/src/movegen/tests/attackers.rs`の逆引きと駒別利きの一致、`crates/minase/src/search/alphabeta/see.rs`の参照実装との枝刈り判断の一致、および獅子規則のテストによる。
 変種ごとの測定と採否は[段階4のbench比較](../measurements/movegen-speedup-2-stage4-bench-depth5.md)にあり、減算方式は親比1.0904倍、近傍走査と足判定の逆引き化は1.0507倍で採用し、減少方向の`leading_zeros`と番兵表への書き換え（1.0039倍）と在席マスク（0.9952倍）は親の幅内で採用しなかった。
 
 ### 段階5　静止探索の候補処理の簡素化
@@ -266,7 +266,7 @@ SEEの逆引きの固定利きも本段階に含める。
 殺し手は各Killer段階で直ちに返し、返した手には印を付けて以後の殺し手検索と非捕獲手の列挙から除き、`position`と`remove`による線形の詰め直しをなくす。
 主探索の着手順は変えず、同点と重複を含む手選択器の全出力列を参照と照合する。
 見込みは、主探索の全手生成の包含時間7.6ポイントのうち捕獲の再生成と判別に当たる部分、探索時間の2%から4%である。
-検証は、非捕獲生成の結果が全手生成から捕獲を除いた列と順序まで一致する契約テストを`src/core/movegen/tests/properties.rs`へ加え、経由升で取って空升へ進む手、相手駒を跳び越す直接の跳び、じっと、および角鷹と飛鷲の2段階移動を含む局面で確かめ、局面別一致で確かめる。
+検証は、非捕獲生成の結果が全手生成から捕獲を除いた列と順序まで一致する契約テストを`crates/minase-core/src/movegen/tests/properties.rs`へ加え、経由升で取って空升へ進む手、相手駒を跳び越す直接の跳び、じっと、および角鷹と飛鷲の2段階移動を含む局面で確かめ、局面別一致で確かめる。
 
 探索ノードの固定費も本段階に含める。
 次の変更を1単位にまとめる。

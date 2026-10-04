@@ -154,7 +154,7 @@ def check_existing_data(config: dict) -> list[dict]:
         if header.rule_set != RULE_SET.decode("utf-8") or len(records) == 0:
             raise ValueError(f"{path}: requires nonempty data with rules {RULE_SET.decode('utf-8')}")
         if provenance[0].result_origin == "selfplay":
-            # src/rng.rs::derive_seed の base_seed + game_number に依存する。
+            # crates/minase-core/src/rng.rs::derive_seed の base_seed + game_number に依存する。
             # 記録されていない破棄対局まで復元はできない。過去ログとの照合も必要。
             start = header.seed + 1
             end = header.seed + int(records["game"].max()) + 1
@@ -222,7 +222,7 @@ def prepare(config_path: Path) -> None:
         write_json(run / "settings.json", config)
         generator = run / "generator"
         run_command(run, "worktree", ["git", "worktree", "add", "--detach", str(generator), base], ROOT)
-        shutil.copyfile(generator / "nets/pst.bin", run / "pst-base.bin")
+        shutil.copyfile(generator / "crates/minase/nets/pst.bin", run / "pst-base.bin")
         read_mnpt(run / "pst-base.bin")
         run_command(run, "build", ["cargo", "build", "--release", "--locked", "--target-dir",
                     str(generator / "target"), "--bin", "selfplay_gen"], generator)

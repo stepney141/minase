@@ -2,20 +2,21 @@
 
 ## 先に読む要約
 
-中核モジュール`src/core/`は、中将棋の規則をRULES.mdどおりに実装する層であり、盤、駒、局面、合法手生成、規則セット、および対局の審判を持つ。
+中核モジュール`crates/minase-core/src/`は、中将棋の規則をRULES.mdどおりに実装する層であり、盤、駒、局面、合法手生成、規則セット、および対局の審判を持つ。
 このうち局面の`position.rs`（2,375行）、規則セットの`rules.rs`（2,143行）、審判の`game.rs`（2,289行）、および終局裁定の`adjudication.rs`（939行）は、それぞれ複数の関心事を1ファイルに抱えている。
 たとえば`rules.rs`は、規則コードの文字列処理、規則セットの組み立て、成りの可否、および獅子の捕獲制限（RULES.md第13〜16条）を同居させ、試験の大半は規則セットではなく獅子の捕獲制限を検査している。
 本書は、コードの目的ごとにファイルとディレクトリを分け、1ファイルが1つの関心事だけを持つ配置へ移す。
-盤の座標系（升、方向、升集合）は`src/core/board/`にまとめ、局面、規則セット、駒、および審判はディレクトリへ昇格させ、成りの判定は新しい`src/core/promotion.rs`へ、獅子の捕獲制限は合法手生成の`src/core/movegen/`へ移す。
+盤の座標系（升、方向、升集合）は`crates/minase-core/src/board/`にまとめ、局面、規則セット、駒、および審判はディレクトリへ昇格させ、成りの判定は新しい`crates/minase-core/src/promotion.rs`へ、獅子の捕獲制限は合法手生成の`crates/minase-core/src/movegen/`へ移す。
 終局裁定と反復の判定は、唯一の呼び出し元である審判`game`の子モジュールにする。
-再編は処理の中身を変えない移動であり、固定局面を深さ6まで探索するベンチ（`src/bin/bench.rs`）の出力と、全試験の名前と結果が再編の前後で一致することを完了条件とする。
+再編は処理の中身を変えない移動であり、固定局面を深さ6まで探索するベンチ（`crates/minase/src/bin/bench.rs`）の出力と、全試験の名前と結果が再編の前後で一致することを完了条件とする。
 
 ## 状態
 
 完了。
 2026年9月27日に起案、着手、および完了した。
-`src/core/`を本書の配置へ移し、各コミットで深さ6のbenchの出力、試験の件数と名前、および全試験の結果が再編前と一致することを確かめてmasterへ統合した。
+当時の`src/core/`を本書の配置へ移し、各コミットで深さ6のbenchの出力、試験の件数と名前、および全試験の結果が再編前と一致することを確かめてmasterへ統合した。
 benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側へ約0.15%外れたが、benchのバイナリに含まれるminaseの関数の集合と各関数の機械語のバイト数（`nm --size-sort`の値）が基点と一致し、生成コードは変わっていない。
+2026年10月4日に、[crate分割](crate-split.md)がこのモジュールを`core`の階層を除いてライブラリ`minase-core`の直下へ移したので、本書のパスは`crates/minase-core/src/`の下を指し、公開パスは`minase::core::X`ではなく`minase_core::X`になった。
 
 ## 目的
 
@@ -24,7 +25,7 @@ benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側�
 
 ## 適用範囲
 
-対象は`src/core/`の全体、`src/core/`の項目を参照する`src/lib.rs`、`src/eval/`、`src/notation/`、`src/search/`、`src/test_util.rs`の`use`文、および`docs/`にある`src/core/`のパスの参照である。
+対象は`crates/minase-core/src/`の全体、`crates/minase-core/src/`の項目を参照する`crates/minase/src/lib.rs`、`crates/minase/src/eval/`、`crates/minase-core/src/notation/`、`crates/minase/src/search/`、`crates/minase-core/src/test_util.rs`の`use`文、および`docs/`にある`crates/minase-core/src/`のパスの参照である。
 
 関数、型、定数、および試験の名前は変えない。
 処理の内容、引数、処理の順序、およびインライン属性（`#[inline]`）も変えない。
@@ -34,10 +35,10 @@ benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側�
 
 | パス | 変えない理由 |
 |---|---|
-| `src/core/attacks/` | 駒の動きの定義（`fixed.rs`）、走り駒の射線（`sliding.rs`）、および前計算表（`tables.rs`）に既に分かれている。 |
-| `src/core/predecessor/` | 直前局面の生成器であり、駒の在庫、一時状態、および逆向きの着手に既に分かれている。 |
-| `src/core/movegen/search_captures.rs` | 静止探索の捕獲生成として既に独立している。ファイルを動かさないので、試験を指す`#[path = "tests/ordinary_capturer.rs"]`もそのまま有効である。 |
-| `src/core/movegen/tests/`の既存ファイル | 条文ごとに既に分かれている。`tests/mod.rs`が`pub(crate) mod tests`として探索部の試験から参照される宣言も変えない。 |
+| `crates/minase-core/src/attacks/` | 駒の動きの定義（`fixed.rs`）、走り駒の射線（`sliding.rs`）、および前計算表（`tables.rs`）に既に分かれている。 |
+| `crates/minase-core/src/predecessor/` | 直前局面の生成器であり、駒の在庫、一時状態、および逆向きの着手に既に分かれている。 |
+| `crates/minase-core/src/movegen/search_captures.rs` | 静止探索の捕獲生成として既に独立している。ファイルを動かさないので、試験を指す`#[path = "tests/ordinary_capturer.rs"]`もそのまま有効である。 |
+| `crates/minase-core/src/movegen/tests/`の既存ファイル | 条文ごとに既に分かれている。`tests/mod.rs`が`pub(crate) mod tests`として探索部の試験から参照される宣言も変えない。 |
 
 `docs/measurements/`の測定記録と`docs/audits/`の監査報告は、ある時点の実行やコードを記録して以後は凍結する文書（docs/README.md）なので、パスの参照を書き換えない。
 
@@ -48,7 +49,7 @@ benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側�
 同書は、ディレクトリによるグループ化が割に合う条件として、ファイル数による見通しの悪化と、機械検査したい境界の2つを挙げていた。
 現在は、局面、規則セット、および審判の各ファイルが2,000行を超え、非公開の欄を参照してよい範囲（局面の欄、終局裁定の文脈の欄、反復の履歴の欄）をファイル単位では表せないので、2つ目の条件が成立している。
 
-`src/core/`を変更する未統合のブランチはない（2026年9月27日に`git diff master...<ブランチ> -- src/core`で確認した）。
+`crates/minase-core/src/`を変更する未統合のブランチはない（2026年9月27日に`git diff master...<ブランチ> -- crates/minase-core/src`で確認した）。
 兄弟リポジトリの`minase-gui`と`minase-lishogi-bot`は、minaseのライブラリを参照せず実行ファイルだけを使う。
 
 ## 設計判断
@@ -56,11 +57,11 @@ benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側�
 | 論点 | 採用 | 棄却した代案 |
 |---|---|---|
 | 局面の分割 | `position/`へ昇格し、`Position`の定義を`mod.rs`に、欄を直接読み書きする処理を子モジュールに置く | 兄弟ファイルへ`impl Position`を分ける |
-| 成りの判定の置き場所 | 新しい`src/core/promotion.rs` | `rules/promotion.rs`、または`movegen/`の中 |
+| 成りの判定の置き場所 | 新しい`crates/minase-core/src/promotion.rs` | `rules/promotion.rs`、または`movegen/`の中 |
 | 獅子の捕獲制限の置き場所 | `movegen/lion_capture.rs` | `rules/lion.rs` |
 | 着手の取り消し記録`Undo` | `position/make_move.rs`へ移す | `mv.rs`に残す |
-| 終局裁定と反復の置き場所 | `game/`の子モジュール`game/adjudication/`と`game/repetition/` | `src/core/`直下に残す |
-| 盤の座標系の置き場所 | `square.rs`、`direction.rs`、`bitboard.rs`を中身を変えずに`src/core/board/`へまとめ、`board/mod.rs`から公開する | `src/core/`直下に残す |
+| 終局裁定と反復の置き場所 | `game/`の子モジュール`game/adjudication/`と`game/repetition/` | `crates/minase-core/src/`直下に残す |
+| 盤の座標系の置き場所 | `square.rs`、`direction.rs`、`bitboard.rs`を中身を変えずに`crates/minase-core/src/board/`へまとめ、`board/mod.rs`から公開する | `crates/minase-core/src/`直下に残す |
 | 試験の置き場所 | 複数の関心事を通して検査する試験は`tests/`の下に主題別のファイルで置き、1関数だけを検査する単体試験は定義元のファイルに残す | すべてを定義元のファイルの`mod tests`へ散らす |
 | 公開パス | ディレクトリの`mod.rs`は自分の子の項目だけを`pub use`で公開し、別のモジュールへ移した項目は呼び出し側の`use`を書き換える | 旧パスを`pub use`で残す |
 
@@ -87,7 +88,7 @@ benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側�
 結果の型を`game/result.rs`に置き、終局裁定と反復を`game/`の子にすると、3者の相互参照は`game/`の中に閉じる。
 3つのモジュールは現在も`pub(crate)`であり、この移動はcrateの公開面を変えない。
 
-盤の座標系を`board/`へまとめるのは、`src/core/`の直下を規則の層の順（盤の座標系、駒、着手、局面、駒の動き、合法手生成、成り、規則セット、審判、直前局面）に並べ、1つの目的を1つのディレクトリで表すためである。
+盤の座標系を`board/`へまとめるのは、`crates/minase-core/src/`の直下を規則の層の順（盤の座標系、駒、着手、局面、駒の動き、合法手生成、成り、規則セット、審判、直前局面）に並べ、1つの目的を1つのディレクトリで表すためである。
 升、方向、および升集合は、いずれもRULES.md第4条の12×12の盤の上の位置と位置の集合を表し、駒や局面に依存しない。
 3つのファイルは互いの非公開の部分を参照しないので、このまとめは非公開の範囲を表す境界ではなく、読む順序を示す配置である。
 3つのファイルはそれぞれ1つの型だけを持つので、中身は分割せずにそのまま移す。
@@ -95,7 +96,7 @@ benchのNPSは再編後の中央値が基点の3回の計測の範囲を下側�
 
 一方、`piece.rs`は手番`Color`、駒種`PieceKind`と成りの対応表、および升の内容の符号`PieceCode`という3つの型を持つので、`piece/`へ分ける。
 
-旧パスを再公開しないのは、`src/core/`の項目の利用者がこのリポジトリ内のコードだけであり、書き換えで足りるからである。
+旧パスを再公開しないのは、`crates/minase-core/src/`の項目の利用者がこのリポジトリ内のコードだけであり、書き換えで足りるからである。
 ただし、`minase::core::rules::parse_rule_set`のように、ディレクトリへ昇格したモジュールが自分の子の項目を`mod.rs`から公開するものは、旧パスの互換ではなくモジュールの公開面そのものである。
 この基準により、`rules`、`position`、`piece`、`game`、および`movegen`の現在の公開パスは、別のモジュールへ移す項目を除いて変わらない。
 公開パスが変わるのは次の2つである。
@@ -112,20 +113,20 @@ crateルートの再公開（`minase::PromotionChoice`、`minase::Square`など�
 
 | パス | 置くもの |
 |---|---|
-| `src/core/mod.rs` | モジュールの宣言。`board`と`promotion`は`pub mod`、`game`は`pub(crate) mod`とし、`square`、`direction`、`bitboard`の宣言は`board/mod.rs`へ、`adjudication`と`repetition`の宣言は`game/mod.rs`へ移す。 |
-| `src/core/mv.rs` | `Move`とその`capture_candidates`だけを残す。 |
-| `src/core/promotion.rs` | `PromotionChoice`、`in_promotion_zone`、および`impl MoveRules`の`promotion_choice`と`promotion_choice_for`。 |
+| `crates/minase-core/src/lib.rs` | モジュールの宣言。`board`と`promotion`は`pub mod`、`game`は`pub(crate) mod`とし、`square`、`direction`、`bitboard`の宣言は`board/mod.rs`へ、`adjudication`と`repetition`の宣言は`game/mod.rs`へ移す。 |
+| `crates/minase-core/src/mv.rs` | `Move`とその`capture_candidates`だけを残す。 |
+| `crates/minase-core/src/promotion.rs` | `PromotionChoice`、`in_promotion_zone`、および`impl MoveRules`の`promotion_choice`と`promotion_choice_for`。 |
 
 ### 盤の座標系
 
 | パス | 置くもの |
 |---|---|
-| `src/core/board/mod.rs` | 子モジュールの宣言と、3つの子の`pub`の項目すべての`pub use`（`BOARD_FILES`、`BOARD_RANKS`、`BOARD_SQUARE_COUNT`、`RAW_SQUARE_COUNT`、`Square`、`SquareRange`、`DIRECTION_COUNT`、`Direction`、`step_square`、`Bitboard`、`FILE_MASKS`、`SquareIter`）。 |
-| `src/core/board/square.rs` | 現行の`src/core/square.rs`をそのまま移す。 |
-| `src/core/board/direction.rs` | 現行の`src/core/direction.rs`をそのまま移す。 |
-| `src/core/board/bitboard.rs` | 現行の`src/core/bitboard.rs`をそのまま移す。 |
+| `crates/minase-core/src/board/mod.rs` | 子モジュールの宣言と、3つの子の`pub`の項目すべての`pub use`（`BOARD_FILES`、`BOARD_RANKS`、`BOARD_SQUARE_COUNT`、`RAW_SQUARE_COUNT`、`Square`、`SquareRange`、`DIRECTION_COUNT`、`Direction`、`step_square`、`Bitboard`、`FILE_MASKS`、`SquareIter`）。 |
+| `crates/minase-core/src/board/square.rs` | 現行の`src/core/square.rs`をそのまま移す。 |
+| `crates/minase-core/src/board/direction.rs` | 現行の`src/core/direction.rs`をそのまま移す。 |
+| `crates/minase-core/src/board/bitboard.rs` | 現行の`src/core/bitboard.rs`をそのまま移す。 |
 
-`src/core/`の内外にある`crate::core::square::`、`crate::core::direction::`、`crate::core::bitboard::`の参照（`src/core/`の外に14行、中に39行）は、`crate::core::board::`へ書き換える。
+`crates/minase-core/src/`の内外にある`crate::core::square::`、`crate::core::direction::`、`crate::core::bitboard::`の参照（`crates/minase-core/src/`の外に14行、中に39行）は、`crate::core::board::`へ書き換える。
 3つのファイルの間の参照（`bitboard.rs`が使う`Square`など）は、`super::square::Square`のような兄弟の子モジュールのパスで書く。
 `FILE_MASKS`は現在どこからも使われていないが、公開APIの項目であり、本書は移動だけを行うので削除しない。
 
@@ -133,52 +134,52 @@ crateルートの再公開（`minase::PromotionChoice`、`minase::Square`など�
 
 | パス | 置くもの |
 |---|---|
-| `src/core/piece/mod.rs` | 子モジュールの宣言と、`Color`、`PieceKind`、`PieceCode`、`COLOR_COUNT`、`PIECE_KIND_COUNT`の`pub use`。 |
-| `src/core/piece/color.rs` | `COLOR_COUNT`と`Color`。 |
-| `src/core/piece/kind.rs` | `PIECE_KIND_COUNT`と`PieceKind`（成りの対応表`promoted`と`unpromoted`を含む）。 |
-| `src/core/piece/code.rs` | `PieceCode`。 |
-| `src/core/piece/tests.rs` | 現行の`piece.rs`の試験4件。 |
+| `crates/minase-core/src/piece/mod.rs` | 子モジュールの宣言と、`Color`、`PieceKind`、`PieceCode`、`COLOR_COUNT`、`PIECE_KIND_COUNT`の`pub use`。 |
+| `crates/minase-core/src/piece/color.rs` | `COLOR_COUNT`と`Color`。 |
+| `crates/minase-core/src/piece/kind.rs` | `PIECE_KIND_COUNT`と`PieceKind`（成りの対応表`promoted`と`unpromoted`を含む）。 |
+| `crates/minase-core/src/piece/code.rs` | `PieceCode`。 |
+| `crates/minase-core/src/piece/tests.rs` | 現行の`piece.rs`の試験4件。 |
 
 ### 局面
 
 | パス | 置くもの |
 |---|---|
-| `src/core/position/mod.rs` | 子モジュールの宣言と`pub use`、`Position`の定義、および欄を読むだけの参照（`piece_at`、`occupied`、`pieces_of`、`pieces_of_kind`、`side_to_move`、`royal_pieces`、`captured_squares`）。 |
-| `src/core/position/zobrist.rs` | 局面のハッシュ値。`ZOBRIST_PIECE_CODE_COUNT`、`ZOBRIST_SEED`、`ZobristKeys`、`ZOBRIST_KEYS`、`zobrist_keys`、`impl Hash for Position`、および`zobrist`、`rights_zobrist`、`recompute_zobrist`、`recompute_rights_zobrist`。 |
-| `src/core/position/setup.rs` | 局面の作成。`empty`と`initial`（RULES.md第5条）。 |
-| `src/core/position/placement.rs` | 駒の配置と除去の基本操作。`put_piece`、`put_piece_without_hash`、`remove_piece`、`remove_piece_without_hash`。 |
-| `src/core/position/lion_trigger.rs` | 先獅子の状態（第15条）。`LionTrigger`、`lion_capture_square`、`set_lion_capture`、`lion_taken_by_non_lion`。 |
-| `src/core/position/promotion_rights.rs` | 成りを保留した駒の権利（第30条P1、P2、P5）。`promotion_deferred`、`set_promotion_deferred`、`clear_promotion_deferred`、`promotion_deferred_is_valid`。 |
-| `src/core/position/make_move.rs` | 着手の適用と取り消し。`CapturedPiece`、`Undo`、`NullUndo`、`flip_side_to_move`、`make_null_move`、`unmake_null_move`、`clone_with_side_to_move`、`make_move_unchecked`、`make_move_with_captures_unchecked`、`unmake_move`。 |
-| `src/core/position/validate.rs` | 局面の不変条件の検査。`PositionError`と`validate`。 |
-| `src/core/position/builder.rs` | `PositionBuildError`と`PositionBuilder`。 |
-| `src/core/position/tests/` | 現行の`position.rs`の試験29件（主題別の表は後述）。 |
+| `crates/minase-core/src/position/mod.rs` | 子モジュールの宣言と`pub use`、`Position`の定義、および欄を読むだけの参照（`piece_at`、`occupied`、`pieces_of`、`pieces_of_kind`、`side_to_move`、`royal_pieces`、`captured_squares`）。 |
+| `crates/minase-core/src/position/zobrist.rs` | 局面のハッシュ値。`ZOBRIST_PIECE_CODE_COUNT`、`ZOBRIST_SEED`、`ZobristKeys`、`ZOBRIST_KEYS`、`zobrist_keys`、`impl Hash for Position`、および`zobrist`、`rights_zobrist`、`recompute_zobrist`、`recompute_rights_zobrist`。 |
+| `crates/minase-core/src/position/setup.rs` | 局面の作成。`empty`と`initial`（RULES.md第5条）。 |
+| `crates/minase-core/src/position/placement.rs` | 駒の配置と除去の基本操作。`put_piece`、`put_piece_without_hash`、`remove_piece`、`remove_piece_without_hash`。 |
+| `crates/minase-core/src/position/lion_trigger.rs` | 先獅子の状態（第15条）。`LionTrigger`、`lion_capture_square`、`set_lion_capture`、`lion_taken_by_non_lion`。 |
+| `crates/minase-core/src/position/promotion_rights.rs` | 成りを保留した駒の権利（第30条P1、P2、P5）。`promotion_deferred`、`set_promotion_deferred`、`clear_promotion_deferred`、`promotion_deferred_is_valid`。 |
+| `crates/minase-core/src/position/make_move.rs` | 着手の適用と取り消し。`CapturedPiece`、`Undo`、`NullUndo`、`flip_side_to_move`、`make_null_move`、`unmake_null_move`、`clone_with_side_to_move`、`make_move_unchecked`、`make_move_with_captures_unchecked`、`unmake_move`。 |
+| `crates/minase-core/src/position/validate.rs` | 局面の不変条件の検査。`PositionError`と`validate`。 |
+| `crates/minase-core/src/position/builder.rs` | `PositionBuildError`と`PositionBuilder`。 |
+| `crates/minase-core/src/position/tests/` | 現行の`position.rs`の試験29件（主題別の表は後述）。 |
 
 ### 規則セット
 
 | パス | 置くもの |
 |---|---|
-| `src/core/rules/mod.rs` | 子モジュールの宣言と、公開する項目の`pub use`。 |
-| `src/core/rules/code.rs` | 規則コード。`RuleCode`（`ALL`と`text`を含む）と`RuleCodeParseError`。 |
-| `src/core/rules/set.rs` | 規則セットの型。`RepetitionRule`、`LionRule`、`PromotionRule`、`ExhaustionRule`、`RuleGroup`、`MoveRules`（構造体と`standard`）、`Rules`（構造体、`ENGINE_DEFAULT`、`LISHOGI`、`adopts`）、`From<Rules> for Vec<RuleCode>`、および`Display for Rules`。 |
-| `src/core/rules/assembly.rs` | 規則コードの列からの組み立てと検査（第33条第2項と第4項）。`RulesError`、`Rules::from_codes`、`assign_group`。 |
-| `src/core/rules/parse.rs` | 規則セットの文字列の解析（第33条第5項と第6項）。`RuleSetParseError`、`RULE_SET_PRESETS`、`parse_rule_set`。 |
-| `src/core/rules/tests.rs` | 現行の`rules.rs`の試験のうち、規則コードと規則セットを検査する7件（`article_29_30_all_rule_codes_round_trip_through_text`から`rules_error_display_identifies_the_missing_group`まで）と、現行の`game.rs`の試験のうち`Rules::from_codes`だけを検査する2件（`article_25_2_repetition_rule_is_mandatory_and_exclusive`と`article_33_9_e2_and_e3_conflict`）。 |
+| `crates/minase-core/src/rules/mod.rs` | 子モジュールの宣言と、公開する項目の`pub use`。 |
+| `crates/minase-core/src/rules/code.rs` | 規則コード。`RuleCode`（`ALL`と`text`を含む）と`RuleCodeParseError`。 |
+| `crates/minase-core/src/rules/set.rs` | 規則セットの型。`RepetitionRule`、`LionRule`、`PromotionRule`、`ExhaustionRule`、`RuleGroup`、`MoveRules`（構造体と`standard`）、`Rules`（構造体、`ENGINE_DEFAULT`、`LISHOGI`、`adopts`）、`From<Rules> for Vec<RuleCode>`、および`Display for Rules`。 |
+| `crates/minase-core/src/rules/assembly.rs` | 規則コードの列からの組み立てと検査（第33条第2項と第4項）。`RulesError`、`Rules::from_codes`、`assign_group`。 |
+| `crates/minase-core/src/rules/parse.rs` | 規則セットの文字列の解析（第33条第5項と第6項）。`RuleSetParseError`、`RULE_SET_PRESETS`、`parse_rule_set`。 |
+| `crates/minase-core/src/rules/tests.rs` | 現行の`rules.rs`の試験のうち、規則コードと規則セットを検査する7件（`article_29_30_all_rule_codes_round_trip_through_text`から`rules_error_display_identifies_the_missing_group`まで）と、現行の`game.rs`の試験のうち`Rules::from_codes`だけを検査する2件（`article_25_2_repetition_rule_is_mandatory_and_exclusive`と`article_33_9_e2_and_e3_conflict`）。 |
 
 ### 合法手生成
 
 | パス | 置くもの |
 |---|---|
-| `src/core/movegen/mod.rs` | 子モジュールの宣言と`pub use`、`MoveGenerator`の定義とその`impl`（現行の32〜113行）。 |
-| `src/core/movegen/generate.rs` | 合法手生成の駆動。自由関数の`generate_moves`と`generate_piece_moves`。 |
-| `src/core/movegen/expand.rs` | 候補手の登録と成りの展開。`promoting_variant`と`push_with_promotion`。 |
-| `src/core/movegen/control.rs` | 利き、ある升へ利く駒の逆引き、および特殊な動きの第1段階の到達升。`piece_control_with_occupancy`、`impl Position`の`attackers_to_by`、`ordinary_attackers_to`、`special_attackers_to`、`piece_control_with_tables`、`piece_control_without_special`、`special_step_destinations`。 |
-| `src/core/movegen/virtual_board.rs` | 着手後の占有を差分で表す`VirtualBoard`。 |
-| `src/core/movegen/lion.rs` | 獅子の2段階移動と跳躍（第12条）。`generate_lion_double_and_jumps`。 |
-| `src/core/movegen/lion_like.rs` | 角鷹と飛鷲の2段階移動（第11条）。`generate_lion_like_double_and_jumps`。 |
-| `src/core/movegen/lion_capture.rs` | 獅子の捕獲制限（第13〜16条と第29条）。`impl MoveRules`の`special_move_is_legal`、`captured_lions`、`is_tsukegui`、`lion_capture_is_legal`、`lion_has_foot_after_capture`。 |
-| `src/core/movegen/checked.rs` | 合法性を検査してから着手を適用する入口。`IllegalMove`と、`impl Position`の`try_make_move`と`try_make_move_with_undo`。 |
-| `src/core/movegen/tests/lion_capture.rs` | 現行の`rules.rs`の試験のうち、獅子の捕獲制限を検査する35件（第3条、第13〜16条、および第29条の節）。 |
+| `crates/minase-core/src/movegen/mod.rs` | 子モジュールの宣言と`pub use`、`MoveGenerator`の定義とその`impl`（現行の32〜113行）。 |
+| `crates/minase-core/src/movegen/generate.rs` | 合法手生成の駆動。自由関数の`generate_moves`と`generate_piece_moves`。 |
+| `crates/minase-core/src/movegen/expand.rs` | 候補手の登録と成りの展開。`promoting_variant`と`push_with_promotion`。 |
+| `crates/minase-core/src/movegen/control.rs` | 利き、ある升へ利く駒の逆引き、および特殊な動きの第1段階の到達升。`piece_control_with_occupancy`、`impl Position`の`attackers_to_by`、`ordinary_attackers_to`、`special_attackers_to`、`piece_control_with_tables`、`piece_control_without_special`、`special_step_destinations`。 |
+| `crates/minase-core/src/movegen/virtual_board.rs` | 着手後の占有を差分で表す`VirtualBoard`。 |
+| `crates/minase-core/src/movegen/lion.rs` | 獅子の2段階移動と跳躍（第12条）。`generate_lion_double_and_jumps`。 |
+| `crates/minase-core/src/movegen/lion_like.rs` | 角鷹と飛鷲の2段階移動（第11条）。`generate_lion_like_double_and_jumps`。 |
+| `crates/minase-core/src/movegen/lion_capture.rs` | 獅子の捕獲制限（第13〜16条と第29条）。`impl MoveRules`の`special_move_is_legal`、`captured_lions`、`is_tsukegui`、`lion_capture_is_legal`、`lion_has_foot_after_capture`。 |
+| `crates/minase-core/src/movegen/checked.rs` | 合法性を検査してから着手を適用する入口。`IllegalMove`と、`impl Position`の`try_make_move`と`try_make_move_with_undo`。 |
+| `crates/minase-core/src/movegen/tests/lion_capture.rs` | 現行の`rules.rs`の試験のうち、獅子の捕獲制限を検査する35件（第3条、第13〜16条、および第29条の節）。 |
 
 `movegen/tests/lion_capture.rs`は、`movegen/tests/mod.rs`で他の試験ファイルと同じく`mod lion_capture;`として宣言する。
 `movegen/tests/mod.rs`の先頭のコメントにある「獅子の捕獲制限は領域D2（rules.rs側）が検証する」という記述は、移動先の`tests/lion_capture.rs`を指すように改める。
@@ -187,19 +188,19 @@ crateルートの再公開（`minase::PromotionChoice`、`minase::Square`など�
 
 | パス | 置くもの |
 |---|---|
-| `src/core/game/mod.rs` | 子モジュールの宣言と`pub use`。 |
-| `src/core/game/result.rs` | 対局の結果。`WinReason`、`DrawReason`、`GameResult`、`GameStatus`。 |
-| `src/core/game/error.rs` | 着手を受け付けなかった理由。`IllegalMoveCause`と`GameError`。 |
-| `src/core/game/referee.rs` | 審判`Game`とその`impl`。 |
-| `src/core/game/adjudication/mod.rs` | 終局裁定の状態と手順。`AdjudicationState`、`AdjudicationContext`（`candidate_is_immediate_win`を含む）、`PostMoveAdjudication`、`adjudicate_after_move`。 |
-| `src/core/game/adjudication/mate.rs` | 王駒の捕獲と詰み（第21条と第23条）。`royal_capture_result`、`captures_last_royal`、`can_capture_last_royal`、`has_no_legal_move`、`is_mate`。 |
-| `src/core/game/adjudication/exhaustion.rs` | 駒枯れ（第22条）。`PieceExhaustionOutcome`、`PieceExhaustionTransition`、`piece_exhaustion_outcome`、`piece_exhaustion_transition`、`promoted_waiting_square`、`is_last_rank`。 |
-| `src/core/game/adjudication/bare_king.rs` | 裸玉の即時裁定（第32条E3）。`bare_king_result`、`bare_king_square`、`effective_pieces`、`dead_pieces`、`pieces_give_check`、`squares_are_adjacent`。 |
-| `src/core/game/adjudication/tests.rs` | 現行の`adjudication.rs`の試験のうち、`article_31_r1_irreversible_moves_are_promotions_captures_and_unpromoted_pawn_or_lance_steps`を除く3件。 |
-| `src/core/game/repetition/mod.rs` | 反復規則ごとの履歴の切り替え。`RepetitionHistory`とその`new`。 |
-| `src/core/game/repetition/r1.rs` | 第31条R1の履歴と裁定。`R1_MIN_REVERSIBLE_PLIES`、`R1Key`、`R1PositionState`、`R1History`、`r1_repetition_result`、`updated_attacking_counters`、`moves_by_color_through`、および現行の`adjudication.rs`にある`move_is_irreversible`と`move_was_attacking`。このファイルの`mod tests`には、現行の`repetition.rs`の試験1件と、`move_is_irreversible`だけを検査する現行の`adjudication.rs`の試験`article_31_r1_irreversible_moves_are_promotions_captures_and_unpromoted_pawn_or_lance_steps`を置く。 |
-| `src/core/game/repetition/prohibition.rs` | 第31条R2とR3の禁止。`R2R3Key`、`R2History`、`R3History`、`repetition_is_forbidden`、`retain_repetition_allowed_moves`。 |
-| `src/core/game/tests/` | 現行の`game.rs`の試験のうち、`rules/tests.rs`へ移す2件を除く51件（主題別の表は後述）。 |
+| `crates/minase-core/src/game/mod.rs` | 子モジュールの宣言と`pub use`。 |
+| `crates/minase-core/src/game/result.rs` | 対局の結果。`WinReason`、`DrawReason`、`GameResult`、`GameStatus`。 |
+| `crates/minase-core/src/game/error.rs` | 着手を受け付けなかった理由。`IllegalMoveCause`と`GameError`。 |
+| `crates/minase-core/src/game/referee.rs` | 審判`Game`とその`impl`。 |
+| `crates/minase-core/src/game/adjudication/mod.rs` | 終局裁定の状態と手順。`AdjudicationState`、`AdjudicationContext`（`candidate_is_immediate_win`を含む）、`PostMoveAdjudication`、`adjudicate_after_move`。 |
+| `crates/minase-core/src/game/adjudication/mate.rs` | 王駒の捕獲と詰み（第21条と第23条）。`royal_capture_result`、`captures_last_royal`、`can_capture_last_royal`、`has_no_legal_move`、`is_mate`。 |
+| `crates/minase-core/src/game/adjudication/exhaustion.rs` | 駒枯れ（第22条）。`PieceExhaustionOutcome`、`PieceExhaustionTransition`、`piece_exhaustion_outcome`、`piece_exhaustion_transition`、`promoted_waiting_square`、`is_last_rank`。 |
+| `crates/minase-core/src/game/adjudication/bare_king.rs` | 裸玉の即時裁定（第32条E3）。`bare_king_result`、`bare_king_square`、`effective_pieces`、`dead_pieces`、`pieces_give_check`、`squares_are_adjacent`。 |
+| `crates/minase-core/src/game/adjudication/tests.rs` | 現行の`adjudication.rs`の試験のうち、`article_31_r1_irreversible_moves_are_promotions_captures_and_unpromoted_pawn_or_lance_steps`を除く3件。 |
+| `crates/minase-core/src/game/repetition/mod.rs` | 反復規則ごとの履歴の切り替え。`RepetitionHistory`とその`new`。 |
+| `crates/minase-core/src/game/repetition/r1.rs` | 第31条R1の履歴と裁定。`R1_MIN_REVERSIBLE_PLIES`、`R1Key`、`R1PositionState`、`R1History`、`r1_repetition_result`、`updated_attacking_counters`、`moves_by_color_through`、および現行の`adjudication.rs`にある`move_is_irreversible`と`move_was_attacking`。このファイルの`mod tests`には、現行の`repetition.rs`の試験1件と、`move_is_irreversible`だけを検査する現行の`adjudication.rs`の試験`article_31_r1_irreversible_moves_are_promotions_captures_and_unpromoted_pawn_or_lance_steps`を置く。 |
+| `crates/minase-core/src/game/repetition/prohibition.rs` | 第31条R2とR3の禁止。`R2R3Key`、`R2History`、`R3History`、`repetition_is_forbidden`、`retain_repetition_allowed_moves`。 |
+| `crates/minase-core/src/game/tests/` | 現行の`game.rs`の試験のうち、`rules/tests.rs`へ移す2件を除く51件（主題別の表は後述）。 |
 
 `move_is_irreversible`と`move_was_attacking`を`r1.rs`へ移すのは、両者がR1の定義する不可逆手と攻撃的着手を判定する関数であり、R1の履歴を更新する入力になるからである。
 `repetition_is_forbidden`を`R2History`および`R3History`と同じファイルに置くのは、この関数が両者の非公開の欄`positions`を直接読むからである。
@@ -274,15 +275,15 @@ crateルートの再公開（`minase::PromotionChoice`、`minase::Square`など�
 
 ## 文書のパス参照
 
-`docs/`（`docs/measurements/`と`docs/audits/`を除く）とコードのdocコメントにある`src/core/`のパスの参照を、新しい配置へ書き換える。
+`docs/`（`docs/measurements/`と`docs/audits/`を除く）とコードのdocコメントにある`crates/minase-core/src/`のパスの参照を、新しい配置へ書き換える。
 対象は約80行であり、`docs/plans/`の`movegen-speedup.md`、`movegen-speedup-2.md`、`movegen-speedup-3.md`、`lishogi-bot.md`、`search-repetition.md`、`predecessor-generator.md`、`spec-first-tests/ledgers/d1.md`から`d4.md`など、および`docs/research/`の各調査に分布する。
-`src/core/square.rs`、`src/core/direction.rs`、および`src/core/bitboard.rs`への参照は、`src/core/board/`の下の同名のファイルへ改める。
-`src/core/rules.rs`、`src/core/position.rs`、`src/core/game.rs`、`src/core/adjudication.rs`、`src/core/repetition.rs`、`src/core/piece.rs`、および`src/core/movegen/mod.rs`への参照は、同じ文にある関数名、型名、または試験名から「再編後の配置」の表に従って移動先のファイルを決める。
-関数名などの手がかりがなく、モジュール全体を指す参照は、ディレクトリ（`src/core/position/`など）へ改める。
+`src/core/square.rs`、`src/core/direction.rs`、および`src/core/bitboard.rs`への参照は、`crates/minase-core/src/board/`の下の同名のファイルへ改める。
+`src/core/rules.rs`、`src/core/position.rs`、`src/core/game.rs`、`src/core/adjudication.rs`、`src/core/repetition.rs`、`src/core/piece.rs`、および`crates/minase-core/src/movegen/mod.rs`への参照は、同じ文にある関数名、型名、または試験名から「再編後の配置」の表に従って移動先のファイルを決める。
+関数名などの手がかりがなく、モジュール全体を指す参照は、ディレクトリ（`crates/minase-core/src/position/`など）へ改める。
 現在存在しないファイル（`src/core/movegen/tests/invariants.rs`、`src/core/movegen/tests/articles.rs`など）への参照と、特定のコミットに固定した引用（`docs/research/protocols/usi-lishogi.md`の［M1］など）は、書かれた時点の記録として残す。
-`src/core/`を前置せずファイル名だけを書いた言及（`rules.rs`、`position.rs`など）も、試験の再構築の台帳（`docs/plans/spec-first-tests/`）の旧テストの所在のように、書かれた時点の文脈での略記として残す。
+`crates/minase-core/src/`を前置せずファイル名だけを書いた言及（`rules.rs`、`position.rs`など）も、試験の再構築の台帳（`docs/plans/spec-first-tests/`）の旧テストの所在のように、書かれた時点の文脈での略記として残す。
 ただし、現行の配置を述べる文（`docs/plans/movegen.md`の「着手生成の構成」の節、`docs/plans/move-canonicalization.md`の`is_tsukegui`の所在など）は新しい配置へ改める。
-行番号の付いた参照（`docs/research/movegen-speedup-ideas.md`の`src/core/movegen/mod.rs#L297`）は、同じ文の関数名から移動先の行を特定できれば新しい行番号へ改め、特定できなければ行番号を削ってパスだけを残す。
+行番号の付いた参照（`docs/research/movegen-speedup-ideas.md`の`crates/minase-core/src/movegen/mod.rs#L297`）は、同じ文の関数名から移動先の行を特定できれば新しい行番号へ改め、特定できなければ行番号を削ってパスだけを残す。
 
 [src構成の整理](src-layout.md)の「core内部はフラット構成を維持する」の節は、本書の配置の方針（1関心事1ファイル、非公開の範囲を表す必要がある型はディレクトリへ昇格し、定義を`mod.rs`に置く）に書き換え、配置の詳細は本書を参照させる。
 
@@ -321,7 +322,7 @@ codexへの指示には、名前の変更、シグネチャの変更、処理の
 収まらない場合は、benchのバイナリに含まれるminaseの関数の集合と各関数の機械語のバイト数（`nm --size-sort`の値）を基点と比べ、[呼び出し元の機械語を比較する教訓](../lessons/check-caller-codegen-for-local-optimizations.md)に従ってインライン化が変わった関数を調べる。
 
 文書の書き換えの後に、`docs/`（`docs/measurements/`と`docs/audits/`を除く）とリポジトリ直下の文書に、再編で消えたパス（`src/core/square.rs`、`src/core/direction.rs`、`src/core/bitboard.rs`、`src/core/rules.rs`、`src/core/position.rs`、`src/core/game.rs`、`src/core/adjudication.rs`、`src/core/repetition.rs`、`src/core/piece.rs`）への参照が、「文書のパス参照」の節で記録として残すと定めたもの（旧テストの所在を記す台帳と、コミットに固定した引用）を除いて残っていないことを`grep`で確かめる。
-`src/core/movegen/mod.rs`への参照は残り得るので、残った参照が`MoveGenerator`の定義を指していることを目で確かめる。
+`crates/minase-core/src/movegen/mod.rs`への参照は残り得るので、残った参照が`MoveGenerator`の定義を指していることを目で確かめる。
 
 ## 完了条件
 
