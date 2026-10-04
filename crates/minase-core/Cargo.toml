@@ -9,6 +9,10 @@ repository = "https://github.com/stepney141/minase"
 readme = "README.md"
 include = ["src/", "tests/", "README.md", "CHANGELOG.md", "LICENSE-MIT"]
 
+# The library tags are minase-core-vX.Y.Z (the default tag-prefix), so its release commits name them too.
+[package.metadata.release]
+pre-release-commit-message = "chore(release): minase-core-v{{version}}"
+
 [lints]
 workspace = true
 

@@ -1,5 +1,5 @@
 allow-branch = ["master"]
-pre-release-commit-message = "chore(release): {{tag_name}}"
+pre-release-commit-message = "chore(release): v{{version}}"
 tag-message = "{{crate_name}} v{{version}}"
 # The dry run only prints the release notes; the real run prepends each crate's changelog.
 pre-release-hook = ["sh", "-eu", "-c", '''
