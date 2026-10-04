@@ -14,7 +14,8 @@ fn run_directory() -> std::path::PathBuf {
 
 fn run_random_match(concurrency: &str, pairs: &str) -> String {
     let run_dir = run_directory();
-    let output = Command::new(env!("CARGO_BIN_EXE_match_runner"))
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run"])
         .arg("--run-dir")
         .arg(&run_dir)
         .args([
@@ -57,7 +58,8 @@ fn without_elapsed(output: &str) -> String {
 
 fn run_minase_candidate_match(candidate: &str) -> String {
     let run_dir = run_directory();
-    let output = Command::new(env!("CARGO_BIN_EXE_match_runner"))
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run"])
         .arg("--run-dir")
         .arg(&run_dir)
         .args([
@@ -142,7 +144,8 @@ fn minase_cecp_match_is_failure_free_and_matches_usi() {
 fn resume_fills_the_lowest_gap_and_preserves_later_records() {
     let run_dir = run_directory();
     let run = |operation: &str| {
-        Command::new(env!("CARGO_BIN_EXE_match_runner"))
+        Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["match", "run"])
             .arg(operation)
             .arg(&run_dir)
             .args([
@@ -205,7 +208,8 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
 #[test]
 fn ponder_invalid_conditions_do_not_create_run_directory() {
     let run_dir = run_directory();
-    let output = Command::new(env!("CARGO_BIN_EXE_match_runner"))
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run"])
         .arg("--run-dir")
         .arg(&run_dir)
         .arg("--ponder")
@@ -223,7 +227,8 @@ fn ponder_invalid_conditions_do_not_create_run_directory() {
 fn ponder_resume_replays_all_counts() {
     let run_dir = run_directory();
     let run = |operation, pairs, ponder| {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_match_runner"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
+        command.args(["match", "run"]);
         command.arg(operation).arg(&run_dir).args([
             "--seed",
             "1234",

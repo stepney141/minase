@@ -44,7 +44,8 @@ fn perft_accepts_d_output_with_lion_and_deferred_promotion() {
     let capture = minase_core::notation::usi::parse(&without_lion, "3h3f").unwrap();
     assert!(unprotected.contains(&capture));
 
-    let result = Command::new(env!("CARGO_BIN_EXE_perft"))
+    let result = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["dev", "perft"])
         .args(["1", "--rules", rules, "--sfen", sfen])
         .output()
         .unwrap();
@@ -63,7 +64,8 @@ fn perft_accepts_d_output_with_lion_and_deferred_promotion() {
 /// debugging-tools.md「perftの規則と拡張SFEN」: 規則の省略はCLIのエラーになる。
 #[test]
 fn perft_requires_rules() {
-    let output = Command::new(env!("CARGO_BIN_EXE_perft"))
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["dev", "perft"])
         .arg("1")
         .output()
         .unwrap();
@@ -82,7 +84,8 @@ fn perft_accepts_basic_and_four_field_sfen_and_rejects_invalid_state() {
     let board = minase_core::to_sfen(&minase_core::Position::initial());
     let mut counts = Vec::new();
     for sfen in [None, Some(board.clone()), Some(format!("{board} - 1"))] {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_perft"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
+        command.args(["dev", "perft"]);
         command.args(["1", "--rules", "engine-default"]);
         if let Some(sfen) = sfen {
             command.args(["--sfen", &sfen]);
@@ -104,7 +107,8 @@ fn perft_accepts_basic_and_four_field_sfen_and_rejects_invalid_state() {
         format!("{board} 6i 1"),
         "k11/12/4P7/12/12/12/12/12/12/12/12/11K b - 1 8c".to_owned(),
     ] {
-        let result = Command::new(env!("CARGO_BIN_EXE_perft"))
+        let result = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["dev", "perft"])
             .args(["1", "--rules", "engine-default", "--sfen", &sfen])
             .output()
             .unwrap();
