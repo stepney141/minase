@@ -7,6 +7,8 @@ description = "A chu shogi library providing boards, pieces, legal move generati
 license = "MIT"
 repository = "https://github.com/stepney141/minase"
 readme = "README.md"
+keywords = ["shogi", "chu-shogi", "board-game", "move-generation", "sfen"]
+categories = ["game-development"]
 include = ["src/", "tests/", "README.md", "CHANGELOG.md", "LICENSE-MIT"]
 
 # The library tags are minase-core-vX.Y.Z (the default tag-prefix), so its release commits name them too.

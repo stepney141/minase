@@ -7,6 +7,8 @@ description = "A USI/CECP chu shogi engine with search and evaluation built on m
 license = "GPL-3.0-or-later"
 repository = "https://github.com/stepney141/minase"
 readme = "README.md"
+keywords = ["shogi", "chu-shogi", "board-game", "usi", "game-ai"]
+categories = ["games"]
 include = ["src/", "nets/", "tests/", "README.md", "COPYING"]
 
 [package.metadata.release]
