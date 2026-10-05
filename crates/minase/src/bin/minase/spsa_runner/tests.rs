@@ -53,16 +53,6 @@ fn manifest(s: Settings) -> Manifest {
         canonical_rules: vec!["L1".to_owned()],
         max_ply: 4096,
         response_timeout_secs: 120,
-        cpu: CpuRecord {
-            model: "test".to_owned(),
-            physical_cores: Some(2),
-            logical_cores: 2,
-            physical_memory_bytes: Some(1024),
-        },
-        runner: HarnessRecord {
-            version: "test".to_owned(),
-            sha256: "c".repeat(64),
-        },
     }
 }
 
@@ -478,7 +468,7 @@ fn resume_reissues_only_missing_iterations_at_all_three_crash_boundaries() {
         );
         assert!(run.is_err());
         drop(store);
-        let (store, records) = Store::resume(&directory.0, &m).unwrap();
+        let (store, records) = Store::resume(&directory.0).unwrap();
         assert_eq!(
             records.keys().copied().collect::<Vec<_>>(),
             match boundary {
@@ -510,7 +500,7 @@ fn resume_reissues_only_missing_iterations_at_all_three_crash_boundaries() {
             assert!(!executed.contains(number));
         }
         drop(store);
-        let (_, records) = Store::resume(&directory.0, &m).unwrap();
+        let (_, records) = Store::resume(&directory.0).unwrap();
         assert_eq!(
             records.keys().copied().collect::<Vec<_>>(),
             vec![1, 2, 3, 4]
@@ -526,7 +516,7 @@ fn resume_reissues_only_missing_iterations_at_all_three_crash_boundaries() {
 }
 
 #[test]
-fn resume_rejects_double_updates_missing_applications_and_manifest_changes() {
+fn resume_rejects_double_updates_and_missing_applications() {
     let directory = Directory::new();
     let m = manifest(settings(3, 1, 1));
     let store = Store::create(&directory.0, &m).unwrap();
@@ -538,20 +528,11 @@ fn resume_rejects_double_updates_missing_applications_and_manifest_changes() {
     )
     .unwrap();
     assert_eq!(
-        Store::resume(&directory.0, &m).unwrap_err().kind(),
+        Store::resume(&directory.0).unwrap_err().kind(),
         io::ErrorKind::WouldBlock
     );
     drop(store);
-    let (_, records) = Store::resume(&directory.0, &m).unwrap();
-    for change in ["seed", "iterations", "engine"] {
-        let mut different = m.clone();
-        match change {
-            "seed" => different.settings.seed += 1,
-            "iterations" => different.settings.iterations += 1,
-            _ => different.engine_sha256.push('0'),
-        }
-        assert!(Store::resume(&directory.0, &different).is_err());
-    }
+    let (_, records) = Store::resume(&directory.0).unwrap();
     let file = directory.0.join("iterations/00000000000000000002.json");
     let mut doubled = records[&2].clone();
     doubled.theta = update(
@@ -562,20 +543,20 @@ fn resume_rejects_double_updates_missing_applications_and_manifest_changes() {
         doubled.d,
     );
     fs::write(&file, serde_json::to_vec(&doubled).unwrap()).unwrap();
-    assert!(Store::resume(&directory.0, &m).is_err());
+    assert!(Store::resume(&directory.0).is_err());
     fs::remove_file(&file).unwrap();
-    assert!(Store::resume(&directory.0, &m).is_err());
+    assert!(Store::resume(&directory.0).is_err());
     let mut duplicate = records[&2].clone();
     duplicate.application = 1;
     fs::write(&file, serde_json::to_vec(&duplicate).unwrap()).unwrap();
-    assert!(Store::resume(&directory.0, &m).is_err());
+    assert!(Store::resume(&directory.0).is_err());
     // 打ち切りの局を含むペアが分類を持つ記録は、破棄の規則と矛盾する。
     let mut cutoff = records[&2].clone();
     cutoff.pairs[0].terminations[0] = TerminationRecord::Cutoff;
     fs::write(&file, serde_json::to_vec(&cutoff).unwrap()).unwrap();
-    assert!(Store::resume(&directory.0, &m).is_err());
+    assert!(Store::resume(&directory.0).is_err());
     fs::write(&file, serde_json::to_vec(&records[&2]).unwrap()).unwrap();
-    assert!(Store::resume(&directory.0, &m).is_ok());
+    assert!(Store::resume(&directory.0).is_ok());
 }
 
 // 後発反復も発行時のθを使い、完了時には最新のθへ加算する。
@@ -757,10 +738,10 @@ with open(sys.argv[1], 'a', buffering=1) as log:
     fs::write(&params_file, "X,250.25,100,400,15,0.002\n").unwrap();
     let engine = format!("python3 -u {} {}", script.display(), transcript.display());
     let run_dir = directory.0.join("run");
-    for operation in ["--run-dir", "--resume"] {
+    {
         let args = Arguments::try_parse_from([
             "spsa_runner",
-            operation,
+            "--run-dir",
             run_dir.to_str().unwrap(),
             "--seed",
             "42",
@@ -782,13 +763,82 @@ with open(sys.argv[1], 'a', buffering=1) as log:
         .unwrap();
         execute(args).unwrap();
     }
+    let manifest_before = fs::read(run_dir.join("manifest.json")).unwrap();
+    let invocations_before = fs::read(run_dir.join("invocations.json")).unwrap();
+    let invocations: Vec<storage::Invocation> =
+        serde_json::from_slice(&invocations_before).unwrap();
+    assert_eq!(invocations.len(), 1);
+    fs::remove_file(&params_file).unwrap();
+    // 握手の宣言がなくなっても、保存した係数を再開に使う。
+    let script_text = fs::read_to_string(&script).unwrap();
+    fs::write(
+        &script,
+        script_text
+            .lines()
+            .filter(|line| !line.contains("option name Tune_"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+    let resume = || {
+        execute(
+            Arguments::try_parse_from(["spsa_runner", "--resume", run_dir.to_str().unwrap()])
+                .unwrap(),
+        )
+    };
+    // 完了済みならエンジンを起動せず、起動記録も増やさない。
+    let commands_before = fs::read(&transcript).unwrap();
+    resume().unwrap();
+    assert_eq!(fs::read(&transcript).unwrap(), commands_before);
+    assert_eq!(
+        fs::read(run_dir.join("invocations.json")).unwrap(),
+        invocations_before
+    );
+    // 最終反復の保存直前に中断した状態を再現する。
+    let last = run_dir.join("iterations/00000000000000000002.json");
+    let expected_last = fs::read(&last).unwrap();
+    fs::remove_file(&last).unwrap();
+    let first_before = fs::read(run_dir.join("iterations/00000000000000000001.json")).unwrap();
+    let mut previous = invocations;
+    previous[0].runner.sha256 = "0".repeat(64);
+    previous[0].cpu.model = "previous machine".to_owned();
+    fs::write(
+        run_dir.join("invocations.json"),
+        serde_json::to_vec(&previous).unwrap(),
+    )
+    .unwrap();
+    // 未確定の起動履歴は原子的な置換時に除去する。
+    fs::write(run_dir.join(".invocations.json.tmp"), b"partial").unwrap();
+    resume().unwrap();
+    let invocations: Vec<storage::Invocation> =
+        serde_json::from_slice(&fs::read(run_dir.join("invocations.json")).unwrap()).unwrap();
+    assert_eq!(invocations.len(), 2);
+    assert_eq!(invocations[0], previous[0]);
+    assert_ne!(invocations[0].runner.sha256, invocations[1].runner.sha256);
+    assert_ne!(invocations[0].cpu, invocations[1].cpu);
+    assert_eq!(
+        fs::read(run_dir.join("manifest.json")).unwrap(),
+        manifest_before
+    );
+    assert_eq!(
+        fs::read(run_dir.join("iterations/00000000000000000001.json")).unwrap(),
+        first_before
+    );
+    assert_eq!(fs::read(&last).unwrap(), expected_last);
     let commands = fs::read_to_string(&transcript).unwrap();
     assert_eq!(
         commands
             .lines()
             .filter(|l| l.starts_with("setoption name Tune_X "))
             .count(),
-        8
+        12
+    );
+    assert_eq!(commands.lines().filter(|line| *line == "usi").count(), 13);
+    assert!(
+        commands
+            .lines()
+            .filter(|line| line.starts_with("go "))
+            .all(|line| line == "go nodes 1")
     );
     for forbidden in [
         "setoption name Tune_Y ",
@@ -800,7 +850,7 @@ with open(sys.argv[1], 'a', buffering=1) as log:
     let m: Manifest =
         serde_json::from_slice(&fs::read(run_dir.join("manifest.json")).unwrap()).unwrap();
     assert_eq!(m.engine_sha256.len(), 64);
-    let (_, records) = Store::resume(&run_dir, &m).unwrap();
+    let (_, records) = Store::resume(&run_dir).unwrap();
     assert_eq!(records.len(), 2);
     assert!(
         records
@@ -1265,17 +1315,27 @@ fn apply_cli_requires_both_paths_and_executes_without_engine_arguments() {
     );
 }
 
+// match-resume-simplification.md: applyはsettingsだけを読み取る。
 #[test]
-fn apply_rejects_unknown_manifest_fields_without_writing() {
-    let directory = apply_session(settings(1, 1, 1), 1, [0, 0]);
+fn apply_reads_only_settings_and_matches_old_manifest_results() {
+    let directory = apply_session(settings(1, 1, 1), 1, [1, 1]);
+    let source = apply_source(&directory, APPLY_TABLE);
+    apply::apply(&directory.0, &source).unwrap();
+    let expected = fs::read(&source).unwrap();
     let path = directory.0.join("manifest.json");
-    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    value["unexpected"] = serde_json::json!(true);
-    fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
-    assert!(matches!(
-        apply_error(&directory, APPLY_TABLE),
-        apply::ApplyError::Read(_)
-    ));
+    let original: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let mut old = original.clone();
+    old["runner"] = serde_json::json!({"version": "test", "sha256": "c".repeat(64)});
+    old["cpu"] = serde_json::json!({"model": "test", "physical_cores": 2, "logical_cores": 2, "physical_memory_bytes": 1024});
+    for value in [
+        old,
+        serde_json::json!({"settings": original["settings"], "unrelated": true}),
+    ] {
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        fs::write(&source, APPLY_TABLE).unwrap();
+        apply::apply(&directory.0, &source).unwrap();
+        assert_eq!(fs::read(&source).unwrap(), expected);
+    }
 }
 
 #[test]
@@ -1290,4 +1350,119 @@ fn apply_preserves_source_and_existing_temporary_file_on_write_failure() {
         apply::ApplyError::Write(_)
     ));
     assert_eq!(fs::read(temporary).unwrap(), b"existing temporary file");
+}
+
+// match-resume-simplification.md「検証」: 再開の入力元はmanifestだけである。
+#[test]
+fn resume_cli_accepts_only_the_run_directory() {
+    assert!(Arguments::try_parse_from(["spsa_runner", "--resume", "run"]).is_ok());
+    for (flag, value) in [
+        ("--run-dir", "new"),
+        ("--seed", "42"),
+        ("--engine", "./engine"),
+        ("--params", "params.txt"),
+        ("--rules", "engine-default"),
+        ("--each", "nodes=1"),
+        ("--concurrency", "1"),
+        ("--iterations", "2"),
+        ("--pairs-per-iteration", "1"),
+        ("--max-ply", "4096"),
+        ("--response-timeout", "120"),
+    ] {
+        let error = Arguments::try_parse_from(["spsa_runner", "--resume", "run", flag, value])
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "{flag}"
+        );
+    }
+}
+
+#[test]
+fn resume_rejects_old_manifest_fields_on_read() {
+    for field in ["runner", "cpu"] {
+        let directory = Directory::new();
+        let m = manifest(settings(1, 1, 1));
+        drop(Store::create(&directory.0, &m).unwrap());
+        let mut value = serde_json::to_value(m).unwrap();
+        value[field] = serde_json::json!({});
+        fs::write(
+            directory.0.join("manifest.json"),
+            serde_json::to_vec(&value).unwrap(),
+        )
+        .unwrap();
+        // 起動履歴より先にmanifestの未知の欄で拒否する。
+        fs::remove_file(directory.0.join("invocations.json")).unwrap();
+        let error = Store::resume(&directory.0).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("unknown field"));
+    }
+}
+
+#[test]
+fn resume_rejects_missing_or_empty_invocations() {
+    let directory = Directory::new();
+    drop(Store::create(&directory.0, &manifest(settings(1, 1, 1))).unwrap());
+    let path = directory.0.join("invocations.json");
+    fs::write(&path, b"[]").unwrap();
+    let error = Store::resume(&directory.0).unwrap_err();
+    assert_eq!(
+        error.get_ref().unwrap().downcast_ref::<ResumeError>(),
+        Some(&ResumeError::EmptyInvocations)
+    );
+    fs::remove_file(path).unwrap();
+    assert_eq!(
+        Store::resume(&directory.0).unwrap_err().kind(),
+        io::ErrorKind::NotFound
+    );
+}
+
+#[test]
+fn resume_rejects_changed_engine_hash_and_working_directory_without_appending() {
+    for change in ["hash", "directory"] {
+        let directory = Directory::new();
+        let path = std::env::current_exe().unwrap();
+        let mut m = manifest(settings(1, 1, 1));
+        m.engine = EngineIdentity::Command {
+            program: path.clone(),
+            args: vec![],
+            protocol: StoredProtocol::Usi,
+            working_directory: std::env::current_dir().unwrap(),
+        };
+        m.engine_sha256 = sha256_file(&path).unwrap();
+        let expected = if change == "hash" {
+            m.engine_sha256 = "0".repeat(64);
+            ResumeError::EngineIdentityMismatch
+        } else {
+            if let EngineIdentity::Command {
+                working_directory, ..
+            } = &mut m.engine
+            {
+                *working_directory = directory.0.clone();
+            }
+            ResumeError::WorkingDirectoryMismatch
+        };
+        drop(Store::create(&directory.0, &m).unwrap());
+        let before = fs::read(directory.0.join("invocations.json")).unwrap();
+        let error = execute(
+            Arguments::try_parse_from(["spsa_runner", "--resume", directory.0.to_str().unwrap()])
+                .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<io::Error>()
+                .unwrap()
+                .get_ref()
+                .unwrap()
+                .downcast_ref::<ResumeError>(),
+            Some(&expected)
+        );
+        assert_eq!(
+            fs::read(directory.0.join("invocations.json")).unwrap(),
+            before
+        );
+    }
 }

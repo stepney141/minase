@@ -1,6 +1,6 @@
 //! 保存した実行条件からの対局設定の復元。
 
-use super::storage::{EngineRecord, ResumeError, RunManifest, StoredSearchLimit};
+use super::storage::{EngineRecord, RunManifest, StoredSearchLimit};
 use minase::harness::*;
 use minase_core::{Rules, rules::parse_rule_set};
 use std::{io, time::Duration};
@@ -31,37 +31,7 @@ fn restore_player(
     hash_mb: Option<u64>,
     manifest: &RunManifest,
 ) -> io::Result<PlayerConfig> {
-    let kind = match &record.identity {
-        EngineIdentity::Random => PlayerKind::Random,
-        EngineIdentity::Commit { hash, .. } => PlayerKind::Commit(hash.clone()),
-        EngineIdentity::Command {
-            program,
-            args,
-            protocol,
-            working_directory,
-        } => {
-            if std::env::current_dir()? != *working_directory {
-                return Err(ResumeError::WorkingDirectoryMismatch.into());
-            }
-            match protocol {
-                StoredProtocol::Usi => PlayerKind::Command {
-                    program: program.clone(),
-                    args: args.clone(),
-                },
-                StoredProtocol::Cecp => PlayerKind::Cecp {
-                    program: program.clone(),
-                    args: args.clone(),
-                },
-            }
-        }
-    };
-    let text = match &kind {
-        PlayerKind::Random => "random".to_owned(),
-        PlayerKind::Commit(hash) => format!("commit:{hash}"),
-        PlayerKind::Command { program, args } | PlayerKind::Cecp { program, args } => {
-            format!("{} {}", program.display(), args.join(" "))
-        }
-    };
+    let spec = restore_player_spec(&record.identity)?;
     let limit = match record.limit {
         StoredSearchLimit::Fixed { depth, nodes } => SearchLimit::Fixed { depth, nodes },
         StoredSearchLimit::Time {
@@ -74,13 +44,7 @@ fn restore_player(
             byoyomi_ms,
         }),
     };
-    let mut player = resolve_player(
-        PlayerSpec { text, kind },
-        limit,
-        hash_mb,
-        &manifest.rules_source,
-        Vec::new(),
-    )?;
+    let mut player = resolve_player(spec, limit, hash_mb, &manifest.rules_source, Vec::new())?;
     verify_identity(&record.identity, &player.identity)?;
     let defaults =
         probe_engine_defaults(&player, Duration::from_secs(manifest.response_timeout_secs))?;

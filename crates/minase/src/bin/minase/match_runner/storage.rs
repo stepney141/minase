@@ -1,13 +1,13 @@
 //! 対局実行条件と完了ペアの永続化。
 
 use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufWriter, Write};
+use std::fs::{self, File};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use minase::harness::{
-    CpuRecord, EngineIdentity, HarnessRecord, PairRecord, RunLock, atomic_write_json,
-    lock_run_directory,
+    CpuRecord, EngineIdentity, HarnessRecord, PairRecord, ResumeError, RunLock,
+    atomic_replace_json, atomic_write_json, lock_run_directory,
 };
 use serde::{Deserialize, Serialize};
 
@@ -134,61 +134,12 @@ pub(super) struct Invocation {
 
 impl Invocation {
     fn current(target_pairs: u64) -> io::Result<Self> {
-        use minase::harness::{
-            cpu_model, harness_record, physical_core_count, physical_memory_bytes,
-        };
+        use minase::harness::{cpu_record, harness_record};
         Ok(Self {
             runner: harness_record()?,
-            cpu: CpuRecord {
-                model: cpu_model(),
-                physical_cores: physical_core_count(),
-                logical_cores: std::thread::available_parallelism()?.get(),
-                physical_memory_bytes: physical_memory_bytes(),
-            },
+            cpu: cpu_record()?,
             target_pairs,
         })
-    }
-}
-
-/// 保存条件を安全に復元できない理由。
-#[derive(Debug, PartialEq, Eq)]
-pub(super) enum ResumeError {
-    EmptyInvocations,
-    InvalidTarget,
-    TargetNotIncreased,
-    WorkingDirectoryMismatch,
-    EngineIdentityMismatch,
-    ThreadsMismatch,
-    HashUnavailable,
-}
-
-impl std::fmt::Display for ResumeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::EmptyInvocations => "invocations must contain at least one invocation",
-            Self::InvalidTarget => "invocation targets must be positive and nondecreasing",
-            Self::TargetNotIncreased => "--target-pairs must exceed the previous invocation target",
-            Self::WorkingDirectoryMismatch => {
-                "engine working directory differs from the recorded working_directory"
-            }
-            Self::EngineIdentityMismatch => {
-                "engine identity does not match the recorded SHA-256 or commit"
-            }
-            Self::ThreadsMismatch => {
-                "engine Threads default differs from the recorded worker count"
-            }
-            Self::HashUnavailable => {
-                "recorded hash size is unavailable but the engine now reports a default"
-            }
-        })
-    }
-}
-
-impl std::error::Error for ResumeError {}
-
-impl From<ResumeError> for io::Error {
-    fn from(error: ResumeError) -> Self {
-        Self::new(io::ErrorKind::InvalidData, error)
     }
 }
 
@@ -377,11 +328,12 @@ impl RunStore {
                 .invocations
                 .last()
                 .ok_or(ResumeError::EmptyInvocations)?;
-            if current.runner.sha256 != previous.runner.sha256 || current.cpu != previous.cpu {
-                eprintln!(
-                    "notice: runner SHA-256 or measurement machine differs from the previous invocation"
-                );
-            }
+            minase::harness::notify_invocation_change(
+                &current.runner,
+                &current.cpu,
+                &previous.runner,
+                &previous.cpu,
+            );
             let mut invocations = self.invocations.clone();
             invocations.push(current);
             atomic_replace_json(
@@ -494,34 +446,6 @@ fn validate_record_header(record: &PairRecord, target_pairs: u64) -> io::Result<
         )));
     }
     Ok(())
-}
-
-/// 既存JSONを同一ディレクトリの一時ファイルから原子的に置き換える。
-fn atomic_replace_json<T: Serialize>(
-    directory: &Path,
-    temporary_path: &Path,
-    final_path: &Path,
-    value: &T,
-) -> io::Result<()> {
-    remove_stale_temp(temporary_path)?;
-    let write_result = (|| {
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(temporary_path)?;
-        let mut writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(&mut writer, value).map_err(json_error)?;
-        writer.write_all(b"\n")?;
-        writer.flush()?;
-        writer.get_ref().sync_all()?;
-        drop(writer);
-        fs::rename(temporary_path, final_path)?;
-        File::open(directory)?.sync_all()
-    })();
-    if write_result.is_err() {
-        let _ = fs::remove_file(temporary_path);
-    }
-    write_result
 }
 
 /// 指定JSONファイル全体を読み込む。

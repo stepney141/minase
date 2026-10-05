@@ -68,3 +68,36 @@ pub fn atomic_write_json<T: Serialize>(
     }
     write_result
 }
+
+/// 既存JSONを同一ディレクトリの一時ファイルから原子的に置き換える。
+pub fn atomic_replace_json<T: Serialize>(
+    directory: &Path,
+    temporary_path: &Path,
+    final_path: &Path,
+    value: &T,
+) -> io::Result<()> {
+    match fs::remove_file(temporary_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    let write_result = (|| {
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(temporary_path)?;
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(&mut writer, value)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        writer.write_all(b"\n")?;
+        writer.flush()?;
+        writer.get_ref().sync_all()?;
+        drop(writer);
+        fs::rename(temporary_path, final_path)?;
+        File::open(directory)?.sync_all()
+    })();
+    if write_result.is_err() {
+        let _ = fs::remove_file(temporary_path);
+    }
+    write_result
+}
