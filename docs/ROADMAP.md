@@ -74,6 +74,7 @@
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
+| 測定の再開条件の簡素化 | [plans/match-resume-simplification.md](plans/match-resume-simplification.md) | 起案 | |
 
 ## 現在地
 
