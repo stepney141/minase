@@ -22,7 +22,28 @@ from minase_train.diagnostics.comparison import (
     derived_piece_values,
     diagnose,
     outcome_metrics,
+    rust_probe,
 )
+
+
+class RustProbeCommandTest(unittest.TestCase):
+
+    def test_probe_uses_minase_subcommand_with_optional_promotions(self):
+        """診断の呼び出しはminase dev pst-probeに既存の引数を続ける。"""
+        binary = Path("/tools with spaces/minase")
+        weights = Path("/data/base weights.bin")
+        positions = Path("/data/positions.bin")
+        for promotions in (False, True):
+            with self.subTest(promotions=promotions), \
+                    patch("minase_train.diagnostics.comparison.subprocess.run") as execute:
+                execute.return_value.stdout = '[{"index": 0, "eval": 123}]'
+                rows = rust_probe(binary)(weights, positions, promotions)
+                expected = [str(binary), "dev", "pst-probe", "--pst", str(weights),
+                            "--positions", str(positions), "--skip-invalid"]
+                if promotions:
+                    expected.append("--promotions")
+                execute.assert_called_once_with(expected, check=True, capture_output=True, text=True)
+                self.assertEqual(rows, [{"index": 0, "eval": 123}])
 
 
 class OutcomeMetricsTest(unittest.TestCase):

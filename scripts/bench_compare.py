@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""作業ツリーのbenchを照合参照コミット、基準コミット、および親コミットと比較する。
+"""作業ツリーの`minase dev bench`を照合参照コミット、基準コミット、および親コミットと比較する。
 
 照合参照コミットとは局面別のノード数、最善手、探索値を全行で比較し、
 不一致があれば終了コード1で報告する。速度は4者（基準、参照、親、候補）を
@@ -12,6 +12,7 @@
 コミットは`git archive`で`target/bench-cache/<完全ハッシュ>/src`へ展開し、
 通常のrelease設定でビルドする。参照の局面別出力は1回実行の結果を同じ
 ディレクトリへ保存して再利用する。候補は作業ツリーをビルドする。
+補助ツールをminaseのサブコマンドへ移したコミット（docs/plans/cli-subcommands.md）より前のコミットは扱えず、そのminaseはdevサブコマンドを知らないため引数エラーで停止する。
 
 使い方:
     scripts/bench_compare.py --reference <参照コミット> --baseline <基準コミット>
@@ -46,27 +47,29 @@ def resolve_commit(root, spec):
 
 
 def build_commit(root, commit):
-    """コミットをキャッシュへ展開してbenchをビルドし、バイナリのパスを返す。"""
+    """コミットをキャッシュへ展開してminaseをビルドし、バイナリのパスを返す。"""
     cache = root / "target" / "bench-cache" / commit
     source = cache / "src"
-    binary = source / "target" / "release" / "bench"
+    binary = source / "target" / "release" / "minase"
     if not binary.exists():
         source.mkdir(parents=True, exist_ok=True)
         archive = subprocess.run(
             ["git", "archive", commit], cwd=root, check=True, capture_output=True
         ).stdout
         subprocess.run(["tar", "-x", "-C", str(source)], input=archive, check=True)
-        subprocess.run(["cargo", "build", "--release", "--bin", "bench"], cwd=source, check=True)
+        subprocess.run(["cargo", "build", "--release", "--bin", "minase"], cwd=source, check=True)
     return binary
 
 
 def build_worktree(root):
-    subprocess.run(["cargo", "build", "--release", "--bin", "bench"], cwd=root, check=True)
-    return root / "target" / "release" / "bench"
+    subprocess.run(["cargo", "build", "--release", "--bin", "minase"], cwd=root, check=True)
+    return root / "target" / "release" / "minase"
 
 
 def bench_args(depth, threads, repetitions):
     return [
+        "dev",
+        "bench",
         "--depth",
         str(depth),
         "--threads",
