@@ -192,12 +192,34 @@ cargo run --release --bin minase -- match report \
 
 ## エンジンの指定方法
 
-`--candidate`と`--baseline`のspecは次の4形式である。
+`--candidate`と`--baseline`には、エンジンを次の4つの形式で指定する。
 
-- `commit:<hash>`: ハーネスが当該コミットを`git archive`で展開して`cargo build --release --bin minase`を実行し、`target/match-cache/`へキャッシュする（キャッシュの検証と再ビルドは [plans/match-harness-efficiency.md](../plans/match-harness-efficiency.md) の「履歴バイナリのキャッシュ」）。未コミットの作業ツリー変更はビルドに含まれない。起動引数`--protocol usi --rules <マッチ規則>`は自動付与され、`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。規則コードP0とE0を導入したコミットより前のコミットを相手にする測定では、コードを列挙した指定は旧コミットが拒否するため、`engine-default`などのプリセット名で指定する。標準の測定はこの形式を使う。
-- 起動コマンド（パス＋空白区切り引数）: 任意のUSIエンジンを起動する（例 `"target/release/minase --protocol usi --rules engine-default"`）。未コミットの作業ツリーや外部エンジンの測定に使う。minase本体は`--protocol`と`--rules`が必須である点に注意する。
-- `random`: 同一ビルドの`minase dev usi-random`（合法手から一様ランダムに着手する校正用エンジン）。真のelo差が0であることが既知の唯一の対戦カードであり、ハーネス自体の煙試験に使う。
-- `cecp:<起動コマンド>`: CECP（XBoardプロトコル）で対局する任意のエンジンを起動する。指定例は`"cecp:../hachu-debian/hachu"`である。HaChuのようにUSIを話さない外部エンジンとの比較に使う（握手と毎手の同期は [plans/match-harness.md](../plans/match-harness.md) の「CECPセッション管理」）。思考制限は`depth`、秒単位の時間制御、および基本時間と加算が0で秒読みが整数秒の1手固定時間に限り、`nodes`、基本時間や加算を伴う秒読み、および秒未満の値は指定できない。HaChuは1手固定時間で指定値より短く考える（[HaChu対minaseの条件格子測定](../plans/hachu-condition-grid.md)）。規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
+標準の測定では、`commit:<hash>`の形式でコミットを指定する。
+ハーネスは当該コミットを`git archive`で展開して`cargo build --release --bin minase`を実行し、成果物を`target/match-cache/`へキャッシュする。
+キャッシュの検証と再ビルドの規則は、[plans/match-harness-efficiency.md](../plans/match-harness-efficiency.md) の「履歴バイナリのキャッシュ」にある。
+作業ツリーにある未コミットの変更は、この形式のビルドには含まれない。
+起動引数`--protocol usi --rules <マッチ規則>`は自動で付与される。
+`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。
+規則コードP0とE0を導入する前のコミットを対戦相手とする測定では、規則コードを列挙した指定を旧版のバイナリが拒否するので、`engine-default`などのプリセット名で指定する。
+
+未コミットの作業ツリーや外部のUSIエンジンを測る場合は、パスと空白区切りの引数からなる起動コマンドで指定する。
+たとえば`"target/release/minase --protocol usi --rules engine-default"`のように書く。
+minase本体は`--protocol`と`--rules`の指定が必須なので、この形式では両方の引数を必ず書く。
+
+ハーネス自体の煙試験には`random`を指定する。
+この指定では同一ビルドの`minase dev usi-random`が起動され、合法手から一様ランダムに着手する校正用エンジンとして動く。
+`random`同士の対局は、真のElo差が0であると分かっている唯一の対戦カードである。
+
+HaChuのようにUSIに対応していない外部エンジンとの比較には、`cecp:<起動コマンド>`の形式を使う。
+この形式は、CECP（XBoardプロトコル）で対局するエンジンを起動する。
+指定例は`"cecp:../hachu-debian/hachu"`である。
+接続時のハンドシェイクと毎手の同期の手順は、[plans/match-harness.md](../plans/match-harness.md) の「CECPセッション管理」にある。
+指定できる思考制限は、`depth`、秒単位の時間制御、および1手固定時間の3種類である。
+1手固定時間は、基本時間と加算が0で秒読みが整数秒の時間制御として指定する。
+`nodes`、基本時間や加算を伴う秒読み、および秒未満の値は指定できない。
+HaChuは1手固定時間を指定すると、指定値より短い時間で着手する。
+測定の詳細は[HaChu対minaseの条件格子測定](../plans/hachu-condition-grid.md)にある。
+規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
 省略時はエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPエンジンは`memory 256`）で走り、解決後の容量は`manifest.json`の`hash_mb`に記録され、再開時にはこの値で対局する。
