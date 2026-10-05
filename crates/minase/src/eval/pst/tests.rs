@@ -495,8 +495,8 @@ fn stored_piece_values_are_validated_independently_of_weights() {
 /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
 #[test]
 fn embedded_pst_matches_python_initial_position_evaluation() {
-    // pst-gen3-training の候補G23の学習ログ（Python整数参照評価）による値。
-    assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 27);
+    // eval-coadaptation-lambda075-training の対照Pcの学習ログ（Python整数参照評価）による値。
+    assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 26);
 }
 
 /// debugging-tools.md「eval」: 特徴別の分子和、全計算評価、720での除算と上下限制限が一致する。

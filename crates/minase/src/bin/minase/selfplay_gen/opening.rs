@@ -203,7 +203,8 @@ mod tests {
             1,
             PlaySettings {
                 base_seed: 42,
-                nodes: 200,
+                // 埋め込みの重みで対局が手数上限前に終わる値（Pcでは200ノードだと上限に達する）。
+                nodes: 400,
                 random_moves: 0,
                 max_ply: 4000,
             },
