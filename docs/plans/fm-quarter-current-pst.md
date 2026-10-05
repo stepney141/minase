@@ -112,7 +112,7 @@ benchは、[段階9](strength-stage9.md)と同じくtasksetでPコアに固定�
 FをMに対してSTCで測り、振り分け規則に従ってLTCへ進める。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/fm-quarter-current-pst-stc --seed 11000000 \
   --candidate commit:<F> --baseline commit:<M> \
   --each time=10000+100 --concurrency 16 gsprt --max-pairs 3000

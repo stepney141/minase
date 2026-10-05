@@ -574,7 +574,7 @@ cargo test
 cargo test predecessor_completeness -- --ignored --test-threads=1
 cargo test predecessor_oracle -- --ignored --test-threads=1
 git diff --check
-cargo run --release --quiet --bin perft -- 4 --rules engine-default
+cargo run --release --quiet --bin minase -- dev perft 4 --rules engine-default
 cargo test --release predecessor_profile -- --ignored --nocapture
 ```
 

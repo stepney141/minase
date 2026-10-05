@@ -1,7 +1,7 @@
 # SPSAによる係数調整の手引き
 
 本書は、探索と時間管理の係数を自己対局で調整する標準手順を定める。
-調整にはSPSA（simultaneous perturbation stochastic approximation、同時摂動確率近似）を使い、コマンドは `spsa_runner` である。
+調整にはSPSA（simultaneous perturbation stochastic approximation、同時摂動確率近似）を使い、コマンドは `minase spsa` である。
 設計判断、更新則、および対象の係数の選定理由は [plans/spsa.md](../plans/spsa.md) が所有し、本書は実行者（人間およびエージェント）向けの手順だけを記す。
 調整で得た値の採否は [SPRTによる棋力測定の手引き](sprt.md) の段階ゲートで判定し、SPSAの対局結果を採用の根拠にしない。
 
@@ -20,12 +20,12 @@
 係数の表は `crates/minase/src/search/alphabeta/params.rs` にあり、表の既定値が調整の開始値になる。
 
 セッションは、runnerのコミットを固定したworktreeから実行する（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)）。
-`spsa_runner` は、再開時にrunnerのバイナリのSHA-256が保存済みの値と一致することを検査する。
+`minase spsa` は、再開時にrunnerのバイナリのSHA-256が保存済みの値と一致することを検査する。
 
 ```console
 git worktree add --detach data/worktrees/<セッション名>-runner <runnerのコミット>
 cd data/worktrees/<セッション名>-runner
-cargo build --release --bin spsa_runner
+cargo build --release --bin minase
 ```
 
 ## 2. パラメーターファイルを作る
@@ -33,7 +33,7 @@ cargo build --release --bin spsa_runner
 `params` サブコマンドは、調整用ビルドが握手で宣言した `Tune_` オプションから既定のファイルを生成する。
 
 ```console
-target/release/spsa_runner params \
+target/release/minase spsa params \
   --engine commit:<調整対象コミット> --rules engine-default > <パラメーターファイル>
 ```
 
@@ -45,7 +45,7 @@ target/release/spsa_runner params \
 ファイルから行を削除した係数は調整されず、エンジンの既定値のまま動く。
 秒読みを使わない時間制御では、秒読みの項の係数は勝敗に影響しないので調整の対象にしない（理由は設計書の「対象の係数」）。
 
-`spsa_runner` は開始時に、ファイルの全係数がエンジンの宣言にあること、範囲が宣言の範囲に収まること、および名前に重複がないことを検査する。
+`minase spsa` は開始時に、ファイルの全係数がエンジンの宣言にあること、範囲が宣言の範囲に収まること、および名前に重複がないことを検査する。
 通常ビルドを `--engine` に渡した場合は、宣言が見つからないのでエラーで終了する。
 
 ## 3. 時間切れの事前確認をする
@@ -57,7 +57,7 @@ target/release/spsa_runner params \
 ## 4. セッションを実行する
 
 ```console
-target/release/spsa_runner \
+target/release/minase spsa \
   --run-dir data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
@@ -71,7 +71,7 @@ target/release/spsa_runner \
 総反復数は摂動幅と学習率の式に入るので、セッションの途中で変更できない。
 標準の規模と所要時間の見積もりは設計書の「調整セッションの規模と所要時間」が定める。
 
-各ペアは `match_runner` と同じ構造であり、同一の開始局面で先後を入れ替えて2局を指す。
+各ペアは `minase match run` と同じ構造であり、同一の開始局面で先後を入れ替えて2局を指す。
 対局のシードは基本シードとペアの通し番号から派生するので、ほかの測定と基本シードを総ペア数以上離す（[隣接する基本シードは1局ずれた同じ対局列を生む](../lessons/derive-seed-adjacent-collision.md)）。
 エンジン異常、時間切れ、および不正着手は起こした側の負けとして更新に使われ、手数上限に達したペアは更新に使われない。
 
@@ -84,7 +84,7 @@ target/release/spsa_runner \
 最初のコマンドの `--run-dir` を `--resume` へ置き換え、それ以外の引数を同じ値で指定する。
 
 ```console
-target/release/spsa_runner \
+target/release/minase spsa \
   --resume data/spsa/<セッション名> --seed <シード> \
   --engine commit:<調整対象コミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
@@ -112,14 +112,14 @@ target/release/spsa_runner \
 
    ```console
    git switch -c <候補ブランチ> <調整対象コミット>
-   target/release/spsa_runner apply \
+   target/release/minase spsa apply \
      --run-dir data/spsa/<セッション名> --source crates/minase/src/search/alphabeta/params.rs
    ```
 
    `git diff` で既定値だけが変わったことを確かめ、セッションの実行ディレクトリ名と調整対象のコミットを書いたメッセージで1つのコミットにする。続いて次のコマンドで候補の調整用ビルドの宣言を出力し、既定値の欄が `apply` の出力した整数と一致することを確かめる。
 
    ```console
-   target/release/spsa_runner params \
+   target/release/minase spsa params \
      --engine commit:<候補コミット> --rules engine-default
    ```
 

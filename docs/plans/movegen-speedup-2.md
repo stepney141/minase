@@ -355,7 +355,7 @@ cargo fmt --check
 cargo clippy --release --all-targets
 cargo test --release
 scripts/bench_compare.py --reference <照合参照コミット> --baseline <第1期の採用版> --parent <直前の採用版> --depth 5 --repetitions 3 --threads 1
-target/release/perft 3
+target/release/minase dev perft 3
 ```
 
 速度測定中は他のCPU負荷を止め、候補と親を交互に3回以上測って中央値を比べ、親の中央値の幅を増分の分解能として記録する。

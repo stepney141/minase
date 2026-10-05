@@ -59,7 +59,7 @@ Cλ\*の採否の測定と第2段の対照には進まず、CλとCλ\*のコー
 - **S0**は、Mそのものであり、Mの`crates/minase/nets/pst.bin`を採用PSTと呼ぶ。
 - **Pλ**は、フェーズ1で学習するPSTの重みである。採用PSTを初期値とし、G23と同じ世代2と世代3の10ファイルを、G23の学習条件のうち混合比だけをλ=1.0に変えて学習する。
 - **Cλ**は、Mの`crates/minase/nets/pst.bin`をPλへ差し替え、重みに依存するテストの期待値をPλの値へ改めたコミットである。
-- **Cλ\***は、Cλの探索係数をSPSAで調整し、その値を`spsa_runner apply`で係数の表へ書き込んだコミットである。
+- **Cλ\***は、Cλの探索係数をSPSAで調整し、その値を`minase spsa apply`で係数の表へ書き込んだコミットである。
 - **S0\***は、Mの探索係数を同じ手順で調整したコミットであり、「判定」の節の条件を満たした場合だけ作る対照である。
 - **探索係数**は、Mの`crates/minase/src/search/alphabeta/params.rs`にある35係数のうち、時間管理の6係数を除く29係数である。
 - **共通ペア**は、比べる測定のすべてで手数上限による破棄がなかったペア番号の集合である。
@@ -215,7 +215,7 @@ Cλではこの期待値を、Pλの学習ログ`train.log`の`initial position 
 Cλ対S0の400ペアを測り、測定記録`eval-coadaptation-before-stc400`に残す。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/eval-coadaptation-before-stc400 --seed 13000000 \
   --candidate commit:<Cλ> --baseline commit:<M> \
   --each time=10000+100 --concurrency 16 elo --pairs 400
@@ -226,19 +226,19 @@ E0とその信頼区間を計算し、第0段の振り分けを記録する。
 
 ### フェーズ3　調整
 
-`spsa_runner params`でCλの調整用ビルドから既定のパラメーターファイルを生成し、開始値がMの係数の値と一致することを確かめる。
+`minase spsa params`でCλの調整用ビルドから既定のパラメーターファイルを生成し、開始値がMの係数の値と一致することを確かめる。
 そのファイルから時間管理の6係数を除き、13係数の`c_end`を「摂動幅」の規則で上書きしたファイルを`data/spsa/eval-coadaptation-params/session.txt`に置く。
 基本シード14000000で3,000ペアのセッションを実行する。
 
 ```console
-spsa_runner --run-dir data/spsa/eval-coadaptation-clambda --seed 14000000 \
+minase spsa --run-dir data/spsa/eval-coadaptation-clambda --seed 14000000 \
   --engine commit:<Cλ> --params data/spsa/eval-coadaptation-params/session.txt \
   --rules engine-default --each time=10000+100 --concurrency 16 \
   --iterations 375 --pairs-per-iteration 8
 ```
 
 セッションの記録は`docs/measurements/eval-coadaptation-spsa.md`に残し、パラメーターファイルの全行を含める。
-最終値を`spsa_runner apply`でCλへ書き込み、Cλ\*をコミットする。
+最終値を`minase spsa apply`でCλへ書き込み、Cλ\*をコミットする。
 完了条件は、Cλ\*のコミットと、セッションの異常が0件であることの確認である。
 
 ### フェーズ4　調整後の測定と第1段の判定

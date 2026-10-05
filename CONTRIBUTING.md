@@ -12,7 +12,7 @@
 
 - コミットメッセージは Conventional Commits 1.0.0 に従い、件名を `<type>(<scope>): <summary>` の形の英語の命令形で書く。scopeは変更したモジュール名（`search`、`eval`、`movegen`、`usi`、`match` など）とし、省略してもよい。
 - typeは次のとおり使い分ける。`feat`は利用者から見える機能の追加と、探索・評価・時間管理のうち棋力に影響する変更に使う。`fix`は不具合の修正、`perf`は棋力を変えない速度改善、`refactor`は挙動を変えない構造変更、`test`はテストだけの変更、`docs`は docs/、RULES.md および測定記録の変更、`build`は依存関係とビルド設定の変更、`chore`はそれ以外に使う。
-- USIオプション、コマンドライン引数、規則コードまたはライブラリの公開APIの互換性を壊す変更は、typeの直後に`!`を付け、本文に`BREAKING CHANGE:`フッターを書く。
+- USIオプション、エンジンの起動引数（`--protocol`、`--rules`、`--io-log`）、規則コードまたはライブラリの公開APIの互換性を壊す変更は、typeの直後に`!`を付け、本文に`BREAKING CHANGE:`フッターを書く。補助ツールのサブコマンド（`minase match run`など）とその引数は開発者向けであり、互換性の対象としない。
 - リリースノートは git-cliff（cliff.toml）がコミット履歴から CHANGELOG.md へ生成し、`feat`、`fix`、`perf`、`refactor`と互換性を壊す変更だけを載せる。マージコミットの件名は既定の`Merge branch '<名前>'`のままでよい。
 
 ### リリースの手順

@@ -142,6 +142,13 @@ clapの引数エラーの終了コード2は変えない。
 したがって、測定、付け直し、または学習の実行の途中で作業ツリーの`minase`を再ビルドすると、その実行を再開できなくなる。
 これには、実行ファイルを専用のworktreeに固定する既存の運用（[生成用バイナリをworktreeに固定する教訓](../lessons/pin-generation-binary-to-worktree.md)）で対処し、検査の規則は変えない。
 
+### プロセス名
+
+補助ツールはすべて実行ファイル`minase`のプロセスとして動くので、`pgrep -a match_runner`のようにプロセス名で測定を探す手順は、境界以後のrunnerを見つけられない。
+進行中の測定の確認は、引数を含めて照合する`pgrep -af '[m]inase (match run|spsa)|[m]atch_runner|[s]psa_runner'`へ改める。
+旧名の照合を残すのは、境界より前のコミットを固定したrunnerが旧名で動き続けるからである。
+該当する手順は[進行中の測定を確認する教訓](../lessons/check-running-measurements-before-cpu-load.md)にある。
+
 ### スクリプトは境界以後のコミットだけを扱う
 
 実行ファイル名で呼び出すスクリプトは、新しい呼び出しへ書き換える。

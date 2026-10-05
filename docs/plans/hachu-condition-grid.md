@@ -149,7 +149,7 @@ CECPエンジンは`Threads`を報告しないため同時対局数の自動計�
 コマンドは次の型である。
 
 ```console
-match_runner --run-dir data/matches/hachu-grid-time1of4 --seed 20560903 \
+minase match run --run-dir data/matches/hachu-grid-time1of4 --seed 20560903 \
   --candidate commit:<minaseのコミット> --candidate-limit time=15000+250 \
   --baseline "cecp:../hachu-debian/hachu" --baseline-limit time=60000+1000 \
   --rules L1,L3,P0,P5,P6,R2,E1,E2 --concurrency 12 elo --pairs 200
@@ -160,7 +160,7 @@ match_runner --run-dir data/matches/hachu-grid-time1of4 --seed 20560903 \
 コマンドは次の型である。
 
 ```console
-match_runner --run-dir data/matches/hachu-grid-hash16-256 --seed 20560903 \
+minase match run --run-dir data/matches/hachu-grid-hash16-256 --seed 20560903 \
   --candidate commit:<minaseのコミット> --candidate-hash 16 \
   --baseline "cecp:../hachu-debian/hachu" --baseline-hash 256 \
   --rules L1,L3,P0,P5,P6,R2,E1,E2 --each time=60000+1000 --concurrency 12 elo --pairs 200

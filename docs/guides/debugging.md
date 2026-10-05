@@ -27,7 +27,7 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 | `tt` | USIで`go`の後に送る | 置換表に残る現局面と全子局面の項目（深さ、境界の種類、評価値、最善手）を表示する。 |
 | `--io-log <パス>` | `minase`の起動引数 | 受け取った行と送った行を、起動からの経過ミリ秒付きでファイルへ記録する。 |
 | フィーチャ`invariants` | `cargo test`では常に有効。他のビルドでは`--features invariants` | 着手の実行と取消しのたびに局面を全検査し、探索中の評価のたびに差分更新の値を全計算と照合する。失敗すると診断を出してパニックする。 |
-| フィーチャ`search-stats` | `--features search-stats`で`bench`をビルドする | ノードの種類、置換表の照会と打ち切り、βカット、最善手の順位を数えて`bench`が出力する。 |
+| フィーチャ`search-stats` | `--features search-stats`で`minase dev bench`をビルドする | ノードの種類、置換表の照会と打ち切り、βカット、最善手の順位を数えて`minase dev bench`が出力する。 |
 
 `eval`と`tt`の出力は、各行が`info string`で始まり、`info string end`の行で終わる。
 `d`の出力は、StockfishとYaneuraOuに合わせて接頭辞のない素の行であり、`rights-zobrist`の行で終わる。
@@ -44,15 +44,15 @@ minaseは、通常の対局と測定には使わない調査用の道具を、US
 先獅子の状態がない局面は、2欄SFENの末尾に`- 1`を付けて4欄にする（例：`position sfen <盤面> b - 1`）。
 着手列が分かっている場合は、`position startpos moves ...`または`position sfen ... moves ...`で局面を作る。
 着手列で作った局面を他の道具へ渡すときは、`d`が表示する拡張SFENを写す。
-`bin/perft`の`--sfen`も、2欄SFENに加えて同じ拡張SFENを受理する。
+`minase dev perft`の`--sfen`も、2欄SFENに加えて同じ拡張SFENを受理する。
 
-**ランダム対局**：`random_play`は、ランダムな合法手で対局を進め、毎手`Position::validate`で局面の不変条件（ビットボードと盤配列の一致、Zobristキーと全再計算の一致など）を検査する。
+**ランダム対局**：`minase dev random-play`は、ランダムな合法手で対局を進め、毎手`Position::validate`で局面の不変条件（ビットボードと盤配列の一致、Zobristキーと全再計算の一致など）を検査する。
 失敗すると、規則、シード、局番号、手数、問題の手、直前の局面のSFEN、および全手順を標準エラーへ出して終了コード1で終わる。
 失敗した局は、同じ`--seed`と`--game`で単独に再現できる。
 
 ```console
-cargo run --release --bin random_play -- --rules engine-default --seed 1 --games 10000
-cargo run --release --bin random_play -- --rules engine-default --seed 1 --game 4213 --verify-all --verbose
+cargo run --release --bin minase -- dev random-play --rules engine-default --seed 1 --games 10000
+cargo run --release --bin minase -- dev random-play --rules engine-default --seed 1 --game 4213 --verify-all --verbose
 ```
 
 `--verify-all`を付けると、ランダムに選んだ1手だけでなく、各手番の全合法手を1手ずつ対局の複製へ適用し、生成した合法手が着手として拒否されないことを確かめる。
@@ -61,10 +61,10 @@ cargo run --release --bin random_play -- --rules engine-default --seed 1 --game 
 この場合は、不変条件が壊れた最初の着手の直後に、理由、手、差分更新と全再計算の両方のZobristキー、および升ごとの駒コードの生データを出して止まる。
 
 ```console
-cargo run --release --features invariants --bin random_play -- --rules engine-default --seed 1 --games 1000
+cargo run --release --features invariants --bin minase -- dev random-play --rules engine-default --seed 1 --games 1000
 ```
 
-**自己対局の測定**：`match_runner`の実行ディレクトリの`pairs/NNN.json`は、各局の開始局面の着手列と全着手を保存している。
+**自己対局の測定**：`minase match run`の実行ディレクトリの`pairs/NNN.json`は、各局の開始局面の着手列と全着手を保存している。
 両エンジンが`Threads=1`で、思考制限が`depth`または`nodes`の対局は完全に再現できる（[sprt.md](sprt.md)の「ペア対局と再現性」）。
 時間制御の対局は着手時間の実測に依存するので、同じ対局は再現できない。
 その場合は、保存された着手列を`position ... moves ...`へ与えて問題の局面を作り、局面単位で調べる。
@@ -84,12 +84,12 @@ cargo run --release --features invariants --bin random_play -- --rules engine-de
 合法手の過不足、不正な局面への遷移、Zobristキーの不一致は、次の順で調べる。
 
 1. RULES.mdの該当条文を読み、期待する挙動を条文から決める。実装の出力を正としない。
-2. `random_play`を`--verify-all`付きで多数局走らせ、失敗する局と手数を見つける。Zobristキーや盤面の不整合が疑われるときは、`--features invariants`付きでビルドして、壊れた最初の着手で止める。
-3. 失敗した局面を`bin/perft`へ与え、`--divide`で根の手ごとの件数を出す。
+2. `minase dev random-play`を`--verify-all`付きで多数局走らせ、失敗する局と手数を見つける。Zobristキーや盤面の不整合が疑われるときは、`--features invariants`付きでビルドして、壊れた最初の着手で止める。
+3. 失敗した局面を`minase dev perft`へ与え、`--divide`で根の手ごとの件数を出す。
 4. 条文から数えた期待値と食い違う手を1手進め、深さを1減らして`--divide`を繰り返し、誤りのある局面と手まで絞り込む。
 
 ```console
-cargo run --release --bin perft -- 3 --rules engine-default --sfen "<拡張SFEN>" --divide
+cargo run --release --bin minase -- dev perft 3 --rules engine-default --sfen "<拡張SFEN>" --divide
 ```
 
 `--rules`は必須であり、不具合が出た対局と同じ規則セットを与える。
@@ -103,8 +103,8 @@ HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己
 
 探索の不具合は、結果の誤り（明らかに悪い手、詰みの見落とし、評価値の異常）と、挙動の意図しない変化に分かれる。
 
-**挙動の変化の検出**：探索木を変えないはずの変更（高速化、リファクタリング）は、`bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
-`bench`は、`Threads=1`の固定深さの探索であり、同じバイナリでは実行のたびに同じノード数を返す。
+**挙動の変化の検出**：探索木を変えないはずの変更（高速化、リファクタリング）は、`minase dev bench`の局面ごとのノード数、最善手、評価値が変更前と完全に一致することで確かめる。
+`minase dev bench`は、`Threads=1`の固定深さの探索であり、同じバイナリでは実行のたびに同じノード数を返す。
 `scripts/bench_compare.py`は、作業ツリーのbenchを参照コミット（`--reference`）のbenchと全行で照合し、不一致があれば終了コード1で報告する。
 `--baseline`と`--parent`は速度の比を求める比較先であり、挙動の一致だけを確かめるときは3つとも同じ比較先のコミットを与える。
 
@@ -130,16 +130,16 @@ scripts/bench_compare.py --reference master --baseline master --parent master --
 表示される値は照会の時点で表に残っている項目であり、直前の探索が最後に保存した値とは限らない（深い項目は浅い探索の結果で上書きされない）。
 項目の最善手は評価値と別の語に保存されるので、評価値と同じ探索に由来するとは限らない。
 
-**探索内部の計測**：静止探索の割合、置換表の一致率、βカットの割合など、探索の健全性を示す回数は、`--features search-stats`でビルドした`bench`で数える。
+**探索内部の計測**：静止探索の割合、置換表の一致率、βカットの割合など、探索の健全性を示す回数は、`--features search-stats`でビルドした`minase dev bench`で数える。
 統計は局面ごとの行とサマリの後に`stats:`の行で出力され、回数と、分母が0でない比が並ぶ。
 測定用の`target/release`を上書きしないよう、別のターゲットディレクトリでビルドする。
 
 ```console
-CARGO_TARGET_DIR=target/stats cargo build --release --features search-stats --bin bench
-target/stats/release/bench --depth 5
+CARGO_TARGET_DIR=target/stats cargo build --release --features search-stats --bin minase
+target/stats/release/minase dev bench --depth 5
 ```
 
-変更の前後で統計を比べるときは、同じ深さと`Threads=1`で両方の`bench`を実行し、回数の比だけを読む。
+変更の前後で統計を比べるときは、同じ深さと`Threads=1`で両方の`minase dev bench`を実行し、回数の比だけを読む。
 速度は計測コードなしのバイナリで測り直す（[教訓](../lessons/shared-probe-counter-distorts-threads.md)）。
 特定の改良の発動回数のように固定項目にない回数は、`crates/minase/src/search/stats.rs`の項目の宣言へ項目を1つ足し、該当箇所に加算を書いたパッチで数える。
 合算と出力は宣言から自動で生成される。
@@ -155,7 +155,7 @@ target/stats/release/bench --depth 5
 評価関数の不具合は、差分更新の誤り、対称性の破れ、および重みの誤りに分かれる。
 
 差分更新の誤りは、探索が使う差分更新の値と`pst::evaluate`の全計算の値を比べて見つける。
-フィーチャ`invariants`は探索中の評価のたびにこの照合を行うので、`cargo test`と、`--features invariants`でビルドした`bench`が照合の失敗を報告する。
+フィーチャ`invariants`は探索中の評価のたびにこの照合を行うので、`cargo test`と、`--features invariants`でビルドした`minase dev bench`が照合の失敗を報告する。
 失敗の診断は、局面のZobristキー、手数、差分更新と全計算の両方の中間値を含む。
 
 対称性の破れは、段反転と陣営交換を施した局面で評価が一致するかで調べる。
@@ -166,7 +166,7 @@ minaseの評価で成り立つ対称性は「段反転と陣営交換」だけ�
 表示される評価値は`pst::evaluate`の戻り値と一致する。
 升ごとの寄与は0.1センチポーン単位に丸めて表示されるので、寄与の和は評価値と丸めの分だけ異なり得る。
 
-重みの誤りは、`pst_probe`の出力をPythonの参照評価と照合して見つける。
+重みの誤りは、`minase dev pst-probe`の出力をPythonの参照評価と照合して見つける。
 手順は[PSTの学習手順](pst-training.md)にある。
 学習した評価関数の駒価値の歪みは、検証損失からは分からないので、[教訓](../lessons/validation-loss-hides-material-distortion.md)の点検を行う。
 
@@ -236,5 +236,5 @@ RUST_BACKTRACE=1 target/debuginfo/release/minase --protocol usi --rules engine-d
 修正は、次の3点を確かめてから採用する。
 
 1. 修正を一時的に外すと失敗する回帰テストを追加する（[教訓](../lessons/confirm-regression-test-fails-without-fix.md)）。規則に関わるテストは、期待値をRULES.mdの条文から導き、条文の番号をテストに書く。`cargo test`は整合検査（フィーチャ`invariants`）を常に有効にして走るので、テストの中の着手と探索も全検査を受ける。
-2. 探索木を変えないはずの修正は、`bench`の局面ごとのノード数が変わらないことを`scripts/bench_compare.py`で確かめる。
+2. 探索木を変えないはずの修正は、`minase dev bench`の局面ごとのノード数が変わらないことを`scripts/bench_compare.py`で確かめる。
 3. 探索木を変える修正のうち、棋力に影響し得るものは、[sprt.md](sprt.md)の手順で採否を決める。

@@ -298,8 +298,8 @@ Eで互いに独立した候補を複数試す場合は、E1、E2のように分
 cargo fmt --check
 cargo clippy --release --all-targets
 cargo test --release
-target/release/bench --depth 5 --repetitions 3 --threads 1
-target/release/perft 3
+target/release/minase dev bench --depth 5 --repetitions 3 --threads 1
+target/release/minase dev perft 3
 ```
 
 実行前に対象バイナリを通常のrelease設定でビルドし、速度測定中は他のCPU負荷を止める。

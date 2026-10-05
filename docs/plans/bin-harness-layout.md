@@ -49,7 +49,8 @@
 4つ目は、ライブラリへ移す項目の可視性であり、`pub(crate)`を`pub`へ改め、欠けているdocコメントを補う（`Cargo.toml`の`missing_docs = "warn"`）。
 
 次の名前と文字列は、外部から参照されるので変えない。
-実行ファイル名`usi_random`、`minase`、`selfplay_gen`、`pst_probe`、`lishogi_import`、`match_runner`、`match_report`、および`spsa_runner`は、`resolve_player`の`current_exe`からの探索、`resolve_commit`の`cargo build --bin minase`、試験の`CARGO_BIN_EXE_*`、`tools/train/pst/`のPythonスクリプト、および`docs/guides/`の標準コマンドが使う。
+本書の時点の実行ファイル名`usi_random`、`minase`、`selfplay_gen`、`pst_probe`、`lishogi_import`、`match_runner`、`match_report`、および`spsa_runner`は、`resolve_player`の`current_exe`からの探索、`resolve_commit`の`cargo build --bin minase`、試験の`CARGO_BIN_EXE_*`、`tools/train/pst/`のPythonスクリプト、および`docs/guides/`の標準コマンドが使う。
+これらの実行ファイルは、後に[補助ツールのサブコマンド化](cli-subcommands.md)で実行ファイル`minase`のサブコマンドへ移り、現在の配置は`crates/minase/src/bin/minase/<旧名>/`である。
 `spsa_runner`の試験モジュールのパス`tests::simulation`は、凍結された測定記録`docs/measurements/spsa-gain-simulation.md`が`--exact tests::simulation::gain_simulation`として記録しているので保つ。
 `match_runner/storage.rs`の`manifest does not match`という文言は、`crates/minase/tests/match_runner.rs`が標準エラー出力を照合する。
 実行ディレクトリのファイル名（`.match_runner.lock`、`manifest.json`、`pairs/`、`summary.json`）と保存形式の版数も変えない。
@@ -398,7 +399,7 @@ codexへの指示には、名前の変更、シグネチャの変更、処理の
 作業ツリーが未コミットの状態でも比べられるように、`selfplay_gen`と`lishogi_import`には`--allow-dirty`を指定する。
 比較は次の4つとする。
 
-1. 対局ハーネスの完全再現契約（[SPRTの手引き](../guides/sprt.md)の「ペア対局と再現性」）の範囲で、`match_runner --run-dir <新しい一時ディレクトリ> --seed 1 --candidate "target/release/minase --protocol usi --rules engine-default" --baseline random --each depth=2 elo --pairs 4`を、同じ作業ディレクトリから実行する。
+1. 対局ハーネスの完全再現契約（[SPRTの手引き](../guides/sprt.md)の「ペア対局と再現性」）の範囲で、`minase match run --run-dir <新しい一時ディレクトリ> --seed 1 --candidate "target/release/minase --protocol usi --rules engine-default" --baseline random --each depth=2 elo --pairs 4`を、同じ作業ディレクトリから実行する。
    標準出力は、経過時間の行と`run_dir`の行を除いて一致することを確かめる。
    `pairs/`の各JSONは、局の実時間、各手の`think_time_ns`とエンジンが報告する`completed_time_ms`、両エンジンのCPU時間、および両エンジンの最大常駐メモリの欄を除いて一致することを確かめる。
    `manifest.json`は、runnerのSHA-256（`runner.sha256`）と基準側`random`のバイナリのSHA-256（`baseline.identity.sha256`）を除いて一致することを確かめる。
