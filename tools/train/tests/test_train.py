@@ -380,7 +380,7 @@ class TrainingPathTest(unittest.TestCase):
                         "--k",
                         "200",
                         "--lr",
-                        "10",
+                        "0.125",
                         "--epochs",
                         "1",
                         "--batch",
@@ -403,7 +403,10 @@ class TrainingPathTest(unittest.TestCase):
                 f"generation 1 = {expected_ks[1]:.9f}",
                 output,
             )
-            self.assertRegex(output, r"best epoch: 0 validation_loss=")
+            self.assertRegex(output, r"best epoch: 1 validation_loss=")
+            report = json.loads(output_path.with_suffix(".training.json").read_text())
+            self.assertEqual(report["best_epoch"], 1)
+            self.assertGreater(report["validation"][1]["loss"], report["validation"][0]["loss"])
             observation_log = re.search(
                 r"feature observations: unobserved=(\d+).* max=(\d+) mean=",
                 output,
@@ -417,13 +420,145 @@ class TrainingPathTest(unittest.TestCase):
                 output,
             )
             middlegame, endgame, piece_values, output_k = read_mnpt(output_path)
-            np.testing.assert_array_equal(middlegame, initial_weights)
-            np.testing.assert_array_equal(endgame, initial_weights)
+            self.assertTrue(np.any(middlegame != initial_weights))
+            np.testing.assert_array_equal(endgame, middlegame)
             np.testing.assert_array_equal(piece_values, PIECE_VALUES)
             self.assertEqual(output_k, 200.0)
-            saved = np.load(float_weights_path(output_path))
-            np.testing.assert_array_equal(saved["middlegame"], 0)
-            np.testing.assert_array_equal(saved["endgame"], 0)
+            with np.load(float_weights_path(output_path)) as saved:
+                self.assertTrue(np.any(saved["middlegame"] != 0))
+                np.testing.assert_array_equal(saved["endgame"], saved["middlegame"])
+                np.testing.assert_array_equal(middlegame, np.rint(saved["middlegame"] * 8).astype(np.int16))
+
+
+class EarlyStoppingTest(unittest.TestCase):
+
+    """学習済みエポックからの最良重み選択と、早期終了の停止境界を検証する。"""
+
+    def test_stop_boundary_counts_from_the_last_best_trained_epoch(self):
+        for epoch, best, patience, expected in (
+            (5, 1, 5, False), (6, 1, 5, True), (7, 1, 5, True),
+            (7, 3, 5, False), (8, 3, 5, True),
+            (1, 1, 1, False), (2, 1, 1, True),
+            (3, 3, 1, False), (4, 3, 1, True), (200, 1, None, False),
+        ):
+            with self.subTest(epoch=epoch, best=best, patience=patience):
+                self.assertEqual(train.should_stop_early(epoch, best, patience), expected)
+
+    def test_cli_rejects_nonpositive_and_noninteger_patience_before_reading_data(self):
+        arguments = ["train", "--data", "not-read.bin", "--init", "not-read.bin",
+                     "--output", "not-written.bin", "--model", "single", "--k", "200",
+                     "--lr", "1", "--device", "cpu", "--removal-penalty", "0"]
+        self.assertIsNone(train.build_parser().parse_args(arguments).patience)
+        for value in ("0", "-1"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "patience"):
+                train_main(arguments + ["--patience", value])
+        for value in ("1.5", "five"):
+            with self.subTest(value=value), redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+                train_main(arguments + ["--patience", value])
+
+    def test_cpu_training_stops_after_validation_and_exports_the_best_weights(self):
+        # 損失列だけを制御し、Adam更新、量子化、出力は実際のCPU経路を通す。
+        cases = (
+            ("ties", 5, [.7] * 9, 6, 1, True, [1.0]),
+            ("worse-than-initial", 2, [.5, .8, .7, .75, .72, .6], 4, 2, True, [1.0]),
+            ("first-epoch-best", 1, [.5, .7, .8, .9], 2, 1, True, [1.0]),
+            ("reset", 2, [.7, .6, .6, .59, .59, .60, .5], 5, 3, True, [1.0]),
+            ("tiny-improvement", 1, [.7, .7, .7 - 1e-12, .7 - 1e-12, .6], 3, 2, True, [1.0]),
+            ("epoch-limit", 5, [.7, .6, .6], 2, 1, False, [1.0]),
+            ("limit-and-patience", 2, [.7, .7, .7, .7], 3, 1, True, [1.0]),
+            ("lr-trials", 2, [.7, .6, .6, .6, .5], 3, 1, True, [.1, 1.0]),
+            ("omitted", None, [.7, .6, .6, .6, .6], 4, 1, False, [1.0]),
+            ("omitted-worse-than-initial", None, [.5, .8, .7, .75, .72], 4, 2, False, [1.0]),
+        )
+        for name, patience, losses, last, best, stopped, rates in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                data, initial, output = root / "data.bin", root / "initial.bin", root / "trained.bin"
+                write_mnsd(data, seed=5, checksum=b"a" * 32, games=list(range(64)),
+                           scores=[300] * 64, results=[2] * 64)
+                zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
+                write_mnpt(initial, zeros, zeros, PIECE_VALUES, 200.0)
+                snapshots = []
+
+                def record_epoch(model, *args, **kwargs):
+                    result = train_epoch(model, *args, **kwargs)
+                    snapshots.append(expanded_model_weights(model).detach().cpu().numpy().copy())
+                    return result
+
+                trials = len(rates) if len(rates) > 1 else 0
+                validation = [(loss, np.array([loss])) for loss in [.9, .8][:trials]]
+                validation += [(loss, np.array([loss])) for loss in losses]
+                arguments = ["train", "--data", str(data), "--init", str(initial), "--output", str(output),
+                             "--model", "single", "--k", "200", "--lr", *map(str, rates),
+                             "--epochs", str(len(losses) - 1), "--batch", "16", "--device", "cpu",
+                             "--removal-penalty", "0"]
+                if patience is not None:
+                    arguments += ["--patience", str(patience)]
+                log = StringIO()
+                with patch.object(train, "train_epoch", side_effect=record_epoch), \
+                        patch.object(train, "validation_loss", side_effect=validation) as validate, \
+                        redirect_stdout(log):
+                    train_main(arguments)
+                self.assertEqual(len(snapshots), last + trials)
+                self.assertEqual(validate.call_count, last + trials + 1)
+                expected = snapshots[trials + best - 1][:, 0]
+                self.assertFalse(np.array_equal(snapshots[-1][:, 0], expected))
+                mg, eg, values, k = read_mnpt(output)
+                np.testing.assert_array_equal(mg, np.rint(expected * 8).astype(np.int16))
+                np.testing.assert_array_equal(eg, mg)
+                np.testing.assert_array_equal(values, PIECE_VALUES)
+                self.assertEqual(k, 200.0)
+                with np.load(float_weights_path(output)) as floating:
+                    np.testing.assert_array_equal(floating["middlegame"], expected)
+                    np.testing.assert_array_equal(floating["endgame"], expected)
+                report = json.loads(output.with_suffix(".training.json").read_text())
+                self.assertEqual(report["best_epoch"], best)
+                self.assertGreaterEqual(report["best_epoch"], 1)
+                self.assertIn(f"epoch 0: validation_loss: overall={losses[0]:.9f}", log.getvalue())
+                self.assertIn(f"best epoch: {best} validation_loss={losses[best]:.9f}", log.getvalue())
+                self.assertEqual([entry["epoch"] for entry in report["validation"]], list(range(last + 1)))
+                self.assertEqual([entry["loss"] for entry in report["validation"]], losses[:last + 1])
+                steps = (Dataset([data]).training_indices.size + 15) // 16
+                self.assertEqual(report["total_updates"], (last + trials) * steps)
+                if patience is None:
+                    self.assertEqual(set(report), {
+                        "validation", "best_epoch", "teacher_classes", "lookahead", "lambda_override",
+                        "train_half", "training_half_counts", "total_updates", "teacher_ks", "rescore_exclusions",
+                    })
+                else:
+                    self.assertEqual(report["patience"], patience)
+                    self.assertEqual(report["last_epoch"], last)
+                if stopped:
+                    self.assertIn(f"early stop: epoch={last} best_epoch={best} patience={patience}\n"
+                                  f"best epoch: {best} ", log.getvalue())
+                    self.assertEqual(log.getvalue().count("early stop:"), 1)
+                else:
+                    self.assertNotIn("early stop:", log.getvalue())
+                self.assertIn("quantization error:", log.getvalue())
+                self.assertIn("initial position evaluation:", log.getvalue())
+
+    def test_nonfinite_validation_loss_stops_with_epoch_context_before_export(self):
+        for bad_loss in (float("nan"), float("inf"), float("-inf")):
+            for bad_epoch in (0, 1, 2):
+                with self.subTest(loss=bad_loss, epoch=bad_epoch), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    data, initial, output = root / "data.bin", root / "initial.bin", root / "trained.bin"
+                    write_mnsd(data, seed=5, checksum=b"a" * 32, games=list(range(64)),
+                               scores=[300] * 64, results=[2] * 64)
+                    zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
+                    write_mnpt(initial, zeros, zeros, PIECE_VALUES, 200.0)
+                    losses = [.7] * bad_epoch + [bad_loss]
+                    with (patch.object(train, "validation_loss", side_effect=[
+                              (loss, np.array([loss])) for loss in losses]),
+                          redirect_stdout(StringIO()),
+                          self.assertRaisesRegex(ValueError, f"epoch {bad_epoch}:.*validation loss.*finite")):
+                        train_main(["train", "--data", str(data), "--init", str(initial),
+                                    "--output", str(output), "--model", "single", "--k", "200",
+                                    "--lr", "1", "--epochs", "2", "--batch", "64",
+                                    "--device", "cpu", "--removal-penalty", "0"])
+                    self.assertFalse(output.exists())
+                    self.assertFalse(float_weights_path(output).exists())
+                    self.assertFalse(output.with_suffix(".training.json").exists())
 
 
 class TaperedFormatTest(unittest.TestCase):
