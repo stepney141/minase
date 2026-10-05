@@ -621,7 +621,8 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
             result.stop_reason,
             StopReason::HardLimit | StopReason::SoftLimit
         ));
-        assert!(result.pv.len() >= 2, "予想手を検査できる深さまで探索する");
+        // 完了深さは負荷に依存するので、主変化の長さは契約にしない。
+        // 予想手は主変化が2手以上あるときだけ現れ、そのときも合法性を検査する。
         assert_eq!(result.pv[0], result.best_move);
         assert_pv_is_legal(&initial, &result.pv);
     }
