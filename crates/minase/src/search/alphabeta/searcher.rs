@@ -179,6 +179,8 @@ impl Searcher<'_> {
     }
 
     /// hを先に読み、hardを当て直しより先に検査する。
+    /// 対象の探索の秒読み期では当て直しを行わない
+    /// （`docs/plans/byoyomi-time-usage.md`の「秒読み期の締切」）。
     pub(super) fn check_time(&mut self) -> bool {
         let Some(limit) = self.shared.hard_limit else {
             return true;
@@ -192,7 +194,7 @@ impl Searcher<'_> {
         let reason = if elapsed.saturating_sub(hit) >= limit.duration {
             Some(StopReason::HardLimit)
         } else if let Some(iteration) = &mut self.ponder_iteration {
-            if iteration.checked {
+            if iteration.budget.byoyomi_period || iteration.checked {
                 return true;
             }
             iteration.checked = true;

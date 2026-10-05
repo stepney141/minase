@@ -10,6 +10,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     let ns = Duration::from_nanos;
     let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
     let budget = TimeBudget {
+        byoyomi_period: false,
         soft: ms(100),
         hard: ms(2 * ratio),
     };
@@ -28,6 +29,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     }
     // 的中後の経過時間に対してもsoftの未満境界を適用する。
     let shifted = TimeBudget {
+        byoyomi_period: false,
         soft: ms(100),
         hard: ms(3 * ratio),
     };
@@ -45,6 +47,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     ));
     // 割り切れる予算で、安定時の予測境界が等号を含むことを検査する。
     let exact_soft = TimeBudget {
+        byoyomi_period: false,
         soft: ms(ratio),
         hard: ms(2 * ratio),
     };
@@ -62,6 +65,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     ));
     // 固定時間では、安定性によらずhardの予測境界が拘束する。
     let fixed = TimeBudget {
+        byoyomi_period: false,
         soft: ms(100),
         hard: ms(100),
     };
@@ -81,6 +85,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     }
     // 的中が100msなら、T=200msの予測境界はhard=2×比−100msとなる。
     let wide_soft = TimeBudget {
+        byoyomi_period: false,
         soft: ms(2 * ratio - 100),
         hard: ms(2 * ratio - 100),
     };
@@ -99,6 +104,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     // 的中前に始めた反復にも、開始時刻からの予測と的中後の予算を使う。
     let hit = ms(10 * ratio);
     let budget = TimeBudget {
+        byoyomi_period: false,
         soft: ms(ratio),
         hard: ms(2 * ratio),
     };
@@ -261,6 +267,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             stable,
             checked: false,
             budget: TimeBudget {
+                byoyomi_period: false,
                 soft: ms(100),
                 hard: ms(400),
             },
@@ -294,6 +301,7 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
             stable: true,
             checked: false,
             budget: TimeBudget {
+                byoyomi_period: false,
                 soft: Duration::from_secs(1),
                 hard: Duration::from_secs(4),
             },
@@ -423,6 +431,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                 stable: false,
                 checked: false,
                 budget: TimeBudget {
+                    byoyomi_period: false,
                     soft: Duration::from_millis(100),
                     hard: Duration::from_millis(400),
                 },
@@ -485,4 +494,71 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
     assert_eq!(outcome.result.depth, 0);
     assert_eq!(outcome.result.nodes, 0);
     assert_eq!(outcome.result.best_move, snapshot.root_moves[0]);
+}
+
+// byoyomi-time-usage.md「秒読み期の締切」。実際の制限から得た予算で当て直しとhardを検査する。
+#[test]
+fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
+    let ms = Duration::from_millis;
+    let position = Position::initial();
+    let pst = weights().unwrap();
+    let table = small_tt();
+    let stop = AtomicBool::new(false);
+    for (remaining, byoyomi, depth, nodes, movetime, recheck) in [
+        (0, 10_030, None, None, None, false),
+        (1, 10_030, None, None, None, true),
+        (60_000, 0, None, None, None, true),
+        (0, 10_030, Some(2), None, None, true),
+        (0, 10_030, None, Some(100), None, true),
+        (0, 10_030, None, None, Some(5000), true),
+    ] {
+        let limits =
+            SearchLimits::new(depth, nodes, movetime, Some(clock(remaining, 0, byoyomi))).unwrap();
+        let budget = time_budget(&limits).unwrap();
+        for stable in [false, true] {
+            for expired in [false, true] {
+                let hit_ns = AtomicU64::new(100_000_000_000);
+                let shared = SharedSearch {
+                    external_stop: &stop,
+                    team_stop: AtomicBool::new(false),
+                    stop_reason: AtomicU8::new(0),
+                    total_nodes: AtomicU64::new(0),
+                    node_limit: None,
+                    started: Instant::now()
+                        - ms(100_000)
+                        - if expired { budget.hard } else { ms(1) },
+                    hard_limit: Some(HardLimit {
+                        duration: budget.hard,
+                        hit_ns: &hit_ns,
+                    }),
+                };
+                let mut history =
+                    Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+                let mut searcher = new_searcher(
+                    &pst,
+                    &position,
+                    engine_rules(),
+                    &[],
+                    &shared,
+                    &table,
+                    &mut history,
+                );
+                searcher.ponder_iteration = Some(PonderIteration {
+                    started: ms(90_000),
+                    stable,
+                    checked: false,
+                    budget,
+                });
+                let expected = if expired {
+                    Some(StopReason::HardLimit)
+                } else if recheck {
+                    Some(StopReason::SoftLimit)
+                } else {
+                    None
+                };
+                assert_eq!(searcher.check_time(), expected.is_none(), "{limits:?}");
+                assert_eq!(searcher.stop_reason, expected, "{limits:?}");
+            }
+        }
+    }
 }

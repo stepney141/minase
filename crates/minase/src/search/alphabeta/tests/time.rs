@@ -98,6 +98,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     let history_keys = [search_key(&position)];
     let external_stop = AtomicBool::new(false);
     let budget = TimeBudget {
+        byoyomi_period: false,
         soft: Duration::from_secs(1),
         hard: Duration::from_secs(1),
     };
@@ -192,4 +193,185 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
     let budget = time_budget(&limits).expect("byoyomi must produce a time budget");
     assert_eq!(budget.soft, Duration::from_millis(70));
     assert_eq!(budget.hard, Duration::from_millis(70));
+}
+
+// byoyomi-time-usage.md「設計判断」の対象外の定義と、変更を秒読みが正の時計に限る理由。
+#[test]
+fn excluded_clocks_preserve_reference_budgets_and_iteration_gates() {
+    let ms = Duration::from_millis;
+    for remaining in [0, 1, 30, 60_000, u64::MAX] {
+        for byoyomi in [0, 1, 1000, u64::MAX] {
+            for margin in [0, 30, 60_000] {
+                let clock = clock(remaining, 100, byoyomi).with_byoyomi_margin_ms(margin);
+                let reference = super::tuning::reference_clock_budget(clock, 30);
+                assert_eq!(clock_budget(clock), reference);
+                for (depth, nodes, movetime) in [
+                    (None, None, None),
+                    (Some(2), None, None),
+                    (None, Some(100), None),
+                    (None, None, Some(500)),
+                    (Some(2), Some(100), Some(500)),
+                ] {
+                    if byoyomi > 0 && depth.is_none() && nodes.is_none() && movetime.is_none() {
+                        continue;
+                    }
+                    let limits = SearchLimits::new(depth, nodes, movetime, Some(clock)).unwrap();
+                    let budget = time_budget(&limits).unwrap();
+                    let mut expected = reference;
+                    if let Some(fixed) = movetime {
+                        expected.soft = expected.soft.min(ms(fixed));
+                        expected.hard = expected.hard.min(ms(fixed));
+                    }
+                    assert_eq!(budget, expected, "{limits:?}");
+                    for hit in [Duration::ZERO, ms(1000)] {
+                        for elapsed in [
+                            Duration::ZERO,
+                            ms(1),
+                            ms(300),
+                            ms(1000),
+                            ms(1500),
+                            hit + expected.soft,
+                            hit + expected.hard,
+                        ] {
+                            for stable in [false, true] {
+                                // strength-stage6.mdとponder.mdの予測式と未満境界。
+                                let predicted = elapsed.as_nanos()
+                                    * crate::search::alphabeta::params::iteration_ratio() as u128;
+                                let fits = predicted <= (hit + expected.hard).as_nanos() * 100
+                                    && if stable {
+                                        predicted <= (hit + expected.soft).as_nanos() * 100
+                                    } else {
+                                        elapsed.saturating_sub(hit) < expected.soft
+                                    };
+                                assert_eq!(
+                                    should_start_next_iteration(elapsed, hit, budget, stable),
+                                    fits
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// byoyomi-time-usage.md「秒読み期の締切」。加算、手数、安定性によらずb未満だけで始める。
+#[test]
+fn byoyomi_period_budget_and_gate_use_only_the_deadline() {
+    let ms = Duration::from_millis;
+    for byoyomi in [1_u64, 29, 30, 31, 1000, 60_000, u64::MAX] {
+        for margin in [0, 30, 60_000] {
+            for increment in [0, 1000] {
+                for ply in [0, 36, u32::MAX] {
+                    let clock =
+                        clock_at_ply(0, increment, byoyomi, ply).with_byoyomi_margin_ms(margin);
+                    let limits = SearchLimits::new(None, None, None, Some(clock)).unwrap();
+                    let budget = time_budget(&limits).unwrap();
+                    let deadline = ms(byoyomi.saturating_sub(margin).max(1));
+                    assert_eq!(budget.soft, deadline);
+                    assert_eq!(budget.hard, deadline);
+                    for hit in [Duration::ZERO, ms(10_000)] {
+                        for stable in [false, true] {
+                            for (since_hit, expected) in [
+                                (deadline - Duration::from_nanos(1), true),
+                                (deadline, false),
+                                (deadline + Duration::from_nanos(1), false),
+                            ] {
+                                assert_eq!(
+                                    should_start_next_iteration(
+                                        hit + since_hit,
+                                        hit,
+                                        budget,
+                                        stable
+                                    ),
+                                    expected
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// byoyomi-time-usage.md「締切の余裕を絶対値のUSIオプションにする理由」。
+#[test]
+fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
+    for remaining in [1, 30, 1000, 60_000, u64::MAX] {
+        for byoyomi in [1, 30, 1000, u64::MAX] {
+            for increment in [0, 1000] {
+                for ply in [0, 36, 432, u32::MAX] {
+                    for margin in [0, 30, 1000, 60_000] {
+                        let clock = clock_at_ply(remaining, increment, byoyomi, ply)
+                            .with_byoyomi_margin_ms(margin);
+                        let limits = SearchLimits::new(None, None, None, Some(clock)).unwrap();
+                        let expected = super::tuning::reference_clock_budget(clock, margin);
+                        assert_eq!(time_budget(&limits), Some(expected));
+                        if margin == 30 {
+                            assert_eq!(time_budget(&limits), Some(clock_budget(clock)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // 安全上限が他の2項より小さい入力で、上限そのものと1msの下限を固定する。
+    for (margin, expected_ms) in [(150, 50), (200, 1), (201, 1)] {
+        let clock = clock(100, 1000, 100).with_byoyomi_margin_ms(margin);
+        let limits = SearchLimits::new(None, None, None, Some(clock)).unwrap();
+        let budget = time_budget(&limits).unwrap();
+        assert_eq!(budget.soft, Duration::from_millis(expected_ms));
+        assert_eq!(budget.hard, Duration::from_millis(expected_ms));
+    }
+}
+
+// byoyomi-time-usage.md「秒読み期の締切」。反復前と完了後の両方の配線を検査する。
+#[test]
+fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search() {
+    let position = position(
+        Color::Black,
+        &[
+            (fs(6, 12), Color::Black, PieceKind::King),
+            (fs(6, 1), Color::White, PieceKind::King),
+        ],
+    );
+    let root_moves = legal_moves(&position);
+    let pst = weights().unwrap();
+    let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 10_030))).unwrap();
+    let budget = time_budget(&limits).unwrap();
+    for ponder in [false, true] {
+        let stop = AtomicBool::new(false);
+        let hit_ns = AtomicU64::new(if ponder { 100_000_000_000 } else { 0 });
+        let shared = SharedSearch {
+            external_stop: &stop,
+            team_stop: AtomicBool::new(false),
+            stop_reason: AtomicU8::new(0),
+            total_nodes: AtomicU64::new(0),
+            node_limit: None,
+            started: Instant::now() - Duration::from_secs(if ponder { 105 } else { 5 }),
+            hard_limit: Some(HardLimit {
+                duration: budget.hard,
+                hit_ns: &hit_ns,
+            }),
+        };
+        let outcome = run_main_worker(
+            &pst,
+            &position,
+            engine_rules(),
+            &root_moves,
+            &[],
+            2,
+            Some(budget),
+            &shared,
+            &small_tt(),
+            &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
+            None,
+            ponder,
+        );
+        assert_eq!(outcome.result.depth, 2);
+        assert_eq!(shared.reason(), StopReason::DepthCompleted);
+        assert!(root_moves.contains(&outcome.result.best_move));
+    }
 }

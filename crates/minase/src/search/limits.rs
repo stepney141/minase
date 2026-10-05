@@ -143,11 +143,16 @@ pub struct ClockLimits {
     pub(super) increment_ms: u64,
     /// 1手ごとの秒読み時間(ms)。
     pub(super) byoyomi_ms: u64,
+    /// 秒読みつき時計の締切に残す余裕(ms)。
+    pub(super) byoyomi_margin_ms: u64,
     /// 開始局面から現局面までの手数。
     pub(super) ply: u32,
 }
 
 impl ClockLimits {
+    /// `docs/plans/byoyomi-time-usage.md`「締切の余裕を絶対値のUSIオプションにする理由」の既定値(ms)。
+    pub const DEFAULT_BYOYOMI_MARGIN_MS: u64 = 30;
+
     /// 持ち時間制の制限を検証して構築する。
     ///
     /// # Errors
@@ -167,8 +172,22 @@ impl ClockLimits {
             remaining_ms,
             increment_ms,
             byoyomi_ms,
+            byoyomi_margin_ms: Self::DEFAULT_BYOYOMI_MARGIN_MS,
             ply,
         })
+    }
+
+    /// 秒読みつき時計の締切に残す余裕(ms)を設定する。
+    ///
+    /// `docs/plans/byoyomi-time-usage.md`の「締切の余裕を絶対値のUSIオプションにする理由」に従う。
+    pub const fn with_byoyomi_margin_ms(mut self, milliseconds: u64) -> Self {
+        self.byoyomi_margin_ms = milliseconds;
+        self
+    }
+
+    /// 同設計書の「締切の余裕を絶対値のUSIオプションにする理由」で定める余裕(ms)を返す。
+    pub const fn byoyomi_margin_ms(self) -> u64 {
+        self.byoyomi_margin_ms
     }
 
     /// 手番開始時の残り時間(ms)を返す。

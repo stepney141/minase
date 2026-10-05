@@ -57,6 +57,8 @@ pub struct UsiProtocol {
     threads: NonZeroUsize,
     /// 完了深さが1以上の採用結果に適用する投了閾値(cp)。
     resign_value: i32,
+    /// 秒読みつき時計の締切に残す余裕(ms)。
+    byoyomi_margin_ms: u64,
 }
 
 /// 最後に受理した`position`のトークン列。
@@ -149,6 +151,7 @@ impl UsiProtocol {
             next_search_id: 1,
             threads: search::DEFAULT_THREADS,
             resign_value: DEFAULT_RESIGN_VALUE,
+            byoyomi_margin_ms: ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS,
         }
     }
 
@@ -234,7 +237,12 @@ impl UsiProtocol {
             return Ok(None);
         }
         let game = engine.game();
-        let config = match parse_go_config(tokens, game.position().side_to_move(), engine.ply()) {
+        let config = match parse_go_config(
+            tokens,
+            game.position().side_to_move(),
+            engine.ply(),
+            self.byoyomi_margin_ms,
+        ) {
             Ok(config) => config,
             Err(error) => {
                 write_error(output, &error)?;
@@ -735,6 +743,11 @@ impl UsiProtocol {
             output,
             "option name ResignValue type spin default {DEFAULT_RESIGN_VALUE} min 1 max 99999"
         )?;
+        writeln!(
+            output,
+            "option name ByoyomiMargin type spin default {} min 0 max 60000",
+            ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS
+        )?;
         #[cfg(feature = "tuning")]
         for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
             writeln!(
@@ -745,7 +758,7 @@ impl UsiProtocol {
         writeln!(output, "usiok")
     }
 
-    /// `setoption`を処理する。RuleSet・USI_Variant・USI_Hash・Threads・ResignValueを受理し、
+    /// `setoption`を処理する。RuleSet・USI_Variant・USI_Hash・Threads・ResignValue・ByoyomiMarginを受理し、
     /// 未知のoption名はUSIの慣例に従って黙って無視する。
     fn handle_setoption(
         &mut self,
@@ -847,6 +860,21 @@ impl UsiProtocol {
                 return write_error(output, "invalid ResignValue value");
             };
             self.resign_value = value;
+            Ok(())
+        } else if name.eq_ignore_ascii_case("ByoyomiMargin") {
+            let Some(value) = value else {
+                return write_error(output, "missing ByoyomiMargin value");
+            };
+            let Some(value) = value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit())
+                .then(|| value.parse::<u64>().ok())
+                .flatten()
+                .filter(|value| *value <= 60_000)
+            else {
+                return write_error(output, "invalid ByoyomiMargin value");
+            };
+            self.byoyomi_margin_ms = value;
             Ok(())
         } else {
             Ok(())
@@ -1169,7 +1197,12 @@ fn position_extension_start(
 ///
 /// `depth`・`nodes`・`movetime`・時計引数(`btime`等)・`infinite`を受理し、
 /// 時計引数からは手番側の残り時間だけを取り出す。
-fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<SearchLimits, String> {
+fn parse_go_config(
+    tokens: &[&str],
+    side_to_move: Color,
+    ply: u32,
+    byoyomi_margin_ms: u64,
+) -> Result<SearchLimits, String> {
     if tokens.is_empty() {
         return Err("go requires depth or nodes".to_owned());
     }
@@ -1253,6 +1286,7 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<Sea
                 Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0)),
             };
             ClockLimits::new(remaining_ms, increment_ms, byoyomi.unwrap_or(0), ply)
+                .map(|clock| clock.with_byoyomi_margin_ms(byoyomi_margin_ms))
         })
         .transpose()
         .map_err(|error| error.to_string())?;
@@ -1993,8 +2027,68 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["option name ResignValue type spin default 20000 min 1 max 99999"]
         );
+        // byoyomi-time-usage.md「締切の余裕を絶対値のUSIオプションにする理由」。
+        assert_eq!(
+            lines
+                .iter()
+                .copied()
+                .filter(|line| line.starts_with("option name ByoyomiMargin "))
+                .collect::<Vec<_>>(),
+            ["option name ByoyomiMargin type spin default 30 min 0 max 60000"]
+        );
         // ponder.md設計判断「USI_Ponder」: 時間管理が値に依存しないため宣言しない（D6-USI-18）。
         assert!(!output.contains("USI_Ponder"));
+    }
+
+    // byoyomi-time-usage.md「締切の余裕を絶対値のUSIオプションにする理由」。
+    #[test]
+    fn byoyomi_margin_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        assert_eq!(protocol.byoyomi_margin_ms, 30);
+        for (value, expected) in [("0", 0), ("60000", 60_000), ("00123", 123)] {
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    &mut engine,
+                    &format!("setoption name byoyomimargin value {value}\n")
+                ),
+                ""
+            );
+            let config = parse_go_config(
+                &["btime", "0", "wtime", "0", "byoyomi", "1000"],
+                Color::Black,
+                0,
+                protocol.byoyomi_margin_ms,
+            )
+            .unwrap();
+            assert_eq!(config.clock().unwrap().byoyomi_margin_ms(), expected);
+        }
+        for value in [
+            "",
+            "value",
+            "value -1",
+            "value +1",
+            "value 60001",
+            "value nope",
+            "value 1.5",
+            "value 999999999999999999999999999",
+        ] {
+            let output = run(
+                &mut protocol,
+                &mut engine,
+                &format!("setoption name ByoyomiMargin {value}\n"),
+            );
+            assert_eq!(
+                output,
+                if value.is_empty() || value == "value" {
+                    "info string error: missing ByoyomiMargin value\n"
+                } else {
+                    "info string error: invalid ByoyomiMargin value\n"
+                }
+            );
+            assert_eq!(protocol.byoyomi_margin_ms, 123);
+        }
     }
 
     #[test]
@@ -2860,11 +2954,15 @@ mod tests {
             "btime", "1000", "wtime", "2000", "binc", "30", "winc", "40", "byoyomi", "500",
         ];
         assert_eq!(
-            parse_go_config(&tokens, Color::Black, 37).unwrap().clock(),
+            parse_go_config(&tokens, Color::Black, 37, 30)
+                .unwrap()
+                .clock(),
             Some(ClockLimits::new(1000, 30, 500, 37).unwrap())
         );
         assert_eq!(
-            parse_go_config(&tokens, Color::White, 37).unwrap().clock(),
+            parse_go_config(&tokens, Color::White, 37, 30)
+                .unwrap()
+                .clock(),
             Some(ClockLimits::new(2000, 40, 500, 37).unwrap())
         );
     }
@@ -3625,7 +3723,8 @@ mod tests {
                 parse_go_config(
                     &args.split_whitespace().collect::<Vec<_>>(),
                     Color::Black,
-                    0
+                    0,
+                    30
                 )
                 .is_ok(),
                 "{args}"
