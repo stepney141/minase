@@ -71,7 +71,7 @@
 | 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 完了（一部不採用） | 2026年9月29日 |
 | 評価関数の候補と探索係数の共適応の検証 | [plans/eval-search-coadaptation.md](plans/eval-search-coadaptation.md) | 完了（一部不採用） | 2026年10月5日 |
 | 補正1/4のFMの現行PSTへの再学習 | [plans/fm-quarter-current-pst.md](plans/fm-quarter-current-pst.md) | 起案 | |
-| 採用PSTの追加学習のエポック数の延長 | [plans/pst-longer-training.md](plans/pst-longer-training.md) | 起案 | |
+| 採用PSTの追加学習のエポック数の延長 | [plans/pst-longer-training.md](plans/pst-longer-training.md) | 完了（採用） | 2026年10月6日 |
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
@@ -81,15 +81,15 @@
 
 ### 直近の完了
 
+- [採用PSTの追加学習のエポック数の延長](plans/pst-longer-training.md)は2026年10月6日に、採用で完了した。学習器に早期終了の打ち切りを加え、採用PSTのPcを初期値に同じデータと条件で上限200エポックまで学習した候補Lは、検証損失が最後まで下がり続けて最良エポックが200となった。候補Lは[STC](measurements/pst-longer-training-stc.md)（得点率65.9%）と[LTC](measurements/pst-longer-training-ltc.md)（得点率73.5%、Elo換算で約+177）でともに`H1`となった。評価値の尺度はPcより約14%大きく、探索係数と探索用駒価値は据え置いたままである。
 - [測定の再開条件の簡素化](plans/match-resume-simplification.md)は2026年10月5日に、採用で完了した。`minase match run --resume <実行ディレクトリ>`と`minase spsa --resume <実行ディレクトリ>`は実行条件をすべて`manifest.json`から読み、対局測定の延長は`--target-pairs`だけで指定する。runnerのSHA-256と測定機は再開時に照合せず起動ごとに`invocations.json`へ記録するので、作業ツリーの`minase`を再ビルドした後でも再開できる。エンジンのSHA-256は引き続き照合する。fishtest、fastchess、cutechess-cli、およびAyaneのいずれも、再開時にrunner自身のハッシュを照合しないことを確認したうえでの判断である。`minase match report`と`minase spsa apply`は、変更前の形式の実行ディレクトリも読み取れる。
 - [補助ツールのサブコマンド化](plans/cli-subcommands.md)は2026年10月5日に、採用で完了した。対局測定、係数調整、学習データの生成、および検証と診断の10個の補助ツールを実行ファイル`minase`のサブコマンド（`minase match run`、`minase spsa`、`minase data selfplay`、`minase dev bench`など）へ移し、`cargo install minase`が導入する実行ファイルを1つにした。エンジンの起動`minase --protocol … --rules …`は変えていない。全ツールの固定シードの出力が移動前と一致し、benchのNPS中央値は移動前の0.9955倍だった（[測定記録](measurements/cli-subcommands-bench-depth5.md)）。runnerがエンジンと同じ実行ファイルになったことで生じた再開の制約は、測定の再開条件の簡素化で解消した。
-- [評価関数の候補と探索係数の共適応の検証](plans/eval-search-coadaptation.md)は2026年10月5日に、一部不採用で完了した。採用PSTのG23から混合比λ=1.0で学び直したPSTはSTCで−151.1 Elo（95%信頼区間 −177.5〜−125.1）と負け、探索係数29個をSPSAで調整し直しても回復量は−10.8 Elo（95%信頼区間 −45.9〜+25.4）で、負けを探索係数との不整合で説明する仮説は支持されなかった（[調整後](measurements/eval-coadaptation-after-stc400.md)）。追加診断では、同じ10エポックの追加学習をλ=0.75で行った対照Ccが段階ゲートの[STC](measurements/eval-coadaptation-lambda075-stc.md)と[LTC](measurements/eval-coadaptation-lambda075-ltc.md)でともに`H1`（得点率57.4%と57.3%）となり、新しい採用PSTになった。λ=1.0の負けは追加学習ではなく混合比に結び付き、G23は10エポックでは学習しきれていなかった。
 
 ### 次の候補
 
 - 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
-- 評価関数の次の計画は[採用PSTの追加学習のエポック数の延長](plans/pst-longer-training.md)である。採用PSTのPcを初期値に、同じデータと条件で最大40エポックまで学習し、検証損失が最良のエポックの重みを段階ゲートで測る。採用PSTを変え得るので、FMの計画より先に完了させる。
-- その次は[補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)である（2026年10月4日の利用者決定）。基点の採用PSTは、共適応の検証で採用したPcに変わった。ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直し、標準の段階ゲートで採否を測る。測定機の時間は約2〜39時間であり、補正の教師の選択が利用者の判断を待っている。
+- 評価関数では、[エポック数の延長](plans/pst-longer-training.md)の採用を受けて、2つの続きが候補になる。1つは、最良エポックが上限の200に達したので、さらに長い学習で伸びるかを確かめることである。もう1つは、新しい採用PSTが評価値の尺度を約14%大きくしたので、探索係数をSPSAで調整し直すことである。
+- [補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)は、2026年10月4日の利用者決定で評価関数の次の計画とされていた。基点の採用PSTは、エポック数の延長で採用した候補Lに変わった。上の2つの続きとの順序は利用者が決める。ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直し、標準の段階ゲートで採否を測る。測定機の時間は約2〜39時間であり、補正の教師の選択が利用者の判断を待っている。
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
