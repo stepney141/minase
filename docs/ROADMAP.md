@@ -75,15 +75,15 @@
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
-| 測定の再開条件の簡素化 | [plans/match-resume-simplification.md](plans/match-resume-simplification.md) | 起案 | |
+| 測定の再開条件の簡素化 | [plans/match-resume-simplification.md](plans/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
 
 ## 現在地
 
 ### 直近の完了
 
-- [補助ツールのサブコマンド化](plans/cli-subcommands.md)は2026年10月5日に、採用で完了した。対局測定、係数調整、学習データの生成、および検証と診断の10個の補助ツールを実行ファイル`minase`のサブコマンド（`minase match run`、`minase spsa`、`minase data selfplay`、`minase dev bench`など）へ移し、`cargo install minase`が導入する実行ファイルを1つにした。エンジンの起動`minase --protocol … --rules …`は変えていない。全ツールの固定シードの出力が移動前と一致し、benchのNPS中央値は移動前の0.9955倍だった（[測定記録](measurements/cli-subcommands-bench-depth5.md)）。runnerがエンジンと同じ実行ファイルになったので、測定の途中で`minase`を再ビルドすると再開できなくなる。
+- [測定の再開条件の簡素化](plans/match-resume-simplification.md)は2026年10月5日に、採用で完了した。`minase match run --resume <実行ディレクトリ>`と`minase spsa --resume <実行ディレクトリ>`は実行条件をすべて`manifest.json`から読み、対局測定の延長は`--target-pairs`だけで指定する。runnerのSHA-256と測定機は再開時に照合せず起動ごとに`invocations.json`へ記録するので、作業ツリーの`minase`を再ビルドした後でも再開できる。エンジンのSHA-256は引き続き照合する。fishtest、fastchess、cutechess-cli、およびAyaneのいずれも、再開時にrunner自身のハッシュを照合しないことを確認したうえでの判断である。`minase match report`と`minase spsa apply`は、変更前の形式の実行ディレクトリも読み取れる。
+- [補助ツールのサブコマンド化](plans/cli-subcommands.md)は2026年10月5日に、採用で完了した。対局測定、係数調整、学習データの生成、および検証と診断の10個の補助ツールを実行ファイル`minase`のサブコマンド（`minase match run`、`minase spsa`、`minase data selfplay`、`minase dev bench`など）へ移し、`cargo install minase`が導入する実行ファイルを1つにした。エンジンの起動`minase --protocol … --rules …`は変えていない。全ツールの固定シードの出力が移動前と一致し、benchのNPS中央値は移動前の0.9955倍だった（[測定記録](measurements/cli-subcommands-bench-depth5.md)）。runnerがエンジンと同じ実行ファイルになったことで生じた再開の制約は、測定の再開条件の簡素化で解消した。
 - [評価関数の候補と探索係数の共適応の検証](plans/eval-search-coadaptation.md)は2026年10月5日に、一部不採用で完了した。採用PSTのG23から混合比λ=1.0で学び直したPSTはSTCで−151.1 Elo（95%信頼区間 −177.5〜−125.1）と負け、探索係数29個をSPSAで調整し直しても回復量は−10.8 Elo（95%信頼区間 −45.9〜+25.4）で、負けを探索係数との不整合で説明する仮説は支持されなかった（[調整後](measurements/eval-coadaptation-after-stc400.md)）。追加診断では、同じ10エポックの追加学習をλ=0.75で行った対照Ccが段階ゲートの[STC](measurements/eval-coadaptation-lambda075-stc.md)と[LTC](measurements/eval-coadaptation-lambda075-ltc.md)でともに`H1`（得点率57.4%と57.3%）となり、新しい採用PSTになった。λ=1.0の負けは追加学習ではなく混合比に結び付き、G23は10エポックでは学習しきれていなかった。
-- [ライブラリとエンジンのcrate分割](plans/crate-split.md)は2026年10月4日に、採用で完了した。リポジトリを仮想マニフェストのワークスペースとし、規則と合法手生成のライブラリ`minase-core`（MIT）と、探索、評価、プロトコル、および実行ファイルのエンジン`minase`（GPL-3.0-or-later）を`crates/`の下に分けた。分割前と比べてbench、perft、および試験の名前の集合が一致し、両crateの`cargo package`が検証ビルドまで通る。RULES.mdは[docs/rules/](rules/RULES.md)へ移した。エンジンの次の版は2.0.0、ライブラリは0.1.0から始め、リリースとcrates.ioへの公開は利用者が行う。
 
 ### 次の候補
 
