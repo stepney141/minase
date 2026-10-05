@@ -2,8 +2,9 @@
 
 本ディレクトリは、minaseの評価関数のうちPST（駒の種類と位置に応じた評価表）を、自己対局の教師データから学習するPythonのツール群である。
 エンジン本体はRustで書かれており、学習ツールとはファイルを介してだけやり取りする。
-本体の`minase data selfplay`が自己対局の局面と探索値を書き出し、学習ツールがそれを読んでPSTを学習し、エンジンが読み込める重みファイル`crates/minase/nets/pst.bin`の形式で書き出す。
-学習の手順、設定項目、および採否の判断は [PSTの学習手順](../../docs/guides/pst-training.md) が定めており、本書は環境の構築とソースの構成だけを説明する。
+本体の`minase data selfplay`が自己対局の局面と探索値を書き出し、学習ツールがそれを読んでPSTを学習する。
+学習した重みは、エンジンが読み込める重みファイル`crates/minase/nets/pst.bin`の形式で保存する。
+学習の手順、設定項目、および採否の判断は [PSTの学習手順](../../docs/guides/pst-training.md) が定めており、本書は環境の構築、ファイル形式と記録の各欄、およびソースの構成を説明する。
 
 ## 環境の構築
 
@@ -46,8 +47,34 @@ uv run --project tools/train python -m unittest discover -s tools/train/tests
 設定ファイルの書き方は、[設定例](pst.example.toml) と学習手順の文書にある。
 
 ```bash
-uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
+uv run --project tools/train pst-workflow prepare --config <実験名>.toml
 ```
+
+学習器の`train`と`estimate-k`、および`pst-diagnostics`を`pst-workflow`を介さずに呼ぶ場合は、設定ファイルの項目を次の引数で指定する。
+教師混合比の上書きは`--lambda-override 1.0`のように指定する。
+先読みは`--lookahead-gamma 0.9 --lookahead-plies 40`のように両方を指定し、両方を省略した場合は先読みなしとし、片方だけの指定は拒否する。
+付け直しファイルは`--rescore`に`--data`と同じ個数と順序でパスを渡し、付け直さないファイルには`-`を渡す。
+`train`では追加損失の係数`--removal-penalty`が必須であり、`pst-workflow`は設定の`train.removal_penalty`をそのまま渡す。
+
+`lookahead-diag`は、先読み教師を使う前の事前診断である。
+基本の教師のMNSD、段階9の定義2による118列の追加特徴を収めたMNKF、追加特徴を含まない学習PST、および王駒の露出局面と対照局面からなる予備標本を渡す。
+予備標本の定義は[先読み教師値の設計書](../../docs/plans/lookahead-teacher.md)にある。
+
+```bash
+uv run --project tools/train lookahead-diag \
+  --data <MNSD...> --king-features <MNKF...> --pst <MNPT> \
+  --output-k 1072.6529541015625 --gammas 0.9,0.7,0.95 --plies 40 \
+  --exposed-sample <予備標本のJSON> \
+  --output <JSON>
+```
+
+この診断は学習器と同じ訓練分割を使い、減衰係数γごとの先読み値と探索値の差、駒数帯ごとの差、その差が−300センチポーン以下となる割合、窓の記録数、および退避率を出す。
+分布には平均、母標準偏差、および線形補間による5、25、50、75、95パーセンタイルを記録する。
+最初の記録までの手数は、記録が1件以上ある窓だけで集計する。
+γの一覧には0.9を含め、教師K、露出局面と対照局面の教師勝率差、およびMNKFの118列との残差相関はγ=0.9で比較する。
+教師勝率はλ=0.75で混合し、残差は教師勝率からPSTの予測勝率を引いた値とする。
+基本の教師に合わせて来歴のλも0.75を要求し、標本のファイル検査和、行番号、訓練分割への所属を照合する。
+空の分布と分散0の相関は`null`とし、理由を記録する。
 
 ## ファイル形式
 
@@ -60,13 +87,138 @@ uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
 | MNKF | MNSDの各局面に対応する追加の評価特徴の列 | 段階9の実験ブランチ（masterには書き出す側がない） | `data/mnsd.py` |
 | MNPT | PSTの重み、探索用の駒価値、および出力の尺度K | `train-pst` | `data/mnpt.py`、本体の評価関数 |
 
-MNSDには、パスの末尾に `.provenance.json` を付けた来歴ファイルが必須である。
-来歴は教師の生成条件と教師値の混合比を記録し、`data/mnsd.py` が検査和とともに検証する。
+### 来歴と教師の分類
+
+各MNSDには、パスの末尾に `.provenance.json` を付けた来歴ファイルが必須であり、`data/mnsd.py` が検査和とともに検証する。
+来歴は`format = "minase-provenance"`、`version = 1`、元のMNSD全体のSHA-256である`mnsd_sha256`、`teacher`、`result_origin`、`start_origin`、`lambda`、`games`を持つ。
+既存データにも明示的に用意し、欠落や検査和の不一致があれば読み込みを停止する。
+
+教師の分類は、`teacher`内の`generation_commit`、`network_checksum`、`nodes`、`rule_set`、`search_condition`と、`result_origin`、`start_origin`の7項目で定まる。
+`search_condition`は`"in-game"`または`"standalone"`、`result_origin`は`"selfplay"`または`"human"`、`start_origin`は`"random"`または`"human-game"`とする。
+混合率は全体の`train.lambda`や`--lambda`では指定せず、各来歴の`lambda`に0以上1以下の有限値を記す。
+[評価関数の設計書](../../docs/plans/evaluation.md#教師値と損失)のとおり、自己対局の分類は0.75、実戦棋譜の対局結果だけを使う分類は0とする。
+同じ分類の実効混合比が一致しない入力は拒否する。
+実効λが0の分類ではKを推定せず、教師値には対局結果だけを使う。
+
+### 教師混合比の上書き
+
+`train.lambda_override = 1.0`を指定すると、`result_origin = "selfplay"`の分類だけで探索側の割合を1にする。
+実戦棋譜の分類のλ=0は変えず、来歴ファイルにも書き戻さない。
+教師の分類には`lambda_override`を加え、適用しない分類では`null`、適用する分類では指定値を記録し、`lambda`には実効値を記録する。
+先読みと併用した分類は、先読みの属性と上書きの値を両方持つ。
+上書きの設定は準備記録、`training/inputs.json`、`<出力名>.training.json`、診断結果に保存し、学習、診断、再開時に照合する。
+λ=1でも教師Kは訓練分割の対局結果から推定し、探索値または先読み値の勝率への換算に使う。
+
+### 先読み教師値
+
+先読みを使う場合は、同じ対局の将来の探索値を手数差の偶奇で現在の手番側へそろえ、幾何加重平均した実数を教師に使う。
+計算式と記録が欠けた場合の正規化は[先読み教師値の設計書](../../docs/plans/lookahead-teacher.md#先読み値の計算)に従う。
+窓に記録がない局面だけは元の探索値を使う。
+入力は対局番号の非減少順、同一対局内では手数の厳密増加順を要求し、並びが崩れていれば拒否する。
+先読み値はMNSDの整数欄へ書き戻さず、別の実数配列に保持し、教師Kの推定、訓練、検証損失、教師探索値との比較に共通して使う。
+
+先読みを使う分類には、生成時の7項目に`lookahead_gamma`と`lookahead_plies`を加え、教師Kを訓練分割から推定し直す。
+来歴ファイル自体は変更せず、先読みなしの分類ではこの2項目を`null`として記録する。
+`train.lookahead`は準備記録、`training/inputs.json`、`<出力名>.training.json`、診断結果に保存し、学習、診断、再開時に照合する。
+`train.rescore`に`"-"`以外が1つでもあれば先読みとの併用を拒否する。
+
+### 検証分割
+
+検証分割は由来に応じて生成シードと対局番号、または棋譜IDによって固定され、約5%の対局が検証用になる。
+乱数開始の自己対局では来歴の`games`を`null`とし、検証の所属は`hash64(seed, game) % 20 == 0`で決める。
+その他の由来では`games`を`{"game": 1, "id": "棋譜ID"}`形式の配列とし、実戦開始では各要素に開始手数`ply`も記す。
+全記録の対局番号が`games`の配列に必要であり、配列にない番号があれば停止する。
+棋譜IDのUTF-8バイト列のSHA-256の先頭8バイトをリトルエンディアンの整数として読み、20で割った余りが0のIDを検証に使う。
+これにより、同じ棋譜の局面と、その棋譜から始めた自己対局は全ファイルを通して同じ側に入る。
+
+### 付け直しファイル
+
+付け直しファイルMNRSはMNSDごとに1つまで指定できる。
+元のMNSDの検査和、記録数、対象一覧の検査和、および固定長240バイトのヘッダに16バイト×記録数を加えたファイル長を照合し、書きかけのファイルは拒否する。
+
+状態1の記録は探索値を差し替え、教師の分類をMNRSの探索条件と元の来歴の由来から決め直す。
+混合率は元の来歴から引き継ぐ。
+差し替えた探索値の絶対値が29,000以上の記録、最善手が捕獲または成りの記録、および深さ1未完了の状態2の記録は、訓練と検証の両方から除く。
+理由別件数は重複を含み、`rescore_exclusions.total`は重複を除いた件数として、標準出力と学習JSONに記録する。
+元のMNSDを書き換えず、MNKFは除外後も元の行番号で参照する。
+
+## 学習と診断の記録
+
+本節は、`pst-workflow`の各工程が実行ディレクトリへ書き出す記録の欄を説明する。
+判断に使う規則と停止時の対処は、学習手順の文書が定める。
+
+### 端点の識別性の報告
+
+`taper-report`は、`mirrored`では鏡映対の観測を正準特徴ごとに統合してから補間係数φの平均と偏差平方和を計算し、`features.csv`へ6,840個の特徴を記録する。
+`tapered`では元の13,680特徴を別々に集計する。
+`report.json`の`training_mean_phi`は、検証局面を除く全訓練局面に等しい重みを与えたφの平均である。
+
+### 学習の記録
+
+教師Kは、訓練集合の添字を明示して教師の分類ごとに推定し、λ=0の分類ではJSONで`null`とする。
+モデル出力の尺度には`train.k`をそのまま渡し、λが0でない分類の混合データから推定したKは標準出力と`training/inputs.json`の`mixed_k`へ参考値として記録する。
+全分類でλ=0の場合は`mixed_k`も`null`とする。
+同ファイルの`k`には学習に使う指定値を記録し、`train.k`を省略した設定は準備時に拒否する。
+分類ごとの尺度、訓練と検証の局面数、1エポックと全体の更新回数も `training/inputs.json` に記録する。
+同ファイルの`options`には`removal_penalty`を含む全学習設定を保存する。
+`total_steps`は`train.epochs`までの上限での総更新回数であり、実際の更新回数は`<出力名>.training.json`の`total_updates`で読む。
+Python、PyTorch、CUDA、導入パッケージの版は `training/environment.json` に残す。
+
+重みファイル `training/pst.bin` はMNPTバージョン2であり、序中盤用と終盤用の2組の重みに加え、基準から引き継いだ探索用駒価値47個を持つ。
+静的評価は盤上総駒数で両端点を線形補間し、探索用駒価値は学習で変えない（[PSTの序中盤と終盤の補間](../../docs/plans/tapered-pst.md)）。
+診断が量子化誤差を測れるよう、量子化前の重みを `training/pst-float.npz` に併置する。
+量子化の丸め、範囲の検査、および重みの範囲射影は[評価関数の設計書](../../docs/plans/evaluation.md#段階1の学習pst)が定める。
+
+検証損失は、由来、教師の分類、駒数帯、および王駒を2枚持つ側を含むかどうかのそれぞれで区分し、初期状態のエポック0から毎エポック記録する。
+駒数帯は補間係数φの5等分を使い、空の区分の損失は`null`とする。
+`game_half`は`hash64(seed, game) % 40 == 0`となる検証局面の平均である。
+`human_game_mean`は、対局結果が実戦棋譜に由来する局面の損失を棋譜IDごとに平均し、その値を全IDについて等しい重みで平均したものである。
+`sign_agreement`は引き分けを除き、評価値の符号と対局結果の一致率を3つの由来ごとに記録する。
+評価値0は勝敗のいずれにも一致しないものとする。
+これらは`<出力名>.training.json`の`validation`に入り、最良エポックは全検証局面の平均損失で選ぶ。
+
+`train.log`の`train_loss`は教師値の二値交差エントロピー、`removal_loss`は係数を掛ける前の追加損失、`total_loss`は両者を指定係数で合成した学習目的の値である。
+係数0では追加損失の計算を省略し、`removal_loss`を0、`total_loss`を`train_loss`と同じ値にする。
+打ち切りで止めたときは学習ログの`best epoch:`行の直前に`early stop:`行を出し、`<出力名>.training.json`に指定値`patience`と最後に回したエポック`last_epoch`を記録する。
+
+### 診断の記録
+
+`diagnostics/report.json`の`bands` は、補間係数を5等分した局面帯と教師の分類の組ごとに、基準と候補を比較する。
+比較する値は、訓練と検証の局面数、全検証局面の検証損失、および教師探索値との平均絶対誤差と相関である。
+平均絶対誤差と相関は最大 `diagnose.sample_size` 局面の標本で計算し、平均絶対誤差は出力Kと教師Kの比で換算した値と生の値の両方を記録する。
+λ=0の分類は教師探索値との比較から除外し、`teacher_comparison_excluded`へ除外件数を記録する。
+検証損失、量子化誤差、およびRustとの評価値の照合にはその分類も含める。
+出力JSONの`generation`と`generations`の軸は教師の分類を表し、`teacher_classes`に生成時の7項目、先読みのγと手数上限、`lambda_override`、および実効混合比`lambda`を記録する。
+相関が定義できない場合は `null` と理由を出力し、空の帯は理由を記録して標本を作らない。
+抽出した局面番号も帯ごとに保存するので、入力ファイルの一覧と合わせて標本を特定できる。
+`quantization` は全帯の標本を合わせた量子化誤差である。
+`rust_agreement` は、同じ標本を `minase dev pst-probe` で評価したRustの値がPythonの整数参照評価と全件一致したことを示す。
+
+`outcome_metrics`は、基準と候補のそれぞれについて、全検証局面の評価値を各重みファイルの固定した出力Kで勝率へ換算し、対局結果への二値交差エントロピーを記録する。
+結果は負け0、引き分け0.5、勝ち1とし、`bce_position_mean`は局面の平均、`bce_game_mean`は対局ごとの平均の平均とする。
+対局単位は学習の分割と同じ識別子を使い、実戦棋譜のIDが複数ファイルに現れる場合も1対局として集計する。
+`sign_agreement`は引き分けと評価値0を除いた符号一致率であり、`sign_records`と`sign_matches`に分母と一致件数を残す。
+`sign_excluded`は除外局面の総数、`draw_records`と`zero_score_records`は重複を含む理由別の件数であり、対象がない場合の率は`null`とする。
+これらは教師の混合比に依存しない診断値である。
+
+`representatives` は、初期配置と各帯の標本のうち最小の通算番号を持つ代表局面について、王駒以外の各駒を1枚除いたときの評価の変化を基準と候補で並べる。
+駒を除くと補間係数も変わるため、評価差をその駒固有の価値と同一視しない。
+同じ代表局面の合法な成り手は `minase dev pst-probe` が実際に適用し、着手前の手番側視点の評価差を `promotions` に記録する。
+成り手がない局面は `promotion_reason` にその旨を残す。
+`after`の着手後局面からPythonで計算した評価差がRustの値と一致した成り手の件数を`rust_promotion_agreement`に記録する。
+
+駒除去の`evaluations`と`delta_cp`はPST部分を表し、`total_evaluations`と`total_delta_cp`は評価全体を表す。
+PST部分の厳密な符号反転は`pst_removal_sign_reversals`へ集計する。
+評価全体の除去差分には、残った駒の利きが変わる効果が入るため、符号の保存を合格条件にしない。
+除去局面は`removals.bin`へ保存してRustで評価し、`--skip-invalid`により復元不能のレコードを入力番号と理由つきで残す。
+`rust_removal_agreement`は一致した件数と除外した件数をモデル別に記録する。
+
+`derived_piece_values` は、各端点の全升平均から導出した駒価値と固定した探索用駒価値を並べ、端点ごとの静的な駒価値が固定値からどれだけ離れたかを示す。
 
 ## ソースの構成
 
 ソースは `src/minase_train/` にあり、機能ごとに3つのサブパッケージへ分かれている。
-依存の向きは、`workflow.py` と `diagnostics/` が `pst/` を、`pst/` が `data/` を使う一方向であり、`data/` は学習の手法を知らない。
+依存の向きは、`workflow.py` と `diagnostics/` が `pst/` を、`pst/` が `data/` を使う一方向であり、`data/` は学習の手法に依存しない。
 
 `data/` は、学習データと重みファイルの読み書き、および学習器と診断が共有する前処理を持つ。
 
@@ -100,7 +252,7 @@ MNSDには、パスの末尾に `.provenance.json` を付けた来歴ファイ�
 
 | ファイル | 内容 |
 |---|---|
-| `workflow.py` | `pst-workflow` の本体。基準コミットのワークツリーで `minase data selfplay` と `minase dev pst-probe` をビルドし、生成、学習、診断の各工程の入力と出力を検査和で照合する。準備の時点で本パッケージのソースの検査和も記録し、ソースが変わった実行ディレクトリの続行を拒否する |
+| `workflow.py` | `pst-workflow` の本体。基準コミットのworktreeで `minase data selfplay` と `minase dev pst-probe` をビルドし、生成、学習、診断の各工程の入力と出力を検査和で照合する。準備の時点で本パッケージのソースの検査和も記録し、ソースが変わった実行ディレクトリの続行を拒否する |
 | `checksum.py` | ファイル全体のSHA-256を計算する |
 
 ## テストの構成

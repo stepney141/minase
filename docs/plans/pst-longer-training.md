@@ -120,7 +120,7 @@ LTCは、同じ形で`--run-dir data/matches/pst-longer-training-ltc --seed 2200
 ## 完了条件
 
 - 候補Lの学習曲線と診断、および段階ゲートの結果（または見送りの理由）が測定記録に残っている。
-- 採用した場合は、候補Lが採用PSTとしてmasterへ統合され、[PSTの学習手順](../guides/pst-training.md)の採用PSTの来歴が更新されている。
+- 採用した場合は、候補Lが採用PSTとしてmasterへ統合され、[評価関数の設計書](evaluation.md#教師値と損失)の採用PSTの来歴が更新されている。
 - ROADMAPの状態表が本書の結論と一致している。
 
 ## 参考資料
