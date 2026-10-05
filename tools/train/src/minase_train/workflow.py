@@ -82,6 +82,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
         fields["train"].add("lookahead")
     if isinstance(config["train"], dict) and "lambda_override" in config["train"]:
         fields["train"].add("lambda_override")
+    if isinstance(config["train"], dict) and "patience" in config["train"]:
+        fields["train"].add("patience")
     for section, expected in fields.items():
         if not isinstance(config[section], dict) or set(config[section]) != expected:
             raise ValueError(f"{section} fields must be {sorted(expected)}")
@@ -129,6 +131,8 @@ def load_config(path: Path, root: Path = ROOT) -> dict:
             raise ValueError("lookahead and rescore cannot be combined")
     for key in ("epochs", "batch", "validation_sample"):
         integer(training[key], f"train.{key}", 1, 2**31 - 1)
+    if "patience" in training:
+        integer(training["patience"], "train.patience", 1, 2**31 - 1)
     integer(training["seed"], "train.seed", 0, 2**63 - 1)
     number(training["k"], "train.k", sys.float_info.min, sys.float_info.max)
     number(training["learning_rate"], "train.learning_rate", sys.float_info.min, sys.float_info.max)
@@ -415,6 +419,8 @@ def train(run: Path) -> None:
                         ("validation_sample", "validation-sample")):
         command += ["--" + option, str(config[key])]
     command += ["--rescore", *config["rescore"]]
+    if "patience" in config:
+        command += ["--patience", str(config["patience"])]
     if config.get("lambda_override") is not None:
         command += ["--lambda-override", str(config["lambda_override"])]
     if config.get("lookahead") is not None:

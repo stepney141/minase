@@ -318,8 +318,13 @@ def _print_feature_observations(observations: NDArray[np.int64]) -> None:
 
 
 def should_replace_best_epoch(candidate_loss: float, best_loss: float) -> bool:
-    """検証損失が厳密に改善した場合だけ最良エポックを更新する。"""
+    """学習済みエポックを比較する。最良損失の初期値は∞とし、厳密な改善で更新する。"""
     return candidate_loss < best_loss
+
+
+def should_stop_early(epoch: int, best_epoch: int, patience: int | None) -> bool:
+    """最良値を更新しないエポックが指定数続いたら打ち切る。"""
+    return patience is not None and epoch - best_epoch >= patience
 
 
 def command_train(arguments: argparse.Namespace) -> None:
@@ -327,6 +332,8 @@ def command_train(arguments: argparse.Namespace) -> None:
     validate_lambda_override(arguments.lambda_override)
     if arguments.epochs <= 0 or arguments.batch <= 0 or arguments.validation_sample <= 0:
         raise ValueError("--epochs, --batch, and --validation-sample must be positive")
+    if arguments.patience is not None and arguments.patience <= 0:
+        raise ValueError("--patience must be positive")
     if any(rate <= 0.0 or not math.isfinite(rate) for rate in arguments.lr):
         raise ValueError("every --lr value must be finite and positive")
     if arguments.k <= 0.0 or not math.isfinite(arguments.k):
@@ -433,7 +440,7 @@ def command_train(arguments: argparse.Namespace) -> None:
     generator = torch.Generator(device=device).manual_seed(arguments.seed)
     breakdown = {}
     history = []
-    best_loss, generation_losses = validation_loss(
+    initial_loss, generation_losses = validation_loss(
         model,
         dataset,
         teacher_ks,
@@ -442,10 +449,14 @@ def command_train(arguments: argparse.Namespace) -> None:
         device,
         indices=dataset.validation_indices, breakdown=breakdown,
     )
+    # エポック0は記録だけに使い、最良重みは学習済みエポックから選ぶ。
+    best_loss = math.inf
     best_epoch = 0
-    best_weights = expanded_model_weights(model).detach().cpu().clone()
+    best_weights = None
 
     def log_validation(epoch: int, loss: float, generations: np.ndarray, groups: dict) -> None:
+        if not math.isfinite(loss):
+            raise ValueError(f"epoch {epoch}: validation loss must be finite, got {loss}")
         entry = {"epoch": epoch, "loss": loss,
                  "generations": [float(v) if np.isfinite(v) else None for v in generations],
                  **groups}
@@ -453,7 +464,7 @@ def command_train(arguments: argparse.Namespace) -> None:
         print(f"epoch {epoch}: {_format_validation_loss(loss, generations)}")
         print(f"epoch {epoch}: validation_groups={json.dumps(groups, allow_nan=False)}")
 
-    log_validation(0, best_loss, generation_losses, breakdown)
+    log_validation(0, initial_loss, generation_losses, breakdown)
     for epoch in range(1, arguments.epochs + 1):
         started = time.perf_counter()
         training = train_epoch(
@@ -496,6 +507,11 @@ def command_train(arguments: argparse.Namespace) -> None:
             best_epoch = epoch
             best_weights = expanded_model_weights(model).detach().cpu().clone()
 
+        if should_stop_early(epoch, best_epoch, arguments.patience):
+            print(f"early stop: epoch={epoch} best_epoch={best_epoch} patience={arguments.patience}")
+            break
+
+    assert best_weights is not None
     print(f"best epoch: {best_epoch} validation_loss={best_loss:.9f}")
 
     float_columns = best_weights.numpy().astype(np.float32)
@@ -543,7 +559,9 @@ def command_train(arguments: argparse.Namespace) -> None:
                    "training_half_counts": training_half_counts,
                    "total_updates": total_updates,
                    "teacher_ks": [float(k) if np.isfinite(k) else None for k in teacher_ks],
-                   "rescore_exclusions": dataset.exclusions}, stream, indent=2, allow_nan=False)
+                   "rescore_exclusions": dataset.exclusions,
+                   **({"patience": arguments.patience, "last_epoch": epoch}
+                      if arguments.patience is not None else {})}, stream, indent=2, allow_nan=False)
         stream.write("\n")
     max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     print(f"resource usage: max_rss={max_rss} KiB")
@@ -587,6 +605,8 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--removal-penalty", required=True, type=float)
     train_parser.add_argument("--lr", type=float, nargs="+", required=True)
     train_parser.add_argument("--epochs", type=int, default=10)
+    train_parser.add_argument("--patience", type=int,
+                              help="検証損失の最良値が指定エポック数続けて更新されなければ打ち切る")
     train_parser.add_argument("--batch", type=int, default=16384)
     train_parser.add_argument("--seed", type=int, default=1)
     train_parser.add_argument("--validation-sample", type=int, default=10000)

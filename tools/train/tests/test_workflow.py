@@ -99,6 +99,18 @@ class WorkflowTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "removal_penalty.*mirrored"):
                         workflow.load_config(self.config_path, self.root)
 
+    def test_patience_config_is_optional_and_requires_a_positive_integer(self):
+        self.assertNotIn("patience", self.config["train"])
+        for value in (1, 5, 20):
+            with self.subTest(value=value):
+                self.config_path.write_text(CONFIG.replace("[train]", f"[train]\npatience = {value}"))
+                self.assertEqual(workflow.load_config(self.config_path, self.root)["train"]["patience"], value)
+        for value in ("0", "-1", "1.5", '"5"', "true"):
+            with self.subTest(value=value):
+                self.config_path.write_text(CONFIG.replace("[train]", f"[train]\npatience = {value}"))
+                with self.assertRaisesRegex(ValueError, "patience"):
+                    workflow.load_config(self.config_path, self.root)
+
     def test_removal_penalty_rejects_negative_values(self) -> None:
         self.config_path.write_text(CONFIG.replace(
             'model = "single"', 'model = "mirrored"').replace(
@@ -278,8 +290,9 @@ class WorkflowTest(unittest.TestCase):
         write_mnsd(source, seed=0, checksum=b'a' * 32,
                    games=np.repeat(np.arange(1, 81), 3).tolist(), scores=[100, 200, -400] * 80)
         self.config['generate']['seeds'] = []
-        self.config['train'].update(rescore=['-'], epochs=1, batch=64, validation_sample=16,
-                                    lookahead={'gamma': .9, 'plies': 3})
+        # 1バッチで1/8 cpだけ更新し、学習済み重みの量子化誤差を小さく保つ。
+        self.config['train'].update(rescore=['-'], epochs=1, batch=256, validation_sample=16,
+                                    lookahead={'gamma': .9, 'plies': 3}, learning_rate=.125)
         run, _ = self.prepared()
         with redirect_stdout(io.StringIO()):
             workflow.train(run)
@@ -357,7 +370,7 @@ class WorkflowTest(unittest.TestCase):
         self.config['run']['data'].append(str(human))
         self.config['generate']['seeds'] = []
         self.config['train'].update(rescore=['-', '-'], epochs=1, batch=64, validation_sample=16,
-                                    lookahead={'gamma': .9, 'plies': 3}, lambda_override=1)
+                                    lookahead={'gamma': .9, 'plies': 3}, lambda_override=1, learning_rate=.125)
         run, _ = self.prepared()
         with redirect_stdout(io.StringIO()):
             workflow.train(run)
@@ -561,7 +574,7 @@ class WorkflowTest(unittest.TestCase):
         self.config["generate"]["seeds"] = [100, 200]
         self.config["train"]["rescore"] = ["-"] * 3
         self.config["generate"]["games"] = 80
-        self.config["train"].update(epochs=1, batch=32, validation_sample=16)
+        self.config["train"].update(epochs=1, batch=32, validation_sample=16, learning_rate=.125)
         self.config["diagnose"]["sample_size"] = 16
         run, _ = self.prepared()
         checksum = (run / "pst-base.bin").read_bytes()[48:80]
@@ -591,6 +604,10 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(inputs["training_records"] + inputs["validation_records"], 240)
         self.assertEqual(inputs["options"]["device"], "cpu")
         self.assertEqual(inputs["options"]["removal_penalty"], 0)
+        self.assertNotIn("patience", inputs["options"])
+        commands = [json.loads(line) for line in (run / "commands.jsonl").read_text().splitlines()]
+        training_command = next(entry["argv"] for entry in commands if "argv" in entry and entry["label"] == "train")
+        self.assertNotIn("--patience", training_command)
 
         with patch.object(workflow, "diagnose_probe", return_value=python_probe) as probe:
             workflow.diagnose(run)
@@ -612,7 +629,7 @@ class WorkflowTest(unittest.TestCase):
                    games=list(range(1, 81)))
         self.config["generate"]["seeds"] = []
         self.config["train"]["rescore"] = ["-"]
-        self.config["train"].update(model="mirrored", k=1500.5, removal_penalty=2.5, lambda_override=0)
+        self.config["train"].update(model="mirrored", k=1500.5, removal_penalty=2.5, lambda_override=0, patience=5)
         run, stack = self.prepared()
         generation_ks = stack.enter_context(patch(
             'minase_train.pst.teacher.estimate_generation_ks', return_value=(np.array([np.nan]), None)))
@@ -627,9 +644,12 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(command[command.index("--model") + 1], "mirrored")
         self.assertEqual(command[command.index("--k") + 1], "1500.5")
         self.assertEqual(command[command.index("--removal-penalty") + 1], "2.5")
+        self.assertEqual(command[command.index("--patience") + 1], "5")
         inputs = json.loads((run / "training/inputs.json").read_text())
         self.assertEqual(inputs["options"], self.config["train"])
         self.assertEqual(inputs["options"]["removal_penalty"], 2.5)
+        self.assertEqual(inputs["options"]["patience"], 5)
+        self.assertEqual(inputs["total_steps"], inputs["steps_per_epoch"] * self.config["train"]["epochs"])
         self.assertEqual(inputs["lambda_override"], 0)
         self.assertEqual(inputs["teacher_ks"], [None])
         self.assertEqual(inputs["teacher_classes"][0]["lambda"], 0)
