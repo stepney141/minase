@@ -76,7 +76,7 @@
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
 | 測定の再開条件の簡素化 | [plans/match-resume-simplification.md](plans/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
-| 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 起案 | |
+| 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
 
 ## 現在地
 
@@ -94,7 +94,7 @@
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
-- 時間管理の次の計画は[秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)である。lishogiの実戦では、秒読み期の手が秒読みの平均55%しか使わず、持ち時間が秒読みの10〜26倍の対局では持ち時間期の手も秒読み期の手とほぼ同じ時間しか使っていない（[実戦の調査](research/lishogi-byoyomi-time-usage.md)）。秒読み期の締切と途中結果の採用、および難しさで重み付けした持ち時間の配分を、秒読みつきの2条件のGSPRTで測る。測定方式の確認と、実戦ログからの定数の確定が着手の前提である。
+- 時間管理の次の計画は[秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)である。lishogiの実戦では、秒読み期の手が秒読みの平均55%しか使わず、持ち時間が秒読みの10〜26倍の対局では持ち時間期の手も秒読み期の手とほぼ同じ時間しか使っていない（[実戦の調査](research/lishogi-byoyomi-time-usage.md)）。秒読み期の締切と途中結果の採用、および難しさで重み付けした持ち時間の配分を、秒読みつきの2条件のGSPRTで測る。2026年10月6日に着手し、実戦ログからの定数の確定と段階Aの実装を並行して進めている。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習を外部のレンタルGPUサーバ（総額2万円、強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。着手は利用者の許可を待ち、SPSAの調整セッションが完了しても許可があるまでは始めない。
 
