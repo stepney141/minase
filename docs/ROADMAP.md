@@ -71,6 +71,7 @@
 | 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 完了（一部不採用） | 2026年9月29日 |
 | 評価関数の候補と探索係数の共適応の検証 | [plans/eval-search-coadaptation.md](plans/eval-search-coadaptation.md) | 完了（一部不採用） | 2026年10月5日 |
 | 補正1/4のFMの現行PSTへの再学習 | [plans/fm-quarter-current-pst.md](plans/fm-quarter-current-pst.md) | 起案 | |
+| 採用PSTの追加学習のエポック数の延長 | [plans/pst-longer-training.md](plans/pst-longer-training.md) | 起案 | |
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
@@ -87,7 +88,8 @@
 ### 次の候補
 
 - 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
-- 評価関数の次の計画は[補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)である（2026年10月4日の利用者決定）。基点の採用PSTは、共適応の検証で採用したPcに変わった。ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直し、標準の段階ゲートで採否を測る。測定機の時間は約2〜39時間であり、補正の教師の選択が利用者の判断を待っている。
+- 評価関数の次の計画は[採用PSTの追加学習のエポック数の延長](plans/pst-longer-training.md)である。採用PSTのPcを初期値に、同じデータと条件で最大40エポックまで学習し、検証損失が最良のエポックの重みを段階ゲートで測る。採用PSTを変え得るので、FMの計画より先に完了させる。
+- その次は[補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)である（2026年10月4日の利用者決定）。基点の採用PSTは、共適応の検証で採用したPcに変わった。ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直し、標準の段階ゲートで採否を測る。測定機の時間は約2〜39時間であり、補正の教師の選択が利用者の判断を待っている。
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
