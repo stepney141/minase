@@ -6,8 +6,7 @@ use crate::match_runner::storage::{
     StoredSearchLimit,
 };
 use minase::harness::*;
-use minase_core::RuleCode;
-use std::{io, thread, time::Duration};
+use std::{io, time::Duration};
 
 /// 探索制限を実行条件記録へ変換する。
 const fn stored_search_limit(limit: SearchLimit) -> StoredSearchLimit {
@@ -58,7 +57,7 @@ fn default_concurrency(
     Ok(concurrency)
 }
 
-/// CLIから再開時に完全一致させる実行条件記録を構成する。
+/// 新規実行の条件を構成する。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_manifest(
     candidate: &PlayerConfig,
@@ -111,23 +110,7 @@ pub(super) fn run_manifest(
             baseline: baseline.hash_mb.or(baseline_defaults.hash_mb),
         },
         concurrency,
-        cpu: CpuRecord {
-            model: cpu_model(),
-            physical_cores,
-            logical_cores: thread::available_parallelism()?.get(),
-            physical_memory_bytes: physical_memory_bytes(),
-        },
-        runner: harness_record()?,
     })
-}
-
-/// 規則コード列をカンマ区切りで返す。
-pub(super) fn rules_text(codes: &[RuleCode]) -> String {
-    codes
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(",")
 }
 
 #[cfg(test)]

@@ -13,9 +13,10 @@ fishtest、fastchess、cutechess-cli、およびやねうら王系のAyaneは、
 
 ## 状態
 
-起案。
-2026年10月5日に起案した。
-実装は、進行中の対局測定（共適応の検証の対照CcのLTC）が終わってから着手する。
+進行中。
+2026年10月5日に起案し、同日に着手した。
+第1フェーズ（対局測定の再開と`minase match report`）を終えた。
+次は第2フェーズ（SPSAの再開と`minase spsa apply`）である。
 
 ## 目的
 

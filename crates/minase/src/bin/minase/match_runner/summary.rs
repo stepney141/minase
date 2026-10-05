@@ -1,9 +1,33 @@
 //! 逐次統計の取り込みと対局測定の集計表示。
 
+use super::storage::ManifestMode;
 use crate::match_runner::scheduler::continue_after_decision;
 use minase::harness::{CompletedPair, FailureCounts};
-use minase::stats::{GsprtDecision, estimate_elo, gsprt_decision, gsprt_llr};
+use minase::stats::{GsprtDecision, estimate_elo, gsprt_llr_with_hypotheses};
 use std::{sync::atomic::AtomicBool, time::Duration};
+
+impl ManifestMode {
+    fn llr(&self, results: &[u64; 5]) -> f64 {
+        match self {
+            Self::Gsprt { h0_elo, h1_elo, .. } => {
+                gsprt_llr_with_hypotheses(results, *h0_elo, *h1_elo)
+            }
+            Self::Elo => 0.0,
+        }
+    }
+
+    fn decision(&self, llr: f64) -> GsprtDecision {
+        if let Self::Gsprt { alpha, beta, .. } = self {
+            if llr >= ((1.0 - beta) / alpha).ln() {
+                return GsprtDecision::AcceptH1;
+            }
+            if llr <= (beta / (1.0 - alpha)).ln() {
+                return GsprtDecision::AcceptH0;
+            }
+        }
+        GsprtDecision::Continue
+    }
+}
 
 /// GSPRTの判定を表示文字列へ変換する。
 const fn decision_text(decision: GsprtDecision) -> &'static str {
@@ -43,6 +67,7 @@ pub(super) fn print_gsprt_summary(
     discarded_pairs: u64,
     failures: FailureCounts,
     decision: GsprtDecision,
+    mode: &ManifestMode,
     elapsed: Duration,
 ) {
     println!(
@@ -51,7 +76,7 @@ pub(super) fn print_gsprt_summary(
         results.iter().sum::<u64>()
     );
     println!("pentanomial: {results:?}");
-    println!("llr: {:.10}", gsprt_llr(results));
+    println!("llr: {:.10}", mode.llr(results));
     println!("decision: {}", decision_text(decision));
     print_failure_summary(failures);
     println!("elapsed: {:.6} s", elapsed.as_secs_f64());
@@ -94,7 +119,7 @@ pub(super) fn integrate_pair_statistics(
     discarded_pairs: &mut u64,
     failures: &mut FailureCounts,
     decision: &mut GsprtDecision,
-    use_gsprt: bool,
+    mode: &ManifestMode,
     stop: &AtomicBool,
 ) -> bool {
     print!("{}", pair.output);
@@ -103,9 +128,9 @@ pub(super) fn integrate_pair_statistics(
         Some(category) => {
             results[category] += 1;
             *valid_pairs += 1;
-            if use_gsprt {
-                let llr = gsprt_llr(results);
-                *decision = gsprt_decision(llr);
+            if matches!(mode, ManifestMode::Gsprt { .. }) {
+                let llr = mode.llr(results);
+                *decision = mode.decision(llr);
                 println!(
                     "statistics: valid_pairs={valid_pairs} pentanomial={results:?} llr={llr:.10} decision={}",
                     decision_text(*decision)
@@ -114,12 +139,25 @@ pub(super) fn integrate_pair_statistics(
         }
         None => *discarded_pairs += 1,
     }
-    continue_after_decision(use_gsprt, *decision, stop)
+    continue_after_decision(matches!(mode, ManifestMode::Gsprt { .. }), *decision, stop)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recorded_gsprt_hypotheses_and_error_rates_control_statistics() {
+        let mode: ManifestMode = serde_json::from_value(serde_json::json!({
+            "kind": "gsprt", "h0_elo": -5.0, "h1_elo": 5.0, "alpha": 0.1, "beta": 0.2
+        }))
+        .unwrap();
+        // 対称な度数と±5 Eloの仮説では尤度が等しく、LLRは0になる。
+        assert!(mode.llr(&[10, 20, 40, 20, 10]).abs() < 1e-10);
+        assert_eq!(mode.decision(2.1), GsprtDecision::AcceptH1);
+        assert_eq!(mode.decision(-1.6), GsprtDecision::AcceptH0);
+        assert_eq!(mode.decision(0.0), GsprtDecision::Continue);
+    }
 
     // D8-HARN-13(sprt.md測定の種類と標準コマンド節): 判定の表示語彙は
     // `decision: H1`(採用)・`decision: H0`(不採用)・`decision: pending`(保留)。

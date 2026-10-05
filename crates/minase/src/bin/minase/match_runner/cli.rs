@@ -32,8 +32,11 @@ pub(crate) struct Arguments {
     #[arg(long)]
     pub(super) run_dir: Option<PathBuf>,
     /// 保存済みの実験を再開する実行ディレクトリ。
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
     pub(super) resume: Option<PathBuf>,
+    /// 再開時の目標ペア数。直前の目標より大きい値を指定する。
+    #[arg(long, requires = "resume", conflicts_with = "run_dir", value_parser = parse_positive_u64)]
+    pub(super) target_pairs: Option<u64>,
     /// 全ペアの乱数列を派生させる基本シード。
     #[arg(long)]
     pub(super) seed: Option<u64>,
@@ -83,7 +86,7 @@ pub(crate) struct Arguments {
     pub(super) ponder: bool,
     /// 実行する統計モード。
     #[command(subcommand)]
-    pub(super) mode: Mode,
+    pub(super) mode: Option<Mode>,
 }
 
 impl Arguments {
@@ -180,7 +183,10 @@ mod tests {
         assert_eq!(arguments.response_timeout, 120);
         assert_eq!(arguments.max_ply, 4096);
         assert_eq!(arguments.concurrency, None);
-        assert!(matches!(arguments.mode, Mode::Gsprt { max_pairs: 100_000 }));
+        assert!(matches!(
+            arguments.mode,
+            Some(Mode::Gsprt { max_pairs: 100_000 })
+        ));
     }
 
     #[test]
@@ -224,7 +230,7 @@ mod tests {
             ])
             .is_err()
         );
-        assert!(Arguments::try_parse_from(["match_runner", "--resume", "old", "gsprt"]).is_ok());
+        assert!(Arguments::try_parse_from(["match_runner", "--resume", "old"]).is_ok());
     }
 
     // D8-HARN-09(sprt.md測定の種類と標準コマンド節): `--each`がマッチ共通既定、

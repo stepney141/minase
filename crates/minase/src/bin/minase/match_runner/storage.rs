@@ -12,7 +12,7 @@ use minase::harness::{
 use serde::{Deserialize, Serialize};
 
 /// 現行の実行記録形式。
-pub(super) const FORMAT_VERSION: u32 = 4;
+pub(super) const FORMAT_VERSION: u32 = 5;
 
 const MANIFEST_FILE: &str = "manifest.json";
 const MANIFEST_TEMP_FILE: &str = ".manifest.json.tmp";
@@ -91,7 +91,7 @@ pub(super) enum ManifestMode {
     Elo,
 }
 
-/// 再開時に完全一致を要求する実行条件記録。
+/// 新規実行時に確定する実行条件記録。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RunManifest {
@@ -121,10 +121,75 @@ pub(super) struct RunManifest {
     pub(super) hash_mb: EngineHashSizes,
     /// 同時に実行するペア数。
     pub(super) concurrency: usize,
-    /// CPUの識別情報。
-    pub(super) cpu: CpuRecord,
-    /// 対局ハーネス実行バイナリの識別情報。
+}
+
+/// 実際に対局を進めた起動の記録。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Invocation {
     pub(super) runner: HarnessRecord,
+    pub(super) cpu: CpuRecord,
+    pub(super) target_pairs: u64,
+}
+
+impl Invocation {
+    fn current(target_pairs: u64) -> io::Result<Self> {
+        use minase::harness::{
+            cpu_model, harness_record, physical_core_count, physical_memory_bytes,
+        };
+        Ok(Self {
+            runner: harness_record()?,
+            cpu: CpuRecord {
+                model: cpu_model(),
+                physical_cores: physical_core_count(),
+                logical_cores: std::thread::available_parallelism()?.get(),
+                physical_memory_bytes: physical_memory_bytes(),
+            },
+            target_pairs,
+        })
+    }
+}
+
+/// 保存条件を安全に復元できない理由。
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum ResumeError {
+    EmptyInvocations,
+    InvalidTarget,
+    TargetNotIncreased,
+    WorkingDirectoryMismatch,
+    EngineIdentityMismatch,
+    ThreadsMismatch,
+    HashUnavailable,
+}
+
+impl std::fmt::Display for ResumeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::EmptyInvocations => "invocations must contain at least one invocation",
+            Self::InvalidTarget => "invocation targets must be positive and nondecreasing",
+            Self::TargetNotIncreased => "--target-pairs must exceed the previous invocation target",
+            Self::WorkingDirectoryMismatch => {
+                "engine working directory differs from the recorded working_directory"
+            }
+            Self::EngineIdentityMismatch => {
+                "engine identity does not match the recorded SHA-256 or commit"
+            }
+            Self::ThreadsMismatch => {
+                "engine Threads default differs from the recorded worker count"
+            }
+            Self::HashUnavailable => {
+                "recorded hash size is unavailable but the engine now reports a default"
+            }
+        })
+    }
+}
+
+impl std::error::Error for ResumeError {}
+
+impl From<ResumeError> for io::Error {
+    fn from(error: ResumeError) -> Self {
+        Self::new(io::ErrorKind::InvalidData, error)
+    }
 }
 
 /// 再開を含む実験の有効実行時間。
@@ -142,6 +207,10 @@ struct RunSummary {
 /// 1つの実行ディレクトリを所有する永続化層。
 #[derive(Debug)]
 pub(super) struct RunStore {
+    pub(super) manifest: RunManifest,
+    pub(super) target_pairs: u64,
+    invocations: Vec<Invocation>,
+    resumed: bool,
     root: PathBuf,
     pairs: PathBuf,
     active_wall_time_ns: u64,
@@ -151,13 +220,21 @@ pub(super) struct RunStore {
 
 impl RunStore {
     /// 存在しないパスへ新規実行ディレクトリを作る。
-    pub(super) fn create(path: &Path, manifest: RunManifest) -> io::Result<Self> {
+    pub(super) fn create(
+        path: &Path,
+        manifest: RunManifest,
+        target_pairs: u64,
+    ) -> io::Result<Self> {
         if manifest.format_version != FORMAT_VERSION {
             return Err(invalid_data(format!(
                 "unsupported manifest format version {}",
                 manifest.format_version
             )));
         }
+        if target_pairs == 0 {
+            return Err(ResumeError::InvalidTarget.into());
+        }
+        let invocations = vec![Invocation::current(target_pairs)?];
         fs::create_dir(path)?;
         let lock = lock_run_directory(path)?;
         let pairs = path.join(PAIRS_DIRECTORY);
@@ -170,6 +247,12 @@ impl RunStore {
         )?;
         atomic_write_json(
             path,
+            &path.join(".invocations.json.tmp"),
+            &path.join("invocations.json"),
+            &invocations,
+        )?;
+        atomic_write_json(
+            path,
             &path.join(SUMMARY_TEMP_FILE),
             &path.join(SUMMARY_FILE),
             &RunSummary {
@@ -179,6 +262,10 @@ impl RunStore {
             },
         )?;
         Ok(Self {
+            manifest,
+            target_pairs,
+            invocations,
+            resumed: false,
             root: path.to_owned(),
             pairs,
             active_wall_time_ns: 0,
@@ -190,12 +277,8 @@ impl RunStore {
     /// 既存実行ディレクトリを検証し、保存済みペアを読み込む。
     pub(super) fn resume(
         path: &Path,
-        expected: &RunManifest,
-        target_pairs: u64,
+        requested_target: Option<u64>,
     ) -> io::Result<(Self, BTreeMap<u64, PairRecord>)> {
-        if target_pairs == 0 {
-            return Err(invalid_data("target pair count must be at least 1"));
-        }
         if !path.exists() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -218,11 +301,22 @@ impl RunStore {
             )));
         }
         let manifest: RunManifest = serde_json::from_value(value).map_err(json_error)?;
-        if &manifest != expected {
-            return Err(invalid_data(
-                "run manifest does not match the requested experiment",
-            ));
+        let invocations: Vec<Invocation> = read_json(&path.join("invocations.json"))?;
+        let last = invocations.last().ok_or(ResumeError::EmptyInvocations)?;
+        if invocations.iter().any(|entry| entry.target_pairs == 0)
+            || invocations
+                .windows(2)
+                .any(|entries| entries[0].target_pairs > entries[1].target_pairs)
+        {
+            return Err(ResumeError::InvalidTarget.into());
         }
+        let target_pairs = match requested_target {
+            Some(target) if target <= last.target_pairs => {
+                return Err(ResumeError::TargetNotIncreased.into());
+            }
+            Some(target) => target,
+            None => last.target_pairs,
+        };
 
         let pairs_directory = path.join(PAIRS_DIRECTORY);
         if !pairs_directory.is_dir() {
@@ -236,6 +330,10 @@ impl RunStore {
         let interrupted = summary.interrupted || summary.invocation_active;
         Ok((
             Self {
+                manifest,
+                target_pairs,
+                invocations,
+                resumed: true,
                 root: path.to_owned(),
                 pairs: pairs_directory,
                 active_wall_time_ns: summary.active_wall_time_ns,
@@ -273,6 +371,26 @@ impl RunStore {
 
     /// 新しい対局実行の開始を記録する。
     pub(super) fn begin_invocation(&self) -> io::Result<()> {
+        if self.resumed {
+            let current = Invocation::current(self.target_pairs)?;
+            let previous = self
+                .invocations
+                .last()
+                .ok_or(ResumeError::EmptyInvocations)?;
+            if current.runner.sha256 != previous.runner.sha256 || current.cpu != previous.cpu {
+                eprintln!(
+                    "notice: runner SHA-256 or measurement machine differs from the previous invocation"
+                );
+            }
+            let mut invocations = self.invocations.clone();
+            invocations.push(current);
+            atomic_replace_json(
+                &self.root,
+                &self.root.join(".invocations.json.tmp"),
+                &self.root.join("invocations.json"),
+                &invocations,
+            )?;
+        }
         self.write_summary(self.active_wall_time_ns, true)
     }
 
@@ -497,9 +615,7 @@ mod tests {
                 },
             },
             baseline: EngineRecord {
-                identity: EngineIdentity::Random {
-                    sha256: "c".repeat(64),
-                },
+                identity: EngineIdentity::Random,
                 limit: StoredSearchLimit::Time {
                     base_ms: 10_000,
                     increment_ms: 100,
@@ -526,16 +642,6 @@ mod tests {
                 baseline: Some(256),
             },
             concurrency: 8,
-            cpu: CpuRecord {
-                model: "test cpu".to_owned(),
-                physical_cores: Some(8),
-                logical_cores: 8,
-                physical_memory_bytes: Some(16 * 1024 * 1024 * 1024),
-            },
-            runner: HarnessRecord {
-                version: "0.1.0".to_owned(),
-                sha256: "b".repeat(64),
-            },
         }
     }
 
@@ -583,15 +689,69 @@ mod tests {
     }
 
     #[test]
+    fn resume_validates_invocation_history_before_writing() {
+        let path = temporary_directory("invalid-history");
+        drop(RunStore::create(&path, manifest(), 2).unwrap());
+        let original: Vec<Invocation> = read_json(&path.join("invocations.json")).unwrap();
+        for (history, expected) in [
+            (Vec::new(), ResumeError::EmptyInvocations),
+            (
+                vec![Invocation {
+                    target_pairs: 0,
+                    ..original[0].clone()
+                }],
+                ResumeError::InvalidTarget,
+            ),
+            (
+                vec![
+                    original[0].clone(),
+                    Invocation {
+                        target_pairs: 1,
+                        ..original[0].clone()
+                    },
+                ],
+                ResumeError::InvalidTarget,
+            ),
+        ] {
+            fs::write(
+                path.join("invocations.json"),
+                serde_json::to_vec(&history).unwrap(),
+            )
+            .unwrap();
+            let error = RunStore::resume(&path, None).unwrap_err();
+            assert_eq!(
+                error.get_ref().unwrap().downcast_ref::<ResumeError>(),
+                Some(&expected)
+            );
+        }
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn invocation_target_is_persisted_before_active_summary() {
+        let path = temporary_directory("invocation-order");
+        drop(RunStore::create(&path, manifest(), 1).unwrap());
+        let (store, _) = RunStore::resume(&path, Some(2)).unwrap();
+        fs::remove_file(path.join(SUMMARY_FILE)).unwrap();
+        fs::create_dir(path.join(SUMMARY_FILE)).unwrap();
+        assert!(store.begin_invocation().is_err());
+        let history: Vec<Invocation> = read_json(&path.join("invocations.json")).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[1].target_pairs, 2);
+        assert!(!path.join(".invocations.json.tmp").exists());
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
     fn create_save_and_resume_round_trip() {
         let path = temporary_directory("round-trip");
         let expected = manifest();
-        let store = RunStore::create(&path, expected.clone()).unwrap();
+        let store = RunStore::create(&path, expected.clone(), 1).unwrap();
         store.save_pair(&pair(2)).unwrap();
         store.save_pair(&pair(1)).unwrap();
         drop(store);
 
-        let (store, records) = RunStore::resume(&path, &expected, 2).unwrap();
+        let (store, records) = RunStore::resume(&path, Some(2)).unwrap();
         assert_eq!(store.path(), path);
         assert_eq!(records.keys().copied().collect::<Vec<_>>(), vec![1, 2]);
         assert_eq!(records[&2], pair(2));
@@ -602,12 +762,12 @@ mod tests {
     fn checkpoints_accumulate_across_resumed_invocations() {
         let path = temporary_directory("checkpoint");
         let expected = manifest();
-        let store = RunStore::create(&path, expected.clone()).unwrap();
+        let store = RunStore::create(&path, expected.clone(), 1).unwrap();
         store.begin_invocation().unwrap();
         store.checkpoint(std::time::Duration::from_secs(2)).unwrap();
         drop(store);
 
-        let (store, _) = RunStore::resume(&path, &expected, 1).unwrap();
+        let (store, _) = RunStore::resume(&path, None).unwrap();
         assert_eq!(store.active_wall_time_ns, 2_000_000_000);
         assert!(store.interrupted);
         store.begin_invocation().unwrap();
@@ -628,12 +788,12 @@ mod tests {
         let path = temporary_directory("directory-contract");
         fs::create_dir(&path).unwrap();
         assert_eq!(
-            RunStore::create(&path, manifest()).unwrap_err().kind(),
+            RunStore::create(&path, manifest(), 1).unwrap_err().kind(),
             io::ErrorKind::AlreadyExists
         );
         fs::remove_dir(&path).unwrap();
         assert_eq!(
-            RunStore::resume(&path, &manifest(), 1).unwrap_err().kind(),
+            RunStore::resume(&path, None).unwrap_err().kind(),
             io::ErrorKind::NotFound
         );
     }
@@ -642,32 +802,30 @@ mod tests {
     fn a_run_directory_cannot_be_opened_by_two_process_owners() {
         let path = temporary_directory("exclusive-lock");
         let expected = manifest();
-        let store = RunStore::create(&path, expected.clone()).unwrap();
+        let store = RunStore::create(&path, expected.clone(), 1).unwrap();
         assert_eq!(
-            RunStore::resume(&path, &expected, 1).unwrap_err().kind(),
+            RunStore::resume(&path, None).unwrap_err().kind(),
             io::ErrorKind::WouldBlock
         );
         drop(store);
-        RunStore::resume(&path, &expected, 1).unwrap();
+        RunStore::resume(&path, None).unwrap();
         fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
-    fn resume_rejects_manifest_mismatch_and_saved_number_above_target() {
+    fn resume_rejects_nonincreasing_target_and_saved_number_above_target() {
         let path = temporary_directory("resume-validation");
         let expected = manifest();
-        let store = RunStore::create(&path, expected.clone()).unwrap();
+        let store = RunStore::create(&path, expected.clone(), 1).unwrap();
         store.save_pair(&pair(2)).unwrap();
         drop(store);
 
-        let mut different = expected.clone();
-        different.seed += 1;
         assert_eq!(
-            RunStore::resume(&path, &different, 2).unwrap_err().kind(),
+            RunStore::resume(&path, Some(1)).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
         assert_eq!(
-            RunStore::resume(&path, &expected, 1).unwrap_err().kind(),
+            RunStore::resume(&path, None).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
         fs::remove_dir_all(path).unwrap();
@@ -677,13 +835,13 @@ mod tests {
     fn resume_rejects_corruption_filename_mismatch_and_invalid_category() {
         let path = temporary_directory("pair-validation");
         let expected = manifest();
-        let store = RunStore::create(&path, expected.clone()).unwrap();
+        let store = RunStore::create(&path, expected.clone(), 1).unwrap();
         store.save_pair(&pair(1)).unwrap();
         drop(store);
 
         fs::write(path.join(PAIRS_DIRECTORY).join(pair_file_name(2)), b"{").unwrap();
         assert_eq!(
-            RunStore::resume(&path, &expected, 2).unwrap_err().kind(),
+            RunStore::resume(&path, Some(2)).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
         fs::remove_file(path.join(PAIRS_DIRECTORY).join(pair_file_name(2))).unwrap();
@@ -691,7 +849,7 @@ mod tests {
         let wrong_name = path.join(PAIRS_DIRECTORY).join(pair_file_name(2));
         fs::write(&wrong_name, serde_json::to_vec(&pair(3)).unwrap()).unwrap();
         assert_eq!(
-            RunStore::resume(&path, &expected, 3).unwrap_err().kind(),
+            RunStore::resume(&path, Some(3)).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
         fs::remove_file(&wrong_name).unwrap();
@@ -704,7 +862,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            RunStore::resume(&path, &expected, 2).unwrap_err().kind(),
+            RunStore::resume(&path, Some(2)).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
         fs::remove_dir_all(path).unwrap();
@@ -714,12 +872,12 @@ mod tests {
     fn stale_temporary_pair_is_ignored_and_removed_before_resave() {
         let path = temporary_directory("stale-temp");
         let expected = manifest();
-        let store = RunStore::create(&path, expected.clone()).unwrap();
+        let store = RunStore::create(&path, expected.clone(), 1).unwrap();
         let temporary = path.join(PAIRS_DIRECTORY).join(pair_temp_file_name(1));
         fs::write(&temporary, b"partial").unwrap();
         drop(store);
 
-        let (store, records) = RunStore::resume(&path, &expected, 1).unwrap();
+        let (store, records) = RunStore::resume(&path, None).unwrap();
         assert!(records.is_empty());
         store.save_pair(&pair(1)).unwrap();
         assert!(!temporary.exists());
@@ -730,7 +888,7 @@ mod tests {
     #[test]
     fn save_rejects_duplicate_pair_without_overwriting_it() {
         let path = temporary_directory("duplicate");
-        let store = RunStore::create(&path, manifest()).unwrap();
+        let store = RunStore::create(&path, manifest(), 1).unwrap();
         let original = pair(1);
         store.save_pair(&original).unwrap();
         let mut replacement = original.clone();
@@ -766,9 +924,9 @@ mod tests {
     fn resume_rejects_version_three_before_decoding_new_fields() {
         let path = temporary_directory("version-three");
         let expected = manifest();
-        drop(RunStore::create(&path, expected.clone()).unwrap());
+        drop(RunStore::create(&path, expected.clone(), 1).unwrap());
         fs::write(path.join(MANIFEST_FILE), br#"{"format_version":3}"#).unwrap();
-        let error = RunStore::resume(&path, &expected, 1).unwrap_err();
+        let error = RunStore::resume(&path, None).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert!(
             error

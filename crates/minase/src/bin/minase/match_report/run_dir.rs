@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::{fs::File, io, path::Path};
 
 /// 集計対象の実行記録形式。
-pub(super) const FORMAT_VERSION: u32 = 4;
+pub(super) const FORMAT_VERSION: u32 = 5;
 
 /// 実行条件から集計に必要な部分。
 #[derive(Deserialize)]
@@ -14,7 +14,6 @@ pub(super) struct Manifest {
     pub(super) mode: Mode,
     pub(super) concurrency: usize,
     pub(super) engine_threads: ThreadCounts,
-    pub(super) cpu: CpuRecord,
 }
 
 /// 集計対象エンジンの探索制限。
@@ -53,11 +52,47 @@ pub(super) struct ThreadCounts {
     pub(super) baseline: Option<u32>,
 }
 
-/// 測定機の資源量。
-#[derive(Deserialize)]
-pub(super) struct CpuRecord {
-    pub(super) physical_cores: Option<usize>,
-    pub(super) physical_memory_bytes: Option<u64>,
+#[derive(Debug)]
+enum MachineError {
+    EmptyInvocations,
+    MixedMachines,
+}
+
+impl std::fmt::Display for MachineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::EmptyInvocations => "invocations must not be empty",
+            Self::MixedMachines => "measurement machines differ across invocations",
+        })
+    }
+}
+
+impl std::error::Error for MachineError {}
+
+/// すべての起動で同じ測定機を使ったことを確認する。
+pub(super) fn measurement_machine(
+    run_dir: &Path,
+    manifest: &serde_json::Value,
+) -> io::Result<minase::harness::CpuRecord> {
+    if manifest["format_version"] == 4 {
+        return serde_json::from_value(manifest["cpu"].clone())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error));
+    }
+    #[derive(Deserialize)]
+    struct Invocation {
+        cpu: minase::harness::CpuRecord,
+    }
+    let invocations: Vec<Invocation> = read_json(&run_dir.join("invocations.json"))?;
+    let first = invocations.first().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, MachineError::EmptyInvocations)
+    })?;
+    if invocations.iter().any(|entry| entry.cpu != first.cpu) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            MachineError::MixedMachines,
+        ));
+    }
+    Ok(first.cpu.clone())
 }
 
 /// 再開を含む有効実行時間。

@@ -143,15 +143,19 @@ pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
         )
     })?;
     let mut comparison_manifest: serde_json::Value = read_json(&run_dir.join("manifest.json"))?;
-    if comparison_manifest["format_version"].as_u64() != Some(u64::from(FORMAT_VERSION)) {
+    if comparison_manifest["format_version"]
+        .as_u64()
+        .is_none_or(|version| version != 4 && version != u64::from(FORMAT_VERSION))
+    {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "match_report requires format version {FORMAT_VERSION}, found {}",
+                "match_report requires format version 4 or {FORMAT_VERSION}, found {}",
                 comparison_manifest["format_version"]
             ),
         ));
     }
+    let cpu = super::run_dir::measurement_machine(run_dir, &comparison_manifest)?;
     let manifest: Manifest =
         serde_json::from_value(comparison_manifest.clone()).map_err(|error| {
             io::Error::new(
@@ -170,9 +174,6 @@ pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
         "/engine_threads",
         "/hash_mb",
         "/concurrency",
-        "/cpu/model",
-        "/cpu/logical_cores",
-        "/runner",
     ] {
         if comparison_manifest.pointer(pointer).is_none() {
             return Err(io::Error::new(
@@ -205,6 +206,23 @@ pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
         .and_then(serde_json::Value::as_object_mut)
         .and_then(|baseline| baseline.remove("limit"))
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "baseline limit is missing"))?;
+    // 版とrunnerの来歴を除き、検査済みの測定機を共通の比較条件へ加える。
+    let conditions = comparison_manifest
+        .as_object_mut()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "manifest must be an object"))?;
+    conditions.remove("format_version");
+    conditions.remove("runner");
+    conditions.insert(
+        "cpu".to_owned(),
+        serde_json::to_value(&cpu).map_err(io::Error::other)?,
+    );
+    for side in ["candidate", "baseline"] {
+        if comparison_manifest[side]["identity"]["kind"] == "random"
+            && let Some(identity) = comparison_manifest[side]["identity"].as_object_mut()
+        {
+            identity.remove("sha256");
+        }
+    }
     let summary: RunSummary = read_json(&run_dir.join("summary.json"))?;
     if summary.invocation_active || summary.interrupted {
         return Err(io::Error::new(
@@ -411,10 +429,10 @@ pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
         .candidate
         .zip(manifest.engine_threads.baseline)
         .map(|(candidate, baseline)| candidate.max(baseline));
-    let physical_cores = manifest.cpu.physical_cores.ok_or_else(|| {
+    let physical_cores = cpu.physical_cores.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "physical core count is missing")
     })?;
-    let physical_memory_bytes = manifest.cpu.physical_memory_bytes.ok_or_else(|| {
+    let physical_memory_bytes = cpu.physical_memory_bytes.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             "physical memory size is missing",
@@ -500,8 +518,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn report_recomputes_the_documented_metrics_from_pair_records() {
+    fn calibration_fixture() -> std::path::PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -515,7 +532,7 @@ mod tests {
         std::fs::write(
             run_dir.join("manifest.json"),
             serde_json::to_vec(&serde_json::json!({
-                "format_version": FORMAT_VERSION,
+                "format_version": 4,
                 "candidate": {
                     "identity": {"kind": "commit", "hash": "a", "sha256": "b"},
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
@@ -590,6 +607,69 @@ mod tests {
             .unwrap();
         }
 
+        run_dir
+    }
+
+    #[test]
+    fn report_compares_version_four_and_five_and_rejects_mixed_machines() {
+        let dir = calibration_fixture();
+        let path = dir.join("manifest.json");
+        let mut manifest: serde_json::Value = read_json(&path).unwrap();
+        for side in ["candidate", "baseline"] {
+            manifest[side]["identity"] =
+                serde_json::json!({"kind": "random", "sha256": "old runner"});
+        }
+        let save = |path: &Path, value: &serde_json::Value| {
+            std::fs::write(path, serde_json::to_vec(value).unwrap()).unwrap()
+        };
+        save(&path, &manifest);
+        let old = report(&dir).unwrap();
+        let cpu = manifest.as_object_mut().unwrap().remove("cpu").unwrap();
+        manifest.as_object_mut().unwrap().remove("runner");
+        manifest["format_version"] = serde_json::json!(5);
+        for side in ["candidate", "baseline"] {
+            manifest[side]["identity"] = serde_json::json!({"kind": "random"});
+        }
+        save(&path, &manifest);
+        let mut invocations = serde_json::json!([
+            {"cpu": cpu, "runner": {"version": "1", "sha256": "first"}, "target_pairs": 5},
+            {"cpu": cpu, "runner": {"version": "2", "sha256": "second"}, "target_pairs": 10}
+        ]);
+        let history = dir.join("invocations.json");
+        save(&history, &invocations);
+        let new = report(&dir).unwrap();
+        assert_eq!(
+            serde_json::to_value(&old).unwrap(),
+            serde_json::to_value(&new).unwrap()
+        );
+        assert!(compare(&new, &old).is_ok());
+        assert!(compare(&old, &new).is_ok());
+        for (field, value) in [
+            ("model", serde_json::json!("different")),
+            ("physical_cores", serde_json::json!(21)),
+            ("logical_cores", serde_json::json!(21)),
+            ("physical_memory_bytes", serde_json::json!(20_000)),
+        ] {
+            let mut changed = invocations.clone();
+            changed[1]["cpu"][field] = value.clone();
+            save(&history, &changed);
+            assert!(report(&dir).is_err(), "mixed {field}");
+            changed[0]["cpu"][field] = value;
+            save(&history, &changed);
+            assert!(
+                compare(&report(&dir).unwrap(), &old).is_err(),
+                "different {field}"
+            );
+        }
+        invocations = serde_json::json!([]);
+        save(&history, &invocations);
+        assert!(report(&dir).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn report_recomputes_the_documented_metrics_from_pair_records() {
+        let run_dir = calibration_fixture();
         let complete_report = report(&run_dir).unwrap();
         assert_eq!(complete_report.pentanomial, [0, 0, 8, 0, 2]);
         assert_eq!(complete_report.valid_pairs, 10);
@@ -731,7 +811,7 @@ mod tests {
         let error = report(&run_dir).err().unwrap();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert!(error.to_string().contains(&format!(
-            "requires format version {FORMAT_VERSION}, found 3"
+            "requires format version 4 or {FORMAT_VERSION}, found 3"
         )));
         std::fs::remove_dir_all(run_dir).unwrap();
     }

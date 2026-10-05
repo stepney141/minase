@@ -21,10 +21,7 @@ pub enum StoredProtocol {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EngineIdentity {
     /// 同梱のランダムエンジン。
-    Random {
-        /// 実行ファイル全体のSHA-256。
-        sha256: String,
-    },
+    Random,
     /// Gitコミットからビルドしたエンジン。
     Commit {
         /// 完全コミットハッシュ。
