@@ -223,7 +223,7 @@ codexへの指示には、名前の変更（`records`を除く）、シグネチ
 ## 検証
 
 基点コミットは、`search-eval-layout`ブランチを切ったmasterのコミットとする。
-再編の前に、基点コミットで`cargo run --release --bin bench -- --depth 6`の標準出力を保存する。
+再編の前に、基点コミットで`cargo run --release --bin minase -- dev bench --depth 6`の標準出力を保存する。
 benchは固定局面を探索し、局面ごとのノード数、最善手、評価値、経過時間、およびNPSを1行ずつ出力する。
 各コードのコミットの後に同じコマンドを実行し、経過時間とNPSの欄を除く標準出力の全行が基点と一致することを確かめる。
 深さ6を使うのは、既定の深さ3では発火しない枝刈り（IIRは深さ3以上、null moveとLMRは残り深さに応じて働く）も通し、[AlphaZero型探索](alphazero.md)が再編の確認に定めた条件と同じにするためである。

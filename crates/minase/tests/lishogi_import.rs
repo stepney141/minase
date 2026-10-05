@@ -38,7 +38,8 @@ fn json_file(path: &Path) -> Value {
 }
 fn import(directory: &Directory, mode: &str, name: &str, concurrency: &str) -> Output {
     let input = directory.path("input.ndjson");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_lishogi_import"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
+    command.args(["data", "lishogi"]);
     command
         .args([mode, "--input"])
         .arg(input)
@@ -238,7 +239,8 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
     fs::write(dir.path("input.ndjson"), CASES).unwrap();
     success(import(&dir, "openings", "openings.txt", "1"));
     let command = |random_moves: &str, name: &str| {
-        Command::new(env!("CARGO_BIN_EXE_selfplay_gen"))
+        Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["data", "selfplay"])
             .args(["generate", "--openings"])
             .arg(dir.path("openings.txt"))
             .arg("--output")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""match_runnerの実行ディレクトリから、対局コストを再集計する。
+"""minase match runの実行ディレクトリから、対局コストを再集計する。
 
 実行時間、対局時間、手数とその分布、並列利用率、手数帯ごとの思考時間、
 長手数局の割合、および評価値による仮想投了の効果を出力する。
@@ -271,7 +271,7 @@ def main():
         nargs="+",
         type=Path,
         metavar="RUN_DIR",
-        help="match_runnerの実行ディレクトリ",
+        help="minase match runの実行ディレクトリ",
     )
     args = parser.parse_args()
 

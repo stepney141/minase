@@ -17,7 +17,7 @@ minase --protocol cecp --rules L0,P0,R1,E0
 `--rules` accepts `engine-default` (the standard rules, L0,P0,R1,E0), `lishogi` (L1,L2,P0,P3,R1,E1,E3), or a comma-separated list with exactly one code from each of the groups L, P, R, and E.
 The rule codes are defined in [RULES.md](https://github.com/stepney141/minase/blob/master/docs/rules/RULES.md) (Japanese).
 
-The crate also builds the development tools used in the [Minase repository](https://github.com/stepney141/minase), such as the `match_runner` SPRT harness, `bench`, and `perft`.
+`cargo install minase` installs the single executable `minase`. The development tools used in the [Minase repository](https://github.com/stepney141/minase), such as the SPRT harness (`minase match run`), `minase dev bench`, and `minase dev perft`, run as its subcommands.
 
 ## License
 

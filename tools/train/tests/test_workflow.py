@@ -186,7 +186,7 @@ class WorkflowTest(unittest.TestCase):
                                initial_piece_values(), 1000)
                 elif command[:2] == ["cargo", "build"]:
                     names = [command[index + 1] for index, value in enumerate(command) if value == "--bin"]
-                    builds[cwd] = names
+                    builds[cwd] = command
                     target = Path(command[command.index("--target-dir") + 1]) / "release"
                     target.mkdir(parents=True)
                     for name in names:
@@ -204,12 +204,16 @@ class WorkflowTest(unittest.TestCase):
             provenance = Path(str(source) + ".provenance.json")
             self.assertEqual(state["existing_data"][0]["provenance"]["sha256"], sha256_file(provenance).hex())
             self.assertEqual(checkouts, {run / "generator": base, run / "probe": tools_commit})
-            self.assertEqual(builds, {run / "generator": ["selfplay_gen"], run / "probe": ["pst_probe"]})
+            self.assertEqual(builds, {
+                run / name: ["cargo", "build", "--release", "--locked", "--target-dir",
+                             str(run / name / "target"), "--bin", "minase"]
+                for name in ("generator", "probe")
+            })
             self.assertEqual(state["config"]["run"]["base_commit"], base)
             self.assertEqual(state["config"]["train"]["removal_penalty"], 0)
             self.assertEqual(state["probe_commit"], tools_commit)
-            self.assertEqual(state["generator_sha256"], sha256_file(run / "generator/target/release/selfplay_gen").hex())
-            self.assertEqual(state["probe_sha256"], sha256_file(run / "probe/target/release/pst_probe").hex())
+            self.assertEqual(state["generator_sha256"], sha256_file(run / "generator/target/release/minase").hex())
+            self.assertEqual(state["probe_sha256"], sha256_file(run / "probe/target/release/minase").hex())
             self.assertEqual(state["lookahead"], lookahead)
             if lookahead is not None:
                 self.assertEqual(state["lambda_override"], 1.0)
@@ -224,10 +228,10 @@ class WorkflowTest(unittest.TestCase):
         """外部git操作だけを置換し、完了記録とファイル検証は実際に通す。"""
         run = self.root / "data/run"
         run.mkdir()
-        binary = run / "generator/target/release/selfplay_gen"
+        binary = run / "generator/target/release/minase"
         binary.parent.mkdir(parents=True)
         binary.write_bytes(b"fixture executable")
-        probe = run / "probe/target/release/pst_probe"
+        probe = run / "probe/target/release/minase"
         probe.parent.mkdir(parents=True)
         probe.write_bytes(b"fixture probe")
         zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
@@ -427,6 +431,41 @@ class WorkflowTest(unittest.TestCase):
                 command()
         execute.assert_not_called()
 
+    def test_generation_and_inspection_use_minase_subcommands(self) -> None:
+        """設計書の新しい呼び出しと生成条件を引数列全体で検査する。"""
+        run, stack = self.prepared()
+        output = run / "generated-100.bin"
+        checksum = (run / "pst-base.bin").read_bytes()[48:80]
+
+        def execute(run, label, command, cwd):
+            if label == "generate-100":
+                write_mnsd(output, seed=100, checksum=checksum, games=[0])
+
+        command = stack.enter_context(patch.object(workflow, "run_command", side_effect=execute))
+        workflow.generate(run, 100)
+        binary = str(run / "generator/target/release/minase")
+        self.assertEqual(command.call_args_list, [
+            unittest.mock.call(run, "generate-100", [
+                binary, "data", "selfplay", "generate", "--output", str(output), "--seed", "100",
+                "--games", "10", "--nodes", "100000", "--random-moves", "0",
+                "--concurrency", "1", "--max-ply", "600", "--hash-mb", "16",
+            ], run / "generator"),
+            unittest.mock.call(run, "inspect-100", [
+                binary, "data", "selfplay", "inspect", str(output),
+            ], run / "generator"),
+        ])
+        receipt = json.loads((run / "generated-100.json").read_text())
+        self.assertEqual(receipt["sha256"], sha256_file(output).hex())
+        self.assertEqual(receipt["records"], 1)
+
+    def test_generation_rejects_modified_minase_binary(self) -> None:
+        run, stack = self.prepared()
+        (run / "generator/target/release/minase").write_bytes(b"modified generator")
+        execute = stack.enter_context(patch.object(workflow, "run_command"))
+        with self.assertRaisesRegex(ValueError, "checksum changed"):
+            workflow.generate(run, 100)
+        execute.assert_not_called()
+
     def test_existing_output_without_completion_is_not_reused(self) -> None:
         run, stack = self.prepared()
         output = run / "generated-100.bin"
@@ -496,7 +535,7 @@ class WorkflowTest(unittest.TestCase):
     def test_diagnosis_rejects_modified_probe_binary(self) -> None:
         run, _ = self.prepared()
         self.completed_training(run)
-        (run / "probe/target/release/pst_probe").write_bytes(b"modified probe")
+        (run / "probe/target/release/minase").write_bytes(b"modified probe")
         with patch.object(workflow, "diagnose_probe") as probe, self.assertRaises(ValueError):
             workflow.diagnose(run)
         probe.assert_not_called()
@@ -505,7 +544,7 @@ class WorkflowTest(unittest.TestCase):
     def test_diagnosis_rejects_modified_probe_worktree(self) -> None:
         run, _ = self.prepared()
         self.completed_training(run)
-        for head, status in (("0" * 40, ""), ("1" * 40, " M crates/minase/src/bin/pst_probe.rs")):
+        for head, status in (("0" * 40, ""), ("1" * 40, " M crates/minase/src/bin/minase/pst_probe.rs")):
             with self.subTest(head=head, status=status), \
                     patch.object(workflow, "git", side_effect=lambda repo, *args:
                                  head if args == ("rev-parse", "HEAD") else status), \
@@ -555,7 +594,7 @@ class WorkflowTest(unittest.TestCase):
 
         with patch.object(workflow, "diagnose_probe", return_value=python_probe) as probe:
             workflow.diagnose(run)
-        probe.assert_called_once_with(run / "probe/target/release/pst_probe")
+        probe.assert_called_once_with(run / "probe/target/release/minase")
         report = json.loads((run / "diagnostics/report.json").read_text())
         self.assertEqual(len(report["bands"]), 10)
         validation = inputs["validation_records"]

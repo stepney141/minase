@@ -179,7 +179,7 @@ cargo fmt --check
 cargo clippy --release --all-targets
 cargo test --release
 scripts/bench_compare.py --reference <第2期の最終の採用版> --baseline <第2期の最終の採用版> --parent <直前の採用版> --depth 5 --repetitions 3 --rounds 5 --threads 1
-target/release/perft 3
+target/release/minase dev perft 3
 ```
 
 `bench_compare.py`は局面別の不一致を終了コード1で報告するので、段階1から段階4では終了コード0（一致）を要求し、探索木を変える段階5では不一致を前提に経過時間とノード数の親比だけを読む。

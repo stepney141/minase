@@ -118,7 +118,7 @@ STCとLTCは別の測定として扱い、測定名と実行ディレクトリ�
 STCの標準コマンドは次のとおりである。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-stc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
   --each time=10000+100 --max-pairs 3000 gsprt
@@ -133,7 +133,7 @@ STCの判定は次のとおり扱う。
 LTCの標準コマンドは次のとおりである。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-ltc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
   --each time=60000+200 gsprt

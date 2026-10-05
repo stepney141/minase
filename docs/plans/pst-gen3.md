@@ -101,7 +101,7 @@ G3もS0に対するSTCは`H1`だった（[記録](../measurements/pst-gen3-g3-st
 ### フェーズ1　世代3の生成
 
 生成用の実行ディレクトリを準備し、5ファイルを生成する。
-各ファイルを`selfplay_gen inspect`で検証し、除外の理由別件数、手数上限による破棄数、および記録局面数を測定記録`pst-gen3-generation`に残す。
+各ファイルを`minase data selfplay inspect`で検証し、除外の理由別件数、手数上限による破棄数、および記録局面数を測定記録`pst-gen3-generation`に残す。
 
 ### フェーズ2　学習器の再現確認と半分割オプション
 

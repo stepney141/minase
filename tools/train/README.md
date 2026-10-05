@@ -2,7 +2,7 @@
 
 本ディレクトリは、minaseの評価関数のうちPST（駒の種類と位置に応じた評価表）を、自己対局の教師データから学習するPythonのツール群である。
 エンジン本体はRustで書かれており、学習ツールとはファイルを介してだけやり取りする。
-本体の`selfplay_gen`が自己対局の局面と探索値を書き出し、学習ツールがそれを読んでPSTを学習し、エンジンが読み込める重みファイル`crates/minase/nets/pst.bin`の形式で書き出す。
+本体の`minase data selfplay`が自己対局の局面と探索値を書き出し、学習ツールがそれを読んでPSTを学習し、エンジンが読み込める重みファイル`crates/minase/nets/pst.bin`の形式で書き出す。
 学習の手順、設定項目、および採否の判断は [PSTの学習手順](../../docs/guides/pst-training.md) が定めており、本書は環境の構築とソースの構成だけを説明する。
 
 ## 環境の構築
@@ -55,8 +55,8 @@ uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
 
 | 形式 | 内容 | 書き出す側 | 読み込むモジュール |
 |---|---|---|---|
-| MNSD | 自己対局の局面、探索値、および対局結果 | `selfplay_gen generate`、`lishogi_import` | `data/mnsd.py` |
-| MNRS | MNSDの各局面に別の探索で付け直した教師値 | `selfplay_gen rescore` | `data/mnsd.py` |
+| MNSD | 自己対局の局面、探索値、および対局結果 | `minase data selfplay generate`、`minase data lishogi` | `data/mnsd.py` |
+| MNRS | MNSDの各局面に別の探索で付け直した教師値 | `minase data selfplay rescore` | `data/mnsd.py` |
 | MNKF | MNSDの各局面に対応する追加の評価特徴の列 | 段階9の実験ブランチ（masterには書き出す側がない） | `data/mnsd.py` |
 | MNPT | PSTの重み、探索用の駒価値、および出力の尺度K | `train-pst` | `data/mnpt.py`、本体の評価関数 |
 
@@ -92,7 +92,7 @@ MNSDには、パスの末尾に `.provenance.json` を付けた来歴ファイ�
 
 | ファイル | 内容 |
 |---|---|
-| `diagnostics/comparison.py` | `pst-diagnostics` の本体。本体の `pst_probe` を呼び、Rustの評価とPythonの参照評価の一致も確認する |
+| `diagnostics/comparison.py` | `pst-diagnostics` の本体。本体の `minase dev pst-probe` を呼び、Rustの評価とPythonの参照評価の一致も確認する |
 | `diagnostics/taper_report.py` | `taper-report` の本体 |
 | `diagnostics/lookahead_teacher.py` | `lookahead-diag` の本体 |
 
@@ -100,7 +100,7 @@ MNSDには、パスの末尾に `.provenance.json` を付けた来歴ファイ�
 
 | ファイル | 内容 |
 |---|---|
-| `workflow.py` | `pst-workflow` の本体。基準コミットのワークツリーで `selfplay_gen` と `pst_probe` をビルドし、生成、学習、診断の各工程の入力と出力を検査和で照合する。準備の時点で本パッケージのソースの検査和も記録し、ソースが変わった実行ディレクトリの続行を拒否する |
+| `workflow.py` | `pst-workflow` の本体。基準コミットのワークツリーで `minase data selfplay` と `minase dev pst-probe` をビルドし、生成、学習、診断の各工程の入力と出力を検査和で照合する。準備の時点で本パッケージのソースの検査和も記録し、ソースが変わった実行ディレクトリの続行を拒否する |
 | `checksum.py` | ファイル全体のSHA-256を計算する |
 
 ## テストの構成

@@ -225,11 +225,11 @@ def prepare(config_path: Path) -> None:
         shutil.copyfile(generator / "crates/minase/nets/pst.bin", run / "pst-base.bin")
         read_mnpt(run / "pst-base.bin")
         run_command(run, "build", ["cargo", "build", "--release", "--locked", "--target-dir",
-                    str(generator / "target"), "--bin", "selfplay_gen"], generator)
+                    str(generator / "target"), "--bin", "minase"], generator)
         probe = run / "probe"
         run_command(run, "probe-worktree", ["git", "worktree", "add", "--detach", str(probe), probe_commit], ROOT)
         run_command(run, "probe-build", ["cargo", "build", "--release", "--locked", "--target-dir",
-                    str(probe / "target"), "--bin", "pst_probe"], probe)
+                    str(probe / "target"), "--bin", "minase"], probe)
         write_json(run / "prepared.json", {
             "config": config, "lambda_override": config["train"].get("lambda_override"),
             "lookahead": config["train"].get("lookahead"), "existing_data": existing,
@@ -237,9 +237,9 @@ def prepare(config_path: Path) -> None:
             "base_sha256": sha256_file(run / "pst-base.bin").hex(),
             "base_piece_values_sha256": hashlib.sha256(
                 (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
-            "generator_sha256": sha256_file(generator / "target/release/selfplay_gen").hex(),
+            "generator_sha256": sha256_file(generator / "target/release/minase").hex(),
             "probe_commit": probe_commit,
-            "probe_sha256": sha256_file(probe / "target/release/pst_probe").hex(),
+            "probe_sha256": sha256_file(probe / "target/release/minase").hex(),
             "repository": str(ROOT),
         })
     print(f"Prepared {run}")
@@ -321,7 +321,7 @@ def generate(run: Path, selected_seed: int | None) -> None:
     generator = run / "generator"
     if git(generator, "rev-parse", "HEAD") != state["config"]["run"]["base_commit"] or git(generator, "status", "--porcelain"):
         raise ValueError("generator worktree changed since prepare")
-    binary = generator / "target/release/selfplay_gen"
+    binary = generator / "target/release/minase"
     verify_file(binary, state["generator_sha256"])
     seeds = config["seeds"] if selected_seed is None else [selected_seed]
     if any(seed not in config["seeds"] for seed in seeds):
@@ -336,11 +336,11 @@ def generate(run: Path, selected_seed: int | None) -> None:
             continue
         if output.exists():
             raise ValueError(f"unverified output exists; isolate it before retrying: {output}")
-        command = [str(binary), "generate", "--output", str(output), "--seed", str(seed)]
+        command = [str(binary), "data", "selfplay", "generate", "--output", str(output), "--seed", str(seed)]
         for key in ("games", "nodes", "random_moves", "concurrency", "max_ply", "hash_mb"):
             command += ["--" + key.replace("_", "-"), str(config[key])]
         run_command(run, f"generate-{seed}", command, generator)
-        run_command(run, f"inspect-{seed}", [str(binary), "inspect", str(output)], generator)
+        run_command(run, f"inspect-{seed}", [str(binary), "data", "selfplay", "inspect", str(output)], generator)
         validate_generated(output, state, seed, run)
         write_json(receipt, {**input_receipt(output), "records": read_header(output).record_count})
 
@@ -447,7 +447,7 @@ def diagnose(run: Path) -> None:
     probe = run / "probe"
     if git(probe, "rev-parse", "HEAD") != state["probe_commit"] or git(probe, "status", "--porcelain"):
         raise ValueError("probe worktree changed since prepare")
-    binary = probe / "target/release/pst_probe"
+    binary = probe / "target/release/minase"
     verify_file(binary, state["probe_sha256"])
     paths = [item["path"] for item in training_data(run, state)]
     destination = run / "diagnostics"

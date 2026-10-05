@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""match_runnerの実行ディレクトリから、手数帯ごとの時間消費と到達深さを集計する。
+"""minase match runの実行ディレクトリから、手数帯ごとの時間消費と到達深さを集計する。
 
 各局の`turns`にある実測思考時間から、ハーネスと同じ規則で両側の時計を
 再構成し、手数帯ごとに平均到達深さ、思考時間と着手前の残り時間の中央値、
@@ -42,7 +42,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("run_dir", type=Path, help="match_runnerの実行ディレクトリ")
+    parser.add_argument("run_dir", type=Path, help="minase match runの実行ディレクトリ")
     parser.add_argument(
         "--role",
         choices=("candidate", "baseline"),

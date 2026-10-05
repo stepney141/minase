@@ -71,7 +71,7 @@ XorShift64は現在、`crates/minase-core/src/position/zobrist.rs`のZobristキ�
 テストには初期局面、成駒を含む局面、および成り権保留（`mark_promotion_deferred`相当の状態）を含む局面を用いる。
 `to_sfen`は盤面部と手番部の2欄基本形であり、成り権保留状態はSFENが運ばないため、保留を含む局面のテストは盤面と手番の保存（および`to_sfen`再適用の同一性）の検証とし、保留状態自体の復元は要求しない。保留状態を含む完全な復元は、プロトコル層の拡張SFENの検証項目である。
 
-ダンプされたSFENは`perft --sfen`へそのまま入力できるため、異常局面の分岐数調査に直結する。
+ダンプされたSFENは`minase dev perft --sfen`へそのまま入力できるため、異常局面の分岐数調査に直結する。
 先獅子状態と成り権状態を含む拡張形式は本関数の対象外であり、プロトコル層の設計で扱う。
 このため、反復や先獅子に依存する異常の完全な再現はSFEN単体では保証されず、後述する全手順ダンプが再現の正となる。
 
@@ -177,8 +177,8 @@ cargo test
 cargo clippy --all-targets
 cargo fmt --all -- --check
 git diff --check
-cargo run --quiet --bin perft -- 4 --rules engine-default
-cargo run --release --bin random_play -- --games 500 --seed 1 --rules engine-default
+cargo run --quiet --bin minase -- dev perft 4 --rules engine-default
+cargo run --release --bin minase -- dev random-play --games 500 --seed 1 --rules engine-default
 ```
 
 初期局面perftの深さ1から4までの自己回帰値`36`、`1,296`、`48,315`、`1,801,639`が変化しないことを確認する。

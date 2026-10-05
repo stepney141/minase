@@ -296,7 +296,7 @@ cargo test
 cargo clippy --all-targets
 cargo fmt --all -- --check
 git diff --check
-cargo run --quiet --bin perft -- 4 --rules engine-default
+cargo run --quiet --bin minase -- dev perft 4 --rules engine-default
 ```
 
 ## 完了条件

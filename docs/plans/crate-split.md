@@ -117,7 +117,7 @@ crates/minase-core/
 参考にしたrshogi（[参考資料](#参考資料)）も、10個のcrateを`crates/`の下に並べる仮想マニフェストをとる。
 
 `target/`はワークスペースのルートに作られるので、実行ファイルのパス`target/release/minase`は変わらない。
-仮想マニフェストのルートでパッケージを指定しない場合、`default-members`を設けなければ全てのメンバーが対象になるので、`cargo build --release --bin minase`と`cargo run --release --bin match_runner`は`-p`なしでエンジンの実行ファイルを見つける。
+仮想マニフェストのルートでパッケージを指定しない場合、`default-members`を設けなければ全てのメンバーが対象になるので、`cargo build --release --bin minase`と`cargo run --release --bin minase -- match run`は`-p`なしでエンジンの実行ファイルを見つける。
 `default-members`は設けない。
 ただし、`[workspace]`の`exclude`に`target`、`data`、および`.claude`を挙げる。
 対局ハーネスと`scripts/bench_compare.py`は他のコミットを`target/`の下へ展開してビルドし、他のブランチのworktreeは`data/`と`.claude/`の下に置かれる。
@@ -275,9 +275,9 @@ Cargo.tomlと設定ファイルの変更はCodexに委任し、CONTRIBUTING.md�
 
 ## 検証
 
-1. 深さ6のbench（`cargo run --release --bin bench -- --depth 6 --threads 1 --repetitions 1`）の局面ごとの`depth`、`nodes`、`best`、および`score`が、分割前のコミットと一致する。経過時間と毎秒ノード数は比較しない。比較には`scripts/bench_compare.py`を使う。
+1. 深さ6のbench（`cargo run --release --bin minase -- dev bench --depth 6 --threads 1 --repetitions 1`）の局面ごとの`depth`、`nodes`、`best`、および`score`が、分割前のコミットと一致する。経過時間と毎秒ノード数は比較しない。比較には`scripts/bench_compare.py`を使う。
 2. `cargo test --workspace`の全試験が通り、試験の名前の集合が分割前と一致する。比較の前に、分割前の試験のパスから`core::`と`notation::`の接頭辞の変化を対応づけ、crateの名前の違いを除く。
-3. `cargo run --release --bin perft -- 4 --rules <規則セット>`の深さ1から4までの値が、規則セット`engine-default`と`lishogi`で分割前と一致する。
+3. `cargo run --release --bin minase -- dev perft 4 --rules <規則セット>`の深さ1から4までの値が、規則セット`engine-default`と`lishogi`で分割前と一致する。
 4. `cargo test -p minase-core`と`cargo test -p minase`がそれぞれ単独で通る。通常のビルドで`invariants`と`test-util`が有効にならないことを、開発依存を除いた`cargo tree -p minase -e normal,build,features`で確かめる。`search-stats`と`tuning`を有効にしたビルドと試験も通る。ワークスペース全体のフィーチャ統合が、単独のビルドの不備を隠すのを防ぐためである。
 5. `cargo package --workspace`が両crateのパッケージ化と検証ビルドを通し、`--list`の出力が、`include`で指定したファイルと、Cargoが自動で加えるファイル（`Cargo.toml`、`Cargo.toml.orig`、`Cargo.lock`、`.cargo_vcs_info.json`）だけを含む。エンジンの出力には`nets/pst.bin`と`tests/fixtures/`が含まれる。
 6. 学習ツールの試験（`tools/train/README.md`の手順）が通る。

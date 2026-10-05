@@ -68,10 +68,10 @@ def check_probe(model: Weights, records: np.ndarray, rows: list[dict], name: str
 
 
 def rust_probe(binary: Path) -> Probe:
-    """`pst_probe`バイナリを呼ぶ探査関数を返す。"""
+    """`minase dev pst-probe`を呼ぶ探査関数を返す。"""
 
     def probe(mnpt: Path, mnsd: Path, promotions: bool) -> list[dict]:
-        command = [str(binary), "--pst", str(mnpt), "--positions", str(mnsd), "--skip-invalid"]
+        command = [str(binary), "dev", "pst-probe", "--pst", str(mnpt), "--positions", str(mnsd), "--skip-invalid"]
         if promotions:
             command.append("--promotions")
         output = subprocess.run(command, check=True, capture_output=True, text=True).stdout
@@ -456,7 +456,7 @@ def main() -> None:
     parser.add_argument("--lookahead-plies", type=int)
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
-    parser.add_argument("--probe", type=Path, required=True)
+    parser.add_argument("--probe", type=Path, required=True, help="minase実行ファイルのパス")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--sample-size", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=1)

@@ -189,7 +189,7 @@
 `prepare`は生成器を段階7の採用構成のコミットへ固定し、`generate`はそのworktreeのバイナリだけを使う。
 診断用の`pst_probe`は準備時の学習ツール側コミットへ別に固定し、過去の生成器を使う場合も、成りの着手後局面をPythonで評価してRustの評価差と照合する検査を維持する。
 [診断値は独立した参照値と照合する](../lessons/compare-diagnostics-with-independent-reference.md)に従い、成りの評価差だけを変えた入力を拒否することを回帰テストで固定する。
-生成した5ファイルは`selfplay_gen inspect`で世代のコミット、シード、局面数、および結果の内訳を確認し、[strength-stage7-gen2-generation](../measurements/strength-stage7-gen2-generation.md)へ記録する。
+生成した5ファイルは`minase data selfplay inspect`で世代のコミット、シード、局面数、および結果の内訳を確認し、[strength-stage7-gen2-generation](../measurements/strength-stage7-gen2-generation.md)へ記録する。
 学習の前に`taper_report.py`で世代0から世代2までの識別性の診断を行い、[PSTの序中盤と終盤の補間](tapered-pst.md)と同じ基準（偏差平方和100未満の特徴の出現割合が5%以下）を満たすことを確認して[strength-stage7-gen2-identifiability](../measurements/strength-stage7-gen2-identifiability.md)へ記録する。
 重み共有を採用している場合、識別性の集計は正準特徴の単位で行う。
 識別性の基準を満たさない場合は学習へ進まず、本マイルストーンを待機中とし、再開条件は利用者が決める。
@@ -258,7 +258,7 @@
 - 重みを差し替えたコミットでは、benchの深さ5の総ノード数の変化を記録する。評価関数の変更は探索木を変えるので不変は要求しないが、NPSは3回の中央値で段階開始版と比べて低下していないことを確認する。
 - 重みを変える候補は、STCへ出す前に局面帯別の診断を通し、駒の除去の符号が保存されていること、成りの評価差がRust側と一致すること、および量子化の平均絶対誤差が2センチポーン以内であることを確認する。駒価値だけを変える候補は、重み領域のバイト一致と47値の導出式との一致を確認する。
 - 採否測定は`docs/guides/sprt.md`のコミット対コミット測定に従い、各測定の`time_forfeits`と異常件数を記録する。測定名は`strength-stage7-<項目>-stc`および`-ltc`とし、項目は`mirror`、`gen2`、`values`とする。進捗指標は`strength-stage7-elo200`（段階開始版との`time=10000+100`）と`strength-stage7-hachu-elo200`（HaChuとの`time=60000+1000`、規則`L1,L3,P0,P5,P6,R2,E1,E2`、置換表は両者256 MB）、診断は`strength-stage7-mirror-diag`、`strength-stage7-plycap-trial`、`strength-stage7-gen2-generation`、`strength-stage7-gen2-identifiability`、`strength-stage7-gen2-training`、および`strength-stage7-values-diag`とする。基本シードは20900903から測定の順に割り当て、次の測定の基本シードは先行する全測定が実際に使ったペア数以上離す（目安は10,000刻み）。生成の基本シードは600000から1000000までの5つと試行生成の1100000であり、測定のシードと同じ派生関数を使うため、過去の生成と測定のいずれの範囲とも重ならないことを着手時に確認する（[隣接する基本シードは1局ずれた同じ対局列を生む](../lessons/derive-seed-adjacent-collision.md)）。
-- 生成した各ファイルは`selfplay_gen inspect`で世代のコミットがworktreeのコミットと一致することを確認する。
+- 生成した各ファイルは`minase data selfplay inspect`で世代のコミットがworktreeのコミットと一致することを確認する。
 
 旧構成の中断測定と駒価値診断を保持するため、最終構成の開始版比較は[strength-stage7-gen2-elo200](../measurements/strength-stage7-gen2-elo200.md)、世代2採用後の駒価値診断は[strength-stage7-gen2-values-diag](../measurements/strength-stage7-gen2-values-diag.md)へ保存した。
 元の測定名の記録からも最終結果を参照でき、旧対局を新構成の集計へ含めない。

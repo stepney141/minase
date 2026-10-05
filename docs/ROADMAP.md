@@ -73,14 +73,15 @@
 | 補正1/4のFMの現行PSTへの再学習 | [plans/fm-quarter-current-pst.md](plans/fm-quarter-current-pst.md) | 起案 | |
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
+| 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
 
 ## 現在地
 
 ### 直近の完了
 
+- [補助ツールのサブコマンド化](plans/cli-subcommands.md)は2026年10月5日に、採用で完了した。対局測定、係数調整、学習データの生成、および検証と診断の10個の補助ツールを実行ファイル`minase`のサブコマンド（`minase match run`、`minase spsa`、`minase data selfplay`、`minase dev bench`など）へ移し、`cargo install minase`が導入する実行ファイルを1つにした。エンジンの起動`minase --protocol … --rules …`は変えていない。全ツールの固定シードの出力が移動前と一致し、benchのNPS中央値は移動前の0.9955倍だった（[測定記録](measurements/cli-subcommands-bench-depth5.md)）。runnerがエンジンと同じ実行ファイルになったので、測定の途中で`minase`を再ビルドすると再開できなくなる。
 - [評価関数の候補と探索係数の共適応の検証](plans/eval-search-coadaptation.md)は2026年10月5日に、不採用で完了した。採用PSTのG23から混合比λ=1.0で学び直したPSTは、S0に対してSTCの400ペアで−151.1 Elo（95%信頼区間 −177.5〜−125.1）と大きく負けた（[調整前](measurements/eval-coadaptation-before-stc400.md)）。探索係数29個をこの候補に合わせてSPSAで調整し直しても、同じ開始局面での負けは縮まず、回復量は−10.8 Elo（95%信頼区間 −45.9〜+25.4）だった（[調整後](measurements/eval-coadaptation-after-stc400.md)）。負けを探索係数との不整合で説明する仮説は支持されなかったので、評価関数の候補の採否の手順は変えない。追加診断では、同じ10エポックの追加学習をλ=0.75で行った対照CcがS0に+55.1 Elo（95%信頼区間 +31.3〜+79.4）で勝ち、負けは混合比λ=1.0に結び付いた（[対照](measurements/eval-coadaptation-lambda075-stc400.md)、[分布](measurements/eval-coadaptation-distribution.md)）。
 - [ライブラリとエンジンのcrate分割](plans/crate-split.md)は2026年10月4日に、採用で完了した。リポジトリを仮想マニフェストのワークスペースとし、規則と合法手生成のライブラリ`minase-core`（MIT）と、探索、評価、プロトコル、および実行ファイルのエンジン`minase`（GPL-3.0-or-later）を`crates/`の下に分けた。分割前と比べてbench、perft、および試験の名前の集合が一致し、両crateの`cargo package`が検証ビルドまで通る。RULES.mdは[docs/rules/](rules/RULES.md)へ移した。エンジンの次の版は2.0.0、ライブラリは0.1.0から始め、リリースとcrates.ioへの公開は利用者が行う。
-- [不採用だった探索部の改良のSPSAによる再調整](plans/search-revival-spsa.md)は2026年10月4日に、採用で完了した（issue #10）。過去にSTCで不採用となった探索部の改良のうち数値係数を持つ8項目（reverse futility pruning、late move pruning、null moveの減深の加算、razoring、improving、捕獲履歴、静止探索の手数制限、butterfly historyの持ち越し）を戻し、既存の探索係数16個とまとめた29係数をSPSAで[調整](measurements/search-revival-t.md)した。候補は評価関数G23のmasterに対して[STC](measurements/search-revival-tstar-vs-m-stc.md)と[LTC](measurements/search-revival-tstar-vs-m-ltc.md)でともに`H1`（得点率67.5%と67.4%）となり、8項目だけを取り除いた版にも[STC](measurements/search-revival-tstar-vs-tprime-stc.md)で`H1`（得点率62.7%）となったので、向上には8項目が寄与している。late move pruningは、元の実装が捕獲手も数えてkiller手まで切っていたことを[診断](measurements/search-revival-lmp-diag.md)で確かめ、静かな手だけを数える定義に改めて戻した。負けた枝刈りは数え方を点検し、係数を調整し直してから捨てることを[教訓](lessons/retune-rejected-pruning-before-discarding.md)にした。
 
 ### 次の候補
 

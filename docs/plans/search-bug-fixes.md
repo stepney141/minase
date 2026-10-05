@@ -77,7 +77,7 @@ null moveの件の修正を加えたコミットを修正のコミットとし�
 STCの標準コマンドに対して候補と基準を入れ替え、次のとおり実行する。
 
 ```console
-data/worktrees/search-bug-fixes-runner/target/release/match_runner \
+data/worktrees/search-bug-fixes-runner/target/release/minase match run \
   --run-dir data/matches/search-bug-fixes-null-move-noninferiority-stc --seed 83200000 \
   --candidate commit:<基準コミット> --baseline commit:<修正のコミット> \
   --concurrency 16 --each time=10000+100 gsprt --max-pairs 3000
@@ -88,7 +88,7 @@ STCが`H0`ならLTCへ進み、`H1`なら不合格とする。
 LTCは次のとおり実行し、`H0`なら採用、`H1`なら不合格とし、`pending`なら同じ実行ディレクトリを`--resume`で再開して`--max-pairs`だけを増やす。
 
 ```console
-data/worktrees/search-bug-fixes-runner/target/release/match_runner \
+data/worktrees/search-bug-fixes-runner/target/release/minase match run \
   --run-dir data/matches/search-bug-fixes-null-move-noninferiority-ltc --seed 83300000 \
   --candidate commit:<基準コミット> --baseline commit:<修正のコミット> \
   --concurrency 16 --each time=60000+200 gsprt

@@ -167,10 +167,10 @@ GSPRTのLLR取り込みは完了順ではなくペア番号順に整列して行
 使用例（提案）:
 
 ```console
-match_runner --candidate commit:abc1234 --baseline commit:93b4bd4 \
+minase match run --candidate commit:abc1234 --baseline commit:93b4bd4 \
   --each depth=4 --concurrency 8 gsprt
 
-match_runner --candidate target/release/minase --baseline random \
+minase match run --candidate target/release/minase --baseline random \
   --each depth=1 elo --pairs 100
 ```
 

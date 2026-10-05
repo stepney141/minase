@@ -167,10 +167,10 @@ uv run --project tools/train lookahead-diag \
 uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
 ```
 
-この操作は基準コミットを固定したworktreeを `data/pst-gen2/generator` に作り、生成器`selfplay_gen`をビルドする。
-診断用の`pst_probe`は、準備時の学習ツール側の`HEAD`を固定した別のworktree `data/pst-gen2/probe`でビルドするため、生成基準が古いコミットでも現在の診断形式を使える。
+この操作は基準コミットを固定したworktreeを `data/pst-gen2/generator` に作り、生成器`minase data selfplay`をビルドする。
+診断用の`minase dev pst-probe`は、準備時の学習ツール側の`HEAD`を固定した別のworktree `data/pst-gen2/probe`でビルドするため、生成基準が古いコミットでも現在の診断形式を使える。
 基準PST、その探索用駒価値、設定、既存データ、来歴ファイル、付け直しファイル、および学習スクリプトの検査和を保存し、`prepared.json`に診断器のコミット`probe_commit`とバイナリの検査和`probe_sha256`も記録する。
-`pst_probe`の変更は準備前にコミットする。
+`minase dev pst-probe`の変更は準備前にコミットする。
 元の作業ブランチに未コミットの変更があっても、各バイナリに使うのはそれぞれ固定したコミットである。
 
 準備後は、元のTOMLファイルを編集しても実験の設定は変わらない。
@@ -199,7 +199,7 @@ uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
 uv run --project tools/train pst-workflow generate --run-dir data/pst-gen2
 ```
 
-生成器は固定したworktree内で起動し、完成したファイルを `selfplay_gen inspect` で検査する。
+生成器は固定したworktree内で起動し、完成したファイルを `minase data selfplay inspect` で検査する。
 ヘッダの生成コミット、重みの検査和、ルール、シード、探索ノード上限も照合する。
 各ファイルは `generated-600000.bin` のような名前で保存され、対応する来歴ファイルも必要である。
 生成に使う固定コミットには来歴の出力機能を含める。
@@ -318,7 +318,7 @@ uv run --project tools/train pst-workflow diagnose --run-dir data/pst-gen2
 相関が定義できない場合は `null` と理由を出力し、空の帯は理由を記録して標本を作らない。
 抽出した局面番号も帯ごとに保存するので、入力ファイルの一覧と合わせて標本を特定できる。
 `quantization` は全帯の標本を合わせた量子化誤差であり、平均絶対誤差が2センチポーンを超えると停止する。
-`rust_agreement` は、同じ標本を `pst_probe` で評価したRustの値がPythonの整数参照評価と全件一致したことを示し、不一致なら停止する。
+`rust_agreement` は、同じ標本を `minase dev pst-probe` で評価したRustの値がPythonの整数参照評価と全件一致したことを示し、不一致なら停止する。
 
 `outcome_metrics`は、基準と候補のそれぞれについて、全検証局面の評価値を各重みファイルの固定した出力Kで勝率へ換算し、対局結果への二値交差エントロピーを記録する。
 結果は負け0、引き分け0.5、勝ち1とし、`bce_position_mean`は局面の平均、`bce_game_mean`は対局ごとの平均の平均とする。
@@ -329,7 +329,7 @@ uv run --project tools/train pst-workflow diagnose --run-dir data/pst-gen2
 
 `representatives` は、初期配置と各帯の標本のうち最小の通算番号を持つ代表局面について、各非王駒を1枚除いた評価変化を基準と候補で並べる。
 駒を除くと補間係数も変わるため、評価差をその駒固有の価値と同一視しない。
-同じ代表局面の合法な成り手は `pst_probe` が実際に適用し、着手前の手番側視点の評価差を `promotions` に記録する。成り手がない局面は `promotion_reason` にその旨を残す。
+同じ代表局面の合法な成り手は `minase dev pst-probe` が実際に適用し、着手前の手番側視点の評価差を `promotions` に記録する。成り手がない局面は `promotion_reason` にその旨を残す。
 `after`の着手後局面からPythonで計算した評価差がRustの値と異なると停止し、一致した成り手の件数を`rust_promotion_agreement`に記録する。
 
 駒除去の`evaluations`と`delta_cp`はPST部分を表し、追加の`total_evaluations`と`total_delta_cp`は評価全体を表す。

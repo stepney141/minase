@@ -7,7 +7,7 @@
 ## 原則
 
 測定はfishtestと同じメタ的な構造に従う。
-テストは「旧エンジンのコミット」と「新エンジンのコミット」の2つで定義し、対局ハーネス`match_runner`は差分の内容（どの機能が追加されたか）を一切知らずに、勝敗だけから効果を判定する。
+テストは「旧エンジンのコミット」と「新エンジンのコミット」の2つで定義し、対局ハーネス`minase match run`は差分の内容（どの機能が追加されたか）を一切知らずに、勝敗だけから効果を判定する。
 したがって、探索・評価・時間管理など棋力に影響し得る変更は、機能ごとの比較スイッチをハーネスへ追加するのではなく、変更をコミットとして確定させたうえでコミット対コミットの対局にかける。
 
 ## 測定の種類と標準コマンド
@@ -24,7 +24,7 @@ STCとLTCは別の測定として扱い、測定名と実行ディレクトリ�
 STCの標準コマンドは次のとおりである。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-stc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
   --each time=10000+100 gsprt --max-pairs 3000
@@ -41,7 +41,7 @@ STCの判定は、次の振分け規則で扱う。
 LTCの標準コマンドは次のとおりである。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名>-ltc --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
   --each time=60000+200 gsprt
@@ -71,7 +71,7 @@ LTCの`decision: pending`は、同じ実行ディレクトリを`--resume`で再
 凍結ベースラインは**コミット0045833のバイナリにdepth=1を指定したもの**に固定されている（確定の経緯は plans/match-harness.md）。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<測定対象> \
   --baseline commit:0045833 --baseline-limit depth=1 \
@@ -87,7 +87,7 @@ HaChuのような外部エンジンとの比較は、対等な時間制御のGSP
 規則はHaChuの既定設定（RULES.md第33条第7項、`L1,L3,P0,P5,P6,R2,E1,E2`）に合わせ、審判層とminase側の双方へ同じ規則を与える。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<測定対象> --baseline "cecp:../hachu-debian/hachu" \
   --rules L1,L3,P0,P5,P6,R2,E1,E2 --each time=60000+1000 gsprt
@@ -107,7 +107,7 @@ HaChuは詰みを自認すると着手を返さずに結果行だけを出力す
 このため、変更ごとのEloは測らず、段階ごとの固定局数Eloだけを進捗指標とする。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --run-dir data/matches/<測定名> --seed <シード> \
   --candidate commit:<新> --baseline commit:<旧> \
   --each depth=4 elo --pairs 200
@@ -136,18 +136,19 @@ cargo run --release --bin match_runner -- \
 
 ## 実行ディレクトリと再開
 
-`match_runner`は、新しい測定では`--run-dir`、保存済み測定の再開では`--resume`のどちらか一方を必須とする。
+`minase match run`は、新しい測定では`--run-dir`、保存済み測定の再開では`--resume`のどちらか一方を必須とする。
 `--run-dir`には存在しないパスを指定し、測定ごとに別のディレクトリを使う。
 ハーネスはそのディレクトリを作成し、実行条件を`manifest.json`、累計実行時間と中断状態を`summary.json`、確定した各ペアを`pairs/`以下へ原子的に保存する。
-`match_runner`は実行ディレクトリを排他的にロックするため、同じディレクトリに対する別のrunnerまたは`match_report`はロックの取得に失敗して終了する。
+`minase match run`は実行ディレクトリを排他的にロックするため、同じディレクトリに対する別のrunnerまたは`minase match report`はロックの取得に失敗して終了する。
 再開と監査には3種類の保存物がすべて必要なので、実行ディレクトリ全体を保存し、個別のJSONを編集しない。
 
 中断した測定は、最初のコマンドの`--run-dir`を`--resume`へ置き換え、それ以外の実行条件を同じ値で指定して再開する。
 再開時にも`--seed`は必須であり、ハーネスはエンジン、規則、思考制限、`--ponder`の有無、シード、手数上限、応答タイムアウト、同時対局数、実効ワーカー数、置換表容量、測定機、およびrunnerのSHA-256が保存済み条件と完全に一致することを検査する。
+runnerはエンジンと同じ実行ファイル`minase`なので、探索や評価だけを変えたコミットでもSHA-256が変わる。測定の途中で作業ツリーの`minase`を再ビルドすると再開できなくなるため、長い測定ではrunnerを専用のworktreeに固定する。
 条件が異なる場合は再開せず、明示的なエラーで終了する。
 
 ```console
-cargo run --release --bin match_runner -- \
+cargo run --release --bin minase -- match run \
   --resume data/matches/<測定名> --seed <シード> \
   --candidate commit:<新コミット> --baseline commit:<旧コミット> \
   --each depth=4 gsprt
@@ -159,7 +160,7 @@ GSPRTの`--max-pairs`または固定局数Eloの`--pairs`だけを増やす場�
 
 ## 保存記録の集計
 
-`match_report`は、同一時間制御の固定局数Eloで完了した実行ディレクトリから、Elo、95%信頼区間、異常件数、CPU時間、局時間、最大常駐メモリ、および校正用の2主指標をJSONで再計算する。
+`minase match report`は、同一時間制御の固定局数Eloで完了した実行ディレクトリから、Elo、95%信頼区間、異常件数、CPU時間、局時間、最大常駐メモリ、および校正用の2主指標をJSONで再計算する。
 GSPRT、候補と基準で時間制御が異なる測定、実行中の測定、および強制終了を含む測定は集計対象外であり、条件を満たさなければエラーで終了する。
 エンジン異常によってCPU時間または最大常駐メモリを取得できない局があっても、反則負けを含む得点、Elo、異常件数、および局時間は再集計する。
 資源の欠測数は候補と基準を分けて`missing_resource_observations`へ出力し、CPU時間の欠測時はCPU時間に依存する4指標を、最大常駐メモリの欠測時はメモリに依存する3指標を`null`とする。
@@ -170,7 +171,7 @@ CECPエンジンなどが探索ワーカー数を報告しない場合は、欠�
 有効ペア、得点分散、または総CPU時間が0の場合も、校正指標へ読み替えずにエラーで終了する。
 
 ```console
-cargo run --release --bin match_report -- \
+cargo run --release --bin minase -- match report \
   --run-dir data/matches/<測定名>
 ```
 
@@ -181,7 +182,7 @@ cargo run --release --bin match_report -- \
 どちらかのCPU時間に欠測があり、校正用の主指標が`null`の場合は、比を推測せずに比較をエラーで終了する。
 
 ```console
-cargo run --release --bin match_report -- \
+cargo run --release --bin minase -- match report \
   --run-dir data/matches/<候補時間制御> \
   --compare-to data/matches/<現行時間制御>
 ```
@@ -192,7 +193,7 @@ cargo run --release --bin match_report -- \
 
 - `commit:<hash>`: ハーネスが`git archive`で当該コミットを一時ディレクトリへ展開して`cargo build --release --bin minase`を実行し、完全ハッシュをキーに`target/match-cache/`へキャッシュする。未コミットの作業ツリー変更はビルドに含まれない。キャッシュにはバイナリとSHA-256を保存し、使用前に検証する。どちらかの欠損または不一致を検出した場合は、当該コミットを再ビルドする。同じコミットの並行ビルドはロックで直列化し、完成したキャッシュを原子的に配置する。起動引数`--protocol usi --rules <マッチ規則>`は自動付与される。標準の測定はこの形式を使う。`--rules`の値は入力原文のまま両エンジンへ渡され、各コミットが自分の語彙で解釈する。規則コードP0・E0を導入したコミットより前のコミットを相手にする測定では、コードを列挙した指定は旧コミットが拒否するため、`engine-default`などのプリセット名で指定する。
 - 起動コマンド（パス＋空白区切り引数）: 任意のUSIエンジンを起動する（例 `"target/release/minase --protocol usi --rules engine-default"`）。未コミットの作業ツリーや外部エンジンの測定に使う。minase本体は`--protocol`と`--rules`が必須である点に注意する。
-- `random`: 同一ビルドの`usi_random`（合法手から一様ランダムに着手する校正用エンジン）。真のelo差が0であることが既知の唯一の対戦カードであり、ハーネス自体の煙試験に使う。
+- `random`: 同一ビルドの`minase dev usi-random`（合法手から一様ランダムに着手する校正用エンジン）。真のelo差が0であることが既知の唯一の対戦カードであり、ハーネス自体の煙試験に使う。
 - `cecp:<起動コマンド>`: CECP（XBoardプロトコル）で対局する任意のエンジンを起動する（例 `"cecp:../hachu-debian/hachu"`）。HaChuのようにUSIを話さない外部エンジンとの比較に使う。ハーネスは`xboard`・`protover 2`の握手後に`memory <置換表容量>`・`new`・`variant chu`・`easy`・`nopost`・`force`を送り、毎手、未送信の着手を`usermove`で転送してから`go`で思考させ、`move`行を受けたら`force`へ戻す。思考制限は`depth`（`sd`へ写す）、秒単位の時間制御（`level`・`time`・`otim`へ写す）、および基本時間と加算が0で秒読みが整数秒の1手固定時間（`st`へ写し、毎手`time`に秒読みを送る）に限り、`nodes`、基本時間や加算を伴う秒読み、および秒未満の値は指定できない。HaChuは`st`のとき`time`の値の0.4倍を目標に探索し、0.98倍で中断する。規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
@@ -248,7 +249,7 @@ cargo test --lib stats::tests::gsprt_monte_carlo_error_rates_match_documented_th
 時間制御対局では、最終サマリの`time_forfeits`を必ず記録する。
 シードを省略すると時刻から生成されるので、記録に残す測定では`--seed`を明示し、出力先頭の`seed:`行とともに保存する。
 
-同時対局数は、`--concurrency`の省略時に`match_runner`が「物理コア数から1を引き、候補と基準の`Threads`の大きい方で割った商」として自動計算する。
+同時対局数は、`--concurrency`の省略時に`minase match run`が「物理コア数から1を引き、候補と基準の`Threads`の大きい方で割った商」として自動計算する。
 `--ponder`のときは両エンジンが同時に探索するので、除数を「`Threads`の大きい方の2倍」とする。
 物理コア数またはどちらかの`Threads`が取得できない場合、および計算結果が1未満になる場合は、既定値を推測せずに明示エラーで終了するため、`--concurrency`を明示する。
 解決後の同時対局数は`manifest.json`へ記録され、再開時の一致検査の対象になる。
@@ -269,7 +270,7 @@ cargo test --lib stats::tests::gsprt_monte_carlo_error_rates_match_documented_th
 コマンドライン全体（シードを含む）、両エンジンのコミットハッシュ、ペンタノミアル度数、LLRと判定（またはEloと信頼区間）、破棄ペア数と異常件数、経過時間。
 実行条件とエンジンバイナリのSHA-256は`manifest.json`、確定済みの結果と異常分類は`pairs/`、再開を含む累計実行時間は`summary.json`を正とする。
 標準出力の`elapsed`は当該起動だけの経過時間であり、再開した測定の累計時間には`summary.json`の`active_wall_time_ns`を使う。
-固定局数の時間制御測定では`match_report`のJSONを保存記録から再計算した集計値として使い、標準出力の最終サマリだけに依存しない。
+固定局数の時間制御測定では`minase match report`のJSONを保存記録から再計算した集計値として使い、標準出力の最終サマリだけに依存しない。
 
 並列測定では、CPU型、物理コア数、論理コア数、候補と基準のワーカー数、`USI_Hash`、同時対局数、時間制御、および`time_forfeits`も記録する。
 外部エンジンを含む測定では、そのエンジンの版（ソースのコミットとビルド手順）と規則オプションの設定も記録する。

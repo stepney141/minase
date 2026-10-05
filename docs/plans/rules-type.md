@@ -148,9 +148,9 @@ R0を含む記録用の規則集合の表現、拡張SFENへの規則の埋め�
 完了基準は次の4点である。
 
 - `cargo test`が全通過し、プロトコル層の規則コード受理・拒否テスト（重複、排他違反、群の欠落、プリセットの単独指定）が第33条第4項と第5項のとおりになる。
-- `cargo run --release --bin bench`の探索ノード数が着手前と一致する。
+- `cargo run --release --bin minase -- dev bench`の探索ノード数が着手前と一致する。
 - `from_codes`から排他ペア表が消え、`Rules::standard()`、`Option<RepetitionRule>`、`GameBuildError`、`contains`が存在しない。
-- `match_runner --rules engine-default`で本変更のコミットと直前コミットの対局が起動し、`engine_failures`が0である。
+- `minase match run --rules engine-default`で本変更のコミットと直前コミットの対局が起動し、`engine_failures`が0である。
 
 ## 進め方
 

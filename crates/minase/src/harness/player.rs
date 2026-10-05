@@ -168,12 +168,10 @@ pub fn resolve_player(
     let working_directory = std::env::current_dir()?;
     let (path, args, protocol, is_random, identity) = match spec.kind {
         PlayerKind::Random => {
-            let current = std::env::current_exe()?;
-            let filename = format!("usi_random{}", std::env::consts::EXE_SUFFIX);
-            let path = current.with_file_name(filename);
+            let path = std::env::current_exe()?;
             (
                 path.clone(),
-                Vec::new(),
+                vec!["dev".to_owned(), "usi-random".to_owned()],
                 Protocol::Usi,
                 true,
                 EngineIdentity::Random {
