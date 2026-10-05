@@ -183,7 +183,7 @@ uv run --project tools/train pst-workflow prepare --config pst-gen2.toml
 学習器を変更して再学習する場合は、既存の実験を保持し、変更後のツールを新しい実行ディレクトリへ固定する。
 現行の[設定例](../../tools/train/pst.example.toml)から全必須項目を含む設定を用意し、`run.directory`には未使用の保存先を指定する。
 段階7の生成済みデータで再学習する場合、`run.data`には世代0と世代1の6ファイル、および`data/strength-stage7/gen2/generated-<seed>.bin`の全5ファイルを列挙し、`generate.seeds = []`としてデータを再生成しない。
-現在の採用PSTは、[世代3の計画](../plans/pst-gen3.md)で世代2の5ファイルと世代3の`data/gen3/generated-<seed>.bin`の5ファイル（基本シード1100000から1500000）だけを`run.data`に列挙し、世代0と世代1を除いて学習したものである。
+現在の採用PSTは、[世代3の計画](../plans/pst-gen3.md)で世代2の5ファイルと世代3の`data/gen3/generated-<seed>.bin`の5ファイル（基本シード1100000から1500000）だけを`run.data`に列挙し、世代0と世代1を除いて学習したG23を初期値に、同じ10ファイルと同じ学習条件でさらに10エポックを重ねたものである（[共適応の検証](../plans/eval-search-coadaptation.md)の対照Pc、設定ファイルは`data/eval-coadaptation-lambda075.toml`）。
 
 段階7で範囲射影を加えた最初の再学習には`data/strength-stage7/gen2-projected.toml`を使い、結果を`data/strength-stage7/gen2-projected`へ保存した。
 この旧設定には現在必須の`train.removal_penalty`がないため、現行の準備コマンドへそのまま渡すことはできない。

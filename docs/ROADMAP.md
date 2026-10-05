@@ -69,7 +69,7 @@
 | 王の安全度と利きに基づく評価特徴の再学習 | [plans/evaluation-terms-relearning.md](plans/evaluation-terms-relearning.md) | 起案 | |
 | デバッグ機能の整備 | [plans/debugging-tools.md](plans/debugging-tools.md) | 完了（採用） | 2026年9月27日 |
 | 探索部の不具合修正 | [plans/search-bug-fixes.md](plans/search-bug-fixes.md) | 完了（一部不採用） | 2026年9月29日 |
-| 評価関数の候補と探索係数の共適応の検証 | [plans/eval-search-coadaptation.md](plans/eval-search-coadaptation.md) | 完了（不採用） | 2026年10月5日 |
+| 評価関数の候補と探索係数の共適応の検証 | [plans/eval-search-coadaptation.md](plans/eval-search-coadaptation.md) | 完了（一部不採用） | 2026年10月5日 |
 | 補正1/4のFMの現行PSTへの再学習 | [plans/fm-quarter-current-pst.md](plans/fm-quarter-current-pst.md) | 起案 | |
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
@@ -81,14 +81,13 @@
 ### 直近の完了
 
 - [補助ツールのサブコマンド化](plans/cli-subcommands.md)は2026年10月5日に、採用で完了した。対局測定、係数調整、学習データの生成、および検証と診断の10個の補助ツールを実行ファイル`minase`のサブコマンド（`minase match run`、`minase spsa`、`minase data selfplay`、`minase dev bench`など）へ移し、`cargo install minase`が導入する実行ファイルを1つにした。エンジンの起動`minase --protocol … --rules …`は変えていない。全ツールの固定シードの出力が移動前と一致し、benchのNPS中央値は移動前の0.9955倍だった（[測定記録](measurements/cli-subcommands-bench-depth5.md)）。runnerがエンジンと同じ実行ファイルになったので、測定の途中で`minase`を再ビルドすると再開できなくなる。
-- [評価関数の候補と探索係数の共適応の検証](plans/eval-search-coadaptation.md)は2026年10月5日に、不採用で完了した。採用PSTのG23から混合比λ=1.0で学び直したPSTは、S0に対してSTCの400ペアで−151.1 Elo（95%信頼区間 −177.5〜−125.1）と大きく負けた（[調整前](measurements/eval-coadaptation-before-stc400.md)）。探索係数29個をこの候補に合わせてSPSAで調整し直しても、同じ開始局面での負けは縮まず、回復量は−10.8 Elo（95%信頼区間 −45.9〜+25.4）だった（[調整後](measurements/eval-coadaptation-after-stc400.md)）。負けを探索係数との不整合で説明する仮説は支持されなかったので、評価関数の候補の採否の手順は変えない。追加診断では、同じ10エポックの追加学習をλ=0.75で行った対照CcがS0に+55.1 Elo（95%信頼区間 +31.3〜+79.4）で勝ち、負けは混合比λ=1.0に結び付いた（[対照](measurements/eval-coadaptation-lambda075-stc400.md)、[分布](measurements/eval-coadaptation-distribution.md)）。
+- [評価関数の候補と探索係数の共適応の検証](plans/eval-search-coadaptation.md)は2026年10月5日に、一部不採用で完了した。採用PSTのG23から混合比λ=1.0で学び直したPSTはSTCで−151.1 Elo（95%信頼区間 −177.5〜−125.1）と負け、探索係数29個をSPSAで調整し直しても回復量は−10.8 Elo（95%信頼区間 −45.9〜+25.4）で、負けを探索係数との不整合で説明する仮説は支持されなかった（[調整後](measurements/eval-coadaptation-after-stc400.md)）。追加診断では、同じ10エポックの追加学習をλ=0.75で行った対照Ccが段階ゲートの[STC](measurements/eval-coadaptation-lambda075-stc.md)と[LTC](measurements/eval-coadaptation-lambda075-ltc.md)でともに`H1`（得点率57.4%と57.3%）となり、新しい採用PSTになった。λ=1.0の負けは追加学習ではなく混合比に結び付き、G23は10エポックでは学習しきれていなかった。
 - [ライブラリとエンジンのcrate分割](plans/crate-split.md)は2026年10月4日に、採用で完了した。リポジトリを仮想マニフェストのワークスペースとし、規則と合法手生成のライブラリ`minase-core`（MIT）と、探索、評価、プロトコル、および実行ファイルのエンジン`minase`（GPL-3.0-or-later）を`crates/`の下に分けた。分割前と比べてbench、perft、および試験の名前の集合が一致し、両crateの`cargo package`が検証ビルドまで通る。RULES.mdは[docs/rules/](rules/RULES.md)へ移した。エンジンの次の版は2.0.0、ライブラリは0.1.0から始め、リリースとcrates.ioへの公開は利用者が行う。
 
 ### 次の候補
 
 - 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
-- 共適応の検証の対照Cc（G23の上へλ=0.75のまま10エポックを重ねたPST、ブランチ`eval-coadaptation-lambda075`の`4114723`）は、固定400ペアでS0に約55 Elo勝ったので、段階ゲートで採否を測るかが利用者の判断を待っている。
-- 評価関数の次の計画は[補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)である（2026年10月4日の利用者決定）。ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直し、標準の段階ゲートで採否を測る。測定機の時間は約2〜39時間であり、補正の教師の選択が利用者の判断を待っている。
+- 評価関数の次の計画は[補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)である（2026年10月4日の利用者決定）。基点の採用PSTは、共適応の検証で採用したPcに変わった。ブランチ`fm-eval`でSTCとLTCをともに通過したままmasterへ統合されなかった補正1/4のFMを、現行の採用PSTの上で学び直し、標準の段階ゲートで採否を測る。測定機の時間は約2〜39時間であり、補正の教師の選択が利用者の判断を待っている。
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
