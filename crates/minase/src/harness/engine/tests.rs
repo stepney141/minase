@@ -59,9 +59,7 @@ for raw in sys.stdin:
     );
     PlayerConfig {
         text: "scripted USI".to_owned(),
-        identity: EngineIdentity::Random {
-            sha256: "test".to_owned(),
-        },
+        identity: EngineIdentity::Random,
         path: PathBuf::from("python3"),
         args: vec!["-u".to_owned(), "-c".to_owned(), script],
         protocol: Protocol::Usi,

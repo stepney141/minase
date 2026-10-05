@@ -13,6 +13,7 @@ mod player;
 mod ponder_stats;
 mod records;
 mod referee;
+mod resume;
 mod storage;
 
 pub use clock::*;
@@ -28,4 +29,5 @@ pub use player::*;
 pub use ponder_stats::*;
 pub use records::*;
 pub use referee::*;
+pub use resume::*;
 pub use storage::*;

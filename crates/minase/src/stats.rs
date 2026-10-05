@@ -100,10 +100,10 @@ fn results_to_pdf(results: &[u64; 5]) -> (f64, Pdf) {
     (count, pdf)
 }
 
-/// H0をelo=0、H1を指定値とするペンタノミアルGSPRTのLLRを返す。
-fn gsprt_llr_with_h1(results: &[u64; 5], h1_elo: f64) -> f64 {
+/// 指定したH0、H1によるペンタノミアルGSPRTのLLRを返す。
+pub fn gsprt_llr_with_hypotheses(results: &[u64; 5], h0_elo: f64, h1_elo: f64) -> f64 {
     let (count, observed) = results_to_pdf(results);
-    let null_pdf = mle_expected(&observed, logistic_score(0.0));
+    let null_pdf = mle_expected(&observed, logistic_score(h0_elo));
     let alternative_pdf = mle_expected(&observed, logistic_score(h1_elo));
     count
         * observed
@@ -117,7 +117,7 @@ fn gsprt_llr_with_h1(results: &[u64; 5], h1_elo: f64) -> f64 {
 
 /// H0をelo=0、H1を[`GSPRT_H1_ELO`]とするペンタノミアルGSPRTのLLRを返す。
 pub fn gsprt_llr(results: &[u64; 5]) -> f64 {
-    gsprt_llr_with_h1(results, GSPRT_H1_ELO)
+    gsprt_llr_with_hypotheses(results, 0.0, GSPRT_H1_ELO)
 }
 
 /// LLRを固定境界と比較してGSPRTの判定を返す。
@@ -189,7 +189,7 @@ mod tests {
             ([141, 593, 1112, 666, 158], 2.146_607_391_5),
         ];
         for (results, expected) in references {
-            let actual = gsprt_llr_with_h1(&results, 5.0);
+            let actual = gsprt_llr_with_hypotheses(&results, 0.0, 5.0);
             assert!(
                 (actual - expected).abs() <= 1e-6,
                 "pentanomial {results:?}: expected {expected}, got {actual}"

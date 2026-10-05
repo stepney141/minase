@@ -1,6 +1,6 @@
 //! 外部エンジンの指定と起動構成。
 
-use crate::harness::commit::{resolve_commit, sha256_file};
+use crate::harness::commit::resolve_commit;
 use crate::harness::engine::validate_cecp_limit;
 use crate::harness::limit::SearchLimit;
 use crate::harness::records::{EngineIdentity, StoredProtocol};
@@ -174,9 +174,7 @@ pub fn resolve_player(
                 vec!["dev".to_owned(), "usi-random".to_owned()],
                 Protocol::Usi,
                 true,
-                EngineIdentity::Random {
-                    sha256: sha256_file(&path)?,
-                },
+                EngineIdentity::Random,
             )
         }
         PlayerKind::Commit(revision) => {

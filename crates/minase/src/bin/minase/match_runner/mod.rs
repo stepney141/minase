@@ -3,6 +3,7 @@
 mod cli;
 mod manifest;
 mod replay;
+mod resume;
 mod scheduler;
 mod storage;
 mod summary;
@@ -10,7 +11,7 @@ mod summary;
 use clap::error::ErrorKind;
 pub(super) use cli::Arguments;
 use cli::{Mode, time_seed};
-use manifest::{rules_text, run_manifest};
+use manifest::run_manifest;
 use minase::harness::*;
 use minase::stats::{GSPRT_H1_ELO, GsprtDecision};
 use minase_core::Rules;
@@ -37,115 +38,135 @@ pub(super) fn main(arguments: Arguments) {
             .error(ErrorKind::ValueValidation, error)
             .exit();
     }
-    let rules = match Rules::from_codes(&arguments.rules.codes) {
-        Ok(rules) => rules,
-        Err(error) => crate::subcommand_command(&["match", "run"])
-            .error(ErrorKind::ValueValidation, error.to_string())
-            .exit(),
-    };
-    if arguments.resume.is_some() && arguments.seed.is_none() {
+    if arguments.resume.is_some() && arguments.mode.is_some() {
         crate::subcommand_command(&["match", "run"])
             .error(
-                ErrorKind::MissingRequiredArgument,
-                "--seed is required with --resume so the experiment can be verified",
+                ErrorKind::ArgumentConflict,
+                "--resume cannot be combined with a mode subcommand",
             )
             .exit();
     }
-    let base_seed = match arguments.seed {
-        Some(seed) => seed,
-        None => match time_seed() {
-            Ok(seed) => seed,
-            Err(error) => {
-                eprintln!("failed to generate a seed from the current time: {error}");
-                process::exit(1);
-            }
-        },
-    };
-    let (target_pairs, use_gsprt, manifest_mode) = match arguments.mode {
-        Mode::Gsprt { max_pairs } => (
-            max_pairs,
-            true,
-            ManifestMode::Gsprt {
-                h0_elo: 0.0,
-                h1_elo: GSPRT_H1_ELO,
-                alpha: 0.05,
-                beta: 0.05,
-            },
-        ),
-        Mode::Elo { pairs } => (pairs, false, ManifestMode::Elo),
-    };
-    let candidate_limit = arguments.candidate_limit.unwrap_or(arguments.each);
-    let baseline_limit = arguments.baseline_limit.unwrap_or(arguments.each);
-    let rules_text = rules_text(&arguments.rules.codes);
-    let candidate = match resolve_player(
-        arguments.candidate,
-        candidate_limit,
-        arguments.candidate_hash,
-        &arguments.rules.source,
-        Vec::new(),
-    ) {
-        Ok(player) => player,
-        Err(error) => {
-            eprintln!("failed to resolve candidate engine: {error}");
-            process::exit(1);
-        }
-    };
-    let baseline = match resolve_player(
-        arguments.baseline,
-        baseline_limit,
-        arguments.baseline_hash,
-        &arguments.rules.source,
-        Vec::new(),
-    ) {
-        Ok(player) => player,
-        Err(error) => {
-            eprintln!("failed to resolve baseline engine: {error}");
-            process::exit(1);
-        }
-    };
-    let manifest = match run_manifest(
-        &candidate,
-        &baseline,
-        &arguments.rules,
-        manifest_mode,
-        base_seed,
-        arguments.max_ply,
-        arguments.response_timeout,
-        arguments.concurrency,
-        arguments.ponder,
-    ) {
-        Ok(manifest) => manifest,
-        Err(error) => {
-            eprintln!("failed to identify the experiment environment: {error}");
-            process::exit(1);
-        }
-    };
-    let concurrency = manifest.concurrency;
-    let (store, saved_records) = match (&arguments.run_dir, &arguments.resume) {
-        (Some(path), None) => match RunStore::create(path, manifest) {
-            Ok(store) => (store, BTreeMap::new()),
-            Err(error) => {
-                eprintln!("failed to create run directory {}: {error}", path.display());
-                process::exit(1);
-            }
-        },
-        (None, Some(path)) => match RunStore::resume(path, &manifest, target_pairs) {
-            Ok(result) => result,
-            Err(error) => {
+    if arguments.run_dir.is_some() && arguments.mode.is_none() {
+        crate::subcommand_command(&["match", "run"])
+            .error(
+                ErrorKind::MissingSubcommand,
+                "a new run requires a mode subcommand",
+            )
+            .exit();
+    }
+    let (store, saved_records, rules, candidate, baseline) = if let Some(path) = &arguments.resume {
+        let (store, records) =
+            RunStore::resume(path, arguments.target_pairs).unwrap_or_else(|error| {
                 eprintln!("failed to resume run directory {}: {error}", path.display());
                 process::exit(1);
+            });
+        let (rules, candidate, baseline) =
+            resume::restore(&store.manifest).unwrap_or_else(|error| {
+                eprintln!("failed to restore experiment: {error}");
+                process::exit(1);
+            });
+        (store, records, rules, candidate, baseline)
+    } else {
+        let rules = match Rules::from_codes(&arguments.rules.codes) {
+            Ok(rules) => rules,
+            Err(error) => crate::subcommand_command(&["match", "run"])
+                .error(ErrorKind::ValueValidation, error.to_string())
+                .exit(),
+        };
+        let base_seed = match arguments.seed {
+            Some(seed) => seed,
+            None => match time_seed() {
+                Ok(seed) => seed,
+                Err(error) => {
+                    eprintln!("failed to generate a seed from the current time: {error}");
+                    process::exit(1);
+                }
+            },
+        };
+        let (target_pairs, manifest_mode) =
+            match arguments.mode.as_ref().expect("new run mode was validated") {
+                Mode::Gsprt { max_pairs } => (
+                    *max_pairs,
+                    ManifestMode::Gsprt {
+                        h0_elo: 0.0,
+                        h1_elo: GSPRT_H1_ELO,
+                        alpha: 0.05,
+                        beta: 0.05,
+                    },
+                ),
+                Mode::Elo { pairs } => (*pairs, ManifestMode::Elo),
+            };
+        let candidate_limit = arguments.candidate_limit.unwrap_or(arguments.each);
+        let baseline_limit = arguments.baseline_limit.unwrap_or(arguments.each);
+        let candidate = match resolve_player(
+            arguments.candidate.clone(),
+            candidate_limit,
+            arguments.candidate_hash,
+            &arguments.rules.source,
+            Vec::new(),
+        ) {
+            Ok(player) => player,
+            Err(error) => {
+                eprintln!("failed to resolve candidate engine: {error}");
+                process::exit(1);
             }
-        },
-        _ => unreachable!("clap requires exactly one run operation"),
+        };
+        let baseline = match resolve_player(
+            arguments.baseline.clone(),
+            baseline_limit,
+            arguments.baseline_hash,
+            &arguments.rules.source,
+            Vec::new(),
+        ) {
+            Ok(player) => player,
+            Err(error) => {
+                eprintln!("failed to resolve baseline engine: {error}");
+                process::exit(1);
+            }
+        };
+        let manifest = match run_manifest(
+            &candidate,
+            &baseline,
+            &arguments.rules,
+            manifest_mode,
+            base_seed,
+            arguments.max_ply,
+            arguments.response_timeout,
+            arguments.concurrency,
+            arguments.ponder,
+        ) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                eprintln!("failed to identify the experiment environment: {error}");
+                process::exit(1);
+            }
+        };
+        let path = arguments
+            .run_dir
+            .as_ref()
+            .expect("clap requires a run directory");
+        let store = RunStore::create(path, manifest, target_pairs).unwrap_or_else(|error| {
+            eprintln!("failed to create run directory {}: {error}", path.display());
+            process::exit(1);
+        });
+        (store, BTreeMap::new(), rules, candidate, baseline)
     };
-    let response_timeout = Duration::from_secs(arguments.response_timeout);
+    let manifest = &store.manifest;
+    let target_pairs = store.target_pairs;
+    let concurrency = manifest.concurrency;
+    let base_seed = manifest.seed;
+    let max_ply = manifest.max_ply;
+    let ponder = manifest.ponder;
+    let use_gsprt = matches!(manifest.mode, ManifestMode::Gsprt { .. });
+    let rules_text = manifest.canonical_rules.join(",");
+    let response_timeout = Duration::from_secs(manifest.response_timeout_secs);
     println!("run_dir: {}", store.path().display());
     println!("rules: {rules_text}");
     println!("seed: {base_seed}");
-    println!("max_ply: {}", arguments.max_ply);
+    println!("max_ply: {max_ply}");
     println!("candidate: {}", candidate.name());
     println!("baseline: {}", baseline.name());
-    println!("response_timeout: {} s", arguments.response_timeout);
+    println!("response_timeout: {} s", manifest.response_timeout_secs);
 
     let mut results = [0; 5];
     let mut valid_pairs = 0;
@@ -160,7 +181,7 @@ pub(super) fn main(arguments: Arguments) {
             record,
             rules,
             base_seed,
-            arguments.max_ply,
+            max_ply,
             response_timeout,
             &candidate,
             &baseline,
@@ -185,7 +206,7 @@ pub(super) fn main(arguments: Arguments) {
             &mut discarded_pairs,
             &mut failures,
             &mut decision,
-            use_gsprt,
+            &manifest.mode,
             &stop,
         ) {
             break;
@@ -226,11 +247,11 @@ pub(super) fn main(arguments: Arguments) {
                             rules_text,
                             base_seed,
                             pair_number,
-                            arguments.max_ply,
+                            max_ply,
                             candidate,
                             baseline,
                             response_timeout,
-                            arguments.ponder,
+                            ponder,
                             stop,
                         );
                         let Some(pair) = pair else {
@@ -288,7 +309,7 @@ pub(super) fn main(arguments: Arguments) {
                         &mut discarded_pairs,
                         &mut failures,
                         &mut decision,
-                        use_gsprt,
+                        &manifest.mode,
                         &stop,
                     )
                 },
@@ -332,13 +353,7 @@ pub(super) fn main(arguments: Arguments) {
         process::exit(1);
     }
 
-    let ponder_counts = match ponder_summary(
-        &store,
-        rules,
-        arguments.ponder,
-        arguments.max_ply,
-        target_pairs,
-    ) {
+    let ponder_counts = match ponder_summary(&store, rules, ponder, max_ply, target_pairs) {
         Ok(counts) => counts,
         Err(error) => {
             eprintln!("failed to replay ponder statistics: {error}");
@@ -362,6 +377,7 @@ pub(super) fn main(arguments: Arguments) {
             discarded_pairs,
             failures,
             decision,
+            &manifest.mode,
             start.elapsed(),
         );
     } else {

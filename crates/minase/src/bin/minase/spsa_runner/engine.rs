@@ -54,3 +54,15 @@ pub(super) fn resolve_engine(
         Ok(player)
     }
 }
+
+/// 保存された条件で調整エンジンを復元し、実行ファイルの同一性を検査する。
+pub(super) fn restore_engine(manifest: &super::storage::Manifest) -> io::Result<PlayerConfig> {
+    let spec = restore_player_spec(&manifest.engine)?;
+    let each = parse_search_limit(&manifest.each)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let player = resolve_engine(spec, each, &manifest.rules_source)?;
+    if sha256_file(&player.path)? != manifest.engine_sha256 {
+        return Err(ResumeError::EngineIdentityMismatch.into());
+    }
+    Ok(player)
+}

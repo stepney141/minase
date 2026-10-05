@@ -6,9 +6,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 fn run_directory() -> std::path::PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     std::env::temp_dir().join(format!(
-        "minase-match-run-{}-{}",
+        "minase-match-run-{}-{}-{}",
         std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
+        NEXT.fetch_add(1, Ordering::Relaxed),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ))
 }
 
@@ -144,11 +148,10 @@ fn minase_cecp_match_is_failure_free_and_matches_usi() {
 fn resume_fills_the_lowest_gap_and_preserves_later_records() {
     let run_dir = run_directory();
     let run = |operation: &str| {
-        Command::new(env!("CARGO_BIN_EXE_minase"))
-            .args(["match", "run"])
-            .arg(operation)
-            .arg(&run_dir)
-            .args([
+        let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
+        command.args(["match", "run"]).arg(operation).arg(&run_dir);
+        if operation == "--run-dir" {
+            command.args([
                 "--seed",
                 "20260828",
                 "--candidate",
@@ -156,19 +159,19 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
                 "--baseline",
                 "random",
                 "--each",
-                "nodes=1",
+                "depth=1",
                 "--response-timeout",
                 "5",
                 "--max-ply",
                 "400",
                 "--concurrency",
                 "1",
-                "elo",
-                "--pairs",
+                "gsprt",
+                "--max-pairs",
                 "3",
-            ])
-            .output()
-            .expect("match_runner must start")
+            ]);
+        }
+        command.output().expect("match_runner must start")
     };
 
     let initial = run("--run-dir");
@@ -181,6 +184,9 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
     let pair3 = run_dir.join("pairs/00000000000000000003.json");
     let pair3_before = std::fs::read(&pair3).unwrap();
     std::fs::remove_file(&pair2).unwrap();
+    let mut interrupted = json_file(&run_dir.join("summary.json"));
+    interrupted["invocation_active"] = serde_json::json!(true);
+    write_json(&run_dir.join("summary.json"), &interrupted);
 
     let resumed = run("--resume");
     assert!(
@@ -193,7 +199,7 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
 
     let initial = String::from_utf8(initial.stdout).unwrap();
     let resumed = String::from_utf8(resumed.stdout).unwrap();
-    for prefix in ["summary:", "pentanomial:", "engine_failures:"] {
+    for prefix in ["summary:", "pentanomial:", "llr:", "engine_failures:"] {
         assert_eq!(
             initial.lines().find(|line| line.starts_with(prefix)),
             resumed.lines().find(|line| line.starts_with(prefix))
@@ -228,22 +234,28 @@ fn ponder_resume_replays_all_counts() {
     let run_dir = run_directory();
     let run = |operation, pairs, ponder| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_minase"));
-        command.args(["match", "run"]);
-        command.arg(operation).arg(&run_dir).args([
-            "--seed",
-            "1234",
-            "--each",
-            "time=10000+100",
-            "--max-ply",
-            "16",
-            "--concurrency",
-            "1",
-        ]);
-        if ponder {
-            command.arg("--ponder");
+        command.args(["match", "run"]).arg(operation).arg(&run_dir);
+        if operation == "--resume" {
+            command.args(["--target-pairs", pairs]);
+        } else {
+            command.args([
+                "--seed",
+                "1234",
+                "--each",
+                "time=10000+100",
+                "--max-ply",
+                "16",
+                "--concurrency",
+                "1",
+            ]);
+            if ponder {
+                command.arg("--ponder");
+            }
+            command.args(["elo", "--pairs", pairs]);
         }
-        command.args(["elo", "--pairs", pairs]).output().unwrap()
+        command.output().unwrap()
     };
+
     let first = run("--run-dir", "1", true);
     assert!(
         first.status.success(),
@@ -278,6 +290,322 @@ fn ponder_resume_replays_all_counts() {
     }
     let mismatch = run("--resume", "2", false);
     assert!(!mismatch.status.success());
-    assert!(String::from_utf8_lossy(&mismatch.stderr).contains("manifest does not match"));
+    assert!(String::from_utf8_lossy(&mismatch.stderr).contains("must exceed"));
     std::fs::remove_dir_all(run_dir).unwrap();
+}
+
+fn json_file(path: &std::path::Path) -> serde_json::Value {
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+fn write_json(path: &std::path::Path, value: &serde_json::Value) {
+    std::fs::write(path, serde_json::to_vec(value).unwrap()).unwrap();
+}
+
+fn small_run(path: &std::path::Path) {
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--run-dir"])
+        .arg(path)
+        .args([
+            "--seed",
+            "42",
+            "--max-ply",
+            "16",
+            "--concurrency",
+            "1",
+            "elo",
+            "--pairs",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn resume_run(path: &std::path::Path, args: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--resume"])
+        .arg(path)
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+// match-resume-simplification.md「起動の記録」: 表示だけでは履歴を変えず、
+// 実行する再開はrunnerと測定機が変わっても通知して記録する。
+#[test]
+fn resume_records_only_invocations_that_execute_games() {
+    let dir = run_directory();
+    small_run(&dir);
+    let manifest = std::fs::read(dir.join("manifest.json")).unwrap();
+    let value = json_file(&dir.join("manifest.json"));
+    assert_eq!(value["format_version"], 5);
+    assert!(value.get("runner").is_none());
+    assert!(value.get("cpu").is_none());
+    assert_eq!(
+        value["candidate"]["identity"],
+        serde_json::json!({"kind": "random"})
+    );
+    let mut invocations = json_file(&dir.join("invocations.json"));
+    invocations[0]["runner"]["sha256"] = serde_json::json!("previous runner");
+    invocations[0]["cpu"]["model"] = serde_json::json!("previous machine");
+    write_json(&dir.join("invocations.json"), &invocations);
+    let before = std::fs::read(dir.join("invocations.json")).unwrap();
+    let summary = std::fs::read(dir.join("summary.json")).unwrap();
+    let output = resume_run(&dir, &[]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(std::fs::read(dir.join("invocations.json")).unwrap(), before);
+    assert_eq!(std::fs::read(dir.join("summary.json")).unwrap(), summary);
+    for target in ["0", "1"] {
+        assert!(
+            !resume_run(&dir, &["--target-pairs", target])
+                .status
+                .success()
+        );
+    }
+    let output = resume_run(&dir, &["--target-pairs", "2"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .filter(|line| line.starts_with("notice:"))
+            .count(),
+        1
+    );
+    let history = json_file(&dir.join("invocations.json"));
+    assert_eq!(history.as_array().unwrap().len(), 2);
+    assert_eq!(history[1]["target_pairs"], 2);
+    assert!(dir.join("pairs/00000000000000000002.json").is_file());
+    assert_eq!(std::fs::read(dir.join("manifest.json")).unwrap(), manifest);
+    assert!(!resume_run(&dir, &["--target-pairs", "2"]).status.success());
+    assert!(resume_run(&dir, &[]).status.success());
+    assert_eq!(json_file(&dir.join("invocations.json")), history);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn resume_condition_arguments_are_clap_errors() {
+    for args in [
+        vec!["--seed", "42"],
+        vec!["--candidate", "random"],
+        vec!["--baseline", "random"],
+        vec!["--each", "depth=1"],
+        vec!["--rules", "engine-default"],
+        vec!["--max-ply", "16"],
+        vec!["--response-timeout", "120"],
+        vec!["--concurrency", "1"],
+        vec!["--ponder"],
+        vec!["--candidate-limit", "depth=1"],
+        vec!["--baseline-limit", "depth=1"],
+        vec!["--candidate-hash", "256"],
+        vec!["--baseline-hash", "256"],
+        vec!["elo", "--pairs", "1"],
+        vec!["gsprt"],
+    ] {
+        let output = resume_run(std::path::Path::new("nonexistent-run"), &args);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args([
+            "match",
+            "run",
+            "--run-dir",
+            "nonexistent-run",
+            "--target-pairs",
+            "2",
+            "elo",
+            "--pairs",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn resume_rejects_version_four_and_changed_engine_conditions_without_writes() {
+    let dir = run_directory();
+    small_run(&dir);
+    let original = json_file(&dir.join("manifest.json"));
+    let history = std::fs::read(dir.join("invocations.json")).unwrap();
+    let summary = std::fs::read(dir.join("summary.json")).unwrap();
+    for (pointer, replacement, message) in [
+        (
+            "/format_version",
+            serde_json::json!(4),
+            "unsupported manifest format version 4",
+        ),
+        (
+            "/engine_threads/candidate",
+            serde_json::json!(2),
+            "Threads default differs",
+        ),
+        (
+            "/candidate/identity",
+            serde_json::json!({"kind":"command", "program":"unused", "args":[], "protocol":"usi", "working_directory":"/nonexistent-recorded-directory"}),
+            "working directory differs",
+        ),
+    ] {
+        let mut manifest = original.clone();
+        *manifest.pointer_mut(pointer).unwrap() = replacement;
+        write_json(&dir.join("manifest.json"), &manifest);
+        let output = resume_run(&dir, &["--target-pairs", "2"]);
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(message),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read(dir.join("invocations.json")).unwrap(),
+            history
+        );
+        assert_eq!(std::fs::read(dir.join("summary.json")).unwrap(), summary);
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn resume_rejects_recorded_commit_digest_mismatch_before_engine_start() {
+    let repository = run_directory();
+    let clone = Command::new("git")
+        .args(["clone", "--shared", "--no-checkout"])
+        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .arg(&repository)
+        .output()
+        .unwrap();
+    assert!(
+        clone.status.success(),
+        "{}",
+        String::from_utf8_lossy(&clone.stderr)
+    );
+    let revision = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&repository)
+        .output()
+        .unwrap();
+    assert!(revision.status.success());
+    let hash = String::from_utf8(revision.stdout)
+        .unwrap()
+        .trim()
+        .to_owned();
+    let cache = repository.join("target/match-cache").join(&hash);
+    std::fs::create_dir_all(&cache).unwrap();
+    // 解決器が検証するキャッシュの署名は正しく、manifestの署名だけを変える。
+    std::fs::write(cache.join("minase"), b"must never be executed").unwrap();
+    let digest = minase::harness::sha256_file(&cache.join("minase")).unwrap();
+    std::fs::write(cache.join("minase.sha256"), digest).unwrap();
+    let dir = repository.join("run");
+    small_run(&dir);
+    let mut manifest = json_file(&dir.join("manifest.json"));
+    manifest["candidate"]["identity"] =
+        serde_json::json!({"kind":"commit", "hash":hash, "sha256":"0".repeat(64)});
+    write_json(&dir.join("manifest.json"), &manifest);
+    let before = std::fs::read(dir.join("invocations.json")).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--resume"])
+        .arg(&dir)
+        .args(["--target-pairs", "2"])
+        .current_dir(&repository)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("engine identity does not match"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(std::fs::read(dir.join("invocations.json")).unwrap(), before);
+    std::fs::remove_dir_all(repository).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn resume_uses_recorded_hypotheses_and_restores_command_defaults() {
+    let parent = run_directory();
+    std::fs::create_dir(&parent).unwrap();
+    let engine = parent.join("engine.sh");
+    let log = parent.join("commands.log");
+    // 引数に空白を含む場合も、記録した配列の要素をそのまま渡す。
+    std::fs::write(&engine, r#"
+test "$2" = 'argument with spaces' || exit 1
+while IFS= read -r line; do
+    printf '%s\n' "$line" >> "$1"
+    case "$line" in
+        usi) printf 'option name Threads type spin default 1 min 1 max 8\noption name USI_Hash type spin default 16 min 1 max 1024\nusiok\n' ;;
+        isready) echo readyok ;;
+        go*) echo 'bestmove resign' ;;
+        quit) exit 0 ;;
+    esac
+done
+"#).unwrap();
+    let dir = parent.join("run");
+    small_run(&dir);
+    let mut manifest = json_file(&dir.join("manifest.json"));
+    for side in ["candidate", "baseline"] {
+        manifest[side]["identity"] = serde_json::json!({
+            "kind":"command", "program":"/bin/sh", "args":[engine, log, "argument with spaces"],
+            "protocol":"usi", "working_directory":std::env::current_dir().unwrap()
+        });
+        manifest["hash_mb"][side] = serde_json::json!(16);
+    }
+    manifest["mode"] =
+        serde_json::json!({"kind":"gsprt", "h0_elo":-5.0, "h1_elo":5.0, "alpha":0.1, "beta":0.2});
+    write_json(&dir.join("manifest.json"), &manifest);
+    // 欠番を再実行して両局が投了で終わるペアを保存する。
+    std::fs::remove_file(dir.join("pairs/00000000000000000001.json")).unwrap();
+    let output = resume_run(&dir, &[]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("pentanomial: [0, 0, 1, 0, 0]"));
+    let llr: f64 = text
+        .lines()
+        .find_map(|line| line.strip_prefix("llr: "))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(llr.abs() < 1e-9);
+    assert!(
+        !std::fs::read_to_string(&log)
+            .unwrap()
+            .contains("setoption name USI_Hash")
+    );
+    let before = std::fs::read(dir.join("invocations.json")).unwrap();
+    assert!(resume_run(&dir, &[]).status.success());
+    assert_eq!(std::fs::read(dir.join("invocations.json")).unwrap(), before);
+    manifest["hash_mb"]["candidate"] = serde_json::json!(32);
+    write_json(&dir.join("manifest.json"), &manifest);
+    let output = resume_run(&dir, &["--target-pairs", "2"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        std::fs::read_to_string(&log)
+            .unwrap()
+            .contains("setoption name USI_Hash value 32")
+    );
+    std::fs::remove_dir_all(parent).unwrap();
 }

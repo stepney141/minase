@@ -3,7 +3,7 @@
 use super::{
     model::{Settings, validate_settings},
     params::{ParameterError, validate_parameters},
-    storage::{read_iterations, read_manifest, validate_chain},
+    storage::{read_iterations, validate_chain},
 };
 use minase::harness::lock_run_directory;
 use std::{
@@ -368,7 +368,14 @@ fn replace_source(source: &Path, text: &str) -> Result<(), ApplyError> {
 /// 完了記録から最終θを復元して適用し、標準出力用の報告を返す。
 pub(super) fn apply(run_dir: &Path, source: &Path) -> Result<String, ApplyError> {
     let _lock = lock_run_directory(run_dir).map_err(ApplyError::Lock)?;
-    let manifest = read_manifest(run_dir).map_err(ApplyError::Read)?;
+    #[derive(serde::Deserialize)]
+    struct ApplyManifest {
+        settings: Settings,
+    }
+    let manifest: ApplyManifest = serde_json::from_reader(
+        File::open(run_dir.join("manifest.json")).map_err(ApplyError::Read)?,
+    )
+    .map_err(|error| ApplyError::Read(io::Error::new(io::ErrorKind::InvalidData, error)))?;
     let settings = &manifest.settings;
     validate_parameters(&settings.parameters).map_err(invalid_parameters)?;
     validate_settings(settings).map_err(ApplyError::InvalidSettings)?;

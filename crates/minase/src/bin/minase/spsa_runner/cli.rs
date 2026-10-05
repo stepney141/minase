@@ -18,34 +18,34 @@ pub(crate) struct Arguments {
     #[arg(long)]
     pub(super) resume: Option<PathBuf>,
     /// 全対局と摂動の基本シード。
-    #[arg(long, required = true)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
     pub(super) seed: Option<u64>,
     /// tuningビルドのcommit指定または起動コマンド。
-    #[arg(long, required = true, value_parser = tuning_spec)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume", value_parser = tuning_spec)]
     pub(super) engine: Option<PlayerSpec>,
     /// 6欄の係数ファイル。
-    #[arg(long, required = true)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
     pub(super) params: Option<PathBuf>,
     /// 両エンジンと審判に適用する規則。
-    #[arg(long, required = true)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
     pub(super) rules: Option<String>,
     /// 両エンジンの思考制限。
-    #[arg(long, required = true, value_parser = parse_search_limit)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume", value_parser = parse_search_limit)]
     pub(super) each: Option<SearchLimit>,
     /// 同時に対局させるペアの数。
-    #[arg(long, required = true)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
     pub(super) concurrency: Option<std::num::NonZeroUsize>,
     /// 開始時に固定する総反復数。
-    #[arg(long, required = true, value_parser = parse_positive_u64)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume", value_parser = parse_positive_u64)]
     pub(super) iterations: Option<u64>,
     /// 1反復のペア数。
-    #[arg(long, required = true)]
+    #[arg(long, required_unless_present = "resume", conflicts_with = "resume")]
     pub(super) pairs_per_iteration: Option<std::num::NonZeroUsize>,
     /// 1局の手数上限。
-    #[arg(long, default_value = "4096", value_parser = parse_positive_u32)]
+    #[arg(long, conflicts_with = "resume", default_value = "4096", value_parser = parse_positive_u32)]
     pub(super) max_ply: u32,
     /// 1回の応答期限を秒で指定する。
-    #[arg(long, default_value = "120", value_parser = parse_positive_u64)]
+    #[arg(long, conflicts_with = "resume", default_value = "120", value_parser = parse_positive_u64)]
     pub(super) response_timeout: u64,
     #[command(subcommand)]
     pub(super) command: Option<Command>,

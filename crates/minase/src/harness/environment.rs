@@ -117,6 +117,30 @@ pub fn harness_record() -> io::Result<HarnessRecord> {
     })
 }
 
+/// 現在の測定機の構成を記録する。
+pub fn cpu_record() -> io::Result<CpuRecord> {
+    Ok(CpuRecord {
+        model: cpu_model(),
+        physical_cores: physical_core_count(),
+        logical_cores: std::thread::available_parallelism()?.get(),
+        physical_memory_bytes: physical_memory_bytes(),
+    })
+}
+
+/// 前回の起動からrunnerまたは測定機が変わった場合に1行通知する。
+pub fn notify_invocation_change(
+    runner: &HarnessRecord,
+    cpu: &CpuRecord,
+    previous_runner: &HarnessRecord,
+    previous_cpu: &CpuRecord,
+) {
+    if runner.sha256 != previous_runner.sha256 || cpu != previous_cpu {
+        eprintln!(
+            "notice: runner SHA-256 or measurement machine differs from the previous invocation"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

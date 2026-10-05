@@ -1,9 +1,10 @@
-//! 実行条件の一致検査と、適用順によるθの復元。
+//! 実行条件と起動の保存、および適用順によるθの復元。
 
 use super::model::{IterationRecord, Settings, flips, update};
 use minase::harness::{
-    CpuRecord, EngineIdentity, FailureCounts, HarnessRecord, RunLock, TerminationRecord,
-    atomic_write_json, failure_from_stored, lock_run_directory,
+    CpuRecord, EngineIdentity, FailureCounts, HarnessRecord, ResumeError, RunLock,
+    TerminationRecord, atomic_replace_json, atomic_write_json, cpu_record, failure_from_stored,
+    harness_record, lock_run_directory, notify_invocation_change,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -24,12 +25,30 @@ pub(super) struct Manifest {
     pub canonical_rules: Vec<String>,
     pub max_ply: u32,
     pub response_timeout_secs: u64,
-    pub cpu: CpuRecord,
+}
+
+/// 実際に反復を進めた起動の記録。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Invocation {
     pub runner: HarnessRecord,
+    pub cpu: CpuRecord,
+}
+
+impl Invocation {
+    fn current() -> io::Result<Self> {
+        Ok(Self {
+            runner: harness_record()?,
+            cpu: cpu_record()?,
+        })
+    }
 }
 
 #[derive(Debug)]
 pub(super) struct Store {
+    pub manifest: Manifest,
+    invocations: Vec<Invocation>,
+    resumed: bool,
     root: PathBuf,
     _lock: RunLock,
 }
@@ -45,6 +64,7 @@ fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> io::Result<T> {
 
 impl Store {
     pub fn create(root: &Path, manifest: &Manifest) -> io::Result<Self> {
+        let invocations = vec![Invocation::current()?];
         fs::create_dir(root)?;
         let lock = lock_run_directory(root)?;
         fs::create_dir(root.join("iterations"))?;
@@ -54,23 +74,30 @@ impl Store {
             &root.join("manifest.json"),
             manifest,
         )?;
+        atomic_write_json(
+            root,
+            &root.join(".invocations.json.tmp"),
+            &root.join("invocations.json"),
+            &invocations,
+        )?;
         Ok(Self {
+            manifest: manifest.clone(),
+            invocations,
+            resumed: false,
             root: root.to_owned(),
             _lock: lock,
         })
     }
 
-    pub fn resume(
-        root: &Path,
-        expected: &Manifest,
-    ) -> io::Result<(Self, BTreeMap<u64, IterationRecord>)> {
+    pub fn resume(root: &Path) -> io::Result<(Self, BTreeMap<u64, IterationRecord>)> {
         let lock = lock_run_directory(root)?;
         let manifest = read_manifest(root)?;
-        if &manifest != expected {
-            return Err(invalid("manifest does not match requested session"));
+        let invocations: Vec<Invocation> = read_json(&root.join("invocations.json"))?;
+        if invocations.is_empty() {
+            return Err(ResumeError::EmptyInvocations.into());
         }
-        let records = read_iterations(root, expected.settings.iterations)?;
-        validate_chain(&expected.settings, &records)?;
+        let records = read_iterations(root, manifest.settings.iterations)?;
+        validate_chain(&manifest.settings, &records)?;
         // 書きかけの記録を削除するのは、再開するときだけである。
         for entry in fs::read_dir(root.join("iterations"))? {
             let entry = entry?;
@@ -80,11 +107,40 @@ impl Store {
         }
         Ok((
             Self {
+                manifest,
+                invocations,
+                resumed: true,
                 root: root.to_owned(),
                 _lock: lock,
             },
             records,
         ))
+    }
+
+    /// 未完了の反復を再開する直前に起動を追記する。
+    pub fn begin_invocation(&self) -> io::Result<()> {
+        if self.resumed {
+            let current = Invocation::current()?;
+            let previous = self
+                .invocations
+                .last()
+                .ok_or(ResumeError::EmptyInvocations)?;
+            notify_invocation_change(
+                &current.runner,
+                &current.cpu,
+                &previous.runner,
+                &previous.cpu,
+            );
+            let mut invocations = self.invocations.clone();
+            invocations.push(current);
+            atomic_replace_json(
+                &self.root,
+                &self.root.join(".invocations.json.tmp"),
+                &self.root.join("invocations.json"),
+                &invocations,
+            )?;
+        }
+        Ok(())
     }
 
     pub fn save(&self, record: &IterationRecord) -> io::Result<()> {
