@@ -39,6 +39,8 @@ pub enum SearchEvent {
     },
     /// 探索が停止した。
     Finished {
+        /// 「途中結果の採用」（byoyomi-time-usage.md）による下界。完了値とは区別する。
+        partial_score: Option<i32>,
         /// 通知元の探索ID。
         search_id: u64,
         /// 選んだ着手。
@@ -51,7 +53,7 @@ pub enum SearchEvent {
         nodes: u64,
         /// 探索開始からの経過時間。
         elapsed: Duration,
-        /// 最後まで完了した深さの主変化。
+        /// 採用した着手の主変化。途中結果があればその手のもの。
         pv: Vec<Move>,
         /// 探索を停止した条件。
         stop_reason: StopReason,
@@ -75,7 +77,7 @@ pub struct SearchResult {
     pub stats: super::SearchStats,
     /// 選んだ着手。
     pub best_move: Move,
-    /// 選んだ着手の評価値。
+    /// 最後まで完了した反復の評価値。途中結果を採用しても更新しない。
     pub score: i32,
     /// 最後まで完了した反復深化の深さ。
     pub depth: u32,

@@ -33,6 +33,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
                     }
                     completed.fetch_add(1, AtomicOrdering::Release);
                     WorkerOutcome {
+                        partial_score: None,
                         worker_index,
                         result: SearchResult {
                             #[cfg(feature = "search-stats")]
@@ -192,6 +193,7 @@ fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
 fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
     let moves = legal_moves(&Position::initial());
     let outcome = |worker_index: usize, depth: u32, move_index: usize| WorkerOutcome {
+        partial_score: None,
         worker_index,
         result: SearchResult {
             #[cfg(feature = "search-stats")]
@@ -270,4 +272,34 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
     assert!(finished.depth >= last_progress_depth);
     assert_eq!(finished.stop_reason, StopReason::DepthCompleted);
     assert!(root_moves.contains(&finished.best_move));
+}
+
+// byoyomi-time-usage.md「途中結果の採用」。完了深さを途中結果の有無より優先する。
+#[test]
+fn worker_selection_prefers_completed_depth_then_partial_then_index() {
+    let moves = legal_moves(&Position::initial());
+    let worker = |worker_index, depth, partial_score| WorkerOutcome {
+        partial_score,
+        worker_index,
+        result: SearchResult {
+            #[cfg(feature = "search-stats")]
+            stats: crate::search::SearchStats::default(),
+            best_move: moves[worker_index],
+            score: 100,
+            depth,
+            nodes: 0,
+        },
+        pv: vec![moves[worker_index]],
+        nodes: 0,
+    };
+    let mut outcomes = vec![
+        worker(1, 4, None),
+        worker(0, 4, Some(-1000)),
+        worker(2, 3, None),
+    ];
+    assert_eq!(select_worker_outcome(&outcomes).worker_index, 0);
+    outcomes[2].result.depth = 5;
+    assert_eq!(select_worker_outcome(&outcomes).worker_index, 2);
+    outcomes[0].result.depth = 5;
+    assert_eq!(select_worker_outcome(&outcomes).worker_index, 1);
 }

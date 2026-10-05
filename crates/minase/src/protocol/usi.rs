@@ -508,11 +508,12 @@ impl UsiProtocol {
                 pv,
                 ..
             } => {
-                write_info(output, context, depth, score, nodes, elapsed, &pv)?;
+                write_info(output, context, depth, score, nodes, elapsed, &pv, false)?;
                 context.last_info_depth = Some(depth);
                 Ok(())
             }
             SearchEvent::Finished {
+                partial_score,
                 best_move,
                 score,
                 depth,
@@ -540,6 +541,7 @@ impl UsiProtocol {
                     nodes,
                     elapsed,
                     &pv,
+                    partial_score,
                 )?;
                 let ponder_move = validated_ponder_move(engine.game(), best_move, &pv);
                 if context.infinite || context.ponder {
@@ -649,10 +651,11 @@ impl UsiProtocol {
                             pv,
                             ..
                         } => {
-                            write_info(output, &context, depth, score, nodes, elapsed, &pv)?;
+                            write_info(output, &context, depth, score, nodes, elapsed, &pv, false)?;
                             context.last_info_depth = Some(depth);
                         }
                         SearchEvent::Finished {
+                            partial_score,
                             best_move,
                             score,
                             depth,
@@ -670,6 +673,7 @@ impl UsiProtocol {
                                 nodes,
                                 elapsed,
                                 &pv,
+                                partial_score,
                             )?;
                             break (
                                 best_move,
@@ -1439,6 +1443,7 @@ const fn stop_reason_text(reason: StopReason) -> &'static str {
 }
 
 /// 探索進捗の`info`行を出力する。読み筋は局面を進めながら表記する。
+#[allow(clippy::too_many_arguments)]
 fn write_info(
     output: &mut dyn Write,
     context: &SearchContext,
@@ -1447,11 +1452,13 @@ fn write_info(
     nodes: u64,
     elapsed: Duration,
     pv: &[Move],
+    lowerbound: bool,
 ) -> io::Result<()> {
     let score = score_text(score);
+    let bound = if lowerbound { " lowerbound" } else { "" };
     write!(
         output,
-        "info depth {depth} score {score} nodes {nodes} nps {} time {} pv",
+        "info depth {depth} score {score}{bound} nodes {nodes} nps {} time {} pv",
         nodes_per_second(nodes, elapsed),
         elapsed.as_millis()
     )?;
@@ -1464,7 +1471,7 @@ fn write_info(
     output.flush()
 }
 
-/// 採用深さが最後の進捗出力を超える場合だけ、採用結果を`info`として出す。
+/// 完了深さが進捗を超えた場合、または「途中結果の採用」（byoyomi-time-usage.md）を通知する。
 #[allow(clippy::too_many_arguments)]
 fn write_final_info_if_deeper(
     output: &mut dyn Write,
@@ -1474,11 +1481,26 @@ fn write_final_info_if_deeper(
     nodes: u64,
     elapsed: Duration,
     pv: &[Move],
+    partial_score: Option<i32>,
 ) -> io::Result<()> {
+    // byoyomi-time-usage.md「途中結果の採用」。完了値と途中結果の下界を混同しない。
+    if let Some(partial_score) = partial_score {
+        writeln!(output, "info string partial")?;
+        return write_info(
+            output,
+            context,
+            depth + 1,
+            partial_score,
+            nodes,
+            elapsed,
+            pv,
+            true,
+        );
+    }
     if depth <= context.last_info_depth.unwrap_or(0) {
         return Ok(());
     }
-    write_info(output, context, depth, score, nodes, elapsed, pv)?;
+    write_info(output, context, depth, score, nodes, elapsed, pv, false)?;
     context.last_info_depth = Some(depth);
     Ok(())
 }
@@ -2308,6 +2330,78 @@ mod tests {
         );
         assert!(output.contains(" score mate +0 "), "{output}");
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
+    }
+
+    // byoyomi-time-usage.md「途中結果の採用」。下界が投了閾値を下回っても
+    // 完了値で判定し、通常終了・保留後のstop・ponderhitのいずれでも着手を返す。
+    #[test]
+    fn partial_info_uses_lowerbound_and_resignation_uses_completed_score() {
+        for (partial_score, score_text) in [(-1000, "cp -1000"), (-search::MATE + 1, "mate -0")] {
+            for release in [None, Some("stop"), Some("ponderhit")] {
+                let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+                run(
+                    &mut protocol,
+                    &mut engine,
+                    "setoption name ResignValue value 100\n",
+                );
+                let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+                let mut output = Vec::new();
+                let limits = if release.is_some() {
+                    vec!["ponder", "depth", "2"]
+                } else {
+                    vec!["depth", "2"]
+                };
+                let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
+                loop {
+                    let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
+                        panic!("search must be running");
+                    };
+                    let mut event = handle
+                        .events()
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap();
+                    let finished = if let SearchEvent::Finished {
+                        score,
+                        partial_score: lowerbound,
+                        depth,
+                        ..
+                    } = &mut event
+                    {
+                        *score = 100;
+                        *depth = 2;
+                        *lowerbound = Some(partial_score);
+                        true
+                    } else {
+                        false
+                    };
+                    protocol
+                        .handle_search_event(&engine, &mut active, event, &mut output)
+                        .unwrap();
+                    if finished {
+                        break;
+                    }
+                }
+                if let Some(command) = release {
+                    protocol
+                        .handle_searching_line(
+                            &engine,
+                            &mut active,
+                            &mut VecDeque::new(),
+                            command,
+                            &mut output,
+                        )
+                        .unwrap();
+                }
+                let text = String::from_utf8(output).unwrap();
+                assert_eq!(text.matches("info string partial\n").count(), 1, "{text}");
+                assert!(
+                    text.contains(&format!("info depth 3 score {score_text} lowerbound ")),
+                    "{text}"
+                );
+                assert!(!text.contains("bestmove resign"), "{text}");
+                assert_legal_bestmove(&text, &legal);
+            }
+        }
     }
 
     // RS設計判断「判定の入力」「出力の形式」（D6-USI-52、D6-USI-55、D6-USI-58）。
@@ -3772,6 +3866,63 @@ mod tests {
 
     fn receive_line(lines: &Receiver<String>) -> String {
         lines.recv_timeout(Duration::from_secs(5)).unwrap()
+    }
+
+    // byoyomi-time-usage.md「フェーズ1　段階Aの実装」。USIの時計とThreadsを
+    // 実際に入力し、通常探索とgo ponderから的中後の着手・予想手を検査する。
+    #[test]
+    fn four_thread_byoyomi_usi_returns_legal_bestmove_and_ponder_before_deadline() {
+        for ponder in [false, true] {
+            ponder_dialogue(|commands, lines| {
+                for command in [
+                    "setoption name Threads value 4",
+                    "setoption name USI_Hash value 1",
+                    "setoption name ByoyomiMargin value 30",
+                    "position startpos",
+                    "moves",
+                ] {
+                    commands.send(Ok(command.into())).unwrap();
+                }
+                let legal = moves_sets(&receive_line(lines)).remove(0);
+                let go = if ponder {
+                    "go ponder btime 0 wtime 0 byoyomi 300"
+                } else {
+                    "go btime 0 wtime 0 byoyomi 300"
+                };
+                let mut origin = std::time::Instant::now();
+                commands.send(Ok(go.into())).unwrap();
+                if ponder {
+                    let line = receive_line(lines);
+                    assert!(line.starts_with("info depth "), "{line}");
+                    origin = std::time::Instant::now();
+                    commands.send(Ok("ponderhit".into())).unwrap();
+                }
+                let best = loop {
+                    let line = receive_line(lines);
+                    assert!(!line.starts_with("info string error:"), "{line}");
+                    if line.starts_with("bestmove ") {
+                        break line;
+                    }
+                };
+                // 締切270 msにノード周期の検査と実行遅延700 msを許容する。
+                assert!(
+                    origin.elapsed() <= Duration::from_millis(970),
+                    "{:?}",
+                    origin.elapsed()
+                );
+                assert_legal_bestmove(&best, &legal);
+                let words: Vec<_> = best.split_whitespace().collect();
+                assert_eq!(words.len(), 4, "{best}");
+                assert_eq!(words[2], "ponder");
+                commands
+                    .send(Ok(format!("position startpos moves {}", words[1])))
+                    .unwrap();
+                commands.send(Ok("moves".into())).unwrap();
+                let replies = moves_sets(&receive_line(lines)).remove(0);
+                assert!(replies.contains(words[3]), "{best}");
+                commands.send(Ok("quit".into())).unwrap();
+            });
+        }
     }
 
     // ponder.md「USI層の契約」、設計判断「bestmoveの保留」「停止理由」

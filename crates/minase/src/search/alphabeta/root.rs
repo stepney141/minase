@@ -1,6 +1,7 @@
 //! 根の探索と探索窓の拡大。
 
 use crate::search::MATE_THRESHOLD;
+use crate::search::events::StopReason;
 use crate::search::snapshot::search_key;
 use minase_core::mv::Move;
 use minase_core::position::Position;
@@ -72,7 +73,68 @@ pub(super) fn grow_aspiration_delta(delta: i32) -> i32 {
     i32::try_from(grown).unwrap_or(i32::MAX)
 }
 
+/// 「途中結果の採用」（byoyomi-time-usage.md）で使う窓内の最大値と主変化。
+pub(super) struct PartialResult {
+    pub(super) score: i32,
+    pub(super) pv: Vec<Move>,
+}
+
+/// 「途中結果の採用」（byoyomi-time-usage.md）に必要な主ワーカーの記録。
+#[derive(Default)]
+pub(super) struct RootResults {
+    pub(super) previous_best: Option<Move>,
+    previous_completed: bool,
+    original_alpha: i32,
+    best: Option<PartialResult>,
+}
+
+impl RootResults {
+    /// 「途中結果の採用」に従い、読み直す窓へ前の窓の結果を持ち越さない。
+    pub(super) fn begin_window(&mut self, alpha: i32) {
+        self.previous_completed = false;
+        self.original_alpha = alpha;
+        self.best = None;
+    }
+
+    /// 「途中結果の採用」に従い、完了した手のうち上界でない最大値だけを保持する。
+    pub(super) fn record(&mut self, mv: Move, score: i32, alpha: i32, pv: &[Move]) {
+        self.previous_completed |= self.previous_best == Some(mv);
+        if score > alpha && self.best.as_ref().is_none_or(|best| score > best.score) {
+            let mut line = Vec::with_capacity(pv.len() + 1);
+            line.push(mv);
+            line.extend_from_slice(pv);
+            self.best = Some(PartialResult { score, pv: line });
+        }
+    }
+
+    /// 「途中結果の採用」に従い、hardで中断し直前の最善手が完了した窓だけを採る。
+    pub(super) fn partial_result(&self, reason: Option<StopReason>) -> Option<&PartialResult> {
+        if reason != Some(StopReason::HardLimit) || !self.previous_completed {
+            return None;
+        }
+        self.best
+            .as_ref()
+            .filter(|best| best.score > self.original_alpha)
+    }
+}
+
 impl Searcher<'_> {
+    /// 「途中結果の採用」（byoyomi-time-usage.md）に従い、直前の最善手だけを先頭へ移す。
+    pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) {
+        let tt_move = self
+            .tt
+            .probe(search_key(position), 0)
+            .and_then(|hit| hit.best_move);
+        self.order_moves(position, moves, tt_move, 0);
+        if let Some(previous) = self.root_results.as_ref().and_then(|r| r.previous_best) {
+            let index = moves
+                .iter()
+                .position(|&mv| mv == previous)
+                .expect("previous best must be a legal root move");
+            moves[..=index].rotate_right(1);
+        }
+    }
+
     /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
     ///
     /// `docs/plans/strength-stage6.md`の「aspiration windows」節に従い、
@@ -94,6 +156,9 @@ impl Searcher<'_> {
             } else if score >= window.beta {
                 window.widen_high();
             } else {
+                if let Some(results) = &mut self.root_results {
+                    results.previous_best = Some(best_move);
+                }
                 return Some((best_move, score));
             }
         }
@@ -112,13 +177,15 @@ impl Searcher<'_> {
         mut alpha: i32,
         beta: i32,
     ) -> Option<(Move, i32)> {
+        if let Some(results) = &mut self.root_results {
+            results.begin_window(alpha);
+        }
         self.pv[0].clear();
 
         let mut position = position.clone();
         let mut moves = root_moves.to_vec();
         let key = search_key(&position);
-        let tt_move = self.tt.probe(key, 0).and_then(|hit| hit.best_move);
-        self.order_moves(&position, &mut moves, tt_move, 0);
+        self.order_root_moves(&position, &mut moves);
         let original_alpha = alpha;
         let mut best_move = moves[0];
         let mut best_score = -INFINITY;
@@ -126,6 +193,9 @@ impl Searcher<'_> {
         for (index, mv) in moves.into_iter().enumerate() {
             let score =
                 self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0, 0)?;
+            if let Some(results) = &mut self.root_results {
+                results.record(mv, score, alpha, &self.pv[1]);
+            }
             if score > best_score {
                 best_score = score;
                 best_move = mv;

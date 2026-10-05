@@ -12,7 +12,8 @@ use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 
 use super::history::HistoryTable;
-use super::searcher::{PonderIteration, new_searcher};
+use super::root::RootResults;
+use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{TimeBudget, should_start_next_iteration, stable_signal};
 
@@ -39,8 +40,10 @@ pub(super) fn run_main_worker(
     history: &mut HistoryTable,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     ponder: bool,
+    adopt_partial: bool,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt, history);
+    searcher.root_results = adopt_partial.then(RootResults::default);
     #[cfg(feature = "invariants")]
     pst.assert_accumulator(position, searcher.accumulators[0], 0);
     let mut result = SearchResult {
@@ -135,12 +138,31 @@ pub(super) fn run_main_worker(
             break;
         }
     }
+    main_worker_outcome(&searcher, result, completed_pv)
+}
+
+/// 「途中結果の採用」（byoyomi-time-usage.md）に従い、完了深さと評価値を保って着手を選ぶ。
+pub(super) fn main_worker_outcome(
+    searcher: &Searcher<'_>,
+    mut result: SearchResult,
+    mut completed_pv: Vec<Move>,
+) -> WorkerOutcome {
     #[cfg(feature = "search-stats")]
     {
         result.stats = searcher.stats;
     }
+    let partial = searcher
+        .root_results
+        .as_ref()
+        .and_then(|results| results.partial_result(searcher.stop_reason));
+    let partial_score = partial.map(|partial| partial.score);
+    if let Some(partial) = partial {
+        result.best_move = partial.pv[0];
+        completed_pv.clone_from(&partial.pv);
+    }
     let nodes = searcher.nodes;
     WorkerOutcome {
+        partial_score,
         worker_index: 0,
         result,
         pv: completed_pv,
@@ -194,6 +216,7 @@ pub(super) fn run_auxiliary_worker(
     }
     let nodes = searcher.nodes;
     WorkerOutcome {
+        partial_score: None,
         worker_index,
         result,
         pv: completed_pv,

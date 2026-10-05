@@ -130,6 +130,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
         &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
         None,
         false,
+        false,
     );
 
     assert_eq!(shared.reason(), StopReason::SoftLimit);
@@ -369,6 +370,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
             None,
             ponder,
+            true,
         );
         assert_eq!(outcome.result.depth, 2);
         assert_eq!(shared.reason(), StopReason::DepthCompleted);

@@ -169,6 +169,7 @@ fn history_carry_workers_update_their_own_table() {
         assert_eq!(history[1][50][51], index as i32 + 10);
         history[1][50][51] += 100;
         WorkerOutcome {
+            partial_score: None,
             worker_index: index,
             result: SearchResult {
                 #[cfg(feature = "search-stats")]
