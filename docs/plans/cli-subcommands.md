@@ -130,17 +130,18 @@ clapの引数エラーの終了コード2は変えない。
 
 対局ハーネスの`random`指定は、現在はrunnerと同じディレクトリの`usi_random`を起動する（`crates/minase/src/harness/player.rs`の`resolve_player`）。
 本書の後は、runner自身（`std::env::current_exe()`）を引数`dev usi-random`で起動する。
-`random`を指定した側の`manifest.json`の欄（たとえば基準側なら`baseline.identity.sha256`）には、`usi_random`のSHA-256に代わって、runnerと同じ`minase`のSHA-256が記録される。
+`random`の同一性はSHA-256を持たず、起動した実行ファイルのSHA-256は、起動ごとの記録`invocations.json`のrunnerの欄に残る（[測定の再開条件の簡素化](match-resume-simplification.md)）。
 
 ### 実行ファイルのSHA-256の意味の変化
 
 実行ファイル自身のSHA-256を記録する箇所は3つある。
-対局測定とSPSAの`manifest.json`の`runner.sha256`は、再開時の一致検査の対象である（[SPRTの手引き](../guides/sprt.md)の「実行ディレクトリと再開」）。
+対局測定とSPSAのrunnerのSHA-256は、起動ごとに`invocations.json`へ記録され、再開時には照合しない（[測定の再開条件の簡素化](match-resume-simplification.md)）。
 `selfplay_gen rescore`は、出力のMNRSのヘッダに自身のSHA-256（`binary_sha256`）を書く（`crates/minase/src/bin/selfplay_gen/rescore.rs`）。
 `workflow.py`は、生成器と診断の実行ファイルのSHA-256を来歴として記録し、再開時に照合する。
 本書の後は、どのツールもエンジンと同じ実行ファイルになるので、探索や評価だけを変えたコミットでもこれらの値が変わる。
-したがって、測定、付け直し、または学習の実行の途中で作業ツリーの`minase`を再ビルドすると、その実行を再開できなくなる。
-これには、実行ファイルを専用のworktreeに固定する既存の運用（[生成用バイナリをworktreeに固定する教訓](../lessons/pin-generation-binary-to-worktree.md)）で対処し、検査の規則は変えない。
+したがって、付け直しまたは学習の実行の途中で作業ツリーの`minase`を再ビルドすると、その実行を再開できなくなる。
+これには、実行ファイルを専用のworktreeに固定する既存の運用（[生成用バイナリをworktreeに固定する教訓](../lessons/pin-generation-binary-to-worktree.md)）で対処する。
+対局測定とSPSAは、runnerのSHA-256を照合しないので、再ビルドの後でも再開できる。
 
 ### プロセス名
 

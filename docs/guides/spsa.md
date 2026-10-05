@@ -19,14 +19,10 @@
 評価関数が変わると探索係数の最適値も動くので、採否の測定が進行中の構成を調整しない。
 係数の表は `crates/minase/src/search/alphabeta/params.rs` にあり、表の既定値が調整の開始値になる。
 
-セッションは、runnerのコミットを固定したworktreeから実行する（[長時間の生成は生成コミットを固定したworktreeで実行する](../lessons/pin-generation-binary-to-worktree.md)）。
-`minase spsa` は、再開時にrunnerのバイナリのSHA-256が保存済みの値と一致することを検査する。
-
-```console
-git worktree add --detach data/worktrees/<セッション名>-runner <runnerのコミット>
-cd data/worktrees/<セッション名>-runner
-cargo build --release --bin minase
-```
+`minase spsa` は、再開時にrunnerのバイナリのSHA-256を照合しない。
+runnerの版とSHA-256、および測定機は、反復を実行する起動ごとに `invocations.json` へ記録され、前回の起動と異なる場合は標準エラーへ1行の通知が出る（設計判断は [plans/match-resume-simplification.md](../plans/match-resume-simplification.md)）。
+このため、セッションの途中で作業ツリーの `minase` を再ビルドしても再開できる。
+起動の記録に複数のrunnerが現れたセッションは、そのことをセッションの記録に書く。
 
 ## 2. パラメーターファイルを作る
 
@@ -81,21 +77,19 @@ target/release/minase spsa \
 
 ## 5. 中断したセッションを再開する
 
-最初のコマンドの `--run-dir` を `--resume` へ置き換え、それ以外の引数を同じ値で指定する。
+`--resume` に実行ディレクトリを指定して再開する。
+実行条件はすべて `manifest.json` から読むので、ほかの引数は指定しない。ほかの引数を同時に指定すると、引数のエラーで終了する。
 
 ```console
-target/release/minase spsa \
-  --resume data/spsa/<セッション名> --seed <シード> \
-  --engine commit:<調整対象コミット> --params <パラメーターファイル> \
-  --rules engine-default --each time=10000+100 --concurrency 16 \
-  --iterations 375 --pairs-per-iteration 8
+target/release/minase spsa --resume data/spsa/<セッション名>
 ```
 
-実行ディレクトリは、実行条件の `manifest.json` と、完了した反復を1反復1ファイルで置く `iterations/` からなる。
+実行ディレクトリは、実行条件の `manifest.json`、起動ごとのrunnerと測定機の `invocations.json`、および完了した反復を1反復1ファイルで置く `iterations/` からなる。
 θの現在値を持つ別のファイルはなく、適用番号が最大の反復のファイルに記録された更新後のθが現在値である。
-再開時には、実行条件が `manifest.json` と完全に一致すること、適用番号が1から連続すること、および各ファイルの更新後のθが前のファイルから再計算した値と一致することが検査される。
+再開時には、調整対象のエンジンの実行ファイルのSHA-256が `manifest.json` の記録と一致すること、起動コマンドで指定したエンジンでは作業ディレクトリが記録と一致すること、適用番号が1から連続すること、および各ファイルの更新後のθが前のファイルから再計算した値と一致することが検査される。
 発行済みで未完了だった反復の対局は捨てられ、ファイルのない反復番号だけが、同じ摂動の符号と同じ開始局面で発行し直される。
 再開と監査には実行ディレクトリ全体が必要なので、個別のJSONを編集しない。
+`invocations.json` を持たない以前の形式の実行ディレクトリは再開できず、そのセッションを開始したrunnerで再開する。
 
 ## 6. 結果を確認して記録する
 
@@ -103,12 +97,12 @@ target/release/minase spsa \
 `engine_failures:` の件数が0でない場合は、採否の測定へ進む前に、反復のファイルに保存された異常局の記録（開始局面、着手列、および各手の思考時間）から原因を調べる。
 時間切れの原因は、時間制御と各手の思考時間から時計を再構成して調べる（[時間管理を変える前に保存記録から時計を再構成する](../lessons/reconstruct-clock-from-match-records.md)）。
 
-セッションの記録は `docs/measurements/<セッション名>.md` へ置き、コマンドライン全体、調整対象とrunnerのコミット、パラメーターファイルの内容、θの開始値と最終値、有効ペア数と破棄ペア数、異常件数、および所要時間を含める。
+セッションの記録は `docs/measurements/<セッション名>.md` へ置き、コマンドライン全体、調整対象とrunnerのコミット（`invocations.json` に複数のrunnerがあればそのすべて）、パラメーターファイルの内容、θの開始値と最終値、有効ペア数と破棄ペア数、異常件数、および所要時間を含める。
 θの履歴が終盤に動かないことだけを、収束の証拠として扱わない。
 
 ## 7. 値の採否を判定する
 
-1. 調整対象のコミットからブランチを切り、`apply` サブコマンドで最終値を `crates/minase/src/search/alphabeta/params.rs` の表の既定値へ書き込む（設計は [plans/spsa-apply.md](../plans/spsa-apply.md)）。`apply` は、実行ディレクトリの保存記録に再開時と同じ検査をかけて最終値を復元し、`f64::round` で丸めた整数で表の既定値だけを書き換える。実行中のセッションと未完了のセッションは拒否し、表の係数の名前がセッションと合わない場合、セッションの範囲が表の範囲に収まらない場合、および表の既定値がセッションの開始値と一致しない場合も、何も書かずにエラーで終了する。
+1. 調整対象のコミットからブランチを切り、`apply` サブコマンドで最終値を `crates/minase/src/search/alphabeta/params.rs` の表の既定値へ書き込む（設計は [plans/spsa-apply.md](../plans/spsa-apply.md)）。`apply` は、`manifest.json` のうち調整の設定だけを読み、反復の記録に再開時と同じ連続性と再計算の検査をかけて最終値を復元し、`f64::round` で丸めた整数で表の既定値だけを書き換える。`invocations.json` を持たない以前の形式のセッションも反映できる。実行中のセッションと未完了のセッションは拒否し、表の係数の名前がセッションと合わない場合、セッションの範囲が表の範囲に収まらない場合、および表の既定値がセッションの開始値と一致しない場合も、何も書かずにエラーで終了する。
 
    ```console
    git switch -c <候補ブランチ> <調整対象コミット>

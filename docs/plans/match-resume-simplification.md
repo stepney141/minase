@@ -15,8 +15,8 @@ fishtest、fastchess、cutechess-cli、およびやねうら王系のAyaneは、
 
 進行中。
 2026年10月5日に起案し、同日に着手した。
-第1フェーズ（対局測定の再開と`minase match report`）を終えた。
-次は第2フェーズ（SPSAの再開と`minase spsa apply`）である。
+第1フェーズから第3フェーズまでを終え、「検証」の全項目が成り立った。
+次の一手はmasterへの統合である。
 
 ## 目的
 
