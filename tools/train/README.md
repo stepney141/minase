@@ -32,12 +32,14 @@ uv run --project tools/train python -m unittest discover -s tools/train/tests
 
 ## コマンド
 
-`pyproject.toml` は次の5つのコマンドを定義する。
+`pyproject.toml` は次の7つのコマンドを定義する。
 いずれも `uv run --project tools/train <コマンド> --help` で引数を確認できる。
 
 | コマンド | 用途 |
 |---|---|
 | `pst-workflow` | 学習の準備、自己対局の生成、学習、診断の4工程を、入力と出力の検査和を記録しながら順に実行する。通常の学習はこのコマンドだけを使う |
+| `train-fm` | 固定PSTへのFMの学習と、学習後の補正1/4への変換を行う |
+| `fm-diagnostics` | FMの整数参照評価とRustの評価を照合する |
 | `train-pst` | 学習器を直接呼ぶ。初期重みの作成（`init`）、教師値の尺度Kの推定（`estimate-k`）、学習（`train`）を持つ |
 | `pst-diagnostics` | 基準のPSTと候補のPSTを、局面帯別の損失、駒の除去、および成りで比較する |
 | `taper-report` | 教師データの駒数分布と、序中盤と終盤の2つの重み（端点）を区別して学習できるかどうかを報告する |
@@ -76,6 +78,68 @@ uv run --project tools/train lookahead-diag \
 基本の教師に合わせて来歴のλも0.75を要求し、標本のファイル検査和、行番号、訓練分割への所属を照合する。
 空の分布と分散0の相関は`null`とし、理由を記録する。
 
+## 固定PSTへのFMの学習
+
+`train-fm`は、採用PSTを固定したまま、2駒の位置関係を表すFactorization Machine（FM）の補正だけを学習する。
+既存データの読み込み、教師の分類、対局単位の分割、先読み、教師Kの推定、および早期終了の判定はPST学習と共通である。
+FMは生成工程もPSTの学習条件も必要としないため、起動には専用コマンドを使い、条件と入力の検査和を学習JSONへ保存する。
+
+先読みなしの候補は、リポジトリのルートで次のように学習する。
+入力MNSDには来歴ファイルが必要であり、教師Kは訓練集合だけから分類順に推定する。
+出力Kは`--init`のMNPT v2から読み込み、PSTの両端点と探索用駒価値とともに固定する。
+
+```bash
+uv run --project tools/train train-fm train \
+  --init crates/minase/nets/pst.bin \
+  --data data/strength-stage7/gen2/generated-*.bin data/gen3/generated-*.bin \
+  --output data/fm-fn/fm.bin --epochs 200 --patience 3 \
+  --lambda-override 1.0 --device cuda
+```
+
+先読みつきの候補では、出力を`data/fm-fa/fm.bin`に変え、`--lookahead-gamma 0.9 --lookahead-plies 40`を加える。
+先読み後の探索値を、教師Kの推定と訓練、検証のすべてに使う。
+既定値は潜在次元32、AdamW、学習率0.001、重み減衰0.0001、補正の正則化係数0.0001、バッチ4,096、乱数シード1であり、上限エポック数とpatienceは必須である。
+CPUの合成データで検証するときは`--device cpu`を使う。
+
+出力は、補正を縮める前のMNPT v3である`fm.bin`、量子化前の埋め込み`V`と出力係数`a`と観測マスク`mask`を持つ`fm-float.npz`、および`fm.training.json`である。
+エポック0は検証損失の記録だけに使い、最良の重みは学習したエポックから選ぶ。
+最良値を厳密に更新しないエポックがpatienceだけ続いたら打ち切り、最良の重みを復元する。
+エポック0より損失が高いことだけでは候補を除外しない。
+
+`fm.training.json`は、入力と来歴と初期重みのSHA-256、訓練と検証の件数と添字のSHA-256、`teacher_classes`と同じ順の`teacher_ks`、教師Kの推定件数、`lambda_override`、`lookahead`、および全学習条件を保存する。
+`epochs`には各エポックの二値交差エントロピー`train_loss`と`validation_loss`、正則化を加えた`total_loss`、補正のロジット分布`phi`を記録する。
+`best_epoch`、`last_epoch`、`max_epochs`、`patience`、`improved_over_epoch_zero`、更新回数、特徴の観測回数、および最初の5更新の勾配も記録する。
+`correction_cp`は同じ検証標本で測った整数補正の標準偏差を縮小前後について保存し、`quantization`はその標本における縮小前後の平均絶対誤差と最大誤差を保存する。
+標本数の既定値は10,000であり、標本の乱数シードも記録する。
+縮小前後のいずれかの平均絶対誤差が2センチポーンを超えた場合はエラーで停止する。
+
+`quarter_zero_check`は全特徴対の整数補正が0かどうかと、最大145特徴の任意の和が整数補正0になる十分条件を別々に検査する。
+各対の値が1未満でも、対を足してから切り捨てると非0になり得るため、対の検査だけで見送らない。
+絶対値による上界で全局面の補正0を保証できた場合は、保存物を残して`status = "excluded_zero_correction"`とし、対局候補から除く。
+この上界は十分条件なので、上界が1以上の場合に補正が非0の合法局面が存在するとは保証しない。
+
+学習後、次のコマンドで補正1/4の候補を作る。
+指数を1増やし、PST、出力K、探索用駒価値、埋め込み、および符号を保持する。
+入力と出力のSHA-256、指数、および全0の検査結果を`fm-quarter.quarter.json`に保存する。
+指数30の入力は、変換後の指数が形式の上限を超えるため拒否する。
+
+```bash
+uv run --project tools/train train-fm quarter \
+  --input data/fm-fn/fm.bin --output data/fm-fn/fm-quarter.bin
+```
+
+Rust側の評価との照合には、検証したい局面を収めたMNSDと、FMに対応した実行ファイルを指定する。
+`--probe-command`には`minase dev pst-probe`のほか、独立した`pst_probe`のパスも指定でき、どちらも`--pst`と`--positions`で呼び出す。
+照合は入力順の全局面についてFM込みの`eval`と固定PSTの`eval_pst`を比較し、局面の欠落もエラーにする。
+実行ファイルのビルドはこのコマンドでは行わない。
+
+```bash
+uv run --project tools/train fm-diagnostics \
+  --base crates/minase/nets/pst.bin --candidate data/fm-fn/fm-quarter.bin \
+  --positions data/fm-samples.bin --output data/fm-fn/rust-agreement.json \
+  --probe-command target/release/minase dev pst-probe
+```
+
 ## ファイル形式
 
 学習ツールが読み書きするファイルは、いずれも先頭4バイトの識別子を名前とする独自のバイナリ形式である。
@@ -85,7 +149,9 @@ uv run --project tools/train lookahead-diag \
 | MNSD | 自己対局の局面、探索値、および対局結果 | `minase data selfplay generate`、`minase data lishogi` | `data/mnsd.py` |
 | MNRS | MNSDの各局面に別の探索で付け直した教師値 | `minase data selfplay rescore` | `data/mnsd.py` |
 | MNKF | MNSDの各局面に対応する追加の評価特徴の列 | 段階9の実験ブランチ（masterには書き出す側がない） | `data/mnsd.py` |
-| MNPT | PSTの重み、探索用の駒価値、および出力の尺度K | `train-pst` | `data/mnpt.py`、本体の評価関数 |
+| MNPT | PSTの重み、探索用の駒価値、および出力の尺度K | `train-fm` | 固定PSTへのFMの学習と、学習後の補正1/4への変換を行う |
+| `fm-diagnostics` | FMの整数参照評価とRustの評価を照合する |
+| `train-pst` | `data/mnpt.py`、本体の評価関数 |
 
 ### 来歴と教師の分類
 
@@ -217,8 +283,8 @@ PST部分の厳密な符号反転は`pst_removal_sign_reversals`へ集計する�
 
 ## ソースの構成
 
-ソースは `src/minase_train/` にあり、機能ごとに3つのサブパッケージへ分かれている。
-依存の向きは、`workflow.py` と `diagnostics/` が `pst/` を、`pst/` が `data/` を使う一方向であり、`data/` は学習の手法に依存しない。
+ソースは `src/minase_train/` にあり、機能ごとに4つのサブパッケージへ分かれている。
+依存の向きは、`workflow.py` と `diagnostics/` が `pst/` を、`fm/` が `pst/` を、学習器が `data/` を使う一方向であり、`data/` は学習の手法に依存しない。
 
 `data/` は、学習データと重みファイルの読み書き、および学習器と診断が共有する前処理を持つ。
 
@@ -240,10 +306,13 @@ PST部分の厳密な符号反転は`pst_removal_sign_reversals`へ集計する�
 | `pst/evaluate.py` | 整数と実数の重みで局面を評価する参照実装であり、量子化誤差の検査とRust側との一致確認に使う |
 | `pst/train.py` | 検証損失、学習ループ、および `train-pst` のコマンドラインを持つ |
 
+`fm/train.py`は、FMのモデル、学習、整数参照評価、および補正1/4への変換を持つ。
+
 `diagnostics/` は、学習済みの重みや教師データを調べる報告を持つ。
 
 | ファイル | 内容 |
 |---|---|
+| `diagnostics/fm.py` | `fm-diagnostics`の本体。MNPT v3の評価をRustと照合する |
 | `diagnostics/comparison.py` | `pst-diagnostics` の本体。本体の `minase dev pst-probe` を呼び、Rustの評価とPythonの参照評価の一致も確認する |
 | `diagnostics/taper_report.py` | `taper-report` の本体 |
 | `diagnostics/lookahead_teacher.py` | `lookahead-diag` の本体 |
