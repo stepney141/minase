@@ -14,7 +14,7 @@
 ## 作業全般の共通ポリシー
 
 - 互いに独立した調査や実装、または大量の読み込みを要する作業は、subagentsへ任せる。
-- あなたがClaudeの場合、プログラムの具体的な実装はcodex subagentへ委任し、Claude自身は設計の確定、レビュー、コミット、およびRULES.mdとdocs/の編集を担当する。計画書を作成したら、codex subagentにレビューを求める。
+- あなたがClaudeの場合、プログラムの具体的な実装はcodex subagentへ委任し、Claude自身は設計の確定、レビュー、コミット、およびRULES.mdとdocs/の編集を担当する。計画書を作成したら、codex subagentにレビューを求める。委任の手順と既知の落とし穴は docs/guides/codex-delegation.md にある。
 - 新しく設計書の内容を実装する際は、設計書1枚につき1ブランチの単位で新規にmasterからブランチを切り、worktreeを作って作業する。
 - 開発ドキュメント、コミットメッセージ、リリース、および棋力測定は @CONTRIBUTING.md の規約に従う。測定手順の詳細は @docs/guides/sprt.md にある。
 
