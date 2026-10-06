@@ -22,6 +22,7 @@ NNUEは着手ごとの差分更新の後に第2層以降の行列計算を毎回
 FM候補（潜在次元32、教師値λ=1.0、λres=1e-4）は不採用とする。根拠は開始版に対する[STC](../measurements/fm-adoption-stc.md)の`H0`（115有効ペア、ペンタノミアル[75, 0, 35, 0, 5]、LLR −2.949、異常0件）であり、段階ゲートの振分け規則によりLTCへ進めない。
 学習と診断は[学習記録](../measurements/fm-phase1-training.md)と[候補の診断](../measurements/fm-candidate-diagnostics.md)、速度は[第3フェーズの速度改善](../measurements/fm-phase3-speed.md)にある。
 候補の実装と重みはブランチ`fm-eval`に保持し、masterの評価実装と重みファイルは変更しない。
+その後、補正を1/4に縮めたFMを現行の採用PSTの上で学び直した[補正1/4のFMの再学習](fm-quarter-current-pst.md)が2026年10月7日に採用で完了し、FMの補正はmasterの評価関数に加わった。
 
 ## 目的
 
