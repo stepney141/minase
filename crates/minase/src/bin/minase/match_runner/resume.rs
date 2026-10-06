@@ -1,9 +1,30 @@
 //! 保存した実行条件からの対局設定の復元。
 
-use super::storage::{EngineRecord, RunManifest, StoredSearchLimit};
+use super::cli::Mode;
+use super::storage::{EngineRecord, ManifestMode, RunManifest, StoredSearchLimit};
 use minase::harness::*;
 use minase_core::{Rules, rules::parse_rule_set};
 use std::{io, time::Duration};
+
+/// 再開時に明示された仮説だけを保存済みの条件と照合する。
+pub(super) fn verify_mode(requested: Option<&Mode>, recorded: &ManifestMode) -> Result<(), String> {
+    let Some(Mode::Gsprt { elo0, elo1, .. }) = requested else {
+        return Ok(());
+    };
+    let ManifestMode::Gsprt { h0_elo, h1_elo, .. } = recorded else {
+        return Err("gsprt does not match the recorded mode".to_owned());
+    };
+    for (name, requested, saved) in [("elo0", elo0, h0_elo), ("elo1", elo1, h1_elo)] {
+        if let Some(value) = requested
+            && value != saved
+        {
+            return Err(format!(
+                "--{name} {value} does not match the recorded value {saved}"
+            ));
+        }
+    }
+    Ok(())
+}
 
 pub(super) fn restore(manifest: &RunManifest) -> io::Result<(Rules, PlayerConfig, PlayerConfig)> {
     let codes = parse_rule_set(&manifest.rules_source)

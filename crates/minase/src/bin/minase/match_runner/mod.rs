@@ -38,11 +38,22 @@ pub(super) fn main(arguments: Arguments) {
             .error(ErrorKind::ValueValidation, error)
             .exit();
     }
-    if arguments.resume.is_some() && arguments.mode.is_some() {
+    if arguments.resume.is_some()
+        && arguments.mode.as_ref().is_some_and(|mode| {
+            !matches!(
+                mode,
+                Mode::Gsprt {
+                    max_pairs: None,
+                    elo0,
+                    elo1,
+                } if elo0.is_some() || elo1.is_some()
+            )
+        })
+    {
         crate::subcommand_command(&["match", "run"])
             .error(
                 ErrorKind::ArgumentConflict,
-                "--resume cannot be combined with a mode subcommand",
+                "--resume only accepts gsprt hypothesis checks; use --target-pairs to extend a run",
             )
             .exit();
     }
@@ -60,6 +71,12 @@ pub(super) fn main(arguments: Arguments) {
                 eprintln!("failed to resume run directory {}: {error}", path.display());
                 process::exit(1);
             });
+        resume::verify_mode(arguments.mode.as_ref(), &store.manifest.mode).unwrap_or_else(
+            |error| {
+                eprintln!("failed to restore experiment: {error}");
+                process::exit(1);
+            },
+        );
         let (rules, candidate, baseline) =
             resume::restore(&store.manifest).unwrap_or_else(|error| {
                 eprintln!("failed to restore experiment: {error}");
@@ -83,19 +100,16 @@ pub(super) fn main(arguments: Arguments) {
                 }
             },
         };
-        let (target_pairs, manifest_mode) =
-            match arguments.mode.as_ref().expect("new run mode was validated") {
-                Mode::Gsprt { max_pairs } => (
-                    *max_pairs,
-                    ManifestMode::Gsprt {
-                        h0_elo: 0.0,
-                        h1_elo: GSPRT_H1_ELO,
-                        alpha: 0.05,
-                        beta: 0.05,
-                    },
-                ),
-                Mode::Elo { pairs } => (*pairs, ManifestMode::Elo),
-            };
+        let (target_pairs, manifest_mode) = arguments
+            .mode
+            .as_ref()
+            .expect("new run mode was validated")
+            .new_run_settings()
+            .unwrap_or_else(|error| {
+                crate::subcommand_command(&["match", "run", "gsprt"])
+                    .error(ErrorKind::ValueValidation, error)
+                    .exit()
+            });
         let candidate_limit = arguments.candidate_limit.unwrap_or(arguments.each);
         let baseline_limit = arguments.baseline_limit.unwrap_or(arguments.each);
         let candidate = match resolve_player(
@@ -163,6 +177,11 @@ pub(super) fn main(arguments: Arguments) {
     println!("run_dir: {}", store.path().display());
     println!("rules: {rules_text}");
     println!("seed: {base_seed}");
+    if let ManifestMode::Gsprt { h0_elo, h1_elo, .. } = manifest.mode
+        && (h0_elo != 0.0 || h1_elo != GSPRT_H1_ELO)
+    {
+        println!("hypotheses: elo0={h0_elo} elo1={h1_elo}");
+    }
     println!("max_ply: {max_ply}");
     println!("candidate: {}", candidate.name());
     println!("baseline: {}", baseline.name());
