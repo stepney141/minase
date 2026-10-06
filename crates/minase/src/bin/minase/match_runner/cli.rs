@@ -2,6 +2,7 @@
 
 use clap::{ArgGroup, Parser, Subcommand};
 use minase::harness::*;
+use minase::stats::GSPRT_H1_ELO;
 use minase_core::RuleCode;
 use minase_core::rules::parse_rule_set;
 use std::path::PathBuf;
@@ -117,9 +118,15 @@ impl Arguments {
 pub(super) enum Mode {
     /// ペンタノミアルGSPRTでH0またはH1を逐次判定する。
     Gsprt {
-        /// 判定を保留して停止する実行ペア数の上限。
-        #[arg(long, default_value_t = DEFAULT_MAX_PAIRS, value_parser = parse_positive_u64)]
-        max_pairs: u64,
+        /// 判定を保留して停止する実行ペア数の上限。新規実行の既定値は100000。
+        #[arg(long, value_parser = parse_positive_u64)]
+        max_pairs: Option<u64>,
+        /// H0のElo。新規実行の既定値は0。再開時は保存済みの値と照合する。
+        #[arg(long, value_name = "ELO", allow_hyphen_values = true, value_parser = parse_finite_elo)]
+        elo0: Option<f64>,
+        /// H1のElo。新規実行の既定値は10。再開時は保存済みの値と照合する。
+        #[arg(long, value_name = "ELO", allow_hyphen_values = true, value_parser = parse_finite_elo)]
+        elo1: Option<f64>,
     },
     /// 固定ペア数からEloと95%信頼区間を推定する。
     Elo {
@@ -127,6 +134,47 @@ pub(super) enum Mode {
         #[arg(long, value_parser = parse_positive_u64)]
         pairs: u64,
     },
+}
+
+impl Mode {
+    /// 新規実行の既定値を補い、仮説の順序を検証する。
+    pub(super) fn new_run_settings(&self) -> Result<(u64, super::storage::ManifestMode), String> {
+        use super::storage::ManifestMode;
+        match self {
+            Self::Gsprt {
+                max_pairs,
+                elo0,
+                elo1,
+            } => {
+                let h0_elo = elo0.unwrap_or(0.0);
+                let h1_elo = elo1.unwrap_or(GSPRT_H1_ELO);
+                if h0_elo >= h1_elo {
+                    return Err("--elo0 must be less than --elo1".to_owned());
+                }
+                Ok((
+                    max_pairs.unwrap_or(DEFAULT_MAX_PAIRS),
+                    ManifestMode::Gsprt {
+                        h0_elo,
+                        h1_elo,
+                        alpha: 0.05,
+                        beta: 0.05,
+                    },
+                ))
+            }
+            Self::Elo { pairs } => Ok((*pairs, ManifestMode::Elo)),
+        }
+    }
+}
+
+/// 仮説として指定できる有限のEloを解析する。
+fn parse_finite_elo(text: &str) -> Result<f64, String> {
+    let value = text
+        .parse::<f64>()
+        .map_err(|error| format!("invalid Elo '{text}': {error}"))?;
+    if !value.is_finite() {
+        return Err("Elo must be finite".to_owned());
+    }
+    Ok(value)
 }
 
 /// `--rules`の入力原文と解析済みコード列。
@@ -185,8 +233,65 @@ mod tests {
         assert_eq!(arguments.concurrency, None);
         assert!(matches!(
             arguments.mode,
-            Some(Mode::Gsprt { max_pairs: 100_000 })
+            Some(Mode::Gsprt {
+                max_pairs: None,
+                elo0: None,
+                elo1: None
+            })
         ));
+        let (target, mode) = arguments.mode.unwrap().new_run_settings().unwrap();
+        assert_eq!(target, 100_000);
+        assert_eq!(
+            serde_json::to_string(&mode).unwrap(),
+            r#"{"kind":"gsprt","h0_elo":0.0,"h1_elo":10.0,"alpha":0.05,"beta":0.05}"#
+        );
+    }
+
+    #[test]
+    fn gsprt_hypotheses_accept_finite_values_and_require_increasing_order() {
+        for (args, expected) in [
+            (vec!["--elo0", "-5", "--elo1", "5"], Some((-5.0, 5.0))),
+            (vec!["--elo0", "-2.5"], Some((-2.5, 10.0))),
+            (vec!["--elo1", "2.5"], Some((0.0, 2.5))),
+            (vec!["--elo0", "5", "--elo1", "5"], None),
+            (vec!["--elo0", "5", "--elo1", "-5"], None),
+            (vec!["--elo0", "10"], None),
+            (vec!["--elo1", "0"], None),
+        ] {
+            let arguments = Arguments::try_parse_from(
+                ["match_runner", "--run-dir", "run", "gsprt"]
+                    .into_iter()
+                    .chain(args),
+            )
+            .unwrap();
+            let settings = arguments.mode.unwrap().new_run_settings();
+            if let Some((h0, h1)) = expected {
+                let (_, mode) = settings.unwrap();
+                assert_eq!(
+                    serde_json::to_value(mode).unwrap(),
+                    serde_json::json!({
+                        "kind": "gsprt", "h0_elo": h0, "h1_elo": h1, "alpha": 0.05, "beta": 0.05
+                    })
+                );
+            } else {
+                assert!(settings.is_err());
+            }
+        }
+        for flag in ["--elo0", "--elo1"] {
+            for value in ["NaN", "inf", "-inf", "1e309", "-1e309"] {
+                assert!(
+                    Arguments::try_parse_from([
+                        "match_runner",
+                        "--run-dir",
+                        "run",
+                        "gsprt",
+                        flag,
+                        value
+                    ])
+                    .is_err()
+                );
+            }
+        }
     }
 
     #[test]

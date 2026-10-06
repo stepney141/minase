@@ -335,6 +335,247 @@ fn resume_run(path: &std::path::Path, args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 
+fn small_gsprt_run(path: &std::path::Path, hypotheses: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["match", "run", "--run-dir"])
+        .arg(path)
+        .args([
+            "--seed",
+            "1234",
+            "--max-ply",
+            "16",
+            "--concurrency",
+            "1",
+            "gsprt",
+            "--max-pairs",
+            "3",
+        ])
+        .args(hypotheses)
+        .output()
+        .unwrap()
+}
+
+// 仮説指定の契約: 新規実行で保存した値を逐次判定と最終サマリに使う。
+#[cfg(unix)]
+#[test]
+fn gsprt_records_hypotheses_and_uses_them_for_each_llr() {
+    let parent = run_directory();
+    std::fs::create_dir(&parent).unwrap();
+    let engine = parent.join("resign.sh");
+    std::fs::write(
+        &engine,
+        r#"
+while IFS= read -r line; do
+    case "$line" in
+        usi) echo usiok ;;
+        isready) echo readyok ;;
+        go*) echo 'bestmove resign' ;;
+        quit) exit 0 ;;
+    esac
+done
+"#,
+    )
+    .unwrap();
+    let player = format!("/bin/sh {}", engine.display());
+    for (elo0, elo1) in [
+        ("-5", "5"),
+        ("-500", "-400"),
+        ("400", "500"),
+        ("-12.5", "7.25"),
+    ] {
+        let dir = parent.join(format!("run-{elo0}-{elo1}"));
+        let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["match", "run", "--run-dir"])
+            .arg(&dir)
+            .args([
+                "--seed",
+                "1234",
+                "--max-ply",
+                "16",
+                "--concurrency",
+                "1",
+                "--candidate",
+                &player,
+                "--baseline",
+                &player,
+                "gsprt",
+                "--max-pairs",
+                "3",
+                "--elo0",
+                elo0,
+                "--elo1",
+                elo1,
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.contains(&format!("hypotheses: elo0={elo0} elo1={elo1}\n")));
+        let h0 = elo0.parse::<f64>().unwrap();
+        let h1 = elo1.parse::<f64>().unwrap();
+        assert_eq!(
+            json_file(&dir.join("manifest.json"))["mode"],
+            serde_json::json!({
+                "kind": "gsprt", "h0_elo": h0, "h1_elo": h1, "alpha": 0.05, "beta": 0.05
+            })
+        );
+        let mut last_llr = None;
+        let mut last_decision = None;
+        for line in text.lines().filter(|line| line.starts_with("statistics:")) {
+            let (counts, tail) = line
+                .split_once("pentanomial=")
+                .unwrap()
+                .1
+                .split_once(" llr=")
+                .unwrap();
+            let counts: [u64; 5] = serde_json::from_str(counts).unwrap();
+            let expected = minase::stats::gsprt_llr_with_hypotheses(&counts, h0, h1);
+            let (llr, decision) = tail.split_once(" decision=").unwrap();
+            assert!((llr.parse::<f64>().unwrap() - expected).abs() < 1e-9);
+            let boundary = 19.0_f64.ln();
+            let expected_decision = if expected >= boundary {
+                "H1"
+            } else if expected <= -boundary {
+                "H0"
+            } else {
+                "pending"
+            };
+            assert_eq!(decision, expected_decision);
+            last_llr = Some(llr);
+            last_decision = Some(decision);
+        }
+        assert_eq!(
+            text.lines().find_map(|line| line.strip_prefix("llr: ")),
+            Some(last_llr.unwrap())
+        );
+        assert_eq!(
+            text.lines()
+                .find_map(|line| line.strip_prefix("decision: ")),
+            Some(last_decision.unwrap())
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    std::fs::remove_dir_all(parent).unwrap();
+}
+
+#[test]
+fn gsprt_invalid_hypotheses_fail_before_creating_a_run() {
+    for (elo0, elo1) in [
+        ("5", "5"),
+        ("5", "-5"),
+        ("NaN", "5"),
+        ("-inf", "5"),
+        ("0", "inf"),
+    ] {
+        let dir = run_directory();
+        let output = small_gsprt_run(&dir, &["--elo0", elo0, "--elo1", elo1]);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(!dir.exists());
+    }
+}
+
+#[test]
+fn gsprt_default_and_explicit_default_have_identical_manifest_and_output() {
+    let implicit = run_directory();
+    let explicit = run_directory();
+    let first = small_gsprt_run(&implicit, &[]);
+    let second = small_gsprt_run(&explicit, &["--elo0", "0", "--elo1", "10"]);
+    assert!(first.status.success());
+    assert!(second.status.success());
+    assert_eq!(
+        std::fs::read(implicit.join("manifest.json")).unwrap(),
+        std::fs::read(explicit.join("manifest.json")).unwrap()
+    );
+    let first = String::from_utf8(first.stdout).unwrap();
+    let second = String::from_utf8(second.stdout).unwrap();
+    assert!(!first.contains("hypotheses:"));
+    assert_eq!(without_elapsed(&first), without_elapsed(&second));
+    assert_eq!(
+        json_file(&implicit.join("manifest.json"))["mode"],
+        serde_json::json!({
+            "kind": "gsprt", "h0_elo": 0.0, "h1_elo": 10.0, "alpha": 0.05, "beta": 0.05
+        })
+    );
+    std::fs::remove_dir_all(implicit).unwrap();
+    std::fs::remove_dir_all(explicit).unwrap();
+}
+
+#[test]
+fn gsprt_resume_checks_only_explicit_hypotheses_without_changing_saved_conditions() {
+    let dir = run_directory();
+    // elo0だけの照合時に、新規実行の既定elo1=10と比較して拒否しないことも検証する。
+    assert!(
+        small_gsprt_run(&dir, &["--elo0", "20", "--elo1", "30"])
+            .status
+            .success()
+    );
+    let saved: Vec<_> = ["manifest.json", "invocations.json", "summary.json"]
+        .into_iter()
+        .map(|file| (dir.join(file), std::fs::read(dir.join(file)).unwrap()))
+        .collect();
+    for args in [
+        vec![],
+        vec!["gsprt", "--elo0", "20"],
+        vec!["gsprt", "--elo1", "30"],
+        vec!["gsprt", "--elo0", "20", "--elo1", "30"],
+    ] {
+        let output = resume_run(&dir, &args);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("hypotheses: elo0=20 elo1=30\n"));
+    }
+    for (flag, value) in [
+        ("--elo0", "0"),
+        ("--elo1", "10"),
+        ("--elo0", "21"),
+        ("--elo1", "31"),
+    ] {
+        let output = resume_run(&dir, &["--target-pairs", "4", "gsprt", flag, value]);
+        assert!(!output.status.success());
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            error.contains(flag) && error.contains("does not match the recorded value"),
+            "{error}"
+        );
+    }
+    for (path, bytes) in saved {
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+    }
+    let output = resume_run(
+        &dir,
+        &[
+            "--target-pairs",
+            "4",
+            "gsprt",
+            "--elo0",
+            "20",
+            "--elo1",
+            "30",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(dir.join("pairs/00000000000000000004.json").is_file());
+    std::fs::remove_dir_all(dir).unwrap();
+
+    let elo = run_directory();
+    small_run(&elo);
+    let output = resume_run(&elo, &["gsprt", "--elo0", "0"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("does not match the recorded mode"));
+    std::fs::remove_dir_all(elo).unwrap();
+}
+
 // match-resume-simplification.md「起動の記録」: 表示だけでは履歴を変えず、
 // 実行する再開はrunnerと測定機が変わっても通知して記録する。
 #[test]
@@ -413,6 +654,7 @@ fn resume_condition_arguments_are_clap_errors() {
         vec!["--baseline-hash", "256"],
         vec!["elo", "--pairs", "1"],
         vec!["gsprt"],
+        vec!["gsprt", "--max-pairs", "1"],
     ] {
         let output = resume_run(std::path::Path::new("nonexistent-run"), &args);
         assert_eq!(

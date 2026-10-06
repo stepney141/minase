@@ -147,6 +147,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cli_hypotheses_survive_serialization_and_control_synthetic_pair_statistics() {
+        use crate::match_runner::cli::Arguments;
+        use clap::Parser;
+
+        let arguments = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "run",
+            "gsprt",
+            "--elo0",
+            "-5",
+            "--elo1",
+            "5",
+        ])
+        .unwrap();
+        let (_, mode) = arguments.mode.unwrap().new_run_settings().unwrap();
+        let recorded: ManifestMode =
+            serde_json::from_str(&serde_json::to_string(&mode).unwrap()).unwrap();
+        for counts in [
+            [10, 20, 40, 20, 10],
+            [10, 20, 40, 30, 20],
+            [20, 30, 40, 20, 10],
+        ] {
+            assert_eq!(
+                recorded.llr(&counts),
+                gsprt_llr_with_hypotheses(&counts, -5.0, 5.0)
+            );
+            assert!((recorded.llr(&counts) - minase::stats::gsprt_llr(&counts)).abs() > 1e-6);
+        }
+        let boundary = 19.0_f64.ln();
+        assert_eq!(recorded.decision(boundary + 1e-10), GsprtDecision::AcceptH1);
+        assert_eq!(recorded.decision(boundary - 1e-10), GsprtDecision::Continue);
+        assert_eq!(
+            recorded.decision(-boundary - 1e-10),
+            GsprtDecision::AcceptH0
+        );
+        assert_eq!(
+            recorded.decision(-boundary + 1e-10),
+            GsprtDecision::Continue
+        );
+    }
+
+    #[test]
     fn recorded_gsprt_hypotheses_and_error_rates_control_statistics() {
         let mode: ManifestMode = serde_json::from_value(serde_json::json!({
             "kind": "gsprt", "h0_elo": -5.0, "h1_elo": 5.0, "alpha": 0.1, "beta": 0.2
