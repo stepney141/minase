@@ -76,6 +76,7 @@
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
 | 測定の再開条件の簡素化 | [plans/match-resume-simplification.md](plans/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
+| PSTとFMの同時学習 | [plans/pst-fm-joint-training.md](plans/pst-fm-joint-training.md) | 起案 | |
 
 ## 現在地
 
@@ -89,6 +90,7 @@
 
 - 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
 - 評価関数では、[エポック数の延長](plans/pst-longer-training.md)の採用を受けて、2つの続きが候補になる。1つは、最良エポックが上限の200に達したので、さらに長い学習で伸びるかを確かめることである。もう1つは、新しい採用PSTが評価値の尺度を約14%大きくしたので、探索係数をSPSAで調整し直すことである。 現在の評価関数はPSTにFMの補正（約14%の探索速度の費用）を加えたものなので、PSTを学び直す場合はその上でFMの補正も学び直す必要がある。
+- [PSTとFMの同時学習](plans/pst-fm-joint-training.md)は、PSTとFMを単一の混合比λの1つの損失で学び直し、λ=0.75とλ=1.0の2候補を段階ゲートで測る。補正の大きさは、補正1/4と同じ大きさを超えないよう学習中に制約する。λ=0.75の候補はPSTの追加学習も含むので、採用した場合は上記の「さらに長い学習」を含むものとして扱う。同時学習の後に、補正なしの候補LのPSTを軽い評価として探索で使う仕組み（lazy evaluation）を、別の設計書で起案する（2026年10月7日の利用者の決定）。
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
