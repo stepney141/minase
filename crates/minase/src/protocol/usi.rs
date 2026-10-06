@@ -1704,6 +1704,10 @@ fn diagnostic_evaluation(position: &Position) -> Result<Vec<String>, String> {
         "lion {:.1}",
         detail.lion as f64 / pst::INTERPOLATION_DIVISOR as f64
     ));
+    if let Some(correction) = detail.fm {
+        lines.push(format!("fm {correction}"));
+        lines.push("note FM correction is added to the clamped PST evaluation; the result is clamped to +/-28999 cp".to_owned());
+    }
     lines.push("note contributions are rounded to 0.1 cp; evaluation divides the total numerator by 720 once (integer truncation) and clamps to +/-28999 cp".to_owned());
     Ok(lines)
 }

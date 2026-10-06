@@ -5,19 +5,46 @@ use core::fmt;
 use sha2::{Digest, Sha256};
 
 use super::features::{FEATURE_COUNT, piece_state};
+use super::fm::{ENCODED_LENGTH, FM_RANK, Fm};
 use super::{EVALUATION_LIMIT, PIECE_STATE_COUNT, Pst};
 use minase_core::{Color, PieceCode, PieceKind};
 
 /// MNPTヘッダのバイト数。
 pub(super) const HEADER_LENGTH: usize = 80;
 /// 対応するMNPT形式の版。
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 3;
 
 impl Pst {
+    /// 復号時の版と規則セットを保ち、MNPTバイト列へ符号化する。
+    pub fn encode(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"MNPT");
+        bytes
+            .extend_from_slice(&(if self.fm.is_some() { FORMAT_VERSION } else { 2 }).to_le_bytes());
+        bytes.extend_from_slice(&(FEATURE_COUNT as u32).to_le_bytes());
+        bytes.extend_from_slice(&self.k.to_le_bytes());
+        bytes.extend_from_slice(&self.rule_set);
+        bytes.extend_from_slice(&[0; 32]);
+        for endpoint in 0..2 {
+            for pair in &self.weights {
+                bytes.extend_from_slice(&pair[endpoint].to_le_bytes());
+            }
+        }
+        for value in self.piece_values {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        if let Some(fm) = &self.fm {
+            fm.encode_into(&mut bytes);
+        }
+        let checksum = Sha256::digest(&bytes[HEADER_LENGTH..]);
+        bytes[48..80].copy_from_slice(&checksum);
+        bytes
+    }
+
     /// MNPTバイト列を検証し、学習PSTへ復号する。
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
         let expected_length = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
-        if bytes.len() != expected_length {
+        if bytes.len() < HEADER_LENGTH {
             return Err(Error::InvalidLength {
                 expected: expected_length,
                 actual: bytes.len(),
@@ -28,8 +55,20 @@ impl Pst {
             return Err(Error::InvalidMagic { actual: magic });
         }
         let version = read_u32(bytes, 4);
-        if version != FORMAT_VERSION {
+        if !matches!(version, 2 | FORMAT_VERSION) {
             return Err(Error::UnsupportedVersion { actual: version });
+        }
+        let expected_length = expected_length
+            + if version == FORMAT_VERSION {
+                ENCODED_LENGTH
+            } else {
+                0
+            };
+        if bytes.len() != expected_length {
+            return Err(Error::InvalidLength {
+                expected: expected_length,
+                actual: bytes.len(),
+            });
         }
         let feature_count = read_u32(bytes, 8);
         if feature_count != FEATURE_COUNT as u32 {
@@ -86,6 +125,14 @@ impl Pst {
             })
             .fold(0, i32::max);
         Ok(Self {
+            fm: if version == FORMAT_VERSION {
+                Some(Fm::decode(
+                    &body[FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4..],
+                )?)
+            } else {
+                None
+            },
+            rule_set: rule_set.try_into().expect("validated rule-set length"),
             max_promotion_gain,
             weights,
             piece_values,
@@ -119,6 +166,23 @@ pub enum Error {
     UnexpectedFeatureCount {
         /// 読み取った特徴数。
         actual: u32,
+    },
+    /// FMの潜在次元が埋め込み候補の次元と異なる。
+    UnexpectedFmRank {
+        /// 読み取った次元。
+        actual: u32,
+    },
+    /// FMの量子化指数が0から30の範囲外である。
+    InvalidFmExponent {
+        /// 読み取った指数。
+        actual: u32,
+    },
+    /// FMの符号が+1でも−1でもない。
+    InvalidFmSign {
+        /// 不正な符号の潜在次元番号。
+        dimension: usize,
+        /// 読み取った符号。
+        actual: i8,
     },
     /// 規則セット名欄がUTF-8またはNUL埋めの規約を満たさない。
     InvalidRuleSet,
@@ -173,6 +237,17 @@ impl fmt::Display for Error {
             Self::UnexpectedFeatureCount { actual } => write!(
                 formatter,
                 "invalid MNPT feature count: expected {FEATURE_COUNT}, got {actual}"
+            ),
+            Self::UnexpectedFmRank { actual } => write!(
+                formatter,
+                "invalid MNPT FM rank: expected {FM_RANK}, got {actual}"
+            ),
+            Self::InvalidFmExponent { actual } => {
+                write!(formatter, "invalid MNPT FM exponent: {actual}")
+            }
+            Self::InvalidFmSign { dimension, actual } => write!(
+                formatter,
+                "invalid MNPT FM sign at dimension {dimension}: {actual}"
             ),
             Self::InvalidRuleSet => formatter.write_str("invalid MNPT rule-set field"),
             Self::InvalidK { actual } => write!(formatter, "invalid MNPT K: {actual}"),

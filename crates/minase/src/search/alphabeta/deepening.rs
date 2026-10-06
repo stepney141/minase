@@ -42,12 +42,12 @@ pub(super) fn run_main_worker(
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt, history);
     #[cfg(feature = "invariants")]
-    pst.assert_accumulator(position, searcher.accumulators[0], 0);
+    pst.assert_accumulator(position, &searcher.accumulators[0], 0);
     let mut result = SearchResult {
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+        score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -164,12 +164,12 @@ pub(super) fn run_auxiliary_worker(
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt, history);
     #[cfg(feature = "invariants")]
-    pst.assert_accumulator(position, searcher.accumulators[0], 0);
+    pst.assert_accumulator(position, &searcher.accumulators[0], 0);
     let mut result = SearchResult {
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(searcher.accumulators[0], position.side_to_move()),
+        score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
