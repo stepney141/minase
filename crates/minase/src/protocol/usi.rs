@@ -3911,15 +3911,20 @@ mod tests {
                     origin.elapsed()
                 );
                 assert_legal_bestmove(&best, &legal);
+                // 完了深さは負荷に依存するので、予想手の有無は契約にしない。
+                // 予想手を出したときは、着手後の局面で合法であることを検査する。
                 let words: Vec<_> = best.split_whitespace().collect();
-                assert_eq!(words.len(), 4, "{best}");
-                assert_eq!(words[2], "ponder");
-                commands
-                    .send(Ok(format!("position startpos moves {}", words[1])))
-                    .unwrap();
-                commands.send(Ok("moves".into())).unwrap();
-                let replies = moves_sets(&receive_line(lines)).remove(0);
-                assert!(replies.contains(words[3]), "{best}");
+                if words.len() == 4 {
+                    assert_eq!(words[2], "ponder");
+                    commands
+                        .send(Ok(format!("position startpos moves {}", words[1])))
+                        .unwrap();
+                    commands.send(Ok("moves".into())).unwrap();
+                    let replies = moves_sets(&receive_line(lines)).remove(0);
+                    assert!(replies.contains(words[3]), "{best}");
+                } else {
+                    assert_eq!(words.len(), 2, "{best}");
+                }
                 commands.send(Ok("quit".into())).unwrap();
             });
         }
