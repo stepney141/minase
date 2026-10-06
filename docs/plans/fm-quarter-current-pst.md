@@ -17,7 +17,9 @@ FM（Factorization Machine）は、駒の種類と升ごとの点数を足すPST
 起案。2026年10月3日に起案し、10月6日に、採用PSTの変更とPSTの学習器の早期終了の変更に合わせて改訂した。
 実行の順序は、2026年10月4日の利用者決定のとおり、[共適応の検証](eval-search-coadaptation.md)の後とした。共適応の検証は10月5日に完了し、評価関数の採否の手順は変わらなかったので、本書は標準の段階ゲートで採否を測る。
 2026年10月6日に、利用者が教師を2通りとも試すこと、上限を200エポックとして早期終了を行うこと、およびPSTでの結果を踏襲しすぎないことを決めた。
-未着手であり、次の一手は、Mからブランチ`fm-quarter-current-pst`を作り、フェーズ1の移植を行うことである。
+進行中。移植と2つの候補の学習を終え（[学習の記録](../measurements/fm-quarter-current-pst-training.md)）、FnとFaはともにSTCで`H1`となった（[Fn](../measurements/fm-quarter-current-pst-fn-stc.md)、[Fa](../measurements/fm-quarter-current-pst-fa-stc.md)）。
+FnのLTCは、634ペアの時点でLLRが±1未満を行き来して決着しにくくなったので、2026年10月6日に利用者の判断で一時停止し、先にFaのLTCを行っている。FnのLTCは同じ実行ディレクトリを`--resume`で再開できる。
+Faが`H0`ならFnのLTCを再開して最後まで測る。Faが`H1`なら、直接対局へ進むにはFnの結果も要るので、Fnを再開するか規則を見直すかを利用者と相談する。
 
 ## 目的
 
