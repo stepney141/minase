@@ -1,3 +1,14 @@
+## v2.1.0 (2026-10-06)
+
+### Features
+
+- **cli:** Run the auxiliary tools as subcommands of minase
+- **eval:** Adopt the PST retrained for 10 more epochs from G23 (Pc)
+- **match:** Resume runs from the recorded conditions
+- **spsa:** Resume sessions from the recorded conditions
+- **eval:** Adopt the PST retrained for 200 epochs from Pc (candidate L)
+- **match:** Let gsprt take the hypothesis Elos for choosing between candidates
+
 ## v2.0.1 (2026-10-04)
 
 ### Bug Fixes
