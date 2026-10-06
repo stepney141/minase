@@ -276,6 +276,7 @@ R1の勝敗も履歴に依存する。
 指定値を`inputs.json`の`k`へ保存し、混合データからの推定値は`mixed_k`と標準出力へ参考値として記録する。
 [棋力向上段階7](strength-stage7.md)では`train.k = 1072.6529541015625`に固定し、教師世代や入力データの追加によって出力の換算尺度が変わらない条件で再学習する。
 現在の採用PSTは、[世代3の計画](pst-gen3.md)で世代2の5ファイルと世代3の`data/gen3/generated-<seed>.bin`の5ファイル（基本シード1100000から1500000）だけを入力に列挙し、世代0と世代1を除いて学習したG23を起点とする。G23に同じ10ファイルと同じ学習条件で10エポックを重ねたPc（[共適応の検証](eval-search-coadaptation.md)の対照、設定ファイルは`data/eval-coadaptation-lambda075.toml`）を初期値に、上限200エポック、早期終了の待つエポック数5でさらに学習し、最良エポック200の重みを採ったものである（[エポック数の延長](pst-longer-training.md)の候補L、設定ファイルは`data/pst-longer-training.toml`）。この重みは、Pcに比べて評価値の尺度が約14%大きい。
+現在の評価関数は、この採用PSTに、2駒の位置関係を表すFactorization Machine（FM）の補正を1/4に縮めて加えたものである。補正は、採用PSTを固定したまま、先読みつき（γ=0.9、n=40）でλ=1.0の教師により学習した（[補正1/4のFMの再学習](fm-quarter-current-pst.md)の候補Fa）。重みファイル`crates/minase/nets/pst.bin`はMNPTバージョン3であり、PSTの部分は候補Lと同一である。
 
 現行のPST学習は、必須設定`train.removal_penalty`で有限の非負係数\(\eta\)を指定し、教師値の平均二値交差エントロピーへ駒の除去差分の損失\(\eta R\)を加える。
 \(\eta\)は教師混合係数\(\lambda\)と区別し、正値は`mirrored`だけで使え、`single`と`tapered`では0を明示する。

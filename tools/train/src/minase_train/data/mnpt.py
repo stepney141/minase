@@ -21,6 +21,7 @@ from minase_train.data.features import (
 
 HEADER_LENGTH = 80
 FORMAT_VERSION = 2
+FM_FORMAT_VERSION = 3
 RULE_SET = b"L0,P0,R1,E0"
 # 設計書「MNPT形式を更新する」: 序中盤13,680 i16、終盤13,680 i16、探索用駒価値47 i32。
 # MNPT本体末尾の探索用駒価値(47個のi32)。
@@ -90,16 +91,7 @@ def write_mnpt(
         + endgame.tobytes()
         + np.asarray(piece_values, dtype="<i4").tobytes()
     )
-    rule_field = _rule_field(rule_set)
-    header = (
-        b"MNPT"
-        + struct.pack("<II f", FORMAT_VERSION, FEATURE_COUNT, k)
-        + rule_field
-        + hashlib.sha256(body).digest()
-    )
-    if len(header) != HEADER_LENGTH or len(body) != BODY_LENGTH:
-        raise AssertionError("MNPT layout is inconsistent")
-    Path(path).write_bytes(header + body)
+    _write_body(path, body, k, FORMAT_VERSION, rule_set)
 
 
 def read_mnpt(
@@ -114,25 +106,45 @@ def read_mnpt(
         raise ValueError(f"{source}: truncated MNPT header")
     if len(raw) != FILE_LENGTH:
         raise ValueError(f"{source}: length must be {FILE_LENGTH}, got {len(raw)}")
+    body, k = _decode_header(raw, source, FORMAT_VERSION, rule_set)
+    return (*_decode_pst(body, source), k)
+
+
+def _decode_header(raw: bytes, source: str | Path, expected_version: int,
+                   rule_set: bytes = RULE_SET) -> tuple[bytes, float]:
     magic, version, stored_feature_count, k = struct.unpack_from("<4sII f", raw)
     if magic != b"MNPT":
         raise ValueError(f"{source}: invalid MNPT magic {magic!r}")
-    if version != FORMAT_VERSION:
+    if version != expected_version:
         raise ValueError(f"{source}: unsupported MNPT version {version}")
     if stored_feature_count != FEATURE_COUNT:
         raise ValueError(f"{source}: feature count must be {FEATURE_COUNT}")
     if not math.isfinite(k) or k <= 0.0:
         raise ValueError(f"{source}: K must be finite and positive")
-    rule_field = raw[16:48]
-    if rule_field != _rule_field(rule_set):
+    if raw[16:48] != _rule_field(rule_set):
         raise ValueError(f"{source}: unexpected rule-set field")
     body = raw[HEADER_LENGTH:]
     if hashlib.sha256(body).digest() != raw[48:80]:
         raise ValueError(f"{source}: SHA-256 mismatch")
-    weights = np.frombuffer(body[: FEATURE_COUNT * 4], dtype="<i2").reshape(2, FEATURE_COUNT)
-    piece_values = np.frombuffer(body[FEATURE_COUNT * 4 :], dtype="<i4").copy()
-    validate_piece_values(piece_values, str(source))
-    return weights[0].copy(), weights[1].copy(), piece_values, float(k)
+    return body, float(k)
+
+
+def _decode_pst(body: bytes, source: str | Path) -> tuple[NDArray, NDArray, NDArray]:
+    weights = np.frombuffer(body, dtype="<i2", count=FEATURE_COUNT * 2).reshape(2, FEATURE_COUNT)
+    values = np.frombuffer(body, dtype="<i4", count=PIECE_STATE_COUNT, offset=FEATURE_COUNT * 4).copy()
+    validate_piece_values(values, str(source))
+    return weights[0].copy(), weights[1].copy(), values
+
+
+def _write_body(path: str | Path, body: bytes, k: float, version: int, rule_set: bytes) -> None:
+    if not math.isfinite(k) or not 0 < k <= np.finfo(np.float32).max:
+        raise ValueError("K must be finite and positive in float32")
+    encoded_k = struct.pack("<f", k)
+    if struct.unpack("<f", encoded_k)[0] <= 0:
+        raise ValueError("K underflows float32")
+    header = (b"MNPT" + struct.pack("<II", version, FEATURE_COUNT) + encoded_k
+              + _rule_field(rule_set) + hashlib.sha256(body).digest())
+    Path(path).write_bytes(header + body)
 
 
 def initial_weights() -> NDArray[np.int16]:
@@ -166,3 +178,64 @@ def float_weights_path(output: str | Path) -> Path:
     """MNPT出力に併置する量子化前の重みファイルのパスを返す。"""
     output = Path(output)
     return output.with_name(output.stem + "-float.npz")
+
+
+def _integer_array(values: NDArray, shape: tuple[int, ...], dtype: str, name: str) -> NDArray:
+    """整数配列を範囲検査してから、保存時の型へ変換する。"""
+    values = np.asarray(values)
+    bounds = np.iinfo(dtype)
+    if (values.shape != shape or not np.issubdtype(values.dtype, np.integer)
+            or np.any(values < bounds.min) or np.any(values > bounds.max)):
+        raise ValueError(f"{name} must have shape {shape} and fit {dtype}")
+    return values.astype(dtype)
+
+
+def write_mnpt_v3(
+    path: str | Path, middlegame: NDArray, endgame: NDArray, piece_values: NDArray,
+    k: float, embeddings: NDArray, signs: NDArray, exponent: int,
+) -> None:
+    """固定PST、駒価値、尺度と量子化FMを、検査和付きv3へ書く。"""
+    embeddings = np.asarray(embeddings)
+    if embeddings.ndim != 2 or not 1 <= embeddings.shape[1] <= 2**32 - 1:
+        raise ValueError("FM rank must be positive and fit u32")
+    rank = embeddings.shape[1]
+    if type(exponent) is not int or not 0 <= exponent <= 30:
+        raise ValueError("FM exponent must be in 0..30")
+    mg = _integer_array(middlegame, (FEATURE_COUNT,), "<i2", "middlegame")
+    eg = _integer_array(endgame, (FEATURE_COUNT,), "<i2", "endgame")
+    values = _integer_array(piece_values, (47,), "<i4", "piece values")
+    validate_piece_values(values, str(path))
+    u = _integer_array(embeddings, (FEATURE_COUNT, rank), "<i2", "embeddings")
+    d = _integer_array(signs, (rank,), "i1", "signs")
+    if not np.all((d == 1) | (d == -1)):
+        raise ValueError("FM signs must be +1 or -1")
+    body = mg.tobytes() + eg.tobytes() + values.tobytes()
+    body += struct.pack("<II", rank, exponent) + d.tobytes() + u.tobytes()
+    _write_body(path, body, k, FM_FORMAT_VERSION, RULE_SET)
+
+
+def read_mnpt_v3(path: str | Path) -> tuple[NDArray, NDArray, NDArray, float, NDArray, NDArray, int]:
+    """v3を完全検証し、両端点、駒価値、K、U、符号、指数を返す。"""
+    raw = Path(path).read_bytes()
+    if len(raw) < HEADER_LENGTH + BODY_LENGTH + 8:
+        raise ValueError(f"{path}: truncated MNPT v3")
+    body, k = _decode_header(raw, path, FM_FORMAT_VERSION)
+    rank, exponent = struct.unpack_from("<II", body, BODY_LENGTH)
+    if rank < 1 or exponent > 30:
+        raise ValueError(f"{path}: invalid FM rank or exponent")
+    if len(body) != BODY_LENGTH + 8 + rank + FEATURE_COUNT * rank * 2:
+        raise ValueError(f"{path}: invalid MNPT v3 length")
+    signs = np.frombuffer(body, dtype="i1", count=rank, offset=BODY_LENGTH + 8).copy()
+    if not np.all((signs == 1) | (signs == -1)):
+        raise ValueError(f"{path}: FM signs must be +1 or -1")
+    u = np.frombuffer(body, dtype="<i2", offset=BODY_LENGTH + 8 + rank).reshape(FEATURE_COUNT, rank).copy()
+    return (*_decode_pst(body, path), k, u, signs, exponent)
+
+
+def validate_fixed_base(base_path: str | Path, candidate_path: str | Path) -> None:
+    """v3の両端点、探索用駒価値、およびKが基準v2と厳密に一致することを確かめる。"""
+    base = read_mnpt(base_path)
+    candidate = read_mnpt_v3(candidate_path)
+    for name, expected, actual in zip(("middlegame", "endgame", "piece values", "K"), base, candidate[:4]):
+        if not np.array_equal(expected, actual):
+            raise ValueError(f"FM candidate changed fixed {name}")

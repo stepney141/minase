@@ -2,6 +2,7 @@
 
 use sha2::{Digest, Sha256};
 
+use super::accumulator::PstAccumulator;
 use super::features::feature_index;
 use super::features::{PIECE_STATE_COUNT, piece_state};
 use super::format::HEADER_LENGTH;
@@ -80,7 +81,7 @@ fn position_with_count(count: usize, side: Color) -> Position {
 fn assert_evaluation(pst: &Pst, position: &Position, expected: i32) {
     assert_eq!(evaluate(pst, position), expected);
     assert_eq!(
-        pst.evaluate_accumulator(pst.refresh_accumulator(position), position.side_to_move()),
+        pst.evaluate_accumulator(&pst.refresh_accumulator(position), position.side_to_move()),
         expected
     );
 }
@@ -111,10 +112,11 @@ fn material_score(position: &Position) -> i32 {
 fn assert_move_accumulator(pst: &Pst, position: &mut Position, mv: Move) {
     let before = pst.refresh_accumulator(position);
     let undo = position.make_move_unchecked(mv, MoveRules::standard());
-    let after = pst.update_accumulator_after_move(before, position, &undo);
+    let mut after = PstAccumulator::default();
+    pst.update_accumulator_after_move(&before, &mut after, position, &undo);
     assert_eq!(after, pst.refresh_accumulator(position));
     assert_eq!(
-        pst.evaluate_accumulator(after, position.side_to_move()),
+        pst.evaluate_accumulator(&after, position.side_to_move()),
         evaluate(pst, position)
     );
     position.unmake_move(undo);
@@ -124,7 +126,7 @@ fn assert_move_accumulator(pst: &Pst, position: &mut Position, mv: Move) {
 /// 差分累算値が通常手、特殊移動、先獅子状態、およびnull moveで完全再計算と一致する。
 #[test]
 fn accumulator_updates_match_full_refresh_across_move_shapes() {
-    let pst = &distinct_pst();
+    let pst = &fm_tests::synthetic_fm_pst();
     let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
     let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
     let black_pawn = PieceCode::new(Color::Black, PieceKind::Pawn).unwrap();
@@ -232,12 +234,13 @@ fn accumulator_updates_match_full_refresh_across_move_shapes() {
         },
         MoveRules::standard(),
     );
-    let after = pst.update_accumulator_after_move(before, &lion_capture, &undo);
+    let mut after = PstAccumulator::default();
+    pst.update_accumulator_after_move(&before, &mut after, &lion_capture, &undo);
     assert_eq!(after, pst.refresh_accumulator(&lion_capture));
     assert_eq!(after.piece_count, 3);
     assert!(lion_capture.lion_taken_by_non_lion().is_some());
     assert_eq!(
-        pst.evaluate_accumulator(after, lion_capture.side_to_move()),
+        pst.evaluate_accumulator(&after, lion_capture.side_to_move()),
         evaluate(pst, &lion_capture)
     );
 
@@ -257,11 +260,12 @@ fn accumulator_updates_match_full_refresh_across_move_shapes() {
         .lion_taken_by_non_lion()
         .map(|trigger| trigger.square);
     let null_undo = lion_capture.make_null_move();
-    let after_null = pst.update_accumulator_after_null(after, lion_before);
+    let mut after_null = PstAccumulator::default();
+    pst.update_accumulator_after_null(&after, &mut after_null, lion_before);
     assert_eq!(after_null, pst.refresh_accumulator(&lion_capture));
     assert_eq!(after_null.piece_count, 3);
     assert_eq!(
-        pst.evaluate_accumulator(after_null, lion_capture.side_to_move()),
+        pst.evaluate_accumulator(&after_null, lion_capture.side_to_move()),
         evaluate(pst, &lion_capture)
     );
     lion_capture.unmake_null_move(null_undo);
@@ -269,7 +273,7 @@ fn accumulator_updates_match_full_refresh_across_move_shapes() {
     assert_eq!(after.piece_count, 3);
     assert!(lion_capture.lion_taken_by_non_lion().is_some());
     assert_eq!(
-        pst.evaluate_accumulator(after, lion_capture.side_to_move()),
+        pst.evaluate_accumulator(&after, lion_capture.side_to_move()),
         evaluate(pst, &lion_capture)
     );
     lion_capture.unmake_move(undo);
@@ -495,8 +499,8 @@ fn stored_piece_values_are_validated_independently_of_weights() {
 /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
 #[test]
 fn embedded_pst_matches_python_initial_position_evaluation() {
-    // pst-longer-training-training の候補Lの学習ログ（Python整数参照評価）による値。
-    assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 33);
+    // fm-quarter-current-pst-training の先読みつきの候補Fa（補正1/4）を学習器の`FMWeights`で評価した値。
+    assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 41);
 }
 
 /// debugging-tools.md「eval」: 特徴別の分子和、全計算評価、720での除算と上下限制限が一致する。
@@ -631,7 +635,7 @@ fn accumulator_invariants_report_mismatch() {
     // 手番ではない視点の1だけの差も、丸められた評価値ではなく中間値で検出する。
     let mut incremental = recomputed;
     incremental.sums[Color::White.index()][1] += 1;
-    let panic = std::panic::catch_unwind(|| pst.assert_accumulator(&position, incremental, 7))
+    let panic = std::panic::catch_unwind(|| pst.assert_accumulator(&position, &incremental, 7))
         .expect_err("an inconsistent accumulator must panic");
     let message = panic.downcast_ref::<String>().unwrap();
     assert!(message.contains("PST accumulator mismatch"));
@@ -641,4 +645,336 @@ fn accumulator_invariants_report_mismatch() {
     assert!(message.contains(&format!("recomputed: {recomputed:?}")));
     let setup = minase_core::notation::sfen::SetupPosition::new(position, None, 1).unwrap();
     assert!(message.contains(&minase_core::notation::sfen::to_extended_sfen(&setup)));
+}
+
+mod fm_tests {
+    use super::*;
+    /// v2の本体を保ち、補正0のFM節を加える。
+    fn valid_fm_bytes() -> Vec<u8> {
+        let mut bytes = valid_bytes();
+        bytes[4..8].copy_from_slice(&3_u32.to_le_bytes());
+        bytes.extend_from_slice(&(FM_RANK as u32).to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&[1; FM_RANK]);
+        bytes.resize(bytes.len() + FEATURE_COUNT * FM_RANK * 2, 0);
+        refresh_checksum(&mut bytes);
+        bytes
+    }
+
+    /// 未観測行も非零とし、全特徴の取り違えを検出できるv3重みを作る。
+    pub(super) fn synthetic_fm_pst() -> Pst {
+        let mut bytes = valid_fm_bytes();
+        let offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+        bytes[offset + 4..offset + 8].copy_from_slice(&3_u32.to_le_bytes());
+        for f in 0..FM_RANK {
+            bytes[offset + 8 + f] = if f % 3 == 0 { 255 } else { 1 };
+        }
+        let mut state = 1_u32;
+        for pair in bytes[offset + 8 + FM_RANK..].as_chunks_mut::<2>().0 {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let value = ((state >> 16) % 201) as i16 - 100;
+            pair.copy_from_slice(&value.to_le_bytes());
+        }
+        refresh_checksum(&mut bytes);
+        Pst::decode(&bytes).unwrap()
+    }
+
+    /// 検査和が正しくても、次元・指数・各次元の符号が定義域外なら拒否する。
+    #[test]
+    fn decode_rejects_invalid_fm_parameters() {
+        let offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+        for rank in [0, 1, FM_RANK as u32 + 1, u32::MAX] {
+            let mut bytes = valid_fm_bytes();
+            bytes[offset..offset + 4].copy_from_slice(&rank.to_le_bytes());
+            refresh_checksum(&mut bytes);
+            assert!(
+                matches!(Pst::decode(&bytes), Err(Error::UnexpectedFmRank { actual }) if actual == rank)
+            );
+        }
+        for exponent in [31, u32::MAX] {
+            let mut bytes = valid_fm_bytes();
+            bytes[offset + 4..offset + 8].copy_from_slice(&exponent.to_le_bytes());
+            refresh_checksum(&mut bytes);
+            assert!(
+                matches!(Pst::decode(&bytes), Err(Error::InvalidFmExponent { actual }) if actual == exponent)
+            );
+        }
+        for dimension in 0..FM_RANK {
+            for sign in [0_i8, 2, -2, i8::MIN, i8::MAX] {
+                let mut bytes = valid_fm_bytes();
+                bytes[offset + 8 + dimension] = sign as u8;
+                refresh_checksum(&mut bytes);
+                assert!(
+                    matches!(Pst::decode(&bytes), Err(Error::InvalidFmSign { dimension: found, actual }) if found == dimension && actual == sign)
+                );
+            }
+        }
+    }
+
+    /// 全零FMはPSTの補間値を、駒数・手番・先獅子状態によらず保存する。
+    #[test]
+    fn zero_fm_preserves_pst_interpolation_exactly() {
+        let baseline = distinct_pst();
+        let mut bytes = valid_fm_bytes();
+        let baseline_bytes = baseline.encode();
+        bytes[HEADER_LENGTH..baseline_bytes.len()]
+            .copy_from_slice(&baseline_bytes[HEADER_LENGTH..]);
+        refresh_checksum(&mut bytes);
+        let pst = Pst::decode(&bytes).unwrap();
+        for count in [0, 1, 2, 3, 47, 92, 93, 144] {
+            for side in Color::ALL {
+                let mut position = position_with_count(count, side);
+                for with_lion in [false, true] {
+                    if with_lion {
+                        let square = Square::all()
+                            .find(|&sq| {
+                                position
+                                    .piece_at(sq)
+                                    .is_none_or(|p| p.color() != Some(side))
+                            })
+                            .unwrap();
+                        position.set_lion_capture(Some(square)).unwrap();
+                    }
+                    let accumulator = pst.refresh_accumulator(&position);
+                    let expected = interpolate(accumulator.sums[side.index()], count as u32);
+                    assert_eq!(evaluate_pst(&pst, &position), expected);
+                    assert_evaluation(&pst, &position, expected);
+                }
+            }
+        }
+    }
+
+    /// FMの大きな補正は64ビットで合算した後に、正負とも評価上限へ切り詰める。
+    #[test]
+    fn extreme_fm_clips_after_adding_to_clipped_pst() {
+        let mut position = position_with_count(144, Color::Black);
+        position.set_lion_capture(Some(sq(1, 0))).unwrap();
+        for u in [i16::MIN, i16::MAX] {
+            for sign in [-1_i8, 1] {
+                let mut bytes = valid_fm_bytes();
+                let offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+                bytes[offset + 8..offset + 8 + FM_RANK].fill(sign as u8);
+                for pair in bytes[offset + 8 + FM_RANK..].as_chunks_mut::<2>().0 {
+                    pair.copy_from_slice(&u.to_le_bytes());
+                }
+                refresh_checksum(&mut bytes);
+                let pst = Pst::decode(&bytes).unwrap();
+                assert_evaluation(&pst, &position, i32::from(sign) * 28_999);
+            }
+        }
+        // PST自体を先に切り詰める契約。生PSTは上限を大きく超えるが、FMは−1cp。
+        let mut bytes = valid_fm_bytes();
+        for pair in bytes[HEADER_LENGTH..HEADER_LENGTH + FEATURE_COUNT * 4]
+            .as_chunks_mut::<2>()
+            .0
+        {
+            pair.copy_from_slice(&i16::MAX.to_le_bytes());
+        }
+        let offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4 + 8 + FM_RANK;
+        let mut features = Vec::new();
+        active_features(&position, |i| features.push(i));
+        for (i, u) in [(features[0], 1_i16), (features[1], -1)] {
+            bytes[offset + i * FM_RANK * 2..offset + i * FM_RANK * 2 + 2]
+                .copy_from_slice(&u.to_le_bytes());
+        }
+        refresh_checksum(&mut bytes);
+        assert_evaluation(&Pst::decode(&bytes).unwrap(), &position, 28_998);
+    }
+
+    /// 太子への成りと王・太子の捕獲でも、累算値と取消が全再計算に一致する。
+    #[test]
+    fn royal_promotion_and_captures_update_all_features() {
+        let pst = synthetic_fm_pst();
+        let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+        let enemy_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
+        let elephant = PieceCode::new(Color::Black, PieceKind::DrunkElephant).unwrap();
+        let mut position = position_from_codes(
+            Color::Black,
+            &[
+                (sq(0, 11), king),
+                (sq(11, 0), enemy_king),
+                (sq(5, 7), elephant),
+            ],
+        );
+        assert_move_accumulator(
+            &pst,
+            &mut position,
+            Move {
+                from: sq(5, 7),
+                mid: None,
+                to: sq(5, 8),
+                promote: true,
+            },
+        );
+        for victim in [
+            enemy_king,
+            PieceCode::new_promoted(Color::White, PieceKind::CrownPrince).unwrap(),
+        ] {
+            let rook = PieceCode::new(Color::Black, PieceKind::Rook).unwrap();
+            let mut position = position_from_codes(
+                Color::Black,
+                &[(sq(0, 11), king), (sq(5, 7), rook), (sq(5, 8), victim)],
+            );
+            assert_move_accumulator(
+                &pst,
+                &mut position,
+                Move {
+                    from: sq(5, 7),
+                    mid: None,
+                    to: sq(5, 8),
+                    promote: false,
+                },
+            );
+        }
+    }
+
+    /// 長い合法着手列の各段階と、その逆順の取消で両視点の累算値を保存する。
+    #[test]
+    fn long_move_sequence_and_undo_restore_accumulators() {
+        let generator = minase_core::MoveGenerator::standard();
+        for pst in [synthetic_fm_pst(), Pst::decode(EMBEDDED).unwrap()] {
+            let mut position = Position::initial();
+            let original = pst.refresh_accumulator(&position);
+            let mut accumulator = original;
+            // 探索と同様に子の格納先を再利用し、前回の値が残らないことも確かめる。
+            let mut after = PstAccumulator::default();
+            let mut after_null = PstAccumulator::default();
+            let mut history = Vec::new();
+            let mut state = 1_u32;
+            for _ in 0..256 {
+                let mut moves = Vec::new();
+                generator.generate_moves(&position, &mut moves);
+                moves.retain(|&mv| {
+                    position
+                        .captured_squares(mv)
+                        .into_iter()
+                        .flatten()
+                        .all(|sq| {
+                            !matches!(
+                                position.piece_at(sq).unwrap().kind(),
+                                Some(PieceKind::King | PieceKind::CrownPrince)
+                            )
+                        })
+                });
+                assert!(!moves.is_empty());
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let undo = position.make_move_unchecked(
+                    moves[state as usize % moves.len()],
+                    MoveRules::standard(),
+                );
+                pst.update_accumulator_after_move(&accumulator, &mut after, &position, &undo);
+                history.push((undo, accumulator));
+                accumulator = after;
+                assert_eq!(accumulator, pst.refresh_accumulator(&position));
+                assert_evaluation(
+                    &pst,
+                    &position,
+                    pst.evaluate_accumulator(&accumulator, position.side_to_move()),
+                );
+                let lion_before = position
+                    .lion_taken_by_non_lion()
+                    .map(|trigger| trigger.square);
+                let undo = position.make_null_move();
+                pst.update_accumulator_after_null(&accumulator, &mut after_null, lion_before);
+                assert_eq!(after_null, pst.refresh_accumulator(&position));
+                assert_evaluation(
+                    &pst,
+                    &position,
+                    pst.evaluate_accumulator(&after_null, position.side_to_move()),
+                );
+                position.unmake_null_move(undo);
+                assert_eq!(accumulator, pst.refresh_accumulator(&position));
+            }
+            for (undo, parent) in history.into_iter().rev() {
+                position.unmake_move(undo);
+                accumulator = parent;
+                assert_eq!(accumulator, pst.refresh_accumulator(&position));
+                assert_evaluation(
+                    &pst,
+                    &position,
+                    pst.evaluate_accumulator(&accumulator, position.side_to_move()),
+                );
+            }
+            assert_eq!(position, Position::initial());
+            assert_eq!(accumulator, original);
+        }
+    }
+    #[test]
+    fn diagnostic_perspectives_preserve_lion_feature_and_use_selected_fm_view() {
+        // PSTは先獅子特徴だけが100/200cp、FMはその特徴と王の積6/20cp。
+        // 視点変更で先獅子を消す、符号だけ反転する、FM視点を固定する実装を検出する。
+        let mut bytes = valid_fm_bytes();
+        bytes[HEADER_LENGTH..HEADER_LENGTH + FEATURE_COUNT * 4].fill(0);
+        let black_king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+        let white_king = PieceCode::new(Color::White, PieceKind::King).unwrap();
+        let mut position = position_from_codes(
+            Color::Black,
+            &[(sq(0, 11), black_king), (sq(11, 0), white_king)],
+        );
+        position.set_lion_capture(Some(sq(5, 3))).unwrap();
+        let original_hash = position.zobrist();
+        let fm_start = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+        let embedding_start = fm_start + 8 + FM_RANK;
+        for (perspective, pst_weight, lion_embedding, king_embedding) in [
+            (Color::Black, 800, 2_i16, 3_i16),
+            (Color::White, 1600, 4_i16, 5_i16),
+        ] {
+            let lion = crate::eval::pst::features::lion_feature_index(perspective, sq(5, 3));
+            for endpoint in 0..2 {
+                set_weight(&mut bytes, endpoint, lion, pst_weight);
+            }
+            let king = feature_index(perspective, black_king, sq(0, 11));
+            for (feature, value) in [(lion, lion_embedding), (king, king_embedding)] {
+                let offset = embedding_start + feature * FM_RANK * 2;
+                bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+            }
+        }
+        refresh_checksum(&mut bytes);
+        let pst = Pst::decode(&bytes).unwrap();
+        assert_eq!(
+            evaluate_for_diagnostics(&pst, &position, Color::Black),
+            (106, 100)
+        );
+        assert_eq!(
+            evaluate_for_diagnostics(&pst, &position, Color::White),
+            (220, 200)
+        );
+        assert_eq!(breakdown(&pst, &position).score, 106);
+        assert_eq!(breakdown(&pst, &position).fm, Some(6));
+        assert_eq!(position.side_to_move(), Color::Black);
+        assert_eq!(position.zobrist(), original_hash);
+        assert_eq!(position.lion_taken_by_non_lion().unwrap().square, sq(5, 3));
+    }
+
+    /// v2とv3のヘッダ、PST、駒価値、FM節を再符号化で保存する。
+    #[test]
+    fn mnpt_versions_round_trip_without_changing_bytes() {
+        for bytes in [valid_bytes(), valid_fm_bytes(), synthetic_fm_pst().encode()] {
+            assert_eq!(Pst::decode(&bytes).unwrap().encode(), bytes);
+        }
+    }
+
+    /// v3はFM節を必須とし、切断、余分なバイト、検査和の不一致を拒否する。
+    #[test]
+    fn v3_rejects_invalid_length_and_checksum() {
+        let bytes = valid_fm_bytes();
+        for length in [0, 4, 79, 80, valid_bytes().len(), bytes.len() - 1] {
+            assert!(matches!(
+                Pst::decode(&bytes[..length]),
+                Err(Error::InvalidLength { .. })
+            ));
+        }
+        let mut extra = bytes.clone();
+        extra.push(0);
+        assert!(matches!(
+            Pst::decode(&extra),
+            Err(Error::InvalidLength { .. })
+        ));
+        let mut corrupt = bytes;
+        *corrupt.last_mut().unwrap() ^= 1;
+        assert!(matches!(
+            Pst::decode(&corrupt),
+            Err(Error::ChecksumMismatch)
+        ));
+    }
 }

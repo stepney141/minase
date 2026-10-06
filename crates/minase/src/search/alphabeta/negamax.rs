@@ -28,7 +28,7 @@ impl Searcher<'_> {
             || static_eval
                 > self
                     .pst
-                    .evaluate_accumulator(self.accumulators[(ply - 2) as usize], side)
+                    .evaluate_accumulator(&self.accumulators[(ply - 2) as usize], side)
     }
 
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
@@ -102,9 +102,9 @@ impl Searcher<'_> {
         let mut static_eval = pruning_node.then(|| {
             #[cfg(feature = "invariants")]
             self.pst
-                .assert_accumulator(position, self.accumulators[ply as usize], ply);
+                .assert_accumulator(position, &self.accumulators[ply as usize], ply);
             self.pst
-                .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move())
+                .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
         });
         let mut royal_attacked = None;
         // 王駒への利きは他の条件が成立してから調べ、返す静的評価は置換表に保存しない。
@@ -136,9 +136,9 @@ impl Searcher<'_> {
             let value = *static_eval.get_or_insert_with(|| {
                 #[cfg(feature = "invariants")]
                 self.pst
-                    .assert_accumulator(position, self.accumulators[ply as usize], ply);
+                    .assert_accumulator(position, &self.accumulators[ply as usize], ply);
                 self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], side)
+                    .evaluate_accumulator(&self.accumulators[ply as usize], side)
             });
             let reduction = null_move_reduction(depth, value, beta, self.pst.pawn_value());
             let score =
@@ -297,9 +297,9 @@ impl Searcher<'_> {
             let static_eval = *static_eval.get_or_insert_with(|| {
                 #[cfg(feature = "invariants")]
                 self.pst
-                    .assert_accumulator(position, self.accumulators[ply as usize], ply);
+                    .assert_accumulator(position, &self.accumulators[ply as usize], ply);
                 self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move())
+                    .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
             });
             if (bound == Bound::Exact
                 || (bound == Bound::Upper && best_score < static_eval)
@@ -332,9 +332,12 @@ impl Searcher<'_> {
             .map(|trigger| trigger.square);
         let undo = position.make_null_move();
         self.previous_capture[(ply + 1) as usize] = None;
-        self.accumulators[(ply + 1) as usize] = self
-            .pst
-            .update_accumulator_after_null(self.accumulators[ply as usize], lion_before);
+        let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
+        self.pst.update_accumulator_after_null(
+            &parents[ply as usize],
+            &mut children[0],
+            lion_before,
+        );
         self.material_keys[(ply + 1) as usize] = self.material_keys[ply as usize];
         let previous_null_move_ply = self.null_move_ply.replace(ply + 1);
         let previous_null_move_boundary = self.null_move_boundary.replace(self.path_keys.len());
@@ -389,8 +392,10 @@ impl Searcher<'_> {
             return Some(DRAW_SCORE);
         }
 
-        self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
-            self.accumulators[ply as usize],
+        let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
+        self.pst.update_accumulator_after_move(
+            &parents[ply as usize],
+            &mut children[0],
             position,
             &undo,
         );

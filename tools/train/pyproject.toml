@@ -10,7 +10,9 @@ build-backend = "uv_build"
 
 [project.scripts]
 pst-workflow = "minase_train.workflow:main"
+train-fm = "minase_train.fm.train:main"
 train-pst = "minase_train.pst.train:main"
+fm-diagnostics = "minase_train.diagnostics.fm:main"
 pst-diagnostics = "minase_train.diagnostics.comparison:main"
 taper-report = "minase_train.diagnostics.taper_report:main"
 lookahead-diag = "minase_train.diagnostics.lookahead_teacher:main"

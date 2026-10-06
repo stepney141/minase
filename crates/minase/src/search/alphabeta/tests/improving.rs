@@ -35,7 +35,7 @@ fn improving_compares_static_evaluations_from_the_current_side() {
                 searcher.accumulators[2] = previous;
                 searcher.accumulators[3] = current;
                 searcher.accumulators[4] = current;
-                let static_eval = searcher.pst.evaluate_accumulator(current, side);
+                let static_eval = searcher.pst.evaluate_accumulator(&current, side);
                 assert_eq!(searcher.improving(static_eval, side, ply), expected);
             }
         });

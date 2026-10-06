@@ -42,19 +42,21 @@ impl Searcher<'_> {
         if ply >= MAX_PLY {
             #[cfg(feature = "invariants")]
             self.pst
-                .assert_accumulator(position, self.accumulators[ply as usize], ply);
+                .assert_accumulator(position, &self.accumulators[ply as usize], ply);
             return Some(
-                self.pst
-                    .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move()),
+                self.pst.evaluate_accumulator(
+                    &self.accumulators[ply as usize],
+                    position.side_to_move(),
+                ),
             );
         }
 
         #[cfg(feature = "invariants")]
         self.pst
-            .assert_accumulator(position, self.accumulators[ply as usize], ply);
+            .assert_accumulator(position, &self.accumulators[ply as usize], ply);
         let stand_pat = self
             .pst
-            .evaluate_accumulator(self.accumulators[ply as usize], position.side_to_move());
+            .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move());
         if stand_pat >= beta {
             return Some(stand_pat);
         }
@@ -150,8 +152,10 @@ impl Searcher<'_> {
                     self.rules,
                     candidate.capture.captured,
                 );
-                self.accumulators[(ply + 1) as usize] = self.pst.update_accumulator_after_move(
-                    self.accumulators[ply as usize],
+                let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
+                self.pst.update_accumulator_after_move(
+                    &parents[ply as usize],
+                    &mut children[0],
                     position,
                     &undo,
                 );

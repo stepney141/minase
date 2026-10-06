@@ -2,7 +2,9 @@
 
 pub(crate) mod accumulator;
 mod features;
+mod fm;
 mod format;
+pub use fm::FM_RANK;
 #[cfg(test)]
 mod tests;
 
@@ -33,6 +35,10 @@ const EVALUATION_LIMIT: i32 = 28_999;
 pub struct Pst {
     /// 「段階6」（movegen-speedup-2.md）に従い、特徴ごとに序中盤と終盤を隣接させる。
     weights: [[i16; 2]; FEATURE_COUNT],
+    /// MNPT v3のFM量子化表。v2では補正を持たない。
+    fm: Option<fm::Fm>,
+    /// MNPTヘッダの規則セット欄。
+    rule_set: [u8; 32],
     /// 駒状態ごとのセンチポーン単位の駒価値。
     piece_values: [i32; PIECE_STATE_COUNT],
     /// SEEの逆引き前の判定に使う全駒種の成り益の非負上限（同「段階6」）。
@@ -128,6 +134,8 @@ pub(crate) struct Breakdown {
     pub(crate) board: [i64; 144],
     /// 先獅子特徴の寄与。
     pub(crate) lion: i64,
+    /// PSTと別に加えるFM補正のセンチポーン値。
+    pub(crate) fm: Option<i64>,
 }
 
 /// 全計算と同じ特徴列挙と補間式で、表示用の内訳を得る。
@@ -138,6 +146,10 @@ pub(crate) fn breakdown(pst: &Pst, position: &Position) -> Breakdown {
         q,
         board: [0; 144],
         lion: 0,
+        fm: pst
+            .fm
+            .as_ref()
+            .map(|fm| fm.correction(&fm.refresh(position.side_to_move(), position))),
     };
     let mut sums = [0_i32; 2];
     active_features(position, |feature| {
@@ -157,17 +169,56 @@ pub(crate) fn breakdown(pst: &Pst, position: &Position) -> Breakdown {
             result.lion += contribution;
         }
     });
-    result.score = interpolate(sums, position.occupied().popcount());
+    let baseline = interpolate(sums, position.occupied().popcount());
+    result.score = match result.fm {
+        Some(correction) => add_correction(baseline, correction),
+        None => baseline,
+    };
     result
 }
 
-/// 学習PSTで局面を手番側の視点からセンチポーン評価する。
-pub fn evaluate(pst: &Pst, position: &Position) -> i32 {
+/// FM補正を含まないPSTだけの評価を手番側の視点で返す。
+pub fn evaluate_pst(pst: &Pst, position: &Position) -> i32 {
     let mut sums = [0_i32; 2];
     active_features(position, |feature| {
         pst.add_feature(&mut sums, feature, 1);
     });
     interpolate(sums, position.occupied().popcount())
+}
+
+/// PSTとFMを64ビットで合算し、静的評価の範囲へ切り詰める。
+fn add_correction(baseline: i32, correction: i64) -> i32 {
+    (i64::from(baseline) + correction)
+        .clamp(-i64::from(EVALUATION_LIMIT), i64::from(EVALUATION_LIMIT)) as i32
+}
+
+/// PSTとFMで局面を手番側の視点からセンチポーン評価する。
+pub fn evaluate(pst: &Pst, position: &Position) -> i32 {
+    let baseline = evaluate_pst(pst, position);
+    match &pst.fm {
+        Some(fm) => add_correction(
+            baseline,
+            fm.correction(&fm.refresh(position.side_to_move(), position)),
+        ),
+        None => baseline,
+    }
+}
+
+/// 診断用に同一配置を指定側の視点で評価し、(FM込み, PSTのみ)を返す。
+///
+/// 先獅子状態を含む配置は保持し、評価に使う視点だけを変える。
+/// 合法な手番交代やパスを適用する操作ではない。
+pub fn evaluate_for_diagnostics(pst: &Pst, position: &Position, perspective: Color) -> (i32, i32) {
+    let mut sums = [0; 2];
+    features::active_features_for(perspective, position, |feature| {
+        pst.add_feature(&mut sums, feature, 1)
+    });
+    let baseline = interpolate(sums, position.occupied().popcount());
+    let score = match &pst.fm {
+        Some(fm) => add_correction(baseline, fm.correction(&fm.refresh(perspective, position))),
+        None => baseline,
+    };
+    (score, baseline)
 }
 
 /// 実行バイナリへ埋め込むMNPTバイト列。

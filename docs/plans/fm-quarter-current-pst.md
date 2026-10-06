@@ -14,13 +14,14 @@ FM（Factorization Machine）は、駒の種類と升ごとの点数を足すPST
 
 ## 状態
 
-起案。2026年10月3日に起案し、10月6日に、採用PSTの変更とPSTの学習器の早期終了の変更に合わせて改訂した。
-実行の順序は、2026年10月4日の利用者決定のとおり、[共適応の検証](eval-search-coadaptation.md)の後とした。共適応の検証は10月5日に完了し、評価関数の採否の手順は変わらなかったので、本書は標準の段階ゲートで採否を測る。
-2026年10月6日に、利用者が教師を2通りとも試すこと、上限を200エポックとして早期終了を行うこと、およびPSTでの結果を踏襲しすぎないことを決めた。
-進行中。移植と2つの候補の学習を終え（[学習の記録](../measurements/fm-quarter-current-pst-training.md)）、FnとFaはともにSTCで`H1`となった（[Fn](../measurements/fm-quarter-current-pst-fn-stc.md)、[Fa](../measurements/fm-quarter-current-pst-fa-stc.md)）。
-FnのLTCは、634ペアの時点でLLRが±1未満を行き来して決着しにくくなったので、2026年10月6日に利用者の判断で一時停止し、先にFaのLTCを行っている。FnのLTCは同じ実行ディレクトリを`--resume`で再開できる。
-Faが`H0`ならFnのLTCを再開して最後まで測る。Faが`H1`なら、直接対局へ進むにはFnの結果も要るので、Fnを再開するか規則を見直すかを利用者と相談する。
-
+完了（一部不採用）。2026年10月3日に起案し、10月6日に着手して、10月7日に完了した。
+先読みつきの教師で学んだ候補Faを採用し、先読みを使わない教師で学んだ候補Fnは採用しなかった。
+両候補とも早期終了で十数エポックで止まり、点検に合格した（[学習の記録](../measurements/fm-quarter-current-pst-training.md)）。探索速度の費用はFnが約7%、Faが約14%だった。
+FaはMに対して[STC](../measurements/fm-quarter-current-pst-fa-stc.md)（得点率59.5%）と[LTC](../measurements/fm-quarter-current-pst-fa-ltc.md)（得点率59.3%、Elo換算で約+65）のいずれも`H1`となり、異常は0件だった。
+Fnは[STC](../measurements/fm-quarter-current-pst-fn-stc.md)で`H1`（得点率55.5%）となったが、[LTC](../measurements/fm-quarter-current-pst-fn-ltc.md)は610ペアで約+10 Elo（95%信頼区間 約−9〜+28）のまま判定が出ず、利用者の判断で一時停止した後に打ち切った。
+「採否」の節の規則では、2つの候補がともにLTCで`H1`となった場合に対称なGSPRTの直接対局で選ぶことにしていたが、2026年10月7日に利用者の判断で、FnのLTCの判定と直接対局を待たずにFaを採用した。LTCの点推定はFaが約+65、Fnが約+10で信頼区間がほとんど重ならず、Fnの判定を待っても採用する候補は変わらない見込みが大きいからである。
+FnのSTCの途中の約20分には、別の作業の対局が重なった（記録に明記した）。
+PSTでは先読みつきのλ=1.0の教師で学び直すと大きく負けたが、FMの補正ではこの教師の方が強かった。
 ## 目的
 
 ブランチ`fm-eval`で測った補正1/4のFMは、当時の採用PSTに対してSTCで得点率54.63%、LTCで53.40%となり、両方で`H1`だった（同ブランチの`docs/measurements/fm-quarter-vs-pst-stc.md`と`fm-quarter-vs-pst-ltc.md`）。
