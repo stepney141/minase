@@ -1,7 +1,6 @@
 //! 時間管理を検査する。
 
 use super::*;
-use crate::search::alphabeta::time::difficulty_signal;
 
 // ---------------------------------------------------------------------------
 // D7-TIME　時間予算
@@ -82,95 +81,6 @@ fn stable_signal_requires_four_identical_recent_best_moves() {
     assert!(!stable_signal(&[a, a, a, b]));
     assert!(!stable_signal(&[a, b, a, a, a]));
     assert!(!stable_signal(&[]));
-}
-
-// byoyomi-time-usage.md「設計判断」の「難しさの信号」。深さ6未満は発動しない。
-#[test]
-fn difficulty_signal_is_false_before_depth_six() {
-    let moves = legal_moves(&Position::initial());
-    let [a, b] = [moves[0], moves[1]];
-    let bests = [a, b, a, b, a];
-    let scores = [500, 300, 100, -100, -300];
-    for depth in 0..6 {
-        assert!(!difficulty_signal(&bests[..depth], &scores[..depth], 100));
-    }
-}
-
-// 同「難しさの信号」。直近2反復のいずれかの交替を検出し、古い交替を除く。
-#[test]
-fn difficulty_signal_detects_either_recent_best_move_change() {
-    let moves = legal_moves(&Position::initial());
-    let [a, b] = [moves[0], moves[1]];
-    for depth in [6, 7, 8] {
-        let scores = vec![0; depth];
-        let mut bests = vec![a; depth];
-        assert!(!difficulty_signal(&bests, &scores, 100));
-        bests[depth - 1] = b;
-        assert!(difficulty_signal(&bests, &scores, 100));
-        bests[depth - 2] = b;
-        assert!(difficulty_signal(&bests, &scores, 100));
-        bests[depth - 1] = a;
-        assert!(difficulty_signal(&bests, &scores, 100));
-        bests[depth - 2] = a;
-        bests[depth - 4] = b;
-        assert!(!difficulty_signal(&bests, &scores, 100));
-    }
-}
-
-// 同「難しさの信号」。同じ偶奇の深さの値を比較し、歩兵1枚以上の低下を検出する。
-#[test]
-fn difficulty_signal_compares_scores_two_depths_apart_at_pawn_threshold() {
-    let a = legal_moves(&Position::initial())[0];
-    for depth in [6, 7, 8] {
-        let bests = vec![a; depth];
-        for (pawn_value, current, expected) in [
-            (100, 201, false),
-            (100, 200, true),
-            (100, 199, true),
-            (100, 300, false),
-            (100, 500, false),
-            (150, 151, false),
-            (150, 150, true),
-        ] {
-            for previous in [-1_000, 1_000, MATE_THRESHOLD, -MATE_THRESHOLD] {
-                let mut scores = vec![0; depth];
-                scores[depth - 3] = 300;
-                scores[depth - 2] = previous;
-                scores[depth - 1] = current;
-                assert_eq!(difficulty_signal(&bests, &scores, pawn_value), expected);
-            }
-        }
-    }
-}
-
-// フェーズ3aの指示による詰み帯の除外。境界を含め、交替による信号は保つ。
-#[test]
-fn difficulty_signal_excludes_mate_scores_but_keeps_move_changes() {
-    let moves = legal_moves(&Position::initial());
-    let [a, b] = [moves[0], moves[1]];
-    for mate in [MATE_THRESHOLD, MATE_THRESHOLD + 1, MATE] {
-        for (earlier, current) in [
-            (mate, 0),
-            (-mate, -mate - 100),
-            (0, -mate),
-            (mate + 100, mate),
-        ] {
-            let scores = [0, 0, 0, earlier, 0, current];
-            assert!(!difficulty_signal(&[a; 6], &scores, 100));
-            assert!(difficulty_signal(&[a, a, a, a, a, b], &scores, 100));
-            assert!(difficulty_signal(&[a, a, a, a, b, b], &scores, 100));
-        }
-    }
-    for (earlier, current) in [
-        (MATE_THRESHOLD - 1, MATE_THRESHOLD - 101),
-        (-MATE_THRESHOLD + 101, -MATE_THRESHOLD + 1),
-    ] {
-        assert!(difficulty_signal(
-            &[a; 6],
-            &[0, 0, 0, earlier, 0, current],
-            100
-        ));
-    }
 }
 
 // D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは

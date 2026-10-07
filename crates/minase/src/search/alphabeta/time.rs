@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use crate::search::MATE_THRESHOLD;
 use crate::search::limits::{ClockLimits, SearchLimits};
 use minase_core::mv::Move;
 
@@ -36,28 +35,6 @@ pub(super) fn stable_signal(bests: &[Move]) -> bool {
         && bests[bests.len() - STABLE_ITERATIONS..]
             .windows(2)
             .all(|pair| pair[0] == pair[1])
-}
-
-/// 完了反復の最善手と評価値から、局面の難しさの信号を返す。
-///
-/// `docs/plans/byoyomi-time-usage.md`の「設計判断」の「難しさの信号」に従う。
-/// 両列は主ワーカーが深さ1から連続して完了した反復を同じ順で保持する。
-/// 深さ6以上で、直近2反復のどちらかで最善手が変わった場合、または
-/// 2つ前から評価値が`Pst::pawn_value()`で得た`pawn_value`以上低下した場合に真を返す。
-/// 比較する評価値のどちらかが詰み帯なら、最善手の交替だけで判定する。
-pub(super) fn difficulty_signal(bests: &[Move], scores: &[i32], pawn_value: i32) -> bool {
-    assert_eq!(bests.len(), scores.len());
-    let depth = bests.len();
-    if depth < 6 {
-        return false;
-    }
-    let best_changed = bests[depth - 1] != bests[depth - 2] || bests[depth - 2] != bests[depth - 3];
-    let current = scores[depth - 1];
-    let earlier = scores[depth - 3];
-    let score_dropped = current.unsigned_abs() < MATE_THRESHOLD as u32
-        && earlier.unsigned_abs() < MATE_THRESHOLD as u32
-        && earlier - current >= pawn_value;
-    best_changed || score_dropped
 }
 
 /// 時間予算内で次の反復を開始できるかを返す。

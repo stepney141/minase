@@ -15,7 +15,7 @@ use super::history::HistoryTable;
 use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
-use super::time::{TimeBudget, difficulty_signal, should_start_next_iteration, stable_signal};
+use super::time::{TimeBudget, should_start_next_iteration, stable_signal};
 
 /// 補助ワーカーが探索する深さを昇順に返す。
 pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item = u32> {
@@ -56,7 +56,6 @@ pub(super) fn run_main_worker(
     };
     let mut completed_pv = vec![root_moves[0]];
     let mut completed_bests = Vec::new();
-    let mut completed_scores = Vec::new();
 
     for depth in 1..=depth_limit {
         let prev = (result.depth > 0).then_some(result.score);
@@ -94,10 +93,6 @@ pub(super) fn run_main_worker(
             break;
         };
         completed_bests.push(best_move);
-        completed_scores.push(score);
-        // byoyomi-time-usage.md「フェーズ3　段階Bの実装」の土台として計算し、
-        // 予算と開始判定への適用は候補ごとの実装で行う。
-        let _difficult = difficulty_signal(&completed_bests, &completed_scores, pst.pawn_value());
         let stable = stable_signal(&completed_bests);
         result.best_move = best_move;
         result.score = score;
