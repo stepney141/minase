@@ -122,6 +122,7 @@ pub fn start_search(
         );
         let result = outcome.result;
         let _ = sender.send(SearchEvent::Finished {
+            partial_score: outcome.partial_score,
             search_id,
             best_move: result.best_move,
             score: result.score,

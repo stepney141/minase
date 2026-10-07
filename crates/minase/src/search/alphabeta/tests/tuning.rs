@@ -12,35 +12,42 @@ use crate::search::alphabeta::{
     root::grow_aspiration_delta,
 };
 
+/// `byoyomi-time-usage.md`「設計判断」の予算式を独立に計算する。
+pub(super) fn reference_clock_budget(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
+    let remaining = u128::from(clock.remaining_ms);
+    let increment = u128::from(clock.increment_ms);
+    let byoyomi = u128::from(clock.byoyomi_ms);
+    let moves = u128::from(
+        (params::min_moves() as u32)
+            .max((params::expected_plies() as u32).saturating_sub(clock.ply) / 2),
+    );
+    let opening = if remaining > 0 {
+        u128::from(clock.ply.saturating_add(4).min(40))
+    } else {
+        40
+    };
+    let soft = remaining / moves
+        + increment * params::increment_share() as u128 / 100
+        + byoyomi * 8 * opening / 400;
+    let hard = (soft * params::hard_soft_ratio() as u128 / 100)
+        .min(remaining * params::hard_remaining_share() as u128 / 100 + byoyomi * 8 / 10)
+        .min(
+            (remaining + byoyomi)
+                .saturating_sub(u128::from(margin_ms))
+                .max(1),
+        )
+        .max(1);
+    TimeBudget {
+        byoyomi_period: false,
+        soft: Duration::from_millis(soft.min(hard).min(u128::from(u64::MAX)) as u64),
+        hard: Duration::from_millis(hard.min(u128::from(u64::MAX)) as u64),
+    }
+}
+
 /// D7-TIME-01。docs/plans/search.md「時間管理」、time-management-efficiency.md
 /// 「予算値」、spsa.md「整数表現」の時間予算式と丸めを係数から照合する。
 #[test]
 fn tuning_default_clock_budget_matches_reference_grid() {
-    fn reference(clock: ClockLimits) -> TimeBudget {
-        let remaining = u128::from(clock.remaining_ms);
-        let increment = u128::from(clock.increment_ms);
-        let byoyomi = u128::from(clock.byoyomi_ms);
-        let moves = u128::from(
-            (params::min_moves() as u32)
-                .max((params::expected_plies() as u32).saturating_sub(clock.ply) / 2),
-        );
-        let opening = if remaining > 0 {
-            u128::from(clock.ply.saturating_add(4).min(40))
-        } else {
-            40
-        };
-        let soft = remaining / moves
-            + increment * params::increment_share() as u128 / 100
-            + byoyomi * 8 * opening / 400;
-        let hard = (soft * params::hard_soft_ratio() as u128 / 100)
-            .min(remaining * params::hard_remaining_share() as u128 / 100 + byoyomi * 8 / 10)
-            .min((remaining + byoyomi).saturating_sub(30).max(1))
-            .max(1);
-        TimeBudget {
-            soft: Duration::from_millis(soft.min(hard).min(u128::from(u64::MAX)) as u64),
-            hard: Duration::from_millis(hard.min(u128::from(u64::MAX)) as u64),
-        }
-    }
     let expected_plies = params::expected_plies() as u32;
     let min_moves = params::min_moves() as u32;
     let initial_moves = u64::from(min_moves.max(expected_plies / 2));
@@ -82,7 +89,11 @@ fn tuning_default_clock_budget_matches_reference_grid() {
                         continue;
                     }
                     let clock = clock_at_ply(remaining, increment, byoyomi, ply);
-                    assert_eq!(clock_budget(clock), reference(clock), "{clock:?}");
+                    assert_eq!(
+                        clock_budget(clock),
+                        reference_clock_budget(clock, 30),
+                        "{clock:?}"
+                    );
                 }
             }
         }
@@ -320,6 +331,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             Duration::from_millis(50),
             Duration::ZERO,
             TimeBudget {
+                byoyomi_period: false,
                 soft: Duration::from_millis(100),
                 hard: Duration::from_millis(200),
             },

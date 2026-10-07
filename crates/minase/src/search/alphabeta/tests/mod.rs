@@ -18,6 +18,7 @@ mod late_move;
 mod limits;
 mod negamax;
 mod ordering;
+mod partial;
 mod ponder;
 mod pruning;
 mod qsearch_move_limit;

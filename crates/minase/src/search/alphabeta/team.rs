@@ -19,10 +19,12 @@ use minase_core::rules::MoveRules;
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::{HistoryTable, HistoryTables};
 use super::params;
-use super::time::time_budget;
+use super::time::{byoyomi_clock, time_budget};
 
 /// 探索の内部実行が返す結果一式。
 pub(in crate::search) struct SearchOutcome {
+    /// 採用した途中結果の下界。完了反復の評価値とは分けて通知する。
+    pub(in crate::search) partial_score: Option<i32>,
     /// 合算前の値を検査するためにテスト時だけ保持する各ワーカーの統計。
     #[cfg(all(test, feature = "search-stats"))]
     pub(super) worker_stats: Vec<crate::search::SearchStats>,
@@ -30,7 +32,7 @@ pub(in crate::search) struct SearchOutcome {
     pub(in crate::search) result: SearchResult,
     /// 探索開始からの経過時間。
     pub(in crate::search) elapsed: Duration,
-    /// 最後まで完了した深さの主変化。
+    /// 採用した着手の主変化。途中結果があればその手のもの。
     pub(in crate::search) pv: Vec<Move>,
     /// 探索を停止した条件。
     pub(in crate::search) stop_reason: StopReason,
@@ -39,11 +41,13 @@ pub(in crate::search) struct SearchOutcome {
 /// 1ワーカーが最後まで完了した反復と実着手の適用回数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(super) struct WorkerOutcome {
+    /// 対象の探索の主ワーカーが採用した途中結果の下界。
+    pub(super) partial_score: Option<i32>,
     /// 探索チーム内のワーカー番号。主ワーカーは0。
     pub(super) worker_index: usize,
     /// 最後まで完了した反復の結果。
     pub(super) result: SearchResult,
-    /// 最後まで完了した反復の主変化。
+    /// 採用した着手の主変化。途中結果があればその手のもの。
     pub(super) pv: Vec<Move>,
     /// このワーカーが実際の着手を盤面へ適用した回数。
     pub(super) nodes: u64,
@@ -214,6 +218,7 @@ pub(in crate::search) fn run_search_team(
                     history,
                     events,
                     ponder,
+                    byoyomi_clock(limits).is_some(),
                 )
             } else {
                 run_auxiliary_worker(
@@ -249,6 +254,7 @@ pub(in crate::search) fn run_search_team(
         }
     }
     SearchOutcome {
+        partial_score: adopted.partial_score,
         #[cfg(all(test, feature = "search-stats"))]
         worker_stats: worker_outcomes
             .iter()
@@ -319,7 +325,8 @@ fn run_worker_guarded<T>(
     outcome
 }
 
-/// 完了深さが最大のワーカーを選び、同じ深さなら番号が最小のものを選ぶ。
+/// 「途中結果の採用」（byoyomi-time-usage.md）に従い、完了深さ、途中結果の有無、
+/// 番号の小ささの順に選ぶ。対象外の探索と補助ワーカーには途中結果がない。
 ///
 /// 深さ0は採用候補から除き、全ワーカーが深さ0なら主ワーカーの既定結果を
 /// 返す。
@@ -331,6 +338,12 @@ pub(super) fn select_worker_outcome(worker_outcomes: &[WorkerOutcome]) -> &Worke
     worker_outcomes
         .iter()
         .filter(|outcome| outcome.result.depth > 0)
-        .max_by_key(|outcome| (outcome.result.depth, Reverse(outcome.worker_index)))
+        .max_by_key(|outcome| {
+            (
+                outcome.result.depth,
+                outcome.partial_score.is_some(),
+                Reverse(outcome.worker_index),
+            )
+        })
         .unwrap_or(main_outcome)
 }

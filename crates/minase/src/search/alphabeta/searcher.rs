@@ -20,6 +20,7 @@ use super::history::HistoryTable;
 use super::ordering::MovePicker;
 use super::params;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
+use super::root::RootResults;
 use super::team::SharedSearch;
 use super::time::{TimeBudget, iteration_prediction_fits};
 
@@ -44,6 +45,9 @@ pub(super) fn new_searcher<'a>(
 ) -> Searcher<'a> {
     let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
+        root_results: None,
+        #[cfg(test)]
+        interrupt_at: None,
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         pst,
@@ -87,6 +91,11 @@ pub(super) struct PonderIteration {
 
 /// 1回の探索実行の可変状態。
 pub(super) struct Searcher<'a> {
+    /// 対象の探索の主ワーカーだけが保持する途中結果の採用材料。
+    pub(super) root_results: Option<RootResults>,
+    /// 「途中結果の採用」の停止契約を実着手の境界で再現する検査用の停止点。
+    #[cfg(test)]
+    pub(super) interrupt_at: Option<(u64, StopReason)>,
     /// このワーカーだけが更新する探索統計。
     #[cfg(feature = "search-stats")]
     pub(super) stats: crate::search::SearchStats,
@@ -153,6 +162,14 @@ impl Searcher<'_> {
 
     /// 実着手の適用直前に停止条件を検査し、続行可能なら適用回数を数える。
     pub(super) fn enter_node(&mut self) -> bool {
+        #[cfg(test)]
+        if let Some((nodes, reason)) = self.interrupt_at
+            && self.nodes >= nodes
+        {
+            self.shared.stop(reason);
+            self.stop_reason = Some(reason);
+            return false;
+        }
         if self.shared.observe_external_stop() {
             self.stop_reason = Some(StopReason::ExternalStop);
             return false;
@@ -179,6 +196,8 @@ impl Searcher<'_> {
     }
 
     /// hを先に読み、hardを当て直しより先に検査する。
+    /// 対象の探索の秒読み期では当て直しを行わない
+    /// （`docs/plans/byoyomi-time-usage.md`の「秒読み期の締切」）。
     pub(super) fn check_time(&mut self) -> bool {
         let Some(limit) = self.shared.hard_limit else {
             return true;
@@ -192,7 +211,7 @@ impl Searcher<'_> {
         let reason = if elapsed.saturating_sub(hit) >= limit.duration {
             Some(StopReason::HardLimit)
         } else if let Some(iteration) = &mut self.ponder_iteration {
-            if iteration.checked {
+            if iteration.budget.byoyomi_period || iteration.checked {
                 return true;
             }
             iteration.checked = true;

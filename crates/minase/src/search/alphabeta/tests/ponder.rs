@@ -10,6 +10,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     let ns = Duration::from_nanos;
     let ratio = crate::search::alphabeta::params::iteration_ratio() as u64;
     let budget = TimeBudget {
+        byoyomi_period: false,
         soft: ms(100),
         hard: ms(2 * ratio),
     };
@@ -28,6 +29,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     }
     // 的中後の経過時間に対してもsoftの未満境界を適用する。
     let shifted = TimeBudget {
+        byoyomi_period: false,
         soft: ms(100),
         hard: ms(3 * ratio),
     };
@@ -45,6 +47,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     ));
     // 割り切れる予算で、安定時の予測境界が等号を含むことを検査する。
     let exact_soft = TimeBudget {
+        byoyomi_period: false,
         soft: ms(ratio),
         hard: ms(2 * ratio),
     };
@@ -62,6 +65,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     ));
     // 固定時間では、安定性によらずhardの予測境界が拘束する。
     let fixed = TimeBudget {
+        byoyomi_period: false,
         soft: ms(100),
         hard: ms(100),
     };
@@ -81,6 +85,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     }
     // 的中が100msなら、T=200msの予測境界はhard=2×比−100msとなる。
     let wide_soft = TimeBudget {
+        byoyomi_period: false,
         soft: ms(2 * ratio - 100),
         hard: ms(2 * ratio - 100),
     };
@@ -99,6 +104,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     // 的中前に始めた反復にも、開始時刻からの予測と的中後の予算を使う。
     let hit = ms(10 * ratio);
     let budget = TimeBudget {
+        byoyomi_period: false,
         soft: ms(ratio),
         hard: ms(2 * ratio),
     };
@@ -261,6 +267,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             stable,
             checked: false,
             budget: TimeBudget {
+                byoyomi_period: false,
                 soft: ms(100),
                 hard: ms(400),
             },
@@ -294,6 +301,7 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
             stable: true,
             checked: false,
             budget: TimeBudget {
+                byoyomi_period: false,
                 soft: Duration::from_secs(1),
                 hard: Duration::from_secs(4),
             },
@@ -368,93 +376,102 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
 // チーム回収と採用処理が、当て直しで中断した反復を選ばないことを固定する。
 #[test]
 fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
-    let position = Position::initial();
-    let roots = legal_moves(&position);
-    let pst = weights().unwrap();
-    let table = small_tt();
-    let stop = AtomicBool::new(false);
-    let hit_ns = AtomicU64::new(u64::MAX);
-    let shared = SharedSearch {
-        external_stop: &stop,
-        team_stop: AtomicBool::new(false),
-        stop_reason: AtomicU8::new(0),
-        total_nodes: AtomicU64::new(0),
-        node_limit: None,
-        started: Instant::now() - Duration::from_secs(1),
-        hard_limit: Some(HardLimit {
-            duration: Duration::from_millis(400),
-            hit_ns: &hit_ns,
-        }),
-    };
-    let completed = std::sync::Barrier::new(2);
-    let outcomes = run_worker_team(
-        &mut crate::search::HistoryTables::new(worker_count(2)).workers,
-        &shared,
-        |worker_index, history| {
-            if worker_index == 1 {
-                let outcome = run_auxiliary_worker(
+    for targeted_with_remaining_time in [false, true] {
+        let position = Position::initial();
+        let roots = legal_moves(&position);
+        let pst = weights().unwrap();
+        let table = small_tt();
+        let stop = AtomicBool::new(false);
+        let hit_ns = AtomicU64::new(u64::MAX);
+        let shared = SharedSearch {
+            external_stop: &stop,
+            team_stop: AtomicBool::new(false),
+            stop_reason: AtomicU8::new(0),
+            total_nodes: AtomicU64::new(0),
+            node_limit: None,
+            started: Instant::now() - Duration::from_secs(1),
+            hard_limit: Some(HardLimit {
+                duration: Duration::from_millis(400),
+                hit_ns: &hit_ns,
+            }),
+        };
+        let completed = std::sync::Barrier::new(2);
+        let outcomes = run_worker_team(
+            &mut crate::search::HistoryTables::new(worker_count(2)).workers,
+            &shared,
+            |worker_index, history| {
+                if worker_index == 1 {
+                    let outcome = run_auxiliary_worker(
+                        &pst,
+                        &position,
+                        engine_rules(),
+                        &roots,
+                        &[],
+                        2,
+                        1,
+                        &shared,
+                        &table,
+                        history,
+                    );
+                    completed.wait();
+                    return outcome;
+                }
+                let mut butterfly_history =
+                    Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+                let mut searcher = new_searcher(
                     &pst,
                     &position,
                     engine_rules(),
-                    &roots,
                     &[],
-                    2,
-                    1,
                     &shared,
                     &table,
-                    history,
+                    &mut butterfly_history,
                 );
+                if targeted_with_remaining_time {
+                    // 持ち時間期では対象の探索にも当て直しを適用する。
+                    searcher.root_results =
+                        Some(crate::search::alphabeta::root::RootResults::default());
+                }
+                searcher.ponder_iteration = Some(PonderIteration {
+                    started: Duration::from_millis(600),
+                    stable: false,
+                    checked: false,
+                    budget: TimeBudget {
+                        byoyomi_period: false,
+                        soft: Duration::from_millis(100),
+                        hard: Duration::from_millis(400),
+                    },
+                });
                 completed.wait();
-                return outcome;
-            }
-            let mut butterfly_history =
-                Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
-            let mut searcher = new_searcher(
-                &pst,
-                &position,
-                engine_rules(),
-                &[],
-                &shared,
-                &table,
-                &mut butterfly_history,
-            );
-            searcher.ponder_iteration = Some(PonderIteration {
-                started: Duration::from_millis(600),
-                stable: false,
-                checked: false,
-                budget: TimeBudget {
-                    soft: Duration::from_millis(100),
-                    hard: Duration::from_millis(400),
-                },
-            });
-            completed.wait();
-            hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
-            assert!(
-                searcher
-                    .search_iteration(&position, &roots, 1, None)
-                    .is_none()
-            );
-            assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
-            WorkerOutcome {
-                worker_index: 0,
-                result: SearchResult {
-                    #[cfg(feature = "search-stats")]
-                    stats: crate::search::SearchStats::default(),
-                    best_move: roots[0],
-                    score: 0,
-                    depth: 0,
-                    nodes: 0,
-                },
-                pv: vec![roots[0]],
-                nodes: searcher.nodes,
-            }
-        },
-    );
-    let adopted = select_worker_outcome(&outcomes);
-    assert_eq!(adopted.worker_index, 1);
-    assert_eq!(adopted.result.depth, 2);
-    assert!(roots.contains(&adopted.result.best_move));
-    assert_eq!(shared.reason(), StopReason::SoftLimit);
+                hit_ns.store(1_000_000_000, AtomicOrdering::Relaxed);
+                assert!(
+                    searcher
+                        .search_iteration(&position, &roots, 1, None)
+                        .is_none()
+                );
+                assert_eq!(searcher.stop_reason, Some(StopReason::SoftLimit));
+                WorkerOutcome {
+                    partial_score: None,
+                    worker_index: 0,
+                    result: SearchResult {
+                        #[cfg(feature = "search-stats")]
+                        stats: crate::search::SearchStats::default(),
+                        best_move: roots[0],
+                        score: 0,
+                        depth: 0,
+                        nodes: 0,
+                    },
+                    pv: vec![roots[0]],
+                    nodes: searcher.nodes,
+                }
+            },
+        );
+        let adopted = select_worker_outcome(&outcomes);
+        assert_eq!(adopted.worker_index, 1);
+        assert_eq!(adopted.result.depth, 2);
+        assert!(roots.contains(&adopted.result.best_move));
+        assert_eq!(shared.reason(), StopReason::SoftLimit);
+    }
 }
 
 // ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08、D7-API-06、D7-LIM-04）。
@@ -485,4 +502,128 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
     assert_eq!(outcome.result.depth, 0);
     assert_eq!(outcome.result.nodes, 0);
     assert_eq!(outcome.result.best_move, snapshot.root_moves[0]);
+}
+
+// byoyomi-time-usage.md「秒読み期の締切」。実際の制限から得た予算で当て直しとhardを検査する。
+#[test]
+fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
+    let ms = Duration::from_millis;
+    let position = Position::initial();
+    let pst = weights().unwrap();
+    let table = small_tt();
+    let stop = AtomicBool::new(false);
+    for (remaining, byoyomi, depth, nodes, movetime, recheck) in [
+        (0, 10_030, None, None, None, false),
+        (1, 10_030, None, None, None, true),
+        (60_000, 0, None, None, None, true),
+        (0, 10_030, Some(2), None, None, true),
+        (0, 10_030, None, Some(100), None, true),
+        (0, 10_030, None, None, Some(5000), true),
+    ] {
+        let limits =
+            SearchLimits::new(depth, nodes, movetime, Some(clock(remaining, 0, byoyomi))).unwrap();
+        let budget = time_budget(&limits).unwrap();
+        for stable in [false, true] {
+            for expired in [false, true] {
+                let hit_ns = AtomicU64::new(100_000_000_000);
+                let shared = SharedSearch {
+                    external_stop: &stop,
+                    team_stop: AtomicBool::new(false),
+                    stop_reason: AtomicU8::new(0),
+                    total_nodes: AtomicU64::new(0),
+                    node_limit: None,
+                    started: Instant::now()
+                        - ms(100_000)
+                        - if expired { budget.hard } else { ms(1) },
+                    hard_limit: Some(HardLimit {
+                        duration: budget.hard,
+                        hit_ns: &hit_ns,
+                    }),
+                };
+                let mut history =
+                    Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+                let mut searcher = new_searcher(
+                    &pst,
+                    &position,
+                    engine_rules(),
+                    &[],
+                    &shared,
+                    &table,
+                    &mut history,
+                );
+                searcher.ponder_iteration = Some(PonderIteration {
+                    started: ms(90_000),
+                    stable,
+                    checked: false,
+                    budget,
+                });
+                let expected = if expired {
+                    Some(StopReason::HardLimit)
+                } else if recheck {
+                    Some(StopReason::SoftLimit)
+                } else {
+                    None
+                };
+                assert_eq!(searcher.check_time(), expected.is_none(), "{limits:?}");
+                assert_eq!(searcher.stop_reason, expected, "{limits:?}");
+            }
+        }
+    }
+}
+
+// byoyomi-time-usage.md「フェーズ1　段階Aの実装」。4ワーカーと先読み的中を
+// 組み合わせ、着手・予想手の合法性と、的中からの締切を検査する。
+#[test]
+fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
+    for ponder in [false, true] {
+        let initial = Position::initial();
+        let limits = SearchLimits::new(
+            None,
+            None,
+            None,
+            Some(ClockLimits::new(0, 0, 300, 0).unwrap()),
+        )
+        .unwrap();
+        let started = Instant::now();
+        let handle = crate::search::start_search(
+            weights().unwrap(),
+            snapshot_for(&initial),
+            limits,
+            910,
+            worker_count(4),
+            small_tt(),
+            crate::search::HistoryTables::new(worker_count(4)),
+            ponder,
+        );
+        let origin = if ponder {
+            assert!(matches!(
+                handle
+                    .events()
+                    .recv_timeout(Duration::from_secs(5))
+                    .unwrap(),
+                SearchEvent::Progress { .. }
+            ));
+            let hit = Instant::now();
+            handle.ponderhit();
+            hit
+        } else {
+            started
+        };
+        let (_, result) = event_reports(drain_raw(&handle));
+        handle.join().unwrap();
+        // 270 msの締切に、4096ノードごとの検査と負荷下の実行遅延700 msを許容する。
+        assert!(
+            origin.elapsed() <= Duration::from_millis(970),
+            "{:?}",
+            origin.elapsed()
+        );
+        assert!(matches!(
+            result.stop_reason,
+            StopReason::HardLimit | StopReason::SoftLimit
+        ));
+        // 完了深さは負荷に依存するので、主変化の長さは契約にしない。
+        // 予想手は主変化が2手以上あるときだけ現れ、そのときも合法性を検査する。
+        assert_eq!(result.pv[0], result.best_move);
+        assert_pv_is_legal(&initial, &result.pv);
+    }
 }

@@ -14,6 +14,8 @@ pub(super) struct TimeBudget {
     pub(super) soft: Duration,
     /// 探索途中でも打ち切る上限時間。
     pub(super) hard: Duration,
+    /// 対象の探索の秒読み期では、予測を使わず締切まで反復を始める。
+    pub(super) byoyomi_period: bool,
 }
 
 /// 最善手の安定を判定する直近の完了反復数。
@@ -41,12 +43,17 @@ pub(super) fn stable_signal(bests: &[Move]) -> bool {
 /// `stable`が真なら経過時間に固定比を掛けた予測完了時刻がsoft以下であることを、
 /// 偽なら経過時間がsoft未満であることを要求し、hardの予測による上限は常に守る。
 /// 比の既定値は`params`の表に定める。
+/// `docs/plans/byoyomi-time-usage.md`の「秒読み期の締切」に従い、
+/// 対象の探索の秒読み期では的中後の経過時間だけを締切と比べる。
 pub(super) fn should_start_next_iteration(
     elapsed: Duration,
     hit: Duration,
     budget: TimeBudget,
     stable: bool,
 ) -> bool {
+    if budget.byoyomi_period {
+        return elapsed.saturating_sub(hit) < budget.hard;
+    }
     iteration_prediction_fits(elapsed, hit, budget, stable)
         && (stable || elapsed.saturating_sub(hit) < budget.soft)
 }
@@ -83,6 +90,13 @@ pub(super) fn moves_to_go(ply: u32) -> u128 {
 /// 秒読みのない時計では序盤の係数が掛かる項は0になる。
 /// 係数を変更する場合は自己対局で採否を判定する。
 pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
+    clock_budget_with_margin(clock, 30)
+}
+
+/// 「締切の余裕を絶対値のUSIオプションにする理由」に従い安全上限の余裕を適用する。
+///
+/// 式は`docs/plans/byoyomi-time-usage.md`の「設計判断」に従う。
+fn clock_budget_with_margin(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);
     let byoyomi = u128::from(clock.byoyomi_ms);
@@ -95,7 +109,10 @@ pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
     let soft_raw = remaining / moves_to_go(clock.ply)
         + increment * params::increment_share() as u128 / 100
         + byoyomi * 8 * opening / 400;
-    let safe_hard = remaining.saturating_add(byoyomi).saturating_sub(30).max(1);
+    let safe_hard = remaining
+        .saturating_add(byoyomi)
+        .saturating_sub(u128::from(margin_ms))
+        .max(1);
     let hard = (soft_raw * params::hard_soft_ratio() as u128 / 100)
         .min(remaining * params::hard_remaining_share() as u128 / 100 + byoyomi_share)
         .min(safe_hard)
@@ -103,20 +120,53 @@ pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
     TimeBudget {
         soft: Duration::from_millis(to_u64_ms(soft_raw.min(hard))),
         hard: Duration::from_millis(to_u64_ms(hard)),
+        byoyomi_period: false,
     }
+}
+
+/// 秒読みの変更対象となる時計を返す。
+///
+/// `docs/plans/byoyomi-time-usage.md`の「設計判断」の対象の探索の定義に従い、
+/// 秒読みが正で、固定時間・深さ・ノード数の制限を併用しない時計だけを選ぶ。
+pub(super) fn byoyomi_clock(limits: &SearchLimits) -> Option<ClockLimits> {
+    let limits = limits.finite()?;
+    limits.clock.filter(|clock| {
+        clock.byoyomi_ms > 0
+            && limits.movetime_ms.is_none()
+            && limits.depth.is_none()
+            && limits.nodes.is_none()
+    })
 }
 
 /// 探索制限から時間予算を求める。`movetime`と時計の併用時は小さい方を採る。
 pub(super) fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
+    if let Some(clock) = byoyomi_clock(limits) {
+        if clock.remaining_ms == 0 {
+            let deadline = Duration::from_millis(
+                clock
+                    .byoyomi_ms
+                    .saturating_sub(clock.byoyomi_margin_ms)
+                    .max(1),
+            );
+            return Some(TimeBudget {
+                soft: deadline,
+                hard: deadline,
+                byoyomi_period: true,
+            });
+        }
+        return Some(clock_budget_with_margin(clock, clock.byoyomi_margin_ms));
+    }
     let limits = limits.finite()?;
     let movetime = limits.movetime_ms.map(|milliseconds| TimeBudget {
         soft: Duration::from_millis(milliseconds.get()),
         hard: Duration::from_millis(milliseconds.get()),
+        byoyomi_period: false,
     });
     match (movetime, limits.clock.map(clock_budget)) {
         (Some(fixed), Some(clock)) => Some(TimeBudget {
             soft: fixed.soft.min(clock.soft),
             hard: fixed.hard.min(clock.hard),
+            byoyomi_period: false,
         }),
         (Some(budget), None) | (None, Some(budget)) => Some(budget),
         (None, None) => None,

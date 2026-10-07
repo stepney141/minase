@@ -57,6 +57,8 @@ pub struct UsiProtocol {
     threads: NonZeroUsize,
     /// 完了深さが1以上の採用結果に適用する投了閾値(cp)。
     resign_value: i32,
+    /// 秒読みつき時計の締切に残す余裕(ms)。
+    byoyomi_margin_ms: u64,
 }
 
 /// 最後に受理した`position`のトークン列。
@@ -149,6 +151,7 @@ impl UsiProtocol {
             next_search_id: 1,
             threads: search::DEFAULT_THREADS,
             resign_value: DEFAULT_RESIGN_VALUE,
+            byoyomi_margin_ms: ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS,
         }
     }
 
@@ -234,7 +237,12 @@ impl UsiProtocol {
             return Ok(None);
         }
         let game = engine.game();
-        let config = match parse_go_config(tokens, game.position().side_to_move(), engine.ply()) {
+        let config = match parse_go_config(
+            tokens,
+            game.position().side_to_move(),
+            engine.ply(),
+            self.byoyomi_margin_ms,
+        ) {
             Ok(config) => config,
             Err(error) => {
                 write_error(output, &error)?;
@@ -500,11 +508,12 @@ impl UsiProtocol {
                 pv,
                 ..
             } => {
-                write_info(output, context, depth, score, nodes, elapsed, &pv)?;
+                write_info(output, context, depth, score, nodes, elapsed, &pv, false)?;
                 context.last_info_depth = Some(depth);
                 Ok(())
             }
             SearchEvent::Finished {
+                partial_score,
                 best_move,
                 score,
                 depth,
@@ -532,6 +541,7 @@ impl UsiProtocol {
                     nodes,
                     elapsed,
                     &pv,
+                    partial_score,
                 )?;
                 let ponder_move = validated_ponder_move(engine.game(), best_move, &pv);
                 if context.infinite || context.ponder {
@@ -641,10 +651,11 @@ impl UsiProtocol {
                             pv,
                             ..
                         } => {
-                            write_info(output, &context, depth, score, nodes, elapsed, &pv)?;
+                            write_info(output, &context, depth, score, nodes, elapsed, &pv, false)?;
                             context.last_info_depth = Some(depth);
                         }
                         SearchEvent::Finished {
+                            partial_score,
                             best_move,
                             score,
                             depth,
@@ -662,6 +673,7 @@ impl UsiProtocol {
                                 nodes,
                                 elapsed,
                                 &pv,
+                                partial_score,
                             )?;
                             break (
                                 best_move,
@@ -735,6 +747,11 @@ impl UsiProtocol {
             output,
             "option name ResignValue type spin default {DEFAULT_RESIGN_VALUE} min 1 max 99999"
         )?;
+        writeln!(
+            output,
+            "option name ByoyomiMargin type spin default {} min 0 max 60000",
+            ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS
+        )?;
         #[cfg(feature = "tuning")]
         for &(name, default, min, max) in search::alphabeta::params::PARAMETERS {
             writeln!(
@@ -745,7 +762,7 @@ impl UsiProtocol {
         writeln!(output, "usiok")
     }
 
-    /// `setoption`を処理する。RuleSet・USI_Variant・USI_Hash・Threads・ResignValueを受理し、
+    /// `setoption`を処理する。RuleSet・USI_Variant・USI_Hash・Threads・ResignValue・ByoyomiMarginを受理し、
     /// 未知のoption名はUSIの慣例に従って黙って無視する。
     fn handle_setoption(
         &mut self,
@@ -847,6 +864,21 @@ impl UsiProtocol {
                 return write_error(output, "invalid ResignValue value");
             };
             self.resign_value = value;
+            Ok(())
+        } else if name.eq_ignore_ascii_case("ByoyomiMargin") {
+            let Some(value) = value else {
+                return write_error(output, "missing ByoyomiMargin value");
+            };
+            let Some(value) = value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit())
+                .then(|| value.parse::<u64>().ok())
+                .flatten()
+                .filter(|value| *value <= 60_000)
+            else {
+                return write_error(output, "invalid ByoyomiMargin value");
+            };
+            self.byoyomi_margin_ms = value;
             Ok(())
         } else {
             Ok(())
@@ -1169,7 +1201,12 @@ fn position_extension_start(
 ///
 /// `depth`・`nodes`・`movetime`・時計引数(`btime`等)・`infinite`を受理し、
 /// 時計引数からは手番側の残り時間だけを取り出す。
-fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<SearchLimits, String> {
+fn parse_go_config(
+    tokens: &[&str],
+    side_to_move: Color,
+    ply: u32,
+    byoyomi_margin_ms: u64,
+) -> Result<SearchLimits, String> {
     if tokens.is_empty() {
         return Err("go requires depth or nodes".to_owned());
     }
@@ -1253,6 +1290,7 @@ fn parse_go_config(tokens: &[&str], side_to_move: Color, ply: u32) -> Result<Sea
                 Color::White => (wtime.unwrap_or(0), winc.unwrap_or(0)),
             };
             ClockLimits::new(remaining_ms, increment_ms, byoyomi.unwrap_or(0), ply)
+                .map(|clock| clock.with_byoyomi_margin_ms(byoyomi_margin_ms))
         })
         .transpose()
         .map_err(|error| error.to_string())?;
@@ -1405,6 +1443,7 @@ const fn stop_reason_text(reason: StopReason) -> &'static str {
 }
 
 /// 探索進捗の`info`行を出力する。読み筋は局面を進めながら表記する。
+#[allow(clippy::too_many_arguments)]
 fn write_info(
     output: &mut dyn Write,
     context: &SearchContext,
@@ -1413,11 +1452,13 @@ fn write_info(
     nodes: u64,
     elapsed: Duration,
     pv: &[Move],
+    lowerbound: bool,
 ) -> io::Result<()> {
     let score = score_text(score);
+    let bound = if lowerbound { " lowerbound" } else { "" };
     write!(
         output,
-        "info depth {depth} score {score} nodes {nodes} nps {} time {} pv",
+        "info depth {depth} score {score}{bound} nodes {nodes} nps {} time {} pv",
         nodes_per_second(nodes, elapsed),
         elapsed.as_millis()
     )?;
@@ -1430,7 +1471,7 @@ fn write_info(
     output.flush()
 }
 
-/// 採用深さが最後の進捗出力を超える場合だけ、採用結果を`info`として出す。
+/// 完了深さが進捗を超えた場合、または「途中結果の採用」（byoyomi-time-usage.md）を通知する。
 #[allow(clippy::too_many_arguments)]
 fn write_final_info_if_deeper(
     output: &mut dyn Write,
@@ -1440,11 +1481,26 @@ fn write_final_info_if_deeper(
     nodes: u64,
     elapsed: Duration,
     pv: &[Move],
+    partial_score: Option<i32>,
 ) -> io::Result<()> {
+    // byoyomi-time-usage.md「途中結果の採用」。完了値と途中結果の下界を混同しない。
+    if let Some(partial_score) = partial_score {
+        writeln!(output, "info string partial")?;
+        return write_info(
+            output,
+            context,
+            depth + 1,
+            partial_score,
+            nodes,
+            elapsed,
+            pv,
+            true,
+        );
+    }
     if depth <= context.last_info_depth.unwrap_or(0) {
         return Ok(());
     }
-    write_info(output, context, depth, score, nodes, elapsed, pv)?;
+    write_info(output, context, depth, score, nodes, elapsed, pv, false)?;
     context.last_info_depth = Some(depth);
     Ok(())
 }
@@ -1997,8 +2053,68 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["option name ResignValue type spin default 20000 min 1 max 99999"]
         );
+        // byoyomi-time-usage.md「締切の余裕を絶対値のUSIオプションにする理由」。
+        assert_eq!(
+            lines
+                .iter()
+                .copied()
+                .filter(|line| line.starts_with("option name ByoyomiMargin "))
+                .collect::<Vec<_>>(),
+            ["option name ByoyomiMargin type spin default 30 min 0 max 60000"]
+        );
         // ponder.md設計判断「USI_Ponder」: 時間管理が値に依存しないため宣言しない（D6-USI-18）。
         assert!(!output.contains("USI_Ponder"));
+    }
+
+    // byoyomi-time-usage.md「締切の余裕を絶対値のUSIオプションにする理由」。
+    #[test]
+    fn byoyomi_margin_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        assert_eq!(protocol.byoyomi_margin_ms, 30);
+        for (value, expected) in [("0", 0), ("60000", 60_000), ("00123", 123)] {
+            assert_eq!(
+                run(
+                    &mut protocol,
+                    &mut engine,
+                    &format!("setoption name byoyomimargin value {value}\n")
+                ),
+                ""
+            );
+            let config = parse_go_config(
+                &["btime", "0", "wtime", "0", "byoyomi", "1000"],
+                Color::Black,
+                0,
+                protocol.byoyomi_margin_ms,
+            )
+            .unwrap();
+            assert_eq!(config.clock().unwrap().byoyomi_margin_ms(), expected);
+        }
+        for value in [
+            "",
+            "value",
+            "value -1",
+            "value +1",
+            "value 60001",
+            "value nope",
+            "value 1.5",
+            "value 999999999999999999999999999",
+        ] {
+            let output = run(
+                &mut protocol,
+                &mut engine,
+                &format!("setoption name ByoyomiMargin {value}\n"),
+            );
+            assert_eq!(
+                output,
+                if value.is_empty() || value == "value" {
+                    "info string error: missing ByoyomiMargin value\n"
+                } else {
+                    "info string error: invalid ByoyomiMargin value\n"
+                }
+            );
+            assert_eq!(protocol.byoyomi_margin_ms, 123);
+        }
     }
 
     #[test]
@@ -2218,6 +2334,78 @@ mod tests {
         );
         assert!(output.contains(" score mate +0 "), "{output}");
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
+    }
+
+    // byoyomi-time-usage.md「途中結果の採用」。下界が投了閾値を下回っても
+    // 完了値で判定し、通常終了・保留後のstop・ponderhitのいずれでも着手を返す。
+    #[test]
+    fn partial_info_uses_lowerbound_and_resignation_uses_completed_score() {
+        for (partial_score, score_text) in [(-1000, "cp -1000"), (-search::MATE + 1, "mate -0")] {
+            for release in [None, Some("stop"), Some("ponderhit")] {
+                let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
+                run(
+                    &mut protocol,
+                    &mut engine,
+                    "setoption name ResignValue value 100\n",
+                );
+                let legal = moves_sets(&run(&mut protocol, &mut engine, "moves\n")).remove(0);
+                let mut output = Vec::new();
+                let limits = if release.is_some() {
+                    vec!["ponder", "depth", "2"]
+                } else {
+                    vec!["depth", "2"]
+                };
+                let mut active = protocol.start_go(&engine, &limits, &mut output).unwrap();
+                loop {
+                    let Some(ActiveSearch::Running { handle, .. }) = active.as_ref() else {
+                        panic!("search must be running");
+                    };
+                    let mut event = handle
+                        .events()
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap();
+                    let finished = if let SearchEvent::Finished {
+                        score,
+                        partial_score: lowerbound,
+                        depth,
+                        ..
+                    } = &mut event
+                    {
+                        *score = 100;
+                        *depth = 2;
+                        *lowerbound = Some(partial_score);
+                        true
+                    } else {
+                        false
+                    };
+                    protocol
+                        .handle_search_event(&engine, &mut active, event, &mut output)
+                        .unwrap();
+                    if finished {
+                        break;
+                    }
+                }
+                if let Some(command) = release {
+                    protocol
+                        .handle_searching_line(
+                            &engine,
+                            &mut active,
+                            &mut VecDeque::new(),
+                            command,
+                            &mut output,
+                        )
+                        .unwrap();
+                }
+                let text = String::from_utf8(output).unwrap();
+                assert_eq!(text.matches("info string partial\n").count(), 1, "{text}");
+                assert!(
+                    text.contains(&format!("info depth 3 score {score_text} lowerbound ")),
+                    "{text}"
+                );
+                assert!(!text.contains("bestmove resign"), "{text}");
+                assert_legal_bestmove(&text, &legal);
+            }
+        }
     }
 
     // RS設計判断「判定の入力」「出力の形式」（D6-USI-52、D6-USI-55、D6-USI-58）。
@@ -2864,11 +3052,15 @@ mod tests {
             "btime", "1000", "wtime", "2000", "binc", "30", "winc", "40", "byoyomi", "500",
         ];
         assert_eq!(
-            parse_go_config(&tokens, Color::Black, 37).unwrap().clock(),
+            parse_go_config(&tokens, Color::Black, 37, 30)
+                .unwrap()
+                .clock(),
             Some(ClockLimits::new(1000, 30, 500, 37).unwrap())
         );
         assert_eq!(
-            parse_go_config(&tokens, Color::White, 37).unwrap().clock(),
+            parse_go_config(&tokens, Color::White, 37, 30)
+                .unwrap()
+                .clock(),
             Some(ClockLimits::new(2000, 40, 500, 37).unwrap())
         );
     }
@@ -3629,7 +3821,8 @@ mod tests {
                 parse_go_config(
                     &args.split_whitespace().collect::<Vec<_>>(),
                     Color::Black,
-                    0
+                    0,
+                    30
                 )
                 .is_ok(),
                 "{args}"
@@ -3677,6 +3870,68 @@ mod tests {
 
     fn receive_line(lines: &Receiver<String>) -> String {
         lines.recv_timeout(Duration::from_secs(5)).unwrap()
+    }
+
+    // byoyomi-time-usage.md「フェーズ1　段階Aの実装」。USIの時計とThreadsを
+    // 実際に入力し、通常探索とgo ponderから的中後の着手・予想手を検査する。
+    #[test]
+    fn four_thread_byoyomi_usi_returns_legal_bestmove_and_ponder_before_deadline() {
+        for ponder in [false, true] {
+            ponder_dialogue(|commands, lines| {
+                for command in [
+                    "setoption name Threads value 4",
+                    "setoption name USI_Hash value 1",
+                    "setoption name ByoyomiMargin value 30",
+                    "position startpos",
+                    "moves",
+                ] {
+                    commands.send(Ok(command.into())).unwrap();
+                }
+                let legal = moves_sets(&receive_line(lines)).remove(0);
+                let go = if ponder {
+                    "go ponder btime 0 wtime 0 byoyomi 300"
+                } else {
+                    "go btime 0 wtime 0 byoyomi 300"
+                };
+                let mut origin = std::time::Instant::now();
+                commands.send(Ok(go.into())).unwrap();
+                if ponder {
+                    let line = receive_line(lines);
+                    assert!(line.starts_with("info depth "), "{line}");
+                    origin = std::time::Instant::now();
+                    commands.send(Ok("ponderhit".into())).unwrap();
+                }
+                let best = loop {
+                    let line = receive_line(lines);
+                    assert!(!line.starts_with("info string error:"), "{line}");
+                    if line.starts_with("bestmove ") {
+                        break line;
+                    }
+                };
+                // 締切270 msにノード周期の検査と実行遅延700 msを許容する。
+                assert!(
+                    origin.elapsed() <= Duration::from_millis(970),
+                    "{:?}",
+                    origin.elapsed()
+                );
+                assert_legal_bestmove(&best, &legal);
+                // 完了深さは負荷に依存するので、予想手の有無は契約にしない。
+                // 予想手を出したときは、着手後の局面で合法であることを検査する。
+                let words: Vec<_> = best.split_whitespace().collect();
+                if words.len() == 4 {
+                    assert_eq!(words[2], "ponder");
+                    commands
+                        .send(Ok(format!("position startpos moves {}", words[1])))
+                        .unwrap();
+                    commands.send(Ok("moves".into())).unwrap();
+                    let replies = moves_sets(&receive_line(lines)).remove(0);
+                    assert!(replies.contains(words[3]), "{best}");
+                } else {
+                    assert_eq!(words.len(), 2, "{best}");
+                }
+                commands.send(Ok("quit".into())).unwrap();
+            });
+        }
     }
 
     // ponder.md「USI層の契約」、設計判断「bestmoveの保留」「停止理由」
