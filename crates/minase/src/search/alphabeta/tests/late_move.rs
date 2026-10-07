@@ -4,9 +4,10 @@ use super::*;
 use crate::search::alphabeta::params;
 use crate::search::alphabeta::pruning::{futility_margin, late_move_limit};
 
-// 双方の金将を離して置き、捕獲を生まずに静かな手の上限だけを観測する。
+// 金将を離して捕獲を避け、1枚を10筋11段に置いて全着手の評価増分をfutilityの余裕内に収める。
+// 各着手の評価を引き分けより高く保ち、静かな手の上限と探索順序を観測する。
 pub(super) fn quiet_board() -> Position {
-    minase_core::parse_sfen("k11/12/1g8g1/12/12/12/12/12/12/3G2G2G2/12/11K b").unwrap()
+    minase_core::parse_sfen("k11/12/1g8g1/12/12/12/12/12/12/3G5G2/2G9/11K b").unwrap()
 }
 
 // 葉でβ打ち切りが起こらず、親でfutility pruningが発動しない窓を作る。
@@ -75,7 +76,8 @@ fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
 fn late_move_pruning_exclusions_search_all_quiets() {
     for (width, mate_window, attacked) in [(2, false, false), (1, true, false), (1, false, true)] {
         let board = if attacked {
-            minase_core::parse_sfen("k11/12/12/12/12/11r/12/12/12/2G2G2G3/12/11K b").unwrap()
+            // 金将1枚を8筋8段に置き、飛車の王手を保ったまま静的評価を正にして引き分けで窓を打ち切らせない。
+            minase_core::parse_sfen("k11/12/12/12/12/11r/12/4G7/12/5G2G3/12/11K b").unwrap()
         } else {
             quiet_board()
         };
