@@ -1,0 +1,44 @@
+{
+  "v0_direct_material_exact": true,
+  "M_equal_Fa_quarter_file": true,
+  "b687022_duplicates_previous_single_endpoints": true,
+  "removal_sample_size": 4096,
+  "removal_losses": [
+    {
+      "reference": "v0",
+      "candidate": "v0",
+      "removal_loss": 0.0,
+      "1000x_loss": 0.0
+    },
+    {
+      "reference": "v0",
+      "candidate": "Pc",
+      "removal_loss": 0.0,
+      "1000x_loss": 0.0
+    },
+    {
+      "reference": "v0",
+      "candidate": "L",
+      "removal_loss": 0.0,
+      "1000x_loss": 0.0
+    },
+    {
+      "reference": "Pc",
+      "candidate": "v0",
+      "removal_loss": 0.0,
+      "1000x_loss": 0.0
+    },
+    {
+      "reference": "Pc",
+      "candidate": "Pc",
+      "removal_loss": 0.0,
+      "1000x_loss": 0.0
+    },
+    {
+      "reference": "Pc",
+      "candidate": "L",
+      "removal_loss": 0.0,
+      "1000x_loss": 0.0
+    }
+  ]
+}
