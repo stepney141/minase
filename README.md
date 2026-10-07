@@ -67,6 +67,16 @@ Both `--protocol` and `--rules` are required.
 - `lishogi`: the rules used on lishogi (L1,L2,P0,P3,R1,E1,E3)
 - A comma-separated list of rule codes. The list must contain exactly one code from each of the groups L, P, R, and E (RULES.md, Article 33).
 
+### Byoyomi clocks
+
+Once its main time is used up, the engine searches each move until the byoyomi minus the USI option `ByoyomiMargin` (milliseconds, default 30).
+The default suits a local GUI on an idle machine.
+Raise it when the move travels over a network or the machine is busy, especially with pondering; the lishogi bot uses 600.
+
+```text
+setoption name ByoyomiMargin value 600
+```
+
 ## Using Minase as a library
 
 Add `minase-core` to Cargo.toml to use position handling and legal-move generation from Rust. The library does not depend on the engine.
