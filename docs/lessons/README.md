@@ -17,6 +17,7 @@
 - [検証損失の近さは駒価値の正しさを保証しない](validation-loss-hides-material-distortion.md) — 学習した評価関数をGSPRTへ出す前に、教師探索値との平均絶対誤差と駒種を1つ除いた局面の評価で駒価値の歪みを点検する。
 - [ランダム初期化の評価関数では探索が止まらない](random-init-net-stalls-search.md) — 推論コードは学習済み重みと同じコミットで入れ、ランダム初期化の重みは一致テストと参照実装の照合にだけ使う。
 - [GPUを要する学習はcodexへ委任しない](run-gpu-training-outside-codex-sandbox.md) — codexのサンドボックスからGPUは見えないので、学習器のコードだけを委任し、学習の実行は本環境で直接行う。
+- [GeForceのGPUで学習する大きな中間配列を倍精度にしない](avoid-float64-tensors-on-geforce-gpu.md) — 損失の中間配列は埋め込みと同じ単精度で計算し、倍精度は集約後の小さな値に限り、学習前に1更新の時間と最大GPUメモリを試走で測る。
 - [学習前に1エポックのステップ数を確認する](check-steps-per-epoch-before-training.md) — 局面数÷バッチサイズで1エポックのステップ数を計算し、総ステップ数が数千回以上になる設定にしてから学習曲線を評価する。
 - [速度指標の計測区間に大容量メモリの確保を含めない](bench-allocation-outside-timing.md) — benchでは置換表を計測区間外で1個を使い回し、確保サイズを変えても指標が動かないことを確認する。
 - [採否測定の条件で改良が発動することを実装前に確認する](measure-feature-activation-before-sprt.md) — 探索改良は実装前に採否測定の思考制限で発動するかをbenchで確かめ、発動しなければ条件変更か先送りにする。
