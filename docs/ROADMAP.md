@@ -77,6 +77,7 @@
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
 | 測定の再開条件の簡素化 | [plans/match-resume-simplification.md](plans/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
 | PSTとFMの同時学習 | [plans/pst-fm-joint-training.md](plans/pst-fm-joint-training.md) | 完了（不採用） | 2026年10月8日 |
+| FMの補正の倍率のSPSAによる調整 | [plans/fm-scale-spsa.md](plans/fm-scale-spsa.md) | 起案 | |
 | 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
 
 ## 現在地
