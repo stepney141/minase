@@ -2,11 +2,11 @@
 
 use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use minase_core::rules::Rules;
+use minase_core::rules::{RuleCode, Rules};
 use minase_core::test_util::sq;
 use minase_core::{Color, Game, GameStatus, Move, PieceCode, PieceKind, Position, PositionBuilder};
 
@@ -538,6 +538,76 @@ fn root_candidates_follow_the_snapshot() {
     }
 }
 
+/// 王将を隣の升へ動かす非捕獲の着手。
+fn step(from: (u8, u8), to: (u8, u8)) -> Move {
+    Move {
+        from: sq(from.0, from.1),
+        mid: None,
+        to: sq(to.0, to.1),
+        promote: false,
+    }
+}
+
+// alphazero.md「検証」: R2とR3の規則セットで、根の候補手から規則が禁じる手が除かれる。
+// 局面と手順は`protocol/usi.rs`の先読み手の検証の試験と同じく、双方の王将を往復させる。
+// E0では王駒だけが残ると駒枯れの引き分け（RULES.md第22条第8項）で終局するので、
+// 双方に動かさない金将を1枚ずつ置く。
+#[test]
+fn repetition_rules_remove_forbidden_root_moves() {
+    let board = position(
+        Color::Black,
+        &[
+            ((3, 3), Color::Black, PieceKind::King),
+            ((0, 8), Color::Black, PieceKind::GoldGeneral),
+            ((8, 8), Color::White, PieceKind::King),
+            ((11, 3), Color::White, PieceKind::GoldGeneral),
+        ],
+    );
+    let cycle = [
+        step((3, 3), (3, 4)),
+        step((8, 8), (8, 7)),
+        step((3, 4), (3, 3)),
+        step((8, 7), (8, 8)),
+    ];
+    // 先手が往復を終えた後の後手の戻る手は、開始局面（先手番）を再現する。
+    let back = cycle[3];
+    // （反復規則, 先に指す往復の回数, 戻る手が許されるか）。R3は4回目の出現だけを禁じる。
+    for (rule, cycles, allowed) in [
+        (RuleCode::R2, 0, false),
+        (RuleCode::R3, 0, true),
+        (RuleCode::R3, 2, false),
+    ] {
+        let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, rule, RuleCode::E0]).unwrap();
+        let mut game = Game::from_position(rules, board.clone());
+        for _ in 0..cycles {
+            for mv in cycle {
+                game.play(mv).unwrap();
+            }
+        }
+        for mv in &cycle[..3] {
+            game.play(*mv).unwrap();
+        }
+        assert!(matches!(game.status(), GameStatus::Ongoing));
+        let snapshot = SearchSnapshot::from_game(&game).unwrap();
+        let case = format!("{rule:?} after {cycles} cycles");
+        assert_eq!(snapshot.root_moves().contains(&back), allowed, "{case}");
+        for selection in [Selection::Puct, Selection::Gumbel] {
+            let mut engine = engine(UniformEvaluator, config(selection, 4, 32));
+            let result = engine.search(&snapshot, &nodes(64)).unwrap();
+            assert!(snapshot.root_moves().contains(&result.best_move));
+            let root = engine.previous_tree().unwrap().root();
+            assert_eq!(
+                root.edges.iter().any(|edge| edge.action == back),
+                allowed,
+                "{case} {selection:?}"
+            );
+            if !allowed {
+                assert_ne!(result.best_move, back, "{case} {selection:?}");
+            }
+        }
+    }
+}
+
 // alphazero.md「検証」: 指した手の部分木が次の探索で再利用され、再利用後の根の訪問回数は
 // 前の探索の子の訪問回数から始まる。
 #[test]
@@ -800,4 +870,47 @@ fn uniform_mcts_plays_a_game() {
             Selection::Gumbel => assert_eq!(max_batch, 1),
         }
     }
+}
+
+// alphazero.md「検証」: 手数の上限に近い着手列を1手ずつ与えても、1手あたりの固定費が時間切れの
+// 安全余裕の内側に収まる（docs/lessons/per-move-overhead-grows-with-game-length.md）。
+// 履歴の鍵を1つずつ延ばしながら、対局管理層と同じくスナップショットを作って探索回数1で探索し、
+// 履歴の鍵が10個のときと3,500個のときの所要時間の最小値の差が、秒読みの安全余裕（既定30 ms）の
+// 10分の1以下であることを確かめる。鍵は反復にならないよう、互いに異なる人工の値を並べる。
+// 時間の揺らぎを避けるため、各長さで最初の1回を捨て、残りの最小値を比べる。
+#[test]
+fn per_move_overhead_does_not_grow_with_history_length() {
+    const ROUNDS: usize = 30;
+    const LONG: usize = 3_500;
+    let game = Game::with_default_rules();
+    let keys: Vec<u64> = (1..=(LONG + ROUNDS) as u64)
+        .map(minase_core::rng::splitmix64)
+        .collect();
+    let fastest = |length: usize| {
+        let mut engine = engine(UniformEvaluator, config(Selection::Puct, 64, 32));
+        (0..=ROUNDS)
+            .map(|round| {
+                let started = Instant::now();
+                let snapshot = SearchSnapshot::from_parts(
+                    game.position().clone(),
+                    game.rules().moves,
+                    keys[..length + round].to_vec(),
+                    game.legal_moves(),
+                )
+                .unwrap();
+                let result = engine.search(&snapshot, &nodes(1)).unwrap();
+                assert_eq!(result.nodes, 1);
+                started.elapsed()
+            })
+            .skip(1)
+            .min()
+            .unwrap()
+    };
+    let short = fastest(10);
+    let long = fastest(LONG);
+    let margin = Duration::from_millis(ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS);
+    assert!(
+        long.saturating_sub(short) <= margin / 10,
+        "10 keys: {short:?}, {LONG} keys: {long:?}"
+    );
 }
