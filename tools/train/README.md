@@ -140,6 +140,17 @@ uv run --project tools/train fm-diagnostics \
   --probe-command target/release/minase dev pst-probe
 ```
 
+PSTも更新した候補とRustの評価を照合するには、`fm-diagnostics`へ`--pst-changed`を付ける。
+この指定では探索用駒価値とKだけを基準との不変条件にし、Rustの`eval_pst`を候補自身のPSTと比較する。
+FMを含む`eval`の照合も同時に行う。
+
+```bash
+uv run --project tools/train fm-diagnostics \
+  --base crates/minase/nets/pst.bin --candidate <候補のMNPT-v3> --pst-changed \
+  --positions data/fm-samples.bin --output <照合結果のJSON> \
+  --probe-command target/release/minase dev pst-probe
+```
+
 ## ファイル形式
 
 学習ツールが読み書きするファイルは、いずれも先頭4バイトの識別子を名前とする独自のバイナリ形式である。
