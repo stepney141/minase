@@ -4,11 +4,17 @@ use core::num::NonZeroUsize;
 
 use crate::eval::{Pst, pst};
 use crate::search::algorithm::SearchAlgorithm;
-use crate::search::alphabeta;
 use crate::search::handle::SearchHandle;
 use crate::search::limits::SearchLimits;
 use crate::search::snapshot::SearchSnapshot;
 use crate::search::{DEFAULT_THREADS, TranspositionTable};
+use crate::search::{alphabeta, mcts};
+
+/// MCTSで深さだけが指定された探索に代わりに与えるシミュレーション回数。
+///
+/// AlphaZeroの自己対局の1手あたりの探索回数800を流用した暫定値であり、深さの制限を誤って
+/// 渡された対局が止まらなくなることを防ぐためだけに使う。
+const DEPTH_ONLY_SIMULATIONS: u64 = 800;
 
 /// 探索方式が宣言するオプションの名前と値の種類。
 ///
@@ -33,6 +39,18 @@ pub enum OptionKind {
         /// 最大値。
         max: i64,
     },
+    /// 列挙した候補から1つを選ぶ値。
+    Combo {
+        /// 既定値。
+        default: &'static str,
+        /// 候補。
+        vars: &'static [&'static str],
+    },
+    /// 文字列。
+    String {
+        /// 既定値。空ならUSIでは`<empty>`と書く。
+        default: &'static str,
+    },
 }
 
 /// 起動時に選ばれた探索方式と、その方式が探索の間で持ち越す状態。
@@ -41,20 +59,43 @@ pub enum OptionKind {
 pub enum Searcher {
     /// αβ探索。
     AlphaBeta(alphabeta::Engine),
+    /// MCTS。
+    Mcts(mcts::Engine),
 }
 
 impl Searcher {
-    /// 指定した方式を既定の設定で作る。置換表のような大きな領域はまだ確保しない。
+    /// 指定した方式を既定の設定で作る。置換表や推論のセッションのような大きな資源はまだ用意しない。
+    ///
+    /// MCTSは、評価値への写像に使う勝率の尺度Kを学習PSTから取る。
     ///
     /// # Errors
     ///
     /// 埋め込みの評価重みを復号できない場合はエラーを返す。
     pub fn new(algorithm: SearchAlgorithm) -> Result<Self, pst::Error> {
-        match algorithm {
-            SearchAlgorithm::AlphaBeta => Ok(Self::AlphaBeta(alphabeta::Engine::new(
-                crate::eval::weights()?,
-                DEFAULT_THREADS,
-            ))),
+        let weights = crate::eval::weights()?;
+        Ok(match algorithm {
+            SearchAlgorithm::AlphaBeta => {
+                Self::AlphaBeta(alphabeta::Engine::new(weights, DEFAULT_THREADS))
+            }
+            SearchAlgorithm::Mcts => Self::Mcts(mcts::Engine::for_play(weights.k())),
+        })
+    }
+
+    /// 試験用に、推論器を差し込んだ対局用の設定のMCTSを作る。
+    #[cfg(test)]
+    pub(crate) fn mcts_with_evaluator(
+        evaluator: Box<dyn crate::nn::evaluator::Evaluator + Send>,
+    ) -> Self {
+        let weights = crate::eval::weights().expect("embedded evaluation weights must be valid");
+        let config = mcts::Engine::for_play(weights.k()).config();
+        Self::Mcts(mcts::Engine::new(evaluator, config))
+    }
+
+    /// 方式を返す。
+    pub fn algorithm(&self) -> SearchAlgorithm {
+        match self {
+            Self::AlphaBeta(_) => SearchAlgorithm::AlphaBeta,
+            Self::Mcts(_) => SearchAlgorithm::Mcts,
         }
     }
 
@@ -62,6 +103,7 @@ impl Searcher {
     pub fn options(&self) -> &'static [OptionSpec] {
         match self {
             Self::AlphaBeta(engine) => engine.options(),
+            Self::Mcts(engine) => engine.options(),
         }
     }
 
@@ -72,10 +114,11 @@ impl Searcher {
     pub fn set_option(&mut self, name: &str, value: Option<&str>) -> Option<Result<(), String>> {
         match self {
             Self::AlphaBeta(engine) => engine.set_option(name, value),
+            Self::Mcts(engine) => engine.set_option(name, value),
         }
     }
 
-    /// 置換表の容量をMB単位で設定する。CECPの`memory`に使う。
+    /// 置換表または探索木の容量をMB単位で設定する。CECPの`memory`に使う。
     ///
     /// # Errors
     ///
@@ -85,6 +128,10 @@ impl Searcher {
             Self::AlphaBeta(engine) => engine
                 .set_hash_mb(size_mb)
                 .map_err(|error| error.to_string()),
+            Self::Mcts(engine) => {
+                engine.set_hash_mb(size_mb);
+                Ok(())
+            }
         }
     }
 
@@ -92,13 +139,22 @@ impl Searcher {
     pub fn threads(&self) -> NonZeroUsize {
         match self {
             Self::AlphaBeta(engine) => engine.threads(),
+            Self::Mcts(_) => DEFAULT_THREADS,
         }
     }
 
     /// 次の探索に使うワーカー数を設定する。CECPの`cores`に使う。
-    pub fn set_threads(&mut self, threads: NonZeroUsize) {
+    ///
+    /// # Errors
+    ///
+    /// 方式がそのワーカー数で探索できない場合は理由を返し、状態を変えない。
+    pub fn set_threads(&mut self, threads: NonZeroUsize) -> Result<(), String> {
         match self {
-            Self::AlphaBeta(engine) => engine.set_threads(threads),
+            Self::AlphaBeta(engine) => {
+                engine.set_threads(threads);
+                Ok(())
+            }
+            Self::Mcts(engine) => engine.set_threads(threads),
         }
     }
 
@@ -106,10 +162,11 @@ impl Searcher {
     pub fn new_game(&mut self) {
         match self {
             Self::AlphaBeta(engine) => engine.new_game(),
+            Self::Mcts(engine) => engine.new_game(),
         }
     }
 
-    /// 最初の探索の前に済ませておく資源の確保を行う。
+    /// 最初の探索の前に済ませておく資源の確保を行う。MCTSでは推論のセッションを作る。
     ///
     /// # Errors
     ///
@@ -117,15 +174,64 @@ impl Searcher {
     pub fn prepare(&mut self) -> Result<(), String> {
         match self {
             Self::AlphaBeta(engine) => engine.prepare().map_err(|error| error.to_string()),
+            Self::Mcts(engine) => engine.prepare(),
+        }
+    }
+
+    /// プロトコル層が受けた探索制限を、方式が解釈できる形へ直す。直した場合は利用者への説明を返す。
+    ///
+    /// MCTSには深さに対応する概念がないので、深さの制限を除き、ノード数と時間の制限だけで探索する。
+    /// 深さだけが指定された場合は、対局が止まらなくなることを防ぐために
+    /// シミュレーション回数の上限800で探索する。
+    pub fn adapt_limits(&self, limits: SearchLimits) -> (SearchLimits, Option<String>) {
+        let (Self::Mcts(_), Some(depth)) = (self, limits.depth()) else {
+            return (limits, None);
+        };
+        let (nodes, movetime_ms, clock) = (limits.nodes(), limits.movetime_ms(), limits.clock());
+        let (nodes, rest) = if nodes.is_none() && movetime_ms.is_none() && clock.is_none() {
+            (
+                Some(DEPTH_ONLY_SIMULATIONS),
+                format!("searching {DEPTH_ONLY_SIMULATIONS} simulations instead"),
+            )
+        } else {
+            (
+                nodes,
+                "searching with the node and time limits only".to_owned(),
+            )
+        };
+        let limits = SearchLimits::new(None, nodes, movetime_ms, clock)
+            .expect("the remaining limits were already validated and at least one is set");
+        (
+            limits,
+            Some(format!(
+                "MCTS does not interpret depth {depth} as a simulation limit; {rest}"
+            )),
+        )
+    }
+
+    /// ノード数の定義がαβ探索と異なる方式なら、その定義の説明を返す。
+    ///
+    /// MCTSのノード数はシミュレーションの回数であり、αβ探索のノード数（着手を盤面へ適用した回数）とは
+    /// 定義が異なる（docs/plans/alphazero.md「共存の構造」）。
+    pub fn node_count_notice(&self) -> Option<&'static str> {
+        match self {
+            Self::AlphaBeta(_) => None,
+            Self::Mcts(_) => Some(
+                "MCTS reports nodes as the number of simulations, not as the number of moves \
+                 made on the board as in the alphabeta search",
+            ),
         }
     }
 
     /// 値ごと探索スレッドへ移して探索を開始する。`ponder`が真なら時間制限は
-    /// 的中の通知まで無効とする。
+    /// 的中の通知まで無効とする。MCTSの推論のセッションがなければ、ここで作る。
     ///
     /// # Errors
     ///
-    /// 探索に必要な資源を確保できない場合は、探索を開始せずに値と理由を返す。
+    /// 探索に必要な資源を確保できない場合と、方式が制限を解釈できない場合は、
+    /// 探索を開始せずに値と理由を返す。
+    // 失敗時は状態を値のまま呼び出し側へ返すので、Errは状態の大きさを持つ。
+    #[allow(clippy::result_large_err)]
     pub fn start(
         self,
         snapshot: SearchSnapshot,
@@ -137,20 +243,30 @@ impl Searcher {
             Self::AlphaBeta(engine) => engine
                 .start(snapshot, limits, search_id, ponder)
                 .map_err(|(engine, error)| (Self::AlphaBeta(engine), error.to_string())),
+            Self::Mcts(mut engine) => {
+                if let Err(error) = engine.prepare() {
+                    return Err((Self::Mcts(engine), error));
+                }
+                engine
+                    .start(snapshot, limits, search_id, ponder)
+                    .map_err(|(engine, error)| (Self::Mcts(engine), error.to_string()))
+            }
         }
     }
 
-    /// 静的評価に使う学習PSTを返す。診断コマンド`eval`に使う。
-    pub fn pst(&self) -> &Pst {
+    /// αβ探索の静的評価に使う学習PSTを返す。MCTSでは`None`を返す。診断コマンド`eval`に使う。
+    pub fn pst(&self) -> Option<&Pst> {
         match self {
-            Self::AlphaBeta(engine) => engine.pst(),
+            Self::AlphaBeta(engine) => Some(engine.pst()),
+            Self::Mcts(_) => None,
         }
     }
 
-    /// 確保済みの置換表を返す。診断コマンド`tt`に使う。
+    /// 確保済みの置換表を返す。MCTSでは`None`を返す。診断コマンド`tt`に使う。
     pub fn transposition_table(&self) -> Option<&TranspositionTable> {
         match self {
             Self::AlphaBeta(engine) => engine.transposition_table(),
+            Self::Mcts(_) => None,
         }
     }
 
@@ -159,6 +275,7 @@ impl Searcher {
     pub(crate) fn into_alphabeta_parts(self) -> (TranspositionTable, crate::search::HistoryTables) {
         match self {
             Self::AlphaBeta(engine) => engine.into_parts(),
+            Self::Mcts(_) => panic!("the searcher is not the alphabeta search"),
         }
     }
 
@@ -167,6 +284,7 @@ impl Searcher {
     pub(crate) fn alphabeta(&self) -> &alphabeta::Engine {
         match self {
             Self::AlphaBeta(engine) => engine,
+            Self::Mcts(_) => panic!("the searcher is not the alphabeta search"),
         }
     }
 
@@ -175,6 +293,7 @@ impl Searcher {
     pub(crate) fn alphabeta_mut(&mut self) -> &mut alphabeta::Engine {
         match self {
             Self::AlphaBeta(engine) => engine,
+            Self::Mcts(_) => panic!("the searcher is not the alphabeta search"),
         }
     }
 }
@@ -211,6 +330,38 @@ mod tests {
                 },
             ]
         );
+    }
+
+    // 同節: ハーネスが既定値を照会するので、MCTSもUSI_HashとThreadsを宣言する。
+    // MCTSは静的評価のPSTも置換表も持たない。
+    #[test]
+    fn mcts_declares_hash_and_threads() {
+        let searcher = Searcher::new(SearchAlgorithm::Mcts).unwrap();
+        assert_eq!(searcher.algorithm(), SearchAlgorithm::Mcts);
+        let names: Vec<_> = searcher
+            .options()
+            .iter()
+            .map(|option| option.name)
+            .collect();
+        assert_eq!(names[..2], ["USI_Hash", "Threads"]);
+        assert!(searcher.pst().is_none());
+        assert!(searcher.transposition_table().is_none());
+    }
+
+    // 指示書E第7項: 深さの制限を直すのはMCTSだけであり、αβ探索の制限はそのまま渡す。
+    #[test]
+    fn only_mcts_adapts_depth_limits() {
+        let depth = SearchLimits::new(Some(3), None, None, None).unwrap();
+        assert_eq!(searcher().adapt_limits(depth), (depth, None));
+        let mcts = Searcher::new(SearchAlgorithm::Mcts).unwrap();
+        let (limits, notice) = mcts.adapt_limits(depth);
+        assert_eq!(
+            limits,
+            SearchLimits::new(None, Some(800), None, None).unwrap()
+        );
+        assert!(notice.is_some());
+        let nodes = SearchLimits::new(None, Some(5), None, None).unwrap();
+        assert_eq!(mcts.adapt_limits(nodes), (nodes, None));
     }
 
     // 同節: 方式のオプションでない名前は呼び出し側へ返し、状態を変えない。

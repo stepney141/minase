@@ -230,7 +230,11 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
         small_tt(),
     );
     let (progress, finished) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
     assert_eq!(
         progress.iter().map(|entry| entry.0).collect::<Vec<_>>(),
         vec![1, 2, 3, 4]

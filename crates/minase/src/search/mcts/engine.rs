@@ -11,14 +11,16 @@ use minase_core::mv::Move;
 use minase_core::rng::XorShift64;
 use minase_core::rules::MoveRules;
 
-use crate::eval::Pst;
 use crate::nn::encoding::EncodingError;
 use crate::nn::evaluator::{Evaluator, EvaluatorError};
+use crate::nn::ort_evaluator::NnBackend;
 use crate::nn::policy::PolicyLabelError;
-use crate::search::alphabeta::time::time_budget;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
+use crate::search::handle::SearchHandle;
 use crate::search::limits::SearchLimits;
+use crate::search::searcher::Searcher;
 use crate::search::snapshot::{SearchSnapshot, search_key};
+use crate::search::time::time_budget;
 use crate::search::{MATE, MAX_PLY};
 
 use super::select::{GUMBEL_PARAMS, GumbelRoot, Selection, improved_policy};
@@ -35,7 +37,7 @@ pub const MAX_CONSIDERED_ACTIONS: NonZeroU32 = NonZeroU32::new(16).unwrap();
 const WIN_RATE_RANGE: (f64, f64) = (0.001, 0.999);
 
 /// MCTSの探索を行えない理由。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MctsError {
     /// 深さの制限が指定された。MCTSには深さに対応する概念がない。
     DepthLimit,
@@ -47,6 +49,8 @@ pub enum MctsError {
     Label(PolicyLabelError),
     /// 推論に失敗した。
     Evaluator(EvaluatorError),
+    /// 推論器がまだない。推論のセッションは[`Engine::prepare`]が作る。
+    NoEvaluator,
 }
 
 impl fmt::Display for MctsError {
@@ -59,6 +63,7 @@ impl fmt::Display for MctsError {
             Self::Encoding(error) => write!(formatter, "MCTS cannot encode a position: {error}"),
             Self::Label(error) => write!(formatter, "MCTS cannot label a move: {error}"),
             Self::Evaluator(error) => write!(formatter, "MCTS evaluation failed: {error}"),
+            Self::NoEvaluator => formatter.write_str("the network session has not been created"),
         }
     }
 }
@@ -66,7 +71,7 @@ impl fmt::Display for MctsError {
 impl std::error::Error for MctsError {}
 
 /// MCTSの探索の設定。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Config {
     /// 子の選択規則。
     pub selection: Selection,
@@ -78,6 +83,10 @@ pub struct Config {
     pub max_considered: NonZeroU32,
     /// Gumbel乱数の生成器のシード。
     pub seed: NonZeroU64,
+    /// 勝率を評価値へ写す尺度K（PSTの学習で推定した値、docs/plans/alphazero.md「共存の構造」）。
+    pub win_rate_scale: f32,
+    /// 探索木の節点数の上限。達したら新しい展開をやめて探索を終える。
+    pub max_nodes: NonZeroU32,
 }
 
 /// 次の探索で再利用する木と、その根を探索したときの対局の履歴と規則。
@@ -110,12 +119,14 @@ struct Outcome {
 
 /// 推論器、再利用する探索木、および探索の設定を探索の間で持ち越すMCTS。
 pub struct Engine {
-    /// ネットの推論器。
-    evaluator: Box<dyn Evaluator + Send>,
+    /// ネットの推論器。推論のセッションを作るまでは`None`。
+    pub(super) evaluator: Option<Box<dyn Evaluator + Send>>,
+    /// 推論のセッションを作るときの実行プロバイダ。
+    pub(super) backend: NnBackend,
+    /// TensorRTのエンジンのキャッシュを置く親ディレクトリ。
+    pub(super) cache_dir: std::path::PathBuf,
     /// 探索の設定。
-    config: Config,
-    /// 勝率を評価値へ写す尺度K（PSTの学習で推定した値）。
-    win_rate_scale: f32,
+    pub(super) config: Config,
     /// Gumbel乱数の生成器。
     rng: XorShift64,
     /// 直前の探索の木。
@@ -123,12 +134,21 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// 推論器、勝率の尺度Kを持つ学習PST、および設定から作る。
-    pub fn new(evaluator: Box<dyn Evaluator + Send>, pst: &Pst, config: Config) -> Self {
+    /// 推論器と設定から作る。推論のセッションの設定は[`Engine::for_play`]と同じ既定値とする。
+    pub fn new(evaluator: Box<dyn Evaluator + Send>, config: Config) -> Self {
         Self {
-            evaluator,
+            evaluator: Some(evaluator),
+            ..Self::without_evaluator(config)
+        }
+    }
+
+    /// 推論器を持たない状態を作る。推論器は[`Engine::prepare`]が作る。
+    pub(super) fn without_evaluator(config: Config) -> Self {
+        Self {
+            evaluator: None,
+            backend: NnBackend::TensorRt,
+            cache_dir: super::options::default_cache_dir(),
             config,
-            win_rate_scale: pst.k(),
             rng: XorShift64::new(config.seed),
             previous: None,
         }
@@ -180,20 +200,25 @@ impl Engine {
     ///
     /// 探索スレッドは進捗を[`SearchEvent::Progress`]で、終了を[`SearchEvent::Finished`]で送る。
     /// 探索中に推論などが失敗した場合は[`SearchEvent::Finished`]を送らず、
-    /// [`Handle::join`]が理由を返す。
+    /// [`SearchHandle::join`]が状態とともに理由を返す。
     ///
     /// # Errors
     ///
-    /// 深さの制限が指定された場合は、探索を開始せずに状態とエラーを返す。
+    /// 深さの制限が指定された場合と推論器がない場合は、探索を開始せずに状態とエラーを返す。
+    // 失敗時は状態を値のまま呼び出し側へ返すので、Errは状態の大きさを持つ。
+    #[allow(clippy::result_large_err)]
     pub fn start(
         mut self,
         snapshot: SearchSnapshot,
         limits: SearchLimits,
         search_id: u64,
         ponder: bool,
-    ) -> Result<Handle, (Self, MctsError)> {
+    ) -> Result<SearchHandle, (Self, MctsError)> {
         if limits.depth().is_some() {
             return Err((self, MctsError::DepthLimit));
+        }
+        if self.evaluator.is_none() {
+            return Err((self, MctsError::NoEvaluator));
         }
         let started = Instant::now();
         let hit_ns = Arc::new(AtomicU64::new(if ponder { u64::MAX } else { 0 }));
@@ -222,9 +247,12 @@ impl Engine {
                         stop_reason: outcome.stop_reason,
                     });
                 });
-            (self, result)
+            (
+                Searcher::Mcts(self),
+                result.map_err(|error| error.to_string()),
+            )
         });
-        Ok(Handle {
+        Ok(SearchHandle {
             events,
             started,
             hit_ns,
@@ -304,9 +332,12 @@ impl Engine {
         control: &Control<'_>,
         events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     ) -> Result<Outcome, MctsError> {
-        let k = self.win_rate_scale;
         let config = self.config;
-        let evaluator = self.evaluator.as_mut();
+        let k = config.win_rate_scale;
+        let evaluator: &mut dyn Evaluator = match self.evaluator.as_deref_mut() {
+            Some(evaluator) => evaluator,
+            None => return Err(MctsError::NoEvaluator),
+        };
         let mut simulator = Simulator::new(PositionDomain::new(
             snapshot.position().clone(),
             snapshot.rules(),
@@ -370,6 +401,9 @@ impl Engine {
                         .saturating_sub(tree.root().total_visits()),
                 ));
             }
+            // 探索木の容量（USI_Hash）。1回のシミュレーションが加える節点は高々1つである。
+            let capacity = u64::from(config.max_nodes.get()).saturating_sub(tree.len() as u64);
+            remaining = remaining.min(capacity);
             if remaining == 0 {
                 break StopReason::NodeLimit;
             }
@@ -389,7 +423,7 @@ impl Engine {
                 usize::try_from(remaining).map_or(batch, |remaining| batch.min(remaining));
             nodes += u64::from(simulator.run_batch(
                 tree,
-                self.evaluator.as_mut(),
+                evaluator,
                 &rule,
                 snapshot.history_keys(),
                 max_leaves,
@@ -505,64 +539,4 @@ fn policy_best_edge(tree: &Tree<Move>) -> usize {
 fn gumbel_noise(rng: &mut XorShift64) -> f64 {
     let uniform = ((rng.next() >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
     -(-uniform.ln()).ln()
-}
-
-/// 実行中のMCTSの探索スレッドを操作するハンドル。
-///
-/// 値を破棄すると探索スレッドへ停止を要求し、終了するまで待つ。
-pub struct Handle {
-    /// 探索イベントの受信端。
-    events: mpsc::Receiver<SearchEvent>,
-    /// スレッド生成前に取得した起点。
-    started: Instant,
-    /// 的中までのナノ秒数。先読み中はu64::MAX。
-    hit_ns: Arc<AtomicU64>,
-    /// 探索スレッドと共有する停止要求。
-    stop: Arc<AtomicBool>,
-    /// 探索の終了後に状態と結果を返すスレッド。
-    thread: Option<thread::JoinHandle<(Engine, Result<(), MctsError>)>>,
-}
-
-impl Handle {
-    /// 探索イベントの受信端を返す。
-    pub fn events(&self) -> &mpsc::Receiver<SearchEvent> {
-        &self.events
-    }
-
-    /// 先読みを的中の時点から計時する。重複した通知は無視する。
-    pub fn ponderhit(&self) {
-        let elapsed = self
-            .started
-            .elapsed()
-            .as_nanos()
-            .min(u128::from(u64::MAX - 1)) as u64;
-        let _ =
-            self.hit_ns
-                .compare_exchange(u64::MAX, elapsed, Ordering::Relaxed, Ordering::Relaxed);
-    }
-
-    /// 探索スレッドへ停止を要求する。
-    pub fn request_stop(&self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
-
-    /// 停止を要求して探索スレッドの終了を待ち、状態と探索の成否を返す。
-    ///
-    /// 探索スレッドがパニックした場合は、そのペイロードを`Err`で返す。
-    pub fn join(mut self) -> thread::Result<(Engine, Result<(), MctsError>)> {
-        self.stop_and_join()
-            .expect("a live Handle must own its search thread")
-    }
-
-    /// 停止要求と探索スレッドの回収を1回だけ行う。
-    fn stop_and_join(&mut self) -> Option<thread::Result<(Engine, Result<(), MctsError>)>> {
-        self.request_stop();
-        self.thread.take().map(thread::JoinHandle::join)
-    }
-}
-
-impl Drop for Handle {
-    fn drop(&mut self) {
-        let _ = self.stop_and_join();
-    }
 }

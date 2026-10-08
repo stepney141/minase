@@ -271,6 +271,11 @@ impl<A: Copy + PartialEq> Tree<A> {
         self.node(ROOT)
     }
 
+    /// 節点の数を返す。
+    pub(super) fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// 合法手を列挙していない節点を加え、その番号を返す。
     pub(super) fn push(&mut self, key: u64) -> NodeId {
         let id = NodeId::try_from(self.nodes.len()).expect("the search tree exceeds u32 nodes");

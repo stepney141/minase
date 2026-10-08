@@ -51,6 +51,8 @@ pub struct UsiProtocol {
     resign_value: i32,
     /// 秒読みつき時計の締切に残す余裕(ms)。
     byoyomi_margin_ms: u64,
+    /// ノード数の定義の説明を`isready`の応答で出力済みか。
+    node_count_announced: bool,
 }
 
 /// 最後に受理した`position`のトークン列。
@@ -143,6 +145,7 @@ impl UsiProtocol {
             next_search_id: 1,
             resign_value: DEFAULT_RESIGN_VALUE,
             byoyomi_margin_ms: ClockLimits::DEFAULT_BYOYOMI_MARGIN_MS,
+            node_count_announced: false,
         }
     }
 
@@ -173,11 +176,22 @@ impl UsiProtocol {
         match command {
             "usi" => self.write_handshake(output)?,
             "isready" => {
-                // 置換表の確保と初期化を最初の`go`の前に済ませ、対局開始直後の手の
-                // 思考時間に数えられないようにする（time-management-efficiency.md）。
-                // 確保に失敗した場合は`go`で改めて試み、そこで報告する。
-                let _ = self.searcher().prepare();
+                // 置換表の確保とMCTSの推論のセッションの作成（TensorRTのエンジンの作成を含む）を
+                // 最初の`go`の前に済ませ、対局開始直後の手の思考時間に数えられないようにする
+                // （time-management-efficiency.md、alphazero.md「推論層」）。
+                // 用意できない場合は、別の資源へ切り替えずにエラーを出力してセッションを終える。
+                if let Err(error) = self.searcher().prepare() {
+                    write_error(output, &error)?;
+                    output.flush()?;
+                    return Err(io::Error::other(error));
+                }
                 writeln!(output, "readyok")?;
+                if !self.node_count_announced {
+                    self.node_count_announced = true;
+                    if let Some(notice) = self.searcher().node_count_notice() {
+                        writeln!(output, "info string {notice}")?;
+                    }
+                }
             }
             "setoption" => self.handle_setoption(engine, &tokens[1..], output)?,
             "usinewgame" => {
@@ -243,6 +257,10 @@ impl UsiProtocol {
                 return Ok(None);
             }
         };
+        let (config, notice) = self.searcher().adapt_limits(config);
+        if let Some(notice) = notice {
+            writeln!(output, "info string {notice}")?;
+        }
         let position = game.position().clone();
         let rules = engine.active_rules();
         let snapshot = match SearchSnapshot::from_game(game) {
@@ -329,7 +347,7 @@ impl UsiProtocol {
                         continue;
                     }
                     Ok(Err(error)) => {
-                        self.discard_search(&mut active)?;
+                        self.discard_search(&mut active, output)?;
                         return Err(error);
                     }
                     Err(TryRecvError::Empty) => {}
@@ -353,7 +371,7 @@ impl UsiProtocol {
                         output,
                     )?,
                     Ok(Err(error)) => {
-                        self.discard_search(&mut active)?;
+                        self.discard_search(&mut active, output)?;
                         return Err(error);
                     }
                     Err(RecvTimeoutError::Timeout) => {}
@@ -364,14 +382,14 @@ impl UsiProtocol {
                 .is_some_and(ActiveSearch::withholds_bestmove)
             {
                 // 入力が閉じると停止も的中も届かないため、結果を保留する探索は破棄する。
-                self.discard_search(&mut active)?;
+                self.discard_search(&mut active, output)?;
             } else {
                 self.wait_search_event(engine, &mut active, output)?;
             }
         }
 
         if active.is_some() {
-            self.discard_search(&mut active)?;
+            self.discard_search(&mut active, output)?;
         }
         Ok(())
     }
@@ -393,7 +411,7 @@ impl UsiProtocol {
             Some("stop") => self.stop_search(engine, active, output)?,
             Some("gameover" | "quit") => {
                 pending.push_back(line.to_owned());
-                self.discard_search(active)?;
+                self.discard_search(active, output)?;
             }
             Some("go") => write_error(output, "go is already running")?,
             Some("ponderhit") => self.ponderhit(engine, active, output)?,
@@ -415,7 +433,7 @@ impl UsiProtocol {
                     Ok(event) => event,
                     Err(TryRecvError::Empty) => return Ok(()),
                     Err(TryRecvError::Disconnected) => {
-                        return self.handle_search_disconnect(active);
+                        return self.handle_search_disconnect(active, output);
                     }
                 },
                 Some(ActiveSearch::AwaitingStop { .. }) | None => return Ok(()),
@@ -437,7 +455,7 @@ impl UsiProtocol {
                     Ok(event) => self.handle_search_event(engine, active, event, output)?,
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => {
-                        self.handle_search_disconnect(active)?;
+                        self.handle_search_disconnect(active, output)?;
                     }
                 }
             }
@@ -447,11 +465,17 @@ impl UsiProtocol {
     }
 
     /// 完了イベントなしで探索チャネルが切断された異常を処理する。
-    fn handle_search_disconnect(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
+    ///
+    /// 探索の失敗の理由を出力し、`bestmove`を出力せずにセッションを終える。
+    fn handle_search_disconnect(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
         let Some(ActiveSearch::Running { handle, .. }) = active.take() else {
             return Ok(());
         };
-        self.searcher = Some(join_search(handle)?);
+        self.reclaim_searcher(handle, output)?;
         Err(io::Error::other("search ended without a finished event"))
     }
 
@@ -505,7 +529,7 @@ impl UsiProtocol {
                 else {
                     unreachable!();
                 };
-                self.searcher = Some(join_search(handle)?);
+                self.reclaim_searcher(handle, output)?;
                 write_final_info_if_deeper(
                     output,
                     &mut context,
@@ -608,10 +632,10 @@ impl UsiProtocol {
                     handle.request_stop();
                 }
                 let (best_move, ponder_move, score, depth, stop_reason) = loop {
-                    let event = handle
-                        .events()
-                        .recv()
-                        .map_err(|_| io::Error::other("search ended without a finished event"))?;
+                    let Ok(event) = handle.events().recv() else {
+                        self.reclaim_searcher(handle, output)?;
+                        return Err(io::Error::other("search ended without a finished event"));
+                    };
                     if event.search_id() != context.id {
                         continue;
                     }
@@ -658,7 +682,7 @@ impl UsiProtocol {
                         }
                     }
                 };
-                self.searcher = Some(join_search(handle)?);
+                self.reclaim_searcher(handle, output)?;
                 write_bestmove(
                     output,
                     &context.position,
@@ -677,15 +701,33 @@ impl UsiProtocol {
     }
 
     /// `bestmove`を出力せずに探索を破棄する。`gameover`・`quit`と入力断で使う。
-    fn discard_search(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
+    fn discard_search(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
         let Some(search) = active.take() else {
             return Ok(());
         };
         if let ActiveSearch::Running { handle, .. } = search {
             handle.request_stop();
-            self.searcher = Some(join_search(handle)?);
+            self.reclaim_searcher(handle, output)?;
         }
         Ok(())
+    }
+
+    /// 探索スレッドの終了を待ち、探索スレッドへ移していた探索方式の状態を戻す。
+    ///
+    /// 探索が失敗していれば（MCTSの推論の失敗など）、理由をエラーとして出力する。
+    fn reclaim_searcher(&mut self, handle: SearchHandle, output: &mut dyn Write) -> io::Result<()> {
+        let (searcher, result) = handle
+            .join()
+            .map_err(|_| io::Error::other("search thread panicked"))?;
+        self.searcher = Some(searcher);
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => write_error(output, &error),
+        }
     }
 
     /// `usi`への応答としてエンジン名とoption宣言を出力する。
@@ -712,6 +754,27 @@ impl UsiProtocol {
                     "option name {} type spin default {default} min {min} max {max}",
                     option.name
                 )?,
+                OptionKind::Combo { default, vars } => {
+                    write!(
+                        output,
+                        "option name {} type combo default {default}",
+                        option.name
+                    )?;
+                    for var in vars {
+                        write!(output, " var {var}")?;
+                    }
+                    writeln!(output)?;
+                }
+                OptionKind::String { default } => writeln!(
+                    output,
+                    "option name {} type string default {}",
+                    option.name,
+                    if default.is_empty() {
+                        "<empty>"
+                    } else {
+                        default
+                    }
+                )?,
             }
         }
         writeln!(
@@ -734,8 +797,9 @@ impl UsiProtocol {
     }
 
     /// `setoption`を処理する。RuleSet・USI_Variant・ResignValue・ByoyomiMarginと、探索方式が
-    /// 宣言したoption（αβ探索ではUSI_Hash・Threads）を受理し、未知のoption名はUSIの慣例に
-    /// 従って黙って無視する。
+    /// 宣言したoption（αβ探索ではUSI_Hash・Threads、MCTSではさらにNnBackend・NnCacheDir・
+    /// NnBatchSize）を受理し、未知のoption名はUSIの慣例に従って黙って無視する。
+    /// 値は`value`の直後の1トークンだけを読むので、空白を含む値は設定できない。
     fn handle_setoption(
         &mut self,
         engine: &mut Engine,
@@ -1046,7 +1110,10 @@ impl UsiProtocol {
             .expect("idle protocol must own the searcher");
         let lines = match command {
             "d" => diagnostic_position(engine),
-            "eval" => diagnostic_evaluation(searcher.pst(), engine.game().position()),
+            "eval" => searcher
+                .pst()
+                .ok_or_else(|| "eval requires the alphabeta search".to_owned())
+                .and_then(|pst| diagnostic_evaluation(pst, engine.game().position())),
             "tt" => searcher
                 .transposition_table()
                 .ok_or_else(|| "tt requires an allocated transposition table".to_owned())
@@ -1309,7 +1376,7 @@ impl Protocol for UsiProtocol {
                 LineAction::Quit => return Ok(()),
             }
         }
-        self.discard_search(&mut active)
+        self.discard_search(&mut active, output)
     }
 }
 
@@ -1322,13 +1389,6 @@ impl ActiveSearch {
             }
         }
     }
-}
-
-/// 探索スレッドの終了を待ち、探索スレッドへ移していた探索方式の状態を回収する。
-fn join_search(handle: SearchHandle) -> io::Result<Searcher> {
-    handle
-        .join()
-        .map_err(|_| io::Error::other("search thread panicked"))
 }
 
 /// 最終結果の2手目を対局履歴と終局規則で検査する。
@@ -3932,7 +3992,7 @@ mod tests {
             assert!(lines.try_iter().all(|line| !line.starts_with("bestmove ")));
             let mut pending = VecDeque::new();
             if command == "eof" {
-                protocol.discard_search(&mut active).unwrap();
+                protocol.discard_search(&mut active, &mut output).unwrap();
             } else {
                 protocol
                     .handle_searching_line(&engine, &mut active, &mut pending, command, &mut output)
@@ -4321,6 +4381,229 @@ mod tests {
         assert!(
             replacement_time <= Duration::from_millis(3),
             "{replacement_time:?}"
+        );
+    }
+
+    /// 一様評価器を差し込んだMCTS。
+    fn mcts_searcher() -> Searcher {
+        Searcher::mcts_with_evaluator(Box::new(crate::nn::evaluator::UniformEvaluator))
+    }
+
+    fn mcts_session(input: &str) -> String {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+        run(&mut protocol, &mut engine, input)
+    }
+
+    // alphazero.md「共存の構造」「推論層」: MCTSはUSI_HashとThreadsに続けて推論の設定を宣言し、
+    // ノード数の定義を最初のisreadyの応答の後に1回だけ告げ、一様評価器でgo nodesにbestmoveを返す。
+    #[test]
+    fn mcts_session_declares_its_options_and_answers_go_nodes() {
+        let output = mcts_session("usi\nisready\nisready\nposition startpos\nmoves\ngo nodes 64\n");
+        assert!(error_lines(&output).is_empty(), "{output}");
+        let lines: Vec<_> = output.lines().collect();
+        for expected in [
+            "option name USI_Hash type spin default 256 min 1 max 65536",
+            "option name Threads type spin default 1 min 1 max 256",
+            "option name NnBackend type combo default tensorrt var tensorrt var cuda var cpu",
+            "option name NnBatchSize type spin default 64 min 1 max 1024",
+        ] {
+            assert!(lines.contains(&expected), "{expected}");
+        }
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("option name NnCacheDir type string default "))
+        );
+        let notice = "info string MCTS reports nodes as the number of simulations";
+        let ready = lines.iter().position(|line| *line == "readyok").unwrap();
+        assert!(lines[ready + 1].starts_with(notice), "{output}");
+        assert_eq!(
+            lines.iter().filter(|line| line.starts_with(notice)).count(),
+            1
+        );
+        assert!(output.contains("info string stop nodes\n"));
+        assert_legal_bestmove(&output, &moves_sets(&output)[0]);
+    }
+
+    // 指示書E第7項: MCTSは深さをシミュレーション回数の制限として扱わない。深さだけのgoは告げてから
+    // 800回で探索し、他の制限と併用された深さは告げてから除く。
+    #[test]
+    fn mcts_go_depth_is_not_a_simulation_limit() {
+        let prefix = "info string MCTS does not interpret depth 3 as a simulation limit; ";
+        let output = mcts_session("position startpos\ngo depth 3\n");
+        assert!(error_lines(&output).is_empty(), "{output}");
+        assert!(output.contains(&format!("{prefix}searching 800 simulations instead\n")));
+        assert_eq!(bestmoves(&output).len(), 1);
+        let nodes: Vec<u64> = output
+            .lines()
+            .filter_map(|line| line.split(" nodes ").nth(1))
+            .map(|rest| rest.split_whitespace().next().unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(nodes.iter().max(), Some(&800), "{output}");
+
+        let output = mcts_session("position startpos\ngo depth 3 nodes 16\n");
+        assert!(error_lines(&output).is_empty(), "{output}");
+        assert!(output.contains(&format!(
+            "{prefix}searching with the node and time limits only\n"
+        )));
+        assert_eq!(bestmoves(&output).len(), 1);
+    }
+
+    // alphazero.md「検証」: MCTSのgo infiniteもαβ探索と同じく、stopまでbestmoveを保留し、
+    // 外部停止の停止理由の後にbestmoveを返す。
+    #[test]
+    fn mcts_go_infinite_withholds_bestmove_until_stop() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+        let (command_sender, command_receiver) = std::sync::mpsc::channel();
+        let (line_sender, line_receiver) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(move || {
+                let mut output = LineWriter {
+                    sender: line_sender,
+                    bytes: Vec::new(),
+                };
+                protocol.run_channel(&mut engine, &command_receiver, &mut output)
+            });
+            command_sender
+                .send(Ok("position startpos".to_owned()))
+                .unwrap();
+            command_sender.send(Ok("go infinite".to_owned())).unwrap();
+            loop {
+                let line = line_receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+                assert!(!line.starts_with("bestmove "));
+                if line.starts_with("info depth ") {
+                    break;
+                }
+            }
+            command_sender.send(Ok("stop".to_owned())).unwrap();
+            let mut tail = Vec::new();
+            loop {
+                let line = line_receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+                let done = line.starts_with("bestmove ");
+                tail.push(line);
+                if done {
+                    break;
+                }
+            }
+            let stop = tail
+                .iter()
+                .position(|line| line.starts_with("info string stop "))
+                .unwrap();
+            assert_eq!(tail[stop], "info string stop external\n");
+            assert_eq!(stop + 2, tail.len(), "{tail:?}");
+            drop(command_sender);
+            worker.join().unwrap().unwrap();
+        });
+    }
+
+    // alphazero.md「検証」: MCTSの先読みの結果もαβ探索と同じく、ponderhitまたはstopで1回だけ
+    // bestmoveを返し、gameover・quit・入力断では破棄する。
+    #[test]
+    fn mcts_ponder_held_results_release_once_or_are_discarded() {
+        for command in ["ponderhit", "stop", "gameover win", "quit", "eof"] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+            let (sender, lines) = std::sync::mpsc::channel();
+            let mut output = LineWriter {
+                sender,
+                bytes: Vec::new(),
+            };
+            protocol
+                .handle_idle_line(&mut engine, "position startpos", &mut output)
+                .unwrap();
+            let mut active = protocol
+                .start_go(&engine, &["ponder", "nodes", "64"], &mut output)
+                .unwrap();
+            while matches!(active, Some(ActiveSearch::Running { .. })) {
+                protocol
+                    .wait_search_event(&engine, &mut active, &mut output)
+                    .unwrap();
+            }
+            assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
+            assert!(lines.try_iter().all(|line| !line.starts_with("bestmove ")));
+            let mut pending = VecDeque::new();
+            if command == "eof" {
+                protocol.discard_search(&mut active, &mut output).unwrap();
+            } else {
+                protocol
+                    .handle_searching_line(&engine, &mut active, &mut pending, command, &mut output)
+                    .unwrap();
+            }
+            assert!(active.is_none());
+            assert!(protocol.searcher.is_some());
+            let result: String = lines.try_iter().collect();
+            if matches!(command, "ponderhit" | "stop") {
+                assert_eq!(bestmoves(&result).len(), 1);
+                assert!(result.contains("info string stop nodes\n"));
+            } else {
+                assert!(bestmoves(&result).is_empty());
+            }
+        }
+    }
+
+    // alphazero.md「検証」: 時間制限つきの先読みは、ponderhitの後に時間で終わってbestmoveを返す。
+    #[test]
+    fn mcts_running_ponderhit_starts_the_clock() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+        let (sender, lines) = std::sync::mpsc::channel();
+        let mut output = LineWriter {
+            sender,
+            bytes: Vec::new(),
+        };
+        protocol
+            .handle_idle_line(&mut engine, "position startpos", &mut output)
+            .unwrap();
+        let mut active = protocol
+            .start_go(&engine, &["ponder", "movetime", "30"], &mut output)
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        protocol
+            .poll_search(&engine, &mut active, &mut output)
+            .unwrap();
+        assert!(matches!(active, Some(ActiveSearch::Running { .. })));
+        let mut pending = VecDeque::new();
+        protocol
+            .handle_searching_line(&engine, &mut active, &mut pending, "ponderhit", &mut output)
+            .unwrap();
+        while active.is_some() {
+            protocol
+                .wait_search_event(&engine, &mut active, &mut output)
+                .unwrap();
+        }
+        let result: String = lines.try_iter().collect();
+        assert_eq!(bestmoves(&result).len(), 1, "{result}");
+        assert!(result.contains("info string stop soft\n"), "{result}");
+    }
+
+    // alphazero.md「推論層」: 推論のセッションを作れない場合は、別の実行プロバイダへ切り替えずに
+    // isreadyへエラーを返してセッションを終える。
+    #[test]
+    fn mcts_isready_fails_without_a_session() {
+        if std::env::var_os("ORT_DYLIB_PATH").is_some() {
+            return;
+        }
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(
+            &engine,
+            Searcher::new(crate::search::SearchAlgorithm::Mcts).unwrap(),
+        );
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender.send(Ok("isready".to_owned())).unwrap();
+        drop(sender);
+        let mut output = Vec::new();
+        assert!(
+            protocol
+                .run_channel(&mut engine, &receiver, &mut output)
+                .is_err()
+        );
+        let output = String::from_utf8(output).unwrap();
+        assert!(!output.contains("readyok"));
+        assert!(
+            output.starts_with("info string error: ORT_DYLIB_PATH"),
+            "{output}"
         );
     }
 }

@@ -34,6 +34,8 @@ minase-core = { version = "0.1.1", path = "../minase-core" }
 clap = { version = "4.6.4", features = ["derive"] }
 fs2 = "0.4.3"
 mimalloc = "0.1.52"
+# ONNX Runtimeは実行時に`ORT_DYLIB_PATH`から読み込み、ビルド時には要らない（docs/plans/alphazero.md「推論はortのload-dynamicで行う」）。
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "tensorrt", "cuda"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 sha2 = "0.10"

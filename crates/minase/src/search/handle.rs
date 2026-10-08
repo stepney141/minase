@@ -16,6 +16,9 @@ use crate::search::searcher::Searcher;
 use crate::search::snapshot::SearchSnapshot;
 use crate::search::{HistoryTables, TranspositionTable};
 
+/// 探索スレッドが終了時に返す探索方式の状態と、探索の成否。失敗は理由で表す。
+pub type JoinedSearch = (Searcher, Result<(), String>);
+
 /// 実行中の探索チームを操作するハンドル。
 ///
 /// 値を破棄すると探索チームへ停止を要求し、全ワーカーを回収するまで待つ。
@@ -28,8 +31,8 @@ pub struct SearchHandle {
     pub(super) hit_ns: Arc<AtomicU64>,
     /// 探索チームと共有する外部停止フラグ。
     pub(super) stop: Arc<AtomicBool>,
-    /// 全ワーカーの終了後に探索方式の状態を返す調整役のハンドル。
-    pub(super) thread: Option<thread::JoinHandle<Searcher>>,
+    /// 全ワーカーの終了後に探索方式の状態と探索の成否を返す調整役のハンドル。
+    pub(super) thread: Option<thread::JoinHandle<JoinedSearch>>,
 }
 
 impl SearchHandle {
@@ -59,17 +62,19 @@ impl SearchHandle {
     }
 
     /// 探索チームへ停止を要求して全ワーカーの終了を待ち、探索スレッドへ
-    /// 移していた探索方式の状態を返す。
+    /// 移していた探索方式の状態と探索の成否を返す。
     ///
+    /// 探索が失敗した場合（MCTSの推論の失敗など）は、探索イベントの
+    /// [`SearchEvent::Finished`]は送信されず、成否に理由が入る。
     /// 探索ワーカーがパニックした場合は、そのペイロードを`Err`で返す。
-    /// この場合、探索イベントの[`SearchEvent::Finished`]は送信されない。
-    pub fn join(mut self) -> thread::Result<Searcher> {
+    /// この場合も、探索イベントの[`SearchEvent::Finished`]は送信されない。
+    pub fn join(mut self) -> thread::Result<JoinedSearch> {
         self.stop_and_join()
             .expect("a live SearchHandle must own its search thread")
     }
 
     /// 停止要求と探索スレッドの回収を1回だけ行う。
-    fn stop_and_join(&mut self) -> Option<thread::Result<Searcher>> {
+    fn stop_and_join(&mut self) -> Option<thread::Result<JoinedSearch>> {
         self.request_stop();
         self.thread.take().map(thread::JoinHandle::join)
     }
@@ -84,7 +89,7 @@ impl Drop for SearchHandle {
 /// 所有権を移した評価重み、入力、置換表およびhistory表を使い、別スレッドで探索チームを
 /// 開始する。`ponder`が真なら時間制限は的中の通知まで無効とする。
 /// `histories`は`threads`と同じワーカー数で作成する。
-/// [`SearchHandle::join`]は、渡した部品をαβ探索の[`Searcher`]にまとめて返す。
+/// [`SearchHandle::join`]は、渡した部品をαβ探索の[`Searcher`]にまとめ、成功とともに返す。
 ///
 /// 探索ワーカーがパニックした場合は残るワーカーへ停止を通知する。その後、
 /// [`SearchHandle::join`]がパニックのペイロードを返し、
@@ -135,7 +140,10 @@ pub fn start_search(
             pv: outcome.pv,
             stop_reason: outcome.stop_reason,
         });
-        Searcher::AlphaBeta(Engine::from_parts(pst, threads, tt, histories))
+        (
+            Searcher::AlphaBeta(Engine::from_parts(pst, threads, tt, histories)),
+            Ok(()),
+        )
     });
     SearchHandle {
         started,

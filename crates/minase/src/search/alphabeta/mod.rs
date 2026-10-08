@@ -17,7 +17,7 @@ mod see;
 pub(in crate::search) mod team;
 #[cfg(test)]
 mod tests;
-pub(crate) mod time;
+mod time;
 pub(in crate::search) mod tt;
 
 pub use engine::{Engine, MAX_HASH_SIZE_MB, MAX_THREADS};

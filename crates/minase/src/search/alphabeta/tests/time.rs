@@ -152,7 +152,11 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
         small_tt(),
     );
     let (_, finished) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
 
     // 上限ガード: ノード周期チェックの遅延を見込んだ十分な許容幅。
     assert!(finished.elapsed <= Duration::from_millis(1_000));
@@ -182,7 +186,11 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
         small_tt(),
     );
     let (_, finished) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
     assert!(matches!(
         finished.stop_reason,
         StopReason::SoftLimit | StopReason::HardLimit

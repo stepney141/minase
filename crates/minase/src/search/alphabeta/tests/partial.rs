@@ -3,7 +3,7 @@
 use super::*;
 use crate::search::alphabeta::deepening::main_worker_outcome;
 use crate::search::alphabeta::root::RootResults;
-use crate::search::alphabeta::time::byoyomi_clock;
+use crate::search::time::byoyomi_clock;
 
 /// 「対象の探索」の境界を列挙する。予算の長短には依存しない。
 fn clock_cases() -> Vec<(SearchLimits, bool)> {

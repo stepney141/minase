@@ -22,7 +22,8 @@ use super::params;
 use super::quiesce::{CaptureRanks, QsearchBuffers};
 use super::root::RootResults;
 use super::team::SharedSearch;
-use super::time::{TimeBudget, iteration_prediction_fits};
+use super::time::iteration_prediction_fits;
+use crate::search::time::TimeBudget;
 
 /// 停止要求と時間切れを検査するノード数間隔。
 pub(super) const STOP_CHECK_INTERVAL: u64 = 4096;

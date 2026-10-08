@@ -7,7 +7,8 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
 use crate::search::{
-    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, Searcher,
+    self, ClockLimits, OptionKind, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot,
+    Searcher,
 };
 use minase_core::game::{DrawReason, GameResult, IllegalMoveCause, WinReason};
 use minase_core::notation::cecp;
@@ -216,6 +217,10 @@ impl CecpProtocol {
                 return Ok(None);
             }
         };
+        let (limits, notice) = self.searcher().adapt_limits(limits);
+        if let Some(notice) = notice {
+            writeln!(output, "# {notice}")?;
+        }
         let game = engine.game();
         let snapshot = match SearchSnapshot::from_game(game) {
             Ok(snapshot) => snapshot,
@@ -293,7 +298,7 @@ impl CecpProtocol {
                         continue;
                     }
                     Ok(Err(error)) => {
-                        self.discard_search(&mut active)?;
+                        self.discard_search(&mut active, output)?;
                         return Err(error);
                     }
                     Err(TryRecvError::Empty) => {}
@@ -316,7 +321,7 @@ impl CecpProtocol {
                         output,
                     )?,
                     Ok(Err(error)) => {
-                        self.discard_search(&mut active)?;
+                        self.discard_search(&mut active, output)?;
                         return Err(error);
                     }
                     Err(RecvTimeoutError::Timeout) => {}
@@ -328,7 +333,7 @@ impl CecpProtocol {
         }
 
         if active.is_some() {
-            self.discard_search(&mut active)?;
+            self.discard_search(&mut active, output)?;
         }
         Ok(())
     }
@@ -346,7 +351,7 @@ impl CecpProtocol {
             Some("?") => self.finish_search(engine, active, output, true)?,
             Some("force" | "result" | "new" | "quit") => {
                 pending.push_back(line.to_owned());
-                self.discard_search(active)?;
+                self.discard_search(active, output)?;
             }
             _ => pending.push_back(line.to_owned()),
         }
@@ -366,7 +371,7 @@ impl CecpProtocol {
                     Ok(event) => event,
                     Err(TryRecvError::Empty) => return Ok(()),
                     Err(TryRecvError::Disconnected) => {
-                        return self.handle_search_disconnect(active);
+                        return self.handle_search_disconnect(active, output);
                     }
                 },
                 None => return Ok(()),
@@ -392,16 +397,22 @@ impl CecpProtocol {
         {
             Ok(event) => self.handle_search_event(engine, active, event, output),
             Err(RecvTimeoutError::Timeout) => Ok(()),
-            Err(RecvTimeoutError::Disconnected) => self.handle_search_disconnect(active),
+            Err(RecvTimeoutError::Disconnected) => self.handle_search_disconnect(active, output),
         }
     }
 
     /// 完了通知なしで探索チャネルが切断された異常を処理する。
-    fn handle_search_disconnect(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
+    ///
+    /// 探索の失敗の理由を出力し、着手を出力せずにセッションを終える。
+    fn handle_search_disconnect(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
         let Some(search) = active.take() else {
             return Ok(());
         };
-        self.searcher = Some(join_search(search.handle)?);
+        self.reclaim_searcher(search.handle, output)?;
         Err(io::Error::other("search ended without a finished event"))
     }
 
@@ -423,7 +434,7 @@ impl CecpProtocol {
             SearchEvent::Progress { .. } => Ok(()),
             SearchEvent::Finished { best_move, .. } => {
                 let search = active.take().expect("active search must exist");
-                self.searcher = Some(join_search(search.handle)?);
+                self.reclaim_searcher(search.handle, output)?;
                 self.apply_engine_move(engine, best_move, output)
             }
         }
@@ -444,11 +455,10 @@ impl CecpProtocol {
             search.handle.request_stop();
         }
         let best_move = loop {
-            let event = search
-                .handle
-                .events()
-                .recv()
-                .map_err(|_| io::Error::other("search ended without a finished event"))?;
+            let Ok(event) = search.handle.events().recv() else {
+                self.reclaim_searcher(search.handle, output)?;
+                return Err(io::Error::other("search ended without a finished event"));
+            };
             if event.search_id() != search.context.id {
                 continue;
             }
@@ -456,18 +466,35 @@ impl CecpProtocol {
                 break best_move;
             }
         };
-        self.searcher = Some(join_search(search.handle)?);
+        self.reclaim_searcher(search.handle, output)?;
         self.apply_engine_move(engine, best_move, output)
     }
 
-    /// 探索結果を出力せずに停止し、置換表だけを回収する。
-    fn discard_search(&mut self, active: &mut Option<ActiveSearch>) -> io::Result<()> {
+    /// 探索結果を出力せずに停止し、探索方式の状態だけを回収する。
+    fn discard_search(
+        &mut self,
+        active: &mut Option<ActiveSearch>,
+        output: &mut dyn Write,
+    ) -> io::Result<()> {
         let Some(search) = active.take() else {
             return Ok(());
         };
         search.handle.request_stop();
-        self.searcher = Some(join_search(search.handle)?);
-        Ok(())
+        self.reclaim_searcher(search.handle, output)
+    }
+
+    /// 探索スレッドの終了を待ち、探索スレッドへ移していた探索方式の状態を戻す。
+    ///
+    /// 探索が失敗していれば（MCTSの推論の失敗など）、理由を利用者向けのエラーとして出力する。
+    fn reclaim_searcher(&mut self, handle: SearchHandle, output: &mut dyn Write) -> io::Result<()> {
+        let (searcher, result) = handle
+            .join()
+            .map_err(|_| io::Error::other("search thread panicked"))?;
+        self.searcher = Some(searcher);
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => writeln!(output, "tellusererror {error}"),
+        }
     }
 
     /// 探索が選んだ手を現局へ適用し、`move`と新規終局結果を順に出力する。
@@ -520,6 +547,33 @@ impl CecpProtocol {
             "feature option=\"RuleSet -string {}\"",
             self.startup_rules_text
         )?;
+        let searcher = self
+            .searcher
+            .as_ref()
+            .expect("idle protocol must own the searcher");
+        // 置換表の容量とワーカー数は、CECPでは`memory`と`cores`で受ける。
+        for option in searcher
+            .options()
+            .iter()
+            .filter(|option| !matches!(option.name, "USI_Hash" | "Threads"))
+        {
+            write!(output, "feature option=\"{} ", option.name)?;
+            match option.kind {
+                OptionKind::Spin { default, min, max } => {
+                    write!(output, "-spin {default} {min} {max}")?;
+                }
+                OptionKind::Combo { default, vars } => {
+                    write!(output, "-combo")?;
+                    for (index, var) in vars.iter().enumerate() {
+                        let separator = if index == 0 { "" } else { " ///" };
+                        let mark = if *var == default { "*" } else { "" };
+                        write!(output, "{separator} {mark}{var}")?;
+                    }
+                }
+                OptionKind::String { default } => write!(output, "-string {default}")?,
+            }
+            writeln!(output, "\"")?;
+        }
         writeln!(output, "feature smp=1")?;
         writeln!(output, "feature done=1")
     }
@@ -647,7 +701,7 @@ impl CecpProtocol {
         }
     }
 
-    /// `option`のRuleSet設定を処理する。他のoption名は黙って無視する。
+    /// `option`のRuleSet設定と、探索方式が宣言したoptionを処理する。他のoption名は黙って無視する。
     fn handle_option(
         &mut self,
         engine: &mut Engine,
@@ -661,7 +715,10 @@ impl CecpProtocol {
             return Ok(());
         };
         if name != "RuleSet" {
-            return Ok(());
+            return match self.searcher().set_option(name, Some(value)) {
+                Some(Err(_)) => writeln!(output, "Error (invalid option value): {line}"),
+                Some(Ok(())) | None => Ok(()),
+            };
         }
 
         let accepted = parse_rule_set(value).is_ok_and(|codes| {
@@ -700,8 +757,10 @@ impl CecpProtocol {
         };
         let searcher = self.searcher();
         if searcher.threads() != threads {
+            if let Err(error) = searcher.set_threads(threads) {
+                return writeln!(output, "Error (unsupported cores): {error}");
+            }
             // ワーカー数を変えた後の探索は、前の置換表も持ち越さない。
-            searcher.set_threads(threads);
             searcher.new_game();
         }
         Ok(())
@@ -825,15 +884,8 @@ impl Protocol for CecpProtocol {
                 LineAction::Quit => return Ok(()),
             }
         }
-        self.discard_search(&mut active)
+        self.discard_search(&mut active, output)
     }
-}
-
-/// 探索スレッドの終了を待ち、探索スレッドへ移していた探索方式の状態を回収する。
-fn join_search(handle: SearchHandle) -> io::Result<Searcher> {
-    handle
-        .join()
-        .map_err(|_| io::Error::other("search thread panicked"))
 }
 
 /// 1以上256以下のワーカー数を解析する。
@@ -1727,5 +1779,52 @@ mod tests {
         for (reason, text) in draws {
             assert_eq!(draw_reason_text(reason), text);
         }
+    }
+
+    // 指示書E第9項: --search mctsのCECPも同じSearcherの操作で動く。推論の設定はfeature optionで
+    // 宣言し、置換表の容量とワーカー数はmemoryとcoresで受ける。sdの深さはシミュレーション回数として
+    // 扱わず、告げてから探索する。
+    #[test]
+    fn mcts_declares_network_options_and_moves() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = CecpProtocol::new(
+            &engine,
+            Searcher::mcts_with_evaluator(Box::new(crate::nn::evaluator::UniformEvaluator)),
+        );
+        let features = run(&mut protocol, &mut engine, "protover 2\n");
+        let options: Vec<_> = features
+            .lines()
+            .filter(|line| line.starts_with("feature option="))
+            .collect();
+        assert_eq!(options.len(), 4, "{features}");
+        assert!(
+            options.contains(&"feature option=\"NnBackend -combo *tensorrt /// cuda /// cpu\"")
+        );
+        assert!(options.contains(&"feature option=\"NnBatchSize -spin 64 1 1024\""));
+        assert!(
+            options
+                .iter()
+                .any(|line| line.starts_with("feature option=\"NnCacheDir -string "))
+        );
+
+        let output = run(
+            &mut protocol,
+            &mut engine,
+            "option NnBatchSize=0\ncores 2\nmemory 1\ncores 1\nsd 1\nnew\ngo\n",
+        );
+        let lines: Vec<_> = output.lines().collect();
+        assert_eq!(
+            lines[0],
+            "Error (invalid option value): option NnBatchSize=0"
+        );
+        assert!(
+            lines[1].starts_with("Error (unsupported cores): "),
+            "{output}"
+        );
+        assert_eq!(
+            lines[2],
+            "# MCTS does not interpret depth 1 as a simulation limit; searching 800 simulations instead"
+        );
+        assert_eq!(logical_move_count(&output), 1, "{output}");
     }
 }

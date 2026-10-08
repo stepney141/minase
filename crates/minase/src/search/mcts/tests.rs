@@ -19,7 +19,9 @@ use super::tree::{Proven, Tree};
 use crate::nn::evaluator::{Evaluator, EvaluatorError, INPUT_SIZE, UniformEvaluator};
 use crate::nn::{POLICY_SIZE, policy};
 use crate::search::events::{SearchEvent, StopReason};
+use crate::search::handle::SearchHandle;
 use crate::search::limits::{ClockLimits, SearchLimits};
+use crate::search::searcher::Searcher;
 use crate::search::snapshot::SearchSnapshot;
 use crate::search::{MATE, MATE_THRESHOLD};
 
@@ -31,16 +33,14 @@ fn config(selection: Selection, batch_size: usize, gumbel_simulations: u32) -> C
         gumbel_simulations: NonZeroU32::new(gumbel_simulations).unwrap(),
         max_considered: MAX_CONSIDERED_ACTIONS,
         seed: NonZeroU64::new(7).unwrap(),
+        win_rate_scale: crate::eval::weights().unwrap().k(),
+        max_nodes: NonZeroU32::MAX,
     }
 }
 
 /// 評価器と設定からMCTSを作る。
 fn engine(evaluator: impl Evaluator + Send + 'static, config: Config) -> Engine {
-    Engine::new(
-        Box::new(evaluator),
-        &crate::eval::weights().unwrap(),
-        config,
-    )
+    Engine::new(Box::new(evaluator), config)
 }
 
 /// ノード数だけを制限する。
@@ -630,7 +630,7 @@ fn non_finite_outputs_are_errors() {
 // ---------------------------------------------------------------------------
 
 /// 終了通知までのイベントを受け取る。
-fn drain(handle: &super::Handle) -> Vec<SearchEvent> {
+fn drain(handle: &SearchHandle) -> Vec<SearchEvent> {
     let mut events = Vec::new();
     loop {
         let event = handle
@@ -687,6 +687,28 @@ fn stop_finishes_an_infinite_search() {
     );
     let (_, result) = handle.join().unwrap();
     assert_eq!(result, Ok(()));
+}
+
+// 指示書E: 探索木の節点数が上限（USI_Hash）に達したら、新しい展開をやめてノード数の制限として終える。
+#[test]
+fn tree_capacity_stops_the_search() {
+    let snapshot = snapshot_of(Position::initial());
+    let mut config = config(Selection::Puct, 4, 32);
+    config.max_nodes = NonZeroU32::new(10).unwrap();
+    let handle = engine(UniformEvaluator, config)
+        .start(snapshot, nodes(1_000), 3, false)
+        .unwrap_or_else(|(_, error)| panic!("{error}"));
+    let events = drain(&handle);
+    let Some(SearchEvent::Finished { stop_reason, .. }) = events.last() else {
+        panic!("the search must finish");
+    };
+    assert_eq!(*stop_reason, StopReason::NodeLimit);
+    let (searcher, result) = handle.join().unwrap();
+    assert_eq!(result, Ok(()));
+    let Searcher::Mcts(engine) = searcher else {
+        panic!("the MCTS search returns its own state");
+    };
+    assert_eq!(engine.previous_tree().unwrap().len(), 10);
 }
 
 // alphazero.md「検証」: 先読み中は時間制限を無効とし、ponderhitの後に時間で終了する。

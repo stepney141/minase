@@ -211,6 +211,19 @@ tools/train/zero/run.sh uv run --project tools/train/zero python -m minase_zero.
   --model data/zero/net.onnx --provider tensorrt --trt-cache-dir data/cache/trt-bench
 ```
 
+## minaseのMCTSのエンジンのキャッシュ
+
+`minase --search mcts`は、最初の`isready`への応答の前にONNX Runtimeのセッションを作り、既定のTensorRTの実行プロバイダでは、実行ファイルに埋め込んだネットからGPU向けのエンジンを作る。
+エンジンの作成には数分かかることがあり、対局ハーネス`minase match run`の応答タイムアウト（`--response-timeout`、既定120秒）を超えると、そのエンジンの反則負けになる。
+作ったエンジンは、USIオプション`NnCacheDir`（既定は`$XDG_CACHE_HOME/minase/tensorrt`）の下の、ネットの検査和、GPUの機種名、メモリ容量、計算能力、およびTensorRTの版から作った鍵のディレクトリに保存され、次回からは読み込むだけになる。
+このため測定の前に、測定に使うバイナリを、測定と同じ`NnCacheDir`と`NnBatchSize`で1回起動し、`readyok`が返るまで待ってキャッシュを作っておく。
+ONNX Runtimeの共有ライブラリは環境変数`ORT_DYLIB_PATH`で指定し、コンテナイメージの中では設定済みである。
+
+```bash
+printf 'usi\nsetoption name NnCacheDir value data/cache/trt-minase\nisready\nquit\n' \
+  | target/release/minase --protocol usi --rules engine-default --search mcts
+```
+
 ## ソースの構成
 
 | ファイル | 内容 |

@@ -8,6 +8,8 @@ use core::str::FromStr;
 pub enum SearchAlgorithm {
     /// 評価関数と静止探索を使うαβ探索。
     AlphaBeta,
+    /// ネットの方策と価値を使うMCTS。
+    Mcts,
 }
 
 impl SearchAlgorithm {
@@ -15,6 +17,7 @@ impl SearchAlgorithm {
     const fn name(self) -> &'static str {
         match self {
             Self::AlphaBeta => "alphabeta",
+            Self::Mcts => "mcts",
         }
     }
 }
@@ -33,7 +36,7 @@ impl fmt::Display for UnknownSearchAlgorithm {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "unknown search algorithm '{}' (expected alphabeta)",
+            "unknown search algorithm '{}' (expected alphabeta or mcts)",
             self.0
         )
     }
@@ -48,6 +51,7 @@ impl FromStr for SearchAlgorithm {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input {
             "alphabeta" => Ok(Self::AlphaBeta),
+            "mcts" => Ok(Self::Mcts),
             _ => Err(UnknownSearchAlgorithm(input.to_owned())),
         }
     }
@@ -60,14 +64,19 @@ mod tests {
     // alphazero.md「共存の構造」: 方式名は起動引数の文字列と相互に変換できる。
     #[test]
     fn search_algorithm_round_trips_through_its_name() {
-        let algorithm: SearchAlgorithm = "alphabeta".parse().unwrap();
-        assert_eq!(algorithm, SearchAlgorithm::AlphaBeta);
-        assert_eq!(algorithm.to_string(), "alphabeta");
+        for (name, expected) in [
+            ("alphabeta", SearchAlgorithm::AlphaBeta),
+            ("mcts", SearchAlgorithm::Mcts),
+        ] {
+            let algorithm: SearchAlgorithm = name.parse().unwrap();
+            assert_eq!(algorithm, expected);
+            assert_eq!(algorithm.to_string(), name);
+        }
     }
 
     #[test]
     fn search_algorithm_rejects_unknown_names() {
-        for input in ["", "AlphaBeta", "alpha-beta", "alphabeta "] {
+        for input in ["", "AlphaBeta", "alpha-beta", "alphabeta ", "MCTS", "mcts "] {
             assert_eq!(
                 input.parse::<SearchAlgorithm>(),
                 Err(UnknownSearchAlgorithm(input.to_owned()))

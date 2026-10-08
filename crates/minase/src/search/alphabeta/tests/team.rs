@@ -97,6 +97,7 @@ fn multi_worker_teams_finish_once_and_return_the_shared_table() {
         let (table, _) = handle
             .join()
             .expect("search team must not panic")
+            .0
             .into_alphabeta_parts();
         assert_eq!(table.generation(), 1);
     }
@@ -124,6 +125,7 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
     let (table, _) = handle
         .join()
         .expect("search team must not panic")
+        .0
         .into_alphabeta_parts();
     assert_eq!(table.generation(), 1);
 
@@ -255,6 +257,7 @@ fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {
     let (table, _) = handle
         .join()
         .expect("search team must not panic")
+        .0
         .into_alphabeta_parts();
     assert_eq!(table.generation(), 1);
 

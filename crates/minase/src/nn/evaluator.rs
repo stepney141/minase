@@ -15,16 +15,19 @@ use super::{INPUT_PLANES, POLICY_SIZE};
 pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 
 /// 推論の失敗。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EvaluatorError {
     /// 方策logitまたは勝率に非有限値（NaNまたは無限大）がある。
     NonFinite,
+    /// 推論の実行系が失敗した。理由を持つ。
+    Inference(String),
 }
 
 impl fmt::Display for EvaluatorError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonFinite => formatter.write_str("network output contains a non-finite value"),
+            Self::Inference(reason) => write!(formatter, "inference failed: {reason}"),
         }
     }
 }

@@ -39,7 +39,7 @@ struct Arguments {
     /// 採用するローカルルールコード列。
     #[arg(long, required = true, value_parser = parse_rule_set_argument)]
     rules: Option<RuleSetArgument>,
-    /// 使用する探索方式（alphabeta）。
+    /// 使用する探索方式（alphabeta、mcts）。mctsは最初の`isready`で推論のセッションを作る。
     #[arg(long, default_value = "alphabeta", value_parser = parse_search_algorithm)]
     search: SearchAlgorithm,
     /// 入出力のログを新規作成するパス。
@@ -309,6 +309,10 @@ mod tests {
         assert_eq!(
             parse(&["--search", "alphabeta"]).unwrap().search,
             SearchAlgorithm::AlphaBeta
+        );
+        assert_eq!(
+            parse(&["--search", "mcts"]).unwrap().search,
+            SearchAlgorithm::Mcts
         );
         assert!(parse(&["--search", "minimax"]).is_err());
         assert!(

@@ -24,7 +24,11 @@ fn search_with_node_limit_is_deterministic() {
             small_tt(),
         );
         let (progress, finished) = event_reports(drain_raw(&handle));
-        handle.join().expect("search thread must not panic");
+        handle
+            .join()
+            .expect("search thread must not panic")
+            .1
+            .unwrap();
         (
             progress
                 .into_iter()
@@ -99,7 +103,7 @@ fn search_apis_use_the_supplied_pst() {
         false,
     );
     let (_, asynchronous) = event_reports(drain_raw(&handle));
-    handle.join().unwrap();
+    handle.join().unwrap().1.unwrap();
 
     assert_eq!(asynchronous.score, expected);
 }
@@ -121,7 +125,11 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
         small_tt(),
     );
     let (_, finished) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
 
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
     assert!(finished.nodes >= 5_000);
@@ -158,7 +166,11 @@ fn stop_before_depth_one_still_yields_a_legal_best_move() {
     let events = drain_raw(&handle);
     assert!(events.iter().all(|event| event.search_id() == 41));
     let (_, finished) = event_reports(events);
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
     assert_eq!(finished.stop_reason, StopReason::ExternalStop);
     assert!(root_moves.contains(&finished.best_move)); // INV-1
 }
@@ -180,7 +192,11 @@ fn infinite_limits_stop_only_on_external_request() {
     ));
     handle.request_stop();
     let (_, finished) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
     assert_eq!(finished.stop_reason, StopReason::ExternalStop);
     assert!(root_moves.contains(&finished.best_move));
 }
@@ -215,7 +231,11 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     let events = drain_raw(&handle);
     assert!(events.iter().all(|event| event.search_id() == 81));
     let (progress, finished) = event_reports(events);
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
 
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
     assert_eq!(depths, vec![1, 2, 3, 4, 5, 6]);
@@ -245,7 +265,11 @@ fn progress_depths_start_at_one_and_increase_by_one() {
         small_tt(),
     );
     let (progress, _) = event_reports(drain_raw(&handle));
-    handle.join().expect("search thread must not panic");
+    handle
+        .join()
+        .expect("search thread must not panic")
+        .1
+        .unwrap();
     let depths: Vec<u32> = progress.iter().map(|entry| entry.0).collect();
     assert_eq!(depths, vec![1]);
 }
@@ -268,6 +292,7 @@ fn join_returns_the_transposition_table_for_reuse() {
     let (mut returned_tt, _) = handle
         .join()
         .expect("search thread must not panic")
+        .0
         .into_alphabeta_parts();
 
     // ルート探索ごとに世代が進む(search.md「置換表」節)。世代が進まないと、
@@ -307,7 +332,10 @@ fn dropping_search_handle_requests_stop_and_joins_the_thread() {
             thread::yield_now();
         }
         finished.store(true, AtomicOrdering::Release);
-        crate::search::Searcher::new(crate::search::SearchAlgorithm::AlphaBeta).unwrap()
+        (
+            crate::search::Searcher::new(crate::search::SearchAlgorithm::AlphaBeta).unwrap(),
+            Ok(()),
+        )
     });
     let handle = SearchHandle {
         started: Instant::now(),
@@ -332,7 +360,7 @@ fn search_handle_join_returns_the_coordinator_panic() {
         hit_ns: Arc::new(AtomicU64::new(0)),
         events,
         stop: Arc::new(AtomicBool::new(false)),
-        thread: Some(thread::spawn(|| -> crate::search::Searcher {
+        thread: Some(thread::spawn(|| -> crate::search::JoinedSearch {
             panic!("injected coordinator panic")
         })),
     };

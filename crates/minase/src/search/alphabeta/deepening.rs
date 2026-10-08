@@ -15,7 +15,8 @@ use super::history::HistoryTable;
 use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
 use super::team::{SharedSearch, WorkerOutcome};
-use super::time::{TimeBudget, should_start_next_iteration, stable_signal};
+use super::time::{should_start_next_iteration, stable_signal};
+use crate::search::time::TimeBudget;
 
 /// 補助ワーカーが探索する深さを昇順に返す。
 pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item = u32> {

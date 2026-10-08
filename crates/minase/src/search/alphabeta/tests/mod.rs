@@ -66,8 +66,7 @@ use crate::search::alphabeta::team::{
     HardLimit, SharedSearch, WorkerOutcome, run_search_team, run_worker_team, select_worker_outcome,
 };
 use crate::search::alphabeta::time::{
-    TimeBudget, clock_budget, iteration_prediction_fits, should_start_next_iteration,
-    stable_signal, time_budget,
+    iteration_prediction_fits, should_start_next_iteration, stable_signal,
 };
 use crate::search::alphabeta::tt::{
     ADVISORY_GENERATION_MASK, ADVISORY_GENERATION_SHIFT, ADVISORY_MOVE_MASK, Bound,
@@ -78,6 +77,7 @@ use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::handle::SearchHandle;
 use crate::search::limits::{ClockLimits, SearchLimits};
 use crate::search::snapshot::{SearchSnapshot, search_key};
+use crate::search::time::{TimeBudget, clock_budget, time_budget};
 use crate::search::{
     DEFAULT_THREADS, DRAW_SCORE, MATE, MATE_THRESHOLD, MAX_PLY, TranspositionTable,
     TranspositionTableError,

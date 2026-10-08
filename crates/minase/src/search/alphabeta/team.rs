@@ -19,7 +19,7 @@ use minase_core::rules::MoveRules;
 use super::deepening::{run_auxiliary_worker, run_main_worker};
 use super::history::{HistoryTable, HistoryTables};
 use super::params;
-use super::time::{byoyomi_clock, time_budget};
+use crate::search::time::{byoyomi_clock, time_budget};
 
 /// 探索の内部実行が返す結果一式。
 pub(in crate::search) struct SearchOutcome {

@@ -141,7 +141,7 @@ fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
                         .unwrap();
                 }
             } else {
-                protocol.discard_search(&mut active).unwrap();
+                protocol.discard_search(&mut active, &mut output).unwrap();
             }
             assert!(active.is_none());
             let histories = protocol.searcher.as_ref().unwrap().alphabeta().histories();

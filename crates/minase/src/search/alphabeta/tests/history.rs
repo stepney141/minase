@@ -68,7 +68,7 @@ fn history_carry_survives_handle_round_trips_and_ages_once_per_go() {
             );
             let (_, result) = event_reports(drain_raw(&handle));
             assert_eq!(result.depth, 3);
-            (table, histories) = handle.join().unwrap().into_alphabeta_parts();
+            (table, histories) = handle.join().unwrap().0.into_alphabeta_parts();
             for (worker, history) in histories.workers.iter().enumerate() {
                 assert_eq!(history[0][60][60], expected[worker]);
             }
@@ -110,7 +110,7 @@ fn history_carry_changes_the_second_search_with_a_fresh_transposition_table() {
         );
         let (_, result) = event_reports(drain_raw(&handle));
         nodes.push(result.nodes);
-        (table, histories) = handle.join().unwrap().into_alphabeta_parts();
+        (table, histories) = handle.join().unwrap().0.into_alphabeta_parts();
         assert!(
             histories.workers[0]
                 .iter()

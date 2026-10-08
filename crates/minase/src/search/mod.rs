@@ -11,6 +11,7 @@ mod searcher;
 mod snapshot;
 #[cfg(feature = "search-stats")]
 mod stats;
+mod time;
 
 #[cfg(feature = "search-stats")]
 pub use stats::SearchStats;
@@ -23,7 +24,7 @@ pub use alphabeta::tt::{
 };
 pub use error::SearchError;
 pub use events::{SearchEvent, SearchResult, StopReason};
-pub use handle::{SearchHandle, search, start_search};
+pub use handle::{JoinedSearch, SearchHandle, search, start_search};
 pub use limits::{ClockLimits, SearchLimits};
 pub use searcher::{OptionKind, OptionSpec, Searcher};
 pub use snapshot::SearchSnapshot;

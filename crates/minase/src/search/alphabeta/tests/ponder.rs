@@ -158,7 +158,7 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
         );
         let (_, result) = event_reports(drain_raw(&handle));
         assert_eq!(result.stop_reason, reason);
-        handle.join().unwrap();
+        handle.join().unwrap().1.unwrap();
     }
 }
 
@@ -179,7 +179,7 @@ fn ponder_hit_finishes_within_the_post_hit_budget_tolerance() {
     ));
     assert!(result.elapsed >= Duration::from_millis(350));
     assert!(legal_moves(&Position::initial()).contains(&result.best_move));
-    handle.join().unwrap();
+    handle.join().unwrap().1.unwrap();
 }
 
 // ponder.md設計判断「起点と共有状態の所有者」（D7-API-06）。
@@ -212,7 +212,7 @@ fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
     assert_eq!(first, 0);
     let (_, result) = event_reports(drain_raw(&handle));
     assert_eq!(result.stop_reason, StopReason::DepthCompleted);
-    handle.join().unwrap();
+    handle.join().unwrap().1.unwrap();
 }
 
 // ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08）。
@@ -367,7 +367,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
             "post-hit elapsed: {:?}",
             hit.elapsed()
         );
-        handle.join().unwrap();
+        handle.join().unwrap().1.unwrap();
     }
 }
 
@@ -610,7 +610,7 @@ fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
             started
         };
         let (_, result) = event_reports(drain_raw(&handle));
-        handle.join().unwrap();
+        handle.join().unwrap().1.unwrap();
         // 270 msの締切に、4096ノードごとの検査と負荷下の実行遅延700 msを許容する。
         assert!(
             origin.elapsed() <= Duration::from_millis(970),
