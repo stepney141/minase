@@ -38,7 +38,7 @@ uv run --project tools/train python -m unittest discover -s tools/train/tests
 | コマンド | 用途 |
 |---|---|
 | `pst-workflow` | 学習の準備、自己対局の生成、学習、診断の4工程を、入力と出力の検査和を記録しながら順に実行する。通常の学習はこのコマンドだけを使う |
-| `train-fm` | 固定PSTへのFMの学習と、学習後の補正1/4への変換を行う |
+| `train-fm` | 固定PSTへのFMの学習、学習後の補正1/4への変換、および補正の倍率の重みファイルへの焼き込みを行う |
 | `fm-diagnostics` | FMの整数参照評価とRustの評価を照合する |
 | `train-pst` | 学習器を直接呼ぶ。初期重みの作成（`init`）、教師値の尺度Kの推定（`estimate-k`）、学習（`train`）を持つ |
 | `pst-diagnostics` | 基準のPSTと候補のPSTを、局面帯別の損失、駒の除去、および成りで比較する |
@@ -126,6 +126,30 @@ CPUの合成データで検証するときは`--device cpu`を使う。
 ```bash
 uv run --project tools/train train-fm quarter \
   --input data/fm-fn/fm.bin --output data/fm-fn/fm-quarter.bin
+```
+
+FMの補正に掛ける倍率bを自己対局で決めた後は、`train-fm scale`でその倍率を重みファイルへ焼き込む。
+`--fm-scale`には、bを1024倍した0から1024までの整数を指定する。
+FMの補正は出力係数に比例するので、このコマンドは整数化前の出力係数`a`を`--fm-scale`/1024倍してから学習時と同じ整数化を行い、PST、探索用駒価値、および出力Kは入力のまま書く。
+倍率0ではFMを含まないMNPTバージョン2を出力し、倍率1024では入力と同じバイト列を出力する。
+書き込む前に、`--float`の両端点を整数化した値が入力の両端点と一致し、埋め込み`V`と出力係数`a`を整数化した値が入力のFMと一致することを確かめる。
+これは、入力のMNPT v3と整数化前の重みが同じ学習の出力であることの検査であり、一致しなければエラーで停止する。
+出力先または報告がすでに存在する場合も、エラーで停止する。
+
+報告`<出力>.scale.json`には、入力、整数化前の重み、出力のそれぞれのSHA-256のほか、倍率、変換前後の指数、出力の埋め込みの最大絶対値、および出力の形式の版を保存する。
+`--data`を指定すると、検証集合から乱数シード`--seed`（既定1）で`--validation-sample`（既定10,000）局面を選び、その標本での次の値を`validation`に加える。
+`float_vs_integer`は、浮動小数点の評価と出力の重みによる整数評価の絶対誤差の平均と最大である。
+`tuning_vs_baked`は、調整用ビルドの補正と出力の重みによる整数補正の差の絶対値の平均と最大である。
+調整用ビルドの補正は、入力のFMの2駒の組の寄与を整数で足した分子Nと、入力の指数eによる分母D=2^(2e+1)から、0方向への切り捨てでtrunc(N·FmScale/(1024·D))として求める。
+`correction_cp`は、出力の重みによる補正と調整用ビルドの補正のそれぞれの標準偏差である。
+このコマンドは誤差の大きさを判定せず、記録だけを行う。
+
+```bash
+uv run --project tools/train train-fm scale \
+  --input data/pst-fm-joint-training/j75/pst.bin \
+  --float data/pst-fm-joint-training/j75/pst-float.npz \
+  --fm-scale 512 --output data/fm-scale-spsa/pst-512.bin \
+  --data <MNSD...>
 ```
 
 Rust側の評価との照合には、検証したい局面を収めたMNSDと、FMに対応した実行ファイルを指定する。

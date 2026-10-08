@@ -18,11 +18,12 @@ from torch.nn import functional as F
 from minase_train.checksum import sha256_file
 from minase_train.data.features import FEATURE_COUNT, PADDING_INDEX, feature_indices, mirror
 from minase_train.data.lookahead import lookahead_options
+from minase_train.data import mnpt
 from minase_train.data.mnsd import Dataset, provenance_path, validate_lambda_override
 from minase_train.data.taper import phase_numerators
 from minase_train.data.mnpt import (
-    EVALUATION_LIMIT, float_weights_path, read_mnpt, read_mnpt_v3,
-    write_mnpt_v3, validate_fixed_base,
+    EVALUATION_LIMIT, FM_FORMAT_VERSION, FORMAT_VERSION, float_weights_path, read_mnpt, read_mnpt_v3,
+    write_mnpt, write_mnpt_v3, validate_fixed_base,
 )
 from minase_train.pst.evaluate import QUANTIZATION_ERROR_LIMIT, integer_evaluate as pst_evaluate
 from minase_train.pst.teacher import build_targets, estimate_generation_ks
@@ -67,10 +68,15 @@ def fm_accumulators(u: NDArray, signs: NDArray, features: NDArray) -> tuple[NDAr
     return accumulators, c
 
 
+def fm_numerator(accumulators: NDArray, c: NDArray, signs: NDArray) -> NDArray[np.int64]:
+    """FMの補正の分子N（Σ_f d_f·A_f² − C）を64ビットで計算する。"""
+    a = np.asarray(accumulators, dtype=np.int64)
+    return (a * a * signs).sum(axis=1, dtype=np.int64) - c
+
+
 def fm_correction(accumulators: NDArray, c: NDArray, signs: NDArray, exponent: int) -> NDArray[np.int64]:
     """FMの累算値を正の分母で除し、負値も0方向へ切り捨てる。"""
-    a = np.asarray(accumulators, dtype=np.int64)
-    numerator = (a * a * signs).sum(axis=1, dtype=np.int64) - c
+    numerator = fm_numerator(accumulators, c, signs)
     return np.sign(numerator) * (np.abs(numerator) // np.int64(1 << (2 * exponent + 1)))
 
 
@@ -256,6 +262,108 @@ def command_quarter(args: argparse.Namespace) -> None:
     print(json.dumps(report, allow_nan=False))
 
 
+FM_SCALE_DENOMINATOR = 1024
+
+
+def tuning_correction(numerator: NDArray, fm_scale: int, exponent: int) -> NDArray[np.int64]:
+    """調整用ビルドの補正trunc(N·FmScale/(1024·D))を、桁あふれのないPython整数で計算する。"""
+    denominator = FM_SCALE_DENOMINATOR * (1 << (2 * exponent + 1))
+    return np.array([(1 if n >= 0 else -1) * (abs(n) * fm_scale // denominator)
+                     for n in np.asarray(numerator).tolist()], dtype=np.int64)
+
+
+def scale_report(dataset: Dataset, mg: NDArray, eg: NDArray, k: float, v: NDArray, scaled_a: NDArray,
+                 source_fm: tuple[NDArray, NDArray, int], output_fm: tuple[NDArray, NDArray, int] | None,
+                 fm_scale: int, batch: int, sample_size: int, seed: int) -> dict:
+    """検証標本で、焼き込んだ重みの整数化の誤差と、調整用ビルドの補正との差を記録する。"""
+    if not dataset.validation_indices.size:
+        raise ValueError("validation set must be nonempty")
+    random = np.random.default_rng(seed)
+    indices = random.choice(dataset.validation_indices, min(sample_size, dataset.validation_indices.size), replace=False)
+    u, signs, exponent = source_fm
+    errors, differences, baked_corrections, tuning_corrections = [], [], [], []
+    for start in range(0, len(indices), batch):
+        records = dataset.gather(indices[start:start + batch])
+        features = feature_indices(records["board"], records["stm"], records["lion"])
+        numerators = phase_numerators(records["board"])
+        baseline = pst_evaluate(mg, eg, features, numerators).astype(np.int64)
+        floating = baseline + k * fm_phi(v, scaled_a, features)
+        accumulators, c = fm_accumulators(u, signs, features)
+        tuning = tuning_correction(fm_numerator(accumulators, c, signs), fm_scale, exponent)
+        if output_fm is None:
+            integer = baseline
+            baked = np.zeros(len(features), dtype=np.int64)
+        else:
+            integer = integer_evaluate(mg, eg, *output_fm, features, numerators).astype(np.int64)
+            baked = fm_correction(*fm_accumulators(output_fm[0], output_fm[1], features), output_fm[1], output_fm[2])
+        errors.append(np.abs(floating - integer))
+        differences.append(np.abs(tuning - baked))
+        baked_corrections.append(baked)
+        tuning_corrections.append(tuning)
+    error, difference = np.concatenate(errors), np.concatenate(differences)
+    if not np.isfinite(error).all():
+        raise ValueError("non-finite quantization error")
+    return {"samples": len(indices), "seed": seed, "split": "validation",
+            "float_vs_integer": {"mean_absolute_cp": float(error.mean()), "max_absolute_cp": float(error.max())},
+            "tuning_vs_baked": {"mean_absolute_cp": float(difference.mean()),
+                                "max_absolute_cp": float(difference.max())},
+            "correction_cp": {"output_std": float(np.concatenate(baked_corrections).std()),
+                              "tuning_std": float(np.concatenate(tuning_corrections).std())}}
+
+
+def scale_weights(source: str | Path, float_path: str | Path, fm_scale: int, output: str | Path, *,
+                  data: Sequence[str | Path] | None = None, batch: int = 4096,
+                  sample_size: int = 10000, seed: int = 1) -> dict:
+    """FMの出力係数をFmScale/1024倍して整数化し直す。PST、駒価値、Kは入力のまま保持する。
+
+    FmScaleが0のときはFMを含まないMNPT v2を書く。入力のMNPT v3と整数化前の重みが
+    同じ学習の出力であることを、両端点とFMの再整数化の完全一致で確かめてから書く。
+    """
+    source, float_path, output = Path(source), Path(float_path), Path(output)
+    if type(fm_scale) is not int or not 0 <= fm_scale <= FM_SCALE_DENOMINATOR:
+        raise ValueError(f"FM scale must be an integer in 0..{FM_SCALE_DENOMINATOR}")
+    if output.exists():
+        raise ValueError("scale output already exists")
+    if batch <= 0 or sample_size <= 0:
+        raise ValueError("batch and validation sample size must be positive")
+    mg, eg, values, k, u, signs, exponent = read_mnpt_v3(source)
+    with np.load(float_path) as weights:
+        float_mg, float_eg, v, a = (weights[name] for name in ("middlegame", "endgame", "V", "a"))
+    if not (np.array_equal(mnpt.quantize(float_mg), mg) and np.array_equal(mnpt.quantize(float_eg), eg)):
+        raise ValueError("floating PST does not quantize to the input MNPT endpoints")
+    expected_u, expected_signs, expected_exponent = quantize(v, a, k)
+    if not (np.array_equal(expected_u, u) and np.array_equal(expected_signs, signs) and expected_exponent == exponent):
+        raise ValueError("floating FM does not quantize to the input MNPT FM")
+    scaled_a = a.astype(np.float64) * fm_scale / FM_SCALE_DENOMINATOR
+    output_fm = quantize(v, scaled_a, k) if fm_scale else None
+    # 検証標本の報告は書き込みの前に求め、失敗時に報告のない出力を残さない。
+    validation = None if not data else scale_report(
+        Dataset(data), mg, eg, k, v, scaled_a, (u, signs, exponent), output_fm, fm_scale, batch, sample_size, seed)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output_fm is None:
+        write_mnpt(output, mg, eg, values, k)
+    else:
+        write_mnpt_v3(output, mg, eg, values, k, *output_fm)
+    report = {"input_sha256": sha256_file(source).hex(), "float_sha256": sha256_file(float_path).hex(),
+              "output_sha256": sha256_file(output).hex(), "fm_scale": fm_scale,
+              "format_version": FORMAT_VERSION if output_fm is None else FM_FORMAT_VERSION,
+              "exponent_before": exponent, "exponent_after": None if output_fm is None else output_fm[2],
+              "max_absolute_embedding": None if output_fm is None else int(np.abs(output_fm[0].astype(np.int64)).max())}
+    if validation is not None:
+        report["validation"] = validation
+    return report
+
+
+def command_scale(args: argparse.Namespace) -> None:
+    report_path = args.output.with_suffix(".scale.json")
+    if report_path.exists():
+        raise ValueError("scale report already exists")
+    report = scale_weights(args.input, args.float, args.fm_scale, args.output, data=args.data,
+                           batch=args.batch, sample_size=args.validation_sample, seed=args.seed)
+    report_path.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
+    print(json.dumps(report, allow_nan=False))
+
+
 def training_report_path(output: str | Path) -> Path:
     """エポックと勾配を保存するJSONのパスを返す。"""
     output = Path(output)
@@ -417,7 +525,7 @@ def command_train(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """FM学習と補正1/4の変換のCLIを作る。教師Kは訓練集合から推定する。"""
+    """FM学習、補正1/4の変換、および倍率の焼き込みのCLIを作る。教師Kは訓練集合から推定する。"""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
@@ -439,6 +547,15 @@ def build_parser() -> argparse.ArgumentParser:
     quarter.add_argument("--input", required=True, type=Path)
     quarter.add_argument("--output", required=True, type=Path)
     quarter.set_defaults(handler=command_quarter)
+    scale = commands.add_parser("scale", help="FMの補正の倍率を出力係数へ焼き込む")
+    scale.add_argument("--input", required=True, type=Path)
+    scale.add_argument("--float", required=True, type=Path)
+    scale.add_argument("--fm-scale", required=True, type=int)
+    scale.add_argument("--output", required=True, type=Path)
+    scale.add_argument("--data", nargs="+")
+    for name, default in (("batch", 4096), ("validation-sample", 10000), ("seed", 1)):
+        scale.add_argument("--" + name, type=int, default=default)
+    scale.set_defaults(handler=command_scale)
     return parser
 
 
