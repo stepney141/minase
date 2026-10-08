@@ -23,7 +23,7 @@
 段階Bは不採用とした。B1は短い条件の選別で`H0`だった（[byoyomi-b1-short-r2](../measurements/byoyomi-b1-short-r2.md)、得点率約48.8%）。B0は得点率約47%、LLR −2.23で推移した時点で、利用者の判断により選別を止めた（[byoyomi-b0-short-r2](../measurements/byoyomi-b0-short-r2.md)）。B2は、煙試験（[byoyomi-b-smoke](../measurements/byoyomi-b-smoke.md)）で大きく負け、B0とB1も段階Aを上回らなかったことから、利用者の判断により選別を行わなかった。
 段階Bの3候補はブランチ`byoyomi-b0`、`byoyomi-b1`、`byoyomi-b2`に残し、採用するブランチからは段階Bの土台（難しさの信号の計算）を取り除いた。
 フェーズ0からフェーズ4までは完了し、[探索部](search.md)の「時間管理」節とREADMEの`ByoyomiMargin`の説明を更新した。
-2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0としてcrates.ioへ公開した。この版は、採用PSTの候補LとFM補正の候補Faも含む。残るのは、lishogiのBotを2.2.0へ更新し`ByoyomiMargin`を600 msに設定する配備と、配備後の秒読みつきの対局20局の記録である。Botは2.0.0のまま動いており、配備は利用者の実行を待っている。20局を記録した時点で、完了（一部不採用）とする。
+2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0としてcrates.ioへ公開した。この版は、採用PSTの候補LとFM補正の候補Faも含む。lishogiのBotは、2026年10月8日に2.2.0へ更新して`ByoyomiMargin`を600 msに設定し、2026年10月9日に2.3.0へ更新した（配備リポジトリ`minase-lishogi-bot`の`config.yml`と`Dockerfile`）。残るのは、配備後の秒読みつきの対局20局の記録であり、20局を記録した時点で完了（一部不採用）とする。
 
 ## 目的
 
