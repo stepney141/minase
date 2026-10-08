@@ -119,7 +119,7 @@ minaseのソースもバイナリも含めないので、ソースを変えて�
 docker build -t minase-zero tools/train/zero
 ```
 
-イメージの大きさは、展開後で約15 GB、レジストリへ送る圧縮後で約7 GBと見込む。
+イメージの大きさは、2026年10月9日に作業機でビルドした時点で展開後24 GB（`docker image ls`の表示）であり、レジストリへ送る圧縮後は約7 GBと見込む。uvのキャッシュをイメージに残すと約12 GB増えるので、Dockerfileは`uv sync`と同じ層で`uv cache clean`を実行する。
 内訳の見込みは、基底イメージ（CUDAとcuDNN）が展開後で約5.5 GB（圧縮後2.4 GB）、Python環境が約8.9 GB（TensorRTの共有ライブラリ3.9 GB、PyTorchが同梱するCUDAとcuDNNのライブラリ2.7 GB、PyTorch本体1.1 GBを含む）、Rustのツールチェーンが約0.6 GBである。
 CUDAとcuDNNは基底イメージとPyTorchのwheelの両方に入って重複するが、ONNX Runtimeが要するcuDNN 9.23以上はPyTorchのwheelの版では満たせないので、この重複を受け入れる。
 

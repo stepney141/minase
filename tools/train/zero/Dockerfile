@@ -40,8 +40,11 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # ONNX Runtime 1.28の公式ビルドと同じ10.14.1.48をuv.lockで固定でき、学習器と推論が
 # 同じ版を使うことをロックファイル1つで管理できるからである。
 COPY pyproject.toml uv.lock /opt/zero-project/
+# uvのキャッシュは仮想環境の複製（約12 GB）になるので、同じ層の中で空にしてイメージに残さない。
 RUN uv python install 3.12 \
     && uv sync --project /opt/zero-project --frozen --no-install-project \
+    && uv cache clean \
+    && mkdir -p /opt/uv-cache \
     && chmod -R a+rwX /opt/zero-venv /opt/uv-cache /opt/cargo
 
 # RustのminaseがONNX Runtimeを実行時に読み込むための設定。pipのonnxruntime-gpuが同梱する
