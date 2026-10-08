@@ -275,11 +275,11 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         with_root_searcher(&board, &[], |searcher| {
             searcher
                 .capture_history
-                .record_cutoff(&board, searcher.pst, mv, &[], 100);
+                .record_cutoff(&board, searcher.nnue, mv, &[], 100);
             result = i64::from(
                 searcher
                     .capture_history
-                    .adjustment(&board, searcher.pst, mv),
+                    .adjustment(&board, searcher.nnue, mv),
             );
         });
         result
@@ -402,8 +402,8 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         .collect();
     assert_eq!(declarations, expected_declarations);
 
-    // 既に復号したPSTにも調整値が反映されることを含めて調べる。
-    let _pst = weights().unwrap();
+    // 既に復号したNNUEにも調整値が反映されることを含めて調べる。
+    let _nnue = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
     let cases: [Case; 36] = [
         ("LmrDivisor", 400, || {
@@ -561,10 +561,10 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
 #[cfg(feature = "tuning")]
 fn reverse_futility_parameter_changes_search() {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
-    let pst = weights().unwrap();
-    let value = evaluate(&pst, &board);
+    let nnue = weights().unwrap();
+    let value = evaluate(&nnue, &board);
     let percent = params::reverse_futility_margin();
-    let beta = value - pst.pawn_value() * percent / 100;
+    let beta = value - nnue.pawn_value() * percent / 100;
     assert_eq!(
         run_negamax(&board, 1, beta - 1, beta, 0, &small_tt()),
         (value, 0)
@@ -581,14 +581,14 @@ fn reverse_futility_parameter_changes_search() {
 #[cfg(feature = "tuning")]
 fn razoring_parameter_changes_search(depth: u32, name: &str) {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let value = evaluate(&pst, &board);
+    let nnue = weights().unwrap();
+    let value = evaluate(&nnue, &board);
     let percent = match depth {
         1 => params::razoring_margin1(),
         2 => params::razoring_margin2(),
         _ => unreachable!(),
     };
-    let alpha = value + pst.pawn_value() * percent / 100;
+    let alpha = value + nnue.pawn_value() * percent / 100;
     assert_eq!(
         run_negamax(&board, depth, alpha, alpha + 1, 0, &small_tt()),
         (value, 0)
@@ -605,10 +605,10 @@ fn razoring_parameter_changes_search(depth: u32, name: &str) {
 #[cfg(feature = "tuning")]
 fn null_move_eval_scale_changes_search() {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let scale = params::null_move_eval_scale();
     assert!(scale > 0);
-    let beta = evaluate(&pst, &board) - (2 * pst.pawn_value() * 100 + scale - 1) / scale;
+    let beta = evaluate(&nnue, &board) - (2 * nnue.pawn_value() * 100 + scale - 1) / scale;
     let (_, default_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
     params::set("NullMoveEvalScale", 0).unwrap();
     let (score, changed_nodes) = run_negamax(&board, 7, beta - 1, beta, 0, &small_tt());
@@ -640,8 +640,8 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
         }
     }
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
-    let pst = weights().unwrap();
-    let beta = evaluate(&pst, &board) - 2 * pst.pawn_value();
+    let nnue = weights().unwrap();
+    let beta = evaluate(&nnue, &board) - 2 * nnue.pawn_value();
     // 記録手なしの深さ7は6となる。基本の減深量から子の深さを求める。
     let reduction = (params::null_move_base() as u32 + 6 * params::null_move_slope() as u32) / 1200;
     let child_depth = 6_u32.saturating_sub(1 + reduction);
@@ -664,7 +664,7 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     let moves = legal_moves(&board);
     let history = repeated_root_children(&board, &moves);
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let (percent, scale) = [
         (
             params::futility_margin1(),
@@ -679,14 +679,14 @@ fn non_improving_parameter_changes_search(depth: u32, name: &str) {
             params::non_improving_futility3(),
         ),
     ][depth as usize - 1];
-    let alpha = evaluate(&pst, &board) + pst.pawn_value() * percent / 100 * scale / 100;
+    let alpha = evaluate(&nnue, &board) + nnue.pawn_value() * percent / 100 * scale / 100;
     let search = || {
         let mut nodes = 0;
         with_root_searcher(&board, &history, |searcher| {
             searcher
                 .tt
                 .store(search_key(&board), 0, 0, Bound::Upper, Some(moves[0]), 2);
-            assert!(!searcher.improving(evaluate(&pst, &board), board.side_to_move(), 2));
+            assert!(!searcher.improving(evaluate(&nnue, &board), board.side_to_move(), 2));
             assert_eq!(
                 searcher.negamax(&mut board.clone(), depth, alpha, alpha + 1, 2),
                 Some(DRAW_SCORE)

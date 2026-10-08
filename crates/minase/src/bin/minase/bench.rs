@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use clap::Parser;
-use minase::eval::Pst;
+use minase::eval::Nnue;
 use minase::search::{
     DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search,
 };
@@ -240,7 +240,7 @@ fn median_f64(values: &mut [f64]) -> f64 {
 
 /// 固定局面集を1回探索する。
 fn run_bench(
-    pst: &Pst,
+    nnue: &Nnue,
     rules: Rules,
     limits: &SearchLimits,
     threads: NonZeroUsize,
@@ -262,7 +262,7 @@ fn run_bench(
         histories.clear();
         let position_start = Instant::now();
         let result = search(
-            pst,
+            nnue,
             &snapshot,
             limits,
             threads,
@@ -313,7 +313,7 @@ fn run_bench(
 
 /// 探索ベンチを実行する。
 pub(super) fn main(arguments: Arguments) {
-    let pst = minase::eval::weights().unwrap_or_else(|error| {
+    let nnue = minase::eval::weights().unwrap_or_else(|error| {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         std::process::exit(1);
     });
@@ -328,7 +328,7 @@ pub(super) fn main(arguments: Arguments) {
         .expect("default transposition table size must be valid");
     if arguments.repetitions.get() == 1 {
         let result = run_bench(
-            &pst,
+            &nnue,
             rules,
             &limits,
             arguments.threads,
@@ -349,7 +349,7 @@ pub(super) fn main(arguments: Arguments) {
     }
 
     let _ = run_bench(
-        &pst,
+        &nnue,
         rules,
         &limits,
         arguments.threads,
@@ -359,7 +359,7 @@ pub(super) fn main(arguments: Arguments) {
     let mut runs = Vec::with_capacity(arguments.repetitions.get());
     for run in 1..=arguments.repetitions.get() {
         let result = run_bench(
-            &pst,
+            &nnue,
             rules,
             &limits,
             arguments.threads,
@@ -473,13 +473,13 @@ mod tests {
         let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
         let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
-        let pst = minase::eval::weights().unwrap();
+        let nnue = minase::eval::weights().unwrap();
         // docs/plans/search.md: 固定15局面を本番のbench経由で解析し探索する。
         assert_eq!(BENCH_POSITIONS.len(), 15);
         let mut transposition_table = TranspositionTable::new(1).unwrap();
         let mut run = || {
             run_bench(
-                &pst,
+                &nnue,
                 rules,
                 &limits,
                 DEFAULT_THREADS,

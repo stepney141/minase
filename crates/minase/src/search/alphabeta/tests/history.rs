@@ -192,11 +192,11 @@ fn history_carry_workers_update_their_own_table() {
 #[cfg(feature = "tuning")]
 pub(super) fn zero_decay_clears_history_between_searches() {
     let snapshot = snapshot_for(&quiet_midgame());
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     for threads in [DEFAULT_THREADS, worker_count(4)] {
         let mut histories = HistoryTables::new(threads);
         crate::search::search(
-            &pst,
+            &nnue,
             &snapshot,
             &depth_limits(3),
             threads,
@@ -212,7 +212,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
         );
         // 2回目は新しい履歴を書き込む前に止め、前回の全要素が消えたことを確かめる。
         run_search_team(
-            &pst,
+            &nnue,
             &snapshot.position,
             snapshot.rules,
             &snapshot.root_moves,
@@ -237,7 +237,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
     // 単一ワーカーの実探索でも、履歴を再利用した2回目と新品の表の結果が一致する。
     let mut histories = HistoryTables::new(DEFAULT_THREADS);
     let first = crate::search::search(
-        &pst,
+        &nnue,
         &snapshot,
         &depth_limits(3),
         DEFAULT_THREADS,
@@ -246,7 +246,7 @@ pub(super) fn zero_decay_clears_history_between_searches() {
     )
     .unwrap();
     let second = crate::search::search(
-        &pst,
+        &nnue,
         &snapshot,
         &depth_limits(3),
         DEFAULT_THREADS,

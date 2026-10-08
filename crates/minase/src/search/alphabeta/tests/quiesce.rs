@@ -272,7 +272,7 @@ fn quiescence_max_ply_leaf_does_not_probe_or_store() {
 // 全捕獲が消える場合は、既存の置換表の値にかかわらず静的評価を返す。
 #[test]
 fn quiescence_empty_candidates_do_not_probe_or_store() {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let capture_position = position(
         Color::Black,
         &[
@@ -282,18 +282,18 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
             (fs(3, 4), Color::White, PieceKind::Pawn),
         ],
     );
-    let stand_pat = evaluate(&pst, &capture_position);
+    let stand_pat = evaluate(&nnue, &capture_position);
     for (position, alpha) in [
         (Position::initial(), -INFINITY),
         (
             capture_position,
             stand_pat
-                + pst.pawn_value()
-                + pst.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100,
+                + nnue.pawn_value()
+                + nnue.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100,
         ),
     ] {
         let key = search_key(&position);
-        let stand_pat = evaluate(&pst, &position);
+        let stand_pat = evaluate(&nnue, &position);
         let table = small_tt();
         let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
         assert_eq!((score, nodes), (stand_pat, 0));
@@ -320,18 +320,18 @@ fn quiescence_see_pruned_candidates_still_store() {
             (fs(3, 1), Color::White, PieceKind::Rook),
         ],
     );
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let mut captures = Vec::new();
     MoveGenerator::standard().generate_captures(&position, &mut captures);
     assert!(!captures.is_empty());
     assert!(captures.iter().all(|&mv| capture_is_pruned_by_see(
         &position,
         engine_rules(),
-        &pst,
+        &nnue,
         mv
     )));
     let table = small_tt();
-    let stand_pat = evaluate(&pst, &position);
+    let stand_pat = evaluate(&nnue, &position);
     let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
     assert_eq!((score, nodes), (stand_pat, 0));
     let hit = table.probe(search_key(&position), 0).unwrap();

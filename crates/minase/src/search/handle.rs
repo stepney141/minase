@@ -6,7 +6,7 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Instant;
 
-use crate::eval::Pst;
+use crate::eval::Nnue;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult};
@@ -88,7 +88,7 @@ impl Drop for SearchHandle {
 /// [`SearchEvent::Finished`]は送信されない。
 #[allow(clippy::too_many_arguments)]
 pub fn start_search(
-    pst: Arc<Pst>,
+    nnue: Arc<Nnue>,
     snapshot: SearchSnapshot,
     limits: SearchLimits,
     search_id: u64,
@@ -105,7 +105,7 @@ pub fn start_search(
     let thread_stop = Arc::clone(&stop);
     let thread = thread::spawn(move || {
         let outcome = run_search_team(
-            &pst,
+            &nnue,
             &snapshot.position,
             snapshot.rules,
             &snapshot.root_moves,
@@ -155,7 +155,7 @@ pub fn start_search(
 /// 外部停止手段を持たない同期版へ無期限探索を指定した場合は
 /// [`SearchError`]を返す。
 pub fn search(
-    pst: &Pst,
+    nnue: &Nnue,
     snapshot: &SearchSnapshot,
     limits: &SearchLimits,
     threads: NonZeroUsize,
@@ -167,7 +167,7 @@ pub fn search(
     }
     let stop = AtomicBool::new(false);
     Ok(run_search_team(
-        pst,
+        nnue,
         &snapshot.position,
         snapshot.rules,
         &snapshot.root_moves,

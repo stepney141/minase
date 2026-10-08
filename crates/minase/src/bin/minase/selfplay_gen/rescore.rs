@@ -6,7 +6,7 @@ use minase::datagen::{
     git::{git_output, validate_commit_hash},
     invalid_data,
 };
-use minase::eval::Pst;
+use minase::eval::Nnue;
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
 use minase::training::records::{Reader, Record, best_move_is_tactical};
 use minase::training::rescore::{self, RescoreEntry, RescoreHeader, RescoreReader, RescoreStatus};
@@ -113,7 +113,7 @@ fn open_rescore_output(
 /// 履歴を復元せず、置換表を消去して1局面を探索する。
 fn rescore_record(
     record: &Record,
-    pst: &Pst,
+    nnue: &Nnue,
     rules: Rules,
     limits: &SearchLimits,
     table: &mut TranspositionTable,
@@ -124,7 +124,7 @@ fn rescore_record(
     table.clear();
     let mut histories = minase::search::HistoryTables::new(DEFAULT_THREADS);
     let result = search(
-        pst,
+        nnue,
         &snapshot,
         limits,
         DEFAULT_THREADS,
@@ -155,7 +155,7 @@ fn write_rescore_records(
     arguments: &RescoreArguments,
     targets: &[u64],
     written: u64,
-    pst: &Pst,
+    nnue: &Nnue,
     summary: &mut RescoreSummary,
 ) -> io::Result<()> {
     let rules = engine_default_rules()?;
@@ -179,7 +179,7 @@ fn write_rescore_records(
             thread::Builder::new().spawn_scoped(scope, move || {
                 while let Ok((slot, record)) = job_rx.recv() {
                     let result = match catch_unwind(AssertUnwindSafe(|| {
-                        rescore_record(&record, pst, rules, limits, &mut table)
+                        rescore_record(&record, nnue, rules, limits, &mut table)
                     })) {
                         Ok(result) => result,
                         Err(_) => Err(data_error(RescoreCommandError::WorkerPanicked)),
@@ -245,8 +245,8 @@ pub(super) fn rescore(arguments: &RescoreArguments) -> io::Result<()> {
             "the working tree is dirty; commit changes or pass --allow-dirty",
         ));
     }
-    let pst = match &arguments.pst {
-        Some(path) => std::sync::Arc::new(Pst::decode(&fs::read(path)?).map_err(data_error)?),
+    let nnue = match &arguments.nnue {
+        Some(path) => std::sync::Arc::new(Nnue::decode(&fs::read(path)?).map_err(data_error)?),
         None => minase::eval::weights().map_err(data_error)?,
     };
     let mut input = File::open(&arguments.input)?;
@@ -263,7 +263,7 @@ pub(super) fn rescore(arguments: &RescoreArguments) -> io::Result<()> {
         record_count: reader.header().record_count(),
         targets_sha256: rescore::targets_checksum(&targets),
         target_count: targets.len() as u64,
-        network_checksum: *pst.checksum(),
+        network_checksum: *nnue.checksum(),
         nodes: arguments.nodes,
         // MNSDのヘッダと同じ表記（規則コードの列挙）で書く。
         rule_set: engine_default_rules()?.to_string(),
@@ -284,7 +284,7 @@ pub(super) fn rescore(arguments: &RescoreArguments) -> io::Result<()> {
             arguments,
             &targets,
             written,
-            &pst,
+            &nnue,
             &mut summary,
         )?;
     }

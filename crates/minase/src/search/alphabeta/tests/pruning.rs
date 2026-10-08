@@ -101,14 +101,14 @@ fn lmr_large_move_indices_use_last_column() {
 #[test]
 fn futility_reduces_quiet_nodes_without_false_mate() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let static_eval = evaluate(&pst, &position);
-    let alpha = static_eval + 3 * pst.pawn_value();
+    let nnue = weights().unwrap();
+    let static_eval = evaluate(&nnue, &position);
+    let alpha = static_eval + 3 * nnue.pawn_value();
     assert!(!royal_under_attack(&position));
     assert!(
         legal_moves(&position)
             .iter()
-            .all(|&mv| { !mv.promote && move_order_key(&position, &pst, mv).is_none() })
+            .all(|&mv| { !mv.promote && move_order_key(&position, &nnue, mv).is_none() })
     );
     // ply=2では2手前と同じ評価なので、良化していないノードの保護も検査する。
     for (depth, ply) in (1..=3).flat_map(|depth| [0, 2].map(|ply| (depth, ply))) {
@@ -130,7 +130,7 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
                 .map(|mv| {
                     let mut child = position.clone();
                     child.make_move_unchecked(mv, engine_rules());
-                    -evaluate(&pst, &child)
+                    -evaluate(&nnue, &child)
                 })
                 .collect();
             assert!(
@@ -146,8 +146,8 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
 #[test]
 fn futility_searches_safe_quiets_after_losing_tt_move() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/10r1/12/12/12/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &position) + 3 * pst.pawn_value();
+    let nnue = weights().unwrap();
+    let alpha = evaluate(&nnue, &position) + 3 * nnue.pawn_value();
     let losing_move = Move {
         from: sq(11, 0),
         mid: None,
@@ -159,7 +159,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
     assert!(
         legal_moves(&position)
             .iter()
-            .all(|&mv| { !mv.promote && move_order_key(&position, &pst, mv).is_none() })
+            .all(|&mv| { !mv.promote && move_order_key(&position, &nnue, mv).is_none() })
     );
     let ply = 5;
     let mut child = position.clone();
@@ -201,8 +201,8 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
         ("k11/12/12/12/5P6/12/12/12/12/12/12/11K b", true),
     ] {
         let position = minase_core::parse_sfen(sfen).unwrap();
-        let pst = weights().unwrap();
-        let alpha = evaluate(&pst, &position) + 3 * pst.pawn_value();
+        let nnue = weights().unwrap();
+        let alpha = evaluate(&nnue, &position) + 3 * nnue.pawn_value();
         let tt_move = Move {
             from: sq(11, 0),
             mid: None,
@@ -215,9 +215,9 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
             .into_iter()
             .filter(|&mv| {
                 if promotion {
-                    mv.promote && move_order_key(&position, &pst, mv).is_none()
+                    mv.promote && move_order_key(&position, &nnue, mv).is_none()
                 } else {
-                    move_order_key(&position, &pst, mv).is_some()
+                    move_order_key(&position, &nnue, mv).is_some()
                 }
             })
             .collect();
@@ -249,15 +249,15 @@ fn see_pruning_searches_first_capture_without_false_mate() {
             (sq(5, 7), Color::White, PieceKind::Pawn),
         ],
     );
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let moves = legal_moves(&board);
     assert_eq!(moves.len(), 2);
     assert!(!royal_under_attack(&board));
     assert!(moves.iter().all(|&mv| {
-        move_order_key(&board, &pst, mv).is_some()
-            && see_prunes(&board, engine_rules(), &pst, mv, 0)
+        move_order_key(&board, &nnue, mv).is_some()
+            && see_prunes(&board, engine_rules(), &nnue, mv, 0)
     }));
-    let alpha = evaluate(&pst, &board) + 3 * pst.pawn_value();
+    let alpha = evaluate(&nnue, &board) + 3 * nnue.pawn_value();
     let table = small_tt();
     let ply = 5;
     let (score, nodes) = run_negamax(&board, 1, alpha, alpha + 1, ply, &table);
@@ -288,7 +288,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
             (sq(11, 11), Color::White, PieceKind::King),
         ],
     );
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let losing_move = Move {
         from: sq(5, 3),
         mid: None,
@@ -303,8 +303,8 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     assert!(moves.contains(&losing_move));
     assert!(moves.contains(&safe_capture));
     assert!(!royal_under_attack(&board));
-    assert!(see_prunes(&board, engine_rules(), &pst, safe_capture, 200));
-    let alpha = evaluate(&pst, &board) + 3 * pst.pawn_value();
+    assert!(see_prunes(&board, engine_rules(), &nnue, safe_capture, 200));
+    let alpha = evaluate(&nnue, &board) + 3 * nnue.pawn_value();
     let ply = 5;
     let mut child = board.clone();
     child.make_move_unchecked(losing_move, engine_rules());
@@ -341,7 +341,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
 // 通常探索の値が保存される。先頭の静かな記録手で負の詰み帯を脱した後を検査する。
 #[test]
 fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     for (depth, width, capture_is_tt, attacked, victim, expanded) in [
         (2, 1, false, false, PieceKind::Pawn, false),
         (3, 1, false, false, PieceKind::Pawn, false),
@@ -378,12 +378,12 @@ fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
         assert_eq!(royal_under_attack(&board), attacked);
         assert!(legal_moves(&board).contains(&capture));
         assert!(legal_moves(&board).contains(&quiet));
-        assert!(see_prunes(&board, engine_rules(), &pst, capture, 0));
+        assert!(see_prunes(&board, engine_rules(), &nnue, capture, 0));
         assert_eq!(
-            see_prunes(&board, engine_rules(), &pst, capture, 200),
+            see_prunes(&board, engine_rules(), &nnue, capture, 200),
             victim == PieceKind::Pawn,
         );
-        let alpha = evaluate(&pst, &board) + 3 * pst.pawn_value();
+        let alpha = evaluate(&nnue, &board) + 3 * nnue.pawn_value();
         let table = small_tt();
         let tt_move = if capture_is_tt { capture } else { quiet };
         table.store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
@@ -424,12 +424,12 @@ fn see_pruning_searches_rule_dependent_capture() {
         to: sq(10, 0),
         promote: false,
     };
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     assert!(legal_moves(&board).contains(&capture));
-    assert!(!see_prunes(&board, engine_rules(), &pst, capture, 200));
+    assert!(!see_prunes(&board, engine_rules(), &nnue, capture, 200));
     assert!(!royal_under_attack(&board));
-    let static_eval = evaluate(&pst, &board);
-    let alpha = static_eval + 3 * pst.pawn_value();
+    let static_eval = evaluate(&nnue, &board);
+    let alpha = static_eval + 3 * nnue.pawn_value();
     let table = small_tt();
     // 他の捕獲による先行カットオフを避け、経由升を持つ捕獲まで探索を進める。
     // 対象と同じ盤面になる手は保存せず、実際に探索された結果を観測する。
@@ -496,9 +496,9 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
 #[test]
 fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
-    let pst = weights().unwrap();
-    let static_eval = evaluate(&pst, &position);
-    let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
+    let nnue = weights().unwrap();
+    let static_eval = evaluate(&nnue, &position);
+    let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
     for depth in 1..=3 {
         let table = small_tt();
         let tt_move = legal_moves(&position)[0];
@@ -517,9 +517,9 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
 #[test]
 fn reverse_futility_exclusions_search_children() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let static_eval = evaluate(&pst, &position);
-    let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
+    let nnue = weights().unwrap();
+    let static_eval = evaluate(&nnue, &position);
+    let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
     let cases = [
         (1, beta - 2, beta, "幅2のPV窓"),
         (1, -MATE_THRESHOLD - 1, -MATE_THRESHOLD, "βが負の詰み帯"),
@@ -547,9 +547,9 @@ fn reverse_futility_exclusions_search_children() {
 #[test]
 fn reverse_futility_preserves_tt_cutoff_priority() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
-    let pst = weights().unwrap();
-    let static_eval = evaluate(&pst, &position);
-    let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
+    let nnue = weights().unwrap();
+    let static_eval = evaluate(&nnue, &position);
+    let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
     let table = small_tt();
     table.store(search_key(&position), 1, beta - 1, Bound::Exact, None, 0);
     let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &table);
@@ -565,9 +565,9 @@ fn reverse_futility_does_not_prune_when_royal_is_attacked() {
             "k11/12/12/12/12/{rook_rank}/12/12/12/12/5P6/11K b"
         ))
         .unwrap();
-        let pst = weights().unwrap();
-        let static_eval = evaluate(&pst, &position);
-        let beta = static_eval - pst.pawn_value() * params::reverse_futility_margin() / 100;
+        let nnue = weights().unwrap();
+        let static_eval = evaluate(&nnue, &position);
+        let beta = static_eval - nnue.pawn_value() * params::reverse_futility_margin() / 100;
         assert_eq!(royal_under_attack(&position), attacked);
         let (score, nodes) = run_negamax(&position, 1, beta - 1, beta, 0, &small_tt());
         if attacked {
@@ -584,15 +584,15 @@ fn reverse_futility_does_not_prune_when_royal_is_attacked() {
 #[test]
 fn razoring_returns_quiescence_at_the_margin_boundary() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let static_eval = evaluate(&pst, &position);
+    let nnue = weights().unwrap();
+    let static_eval = evaluate(&nnue, &position);
     assert!(!royal_under_attack(&position));
     for (depth, percent) in [
         (1, params::razoring_margin1()),
         (2, params::razoring_margin2()),
     ] {
-        for excess in [0, pst.pawn_value()] {
-            let alpha = static_eval + pst.pawn_value() * percent / 100 + excess;
+        for excess in [0, nnue.pawn_value()] {
+            let alpha = static_eval + nnue.pawn_value() * percent / 100 + excess;
             let (quiet_score, quiet_nodes) =
                 run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
             assert_eq!(quiet_score, static_eval);
@@ -607,7 +607,7 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
                 "捕獲のない静止探索は置換表に保存しない"
             );
         }
-        let alpha = static_eval + pst.pawn_value() * percent / 100 - 1;
+        let alpha = static_eval + nnue.pawn_value() * percent / 100 - 1;
         let (_, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
         let (_, nodes) = run_negamax(&position, depth, alpha, alpha + 1, 0, &small_tt());
         assert!(nodes > quiet_nodes, "余裕値に1足りなければ通常探索する");
@@ -618,12 +618,12 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
 #[test]
 fn razoring_accepts_quiescence_equal_to_alpha() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     for (depth, percent) in [
         (1, params::razoring_margin1()),
         (2, params::razoring_margin2()),
     ] {
-        let alpha = evaluate(&pst, &position) + pst.pawn_value() * percent / 100;
+        let alpha = evaluate(&nnue, &position) + nnue.pawn_value() * percent / 100;
         let table = small_tt();
         table.store(search_key(&position), 0, alpha, Bound::Upper, None, 0);
         let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &table);
@@ -638,9 +638,9 @@ fn razoring_accepts_quiescence_equal_to_alpha() {
 #[test]
 fn razoring_excludes_pv_mate_windows_and_depth_three() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &position)
-        + pst.pawn_value() * params::razoring_margin1().max(params::razoring_margin2()) / 100;
+    let nnue = weights().unwrap();
+    let alpha = evaluate(&nnue, &position)
+        + nnue.pawn_value() * params::razoring_margin1().max(params::razoring_margin2()) / 100;
     for (depth, alpha, beta) in [
         (1, alpha, alpha + 2),
         (2, alpha, alpha + 2),
@@ -674,7 +674,7 @@ fn razoring_excludes_pv_mate_windows_and_depth_three() {
 // 同「王駒への利きの判定」。王駒への疑似利きがあれば、静的評価の条件が成立しても探索する。
 #[test]
 fn razoring_excludes_attacked_royals() {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     for rook_file in [10, 11] {
         let position = position(
             Color::Black,
@@ -689,7 +689,7 @@ fn razoring_excludes_attacked_royals() {
             (1, params::razoring_margin1()),
             (2, params::razoring_margin2()),
         ] {
-            let alpha = evaluate(&pst, &position) + pst.pawn_value() * percent / 100;
+            let alpha = evaluate(&nnue, &position) + nnue.pawn_value() * percent / 100;
             let (quiet_score, quiet_nodes) =
                 run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
             assert!(quiet_score <= alpha);
@@ -707,8 +707,8 @@ fn razoring_excludes_attacked_royals() {
 #[test]
 fn razoring_continues_normal_search_after_recovering_capture() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &position) + pst.pawn_value() * params::razoring_margin1() / 100;
+    let nnue = weights().unwrap();
+    let alpha = evaluate(&nnue, &position) + nnue.pawn_value() * params::razoring_margin1() / 100;
     assert!(!royal_under_attack(&position));
     let (quiet_score, quiet_nodes) = run_quiesce(&position, alpha, alpha + 1, 0, &small_tt());
     assert!(quiet_score > alpha, "無防備な奔王の捕獲で余裕値を取り戻す");
@@ -762,10 +762,10 @@ fn null_move_reduction_scales_with_eval_surplus_and_depth() {
 #[test]
 fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let scale = params::null_move_eval_scale();
     assert!(scale > 0);
-    let beta = evaluate(&pst, &position) - (2 * pst.pawn_value() * 100 + scale - 1) / scale;
+    let beta = evaluate(&nnue, &position) - (2 * nnue.pawn_value() * 100 + scale - 1) / scale;
     let mut passed = position.clone();
     passed.make_null_move();
     let (reply_score, reply_nodes) = run_negamax(&passed, 1, -beta, -beta + 1, 1, &small_tt());
@@ -791,11 +791,11 @@ fn revived_pruning_uses_uncorrected_static_evaluation() {
             let difference = if reverse { -1000 } else { 1000 };
             searcher.correction.update(side, key, difference, 8);
             assert_ne!(searcher.correction.read(side, key), 0);
-            let raw = evaluate(searcher.pst, &position);
+            let raw = evaluate(searcher.nnue, &position);
             let alpha = if reverse {
-                raw - searcher.pst.pawn_value() * params::reverse_futility_margin() / 100 - 1
+                raw - searcher.nnue.pawn_value() * params::reverse_futility_margin() / 100 - 1
             } else {
-                raw + searcher.pst.pawn_value() * params::razoring_margin1() / 100
+                raw + searcher.nnue.pawn_value() * params::razoring_margin1() / 100
             };
             let mut board = position.clone();
             assert_eq!(

@@ -7,7 +7,7 @@ use super::{
 use minase::datagen::game::{CompletedGame, CompletedRecord};
 use minase::datagen::statistics::Statistics;
 use minase::datagen::{MATE_BAND_START, current_position_is_repeated, invalid_data};
-use minase::eval::Pst;
+use minase::eval::Nnue;
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
 use minase::training::records::{Outcome, Record, best_move_is_tactical};
 use minase_core::rng::{XorShift64, derive_seed};
@@ -54,18 +54,18 @@ struct InjectionPlan {
 
 /// 1局をランダム序盤から終局まで進め、採用レコードを返す。
 pub(super) fn play_game(
-    pst: &Pst,
+    nnue: &Nnue,
     rules: Rules,
     game_number: u32,
     settings: PlaySettings,
     table: &mut TranspositionTable,
 ) -> io::Result<CompletedGame> {
-    play_game_from_opening(pst, rules, game_number, settings, table, None)
+    play_game_from_opening(nnue, rules, game_number, settings, table, None)
 }
 
 /// 実戦の開始局面では乱数手を入れず、次の局面から記録する。
 pub(super) fn play_game_from_opening(
-    pst: &Pst,
+    nnue: &Nnue,
     rules: Rules,
     game_number: u32,
     settings: PlaySettings,
@@ -124,7 +124,7 @@ pub(super) fn play_game_from_opening(
             ))
         })?;
         let search_result = search(
-            pst,
+            nnue,
             &snapshot,
             &limits,
             DEFAULT_THREADS,
@@ -308,14 +308,14 @@ mod tests {
     #[test]
     fn play_game_is_deterministic_for_same_seed_and_arguments() {
         let rules = engine_default_rules().expect("engine-default rules are valid");
-        let pst = minase::eval::weights().expect("embedded weights are valid");
+        let nnue = minase::eval::weights().expect("embedded weights are valid");
         let mut first_table = test_table();
         let mut second_table = test_table();
         // 100ノードの対局が終局して記録を残すように、手数上限は埋め込んだ重みで確かめた値にする。
         let settings = test_settings(7, 4, 1200);
-        let first = play_game(pst.as_ref(), rules, 1, settings, &mut first_table)
+        let first = play_game(nnue.as_ref(), rules, 1, settings, &mut first_table)
             .expect("the fixed game is valid");
-        let second = play_game(pst.as_ref(), rules, 1, settings, &mut second_table)
+        let second = play_game(nnue.as_ref(), rules, 1, settings, &mut second_table)
             .expect("the fixed game is valid");
 
         assert!(!first.records.is_empty());
@@ -347,14 +347,14 @@ mod tests {
     #[test]
     fn injection_counts_and_offsets_stay_within_configured_bounds() {
         let rules = engine_default_rules().expect("engine-default rules are valid");
-        let pst = minase::eval::weights().expect("embedded weights are valid");
+        let nnue = minase::eval::weights().expect("embedded weights are valid");
         let maximum = 80;
 
         let game_number = 1;
         let (opening_ply, plan) = opening_and_plan(rules, 19, game_number, maximum);
         let mut table = test_table();
         let completed = play_game(
-            pst.as_ref(),
+            nnue.as_ref(),
             rules,
             game_number,
             test_settings(19, maximum, 32),

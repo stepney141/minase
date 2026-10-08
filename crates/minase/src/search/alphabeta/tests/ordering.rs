@@ -7,7 +7,7 @@ use crate::search::alphabeta::capture_history::CaptureHistory;
 #[test]
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let position = staged_picker_fixture();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
@@ -30,7 +30,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
         assert!(generator.is_legal_move(&position, tt_move, &mut Vec::new(), &mut Vec::new()));
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
         let picked = picker
-            .next(&position, &pst, &generator, &history, &capture_history)
+            .next(&position, &nnue, &generator, &history, &capture_history)
             .unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
     }
@@ -69,7 +69,7 @@ impl ReferenceMovePicker {
     fn next(
         &mut self,
         position: &Position,
-        pst: &Pst,
+        nnue: &Nnue,
         generator: &MoveGenerator,
         history: &HistoryTable,
     ) -> Option<(Move, bool)> {
@@ -84,7 +84,7 @@ impl ReferenceMovePicker {
                             moves.contains(&tt_move)
                         }
                     {
-                        return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
+                        return Some((tt_move, move_order_key(position, nnue, tt_move).is_some()));
                     }
                 }
                 MovePickerStage::Captures => {
@@ -96,7 +96,7 @@ impl ReferenceMovePicker {
                                 .into_iter()
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
-                                    let key = move_order_key(position, pst, mv)
+                                    let key = move_order_key(position, nnue, mv)
                                         .expect("capture generator must not return a quiet move");
                                     (mv, key)
                                 }),
@@ -158,7 +158,7 @@ impl ReferenceMovePicker {
 /// 「段階6」（movegen-speedup-2.md）の全出力列を同点・重複・履歴更新込みで照合する。
 #[test]
 fn staged_picker_matches_reference_sequence_with_changing_history() {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let capture_history = CaptureHistory::new();
     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
     for rules in minase_core::test_util::capture_test_rules() {
@@ -174,7 +174,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
             let quiets: Vec<_> = all
                 .iter()
                 .copied()
-                .filter(|&mv| move_order_key(&position, &pst, mv).is_none())
+                .filter(|&mv| move_order_key(&position, &nnue, mv).is_none())
                 .collect();
             let first = quiets.first().copied();
             let last = quiets.last().copied();
@@ -196,9 +196,9 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
                 picker.reset(tt, killers);
                 let mut ordinal = 0;
                 loop {
-                    let expected = reference.next(&position, &pst, &generator, &history);
+                    let expected = reference.next(&position, &nnue, &generator, &history);
                     let actual =
-                        picker.next(&position, &pst, &generator, &history, &capture_history);
+                        picker.next(&position, &nnue, &generator, &history, &capture_history);
                     assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
                     let Some((mv, _)) = expected else {
                         break;

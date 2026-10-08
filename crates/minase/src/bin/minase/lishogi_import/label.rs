@@ -48,7 +48,7 @@ pub(super) fn process_job(
     openings: bool,
     table: &mut TranspositionTable,
 ) -> io::Result<Processed> {
-    let pst = minase::eval::weights().map_err(data_error)?;
+    let nnue = minase::eval::weights().map_err(data_error)?;
     let limits = SearchLimits::new(None, Some(u64::from(common.nodes.get())), None, None)
         .map_err(data_error)?;
     let mut records = Vec::new();
@@ -69,7 +69,7 @@ pub(super) fn process_job(
         table.clear();
         histories.clear();
         let result = search(
-            &pst,
+            &nnue,
             &snapshot,
             &limits,
             DEFAULT_THREADS,

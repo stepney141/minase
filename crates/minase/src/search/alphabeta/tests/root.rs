@@ -207,7 +207,7 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
         }
         completed_pv.clone_from(&searcher.pv[0]);
         let (_, prev) = completed.unwrap();
-        let delta = searcher.pst.pawn_value() / 2;
+        let delta = searcher.nnue.pawn_value() / 2;
         let (_, score) = searcher
             .search_root(&position, &moves, 5, prev - delta, prev + delta)
             .unwrap();

@@ -3,7 +3,7 @@
 //! 設計は`docs/plans/strength-stage8.md`「静的評価の補正（correction history）」に従う。
 
 use super::params;
-use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
+use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use minase_core::piece::{COLOR_COUNT, Color, PieceCode};
 use minase_core::position::Undo;
 use minase_core::{Position, Square};

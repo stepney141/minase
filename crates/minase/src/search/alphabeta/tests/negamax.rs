@@ -314,7 +314,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
 #[test]
 fn interrupted_null_move_restores_repetition_scope() {
     let root = null_repetition_fixture();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     for nested in [false, true] {
         let external_stop = AtomicBool::new(false);
         let shared = SharedSearch {
@@ -330,7 +330,7 @@ fn interrupted_null_move_restores_repetition_scope() {
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut searcher = new_searcher(
-            &pst,
+            &nnue,
             &root,
             engine_rules(),
             &[],
@@ -346,7 +346,7 @@ fn interrupted_null_move_restores_repetition_scope() {
         let boundary = searcher.null_move_boundary;
         let mut current = root.clone();
         // 静的評価付近の窓で枝刈りを避け、実着手を1手積んだ後にノード上限で中断する。
-        let beta = evaluate(&pst, &root);
+        let beta = evaluate(&nnue, &root);
         assert_eq!(
             searcher.search_null_move(&mut current, 2, beta, if nested { 2 } else { 0 }),
             None

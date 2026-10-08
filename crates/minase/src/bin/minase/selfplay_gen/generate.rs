@@ -108,9 +108,9 @@ fn write_training_data(
     openings: Option<&[Opening]>,
     games: u32,
 ) -> io::Result<()> {
-    // 探索は埋め込み学習PSTで着手するので、その重み本体の検査和を生成元として残す。
-    let pst = minase::eval::weights().map_err(|error| invalid_data(error.to_string()))?;
-    let network_checksum = *pst.checksum();
+    // 探索は埋め込みNNUEで着手するので、その重み本体の検査和を生成元として残す。
+    let nnue = minase::eval::weights().map_err(|error| invalid_data(error.to_string()))?;
+    let network_checksum = *nnue.checksum();
     let header = Header::new(
         rule_set.to_owned(),
         generation_commit.to_owned(),
@@ -136,7 +136,7 @@ fn write_training_data(
         for _ in 0..arguments.concurrency.get() {
             let sender = sender.clone();
             let next_game = &next_game;
-            let pst = pst.as_ref();
+            let nnue = nnue.as_ref();
             scope.spawn(move || {
                 let mut table = match TranspositionTable::new(arguments.hash_mb.get()) {
                     Ok(table) => table,
@@ -159,14 +159,14 @@ fn write_training_data(
                     };
                     let completed = match catch_unwind(AssertUnwindSafe(|| match openings {
                         Some(items) => play_game_from_opening(
-                            pst,
+                            nnue,
                             rules,
                             game_number,
                             play_settings,
                             &mut table,
                             Some(&items[game_number as usize - 1]),
                         ),
-                        None => play_game(pst, rules, game_number, play_settings, &mut table),
+                        None => play_game(nnue, rules, game_number, play_settings, &mut table),
                     })) {
                         Ok(completed) => completed,
                         Err(_) => Err(invalid_data(format!(

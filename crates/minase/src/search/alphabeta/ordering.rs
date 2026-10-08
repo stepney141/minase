@@ -2,7 +2,7 @@
 
 use core::cmp::Reverse;
 
-use crate::eval::Pst;
+use crate::eval::Nnue;
 use minase_core::MoveGenerator;
 use minase_core::mv::Move;
 use minase_core::piece::PieceCode;
@@ -25,7 +25,7 @@ impl Searcher<'_> {
         let killers = self.killers[ply as usize];
         let color = position.side_to_move().index();
         moves.sort_by_cached_key(|&mv| {
-            if let Some(key) = move_order_key(position, self.pst, mv) {
+            if let Some(key) = move_order_key(position, self.nnue, mv) {
                 OrderedMoveKey::Capture {
                     captured_value: Reverse(key.captured_value),
                     attacker_value: key.attacker_value,
@@ -163,7 +163,7 @@ impl MovePicker {
     pub(super) fn next(
         &mut self,
         position: &Position,
-        pst: &Pst,
+        nnue: &Nnue,
         generator: &MoveGenerator,
         history: &HistoryTable,
         capture_history: &CaptureHistory,
@@ -180,7 +180,7 @@ impl MovePicker {
                             &mut self.quiets,
                         )
                     {
-                        return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
+                        return Some((tt_move, move_order_key(position, nnue, tt_move).is_some()));
                     }
                 }
                 MovePickerStage::Captures => {
@@ -196,10 +196,10 @@ impl MovePicker {
                                 .drain(..)
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
-                                    let mut key = move_order_key(position, pst, mv)
+                                    let mut key = move_order_key(position, nnue, mv)
                                         .expect("capture generator must not return a quiet move");
                                     key.captured_value +=
-                                        capture_history.adjustment(position, pst, mv);
+                                        capture_history.adjustment(position, nnue, mv);
                                     (mv, key)
                                 }),
                         );
@@ -278,16 +278,16 @@ pub(super) struct MoveOrderKey {
 }
 
 /// 捕獲手なら整列キーを返す。非捕獲手は`None`を返す。
-pub(super) fn move_order_key(position: &Position, pst: &Pst, mv: Move) -> Option<MoveOrderKey> {
+pub(super) fn move_order_key(position: &Position, nnue: &Nnue, mv: Move) -> Option<MoveOrderKey> {
     let captured_value: i32 = position
         .captured_squares(mv)
         .into_iter()
         .flatten()
-        .map(|square| pst.piece_value(piece_at_for_ordering(position, square)))
+        .map(|square| nnue.piece_value(piece_at_for_ordering(position, square)))
         .sum();
     (captured_value > 0).then(|| MoveOrderKey {
         captured_value,
-        attacker_value: pst.piece_value(piece_at_for_ordering(position, mv.from)),
+        attacker_value: nnue.piece_value(piece_at_for_ordering(position, mv.from)),
     })
 }
 

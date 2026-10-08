@@ -11,20 +11,20 @@ pub(super) fn quiet_board() -> Position {
 }
 
 // 葉でβ打ち切りが起こらず、親でfutility pruningが発動しない窓を作る。
-fn quiet_alpha(board: &Position, pst: &Pst) -> i32 {
-    let static_eval = evaluate(pst, board);
+fn quiet_alpha(board: &Position, nnue: &Nnue) -> i32 {
+    let static_eval = evaluate(nnue, board);
     let alpha = legal_moves(board)
         .into_iter()
         .map(|mv| {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
-            -evaluate(pst, &child)
+            -evaluate(nnue, &child)
         })
         .max()
         .unwrap()
         .max(static_eval)
         + 1;
-    assert!(alpha < static_eval + futility_margin(pst.pawn_value(), 1, true));
+    assert!(alpha < static_eval + futility_margin(nnue.pawn_value(), 1, true));
     alpha
 }
 
@@ -46,14 +46,14 @@ fn late_move_limits_follow_quadratic_depth_rule() {
 #[test]
 fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
     let board = quiet_board();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let moves = legal_moves(&board);
     assert!(moves.len() > late_move_limit(3) as usize);
     assert!(!royal_under_attack(&board));
     assert!(
         moves
             .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, &pst, mv).is_none())
+            .all(|&mv| !mv.promote && move_order_key(&board, &nnue, mv).is_none())
     );
     let (score, nodes) = search_quiet_board(&board);
     assert_eq!(nodes, late_move_limit(1) as u64);
@@ -62,7 +62,7 @@ fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
         .map(|&mv| {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
-            -evaluate(&pst, &child)
+            -evaluate(&nnue, &child)
         })
         .collect();
     assert!(score.abs() < MATE_THRESHOLD);
@@ -88,7 +88,7 @@ fn late_move_pruning_exclusions_search_all_quiets() {
             let alpha = if mate_window {
                 MATE_THRESHOLD - 1
             } else {
-                evaluate(searcher.pst, &board) + 1
+                evaluate(searcher.nnue, &board) + 1
             };
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
@@ -119,7 +119,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             let quiets: Vec<_> = moves
                 .iter()
                 .copied()
-                .filter(|&mv| !mv.promote && move_order_key(&board, searcher.pst, mv).is_none())
+                .filter(|&mv| !mv.promote && move_order_key(&board, searcher.nnue, mv).is_none())
                 .collect();
             assert!(quiets.len() > 3 + limit as usize);
             let tt_move = quiets[0];
@@ -131,19 +131,19 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
             // 捕獲手はSEEでも切られず、子はすべて反復引き分けになる。
             let protected = moves
                 .iter()
-                .filter(|&&mv| mv.promote || move_order_key(&board, searcher.pst, mv).is_some())
+                .filter(|&&mv| mv.promote || move_order_key(&board, searcher.nnue, mv).is_some())
                 .count();
             assert!(protected > 0);
             for &mv in &moves {
-                if move_order_key(&board, searcher.pst, mv).is_some() {
-                    assert!(!see_prunes(&board, engine_rules(), searcher.pst, mv, 2));
+                if move_order_key(&board, searcher.nnue, mv).is_some() {
+                    assert!(!see_prunes(&board, engine_rules(), searcher.nnue, mv, 2));
                 }
             }
             let mut picker = MovePicker::new(Some(tt_move), killers);
             let mut ordered = Vec::new();
             while let Some((mv, capture)) = picker.next(
                 &board,
-                searcher.pst,
+                searcher.nnue,
                 &searcher.generator,
                 searcher.history,
                 &searcher.capture_history,
@@ -156,7 +156,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                     .skip(limit as usize)
                     .any(|&(mv, capture)| if promotion { mv.promote } else { capture })
             );
-            let alpha = evaluate(searcher.pst, &board) + 1;
+            let alpha = evaluate(searcher.nnue, &board) + 1;
             assert!(alpha > DRAW_SCORE);
             assert_eq!(
                 searcher.negamax(&mut board.clone(), 1, alpha, alpha + 1, 0),
@@ -176,8 +176,8 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
 pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     let board =
         minase_core::parse_sfen("k11/12/12/12/12/10r1/12/2G9/12/G2G2G2G2/12/11K b").unwrap();
-    let pst = weights().unwrap();
-    let alpha = evaluate(&pst, &board) + 1;
+    let nnue = weights().unwrap();
+    let alpha = evaluate(&nnue, &board) + 1;
     let losing_move = Move {
         from: sq(11, 0),
         mid: None,
@@ -190,7 +190,7 @@ pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     assert!(
         moves
             .iter()
-            .all(|&mv| !mv.promote && move_order_key(&board, &pst, mv).is_none())
+            .all(|&mv| !mv.promote && move_order_key(&board, &nnue, mv).is_none())
     );
     let safe_moves = moves
         .iter()
@@ -243,7 +243,7 @@ fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
         let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
         while let Some((mv, capture)) = picker.next(
             &board,
-            searcher.pst,
+            searcher.nnue,
             &searcher.generator,
             searcher.history,
             &searcher.capture_history,
@@ -258,10 +258,10 @@ fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
         let other_moves: Vec<_> = ordered.iter().copied().filter(|&mv| mv != target).collect();
         let history = repeated_root_children(&board, &other_moves);
         with_root_searcher(&board, &history, |searcher| {
-            let alpha = quiet_alpha(&board, searcher.pst);
+            let alpha = quiet_alpha(&board, searcher.nnue);
             let mut child = board.clone();
             child.make_move_unchecked(target, engine_rules());
-            let target_score = -evaluate(searcher.pst, &child);
+            let target_score = -evaluate(searcher.nnue, &child);
             assert!(target_score > DRAW_SCORE && target_score < alpha);
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 0)

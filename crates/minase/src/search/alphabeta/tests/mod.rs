@@ -41,8 +41,8 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
-use crate::eval::{Pst, evaluate, weights};
+use crate::eval::{Nnue, evaluate, weights};
+use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::alphabeta::INFINITY;
 use crate::search::alphabeta::correction::material_key;
 use crate::search::alphabeta::deepening::{
@@ -170,12 +170,12 @@ fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&m
         started: Instant::now(),
         hard_limit: None,
     };
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let table = small_tt();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut searcher = new_searcher(
-        &pst,
+        &nnue,
         position,
         engine_rules(),
         history,
@@ -218,11 +218,11 @@ fn run_quiesce(
     };
     let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
-    let pst = crate::eval::weights().unwrap();
+    let nnue = crate::eval::weights().unwrap();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut searcher = new_searcher(
-        &pst,
+        &nnue,
         position,
         engine_rules(),
         &history,
@@ -257,11 +257,11 @@ fn run_negamax(
     };
     let history: Vec<u64> = Vec::new();
     let mut current = position.clone();
-    let pst = crate::eval::weights().unwrap();
+    let nnue = crate::eval::weights().unwrap();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut searcher = new_searcher(
-        &pst,
+        &nnue,
         position,
         engine_rules(),
         &history,
@@ -317,9 +317,9 @@ fn run_search(
         root_moves.to_vec(),
     )
     .expect("test root moves must not be empty");
-    let pst = crate::eval::weights().unwrap();
+    let nnue = crate::eval::weights().unwrap();
     crate::search::search(
-        &pst,
+        &nnue,
         &snapshot,
         limits,
         threads,

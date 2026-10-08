@@ -27,7 +27,7 @@ impl Searcher<'_> {
             || self.null_move_ply == Some(ply - 1)
             || static_eval
                 > self
-                    .pst
+                    .nnue
                     .evaluate_accumulator(&self.accumulators[(ply - 2) as usize], side)
     }
 
@@ -101,21 +101,21 @@ impl Searcher<'_> {
             && beta.abs() < MATE_THRESHOLD;
         let mut static_eval = pruning_node.then(|| {
             #[cfg(feature = "invariants")]
-            self.pst
+            self.nnue
                 .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-            self.pst
+            self.nnue
                 .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
         });
         let mut royal_attacked = None;
         // 王駒への利きは他の条件が成立してから調べ、返す静的評価は置換表に保存しない。
         if let Some(value) = static_eval {
-            if value - reverse_futility_margin(self.pst.pawn_value()) >= beta
+            if value - reverse_futility_margin(self.nnue.pawn_value()) >= beta
                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
             {
                 return Some(value);
             }
             if depth <= 2
-                && value + razoring_margin(self.pst.pawn_value(), depth) <= alpha
+                && value + razoring_margin(self.nnue.pawn_value(), depth) <= alpha
                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
             {
                 let value = self.quiesce(position, alpha, beta, ply)?;
@@ -135,12 +135,12 @@ impl Searcher<'_> {
         {
             let value = *static_eval.get_or_insert_with(|| {
                 #[cfg(feature = "invariants")]
-                self.pst
+                self.nnue
                     .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-                self.pst
+                self.nnue
                     .evaluate_accumulator(&self.accumulators[ply as usize], side)
             });
-            let reduction = null_move_reduction(depth, value, beta, self.pst.pawn_value());
+            let reduction = null_move_reduction(depth, value, beta, self.nnue.pawn_value());
             let score =
                 self.search_null_move(position, depth.saturating_sub(1 + reduction), beta, ply)?;
             if score >= beta {
@@ -158,7 +158,7 @@ impl Searcher<'_> {
             value
                 + self.correction.read(side, self.material_keys[ply as usize])
                 + futility_margin(
-                    self.pst.pawn_value(),
+                    self.nnue.pawn_value(),
                     depth,
                     self.improving(value, side, ply),
                 )
@@ -179,7 +179,7 @@ impl Searcher<'_> {
         let mut best_move_rank = 0;
         while let Some((mv, capture)) = self.move_pickers[ply as usize].next(
             position,
-            self.pst,
+            self.nnue,
             &self.generator,
             self.history,
             &self.capture_history,
@@ -217,9 +217,9 @@ impl Searcher<'_> {
                 && see_prunes(
                     position,
                     self.rules,
-                    self.pst,
+                    self.nnue,
                     mv,
-                    see_margin(self.pst.pawn_value(), depth),
+                    see_margin(self.nnue.pawn_value(), depth),
                 )
             {
                 index += 1;
@@ -263,7 +263,7 @@ impl Searcher<'_> {
                 if capture {
                     self.capture_history.record_cutoff(
                         position,
-                        self.pst,
+                        self.nnue,
                         mv,
                         &searched_captures,
                         depth,
@@ -296,9 +296,9 @@ impl Searcher<'_> {
         if best_score.abs() < MATE_THRESHOLD && !best_capture {
             let static_eval = *static_eval.get_or_insert_with(|| {
                 #[cfg(feature = "invariants")]
-                self.pst
+                self.nnue
                     .assert_accumulator(position, &self.accumulators[ply as usize], ply);
-                self.pst
+                self.nnue
                     .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
             });
             if (bound == Bound::Exact
@@ -333,7 +333,7 @@ impl Searcher<'_> {
         let undo = position.make_null_move();
         self.previous_capture[(ply + 1) as usize] = None;
         let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-        self.pst.update_accumulator_after_null(
+        self.nnue.update_accumulator_after_null(
             &parents[ply as usize],
             &mut children[0],
             lion_before,
@@ -393,7 +393,7 @@ impl Searcher<'_> {
         }
 
         let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-        self.pst.update_accumulator_after_move(
+        self.nnue.update_accumulator_after_move(
             &parents[ply as usize],
             &mut children[0],
             position,

@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::eval::Pst;
+use crate::eval::Nnue;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use crate::search::limits::SearchLimits;
 use crate::search::{MAX_PLY, TranspositionTable};
@@ -154,7 +154,7 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
 /// 調整役として補助ワーカーを生成し、主ワーカー探索と全joinを実行する。
 #[allow(clippy::too_many_arguments)]
 pub(in crate::search) fn run_search_team(
-    pst: &Pst,
+    nnue: &Nnue,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -206,7 +206,7 @@ pub(in crate::search) fn run_search_team(
         run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
             if worker_index == 0 {
                 run_main_worker(
-                    pst,
+                    nnue,
                     position,
                     rules,
                     root_moves,
@@ -222,7 +222,7 @@ pub(in crate::search) fn run_search_team(
                 )
             } else {
                 run_auxiliary_worker(
-                    pst,
+                    nnue,
                     position,
                     rules,
                     root_moves,

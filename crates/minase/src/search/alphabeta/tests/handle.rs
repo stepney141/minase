@@ -48,10 +48,10 @@ fn search_with_node_limit_is_deterministic() {
     assert_eq!(first, second);
 }
 
-// 監査「学習PST追加後の公開境界」: 探索APIはグローバルな埋め込み重みでは
-// なく、呼び出し側が明示した検証済みPSTで葉を評価する。
+// 監査「学習NNUE追加後の公開境界」: 探索APIはグローバルな埋め込み重みでは
+// なく、呼び出し側が明示した検証済みNNUEで葉を評価する。
 #[test]
-fn search_apis_use_the_supplied_pst() {
+fn search_apis_use_the_supplied_nnue() {
     let position = position(
         Color::Black,
         &[
@@ -59,7 +59,14 @@ fn search_apis_use_the_supplied_pst() {
             (fs(6, 1), Color::White, PieceKind::King),
         ],
     );
-    let supplied = Pst::decode(include_bytes!("../../../../nets/pst-init.bin")).unwrap();
+    // 同じエポック0のネットの出力バイアスだけを変え、注入した重みを区別する。
+    use sha2::{Digest, Sha256};
+    let mut bytes = include_bytes!("../../../../nets/nnue.bin").to_vec();
+    let end = bytes.len();
+    bytes[end - 4..].copy_from_slice(&520_192_i32.to_le_bytes());
+    let checksum = Sha256::digest(&bytes[96..]);
+    bytes[56..88].copy_from_slice(&checksum);
+    let supplied = Nnue::decode(&bytes).unwrap();
     let embedded = crate::eval::weights().unwrap();
     let mut child = position.clone();
     let root_move = legal_moves(&position)
@@ -70,7 +77,7 @@ fn search_apis_use_the_supplied_pst() {
             child.unmake_move(undo);
             differs
         })
-        .expect("fixture must distinguish the supplied and embedded PSTs");
+        .expect("fixture must distinguish the supplied and embedded networks");
     let undo = child.make_move_unchecked(root_move, engine_rules());
     let expected = -evaluate(&supplied, &child);
     child.unmake_move(undo);

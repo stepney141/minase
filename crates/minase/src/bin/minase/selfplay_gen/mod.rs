@@ -121,7 +121,7 @@ mod test_support {
                 input,
                 targets,
                 output: directory.join("output.mnrs"),
-                pst: None,
+                nnue: None,
                 nodes: 200,
                 hash_mb: NonZeroUsize::new(1).unwrap(),
                 concurrency: NonZeroUsize::new(1).unwrap(),
