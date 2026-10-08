@@ -1,0 +1,15 @@
+[package]
+name = "simdcheck"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.89"
+
+[dependencies]
+fearless_simd = "1.1"
+fearless_simd_macros = "0.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# Stand-alone: keeps this verification crate out of the minase workspace.
+[workspace]

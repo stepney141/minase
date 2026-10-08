@@ -45,14 +45,15 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [複数駒の関係と探索結果を学ぶ評価関数の一次資料](relational-evaluation-primary-sources.md)は、Stockfishとやねうら王の関係特徴、探索内部を教師にする研究、および学習時だけ高価な特徴を使う方法の根拠と限界を確認する。
 - [Athénanの先行事例の調査](athenan-prior-art.md)は、学習にDescent、対局にUBFMsを使うAthénanの定義、構成要素ごとの効果の証拠、Olympiadの成績、および公開実装を一次資料で確認し、中将棋へ適用するときの問題として循環、長い対局、線形の評価関数での実証の欠如、比較相手のαβ探索の弱さ、およびメモリの増加を挙げる。
 
-## 合法手生成の高速化
+## 実行速度の改善
 
-合法手生成と利きの計算を速くする案について、処理件数の診断と一次資料をまとめた調査である。
+合法手生成、利きの計算、および評価の計算を速くする案について、処理件数の診断、機械語の読解、および一次資料をまとめた調査である。
 
 - [合法手生成の高速化計画への追加候補](movegen-speedup-ideas.md)は、2026年9月13日時点の高速化計画に対して、静止探索で不要な捕獲を生成前に除く案と段階的に生成する案を、処理件数の診断から提案する。
 - [Magic bitboardの一次資料](magic-bitboard-primary-sources.md)は、Stockfish、やねうら王、およびFairy-Stockfishの利きの求め方を調べ、12×12盤では方向ごとに表を分割する方式を先に比較する価値があると示す。
 - [12×12盤へのmagic bitboardの適用](magic-bitboard-feasibility.md)は、斜線のmagicと横線の小表の試作がいずれも現行の算術方式を上回らなかった結果を記録する。付属の計算スクリプトは[magic-bitboard-feasibility/](magic-bitboard-feasibility/)にある。
 - [既存エンジンとminaseのビットボードの比較](bitboard-comparison.md)は、Stockfishとやねうら王のビットボードを語構成、走りの利きの算法、および局面の派生構造の3点でminaseと比べ、王手とピンの機構がないことが規則の帰結であることと、未測定の改善案3件を示す。
+- [fearless_simdによる安全なSIMDの適用可能性](fearless-simd-feasibility.md)は、`unsafe`なしで実行時に命令集合を選ぶRustのSIMDライブラリfearless_simd 1.1.0が現行のminaseを速くできるかを、FMの4つの核の機械語の読解と移植可能ビルドとの速度比較で見積もり、標準ビルドでは自動ベクトル化が既に同じ命令を出しているため試作を見送り、再検討はNNUEの推論を実装する時点とする。
 
 ## 時間管理と投了
 
