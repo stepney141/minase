@@ -79,6 +79,7 @@
 | PSTとFMの同時学習 | [plans/pst-fm-joint-training.md](plans/pst-fm-joint-training.md) | 完了（不採用） | 2026年10月8日 |
 | FMの補正の倍率のSPSAによる調整 | [plans/fm-scale-spsa.md](plans/fm-scale-spsa.md) | 完了（採用） | 2026年10月8日 |
 | 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
+| NNUEによるPST＋FMの完全代替（初代のネット） | [plans/nnue-replacement.md](plans/nnue-replacement.md) | 起案 | |
 
 ## 現在地
 
@@ -97,6 +98,7 @@
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotの2.2.0への更新と、配備後の秒読みつきの対局20局の記録が残っている。
+- [NNUEによるPST＋FMの完全代替（初代のネット）](plans/nnue-replacement.md)は、現行PSTを線形経路として内包する幅64と128の浅いNNUEを、既存データに現行PST＋FMが1局面2万ノードで生成する新規データ（候補量1億局面。試走の速度から確定する）を加えて学び、幅を自己対局で選んでから段階ゲートで採否を決める。採用したネットで教師を生成し直す世代反復の初代であり、反復の基盤と運用は後続の設計書で起案する。着手は利用者の指示を待つ。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習を外部のレンタルGPUサーバ（総額2万円、強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。着手は利用者の許可を待ち、SPSAの調整セッションが完了しても許可があるまでは始めない。
 
