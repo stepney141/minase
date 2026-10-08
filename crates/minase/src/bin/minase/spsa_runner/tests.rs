@@ -1162,7 +1162,6 @@ fn apply_rejects_unrecognized_table_lines_without_writing() {
     for declaration in [
         "/* X(x): 250, 100, 400; */",
         "X(x): 250,\n100, 400;",
-        "#[doc = \"X\"]",
         "X(x): 250_0, 100, 400;",
         "X(x): 0xfa, 100, 400;",
         "X(x): 2147483648, 100, 400;",

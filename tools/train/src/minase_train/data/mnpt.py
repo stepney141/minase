@@ -239,3 +239,12 @@ def validate_fixed_base(base_path: str | Path, candidate_path: str | Path) -> No
     for name, expected, actual in zip(("middlegame", "endgame", "piece values", "K"), base, candidate[:4]):
         if not np.array_equal(expected, actual):
             raise ValueError(f"FM candidate changed fixed {name}")
+
+
+def validate_search_constants(base_path: str | Path, candidate_path: str | Path) -> None:
+    """v3間で探索用駒価値と出力Kが厳密に一致することを確かめる。"""
+    base = read_mnpt_v3(base_path)
+    candidate = read_mnpt_v3(candidate_path)
+    for name, expected, actual in zip(("piece values", "K"), base[2:4], candidate[2:4]):
+        if not np.array_equal(expected, actual):
+            raise ValueError(f"joint candidate changed fixed {name}")

@@ -100,7 +100,7 @@ fn tuning_default_clock_budget_matches_reference_grid() {
     }
 }
 
-/// 全35係数の反映とUSIの入力契約を直列に検査する。
+/// 全36係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -405,7 +405,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 35] = [
+    let cases: [Case; 36] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -483,6 +483,9 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             clock_budget(clock(1000, 1000, 0)).hard.as_millis() as i64
         }),
         ("IterationRatio", 150, prediction),
+        ("FmScale", 0, || {
+            i64::from(evaluate(&weights().unwrap(), &Position::initial()))
+        }),
     ];
     assert_eq!(cases.len(), params::PARAMETERS.len());
     for ((name, value, observe), &(expected_name, default, min, max)) in

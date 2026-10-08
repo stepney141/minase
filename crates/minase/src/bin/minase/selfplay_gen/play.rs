@@ -311,7 +311,8 @@ mod tests {
         let pst = minase::eval::weights().expect("embedded weights are valid");
         let mut first_table = test_table();
         let mut second_table = test_table();
-        let settings = test_settings(7, 4, 600);
+        // 100ノードの対局が終局して記録を残すように、手数上限は埋め込んだ重みで確かめた値にする。
+        let settings = test_settings(7, 4, 1200);
         let first = play_game(pst.as_ref(), rules, 1, settings, &mut first_table)
             .expect("the fixed game is valid");
         let second = play_game(pst.as_ref(), rules, 1, settings, &mut second_table)

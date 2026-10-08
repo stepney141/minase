@@ -1,5 +1,6 @@
 """整数式で決めた合成期待値で、Rust照合の呼出しと不一致検出を検査する。"""
 
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ import numpy as np
 from minase_train.data.features import FEATURE_COUNT
 from minase_train.data.mnpt import initial_piece_values, write_mnpt, write_mnpt_v3
 from minase_train.data.mnsd import RECORD_DTYPE, write_mnsd
-from minase_train.diagnostics.fm import compare, rust_probe
+from minase_train.diagnostics.fm import compare, rust_probe, main
 
 
 class FMProbeTest(unittest.TestCase):
@@ -60,6 +61,36 @@ class FMProbeTest(unittest.TestCase):
             write_mnpt_v3(candidate, weights, weights, values, 1000, u, np.array([1]), 1)
             with self.assertRaisesRegex(ValueError, "fixed middlegame"):
                 compare(base, candidate, positions, probe)
+
+
+    def test_pst_changed_checks_candidate_endpoints_and_rejects_wrong_pst_score(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base, candidate, positions = [root / name for name in ("base.bin", "joint.bin", "positions.bin")]
+            zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
+            weights = zeros.copy()
+            weights[29 * 144:29 * 144 + 2] = 16
+            u = np.zeros((FEATURE_COUNT, 1), dtype=np.int16)
+            u[29 * 144:29 * 144 + 2, 0] = [7, -5]
+            values = initial_piece_values()
+            write_mnpt_v3(base, zeros, zeros, values, 1000, u, np.array([1]), 1)
+            write_mnpt_v3(candidate, weights, weights, values, 1000, u, np.array([1]), 1)
+            records = np.zeros(1, dtype=RECORD_DTYPE)
+            records["lion"] = 255
+            records["board"][:, :2] = 1
+            write_mnsd(positions, records, seed=0, network_checksum=b"a" * 32)
+            # 候補PST=4cp、FM=trunc(-35/4)=-8cp、合計=-4cp。
+            expected = [{"index": 0, "eval": -4, "eval_pst": 4}]
+            probe = Mock(return_value=expected)
+            self.assertEqual(compare(base, candidate, positions, probe, pst_changed=True)["samples"], 1)
+            with self.assertRaises(ValueError):
+                compare(base, candidate, positions,
+                        Mock(return_value=[dict(expected[0], eval_pst=5)]), pst_changed=True)
+            output = root / "diagnostics.json"
+            with patch("minase_train.diagnostics.fm.rust_probe", return_value=probe):
+                main(["--base", str(base), "--candidate", str(candidate), "--positions", str(positions),
+                      "--output", str(output), "--pst-changed", "--probe-command", "/bin/true"])
+            self.assertEqual(json.loads(output.read_text())["candidate_pst"], 1)
 
 
 if __name__ == "__main__":

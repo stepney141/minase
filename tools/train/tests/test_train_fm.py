@@ -1,6 +1,7 @@
 """FM設計書の恒等式、初期勾配、整数化、保存形式、および学習の契約を検証する。"""
 
 from contextlib import redirect_stdout
+from fractions import Fraction
 from io import StringIO
 from itertools import combinations
 import hashlib
@@ -14,11 +15,14 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from minase_train.data.features import FEATURE_COUNT, PADDING_INDEX, BOARD_FEATURE_COUNT, feature_indices, mirror
+from minase_train.data.features import (
+    FEATURE_COUNT, INITIAL_BOARD, PADDING_INDEX, BOARD_FEATURE_COUNT, feature_indices, mirror,
+)
 from minase_train.data.mnsd import Dataset, RECORD_DTYPE, write_mnsd, map_records
 from minase_train.data.taper import phase_numerators
 from helpers import write_provenance
-from minase_train.data.mnpt import initial_piece_values, write_mnpt, float_weights_path
+from minase_train.data import mnpt
+from minase_train.data.mnpt import initial_piece_values, read_mnpt, write_mnpt, float_weights_path
 from minase_train.pst.evaluate import integer_evaluate as pst_evaluate
 import minase_train.fm.train as fm
 
@@ -539,6 +543,146 @@ class CurrentTrainingContractTest(unittest.TestCase):
         # Nonzero embeddings can also cancel exactly across signed dimensions.
         u = np.repeat(u, 2, axis=1)
         self.assertTrue(fm.zero_correction_report(u, np.array([1, -1]), 0)["identically_zero"])
+
+
+def scale_inputs(root: Path) -> tuple[Path, Path, dict]:
+    """同じ浮動小数点の重みから、整合したMNPT v3と整数化前の重みを作る。"""
+    random = np.random.default_rng(3)
+    weights = {"middlegame": random.normal(0, 50, FEATURE_COUNT).astype(np.float32),
+               "endgame": random.normal(0, 50, FEATURE_COUNT).astype(np.float32),
+               "V": random.normal(0, 0.05, (FEATURE_COUNT, 3)).astype(np.float32),
+               "a": np.array([0.8, -0.5, 0.3], dtype=np.float32),
+               "mask": np.ones(FEATURE_COUNT, dtype=bool)}
+    source, floating = root / "pst.bin", root / "pst-float.npz"
+    fm.write_mnpt_v3(source, mnpt.quantize(weights["middlegame"]), mnpt.quantize(weights["endgame"]),
+                     initial_piece_values(), 1000.125, *fm.quantize(weights["V"], weights["a"], 1000.125))
+    np.savez(floating, **weights)
+    return source, floating, weights
+
+
+class ScaleTest(unittest.TestCase):
+    """FMの補正の倍率の焼き込みを、入力の重みと整数化の式から検査する。"""
+
+    def test_full_scale_reproduces_input_and_half_scale_quantizes_half_coefficients(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, floating, weights = scale_inputs(root)
+            fm.scale_weights(source, floating, 1024, root / "full.bin")
+            self.assertEqual((root / "full.bin").read_bytes(), source.read_bytes())
+            for expected, actual in zip(fm.read_mnpt_v3(source), fm.read_mnpt_v3(root / "full.bin")):
+                np.testing.assert_array_equal(actual, expected)
+            report = fm.scale_weights(source, floating, 512, root / "half.bin")
+            half = fm.read_mnpt_v3(root / "half.bin")
+            for expected, actual in zip(fm.read_mnpt_v3(source)[:4], half[:4]):
+                np.testing.assert_array_equal(actual, expected)
+            expected = fm.quantize(weights["V"], weights["a"] / 2, 1000.125)
+            for expected_part, actual in zip(expected, half[4:]):
+                np.testing.assert_array_equal(actual, expected_part)
+            self.assertEqual(report["format_version"], 3)
+            self.assertEqual(report["exponent_after"], expected[2])
+            self.assertEqual(report["max_absolute_embedding"], int(np.abs(expected[0].astype(np.int64)).max()))
+            self.assertNotIn("validation", report)
+
+    def test_zero_scale_writes_pst_only_version_2(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, floating, _ = scale_inputs(root)
+            report = fm.scale_weights(source, floating, 0, root / "pst.v2.bin")
+            for expected, actual in zip(fm.read_mnpt_v3(source)[:4], read_mnpt(root / "pst.v2.bin")):
+                np.testing.assert_array_equal(actual, expected)
+            self.assertEqual(report["format_version"], 2)
+            self.assertIsNone(report["exponent_after"])
+            self.assertIsNone(report["max_absolute_embedding"])
+            self.assertEqual(report["output_sha256"], hashlib.sha256((root / "pst.v2.bin").read_bytes()).hexdigest())
+
+    def test_mismatched_float_weights_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, _, weights = scale_inputs(root)
+            flipped = dict(weights, a=weights["a"] * np.array([-1, 1, 1], dtype=np.float32))
+            shifted = dict(weights, middlegame=weights["middlegame"] + np.float32(1))
+            for name, changed, message in (("a", flipped, "floating FM"), ("pst", shifted, "floating PST")):
+                floating = root / f"{name}.npz"
+                np.savez(floating, **changed)
+                with self.subTest(name=name), self.assertRaisesRegex(ValueError, message):
+                    fm.scale_weights(source, floating, 512, root / f"scaled-{name}.bin")
+                self.assertFalse((root / f"scaled-{name}.bin").exists())
+
+    def test_out_of_range_scale_and_existing_outputs_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, floating, _ = scale_inputs(root)
+            arguments = ["scale", "--input", str(source), "--float", str(floating)]
+            for value in (-1, 1025):
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "0..1024"):
+                    fm.main(arguments + ["--fm-scale", str(value), "--output", str(root / "bad.bin")])
+                with self.assertRaisesRegex(ValueError, "0..1024"):
+                    fm.scale_weights(source, floating, value, root / "bad.bin")
+            self.assertFalse((root / "bad.bin").exists())
+            existing = root / "existing.bin"
+            existing.write_bytes(b"x")
+            with self.assertRaisesRegex(ValueError, "output already exists"):
+                fm.scale_weights(source, floating, 512, existing)
+            existing.with_suffix(".scale.json").write_text("{}")
+            with self.assertRaisesRegex(ValueError, "report already exists"):
+                fm.main(arguments + ["--fm-scale", "512", "--output", str(existing)])
+            self.assertEqual(existing.read_bytes(), b"x")
+
+    def test_validation_report_compares_tuning_and_baked_corrections(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # Varied positions make both corrections nonzero and position-dependent.
+            random = np.random.default_rng(5)
+            records = np.zeros(400, dtype=RECORD_DTYPE)
+            records["board"] = np.where(random.random((400, 144)) < 0.5, INITIAL_BOARD, 0)
+            records["stm"] = random.integers(0, 2, 400)
+            records["lion"] = 255
+            records["game"] = np.arange(400)
+            data = root / "data.bin"
+            write_mnsd(data, records, seed=0, network_checksum=b"a" * 32)
+            write_provenance(data)
+            source, floating, weights = scale_inputs(root)
+            reports = {}
+            for value in (1024, 768, 0):
+                output = root / f"pst-{value}.bin"
+                with redirect_stdout(StringIO()):
+                    fm.main(["scale", "--input", str(source), "--float", str(floating), "--fm-scale", str(value),
+                             "--output", str(output), "--data", str(data), "--batch", "3",
+                             "--validation-sample", "7", "--seed", "2"])
+                reports[value] = json.loads(output.with_suffix(".scale.json").read_text())
+            for value, report in reports.items():
+                validation = report["validation"]
+                self.assertEqual(report["fm_scale"], value)
+                self.assertEqual({key: validation[key] for key in ("samples", "seed", "split")},
+                                 {"samples": 7, "seed": 2, "split": "validation"})
+                for key in ("float_vs_integer", "tuning_vs_baked"):
+                    self.assertEqual(set(validation[key]), {"mean_absolute_cp", "max_absolute_cp"})
+                self.assertEqual(set(validation["correction_cp"]), {"output_std", "tuning_std"})
+            full = reports[1024]["validation"]
+            self.assertEqual(full["tuning_vs_baked"], {"mean_absolute_cp": 0.0, "max_absolute_cp": 0.0})
+            self.assertGreater(full["correction_cp"]["output_std"], 0)
+            self.assertEqual(full["correction_cp"]["output_std"], full["correction_cp"]["tuning_std"])
+            self.assertEqual(reports[0]["validation"]["correction_cp"]["output_std"], 0)
+            # Recompute the sample and both corrections independently, with exact truncation.
+            dataset = Dataset([data])
+            indices = np.random.default_rng(2).choice(dataset.validation_indices, 7, replace=False)
+            sample = dataset.gather(indices)
+            features = feature_indices(sample["board"], sample["stm"], sample["lion"])
+            u, signs, exponent = fm.read_mnpt_v3(source)[4:]
+            numerators = fm.fm_numerator(*fm.fm_accumulators(u, signs, features), signs).tolist()
+            scaled = fm.read_mnpt_v3(root / "pst-768.bin")[4:]
+            baked = {768: fm.fm_correction(*fm.fm_accumulators(scaled[0], scaled[1], features), *scaled[1:]),
+                     0: np.zeros(7, dtype=np.int64)}
+            for value in (768, 0):
+                # int(Fraction) truncates toward zero without floating rounding.
+                tuning = np.array([int(Fraction(n * value, 1024 * 2 ** (2 * exponent + 1))) for n in numerators])
+                difference = np.abs(tuning - baked[value])
+                validation = reports[value]["validation"]
+                self.assertEqual(validation["tuning_vs_baked"],
+                                 {"mean_absolute_cp": float(difference.mean()), "max_absolute_cp": float(difference.max())})
+                self.assertEqual(validation["correction_cp"]["tuning_std"], float(tuning.std()))
+                self.assertEqual(validation["correction_cp"]["output_std"], float(baked[value].std()))
+            self.assertGreater(reports[768]["validation"]["correction_cp"]["tuning_std"], 0)
 
 
 if __name__ == "__main__":

@@ -193,6 +193,7 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
     if !single_capture_limit("qsearch_limit_reads_double_lion_capture_after_tt_capture") {
         return;
     }
+    // 香車2枚をこの配置に置き、二重捕獲による評価増分を駒価値とdelta_marginの和に収める。
     let board = position(
         Color::Black,
         &[
@@ -200,9 +201,9 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
             (sq(11, 11), Color::White, PieceKind::King),
             (sq(0, 0), Color::Black, PieceKind::Rook),
             (sq(0, 2), Color::White, PieceKind::Pawn),
-            (sq(5, 5), Color::Black, PieceKind::Lion),
-            (sq(5, 6), Color::White, PieceKind::CopperGeneral),
-            (sq(6, 6), Color::White, PieceKind::CopperGeneral),
+            (sq(3, 2), Color::Black, PieceKind::Lion),
+            (sq(3, 3), Color::White, PieceKind::Lance),
+            (sq(4, 3), Color::White, PieceKind::Lance),
         ],
     );
     with_root_searcher(&board, &[], |searcher| {
@@ -454,7 +455,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
 #[test]
 fn qsearch_limit_does_not_count_delta_pruned_capture() {
     let (board, captures) = captures_over_limit();
-    // 銅将は歩兵より捕獲価値が高く、この配置では捕獲による評価増分が駒価値とdelta_marginの和に余裕を持って収まる。
+    // 盲虎は歩兵より捕獲価値が高く、この配置では捕獲による評価増分が駒価値とdelta_marginの和に収まる。
     // 先頭の歩兵捕獲だけを枝刈りし、残りの捕獲でαが上がらない局面にする。
     let pieces: Vec<_> = Square::all()
         .filter_map(|square| {
@@ -462,7 +463,7 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
                 if captures[1..].iter().any(|mv| mv.to == square) {
                     (
                         square,
-                        PieceCode::new(Color::White, PieceKind::CopperGeneral).unwrap(),
+                        PieceCode::new(Color::White, PieceKind::BlindTiger).unwrap(),
                     )
                 } else {
                     (square, piece)
