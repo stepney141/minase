@@ -23,11 +23,6 @@ HEADER_LENGTH = 80
 FORMAT_VERSION = 2
 FM_FORMAT_VERSION = 3
 RULE_SET = b"L0,P0,R1,E0"
-# 設計書「MNPT形式を更新する」: 序中盤13,680 i16、終盤13,680 i16、探索用駒価値47 i32。
-# MNPT本体末尾の探索用駒価値(47個のi32)。
-PIECE_VALUE_BYTES = PIECE_STATE_COUNT * 4
-BODY_LENGTH = FEATURE_COUNT * 2 * 2 + PIECE_STATE_COUNT * 4
-FILE_LENGTH = HEADER_LENGTH + BODY_LENGTH
 EVALUATION_LIMIT = 28_999
 PIECE_VALUES = np.array(
     [
@@ -99,23 +94,26 @@ def read_mnpt(
     *,
     rule_set: bytes = RULE_SET,
 ) -> tuple[NDArray[np.int16], NDArray[np.int16], NDArray[np.int32], float]:
-    """MNPTファイルを完全検証し、両端点の量子化重み、駒価値、Kを返す。"""
+    """MNPT版2・版3を完全検証し、PSTの両端点、駒価値、Kを返す。"""
+    base, _ = _read_mnpt(path, rule_set)
+    return base
+
+
+def _read_mnpt(
+    path: str | Path, rule_set: bytes,
+) -> tuple[
+    tuple[NDArray[np.int16], NDArray[np.int16], NDArray[np.int32], float],
+    tuple[NDArray[np.int16], NDArray[np.int8], int] | None,
+]:
+    """ヘッダの版と次元に従って全体を復号し、PST部分と任意のFM部分を返す。"""
     source = Path(path)
     raw = source.read_bytes()
     if len(raw) < HEADER_LENGTH:
         raise ValueError(f"{source}: truncated MNPT header")
-    if len(raw) != FILE_LENGTH:
-        raise ValueError(f"{source}: length must be {FILE_LENGTH}, got {len(raw)}")
-    body, k = _decode_header(raw, source, FORMAT_VERSION, rule_set)
-    return (*_decode_pst(body, source), k)
-
-
-def _decode_header(raw: bytes, source: str | Path, expected_version: int,
-                   rule_set: bytes = RULE_SET) -> tuple[bytes, float]:
     magic, version, stored_feature_count, k = struct.unpack_from("<4sII f", raw)
     if magic != b"MNPT":
         raise ValueError(f"{source}: invalid MNPT magic {magic!r}")
-    if version != expected_version:
+    if version not in (FORMAT_VERSION, FM_FORMAT_VERSION):
         raise ValueError(f"{source}: unsupported MNPT version {version}")
     if stored_feature_count != FEATURE_COUNT:
         raise ValueError(f"{source}: feature count must be {FEATURE_COUNT}")
@@ -123,17 +121,32 @@ def _decode_header(raw: bytes, source: str | Path, expected_version: int,
         raise ValueError(f"{source}: K must be finite and positive")
     if raw[16:48] != _rule_field(rule_set):
         raise ValueError(f"{source}: unexpected rule-set field")
+    weights_bytes = stored_feature_count * 2 * 2
+    fixed_body_length = weights_bytes + PIECE_STATE_COUNT * 4
+    expected_length = HEADER_LENGTH + fixed_body_length
+    if version == FM_FORMAT_VERSION:
+        if len(raw) < expected_length + 8:
+            raise ValueError(f"{source}: truncated MNPT v3 fixed body, rank or exponent")
+        rank, exponent = struct.unpack_from("<II", raw, expected_length)
+        if rank < 1 or exponent > 30:
+            raise ValueError(f"{source}: invalid FM rank or exponent")
+        expected_length += 8 + rank + stored_feature_count * rank * 2
+    if len(raw) != expected_length:
+        raise ValueError(f"{source}: length must be {expected_length}, got {len(raw)}")
     body = raw[HEADER_LENGTH:]
     if hashlib.sha256(body).digest() != raw[48:80]:
         raise ValueError(f"{source}: SHA-256 mismatch")
-    return body, float(k)
-
-
-def _decode_pst(body: bytes, source: str | Path) -> tuple[NDArray, NDArray, NDArray]:
-    weights = np.frombuffer(body, dtype="<i2", count=FEATURE_COUNT * 2).reshape(2, FEATURE_COUNT)
-    values = np.frombuffer(body, dtype="<i4", count=PIECE_STATE_COUNT, offset=FEATURE_COUNT * 4).copy()
+    weights = np.frombuffer(body, dtype="<i2", count=stored_feature_count * 2).reshape(2, stored_feature_count)
+    values = np.frombuffer(body, dtype="<i4", count=PIECE_STATE_COUNT, offset=weights_bytes).copy()
     validate_piece_values(values, str(source))
-    return weights[0].copy(), weights[1].copy(), values
+    base = weights[0].copy(), weights[1].copy(), values, float(k)
+    if version == FORMAT_VERSION:
+        return base, None
+    signs = np.frombuffer(body, dtype="i1", count=rank, offset=fixed_body_length + 8).copy()
+    if not np.all((signs == 1) | (signs == -1)):
+        raise ValueError(f"{source}: FM signs must be +1 or -1")
+    u = np.frombuffer(body, dtype="<i2", offset=fixed_body_length + 8 + rank).reshape(stored_feature_count, rank).copy()
+    return base, (u, signs, exponent)
 
 
 def _write_body(path: str | Path, body: bytes, k: float, version: int, rule_set: bytes) -> None:
@@ -216,24 +229,14 @@ def write_mnpt_v3(
 
 def read_mnpt_v3(path: str | Path) -> tuple[NDArray, NDArray, NDArray, float, NDArray, NDArray, int]:
     """v3を完全検証し、両端点、駒価値、K、U、符号、指数を返す。"""
-    raw = Path(path).read_bytes()
-    if len(raw) < HEADER_LENGTH + BODY_LENGTH + 8:
-        raise ValueError(f"{path}: truncated MNPT v3")
-    body, k = _decode_header(raw, path, FM_FORMAT_VERSION)
-    rank, exponent = struct.unpack_from("<II", body, BODY_LENGTH)
-    if rank < 1 or exponent > 30:
-        raise ValueError(f"{path}: invalid FM rank or exponent")
-    if len(body) != BODY_LENGTH + 8 + rank + FEATURE_COUNT * rank * 2:
-        raise ValueError(f"{path}: invalid MNPT v3 length")
-    signs = np.frombuffer(body, dtype="i1", count=rank, offset=BODY_LENGTH + 8).copy()
-    if not np.all((signs == 1) | (signs == -1)):
-        raise ValueError(f"{path}: FM signs must be +1 or -1")
-    u = np.frombuffer(body, dtype="<i2", offset=BODY_LENGTH + 8 + rank).reshape(FEATURE_COUNT, rank).copy()
-    return (*_decode_pst(body, path), k, u, signs, exponent)
+    base, fm = _read_mnpt(path, RULE_SET)
+    if fm is None:
+        raise ValueError(f"{path}: MNPT v3 required, got version 2")
+    return (*base, *fm)
 
 
 def validate_fixed_base(base_path: str | Path, candidate_path: str | Path) -> None:
-    """v3の両端点、探索用駒価値、およびKが基準v2と厳密に一致することを確かめる。"""
+    """v3の両端点、探索用駒価値、およびKが基準v2・v3と厳密に一致することを確かめる。"""
     base = read_mnpt(base_path)
     candidate = read_mnpt_v3(candidate_path)
     for name, expected, actual in zip(("middlegame", "endgame", "piece values", "K"), base, candidate[:4]):

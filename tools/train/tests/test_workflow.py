@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import ExitStack, redirect_stdout
+from itertools import product
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,7 +21,7 @@ import minase_train.workflow as workflow
 from helpers import python_probe, write_mnsd, write_provenance, write_rescore
 from minase_train.checksum import sha256_file
 from minase_train.data.features import FEATURE_COUNT
-from minase_train.data.mnpt import initial_piece_values, read_mnpt, write_mnpt
+from minase_train.data.mnpt import initial_piece_values, read_mnpt, write_mnpt, write_mnpt_v3
 
 
 CONFIG = '''[run]
@@ -165,7 +167,7 @@ class WorkflowTest(unittest.TestCase):
 
     def test_prepare_pins_generator_to_base_and_probe_to_training_tools_commit(self) -> None:
         """生成基準が古くても、診断器はprepare時のHEADから別にビルドする。"""
-        for case, lookahead in enumerate((None, {"gamma": .9, "plies": 40})):
+        for case, (lookahead, version) in enumerate(product((None, {"gamma": .9, "plies": 40}), (2, 3))):
             run = self.root / f"data/run-{case}"
             self.config["run"]["directory"] = str(run)
             base = "0" * 40
@@ -194,8 +196,12 @@ class WorkflowTest(unittest.TestCase):
                     checkouts[destination] = command[-1]
                     (destination / "crates/minase/nets").mkdir(parents=True)
                     weights = np.zeros(FEATURE_COUNT, dtype=np.int16)
-                    write_mnpt(destination / "crates/minase/nets/pst.bin", weights, weights,
-                               initial_piece_values(), 1000)
+                    network = destination / "crates/minase/nets/pst.bin"
+                    if version == 2:
+                        write_mnpt(network, weights, weights, initial_piece_values(), 1000)
+                    else:
+                        write_mnpt_v3(network, weights, weights, initial_piece_values(), 1000,
+                                      np.ones((FEATURE_COUNT, 2), dtype=np.int16), np.array([1, -1]), 7)
                 elif command[:2] == ["cargo", "build"]:
                     names = [command[index + 1] for index, value in enumerate(command) if value == "--bin"]
                     builds[cwd] = command
@@ -212,6 +218,13 @@ class WorkflowTest(unittest.TestCase):
                     patch.object(workflow, "run_command", side_effect=fake_command):
                 workflow.prepare(self.config_path)
             state = json.loads((run / "prepared.json").read_text())
+            expected_hash = hashlib.sha256(struct.pack("<47i", *initial_piece_values())).hexdigest()
+            self.assertEqual(state["base_piece_values_sha256"], expected_hash)
+            tail_hash = hashlib.sha256((run / "pst-base.bin").read_bytes()[-188:]).hexdigest()
+            if version == 2:
+                self.assertEqual(expected_hash, tail_hash)
+            else:
+                self.assertNotEqual(expected_hash, tail_hash)
             self.assertEqual(state["rescores"], [{"path": str(sidecar), "sha256": sha256_file(sidecar).hex()}] if lookahead is None else [])
             provenance = Path(str(source) + ".provenance.json")
             self.assertEqual(state["existing_data"][0]["provenance"]["sha256"], sha256_file(provenance).hex())
@@ -236,9 +249,9 @@ class WorkflowTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "lookahead"):
                         workflow.load_prepared(run)
 
-    def prepared(self) -> tuple[Path, ExitStack]:
+    def prepared(self, *, version: int = 2) -> tuple[Path, ExitStack]:
         """外部git操作だけを置換し、完了記録とファイル検証は実際に通す。"""
-        run = self.root / "data/run"
+        run = Path(self.config["run"]["directory"])
         run.mkdir()
         binary = run / "generator/target/release/minase"
         binary.parent.mkdir(parents=True)
@@ -247,7 +260,12 @@ class WorkflowTest(unittest.TestCase):
         probe.parent.mkdir(parents=True)
         probe.write_bytes(b"fixture probe")
         zeros = np.zeros(FEATURE_COUNT, dtype=np.int16)
-        write_mnpt(run / "pst-base.bin", zeros, zeros, initial_piece_values(), 1000)
+        k = self.config["train"]["k"]
+        if version == 2:
+            write_mnpt(run / "pst-base.bin", zeros, zeros, initial_piece_values(), k)
+        else:
+            write_mnpt_v3(run / "pst-base.bin", zeros, zeros, initial_piece_values(), k,
+                          np.zeros((FEATURE_COUNT, 2), dtype=np.int16), np.array([1, -1]), 7)
         state = {
             "config": self.config,
             "lookahead": self.config["train"].get("lookahead"),
@@ -257,7 +275,7 @@ class WorkflowTest(unittest.TestCase):
             "sources": workflow.source_hashes(),
             "base_sha256": sha256_file(run / "pst-base.bin").hex(),
             "base_piece_values_sha256": hashlib.sha256(
-                (run / "pst-base.bin").read_bytes()[-workflow.PIECE_VALUE_BYTES:]).hexdigest(),
+                struct.pack("<47i", *initial_piece_values())).hexdigest(),
             "generator_sha256": sha256_file(binary).hex(),
             "probe_commit": "1" * 40,
             "probe_sha256": sha256_file(probe).hex(),
@@ -446,7 +464,7 @@ class WorkflowTest(unittest.TestCase):
 
     def test_generation_and_inspection_use_minase_subcommands(self) -> None:
         """設計書の新しい呼び出しと生成条件を引数列全体で検査する。"""
-        run, stack = self.prepared()
+        run, stack = self.prepared(version=3)
         output = run / "generated-100.bin"
         checksum = (run / "pst-base.bin").read_bytes()[48:80]
 
@@ -470,6 +488,9 @@ class WorkflowTest(unittest.TestCase):
         receipt = json.loads((run / "generated-100.json").read_text())
         self.assertEqual(receipt["sha256"], sha256_file(output).hex())
         self.assertEqual(receipt["records"], 1)
+        command.reset_mock()
+        workflow.generate(run, 100)
+        command.assert_not_called()
 
     def test_generation_rejects_modified_minase_binary(self) -> None:
         run, stack = self.prepared()
@@ -576,7 +597,7 @@ class WorkflowTest(unittest.TestCase):
         self.config["generate"]["games"] = 80
         self.config["train"].update(epochs=1, batch=32, validation_sample=16, learning_rate=.125)
         self.config["diagnose"]["sample_size"] = 16
-        run, _ = self.prepared()
+        run, _ = self.prepared(version=3)
         checksum = (run / "pst-base.bin").read_bytes()[48:80]
         for seed in (100, 200):
             output = run / f"generated-{seed}.bin"
@@ -622,6 +643,40 @@ class WorkflowTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             workflow.train(run)
         self.assertEqual(candidate.read_bytes(), original)
+
+    def test_training_validates_decoded_piece_values_and_k_for_both_output_versions(self) -> None:
+        """版3の基準と復号値が一致する結果だけに、学習の完了記録を残す。"""
+        write_mnsd(self.root / "data/old.bin", seed=0, checksum=b"a" * 32,
+                   games=list(range(1, 81)))
+        self.config["generate"]["seeds"] = []
+        self.config["train"]["rescore"] = ["-"]
+        for version, changed in product((2, 3), (None, "piece values", "K")):
+            with self.subTest(version=version, changed=changed):
+                self.config["run"]["directory"] = str(self.root / f"data/run-{version}-{changed}")
+                run, stack = self.prepared(version=3)
+
+                def execute(run, label, command, cwd):
+                    output = run / "training/pst.bin"
+                    weights = np.ones(FEATURE_COUNT, dtype=np.int16)
+                    values = initial_piece_values()
+                    if changed == "piece values":
+                        values[0] += 1
+                    k = self.config["train"]["k"] + (1 if changed == "K" else 0)
+                    if version == 2:
+                        write_mnpt(output, weights, weights, values, k)
+                    else:
+                        # 基準と同じFM末尾でも、駒価値とKの変更を検出する。
+                        write_mnpt_v3(output, weights, weights, values, k,
+                                      np.zeros((FEATURE_COUNT, 2), dtype=np.int16), np.array([1, -1]), 7)
+                    (run / "training/pst-float.npz").write_bytes(b"fixture")
+
+                with stack, patch.object(workflow, "run_command", side_effect=execute), redirect_stdout(io.StringIO()):
+                    if changed is None:
+                        workflow.train(run)
+                    else:
+                        with self.assertRaises(ValueError):
+                            workflow.train(run)
+                self.assertEqual((run / "training/complete.json").exists(), changed is None)
 
     def test_training_forwards_and_records_mirrored_penalty_and_explicit_k(self) -> None:
         """指定した係数を保存してCLIへ渡し、教師尺度は訓練集合だけから推定する。"""
