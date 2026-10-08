@@ -57,6 +57,24 @@ fn default_concurrency(
     Ok(concurrency)
 }
 
+/// 記録する置換表容量を、明示した容量とエンジンが宣言した既定値から決める。
+///
+/// `USI_Hash`を宣言しないエンジン（`--search mcts`など）に容量を明示した場合は、送る先がないので
+/// 入力エラーとする。明示がなければ既定値を記録し、宣言がなければ`None`を記録する。
+fn resolve_hash(
+    side: &str,
+    explicit: Option<u64>,
+    default: Option<u64>,
+) -> io::Result<Option<u64>> {
+    if explicit.is_some() && default.is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{side} engine does not declare USI_Hash, so --{side}-hash cannot be applied"),
+        ));
+    }
+    Ok(explicit.or(default))
+}
+
 /// 新規実行の条件を構成する。
 ///
 /// `candidate_args`と`baseline_args`は、`resolve_player`へ渡した追加の起動引数である。
@@ -78,6 +96,10 @@ pub(super) fn run_manifest(
     let timeout = Duration::from_secs(response_timeout_secs);
     let candidate_defaults = probe_engine_defaults(candidate, timeout)?;
     let baseline_defaults = probe_engine_defaults(baseline, timeout)?;
+    let hash_mb = EngineHashSizes {
+        candidate: resolve_hash("candidate", candidate.hash_mb, candidate_defaults.hash_mb)?,
+        baseline: resolve_hash("baseline", baseline.hash_mb, baseline_defaults.hash_mb)?,
+    };
     let physical_cores = physical_core_count();
     let concurrency = match concurrency {
         Some(concurrency) => concurrency,
@@ -112,10 +134,7 @@ pub(super) fn run_manifest(
             candidate: candidate_defaults.threads,
             baseline: baseline_defaults.threads,
         },
-        hash_mb: EngineHashSizes {
-            candidate: candidate.hash_mb.or(candidate_defaults.hash_mb),
-            baseline: baseline.hash_mb.or(baseline_defaults.hash_mb),
-        },
+        hash_mb,
         concurrency,
     })
 }
@@ -201,6 +220,72 @@ mod tests {
             assert_eq!(manifest.hash_mb.candidate, expected_candidate);
             assert_eq!(manifest.hash_mb.baseline, expected_baseline);
         }
+    }
+
+    // alphazero.md「共存の構造」: USI_Hashを宣言しないエンジンへの容量の明示は入力エラーとし、
+    // 明示がなければ容量を記録しない。宣言するエンジンでは明示を優先する。
+    #[test]
+    fn hash_size_requires_a_declared_usi_hash() {
+        let error = resolve_hash("candidate", Some(512), None).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            error.to_string(),
+            "candidate engine does not declare USI_Hash, so --candidate-hash cannot be applied"
+        );
+        assert!(
+            resolve_hash("baseline", Some(1), None)
+                .unwrap_err()
+                .to_string()
+                .contains("--baseline-hash")
+        );
+        assert_eq!(resolve_hash("candidate", None, None).unwrap(), None);
+        assert_eq!(
+            resolve_hash("candidate", None, Some(256)).unwrap(),
+            Some(256)
+        );
+        assert_eq!(
+            resolve_hash("candidate", Some(512), Some(256)).unwrap(),
+            Some(512)
+        );
+    }
+
+    // 同節: 容量を記録しないエンジンの`hash_mb`はJSONで`null`となり、往復しても`None`に戻る。
+    #[test]
+    fn manifest_round_trips_undeclared_hash_sizes_as_null() {
+        let player = resolve_player(
+            parse_player_spec("random").unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            None,
+            "R1",
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        let manifest = run_manifest(
+            &player,
+            &[],
+            &player,
+            &[],
+            &parse_rule_set_argument("R1").unwrap(),
+            ManifestMode::Elo,
+            1,
+            4096,
+            120,
+            Some(1),
+            false,
+        )
+        .unwrap();
+        assert_eq!(manifest.hash_mb.candidate, None);
+        assert_eq!(manifest.hash_mb.baseline, None);
+        let value = serde_json::to_value(&manifest).unwrap();
+        assert_eq!(
+            value["hash_mb"],
+            serde_json::json!({"candidate": null, "baseline": null})
+        );
+        assert_eq!(
+            serde_json::from_value::<RunManifest>(value).unwrap(),
+            manifest
+        );
     }
 
     // alphazero.md「棋力測定」: 追加の起動引数はmanifestを往復し、欄のない記録は

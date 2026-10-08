@@ -127,8 +127,6 @@ pub struct Engine {
     pub(super) cache_dir: std::path::PathBuf,
     /// 探索の設定。
     pub(super) config: Config,
-    /// `USI_Hash`の容量(MiB)。NNキャッシュの容量として予約し、NNキャッシュを実装するまで使わない。
-    pub(super) hash_mb: usize,
     /// Gumbel乱数の生成器。
     rng: XorShift64,
     /// 直前の探索の木。
@@ -151,7 +149,6 @@ impl Engine {
             backend: NnBackend::TensorRt,
             cache_dir: super::options::default_cache_dir(),
             config,
-            hash_mb: crate::search::DEFAULT_TT_SIZE_MB,
             rng: XorShift64::new(config.seed),
             previous: None,
         }

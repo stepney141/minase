@@ -229,6 +229,7 @@ HaChuは1手固定時間を指定すると、指定値より短い時間で着�
 
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
 省略時はエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPエンジンは`memory 256`）で走り、解決後の容量は`manifest.json`の`hash_mb`に記録され、再開時にはこの値で対局する。
+`USI_Hash`を宣言しないUSIエンジン（`--search mcts`で起動したminaseなど）では容量を省略し、`hash_mb`には`null`が記録され、容量を明示するとハーネスは対局を始めずにエラーで終了する。
 HaChuは受けた容量を2の冪へ丸めるため、CECPエンジンには2の冪だけを指定できる。
 
 ハーネスは、USIエンジンの起動時に`setoption name ResignValue value 99999`を候補と基準の両方へ無条件に送り、エンジンの投了を無効にして対局を規則上の終局まで指させる（理由は [USI投了](../plans/usi-resignation.md)）。

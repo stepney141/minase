@@ -109,33 +109,47 @@ impl Searcher {
 
     /// 方式が宣言したオプションなら値を設定する。
     ///
-    /// 名前が方式のオプションでなければ`None`を返す。値が不正な場合や
-    /// 資源を確保できない場合は、状態を変えずに理由を`Some(Err)`で返す。
+    /// 名前が方式のオプションでなければ`None`を返す。ただし`USI_Hash`を宣言しない方式に
+    /// `USI_Hash`を指定した場合は、αβ探索との取り違えに気付けるように理由を`Some(Err)`で返す。
+    /// 値が不正な場合や資源を確保できない場合は、状態を変えずに理由を`Some(Err)`で返す。
     pub fn set_option(&mut self, name: &str, value: Option<&str>) -> Option<Result<(), String>> {
+        if name.eq_ignore_ascii_case("USI_Hash") && !self.declares_hash() {
+            return Some(Err(self.hash_unsupported()));
+        }
         match self {
             Self::AlphaBeta(engine) => engine.set_option(name, value),
             Self::Mcts(engine) => engine.set_option(name, value),
         }
     }
 
-    /// `USI_Hash`に当たる容量をMB単位で設定する。CECPの`memory`に使う。
-    ///
-    /// αβ探索では置換表の容量であり、MCTSではNNキャッシュの容量として値を記録するだけで、
-    /// 探索の動作を変えない。
+    /// 方式が`USI_Hash`を宣言するかどうかを返す。置換表を持つαβ探索だけが宣言する。
+    pub fn declares_hash(&self) -> bool {
+        self.options()
+            .iter()
+            .any(|option| option.name == "USI_Hash")
+    }
+
+    /// `USI_Hash`に当たる置換表の容量をMB単位で設定する。CECPの`memory`に使う。
     ///
     /// # Errors
     ///
-    /// 置換表を確保できない場合は理由を返し、状態を変えない。
+    /// 方式が`USI_Hash`を宣言しない場合（[`Searcher::declares_hash`]）、または置換表を
+    /// 確保できない場合は理由を返し、状態を変えない。
     pub fn set_hash_mb(&mut self, size_mb: usize) -> Result<(), String> {
         match self {
             Self::AlphaBeta(engine) => engine
                 .set_hash_mb(size_mb)
                 .map_err(|error| error.to_string()),
-            Self::Mcts(engine) => {
-                engine.set_hash_mb(size_mb);
-                Ok(())
-            }
+            Self::Mcts(_) => Err(self.hash_unsupported()),
         }
+    }
+
+    /// 方式が`USI_Hash`を宣言しないことを告げる理由。
+    fn hash_unsupported(&self) -> String {
+        format!(
+            "USI_Hash is not an option of the {} search",
+            self.algorithm()
+        )
     }
 
     /// 次の探索に使うワーカー数を返す。
@@ -335,11 +349,12 @@ mod tests {
         );
     }
 
-    // 同節: ハーネスが既定値を照会するので、MCTSもUSI_HashとThreadsを宣言し、続けて探索木の
-    // 節点数の上限UCT_NodeLimitを宣言する。
+    // 同節: ハーネスが既定値を照会するので、MCTSもThreadsを宣言し、続けて探索木の
+    // 節点数の上限UCT_NodeLimitを宣言する。置換表を持たないのでUSI_Hashは宣言せず、
+    // USI_HashとCECPのmemoryに当たる容量の設定は理由を返して拒む。
     // MCTSは静的評価のPSTも置換表も持たない。
     #[test]
-    fn mcts_declares_hash_and_threads() {
+    fn mcts_declares_threads_but_not_hash() {
         let searcher = Searcher::new(SearchAlgorithm::Mcts).unwrap();
         assert_eq!(searcher.algorithm(), SearchAlgorithm::Mcts);
         let names: Vec<_> = searcher
@@ -347,9 +362,23 @@ mod tests {
             .iter()
             .map(|option| option.name)
             .collect();
-        assert_eq!(names[..3], ["USI_Hash", "Threads", "UCT_NodeLimit"]);
+        assert_eq!(names[..2], ["Threads", "UCT_NodeLimit"]);
+        assert!(!names.contains(&"USI_Hash"));
+        assert!(!searcher.declares_hash());
         assert!(searcher.pst().is_none());
         assert!(searcher.transposition_table().is_none());
+
+        let mut searcher = searcher;
+        let message = "USI_Hash is not an option of the mcts search";
+        for value in [Some("1"), None] {
+            assert_eq!(
+                searcher.set_option("usi_hash", value),
+                Some(Err(message.to_owned()))
+            );
+        }
+        assert_eq!(searcher.set_hash_mb(1), Err(message.to_owned()));
+        assert!(searcher.transposition_table().is_none());
+        assert!(self::searcher().declares_hash());
     }
 
     // 指示書E第7項: 深さの制限を直すのはMCTSだけであり、αβ探索の制限はそのまま渡す。

@@ -1,9 +1,8 @@
 //! MCTSが宣言するUSIオプションと、推論のセッションの作成。
 //!
-//! オプションの集合は docs/plans/alphazero.md「共存の構造」と「推論層」に従う。`Threads`と`USI_Hash`は
-//! ハーネスが既定値を照会するのでαβ探索と同じ名前で宣言する。探索木の大きさは、dlshogiに倣い、
-//! 節点数の上限`UCT_NodeLimit`で制御する。`USI_Hash`はNNキャッシュの容量として予約し、
-//! NNキャッシュを実装するまで動作を変えない。
+//! オプションの集合は docs/plans/alphazero.md「共存の構造」と「推論層」に従う。`Threads`は
+//! ハーネスが既定値を照会するのでαβ探索と同じ名前で宣言する。置換表を持たないので`USI_Hash`は
+//! 宣言せず、探索木の大きさは、dlshogiに倣い、節点数の上限`UCT_NodeLimit`で制御する。
 
 use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::env;
@@ -11,14 +10,10 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use crate::nn::ort_evaluator::{NETWORK, NnBackend, OrtEvaluator, SessionConfig};
-use crate::search::DEFAULT_TT_SIZE_MB;
 use crate::search::searcher::{OptionKind, OptionSpec};
 
 use super::engine::{Config, DEFAULT_GUMBEL_SIMULATIONS, Engine, MAX_CONSIDERED_ACTIONS};
 use super::select::Selection;
-
-/// オプション`USI_Hash`で設定できる容量の上限(MiB)。αβ探索の置換表と同じ値とする。
-const MAX_HASH_SIZE_MB: usize = 65_536;
 
 /// オプション`Threads`の上限。初版のMCTSは1スレッドで探索するので、宣言の範囲のうち1だけを受理する。
 const MAX_THREADS: usize = 256;
@@ -86,17 +81,9 @@ impl Engine {
 
     /// 宣言するオプションを宣言の順に返す。
     pub fn options(&self) -> &'static [OptionSpec] {
-        static OPTIONS: OnceLock<[OptionSpec; 6]> = OnceLock::new();
+        static OPTIONS: OnceLock<[OptionSpec; 5]> = OnceLock::new();
         OPTIONS.get_or_init(|| {
             [
-                OptionSpec {
-                    name: "USI_Hash",
-                    kind: OptionKind::Spin {
-                        default: DEFAULT_TT_SIZE_MB as i64,
-                        min: 1,
-                        max: MAX_HASH_SIZE_MB as i64,
-                    },
-                },
                 OptionSpec {
                     name: "Threads",
                     kind: OptionKind::Spin {
@@ -144,10 +131,7 @@ impl Engine {
     /// `NnBackend`、`NnCacheDir`、または`NnBatchSize`を変えると推論のセッションを捨て、
     /// 次の[`Engine::prepare`]で作り直す。
     pub fn set_option(&mut self, name: &str, value: Option<&str>) -> Option<Result<(), String>> {
-        let result = if name.eq_ignore_ascii_case("USI_Hash") {
-            parse_range("USI_Hash", value, 1, MAX_HASH_SIZE_MB)
-                .map(|size_mb| self.set_hash_mb(size_mb.get()))
-        } else if name.eq_ignore_ascii_case("Threads") {
+        let result = if name.eq_ignore_ascii_case("Threads") {
             parse_range("Threads", value, 1, MAX_THREADS)
                 .and_then(|threads| self.set_threads(threads))
         } else if name.eq_ignore_ascii_case("UCT_NodeLimit") {
@@ -185,19 +169,6 @@ impl Engine {
             return None;
         };
         Some(result)
-    }
-
-    /// `USI_Hash`の容量(MiB)を記録する。
-    ///
-    /// 容量はNNキャッシュのために予約した値であり、NNキャッシュを実装するまで探索の動作を変えない。
-    /// 探索木の大きさは`UCT_NodeLimit`が定める。
-    pub fn set_hash_mb(&mut self, size_mb: usize) {
-        self.hash_mb = size_mb;
-    }
-
-    /// 記録した`USI_Hash`の容量(MiB)を返す。NNキャッシュの容量として予約した値である。
-    pub fn hash_mb(&self) -> usize {
-        self.hash_mb
     }
 
     /// ワーカー数を設定する。初版のMCTSは1スレッドで探索するので、1だけを受理する。
@@ -263,10 +234,10 @@ mod tests {
         Engine::new(Box::new(UniformEvaluator), Engine::for_play(1.0).config)
     }
 
-    // alphazero.md「共存の構造」: MCTSもUSI_HashとThreadsを宣言し、続けて節点数の上限
+    // alphazero.md「共存の構造」: MCTSはUSI_Hashを宣言せず、Threadsに続けて節点数の上限
     // UCT_NodeLimitと推論の設定を宣言する。
     #[test]
-    fn options_declare_hash_threads_node_limit_and_network_settings() {
+    fn options_declare_threads_node_limit_and_network_settings() {
         let names: Vec<_> = engine()
             .options()
             .iter()
@@ -275,7 +246,6 @@ mod tests {
         assert_eq!(
             names,
             [
-                "USI_Hash",
                 "Threads",
                 "UCT_NodeLimit",
                 "NnBackend",
@@ -284,7 +254,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            engine().options()[2].kind,
+            engine().options()[1].kind,
             OptionKind::Spin {
                 default: 1_000_000,
                 min: 100_000,
@@ -292,7 +262,7 @@ mod tests {
             }
         );
         assert_eq!(
-            engine().options()[3].kind,
+            engine().options()[2].kind,
             OptionKind::Combo {
                 default: "tensorrt",
                 vars: &["tensorrt", "cuda", "cpu"],
@@ -347,22 +317,6 @@ mod tests {
             Some(Err(_))
         ));
         assert_eq!(engine.config.max_nodes.get(), 1_000_000_000);
-    }
-
-    // 同節: USI_HashはNNキャッシュの容量として予約し、値を記録するだけで探索木の上限を変えない。
-    #[test]
-    fn hash_does_not_change_the_tree_capacity() {
-        let mut engine = engine();
-        assert_eq!(engine.hash_mb(), 256);
-        assert_eq!(engine.set_option("USI_Hash", Some("1")), Some(Ok(())));
-        assert_eq!(engine.hash_mb(), 1);
-        assert_eq!(engine.set_option("USI_Hash", Some("65536")), Some(Ok(())));
-        assert_eq!(engine.hash_mb(), 65_536);
-        assert_eq!(engine.config.max_nodes, DEFAULT_NODE_LIMIT);
-        for value in [Some("0"), Some("65537"), None] {
-            assert!(matches!(engine.set_option("USI_Hash", value), Some(Err(_))));
-        }
-        assert_eq!(engine.hash_mb(), 65_536);
     }
 
     // 指示書: 推論の設定を変えると推論のセッションを捨て、同じ値では捨てない。不正値は状態を変えない。

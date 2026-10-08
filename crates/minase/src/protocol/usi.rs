@@ -797,8 +797,9 @@ impl UsiProtocol {
     }
 
     /// `setoption`を処理する。RuleSet・USI_Variant・ResignValue・ByoyomiMarginと、探索方式が
-    /// 宣言したoption（αβ探索ではUSI_Hash・Threads、MCTSではさらにUCT_NodeLimit・NnBackend・
+    /// 宣言したoption（αβ探索ではUSI_Hash・Threads、MCTSではThreads・UCT_NodeLimit・NnBackend・
     /// NnCacheDir・NnBatchSize）を受理し、未知のoption名はUSIの慣例に従って黙って無視する。
+    /// ただしMCTSへの`USI_Hash`は、探索方式が理由を返すのでエラーとして告げる。
     /// 値は`value`の直後の1トークンだけを読むので、空白を含む値は設定できない。
     fn handle_setoption(
         &mut self,
@@ -4395,15 +4396,20 @@ mod tests {
         run(&mut protocol, &mut engine, input)
     }
 
-    // alphazero.md「共存の構造」「推論層」: MCTSはUSI_HashとThreadsに続けて節点数の上限
+    // alphazero.md「共存の構造」「推論層」: MCTSはUSI_Hashを宣言せず、Threadsに続けて節点数の上限
     // UCT_NodeLimitと推論の設定を宣言し、ノード数の定義を最初のisreadyの応答の後に1回だけ告げ、一様評価器でgo nodesにbestmoveを返す。
     #[test]
     fn mcts_session_declares_its_options_and_answers_go_nodes() {
         let output = mcts_session("usi\nisready\nisready\nposition startpos\nmoves\ngo nodes 64\n");
         assert!(error_lines(&output).is_empty(), "{output}");
         let lines: Vec<_> = output.lines().collect();
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with("option name USI_Hash")),
+            "{output}"
+        );
         for expected in [
-            "option name USI_Hash type spin default 256 min 1 max 65536",
             "option name Threads type spin default 1 min 1 max 256",
             "option name UCT_NodeLimit type spin default 1000000 min 100000 max 1000000000",
             "option name NnBackend type combo default tensorrt var tensorrt var cuda var cpu",
@@ -4425,6 +4431,16 @@ mod tests {
         );
         assert!(output.contains("info string stop nodes\n"));
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
+    }
+
+    // alphazero.md「共存の構造」: MCTSはUSI_Hashを宣言しないので、setoptionで指定されると
+    // 未知のoptionとして黙って無視せず、エラーとして告げる。
+    #[test]
+    fn mcts_rejects_usi_hash() {
+        assert_eq!(
+            mcts_session("setoption name USI_Hash value 1\n"),
+            "info string error: USI_Hash is not an option of the mcts search\n"
+        );
     }
 
     // 指示書E第7項: MCTSは深さをシミュレーション回数の制限として扱わない。深さだけのgoは告げてから

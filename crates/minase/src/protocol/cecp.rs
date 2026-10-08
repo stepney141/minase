@@ -539,18 +539,23 @@ impl CecpProtocol {
         writeln!(output, "feature sigint=0")?;
         writeln!(output, "feature sigterm=0")?;
         writeln!(output, "feature analyze=0")?;
+        let searcher = self
+            .searcher
+            .as_ref()
+            .expect("idle protocol must own the searcher");
         writeln!(output, "feature time=1")?;
-        writeln!(output, "feature memory=1")?;
+        // 置換表を持たない方式（MCTS）は`USI_Hash`を宣言しないので、`memory`も受けない。
+        writeln!(
+            output,
+            "feature memory={}",
+            u8::from(searcher.declares_hash())
+        )?;
         writeln!(output, "feature draw=0")?;
         writeln!(
             output,
             "feature option=\"RuleSet -string {}\"",
             self.startup_rules_text
         )?;
-        let searcher = self
-            .searcher
-            .as_ref()
-            .expect("idle protocol must own the searcher");
         // `USI_Hash`と`Threads`に当たる値は、CECPでは`memory`と`cores`で受ける。
         for option in searcher
             .options()
@@ -736,7 +741,13 @@ impl CecpProtocol {
     }
 
     /// `memory MB`を範囲内の容量として受理し、待機中の置換表を作り直す。
+    ///
+    /// `USI_Hash`を宣言しない方式（MCTS）は`feature memory=0`を宣言しているので、未対応の
+    /// コマンドとして拒否する。
     fn handle_memory(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
+        if !self.searcher().declares_hash() {
+            return writeln!(output, "Error (command not supported): memory");
+        }
         let Some(size_mb) = tokens
             .first()
             .and_then(|value| value.parse::<usize>().ok())
@@ -1782,8 +1793,9 @@ mod tests {
     }
 
     // 指示書E第9項: --search mctsのCECPも同じSearcherの操作で動く。節点数の上限と推論の設定は
-    // feature optionで宣言し、USI_Hashに当たる容量とワーカー数はmemoryとcoresで受ける。sdの深さはシミュレーション回数として
-    // 扱わず、告げてから探索する。
+    // feature optionで宣言し、ワーカー数はcoresで受ける。USI_Hashを宣言しないので
+    // feature memory=0を宣言してmemoryを拒否する（alphazero.md「共存の構造」）。sdの深さは
+    // シミュレーション回数として扱わず、告げてから探索する。
     #[test]
     fn mcts_declares_network_options_and_moves() {
         let mut engine = make_engine(&[RuleCode::R1]);
@@ -1792,6 +1804,8 @@ mod tests {
             Searcher::mcts_with_evaluator(Box::new(crate::nn::evaluator::UniformEvaluator)),
         );
         let features = run(&mut protocol, &mut engine, "protover 2\n");
+        assert!(features.lines().any(|line| line == "feature memory=0"));
+        assert!(!features.lines().any(|line| line == "feature memory=1"));
         let options: Vec<_> = features
             .lines()
             .filter(|line| line.starts_with("feature option="))
@@ -1824,8 +1838,9 @@ mod tests {
             lines[1].starts_with("Error (unsupported cores): "),
             "{output}"
         );
+        assert_eq!(lines[2], "Error (command not supported): memory");
         assert_eq!(
-            lines[2],
+            lines[3],
             "# MCTS does not interpret depth 1 as a simulation limit; searching 800 simulations instead"
         );
         assert_eq!(logical_move_count(&output), 1, "{output}");
