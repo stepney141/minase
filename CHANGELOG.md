@@ -1,3 +1,11 @@
+## v2.3.0 (2026-10-08)
+
+### Features
+
+- **eval:** Embed the jointly trained PST and FM weights (candidate J75)
+- **eval:** Add the FmScale tuning parameter for the FM correction
+- **eval:** Embed the J75 weights with the FM correction scaled by 611/1024
+
 ## v2.2.0 (2026-10-08)
 
 ### Features
