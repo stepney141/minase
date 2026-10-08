@@ -8,10 +8,11 @@ use minase::datagen::game::{CompletedGame, CompletedRecord};
 use minase::datagen::statistics::Statistics;
 use minase::datagen::{MATE_BAND_START, current_position_is_repeated, invalid_data};
 use minase::eval::Pst;
+use minase::nn::{mnzt, policy};
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
 use minase::training::records::{Outcome, Record, best_move_is_tactical};
 use minase_core::rng::{XorShift64, derive_seed};
-use minase_core::{MoveGenerator, Position, Rules};
+use minase_core::{GameResult, Move, MoveGenerator, Position, Rules};
 use std::{
     io,
     num::{NonZeroU64, NonZeroUsize},
@@ -43,6 +44,28 @@ struct Candidate {
     search_key: u64,
 }
 
+/// 終局後に結果を付ける方策の教師の候補。探索したすべての局面について作る。
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct PolicyCandidate {
+    /// 探索した局面。
+    position: Position,
+    /// 手番側視点の探索値。
+    score: i32,
+    /// 探索の最善手。
+    best_move: Move,
+    /// 探索時点の手数。
+    ply: u16,
+}
+
+/// 1局分のMNSDの記録と統計、およびMNZTの記録。
+#[derive(PartialEq, Debug)]
+pub(super) struct PlayedGame {
+    /// MNSDへ書く記録と生成統計。
+    pub(super) completed: CompletedGame,
+    /// MNZTへ書く記録。終局した対局の探索したすべての局面を手数順に持つ。
+    pub(super) policy_records: Vec<mnzt::Record>,
+}
+
 /// 1局のランダム着手予定と記録開始手数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct InjectionPlan {
@@ -52,18 +75,8 @@ struct InjectionPlan {
     record_from: u32,
 }
 
-/// 1局をランダム序盤から終局まで進め、採用レコードを返す。
-pub(super) fn play_game(
-    pst: &Pst,
-    rules: Rules,
-    game_number: u32,
-    settings: PlaySettings,
-    table: &mut TranspositionTable,
-) -> io::Result<CompletedGame> {
-    play_game_from_opening(pst, rules, game_number, settings, table, None)
-}
-
-/// 実戦の開始局面では乱数手を入れず、次の局面から記録する。
+/// 実戦の開始局面から1局を進め、MNSDの採用レコードだけを返す。opening.rsの試験が使う。
+#[cfg(test)]
 pub(super) fn play_game_from_opening(
     pst: &Pst,
     rules: Rules,
@@ -72,6 +85,21 @@ pub(super) fn play_game_from_opening(
     table: &mut TranspositionTable,
     opening: Option<&Opening>,
 ) -> io::Result<CompletedGame> {
+    play_game(pst, rules, game_number, settings, table, opening).map(|played| played.completed)
+}
+
+/// 1局をランダム序盤または実戦の開始局面から終局まで進め、MNSDとMNZTの記録を返す。
+///
+/// 実戦の開始局面では乱数手を入れず、MNSDには次の局面から記録する。
+/// MNZTには、乱数手を指した局面を除く探索したすべての局面を、探索の最善手を方策の教師として記録する。
+pub(super) fn play_game(
+    pst: &Pst,
+    rules: Rules,
+    game_number: u32,
+    settings: PlaySettings,
+    table: &mut TranspositionTable,
+    opening: Option<&Opening>,
+) -> io::Result<PlayedGame> {
     let game_seed = derive_seed(settings.base_seed, u64::from(game_number));
     let mut game = starting_game(rules, game_seed, opening)?;
     let ply_offset = opening.map_or(0, |opening| opening.ply);
@@ -86,6 +114,7 @@ pub(super) fn play_game_from_opening(
     let limits = SearchLimits::new(None, Some(u64::from(settings.nodes)), None, None)
         .expect("the CLI parser accepts only non-zero node limits");
     let mut candidates = Vec::new();
+    let mut policy_candidates = Vec::new();
     let mut stats = Statistics {
         planned_injections: u64::try_from(injection_plan.plies.len())
             .expect("the injection count is at most 80"),
@@ -137,6 +166,17 @@ pub(super) fn play_game_from_opening(
             .searched_nodes
             .checked_add(search_result.nodes)
             .ok_or_else(|| invalid_data("searched node count overflow"))?;
+        policy_candidates.push(PolicyCandidate {
+            position: game.position().clone(),
+            score: search_result.score,
+            best_move: search_result.best_move,
+            ply: u16::try_from(game.ply_count() + ply_offset).map_err(|_| {
+                invalid_data(format!(
+                    "game {game_number} ply {} does not fit in u16",
+                    game.ply_count()
+                ))
+            })?,
+        });
 
         if game.ply_count() < injection_plan.record_from {
             game.play(search_result.best_move).map_err(|error| {
@@ -190,6 +230,13 @@ pub(super) fn play_game_from_opening(
     }
 
     stats.total_plies = u64::from(game.ply_count() + ply_offset);
+    let policy_records = match game.result() {
+        Some(result) => policy_candidates
+            .into_iter()
+            .map(|candidate| policy_record(pst, result, game_number, candidate))
+            .collect::<io::Result<Vec<_>>>()?,
+        None => Vec::new(),
+    };
     let records = match game.result() {
         Some(result) => {
             stats.record_result(result);
@@ -220,11 +267,51 @@ pub(super) fn play_game_from_opening(
         }
     };
 
-    Ok(CompletedGame {
-        game_number,
-        records,
-        stats,
+    Ok(PlayedGame {
+        completed: CompletedGame {
+            game_number,
+            records,
+            stats,
+        },
+        policy_records,
     })
+}
+
+/// 方策の教師の候補へ対局結果を付けてMNZTの記録を作る。
+fn policy_record(
+    pst: &Pst,
+    result: GameResult,
+    game_number: u32,
+    candidate: PolicyCandidate,
+) -> io::Result<mnzt::Record> {
+    let side_to_move = candidate.position.side_to_move();
+    let label = policy::label(candidate.best_move, side_to_move).map_err(|error| {
+        invalid_data(format!(
+            "game {game_number} best move has no policy label: {error}"
+        ))
+    })?;
+    let entry = mnzt::PolicyEntry::new(label, 1.0)
+        .map_err(|error| invalid_data(format!("game {game_number}: {error}")))?;
+    mnzt::Record::from_position(
+        &candidate.position,
+        Outcome::from_game_result(result, side_to_move),
+        game_number,
+        candidate.ply,
+        win_rate(candidate.score, pst.k()),
+        vec![entry],
+    )
+    .map_err(|error| invalid_data(format!("game {game_number}: {error}")))
+}
+
+/// 手番側視点の探索値を、PSTの勝率尺度`k`で手番側の勝率へ変換する。
+///
+/// 詰みの帯の探索値は、符号に応じて0または1へ丸める。
+fn win_rate(score: i32, k: f32) -> f32 {
+    if score.unsigned_abs() >= MATE_BAND_START {
+        if score > 0 { 1.0 } else { 0.0 }
+    } else {
+        (1.0 / (1.0 + (-f64::from(score) / f64::from(k)).exp())) as f32
+    }
 }
 
 /// 対局シードからランダム着手の予定と記録開始手数を決める。
@@ -313,13 +400,20 @@ mod tests {
         let mut second_table = test_table();
         // 100ノードの対局が終局して記録を残すように、手数上限は埋め込んだ重みで確かめた値にする。
         let settings = test_settings(7, 4, 1200);
-        let first = play_game(pst.as_ref(), rules, 1, settings, &mut first_table)
+        let played = play_game(pst.as_ref(), rules, 1, settings, &mut first_table, None)
             .expect("the fixed game is valid");
-        let second = play_game(pst.as_ref(), rules, 1, settings, &mut second_table)
+        let second = play_game(pst.as_ref(), rules, 1, settings, &mut second_table, None)
             .expect("the fixed game is valid");
 
+        assert_eq!(played, second);
+        let first = played.completed;
         assert!(!first.records.is_empty());
-        assert_eq!(first, second);
+        // 終局した対局では、乱数手を除く探索したすべての局面がMNZTの記録になる。
+        assert_eq!(
+            u64::try_from(played.policy_records.len()).unwrap(),
+            first.stats.searched_positions
+        );
+        assert!(played.policy_records.len() > first.records.len());
         let (_, plan) = opening_and_plan(rules, 7, 1, 4);
         assert!(
             first
@@ -359,8 +453,10 @@ mod tests {
             game_number,
             test_settings(19, maximum, 32),
             &mut table,
+            None,
         )
-        .expect("the fixed game is valid");
+        .expect("the fixed game is valid")
+        .completed;
 
         assert!(plan.plies.len() <= usize::from(maximum));
         assert_eq!(
@@ -403,6 +499,17 @@ mod tests {
             completed.stats.searched_positions,
             completed.stats.searched_plies
         );
+    }
+
+    /// 探索値は尺度Kのロジスティック関数で勝率になり、詰みの帯は0または1へ丸める。
+    #[test]
+    fn win_rate_uses_logistic_scale_and_saturates_mate_band() {
+        let mate = i32::try_from(MATE_BAND_START).unwrap();
+        assert_eq!(win_rate(0, 807.0), 0.5);
+        assert!((win_rate(807, 807.0) - 1.0 / (1.0 + (-1.0_f32).exp())).abs() < 1e-6);
+        assert!((win_rate(-807, 807.0) + win_rate(807, 807.0) - 1.0).abs() < 1e-6);
+        assert_eq!(win_rate(mate, 807.0), 1.0);
+        assert_eq!(win_rate(-mate, 807.0), 0.0);
     }
 
     /// 注入計画は0以上80未満の異なるオフセットと予定由来の境界を返す。

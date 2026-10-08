@@ -62,6 +62,9 @@ pub(super) struct GenerateArguments {
     /// 新規作成する出力ファイル。
     #[arg(long, required = true)]
     pub(super) output: PathBuf,
+    /// 探索したすべての局面と探索の最善手を方策の教師として書く、新規作成のMNZT。
+    #[arg(long)]
+    pub(super) mnzt_output: Option<PathBuf>,
     /// 生成する対局数。
     #[arg(long, required_unless_present = "openings", conflicts_with = "openings", value_parser = parse_positive_u32)]
     pub(super) games: Option<u32>,

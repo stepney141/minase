@@ -4,22 +4,26 @@ use super::{
     cli::GenerateArguments,
     engine_default_rules,
     opening::{Opening, OpeningError, read_openings},
-    play::{PlaySettings, play_game, play_game_from_opening},
+    play::{PlaySettings, PlayedGame, play_game},
     statistics::{format_rate_percent, score_mean_and_std, score_percentile},
 };
-use minase::datagen::game::{CompletedGame, merge_completed_games};
+use minase::datagen::game::merge_completed_games;
 use minase::datagen::git::{git_output, validate_commit_hash};
 use minase::datagen::provenance::{ProvenanceArguments, write_mapped_provenance};
 use minase::datagen::statistics::{RecordedStatistics, Statistics};
 use minase::datagen::{data_error, invalid_data, training_error};
+use minase::nn::mnzt;
 use minase::search::TranspositionTable;
 use minase::training::provenance::{ResultOrigin, SearchCondition, StartOrigin};
 use minase::training::records::{Header, Writer};
 use minase_core::Rules;
 use std::{
+    cell::RefCell,
+    collections::{BTreeMap, VecDeque},
     fs::{self, File, OpenOptions},
     io,
     panic::{AssertUnwindSafe, catch_unwind},
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         mpsc,
@@ -59,24 +63,32 @@ pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
         .write(true)
         .create_new(true)
         .open(&arguments.output)?;
-    let result = write_training_data(
-        file,
-        arguments,
-        rules,
-        &rule_set,
-        &generation_commit,
-        openings.as_deref(),
-        games,
-    );
+    let mut created = vec![arguments.output.clone()];
+    let result = create_policy_files(arguments, &mut created).and_then(|policy_files| {
+        write_training_data(
+            file,
+            policy_files,
+            arguments,
+            rules,
+            &rule_set,
+            &generation_commit,
+            openings.as_deref(),
+            games,
+        )
+    });
     // 失敗した出力を残すと、Readerが受理する空ファイルや破損ファイルが最終パスに
     // 残り、同じコマンドの再実行もcreate_newで拒否されるため、失敗時は削除する。
-    if result.is_err()
-        && let Err(remove_error) = fs::remove_file(&arguments.output)
-    {
-        eprintln!(
-            "error: cannot remove incomplete output {}: {remove_error}",
-            arguments.output.display()
-        );
+    // 方策の列の一時置き場は、成否にかかわらず削除する。
+    let scratch = arguments.mnzt_output.as_deref().map(policy_scratch_path);
+    for path in created {
+        if (result.is_err() || scratch.as_ref() == Some(&path))
+            && let Err(remove_error) = fs::remove_file(&path)
+        {
+            eprintln!(
+                "error: cannot remove incomplete output {}: {remove_error}",
+                path.display()
+            );
+        }
     }
     result?;
     let mut provenance_path = arguments.output.as_os_str().to_owned();
@@ -98,9 +110,48 @@ pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
     )
 }
 
+/// MNZTの出力先と、方策の列を溜める一時置き場。
+struct PolicyFiles {
+    /// MNZTの出力先。
+    output: File,
+    /// 方策の列の一時置き場。
+    scratch: File,
+}
+
+/// MNZTの出力先の隣に置く、方策の列の一時置き場の経路を返す。
+fn policy_scratch_path(output: &Path) -> PathBuf {
+    let mut path = output.as_os_str().to_owned();
+    path.push(".policy.tmp");
+    path.into()
+}
+
+/// `--mnzt-output`の指定時に、MNZTの出力先と一時置き場を新規作成する。
+///
+/// 作成したファイルの経路を`created`へ加え、失敗時の削除を呼び出し側に任せる。
+fn create_policy_files(
+    arguments: &GenerateArguments,
+    created: &mut Vec<PathBuf>,
+) -> io::Result<Option<PolicyFiles>> {
+    let Some(path) = &arguments.mnzt_output else {
+        return Ok(None);
+    };
+    let output = OpenOptions::new().write(true).create_new(true).open(path)?;
+    created.push(path.clone());
+    let scratch_path = policy_scratch_path(path);
+    let scratch = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(&scratch_path)?;
+    created.push(scratch_path);
+    Ok(Some(PolicyFiles { output, scratch }))
+}
+
 /// 自己対局を並列実行し、対局番号順にレコードを書き出して要約を表示する。
+#[allow(clippy::too_many_arguments)]
 fn write_training_data(
     file: File,
+    policy_files: Option<PolicyFiles>,
     arguments: &GenerateArguments,
     rules: Rules,
     rule_set: &str,
@@ -121,8 +172,22 @@ fn write_training_data(
     )
     .map_err(training_error)?;
     let mut writer = Writer::new(file, header).map_err(training_error)?;
+    // MNZTはネットを使わずにαβ探索で生成するので、ネットの検査和は全零とする。
+    let mut policy_writer = policy_files
+        .map(|files| {
+            let header = mnzt::Header::new(
+                rule_set.to_owned(),
+                generation_commit.to_owned(),
+                [0; 32],
+                mnzt::Teacher::AlphaBetaNodes(u64::from(arguments.nodes)),
+                arguments.seed,
+            )?;
+            mnzt::Writer::new(files.output, files.scratch, header)
+        })
+        .transpose()
+        .map_err(data_error)?;
     let next_game = AtomicU64::new(1);
-    let (sender, receiver) = mpsc::channel::<io::Result<CompletedGame>>();
+    let (sender, receiver) = mpsc::channel::<io::Result<PlayedGame>>();
     let start = Instant::now();
     let progress_interval = u64::from(games).div_ceil(20).max(1);
     let play_settings = PlaySettings {
@@ -132,6 +197,7 @@ fn write_training_data(
         max_ply: arguments.max_ply,
     };
 
+    let mut policy_total = 0_u64;
     let total = thread::scope(|scope| -> io::Result<(Statistics, RecordedStatistics)> {
         for _ in 0..arguments.concurrency.get() {
             let sender = sender.clone();
@@ -157,16 +223,15 @@ fn write_training_data(
                             break;
                         }
                     };
-                    let completed = match catch_unwind(AssertUnwindSafe(|| match openings {
-                        Some(items) => play_game_from_opening(
+                    let completed = match catch_unwind(AssertUnwindSafe(|| {
+                        play_game(
                             pst,
                             rules,
                             game_number,
                             play_settings,
                             &mut table,
-                            Some(&items[game_number as usize - 1]),
-                        ),
-                        None => play_game(pst, rules, game_number, play_settings, &mut table),
+                            openings.map(|items| &items[game_number as usize - 1]),
+                        )
                     })) {
                         Ok(completed) => completed,
                         Err(_) => Err(invalid_data(format!(
@@ -182,12 +247,37 @@ fn write_training_data(
         }
         drop(sender);
 
-        merge_completed_games(receiver, &mut writer, games, |completed_count, total| {
+        // MNZTはMNSDと同じく対局番号順に書く。MNSDの統合へ渡す前に、到着した対局の
+        // MNZTの記録を番号順に書き出し、各対局を書き終えた時点の累計を進捗表示へ渡す。
+        let policy_totals = RefCell::new(VecDeque::new());
+        let mut pending_policy = BTreeMap::new();
+        let mut next_policy_game = 1_u32;
+        let messages = receiver.into_iter().map(|message| {
+            let played = message?;
+            let Some(policy_writer) = policy_writer.as_mut() else {
+                return Ok(played.completed);
+            };
+            pending_policy.insert(played.completed.game_number, played.policy_records);
+            while let Some(records) = pending_policy.remove(&next_policy_game) {
+                for record in &records {
+                    policy_writer.write_record(record).map_err(data_error)?;
+                }
+                policy_total += records.len() as u64;
+                policy_totals.borrow_mut().push_back(policy_total);
+                next_policy_game += 1;
+            }
+            Ok(played.completed)
+        });
+        merge_completed_games(messages, &mut writer, games, |completed_count, total| {
+            let policy_records = policy_totals.borrow_mut().pop_front();
             if completed_count.is_multiple_of(progress_interval)
                 || completed_count == u64::from(games)
             {
+                let policy_field = policy_records
+                    .map(|count| format!(" mnzt_records={count}"))
+                    .unwrap_or_default();
                 eprintln!(
-                    "progress: games={completed_count}/{} records={} elapsed_seconds={:.3}",
+                    "progress: games={completed_count}/{} records={}{policy_field} elapsed_seconds={:.3}",
                     games,
                     total.recorded_positions,
                     start.elapsed().as_secs_f64()
@@ -200,12 +290,20 @@ fn write_training_data(
 
     let file = writer.finish().map_err(training_error)?;
     file.sync_all()?;
+    let policy_records = match policy_writer {
+        Some(policy_writer) => {
+            policy_writer.finish().map_err(data_error)?.sync_all()?;
+            Some(policy_total)
+        }
+        None => None,
+    };
     print_generation_summary(
         arguments,
         rule_set,
         generation_commit,
         &total,
         &recorded,
+        policy_records,
         start.elapsed().as_secs_f64(),
     );
     Ok(())
@@ -218,6 +316,7 @@ fn print_generation_summary(
     generation_commit: &str,
     stats: &Statistics,
     recorded: &RecordedStatistics,
+    policy_records: Option<u64>,
     elapsed_seconds: f64,
 ) {
     let game_count = stats.black_wins + stats.white_wins + stats.draws + stats.discarded_games;
@@ -271,6 +370,9 @@ fn print_generation_summary(
     println!("searched_positions: {}", stats.searched_positions);
     println!("recordable_positions: {}", stats.recordable_positions);
     println!("recorded_positions: {}", stats.recorded_positions);
+    if let Some(policy_records) = policy_records {
+        println!("mnzt_recorded_positions: {policy_records}");
+    }
     println!("excluded_mate_band: {}", stats.excluded_mate_band);
     println!(
         "excluded_mate_band_rate_percent: {}",
@@ -334,20 +436,25 @@ fn print_generation_summary(
 mod tests {
     use super::*;
     use crate::selfplay_gen::test_support::RescoreFixture;
-    use minase::datagen::{game::CompletedRecord, provenance::hex};
+    use minase::datagen::{
+        game::{CompletedGame, CompletedRecord},
+        provenance::hex,
+    };
+    use minase::nn::policy;
     use minase::training::{
         provenance::Provenance,
         records::{Outcome, Reader, Record},
         rescore,
     };
     use minase_core::Game;
-    use std::{io::Cursor, num::NonZeroUsize};
+    use std::{collections::BTreeSet, io::Cursor, num::NonZeroUsize};
 
     #[test]
     fn generate_emits_provenance_after_completing_mnsd() {
         let fixture = RescoreFixture::new();
         let arguments = GenerateArguments {
             output: fixture.directory.join("generated.mnsd"),
+            mnzt_output: None,
             games: Some(1),
             openings: None,
             seed: 42,
@@ -377,6 +484,102 @@ mod tests {
         assert_eq!(provenance.teacher.search_condition, SearchCondition::InGame);
         assert_eq!(provenance.result_origin, ResultOrigin::Selfplay);
         assert_eq!(provenance.start_origin, StartOrigin::Random);
+    }
+
+    /// MNZTには、MNSDの局面選別を通らない局面も含めて探索したすべての局面が、
+    /// 探索の最善手1個を確率1の方策として書かれる。
+    #[test]
+    fn generate_writes_every_searched_position_to_mnzt() {
+        let fixture = RescoreFixture::new();
+        let mnzt_path = fixture.directory.join("generated.mnzt");
+        // 2局とも手数上限の前に終局する値を、埋め込みの重みで確かめて選んだ。
+        let arguments = GenerateArguments {
+            output: fixture.directory.join("generated.mnsd"),
+            mnzt_output: Some(mnzt_path.clone()),
+            games: Some(2),
+            openings: None,
+            seed: 7,
+            nodes: 200,
+            random_moves: 4,
+            concurrency: NonZeroUsize::new(2).unwrap(),
+            max_ply: 1200,
+            hash_mb: NonZeroUsize::new(1).unwrap(),
+            allow_dirty: true,
+        };
+        generate(&arguments).unwrap();
+
+        let mnsd_count = Reader::new(File::open(&arguments.output).unwrap())
+            .unwrap()
+            .header()
+            .record_count();
+        let reader = mnzt::Reader::new(File::open(&mnzt_path).unwrap()).unwrap();
+        let header = reader.header().clone();
+        assert_eq!(header.rule_set(), "L0,P0,R1,E0");
+        assert_eq!(header.network_checksum(), &[0; 32]);
+        assert_eq!(header.teacher(), mnzt::Teacher::AlphaBetaNodes(200));
+        assert_eq!(header.seed(), 7);
+        let records = reader.collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(u64::try_from(records.len()).unwrap(), header.record_count());
+        assert_eq!(header.policy_count(), header.record_count());
+        // 局面選別と乱数手の前の局面を含むので、同じ生成のMNSDより記録が多い。
+        assert!(header.record_count() > mnsd_count);
+        assert_eq!(
+            records
+                .iter()
+                .map(mnzt::Record::game_number)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([1, 2])
+        );
+        assert!(
+            records
+                .windows(2)
+                .all(|pair| pair[0].game_number() <= pair[1].game_number())
+        );
+        let rules = engine_default_rules().unwrap();
+        for record in &records {
+            let [entry] = record.policy() else {
+                panic!("an alpha-beta record has exactly one policy entry");
+            };
+            assert_eq!(entry.probability(), 1.0);
+            let position = record.to_position().unwrap();
+            let side_to_move = position.side_to_move();
+            let legal_labels = Game::from_position(rules, position)
+                .legal_moves()
+                .into_iter()
+                .map(|mv| policy::label(mv, side_to_move).unwrap())
+                .collect::<BTreeSet<_>>();
+            assert!(legal_labels.contains(&entry.label()));
+            assert!((0.0..=1.0).contains(&record.value()));
+        }
+        assert!(!policy_scratch_path(&mnzt_path).exists());
+    }
+
+    /// 既存のMNZTの出力先は上書きせず、生成を始める前に失敗してMNSDも残さない。
+    #[test]
+    fn generate_refuses_an_existing_mnzt_output() {
+        let fixture = RescoreFixture::new();
+        let mnzt_path = fixture.directory.join("existing.mnzt");
+        fs::write(&mnzt_path, b"keep").unwrap();
+        let arguments = GenerateArguments {
+            output: fixture.directory.join("generated.mnsd"),
+            mnzt_output: Some(mnzt_path.clone()),
+            games: Some(1),
+            openings: None,
+            seed: 42,
+            nodes: 1,
+            random_moves: 0,
+            concurrency: NonZeroUsize::new(1).unwrap(),
+            max_ply: 1,
+            hash_mb: NonZeroUsize::new(1).unwrap(),
+            allow_dirty: true,
+        };
+
+        let error = generate(&arguments).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(&mnzt_path).unwrap(), b"keep");
+        assert!(!arguments.output.exists());
+        assert!(!policy_scratch_path(&mnzt_path).exists());
     }
 
     /// テスト用の完了対局を1レコード付きで作る。
