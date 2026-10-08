@@ -1,3 +1,12 @@
+## v2.2.0 (2026-10-08)
+
+### Features
+
+- **eval:** Port the factorization-machine correction to the current PST layout
+- **eval:** Embed the quarter FM correction trained with the lookahead teacher (candidate Fa)
+- **search:** Search to the byoyomi deadline with a ByoyomiMargin option
+- **search:** Adopt interrupted-iteration results in byoyomi clocks
+
 ## v2.1.0 (2026-10-06)
 
 ### Features
