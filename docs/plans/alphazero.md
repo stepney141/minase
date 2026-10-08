@@ -60,7 +60,7 @@ dlshogiもNVIDIA A100を8枚使う構成で大会に臨んでいる。
 - 起動引数`--search alphabeta|mcts`と、MCTS用のUSIオプションを追加する。
 - ハーネスのエンジンの指定に、任意の起動引数を足せる汎用の拡張を加える（「棋力測定」の節）。
 - 学習データの形式MNZTと、αβ探索の自己対局からMNZTを書く生成機能を`selfplay_gen`に追加する。
-- 強化学習の自己対局を行う生成器`zero_selfplay`を新設する。
+- 強化学習の自己対局を行う生成器`zero_selfplay`（サブコマンド`minase data zero-selfplay`）を新設する。
 - PyTorchの学習器とONNXへの出力を`tools/train/zero/`に新設する。
 - レンタル機と作業機で共通に使うコンテナイメージの定義を`tools/train/zero/`に置く。
 - 教師あり学習と強化学習を実行し、MCTSとαβ探索の強さを比べる。
@@ -347,7 +347,7 @@ Rustには静的初期化による登録がないので、登録表の代わり�
 | `crates/minase/src/search/mcts/` | MCTSの探索木、選択規則（PUCTとGumbel）、バッチ評価の収集、終局の判定、および時間管理。 |
 | `crates/minase/src/nn/` | 入力平面の符号化、方策のラベル、推論の抽象`Evaluator`、ortによる実装、試験用の一様評価器、および学習データ形式MNZT。 |
 | `crates/minase/src/eval/` | αβ探索の静的評価（変更なし）。 |
-| `crates/minase/src/bin/zero_selfplay.rs` | RLの自己対局生成器。 |
+| `crates/minase/src/bin/minase/zero_selfplay/` | RLの自己対局生成器（サブコマンド`minase data zero-selfplay`）。 |
 | `tools/train/zero/` | ネットの定義、MNZTの読み込み、学習、およびONNXへの出力。 |
 
 依存の向きは、`search::alphabeta`から`eval`と`core`へ、`search::mcts`から`nn`と`core`へ、`nn`から`core`へとし、`alphabeta`と`mcts`は互いを参照しない。

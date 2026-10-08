@@ -12,10 +12,10 @@ use std::{
 };
 
 /// 実戦開始の局面と、元棋譜での位置。
-pub(super) struct Opening {
+pub(crate) struct Opening {
     pub(super) origin: GameOrigin,
     position: Position,
-    pub(super) ply: u32,
+    pub(crate) ply: u32,
 }
 
 /// 開始局面一覧または生成引数の不整合。
@@ -59,7 +59,7 @@ impl std::error::Error for OpeningError {
 }
 
 /// 一覧の全行を検査し、先獅子の状態を含めて復元する。
-pub(super) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
+pub(crate) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
     use minase_core::notation::sfen::parse_extended_sfen;
     let mut openings = Vec::new();
     for (index, line) in BufReader::new(File::open(path)?).lines().enumerate() {
@@ -107,7 +107,7 @@ pub(super) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
 }
 
 /// 生成の最初の探索に渡す局面を返す。
-pub(super) fn starting_game(
+pub(crate) fn starting_game(
     rules: Rules,
     seed: NonZeroU64,
     opening: Option<&Opening>,

@@ -20,6 +20,7 @@ mod random_play;
 mod selfplay_gen;
 mod spsa_runner;
 mod usi_random;
+mod zero_selfplay;
 
 /// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
 #[global_allocator]
@@ -111,6 +112,8 @@ enum DataCommand {
     Selfplay(selfplay_gen::Arguments),
     /// lishogiの棋譜を取り込む。
     Lishogi(lishogi_import::Arguments),
+    /// Gumbel探索の自己対局で強化学習のデータを生成する。
+    ZeroSelfplay(zero_selfplay::Arguments),
 }
 
 #[derive(Subcommand)]
@@ -156,6 +159,7 @@ fn main() -> ExitCode {
         Some(Command::Spsa(arguments)) => spsa_runner::main(arguments),
         Some(Command::Data(DataCommand::Selfplay(arguments))) => selfplay_gen::main(arguments),
         Some(Command::Data(DataCommand::Lishogi(arguments))) => lishogi_import::main(arguments),
+        Some(Command::Data(DataCommand::ZeroSelfplay(arguments))) => zero_selfplay::main(arguments),
         Some(Command::Dev(DevCommand::Bench(arguments))) => bench::main(arguments),
         Some(Command::Dev(DevCommand::Perft(arguments))) => perft::main(arguments),
         Some(Command::Dev(DevCommand::RandomPlay(arguments))) => random_play::main(arguments),
@@ -190,6 +194,18 @@ mod tests {
                 "report.json",
                 "--nodes",
                 "200",
+            ],
+            vec![
+                "data",
+                "zero-selfplay",
+                "--out-dir",
+                "cycle",
+                "--games",
+                "10",
+                "--seed",
+                "1",
+                "--rules",
+                "engine-default",
             ],
             vec!["dev", "bench"],
             vec!["dev", "perft", "1", "--rules", "engine-default"],

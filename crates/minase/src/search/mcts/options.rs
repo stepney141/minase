@@ -40,7 +40,7 @@ const PLAY_SEED: NonZeroU64 = NonZeroU64::new(1).unwrap();
 
 /// `NnCacheDir`の既定値を返す。`$XDG_CACHE_HOME/minase/tensorrt`、未設定なら
 /// `$HOME/.cache/minase/tensorrt`とし、どちらもなければ空とする。
-pub(super) fn default_cache_dir() -> PathBuf {
+pub fn default_cache_dir() -> PathBuf {
     PathBuf::from(default_cache_dir_text())
 }
 

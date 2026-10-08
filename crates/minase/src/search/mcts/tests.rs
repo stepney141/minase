@@ -915,3 +915,86 @@ fn per_move_overhead_does_not_grow_with_history_length() {
         "10 keys: {short:?}, {LONG} keys: {long:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// 推論を呼び出し側に任せるGumbel探索
+// ---------------------------------------------------------------------------
+
+/// 入力平面から決定的に作った、局面ごとに異なる方策logitと勝率を返す評価器。
+struct InputHashEvaluator;
+
+impl Evaluator for InputHashEvaluator {
+    fn evaluate(
+        &mut self,
+        inputs: &[f32],
+        batch: usize,
+        out_policy: &mut [f32],
+        out_value: &mut [f32],
+    ) -> Result<(), EvaluatorError> {
+        for row in 0..batch {
+            let planes = &inputs[row * INPUT_SIZE..(row + 1) * INPUT_SIZE];
+            let hash = planes
+                .iter()
+                .enumerate()
+                .filter(|&(_, &value)| value != 0.0)
+                .fold(0_u64, |hash, (index, _)| {
+                    minase_core::rng::splitmix64(hash ^ index as u64)
+                });
+            for (label, logit) in out_policy[row * POLICY_SIZE..(row + 1) * POLICY_SIZE]
+                .iter_mut()
+                .enumerate()
+            {
+                *logit = (minase_core::rng::splitmix64(hash ^ label as u64) % 64) as f32 / 16.0;
+            }
+            out_value[row] = (hash % 1000) as f32 / 1000.0;
+        }
+        Ok(())
+    }
+}
+
+// alphazero.md「強化学習」: 推論を呼び出し側に任せる探索は、同じ乱数のシードのGumbel探索
+// （Engine）と同じ手、同じ方策の目標を返し、葉を1つずつ評価に出す。
+#[test]
+fn stepped_gumbel_search_matches_the_engine() {
+    use minase_core::rng::XorShift64;
+
+    use super::stepped::{Step, SteppedGumbelSearch};
+
+    let mut game = Game::with_default_rules();
+    for _ in 0..30 {
+        let snapshot = SearchSnapshot::from_game(&game).unwrap();
+        let mut engine = engine(InputHashEvaluator, config(Selection::Gumbel, 8, 16));
+        let expected = engine.search(&snapshot, &nodes(1_000)).unwrap();
+        let expected_target = engine.policy_target().unwrap();
+
+        let mut search = SteppedGumbelSearch::new(&snapshot, NonZeroU32::new(16).unwrap()).unwrap();
+        let mut rng = XorShift64::new(NonZeroU64::new(7).unwrap());
+        let mut evaluations = 0;
+        let searched = loop {
+            match search.advance(&mut rng).unwrap() {
+                Step::Evaluate => {
+                    let input = search.pending_input();
+                    assert_eq!(input.len(), INPUT_SIZE);
+                    let mut policy = vec![0.0; POLICY_SIZE];
+                    let mut value = [0.0];
+                    InputHashEvaluator
+                        .evaluate(input, 1, &mut policy, &mut value)
+                        .unwrap();
+                    search.supply(&policy, value[0]).unwrap();
+                    evaluations += 1;
+                }
+                Step::Finished(searched) => break searched,
+            }
+        };
+        assert_eq!(searched.best_move, expected.best_move);
+        assert_eq!(searched.policy_target, expected_target);
+        assert!((0.0..=1.0).contains(&searched.root_value));
+        assert!(evaluations <= 17, "{evaluations}");
+        if matches!(
+            game.play(searched.best_move).unwrap(),
+            GameStatus::Finished(_)
+        ) {
+            break;
+        }
+    }
+}

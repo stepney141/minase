@@ -197,15 +197,32 @@ impl<D: Domain> Simulator<D> {
         if tree.root().state != NodeState::Unexpanded {
             return Ok(false);
         }
+        self.begin_root(tree, root_actions)?;
+        self.evaluate_pending(tree, evaluator)?;
+        Ok(true)
+    }
+
+    /// 展開されていない根を`root_actions`を合法手として展開し、評価が必要なら評価待ちに積む。
+    ///
+    /// 評価は行わない。評価待ちの入力平面は[`Simulator::pending_inputs`]が返し、
+    /// 呼び出し側は推論の出力を[`Simulator::apply_evaluations`]へ渡す。
+    ///
+    /// # Errors
+    ///
+    /// 符号化に失敗した場合はエラーを返す。
+    pub(super) fn begin_root(
+        &mut self,
+        tree: &mut Tree<D::Action>,
+        root_actions: &[D::Action],
+    ) -> Result<(), MctsError> {
         self.pending.clear();
         if let Expansion::Pending = self.expand(tree, ROOT, root_actions)? {
             self.pending.push(PendingLeaf {
                 path: Vec::new(),
                 node: ROOT,
             });
-            self.evaluate_pending(tree, evaluator)?;
         }
-        Ok(true)
+        Ok(())
     }
 
     /// 最大`max_leaves`回のシミュレーションを行い、評価が必要な葉を1回の推論にまとめる。
@@ -221,6 +238,28 @@ impl<D: Domain> Simulator<D> {
         &mut self,
         tree: &mut Tree<D::Action>,
         evaluator: &mut dyn Evaluator,
+        rule: &Rule<'_>,
+        history_keys: &[u64],
+        max_leaves: usize,
+    ) -> Result<u32, MctsError> {
+        let resolved = self.collect_leaves(tree, rule, history_keys, max_leaves)?;
+        let evaluated = self.pending.len();
+        self.evaluate_pending(tree, evaluator)?;
+        Ok((resolved as usize + evaluated) as u32)
+    }
+
+    /// 評価なしで決まった葉と評価待ちの葉の合計が`max_leaves`になるまでシミュレーションを行い、
+    /// 評価が必要な葉を評価待ちに積む。評価は行わない。
+    ///
+    /// 評価待ちの節点へ再び到達した場合と、根の勝敗が確定した場合は、そこで葉の収集をやめる。
+    /// 評価なしで決まって逆伝播した葉の数を返す。
+    ///
+    /// # Errors
+    ///
+    /// 符号化に失敗した場合はエラーを返す。
+    pub(super) fn collect_leaves(
+        &mut self,
+        tree: &mut Tree<D::Action>,
         rule: &Rule<'_>,
         history_keys: &[u64],
         max_leaves: usize,
@@ -245,9 +284,17 @@ impl<D: Domain> Simulator<D> {
                 }
             }
         }
-        let evaluated = self.pending.len();
-        self.evaluate_pending(tree, evaluator)?;
-        Ok((resolved + evaluated) as u32)
+        Ok(resolved as u32)
+    }
+
+    /// 評価待ちの葉の数を返す。
+    pub(super) fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// 評価待ちの葉の入力平面を、葉ごとに[`INPUT_SIZE`]個ずつ並べて返す。
+    pub(super) fn pending_inputs(&self) -> &[f32] {
+        &self.inputs[..self.pending.len() * INPUT_SIZE]
     }
 
     /// 根から選択で降り、葉を展開する。通った辺を`path`へ積み、局面は葉のまま返す。
@@ -348,9 +395,6 @@ impl<D: Domain> Simulator<D> {
     }
 
     /// 評価待ちの葉を1回の推論にかけ、方策と勝率を設定して逆伝播する。
-    ///
-    /// 推論の出力に非有限値があれば、どの葉にも反映せずに
-    /// [`EvaluatorError::NonFinite`]を返す（docs/plans/alphazero.md「推論層」）。
     fn evaluate_pending(
         &mut self,
         tree: &mut Tree<D::Action>,
@@ -360,15 +404,42 @@ impl<D: Domain> Simulator<D> {
         if batch == 0 {
             return Ok(());
         }
-        self.policy.resize(batch * POLICY_SIZE, 0.0);
-        self.values.resize(batch, 0.0);
-        let (policy, values) = (
-            &mut self.policy[..batch * POLICY_SIZE],
-            &mut self.values[..batch],
-        );
-        evaluator
-            .evaluate(&self.inputs[..batch * INPUT_SIZE], batch, policy, values)
-            .map_err(MctsError::Evaluator)?;
+        let mut policy = core::mem::take(&mut self.policy);
+        let mut values = core::mem::take(&mut self.values);
+        policy.resize(batch * POLICY_SIZE, 0.0);
+        values.resize(batch, 0.0);
+        let result = evaluator
+            .evaluate(
+                &self.inputs[..batch * INPUT_SIZE],
+                batch,
+                &mut policy[..batch * POLICY_SIZE],
+                &mut values[..batch],
+            )
+            .map_err(MctsError::Evaluator)
+            .and_then(|()| {
+                self.apply_evaluations(tree, &policy[..batch * POLICY_SIZE], &values[..batch])
+            });
+        self.policy = policy;
+        self.values = values;
+        result
+    }
+
+    /// 評価待ちの葉ごとの方策logit（[`POLICY_SIZE`]個ずつ）と勝率を設定して逆伝播する。
+    ///
+    /// 出力に非有限値があれば、どの葉にも反映せずに
+    /// [`EvaluatorError::NonFinite`]を返す（docs/plans/alphazero.md「推論層」）。
+    ///
+    /// # Panics
+    ///
+    /// 配列の長さが評価待ちの葉の数と合わない場合にパニックする。
+    pub(super) fn apply_evaluations(
+        &mut self,
+        tree: &mut Tree<D::Action>,
+        policy: &[f32],
+        values: &[f32],
+    ) -> Result<(), MctsError> {
+        assert_eq!(policy.len(), self.pending.len() * POLICY_SIZE);
+        assert_eq!(values.len(), self.pending.len());
         if !policy
             .iter()
             .chain(values.iter())

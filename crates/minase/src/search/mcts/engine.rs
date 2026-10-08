@@ -25,7 +25,7 @@ use crate::search::{MATE, MAX_PLY};
 
 use super::select::{GUMBEL_PARAMS, GumbelRoot, Selection, improved_policy};
 use super::simulate::{PositionDomain, Rule, Simulator};
-use super::tree::{NodeState, Proven, Tree};
+use super::tree::{Node, NodeState, Proven, Tree};
 
 /// Gumbel探索の1手の探索回数nの初期値（docs/plans/alphazero.md「RLの探索はGumbel AlphaZeroにする」）。
 pub const DEFAULT_GUMBEL_SIMULATIONS: NonZeroU32 = NonZeroU32::new(32).unwrap();
@@ -267,13 +267,7 @@ impl Engine {
     /// 根を評価した探索がなければ`None`を返す。
     pub fn policy_target(&self) -> Option<Vec<(Move, f32)>> {
         let root = self.previous.as_ref()?.tree.root();
-        (root.state == NodeState::Ready).then(|| {
-            root.edges
-                .iter()
-                .zip(improved_policy(root, GUMBEL_PARAMS))
-                .map(|(edge, prob)| (edge.action, prob as f32))
-                .collect()
-        })
+        (root.state == NodeState::Ready).then(|| root_policy_target(root))
     }
 
     /// 探索木を用意して探索し、成功した場合だけ木を次の探索のために残す。
@@ -497,18 +491,35 @@ fn score(tree: &Tree<Move>, best: usize, k: f32) -> i32 {
         Some(Proven::Loss(plies)) => -MATE + plies.min(MAX_PLY) as i32,
         None => {
             let (low, high) = WIN_RATE_RANGE;
-            let p = root.edges[best]
-                .q()
-                .unwrap_or(f64::from(root.raw_value))
-                .clamp(low, high);
+            let p = root_win_rate(tree, best).clamp(low, high);
             (f64::from(k) * (p / (1.0 - p)).ln()).round() as i32
         }
     }
 }
 
+/// 根の手番側の勝率を返す。評価値（[`score`]）の元になる値である。
+///
+/// 勝敗が確定していれば1または0、そうでなければ辺`best`のQ（未訪問なら根のネットの勝率）とする。
+pub(super) fn root_win_rate(tree: &Tree<Move>, best: usize) -> f64 {
+    let root = tree.root();
+    match root.proven {
+        Some(proven) => proven.value(),
+        None => root.edges[best].q().unwrap_or(f64::from(root.raw_value)),
+    }
+}
+
+/// 評価済みの根の改善後の方策softmax(logit＋σ(completed Q))を、根の着手ごとに返す。
+pub(super) fn root_policy_target(root: &Node<Move>) -> Vec<(Move, f32)> {
+    root.edges
+        .iter()
+        .zip(improved_policy(root, GUMBEL_PARAMS))
+        .map(|(edge, prob)| (edge.action, prob as f32))
+        .collect()
+}
+
 /// 探索後に指す根の辺を選ぶ。勝敗が確定していない根のGumbel探索はGumbelの規則で、
 /// それ以外は訪問回数の最も多い辺（[`super::tree::Node::best_edge`]）を選ぶ。
-fn best_edge(tree: &Tree<Move>, gumbel: Option<&GumbelRoot>) -> usize {
+pub(super) fn best_edge(tree: &Tree<Move>, gumbel: Option<&GumbelRoot>) -> usize {
     let root = tree.root();
     match gumbel {
         Some(gumbel) if root.proven.is_none() => gumbel.final_action(root),
@@ -536,7 +547,7 @@ fn policy_best_edge(tree: &Tree<Move>) -> usize {
 }
 
 /// 標準Gumbel分布に従う乱数 −log(−log u) を返す。uは(0, 1)の一様乱数。
-fn gumbel_noise(rng: &mut XorShift64) -> f64 {
+pub(super) fn gumbel_noise(rng: &mut XorShift64) -> f64 {
     let uniform = ((rng.next() >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
     -(-uniform.ln()).ln()
 }

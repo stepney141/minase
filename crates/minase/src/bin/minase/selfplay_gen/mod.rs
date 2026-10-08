@@ -3,7 +3,7 @@
 mod cli;
 mod generate;
 mod inspect;
-mod opening;
+pub(crate) mod opening;
 mod play;
 mod provenance;
 mod rescore;
