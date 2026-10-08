@@ -9,9 +9,9 @@ use super::params;
 
 /// 1手に使う時間の予算。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) struct TimeBudget {
+pub(crate) struct TimeBudget {
     /// 完了イテレーションの境界で停止する目安時間。
-    pub(super) soft: Duration,
+    pub(crate) soft: Duration,
     /// 探索途中でも打ち切る上限時間。
     pub(super) hard: Duration,
     /// 対象の探索の秒読み期では、予測を使わず締切まで反復を始める。
@@ -141,7 +141,7 @@ pub(super) fn byoyomi_clock(limits: &SearchLimits) -> Option<ClockLimits> {
 }
 
 /// 探索制限から時間予算を求める。`movetime`と時計の併用時は小さい方を採る。
-pub(super) fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
+pub(crate) fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
     if let Some(clock) = byoyomi_clock(limits) {
         if clock.remaining_ms == 0 {
             let deadline = Duration::from_millis(

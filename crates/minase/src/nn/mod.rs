@@ -4,6 +4,7 @@
 //! 升(筋, 段)を(11 − 筋, 11 − 段)へ写す（docs/plans/alphazero.md「入力とネットの構成」）。
 
 pub mod encoding;
+pub mod evaluator;
 pub mod mnzt;
 pub mod policy;
 

@@ -6,6 +6,7 @@ mod error;
 mod events;
 mod handle;
 mod limits;
+pub mod mcts;
 mod searcher;
 mod snapshot;
 #[cfg(feature = "search-stats")]
