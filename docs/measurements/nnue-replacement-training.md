@@ -58,6 +58,19 @@ train-nnue train --data data/gen3/generated-1500000.bin \
 24時間の上限は約24エポックに当たり、50エポックの上限より先に時間の上限が働く。
 エポック0の非線形部分は出力重みが0なので、量子化誤差は線形部分の丸めだけであり、幅128の1エポック後の誤差6.15センチポーンは活性化の整数近似（127で割る代わりに128で切り捨て）と第1層の尺度127による。
 
+### フェーズ3の正しさの検査
+
+Rustの実装（`crates/minase/src/eval/nnue/`）について、対局前に要する正しさの検査を次のとおり通した。
+
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| 差分更新と完全再計算の一致 | 着手の形ごとの局面と固定シードのランダム対局の全手で、`update_*`と`refresh_accumulator`をビット単位で比較（`cargo test`） | 一致 |
+| Pythonの参照推論との一致 | `nnue-diagnostics`で、ランダム重み（幅64と幅128）とエポック0のネットの3本について、試走の21,609局面を`minase dev nnue-probe`と照合 | 3本とも全局面一致 |
+| 左右鏡映の不変性 | ランダム重みとランダム対局の局面で、局面とその鏡映の整数評価を比較（`cargo test`） | 一致 |
+| エポック0のネットとPST評価の一致 | `nets/nnue.bin`（幅64、エポック0）の評価を、`nets/nnue-epoch0-pst.bin`（基準MのPST部分だけを持つMNPT版2）の`eval/pst/`による評価と比較（`cargo test`） | 一致 |
+| 探索のノード数と評価値の一致 | 基準Mに`nnue-epoch0-pst.bin`を`nets/pst.bin`として埋め込んだビルドと、本ブランチのビルドで、初期局面と`7i7h 6d6e 8i8h 5d5e`の後の局面から深さ3〜5をUSIで探索 | 6通りすべてでノード数、評価値、最善手、予想手が一致（初期局面の深さ5は2,001ノード、評価値+25） |
+| 既存の`eval/pst/`と`handcrafted.rs`のテスト | `cargo test`（842件）、`cargo test --features invariants --lib eval`、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check` | すべて通過 |
+
 ### フェーズ4の学習
 
 （幅64と幅128の学習後に書く。）
