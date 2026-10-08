@@ -88,6 +88,8 @@ pub(super) fn moves_to_go(ply: u32) -> u128 {
 /// 対局開始直後の数手が秒読み相当の長考を使うことを防ぐ
 /// （`docs/plans/time-management-efficiency.md`の「採用した方式」）。
 /// 秒読みのない時計では序盤の係数が掛かる項は0になる。
+/// 秒読みが正の時計では、`time_budget`が`safe_hard`の30 msに代えてUSIオプション`ByoyomiMargin`の値を
+/// [`clock_budget_with_margin`]へ渡し、持ち時間が尽きた手では秒読みから同じ余裕を引いた締切をsoftとhardの両方にする。
 /// 係数を変更する場合は自己対局で採否を判定する。
 pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
     clock_budget_with_margin(clock, 30)
