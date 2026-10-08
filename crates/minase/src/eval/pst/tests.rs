@@ -499,8 +499,8 @@ fn stored_piece_values_are_validated_independently_of_weights() {
 /// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
 #[test]
 fn embedded_pst_matches_python_initial_position_evaluation() {
-    // pst-fm-joint-training-training の同時学習の候補J75（λ=0.75）を学習器の整数参照評価で評価した値。
-    assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 69);
+    // fm-scale-spsa-candidate の、J75のFMの補正に倍率611/1024を焼き込んだ候補を学習器の整数参照評価で評価した値。
+    assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 53);
 }
 
 /// debugging-tools.md「eval」: 特徴別の分子和、全計算評価、720での除算と上下限制限が一致する。
