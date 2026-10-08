@@ -14,9 +14,8 @@ J75のPSTとFMの重みは固定し、bだけを0から1の範囲で調整する
 
 ## 状態
 
-進行中。2026年10月8日に起案し、同日に着手した。
-フェーズ1（倍率の係数、焼き込みの道具、および診断器）とフェーズ2（[SPSA](../measurements/fm-scale-spsa.md)、`FmScale`=611）は完了し、フェーズ3では倍率611/1024を焼き込んだ[候補](../measurements/fm-scale-spsa-candidate.md)が正しさの検査に合格した。
-2026年10月8日21時20分から候補とmasterのSTCを実行中であり、次の一手は、STCの判定を振分け規則に従ってLTCまたは不採用へ進めることである。
+完了（採用）。2026年10月8日に起案し、同日に着手して完了した。
+J75の重みを固定して`FmScale`だけを調整した[SPSA](../measurements/fm-scale-spsa.md)は611（b≈0.597）を与え、焼き込んだ[候補](../measurements/fm-scale-spsa-candidate.md)は[STC](../measurements/fm-scale-spsa-stc.md)と[LTC](../measurements/fm-scale-spsa-ltc.md)でともに`H1`（LTCの得点率66.6%、Elo換算で約+120）となり採用した。
 
 ## 目的
 
