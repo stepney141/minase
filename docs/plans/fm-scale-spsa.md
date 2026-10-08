@@ -14,9 +14,9 @@ J75のPSTとFMの重みは固定し、bだけを0から1の範囲で調整する
 
 ## 状態
 
-起案。2026年10月8日に起案した。
-本書は、同時学習の記録（ブランチ`pst-fm-joint-training-records`）がmasterへ入っていることを前提にする。
-次の一手は、masterから専用のブランチとworktreeを作り、フェーズ1の実装を行うことである。
+進行中。2026年10月8日に起案し、同日に着手した。
+フェーズ1（倍率の係数、焼き込みの道具、および診断器）を実装中である。
+次の一手は、フェーズ1の検証とコミットを終え、SPSAのセッションを開始することである。
 
 ## 目的
 
@@ -150,7 +150,7 @@ FmScale, 512, 0, 1024, 170.6666666667, 0.002
 
 ```console
 <固定したminase> spsa \
-  --run-dir data/spsa/fm-scale-spsa --seed 32000000 \
+  --run-dir data/spsa/fm-scale-spsa --seed 101000000 \
   --engine commit:<フェーズ1のコミット> --params <パラメーターファイル> \
   --rules engine-default --each time=10000+100 --concurrency 16 \
   --iterations 375 --pairs-per-iteration 8
@@ -170,13 +170,14 @@ runner（対局を進めるコマンド）は、masterでビルドした`minase`
 
 ```console
 <固定したminase> match run \
-  --run-dir data/matches/fm-scale-spsa-stc --seed 33000000 \
+  --run-dir data/matches/fm-scale-spsa-stc --seed 102000000 \
   --candidate commit:<候補> --baseline commit:<master> \
   --each time=10000+100 --concurrency 16 gsprt --max-pairs 3000
 ```
 
-LTCは測定名の接尾辞を`-ltc`、基本シードを34000000、持ち時間を`time=60000+200`とし、`--max-pairs`を付けない。
+LTCは測定名の接尾辞を`-ltc`、基本シードを103000000、持ち時間を`time=60000+200`とし、`--max-pairs`を付けない。
 基本シードを100万ずつ離すのは、近い基本シードが同じ対局列を生む事故を避けるためである（[教訓](../lessons/derive-seed-adjacent-collision.md)）。
+3つの基本シードは、保存済みの測定とSPSAの基本シード（`data/matches/`と`data/spsa/`の`manifest.json`）のいずれからもペア数以上離れた未使用の値である。
 採否を記録し、採用した場合は[評価関数](evaluation.md)の現行設計と[PSTの学習手順](../guides/pst-training.md)に、重みを更新したら倍率も決め直す手順を加える。
 
 ## 検証
