@@ -8,6 +8,7 @@ pub mod datagen;
 pub mod eval;
 #[doc(hidden)]
 pub mod harness;
+pub mod nn;
 pub mod protocol;
 pub mod search;
 #[doc(hidden)]

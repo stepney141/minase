@@ -368,7 +368,7 @@ impl Outcome {
     }
 
     /// 二進形式の結果コードを返す。
-    const fn code(self) -> u8 {
+    pub(crate) const fn code(self) -> u8 {
         match self {
             Self::Loss => 0,
             Self::Draw => 1,
@@ -377,7 +377,7 @@ impl Outcome {
     }
 
     /// 二進形式の結果コードを復号する。
-    const fn from_code(value: u8) -> Result<Self, Error> {
+    pub(crate) const fn from_code(value: u8) -> Result<Self, Error> {
         match value {
             0 => Ok(Self::Loss),
             1 => Ok(Self::Draw),
@@ -711,7 +711,7 @@ impl<W: Write + Seek> Writer<W> {
 }
 
 /// 規則セット名が固定欄へ符号化できることを検査する。
-fn validate_rule_set_name(rule_set: &str) -> Result<(), Error> {
+pub(crate) fn validate_rule_set_name(rule_set: &str) -> Result<(), Error> {
     if rule_set.len() > RULE_SET_LEN || rule_set.as_bytes().contains(&0) {
         Err(Error::InvalidRuleSetName)
     } else {
@@ -720,7 +720,7 @@ fn validate_rule_set_name(rule_set: &str) -> Result<(), Error> {
 }
 
 /// コミットハッシュが完全ハッシュの表記規約を満たすことを検査する。
-fn validate_generation_commit(commit: &str) -> Result<(), Error> {
+pub(crate) fn validate_generation_commit(commit: &str) -> Result<(), Error> {
     if commit.len() == COMMIT_LEN && commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         Ok(())
     } else {
@@ -729,7 +729,7 @@ fn validate_generation_commit(commit: &str) -> Result<(), Error> {
 }
 
 /// 内部駒コードを安定した永続形式へ符号化する。
-fn encode_piece(piece: PieceCode) -> u8 {
+pub(crate) fn encode_piece(piece: PieceCode) -> u8 {
     let kind = piece.kind().expect("a board piece must have a kind");
     let color = piece.color().expect("a board piece must have a color");
     1 + kind.index() as u8
@@ -738,7 +738,7 @@ fn encode_piece(piece: PieceCode) -> u8 {
 }
 
 /// 永続形式の駒コードを内部駒コードへ復号する。
-fn decode_piece(square: Square, value: u8) -> Result<PieceCode, Error> {
+pub(crate) fn decode_piece(square: Square, value: u8) -> Result<PieceCode, Error> {
     let (color, payload) = match value {
         1..=58 => (Color::Black, value - 1),
         65..=122 => (Color::White, value - 65),
@@ -756,7 +756,7 @@ fn decode_piece(square: Square, value: u8) -> Result<PieceCode, Error> {
 }
 
 /// 指定オフセットからリトルエンディアンの`u32`を読む。
-fn read_u32(bytes: &[u8], offset: usize) -> u32 {
+pub(crate) fn read_u32(bytes: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes(
         bytes[offset..offset + 4]
             .try_into()
@@ -765,7 +765,7 @@ fn read_u32(bytes: &[u8], offset: usize) -> u32 {
 }
 
 /// 指定オフセットからリトルエンディアンの`u64`を読む。
-fn read_u64(bytes: &[u8], offset: usize) -> u64 {
+pub(crate) fn read_u64(bytes: &[u8], offset: usize) -> u64 {
     u64::from_le_bytes(
         bytes[offset..offset + 8]
             .try_into()
