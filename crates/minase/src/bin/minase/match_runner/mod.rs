@@ -10,7 +10,7 @@ mod summary;
 
 use clap::error::ErrorKind;
 pub(super) use cli::Arguments;
-use cli::{Mode, time_seed};
+use cli::{Mode, split_engine_args, time_seed};
 use manifest::run_manifest;
 use minase::harness::*;
 use minase::stats::{GSPRT_H1_ELO, GsprtDecision};
@@ -112,12 +112,15 @@ pub(super) fn main(arguments: Arguments) {
             });
         let candidate_limit = arguments.candidate_limit.unwrap_or(arguments.each);
         let baseline_limit = arguments.baseline_limit.unwrap_or(arguments.each);
+        let candidate_args = split_engine_args(arguments.candidate_args.as_deref());
+        let baseline_args = split_engine_args(arguments.baseline_args.as_deref());
         let candidate = match resolve_player(
             arguments.candidate.clone(),
             candidate_limit,
             arguments.candidate_hash,
             &arguments.rules.source,
             Vec::new(),
+            candidate_args.clone(),
         ) {
             Ok(player) => player,
             Err(error) => {
@@ -131,6 +134,7 @@ pub(super) fn main(arguments: Arguments) {
             arguments.baseline_hash,
             &arguments.rules.source,
             Vec::new(),
+            baseline_args.clone(),
         ) {
             Ok(player) => player,
             Err(error) => {
@@ -140,7 +144,9 @@ pub(super) fn main(arguments: Arguments) {
         };
         let manifest = match run_manifest(
             &candidate,
+            &candidate_args,
             &baseline,
+            &baseline_args,
             &arguments.rules,
             manifest_mode,
             base_seed,

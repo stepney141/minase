@@ -51,7 +51,7 @@ pub enum Protocol {
 /// 起動に必要な解決済みプレイヤー設定。
 #[derive(Clone)]
 pub struct PlayerConfig {
-    /// 入力された指定の原文。表示に使う。
+    /// 入力された指定の原文。追加の起動引数があれば末尾に空白区切りで続ける。表示に使う。
     pub text: String,
     /// 再開時の照合に使う完全コミットハッシュまたは起動指定。
     pub identity: EngineIdentity,
@@ -132,17 +132,27 @@ pub fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
 ///
 /// `options`はUSIの握手後、`isready`より前に列順で送る名前と値である。
 /// CECP指定で列が空でなければ入力エラーを返す。コミット指定は通常ビルドを使う。
+/// `extra_args`は`commit:`の起動引数の末尾へ追加する引数である。
+/// 起動コマンド形式と`cecp:`は指定自身に引数を書け、`random`は引数を受け付けないので、
+/// これらの指定で列が空でなければ入力エラーを返す。
 pub fn resolve_player(
     spec: PlayerSpec,
     limit: SearchLimit,
     hash_mb: Option<u64>,
     rules_text: &str,
     options: Vec<(String, String)>,
+    extra_args: Vec<String>,
 ) -> io::Result<PlayerConfig> {
     if matches!(spec.kind, PlayerKind::Cecp { .. }) && !options.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "CECP engine does not support USI setoption settings",
+        ));
+    }
+    if !matches!(spec.kind, PlayerKind::Commit(_)) && !extra_args.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "extra engine arguments apply only to commit: specs; write them in the startup command instead",
         ));
     }
     if let Some(hash_mb) = hash_mb {
@@ -181,12 +191,7 @@ pub fn resolve_player(
             let (path, hash, sha256) = resolve_commit(&revision, None)?;
             (
                 path,
-                vec![
-                    "--protocol".to_owned(),
-                    "usi".to_owned(),
-                    "--rules".to_owned(),
-                    rules_text.to_owned(),
-                ],
+                commit_startup_args(rules_text, &extra_args),
                 Protocol::Usi,
                 false,
                 EngineIdentity::Commit { hash, sha256 },
@@ -220,8 +225,13 @@ pub fn resolve_player(
             )
         }
     };
+    let text = if extra_args.is_empty() {
+        spec.text
+    } else {
+        format!("{} {}", spec.text, extra_args.join(" "))
+    };
     Ok(PlayerConfig {
-        text: spec.text,
+        text,
         identity,
         path,
         args,
@@ -232,6 +242,18 @@ pub fn resolve_player(
         rules_source: rules_text.to_owned(),
         options,
     })
+}
+
+/// コミット指定の起動引数を、固定の`--protocol usi --rules <規則>`と追加引数から組み立てる。
+fn commit_startup_args(rules_text: &str, extra_args: &[String]) -> Vec<String> {
+    let mut args = vec![
+        "--protocol".to_owned(),
+        "usi".to_owned(),
+        "--rules".to_owned(),
+        rules_text.to_owned(),
+    ];
+    args.extend(extra_args.iter().cloned());
+    args
 }
 
 #[cfg(test)]
@@ -329,7 +351,7 @@ mod tests {
             parse_search_limit("time=1000+1500").unwrap(),
         ] {
             let spec = parse_player_spec("cecp:engine").unwrap();
-            let error = resolve_player(spec, limit, None, "R1", Vec::new())
+            let error = resolve_player(spec, limit, None, "R1", Vec::new(), Vec::new())
                 .err()
                 .expect("the unsupported CECP limit must fail resolution");
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
@@ -346,6 +368,7 @@ mod tests {
             parse_search_limit("depth=4").unwrap(),
             None,
             "R1",
+            Vec::new(),
             Vec::new(),
         )
         .unwrap();
@@ -366,6 +389,7 @@ mod tests {
                 parse_search_limit(limit).unwrap(),
                 None,
                 "R1",
+                Vec::new(),
                 Vec::new(),
             )
             .unwrap();
@@ -390,6 +414,7 @@ mod tests {
                 Some(hash_mb),
                 "R1",
                 Vec::new(),
+                Vec::new(),
             )
             .err()
             .expect("invalid or inapplicable hash size must fail resolution");
@@ -406,7 +431,42 @@ mod tests {
             None,
             "R1",
             vec![("Tune_First".to_owned(), "17".to_owned())],
+            Vec::new(),
         );
         assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
+    }
+
+    // alphazero.md「棋力測定」: 追加の起動引数は`commit:`の固定引数の末尾へ付く。
+    // 実際のコミット解決はビルドを伴うので、起動引数の組み立てだけを検査する。
+    #[test]
+    fn extra_args_are_appended_to_commit_startup_arguments() {
+        let extra = vec!["--search".to_owned(), "mcts".to_owned()];
+        assert_eq!(
+            commit_startup_args("R1", &extra),
+            ["--protocol", "usi", "--rules", "R1", "--search", "mcts"]
+        );
+        assert_eq!(
+            commit_startup_args("R1", &[]),
+            ["--protocol", "usi", "--rules", "R1"]
+        );
+    }
+
+    // alphazero.md「棋力測定」: 起動コマンド形式と`cecp:`は指定自身に引数を書け、
+    // `random`（`minase dev usi-random`）は引数を受け付けないので、追加の起動引数を拒否する。
+    #[test]
+    fn extra_args_are_rejected_for_random_command_and_cecp_specs() {
+        for spec in ["random", "engine --x", "cecp:engine"] {
+            let error = resolve_player(
+                parse_player_spec(spec).unwrap(),
+                parse_search_limit("depth=1").unwrap(),
+                None,
+                "R1",
+                Vec::new(),
+                vec!["--search".to_owned(), "mcts".to_owned()],
+            )
+            .err()
+            .expect("extra arguments must be rejected for a startup command spec");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        }
     }
 }

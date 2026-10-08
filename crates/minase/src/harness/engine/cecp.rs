@@ -256,6 +256,7 @@ mod tests {
                 hash_mb,
                 "R1",
                 Vec::new(),
+                Vec::new(),
             )
             .unwrap();
             assert_eq!(cecp_memory_text(player.hash_mb), expected);

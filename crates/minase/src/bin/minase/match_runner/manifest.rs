@@ -58,10 +58,15 @@ fn default_concurrency(
 }
 
 /// 新規実行の条件を構成する。
+///
+/// `candidate_args`と`baseline_args`は、`resolve_player`へ渡した追加の起動引数である。
+/// 再開時に同じ引数で起動できるよう、固定の起動引数とは分けて記録する。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_manifest(
     candidate: &PlayerConfig,
+    candidate_args: &[String],
     baseline: &PlayerConfig,
+    baseline_args: &[String],
     rules: &RuleSetArgument,
     mode: ManifestMode,
     seed: u64,
@@ -90,10 +95,12 @@ pub(super) fn run_manifest(
         candidate: EngineRecord {
             identity: candidate.identity.clone(),
             limit: stored_search_limit(candidate.limit),
+            args: candidate_args.to_vec(),
         },
         baseline: EngineRecord {
             identity: baseline.identity.clone(),
             limit: stored_search_limit(baseline.limit),
+            args: baseline_args.to_vec(),
         },
         rules_source: rules.source.clone(),
         canonical_rules: rules.codes.iter().map(ToString::to_string).collect(),
@@ -173,12 +180,15 @@ mod tests {
                     hash_mb,
                     "R1",
                     Vec::new(),
+                    Vec::new(),
                 )
                 .unwrap()
             };
             let manifest = run_manifest(
                 &player(candidate_hash),
+                &[],
                 &player(baseline_hash),
+                &[],
                 &parse_rule_set_argument("R1").unwrap(),
                 ManifestMode::Elo,
                 1,
@@ -191,6 +201,58 @@ mod tests {
             assert_eq!(manifest.hash_mb.candidate, expected_candidate);
             assert_eq!(manifest.hash_mb.baseline, expected_baseline);
         }
+    }
+
+    // alphazero.md「棋力測定」: 追加の起動引数はmanifestを往復し、欄のない記録は
+    // 追加なしとして読む。追加がなければ欄を書かず、従来の記録と同じ形を保つ。
+    #[test]
+    fn manifest_round_trips_extra_engine_arguments() {
+        let player = resolve_player(
+            parse_player_spec("cecp:engine").unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            None,
+            "R1",
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        let extra = ["--search".to_owned(), "mcts".to_owned()];
+        let manifest = run_manifest(
+            &player,
+            &extra,
+            &player,
+            &[],
+            &parse_rule_set_argument("R1").unwrap(),
+            ManifestMode::Elo,
+            1,
+            4096,
+            120,
+            Some(1),
+            false,
+        )
+        .unwrap();
+        assert_eq!(manifest.candidate.args, extra);
+        assert!(manifest.baseline.args.is_empty());
+
+        let value = serde_json::to_value(&manifest).unwrap();
+        assert_eq!(
+            value["candidate"]["args"],
+            serde_json::json!(["--search", "mcts"])
+        );
+        assert!(value["baseline"].get("args").is_none());
+        assert_eq!(
+            serde_json::from_value::<RunManifest>(value.clone()).unwrap(),
+            manifest
+        );
+
+        let mut without_args = value;
+        without_args["candidate"]
+            .as_object_mut()
+            .unwrap()
+            .remove("args");
+        let restored = serde_json::from_value::<RunManifest>(without_args).unwrap();
+        assert!(restored.candidate.args.is_empty());
+        assert!(restored.baseline.args.is_empty());
     }
 
     // D8-HARN-27（ponder.md設計判断「同時対局数」）。

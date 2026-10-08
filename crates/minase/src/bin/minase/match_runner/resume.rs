@@ -65,7 +65,14 @@ fn restore_player(
             byoyomi_ms,
         }),
     };
-    let mut player = resolve_player(spec, limit, hash_mb, &manifest.rules_source, Vec::new())?;
+    let mut player = resolve_player(
+        spec,
+        limit,
+        hash_mb,
+        &manifest.rules_source,
+        Vec::new(),
+        record.args.clone(),
+    )?;
     verify_identity(&record.identity, &player.identity)?;
     let defaults =
         probe_engine_defaults(&player, Duration::from_secs(manifest.response_timeout_secs))?;

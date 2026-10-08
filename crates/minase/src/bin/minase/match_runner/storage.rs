@@ -28,6 +28,10 @@ pub(super) struct EngineRecord {
     pub(super) identity: EngineIdentity,
     /// 実効探索制限。
     pub(super) limit: StoredSearchLimit,
+    /// `commit:`の起動引数の末尾へ追加した引数。
+    /// 欄のない記録は追加なしとして読み、追加がなければ書かない。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) args: Vec<String>,
 }
 
 /// 保存用の探索制限。
@@ -537,6 +541,7 @@ mod tests {
                     depth: None,
                     nodes: Some(100_000),
                 },
+                args: Vec::new(),
             },
             baseline: EngineRecord {
                 identity: EngineIdentity::Random,
@@ -545,6 +550,7 @@ mod tests {
                     increment_ms: 100,
                     byoyomi_ms: 0,
                 },
+                args: Vec::new(),
             },
             rules_source: "engine-default".to_owned(),
             canonical_rules: vec!["L1".to_owned(), "P0".to_owned()],

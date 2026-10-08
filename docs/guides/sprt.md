@@ -221,6 +221,12 @@ HaChuは1手固定時間を指定すると、指定値より短い時間で着�
 測定の詳細は[HaChu対minaseの条件格子測定](../plans/hachu-condition-grid.md)にある。
 規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 
+`commit:`の形式のエンジンに起動引数を足す場合は、`--candidate-args`と`--baseline-args`に空白区切りの引数を指定する。
+たとえば`--candidate commit:<hash> --candidate-args "--search mcts"`は、候補の起動引数を`--protocol usi --rules <マッチ規則> --search mcts`にする。
+ハーネスはこの引数の意味を解釈しないので、これはエンジンの起動方法の指定であり、機能比較のスイッチではない（[plans/alphazero.md](../plans/alphazero.md)の「棋力測定」）。
+起動コマンド形式と`cecp:`の形式は起動コマンド自身に引数を書け、`random`は引数を受け付けないので、これらへの指定はエラーになる。
+指定した引数は`manifest.json`の各エンジンの`args`に記録され、`--resume`では記録された引数で起動する。
+
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
 省略時はエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPエンジンは`memory 256`）で走り、解決後の容量は`manifest.json`の`hash_mb`に記録され、再開時にはこの値で対局する。
 HaChuは受けた容量を2の冪へ丸めるため、CECPエンジンには2の冪だけを指定できる。

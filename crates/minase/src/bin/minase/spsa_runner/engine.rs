@@ -38,7 +38,7 @@ pub(super) fn resolve_engine(
             options: Vec::new(),
         })
     } else {
-        let mut player = resolve_player(spec, each, None, rules, Vec::new())?;
+        let mut player = resolve_player(spec, each, None, rules, Vec::new(), Vec::new())?;
         // 裸のコマンド名は起動時と同じPATHで解決し、ハッシュ対象を固定する。
         if player.path.components().count() == 1 {
             let path = std::env::var_os("PATH")

@@ -33,7 +33,7 @@ pub(crate) struct Arguments {
     #[arg(long)]
     pub(super) run_dir: Option<PathBuf>,
     /// 保存済みの実験を再開する実行ディレクトリ。
-    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
+    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "candidate_args", "baseline_args", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
     pub(super) resume: Option<PathBuf>,
     /// 再開時の目標ペア数。直前の目標より大きい値を指定する。
     #[arg(long, requires = "resume", conflicts_with = "run_dir", value_parser = parse_positive_u64)]
@@ -57,6 +57,14 @@ pub(crate) struct Arguments {
     /// 基準側の起動コマンド（パスと空白区切りの引数）または`random`。
     #[arg(long, default_value = "random", value_parser = parse_player_spec)]
     pub(super) baseline: PlayerSpec,
+    /// 候補側の`commit:`の起動引数の末尾へ追加する、空白区切りの引数。
+    /// ハーネスは引数の意味を解釈せず、これは機能比較のスイッチではなくエンジンの起動方法の指定である。
+    #[arg(long, value_name = "ARGS", allow_hyphen_values = true)]
+    pub(super) candidate_args: Option<String>,
+    /// 基準側の`commit:`の起動引数の末尾へ追加する、空白区切りの引数。
+    /// ハーネスは引数の意味を解釈せず、これは機能比較のスイッチではなくエンジンの起動方法の指定である。
+    #[arg(long, value_name = "ARGS", allow_hyphen_values = true)]
+    pub(super) baseline_args: Option<String>,
     /// 両エンジンに適用する既定の思考制限。
     #[arg(long, default_value = "depth=1", value_parser = parse_search_limit)]
     pub(super) each: SearchLimit,
@@ -111,6 +119,13 @@ impl Arguments {
         }
         Ok(())
     }
+}
+
+/// `--candidate-args`または`--baseline-args`の値を空白で分割する。省略時は空とする。
+pub(super) fn split_engine_args(text: Option<&str>) -> Vec<String> {
+    text.map_or_else(Vec::new, |text| {
+        text.split_whitespace().map(str::to_owned).collect()
+    })
 }
 
 /// 対局結果の集計方法。
@@ -406,8 +421,43 @@ mod tests {
             (arguments.candidate, arguments.candidate_hash, 300),
             (arguments.baseline, arguments.baseline_hash, 512),
         ] {
-            let player = resolve_player(spec, arguments.each, hash_mb, "R1", Vec::new()).unwrap();
+            let player =
+                resolve_player(spec, arguments.each, hash_mb, "R1", Vec::new(), Vec::new())
+                    .unwrap();
             assert_eq!(player.hash_mb, Some(expected));
+        }
+    }
+
+    // alphazero.md「棋力測定」: 追加の起動引数は先頭がハイフンの値も受け取り、
+    // 空白で分割する。再開時は記録の値を使うので、`--resume`とは併用できない。
+    #[test]
+    fn engine_args_accept_hyphenated_values_and_conflict_with_resume() {
+        let arguments = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "run",
+            "--candidate-args",
+            "--search mcts",
+            "gsprt",
+        ])
+        .unwrap();
+        assert_eq!(
+            split_engine_args(arguments.candidate_args.as_deref()),
+            ["--search", "mcts"]
+        );
+        assert!(split_engine_args(arguments.baseline_args.as_deref()).is_empty());
+        assert!(split_engine_args(Some("  ")).is_empty());
+        for flag in ["--candidate-args", "--baseline-args"] {
+            assert!(
+                Arguments::try_parse_from([
+                    "match_runner",
+                    "--resume",
+                    "old",
+                    flag,
+                    "--search mcts",
+                ])
+                .is_err()
+            );
         }
     }
 
