@@ -136,8 +136,24 @@ impl Fm {
             .zip(self.signs)
             .map(|(&a, d)| i64::from(a * i32::from(d)) * i64::from(a))
             .sum();
-        (square_sum - accumulator.self_sum) / (1_i64 << (2 * self.exponent + 1))
+        let numerator = square_sum - accumulator.self_sum;
+        #[cfg(not(feature = "tuning"))]
+        let correction = numerator / (1_i64 << (2 * self.exponent + 1));
+        #[cfg(feature = "tuning")]
+        let correction = scaled_correction(
+            numerator,
+            self.exponent,
+            crate::search::alphabeta::params::fm_scale(),
+        );
+        correction
     }
+}
+
+#[cfg(any(feature = "tuning", test))]
+fn scaled_correction(numerator: i64, exponent: u32, scale: i32) -> i64 {
+    // 指数の上限30では分母が2^71となり、i64に収まらないのでi128で計算する。
+    // scaleは0..=1024なので結果の絶対値は|numerator|以下となり、i64に収まる。
+    (i128::from(numerator) * i128::from(scale) / (1024_i128 << (2 * exponent + 1))) as i64
 }
 
 #[cfg(test)]
@@ -170,6 +186,128 @@ mod tests {
             .wrapping_mul(1_664_525)
             .wrapping_add(1_013_904_223);
         ((state >> 16) % 201) as i16 - 100
+    }
+
+    /// 倍率1は、全指数で通常ビルドの0方向への切り捨てを保存する。
+    #[test]
+    fn full_scale_matches_unscaled_correction_for_every_exponent() {
+        for exponent in 0..=30 {
+            let denominator = 1_i64 << (2 * exponent + 1);
+            for numerator in [
+                i64::MIN,
+                i64::MIN + 1,
+                -(1_i64 << 62),
+                -3,
+                -2,
+                -1,
+                0,
+                1,
+                2,
+                3,
+                1_i64 << 62,
+                i64::MAX,
+                -3 * (denominator / 2),
+                -denominator / 2,
+                denominator / 2,
+                3 * (denominator / 2),
+            ] {
+                assert_eq!(
+                    scaled_correction(numerator, exponent, 1024),
+                    numerator / denominator,
+                    "numerator={numerator}, exponent={exponent}"
+                );
+            }
+        }
+    }
+
+    /// 除算を再実装せず、商の絶対値の上下限と符号から切り捨てを検査する。
+    fn assert_scaled_truncation(numerator: i64, exponent: u32, scale: i32) {
+        let quotient = i128::from(scaled_correction(numerator, exponent, scale));
+        let product = i128::from(numerator) * i128::from(scale);
+        let denominator = 1024 * 2_i128.pow(2 * exponent + 1);
+        assert!(
+            quotient.abs() * denominator <= product.abs()
+                && product.abs() < (quotient.abs() + 1) * denominator,
+            "numerator={numerator}, exponent={exponent}, scale={scale}, quotient={quotient}"
+        );
+        if quotient != 0 {
+            assert_eq!(quotient.signum(), product.signum());
+        }
+    }
+
+    /// 倍率0、1/2、3/4は、正負の分子と全指数で定義の不等式を満たす。
+    #[test]
+    fn fractional_scales_truncate_toward_zero() {
+        for exponent in 0..=30 {
+            let denominator = 1_i64 << (2 * exponent + 1);
+            for numerator in [
+                -3 * denominator,
+                -3 * (denominator / 2),
+                -denominator,
+                -denominator / 2,
+                -3,
+                -1,
+                0,
+                1,
+                3,
+                denominator / 2,
+                denominator,
+                3 * (denominator / 2),
+                3 * denominator,
+            ] {
+                for scale in [0, 512, 768] {
+                    assert_scaled_truncation(numerator, exponent, scale);
+                }
+            }
+        }
+    }
+
+    /// 倍率3/4は整数化より先に掛ける。倍率1/2の例も正負で固定する。
+    #[test]
+    fn scaling_precedes_integer_truncation() {
+        for sign in [-1, 1] {
+            let numerator = sign * 12;
+            assert_eq!(scaled_correction(numerator, 1, 768), sign);
+            assert_eq!((numerator / 8) * 768 / 1024, 0);
+            for (numerator, expected) in [(12, 0), (24, 1)] {
+                assert_eq!(scaled_correction(sign * numerator, 1, 512), sign * expected);
+                assert_eq!((sign * numerator / 8) * 512 / 1024, sign * expected);
+            }
+        }
+    }
+
+    /// 指数26と30では分母がi64を超えるが、分子の両端でも定義を満たす。
+    #[test]
+    fn scaled_extreme_numerators_do_not_overflow() {
+        for exponent in [26, 30] {
+            for numerator in [i64::MIN, i64::MAX] {
+                for scale in [0, 512, 768, 1024] {
+                    assert_scaled_truncation(numerator, exponent, scale);
+                }
+            }
+        }
+    }
+
+    /// 調整用ビルドの既定倍率が、実際のFM補正の計算にも適用される。
+    #[cfg(feature = "tuning")]
+    #[test]
+    fn tuning_default_correction_matches_full_scale() {
+        for sign in [-1, 1] {
+            let fm = Fm::decode(&encoded(1, [sign; FM_RANK], |i, f| match (i, f) {
+                (0, 0) => 2,
+                (1, 0) => 3,
+                _ => 0,
+            }))
+            .unwrap();
+            let mut accumulator = FmAccumulator::default();
+            fm.add(&mut accumulator, 0);
+            fm.add(&mut accumulator, 1);
+            // 2特徴の組による分子は、符号 × 2 × 2 × 3となる。
+            assert_eq!(
+                fm.correction(&accumulator),
+                scaled_correction(i64::from(sign) * 12, 1, 1024)
+            );
+        }
     }
 
     /// v3の特徴番号優先配置を復号し、整数表からの再符号化で全バイトを保存する。

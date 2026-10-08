@@ -10,7 +10,7 @@ macro_rules! parameters {
             $(#[$doc])*
             #[cfg(not(feature = "tuning"))]
             #[inline]
-            pub(super) const fn $accessor() -> i32 { $default }
+            pub(crate) const fn $accessor() -> i32 { $default }
 
             #[cfg(feature = "tuning")]
             mod $accessor {
@@ -20,7 +20,7 @@ macro_rules! parameters {
             $(#[$doc])*
             #[cfg(feature = "tuning")]
             #[inline]
-            pub(super) fn $accessor() -> i32 {
+            pub(crate) fn $accessor() -> i32 {
                 $accessor::VALUE.load(Ordering::Relaxed)
             }
         )*
@@ -122,6 +122,9 @@ parameters! {
     /// 次の反復の予測時間比の百分率。`docs/plans/strength-stage6.md`「最善手安定時の早期終了」。
     /// 初期値2.5は、段階1の候補で測定した深さ5以上の累積時間比の中央値に基づく。
     IterationRatio(iteration_ratio): 263, 150, 400;
+    /// FMの補正に掛ける倍率を1,024分率で表す。調整用ビルドの`Fm::correction`だけが参照する。`docs/plans/fm-scale-spsa.md`「設計判断」。
+    #[cfg_attr(not(feature = "tuning"), allow(dead_code))]
+    FmScale(fm_scale): 1024, 0, 1024;
 }
 
 /// 調整係数の設定時のエラー。

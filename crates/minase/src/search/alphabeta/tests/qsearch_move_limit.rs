@@ -193,6 +193,7 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
     if !single_capture_limit("qsearch_limit_reads_double_lion_capture_after_tt_capture") {
         return;
     }
+    // 香車2枚をこの配置に置き、二重捕獲による評価増分を駒価値とdelta_marginの和に収める。
     let board = position(
         Color::Black,
         &[
@@ -200,9 +201,9 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
             (sq(11, 11), Color::White, PieceKind::King),
             (sq(0, 0), Color::Black, PieceKind::Rook),
             (sq(0, 2), Color::White, PieceKind::Pawn),
-            (sq(5, 5), Color::Black, PieceKind::Lion),
-            (sq(5, 6), Color::White, PieceKind::CopperGeneral),
-            (sq(6, 6), Color::White, PieceKind::CopperGeneral),
+            (sq(3, 2), Color::Black, PieceKind::Lion),
+            (sq(3, 3), Color::White, PieceKind::Lance),
+            (sq(4, 3), Color::White, PieceKind::Lance),
         ],
     );
     with_root_searcher(&board, &[], |searcher| {

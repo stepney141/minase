@@ -179,6 +179,7 @@ fn declaration(line: &str, offset: usize) -> Option<Entry> {
 }
 
 /// 指定された行文法を検査し、呼び出しの外側には触れない。
+/// docコメント行と属性行は宣言として解析せず読み飛ばす。
 pub(super) fn parse_table(text: &str) -> Result<Vec<Entry>, ApplyError> {
     let count = text
         .lines()
@@ -196,7 +197,10 @@ pub(super) fn parse_table(text: &str) -> Result<Vec<Entry>, ApplyError> {
             inside = line.trim() == "parameters! {";
         } else if line.trim() == "}" {
             return Ok(entries);
-        } else if !line.trim().is_empty() && !line.trim_start().starts_with("///") {
+        } else if !line.trim().is_empty()
+            && !line.trim_start().starts_with("///")
+            && !line.trim_start().starts_with("#[")
+        {
             let entry = declaration(line, offset).ok_or_else(|| ApplyError::InvalidLine {
                 line: index + 1,
                 text: line.trim_end_matches(['\r', '\n']).to_owned(),
@@ -395,4 +399,51 @@ pub(super) fn apply(run_dir: &Path, source: &Path) -> Result<String, ApplyError>
     let report = report(&entries, settings, &theta, &values, source);
     replace_source(source, &rewritten)?;
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_and_rewrite_preserve_doc_comments_and_attributes() {
+        let source = concat!(
+            "parameters! {\n",
+            "    /// 最初の係数。\n",
+            "    First(first): 10, 0, 100;\n",
+            "\n",
+            "    /// FMの補正の倍率。\n",
+            "    #[cfg_attr(not(feature = \"tuning\"), allow(dead_code))]\n",
+            "    FmScale(fm_scale): 1024, 0, 1024;\n",
+            "}\n",
+        );
+        let entries = parse_table(source).unwrap();
+        let declarations: Vec<_> = entries
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.default, entry.min, entry.max))
+            .collect();
+        assert_eq!(
+            declarations,
+            [("First", 10, 0, 100), ("FmScale", 1024, 0, 1024)]
+        );
+        let rewritten = rewrite(
+            source,
+            &entries,
+            &[("First".into(), 5), ("FmScale".into(), 768)],
+        )
+        .unwrap();
+        assert_eq!(
+            rewritten,
+            concat!(
+                "parameters! {\n",
+                "    /// 最初の係数。\n",
+                "    First(first): 5, 0, 100;\n",
+                "\n",
+                "    /// FMの補正の倍率。\n",
+                "    #[cfg_attr(not(feature = \"tuning\"), allow(dead_code))]\n",
+                "    FmScale(fm_scale): 768, 0, 1024;\n",
+                "}\n",
+            )
+        );
+    }
 }
