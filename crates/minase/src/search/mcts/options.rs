@@ -1,15 +1,14 @@
 //! MCTSが宣言するUSIオプションと、推論のセッションの作成。
 //!
 //! オプションの集合は docs/plans/alphazero.md「共存の構造」と「推論層」に従う。`Threads`と`USI_Hash`は
-//! ハーネスが既定値を照会するのでαβ探索と同じ名前で宣言し、`USI_Hash`は探索木の容量として解釈する。
+//! ハーネスが既定値を照会するのでαβ探索と同じ名前で宣言する。探索木の大きさは、dlshogiに倣い、
+//! 節点数の上限`UCT_NodeLimit`で制御する。`USI_Hash`はNNキャッシュの容量として予約し、
+//! NNキャッシュを実装するまで動作を変えない。
 
-use core::mem::size_of;
 use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::env;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-
-use minase_core::mv::Move;
 
 use crate::nn::ort_evaluator::{NETWORK, NnBackend, OrtEvaluator, SessionConfig};
 use crate::search::DEFAULT_TT_SIZE_MB;
@@ -17,7 +16,6 @@ use crate::search::searcher::{OptionKind, OptionSpec};
 
 use super::engine::{Config, DEFAULT_GUMBEL_SIMULATIONS, Engine, MAX_CONSIDERED_ACTIONS};
 use super::select::Selection;
-use super::tree::{Edge, Node};
 
 /// オプション`USI_Hash`で設定できる容量の上限(MiB)。αβ探索の置換表と同じ値とする。
 const MAX_HASH_SIZE_MB: usize = 65_536;
@@ -32,24 +30,18 @@ const DEFAULT_BATCH_SIZE: NonZeroUsize = NonZeroUsize::new(64).unwrap();
 /// 上限でも約200 MBに収まる。
 const MAX_BATCH_SIZE: usize = 1024;
 
-/// 1節点あたりの子の数の見込み。2026年10月3日の教師データの平均合法手数73.6
-/// （docs/measurements/alphazero-feasibility.md「第2項」）を切り上げた値。
-const EXPECTED_EDGES_PER_NODE: usize = 74;
+/// オプション`UCT_NodeLimit`の既定値。1節点は辺を含めて約4.2 KBなので、約4.2 GBに当たる
+/// （docs/plans/alphazero.md「共存の構造」）。
+const DEFAULT_NODE_LIMIT: NonZeroU32 = NonZeroU32::new(1_000_000).unwrap();
 
-/// 探索木の1節点の概算バイト数。節点の本体と、見込みの数の辺からなる。
-const NODE_BYTES: usize =
-    size_of::<Node<Move>>() + EXPECTED_EDGES_PER_NODE * size_of::<Edge<Move>>();
+/// オプション`UCT_NodeLimit`の下限。dlshogiと同じ値とする。
+const MIN_NODE_LIMIT: usize = 100_000;
+
+/// オプション`UCT_NodeLimit`の上限。dlshogiと同じ値とする。
+const MAX_NODE_LIMIT: usize = 1_000_000_000;
 
 /// 対局で使う探索の乱数のシード。PUCTは乱数を使わないので値は探索に影響しない。
 const PLAY_SEED: NonZeroU64 = NonZeroU64::new(1).unwrap();
-
-/// `USI_Hash`の容量(MiB)を探索木の節点数の上限へ換算する。
-///
-/// 初版はNNキャッシュを持たないので、容量の全体を探索木に充てる。
-fn max_nodes(hash_mb: usize) -> NonZeroU32 {
-    let nodes = (hash_mb << 20) / NODE_BYTES;
-    NonZeroU32::new(u32::try_from(nodes).unwrap_or(u32::MAX)).unwrap_or(NonZeroU32::MIN)
-}
 
 /// `NnCacheDir`の既定値を返す。`$XDG_CACHE_HOME/minase/tensorrt`、未設定なら
 /// `$HOME/.cache/minase/tensorrt`とし、どちらもなければ空とする。
@@ -78,8 +70,8 @@ fn default_cache_dir_text() -> &'static str {
 impl Engine {
     /// 対局用の既定の設定で、推論器を持たない状態を作る。
     ///
-    /// 選択規則はPUCT（docs/plans/alphazero.md「対局ではPUCTを使う」）、探索木の容量は`USI_Hash`の
-    /// 既定値とする。推論のセッションは[`Engine::prepare`]が作る。
+    /// 選択規則はPUCT（docs/plans/alphazero.md「対局ではPUCTを使う」）、探索木の節点数の上限は
+    /// `UCT_NodeLimit`の既定値とする。推論のセッションは[`Engine::prepare`]が作る。
     pub fn for_play(win_rate_scale: f32) -> Self {
         Self::without_evaluator(Config {
             selection: Selection::Puct,
@@ -88,13 +80,13 @@ impl Engine {
             max_considered: MAX_CONSIDERED_ACTIONS,
             seed: PLAY_SEED,
             win_rate_scale,
-            max_nodes: max_nodes(DEFAULT_TT_SIZE_MB),
+            max_nodes: DEFAULT_NODE_LIMIT,
         })
     }
 
     /// 宣言するオプションを宣言の順に返す。
     pub fn options(&self) -> &'static [OptionSpec] {
-        static OPTIONS: OnceLock<[OptionSpec; 5]> = OnceLock::new();
+        static OPTIONS: OnceLock<[OptionSpec; 6]> = OnceLock::new();
         OPTIONS.get_or_init(|| {
             [
                 OptionSpec {
@@ -111,6 +103,14 @@ impl Engine {
                         default: 1,
                         min: 1,
                         max: MAX_THREADS as i64,
+                    },
+                },
+                OptionSpec {
+                    name: "UCT_NodeLimit",
+                    kind: OptionKind::Spin {
+                        default: i64::from(DEFAULT_NODE_LIMIT.get()),
+                        min: MIN_NODE_LIMIT as i64,
+                        max: MAX_NODE_LIMIT as i64,
                     },
                 },
                 OptionSpec {
@@ -145,10 +145,17 @@ impl Engine {
     /// 次の[`Engine::prepare`]で作り直す。
     pub fn set_option(&mut self, name: &str, value: Option<&str>) -> Option<Result<(), String>> {
         let result = if name.eq_ignore_ascii_case("USI_Hash") {
-            parse_range("USI_Hash", value, MAX_HASH_SIZE_MB)
+            parse_range("USI_Hash", value, 1, MAX_HASH_SIZE_MB)
                 .map(|size_mb| self.set_hash_mb(size_mb.get()))
         } else if name.eq_ignore_ascii_case("Threads") {
-            parse_range("Threads", value, MAX_THREADS).and_then(|threads| self.set_threads(threads))
+            parse_range("Threads", value, 1, MAX_THREADS)
+                .and_then(|threads| self.set_threads(threads))
+        } else if name.eq_ignore_ascii_case("UCT_NodeLimit") {
+            parse_range("UCT_NodeLimit", value, MIN_NODE_LIMIT, MAX_NODE_LIMIT).map(|limit| {
+                self.config.max_nodes =
+                    NonZeroU32::try_from(limit).expect("MAX_NODE_LIMIT fits in u32");
+                self.new_game();
+            })
         } else if name.eq_ignore_ascii_case("NnBackend") {
             value
                 .ok_or_else(|| "NnBackend requires a value".to_owned())
@@ -168,7 +175,7 @@ impl Engine {
             }
             Ok(())
         } else if name.eq_ignore_ascii_case("NnBatchSize") {
-            parse_range("NnBatchSize", value, MAX_BATCH_SIZE).map(|batch_size| {
+            parse_range("NnBatchSize", value, 1, MAX_BATCH_SIZE).map(|batch_size| {
                 if self.config.batch_size != batch_size {
                     self.config.batch_size = batch_size;
                     self.evaluator = None;
@@ -180,10 +187,17 @@ impl Engine {
         Some(result)
     }
 
-    /// `USI_Hash`の容量(MiB)から探索木の節点数の上限を設定し、再利用する探索木を捨てる。
+    /// `USI_Hash`の容量(MiB)を記録する。
+    ///
+    /// 容量はNNキャッシュのために予約した値であり、NNキャッシュを実装するまで探索の動作を変えない。
+    /// 探索木の大きさは`UCT_NodeLimit`が定める。
     pub fn set_hash_mb(&mut self, size_mb: usize) {
-        self.config.max_nodes = max_nodes(size_mb);
-        self.new_game();
+        self.hash_mb = size_mb;
+    }
+
+    /// 記録した`USI_Hash`の容量(MiB)を返す。NNキャッシュの容量として予約した値である。
+    pub fn hash_mb(&self) -> usize {
+        self.hash_mb
     }
 
     /// ワーカー数を設定する。初版のMCTSは1スレッドで探索するので、1だけを受理する。
@@ -224,15 +238,20 @@ impl Engine {
     }
 }
 
-/// `1..=max`の整数の値を解析する。
-fn parse_range(name: &str, value: Option<&str>, max: usize) -> Result<NonZeroUsize, String> {
+/// `min..=max`の整数の値を解析する。`min`は1以上とする。
+fn parse_range(
+    name: &str,
+    value: Option<&str>,
+    min: usize,
+    max: usize,
+) -> Result<NonZeroUsize, String> {
     let value = value.ok_or_else(|| format!("{name} requires a value"))?;
     value
         .parse::<usize>()
         .ok()
         .and_then(NonZeroUsize::new)
-        .filter(|parsed| parsed.get() <= max)
-        .ok_or_else(|| format!("{name} must be an integer from 1 to {max}"))
+        .filter(|parsed| (min..=max).contains(&parsed.get()))
+        .ok_or_else(|| format!("{name} must be an integer from {min} to {max}"))
 }
 
 #[cfg(test)]
@@ -244,9 +263,10 @@ mod tests {
         Engine::new(Box::new(UniformEvaluator), Engine::for_play(1.0).config)
     }
 
-    // alphazero.md「共存の構造」: MCTSもUSI_HashとThreadsを宣言し、続けて推論の設定を宣言する。
+    // alphazero.md「共存の構造」: MCTSもUSI_HashとThreadsを宣言し、続けて節点数の上限
+    // UCT_NodeLimitと推論の設定を宣言する。
     #[test]
-    fn options_declare_hash_threads_and_network_settings() {
+    fn options_declare_hash_threads_node_limit_and_network_settings() {
         let names: Vec<_> = engine()
             .options()
             .iter()
@@ -257,6 +277,7 @@ mod tests {
             [
                 "USI_Hash",
                 "Threads",
+                "UCT_NodeLimit",
                 "NnBackend",
                 "NnCacheDir",
                 "NnBatchSize"
@@ -264,6 +285,14 @@ mod tests {
         );
         assert_eq!(
             engine().options()[2].kind,
+            OptionKind::Spin {
+                default: 1_000_000,
+                min: 100_000,
+                max: 1_000_000_000,
+            }
+        );
+        assert_eq!(
+            engine().options()[3].kind,
             OptionKind::Combo {
                 default: "tensorrt",
                 vars: &["tensorrt", "cuda", "cpu"],
@@ -289,21 +318,51 @@ mod tests {
         assert_eq!(engine.set_option("ResignValue", Some("1")), None);
     }
 
-    // 指示書: USI_Hashは探索木の節点数の上限に換算し、容量に比例する。
+    // alphazero.md「共存の構造」: UCT_NodeLimitの値が探索木の節点数の上限になり、範囲外の値は
+    // 状態を変えずに理由を返す。
     #[test]
-    fn hash_sets_the_tree_capacity() {
+    fn node_limit_sets_the_tree_capacity() {
         let mut engine = engine();
-        assert_eq!(engine.set_option("USI_Hash", Some("1")), Some(Ok(())));
-        let small = engine.config.max_nodes.get();
-        assert_eq!(small as usize, (1 << 20) / NODE_BYTES);
-        assert_eq!(engine.set_option("USI_Hash", Some("2")), Some(Ok(())));
-        assert_eq!(engine.config.max_nodes.get(), (2 << 20) / NODE_BYTES as u32);
+        assert_eq!(engine.config.max_nodes.get(), 1_000_000);
+        assert_eq!(
+            engine.set_option("uct_nodelimit", Some("100000")),
+            Some(Ok(()))
+        );
+        assert_eq!(engine.config.max_nodes.get(), 100_000);
+        assert_eq!(
+            engine.set_option("UCT_NodeLimit", Some("1000000000")),
+            Some(Ok(()))
+        );
+        assert_eq!(engine.config.max_nodes.get(), 1_000_000_000);
+        for value in [Some("99999"), Some("1000000001"), Some("0"), Some("x")] {
+            assert_eq!(
+                engine.set_option("UCT_NodeLimit", value),
+                Some(Err(
+                    "UCT_NodeLimit must be an integer from 100000 to 1000000000".to_owned()
+                ))
+            );
+        }
         assert!(matches!(
-            engine.set_option("USI_Hash", Some("0")),
+            engine.set_option("UCT_NodeLimit", None),
             Some(Err(_))
         ));
-        assert!(matches!(engine.set_option("USI_Hash", None), Some(Err(_))));
-        assert_eq!(engine.config.max_nodes.get(), (2 << 20) / NODE_BYTES as u32);
+        assert_eq!(engine.config.max_nodes.get(), 1_000_000_000);
+    }
+
+    // 同節: USI_HashはNNキャッシュの容量として予約し、値を記録するだけで探索木の上限を変えない。
+    #[test]
+    fn hash_does_not_change_the_tree_capacity() {
+        let mut engine = engine();
+        assert_eq!(engine.hash_mb(), 256);
+        assert_eq!(engine.set_option("USI_Hash", Some("1")), Some(Ok(())));
+        assert_eq!(engine.hash_mb(), 1);
+        assert_eq!(engine.set_option("USI_Hash", Some("65536")), Some(Ok(())));
+        assert_eq!(engine.hash_mb(), 65_536);
+        assert_eq!(engine.config.max_nodes, DEFAULT_NODE_LIMIT);
+        for value in [Some("0"), Some("65537"), None] {
+            assert!(matches!(engine.set_option("USI_Hash", value), Some(Err(_))));
+        }
+        assert_eq!(engine.hash_mb(), 65_536);
     }
 
     // 指示書: 推論の設定を変えると推論のセッションを捨て、同じ値では捨てない。不正値は状態を変えない。

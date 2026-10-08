@@ -85,7 +85,7 @@ pub struct Config {
     pub seed: NonZeroU64,
     /// 勝率を評価値へ写す尺度K（PSTの学習で推定した値、docs/plans/alphazero.md「共存の構造」）。
     pub win_rate_scale: f32,
-    /// 探索木の節点数の上限。達したら新しい展開をやめて探索を終える。
+    /// 探索木の節点数の上限（オプション`UCT_NodeLimit`）。達したら新しい展開をやめて探索を終える。
     pub max_nodes: NonZeroU32,
 }
 
@@ -127,6 +127,8 @@ pub struct Engine {
     pub(super) cache_dir: std::path::PathBuf,
     /// 探索の設定。
     pub(super) config: Config,
+    /// `USI_Hash`の容量(MiB)。NNキャッシュの容量として予約し、NNキャッシュを実装するまで使わない。
+    pub(super) hash_mb: usize,
     /// Gumbel乱数の生成器。
     rng: XorShift64,
     /// 直前の探索の木。
@@ -149,6 +151,7 @@ impl Engine {
             backend: NnBackend::TensorRt,
             cache_dir: super::options::default_cache_dir(),
             config,
+            hash_mb: crate::search::DEFAULT_TT_SIZE_MB,
             rng: XorShift64::new(config.seed),
             previous: None,
         }
@@ -401,7 +404,7 @@ impl Engine {
                         .saturating_sub(tree.root().total_visits()),
                 ));
             }
-            // 探索木の容量（USI_Hash）。1回のシミュレーションが加える節点は高々1つである。
+            // 探索木の節点数の上限（UCT_NodeLimit）。1回のシミュレーションが加える節点は高々1つである。
             let capacity = u64::from(config.max_nodes.get()).saturating_sub(tree.len() as u64);
             remaining = remaining.min(capacity);
             if remaining == 0 {

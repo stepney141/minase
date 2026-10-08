@@ -759,7 +759,8 @@ fn stop_finishes_an_infinite_search() {
     assert_eq!(result, Ok(()));
 }
 
-// 指示書E: 探索木の節点数が上限（USI_Hash）に達したら、新しい展開をやめてノード数の制限として終える。
+// alphazero.md「共存の構造」: 探索木の節点数が上限（UCT_NodeLimit）に達したら、新しい展開をやめて
+// ノード数の制限として終える。UCT_NodeLimitの下限は10万なので、上限は設定へ直接与える。
 #[test]
 fn tree_capacity_stops_the_search() {
     let snapshot = snapshot_of(Position::initial());

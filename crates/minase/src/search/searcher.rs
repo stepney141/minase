@@ -118,7 +118,10 @@ impl Searcher {
         }
     }
 
-    /// 置換表または探索木の容量をMB単位で設定する。CECPの`memory`に使う。
+    /// `USI_Hash`に当たる容量をMB単位で設定する。CECPの`memory`に使う。
+    ///
+    /// αβ探索では置換表の容量であり、MCTSではNNキャッシュの容量として値を記録するだけで、
+    /// 探索の動作を変えない。
     ///
     /// # Errors
     ///
@@ -332,7 +335,8 @@ mod tests {
         );
     }
 
-    // 同節: ハーネスが既定値を照会するので、MCTSもUSI_HashとThreadsを宣言する。
+    // 同節: ハーネスが既定値を照会するので、MCTSもUSI_HashとThreadsを宣言し、続けて探索木の
+    // 節点数の上限UCT_NodeLimitを宣言する。
     // MCTSは静的評価のPSTも置換表も持たない。
     #[test]
     fn mcts_declares_hash_and_threads() {
@@ -343,7 +347,7 @@ mod tests {
             .iter()
             .map(|option| option.name)
             .collect();
-        assert_eq!(names[..2], ["USI_Hash", "Threads"]);
+        assert_eq!(names[..3], ["USI_Hash", "Threads", "UCT_NodeLimit"]);
         assert!(searcher.pst().is_none());
         assert!(searcher.transposition_table().is_none());
     }

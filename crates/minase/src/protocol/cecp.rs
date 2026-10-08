@@ -551,7 +551,7 @@ impl CecpProtocol {
             .searcher
             .as_ref()
             .expect("idle protocol must own the searcher");
-        // 置換表の容量とワーカー数は、CECPでは`memory`と`cores`で受ける。
+        // `USI_Hash`と`Threads`に当たる値は、CECPでは`memory`と`cores`で受ける。
         for option in searcher
             .options()
             .iter()
@@ -1781,8 +1781,8 @@ mod tests {
         }
     }
 
-    // 指示書E第9項: --search mctsのCECPも同じSearcherの操作で動く。推論の設定はfeature optionで
-    // 宣言し、置換表の容量とワーカー数はmemoryとcoresで受ける。sdの深さはシミュレーション回数として
+    // 指示書E第9項: --search mctsのCECPも同じSearcherの操作で動く。節点数の上限と推論の設定は
+    // feature optionで宣言し、USI_Hashに当たる容量とワーカー数はmemoryとcoresで受ける。sdの深さはシミュレーション回数として
     // 扱わず、告げてから探索する。
     #[test]
     fn mcts_declares_network_options_and_moves() {
@@ -1796,7 +1796,10 @@ mod tests {
             .lines()
             .filter(|line| line.starts_with("feature option="))
             .collect();
-        assert_eq!(options.len(), 4, "{features}");
+        assert_eq!(options.len(), 5, "{features}");
+        assert!(
+            options.contains(&"feature option=\"UCT_NodeLimit -spin 1000000 100000 1000000000\"")
+        );
         assert!(
             options.contains(&"feature option=\"NnBackend -combo *tensorrt /// cuda /// cpu\"")
         );
