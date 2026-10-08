@@ -13,15 +13,21 @@ use super::io_log::{IoLog, LoggedOutput, read_input};
 
 use super::{ProtocolKind, RuleSetArgument};
 use minase::protocol::{CecpProtocol, Engine, UsiProtocol};
+use minase::search::{SearchAlgorithm, Searcher};
 
 /// エラーを標準エラーへ報告して終了コード1で終わる入口。
-pub(super) fn main(protocol: ProtocolKind, rules: RuleSetArgument, io_log: Option<PathBuf>) {
+pub(super) fn main(
+    protocol: ProtocolKind,
+    rules: RuleSetArgument,
+    search: SearchAlgorithm,
+    io_log: Option<PathBuf>,
+) {
     let started = Instant::now();
     if let Err(error) = minase::eval::weights() {
         eprintln!("error: embedded evaluation weights are invalid: {error}");
         process::exit(1);
     }
-    if let Err(error) = run(started, protocol, rules, io_log) {
+    if let Err(error) = run(started, protocol, rules, search, io_log) {
         eprintln!("error: {error}");
         process::exit(1);
     }
@@ -35,6 +41,7 @@ fn run(
     started: Instant,
     protocol: ProtocolKind,
     rules: RuleSetArgument,
+    search: SearchAlgorithm,
     io_log: Option<PathBuf>,
 ) -> Result<(), Box<dyn Error>> {
     let log = io_log
@@ -48,6 +55,7 @@ fn run(
         .transpose()?;
     let mut engine =
         Engine::new(rules.0).map_err(|reason| format!("invalid --rules value: {reason}"))?;
+    let searcher = Searcher::new(search)?;
 
     let (sender, receiver) = mpsc::channel();
     let input_log = log.clone();
@@ -66,12 +74,12 @@ fn run(
 
     match protocol {
         ProtocolKind::Usi => {
-            let mut protocol = UsiProtocol::new(&engine);
+            let mut protocol = UsiProtocol::new(&engine, searcher);
             protocol.run_channel(&mut engine, &receiver, output)?;
             Ok(())
         }
         ProtocolKind::Cecp => {
-            let mut protocol = CecpProtocol::new(&engine);
+            let mut protocol = CecpProtocol::new(&engine, searcher);
             protocol.run_channel(&mut engine, &receiver, output)?;
             Ok(())
         }

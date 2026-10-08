@@ -4,6 +4,7 @@ use std::io::Cursor;
 use std::process::Command;
 
 use minase::protocol::{Engine, Protocol, UsiProtocol};
+use minase::search::{SearchAlgorithm, Searcher};
 use minase_core::rules::parse_rule_set;
 
 /// debugging-tools.md「perftの規則と拡張SFEN」: dの拡張SFENを渡すと深さ1がmovesの件数と一致する。
@@ -11,7 +12,8 @@ use minase_core::rules::parse_rule_set;
 fn perft_accepts_d_output_with_lion_and_deferred_promotion() {
     let rules = "L1,L2,P1,R1,E2";
     let mut engine = Engine::new(parse_rule_set(rules).unwrap()).unwrap();
-    let mut protocol = UsiProtocol::new(&engine);
+    let searcher = Searcher::new(SearchAlgorithm::AlphaBeta).unwrap();
+    let mut protocol = UsiProtocol::new(&engine, searcher);
     let mut output = Vec::new();
     protocol
         .run(

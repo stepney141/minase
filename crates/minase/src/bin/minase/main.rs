@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::{ExitCode, Termination};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use minase::search::SearchAlgorithm;
 use minase_core::RuleCode;
 use minase_core::rules::parse_rule_set;
 
@@ -38,6 +39,9 @@ struct Arguments {
     /// 採用するローカルルールコード列。
     #[arg(long, required = true, value_parser = parse_rule_set_argument)]
     rules: Option<RuleSetArgument>,
+    /// 使用する探索方式（alphabeta）。
+    #[arg(long, default_value = "alphabeta", value_parser = parse_search_algorithm)]
+    search: SearchAlgorithm,
     /// 入出力のログを新規作成するパス。
     #[arg(long)]
     io_log: Option<PathBuf>,
@@ -55,6 +59,13 @@ fn parse_rule_set_argument(input: &str) -> Result<RuleSetArgument, String> {
     parse_rule_set(input)
         .map(RuleSetArgument)
         .map_err(|error| error.to_string())
+}
+
+/// `--search`の値を探索方式として解析する。
+fn parse_search_algorithm(input: &str) -> Result<SearchAlgorithm, String> {
+    input
+        .parse()
+        .map_err(|error: minase::search::UnknownSearchAlgorithm| error.to_string())
 }
 
 /// 対応する通信プロトコル。
@@ -137,6 +148,7 @@ fn main() -> ExitCode {
             arguments
                 .rules
                 .expect("clap requires --rules for the engine"),
+            arguments.search,
             arguments.io_log,
         ),
         Some(Command::Match(MatchCommand::Run(arguments))) => match_runner::main(arguments),
@@ -280,6 +292,28 @@ mod tests {
         );
         assert!(
             Arguments::try_parse_from(["minase", "--protocol", "cecp", "--rules", "R1"]).is_ok()
+        );
+    }
+
+    // alphazero.md「共存の構造」: --searchは起動時に方式を選び、既定はalphabetaとする。
+    #[test]
+    fn search_argument_defaults_to_alphabeta_and_rejects_unknown_names() {
+        let parse = |extra: &[&str]| {
+            Arguments::try_parse_from(
+                ["minase", "--protocol", "usi", "--rules", "R1"]
+                    .into_iter()
+                    .chain(extra.iter().copied()),
+            )
+        };
+        assert_eq!(parse(&[]).unwrap().search, SearchAlgorithm::AlphaBeta);
+        assert_eq!(
+            parse(&["--search", "alphabeta"]).unwrap().search,
+            SearchAlgorithm::AlphaBeta
+        );
+        assert!(parse(&["--search", "minimax"]).is_err());
+        assert!(
+            Arguments::try_parse_from(["minase", "--search", "alphabeta", "dev", "usi-random"])
+                .is_err()
         );
     }
 

@@ -5,7 +5,7 @@ use crate::search::alphabeta::history_decay_for_test;
 
 fn setup() -> (Engine, UsiProtocol) {
     let mut engine = make_engine(&[RuleCode::R1]);
-    let mut protocol = UsiProtocol::new(&engine);
+    let mut protocol = UsiProtocol::new(&engine, test_searcher());
     run(
         &mut protocol,
         &mut engine,
@@ -16,9 +16,9 @@ fn setup() -> (Engine, UsiProtocol) {
 
 fn seed(protocol: &mut UsiProtocol) {
     for (worker, history) in protocol
-        .histories
-        .as_mut()
-        .unwrap()
+        .searcher()
+        .alphabeta_mut()
+        .histories_mut()
         .workers
         .iter_mut()
         .enumerate()
@@ -30,9 +30,11 @@ fn seed(protocol: &mut UsiProtocol) {
 
 fn assert_seed(protocol: &UsiProtocol) {
     for (worker, history) in protocol
-        .histories
+        .searcher
         .as_ref()
         .unwrap()
+        .alphabeta()
+        .histories()
         .workers
         .iter()
         .enumerate()
@@ -90,7 +92,7 @@ fn history_carry_usi_clears_new_games_accepted_rules_and_changed_threads() {
         seed(&mut protocol);
         let output = run(&mut protocol, &mut engine, command);
         assert!(!output.contains("error"), "{command}: {output}");
-        let histories = protocol.histories.as_ref().unwrap();
+        let histories = protocol.searcher.as_ref().unwrap().alphabeta().histories();
         assert_eq!(
             histories.workers.len(),
             if command.ends_with('2') { 2 } else { 4 }
@@ -142,7 +144,7 @@ fn history_carry_usi_returns_ponder_history_on_hit_and_miss() {
                 protocol.discard_search(&mut active).unwrap();
             }
             assert!(active.is_none());
-            let histories = protocol.histories.as_ref().unwrap();
+            let histories = protocol.searcher.as_ref().unwrap().alphabeta().histories();
             assert_eq!(histories.workers.len(), 4);
             for (worker, history) in histories.workers.iter().enumerate() {
                 assert_eq!(

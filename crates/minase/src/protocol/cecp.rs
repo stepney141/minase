@@ -7,7 +7,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
 use crate::search::{
-    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, TranspositionTable,
+    self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, Searcher,
 };
 use minase_core::game::{DrawReason, GameResult, IllegalMoveCause, WinReason};
 use minase_core::notation::cecp;
@@ -30,14 +30,10 @@ pub struct CecpProtocol {
     startup_rules_text: String,
     /// CECPの着手応答モード。
     play_mode: PlayMode,
-    /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出し中は`None`。
-    transposition_table: Option<TranspositionTable>,
-    /// strength-stage12.md「項目5」のワーカー別history。探索中はNone。
-    histories: Option<search::HistoryTables>,
+    /// 探索方式の状態。探索スレッドへ移している間は`None`。
+    searcher: Option<Searcher>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
-    /// 次の探索に使うワーカー数。
-    threads: NonZeroUsize,
     /// CECPの時間コマンドをミリ秒へ正規化した値。
     time_control: TimeControl,
 }
@@ -91,17 +87,23 @@ enum LineAction {
 }
 
 impl CecpProtocol {
-    /// エンジンの起動時active規則をfeature宣言の既定値として保持する。
-    pub fn new(engine: &Engine) -> Self {
+    /// エンジンの起動時active規則をfeature宣言の既定値として保持し、
+    /// 起動時に選ばれた探索方式の状態を受け取る。
+    pub fn new(engine: &Engine, searcher: Searcher) -> Self {
         Self {
             startup_rules_text: canonical_rules_text(engine.active_rule_codes()),
             play_mode: PlayMode::Force,
-            transposition_table: None,
-            histories: Some(search::HistoryTables::new(search::DEFAULT_THREADS)),
+            searcher: Some(searcher),
             next_search_id: 1,
-            threads: search::DEFAULT_THREADS,
             time_control: TimeControl::default(),
         }
+    }
+
+    /// 待機中に所有している探索方式の状態を返す。
+    fn searcher(&mut self) -> &mut Searcher {
+        self.searcher
+            .as_mut()
+            .expect("idle protocol must own the searcher")
     }
 
     /// 探索していない待機状態で1コマンドを処理する。
@@ -224,35 +226,18 @@ impl CecpProtocol {
         };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
-        let pst = match crate::eval::weights() {
-            Ok(pst) => pst,
-            Err(error) => {
+        let searcher = self
+            .searcher
+            .take()
+            .expect("idle protocol must own the searcher");
+        let handle = match searcher.start(snapshot, limits, search_id, false) {
+            Ok(handle) => handle,
+            Err((searcher, error)) => {
+                self.searcher = Some(searcher);
                 writeln!(output, "tellusererror {error}")?;
                 return Ok(None);
             }
         };
-        let transposition_table = match self.transposition_table.take() {
-            Some(table) => table,
-            None => match TranspositionTable::new(search::DEFAULT_TT_SIZE_MB) {
-                Ok(table) => table,
-                Err(error) => {
-                    writeln!(output, "tellusererror {error}")?;
-                    return Ok(None);
-                }
-            },
-        };
-        let handle = search::start_search(
-            pst,
-            snapshot,
-            limits,
-            search_id,
-            self.threads,
-            transposition_table,
-            self.histories
-                .take()
-                .expect("idle protocol must own history tables"),
-            false,
-        );
         Ok(Some(ActiveSearch {
             context: SearchContext { id: search_id },
             handle,
@@ -416,9 +401,7 @@ impl CecpProtocol {
         let Some(search) = active.take() else {
             return Ok(());
         };
-        let (table, histories) = join_search(search.handle)?;
-        self.transposition_table = Some(table);
-        self.histories = Some(histories);
+        self.searcher = Some(join_search(search.handle)?);
         Err(io::Error::other("search ended without a finished event"))
     }
 
@@ -440,9 +423,7 @@ impl CecpProtocol {
             SearchEvent::Progress { .. } => Ok(()),
             SearchEvent::Finished { best_move, .. } => {
                 let search = active.take().expect("active search must exist");
-                let (table, histories) = join_search(search.handle)?;
-                self.transposition_table = Some(table);
-                self.histories = Some(histories);
+                self.searcher = Some(join_search(search.handle)?);
                 self.apply_engine_move(engine, best_move, output)
             }
         }
@@ -475,9 +456,7 @@ impl CecpProtocol {
                 break best_move;
             }
         };
-        let (table, histories) = join_search(search.handle)?;
-        self.transposition_table = Some(table);
-        self.histories = Some(histories);
+        self.searcher = Some(join_search(search.handle)?);
         self.apply_engine_move(engine, best_move, output)
     }
 
@@ -487,9 +466,7 @@ impl CecpProtocol {
             return Ok(());
         };
         search.handle.request_stop();
-        let (table, histories) = join_search(search.handle)?;
-        self.transposition_table = Some(table);
-        self.histories = Some(histories);
+        self.searcher = Some(join_search(search.handle)?);
         Ok(())
     }
 
@@ -568,13 +545,7 @@ impl CecpProtocol {
             self.play_mode = PlayMode::Playing {
                 engine_side: Color::White,
             };
-            self.histories
-                .as_mut()
-                .expect("idle protocol must own history tables")
-                .clear();
-            if let Some(transposition_table) = &mut self.transposition_table {
-                transposition_table.clear();
-            }
+            self.searcher().new_game();
             Ok(())
         } else {
             writeln!(output, "Error (command not legal now): new")
@@ -700,13 +671,7 @@ impl CecpProtocol {
             )
         });
         if accepted {
-            self.histories
-                .as_mut()
-                .expect("idle protocol must own history tables")
-                .clear();
-            if let Some(transposition_table) = &mut self.transposition_table {
-                transposition_table.clear();
-            }
+            self.searcher().new_game();
             Ok(())
         } else {
             writeln!(output, "Error (invalid option value): {line}")
@@ -722,19 +687,9 @@ impl CecpProtocol {
         else {
             return writeln!(output, "Error (invalid command): memory");
         };
-        let result = match &mut self.transposition_table {
-            Some(transposition_table) => transposition_table.resize(size_mb),
-            None => TranspositionTable::new(size_mb).map(|table| {
-                self.transposition_table = Some(table);
-            }),
-        };
-        if result.is_err() {
+        if self.searcher().set_hash_mb(size_mb).is_err() {
             return writeln!(output, "Error (cannot allocate memory): {size_mb}");
         }
-        self.histories
-            .as_mut()
-            .expect("idle protocol must own history tables")
-            .clear();
         Ok(())
     }
 
@@ -743,12 +698,11 @@ impl CecpProtocol {
         let Some(threads) = tokens.first().and_then(|value| parse_cores(value)) else {
             return writeln!(output, "Error (invalid command): cores");
         };
-        if self.threads != threads {
-            self.histories = Some(search::HistoryTables::new(threads));
-            if let Some(table) = &mut self.transposition_table {
-                table.clear();
-            }
-            self.threads = threads;
+        let searcher = self.searcher();
+        if searcher.threads() != threads {
+            // ワーカー数を変えた後の探索は、前の置換表も持ち越さない。
+            searcher.set_threads(threads);
+            searcher.new_game();
         }
         Ok(())
     }
@@ -875,8 +829,8 @@ impl Protocol for CecpProtocol {
     }
 }
 
-/// 探索スレッドの終了を待ち、貸し出した置換表とhistory表を回収する。
-fn join_search(handle: SearchHandle) -> io::Result<(TranspositionTable, search::HistoryTables)> {
+/// 探索スレッドの終了を待ち、探索スレッドへ移していた探索方式の状態を回収する。
+fn join_search(handle: SearchHandle) -> io::Result<Searcher> {
     handle
         .join()
         .map_err(|_| io::Error::other("search thread panicked"))
@@ -979,7 +933,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::protocol::UsiProtocol;
+    use crate::protocol::{UsiProtocol, test_searcher};
     use minase_core::rules::RuleCode;
     use minase_core::{Game, Rules};
 
@@ -1052,7 +1006,7 @@ mod tests {
         // engine-connectivity.mdの単位規定)はwire出力に現れず時間管理へだけ流れる
         // ため、ここに限り内部時計を直接観測して換算係数を固定する。
         let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
         let output = run(&mut protocol, &mut engine, "time 6000\notim 123\n");
 
         assert!(output.is_empty());
@@ -1083,19 +1037,19 @@ mod tests {
 
     fn session(codes: &[RuleCode], input: &str) -> String {
         let mut engine = make_engine(codes);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
         run(&mut protocol, &mut engine, input)
     }
 
     fn queued_session(codes: &[RuleCode], input: &str) -> String {
         let mut engine = make_engine(codes);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
         run_queued(&mut protocol, &mut engine, input)
     }
 
     fn usi_session(codes: &[RuleCode], input: &str) -> String {
         let mut engine = make_engine(codes);
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new(&engine, test_searcher());
         let mut input = Cursor::new(input.as_bytes());
         let mut output = Vec::new();
         protocol.run(&mut engine, &mut input, &mut output).unwrap();
@@ -1163,14 +1117,14 @@ mod tests {
         // LS「プロトコル設定」: coresは1..=256だけを受理し、不正値は固定CECPエラーを
         // 返す（D6-CECP-33）。正当値は無応答である。
         let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
         // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
         for threads in [256, 1] {
             assert_eq!(
                 run(&mut protocol, &mut engine, &format!("cores {threads}\n")),
                 ""
             );
-            assert_eq!(protocol.threads.get(), threads);
+            assert_eq!(protocol.searcher().threads().get(), threads);
         }
         let output = run(
             &mut protocol,
@@ -1179,7 +1133,7 @@ mod tests {
         );
 
         assert_eq!(output, "Error (invalid command): cores\n".repeat(4));
-        assert_eq!(protocol.threads.get(), 1);
+        assert_eq!(protocol.searcher().threads().get(), 1);
     }
 
     #[test]
@@ -1467,7 +1421,7 @@ mod tests {
         // EC実施状況フェーズ2の実装判断: 探索制限のないgoは暗黙の既定値でフォールバック
         // せずtellusererrorを返す（D6-CECP-15。絶対規則: 暗黙フォールバック禁止）。
         let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
 
         let output = run(&mut protocol, &mut engine, "new\ngo\n");
         assert_eq!(output.lines().count(), 1);
@@ -1516,7 +1470,7 @@ mod tests {
         // EC「状態機械」: resultは外部要因を含む確定通知であり、エンジンは異議を唱えず
         // AwaitingStartへ戻る（D6-CECP-17）。
         let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
 
         let output = run(
             &mut protocol,
@@ -1555,7 +1509,7 @@ mod tests {
 
         // 探索中のnewは破棄のうえ次局を開始する。
         let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
         assert!(
             !run_queued(&mut protocol, &mut engine, "sd 256\nnew\ngo\nnew\n").contains("move ")
         );
@@ -1570,7 +1524,7 @@ mod tests {
     fn move_now_and_queued_commands_complete_in_order() {
         // ECの停止・ping順序と、LSの探索中cores待機列が次の探索まで進む契約。
         let mut engine = make_engine(&[RuleCode::R1]);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
         assert_eq!(run(&mut protocol, &mut engine, "?\nping 42\n"), "pong 42\n");
         let output = run_queued(
             &mut protocol,
@@ -1667,7 +1621,7 @@ mod tests {
         // PL「規則オプション」: option NAME=VALUEで検証し、正当ならpendingのみ更新、不正なら
         // Error (invalid option value): <受信行>。commitはnew（D6-CECP-25、D6-ENG-02）。
         let mut engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
-        let mut protocol = CecpProtocol::new(&engine);
+        let mut protocol = CecpProtocol::new(&engine, test_searcher());
         let cycle = KINGS_CYCLE;
         let output = run(
             &mut protocol,

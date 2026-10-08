@@ -4,6 +4,7 @@ use std::io::{self, BufRead, Cursor, Write};
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use minase::protocol::{Engine, EngineLifecycle, Protocol, UsiProtocol};
+use minase::search::{SearchAlgorithm, Searcher};
 use minase_core::MoveGenerator;
 use minase_core::notation::usi;
 use minase_core::rng::XorShift64;
@@ -30,7 +31,9 @@ impl RandomUsi {
         let codes = parse_rule_set(DEFAULT_RULE_SET)
             .expect("the default rule set must be valid and executable");
         let engine = Engine::new(codes).expect("the default rule set must construct an engine");
-        let protocol = UsiProtocol::new(&engine);
+        let searcher = Searcher::new(SearchAlgorithm::AlphaBeta)
+            .expect("embedded evaluation weights must be valid");
+        let protocol = UsiProtocol::new(&engine, searcher);
         Self {
             engine,
             protocol,

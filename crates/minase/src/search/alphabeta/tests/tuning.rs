@@ -231,7 +231,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         // 設定した除数が表へ反映されることを、表を経由する`lmr_reduction`で調べる。
         // 除数1.0ならln4 × ln3 ≈ 1.52を切り捨てた1が表へ入る。
         let mut engine = engine();
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new(&engine, crate::protocol::test_searcher());
         let output = run(
             &mut protocol,
             &mut engine,
@@ -342,7 +342,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // goの各種入力をそれぞれ新しいプロセスで検査し、先行するgoの固定状態に依存させない。
     if scenario != "parameters" {
         let mut engine = engine();
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new(&engine, crate::protocol::test_searcher());
         assert!(
             run(
                 &mut protocol,
@@ -373,7 +373,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             assert_eq!(params::delta_margin(), 200);
         }
         // USIアダプターを作り直しても、プロセス内の固定状態を解除しない。
-        let mut protocol = UsiProtocol::new(&engine);
+        let mut protocol = UsiProtocol::new(&engine, crate::protocol::test_searcher());
         assert!(
             run(
                 &mut protocol,
@@ -388,7 +388,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
 
     // USIの宣言行が係数表の名前、既定値、範囲と一致する。
     let mut engine = engine();
-    let mut protocol = UsiProtocol::new(&engine);
+    let mut protocol = UsiProtocol::new(&engine, crate::protocol::test_searcher());
     let handshake = run(&mut protocol, &mut engine, "usi\n");
     let declarations: Vec<_> = handshake
         .lines()

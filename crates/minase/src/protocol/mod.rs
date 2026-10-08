@@ -23,3 +23,10 @@ pub trait Protocol {
         output: &mut dyn Write,
     ) -> io::Result<()>;
 }
+
+/// 試験用に、既定の設定のαβ探索を作る。
+#[cfg(test)]
+pub(crate) fn test_searcher() -> crate::search::Searcher {
+    crate::search::Searcher::new(crate::search::SearchAlgorithm::AlphaBeta)
+        .expect("embedded evaluation weights must be valid")
+}

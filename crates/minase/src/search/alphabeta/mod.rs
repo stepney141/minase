@@ -3,6 +3,7 @@
 mod capture_history;
 mod correction;
 mod deepening;
+mod engine;
 pub(crate) mod history;
 mod negamax;
 mod ordering;
@@ -18,6 +19,8 @@ pub(in crate::search) mod team;
 mod tests;
 mod time;
 pub(in crate::search) mod tt;
+
+pub use engine::{Engine, MAX_HASH_SIZE_MB, MAX_THREADS};
 
 use crate::search::MATE;
 

@@ -1,10 +1,12 @@
 //! 評価関数と静止探索を使って着手を選ぶ探索。
 
-pub(crate) mod alphabeta;
+mod algorithm;
+pub mod alphabeta;
 mod error;
 mod events;
 mod handle;
 mod limits;
+mod searcher;
 mod snapshot;
 #[cfg(feature = "search-stats")]
 mod stats;
@@ -12,6 +14,7 @@ mod stats;
 #[cfg(feature = "search-stats")]
 pub use stats::SearchStats;
 
+pub use algorithm::{SearchAlgorithm, UnknownSearchAlgorithm};
 pub use alphabeta::history::HistoryTables;
 pub(crate) use alphabeta::tt::{Bound, Hit};
 pub use alphabeta::tt::{
@@ -21,6 +24,7 @@ pub use error::SearchError;
 pub use events::{SearchEvent, SearchResult, StopReason};
 pub use handle::{SearchHandle, search, start_search};
 pub use limits::{ClockLimits, SearchLimits};
+pub use searcher::{OptionKind, OptionSpec, Searcher};
 pub use snapshot::SearchSnapshot;
 
 use core::num::NonZeroUsize;

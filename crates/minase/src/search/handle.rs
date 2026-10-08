@@ -7,10 +7,12 @@ use std::thread;
 use std::time::Instant;
 
 use crate::eval::Pst;
+use crate::search::alphabeta::Engine;
 use crate::search::alphabeta::team::run_search_team;
 use crate::search::error::SearchError;
 use crate::search::events::{SearchEvent, SearchResult};
 use crate::search::limits::SearchLimits;
+use crate::search::searcher::Searcher;
 use crate::search::snapshot::SearchSnapshot;
 use crate::search::{HistoryTables, TranspositionTable};
 
@@ -26,8 +28,8 @@ pub struct SearchHandle {
     pub(super) hit_ns: Arc<AtomicU64>,
     /// 探索チームと共有する外部停止フラグ。
     pub(super) stop: Arc<AtomicBool>,
-    /// 全ワーカーの終了後に置換表とhistory表を返す調整役のハンドル。
-    pub(super) thread: Option<thread::JoinHandle<(TranspositionTable, HistoryTables)>>,
+    /// 全ワーカーの終了後に探索方式の状態を返す調整役のハンドル。
+    pub(super) thread: Option<thread::JoinHandle<Searcher>>,
 }
 
 impl SearchHandle {
@@ -56,18 +58,18 @@ impl SearchHandle {
         self.stop.store(true, AtomicOrdering::Relaxed);
     }
 
-    /// 探索チームへ停止を要求して全ワーカーの終了を待ち、共有していた
-    /// 置換表とワーカー別のhistory表を返す。
+    /// 探索チームへ停止を要求して全ワーカーの終了を待ち、探索スレッドへ
+    /// 移していた探索方式の状態を返す。
     ///
     /// 探索ワーカーがパニックした場合は、そのペイロードを`Err`で返す。
     /// この場合、探索イベントの[`SearchEvent::Finished`]は送信されない。
-    pub fn join(mut self) -> thread::Result<(TranspositionTable, HistoryTables)> {
+    pub fn join(mut self) -> thread::Result<Searcher> {
         self.stop_and_join()
             .expect("a live SearchHandle must own its search thread")
     }
 
     /// 停止要求と探索スレッドの回収を1回だけ行う。
-    fn stop_and_join(&mut self) -> Option<thread::Result<(TranspositionTable, HistoryTables)>> {
+    fn stop_and_join(&mut self) -> Option<thread::Result<Searcher>> {
         self.request_stop();
         self.thread.take().map(thread::JoinHandle::join)
     }
@@ -82,6 +84,7 @@ impl Drop for SearchHandle {
 /// 所有権を移した評価重み、入力、置換表およびhistory表を使い、別スレッドで探索チームを
 /// 開始する。`ponder`が真なら時間制限は的中の通知まで無効とする。
 /// `histories`は`threads`と同じワーカー数で作成する。
+/// [`SearchHandle::join`]は、渡した部品をαβ探索の[`Searcher`]にまとめて返す。
 ///
 /// 探索ワーカーがパニックした場合は残るワーカーへ停止を通知する。その後、
 /// [`SearchHandle::join`]がパニックのペイロードを返し、
@@ -132,7 +135,7 @@ pub fn start_search(
             pv: outcome.pv,
             stop_reason: outcome.stop_reason,
         });
-        (tt, histories)
+        Searcher::AlphaBeta(Engine::from_parts(pst, threads, tt, histories))
     });
     SearchHandle {
         started,
