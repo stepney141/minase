@@ -7,15 +7,17 @@
 ## 環境
 
 作業機は、CPUがIntel Core Ultra 7 265KF（20コア、ハイパースレッディングなし）、メモリ30 GiB、GPUがNVIDIA GeForce RTX 3060 Ti（8 GiB、ドライバ615.71.09）、CUDA 13.4、Linux 6.18.53である。
-2026年10月8日時点でNVIDIA Container Toolkitは導入されておらず、コンテナイメージの中でのGPUの実測は導入後に行う。
+NVIDIA Container Toolkit 1.20.0は2026年10月9日に利用者が導入した。Docker 29.8.1では`--gpus all`がToolkitのCDI経由で動き、`daemon.json`へのランタイム登録は不要だった。コンテナイメージ`minase-zero:dev`（`tools/train/zero/Dockerfile`、CUDA 13.4.2、cuDNN 9.26、ONNX Runtime 1.28.0、TensorRT 10.14.1.48、PyTorch 2.13.0）は同日に作業機でビルドし、展開後24 GBである。
 レンタル機の環境は、借りた時点でここに書く。
 
 ## 第1項　ネットの推論速度
 
-### 作業機（コンテナイメージの外）
+### 作業機
 
-NVIDIA Container Toolkitの導入前なので、コンテナイメージの中ではなく、`tools/train/zero` のuv環境（onnxruntime-gpu 1.28.0、tensorrt-cu13 10.14.1.48、PyTorch 2.13.0、CUDA 13.4）で測った。
-イメージの中の計測は、Toolkitの導入後に同じコマンドで行い、この表を置き換える。
+まずコンテナイメージの外の `tools/train/zero` のuv環境（onnxruntime-gpu 1.28.0、tensorrt-cu13 10.14.1.48、PyTorch 2.13.0、CUDA 13.4）で測り、次にコンテナイメージ`minase-zero:dev`の中で同じコマンドを実行した。
+10ブロック128チャネルのTensorRT FP16は、イメージの中でバッチ64から512の順に毎秒23,800、25,666、27,466、28,233評価であり、外の値と0.2%以内で一致した。
+イメージの中の実行で`--verbose`により出したTensorRTの詳細ログには、`trt_fp16_enable: 1`、`FP16 mode is enabled`、および`ampere_fp16_s16816gemm`系のカーネルの選択が記録されており、FP16で動いていることを設計書の求める方法で確かめた（ログは`data/alphazero-feasibility/bench-image-b10-c128-verbose.log`）。
+下の表は外の環境の値である。
 ネットはランダム初期化で、`python -m minase_zero.export` でONNXへ出力し、`python -m minase_zero.bench --provider tensorrt --batches 64,128,256,512` でウォームアップ20回の後に100回の推論を測った。
 GPUメモリは `nvidia-smi` の使用量であり、計測前の基準値は53 MiBである。
 
