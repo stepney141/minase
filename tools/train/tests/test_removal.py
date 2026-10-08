@@ -9,8 +9,22 @@ import numpy as np
 import torch
 
 import minase_train.pst.removal as removal
-from helpers import CPU, PROMOTABLE, constant_base, direct_loss, model_and_loss, records_with
+from helpers import CPU, PROMOTABLE, constant_base, direct_loss, records_with
 from minase_train.data.features import feature_indices, mirror
+from minase_train.pst.model import make_model
+
+
+def model_and_loss(records, base, candidate, k=2):
+    model = make_model(torch.tensor(candidate, dtype=torch.float64), CPU, "mirrored").double()
+    canonical = candidate.reshape(95, 12, 12, 2)[:, :, :6].reshape(6840, 2)
+    with torch.no_grad():
+        model.weight[:6840].copy_(torch.from_numpy(canonical))
+    indices = torch.from_numpy(feature_indices(records["board"], records["stm"], records["lion"]))
+    counts = torch.tensor(np.count_nonzero(records["board"], axis=1), device=CPU)
+    reference = removal.make_removal_reference(base[:, 0], base[:, 1], CPU)
+    loss = removal.removal_loss(removal.pst_removal_deltas(model(indices), counts),
+                                indices, reference, counts, k)
+    return model, loss
 
 
 class RemovalFormulaTest(unittest.TestCase):
@@ -157,7 +171,8 @@ class RemovalFormulaTest(unittest.TestCase):
                         weights = torch.zeros((1, 145, 2), dtype=torch.float64, device=CPU)
                         # q=0 both before and after removal, so delta=-pawn_EG.
                         weights[0, 0, 1] = -base_sign * signed_delta
-                        loss = removal.removal_loss(weights, features, reference, counts, k)
+                        loss = removal.removal_loss(removal.pst_removal_deltas(weights, counts),
+                                                    features, reference, counts, k)
                         expected = max(Fraction(), Fraction(1, 4) - signed_value)
                         if baseline_wrong:
                             expected += max(Fraction(), signed_value - 1)
