@@ -140,6 +140,7 @@ Gumbel方式の候補数m＝16は、平均74手の約2割に当たる。
 
 ortの依存を加えたコミットで、`cargo build --release --bin minase`のバイナリは5.1 MB（master）から19.5 MBへ増えた。
 増分のうち約14 MBは埋め込んだ10ブロック128チャネルのONNXであり、ortのコード自体の増分は約0.4 MBである。
+クリーンなリリースビルド（`cargo build --release --bin minase`、新しい`CARGO_TARGET_DIR`、`nice -n 19`）の所要時間は、masterとブランチのどちらも38秒であり、ortの依存による増加は測定の分解能（1秒）の範囲で見られなかった。
 `ORT_DYLIB_PATH`を設定しない環境でもビルドは通り、`--search mcts`で`isready`を送ると専用のエラーを出して終了する。
 1.88のツールチェーンでは`cargo +1.88 check -p minase --lib --bins`が通る。`--all-targets`は、本マイルストーン以前から存在する`search/alphabeta/tests/time.rs`の一時値の寿命の問題で1.88では通らない。
 
