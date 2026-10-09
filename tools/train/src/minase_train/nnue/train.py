@@ -82,7 +82,8 @@ def validation_loss(model: NNUE, dataset: Dataset, teacher_ks: NDArray, batch: i
             targets = build_targets(records, teacher_ks, dataset.generations(indices), dataset.teacher_lambdas,
                                     scores=dataset.teacher_scores(indices))
             total += float(F.binary_cross_entropy_with_logits(
-                linear / model.k + nonlinear, torch.as_tensor(targets, device=device), reduction="sum"))
+                linear / model.k + nonlinear, torch.as_tensor(targets, device=device),
+                reduction="none").sum(dtype=torch.float64))
             values = nonlinear.cpu().numpy().astype(np.float64) * model.k
             nonlinear_sum += float(values.sum())
             nonlinear_square_sum += float(np.square(values).sum())
@@ -210,8 +211,7 @@ def _fit(model: NNUE, dataset: Dataset, teacher_ks: NDArray, initial: NDArray,
     deadline = started + args.time_limit_hours * 3600
     best, best_loss, best_epoch = None, math.inf, 0
     try:
-        loss, statistics = validation_loss(model, dataset, teacher_ks,
-            min(args.batch, args.removal_chunk), deadline)
+        loss, statistics = validation_loss(model, dataset, teacher_ks, args.batch, deadline)
         report["initial_validation_loss"] = loss
         report["epochs"].append({"epoch": 0, "train_loss": None, "removal_loss": None,
             "total_loss": None, "validation_loss": loss, "linear_movement": _linear_movement(model, initial),
@@ -221,8 +221,7 @@ def _fit(model: NNUE, dataset: Dataset, teacher_ks: NDArray, initial: NDArray,
         for epoch in range(1, args.epochs + 1):
             training = train_epoch(model, dataset, teacher_ks, reference, optimizer, generator,
                                    args, report, deadline)
-            loss, statistics = validation_loss(model, dataset, teacher_ks,
-                                                min(args.batch, args.removal_chunk), deadline)
+            loss, statistics = validation_loss(model, dataset, teacher_ks, args.batch, deadline)
             report["epochs"].append({"epoch": epoch, **training, "validation_loss": loss,
                 "linear_movement": _linear_movement(model, initial), **statistics,
                 "elapsed_seconds": time.monotonic() - started,

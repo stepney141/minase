@@ -110,6 +110,26 @@ class NNUETrainingTest(unittest.TestCase):
                 with self.subTest(component=name):
                     self.assertTrue(torch.equal(expected, actual))
 
+    def test_validation_uses_training_batch_and_is_invariant_to_partition(self):
+        # 要求1: エポック0と学習後の検証でbatchを使い、除去用分割に依存しない。
+        original = train.validation_loss
+        calls = []
+
+        def validation(model, dataset, teacher_ks, batch, deadline):
+            calls.append(batch)
+            result = original(model, dataset, teacher_ks, batch, deadline)
+            for chunk in (1, 3, 13):
+                loss, statistics = original(model, dataset, teacher_ks, chunk, deadline)
+                self.assertAlmostEqual(result[0], loss, delta=1e-9)
+                self.assertEqual(statistics["samples"], result[1]["samples"])
+                self.assertEqual(statistics["saturation"], result[1]["saturation"])
+                self.assertAlmostEqual(statistics["nonlinear_std_cp"], result[1]["nonlinear_std_cp"], delta=1e-9)
+            return result
+
+        with patch.object(train, "validation_loss", side_effect=validation):
+            self.run_training(1)
+        self.assertEqual(calls, [32, 32])
+
     def test_initial_pst_validation_rejects_asymmetry_type_and_nonfinite_values(self):
         np.testing.assert_array_equal(load_initial(self.init), self.initial)
         for kind in ("mirror", "dtype", "shape", "nan", "range", "missing"):

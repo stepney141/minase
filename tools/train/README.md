@@ -41,7 +41,7 @@ uv run --project tools/train python -m unittest discover -s tools/train/tests
 | `train-fm` | 固定PSTへのFMの学習、学習後の補正1/4への変換、および補正の倍率の重みファイルへの焼き込みを行う |
 | `train-nnue` | 線形PSTと鏡映共有NNUEを同時に学習し、MNUE版4へ保存する。照合用のランダムネットも生成する |
 | `fm-diagnostics` | FMの整数参照評価とRustの評価を照合する |
-| `nnue-diagnostics` | MNUE版4の整数参照評価とRustの評価を全局面で照合する |
+| `nnue-diagnostics` | `compare` でRustとの整数評価照合、`distribution` で評価分布と順位相関、`moves` で着手前後の評価差、`removal` で駒除去差分を診断する |
 | `train-pst` | 学習器を直接呼ぶ。初期重みの作成（`init`）、教師値の尺度Kの推定（`estimate-k`）、学習（`train`）を持つ |
 | `pst-diagnostics` | 基準のPSTと候補のPSTを、局面帯別の損失、駒の除去、および成りで比較する |
 | `taper-report` | 教師データの駒数分布と、序中盤と終盤の2つの重み（端点）を区別して学習できるかどうかを報告する |
