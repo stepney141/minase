@@ -80,7 +80,7 @@
 | FMの補正の倍率のSPSAによる調整 | [plans/fm-scale-spsa.md](plans/fm-scale-spsa.md) | 完了（採用） | 2026年10月8日 |
 | 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
 | NNUEによるPST＋FMの完全代替（初代のネット） | [plans/nnue-replacement.md](plans/nnue-replacement.md) | 起案 | |
-| 手の順序付けの改善 | [plans/move-ordering.md](plans/move-ordering.md) | 起案 | |
+| 手の順序付けの改善 | [plans/move-ordering.md](plans/move-ordering.md) | 進行中 | |
 
 ## 現在地
 

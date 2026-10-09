@@ -1,0 +1,378 @@
+{
+  "loop_nodes": {
+    "1": 413286,
+    "2": 96552,
+    "3": 27488,
+    "4+": 27153
+  },
+  "w": {
+    "1": {
+      "tt": {
+        "count": 33416,
+        "w_sum": 48387,
+        "first_move_cutoffs": 29128
+      },
+      "capture_see_negative": {
+        "count": 73659,
+        "w_sum": 210277,
+        "first_move_cutoffs": 13273
+      },
+      "capture_other": {
+        "count": 247278,
+        "w_sum": 437909,
+        "first_move_cutoffs": 188248
+      },
+      "killer": {
+        "count": 13416,
+        "w_sum": 1865,
+        "first_move_cutoffs": 12986
+      },
+      "quiet": {
+        "count": 70,
+        "w_sum": 63,
+        "first_move_cutoffs": 62
+      }
+    },
+    "2": {
+      "tt": {
+        "count": 43448,
+        "w_sum": 152927,
+        "first_move_cutoffs": 39152
+      },
+      "capture_see_negative": {
+        "count": 6735,
+        "w_sum": 58262,
+        "first_move_cutoffs": 1229
+      },
+      "capture_other": {
+        "count": 29644,
+        "w_sum": 101611,
+        "first_move_cutoffs": 21954
+      },
+      "killer": {
+        "count": 783,
+        "w_sum": 3462,
+        "first_move_cutoffs": 635
+      },
+      "quiet": {
+        "count": 18,
+        "w_sum": 207,
+        "first_move_cutoffs": 13
+      }
+    },
+    "3": {
+      "tt": {
+        "count": 18265,
+        "w_sum": 176214,
+        "first_move_cutoffs": 16779
+      },
+      "capture_see_negative": {
+        "count": 236,
+        "w_sum": 4062,
+        "first_move_cutoffs": 88
+      },
+      "capture_other": {
+        "count": 1977,
+        "w_sum": 8928,
+        "first_move_cutoffs": 1625
+      },
+      "killer": {
+        "count": 6,
+        "w_sum": 105,
+        "first_move_cutoffs": 5
+      },
+      "quiet": {
+        "count": 0,
+        "w_sum": 0,
+        "first_move_cutoffs": 0
+      }
+    },
+    "4+": {
+      "tt": {
+        "count": 18841,
+        "w_sum": 914333,
+        "first_move_cutoffs": 16562
+      },
+      "capture_see_negative": {
+        "count": 114,
+        "w_sum": 3132,
+        "first_move_cutoffs": 51
+      },
+      "capture_other": {
+        "count": 806,
+        "w_sum": 6772,
+        "first_move_cutoffs": 695
+      },
+      "killer": {
+        "count": 1,
+        "w_sum": 0,
+        "first_move_cutoffs": 1
+      },
+      "quiet": {
+        "count": 0,
+        "w_sum": 0,
+        "first_move_cutoffs": 0
+      }
+    }
+  },
+  "cut_move_type": {
+    "1": {
+      "tt": 29128,
+      "capture": 249265,
+      "killer": 85329,
+      "quiet": 4117
+    },
+    "2": {
+      "tt": 39152,
+      "capture": 29624,
+      "killer": 9705,
+      "quiet": 2147
+    },
+    "3": {
+      "tt": 16779,
+      "capture": 2475,
+      "killer": 767,
+      "quiet": 463
+    },
+    "4+": {
+      "tt": 16562,
+      "capture": 1387,
+      "killer": 1164,
+      "quiet": 649
+    }
+  },
+  "no_cutoff_nodes": {
+    "1": 45447,
+    "2": 15924,
+    "3": 7004,
+    "4+": 7391
+  },
+  "cutoff_before_quiets": {
+    "1": 278393,
+    "2": 68776,
+    "3": 19254,
+    "4+": 17949
+  },
+  "capture_head": {
+    "1": {
+      "node_head": {
+        "negative": {
+          "count": 96742,
+          "subtree_sum": 198977,
+          "cut_by_head": 13273
+        },
+        "other": {
+          "count": 258582,
+          "subtree_sum": 413535,
+          "cut_by_head": 188248
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 1372,
+          "subtree_sum": 3634,
+          "cut_by_head": 362
+        },
+        "other": {
+          "count": 4639,
+          "subtree_sum": 5151,
+          "cut_by_head": 376
+        }
+      }
+    },
+    "2": {
+      "node_head": {
+        "negative": {
+          "count": 10548,
+          "subtree_sum": 35536,
+          "cut_by_head": 1229
+        },
+        "other": {
+          "count": 33994,
+          "subtree_sum": 128065,
+          "cut_by_head": 21954
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 1139,
+          "subtree_sum": 2752,
+          "cut_by_head": 83
+        },
+        "other": {
+          "count": 4915,
+          "subtree_sum": 16091,
+          "cut_by_head": 270
+        }
+      }
+    },
+    "3": {
+      "node_head": {
+        "negative": {
+          "count": 1994,
+          "subtree_sum": 6417,
+          "cut_by_head": 88
+        },
+        "other": {
+          "count": 3032,
+          "subtree_sum": 18889,
+          "cut_by_head": 1625
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 291,
+          "subtree_sum": 3122,
+          "cut_by_head": 18
+        },
+        "other": {
+          "count": 2186,
+          "subtree_sum": 16553,
+          "cut_by_head": 173
+        }
+      }
+    },
+    "4+": {
+      "node_head": {
+        "negative": {
+          "count": 185,
+          "subtree_sum": 2730,
+          "cut_by_head": 51
+        },
+        "other": {
+          "count": 920,
+          "subtree_sum": 6388,
+          "cut_by_head": 695
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 4707,
+          "subtree_sum": 86882,
+          "cut_by_head": 38
+        },
+        "other": {
+          "count": 3977,
+          "subtree_sum": 83947,
+          "cut_by_head": 228
+        }
+      }
+    }
+  },
+  "cand1": {
+    "segments": 403918,
+    "segments_changed": 144269,
+    "quiet_cutoff_nodes": 120901,
+    "quiet_cutoff_nodes_with_searched_captures": 87868,
+    "capture_cut_rank": {
+      "count": 282751,
+      "forward": 3102,
+      "backward": 6030,
+      "forward_sum": 4082,
+      "backward_sum": 8917
+    }
+  },
+  "cand2": {
+    "1": {
+      "no_tt": {
+        "zero_window_nodes": 371711,
+        "head_negative": 96491,
+        "head_negative_subtree_sum": 198489,
+        "head_negative_pruned": 0,
+        "head_negative_with_killer": 96188,
+        "head_negative_with_killer_subtree_sum": 197962,
+        "head_negative_with_killer_cutoff_before_quiets": 31975,
+        "generate_quiets_calls": 96491
+      },
+      "tt": {
+        "zero_window_nodes": 38616,
+        "head_negative": 5380,
+        "head_negative_subtree_sum": 174,
+        "head_negative_pruned": 5272,
+        "head_negative_with_killer": 5326,
+        "head_negative_with_killer_subtree_sum": 174,
+        "head_negative_with_killer_cutoff_before_quiets": 232,
+        "generate_quiets_calls": 5380
+      }
+    },
+    "2": {
+      "no_tt": {
+        "zero_window_nodes": 45651,
+        "head_negative": 10469,
+        "head_negative_subtree_sum": 34791,
+        "head_negative_pruned": 0,
+        "head_negative_with_killer": 10461,
+        "head_negative_with_killer_subtree_sum": 34779,
+        "head_negative_with_killer_cutoff_before_quiets": 2821,
+        "generate_quiets_calls": 10469
+      },
+      "tt": {
+        "zero_window_nodes": 49607,
+        "head_negative": 5148,
+        "head_negative_subtree_sum": 1475,
+        "head_negative_pruned": 4503,
+        "head_negative_with_killer": 5125,
+        "head_negative_with_killer_subtree_sum": 1470,
+        "head_negative_with_killer_cutoff_before_quiets": 455,
+        "generate_quiets_calls": 5148
+      }
+    },
+    "3": {
+      "no_tt": {
+        "zero_window_nodes": 5052,
+        "head_negative": 1991,
+        "head_negative_subtree_sum": 6201,
+        "head_negative_pruned": 0,
+        "head_negative_with_killer": 1991,
+        "head_negative_with_killer_subtree_sum": 6201,
+        "head_negative_with_killer_cutoff_before_quiets": 155,
+        "generate_quiets_calls": 1991
+      },
+      "tt": {
+        "zero_window_nodes": 21682,
+        "head_negative": 2607,
+        "head_negative_subtree_sum": 39,
+        "head_negative_pruned": 2577,
+        "head_negative_with_killer": 2604,
+        "head_negative_with_killer_subtree_sum": 39,
+        "head_negative_with_killer_cutoff_before_quiets": 88,
+        "generate_quiets_calls": 2607
+      }
+    }
+  },
+  "cand3": {
+    "qnodes": 859992,
+    "groups_ge2": 1100803,
+    "groups_head_changed": 221397,
+    "nodes_compared": 859992,
+    "nodes_set_differs": 22494
+  },
+  "cand5": {
+    "quiet_stage_nodes": 83142,
+    "head_changed": 4705,
+    "quiets_total": 7633126,
+    "quiets_history_zero": 6730973,
+    "tie_groups": {
+      "1": 707988,
+      "2-4": 83044,
+      "5-16": 2504,
+      "17-64": 16579,
+      "65+": 66563
+    },
+    "quiets_in_tie_groups_ge2": 6925138,
+    "success_moves": {
+      "count": 8604,
+      "forward": 2036,
+      "backward": 647,
+      "forward_sum": 25313,
+      "backward_sum": 15015,
+      "from_tie_group_ge2": 2768
+    }
+  },
+  "cost": {
+    "see_calls": 441575,
+    "see_ns": 44051826,
+    "generate_quiets_calls": 122086,
+    "generate_quiets_ns": 156879106
+  }
+}
