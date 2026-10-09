@@ -80,6 +80,7 @@
 | FMの補正の倍率のSPSAによる調整 | [plans/fm-scale-spsa.md](plans/fm-scale-spsa.md) | 完了（採用） | 2026年10月8日 |
 | 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
 | NNUEによるPST＋FMの完全代替（初代のネット） | [plans/nnue-replacement.md](plans/nnue-replacement.md) | 起案 | |
+| 手の順序付けの改善 | [plans/move-ordering.md](plans/move-ordering.md) | 起案 | |
 
 ## 現在地
 
@@ -91,7 +92,7 @@
 
 ### 次の候補
 
-- 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
+- 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)と[手の順序付けの改善](plans/move-ordering.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、後者は、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果を受けて、損失をノード数で測る診断から始める（[調査メモ](research/move-ordering-discussion.md)）。
 - 評価関数では、[エポック数の延長](plans/pst-longer-training.md)の採用を受けて、2つの続きが候補になる。1つは、最良エポックが上限の200に達したので、さらに長い学習で伸びるかを確かめることである。もう1つは、新しい採用PSTが評価値の尺度を約14%大きくしたので、探索係数をSPSAで調整し直すことである。 現在の評価関数はPSTにFMの補正（約14%の探索速度の費用）を加えたものなので、PSTを学び直す場合はその上でFMの補正も学び直す必要がある。
 - 補正なしの候補LのPSTを軽い評価として探索で使う仕組み（lazy evaluation）は、[PSTとFMの同時学習](plans/pst-fm-joint-training.md)の後に別の設計書で起案する（2026年10月7日の利用者の決定）。同時学習は不採用となったが、その候補J75の補正を[FMの補正の倍率のSPSAによる調整](plans/fm-scale-spsa.md)で約0.60倍に縮めた候補を採用したので、現行の評価関数はJ75のPSTと、倍率611/1024を焼き込んだJ75のFMからなる。
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。

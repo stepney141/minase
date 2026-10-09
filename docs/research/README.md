@@ -17,6 +17,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 探索の各機構について、StockfishやYaneuraOuなどの実装を一次資料で照合した調査である。
 
 - [前向き枝刈りの第3層に関する既存実装の調査](forward-pruning-prior-art.md)は、棋力向上段階8の4項目（correction history、improving、SEE pruning、history pruning）の更新条件と閾値を、StockfishとYaneuraOuのソースで確認する。
+- [手の順序付けの改善余地に関する調査と議論](move-ordering-discussion.md)は、現行の順序付けでβカットの遅れが件数では置換表の記録手がない残り深さ1のノードに集中する一方、初手βカット率ではノード数の損失を測れないことを示し、Claudeとcodexの議論を経た8候補の順位とStockfishの現行方式を記す。
 - [探索内の反復の扱いに関する既存実装の調査](search-repetition-prior-art.md)は、13本の実装が探索木の中で同一局面の再現を検出して返す値と、置換表との折り合いの付け方を比較する。
 - [探索ノード数の定義と既存エンジンとの照合](node-count-definition.md)は、minaseが末端局面を二重に数えていたことを示し、Stockfishとやねうらおうに合わせたノード数の定義の根拠を記す。
 - [SPSAで調整した係数をソースへ反映する先行例](spsa-parameter-application.md)は、やねうら王、fishutils、およびapeironが調整結果をソースの定数へ自動転記する方法を確認する。
