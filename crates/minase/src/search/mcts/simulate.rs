@@ -426,8 +426,10 @@ impl<D: Domain> Simulator<D> {
 
     /// 評価待ちの葉ごとの方策logit（[`POLICY_SIZE`]個ずつ）と勝率を設定して逆伝播する。
     ///
-    /// 出力に非有限値があれば、どの葉にも反映せずに
+    /// 探索が使う出力（各葉の合法手のlogitと勝率）に非有限値があれば、どの葉にも反映せずに
     /// [`EvaluatorError::NonFinite`]を返す（docs/plans/alphazero.md「推論層」）。
+    /// 合法手でないlogitは探索に使わないので調べない。1葉あたり35,856個のlogitをすべて読むと、
+    /// 自己対局の生成器では推論以外の費用の大半を占めるからである。
     ///
     /// # Panics
     ///
@@ -440,11 +442,16 @@ impl<D: Domain> Simulator<D> {
     ) -> Result<(), MctsError> {
         assert_eq!(policy.len(), self.pending.len() * POLICY_SIZE);
         assert_eq!(values.len(), self.pending.len());
-        if !policy
-            .iter()
-            .chain(values.iter())
-            .all(|value| value.is_finite())
-        {
+        let finite = self.pending.iter().enumerate().all(|(row, leaf)| {
+            let logits = &policy[row * POLICY_SIZE..(row + 1) * POLICY_SIZE];
+            values[row].is_finite()
+                && tree
+                    .node(leaf.node)
+                    .edges
+                    .iter()
+                    .all(|edge| logits[edge.label].is_finite())
+        });
+        if !finite {
             return Err(MctsError::Evaluator(EvaluatorError::NonFinite));
         }
         for (row, leaf) in self.pending.iter().enumerate() {

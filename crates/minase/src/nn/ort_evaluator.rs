@@ -13,6 +13,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 use minase_core::{BOARD_FILES, BOARD_RANKS};
 use ort::ep::{self, ExecutionProviderDispatch};
@@ -193,6 +194,13 @@ pub fn cache_key(network_sha256: &[u8], gpu: &GpuInfo, tensorrt_version: &str) -
         .collect()
 }
 
+/// プロセスで1回だけ行う、ONNX Runtimeの共有ライブラリの読み込みと環境の設定の結果。
+static RUNTIME: OnceLock<Result<(), OrtError>> = OnceLock::new();
+
+/// セッションの作成を直列化する錠。TensorRTの実行プロバイダは、複数のスレッドが同時にセッションを作ると
+/// プラグインの演算子の領域`trt.plugins`を重ねて登録して失敗し得るからである。
+static SESSION_CREATION: Mutex<()> = Mutex::new(());
+
 /// ONNX Runtimeのセッションで推論する評価器。
 pub struct OrtEvaluator {
     /// 推論のセッション。
@@ -201,6 +209,9 @@ pub struct OrtEvaluator {
 
 impl OrtEvaluator {
     /// ONNX Runtimeを読み込み、ネット`model`から指定の実行プロバイダのセッションを作る。
+    ///
+    /// 共有ライブラリの読み込みと環境の設定はプロセスで最初の呼び出しだけが行い、その結果を以後の呼び出しでも返す。
+    /// セッションの作成はプロセス全体で1つずつ行う。
     ///
     /// TensorRTでは、エンジンのキャッシュを`cache_dir`の下の[`cache_key`]のディレクトリに置き、
     /// FP16を有効にして、バッチの大きさ1から`max_batch`までの最適化プロファイルを作る。
@@ -211,14 +222,12 @@ impl OrtEvaluator {
     /// ONNX Runtimeを読み込めない場合、TensorRTのキャッシュの鍵を作れない場合、選んだ実行プロバイダを
     /// 初期化できない場合、およびネットの入出力の名前が想定と異なる場合はエラーを返す。
     pub fn new(model: &[u8], config: &SessionConfig) -> Result<Self, OrtError> {
-        let dylib = env::var_os("ORT_DYLIB_PATH")
-            .filter(|path| !path.is_empty())
-            .ok_or(OrtError::MissingDylibPath)?;
-        ort::init_from(&dylib)
-            .map_err(|error| OrtError::Load(error.to_string()))?
-            .commit();
+        RUNTIME.get_or_init(load_runtime).clone()?;
         let provider = execution_provider(model, config)?;
         let session_error = |error: ort::Error<_>| OrtError::Session(error.to_string());
+        let creation = SESSION_CREATION
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let session = Session::builder()
             .map_err(|error| OrtError::Session(error.to_string()))?
             .with_intra_threads(1)
@@ -227,9 +236,21 @@ impl OrtEvaluator {
             .map_err(session_error)?
             .commit_from_memory(model)
             .map_err(|error| OrtError::Session(error.to_string()))?;
+        drop(creation);
         check_interface(&session)?;
         Ok(Self { session })
     }
+}
+
+/// 環境変数`ORT_DYLIB_PATH`の共有ライブラリを読み込み、ONNX Runtimeの環境の設定を確定する。
+fn load_runtime() -> Result<(), OrtError> {
+    let dylib = env::var_os("ORT_DYLIB_PATH")
+        .filter(|path| !path.is_empty())
+        .ok_or(OrtError::MissingDylibPath)?;
+    ort::init_from(&dylib)
+        .map_err(|error| OrtError::Load(error.to_string()))?
+        .commit();
+    Ok(())
 }
 
 /// 設定の実行プロバイダを、初期化できなければエラーとする形で作る。

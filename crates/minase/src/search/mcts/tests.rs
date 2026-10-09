@@ -667,10 +667,13 @@ fn depth_limits_are_rejected() {
     );
 }
 
-/// 方策logitにNaNを書く評価器。
-struct NanEvaluator;
+/// 各局面の方策logitを`logits`（[`POLICY_SIZE`]個）、勝率を`value`で埋める評価器。
+struct FilledEvaluator {
+    logits: Vec<f32>,
+    value: f32,
+}
 
-impl Evaluator for NanEvaluator {
+impl Evaluator for FilledEvaluator {
     fn evaluate(
         &mut self,
         _: &[f32],
@@ -678,8 +681,10 @@ impl Evaluator for NanEvaluator {
         out_policy: &mut [f32],
         out_value: &mut [f32],
     ) -> Result<(), EvaluatorError> {
-        out_policy.fill(f32::NAN);
-        out_value.fill(0.5);
+        for logits in out_policy.as_chunks_mut::<POLICY_SIZE>().0 {
+            logits.copy_from_slice(&self.logits);
+        }
+        out_value.fill(self.value);
         Ok(())
     }
 }
@@ -688,10 +693,34 @@ impl Evaluator for NanEvaluator {
 #[test]
 fn non_finite_outputs_are_errors() {
     let snapshot = snapshot_of(Position::initial());
-    let mut engine = engine(NanEvaluator, config(Selection::Puct, 1, 32));
-    assert_eq!(
-        engine.search(&snapshot, &nodes(8)),
-        Err(MctsError::Evaluator(EvaluatorError::NonFinite))
+    for (logit, value) in [(f32::NAN, 0.5), (0.0, f32::NAN), (0.0, f32::INFINITY)] {
+        let evaluator = FilledEvaluator {
+            logits: vec![logit; POLICY_SIZE],
+            value,
+        };
+        let mut engine = engine(evaluator, config(Selection::Puct, 1, 32));
+        assert_eq!(
+            engine.search(&snapshot, &nodes(8)),
+            Err(MctsError::Evaluator(EvaluatorError::NonFinite)),
+            "logit {logit}, value {value}"
+        );
+    }
+}
+
+// 同節: 探索が使うのは合法手のlogitと勝率だけなので、合法手でないlogitの非有限値はエラーにしない。
+#[test]
+fn non_finite_logits_of_illegal_moves_are_ignored() {
+    let game = Game::new(Rules::ENGINE_DEFAULT);
+    let mut logits = vec![f32::NAN; POLICY_SIZE];
+    for mv in game.legal_moves() {
+        logits[usize::from(policy::label(mv, Color::Black).unwrap())] = 0.0;
+    }
+    let evaluator = FilledEvaluator { logits, value: 0.5 };
+    let mut engine = engine(evaluator, config(Selection::Puct, 1, 32));
+    assert!(
+        engine
+            .search(&snapshot_of(Position::initial()), &nodes(1))
+            .is_ok()
     );
 }
 
