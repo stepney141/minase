@@ -242,7 +242,15 @@ impl OrtEvaluator {
     }
 }
 
-/// 環境変数`ORT_DYLIB_PATH`の共有ライブラリを読み込み、ONNX Runtimeの環境の設定を確定する。
+/// 環境変数`ORT_DYLIB_PATH`の共有ライブラリを読み込み、ONNX Runtimeの環境を作って、プロセスの終了まで保持する。
+///
+/// ortは、実行ファイルの`.fini_array`に置いた関数で、大域に保持する環境への参照を終了時に手放して環境を解放する。
+/// その時点では、`dlopen`で読み込んだONNX RuntimeとTensorRTのライブラリのC++の静的デストラクタが
+/// `__cxa_atexit`の登録順の逆に先に走り得る。後始末を終えたライブラリの上で環境を解放すると、glibcが
+/// `corrupted double-linked list`で異常終了する（終了コード134）。そこで、環境への参照を1つ
+/// [`std::mem::forget`]で意図的に漏らし、終了時に手放される参照が最後の参照にならないようにする。
+/// 環境は解放されないまま、OSがプロセスとともに回収する。CPUとCUDAの実行プロバイダではこの異常終了は
+/// 起きないが、プロバイダによらず同じ扱いにする。
 fn load_runtime() -> Result<(), OrtError> {
     let dylib = env::var_os("ORT_DYLIB_PATH")
         .filter(|path| !path.is_empty())
@@ -250,6 +258,9 @@ fn load_runtime() -> Result<(), OrtError> {
     ort::init_from(&dylib)
         .map_err(|error| OrtError::Load(error.to_string()))?
         .commit();
+    let environment = ort::environment::Environment::current()
+        .map_err(|error| OrtError::Load(error.to_string()))?;
+    std::mem::forget(environment);
     Ok(())
 }
 
