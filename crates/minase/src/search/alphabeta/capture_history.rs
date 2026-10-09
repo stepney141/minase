@@ -1,5 +1,6 @@
 //! docs/plans/search-revival-spsa.md「戻す8項目」の捕獲履歴。
 //! 更新と添字はstrength-stage12.md「項目3」に従い、上限65,536をi32で保持する。
+//! 静かな手のβカット時の減点はdocs/plans/move-ordering.md「候補1」に従う。
 
 use crate::eval::Pst;
 use minase_core::board::BOARD_SQUARE_COUNT;
@@ -51,6 +52,21 @@ impl CaptureHistory {
             core::iter::once((mv, bonus)).chain(earlier.iter().map(|&mv| (mv, -bonus)))
         {
             update(&mut self.values[index(position, pst, mv)], bonus, limit);
+        }
+    }
+
+    /// 静かな手による打ち切り時に、同じノードで探索済みの捕獲手に減点する。
+    pub(super) fn record_quiet_cutoff(
+        &mut self,
+        position: &Position,
+        pst: &Pst,
+        earlier: &[Move],
+        depth: u32,
+    ) {
+        let limit = params::capture_history_limit();
+        let bonus = (depth * depth).min(limit as u32) as i32;
+        for &mv in earlier {
+            update(&mut self.values[index(position, pst, mv)], -bonus, limit);
         }
     }
 }

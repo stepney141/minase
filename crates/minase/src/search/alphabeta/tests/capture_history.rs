@@ -229,44 +229,114 @@ fn capture_history_changes_picker_but_preserves_root_and_tt_order() {
 }
 
 /// 子局面の既知の値で打ち切り位置を固定し、通常探索による加減点を調べる。
+fn assert_capture_history_after_cutoff(quiet_cutoff: bool) {
+    let board = capture_fixture();
+    with_root_searcher(&board, &[], |searcher| {
+        let moves = picked(searcher, &board, None);
+        let winner_index = if quiet_cutoff { 4 } else { 2 };
+        assert_eq!(moves[winner_index].1, !quiet_cutoff);
+        for (index, &(mv, _)) in moves.iter().enumerate() {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            let score = if index == winner_index { 20 } else { 0 };
+            searcher
+                .tt
+                .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
+        }
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
+            Some(20)
+        );
+        assert_eq!(searcher.nodes, winner_index as u64 + 1);
+        for (index, &(mv, is_capture)) in moves.iter().enumerate() {
+            if is_capture {
+                let expected = if index > winner_index {
+                    0
+                } else if index == winner_index {
+                    4
+                } else {
+                    -4
+                };
+                assert_eq!(
+                    searcher.capture_history.read(&board, searcher.pst, mv),
+                    expected,
+                    "move {index}, quiet={quiet_cutoff}"
+                );
+            }
+        }
+    });
+}
+
 #[test]
 fn capture_history_negamax_updates_only_searched_captures_on_capture_cutoff() {
+    assert_capture_history_after_cutoff(false);
+}
+
+/// 候補1: 静かな手でβカットしたノードでも、先に探索した捕獲手を減点する。
+#[test]
+fn capture_history_negamax_penalizes_searched_captures_on_quiet_cutoff() {
+    assert_capture_history_after_cutoff(true);
+}
+
+/// 候補1: 減点は既存の重力更新式に従い、探索済みの捕獲手だけに適用する。
+#[test]
+fn capture_history_quiet_cutoff_applies_gravity_only_to_earlier_captures() {
     let board = capture_fixture();
-    for quiet_cutoff in [false, true] {
-        with_root_searcher(&board, &[], |searcher| {
-            let moves = picked(searcher, &board, None);
-            let winner_index = if quiet_cutoff { 4 } else { 2 };
-            for (index, &(mv, _)) in moves.iter().enumerate() {
-                let mut child = board.clone();
-                child.make_move_unchecked(mv, engine_rules());
-                let score = if index == winner_index { 20 } else { 0 };
-                searcher
-                    .tt
-                    .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
-            }
+    let pst = weights().unwrap();
+    let earlier = [
+        capture(sq(5, 5), sq(5, 7)),
+        capture(sq(5, 5), sq(3, 5)),
+        capture(sq(5, 5), sq(7, 5)),
+    ];
+    let untouched = capture(sq(5, 5), sq(5, 3));
+    let limit = i64::from(params::capture_history_limit());
+    for depth in [0, 3, 64, 256] {
+        let mut history = CaptureHistory::new();
+        history.record_cutoff(&board, &pst, earlier[0], &[earlier[1]], 64);
+        history.record_cutoff(&board, &pst, untouched, &[], 3);
+        let before = earlier.map(|mv| history.read(&board, &pst, mv));
+        assert_eq!(before, [4096, -4096, 0]);
+
+        history.record_quiet_cutoff(&board, &pst, &earlier, depth);
+
+        let malus = -i64::from(depth).pow(2).min(limit);
+        for (mv, old) in earlier.into_iter().zip(before) {
+            let old = i64::from(old);
+            let expected = old + malus - old * malus.abs() / limit;
             assert_eq!(
-                searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
-                Some(20)
+                i64::from(history.read(&board, &pst, mv)),
+                expected,
+                "depth={depth}, old={old}"
             );
-            assert_eq!(searcher.nodes, winner_index as u64 + 1);
-            for (index, &(mv, is_capture)) in moves.iter().enumerate() {
-                if is_capture {
-                    let expected = if quiet_cutoff || index > winner_index {
-                        0
-                    } else if index == winner_index {
-                        4
-                    } else {
-                        -4
-                    };
-                    assert_eq!(
-                        searcher.capture_history.read(&board, searcher.pst, mv),
-                        expected,
-                        "move {index}, quiet={quiet_cutoff}"
-                    );
-                }
-            }
-        });
+        }
+        assert_eq!(history.read(&board, &pst, untouched), 9);
     }
+}
+
+/// 候補1: 探索済みの捕獲手がなければ、非ゼロの履歴も変えない。
+#[test]
+fn capture_history_quiet_cutoff_with_no_earlier_captures_preserves_history() {
+    let board = capture_fixture();
+    let pst = weights().unwrap();
+    let captures: Vec<_> = legal_moves(&board)
+        .into_iter()
+        .filter(|&mv| board.captured_squares(mv).iter().any(Option::is_some))
+        .collect();
+    assert_eq!(captures.len(), 4);
+    let mut history = CaptureHistory::new();
+    history.record_cutoff(&board, &pst, captures[0], &captures[1..3], 64);
+    let before: Vec<_> = captures
+        .iter()
+        .map(|&mv| history.read(&board, &pst, mv))
+        .collect();
+
+    history.record_quiet_cutoff(&board, &pst, &[], 256);
+
+    let after: Vec<_> = captures
+        .iter()
+        .map(|&mv| history.read(&board, &pst, mv))
+        .collect();
+    assert_eq!(after, before);
 }
 
 /// 新しく作る探索ワーカーの表は、先行するワーカーの更新を引き継がない。

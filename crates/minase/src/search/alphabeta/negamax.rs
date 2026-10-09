@@ -269,6 +269,12 @@ impl Searcher<'_> {
                         depth,
                     );
                 } else {
+                    self.capture_history.record_quiet_cutoff(
+                        position,
+                        self.pst,
+                        &searched_captures,
+                        depth,
+                    );
                     self.record_quiet_beta_cutoff(position, mv, depth, ply);
                 }
                 break;
