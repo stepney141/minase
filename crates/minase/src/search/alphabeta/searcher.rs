@@ -48,6 +48,8 @@ pub(super) fn new_searcher<'a>(
     let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
         root_results: None,
+        completed_root_nodes: Vec::new(),
+        current_root_nodes: Vec::new(),
         #[cfg(test)]
         interrupt_at: None,
         #[cfg(feature = "search-stats")]
@@ -95,6 +97,10 @@ pub(super) struct PonderIteration {
 pub(super) struct Searcher<'a> {
     /// 対象の探索の主ワーカーだけが保持する途中結果の採用材料。
     pub(super) root_results: Option<RootResults>,
+    /// 直前に完了した反復の、根の手ごとの部分木ノード数。
+    pub(super) completed_root_nodes: Vec<(Move, u64)>,
+    /// 進行中の反復で、窓の読み直しを含めて累積する部分木ノード数。
+    pub(super) current_root_nodes: Vec<(Move, u64)>,
     /// 「途中結果の採用」の停止契約を実着手の境界で再現する検査用の停止点。
     #[cfg(test)]
     pub(super) interrupt_at: Option<(u64, StopReason)>,
