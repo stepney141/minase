@@ -126,7 +126,7 @@ pub(super) struct MovePicker {
     quiets: Vec<Move>,
     quiet_index: usize,
     base_moves: Vec<Move>,
-    quiet_order: Vec<(Reverse<i32>, usize)>,
+    quiet_order: Vec<(Reverse<i32>, Reverse<i64>, usize)>,
     used_quiets: [Option<usize>; KILLER_COUNT],
     quiets_generated: bool,
 }
@@ -280,6 +280,7 @@ impl MovePicker {
                                     Reverse(
                                         history[color][mv.from.dense_index()][mv.to.dense_index()],
                                     ),
+                                    Reverse(pst.quiet_move_pst_delta(position, *mv)),
                                     index,
                                 )
                             }),
@@ -288,7 +289,7 @@ impl MovePicker {
                     self.stage = MovePickerStage::Done;
                 }
                 MovePickerStage::Done => {
-                    if let Some(&(_, index)) = self.quiet_order.get(self.quiet_index) {
+                    if let Some(&(_, _, index)) = self.quiet_order.get(self.quiet_index) {
                         self.quiet_index += 1;
                         return Some((self.quiets[index], false));
                     }

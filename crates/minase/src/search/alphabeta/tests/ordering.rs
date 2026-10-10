@@ -3,6 +3,83 @@
 use super::*;
 use crate::search::alphabeta::capture_history::CaptureHistory;
 
+/// 候補5: historyを優先し、同点はPST差分の降順、さらに同点なら生成順で返す。
+#[test]
+fn staged_picker_breaks_quiet_history_ties_by_pst_delta() {
+    let position = Position::initial();
+    let pst = weights().unwrap();
+    let generator = MoveGenerator::new(engine_rules());
+    let capture_history = CaptureHistory::new();
+    let mut history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut generated = Vec::new();
+    generator.generate_moves(&position, &mut generated);
+    generated.retain(|&mv| {
+        position
+            .captured_squares(mv)
+            .into_iter()
+            .all(|sq| sq.is_none())
+    });
+    let pick_quiets = |history: &HistoryTable| {
+        let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
+        std::iter::from_fn(|| picker.next(&position, &pst, &generator, history, &capture_history))
+            .filter_map(|(mv, capture)| (!capture).then_some(mv))
+            .collect::<Vec<_>>()
+    };
+    let assert_pst_order = |moves: &[Move]| {
+        let mut saw_tie = false;
+        let mut saw_decrease = false;
+        for pair in moves.windows(2) {
+            let first = pst.quiet_move_pst_delta(&position, pair[0]);
+            let second = pst.quiet_move_pst_delta(&position, pair[1]);
+            assert!(first >= second);
+            if first == second {
+                saw_tie = true;
+                let first_index = generated.iter().position(|&mv| mv == pair[0]).unwrap();
+                let second_index = generated.iter().position(|&mv| mv == pair[1]).unwrap();
+                assert!(first_index < second_index);
+            } else {
+                saw_decrease = true;
+            }
+        }
+        assert!(saw_tie);
+        assert!(saw_decrease);
+    };
+
+    let zero_history = pick_quiets(&history);
+    assert_eq!(zero_history.len(), generated.len());
+    for mv in &generated {
+        assert_eq!(
+            zero_history.iter().filter(|picked| *picked == mv).count(),
+            1
+        );
+    }
+    assert_pst_order(&zero_history);
+
+    // history表の同じ升対を共有する別の手がない標本を選ぶ。
+    let preferred = *zero_history
+        .iter()
+        .rev()
+        .find(|mv| {
+            generated
+                .iter()
+                .filter(|other| other.from == mv.from && other.to == mv.to)
+                .count()
+                == 1
+        })
+        .unwrap();
+    assert_ne!(zero_history[0], preferred);
+    history[position.side_to_move().index()][preferred.from.dense_index()]
+        [preferred.to.dense_index()] = 1;
+    let updated = pick_quiets(&history);
+    assert_eq!(updated[0], preferred);
+    assert_pst_order(&updated[1..]);
+    let remaining: Vec<_> = zero_history
+        .into_iter()
+        .filter(|&mv| mv != preferred)
+        .collect();
+    assert_eq!(&updated[1..], remaining);
+}
+
 /// 段階5「手の分類」: 捕獲・非捕獲のTT手が正しく分類されて先頭に出る。
 #[test]
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
@@ -36,7 +113,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     }
 }
 
-// movegen-speedup-2.md「段階6」: 変更前の全出力列を契約の参照にする。
+// movegen-speedup-2.md「段階6」の参照列に、move-ordering.md「候補5」の同点破りを適用する。
 struct ReferenceMovePicker {
     stage: MovePickerStage,
     tt_move: Option<Move>,
@@ -142,7 +219,10 @@ impl ReferenceMovePicker {
                 MovePickerStage::Quiets => {
                     let color = position.side_to_move().index();
                     self.quiets.sort_by_cached_key(|&mv| {
-                        Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()])
+                        (
+                            Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()]),
+                            Reverse(pst.quiet_move_pst_delta(position, mv)),
+                        )
                     });
                     self.stage = MovePickerStage::Done;
                 }
