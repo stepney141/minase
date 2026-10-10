@@ -19,7 +19,7 @@ cargo run --release --bin minase -- match run \
 
 ## 環境
 
-2026年10月10日から11日にかけて、Intel Core Ultra 7 265KF（物理20コア、論理20コア）で測定した。候補と基準のワーカー数は1、同時対局数は16（lishogi Botのminaseが2プロセス同居するため明示した）。
+2026年10月10日、Intel Core Ultra 7 265KF（物理20コア、論理20コア）で測定した。候補と基準のワーカー数は1、同時対局数は16（lishogi Botのminaseが2プロセス同居するため明示した）。
 
 ## 結果
 

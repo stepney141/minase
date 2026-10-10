@@ -13,7 +13,7 @@
 
 ## 状態
 
-進行中。2026年10月9日にcodexとの議論（[調査メモ](../research/move-ordering-discussion.md)）を経て起案し、同日に着手してフェーズ1の診断を完了した（[move-ordering-diag](../measurements/move-ordering-diag.md)）。候補1から候補5までは発動率の基準を満たし、候補6の再診断も持ち越し状態で発動率44.6〜71.8%を示したので、見送る候補はない。候補2の対象は「置換表の記録手がない残り深さ1〜3の零窓ノード」に絞った。候補1を実装してSTCを始めたが、820ペアでLLR +0.08の判定保留のまま利用者の判断で停止し、2026年10月10日に、全候補を実装してから1回のSTCとLTCで判定する方式へ変更した。同日に候補2から候補5までを実装し、候補7と候補8を積み上げた構成で診断（[move-ordering-root-diag](../measurements/move-ordering-root-diag.md)）してから実装して、候補6を除く7候補を積み上げた構成（コミット`ea0c75a`）が揃った。各段の`bench`は[move-ordering-stack-bench](../measurements/move-ordering-stack-bench.md)にある。次の一手は、この構成と段階開始版のSTC（`move-ordering-all-stc`）と、通過すればLTCである。候補8の加点と減点の尺度は既定の100%のままであり、SPSAによる調整は採否測定の後に回す。
+完了（採用）。2026年10月9日にcodexとの議論（[調査メモ](../research/move-ordering-discussion.md)）を経て起案し、同日に着手してフェーズ1の診断（[move-ordering-diag](../measurements/move-ordering-diag.md)）を完了した。2026年10月10日の利用者の決定により候補ごとの採否測定をやめ、候補6を除く7候補を1候補1コミットで積み上げた構成（コミット`ea0c75a`）を、段階開始版（master `b784fe5`）との[STC](../measurements/move-ordering-all-stc.md)（298ペア、得点率58.7%、`H1`）と[LTC](../measurements/move-ordering-all-ltc.md)（566ペア、得点率54.5%、`H1`）で判定し、2026年10月10日に採用して完了した。固定200ペアの進捗指標は[+26.5 Elo](../measurements/move-ordering-elo200.md)（95%信頼区間 −5.4〜+58.9）である。候補6（counter move historyとcontinuation history）は持ち越し状態の再診断を通過したので、表の寸法と初期化の費用を含む設計を別の設計書で起こす。候補4と候補8が加えた係数`CaptureHistoryDecay`、`HistoryBonusScale`、`HistoryMalusScale`は既定値のままであり、次のSPSAの調整セッションの対象とする。
 
 ## 目的
 
