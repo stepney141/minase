@@ -48,11 +48,12 @@ impl Searcher<'_> {
         }
     }
 
-    /// βカットを起こした非捕獲手をkiller表とhistory表へ記録する。
+    /// βカットを起こした非捕獲手を記録し、先に探索した非捕獲手を減点する。
     pub(super) fn record_quiet_beta_cutoff(
         &mut self,
         position: &Position,
         mv: Move,
+        earlier: &[Move],
         depth: u32,
         ply: u32,
     ) {
@@ -63,17 +64,22 @@ impl Searcher<'_> {
         }
 
         let color = position.side_to_move().index();
-        let from = mv.from.dense_index();
-        let to = mv.to.dense_index();
-        self.history[color][from][to] += (depth * depth) as i32;
-        if self.history[color][from][to] > params::history_limit() {
-            for color_history in self.history.iter_mut() {
-                for from_history in color_history.iter_mut() {
-                    for value in from_history.iter_mut() {
-                        *value /= 2;
-                    }
-                }
-            }
+        let limit = i64::from(params::history_limit());
+        let depth_squared = i64::from(depth).pow(2);
+        let bonus =
+            (depth_squared * i64::from(params::history_bonus_scale()) / 100).min(limit) as i32;
+        let malus =
+            (depth_squared * i64::from(params::history_malus_scale()) / 100).min(limit) as i32;
+        // docs/plans/move-ordering.md「候補8」。重力項も符号付きのまま0方向へ丸める。
+        let mut update = |mv: Move, delta: i32| {
+            let value = &mut self.history[color][mv.from.dense_index()][mv.to.dense_index()];
+            let old = i64::from(*value);
+            let delta = i64::from(delta);
+            *value = (old + delta - old * delta.abs() / limit) as i32;
+        };
+        update(mv, bonus);
+        for &mv in earlier {
+            update(mv, -malus);
         }
     }
 }

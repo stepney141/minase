@@ -112,6 +112,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             "lmr table",
             "parameters",
             "disabled capture history",
+            "quiet history scales",
             "disabled history decay",
             "disabled capture history decay",
             "non improving futility 1",
@@ -150,6 +151,10 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         return;
     }
     let scenario = scenario.unwrap();
+    if scenario == "quiet history scales" {
+        super::history::check_quiet_history_scales();
+        return;
+    }
     if scenario == "disabled capture history" {
         params::set("CaptureHistoryScale", 0).unwrap();
         super::captures::zero_capture_scale_preserves_reference_order();
@@ -264,9 +269,9 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
                 mv.from.dense_index(),
                 mv.to.dense_index(),
             );
-            // 宣言範囲の上端なら半減せず、既定の上限なら半減する値を置く。
-            searcher.history[side][from][to] = 65_535;
-            searcher.record_quiet_beta_cutoff(&board, mv, 1, 0);
+            // どちらの上限でも有効な値から、上限に応じた重力項の差を観測する。
+            searcher.history[side][from][to] = 4096;
+            searcher.record_quiet_beta_cutoff(&board, mv, &[], 8, 0);
             result = i64::from(searcher.history[side][from][to]);
         });
         result
@@ -413,7 +418,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 37] = [
+    let cases: [Case; 39] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -466,6 +471,21 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             i64::from(null_move_reduction(12, 800, 0, 100))
         }),
         ("HistoryLimit", 65536, history),
+        ("HistoryBonusScale", 200, history),
+        ("HistoryMalusScale", 200, || {
+            let board = Position::initial();
+            let moves = legal_moves(&board);
+            let winner = moves[0];
+            let earlier = *moves.iter().find(|mv| mv.from != winner.from).unwrap();
+            let mut result = 0;
+            with_root_searcher(&board, &[], |searcher| {
+                searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], 3, 0);
+                result = i64::from(
+                    searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()],
+                );
+            });
+            result
+        }),
         ("HistoryDecay", 50, history_decay),
         (
             "CaptureHistoryDecay",

@@ -176,6 +176,7 @@ impl Searcher<'_> {
         let mut index = 0;
         let mut counted_quiets = 0;
         let mut searched_captures = Vec::new();
+        let mut searched_quiets: Vec<Move> = Vec::new();
         // 枝刈りされた候補は探索順位に含めない。
         #[cfg(feature = "search-stats")]
         let mut searched_moves = 0;
@@ -279,12 +280,14 @@ impl Searcher<'_> {
                         &searched_captures,
                         depth,
                     );
-                    self.record_quiet_beta_cutoff(position, mv, depth, ply);
+                    self.record_quiet_beta_cutoff(position, mv, &searched_quiets, depth, ply);
                 }
                 break;
             }
             if capture {
                 searched_captures.push(mv);
+            } else {
+                searched_quiets.push(mv);
             }
             index += 1;
         }

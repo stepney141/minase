@@ -273,3 +273,256 @@ pub(super) fn zero_decay_clears_history_between_searches() {
     .unwrap();
     assert_eq!(first, second);
 }
+
+/// 候補8の更新式は両端で飽和し、負の重力項も0方向へ丸める。
+#[test]
+fn quiet_history_gravity_stays_bounded_and_truncates_toward_zero() {
+    let board = Position::initial();
+    let moves = legal_moves(&board);
+    let winner = moves[0];
+    let earlier = *moves.iter().find(|mv| mv.from != winner.from).unwrap();
+    let side = board.side_to_move().index();
+    let limit = params::history_limit();
+    with_root_searcher(&board, &[], |searcher| {
+        for (old, depth, expected_bonus, expected_malus) in [
+            (0, 3, 9, -9),
+            (limit, 3, limit, limit - 18),
+            (-limit, 3, -limit + 18, -limit),
+            (-10, 3, -1, -19),
+            (-limit / 2 - 1, 3, -limit / 2 + 12, -limit / 2 - 6),
+            (0, 256, limit, -limit),
+            (limit, 256, limit, -limit),
+            (-limit, 256, limit, -limit),
+            (10, 0, 10, 10),
+        ] {
+            searcher.history[side][winner.from.dense_index()][winner.to.dense_index()] = old;
+            searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()] = old;
+            searcher.history[side ^ 1][0][0] = 123;
+            searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
+            assert_eq!(
+                searcher.history[side][winner.from.dense_index()][winner.to.dense_index()],
+                expected_bonus,
+                "bonus: old={old}, depth={depth}"
+            );
+            assert_eq!(
+                searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()],
+                expected_malus,
+                "malus: old={old}, depth={depth}"
+            );
+            assert_eq!(searcher.history[side ^ 1][0][0], 123);
+        }
+        for _ in 0..1000 {
+            searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], 256, 0);
+        }
+        assert_eq!(
+            searcher.history[side][winner.from.dense_index()][winner.to.dense_index()],
+            limit
+        );
+        assert_eq!(
+            searcher.history[side][earlier.from.dense_index()][earlier.to.dense_index()],
+            -limit
+        );
+    });
+}
+
+fn history_moves(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(Move, bool)> {
+    let mut picker = MovePicker::new(tt, searcher.killers[0]);
+    std::iter::from_fn(|| {
+        picker.next(
+            board,
+            searcher.pst,
+            &searcher.generator,
+            searcher.history,
+            searcher.capture_history,
+        )
+    })
+    .collect()
+}
+
+/// 候補8: TT手・killer手・通常の静かな手の各カットで、探索済みの非捕獲手だけを減点する。
+#[test]
+fn quiet_history_negamax_updates_only_searched_quiets() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(5, 5), Color::Black, PieceKind::Rook),
+            (sq(5, 7), Color::White, PieceKind::Pawn),
+            (sq(3, 5), Color::White, PieceKind::Pawn),
+            (sq(7, 5), Color::White, PieceKind::Pawn),
+            (sq(5, 3), Color::White, PieceKind::Pawn),
+        ],
+    );
+    for winner_index in [0, 2, 4] {
+        with_root_searcher(&board, &[], |searcher| {
+            let quiets: Vec<_> = legal_moves(&board)
+                .into_iter()
+                .filter(|&mv| board.captured_squares(mv).iter().all(Option::is_none))
+                .collect();
+            let tt_move = quiets[0];
+            let winner = quiets[winner_index];
+            searcher.killers[0] = [Some(quiets[1]), Some(quiets[2])];
+            let moves = history_moves(searcher, &board, Some(tt_move));
+            assert!(moves.iter().any(|&(_, capture)| capture));
+            let cutoff_index = moves.iter().position(|&(mv, _)| mv == winner).unwrap();
+            assert!(cutoff_index + 1 < moves.len());
+            searcher
+                .tt
+                .store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
+            for &(mv, _) in &moves {
+                let mut child = board.clone();
+                child.make_move_unchecked(mv, engine_rules());
+                let score = if mv == winner { 20 } else { 0 };
+                searcher
+                    .tt
+                    .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
+            }
+            assert_eq!(
+                searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
+                Some(20)
+            );
+            assert_eq!(searcher.nodes, cutoff_index as u64 + 1);
+            assert_eq!(searcher.killers[0][0], Some(winner));
+            for (index, &(mv, capture)) in moves.iter().enumerate() {
+                let expected = if capture || index > cutoff_index {
+                    0
+                } else if mv == winner {
+                    4
+                } else {
+                    -4
+                };
+                assert_eq!(
+                    searcher.history[board.side_to_move().index()][mv.from.dense_index()]
+                        [mv.to.dense_index()],
+                    expected,
+                    "winner={winner:?}, move={mv:?}"
+                );
+            }
+        });
+    }
+}
+
+/// 候補8: futilityで飛ばした非捕獲手は、後続の成る手がカットしても減点しない。
+#[test]
+fn quiet_history_excludes_pruned_quiets_on_promotion_cutoff() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(0, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(5, 7), Color::Black, PieceKind::Rook),
+        ],
+    );
+    with_root_searcher(&board, &[], |searcher| {
+        let tt_move = Move {
+            from: sq(0, 0),
+            to: sq(1, 0),
+            mid: None,
+            promote: false,
+        };
+        let pruned_move = Move {
+            to: sq(0, 1),
+            ..tt_move
+        };
+        searcher.history[0][pruned_move.from.dense_index()][pruned_move.to.dense_index()] = 100;
+        let moves = history_moves(searcher, &board, Some(tt_move));
+        assert_eq!(moves[1], (pruned_move, false));
+        assert!(moves.iter().all(|&(_, capture)| !capture));
+        let cutoff_index = moves.iter().rposition(|&(mv, _)| mv.promote).unwrap();
+        let winner = moves[cutoff_index].0;
+        assert!(!royal_under_attack(&board));
+        assert!(
+            evaluate(searcher.pst, &board)
+                + super::super::pruning::futility_margin(searcher.pst.pawn_value(), 3, true)
+                < 10_000
+        );
+        searcher
+            .tt
+            .store(search_key(&board), 0, 0, Bound::Upper, Some(tt_move), 0);
+        for &(mv, _) in &moves {
+            let mut child = board.clone();
+            child.make_move_unchecked(mv, engine_rules());
+            let score = if mv == winner { 10_001 } else { 0 };
+            searcher
+                .tt
+                .store(search_key(&child), 2, -score, Bound::Exact, None, 1);
+        }
+        searcher.null_move_ply = Some(0);
+        assert_eq!(
+            searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0),
+            Some(10_001)
+        );
+        let searched: Vec<_> = moves[..=cutoff_index]
+            .iter()
+            .map(|&(mv, _)| mv)
+            .filter(|mv| *mv == tt_move || mv.promote)
+            .collect();
+        assert_eq!(searcher.nodes, searched.len() as u64);
+        let mut pruned = 0;
+        for &(mv, _) in &moves[..=cutoff_index] {
+            // 成る手と不成の手は同じbutterfly要素を共有する。
+            let learned = searched
+                .iter()
+                .find(|other| other.from == mv.from && other.to == mv.to);
+            let expected = match learned {
+                Some(other) if *other == winner => 9,
+                Some(_) => -9,
+                None => {
+                    pruned += 1;
+                    if mv == pruned_move { 100 } else { 0 }
+                }
+            };
+            assert_eq!(
+                searcher.history[0][mv.from.dense_index()][mv.to.dense_index()],
+                expected,
+                "{mv:?}"
+            );
+        }
+        assert!(pruned > 0);
+    });
+}
+
+/// 調整係数は子プロセス内だけで変更し、加点と減点の独立性と百分率の丸めを固定する。
+#[cfg(feature = "tuning")]
+pub(super) fn check_quiet_history_scales() {
+    let board = Position::initial();
+    let moves = legal_moves(&board);
+    let winner = moves[0];
+    let earlier = *moves.iter().find(|mv| mv.from != winner.from).unwrap();
+    for (bonus_scale, malus_scale, depth, bonus, malus) in [
+        (0, 100, 3, 0, 9),
+        (100, 0, 3, 9, 0),
+        (0, 0, 256, 0, 0),
+        (150, 250, 3, 13, 22),
+        (400, 400, 256, 17_408, 17_408),
+    ] {
+        params::set("HistoryBonusScale", bonus_scale).unwrap();
+        params::set("HistoryMalusScale", malus_scale).unwrap();
+        with_root_searcher(&board, &[], |searcher| {
+            searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
+            assert_eq!(
+                searcher.history[0][winner.from.dense_index()][winner.to.dense_index()],
+                bonus
+            );
+            assert_eq!(
+                searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()],
+                -malus
+            );
+            assert_eq!(searcher.killers[0][0], Some(winner));
+            if bonus_scale == 0 && malus_scale == 0 {
+                searcher.history[0][winner.from.dense_index()][winner.to.dense_index()] = -123;
+                searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()] = 456;
+                searcher.record_quiet_beta_cutoff(&board, winner, &[earlier], depth, 0);
+                assert_eq!(
+                    searcher.history[0][winner.from.dense_index()][winner.to.dense_index()],
+                    -123
+                );
+                assert_eq!(
+                    searcher.history[0][earlier.from.dense_index()][earlier.to.dense_index()],
+                    456
+                );
+            }
+        });
+    }
+}
