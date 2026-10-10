@@ -72,6 +72,7 @@ lishogiでの実戦と外部エンジンとの対局棋譜から、minaseの弱�
 - [lishogi対局 yO464dzl の敗因分析](lishogi-game-yO464dzl-loss-analysis.md)は、517手で負けた対局の敗因を、評価関数が王の安全度を測れないことに求める。
 - [lishogi対局 WPgmFqSa の時間配分](lishogi-game-WPgmFqSa-time-management.md)は、160手目で本時間を使い切った対局のログから、反復の開始条件と序盤の配分を見直す根拠を示す。
 - [HaChuとMinaseの勝ち方・負け方](hachu-minase-playing-style-analysis.md)は、HaChuとの400局の保存棋譜から、両エンジンが勝つ局と負ける局の典型的な経過を比較する。
+- [Minaseが駒を前に出さない傾向の切り分け](forward-play-diagnosis.md)は、Botの棋譜、教師データでの特徴の分布、および合法手ごとの静的評価から、前に出ない傾向の原因が教師データの偏りでも探索でもなく、評価関数が学んだ値そのものにあることを示す。
 
 ## 開発の道具
 
