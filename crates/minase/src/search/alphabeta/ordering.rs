@@ -11,7 +11,9 @@ use minase_core::position::Position;
 use super::capture_history::CaptureHistory;
 use super::history::HistoryTable;
 use super::params;
+use super::royal::captures_last_royal;
 use super::searcher::{KILLER_COUNT, Searcher};
+use super::see::see_prunes;
 
 impl Searcher<'_> {
     /// 捕獲手、killer手、history値の順で着手を整列し、置換表の手を先頭へ置く。
@@ -103,6 +105,8 @@ enum OrderedMoveKey {
 pub(super) enum MovePickerStage {
     Tt,
     Captures,
+    EarlyKiller0,
+    EarlyKiller1,
     Killer0,
     Killer1,
     Quiets,
@@ -110,10 +114,12 @@ pub(super) enum MovePickerStage {
 }
 
 /// TT手、捕獲手、killer手、静かな手の順に合法手を1回ずつ返す。
+/// 対象ノードで先頭捕獲がSEE負なら、killer手を捕獲列の前へ移す。
 pub(super) struct MovePicker {
     stage: MovePickerStage,
     tt_move: Option<Move>,
     killers: [Option<Move>; KILLER_COUNT],
+    killers_before_losing_capture: bool,
     captures: Vec<(Move, MoveOrderKey)>,
     capture_index: usize,
     captures_generated: bool,
@@ -132,6 +138,7 @@ impl MovePicker {
             stage: MovePickerStage::Tt,
             tt_move,
             killers,
+            killers_before_losing_capture: false,
             captures: Vec::new(),
             capture_index: 0,
             captures_generated: false,
@@ -145,10 +152,16 @@ impl MovePicker {
     }
 
     /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
-    pub(super) fn reset(&mut self, tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) {
+    pub(super) fn reset(
+        &mut self,
+        tt_move: Option<Move>,
+        killers: [Option<Move>; KILLER_COUNT],
+        killers_before_losing_capture: bool,
+    ) {
         self.stage = MovePickerStage::Tt;
         self.tt_move = tt_move;
         self.killers = killers;
+        self.killers_before_losing_capture = killers_before_losing_capture;
         self.captures.clear();
         self.capture_index = 0;
         self.captures_generated = false;
@@ -207,25 +220,43 @@ impl MovePicker {
                             (Reverse(key.captured_value), key.attacker_value)
                         });
                         self.captures_generated = true;
+                        // 生成時だけ判定し、killer段から戻ったときは再判定しない。
+                        if self.killers_before_losing_capture
+                            && let Some(&(mv, _)) = self.captures.first()
+                            && !captures_last_royal(position, mv)
+                            && see_prunes(position, generator.rules(), pst, mv, 0)
+                        {
+                            self.stage = MovePickerStage::EarlyKiller0;
+                            continue;
+                        }
                     }
                     if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
                         self.capture_index += 1;
                         return Some((mv, true));
                     }
-                    self.stage = MovePickerStage::Killer0;
+                    self.stage = if self.quiets_generated {
+                        MovePickerStage::Quiets
+                    } else {
+                        MovePickerStage::Killer0
+                    };
                 }
-                MovePickerStage::Killer0 | MovePickerStage::Killer1 => {
+                MovePickerStage::EarlyKiller0
+                | MovePickerStage::EarlyKiller1
+                | MovePickerStage::Killer0
+                | MovePickerStage::Killer1 => {
                     if !self.quiets_generated {
                         generator.generate_quiets(position, &mut self.base_moves, &mut self.quiets);
                         self.quiets.retain(|&mv| Some(mv) != self.tt_move);
                         self.quiets_generated = true;
                     }
-                    let killer_index = usize::from(matches!(self.stage, MovePickerStage::Killer1));
-                    self.stage = if killer_index == 0 {
-                        MovePickerStage::Killer1
-                    } else {
-                        MovePickerStage::Quiets
+                    let (killer_index, next_stage) = match self.stage {
+                        MovePickerStage::EarlyKiller0 => (0, MovePickerStage::EarlyKiller1),
+                        MovePickerStage::EarlyKiller1 => (1, MovePickerStage::Captures),
+                        MovePickerStage::Killer0 => (0, MovePickerStage::Killer1),
+                        MovePickerStage::Killer1 => (1, MovePickerStage::Quiets),
+                        _ => unreachable!("only killer stages select a killer"),
                     };
+                    self.stage = next_stage;
                     if let Some(killer) = self.killers[killer_index]
                         && let Some(index) =
                             self.quiets.iter().enumerate().find_map(|(index, &mv)| {

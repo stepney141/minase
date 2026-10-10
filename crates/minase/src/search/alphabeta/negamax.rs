@@ -164,7 +164,11 @@ impl Searcher<'_> {
                 )
         });
         let late_move_limit = pruning_node.then(|| late_move_limit(depth));
-        self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
+        self.move_pickers[ply as usize].reset(
+            tt_move,
+            self.killers[ply as usize],
+            tt_move.is_none() && beta - alpha == 1 && depth <= 3,
+        );
         let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut best_capture = false;

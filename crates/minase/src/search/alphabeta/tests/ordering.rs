@@ -75,6 +75,9 @@ impl ReferenceMovePicker {
     ) -> Option<(Move, bool)> {
         loop {
             match self.stage {
+                MovePickerStage::EarlyKiller0 | MovePickerStage::EarlyKiller1 => {
+                    unreachable!("reference picker does not move killers before captures")
+                }
                 MovePickerStage::Tt => {
                     self.stage = MovePickerStage::Captures;
                     if let Some(tt_move) = self.tt_move
@@ -193,7 +196,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
                 let mut history =
                     Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
                 let mut reference = ReferenceMovePicker::new(tt, killers);
-                picker.reset(tt, killers);
+                picker.reset(tt, killers, false);
                 let mut ordinal = 0;
                 loop {
                     let expected = reference.next(&position, &pst, &generator, &history);
@@ -211,4 +214,177 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
             }
         }
     }
+}
+
+/// 候補2: 奔王による飛車取りは歩兵に取り返され、別の歩兵取りも残る。
+pub(super) fn losing_capture_fixture() -> (Position, Move, [Option<Move>; KILLER_COUNT]) {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(0, 11), Color::White, PieceKind::King),
+            (sq(5, 3), Color::Black, PieceKind::FreeKing),
+            (sq(5, 4), Color::White, PieceKind::Rook),
+            (sq(5, 5), Color::White, PieceKind::Pawn),
+            (sq(3, 3), Color::Black, PieceKind::Pawn),
+            (sq(3, 4), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let capture = Move {
+        from: sq(5, 3),
+        mid: None,
+        to: sq(5, 4),
+        promote: false,
+    };
+    let killer0 = Move {
+        from: sq(11, 0),
+        to: sq(10, 0),
+        ..capture
+    };
+    let killer1 = Move {
+        to: sq(10, 1),
+        ..killer0
+    };
+    (board, capture, [Some(killer0), Some(killer1)])
+}
+
+fn reference_sequence(
+    board: &Position,
+    tt_move: Option<Move>,
+    killers: [Option<Move>; KILLER_COUNT],
+) -> Vec<(Move, bool)> {
+    let pst = weights().unwrap();
+    let generator = MoveGenerator::new(engine_rules());
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut reference = ReferenceMovePicker::new(tt_move, killers);
+    std::iter::from_fn(|| reference.next(board, &pst, &generator, &history)).collect()
+}
+
+fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool)> {
+    let pst = weights().unwrap();
+    let generator = MoveGenerator::new(engine_rules());
+    let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let capture_history = CaptureHistory::new();
+    std::iter::from_fn(|| picker.next(board, &pst, &generator, &history, &capture_history))
+        .collect()
+}
+
+/// move-ordering.md「候補2」: 合法なkillerだけを前置し、元の捕獲列を保つ。
+#[test]
+fn early_killers_preserve_capture_order_and_return_every_legal_move_once() {
+    let (board, capture, killers) = losing_capture_fixture();
+    assert!(see_prunes(
+        &board,
+        engine_rules(),
+        &weights().unwrap(),
+        capture,
+        0
+    ));
+    let illegal = Move {
+        from: sq(10, 10),
+        ..capture
+    };
+    let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
+    for (hints, early) in [
+        (killers, vec![killers[0].unwrap(), killers[1].unwrap()]),
+        ([killers[0], killers[0]], vec![killers[0].unwrap()]),
+        ([Some(illegal), killers[1]], vec![killers[1].unwrap()]),
+        ([killers[0], Some(illegal)], vec![killers[0].unwrap()]),
+        ([Some(capture), killers[1]], vec![killers[1].unwrap()]),
+        ([Some(illegal), None], vec![]),
+        ([None, None], vec![]),
+    ] {
+        let baseline = reference_sequence(&board, None, hints);
+        assert_eq!(baseline[0], (capture, true));
+        assert!(baseline.iter().filter(|(_, capture)| *capture).count() >= 2);
+        let expected: Vec<_> = early
+            .iter()
+            .map(|&mv| (mv, false))
+            .chain(
+                baseline
+                    .iter()
+                    .copied()
+                    .filter(|(mv, _)| !early.contains(mv)),
+            )
+            .collect();
+        // 有効・無効を交互にresetし、前ノードの状態が残らないことも確かめる。
+        for enabled in [true, false, true] {
+            picker.reset(None, hints, enabled);
+            let actual = picker_sequence(&mut picker, &board);
+            assert_eq!(&actual, if enabled { &expected } else { &baseline });
+            let legal = legal_moves(&board);
+            assert_eq!(actual.len(), legal.len());
+            for mv in legal {
+                assert_eq!(actual.iter().filter(|(picked, _)| *picked == mv).count(), 1);
+            }
+        }
+    }
+}
+
+/// 非負の先頭捕獲と捕獲手のないノードでは、前置を要求しても順序を変えない。
+#[test]
+fn early_killers_leave_non_losing_or_absent_captures_in_reference_order() {
+    let pst = weights().unwrap();
+    for board in [
+        staged_picker_fixture(),
+        position(
+            Color::Black,
+            &[
+                (sq(11, 0), Color::Black, PieceKind::King),
+                (sq(0, 11), Color::White, PieceKind::King),
+            ],
+        ),
+    ] {
+        let quiets: Vec<_> = legal_moves(&board)
+            .into_iter()
+            .filter(|&mv| move_order_key(&board, &pst, mv).is_none())
+            .collect();
+        let killers = [quiets.first().copied(), quiets.last().copied()];
+        let expected = reference_sequence(&board, None, killers);
+        if expected[0].1 {
+            assert!(!see_prunes(&board, engine_rules(), &pst, expected[0].0, 0));
+        }
+        let mut picker = MovePicker::new(None, killers);
+        picker.reset(None, killers, true);
+        assert_eq!(picker_sequence(&mut picker, &board), expected);
+    }
+}
+
+/// 対象外のノードと、TT手に一致するkillerは従来どおりの列で1回ずつ返す。
+#[test]
+fn early_killers_leave_ineligible_nodes_and_tt_duplicates_in_reference_order() {
+    let (board, capture, killers) = losing_capture_fixture();
+    for tt_move in [None, Some(capture), killers[0], killers[1]] {
+        let mut picker = MovePicker::new(tt_move, killers);
+        picker.reset(tt_move, killers, false);
+        assert_eq!(
+            picker_sequence(&mut picker, &board),
+            reference_sequence(&board, tt_move, killers),
+        );
+    }
+}
+
+/// move-ordering.md「規則依存の除外」: 最後の王駒の捕獲は後回しにしない。
+#[test]
+fn early_killers_do_not_precede_last_royal_capture() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(5, 3), Color::Black, PieceKind::Rook),
+            (sq(5, 4), Color::White, PieceKind::King),
+        ],
+    );
+    let killer = Move {
+        from: sq(11, 0),
+        mid: None,
+        to: sq(10, 0),
+        promote: false,
+    };
+    let killers = [Some(killer), None];
+    let expected = reference_sequence(&board, None, killers);
+    assert!(captures_last_royal(&board, expected[0].0));
+    let mut picker = MovePicker::new(None, killers);
+    picker.reset(None, killers, true);
+    assert_eq!(picker_sequence(&mut picker, &board), expected);
 }
