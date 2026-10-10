@@ -34,6 +34,7 @@ pub(super) const KILLER_COUNT: usize = 2;
 type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 
 /// ワーカー固有の探索状態を構築する。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn new_searcher<'a>(
     pst: &'a Pst,
     position: &Position,
@@ -42,6 +43,7 @@ pub(super) fn new_searcher<'a>(
     shared: &'a SharedSearch<'a>,
     tt: &'a TranspositionTable,
     history: &'a mut HistoryTable,
+    capture_history: &'a mut CaptureHistory,
 ) -> Searcher<'a> {
     let root_accumulator = pst.refresh_accumulator(position);
     Searcher {
@@ -75,7 +77,7 @@ pub(super) fn new_searcher<'a>(
         correction: CorrectionTable::new(pst.pawn_value()),
         delta_margin: pst.pawn_value() * params::delta_margin() / 100,
         history,
-        capture_history: CaptureHistory::new(),
+        capture_history,
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
         tt,
     }
@@ -143,8 +145,8 @@ pub(super) struct Searcher<'a> {
     pub(super) delta_margin: i32,
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     pub(super) history: &'a mut HistoryTable,
-    /// 捕獲履歴は探索ごとに初期化する。
-    pub(super) capture_history: CaptureHistory,
+    /// ワーカー番号ごとに探索間で持ち越す捕獲履歴。
+    pub(super) capture_history: &'a mut CaptureHistory,
     /// βカットを起こした非捕獲手をplyごとに新しい順で保持する表。
     pub(super) killers: KillerTable,
     /// 置換表。

@@ -158,7 +158,7 @@ fn picked(searcher: &Searcher<'_>, board: &Position, tt: Option<Move>) -> Vec<(M
             searcher.pst,
             &searcher.generator,
             searcher.history,
-            &searcher.capture_history,
+            searcher.capture_history,
         )
     })
     .collect()
@@ -339,9 +339,9 @@ fn capture_history_quiet_cutoff_with_no_earlier_captures_preserves_history() {
     assert_eq!(after, before);
 }
 
-/// 新しく作る探索ワーカーの表は、先行するワーカーの更新を引き継がない。
+/// 別の履歴表を借りる探索ワーカー間では更新が混ざらない。
 #[test]
-fn capture_history_is_zero_for_each_new_searcher() {
+fn capture_history_workers_with_separate_tables_are_independent() {
     let board = capture_fixture();
     let mv = capture(sq(5, 5), sq(5, 7));
     with_root_searcher(&board, &[], |first| {
@@ -437,4 +437,208 @@ fn capture_history_excludes_see_pruned_captures_and_quiet_tt_move() {
             9
         );
     });
+}
+
+/// 候補4: 停止済みの探索でも、根の開始時に全ワーカーの履歴を1回だけ減衰する。
+fn stopped_search(histories: &mut crate::search::HistoryTables, threads: NonZeroUsize) {
+    let snapshot = snapshot_for(&Position::initial());
+    let outcome = run_search_team(
+        &weights().unwrap(),
+        &snapshot.position,
+        snapshot.rules,
+        &snapshot.root_moves,
+        &snapshot.history_keys,
+        &depth_limits(3),
+        &AtomicBool::new(true),
+        threads,
+        &small_tt(),
+        histories,
+        None,
+        Instant::now(),
+        &AtomicU64::new(0),
+        false,
+    );
+    assert_eq!(outcome.result.nodes, 0);
+}
+
+#[test]
+fn capture_history_carry_ages_every_worker_once_per_go() {
+    #[cfg(not(feature = "tuning"))]
+    assert_eq!(params::capture_history_decay(), 23);
+    let mut histories = crate::search::HistoryTables::new(worker_count(4));
+    let mut expected = [-65_536, -100, -7, -4, -1, 0, 1, 4, 7, 100, 65_536];
+    for (worker, history) in histories.capture.iter_mut().enumerate() {
+        for (index, value) in history.values_mut().iter_mut().enumerate() {
+            *value = expected[(index + worker) % expected.len()];
+        }
+    }
+    for _ in 0..2 {
+        expected = expected.map(|value| value * params::capture_history_decay() / 100);
+        stopped_search(&mut histories, worker_count(4));
+        for (worker, history) in histories.capture.iter().enumerate() {
+            for (index, value) in history.values().iter().enumerate() {
+                assert_eq!(*value, expected[(index + worker) % expected.len()]);
+            }
+        }
+    }
+}
+
+/// 初期局面から深さ3では王が到達できない捕獲升を印にし、反復中の再減衰も検出する。
+#[test]
+fn capture_history_carry_survives_handle_round_trips() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(5, 5), Color::Black, PieceKind::King),
+            (sq(5, 6), Color::White, PieceKind::Pawn),
+            (sq(11, 11), Color::White, PieceKind::King),
+        ],
+    );
+    let mv = capture(sq(5, 5), sq(5, 6));
+    let pst = weights().unwrap();
+    for threads in [DEFAULT_THREADS, worker_count(4)] {
+        let mut histories = crate::search::HistoryTables::new(threads);
+        let mut expected = Vec::new();
+        for (worker, history) in histories.capture.iter_mut().enumerate() {
+            let depth = 30 + worker as u32;
+            history.record_cutoff(&board, &pst, mv, &[], depth);
+            expected.push((depth * depth) as i32);
+        }
+        let mut table = small_tt();
+        for search_id in [901, 902] {
+            for value in &mut expected {
+                *value = *value * params::capture_history_decay() / 100;
+            }
+            let handle = crate::search::start_search(
+                weights().unwrap(),
+                snapshot_for(&Position::initial()),
+                depth_limits(3),
+                search_id,
+                threads,
+                table,
+                histories,
+                false,
+            );
+            let (_, result) = event_reports(drain_raw(&handle));
+            assert_eq!(result.depth, 3);
+            (table, histories) = handle.join().unwrap();
+            for (worker, history) in histories.capture.iter().enumerate() {
+                assert_eq!(history.read(&board, &pst, mv), expected[worker]);
+            }
+        }
+    }
+}
+
+/// 候補4: clearは両方の履歴を全消去し、ワーカー数を保つ。
+#[test]
+fn history_tables_clear_resets_butterfly_and_capture_history() {
+    let mut histories = crate::search::HistoryTables::new(worker_count(4));
+    for history in &mut histories.workers {
+        for value in history.iter_mut().flatten().flatten() {
+            *value = -123;
+        }
+    }
+    for history in &mut histories.capture {
+        history.values_mut().fill(456);
+    }
+    histories.clear();
+    assert_eq!(histories.workers.len(), 4);
+    assert_eq!(histories.capture.len(), 4);
+    assert!(
+        histories.workers.iter().all(|history| history
+            .iter()
+            .flatten()
+            .flatten()
+            .all(|&value| value == 0))
+    );
+    assert!(
+        histories
+            .capture
+            .iter()
+            .all(|history| history.values().iter().all(|&value| value == 0))
+    );
+}
+
+/// 候補4: ワーカー数が増減すると、持ち越し表を新品に置き換える。
+#[test]
+fn changed_worker_count_resets_capture_history() {
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    for count in [4, 2, 1] {
+        for history in &mut histories.capture {
+            history.values_mut().fill(1000);
+        }
+        stopped_search(&mut histories, worker_count(count));
+        assert_eq!(histories.capture.len(), count);
+        assert!(
+            histories
+                .capture
+                .iter()
+                .all(|history| history.values().iter().all(|&value| value == 0))
+        );
+    }
+}
+
+/// 候補4: 0は全消去、100は全保持し、負値の端数も0方向へ丸める。
+#[test]
+fn capture_history_decay_boundaries() {
+    let mut history = CaptureHistory::new();
+    let values = [-65_536, -7, -1, 0, 1, 7, 65_536];
+    for percent in [0, 23, 100] {
+        for (index, value) in history.values_mut().iter_mut().enumerate() {
+            *value = values[index % values.len()];
+        }
+        history.decay(percent);
+        for (index, value) in history.values().iter().enumerate() {
+            assert_eq!(*value, values[index % values.len()] * percent / 100);
+        }
+    }
+}
+
+/// tuningの隔離プロセスから呼び、他の並列テストへ係数変更を漏らさない。
+#[cfg(feature = "tuning")]
+pub(super) fn zero_decay_clears_capture_history_between_searches() {
+    assert_eq!(params::capture_history_decay(), 0);
+    assert_eq!(params::history_decay(), 23, "捕獲履歴だけを消去する");
+    for threads in [DEFAULT_THREADS, worker_count(4)] {
+        let mut histories = crate::search::HistoryTables::new(threads);
+        crate::search::search(
+            &weights().unwrap(),
+            &snapshot_for(&quiet_midgame()),
+            &depth_limits(3),
+            threads,
+            &mut small_tt(),
+            &mut histories,
+        )
+        .unwrap();
+        assert!(
+            histories
+                .capture
+                .iter()
+                .any(|history| history.values().iter().any(|&value| value != 0))
+        );
+        for history in &mut histories.workers {
+            history[0][60][60] = 100;
+        }
+        stopped_search(&mut histories, threads);
+        assert!(
+            histories
+                .capture
+                .iter()
+                .all(|history| history.values().iter().all(|&value| value == 0))
+        );
+        assert!(
+            histories
+                .workers
+                .iter()
+                .all(|history| history[0][60][60] == 23)
+        );
+    }
+}
+
+#[cfg(feature = "tuning")]
+pub(super) fn capture_decay_probe() -> i64 {
+    let mut histories = crate::search::HistoryTables::new(DEFAULT_THREADS);
+    histories.capture[0].values_mut()[0] = 100;
+    stopped_search(&mut histories, DEFAULT_THREADS);
+    i64::from(histories.capture[0].values()[0])
 }

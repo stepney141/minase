@@ -100,7 +100,7 @@ fn tuning_default_clock_budget_matches_reference_grid() {
     }
 }
 
-/// 全36係数の反映とUSIの入力契約を直列に検査する。
+/// 全係数の反映とUSIの入力契約を直列に検査する。
 /// グローバル係数が既存の並列テストへ漏れないよう、このテストだけを子プロセスで走らせる。
 #[cfg(feature = "tuning")]
 #[test]
@@ -113,6 +113,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
             "parameters",
             "disabled capture history",
             "disabled history decay",
+            "disabled capture history decay",
             "non improving futility 1",
             "non improving futility 2",
             "non improving futility 3",
@@ -156,7 +157,14 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     }
     if scenario == "disabled history decay" {
         params::set("HistoryDecay", 0).unwrap();
+        params::set("CaptureHistoryDecay", 0).unwrap();
         super::history::zero_decay_clears_history_between_searches();
+        return;
+    }
+
+    if scenario == "disabled capture history decay" {
+        params::set("CaptureHistoryDecay", 0).unwrap();
+        super::capture_history::zero_decay_clears_capture_history_between_searches();
         return;
     }
 
@@ -405,7 +413,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     // 既に復号したPSTにも調整値が反映されることを含めて調べる。
     let _pst = weights().unwrap();
     type Case = (&'static str, i32, fn() -> i64);
-    let cases: [Case; 36] = [
+    let cases: [Case; 37] = [
         ("LmrDivisor", 400, || {
             i64::from(lmr_base(8, 16, params::lmr_divisor()))
         }),
@@ -459,6 +467,11 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
         }),
         ("HistoryLimit", 65536, history),
         ("HistoryDecay", 50, history_decay),
+        (
+            "CaptureHistoryDecay",
+            50,
+            super::capture_history::capture_decay_probe,
+        ),
         ("CaptureHistoryLimit", 65536, capture_history_adjustment),
         ("CaptureHistoryScale", 200, capture_history_adjustment),
         ("CorrectionCap", 400, || correction(100_000)),

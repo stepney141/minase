@@ -12,17 +12,34 @@ use super::ordering::piece_at_for_ordering;
 use super::params;
 
 /// 着手前の駒コード、到達升、被捕獲駒種で参照するワーカー専用の表。
-pub(super) struct CaptureHistory {
+pub(crate) struct CaptureHistory {
     values: Box<[i32]>,
 }
 
 impl CaptureHistory {
-    /// 1回の探索で使う表を0で初期化する。
+    /// ワーカーが探索間で持ち越す表を0で初期化する。
     pub(super) fn new() -> Self {
         Self {
             values: vec![0; COLOR_COUNT * PIECE_KIND_COUNT * BOARD_SQUARE_COUNT * PIECE_KIND_COUNT]
                 .into_boxed_slice(),
         }
+    }
+
+    /// 探索間に残す百分率で全要素を減衰させる。整数除算は0方向へ丸める。
+    pub(super) fn decay(&mut self, percent: i32) {
+        for value in &mut self.values {
+            *value = *value * percent / 100;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn values(&self) -> &[i32] {
+        &self.values
+    }
+
+    #[cfg(test)]
+    pub(crate) fn values_mut(&mut self) -> &mut [i32] {
+        &mut self.values
     }
 
     /// 捕獲手の履歴値を返す。

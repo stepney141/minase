@@ -329,6 +329,7 @@ fn interrupted_null_move_restores_repetition_scope() {
         let table = small_tt();
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &pst,
             &root,
@@ -337,6 +338,7 @@ fn interrupted_null_move_restores_repetition_scope() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         if nested {
             set_outer_null_path(&mut searcher, &root);

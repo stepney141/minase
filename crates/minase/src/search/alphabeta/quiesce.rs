@@ -112,7 +112,7 @@ impl Searcher<'_> {
             &self.generator,
             self.pst,
             &self.capture_ranks,
-            &self.capture_history,
+            self.capture_history,
         ) {
             let mv = candidate.capture.mv;
             let buffers = &self.qsearch[ply as usize];

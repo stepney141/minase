@@ -146,7 +146,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
                 searcher.pst,
                 &searcher.generator,
                 searcher.history,
-                &searcher.capture_history,
+                searcher.capture_history,
             ) {
                 ordered.push((mv, capture));
             }
@@ -246,7 +246,7 @@ fn late_move_pruning_searches_exactly_the_first_counted_quiets_up_to_limit() {
             searcher.pst,
             &searcher.generator,
             searcher.history,
-            &searcher.capture_history,
+            searcher.capture_history,
         ) {
             assert!(!capture && !mv.promote);
             ordered.push(mv);

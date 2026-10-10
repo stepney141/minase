@@ -186,7 +186,7 @@ impl Searcher<'_> {
             self.pst,
             &self.generator,
             self.history,
-            &self.capture_history,
+            self.capture_history,
         ) {
             // docs/plans/search-revival-spsa.md「late move pruningの定義の変更」。
             // 枝刈りした手も数え、判定には現在の手より前の数を使う。

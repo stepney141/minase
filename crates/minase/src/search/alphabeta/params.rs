@@ -97,6 +97,8 @@ parameters! {
     HistoryLimit(history_limit): 17408, 4096, 65536;
     /// 探索間に残す履歴の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
     HistoryDecay(history_decay): 23, 0, 100;
+    /// 探索間に残す捕獲履歴の百分率。`docs/plans/move-ordering.md`「候補4」。
+    CaptureHistoryDecay(capture_history_decay): 23, 0, 100;
     /// 捕獲履歴の上限。`docs/plans/search-revival-spsa.md`「戻す8項目」。
     CaptureHistoryLimit(capture_history_limit): 16950, 4096, 65536;
     /// 捕獲履歴の尺度を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。

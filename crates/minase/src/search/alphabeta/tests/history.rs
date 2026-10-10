@@ -164,27 +164,44 @@ fn history_carry_workers_update_their_own_table() {
     for (index, history) in histories.workers.iter_mut().enumerate() {
         history[1][50][51] = index as i32 + 10;
     }
+    for (index, history) in histories.capture.iter_mut().enumerate() {
+        history.values_mut()[0] = -(index as i32 + 20);
+    }
     let mv = legal_moves(&Position::initial())[0];
-    run_worker_team(&mut histories.workers, &shared, |index, history| {
-        assert_eq!(history[1][50][51], index as i32 + 10);
-        history[1][50][51] += 100;
-        WorkerOutcome {
-            partial_score: None,
-            worker_index: index,
-            result: SearchResult {
-                #[cfg(feature = "search-stats")]
-                stats: crate::search::SearchStats::default(),
-                best_move: mv,
-                score: 0,
-                depth: 1,
+    let mut worker_histories: Vec<_> = histories
+        .workers
+        .iter_mut()
+        .zip(&mut histories.capture)
+        .collect();
+    run_worker_team(
+        &mut worker_histories,
+        &shared,
+        |index, (history, capture)| {
+            assert_eq!(history[1][50][51], index as i32 + 10);
+            assert_eq!(capture.values()[0], -(index as i32 + 20));
+            history[1][50][51] += 100;
+            capture.values_mut()[0] -= 100;
+            WorkerOutcome {
+                partial_score: None,
+                worker_index: index,
+                result: SearchResult {
+                    #[cfg(feature = "search-stats")]
+                    stats: crate::search::SearchStats::default(),
+                    best_move: mv,
+                    score: 0,
+                    depth: 1,
+                    nodes: 0,
+                },
+                pv: vec![mv],
                 nodes: 0,
-            },
-            pv: vec![mv],
-            nodes: 0,
-        }
-    });
+            }
+        },
+    );
     for (index, history) in histories.workers.iter().enumerate() {
         assert_eq!(history[1][50][51], index as i32 + 110);
+    }
+    for (index, history) in histories.capture.iter().enumerate() {
+        assert_eq!(history.values()[0], -(index as i32 + 120));
     }
 }
 
