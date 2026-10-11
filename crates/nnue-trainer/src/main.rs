@@ -15,11 +15,27 @@ struct Cli {
 enum Command {
     /// Write batch indices and teacher scores for comparison with Python.
     DumpBatch(dump::Args),
+    /// Compare GPU forward, output gradients, reductions and validation with the CPU reference.
+    CheckEquivalence {
+        #[arg(long, value_enum)]
+        feature_set: nnue_trainer::data::InputFeatureSet,
+        #[arg(long)]
+        width: usize,
+        #[arg(long)]
+        batch: usize,
+        #[arg(long)]
+        seed: u64,
+    },
 }
 
 fn main() -> std::process::ExitCode {
-    let result = match Cli::parse().command {
+    let result: Result<(), Box<dyn std::error::Error>> = match Cli::parse().command {
         Command::DumpBatch(args) => dump::run(args),
+        Command::CheckEquivalence { feature_set, width, batch, seed } => {
+            nnue_trainer::gpu::equivalence::run(feature_set, width, batch, seed)
+                .map(|r| println!("一致: {feature_set:?}, 幅{width}, バッチ{batch}, GPU={}, 比較数={}, 最大絶対誤差={:.3e}, 最大相対誤差={:.3e}, rtol=1e-5, atol=1e-6, 反復ビット一致", r.device_name, r.comparisons, r.max_absolute_error, r.max_relative_error))
+                .map_err(Into::into)
+        }
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,

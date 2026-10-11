@@ -288,7 +288,19 @@ pub struct Model {
 }
 impl Model {
     /// J75の全基底特徴の2端点を鏡映対で平均し、観測行を決定的に初期化する。
-    pub fn initialize(shape: Shape, initial: &[[f32; 2]], masks: Masks, seed: u64) -> Result<Self> {
+    /// init_stdは第1層の正規分布の標準偏差で、有限かつ非負でなければならない。
+    pub fn initialize(
+        shape: Shape,
+        initial: &[[f32; 2]],
+        masks: Masks,
+        seed: u64,
+        init_std: f32,
+    ) -> Result<Self> {
+        if !init_std.is_finite() || init_std < 0.0 {
+            return Err(Error::Invalid(
+                "initial standard deviation must be finite and nonnegative",
+            ));
+        }
         if initial.len() != FEATURE_COUNT
             || initial
                 .iter()
@@ -314,7 +326,7 @@ impl Model {
                 }
             }
         }
-        let mut random = Normal::new(seed);
+        let mut random = Normal::new(seed, init_std);
         let mut shared = vec![0.0; CANONICAL_ROWS * shape.width];
         for (row, &observed) in masks.canonical.iter().enumerate() {
             if observed {
@@ -334,6 +346,7 @@ impl Model {
                 }
             }
         }
+        parameters.validate()?;
         Ok(Self {
             initial_linear: parameters[Parameter::Linear].to_vec(),
             initial_virtual: parameters[Parameter::Virtual].to_vec(),
@@ -488,12 +501,14 @@ pub(crate) fn rotated_unit(rotated: bool, j: usize, width: usize) -> usize {
 struct Normal {
     state: u64,
     spare: Option<f32>,
+    std: f64,
 }
 impl Normal {
-    fn new(seed: u64) -> Self {
+    fn new(seed: u64, std: f32) -> Self {
         Self {
             state: seed,
             spare: None,
+            std: f64::from(std),
         }
     }
     fn uniform(&mut self) -> f64 {
@@ -509,7 +524,7 @@ impl Normal {
         if let Some(value) = self.spare.take() {
             return value;
         }
-        let radius = (-2.0 * self.uniform().ln()).sqrt() * 0.05;
+        let radius = (-2.0 * self.uniform().ln()).sqrt() * self.std;
         let angle = std::f64::consts::TAU * self.uniform();
         self.spare = Some((radius * angle.sin()) as f32);
         (radius * angle.cos()) as f32

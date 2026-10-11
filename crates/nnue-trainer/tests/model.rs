@@ -27,8 +27,8 @@ fn initialization_is_seeded_consumes_only_observed_canonical_rows_and_averages_m
         Masks::new(InputFeatureSet::P, canonical, vec![false; 13681]).unwrap()
     };
     let shape = Shape::new(InputFeatureSet::P, 4, 1000.0).unwrap();
-    let a = Model::initialize(shape, &initial, masks(&[3, 5]), 7).unwrap();
-    let b = Model::initialize(shape, &initial, masks(&[0, 3, 5]), 7).unwrap();
+    let a = Model::initialize(shape, &initial, masks(&[3, 5]), 7, 0.05).unwrap();
+    let b = Model::initialize(shape, &initial, masks(&[0, 3, 5]), 7, 0.05).unwrap();
     assert_eq!(&a.parameters()[Parameter::Linear][..2], &[12.0, 24.0]);
     assert_eq!(
         &a.parameters()[Parameter::FirstLayer][12..16],
@@ -40,11 +40,11 @@ fn initialization_is_seeded_consumes_only_observed_canonical_rows_and_averages_m
     );
     assert_eq!(
         a,
-        Model::initialize(shape, &initial, masks(&[3, 5]), 7).unwrap()
+        Model::initialize(shape, &initial, masks(&[3, 5]), 7, 0.05).unwrap()
     );
     assert_ne!(
         a,
-        Model::initialize(shape, &initial, masks(&[3, 5]), 8).unwrap()
+        Model::initialize(shape, &initial, masks(&[3, 5]), 8, 0.05).unwrap()
     );
     assert!(
         a.parameters()[Parameter::FirstLayer][..12]
@@ -72,6 +72,31 @@ fn initialization_is_seeded_consumes_only_observed_canonical_rows_and_averages_m
 }
 
 #[test]
+fn initialization_standard_deviation_scales_first_layer_and_virtual_rows() {
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let shape = Shape::new(set, 6, 1000.0).unwrap();
+        let initial = vec![[17.0, -23.0]; 13680];
+        let make = |std| Model::initialize(shape, &initial, all_observed(set), 71, std);
+        let a = make(0.05).unwrap();
+        let b = make(0.1).unwrap();
+        for p in [Parameter::FirstLayer, Parameter::Virtual] {
+            for (&a, &b) in a.parameters()[p].iter().zip(&b.parameters()[p]) {
+                assert_eq!(b, 2.0 * a);
+            }
+        }
+        assert_eq!(
+            a.parameters()[Parameter::Linear],
+            b.parameters()[Parameter::Linear]
+        );
+        let zero = make(0.0).unwrap();
+        assert!(reference::fold(&zero).iter().all(|&x| x == 0.0));
+        for std in [-0.1, f32::NAN, f32::INFINITY] {
+            assert!(make(std).is_err());
+        }
+    }
+}
+
+#[test]
 fn constraints_restore_unobserved_rows_and_bound_folded_weights() {
     let fixture = Fixture::new(&positions());
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
@@ -83,6 +108,7 @@ fn constraints_restore_unobserved_rows_and_bound_folded_weights() {
                 &vec![[100.0, 120.0]; 13680],
                 masks.clone(),
                 41,
+                0.05,
             )
             .unwrap();
             let initial_linear = model.initial_linear().to_vec();
@@ -150,6 +176,7 @@ fn halfkp_unobserved_feature_inherits_updated_virtual_row() {
         &vec![[0.0; 2]; 13680],
         masks,
         5,
+        0.05,
     )
     .unwrap();
     model.parameter_mut(Parameter::Virtual)[0] = 0.75;
@@ -328,7 +355,8 @@ fn model_rejects_invalid_width_k_initial_and_mask_shapes() {
             Shape::new(InputFeatureSet::P, 4, 1000.0).unwrap(),
             &[],
             all_observed(InputFeatureSet::P),
-            7
+            7,
+            0.05,
         )
         .is_err()
     );

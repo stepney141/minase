@@ -88,3 +88,59 @@ fn dump_reference_writes_warmed_checkpoint_three_batches_gradients_and_states() 
         }
     }
 }
+
+#[test]
+fn dump_init_std_changes_initial_weights_and_configuration_hash() {
+    let fixture = Fixture::new(&positions());
+    let initial = fixture.root.join("pst-float.npz");
+    std::fs::write(&initial, npz_bytes(&vec![[0.0; 2]; 13680], false)).unwrap();
+    let mut saved = Vec::new();
+    for std in ["0.05", "0.2"] {
+        let directory = fixture.root.join(std);
+        let result = std::process::Command::new(env!("CARGO_BIN_EXE_nnue-trainer"))
+            .args(["dump-batch", "--feature-set", "P", "--data"])
+            .arg(fixture.root.join("records.bin"))
+            .args(["--indices", "0,1,2", "--output"])
+            .arg(&directory)
+            .arg("--init-pst")
+            .arg(&initial)
+            .args([
+                "--width",
+                "2",
+                "--k",
+                "1000",
+                "--seed",
+                "71",
+                "--steps",
+                "0",
+                "--init-std",
+                std,
+                "--reference-batch",
+                "0,1,2",
+                "--reference-batch",
+                "0,1,2",
+                "--reference-batch",
+                "0,1,2",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        saved.push(Checkpoint::read(directory.join("checkpoint.bin")).unwrap());
+    }
+    assert_ne!(saved[0].progress.config_hash, saved[1].progress.config_hash);
+    assert!(
+        saved[0].model.parameters()[Parameter::FirstLayer]
+            .iter()
+            .any(|&x| x != 0.0)
+    );
+    for (&a, &b) in saved[0].model.parameters()[Parameter::FirstLayer]
+        .iter()
+        .zip(&saved[1].model.parameters()[Parameter::FirstLayer])
+    {
+        assert_eq!(b, 4.0 * a);
+    }
+}

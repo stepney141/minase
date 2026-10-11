@@ -1,4 +1,5 @@
-フェーズ1bは、NNUEの浮動小数点モデルと、設計書のカーネル1〜8を検証するCPU参照実装を提供する。
+NNUEの浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびフェーズ2aのGPU基盤を提供する。
+GPU側では第1層の前進、出力部の後退、部分和の縮約、検証を実行できる。
 学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)と`tools/train/src/minase_train`に従う。
 `dump-batch`の更新処理は照合資料の生成用であり、エポックを進める学習ループは持たない。
 
@@ -22,7 +23,8 @@
 `Parameter::ALL`が保存順、`Parameter::name`がPyTorchの名前を定め、添字による読み書きは配列長を保つ。
 `Masks`は`new`または`from_observations`で作り、`canonical`、`first_layer`、`virtual_rows`で3種のマスクを返す。
 
-`Model::initialize`は全基底特徴の線形2端点と観測マスクを受け取る。
+`Model::initialize`は全基底特徴の線形2端点、観測マスク、シード、第1層の初期化標準偏差を受け取る。
+標準偏差は有限かつ非負とし、`dump-batch --init-std`の既定値は0.05である。
 `shape`、`parameters`、`parameter_mut`、`masks`、`initial_linear`、`initial_virtual`が値を公開する。
 `expanded_biases`、`expanded_output_weights`、`expanded_linear`、`expanded_first_layer`が共有パラメータを展開し、最後の関数はHalfKP-hm-b8の特徴分解も畳み込む。
 `constrain`は有限性を検査してから切り詰め、`fix_unobserved`で未観測行と埋め草を復元する。
@@ -122,3 +124,124 @@ done
 Pythonは教師用Kと先読み教師を独立に計算し、特徴番号、損失、全パラメータ群の勾配、切り詰め後の重み、AdamWの両状態を照合する。
 浮動小数点数は`numpy.isclose`の`rtol=1e-4, atol=1e-5`で検査し、不一致の場所と差を表示して終了コード1を返す。
 Pythonとの3更新の実照合は委任元で行うため、Rustの単体テストの成功とは別に記録する。
+
+補助損失が発火する資料を照合する場合は、`dump-batch`に`--init-std 0.2`などを指定し、Pythonの照合に`--require-auxiliary`を付ける。
+このフラグは`reference.json`の3更新のうち少なくとも1更新の補助損失が正であることを要求する。
+標準偏差だけでは発火を保証しないため、全更新が0ならスクリプトは明示的なエラーで終了する。
+
+フェーズ2aの実装は次のファイルに置く。
+各CUDAソースは`include_str!`で埋め込み、改行で連結してNVRTCで実行時にコンパイルする。
+デバイスから取得した計算能力を`--gpu-architecture=sm_主番号副番号`で指定し、NVRTCの診断ログは`gpu::Error::Compile`に保持する。
+幅や特徴集合は起動引数で渡し、ソースの置換やテンプレートによる特殊化は行わない。
+
+| ファイル | 公開型と役割 |
+|---|---|
+| `src/gpu/mod.rs` | `gpu::Error`と`gpu::Result`を定義し、GPU不在、コンパイル、転送、入力不正、等価性違反を区別する。 |
+| `src/gpu/device.rs` | `Device`がCUDA文脈、計算ストリーム、転送ストリームを所有し、デバイス名と計算能力を返す。 |
+| `src/gpu/ring.rs` | `HostRing`がホスト3面とデバイス2面を所有し、`BatchTicket`で投入世代と所有する環を検査する。 |
+| `src/gpu/engine.rs` | `Evaluator`がモデルと作業配列を保持し、`Evaluation`へ前進、出力部の寄与、勾配の縮約、検証統計を回収する。 |
+| `src/gpu/equivalence.rs` | `Report`、`run`、`check`が合成入力でCPUとの一致と反復実行のビット一致を検査する。 |
+| `src/reference/validation.rs` | `reference::Validation`と`validation_forward`が検証統計のCPU参照を提供する。 |
+| `kernels/forward.cu` | 第1層と線形経路の前進を実装する。 |
+| `kernels/head.cu` | 出力部の後退と、後退を伴わない検証を実装する。 |
+| `kernels/reduce.cu` | 勾配のブロック部分和と固定順の縮約を実装する。 |
+| `tests/validation.rs` | 勝敗の符号、引き分け、飽和の端点、標準偏差の単位をGPUなしで検査する。 |
+
+`BatchSlot::from_records`は記録と教師配列から合成バッチを作り、既存のデータ経路と同じ特徴番号と逆索引を構築する。
+`Evaluator::evaluate`は補助損失の寄与を0として計算し、`Evaluator::validate`は前進と検証のカーネルだけを起動する。
+結果のホストへの同期回収は等価性検査用であり、エポックを進める処理や第1層の後退は本フェーズに含めない。
+
+カーネルの配列はCPU参照と同じ行優先順である。
+Bを局面数、Hを全幅、UをP型ならH/2、それ以外ならHとする。
+Rは第1層の行数で、P型は6,841、HalfKP-hm-b8は埋め草を含め109,441である。
+全カーネルのブロックは`(128, 1, 1)`で、Gを`ceil(B/128)`、Cを`3U+1`とする。
+以下の格子はx方向のブロック数を示し、y方向とz方向は1である。
+
+| カーネル | 引数を宣言順に記す | 格子と共有メモリ |
+|---|---|---|
+| `forward_acc` | `features, weights, bias, acc, B, H, p`を受ける。 | 格子は`ceil(2B ceil(H/4)/128)`である。 |
+| `forward_linear` | `features, weights, lin, B`を受ける。 | 格子は`ceil(2B/128)`である。 |
+| `output_backward` | `acc, lin, counts, output, bias, targets, S, removal_acc, removal_output, removal_linear, f, h, logits, loss, g, d_acc, d_output, c, loss_partials, B, H, p, K`を受ける。 | 格子はG、共有メモリは1,024バイトである。 |
+| `gradient_partials` | `d_acc, d_output, g, partials, B, H, units, chunk`を受ける。 | 格子はG、`units=U`、`chunk=128`である。 |
+| `reduce_partials` | `partials, sums, blocks, values`を受ける。 | Qを列数とすると格子は`ceil(Q/128)`、`blocks=G`、`values=Q`である。 |
+| `validation_head` | `acc, lin, counts, outcomes, output, bias, targets, partials, B, H, p, K`を受ける。 | 格子はG、共有メモリは7,168バイトである。 |
+
+次の表で、上記引数の型と形を定める。
+`p`はP型なら1、それ以外なら0で、B、H、`p`、`units`、`chunk`、`blocks`、`values`はu32、Kはf32である。
+そのほかの配列も、表に示す要素型をCUDA側の対応する型へそのまま渡す。
+
+| 配列 | 型と形 |
+|---|---|
+| 第1層の`features, weights, bias, acc` | 順に`u32[B,2,145]`、`f32[R,H]`、`f32[H]`、`f32[B,2,H]`である。 |
+| 線形前進の`features, weights, lin` | 順に`u32[B,145]`、`f32[6841,2]`、`f32[B,2]`である。 |
+| 出力部の`counts, outcomes, output, bias` | 順に`u8[B]`、`u8[B]`、`f32[2,H]`、`f32[1]`である。 |
+| `targets, S, logits, loss, g` | いずれも`f32[B]`である。 |
+| `removal_acc, removal_output, f, h, d_acc, d_output` | いずれも`f32[B,2,H]`である。 |
+| `removal_linear, c` | いずれも`f32[B,2]`である。 |
+| `loss_partials` | `f64[G]`で、縮約後にBで割る。 |
+| 勾配の`partials` | `f64[G,C]`で、出力重み2U個、バイアスU個、出力バイアス1個の順である。 |
+| 検証の`partials` | `f64[G,7]`で、BCEの和、符号一致数、非引き分け数、非線形出力の和、二乗和、下側飽和数、上側飽和数の順である。 |
+| 縮約の`partials, sums` | `f64[G,Q]`と`f64[Q]`で、Qは1、C、7のいずれかである。 |
+
+加算順はCPU参照に合わせ、第1層では左右の升を先に対にし、P型の出力部では左右半幅の活性化を足してから重みを掛ける。
+乗算と加算の融合は無効にし、SCReLUの微分は0と1の端点を含める。
+Hが4の倍数でない場合も、最後のスレッドがH未満の出力だけを処理する。
+大きな中間配列はf32で保持し、ブロック部分和をf64で書いてからブロック番号順に縮約する。
+アトミック加算は使わない。
+
+本フェーズでは`S, removal_acc, removal_output, removal_linear`に0を渡す。
+これらはそれぞれCPU参照の`Removal::s, d_acc_removal, d_output, linear`に対応する。
+`removal_linear`は`S(u_r-u)/K`を受ける形なので、出力部は`g u/K`を加える。
+非線形出力の和と二乗和はセンチポーン単位で集め、分散は局面数で割った母分散とする。
+符号一致率は引き分けを除き、ロジット0は勝ち予測に含めず、全局面が引き分けなら`None`を返す。
+
+ホスト面は「書き込み可能→転送中→転送完了→書き込み可能」の順に再利用する。
+各面は`BatchSlot`と同じ順の全配列を持ち、通し番号も含めて`alloc_pinned_with_flags(len, 0)`で確保する。
+逆索引の要素配列は両方とも`最大B×2×145`語を確保し、実際の局面数と2つの要素数を別に持つ。
+転送前のコピーは、そのホスト面の転送完了イベントをホストで待ってから行う。
+転送時は`PinnedHostSlice`をそのまま`memcpy_htod`へ渡し、容量全体をコピーする。
+カーネルが読む範囲は実際の局面数と要素数で制限する。
+
+デバイス面は「空き→投入済み→後退完了を記録済み→次の転送」の順に進む。
+次の転送ストリームは、その面の後退完了イベントを待つ。
+転送後にホスト面の転送完了イベントを記録し、計算ストリームがそのイベントを待ってから面を読む。
+`finish`は最後の使用を計算ストリームへ投入した後に呼び、その時点までの後退完了を記録する。
+完了を記録していない面、古い世代の券、別の環の券は拒否し、部分転送の失敗後はその環の再利用も拒否する。
+ストリーム間の`join`は呼ばない。
+
+追加した`unsafe`は以下の10ブロックで、すべて`gpu`モジュールにある。
+各起動の前にRust側で配列長を検査し、各ブロックの直前に前提条件を書く。
+既存のデータ読み込みにあるmmapの`unsafe`は変更していない。
+
+| 所在 | 前提条件 |
+|---|---|
+| `device.rs`のドライバ存在検査 | OSがロードするCUDA共有ライブラリを信頼し、GPUポインタを渡さない。 |
+| `device.rs`の固定メモリ確保 | 要素数とバイト数を検査し、フラグ0で確保する。読み出す前に全要素を初期化する。 |
+| `device.rs`のゼロ初期化 | ポインタは整列済みでlen要素を保持し、`ValidAsZeroBits`を満たす。参照や転送がまだ存在しない。 |
+| `device.rs`のNVRTC存在検査 | OSがロードするNVRTC共有ライブラリを信頼し、未検証のポインタを渡さない。 |
+| `engine.rs`の第1層起動 | 特徴配列、R×Hの重み、Hのバイアス、B×2×Hの出力を検査する。特徴番号は`BatchSlot`の不変条件で範囲内か番兵と保証する。 |
+| `engine.rs`の線形前進起動 | B×145、6,841×2、B×2の長さを検査し、正準行番号と番兵の契約を使う。 |
+| `engine.rs`の出力部起動 | B、B×2、B×2×Hの各配列とG個の部分和を検査し、128個のf64の共有メモリを確保する。 |
+| `engine.rs`の勾配部分和起動 | 入力のB×2×HとB、出力のG×Cを検査し、UがHまたはH/2であることを`Shape`で保証する。 |
+| `engine.rs`の縮約起動 | G×Qの部分和とQ個の出力を検査し、1スレッドが出力1列だけを担当する。 |
+| `engine.rs`の検証起動 | 前進と教師配列、B個の結果、G×7の部分和を検査し、7×128個のf64の共有メモリを確保する。 |
+
+カーネルと配列は同じ`Device`から作り、書き込み先には排他的な参照を渡す。
+cudarcのイベント追跡を有効に保ち、転送中または起動中のメモリの解放も追跡する。
+CPUテストでは、CUDAの引数宣言とRustの起動引数の順序、ソースの連結、面の状態遷移、入力範囲、検証統計を確認する。
+GPUを要する9テストには`#[ignore]`を付け、名前はすべて`gpu_`で始める。
+
+等価性検査の合成記録は、回転と番兵、先獅子、補間率の境界、空の逆索引範囲、3分類の教師値を含む。
+幅2、6、8、128と両特徴集合について、バッチ64、4,096、100、1、129を同じ評価器へ順に渡し、面の再利用も検査する。
+CPUとの判定は既存のPython照合と同じ許容誤差の形式で、`|GPU-CPU| ≤ 1e-6 + 1e-5 |CPU|`とする。
+非有限値は拒否し、全中間値と縮約値を同一入力で2回実行してビット単位でも比較する。
+検証専用の起動も2回実行し、出力部の後退を伴う場合の検証値とビット一致を要求する。
+
+GPUを使える環境では次のコマンドを実行する。
+カーネルのコンパイル成功と、実GPUでの値の一致は別々に確認する。
+
+```sh
+cargo test -p nnue-trainer -- --ignored gpu_
+cargo run -p nnue-trainer -- check-equivalence --feature-set P --width 6 --batch 100 --seed 71
+cargo run -p nnue-trainer -- check-equivalence --feature-set HalfKP-hm-b8 --width 128 --batch 4096 --seed 71
+```

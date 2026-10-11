@@ -182,6 +182,7 @@ pub fn model(set: InputFeatureSet, width: usize) -> Model {
         &vec![[0.0; 2]; 13680],
         all_observed(set),
         71,
+        0.05,
     )
     .unwrap()
 }

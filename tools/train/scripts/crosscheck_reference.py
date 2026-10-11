@@ -172,12 +172,14 @@ def check_batch(batch: dict, dataset: Dataset, records: np.ndarray, spec) -> boo
     return bool(valid)
 
 
-def crosscheck(paths: list[Path], manifest_path: Path) -> bool:
+def crosscheck(paths: list[Path], manifest_path: Path, require_auxiliary: bool = False) -> bool:
     torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
     manifest = json.loads(manifest_path.read_text())
     if manifest["format"] != "minase-nnue-reference" or manifest["version"] != 1 or len(manifest["steps"]) != 3:
         raise ValueError("unsupported reference dump format or step count")
+    if require_auxiliary and not any(step["losses"]["auxiliary"] > 0 for step in manifest["steps"]):
+        raise ValueError("--require-auxiliary requires a positive auxiliary loss in at least one of the 3 recorded updates")
     directory = manifest_path.parent
     saved = checkpoint(directory / manifest["checkpoint"])
     if saved["step"] == 0 or not np.any(saved["parameters"]["head.output_weights"]):
@@ -235,9 +237,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", nargs="+", required=True, type=Path)
     parser.add_argument("--dump", required=True, type=Path, help="dump-batchが書いたreference.json")
+    parser.add_argument("--require-auxiliary", action="store_true",
+                        help="reference.jsonの3更新のうち少なくとも1回で補助損失が正であることを要求する")
     args = parser.parse_args()
     try:
-        return 0 if crosscheck(args.data, args.dump) else 1
+        return 0 if crosscheck(args.data, args.dump, args.require_auxiliary) else 1
     except (OSError, ValueError, KeyError, IndexError, TypeError, RuntimeError, struct.error) as error:
         print(f"crosscheck_reference: {error}", file=sys.stderr)
         return 1

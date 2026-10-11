@@ -1,3 +1,4 @@
+use minase::training::records::Record;
 use serde::Serialize;
 
 use super::features::{base_features, canonical_row, input_features};
@@ -203,6 +204,50 @@ impl BatchSlot {
     }
 
     fn build(dataset: &Dataset, feature_set: InputFeatureSet, indices: &[u64]) -> Result<Self> {
+        Self::assemble(
+            feature_set,
+            indices,
+            indices.iter().map(|&index| {
+                Ok((
+                    dataset.record(index)?,
+                    dataset.teacher_score(index)?,
+                    dataset.teacher_class(index)?,
+                ))
+            }),
+        )
+    }
+
+    /// 合成記録または読み込み済み記録から面を作る。通し番号は記録の添字とする。
+    /// 教師値と分類は記録と同数で、教師値は有限でなければならない。
+    pub fn from_records(
+        feature_set: InputFeatureSet,
+        records: &[Record],
+        teacher_scores: &[f32],
+        teacher_classes: &[u32],
+    ) -> Result<Self> {
+        if records.len() != teacher_scores.len()
+            || records.len() != teacher_classes.len()
+            || teacher_scores.iter().any(|s| !s.is_finite())
+        {
+            return Err(Error::TeacherSamples);
+        }
+        let indices: Vec<u64> = (0..records.len() as u64).collect();
+        Self::assemble(
+            feature_set,
+            &indices,
+            records
+                .iter()
+                .zip(teacher_scores)
+                .zip(teacher_classes)
+                .map(|((record, &score), &class)| Ok((record.clone(), score, class))),
+        )
+    }
+
+    fn assemble(
+        feature_set: InputFeatureSet,
+        indices: &[u64],
+        samples: impl Iterator<Item = Result<(Record, f32, u32)>>,
+    ) -> Result<Self> {
         if indices.is_empty() || indices.len() > MAX_BATCH_SIZE {
             return Err(Error::BatchSize {
                 size: indices.len(),
@@ -214,8 +259,8 @@ impl BatchSlot {
         let mut teacher_scores = Vec::with_capacity(indices.len());
         let mut teacher_classes = Vec::with_capacity(indices.len());
         let mut outcomes = Vec::with_capacity(indices.len());
-        for &index in indices {
-            let record = dataset.record(index)?;
+        for sample in samples {
+            let (record, score, class) = sample?;
             let position = record.to_position()?;
             let bases = base_features(&position);
             let inputs = input_features(&position, &bases, feature_set);
@@ -233,8 +278,8 @@ impl BatchSlot {
                     .filter(|&&base| base != SENTINEL)
                     .count() as u8,
             );
-            teacher_scores.push(dataset.teacher_score(index)?);
-            teacher_classes.push(dataset.teacher_class(index)?);
+            teacher_scores.push(score);
+            teacher_classes.push(class);
             outcomes.push(outcome_code(record.outcome()));
         }
         let first_layer_inverse = ReverseIndex::build(

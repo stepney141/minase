@@ -48,6 +48,12 @@ pub(crate) struct Args {
     /// SplitMix64 model initialization seed.
     #[arg(long, requires = "init_pst")]
     seed: Option<u64>,
+    /// Standard deviation of first-layer initialization.
+    #[arg(long, default_value_t = 0.05)]
+    init_std: f32,
+    /// Scale applied to the initial PST (0 makes the removal lower-bound penalty fire everywhere).
+    #[arg(long, default_value_t = 1.0, requires = "init_pst")]
+    init_pst_scale: f32,
     /// Warm-up updates on --indices before saving checkpoint.bin; 0 also allowed.
     #[arg(long, requires = "init_pst")]
     steps: Option<u64>,
@@ -206,7 +212,14 @@ fn dump_reference(
         .init_pst
         .as_ref()
         .ok_or_else(|| invalid("--init-pst is required"))?;
-    let initial = load_initial(initial_path)?;
+    let mut initial = load_initial(initial_path)?;
+    if !args.init_pst_scale.is_finite() {
+        return Err(invalid("--init-pst-scale must be finite").into());
+    }
+    for pair in &mut initial {
+        pair[0] *= args.init_pst_scale;
+        pair[1] *= args.init_pst_scale;
+    }
     let observations = Observations::compute(dataset, args.feature_set)?;
     let shape = Shape::new(args.feature_set, width, k)?;
     let model = Model::initialize(
@@ -214,6 +227,7 @@ fn dump_reference(
         &initial,
         Masks::from_observations(args.feature_set, &observations)?,
         seed,
+        args.init_std,
     )?;
     let optimizer = AdamW::new(shape, AdamWConfig::default())?;
     let teacher_ks = dataset.estimate_teacher_ks()?;
@@ -233,6 +247,8 @@ fn dump_reference(
         k,
         seed,
         lookahead,
+        args.init_std,
+        args.init_pst_scale,
         optimizer.config(),
         &teacher_ks,
     ))?;

@@ -5,8 +5,10 @@
 
 mod optimizer;
 mod removal;
+mod validation;
 pub use optimizer::{AdamW, AdamWConfig, AdamWGroup, adamw};
 pub use removal::{Removal, RemovalReference, removal_forward, v0_piece_values};
+pub use validation::{Validation, validation_forward};
 
 use crate::{
     data::{
