@@ -2,6 +2,148 @@
 
 use super::*;
 
+// move-ordering.md「候補7」。完了反復だけを保存し、次の反復では先頭以外を整列する。
+#[test]
+fn completed_root_subtrees_order_the_next_iteration() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    with_root_searcher(&position, &[], |searcher| {
+        assert!(searcher.completed_root_nodes.is_empty());
+        assert!(searcher.current_root_nodes.is_empty());
+        let mut prev = None;
+        for depth in 1..=2 {
+            let before = searcher.nodes;
+            let (best, score) = searcher
+                .search_iteration(&position, &moves, depth, prev)
+                .unwrap();
+            prev = Some(score);
+            assert!(searcher.current_root_nodes.is_empty());
+            let counts = &searcher.completed_root_nodes;
+            assert_eq!(counts.len(), moves.len());
+            assert_eq!(
+                counts.iter().map(|(_, nodes)| nodes).sum::<u64>(),
+                searcher.nodes - before
+            );
+            for mv in &moves {
+                assert_eq!(counts.iter().filter(|(m, _)| m == mv).count(), 1);
+            }
+            let count = |mv: Move| counts.iter().find(|(m, _)| *m == mv).unwrap().1;
+            let mut baseline = moves.clone();
+            searcher.order_moves(&position, &mut baseline, Some(best), 0);
+            let mut ordered = moves.clone();
+            searcher.order_root_moves(&position, &mut ordered);
+            assert_eq!(ordered[0], best);
+            assert_eq!(ordered.len(), baseline.len());
+            for pair in ordered[1..].windows(2) {
+                assert!(count(pair[0]) >= count(pair[1]));
+                if count(pair[0]) == count(pair[1]) {
+                    assert!(
+                        baseline.iter().position(|&mv| mv == pair[0])
+                            < baseline.iter().position(|&mv| mv == pair[1])
+                    );
+                }
+            }
+            if depth == 2 {
+                assert!(counts.iter().any(|(_, nodes)| *nodes > 1));
+                assert!(counts.iter().any(|(_, nodes)| *nodes != counts[0].1));
+            }
+        }
+    });
+}
+
+// 同点と未記録の手は通常の整列順を保ち、previous_bestは置換表の手より優先する。
+#[test]
+fn root_node_order_preserves_ties_missing_moves_and_the_preferred_first_move() {
+    let position = Position::initial();
+    let moves = legal_moves(&position);
+    for previous_best in [None, Some(moves[1])] {
+        with_root_searcher(&position, &[], |searcher| {
+            let tt_move = *moves.last().unwrap();
+            searcher
+                .tt
+                .store(search_key(&position), 1, 0, Bound::Exact, Some(tt_move), 0);
+            if let Some(previous) = previous_best {
+                let mut results = crate::search::alphabeta::root::RootResults::default();
+                results.previous_best = Some(previous);
+                searcher.root_results = Some(results);
+            }
+            let mut baseline = moves.clone();
+            searcher.order_root_moves(&position, &mut baseline);
+            assert_eq!(baseline[0], previous_best.unwrap_or(tt_move));
+            searcher.completed_root_nodes = vec![
+                (baseline[0], 1),
+                (baseline[2], 0),
+                (baseline[3], 10),
+                (baseline[4], 20),
+                (baseline[5], 10),
+            ];
+            let mut expected = vec![baseline[0], baseline[4], baseline[3], baseline[5]];
+            expected.extend([baseline[1], baseline[2]]);
+            expected.extend_from_slice(&baseline[6..]);
+            let mut actual = moves.clone();
+            searcher.order_root_moves(&position, &mut actual);
+            assert_eq!(actual, expected);
+        });
+    }
+}
+
+// 読み直し中は前回完了表を参照し、同じ手へ各窓の探索量を加算する。
+#[test]
+fn root_research_keeps_completed_counts_and_accumulates_each_move() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = repeated_root_children(&position, &moves);
+    with_root_searcher(&position, &history, |searcher| {
+        let mut baseline = moves.clone();
+        searcher.order_root_moves(&position, &mut baseline);
+        let promoted = *baseline.last().unwrap();
+        let completed = vec![(promoted, 100)];
+        searcher.completed_root_nodes.clone_from(&completed);
+        // 全ての手が反復による引き分けとなり、各窓で正確に1ノードを使う。
+        for expected_count in 1..=2 {
+            assert_eq!(
+                searcher.search_root(&position, &moves, 5, 0, 1).unwrap().1,
+                DRAW_SCORE
+            );
+            assert_eq!(searcher.completed_root_nodes, completed);
+            assert_eq!(searcher.current_root_nodes.len(), moves.len());
+            assert!(
+                searcher
+                    .current_root_nodes
+                    .iter()
+                    .all(|(_, nodes)| *nodes == expected_count)
+            );
+            let mut ordered = moves.clone();
+            searcher.order_root_moves(&position, &mut ordered);
+            assert_eq!(ordered[0], baseline[0]);
+            assert_eq!(ordered[1], promoted);
+        }
+    });
+}
+
+#[test]
+fn interrupted_root_iteration_discards_only_current_counts() {
+    let position = quiet_midgame();
+    let moves = legal_moves(&position);
+    let history = repeated_root_children(&position, &moves);
+    with_root_searcher(&position, &history, |searcher| {
+        searcher
+            .search_iteration(&position, &moves, 2, None)
+            .unwrap();
+        let completed = searcher.completed_root_nodes.clone();
+        // 最初のfail-high窓を完了し、読み直しの途中で止める。
+        searcher.interrupt_at = Some((searcher.nodes + 2, StopReason::NodeLimit));
+        let delta = aspiration_delta(searcher.pst.pawn_value());
+        assert!(
+            searcher
+                .search_iteration(&position, &moves, 5, Some(-delta))
+                .is_none()
+        );
+        assert_eq!(searcher.completed_root_nodes, completed);
+        assert!(searcher.current_root_nodes.is_empty());
+    });
+}
+
 // docs/plans/strength-stage6.md「窓の適用条件と拡大」「検証」。
 #[test]
 fn aspiration_initial_window_uses_only_eligible_previous_scores() {
@@ -136,6 +278,11 @@ fn aspiration_researches_scores_equal_to_either_edge() {
                 .unwrap();
             assert_eq!(score, DRAW_SCORE);
             assert_eq!(searcher.nodes, first_nodes + moves.len() as u64);
+            assert!(searcher.current_root_nodes.is_empty());
+            assert_eq!(searcher.completed_root_nodes.len(), moves.len());
+            for (index, &(_, nodes)) in searcher.completed_root_nodes.iter().enumerate() {
+                assert_eq!(nodes, if prev == delta || index == 0 { 2 } else { 1 });
+            }
             assert_eq!(
                 searcher.tt.probe(search_key(&position), 0).unwrap().bound,
                 Bound::Exact

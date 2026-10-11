@@ -119,7 +119,7 @@ impl RootResults {
 }
 
 impl Searcher<'_> {
-    /// 「途中結果の採用」（byoyomi-time-usage.md）に従い、直前の最善手だけを先頭へ移す。
+    /// 現行の先頭手を保ち、残りを前回完了反復の部分木ノード数の降順に安定整列する。
     pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) {
         let tt_move = self
             .tt
@@ -132,6 +132,16 @@ impl Searcher<'_> {
                 .position(|&mv| mv == previous)
                 .expect("previous best must be a legal root move");
             moves[..=index].rotate_right(1);
+        }
+        if !self.completed_root_nodes.is_empty() && moves.len() > 1 {
+            moves[1..].sort_by_key(|mv| {
+                std::cmp::Reverse(
+                    self.completed_root_nodes
+                        .iter()
+                        .find(|(root_move, _)| root_move == mv)
+                        .map_or(0, |&(_, nodes)| nodes),
+                )
+            });
         }
     }
 
@@ -149,13 +159,18 @@ impl Searcher<'_> {
         let mut window =
             AspirationWindow::initial(depth, prev, aspiration_delta(self.pst.pawn_value()));
         loop {
-            let (best_move, score) =
-                self.search_root(position, root_moves, depth, window.alpha, window.beta)?;
+            let Some((best_move, score)) =
+                self.search_root(position, root_moves, depth, window.alpha, window.beta)
+            else {
+                self.current_root_nodes.clear();
+                return None;
+            };
             if score <= window.alpha {
                 window.widen_low();
             } else if score >= window.beta {
                 window.widen_high();
             } else {
+                self.completed_root_nodes = std::mem::take(&mut self.current_root_nodes);
                 if let Some(results) = &mut self.root_results {
                     results.previous_best = Some(best_move);
                 }
@@ -191,8 +206,15 @@ impl Searcher<'_> {
         let mut best_score = -INFINITY;
 
         for (index, mv) in moves.into_iter().enumerate() {
-            let score =
-                self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0, 0)?;
+            let before = self.nodes;
+            let score = self.search_move(&mut position, mv, depth, alpha, beta, 0, index == 0, 0);
+            let nodes = self.nodes - before;
+            if let Some((_, total)) = self.current_root_nodes.iter_mut().find(|(m, _)| *m == mv) {
+                *total += nodes;
+            } else {
+                self.current_root_nodes.push((mv, nodes));
+            }
+            let score = score?;
             if let Some(results) = &mut self.root_results {
                 results.record(mv, score, alpha, &self.pv[1]);
             }

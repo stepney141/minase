@@ -174,6 +174,7 @@ fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&m
     let table = small_tt();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut searcher = new_searcher(
         &pst,
         position,
@@ -182,6 +183,7 @@ fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&m
         &shared,
         &table,
         &mut butterfly_history,
+        &mut capture_history,
     );
     test(&mut searcher);
 }
@@ -221,6 +223,7 @@ fn run_quiesce(
     let pst = crate::eval::weights().unwrap();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut searcher = new_searcher(
         &pst,
         position,
@@ -229,6 +232,7 @@ fn run_quiesce(
         &shared,
         table,
         &mut butterfly_history,
+        &mut capture_history,
     );
     let score = searcher
         .quiesce(&mut current, alpha, beta, ply)
@@ -260,6 +264,7 @@ fn run_negamax(
     let pst = crate::eval::weights().unwrap();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut searcher = new_searcher(
         &pst,
         position,
@@ -268,6 +273,7 @@ fn run_negamax(
         &shared,
         table,
         &mut butterfly_history,
+        &mut capture_history,
     );
     let score = searcher
         .negamax(&mut current, depth, alpha, beta, ply)

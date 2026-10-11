@@ -1,0 +1,2609 @@
+diff --git a/crates/minase/src/bin/minase/bench.rs b/crates/minase/src/bin/minase/bench.rs
+index 2d32b47..309b22a 100644
+--- a/crates/minase/src/bin/minase/bench.rs
++++ b/crates/minase/src/bin/minase/bench.rs
+@@ -150,6 +150,8 @@ fn parse_repetitions(text: &str) -> Result<NonZeroUsize, String> {
+ 
+ /// bench 1回分の集計。
+ struct BenchRun {
++    #[cfg(feature = "search-stats")]
++    ordering_diag: minase::search::OrderingDiag,
+     /// 計測した全局面の探索統計。
+     #[cfg(feature = "search-stats")]
+     stats: minase::search::SearchStats,
+@@ -253,6 +255,8 @@ fn run_bench(
+     let mut total_elapsed = 0.0_f64;
+     #[cfg(feature = "search-stats")]
+     let mut stats = minase::search::SearchStats::default();
++    #[cfg(feature = "search-stats")]
++    let mut ordering_diag = minase::search::OrderingDiag::default();
+ 
+     for bench_position in BENCH_POSITIONS {
+         let position = parse_sfen(bench_position.sfen).expect("embedded SFEN must be valid");
+@@ -274,6 +278,7 @@ fn run_bench(
+         #[cfg(feature = "search-stats")]
+         {
+             stats += result.stats;
++            ordering_diag += result.ordering_diag;
+         }
+         reached_depth = reached_depth.min(result.depth);
+         total_elapsed += elapsed.as_secs_f64();
+@@ -303,6 +308,8 @@ fn run_bench(
+     }
+ 
+     BenchRun {
++        #[cfg(feature = "search-stats")]
++        ordering_diag,
+         #[cfg(feature = "search-stats")]
+         stats,
+         depth: reached_depth,
+@@ -345,6 +352,8 @@ pub(super) fn main(arguments: Arguments) {
+         );
+         #[cfg(feature = "search-stats")]
+         println!("{}", format_stats(&result.stats));
++        #[cfg(feature = "search-stats")]
++        write_ordering_diag(&result.ordering_diag);
+         return;
+     }
+ 
+@@ -394,11 +403,25 @@ pub(super) fn main(arguments: Arguments) {
+         for run in &runs {
+             stats += run.stats;
+         }
++        let mut ordering_diag = minase::search::OrderingDiag::default();
++        for run in &runs {
++            ordering_diag += run.ordering_diag;
++        }
++        write_ordering_diag(&ordering_diag);
+         // 中央値の回数ではなく、ウォームアップを除く全計測反復の合計。
+         println!("{} scope=all_measured_runs", format_stats(&stats));
+     }
+ }
+ 
++/// 指定がある場合だけ、全計測反復の診断をJSONへ書く。
++#[cfg(feature = "search-stats")]
++fn write_ordering_diag(diag: &minase::search::OrderingDiag) {
++    if let Some(path) = std::env::var_os("MINASE_ORDERING_DIAG") {
++        let file = std::fs::File::create(&path).expect("create MINASE_ORDERING_DIAG output");
++        serde_json::to_writer_pretty(file, diag).expect("write MINASE_ORDERING_DIAG output");
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/minase/src/eval/pst/mod.rs b/crates/minase/src/eval/pst/mod.rs
+index 52aaf81..3004298 100644
+--- a/crates/minase/src/eval/pst/mod.rs
++++ b/crates/minase/src/eval/pst/mod.rs
+@@ -50,6 +50,37 @@ pub struct Pst {
+ }
+ 
+ impl Pst {
++    /// 静かな手のPST差分を手番側視点の補間分子で返す。FMは含めない。
++    #[cfg(feature = "search-stats")]
++    pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: minase_core::Move) -> i64 {
++        let side = position.side_to_move();
++        let piece = position.piece_at(mv.from).expect("quiet mover exists");
++        let piece_after = if mv.promote {
++            piece.promote().expect("legal promotion")
++        } else {
++            piece
++        };
++        let from = self.weights[features::feature_index(side, piece, mv.from)];
++        let to = self.weights[features::feature_index(side, piece_after, mv.to)];
++        interpolation_numerator(
++            [
++                i32::from(to[0]) - i32::from(from[0]),
++                i32::from(to[1]) - i32::from(from[1]),
++            ],
++            phase(position.occupied().popcount()),
++        )
++    }
++
++    /// テスト用の全再計算。PST累算値を除算前の分子として参照する。
++    #[cfg(all(test, feature = "search-stats"))]
++    pub(crate) fn accumulator_numerator_for_test(&self, position: &Position, side: Color) -> i64 {
++        let accumulator = self.refresh_accumulator(position);
++        interpolation_numerator(
++            accumulator.sums[side.index()],
++            phase(accumulator.piece_count),
++        )
++    }
++
+     /// 盤上の駒コードに対応する駒価値をセンチポーンで返す。
+     ///
+     /// 値はMNPT本体に格納した探索用駒価値を使う。
+diff --git a/crates/minase/src/protocol/usi.rs b/crates/minase/src/protocol/usi.rs
+index dfda855..b08dcba 100644
+--- a/crates/minase/src/protocol/usi.rs
++++ b/crates/minase/src/protocol/usi.rs
+@@ -202,6 +202,14 @@ impl UsiProtocol {
+             }
+             "go" => {
+                 let Some(search) = self.start_go(engine, &tokens[1..], output)? else {
++                    #[cfg(feature = "search-stats")]
++                    if std::env::var_os("MINASE_ORDERING_DIAG").is_some() {
++                        self.histories
++                            .as_ref()
++                            .expect("idle protocol histories")
++                            .carry_counts()
++                            .write_info(output)?;
++                    }
+                     output.flush()?;
+                     return Ok(LineAction::Continue);
+                 };
+@@ -562,6 +570,11 @@ impl UsiProtocol {
+                         ponder_move.as_deref(),
+                         stop_reason,
+                         self.should_resign(score, depth),
++                        #[cfg(feature = "search-stats")]
++                        self.histories
++                            .as_ref()
++                            .expect("joined search histories")
++                            .carry_counts(),
+                     )
+                 }
+             }
+@@ -626,6 +639,11 @@ impl UsiProtocol {
+                 ponder_move.as_deref(),
+                 stop_reason,
+                 self.should_resign(score, depth),
++                #[cfg(feature = "search-stats")]
++                self.histories
++                    .as_ref()
++                    .expect("joined search histories")
++                    .carry_counts(),
+             ),
+             ActiveSearch::Running {
+                 mut context,
+@@ -695,6 +713,11 @@ impl UsiProtocol {
+                     ponder_move.as_deref(),
+                     stop_reason,
+                     self.should_resign(score, depth),
++                    #[cfg(feature = "search-stats")]
++                    self.histories
++                        .as_ref()
++                        .expect("joined search histories")
++                        .carry_counts(),
+                 )
+             }
+         }
+@@ -1417,8 +1440,13 @@ fn write_bestmove(
+     ponder_move: Option<&str>,
+     stop_reason: StopReason,
+     resign: bool,
++    #[cfg(feature = "search-stats")] counts: search::alphabeta::ordering_diag::CarryCounts,
+ ) -> io::Result<()> {
+     writeln!(output, "info string stop {}", stop_reason_text(stop_reason))?;
++    #[cfg(feature = "search-stats")]
++    if std::env::var_os("MINASE_ORDERING_DIAG").is_some() {
++        counts.write_info(output)?;
++    }
+     if resign {
+         writeln!(output, "bestmove resign")?;
+     } else {
+@@ -4342,6 +4370,8 @@ mod tests {
+             prediction.as_deref(),
+             StopReason::DepthCompleted,
+             false,
++            #[cfg(feature = "search-stats")]
++            search::alphabeta::ordering_diag::CarryCounts::default(),
+         )
+         .unwrap();
+         let output_time = started.elapsed();
+diff --git a/crates/minase/src/search/alphabeta/capture_history.rs b/crates/minase/src/search/alphabeta/capture_history.rs
+index 65462d1..4664b80 100644
+--- a/crates/minase/src/search/alphabeta/capture_history.rs
++++ b/crates/minase/src/search/alphabeta/capture_history.rs
+@@ -16,6 +16,19 @@ pub(super) struct CaptureHistory {
+ }
+ 
+ impl CaptureHistory {
++    #[cfg(all(test, feature = "search-stats"))]
++    pub(super) fn values_for_test(&mut self) -> &mut [i32] {
++        &mut self.values
++    }
++
++    /// 持ち越し診断用に、全要素を同じ率で減衰させる。0なら全消去する。
++    #[cfg(feature = "search-stats")]
++    pub(super) fn decay(&mut self, decay: i32) {
++        for value in &mut self.values {
++            *value = *value * decay / 100;
++        }
++    }
++
+     /// 1回の探索で使う表を0で初期化する。
+     pub(super) fn new() -> Self {
+         Self {
+@@ -36,6 +49,22 @@ impl CaptureHistory {
+             / i64::from(params::capture_history_limit())) as i32
+     }
+ 
++    /// 診断専用の影の表で、静かな手より前に読んだ捕獲手を減点する。
++    #[cfg(feature = "search-stats")]
++    pub(super) fn record_quiet_cutoff_penalty(
++        &mut self,
++        position: &Position,
++        pst: &Pst,
++        earlier: &[Move],
++        depth: u32,
++    ) {
++        let limit = params::capture_history_limit();
++        let penalty = -((depth * depth).min(limit as u32) as i32);
++        for &mv in earlier {
++            update(&mut self.values[index(position, pst, mv)], penalty, limit);
++        }
++    }
++
+     /// 打ち切り手に加点し、同じノードで探索済みの捕獲手に減点する。
+     pub(super) fn record_cutoff(
+         &mut self,
+diff --git a/crates/minase/src/search/alphabeta/deepening.rs b/crates/minase/src/search/alphabeta/deepening.rs
+index 6fa1652..19cb037 100644
+--- a/crates/minase/src/search/alphabeta/deepening.rs
++++ b/crates/minase/src/search/alphabeta/deepening.rs
+@@ -38,17 +38,33 @@ pub(super) fn run_main_worker(
+     shared: &SharedSearch<'_>,
+     tt: &TranspositionTable,
+     history: &mut HistoryTable,
++    #[cfg(feature = "search-stats")] carry: &mut super::ordering_diag::OrderingCarry,
+     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
+     ponder: bool,
+     adopt_partial: bool,
+ ) -> WorkerOutcome {
+     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt, history);
++    #[cfg(feature = "search-stats")]
++    {
++        searcher.carry = Some(carry);
++    }
++    #[cfg(feature = "search-stats")]
++    {
++        searcher
++            .carry
++            .as_deref_mut()
++            .expect("worker carry")
++            .counts
++            .searches += 1;
++    }
+     searcher.root_results = adopt_partial.then(RootResults::default);
+     #[cfg(feature = "invariants")]
+     pst.assert_accumulator(position, &searcher.accumulators[0], 0);
+     let mut result = SearchResult {
+         #[cfg(feature = "search-stats")]
+         stats: crate::search::SearchStats::default(),
++        #[cfg(feature = "search-stats")]
++        ordering_diag: super::ordering_diag::OrderingDiag::default(),
+         best_move: root_moves[0],
+         score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
+         depth: 0,
+@@ -150,6 +166,7 @@ pub(super) fn main_worker_outcome(
+     #[cfg(feature = "search-stats")]
+     {
+         result.stats = searcher.stats;
++        result.ordering_diag = searcher.ordering_diag;
+     }
+     let partial = searcher
+         .root_results
+@@ -183,13 +200,20 @@ pub(super) fn run_auxiliary_worker(
+     shared: &SharedSearch<'_>,
+     tt: &TranspositionTable,
+     history: &mut HistoryTable,
++    #[cfg(feature = "search-stats")] carry: &mut super::ordering_diag::OrderingCarry,
+ ) -> WorkerOutcome {
+     let mut searcher = new_searcher(pst, position, rules, history_keys, shared, tt, history);
++    #[cfg(feature = "search-stats")]
++    {
++        searcher.carry = Some(carry);
++    }
+     #[cfg(feature = "invariants")]
+     pst.assert_accumulator(position, &searcher.accumulators[0], 0);
+     let mut result = SearchResult {
+         #[cfg(feature = "search-stats")]
+         stats: crate::search::SearchStats::default(),
++        #[cfg(feature = "search-stats")]
++        ordering_diag: super::ordering_diag::OrderingDiag::default(),
+         best_move: root_moves[0],
+         score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
+         depth: 0,
+@@ -213,6 +237,7 @@ pub(super) fn run_auxiliary_worker(
+     #[cfg(feature = "search-stats")]
+     {
+         result.stats = searcher.stats;
++        result.ordering_diag = searcher.ordering_diag;
+     }
+     let nodes = searcher.nodes;
+     WorkerOutcome {
+diff --git a/crates/minase/src/search/alphabeta/history.rs b/crates/minase/src/search/alphabeta/history.rs
+index 9e2a55c..fa104be 100644
+--- a/crates/minase/src/search/alphabeta/history.rs
++++ b/crates/minase/src/search/alphabeta/history.rs
+@@ -12,12 +12,18 @@ pub(crate) type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT];
+ /// `docs/plans/strength-stage12.md`「項目5」「並列探索」に従う。
+ pub struct HistoryTables {
+     pub(crate) workers: Vec<Box<HistoryTable>>,
++    #[cfg(feature = "search-stats")]
++    pub(crate) carry: Vec<super::ordering_diag::OrderingCarry>,
+ }
+ 
+ impl HistoryTables {
+     /// 指定したワーカー数の表を0で初期化する。
+     pub fn new(threads: NonZeroUsize) -> Self {
+         Self {
++            #[cfg(feature = "search-stats")]
++            carry: (0..threads.get())
++                .map(|_| super::ordering_diag::OrderingCarry::new())
++                .collect(),
+             workers: (0..threads.get())
+                 .map(|_| Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]))
+                 .collect(),
+@@ -26,10 +32,24 @@ impl HistoryTables {
+ 
+     /// ワーカー数を保ったまま全ワーカーの表を0にする。
+     pub fn clear(&mut self) {
++        #[cfg(feature = "search-stats")]
++        for carry in &mut self.carry {
++            carry.clear();
++        }
+         for history in &mut self.workers {
+             for value in history.iter_mut().flatten().flatten() {
+                 *value = 0;
+             }
+         }
+     }
++
++    /// 完了済みの全ワーカーの対局内累計を合算する。
++    #[cfg(feature = "search-stats")]
++    pub(crate) fn carry_counts(&self) -> super::ordering_diag::CarryCounts {
++        let mut counts = super::ordering_diag::CarryCounts::default();
++        for carry in &self.carry {
++            counts += carry.counts;
++        }
++        counts
++    }
+ }
+diff --git a/crates/minase/src/search/alphabeta/mod.rs b/crates/minase/src/search/alphabeta/mod.rs
+index 31689b9..d99060a 100644
+--- a/crates/minase/src/search/alphabeta/mod.rs
++++ b/crates/minase/src/search/alphabeta/mod.rs
+@@ -6,6 +6,8 @@ mod deepening;
+ pub(crate) mod history;
+ mod negamax;
+ mod ordering;
++#[cfg(feature = "search-stats")]
++pub(crate) mod ordering_diag;
+ pub(crate) mod params;
+ mod pruning;
+ mod quiesce;
+diff --git a/crates/minase/src/search/alphabeta/negamax.rs b/crates/minase/src/search/alphabeta/negamax.rs
+index fa58af5..76fb617 100644
+--- a/crates/minase/src/search/alphabeta/negamax.rs
++++ b/crates/minase/src/search/alphabeta/negamax.rs
+@@ -165,6 +165,9 @@ impl Searcher<'_> {
+         });
+         let late_move_limit = pruning_node.then(|| late_move_limit(depth));
+         self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
++        #[cfg(feature = "search-stats")]
++        let mut ordering_observation =
++            super::ordering_diag::NodeObservation::new(self, depth, beta - alpha == 1);
+         let mut best_move = None;
+         let mut best_score = -INFINITY;
+         let mut best_capture = false;
+@@ -184,6 +187,9 @@ impl Searcher<'_> {
+             self.history,
+             &self.capture_history,
+         ) {
++            #[cfg(feature = "search-stats")]
++            let capture_head =
++                ordering_observation.picked(self, position, ply as usize, mv, tt_move);
+             // docs/plans/search-revival-spsa.md「late move pruningの定義の変更」。
+             // 枝刈りした手も数え、判定には現在の手より前の数を使う。
+             let counted_quiet = Some(mv) != tt_move
+@@ -203,6 +209,8 @@ impl Searcher<'_> {
+                 && !capture
+                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
+             {
++                #[cfg(feature = "search-stats")]
++                ordering_observation.pruned_head(self, capture_head);
+                 index += 1;
+                 continue;
+             }
+@@ -222,6 +230,8 @@ impl Searcher<'_> {
+                     see_margin(self.pst.pawn_value(), depth),
+                 )
+             {
++                #[cfg(feature = "search-stats")]
++                ordering_observation.pruned_head(self, capture_head);
+                 index += 1;
+                 continue;
+             }
+@@ -235,10 +245,21 @@ impl Searcher<'_> {
+             } else {
+                 0
+             };
++            #[cfg(feature = "search-stats")]
++            let nodes_before = self.nodes;
+             let score =
+                 self.search_move(position, mv, depth, alpha, beta, ply, index == 0, reduction)?;
+             #[cfg(feature = "search-stats")]
+             {
++                ordering_observation.searched(
++                    self,
++                    ply as usize,
++                    capture_head,
++                    self.nodes - nodes_before,
++                    score >= beta,
++                    score > alpha,
++                    mv,
++                );
+                 searched_moves += 1;
+                 if score > alpha {
+                     best_move_rank = searched_moves;
+@@ -259,8 +280,44 @@ impl Searcher<'_> {
+                         self.stats.first_move_beta_cutoffs += 1;
+                     }
+                 }
++                #[cfg(feature = "search-stats")]
++                {
++                    if capture {
++                        // 影の表は本番と同じ更新（置換表の記録手の捕獲を含む）に
++                        // 静かな手のβカット時の減点だけを加える。
++                        self.shadow_capture_history.record_cutoff(
++                            position,
++                            self.pst,
++                            mv,
++                            &searched_captures,
++                            depth,
++                        );
++                    } else {
++                        self.ordering_diag.cand1.quiet_cutoff_nodes += 1;
++                        self.ordering_diag
++                            .cand1
++                            .quiet_cutoff_nodes_with_searched_captures +=
++                            u64::from(!searched_captures.is_empty());
++                        self.shadow_capture_history.record_quiet_cutoff_penalty(
++                            position,
++                            self.pst,
++                            &searched_captures,
++                            depth,
++                        );
++                    }
++                }
+                 beta_cutoff = true;
+                 if capture {
++                    #[cfg(feature = "search-stats")]
++                    if let Some(carry) = self.carry.as_deref_mut() {
++                        carry.capture_history.record_cutoff(
++                            position,
++                            self.pst,
++                            mv,
++                            &searched_captures,
++                            depth,
++                        );
++                    }
+                     self.capture_history.record_cutoff(
+                         position,
+                         self.pst,
+@@ -279,6 +336,8 @@ impl Searcher<'_> {
+             index += 1;
+         }
+         #[cfg(feature = "search-stats")]
++        ordering_observation.finished(self, beta_cutoff);
++        #[cfg(feature = "search-stats")]
+         if !beta_cutoff {
+             self.stats.record_best_move_rank(best_move_rank);
+         }
+@@ -330,6 +389,10 @@ impl Searcher<'_> {
+         let lion_before = position
+             .lion_taken_by_non_lion()
+             .map(|trigger| trigger.square);
++        #[cfg(feature = "search-stats")]
++        {
++            self.move_records[(ply + 1) as usize] = None;
++        }
+         let undo = position.make_null_move();
+         self.previous_capture[(ply + 1) as usize] = None;
+         let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
+@@ -385,6 +448,11 @@ impl Searcher<'_> {
+         if !self.enter_node() {
+             return None;
+         }
++        #[cfg(feature = "search-stats")]
++        {
++            self.move_records[(ply + 1) as usize] =
++                Some(super::ordering_diag::move_record(position, mv));
++        }
+         let undo = position.make_move_unchecked(mv, self.rules);
+         let key = search_key(position);
+         if self.is_repetition(key) {
+diff --git a/crates/minase/src/search/alphabeta/ordering.rs b/crates/minase/src/search/alphabeta/ordering.rs
+index 05fc67a..d75c129 100644
+--- a/crates/minase/src/search/alphabeta/ordering.rs
++++ b/crates/minase/src/search/alphabeta/ordering.rs
+@@ -54,6 +54,18 @@ impl Searcher<'_> {
+         depth: u32,
+         ply: u32,
+     ) {
++        #[cfg(feature = "search-stats")]
++        {
++            let [counter, continuation] = self.carry_sources(ply as usize);
++            if let Some(carry) = self.carry.as_deref_mut() {
++                carry.record_quiet_cutoff(
++                    counter,
++                    continuation,
++                    super::ordering_diag::move_record(position, mv),
++                    depth,
++                );
++            }
++        }
+         let killers = &mut self.killers[ply as usize];
+         if killers[0] != Some(mv) {
+             killers[1] = killers[0];
+@@ -123,6 +135,16 @@ pub(super) struct MovePicker {
+     quiet_order: Vec<(Reverse<i32>, usize)>,
+     used_quiets: [Option<usize>; KILLER_COUNT],
+     quiets_generated: bool,
++    #[cfg(feature = "search-stats")]
++    pub(super) last_stage: MovePickerStage,
++    #[cfg(feature = "search-stats")]
++    pub(super) diag_capture_generation: Vec<Move>,
++    #[cfg(feature = "search-stats")]
++    pub(super) diag_candidate_rank: Vec<usize>,
++    #[cfg(feature = "search-stats")]
++    pub(super) diag_tie_sizes: Vec<usize>,
++    #[cfg(feature = "search-stats")]
++    pub(super) diag_quiet_observation: super::ordering_diag::Candidate5,
+ }
+ 
+ impl MovePicker {
+@@ -141,11 +163,29 @@ impl MovePicker {
+             quiet_order: Vec::new(),
+             used_quiets: [None; KILLER_COUNT],
+             quiets_generated: false,
++            #[cfg(feature = "search-stats")]
++            last_stage: MovePickerStage::Tt,
++            #[cfg(feature = "search-stats")]
++            diag_capture_generation: Vec::new(),
++            #[cfg(feature = "search-stats")]
++            diag_candidate_rank: Vec::new(),
++            #[cfg(feature = "search-stats")]
++            diag_tie_sizes: Vec::new(),
++            #[cfg(feature = "search-stats")]
++            diag_quiet_observation: super::ordering_diag::Candidate5::default(),
+         }
+     }
+ 
+     /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
+     pub(super) fn reset(&mut self, tt_move: Option<Move>, killers: [Option<Move>; KILLER_COUNT]) {
++        #[cfg(feature = "search-stats")]
++        {
++            self.last_stage = MovePickerStage::Tt;
++            self.diag_capture_generation.clear();
++            self.diag_candidate_rank.clear();
++            self.diag_tie_sizes.clear();
++            self.diag_quiet_observation = super::ordering_diag::Candidate5::default();
++        }
+         self.stage = MovePickerStage::Tt;
+         self.tt_move = tt_move;
+         self.killers = killers;
+@@ -180,6 +220,10 @@ impl MovePicker {
+                             &mut self.quiets,
+                         )
+                     {
++                        #[cfg(feature = "search-stats")]
++                        {
++                            self.last_stage = MovePickerStage::Tt;
++                        }
+                         return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
+                     }
+                 }
+@@ -191,6 +235,13 @@ impl MovePicker {
+                             &mut self.base_moves,
+                             &mut self.quiets,
+                         );
++                        #[cfg(feature = "search-stats")]
++                        self.diag_capture_generation.extend(
++                            self.quiets
++                                .iter()
++                                .copied()
++                                .filter(|&mv| Some(mv) != self.tt_move),
++                        );
+                         self.captures.extend(
+                             self.quiets
+                                 .drain(..)
+@@ -209,6 +260,10 @@ impl MovePicker {
+                         self.captures_generated = true;
+                     }
+                     if let Some(&(mv, _)) = self.captures.get(self.capture_index) {
++                        #[cfg(feature = "search-stats")]
++                        {
++                            self.last_stage = MovePickerStage::Captures;
++                        }
+                         self.capture_index += 1;
+                         return Some((mv, true));
+                     }
+@@ -233,6 +288,14 @@ impl MovePicker {
+                                     .then_some(index)
+                             })
+                     {
++                        #[cfg(feature = "search-stats")]
++                        {
++                            self.last_stage = if killer_index == 0 {
++                                MovePickerStage::Killer0
++                            } else {
++                                MovePickerStage::Killer1
++                            };
++                        }
+                         self.used_quiets[killer_index] = Some(index);
+                         return Some((self.quiets[index], false));
+                     }
+@@ -254,10 +317,16 @@ impl MovePicker {
+                             }),
+                     );
+                     self.quiet_order.sort_unstable();
++                    #[cfg(feature = "search-stats")]
++                    self.observe_quiet_order(position, pst);
+                     self.stage = MovePickerStage::Done;
+                 }
+                 MovePickerStage::Done => {
+                     if let Some(&(_, index)) = self.quiet_order.get(self.quiet_index) {
++                        #[cfg(feature = "search-stats")]
++                        {
++                            self.last_stage = MovePickerStage::Quiets;
++                        }
+                         self.quiet_index += 1;
+                         return Some((self.quiets[index], false));
+                     }
+@@ -301,3 +370,78 @@ pub(super) fn piece_at_for_ordering(position: &Position, square: minase_core::Sq
+         .piece_at(square)
+         .expect("move ordering square must contain a piece")
+ }
++
++#[cfg(feature = "search-stats")]
++impl MovePicker {
++    pub(super) fn diag_quiet_order(&self) -> &[(Reverse<i32>, usize)] {
++        &self.quiet_order
++    }
++    pub(super) fn diag_quiets(&self) -> &[Move] {
++        &self.quiets
++    }
++    pub(super) fn captures(&self) -> &[(Move, MoveOrderKey)] {
++        &self.captures
++    }
++    pub(super) fn capture_index(&self) -> usize {
++        self.capture_index
++    }
++    pub(super) fn quiet_index(&self) -> usize {
++        self.quiet_index
++    }
++    pub(super) fn quiets_generated(&self) -> bool {
++        self.quiets_generated
++    }
++
++    fn observe_quiet_order(&mut self, position: &Position, pst: &Pst) {
++        let len = self.quiet_order.len();
++        if len == 0 {
++            return;
++        }
++        let observation = &mut self.diag_quiet_observation;
++        observation.quiet_stage_nodes = 1;
++        observation.quiets_total = len as u64;
++        observation.quiets_history_zero =
++            self.quiet_order.iter().filter(|(h, _)| h.0 == 0).count() as u64;
++        let mut candidate: Vec<_> = self
++            .quiet_order
++            .iter()
++            .enumerate()
++            .map(|(rank, &(history, index))| {
++                (
++                    history,
++                    Reverse(pst.quiet_move_pst_delta(position, self.quiets[index])),
++                    index,
++                    rank,
++                )
++            })
++            .collect();
++        candidate.sort_unstable();
++        self.diag_candidate_rank.resize(len, 0);
++        for (rank, &(_, _, _, current)) in candidate.iter().enumerate() {
++            self.diag_candidate_rank[current] = rank;
++        }
++        observation.head_changed = u64::from(self.diag_candidate_rank[0] != 0);
++        self.diag_tie_sizes.resize(len, 0);
++        let mut start = 0;
++        while start < len {
++            let mut end = start + 1;
++            while end < len && self.quiet_order[end].0 == self.quiet_order[start].0 {
++                end += 1;
++            }
++            let size = end - start;
++            self.diag_tie_sizes[start..end].fill(size);
++            let bucket = match size {
++                1 => 0,
++                2..=4 => 1,
++                5..=16 => 2,
++                17..=64 => 3,
++                _ => 4,
++            };
++            observation.tie_groups[bucket] += 1;
++            if size >= 2 {
++                observation.quiets_in_tie_groups_ge2 += size as u64;
++            }
++            start = end;
++        }
++    }
++}
+diff --git a/crates/minase/src/search/alphabeta/ordering_diag.rs b/crates/minase/src/search/alphabeta/ordering_diag.rs
+new file mode 100644
+index 0000000..100eeaa
+--- /dev/null
++++ b/crates/minase/src/search/alphabeta/ordering_diag.rs
+@@ -0,0 +1,690 @@
++//! 手の順序付けの受動診断。表はワーカー内だけで更新し、探索終了後に合算する。
++
++use core::ops::{AddAssign, Index, IndexMut};
++use serde::Serialize;
++
++// 名前付きの固定長表により、ゼロ件の区分もJSONへ出力する。
++macro_rules! table {
++    ($name:ident, $n:expr, [$($key:literal),+]) => {
++        #[doc = "診断区分ごとの固定長表。JSONでは区分名をキーにする。"]
++        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
++        pub struct $name<T>(pub [T; $n]);
++        impl<T: Default> Default for $name<T> {
++            fn default() -> Self { Self(core::array::from_fn(|_| T::default())) }
++        }
++        impl<T: AddAssign> AddAssign for $name<T> {
++            fn add_assign(&mut self, rhs: Self) {
++                for (left, right) in self.0.iter_mut().zip(rhs.0) { *left += right; }
++            }
++        }
++        impl<T> Index<usize> for $name<T> {
++            type Output = T;
++            fn index(&self, i: usize) -> &T { &self.0[i] }
++        }
++        impl<T> IndexMut<usize> for $name<T> {
++            fn index_mut(&mut self, i: usize) -> &mut T { &mut self.0[i] }
++        }
++        impl<T: Serialize> Serialize for $name<T> {
++            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
++                use serde::ser::SerializeMap;
++                let mut map = serializer.serialize_map(Some($n))?;
++                for (key, value) in [$($key),+].iter().zip(&self.0) { map.serialize_entry(key, value)?; }
++                map.end()
++            }
++        }
++    };
++}
++table!(Depth, 4, ["1", "2", "3", "4+"]);
++table!(ShallowDepth, 3, ["1", "2", "3"]);
++table!(
++    HeadType,
++    5,
++    [
++        "tt",
++        "capture_see_negative",
++        "capture_other",
++        "killer",
++        "quiet"
++    ]
++);
++table!(CutType, 4, ["tt", "capture", "killer", "quiet"]);
++table!(CapturePosition, 2, ["node_head", "after_tt"]);
++table!(SeeType, 2, ["negative", "other"]);
++table!(TtType, 2, ["no_tt", "tt"]);
++table!(TieSize, 5, ["1", "2-4", "5-16", "17-64", "65+"]);
++
++macro_rules! counters {
++    ($(#[$meta:meta])* $name:ident { $($(#[$field_meta:meta])* $field:ident: $ty:ty),* $(,)? }) => {
++        $(#[$meta])*
++        #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize)]
++        pub struct $name { $($(#[$field_meta])* pub $field: $ty),* }
++        impl AddAssign for $name {
++            fn add_assign(&mut self, rhs: Self) { $(self.$field += rhs.$field;)* }
++        }
++    };
++}
++counters! {
++    /// 順序付け診断の全計数。残り深さはIIR適用後で分類する。
++    OrderingDiag {
++        /// 通常探索の手のループへ入ったノード数。
++        loop_nodes: Depth<u64>,
++        /// βカットの件数、先行費用、先頭手によるカット数。
++        w: Depth<HeadType<Work>>,
++        /// カット手の出所別件数。
++        cut_move_type: Depth<CutType<u64>>,
++        /// ループを完走したノード数。
++        no_cutoff_nodes: Depth<u64>,
++        /// 静かな手を生成する前にβカットしたノード数。
++        cutoff_before_quiets: Depth<u64>,
++        /// 探索された捕獲段の先頭の費用。
++        capture_head: Depth<CapturePosition<SeeType<CaptureHead>>>,
++        /// 静かな手による捕獲履歴の減点。
++        cand1: Candidate1,
++        /// SEE負の先頭捕獲と合法killerの共存。
++        cand2: ShallowDepth<TtType<Candidate2>>,
++        /// 静止探索の群内への捕獲履歴適用。
++        cand3: Candidate3,
++        /// 静かな手のPST差分による同点破り。
++        cand5: Candidate5,
++        /// 候補2の費用見積りに使う、診断で呼んだSEEと静かな手の生成の所要時間。
++        cost: Cost,
++    }
++}
++counters! {
++    /// 捕獲段の先頭のSEE判定とkiller合法性のための静かな手の生成の回数と所要ナノ秒。
++    Cost {
++        /// `see_prunes(…, 0)`の呼び出し回数。
++        see_calls: u64,
++        /// 同、所要ナノ秒の合計。
++        see_ns: u64,
++        /// `generate_quiets`の呼び出し回数。
++        generate_quiets_calls: u64,
++        /// 同、所要ナノ秒の合計。
++        generate_quiets_ns: u64,
++    }
++}
++counters! {
++    /// βカットまでの先行費用。
++    Work {
++        /// βカットしたノード数。
++        count: u64,
++        /// カット手より前に探索した部分木ノード数の和。
++        w_sum: u64,
++        /// 先頭手自身のβカット数。
++        first_move_cutoffs: u64,
++    }
++}
++counters! {
++    /// 捕獲段の先頭の探索費用。
++    CaptureHead {
++        /// 探索した件数。
++        count: u64,
++        /// 当該捕獲手だけの部分木ノード数の和。
++        subtree_sum: u64,
++        /// 当該捕獲手によるβカット数。
++        cut_by_head: u64,
++    }
++}
++counters! {
++    /// 現行順位から候補順位への変化。
++    RankChange {
++        /// 比較した成功手の数。
++        count: u64,
++        /// 候補の方が前の件数。
++        forward: u64,
++        /// 候補の方が後の件数。
++        backward: u64,
++        /// 前進幅の和。
++        forward_sum: u64,
++        /// 後退幅の和。
++        backward_sum: u64,
++    }
++}
++impl RankChange {
++    pub(super) fn record(&mut self, current: usize, candidate: usize) {
++        self.count += 1;
++        if current > candidate {
++            self.forward += 1;
++            self.forward_sum += (current - candidate) as u64;
++        } else if current < candidate {
++            self.backward += 1;
++            self.backward_sum += (candidate - current) as u64;
++        }
++    }
++}
++counters! {
++    /// 候補1の発動と更新機会。
++    Candidate1 {
++        /// TT手を除いた捕獲候補が2手以上の段数。
++        segments: u64,
++        /// 影の表で手の列が変わる段数。
++        segments_changed: u64,
++        /// 静かな手によるβカット数。
++        quiet_cutoff_nodes: u64,
++        /// 先に探索した捕獲手がある静かな手のβカット数。
++        quiet_cutoff_nodes_with_searched_captures: u64,
++        /// 捕獲段のカット手の順位変化。
++        capture_cut_rank: RankChange,
++    }
++}
++counters! {
++    /// 候補2の対象となる零窓ノード。
++    Candidate2 {
++        /// 手のループに入った対象ノード数。
++        zero_window_nodes: u64,
++        /// 捕獲段の先頭がSEE負だった数。
++        head_negative: u64,
++        /// SEE負の先頭捕獲の部分木ノード数。
++        head_negative_subtree_sum: u64,
++        /// SEE負の先頭捕獲が枝刈りされた数。
++        head_negative_pruned: u64,
++        /// SEE負の先頭捕獲と合法killerが共存した数。
++        head_negative_with_killer: u64,
++        /// 合法killerが共存した先頭捕獲の部分木ノード数。
++        head_negative_with_killer_subtree_sum: u64,
++        /// 合法killerが共存し、静かな手の生成前にカットした数。
++        head_negative_with_killer_cutoff_before_quiets: u64,
++        /// killer合法性のための追加生成回数。
++        generate_quiets_calls: u64,
++    }
++}
++counters! {
++    /// 候補3の群内順序と読む集合の比較。
++    Candidate3 {
++        /// 静止探索の手のループに入ったノード数。
++        qnodes: u64,
++        /// TT手を除いて2候補以上の群数。
++        groups_ge2: u64,
++        /// 群の先頭が変わる数。
++        groups_head_changed: u64,
++        /// 固定αで集合を比較したノード数。
++        nodes_compared: u64,
++        /// 読む捕獲手の集合が変わるノード数。
++        nodes_set_differs: u64,
++    }
++}
++counters! {
++    /// 静かな成功手の順位変化。
++    QuietSuccess {
++        /// 成功手の順位変化。
++        #[serde(flatten)]
++        ranks: RankChange,
++        /// 大きさ2以上の同点群に属する成功手数。
++        from_tie_group_ge2: u64,
++    }
++}
++counters! {
++    /// 候補5の同点とPST差分の観測。
++    Candidate5 {
++        /// 静かな手が1手以上ある整列の回数。
++        quiet_stage_nodes: u64,
++        /// PST差分によって先頭が変わる数。
++        head_changed: u64,
++        /// 整列対象の手の総数。
++        quiets_total: u64,
++        /// history値が0の手の数。
++        quiets_history_zero: u64,
++        /// history同点群の大きさ別件数。
++        tie_groups: TieSize<u64>,
++        /// 大きさ2以上の同点群に属する手の数。
++        quiets_in_tie_groups_ge2: u64,
++        /// βカットまたはαを上げた手の順位変化。
++        success_moves: QuietSuccess,
++    }
++}
++
++use super::ordering::{MovePickerStage, move_order_key};
++use super::searcher::Searcher;
++use super::see::see_prunes;
++use core::cmp::Reverse;
++use minase_core::{Move, Position};
++
++/// 再帰呼び出しで上書きされない、通常探索1ノードの観測状態。
++pub(super) struct NodeObservation {
++    depth: usize,
++    cand2: bool,
++    tt_searched: bool,
++    first_type: Option<usize>,
++    work: u64,
++    head_negative: bool,
++    head_with_killer: bool,
++    shadow_order: Vec<Move>,
++    carry_order: Vec<Move>,
++}
++impl NodeObservation {
++    pub(super) fn new(searcher: &mut Searcher<'_>, depth: u32, zero_window: bool) -> Self {
++        let bucket = depth.min(4) as usize - 1;
++        let cand2 = depth <= 3 && zero_window;
++        searcher.ordering_diag.loop_nodes[bucket] += 1;
++        if cand2 {
++            searcher.ordering_diag.cand2[bucket][0].zero_window_nodes += 1;
++        }
++        Self {
++            depth: bucket,
++            cand2,
++            tt_searched: false,
++            first_type: None,
++            work: 0,
++            head_negative: false,
++            head_with_killer: false,
++            shadow_order: Vec::new(),
++            carry_order: Vec::new(),
++        }
++    }
++
++    /// next直後に観測し、捕獲段の先頭かどうかを返す。
++    pub(super) fn picked(
++        &mut self,
++        searcher: &mut Searcher<'_>,
++        position: &Position,
++        ply: usize,
++        mv: Move,
++        tt_move: Option<Move>,
++    ) -> bool {
++        if matches!(
++            searcher.move_pickers[ply].last_stage,
++            MovePickerStage::Quiets
++        ) && searcher.move_pickers[ply].quiet_index() == 1
++        {
++            searcher.observe_carry_quiets(position, ply);
++        }
++        let picker = &searcher.move_pickers[ply];
++        let stage = picker.last_stage;
++        if matches!(stage, MovePickerStage::Tt) {
++            self.tt_searched = true;
++            if self.cand2 {
++                searcher.ordering_diag.cand2[self.depth][0].zero_window_nodes -= 1;
++                searcher.ordering_diag.cand2[self.depth][1].zero_window_nodes += 1;
++            }
++        }
++        if matches!(stage, MovePickerStage::Quiets) && picker.quiet_index() == 1 {
++            searcher.ordering_diag.cand5 += picker.diag_quiet_observation;
++        }
++        let head = matches!(stage, MovePickerStage::Captures) && picker.capture_index() == 1;
++        if head {
++            if let Some(carry) = searcher.carry.as_deref_mut() {
++                let mut candidate: Vec<_> = picker
++                    .diag_capture_generation
++                    .iter()
++                    .map(|&mv| {
++                        let mut key = move_order_key(position, searcher.pst, mv).expect("capture");
++                        let value = carry.capture_history.read(position, searcher.pst, mv);
++                        carry.counts.ch_refs += 1;
++                        carry.counts.ch_nonzero += u64::from(value != 0);
++                        key.captured_value +=
++                            carry.capture_history.adjustment(position, searcher.pst, mv);
++                        (mv, key)
++                    })
++                    .collect();
++                candidate
++                    .sort_by_key(|&(_, key)| (Reverse(key.captured_value), key.attacker_value));
++                self.carry_order = candidate.into_iter().map(|(mv, _)| mv).collect();
++                if self.carry_order.len() >= 2 {
++                    carry.counts.ch_segments += 1;
++                    carry.counts.ch_segments_changed += u64::from(
++                        !picker
++                            .captures()
++                            .iter()
++                            .map(|&(mv, _)| mv)
++                            .eq(self.carry_order.iter().copied()),
++                    );
++                }
++            }
++            // 安定整列の同点は、本番整列前の生成順で解決する。
++            let mut shadow: Vec<_> = picker
++                .diag_capture_generation
++                .iter()
++                .map(|&mv| {
++                    let mut key = move_order_key(position, searcher.pst, mv).expect("capture");
++                    key.captured_value +=
++                        searcher
++                            .shadow_capture_history
++                            .adjustment(position, searcher.pst, mv);
++                    (mv, key)
++                })
++                .collect();
++            shadow.sort_by_key(|&(_, key)| (Reverse(key.captured_value), key.attacker_value));
++            self.shadow_order = shadow.into_iter().map(|(mv, _)| mv).collect();
++            if self.shadow_order.len() >= 2 {
++                searcher.ordering_diag.cand1.segments += 1;
++                searcher.ordering_diag.cand1.segments_changed += u64::from(
++                    !picker
++                        .captures()
++                        .iter()
++                        .map(|&(mv, _)| mv)
++                        .eq(self.shadow_order.iter().copied()),
++                );
++            }
++            let see_started = std::time::Instant::now();
++            self.head_negative = see_prunes(position, searcher.rules, searcher.pst, mv, 0);
++            searcher.ordering_diag.cost.see_ns += see_started.elapsed().as_nanos() as u64;
++            searcher.ordering_diag.cost.see_calls += 1;
++            if self.cand2 && self.head_negative {
++                let counts =
++                    &mut searcher.ordering_diag.cand2[self.depth][usize::from(self.tt_searched)];
++                counts.head_negative += 1;
++                counts.generate_quiets_calls += 1;
++                let generation_started = std::time::Instant::now();
++                searcher.generator.generate_quiets(
++                    position,
++                    &mut searcher.diag_base_moves,
++                    &mut searcher.diag_quiets,
++                );
++                searcher.ordering_diag.cost.generate_quiets_ns +=
++                    generation_started.elapsed().as_nanos() as u64;
++                searcher.ordering_diag.cost.generate_quiets_calls += 1;
++                self.head_with_killer = searcher.killers[ply].iter().flatten().any(|&killer| {
++                    Some(killer) != tt_move && searcher.diag_quiets.contains(&killer)
++                });
++                counts.head_negative_with_killer += u64::from(self.head_with_killer);
++            }
++        }
++        head
++    }
++
++    pub(super) fn pruned_head(&self, searcher: &mut Searcher<'_>, head: bool) {
++        if head && self.cand2 && self.head_negative {
++            searcher.ordering_diag.cand2[self.depth][usize::from(self.tt_searched)]
++                .head_negative_pruned += 1;
++        }
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    pub(super) fn searched(
++        &mut self,
++        searcher: &mut Searcher<'_>,
++        ply: usize,
++        head: bool,
++        subtree: u64,
++        cutoff: bool,
++        raised_alpha: bool,
++        mv: Move,
++    ) {
++        let picker = &searcher.move_pickers[ply];
++        let stage = picker.last_stage;
++        let first = self.first_type.is_none();
++        let first_type = *self.first_type.get_or_insert(match stage {
++            MovePickerStage::Tt => 0,
++            MovePickerStage::Captures => {
++                if self.head_negative {
++                    1
++                } else {
++                    2
++                }
++            }
++            MovePickerStage::Killer0 | MovePickerStage::Killer1 => 3,
++            MovePickerStage::Quiets | MovePickerStage::Done => 4,
++        });
++        let diag = &mut searcher.ordering_diag;
++        if head {
++            let counts = &mut diag.capture_head[self.depth][usize::from(self.tt_searched)]
++                [usize::from(!self.head_negative)];
++            counts.count += 1;
++            counts.subtree_sum += subtree;
++            counts.cut_by_head += u64::from(cutoff);
++            if self.cand2 && self.head_negative {
++                let counts = &mut diag.cand2[self.depth][usize::from(self.tt_searched)];
++                counts.head_negative_subtree_sum += subtree;
++                if self.head_with_killer {
++                    counts.head_negative_with_killer_subtree_sum += subtree;
++                }
++            }
++        }
++        if matches!(stage, MovePickerStage::Quiets) && (cutoff || raised_alpha) {
++            let rank = picker.quiet_index() - 1;
++            diag.cand5
++                .success_moves
++                .ranks
++                .record(rank, picker.diag_candidate_rank[rank]);
++            diag.cand5.success_moves.from_tie_group_ge2 +=
++                u64::from(picker.diag_tie_sizes[rank] >= 2);
++        }
++        if cutoff {
++            let counts = &mut diag.w[self.depth][first_type];
++            counts.count += 1;
++            counts.w_sum += self.work;
++            counts.first_move_cutoffs += u64::from(first);
++            let cut_type = match stage {
++                MovePickerStage::Tt => 0,
++                MovePickerStage::Captures => 1,
++                MovePickerStage::Killer0 | MovePickerStage::Killer1 => 2,
++                MovePickerStage::Quiets | MovePickerStage::Done => 3,
++            };
++            diag.cut_move_type[self.depth][cut_type] += 1;
++            if !picker.quiets_generated() {
++                diag.cutoff_before_quiets[self.depth] += 1;
++                if self.cand2 && self.head_with_killer {
++                    diag.cand2[self.depth][usize::from(self.tt_searched)]
++                        .head_negative_with_killer_cutoff_before_quiets += 1;
++                }
++            }
++            if matches!(stage, MovePickerStage::Captures) {
++                if let Some(carry) = searcher.carry.as_deref_mut() {
++                    let candidate = self
++                        .carry_order
++                        .iter()
++                        .position(|&m| m == mv)
++                        .expect("carried order contains cutoff capture");
++                    let current = picker.capture_index() - 1;
++                    let counts = &mut carry.counts;
++                    counts.ch_cut_count += 1;
++                    if current > candidate {
++                        counts.ch_cut_forward += 1;
++                        counts.ch_cut_forward_sum += (current - candidate) as u64;
++                    } else if current < candidate {
++                        counts.ch_cut_backward += 1;
++                        counts.ch_cut_backward_sum += (candidate - current) as u64;
++                    }
++                }
++                let candidate = self
++                    .shadow_order
++                    .iter()
++                    .position(|&candidate| candidate == mv)
++                    .expect("shadow contains cutoff capture");
++                diag.cand1
++                    .capture_cut_rank
++                    .record(picker.capture_index() - 1, candidate);
++            }
++        }
++        self.work += subtree;
++    }
++
++    pub(super) fn finished(&self, searcher: &mut Searcher<'_>, cutoff: bool) {
++        if !cutoff {
++            searcher.ordering_diag.no_cutoff_nodes[self.depth] += 1;
++        }
++    }
++}
++
++/// 候補4・6の対局内累計。USIのキーと同じ名前で保持する。
++#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
++pub(crate) struct CarryCounts {
++    pub searches: u64,
++    pub ch_segments: u64,
++    pub ch_segments_changed: u64,
++    pub ch_cut_count: u64,
++    pub ch_cut_forward: u64,
++    pub ch_cut_backward: u64,
++    pub ch_cut_forward_sum: u64,
++    pub ch_cut_backward_sum: u64,
++    pub ch_refs: u64,
++    pub ch_nonzero: u64,
++    pub cmh_nodes: u64,
++    pub cmh_nodes_with_record: u64,
++    pub cmh_refs: u64,
++    pub cmh_nonzero: u64,
++    pub cmh_order_changed: u64,
++    pub cont_nodes: u64,
++    pub cont_nodes_with_record: u64,
++    pub cont_refs: u64,
++    pub cont_nonzero: u64,
++    pub cont_order_changed: u64,
++}
++
++macro_rules! carry_fields {
++    ($($field:ident),+ $(,)?) => {
++        impl AddAssign for CarryCounts {
++            fn add_assign(&mut self, rhs: Self) { $(self.$field += rhs.$field;)+ }
++        }
++        impl CarryCounts {
++            pub(crate) fn write_info(&self, output: &mut dyn std::io::Write) -> std::io::Result<()> {
++                write!(output, "info string diag scope=game")?;
++                $(write!(output, " {}={}", stringify!($field), self.$field)?;)+
++                writeln!(output)
++            }
++        }
++    };
++}
++carry_fields!(
++    searches,
++    ch_segments,
++    ch_segments_changed,
++    ch_cut_count,
++    ch_cut_forward,
++    ch_cut_backward,
++    ch_cut_forward_sum,
++    ch_cut_backward_sum,
++    ch_refs,
++    ch_nonzero,
++    cmh_nodes,
++    cmh_nodes_with_record,
++    cmh_refs,
++    cmh_nonzero,
++    cmh_order_changed,
++    cont_nodes,
++    cont_nodes_with_record,
++    cont_refs,
++    cont_nonzero,
++    cont_order_changed,
++);
++
++use super::capture_history::CaptureHistory;
++use minase_core::board::BOARD_SQUARE_COUNT;
++use minase_core::piece::PIECE_KIND_COUNT;
++
++const MOVE_RECORD_COUNT: usize = PIECE_KIND_COUNT * BOARD_SQUARE_COUNT;
++
++/// ワーカーごとに根の探索をまたいで保持する影の表。
++pub(crate) struct OrderingCarry {
++    pub(super) capture_history: CaptureHistory,
++    pub(super) counter: Box<[i16]>,
++    pub(super) continuation: Box<[i16]>,
++    pub(crate) counts: CarryCounts,
++}
++
++impl OrderingCarry {
++    pub(super) fn new() -> Self {
++        Self {
++            capture_history: CaptureHistory::new(),
++            counter: vec![0; MOVE_RECORD_COUNT * MOVE_RECORD_COUNT].into_boxed_slice(),
++            continuation: vec![0; MOVE_RECORD_COUNT * MOVE_RECORD_COUNT].into_boxed_slice(),
++            counts: CarryCounts::default(),
++        }
++    }
++
++    pub(super) fn clear(&mut self) {
++        self.decay(0);
++        self.counts = CarryCounts::default();
++    }
++
++    pub(super) fn decay(&mut self, decay: i32) {
++        self.capture_history.decay(decay);
++        for value in self.counter.iter_mut().chain(self.continuation.iter_mut()) {
++            *value = (i32::from(*value) * decay / 100) as i16;
++        }
++    }
++
++    pub(super) fn record_quiet_cutoff(
++        &mut self,
++        counter_source: Option<(usize, usize)>,
++        continuation_source: Option<(usize, usize)>,
++        reply: (usize, usize),
++        depth: u32,
++    ) {
++        for (table, source) in [
++            (&mut self.counter, counter_source),
++            (&mut self.continuation, continuation_source),
++        ] {
++            if let Some(source) = source {
++                let value = &mut table[carry_index(source, reply)];
++                *value = (i32::from(*value) + (depth * depth) as i32).clamp(-16_384, 16_384) as i16;
++            }
++        }
++    }
++}
++
++pub(super) fn carry_index(source: (usize, usize), reply: (usize, usize)) -> usize {
++    (source.0 * BOARD_SQUARE_COUNT + source.1) * MOVE_RECORD_COUNT
++        + reply.0 * BOARD_SQUARE_COUNT
++        + reply.1
++}
++
++pub(super) fn move_record(position: &Position, mv: Move) -> (usize, usize) {
++    (
++        position
++            .piece_at(mv.from)
++            .expect("moving piece")
++            .kind()
++            .expect("moving kind")
++            .index(),
++        mv.to.dense_index(),
++    )
++}
++
++impl Searcher<'_> {
++    /// 指示書のply−1、ply−2を独立に参照する。根の記録は常に空。
++    pub(super) fn carry_sources(&self, ply: usize) -> [Option<(usize, usize)>; 2] {
++        [1, 2].map(|offset| ply.checked_sub(offset).and_then(|p| self.move_records[p]))
++    }
++
++    fn observe_carry_quiets(&mut self, position: &Position, ply: usize) {
++        let sources = self.carry_sources(ply);
++        let Some(carry) = self.carry.as_deref_mut() else {
++            return;
++        };
++        let picker = &self.move_pickers[ply];
++        let counts = &mut carry.counts;
++        for (table, source, nodes, with_record, refs, nonzero, changed) in [
++            (
++                &carry.counter,
++                sources[0],
++                &mut counts.cmh_nodes,
++                &mut counts.cmh_nodes_with_record,
++                &mut counts.cmh_refs,
++                &mut counts.cmh_nonzero,
++                &mut counts.cmh_order_changed,
++            ),
++            (
++                &carry.continuation,
++                sources[1],
++                &mut counts.cont_nodes,
++                &mut counts.cont_nodes_with_record,
++                &mut counts.cont_refs,
++                &mut counts.cont_nonzero,
++                &mut counts.cont_order_changed,
++            ),
++        ] {
++            *nodes += 1;
++            let Some(source) = source else { continue };
++            *with_record += 1;
++            let mut candidate: Vec<_> = picker
++                .diag_quiet_order()
++                .iter()
++                .map(|&(history, index)| {
++                    let mv = picker.diag_quiets()[index];
++                    let value = table[carry_index(source, move_record(position, mv))];
++                    *refs += 1;
++                    *nonzero += u64::from(value != 0);
++                    (Reverse(history.0 + i32::from(value)), index)
++                })
++                .collect();
++            candidate.sort_unstable();
++            *changed += u64::from(
++                !candidate
++                    .iter()
++                    .map(|x| x.1)
++                    .eq(picker.diag_quiet_order().iter().map(|x| x.1)),
++            );
++        }
++    }
++}
+diff --git a/crates/minase/src/search/alphabeta/quiesce.rs b/crates/minase/src/search/alphabeta/quiesce.rs
+index 549b24b..0796445 100644
+--- a/crates/minase/src/search/alphabeta/quiesce.rs
++++ b/crates/minase/src/search/alphabeta/quiesce.rs
+@@ -106,12 +106,25 @@ impl Searcher<'_> {
+         let mut best_move = None;
+         let mut searched_captures = 0;
+         self.qsearch[ply as usize].set_tt_move(position, &self.generator, tt_move);
+-        while let Some(candidate) = self.qsearch[ply as usize].next(
+-            position,
+-            &self.generator,
+-            self.pst,
+-            &self.capture_ranks,
+-        ) {
++        #[cfg(feature = "search-stats")]
++        let mut observation = QsearchObservation::new(self, ply as usize, alpha, stand_pat);
++        loop {
++            let candidate = self.qsearch[ply as usize].next(
++                position,
++                &self.generator,
++                self.pst,
++                &self.capture_ranks,
++            );
++            #[cfg(feature = "search-stats")]
++            observation.collect_groups(self, position, ply as usize);
++            let Some(candidate) = candidate else {
++                break;
++            };
++            #[cfg(feature = "search-stats")]
++            if Some(candidate.capture.mv) == self.qsearch[ply as usize].tt_move {
++                observation.current.insert(0, candidate);
++                observation.candidate.insert(0, candidate);
++            }
+             let mv = candidate.capture.mv;
+             let buffers = &self.qsearch[ply as usize];
+             let is_last_royal_capture = captures_all_royals(
+@@ -174,6 +187,17 @@ impl Searcher<'_> {
+                 break;
+             }
+         }
++        #[cfg(feature = "search-stats")]
++        {
++            // 本番ループ終了後にだけ残りを生成する。次のノードではresetで消える。
++            while self.qsearch[ply as usize]
++                .generate_group(position, &self.generator, self.pst, &self.capture_ranks)
++                .is_some()
++            {
++                observation.collect_groups(self, position, ply as usize);
++            }
++            observation.compare(self, position);
++        }
+         let bound = if best >= beta {
+             Bound::Lower
+         } else if best <= original_alpha {
+@@ -272,6 +296,8 @@ pub(super) struct QsearchBuffers {
+     tt_pending: bool,
+     special_cursor: usize,
+     cursor: usize,
++    #[cfg(feature = "search-stats")]
++    diag_groups: Vec<Vec<QsearchCapture>>,
+ }
+ 
+ impl Default for QsearchBuffers {
+@@ -289,12 +315,16 @@ impl Default for QsearchBuffers {
+             tt_pending: false,
+             special_cursor: 0,
+             cursor: 0,
++            #[cfg(feature = "search-stats")]
++            diag_groups: Vec::new(),
+         }
+     }
+ }
+ 
+ impl QsearchBuffers {
+     pub(super) fn reset(&mut self, position: &Position) {
++        #[cfg(feature = "search-stats")]
++        self.diag_groups.clear();
+         self.validation.clear();
+         self.special.clear();
+         self.group.clear();
+@@ -453,6 +483,8 @@ impl QsearchBuffers {
+             self.group
+                 .sort_unstable_by_key(|c| (c.attacker_value, c.origin_key, c.seq));
+         }
++        #[cfg(feature = "search-stats")]
++        self.diag_groups.push(self.group.clone());
+         Some(())
+     }
+ 
+@@ -494,3 +526,109 @@ impl QsearchBuffers {
+         }
+     }
+ }
++
++/// αと例外条件をノード入口で固定し、着手を適用せず読む集合だけを比べる。
++#[cfg(feature = "search-stats")]
++struct QsearchObservation {
++    alpha: i32,
++    stand_pat: i32,
++    delta_margin: i32,
++    previous_capture: Option<minase_core::Square>,
++    royals: Bitboard,
++    royal_count: u32,
++    current: Vec<QsearchCapture>,
++    candidate: Vec<QsearchCapture>,
++}
++
++#[cfg(feature = "search-stats")]
++impl QsearchObservation {
++    fn new(searcher: &mut Searcher<'_>, ply: usize, alpha: i32, stand_pat: i32) -> Self {
++        searcher.ordering_diag.cand3.qnodes += 1;
++        Self {
++            alpha,
++            stand_pat,
++            delta_margin: searcher.delta_margin,
++            previous_capture: searcher.previous_capture[ply],
++            royals: searcher.qsearch[ply].royals,
++            royal_count: searcher.qsearch[ply].royal_count,
++            current: Vec::new(),
++            candidate: Vec::new(),
++        }
++    }
++
++    fn collect_groups(&mut self, searcher: &mut Searcher<'_>, position: &Position, ply: usize) {
++        let buffers = &mut searcher.qsearch[ply];
++        for group in buffers.diag_groups.drain(..) {
++            let current: Vec<_> = group
++                .into_iter()
++                .filter(|c| Some(c.capture.mv) != buffers.tt_move)
++                .collect();
++            // 現行の整列済み列に対する安定整列は、historyを先頭に加えたキーと同値。
++            // 同点時のattacker/origin/seqの順序をそのまま保つ。
++            let mut candidate: Vec<_> = current
++                .iter()
++                .map(|&c| {
++                    (
++                        c,
++                        Reverse(searcher.capture_history.read(
++                            position,
++                            searcher.pst,
++                            c.capture.mv,
++                        )),
++                    )
++                })
++                .collect();
++            candidate.sort_by_key(|&(_, history)| history);
++            if current.len() >= 2 {
++                searcher.ordering_diag.cand3.groups_ge2 += 1;
++                searcher.ordering_diag.cand3.groups_head_changed +=
++                    u64::from(current[0].capture.mv != candidate[0].0.capture.mv);
++            }
++            self.current.extend(current);
++            self.candidate.extend(candidate.into_iter().map(|(c, _)| c));
++        }
++    }
++
++    fn selected(
++        &self,
++        searcher: &Searcher<'_>,
++        position: &Position,
++        candidates: &[QsearchCapture],
++    ) -> Vec<Move> {
++        let mut selected = Vec::new();
++        for candidate in candidates {
++            let mv = candidate.capture.mv;
++            let last_royal =
++                captures_all_royals(self.royals, self.royal_count, candidate.capture.captured);
++            if !last_royal
++                && self.stand_pat + candidate.captured_value + self.delta_margin <= self.alpha
++            {
++                continue;
++            }
++            if !last_royal && capture_is_pruned_by_see(position, searcher.rules, searcher.pst, mv) {
++                continue;
++            }
++            if selected.len() >= params::qsearch_move_limit() as usize
++                && !last_royal
++                && !self
++                    .previous_capture
++                    .is_some_and(|square| candidate.capture.captured.contains(&Some(square)))
++                && !(candidate.capture.piece.kind() == Some(PieceKind::Lion)
++                    && candidate.capture.captured.iter().all(Option::is_some))
++            {
++                continue;
++            }
++            selected.push(mv);
++        }
++        selected
++    }
++
++    fn compare(self, searcher: &mut Searcher<'_>, position: &Position) {
++        let current = self.selected(searcher, position, &self.current);
++        let candidate = self.selected(searcher, position, &self.candidate);
++        searcher.ordering_diag.cand3.nodes_compared += 1;
++        searcher.ordering_diag.cand3.nodes_set_differs += u64::from(
++            current.len() != candidate.len() || current.iter().any(|mv| !candidate.contains(mv)),
++        );
++    }
++}
+diff --git a/crates/minase/src/search/alphabeta/searcher.rs b/crates/minase/src/search/alphabeta/searcher.rs
+index 1d079d1..8c336d9 100644
+--- a/crates/minase/src/search/alphabeta/searcher.rs
++++ b/crates/minase/src/search/alphabeta/searcher.rs
+@@ -50,6 +50,8 @@ pub(super) fn new_searcher<'a>(
+         interrupt_at: None,
+         #[cfg(feature = "search-stats")]
+         stats: crate::search::SearchStats::default(),
++        #[cfg(feature = "search-stats")]
++        ordering_diag: super::ordering_diag::OrderingDiag::default(),
+         pst,
+         rules,
+         generator: MoveGenerator::new(rules),
+@@ -76,6 +78,16 @@ pub(super) fn new_searcher<'a>(
+         delta_margin: pst.pawn_value() * params::delta_margin() / 100,
+         history,
+         capture_history: CaptureHistory::new(),
++        #[cfg(feature = "search-stats")]
++        shadow_capture_history: CaptureHistory::new(),
++        #[cfg(feature = "search-stats")]
++        carry: None,
++        #[cfg(feature = "search-stats")]
++        move_records: [None; MAX_PLY as usize + 1],
++        #[cfg(feature = "search-stats")]
++        diag_base_moves: Vec::new(),
++        #[cfg(feature = "search-stats")]
++        diag_quiets: Vec::new(),
+         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
+         tt,
+     }
+@@ -99,6 +111,18 @@ pub(super) struct Searcher<'a> {
+     /// このワーカーだけが更新する探索統計。
+     #[cfg(feature = "search-stats")]
+     pub(super) stats: crate::search::SearchStats,
++    #[cfg(feature = "search-stats")]
++    pub(super) ordering_diag: super::ordering_diag::OrderingDiag,
++    #[cfg(feature = "search-stats")]
++    pub(super) shadow_capture_history: CaptureHistory,
++    #[cfg(feature = "search-stats")]
++    pub(super) carry: Option<&'a mut super::ordering_diag::OrderingCarry>,
++    #[cfg(feature = "search-stats")]
++    pub(super) move_records: [Option<(usize, usize)>; MAX_PLY as usize + 1],
++    #[cfg(feature = "search-stats")]
++    pub(super) diag_base_moves: Vec<Move>,
++    #[cfg(feature = "search-stats")]
++    pub(super) diag_quiets: Vec<Move>,
+     /// 探索中に使う検証済み学習PST。
+     pub(super) pst: &'a Pst,
+     /// 探索内の着手適用に使う規則。
+diff --git a/crates/minase/src/search/alphabeta/team.rs b/crates/minase/src/search/alphabeta/team.rs
+index 97e09f1..b2629e5 100644
+--- a/crates/minase/src/search/alphabeta/team.rs
++++ b/crates/minase/src/search/alphabeta/team.rs
+@@ -17,7 +17,7 @@ use minase_core::position::Position;
+ use minase_core::rules::MoveRules;
+ 
+ use super::deepening::{run_auxiliary_worker, run_main_worker};
+-use super::history::{HistoryTable, HistoryTables};
++use super::history::HistoryTables;
+ use super::params;
+ use super::time::{byoyomi_clock, time_budget};
+ 
+@@ -187,6 +187,10 @@ pub(in crate::search) fn run_search_team(
+             *value = *value * decay / 100;
+         }
+     }
++    #[cfg(feature = "search-stats")]
++    for carry in &mut histories.carry {
++        carry.decay(decay);
++    }
+     tt.new_search();
+     let shared = SharedSearch {
+         external_stop,
+@@ -202,39 +206,54 @@ pub(in crate::search) fn run_search_team(
+     };
+ 
+     let history_keys: Vec<u64> = history_keys.to_vec();
+-    let worker_outcomes =
+-        run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
+-            if worker_index == 0 {
+-                run_main_worker(
+-                    pst,
+-                    position,
+-                    rules,
+-                    root_moves,
+-                    &history_keys,
+-                    depth_limit,
+-                    time_budget,
+-                    &shared,
+-                    tt,
+-                    history,
+-                    events,
+-                    ponder,
+-                    byoyomi_clock(limits).is_some(),
+-                )
+-            } else {
+-                run_auxiliary_worker(
+-                    pst,
+-                    position,
+-                    rules,
+-                    root_moves,
+-                    &history_keys,
+-                    depth_limit,
+-                    worker_index,
+-                    &shared,
+-                    tt,
+-                    history,
+-                )
+-            }
+-        });
++    #[cfg(feature = "search-stats")]
++    let mut worker_histories: Vec<_> = histories
++        .workers
++        .iter_mut()
++        .zip(&mut histories.carry)
++        .collect();
++    #[cfg(feature = "search-stats")]
++    let worker_histories = &mut worker_histories[..];
++    #[cfg(not(feature = "search-stats"))]
++    let worker_histories = &mut histories.workers[..];
++    let worker_outcomes = run_worker_team(worker_histories, &shared, |worker_index, history| {
++        #[cfg(feature = "search-stats")]
++        let (history, carry) = history;
++        if worker_index == 0 {
++            run_main_worker(
++                pst,
++                position,
++                rules,
++                root_moves,
++                &history_keys,
++                depth_limit,
++                time_budget,
++                &shared,
++                tt,
++                history,
++                #[cfg(feature = "search-stats")]
++                carry,
++                events,
++                ponder,
++                byoyomi_clock(limits).is_some(),
++            )
++        } else {
++            run_auxiliary_worker(
++                pst,
++                position,
++                rules,
++                root_moves,
++                &history_keys,
++                depth_limit,
++                worker_index,
++                &shared,
++                tt,
++                history,
++                #[cfg(feature = "search-stats")]
++                carry,
++            )
++        }
++    });
+     let total_nodes = shared.nodes();
+     debug_assert_eq!(
+         total_nodes,
+@@ -249,8 +268,10 @@ pub(in crate::search) fn run_search_team(
+     #[cfg(feature = "search-stats")]
+     {
+         result.stats = crate::search::SearchStats::default();
++        result.ordering_diag = super::ordering_diag::OrderingDiag::default();
+         for outcome in &worker_outcomes {
+             result.stats += outcome.result.stats;
++            result.ordering_diag += outcome.result.ordering_diag;
+         }
+     }
+     SearchOutcome {
+@@ -268,10 +289,10 @@ pub(in crate::search) fn run_search_team(
+ }
+ 
+ /// 主ワーカーと補助ワーカーを実行し、パニック時も全ワーカーを回収する。
+-pub(super) fn run_worker_team(
+-    histories: &mut [Box<HistoryTable>],
++pub(super) fn run_worker_team<T: Send>(
++    histories: &mut [T],
+     shared: &SharedSearch<'_>,
+-    worker: impl Fn(usize, &mut HistoryTable) -> WorkerOutcome + Sync,
++    worker: impl Fn(usize, &mut T) -> WorkerOutcome + Sync,
+ ) -> Vec<WorkerOutcome> {
+     let worker_count = histories.len();
+     let (main_history, auxiliary_histories) = histories
+diff --git a/crates/minase/src/search/alphabeta/tests/history.rs b/crates/minase/src/search/alphabeta/tests/history.rs
+index 550bf6f..a48eabd 100644
+--- a/crates/minase/src/search/alphabeta/tests/history.rs
++++ b/crates/minase/src/search/alphabeta/tests/history.rs
+@@ -172,6 +172,8 @@ fn history_carry_workers_update_their_own_table() {
+             partial_score: None,
+             worker_index: index,
+             result: SearchResult {
++                #[cfg(feature = "search-stats")]
++                ordering_diag: crate::search::OrderingDiag::default(),
+                 #[cfg(feature = "search-stats")]
+                 stats: crate::search::SearchStats::default(),
+                 best_move: mv,
+diff --git a/crates/minase/src/search/alphabeta/tests/mod.rs b/crates/minase/src/search/alphabeta/tests/mod.rs
+index 13c8356..f9a618f 100644
+--- a/crates/minase/src/search/alphabeta/tests/mod.rs
++++ b/crates/minase/src/search/alphabeta/tests/mod.rs
+@@ -18,6 +18,10 @@ mod late_move;
+ mod limits;
+ mod negamax;
+ mod ordering;
++#[cfg(feature = "search-stats")]
++mod ordering_carry;
++#[cfg(feature = "search-stats")]
++mod ordering_diag;
+ mod partial;
+ mod ponder;
+ mod pruning;
+diff --git a/crates/minase/src/search/alphabeta/tests/ordering_carry.rs b/crates/minase/src/search/alphabeta/tests/ordering_carry.rs
+new file mode 100644
+index 0000000..a8bc64d
+--- /dev/null
++++ b/crates/minase/src/search/alphabeta/tests/ordering_carry.rs
+@@ -0,0 +1,214 @@
++//! diag-b.mdの初期化、根ごとの減衰、参照元と飽和加算の契約。
++
++use super::*;
++use crate::search::HistoryTables;
++use crate::search::alphabeta::ordering_diag::{
++    CarryCounts, OrderingCarry, carry_index, move_record,
++};
++use crate::search::alphabeta::params;
++
++#[test]
++fn clear_zeroes_all_carried_tables_and_game_counts_without_reallocation() {
++    let mut histories = HistoryTables::new(worker_count(2));
++    let mut pointers = Vec::new();
++    for carry in &mut histories.carry {
++        carry.capture_history.values_for_test().fill(-65_536);
++        carry.counter.fill(16_384);
++        carry.continuation.fill(-16_384);
++        carry.counts = populated_counts(7);
++        pointers.push((carry.counter.as_ptr(), carry.continuation.as_ptr()));
++    }
++    histories.clear();
++    for (carry, pointers) in histories.carry.iter_mut().zip(pointers) {
++        assert!(
++            carry
++                .capture_history
++                .values_for_test()
++                .iter()
++                .all(|&v| v == 0)
++        );
++        assert!(carry.counter.iter().all(|&v| v == 0));
++        assert!(carry.continuation.iter().all(|&v| v == 0));
++        assert_eq!(carry.counts, CarryCounts::default());
++        assert_eq!(
++            (carry.counter.as_ptr(), carry.continuation.as_ptr()),
++            pointers
++        );
++    }
++}
++
++#[test]
++fn root_start_decays_all_three_tables_once_per_worker_without_decaying_counts() {
++    let snapshot = snapshot_for(&Position::initial());
++    let mut histories = HistoryTables::new(worker_count(2));
++    let values: [i16; 7] = [-16_384, -101, -1, 0, 1, 101, 16_384];
++    for carry in &mut histories.carry {
++        for (i, value) in carry
++            .capture_history
++            .values_for_test()
++            .iter_mut()
++            .enumerate()
++        {
++            *value = i32::from(values[i % values.len()]);
++        }
++        for table in [&mut carry.counter, &mut carry.continuation] {
++            for (i, value) in table.iter_mut().enumerate() {
++                *value = values[i % values.len()];
++            }
++        }
++        carry.counts = populated_counts(7);
++    }
++    let pointers: Vec<_> = histories.carry.iter().map(|c| c.counter.as_ptr()).collect();
++    let result = run_search_team(
++        &weights().unwrap(),
++        &snapshot.position,
++        snapshot.rules,
++        &snapshot.root_moves,
++        &snapshot.history_keys,
++        &depth_limits(3),
++        &AtomicBool::new(true),
++        worker_count(2),
++        &small_tt(),
++        &mut histories,
++        None,
++        Instant::now(),
++        &AtomicU64::new(0),
++        false,
++    );
++    assert_eq!(result.result.nodes, 0);
++    let expected = values.map(|v| i32::from(v) * params::history_decay() / 100);
++    for (worker, carry) in histories.carry.iter_mut().enumerate() {
++        for (i, value) in carry.capture_history.values_for_test().iter().enumerate() {
++            assert_eq!(*value, expected[i % expected.len()]);
++        }
++        for table in [&carry.counter, &carry.continuation] {
++            for (i, value) in table.iter().enumerate() {
++                assert_eq!(i32::from(*value), expected[i % expected.len()]);
++            }
++        }
++        let mut counts = populated_counts(7);
++        counts.searches += u64::from(worker == 0);
++        assert_eq!(carry.counts, counts);
++        assert_eq!(carry.counter.as_ptr(), pointers[worker]);
++    }
++}
++
++#[test]
++fn quiet_cutoff_uses_independent_sources_and_saturates_without_halving() {
++    let mut carry = OrderingCarry::new();
++    let source = (28, 143);
++    let reply = (0, 0);
++    let index = carry_index(source, reply);
++    carry.counter[index] = 16_380;
++    carry.counter[index + 1] = 10_000;
++    carry.continuation[index] = -16_384;
++    carry.record_quiet_cutoff(None, None, reply, 3);
++    assert_eq!(carry.counter[index], 16_380);
++    assert_eq!(carry.continuation[index], -16_384);
++    carry.record_quiet_cutoff(None, Some(source), reply, 3);
++    assert_eq!(carry.counter[index], 16_380);
++    assert_eq!(carry.continuation[index], -16_375);
++    carry.record_quiet_cutoff(Some(source), None, reply, 3);
++    assert_eq!(carry.counter[index], 16_384);
++    assert_eq!(carry.counter[index + 1], 10_000);
++    assert_eq!(carry.continuation[index], -16_375);
++    carry.counter[index] = 0;
++    carry.record_quiet_cutoff(Some(source), None, reply, 3);
++    assert_eq!(carry.counter[index], 9);
++    carry.record_quiet_cutoff(Some(source), Some(source), reply, MAX_PLY);
++    assert_eq!(carry.counter[index], 16_384);
++    assert_eq!(carry.continuation[index], 16_384);
++    assert_eq!(carry_index((28, 143), (28, 143)), 29 * 144 * 29 * 144 - 1);
++}
++
++#[test]
++fn search_records_moves_and_clears_null_record_with_independent_ply_sources() {
++    let board = Position::initial();
++    with_root_searcher(&board, &[], |searcher| {
++        assert!(searcher.move_records.iter().all(Option::is_none));
++        let mut carry = OrderingCarry::new();
++        // 参照の添字と更新を同じSearcherで検査する。
++        let first = legal_moves(&board)[0];
++        let record = move_record(&board, first);
++        assert!(
++            searcher
++                .search_move(
++                    &mut board.clone(),
++                    first,
++                    1,
++                    -INFINITY,
++                    INFINITY,
++                    0,
++                    true,
++                    0
++                )
++                .is_some()
++        );
++        assert_eq!(searcher.move_records[0], None);
++        assert_eq!(searcher.move_records[1], Some(record));
++        assert_eq!(searcher.carry_sources(1), [None, None]);
++        assert_eq!(searcher.carry_sources(2), [Some(record), None]);
++        searcher.move_records[2] = Some((28, 143));
++        let mut child = board.clone();
++        child.make_move_unchecked(first, engine_rules());
++        assert!(
++            searcher
++                .search_null_move(&mut child, 0, INFINITY, 1)
++                .is_some()
++        );
++        assert_eq!(searcher.move_records[2], None);
++        assert_eq!(searcher.carry_sources(3), [None, Some(record)]);
++        let [counter, continuation] = searcher.carry_sources(3);
++        carry.record_quiet_cutoff(counter, continuation, record, 4);
++        assert_eq!(carry.counter[carry_index(record, record)], 0);
++        assert_eq!(carry.continuation[carry_index(record, record)], 16);
++    });
++}
++
++fn populated_counts(n: u64) -> CarryCounts {
++    CarryCounts {
++        searches: n,
++        ch_segments: n,
++        ch_segments_changed: n,
++        ch_cut_count: n,
++        ch_cut_forward: n,
++        ch_cut_backward: n,
++        ch_cut_forward_sum: n,
++        ch_cut_backward_sum: n,
++        ch_refs: n,
++        ch_nonzero: n,
++        cmh_nodes: n,
++        cmh_nodes_with_record: n,
++        cmh_refs: n,
++        cmh_nonzero: n,
++        cmh_order_changed: n,
++        cont_nodes: n,
++        cont_nodes_with_record: n,
++        cont_refs: n,
++        cont_nonzero: n,
++        cont_order_changed: n,
++    }
++}
++
++#[test]
++fn sums_all_workers_and_writes_exact_game_keys() {
++    let mut histories = HistoryTables::new(worker_count(2));
++    histories.carry[0].counts = populated_counts(2);
++    histories.carry[1].counts = populated_counts(3);
++    let counts = histories.carry_counts();
++    assert_eq!(counts, populated_counts(5));
++    let mut output = Vec::new();
++    counts.write_info(&mut output).unwrap();
++    let output = String::from_utf8(output).unwrap();
++    let keys = "searches ch_segments ch_segments_changed ch_cut_count ch_cut_forward ch_cut_backward ch_cut_forward_sum ch_cut_backward_sum ch_refs ch_nonzero cmh_nodes cmh_nodes_with_record cmh_refs cmh_nonzero cmh_order_changed cont_nodes cont_nodes_with_record cont_refs cont_nonzero cont_order_changed";
++    assert_eq!(
++        output,
++        format!(
++            "info string diag scope=game {}\n",
++            keys.split_whitespace()
++                .map(|k| format!("{k}=5"))
++                .collect::<Vec<_>>()
++                .join(" ")
++        )
++    );
++}
+diff --git a/crates/minase/src/search/alphabeta/tests/ordering_diag.rs b/crates/minase/src/search/alphabeta/tests/ordering_diag.rs
+new file mode 100644
+index 0000000..d933cdb
+--- /dev/null
++++ b/crates/minase/src/search/alphabeta/tests/ordering_diag.rs
+@@ -0,0 +1,415 @@
++//! diag-a.mdの加算、影の減点、PST差分、および受動計数の契約。
++
++use super::*;
++use crate::search::alphabeta::capture_history::CaptureHistory;
++use crate::search::alphabeta::ordering_diag::*;
++use crate::search::alphabeta::params;
++
++fn rank_counts(n: u64) -> RankChange {
++    RankChange {
++        count: n,
++        forward: n,
++        backward: n,
++        forward_sum: n,
++        backward_sum: n,
++    }
++}
++
++// 全フィールドを明記し、新しいフィールドが追加されたら試験にも反映させる。
++fn all_counts(n: u64) -> OrderingDiag {
++    OrderingDiag {
++        loop_nodes: Depth([n; 4]),
++        w: Depth(
++            [HeadType(
++                [Work {
++                    count: n,
++                    w_sum: n,
++                    first_move_cutoffs: n,
++                }; 5],
++            ); 4],
++        ),
++        cut_move_type: Depth([CutType([n; 4]); 4]),
++        no_cutoff_nodes: Depth([n; 4]),
++        cutoff_before_quiets: Depth([n; 4]),
++        capture_head: Depth(
++            [CapturePosition(
++                [SeeType(
++                    [CaptureHead {
++                        count: n,
++                        subtree_sum: n,
++                        cut_by_head: n,
++                    }; 2],
++                ); 2],
++            ); 4],
++        ),
++        cand1: Candidate1 {
++            segments: n,
++            segments_changed: n,
++            quiet_cutoff_nodes: n,
++            quiet_cutoff_nodes_with_searched_captures: n,
++            capture_cut_rank: rank_counts(n),
++        },
++        cand2: ShallowDepth(
++            [TtType(
++                [Candidate2 {
++                    zero_window_nodes: n,
++                    head_negative: n,
++                    head_negative_subtree_sum: n,
++                    head_negative_pruned: n,
++                    head_negative_with_killer: n,
++                    head_negative_with_killer_subtree_sum: n,
++                    head_negative_with_killer_cutoff_before_quiets: n,
++                    generate_quiets_calls: n,
++                }; 2],
++            ); 3],
++        ),
++        cand3: Candidate3 {
++            qnodes: n,
++            groups_ge2: n,
++            groups_head_changed: n,
++            nodes_compared: n,
++            nodes_set_differs: n,
++        },
++        cand5: Candidate5 {
++            quiet_stage_nodes: n,
++            head_changed: n,
++            quiets_total: n,
++            quiets_history_zero: n,
++            tie_groups: TieSize([n; 5]),
++            quiets_in_tie_groups_ge2: n,
++            success_moves: QuietSuccess {
++                ranks: rank_counts(n),
++                from_tie_group_ge2: n,
++            },
++        },
++        cost: Cost {
++            see_calls: n,
++            see_ns: n,
++            generate_quiets_calls: n,
++            generate_quiets_ns: n,
++        },
++    }
++}
++
++#[test]
++fn add_assign_sums_every_counter_and_serializes_named_buckets() {
++    let mut sum = all_counts(2);
++    sum += all_counts(7);
++    assert_eq!(sum, all_counts(9));
++    let before = sum;
++    sum += OrderingDiag::default();
++    assert_eq!(sum, before);
++    let json = serde_json::to_value(sum).unwrap();
++    assert_eq!(json["w"]["4+"]["capture_see_negative"]["w_sum"], 9);
++    assert_eq!(json["capture_head"]["2"]["after_tt"]["other"]["count"], 9);
++    assert_eq!(json["cand2"]["3"]["no_tt"]["head_negative_pruned"], 9);
++    assert!(json["cand2"].get("4+").is_none());
++    assert_eq!(json["cand5"]["tie_groups"]["65+"], 9);
++    assert_eq!(json["cand5"]["success_moves"]["count"], 9);
++}
++
++fn capture_board() -> Position {
++    position(
++        Color::Black,
++        &[
++            (sq(0, 0), Color::Black, PieceKind::King),
++            (sq(11, 11), Color::White, PieceKind::King),
++            (sq(5, 5), Color::Black, PieceKind::Rook),
++            (sq(5, 7), Color::White, PieceKind::Pawn),
++            (sq(3, 5), Color::White, PieceKind::Pawn),
++            (sq(7, 5), Color::White, PieceKind::Pawn),
++            (sq(5, 3), Color::White, PieceKind::Pawn),
++        ],
++    )
++}
++
++#[test]
++fn quiet_cutoff_penalty_updates_only_earlier_captures_with_gravity_and_limit() {
++    let board = capture_board();
++    let pst = weights().unwrap();
++    let captures: Vec<_> = legal_moves(&board)
++        .into_iter()
++        .filter(|&mv| move_order_key(&board, &pst, mv).is_some())
++        .collect();
++    assert_eq!(captures.len(), 4);
++    for depth in [0, 1, 3, 256, 300] {
++        let mut history = CaptureHistory::new();
++        history.record_cutoff(&board, &pst, captures[0], &[captures[1]], 100);
++        let before: Vec<_> = captures
++            .iter()
++            .map(|&mv| history.read(&board, &pst, mv))
++            .collect();
++        history.record_quiet_cutoff_penalty(&board, &pst, &captures[..2], depth);
++        let limit = i64::from(params::capture_history_limit());
++        let penalty = i64::from(depth * depth).min(limit);
++        for (i, &mv) in captures.iter().enumerate() {
++            let old = i64::from(before[i]);
++            let expected = if i < 2 {
++                old - penalty - old * penalty / limit
++            } else {
++                old
++            };
++            assert_eq!(i64::from(history.read(&board, &pst, mv)), expected);
++        }
++        let after: Vec<_> = captures
++            .iter()
++            .map(|&mv| history.read(&board, &pst, mv))
++            .collect();
++        history.record_quiet_cutoff_penalty(&board, &pst, &[], depth);
++        assert_eq!(
++            after,
++            captures
++                .iter()
++                .map(|&mv| history.read(&board, &pst, mv))
++                .collect::<Vec<_>>()
++        );
++    }
++}
++
++#[test]
++fn quiet_pst_delta_matches_full_accumulator_difference_for_both_sides_and_promotions() {
++    let pst = weights().unwrap();
++    let mut promotions = 0;
++    let mut stationary = 0;
++    for side in Color::ALL {
++        let sparse = position(
++            side,
++            &[
++                (sq(0, 0), Color::Black, PieceKind::King),
++                (sq(11, 11), Color::White, PieceKind::King),
++                (sq(3, 7), Color::Black, PieceKind::Rook),
++                (sq(8, 4), Color::White, PieceKind::Rook),
++                (sq(5, 5), side, PieceKind::Lion),
++            ],
++        );
++        let mut initial = Position::initial();
++        if side == Color::White {
++            initial.make_null_move();
++        }
++        for mut board in [sparse, initial] {
++            let before = pst.accumulator_numerator_for_test(&board, side);
++            for mv in legal_moves(&board) {
++                if board.captured_squares(mv).iter().any(Option::is_some) {
++                    continue;
++                }
++                promotions += usize::from(mv.promote);
++                stationary += usize::from(mv.from == mv.to);
++                let delta = pst.quiet_move_pst_delta(&board, mv);
++                let undo = board.make_move_unchecked(mv, engine_rules());
++                assert_eq!(
++                    delta,
++                    pst.accumulator_numerator_for_test(&board, side) - before,
++                    "{mv:?}"
++                );
++                board.unmake_move(undo);
++            }
++        }
++    }
++    assert!(promotions > 0);
++    assert!(stationary > 0);
++}
++
++/// 子局面を既知の値に固定し、Wがカット手を含まず探索済み手だけを数えることを検査する。
++#[test]
++fn work_and_shadow_penalty_follow_the_observed_cutoff() {
++    let board = capture_board();
++    for quiet_cutoff in [false, true] {
++        with_root_searcher(&board, &[], |searcher| {
++            let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
++            let moves: Vec<_> = std::iter::from_fn(|| {
++                picker.next(
++                    &board,
++                    searcher.pst,
++                    &searcher.generator,
++                    searcher.history,
++                    &searcher.capture_history,
++                )
++            })
++            .collect();
++            let winner_index = if quiet_cutoff { 4 } else { 2 };
++            for (index, &(mv, _)) in moves.iter().enumerate() {
++                let mut child = board.clone();
++                child.make_move_unchecked(mv, engine_rules());
++                let score = if index == winner_index { 20 } else { 0 };
++                searcher
++                    .tt
++                    .store(search_key(&child), 1, -score, Bound::Exact, None, 1);
++            }
++            assert_eq!(
++                searcher.negamax(&mut board.clone(), 2, -10, 10, 0),
++                Some(20)
++            );
++            let diag = searcher.ordering_diag;
++            assert_eq!(diag.loop_nodes[1], 1);
++            assert_eq!(diag.no_cutoff_nodes[1], 0);
++            assert_eq!(diag.w[1].0.iter().map(|w| w.count).sum::<u64>(), 1);
++            assert_eq!(
++                diag.w[1].0.iter().map(|w| w.w_sum).sum::<u64>(),
++                winner_index as u64
++            );
++            assert_eq!(diag.cand1.segments, 1);
++            assert_eq!(diag.cand1.segments_changed, 0);
++            assert_eq!(diag.cand1.quiet_cutoff_nodes, u64::from(quiet_cutoff));
++            assert_eq!(
++                diag.cand1.quiet_cutoff_nodes_with_searched_captures,
++                u64::from(quiet_cutoff)
++            );
++            for (index, &(mv, capture)) in moves.iter().enumerate() {
++                if capture {
++                    let expected = if index < winner_index {
++                        -4
++                    } else if index == winner_index {
++                        4
++                    } else {
++                        0
++                    };
++                    assert_eq!(
++                        searcher
++                            .shadow_capture_history
++                            .read(&board, searcher.pst, mv),
++                        expected
++                    );
++                }
++            }
++        });
++    }
++}
++
++/// 手数制限の外の捕獲を群の先頭へ動かすと集合が変わる。TT直後のカットでも残りの群を比べる。
++#[test]
++fn qsearch_compares_unread_groups_and_resets_diagnostic_buffers() {
++    let count = params::qsearch_move_limit() as u8 + 1;
++    let mut pieces = vec![
++        (sq(11, 0), Color::Black, PieceKind::King),
++        (sq(11, 11), Color::White, PieceKind::King),
++    ];
++    let mut captures = Vec::new();
++    for file in 0..count {
++        pieces.push((sq(file, 4), Color::Black, PieceKind::Pawn));
++        pieces.push((sq(file, 5), Color::White, PieceKind::Pawn));
++        captures.push(Move {
++            from: sq(file, 4),
++            to: sq(file, 5),
++            mid: None,
++            promote: false,
++        });
++    }
++    let board = position(Color::Black, &pieces);
++    for early_cutoff in [false, true] {
++        with_root_searcher(&board, &[], |searcher| {
++            let ply = MAX_PLY - 1;
++            searcher.capture_history.record_cutoff(
++                &board,
++                searcher.pst,
++                *captures.last().unwrap(),
++                &[],
++                4,
++            );
++            let stand_pat = evaluate(searcher.pst, &board);
++            let beta = if early_cutoff {
++                stand_pat + 1
++            } else {
++                INFINITY
++            };
++            for _ in 0..2 {
++                searcher.tt.store(
++                    search_key(&board),
++                    0,
++                    INFINITY,
++                    Bound::Upper,
++                    early_cutoff.then_some(captures[0]),
++                    ply,
++                );
++                let before = searcher.ordering_diag.cand3;
++                let before_nodes = searcher.nodes;
++                let score = searcher
++                    .quiesce(&mut board.clone(), -INFINITY, beta, ply)
++                    .unwrap();
++                let after = searcher.ordering_diag.cand3;
++                assert_eq!(after.qnodes - before.qnodes, 1);
++                assert_eq!(after.groups_ge2 - before.groups_ge2, 1);
++                assert_eq!(after.groups_head_changed - before.groups_head_changed, 1);
++                assert_eq!(after.nodes_compared - before.nodes_compared, 1);
++                assert_eq!(after.nodes_set_differs - before.nodes_set_differs, 1);
++                if early_cutoff {
++                    assert!(score >= beta);
++                    assert_eq!(searcher.nodes - before_nodes, 1);
++                }
++            }
++        });
++    }
++}
++
++/// TT後のSEE枝刈りは捕獲先頭の費用へ入れず、TTと同じkillerも候補2から除く。
++#[test]
++fn candidate2_excludes_pruned_head_cost_and_tt_killer() {
++    let board = position(
++        Color::Black,
++        &[
++            (sq(11, 0), Color::Black, PieceKind::King),
++            (sq(0, 11), Color::White, PieceKind::King),
++            (sq(5, 3), Color::Black, PieceKind::FreeKing),
++            (sq(5, 4), Color::White, PieceKind::Rook),
++            (sq(5, 5), Color::White, PieceKind::Pawn),
++            (sq(3, 3), Color::Black, PieceKind::Pawn),
++            (sq(3, 4), Color::White, PieceKind::Pawn),
++        ],
++    );
++    let quiet = Move {
++        from: sq(11, 0),
++        to: sq(10, 0),
++        mid: None,
++        promote: false,
++    };
++    let winner = Move {
++        from: sq(3, 3),
++        to: sq(3, 4),
++        mid: None,
++        promote: false,
++    };
++    for distinct_killer in [false, true] {
++        with_root_searcher(&board, &[], |searcher| {
++            let killer = if distinct_killer {
++                legal_moves(&board)
++                    .into_iter()
++                    .find(|&mv| mv != quiet && move_order_key(&board, searcher.pst, mv).is_none())
++                    .unwrap()
++            } else {
++                quiet
++            };
++            searcher.killers[0][0] = Some(killer);
++            searcher
++                .tt
++                .store(search_key(&board), 0, 0, Bound::Upper, Some(quiet), 0);
++            for (mv, score) in [(quiet, 0), (winner, 10_001)] {
++                let mut child = board.clone();
++                child.make_move_unchecked(mv, engine_rules());
++                searcher
++                    .tt
++                    .store(search_key(&child), 2, -score, Bound::Exact, None, 1);
++            }
++            searcher.null_move_ply = Some(0);
++            assert_eq!(
++                searcher.negamax(&mut board.clone(), 3, 10_000, 10_001, 0),
++                Some(10_001)
++            );
++            let diag = searcher.ordering_diag;
++            assert_eq!(diag.cand2[2][0].zero_window_nodes, 0);
++            let counts = diag.cand2[2][1];
++            assert_eq!(counts.zero_window_nodes, 1);
++            assert_eq!(counts.head_negative, 1);
++            assert_eq!(counts.head_negative_pruned, 1);
++            assert_eq!(counts.head_negative_subtree_sum, 0);
++            assert_eq!(counts.head_negative_with_killer_subtree_sum, 0);
++            assert_eq!(counts.generate_quiets_calls, 1);
++            assert_eq!(counts.head_negative_with_killer, u64::from(distinct_killer));
++            assert_eq!(
++                counts.head_negative_with_killer_cutoff_before_quiets,
++                u64::from(distinct_killer)
++            );
++            assert_eq!(diag.w[2][0].w_sum, 1);
++            assert_eq!(diag.capture_head[2][1][0].count, 0);
++            assert!(!searcher.move_pickers[0].quiets_generated());
++        });
++    }
++}
+diff --git a/crates/minase/src/search/alphabeta/tests/partial.rs b/crates/minase/src/search/alphabeta/tests/partial.rs
+index 091eb74..f47a2ad 100644
+--- a/crates/minase/src/search/alphabeta/tests/partial.rs
++++ b/crates/minase/src/search/alphabeta/tests/partial.rs
+@@ -146,6 +146,8 @@ fn hard_partial_preserves_completed_values_and_root_tt_only_for_eligible_searche
+                     .search_iteration(&position, &roots, 1, None)
+                     .unwrap();
+                 let completed = SearchResult {
++                    #[cfg(feature = "search-stats")]
++                    ordering_diag: crate::search::OrderingDiag::default(),
+                     #[cfg(feature = "search-stats")]
+                     stats: crate::search::SearchStats::default(),
+                     best_move,
+@@ -235,6 +237,8 @@ fn partial_changes_move_and_pv_without_changing_completed_score_or_depth() {
+         searcher.root_results = Some(results);
+         searcher.stop_reason = Some(StopReason::HardLimit);
+         let completed = SearchResult {
++            #[cfg(feature = "search-stats")]
++            ordering_diag: crate::search::OrderingDiag::default(),
+             #[cfg(feature = "search-stats")]
+             stats: crate::search::SearchStats::default(),
+             best_move: roots[0],
+diff --git a/crates/minase/src/search/alphabeta/tests/ponder.rs b/crates/minase/src/search/alphabeta/tests/ponder.rs
+index 79bf02e..189bd16 100644
+--- a/crates/minase/src/search/alphabeta/tests/ponder.rs
++++ b/crates/minase/src/search/alphabeta/tests/ponder.rs
+@@ -412,6 +412,8 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
+                         &shared,
+                         &table,
+                         history,
++                        #[cfg(feature = "search-stats")]
++                        &mut crate::search::alphabeta::ordering_diag::OrderingCarry::new(),
+                     );
+                     completed.wait();
+                     return outcome;
+@@ -454,6 +456,8 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
+                     partial_score: None,
+                     worker_index: 0,
+                     result: SearchResult {
++                        #[cfg(feature = "search-stats")]
++                        ordering_diag: crate::search::OrderingDiag::default(),
+                         #[cfg(feature = "search-stats")]
+                         stats: crate::search::SearchStats::default(),
+                         best_move: roots[0],
+diff --git a/crates/minase/src/search/alphabeta/tests/team.rs b/crates/minase/src/search/alphabeta/tests/team.rs
+index 7cfbc00..446919d 100644
+--- a/crates/minase/src/search/alphabeta/tests/team.rs
++++ b/crates/minase/src/search/alphabeta/tests/team.rs
+@@ -36,6 +36,8 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
+                         partial_score: None,
+                         worker_index,
+                         result: SearchResult {
++                            #[cfg(feature = "search-stats")]
++                            ordering_diag: crate::search::OrderingDiag::default(),
+                             #[cfg(feature = "search-stats")]
+                             stats: crate::search::SearchStats::default(),
+                             best_move: fallback,
+@@ -196,6 +198,8 @@ fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
+         partial_score: None,
+         worker_index,
+         result: SearchResult {
++            #[cfg(feature = "search-stats")]
++            ordering_diag: crate::search::OrderingDiag::default(),
+             #[cfg(feature = "search-stats")]
+             stats: crate::search::SearchStats::default(),
+             best_move: moves[move_index],
+@@ -282,6 +286,8 @@ fn worker_selection_prefers_completed_depth_then_partial_then_index() {
+         partial_score,
+         worker_index,
+         result: SearchResult {
++            #[cfg(feature = "search-stats")]
++            ordering_diag: crate::search::OrderingDiag::default(),
+             #[cfg(feature = "search-stats")]
+             stats: crate::search::SearchStats::default(),
+             best_move: moves[worker_index],
+diff --git a/crates/minase/src/search/alphabeta/tests/time.rs b/crates/minase/src/search/alphabeta/tests/time.rs
+index 1a470ab..62ab58e 100644
+--- a/crates/minase/src/search/alphabeta/tests/time.rs
++++ b/crates/minase/src/search/alphabeta/tests/time.rs
+@@ -128,6 +128,8 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
+         &shared,
+         &tt,
+         &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
++        #[cfg(feature = "search-stats")]
++        &mut crate::search::alphabeta::ordering_diag::OrderingCarry::new(),
+         None,
+         false,
+         false,
+@@ -368,6 +370,8 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
+             &shared,
+             &small_tt(),
+             &mut Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]),
++            #[cfg(feature = "search-stats")]
++            &mut crate::search::alphabeta::ordering_diag::OrderingCarry::new(),
+             None,
+             ponder,
+             true,
+diff --git a/crates/minase/src/search/events.rs b/crates/minase/src/search/events.rs
+index 05ee663..452900c 100644
+--- a/crates/minase/src/search/events.rs
++++ b/crates/minase/src/search/events.rs
+@@ -72,6 +72,9 @@ impl SearchEvent {
+ /// 完了した探索の結果。
+ #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+ pub struct SearchResult {
++    /// ワーカーごとに数えた順序付け診断の合計。
++    #[cfg(feature = "search-stats")]
++    pub ordering_diag: super::OrderingDiag,
+     /// 全ワーカーの探索終了時点の統計を合算した値。
+     #[cfg(feature = "search-stats")]
+     pub stats: super::SearchStats,
+diff --git a/crates/minase/src/search/mod.rs b/crates/minase/src/search/mod.rs
+index 5d8c55b..6f102f0 100644
+--- a/crates/minase/src/search/mod.rs
++++ b/crates/minase/src/search/mod.rs
+@@ -9,6 +9,8 @@ mod snapshot;
+ #[cfg(feature = "search-stats")]
+ mod stats;
+ 
++#[cfg(feature = "search-stats")]
++pub use alphabeta::ordering_diag::OrderingDiag;
+ #[cfg(feature = "search-stats")]
+ pub use stats::SearchStats;
+ 
