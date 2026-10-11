@@ -67,6 +67,8 @@ struct TimeControl {
 struct SearchContext {
     /// 探索イベントの照合に使う探索識別子。
     id: u64,
+    /// 無期限の探索かどうか。MCTSが`sd`だけの制限を受けた場合に生じ、`?`で着手させる。
+    infinite: bool,
 }
 
 /// 実行中の探索と操作ハンドル。
@@ -231,6 +233,7 @@ impl CecpProtocol {
         };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
+        let infinite = limits.is_infinite();
         let searcher = self
             .searcher
             .take()
@@ -244,7 +247,10 @@ impl CecpProtocol {
             }
         };
         Ok(Some(ActiveSearch {
-            context: SearchContext { id: search_id },
+            context: SearchContext {
+                id: search_id,
+                infinite,
+            },
             handle,
         }))
     }
@@ -327,6 +333,12 @@ impl CecpProtocol {
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => input_open = false,
                 }
+            } else if active
+                .as_ref()
+                .is_some_and(|search| search.context.infinite)
+            {
+                // 入力が閉じると`?`が届かないため、無期限の探索は破棄する。
+                self.discard_search(&mut active, output)?;
             } else {
                 self.wait_search_event(engine, &mut active, output)?;
             }
@@ -889,8 +901,12 @@ impl Protocol for CecpProtocol {
             match self.handle_idle_line(engine, &command, output)? {
                 LineAction::Continue => {}
                 LineAction::Start(search) => {
+                    // 無期限の探索は、後続の入力の`?`で着手させる。
+                    let infinite = search.context.infinite;
                     active = Some(*search);
-                    self.finish_search(engine, &mut active, output, false)?;
+                    if !infinite {
+                        self.finish_search(engine, &mut active, output, false)?;
+                    }
                 }
                 LineAction::Quit => return Ok(()),
             }
@@ -1795,7 +1811,8 @@ mod tests {
     // 指示書E第9項: --search mctsのCECPも同じSearcherの操作で動く。節点数の上限と推論の設定は
     // feature optionで宣言し、ワーカー数はcoresで受ける。USI_Hashを宣言しないので
     // feature memory=0を宣言してmemoryを拒否する（alphazero.md「共存の構造」）。sdの深さは
-    // シミュレーション回数として扱わず、告げてから探索する。
+    // シミュレーション回数として扱わず、告げてから探索する。指示書P第2項のConst_Playoutも-spinで宣言し、
+    // sdだけの制限ではその回数で探索を止めて着手する。
     #[test]
     fn mcts_declares_network_options_and_moves() {
         let mut engine = make_engine(&[RuleCode::R1]);
@@ -1810,7 +1827,8 @@ mod tests {
             .lines()
             .filter(|line| line.starts_with("feature option="))
             .collect();
-        assert_eq!(options.len(), 6, "{features}");
+        assert_eq!(options.len(), 7, "{features}");
+        assert!(options.contains(&"feature option=\"Const_Playout -spin 0 0 1000000000\""));
         assert!(
             options.contains(&"feature option=\"UCT_NodeLimit -spin 1000000 100000 1000000000\"")
         );
@@ -1828,7 +1846,7 @@ mod tests {
         let output = run(
             &mut protocol,
             &mut engine,
-            "option NnBatchSize=0\ncores 2\nmemory 1\ncores 1\nsd 1\nnew\ngo\n",
+            "option NnBatchSize=0\ncores 2\nmemory 1\ncores 1\noption Const_Playout=30\nsd 1\nnew\ngo\n",
         );
         let lines: Vec<_> = output.lines().collect();
         assert_eq!(
@@ -1842,8 +1860,71 @@ mod tests {
         assert_eq!(lines[2], "Error (command not supported): memory");
         assert_eq!(
             lines[3],
-            "# MCTS does not interpret depth 1 as a simulation limit; searching 800 simulations instead"
+            "# MCTS does not interpret depth 1 as a simulation limit; \
+             searching 30 simulations of Const_Playout instead"
         );
         assert_eq!(logical_move_count(&output), 1, "{output}");
+    }
+
+    // 指示書P第3項: Const_Playoutが0なら、sdだけの制限は止める制限を持たないので、MCTSは`?`を受けるまで
+    // 探索する。入力が閉じれば着手せずに探索を破棄する。
+    #[test]
+    fn mcts_sd_alone_searches_until_move_now() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = CecpProtocol::new(
+            &engine,
+            Searcher::mcts_with_evaluator(Box::new(crate::nn::evaluator::UniformEvaluator)),
+        );
+        let mut output = Vec::new();
+        for line in ["sd 3", "new"] {
+            assert!(matches!(
+                protocol
+                    .handle_idle_line(&mut engine, line, &mut output)
+                    .unwrap(),
+                LineAction::Continue
+            ));
+        }
+        let LineAction::Start(search) = protocol
+            .handle_idle_line(&mut engine, "go", &mut output)
+            .unwrap()
+        else {
+            panic!("go must start a search");
+        };
+        assert!(search.context.infinite);
+        let mut active = Some(*search);
+        std::thread::sleep(Duration::from_millis(100));
+        protocol
+            .poll_search(&mut engine, &mut active, &mut output)
+            .unwrap();
+        assert!(active.is_some());
+        let mut pending = VecDeque::new();
+        protocol
+            .handle_searching_line(&mut engine, &mut active, &mut pending, "?", &mut output)
+            .unwrap();
+        assert!(active.is_none());
+        let output = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output.lines().next(),
+            Some(
+                "# MCTS does not interpret depth 3 as a simulation limit; searching until stopped"
+            )
+        );
+        assert_eq!(logical_move_count(&output), 1, "{output}");
+
+        for queued in [false, true] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = CecpProtocol::new(
+                &engine,
+                Searcher::mcts_with_evaluator(Box::new(crate::nn::evaluator::UniformEvaluator)),
+            );
+            let input = "sd 3\nnew\ngo\n";
+            let output = if queued {
+                run_queued(&mut protocol, &mut engine, input)
+            } else {
+                run(&mut protocol, &mut engine, input)
+            };
+            assert_eq!(logical_move_count(&output), 0, "{output}");
+            assert!(protocol.searcher.is_some());
+        }
     }
 }

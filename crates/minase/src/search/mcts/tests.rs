@@ -850,6 +850,44 @@ fn clock_limits_stop_the_search() {
     assert!(result.nodes > 1);
 }
 
+// 指示書P第2項: Const_Playoutが正なら、時間制御と無期限探索の制限に代えて、根の展開を含めたシミュレーション
+// 回数がその値に達した時点でノード数の制限として止まる。go nodesの明示はConst_Playoutより優先する。
+#[test]
+fn const_playout_replaces_time_and_infinite_limits() {
+    let clock = ClockLimits::new(1_000_000, 0, 0, 0).unwrap();
+    for (limits, expected) in [
+        (
+            SearchLimits::new(None, None, None, Some(clock)).unwrap(),
+            50,
+        ),
+        (
+            SearchLimits::new(None, None, Some(1_000_000), None).unwrap(),
+            50,
+        ),
+        (SearchLimits::infinite(), 50),
+        (
+            SearchLimits::new(None, Some(20), None, Some(clock)).unwrap(),
+            20,
+        ),
+    ] {
+        let mut mcts = engine(UniformEvaluator, config(Selection::Puct, 4, 32));
+        assert_eq!(mcts.set_option("Const_Playout", Some("50")), Some(Ok(())));
+        let handle = mcts
+            .start(snapshot_of(Position::initial()), limits, 1, false)
+            .unwrap_or_else(|(_, error)| panic!("{error}"));
+        let events = drain(&handle);
+        let Some(SearchEvent::Finished {
+            nodes, stop_reason, ..
+        }) = events.last()
+        else {
+            panic!("the search must finish");
+        };
+        assert_eq!((*nodes, *stop_reason), (expected, StopReason::NodeLimit));
+        let (_, result) = handle.join().unwrap();
+        assert_eq!(result, Ok(()));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 対局の完走
 // ---------------------------------------------------------------------------

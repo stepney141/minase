@@ -4412,6 +4412,7 @@ mod tests {
         for expected in [
             "option name Threads type spin default 1 min 1 max 256",
             "option name UCT_NodeLimit type spin default 1000000 min 100000 max 1000000000",
+            "option name Const_Playout type spin default 0 min 0 max 1000000000",
             "option name NnBackend type combo default tensorrt var tensorrt var cuda var cpu",
             "option name NnModelPath type string default <empty>",
             "option name NnBatchSize type spin default 64 min 1 max 1024",
@@ -4444,28 +4445,196 @@ mod tests {
         );
     }
 
-    // 指示書E第7項: MCTSは深さをシミュレーション回数の制限として扱わない。深さだけのgoは告げてから
-    // 800回で探索し、他の制限と併用された深さは告げてから除く。
-    #[test]
-    fn mcts_go_depth_is_not_a_simulation_limit() {
-        let prefix = "info string MCTS does not interpret depth 3 as a simulation limit; ";
-        let output = mcts_session("position startpos\ngo depth 3\n");
-        assert!(error_lines(&output).is_empty(), "{output}");
-        assert!(output.contains(&format!("{prefix}searching 800 simulations instead\n")));
-        assert_eq!(bestmoves(&output).len(), 1);
-        let nodes: Vec<u64> = output
+    /// 出力の`info`行が報告したノード数の最大値を返す。
+    fn max_info_nodes(output: &str) -> u64 {
+        output
             .lines()
             .filter_map(|line| line.split(" nodes ").nth(1))
             .map(|rest| rest.split_whitespace().next().unwrap().parse().unwrap())
-            .collect();
-        assert_eq!(nodes.iter().max(), Some(&800), "{output}");
+            .max()
+            .unwrap()
+    }
 
-        let output = mcts_session("position startpos\ngo depth 3 nodes 16\n");
+    /// 一様評価器のMCTSで`position startpos`の後に`go`を1回送り、`bestmove`まで進める。
+    /// `stop_after`が真なら、探索が`go`だけでは`bestmove`を返さないことを確かめてから`stop`を送る。
+    fn mcts_stepwise_go(setup: &[&str], go: &[&str], stop_after: bool) -> String {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+        let (sender, lines) = std::sync::mpsc::channel();
+        let mut output = LineWriter {
+            sender,
+            bytes: Vec::new(),
+        };
+        for line in setup.iter().chain(&["position startpos"]) {
+            protocol
+                .handle_idle_line(&mut engine, line, &mut output)
+                .unwrap();
+        }
+        let mut active = protocol.start_go(&engine, go, &mut output).unwrap();
+        assert!(active.is_some());
+        if stop_after {
+            std::thread::sleep(Duration::from_millis(100));
+            protocol
+                .poll_search(&engine, &mut active, &mut output)
+                .unwrap();
+            assert!(active.is_some());
+            let mut pending = VecDeque::new();
+            protocol
+                .handle_searching_line(&engine, &mut active, &mut pending, "stop", &mut output)
+                .unwrap();
+        }
+        while active.is_some() {
+            protocol
+                .wait_search_event(&engine, &mut active, &mut output)
+                .unwrap();
+        }
+        let output: String = lines.try_iter().collect();
         assert!(error_lines(&output).is_empty(), "{output}");
+        assert_eq!(bestmoves(&output).len(), 1, "{output}");
+        output
+    }
+
+    // 指示書P第2項: Const_Playoutが正なら、時間制御のgoでもその回数のシミュレーションで止まり、
+    // go nodes Nと同じ回数を報告する。go nodesの明示はConst_Playoutより優先する。
+    #[test]
+    fn mcts_const_playout_replaces_the_time_control() {
+        let fixed = "setoption name Const_Playout value 50\nposition startpos\n";
+        let reference = mcts_session("position startpos\ngo nodes 50\n");
+        let output = mcts_session(&format!("{fixed}go btime 100000 wtime 100000\n"));
+        assert!(error_lines(&output).is_empty(), "{output}");
+        assert_eq!(bestmoves(&output).len(), 1, "{output}");
+        assert!(output.contains("info string stop nodes\n"), "{output}");
+        assert_eq!(max_info_nodes(&output), max_info_nodes(&reference));
+        assert!((32..=51).contains(&max_info_nodes(&output)), "{output}");
+
+        let reference = mcts_session("position startpos\ngo nodes 20\n");
+        let output = mcts_session(&format!("{fixed}go nodes 20\n"));
+        assert!(output.contains("info string stop nodes\n"), "{output}");
+        assert_eq!(max_info_nodes(&output), max_info_nodes(&reference));
+        assert!(max_info_nodes(&output) <= 21, "{output}");
+    }
+
+    // 同項: Const_Playoutはgo infiniteの探索もその回数で止める。bestmoveはUSIの規定どおりstopまで保留し、
+    // 停止理由はノード数とする。
+    #[test]
+    fn mcts_const_playout_stops_go_infinite() {
+        let reference = mcts_session("position startpos\ngo nodes 50\n");
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+        let (sender, lines) = std::sync::mpsc::channel();
+        let mut output = LineWriter {
+            sender,
+            bytes: Vec::new(),
+        };
+        for line in ["setoption name Const_Playout value 50", "position startpos"] {
+            protocol
+                .handle_idle_line(&mut engine, line, &mut output)
+                .unwrap();
+        }
+        let mut active = protocol
+            .start_go(&engine, &["infinite"], &mut output)
+            .unwrap();
+        while matches!(active, Some(ActiveSearch::Running { .. })) {
+            protocol
+                .wait_search_event(&engine, &mut active, &mut output)
+                .unwrap();
+        }
+        assert!(matches!(active, Some(ActiveSearch::AwaitingStop { .. })));
+        let mut pending = VecDeque::new();
+        protocol
+            .handle_searching_line(&engine, &mut active, &mut pending, "stop", &mut output)
+            .unwrap();
+        assert!(active.is_none());
+        let output: String = lines.try_iter().collect();
+        assert_eq!(bestmoves(&output).len(), 1, "{output}");
+        assert!(output.contains("info string stop nodes\n"), "{output}");
+        assert_eq!(max_info_nodes(&output), max_info_nodes(&reference));
+    }
+
+    // 同項: 先読み中はConst_Playoutの回数を超えても止まらず、ponderhitで的中した後に回数で止まる。
+    #[test]
+    fn mcts_const_playout_applies_after_ponderhit() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+        let (sender, lines) = std::sync::mpsc::channel();
+        let mut output = LineWriter {
+            sender,
+            bytes: Vec::new(),
+        };
+        for line in ["setoption name Const_Playout value 50", "position startpos"] {
+            protocol
+                .handle_idle_line(&mut engine, line, &mut output)
+                .unwrap();
+        }
+        let mut active = protocol
+            .start_go(
+                &engine,
+                &["ponder", "btime", "100000", "wtime", "100000"],
+                &mut output,
+            )
+            .unwrap();
+        let started = std::time::Instant::now();
+        loop {
+            protocol
+                .wait_search_event(&engine, &mut active, &mut output)
+                .unwrap();
+            assert!(matches!(active, Some(ActiveSearch::Running { .. })));
+            let progressed: String = lines.try_iter().collect();
+            assert!(bestmoves(&progressed).is_empty());
+            if progressed
+                .lines()
+                .any(|line| line.contains(" nodes ") && max_info_nodes(line) > 50)
+            {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(10));
+        }
+        let mut pending = VecDeque::new();
+        protocol
+            .handle_searching_line(&engine, &mut active, &mut pending, "ponderhit", &mut output)
+            .unwrap();
+        while active.is_some() {
+            protocol
+                .wait_search_event(&engine, &mut active, &mut output)
+                .unwrap();
+        }
+        let result: String = lines.try_iter().collect();
+        assert_eq!(bestmoves(&result).len(), 1, "{result}");
+        assert!(result.contains("info string stop nodes\n"), "{result}");
+    }
+
+    // 指示書P第3項: MCTSは深さをシミュレーション回数の制限として扱わない。深さだけのgoは、告げてから
+    // go infiniteと同じくstopまで探索し、他の制限と併用された深さは告げてから除く。
+    #[test]
+    fn mcts_go_depth_is_not_a_simulation_limit() {
+        let prefix = "info string MCTS does not interpret depth 3 as a simulation limit; ";
+        let output = mcts_stepwise_go(&[], &["depth", "3"], true);
+        assert!(
+            output.contains(&format!("{prefix}searching until stopped\n")),
+            "{output}"
+        );
+        assert_eq!(output.matches(prefix).count(), 1, "{output}");
+        assert!(output.contains("info string stop external\n"), "{output}");
+
+        let reference = mcts_session("position startpos\ngo nodes 30\n");
+        let output = mcts_stepwise_go(&[], &["depth", "3", "nodes", "30"], false);
         assert!(output.contains(&format!(
             "{prefix}searching with the node and time limits only\n"
         )));
-        assert_eq!(bestmoves(&output).len(), 1);
+        assert!(output.contains("info string stop nodes\n"), "{output}");
+        assert_eq!(max_info_nodes(&output), max_info_nodes(&reference));
+
+        let reference = mcts_session("position startpos\ngo nodes 50\n");
+        let output = mcts_stepwise_go(
+            &["setoption name Const_Playout value 50"],
+            &["depth", "3"],
+            false,
+        );
+        assert!(output.contains(&format!(
+            "{prefix}searching 50 simulations of Const_Playout instead\n"
+        )));
+        assert!(output.contains("info string stop nodes\n"), "{output}");
+        assert_eq!(max_info_nodes(&output), max_info_nodes(&reference));
     }
 
     // alphazero.md「検証」: MCTSのgo infiniteもαβ探索と同じく、stopまでbestmoveを保留し、

@@ -10,12 +10,6 @@ use crate::search::snapshot::SearchSnapshot;
 use crate::search::{DEFAULT_THREADS, TranspositionTable};
 use crate::search::{alphabeta, mcts};
 
-/// MCTSで深さだけが指定された探索に代わりに与えるシミュレーション回数。
-///
-/// AlphaZeroの自己対局の1手あたりの探索回数800を流用した暫定値であり、深さの制限を誤って
-/// 渡された対局が止まらなくなることを防ぐためだけに使う。
-const DEPTH_ONLY_SIMULATIONS: u64 = 800;
-
 /// 探索方式が宣言するオプションの名前と値の種類。
 ///
 /// USIとCECPの文字列への変換はプロトコル層が行う。
@@ -197,27 +191,33 @@ impl Searcher {
 
     /// プロトコル層が受けた探索制限を、方式が解釈できる形へ直す。直した場合は利用者への説明を返す。
     ///
-    /// MCTSには深さに対応する概念がないので、深さの制限を除き、ノード数と時間の制限だけで探索する。
-    /// 深さだけが指定された場合は、対局が止まらなくなることを防ぐために
-    /// シミュレーション回数の上限800で探索する。
+    /// MCTSには深さに対応する概念がないので、深さの制限を除き、ノード数と時間の制限、および
+    /// オプション`Const_Playout`だけで探索する（dlshogiとlc0も深さで探索を止めない）。
+    /// 深さだけが指定された場合は、`Const_Playout`が正ならその回数を上限とし、0なら他に止める制限が
+    /// ないので、`go infinite`と同じく停止の指示まで探索する。
     pub fn adapt_limits(&self, limits: SearchLimits) -> (SearchLimits, Option<String>) {
-        let (Self::Mcts(_), Some(depth)) = (self, limits.depth()) else {
+        let (Self::Mcts(engine), Some(depth)) = (self, limits.depth()) else {
             return (limits, None);
         };
         let (nodes, movetime_ms, clock) = (limits.nodes(), limits.movetime_ms(), limits.clock());
-        let (nodes, rest) = if nodes.is_none() && movetime_ms.is_none() && clock.is_none() {
+        let (limits, rest) = if nodes.is_some() || movetime_ms.is_some() || clock.is_some() {
             (
-                Some(DEPTH_ONLY_SIMULATIONS),
-                format!("searching {DEPTH_ONLY_SIMULATIONS} simulations instead"),
+                SearchLimits::new(None, nodes, movetime_ms, clock)
+                    .expect("the remaining limits were already validated and at least one is set"),
+                "searching with the node and time limits only".to_owned(),
+            )
+        } else if let Some(playout) = engine.const_playout() {
+            (
+                SearchLimits::new(None, Some(playout.get()), None, None)
+                    .expect("Const_Playout is a positive simulation limit"),
+                format!("searching {playout} simulations of Const_Playout instead"),
             )
         } else {
             (
-                nodes,
-                "searching with the node and time limits only".to_owned(),
+                SearchLimits::infinite(),
+                "searching until stopped".to_owned(),
             )
         };
-        let limits = SearchLimits::new(None, nodes, movetime_ms, clock)
-            .expect("the remaining limits were already validated and at least one is set");
         (
             limits,
             Some(format!(
@@ -350,7 +350,7 @@ mod tests {
     }
 
     // 同節: ハーネスが既定値を照会するので、MCTSもThreadsを宣言し、続けて探索木の
-    // 節点数の上限UCT_NodeLimitを宣言する。置換表を持たないのでUSI_Hashは宣言せず、
+    // 節点数の上限UCT_NodeLimitと、指示書P第2項のConst_Playoutを宣言する。置換表を持たないのでUSI_Hashは宣言せず、
     // USI_HashとCECPのmemoryに当たる容量の設定は理由を返して拒む。
     // MCTSは静的評価のPSTも置換表も持たない。
     #[test]
@@ -362,7 +362,7 @@ mod tests {
             .iter()
             .map(|option| option.name)
             .collect();
-        assert_eq!(names[..2], ["Threads", "UCT_NodeLimit"]);
+        assert_eq!(names[..3], ["Threads", "UCT_NodeLimit", "Const_Playout"]);
         assert!(!names.contains(&"USI_Hash"));
         assert!(!searcher.declares_hash());
         assert!(searcher.pst().is_none());
@@ -381,20 +381,36 @@ mod tests {
         assert!(self::searcher().declares_hash());
     }
 
-    // 指示書E第7項: 深さの制限を直すのはMCTSだけであり、αβ探索の制限はそのまま渡す。
+    // 指示書E第7項、指示書P第3項: 深さの制限を直すのはMCTSだけであり、αβ探索の制限はそのまま渡す。
+    // MCTSは深さを除き、深さだけならConst_Playoutの回数、それも0なら無期限の探索にする。
     #[test]
     fn only_mcts_adapts_depth_limits() {
         let depth = SearchLimits::new(Some(3), None, None, None).unwrap();
         assert_eq!(searcher().adapt_limits(depth), (depth, None));
-        let mcts = Searcher::new(SearchAlgorithm::Mcts).unwrap();
+        let mut mcts = Searcher::new(SearchAlgorithm::Mcts).unwrap();
+        let (limits, notice) = mcts.adapt_limits(depth);
+        assert_eq!(limits, SearchLimits::infinite());
+        assert_eq!(
+            notice.as_deref(),
+            Some("MCTS does not interpret depth 3 as a simulation limit; searching until stopped")
+        );
+        let depth_nodes = SearchLimits::new(Some(3), Some(30), None, None).unwrap();
+        let nodes = SearchLimits::new(None, Some(30), None, None).unwrap();
+        assert_eq!(mcts.adapt_limits(depth_nodes).0, nodes);
+        assert_eq!(mcts.adapt_limits(nodes), (nodes, None));
+
+        assert_eq!(mcts.set_option("Const_Playout", Some("50")), Some(Ok(())));
         let (limits, notice) = mcts.adapt_limits(depth);
         assert_eq!(
             limits,
-            SearchLimits::new(None, Some(800), None, None).unwrap()
+            SearchLimits::new(None, Some(50), None, None).unwrap()
         );
-        assert!(notice.is_some());
-        let nodes = SearchLimits::new(None, Some(5), None, None).unwrap();
-        assert_eq!(mcts.adapt_limits(nodes), (nodes, None));
+        assert!(
+            notice
+                .unwrap()
+                .ends_with("searching 50 simulations of Const_Playout instead")
+        );
+        assert_eq!(mcts.adapt_limits(depth_nodes).0, nodes);
     }
 
     // 同節: 方式のオプションでない名前は呼び出し側へ返し、状態を変えない。

@@ -3,6 +3,7 @@
 //! オプションの集合は docs/plans/alphazero.md「共存の構造」と「推論層」に従う。`Threads`は
 //! ハーネスが既定値を照会するのでαβ探索と同じ名前で宣言する。置換表を持たないので`USI_Hash`は
 //! 宣言せず、探索木の大きさは、dlshogiに倣い、節点数の上限`UCT_NodeLimit`で制御する。
+//! 1手のシミュレーション回数を時間制御に代えて固定する`Const_Playout`もdlshogiに倣う。
 //! 推論に使うネットは既定で埋め込みのネットとし、`NnModelPath`で別のONNXファイルを与えられる。
 
 use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
@@ -35,6 +36,9 @@ const MIN_NODE_LIMIT: usize = 100_000;
 
 /// オプション`UCT_NodeLimit`の上限。dlshogiと同じ値とする。
 const MAX_NODE_LIMIT: usize = 1_000_000_000;
+
+/// オプション`Const_Playout`の上限。dlshogiの同名オプションと同じ値とする。
+const MAX_CONST_PLAYOUT: u64 = 1_000_000_000;
 
 /// 対局で使う探索の乱数のシード。PUCTは乱数を使わないので値は探索に影響しない。
 const PLAY_SEED: NonZeroU64 = NonZeroU64::new(1).unwrap();
@@ -82,7 +86,7 @@ impl Engine {
 
     /// 宣言するオプションを宣言の順に返す。
     pub fn options(&self) -> &'static [OptionSpec] {
-        static OPTIONS: OnceLock<[OptionSpec; 6]> = OnceLock::new();
+        static OPTIONS: OnceLock<[OptionSpec; 7]> = OnceLock::new();
         OPTIONS.get_or_init(|| {
             [
                 OptionSpec {
@@ -99,6 +103,14 @@ impl Engine {
                         default: i64::from(DEFAULT_NODE_LIMIT.get()),
                         min: MIN_NODE_LIMIT as i64,
                         max: MAX_NODE_LIMIT as i64,
+                    },
+                },
+                OptionSpec {
+                    name: "Const_Playout",
+                    kind: OptionKind::Spin {
+                        default: 0,
+                        min: 0,
+                        max: MAX_CONST_PLAYOUT as i64,
                     },
                 },
                 OptionSpec {
@@ -133,6 +145,11 @@ impl Engine {
     /// 名前が宣言したオプション（大文字小文字を区別しない）なら値を設定する。
     ///
     /// 未知の名前には`None`を返す。値が不正な場合は状態を変えずに理由を`Some(Err)`で返す。
+    ///
+    /// `Const_Playout`が正なら、時間制御（`go btime`など）や`go infinite`で呼ばれても、根の展開を含めた
+    /// シミュレーション回数がその値に達した時点で探索を止め、時間制御は無視する。先読み中は的中の通知の後に
+    /// 回数で止まる。dlshogiの同名オプション（`usi/UctSearch.cpp`）は`go nodes`より`Const_Playout`を
+    /// 優先するが、本実装は対局ハーネスのノード数の制限を確実に効かせるため、`go nodes`の明示を優先する。
     /// `NnBackend`、`NnModelPath`、`NnCacheDir`、または`NnBatchSize`を変えると推論のセッションを捨て、
     /// 次の[`Engine::prepare`]で作り直す。
     pub fn set_option(&mut self, name: &str, value: Option<&str>) -> Option<Result<(), String>> {
@@ -145,6 +162,21 @@ impl Engine {
                     NonZeroU32::try_from(limit).expect("MAX_NODE_LIMIT fits in u32");
                 self.new_game();
             })
+        } else if name.eq_ignore_ascii_case("Const_Playout") {
+            value
+                .ok_or_else(|| "Const_Playout requires a value".to_owned())
+                .and_then(|value| {
+                    value
+                        .parse::<u64>()
+                        .ok()
+                        .filter(|&playout| playout <= MAX_CONST_PLAYOUT)
+                        .ok_or_else(|| {
+                            format!(
+                                "Const_Playout must be an integer from 0 to {MAX_CONST_PLAYOUT}"
+                            )
+                        })
+                })
+                .map(|playout| self.const_playout = NonZeroU64::new(playout))
         } else if name.eq_ignore_ascii_case("NnBackend") {
             value
                 .ok_or_else(|| "NnBackend requires a value".to_owned())
@@ -272,6 +304,7 @@ mod tests {
             [
                 "Threads",
                 "UCT_NodeLimit",
+                "Const_Playout",
                 "NnBackend",
                 "NnModelPath",
                 "NnCacheDir",
@@ -279,7 +312,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            engine().options()[3].kind,
+            engine().options()[4].kind,
             OptionKind::String { default: "" }
         );
         assert_eq!(
@@ -292,6 +325,14 @@ mod tests {
         );
         assert_eq!(
             engine().options()[2].kind,
+            OptionKind::Spin {
+                default: 0,
+                min: 0,
+                max: 1_000_000_000,
+            }
+        );
+        assert_eq!(
+            engine().options()[3].kind,
             OptionKind::Combo {
                 default: "tensorrt",
                 vars: &["tensorrt", "cuda", "cpu"],
@@ -346,6 +387,40 @@ mod tests {
             Some(Err(_))
         ));
         assert_eq!(engine.config.max_nodes.get(), 1_000_000_000);
+    }
+
+    // 指示書P第2項: Const_Playoutは0から1,000,000,000までを受理し、0は回数の固定をやめる。範囲外の値は
+    // 状態を変えずに理由を返す。
+    #[test]
+    fn const_playout_accepts_zero_to_one_billion() {
+        let mut engine = engine();
+        assert_eq!(engine.const_playout(), None);
+        assert_eq!(engine.set_option("const_playout", Some("50")), Some(Ok(())));
+        assert_eq!(engine.const_playout().map(NonZeroU64::get), Some(50));
+        for value in [Some("1000000001"), Some("-1"), Some("x")] {
+            assert_eq!(
+                engine.set_option("Const_Playout", value),
+                Some(Err(
+                    "Const_Playout must be an integer from 0 to 1000000000".to_owned()
+                ))
+            );
+        }
+        assert_eq!(
+            engine.set_option("Const_Playout", None),
+            Some(Err("Const_Playout requires a value".to_owned()))
+        );
+        assert_eq!(engine.const_playout().map(NonZeroU64::get), Some(50));
+        assert_eq!(
+            engine.set_option("Const_Playout", Some("1000000000")),
+            Some(Ok(()))
+        );
+        assert_eq!(
+            engine.const_playout().map(NonZeroU64::get),
+            Some(1_000_000_000)
+        );
+        assert_eq!(engine.set_option("Const_Playout", Some("0")), Some(Ok(())));
+        assert_eq!(engine.const_playout(), None);
+        assert!(engine.evaluator.is_some());
     }
 
     // 指示書: 推論の設定を変えると推論のセッションを捨て、同じ値では捨てない。不正値は状態を変えない。

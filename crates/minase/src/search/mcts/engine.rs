@@ -129,6 +129,8 @@ pub struct Engine {
     pub(super) cache_dir: std::path::PathBuf,
     /// 探索の設定。
     pub(super) config: Config,
+    /// 時間制御に代えて探索を止めるシミュレーション回数（オプション`Const_Playout`）。0なら`None`。
+    pub(super) const_playout: Option<NonZeroU64>,
     /// Gumbel乱数の生成器。
     rng: XorShift64,
     /// 直前の探索の木。
@@ -152,6 +154,7 @@ impl Engine {
             model_path: std::path::PathBuf::new(),
             cache_dir: super::options::default_cache_dir(),
             config,
+            const_playout: None,
             rng: XorShift64::new(config.seed),
             previous: None,
         }
@@ -160,6 +163,11 @@ impl Engine {
     /// 探索の設定を返す。
     pub fn config(&self) -> Config {
         self.config
+    }
+
+    /// 時間制御に代えて探索を止めるシミュレーション回数（オプション`Const_Playout`）を返す。
+    pub fn const_playout(&self) -> Option<NonZeroU64> {
+        self.const_playout
     }
 
     /// 前の対局の探索木を捨てる。
@@ -330,6 +338,7 @@ impl Engine {
         events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     ) -> Result<Outcome, MctsError> {
         let config = self.config;
+        let const_playout = self.const_playout;
         let k = config.win_rate_scale;
         let evaluator: &mut dyn Evaluator = match self.evaluator.as_deref_mut() {
             Some(evaluator) => evaluator,
@@ -374,7 +383,10 @@ impl Engine {
             Some(_) => 1,
             None => config.batch_size.get(),
         };
-        let budget = time_budget(limits);
+        // Const_Playoutが探索を止める場合は時間制御を無視する（dlshogiと同じ）。`go nodes`はConst_Playoutより
+        // 優先するので、そのときは時間制御も通常どおり使う。
+        let budget =
+            time_budget(limits).filter(|_| limits.nodes().is_some() || const_playout.is_none());
         let mut next_report = 1;
         let stop_reason = loop {
             if nodes >= next_report {
@@ -389,9 +401,14 @@ impl Engine {
             if tree.root().proven.is_some() {
                 break StopReason::DepthCompleted;
             }
-            let mut remaining = limits
-                .nodes()
-                .map_or(u64::MAX, |limit| limit.saturating_sub(nodes));
+            // 先読み中は的中の通知まで時間制御もConst_Playoutも効かせない。`go nodes`は先読み中も効く。
+            let hit_ns = control.hit_ns.load(Ordering::Relaxed);
+            let node_limit = limits.nodes().or_else(|| {
+                const_playout
+                    .filter(|_| hit_ns != u64::MAX)
+                    .map(NonZeroU64::get)
+            });
+            let mut remaining = node_limit.map_or(u64::MAX, |limit| limit.saturating_sub(nodes));
             if let Some(root) = &gumbel {
                 remaining = remaining.min(u64::from(
                     root.simulations()
@@ -404,17 +421,15 @@ impl Engine {
             if remaining == 0 {
                 break StopReason::NodeLimit;
             }
-            if let Some(budget) = budget {
-                let hit_ns = control.hit_ns.load(Ordering::Relaxed);
-                if hit_ns != u64::MAX
-                    && control
-                        .started
-                        .elapsed()
-                        .saturating_sub(Duration::from_nanos(hit_ns))
-                        >= budget.soft
-                {
-                    break StopReason::SoftLimit;
-                }
+            if let Some(budget) = budget
+                && hit_ns != u64::MAX
+                && control
+                    .started
+                    .elapsed()
+                    .saturating_sub(Duration::from_nanos(hit_ns))
+                    >= budget.soft
+            {
+                break StopReason::SoftLimit;
             }
             let max_leaves =
                 usize::try_from(remaining).map_or(batch, |remaining| batch.min(remaining));
