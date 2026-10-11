@@ -79,24 +79,27 @@
 | PSTとFMの同時学習 | [plans/pst-fm-joint-training.md](plans/pst-fm-joint-training.md) | 完了（不採用） | 2026年10月8日 |
 | FMの補正の倍率のSPSAによる調整 | [plans/fm-scale-spsa.md](plans/fm-scale-spsa.md) | 完了（採用） | 2026年10月8日 |
 | 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
+| NNUEによるPST＋FMの完全代替（初代のネット） | [plans/nnue-replacement.md](plans/nnue-replacement.md) | 起案 | |
+| 手の順序付けの改善 | [plans/move-ordering.md](plans/move-ordering.md) | 完了（採用） | 2026年10月10日 |
 
 ## 現在地
 
 ### 直近の完了
 
+- [手の順序付けの改善](plans/move-ordering.md)は2026年10月10日に、採用で完了した。βカットした手より前に読んだ手の部分木ノード数（先行費用W）を測る[診断](measurements/move-ordering-diag.md)で8候補の進退を決め、候補6を除く7候補（捕獲履歴の減点の拡張、SEE負の先頭捕獲の前のkiller手、静止探索の群内の捕獲履歴、捕獲履歴の持ち越し、静かな手のPST差分による同点破り、根の手の前回反復の部分木ノード数による整列、history malus）を積み上げた構成は、利用者の決定による1回の採否測定で[STC](measurements/move-ordering-all-stc.md)（得点率58.7%）と[LTC](measurements/move-ordering-all-ltc.md)（566ペア、得点率54.5%、Elo換算で約+31）がともに`H1`となった。固定200ペアでは[+26.5 Elo](measurements/move-ordering-elo200.md)である。候補ごとの寄与は分からない。
 - [FMの補正の倍率のSPSAによる調整](plans/fm-scale-spsa.md)は2026年10月8日に、採用で完了した。同時学習の候補J75の重みを固定し、FMの補正に掛ける倍率だけを自己対局のSPSA（3,000ペア）で調整して611/1024（約0.60）を得た。倍率を整数化前の出力係数に焼き込んだ候補は、[STC](measurements/fm-scale-spsa-stc.md)（得点率65.9%）と[LTC](measurements/fm-scale-spsa-ltc.md)（163ペア、得点率66.6%、Elo換算で約+120）でともに`H1`となった。補正の大きさは168センチポーンで従来の68センチポーンの約2.5倍、深さ9までのノード数は25%多い（[候補の検査](measurements/fm-scale-spsa-candidate.md)）。
 - [PSTとFMの同時学習](plans/pst-fm-joint-training.md)は2026年10月8日に、不採用で完了した。PSTとFMを単一の混合比λの1つの損失で学び直し、FMの補正を縮めずに、補正の大きさを損失と正則化に任せた。λ=0.75の候補J75とλ=1.0の候補J100は、どちらも2エポック目が最良で早期終了し、補正の標準偏差は282センチポーンと253センチポーンで、現行の補正1/4（68センチポーン）の約4倍だった。J75は[STC](measurements/pst-fm-joint-training-j75-stc.md)の1,245ペアで、J100は[STC](measurements/pst-fm-joint-training-j100-stc.md)の328ペアで、ともに`H0`（Elo換算で約−8と約−46）となった。合法手ごとの着手差に占めるFMの補正分はMの約4倍、深さ9までのノード数は35〜41%多かった（[学習の記録](measurements/pst-fm-joint-training-training.md)）。
-- [補正1/4のFMの現行PSTへの再学習](plans/fm-quarter-current-pst.md)は2026年10月7日に、一部不採用で完了した。採用PSTの候補Lを固定し、2駒関係のFMの補正を先読みなしと先読みつきの2通りの教師（λ=1.0）で学び、補正を1/4に縮めた。先読みつきの候補Faは[STC](measurements/fm-quarter-current-pst-fa-stc.md)と[LTC](measurements/fm-quarter-current-pst-fa-ltc.md)でともに`H1`（LTCの得点率59.3%、Elo換算で約+65）となり採用した。先読みなしの候補FnはSTCを通過したが、LTCは約+10 Eloで判定が出ず、利用者の判断で打ち切って不採用とした。探索速度の費用はFaで約14%である。
 
 ### 次の候補
 
-- 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[棋力向上段階12](plans/strength-stage12.md)で他エンジンの定番の改良が7件とも効果を示さなかったので、探索の改良を続ける前に、βカットのうち最初の手によるものが59%にとどまる手の順序付けの[監査](audits/beta-cutoff-first-move-2026-09-27.md)の結果と合わせて、原因を切り分けることも候補になる。
+- 探索部の次の対象は[探索部の反復負け回避](plans/search-repetition.md)である。[手の順序付けの改善](plans/move-ordering.md)の完了を受けて、counter move historyとcontinuation historyの持ち越し（再診断で発動率44.6〜71.8%）を扱う設計書の起案と、新しい3係数（`CaptureHistoryDecay`、`HistoryBonusScale`、`HistoryMalusScale`）を含むSPSAの調整セッションも候補になる。
 - 評価関数では、[エポック数の延長](plans/pst-longer-training.md)の採用を受けて、2つの続きが候補になる。1つは、最良エポックが上限の200に達したので、さらに長い学習で伸びるかを確かめることである。もう1つは、新しい採用PSTが評価値の尺度を約14%大きくしたので、探索係数をSPSAで調整し直すことである。 現在の評価関数はPSTにFMの補正（約14%の探索速度の費用）を加えたものなので、PSTを学び直す場合はその上でFMの補正も学び直す必要がある。
 - 補正なしの候補LのPSTを軽い評価として探索で使う仕組み（lazy evaluation）は、[PSTとFMの同時学習](plans/pst-fm-joint-training.md)の後に別の設計書で起案する（2026年10月7日の利用者の決定）。同時学習は不採用となったが、その候補J75の補正を[FMの補正の倍率のSPSAによる調整](plans/fm-scale-spsa.md)で約0.60倍に縮めた候補を採用したので、現行の評価関数はJ75のPSTと、倍率611/1024を焼き込んだJ75のFMからなる。
 - 評価関数でほかに着手できるのは[Athénanの計画](plans/athenan.md)である。学習用の探索Descentで採用PSTから追加学習し、学習したPSTを現行のαβ探索に載せた候補と、対局用の探索UBFMsに載せた候補の採否を別々に測る。対照を置かず、学習は同時16対局で48時間を予算とする。着手の条件は満たしている。
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
-- [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotの2.2.0への更新と、配備後の秒読みつきの対局20局の記録が残っている。
+- [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2026年10月8日に2.2.0へ、10月9日に2.3.0へ更新済みで、配備後の秒読みつきの対局20局の記録が残っている。
+- [NNUEによるPST＋FMの完全代替（初代のネット）](plans/nnue-replacement.md)は、現行PSTを線形経路として内包する幅64と128の浅いNNUEを、既存データに現行PST＋FMが1局面2万ノードで生成する新規データ（候補量1億局面。試走の速度から確定する）を加えて学び、幅を自己対局で選んでから段階ゲートで採否を決める。採用したネットで教師を生成し直す世代反復の初代であり、反復の基盤と運用は後続の設計書で起案する。着手は利用者の指示を待つ。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、2026年10月8日に利用者の許可を受けて着手し、ブランチ`alphazero-phase1`にフェーズ1の基盤（探索境界、符号化、MNZT、MCTS、ortによる推論、生成器、学習器、サイクル制御、コンテナイメージ）をすべて実装した。フェーズ0の作業機側の実測は記録済みで、強化学習の1サイクルは作業機で約1時間と見積もられる。次はフェーズ2の教師生成（約1.6日）であり、開始は利用者の指示を待つ。
 

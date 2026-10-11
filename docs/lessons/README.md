@@ -58,3 +58,4 @@
 - [明示的SIMDの前に自動ベクトル化の機械語を確かめる](check-autovectorization-before-explicit-simd.md) — SIMDライブラリの導入を検討する前に、対象の核を`#[inline(never)]`にした診断用ビルドの機械語で命令名ごとの出現数を数え、候補のライブラリで同じ核を書いた検証用のcrateの出現数と比べ、命令数が減るかコンパイラが出さない命令を使う核に限って試作する。
 - [コンテナイメージはパッケージ管理のキャッシュを同じ層で消し、ビルド直後に大きさを測る](clear-package-caches-in-image-layer.md) — `RUN`の同じ層でキャッシュを消し、ビルド前に`docker system df`、直後に`docker image ls`で大きさを見込みと比べる。
 - [GPU推論を伴う生成器が遅いときは、まず1回の推論の平均バッチと呼び出し回数を数える](count-batch-fill-before-blaming-cpu.md) — 推論の呼び出し回数と平均バッチを出力に含め、上限を大きく下回っていれば同時局数・塊・補充の仕組みを先に見直す。
+- [通信の余裕は遅れの分布の裾から決める](derive-network-margin-from-latency-tail.md) — 通信を挟む時計の余裕は運用ログで測った遅れの分布の裾から決め、1局で上限まで考える手数を掛けた時間切れの確率で分位点を選ぶ。

@@ -1,17 +1,20 @@
-//! 対局内で持ち越すワーカー別のbutterfly history。
+//! 対局内で持ち越すワーカー別のbutterfly historyと捕獲履歴。
 
 use core::num::NonZeroUsize;
 
 use minase_core::board::BOARD_SQUARE_COUNT;
 use minase_core::piece::COLOR_COUNT;
 
+use super::capture_history::CaptureHistory;
+
 /// 手番側・移動元・移動先で参照するhistory表。
 pub(crate) type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 
 /// 各ワーカーが次の根の探索へ持ち越す表。
-/// `docs/plans/strength-stage12.md`「項目5」「並列探索」に従う。
+/// `docs/plans/strength-stage12.md`「項目5」と`docs/plans/move-ordering.md`「候補4」に従う。
 pub struct HistoryTables {
     pub(crate) workers: Vec<Box<HistoryTable>>,
+    pub(crate) capture: Vec<CaptureHistory>,
 }
 
 impl HistoryTables {
@@ -21,6 +24,7 @@ impl HistoryTables {
             workers: (0..threads.get())
                 .map(|_| Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]))
                 .collect(),
+            capture: (0..threads.get()).map(|_| CaptureHistory::new()).collect(),
         }
     }
 
@@ -30,6 +34,9 @@ impl HistoryTables {
             for value in history.iter_mut().flatten().flatten() {
                 *value = 0;
             }
+        }
+        for history in &mut self.capture {
+            history.decay(0);
         }
     }
 }
