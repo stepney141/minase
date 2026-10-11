@@ -319,3 +319,7 @@ printf 'usi\nsetoption name NnCacheDir value data/cache/trt-minase\nisready\nqui
 | `tests/conftest.py` | 合成のMNZTの書き出しと、見本のMNZTの場所 |
 | `Dockerfile`、`.dockerignore` | コンテナイメージの定義。ビルドの文脈へは `pyproject.toml` と `uv.lock` だけを取り込む |
 | `run.sh` | 作業機でコンテナを起動する手順 |
+
+## コンテナの共有メモリ
+
+学習器のデータ読み込みのワーカーは`/dev/shm`でバッチを受け渡すので、コンテナはDockerの既定（64 MB）ではなく`--shm-size=8g`で起動する（`run.sh`は付けている）。足りないと`unable to allocate shared memory (shm) ... No space left on device`でワーカーが落ち、学習が止まったままになる。

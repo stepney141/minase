@@ -21,7 +21,9 @@ if [ -t 0 ]; then
     TTY=(-t)
 fi
 
-exec docker run --rm -i "${TTY[@]}" --gpus all \
+# PyTorchのDataLoaderのワーカーは/dev/shmで配列を受け渡す。Dockerの既定の64 MBでは
+# 「unable to allocate shared memory」で止まるので、共有メモリを広げる。
+exec docker run --rm -i "${TTY[@]}" --gpus all --shm-size=8g \
     --user "$(id -u):$(id -g)" \
     -v "$REPO:/work" \
     -v "$DATA:/work/data" \
