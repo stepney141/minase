@@ -67,7 +67,7 @@ uv run --project tools/train/zero python -m minase_zero.export --blocks 10 --cha
 
 | 名前 | 形状 | 内容 |
 |---|---|---|
-| `input` | `[N, 95, 12, 12]` | 手番側から見た入力平面（float32、値は0か1） |
+| `input` | `[N, 96, 12, 12]` | 手番側から見た入力平面（float32、値は0か1） |
 | `policy` | `[N, 35856]` | 方策のlogit。要素の番号はRust側のラベル `相対移動元 * 249 + 面` に一致する |
 | `value` | `[N, 1]` | 手番側の勝率（0〜1） |
 
@@ -115,13 +115,14 @@ ONNX Runtimeは確保したメモリを返さないので、1回の実行で複�
 ### 入力の符号化と方策ラベル
 
 `minase_zero.encoding` は、Rustの `crates/minase/src/nn/encoding.rs` と `nn/policy.rs` と同じ入力平面と方策ラベルをPythonで計算する。
-`parse_sfen` は2欄の基本形と、先獅子の升を含む4欄または5欄の拡張SFENを読み、`encode` は局面を `[95, 12, 12]` の入力平面へ、`move_label` はUSI表記の着手を方策ラベルへ変換する。
+`parse_sfen` は2欄の基本形と、先獅子の升を含む4欄、または成り権保留の升も含む5欄の拡張SFENを読み、`encode` は局面を `[96, 12, 12]` の入力平面へ、`move_label` はUSI表記の着手を方策ラベルへ変換する。
 面と方向の割当はRust側の `nn/policy.rs` の説明が定めており、両者の一致は前述の参照値のテストで確かめる。
 
 ### 学習
 
 `minase_zero.train` は、MNZTの学習データからネットを学習し、ONNXへ出力する。
 学習データの形式はRustの `crates/minase/src/nn/mnzt.rs` が定めており、`minase_zero.mnzt` が開く時点でヘッダ、ファイル長、および全レコードの欄を検証して、壊れたファイルを拒否する。
+MNZTの局面の欄は成り権を保留している駒（規則P1、P2、P5）の升を持たないので、MNZTから作る入力平面の面95は常に0になる。
 複数のファイルを `--data` に並べると連結して1つの学習データとして扱い、対局は（ファイル、対局番号）の組で区別する。
 
 ```bash

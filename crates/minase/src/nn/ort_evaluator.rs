@@ -28,7 +28,7 @@ use super::evaluator::{Evaluator, EvaluatorError};
 /// 実行ファイルに埋め込んだネット（ONNX）。
 pub const NETWORK: &[u8] = include_bytes!("../../nets/zero.onnx");
 
-/// ネットの入力の名前。形状は`[N, 95, 12, 12]`（tools/train/zero/README.md「ONNXへの出力」）。
+/// ネットの入力の名前。形状は`[N, 96, 12, 12]`（tools/train/zero/README.md「ONNXへの出力」）。
 const INPUT_NAME: &str = "input";
 
 /// 方策logitの出力の名前。形状は`[N, 35856]`。

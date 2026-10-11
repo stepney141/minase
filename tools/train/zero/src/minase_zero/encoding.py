@@ -12,6 +12,7 @@ Rust側の`crates/minase/src/nn/encoding.rs`と`nn/policy.rs`を同じ規約で�
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 
@@ -21,10 +22,12 @@ SQUARE_COUNT = BOARD_SIZE * BOARD_SIZE
 """盤の升の数。"""
 PIECE_STATE_COUNT = 47
 """駒種と現在の成り可否を区別した駒状態の数。"""
-INPUT_PLANES = 2 * PIECE_STATE_COUNT + 1
-"""入力平面の数。手番側の47状態、相手側の47状態、および先獅子の升の1面。"""
+INPUT_PLANES = 2 * PIECE_STATE_COUNT + 2
+"""入力平面の数。手番側の47状態、相手側の47状態、先獅子の升の1面、および成り権保留の升の1面。"""
 LION_CAPTURE_PLANE = 2 * PIECE_STATE_COUNT
 """先獅子の升を示す面の番号。"""
+PROMOTION_DEFERRED_PLANE = LION_CAPTURE_PLANE + 1
+"""成り権を保留している駒（規則P1、P2、P5）の升を示す面の番号。"""
 POLICY_PLANES = 249
 """方策の移動元の升ごとの面の数。"""
 POLICY_SIZE = SQUARE_COUNT * POLICY_PLANES
@@ -142,12 +145,14 @@ class Piece:
 class Position:
     """符号化に必要な局面の情報。
 
-    `board`は内部座標の升番号`段 * 12 + 筋`ごとの駒、`lion_capture`は先獅子の升である。
+    `board`は内部座標の升番号`段 * 12 + 筋`ごとの駒、`lion_capture`は先獅子の升、
+    `promotion_deferred`は成り権を保留している駒の升番号を昇順に並べた組である。
     """
 
     board: tuple[Piece | None, ...]
     side_to_move: int
     lion_capture: int | None
+    promotion_deferred: tuple[int, ...]
 
 
 def square_index(file: int, rank: int) -> int:
@@ -183,11 +188,13 @@ def parse_square(text: str) -> int:
 def parse_sfen(sfen: str) -> Position:
     """2欄の基本形、または4欄か5欄の拡張SFENを読む。
 
-    拡張SFENの第3欄は先獅子の升（`-`はなし）、第4欄は手数である。
-    第5欄の成り権保留（P1・P2・P5）は本版の入力が表せないので、`-`以外を拒否する。
+    拡張SFENの第3欄は先獅子の升（`-`はなし）、第4欄は手数、第5欄は成り権を保留している駒
+    （規則P1、P2、P5）の升をコンマで区切った一覧（`-`はなし）である。
+    第5欄の升は、Rust側の`parse_extended_sfen`と同じく升番号の狭義昇順に並び、
+    成っていない成れる駒がなければならない。
 
     Raises:
-        ValueError: 構文が誤っている場合、または成り権保留の升がある場合。
+        ValueError: 構文が誤っている場合。
     """
     fields = sfen.split()
     if len(fields) not in (2, 4, 5):
@@ -201,9 +208,27 @@ def parse_sfen(sfen: str) -> Position:
             lion_capture = parse_square(fields[2])
         if not fields[3].isdigit():
             raise ValueError(f"invalid move number {fields[3]!r}")
+    board = _parse_board(fields[0])
+    promotion_deferred = ()
     if len(fields) == 5 and fields[4] != "-":
-        raise ValueError("positions with deferred promotion rights cannot be encoded")
-    return Position(_parse_board(fields[0]), side_to_move, lion_capture)
+        promotion_deferred = _parse_promotion_deferred(fields[4], board)
+    return Position(board, side_to_move, lion_capture, promotion_deferred)
+
+
+def _parse_promotion_deferred(field: str, board: tuple[Piece | None, ...]) -> tuple[int, ...]:
+    """拡張SFENの第5欄（成り権保留の升の一覧）を読む。
+
+    Raises:
+        ValueError: 升が誤っている場合、狭義昇順でない場合、または升に成っていない成れる駒がない場合。
+    """
+    squares = tuple(parse_square(text) for text in field.split(","))
+    if any(previous >= current for previous, current in pairwise(squares)):
+        raise ValueError(f"promotion-deferred squares are not strictly ascending: {field!r}")
+    for square in squares:
+        piece = board[square]
+        if piece is None or piece.promoted or piece.kind not in _PROMOTED:
+            raise ValueError(f"promotion-deferred square {square} has no unpromoted promotable piece")
+    return squares
 
 
 def _parse_board(board: str) -> tuple[Piece | None, ...]:
@@ -254,9 +279,10 @@ def _parse_board(board: str) -> tuple[Piece | None, ...]:
 
 
 def encode(position: Position) -> np.ndarray:
-    """局面を手番側から見た入力平面`[95, 12, 12]`（float32、値は0か1）へ符号化する。
+    """局面を手番側から見た入力平面`[96, 12, 12]`（float32、値は0か1）へ符号化する。
 
-    面0〜46は手番側の駒、面47〜93は相手側の駒、面94は先獅子の升を表す。
+    面0〜46は手番側の駒、面47〜93は相手側の駒、面94は先獅子の升、面95は成り権を保留している
+    駒の升を表す。面95は手番側と相手側の駒を1面にまとめる。
     """
     planes = np.zeros((INPUT_PLANES, SQUARE_COUNT), dtype=np.float32)
     side = position.side_to_move
@@ -267,6 +293,8 @@ def encode(position: Position) -> np.ndarray:
         planes[owner * PIECE_STATE_COUNT + piece.state(), relative_square(square, side)] = 1.0
     if position.lion_capture is not None:
         planes[LION_CAPTURE_PLANE, relative_square(position.lion_capture, side)] = 1.0
+    for square in position.promotion_deferred:
+        planes[PROMOTION_DEFERRED_PLANE, relative_square(square, side)] = 1.0
     return planes.reshape(INPUT_PLANES, BOARD_SIZE, BOARD_SIZE)
 
 

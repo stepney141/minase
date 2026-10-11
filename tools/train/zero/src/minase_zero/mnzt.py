@@ -6,6 +6,8 @@
 数値はすべてリトルエンディアンである。
 局面の盤面の駒コードは評価関数の学習データ形式MNSD（`crates/minase/src/training/records.rs`の
 `encode_piece`）と同じである。
+局面の欄は成り権を保留している駒（規則P1、P2、P5）の升を持たないので、MNZTの局面を符号化した
+入力平面の面95（`encoding.PROMOTION_DEFERRED_PLANE`）は常に0になる。
 
 開く時点でヘッダ、ファイル長、および全レコードと全組の欄を検証し、壊れたファイルは`MnztError`で拒否する。
 局面の表と方策の列は`numpy.memmap`で読むので、大きなファイルもメモリへ載せずに扱える。
@@ -138,12 +140,14 @@ def record_position(record: np.void) -> Position:
 
     盤面の升の番号（dense index、`段 * 12 + 筋`）と先獅子の升コードは、
     `encoding.Position`の升番号と同じ規約である。レコードは`MnztFile`が検証済みとする。
+    MNZTのレコードは成り権保留の升を持たないので、`promotion_deferred`は常に空である。
     """
     lion = int(record["lion_square"])
     return Position(
         board=tuple(_PIECES[code] for code in record["board"].tolist()),
         side_to_move=int(record["side_to_move"]),
         lion_capture=None if lion == NO_LION_SQUARE else lion,
+        promotion_deferred=(),
     )
 
 

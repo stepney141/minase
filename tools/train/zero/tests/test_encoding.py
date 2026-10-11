@@ -14,6 +14,7 @@ from minase_zero.encoding import (
     LION_CAPTURE_PLANE,
     PIECE_STATE_COUNT,
     POLICY_PLANES,
+    PROMOTION_DEFERRED_PLANE,
     SQUARE_COUNT,
     WHITE,
     encode,
@@ -114,10 +115,31 @@ def test_promoted_pieces_and_lion_capture_square():
     assert planes[LION_CAPTURE_PLANE, rotated - parse_square("7f")] == 1.0
 
 
-def test_deferred_promotion_is_rejected():
-    """成り権保留の欄を持つ局面は符号化できない。"""
-    with pytest.raises(ValueError):
-        parse_sfen(INITIAL_SFEN + " - 1 7i")
+def test_promotion_deferred_squares_are_marked_on_plane_95():
+    """第5欄の成り権保留の升は、手番側と相手側の駒とも、回転後の相対座標で面95に立つ。"""
+    pieces = {"7d": "P", "4i": "s", "1a": "k", "12l": "K"}
+    position = parse_sfen(sfen(pieces, "w") + " 4i,7d")
+    assert position.promotion_deferred == (parse_square("4i"), parse_square("7d"))
+    planes = encode(position).reshape(INPUT_PLANES, SQUARE_COUNT)
+    rotated = SQUARE_COUNT - 1
+    marked = sorted(int(square) for square in np.flatnonzero(planes[PROMOTION_DEFERRED_PLANE]))
+    assert marked == sorted([rotated - parse_square("4i"), rotated - parse_square("7d")])
+    assert len(nonzero(planes)) == 4 + 2
+
+
+def test_promotion_deferred_plane_is_empty_without_the_field():
+    """第5欄が`-`または省略の局面では、面95はすべて0である。"""
+    for text in (INITIAL_SFEN, INITIAL_SFEN + " - 1", INITIAL_SFEN + " - 1 -"):
+        planes = encode(parse_sfen(text)).reshape(INPUT_PLANES, SQUARE_COUNT)
+        assert not planes[PROMOTION_DEFERRED_PLANE].any()
+
+
+def test_invalid_promotion_deferred_field_raises_value_error():
+    """第5欄の誤った升、昇順でない並び、および成っていない成れる駒のない升を拒否する。"""
+    pieces = sfen({"7d": "P", "4i": "s", "6g": "+C", "1a": "k", "12l": "K"}, "b")
+    for field in ("7z", "7d,4i", "4i,4i", "5e", "6g", "1a", "4i,"):
+        with pytest.raises(ValueError):
+            parse_sfen(f"{pieces} {field}")
 
 
 def test_pawn_advances_have_hand_computed_labels():

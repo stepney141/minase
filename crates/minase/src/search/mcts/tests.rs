@@ -130,13 +130,12 @@ impl Domain for TableDomain {
     }
 
     /// 入力の先頭に手順の長さ、続けて手順を書く。
-    fn encode(&self, out: &mut [f32]) -> Result<(), MctsError> {
+    fn encode(&self, out: &mut [f32]) {
         out.fill(0.0);
         out[0] = self.path.len() as f32;
         for (slot, &action) in out[1..].iter_mut().zip(&self.path) {
             *slot = action as f32;
         }
-        Ok(())
     }
 
     fn play(&mut self, action: usize) {
@@ -352,9 +351,8 @@ impl Domain for GraphDomain {
         Ok(action)
     }
 
-    fn encode(&self, out: &mut [f32]) -> Result<(), MctsError> {
+    fn encode(&self, out: &mut [f32]) {
         out.fill(0.0);
-        Ok(())
     }
 
     fn play(&mut self, action: usize) {

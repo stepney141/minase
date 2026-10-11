@@ -11,7 +11,7 @@ use minase_core::BOARD_SQUARE_COUNT;
 
 use super::{INPUT_PLANES, POLICY_SIZE};
 
-/// 1局面の入力平面の要素数（95面×144升）。
+/// 1局面の入力平面の要素数（96面×144升）。
 pub const INPUT_SIZE: usize = INPUT_PLANES * BOARD_SQUARE_COUNT;
 
 /// 推論の失敗。

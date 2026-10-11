@@ -13,7 +13,7 @@ from minase_zero.dataset import (
     split_by_game,
     validation_loader,
 )
-from minase_zero.encoding import encode, parse_sfen
+from minase_zero.encoding import INPUT_PLANES, encode, parse_sfen
 from minase_zero.mnzt import MnztCollection
 
 
@@ -66,7 +66,7 @@ def test_batch_contents(tmp_path):
     ]
     data = MnztCollection.open([write_mnzt(tmp_path / "a.mnzt", records)])
     batch = BatchDataset(data, value_lambda=0.25)[np.array([0, 1, 2])]
-    assert batch["input"].shape == (3, 95, 12, 12)
+    assert batch["input"].shape == (3, INPUT_PLANES, 12, 12)
     assert batch["input"].dtype == torch.float32
     np.testing.assert_array_equal(batch["input"][0].numpy(), encode(parse_sfen(INITIAL_SFEN)))
     assert batch["policy_counts"].tolist() == [2, 1, 3]

@@ -11,7 +11,6 @@ use minase_core::mv::Move;
 use minase_core::rng::XorShift64;
 use minase_core::rules::MoveRules;
 
-use crate::nn::encoding::EncodingError;
 use crate::nn::evaluator::{Evaluator, EvaluatorError};
 use crate::nn::ort_evaluator::NnBackend;
 use crate::nn::policy::PolicyLabelError;
@@ -43,8 +42,6 @@ pub enum MctsError {
     DepthLimit,
     /// 同期探索に無期限探索が指定された。
     InfiniteSynchronousSearch,
-    /// 局面を入力平面へ符号化できない。
-    Encoding(EncodingError),
     /// 合法手が方策のラベルを持たない。
     Label(PolicyLabelError),
     /// 推論に失敗した。
@@ -60,7 +57,6 @@ impl fmt::Display for MctsError {
             Self::InfiniteSynchronousSearch => {
                 formatter.write_str("synchronous search cannot use an infinite limit")
             }
-            Self::Encoding(error) => write!(formatter, "MCTS cannot encode a position: {error}"),
             Self::Label(error) => write!(formatter, "MCTS cannot label a move: {error}"),
             Self::Evaluator(error) => write!(formatter, "MCTS evaluation failed: {error}"),
             Self::NoEvaluator => formatter.write_str("the network session has not been created"),

@@ -36,7 +36,7 @@ pub(super) trait Domain {
     fn label(&self, action: Self::Action) -> Result<usize, MctsError>;
 
     /// 現局面の入力平面を`out`（[`INPUT_SIZE`]個）へ書く。
-    fn encode(&self, out: &mut [f32]) -> Result<(), MctsError>;
+    fn encode(&self, out: &mut [f32]);
 
     /// 着手を適用する。
     fn play(&mut self, action: Self::Action);
@@ -99,8 +99,8 @@ impl Domain for PositionDomain {
             .map_err(MctsError::Label)
     }
 
-    fn encode(&self, out: &mut [f32]) -> Result<(), MctsError> {
-        encode_into(&self.position, out).map_err(MctsError::Encoding)
+    fn encode(&self, out: &mut [f32]) {
+        encode_into(&self.position, out);
     }
 
     fn play(&mut self, mv: Move) {
@@ -387,7 +387,7 @@ impl<D: Domain> Simulator<D> {
             self.inputs.resize((row + 1) * INPUT_SIZE, 0.0);
         }
         self.domain
-            .encode(&mut self.inputs[row * INPUT_SIZE..(row + 1) * INPUT_SIZE])?;
+            .encode(&mut self.inputs[row * INPUT_SIZE..(row + 1) * INPUT_SIZE]);
         let node = tree.node_mut(id);
         node.edges = edges;
         node.state = NodeState::Pending;

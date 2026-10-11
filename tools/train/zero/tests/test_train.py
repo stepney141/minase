@@ -13,7 +13,7 @@ import torch
 
 from minase_zero import train
 from minase_zero.dataset import BatchDataset, validation_loader
-from minase_zero.encoding import POLICY_SIZE
+from minase_zero.encoding import INPUT_PLANES, POLICY_SIZE
 from minase_zero.mnzt import MnztCollection, sha256_file
 
 
@@ -64,7 +64,7 @@ def test_training_writes_finite_losses_checkpoint_and_onnx(sample_mnzt, tmp_path
     digest = hashlib.sha256(onnx_path.read_bytes()).hexdigest()
     assert (run_dir / "net.sha256").read_text() == f"{digest}  net.onnx\n"
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    policy, value = session.run(None, {"input": np.zeros((3, 95, 12, 12), dtype=np.float32)})
+    policy, value = session.run(None, {"input": np.zeros((3, INPUT_PLANES, 12, 12), dtype=np.float32)})
     assert policy.shape == (3, POLICY_SIZE)
     assert value.shape == (3, 1)
 
