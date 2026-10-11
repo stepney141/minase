@@ -15,10 +15,10 @@ use nnue_trainer::{
 };
 
 #[test]
-fn initialization_is_seeded_consumes_only_observed_canonical_rows_and_averages_mirrors() {
+fn initialization_is_seeded_and_consumes_only_observed_canonical_rows() {
     let mut initial = vec![[0.0; 2]; 13680];
     initial[0] = [10.0, 20.0];
-    initial[11] = [14.0, 28.0];
+    initial[11] = initial[0];
     let masks = |rows: &[usize]| {
         let mut canonical = vec![false; 6841];
         for &row in rows {
@@ -29,7 +29,7 @@ fn initialization_is_seeded_consumes_only_observed_canonical_rows_and_averages_m
     let shape = Shape::new(InputFeatureSet::P, 4, 1000.0).unwrap();
     let a = Model::initialize(shape, &initial, masks(&[3, 5]), 7, 0.05).unwrap();
     let b = Model::initialize(shape, &initial, masks(&[0, 3, 5]), 7, 0.05).unwrap();
-    assert_eq!(&a.parameters()[Parameter::Linear][..2], &[12.0, 24.0]);
+    assert_eq!(&a.parameters()[Parameter::Linear][..2], &[10.0, 20.0]);
     assert_eq!(
         &a.parameters()[Parameter::FirstLayer][12..16],
         &b.parameters()[Parameter::FirstLayer][..4]
@@ -72,6 +72,28 @@ fn initialization_is_seeded_consumes_only_observed_canonical_rows_and_averages_m
 }
 
 #[test]
+fn initialization_requires_exact_mirror_symmetry_in_both_endpoints() {
+    // Pythonのload_initialと同じく、未観測行も含む全特徴の左右一致を要求する。
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let shape = Shape::new(set, 2, 1000.0).unwrap();
+        let masks = Masks::new(set, vec![false; 6841], vec![false; set.dimensions() + 1]).unwrap();
+        for (left, right) in [(0, 11), (5, 6), (12, 23), (13668, 13679)] {
+            for endpoint in 0..2 {
+                let mut initial = vec![[0.0; 2]; 13680];
+                initial[left][endpoint] = 1.0;
+                initial[right][endpoint] = 1.0;
+                let model = Model::initialize(shape, &initial, masks.clone(), 7, 0.05).unwrap();
+                assert_eq!(model.expanded_linear(), initial);
+
+                // 隣接するf32値の差にも許容誤差や平均化を適用しない。
+                initial[right][endpoint] = f32::from_bits(1.0_f32.to_bits() + 1);
+                assert!(Model::initialize(shape, &initial, masks.clone(), 7, 0.05).is_err());
+            }
+        }
+    }
+}
+
+#[test]
 fn initialization_standard_deviation_scales_first_layer_and_virtual_rows() {
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let shape = Shape::new(set, 6, 1000.0).unwrap();
@@ -89,7 +111,7 @@ fn initialization_standard_deviation_scales_first_layer_and_virtual_rows() {
             b.parameters()[Parameter::Linear]
         );
         let zero = make(0.0).unwrap();
-        assert!(reference::fold(&zero).iter().all(|&x| x == 0.0));
+        assert!(reference::fold(&zero).unwrap().iter().all(|&x| x == 0.0));
         for std in [-0.1, f32::NAN, f32::INFINITY] {
             assert!(make(std).is_err());
         }
@@ -183,7 +205,7 @@ fn halfkp_unobserved_feature_inherits_updated_virtual_row() {
     model.parameter_mut(Parameter::FirstLayer)[13680 * 4] = 4.0;
     model.constrain().unwrap();
     assert_eq!(model.parameters()[Parameter::FirstLayer][13680 * 4], 0.0);
-    assert_eq!(reference::fold(&model)[13680 * 4], 0.75);
+    assert_eq!(reference::fold(&model).unwrap()[13680 * 4], 0.75);
 }
 
 #[test]
@@ -377,7 +399,10 @@ fn stored_npz_and_numpy_zip64_load_endpoints_and_reject_bad_archives() {
     let fixture = Fixture::new(&positions());
     let path = fixture.root.join("pst-float.npz");
     let initial: Vec<_> = (0..13680)
-        .map(|i| [i as f32 / 8.0, -(i as f32) / 16.0])
+        .map(|i| {
+            let row = i / 12;
+            [row as f32 / 8.0, -(row as f32) / 16.0]
+        })
         .collect();
     for zip64 in [false, true] {
         let bytes = npz_bytes(&initial, zip64);
@@ -391,6 +416,20 @@ fn stored_npz_and_numpy_zip64_load_endpoints_and_reject_bad_archives() {
         }
         for cut in [0, 10, 100, bytes.len() - 1] {
             std::fs::write(&path, &bytes[..cut]).unwrap();
+            assert!(nnue_trainer::model::load_initial(&path).is_err());
+        }
+    }
+}
+
+#[test]
+fn load_initial_rejects_asymmetric_endpoints() {
+    let fixture = Fixture::new(&positions());
+    let path = fixture.root.join("pst-float.npz");
+    for zip64 in [false, true] {
+        for endpoint in 0..2 {
+            let mut initial = vec![[0.0; 2]; 13680];
+            initial[13679][endpoint] = 1.0;
+            std::fs::write(&path, npz_bytes(&initial, zip64)).unwrap();
             assert!(nnue_trainer::model::load_initial(&path).is_err());
         }
     }

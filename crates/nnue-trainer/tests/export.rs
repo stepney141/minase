@@ -101,7 +101,8 @@ impl Fixture {
         .write(File::create(root.join("records.bin.provenance.json")).unwrap())
         .unwrap();
         Self {
-            dataset: Dataset::open(&[path], None).unwrap(),
+            // SAFETY: この試験専用ファイルは、Datasetの生存中に変更も切り詰めもしない。
+            dataset: unsafe { Dataset::open(&[path], None) }.unwrap(),
             root,
         }
     }
@@ -226,6 +227,22 @@ fn integer_inference_and_the_float_reference_use_centipawns() {
         assert_eq!(report.mean_absolute_error_cp, 0.0);
         assert_eq!(report.max_absolute_error_cp, 0.0);
         assert!(report.passed);
+    }
+}
+
+#[test]
+fn quantization_error_keeps_the_double_precision_float_evaluation() {
+    let fixture = Fixture::new(0..80, None);
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut checkpoint = checkpoint(set, 1000.0, 0.0);
+        checkpoint.model.parameter_mut(Parameter::OutputBias)[0] = 0.04;
+        // 保存値0.04_f32は0.04より小さい。K換算をf32で行うと40へ丸められるが、
+        // 倍精度では整数推論の40 cpとの小さな差を検査結果に残す。
+        let expected = (f64::from(0.04_f32) * 1000.0 - 40.0).abs();
+        assert!(expected > 0.0);
+        let report = fixture.export(&checkpoint, 7);
+        assert_eq!(report.mean_absolute_error_cp, expected);
+        assert_eq!(report.max_absolute_error_cp, expected);
     }
 }
 

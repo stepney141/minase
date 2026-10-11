@@ -71,7 +71,8 @@ impl Fixture {
             .write(File::create(root.join("records.bin.provenance.json")).unwrap())
             .unwrap();
         Self {
-            dataset: Dataset::open(&[path], None).unwrap(),
+            // SAFETY: このfixture専用のファイルを作成し、Datasetの生存中は変更・切り詰めしない。
+            dataset: unsafe { Dataset::open(&[path], None).unwrap() },
             root,
         }
     }

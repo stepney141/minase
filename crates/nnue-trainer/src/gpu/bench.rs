@@ -24,34 +24,34 @@ use std::{
 /// `bench-step`で使う実データと測定条件。
 #[derive(clap::Args)]
 pub struct Args {
-    /// Input feature set.
+    /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     feature_set: InputFeatureSet,
-    /// Even hidden width, 2..=512.
+    /// 隠れ層の幅を2以上512以下の偶数で指定する。
     #[arg(long)]
     width: usize,
-    /// Positions in each measured batch.
+    /// 測定する1バッチの局面数を指定する。
     #[arg(long)]
     batch: usize,
-    /// Measured updates, at least 2; one additional update warms up the GPU.
+    /// 測定する更新回数を2以上で指定する。別に1回の更新でGPUをウォームアップする。
     #[arg(long)]
     steps: usize,
-    /// Time each kernel with CUDA events and report launch dimensions and estimated array bytes.
+    /// CUDAイベントでカーネルごとに計時し、起動時の次元と配列の推定バイト数を報告する。
     #[arg(long)]
     profile: bool,
-    /// MNSD files, in global-record order, including their provenance sidecars.
+    /// MNSDファイルを記録の通し番号順に指定する。対応する来歴ファイルも用意する。
     #[arg(long, required = true, num_args = 1..)]
     data: Vec<PathBuf>,
-    /// Model initialization and epoch permutation seed.
+    /// モデル初期化とエポック内の局面順列に使うシードを指定する。
     #[arg(long, default_value_t = 71)]
     seed: u64,
-    /// Batch workers; omit to use physical cores minus 2, with a minimum of 1.
+    /// バッチ構築のワーカー数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     workers: Option<usize>,
-    /// CUDA device ordinal.
+    /// CUDAデバイスの番号を指定する。
     #[arg(long, default_value_t = 0)]
     device: usize,
-    /// Fixed output and teacher K for this timing experiment.
+    /// この測定で固定する出力用Kと教師用Kの共通値を指定する。
     #[arg(long, default_value_t = 1000.0)]
     k: f32,
 }
@@ -267,7 +267,9 @@ pub fn run(args: Args) -> Result<Report> {
         None => physical_workers()?,
     }
     .min(args.steps);
-    let dataset = Dataset::open(&args.data, None)?;
+    // SAFETY: 入力は生成完了済みのMNSDに限り、Datasetの生存中は外部プロセスも含めて
+    // 変更・切り詰めしない運用契約とする。この処理も入力ファイルを書き換えない。
+    let dataset = unsafe { Dataset::open(&args.data, None)? };
     if dataset.training_indices().len() < required {
         return Err(Error::Invalid(
             "not enough training positions for (steps + 1) * batch, including warmup",

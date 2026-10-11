@@ -14,7 +14,7 @@ use crate::{
     data::{
         BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, PackedOccurrence, SENTINEL,
     },
-    model::{Error, Model, Parameter, Parameters, Result, rotated_unit},
+    model::{Error, Model, Parameter, Parameters, Result, Shape, rotated_unit},
 };
 use minase::eval::features::FEATURE_COUNT;
 
@@ -25,6 +25,14 @@ pub struct Forward {
     pub acc: Vec<f32>,
     /// 線形端点和lin[B, 2]。手番側視点。
     pub lin: Vec<[f32; 2]>,
+}
+impl Forward {
+    fn check_shape(&self, n: usize, h: usize) -> Result<()> {
+        if Some(self.acc.len()) != n.checked_mul(2 * h) || self.lin.len() != n {
+            return Err(Error::Invalid("reference forward shape"));
+        }
+        Ok(())
+    }
 }
 /// カーネル3の出力。縮約前の寄与を局面順に保持する。
 #[derive(Debug)]
@@ -45,6 +53,22 @@ pub struct Output {
     pub d_output: Vec<f32>,
     /// 線形係数c[B, 2]。
     pub c: Vec<[f32; 2]>,
+}
+impl Output {
+    fn check_shape(&self, n: usize, h: usize) -> Result<()> {
+        if n == 0
+            || [&self.f, &self.h, &self.d_acc, &self.d_output]
+                .iter()
+                .any(|values| Some(values.len()) != n.checked_mul(2 * h))
+            || [&self.logits, &self.loss, &self.g]
+                .iter()
+                .any(|values| values.len() != n)
+            || self.c.len() != n
+        {
+            return Err(Error::Invalid("reference output shape"));
+        }
+        Ok(())
+    }
 }
 /// カーネル4で得たバッチ平均の損失。
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -86,12 +110,13 @@ pub(crate) fn phase(count: u8, removed: bool) -> [f32; 2] {
 }
 
 /// HalfKPのC=W+V[base]を作る。P型では回転前の正準行を返す。埋め草を含む。
-pub fn fold(model: &Model) -> Vec<f32> {
-    if model.shape().feature_set() == InputFeatureSet::P {
+pub fn fold(model: &Model) -> Result<Vec<f32>> {
+    check_parameters(model.parameters(), model.shape())?;
+    Ok(if model.shape().feature_set() == InputFeatureSet::P {
         model.parameters()[Parameter::FirstLayer].to_vec()
     } else {
         model.expanded_first_layer()
-    }
+    })
 }
 pub(crate) fn row_value(model: &Model, weights: &[f32], feature: u32, j: usize) -> f32 {
     if feature == SENTINEL {
@@ -119,12 +144,43 @@ pub(crate) fn linear_row(model: &Model, feature: u32) -> [f32; 2] {
         ]
     }
 }
-fn check_batch(model: &Model, batch: &BatchSlot, weights: &[f32]) -> Result<()> {
-    if batch.is_empty()
-        || batch.feature_set() != model.shape().feature_set()
-        || weights.len() != model.shape().len(Parameter::FirstLayer)
+fn check_parameters(parameters: &Parameters, shape: Shape) -> Result<()> {
+    if parameters.shape() != shape
+        || Parameter::ALL
+            .iter()
+            .any(|&p| parameters[p].len() != shape.len(p))
     {
-        return Err(Error::Invalid("reference batch or folded weights shape"));
+        return Err(Error::Invalid("reference parameter shape"));
+    }
+    Ok(())
+}
+fn check_batch_arrays(batch: &BatchSlot) -> Result<()> {
+    let n = batch.len();
+    if n == 0
+        || Some(batch.features().len()) != n.checked_mul(2 * FEATURE_COLUMNS)
+        || Some(batch.linear_features().len()) != n.checked_mul(FEATURE_COLUMNS)
+        || batch.piece_counts().len() != n
+        || batch.teacher_scores().len() != n
+        || batch.teacher_classes().len() != n
+        || batch.outcomes().len() != n
+        || batch.first_layer_inverse().starts().len() != batch.feature_set().first_layer_rows() + 1
+        || batch.linear_inverse().starts().len() != CANONICAL_ROWS + 1
+    {
+        return Err(Error::Invalid("reference batch shape"));
+    }
+    Ok(())
+}
+fn check_batch(model: &Model, batch: &BatchSlot) -> Result<()> {
+    check_parameters(model.parameters(), model.shape())?;
+    check_batch_arrays(batch)?;
+    if batch.feature_set() != model.shape().feature_set() {
+        return Err(Error::Invalid("reference batch feature set"));
+    }
+    Ok(())
+}
+fn check_weights(model: &Model, weights: &[f32]) -> Result<()> {
+    if weights.len() != model.shape().len(Parameter::FirstLayer) {
+        return Err(Error::Invalid("reference folded weights shape"));
     }
     Ok(())
 }
@@ -142,7 +198,8 @@ fn feature_sum(mut value: impl FnMut(usize) -> f32) -> f32 {
 
 /// カーネル1。145列のgather-sumと線形の端点和を求める。
 pub fn forward(model: &Model, batch: &BatchSlot, weights: &[f32]) -> Result<Forward> {
-    check_batch(model, batch, weights)?;
+    check_batch(model, batch)?;
+    check_weights(model, weights)?;
     let h = model.shape().width();
     let bias = model.expanded_biases();
     let mut acc = vec![0.0; batch.len() * 2 * h];
@@ -191,26 +248,79 @@ pub(crate) fn logit(model: &Model, batch: &BatchSlot, f: &Forward, b: usize) -> 
 }
 /// 浮動小数点の評価をセンチポーンで返す。学習と同じf32の前進を使う。
 pub fn evaluate(model: &Model, batch: &BatchSlot) -> Result<Vec<f32>> {
-    let weights = fold(model);
+    check_batch(model, batch)?;
+    let weights = fold(model)?;
     let f = forward(model, batch, &weights)?;
     Ok((0..batch.len())
         .map(|b| logit(model, batch, &f, b) * model.shape().k())
         .collect())
 }
 
+/// 量子化検査用に、線形和から非線形出力まで倍精度で評価する。
+///
+/// Pythonのfloat_evaluateと同じく、保存用に単精度で畳み込んだ第1層を使い、
+/// 両半幅の活性化を個別に倍精度で重み付けする。結果の単位はセンチポーン。
+pub fn evaluate_f64(model: &Model, batch: &BatchSlot) -> Result<Vec<f64>> {
+    check_batch(model, batch)?;
+    let weights = fold(model)?;
+    let h = model.shape().width();
+    let biases = model.expanded_biases();
+    let output = model.expanded_output_weights();
+    let mut values = Vec::with_capacity(batch.len());
+    for b in 0..batch.len() {
+        let mut linear = [0.0_f64; 2];
+        for col in 0..FEATURE_COLUMNS {
+            let row = linear_row(model, batch.linear_features()[b * FEATURE_COLUMNS + col]);
+            for (sum, value) in linear.iter_mut().zip(row) {
+                *sum += f64::from(value);
+            }
+        }
+        let ratio = f64::from(batch.piece_counts()[b].saturating_sub(2).min(90)) / 90.0;
+        let cp = ratio * linear[0] + (1.0 - ratio) * linear[1];
+        let mut nonlinear = f64::from(model.parameters()[Parameter::OutputBias][0]);
+        for v in 0..2 {
+            let mut head = 0.0_f64;
+            for j in 0..h {
+                let mut hidden = 0.0_f64;
+                for col in 0..FEATURE_COLUMNS {
+                    hidden += f64::from(row_value(
+                        model,
+                        &weights,
+                        batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col],
+                        j,
+                    ));
+                }
+                hidden += f64::from(biases[j]);
+                head += hidden.clamp(0.0, 1.0).powi(2) * f64::from(output[v * h + j]);
+            }
+            nonlinear += head;
+        }
+        values.push(cp + f64::from(model.shape().k()) * nonlinear);
+    }
+    Ok(values)
+}
+
 /// 分類ごとの教師用Kを使う。λ=1で、勝敗は混ぜない。
 pub fn targets(batch: &BatchSlot, teacher_ks: &[f64]) -> Result<Vec<f32>> {
+    check_batch_arrays(batch)?;
+    if batch
+        .teacher_classes()
+        .iter()
+        .any(|&class| class as usize >= teacher_ks.len())
+        || teacher_ks.iter().any(|&k| !k.is_finite() || k <= 0.0)
+        || batch
+            .teacher_scores()
+            .iter()
+            .any(|score| !score.is_finite())
+    {
+        return Err(Error::Invalid("teacher class, K or score"));
+    }
     batch
         .teacher_scores()
         .iter()
         .zip(batch.teacher_classes())
         .map(|(&score, &class)| {
-            let k = *teacher_ks
-                .get(class as usize)
-                .ok_or(Error::Invalid("teacher class"))?;
-            if !k.is_finite() || k <= 0.0 || !score.is_finite() {
-                return Err(Error::Invalid("teacher K or score"));
-            }
+            let k = teacher_ks[class as usize];
             Ok((1.0 / (1.0 + (-f64::from(score) / k).exp())) as f32)
         })
         .collect()
@@ -224,8 +334,11 @@ pub fn output_backward(
     removal: &Removal,
     targets: &[f32],
 ) -> Result<Output> {
+    check_batch(model, batch)?;
     let h = model.shape().width();
     let n = batch.len();
+    forward.check_shape(n, h)?;
+    removal.check_shape(n, h)?;
     if targets.len() != n
         || targets
             .iter()
@@ -273,11 +386,15 @@ pub fn reduce_partials(
     output: &Output,
     removal: &Removal,
     gradient: &mut Parameters,
-) -> Losses {
+) -> Result<Losses> {
     let s = model.shape();
     let n = output.g.len();
     let h = s.width();
     let units = s.units();
+    check_parameters(model.parameters(), s)?;
+    check_parameters(gradient, s)?;
+    output.check_shape(n, h)?;
+    removal.check_shape(n, h)?;
     for j in 0..units {
         let mut bias = 0.0_f64;
         for v in 0..2 {
@@ -294,10 +411,10 @@ pub fn reduce_partials(
         gradient[Parameter::Biases][j] = bias as f32;
     }
     gradient[Parameter::OutputBias][0] = output.g.iter().map(|&v| f64::from(v)).sum::<f64>() as f32;
-    Losses {
+    Ok(Losses {
         bce: output.loss.iter().map(|&v| f64::from(v)).sum::<f64>() / n as f64,
         auxiliary: removal.loss.iter().sum::<f64>() / n as f64,
-    }
+    })
 }
 
 /// カーネル5。逆索引を固定順で走査し、除去した行自身の寄与を引く。
@@ -309,8 +426,14 @@ pub fn first_layer_backward(
     removal: &Removal,
     output: &Output,
     gradient: &mut Parameters,
-) {
+) -> Result<()> {
+    check_batch(model, batch)?;
+    check_weights(model, weights)?;
+    check_parameters(gradient, model.shape())?;
     let h = model.shape().width();
+    forward.check_shape(batch.len(), h)?;
+    removal.check_shape(batch.len(), h)?;
+    output.check_shape(batch.len(), h)?;
     let o = model.expanded_output_weights();
     let inverse = batch.first_layer_inverse();
     gradient[Parameter::FirstLayer].fill(0.0);
@@ -342,6 +465,7 @@ pub fn first_layer_backward(
             gradient[Parameter::FirstLayer][row * h + j] = sum as f32;
         }
     }
+    Ok(())
 }
 
 /// カーネル6。線形逆索引からc-d_j u_j/Kを正準行へ足す。回転はしない。
@@ -351,7 +475,11 @@ pub fn linear_backward(
     removal: &Removal,
     output: &Output,
     gradient: &mut Parameters,
-) {
+) -> Result<()> {
+    check_batch(model, batch)?;
+    check_parameters(gradient, model.shape())?;
+    removal.check_shape(batch.len(), model.shape().width())?;
+    output.check_shape(batch.len(), model.shape().width())?;
     let inverse = batch.linear_inverse();
     for row in 0..CANONICAL_ROWS {
         for endpoint in 0..2 {
@@ -374,12 +502,14 @@ pub fn linear_backward(
             gradient[Parameter::Linear][row * 2 + endpoint] = sum as f32;
         }
     }
+    Ok(())
 }
 
 /// カーネル7。dV[p]=Σ_k dW[k*13680+p]を8区分の順で縮約する。
-pub fn reduce_virtual(gradient: &mut Parameters) {
+pub fn reduce_virtual(gradient: &mut Parameters) -> Result<()> {
+    check_parameters(gradient, gradient.shape())?;
     if gradient.shape().feature_set() == InputFeatureSet::P {
-        return;
+        return Ok(());
     }
     let h = gradient.shape().width();
     for base in 0..FEATURE_COUNT {
@@ -394,6 +524,7 @@ pub fn reduce_virtual(gradient: &mut Parameters) {
         }
     }
     gradient[Parameter::Virtual][FEATURE_COUNT * h..].fill(0.0);
+    Ok(())
 }
 
 /// カーネル1〜7を1回実行する。更新はAdamW::updateで別に行う。
@@ -403,19 +534,15 @@ pub fn loss_and_gradients(
     teacher_ks: &[f64],
     reference: &RemovalReference,
 ) -> Result<Gradients> {
+    check_batch(model, batch)?;
+    let targets = targets(batch, teacher_ks)?;
     model.parameters().validate()?;
-    let weights = fold(model);
+    let weights = fold(model)?;
     let forward = forward(model, batch, &weights)?;
     let removal = removal_forward(model, batch, &weights, &forward, reference)?;
-    let output = output_backward(
-        model,
-        batch,
-        &forward,
-        &removal,
-        &targets(batch, teacher_ks)?,
-    )?;
+    let output = output_backward(model, batch, &forward, &removal, &targets)?;
     let mut parameters = Parameters::zeros(model.shape());
-    let losses = reduce_partials(model, &output, &removal, &mut parameters);
+    let losses = reduce_partials(model, &output, &removal, &mut parameters)?;
     first_layer_backward(
         model,
         batch,
@@ -424,9 +551,9 @@ pub fn loss_and_gradients(
         &removal,
         &output,
         &mut parameters,
-    );
-    linear_backward(model, batch, &removal, &output, &mut parameters);
-    reduce_virtual(&mut parameters);
+    )?;
+    linear_backward(model, batch, &removal, &output, &mut parameters)?;
+    reduce_virtual(&mut parameters)?;
     parameters.validate()?;
     if !losses.total().is_finite() {
         return Err(Error::Invalid("non-finite loss"));

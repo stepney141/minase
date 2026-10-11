@@ -6,7 +6,7 @@ use crate::{
     model::{Masks, Model, Parameter, Parameters, Shape},
     reference::{self, AdamW, AdamWConfig, AdamWGroup, Losses, RemovalReference},
 };
-use minase::eval::features::FEATURE_COUNT;
+use minase::eval::features::{FEATURE_COUNT, mirror_feature};
 
 use super::equivalence::Random;
 
@@ -76,12 +76,17 @@ fn fixture(shape: Shape, batch: &BatchSlot, seed: u64) -> Result<Fixture> {
         })
         .collect();
     let masks = Masks::new(shape.feature_set(), canonical, input)?;
-    let initial: Vec<_> = (0..FEATURE_COUNT)
-        .map(|_| {
-            let value = random.centered();
-            [value.signum() * (2.0 + value.abs() * 4.0); 2]
-        })
-        .collect();
+    let mut initial = vec![[0.0; 2]; FEATURE_COUNT];
+    for base in 0..FEATURE_COUNT {
+        let mirror = mirror_feature(base);
+        if base > mirror {
+            continue;
+        }
+        let value = random.centered();
+        let endpoints = [value.signum() * (2.0 + value.abs() * 4.0); 2];
+        initial[base] = endpoints;
+        initial[mirror] = endpoints;
+    }
     let mut model = Model::initialize(shape, &initial, masks, seed, 0.001)?;
     for pair in model
         .parameter_mut(Parameter::Linear)
@@ -235,12 +240,12 @@ fn cpu_gradients(
     targets: &[f32],
     removal_reference: &RemovalReference,
 ) -> Result<reference::Gradients> {
-    let weights = reference::fold(model);
+    let weights = reference::fold(model)?;
     let forward = reference::forward(model, batch, &weights)?;
     let removal = reference::removal_forward(model, batch, &weights, &forward, removal_reference)?;
     let output = reference::output_backward(model, batch, &forward, &removal, targets)?;
     let mut parameters = Parameters::zeros(model.shape());
-    let losses = reference::reduce_partials(model, &output, &removal, &mut parameters);
+    let losses = reference::reduce_partials(model, &output, &removal, &mut parameters)?;
     reference::first_layer_backward(
         model,
         batch,
@@ -249,9 +254,9 @@ fn cpu_gradients(
         &removal,
         &output,
         &mut parameters,
-    );
-    reference::linear_backward(model, batch, &removal, &output, &mut parameters);
-    reference::reduce_virtual(&mut parameters);
+    )?;
+    reference::linear_backward(model, batch, &removal, &output, &mut parameters)?;
+    reference::reduce_virtual(&mut parameters)?;
     Ok(reference::Gradients { losses, parameters })
 }
 
@@ -430,7 +435,7 @@ fn compare_expanded(report: &mut Report, cpu: &Model, first: &Step, repeated: &S
     for (name, expected, actual, again) in [
         (
             "folded first layer",
-            reference::fold(cpu),
+            reference::fold(cpu)?,
             weights,
             again_weights,
         ),

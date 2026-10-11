@@ -11,6 +11,7 @@ use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
     path::Path,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -233,10 +234,37 @@ pub(super) fn configuration(
     Ok(Configuration {
         document: json!({"arguments": args, "resolved_threads": resolved_threads, "settings": settings,
         "inputs": inputs, "preprocessing": preprocessing,
+        "resumes": [],
         "config_sha256": hex(&config_hash), "input_sha256": hex(&input_hash)}),
         config_hash,
         input_hash,
     })
+}
+
+pub(super) fn append_resume(
+    path: &Path,
+    config: &mut Value,
+    args: &Args,
+    workers: usize,
+    epoch: u64,
+) -> Result<()> {
+    let resumed_at = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let resumes = config
+        .as_object_mut()
+        .ok_or(Error::Invalid("configuration must be an object"))?
+        .entry("resumes")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .ok_or(Error::Invalid("configuration resumes must be an array"))?;
+    resumes.push(json!({
+        "resumed_at_unix_seconds": resumed_at,
+        "epochs": args.epochs,
+        "patience": args.patience,
+        "time_limit_hours": args.time_limit_hours,
+        "workers": workers,
+        "epoch": epoch,
+    }));
+    write_json(path, config)
 }
 
 pub(super) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {

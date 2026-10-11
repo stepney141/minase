@@ -18,46 +18,46 @@ use sha2::{Digest, Sha256};
 
 #[derive(clap::Args)]
 pub(crate) struct Args {
-    /// Input feature set.
+    /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     feature_set: InputFeatureSet,
-    /// MNSD files, in global-record order.
+    /// MNSDファイルを記録の通し番号順に指定する。
     #[arg(long, required = true, num_args = 1..)]
     data: Vec<PathBuf>,
-    /// Comma-separated zero-based global record indices.
+    /// 0始まりの記録の通し番号をカンマで区切って指定する。
     #[arg(long, required = true, value_delimiter = ',')]
     indices: Vec<u64>,
-    /// Directory in which to write batch.json.
+    /// batch.jsonの出力先ディレクトリを指定する。
     #[arg(long)]
     output: PathBuf,
-    /// Lookahead discount; requires --lookahead-plies. Omit both for original scores.
+    /// 先読みの割引率を--lookahead-pliesとともに指定する。両方を省略すると元の探索値を使う。
     #[arg(long, requires = "lookahead_plies")]
     lookahead_gamma: Option<f64>,
-    /// Lookahead window in plies (1..=4096); requires --lookahead-gamma.
+    /// 先読みの手数上限を1以上4096以下で指定する。--lookahead-gammaも指定する。
     #[arg(long, requires = "lookahead_gamma")]
     lookahead_plies: Option<u16>,
-    /// Initialize a model from J75's stored (uncompressed) pst-float.npz.
+    /// J75の非圧縮pst-float.npzからモデルを初期化する。
     #[arg(long, requires_all = ["width", "k", "seed", "steps", "reference_batches"])]
     init_pst: Option<PathBuf>,
-    /// Even hidden width, 2..=512. Requires --init-pst.
+    /// 隠れ層の幅を2以上512以下の偶数で指定する。--init-pstも指定する。
     #[arg(long, requires = "init_pst")]
     width: Option<usize>,
-    /// Output K (from the base MNPT), independent of the estimated teacher K.
+    /// 基準MNPTの出力用Kを、推定した教師用Kとは独立に指定する。
     #[arg(long, requires = "init_pst")]
     k: Option<f32>,
-    /// SplitMix64 model initialization seed.
+    /// モデル初期化に使うSplitMix64のシードを指定する。
     #[arg(long, requires = "init_pst")]
     seed: Option<u64>,
-    /// Standard deviation of first-layer initialization.
+    /// 第1層の初期値の標準偏差を指定する。
     #[arg(long, default_value_t = 0.05)]
     init_std: f32,
-    /// Scale applied to the initial PST (0 makes the removal lower-bound penalty fire everywhere).
+    /// 初期PSTに掛ける倍率を指定する。0では除去損失の下限制約が全適格列で違反となる。
     #[arg(long, default_value_t = 1.0, requires = "init_pst")]
     init_pst_scale: f32,
-    /// Warm-up updates on --indices before saving checkpoint.bin; 0 also allowed.
+    /// checkpoint.bin保存前に--indicesで行うウォームアップの更新回数を指定する。0も指定できる。
     #[arg(long, requires = "init_pst")]
     steps: Option<u64>,
-    /// One comma-separated batch of global indices. Repeat exactly 3 times.
+    /// 記録の通し番号をカンマで区切り、1バッチずつちょうど3回指定する。
     #[arg(long = "reference-batch", requires = "init_pst", action = clap::ArgAction::Append)]
     reference_batches: Vec<String>,
 }
@@ -154,7 +154,9 @@ pub(crate) fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         (None, None) => None,
         _ => return Err(nnue_trainer::data::Error::LookaheadParameters.into()),
     };
-    let dataset = Dataset::open(&args.data, lookahead)?;
+    // SAFETY: 入力は生成完了済みのMNSDに限り、Datasetの生存中は外部プロセスも含めて
+    // 変更・切り詰めしない運用契約とする。この処理も入力ファイルを書き換えない。
+    let dataset = unsafe { Dataset::open(&args.data, lookahead)? };
     let slots = build_batches(&dataset, args.feature_set, &[&args.indices])?;
     let dump = payload(&dataset, &slots[0], lookahead)?;
     fs::create_dir_all(&args.output)?;

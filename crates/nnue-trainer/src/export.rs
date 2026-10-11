@@ -177,14 +177,14 @@ fn measure<F: FeatureSet>(
         )?
         .pop()
         .expect("one batch was requested");
-        let floating = reference::evaluate(&checkpoint.model, &batch)?;
+        let floating = reference::evaluate_f64(&checkpoint.model, &batch)?;
         for (&index, &floating_cp) in batch_indices.iter().zip(&floating) {
             let position = dataset
                 .record(index)?
                 .to_position()
                 .map_err(data::Error::from)?;
             let integer_cp = nnue::evaluate(&network, &position);
-            let error = (f64::from(floating_cp) - f64::from(integer_cp)).abs();
+            let error = (floating_cp - f64::from(integer_cp)).abs();
             if !error.is_finite() {
                 return Err(Error::NonFinite { record: index });
             }

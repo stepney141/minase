@@ -17,8 +17,8 @@ use crate::{
 pub use args::Args;
 pub use record::{EpochRecord, LinearMovement, Saturation};
 use record::{
-    append_epoch, atomic_write, configuration, linear_movement, reconcile_log, validate_statistics,
-    write_json,
+    append_epoch, append_resume, atomic_write, configuration, linear_movement, reconcile_log,
+    validate_statistics, write_json,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -153,7 +153,9 @@ impl Session {
         let base = base::read(&args.base)?;
         let initial = load_initial(&args.init_pst)?;
         validate_initial(&initial, &base.linear)?;
-        let dataset = Dataset::open(&args.data, args.lookahead()?)?;
+        // SAFETY: --dataは実行中に変更・切り詰めない入力というコマンドの契約に従う。
+        // このセッションもDatasetを破棄するまで入力ファイルへ書き込まない。
+        let dataset = unsafe { Dataset::open(&args.data, args.lookahead()?)? };
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err(
                 Error::Invalid("training and validation sets must both be nonempty").into(),
@@ -248,7 +250,7 @@ impl Session {
         };
         let device = Device::new(0)?;
         let name = device.name();
-        if let Some(saved) = saved_config {
+        if let Some(saved) = &saved_config {
             if saved.get("device_name") != Some(&json!(name)) {
                 return Err(
                     Error::Invalid("resume device differs from the recorded device").into(),
@@ -279,6 +281,15 @@ impl Session {
         };
         if session.checkpoint.progress.best.is_some() {
             recover_best_checkpoint(&session.args.output_dir, &session.checkpoint)?;
+        }
+        if let Some(mut saved) = saved_config {
+            append_resume(
+                &session.args.output_dir.join("config.json"),
+                &mut saved,
+                &session.args,
+                session.workers,
+                session.checkpoint.progress.epoch,
+            )?;
         }
         if session.initial_validation_loss.is_none() && !session.expired() {
             let validation_started = Instant::now();
@@ -337,32 +348,16 @@ impl Session {
             self.args.batch,
         )?;
         self.memory()?;
-        let mut total: Option<Validation> = None;
-        for indices in self.dataset.validation_indices().chunks(self.args.batch) {
-            if self.expired() {
-                return Ok(None);
-            }
-            let batch = build_batches(&self.dataset, self.args.feature_set, &[indices])?.remove(0);
-            let values = targets(&batch, &self.teacher_ks)?;
-            let statistics = evaluator.validate(&batch, &values)?;
-            validate_statistics(&statistics)?;
-            if let Some(total) = &mut total {
-                total.loss_sum += statistics.loss_sum;
-                total.correct += statistics.correct;
-                total.decisive += statistics.decisive;
-                total.nonlinear_sum += statistics.nonlinear_sum;
-                total.nonlinear_square_sum += statistics.nonlinear_square_sum;
-                total.lower += statistics.lower;
-                total.upper += statistics.upper;
-                total.positions += statistics.positions;
-                total.activations += statistics.activations;
-            } else {
-                total = Some(statistics);
-            }
-        }
-        let total = total.ok_or(Error::Invalid("empty validation set"))?;
-        validate_statistics(&total)?;
-        Ok(Some(total))
+        validate_batches(
+            self.dataset.validation_indices().chunks(self.args.batch),
+            |indices| {
+                let batch =
+                    build_batches(&self.dataset, self.args.feature_set, &[indices])?.remove(0);
+                let values = targets(&batch, &self.teacher_ks)?;
+                Ok(evaluator.validate(&batch, &values)?)
+            },
+            || self.expired(),
+        )
     }
 
     fn advance(&mut self) -> Result<bool> {
@@ -565,6 +560,41 @@ impl Session {
         }
         Ok(summary)
     }
+}
+
+fn validate_batches<T>(
+    batches: impl IntoIterator<Item = T>,
+    mut evaluate: impl FnMut(T) -> Result<Validation>,
+    expired: impl Fn() -> bool,
+) -> Result<Option<Validation>> {
+    let mut total: Option<Validation> = None;
+    for batch in batches {
+        if expired() {
+            return Ok(None);
+        }
+        let statistics = evaluate(batch)?;
+        validate_statistics(&statistics)?;
+        if let Some(total) = &mut total {
+            total.loss_sum += statistics.loss_sum;
+            total.correct += statistics.correct;
+            total.decisive += statistics.decisive;
+            total.nonlinear_sum += statistics.nonlinear_sum;
+            total.nonlinear_square_sum += statistics.nonlinear_square_sum;
+            total.lower += statistics.lower;
+            total.upper += statistics.upper;
+            total.positions += statistics.positions;
+            total.activations += statistics.activations;
+        } else {
+            total = Some(statistics);
+        }
+        // Pythonのvalidation_lossと同じく、最終バッチの後も期限を確認する。
+        if expired() {
+            return Ok(None);
+        }
+    }
+    let total = total.ok_or(Error::Invalid("empty validation set"))?;
+    validate_statistics(&total)?;
+    Ok(Some(total))
 }
 
 fn validate_initial(initial: &[[f32; 2]], baseline: &[[i16; 2]]) -> Result<()> {

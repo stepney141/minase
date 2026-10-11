@@ -93,13 +93,6 @@ impl From<crate::model::Error> for Error {
 /// GPU操作の結果。
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// 読み取り専用で写像する。呼び手は写像の生存中、元ファイルを変更しないこと。
-pub(crate) fn map_readonly(file: &std::fs::File) -> std::io::Result<memmap2::Mmap> {
-    // SAFETY: Datasetが文書化する運用上の前提により、外部プロセスを含めて
-    // 元ファイルを変更・切り詰めしない。写像には読み取りの参照だけを公開する。
-    unsafe { memmap2::MmapOptions::new().map(file) }
-}
-
 const THREADS: usize = 128;
 const WARPS_PER_BLOCK: usize = THREADS / 32;
 

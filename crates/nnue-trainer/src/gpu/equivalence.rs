@@ -119,12 +119,12 @@ pub fn check(
     batch: &BatchSlot,
     targets: &[f32],
 ) -> Result<Report> {
-    let weights = reference::fold(model);
+    let weights = reference::fold(model)?;
     let f = reference::forward(model, batch, &weights)?;
     let removal = reference::removal_forward(model, batch, &weights, &f, removal_reference)?;
     let output = reference::output_backward(model, batch, &f, &removal, targets)?;
     let mut gradients = Parameters::zeros(model.shape());
-    let losses = reference::reduce_partials(model, &output, &removal, &mut gradients);
+    let losses = reference::reduce_partials(model, &output, &removal, &mut gradients)?;
     reference::first_layer_backward(
         model,
         batch,
@@ -133,9 +133,9 @@ pub fn check(
         &removal,
         &output,
         &mut gradients,
-    );
-    reference::linear_backward(model, batch, &removal, &output, &mut gradients);
-    reference::reduce_virtual(&mut gradients);
+    )?;
+    reference::linear_backward(model, batch, &removal, &output, &mut gradients)?;
+    reference::reduce_virtual(&mut gradients)?;
     let validation = reference::validation_forward(model, batch, &f, targets)?;
     let expected = Evaluation {
         forward: f,
@@ -598,7 +598,7 @@ mod tests {
             for width in [2, 6, 8, 128] {
                 let shape = Shape::new(set, width, 1000.0).unwrap();
                 let (model, batch, removal_reference) = removal_partitions(shape, 71).unwrap();
-                let weights = reference::fold(&model);
+                let weights = reference::fold(&model).unwrap();
                 let forward = reference::forward(&model, &batch, &weights).unwrap();
                 let removal = reference::removal_forward(
                     &model,

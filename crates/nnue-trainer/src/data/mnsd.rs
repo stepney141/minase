@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use memmap2::Mmap;
+use memmap2::{Mmap, MmapOptions};
 use minase::training::{
     provenance::{Provenance, ResultOrigin, StartOrigin},
     records::{self, HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
@@ -65,13 +65,14 @@ fn invalid(path: &Path, reason: &'static str) -> Error {
 }
 
 impl MappedFile {
-    fn open(path: &Path) -> Result<Self> {
+    unsafe fn open(path: &Path) -> Result<Self> {
         let file = File::open(path)?;
         let length = file.metadata()?.len();
         if length < HEADER_LEN as u64 {
             return Err(invalid(path, "MNSD header is shorter than 136 bytes"));
         }
-        let map = crate::gpu::map_readonly(&file)?;
+        // SAFETY: 呼び手は、この呼び出し中と写像の生存中に元ファイルを変更・切り詰めしない。
+        let map = unsafe { MmapOptions::new().map(&file)? };
         let header = Header::decode(&map[..HEADER_LEN])?;
         let expected = header
             .record_count()
@@ -138,7 +139,7 @@ impl MappedFile {
 
 /// 複数の自己対局MNSDをmmapで保持し、同じ通し番号で前処理とバッチを参照する。
 ///
-/// 元ファイルはこの型の生存中に変更しないこと。盤面全体は保持せず、教師探索値
+/// 元ファイルはこの型の生存中に変更・切り詰めしないこと。盤面全体は保持せず、教師探索値
 /// （f32）と結果（u8）、訓練・検証の通し番号を保持する。
 pub struct Dataset {
     files: Vec<MappedFile>,
@@ -153,7 +154,12 @@ impl Dataset {
     ///
     /// 先読みを指定した場合はファイルごとに対局・手数の順序も検証する。
     /// 来歴のλは読み手の契約で検証するが、学習時のλは指定仕様に従って1とする。
-    pub fn open(paths: &[PathBuf], lookahead: Option<Lookahead>) -> Result<Self> {
+    ///
+    /// # Safety
+    ///
+    /// 呼び手は、この呼び出し中、および返された`Dataset`の生存中に、渡したファイルを
+    /// 外部プロセスも含めて変更・切り詰めしないことを保証しなければならない。
+    pub unsafe fn open(paths: &[PathBuf], lookahead: Option<Lookahead>) -> Result<Self> {
         if paths.is_empty() {
             return Err(invalid(Path::new(""), "at least one MNSD file is required"));
         }
@@ -167,7 +173,8 @@ impl Dataset {
         let mut seeds = HashSet::new();
         for path in paths {
             let path = path.canonicalize()?;
-            let mut file = MappedFile::open(&path)?;
+            // SAFETY: 元ファイルの不変性はDataset::openの呼び手が保証する。
+            let mut file = unsafe { MappedFile::open(&path)? };
             if !seeds.insert(file.header.seed()) {
                 return Err(invalid(&path, "random-selfplay file seeds must be unique"));
             }

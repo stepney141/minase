@@ -120,6 +120,46 @@ extern "C" __global__ void removal_forward(
     long long before_reference = (long long)q * shared.reference_sum[0]
         + (90 - (long long)q) * shared.reference_sum[1];
     for (unsigned col = warp; col < 144; col += blockDim.x / 32) {
+        unsigned long long i = columns_offset + col;
+        unsigned row = linear_rows[col];
+        unsigned active = 0;
+        float sign = 0;
+        double magnitude = 0;
+        bool wrong = false;
+        if (lane == 0) {
+            long long reference_weight[2] = {0, 0};
+            if (row != 0xffffffffu) {
+                reference_weight[0] = reference[row * 2];
+                reference_weight[1] = reference[row * 2 + 1];
+            }
+            long long after_reference = (long long)after_q
+                    * (shared.reference_sum[0] - reference_weight[0])
+                + (90 - (long long)after_q)
+                    * (shared.reference_sum[1] - reference_weight[1]);
+            int reference_delta = (int)(removal_integer(after_reference)
+                - removal_integer(before_reference));
+            sign = reference_delta < 0 ? -1.0f : (reference_delta > 0 ? 1.0f : 0.0f);
+            // 大きさは整数の切り捨てと評価上限の適用前から取る。
+            magnitude = fabs((double)(after_reference - before_reference) / 720.0);
+            unsigned state = row / 72 % 47;
+            active = row != 0xffffffffu && row < 94 * 72
+                && state != 11 && state != 21 && reference_delta != 0;
+            wrong = (row < 47 * 72 && reference_delta > 0)
+                || (row >= 47 * 72 && row < 94 * 72 && reference_delta < 0);
+            ref_r[i] = reference_delta;
+            s_r[i] = sign;
+            eligible[i] = active;
+            wrong_r[i] = wrong;
+            shared.active[col] = active;
+            e_r[i] = 0;
+            delta_r[i] = 0;
+            pen_r[i] = 0;
+            shared.penalty[col] = 0;
+            shared.d[col] = 0;
+        }
+        // 適格性をワープ全体で共有してから、除去後の両視点を計算する。
+        active = __shfl_sync(0xffffffffu, active, 0);
+        if (!active) continue;
         float after[2];
         for (unsigned v = 0; v < 2; ++v) {
             unsigned feature = position_features[v * 145 + col];
@@ -127,32 +167,6 @@ extern "C" __global__ void removal_forward(
                 output + v * H, feature, H, p);
         }
         if (lane != 0) continue;
-        unsigned long long i = columns_offset + col;
-        unsigned row = linear_rows[col];
-        long long reference_weight[2] = {0, 0};
-        if (row != 0xffffffffu) {
-            reference_weight[0] = reference[row * 2];
-            reference_weight[1] = reference[row * 2 + 1];
-        }
-        long long after_reference = (long long)after_q
-                * (shared.reference_sum[0] - reference_weight[0])
-            + (90 - (long long)after_q)
-                * (shared.reference_sum[1] - reference_weight[1]);
-        int reference_delta = (int)(removal_integer(after_reference)
-            - removal_integer(before_reference));
-        float sign = reference_delta < 0 ? -1.0f : (reference_delta > 0 ? 1.0f : 0.0f);
-        // Magnitude is taken before integer truncation and evaluation clipping.
-        double magnitude = fabs((double)(after_reference - before_reference) / 720.0);
-        unsigned state = row / 72 % 47;
-        bool active = row != 0xffffffffu && row < 94 * 72
-            && state != 11 && state != 21 && reference_delta != 0;
-        bool wrong = (row < 47 * 72 && reference_delta > 0)
-            || (row >= 47 * 72 && row < 94 * 72 && reference_delta < 0);
-        ref_r[i] = reference_delta;
-        s_r[i] = sign;
-        eligible[i] = active;
-        wrong_r[i] = wrong;
-        shared.active[col] = active;
 
         double after_linear = (double)after_q
                 * (shared.linear_sum[0] - (double)linear_weight(linear, row, 0))
@@ -165,16 +179,12 @@ extern "C" __global__ void removal_forward(
         delta_r[i] = delta;
         e_r[i] = shared.before_e + delta;
 
-        double penalty = 0;
-        float slope = 0;
-        if (active) {
-            double signed_delta = (double)sign * delta;
-            double lower = fmin(magnitude, 0.25);
-            penalty = fmax(lower - signed_delta, 0.0)
-                + (wrong ? fmax(signed_delta - magnitude, 0.0) : 0.0);
-            slope = signed_delta < lower ? -sign
-                : (wrong && signed_delta > magnitude ? sign : 0.0f);
-        }
+        double signed_delta = (double)sign * delta;
+        double lower = fmin(magnitude, 0.25);
+        double penalty = fmax(lower - signed_delta, 0.0)
+            + (wrong ? fmax(signed_delta - magnitude, 0.0) : 0.0);
+        float slope = signed_delta < lower ? -sign
+            : (wrong && signed_delta > magnitude ? sign : 0.0f);
         shared.penalty[col] = penalty;
         shared.d[col] = slope;
         pen_r[i] = penalty;
@@ -233,7 +243,7 @@ extern "C" __global__ void removal_forward(
         double acc_sum = 0.0;
         double output_sum = 0.0;
         for (unsigned col = 0; col < 144; ++col) {
-            if (!shared.active[col]) continue;
+            if (shared.d[col] == 0) continue;
             unsigned feature = position_features[v * 145 + col];
             float after = acc[offset + vj] - feature_weight(weights, feature, j, H, p);
             float d = shared.d[col];

@@ -178,7 +178,7 @@ fn finite_differences_cover_all_parameter_groups_and_penalty_regions() {
                 dense_loss(&model, &batch, &endpoints),
                 3e-5,
             );
-            let weights = reference::fold(&model);
+            let weights = reference::fold(&model).unwrap();
             let forward = reference::forward(&model, &batch, &weights).unwrap();
             let removal =
                 reference::removal_forward(&model, &batch, &weights, &forward, &reference).unwrap();
@@ -241,7 +241,7 @@ fn removal_uses_lane_partials_then_descending_shuffle_distances() {
             model.parameter_mut(p).fill(0.0);
         }
         model.parameter_mut(Parameter::Biases).fill(1.0);
-        let weights = reference::fold(&model);
+        let weights = reference::fold(&model).unwrap();
         let forward = reference::forward(&model, &batch, &weights).unwrap();
         let units = model.shape().units();
         for (terms, expected) in [
@@ -269,10 +269,16 @@ fn removal_uses_lane_partials_then_descending_shuffle_distances() {
                 )
                 .unwrap();
                 let expected_e = f64::from(expected) * f64::from(model.shape().k());
-                for (&delta, &e) in removal.delta_r.iter().zip(&removal.e_r) {
-                    // 全埋め込みが0なので、除去前後の縮約が等しく、E_r = Eとなる。
+                for ((&delta, &e), &eligible) in removal
+                    .delta_r
+                    .iter()
+                    .zip(&removal.e_r)
+                    .zip(&removal.eligible)
+                {
+                    // 全埋め込みが0なので、適格な除去ではE_r = Eとなる。
                     assert_eq!(delta.to_bits(), 0.0_f64.to_bits(), "{set:?} view={v}");
-                    assert_eq!(e.to_bits(), expected_e.to_bits(), "{set:?} view={v}");
+                    let expected = if eligible { expected_e } else { 0.0 };
+                    assert_eq!(e.to_bits(), expected.to_bits(), "{set:?} view={v}");
                 }
             }
         }
@@ -288,7 +294,7 @@ fn removal_p_adds_both_activations_before_multiplying_the_shared_weight() {
         model.parameter_mut(p).fill(0.0);
     }
     model.parameter_mut(Parameter::OutputWeights)[0] = 0.11;
-    let weights = reference::fold(&model);
+    let weights = reference::fold(&model).unwrap();
     // 両半幅の活性化を異なる値にして、共有重みを掛ける前の丸めを検査する。
     let forward = reference::Forward {
         acc: vec![0.3, 0.7, 0.0, 0.0],
@@ -299,9 +305,304 @@ fn removal_p_adds_both_activations_before_multiplying_the_shared_weight() {
             .unwrap();
     let paired = (0.3_f32 * 0.3 + 0.7_f32 * 0.7) * 0.11;
     let expected_e = f64::from(paired) * f64::from(model.shape().k());
-    for (&delta, &e) in removal.delta_r.iter().zip(&removal.e_r) {
+    for ((&delta, &e), &eligible) in removal
+        .delta_r
+        .iter()
+        .zip(&removal.e_r)
+        .zip(&removal.eligible)
+    {
         assert_eq!(delta.to_bits(), 0.0_f64.to_bits());
-        assert_eq!(e.to_bits(), expected_e.to_bits());
+        let expected = if eligible { expected_e } else { 0.0 };
+        assert_eq!(e.to_bits(), expected.to_bits());
+    }
+}
+
+#[test]
+fn ineligible_removals_zero_diagnostics_and_preserve_reference_fields() {
+    let fixture = Fixture::new(&[position(
+        &[
+            (0, 0, Color::Black, PieceKind::King),
+            (1, 2, Color::Black, PieceKind::Pawn),
+            (2, 3, Color::White, PieceKind::Pawn),
+        ],
+        Color::Black,
+        None,
+    )]);
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let batch = fixture.batch(set, &[0]);
+        let model = nonzero_model(set);
+        let weights = reference::fold(&model).unwrap();
+        let forward = reference::forward(&model, &batch, &weights).unwrap();
+        for zero_reference in [false, true] {
+            let reference = if zero_reference {
+                RemovalReference::new(&vec![[0; 2]; FEATURE_COUNT]).unwrap()
+            } else {
+                RemovalReference::v0()
+            };
+            let result =
+                reference::removal_forward(&model, &batch, &weights, &forward, &reference).unwrap();
+            for col in 0..144 {
+                let expected_reference = if zero_reference {
+                    0
+                } else {
+                    match col {
+                        0 => -2600,
+                        25 => -100,
+                        38 => 100,
+                        _ => 0,
+                    }
+                };
+                let eligible = !zero_reference && [25, 38].contains(&col);
+                assert_eq!(result.ref_r[col], expected_reference);
+                assert_eq!(result.s_r[col], expected_reference.signum() as f32);
+                assert_eq!(result.eligible[col], eligible);
+                assert!(!result.wrong_r[col]);
+                if !eligible {
+                    assert_eq!(result.e_r[col].to_bits(), 0.0_f64.to_bits());
+                    assert_eq!(result.delta_r[col].to_bits(), 0.0_f64.to_bits());
+                    assert_eq!(result.pen_r[col].to_bits(), 0.0_f64.to_bits());
+                    assert_eq!(result.d_r[col].to_bits(), 0.0_f32.to_bits());
+                }
+            }
+            if zero_reference {
+                assert_eq!(result.loss, [0.0]);
+                assert!(result.d_acc_removal.iter().all(|&value| value == 0.0));
+                assert!(result.d_output.iter().all(|&value| value == 0.0));
+            }
+        }
+    }
+}
+
+#[test]
+fn quantization_evaluation_uses_double_precision_at_every_stage() {
+    let fixture = Fixture::new(&[position(
+        &[
+            (0, 0, Color::Black, PieceKind::Pawn),
+            (1, 0, Color::Black, PieceKind::Pawn),
+            (2, 0, Color::Black, PieceKind::Pawn),
+        ],
+        Color::Black,
+        None,
+    )]);
+    let epsilon = 2.0_f32.powi(-24);
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let batch = fixture.batch(set, &[0]);
+        let mut zero = model(set, 2);
+        for p in Parameter::ALL {
+            zero.parameter_mut(p).fill(0.0);
+        }
+        let mut linear = zero.clone();
+        let mut hidden = zero.clone();
+        for (col, value) in [1.0, epsilon, -1.0].into_iter().enumerate() {
+            let row = batch.linear_features()[col] as usize;
+            linear.parameter_mut(Parameter::Linear)[row * 2..row * 2 + 2].fill(value);
+            let feature = batch.features()[col];
+            let row = match set {
+                InputFeatureSet::P => feature as usize / 2,
+                InputFeatureSet::HalfKpHmB8 => feature as usize,
+            };
+            hidden.parameter_mut(Parameter::FirstLayer)[row * 2..row * 2 + 2].fill(value);
+        }
+        let units = hidden.shape().units();
+        hidden.parameter_mut(Parameter::OutputWeights)[..units].fill(1.0);
+        // 1 + 2^-24 - 1は、線形和でも隠れ和でも倍精度なら2^-24を保つ。
+        for (model, expected) in [
+            (linear, f64::from(epsilon)),
+            (hidden, 2.0 * f64::from(epsilon).powi(2) * 1000.0),
+        ] {
+            assert_eq!(reference::evaluate_f64(&model, &batch).unwrap(), [expected]);
+            assert_eq!(reference::evaluate(&model, &batch).unwrap(), [0.0]);
+        }
+
+        let mut phased = zero.clone();
+        let row = batch.linear_features()[0] as usize;
+        phased.parameter_mut(Parameter::Linear)[row * 2] = 3.0;
+        // 駒数3なので中盤比は1/90。位相比も倍精度で求める。
+        close(
+            reference::evaluate_f64(&phased, &batch).unwrap()[0],
+            1.0 / 30.0,
+            1e-17,
+        );
+
+        let mut nonlinear = zero;
+        nonlinear.parameter_mut(Parameter::Biases).fill(0.3);
+        nonlinear.parameter_mut(Parameter::OutputWeights).fill(0.11);
+        nonlinear.parameter_mut(Parameter::OutputBias)[0] = 0.04;
+        // 2視点×2ユニットについて、活性化・出力積・バイアス・K換算をf64で行う。
+        let head = 2.0 * f64::from(0.3_f32).powi(2) * f64::from(0.11_f32);
+        let expected = ((f64::from(0.04_f32) + head) + head) * 1000.0;
+        assert_eq!(
+            reference::evaluate_f64(&nonlinear, &batch).unwrap(),
+            [expected]
+        );
+        assert!(
+            (f64::from(reference::evaluate(&nonlinear, &batch).unwrap()[0]) - expected).abs()
+                > 1e-6
+        );
+    }
+}
+
+#[test]
+fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
+    // 公開の中間配列は、欠落と余分な要素のどちらも各消費入口でErrにする。
+    macro_rules! malformed_fields {
+        ($value:ident, $check:ident, $($field:ident),+ $(,)?) => {
+            $(
+                let saved = std::mem::take(&mut $value.$field);
+                $check(&$value);
+                $value.$field = saved.clone();
+                $value.$field.push(saved[0]);
+                $check(&$value);
+                $value.$field = saved;
+            )+
+        };
+    }
+    let fixture = Fixture::new(&positions()[..1]);
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let batch = fixture.batch(set, &[0]);
+        let model = model(set, 2);
+        let weights = reference::fold(&model).unwrap();
+        let mut forward = reference::forward(&model, &batch, &weights).unwrap();
+        let reference = RemovalReference::v0();
+        let mut removal =
+            reference::removal_forward(&model, &batch, &weights, &forward, &reference).unwrap();
+        let mut output =
+            reference::output_backward(&model, &batch, &forward, &removal, &[0.5]).unwrap();
+        let mut gradient = Parameters::zeros(model.shape());
+        let unchanged = gradient.clone();
+        let mut check_forward = |bad: &reference::Forward| {
+            assert!(reference::removal_forward(&model, &batch, &weights, bad, &reference).is_err());
+            assert!(reference::output_backward(&model, &batch, bad, &removal, &[0.5]).is_err());
+            assert!(reference::validation_forward(&model, &batch, bad, &[0.5]).is_err());
+            assert!(
+                reference::first_layer_backward(
+                    &model,
+                    &batch,
+                    &weights,
+                    bad,
+                    &removal,
+                    &output,
+                    &mut gradient
+                )
+                .is_err()
+            );
+        };
+        malformed_fields!(forward, check_forward, acc, lin);
+        let mut check_removal = |bad: &reference::Removal| {
+            assert!(reference::output_backward(&model, &batch, &forward, bad, &[0.5]).is_err());
+            assert!(reference::reduce_partials(&model, &output, bad, &mut gradient).is_err());
+            assert!(
+                reference::first_layer_backward(
+                    &model,
+                    &batch,
+                    &weights,
+                    &forward,
+                    bad,
+                    &output,
+                    &mut gradient
+                )
+                .is_err()
+            );
+            assert!(
+                reference::linear_backward(&model, &batch, bad, &output, &mut gradient).is_err()
+            );
+        };
+        malformed_fields!(
+            removal,
+            check_removal,
+            e_r,
+            delta_r,
+            ref_r,
+            s_r,
+            eligible,
+            wrong_r,
+            pen_r,
+            d_r,
+            s,
+            d_acc_removal,
+            d_output,
+            linear,
+            loss
+        );
+        let mut check_output = |bad: &reference::Output| {
+            assert!(reference::reduce_partials(&model, bad, &removal, &mut gradient).is_err());
+            assert!(
+                reference::first_layer_backward(
+                    &model,
+                    &batch,
+                    &weights,
+                    &forward,
+                    &removal,
+                    bad,
+                    &mut gradient
+                )
+                .is_err()
+            );
+            assert!(
+                reference::linear_backward(&model, &batch, &removal, bad, &mut gradient).is_err()
+            );
+        };
+        malformed_fields!(
+            output,
+            check_output,
+            f,
+            h,
+            logits,
+            loss,
+            g,
+            d_acc,
+            d_output,
+            c
+        );
+        assert_eq!(gradient, unchanged);
+
+        let short_weights = &weights[..weights.len() - 1];
+        assert!(reference::forward(&model, &batch, short_weights).is_err());
+        assert!(
+            reference::removal_forward(&model, &batch, short_weights, &forward, &reference)
+                .is_err()
+        );
+        assert!(
+            reference::first_layer_backward(
+                &model,
+                &batch,
+                short_weights,
+                &forward,
+                &removal,
+                &output,
+                &mut gradient
+            )
+            .is_err()
+        );
+        for targets in [vec![], vec![0.5; 2]] {
+            assert!(
+                reference::output_backward(&model, &batch, &forward, &removal, &targets).is_err()
+            );
+            assert!(reference::validation_forward(&model, &batch, &forward, &targets).is_err());
+        }
+        assert!(reference::targets(&batch, &[]).is_err());
+        assert!(reference.deltas(&batch, batch.len()).is_err());
+        let shape = nnue_trainer::model::Shape::new(set, 4, 1000.0).unwrap();
+        let mut wrong_gradient = Parameters::zeros(shape);
+        assert!(
+            reference::reduce_partials(&model, &output, &removal, &mut wrong_gradient).is_err()
+        );
+        assert!(
+            reference::first_layer_backward(
+                &model,
+                &batch,
+                &weights,
+                &forward,
+                &removal,
+                &output,
+                &mut wrong_gradient
+            )
+            .is_err()
+        );
+        assert!(
+            reference::linear_backward(&model, &batch, &removal, &output, &mut wrong_gradient)
+                .is_err()
+        );
     }
 }
 
@@ -321,15 +622,15 @@ fn p_mirror_preserves_evaluation_and_canonical_gradients() {
         );
         // 同じ教師値を明示して、鏡映以外の入力差を除く。
         let derivatives = |batch: &BatchSlot| {
-            let w = reference::fold(&model);
+            let w = reference::fold(&model).unwrap();
             let f = reference::forward(&model, batch, &w).unwrap();
             let r =
                 reference::removal_forward(&model, batch, &w, &f, &RemovalReference::v0()).unwrap();
             let o = reference::output_backward(&model, batch, &f, &r, &[0.7]).unwrap();
             let mut g = nnue_trainer::model::Parameters::zeros(model.shape());
-            reference::reduce_partials(&model, &o, &r, &mut g);
-            reference::first_layer_backward(&model, batch, &w, &f, &r, &o, &mut g);
-            reference::linear_backward(&model, batch, &r, &o, &mut g);
+            reference::reduce_partials(&model, &o, &r, &mut g).unwrap();
+            reference::first_layer_backward(&model, batch, &w, &f, &r, &o, &mut g).unwrap();
+            reference::linear_backward(&model, batch, &r, &o, &mut g).unwrap();
             g
         };
         let a = derivatives(&first);
@@ -512,7 +813,7 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
                 assert_eq!(model.parameters()[p][1], lower);
             }
         }
-        let folded = reference::fold(&model);
+        let folded = reference::fold(&model).unwrap();
         assert_eq!(&folded[..4], &[8.0, -8.0, 8.0, -8.0]);
         if set == InputFeatureSet::HalfKpHmB8 {
             assert_eq!(
@@ -551,7 +852,10 @@ fn adamw_fold_inherits_updated_virtual_rows_at_unobserved_features() {
     );
     let v = &model.parameters()[Parameter::Virtual][..2];
     assert!(v.iter().all(|&x| x > 0.0));
-    assert_eq!(&reference::fold(&model)[unobserved..unobserved + 2], v);
+    assert_eq!(
+        &reference::fold(&model).unwrap()[unobserved..unobserved + 2],
+        v
+    );
 }
 
 #[test]
@@ -567,12 +871,12 @@ fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
     );
     let fixture = Fixture::new(&[position]);
     let batch = fixture.batch(InputFeatureSet::P, &[0]);
-    let (delta, _) = RemovalReference::v0().deltas(&batch, 0);
+    let (delta, _) = RemovalReference::v0().deltas(&batch, 0).unwrap();
     assert_eq!(delta[25], -100);
     assert_eq!(delta[38], 100);
     assert_eq!(delta[0], -2600);
     let m = model(InputFeatureSet::P, 4);
-    let w = reference::fold(&m);
+    let w = reference::fold(&m).unwrap();
     let f = reference::forward(&m, &batch, &w).unwrap();
     let r = reference::removal_forward(&m, &batch, &w, &f, &RemovalReference::v0()).unwrap();
     assert!(!r.eligible[0]);
@@ -586,7 +890,10 @@ fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
     let feature = feature_index(Color::Black, p.piece_at(sq).unwrap(), sq);
     endpoints[feature] = [8, 1];
     endpoints[mirror_feature(feature)] = [8, 1];
-    let (delta, magnitudes) = RemovalReference::new(&endpoints).unwrap().deltas(&batch, 0);
+    let (delta, magnitudes) = RemovalReference::new(&endpoints)
+        .unwrap()
+        .deltas(&batch, 0)
+        .unwrap();
     assert_eq!(delta[25], 0);
     close(magnitudes[25], 97.0 / 720.0, 1e-15);
     let full = Fixture::new(&[common::position(&[], Color::Black, None)]); // 空局面の全除去は不適格。
@@ -612,7 +919,10 @@ fn integer_reference_handles_phase_boundaries_negative_truncation_and_evaluation
                 (47 + 29) * 144
             };
             endpoints[start..start + 144].fill([sign * 16, sign * 8]);
-            let (deltas, _) = RemovalReference::new(&endpoints).unwrap().deltas(&batch, 0);
+            let (deltas, _) = RemovalReference::new(&endpoints)
+                .unwrap()
+                .deltas(&batch, 0)
+                .unwrap();
             assert_eq!(
                 deltas[0],
                 i32::from(sign) * expected,
@@ -633,7 +943,7 @@ fn integer_reference_handles_phase_boundaries_negative_truncation_and_evaluation
             .collect();
         let fixture = Fixture::new(&[position(&pieces, Color::Black, None)]);
         let batch = fixture.batch(InputFeatureSet::P, &[0]);
-        let (deltas, magnitudes) = RemovalReference::v0().deltas(&batch, 0);
+        let (deltas, magnitudes) = RemovalReference::v0().deltas(&batch, 0).unwrap();
         assert_eq!(deltas[0], expected);
         assert_eq!(magnitudes[0], 750.0);
     }

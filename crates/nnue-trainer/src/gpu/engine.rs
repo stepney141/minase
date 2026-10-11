@@ -58,7 +58,7 @@ impl DeviceModel {
         let s = &device.compute;
         Ok(Self {
             shape: model.shape(),
-            weights: s.clone_htod(&reference::fold(model))?,
+            weights: s.clone_htod(&reference::fold(model)?)?,
             linear: s.clone_htod(&model.parameters()[Parameter::Linear])?,
             bias: s.clone_htod(&model.expanded_biases())?,
             output: s.clone_htod(&model.expanded_output_weights())?,

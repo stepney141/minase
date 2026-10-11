@@ -1,13 +1,16 @@
-use super::{Error, Result};
+use super::{Error, Result, validate_initial};
 use minase::eval::features::FEATURE_COUNT;
 use std::path::Path;
 
 /// 圧縮なしnpzのmiddlegame.npyとendgame.npyを読む。NPY 1.0の<f4[13680]専用で、他のメンバーは読み飛ばす。
 ///
 /// NumPyが小さいファイルにも使うZIP64ローカルサイズを扱う。暗号化、データ
-/// デスクリプタ、圧縮、別のdtype・shape・配列順、および未知のメンバーは拒否する。
+/// デスクリプタ、圧縮、および異なるデータ型・配列形状・配列順は拒否する。
+/// 2端点の値が有限で保存範囲内にあり、左右の鏡映対で一致することも検査する。
 pub fn load_initial(path: impl AsRef<Path>) -> Result<Vec<[f32; 2]>> {
-    parse(&std::fs::read(path)?)
+    let initial = parse(&std::fs::read(path)?)?;
+    validate_initial(&initial)?;
+    Ok(initial)
 }
 
 fn parse(bytes: &[u8]) -> Result<Vec<[f32; 2]>> {
@@ -157,19 +160,12 @@ fn npy(bytes: &[u8]) -> Result<Vec<f32>> {
     if !r.remaining().is_empty() {
         return Err(Error::Format("NPY array length"));
     }
-    let values: Vec<_> = data
+    Ok(data
         .as_chunks::<4>()
         .0
         .iter()
         .map(|&b| f32::from_le_bytes(b))
-        .collect();
-    if values
-        .iter()
-        .any(|v| !v.is_finite() || !(-4096.0..=4095.875).contains(v))
-    {
-        return Err(Error::Invalid("initial PST range"));
-    }
-    Ok(values)
+        .collect())
 }
 
 fn token(input: &mut &str, expected: &str) -> Result<()> {

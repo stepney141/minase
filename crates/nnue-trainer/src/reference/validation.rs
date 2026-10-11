@@ -1,4 +1,4 @@
-use super::{Forward, head, logit};
+use super::{Forward, check_batch, head, logit};
 use crate::{
     data::BatchSlot,
     model::{Error, Model, Result},
@@ -82,16 +82,14 @@ pub fn validation_forward(
     f: &Forward,
     targets: &[f32],
 ) -> Result<Validation> {
+    check_batch(model, batch)?;
     let n = batch.len();
     let h = model.shape().width();
-    if n == 0
-        || model.shape().feature_set() != batch.feature_set()
-        || targets.len() != n
+    f.check_shape(n, h)?;
+    if targets.len() != n
         || targets
             .iter()
             .any(|&v| !v.is_finite() || !(0.0..=1.0).contains(&v))
-        || f.acc.len() != n * 2 * h
-        || f.lin.len() != n
     {
         return Err(Error::Invalid("validation inputs"));
     }

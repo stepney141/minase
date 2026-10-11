@@ -5,7 +5,7 @@ mod dump;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "nnue-trainer", about = "minase NNUE trainer development tools")]
+#[command(name = "nnue-trainer", about = "minaseのNNUE学習器の開発用コマンド")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -13,22 +13,26 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Train on CUDA, validate each epoch, checkpoint and export the best network.
+    /// CUDAで学習し、各エポックの検証、チェックポイントの保存、最良モデルの書き出しを行う。
     Train(nnue_trainer::train::Args),
-    /// Write batch indices and teacher scores for comparison with Python.
+    /// Pythonとの照合に使うバッチの局面番号と教師評価値を書き出す。
     DumpBatch(dump::Args),
-    /// Compare GPU forward, all gradients, updates and validation with the CPU reference.
+    /// GPUの前進計算、全勾配、更新、検証をCPU参照と照合する。
     CheckEquivalence {
+        /// 入力の特徴集合を指定する。
         #[arg(long, value_enum)]
         feature_set: nnue_trainer::data::InputFeatureSet,
+        /// 隠れ層の幅を2以上512以下の偶数で指定する。
         #[arg(long)]
         width: usize,
+        /// バッチの局面数を指定する。
         #[arg(long)]
         batch: usize,
+        /// モデルの初期化と合成入力の生成に使う乱数シードを指定する。
         #[arg(long)]
         seed: u64,
     },
-    /// Measure GPU updates, real-data worker throughput, transfers and device memory.
+    /// GPUの更新、実データの供給、転送に要する時間とデバイスメモリを測る。
     BenchStep(nnue_trainer::gpu::bench::Args),
 }
 

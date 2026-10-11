@@ -11,9 +11,11 @@ use minase::training::{
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
 use sha2::{Digest, Sha256};
 use std::{
+    cell::Cell,
     fs::{self, File},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 fn args() -> Args {
@@ -132,6 +134,67 @@ fn budgets_stop_at_the_boundary_without_selecting_epoch_zero() {
     progress.elapsed_seconds = 24.0 * 3600.0;
     assert_eq!(stop_reason(&progress, &args), Some(StopReason::TimeLimit));
     assert_eq!(progress.best.unwrap().epoch, 49);
+}
+
+fn validation_statistics() -> Validation {
+    Validation {
+        loss_sum: 0.25,
+        correct: 0,
+        decisive: 0,
+        nonlinear_sum: 0.0,
+        nonlinear_square_sum: 0.0,
+        lower: 8,
+        upper: 0,
+        positions: 1,
+        activations: 16,
+    }
+}
+
+#[test]
+fn validation_deadline_includes_the_final_batch() {
+    // Pythonのvalidation_lossと同じく、最終バッチの完了時刻も期限未満でなければならない。
+    for final_time in [9, 10, 11] {
+        let now = Cell::new(0);
+        let evaluated = Cell::new(0);
+        let result = validate_batches(
+            [3, final_time],
+            |completed_at| {
+                evaluated.set(evaluated.get() + 1);
+                now.set(completed_at);
+                Ok(validation_statistics())
+            },
+            || now.get() >= 10,
+        )
+        .unwrap();
+        assert_eq!(evaluated.get(), 2);
+        if final_time < 10 {
+            let result = result.unwrap();
+            assert_eq!(result.positions, 2);
+            assert_eq!(result.loss(), 0.25);
+        } else {
+            assert!(result.is_none(), "final batch completed at {final_time}");
+        }
+    }
+}
+
+#[test]
+fn validation_timeout_stops_before_evaluating_more_batches() {
+    for (initial_time, expected_evaluations) in [(0, 1), (10, 0)] {
+        let now = Cell::new(initial_time);
+        let evaluated = Cell::new(0);
+        let result = validate_batches(
+            [10, 11],
+            |completed_at| {
+                evaluated.set(evaluated.get() + 1);
+                now.set(completed_at);
+                Ok(validation_statistics())
+            },
+            || now.get() >= 10,
+        )
+        .unwrap();
+        assert!(result.is_none());
+        assert_eq!(evaluated.get(), expected_evaluations);
+    }
 }
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
@@ -318,7 +381,8 @@ fn initialized(args: &Args, dataset: &Dataset) -> (Model, Observations) {
 fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap()).unwrap();
+    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
     assert_eq!(dataset.record_count(), 320);
     assert_eq!(dataset.training_indices().len(), 296);
     assert_eq!(dataset.validation_indices().len(), 24);
@@ -348,10 +412,11 @@ fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
 }
 
 #[test]
-fn resume_hashes_bind_configuration_and_input_content_but_not_output_location() {
+fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_changes() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap()).unwrap();
+    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
@@ -396,8 +461,12 @@ fn resume_hashes_bind_configuration_and_input_content_but_not_output_location() 
     let mut resume = args.clone();
     resume.output_dir = fixture.0.join("resumed");
     resume.resume = Some(resume.output_dir.clone());
+    resume.epochs = 10;
+    resume.patience = 2;
+    resume.time_limit_hours = 12.0;
+    resume.threads = Some(3);
     let same =
-        record::configuration(&resume, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
+        record::configuration(&resume, 3, &dataset, &observations, &teacher_ks, &model).unwrap();
     restored
         .check_hashes(&same.config_hash, &same.input_hash)
         .unwrap();
@@ -431,12 +500,64 @@ fn resume_hashes_bind_configuration_and_input_content_but_not_output_location() 
 }
 
 #[test]
+fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let (model, observations) = initialized(&args, &dataset);
+    let teacher_ks = dataset.estimate_teacher_ks().unwrap();
+    let configuration =
+        record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
+    let mut original = configuration.document;
+    assert_eq!(original["resumes"], json!([]));
+    // 初回の再開で配列を新設し、2回目以降も既存の履歴を保持する。
+    original.as_object_mut().unwrap().remove("resumes");
+    let path = fixture.0.join("config.json");
+    record::write_json(&path, &original).unwrap();
+    let earliest = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    for (epoch, epochs, patience, hours, workers) in [(1, 4, 2, 6.0, 3), (3, 8, 4, 12.0, 1)] {
+        args.epochs = epochs;
+        args.patience = patience;
+        args.time_limit_hours = hours;
+        args.threads = Some(workers);
+        let mut saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        record::append_resume(&path, &mut saved, &args, workers, epoch).unwrap();
+    }
+    let latest = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let resumes = saved["resumes"].as_array().unwrap();
+    assert_eq!(resumes.len(), 2);
+    for (entry, epoch, epochs, patience, hours, workers) in [
+        (&resumes[0], 1, 4, 2, 6.0, 3),
+        (&resumes[1], 3, 8, 4, 12.0, 1),
+    ] {
+        let timestamp = entry["resumed_at_unix_seconds"].as_u64().unwrap();
+        assert!((earliest..=latest).contains(&timestamp));
+        assert_eq!(entry["epoch"], epoch);
+        assert_eq!(entry["epochs"], epochs);
+        assert_eq!(entry["patience"], patience);
+        assert_eq!(entry["time_limit_hours"], hours);
+        assert_eq!(entry["workers"], workers);
+    }
+    saved.as_object_mut().unwrap().remove("resumes");
+    assert_eq!(saved, original);
+}
+
+#[test]
 fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
     for change in ["settings", "npz", "base", "data", "provenance"] {
         let fixture = Fixture::new();
         let mut args = fixture.training_args();
         {
-            let dataset = Dataset::open(&args.data, args.lookahead().unwrap()).unwrap();
+            // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+            let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
             let (model, observations) = initialized(&args, &dataset);
             let teacher_ks = dataset.estimate_teacher_ks().unwrap();
             let configuration =
@@ -557,7 +678,8 @@ fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
 fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap()).unwrap();
+    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=1 {
@@ -602,7 +724,8 @@ fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
 fn resume_keeps_completed_log_epochs_and_discards_an_uncommitted_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap()).unwrap();
+    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=2 {
@@ -645,7 +768,8 @@ fn completed_checkpoint(model: &Model, epoch: u64, best: BestEpoch) -> Checkpoin
 fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap()).unwrap();
+    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
     let (model, _) = initialized(&args, &dataset);
     let old = completed_checkpoint(
         &model,
@@ -677,7 +801,8 @@ fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
 fn resume_preserves_an_older_best_and_rejects_its_loss_or_corruption() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
-    let dataset = Dataset::open(&args.data, args.lookahead().unwrap()).unwrap();
+    // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
+    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
     let (model, _) = initialized(&args, &dataset);
     let best_epoch = BestEpoch {
         epoch: 1,
@@ -728,7 +853,7 @@ fn compare_checkpoint(left: &Path, right: &Path) {
 }
 
 #[test]
-#[ignore = "requires CUDA; run explicitly on the training host"]
+#[ignore = "CUDAが必要。学習環境で明示的に実行する"]
 fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets() {
     for feature_set in [
         crate::data::InputFeatureSet::P,
@@ -749,6 +874,13 @@ fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
         assert_eq!(first.optimizer.step(), 9);
         split.resume = Some(split.output_dir.clone());
         run(split.clone()).unwrap();
+        let configuration: Value =
+            serde_json::from_slice(&fs::read(split.output_dir.join("config.json")).unwrap())
+                .unwrap();
+        assert_eq!(configuration["resumes"].as_array().unwrap().len(), 1);
+        assert_eq!(configuration["resumes"][0]["epoch"], 1);
+        assert_eq!(configuration["resumes"][0]["epochs"], split.epochs);
+        assert_eq!(configuration["resumes"][0]["workers"], 2);
 
         for file in ["latest.bin", "best.bin", "nnue-float.bin"] {
             compare_checkpoint(&args.output_dir.join(file), &split.output_dir.join(file));

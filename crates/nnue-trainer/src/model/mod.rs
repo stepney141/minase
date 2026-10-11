@@ -287,7 +287,7 @@ pub struct Model {
     initial_virtual: Vec<f32>,
 }
 impl Model {
-    /// J75の全基底特徴の2端点を鏡映対で平均し、観測行を決定的に初期化する。
+    /// J75の全基底特徴の2端点に鏡映対称性を要求し、観測行を決定的に初期化する。
     /// init_stdは第1層の正規分布の標準偏差で、有限かつ非負でなければならない。
     pub fn initialize(
         shape: Shape,
@@ -301,29 +301,17 @@ impl Model {
                 "initial standard deviation must be finite and nonnegative",
             ));
         }
-        if initial.len() != FEATURE_COUNT
-            || initial
-                .iter()
-                .flatten()
-                .any(|v| !v.is_finite() || !(-4096.0..=4095.875).contains(v))
-        {
-            return Err(Error::Invalid(
-                "initial PST must be finite [13680, 2] in -4096..4095.875",
-            ));
-        }
+        validate_initial(initial)?;
         if masks.first_layer.len() != shape.rows()
             || masks.virtual_rows.len() * shape.width != shape.len(Parameter::Virtual)
         {
             return Err(Error::Invalid("mask feature set"));
         }
         let mut parameters = Parameters::zeros(shape);
-        for base in 0..FEATURE_COUNT {
+        for (base, endpoints) in initial.iter().enumerate() {
             if base % 12 < 6 {
                 let row = canonical(base);
-                for endpoint in 0..2 {
-                    parameters[Parameter::Linear][2 * row + endpoint] =
-                        (initial[base][endpoint] + initial[mirror_feature(base)][endpoint]) / 2.0;
-                }
+                parameters[Parameter::Linear][2 * row..2 * row + 2].copy_from_slice(endpoints);
             }
         }
         let mut random = Normal::new(seed, init_std);
@@ -488,6 +476,27 @@ impl Model {
             }
         }
     }
+}
+
+fn validate_initial(initial: &[[f32; 2]]) -> Result<()> {
+    if initial.len() != FEATURE_COUNT
+        || initial
+            .iter()
+            .flatten()
+            .any(|v| !v.is_finite() || !(-4096.0..=4095.875).contains(v))
+    {
+        return Err(Error::Invalid(
+            "initial PST must be finite [13680, 2] in -4096..4095.875",
+        ));
+    }
+    if initial
+        .iter()
+        .enumerate()
+        .any(|(base, &value)| value != initial[mirror_feature(base)])
+    {
+        return Err(Error::Invalid("initial PST mirror sharing violated"));
+    }
+    Ok(())
 }
 
 pub(crate) fn canonical(base: usize) -> usize {

@@ -9,52 +9,52 @@ use std::{collections::HashSet, path::PathBuf};
 /// GPU学習の入力と実行条件。最適化器の係数は固定する。
 #[derive(Clone, Debug, clap::Args, Serialize)]
 pub struct Args {
-    /// Input feature set.
+    /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     pub feature_set: InputFeatureSet,
-    /// Even hidden width, 2..=512.
+    /// 隠れ層の幅を2以上512以下の偶数で指定する。
     #[arg(long)]
     pub width: usize,
-    /// MNSD files, including their provenance sidecars, in global-record order.
+    /// 来歴ファイルを伴うMNSDファイルを、全体のレコード順に指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
-    /// Uncompressed NPZ with the initial floating-point PST.
+    /// 浮動小数点の初期駒配置評価表（PST）を格納した無圧縮NPZファイルを指定する。
     #[arg(long)]
     pub init_pst: PathBuf,
-    /// Baseline MNPT supplying the PST, piece values, output K and rule-set name.
+    /// 初期PST、駒価値、出力用K、規則セット名の基準となるMNPTファイルを指定する。
     #[arg(long)]
     pub base: PathBuf,
-    /// Directory for configuration, logs, checkpoints and exported networks.
+    /// 設定、ログ、チェックポイント、学習済みネットワークの保存先を指定する。
     #[arg(long)]
     pub output_dir: PathBuf,
-    /// Lookahead discount, strictly between 0 and 1; requires --lookahead-plies.
+    /// 先読みの割引率を0より大きく1より小さい値で指定する。--lookahead-pliesも必要。
     #[arg(long, requires = "lookahead_plies")]
     pub lookahead_gamma: Option<f64>,
-    /// Lookahead window, 1..=4096; requires --lookahead-gamma.
+    /// 先読み幅を1以上4096以下の手数で指定する。--lookahead-gammaも必要。
     #[arg(long, requires = "lookahead_gamma")]
     pub lookahead_plies: Option<u16>,
-    /// Maximum positions per update; the final batch can be shorter.
+    /// 1更新の最大局面数を指定する。末尾のバッチは指定数より少なくてもよい。
     #[arg(long, default_value_t = 16_384)]
     pub batch: usize,
-    /// Total epoch budget, including completed epochs on resume, 1..=50.
+    /// 再開前の完了分を含むエポック数の上限を1以上50以下で指定する。
     #[arg(long, default_value_t = 50)]
     pub epochs: u64,
-    /// Stop after this many completed epochs without improvement.
+    /// 改善しないエポックが指定数だけ連続して完了したら停止する。
     #[arg(long, default_value_t = 5)]
     pub patience: u64,
-    /// Initialization, permutation and validation-sample seed.
+    /// 初期化、順列作成、検証標本抽出の乱数シードを指定する。
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
-    /// Cumulative wall-clock budget including preprocessing and validation, at most 24 hours.
+    /// 前処理、検証、再開前の実行を含む累積時間の上限を24時間以下で指定する。
     #[arg(long, default_value_t = 24.0)]
     pub time_limit_hours: f64,
-    /// Maximum validation positions for the quantization error check.
+    /// 量子化誤差の検査に使う検証局面数の上限を指定する。
     #[arg(long, default_value_t = 10_000)]
     pub validation_sample: usize,
-    /// Batch workers; omit for physical cores minus 2, with a minimum of 1.
+    /// バッチ供給のワーカー数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     pub threads: Option<usize>,
-    /// Resume the latest checkpoint in this directory; must equal --output-dir.
+    /// 指定ディレクトリの最新チェックポイントから再開する。--output-dirと同じ場所を指定する。
     #[arg(long)]
     pub resume: Option<PathBuf>,
 }

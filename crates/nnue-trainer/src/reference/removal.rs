@@ -1,4 +1,7 @@
-use super::{Forward, check_batch, linear_row, phase, row_value, screlu, screlu_derivative};
+use super::{
+    Forward, check_batch, check_batch_arrays, check_weights, linear_row, phase, row_value, screlu,
+    screlu_derivative,
+};
 use crate::{
     data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, SENTINEL},
     model::{Error, Model, Parameter, Result, canonical},
@@ -66,7 +69,11 @@ impl RemovalReference {
     ///
     /// Pythonは符号だけを切り捨て・評価上限適用後の差分から取り、罰則の大きさは
     /// 切り捨て前から取る。v0でも評価上限で符号が0になる場合を区別する。
-    pub fn deltas(&self, batch: &BatchSlot, b: usize) -> (Vec<i32>, Vec<f64>) {
+    pub fn deltas(&self, batch: &BatchSlot, b: usize) -> Result<(Vec<i32>, Vec<f64>)> {
+        check_batch_arrays(batch)?;
+        if b >= batch.len() || self.rows.len() != CANONICAL_ROWS {
+            return Err(Error::Invalid("removal reference shape or position"));
+        }
         let columns = &batch.linear_features()[b * FEATURE_COLUMNS..(b + 1) * FEATURE_COLUMNS];
         let row = |col: usize| {
             if columns[col] == SENTINEL {
@@ -93,16 +100,16 @@ impl RemovalReference {
             deltas[col] = (integer(after) - integer(before)) as i32;
             magnitude[col] = ((after - before) as f64 / (PHASE_DIVISOR * 8) as f64).abs();
         }
-        (deltas, magnitude)
+        Ok((deltas, magnitude))
     }
 }
 
 /// カーネル2の中間値と部分和。除去列は元の盤面の144升に対応する。
 #[derive(Debug)]
 pub struct Removal {
-    /// 除去後の評価E_r[B,144]、センチポーン。
+    /// 除去後の評価E_r[B,144]、センチポーン。不適格な列は0。
     pub e_r: Vec<f64>,
-    /// 除去差分Δ_r[B,144]、センチポーン。
+    /// 除去差分Δ_r[B,144]、センチポーン。不適格な列は0。
     pub delta_r: Vec<f64>,
     /// 整数参照差分ref_r[B,144]。
     pub ref_r: Vec<i32>,
@@ -126,6 +133,31 @@ pub struct Removal {
     pub linear: Vec<[f32; 2]>,
     /// 局面ごとの補助損失。係数1000を含み、バッチ平均前。
     pub loss: Vec<f64>,
+}
+impl Removal {
+    pub(super) fn check_shape(&self, n: usize, h: usize) -> Result<()> {
+        let columns = n.checked_mul(144);
+        if [&self.e_r, &self.delta_r, &self.pen_r]
+            .iter()
+            .any(|values| Some(values.len()) != columns)
+            || [&self.s_r, &self.d_r]
+                .iter()
+                .any(|values| Some(values.len()) != columns)
+            || [&self.eligible, &self.wrong_r]
+                .iter()
+                .any(|values| Some(values.len()) != columns)
+            || Some(self.ref_r.len()) != columns
+            || self.s.len() != n
+            || self.loss.len() != n
+            || self.linear.len() != n
+            || [&self.d_acc_removal, &self.d_output]
+                .iter()
+                .any(|values| Some(values.len()) != n.checked_mul(2 * h))
+        {
+            return Err(Error::Invalid("reference removal shape"));
+        }
+        Ok(())
+    }
 }
 
 // GPUのremoval_headと同じf32縮約。各レーンはlane, lane+32, ...の順に足し、
@@ -159,9 +191,11 @@ pub fn removal_forward(
     forward: &Forward,
     reference: &RemovalReference,
 ) -> Result<Removal> {
-    check_batch(model, batch, weights)?;
+    check_batch(model, batch)?;
+    check_weights(model, weights)?;
     let n = batch.len();
     let h = model.shape().width();
+    forward.check_shape(n, h)?;
     let k = f64::from(model.shape().k());
     let o = model.expanded_output_weights();
     let mut result = Removal {
@@ -180,7 +214,7 @@ pub fn removal_forward(
         loss: vec![0.0; n],
     };
     for b in 0..n {
-        let (refs, magnitudes) = reference.deltas(batch, b);
+        let (refs, magnitudes) = reference.deltas(batch, b)?;
         let mut count = 0;
         for (col, &reference) in refs.iter().enumerate() {
             let i = b * 144 + col;
@@ -223,6 +257,9 @@ pub fn removal_forward(
         let mut s = 0.0_f64;
         for (col, &magnitude) in magnitudes.iter().enumerate() {
             let i = b * 144 + col;
+            if !result.eligible[i] {
+                continue;
+            }
             let w = linear_row(model, batch.linear_features()[b * FEATURE_COLUMNS + col])
                 .map(f64::from);
             let after_linear = after_q * (sums[0] - w[0]) + (90.0 - after_q) * (sums[1] - w[1]);
@@ -236,9 +273,6 @@ pub fn removal_forward(
             }
             result.delta_r[i] = delta;
             result.e_r[i] = before_e + delta;
-            if !result.eligible[i] {
-                continue;
-            }
             let sign = f64::from(result.s_r[i]);
             let signed = sign * delta;
             let lower = magnitude.min(0.25);
@@ -260,6 +294,9 @@ pub fn removal_forward(
             let d = (scale * derivative) as f32;
             result.d_r[i] = d;
             s += f64::from(d);
+            if d == 0.0 {
+                continue;
+            }
             for v in 0..2 {
                 let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
                 for j in 0..h {

@@ -143,7 +143,8 @@ fn mmap_reads_multiple_files_and_checks_global_bounds() {
     let empty = fixture.write("empty.bin", 33, 1, 200, &[]);
     let last_record = sample(&Position::initial(), 2, 0, 30, Outcome::Draw);
     let last = fixture.write("last.bin", 22, 2, 200, std::slice::from_ref(&last_record));
-    let dataset = Dataset::open(&[first, empty, last], None).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&[first, empty, last], None) }.unwrap();
     assert_eq!(dataset.record_count(), 3);
     assert_eq!(dataset.headers().count(), 3);
     for (index, file, offset, expected) in [
@@ -166,7 +167,8 @@ fn mmap_reads_multiple_files_and_checks_global_bounds() {
     assert_eq!(dataset.teacher_classes().len(), 2);
     assert_eq!(dataset.teacher_class(0).unwrap(), 0);
     assert_eq!(dataset.teacher_class(2).unwrap(), 1);
-    assert!(Dataset::open(&[], None).is_err());
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    assert!(unsafe { Dataset::open(&[], None) }.is_err());
 }
 
 #[test]
@@ -189,7 +191,8 @@ fn mmap_rejects_invalid_headers_lengths_and_records() {
     cases.push(overflow);
     for bytes in cases {
         fs::write(&path, bytes).unwrap();
-        assert!(Dataset::open(std::slice::from_ref(&path), None).is_err());
+        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+        assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None) }.is_err());
     }
     // 正しいSHAを持っていてもRecord::decodeが予約欄の違反を拒否する。
     let mut reserved = original;
@@ -197,7 +200,8 @@ fn mmap_rejects_invalid_headers_lengths_and_records() {
     fs::write(&path, reserved).unwrap();
     refresh_checksum(&path);
     assert!(matches!(
-        Dataset::open(&[path], None),
+        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+        unsafe { Dataset::open(&[path], None) },
         Err(Error::Mnsd(
             minase::training::records::Error::NonzeroReservedBytes
         ))
@@ -212,24 +216,30 @@ fn mmap_requires_valid_provenance_and_unique_seeds() {
     let provenance = fs::read(sidecar(&path)).unwrap();
     fs::remove_file(sidecar(&path)).unwrap();
     assert!(matches!(
-        Dataset::open(std::slice::from_ref(&path), None),
+        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+        unsafe { Dataset::open(std::slice::from_ref(&path), None) },
         Err(Error::Io(_))
     ));
     fs::write(sidecar(&path), b"{}").unwrap();
     assert!(matches!(
-        Dataset::open(std::slice::from_ref(&path), None),
+        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+        unsafe { Dataset::open(std::slice::from_ref(&path), None) },
         Err(Error::Provenance(_))
     ));
     fs::write(sidecar(&path), &provenance).unwrap();
     update_provenance(&path, |value| value["mnsd_sha256"] = "0".repeat(64).into());
-    assert!(Dataset::open(std::slice::from_ref(&path), None).is_err());
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None) }.is_err());
     fs::write(sidecar(&path), &provenance).unwrap();
     update_provenance(&path, |value| value["teacher"]["nodes"] = 300.into());
-    assert!(Dataset::open(std::slice::from_ref(&path), None).is_err());
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None) }.is_err());
     fs::write(sidecar(&path), &provenance).unwrap();
-    assert!(Dataset::open(&[path.clone(), path.clone()], None).is_err());
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    assert!(unsafe { Dataset::open(&[path.clone(), path.clone()], None) }.is_err());
     let other = fixture.write("other.bin", 11, 2, 200, &records);
-    assert!(Dataset::open(&[path, other], None).is_err());
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    assert!(unsafe { Dataset::open(&[path, other], None) }.is_err());
 }
 
 #[test]
@@ -252,7 +262,8 @@ fn mmap_rejects_both_kinds_of_game_id_split() {
             }
         });
         assert!(matches!(
-            Dataset::open(&[path], None),
+            // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+            unsafe { Dataset::open(&[path], None) },
             Err(Error::Dataset { .. })
         ));
     }
@@ -281,7 +292,8 @@ fn lookahead_is_file_local_and_validates_record_order() {
         &[sample(&pos, 1, 4, 999, Outcome::Win)],
     );
     let options = Lookahead::new(0.5, 3).unwrap();
-    let dataset = Dataset::open(&[first, second], Some(options)).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&[first, second], Some(options)) }.unwrap();
     let scores: Vec<_> = (0..4).map(|i| dataset.teacher_score(i).unwrap()).collect();
     assert_eq!(scores, [-1.8_f32, 1.0, 1.0, 999.0]);
     assert_eq!(dataset.record(0).unwrap().score(), 7);
@@ -298,7 +310,8 @@ fn lookahead_is_file_local_and_validates_record_order() {
             ],
         );
         assert!(matches!(
-            Dataset::open(&[path], Some(options)),
+            // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+            unsafe { Dataset::open(&[path], Some(options)) },
             Err(Error::RecordOrder { index: 1 })
         ));
     }
@@ -341,7 +354,8 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
         &[sample(&pos, 1, 0, 1000, Outcome::Loss)],
     );
     let paths = [first, second, third, fourth];
-    let dataset = Dataset::open(&paths, None).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&paths, None) }.unwrap();
     assert_eq!(dataset.teacher_classes().len(), 3);
     assert_eq!(dataset.teacher_class(2).unwrap(), 0);
     assert_eq!(dataset.teacher_class(3).unwrap(), 1);
@@ -351,7 +365,8 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
     assert!((ks[0] - 50.0).abs() < 1e-8);
     assert!((ks[1] - 4000.0).abs() < 1e-8);
     assert!((ks[2] - 4000.0).abs() < 1e-8);
-    let future = Dataset::open(&paths, Some(Lookahead::new(0.9, 40).unwrap())).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let future = unsafe { Dataset::open(&paths, Some(Lookahead::new(0.9, 40).unwrap())) }.unwrap();
     assert_ne!(dataset.teacher_classes(), future.teacher_classes());
     let only_validation = fixture.write(
         "validation.bin",
@@ -361,7 +376,8 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
         &[sample(&pos, 4, 0, 1, Outcome::Win)],
     );
     assert!(matches!(
-        Dataset::open(&[only_validation], None)
+        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+        unsafe { Dataset::open(&[only_validation], None) }
             .unwrap()
             .estimate_teacher_ks(),
         Err(Error::EmptyTeacherClass { class: 0 })
@@ -383,7 +399,8 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
             sample(&Position::initial(), 4, 0, 3, Outcome::Draw),
         ],
     );
-    let dataset = Dataset::open(&[path], None).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
@@ -435,7 +452,8 @@ fn halfkp_virtual_observations_are_the_union_of_buckets() {
     }
     let path = fixture.write("data.bin", 11, 1, 200, &records);
     let observed = Observations::compute(
-        &Dataset::open(&[path], None).unwrap(),
+        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+        &unsafe { Dataset::open(&[path], None) }.unwrap(),
         InputFeatureSet::HalfKpHmB8,
     )
     .unwrap();
@@ -530,7 +548,8 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
         200,
         &[sample(&single_pawn(false), 1, 0, 1, Outcome::Win)],
     );
-    let dataset = Dataset::open(&[path], None).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     // 指示書の128要素分割に対し、直前・一致・直後と複数区分を検査する。
     assert_eq!(REVERSE_INDEX_SEGMENT_LEN, 128);
     for count in [127, 128, 129, 256, 257] {
@@ -561,7 +580,8 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
         sample(&empty, 2, 0, 0, Outcome::Draw),
     ];
     let path = fixture.write("data.bin", 11, 1, 200, &records);
-    let dataset = Dataset::open(&[path], None).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     let batches: &[&[u64]] = &[&[2, 0, 1, 0], &[1, 0], &[2]];
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let slots = build_batches(&dataset, set, batches).unwrap();
@@ -608,7 +628,8 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
         200,
         &[sample(&single_pawn(true), 1, 0, 1, Outcome::Win)],
     );
-    let dataset = Dataset::open(&[path], None).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     let slots = build_batches(&dataset, InputFeatureSet::P, &[&[0]]).unwrap();
     let slot = &slots[0];
     assert_eq!(slot.features()[20], 4303);
@@ -670,7 +691,8 @@ fn halfkp_batch_indices_match_feature_set_for_both_perspectives() {
         .map(|(i, position)| sample(position, 1, i as u16, 0, Outcome::Draw))
         .collect();
     let path = fixture.write("data.bin", 11, 1, 200, &records);
-    let dataset = Dataset::open(&[path], None).unwrap();
+    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     let indices: Vec<_> = (0..positions.len() as u64).collect();
     let slots = build_batches(&dataset, InputFeatureSet::HalfKpHmB8, &[&indices]).unwrap();
     for (batch, position) in positions.iter().enumerate() {
