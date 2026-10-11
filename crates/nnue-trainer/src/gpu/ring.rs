@@ -1,5 +1,7 @@
 use super::{Device, Error, Result, device::pinned_zeros, require_len};
-use crate::data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE};
+use crate::data::{
+    BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE, max_segment_count,
+};
 use crate::model::Shape;
 use cudarc::driver::{
     CudaEvent, CudaSlice, DeviceRepr, PinnedHostSlice, ValidAsZeroBits, sys::CUevent_flags,
@@ -93,13 +95,17 @@ struct HostSlot {
     teacher_scores: PinnedHostSlice<f32>,
     teacher_classes: PinnedHostSlice<u32>,
     outcomes: PinnedHostSlice<u8>,
-    first_starts: PinnedHostSlice<u32>,
+    first_segment_starts: PinnedHostSlice<u32>,
+    first_segment_offsets: PinnedHostSlice<u32>,
     first_entries: PinnedHostSlice<u32>,
-    linear_starts: PinnedHostSlice<u32>,
+    linear_segment_starts: PinnedHostSlice<u32>,
+    linear_segment_offsets: PinnedHostSlice<u32>,
     linear_entries: PinnedHostSlice<u32>,
     len: usize,
     first_len: usize,
     linear_len: usize,
+    first_segments: usize,
+    linear_segments: usize,
     transfer_done: CudaEvent,
 }
 impl HostSlot {
@@ -113,13 +119,23 @@ impl HostSlot {
             teacher_scores: pinned_zeros(device, capacity)?,
             teacher_classes: pinned_zeros(device, capacity)?,
             outcomes: pinned_zeros(device, capacity)?,
-            first_starts: pinned_zeros(device, set.first_layer_rows() + 1)?,
+            first_segment_starts: pinned_zeros(device, set.first_layer_rows() + 1)?,
+            first_segment_offsets: pinned_zeros(
+                device,
+                max_segment_count(set.first_layer_rows(), entries) + 1,
+            )?,
             first_entries: pinned_zeros(device, entries)?,
-            linear_starts: pinned_zeros(device, CANONICAL_ROWS + 1)?,
+            linear_segment_starts: pinned_zeros(device, CANONICAL_ROWS + 1)?,
+            linear_segment_offsets: pinned_zeros(
+                device,
+                max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) + 1,
+            )?,
             linear_entries: pinned_zeros(device, entries)?,
             len: 0,
             first_len: 0,
             linear_len: 0,
+            first_segments: 0,
+            linear_segments: 0,
             transfer_done: device.context.new_event(None)?,
         })
     }
@@ -132,16 +148,32 @@ impl HostSlot {
         copy(&mut self.teacher_scores, batch.teacher_scores())?;
         copy(&mut self.teacher_classes, batch.teacher_classes())?;
         copy(&mut self.outcomes, batch.outcomes())?;
-        copy(&mut self.first_starts, batch.first_layer_inverse().starts())?;
+        copy(
+            &mut self.first_segment_starts,
+            batch.first_layer_inverse().segment_starts(),
+        )?;
+        copy(
+            &mut self.first_segment_offsets,
+            batch.first_layer_inverse().segment_offsets(),
+        )?;
         copy(
             &mut self.first_entries,
             batch.first_layer_inverse().entries(),
         )?;
-        copy(&mut self.linear_starts, batch.linear_inverse().starts())?;
+        copy(
+            &mut self.linear_segment_starts,
+            batch.linear_inverse().segment_starts(),
+        )?;
+        copy(
+            &mut self.linear_segment_offsets,
+            batch.linear_inverse().segment_offsets(),
+        )?;
         copy(&mut self.linear_entries, batch.linear_inverse().entries())?;
         self.len = batch.len();
         self.first_len = batch.first_layer_inverse().entries().len();
         self.linear_len = batch.linear_inverse().entries().len();
+        self.first_segments = batch.first_layer_inverse().segment_count();
+        self.linear_segments = batch.linear_inverse().segment_count();
         Ok(())
     }
 }
@@ -159,13 +191,17 @@ pub(super) struct DeviceInput {
     pub teacher_scores: CudaSlice<f32>,
     pub teacher_classes: CudaSlice<u32>,
     pub outcomes: CudaSlice<u8>,
-    pub first_starts: CudaSlice<u32>,
+    pub first_segment_starts: CudaSlice<u32>,
+    pub first_segment_offsets: CudaSlice<u32>,
     pub first_entries: CudaSlice<u32>,
-    pub linear_starts: CudaSlice<u32>,
+    pub linear_segment_starts: CudaSlice<u32>,
+    pub linear_segment_offsets: CudaSlice<u32>,
     pub linear_entries: CudaSlice<u32>,
     pub len: usize,
     pub first_len: usize,
     pub linear_len: usize,
+    pub first_segments: usize,
+    pub linear_segments: usize,
     backward_done: CudaEvent,
 }
 impl DeviceInput {
@@ -180,13 +216,19 @@ impl DeviceInput {
             teacher_scores: s.alloc_zeros(capacity)?,
             teacher_classes: s.alloc_zeros(capacity)?,
             outcomes: s.alloc_zeros(capacity)?,
-            first_starts: s.alloc_zeros(set.first_layer_rows() + 1)?,
+            first_segment_starts: s.alloc_zeros(set.first_layer_rows() + 1)?,
+            first_segment_offsets: s
+                .alloc_zeros(max_segment_count(set.first_layer_rows(), entries) + 1)?,
             first_entries: s.alloc_zeros(entries)?,
-            linear_starts: s.alloc_zeros(CANONICAL_ROWS + 1)?,
+            linear_segment_starts: s.alloc_zeros(CANONICAL_ROWS + 1)?,
+            linear_segment_offsets: s
+                .alloc_zeros(max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) + 1)?,
             linear_entries: s.alloc_zeros(entries)?,
             len: 0,
             first_len: 0,
             linear_len: 0,
+            first_segments: 0,
+            linear_segments: 0,
             backward_done: device.context.new_event(None)?,
         })
     }
@@ -275,13 +317,26 @@ impl HostRing {
         )?;
         send(&host.teacher_classes, &mut input.teacher_classes)?;
         transfer(&self.device, &host.outcomes, &mut input.outcomes)?;
-        send(&host.first_starts, &mut input.first_starts)?;
+        send(&host.first_segment_starts, &mut input.first_segment_starts)?;
+        send(
+            &host.first_segment_offsets,
+            &mut input.first_segment_offsets,
+        )?;
         send(&host.first_entries, &mut input.first_entries)?;
-        send(&host.linear_starts, &mut input.linear_starts)?;
+        send(
+            &host.linear_segment_starts,
+            &mut input.linear_segment_starts,
+        )?;
+        send(
+            &host.linear_segment_offsets,
+            &mut input.linear_segment_offsets,
+        )?;
         send(&host.linear_entries, &mut input.linear_entries)?;
         input.len = host.len;
         input.first_len = host.first_len;
         input.linear_len = host.linear_len;
+        input.first_segments = host.first_segments;
+        input.linear_segments = host.linear_segments;
         timing.end.record(&self.device.transfer)?;
         host.transfer_done.record(&self.device.transfer)?;
         self.device.compute.wait(&host.transfer_done)?;
@@ -310,9 +365,11 @@ impl HostRing {
             + (host.features.len()
                 + host.linear_features.len()
                 + host.teacher_classes.len()
-                + host.first_starts.len()
+                + host.first_segment_starts.len()
+                + host.first_segment_offsets.len()
                 + host.first_entries.len()
-                + host.linear_starts.len()
+                + host.linear_segment_starts.len()
+                + host.linear_segment_offsets.len()
                 + host.linear_entries.len())
                 * size_of::<u32>()
     }
@@ -403,6 +460,11 @@ mod tests {
                     assert_eq!(i.len, batch.len());
                     assert_eq!(i.first_len, batch.first_layer_inverse().entries().len());
                     assert_eq!(i.linear_len, batch.linear_inverse().entries().len());
+                    assert_eq!(
+                        i.first_segments,
+                        batch.first_layer_inverse().segment_count()
+                    );
+                    assert_eq!(i.linear_segments, batch.linear_inverse().segment_count());
                     macro_rules! matches {
                         ($field:ident, $expected:expr) => {
                             let expected = $expected;
@@ -420,9 +482,23 @@ mod tests {
                     matches!(teacher_scores, batch.teacher_scores());
                     matches!(teacher_classes, batch.teacher_classes());
                     matches!(outcomes, batch.outcomes());
-                    matches!(first_starts, batch.first_layer_inverse().starts());
+                    matches!(
+                        first_segment_starts,
+                        batch.first_layer_inverse().segment_starts()
+                    );
+                    matches!(
+                        first_segment_offsets,
+                        batch.first_layer_inverse().segment_offsets()
+                    );
                     matches!(first_entries, batch.first_layer_inverse().entries());
-                    matches!(linear_starts, batch.linear_inverse().starts());
+                    matches!(
+                        linear_segment_starts,
+                        batch.linear_inverse().segment_starts()
+                    );
+                    matches!(
+                        linear_segment_offsets,
+                        batch.linear_inverse().segment_offsets()
+                    );
                     matches!(linear_entries, batch.linear_inverse().entries());
                     ring.finish(ticket).unwrap();
                 }

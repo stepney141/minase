@@ -19,7 +19,8 @@ use minase::{
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use nnue_trainer::data::{
     BatchSlot, CANONICAL_ROWS, Dataset, Error, FEATURE_COLUMNS, InputFeatureSet, Lookahead,
-    Observations, PackedOccurrence, ReverseIndex, SENTINEL, build_batches, decode_p_feature,
+    Observations, PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL,
+    build_batches, decode_p_feature,
 };
 use sha2::{Digest, Sha256};
 
@@ -461,12 +462,37 @@ fn verify_inverse(slot: &BatchSlot, inverse: &ReverseIndex, linear: bool) {
     assert_eq!(inverse.starts().len(), rows + 1);
     assert_eq!(inverse.starts()[0], 0);
     assert_eq!(inverse.starts()[rows] as usize, inverse.entries().len());
+    assert_eq!(inverse.segment_starts().len(), rows + 1);
+    assert_eq!(inverse.segment_starts()[0], 0);
+    assert_eq!(
+        inverse.segment_starts()[rows] as usize,
+        inverse.segment_count()
+    );
+    assert_eq!(inverse.segment_offsets().len(), inverse.segment_count() + 1);
+    assert_eq!(inverse.segment_offsets()[0], 0);
+    assert_eq!(
+        inverse.segment_offsets()[inverse.segment_count()] as usize,
+        inverse.entries().len()
+    );
     assert_eq!(
         inverse.entries().len(),
         features.iter().filter(|&&v| v != SENTINEL).count()
     );
     let mut visited = vec![false; features.len()];
     for row in 0..rows {
+        // 固定長区分は行境界をまたがず、全要素を元の順にちょうど1回覆う。
+        let begin = inverse.segment_starts()[row] as usize;
+        let end = inverse.segment_starts()[row + 1] as usize;
+        assert_eq!(inverse.segment_offsets()[begin], inverse.starts()[row]);
+        assert_eq!(inverse.segment_offsets()[end], inverse.starts()[row + 1]);
+        for segment in begin..end {
+            let len = (inverse.segment_offsets()[segment + 1] - inverse.segment_offsets()[segment])
+                as usize;
+            assert!((1..=REVERSE_INDEX_SEGMENT_LEN).contains(&len));
+            if segment + 1 < end {
+                assert_eq!(len, REVERSE_INDEX_SEGMENT_LEN);
+            }
+        }
         let mut previous = None;
         for &word in
             &inverse.entries()[inverse.starts()[row] as usize..inverse.starts()[row + 1] as usize]
@@ -491,6 +517,37 @@ fn verify_inverse(slot: &BatchSlot, inverse: &ReverseIndex, linear: bool) {
     }
     for (seen, &feature) in visited.iter().zip(features) {
         assert_eq!(*seen, feature != SENTINEL);
+    }
+}
+
+#[test]
+fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        "data.bin",
+        11,
+        1,
+        200,
+        &[sample(&single_pawn(false), 1, 0, 1, Outcome::Win)],
+    );
+    let dataset = Dataset::open(&[path], None).unwrap();
+    // 指示書の128要素分割に対し、直前・一致・直後と複数区分を検査する。
+    assert_eq!(REVERSE_INDEX_SEGMENT_LEN, 128);
+    for count in [127, 128, 129, 256, 257] {
+        let indices = vec![0; count];
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            let batches = build_batches(&dataset, set, &[&indices]).unwrap();
+            assert_eq!(batches, build_batches(&dataset, set, &[&indices]).unwrap());
+            let batch = &batches[0];
+            verify_inverse(batch, batch.first_layer_inverse(), false);
+            verify_inverse(batch, batch.linear_inverse(), true);
+            // 歩1枚なので線形は1行、第1層は色の異なる2視点で2行が発火する。
+            assert_eq!(batch.linear_inverse().segment_count(), count.div_ceil(128));
+            assert_eq!(
+                batch.first_layer_inverse().segment_count(),
+                2 * count.div_ceil(128)
+            );
+        }
     }
 }
 

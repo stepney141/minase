@@ -172,28 +172,34 @@ GPUの実装は次のファイルに置く。
 HalfKP-hm-b8は仮想行を先に更新し、特徴行の更新と`C=W+V[base]`の書き込みを同じ起動で行う。
 特徴行が未観測でも、合成重みには更新済みの仮想行を反映する。
 P型のバイアスと出力重みは両半幅の勾配を足した自由パラメータを更新し、全幅の配列に展開する。
+AdamWのバイアス補正は、ホストが更新回数tに対して`1.0 / (1.0 - 0.9_f64.powf(t as f64))`と`1.0 / (1.0 - 0.999_f64.powf(t as f64))`を1回ずつ求め、全更新カーネルへf64の引数として渡す。
+べき乗にはCPU参照と同じ`powf`の式を使い、カーネル内ではモーメントに補正係数を掛ける。
 
 カーネルの配列はCPU参照と同じ行優先順である。
 Bを局面数、Hを全幅、UをP型ならH/2、それ以外ならHとする。
 Rは第1層の行数で、P型は6,841、HalfKP-hm-b8は埋め草を含め109,441である。
-全カーネルのブロックは`(128, 1, 1)`で、Gを`ceil(B/128)`、Cを`3U+1`とする。
+全カーネルのブロックは`(128, 1, 1)`で、Gを`ceil(B/128)`、Wを`ceil(B/4)`、Cを`3U+1`とする。
+第1層と線形経路の逆索引を行ごとに最大128要素の区分へ分け、その区分数をそれぞれS_f、S_lとする。
+区分長は`data::REVERSE_INDEX_SEGMENT_LEN = 128`で固定し、区分表をバッチ構築時にホストのワーカーが作る。
 以下の格子はx方向のブロック数を示し、y方向とz方向は1である。
 
 | カーネル | 引数を宣言順に記す | 格子と共有メモリ |
 |---|---|---|
 | `forward_acc` | `features, weights, bias, acc, B, H, p`を受ける。 | 格子は`ceil(2B ceil(H/4)/128)`である。 |
 | `forward_linear` | `features, weights, lin, B`を受ける。 | 格子は`ceil(2B/128)`である。 |
-| `removal_forward` | `features, linear_features, counts, weights, linear, output, bias, acc, lin, reference, e_r, delta_r, ref_r, s_r, eligible, wrong_r, pen_r, d_r, S, removal_acc, removal_output, removal_linear, removal_loss, B, H, p, K`を受ける。 | 格子はB、静的共有メモリは1,928バイトである。 |
-| `output_backward` | `acc, lin, counts, output, bias, targets, S, removal_acc, removal_output, removal_linear, removal_loss, f, h, logits, loss, g, d_acc, d_output, c, loss_partials, B, H, p, K`を受ける。 | 格子はG、共有メモリは2,048バイトである。 |
+| `removal_forward` | `features, linear_features, counts, weights, linear, output, bias, acc, lin, reference, e_r, delta_r, ref_r, s_r, eligible, wrong_r, pen_r, d_r, S, removal_acc, removal_output, removal_linear, removal_loss, B, H, p, K`を受ける。 | 格子はB、静的共有構造体は2,008バイトである。 |
+| `output_backward` | `acc, lin, counts, output, bias, targets, S, removal_acc, removal_output, removal_linear, removal_loss, f, h, logits, loss, g, d_acc, d_output, c, loss_partials, B, H, p, K`を受ける。 | 格子はW、共有メモリは64バイトである。 |
 | `gradient_partials` | `d_acc, d_output, g, partials, B, H, units, chunk`を受ける。 | 格子はG、`units=U`、`chunk=128`である。 |
-| `first_layer_backward` | `first_starts, first_entries, features, weights, acc, output, d_r, d_acc, d_first, rows, H, p`を受ける。 | 格子は`ceil(R ceil(H/4)/128)`、`rows=R`である。 |
-| `linear_backward` | `linear_starts, linear_entries, counts, d_r, c, d_linear, rows, K`を受ける。 | 格子は`ceil(6841/128)`、`rows=6841`である。 |
+| `first_layer_backward_partials` | `first_segment_offsets, first_entries, features, weights, acc, output, d_r, d_acc, first_partials, H, p`を受ける。 | 格子はS_fで、区分数0なら起動しない。 |
+| `first_layer_backward_reduce` | `first_segment_starts, first_partials, d_first, rows, H`を受ける。 | 格子は`ceil(R H/128)`、`rows=R`である。 |
+| `linear_backward_partials` | `linear_segment_offsets, linear_entries, counts, d_r, c, linear_partials, segments, K`を受ける。 | 格子は`ceil(S_l/4)`、`segments=S_l`で、区分数0なら起動しない。 |
+| `linear_backward_reduce` | `linear_segment_starts, linear_partials, d_linear, rows`を受ける。 | 格子は`ceil(6841/128)`、`rows=6841`である。 |
 | `reduce_virtual` | `d_first, d_virtual, H`を受ける。 | HalfKPだけで起動し、格子は`ceil(13681 ceil(H/4)/128)`である。 |
-| `reduce_partials` | `partials, sums, blocks, values`を受ける。 | Qを列数とすると格子は`ceil(Q/128)`、`blocks=G`、`values=Q`である。 |
-| `validation_head` | `acc, lin, counts, outcomes, output, bias, targets, partials, B, H, p, K`を受ける。 | 格子はG、共有メモリは7,168バイトである。 |
+| `reduce_partials` | `partials, sums, blocks, values`を受ける。 | Qを列数とすると格子は`ceil(Q/128)`で、`blocks`は出力部と検証ではW、勾配ではG、`values=Q`である。 |
+| `validation_head` | `acc, lin, counts, outcomes, output, bias, targets, partials, B, H, p, K`を受ける。 | 格子はW、共有メモリは224バイトである。 |
 
 次の表で、上記引数の型と形を定める。
-`p`はP型なら1、それ以外なら0で、B、H、`p`、`rows`、`units`、`chunk`、`blocks`、`values`はu32、Kはf32である。
+`p`はP型なら1、それ以外なら0で、B、H、`p`、`rows`、`units`、`chunk`、`blocks`、`values`、`segments`はu32、Kはf32である。
 そのほかの配列も、表に示す要素型をCUDA側の対応する型へそのまま渡す。
 
 | 配列 | 型と形 |
@@ -208,28 +214,43 @@ Rは第1層の行数で、P型は6,841、HalfKP-hm-b8は埋め草を含め109,44
 | `e_r, delta_r, pen_r` | いずれも`f64[B,144]`で、評価、除去差分、罰則をセンチポーン単位で保持する。 |
 | `ref_r, s_r, eligible, wrong_r, d_r` | 順に`i32[B,144]`、`f32[B,144]`、`u8[B,144]`、`u8[B,144]`、`f32[B,144]`である。真偽値は0か1である。 |
 | `removal_loss` | `f64[B]`で、適格な除去の平均に係数1000を掛けてKで割った値を保持する。 |
-| `first_starts, first_entries` | u32配列である。開始位置はP型で6,842個、HalfKPで109,441個とし、要素数は実際の発火数とする。 |
-| `linear_starts, linear_entries` | u32配列である。開始位置は6,842個とし、要素数は手番側の発火数とする。 |
+| `first_segment_starts, first_segment_offsets, first_entries` | u32配列で、長さは順にP型で6,842個またはHalfKPで109,441個、S_f+1個、実際の発火数である。 |
+| `linear_segment_starts, linear_segment_offsets, linear_entries` | u32配列で、長さは順に6,842個、S_l+1個、手番側の発火数である。 |
+| `first_partials, linear_partials` | 順に`f64[S_f,H]`、`f64[S_l,2]`であり、区分間の縮約まで倍精度を保つ。 |
 | `d_first, d_linear, d_virtual` | 順に`f32[R,H]`、`f32[6841,2]`、`f32[13681,H]`であり、埋め草行を含む。P型には仮想行配列を確保しない。 |
-| `loss_partials` | `f64[G,2]`で、二値交差エントロピーと補助損失の順に保持し、縮約後にBで割る。 |
+| `loss_partials` | `f64[W,2]`で、二値交差エントロピーと補助損失の順に保持し、縮約後にBで割る。 |
 | 勾配の`partials` | `f64[G,C]`で、出力重み2U個、バイアスU個、出力バイアス1個の順である。 |
-| 検証の`partials` | `f64[G,7]`で、BCEの和、符号一致数、非引き分け数、非線形出力の和、二乗和、下側飽和数、上側飽和数の順である。 |
-| 縮約の`partials, sums` | `f64[G,Q]`と`f64[Q]`で、Qは2、C、7のいずれかである。 |
+| 検証の`partials` | `f64[W,7]`で、BCEの和、符号一致数、非引き分け数、非線形出力の和、二乗和、下側飽和数、上側飽和数の順である。 |
+| 縮約の`partials, sums` | `f64[blocks,Q]`と`f64[Q]`で、Qは2、C、7のいずれかである。 |
 
 加算順はCPU参照に合わせ、第1層では左右の升を先に対にし、P型の出力部では左右半幅の活性化を足してから重みを掛ける。
 乗算と加算の融合は無効にし、SCReLUの微分は0と1の端点を含める。
-Hが4の倍数でない場合も、最後のスレッドがH未満の出力だけを処理する。
-大きな中間配列はf32で保持し、ブロック部分和をf64で書いてからブロック番号順に縮約する。
+Hがスレッド数やレーン数で割り切れない場合も、H未満の単位だけを読み書きする。
+活性化と最終勾配はf32で保持し、区分またはブロックの部分和をf64で書いてから番号順に縮約する。
 アトミック加算は使わない。
+
+出力部と検証は1ワープが1局面を担当する。
+32レーンが連続した32単位の積を並列に求め、シャッフルで単位番号の昇順に加算する。
+内積のf32逐次和をCPU参照と一致させることで、ロジットの符号や、K倍される除去差分への丸めの影響を抑える。
+局面ごとの統計はワープ番号順にf64で加算し、検証の飽和数は整数の固定木で縮約する。
 
 `removal_forward`が生成した`S, removal_acc, removal_output, removal_linear`を出力部へ渡す。
 これらはそれぞれCPU参照の`Removal::s, d_acc_removal, d_output, linear`に対応する。
 `removal_linear`はCPU参照と同じ`S(u_r-u)/K`で、出力部が`g u/K`を加えて`c`を組み立てる。
 整数参照は負数も0方向へ切り捨て、±28,999で切り詰めて符号を取り、罰則の大きさは切り捨て前の差分から求める。
-除去の共有領域は144列のスカラーだけを保持し、累算器と出力重みへの寄与は各スレッドのf64レジスタに列順で足す。
+除去は1ブロック内の4ワープが列を4列間隔で担当し、各列の内積を出力部と同じ順序で求める。
+初段は2ワープで線形と整数参照の各端点を処理し、残る2ワープで除去前の各視点を処理する。
+適格列数、S、損失はワープ内を距離16、8、4、2、1の固定木で縮約する。
+適格列数は4個の整数部分和を番号順に足し、Sと損失は先頭ワープが4個の部分和を同じ固定木で縮約する。
+共有領域には144列のスカラーとワープ部分和を保持し、累算器と出力重みへの寄与は各スレッドのf64レジスタに列順で足す。
 `(B,144,H)`の中間配列は作らない。
 
-第1層と線形経路の後退は、逆索引の範囲を固定順に読み、空範囲と埋め草行にも0を書く。
+逆索引の`segment_starts[row..row+2]`は行に属する区分番号の範囲、`segment_offsets[segment..segment+2]`は区分に属する逆索引要素の範囲を表す。
+どちらも行番号と元の要素番号の昇順に構築し、空行には区分を作らない。
+第1層の部分和は1区分を1ブロックが担当し、スレッドtは単位`t, t+128, …`を処理する。
+区分内を要素番号順にf64で加算し、隣接スレッドの`d_acc`読み込みを合流させる。
+線形の部分和は1区分を1ワープが担当し、レーンtは要素`t, t+32, …`を処理して、距離16、8、4、2、1の固定木で2端点を縮約する。
+後段は各行の区分を昇順にf64で加算してからf32へ変換し、空範囲と埋め草行にも0を書く。
 列144の先獅子には除去の補正を掛けず、P型の第1層だけ半幅の逆回転を行う。
 HalfKPの埋め草行は逆索引に含まれないため、その範囲を読む前に0を書く。
 仮想行の縮約は8区分を番号順に足し、最後の埋め草行に0を書く。
@@ -238,11 +259,33 @@ HalfKPの埋め草行は逆索引に含まれないため、その範囲を読�
 符号一致率は引き分けを除き、ロジット0は勝ち予測に含めず、全局面が引き分けなら`None`を返す。
 
 ホスト面は「書き込み可能→転送中→転送完了→書き込み可能」の順に再利用する。
-各面は`BatchSlot`と同じ順の全配列を持ち、通し番号も含めて`alloc_pinned_with_flags(len, 0)`で確保する。
+各面は通し番号を含むバッチ配列を`alloc_pinned_with_flags(len, 0)`で確保し、CPU用の逆索引開始位置はGPU用の区分開始位置へ置き換える。
 逆索引の要素配列は両方とも`最大B×2×145`語を確保し、実際の局面数と2つの要素数を別に持つ。
 転送前のコピーは、そのホスト面の転送完了イベントをホストで待ってから行う。
 転送時は`PinnedHostSlice`をそのまま`memcpy_htod`へ渡し、容量全体をコピーする。
 カーネルが読む範囲は実際の局面数と要素数で制限する。
+
+区分表と部分和の容量は、非空行数の上限から求める。
+行数rと逆索引要素数の上限eに対して、`m=min(r,e)`、`M(r,e)=m+floor((e-m)/128)`と定義する。
+各非空行の最初の区分に1要素を割り当てた後、区分を1個増やすには128要素が必要なので、Mは区分数の上限になる。
+最大バッチ容量をB_maxとすると、第1層は`T_f=M(r,290 B_max)`、線形は`T_l=M(6841,145 B_max)`を確保する。
+ここでrはP型では6,841、HalfKPでは埋め草を除く109,440である。
+
+CPUの`ReverseIndex`には行ごとの`segment_starts`と区分ごとの`segment_offsets`を追加し、CPU参照用の`starts`も保持する。
+ページ固定メモリとデバイス入力面では`starts`を`segment_starts`へ置換するため、1面あたりの追加領域と1バッチあたりの追加転送量は、2本の`segment_offsets`に相当する`4(T_f+T_l+2)`バイトである。
+ホスト3面とデバイス2面にこの領域を確保する。
+更新器の作業領域には、第1層の`8 T_f H`バイトと線形の`16 T_l`バイトの部分和を追加する。
+出力部と検証の部分和の拡大は`72(ceil(B_max/4)-ceil(B_max/128))`バイトであり、これらの部分和はデバイス内だけで使う。
+
+最大バッチ容量16,384、幅128での増分は次のとおりである。
+補助損失はブロック内の共有メモリを80バイト増やし、大域配列は増やさない。
+
+| 追加領域または転送 | P型 | HalfKP-hm-b8 |
+|---|---:|---:|
+| 入力1面の区分オフセットと1バッチの転送増分 | 277,024バイト | 684,216バイト |
+| 第1層の部分和 | 44,960,768バイト | 149,201,920バイト |
+| 線形の部分和 | 405,552バイト | 405,552バイト |
+| 出力部と検証の部分和の増分 | 285,696バイト | 285,696バイト |
 
 デバイス面は「空き→投入済み→後退完了を記録済み→次の転送」の順に進む。
 次の転送ストリームは、その面の後退完了イベントを待つ。
@@ -264,13 +307,13 @@ GPU処理の`unsafe`はすべて`gpu`モジュールにある。
 | `engine.rs`の第1層起動 | 特徴配列、R×Hの重み、Hのバイアス、B×2×Hの出力を検査する。特徴番号は`BatchSlot`の不変条件で範囲内か番兵と保証する。 |
 | `engine.rs`の線形前進起動 | B×145、6,841×2、B×2の長さを検査し、正準行番号と番兵の契約を使う。 |
 | `engine.rs`の補助損失起動 | B×144のスカラー、B×2×Hの寄与、6,841×2の整数PSTを検査する。1ブロックが1局面を担当する。 |
-| `engine.rs`の出力部起動 | B、B×2、B×2×Hの各配列とG×2の部分和を検査し、2×128個のf64の共有メモリを確保する。 |
+| `engine.rs`の出力部起動 | B、B×2、B×2×Hの各配列とW×2の部分和を検査し、2×4個のf64の共有メモリを確保する。 |
 | `engine.rs`の勾配部分和起動 | 入力のB×2×HとB、出力のG×Cを検査し、UがHまたはH/2であることを`Shape`で保証する。 |
-| `engine.rs`の第1層後退起動 | 逆索引、B×144の微分、B×2×Hの入力、R×Hの出力を検査する。HalfKPの埋め草では逆索引を読まない。 |
-| `engine.rs`の線形後退起動 | 6,842個の開始位置、逆索引、B局面分の係数、6,841×2の出力を検査する。列144の微分を読まない。 |
+| `engine.rs`の第1層後退起動 | 区分表、逆索引、B×144の微分、B×2×Hの入力、S_f×Hの部分和、R×Hの出力を検査する。HalfKPの埋め草では区分表を読まない。 |
+| `engine.rs`の線形後退起動 | 6,842個の区分開始位置、区分オフセット、逆索引、B局面分の係数、S_l×2の部分和、6,841×2の出力を検査する。列144の微分を読まない。 |
 | `engine.rs`の仮想行縮約起動 | 109,441×Hの入力と13,681×Hの出力を検査する。8区分を読み、埋め草は入力を読まず0にする。 |
-| `engine.rs`の縮約起動 | G×Qの部分和とQ個の出力を検査し、1スレッドが出力1列だけを担当する。 |
-| `engine.rs`の検証起動 | 前進と教師配列、B個の結果、G×7の部分和を検査し、7×128個のf64の共有メモリを確保する。 |
+| `engine.rs`の縮約起動 | blocks×Qの部分和とQ個の出力を検査し、1スレッドが出力1列だけを担当する。 |
+| `engine.rs`の検証起動 | 前進と教師配列、B個の結果、W×7の部分和を検査し、7×4個のf64の共有メモリを確保する。 |
 | `optimizer.rs`の4種類の更新起動 | 自由パラメータ、勾配、両モーメント、行マスクと展開先の長さを検査し、同じ計算ストリーム上で仮想行を特徴行より先に更新する。 |
 
 カーネルと配列は同じ`Device`から作り、書き込み先には排他的な参照を渡す。
@@ -279,7 +322,8 @@ CPUテストでは、CUDAの引数宣言とRustの起動引数の順序、ソー
 GPUを要するテストには`#[ignore]`を付け、名前はすべて`gpu_`で始める。
 
 等価性検査の合成記録は、回転と番兵、先獅子、補間率の境界、空の逆索引範囲、3分類の教師値を含む。
-幅2、6、8、128と両特徴集合について、バッチ64、4,096、100、1、129を同じ評価器へ順に渡し、面の再利用も検査する。
+幅2、6、8、128、130と両特徴集合について、バッチ64、4,096、100、1、129を同じ評価器へ順に渡し、面の再利用も検査する。
+幅130は、128スレッドを超える幅と、32レーンで割り切れない単位数を検査する。
 CPUとの判定は既存のPython照合と同じ許容誤差の形式で、`|GPU-CPU| ≤ 1e-6 + 1e-5 |CPU|`とする。
 非有限値は拒否し、全中間値と縮約値を同一入力で2回実行してビット単位でも比較する。
 検証専用の起動も2回実行し、出力部の後退を伴う場合の検証値とビット一致を要求する。
@@ -300,7 +344,7 @@ CPUテスト`removal_inputs_cover_lower_upper_inactive_and_all_ineligible_reason
 GPUを使わない検査は次のコマンドで実行する。
 
 ```sh
-cargo fmt --all
+cargo fmt --all --check
 nice -n 19 cargo clippy -j 2 --workspace --all-targets -- -D warnings
 nice -n 19 cargo test -j 2 -p nnue-trainer
 ```
@@ -319,19 +363,22 @@ done
 ```
 
 実データでの測定は、最適化を有効にしたバイナリで行う。
-次の例では訓練集合に少なくとも835,584局面が必要であり、検証集合は使わない。
+次の例では訓練集合に少なくとも344,064局面が必要であり、検証集合は使わない。
 各ファイルには来歴を記した`.provenance.json`を添える。
 
 ```sh
 DATA=/absolute/path/to/generated-1500000.bin
 for FEATURE_SET in P HalfKP-hm-b8; do
   CARGO_NET_OFFLINE=true nice -n 19 cargo run --release -j 2 -p nnue-trainer -- bench-step \
-    --feature-set "$FEATURE_SET" --width 128 --batch 16384 --steps 50 \
-    --data "$DATA"
+    --feature-set "$FEATURE_SET" --width 128 --batch 16384 --steps 20 \
+    --workers 6 --profile --data "$DATA"
 done
 ```
 
 `bench-step`はファイル検査、モデルの初期化、カーネルのコンパイル、GPU配列の確保を済ませ、1回のウォームアップの後で指定回数を測る。
+`--profile`の表には`first_layer_backward_partials`、`first_layer_backward_reduce`、`linear_backward_partials`、`linear_backward_reduce`を別々に表示する。
+格子は各バッチの区分数から求め、部分和の読み書きも主要配列の理論バイト数に含める。
+性能の採否は実GPUの測定で判断し、CUDAコンパイルやGPUなしのテスト結果から速度を推定しない。
 シード71で訓練局面を並べ替え、ウォームアップを含む`(steps+1)×batch`局面を重複なく使う。
 `--seed`、`--device`、`--workers`で条件を指定でき、ワーカー数の既定値はLinuxが報告する物理コア数から2を引いた数で、最小1、最大は測定更新数とする。
 CPUの構成を取得できない場合は`--workers`を明示する。
@@ -340,7 +387,7 @@ CPUの構成を取得できない場合は`--workers`を明示する。
 ワーカーの供給速度は、復号、特徴抽出、逆索引構築、教師値変換、スレッドの起動と回収を含む構築時間から求め、GPU待ちによる送信の停止時間を除く。
 完成バッチを渡すチャネルの容量は3とし、供給側にはワーカー数以下のバッチを別途保持する。
 転送には`HostRing`の固定メモリ3面とデバイス2面を使う。
-転送時間は、通し番号を含む`BatchSlot`の全配列と教師確率について、転送ストリームのイベントで測ったコピー時間を合計する。
+転送時間は、通し番号と区分表を含むGPU入力配列と教師確率について、転送ストリームのイベントで測ったコピー時間を合計する。
 入力面の再利用待ちとホスト内のコピーをこの指標から除き、計算時間は教師確率の到着後の前進からAdamW群の完了までを計算ストリームのイベントで測る。
 全体の経過時間には供給、固定メモリへのコピー、投入、損失回収を含めるため、供給と転送を重ねた実効速度も確認できる。
 

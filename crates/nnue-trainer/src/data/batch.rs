@@ -23,6 +23,14 @@ pub const PERSPECTIVE_SHIFT: u32 = COLUMN_SHIFT + COLUMN_BITS;
 pub const POSITION_SHIFT: u32 = PERSPECTIVE_SHIFT + PERSPECTIVE_BITS;
 /// 逆索引の1語で表現できるバッチ局面数の上限。
 pub const MAX_BATCH_SIZE: usize = 1 << POSITION_BITS;
+/// GPUの後退で1区分が処理する逆索引要素数の上限。
+pub const REVERSE_INDEX_SEGMENT_LEN: usize = 128;
+
+/// 各非空行の先頭区分は1要素、後続区分は追加の128要素を要する。
+pub(crate) fn max_segment_count(rows: usize, entries: usize) -> usize {
+    let nonempty = rows.min(entries);
+    nonempty + (entries - nonempty) / REVERSE_INDEX_SEGMENT_LEN
+}
 
 /// 逆索引の1要素。上位から局面22、視点1、列8、回転1ビットで保持する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,6 +90,8 @@ impl PackedOccurrence {
 pub struct ReverseIndex {
     starts: Vec<u32>,
     entries: Vec<u32>,
+    segment_starts: Vec<u32>,
+    segment_offsets: Vec<u32>,
 }
 
 impl ReverseIndex {
@@ -93,6 +103,22 @@ impl ReverseIndex {
     /// 行ごとに局面番号、視点、列の昇順に並べた`PackedOccurrence`の生の1語。
     pub fn entries(&self) -> &[u32] {
         &self.entries
+    }
+
+    /// 各行の区分番号の開始位置[行数＋1]。空行では次の行と同じ値を持つ。
+    pub fn segment_starts(&self) -> &[u32] {
+        &self.segment_starts
+    }
+
+    /// 区分ごとの逆索引の開始位置[区分数＋1]。最終要素は全逆索引要素数。
+    /// 各区分は1行の範囲内にあり、長さは`REVERSE_INDEX_SEGMENT_LEN`以下。
+    pub fn segment_offsets(&self) -> &[u32] {
+        &self.segment_offsets
+    }
+
+    /// 空行を含めずに作った区分の数。
+    pub fn segment_count(&self) -> usize {
+        self.segment_offsets.len() - 1
     }
 
     fn build(features: &[u32], rows: usize, perspectives: usize, p_encoded: bool) -> Result<Self> {
@@ -129,7 +155,24 @@ impl ReverseIndex {
             entries[next[row] as usize] = occurrence.word();
             next[row] += 1;
         }
-        Ok(Self { starts, entries })
+        let mut segment_starts = Vec::with_capacity(rows + 1);
+        let mut segment_offsets = Vec::with_capacity(max_segment_count(rows, entries.len()) + 1);
+        segment_starts.push(0);
+        segment_offsets.push(0);
+        for range in starts.windows(2) {
+            let mut offset = range[0];
+            while offset < range[1] {
+                offset = (offset + REVERSE_INDEX_SEGMENT_LEN as u32).min(range[1]);
+                segment_offsets.push(offset);
+            }
+            segment_starts.push((segment_offsets.len() - 1) as u32);
+        }
+        Ok(Self {
+            starts,
+            entries,
+            segment_starts,
+            segment_offsets,
+        })
     }
 }
 
@@ -139,6 +182,7 @@ impl ReverseIndex {
 /// 局面、視点（手番側0、相手側1）、元の盤面のdense升の順で行優先に並ぶ。
 /// 列144は先獅子である。残る局面ごとの配列はすべて[B]。
 /// 第1層と線形の逆索引は各々[行数＋1]の開始位置と、発火数個のu32を持つ。
+/// 後退用の区分表もワーカーが構築し、行・逆索引要素とも昇順を保つ。
 #[derive(Debug, PartialEq)]
 pub struct BatchSlot {
     feature_set: InputFeatureSet,

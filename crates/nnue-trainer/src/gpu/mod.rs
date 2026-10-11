@@ -91,6 +91,7 @@ impl From<crate::model::Error> for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 const THREADS: usize = 128;
+const WARPS_PER_BLOCK: usize = THREADS / 32;
 
 fn require_len(actual: usize, expected: usize) -> Result<()> {
     if actual < expected {

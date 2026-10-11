@@ -685,8 +685,10 @@ mod tests {
     gpu_case!(gpu_step_p_width_6, InputFeatureSet::P, 6);
     gpu_case!(gpu_step_p_width_8, InputFeatureSet::P, 8);
     gpu_case!(gpu_step_p_width_128, InputFeatureSet::P, 128);
+    gpu_case!(gpu_step_p_width_130, InputFeatureSet::P, 130);
     gpu_case!(gpu_step_halfkp_width_2, InputFeatureSet::HalfKpHmB8, 2);
     gpu_case!(gpu_step_halfkp_width_6, InputFeatureSet::HalfKpHmB8, 6);
     gpu_case!(gpu_step_halfkp_width_8, InputFeatureSet::HalfKpHmB8, 8);
     gpu_case!(gpu_step_halfkp_width_128, InputFeatureSet::HalfKpHmB8, 128);
+    gpu_case!(gpu_step_halfkp_width_130, InputFeatureSet::HalfKpHmB8, 130);
 }

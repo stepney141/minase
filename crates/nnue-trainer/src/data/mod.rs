@@ -11,10 +11,11 @@ mod observations;
 mod shuffle;
 mod teacher;
 
+pub(crate) use batch::max_segment_count;
 pub use batch::{
     BatchSlot, COLUMN_BITS, COLUMN_SHIFT, MAX_BATCH_SIZE, PERSPECTIVE_BITS, PERSPECTIVE_SHIFT,
-    POSITION_BITS, POSITION_SHIFT, PackedOccurrence, ROTATION_BITS, ROTATION_SHIFT, ReverseIndex,
-    build_batches,
+    POSITION_BITS, POSITION_SHIFT, PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ROTATION_BITS,
+    ROTATION_SHIFT, ReverseIndex, build_batches,
 };
 pub use error::Error;
 pub use features::{CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, SENTINEL, decode_p_feature};

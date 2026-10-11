@@ -21,7 +21,8 @@ struct Group {
 }
 
 struct Update<'a> {
-    step: u64,
+    correction1: f64,
+    correction2: f64,
     group: AdamWGroup,
     profile: Option<&'a mut KernelProfile>,
 }
@@ -102,6 +103,9 @@ impl Optimizer {
             .checked_add(1)
             .ok_or(Error::Invalid("AdamW step overflow"))?;
         self.validate(model, b)?;
+        // CPU参照と同じpowfで分母を求め、逆数を全群のカーネルで共有する。
+        let correction1 = 1.0 / (1.0 - 0.9_f64.powf(step as f64));
+        let correction2 = 1.0 / (1.0 - 0.999_f64.powf(step as f64));
         let shape = self.shape;
         let config = self.config;
         self.group_mut(Parameter::Linear)?.rows(
@@ -111,7 +115,8 @@ impl Optimizer {
             &mut model.linear,
             2,
             Update {
-                step,
+                correction1,
+                correction2,
                 group: config.linear,
                 profile: profile.as_deref_mut(),
             },
@@ -124,7 +129,8 @@ impl Optimizer {
                 &mut model.weights,
                 shape.width(),
                 Update {
-                    step,
+                    correction1,
+                    correction2,
                     group: config.ft,
                     profile: profile.as_deref_mut(),
                 },
@@ -138,7 +144,8 @@ impl Optimizer {
                         .ok_or(Error::Invalid("missing virtual gradient"))?,
                     shape.width(),
                     Update {
-                        step,
+                        correction1,
+                        correction2,
                         group: config.ft,
                         profile: profile.as_deref_mut(),
                     },
@@ -160,7 +167,8 @@ impl Optimizer {
                         (
                             shape.width(),
                             Update {
-                                step,
+                                correction1,
+                                correction2,
                                 group: config.ft,
                                 profile: profile.as_deref_mut(),
                             },
@@ -175,7 +183,8 @@ impl Optimizer {
             &mut model.bias,
             shape,
             Update {
-                step,
+                correction1,
+                correction2,
                 group: config.head,
                 profile: profile.as_deref_mut(),
             },
@@ -187,7 +196,8 @@ impl Optimizer {
             &mut model.output,
             shape,
             Update {
-                step,
+                correction1,
+                correction2,
                 group: config.head,
                 profile: profile.as_deref_mut(),
             },
@@ -199,7 +209,8 @@ impl Optimizer {
             &mut model.output_bias,
             shape,
             Update {
-                step,
+                correction1,
+                correction2,
                 group: config.head,
                 profile,
             },
@@ -321,7 +332,8 @@ impl Group {
             .arg(&row_width)
             .arg(&lower)
             .arg(&upper)
-            .arg(&update.step)
+            .arg(&update.correction1)
+            .arg(&update.correction2)
             .arg(&update.group.lr)
             .arg(&update.group.weight_decay);
         // SAFETY: update冒頭で全配列と行マスクの長さを検査済み。列数は2または
@@ -359,7 +371,8 @@ impl Group {
             .arg(observed)
             .arg(&count)
             .arg(&h)
-            .arg(&update.step)
+            .arg(&update.correction1)
+            .arg(&update.correction2)
             .arg(&update.group.lr)
             .arg(&update.group.weight_decay);
         // SAFETY: 13681×Hの各状態と13681行のマスクを検査済み。Hは検査済みShape
@@ -400,7 +413,8 @@ impl Group {
             .arg(expanded)
             .arg(&count)
             .arg(&h)
-            .arg(&update.step)
+            .arg(&update.correction1)
+            .arg(&update.correction2)
             .arg(&update.group.lr)
             .arg(&update.group.weight_decay);
         // SAFETY: WとCは109441×H、Vは13681×Hで長さを検査済み。基底行の対応は
@@ -446,7 +460,8 @@ impl Group {
             .arg(&units)
             .arg(&h)
             .arg(&limit)
-            .arg(&update.step)
+            .arg(&update.correction1)
+            .arg(&update.correction2)
             .arg(&update.group.lr)
             .arg(&update.group.weight_decay);
         // SAFETY: 3×units+1個の勾配と各群の自由・展開配列を検査済み。Pの両半分は

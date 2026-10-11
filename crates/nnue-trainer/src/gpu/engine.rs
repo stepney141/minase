@@ -1,12 +1,12 @@
 use super::{
-    Device, Error, HostRing, Result, THREADS,
+    Device, Error, HostRing, Result, THREADS, WARPS_PER_BLOCK,
     device::{Kernels, pinned_zeros},
     launch_config, require_len,
     ring::DeviceInput,
     step::{Kernel, KernelProfile, launch_kernel},
 };
 use crate::{
-    data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet},
+    data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, max_segment_count},
     model::{Model, Parameter, Shape},
     reference::{self, Forward, Losses, Output, Removal, RemovalReference, Validation},
 };
@@ -96,6 +96,8 @@ pub(super) struct Buffers {
     pub d_first: CudaSlice<f32>,
     pub d_linear: CudaSlice<f32>,
     pub d_virtual: Option<CudaSlice<f32>>,
+    first_partials: CudaSlice<f64>,
+    linear_partials: CudaSlice<f64>,
     loss_partials: CudaSlice<f64>,
     gradient_partials: CudaSlice<f64>,
     validation_partials: CudaSlice<f64>,
@@ -108,6 +110,7 @@ impl Buffers {
         let s = &device.compute;
         let activations = capacity * 2 * shape.width();
         let blocks = capacity.div_ceil(THREADS);
+        let head_blocks = capacity.div_ceil(WARPS_PER_BLOCK);
         let columns = 3 * shape.units() + 1;
         Ok(Self {
             acc: s.alloc_zeros(activations)?,
@@ -141,9 +144,17 @@ impl Buffers {
                 InputFeatureSet::P => None,
                 InputFeatureSet::HalfKpHmB8 => Some(s.alloc_zeros(shape.len(Parameter::Virtual))?),
             },
-            loss_partials: s.alloc_zeros(blocks * 2)?,
+            first_partials: s.alloc_zeros(
+                max_segment_count(
+                    shape.feature_set().first_layer_rows(),
+                    capacity * 2 * FEATURE_COLUMNS,
+                ) * shape.width(),
+            )?,
+            linear_partials: s
+                .alloc_zeros(max_segment_count(CANONICAL_ROWS, capacity * FEATURE_COLUMNS) * 2)?,
+            loss_partials: s.alloc_zeros(head_blocks * 2)?,
             gradient_partials: s.alloc_zeros(blocks * columns)?,
-            validation_partials: s.alloc_zeros(blocks * 7)?,
+            validation_partials: s.alloc_zeros(head_blocks * 7)?,
             loss_sum: s.alloc_zeros(2)?,
             gradient_sums: s.alloc_zeros(columns)?,
             validation_sums: s.alloc_zeros(7)?,
@@ -555,9 +566,10 @@ pub(super) fn output_backward(
         require_len(array.len(), n * 2)?;
     }
     require_len(b.removal_loss.len(), n)?;
-    require_len(b.loss_partials.len(), n.div_ceil(THREADS) * 2)?;
-    let mut cfg = launch_config(n)?;
-    cfg.shared_mem_bytes = (2 * THREADS * size_of::<f64>()) as u32;
+    let blocks = n.div_ceil(WARPS_PER_BLOCK);
+    require_len(b.loss_partials.len(), blocks * 2)?;
+    let mut cfg = launch_config(blocks * THREADS)?;
+    cfg.shared_mem_bytes = (2 * WARPS_PER_BLOCK * size_of::<f64>()) as u32;
     let (n, h, p) = scalars(m.shape, n);
     let scale = m.shape.k();
     let mut args = d.compute.launch_builder(&k.head);
@@ -585,8 +597,9 @@ pub(super) fn output_backward(
         .arg(&h)
         .arg(&p)
         .arg(&scale);
-    // SAFETY: 全配列の範囲と共有メモリ2×128×f64を上で検査・指定済み。
-    // CUDAの引数順・型と一致し、出力には排他的な参照を渡す。末尾スレッドも同期に参加する。
+    // SAFETY: 全配列の範囲と共有メモリ2×4×f64を上で検査・指定済み。
+    // 1ワープが1局面を書き、末尾の未使用ワープもブロック同期に参加する。
+    // CUDAの引数順・型と一致し、出力には排他的な参照を渡す。
     unsafe {
         launch_kernel(
             &mut args,
@@ -595,15 +608,7 @@ pub(super) fn output_backward(
             profile.as_deref_mut(),
         )?;
     }
-    reduce(
-        d,
-        k,
-        &b.loss_partials,
-        &mut b.loss_sum,
-        n as usize,
-        2,
-        profile,
-    )
+    reduce(d, k, &b.loss_partials, &mut b.loss_sum, blocks, 2, profile)
 }
 
 pub(super) fn backward(
@@ -618,9 +623,10 @@ pub(super) fn backward(
     let shape = m.shape;
     let width = shape.width();
     require_len(
-        input.first_starts.len(),
+        input.first_segment_starts.len(),
         shape.feature_set().first_layer_rows() + 1,
     )?;
+    require_len(input.first_segment_offsets.len(), input.first_segments + 1)?;
     require_len(input.first_entries.len(), input.first_len)?;
     require_len(input.features.len(), n * 2 * FEATURE_COLUMNS)?;
     require_len(m.weights.len(), shape.len(Parameter::FirstLayer))?;
@@ -629,58 +635,111 @@ pub(super) fn backward(
     require_len(b.d_acc.len(), n * 2 * width)?;
     require_len(b.d_r.len(), n * 144)?;
     require_len(b.d_first.len(), shape.len(Parameter::FirstLayer))?;
+    require_len(b.first_partials.len(), input.first_segments * width)?;
     let rows = shape.rows() as u32;
     let (_, h, p) = scalars(shape, n);
-    let cfg = launch_config(shape.rows() * width.div_ceil(4))?;
-    let mut args = d.compute.launch_builder(&k.first_backward);
-    args.arg(&input.first_starts)
-        .arg(&input.first_entries)
-        .arg(&input.features)
-        .arg(&m.weights)
-        .arg(&b.acc)
-        .arg(&m.output)
-        .arg(&b.d_r)
-        .arg(&b.d_acc)
+    if input.first_segments != 0 {
+        let cfg = cudarc::driver::LaunchConfig {
+            grid_dim: (input.first_segments as u32, 1, 1),
+            block_dim: (THREADS as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+        let mut args = d.compute.launch_builder(&k.first_backward_partials);
+        args.arg(&input.first_segment_offsets)
+            .arg(&input.first_entries)
+            .arg(&input.features)
+            .arg(&m.weights)
+            .arg(&b.acc)
+            .arg(&m.output)
+            .arg(&b.d_r)
+            .arg(&b.d_acc)
+            .arg(&mut b.first_partials)
+            .arg(&h)
+            .arg(&p);
+        // SAFETY: 入出力の長さを検査済み。BatchSlotの区分は同じ行の128要素以内で、
+        // 区分数のブロックだけを起動する。各スレッドは区分内の別々のunitを担当する。
+        // 列144はd_rを読まず、回転はH未満。部分和の各要素は1回だけf64で書く。
+        unsafe {
+            launch_kernel(
+                &mut args,
+                cfg,
+                Kernel::FirstLayerBackwardPartials,
+                profile.as_deref_mut(),
+            )?;
+        }
+    }
+    let cfg = launch_config(shape.rows() * width)?;
+    let mut args = d.compute.launch_builder(&k.first_backward_reduce);
+    args.arg(&input.first_segment_starts)
+        .arg(&b.first_partials)
         .arg(&mut b.d_first)
         .arg(&rows)
-        .arg(&h)
-        .arg(&p);
-    // SAFETY: 入出力の長さを検査済み。逆索引はBatchSlotが範囲内の要素を固定順に構築。
-    // HalfKPの埋め草行ではstartsを読まず0を書く。各スレッドは異なる行の4列以内を担当。
-    // 列144はd_rを読まず、回転はHの範囲内に収まり、全配列は同じDeviceに属する。
+        .arg(&h);
+    // SAFETY: 行ごとの区分範囲と部分和の容量を検査済み。各スレッドは(row,unit)の
+    // 1要素だけを書き、前段が埋めた区分だけを昇順に読む。埋め草行と空行は0を書く。
+    // HalfKPの埋め草行では範囲外になるsegment_startsを読まない。
     unsafe {
         launch_kernel(
             &mut args,
             cfg,
-            Kernel::FirstLayerBackward,
+            Kernel::FirstLayerBackwardReduce,
             profile.as_deref_mut(),
         )?;
     }
 
-    require_len(input.linear_starts.len(), CANONICAL_ROWS + 1)?;
+    require_len(input.linear_segment_starts.len(), CANONICAL_ROWS + 1)?;
+    require_len(
+        input.linear_segment_offsets.len(),
+        input.linear_segments + 1,
+    )?;
     require_len(input.linear_entries.len(), input.linear_len)?;
     require_len(input.piece_counts.len(), n)?;
     require_len(b.c.len(), n * 2)?;
     require_len(b.d_linear.len(), CANONICAL_ROWS * 2)?;
+    require_len(b.linear_partials.len(), input.linear_segments * 2)?;
     let rows = CANONICAL_ROWS as u32;
     let scale = shape.k();
+    if input.linear_segments != 0 {
+        let segments = input.linear_segments as u32;
+        let cfg = cudarc::driver::LaunchConfig {
+            grid_dim: (input.linear_segments.div_ceil(WARPS_PER_BLOCK) as u32, 1, 1),
+            block_dim: (THREADS as u32, 1, 1),
+            shared_mem_bytes: 0,
+        };
+        let mut args = d.compute.launch_builder(&k.linear_backward_partials);
+        args.arg(&input.linear_segment_offsets)
+            .arg(&input.linear_entries)
+            .arg(&input.piece_counts)
+            .arg(&b.d_r)
+            .arg(&b.c)
+            .arg(&mut b.linear_partials)
+            .arg(&segments)
+            .arg(&scale);
+        // SAFETY: 区分表、逆索引、B局面分の入力、2端点の部分和の容量を検査済み。
+        // 1ワープは128要素以内の1区分を担当し、全レーンが固定順シャッフルに参加する。
+        // 末尾の余剰ワープは一斉に終了し、有効ワープのレーン0だけが2端点を書く。
+        unsafe {
+            launch_kernel(
+                &mut args,
+                cfg,
+                Kernel::LinearBackwardPartials,
+                profile.as_deref_mut(),
+            )?;
+        }
+    }
     let cfg = launch_config(CANONICAL_ROWS)?;
-    let mut args = d.compute.launch_builder(&k.linear_backward);
-    args.arg(&input.linear_starts)
-        .arg(&input.linear_entries)
-        .arg(&input.piece_counts)
-        .arg(&b.d_r)
-        .arg(&b.c)
+    let mut args = d.compute.launch_builder(&k.linear_backward_reduce);
+    args.arg(&input.linear_segment_starts)
+        .arg(&b.linear_partials)
         .arg(&mut b.d_linear)
-        .arg(&rows)
-        .arg(&scale);
-    // SAFETY: 6842個のstarts、検査済み逆索引、B局面分の入力、6841×2の出力を検査済み。
-    // 列144はd_rを読まない。1スレッドが正準行の2端点だけを書き、Kは正の有限値。
+        .arg(&rows);
+    // SAFETY: 6842個の区分開始位置、全区分の部分和、6841×2の出力を検査済み。
+    // 各スレッドが1行の2端点を区分順に合算し、空行は0を書く。
     unsafe {
         launch_kernel(
             &mut args,
             cfg,
-            Kernel::LinearBackward,
+            Kernel::LinearBackwardReduce,
             profile.as_deref_mut(),
         )?;
     }
@@ -744,7 +803,7 @@ pub(super) fn gradients(
         k,
         &b.gradient_partials,
         &mut b.gradient_sums,
-        n,
+        n.div_ceil(THREADS),
         columns,
         profile,
     )
@@ -754,11 +813,10 @@ fn reduce(
     k: &Kernels,
     partials: &CudaSlice<f64>,
     sums: &mut CudaSlice<f64>,
-    n: usize,
+    blocks: usize,
     columns: usize,
     profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
-    let blocks = n.div_ceil(THREADS);
     require_len(partials.len(), blocks * columns)?;
     require_len(sums.len(), columns)?;
     let cfg = launch_config(columns)?;
@@ -772,7 +830,10 @@ fn reduce(
         launch_kernel(
             &mut args,
             cfg,
-            Kernel::ReducePartials(columns as usize),
+            Kernel::ReducePartials {
+                blocks: blocks as usize,
+                columns: columns as usize,
+            },
             profile,
         )?;
     }
@@ -788,9 +849,10 @@ fn validation(
     check_head(m, input, b)?;
     let n = input.len;
     require_len(input.outcomes.len(), n)?;
-    require_len(b.validation_partials.len(), n.div_ceil(THREADS) * 7)?;
-    let mut cfg = launch_config(n)?;
-    cfg.shared_mem_bytes = (7 * THREADS * size_of::<f64>()) as u32;
+    let blocks = n.div_ceil(WARPS_PER_BLOCK);
+    require_len(b.validation_partials.len(), blocks * 7)?;
+    let mut cfg = launch_config(blocks * THREADS)?;
+    cfg.shared_mem_bytes = (7 * WARPS_PER_BLOCK * size_of::<f64>()) as u32;
     let (n32, h, p) = scalars(m.shape, n);
     let scale = m.shape.k();
     let mut args = d.compute.launch_builder(&k.validation);
@@ -806,8 +868,9 @@ fn validation(
         .arg(&h)
         .arg(&p)
         .arg(&scale);
-    // SAFETY: 入出力の長さを検査済み。共有メモリは7×128個のf64を確保。
-    // 全スレッドがバリアに参加し、7列の部分和だけを書き込む。
+    // SAFETY: 入出力の長さを検査済み。共有メモリは7×4個のf64を確保。
+    // 1ワープが1局面を担当し、末尾の未使用ワープもブロック同期に参加する。
+    // ブロック内で各出力列を1スレッドだけが書く。
     unsafe {
         args.launch(cfg)?;
     }
@@ -816,7 +879,7 @@ fn validation(
         k,
         &b.validation_partials,
         &mut b.validation_sums,
-        n,
+        blocks,
         7,
         None,
     )

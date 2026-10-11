@@ -1,5 +1,5 @@
 use super::{
-    BatchTicket, Device, Error, HostRing, Result, THREADS,
+    BatchTicket, Device, Error, HostRing, Result, THREADS, WARPS_PER_BLOCK,
     device::{Kernels, pinned_zeros},
     engine::{self, Buffers, DeviceModel},
     optimizer::Optimizer,
@@ -22,9 +22,11 @@ pub(super) enum Kernel {
     RemovalForward,
     OutputBackward,
     GradientPartials,
-    ReducePartials(usize),
-    FirstLayerBackward,
-    LinearBackward,
+    ReducePartials { blocks: usize, columns: usize },
+    FirstLayerBackwardPartials,
+    FirstLayerBackwardReduce,
+    LinearBackwardPartials,
+    LinearBackwardReduce,
     ReduceVirtual,
     OptimizerRows(Parameter),
     OptimizerVirtual,
@@ -40,9 +42,11 @@ impl Kernel {
             Self::RemovalForward => "removal_forward",
             Self::OutputBackward => "output_backward",
             Self::GradientPartials => "gradient_partials",
-            Self::ReducePartials(_) => "reduce_partials",
-            Self::FirstLayerBackward => "first_layer_backward",
-            Self::LinearBackward => "linear_backward",
+            Self::ReducePartials { .. } => "reduce_partials",
+            Self::FirstLayerBackwardPartials => "first_layer_backward_partials",
+            Self::FirstLayerBackwardReduce => "first_layer_backward_reduce",
+            Self::LinearBackwardPartials => "linear_backward_partials",
+            Self::LinearBackwardReduce => "linear_backward_reduce",
             Self::ReduceVirtual => "reduce_virtual",
             Self::OptimizerRows(_) => "optimizer_rows",
             Self::OptimizerVirtual => "optimizer_virtual",
@@ -73,6 +77,8 @@ pub(super) struct KernelProfile {
     batch: usize,
     first_entries: usize,
     linear_entries: usize,
+    first_segments: usize,
+    linear_segments: usize,
     events: Vec<KernelEvents>,
 }
 
@@ -83,7 +89,9 @@ impl KernelProfile {
             batch: input.len,
             first_entries: input.first_len,
             linear_entries: input.linear_len,
-            events: Vec::with_capacity(16),
+            first_segments: input.first_segments,
+            linear_segments: input.linear_segments,
+            events: Vec::with_capacity(18),
         }
     }
 
@@ -112,8 +120,11 @@ impl KernelProfile {
         let r = self.shape.rows() as u64;
         let f = self.first_entries as u64;
         let e = self.linear_entries as u64;
+        let first_segments = self.first_segments as u64;
+        let linear_segments = self.linear_segments as u64;
         let g = h.div_ceil(4);
         let q = b.div_ceil(THREADS as u64);
+        let head_blocks = b.div_ceil(WARPS_PER_BLOCK as u64);
         let l = CANONICAL_ROWS as u64;
         let columns = FEATURE_COLUMNS as u64;
         let squares = columns - 1;
@@ -129,12 +140,23 @@ impl KernelProfile {
             ),
             Kernel::OutputBackward => (
                 40 * b * h + 8 * b * u + 37 * b,
-                32 * b * h + 20 * b + 16 * q,
+                32 * b * h + 20 * b + 16 * head_blocks,
             ),
             Kernel::GradientPartials => (4 * b * (4 * h + 1), 8 * q * (3 * u + 1)),
-            Kernel::ReducePartials(columns) => (8 * q * columns as u64, 8 * columns as u64),
-            Kernel::FirstLayerBackward => (8 * (r - 1) * g + 12 * f * g + 16 * f * h, 4 * r * h),
-            Kernel::LinearBackward => (8 * l + 17 * e, 8 * l),
+            Kernel::ReducePartials { blocks, columns } => {
+                (8 * blocks as u64 * columns as u64, 8 * columns as u64)
+            }
+            Kernel::FirstLayerBackwardPartials => (
+                8 * first_segments * THREADS as u64 + 28 * f * h,
+                8 * first_segments * h,
+            ),
+            Kernel::FirstLayerBackwardReduce => {
+                (8 * (r - 1) * h + 8 * first_segments * h, 4 * r * h)
+            }
+            Kernel::LinearBackwardPartials => {
+                (8 * linear_segments * 32 + 17 * e, 16 * linear_segments)
+            }
+            Kernel::LinearBackwardReduce => (8 * l + 16 * linear_segments, 8 * l),
             Kernel::ReduceVirtual => (4 * (r - 1) * h, 4 * parameter_len(Parameter::Virtual)),
             Kernel::OptimizerRows(p) => (17 * parameter_len(p), 16 * parameter_len(p)),
             Kernel::OptimizerVirtual => (
