@@ -37,13 +37,20 @@ Pythonの照合は`tools/train/.venv`（torch 2.13.0、numpy）で行った。
 | 勾配の数値微分との一致 | 幅4、合成局面で、第1層、線形、バイアス、出力重み、出力バイアス、仮想行の勾配を中心差分と比較。補助損失の各区分が発火する例を含む（`cargo test`） | 通過 |
 | P型の鏡映不変とエポック0の同一性 | 局面とその鏡映の評価の一致、同じシードのP型とHalfKP-hm-b8の評価の一致（`cargo test`） | 通過 |
 | 量子化とMNUE版5の往復 | 量子化して符号化し、`minase`で復号して整数評価と浮動小数点の評価を比較（`cargo test`） | 通過 |
-| PyTorchとの3更新の照合（実データ） | `dump-batch --width 4 --seed 71 --steps 3`で世代3の1ファイルの9局面を3バッチにし、`crosscheck_reference.py`でPyTorchの`minase_train.nnue.model`と`torch.optim.AdamW`に同じ初期状態を写して3更新し、損失、勾配、切り詰め後の重みを比較（相対10⁻⁴、絶対10⁻⁵） | 両方の型で一致。ただしこの標本では補助損失の罰則が発火せず（補助損失0）、罰則の経路の照合はフェーズ2で`--init-std`を大きくした標本で行う |
+| PyTorchとの3更新の照合（実データ） | `dump-batch --width 4 --seed 71 --steps 3`で世代3の1ファイルの9局面を3バッチにし、`crosscheck_reference.py`でPyTorchの`minase_train.nnue.model`と`torch.optim.AdamW`に同じ初期状態を写して3更新し、損失、勾配、切り詰め後の重みを比較（相対10⁻⁴、絶対10⁻⁵） | 両方の型で一致。この標本では補助損失の罰則が発火しない（補助損失0）ため、線形の初期値を0倍にして除去差分を0にし下限側の罰則を全除去で発火させた標本（`--init-pst-scale 0 --init-std 0.5 --width 8`、12局面、補助損失0.17〜0.29）でも3更新を照合し、両方の型で一致した。上限側の罰則（参照の向きが駒の持ち主と逆の除去）は実データでは稀であり、数値微分の単体テストだけで検査している |
 | J75のnpzの読み込み | FMの配列（`V`、`a`、`mask`）を含むnpzを読む | codexの初版は未知のメンバーを拒否したため、読み飛ばす形に直した |
 | 静的検査 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p nnue-trainer`（39件） | 通過 |
 
 ## フェーズ2　GPUカーネルと等価性テスト
 
-（実装後に書く。）
+### フェーズ2a　GPU基盤、第1層の前進、出力部、縮約、検証の前進
+
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| GPUとCPU参照の等価性 | `cargo test -p nnue-trainer -- --ignored gpu_`（幅2、6、8、128の両方の型と、面の環の転送）と`check-equivalence`（幅6のバッチ100、幅128のバッチ4,096と16,384、両方の型）。判定は`|GPU−CPU| ≤ 10⁻⁶ + 10⁻⁵·|CPU|`、2回実行のビット単位一致 | すべて一致。幅128・バッチ16,384の最大絶対誤差はP型6.1×10⁻⁵、HalfKP-hm-b8で2.0×10⁻⁴（損失の部分和など大きな値で生じ、許容誤差の内側） |
+| 静的検査 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p nnue-trainer`（GPUなし） | 通過 |
+
+`unsafe`ブロックは`gpu`モジュールに10か所（ライブラリの存在検査2、ページ固定メモリの確保と初期化2、カーネル起動6）と、`data`のmmapに1か所である。
 
 ## フェーズ3　学習ループと照合、1ファイルの試走
 
