@@ -54,6 +54,15 @@ MCTSが勝てなくても完了とするのは、本書の目的が、作業機�
 5. レンタル機を使う場合は、利用者が事業者のアカウントとコンテナレジストリへのイメージの登録を用意した後に、候補機種の短時間の実測を行って「計算資源の分担」の節の規則で判定する。任意である。
 6. フェーズ4の最終測定（STCとLTCのGSPRT）を行い、本書を完了する。
 
+### 再開のための手引き
+
+作業は2026年10月11日に、利用者の指示で一区切りとして中断した。worktree `data/worktrees/alphazero-phase1`（ブランチ`alphazero-phase1`、masterから53コミット先、未コミットの変更なし）で再開する。
+再開時は、まず`docs/lessons/README.md`と本節を読み、`cargo test -p minase`（658件）と`uv run --project tools/train/zero pytest -q tools/train/zero/tests`（68件）が通ることを確かめる。
+GPUを使う作業はコンテナイメージ`minase-zero:dev`の中で行う。起動は`tools/train/zero/run.sh`（`--gpus all --shm-size=8g`、リポジトリを`/work`、本体の`data/`を`/work/data`にマウント）で、`ORT_DYLIB_PATH`はイメージが設定済みである。コンテナの中でminaseをビルドするときは`CARGO_TARGET_DIR`を`target/zero-image`にして、ホストのビルドと分ける。
+作業機の`data/alphazero-feasibility/`には、フェーズ0の実測で使ったONNX（`net-b10-c128.onnx`ほか2つ、96面）、学習の試走で作った96面のチェックポイント`train-step-b1024/checkpoint.pt`、見本MNZT（`sample.mnzt`、`step.mnzt`）、サイクル制御の試走の結果`cycle-smoke/`、およびフェーズ0のCPU計測ツール`phase0-tool/`（path依存はこのworktreeを指す）がある。TensorRTのエンジンのキャッシュは`data/cache/minase/tensorrt/`にある。
+次の作業はフェーズ2の教師生成であり、始める前に`pgrep -af '[m]inase (match run|spsa|data selfplay|data zero)'`で他の生成や測定が走っていないことを確かめる。生成は、生成コミットを固定したworktreeで`minase data selfplay generate --nodes 100000 --mnzt-output <path>`を使い、開始局面は初期局面からの乱択の手順（`--games`）とlishogiの実戦棋譜（`--openings`）の2回の実行に分ける（1回の実行では混ぜられない。学習器は（ファイル, 対局番号）で対局を分割するので2ファイルを並べて渡せる）。生成の全条件と記録は、着手時に測定記録を新設して書く。
+学習は`python -m minase_zero.train`、強化学習のサイクルは`python -m minase_zero.cycle`（使い方は`tools/train/zero/README.md`）である。
+
 ### 既知の制約
 
 ハーネスで`--each depth=N`をMCTSのエンジンに指定することはできず、`nodes=`または時間制御を指定する（「共存の構造」の節）。
