@@ -32,7 +32,8 @@ extern "C" __global__ void output_backward(
     const float* acc, const float* lin, const unsigned char* counts,
     const float* output, const float* bias, const float* targets,
     const float* S, const float* removal_acc, const float* removal_output,
-    const float* removal_linear, float* f, float* h, float* logits,
+    const float* removal_linear, const double* removal_loss,
+    float* f, float* h, float* logits,
     float* loss, float* g, float* d_acc, float* d_output, float* c,
     double* loss_partials, unsigned B, unsigned H, unsigned p, float K) {
     extern __shared__ double shared[];
@@ -63,11 +64,13 @@ extern "C" __global__ void output_backward(
         c[b * 2 + 1] = grad * (1.0f - u) / K + removal_linear[b * 2 + 1];
     }
     shared[threadIdx.x] = (double)l;
+    shared[blockDim.x + threadIdx.x] = b < B ? removal_loss[b] : 0.0;
     __syncthreads();
-    if (threadIdx.x == 0) {
+    if (threadIdx.x < 2) {
         double sum = 0;
-        for (unsigned t = 0; t < blockDim.x; ++t) sum += shared[t];
-        loss_partials[blockIdx.x] = sum;
+        for (unsigned t = 0; t < blockDim.x; ++t)
+            sum += shared[threadIdx.x * blockDim.x + t];
+        loss_partials[blockIdx.x * 2 + threadIdx.x] = sum;
     }
 }
 

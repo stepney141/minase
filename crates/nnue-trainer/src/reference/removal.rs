@@ -35,6 +35,11 @@ pub struct RemovalReference {
     rows: Vec<[i64; 2]>,
 }
 impl RemovalReference {
+    /// GPUへ一度だけ転送する、正準行順の整数2端点。
+    pub(crate) fn rows(&self) -> &[[i64; 2]] {
+        &self.rows
+    }
+
     /// Python make_removal_reference(v0,v0)と同じ表。
     pub fn v0() -> Self {
         let values = v0_piece_values();
