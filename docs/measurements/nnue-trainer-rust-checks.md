@@ -32,7 +32,14 @@ Pythonの照合は`tools/train/.venv`（torch 2.13.0、numpy）で行った。
 
 ## フェーズ1b　モデルとCPU参照実装
 
-（実装後に書く。）
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| 勾配の数値微分との一致 | 幅4、合成局面で、第1層、線形、バイアス、出力重み、出力バイアス、仮想行の勾配を中心差分と比較。補助損失の各区分が発火する例を含む（`cargo test`） | 通過 |
+| P型の鏡映不変とエポック0の同一性 | 局面とその鏡映の評価の一致、同じシードのP型とHalfKP-hm-b8の評価の一致（`cargo test`） | 通過 |
+| 量子化とMNUE版5の往復 | 量子化して符号化し、`minase`で復号して整数評価と浮動小数点の評価を比較（`cargo test`） | 通過 |
+| PyTorchとの3更新の照合（実データ） | `dump-batch --width 4 --seed 71 --steps 3`で世代3の1ファイルの9局面を3バッチにし、`crosscheck_reference.py`でPyTorchの`minase_train.nnue.model`と`torch.optim.AdamW`に同じ初期状態を写して3更新し、損失、勾配、切り詰め後の重みを比較（相対10⁻⁴、絶対10⁻⁵） | 両方の型で一致。ただしこの標本では補助損失の罰則が発火せず（補助損失0）、罰則の経路の照合はフェーズ2で`--init-std`を大きくした標本で行う |
+| J75のnpzの読み込み | FMの配列（`V`、`a`、`mask`）を含むnpzを読む | codexの初版は未知のメンバーを拒否したため、読み飛ばす形に直した |
+| 静的検査 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p nnue-trainer`（39件） | 通過 |
 
 ## フェーズ2　GPUカーネルと等価性テスト
 
