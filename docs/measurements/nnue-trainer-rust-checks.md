@@ -157,6 +157,26 @@ HalfKP-hm-b8の1更新は47.0 msである。等価性（`gpu_`テスト23件、`
 
 （生成の完了後に書く。）
 
+本学習は、生成の完了を待って両方の型を順に学習する常駐スクリプト`data/nnue-replacement-train/phase4.sh`（2026年10月12日5時13分に起動、`nice -n 19`、ワーカー12、学習器のバイナリはコミット`6c224c2`のものを同じディレクトリに写し、SHA-256を`trainer-sha256.txt`に記録）で行う。進捗は`phase4.log`と`<型>/training.jsonl`にある。
+
+学習後にNNUEの設計書のフェーズ4が要求する診断は次のとおりで、結果は[学習の記録](nnue-replacement-training.md)の「フェーズ4の学習」に書く。
+
+```console
+# 量子化誤差（学習器が自動で検査し、summary.jsonに書く）
+# Pythonの整数参照との一致
+PYTHONPATH=tools/train/src tools/train/.venv/bin/python -m minase_train.diagnostics.nnue compare \
+  --net data/nnue-replacement-train/<型>/nnue.bin --positions data/nnue-replacement-trial/generated-2000000.bin \
+  --probe-command target/release/minase dev nnue-probe --output <出力>
+# 駒除去差分、互角帯の順位相関と評価値の分布、着手前後の評価差
+PYTHONPATH=tools/train/src tools/train/.venv/bin/python -m minase_train.diagnostics.nnue removal ...
+PYTHONPATH=tools/train/src tools/train/.venv/bin/python -m minase_train.diagnostics.nnue distribution ...
+PYTHONPATH=tools/train/src tools/train/.venv/bin/python -m minase_train.diagnostics.nnue moves ...
+# bench（深さ9、性能コアに固定、基準Mと交互に5巡）とHalfKP-hm-b8の全再計算の割合
+taskset -c 3 target/release/minase dev bench --depth 9 --repetitions 3
+```
+
+`removal`、`distribution`、`moves`の引数は`tools/train/src/minase_train/diagnostics/nnue.py`の`main`に定義がある。フェーズ5の型の比較には、`ActiveFeatureSet`と`nets/nnue.bin`だけが異なる2つのコミットが要る。
+
 ## 結論
 
 （完了後に書く。）
