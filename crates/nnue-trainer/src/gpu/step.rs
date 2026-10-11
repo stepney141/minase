@@ -1,16 +1,189 @@
 use super::{
-    BatchTicket, Device, Error, HostRing, Result,
+    BatchTicket, Device, Error, HostRing, Result, THREADS,
     device::{Kernels, pinned_zeros},
     engine::{self, Buffers, DeviceModel},
     optimizer::Optimizer,
+    ring::DeviceInput,
 };
 use crate::{
-    data::MAX_BATCH_SIZE,
-    model::{Model, Parameters},
+    data::{CANONICAL_ROWS, FEATURE_COLUMNS, MAX_BATCH_SIZE},
+    model::{Model, Parameter, Parameters, Shape},
     reference::{AdamW, Losses, RemovalReference},
 };
-use cudarc::driver::{CudaEvent, CudaSlice, PinnedHostSlice, sys::CUevent_flags};
+use cudarc::driver::{
+    CudaEvent, CudaSlice, LaunchArgs, LaunchConfig, PinnedHostSlice, sys::CUevent_flags,
+};
 use std::sync::Arc;
+
+#[derive(Clone, Copy)]
+pub(super) enum Kernel {
+    ForwardAcc,
+    ForwardLinear,
+    RemovalForward,
+    OutputBackward,
+    GradientPartials,
+    ReducePartials(usize),
+    FirstLayerBackward,
+    LinearBackward,
+    ReduceVirtual,
+    OptimizerRows(Parameter),
+    OptimizerVirtual,
+    OptimizerFirst,
+    OptimizerHead(Parameter),
+}
+
+impl Kernel {
+    fn name(self) -> &'static str {
+        match self {
+            Self::ForwardAcc => "forward_acc",
+            Self::ForwardLinear => "forward_linear",
+            Self::RemovalForward => "removal_forward",
+            Self::OutputBackward => "output_backward",
+            Self::GradientPartials => "gradient_partials",
+            Self::ReducePartials(_) => "reduce_partials",
+            Self::FirstLayerBackward => "first_layer_backward",
+            Self::LinearBackward => "linear_backward",
+            Self::ReduceVirtual => "reduce_virtual",
+            Self::OptimizerRows(_) => "optimizer_rows",
+            Self::OptimizerVirtual => "optimizer_virtual",
+            Self::OptimizerFirst => "optimizer_first",
+            Self::OptimizerHead(_) => "optimizer_head",
+        }
+    }
+}
+
+struct KernelEvents {
+    kernel: Kernel,
+    config: LaunchConfig,
+    start: CudaEvent,
+    end: CudaEvent,
+}
+
+pub(super) struct KernelTiming {
+    pub name: &'static str,
+    pub config: LaunchConfig,
+    pub elapsed_ms: f32,
+    pub read_bytes: u64,
+    pub write_bytes: u64,
+}
+
+// イベントは更新ごとの回収券が所有する。次の更新の投入では再記録しない。
+pub(super) struct KernelProfile {
+    shape: Shape,
+    batch: usize,
+    first_entries: usize,
+    linear_entries: usize,
+    events: Vec<KernelEvents>,
+}
+
+impl KernelProfile {
+    fn new(shape: Shape, input: &DeviceInput) -> Self {
+        Self {
+            shape,
+            batch: input.len,
+            first_entries: input.first_len,
+            linear_entries: input.linear_len,
+            events: Vec::with_capacity(16),
+        }
+    }
+
+    fn collect(&self) -> Result<Vec<KernelTiming>> {
+        self.events
+            .iter()
+            .map(|event| {
+                let (read_bytes, write_bytes) = self.array_bytes(event.kernel);
+                Ok(KernelTiming {
+                    name: event.kernel.name(),
+                    config: event.config,
+                    elapsed_ms: event.start.elapsed_ms(&event.end)?,
+                    read_bytes,
+                    write_bytes,
+                })
+            })
+            .collect()
+    }
+
+    // キャッシュと共有メモリを含まない、主要配列の論理アクセス量の概算。
+    // 逆索引の長さは実バッチの値。除去の有効列とAdamWの観測行は上限で数える。
+    fn array_bytes(&self, kernel: Kernel) -> (u64, u64) {
+        let b = self.batch as u64;
+        let h = self.shape.width() as u64;
+        let u = self.shape.units() as u64;
+        let r = self.shape.rows() as u64;
+        let f = self.first_entries as u64;
+        let e = self.linear_entries as u64;
+        let g = h.div_ceil(4);
+        let q = b.div_ceil(THREADS as u64);
+        let l = CANONICAL_ROWS as u64;
+        let columns = FEATURE_COLUMNS as u64;
+        let squares = columns - 1;
+        let parameter_len = |p| self.shape.len(p) as u64;
+        match kernel {
+            Kernel::ForwardAcc => (4 * (2 * b * columns * g + f * h + 2 * b * h), 8 * b * h),
+            Kernel::ForwardLinear => (8 * (b * columns + e), 8 * b),
+            // 除去前と全144列のacc/output、除去時weights、有効列の微分を数える。
+            // 小さいlinear/reference等は除外し、有効列数を駒の出現数で上限化する。
+            Kernel::RemovalForward => (
+                8 * b * columns * (h + u) + 4 * f * h + 32 * e.min(squares * b) * h,
+                b * (squares * 38 + 16 * h + 20),
+            ),
+            Kernel::OutputBackward => (
+                40 * b * h + 8 * b * u + 37 * b,
+                32 * b * h + 20 * b + 16 * q,
+            ),
+            Kernel::GradientPartials => (4 * b * (4 * h + 1), 8 * q * (3 * u + 1)),
+            Kernel::ReducePartials(columns) => (8 * q * columns as u64, 8 * columns as u64),
+            Kernel::FirstLayerBackward => (8 * (r - 1) * g + 12 * f * g + 16 * f * h, 4 * r * h),
+            Kernel::LinearBackward => (8 * l + 17 * e, 8 * l),
+            Kernel::ReduceVirtual => (4 * (r - 1) * h, 4 * parameter_len(Parameter::Virtual)),
+            Kernel::OptimizerRows(p) => (17 * parameter_len(p), 16 * parameter_len(p)),
+            Kernel::OptimizerVirtual => (
+                17 * parameter_len(Parameter::Virtual),
+                12 * parameter_len(Parameter::Virtual),
+            ),
+            Kernel::OptimizerFirst => (
+                21 * parameter_len(Parameter::FirstLayer),
+                16 * parameter_len(Parameter::FirstLayer),
+            ),
+            Kernel::OptimizerHead(p) => {
+                let n = parameter_len(p);
+                let expanded = if p == Parameter::OutputBias {
+                    1
+                } else {
+                    n * h / u
+                };
+                (20 * n, 12 * n + 4 * expanded)
+            }
+        }
+    }
+}
+
+/// # Safety
+/// `LaunchArgs::launch`と同じく、引数の型、順序、配列範囲と書き込みの排他性を保証する。
+pub(super) unsafe fn launch_kernel(
+    args: &mut LaunchArgs<'_>,
+    config: LaunchConfig,
+    kernel: Kernel,
+    profile: Option<&mut KernelProfile>,
+) -> Result<()> {
+    if profile.is_some() {
+        // cudarcは入力依存のwait後、起動の直前・直後に計算ストリームで
+        // record_eventを呼ぶ。Noneなら従来のlaunchと同じで計測イベントを作らない。
+        args.record_kernel_launch(CUevent_flags::CU_EVENT_DEFAULT);
+    }
+    // SAFETY: 呼び出し元が元のlaunchと同じ契約を保証し、引数と格子は変更しない。
+    let events = unsafe { args.launch(config)? };
+    if let Some(profile) = profile {
+        let (start, end) = events.ok_or(Error::Invalid("missing kernel timing events"))?;
+        profile.events.push(KernelEvents {
+            kernel,
+            config,
+            start,
+            end,
+        });
+    }
+    Ok(())
+}
 
 // 回収用メモリと計測イベントは2面だけを事前確保する。結果の所有者が残る間は
 // Arc::get_mutが失敗するため、未回収の値やイベントの世代を上書きできない。
@@ -64,8 +237,20 @@ pub struct StepResult {
     batch_len: usize,
     target_bytes: usize,
     step: u64,
+    profile: Option<KernelProfile>,
 }
 impl StepResult {
+    pub(super) fn collect_profiled(mut self) -> Result<(StepMetrics, Vec<KernelTiming>)> {
+        // 損失の転送完了まで待てば、全カーネルの終了イベントも完了している。
+        let profile = self.profile.take();
+        let metrics = self.collect()?;
+        let profile = match profile {
+            Some(profile) => profile.collect()?,
+            None => Vec::new(),
+        };
+        Ok((metrics, profile))
+    }
+
     /// この更新の損失転送だけを待ち、平均損失とCUDAイベントの時間を返す。
     /// 回収券を消費すると、対応する固定メモリの面を次回以降に再利用できる。
     pub fn collect(self) -> Result<StepMetrics> {
@@ -103,6 +288,7 @@ pub struct Step {
     next_readback: usize,
     capacity: usize,
     failed: bool,
+    profile: bool,
 }
 impl Step {
     /// モデルと最適化器を一度だけ転送し、最大バッチ分の配列を確保する。
@@ -138,6 +324,7 @@ impl Step {
             next_readback: 0,
             capacity,
             failed: false,
+            profile: false,
         })
     }
 
@@ -149,6 +336,10 @@ impl Step {
     /// 投入済みの更新までを含むAdamWの更新回数。
     pub fn step(&self) -> u64 {
         self.optimizer.step()
+    }
+
+    pub(super) fn enable_profiling(&mut self) {
+        self.profile = true;
     }
 
     /// 入力面を受け取り、前進、補助損失、出力部、縮約、後退、AdamWを順に投入する。
@@ -182,6 +373,11 @@ impl Step {
         let readback = Arc::get_mut(&mut self.readbacks[self.next_readback]).ok_or(
             Error::Invalid("collect the oldest step result before reusing its slot"),
         )?;
+        let mut profile = if self.profile {
+            Some(KernelProfile::new(self.model.shape, ring.input(ticket)?))
+        } else {
+            None
+        };
 
         // 教師値も2面にし、次の投入で前回の出力部が読む値を上書きしない。
         std::mem::swap(&mut self.buffers.targets, &mut self.spare_targets);
@@ -202,6 +398,7 @@ impl Step {
                 &self.model,
                 input,
                 &mut self.buffers,
+                profile.as_mut(),
             )?;
             engine::removal_forward(
                 &self.device,
@@ -209,6 +406,7 @@ impl Step {
                 &self.model,
                 input,
                 &mut self.buffers,
+                profile.as_mut(),
             )?;
             engine::output_backward(
                 &self.device,
@@ -216,6 +414,7 @@ impl Step {
                 &self.model,
                 input,
                 &mut self.buffers,
+                profile.as_mut(),
             )?;
             engine::gradients(
                 &self.device,
@@ -223,6 +422,7 @@ impl Step {
                 self.model.shape,
                 n,
                 &mut self.buffers,
+                profile.as_mut(),
             )?;
             engine::backward(
                 &self.device,
@@ -230,10 +430,16 @@ impl Step {
                 &self.model,
                 input,
                 &mut self.buffers,
+                profile.as_mut(),
             )?;
             ring.finish(ticket.clone())?;
-            self.optimizer
-                .update(&self.device, &self.kernels, &mut self.model, &self.buffers)?;
+            self.optimizer.update(
+                &self.device,
+                &self.kernels,
+                &mut self.model,
+                &self.buffers,
+                profile.as_mut(),
+            )?;
             readback.end.record(&self.device.compute)?;
             // PinnedHostSlice自体を渡すと、cudarcは転送完了をイベントで追跡する。
             // ホストからの参照はcollectまで作らず、次の縮約より前に損失を保存する。
@@ -252,6 +458,7 @@ impl Step {
             batch_len: n,
             target_bytes: self.capacity * size_of::<f32>(),
             step: self.optimizer.step(),
+            profile,
         };
         self.next_readback ^= 1;
         Ok(result)

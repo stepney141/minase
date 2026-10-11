@@ -45,6 +45,9 @@ fn main() -> std::process::ExitCode {
                 println!("ワーカーの供給速度は {:.0} 局面/s、全体の経過時間は {:.3} s、実効速度は {:.0} 局面/sでした。", r.worker_positions_per_second, r.elapsed_seconds, r.steps as f64 * r.batch as f64 / r.elapsed_seconds);
                 println!("GPUメモリ使用量は {} / {} bytes、入力面と更新器の確保前後の差は {} bytesでした。", r.gpu_used_bytes, r.gpu_total_bytes, r.gpu_allocation_bytes);
                 println!("平均損失は {:.8}、補助損失は {:.8} でした。計測用の設定として埋め草を除く全行を観測済みとし、出力と教師値に共通の K={} を使いました。", r.losses.total(), r.losses.auxiliary, r.k);
+                if let Some(profile) = r.profile {
+                    println!("{profile}");
+                }
             })
             .map_err(Into::into),
     };

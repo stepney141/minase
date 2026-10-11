@@ -3,6 +3,7 @@ use super::{
     device::{Kernels, pinned_zeros},
     engine::{Buffers, DeviceModel},
     launch_config, require_len,
+    step::{Kernel, KernelProfile, launch_kernel},
 };
 use crate::{
     data::InputFeatureSet,
@@ -19,10 +20,10 @@ struct Group {
     observed: Option<CudaSlice<u8>>,
 }
 
-#[derive(Clone, Copy)]
-struct Update {
+struct Update<'a> {
     step: u64,
     group: AdamWGroup,
+    profile: Option<&'a mut KernelProfile>,
 }
 
 /// 自由パラメータ、観測マスク、AdamWの状態をデバイス上に保持する。
@@ -94,6 +95,7 @@ impl Optimizer {
         k: &Kernels,
         model: &mut DeviceModel,
         b: &Buffers,
+        mut profile: Option<&mut KernelProfile>,
     ) -> Result<()> {
         let step = self
             .step
@@ -102,20 +104,18 @@ impl Optimizer {
         self.validate(model, b)?;
         let shape = self.shape;
         let config = self.config;
-        let linear = Update {
-            step,
-            group: config.linear,
-        };
-        let ft = Update {
-            step,
-            group: config.ft,
-        };
-        let head = Update {
-            step,
-            group: config.head,
-        };
-        self.group_mut(Parameter::Linear)?
-            .rows(d, k, &b.d_linear, &mut model.linear, 2, linear)?;
+        self.group_mut(Parameter::Linear)?.rows(
+            d,
+            k,
+            &b.d_linear,
+            &mut model.linear,
+            2,
+            Update {
+                step,
+                group: config.linear,
+                profile: profile.as_deref_mut(),
+            },
+        )?;
         match shape.feature_set() {
             InputFeatureSet::P => self.group_mut(Parameter::FirstLayer)?.rows(
                 d,
@@ -123,7 +123,11 @@ impl Optimizer {
                 &b.d_first,
                 &mut model.weights,
                 shape.width(),
-                ft,
+                Update {
+                    step,
+                    group: config.ft,
+                    profile: profile.as_deref_mut(),
+                },
             )?,
             InputFeatureSet::HalfKpHmB8 => {
                 self.group_mut(Parameter::Virtual)?.virtual_rows(
@@ -133,7 +137,11 @@ impl Optimizer {
                         .as_ref()
                         .ok_or(Error::Invalid("missing virtual gradient"))?,
                     shape.width(),
-                    ft,
+                    Update {
+                        step,
+                        group: config.ft,
+                        profile: profile.as_deref_mut(),
+                    },
                 )?;
                 // 別々の群を分割して借り、更新済みの仮想行を読み取り専用にする。
                 let (first, virtual_rows) = self.groups.split_at_mut(Parameter::Virtual as usize);
@@ -149,7 +157,14 @@ impl Optimizer {
                             .ok_or(Error::Invalid("missing virtual optimizer"))?
                             .values,
                         &mut model.weights,
-                        (shape.width(), ft),
+                        (
+                            shape.width(),
+                            Update {
+                                step,
+                                group: config.ft,
+                                profile: profile.as_deref_mut(),
+                            },
+                        ),
                     )?;
             }
         }
@@ -159,7 +174,11 @@ impl Optimizer {
             &b.gradient_sums,
             &mut model.bias,
             shape,
-            head,
+            Update {
+                step,
+                group: config.head,
+                profile: profile.as_deref_mut(),
+            },
         )?;
         self.group_mut(Parameter::OutputWeights)?.head(
             d,
@@ -167,7 +186,11 @@ impl Optimizer {
             &b.gradient_sums,
             &mut model.output,
             shape,
-            head,
+            Update {
+                step,
+                group: config.head,
+                profile: profile.as_deref_mut(),
+            },
         )?;
         self.group_mut(Parameter::OutputBias)?.head(
             d,
@@ -175,7 +198,11 @@ impl Optimizer {
             &b.gradient_sums,
             &mut model.output_bias,
             shape,
-            head,
+            Update {
+                step,
+                group: config.head,
+                profile,
+            },
         )?;
         self.step = step;
         Ok(())
@@ -270,7 +297,7 @@ impl Group {
         gradient: &CudaSlice<f32>,
         expanded: &mut CudaSlice<f32>,
         row_width: usize,
-        update: Update,
+        update: Update<'_>,
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let row_width = row_width as u32;
@@ -299,7 +326,14 @@ impl Group {
             .arg(&update.group.weight_decay);
         // SAFETY: update冒頭で全配列と行マスクの長さを検査済み。列数は2または
         // Shapeの幅であり、末尾を検査する1スレッドが1要素を排他的に書く。
-        unsafe { args.launch(launch_config(count as usize)?)? };
+        unsafe {
+            launch_kernel(
+                &mut args,
+                launch_config(count as usize)?,
+                Kernel::OptimizerRows(self.parameter),
+                update.profile,
+            )?;
+        }
         Ok(())
     }
 
@@ -309,7 +343,7 @@ impl Group {
         k: &Kernels,
         gradient: &CudaSlice<f32>,
         width: usize,
-        update: Update,
+        update: Update<'_>,
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let h = width as u32;
@@ -330,7 +364,14 @@ impl Group {
             .arg(&update.group.weight_decay);
         // SAFETY: 13681×Hの各状態と13681行のマスクを検査済み。Hは検査済みShape
         // の正の幅。配列の所属と寿命は所有元Deviceとcudarcのイベント追跡が保つ。
-        unsafe { args.launch(launch_config(count as usize)?)? };
+        unsafe {
+            launch_kernel(
+                &mut args,
+                launch_config(count as usize)?,
+                Kernel::OptimizerVirtual,
+                update.profile,
+            )?;
+        }
         Ok(())
     }
 
@@ -341,7 +382,7 @@ impl Group {
         gradient: &CudaSlice<f32>,
         virtual_rows: &CudaSlice<f32>,
         expanded: &mut CudaSlice<f32>,
-        (width, update): (usize, Update),
+        (width, update): (usize, Update<'_>),
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let h = width as u32;
@@ -364,7 +405,14 @@ impl Group {
             .arg(&update.group.weight_decay);
         // SAFETY: WとCは109441×H、Vは13681×Hで長さを検査済み。基底行の対応は
         // paddingを含めCUDA側で範囲内に写る。同一ストリーム上の先行起動がVを更新済み。
-        unsafe { args.launch(launch_config(count as usize)?)? };
+        unsafe {
+            launch_kernel(
+                &mut args,
+                launch_config(count as usize)?,
+                Kernel::OptimizerFirst,
+                update.profile,
+            )?;
+        }
         Ok(())
     }
 
@@ -375,7 +423,7 @@ impl Group {
         gradient_sums: &CudaSlice<f64>,
         expanded: &mut CudaSlice<f32>,
         shape: Shape,
-        update: Update,
+        update: Update<'_>,
     ) -> Result<()> {
         let count = self.values.len() as u32;
         let (gradient_offset, units, h, limit) = match self.parameter {
@@ -403,7 +451,14 @@ impl Group {
             .arg(&update.group.weight_decay);
         // SAFETY: 3×units+1個の勾配と各群の自由・展開配列を検査済み。Pの両半分は
         // 同じスレッドが書く。unitsはHまたはH/2で正であり、全要素の書込先は重ならない。
-        unsafe { args.launch(launch_config(count as usize)?)? };
+        unsafe {
+            launch_kernel(
+                &mut args,
+                launch_config(count as usize)?,
+                Kernel::OptimizerHead(self.parameter),
+                update.profile,
+            )?;
+        }
         Ok(())
     }
 }

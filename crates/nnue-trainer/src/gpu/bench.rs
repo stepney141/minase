@@ -1,6 +1,8 @@
 //! 実データの供給、面の環を通る転送、およびGPUの1更新を別々に測る。
 
-use super::{Device, Error, HostRing, Result, Step, StepResult, ring::TransferTiming};
+use super::{
+    Device, Error, HostRing, Result, Step, StepResult, ring::TransferTiming, step::KernelTiming,
+};
 use crate::{
     data::{
         BatchSlot, CANONICAL_ROWS, Dataset, InputFeatureSet, MAX_BATCH_SIZE, build_batches,
@@ -9,9 +11,11 @@ use crate::{
     model::{Masks, Model, Parameter, Shape},
     reference::{AdamW, AdamWConfig, Losses, RemovalReference, targets, v0_piece_values},
 };
+use cudarc::driver::LaunchConfig;
 use minase::eval::features::FEATURE_COUNT;
 use std::{
     collections::HashSet,
+    fmt::Write,
     path::PathBuf,
     sync::mpsc::{Receiver, SyncSender, sync_channel},
     time::{Duration, Instant},
@@ -32,6 +36,9 @@ pub struct Args {
     /// Measured updates, at least 2; one additional update warms up the GPU.
     #[arg(long)]
     steps: usize,
+    /// Time each kernel with CUDA events and report launch dimensions and estimated array bytes.
+    #[arg(long)]
+    profile: bool,
     /// MNSD files, in global-record order, including their provenance sidecars.
     #[arg(long, required = true, num_args = 1..)]
     data: Vec<PathBuf>,
@@ -85,6 +92,8 @@ pub struct Report {
     pub gpu_allocation_bytes: i128,
     /// 測定した更新の平均損失。
     pub losses: Losses,
+    /// `--profile`指定時だけ作る、ウォームアップを除いたカーネル別の計測表。
+    pub profile: Option<String>,
 }
 
 struct PreparedBatch {
@@ -103,16 +112,137 @@ struct Measurements {
     transfer_ms: f64,
     binary_cross_entropy: f64,
     auxiliary: f64,
+    profile: ProfileMeasurements,
 }
 
 impl Measurements {
     fn collect(&mut self, pending: (StepResult, TransferTiming)) -> Result<()> {
-        let result = pending.0.collect()?;
+        let (result, profile) = pending.0.collect_profiled()?;
         self.compute_ms += f64::from(result.compute_ms);
         self.transfer_ms += f64::from(pending.1.collect()?) + f64::from(result.target_transfer_ms);
         self.binary_cross_entropy += result.losses.bce;
         self.auxiliary += result.losses.auxiliary;
+        for timing in profile {
+            self.profile.add(timing);
+        }
         Ok(())
+    }
+}
+
+struct KernelTotals {
+    name: &'static str,
+    total_ms: f64,
+    calls: usize,
+    read_bytes: u64,
+    write_bytes: u64,
+    configurations: Vec<(LaunchConfig, usize)>,
+}
+
+#[derive(Default)]
+struct ProfileMeasurements {
+    kernels: Vec<KernelTotals>,
+}
+
+impl ProfileMeasurements {
+    fn add(&mut self, timing: KernelTiming) {
+        let index = match self.kernels.iter().position(|k| k.name == timing.name) {
+            Some(index) => index,
+            None => {
+                self.kernels.push(KernelTotals {
+                    name: timing.name,
+                    total_ms: 0.0,
+                    calls: 0,
+                    read_bytes: 0,
+                    write_bytes: 0,
+                    configurations: Vec::new(),
+                });
+                self.kernels.len() - 1
+            }
+        };
+        let kernel = &mut self.kernels[index];
+        kernel.total_ms += f64::from(timing.elapsed_ms);
+        kernel.calls += 1;
+        kernel.read_bytes += timing.read_bytes;
+        kernel.write_bytes += timing.write_bytes;
+        if let Some((_, count)) = kernel.configurations.iter_mut().find(|(cfg, _)| {
+            cfg.grid_dim == timing.config.grid_dim && cfg.block_dim == timing.config.block_dim
+        }) {
+            *count += 1;
+        } else {
+            kernel.configurations.push((timing.config, 1));
+        }
+    }
+
+    fn table(&self, steps: usize) -> String {
+        let total_ms: f64 = self.kernels.iter().map(|k| k.total_ms).sum();
+        let updates = steps as f64;
+        let mut table = format!(
+            "カーネル別計測はウォームアップを除く{steps}更新です。平均時間と起動回数は1更新あたり、合計時間は全更新分です。\n\
+             割合の分母はカーネル時間の合計です。格子には各構成の1更新あたりの起動回数を添え、ブロックは格子と同じ順に並べます。\n\
+             read/writeは1更新あたりの主要配列の理論バイト数です。キャッシュ・共有メモリを除き、除去の有効列とAdamWの観測行には上限を用います。\n\
+             計測イベントの挿入による負荷があるため、通常実行の速度は--profileなしで測定してください。\n"
+        );
+        writeln!(
+            table,
+            "{:<22} {:>14} {:>12} {:>12} {:>8} {:<38} {:<25} {:>18} {:>18}",
+            "kernel",
+            "mean_ms/update",
+            "total_ms",
+            "calls/update",
+            "share_%",
+            "grid(x,y,z):calls/update",
+            "block(x,y,z)",
+            "read_bytes/update",
+            "write_bytes/update"
+        )
+        .unwrap();
+        for kernel in &self.kernels {
+            let grids = kernel
+                .configurations
+                .iter()
+                .map(|(cfg, calls)| {
+                    let (x, y, z) = cfg.grid_dim;
+                    format!("({x},{y},{z}):{:.1}", *calls as f64 / updates)
+                })
+                .collect::<Vec<_>>()
+                .join(";");
+            let blocks = kernel
+                .configurations
+                .iter()
+                .map(|(cfg, _)| {
+                    let (x, y, z) = cfg.block_dim;
+                    format!("({x},{y},{z})")
+                })
+                .collect::<Vec<_>>()
+                .join(";");
+            // イベント時刻がすべて0なら割合は未定義であり、0%とは表示しない。
+            let share = if total_ms == 0.0 {
+                "n/a".to_owned()
+            } else {
+                format!("{:.1}", 100.0 * kernel.total_ms / total_ms)
+            };
+            writeln!(
+                table,
+                "{:<22} {:>14.3} {:>12.3} {:>12.1} {:>8} {:<38} {:<25} {:>18.0} {:>18.0}",
+                kernel.name,
+                kernel.total_ms / updates,
+                kernel.total_ms,
+                kernel.calls as f64 / updates,
+                share,
+                grids,
+                blocks,
+                kernel.read_bytes as f64 / updates,
+                kernel.write_bytes as f64 / updates,
+            )
+            .unwrap();
+        }
+        write!(
+            table,
+            "カーネル時間の合計は1更新平均 {:.3} ms、全{steps}更新で {total_ms:.3} msです。",
+            total_ms / updates
+        )
+        .unwrap();
+        table
     }
 }
 
@@ -162,6 +292,9 @@ pub fn run(args: Args) -> Result<Report> {
         &RemovalReference::v0(),
         args.batch,
     )?;
+    if args.profile {
+        step.enable_profiling();
+    }
     let warmup_ticket = ring.upload(&warmup)?;
     step.enqueue(&mut ring, &warmup_ticket, &warmup_targets)?
         .collect()?;
@@ -215,6 +348,7 @@ pub fn run(args: Args) -> Result<Report> {
             bce: measurements.binary_cross_entropy / steps,
             auxiliary: measurements.auxiliary / steps,
         },
+        profile: args.profile.then(|| measurements.profile.table(args.steps)),
     })
 }
 
@@ -336,4 +470,83 @@ fn physical_workers() -> Result<usize> {
         ));
     }
     Ok(cores.len().saturating_sub(2).max(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn timing(name: &'static str, elapsed_ms: f32, grid: u32, bytes: u64) -> KernelTiming {
+        KernelTiming {
+            name,
+            config: LaunchConfig {
+                grid_dim: (grid, 1, 1),
+                block_dim: (128, 1, 1),
+                shared_mem_bytes: 0,
+            },
+            elapsed_ms,
+            read_bytes: bytes,
+            write_bytes: bytes / 2,
+        }
+    }
+
+    #[test]
+    fn profile_table_sums_launches_and_averages_over_updates() {
+        // 仕様: 同名カーネルをまとめ、起動数ではなく測定した更新数で平均する。
+        // 2更新でaは(1+3)+(2+4)=10ms、bは0.5+2=2.5msなので割合は80%と20%。
+        let mut measurements = ProfileMeasurements::default();
+        for (a1, a2, b, bytes) in [(1.0, 3.0, 0.5, 100), (2.0, 4.0, 2.0, 200)] {
+            measurements.add(timing("a", a1, 1, bytes));
+            measurements.add(timing("a", a2, 2, bytes * 2));
+            measurements.add(timing("b", b, 1, 40));
+        }
+        let table = measurements.table(2);
+        let row = |name| {
+            table
+                .lines()
+                .find_map(|line| {
+                    let columns: Vec<_> = line.split_whitespace().collect();
+                    (columns.first().copied() == Some(name)).then_some(columns)
+                })
+                .unwrap()
+        };
+        assert_eq!(
+            row("a"),
+            [
+                "a",
+                "5.000",
+                "10.000",
+                "2.0",
+                "80.0",
+                "(1,1,1):1.0;(2,1,1):1.0",
+                "(128,1,1);(128,1,1)",
+                "450",
+                "225",
+            ]
+        );
+        assert_eq!(
+            row("b"),
+            [
+                "b",
+                "1.250",
+                "2.500",
+                "1.0",
+                "20.0",
+                "(1,1,1):1.0",
+                "(128,1,1)",
+                "40",
+                "20",
+            ]
+        );
+        assert!(table.contains("1更新平均 6.250 ms、全2更新で 12.500 ms"));
+    }
+
+    #[test]
+    fn zero_kernel_time_has_no_percentage() {
+        let mut measurements = ProfileMeasurements::default();
+        measurements.add(timing("a", 0.0, 1, 0));
+        let table = measurements.table(1);
+        let row = table.lines().find(|line| line.starts_with("a ")).unwrap();
+        assert_eq!(row.split_whitespace().nth(4), Some("n/a"));
+    }
 }

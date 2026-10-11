@@ -3,6 +3,7 @@ use super::{
     device::{Kernels, pinned_zeros},
     launch_config, require_len,
     ring::DeviceInput,
+    step::{Kernel, KernelProfile, launch_kernel},
 };
 use crate::{
     data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet},
@@ -208,6 +209,7 @@ impl Evaluator {
             &self.model,
             input,
             &mut self.buffers,
+            None,
         )?;
         removal_forward(
             &self.device,
@@ -215,6 +217,7 @@ impl Evaluator {
             &self.model,
             input,
             &mut self.buffers,
+            None,
         )?;
         output_backward(
             &self.device,
@@ -222,6 +225,7 @@ impl Evaluator {
             &self.model,
             input,
             &mut self.buffers,
+            None,
         )?;
         gradients(
             &self.device,
@@ -229,6 +233,7 @@ impl Evaluator {
             self.model.shape,
             batch.len(),
             &mut self.buffers,
+            None,
         )?;
         backward(
             &self.device,
@@ -236,6 +241,7 @@ impl Evaluator {
             &self.model,
             input,
             &mut self.buffers,
+            None,
         )?;
         validation(
             &self.device,
@@ -258,6 +264,7 @@ impl Evaluator {
             &self.model,
             input,
             &mut self.buffers,
+            None,
         )?;
         validation(
             &self.device,
@@ -387,6 +394,7 @@ pub(super) fn forward(
     m: &DeviceModel,
     input: &DeviceInput,
     b: &mut Buffers,
+    mut profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
     let n = input.len;
     let width = m.shape.width();
@@ -411,7 +419,7 @@ pub(super) fn forward(
     // 検証済み局面から作った範囲内の番号か番兵。カーネルは端数を検査し、accだけを書く。
     // 全配列・関数は同じDeviceに属し、cudarcのイベント追跡が寿命と転送依存を保つ。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(&mut args, cfg, Kernel::ForwardAcc, profile.as_deref_mut())?;
     }
     let cfg = launch_config(n as usize * 2)?;
     let mut args = d.compute.launch_builder(&k.linear);
@@ -422,7 +430,7 @@ pub(super) fn forward(
     // SAFETY: 上でB×145、6841×2、B×2を検査済み。正準行と番兵はBatchSlotの不変条件。
     // forward_linearの引数順・型と一致し、lin以外を書き換えない。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(&mut args, cfg, Kernel::ForwardLinear, profile)?;
     }
     Ok(())
 }
@@ -449,6 +457,7 @@ pub(super) fn removal_forward(
     m: &DeviceModel,
     input: &DeviceInput,
     b: &mut Buffers,
+    profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
     check_head(m, input, b)?;
     let n = input.len;
@@ -514,7 +523,7 @@ pub(super) fn removal_forward(
     // referenceは検査済みRemovalReferenceのi64端点で、CUDAのlong longと同じ表現。
     // 1ブロックが1局面を担当し、共有配列の範囲は144列、幅はShapeで2〜512に制限。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(&mut args, cfg, Kernel::RemovalForward, profile)?;
     }
     Ok(())
 }
@@ -525,6 +534,7 @@ pub(super) fn output_backward(
     m: &DeviceModel,
     input: &DeviceInput,
     b: &mut Buffers,
+    mut profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
     check_head(m, input, b)?;
     let n = input.len;
@@ -578,9 +588,22 @@ pub(super) fn output_backward(
     // SAFETY: 全配列の範囲と共有メモリ2×128×f64を上で検査・指定済み。
     // CUDAの引数順・型と一致し、出力には排他的な参照を渡す。末尾スレッドも同期に参加する。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(
+            &mut args,
+            cfg,
+            Kernel::OutputBackward,
+            profile.as_deref_mut(),
+        )?;
     }
-    reduce(d, k, &b.loss_partials, &mut b.loss_sum, n as usize, 2)
+    reduce(
+        d,
+        k,
+        &b.loss_partials,
+        &mut b.loss_sum,
+        n as usize,
+        2,
+        profile,
+    )
 }
 
 pub(super) fn backward(
@@ -589,6 +612,7 @@ pub(super) fn backward(
     m: &DeviceModel,
     input: &DeviceInput,
     b: &mut Buffers,
+    mut profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
     let n = input.len;
     let shape = m.shape;
@@ -625,7 +649,12 @@ pub(super) fn backward(
     // HalfKPの埋め草行ではstartsを読まず0を書く。各スレッドは異なる行の4列以内を担当。
     // 列144はd_rを読まず、回転はHの範囲内に収まり、全配列は同じDeviceに属する。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(
+            &mut args,
+            cfg,
+            Kernel::FirstLayerBackward,
+            profile.as_deref_mut(),
+        )?;
     }
 
     require_len(input.linear_starts.len(), CANONICAL_ROWS + 1)?;
@@ -648,7 +677,12 @@ pub(super) fn backward(
     // SAFETY: 6842個のstarts、検査済み逆索引、B局面分の入力、6841×2の出力を検査済み。
     // 列144はd_rを読まない。1スレッドが正準行の2端点だけを書き、Kは正の有限値。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(
+            &mut args,
+            cfg,
+            Kernel::LinearBackward,
+            profile.as_deref_mut(),
+        )?;
     }
 
     if shape.feature_set() == InputFeatureSet::HalfKpHmB8 {
@@ -664,7 +698,7 @@ pub(super) fn backward(
         // 各スレッドは8区分の同一基底行だけを読み、出力の別々の4列以内を書き込む。
         // 埋め草は入力を読まず0にし、H未満の列だけを処理する。
         unsafe {
-            args.launch(cfg)?;
+            launch_kernel(&mut args, cfg, Kernel::ReduceVirtual, profile)?;
         }
     }
     Ok(())
@@ -675,6 +709,7 @@ pub(super) fn gradients(
     shape: Shape,
     n: usize,
     b: &mut Buffers,
+    mut profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
     let columns = 3 * shape.units() + 1;
     require_len(b.d_acc.len(), n * 2 * shape.width())?;
@@ -697,9 +732,22 @@ pub(super) fn gradients(
     // SAFETY: 入出力の長さを検査済み。unitsは検査済みShapeのHまたはH/2で0ではない。
     // 各ブロックは独立した部分和を書き、末尾の局面はBで打ち切る。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(
+            &mut args,
+            cfg,
+            Kernel::GradientPartials,
+            profile.as_deref_mut(),
+        )?;
     }
-    reduce(d, k, &b.gradient_partials, &mut b.gradient_sums, n, columns)
+    reduce(
+        d,
+        k,
+        &b.gradient_partials,
+        &mut b.gradient_sums,
+        n,
+        columns,
+        profile,
+    )
 }
 fn reduce(
     d: &Device,
@@ -708,6 +756,7 @@ fn reduce(
     sums: &mut CudaSlice<f64>,
     n: usize,
     columns: usize,
+    profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
     let blocks = n.div_ceil(THREADS);
     require_len(partials.len(), blocks * columns)?;
@@ -720,7 +769,12 @@ fn reduce(
     // SAFETY: partials[blocks,columns]とsums[columns]を検査済み。各スレッドは
     // 1列だけを固定順で読み、対応する出力1要素だけを書き込む。
     unsafe {
-        args.launch(cfg)?;
+        launch_kernel(
+            &mut args,
+            cfg,
+            Kernel::ReducePartials(columns as usize),
+            profile,
+        )?;
     }
     Ok(())
 }
@@ -757,5 +811,13 @@ fn validation(
     unsafe {
         args.launch(cfg)?;
     }
-    reduce(d, k, &b.validation_partials, &mut b.validation_sums, n, 7)
+    reduce(
+        d,
+        k,
+        &b.validation_partials,
+        &mut b.validation_sums,
+        n,
+        7,
+        None,
+    )
 }
