@@ -52,6 +52,15 @@ Pythonの照合は`tools/train/.venv`（torch 2.13.0、numpy）で行った。
 
 `unsafe`ブロックは`gpu`モジュールに10か所（ライブラリの存在検査2、ページ固定メモリの確保と初期化2、カーネル起動6）と、`data`のmmapに1か所である。
 
+### フェーズ2b　補助損失の前進、第1層と線形経路の後退、仮想行の縮約
+
+| 検査 | 方法 | 結果 |
+|---|---|---|
+| GPUとCPU参照の等価性 | `cargo test -p nnue-trainer -- --ignored gpu_`（幅2、6、8、128の両方の型）と`check-equivalence`（幅6のバッチ100、幅128のバッチ16,384、両方の型）。補助損失の下限と上限の罰則（上限は符号を反転した整数PSTの参照で発火させる）、不適格な除去、回転、空の逆索引の範囲を含む。判定は`|GPU−CPU| ≤ 10⁻⁶ + 10⁻⁵·|CPU|`、2回実行のビット単位一致 | すべて一致。幅128・バッチ16,384の最大絶対誤差はP型6.1×10⁻⁵、HalfKP-hm-b8で2.0×10⁻⁴ |
+| 静的検査 | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test -p nnue-trainer`（GPUなし、50件） | 通過 |
+
+カーネル起動の`unsafe`は4か所増えて、`gpu`モジュールに合計14か所である。
+
 ## フェーズ3　学習ループと照合、1ファイルの試走
 
 （実装後に書く。Pythonの試走との比較は[学習の記録](nnue-replacement-training.md)の値を使う。）
