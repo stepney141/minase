@@ -12,7 +12,7 @@ extern "C" __global__ void first_layer_backward_partials(
     // A block owns one interval of at most 128 inverse occurrences. Adjacent
     // lanes own adjacent units, including after a P-type half-width rotation.
     for (unsigned j = threadIdx.x; j < H; j += blockDim.x) {
-        double sum = 0;
+        float sum = 0;
         for (unsigned e = begin; e < end; ++e) {
             unsigned word = first_entries[e];
             unsigned b = word >> 10;
@@ -25,9 +25,7 @@ extern "C" __global__ void first_layer_backward_partials(
             unsigned long long i = (unsigned long long)bv * H + unit;
             float removed = acc[i] - feature_weight(weights, feature, unit, H, p);
             // Inverse rotation applies to A, the accumulator, and output weights.
-            sum += (double)d_acc[i]
-                 - (double)d * (double)output[v * H + unit]
-                   * (double)derivative(removed);
+            sum += d_acc[i] - d * output[v * H + unit] * derivative(removed);
         }
         first_partials[(unsigned long long)segment * H + j] = sum;
     }
@@ -47,7 +45,7 @@ extern "C" __global__ void first_layer_backward_reduce(
     for (unsigned segment = begin; segment < end; ++segment) {
         sum += first_partials[(unsigned long long)segment * H + j];
     }
-    // Cast only after all f64 partials; empty rows and the padding row write 0.
+    // Reduce the f32 segment sums in f64; empty rows and the padding row write 0.
     d_first[t] = (float)sum;
 }
 
@@ -61,7 +59,7 @@ extern "C" __global__ void linear_backward_partials(
     if (segment >= segments) return;
     unsigned begin = linear_segment_offsets[segment];
     unsigned end = linear_segment_offsets[segment + 1];
-    double sums[2] = {0, 0};
+    float sums[2] = {0, 0};
     for (unsigned e = begin + lane; e < end; e += 32) {
         unsigned word = linear_entries[e];
         unsigned b = word >> 10;
@@ -70,8 +68,7 @@ extern "C" __global__ void linear_backward_partials(
         float phi = (float)min(90, max(0, (int)counts[b] - 3)) / 90.0f;
         float u[2] = {phi, 1.0f - phi};
         for (unsigned endpoint = 0; endpoint < 2; ++endpoint) {
-            sums[endpoint] += (double)c[b * 2 + endpoint]
-                            - (double)d * (double)u[endpoint] / (double)K;
+            sums[endpoint] += c[b * 2 + endpoint] - d * u[endpoint] / K;
         }
     }
     // Every lane participates, with zero for an incomplete interval. This fixed

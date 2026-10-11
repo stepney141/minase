@@ -1,6 +1,6 @@
 // One 128-thread block owns one position, with one warp per removal column.
 // Scratch is 2,008 bytes, independent of H; accumulator components keep their
-// fixed-order sums in double registers.
+// fixed-order sums in float registers.
 struct RemovalScratch {
     long long reference_sum[2];
     double linear_sum[2];
@@ -227,15 +227,18 @@ extern "C" __global__ void removal_forward(
     for (unsigned vj = threadIdx.x; vj < 2 * H; vj += blockDim.x) {
         unsigned v = vj / H;
         unsigned j = vj % H;
-        double acc_sum = 0;
-        double output_sum = 0;
+        // The products stay in f32 (f64 arithmetic runs at 1/64 rate on GeForce),
+        // but the 144-term sums cancel heavily when summed over positions, so
+        // accumulate in f64 to stay within the equivalence tolerance.
+        double acc_sum = 0.0;
+        double output_sum = 0.0;
         for (unsigned col = 0; col < 144; ++col) {
             if (!shared.active[col]) continue;
             unsigned feature = position_features[v * 145 + col];
             float after = acc[offset + vj] - feature_weight(weights, feature, j, H, p);
-            double d = (double)shared.d[col];
-            acc_sum += d * (double)output[vj] * (double)derivative(after);
-            output_sum += d * (double)screlu(after);
+            float d = shared.d[col];
+            acc_sum += (double)(d * output[vj] * derivative(after));
+            output_sum += (double)(d * screlu(after));
         }
         removal_acc[offset + vj] = (float)acc_sum;
         removal_output[offset + vj] = (float)output_sum;
