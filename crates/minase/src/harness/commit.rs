@@ -123,8 +123,13 @@ pub fn resolve_commit(
             Err(command_error("tar -xf", &extract_output))
         } else {
             (|| {
+                // 成果物は展開したソースの`target/`に置く。`--target-dir`を明示しないと、
+                // 環境変数`CARGO_TARGET_DIR`（コンテナイメージの`run.sh`が設定する）が
+                // 効いて別の場所へ出力され、下の`target/release`からの取り込みが
+                // `NotFound`で失敗する。
                 let mut command = Command::new("cargo");
-                command.args(["build", "--release", "--bin", "minase"]);
+                command.args(["build", "--release", "--bin", "minase", "--target-dir"]);
+                command.arg(source_tree.join("target"));
                 if let Some(feature) = feature {
                     command.args(["--features", feature]);
                 }
