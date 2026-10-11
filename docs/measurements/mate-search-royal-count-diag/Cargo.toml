@@ -1,0 +1,12 @@
+[package]
+name = "royal-diag"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+minase-core = { path = "../../../crates/minase-core" }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.140"
+
+[profile.release]
+opt-level = 3

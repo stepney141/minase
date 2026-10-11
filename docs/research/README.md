@@ -25,6 +25,7 @@ Stockfishのコミットを引用するときは、ローカルにクローン�
 - [SPSAの反復予算の決め方](spsa-iteration-budget.md)は、対局予算から反復数を決め、停止後に原因と採否を分けて扱う方法をまとめる。
 - [チェスエンジンのSPSA調整で使われた対局数](chess-engine-spsa-session-sizes.md)は、StockfishとOpenBench上の公開記録から係数の数と実績局数を集める。
 - [AlphaZero型の深層強化学習の先行実装調査](alphazero-prior-art.md)は、lc0とdlshogiを中心に、学習アルゴリズム、MCTSの実装、Rustからの推論ランタイム、および複数の探索方式の共存方法を調べる。
+- [詰み探索（df-pn）の先行研究と既存実装の調査](mate-search-prior-art.md)は、証明数探索の一次文献と将棋の詰将棋ソルバ6系統のソースを調べ、持ち駒と単一の王に依存する技法を除いて中将棋へ持ち込める要素と、中将棋の規則から定義し直す終端条件と反復の扱いを整理する。
 
 ## 評価関数と教師データ
 

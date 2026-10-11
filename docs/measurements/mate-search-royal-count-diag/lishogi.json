@@ -1,0 +1,107 @@
+{
+  "games_total": 23567,
+  "games_replayed": 22855,
+  "excluded": {
+    "illegal_move_under_LISHOGI": 1,
+    "initialSfen_present": 459,
+    "no_moves": 247,
+    "status_noStart": 5
+  },
+  "illegal_move_games": 1,
+  "remaining_after_result_games": 0,
+  "end_reasons": {
+    "bareKing / Win:BareKing": 822,
+    "draw / Draw:BareKing": 3,
+    "draw / Draw:Repetition": 1,
+    "draw / Win:Repetition": 1,
+    "draw / none": 194,
+    "outoftime / none": 4187,
+    "perpetualCheck / Win:Repetition": 27,
+    "repetition / Draw:Repetition": 22,
+    "resign / none": 11394,
+    "royalsLost / Win:RoyalCapture": 5744,
+    "timeout / none": 460
+  },
+  "adjudication_mismatch": 1,
+  "twin_mate": {
+    "bareKing / twin:mate-then-continued-1-2-plies": 32,
+    "bareKing / twin:mate-then-continued-3-10-plies": 26,
+    "bareKing / twin:mate-then-continued->10-plies": 25,
+    "bareKing / twin:no-mate / twin:Win:BareKing": 739,
+    "draw / twin:mate-then-continued->10-plies": 1,
+    "draw / twin:no-mate / twin:Draw:BareKing": 3,
+    "draw / twin:no-mate / twin:Draw:Repetition": 1,
+    "draw / twin:no-mate / twin:Win:Repetition": 1,
+    "draw / twin:no-mate / twin:none": 193,
+    "outoftime / twin:mate-at-final-ply": 11,
+    "outoftime / twin:mate-then-continued-1-2-plies": 2,
+    "outoftime / twin:mate-then-continued-3-10-plies": 1,
+    "outoftime / twin:mate-then-continued->10-plies": 4,
+    "outoftime / twin:no-mate / twin:none": 4169,
+    "perpetualCheck / twin:no-mate / twin:Win:Repetition": 27,
+    "repetition / twin:no-mate / twin:Draw:Repetition": 22,
+    "resign / twin:mate-at-final-ply": 540,
+    "resign / twin:mate-then-continued-1-2-plies": 39,
+    "resign / twin:mate-then-continued-3-10-plies": 1,
+    "resign / twin:mate-then-continued->10-plies": 1,
+    "resign / twin:no-mate / twin:none": 10813,
+    "royalsLost / twin:mate-then-continued-1-2-plies": 3501,
+    "royalsLost / twin:mate-then-continued-3-10-plies": 255,
+    "royalsLost / twin:mate-then-continued->10-plies": 51,
+    "royalsLost / twin:no-mate / twin:Win:RoyalCapture": 1937,
+    "timeout / twin:mate-at-final-ply": 1,
+    "timeout / twin:no-mate / twin:none": 459
+  },
+  "royals_at_offset": {
+    "minus0": {
+      "loser0_winner1": 5526,
+      "loser0_winner2": 218,
+      "loser1_winner1": 16566,
+      "loser1_winner2": 244,
+      "loser2_winner1": 52,
+      "loser2_winner2": 4
+    },
+    "minus1": {
+      "loser1_winner1": 22060,
+      "loser1_winner2": 464,
+      "loser2_winner1": 80,
+      "loser2_winner2": 6
+    },
+    "minus10": {
+      "loser1_winner1": 19432,
+      "loser1_winner2": 556,
+      "loser2_winner1": 125,
+      "loser2_winner2": 10,
+      "too_short": 2487
+    },
+    "minus20": {
+      "loser1_winner1": 17754,
+      "loser1_winner2": 535,
+      "loser2_winner1": 134,
+      "loser2_winner2": 11,
+      "too_short": 4176
+    }
+  },
+  "royals_final_no_winner": {
+    "black1_white1": 243,
+    "black1_white2": 1,
+    "black2_white1": 1
+  },
+  "positions_total": 3636001,
+  "positions_opp_two_royals": 49610,
+  "positions_stm_two_royals": 48432,
+  "games_with_prince": 1171,
+  "games_with_prince_by_reason": {
+    "bareKing / Win:BareKing": 361,
+    "draw / Draw:BareKing": 1,
+    "draw / none": 5,
+    "outoftime / none": 29,
+    "perpetualCheck / Win:Repetition": 2,
+    "repetition / Draw:Repetition": 3,
+    "resign / none": 250,
+    "royalsLost / Win:RoyalCapture": 519,
+    "timeout / none": 1
+  },
+  "royal_capture_dumps": [],
+  "plies_total": 3613146
+}

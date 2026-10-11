@@ -1,0 +1,147 @@
+{
+  "games_total": 1816,
+  "games_replayed": 1790,
+  "excluded": {
+    "cutoff_max_ply": 26
+  },
+  "illegal_move_games": 0,
+  "remaining_after_result_games": 0,
+  "end_reasons": {
+    "Draw:Repetition": 56,
+    "Win:Mate": 1629,
+    "Win:PieceExhaustion": 7,
+    "Win:Repetition": 92,
+    "Win:RoyalCapture": 6
+  },
+  "adjudication_mismatch": 0,
+  "twin_mate": {},
+  "royals_at_offset": {
+    "minus0": {
+      "loser0_winner1": 6,
+      "loser1_winner1": 1646,
+      "loser1_winner2": 82
+    },
+    "minus1": {
+      "loser1_winner1": 1650,
+      "loser1_winner2": 82,
+      "loser2_winner1": 2
+    },
+    "minus10": {
+      "loser1_winner1": 1651,
+      "loser1_winner2": 83
+    },
+    "minus20": {
+      "loser1_winner1": 1647,
+      "loser1_winner2": 75,
+      "loser2_winner1": 6,
+      "too_short": 6
+    }
+  },
+  "royals_final_no_winner": {
+    "black1_white1": 55,
+    "black1_white2": 1
+  },
+  "positions_total": 903094,
+  "positions_opp_two_royals": 7151,
+  "positions_stm_two_royals": 6902,
+  "games_with_prince": 238,
+  "games_with_prince_by_reason": {
+    "Draw:Repetition": 1,
+    "Win:Mate": 227,
+    "Win:PieceExhaustion": 3,
+    "Win:Repetition": 7
+  },
+  "royal_capture_dumps": [
+    {
+      "id": "data/matches/move-ordering-all-ltc/pairs/00000000000000000029.json#0",
+      "plies": 12,
+      "royals_before_last": {
+        "black": 1,
+        "white": 1
+      },
+      "royals_final": {
+        "black": 0,
+        "white": 1
+      },
+      "sfen_before_last": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pp1ppppppppp/2pi4i3/12/3I8/7PI3/PPP1PPP1PPPP/MVRHD1QDHRVM/A1BNTnXTGB1A/LFCSGKE1SCFL w",
+      "sfen_final": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pp1ppppppppp/2pi4i3/12/3I8/7PI3/PPP1PPP1PPPP/MVRHD1QDHRVM/A1BNT1XTGB1A/LFCSG1n1SCFL b",
+      "winner": "Some(White)"
+    },
+    {
+      "id": "data/matches/move-ordering-all-ltc/pairs/00000000000000000029.json#1",
+      "plies": 12,
+      "royals_before_last": {
+        "black": 1,
+        "white": 1
+      },
+      "royals_final": {
+        "black": 0,
+        "white": 1
+      },
+      "sfen_before_last": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pp1ppppppppp/2pi4i3/12/3I8/7PI3/PPP1PPP1PPPP/MVRHD1QDHRVM/A1BNTnXTGB1A/LFCSGKE1SCFL w",
+      "sfen_final": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pp1ppppppppp/2pi4i3/12/3I8/7PI3/PPP1PPP1PPPP/MVRHD1QDHRVM/A1BNT1XTGB1A/LFCSG1n1SCFL b",
+      "winner": "Some(White)"
+    },
+    {
+      "id": "data/matches/move-ordering-all-stc/pairs/00000000000000000242.json#0",
+      "plies": 12,
+      "royals_before_last": {
+        "black": 1,
+        "white": 1
+      },
+      "royals_final": {
+        "black": 0,
+        "white": 1
+      },
+      "sfen_before_last": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/p1pppppppppp/1p1i4i3/12/12/1P1I4I1PP/P1PP1PPPPPV1/MVRnDNQ1HR1M/ACB1TOXTDB1A/LF1SGKEGSCFL w",
+      "sfen_final": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/p1pppppppppp/1p1i4i3/12/12/1P1I4I1PP/P1PP1PPPPPV1/MVR1DNQ1HR1M/ACB2OXTDB1A/LF1SGnEGSCFL b",
+      "winner": "Some(White)"
+    },
+    {
+      "id": "data/matches/move-ordering-all-stc/pairs/00000000000000000242.json#1",
+      "plies": 12,
+      "royals_before_last": {
+        "black": 1,
+        "white": 1
+      },
+      "royals_final": {
+        "black": 0,
+        "white": 1
+      },
+      "sfen_before_last": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/p1pppppppppp/1p1i4i3/12/12/1P1I4I1PP/P1PP1PPPPPV1/MVRnDNQ1HR1M/ACB1TOXTDB1A/LF1SGKEGSCFL w",
+      "sfen_final": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/p1pppppppppp/1p1i4i3/12/12/1P1I4I1PP/P1PP1PPPPPV1/MVR1DNQ1HR1M/ACB2OXTDB1A/LF1SGnEGSCFL b",
+      "winner": "Some(White)"
+    },
+    {
+      "id": "data/matches/move-ordering-all-stc/pairs/00000000000000000301.json#0",
+      "plies": 10,
+      "royals_before_last": {
+        "black": 1,
+        "white": 1
+      },
+      "royals_final": {
+        "black": 0,
+        "white": 1
+      },
+      "sfen_before_last": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pppppppppppp/3i4i3/12/12/3I1P2IPP1/PPPP2PPP2P/MVRHn1QDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL w",
+      "sfen_final": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pppppppppppp/3i4i3/12/12/3I1P2IPP1/PPPP2PPP2P/MVRH2QDHRVM/A1B1T1XT1B1A/LFCSGnEGSCFL b",
+      "winner": "Some(White)"
+    },
+    {
+      "id": "data/matches/move-ordering-all-stc/pairs/00000000000000000301.json#1",
+      "plies": 10,
+      "royals_before_last": {
+        "black": 1,
+        "white": 1
+      },
+      "royals_final": {
+        "black": 0,
+        "white": 1
+      },
+      "sfen_before_last": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pppppppppppp/3i4i3/12/12/3I1P2IPP1/PPPP2PPP2P/MVRHn1QDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL w",
+      "sfen_final": "lfcsgekgscfl/a1b1txot1b1a/mvrhdq1dhrvm/pppppppppppp/3i4i3/12/12/3I1P2IPP1/PPPP2PPP2P/MVRH2QDHRVM/A1B1T1XT1B1A/LFCSGnEGSCFL b",
+      "winner": "Some(White)"
+    }
+  ],
+  "plies_total": 901304
+}
