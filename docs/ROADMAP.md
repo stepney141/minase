@@ -81,6 +81,7 @@
 | 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
 | NNUEの共通土台と初代のネットによるPST＋FMの完全代替 | [plans/nnue-replacement.md](plans/nnue-replacement.md) | 進行中 | |
 | 手の順序付けの改善 | [plans/move-ordering.md](plans/move-ordering.md) | 完了（採用） | 2026年10月10日 |
+| Rust製NNUE学習器（GPU） | [plans/nnue-trainer-rust.md](plans/nnue-trainer-rust.md) | 起案 | |
 
 ## 現在地
 
