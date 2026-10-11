@@ -253,6 +253,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
         };
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &nnue,
             &position,
@@ -261,6 +262,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         searcher.ponder_iteration = Some(PonderIteration {
             started: ms(t),
@@ -412,12 +414,15 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                         &shared,
                         &table,
                         history,
+                        &mut crate::search::alphabeta::capture_history::CaptureHistory::new(),
                     );
                     completed.wait();
                     return outcome;
                 }
                 let mut butterfly_history =
                     Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+                let mut capture_history =
+                    crate::search::alphabeta::capture_history::CaptureHistory::new();
                 let mut searcher = new_searcher(
                     &nnue,
                     &position,
@@ -426,6 +431,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
                     &shared,
                     &table,
                     &mut butterfly_history,
+                    &mut capture_history,
                 );
                 if targeted_with_remaining_time {
                     // 持ち時間期では対象の探索にも当て直しを適用する。
@@ -542,6 +548,8 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                 };
                 let mut history =
                     Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+                let mut capture_history =
+                    crate::search::alphabeta::capture_history::CaptureHistory::new();
                 let mut searcher = new_searcher(
                     &nnue,
                     &position,
@@ -550,6 +558,7 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
                     &shared,
                     &table,
                     &mut history,
+                    &mut capture_history,
                 );
                 searcher.ponder_iteration = Some(PonderIteration {
                     started: ms(90_000),

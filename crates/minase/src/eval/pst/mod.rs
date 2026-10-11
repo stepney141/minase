@@ -13,7 +13,7 @@ pub use format::Error;
 use std::sync::{Arc, OnceLock};
 
 use self::features::{FEATURE_COUNT, active_features, piece_state};
-use minase_core::{Color, PieceCode, PieceKind, Position, Square};
+use minase_core::{Color, Move, PieceCode, PieceKind, Position, Square};
 
 /// 駒種と現在の成り可否を区別した駒状態の総数。
 pub const PIECE_STATE_COUNT: usize = features::PIECE_STATE_COUNT;
@@ -50,6 +50,27 @@ pub struct Pst {
 }
 
 impl Pst {
+    /// `docs/plans/move-ordering.md`「候補5」の同点破りに使う、手番側視点のPST差分。
+    /// FMは含めず、補間後の除算前の分子を返す。
+    pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
+        let side = position.side_to_move();
+        let piece = position.piece_at(mv.from).expect("quiet mover exists");
+        let piece_after = if mv.promote {
+            piece.promote().expect("legal promotion")
+        } else {
+            piece
+        };
+        let from = self.weights[features::feature_index(side, piece, mv.from)];
+        let to = self.weights[features::feature_index(side, piece_after, mv.to)];
+        interpolation_numerator(
+            [
+                i32::from(to[0]) - i32::from(from[0]),
+                i32::from(to[1]) - i32::from(from[1]),
+            ],
+            phase(position.occupied().popcount()),
+        )
+    }
+
     /// 盤上の駒コードに対応する駒価値をセンチポーンで返す。
     ///
     /// 値はMNPT本体に格納した探索用駒価値を使う。

@@ -1868,6 +1868,89 @@ mod tests {
     use minase_core::Rules;
     use minase_core::rules::RuleCode;
 
+    /// 候補4: 置換表の初期化とワーカー数の変更は捕獲履歴も全消去する。
+    #[test]
+    fn capture_history_clears_on_new_game_accepted_settings_and_changed_threads() {
+        for (command, workers) in [
+            ("usinewgame", 4),
+            ("setoption name RuleSet value L0,P0,R2,E0", 4),
+            ("setoption name USI_Hash value 2", 4),
+            ("setoption name Threads value 2", 2),
+        ] {
+            let mut engine = make_engine(&[RuleCode::R1]);
+            let mut protocol = UsiProtocol::new(&engine);
+            run(
+                &mut protocol,
+                &mut engine,
+                "setoption name USI_Hash value 1\nsetoption name Threads value 4\nposition startpos\n",
+            );
+            for history in &mut protocol.histories.as_mut().unwrap().capture {
+                history.values_mut().fill(-100);
+            }
+            let output = run(&mut protocol, &mut engine, command);
+            assert!(!output.contains("error"), "{command}: {output}");
+            let histories = protocol.histories.as_ref().unwrap();
+            assert_eq!(histories.capture.len(), workers);
+            assert!(
+                histories
+                    .capture
+                    .iter()
+                    .all(|history| history.values().iter().all(|&value| value == 0)),
+                "{command}"
+            );
+        }
+    }
+
+    /// 候補4: 拒否された設定と同じワーカー数の再指定では捕獲履歴を保持する。
+    #[test]
+    fn capture_history_preserves_rejected_settings_and_unchanged_threads() {
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine);
+        run(
+            &mut protocol,
+            &mut engine,
+            "setoption name USI_Hash value 1\nsetoption name Threads value 4\nposition startpos\n",
+        );
+        for (worker, history) in protocol
+            .histories
+            .as_mut()
+            .unwrap()
+            .capture
+            .iter_mut()
+            .enumerate()
+        {
+            history.values_mut().fill(worker as i32 + 100);
+        }
+        for command in [
+            "setoption name RuleSet value XX9",
+            "setoption name RuleSet value L1,E1",
+            "setoption name Threads value 0",
+            "setoption name Threads value 257",
+            "setoption name USI_Hash value 0",
+            "setoption name Threads value 4",
+            "position startpos",
+            "isready",
+        ] {
+            run(&mut protocol, &mut engine, command);
+            for (worker, history) in protocol
+                .histories
+                .as_ref()
+                .unwrap()
+                .capture
+                .iter()
+                .enumerate()
+            {
+                assert!(
+                    history
+                        .values()
+                        .iter()
+                        .all(|&value| value == worker as i32 + 100),
+                    "{command}"
+                );
+            }
+        }
+    }
+
     /// RULES.md第5条の初期配置に対応する2欄SFEN（盤面部と手番部、D6-USI-10）。
     const INITIAL_BOARD: &str = "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b";
 

@@ -13,6 +13,7 @@ use minase_core::mv::Move;
 use minase_core::piece::{PIECE_KIND_COUNT, PieceCode, PieceKind};
 use minase_core::position::Position;
 
+use super::capture_history::CaptureHistory;
 use super::ordering::piece_at_for_ordering;
 use super::params;
 use super::pruning::capture_is_pruned_by_see;
@@ -111,6 +112,7 @@ impl Searcher<'_> {
             &self.generator,
             self.nnue,
             &self.capture_ranks,
+            self.capture_history,
         ) {
             let mv = candidate.capture.mv;
             let buffers = &self.qsearch[ply as usize];
@@ -192,6 +194,7 @@ impl Searcher<'_> {
 pub(super) struct QsearchCapture {
     pub(super) capture: CaptureCandidate,
     pub(super) captured_value: i32,
+    history: i32,
     attacker_value: i32,
     // 駒種の添字は0..29、升の生値は最大187（16×11+11）なのでu8に収まる。
     origin_key: (u8, u8),
@@ -201,10 +204,11 @@ pub(super) struct QsearchCapture {
 }
 
 impl QsearchCapture {
-    fn new(nnue: &Nnue, capture: CaptureCandidate, captured_value: i32) -> Self {
+    fn new(nnue: &Nnue, capture: CaptureCandidate, captured_value: i32, history: i32) -> Self {
         let piece = capture.piece;
         Self {
             captured_value,
+            history,
             attacker_value: nnue.piece_value(piece),
             origin_key: (
                 piece.kind().expect("capture origin has a kind").index() as u8,
@@ -348,7 +352,7 @@ impl QsearchBuffers {
             {
                 return;
             }
-            let mut candidate = QsearchCapture::new(nnue, capture, captured_value);
+            let mut candidate = QsearchCapture::new(nnue, capture, captured_value, 0);
             candidate.seq = self.special.len() as u16;
             self.special.push(candidate);
         });
@@ -413,6 +417,7 @@ impl QsearchBuffers {
         generator: &MoveGenerator,
         nnue: &Nnue,
         ranks: &CaptureRanks,
+        capture_history: &CaptureHistory,
     ) -> Option<()> {
         let rank = self.present_ranks.trailing_zeros() as usize;
         let ordinary_value = (self.present_ranks != 0).then(|| ranks.values[rank]);
@@ -438,20 +443,27 @@ impl QsearchBuffers {
         self.group.clear();
         self.cursor = 0;
         generator.emit_ordinary_captures(position, &self.capturers, targets, &mut |capture| {
-            let mut candidate = QsearchCapture::new(nnue, capture, value);
+            let history = capture_history.read(position, nnue, capture.mv);
+            let mut candidate = QsearchCapture::new(nnue, capture, value, history);
             candidate.seq = self.group.len() as u16;
             self.group.push(candidate);
         });
         if special_start == self.special_cursor {
             self.group
-                .sort_unstable_by_key(|c| (c.attacker_value, c.seq));
+                .sort_unstable_by_key(|c| (Reverse(c.history), c.attacker_value, c.seq));
         } else {
             self.group
-                .extend_from_slice(&self.special[special_start..self.special_cursor]);
+                .extend(self.special[special_start..self.special_cursor].iter().map(
+                    |&candidate| QsearchCapture {
+                        history: capture_history.read(position, nnue, candidate.capture.mv),
+                        ..candidate
+                    },
+                ));
             // 駒種と移動元は通常駒・特殊駒で重ならない。各列の連番と合わせると、
             // 公開生成順で合流してから安定整列した順序に一致する。
-            self.group
-                .sort_unstable_by_key(|c| (c.attacker_value, c.origin_key, c.seq));
+            self.group.sort_unstable_by_key(|c| {
+                (Reverse(c.history), c.attacker_value, c.origin_key, c.seq)
+            });
         }
         Some(())
     }
@@ -463,6 +475,7 @@ impl QsearchBuffers {
         generator: &MoveGenerator,
         nnue: &Nnue,
         ranks: &CaptureRanks,
+        capture_history: &CaptureHistory,
     ) -> Option<QsearchCapture> {
         if self.tt_pending {
             self.tt_pending = false;
@@ -481,6 +494,7 @@ impl QsearchBuffers {
                     captured,
                 },
                 captured_value,
+                0,
             ));
         }
         loop {
@@ -490,7 +504,7 @@ impl QsearchBuffers {
                     return Some(candidate);
                 }
             }
-            self.generate_group(position, generator, nnue, ranks)?;
+            self.generate_group(position, generator, nnue, ranks, capture_history)?;
         }
     }
 }

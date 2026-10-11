@@ -329,6 +329,7 @@ fn interrupted_null_move_restores_repetition_scope() {
         let table = small_tt();
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &nnue,
             &root,
@@ -337,6 +338,7 @@ fn interrupted_null_move_restores_repetition_scope() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         if nested {
             set_outer_null_path(&mut searcher, &root);
@@ -357,5 +359,65 @@ fn interrupted_null_move_restores_repetition_scope() {
         assert_eq!(searcher.path_keys, path);
         assert_eq!(searcher.null_move_ply, null_ply);
         assert_eq!(searcher.null_move_boundary, boundary);
+    }
+}
+
+/// move-ordering.md「候補2」: 対象ノードだけkillerを先に読み、捕獲の部分木を省く。
+#[test]
+fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
+    let (board, capture, killers) = super::ordering::losing_capture_fixture();
+    let killer = killers[0].unwrap();
+    let mut killer_child = board.clone();
+    killer_child.make_move_unchecked(killer, engine_rules());
+    // 深さは要求値。4はIIR後に3となり対象、5は4となり対象外である。
+    for (depth, width, tt_move, expected) in [
+        (1, 1, None, killer),
+        (2, 1, None, killer),
+        (3, 1, None, killer),
+        (4, 1, None, killer),
+        (5, 1, None, capture),
+        (2, 2, None, capture),
+        (2, 1, Some(capture), capture),
+    ] {
+        with_root_searcher(&board, &[], |searcher| {
+            searcher.killers[0] = killers;
+            // null moveを無効にし、実着手による打ち切りだけを検査する。
+            searcher.null_move_ply = Some(0);
+            let static_eval = evaluate(searcher.nnue, &board);
+            // 親ではrazoring、深さ1のkillerの子ではstand-patによる打ち切りを避ける。
+            // 子の評価を親の手番へ戻し、子の静止探索が置換表を読む窓にする。
+            let alpha = static_eval.min(-evaluate(searcher.nnue, &killer_child)) - 1;
+            let beta = alpha + width;
+            assert!(
+                static_eval
+                    - super::super::pruning::reverse_futility_margin(searcher.nnue.pawn_value())
+                    < beta,
+                "親のreverse futilityが働かない窓で検査する"
+            );
+            if let Some(mv) = tt_move {
+                searcher
+                    .tt
+                    .store(search_key(&board), 0, 0, Bound::Upper, Some(mv), 0);
+            }
+            for (mv, score) in [(killer, beta), (capture, beta + 100)] {
+                let mut child = board.clone();
+                child.make_move_unchecked(mv, engine_rules());
+                searcher
+                    .tt
+                    .store(search_key(&child), 5, -score, Bound::Exact, None, 1);
+            }
+            let mut current = board.clone();
+            assert_eq!(
+                searcher.negamax(&mut current, depth, alpha, beta, 0),
+                Some(if expected == killer { beta } else { beta + 100 }),
+                "depth={depth}, width={width}, tt_move={tt_move:?}",
+            );
+            assert_eq!(searcher.nodes, 1, "先頭の1手だけで打ち切る");
+            assert_eq!(
+                searcher.tt.probe(search_key(&board), 0).unwrap().best_move,
+                Some(expected)
+            );
+            assert_eq!(current, board);
+        });
     }
 }

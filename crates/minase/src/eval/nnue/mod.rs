@@ -5,9 +5,9 @@ mod format;
 #[cfg(test)]
 mod tests;
 
-use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, piece_state};
+use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
 pub use format::Error;
-use minase_core::{Color, PieceCode, PieceKind, Position};
+use minase_core::{Color, Move, PieceCode, PieceKind, Position};
 use std::sync::{Arc, OnceLock};
 
 const EVALUATION_LIMIT: i32 = 28_999;
@@ -79,6 +79,26 @@ impl Nnue {
     /// 第1層の幅Hを返す。
     pub const fn width(&self) -> usize {
         self.width
+    }
+
+    /// `docs/plans/move-ordering.md`「候補5」の同点破りに使う、手番側視点の線形経路（PST）の差分。
+    /// 非線形経路は含めず、補間後の除算前の分子を返す。
+    pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
+        let side = position.side_to_move();
+        let piece = position.piece_at(mv.from).expect("quiet mover exists");
+        let piece_after = if mv.promote {
+            piece.promote().expect("legal promotion")
+        } else {
+            piece
+        };
+        let from = self.linear[feature_index(side, piece, mv.from)];
+        let to = self.linear[feature_index(side, piece_after, mv.to)];
+        let q = i64::from(position.occupied().popcount().saturating_sub(2)).min(90);
+        let [mg, eg] = [
+            i64::from(to[0]) - i64::from(from[0]),
+            i64::from(to[1]) - i64::from(from[1]),
+        ];
+        q * mg + (90 - q) * eg
     }
 
     /// 生成時の規則セット名を返す。

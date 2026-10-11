@@ -1,6 +1,7 @@
 //! movegen-speedup.md「静止探索の捕獲を段階的に生成する」の残存手順契約。
 
 use super::*;
+use crate::search::alphabeta::capture_history::CaptureHistory;
 use minase_core::test_util::{CAPTURE_EDGE_SFENS, capture_test_positions, capture_test_rules};
 
 fn public_reference(
@@ -40,6 +41,7 @@ fn reference(
 fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
     let nnue = crate::eval::weights().unwrap();
     let ranks = CaptureRanks::new(&nnue);
+    let capture_history = CaptureHistory::new();
     let positions = capture_test_positions();
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
@@ -83,7 +85,9 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
                     buffers.initialize(position, &generator, &nnue, &ranks, threshold);
                     buffers.set_tt_move(position, &generator, tt_move);
                     let mut actual = Vec::new();
-                    while let Some(candidate) = buffers.next(position, &generator, &nnue, &ranks) {
+                    while let Some(candidate) =
+                        buffers.next(position, &generator, &nnue, &ranks, &capture_history)
+                    {
                         if candidate.captured_value > threshold
                             || captures_last_royal(position, candidate.capture.mv)
                         {
@@ -105,13 +109,18 @@ fn staged_captures_match_reference_for_rules_tt_moves_and_thresholds() {
 fn stopping_in_first_group_leaves_later_groups_ungenerated() {
     let nnue = crate::eval::weights().unwrap();
     let ranks = CaptureRanks::new(&nnue);
+    let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::standard();
     let position = minase_core::parse_sfen("12/2p1q7/2R1R7/12/12/12/12/12/12/12/12/11K b").unwrap();
     let mut buffers = QsearchBuffers::default();
     buffers.reset(&position);
     buffers.initialize(&position, &generator, &nnue, &ranks, -1);
     buffers.set_tt_move(&position, &generator, None);
-    assert!(buffers.next(&position, &generator, &nnue, &ranks).is_some());
+    assert!(
+        buffers
+            .next(&position, &generator, &nnue, &ranks, &capture_history)
+            .is_some()
+    );
     let ordered = reference(&position, &generator, &nnue, None);
     let first_value = ordered[0].1.captured_value;
     assert_ne!(buffers.present_ranks, 0);
@@ -133,6 +142,7 @@ fn stopping_in_first_group_leaves_later_groups_ungenerated() {
 fn double_capture_survives_when_each_victim_is_at_the_threshold() {
     let nnue = crate::eval::weights().unwrap();
     let ranks = CaptureRanks::new(&nnue);
+    let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::standard();
     let position = minase_core::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
     let threshold = nnue.pawn_value();
@@ -141,7 +151,7 @@ fn double_capture_survives_when_each_victim_is_at_the_threshold() {
     buffers.initialize(&position, &generator, &nnue, &ranks, threshold);
     buffers.set_tt_move(&position, &generator, None);
     let mut surviving = Vec::new();
-    while let Some(c) = buffers.next(&position, &generator, &nnue, &ranks) {
+    while let Some(c) = buffers.next(&position, &generator, &nnue, &ranks, &capture_history) {
         if c.captured_value > threshold {
             surviving.push(c);
         }
@@ -159,6 +169,7 @@ fn double_capture_survives_when_each_victim_is_at_the_threshold() {
 fn rising_threshold_preserves_the_surviving_sequence() {
     let nnue = crate::eval::weights().unwrap();
     let ranks = CaptureRanks::new(&nnue);
+    let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::standard();
     let mut buffers = QsearchBuffers::default();
     for position in capture_test_positions() {
@@ -177,7 +188,7 @@ fn rising_threshold_preserves_the_surviving_sequence() {
         buffers.set_tt_move(&position, &generator, tt_move);
         threshold = -1;
         let mut actual = Vec::new();
-        while let Some(c) = buffers.next(&position, &generator, &nnue, &ranks) {
+        while let Some(c) = buffers.next(&position, &generator, &nnue, &ranks, &capture_history) {
             if c.captured_value > threshold || captures_last_royal(&position, c.capture.mv) {
                 actual.push(c.capture.mv);
                 threshold = threshold.max(c.captured_value);
@@ -192,6 +203,7 @@ fn rising_threshold_preserves_the_surviving_sequence() {
 fn warmed_buffers_retain_capacity_across_nodes() {
     let nnue = crate::eval::weights().unwrap();
     let ranks = CaptureRanks::new(&nnue);
+    let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::standard();
     let positions = capture_test_positions();
     let mut buffers = QsearchBuffers::default();
@@ -207,14 +219,20 @@ fn warmed_buffers_retain_capacity_across_nodes() {
         buffers.reset(position);
         buffers.initialize(position, &generator, &nnue, &ranks, -1);
         buffers.set_tt_move(position, &generator, None);
-        while buffers.next(position, &generator, &nnue, &ranks).is_some() {}
+        while buffers
+            .next(position, &generator, &nnue, &ranks, &capture_history)
+            .is_some()
+        {}
     }
     let warmed = capacities(&buffers);
     for position in &positions {
         buffers.reset(position);
         buffers.initialize(position, &generator, &nnue, &ranks, -1);
         buffers.set_tt_move(position, &generator, None);
-        while buffers.next(position, &generator, &nnue, &ranks).is_some() {}
+        while buffers
+            .next(position, &generator, &nnue, &ranks, &capture_history)
+            .is_some()
+        {}
         assert_eq!(capacities(&buffers), warmed);
     }
 }
@@ -248,6 +266,7 @@ fn capture_ranks_preserve_value_order_and_equality() {
 fn reset_discards_targets_from_partially_consumed_node() {
     let nnue = crate::eval::weights().unwrap();
     let ranks = CaptureRanks::new(&nnue);
+    let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::standard();
     let positions = [
         minase_core::parse_sfen("12/2p1q7/2R1R7/12/12/12/12/12/12/12/12/11K b").unwrap(),
@@ -259,13 +278,17 @@ fn reset_discards_targets_from_partially_consumed_node() {
             buffers.reset(first);
             buffers.initialize(first, &generator, &nnue, &ranks, -1);
             buffers.set_tt_move(first, &generator, None);
-            assert!(buffers.next(first, &generator, &nnue, &ranks).is_some());
+            assert!(
+                buffers
+                    .next(first, &generator, &nnue, &ranks, &capture_history)
+                    .is_some()
+            );
             assert_ne!(buffers.present_ranks, 0);
             buffers.reset(second);
             buffers.initialize(second, &generator, &nnue, &ranks, -1);
             buffers.set_tt_move(second, &generator, None);
             let mut actual = Vec::new();
-            while let Some(c) = buffers.next(second, &generator, &nnue, &ranks) {
+            while let Some(c) = buffers.next(second, &generator, &nnue, &ranks, &capture_history) {
                 actual.push(c.capture.mv);
             }
             let expected: Vec<_> = reference(second, &generator, &nnue, None)
@@ -283,6 +306,7 @@ fn reset_discards_targets_from_partially_consumed_node() {
 fn lion_capture_filter_preserves_remaining_tt_variants() {
     let nnue = crate::eval::weights().unwrap();
     let ranks = CaptureRanks::new(&nnue);
+    let capture_history = CaptureHistory::new();
     let position = minase_core::parse_sfen(CAPTURE_EDGE_SFENS[2]).unwrap();
     for rules in capture_test_rules() {
         let generator = MoveGenerator::new(rules);
@@ -317,7 +341,9 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
                 buffers.initialize(&position, &generator, &nnue, &ranks, threshold);
                 buffers.set_tt_move(&position, &generator, tt_move);
                 let mut actual = Vec::new();
-                while let Some(candidate) = buffers.next(&position, &generator, &nnue, &ranks) {
+                while let Some(candidate) =
+                    buffers.next(&position, &generator, &nnue, &ranks, &capture_history)
+                {
                     if candidate.captured_value > threshold
                         || captures_last_royal(&position, candidate.capture.mv)
                     {

@@ -1,0 +1,378 @@
+{
+  "loop_nodes": {
+    "1": 83334,
+    "2": 13179,
+    "3": 5579,
+    "4+": 3620
+  },
+  "w": {
+    "1": {
+      "tt": {
+        "count": 8739,
+        "w_sum": 24884,
+        "first_move_cutoffs": 7303
+      },
+      "capture_see_negative": {
+        "count": 13215,
+        "w_sum": 44726,
+        "first_move_cutoffs": 1933
+      },
+      "capture_other": {
+        "count": 50371,
+        "w_sum": 96304,
+        "first_move_cutoffs": 35280
+      },
+      "killer": {
+        "count": 3772,
+        "w_sum": 473,
+        "first_move_cutoffs": 3695
+      },
+      "quiet": {
+        "count": 11,
+        "w_sum": 3,
+        "first_move_cutoffs": 10
+      }
+    },
+    "2": {
+      "tt": {
+        "count": 5783,
+        "w_sum": 52343,
+        "first_move_cutoffs": 5104
+      },
+      "capture_see_negative": {
+        "count": 658,
+        "w_sum": 6140,
+        "first_move_cutoffs": 129
+      },
+      "capture_other": {
+        "count": 3522,
+        "w_sum": 7612,
+        "first_move_cutoffs": 2784
+      },
+      "killer": {
+        "count": 61,
+        "w_sum": 31,
+        "first_move_cutoffs": 56
+      },
+      "quiet": {
+        "count": 1,
+        "w_sum": 0,
+        "first_move_cutoffs": 1
+      }
+    },
+    "3": {
+      "tt": {
+        "count": 4289,
+        "w_sum": 64762,
+        "first_move_cutoffs": 3945
+      },
+      "capture_see_negative": {
+        "count": 16,
+        "w_sum": 454,
+        "first_move_cutoffs": 2
+      },
+      "capture_other": {
+        "count": 119,
+        "w_sum": 118,
+        "first_move_cutoffs": 110
+      },
+      "killer": {
+        "count": 0,
+        "w_sum": 0,
+        "first_move_cutoffs": 0
+      },
+      "quiet": {
+        "count": 0,
+        "w_sum": 0,
+        "first_move_cutoffs": 0
+      }
+    },
+    "4+": {
+      "tt": {
+        "count": 2476,
+        "w_sum": 59021,
+        "first_move_cutoffs": 2248
+      },
+      "capture_see_negative": {
+        "count": 4,
+        "w_sum": 72,
+        "first_move_cutoffs": 1
+      },
+      "capture_other": {
+        "count": 51,
+        "w_sum": 50,
+        "first_move_cutoffs": 48
+      },
+      "killer": {
+        "count": 0,
+        "w_sum": 0,
+        "first_move_cutoffs": 0
+      },
+      "quiet": {
+        "count": 0,
+        "w_sum": 0,
+        "first_move_cutoffs": 0
+      }
+    }
+  },
+  "cut_move_type": {
+    "1": {
+      "tt": 7303,
+      "capture": 48086,
+      "killer": 20078,
+      "quiet": 641
+    },
+    "2": {
+      "tt": 5104,
+      "capture": 3768,
+      "killer": 916,
+      "quiet": 237
+    },
+    "3": {
+      "tt": 3945,
+      "capture": 181,
+      "killer": 236,
+      "quiet": 62
+    },
+    "4+": {
+      "tt": 2248,
+      "capture": 79,
+      "killer": 156,
+      "quiet": 48
+    }
+  },
+  "no_cutoff_nodes": {
+    "1": 7226,
+    "2": 3154,
+    "3": 1155,
+    "4+": 1089
+  },
+  "cutoff_before_quiets": {
+    "1": 55389,
+    "2": 8872,
+    "3": 4126,
+    "4+": 2327
+  },
+  "capture_head": {
+    "1": {
+      "node_head": {
+        "negative": {
+          "count": 16526,
+          "subtree_sum": 38426,
+          "cut_by_head": 1933
+        },
+        "other": {
+          "count": 52223,
+          "subtree_sum": 85699,
+          "cut_by_head": 35280
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 608,
+          "subtree_sum": 2611,
+          "cut_by_head": 188
+        },
+        "other": {
+          "count": 1469,
+          "subtree_sum": 1666,
+          "cut_by_head": 174
+        }
+      }
+    },
+    "2": {
+      "node_head": {
+        "negative": {
+          "count": 1472,
+          "subtree_sum": 8589,
+          "cut_by_head": 129
+        },
+        "other": {
+          "count": 3875,
+          "subtree_sum": 12571,
+          "cut_by_head": 2784
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 342,
+          "subtree_sum": 955,
+          "cut_by_head": 11
+        },
+        "other": {
+          "count": 841,
+          "subtree_sum": 3590,
+          "cut_by_head": 22
+        }
+      }
+    },
+    "3": {
+      "node_head": {
+        "negative": {
+          "count": 135,
+          "subtree_sum": 412,
+          "cut_by_head": 2
+        },
+        "other": {
+          "count": 217,
+          "subtree_sum": 461,
+          "cut_by_head": 110
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 85,
+          "subtree_sum": 1137,
+          "cut_by_head": 1
+        },
+        "other": {
+          "count": 524,
+          "subtree_sum": 3595,
+          "cut_by_head": 9
+        }
+      }
+    },
+    "4+": {
+      "node_head": {
+        "negative": {
+          "count": 4,
+          "subtree_sum": 19,
+          "cut_by_head": 1
+        },
+        "other": {
+          "count": 51,
+          "subtree_sum": 201,
+          "cut_by_head": 48
+        }
+      },
+      "after_tt": {
+        "negative": {
+          "count": 639,
+          "subtree_sum": 9614,
+          "cut_by_head": 3
+        },
+        "other": {
+          "count": 535,
+          "subtree_sum": 8981,
+          "cut_by_head": 8
+        }
+      }
+    }
+  },
+  "cand1": {
+    "segments": 76711,
+    "segments_changed": 12636,
+    "quiet_cutoff_nodes": 26400,
+    "quiet_cutoff_nodes_with_searched_captures": 18107,
+    "capture_cut_rank": {
+      "count": 52114,
+      "forward": 441,
+      "backward": 1223,
+      "forward_sum": 451,
+      "backward_sum": 1437
+    }
+  },
+  "cand2": {
+    "1": {
+      "no_tt": {
+        "zero_window_nodes": 72810,
+        "head_negative": 16413,
+        "head_negative_subtree_sum": 38162,
+        "head_negative_pruned": 0,
+        "head_negative_with_killer": 16164,
+        "head_negative_with_killer_subtree_sum": 37718,
+        "head_negative_with_killer_cutoff_before_quiets": 4881,
+        "generate_quiets_calls": 16413
+      },
+      "tt": {
+        "zero_window_nodes": 9092,
+        "head_negative": 776,
+        "head_negative_subtree_sum": 2,
+        "head_negative_pruned": 774,
+        "head_negative_with_killer": 722,
+        "head_negative_with_killer_subtree_sum": 2,
+        "head_negative_with_killer_cutoff_before_quiets": 40,
+        "generate_quiets_calls": 776
+      }
+    },
+    "2": {
+      "no_tt": {
+        "zero_window_nodes": 5441,
+        "head_negative": 1454,
+        "head_negative_subtree_sum": 8474,
+        "head_negative_pruned": 0,
+        "head_negative_with_killer": 1446,
+        "head_negative_with_killer_subtree_sum": 8462,
+        "head_negative_with_killer_cutoff_before_quiets": 229,
+        "generate_quiets_calls": 1454
+      },
+      "tt": {
+        "zero_window_nodes": 7295,
+        "head_negative": 1338,
+        "head_negative_subtree_sum": 274,
+        "head_negative_pruned": 1206,
+        "head_negative_with_killer": 1320,
+        "head_negative_with_killer_subtree_sum": 272,
+        "head_negative_with_killer_cutoff_before_quiets": 99,
+        "generate_quiets_calls": 1338
+      }
+    },
+    "3": {
+      "no_tt": {
+        "zero_window_nodes": 350,
+        "head_negative": 134,
+        "head_negative_subtree_sum": 365,
+        "head_negative_pruned": 0,
+        "head_negative_with_killer": 134,
+        "head_negative_with_killer_subtree_sum": 365,
+        "head_negative_with_killer_cutoff_before_quiets": 6,
+        "generate_quiets_calls": 134
+      },
+      "tt": {
+        "zero_window_nodes": 4994,
+        "head_negative": 543,
+        "head_negative_subtree_sum": 3,
+        "head_negative_pruned": 540,
+        "head_negative_with_killer": 540,
+        "head_negative_with_killer_subtree_sum": 3,
+        "head_negative_with_killer_cutoff_before_quiets": 2,
+        "generate_quiets_calls": 543
+      }
+    }
+  },
+  "cand3": {
+    "qnodes": 203086,
+    "groups_ge2": 283703,
+    "groups_head_changed": 58116,
+    "nodes_compared": 203086,
+    "nodes_set_differs": 4599
+  },
+  "cand5": {
+    "quiet_stage_nodes": 13612,
+    "head_changed": 1689,
+    "quiets_total": 1179407,
+    "quiets_history_zero": 1121413,
+    "tie_groups": {
+      "1": 43469,
+      "2-4": 6335,
+      "5-16": 179,
+      "17-64": 2444,
+      "65+": 11168
+    },
+    "quiets_in_tie_groups_ge2": 1135938,
+    "success_moves": {
+      "count": 1632,
+      "forward": 538,
+      "backward": 393,
+      "forward_sum": 12694,
+      "backward_sum": 9879,
+      "from_tie_group_ge2": 961
+    }
+  },
+  "cost": {
+    "see_calls": 82066,
+    "see_ns": 7715523,
+    "generate_quiets_calls": 20658,
+    "generate_quiets_ns": 26293929
+  }
+}

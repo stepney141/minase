@@ -71,10 +71,10 @@ Both `--protocol` and `--rules` are required.
 
 Once its main time is used up, the engine searches each move until the byoyomi minus the USI option `ByoyomiMargin` (milliseconds, default 30).
 The default suits a local GUI on an idle machine.
-Raise it when the move travels over a network or the machine is busy, especially with pondering; the lishogi bot uses 600.
+Raise it when the move travels over a network or the machine is busy, especially with pondering; the lishogi bot uses 3000.
 
 ```text
-setoption name ByoyomiMargin value 600
+setoption name ByoyomiMargin value 3000
 ```
 
 ## Using Minase as a library

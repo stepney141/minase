@@ -164,7 +164,11 @@ impl Searcher<'_> {
                 )
         });
         let late_move_limit = pruning_node.then(|| late_move_limit(depth));
-        self.move_pickers[ply as usize].reset(tt_move, self.killers[ply as usize]);
+        self.move_pickers[ply as usize].reset(
+            tt_move,
+            self.killers[ply as usize],
+            tt_move.is_none() && beta - alpha == 1 && depth <= 3,
+        );
         let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut best_capture = false;
@@ -172,6 +176,7 @@ impl Searcher<'_> {
         let mut index = 0;
         let mut counted_quiets = 0;
         let mut searched_captures = Vec::new();
+        let mut searched_quiets: Vec<Move> = Vec::new();
         // 枝刈りされた候補は探索順位に含めない。
         #[cfg(feature = "search-stats")]
         let mut searched_moves = 0;
@@ -182,7 +187,7 @@ impl Searcher<'_> {
             self.nnue,
             &self.generator,
             self.history,
-            &self.capture_history,
+            self.capture_history,
         ) {
             // docs/plans/search-revival-spsa.md「late move pruningの定義の変更」。
             // 枝刈りした手も数え、判定には現在の手より前の数を使う。
@@ -269,12 +274,20 @@ impl Searcher<'_> {
                         depth,
                     );
                 } else {
-                    self.record_quiet_beta_cutoff(position, mv, depth, ply);
+                    self.capture_history.record_quiet_cutoff(
+                        position,
+                        self.nnue,
+                        &searched_captures,
+                        depth,
+                    );
+                    self.record_quiet_beta_cutoff(position, mv, &searched_quiets, depth, ply);
                 }
                 break;
             }
             if capture {
                 searched_captures.push(mv);
+            } else {
+                searched_quiets.push(mv);
             }
             index += 1;
         }

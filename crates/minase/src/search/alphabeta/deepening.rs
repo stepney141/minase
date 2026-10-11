@@ -11,6 +11,7 @@ use minase_core::mv::Move;
 use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 
+use super::capture_history::CaptureHistory;
 use super::history::HistoryTable;
 use super::root::RootResults;
 use super::searcher::{PonderIteration, Searcher, new_searcher};
@@ -38,11 +39,21 @@ pub(super) fn run_main_worker(
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
     history: &mut HistoryTable,
+    capture_history: &mut CaptureHistory,
     events: Option<(&mpsc::Sender<SearchEvent>, u64)>,
     ponder: bool,
     adopt_partial: bool,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(nnue, position, rules, history_keys, shared, tt, history);
+    let mut searcher = new_searcher(
+        nnue,
+        position,
+        rules,
+        history_keys,
+        shared,
+        tt,
+        history,
+        capture_history,
+    );
     searcher.root_results = adopt_partial.then(RootResults::default);
     #[cfg(feature = "invariants")]
     nnue.assert_accumulator(position, &searcher.accumulators[0], 0);
@@ -183,8 +194,18 @@ pub(super) fn run_auxiliary_worker(
     shared: &SharedSearch<'_>,
     tt: &TranspositionTable,
     history: &mut HistoryTable,
+    capture_history: &mut CaptureHistory,
 ) -> WorkerOutcome {
-    let mut searcher = new_searcher(nnue, position, rules, history_keys, shared, tt, history);
+    let mut searcher = new_searcher(
+        nnue,
+        position,
+        rules,
+        history_keys,
+        shared,
+        tt,
+        history,
+        capture_history,
+    );
     #[cfg(feature = "invariants")]
     nnue.assert_accumulator(position, &searcher.accumulators[0], 0);
     let mut result = SearchResult {

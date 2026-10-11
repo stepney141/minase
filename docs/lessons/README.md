@@ -56,3 +56,4 @@
 - [不採用の枝刈りは数え方を点検し、係数を調整し直してから捨てる](retune-rejected-pruning-before-discarding.md) — 負けた枝刈りは数える対象と保護する手をbenchの計数で点検し、係数を既存の係数とまとめて調整し直した候補で採否を判定し、改良だけを取り除いた版との対局で帰属を確かめる。
 - [リリース設定は使い捨てのクローンで本番を実行して確かめる](rehearse-release-config-in-a-clone.md) — release.tomlを変更したら、リモートを外したクローンで`cargo release --execute`を走らせ、件名、タグ、変更履歴を確かめてから採用する。
 - [明示的SIMDの前に自動ベクトル化の機械語を確かめる](check-autovectorization-before-explicit-simd.md) — SIMDライブラリの導入を検討する前に、対象の核を`#[inline(never)]`にした診断用ビルドの機械語で命令名ごとの出現数を数え、候補のライブラリで同じ核を書いた検証用のcrateの出現数と比べ、命令数が減るかコンパイラが出さない命令を使う核に限って試作する。
+- [通信の余裕は遅れの分布の裾から決める](derive-network-margin-from-latency-tail.md) — 通信を挟む時計の余裕は運用ログで測った遅れの分布の裾から決め、1局で上限まで考える手数を掛けた時間切れの確率で分位点を選ぶ。

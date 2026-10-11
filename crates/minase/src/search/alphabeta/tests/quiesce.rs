@@ -1,6 +1,7 @@
 //! 静止探索を検査する。
 
 use super::*;
+use crate::search::alphabeta::capture_history::CaptureHistory;
 
 // D7-SRCH-08。search.md「静止探索」: 深さ0ではstand-patと捕獲手を探索する。
 // 守られた歩兵を飛車で取る損な交換は静止探索で見抜かれ、最善手にならない。
@@ -339,4 +340,169 @@ fn quiescence_see_pruned_candidates_still_store() {
         (hit.score, hit.bound, hit.best_move),
         (stand_pat, Bound::Exact, None)
     );
+}
+
+fn history_ordering_position() -> (Position, [Move; 6]) {
+    let mut pieces = vec![
+        (sq(11, 0), Color::Black, PieceKind::King),
+        (sq(11, 11), Color::White, PieceKind::King),
+    ];
+    let captures = core::array::from_fn(|i| {
+        let from = sq(2 * i as u8, 4);
+        let to = sq(2 * i as u8, 5);
+        let attacker = if i < 2 {
+            PieceKind::Pawn
+        } else {
+            PieceKind::Rook
+        };
+        let victim = if i == 5 {
+            PieceKind::Rook
+        } else {
+            PieceKind::Pawn
+        };
+        pieces.push((from, Color::Black, attacker));
+        pieces.push((to, Color::White, victim));
+        Move {
+            from,
+            to,
+            mid: None,
+            promote: false,
+        }
+    });
+    (position(Color::Black, &pieces), captures)
+}
+
+fn captures_with_history(
+    board: &Position,
+    nnue: &Nnue,
+    history: &CaptureHistory,
+    tt_move: Option<Move>,
+) -> Vec<Move> {
+    let generator = MoveGenerator::standard();
+    let ranks = CaptureRanks::new(nnue);
+    let mut buffers = QsearchBuffers::default();
+    buffers.reset(board);
+    assert!(buffers.initialize(board, &generator, nnue, &ranks, -1));
+    buffers.set_tt_move(board, &generator, tt_move);
+    std::iter::from_fn(|| buffers.next(board, &generator, nnue, &ranks, history))
+        .map(|candidate| candidate.capture.mv)
+        .collect()
+}
+
+// move-ordering.md「候補3」: 生の履歴を優先し、同点なら攻撃駒価値と生成順を保つ。
+#[test]
+fn quiescence_capture_history_orders_within_group_using_raw_values() {
+    let (board, moves) = history_ordering_position();
+    let nnue = weights().unwrap();
+    let mut history = CaptureHistory::new();
+    assert_eq!(
+        captures_with_history(&board, &nnue, &history, None),
+        [moves[5], moves[0], moves[1], moves[2], moves[3], moves[4]]
+    );
+    history.record_cutoff(&board, &nnue, moves[4], &[moves[0]], 1);
+    assert_eq!(history.read(&board, &nnue, moves[4]), 1);
+    assert_eq!(history.read(&board, &nnue, moves[0]), -1);
+    // 歩兵価値への換算では両方0になる小さな値でも順序が変わる。
+    assert_eq!(history.adjustment(&board, &nnue, moves[4]), 0);
+    assert_eq!(history.adjustment(&board, &nnue, moves[0]), 0);
+    assert_eq!(
+        captures_with_history(&board, &nnue, &history, None),
+        [moves[5], moves[4], moves[1], moves[2], moves[3], moves[0]]
+    );
+}
+
+// move-ordering.md「候補3」: 正負の履歴があっても捕獲価値の群を越えない。
+#[test]
+fn quiescence_capture_history_preserves_group_boundaries() {
+    let (board, moves) = history_ordering_position();
+    let nnue = weights().unwrap();
+    let mut history = CaptureHistory::new();
+    history.record_cutoff(&board, &nnue, moves[4], &[moves[5]], 256);
+    assert!(history.read(&board, &nnue, moves[4]) > 0);
+    assert!(history.read(&board, &nnue, moves[5]) < 0);
+    assert_eq!(
+        captures_with_history(&board, &nnue, &history, None),
+        [moves[5], moves[4], moves[0], moves[1], moves[2], moves[3]]
+    );
+}
+
+// move-ordering.md「候補3」: 置換表の記録手は群と履歴に優先し、重複しない。
+#[test]
+fn quiescence_capture_history_keeps_tt_capture_first() {
+    let (board, moves) = history_ordering_position();
+    let nnue = weights().unwrap();
+    let mut history = CaptureHistory::new();
+    history.record_cutoff(&board, &nnue, moves[4], &[moves[0]], 256);
+    assert_eq!(
+        captures_with_history(&board, &nnue, &history, Some(moves[0])),
+        [moves[0], moves[5], moves[4], moves[1], moves[2], moves[3]]
+    );
+}
+
+// move-ordering.md「候補3」: 特殊駒も履歴順で通常駒と合流し、同点は公開生成順を保つ。
+#[test]
+fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
+    let board = position(
+        Color::Black,
+        &[
+            (sq(11, 0), Color::Black, PieceKind::King),
+            (sq(11, 11), Color::White, PieceKind::King),
+            (sq(0, 4), Color::Black, PieceKind::Pawn),
+            (sq(0, 5), Color::White, PieceKind::Pawn),
+            (sq(4, 4), Color::Black, PieceKind::Rook),
+            (sq(4, 5), Color::White, PieceKind::Pawn),
+            (sq(8, 4), Color::Black, PieceKind::Lion),
+            (sq(9, 4), Color::Black, PieceKind::Lion),
+            (sq(8, 6), Color::White, PieceKind::Pawn),
+        ],
+    );
+    let nnue = weights().unwrap();
+    let mut public = Vec::new();
+    MoveGenerator::standard().generate_captures(&board, &mut public);
+    let mut reference: Vec<_> = public
+        .into_iter()
+        .map(|mv| (mv, move_order_key(&board, &nnue, mv).unwrap()))
+        .collect();
+    order_captures(&mut reference);
+    let reference: Vec<_> = reference.into_iter().map(|(mv, _)| mv).collect();
+    let history = CaptureHistory::new();
+    assert_eq!(
+        captures_with_history(&board, &nnue, &history, None),
+        reference
+    );
+    let lion_moves: Vec<_> = reference
+        .iter()
+        .copied()
+        .filter(|mv| mv.to == sq(8, 6))
+        .collect();
+    assert!(
+        lion_moves.len() >= 2,
+        "同じ履歴の特殊捕獲で生成順も検査する"
+    );
+    let ordinary: Vec<_> = reference
+        .iter()
+        .copied()
+        .filter(|mv| mv.to != sq(8, 6))
+        .collect();
+    assert_eq!(ordinary.len(), 2);
+    for reward_special in [true, false] {
+        let mut history = CaptureHistory::new();
+        if reward_special {
+            history.record_cutoff(&board, &nnue, lion_moves[0], &ordinary, 1);
+        } else {
+            history.record_cutoff(&board, &nnue, ordinary[1], &[lion_moves[0]], 1);
+        }
+        let expected: Vec<_> = if reward_special {
+            lion_moves.iter().chain(&ordinary).copied().collect()
+        } else {
+            [ordinary[1], ordinary[0]]
+                .into_iter()
+                .chain(lion_moves.iter().copied())
+                .collect()
+        };
+        assert_eq!(
+            captures_with_history(&board, &nnue, &history, None),
+            expected
+        );
+    }
 }

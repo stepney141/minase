@@ -17,7 +17,7 @@ use minase_core::position::Position;
 use minase_core::rules::MoveRules;
 
 use super::deepening::{run_auxiliary_worker, run_main_worker};
-use super::history::{HistoryTable, HistoryTables};
+use super::history::HistoryTables;
 use super::params;
 use super::time::{byoyomi_clock, time_budget};
 
@@ -187,6 +187,9 @@ pub(in crate::search) fn run_search_team(
             *value = *value * decay / 100;
         }
     }
+    for history in &mut histories.capture {
+        history.decay(params::capture_history_decay());
+    }
     tt.new_search();
     let shared = SharedSearch {
         external_stop,
@@ -202,8 +205,15 @@ pub(in crate::search) fn run_search_team(
     };
 
     let history_keys: Vec<u64> = history_keys.to_vec();
-    let worker_outcomes =
-        run_worker_team(&mut histories.workers, &shared, |worker_index, history| {
+    let mut worker_histories: Vec<_> = histories
+        .workers
+        .iter_mut()
+        .zip(&mut histories.capture)
+        .collect();
+    let worker_outcomes = run_worker_team(
+        &mut worker_histories,
+        &shared,
+        |worker_index, (history, capture_history)| {
             if worker_index == 0 {
                 run_main_worker(
                     nnue,
@@ -216,6 +226,7 @@ pub(in crate::search) fn run_search_team(
                     &shared,
                     tt,
                     history,
+                    capture_history,
                     events,
                     ponder,
                     byoyomi_clock(limits).is_some(),
@@ -232,9 +243,11 @@ pub(in crate::search) fn run_search_team(
                     &shared,
                     tt,
                     history,
+                    capture_history,
                 )
             }
-        });
+        },
+    );
     let total_nodes = shared.nodes();
     debug_assert_eq!(
         total_nodes,
@@ -268,10 +281,10 @@ pub(in crate::search) fn run_search_team(
 }
 
 /// 主ワーカーと補助ワーカーを実行し、パニック時も全ワーカーを回収する。
-pub(super) fn run_worker_team(
-    histories: &mut [Box<HistoryTable>],
+pub(super) fn run_worker_team<T: Send>(
+    histories: &mut [T],
     shared: &SharedSearch<'_>,
-    worker: impl Fn(usize, &mut HistoryTable) -> WorkerOutcome + Sync,
+    worker: impl Fn(usize, &mut T) -> WorkerOutcome + Sync,
 ) -> Vec<WorkerOutcome> {
     let worker_count = histories.len();
     let (main_history, auxiliary_histories) = histories

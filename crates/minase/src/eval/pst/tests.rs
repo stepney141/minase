@@ -123,6 +123,67 @@ fn assert_move_accumulator(pst: &Pst, position: &mut Position, mv: Move) {
     assert_eq!(before, pst.refresh_accumulator(position));
 }
 
+/// 候補5の分子差分を全再計算で検査し、成りと獅子のじっとを両手番で含める。
+#[test]
+fn quiet_move_pst_delta_matches_refreshed_accumulator_difference() {
+    let sparse = minase_core::test_util::position(
+        Color::Black,
+        &[
+            (sq(0, 11), Color::Black, PieceKind::King),
+            (sq(11, 0), Color::White, PieceKind::King),
+            (sq(5, 7), Color::Black, PieceKind::Pawn),
+            (sq(5, 6), Color::Black, PieceKind::Lion),
+        ],
+    );
+    let generator = minase_core::MoveGenerator::new(MoveRules::standard());
+    for pst in [distinct_pst(), fm_tests::synthetic_fm_pst()] {
+        let numerator = |position: &Position, side: Color| {
+            let accumulator = pst.refresh_accumulator(position);
+            interpolation_numerator(
+                accumulator.sums[side.index()],
+                phase(accumulator.piece_count),
+            )
+        };
+        for side in Color::ALL {
+            let mut saw_promotion = false;
+            let mut saw_jitto = false;
+            let mut saw_nonzero_delta = false;
+            for mut position in [Position::initial(), sparse.clone()] {
+                if side == Color::White {
+                    position = reflect_ranks_and_swap_colors(&position);
+                }
+                assert_eq!(position.side_to_move(), side);
+                let before = numerator(&position, side);
+                let mut moves = Vec::new();
+                generator.generate_moves(&position, &mut moves);
+                for mv in moves {
+                    if position
+                        .captured_squares(mv)
+                        .into_iter()
+                        .any(|sq| sq.is_some())
+                    {
+                        continue;
+                    }
+                    saw_promotion |= mv.promote;
+                    saw_jitto |= mv.from == mv.to;
+                    let delta = pst.quiet_move_pst_delta(&position, mv);
+                    saw_nonzero_delta |= delta != 0;
+                    let undo = position.make_move_unchecked(mv, generator.rules());
+                    assert_eq!(
+                        delta,
+                        numerator(&position, side) - before,
+                        "side={side:?}, move={mv:?}"
+                    );
+                    position.unmake_move(undo);
+                }
+            }
+            assert!(saw_promotion, "side={side:?}");
+            assert!(saw_jitto, "side={side:?}");
+            assert!(saw_nonzero_delta, "side={side:?}");
+        }
+    }
+}
+
 /// 差分累算値が通常手、特殊移動、先獅子状態、およびnull moveで完全再計算と一致する。
 #[test]
 fn accumulator_updates_match_full_refresh_across_move_shapes() {

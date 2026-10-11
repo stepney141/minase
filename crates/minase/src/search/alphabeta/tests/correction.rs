@@ -70,6 +70,7 @@ fn correction_negamax_update_conditions() {
         }
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &nnue,
             &board,
@@ -78,6 +79,7 @@ fn correction_negamax_update_conditions() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         // 更新しないケースも非ゼロの初期値を保持することを確認する。
         searcher.correction.update(Color::Black, key, 64, 8);
@@ -135,6 +137,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
         let key = material_key(&board);
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &nnue,
             &board,
@@ -143,6 +146,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
@@ -165,6 +169,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
         let key = material_key(&board);
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &nnue,
             &board,
@@ -173,6 +178,7 @@ fn correction_negamax_skips_mates_tt_cutoffs_and_interruption() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         searcher.correction.update(Color::Black, key, 64, 8);
         assert_eq!(
@@ -195,6 +201,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
     let table = TranspositionTable::new(1).unwrap();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut a = new_searcher(
         &nnue,
         &board,
@@ -203,9 +210,11 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         &shared,
         &table,
         &mut butterfly_history,
+        &mut capture_history,
     );
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut b = new_searcher(
         &nnue,
         &board,
@@ -214,6 +223,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         &shared,
         &table,
         &mut butterfly_history,
+        &mut capture_history,
     );
     let key = material_key(&board);
     let expected = 100 * 8 * params::correction_weight() / 1024;
@@ -225,6 +235,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
     assert_eq!(b.correction.read(Color::Black, key), -expected);
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let c = new_searcher(
         &nnue,
         &board,
@@ -233,6 +244,7 @@ fn correction_workers_are_independent_and_new_search_resets_table() {
         &shared,
         &table,
         &mut butterfly_history,
+        &mut capture_history,
     );
     assert_eq!(c.correction.read(Color::Black, key), 0);
 }
@@ -249,6 +261,7 @@ fn correction_changes_futility_expansion_at_boundary() {
         let alpha = evaluate(&nnue, &board) + nnue.pawn_value() * params::futility_margin1() / 100;
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &nnue,
             &board,
@@ -257,6 +270,7 @@ fn correction_changes_futility_expansion_at_boundary() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         searcher.correction.update(
             Color::Black,
@@ -292,6 +306,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         let root_key = material_key(&board);
         let mut butterfly_history =
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+        let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
             &nnue,
             &board,
@@ -300,6 +315,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
             &shared,
             &table,
             &mut butterfly_history,
+            &mut capture_history,
         );
         assert_eq!(searcher.material_keys[0], root_key);
         let mut moves = Vec::new();
@@ -328,6 +344,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
     let root_key = material_key(&board);
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
+    let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut searcher = new_searcher(
         &nnue,
         &board,
@@ -336,6 +353,7 @@ fn correction_search_move_and_null_move_propagate_material_keys() {
         &shared,
         &table,
         &mut butterfly_history,
+        &mut capture_history,
     );
     searcher.material_keys[1] = !root_key;
     let score = searcher
