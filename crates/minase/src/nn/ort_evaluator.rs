@@ -7,6 +7,7 @@
 //! 選んだ実行プロバイダを初期化できない場合は、別の実行プロバイダへ切り替えずにエラーを返す。
 
 use core::fmt;
+use core::iter;
 use core::num::NonZeroUsize;
 use core::str::FromStr;
 use std::env;
@@ -19,11 +20,11 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use minase_core::{BOARD_FILES, BOARD_RANKS};
 use ort::ep::{self, ExecutionProviderDispatch};
 use ort::session::{Session, SessionOutputs};
-use ort::value::TensorRef;
+use ort::value::{Outlet, Shape, SymbolicDimensions, TensorElementType, TensorRef, ValueType};
 use sha2::{Digest, Sha256};
 
-use super::INPUT_PLANES;
 use super::evaluator::{Evaluator, EvaluatorError};
+use super::{INPUT_PLANES, POLICY_SIZE};
 
 /// 実行ファイルに埋め込んだネット（ONNX）。
 pub const NETWORK: &[u8] = include_bytes!("../../nets/zero.onnx");
@@ -127,6 +128,15 @@ pub enum OrtError {
     Session(String),
     /// ネットの入出力の名前が想定と異なる。
     Interface(String),
+    /// ネットの入出力の要素の型または形が想定と異なる。型と形はONNX Runtimeの表記で持つ。
+    UnexpectedShape {
+        /// 入出力の名前。
+        name: &'static str,
+        /// 想定する型と形。
+        expected: String,
+        /// ネットが宣言する型と形。
+        actual: String,
+    },
     /// ネットのファイルを読めない、またはファイルが空である。
     Model(String),
 }
@@ -156,6 +166,14 @@ impl fmt::Display for OrtError {
                 "cannot create the ONNX Runtime session: {reason}"
             ),
             Self::Interface(reason) => write!(formatter, "unexpected network interface: {reason}"),
+            Self::UnexpectedShape {
+                name,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "network '{name}' is {actual} (expected {expected})"
+            ),
             Self::Model(reason) => write!(formatter, "cannot read the network: {reason}"),
         }
     }
@@ -242,7 +260,7 @@ impl OrtEvaluator {
     /// # Errors
     ///
     /// ONNX Runtimeを読み込めない場合、TensorRTのキャッシュの鍵を作れない場合、選んだ実行プロバイダを
-    /// 初期化できない場合、およびネットの入出力の名前が想定と異なる場合はエラーを返す。
+    /// 初期化できない場合、およびネットの入出力の名前、要素の型、または形が想定と異なる場合はエラーを返す。
     pub fn new(model: &[u8], config: &SessionConfig) -> Result<Self, OrtError> {
         RUNTIME.get_or_init(load_runtime).clone()?;
         let provider = execution_provider(model, config)?;
@@ -320,9 +338,13 @@ fn execution_provider(
     Ok(provider.error_on_failure())
 }
 
-/// セッションの入出力の名前が[`INPUT_NAME`]、[`POLICY_NAME`]、[`VALUE_NAME`]であることを確かめる。
+/// セッションの入出力の名前が[`INPUT_NAME`]、[`POLICY_NAME`]、[`VALUE_NAME`]であり、
+/// それぞれの型と形が[`check_shape`]の検査を通ることを確かめる。
+///
+/// 入力面の数が異なる古いネットを埋め込んだままビルドした場合や、`NnModelPath`で別の形のネットを
+/// 与えた場合に、最初の推論ではなくセッションの作成時にエラーにするためである。
 fn check_interface(session: &Session) -> Result<(), OrtError> {
-    let names = |outlets: &[ort::value::Outlet]| {
+    let names = |outlets: &[Outlet]| {
         outlets
             .iter()
             .map(|outlet| outlet.name().to_owned())
@@ -339,7 +361,49 @@ fn check_interface(session: &Session) -> Result<(), OrtError> {
              [\"{POLICY_NAME}\", \"{VALUE_NAME}\"])"
         )));
     }
+    let board = [usize::from(BOARD_RANKS), usize::from(BOARD_FILES)];
+    for (outlets, name, dims) in [
+        (
+            session.inputs(),
+            INPUT_NAME,
+            &[INPUT_PLANES, board[0], board[1]][..],
+        ),
+        (session.outputs(), POLICY_NAME, &[POLICY_SIZE][..]),
+        (session.outputs(), VALUE_NAME, &[1][..]),
+    ] {
+        let outlet = outlets
+            .iter()
+            .find(|outlet| outlet.name() == name)
+            .ok_or_else(|| OrtError::Interface(format!("the network has no '{name}'")))?;
+        check_shape(name, outlet.dtype(), dims)?;
+    }
     Ok(())
+}
+
+/// 入出力`name`の型`actual`が、要素をfloat32とし、先頭のバッチの次元を動的にした`[N, dims...]`の
+/// テンソルであることを確かめる。
+///
+/// バッチの次元は、名前つきでも名前なしでも動的であればよく、固定の大きさは受理しない。
+/// 評価器は推論ごとに異なる局面数を渡すからである。
+fn check_shape(name: &'static str, actual: &ValueType, dims: &[usize]) -> Result<(), OrtError> {
+    let shape = Shape::new(iter::once(-1).chain(dims.iter().map(|&dim| dim as i64)));
+    if actual.tensor_type() == Some(TensorElementType::Float32)
+        && actual.tensor_shape() == Some(&shape)
+    {
+        return Ok(());
+    }
+    let expected = ValueType::Tensor {
+        ty: TensorElementType::Float32,
+        shape,
+        dimension_symbols: SymbolicDimensions::new(
+            iter::once("N".to_owned()).chain(dims.iter().map(|_| String::new())),
+        ),
+    };
+    Err(OrtError::UnexpectedShape {
+        name,
+        expected: expected.to_string(),
+        actual: actual.to_string(),
+    })
 }
 
 /// ONNX Runtimeが使うGPU（`CUDA_VISIBLE_DEVICES`の先頭、未設定なら番号0）の属性を`nvidia-smi`で調べる。
@@ -646,6 +710,67 @@ mod tests {
             "gpu".parse::<NnBackend>(),
             Err(UnknownNnBackend("gpu".to_owned()))
         );
+    }
+
+    fn tensor(ty: TensorElementType, dims: &[i64], symbols: &[&str]) -> ValueType {
+        ValueType::Tensor {
+            ty,
+            shape: Shape::new(dims.iter().copied()),
+            dimension_symbols: SymbolicDimensions::new(
+                symbols.iter().map(|&symbol| symbol.to_owned()),
+            ),
+        }
+    }
+
+    const BOARD: [usize; 2] = [BOARD_RANKS as usize, BOARD_FILES as usize];
+
+    // 入出力の形の検査: バッチの次元は名前つきでも名前なしでも動的であれば受理する。
+    #[test]
+    fn shapes_with_dynamic_batch_are_accepted() {
+        let input = [INPUT_PLANES, BOARD[0], BOARD[1]];
+        for symbol in ["batch", ""] {
+            let actual = tensor(
+                TensorElementType::Float32,
+                &[-1, 96, 12, 12],
+                &[symbol, "", "", ""],
+            );
+            assert_eq!(check_shape(INPUT_NAME, &actual, &input), Ok(()));
+        }
+        let policy = tensor(TensorElementType::Float32, &[-1, 35856], &["batch", ""]);
+        assert_eq!(check_shape(POLICY_NAME, &policy, &[POLICY_SIZE]), Ok(()));
+        let value = tensor(TensorElementType::Float32, &[-1, 1], &["batch", ""]);
+        assert_eq!(check_shape(VALUE_NAME, &value, &[1]), Ok(()));
+    }
+
+    // 同上: 面の数、次元の数、固定のバッチ、または要素の型が異なれば、両方の表記を持つ専用のエラーにする。
+    #[test]
+    fn mismatched_shapes_are_rejected() {
+        let input = [INPUT_PLANES, BOARD[0], BOARD[1]];
+        let symbols = ["batch", "", "", ""];
+        let mismatches = [
+            tensor(TensorElementType::Float32, &[-1, 95, 12, 12], &symbols),
+            tensor(TensorElementType::Float32, &[1, 96, 12, 12], &symbols),
+            tensor(TensorElementType::Float32, &[-1, 96, 144], &symbols[..3]),
+            tensor(TensorElementType::Float16, &[-1, 96, 12, 12], &symbols),
+        ];
+        for actual in mismatches {
+            assert_eq!(
+                check_shape(INPUT_NAME, &actual, &input),
+                Err(OrtError::UnexpectedShape {
+                    name: INPUT_NAME,
+                    expected: "Tensor<f32>(N, 96, 12, 12)".to_owned(),
+                    actual: actual.to_string(),
+                })
+            );
+        }
+        let value = tensor(TensorElementType::Float32, &[-1, 2], &["batch", ""]);
+        assert!(matches!(
+            check_shape(VALUE_NAME, &value, &[1]),
+            Err(OrtError::UnexpectedShape {
+                name: VALUE_NAME,
+                ..
+            })
+        ));
     }
 
     // 共通の前提: 外部入力でパニックしない。ORT_DYLIB_PATHがなければ専用のエラーを返す。
