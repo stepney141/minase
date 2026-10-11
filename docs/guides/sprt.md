@@ -227,6 +227,25 @@ HaChuは1手固定時間を指定すると、指定値より短い時間で着�
 起動コマンド形式と`cecp:`の形式は起動コマンド自身に引数を書け、`random`は引数を受け付けないので、これらへの指定はエラーになる。
 指定した引数は`manifest.json`の各エンジンの`args`に記録され、`--resume`では記録された引数で起動する。
 
+USIエンジンへ`setoption`で設定を渡す場合は、`--candidate-option`と`--baseline-option`に`名前=値`を指定する。
+この引数は繰り返して指定でき、ハーネスは握手の後、`isready`より前に、指定の順で`setoption name <名前> value <値>`を送る。
+たとえば強化学習の進捗測定（[plans/alphazero.md](../plans/alphazero.md)の「強化学習」）では、同じコミットのMCTSエンジン2つに別々のネットを`NnModelPath`で与える。
+
+```console
+cargo run --release --bin minase -- match run \
+  --run-dir data/matches/<測定名> --seed <シード> \
+  --candidate commit:<コミット> --candidate-args "--search mcts" --candidate-option NnModelPath=<新しいネット> \
+  --baseline commit:<コミット> --baseline-args "--search mcts" --baseline-option NnModelPath=<古いネット> \
+  --each nodes=800 --concurrency 2 elo --pairs 200
+```
+
+MCTSでは`nodes`が1手あたりのシミュレーション回数を表す。
+2つのエンジンが1つのGPUを共有するので、同時対局数は自動計算に任せず2を明示する。
+`=`を含まない値と名前が空の値は引数のエラーになる。
+`USI_Hash`と`Threads`は、それぞれ`--candidate-hash`などの専用の引数と再開時の照合があるので、この引数では指定できない。
+`cecp:`と`random`のエンジンはUSIの設定を受け付けないので、これらへの指定もエラーになる。
+指定した設定は`manifest.json`の各エンジンの`options`に記録され、`--resume`では記録された設定で起動する。
+
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
 省略時はエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPエンジンは`memory 256`）で走り、解決後の容量は`manifest.json`の`hash_mb`に記録され、再開時にはこの値で対局する。
 `USI_Hash`を宣言しないUSIエンジン（`--search mcts`で起動したminaseなど）では容量を省略し、`hash_mb`には`null`が記録され、容量を明示するとハーネスは対局を始めずにエラーで終了する。

@@ -33,7 +33,7 @@ pub(crate) struct Arguments {
     #[arg(long)]
     pub(super) run_dir: Option<PathBuf>,
     /// 保存済みの実験を再開する実行ディレクトリ。
-    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "candidate_args", "baseline_args", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
+    #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "candidate_args", "baseline_args", "candidate_option", "baseline_option", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
     pub(super) resume: Option<PathBuf>,
     /// 再開時の目標ペア数。直前の目標より大きい値を指定する。
     #[arg(long, requires = "resume", conflicts_with = "run_dir", value_parser = parse_positive_u64)]
@@ -65,6 +65,12 @@ pub(crate) struct Arguments {
     /// ハーネスは引数の意味を解釈せず、これは機能比較のスイッチではなくエンジンの起動方法の指定である。
     #[arg(long, value_name = "ARGS", allow_hyphen_values = true)]
     pub(super) baseline_args: Option<String>,
+    /// 候補側のUSIエンジンへ`isready`より前に送る`setoption`の名前と値。繰り返して指定できる。
+    #[arg(long, value_name = "NAME=VALUE", value_parser = parse_engine_option)]
+    pub(super) candidate_option: Vec<(String, String)>,
+    /// 基準側のUSIエンジンへ`isready`より前に送る`setoption`の名前と値。繰り返して指定できる。
+    #[arg(long, value_name = "NAME=VALUE", value_parser = parse_engine_option)]
+    pub(super) baseline_option: Vec<(String, String)>,
     /// 両エンジンに適用する既定の思考制限。
     #[arg(long, default_value = "depth=1", value_parser = parse_search_limit)]
     pub(super) each: SearchLimit,
@@ -126,6 +132,30 @@ pub(super) fn split_engine_args(text: Option<&str>) -> Vec<String> {
     text.map_or_else(Vec::new, |text| {
         text.split_whitespace().map(str::to_owned).collect()
     })
+}
+
+/// `--candidate-option`または`--baseline-option`の`名前=値`を最初の`=`で分ける。
+///
+/// 名前が空の値と`=`を含まない値は拒否する。`USI_Hash`と`Threads`は専用の引数と
+/// 再開時の照合があるので、エンジンと同じく大文字小文字を区別せずに拒否する。
+fn parse_engine_option(text: &str) -> Result<(String, String), String> {
+    let Some((name, value)) = text.split_once('=') else {
+        return Err(format!(
+            "engine option '{text}' must have the form NAME=VALUE"
+        ));
+    };
+    if name.is_empty() {
+        return Err(format!("engine option '{text}' has an empty name"));
+    }
+    if name.eq_ignore_ascii_case("USI_Hash") {
+        return Err("USI_Hash must be set with --candidate-hash or --baseline-hash".to_owned());
+    }
+    if name.eq_ignore_ascii_case("Threads") {
+        return Err(
+            "Threads cannot be set as an engine option because it is verified on resume".to_owned(),
+        );
+    }
+    Ok((name.to_owned(), value.to_owned()))
 }
 
 /// 対局結果の集計方法。
@@ -458,6 +488,117 @@ mod tests {
                 ])
                 .is_err()
             );
+        }
+    }
+
+    // alphazero.md「強化学習」: USIオプションは繰り返して指定でき、最初の`=`で名前と値に
+    // 分ける。値は空でもよい。両側は独立に保持する。
+    #[test]
+    fn engine_options_repeat_and_split_at_the_first_equals_sign() {
+        let arguments = Arguments::try_parse_from([
+            "match_runner",
+            "--run-dir",
+            "run",
+            "--candidate-option",
+            "NnModelPath=/nets/new.onnx",
+            "--candidate-option",
+            "Mode=a=b",
+            "--baseline-option",
+            "NnModelPath=",
+            "gsprt",
+        ])
+        .unwrap();
+        assert_eq!(
+            arguments.candidate_option,
+            [
+                ("NnModelPath".to_owned(), "/nets/new.onnx".to_owned()),
+                ("Mode".to_owned(), "a=b".to_owned()),
+            ]
+        );
+        assert_eq!(
+            arguments.baseline_option,
+            [("NnModelPath".to_owned(), String::new())]
+        );
+        let plain =
+            Arguments::try_parse_from(["match_runner", "--run-dir", "run", "gsprt"]).unwrap();
+        assert!(plain.candidate_option.is_empty());
+        assert!(plain.baseline_option.is_empty());
+    }
+
+    // 同節: `=`のない値、名前が空の値、専用の引数がある`USI_Hash`と`Threads`は引数エラーとし、
+    // 再開時は記録の値を使うので`--resume`とは併用できない。
+    #[test]
+    fn engine_options_reject_malformed_or_reserved_names_and_resume() {
+        for flag in ["--candidate-option", "--baseline-option"] {
+            for value in [
+                "NnModelPath",
+                "",
+                "=value",
+                "USI_Hash=512",
+                "usi_hash=512",
+                "Threads=2",
+                "THREADS=2",
+            ] {
+                assert!(
+                    Arguments::try_parse_from([
+                        "match_runner",
+                        "--run-dir",
+                        "run",
+                        flag,
+                        value,
+                        "gsprt",
+                    ])
+                    .is_err(),
+                    "{flag} {value:?} must be rejected"
+                );
+            }
+            assert!(
+                Arguments::try_parse_from([
+                    "match_runner",
+                    "--resume",
+                    "old",
+                    flag,
+                    "NnModelPath=a.onnx",
+                ])
+                .is_err()
+            );
+        }
+    }
+
+    // 同節: USIオプションはresolve_playerへ渡り、USI設定を送れない`random`と`cecp:`では
+    // 解決時の入力エラーになる。
+    #[test]
+    fn engine_options_are_rejected_for_random_and_cecp_engines() {
+        for (spec, flag) in [
+            ("random", "--candidate-option"),
+            ("cecp:engine", "--baseline-option"),
+        ] {
+            let side = if flag == "--candidate-option" {
+                "--candidate"
+            } else {
+                "--baseline"
+            };
+            let arguments = Arguments::try_parse_from([
+                "match_runner",
+                "--run-dir",
+                "run",
+                side,
+                spec,
+                flag,
+                "NnModelPath=a.onnx",
+                "gsprt",
+            ])
+            .unwrap();
+            let (spec, options) = if flag == "--candidate-option" {
+                (arguments.candidate, arguments.candidate_option)
+            } else {
+                (arguments.baseline, arguments.baseline_option)
+            };
+            let error = resolve_player(spec, arguments.each, None, "R1", options, Vec::new())
+                .err()
+                .expect("USI options must be rejected for this engine");
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+            assert!(error.to_string().contains("does not support USI setoption"));
         }
     }
 

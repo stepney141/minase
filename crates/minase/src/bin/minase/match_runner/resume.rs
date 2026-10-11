@@ -70,7 +70,7 @@ fn restore_player(
         limit,
         hash_mb,
         &manifest.rules_source,
-        Vec::new(),
+        record.options.clone(),
         record.args.clone(),
     )?;
     verify_identity(&record.identity, &player.identity)?;

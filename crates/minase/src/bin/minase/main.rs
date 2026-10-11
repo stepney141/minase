@@ -80,6 +80,10 @@ enum ProtocolKind {
 
 /// 目的別の補助ツール。
 #[derive(Subcommand)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "起動時に一度だけ解析する既存の引数型をそのまま保持する"
+)]
 enum Command {
     /// 対局測定と集計。
     #[command(subcommand)]

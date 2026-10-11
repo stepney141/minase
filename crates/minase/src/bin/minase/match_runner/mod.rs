@@ -119,7 +119,7 @@ pub(super) fn main(arguments: Arguments) {
             candidate_limit,
             arguments.candidate_hash,
             &arguments.rules.source,
-            Vec::new(),
+            arguments.candidate_option.clone(),
             candidate_args.clone(),
         ) {
             Ok(player) => player,
@@ -133,7 +133,7 @@ pub(super) fn main(arguments: Arguments) {
             baseline_limit,
             arguments.baseline_hash,
             &arguments.rules.source,
-            Vec::new(),
+            arguments.baseline_option.clone(),
             baseline_args.clone(),
         ) {
             Ok(player) => player,

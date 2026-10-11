@@ -32,6 +32,10 @@ pub(super) struct EngineRecord {
     /// 欄のない記録は追加なしとして読み、追加がなければ書かない。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(super) args: Vec<String>,
+    /// 握手後、`isready`より前に列順で送ったUSIオプションの名前と値。
+    /// 欄のない記録は指定なしとして読み、指定がなければ書かない。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) options: Vec<(String, String)>,
 }
 
 /// 保存用の探索制限。
@@ -542,6 +546,7 @@ mod tests {
                     nodes: Some(100_000),
                 },
                 args: Vec::new(),
+                options: Vec::new(),
             },
             baseline: EngineRecord {
                 identity: EngineIdentity::Random,
@@ -551,6 +556,7 @@ mod tests {
                     byoyomi_ms: 0,
                 },
                 args: Vec::new(),
+                options: Vec::new(),
             },
             rules_source: "engine-default".to_owned(),
             canonical_rules: vec!["L1".to_owned(), "P0".to_owned()],

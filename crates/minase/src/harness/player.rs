@@ -51,7 +51,8 @@ pub enum Protocol {
 /// 起動に必要な解決済みプレイヤー設定。
 #[derive(Clone)]
 pub struct PlayerConfig {
-    /// 入力された指定の原文。追加の起動引数があれば末尾に空白区切りで続ける。表示に使う。
+    /// 入力された指定の原文。追加の起動引数と`名前=値`形式のUSIオプションがあれば、
+    /// この順に末尾へ空白区切りで続ける。表示に使う。
     pub text: String,
     /// 再開時の照合に使う完全コミットハッシュまたは起動指定。
     pub identity: EngineIdentity,
@@ -131,7 +132,7 @@ pub fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
 /// specを起動コマンドと実効制限へ解決する。
 ///
 /// `options`はUSIの握手後、`isready`より前に列順で送る名前と値である。
-/// CECP指定で列が空でなければ入力エラーを返す。コミット指定は通常ビルドを使う。
+/// CECP指定と`random`で列が空でなければ入力エラーを返す。コミット指定は通常ビルドを使う。
 /// `extra_args`は`commit:`の起動引数の末尾へ追加する引数である。
 /// 起動コマンド形式と`cecp:`は指定自身に引数を書け、`random`は引数を受け付けないので、
 /// これらの指定で列が空でなければ入力エラーを返す。
@@ -147,6 +148,12 @@ pub fn resolve_player(
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "CECP engine does not support USI setoption settings",
+        ));
+    }
+    if matches!(spec.kind, PlayerKind::Random) && !options.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "random engine does not support USI setoption settings",
         ));
     }
     if !matches!(spec.kind, PlayerKind::Commit(_)) && !extra_args.is_empty() {
@@ -225,11 +232,15 @@ pub fn resolve_player(
             )
         }
     };
-    let text = if extra_args.is_empty() {
-        spec.text
-    } else {
-        format!("{} {}", spec.text, extra_args.join(" "))
-    };
+    let text = std::iter::once(spec.text)
+        .chain(extra_args)
+        .chain(
+            options
+                .iter()
+                .map(|(name, value)| format!("{name}={value}")),
+        )
+        .collect::<Vec<_>>()
+        .join(" ");
     Ok(PlayerConfig {
         text,
         identity,
@@ -434,6 +445,48 @@ mod tests {
             Vec::new(),
         );
         assert_eq!(result.err().unwrap().kind(), io::ErrorKind::InvalidInput);
+    }
+
+    // alphazero.md「強化学習」: 校正用のランダムエンジンはUSIオプションを受け付けないので、
+    // 追加のUSI設定があれば起動前に拒否する。
+    #[test]
+    fn random_resolution_rejects_nonempty_usi_options() {
+        let error = resolve_player(
+            parse_player_spec("random").unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            None,
+            "R1",
+            vec![("NnModelPath".to_owned(), "a.onnx".to_owned())],
+            Vec::new(),
+        )
+        .err()
+        .expect("USI options must be rejected for the random engine");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            error.to_string(),
+            "random engine does not support USI setoption settings"
+        );
+    }
+
+    // alphazero.md「強化学習」: USIオプションは解決後の設定に列順で残り、表示名には
+    // `名前=値`の形で末尾へ付く。起動コマンド形式は解決時にプロセスを起動しない。
+    #[test]
+    fn usi_options_are_kept_in_order_and_shown_in_the_player_text() {
+        let options = vec![
+            ("NnModelPath".to_owned(), "/nets/a=b.onnx".to_owned()),
+            ("Other".to_owned(), String::new()),
+        ];
+        let player = resolve_player(
+            parse_player_spec("engine --x").unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            None,
+            "R1",
+            options.clone(),
+            Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(player.options, options);
+        assert_eq!(player.text, "engine --x NnModelPath=/nets/a=b.onnx Other=");
     }
 
     // alphazero.md「棋力測定」: 追加の起動引数は`commit:`の固定引数の末尾へ付く。

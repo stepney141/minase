@@ -79,6 +79,7 @@ fn resolve_hash(
 ///
 /// `candidate_args`と`baseline_args`は、`resolve_player`へ渡した追加の起動引数である。
 /// 再開時に同じ引数で起動できるよう、固定の起動引数とは分けて記録する。
+/// USIオプションは各プレイヤーの`options`をそのまま記録し、再開時に同じ値を送る。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_manifest(
     candidate: &PlayerConfig,
@@ -118,11 +119,13 @@ pub(super) fn run_manifest(
             identity: candidate.identity.clone(),
             limit: stored_search_limit(candidate.limit),
             args: candidate_args.to_vec(),
+            options: candidate.options.clone(),
         },
         baseline: EngineRecord {
             identity: baseline.identity.clone(),
             limit: stored_search_limit(baseline.limit),
             args: baseline_args.to_vec(),
+            options: baseline.options.clone(),
         },
         rules_source: rules.source.clone(),
         canonical_rules: rules.codes.iter().map(ToString::to_string).collect(),
@@ -338,6 +341,64 @@ mod tests {
         let restored = serde_json::from_value::<RunManifest>(without_args).unwrap();
         assert!(restored.candidate.args.is_empty());
         assert!(restored.baseline.args.is_empty());
+    }
+
+    // alphazero.md「強化学習」: USIオプションはmanifestを`[名前, 値]`の列として往復し、
+    // 欄のない記録は指定なしとして読む。指定がなければ欄を書かず、従来の記録と同じ形を保つ。
+    // オプションを受け付けるUSIエンジンの解決は起動を伴うので、記録の形だけを検査する。
+    #[test]
+    fn manifest_round_trips_usi_options() {
+        let player = resolve_player(
+            parse_player_spec("cecp:engine").unwrap(),
+            parse_search_limit("depth=1").unwrap(),
+            None,
+            "R1",
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        let mut manifest = run_manifest(
+            &player,
+            &[],
+            &player,
+            &[],
+            &parse_rule_set_argument("R1").unwrap(),
+            ManifestMode::Elo,
+            1,
+            4096,
+            120,
+            Some(1),
+            false,
+        )
+        .unwrap();
+        assert!(manifest.candidate.options.is_empty());
+        let plain = serde_json::to_value(&manifest).unwrap();
+        assert!(plain["candidate"].get("options").is_none());
+        assert!(plain["baseline"].get("options").is_none());
+
+        manifest.candidate.options = vec![
+            ("NnModelPath".to_owned(), "/nets/new.onnx".to_owned()),
+            ("Other".to_owned(), String::new()),
+        ];
+        let value = serde_json::to_value(&manifest).unwrap();
+        assert_eq!(
+            value["candidate"]["options"],
+            serde_json::json!([["NnModelPath", "/nets/new.onnx"], ["Other", ""]])
+        );
+        assert!(value["baseline"].get("options").is_none());
+        assert_eq!(
+            serde_json::from_value::<RunManifest>(value.clone()).unwrap(),
+            manifest
+        );
+
+        let mut without_options = value;
+        without_options["candidate"]
+            .as_object_mut()
+            .unwrap()
+            .remove("options");
+        let restored = serde_json::from_value::<RunManifest>(without_options).unwrap();
+        assert!(restored.candidate.options.is_empty());
+        assert!(restored.baseline.options.is_empty());
     }
 
     // D8-HARN-27（ponder.md設計判断「同時対局数」）。
