@@ -27,7 +27,7 @@ MCTSが勝てなくても完了とするのは、本書の目的が、作業機�
 ## 状態
 
 進行中。2026年9月24日に起案し、2026年10月8日に利用者の許可を受けて着手した。
-作業はブランチ`alphazero-phase1`（masterから分岐、2026年10月11日時点で46コミット）で行い、学習済みのネットができるまでmasterへ入れない。
+作業はブランチ`alphazero-phase1`（masterから分岐、2026年10月11日にmasterを取り込み済み）で行い、学習済みのネットができるまでmasterへ入れない。
 記録は[measurements/alphazero-feasibility.md](../measurements/alphazero-feasibility.md)にある。
 
 ### 完了した項目
@@ -56,7 +56,7 @@ MCTSが勝てなくても完了とするのは、本書の目的が、作業機�
 
 ### 再開のための手引き
 
-作業は2026年10月11日に、利用者の指示で一区切りとして中断した。worktree `data/worktrees/alphazero-phase1`（ブランチ`alphazero-phase1`、masterから53コミット先、未コミットの変更なし）で再開する。
+作業は2026年10月11日に、利用者の指示で一区切りとして中断した。worktree `data/worktrees/alphazero-phase1`（ブランチ`alphazero-phase1`、未コミットの変更なし）で再開する。2026年10月11日にmaster（8d0e382、move-orderingの採用を含む）を取り込み、master側で追加された試験をブランチのAPIに合わせたうえで、深さ6のbenchがmasterと一致することを確かめた。
 再開時は、まず`docs/lessons/README.md`と本節を読み、`cargo test -p minase`（658件）と`uv run --project tools/train/zero pytest -q tools/train/zero/tests`（68件）が通ることを確かめる。
 GPUを使う作業はコンテナイメージ`minase-zero:dev`の中で行う。起動は`tools/train/zero/run.sh`（`--gpus all --shm-size=8g`、リポジトリを`/work`、本体の`data/`を`/work/data`にマウント）で、`ORT_DYLIB_PATH`はイメージが設定済みである。コンテナの中でminaseをビルドするときは`CARGO_TARGET_DIR`を`target/zero-image`にして、ホストのビルドと分ける。
 作業機の`data/alphazero-feasibility/`には、フェーズ0の実測で使ったONNX（`net-b10-c128.onnx`ほか2つ、96面）、学習の試走で作った96面のチェックポイント`train-step-b1024/checkpoint.pt`、見本MNZT（`sample.mnzt`、`step.mnzt`）、サイクル制御の試走の結果`cycle-smoke/`、およびフェーズ0のCPU計測ツール`phase0-tool/`（path依存はこのworktreeを指す）がある。TensorRTのエンジンのキャッシュは`data/cache/minase/tensorrt/`にある。
