@@ -20,6 +20,7 @@ from minase_train.data.mnsd import Dataset
 from minase_train.data.taper import phase_ratios, piece_counts
 from minase_train.fm.train import feature_observations
 from minase_train.nnue.format import read_mnue
+from minase_train.nnue.feature_sets import get_feature_set
 from minase_train.nnue.model import NNUE, float_evaluate, load_initial
 import minase_train.nnue.train as train
 
@@ -54,28 +55,29 @@ def fixture(root):
 
 
 def arguments(data, init, base, output, epochs=2):
-    return ["train", "--data", str(data), "--init-pst", str(init), "--base", str(base),
+    return ["train", "--feature-set", "P", "--data", str(data), "--init-pst", str(init), "--base", str(base),
             "--output", str(output), "--width", "4", "--epochs", str(epochs), "--batch", "32",
             "--removal-chunk", "13", "--validation-sample", "10", "--device", "cpu", "--seed", "13"]
 
 
 def inputs(records, dtype=torch.float32):
-    return (torch.from_numpy(feature_indices(records["board"], records["stm"], records["lion"])),
-            torch.from_numpy(feature_indices(records["board"], 1 - records["stm"], records["lion"])),
-            torch.tensor(phase_ratios(records["board"]), dtype=dtype))
+    pairs = [tuple(torch.from_numpy(indices) for indices in
+                   get_feature_set("P").indices(records["board"], records["lion"], side))
+             for side in (records["stm"], 1 - records["stm"])]
+    return pairs[0], pairs[1], torch.tensor(phase_ratios(records["board"]), dtype=dtype)
 
 
 def from_floating(weights, k):
     """公開npzの全特徴から正準側を選び、出力を再計算できるモデルを復元する。"""
     initial = np.stack((weights["middlegame"], weights["endgame"]), axis=1)
     width = weights["weights"].shape[1]
-    model = NNUE(initial, weights["mask"], width, k, CPU, 13)
+    model = NNUE(initial, weights["mask"], width, k, CPU, 13, get_feature_set("P"), weights["mask"])
     with torch.no_grad():
-        model.embedding.weight[:6840].copy_(torch.from_numpy(
+        model.ft.embedding.weight[:6840].copy_(torch.from_numpy(
             weights["weights"].reshape(95, 12, 12, width)[:, :, :6].reshape(6840, width)))
-        model.biases.copy_(torch.from_numpy(weights["biases"][:width // 2]))
-        model.output_weights.copy_(torch.from_numpy(weights["output_weights"][:, :width // 2]))
-        model.output_bias.copy_(torch.from_numpy(weights["output_bias"]))
+        model.head.biases.copy_(torch.from_numpy(weights["biases"][:width // 2]))
+        model.head.output_weights.copy_(torch.from_numpy(weights["output_weights"][:, :width // 2]))
+        model.head.output_bias.copy_(torch.from_numpy(weights["output_bias"]))
     return model
 
 
@@ -123,6 +125,7 @@ class NNUETrainingTest(unittest.TestCase):
                 loss, statistics = original(model, dataset, teacher_ks, chunk, deadline)
                 self.assertAlmostEqual(result[0], loss, delta=1e-9)
                 self.assertEqual(statistics["samples"], result[1]["samples"])
+                self.assertEqual(statistics["sign_accuracy"], result[1]["sign_accuracy"])
                 self.assertEqual(statistics["saturation"], result[1]["saturation"])
                 self.assertAlmostEqual(statistics["nonlinear_std_cp"], result[1]["nonlinear_std_cp"], delta=1e-9)
             return result
@@ -155,10 +158,10 @@ class NNUETrainingTest(unittest.TestCase):
     def test_initial_logits_are_pst_only_and_seeded_rows_are_reproducible(self):
         dataset = Dataset([self.data])
         observed = feature_observations(dataset, 16) > 0
-        model = NNUE(self.initial, observed, 8, 1072.6529541015625, CPU, 18)
-        other = NNUE(self.initial, observed, 8, model.k, CPU, 18)
-        torch.testing.assert_close(model.embedding.weight, other.embedding.weight, rtol=0, atol=0)
-        deviation = float(model.embedding.weight[model.canonical_observed].detach().std())
+        model = NNUE(self.initial, observed, 8, 1072.6529541015625, CPU, 18, get_feature_set("P"), observed)
+        other = NNUE(self.initial, observed, 8, model.k, CPU, 18, get_feature_set("P"), observed)
+        torch.testing.assert_close(model.ft.embedding.weight, other.ft.embedding.weight, rtol=0, atol=0)
+        deviation = float(model.ft.embedding.weight[model.ft.observed].detach().std())
         self.assertGreater(deviation, 0.04)
         self.assertLess(deviation, 0.06)
         records = dataset.gather(dataset.validation_indices)
@@ -169,7 +172,7 @@ class NNUETrainingTest(unittest.TestCase):
         expected = [float(direct_score(record, self.initial)) for record in records]
         with torch.no_grad():
             np.testing.assert_allclose(model(*inputs(records)).numpy() * model.k, expected, rtol=0, atol=0.001)
-        np.testing.assert_allclose(float_evaluate(floating, model.k, records["board"], records["stm"], records["lion"]),
+        np.testing.assert_allclose(float_evaluate(floating, model.k, records["board"], records["stm"], records["lion"], model.spec),
                                    expected, rtol=0, atol=1e-10)
 
     def test_epoch_zero_exports_requantized_pst_and_fixed_search_constants(self):
@@ -201,7 +204,7 @@ class NNUETrainingTest(unittest.TestCase):
         self.assertEqual(report["stopped_by"], "max_epochs")
         self.assertEqual(len(report["gradients"]), 5)
         for row in report["gradients"]:
-            self.assertTrue(np.isfinite([row["linear"], row["nonlinear"]]).all())
+            self.assertTrue(np.isfinite([row["linear"], row["ft"], row["head"]]).all())
         for row in report["epochs"]:
             self.assertTrue(np.isfinite(row["validation_loss"]))
             for name in ("linear_movement", "nonlinear_std_cp", "saturation", "elapsed_seconds", "steps", "total_steps"):
@@ -210,7 +213,7 @@ class NNUETrainingTest(unittest.TestCase):
             if row["epoch"]:
                 self.assertAlmostEqual(row["total_loss"], row["train_loss"] + 1000 * row["removal_loss"], delta=1e-8)
         for name in ("inputs", "base", "init_pst", "width", "split", "teacher_classes", "teacher_ks",
-                     "unobserved_features", "lr_linear", "lr_nonlinear", "weight_decay_nonlinear", "seed",
+                     "unobserved_features", "lr_linear", "lr_ft", "lr_head", "weight_decay_ft", "weight_decay_head", "seed",
                      "batch", "max_epochs", "patience", "time_limit_hours", "packages", "quantization"):
             self.assertIn(name, report)
         self.assertEqual(report["lambda_override"], 1.0)
@@ -240,11 +243,11 @@ class NNUETrainingTest(unittest.TestCase):
         self.assert_mirrors(from_floating(floating, net.k), records)
 
     def test_removal_matches_actual_board_recalculation_at_phase_boundaries(self):
-        model = NNUE(self.initial, np.ones(13680, dtype=bool), 4, 1072.6529541015625, CPU, 16).double()
+        model = NNUE(self.initial, np.ones(13680, dtype=bool), 4, 1072.6529541015625, CPU, 16, get_feature_set("P"), np.ones(13680, dtype=bool)).double()
         with torch.no_grad():
-            model.output_weights.copy_(torch.tensor([[0.2, -0.3], [0.4, 0.1]], dtype=torch.float64))
-            model.biases.fill_(0.07)
-            model.output_bias.fill_(0.125)
+            model.head.output_weights.copy_(torch.tensor([[0.2, -0.3], [0.4, 0.1]], dtype=torch.float64))
+            model.head.biases.fill_(0.07)
+            model.head.output_bias.fill_(0.125)
         for count in (1, 2, 3, 91, 92, 93):
             for stm in (0, 1):
                 with self.subTest(count=count, stm=stm), torch.no_grad():
@@ -260,7 +263,7 @@ class NNUETrainingTest(unittest.TestCase):
     def test_constraints_restore_initial_unobserved_rows_after_each_update(self):
         dataset = Dataset([self.data])
         observed = feature_observations(dataset, 16) > 0
-        model = NNUE(self.initial, observed, 4, 1000, CPU, 1)
+        model = NNUE(self.initial, observed, 4, 1000, CPU, 1, get_feature_set("P"), observed)
         for sign in (-1, 1):
             with torch.no_grad():
                 for parameter in model.parameters():
@@ -275,7 +278,7 @@ class NNUETrainingTest(unittest.TestCase):
                 np.testing.assert_array_equal(floating[name][~observed], self.initial[~observed, i])
                 self.assertTrue(np.all(floating[name][observed] == (-4096 if sign < 0 else 4095.875)))
             self.assertTrue(torch.all(model.linear.weight[-1] == 0))
-            self.assertTrue(torch.all(model.embedding.weight[-1] == 0))
+            self.assertTrue(torch.all(model.ft.embedding.weight[-1] == 0))
             train.quantized_weights(floating)
 
     def test_time_limit_before_first_completed_epoch_writes_error(self):
@@ -366,7 +369,7 @@ class NNUETrainingTest(unittest.TestCase):
 
         def bad_gradient(model, *args, **kwargs):
             original_init(model, *args, **kwargs)
-            model.output_bias.register_hook(lambda gradient: gradient * float("nan"))
+            model.head.output_bias.register_hook(lambda gradient: gradient * float("nan"))
 
         for kind in ("loss", "gradient"):
             output = self.root / f"{kind}.bin"
@@ -385,9 +388,9 @@ class NNUETrainingTest(unittest.TestCase):
         def saturated(model, *args, **kwargs):
             original_init(model, *args, **kwargs)
             with torch.no_grad():
-                model.embedding.weight.zero_()
-                model.biases.fill_(1)
-                model.output_weights.fill_(1.98)
+                model.ft.embedding.weight.zero_()
+                model.head.biases.fill_(1)
+                model.head.output_weights.fill_(1.98)
 
         with patch.object(NNUE, "__init__", saturated), self.assertRaises(SystemExit) as error:
             self.run_training(0)
@@ -408,7 +411,7 @@ class NNUETrainingTest(unittest.TestCase):
                 path.unlink()
 
     def test_quantization_uses_ties_to_even_and_rejects_overflow(self):
-        model = NNUE(self.initial, np.ones(13680, dtype=bool), 2, 1000, CPU, 1)
+        model = NNUE(self.initial, np.ones(13680, dtype=bool), 2, 1000, CPU, 1, get_feature_set("P"), np.ones(13680, dtype=bool))
         floating = model.floating_weights()
         floating["middlegame"][:4] = [0.0625, 0.1875, -0.0625, -0.1875]
         floating["weights"][0] = [0.5, 1.5]

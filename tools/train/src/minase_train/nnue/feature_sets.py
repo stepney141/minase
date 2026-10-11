@@ -52,7 +52,9 @@ class FeatureSetSpec:
 
     def base_indices(self, features: NDArray[np.integer]) -> NDArray[np.int32]:
         """発火した特徴を、特徴分解で共有する基底特徴の行へ写す。"""
-        return (np.asarray(features) % FEATURE_COUNT).astype(np.int32)
+        features = np.asarray(features)
+        return np.where(features == self.feature_count, FEATURE_COUNT,
+                        features % FEATURE_COUNT).astype(np.int32)
 
 
 FEATURE_SETS = MappingProxyType({

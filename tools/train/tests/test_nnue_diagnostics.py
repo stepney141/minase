@@ -14,6 +14,7 @@ from minase_train.data import mnpt
 from minase_train.data.mnpt import initial_piece_values
 from minase_train.data.mnsd import HEADER_LENGTH, Dataset, map_records
 import minase_train.diagnostics.nnue as diagnostics
+from minase_train.nnue.feature_sets import get_feature_set
 from minase_train.nnue.model import NNUE
 from minase_train.nnue.train import quantized_weights
 import torch
@@ -87,6 +88,8 @@ class DiagnosticsTest(unittest.TestCase):
 
 
 class PhaseFourDiagnosticsTest(unittest.TestCase):
+    feature_set = "P"
+
     @classmethod
     def setUpClass(cls):
         cls.threads = torch.get_num_threads()
@@ -104,9 +107,10 @@ class PhaseFourDiagnosticsTest(unittest.TestCase):
             self.root / name for name in ("net.bin", "base.bin", "data.bin", "report.json")]
 
     def write_network(self, linear):
+        spec = get_feature_set(self.feature_set)
         write_mnue(self.net, linear, initial_piece_values(), 1000,
-                   np.zeros((13680, 2), dtype=np.int16), np.zeros(2, dtype=np.int32),
-                   np.zeros((2, 2), dtype=np.int16), 0, feature_set="P")
+                   np.zeros((spec.feature_count, 2), dtype=np.int16), np.zeros(2, dtype=np.int32),
+                   np.zeros((2, 2), dtype=np.int16), 0, feature_set=spec.name)
 
     def distribution_fixture(self):
         # 50 cpの歩を0,1,2,3,6,7,20,21枚とし、全指定帯で分散を持たせる。
@@ -260,17 +264,24 @@ class PhaseFourDiagnosticsTest(unittest.TestCase):
         initial = np.tile(-mnpt.initial_weights().astype(np.float32)[:, None] / 8, (1, 2))
         if nonlinear:
             initial[:, 1] *= 0.9
-        model = NNUE(initial, np.ones(13680, dtype=bool), 4, 1000, torch.device("cpu"), 18)
+        spec = get_feature_set(self.feature_set)
+        model = NNUE(initial, np.ones(13680, dtype=bool), 4, 1000, torch.device("cpu"), 18,
+                     spec, np.ones(spec.feature_count, dtype=bool))
         with torch.no_grad():
             if nonlinear:
-                model.biases.fill_(0.13)
-                model.output_weights.copy_(torch.tensor([[0.2, -0.3], [0.4, 0.1]]))
-                model.output_bias.fill_(0.125)
+                model.head.biases.fill_(0.13)
+                output = torch.tensor([[0.2, -0.3], [0.4, 0.1]])
+                model.head.output_weights.copy_(output.repeat(1, 2) if spec.factorized else output)
+                if spec.factorized:
+                    # 非0の区分固有行を加え、仮想行だけの診断にならないようにする。
+                    model.ft.embedding.weight[:-1].fill_(0.01)
+                    model.head.output_weights[:, 2:] += 0.05
+                model.head.output_bias.fill_(0.125)
         weights = model.floating_weights()
         float_path = self.root / "net-float.npz"
         np.savez(float_path, **weights)
         linear, hidden, biases, output, bias = quantized_weights(weights)
-        write_mnue(self.net, linear, initial_piece_values(), 1000, hidden, biases, output, bias, feature_set="P")
+        write_mnue(self.net, linear, initial_piece_values(), 1000, hidden, biases, output, bias, feature_set=spec.name)
         args = ["removal", "--float", str(float_path), "--net", str(self.net), "--data", str(self.data),
                 "--sample", str(len(records)), "--seed", "8", "--output", str(self.output)]
         return records, args
@@ -325,7 +336,7 @@ class PhaseFourDiagnosticsTest(unittest.TestCase):
 
         data, initial, base, _ = fixture(self.root)
         with redirect_stdout(StringIO()):
-            train.main(arguments(data, initial, base, self.net, epochs=1))
+            train.main(arguments(data, initial, base, self.net, epochs=1) + ["--feature-set", self.feature_set])
         dataset = Dataset([data])
         sample, seed = 3, 42
         indices = np.sort(np.random.default_rng(seed).choice(dataset.validation_indices, sample, replace=False))
@@ -352,6 +363,10 @@ class PhaseFourDiagnosticsTest(unittest.TestCase):
         for rows in variants:
             with self.subTest(rows=rows), self.assertRaises(ValueError):
                 diagnostics.moves(self.net, self.base, self.data, lambda *args: rows, lambda *args: baseline)
+
+
+class HalfKPDiagnosticsTest(PhaseFourDiagnosticsTest):
+    feature_set = "HalfKP-hm-b8"
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from minase_train.data.mnpt import initial_weights, read_mnpt_v3
 from minase_train.data.mnsd import Dataset, map_records
 from minase_train.data.taper import PHASE_DIVISOR, phase_numerators
 from minase_train.fm.train import integer_evaluate as fm_evaluate
+from minase_train.nnue.feature_sets import FeatureSetSpec, get_feature_set
 from minase_train.nnue.format import read_mnue
 from minase_train.nnue.model import float_evaluate
 from minase_train.nnue.reference import REFERENCE_BATCH, integer_evaluate
@@ -289,15 +290,15 @@ def moves(net: Path, base: Path, positions: Path, probe: Probe, base_probe: Prob
     return report
 
 
-def float_removal_deltas(weights: dict, k: float, records: np.ndarray) -> np.ndarray:
+def float_removal_deltas(weights: dict, k: float, records: np.ndarray, spec: FeatureSetSpec) -> np.ndarray:
     """両累算器から各駒の特徴を引き、補間率の変化を含めて倍精度で計算する。"""
     linear = np.zeros((FEATURE_COUNT + 1, 2), dtype=np.float64)
     linear[:FEATURE_COUNT] = np.stack((weights["middlegame"], weights["endgame"]), axis=1)
-    table = np.zeros((FEATURE_COUNT + 1, weights["weights"].shape[1]), dtype=np.float64)
-    table[:FEATURE_COUNT] = weights["weights"]
-    features = [feature_indices(records["board"], side, records["lion"])
+    table = np.zeros((spec.feature_count + 1, weights["weights"].shape[1]), dtype=np.float64)
+    table[:spec.feature_count] = weights["weights"]
+    features = [spec.indices(records["board"], records["lion"], side)
                 for side in (records["stm"], 1 - records["stm"])]
-    rows = linear[features[0]]
+    rows = linear[features[0][0]]
     sums = rows.sum(axis=1)
     counts = np.count_nonzero(records["board"], axis=1)
     q = np.clip(counts - 2, 0, PHASE_DIVISOR) / PHASE_DIVISOR
@@ -306,7 +307,7 @@ def float_removal_deltas(weights: dict, k: float, records: np.ndarray) -> np.nda
     remaining = sums[:, None, :] - rows[:, :144]
     delta = (after_q[:, None] * remaining[:, :, 0]
              + (1 - after_q[:, None]) * remaining[:, :, 1] - before[:, None])
-    for perspective, indices in enumerate(features):
+    for perspective, (_, indices) in enumerate(features):
         rows = table[indices]
         hidden = rows.sum(axis=1) + weights["biases"]
         before = (np.clip(hidden, 0, 1)**2 * weights["output_weights"][perspective]).sum(axis=-1)
@@ -334,8 +335,9 @@ def removal(float_path: Path, net_path: Path, data: list[Path], sample: int, see
         raise ValueError(f"sample must be in 1..{len(dataset.validation_indices)} validation positions")
     indices = np.sort(np.random.default_rng(seed).choice(dataset.validation_indices, sample, replace=False))
     net = read_mnue(net_path)
+    spec = get_feature_set(net.feature_set)
     shapes = {"middlegame": (FEATURE_COUNT,), "endgame": (FEATURE_COUNT,),
-              "weights": (FEATURE_COUNT, net.width), "biases": (net.width,),
+              "weights": (spec.feature_count, net.width), "biases": (net.width,),
               "output_weights": (2, net.width), "output_bias": ()}
     with np.load(float_path, allow_pickle=False) as archive:
         weights = {}
@@ -354,13 +356,13 @@ def removal(float_path: Path, net_path: Path, data: list[Path], sample: int, see
         squares = np.flatnonzero((records["board"][0] != 0) & ~np.isin(board_states, ROYAL_STATES))
         if not squares.size:
             continue
-        batched = float_removal_deltas(weights, net.k, records)[0, squares]
+        batched = float_removal_deltas(weights, net.k, records, spec)[0, squares]
         after = np.repeat(records, len(squares))
         after["board"][np.arange(len(squares)), squares] = 0
         floating, integer, reference = [], [], []
         for positions in (records, after):
             arguments = (positions["board"], positions["stm"], positions["lion"])
-            floating.append(float_evaluate(weights, net.k, *arguments))
+            floating.append(float_evaluate(weights, net.k, *arguments, spec))
             integer.append(integer_evaluate(net, *arguments).astype(np.int64))
             reference.append(pst_evaluate(v0, v0, feature_indices(*arguments),
                                           phase_numerators(positions["board"])).astype(np.int64))

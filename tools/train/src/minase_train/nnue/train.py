@@ -1,4 +1,4 @@
-"""線形PSTと鏡映共有NNUEを学習し、検査済みのMNUE版5へ保存する。"""
+"""線形PSTとNNUEを学習し、検査済みのMNUE版5へ保存する。"""
 
 from __future__ import annotations
 
@@ -23,12 +23,12 @@ from minase_train.data.lookahead import lookahead_options
 from minase_train.data.mnsd import Dataset, provenance_path, validate_lambda_override
 from minase_train.data.taper import phase_ratios, piece_counts
 from minase_train.fm.train import feature_observations
-from minase_train.nnue.feature_sets import get_feature_set
+from minase_train.nnue.feature_sets import FEATURE_SETS, FeatureSetSpec, get_feature_set
 from minase_train.nnue.format import (
     FIRST_LAYER_LIMIT, OUTPUT_BIAS_LIMIT, OUTPUT_WEIGHT_LIMIT, Network,
     read_mnue, validate_width, write_mnue,
 )
-from minase_train.nnue.model import NNUE, float_evaluate, load_initial
+from minase_train.nnue.model import FeatureInputs, NNUE, float_evaluate, load_initial
 from minase_train.nnue.reference import REFERENCE_BATCH, integer_evaluate
 from minase_train.pst.model import expanded_model_weights
 from minase_train.pst.removal import make_removal_reference, removal_loss
@@ -61,29 +61,59 @@ def _file_record(path: str | Path) -> dict:
     return {"path": str(Path(path).resolve()), "sha256": sha256_file(Path(path)).hex()}
 
 
-def _batch_inputs(records: NDArray, device: torch.device) -> tuple[Tensor, Tensor, Tensor]:
-    features = [torch.as_tensor(get_feature_set("P").indices(records["board"], records["lion"], side)[1], device=device)
+def _batch_inputs(records: NDArray, device: torch.device,
+                  spec: FeatureSetSpec) -> tuple[FeatureInputs, FeatureInputs, Tensor]:
+    features = [tuple(torch.as_tensor(indices, device=device) for indices in
+                      spec.indices(records["board"], records["lion"], side))
                 for side in (records["stm"], 1 - records["stm"])]
     ratios = torch.as_tensor(phase_ratios(records["board"]), dtype=torch.float32, device=device)
     return features[0], features[1], ratios
 
 
+def input_feature_observations(dataset: Dataset, batch: int, spec: FeatureSetSpec) -> NDArray[np.int64]:
+    """訓練集合を1回読み、両視点の特徴を埋め草を除いて数える。"""
+    counts = np.zeros(spec.feature_count, dtype=np.int64)
+    for start in range(0, dataset.training_indices.size, batch):
+        records = dataset.gather(dataset.training_indices[start:start + batch])
+        for side in (records["stm"], 1 - records["stm"]):
+            _, features = spec.indices(records["board"], records["lion"], side)
+            counts += np.bincount(features.ravel(), minlength=spec.feature_count + 1)[:spec.feature_count]
+    return counts
+
+
+def make_optimizer(model: NNUE, args: argparse.Namespace) -> torch.optim.AdamW:
+    """線形、第1層、出力部の3群に、それぞれの学習率と重み減衰を設定する。"""
+    return torch.optim.AdamW([
+        {"name": "linear", "params": [model.linear.weight], "lr": args.lr_linear,
+         "weight_decay": args.weight_decay_linear},
+        {"name": "ft", "params": model.ft.parameters(), "lr": args.lr_ft,
+         "weight_decay": args.weight_decay_ft},
+        {"name": "head", "params": model.head.parameters(), "lr": args.lr_head,
+         "weight_decay": args.weight_decay_head},
+    ])
+
+
 def validation_loss(model: NNUE, dataset: Dataset, teacher_ks: NDArray, batch: int,
                     deadline: float | None) -> tuple[float, dict]:
-    """検証集合全体のBCE、非線形出力の標準偏差、および飽和率を集計する。"""
+    """検証損失、符号一致率、非線形出力の標準偏差、飽和率、所要時間を返す。"""
     total = nonlinear_sum = nonlinear_square_sum = 0.0
-    lower = upper = units = 0
-    device = model.output_bias.device
+    lower = upper = units = correct = decisive_count = 0
+    started = time.perf_counter()
+    device = model.head.output_bias.device
     with torch.no_grad():
         for start in range(0, dataset.validation_indices.size, batch):
             _check_time(deadline)
             indices = dataset.validation_indices[start:start + batch]
             records = dataset.gather(indices)
-            linear, nonlinear, hidden = model.components(*_batch_inputs(records, device))
+            linear, nonlinear, hidden = model.components(*_batch_inputs(records, device, model.spec))
             targets = build_targets(records, teacher_ks, dataset.generations(indices), dataset.teacher_lambdas,
                                     scores=dataset.teacher_scores(indices))
+            logits = linear / model.k + nonlinear
+            decisive = records["result"] != 1
+            correct += int(np.count_nonzero(decisive & ((logits.cpu().numpy() > 0) == (records["result"] == 2))))
+            decisive_count += int(np.count_nonzero(decisive))
             total += float(F.binary_cross_entropy_with_logits(
-                linear / model.k + nonlinear, torch.as_tensor(targets, device=device),
+                logits, torch.as_tensor(targets, device=device),
                 reduction="none").sum(dtype=torch.float64))
             values = nonlinear.cpu().numpy().astype(np.float64) * model.k
             nonlinear_sum += float(values.sum())
@@ -100,6 +130,9 @@ def validation_loss(model: NNUE, dataset: Dataset, teacher_ks: NDArray, batch: i
         "nonlinear_std_cp": math.sqrt(max(0, nonlinear_square_sum / count - mean * mean)),
         "saturation": {"acc_le_zero": lower / units, "acc_ge_one": upper / units},
         "samples": int(count),
+        "sign_accuracy": correct / decisive_count if decisive_count else None,
+        "decisive_samples": decisive_count,
+        "validation_seconds": time.perf_counter() - started,
     }
 
 
@@ -113,8 +146,8 @@ def _linear_movement(model: NNUE, initial: NDArray) -> dict:
 
 def _record_gradients(optimizer: torch.optim.Optimizer, report: dict) -> None:
     norms = {}
-    for name, group in zip(("linear", "nonlinear"), optimizer.param_groups):
-        norms[name] = math.sqrt(sum(float(parameter.grad.norm())**2
+    for group in optimizer.param_groups:
+        norms[group["name"]] = math.sqrt(sum(float(parameter.grad.norm())**2
                                     for parameter in group["params"] if parameter.grad is not None))
     if not all(math.isfinite(value) for value in norms.values()):
         raise ValueError("non-finite loss gradient")
@@ -129,7 +162,7 @@ def train_epoch(model: NNUE, dataset: Dataset, teacher_ks: NDArray, reference: T
     _check_time(deadline)
     order = torch.randperm(dataset.training_indices.size, generator=generator).numpy()
     totals = dict.fromkeys(("train_loss", "removal_loss", "total_loss"), 0.0)
-    device = model.output_bias.device
+    device = model.head.output_bias.device
     for start in range(0, len(order), args.batch):
         _check_time(deadline)
         indices = dataset.training_indices[order[start:start + args.batch]]
@@ -138,7 +171,7 @@ def train_epoch(model: NNUE, dataset: Dataset, teacher_ks: NDArray, reference: T
             _check_time(deadline)
             chunk = indices[offset:offset + args.removal_chunk]
             records = dataset.gather(chunk)
-            features, opposite, ratios = _batch_inputs(records, device)
+            features, opposite, ratios = _batch_inputs(records, device, model.spec)
             targets = build_targets(records, teacher_ks, dataset.generations(chunk), dataset.teacher_lambdas,
                                     scores=dataset.teacher_scores(chunk))
             bce = F.binary_cross_entropy_with_logits(model(features, opposite, ratios),
@@ -146,7 +179,7 @@ def train_epoch(model: NNUE, dataset: Dataset, teacher_ks: NDArray, reference: T
             if args.removal_penalty > 0:
                 counts = torch.as_tensor(piece_counts(records["board"]), device=device)
                 penalty = removal_loss(model.removal_deltas(features, opposite, counts),
-                                       features, reference, counts, model.k)
+                                       features[0], reference, counts, model.k)
             else:
                 penalty = bce.new_zeros(())
             loss = bce + args.removal_penalty * penalty
@@ -185,10 +218,11 @@ def quantization_report(dataset: Dataset, weights: dict[str, NDArray], net: Netw
     indices = np.random.default_rng(seed).choice(dataset.validation_indices,
         size=min(sample_size, dataset.validation_indices.size), replace=False)
     errors = []
+    spec = get_feature_set(net.feature_set)
     for start in range(0, len(indices), min(batch, REFERENCE_BATCH)):
         records = dataset.gather(indices[start:start + min(batch, REFERENCE_BATCH)])
         arguments = (records["board"], records["stm"], records["lion"])
-        errors.append(np.abs(float_evaluate(weights, net.k, *arguments) - integer_evaluate(net, *arguments)))
+        errors.append(np.abs(float_evaluate(weights, net.k, *arguments, spec) - integer_evaluate(net, *arguments)))
     error = np.concatenate(errors)
     if not np.isfinite(error).all():
         raise ValueError("non-finite quantization error")
@@ -200,31 +234,41 @@ def quantization_report(dataset: Dataset, weights: dict[str, NDArray], net: Netw
 
 def _fit(model: NNUE, dataset: Dataset, teacher_ks: NDArray, initial: NDArray,
          args: argparse.Namespace, report: dict, path: Path, started: float) -> None:
-    device = model.output_bias.device
-    optimizer = torch.optim.AdamW([
-        {"params": [model.linear.weight], "lr": args.lr_linear, "weight_decay": 0},
-        {"params": model.nonlinear_parameters(), "lr": args.lr_nonlinear,
-         "weight_decay": args.weight_decay_nonlinear},
-    ])
+    device = model.head.output_bias.device
+    optimizer = make_optimizer(model, args)
     generator = torch.Generator().manual_seed(args.seed)
     v0 = mnpt.initial_weights()
     reference = make_removal_reference(v0, v0, device)
     deadline = started + args.time_limit_hours * 3600
     best, best_loss, best_epoch = None, math.inf, 0
     try:
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
         loss, statistics = validation_loss(model, dataset, teacher_ks, args.batch, deadline)
         report["initial_validation_loss"] = loss
         report["epochs"].append({"epoch": 0, "train_loss": None, "removal_loss": None,
             "total_loss": None, "validation_loss": loss, "linear_movement": _linear_movement(model, initial),
+            "training_seconds": None, "training_positions_per_second": None,
+            "cuda_peak_memory_bytes": torch.cuda.max_memory_allocated(device) if device.type == "cuda" else None,
             **statistics, "elapsed_seconds": time.monotonic() - started, "steps": 0, "total_steps": 0})
         _write_report(path, report)
         print(f"epoch 0: validation_loss={loss:.9f}", flush=True)
         for epoch in range(1, args.epochs + 1):
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+                torch.cuda.reset_peak_memory_stats(device)
+            training_started = time.perf_counter()
             training = train_epoch(model, dataset, teacher_ks, reference, optimizer, generator,
                                    args, report, deadline)
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            training_seconds = time.perf_counter() - training_started
+            training.update(training_seconds=training_seconds,
+                            training_positions_per_second=len(dataset.training_indices) / training_seconds)
             loss, statistics = validation_loss(model, dataset, teacher_ks, args.batch, deadline)
             report["epochs"].append({"epoch": epoch, **training, "validation_loss": loss,
                 "linear_movement": _linear_movement(model, initial), **statistics,
+                "cuda_peak_memory_bytes": torch.cuda.max_memory_allocated(device) if device.type == "cuda" else None,
                 "elapsed_seconds": time.monotonic() - started,
                 "steps": report["steps_per_epoch"], "total_steps": report["total_steps"]})
             if should_replace_best_epoch(loss, best_loss):
@@ -271,9 +315,10 @@ def command_train(args: argparse.Namespace) -> None:
         for name in ("patience", "batch", "removal_chunk", "validation_sample"):
             if getattr(args, name) <= 0:
                 raise ValueError(f"{output}: --{name.replace('_', '-')} must be positive")
-        for name in ("lr_linear", "lr_nonlinear", "time_limit_hours", "weight_decay_nonlinear", "removal_penalty"):
+        for name in ("lr_linear", "lr_ft", "lr_head", "time_limit_hours", "weight_decay_linear",
+                     "weight_decay_ft", "weight_decay_head", "removal_penalty"):
             value = getattr(args, name)
-            if not math.isfinite(value) or value < 0 or (name in ("lr_linear", "lr_nonlinear", "time_limit_hours") and value == 0):
+            if not math.isfinite(value) or value < 0 or (name in ("lr_linear", "lr_ft", "lr_head", "time_limit_hours") and value == 0):
                 raise ValueError(f"{output}: invalid --{name.replace('_', '-')}")
         validate_lambda_override(args.lambda_override)
         device = torch.device(args.device)
@@ -287,12 +332,22 @@ def command_train(args: argparse.Namespace) -> None:
             raise ValueError(f"{output}: training and validation sets must both be nonempty")
         teacher_ks, teacher_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
         counts = feature_observations(dataset, args.batch)
-        model = NNUE(initial, counts > 0, args.width, k, device, args.seed)
+        spec = get_feature_set(args.feature_set)
+        feature_counts = input_feature_observations(dataset, args.batch, spec) if spec.factorized else counts
+        model = NNUE(initial, counts > 0, args.width, k, device, args.seed, spec, feature_counts > 0)
+        row_counts = (feature_counts if spec.factorized
+                      else feature_counts.reshape(95, 12, 12)[:, :, :6])
+        observations = {"feature_rows": {"observed": int(np.count_nonzero(row_counts)),
+                                        "unobserved": int(np.count_nonzero(row_counts == 0))}}
+        if spec.factorized:
+            virtual_counts = feature_counts.reshape(-1, FEATURE_COUNT).sum(axis=0)
+            observations["virtual_rows"] = {"observed": int(np.count_nonzero(virtual_counts)),
+                                            "unobserved": int(np.count_nonzero(virtual_counts == 0))}
         steps = (dataset.training_indices.size + args.batch - 1) // args.batch
         report.update(
             inputs=[dict(_file_record(path), provenance_sha256=sha256_file(provenance_path(Path(path))).hex())
                     for path in args.data], init_pst=_file_record(args.init_pst), base=_file_record(args.base),
-            width=args.width, k=k, split={
+            feature_set=spec.name, observations=observations, width=args.width, k=k, split={
                 "method": "Dataset game hash modulo 20; remainder 0 is validation",
                 "training_positions": int(dataset.training_indices.size),
                 "validation_positions": int(dataset.validation_indices.size),
@@ -303,8 +358,9 @@ def command_train(args: argparse.Namespace) -> None:
             teacher_k_source="estimated from training set", lambda_override=args.lambda_override,
             lookahead=dataset.lookahead, feature_observations=counts.tolist(),
             unobserved_features=int(np.count_nonzero(counts == 0)), optimizer="AdamW",
-            lr_linear=args.lr_linear, lr_nonlinear=args.lr_nonlinear, weight_decay_linear=0,
-            weight_decay_nonlinear=args.weight_decay_nonlinear, removal_penalty=args.removal_penalty,
+            lr_linear=args.lr_linear, weight_decay_linear=args.weight_decay_linear,
+            lr_ft=args.lr_ft, weight_decay_ft=args.weight_decay_ft,
+            lr_head=args.lr_head, weight_decay_head=args.weight_decay_head, removal_penalty=args.removal_penalty,
             removal_chunk=args.removal_chunk, removal_reference="v0 initial_weights at both endpoints",
             batch=args.batch, seed=args.seed, device=args.device, max_epochs=args.epochs, patience=args.patience,
             time_limit_hours=args.time_limit_hours, validation_sample=args.validation_sample,
@@ -316,7 +372,7 @@ def command_train(args: argparse.Namespace) -> None:
         with float_path.open("xb") as stream:
             np.savez(stream, **floating)
         linear, weights, biases, output_weights, output_bias = quantized_weights(floating)
-        write_mnue(output, linear, piece_values, k, weights, biases, output_weights, output_bias, feature_set="P")
+        write_mnue(output, linear, piece_values, k, weights, biases, output_weights, output_bias, feature_set=spec.name)
         net = read_mnue(output)
         report["output_sha256"] = sha256_file(output).hex()
         report["float_sha256"] = sha256_file(float_path).hex()
@@ -339,7 +395,7 @@ def command_train(args: argparse.Namespace) -> None:
 
 
 def command_random(args: argparse.Namespace) -> None:
-    """Rust照合用に、鏡映共有と保存範囲を満たす一様整数のネットを生成する。"""
+    """Rust照合用に、特徴集合の共有条件と保存範囲を満たす整数ネットを生成する。"""
     validate_width(args.width, str(args.output))
     output = Path(args.output)
     if output.exists():
@@ -348,14 +404,20 @@ def command_random(args: argparse.Namespace) -> None:
     rng = np.random.default_rng(args.seed)
     canonical = canonical_feature_indices(np.arange(FEATURE_COUNT))
     linear = rng.integers(-4000, 4001, size=(FEATURE_COUNT // 2, 2), dtype=np.int16)[canonical]
-    weights = rng.integers(-1016, 1017, size=(FEATURE_COUNT // 2, args.width), dtype=np.int16)[canonical]
-    reflected = np.arange(FEATURE_COUNT) % 12 >= 6
-    weights[reflected] = np.roll(weights[reflected], args.width // 2, axis=1)
-    biases = np.tile(rng.integers(-1016, 1017, size=args.width // 2, dtype=np.int32), 2)
-    output_weights = np.tile(rng.integers(-8192, 8193, size=(2, args.width // 2), dtype=np.int16), (1, 2))
+    spec = get_feature_set(args.feature_set)
+    if spec.mirror == "shared":
+        weights = rng.integers(-1016, 1017, size=(FEATURE_COUNT // 2, args.width), dtype=np.int16)[canonical]
+        reflected = np.arange(FEATURE_COUNT) % 12 >= 6
+        weights[reflected] = np.roll(weights[reflected], args.width // 2, axis=1)
+        biases = np.tile(rng.integers(-1016, 1017, size=args.width // 2, dtype=np.int32), 2)
+        output_weights = np.tile(rng.integers(-8192, 8193, size=(2, args.width // 2), dtype=np.int16), (1, 2))
+    else:
+        weights = rng.integers(-1016, 1017, size=(spec.feature_count, args.width), dtype=np.int16)
+        biases = rng.integers(-1016, 1017, size=args.width, dtype=np.int32)
+        output_weights = rng.integers(-8192, 8193, size=(2, args.width), dtype=np.int16)
     output_bias = int(rng.integers(-100_000, 100_001))
     output.parent.mkdir(parents=True, exist_ok=True)
-    write_mnue(output, linear, values, k, weights, biases, output_weights, output_bias, feature_set="P")
+    write_mnue(output, linear, values, k, weights, biases, output_weights, output_bias, feature_set=spec.name)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -363,6 +425,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
+    train.add_argument("--feature-set", choices=tuple(FEATURE_SETS), required=True)
     train.add_argument("--data", nargs="+", required=True, type=Path)
     train.add_argument("--init-pst", required=True, type=Path)
     train.add_argument("--base", required=True, type=Path)
@@ -371,7 +434,9 @@ def build_parser() -> argparse.ArgumentParser:
     for name, default in (("epochs", 50), ("patience", 5), ("batch", 16384), ("seed", 1),
                           ("removal-chunk", 2048), ("validation-sample", 10000)):
         train.add_argument("--" + name, type=int, default=default)
-    for name, default in (("lr-linear", 0.03), ("lr-nonlinear", 1e-3), ("weight-decay-nonlinear", 1e-4),
+    for name, default in (("lr-linear", 0.03), ("weight-decay-linear", 0),
+                          ("lr-ft", 1e-3), ("weight-decay-ft", 1e-4),
+                          ("lr-head", 1e-3), ("weight-decay-head", 1e-4),
                           ("removal-penalty", 1000), ("time-limit-hours", 24), ("lambda-override", 1.0)):
         train.add_argument("--" + name, type=float, default=default)
     train.add_argument("--lookahead-gamma", type=float)
@@ -379,6 +444,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--device", choices=("cpu", "cuda"), required=True)
     train.set_defaults(handler=command_train)
     random = commands.add_parser("random")
+    random.add_argument("--feature-set", choices=tuple(FEATURE_SETS), required=True)
     for name in ("width", "seed"):
         random.add_argument("--" + name, required=True, type=int)
     for name in ("base", "output"):

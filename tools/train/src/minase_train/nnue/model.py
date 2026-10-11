@@ -1,4 +1,4 @@
-"""鏡映共有の線形PSTとSCReLUの1層ネットを同時に学習する。"""
+"""線形経路、特徴変換部、および直接内積の出力部を組み合わせる。"""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from minase_train.data.features import (
-    FEATURE_COUNT, MIRRORED_FEATURE_COUNT, PADDING_INDEX,
+    FEATURE_COUNT, MIRRORED_FEATURE_COUNT, PADDING_INDEX, canonical_feature_indices,
 )
 from minase_train.data.taper import phase_ratios
-from minase_train.nnue.feature_sets import get_feature_set
+from minase_train.nnue.feature_sets import FeatureSetSpec
 from minase_train.nnue.format import validate_width
 from minase_train.nnue.reference import REFERENCE_BATCH
 from minase_train.pst.model import MirroredEmbedding, expanded_model_weights
@@ -51,11 +51,138 @@ def _feature_sum(rows: Tensor) -> Tensor:
     return pairs.sum(dim=(1, 2)) + rows[:, 144]
 
 
+class LinearPath(MirroredEmbedding):
+    """基底特徴の鏡映対を共有し、未観測行には移植値を保つ。"""
+
+    def __init__(self, initial: NDArray, observed: NDArray, device: torch.device) -> None:
+        super().__init__(torch.as_tensor(initial, device=device), device)
+        self.register_buffer("observed", torch.as_tensor(observed, device=device))
+        self.register_buffer("canonical_observed", torch.as_tensor(
+            np.append(observed.reshape(95, 12, 12)[:, :, :6].reshape(-1), False), device=device))
+        self.register_buffer("initial", self.weight.detach().clone())
+
+    @torch.no_grad()
+    def fix_unobserved(self) -> None:
+        self.weight[~self.canonical_observed] = self.initial[~self.canonical_observed]
+
+
+class SharedTransformer(nn.Module):
+    """P型の正準行を持ち、鏡映側ではユニットの前半と後半を交換する。"""
+
+    def __init__(self, observed: NDArray, width: int, device: torch.device, seed: int) -> None:
+        super().__init__()
+        self.width = width
+        self.embedding = nn.Embedding(MIRRORED_FEATURE_COUNT + 1, width,
+                                      padding_idx=MIRRORED_FEATURE_COUNT, device=device)
+        self.register_buffer("canonical_indices", torch.as_tensor(
+            canonical_feature_indices(np.arange(FEATURE_COUNT + 1)), dtype=torch.long, device=device))
+        self.register_buffer("reflected", torch.as_tensor(
+            np.arange(FEATURE_COUNT + 1) % 12 >= 6, device=device))
+        self.register_buffer("observed", torch.as_tensor(
+            np.append(observed.reshape(95, 12, 12)[:, :, :6].reshape(-1), False), device=device))
+        generator = torch.Generator(device=device).manual_seed(seed)
+        with torch.no_grad():
+            self.embedding.weight.zero_()
+            count = int(self.observed.sum())
+            self.embedding.weight[self.observed] = torch.randn(
+                (count, width), generator=generator, device=device) * 0.05
+
+    def expanded_weights(self) -> Tensor:
+        rows = self.embedding.weight[self.canonical_indices]
+        return torch.where(self.reflected[:, None], rows.roll(self.width // 2, dims=1), rows)
+
+    def forward(self, features: Tensor) -> Tensor:
+        return F.embedding(features.long(), self.expanded_weights(), padding_idx=PADDING_INDEX)
+
+    @torch.no_grad()
+    def fix_unobserved(self) -> None:
+        self.embedding.weight[~self.observed] = 0
+
+    @torch.no_grad()
+    def constrain(self) -> None:
+        self.embedding.weight.clamp_(-8, 8)
+
+
+class FactorizedTransformer(nn.Module):
+    """特徴の行と基底特徴の仮想行を足し、保存時だけ全行を畳み込む。"""
+
+    def __init__(self, spec: FeatureSetSpec, observed: NDArray, base_observed: NDArray,
+                 width: int, device: torch.device, seed: int) -> None:
+        super().__init__()
+        self.embedding = nn.Embedding(spec.feature_count + 1, width,
+                                      padding_idx=spec.feature_count, device=device)
+        self.virtual = nn.Embedding(FEATURE_COUNT + 1, width, padding_idx=FEATURE_COUNT, device=device)
+        self.register_buffer("observed", torch.as_tensor(np.append(observed, False), device=device))
+        self.register_buffer("virtual_observed", torch.as_tensor(
+            np.append(observed.reshape(-1, FEATURE_COUNT).any(axis=0), False), device=device))
+        self.register_buffer("virtual_indices", torch.as_tensor(
+            spec.base_indices(np.arange(spec.feature_count + 1)), dtype=torch.long, device=device))
+        initial = SharedTransformer(base_observed, width, device, seed).expanded_weights().detach()
+        self.register_buffer("initial_virtual", initial.clone())
+        with torch.no_grad():
+            self.embedding.weight.zero_()
+            self.virtual.weight.copy_(initial)
+
+    def forward(self, features: Tensor) -> Tensor:
+        features = features.long()
+        return self.embedding(features) + self.virtual(self.virtual_indices[features])
+
+    def expanded_weights(self) -> Tensor:
+        return self.embedding.weight + self.virtual.weight[self.virtual_indices]
+
+    @torch.no_grad()
+    def fix_unobserved(self) -> None:
+        self.embedding.weight[~self.observed] = 0
+        self.virtual.weight[~self.virtual_observed] = self.initial_virtual[~self.virtual_observed]
+
+    @torch.no_grad()
+    def constrain(self) -> None:
+        self.virtual.weight.clamp_(-8, 8)
+        virtual = self.virtual.weight[self.virtual_indices]
+        self.embedding.weight.clamp_(min=-8 - virtual, max=8 - virtual)
+
+
+class DirectHead(nn.Module):
+    """第1層のバイアスと、両視点のSCReLUへの直接内積を持つ。"""
+
+    def __init__(self, width: int, shared: bool, device: torch.device) -> None:
+        super().__init__()
+        self.shared = shared
+        units = width // 2 if shared else width
+        self.biases = nn.Parameter(torch.zeros(units, device=device))
+        self.output_weights = nn.Parameter(torch.zeros(2, units, device=device))
+        self.output_bias = nn.Parameter(torch.zeros((), device=device))
+
+    def expanded_biases(self) -> Tensor:
+        return self.biases.repeat(2) if self.shared else self.biases
+
+    def expanded_output_weights(self) -> Tensor:
+        return self.output_weights.repeat(1, 2) if self.shared else self.output_weights
+
+    def forward(self, hidden: Tensor, perspective: int) -> Tensor:
+        activation = hidden.clamp(0, 1).square()
+        if self.shared:
+            left, right = activation.chunk(2, dim=-1)
+            activation = left + right
+        return (activation * self.output_weights[perspective]).sum(dim=-1)
+
+    @torch.no_grad()
+    def constrain(self) -> None:
+        self.biases.clamp_(-8, 8)
+        self.output_weights.clamp_(-1.98, 1.98)
+        self.output_bias.clamp_(-8, 8)
+
+
+# 各視点の基底番号と入力特徴番号は、どちらも元の升順の145列を持つ。
+FeatureInputs = tuple[Tensor, Tensor]
+
+
 class NNUE(nn.Module):
-    """正準特徴の重みと半数のバイアス・出力重みで、鏡映共有を表現する。"""
+    """入力特徴集合に従って線形経路、特徴変換部、出力部を組み立てる。"""
 
     def __init__(self, initial: NDArray, observed: NDArray, width: int, k: float,
-                 device: torch.device, seed: int) -> None:
+                 device: torch.device, seed: int, spec: FeatureSetSpec,
+                 feature_observed: NDArray) -> None:
         super().__init__()
         validate_width(width, "NNUE model")
         _validate_initial(np.asarray(initial), "NNUE model")
@@ -65,125 +192,88 @@ class NNUE(nn.Module):
         squares = observed.reshape(95, 12, 12)
         if not np.array_equal(squares, squares[:, :, ::-1]):
             raise ValueError("NNUE model: observed mask must share mirrors")
+        feature_observed = np.asarray(feature_observed)
+        if feature_observed.shape != (spec.feature_count,) or feature_observed.dtype != np.bool_:
+            raise ValueError(f"NNUE model: feature mask must be bool[{spec.feature_count}]")
         if not math.isfinite(k) or not 0 < k <= 100_000:
             raise ValueError("NNUE model: K must be finite and in (0, 100000]")
-        self.width, self.k = width, k
-        self.linear = MirroredEmbedding(torch.as_tensor(initial, device=device), device)
-        self.embedding = nn.Embedding(MIRRORED_FEATURE_COUNT + 1, width,
-                                      padding_idx=MIRRORED_FEATURE_COUNT, device=device)
-        self.biases = nn.Parameter(torch.zeros(width // 2, device=device))
-        self.output_weights = nn.Parameter(torch.zeros(2, width // 2, device=device))
-        self.output_bias = nn.Parameter(torch.zeros((), device=device))
-        self.register_buffer("observed", torch.as_tensor(observed, device=device))
-        self.register_buffer("canonical_observed", torch.as_tensor(
-            np.append(squares[:, :, :6].reshape(-1), False), device=device))
-        self.register_buffer("initial_linear", self.linear.weight.detach().clone())
-        self.register_buffer("reflected", torch.as_tensor(
-            np.arange(FEATURE_COUNT + 1) % 12 >= 6, device=device))
-        generator = torch.Generator(device=device).manual_seed(seed)
-        with torch.no_grad():
-            self.embedding.weight.zero_()
-            count = int(self.canonical_observed.sum())
-            self.embedding.weight[self.canonical_observed] = torch.randn(
-                (count, width), generator=generator, device=device) * 0.05
-            self.fix_unobserved()
+        self.width, self.k, self.spec = width, k, spec
+        self.linear = LinearPath(initial, observed, device)
+        self.ft = (FactorizedTransformer(spec, feature_observed, observed, width, device, seed)
+                   if spec.factorized else SharedTransformer(observed, width, device, seed))
+        self.head = DirectHead(width, spec.mirror == "shared", device)
 
-    def nonlinear_parameters(self) -> list[nn.Parameter]:
-        """非線形経路を1つの最適化群として返す。"""
-        return [self.embedding.weight, self.biases, self.output_weights, self.output_bias]
-
-    def expanded_weights(self) -> Tensor:
-        """鏡映側で隠れユニットの前半と後半を交換して全特徴へ展開する。"""
-        rows = self.embedding.weight[self.linear.canonical_indices]
-        return torch.where(self.reflected[:, None], rows.roll(self.width // 2, dims=1), rows)
-
-    def feature_weights(self, features: Tensor) -> Tensor:
-        """padding行を含む非線形の特徴重みを集める。"""
-        return F.embedding(features.long(), self.expanded_weights(), padding_idx=PADDING_INDEX)
-
-    def _output(self, hidden: Tensor, perspective: int) -> Tensor:
-        activation = hidden.clamp(0, 1).square()
-        left, right = activation.chunk(2, dim=-1)
-        return ((left + right) * self.output_weights[perspective]).sum(dim=-1)
-
-    def components(self, features_stm: Tensor, features_nstm: Tensor,
+    def components(self, stm: FeatureInputs, nstm: FeatureInputs,
                    ratios: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """線形のセンチポーン、非線形ロジット、および両視点の累算器を返す。"""
-        sums = _feature_sum(self.linear(features_stm))
+        sums = _feature_sum(self.linear(stm[0]))
         linear_cp = ratios * sums[:, 0] + (1 - ratios) * sums[:, 1]
-        bias = self.biases.repeat(2)
-        hidden = torch.stack([_feature_sum(self.feature_weights(features)) + bias
-                              for features in (features_stm, features_nstm)], dim=1)
-        nl = self._output(hidden[:, 0], 0) + self._output(hidden[:, 1], 1) + self.output_bias
+        bias = self.head.expanded_biases()
+        hidden = torch.stack([_feature_sum(self.ft(features)) + bias
+                              for _, features in (stm, nstm)], dim=1)
+        nl = self.head(hidden[:, 0], 0) + self.head(hidden[:, 1], 1) + self.head.output_bias
         return linear_cp, nl, hidden
 
-    def forward(self, features_stm: Tensor, features_nstm: Tensor, ratios: Tensor) -> Tensor:
+    def forward(self, stm: FeatureInputs, nstm: FeatureInputs, ratios: Tensor) -> Tensor:
         """固定した出力用Kで線形評価を割り、非線形ロジットを足す。"""
-        linear_cp, nl, _ = self.components(features_stm, features_nstm, ratios)
+        linear_cp, nl, _ = self.components(stm, nstm, ratios)
         return linear_cp / self.k + nl
 
-    def removal_deltas(self, features_stm: Tensor, features_nstm: Tensor, counts: Tensor) -> Tensor:
-        """先獅子を残して各升の特徴だけを両視点から引いた除去差分を返す。"""
-        delta = pst_removal_deltas(self.linear(features_stm), counts)
-        for perspective, features in enumerate((features_stm, features_nstm)):
-            rows = self.feature_weights(features)
-            hidden = _feature_sum(rows) + self.biases.repeat(2)
-            before = self._output(hidden, perspective)
-            after = self._output(hidden[:, None, :] - rows[:, :144], perspective)
+    def removal_deltas(self, stm: FeatureInputs, nstm: FeatureInputs, counts: Tensor) -> Tensor:
+        """文脈を固定し、先獅子を残して各升の行を両視点から引く。"""
+        delta = pst_removal_deltas(self.linear(stm[0]), counts)
+        for perspective, (_, features) in enumerate((stm, nstm)):
+            rows = self.ft(features)
+            hidden = _feature_sum(rows) + self.head.expanded_biases()
+            before = self.head(hidden, perspective)
+            after = self.head(hidden[:, None, :] - rows[:, :144], perspective)
             # 大きな(B, 144, H)配列はモデルの精度のまま、集約後だけ倍精度へ広げる。
             delta = delta + self.k * (after - before[:, None]).to(torch.float64)
         return delta
 
     @torch.no_grad()
-    def fix_unobserved(self) -> None:
-        """未観測行の線形初期値と非線形の0、およびpaddingの0を厳密に保つ。"""
-        self.embedding.weight[~self.canonical_observed] = 0
-        self.linear.weight[~self.canonical_observed] = self.initial_linear[~self.canonical_observed]
-
-    @torch.no_grad()
     def constrain(self) -> None:
-        """更新後の重みを保存形式の範囲へ制限し、未観測行を復元する。"""
+        """更新後に保存範囲へ切り詰め、未観測行とpaddingを復元する。"""
         if any(not bool(torch.isfinite(value).all()) for value in self.parameters()):
             raise ValueError("NNUE model: non-finite trained weights")
         self.linear.weight.clamp_(-4096, 4095.875)
-        self.embedding.weight.clamp_(-8, 8)
-        self.biases.clamp_(-8, 8)
-        self.output_weights.clamp_(-1.98, 1.98)
-        self.output_bias.clamp_(-8, 8)
-        self.fix_unobserved()
+        self.ft.constrain()
+        self.head.constrain()
+        self.linear.fix_unobserved()
+        self.ft.fix_unobserved()
 
     @torch.no_grad()
     def floating_weights(self) -> dict[str, NDArray]:
-        """量子化前の全特徴の重みを、npz用の単精度配列として取り出す。"""
+        """特徴分解を畳み込み、保存用の単精度配列を取り出す。"""
         linear = expanded_model_weights(self.linear).cpu().numpy().astype(np.float32)
         return {
             "middlegame": linear[:, 0], "endgame": linear[:, 1],
-            "weights": self.expanded_weights()[:FEATURE_COUNT].cpu().numpy().astype(np.float32),
-            "biases": self.biases.repeat(2).cpu().numpy().astype(np.float32),
-            "output_weights": self.output_weights.repeat(1, 2).cpu().numpy().astype(np.float32),
-            "output_bias": self.output_bias.cpu().numpy().astype(np.float32),
-            "mask": self.observed.cpu().numpy().copy(),
+            "weights": self.ft.expanded_weights()[:self.spec.feature_count].cpu().numpy().astype(np.float32),
+            "biases": self.head.expanded_biases().cpu().numpy().astype(np.float32),
+            "output_weights": self.head.expanded_output_weights().cpu().numpy().astype(np.float32),
+            "output_bias": self.head.output_bias.cpu().numpy().astype(np.float32),
+            "mask": self.linear.observed.cpu().numpy().copy(),
         }
 
 
 def float_evaluate(weights: dict[str, NDArray], k: float, board: NDArray,
-                   stm: NDArray, lion: NDArray) -> NDArray[np.float64]:
+                   stm: NDArray, lion: NDArray, spec: FeatureSetSpec) -> NDArray[np.float64]:
     """量子化検査用に、線形評価と非線形出力を倍精度で再計算する。"""
     width = weights["weights"].shape[1]
     linear = np.zeros((FEATURE_COUNT + 1, 2), dtype=np.float64)
     linear[:FEATURE_COUNT] = np.stack((weights["middlegame"], weights["endgame"]), axis=1)
-    table = np.zeros((FEATURE_COUNT + 1, width), dtype=np.float64)
-    table[:FEATURE_COUNT] = weights["weights"]
+    table = np.zeros((spec.feature_count + 1, width), dtype=np.float64)
+    table[:spec.feature_count] = weights["weights"]
     result = np.empty(len(board), dtype=np.float64)
     for start in range(0, len(board), REFERENCE_BATCH):
         chunk = slice(start, start + REFERENCE_BATCH)
-        features = [get_feature_set("P").indices(board[chunk], lion[chunk], side[chunk])[1]
+        features = [spec.indices(board[chunk], lion[chunk], side[chunk])
                     for side in (stm, 1 - np.asarray(stm))]
-        sums = linear[features[0]].sum(axis=1)
+        sums = linear[features[0][0]].sum(axis=1)
         ratios = phase_ratios(board[chunk])
         cp = ratios * sums[:, 0] + (1 - ratios) * sums[:, 1]
         nl = np.full(len(cp), float(weights["output_bias"]), dtype=np.float64)
-        for perspective, indices in enumerate(features):
+        for perspective, (_, indices) in enumerate(features):
             hidden = table[indices].sum(axis=1) + weights["biases"]
             nl += (np.clip(hidden, 0, 1)**2 * weights["output_weights"][perspective]).sum(axis=1)
         result[chunk] = cp + k * nl

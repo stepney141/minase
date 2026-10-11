@@ -161,9 +161,9 @@ class ReferenceTest(unittest.TestCase):
         write_mnpt(base, zeros, zeros, initial_piece_values(), 1072.6529541015625)
         for width in (2, 4, 8):
             path = self.root / f"random{width}.bin"
-            main(["random", "--width", str(width), "--seed", "12", "--base", str(base), "--output", str(path)])
+            main(["random", "--feature-set", "P", "--width", str(width), "--seed", "12", "--base", str(base), "--output", str(path)])
             copy = self.root / f"copy{width}.bin"
-            main(["random", "--width", str(width), "--seed", "12", "--base", str(base), "--output", str(copy)])
+            main(["random", "--feature-set", "P", "--width", str(width), "--seed", "12", "--base", str(base), "--output", str(copy)])
             self.assertEqual(path.read_bytes(), copy.read_bytes())
             net = read_mnue(path)
             for side in (0, 1):
