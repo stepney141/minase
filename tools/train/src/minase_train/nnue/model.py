@@ -12,9 +12,10 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from minase_train.data.features import (
-    FEATURE_COUNT, MIRRORED_FEATURE_COUNT, PADDING_INDEX, feature_indices,
+    FEATURE_COUNT, MIRRORED_FEATURE_COUNT, PADDING_INDEX,
 )
 from minase_train.data.taper import phase_ratios
+from minase_train.nnue.feature_sets import get_feature_set
 from minase_train.nnue.format import validate_width
 from minase_train.nnue.reference import REFERENCE_BATCH
 from minase_train.pst.model import MirroredEmbedding, expanded_model_weights
@@ -176,7 +177,7 @@ def float_evaluate(weights: dict[str, NDArray], k: float, board: NDArray,
     result = np.empty(len(board), dtype=np.float64)
     for start in range(0, len(board), REFERENCE_BATCH):
         chunk = slice(start, start + REFERENCE_BATCH)
-        features = [feature_indices(board[chunk], side[chunk], lion[chunk])
+        features = [get_feature_set("P").indices(board[chunk], lion[chunk], side[chunk])[1]
                     for side in (stm, 1 - np.asarray(stm))]
         sums = linear[features[0]].sum(axis=1)
         ratios = phase_ratios(board[chunk])

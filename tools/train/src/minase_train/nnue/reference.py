@@ -1,4 +1,4 @@
-"""設計書の整数演算と丸めで、MNUE版4の局面バッチを参照評価する。"""
+"""設計書の整数演算と丸めで、MNUE版5の局面バッチを参照評価する。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from minase_train.data.features import FEATURE_COUNT, feature_indices
+from minase_train.data.features import FEATURE_COUNT
 from minase_train.data.mnpt import EVALUATION_LIMIT
 from minase_train.data.taper import PHASE_DIVISOR, phase_numerators
 from minase_train.nnue.format import Network
+from minase_train.nnue.feature_sets import get_feature_set
 
 
 REFERENCE_BATCH = 1024
@@ -33,15 +34,16 @@ def accumulators(net: Network, board: NDArray, stm: NDArray, lion: NDArray) -> t
     """手番側、相手側の順に、paddingが0の線形・非線形累算器を作る。"""
     linear_table = np.zeros((FEATURE_COUNT + 1, 2), dtype=np.int32)
     linear_table[:FEATURE_COUNT] = net.linear
-    table = np.zeros((FEATURE_COUNT + 1, net.width), dtype=np.int32)
-    table[:FEATURE_COUNT] = net.weights
+    spec = get_feature_set(net.feature_set)
+    table = np.zeros((spec.feature_count + 1, net.width), dtype=np.int32)
+    table[:spec.feature_count] = net.weights
     linear = np.empty((len(board), 2, 2), dtype=np.int32)
     hidden = np.empty((len(board), 2, net.width), dtype=np.int32)
     for perspective, side in enumerate((stm, 1 - np.asarray(stm))):
-        features = feature_indices(board, side, lion)
+        base, features = spec.indices(board, lion, side)
         for start in range(0, len(board), REFERENCE_BATCH):
             chunk = slice(start, start + REFERENCE_BATCH)
-            linear[chunk, perspective] = linear_table[features[chunk]].sum(axis=1, dtype=np.int32)
+            linear[chunk, perspective] = linear_table[base[chunk]].sum(axis=1, dtype=np.int32)
             hidden[chunk, perspective] = table[features[chunk]].sum(axis=1, dtype=np.int32) + net.biases
     return linear, hidden
 

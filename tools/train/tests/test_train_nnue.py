@@ -4,6 +4,7 @@ from contextlib import redirect_stdout
 import hashlib
 from io import StringIO
 import json
+import struct
 from pathlib import Path
 import tempfile
 import unittest
@@ -174,6 +175,8 @@ class NNUETrainingTest(unittest.TestCase):
     def test_epoch_zero_exports_requantized_pst_and_fixed_search_constants(self):
         report = self.run_training(0)
         net = read_mnue(self.output)
+        self.assertEqual(net.feature_set, "P")
+        self.assertEqual(struct.unpack_from("<I", self.output.read_bytes(), 4)[0], 5)
         np.testing.assert_array_equal(net.linear, mnpt.quantize(self.initial))
         _, _, values, k = mnpt.read_mnpt(self.base)
         np.testing.assert_array_equal(net.piece_values, values)

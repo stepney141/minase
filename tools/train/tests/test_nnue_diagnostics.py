@@ -22,6 +22,26 @@ from minase_train.nnue.format import write_mnue
 
 
 class DiagnosticsTest(unittest.TestCase):
+    def test_halfkp_compare_uses_context_with_independent_known_scores(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            net, data = root / "halfkp.bin", root / "positions.bin"
+            linear = np.zeros((13680, 2), dtype=np.int16)
+            linear[29 * 144:30 * 144] = 8
+            weights = np.zeros((109440, 2), dtype=np.int16)
+            weights[72633] = [127, 0]
+            write_mnue(net, linear, initial_piece_values(), 254, weights, np.zeros(2, dtype=np.int32),
+                       np.array([[4096, 0], [0, 0]]), 0, feature_set="HalfKP-hm-b8")
+            board = np.zeros((2, 144), dtype=np.uint8)
+            board[:, 50], board[:, 143] = 1, 76
+            board[0, 5], board[1, 6] = 12, 12
+            write_mnsd(data, seed=0, checksum=b"a" * 32, games=[0, 1], board=board)
+            # 1局面目だけ127が発火し、(126 * 4096 * 32 + 32768) >> 16 = 252 cp。
+            expected = [{"index": 0, "eval": 253}, {"index": 1, "eval": 1}]
+            self.assertEqual(compare(net, data, Mock(return_value=expected))["samples"], 2)
+            with self.assertRaisesRegex(ValueError, "index 0"):
+                compare(net, data, Mock(return_value=[{"index": 0, "eval": 1}, expected[1]]))
+
     def test_probe_passes_net_positions_and_preserves_command_prefix(self):
         for command in (["nnue_probe"], ["minase", "dev", "nnue-probe"]):
             with patch("minase_train.diagnostics.nnue.subprocess.run", return_value=Mock(stdout="[]")) as run:
@@ -38,7 +58,7 @@ class DiagnosticsTest(unittest.TestCase):
             linear = np.zeros((13680, 2), dtype=np.int16)
             linear[29 * 144:30 * 144] = 8
             write_mnue(net, linear, initial_piece_values(), 1000, np.zeros((13680, 2), dtype=np.int16),
-                       np.zeros(2, dtype=np.int32), np.zeros((2, 2), dtype=np.int16), 0)
+                       np.zeros(2, dtype=np.int32), np.zeros((2, 2), dtype=np.int16), 0, feature_set="P")
             board = np.zeros((3, 144), dtype=np.uint8)
             for i, row in enumerate(board):
                 row[:i + 1] = 1
@@ -86,7 +106,7 @@ class PhaseFourDiagnosticsTest(unittest.TestCase):
     def write_network(self, linear):
         write_mnue(self.net, linear, initial_piece_values(), 1000,
                    np.zeros((13680, 2), dtype=np.int16), np.zeros(2, dtype=np.int32),
-                   np.zeros((2, 2), dtype=np.int16), 0)
+                   np.zeros((2, 2), dtype=np.int16), 0, feature_set="P")
 
     def distribution_fixture(self):
         # 50 cpの歩を0,1,2,3,6,7,20,21枚とし、全指定帯で分散を持たせる。
@@ -250,7 +270,7 @@ class PhaseFourDiagnosticsTest(unittest.TestCase):
         float_path = self.root / "net-float.npz"
         np.savez(float_path, **weights)
         linear, hidden, biases, output, bias = quantized_weights(weights)
-        write_mnue(self.net, linear, initial_piece_values(), 1000, hidden, biases, output, bias)
+        write_mnue(self.net, linear, initial_piece_values(), 1000, hidden, biases, output, bias, feature_set="P")
         args = ["removal", "--float", str(float_path), "--net", str(self.net), "--data", str(self.data),
                 "--sample", str(len(records)), "--seed", "8", "--output", str(self.output)]
         return records, args

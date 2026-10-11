@@ -1,4 +1,4 @@
-"""MNUE版4の整数評価、分布、着手差分、および駒除去差分を診断する。"""
+"""MNUE版5の整数評価、分布、着手差分、および駒除去差分を診断する。"""
 
 from __future__ import annotations
 
@@ -173,7 +173,7 @@ def sample_identity(dataset: Dataset, indices: np.ndarray, seed: int) -> dict:
 
 
 def distribution(data: list[Path], sample: int, seed: int, pairs: list[list[str]]) -> dict:
-    """全局面から同じ一様非復元標本を取り、MNPT版3とMNUE版4を比較する。"""
+    """全局面から同じ一様非復元標本を取り、MNPT版3とMNUE版5を比較する。"""
     if sample < 2:
         raise ValueError("sample must be at least 2")
     names = [name for name, _, _ in pairs]

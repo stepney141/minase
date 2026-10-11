@@ -1,4 +1,4 @@
-"""線形PSTと鏡映共有NNUEを学習し、検査済みのMNUE版4へ保存する。"""
+"""線形PSTと鏡映共有NNUEを学習し、検査済みのMNUE版5へ保存する。"""
 
 from __future__ import annotations
 
@@ -18,11 +18,12 @@ from torch.nn import functional as F
 
 from minase_train.checksum import sha256_file
 from minase_train.data import mnpt
-from minase_train.data.features import FEATURE_COUNT, canonical_feature_indices, feature_indices
+from minase_train.data.features import FEATURE_COUNT, canonical_feature_indices
 from minase_train.data.lookahead import lookahead_options
 from minase_train.data.mnsd import Dataset, provenance_path, validate_lambda_override
 from minase_train.data.taper import phase_ratios, piece_counts
 from minase_train.fm.train import feature_observations
+from minase_train.nnue.feature_sets import get_feature_set
 from minase_train.nnue.format import (
     FIRST_LAYER_LIMIT, OUTPUT_BIAS_LIMIT, OUTPUT_WEIGHT_LIMIT, Network,
     read_mnue, validate_width, write_mnue,
@@ -61,7 +62,7 @@ def _file_record(path: str | Path) -> dict:
 
 
 def _batch_inputs(records: NDArray, device: torch.device) -> tuple[Tensor, Tensor, Tensor]:
-    features = [torch.as_tensor(feature_indices(records["board"], side, records["lion"]), device=device)
+    features = [torch.as_tensor(get_feature_set("P").indices(records["board"], records["lion"], side)[1], device=device)
                 for side in (records["stm"], 1 - records["stm"])]
     ratios = torch.as_tensor(phase_ratios(records["board"]), dtype=torch.float32, device=device)
     return features[0], features[1], ratios
@@ -315,7 +316,7 @@ def command_train(args: argparse.Namespace) -> None:
         with float_path.open("xb") as stream:
             np.savez(stream, **floating)
         linear, weights, biases, output_weights, output_bias = quantized_weights(floating)
-        write_mnue(output, linear, piece_values, k, weights, biases, output_weights, output_bias)
+        write_mnue(output, linear, piece_values, k, weights, biases, output_weights, output_bias, feature_set="P")
         net = read_mnue(output)
         report["output_sha256"] = sha256_file(output).hex()
         report["float_sha256"] = sha256_file(float_path).hex()
@@ -354,7 +355,7 @@ def command_random(args: argparse.Namespace) -> None:
     output_weights = np.tile(rng.integers(-8192, 8193, size=(2, args.width // 2), dtype=np.int16), (1, 2))
     output_bias = int(rng.integers(-100_000, 100_001))
     output.parent.mkdir(parents=True, exist_ok=True)
-    write_mnue(output, linear, values, k, weights, biases, output_weights, output_bias)
+    write_mnue(output, linear, values, k, weights, biases, output_weights, output_bias, feature_set="P")
 
 
 def build_parser() -> argparse.ArgumentParser:

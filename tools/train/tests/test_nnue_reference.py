@@ -13,6 +13,7 @@ from minase_train.data.mnsd import map_records
 from minase_train.nnue.format import read_mnue, write_mnue
 from minase_train.nnue.reference import activate, evaluate_details, integer_evaluate, nonlinear_cp, output_scale
 from minase_train.nnue.train import main
+from test_nnue_format import network_arrays
 
 
 class ReferenceTest(unittest.TestCase):
@@ -20,6 +21,78 @@ class ReferenceTest(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
+
+    def royal_positions(self):
+        """王将か太子が各陣営に一意にある局面を、全区分と両手番で作る。"""
+        rng = np.random.default_rng(314)
+        board = rng.choice(np.array([0, 0, 0, 1, 65, 47, 111], dtype=np.uint8), (48, 144))
+        for i, row in enumerate(board):
+            row[[0, 1, 2, 3, 4, 5, 18, 30][i % 8]] = 12 if i % 3 else 22
+            row[[143, 142, 141, 140, 139, 138, 125, 113][i % 8]] = 76 if i % 3 else 86
+        lion = np.arange(48, dtype=np.uint8)
+        lion[::3] = 255
+        return board, np.arange(48, dtype=np.uint8) % 2, lion
+
+    def test_both_feature_sets_are_mirror_invariant_with_unique_royals(self):
+        board, stm, lion = self.royal_positions()
+        reflected, reflected_lion = mirror(board, lion)
+        for name in ("P", "HalfKP-hm-b8"):
+            for width in (2, 8):
+                arrays = network_arrays(width, name)
+                arrays["weights"] //= 32
+                arrays["biases"] //= 16
+                arrays["linear"] //= 100
+                path = self.root / "mirror.bin"
+                write_mnue(path, **arrays)
+                net = read_mnue(path)
+                values = integer_evaluate(net, board, stm, lion)
+                self.assertTrue(np.all(np.abs(values) < 28999))
+                self.assertGreater(np.unique(values).size, 1)
+                with self.subTest(feature_set=name, width=width):
+                    np.testing.assert_array_equal(values, integer_evaluate(net, reflected, stm, reflected_lion))
+
+    def test_p_rows_copied_to_every_halfkp_bucket_preserve_integer_evaluation(self):
+        board, stm, lion = self.royal_positions()
+        for width in (2, 8):
+            arrays = network_arrays(width)
+            arrays["weights"] //= 32
+            arrays["biases"] //= 16
+            arrays["linear"] //= 100
+            p_path, halfkp_path = self.root / "p.bin", self.root / "halfkp.bin"
+            write_mnue(p_path, **arrays)
+            arrays.update(feature_set="HalfKP-hm-b8", weights=np.tile(arrays["weights"], (8, 1)))
+            write_mnue(halfkp_path, **arrays)
+            p, halfkp = read_mnue(p_path), read_mnue(halfkp_path)
+            with self.subTest(width=width):
+                left, right = evaluate_details(p, board, stm, lion), evaluate_details(halfkp, board, stm, lion)
+                np.testing.assert_array_equal(left.linear_accumulators, right.linear_accumulators)
+                np.testing.assert_array_equal(left.output, right.output)
+                np.testing.assert_array_equal(left.evaluation, right.evaluation)
+
+    def test_halfkp_uses_unmirrored_base_for_linear_and_canonical_features_for_hidden(self):
+        arrays = network_arrays(2, "HalfKP-hm-b8")
+        arrays["linear"].fill(0)
+        arrays["weights"].fill(0)
+        for feature, endpoints in ((4226, [80, -81]), (13549, [0, 8]),
+                                   (11030, [48, 16]), (13657, [8, -8])):
+            reflected = feature // 12 * 12 + 11 - feature % 12
+            arrays["linear"][feature] = arrays["linear"][reflected] = endpoints
+        for feature, hidden in ((72633, [40, -20]), (81958, [30, 50]),
+                                (11030, [120, 0]), (13657, [-5, -40])):
+            arrays["weights"][feature] = hidden
+        arrays.update(k=254, biases=np.array([10, 20]),
+                      output_weights=np.array([[4096, 2048], [-2048, 1024]]), output_bias=-7)
+        path = self.root / "halfkp-hand.bin"
+        write_mnue(path, **arrays)
+        records = records_with([[(5, 12), (50, 1), (143, 76)]], lion=13)
+        result = evaluate_details(read_mnue(path), records["board"], records["stm"], records["lion"])
+        np.testing.assert_array_equal(result.linear_accumulators, [[[80, -73], [56, 8]]])
+        np.testing.assert_array_equal(result.accumulators, [[[80, 50], [125, -20]]])
+        np.testing.assert_array_equal(result.activations, [[[50, 19], [122, 0]]])
+        np.testing.assert_array_equal(result.linear_cp, [-8])
+        np.testing.assert_array_equal(result.output, [-6151])
+        np.testing.assert_array_equal(result.cp_nl, [-3])
+        np.testing.assert_array_equal(result.evaluation, [-11])
 
     def test_two_active_features_follow_all_six_steps(self):
         linear = np.zeros((13680, 2), dtype=np.int16)
@@ -34,7 +107,7 @@ class ReferenceTest(unittest.TestCase):
             weights[feature], weights[reflected] = hidden, hidden[::-1]
         path = self.root / "net.bin"
         write_mnue(path, linear, initial_piece_values(), 254, weights, np.array([10, 10]),
-                   np.array([[4096, 4096], [-2048, -2048]]), -7)
+                   np.array([[4096, 4096], [-2048, -2048]]), -7, feature_set="P")
         records = records_with([[(0, 1)]], lion=13)
         result = evaluate_details(read_mnue(path), records["board"], records["stm"], records["lion"])
         np.testing.assert_array_equal(result.linear_accumulators, [[[80, -73], [56, 8]]])
@@ -58,7 +131,7 @@ class ReferenceTest(unittest.TestCase):
         path = self.root / "clip.bin"
         write_mnue(path, np.full((13680, 2), 32767), initial_piece_values(), 1000,
                    np.zeros((13680, 2), dtype=np.int16), np.zeros(2, dtype=np.int32),
-                   np.zeros((2, 2), dtype=np.int16), -4161536)
+                   np.zeros((2, 2), dtype=np.int16), -4161536, feature_set="P")
         records = records_with([[(i, 1) for i in range(9)]])
         result = evaluate_details(read_mnue(path), records["board"], records["stm"], records["lion"])
         self.assertEqual(result.linear_cp[0], 36862)
@@ -69,7 +142,7 @@ class ReferenceTest(unittest.TestCase):
         path = self.root / "max.bin"
         write_mnue(path, np.full((13680, 2), 32767), initial_piece_values(), 100000,
                    np.full((13680, 512), 1016), np.full(512, 1016),
-                   np.full((2, 512), 8192), 4161536)
+                   np.full((2, 512), 8192), 4161536, feature_set="P")
         records = records_with([[(i, 1) for i in range(144)]], lion=0)
         result = evaluate_details(read_mnue(path), records["board"], records["stm"], records["lion"])
         self.assertTrue(np.all(result.accumulators == 148336))
