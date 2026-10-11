@@ -27,27 +27,19 @@ __device__ float removal_head(
     unsigned units = p ? H / 2 : H;
     unsigned lane = threadIdx.x % 32;
     float sum = 0;
-    for (unsigned base = 0; base < units; base += 32) {
-        unsigned j = base + lane;
-        float product = 0;
-        if (j < units) {
-            float activation = screlu(acc[j] - feature_weight(weights, feature, j, H, p));
-            // P shares output weights across the two halves. Match reference::head
-            // by adding the activations before multiplying by the shared weight.
-            if (p) {
-                activation += screlu(acc[j + units]
-                    - feature_weight(weights, feature, j + units, H, p));
-            }
-            product = activation * output[j];
+    // Each lane sums j = lane, lane + 32, ... in f32 before the fixed tree.
+    // reference::removal::removal_head uses the same order for before and after.
+    for (unsigned j = lane; j < units; j += 32) {
+        float activation = screlu(acc[j] - feature_weight(weights, feature, j, H, p));
+        // P adds both activations before multiplying by their shared weight.
+        if (p) {
+            activation += screlu(acc[j + units]
+                - feature_weight(weights, feature, j + units, H, p));
         }
-        // A tree changes the f32 rounding of after-before, which K amplifies.
-        // Compute products in parallel, then retain the CPU's ascending order.
-        // Every lane participates in each shuffle; only lane 0 owns the sum.
-        for (unsigned source = 0; source < min(32u, units - base); ++source) {
-            float value = __shfl_sync(0xffffffffu, product, source);
-            if (lane == 0) sum += value;
-        }
+        sum += activation * output[j];
     }
+    for (unsigned distance = 16; distance > 0; distance /= 2)
+        sum += __shfl_down_sync(0xffffffffu, sum, distance);
     // The result is consumed only by lane 0.
     return sum;
 }

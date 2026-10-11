@@ -230,6 +230,82 @@ fn finite_differences_cover_all_parameter_groups_and_penalty_regions() {
 }
 
 #[test]
+fn removal_uses_lane_partials_then_descending_shuffle_distances() {
+    let fixture = Fixture::new(&positions()[..1]);
+    // 2^-24は1.0と次のf32値との差の半分なので、1.0 + epsilonは偶数丸めで1.0になる。
+    let epsilon = 2.0_f32.powi(-24);
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let batch = fixture.batch(set, &[0]);
+        let mut model = model(set, 130);
+        for p in Parameter::ALL {
+            model.parameter_mut(p).fill(0.0);
+        }
+        model.parameter_mut(Parameter::Biases).fill(1.0);
+        let weights = reference::fold(&model);
+        let forward = reference::forward(&model, &batch, &weights).unwrap();
+        let units = model.shape().units();
+        for (terms, expected) in [
+            // 距離16で1と-1が先に消え、距離1でepsilonが残る。
+            (vec![(0, 1.0), (1, epsilon), (16, -1.0)], epsilon),
+            // レーン0は(1 + epsilon) + epsilon = 1、レーン1は-1。
+            (vec![(0, 1.0), (1, -1.0), (32, epsilon), (64, epsilon)], 0.0),
+            // 32の倍数でない単位数でも最後の単位を含める。
+            (vec![(units - 1, 0.25)], 0.25),
+        ] {
+            for v in 0..2 {
+                let output = model.parameter_mut(Parameter::OutputWeights);
+                output.fill(0.0);
+                for &(j, term) in &terms {
+                    // P型は両半幅の活性化が1なので、共有重みを半分にする。
+                    output[v * units + j] =
+                        term * if set == InputFeatureSet::P { 0.5 } else { 1.0 };
+                }
+                let removal = reference::removal_forward(
+                    &model,
+                    &batch,
+                    &weights,
+                    &forward,
+                    &RemovalReference::v0(),
+                )
+                .unwrap();
+                let expected_e = f64::from(expected) * f64::from(model.shape().k());
+                for (&delta, &e) in removal.delta_r.iter().zip(&removal.e_r) {
+                    // 全埋め込みが0なので、除去前後の縮約が等しく、E_r = Eとなる。
+                    assert_eq!(delta.to_bits(), 0.0_f64.to_bits(), "{set:?} view={v}");
+                    assert_eq!(e.to_bits(), expected_e.to_bits(), "{set:?} view={v}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn removal_p_adds_both_activations_before_multiplying_the_shared_weight() {
+    let fixture = Fixture::new(&positions()[..1]);
+    let batch = fixture.batch(InputFeatureSet::P, &[0]);
+    let mut model = model(InputFeatureSet::P, 2);
+    for p in Parameter::ALL {
+        model.parameter_mut(p).fill(0.0);
+    }
+    model.parameter_mut(Parameter::OutputWeights)[0] = 0.11;
+    let weights = reference::fold(&model);
+    // 両半幅の活性化を異なる値にして、共有重みを掛ける前の丸めを検査する。
+    let forward = reference::Forward {
+        acc: vec![0.3, 0.7, 0.0, 0.0],
+        lin: vec![[0.0; 2]],
+    };
+    let removal =
+        reference::removal_forward(&model, &batch, &weights, &forward, &RemovalReference::v0())
+            .unwrap();
+    let paired = (0.3_f32 * 0.3 + 0.7_f32 * 0.7) * 0.11;
+    let expected_e = f64::from(paired) * f64::from(model.shape().k());
+    for (&delta, &e) in removal.delta_r.iter().zip(&removal.e_r) {
+        assert_eq!(delta.to_bits(), 0.0_f64.to_bits());
+        assert_eq!(e.to_bits(), expected_e.to_bits());
+    }
+}
+
+#[test]
 fn p_mirror_preserves_evaluation_and_canonical_gradients() {
     let original = positions().remove(0);
     let fixture = Fixture::new(&[original.clone(), mirror(&original)]);

@@ -1,9 +1,7 @@
-use super::{
-    Forward, check_batch, head, linear_row, logit, phase, row_value, screlu, screlu_derivative,
-};
+use super::{Forward, check_batch, linear_row, phase, row_value, screlu, screlu_derivative};
 use crate::{
-    data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, SENTINEL},
-    model::{Error, Model, Result, canonical},
+    data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, SENTINEL},
+    model::{Error, Model, Parameter, Result, canonical},
 };
 use minase::eval::{
     features::{FEATURE_COUNT, PIECE_STATE_COUNT, mirror_feature, piece_state},
@@ -130,6 +128,29 @@ pub struct Removal {
     pub loss: Vec<f64>,
 }
 
+// GPUのremoval_headと同じf32縮約。各レーンはlane, lane+32, ...の順に足し、
+// 距離16, 8, 4, 2, 1の木でレーン0へ集める。未使用レーンの部分和は0。
+fn removal_head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32) -> f32 {
+    let shape = model.shape();
+    let units = shape.units();
+    let mut partials = [0.0_f32; 32];
+    for (lane, sum) in partials.iter_mut().enumerate() {
+        for j in (lane..units).step_by(32) {
+            let mut activation = screlu(hidden(j));
+            if shape.feature_set() == InputFeatureSet::P {
+                activation += screlu(hidden(j + units));
+            }
+            *sum += activation * model.parameters()[Parameter::OutputWeights][v * units + j];
+        }
+    }
+    for distance in [16, 8, 4, 2, 1] {
+        for lane in 0..distance {
+            partials[lane] += partials[lane + distance];
+        }
+    }
+    partials[0]
+}
+
 /// カーネル2。両視点の同じ升を除き、罰則と後退用の部分和を計算する。
 pub fn removal_forward(
     model: &Model,
@@ -189,7 +210,14 @@ pub fn removal_forward(
         let after_q = f64::from(batch.piece_counts()[b].saturating_sub(3).min(90));
         let before_linear = q * sums[0] + (90.0 - q) * sums[1];
         let before_head: [f32; 2] =
-            std::array::from_fn(|v| head(model, v, |j| forward.acc[(b * 2 + v) * h + j]));
+            std::array::from_fn(|v| removal_head(model, v, |j| forward.acc[(b * 2 + v) * h + j]));
+        // E_rの基準となるEも、補助損失の縮約順で求める。
+        let u = phase(batch.piece_counts()[b], false);
+        let nonlinear =
+            before_head[0] + before_head[1] + model.parameters()[Parameter::OutputBias][0];
+        let before_e = f64::from(
+            (u[0] * forward.lin[b][0] + u[1] * forward.lin[b][1]) / model.shape().k() + nonlinear,
+        ) * k;
         let mut d_acc = vec![0.0_f64; 2 * h];
         let mut d_output = vec![0.0_f64; 2 * h];
         let mut s = 0.0_f64;
@@ -201,13 +229,13 @@ pub fn removal_forward(
             let mut delta = (after_linear - before_linear) / 90.0;
             for (v, &before) in before_head.iter().enumerate() {
                 let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
-                let after = head(model, v, |j| {
+                let after = removal_head(model, v, |j| {
                     forward.acc[(b * 2 + v) * h + j] - row_value(model, weights, feature, j)
                 });
                 delta += k * f64::from(after - before);
             }
             result.delta_r[i] = delta;
-            result.e_r[i] = f64::from(logit(model, batch, forward, b)) * k + delta;
+            result.e_r[i] = before_e + delta;
             if !result.eligible[i] {
                 continue;
             }
@@ -249,7 +277,6 @@ pub fn removal_forward(
             result.d_acc_removal[b * 2 * h + j] = d_acc[j] as f32;
             result.d_output[b * 2 * h + j] = d_output[j] as f32;
         }
-        let u = phase(batch.piece_counts()[b], false);
         let after_u = phase(batch.piece_counts()[b], true);
         for e in 0..2 {
             result.linear[b][e] = (s * f64::from(after_u[e] - u[e]) / k) as f32;
