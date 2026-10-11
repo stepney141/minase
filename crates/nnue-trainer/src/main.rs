@@ -13,6 +13,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Train on CUDA, validate each epoch, checkpoint and export the best network.
+    Train(nnue_trainer::train::Args),
     /// Write batch indices and teacher scores for comparison with Python.
     DumpBatch(dump::Args),
     /// Compare GPU forward, all gradients, updates and validation with the CPU reference.
@@ -32,6 +34,10 @@ enum Command {
 
 fn main() -> std::process::ExitCode {
     let result: Result<(), Box<dyn std::error::Error>> = match Cli::parse().command {
+        Command::Train(args) => nnue_trainer::train::run(args).map(|summary| {
+            println!("best epoch: {}; stopped_by: {:?}; status: {}",
+                summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
+        }),
         Command::DumpBatch(args) => dump::run(args),
         Command::CheckEquivalence { feature_set, width, batch, seed } => {
             nnue_trainer::gpu::equivalence::run(feature_set, width, batch, seed)

@@ -288,11 +288,13 @@ impl Evaluator {
         self.read_validation(batch.len())
     }
     fn read_validation(&self, n: usize) -> Result<Validation> {
-        Ok(Validation::from_sums(
-            &read(&self.device, &self.buffers.validation_sums, 7)?,
-            n,
-            self.model.shape.width(),
-        ))
+        let sums = read(&self.device, &self.buffers.validation_sums, 7)?;
+        // 符号一致数と飽和数を整数に変換する前に、生の縮約値を検査する。
+        // NaNを整数へ変換してもエラーにならず、異常を隠してしまうため。
+        if sums.iter().any(|value| !value.is_finite()) {
+            return Err(Error::NonFinite("validation loss or NNUE output"));
+        }
+        Ok(Validation::from_sums(&sums, n, self.model.shape.width()))
     }
     fn read_evaluation(&self, n: usize) -> Result<Evaluation> {
         let b = &self.buffers;

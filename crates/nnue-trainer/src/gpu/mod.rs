@@ -13,7 +13,7 @@ mod step_equivalence;
 
 pub use device::Device;
 pub use engine::{Evaluation, Evaluator};
-pub use ring::{BatchTicket, HostRing, TransferTiming};
+pub use ring::{BatchTicket, HostBuffer, HostRing, TransferTiming};
 pub use step::{Step, StepMetrics, StepResult};
 
 use cudarc::{driver::DriverError, nvrtc::CompileError};
@@ -34,6 +34,8 @@ pub enum Error {
     Compile(CompileError),
     /// 配列形状、容量、または面の状態が契約に違反した。
     Invalid(&'static str),
+    /// 損失、勾配または更新後の状態が有限値でなかった。
+    NonFinite(&'static str),
     /// データの構築に失敗した。
     Data(crate::data::Error),
     /// モデルまたは参照計算の入力が不正だった。
@@ -50,6 +52,7 @@ impl fmt::Display for Error {
             Self::Driver(e) => write!(f, "CUDA: {e}"),
             Self::Compile(e) => write!(f, "NVRTC compilation failed: {e}"),
             Self::Invalid(s) => write!(f, "invalid GPU input or ring state: {s}"),
+            Self::NonFinite(s) => write!(f, "non-finite {s}"),
             Self::Data(e) => e.fmt(f),
             Self::Model(e) => e.fmt(f),
             Self::Equivalence(s) => write!(f, "equivalence check failed: {s}"),
@@ -89,6 +92,13 @@ impl From<crate::model::Error> for Error {
 }
 /// GPU操作の結果。
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// 読み取り専用で写像する。呼び手は写像の生存中、元ファイルを変更しないこと。
+pub(crate) fn map_readonly(file: &std::fs::File) -> std::io::Result<memmap2::Mmap> {
+    // SAFETY: Datasetが文書化する運用上の前提により、外部プロセスを含めて
+    // 元ファイルを変更・切り詰めしない。写像には読み取りの参照だけを公開する。
+    unsafe { memmap2::MmapOptions::new().map(file) }
+}
 
 const THREADS: usize = 128;
 const WARPS_PER_BLOCK: usize = THREADS / 32;

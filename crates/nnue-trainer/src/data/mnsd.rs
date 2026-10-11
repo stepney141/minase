@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use memmap2::{Mmap, MmapOptions};
+use memmap2::Mmap;
 use minase::training::{
     provenance::{Provenance, ResultOrigin, StartOrigin},
     records::{self, HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
@@ -71,9 +71,7 @@ impl MappedFile {
         if length < HEADER_LEN as u64 {
             return Err(invalid(path, "MNSD header is shorter than 136 bytes"));
         }
-        // SAFETY: 学習中（このmmapの生存中）に、外部プロセスを含めて
-        // 元ファイルが変更・切り詰めされないことを運用上の前提とする。
-        let map = unsafe { MmapOptions::new().map(&file)? };
+        let map = crate::gpu::map_readonly(&file)?;
         let header = Header::decode(&map[..HEADER_LEN])?;
         let expected = header
             .record_count()

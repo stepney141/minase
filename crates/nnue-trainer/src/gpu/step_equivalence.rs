@@ -532,6 +532,49 @@ mod tests {
     use super::*;
     use crate::gpu::equivalence::synthetic_batch;
 
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_step_rejects_nonfinite_gradients_with_finite_loss() {
+        // 契約: 損失だけが有限でも、勾配が非有限なら回収時に明示的に失敗する。
+        // 相殺する大きな出力重みでロジットを有限に保ち、SCReLUの微分で
+        // 第1層の勾配だけをオーバーフローさせる。補助損失の参照はすべて0。
+        let device = Device::new(0).unwrap();
+        let removal = RemovalReference::new(&vec![[0; 2]; FEATURE_COUNT]).unwrap();
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            let shape = Shape::new(set, 8, 1000.0).unwrap();
+            let batch = synthetic_batch(set, 1, 71).unwrap();
+            let mut model = super::super::equivalence::random_model(shape, 293).unwrap();
+            for parameter in Parameter::ALL {
+                model.parameter_mut(parameter).fill(0.0);
+            }
+            model.parameter_mut(Parameter::Biases).fill(0.6);
+            for (index, weight) in model
+                .parameter_mut(Parameter::OutputWeights)
+                .iter_mut()
+                .enumerate()
+            {
+                *weight = if index.is_multiple_of(2) {
+                    f32::MAX
+                } else {
+                    -f32::MAX
+                };
+            }
+            model.parameter_mut(Parameter::OutputBias)[0] = -100.0;
+            let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
+            let mut step = Step::new(device.clone(), &model, &optimizer, &removal, 1).unwrap();
+            let mut ring = HostRing::new(&device, set, 1).unwrap();
+            let ticket = ring.upload(&batch).unwrap();
+            let result = step.enqueue(&mut ring, &ticket, &[1.0]).unwrap();
+            assert!(matches!(
+                result.collect(),
+                Err(Error::NonFinite("loss gradient"))
+            ));
+            assert!(step.snapshot().is_err());
+            let ticket = ring.upload(&batch).unwrap();
+            assert!(step.enqueue(&mut ring, &ticket, &[1.0]).is_err());
+        }
+    }
+
     // 指示書の幅と、縮約ブロックに満たない/またがるバッチで同じ契約を検査する。
     fn matrix(set: InputFeatureSet, width: usize) {
         let device = Device::new(0).unwrap();

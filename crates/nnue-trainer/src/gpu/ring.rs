@@ -87,7 +87,14 @@ impl RingState {
     }
 }
 
-struct HostSlot {
+/// ワーカーが所有して埋められるページ固定メモリの面。
+///
+/// 所有権を供給スレッドと計算スレッドの間で移し、`fill`で前回転送の完了を待つ。
+/// 元の`HostRing`だけがこの面を転送でき、転送中のメモリを同時に書き換えられない。
+pub struct HostBuffer {
+    owner: Arc<()>,
+    set: InputFeatureSet,
+    capacity: usize,
     record_indices: PinnedHostSlice<u64>,
     features: PinnedHostSlice<u32>,
     linear_features: PinnedHostSlice<u32>,
@@ -108,10 +115,13 @@ struct HostSlot {
     linear_segments: usize,
     transfer_done: CudaEvent,
 }
-impl HostSlot {
-    fn new(device: &Device, set: InputFeatureSet, capacity: usize) -> Result<Self> {
+impl HostBuffer {
+    fn new(device: &Device, set: InputFeatureSet, capacity: usize, owner: Arc<()>) -> Result<Self> {
         let entries = capacity * 2 * FEATURE_COLUMNS;
         Ok(Self {
+            owner,
+            set,
+            capacity,
             record_indices: pinned_zeros(device, capacity)?,
             features: pinned_zeros(device, entries)?,
             linear_features: pinned_zeros(device, capacity * FEATURE_COLUMNS)?,
@@ -139,7 +149,12 @@ impl HostSlot {
             transfer_done: device.context.new_event(None)?,
         })
     }
-    fn fill(&mut self, batch: &BatchSlot) -> Result<()> {
+    /// 前回転送の完了を待ち、バッチの全配列をこの面へ写す。
+    pub fn fill(&mut self, batch: &BatchSlot) -> Result<()> {
+        if batch.feature_set() != self.set || batch.is_empty() || batch.len() > self.capacity {
+            return Err(Error::Invalid("batch feature set or host buffer capacity"));
+        }
+        self.len = 0;
         self.transfer_done.synchronize()?;
         copy(&mut self.record_indices, batch.record_indices())?;
         copy(&mut self.features, batch.features())?;
@@ -175,6 +190,23 @@ impl HostSlot {
         self.first_segments = batch.first_layer_inverse().segment_count();
         self.linear_segments = batch.linear_inverse().segment_count();
         Ok(())
+    }
+
+    fn transfer_bytes(&self) -> usize {
+        self.record_indices.len() * size_of::<u64>()
+            + self.piece_counts.len() * size_of::<u8>()
+            + self.teacher_scores.len() * size_of::<f32>()
+            + self.outcomes.len() * size_of::<u8>()
+            + (self.features.len()
+                + self.linear_features.len()
+                + self.teacher_classes.len()
+                + self.first_segment_starts.len()
+                + self.first_segment_offsets.len()
+                + self.first_entries.len()
+                + self.linear_segment_starts.len()
+                + self.linear_segment_offsets.len()
+                + self.linear_entries.len())
+                * size_of::<u32>()
     }
 }
 fn copy<T: Copy + ValidAsZeroBits>(dst: &mut PinnedHostSlice<T>, src: &[T]) -> Result<()> {
@@ -242,7 +274,8 @@ pub struct HostRing {
     device: Device,
     set: InputFeatureSet,
     capacity: usize,
-    hosts: [HostSlot; 3],
+    hosts: Option<[HostBuffer; 3]>,
+    transfer_bytes: usize,
     inputs: [DeviceInput; 2],
     timings: [Option<Arc<TransferEvents>>; 2],
     state: RingState,
@@ -253,21 +286,25 @@ impl HostRing {
         if !(1..=MAX_BATCH_SIZE).contains(&capacity) {
             return Err(Error::Invalid("ring capacity"));
         }
+        let state = RingState::new();
+        let hosts = [
+            HostBuffer::new(device, set, capacity, state.owner.clone())?,
+            HostBuffer::new(device, set, capacity, state.owner.clone())?,
+            HostBuffer::new(device, set, capacity, state.owner.clone())?,
+        ];
+        let transfer_bytes = hosts[0].transfer_bytes();
         Ok(Self {
             device: device.clone(),
             set,
             capacity,
-            hosts: [
-                HostSlot::new(device, set, capacity)?,
-                HostSlot::new(device, set, capacity)?,
-                HostSlot::new(device, set, capacity)?,
-            ],
+            hosts: Some(hosts),
+            transfer_bytes,
             inputs: [
                 DeviceInput::new(device, set, capacity)?,
                 DeviceInput::new(device, set, capacity)?,
             ],
             timings: [None, None],
-            state: RingState::new(),
+            state,
         })
     }
     /// BatchSlotを固定メモリへ写し、転送ストリームへ転送を投入する。
@@ -276,72 +313,56 @@ impl HostRing {
         if batch.feature_set() != self.set || batch.is_empty() || batch.len() > self.capacity {
             return Err(Error::Invalid("batch feature set or ring capacity"));
         }
+        let hosts = self
+            .hosts
+            .as_mut()
+            .ok_or(Error::Invalid("host buffers are owned by producers"))?;
         let ticket = self.state.reserve()?;
-        if let Err(e) = self.transfer(&ticket, batch) {
-            // 部分転送の後は完了と見なさない。CUDA配列のDropは記録済みの使用を待つ。
-            self.state.poisoned = true;
-            return Err(e);
+        let host = &mut hosts[ticket.host];
+        let transfer = host
+            .fill(batch)
+            .and_then(|()| transfer_buffer(&self.device, host, &mut self.inputs[ticket.device]));
+        match transfer {
+            Ok(timing) => self.timings[ticket.device] = Some(timing),
+            Err(error) => {
+                // 部分転送後は再使用を拒否する。Dropは記録済みのCUDA使用を待つ。
+                self.state.poisoned = true;
+                return Err(error);
+            }
         }
         Ok(ticket)
     }
-    fn transfer(&mut self, ticket: &BatchTicket, batch: &BatchSlot) -> Result<()> {
-        let timing = Arc::new(TransferEvents {
-            start: self
-                .device
-                .context
-                .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
-            end: self
-                .device
-                .context
-                .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
-        });
-        let host = &mut self.hosts[ticket.host];
-        let input = &mut self.inputs[ticket.device];
-        host.fill(batch)?;
-        self.device.transfer.wait(&input.backward_done)?;
-        timing.start.record(&self.device.transfer)?;
-        let send =
-            |src: &PinnedHostSlice<u32>, dst: &mut CudaSlice<u32>| transfer(&self.device, src, dst);
-        transfer(
-            &self.device,
-            &host.record_indices,
-            &mut input.record_indices,
-        )?;
-        send(&host.features, &mut input.features)?;
-        send(&host.linear_features, &mut input.linear_features)?;
-        transfer(&self.device, &host.piece_counts, &mut input.piece_counts)?;
-        transfer(
-            &self.device,
-            &host.teacher_scores,
-            &mut input.teacher_scores,
-        )?;
-        send(&host.teacher_classes, &mut input.teacher_classes)?;
-        transfer(&self.device, &host.outcomes, &mut input.outcomes)?;
-        send(&host.first_segment_starts, &mut input.first_segment_starts)?;
-        send(
-            &host.first_segment_offsets,
-            &mut input.first_segment_offsets,
-        )?;
-        send(&host.first_entries, &mut input.first_entries)?;
-        send(
-            &host.linear_segment_starts,
-            &mut input.linear_segment_starts,
-        )?;
-        send(
-            &host.linear_segment_offsets,
-            &mut input.linear_segment_offsets,
-        )?;
-        send(&host.linear_entries, &mut input.linear_entries)?;
-        input.len = host.len;
-        input.first_len = host.first_len;
-        input.linear_len = host.linear_len;
-        input.first_segments = host.first_segments;
-        input.linear_segments = host.linear_segments;
-        timing.end.record(&self.device.transfer)?;
-        host.transfer_done.record(&self.device.transfer)?;
-        self.device.compute.wait(&host.transfer_done)?;
-        self.timings[ticket.device] = Some(timing);
-        Ok(())
+
+    /// 最初の投入前に3面の所有権をワーカーへ移す。取得は1回だけ許す。
+    /// 以降は`upload_prepared`で、埋め終わった面の転送を投入する。
+    pub fn take_host_buffers(&mut self) -> Result<[HostBuffer; 3]> {
+        if self.state.next != 0 || self.state.poisoned {
+            return Err(Error::Invalid(
+                "host buffers must be taken before the first upload",
+            ));
+        }
+        self.hosts
+            .take()
+            .ok_or(Error::Invalid("host buffers already taken"))
+    }
+
+    /// ワーカーが埋めた面を転送する。ホスト側のコピーは行わない。
+    /// 呼出後は面をワーカーへ返せる。次の`fill`が今回の転送完了を待つ。
+    pub fn upload_prepared(&mut self, host: &mut HostBuffer) -> Result<BatchTicket> {
+        if !Arc::ptr_eq(&self.state.owner, &host.owner)
+            || host.set != self.set
+            || host.capacity != self.capacity
+            || host.len == 0
+        {
+            return Err(Error::Invalid("foreign or unfilled host buffer"));
+        }
+        let ticket = self.state.reserve()?;
+        let transfer = transfer_buffer(&self.device, host, &mut self.inputs[ticket.device]);
+        if transfer.is_err() {
+            self.state.poisoned = true;
+        }
+        self.timings[ticket.device] = Some(transfer?);
+        Ok(ticket)
     }
 
     /// `finish`より前に、券に対応する転送の測定値を予約する。
@@ -357,21 +378,7 @@ impl HostRing {
 
     /// 1回の`upload`で転送するバイト数。端数バッチでも面の容量全体を送る。
     pub fn transfer_bytes(&self) -> usize {
-        let host = &self.hosts[0];
-        host.record_indices.len() * size_of::<u64>()
-            + host.piece_counts.len() * size_of::<u8>()
-            + host.teacher_scores.len() * size_of::<f32>()
-            + host.outcomes.len() * size_of::<u8>()
-            + (host.features.len()
-                + host.linear_features.len()
-                + host.teacher_classes.len()
-                + host.first_segment_starts.len()
-                + host.first_segment_offsets.len()
-                + host.first_entries.len()
-                + host.linear_segment_starts.len()
-                + host.linear_segment_offsets.len()
-                + host.linear_entries.len())
-                * size_of::<u32>()
+        self.transfer_bytes
     }
 
     pub(super) fn validate_device(&self, device: &Device, shape: Shape) -> Result<()> {
@@ -396,6 +403,56 @@ impl HostRing {
         Ok(&self.inputs[ticket.device])
     }
 }
+
+fn transfer_buffer(
+    device: &Device,
+    host: &mut HostBuffer,
+    input: &mut DeviceInput,
+) -> Result<Arc<TransferEvents>> {
+    let timing = Arc::new(TransferEvents {
+        start: device
+            .context
+            .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+        end: device
+            .context
+            .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+    });
+    device.transfer.wait(&input.backward_done)?;
+    timing.start.record(&device.transfer)?;
+    let send = |src: &PinnedHostSlice<u32>, dst: &mut CudaSlice<u32>| transfer(device, src, dst);
+    transfer(device, &host.record_indices, &mut input.record_indices)?;
+    send(&host.features, &mut input.features)?;
+    send(&host.linear_features, &mut input.linear_features)?;
+    transfer(device, &host.piece_counts, &mut input.piece_counts)?;
+    transfer(device, &host.teacher_scores, &mut input.teacher_scores)?;
+    send(&host.teacher_classes, &mut input.teacher_classes)?;
+    transfer(device, &host.outcomes, &mut input.outcomes)?;
+    send(&host.first_segment_starts, &mut input.first_segment_starts)?;
+    send(
+        &host.first_segment_offsets,
+        &mut input.first_segment_offsets,
+    )?;
+    send(&host.first_entries, &mut input.first_entries)?;
+    send(
+        &host.linear_segment_starts,
+        &mut input.linear_segment_starts,
+    )?;
+    send(
+        &host.linear_segment_offsets,
+        &mut input.linear_segment_offsets,
+    )?;
+    send(&host.linear_entries, &mut input.linear_entries)?;
+    input.len = host.len;
+    input.first_len = host.first_len;
+    input.linear_len = host.linear_len;
+    input.first_segments = host.first_segments;
+    input.linear_segments = host.linear_segments;
+    timing.end.record(&device.transfer)?;
+    host.transfer_done.record(&device.transfer)?;
+    device.compute.wait(&host.transfer_done)?;
+    Ok(timing)
+}
+
 fn transfer<T: DeviceRepr>(
     device: &Device,
     src: &PinnedHostSlice<T>,
@@ -410,6 +467,71 @@ fn transfer<T: DeviceRepr>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a CUDA GPU"]
+    fn gpu_workers_fill_and_reuse_three_owned_host_buffers() {
+        let device = Device::new(0).unwrap();
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            let mut ring = HostRing::new(&device, set, 3).unwrap();
+            let bytes = ring.transfer_bytes();
+            let buffers = ring.take_host_buffers().unwrap();
+            assert!(ring.take_host_buffers().is_err());
+            assert_eq!(ring.transfer_bytes(), bytes);
+            let mut foreign = HostRing::new(&device, set, 3).unwrap();
+            let (recycle, producer) = std::sync::mpsc::sync_channel(3);
+            let (prepared, consumer) = std::sync::mpsc::sync_channel(3);
+            for buffer in buffers {
+                recycle.send(buffer).unwrap();
+            }
+            std::thread::scope(|scope| {
+                scope.spawn(move || {
+                    for iteration in 0..8 {
+                        let batch = super::super::equivalence::synthetic_batch(
+                            set,
+                            1 + iteration % 3,
+                            71 + iteration as u64,
+                        )
+                        .unwrap();
+                        let mut buffer = producer.recv().unwrap();
+                        buffer.fill(&batch).unwrap();
+                        prepared.send((buffer, batch)).unwrap();
+                    }
+                });
+                for iteration in 0..8 {
+                    let (mut buffer, batch) = consumer.recv().unwrap();
+                    assert!(foreign.upload_prepared(&mut buffer).is_err());
+                    assert!(ring.upload(&batch).is_err());
+                    let ticket = ring.upload_prepared(&mut buffer).unwrap();
+                    let input = ring.input(&ticket).unwrap();
+                    assert_eq!(input.len, batch.len());
+                    assert_eq!(
+                        device
+                            .compute
+                            .clone_dtoh(&input.features.slice(..batch.features().len()))
+                            .unwrap(),
+                        batch.features(),
+                    );
+                    assert_eq!(
+                        device
+                            .compute
+                            .clone_dtoh(
+                                &input
+                                    .first_entries
+                                    .slice(..batch.first_layer_inverse().entries().len())
+                            )
+                            .unwrap(),
+                        batch.first_layer_inverse().entries(),
+                    );
+                    ring.finish(ticket).unwrap();
+                    // 転送した面自身を返し、4面目を確保せずに再使用する。
+                    if iteration < 5 {
+                        recycle.send(buffer).unwrap();
+                    }
+                }
+            });
+        }
+    }
 
     #[test]
     #[ignore = "requires a CUDA GPU"]

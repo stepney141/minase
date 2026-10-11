@@ -13,7 +13,10 @@ use crate::{
 use cudarc::driver::{
     CudaEvent, CudaSlice, LaunchArgs, LaunchConfig, PinnedHostSlice, sys::CUevent_flags,
 };
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum Kernel {
@@ -211,6 +214,7 @@ pub(super) unsafe fn launch_kernel(
 // Arc::get_mutが失敗するため、未回収の値やイベントの世代を上書きできない。
 struct Readback {
     losses: PinnedHostSlice<f64>,
+    nonfinite: PinnedHostSlice<u32>,
     start: CudaEvent,
     end: CudaEvent,
     target_start: CudaEvent,
@@ -220,6 +224,7 @@ impl Readback {
     fn new(device: &Device) -> Result<Self> {
         Ok(Self {
             losses: pinned_zeros(device, 2)?,
+            nonfinite: pinned_zeros(device, 1)?,
             start: device
                 .context
                 .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
@@ -256,6 +261,7 @@ pub struct StepMetrics {
 #[must_use = "collect the losses after submitting the next update"]
 pub struct StepResult {
     readback: Arc<Readback>,
+    failed: Arc<AtomicBool>,
     batch_len: usize,
     target_bytes: usize,
     step: u64,
@@ -277,6 +283,20 @@ impl StepResult {
     /// 回収券を消費すると、対応する固定メモリの面を次回以降に再利用できる。
     pub fn collect(self) -> Result<StepMetrics> {
         let values = self.readback.losses.as_slice()?;
+        let status = self.readback.nonfinite.as_slice()?[0];
+        let error = if values.iter().any(|value| !value.is_finite()) {
+            Some("training loss")
+        } else if status & 1 != 0 {
+            Some("loss gradient")
+        } else if status & 2 != 0 {
+            Some("AdamW state or parameter")
+        } else {
+            None
+        };
+        if let Some(error) = error {
+            self.failed.store(true, Ordering::Relaxed);
+            return Err(Error::NonFinite(error));
+        }
         Ok(StepMetrics {
             losses: Losses {
                 bce: values[0] / self.batch_len as f64,
@@ -304,12 +324,13 @@ pub struct Step {
     model: DeviceModel,
     optimizer: Optimizer,
     buffers: Buffers,
+    nonfinite: CudaSlice<u32>,
     spare_targets: CudaSlice<f32>,
     spare_host_targets: PinnedHostSlice<f32>,
     readbacks: [Arc<Readback>; 2],
     next_readback: usize,
     capacity: usize,
-    failed: bool,
+    failed: Arc<AtomicBool>,
     profile: bool,
 }
 impl Step {
@@ -329,6 +350,7 @@ impl Step {
         let buffers = Buffers::new(&device, model.shape(), capacity)?;
         let model = DeviceModel::new(&device, model, reference)?;
         let spare_targets = device.compute.alloc_zeros(capacity)?;
+        let nonfinite = device.compute.alloc_zeros(1)?;
         let spare_host_targets = pinned_zeros(&device, capacity)?;
         let readbacks = [
             Arc::new(Readback::new(&device)?),
@@ -340,12 +362,13 @@ impl Step {
             model,
             optimizer,
             buffers,
+            nonfinite,
             spare_targets,
             spare_host_targets,
             readbacks,
             next_readback: 0,
             capacity,
-            failed: false,
+            failed: Arc::new(AtomicBool::new(false)),
             profile: false,
         })
     }
@@ -375,7 +398,7 @@ impl Step {
         ticket: &BatchTicket,
         targets: &[f32],
     ) -> Result<StepResult> {
-        if self.failed {
+        if self.failed.load(Ordering::Relaxed) {
             return Err(Error::Invalid("step has a failed submission"));
         }
         ring.validate_device(&self.device, self.model.shape)?;
@@ -455,11 +478,13 @@ impl Step {
                 profile.as_mut(),
             )?;
             ring.finish(ticket.clone())?;
+            self.device.compute.memset_zeros(&mut self.nonfinite)?;
             self.optimizer.update(
                 &self.device,
                 &self.kernels,
                 &mut self.model,
                 &self.buffers,
+                &mut self.nonfinite,
                 profile.as_mut(),
             )?;
             readback.end.record(&self.device.compute)?;
@@ -468,15 +493,19 @@ impl Step {
             self.device
                 .compute
                 .memcpy_dtoh(&self.buffers.loss_sum, &mut readback.losses)?;
+            self.device
+                .compute
+                .memcpy_dtoh(&self.nonfinite, &mut readback.nonfinite)?;
             Ok(())
         })();
         if let Err(error) = submitted {
             // 一部の群だけが更新された可能性があるため再投入・保存を拒否する。
-            self.failed = true;
+            self.failed.store(true, Ordering::Relaxed);
             return Err(error);
         }
         let result = StepResult {
             readback: Arc::clone(&self.readbacks[self.next_readback]),
+            failed: Arc::clone(&self.failed),
             batch_len: n,
             target_bytes: self.capacity * size_of::<f32>(),
             step: self.optimizer.step(),
@@ -489,7 +518,7 @@ impl Step {
     /// 投入済み更新の完了を待ち、全パラメータとAdamW状態を回収する。
     /// 等価性検査や保存用であり、更新ごとの計算経路からは呼ばない。
     pub fn snapshot(&self) -> Result<(Parameters, AdamW)> {
-        if self.failed {
+        if self.failed.load(Ordering::Relaxed) {
             return Err(Error::Invalid("step has a failed submission"));
         }
         self.optimizer.snapshot(&self.device)
@@ -497,7 +526,7 @@ impl Step {
 
     // 等価性検査では、次の前進が読む合成重みと共有パラメータの展開も照合する。
     pub(super) fn snapshot_expanded(&self) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
-        if self.failed {
+        if self.failed.load(Ordering::Relaxed) {
             return Err(Error::Invalid("step has a failed submission"));
         }
         Ok((
