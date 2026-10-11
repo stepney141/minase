@@ -2,7 +2,8 @@
 //!
 //! ONNX Runtimeの共有ライブラリは、ビルド時ではなくセッションの作成時に環境変数`ORT_DYLIB_PATH`から
 //! 読み込む。ネットは`crates/minase/nets/zero.onnx`を実行ファイルへ埋め込み、メモリからセッションを作る
-//! （docs/plans/alphazero.md「推論はortのload-dynamicで行う」「推論層」）。
+//! （docs/plans/alphazero.md「推論はortのload-dynamicで行う」「推論層」）。埋め込み以外のネットは、
+//! 呼び出し側が[`read_model`]でファイルから読んで同じ形で渡す。
 //! 選んだ実行プロバイダを初期化できない場合は、別の実行プロバイダへ切り替えずにエラーを返す。
 
 use core::fmt;
@@ -126,6 +127,8 @@ pub enum OrtError {
     Session(String),
     /// ネットの入出力の名前が想定と異なる。
     Interface(String),
+    /// ネットのファイルを読めない、またはファイルが空である。
+    Model(String),
 }
 
 impl fmt::Display for OrtError {
@@ -153,11 +156,29 @@ impl fmt::Display for OrtError {
                 "cannot create the ONNX Runtime session: {reason}"
             ),
             Self::Interface(reason) => write!(formatter, "unexpected network interface: {reason}"),
+            Self::Model(reason) => write!(formatter, "cannot read the network: {reason}"),
         }
     }
 }
 
 impl std::error::Error for OrtError {}
+
+/// 埋め込み以外のネット（ONNX）をファイルから読む。
+///
+/// USIオプション`NnModelPath`と生成器の`--nn-model`が使う（docs/plans/alphazero.md「推論層」）。
+/// 中身の形式はセッションの作成時にONNX Runtimeが検査する。
+///
+/// # Errors
+///
+/// ファイルを読めない場合と、ファイルが空の場合はエラーを返す。
+pub fn read_model(path: &Path) -> Result<Vec<u8>, OrtError> {
+    let model =
+        fs::read(path).map_err(|error| OrtError::Model(format!("{}: {error}", path.display())))?;
+    if model.is_empty() {
+        return Err(OrtError::Model(format!("{} is empty", path.display())));
+    }
+    Ok(model)
+}
 
 /// TensorRTのエンジンが依存するGPUの属性。値は`nvidia-smi`の表示のまま持つ。
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -213,7 +234,8 @@ impl OrtEvaluator {
     /// 共有ライブラリの読み込みと環境の設定はプロセスで最初の呼び出しだけが行い、その結果を以後の呼び出しでも返す。
     /// セッションの作成はプロセス全体で1つずつ行う。
     ///
-    /// TensorRTでは、エンジンのキャッシュを`cache_dir`の下の[`cache_key`]のディレクトリに置き、
+    /// TensorRTでは、エンジンのキャッシュを`cache_dir`の下の[`cache_key`]のディレクトリに置き
+    /// （鍵のネットの検査和は、埋め込みのネットではなく`model`のSHA-256とする）、
     /// FP16を有効にして、バッチの大きさ1から`max_batch`までの最適化プロファイルを作る。
     /// 推論のスレッドは1つとする（docs/plans/alphazero.md「棋力測定」のCPUのスレッドTに合わせる）。
     ///

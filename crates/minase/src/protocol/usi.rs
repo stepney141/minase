@@ -798,7 +798,7 @@ impl UsiProtocol {
 
     /// `setoption`を処理する。RuleSet・USI_Variant・ResignValue・ByoyomiMarginと、探索方式が
     /// 宣言したoption（αβ探索ではUSI_Hash・Threads、MCTSではThreads・UCT_NodeLimit・NnBackend・
-    /// NnCacheDir・NnBatchSize）を受理し、未知のoption名はUSIの慣例に従って黙って無視する。
+    /// NnModelPath・NnCacheDir・NnBatchSize）を受理し、未知のoption名はUSIの慣例に従って黙って無視する。
     /// ただしMCTSへの`USI_Hash`は、探索方式が理由を返すのでエラーとして告げる。
     /// 値は`value`の直後の1トークンだけを読むので、空白を含む値は設定できない。
     fn handle_setoption(
@@ -4413,6 +4413,7 @@ mod tests {
             "option name Threads type spin default 1 min 1 max 256",
             "option name UCT_NodeLimit type spin default 1000000 min 100000 max 1000000000",
             "option name NnBackend type combo default tensorrt var tensorrt var cuda var cpu",
+            "option name NnModelPath type string default <empty>",
             "option name NnBatchSize type spin default 64 min 1 max 1024",
         ] {
             assert!(lines.contains(&expected), "{expected}");
@@ -4620,6 +4621,39 @@ mod tests {
         assert!(!output.contains("readyok"));
         assert!(
             output.starts_with("info string error: ORT_DYLIB_PATH"),
+            "{output}"
+        );
+    }
+
+    // alphazero.md「推論層」: NnModelPathを変えると推論のセッションを捨て、次のisreadyでそのファイルを
+    // 読む。読めなければisreadyへエラーを返してセッションを終える。
+    #[test]
+    fn mcts_isready_fails_when_the_model_path_cannot_be_read() {
+        let missing =
+            std::env::temp_dir().join(format!("minase-usi-missing-{}.onnx", std::process::id()));
+        let mut engine = make_engine(&[RuleCode::R1]);
+        let mut protocol = UsiProtocol::new(&engine, mcts_searcher());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        for line in [
+            format!("setoption name NnModelPath value {}", missing.display()),
+            "isready".to_owned(),
+        ] {
+            sender.send(Ok(line)).unwrap();
+        }
+        drop(sender);
+        let mut output = Vec::new();
+        assert!(
+            protocol
+                .run_channel(&mut engine, &receiver, &mut output)
+                .is_err()
+        );
+        let output = String::from_utf8(output).unwrap();
+        assert!(!output.contains("readyok"));
+        assert!(
+            output.starts_with(&format!(
+                "info string error: cannot read the network: {}: ",
+                missing.display()
+            )),
             "{output}"
         );
     }

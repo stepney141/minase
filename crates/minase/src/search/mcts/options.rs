@@ -3,13 +3,14 @@
 //! オプションの集合は docs/plans/alphazero.md「共存の構造」と「推論層」に従う。`Threads`は
 //! ハーネスが既定値を照会するのでαβ探索と同じ名前で宣言する。置換表を持たないので`USI_Hash`は
 //! 宣言せず、探索木の大きさは、dlshogiに倣い、節点数の上限`UCT_NodeLimit`で制御する。
+//! 推論に使うネットは既定で埋め込みのネットとし、`NnModelPath`で別のONNXファイルを与えられる。
 
 use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::env;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use crate::nn::ort_evaluator::{NETWORK, NnBackend, OrtEvaluator, SessionConfig};
+use crate::nn::ort_evaluator::{NETWORK, NnBackend, OrtEvaluator, SessionConfig, read_model};
 use crate::search::searcher::{OptionKind, OptionSpec};
 
 use super::engine::{Config, DEFAULT_GUMBEL_SIMULATIONS, Engine, MAX_CONSIDERED_ACTIONS};
@@ -81,7 +82,7 @@ impl Engine {
 
     /// 宣言するオプションを宣言の順に返す。
     pub fn options(&self) -> &'static [OptionSpec] {
-        static OPTIONS: OnceLock<[OptionSpec; 5]> = OnceLock::new();
+        static OPTIONS: OnceLock<[OptionSpec; 6]> = OnceLock::new();
         OPTIONS.get_or_init(|| {
             [
                 OptionSpec {
@@ -108,6 +109,10 @@ impl Engine {
                     },
                 },
                 OptionSpec {
+                    name: "NnModelPath",
+                    kind: OptionKind::String { default: "" },
+                },
+                OptionSpec {
                     name: "NnCacheDir",
                     kind: OptionKind::String {
                         default: default_cache_dir_text(),
@@ -128,7 +133,7 @@ impl Engine {
     /// 名前が宣言したオプション（大文字小文字を区別しない）なら値を設定する。
     ///
     /// 未知の名前には`None`を返す。値が不正な場合は状態を変えずに理由を`Some(Err)`で返す。
-    /// `NnBackend`、`NnCacheDir`、または`NnBatchSize`を変えると推論のセッションを捨て、
+    /// `NnBackend`、`NnModelPath`、`NnCacheDir`、または`NnBatchSize`を変えると推論のセッションを捨て、
     /// 次の[`Engine::prepare`]で作り直す。
     pub fn set_option(&mut self, name: &str, value: Option<&str>) -> Option<Result<(), String>> {
         let result = if name.eq_ignore_ascii_case("Threads") {
@@ -150,9 +155,15 @@ impl Engine {
                         self.evaluator = None;
                     }
                 })
+        } else if name.eq_ignore_ascii_case("NnModelPath") {
+            let model_path = path_value(value);
+            if self.model_path != model_path {
+                self.model_path = model_path;
+                self.evaluator = None;
+            }
+            Ok(())
         } else if name.eq_ignore_ascii_case("NnCacheDir") {
-            // USIは空の文字列を`<empty>`と書く。
-            let cache_dir = PathBuf::from(value.filter(|&value| value != "<empty>").unwrap_or(""));
+            let cache_dir = path_value(value);
             if self.cache_dir != cache_dir {
                 self.cache_dir = cache_dir;
                 self.evaluator = None;
@@ -188,12 +199,14 @@ impl Engine {
 
     /// 推論器がなければ、オプションの設定で推論のセッションを作る。
     ///
+    /// ネットは、`NnModelPath`が空なら埋め込みのネット、空でなければそのファイルとする。
     /// TensorRTではエンジンの作成に数分かかることがあるので、USIでは`isready`の応答の前に呼ぶ
     /// （docs/plans/alphazero.md「推論層」）。
     ///
     /// # Errors
     ///
-    /// セッションを作れない場合は理由を返し、状態を変えない。
+    /// ネットのファイルを読めない場合、ファイルが空の場合、およびセッションを作れない場合は理由を返し、
+    /// 状態を変えない。
     pub fn prepare(&mut self) -> Result<(), String> {
         if self.evaluator.is_none() {
             let config = SessionConfig {
@@ -201,12 +214,23 @@ impl Engine {
                 cache_dir: self.cache_dir.clone(),
                 max_batch: self.config.batch_size,
             };
-            let evaluator =
-                OrtEvaluator::new(NETWORK, &config).map_err(|error| error.to_string())?;
+            let file;
+            let model = if self.model_path.as_os_str().is_empty() {
+                NETWORK
+            } else {
+                file = read_model(&self.model_path).map_err(|error| error.to_string())?;
+                &file
+            };
+            let evaluator = OrtEvaluator::new(model, &config).map_err(|error| error.to_string())?;
             self.evaluator = Some(Box::new(evaluator));
         }
         Ok(())
     }
+}
+
+/// 文字列のオプションの値を経路として読む。値がない場合と、USIが空の文字列を表す`<empty>`は空とする。
+fn path_value(value: Option<&str>) -> PathBuf {
+    PathBuf::from(value.filter(|&value| value != "<empty>").unwrap_or(""))
 }
 
 /// `min..=max`の整数の値を解析する。`min`は1以上とする。
@@ -249,9 +273,14 @@ mod tests {
                 "Threads",
                 "UCT_NodeLimit",
                 "NnBackend",
+                "NnModelPath",
                 "NnCacheDir",
                 "NnBatchSize"
             ]
+        );
+        assert_eq!(
+            engine().options()[3].kind,
+            OptionKind::String { default: "" }
         );
         assert_eq!(
             engine().options()[1].kind,
@@ -359,5 +388,70 @@ mod tests {
             Some(Ok(()))
         );
         assert_eq!(engine.cache_dir, PathBuf::new());
+
+        let mut engine = self::engine();
+        assert_eq!(
+            engine.set_option("NnModelPath", Some("<empty>")),
+            Some(Ok(()))
+        );
+        assert!(engine.evaluator.is_some());
+        assert_eq!(
+            engine.set_option("nnmodelpath", Some("/tmp/net.onnx")),
+            Some(Ok(()))
+        );
+        assert_eq!(engine.model_path, PathBuf::from("/tmp/net.onnx"));
+        assert!(engine.evaluator.is_none());
+    }
+
+    /// `NnModelPath`を設定した推論器のない状態を作る。
+    fn engine_with_model(path: &std::path::Path) -> Engine {
+        let mut engine = engine();
+        assert_eq!(
+            engine.set_option("NnModelPath", path.to_str()),
+            Some(Ok(()))
+        );
+        assert!(engine.evaluator.is_none());
+        engine
+    }
+
+    // alphazero.md「推論層」: NnModelPathが空でなければ、prepareは埋め込みのネットではなくそのファイルを
+    // 読む。存在しないファイルと空のファイルは、ONNX Runtimeを読み込む前にエラーとし、状態を変えない。
+    #[test]
+    fn prepare_reads_the_model_path_before_loading_onnx_runtime() {
+        let missing = env::temp_dir().join(format!("minase-missing-{}.onnx", std::process::id()));
+        let mut engine = engine_with_model(&missing);
+        let error = engine.prepare().unwrap_err();
+        assert!(
+            error.starts_with(&format!("cannot read the network: {}: ", missing.display())),
+            "{error}"
+        );
+        assert!(engine.evaluator.is_none());
+
+        let empty = env::temp_dir().join(format!("minase-empty-{}.onnx", std::process::id()));
+        std::fs::write(&empty, b"").unwrap();
+        let result = engine_with_model(&empty).prepare();
+        std::fs::remove_file(&empty).unwrap();
+        assert_eq!(
+            result,
+            Err(format!(
+                "cannot read the network: {} is empty",
+                empty.display()
+            ))
+        );
+    }
+
+    // 同節: 読めるファイルを指せば、セッションの作成へ進む。ORT_DYLIB_PATHのない環境では、
+    // 埋め込みのネットと同じくそのエラーになる。環境変数は他の試験と共有するので、設定されている環境では
+    // この試験を省く。
+    #[test]
+    fn prepare_with_a_readable_model_path_reaches_onnx_runtime() {
+        if env::var_os("ORT_DYLIB_PATH").is_some() {
+            return;
+        }
+        let path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/nets/zero.onnx"));
+        assert_eq!(
+            engine_with_model(path).prepare(),
+            Err(crate::nn::ort_evaluator::OrtError::MissingDylibPath.to_string())
+        );
     }
 }

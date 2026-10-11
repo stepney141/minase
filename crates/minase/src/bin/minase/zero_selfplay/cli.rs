@@ -51,6 +51,9 @@ pub(crate) struct Arguments {
     /// 推論器。
     #[arg(long, value_enum, default_value = "ort")]
     pub(super) evaluator: EvaluatorKind,
+    /// 推論に使うネット（ONNX）のファイル。省略時は埋め込みのネット。`--evaluator uniform`とは併用できない。
+    #[arg(long)]
+    pub(super) nn_model: Option<PathBuf>,
     /// ortの実行プロバイダ（tensorrt、cuda、cpu）。
     #[arg(long, default_value = "tensorrt", value_parser = parse_backend)]
     pub(super) nn_backend: NnBackend,
@@ -71,7 +74,7 @@ pub(crate) struct Arguments {
 /// 推論器の種類。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum)]
 pub(super) enum EvaluatorKind {
-    /// 埋め込みのネットをONNX Runtimeで推論する。
+    /// ネット（既定は埋め込みのネット、`--nn-model`で別のファイル）をONNX Runtimeで推論する。
     Ort,
     /// すべての合法手に等しい方策と勝率0.5を返す試験用の評価器。
     Uniform,
@@ -185,6 +188,11 @@ mod tests {
         assert_eq!(arguments.evaluator, EvaluatorKind::Ort);
         assert_eq!(arguments.nn_backend, NnBackend::TensorRt);
         assert_eq!(arguments.nn_batch_size.get(), 256);
+        assert_eq!(arguments.nn_model, None);
+        assert_eq!(
+            parse(&["--nn-model", "net.onnx"]).unwrap().nn_model,
+            Some(PathBuf::from("net.onnx"))
+        );
         assert!(parse(&["--resign-playthrough", "1.5"]).is_err());
         assert!(parse(&["--resign-threshold", "NaN"]).is_err());
         assert!(parse(&["--simulations", "0"]).is_err());

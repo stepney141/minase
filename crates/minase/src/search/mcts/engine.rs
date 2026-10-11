@@ -123,6 +123,8 @@ pub struct Engine {
     pub(super) evaluator: Option<Box<dyn Evaluator + Send>>,
     /// 推論のセッションを作るときの実行プロバイダ。
     pub(super) backend: NnBackend,
+    /// 推論に使うネットのファイル（オプション`NnModelPath`）。空なら埋め込みのネットを使う。
+    pub(super) model_path: std::path::PathBuf,
     /// TensorRTのエンジンのキャッシュを置く親ディレクトリ。
     pub(super) cache_dir: std::path::PathBuf,
     /// 探索の設定。
@@ -147,6 +149,7 @@ impl Engine {
         Self {
             evaluator: None,
             backend: NnBackend::TensorRt,
+            model_path: std::path::PathBuf::new(),
             cache_dir: super::options::default_cache_dir(),
             config,
             rng: XorShift64::new(config.seed),

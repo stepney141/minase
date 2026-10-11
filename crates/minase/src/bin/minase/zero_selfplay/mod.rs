@@ -14,7 +14,7 @@ use cli::EvaluatorKind;
 use generate::generate;
 use minase::datagen::data_error;
 use minase::nn::evaluator::{Evaluator, UniformEvaluator};
-use minase::nn::ort_evaluator::{NETWORK, OrtEvaluator, SessionConfig};
+use minase::nn::ort_evaluator::{NETWORK, OrtEvaluator, SessionConfig, read_model};
 use minase::search::mcts::default_cache_dir;
 use sha2::{Digest, Sha256};
 use std::{io, process};
@@ -28,6 +28,9 @@ pub(super) fn main(arguments: Arguments) {
 }
 
 /// 推論器を選んで生成する。一様評価器のネットの検査和は全零とする。
+///
+/// ortでは、`--nn-model`のファイル、省略時は埋め込みのネットを使い、MNZTのヘッダにはそのバイト列の
+/// SHA-256を書く（docs/plans/alphazero.md「推論層」）。
 fn run(arguments: &Arguments) -> io::Result<()> {
     match arguments.evaluator {
         EvaluatorKind::Uniform => generate(
@@ -36,6 +39,13 @@ fn run(arguments: &Arguments) -> io::Result<()> {
             [0; 32],
         ),
         EvaluatorKind::Ort => {
+            let file = arguments
+                .nn_model
+                .as_deref()
+                .map(read_model)
+                .transpose()
+                .map_err(data_error)?;
+            let model = file.as_deref().unwrap_or(NETWORK);
             let config = SessionConfig {
                 backend: arguments.nn_backend,
                 cache_dir: arguments
@@ -47,11 +57,11 @@ fn run(arguments: &Arguments) -> io::Result<()> {
             generate(
                 arguments,
                 &|| {
-                    OrtEvaluator::new(NETWORK, &config)
+                    OrtEvaluator::new(model, &config)
                         .map(|evaluator| Box::new(evaluator) as Box<dyn Evaluator>)
                         .map_err(data_error)
                 },
-                Sha256::digest(NETWORK).into(),
+                Sha256::digest(model).into(),
             )
         }
     }

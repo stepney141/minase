@@ -3,6 +3,7 @@
 
 use super::play::{Ending, FinishedGame, GameSettings, SelfPlayGame};
 use crate::selfplay_gen::opening::Opening;
+use minase::datagen::provenance::hex;
 use minase::datagen::{data_error, invalid_data};
 use minase::nn::POLICY_SIZE;
 use minase::nn::evaluator::{Evaluator, INPUT_SIZE};
@@ -60,6 +61,8 @@ pub(super) struct Context<'a> {
     pub(super) rule_set: &'a str,
     /// 生成コミット。
     pub(super) generation_commit: &'a str,
+    /// 推論に使うネットのファイル（`--nn-model`）。埋め込みのネットと一様評価器では`None`。
+    pub(super) network_path: Option<&'a Path>,
     /// 推論に使うネットの検査和。
     pub(super) network_checksum: [u8; 32],
     /// 推論器を作る関数。
@@ -201,6 +204,10 @@ pub(super) struct ChunkSummary {
     pub(super) chunk: u32,
     /// 塊のシード。
     pub(super) seed: u64,
+    /// 推論に使ったネットのファイル（`--nn-model`）。埋め込みのネットと一様評価器では`null`。
+    pub(super) nn_model: Option<PathBuf>,
+    /// 推論に使ったネットの検査和（SHA-256の16進表記）。MNZTのヘッダの値と同じである。
+    pub(super) network_checksum: String,
     /// 件数。
     #[serde(flatten)]
     pub(super) counts: Counts,
@@ -266,6 +273,8 @@ pub(super) fn generate_chunk(context: &Context<'_>, plan: &ChunkPlan) -> io::Res
         let summary = ChunkSummary {
             chunk: plan.index,
             seed: plan.seed,
+            nn_model: context.network_path.map(Path::to_path_buf),
+            network_checksum: hex(&context.network_checksum),
             average_plies: counts.average_plies(),
             elapsed_seconds,
             positions_per_second: if elapsed_seconds > 0.0 {

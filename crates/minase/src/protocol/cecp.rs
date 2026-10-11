@@ -1810,7 +1810,7 @@ mod tests {
             .lines()
             .filter(|line| line.starts_with("feature option="))
             .collect();
-        assert_eq!(options.len(), 5, "{features}");
+        assert_eq!(options.len(), 6, "{features}");
         assert!(
             options.contains(&"feature option=\"UCT_NodeLimit -spin 1000000 100000 1000000000\"")
         );
@@ -1818,6 +1818,7 @@ mod tests {
             options.contains(&"feature option=\"NnBackend -combo *tensorrt /// cuda /// cpu\"")
         );
         assert!(options.contains(&"feature option=\"NnBatchSize -spin 64 1 1024\""));
+        assert!(options.contains(&"feature option=\"NnModelPath -string \""));
         assert!(
             options
                 .iter()

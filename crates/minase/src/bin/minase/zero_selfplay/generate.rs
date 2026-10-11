@@ -3,10 +3,11 @@
 use super::chunk::{
     ChunkPlan, ChunkSummary, Context, Counts, EvaluatorFactory, generate_chunk, ratio,
 };
-use super::cli::Arguments;
+use super::cli::{Arguments, EvaluatorKind};
 use super::play::GameSettings;
 use crate::selfplay_gen::opening::read_openings;
 use minase::datagen::git::{git_output, validate_commit_hash};
+use minase::datagen::provenance::hex;
 use minase::datagen::{data_error, invalid_data};
 use minase::nn::mnzt;
 use std::{
@@ -31,6 +32,12 @@ pub(super) fn generate(
     evaluator: &EvaluatorFactory<'_>,
     network_checksum: [u8; 32],
 ) -> io::Result<Report> {
+    if arguments.nn_model.is_some() && arguments.evaluator == EvaluatorKind::Uniform {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--nn-model cannot be used with --evaluator uniform",
+        ));
+    }
     if arguments.threads > arguments.games_in_flight {
         return Err(invalid_data(format!(
             "--threads {} exceeds --games-in-flight {}",
@@ -82,6 +89,7 @@ pub(super) fn generate(
         out_dir: &arguments.out_dir,
         rule_set: &rule_set,
         generation_commit: &generation_commit,
+        network_path: arguments.nn_model.as_deref(),
         network_checksum,
         evaluator,
     };
@@ -107,7 +115,13 @@ pub(super) fn generate(
         );
         report.chunks.push(summary);
     }
-    print_summary(arguments, &rule_set, &generation_commit, &report);
+    print_summary(
+        arguments,
+        &rule_set,
+        &generation_commit,
+        &network_checksum,
+        &report,
+    );
     Ok(report)
 }
 
@@ -139,17 +153,20 @@ fn read_finished_chunk(context: &Context<'_>, plan: &ChunkPlan) -> io::Result<Ch
     if summary.chunk != plan.index
         || summary.seed != plan.seed
         || summary.counts.games != u64::from(plan.games)
+        || summary.network_checksum != hex(&context.network_checksum)
     {
         return Err(invalid_data(format!(
-            "{} was generated for chunk {} with seed {} and {} games, \
-             but the current arguments give chunk {} with seed {} and {} games",
+            "{} was generated for chunk {} with seed {}, {} games, and network {}, \
+             but the current arguments give chunk {} with seed {}, {} games, and network {}",
             summary_path.display(),
             summary.chunk,
             summary.seed,
             summary.counts.games,
+            summary.network_checksum,
             plan.index,
             plan.seed,
-            plan.games
+            plan.games,
+            hex(&context.network_checksum)
         )));
     }
     let mnzt_path = plan.path(context.out_dir, "mnzt");
@@ -184,7 +201,13 @@ fn read_finished_chunk(context: &Context<'_>, plan: &ChunkPlan) -> io::Result<Ch
 }
 
 /// 全塊の合計を設計書へ転記できる1項目1行の形式で表示する。
-fn print_summary(arguments: &Arguments, rule_set: &str, generation_commit: &str, report: &Report) {
+fn print_summary(
+    arguments: &Arguments,
+    rule_set: &str,
+    generation_commit: &str,
+    network_checksum: &[u8; 32],
+    report: &Report,
+) {
     let mut counts = Counts::new();
     let mut elapsed_seconds = 0.0;
     for chunk in &report.chunks {
@@ -205,6 +228,11 @@ fn print_summary(arguments: &Arguments, rule_set: &str, generation_commit: &str,
     println!("resign_threshold: {}", arguments.resign_threshold);
     println!("resign_playthrough: {}", arguments.resign_playthrough);
     println!("evaluator: {}", arguments.evaluator.name());
+    match &arguments.nn_model {
+        Some(path) => println!("nn_model: {}", path.display()),
+        None => println!("nn_model: none"),
+    }
+    println!("network_checksum: {}", hex(network_checksum));
     println!("rules: {rule_set}");
     println!("commit: {generation_commit}");
     println!("games_completed: {}", counts.games);
@@ -298,6 +326,7 @@ mod tests {
             openings: None,
             evaluator: EvaluatorKind::Uniform,
             nn_backend: NnBackend::Cpu,
+            nn_model: None,
             nn_cache_dir: None,
             nn_batch_size: NonZeroUsize::new(256).unwrap(),
             resume: false,
@@ -356,6 +385,8 @@ mod tests {
             assert_eq!(summary, report.chunks[index as usize]);
             assert_eq!(header.rule_set(), "L0,P0,R1,E0");
             assert_eq!(header.network_checksum(), &[0; 32]);
+            assert_eq!(summary.nn_model, None);
+            assert_eq!(summary.network_checksum, "0".repeat(64));
             assert_eq!(header.teacher(), mnzt::Teacher::MctsSimulations(8));
             assert_eq!(header.seed(), 11 + u64::from(index) * 3 * 2);
             assert_eq!(summary.seed, header.seed());
@@ -435,6 +466,52 @@ mod tests {
         // 条件の異なる再開は、確定済みの塊と混ぜずに拒否する。
         arguments.seed = 12;
         assert!(generate_uniform(&arguments).is_err());
+    }
+
+    /// 指示書N「試験」: `--nn-model`と`--evaluator uniform`の併用は、塊を書く前に引数の誤りとして拒否する。
+    #[test]
+    fn nn_model_is_rejected_with_the_uniform_evaluator() {
+        let directory = TempDir::new();
+        let mut arguments = arguments(directory.0.join("cycle"));
+        arguments.nn_model = Some(directory.0.join("net.onnx"));
+        let error = generate_uniform(&arguments).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(!arguments.out_dir.exists());
+    }
+
+    /// 指示書N「試験」: 塊のサマリには、推論に使ったネットのファイルと検査和を記録し、検査和はMNZTの
+    /// ヘッダと一致する。推論器は差し替えるので、ネットのファイルは読まない。
+    #[test]
+    fn chunk_summaries_record_the_model_path_and_checksum() {
+        let directory = TempDir::new();
+        let mut arguments = arguments(directory.0.join("cycle"));
+        arguments.evaluator = EvaluatorKind::Ort;
+        arguments.nn_model = Some(PathBuf::from("nets/cycle-10.onnx"));
+        arguments.games = NonZeroU32::new(3).unwrap();
+        generate(
+            &arguments,
+            &|| Ok(Box::new(UniformEvaluator) as Box<dyn Evaluator>),
+            [7; 32],
+        )
+        .unwrap();
+        let json: serde_json::Value =
+            serde_json::from_reader(File::open(chunk_path(&arguments.out_dir, 0, "json")).unwrap())
+                .unwrap();
+        assert_eq!(json["nn_model"], "nets/cycle-10.onnx");
+        assert_eq!(json["network_checksum"], "07".repeat(32));
+        let (header, _) = read_records(&chunk_path(&arguments.out_dir, 0, "mnzt"));
+        assert_eq!(header.network_checksum(), &[7; 32]);
+
+        // 検査和の異なるネットでの再開は、確定済みの塊と混ぜずに拒否する。
+        arguments.resume = true;
+        assert!(
+            generate(
+                &arguments,
+                &|| Ok(Box::new(UniformEvaluator) as Box<dyn Evaluator>),
+                [8; 32],
+            )
+            .is_err()
+        );
     }
 
     /// 指示書「試験」: 手数の上限20では全対局が上限に達し、記録は0件で、上限到達の件数が対局数と一致する。

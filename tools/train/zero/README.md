@@ -217,6 +217,7 @@ tools/train/zero/run.sh uv run --project tools/train/zero python -m minase_zero.
 エンジンの作成には数分かかることがあり、対局ハーネス`minase match run`の応答タイムアウト（`--response-timeout`、既定120秒）を超えると、そのエンジンの反則負けになる。
 作ったエンジンは、USIオプション`NnCacheDir`（既定は`$XDG_CACHE_HOME/minase/tensorrt`）の下の、ネットの検査和、GPUの機種名、メモリ容量、計算能力、およびTensorRTの版から作った鍵のディレクトリに保存され、次回からは読み込むだけになる。
 このため測定の前に、測定に使うバイナリを、測定と同じ`NnCacheDir`と`NnBatchSize`で1回起動し、`readyok`が返るまで待ってキャッシュを作っておく。
+USIオプション`NnModelPath`にONNXファイルを指定すると、埋め込みのネットの代わりにそのファイルを`isready`の時点で読み、キャッシュの鍵の検査和もそのファイルのSHA-256になるので、別のネットで起動する場合はそのネットを指定してキャッシュを作っておく。
 ONNX Runtimeの共有ライブラリは環境変数`ORT_DYLIB_PATH`で指定し、コンテナイメージの中では設定済みである。
 
 ```bash
