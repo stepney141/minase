@@ -77,7 +77,7 @@ Rustの実装（`crates/minase/src/eval/nnue/`）について、対局前に要�
 | Pythonの参照推論との一致 | `nnue-diagnostics`で、ランダム重み（幅64と幅128）とエポック0のネットの3本について、試走の21,609局面を`minase dev nnue-probe`と照合 | 3本とも全局面一致 |
 | 左右鏡映の不変性 | ランダム重みとランダム対局の局面で、局面とその鏡映の整数評価を比較（`cargo test`） | 一致 |
 | エポック0のネットとPST評価の一致 | `nets/nnue.bin`（幅64、エポック0）の評価を、`nets/nnue-epoch0-pst.bin`（基準MのPST部分だけを持つMNPT版2）の`eval/pst/`による評価と比較（`cargo test`） | 一致 |
-| 探索のノード数と評価値の一致 | 基準Mに`nnue-epoch0-pst.bin`を`nets/pst.bin`として埋め込んだビルド（実行ファイルのSHA-256 `9afe25b8…`）と、本ブランチのビルドで、初期局面と`7i7h 6d6e 8i8h 5d5e`の後の局面から深さ3〜5をUSIで探索 | 6通りすべてでノード数、評価値、最善手、予想手が一致（初期局面の深さ5は2,001ノード、評価値+25） |
+| 探索のノード数と評価値の一致 | 着手時のmaster `6b97cc26`に`nnue-epoch0-pst.bin`を`nets/pst.bin`として埋め込んだビルド（実行ファイルのSHA-256 `9afe25b8…`）と本ブランチのビルドで、初期局面と`7i7h 6d6e 8i8h 5d5e`の後の局面から深さ3〜5をUSIで探索。masterの取り込み後は、基準M `8d0e382`に同じ重みを埋め込んだビルド（`45a0ad01…`）と取り込み後のブランチで再確認 | どちらも6通りすべてでノード数、評価値、最善手、予想手が一致（取り込み前は初期局面の深さ5が2,001ノード、取り込み後は1,695ノードで、いずれも評価値+25） |
 | 既存の`eval/pst/`と`handcrafted.rs`のテスト | `cargo test`（842件）、`cargo test --features invariants --lib eval`、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check` | すべて通過 |
 
 ### フェーズ4の学習
