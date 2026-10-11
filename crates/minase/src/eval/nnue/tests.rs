@@ -511,6 +511,450 @@ fn embedded_metadata_and_search_values_match_baseline() {
     );
 }
 
+/// 出力部へ零の累算値を渡すと、仕様上は出力バイアスだけが残る。
+fn encoding_input<F: FeatureSet>(net: &Network<F, DirectScrelu>) -> EncodeInput<'_> {
+    let zeros = vec![0; net.width()];
+    EncodeInput {
+        width: net.width() as u32,
+        k: net.k(),
+        rule_set: net.rule_set(),
+        piece_values: &net.piece_values,
+        linear: &net.linear,
+        weights: &net.weights,
+        biases: &net.biases,
+        output_weights: &net.head.weights,
+        output_bias: net.head.output(&zeros, &zeros),
+    }
+}
+
+/// 配布済みのMNUE版5を、予約領域と検査和も含めて完全に再現する。
+#[test]
+fn embedded_encode_round_trip_is_byte_identical() {
+    let net = Nnue::decode(EMBEDDED).unwrap();
+    assert_eq!(encode::<P>(&encoding_input(&net)).unwrap(), EMBEDDED);
+}
+
+both_feature_sets!(encode_round_trip_preserves_random_parameters);
+fn encode_round_trip_preserves_random_parameters<F: FeatureSet>() {
+    for width in [2, 4] {
+        // 独立した既存の符号化で作った重みを参照値とする。
+        let original = random_bytes::<F>(width);
+        let net = Network::<F, DirectScrelu>::decode(&original).unwrap();
+        let input = encoding_input(&net);
+        let bytes = encode::<F>(&input).unwrap();
+        assert_eq!(bytes, original);
+        let decoded = Network::<F, DirectScrelu>::decode(&bytes).unwrap();
+        let actual = encoding_input(&decoded);
+        assert_eq!(actual.width, input.width);
+        assert_eq!(actual.k.to_bits(), input.k.to_bits());
+        assert_eq!(actual.rule_set, input.rule_set);
+        assert_eq!(actual.piece_values, input.piece_values);
+        assert_eq!(actual.linear, input.linear);
+        assert_eq!(actual.weights, input.weights);
+        assert_eq!(actual.biases, input.biases);
+        assert_eq!(actual.output_weights, input.output_weights);
+        assert_eq!(actual.output_bias, input.output_bias);
+        assert_eq!(encode::<F>(&actual).unwrap(), bytes);
+    }
+}
+
+/// MNUE版5のヘッダで定めた幅とKの境界を検査する。
+#[test]
+fn encode_validates_width_and_k() {
+    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let input = encoding_input(&net);
+    for width in [0, 1, 3, 513, 514, u32::MAX] {
+        assert_eq!(
+            encode::<P>(&EncodeInput { width, ..input }).unwrap_err(),
+            Error::InvalidWidth { actual: width }
+        );
+    }
+    for k in [
+        0.0,
+        -0.0,
+        -1.0,
+        f32::NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        100_001.0,
+    ] {
+        assert!(matches!(
+            encode::<P>(&EncodeInput { k, ..input }),
+            Err(Error::InvalidK { .. })
+        ));
+    }
+    for k in [f32::from_bits(1), f32::MIN_POSITIVE, 100_000.0] {
+        let bytes = encode::<P>(&EncodeInput { k, ..input }).unwrap();
+        assert_eq!(Nnue::decode(&bytes).unwrap().k().to_bits(), k.to_bits());
+    }
+    let weights = vec![0; FEATURE_COUNT * 512];
+    let bytes = encode::<P>(&EncodeInput {
+        width: 512,
+        weights: &weights,
+        biases: &[0; 512],
+        output_weights: &[0; 1024],
+        ..input
+    })
+    .unwrap();
+    assert_eq!(Nnue::decode(&bytes).unwrap().width(), 512);
+}
+
+both_feature_sets!(encode_rejects_invalid_parameter_lengths);
+fn encode_rejects_invalid_parameter_lengths<F: FeatureSet>() {
+    let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(2)).unwrap();
+    let input = encoding_input(&net);
+    let extra_linear = vec![[0; 2]; input.linear.len() + 1];
+    let extra_weights = vec![0; input.weights.len() + 1];
+    let extra_biases = vec![0; input.biases.len() + 1];
+    let extra_output = vec![0; input.output_weights.len() + 1];
+    for length in [0, input.linear.len() - 1, input.linear.len() + 1] {
+        assert!(matches!(
+            encode::<F>(&EncodeInput {
+                linear: &extra_linear[..length],
+                ..input
+            }),
+            Err(Error::InvalidParameterLength {
+                parameter: "linear",
+                ..
+            })
+        ));
+    }
+    for length in [0, input.weights.len() - 1, input.weights.len() + 1] {
+        assert!(matches!(
+            encode::<F>(&EncodeInput {
+                weights: &extra_weights[..length],
+                ..input
+            }),
+            Err(Error::InvalidParameterLength {
+                parameter: "weights",
+                ..
+            })
+        ));
+    }
+    for length in [0, input.biases.len() - 1, input.biases.len() + 1] {
+        assert!(matches!(
+            encode::<F>(&EncodeInput {
+                biases: &extra_biases[..length],
+                ..input
+            }),
+            Err(Error::InvalidParameterLength {
+                parameter: "biases",
+                ..
+            })
+        ));
+    }
+    for length in [
+        0,
+        input.output_weights.len() - 1,
+        input.output_weights.len() + 1,
+    ] {
+        assert!(matches!(
+            encode::<F>(&EncodeInput {
+                output_weights: &extra_output[..length],
+                ..input
+            }),
+            Err(Error::InvalidParameterLength {
+                parameter: "output_weights",
+                ..
+            })
+        ));
+    }
+}
+
+both_feature_sets!(encode_validates_parameter_ranges);
+fn encode_validates_parameter_ranges<F: FeatureSet>() {
+    let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(2)).unwrap();
+    let input = encoding_input(&net);
+    let mut weights = input.weights.to_vec();
+    for value in [-1017, 1017, i16::MIN, i16::MAX] {
+        weights[0] = value;
+        assert_eq!(
+            encode::<F>(&EncodeInput {
+                weights: &weights,
+                ..input
+            })
+            .unwrap_err(),
+            Error::ParameterOutOfRange {
+                parameter: "weights",
+                index: 0,
+                value: i32::from(value)
+            }
+        );
+    }
+    let mut biases = input.biases.to_vec();
+    for value in [-1017, 1017, i32::MIN, i32::MAX] {
+        biases[0] = value;
+        assert_eq!(
+            encode::<F>(&EncodeInput {
+                biases: &biases,
+                ..input
+            })
+            .unwrap_err(),
+            Error::ParameterOutOfRange {
+                parameter: "biases",
+                index: 0,
+                value
+            }
+        );
+    }
+    let mut output_weights = input.output_weights.to_vec();
+    for value in [-8193, 8193, i16::MIN, i16::MAX] {
+        output_weights[0] = value;
+        assert_eq!(
+            encode::<F>(&EncodeInput {
+                output_weights: &output_weights,
+                ..input
+            })
+            .unwrap_err(),
+            Error::ParameterOutOfRange {
+                parameter: "output_weights",
+                index: 0,
+                value: i32::from(value)
+            }
+        );
+    }
+    for value in [-4_161_537, 4_161_537, i32::MIN, i32::MAX] {
+        assert_eq!(
+            encode::<F>(&EncodeInput {
+                output_bias: value,
+                ..input
+            })
+            .unwrap_err(),
+            Error::ParameterOutOfRange {
+                parameter: "output_bias",
+                index: 0,
+                value
+            }
+        );
+    }
+    // 整数推論の仕様は端点を含み、線形重みにはi16の全範囲を許す。
+    let linear = vec![[i16::MIN, i16::MAX]; FEATURE_COUNT];
+    for sign in [-1, 1] {
+        weights.fill(sign * 1016);
+        biases.fill(i32::from(sign) * 1016);
+        output_weights.fill(sign * 8192);
+        let bytes = encode::<F>(&EncodeInput {
+            linear: &linear,
+            weights: &weights,
+            biases: &biases,
+            output_weights: &output_weights,
+            output_bias: i32::from(sign) * 4_161_536,
+            ..input
+        })
+        .unwrap();
+        assert!(Network::<F, DirectScrelu>::decode(&bytes).is_ok());
+    }
+}
+
+both_feature_sets!(encode_validates_mirror_sharing);
+fn encode_validates_mirror_sharing<F: FeatureSet>() {
+    let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(4)).unwrap();
+    let input = encoding_input(&net);
+    let mut linear = input.linear.to_vec();
+    linear[0][0] ^= 1;
+    assert!(matches!(
+        encode::<F>(&EncodeInput {
+            linear: &linear,
+            ..input
+        }),
+        Err(Error::MirrorMismatch {
+            parameter: "linear",
+            ..
+        })
+    ));
+    let mut weights = input.weights.to_vec();
+    weights[0] ^= 1;
+    let mut biases = input.biases.to_vec();
+    biases[0] ^= 1;
+    let mut us = input.output_weights.to_vec();
+    us[0] ^= 1;
+    let mut them = input.output_weights.to_vec();
+    them[net.width()] ^= 1;
+    for (parameter, altered) in [
+        (
+            "weights",
+            EncodeInput {
+                weights: &weights,
+                ..input
+            },
+        ),
+        (
+            "biases",
+            EncodeInput {
+                biases: &biases,
+                ..input
+            },
+        ),
+        (
+            "output_weights",
+            EncodeInput {
+                output_weights: &us,
+                ..input
+            },
+        ),
+        (
+            "output_weights",
+            EncodeInput {
+                output_weights: &them,
+                ..input
+            },
+        ),
+    ] {
+        let result = encode::<F>(&altered);
+        if F::MIRROR == Mirror::Shared {
+            assert!(
+                matches!(result, Err(Error::MirrorMismatch { parameter: found, .. }) if found == parameter)
+            );
+        } else {
+            assert!(Network::<F, DirectScrelu>::decode(&result.unwrap()).is_ok());
+        }
+    }
+}
+
+/// 規則セット名の上限は文字数ではなくUTF-8のバイト数である。
+#[test]
+fn encode_validates_rule_set_names() {
+    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let input = encoding_input(&net);
+    for rule_set in [
+        String::new(),
+        "x".repeat(32),
+        format!("{}ab", "あ".repeat(10)),
+    ] {
+        let bytes = encode::<P>(&EncodeInput {
+            rule_set: &rule_set,
+            ..input
+        })
+        .unwrap();
+        assert_eq!(Nnue::decode(&bytes).unwrap().rule_set(), rule_set);
+    }
+    for rule_set in [
+        "x".repeat(33),
+        "あ".repeat(11),
+        "a\0b".to_owned(),
+        "a\0".to_owned(),
+    ] {
+        assert_eq!(
+            encode::<P>(&EncodeInput {
+                rule_set: &rule_set,
+                ..input
+            })
+            .unwrap_err(),
+            Error::InvalidRuleSet
+        );
+    }
+}
+
+/// 公開されたFeatureSetの名前と特徴数も、外部から与えられる値として検査する。
+#[test]
+fn encode_validates_feature_set_metadata() {
+    macro_rules! format_feature_set {
+        ($set:ident, $name:expr, $dimensions:expr) => {
+            #[derive(Clone, PartialEq, Eq, Debug)]
+            struct $set;
+            impl FeatureSet for $set {
+                const NAME: &'static str = $name;
+                const DIMENSIONS: usize = $dimensions;
+                const MIRROR: Mirror = Mirror::Shared;
+                type Context = ();
+
+                fn context(_: &Position, _: Color) {}
+                fn context_after_move(
+                    _: (),
+                    _: &Position,
+                    _: Color,
+                    _: &minase_core::position::Undo,
+                ) {
+                }
+                fn index((): (), base: usize) -> usize {
+                    base
+                }
+                fn base_index(feature: usize) -> usize {
+                    feature
+                }
+            }
+        };
+    }
+    // 幅2の構造記述文字列は、名前以外で49バイトを使う。
+    format_feature_set!(
+        FullName,
+        "12345678901234567890123456789012345678901234567",
+        FEATURE_COUNT
+    );
+    format_feature_set!(
+        LongName,
+        "123456789012345678901234567890123456789012345678",
+        FEATURE_COUNT
+    );
+    format_feature_set!(NonAsciiName, "あ", FEATURE_COUNT);
+    format_feature_set!(NulName, "P\0", FEATURE_COUNT);
+    format_feature_set!(OversizedDimensions, "large", usize::MAX);
+    format_feature_set!(ShortDimensions, "small", 0);
+
+    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let input = encoding_input(&net);
+    let bytes = encode::<FullName>(&input).unwrap();
+    assert_eq!(architecture(&bytes).unwrap().len(), 96);
+    assert!(Network::<FullName, DirectScrelu>::decode(&bytes).is_ok());
+    for result in [
+        encode::<LongName>(&input),
+        encode::<NonAsciiName>(&input),
+        encode::<NulName>(&input),
+    ] {
+        assert_eq!(result.unwrap_err(), Error::InvalidArchitecture);
+    }
+    assert_eq!(
+        encode::<OversizedDimensions>(&input).unwrap_err(),
+        Error::InvalidDimensions { actual: usize::MAX }
+    );
+    assert_eq!(
+        encode::<ShortDimensions>(&EncodeInput {
+            weights: &[],
+            ..input
+        })
+        .unwrap_err(),
+        Error::InvalidDimensions { actual: 0 }
+    );
+}
+
+/// 探索用駒価値も復号と同じ契約で検査する。
+#[test]
+fn encode_rejects_invalid_piece_values() {
+    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let input = encoding_input(&net);
+    for value in [-1, 29_000, i32::MAX] {
+        let mut piece_values = *input.piece_values;
+        piece_values[0] = value;
+        assert!(matches!(
+            encode::<P>(&EncodeInput {
+                piece_values: &piece_values,
+                ..input
+            }),
+            Err(Error::PieceValueOutOfRange { .. })
+        ));
+    }
+    for kind in [PieceKind::King, PieceKind::CrownPrince] {
+        let mut piece_values = *input.piece_values;
+        piece_values[kind.index()] = 0;
+        assert!(matches!(
+            encode::<P>(&EncodeInput {
+                piece_values: &piece_values,
+                ..input
+            }),
+            Err(Error::InconsistentRoyalValue { .. })
+        ));
+    }
+    let mut piece_values = *input.piece_values;
+    piece_values[29] = 0;
+    assert!(matches!(
+        encode::<P>(&EncodeInput {
+            piece_values: &piece_values,
+            ..input
+        }),
+        Err(Error::NonPositivePieceValue { .. })
+    ));
+}
+
 both_feature_sets!(header_validation_and_runtime_lengths);
 fn header_validation_and_runtime_lengths<F: FeatureSet>() {
     let a = random_bytes::<F>(2);
@@ -862,17 +1306,20 @@ fn half_kp_anchor_selection_and_dense_indices_follow_the_contract() {
         for (pieces, expected) in cases {
             let position = position_from_codes(side, &pieces);
             let (bucket, mirrored) = expected[side.index()];
+            let context = HalfKpHmB8::context(&position, side);
+            assert_eq!(context, HalfKpContext { bucket, mirrored });
+            assert_eq!(context.bucket(), bucket);
+            assert_eq!(context.mirrored(), mirrored);
+            let opposite = HalfKpHmB8::context(&position, side.opposite());
             assert_eq!(
-                HalfKpHmB8::context(&position, side),
-                HalfKpContext { bucket, mirrored }
-            );
-            assert_eq!(
-                HalfKpHmB8::context(&position, side.opposite()),
+                opposite,
                 HalfKpContext {
                     bucket: 0,
                     mirrored: false
                 }
             );
+            assert_eq!(opposite.bucket(), 0);
+            assert!(!opposite.mirrored());
         }
     }
     assert_eq!(std::mem::size_of::<<P as FeatureSet>::Context>(), 0);
@@ -906,6 +1353,8 @@ fn half_kp_buckets_and_feature_indices_follow_the_contract() {
                         mirrored: file < 6
                     }
                 );
+                assert_eq!(context.bucket(), bucket);
+                assert_eq!(context.mirrored(), file < 6);
             }
         }
     }

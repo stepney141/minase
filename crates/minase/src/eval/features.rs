@@ -1,14 +1,14 @@
-//! 学習評価関数で共有する駒状態と手番側視点の特徴番号。
+//! 学習と推論で共有する駒状態と視点ごとの特徴番号。
 
 use minase_core::piece::PIECE_KIND_COUNT;
 use minase_core::{Color, PieceCode, PieceKind, Position, Square};
 
 /// 学習評価関数が使う特徴の総数。
-pub(crate) const FEATURE_COUNT: usize = 13_680;
+pub const FEATURE_COUNT: usize = 13_680;
 /// 駒種と現在の成り可否を区別した駒状態の総数。
-pub(crate) const PIECE_STATE_COUNT: usize = 47;
+pub const PIECE_STATE_COUNT: usize = 47;
 /// 駒と升の組からなる特徴の総数。
-pub(crate) const BOARD_FEATURE_COUNT: usize = 2 * PIECE_STATE_COUNT * 144;
+pub const BOARD_FEATURE_COUNT: usize = 2 * PIECE_STATE_COUNT * 144;
 /// 成っていない駒の駒種番号から状態番号への表。成れる駒種は29以降の
 /// 「成れる」状態、それ以外は駒種番号そのものへ写す。
 const UNPROMOTED_STATES: [u8; PIECE_KIND_COUNT] = build_unpromoted_states();
@@ -31,7 +31,10 @@ const fn build_unpromoted_states() -> [u8; PIECE_KIND_COUNT] {
 }
 
 /// 駒コードを駒種と現在の成り可否からなる状態番号へ変換する。
-pub(crate) fn piece_state(piece: PieceCode) -> usize {
+///
+/// # Panics
+/// 空升または盤外の番兵ではパニックする。
+pub fn piece_state(piece: PieceCode) -> usize {
     let kind = piece.kind().expect("feature piece must have a valid kind");
     if piece.is_promoted() {
         kind.index()
@@ -41,7 +44,10 @@ pub(crate) fn piece_state(piece: PieceCode) -> usize {
 }
 
 /// 指定視点における盤上の駒の特徴番号を返す。
-pub(crate) fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> usize {
+///
+/// # Panics
+/// `piece`が空升または盤外の番兵ではパニックする。
+pub fn feature_index(perspective: Color, piece: PieceCode, square: Square) -> usize {
     let relative_color = usize::from(
         piece
             .color()
@@ -57,7 +63,7 @@ pub(crate) fn feature_index(perspective: Color, piece: PieceCode, square: Square
 }
 
 /// 指定視点における先獅子対象升の特徴番号を返す。
-pub(crate) fn lion_feature_index(perspective: Color, square: Square) -> usize {
+pub fn lion_feature_index(perspective: Color, square: Square) -> usize {
     let relative_rank = match perspective {
         Color::Black => square.rank(),
         Color::White => 11 - square.rank(),
@@ -66,16 +72,12 @@ pub(crate) fn lion_feature_index(perspective: Color, square: Square) -> usize {
 }
 
 /// 局面で有効な手番側視点の特徴番号を列挙する。
-pub(crate) fn active_features(position: &Position, mut f: impl FnMut(usize)) {
+pub fn active_features(position: &Position, mut f: impl FnMut(usize)) {
     active_features_for(position.side_to_move(), position, &mut f);
 }
 
 /// 局面で有効な指定視点の特徴番号を列挙する。
-pub(crate) fn active_features_for(
-    perspective: Color,
-    position: &Position,
-    mut f: impl FnMut(usize),
-) {
+pub fn active_features_for(perspective: Color, position: &Position, mut f: impl FnMut(usize)) {
     for square in position.occupied() {
         let piece = position
             .piece_at(square)
@@ -88,7 +90,8 @@ pub(crate) fn active_features_for(
 }
 
 /// 特徴を盤面の左右鏡映で対応する番号へ写す。
-pub(crate) const fn mirror_feature(feature: usize) -> usize {
+/// `feature`には[`FEATURE_COUNT`]未満の基底特徴番号を渡す。
+pub const fn mirror_feature(feature: usize) -> usize {
     feature / 12 * 12 + 11 - feature % 12
 }
 

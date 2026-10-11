@@ -1,6 +1,6 @@
 //! 中将棋の静的評価関数。
 
-mod features;
+pub mod features;
 pub mod handcrafted;
 pub mod nnue;
 // 比較用PSTの探索向け内部APIもソースとテストを保持する。

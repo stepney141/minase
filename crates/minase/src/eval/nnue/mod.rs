@@ -1,4 +1,4 @@
-//! MNUE版5の復号、差分更新および整数推論。
+//! MNUE版5の符号化・復号、差分更新および整数推論。
 
 pub(crate) mod accumulator;
 pub mod feature_set;
@@ -9,7 +9,7 @@ mod tests;
 
 use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
 use feature_set::{FeatureSet, P};
-pub use format::{Error, architecture};
+pub use format::{EncodeInput, Error, architecture, encode};
 use head::{DirectScrelu, Head};
 use minase_core::{Color, Move, PieceCode, PieceKind, Position};
 use std::marker::PhantomData;

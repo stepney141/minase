@@ -1,7 +1,7 @@
-//! MNUE版5の配置、範囲、検査和および鏡映共有を検証する。
+//! MNUE版5を符号化・復号し、配置、範囲、検査和および鏡映共有を検証する。
 
 use super::feature_set::{FeatureSet, Mirror};
-use super::head::Head;
+use super::head::{DirectScrelu, Head};
 use super::{EVALUATION_LIMIT, FEATURE_COUNT, Network, PIECE_STATE_COUNT};
 use crate::eval::features::{mirror_feature, piece_state};
 use core::fmt;
@@ -10,6 +10,124 @@ use sha2::{Digest, Sha256};
 use std::marker::PhantomData;
 
 pub(super) const HEADER_LENGTH: usize = 192;
+
+/// MNUE版5へ書き出す量子化済みの重みとメタデータ。
+#[derive(Clone, Copy)]
+pub struct EncodeInput<'a> {
+    /// 第1層の幅H。2以上512以下の偶数を指定する。
+    pub width: u32,
+    /// 出力用の勝率尺度K。正の有限値で100,000以下を指定する。
+    pub k: f32,
+    /// 生成時の規則セット名。NULを含まない32バイト以下のUTF-8文字列を指定する。
+    pub rule_set: &'a str,
+    /// 駒状態番号順の探索用駒価値。
+    pub piece_values: &'a [i32; PIECE_STATE_COUNT],
+    /// 基底特徴ごとの序中盤用と終盤用の線形重み。要素数は13,680。
+    pub linear: &'a [[i16; 2]],
+    /// 特徴ごとにH個が連続する第1層の重み。要素数は入力特徴数×H。
+    pub weights: &'a [i16],
+    /// 第1層のバイアス。要素数はH。
+    pub biases: &'a [i32],
+    /// 手番側視点のH個に相手側視点のH個が続く出力重み。
+    pub output_weights: &'a [i16],
+    /// 出力バイアス。
+    pub output_bias: i32,
+}
+
+/// 入力特徴集合`F`と直接出力部の重みを検証し、MNUE版5へ符号化する。
+///
+/// 構造記述文字列は`F`の名前と幅から組み立て、本体のSHA-256をヘッダへ格納する。
+///
+/// # Errors
+/// 幅、K、文字列、配列長、駒価値、重みの範囲または鏡映共有が不正ならエラーを返す。
+pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> {
+    let width = input.width as usize;
+    let text = architecture_text::<F, DirectScrelu>(width);
+    if text.len() > 96 {
+        return Err(Error::InvalidArchitecture);
+    }
+    let mut header = [0_u8; HEADER_LENGTH];
+    header[..4].copy_from_slice(b"MNUE");
+    header[4..8].copy_from_slice(&5_u32.to_le_bytes());
+    header[8..8 + text.len()].copy_from_slice(text.as_bytes());
+    header[104..108].copy_from_slice(&input.width.to_le_bytes());
+    architecture(&header)?;
+    validate_k(input.k)?;
+    header[108..112].copy_from_slice(&input.k.to_le_bytes());
+    if input.rule_set.len() > 32 || input.rule_set.as_bytes().contains(&0) {
+        return Err(Error::InvalidRuleSet);
+    }
+    header[112..112 + input.rule_set.len()].copy_from_slice(input.rule_set.as_bytes());
+
+    let invalid_dimensions = Error::InvalidDimensions {
+        actual: F::DIMENSIONS,
+    };
+    let weight_count = F::DIMENSIONS
+        .checked_mul(width)
+        .ok_or_else(|| invalid_dimensions.clone())?;
+    for (parameter, expected, actual) in [
+        ("linear", FEATURE_COUNT, input.linear.len()),
+        ("weights", weight_count, input.weights.len()),
+        ("biases", width, input.biases.len()),
+        ("output_weights", 2 * width, input.output_weights.len()),
+    ] {
+        if actual != expected {
+            return Err(Error::InvalidParameterLength {
+                parameter,
+                expected,
+                actual,
+            });
+        }
+    }
+    let length = weight_count
+        .checked_mul(2)
+        .and_then(|bytes| {
+            bytes.checked_add(
+                HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4 + 8 * width + 4,
+            )
+        })
+        .filter(|&bytes| bytes <= isize::MAX as usize)
+        .ok_or(invalid_dimensions)?;
+    validate_piece_values(input.piece_values)?;
+    validate_features::<F>(width, input.linear, input.weights, input.biases)?;
+
+    // 出力区画は最大2,052バイト。既存の復号と同じ範囲・共有条件で検査する。
+    let mut output = Vec::with_capacity(DirectScrelu::byte_len(width));
+    for value in input.output_weights {
+        output.extend_from_slice(&value.to_le_bytes());
+    }
+    output.extend_from_slice(&input.output_bias.to_le_bytes());
+    DirectScrelu::decode(&output, width, F::MIRROR == Mirror::Shared)?;
+
+    let mut bytes = Vec::with_capacity(length);
+    bytes.extend_from_slice(&header);
+    for pair in input.linear {
+        for value in pair {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+    for value in input.piece_values {
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    for value in input.weights {
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    for value in input.biases {
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    bytes.extend_from_slice(&output);
+    let checksum = Sha256::digest(&bytes[HEADER_LENGTH..]);
+    bytes[144..176].copy_from_slice(&checksum);
+    Ok(bytes)
+}
+
+fn architecture_text<F: FeatureSet, H: Head>(width: usize) -> String {
+    format!(
+        "features={};ft={width};linear=tapered2;head={}",
+        F::NAME,
+        H::NAME
+    )
+}
 
 /// ヘッダの版、幅、ASCIIおよびNUL埋めを検証し、構造記述文字列を返す。
 /// 本体を読む側は、型から組み立てた文字列との完全一致も検査する。
@@ -49,20 +167,14 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         let actual_architecture = architecture(bytes)?;
         let width = read_u32(bytes, 104);
         let width = width as usize;
-        let expected_architecture = format!(
-            "features={};ft={width};linear=tapered2;head={}",
-            F::NAME,
-            H::NAME
-        );
+        let expected_architecture = architecture_text::<F, H>(width);
         if actual_architecture != expected_architecture {
             return Err(Error::UnexpectedArchitecture {
                 actual: actual_architecture.to_owned(),
             });
         }
         let k = f32::from_le_bytes(bytes[108..112].try_into().expect("checked header length"));
-        if !k.is_finite() || k <= 0.0 || k > 100_000.0 {
-            return Err(Error::InvalidK { actual: k });
-        }
+        validate_k(k)?;
         if bytes[176..192].iter().any(|&b| b != 0) {
             return Err(Error::NonZeroReserved);
         }
@@ -116,41 +228,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
             .collect();
         offset += width * 4;
         let head = H::decode(&body[offset..], width, F::MIRROR == Mirror::Shared)?;
-        validate_range("weights", weights.iter().copied().map(i32::from), 1_016)?;
-        validate_range("biases", biases.iter().copied(), 1_016)?;
-        for feature in 0..FEATURE_COUNT {
-            let mirrored = mirror_feature(feature);
-            if linear[feature] != linear[mirrored] {
-                return Err(Error::MirrorMismatch {
-                    parameter: "linear",
-                    index: feature,
-                });
-            }
-            if F::MIRROR != Mirror::Shared {
-                continue;
-            }
-            for j in 0..width {
-                if weights[mirrored * width + j]
-                    != weights[feature * width + (j + width / 2) % width]
-                {
-                    return Err(Error::MirrorMismatch {
-                        parameter: "weights",
-                        index: feature * width + j,
-                    });
-                }
-            }
-        }
-        if F::MIRROR == Mirror::Shared {
-            for j in 0..width {
-                let partner = (j + width / 2) % width;
-                if biases[j] != biases[partner] {
-                    return Err(Error::MirrorMismatch {
-                        parameter: "biases",
-                        index: j,
-                    });
-                }
-            }
-        }
+        validate_features::<F>(width, &linear, &weights, &biases)?;
         let max_promotion_gain = PieceKind::ALL
             .into_iter()
             .filter_map(|kind| PieceCode::new(Color::Black, kind))
@@ -176,6 +254,61 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
             checksum,
         })
     }
+}
+
+fn validate_k(k: f32) -> Result<(), Error> {
+    if !k.is_finite() || k <= 0.0 || k > 100_000.0 {
+        return Err(Error::InvalidK { actual: k });
+    }
+    Ok(())
+}
+
+/// 長さを検査済みの特徴重みについて、範囲と鏡映共有を検査する。
+fn validate_features<F: FeatureSet>(
+    width: usize,
+    linear: &[[i16; 2]],
+    weights: &[i16],
+    biases: &[i32],
+) -> Result<(), Error> {
+    if F::MIRROR == Mirror::Shared && F::DIMENSIONS < FEATURE_COUNT {
+        return Err(Error::InvalidDimensions {
+            actual: F::DIMENSIONS,
+        });
+    }
+    validate_range("weights", weights.iter().copied().map(i32::from), 1_016)?;
+    validate_range("biases", biases.iter().copied(), 1_016)?;
+    for feature in 0..FEATURE_COUNT {
+        let mirrored = mirror_feature(feature);
+        if linear[feature] != linear[mirrored] {
+            return Err(Error::MirrorMismatch {
+                parameter: "linear",
+                index: feature,
+            });
+        }
+        if F::MIRROR != Mirror::Shared {
+            continue;
+        }
+        for j in 0..width {
+            if weights[mirrored * width + j] != weights[feature * width + (j + width / 2) % width] {
+                return Err(Error::MirrorMismatch {
+                    parameter: "weights",
+                    index: feature * width + j,
+                });
+            }
+        }
+    }
+    if F::MIRROR == Mirror::Shared {
+        for j in 0..width {
+            let partner = (j + width / 2) % width;
+            if biases[j] != biases[partner] {
+                return Err(Error::MirrorMismatch {
+                    parameter: "biases",
+                    index: j,
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn validate_range(
@@ -210,7 +343,7 @@ pub(super) fn read_i32(bytes: &[u8], offset: usize) -> i32 {
     )
 }
 
-/// MNUEバイト列の検証失敗。
+/// MNUEの符号化・復号における検証失敗。
 #[derive(Clone, PartialEq, Debug)]
 pub enum Error {
     /// ファイル長がヘッダの幅から導いた長さに一致しない。
@@ -218,6 +351,20 @@ pub enum Error {
         /// 期待するファイル長。
         expected: usize,
         /// 実際のファイル長。
+        actual: usize,
+    },
+    /// 符号化する配列の要素数が特徴数と幅から導いた値に一致しない。
+    InvalidParameterLength {
+        /// 配列名。
+        parameter: &'static str,
+        /// 期待する要素数。
+        expected: usize,
+        /// 実際の要素数。
+        actual: usize,
+    },
+    /// 入力特徴数が鏡映共有に必要な行数を満たさないか、格納可能な長さを超える。
+    InvalidDimensions {
+        /// 入力特徴数。
         actual: usize,
     },
     /// ファイル識別子がMNUEではない。
@@ -230,7 +377,7 @@ pub enum Error {
         /// 読み取った版。
         actual: u32,
     },
-    /// 構造記述文字列がASCIIまたはNUL埋めの規約を満たさない。
+    /// 構造記述文字列が96バイトを超えるか、ASCIIまたはNUL埋めの規約を満たさない。
     InvalidArchitecture,
     /// 構造記述文字列が復号する型と一致しない。
     UnexpectedArchitecture {
@@ -260,7 +407,7 @@ pub enum Error {
         /// 配列内の添字。
         index: usize,
     },
-    /// 規則セット名欄がUTF-8またはNUL埋めの規約を満たさない。
+    /// 規則セット名欄が32バイトを超えるか、UTF-8またはNUL埋めの規約を満たさない。
     InvalidRuleSet,
     /// 勝率尺度Kが正の有限値ではないか、100,000を超える。
     InvalidK {
@@ -305,6 +452,17 @@ impl fmt::Display for Error {
                     formatter,
                     "invalid MNUE length: expected {expected}, got {actual}"
                 )
+            }
+            Self::InvalidParameterLength {
+                parameter,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "invalid MNUE {parameter} length: expected {expected}, got {actual}"
+            ),
+            Self::InvalidDimensions { actual } => {
+                write!(formatter, "invalid MNUE input dimensions: {actual}")
             }
             Self::InvalidMagic { actual } => write!(formatter, "invalid MNUE magic: {actual:?}"),
             Self::UnsupportedVersion { actual } => {
