@@ -1,24 +1,29 @@
-//! MNUE版4の復号、差分更新および整数推論。
+//! MNUE版5の復号、差分更新および整数推論。
 
 pub(crate) mod accumulator;
+pub mod feature_set;
 mod format;
+pub mod head;
 #[cfg(test)]
 mod tests;
 
 use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
-pub use format::Error;
+use feature_set::{FeatureSet, P};
+pub use format::{Error, architecture};
+use head::{DirectScrelu, Head};
 use minase_core::{Color, Move, PieceCode, PieceKind, Position};
+use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
 
 const EVALUATION_LIMIT: i32 = 28_999;
 
 /// 検証済みのMNUE整数重みと探索用駒価値。
-pub struct Nnue {
+pub struct Network<F: FeatureSet, H: Head> {
     linear: Box<[[i16; 2]]>,
     weights: Box<[i16]>,
     biases: Box<[i32]>,
-    output_weights: Box<[i16]>,
-    output_bias: i32,
+    head: H,
+    feature_set: PhantomData<F>,
     width: usize,
     scale: i64,
     rule_set: [u8; 32],
@@ -28,7 +33,14 @@ pub struct Nnue {
     checksum: [u8; 32],
 }
 
-impl Nnue {
+/// 探索が使う入力特徴集合。
+pub type ActiveFeatureSet = P;
+/// 探索が使う出力部。
+pub type ActiveHead = DirectScrelu;
+/// 探索が使う具体化済みのNNUE。
+pub type Nnue = Network<ActiveFeatureSet, ActiveHead>;
+
+impl<F: FeatureSet, H: Head> Network<F, H> {
     /// 盤上の駒コードに対応する駒価値をセンチポーンで返す。
     ///
     /// 値はMNUE本体に格納した探索用駒価値を使う。
@@ -113,12 +125,16 @@ impl Nnue {
 }
 
 /// 局面を完全再計算し、手番側の視点で評価する。
-pub fn evaluate(nnue: &Nnue, position: &Position) -> i32 {
+pub fn evaluate<F: FeatureSet, H: Head>(nnue: &Network<F, H>, position: &Position) -> i32 {
     evaluate_for_diagnostics(nnue, position, position.side_to_move())
 }
 
 /// 先獅子を含む配置を保ち、指定した視点から完全再計算する。
-pub fn evaluate_for_diagnostics(nnue: &Nnue, position: &Position, perspective: Color) -> i32 {
+pub fn evaluate_for_diagnostics<F: FeatureSet, H: Head>(
+    nnue: &Network<F, H>,
+    position: &Position,
+    perspective: Color,
+) -> i32 {
     nnue.evaluate_accumulator(&nnue.refresh_accumulator(position), perspective)
 }
 

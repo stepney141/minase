@@ -423,7 +423,7 @@ mod tests {
         for captured_value in [799_i32, 800, 801, 999, 1000, 1001] {
             // MNUEの駒価値表を直接指定する。最大の成り益は歩100→金1000の900。
             let mut bytes = include_bytes!("../../../nets/nnue.bin").to_vec();
-            let base = 96 + 13_680 * 4;
+            let base = 192 + 13_680 * 4;
             for state in 0..PIECE_STATE_COUNT {
                 bytes[base + state * 4..base + state * 4 + 4]
                     .copy_from_slice(&1000_i32.to_le_bytes());
@@ -439,8 +439,8 @@ mod tests {
             ] {
                 bytes[base + state * 4..base + state * 4 + 4].copy_from_slice(&value.to_le_bytes());
             }
-            let checksum = Sha256::digest(&bytes[96..]);
-            bytes[56..88].copy_from_slice(&checksum);
+            let checksum = Sha256::digest(&bytes[192..]);
+            bytes[144..176].copy_from_slice(&checksum);
             let nnue = Nnue::decode(&bytes).unwrap();
             assert_eq!(nnue.max_promotion_gain(), 900);
             let board = position(
@@ -538,10 +538,10 @@ mod tests {
         // nnue-replacement.mdのMNUE形式に従い、成香の価値だけを1へ下げる。
         let mut bytes = include_bytes!("../../../nets/nnue.bin").to_vec();
         let promoted_lance = promoted(Color::Black, PieceKind::WhiteHorse);
-        let offset = 96 + 13_680 * 4 + piece_state_of(promoted_lance) * 4;
+        let offset = 192 + 13_680 * 4 + piece_state_of(promoted_lance) * 4;
         bytes[offset..offset + 4].copy_from_slice(&1_i32.to_le_bytes());
-        let checksum = Sha256::digest(&bytes[96..]);
-        bytes[56..88].copy_from_slice(&checksum);
+        let checksum = Sha256::digest(&bytes[192..]);
+        bytes[144..176].copy_from_slice(&checksum);
         let nnue = Nnue::decode(&bytes).unwrap();
         let mover = unpromoted(Color::Black, PieceKind::Lance);
         let victim = unpromoted(Color::White, PieceKind::Pawn);

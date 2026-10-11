@@ -1,49 +1,72 @@
-//! MNUE版4の配置、範囲、検査和および鏡映共有を検証する。
+//! MNUE版5の配置、範囲、検査和および鏡映共有を検証する。
 
-use super::{EVALUATION_LIMIT, FEATURE_COUNT, Nnue, PIECE_STATE_COUNT};
+use super::feature_set::{FeatureSet, Mirror};
+use super::head::Head;
+use super::{EVALUATION_LIMIT, FEATURE_COUNT, Network, PIECE_STATE_COUNT};
 use crate::eval::features::{mirror_feature, piece_state};
 use core::fmt;
 use minase_core::{Color, PieceCode, PieceKind};
 use sha2::{Digest, Sha256};
+use std::marker::PhantomData;
 
-pub(super) const HEADER_LENGTH: usize = 96;
+pub(super) const HEADER_LENGTH: usize = 192;
 
-impl Nnue {
-    /// MNUE版4を検証して復号する。
+/// ヘッダの版、幅、ASCIIおよびNUL埋めを検証し、構造記述文字列を返す。
+/// 本体を読む側は、型から組み立てた文字列との完全一致も検査する。
+pub fn architecture(bytes: &[u8]) -> Result<&str, Error> {
+    if bytes.len() < HEADER_LENGTH {
+        return Err(Error::InvalidLength {
+            expected: HEADER_LENGTH,
+            actual: bytes.len(),
+        });
+    }
+    let magic = bytes[..4].try_into().expect("checked header length");
+    if magic != *b"MNUE" {
+        return Err(Error::InvalidMagic { actual: magic });
+    }
+    let version = read_u32(bytes, 4);
+    if version != 5 {
+        return Err(Error::UnsupportedVersion { actual: version });
+    }
+    let width = read_u32(bytes, 104);
+    if !(2..=512).contains(&width) || !width.is_multiple_of(2) {
+        return Err(Error::InvalidWidth { actual: width });
+    }
+    let field = &bytes[8..104];
+    let end = field
+        .iter()
+        .position(|&byte| byte == 0)
+        .unwrap_or(field.len());
+    if !field[..end].is_ascii() || field[end..].iter().any(|&byte| byte != 0) {
+        return Err(Error::InvalidArchitecture);
+    }
+    Ok(std::str::from_utf8(&field[..end]).expect("validated ASCII"))
+}
+
+impl<F: FeatureSet, H: Head> Network<F, H> {
+    /// MNUE版5を検証して復号する。
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() < HEADER_LENGTH {
-            return Err(Error::InvalidLength {
-                expected: HEADER_LENGTH,
-                actual: bytes.len(),
-            });
-        }
-        let magic = bytes[..4].try_into().expect("checked header length");
-        if magic != *b"MNUE" {
-            return Err(Error::InvalidMagic { actual: magic });
-        }
-        let version = read_u32(bytes, 4);
-        if version != 4 {
-            return Err(Error::UnsupportedVersion { actual: version });
-        }
-        let feature_set = read_u32(bytes, 8);
-        if feature_set != 1 {
-            return Err(Error::UnexpectedFeatureSet {
-                actual: feature_set,
-            });
-        }
-        let width = read_u32(bytes, 12);
-        if !(2..=512).contains(&width) || !width.is_multiple_of(2) {
-            return Err(Error::InvalidWidth { actual: width });
-        }
+        let actual_architecture = architecture(bytes)?;
+        let width = read_u32(bytes, 104);
         let width = width as usize;
-        let k = f32::from_le_bytes(bytes[16..20].try_into().expect("checked header length"));
+        let expected_architecture = format!(
+            "features={};ft={width};linear=tapered2;head={}",
+            F::NAME,
+            H::NAME
+        );
+        if actual_architecture != expected_architecture {
+            return Err(Error::UnexpectedArchitecture {
+                actual: actual_architecture.to_owned(),
+            });
+        }
+        let k = f32::from_le_bytes(bytes[108..112].try_into().expect("checked header length"));
         if !k.is_finite() || k <= 0.0 || k > 100_000.0 {
             return Err(Error::InvalidK { actual: k });
         }
-        if bytes[20..24].iter().chain(&bytes[88..96]).any(|&b| b != 0) {
+        if bytes[176..192].iter().any(|&b| b != 0) {
             return Err(Error::NonZeroReserved);
         }
-        let rule_set: [u8; 32] = bytes[24..56].try_into().expect("checked header length");
+        let rule_set: [u8; 32] = bytes[112..144].try_into().expect("checked header length");
         let end = rule_set.iter().position(|&b| b == 0).unwrap_or(32);
         if rule_set[end..].iter().any(|&b| b != 0) || std::str::from_utf8(&rule_set[..end]).is_err()
         {
@@ -52,9 +75,9 @@ impl Nnue {
         let expected = HEADER_LENGTH
             + FEATURE_COUNT * 4
             + PIECE_STATE_COUNT * 4
-            + FEATURE_COUNT * 2 * width
-            + 8 * width
-            + 4;
+            + F::DIMENSIONS * 2 * width
+            + 4 * width
+            + H::byte_len(width);
         if bytes.len() != expected {
             return Err(Error::InvalidLength {
                 expected,
@@ -62,7 +85,7 @@ impl Nnue {
             });
         }
         let body = &bytes[HEADER_LENGTH..];
-        let checksum: [u8; 32] = bytes[56..88].try_into().expect("checked header length");
+        let checksum: [u8; 32] = bytes[144..176].try_into().expect("checked header length");
         let actual: [u8; 32] = Sha256::digest(body).into();
         if checksum != actual {
             return Err(Error::ChecksumMismatch);
@@ -78,13 +101,13 @@ impl Nnue {
         let piece_values = std::array::from_fn(|state| read_i32(body, offset + state * 4));
         validate_piece_values(&piece_values)?;
         offset += PIECE_STATE_COUNT * 4;
-        let weights: Box<[i16]> = body[offset..offset + FEATURE_COUNT * width * 2]
+        let weights: Box<[i16]> = body[offset..offset + F::DIMENSIONS * width * 2]
             .as_chunks::<2>()
             .0
             .iter()
             .map(|b| read_i16(b, 0))
             .collect();
-        offset += FEATURE_COUNT * width * 2;
+        offset += F::DIMENSIONS * width * 2;
         let biases: Box<[i32]> = body[offset..offset + width * 4]
             .as_chunks::<4>()
             .0
@@ -92,21 +115,9 @@ impl Nnue {
             .map(|b| read_i32(b, 0))
             .collect();
         offset += width * 4;
-        let output_weights: Box<[i16]> = body[offset..offset + width * 4]
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|b| read_i16(b, 0))
-            .collect();
-        let output_bias = read_i32(body, offset + width * 4);
+        let head = H::decode(&body[offset..], width, F::MIRROR == Mirror::Shared)?;
         validate_range("weights", weights.iter().copied().map(i32::from), 1_016)?;
         validate_range("biases", biases.iter().copied(), 1_016)?;
-        validate_range(
-            "output_weights",
-            output_weights.iter().copied().map(i32::from),
-            8_192,
-        )?;
-        validate_range("output_bias", [output_bias], 4_161_536)?;
         for feature in 0..FEATURE_COUNT {
             let mirrored = mirror_feature(feature);
             if linear[feature] != linear[mirrored] {
@@ -114,6 +125,9 @@ impl Nnue {
                     parameter: "linear",
                     index: feature,
                 });
+            }
+            if F::MIRROR != Mirror::Shared {
+                continue;
             }
             for j in 0..width {
                 if weights[mirrored * width + j]
@@ -126,21 +140,13 @@ impl Nnue {
                 }
             }
         }
-        for j in 0..width {
-            let partner = (j + width / 2) % width;
-            if biases[j] != biases[partner] {
-                return Err(Error::MirrorMismatch {
-                    parameter: "biases",
-                    index: j,
-                });
-            }
-            for perspective in 0..2 {
-                if output_weights[perspective * width + j]
-                    != output_weights[perspective * width + partner]
-                {
+        if F::MIRROR == Mirror::Shared {
+            for j in 0..width {
+                let partner = (j + width / 2) % width;
+                if biases[j] != biases[partner] {
                     return Err(Error::MirrorMismatch {
-                        parameter: "output_weights",
-                        index: perspective * width + j,
+                        parameter: "biases",
+                        index: j,
                     });
                 }
             }
@@ -159,8 +165,8 @@ impl Nnue {
             linear,
             weights,
             biases,
-            output_weights,
-            output_bias,
+            head,
+            feature_set: PhantomData,
             width,
             scale,
             rule_set,
@@ -172,7 +178,7 @@ impl Nnue {
     }
 }
 
-fn validate_range(
+pub(super) fn validate_range(
     parameter: &'static str,
     values: impl IntoIterator<Item = i32>,
     limit: i32,
@@ -189,14 +195,14 @@ fn validate_range(
     Ok(())
 }
 
-fn read_i16(bytes: &[u8], offset: usize) -> i16 {
+pub(super) fn read_i16(bytes: &[u8], offset: usize) -> i16 {
     i16::from_le_bytes(
         bytes[offset..offset + 2]
             .try_into()
             .expect("validated body length"),
     )
 }
-fn read_i32(bytes: &[u8], offset: usize) -> i32 {
+pub(super) fn read_i32(bytes: &[u8], offset: usize) -> i32 {
     i32::from_le_bytes(
         bytes[offset..offset + 4]
             .try_into()
@@ -224,10 +230,12 @@ pub enum Error {
         /// 読み取った版。
         actual: u32,
     },
-    /// 特徴集合が対応する識別子ではない。
-    UnexpectedFeatureSet {
-        /// 読み取った識別子。
-        actual: u32,
+    /// 構造記述文字列がASCIIまたはNUL埋めの規約を満たさない。
+    InvalidArchitecture,
+    /// 構造記述文字列が復号する型と一致しない。
+    UnexpectedArchitecture {
+        /// 読み取った構造記述文字列。
+        actual: String,
     },
     /// 幅が2以上512以下の偶数ではない。
     InvalidWidth {
@@ -302,8 +310,9 @@ impl fmt::Display for Error {
             Self::UnsupportedVersion { actual } => {
                 write!(formatter, "unsupported MNUE version: {actual}")
             }
-            Self::UnexpectedFeatureSet { actual } => {
-                write!(formatter, "invalid MNUE feature set: {actual}")
+            Self::InvalidArchitecture => formatter.write_str("invalid MNUE architecture field"),
+            Self::UnexpectedArchitecture { actual } => {
+                write!(formatter, "unsupported MNUE architecture: {actual}")
             }
             Self::InvalidWidth { actual } => write!(formatter, "invalid MNUE width: {actual}"),
             Self::NonZeroReserved => formatter.write_str("nonzero MNUE reserved field"),

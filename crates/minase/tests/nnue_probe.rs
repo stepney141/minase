@@ -12,6 +12,7 @@ use minase_core::{
     Color, Game, MoveGenerator, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 /// 歩兵が歩兵を取りながら敵陣へ入り、成りと不成を選べる局面。
 fn promotion_position(side: Color) -> Position {
@@ -52,6 +53,26 @@ fn probe(positions: &Path, weights: &str, flags: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
+/// 埋め込みP型の各行を8区分へ複写し、同じ評価を返すHalfKP型を作る。
+fn half_kp_weights() -> Vec<u8> {
+    let source = include_bytes!("../nets/nnue.bin");
+    let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
+    let hidden = 192 + 13_680 * 4 + 47 * 4;
+    let end = hidden + 13_680 * width * 2;
+    let mut bytes = source[..hidden].to_vec();
+    let architecture =
+        format!("features=HalfKP-hm-b8;ft={width};linear=tapered2;head=direct-screlu");
+    bytes[8..104].fill(0);
+    bytes[8..8 + architecture.len()].copy_from_slice(architecture.as_bytes());
+    for _ in 0..8 {
+        bytes.extend_from_slice(&source[hidden..end]);
+    }
+    bytes.extend_from_slice(&source[end..]);
+    let checksum = Sha256::digest(&bytes[192..]);
+    bytes[144..176].copy_from_slice(&checksum);
+    bytes
+}
+
 /// 全合法手を欠落・重複なく返し、成りの選別と着手前視点の差分を保存する。
 #[test]
 fn flags_preserve_json_fields_and_side_relative_deltas() {
@@ -69,6 +90,8 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
             .unwrap();
     }
     writer.finish().unwrap();
+    let half_kp_path = path.with_extension("mnue");
+    std::fs::write(&half_kp_path, half_kp_weights()).unwrap();
     let nnue = minase::eval::weights().unwrap();
     let rules = Rules::from_codes(&parse_rule_set("engine-default").unwrap()).unwrap();
     let generator = MoveGenerator::new(rules.moves);
@@ -83,6 +106,7 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
             concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue.bin"),
             &flags,
         );
+        assert_eq!(result, probe(&path, half_kp_path.to_str().unwrap(), &flags));
         assert_eq!(result.as_array().unwrap().len(), positions.len());
         for (index, position) in positions.iter().enumerate() {
             let entry = &result[index];
@@ -174,6 +198,7 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
             }
         }
     }
+    std::fs::remove_file(half_kp_path).unwrap();
     std::fs::remove_file(path).unwrap();
 }
 
@@ -229,6 +254,26 @@ fn skip_invalid_preserves_indices_and_malformed_network_fails() {
         .output()
         .unwrap();
     assert_eq!(fail.status.code(), Some(1));
+    // 分岐先がない特徴集合と、既知の特徴集合に未知の出力部を組み合わせたヘッダ。
+    for architecture in [
+        "features=unknown;ft=64;linear=tapered2;head=direct-screlu",
+        "features=P;ft=64;linear=tapered2;head=unknown",
+        "features=HalfKP-hm-b8;ft=64;linear=tapered2;head=unknown",
+    ] {
+        let mut bytes = include_bytes!("../nets/nnue.bin").to_vec();
+        bytes[8..104].fill(0);
+        bytes[8..8 + architecture.len()].copy_from_slice(architecture.as_bytes());
+        std::fs::write(&invalid_net, bytes).unwrap();
+        let fail = Command::new(env!("CARGO_BIN_EXE_minase"))
+            .args(["dev", "nnue-probe", "--net"])
+            .arg(&invalid_net)
+            .arg("--positions")
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert_eq!(fail.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&fail.stderr).contains("unsupported MNUE architecture"));
+    }
     std::fs::remove_file(invalid_net).unwrap();
     std::fs::remove_file(path).unwrap();
 }

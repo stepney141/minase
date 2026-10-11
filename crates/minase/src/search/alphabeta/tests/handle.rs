@@ -64,8 +64,8 @@ fn search_apis_use_the_supplied_nnue() {
     let mut bytes = include_bytes!("../../../../nets/nnue.bin").to_vec();
     let end = bytes.len();
     bytes[end - 4..].copy_from_slice(&520_192_i32.to_le_bytes());
-    let checksum = Sha256::digest(&bytes[96..]);
-    bytes[56..88].copy_from_slice(&checksum);
+    let checksum = Sha256::digest(&bytes[192..]);
+    bytes[144..176].copy_from_slice(&checksum);
     let supplied = Nnue::decode(&bytes).unwrap();
     let embedded = crate::eval::weights().unwrap();
     let mut child = position.clone();

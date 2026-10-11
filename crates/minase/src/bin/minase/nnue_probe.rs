@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
-use minase::eval::Nnue;
-use minase::eval::nnue::evaluate_for_diagnostics;
+use minase::eval::nnue::feature_set::{FeatureSet, HalfKpHmB8, P};
+use minase::eval::nnue::head::DirectScrelu;
+use minase::eval::nnue::{Network, architecture, evaluate_for_diagnostics};
 use minase::training::records::{Outcome, Reader, Record};
 use minase_core::notation::usi;
 use minase_core::rules::parse_rule_set;
@@ -187,7 +188,23 @@ fn diagnostic_rules(rule_set: &str) -> Result<Rules, Error> {
 /// 局面を読み、評価と成り手の評価差を計算する。
 fn run(arguments: &Arguments) -> Result<Vec<Probe>, Error> {
     let bytes = std::fs::read(&arguments.net).map_err(Error::Io)?;
-    let net = Nnue::decode(&bytes).map_err(Error::Network)?;
+    let description = architecture(&bytes).map_err(Error::Network)?;
+    if description.starts_with("features=P;") {
+        run_network::<P>(arguments, &bytes)
+    } else if description.starts_with("features=HalfKP-hm-b8;") {
+        run_network::<HalfKpHmB8>(arguments, &bytes)
+    } else {
+        Err(Error::Network(
+            minase::eval::nnue::Error::UnexpectedArchitecture {
+                actual: description.to_owned(),
+            },
+        ))
+    }
+}
+
+/// 選択した入力特徴集合の型で復号し、同じJSON形式へ評価結果をまとめる。
+fn run_network<F: FeatureSet>(arguments: &Arguments, bytes: &[u8]) -> Result<Vec<Probe>, Error> {
+    let net = Network::<F, DirectScrelu>::decode(bytes).map_err(Error::Network)?;
     let file = File::open(&arguments.positions).map_err(Error::Io)?;
     let mut reader = Reader::new(BufReader::new(file)).map_err(Error::Records)?;
     let rules = diagnostic_rules(reader.header().rule_set())?;
