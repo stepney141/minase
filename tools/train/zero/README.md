@@ -2,7 +2,7 @@
 
 本ディレクトリは、AlphaZero型探索（[docs/plans/alphazero.md](../../../docs/plans/alphazero.md)）が使うニューラルネットワーク（以下ネット）を扱うPythonのツール群である。
 ネットは局面を入力として、各合法手の有望さ（方策）と手番側の勝率（価値）を出力する。
-本ツールは、ネットの定義、ONNX形式への出力、ONNX Runtimeによる推論速度の計測、入力平面と方策ラベルの符号化、学習データ形式MNZTの読み込み、および学習のループを持つ。
+本ツールは、ネットの定義、ONNX形式への出力、ONNX Runtimeによる推論速度の計測、入力平面と方策ラベルの符号化、学習データ形式MNZTの読み込み、学習のループ、および強化学習のサイクルの制御を持つ。
 エンジン本体はRustで書かれており、学習したネットはONNXファイルを介してだけ受け渡す。
 レンタル機と作業機で共通に使うコンテナイメージの定義もここに置く。
 
@@ -182,6 +182,78 @@ uv run --project tools/train/zero python -m minase_zero.train \
 uv run --project tools/train/zero python -m minase_zero.train --resume data/zero/run-sl
 ```
 
+### サイクル制御
+
+`minase_zero.cycle` は、強化学習の1サイクル（生成、学習、進捗測定、および記録の1行）を指定の回数だけ繰り返す（[docs/plans/alphazero.md](../../../docs/plans/alphazero.md) の「生成と学習を交互に行う」と「強化学習」）。
+生成は `minase data zero-selfplay`、学習は `minase_zero.train`、進捗測定は `minase match run` を外部コマンドとして呼ぶ。
+対局ハーネスは `commit:` のエンジンを `git archive` で作り、生成器は作業ツリーのコミットを記録するので、リポジトリのルートで実行する。
+
+```bash
+uv run --project tools/train/zero python -m minase_zero.cycle \
+  --root data/zero/rl --minase target/release/minase --commit <hash> --rules engine-default \
+  --net data/zero/run-sl/net.onnx --init-checkpoint data/zero/run-sl/checkpoint.pt \
+  --games 2400 --nn-cache-dir data/cache/trt-minase --lr 0.02 \
+  --window-schedule 1:10,2:30,4 --seed 1 --cycles 100 --deadline 2026-11-10T00:00:00+09:00
+```
+
+必須の引数は次のとおりである。
+
+| 引数 | 内容 |
+|---|---|
+| `--root` | サイクルの全ファイルを置くディレクトリ。状態ファイルがあれば続きから走る |
+| `--minase`、`--commit` | 生成と進捗測定に使う実行ファイルと、進捗測定で両エンジンをビルドするコミット |
+| `--rules` | 生成と進捗測定の規則セット |
+| `--net`、`--init-checkpoint` | 最初のサイクルの生成に使うネット（SLの `net.onnx`）と、学習の `--init` に使うチェックポイント（SLの `checkpoint.pt`） |
+| `--games` | 1サイクルで生成する対局数。設計書の1サイクル100万局面は、局面数ではなく対局数で与え、生成した局面数を記録に書く |
+| `--nn-cache-dir` | TensorRTのエンジンのキャッシュ。生成と進捗測定で共有する |
+| `--lr` | 各サイクルの学習の学習率の初期値。学習率は各サイクルの1エポックの中でコサインで0へ下がる |
+| `--window-schedule` | 学習窓の幅kの段階表。`1:10,2:30,4` は、サイクル1〜10でk=1、11〜30でk=2、以後k=4を表す |
+| `--seed`、`--cycles`、`--deadline` | 基本シード、実行するサイクルの総数、およびRLの期間の上限（ISO 8601の日時。時差がなければ実行機の地方時） |
+
+生成の `--simulations`（既定32）、`--max-ply`（既定1000）、`--games-in-flight`（既定256）、`--threads`（既定2）、`--nn-batch-size`（既定128）、`--nn-backend`（既定 `tensorrt`）、学習の `--blocks`、`--channels`、`--batch-size`、`--lambda`、`--workers`、`--device`、および進捗測定の `--progress-every`（既定10）、`--progress-pairs`（既定200）、`--progress-simulations`（既定800）も指定できる。
+`--image-digest` を指定すると、コンテナイメージの識別子を記録に残す。
+
+サイクルNは次の手順からなる。
+
+1. 生成：`nets/<N−1>.onnx` を `--nn-model` に、`seed + N × 1,000,003` をシードにして生成器を実行し、塊のサマリ `chunk-*.json` を集計する。推論に使ったネットの検査和が入力のネットと異なれば止まる。
+2. 学習：直近kサイクルの `chunk-*.mnzt` を `--data` に、前のサイクルの `checkpoint.pt`（サイクル1は `--init-checkpoint`）を `--init` にして、学習器を1エポック実行する。学習のシードは生成と同じ値である。出力した `net.onnx` を `nets/<N>.onnx` へ写し、`net.sha256` の検査和と一致することを確かめる。
+3. 進捗測定：Nが `--progress-every` の倍数なら、`nets/<N>.onnx` を候補、`--progress-every` サイクル前のネットを基準にして、同じコミットのMCTSのエンジン2つを `nodes=<--progress-simulations>`、同時対局数2の固定ペア数で対局させる。シードは `seed + 7,000,003 × N` である。対局の前に、両方のネットでエンジンを1回起動して `readyok` まで待ち、TensorRTのエンジンのキャッシュを作っておく。キャッシュがないとエンジンの作成がハーネスの応答タイムアウトを超え、反則負けになり得るからである。
+4. 記録：`record.jsonl` に1行を追記する。
+
+`--root` の下の構成は次のとおりである。
+
+| 経路 | 内容 |
+|---|---|
+| `cycles/NNN/selfplay/` | 生成器の `--out-dir`（塊のMNZTとサマリ） |
+| `cycles/NNN/train/` | 学習器の実行ディレクトリ |
+| `cycles/NNN/<段階>.log` | 各段階の外部コマンドの標準出力と標準エラー（`selfplay`、`train`、`prewarm`、`progress`）。再実行した段階のログは追記される |
+| `nets/NNN.onnx` | 各サイクルの結果のネット。`nets/000.onnx` は `--net` の写しである |
+| `progress/NNN/` | 進捗測定の対局ハーネスの実行ディレクトリ |
+| `record.jsonl` | 1サイクル1行の記録 |
+| `state.json` | 完了したサイクルの数と、実行中のサイクルの完了した段階とその結果 |
+
+`record.jsonl` の各行は、サイクル番号、開始と終了の時刻、生成に使ったネットと学習したネットの検査和、生成の対局数、局面数、手数上限に達して除いた対局数とその割合、誤った投了の分母、分子、および割合、平均手数、学習窓の幅とサイクル、学習損失の最後の行と検証の最後の行、進捗測定の基準のサイクル、Eloの点推定、95%信頼区間、およびエンジンの異常件数、各段階の経過時間、実行した機械（`platform.node()` と `nvidia-smi` が報告するGPUの名前）、および来歴（生成と進捗測定のシード、`--commit`、`--image-digest`、学習の設定、`--init` の検査和、学習窓のMNZTの経路と検査和）を持つ。
+全勝または全敗でEloが無限大になった場合は、`"+inf"` または `"-inf"` の文字列で書く。
+誤った投了の割合が5%を超えた場合と、手数上限に達した対局の割合が10%を超えた場合は、標準エラーへ警告を出す。
+進捗測定のエンジンの異常件数が0でない場合も警告を出す。
+各段階の経過時間は、その段階を最後に実行したプロセスの中で測った値であり、中断前の試行の時間を含まない。
+
+終了コードと停止条件は次のとおりである。
+
+| 終了コード | 条件 |
+|---|---|
+| 0 | `--cycles` のサイクルをすべて終えた |
+| 1 | 外部コマンドが0以外の終了コードで終わったか、出力や状態ファイルが不正だった。サイクルの途中で止まる |
+| 2 | 進捗測定の点推定が2回続けて0以下だった。記録の1行を書いてから止まる |
+| 3 | 直近3サイクルの平均所要時間（各段階の経過時間の和）に残りのサイクル数を掛けた見込みが `--deadline` を超えるため、次のサイクルを始めなかった |
+
+中断や失敗の後は、同じコマンドを同じ `--root` でもう一度実行すれば、`state.json` から続きを走らせる。
+完了した段階は飛ばし、途中の段階は再開の形で呼び直す。
+生成は出力ディレクトリがあれば `--resume` を付け、学習は `checkpoint.pt` があれば `--resume` で、進捗測定は実行ディレクトリがあれば `--resume` で続ける。
+再開時に、シード、対局数、探索回数、手数上限、規則、コミット、ネットと学習の設定、学習窓の段階表、および進捗測定の設定が `state.json` の記録と異なると、誤りで終了する。
+`--cycles`、`--deadline`、機械に依存する引数（`--threads`、`--device` など）、および `--image-digest` は変えてよい。
+終了コード2で止まった後に同じコマンドを実行すると、停止規則を確かめ直さずに次のサイクルへ進むので、原因を調べて再開の条件を決めてから実行する。
+
 ## コンテナイメージ
 
 `Dockerfile` は、レンタル機と作業機で共通に使う土台のイメージを定義する。
@@ -236,11 +308,13 @@ printf 'usi\nsetoption name NnCacheDir value data/cache/trt-minase\nisready\nqui
 | `src/minase_zero/mnzt.py` | MNZTの検証と、局面の表と方策の列の `memmap` による読み込み、および複数ファイルの連結 |
 | `src/minase_zero/dataset.py` | 対局単位の学習と検証の分割、局面の符号化によるバッチの作成、およびエポックごとのバッチの順序 |
 | `src/minase_zero/train.py` | 学習のループ、検証、チェックポイントの保存と再開、ONNXと来歴の出力、およびそのコマンドライン |
+| `src/minase_zero/cycle.py` | 強化学習のサイクル（生成、学習、進捗測定、記録）の制御、状態ファイルによる再開、停止規則、および期限の判定 |
 | `tests/test_encoding.py` | Rustの参照値との照合と、手計算した入力平面とラベルの検査 |
 | `tests/test_model.py` | ONNXの入出力の名前と形状、方策の並び、価値の範囲、およびPyTorchとONNX Runtimeの出力の一致の検査 |
 | `tests/test_mnzt.py` | 見本のMNZTと同じ生成のMNSDとの照合、合成ファイルの往復、および壊れたファイルの拒否の検査 |
 | `tests/test_dataset.py` | 分割が対局単位であること、バッチの内容と価値の目標、およびバッチの順序の再現の検査 |
 | `tests/test_train.py` | 学習の損失が有限であること、中断と再開が中断しない学習と一致すること、`--init`、およびONNXと来歴の出力の検査 |
+| `tests/test_cycle.py` | 偽の実行関数による、サイクル制御が組み立てるコマンド、状態と記録の更新、中断からの再開、進捗測定のEloの解析と停止規則、期限の判定、および学習窓の計算の検査 |
 | `tests/conftest.py` | 合成のMNZTの書き出しと、見本のMNZTの場所 |
 | `Dockerfile`、`.dockerignore` | コンテナイメージの定義。ビルドの文脈へは `pyproject.toml` と `uv.lock` だけを取り込む |
 | `run.sh` | 作業機でコンテナを起動する手順 |
