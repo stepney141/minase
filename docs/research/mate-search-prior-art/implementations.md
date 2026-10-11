@@ -754,7 +754,7 @@ Python からは `cshogi.DfPn` がこの実装、`cshogi.osl.DfPn` が OSL 移�
 
 ## 7. HaChu と Fairy-Stockfish
 
-どちらにも df-pn や証明数探索はない。
+どちらにも df-pn や証明数探索はない。中将棋を直接扱う詰みソルバとしては、本書の調査後に神無次郎氏の fmcs.exe を別に調べた（[fmcs の調査](../fm-fmcs-survey.md)）。
 HaChu の `tsume` は対話的オプションであり（`hachu.c:165`、3010-3024）、通常の alpha-beta 探索の中で「詰まされる側が王手を受けていなければ勝ち（INF）を返す」フィルタとして働く。
 
 ```
