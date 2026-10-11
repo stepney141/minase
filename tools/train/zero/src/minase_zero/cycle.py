@@ -679,6 +679,8 @@ def run_progress(args: argparse.Namespace, layout: Layout, cycle: int, runner: R
     def measure() -> None:
         for net in nets:
             runner(prewarm_command(args), layout.log(cycle, "prewarm"), prewarm_input(args, net))
+        # ハーネスは`--run-dir`自身を新規に作るが、その親ディレクトリは作らない。
+        layout.progress(cycle).parent.mkdir(parents=True, exist_ok=True)
         runner(argv, log, None)
 
     elapsed = timed(measure)
