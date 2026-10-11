@@ -1,4 +1,8 @@
-use crate::model::{Error, Model, Parameter, Parameters, Result, Shape};
+use crate::{
+    data::InputFeatureSet,
+    model::{Error, Model, Parameter, Parameters, Result, Shape},
+};
+use minase::eval::features::FEATURE_COUNT;
 use serde::Serialize;
 
 /// AdamWの1群の固定係数。β₁=0.9、β₂=0.999、ε=1e-8。
@@ -100,39 +104,97 @@ impl AdamW {
     pub fn config(&self) -> AdamWConfig {
         self.config
     }
-    /// カーネル8。全要素を更新してから切り詰め、未観測行を復元する。
+    /// カーネル8。観測行の全要素を更新して切り詰める。
     ///
-    /// バッチに現れなかった行もモーメントと減衰で動く。未観測行についても
-    /// PyTorchと同じ状態更新を行い、パラメータだけをfix_unobservedで戻す。
+    /// バッチに現れなかった観測行もモーメントと減衰で動く。未観測行は
+    /// パラメータと両モーメントを保ち、切り詰めも行わない。
     pub fn update(&mut self, model: &mut Model, gradient: &Parameters) -> Result<()> {
-        if model.shape() != self.m.shape() || model.shape() != gradient.shape() {
+        if model.shape() != self.m.shape()
+            || model.shape() != self.v.shape()
+            || model.shape() != gradient.shape()
+        {
             return Err(Error::Invalid("AdamW parameter shape"));
         }
+        self.config.validate()?;
         gradient.validate()?;
         model.parameters().validate()?;
+        self.m.validate()?;
+        self.v.validate()?;
+        if Parameter::ALL
+            .iter()
+            .any(|&p| self.v[p].iter().any(|&v| v < 0.0))
+        {
+            return Err(Error::Invalid("negative AdamW variance"));
+        }
         let step = self
             .step
             .checked_add(1)
             .ok_or(Error::Invalid("AdamW step overflow"))?;
-        for p in Parameter::ALL {
-            adamw(
-                model.parameter_mut(p),
-                &gradient[p],
-                self.m.index_mut_slice(p),
-                self.v.index_mut_slice(p),
-                step,
-                self.config.group(p),
-            )?;
+        let shape = model.shape();
+        // 特徴行の範囲は、今回更新して切り詰めた仮想行から求める。
+        for p in [
+            Parameter::Linear,
+            Parameter::Virtual,
+            Parameter::FirstLayer,
+            Parameter::Biases,
+            Parameter::OutputWeights,
+            Parameter::OutputBias,
+        ] {
+            let coefficients = Coefficients::new(step, self.config.group(p));
+            for i in 0..shape.len(p) {
+                let observed = match p {
+                    Parameter::Linear => model.masks().canonical()[i / 2],
+                    Parameter::FirstLayer => model.masks().first_layer()[i / shape.width()],
+                    Parameter::Virtual => model.masks().virtual_rows()[i / shape.width()],
+                    _ => true,
+                };
+                if !observed {
+                    continue;
+                }
+                let (lower, upper) = match p {
+                    Parameter::Linear => (-4096.0, 4095.875),
+                    Parameter::OutputWeights => (-1.98, 1.98),
+                    Parameter::FirstLayer if shape.feature_set() == InputFeatureSet::HalfKpHmB8 => {
+                        let base = i / shape.width() % FEATURE_COUNT;
+                        let v = model.parameters()[Parameter::Virtual]
+                            [base * shape.width() + i % shape.width()];
+                        (-8.0 - v, 8.0 - v)
+                    }
+                    _ => (-8.0, 8.0),
+                };
+                let value = &mut model.parameter_mut(p)[i];
+                coefficients.update(value, gradient[p][i], &mut self.m[p][i], &mut self.v[p][i]);
+                *value = value.clamp(lower, upper);
+            }
         }
         self.step = step;
-        model.constrain()
+        model.parameters().validate()
     }
 }
 
-// 明示的なスライス借用で、異なる状態の対応を更新式の引数に保つ。
-impl Parameters {
-    fn index_mut_slice(&mut self, p: Parameter) -> &mut [f32] {
-        &mut self[p]
+struct Coefficients {
+    lr: f64,
+    decay: f32,
+    correction1: f64,
+    correction2: f64,
+}
+impl Coefficients {
+    fn new(step: u64, group: AdamWGroup) -> Self {
+        Self {
+            lr: group.lr,
+            decay: (1.0 - group.lr * group.weight_decay) as f32,
+            correction1: 1.0 - 0.9_f64.powf(step as f64),
+            correction2: 1.0 - 0.999_f64.powf(step as f64),
+        }
+    }
+    fn update(&self, p: &mut f32, g: f32, m: &mut f32, v: &mut f32) {
+        *p *= self.decay;
+        // torchのlerp_とmul_/addcmul_の単精度演算に合わせる。
+        *m += (g - *m) * 0.1;
+        *v = *v * 0.999 + (g * g) * 0.001;
+        let m_hat = f64::from(*m) / self.correction1;
+        let v_hat = f64::from(*v) / self.correction2;
+        *p -= (self.lr * m_hat / (v_hat.sqrt() + 1e-8)) as f32;
     }
 }
 
@@ -160,16 +222,9 @@ pub fn adamw(
             "AdamW non-finite values or negative variance",
         ));
     }
-    let correction1 = 1.0 - 0.9_f64.powf(step as f64);
-    let correction2 = 1.0 - 0.999_f64.powf(step as f64);
+    let coefficients = Coefficients::new(step, group);
     for i in 0..p.len() {
-        p[i] *= (1.0 - group.lr * group.weight_decay) as f32;
-        // torchのlerp_とmul_/addcmul_の単精度演算に合わせる。
-        m[i] += (g[i] - m[i]) * 0.1;
-        v[i] = v[i] * 0.999 + (g[i] * g[i]) * 0.001;
-        let m_hat = f64::from(m[i]) / correction1;
-        let v_hat = f64::from(v[i]) / correction2;
-        p[i] -= (group.lr * m_hat / (v_hat.sqrt() + 1e-8)) as f32;
+        coefficients.update(&mut p[i], g[i], &mut m[i], &mut v[i]);
     }
     Ok(())
 }

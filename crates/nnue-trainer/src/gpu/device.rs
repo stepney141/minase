@@ -46,6 +46,10 @@ impl Device {
     pub fn compute_capability(&self) -> (i32, i32) {
         self.capability
     }
+    /// CUDAが報告する空き容量と総容量。単位はバイトで、デバイス全体の値。
+    pub fn memory_info(&self) -> Result<(usize, usize)> {
+        Ok(self.context.mem_get_info()?)
+    }
 }
 
 pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
@@ -75,6 +79,7 @@ pub(super) fn source() -> String {
         include_str!("../../kernels/removal.cu"),
         include_str!("../../kernels/backward.cu"),
         include_str!("../../kernels/reduce.cu"),
+        include_str!("../../kernels/optimizer.cu"),
     ]
     .join("\n")
 }
@@ -105,6 +110,10 @@ pub(super) struct Kernels {
     pub gradients: CudaFunction,
     pub reduce: CudaFunction,
     pub validation: CudaFunction,
+    pub optimizer_rows: CudaFunction,
+    pub optimizer_virtual: CudaFunction,
+    pub optimizer_first: CudaFunction,
+    pub optimizer_head: CudaFunction,
 }
 impl Kernels {
     pub fn compile(device: &Device) -> Result<Self> {
@@ -126,6 +135,10 @@ impl Kernels {
             gradients: module.load_function("gradient_partials")?,
             reduce: module.load_function("reduce_partials")?,
             validation: module.load_function("validation_head")?,
+            optimizer_rows: module.load_function("optimizer_rows")?,
+            optimizer_virtual: module.load_function("optimizer_virtual")?,
+            optimizer_first: module.load_function("optimizer_first")?,
+            optimizer_head: module.load_function("optimizer_head")?,
         })
     }
 }
@@ -147,6 +160,10 @@ mod tests {
             "gradient_partials",
             "reduce_partials",
             "validation_head",
+            "optimizer_rows",
+            "optimizer_virtual",
+            "optimizer_first",
+            "optimizer_head",
         ] {
             assert_eq!(
                 src.matches(&format!("extern \"C\" __global__ void {name}("))
@@ -164,7 +181,7 @@ mod tests {
     #[test]
     fn rust_launch_argument_order_matches_cuda_signatures() {
         let cuda = source();
-        let rust = include_str!("engine.rs");
+        let rust = [include_str!("engine.rs"), include_str!("optimizer.rs")].join("\n");
         for (kernel, field) in [
             ("forward_acc", "acc"),
             ("forward_linear", "linear"),
@@ -176,6 +193,10 @@ mod tests {
             ("gradient_partials", "gradients"),
             ("reduce_partials", "reduce"),
             ("validation_head", "validation"),
+            ("optimizer_rows", "optimizer_rows"),
+            ("optimizer_virtual", "optimizer_virtual"),
+            ("optimizer_first", "optimizer_first"),
+            ("optimizer_head", "optimizer_head"),
         ] {
             let signature = cuda
                 .split(&format!("void {kernel}("))
@@ -217,6 +238,7 @@ mod tests {
                         ("forward_linear", "linear_features") => "features",
                         ("forward_linear", "linear") => "weights",
                         ("reduce_partials", "columns") => "values",
+                        (_, "weight_decay") => "decay",
                         _ => name,
                     }
                 })

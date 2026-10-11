@@ -38,17 +38,21 @@ pub struct Evaluation {
     pub validation: Validation,
 }
 
-struct DeviceModel {
-    shape: Shape,
-    weights: CudaSlice<f32>,
-    linear: CudaSlice<f32>,
-    bias: CudaSlice<f32>,
-    output: CudaSlice<f32>,
-    output_bias: CudaSlice<f32>,
+pub(super) struct DeviceModel {
+    pub shape: Shape,
+    pub weights: CudaSlice<f32>,
+    pub linear: CudaSlice<f32>,
+    pub bias: CudaSlice<f32>,
+    pub output: CudaSlice<f32>,
+    pub output_bias: CudaSlice<f32>,
     reference: CudaSlice<i64>,
 }
 impl DeviceModel {
-    fn new(device: &Device, model: &Model, reference: &RemovalReference) -> Result<Self> {
+    pub(super) fn new(
+        device: &Device,
+        model: &Model,
+        reference: &RemovalReference,
+    ) -> Result<Self> {
         model.parameters().validate()?;
         let s = &device.compute;
         Ok(Self {
@@ -62,7 +66,7 @@ impl DeviceModel {
         })
     }
 }
-struct Buffers {
+pub(super) struct Buffers {
     acc: CudaSlice<f32>,
     lin: CudaSlice<f32>,
     f: CudaSlice<f32>,
@@ -73,8 +77,8 @@ struct Buffers {
     d_acc: CudaSlice<f32>,
     d_output: CudaSlice<f32>,
     c: CudaSlice<f32>,
-    targets: CudaSlice<f32>,
-    host_targets: PinnedHostSlice<f32>,
+    pub targets: CudaSlice<f32>,
+    pub host_targets: PinnedHostSlice<f32>,
     removal_s: CudaSlice<f32>,
     removal_acc: CudaSlice<f32>,
     removal_output: CudaSlice<f32>,
@@ -88,18 +92,18 @@ struct Buffers {
     pen_r: CudaSlice<f64>,
     d_r: CudaSlice<f32>,
     removal_loss: CudaSlice<f64>,
-    d_first: CudaSlice<f32>,
-    d_linear: CudaSlice<f32>,
-    d_virtual: Option<CudaSlice<f32>>,
+    pub d_first: CudaSlice<f32>,
+    pub d_linear: CudaSlice<f32>,
+    pub d_virtual: Option<CudaSlice<f32>>,
     loss_partials: CudaSlice<f64>,
     gradient_partials: CudaSlice<f64>,
     validation_partials: CudaSlice<f64>,
-    loss_sum: CudaSlice<f64>,
-    gradient_sums: CudaSlice<f64>,
+    pub loss_sum: CudaSlice<f64>,
+    pub gradient_sums: CudaSlice<f64>,
     validation_sums: CudaSlice<f64>,
 }
 impl Buffers {
-    fn new(device: &Device, shape: Shape, capacity: usize) -> Result<Self> {
+    pub(super) fn new(device: &Device, shape: Shape, capacity: usize) -> Result<Self> {
         let s = &device.compute;
         let activations = capacity * 2 * shape.width();
         let blocks = capacity.div_ceil(THREADS);
@@ -377,7 +381,7 @@ pub(super) fn validate_inputs(
     Ok(())
 }
 
-fn forward(
+pub(super) fn forward(
     d: &Device,
     k: &Kernels,
     m: &DeviceModel,
@@ -439,7 +443,7 @@ fn check_head(m: &DeviceModel, input: &DeviceInput, b: &Buffers) -> Result<()> {
     require_len(b.targets.len(), n)?;
     Ok(())
 }
-fn removal_forward(
+pub(super) fn removal_forward(
     d: &Device,
     k: &Kernels,
     m: &DeviceModel,
@@ -515,7 +519,7 @@ fn removal_forward(
     Ok(())
 }
 
-fn output_backward(
+pub(super) fn output_backward(
     d: &Device,
     k: &Kernels,
     m: &DeviceModel,
@@ -579,7 +583,7 @@ fn output_backward(
     reduce(d, k, &b.loss_partials, &mut b.loss_sum, n as usize, 2)
 }
 
-fn backward(
+pub(super) fn backward(
     d: &Device,
     k: &Kernels,
     m: &DeviceModel,
@@ -665,7 +669,13 @@ fn backward(
     }
     Ok(())
 }
-fn gradients(d: &Device, k: &Kernels, shape: Shape, n: usize, b: &mut Buffers) -> Result<()> {
+pub(super) fn gradients(
+    d: &Device,
+    k: &Kernels,
+    shape: Shape,
+    n: usize,
+    b: &mut Buffers,
+) -> Result<()> {
     let columns = 3 * shape.units() + 1;
     require_len(b.d_acc.len(), n * 2 * shape.width())?;
     require_len(b.d_output.len(), n * 2 * shape.width())?;

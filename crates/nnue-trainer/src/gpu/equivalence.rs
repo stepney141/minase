@@ -17,7 +17,7 @@ pub const RTOL: f64 = 1e-5;
 /// CPUとの比較に使う絶対許容誤差。
 pub const ATOL: f64 = 1e-6;
 
-/// 全中間値、縮約値、および反復のビット一致の検査結果。
+/// 全中間値、縮約値、更新後の状態、および反復のビット一致の検査結果。
 #[derive(Debug)]
 pub struct Report {
     /// 実行デバイスの名前。
@@ -30,7 +30,7 @@ pub struct Report {
     pub max_relative_error: f64,
 }
 impl Report {
-    fn compare(&mut self, name: &str, expected: &[f32], actual: &[f32]) -> Result<()> {
+    pub(super) fn compare(&mut self, name: &str, expected: &[f32], actual: &[f32]) -> Result<()> {
         if expected.len() != actual.len() {
             return Err(Error::Equivalence(format!("{name}: length")));
         }
@@ -57,7 +57,13 @@ impl Report {
         self.comparisons += expected.len();
         exact(name, expected, actual)
     }
-    fn number(&mut self, name: &str, i: usize, expected: f64, actual: f64) -> Result<()> {
+    pub(super) fn number(
+        &mut self,
+        name: &str,
+        i: usize,
+        expected: f64,
+        actual: f64,
+    ) -> Result<()> {
         let abs = (expected - actual).abs();
         self.comparisons += 1;
         self.max_absolute_error = self.max_absolute_error.max(abs);
@@ -71,7 +77,7 @@ impl Report {
         }
         Ok(())
     }
-    fn merge(&mut self, other: Self) {
+    pub(super) fn merge(&mut self, other: Self) {
         self.comparisons += other.comparisons;
         self.max_absolute_error = self.max_absolute_error.max(other.max_absolute_error);
         self.max_relative_error = self.max_relative_error.max(other.max_relative_error);
@@ -79,7 +85,7 @@ impl Report {
 }
 
 /// 指定条件の合成入力を作り、GPUで2回実行してCPU参照と照合する。
-/// 成功は補助損失の各区分を含む前進、全勾配、縮約、検証とビット一致を意味する。
+/// 前進、補助損失、全勾配、検証、1・3更新後の全状態と反復のビット一致を検査する。
 pub fn run(set: InputFeatureSet, width: usize, batch: usize, seed: u64) -> Result<Report> {
     let shape = Shape::new(set, width, 1000.0)?;
     if !(1..=MAX_BATCH_SIZE).contains(&batch) {
@@ -100,7 +106,8 @@ pub fn run(set: InputFeatureSet, width: usize, batch: usize, seed: u64) -> Resul
     )?;
     drop(evaluator);
     drop(model);
-    report.merge(check_removal_partitions(device, shape, seed)?);
+    report.merge(check_removal_partitions(device.clone(), shape, seed)?);
+    report.merge(super::step_equivalence::run(device, shape, &input, seed)?);
     Ok(report)
 }
 
@@ -295,14 +302,14 @@ fn statistics(e: &Evaluation) -> Vec<f64> {
     values
 }
 
-struct Random(u64);
+pub(super) struct Random(pub(super) u64);
 impl Random {
     fn next(&mut self) -> u64 {
         let result = minase_core::rng::splitmix64(self.0);
         self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
         result
     }
-    fn centered(&mut self) -> f32 {
+    pub(super) fn centered(&mut self) -> f32 {
         ((self.next() >> 40) as f32 / 8_388_608.0) - 1.0
     }
 }

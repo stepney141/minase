@@ -5,8 +5,8 @@ use minase::eval::features::{FEATURE_COUNT, feature_index, mirror_feature};
 use minase_core::{Color, PieceKind, Square};
 use nnue_trainer::{
     data::{BatchSlot, InputFeatureSet, SENTINEL, decode_p_feature},
-    model::{Model, Parameter},
-    reference::{self, AdamWGroup, RemovalReference, loss_and_gradients},
+    model::{Masks, Model, Parameter, Parameters},
+    reference::{self, AdamW, AdamWConfig, AdamWGroup, RemovalReference, loss_and_gradients},
 };
 
 fn close(actual: f64, expected: f64, tolerance: f64) {
@@ -328,6 +328,154 @@ fn adamw_bias_correction_decay_and_zero_gradient_momentum_match_hand_calculation
         - 0.01 * (0.045 / 0.19) / ((0.00024975_f64 / 0.001999).sqrt() + 1e-8);
     close(f64::from(p[0]), expected, 3e-7);
     assert!(p[0] < old * 0.999);
+}
+
+#[test]
+fn adamw_preserves_unobserved_parameters_and_moments_without_clipping() {
+    // カーネル8の契約: 訓練集合で未観測の行はp,m,vを保持する一方、
+    // 今回だけ勾配0の観測行は過去のモーメントと減衰で動く。
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut warm = model(set, 2);
+        let shape = warm.shape();
+        let group = AdamWGroup {
+            lr: 0.01,
+            weight_decay: 0.1,
+        };
+        let mut optimizer = AdamW::new(
+            shape,
+            AdamWConfig {
+                linear: group,
+                ft: group,
+                head: group,
+            },
+        )
+        .unwrap();
+        let mut gradient = Parameters::zeros(shape);
+        for p in Parameter::ALL {
+            gradient[p].fill(0.25);
+        }
+        optimizer.update(&mut warm, &gradient).unwrap();
+
+        let mut canonical = vec![false; 6841];
+        canonical[0] = true;
+        let mut input = vec![false; set.dimensions() + 1];
+        input[0] = true;
+        let masks = Masks::new(set, canonical, input).unwrap();
+        let mut model =
+            Model::initialize(shape, &vec![[0.0; 2]; FEATURE_COUNT], masks, 0, 0.0).unwrap();
+        for p in [Parameter::Linear, Parameter::FirstLayer, Parameter::Virtual] {
+            // 初期値や範囲外の値を復元・切り詰めしていないことも検査する。
+            model
+                .parameter_mut(p)
+                .fill(if p == Parameter::Linear { 5000.0 } else { 9.0 });
+            model.parameter_mut(p)[..shape.len(p).min(2)].fill(0.5);
+        }
+        let before = model.parameters().clone();
+        let m_before = optimizer.m().clone();
+        let v_before = optimizer.v().clone();
+        optimizer
+            .update(&mut model, &Parameters::zeros(shape))
+            .unwrap();
+        assert_eq!(optimizer.step(), 2);
+        for p in [Parameter::Linear, Parameter::FirstLayer, Parameter::Virtual] {
+            for i in 0..shape.len(p) {
+                if i < 2 {
+                    assert!(model.parameters()[p][i] < before[p][i] * 0.999);
+                    assert!(optimizer.m()[p][i] < m_before[p][i]);
+                    assert!(optimizer.v()[p][i] < v_before[p][i]);
+                } else {
+                    assert_eq!(model.parameters()[p][i].to_bits(), before[p][i].to_bits());
+                    assert_eq!(optimizer.m()[p][i].to_bits(), m_before[p][i].to_bits());
+                    assert_eq!(optimizer.v()[p][i].to_bits(), v_before[p][i].to_bits());
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
+    // 仕様の保存範囲とW+Vの不変条件を、勾配や減衰のない更新で検査する。
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut model = model(set, 4);
+        let shape = model.shape();
+        for p in Parameter::ALL {
+            for (i, value) in model.parameter_mut(p).iter_mut().enumerate() {
+                *value = if i % 2 == 0 { 5000.0 } else { -5000.0 };
+            }
+        }
+        let no_decay = AdamWGroup {
+            lr: 0.01,
+            weight_decay: 0.0,
+        };
+        let mut optimizer = AdamW::new(
+            shape,
+            AdamWConfig {
+                linear: no_decay,
+                ft: no_decay,
+                head: no_decay,
+            },
+        )
+        .unwrap();
+        optimizer
+            .update(&mut model, &Parameters::zeros(shape))
+            .unwrap();
+        for p in [
+            Parameter::Linear,
+            Parameter::Biases,
+            Parameter::OutputWeights,
+            Parameter::OutputBias,
+        ] {
+            let (upper, lower) = match p {
+                Parameter::Linear => (4095.875, -4096.0),
+                Parameter::OutputWeights => (1.98, -1.98),
+                _ => (8.0, -8.0),
+            };
+            assert_eq!(model.parameters()[p][0], upper);
+            if shape.len(p) > 1 {
+                assert_eq!(model.parameters()[p][1], lower);
+            }
+        }
+        let folded = reference::fold(&model);
+        assert_eq!(&folded[..4], &[8.0, -8.0, 8.0, -8.0]);
+        if set == InputFeatureSet::HalfKpHmB8 {
+            assert_eq!(
+                &model.parameters()[Parameter::Virtual][..4],
+                &[8.0, -8.0, 8.0, -8.0]
+            );
+            assert_eq!(&model.parameters()[Parameter::FirstLayer][..4], &[0.0; 4]);
+        }
+    }
+}
+
+#[test]
+fn adamw_fold_inherits_updated_virtual_rows_at_unobserved_features() {
+    let set = InputFeatureSet::HalfKpHmB8;
+    let shape = nnue_trainer::model::Shape::new(set, 2, 1000.0).unwrap();
+    let mut canonical = vec![false; 6841];
+    canonical[0] = true;
+    let mut input = vec![false; set.dimensions() + 1];
+    input[0] = true;
+    let mut model = Model::initialize(
+        shape,
+        &vec![[0.0; 2]; FEATURE_COUNT],
+        Masks::new(set, canonical, input).unwrap(),
+        0,
+        0.0,
+    )
+    .unwrap();
+    let mut optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
+    let mut gradient = Parameters::zeros(shape);
+    gradient[Parameter::Virtual][..2].fill(-1.0);
+    optimizer.update(&mut model, &gradient).unwrap();
+    let unobserved = FEATURE_COUNT * shape.width();
+    assert_eq!(
+        &model.parameters()[Parameter::FirstLayer][unobserved..unobserved + 2],
+        &[0.0; 2]
+    );
+    let v = &model.parameters()[Parameter::Virtual][..2];
+    assert!(v.iter().all(|&x| x > 0.0));
+    assert_eq!(&reference::fold(&model)[unobserved..unobserved + 2], v);
 }
 
 #[test]

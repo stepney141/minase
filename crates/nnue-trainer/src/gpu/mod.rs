@@ -2,14 +2,19 @@
 //!
 //! GPUが使えない場合は明示的なエラーを返す。CPU参照への代替経路は持たない。
 
+pub mod bench;
 mod device;
 mod engine;
 pub mod equivalence;
+mod optimizer;
 mod ring;
+mod step;
+mod step_equivalence;
 
 pub use device::Device;
 pub use engine::{Evaluation, Evaluator};
-pub use ring::{BatchTicket, HostRing};
+pub use ring::{BatchTicket, HostRing, TransferTiming};
+pub use step::{Step, StepMetrics, StepResult};
 
 use cudarc::{driver::DriverError, nvrtc::CompileError};
 use std::fmt;

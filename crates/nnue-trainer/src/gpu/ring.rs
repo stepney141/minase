@@ -1,6 +1,9 @@
 use super::{Device, Error, Result, device::pinned_zeros, require_len};
 use crate::data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE};
-use cudarc::driver::{CudaEvent, CudaSlice, DeviceRepr, PinnedHostSlice, ValidAsZeroBits};
+use crate::model::Shape;
+use cudarc::driver::{
+    CudaEvent, CudaSlice, DeviceRepr, PinnedHostSlice, ValidAsZeroBits, sys::CUevent_flags,
+};
 use std::sync::Arc;
 
 /// 投入されたデバイス面を識別する券。同じ環の、完了を記録する前の券だけが有効。
@@ -10,6 +13,23 @@ pub struct BatchTicket {
     generation: u64,
     host: usize,
     device: usize,
+}
+
+struct TransferEvents {
+    start: CudaEvent,
+    end: CudaEvent,
+}
+
+/// 1回の転送の時刻。面の再利用後も同じ転送を測定できる。
+pub struct TransferTiming {
+    events: Arc<TransferEvents>,
+}
+impl TransferTiming {
+    /// 転送の完了を待ち、転送ストリーム上で測ったミリ秒を返す。
+    /// 次の更新を投入してから呼ぶと、計算とホスト処理を重ねられる。
+    pub fn collect(self) -> Result<f32> {
+        Ok(self.events.start.elapsed_ms(&self.events.end)?)
+    }
 }
 
 // CUDAを必要としない状態遷移。完了イベントを記録するまでは面を再予約しない。
@@ -182,6 +202,7 @@ pub struct HostRing {
     capacity: usize,
     hosts: [HostSlot; 3],
     inputs: [DeviceInput; 2],
+    timings: [Option<Arc<TransferEvents>>; 2],
     state: RingState,
 }
 impl HostRing {
@@ -203,6 +224,7 @@ impl HostRing {
                 DeviceInput::new(device, set, capacity)?,
                 DeviceInput::new(device, set, capacity)?,
             ],
+            timings: [None, None],
             state: RingState::new(),
         })
     }
@@ -221,10 +243,21 @@ impl HostRing {
         Ok(ticket)
     }
     fn transfer(&mut self, ticket: &BatchTicket, batch: &BatchSlot) -> Result<()> {
+        let timing = Arc::new(TransferEvents {
+            start: self
+                .device
+                .context
+                .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+            end: self
+                .device
+                .context
+                .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))?,
+        });
         let host = &mut self.hosts[ticket.host];
         let input = &mut self.inputs[ticket.device];
         host.fill(batch)?;
         self.device.transfer.wait(&input.backward_done)?;
+        timing.start.record(&self.device.transfer)?;
         let send =
             |src: &PinnedHostSlice<u32>, dst: &mut CudaSlice<u32>| transfer(&self.device, src, dst);
         transfer(
@@ -249,8 +282,48 @@ impl HostRing {
         input.len = host.len;
         input.first_len = host.first_len;
         input.linear_len = host.linear_len;
+        timing.end.record(&self.device.transfer)?;
         host.transfer_done.record(&self.device.transfer)?;
         self.device.compute.wait(&host.transfer_done)?;
+        self.timings[ticket.device] = Some(timing);
+        Ok(())
+    }
+
+    /// `finish`より前に、券に対応する転送の測定値を予約する。
+    pub fn transfer_timing(&self, ticket: &BatchTicket) -> Result<TransferTiming> {
+        self.state.check(ticket)?;
+        let events = self.timings[ticket.device]
+            .as_ref()
+            .ok_or(Error::Invalid("batch has no recorded transfer"))?;
+        Ok(TransferTiming {
+            events: events.clone(),
+        })
+    }
+
+    /// 1回の`upload`で転送するバイト数。端数バッチでも面の容量全体を送る。
+    pub fn transfer_bytes(&self) -> usize {
+        let host = &self.hosts[0];
+        host.record_indices.len() * size_of::<u64>()
+            + host.piece_counts.len() * size_of::<u8>()
+            + host.teacher_scores.len() * size_of::<f32>()
+            + host.outcomes.len() * size_of::<u8>()
+            + (host.features.len()
+                + host.linear_features.len()
+                + host.teacher_classes.len()
+                + host.first_starts.len()
+                + host.first_entries.len()
+                + host.linear_starts.len()
+                + host.linear_entries.len())
+                * size_of::<u32>()
+    }
+
+    pub(super) fn validate_device(&self, device: &Device, shape: Shape) -> Result<()> {
+        if !Arc::ptr_eq(&self.device.compute, &device.compute)
+            || !Arc::ptr_eq(&self.device.transfer, &device.transfer)
+            || self.set != shape.feature_set()
+        {
+            return Err(Error::Invalid("ring device streams or feature set"));
+        }
         Ok(())
     }
     /// この面を最後に読む後退または検証を投入した後、完了イベントを記録する。
@@ -280,6 +353,28 @@ fn transfer<T: DeviceRepr>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a CUDA GPU"]
+    fn gpu_transfer_timing_survives_reused_input_and_host_slots() {
+        let device = Device::new(0).unwrap();
+        let batch = super::super::equivalence::synthetic_batch(InputFeatureSet::P, 3, 71).unwrap();
+        let mut ring = HostRing::new(&device, InputFeatureSet::P, 3).unwrap();
+        let mut timings = Vec::new();
+        for _ in 0..5 {
+            let ticket = ring.upload(&batch).unwrap();
+            let delayed = ring.transfer_timing(&ticket).unwrap();
+            let immediate = ring.transfer_timing(&ticket).unwrap().collect().unwrap();
+            assert!(immediate.is_finite() && immediate >= 0.0);
+            timings.push((delayed, immediate));
+            ring.finish(ticket).unwrap();
+        }
+        for (delayed, immediate) in timings {
+            // 時間の絶対値には依存せず、面の再利用が過去の測定を変えない契約を検査する。
+            assert_eq!(delayed.collect().unwrap().to_bits(), immediate.to_bits());
+        }
+    }
+
     #[test]
     #[ignore = "requires a CUDA GPU"]
     fn gpu_ring_transfers_all_arrays_and_reuses_three_host_two_device_slots() {
