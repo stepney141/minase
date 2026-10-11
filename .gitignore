@@ -4,3 +4,4 @@
 /tools/train/.venv
 __pycache__/
 /minase-lishogi-bot
+.env
