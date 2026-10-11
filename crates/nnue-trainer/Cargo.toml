@@ -1,0 +1,28 @@
+[package]
+name = "nnue-trainer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "GPU trainer for minase's NNUE (development tool, not published)"
+
+[[bin]]
+name = "nnue-trainer"
+path = "src/main.rs"
+
+[dependencies]
+minase = { path = "../minase" }
+minase-core = { path = "../minase-core" }
+cudarc = { version = "0.19.10", default-features = false, features = ["std", "driver", "nvrtc", "dynamic-loading", "cuda-13040"] }
+clap = { version = "4.6.4", features = ["derive"] }
+memmap2 = "0.9"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.140"
+sha2 = "0.10"
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+
+[lints.clippy]
+all = "warn"
