@@ -1,9 +1,14 @@
-//! NNUEの分布、駒除去、合法手の評価差をCPUで診断する。
+//! NNUEの分布・局面操作とPSTの比較をCPUで診断する。
 
 mod network;
 mod nnue_distribution;
 mod nnue_moves;
 mod nnue_removal;
+mod pst_compare;
+mod pst_positions;
+mod pst_reference;
+mod pst_sample;
+mod pst_statistics;
 mod sample;
 mod statistics;
 
@@ -16,11 +21,15 @@ pub use nnue_distribution::DistributionArgs;
 pub use nnue_moves::MovesArgs;
 pub use nnue_removal::RemovalArgs;
 
+pub use pst_compare::PstCompareArgs;
+
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// CPUだけで実行する評価関数の診断。
 #[derive(Subcommand)]
 pub enum Command {
+    /// 教師分類・位相帯の損失、整数一致、除去と成りでPSTを比較する。
+    PstCompare(PstCompareArgs),
     /// 全局面の標本でMNPT版3とMNUE版5の評価分布を比較する。
     NnueDistribution(DistributionArgs),
     /// 検証集合で実数と整数の駒除去差分を検査する。
@@ -32,6 +41,7 @@ pub enum Command {
 /// 診断報告を保存する。不合格の報告も保存してからエラーを返す。
 pub fn run(command: Command) -> Result<()> {
     let path = match &command {
+        Command::PstCompare(args) => &args.output_dir,
         Command::NnueDistribution(args) => &args.output,
         Command::NnueRemoval(args) => &args.output,
         Command::NnueMoves(args) => &args.output,
@@ -40,6 +50,7 @@ pub fn run(command: Command) -> Result<()> {
         return Err(format!("{}: diagnostic output already exists", path.display()).into());
     }
     match command {
+        Command::PstCompare(args) => pst_compare::run(&args),
         Command::NnueDistribution(args) => {
             let report = nnue_distribution::run(&args)?;
             save(&args.output, &report, None)

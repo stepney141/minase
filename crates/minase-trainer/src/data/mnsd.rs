@@ -20,15 +20,15 @@ use super::{
 /// 教師用Kを共有する分類。ファイル順で最初に現れた分類から番号を付ける。
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct TeacherClass {
-    generation_commit: String,
-    network_checksum: [u8; 32],
-    nodes: u32,
-    rule_set: String,
-    search_condition: SearchCondition,
-    result_origin: ResultOrigin,
-    start_origin: StartOrigin,
-    lookahead: Option<Lookahead>,
-    lambda_override: Option<f64>,
+    pub(crate) generation_commit: String,
+    pub(crate) network_checksum: [u8; 32],
+    pub(crate) nodes: u32,
+    pub(crate) rule_set: String,
+    pub(crate) search_condition: SearchCondition,
+    pub(crate) result_origin: ResultOrigin,
+    pub(crate) start_origin: StartOrigin,
+    pub(crate) lookahead: Option<Lookahead>,
+    pub(crate) lambda_override: Option<f64>,
 }
 
 impl TeacherClass {
@@ -64,6 +64,7 @@ struct MappedFile {
     class: u32,
     scores: Vec<f32>,
     outcomes: Vec<u8>,
+    game_ids: Option<HashMap<u32, String>>,
 }
 
 // 生成側のProvenanceはλを由来ごとの既定値に固定する。学習側はPythonと同じく
@@ -223,6 +224,10 @@ impl MappedFile {
                 class: 0,
                 scores: Vec::new(),
                 outcomes: Vec::new(),
+                game_ids: provenance
+                    .games
+                    .as_ref()
+                    .map(|games| games.iter().map(|g| (g.game, g.id.clone())).collect()),
             },
             provenance,
         ))
@@ -454,6 +459,42 @@ impl Dataset {
         Ok(self.files[file].class)
     }
 
+    /// 診断用に元の探索値から先読みを再計算し、f32へ丸めずに返す。
+    pub(crate) fn diagnostic_teacher_scores(&self) -> Result<Vec<f64>> {
+        let mut scores = Vec::with_capacity(self.record_count() as usize);
+        for file in &self.files {
+            let count = file.header.record_count() as usize;
+            if count == 0 {
+                continue;
+            }
+            let mut raw = Vec::with_capacity(count);
+            let mut games = Vec::with_capacity(count);
+            let mut plies = Vec::with_capacity(count);
+            for local in 0..count {
+                let record = file.record(local)?;
+                raw.push(f64::from(record.score()));
+                games.push(record.game_number());
+                plies.push(record.ply());
+            }
+            match self.classes[file.class as usize].lookahead {
+                Some(options) => scores.extend(compute_lookahead(&games, &plies, &raw, options)?),
+                None => scores.extend(raw),
+            }
+        }
+        Ok(scores)
+    }
+
+    /// 実戦棋譜IDは全入力で共通、ランダム自己対局はseedと対局番号で区別する。
+    pub(crate) fn game_key(&self, index: u64) -> Result<GameKey<'_>> {
+        let (file, local) = self.locate(index)?;
+        let file = &self.files[file];
+        let game = file.record(local)?.game_number();
+        Ok(match &file.game_ids {
+            Some(ids) => GameKey::Human(&ids[&game]),
+            None => GameKey::Random(file.header.seed(), game),
+        })
+    }
+
     /// 分類ごとに訓練集合だけを使って教師用Kを推定する。
     ///
     /// 保持したf32の教師探索値をf64へ昇格して校正する。標本は1分類ずつ確保する。
@@ -490,6 +531,12 @@ impl Dataset {
         }
         Ok(values)
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum GameKey<'a> {
+    Human(&'a str),
+    Random(u64, u32),
 }
 
 pub(crate) fn outcome_code(outcome: Outcome) -> u8 {

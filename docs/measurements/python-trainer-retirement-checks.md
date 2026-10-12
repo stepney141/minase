@@ -688,3 +688,24 @@ Pythonの同時学習器はブランチ`pst-fm-joint-training`のコミット`b4
      verify = commands.add_parser("verify-init")
      for name in ("base", "pst-init", "fm-init", "fm-reference", "output"):
 ```
+
+## フェーズ5　PSTの比較診断
+
+Pythonの`pst-diagnostics`（`minase_train.diagnostics.comparison`）を、`minase-trainer diag pst-compare`として移植した。
+Pythonは`minase dev pst-probe`を子プロセスとして呼んでいたが、Rustは`minase`のライブラリを直接呼ぶ。
+整数のPST評価の一致の検査は、独立に計算した整数評価とエンジンの評価を比べる形のまま残した。
+
+照合には、候補Lの診断と同じ入力（`data/pst-longer-training/config.toml`の10ファイル、先読みγ=0.9・n=40、λは来歴、基準`pst-base.bin`、候補`training/pst.bin`と`training/pst-float.npz`、各分類と帯で最大10,000局面、シード1）を使った。
+2026年10月6日に保存した報告は、その後にプローブへ加わった欄（成り手の捕獲と終局の有無、評価差の内訳）を持たないので、比較の相手には、同じ入力でPythonの診断を現行の`minase dev pst-probe`とともに実行し直した出力を使った。
+Pythonは標本をNumPyの乱数で選ぶので、Rustには、保存済みの帯ごとの標本の番号（`diagnostic-indices-generation{g}-band{b}.npy`）を一時的な引数`--replay-sample`で与えた。
+
+| 比較 | 結果 |
+|---|---|
+| 帯ごとの標本の番号（10ファイル）、標本の局面（`diagnostic-samples.bin`）、代表局面（`representatives.bin`）、駒除去の局面（`removals.bin`） | 13ファイルすべてがバイト単位で一致 |
+| `report.json` | キーと並びが一致し、整数3,438件が完全に一致、実数100件の最大相対差4.5×10⁻⁶（許容誤差内） |
+| 量子化誤差（10万局面） | 両方とも平均0.5119587779、最大1.7417755127センチポーン |
+| 整数評価とエンジンの評価の一致 | 両方とも基準と候補の10万局面すべてで一致 |
+
+実行時間はRustが281秒、Pythonが71秒だった。
+Rustの時間の大半は、10ファイルの全記録を単一スレッドで復号して検証分割を作る前処理であり、フェーズ1のNNUEの診断と同じ原因である。
+診断は実験ごとに1回だけ走らせるので、本マイルストーンでは速度を変えない。

@@ -51,30 +51,8 @@ pub fn encode(arrays: &[(&str, Array)]) -> Result<Vec<u8>> {
         {
             return Err(Error::Format("invalid or duplicate NPZ key"));
         }
-        value.validate()?;
         let name = format!("{key}.npy");
-        let shape = value
-            .shape
-            .iter()
-            .map(|n| format!("{n},"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let mut header = format!(
-            "{{'descr': '{}', 'fortran_order': False, 'shape': ({shape}), }}",
-            value.dtype
-        );
-        while !(10 + header.len() + 1).is_multiple_of(64) {
-            header.push(' ');
-        }
-        header.push('\n');
-        let mut array = b"\x93NUMPY\x01\x00".to_vec();
-        array.extend(
-            u16::try_from(header.len())
-                .map_err(|_| Error::Format("NPY header too long"))?
-                .to_le_bytes(),
-        );
-        array.extend(header.as_bytes());
-        array.extend(&value.data);
+        let array = encode_npy(value)?;
         let offset = u32::try_from(zip.len()).map_err(|_| Error::Format("NPZ size exceeds u32"))?;
         let size = u32::try_from(array.len()).map_err(|_| Error::Format("NPY size exceeds u32"))?;
         let checksum = crc32(&array);
@@ -124,6 +102,34 @@ pub fn encode(arrays: &[(&str, Array)]) -> Result<Vec<u8>> {
     zip.extend(offset.to_le_bytes());
     zip.extend(0_u16.to_le_bytes());
     Ok(zip)
+}
+
+/// NPY 1.0へ符号化する。NumPyと同じ64バイト境界へヘッダを整列する。
+pub fn encode_npy(value: &Array) -> Result<Vec<u8>> {
+    value.validate()?;
+    let shape = value
+        .shape
+        .iter()
+        .map(|n| format!("{n},"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut header = format!(
+        "{{'descr': '{}', 'fortran_order': False, 'shape': ({shape}), }}",
+        value.dtype
+    );
+    while !(10 + header.len() + 1).is_multiple_of(64) {
+        header.push(' ');
+    }
+    header.push('\n');
+    let mut bytes = b"\x93NUMPY\x01\x00".to_vec();
+    bytes.extend(
+        u16::try_from(header.len())
+            .map_err(|_| Error::Format("NPY header too long"))?
+            .to_le_bytes(),
+    );
+    bytes.extend(header.as_bytes());
+    bytes.extend(&value.data);
+    Ok(bytes)
 }
 
 /// ZIP64のローカルサイズも読み、検査和、dtype、形状と配列長を検査する。
@@ -199,7 +205,7 @@ fn decode_members(
         if key.is_empty()
             || !key.is_ascii()
             || key.contains(['/', '\\', '\0'])
-            || arrays.insert(key.to_owned(), npy(data)?).is_some()
+            || arrays.insert(key.to_owned(), decode_npy(data)?).is_some()
         {
             return Err(Error::Format("invalid or duplicate NPZ key"));
         }
@@ -234,7 +240,8 @@ fn decode_members(
     Ok(arrays)
 }
 
-fn npy(bytes: &[u8]) -> Result<Array> {
+/// NPY 1.0の数値配列を検証し、値を変えずに復号する。
+pub fn decode_npy(bytes: &[u8]) -> Result<Array> {
     let mut r = Reader::new(bytes);
     if r.take(8)? != b"\x93NUMPY\x01\x00" {
         return Err(Error::Format("NPY version must be 1.0"));
@@ -386,21 +393,21 @@ mod tests {
         }
         let header = "{'descr': '<f4', 'fortran_order': False, 'shape': (3,), }\n";
         let bytes = array(header);
-        assert_eq!(npy(&bytes).unwrap().data, [0; 12]);
+        assert_eq!(decode_npy(&bytes).unwrap().data, [0; 12]);
         for wrong in [
             header.replace("<f4", "|O"),
             header.replace("False", "True"),
             header.replace("(3,)", "(4,)"),
             header.replace("'shape'", "'unknown'"),
         ] {
-            assert!(npy(&array(&wrong)).is_err());
+            assert!(decode_npy(&array(&wrong)).is_err());
         }
         for cut in [0, 7, 9, bytes.len() - 1] {
-            assert!(npy(&bytes[..cut]).is_err());
+            assert!(decode_npy(&bytes[..cut]).is_err());
         }
         let mut wrong = bytes;
         wrong[6] = 2;
-        assert!(npy(&wrong).is_err());
+        assert!(decode_npy(&wrong).is_err());
     }
 
     #[test]

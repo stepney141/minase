@@ -74,7 +74,7 @@ pub fn quantize_weights(weights: &[[f64; 2]]) -> Result<Vec<[i16; 2]>> {
 
 // NumPyの連続したf32配列のpairwise sum。float_evaluateは学習のf64和とは別に、
 // 145列をf32で加算してからf32のφで補間する。
-fn numpy_sum(values: &[f32]) -> f32 {
+pub(crate) fn numpy_sum(values: &[f32]) -> f32 {
     if values.len() < 8 {
         return values.iter().fold(-0.0, |sum, value| sum + value);
     }

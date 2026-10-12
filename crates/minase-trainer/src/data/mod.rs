@@ -10,8 +10,8 @@ mod shuffle;
 mod teacher;
 
 pub use error::Error;
-pub(crate) use mnsd::outcome_code;
 pub use mnsd::{Dataset, RecordLocation, TeacherClass};
+pub(crate) use mnsd::{GameKey, outcome_code};
 pub use shuffle::{epoch_permutation, hash64, is_validation};
 pub use teacher::{
     Lookahead, build_targets_from_arrays, compute_lookahead, estimate_k, validate_lambda_override,
