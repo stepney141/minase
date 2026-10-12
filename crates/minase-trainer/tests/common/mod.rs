@@ -6,8 +6,11 @@ use minase::training::{
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
-    data::{BatchSlot, Dataset, InputFeatureSet, build_batches},
-    model::{Masks, Model, Shape},
+    data::Dataset,
+    nnue::{
+        data::{BatchSlot, InputFeatureSet, build_batches},
+        model::{Masks, Model, Shape},
+    },
 };
 use sha2::{Digest, Sha256};
 use std::{

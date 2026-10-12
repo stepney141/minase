@@ -11,7 +11,7 @@ use minase::eval::{
 use minase_core::{Color, Position};
 
 use super::Result;
-use crate::data::InputFeatureSet;
+use crate::nnue::data::InputFeatureSet;
 
 pub(super) enum IntegerNetwork {
     P(Network<P, DirectScrelu>),

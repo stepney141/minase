@@ -20,7 +20,7 @@ use minase::{
     },
 };
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
-use minase_trainer::{
+use minase_trainer::nnue::{
     data::InputFeatureSet,
     model::{Checkpoint, Model, Parameter, Progress, Shape, quantize},
     reference::{AdamW, AdamWConfig, v0_piece_values},

@@ -1,5 +1,6 @@
 //! 設計書の書き出し契約を、合成MNSDと独立に計算できる線形評価で検証する。
 
+use minase_trainer::nn::BestEpoch;
 mod common;
 
 use std::{
@@ -25,10 +26,13 @@ use minase::{
 };
 use minase_core::{Color, PieceKind, Position};
 use minase_trainer::{
-    data::{Dataset, InputFeatureSet},
-    export::{self, QuantizationReport, write_best},
-    model::{BestEpoch, Checkpoint, Model, Parameter, Progress, Shape},
-    reference::{AdamW, AdamWConfig, v0_piece_values},
+    data::Dataset,
+    nnue::{
+        data::InputFeatureSet,
+        export::{self, QuantizationReport, write_best},
+        model::{Checkpoint, Model, Parameter, Progress, Shape},
+        reference::{AdamW, AdamWConfig, v0_piece_values},
+    },
 };
 use sha2::{Digest, Sha256};
 

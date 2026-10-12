@@ -11,7 +11,7 @@ use super::{
     sample::{FileIdentity, SampleArgs, SampleIdentity, file_identity, sample_identity},
     statistics::{Reversals, reversal_statistics},
 };
-use crate::{
+use crate::nnue::{
     data::{BatchSlot, FEATURE_COLUMNS},
     model::{Checkpoint, Model},
     reference::{self, RemovalReference, linear_row, row_value},

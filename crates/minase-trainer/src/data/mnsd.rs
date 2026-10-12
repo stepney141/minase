@@ -492,7 +492,7 @@ impl Dataset {
     }
 }
 
-pub(super) fn outcome_code(outcome: Outcome) -> u8 {
+pub(crate) fn outcome_code(outcome: Outcome) -> u8 {
     match outcome {
         Outcome::Loss => 0,
         Outcome::Draw => 1,

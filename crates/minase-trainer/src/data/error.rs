@@ -45,20 +45,6 @@ pub enum Error {
         /// 教師の分類番号。
         class: usize,
     },
-    /// バッチの局面数が1以上、符号化可能な上限以下ではない。
-    BatchSize {
-        /// 要求された局面数。
-        size: usize,
-    },
-    /// 逆索引の局面番号、視点または列が範囲外にある。
-    PackedOccurrence,
-    /// P型の符号化された特徴が範囲外にある。
-    PFeature {
-        /// 不正な符号化値。
-        value: u32,
-    },
-    /// バッチ構築のワーカーがパニックした。
-    WorkerPanicked,
 }
 
 impl fmt::Display for Error {
@@ -91,10 +77,7 @@ impl fmt::Display for Error {
             Self::EmptyTeacherClass { class } => {
                 write!(f, "teacher class {class} has no training records")
             }
-            Self::BatchSize { size } => write!(f, "invalid batch size: {size}"),
-            Self::PackedOccurrence => f.write_str("inverse-index occurrence is outside its domain"),
-            Self::PFeature { value } => write!(f, "invalid packed P feature: {value}"),
-            Self::WorkerPanicked => f.write_str("batch worker panicked"),
+
         }
     }
 }

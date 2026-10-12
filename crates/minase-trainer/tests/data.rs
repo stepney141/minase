@@ -17,10 +17,13 @@ use minase::{
     },
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
-use minase_trainer::data::{
-    BatchSlot, CANONICAL_ROWS, Dataset, Error, FEATURE_COLUMNS, InputFeatureSet, Lookahead,
-    Observations, PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL,
-    build_batches, build_targets, decode_p_feature, validate_lambda_override,
+use minase_trainer::{
+    data::{Dataset, Error, Lookahead, validate_lambda_override},
+    nnue::data::{
+        BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, Observations,
+        PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL, build_batches,
+        build_targets, decode_p_feature,
+    },
 };
 use sha2::{Digest, Sha256};
 
@@ -802,11 +805,13 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
     }
     assert!(matches!(
         build_batches(&dataset, InputFeatureSet::P, &[&[]]),
-        Err(Error::BatchSize { size: 0 })
+        Err(minase_trainer::nnue::data::Error::BatchSize { size: 0 })
     ));
     assert!(matches!(
         build_batches(&dataset, InputFeatureSet::P, &[&[3], &[0]]),
-        Err(Error::RecordIndex { .. })
+        Err(minase_trainer::nnue::data::Error::Data(
+            Error::RecordIndex { .. }
+        ))
     ));
 }
 

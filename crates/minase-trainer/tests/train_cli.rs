@@ -1,7 +1,7 @@
 //! 学習コマンドの引数契約を、ファイルやGPUを使わず検査する。
 
 use clap::Parser;
-use minase_trainer::{
+use minase_trainer::nnue::{
     data::InputFeatureSet,
     options::{DeviceKind, TrainingOptions},
     train::Args,
@@ -140,11 +140,11 @@ fn train_rejects_invalid_numeric_arguments_before_opening_inputs() {
 #[test]
 fn train_batch_bound_uses_the_packed_occurrence_limit() {
     let mut args = TrainArguments::try_parse_from(argv()).unwrap().args;
-    for batch in [32_769, minase_trainer::data::MAX_BATCH_SIZE] {
+    for batch in [32_769, minase_trainer::nnue::data::MAX_BATCH_SIZE] {
         args.batch = batch;
         args.validate().unwrap();
     }
-    args.batch = minase_trainer::data::MAX_BATCH_SIZE + 1;
+    args.batch = minase_trainer::nnue::data::MAX_BATCH_SIZE + 1;
     assert!(args.validate().is_err());
 }
 

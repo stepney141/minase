@@ -2,7 +2,7 @@
 mod common;
 use common::*;
 use minase::training::records::{Outcome, Record};
-use minase_trainer::{
+use minase_trainer::nnue::{
     data::{BatchSlot, InputFeatureSet},
     model::Parameter,
     reference::{self, Forward},

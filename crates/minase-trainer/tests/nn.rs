@@ -10,18 +10,18 @@ use std::sync::{
 
 #[test]
 fn adamw_matches_element_arithmetic_and_leaves_selection_to_the_caller() {
-    // 既存の要素更新と演算精度・順序が同じという契約。比較先は変更していない。
-    for decay in [0.0, 0.2] {
+    // 46e03baのCoefficientsを同じ入力で3更新した重みと両モーメントのビット列。
+    // 共通化後も比較先が同じ実装にならないよう、履歴から得た固定値を使う。
+    let expected: [[[u32; 4]; 3]; 6] =
+        serde_json::from_str(include_str!("fixtures/adam-46e03ba.json")).unwrap();
+    for (decay_index, decay) in [0.0, 0.2].into_iter().enumerate() {
         let group = AdamWGroup {
             lr: 0.03,
             weight_decay: decay,
         };
         let mut actual = [4095.875_f32, -0.0, -4096.0, 3.125];
-        let mut expected = actual;
         let mut m = [0.0; 4];
         let mut v = [0.0; 4];
-        let mut expected_m = m;
-        let mut expected_v = v;
         for (step, gradient) in [[-0.7, 0.0, 0.31, 2.0], [0.0; 4], [0.9, -1.1, 0.0, -7.3]]
             .into_iter()
             .enumerate()
@@ -31,21 +31,11 @@ fn adamw_matches_element_arithmetic_and_leaves_selection_to_the_caller() {
             for i in 0..4 {
                 coefficients.update(&mut actual[i], gradient[i], &mut m[i], &mut v[i]);
             }
-            minase_trainer::reference::adamw(
-                &mut expected,
-                &gradient,
-                &mut expected_m,
-                &mut expected_v,
-                step,
-                minase_trainer::reference::AdamWGroup {
-                    lr: group.lr,
-                    weight_decay: decay,
-                },
-            )
-            .unwrap();
-            assert_eq!(actual.map(f32::to_bits), expected.map(f32::to_bits));
-            assert_eq!(m.map(f32::to_bits), expected_m.map(f32::to_bits));
-            assert_eq!(v.map(f32::to_bits), expected_v.map(f32::to_bits));
+            let [weights, first_moments, second_moments] =
+                expected[decay_index * 3 + step as usize - 1];
+            assert_eq!(actual.map(f32::to_bits), weights);
+            assert_eq!(m.map(f32::to_bits), first_moments);
+            assert_eq!(v.map(f32::to_bits), second_moments);
         }
         if decay == 0.0 {
             assert!(actual[0] > 4095.875);

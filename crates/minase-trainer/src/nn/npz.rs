@@ -128,6 +128,19 @@ pub fn encode(arrays: &[(&str, Array)]) -> Result<Vec<u8>> {
 
 /// ZIP64のローカルサイズも読み、検査和、dtype、形状と配列長を検査する。
 pub fn decode(bytes: &[u8]) -> Result<BTreeMap<String, Array>> {
+    decode_members(bytes, |_| true)
+}
+
+/// 指定キーの配列だけを読む。ほかのメンバーはZIPの検査和を検査して読み飛ばす。
+pub fn decode_selected(bytes: &[u8], keys: &[&str]) -> Result<BTreeMap<String, Array>> {
+    let names: Vec<_> = keys.iter().map(|key| format!("{key}.npy")).collect();
+    decode_members(bytes, |name| names.iter().any(|key| key.as_bytes() == name))
+}
+
+fn decode_members(
+    bytes: &[u8],
+    include: impl Fn(&[u8]) -> bool,
+) -> Result<BTreeMap<String, Array>> {
     let mut reader = Reader::new(bytes);
     let mut arrays = BTreeMap::new();
     let mut members = 0_u16;
@@ -175,6 +188,9 @@ pub fn decode(bytes: &[u8]) -> Result<BTreeMap<String, Array>> {
         let data = reader.take(usize::try_from(size).map_err(|_| Error::Format("ZIP size"))?)?;
         if crc32(data) != crc {
             return Err(Error::Format("ZIP CRC32"));
+        }
+        if !include(name) {
+            continue;
         }
         let key = std::str::from_utf8(name)
             .map_err(|_| Error::Format("NPZ key encoding"))?
@@ -353,4 +369,75 @@ fn crc32(bytes: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn npy_rejects_invalid_order_shape_version_and_truncation() {
+        fn array(header: &str) -> Vec<u8> {
+            let mut bytes = b"\x93NUMPY\x01\x00".to_vec();
+            bytes.extend((header.len() as u16).to_le_bytes());
+            bytes.extend(header.as_bytes());
+            bytes.extend([0; 12]);
+            bytes
+        }
+        let header = "{'descr': '<f4', 'fortran_order': False, 'shape': (3,), }\n";
+        let bytes = array(header);
+        assert_eq!(npy(&bytes).unwrap().data, [0; 12]);
+        for wrong in [
+            header.replace("<f4", "|O"),
+            header.replace("False", "True"),
+            header.replace("(3,)", "(4,)"),
+            header.replace("'shape'", "'unknown'"),
+        ] {
+            assert!(npy(&array(&wrong)).is_err());
+        }
+        for cut in [0, 7, 9, bytes.len() - 1] {
+            assert!(npy(&bytes[..cut]).is_err());
+        }
+        let mut wrong = bytes;
+        wrong[6] = 2;
+        assert!(npy(&wrong).is_err());
+    }
+
+    #[test]
+    fn selected_arrays_skip_unrelated_payloads_but_verify_their_checksums() {
+        let mut bytes = encode(&[
+            (
+                "value",
+                Array {
+                    dtype: "<f4".into(),
+                    shape: vec![1],
+                    data: (-0.0_f32).to_le_bytes().to_vec(),
+                },
+            ),
+            (
+                "unused",
+                Array {
+                    dtype: "|u1".into(),
+                    shape: vec![1],
+                    data: vec![17],
+                },
+            ),
+        ])
+        .unwrap();
+        // 任意の余分なメンバーを許す契約。NPYとして読めないペイロードも読み飛ばす。
+        let local = bytes.windows(4).rposition(|w| w == b"PK\x03\x04").unwrap();
+        let data_start = local + 30 + u16_at(&bytes, local + 26) as usize;
+        let data_len = u32_at(&bytes, local + 22) as usize;
+        bytes[data_start] = 0;
+        let checksum = crc32(&bytes[data_start..data_start + data_len]);
+        bytes[local + 14..local + 18].copy_from_slice(&checksum.to_le_bytes());
+        let central = bytes.windows(4).rposition(|w| w == b"PK\x01\x02").unwrap();
+        bytes[central + 16..central + 20].copy_from_slice(&checksum.to_le_bytes());
+        let selected = decode_selected(&bytes, &["value"]).unwrap();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected["value"].data, (-0.0_f32).to_le_bytes());
+        assert!(decode(&bytes).is_err());
+        bytes[data_start + data_len - 1] ^= 1;
+        assert!(decode_selected(&bytes, &["value"]).is_err());
+    }
 }

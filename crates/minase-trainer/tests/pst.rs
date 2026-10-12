@@ -409,7 +409,7 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
         .unwrap();
     let bytes = ck.encode().unwrap();
     assert_eq!(Checkpoint::decode(&bytes).unwrap(), ck);
-    assert!(minase_trainer::model::Checkpoint::decode(&bytes).is_err());
+    assert!(minase_trainer::nnue::model::Checkpoint::decode(&bytes).is_err());
     for cut in [0, 8, 100, bytes.len() - 1] {
         assert!(Checkpoint::decode(&bytes[..cut]).is_err());
     }

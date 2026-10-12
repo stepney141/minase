@@ -1,8 +1,19 @@
-このクレートはminaseの評価関数の学習器であり、現時点ではNNUEの学習を`nnue`サブコマンドの下に持つ。
+このクレートはminaseの評価関数の学習器であり、NNUEを`nnue`、PSTを`pst`サブコマンドで学習する。
 NNUEの浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
 GPU側では第1層の前進、駒除去差分の補助損失、全パラメータの勾配、部分和の縮約、AdamWによる更新と切り詰め、検証を実行できる。
 学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)に従う。
 移植時にはPythonの学習器と1更新の勾配と重みが一致することを[設計書](../../docs/plans/nnue-trainer-rust.md)の条件で一度確かめ、結果を[検査の記録](../../docs/measurements/nnue-trainer-rust-checks.md)にまとめた。
+
+評価関数ごとに独立した学習パイプラインを持ち、評価関数の知識を要しないデータ処理と機械学習の部品だけを共有する。
+`src/`の配置は次のとおりである。
+
+| ディレクトリ | 役割 |
+|---|---|
+| `data/` | データの読み込み、分割、教師値の構築を共有する。 |
+| `nn/` | Adamの要素更新、並列処理、配列の入出力、停止判定などの汎用部品を提供する。 |
+| `nnue/` | NNUEの特徴構築、モデル、CPU参照計算、GPU処理と学習を担う。 |
+| `pst/` | PST専用のバッチ構築、計算、モデルと学習を担う。 |
+| `diagnostics/` | 評価関数を診断する。 |
 
 `minase-trainer nnue train`は前処理、指定したデバイスでの更新、全検証集合の評価、チェックポイントの保存、最良重みの書き出しを行う。
 線形重みは`--init-pst`の圧縮なしNPZから初期化し、左右の鏡映対が一致することと、再量子化が`--base`のMNPTのPST部分と一致することを検査する。
@@ -17,7 +28,7 @@ CUDA実行ではワーカーが順列の順にバッチを作り、3面のペー
 
 `--device`の既定値は`cuda`であり、GPUがなければ明示的なエラーで終了する。
 `--device cpu`ではGPUを初期化せず、同じ学習ループからCPU参照関数を呼ぶ。
-`train::backend::Backend`が更新、検証、状態の回収、入力面の管理をまとめ、デバイスの違いを学習ループから隠す。
+`nnue::train::backend::Backend`が更新、検証、状態の回収、入力面の管理をまとめ、デバイスの違いを学習ループから隠す。
 CPUの1更新では`std::thread::scope`を使い、前進、駒除去、出力部の後退を局面方向、特徴勾配、仮想行の縮約、AdamWを行または要素方向に分割する。
 各要素の縮約順と精度を単一スレッド参照にそろえ、`--threads`を変更しても数値計算のビット列を保つ。
 `--threads`の既定値は物理コア数−2で、最小1である。
@@ -107,15 +118,15 @@ cargo test --release --offline -j 2 -p minase-trainer -- --ignored gpu_ --test-t
 
 | ファイル | 公開型と関数 |
 |---|---|
-| `src/model/mod.rs` | `Error`、`Result`、`Parameter`、`Shape`、`Parameters`、`Masks`、`Model`を定義する。 |
-| `src/model/npz.rs` | `model::load_initial`が圧縮なしnpzを読む。 |
-| `src/model/quantize.rs` | `model::Quantized`、`model::quantize`、`Quantized::encode`を提供する。MNUE版5の符号化は`minase::eval::nnue::encode`を使う。 |
-| `src/model/checkpoint.rs` | `model::BestEpoch`、`model::Progress`、`model::Checkpoint`を提供する。 |
-| `src/reference/mod.rs` | `Forward`、`Output`、`Losses`、`Gradients`と、`forward`、`output_backward`、`reduce_partials`、`first_layer_backward`、`linear_backward`、`reduce_virtual`、`fold`を提供する。 |
-| `src/reference/mod.rs` | `evaluate`、`screlu`、`screlu_derivative`、`loss_and_gradients`と`loss_and_gradients_parallel`も公開する。 |
-| `src/data/teacher.rs` | `data::build_targets`が分類ごとの教師値を構築する。 |
-| `src/reference/removal.rs` | `reference::Removal`、`reference::RemovalReference`、`reference::removal_forward`、`reference::v0_piece_values`を提供する。v0の値は`minase::eval::handcrafted::piece_value`から取る。 |
-| `src/reference/optimizer.rs` | `reference::AdamWGroup`、`reference::AdamWConfig`、`reference::AdamW`、`reference::adamw`を提供する。 |
+| `src/nnue/model/mod.rs` | `Error`、`Result`、`Parameter`、`Shape`、`Parameters`、`Masks`、`Model`を定義する。 |
+| `src/nnue/model/npz.rs` | `nnue::model::load_initial`が圧縮なしnpzを読む。 |
+| `src/nnue/model/quantize.rs` | `nnue::model::Quantized`、`nnue::model::quantize`、`Quantized::encode`を提供する。MNUE版5の符号化は`minase::eval::nnue::encode`を使う。 |
+| `src/nnue/model/checkpoint.rs` | `nn::BestEpoch`を使い、`nnue::model::Progress`と`nnue::model::Checkpoint`を提供する。 |
+| `src/nnue/reference/mod.rs` | `Forward`、`Output`、`Losses`、`Gradients`と、`forward`、`output_backward`、`reduce_partials`、`first_layer_backward`、`linear_backward`、`reduce_virtual`、`fold`を提供する。 |
+| `src/nnue/reference/mod.rs` | `evaluate`、`screlu`、`screlu_derivative`、`loss_and_gradients`と`loss_and_gradients_parallel`も公開する。 |
+| `src/data/teacher.rs` | `data::build_targets_from_arrays`が分類ごとの教師値を構築する。 |
+| `src/nnue/reference/removal.rs` | `nnue::reference::Removal`、`nnue::reference::RemovalReference`、`nnue::reference::removal_forward`、`nnue::reference::v0_piece_values`を提供する。v0の値は`minase::eval::handcrafted::piece_value`から取る。 |
+| `src/nnue/reference/optimizer.rs` | `nn::AdamWGroup`を使い、`nnue::reference::AdamWConfig`、`nnue::reference::AdamW`、`nnue::reference::adamw`を提供する。 |
 
 `Shape`は`new`で幅とKを検査し、`feature_set`、`width`、`k`、`units`、`rows`、`len`、`architecture`で配置を返す。
 `Parameters::zeros`はその配置で確保し、`shape`と`validate`で形と有限性を検査できる。
@@ -192,7 +203,7 @@ P型の仮想行の配列とマスクは長さ0である。
 | `checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mismatch` | 全状態の往復、次の更新のビット一致、破損とハッシュ不一致の拒否を検査する。 |
 | `model_rejects_invalid_width_k_initial_and_mask_shapes` | 幅、K、初期値、観測マスク、最適化器の形の違反を検査する。 |
 | `stored_npz_and_numpy_zip64_load_endpoints_and_reject_bad_archives` | NumPyが使うZIP64サイズと通常のstored ZIP、破損、圧縮指定、切断を検査する。 |
-| `model::npz::tests::npy_rejects_dtype_order_shape_version_and_truncation` | NPYの型、配列順、形、版、切断を検査する。 |
+| `load_initial_rejects_wrong_dtype_or_shape_and_preserves_bits` | NNUEのNPZ初期値の型と形を検査し、配列値のビット列を保持することを確かめる。 |
 
 v0の駒価値はすべて正なので、所有者に反する方向だけに掛かる上限制約は通常のv0参照では発火しない。
 この区分の有限差分試験には、歩の参照値を反転した鏡映対称の整数PSTを明示的に使う。
@@ -203,21 +214,21 @@ v0の駒価値はすべて正なので、所有者に反する方向だけに掛
 
 GPUの実装は次のファイルに置く。
 各CUDAソースは`include_str!`で埋め込み、改行で連結してNVRTCで実行時にコンパイルする。
-デバイスから取得した計算能力を`--gpu-architecture=sm_主番号副番号`で指定し、NVRTCの診断ログは`gpu::Error::Compile`に保持する。
+デバイスから取得した計算能力を`--gpu-architecture=sm_主番号副番号`で指定し、NVRTCの診断ログは`nnue::gpu::Error::Compile`に保持する。
 幅や特徴集合は起動引数で渡し、ソースの置換やテンプレートによる特殊化は行わない。
 
 | ファイル | 公開型と役割 |
 |---|---|
-| `src/gpu/mod.rs` | `gpu::Error`と`gpu::Result`を定義し、GPU不在、コンパイル、転送、入力不正、等価性違反を区別する。 |
-| `src/gpu/device.rs` | `Device`がCUDA文脈、計算ストリーム、転送ストリームを所有し、デバイス名と計算能力を返す。 |
-| `src/gpu/ring.rs` | `HostRing`がホスト3面とデバイス2面を所有し、`BatchTicket`で投入世代と所有する環を検査する。 |
-| `src/gpu/engine.rs` | `Evaluator`がモデル、整数参照PST、作業配列を保持し、`Evaluation`へ前進、補助損失、全勾配、検証統計を回収する。 |
-| `src/gpu/optimizer.rs` | 全自由パラメータとAdamWの両モーメントをデバイスに保持し、群ごとに更新する。 |
-| `src/gpu/step.rs` | `Step`がカーネル1〜8を投入し、`StepResult`が損失と更新時間を遅れて回収する。 |
-| `src/gpu/bench.rs` | `minase-trainer nnue bench-step`が実データの供給速度、入力転送時間、GPUの更新時間とメモリ使用量を測る。 |
-| `src/gpu/equivalence.rs` | `Report`、`run`、`check`が合成入力でCPUとの一致と反復実行のビット一致を検査する。 |
-| `src/gpu/step_equivalence.rs` | 非0のモデルと最適化器の状態から1更新と連続3更新をCPU参照と照合する。 |
-| `src/reference/validation.rs` | `reference::Validation`と`validation_forward`が検証統計のCPU参照を提供する。 |
+| `src/nnue/gpu/mod.rs` | `nnue::gpu::Error`と`nnue::gpu::Result`を定義し、GPU不在、コンパイル、転送、入力不正、等価性違反を区別する。 |
+| `src/nnue/gpu/device.rs` | `Device`がCUDA文脈、計算ストリーム、転送ストリームを所有し、デバイス名と計算能力を返す。 |
+| `src/nnue/gpu/ring.rs` | `HostRing`がホスト3面とデバイス2面を所有し、`BatchTicket`で投入世代と所有する環を検査する。 |
+| `src/nnue/gpu/engine.rs` | `Evaluator`がモデル、整数参照PST、作業配列を保持し、`Evaluation`へ前進、補助損失、全勾配、検証統計を回収する。 |
+| `src/nnue/gpu/optimizer.rs` | 全自由パラメータとAdamWの両モーメントをデバイスに保持し、群ごとに更新する。 |
+| `src/nnue/gpu/step.rs` | `Step`がカーネル1〜8を投入し、`StepResult`が損失と更新時間を遅れて回収する。 |
+| `src/nnue/gpu/bench.rs` | `minase-trainer nnue bench-step`が実データの供給速度、入力転送時間、GPUの更新時間とメモリ使用量を測る。 |
+| `src/nnue/gpu/equivalence.rs` | `Report`、`run`、`check`が合成入力でCPUとの一致と反復実行のビット一致を検査する。 |
+| `src/nnue/gpu/step_equivalence.rs` | 非0のモデルと最適化器の状態から1更新と連続3更新をCPU参照と照合する。 |
+| `src/nnue/reference/validation.rs` | `nnue::reference::Validation`と`validation_forward`が検証統計のCPU参照を提供する。 |
 | `kernels/forward.cu` | 第1層と線形経路の前進を実装する。 |
 | `kernels/head.cu` | 出力部の後退と、後退を伴わない検証を実装する。 |
 | `kernels/removal.cu` | 整数参照の除去差分、罰則、後退に使う除去ごとの微分と局面ごとの部分和を実装する。 |
@@ -251,7 +262,7 @@ Bを局面数、Hを全幅、UをP型ならH/2、それ以外ならHとする。
 Rは第1層の行数で、P型は6,841、HalfKP-hm-b8は埋め草を含め109,441である。
 全カーネルのブロックは`(128, 1, 1)`で、Gを`ceil(B/128)`、Wを`ceil(B/4)`、Cを`3U+1`とする。
 第1層と線形経路の逆索引を行ごとに最大128要素の区分へ分け、その区分数をそれぞれS_f、S_lとする。
-区分長は`data::REVERSE_INDEX_SEGMENT_LEN = 128`で固定し、区分表をバッチ構築時にホストのワーカーが作る。
+区分長は`nnue::data::REVERSE_INDEX_SEGMENT_LEN = 128`で固定し、区分表をバッチ構築時にホストのワーカーが作る。
 以下の格子はx方向のブロック数を示し、y方向とz方向は1である。
 
 | カーネル | 引数を宣言順に記す | 格子と共有メモリ |

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::{BatchSlot, Error, Result};
+use super::{Error, Result};
 
 /// 省略、または有限な0以上1以下の教師の混合比を許す。
 pub fn validate_lambda_override(value: Option<f64>) -> Result<()> {
@@ -10,26 +10,9 @@ pub fn validate_lambda_override(value: Option<f64>) -> Result<()> {
     Ok(())
 }
 
-/// Pythonの`pst.teacher.build_targets`と同じ教師値を構築する。
-///
+/// 探索値、分類番号、結果の配列から教師値を構築する。すべて局面順で同じ長さを要求する。
 /// 分類ごとに`λ / (1 + exp(-score / K)) + (1 - λ) * result / 2`をf64で
 /// 計算してf32へ丸める。λが0の分類ではKと探索値を参照しない。
-pub fn build_targets(
-    batch: &BatchSlot,
-    teacher_ks: &[f64],
-    teacher_lambdas: &[f64],
-) -> Result<Vec<f32>> {
-    build_targets_from_arrays(
-        batch.teacher_scores(),
-        batch.teacher_classes(),
-        batch.outcomes(),
-        teacher_ks,
-        teacher_lambdas,
-    )
-}
-
-/// 探索値、分類番号、結果の配列から教師値を構築する。すべて局面順で同じ長さを要求する。
-/// 混合と丸めの演算順はバッチを受け取る関数と同じ。
 pub fn build_targets_from_arrays(
     scores: &[f32],
     classes: &[u32],
