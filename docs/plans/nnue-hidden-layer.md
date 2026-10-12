@@ -52,7 +52,7 @@ SCReLUが入力の二乗を作るので、非線形部分全体は第1層の重�
 
 本マイルストーンで行う作業は次のとおりである。
 
-- 学習器`crates/nnue-trainer`から駒除去差分の補助損失を削除し、代わりに書き出し時の検査として、駒除去差分の符号反転の割合を記録する。
+- 学習器`crates/minase-trainer`から駒除去差分の補助損失を削除し、代わりに書き出し時の検査として、駒除去差分の符号反転の割合を記録する。
 - エンジンの推論（`crates/minase/src/eval/nnue/`）に、位相補間の直接内積、隠れ層つき、隠れ層つきの位相補間の3つの出力部を加え。学習器の診断（`diag`）がヘッダの構造記述文字列から出力部を選んで復号できるようにする。`ActiveHead`に依存するテスト（探索のテストの重み生成など）を、出力部の切り替えに追従する形へ移す。
 - 学習器に同じ3つの出力部と、出力部を選ぶ引数を加える。学習器のテストに、エンジンの推論を呼ばずに本書の仕様から書いた4つの出力部の整数参照を置く。
 - 補助損失なしの直接内積と3候補を同じ条件で学び、検証損失で1つを選んで段階ゲートに出す。
@@ -63,7 +63,7 @@ SCReLUが入力の二乗を作るので、非線形部分全体は第1層の重�
 - 隠れ層の2層目以降、幅16以外の幅、二乗と通常の活性化を連結する構成（Stockfish、やねうら王）。本書の候補が採用されたときに、次の段階として比べる。
 - 硬い区切りの出力バケット、3端点以上の補間、および進行度を推定するモデル（tataraの`progresskpabs`）。
 - 量子化を考慮した学習（QAT）。
-- Pythonの学習ツールの扱い。PyTorchとの照合の経路とPythonの診断の削除、およびPSTとFMの学習器の移植は、[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)が行う。本書の実装は同書のフェーズ2（PSTの学習器の移植）の後に始める。改名と、NNUEの診断の移植（同書のフェーズ1）が済み、PSTの学習器が線形経路の除去差分を使う形になってから、NNUEの学習だけから補助損失を外すためである。新しい出力部の正しさはPythonと照合せずに検査する。
+- Pythonの学習ツールの扱い。PyTorchとの照合の経路とPythonの診断の削除、およびPSTとFMの学習器の移植は、[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)が行う。本書の実装は同書のフェーズ2（PSTの学習器の移植）の後に始める。改名とNNUEの診断の移植（同書のフェーズ0と1）は済み、PSTと同時学習の学習器はNNUEとは別のパイプラインに独自の駒除去差分の計算を持つ（同書のフェーズ2と4）ので、NNUEの学習から補助損失を外してもPST系の学習器には影響しない。新しい出力部の正しさはPythonと照合せずに検査する。
 - 学習率スケジュール、最適化器、損失関数の変更。
 
 ## 依存関係
@@ -76,9 +76,9 @@ SCReLUが入力の二乗を作るので、非線形部分全体は第1層の重�
 [NNUEの完全代替](nnue-replacement.md)の「重みファイルの形式」は、出力部を追加するときは`head=`の名前と区画の形を出力部の定義として加えると定めており、本書は版5のまま出力部を追加する。
 評価関数の値はキャッシュされず、静止探索の各節点を含めて評価のたびに出力部を全計算する。
 
-学習器の出力部は、パラメータの種類を6つに固定した配列（`src/model/mod.rs`の`Parameter`）、CPU参照の`head`と`output_backward`（`src/reference/mod.rs`）、CUDAの`output_backward`、`validation_head`、`gradient_partials`、`optimizer_head`（`kernels/`）からなる。
-書き出し時の量子化誤差の検査（`src/export.rs`）は、エンジンの整数推論を呼んで浮動小数点の参照と比べる。
-駒除去差分の補助損失は`src/reference/removal.rs`と`kernels/removal.cu`にあり、チェックポイント（MNTRCKPT版2）は補助損失の係数を保存している。
+学習器の出力部は、パラメータの種類を6つに固定した配列（`src/nnue/model/mod.rs`の`Parameter`）、CPU参照の`head`と`output_backward`（`src/nnue/reference/mod.rs`）、CUDAの`output_backward`、`validation_head`、`gradient_partials`、`optimizer_head`（`kernels/`）からなる。
+書き出し時の量子化誤差の検査（`src/nnue/export.rs`）は、エンジンの整数推論を呼んで浮動小数点の参照と比べる。
+駒除去差分の補助損失は`src/nnue/reference/removal.rs`と`kernels/removal.cu`にあり、チェックポイント（MNTRCKPT版2）は補助損失の係数を保存している。
 P型は第1層の重みと出力重みを幅の前半と後半で共有し、左右鏡映に対する不変性を課している。
 HalfKP-hm-b8の文脈は、基準の王駒が1枚もない場合は鏡映なしとし、複数ある場合は升番号の最小のものを選ぶ（`feature_set.rs`の`HalfKpHmB8::context`）。
 
@@ -158,14 +158,14 @@ qは線形経路の補間で既に計算しているので、評価1回あたり
 
 ### フェーズ0　補助損失の削除と符号反転の検査
 
-学習器のNNUEの学習から、駒除去差分の補助損失（参照実装、CUDAカーネル、`--removal-penalty`、学習記録の補助損失の欄）を削除する。PSTと同時学習の学習器（[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)）は除去損失を使い続けるので、線形経路の除去差分の計算はそちらのために残す。
+学習器のNNUEの学習から、駒除去差分の補助損失（参照実装、CUDAカーネル、`--removal-penalty`、学習記録の補助損失の欄）を削除する。PSTと同時学習の学習器（[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)）は、NNUEとは別のパイプライン（`crates/minase-trainer/src/pst/`、`src/joint/`）に独自の駒除去差分の計算を持つので、PST系のためにNNUE側の除去差分の計算を残す必要はない。書き出し時の符号反転の検査と、診断`minase-trainer diag nnue-removal`が使う除去差分の評価は残す。
 NNUEの学習のチェックポイントは補助損失の係数を持たない形に改めて版を上げ、旧版の読み込みは拒否する。
 書き出し時の検査に、「設計判断」の符号反転の検査を加える。
 この検査は出力部によらず、minaseの整数推論で評価する。
 
 完了条件は次のとおりである。
 
-- `cargo test -p nnue-trainer`と`gpu_`で始まるGPUのテストが通り、GPUとCPU参照の等価性、数値微分、再開の一致の各テストが補助損失なしで成り立つ。
+- `cargo test -p minase-trainer`と`gpu_`で始まるGPUのテストが通り、GPUとCPU参照の等価性、数値微分、再開の一致の各テストが補助損失なしで成り立つ。
 - 世代3の1ファイルの1エポック学習で、両型の1更新の時間と、ワーカー数6と12での1秒あたりの学習局面数を測り、[検査の記録](../measurements/nnue-trainer-rust-checks.md)に書く。
 - 比較の起点のネットについて、符号反転の検査の値を記録する。
 

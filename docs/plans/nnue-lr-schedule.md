@@ -2,7 +2,7 @@
 
 ## 先に読む要約
 
-本マイルストーンは、中将棋エンジンminaseの評価関数であるNNUEのRust製学習器（`crates/nnue-trainer`）に、更新ごとに学習率を変える学習率スケジュール（learning-rate schedule）を加え、学習率の与え方を変えると検証損失（学習に使わない対局の局面での損失）が下がるか、下がったネットが強いかを確かめる。
+本マイルストーンは、中将棋エンジンminaseの評価関数であるNNUEのRust製学習器（`crates/minase-trainer`）に、更新ごとに学習率を変える学習率スケジュール（learning-rate schedule）を加え、学習率の与え方を変えると検証損失（学習に使わない対局の局面での損失）が下がるか、下がったネットが強いかを確かめる。
 動機は、[NNUEの完全代替](nnue-replacement.md)（以下、前計画）のフェーズ4で、2つの入力特徴集合（P型とHalfKP-hm-b8）のどちらも検証損失が最初の訓練エポックの直後で最良になり、以後は訓練損失だけが下がり続けたことである。
 この症状は、学習率が大きすぎて最良点を通り過ぎた場合にも、同じ対局の局面どうしの相関で実質の標本数が少なく過学習した場合にも生じるので、両者を見分ける手がかりを集める。
 学習器には、学習率に掛ける倍率を完了した更新回数の関数として与える3つの形（一定、指数減衰、cosine annealing）と、エポックの途中で検証損失を記録する機能を加える。
@@ -67,14 +67,14 @@
 
 ## 依存関係
 
-学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`nnue-trainer train`である。
-学習率はホストが群ごとに保持し、更新のたびにバイアス補正の係数とともに倍精度でカーネルへ渡している（`src/gpu/optimizer.rs`の`Optimizer::update`、CPU参照は`src/reference/optimizer.rs`の`Coefficients::new`）。
+学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`minase-trainer nnue train`である。
+学習率はホストが群ごとに保持し、更新のたびにバイアス補正の係数とともに倍精度でカーネルへ渡している（`src/nnue/gpu/optimizer.rs`の`Optimizer::update`、CPU参照は汎用部品`src/nn/adam.rs`の`AdamCoefficients::new`）。
 したがって倍率を掛けるのはホスト側の変更で済み、CUDAカーネルは変えない。
 重み減衰はAdamWの分離型で`p ← p·(1 − lr·wd)`として掛かるので、倍率を掛けると減衰も同じ割合で小さくなる。
 チェックポイント（MNTRCKPT版2）は完了した更新回数、エポック、AdamWの状態を保存しており、再開時は`更新回数 = エポック × ceil(訓練局面数 / バッチ)`を検査する。
 チェックポイントには実測の累積時間とそれを含む検査和も入るので、連続実行と再開実行のファイル全体は一致しない。
-再開の設定ハッシュは引数から出力先、データ、`--epochs`、`--patience`、時間の上限、`--threads`を除いて作る（`src/train/record.rs`）。
-再開時は、`training.jsonl`の各行をエポックの記録として読み、エポック番号が1ずつ増えることを検査する（`src/train/record.rs`の`reconcile_log`）。
+再開の設定ハッシュは引数から出力先、データ、`--epochs`、`--patience`、時間の上限、`--threads`を除いて作る（`src/nnue/train/record.rs`）。
+再開時は、`training.jsonl`の各行をエポックの記録として読み、エポック番号が1ずつ増えることを検査する（`src/nnue/train/record.rs`の`reconcile_log`）。
 教師用Kの推定と観測マスクは訓練集合から作り、第1層の初期化は観測された行だけで乱数を消費する。
 
 入力特徴集合と幅、および比較の基準となる一定の学習率のネットは、[NNUEの完全代替](nnue-replacement.md)が最後に段階ゲートへ出したものとする。
@@ -172,7 +172,7 @@ STCが`H1`、または上限に達してLLRが0以上なら、LTC（`time=60000+
 
 完了前に次を確認する。
 
-- `cargo test -p nnue-trainer`と、`gpu_`で始まるGPUのテスト（`cargo test -p nnue-trainer -- --ignored gpu_`）がすべて通る。
+- `cargo test -p minase-trainer`と、`gpu_`で始まるGPUのテスト（`cargo test -p minase-trainer -- --ignored gpu_`）がすべて通る。
 - フェーズ1の完了条件のビット一致と再開の一致を、変更後のバイナリで確かめる。
 - 段階ゲートに出すネットが、書き出し時の量子化誤差の検査（検証1万局面の平均絶対誤差が`K/40`以下）を通り、最大誤差を記録する。
 

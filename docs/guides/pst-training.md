@@ -1,240 +1,198 @@
-# PSTの学習手順
+# PSTとFMの学習手順
 
-PST（駒の種類と位置に応じた評価表）の学習には、学習ツールのコマンド`pst-workflow`を使う。
-実装は [workflow.py](../../tools/train/src/minase_train/workflow.py) にある。
-条件を設定ファイルへ記入し、「準備」「生成」「学習」「診断」の順に実行する。
-このコマンドは、教師の探索値を勝率へ換算する教師尺度Kの推定、ログの保存、および入力と重みの検査和の記録を行う。
-PSTの評価値を勝率へ換算するモデル出力の尺度Kには、設定ファイルで指定した値を使う。
-学習の計算は学習器`train-pst`（[train.py](../../tools/train/src/minase_train/pst/train.py)）が担当する。
+本書は、PST（駒の種類と位置に応じた評価表）と、PSTに加える2駒関係の補正FM（Factorization Machine）を学習する手順を定める。
+学習には、学習器のクレート`crates/minase-trainer`の実行ファイル`minase-trainer`のサブコマンドを使う。
+エンジンが探索に使う既定の評価関数は、2026年10月12日から[NNUE](../plans/nnue-replacement.md)である。
+PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PSTを土台にした研究の計画で使う。
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
-学習データの形式、来歴、教師の分類、検証分割、および学習と診断が出力する記録の各欄は [学習ツールのREADME](../../tools/train/README.md) が説明する。
+学習データの形式、来歴、教師の分類、検証分割、学習器が出力する記録の各欄は [学習器のREADME](../../crates/minase-trainer/README.md) が説明する。
 教師値、損失、量子化、および重みの範囲の定義は [評価関数の設計書](../plans/evaluation.md) と [PSTの序中盤と終盤の補間](../plans/tapered-pst.md) が定める。
+学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement-checks.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md) に状態を登録する。
 学習後の採否は [棋力測定の標準手順](sprt.md) に従う。
-以下のコマンド例では、実験名を`<実験名>`、設定ファイルを`<実験名>.toml`、生成シードを`<シード>`と書く。
+以下のコマンド例では、実験名を`<実験名>`、基準コミットを`<基準コミット>`、生成シードを`<シード>`と書き、明記した箇所を除いて、すべてのコマンドをリポジトリのルートで実行する。
 
-## 1. 設定ファイルを用意する
+## 1. 学習器を用意する
 
-学習環境は [uv](https://docs.astral.sh/uv/) で管理しており、`uv sync --project tools/train` で `uv.lock` に固定した版のPython 3.12以上、NumPy、PyTorchが入った `tools/train/.venv` を作る。
-GPUで学習する場合は、その環境からCUDAを利用できる必要がある。
-すべてのコマンドはリポジトリのルートで実行する。
-
-学習環境を用意したら、次のコマンドでPST関連のテストを実行する。
+学習器はCPUだけで動き、`--threads`の既定値は物理コア数から2を引いた数である。
+次のコマンドでビルドし、テストを実行する。
 
 ```bash
-uv run --project tools/train python -m unittest discover -s tools/train/tests
+cargo build --release -p minase-trainer
+cargo test --release -p minase-trainer
 ```
 
-まず、[設定例](../../tools/train/pst.example.toml) をコピーする。
-
-```bash
-cp tools/train/pst.example.toml <実験名>.toml
-```
-
-コピーした設定ファイルを開き、`run.base_commit` を採用済みコミットの完全なハッシュに置き換える。
-現在のコミットを基準にする場合は、次のコマンドで確認できる。
-
-```bash
-git rev-parse HEAD
-```
-
-主要な設定は次のとおりである。
-表の数値は設定例の値であり、汎用の開始条件にすぎない。
-個別の実験で固定した条件は、その計画と測定記録に従って指定する。
-現在の採用PSTの学習条件と設定ファイルは、[評価関数の設計書](../plans/evaluation.md#教師値と損失)から辿れる。
-現在の評価関数はPSTにFMの補正を加えたものであり、その補正は本書のワークフローではなく、学習ツールのコマンド`train-fm`（または`train-joint`）で学習する（[学習ツールのREADME](../../tools/train/README.md)、[補正1/4のFMの再学習](../plans/fm-quarter-current-pst.md)、[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)）。補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整し、得た倍率を`train-fm scale`で重みファイルへ焼き込んでから段階ゲートへ出す。
-PSTのワークフローは基点コミットの`crates/minase/nets/pst.bin`を初期値にするが、PSTの読み込みはMNPTバージョン2だけを受け付けるので、FMを含むバージョン3の重みを基点にすると準備が明示的なエラーで止まる。採用中の重みのPSTの部分は同時学習の候補J75と同一であり、そのバージョン2の重み（`train-fm scale`に倍率0を与えて作ったもの）は`data/fm-scale-spsa/pst-j75-pst-only.bin`にある。PSTを学び直す計画では、この重みを初期値にする手順と、学び直したPSTの上でFMの補正も学び直すかを、その計画で定める。
-
-| 設定 | 意味と設定例 |
-|---|---|
-| `run.directory` | 結果を保存する未使用のディレクトリとして `data/<実験名>` を指定する。 |
-| `run.data` | 既存の学習データをファイルごとに列挙する。 |
-| `generate.seeds` | 各生成ファイルの基本シードを指定する。既存データだけで学習する場合は空配列`[]`を明示する。 |
-| `generate.games` | 1ファイルあたり7,500局を生成する。 |
-| `generate.nodes` | 1手の探索ノード上限を100,000とする。 |
-| `generate.concurrency` | 同時に生成する対局数を16とする。実行機に合わせて決める。 |
-| `generate.max_ply` | 4,000手までに終局しない対局を破棄する。 |
-| `generate.hash_mb` | 生成ワーカーごとの置換表を16 MBとする。 |
-| `generate.random_moves` | 対局中のランダム着手注入を0とする。開始局面の8〜16手のランダム化は残る。 |
-| `train.model` | 単一PSTを学習する`single`、序中盤用と終盤用の2端点PSTを学習する`tapered`、左右の鏡映対で重みを共有する2端点PSTを学習する`mirrored`から選ぶ。 |
-| `train.k` | モデル出力の尺度Kを有限の正値で明示する。設定例は`1072.6529541015625`である。 |
-| `train.learning_rate` | Adamの学習率を有限の正値で明示する。設定例は3とする。 |
-| `train.epochs` | 10エポックを学習し、学習したエポックの中で検証集合の二値交差エントロピーが最小の重みを保存する。 |
-| `train.patience` | 省略可能である。正の整数を指定すると、検証損失の最良値がそのエポック数だけ続けて更新されなかった時点で学習を止める（早期終了の打ち切り）。止めた後も、学習したエポックの中で検証損失が最小の重みを保存する。省略した場合は打ち切らず、`train.epochs`まで学習する。 |
-| `train.batch` | 1回の更新に16,384局面を使う。 |
-| `train.rescore` | 別の探索で教師値を付け直した付け直しファイル（MNRS形式）を、`run.data`、生成シードの順に列挙する。付け直しなしは`"-"`とする。先読みとは併用できない。 |
-| `train.lambda_override` | 自己対局の教師混合比を0以上1以下の有限値で上書きする。省略時は来歴のλを使い、明示的な0は対局結果だけを使う。実戦棋譜のλは変えない。 |
-| `train.lookahead` | 先読みを使う場合は`{ gamma = 0.9, plies = 40 }`を指定する。省略時は元の探索値を使う。γは0より大きく1未満、手数上限は整数1〜4,096とする。 |
-| `train.removal_penalty` | 王駒以外の駒を1枚除いたときの評価差に課す追加損失の係数を有限の非負値で明示する。正値は`mirrored`だけで使え、`single`と`tapered`は0に限る。設定例は係数未選定のため0とする。 |
-| `train.seed` | 学習の乱数シードを1とする。検証分割の指定ではない。 |
-| `train.device` | GPU実行は `cuda`、明示的なCPU実行は `cpu` を指定する。 |
-| `train.validation_sample` | 量子化誤差の確認に最大10,000検証局面を使う。 |
-| `diagnose.sample_size` | 教師評価との比較に各教師分類の各局面帯で最大10,000検証局面を使う。 |
-| `diagnose.seed` | 診断用標本の抽出シードを1とする。 |
-
-パスは設定ファイルの場所によらず、リポジトリのルートから解釈する。
-省略できる項目は`train.rescore`、`train.lookahead`、`train.patience`、および`train.lambda_override`である。
-これらを省略すると、それぞれ全ファイルの付け直しなし、先読みなし、打ち切りなし、および各来歴の混合比の保持として扱う。
-それ以外の項目の省略と、未知の項目はエラーになる。
-
-`run.data`に列挙する各学習データファイル（MNSD形式）には、来歴ファイルが必須である。
-来歴ファイルの形式はREADMEの「来歴と教師の分類」が説明する。
-欠落や検査和の不一致があれば読み込みを停止するので、既存データにも明示的に用意する。
-`gen0b.bin` は既存の対局と重複するため、入力へ加えない。
-
-モデルは、通常は採用済みPSTと同じ`mirrored`を指定する。
-`single`は1組の重みを保存時に両端点へ複製し、初期重みの両端点が一致しなければ停止するため、両端点が異なる採用済みPSTの継続学習には使えない。
-`train.removal_penalty`が正の場合は、初期重みファイル（MNPT形式）のi16重みが両端点とも完全な鏡映対称であることを学習器が検査し、不一致なら停止する。
-正の係数を使う場合は、準備の前に、訓練集合内の予備比較で採用した係数と、その比較で固定した学習率を一組として設定へ転記する。
-予備比較は訓練集合内の対局単位の分割で行い、既存の検証集合、駒除去の診断局面、および対局結果は係数の調整に使わない。
-
-生成シードは互いに生成局数以上離し、過去の生成にも使っていない範囲を選ぶ。
-スクリプトは設定内の重複と、既存データに記録された対局番号との重なりを検出する。
-ただし、破棄されて記録されなかった対局や、入力に含めていないファイルの範囲は分からないため、過去の生成ログも確認する。
+以下では、ビルドした`target/release/minase-trainer`を`minase-trainer`と書く。
+学習器の変更を含む実験では、学習を始める前に学習器のコミットを決めて測定記録に書き、実行中はそのバイナリを使い続ける。
 
 ## 2. 実験を準備する
 
-設定を確定したら、次を実行する。
+基準コミットを固定したworktreeを作り、教師データの生成器（`minase`）をビルドする。
+基準のPSTを実験ディレクトリへ複製し、以後の学習と診断はこの複製を使う。
 
 ```bash
-uv run --project tools/train pst-workflow prepare --config <実験名>.toml
+mkdir data/<実験名>
+git worktree add --detach data/<実験名>/generator <基準コミット>
+cargo build --release --locked --target-dir data/<実験名>/generator/target \
+  --manifest-path data/<実験名>/generator/Cargo.toml --bin minase
+cp <基準のPST（MNPT版2）> data/<実験名>/pst-base.bin
+sha256sum data/<実験名>/pst-base.bin
 ```
 
-この操作は基準コミットを固定したworktreeを `data/<実験名>/generator` に作り、生成器`minase data selfplay`をビルドする。
-診断用の`minase dev pst-probe`は、準備時の学習ツール側の`HEAD`を固定した別のworktree `data/<実験名>/probe`でビルドするため、生成基準が古いコミットでも現在の診断形式を使える。
-基準PST、その探索用駒価値、設定、既存データ、来歴ファイル、付け直しファイル、および学習スクリプトの検査和を保存し、`prepared.json`に診断器のコミット`probe_commit`とバイナリの検査和`probe_sha256`も記録する。
-`minase dev pst-probe`の変更は準備前にコミットする。
-元の作業ブランチに未コミットの変更があっても、各バイナリに使うのはそれぞれ固定したコミットである。
+`pst-base.bin`には、重みファイルの形式MNPTの版2（PSTだけ）を使う。
+`pst train`と`fm train`は版3（PSTとFM）のPSTの部分も読めるが、PSTの比較診断（5節）は基準と候補が版2であることを前提に、独立に計算した整数のPST評価とエンジンの評価を比べるので、版3を与えると開始時に拒否する。
+`crates/minase/nets/pst.bin`はFMを含む版3であり、そのPSTの部分を版2にした重みは`data/fm-scale-spsa/pst-j75-pst-only.bin`にある。
+同じ学習の量子化前の重み（`pst-float.npz`）があれば、`minase-trainer fm scale --fm-scale 0`で版3から版2を作れる。
+基準の重みと入力ファイルのSHA-256は、学習の記録（`config.json`）にも残るが、準備の時点の値を測定記録に書いておく。
 
-準備後は、元のTOMLファイルを編集しても実験の設定は変わらない。
-学習条件や入力を変更する場合は、新しい `run.directory` で準備し直す。
-`prepared.json` などの保存記録や、生成用と診断用のworktreeは編集しない。
-生成、学習、診断、および再開の時点では来歴ファイルと付け直しファイルの検査和も照合し、変更があれば停止する。
-準備後に生成するMNSDの来歴は、生成完了時の記録へ検査和を固定する。
-学習スクリプトの変更も検出して停止するので、実行中はその版を維持する。
-
-学習器を変更して再学習する場合は、既存の実験を保持し、変更後のツールを新しい実行ディレクトリへ固定する。
-現行の[設定例](../../tools/train/pst.example.toml)から全必須項目を含む設定を用意し、`run.directory`には未使用の保存先を指定する。
-既に生成済みのデータだけで学習し直す場合は、そのファイルをすべて`run.data`に列挙し、`generate.seeds = []`としてデータを再生成しない。
-以前の実験の設定ファイルは、必須項目が足りなければ現行の準備コマンドへそのまま渡せない。
+学習データ（MNSD形式）には、来歴ファイル（`<データ>.provenance.json`）が必須である。
+来歴ファイルの形式はREADMEの「来歴と教師の分類」が説明する。
+欠落や検査和の不一致があれば学習器が停止するので、既存データにも明示的に用意する。
+`gen0b.bin` は既存の対局と重複するため、入力へ加えない。
 
 ## 3. 自己対局データを生成する
 
-次のコマンドで、設定したシードを順に処理する。
-生成シードが空配列の場合は、生成するファイルがないので何もしない。
+生成シードは互いに生成局数以上離し、過去の生成にも使っていない範囲を選ぶ（[隣接シードの教訓](../lessons/derive-seed-adjacent-collision.md)）。
+設定内の重複だけでなく、破棄されて記録されなかった対局や入力に含めていないファイルの範囲も、過去の生成ログで確認する。
+
+シードごとに次を実行する。
+生成器は、基準コミットを固定したworktreeの中で起動する（[生成コミットを固定する教訓](../lessons/pin-generation-binary-to-worktree.md)）。
+数値は、これまでの実験で使った生成条件の例である（1ファイル7,500局、1手10万ノード、同時16局、4,000手で破棄、置換表16 MB、対局中のランダム着手なし）。
 
 ```bash
-uv run --project tools/train pst-workflow generate --run-dir data/<実験名>
+cd data/<実験名>/generator
+target/release/minase data selfplay generate --output ../generated-<シード>.bin --seed <シード> \
+  --games 7500 --nodes 100000 --random-moves 0 --concurrency 16 --max-ply 4000 --hash-mb 16 \
+  2>&1 | tee ../generate-<シード>.log
+target/release/minase data selfplay inspect ../generated-<シード>.bin | tee ../inspect-<シード>.log
+cd -
 ```
 
-生成器は固定したworktree内で起動し、完成したファイルを `minase data selfplay inspect` で検査する。
-ヘッダの生成コミット、重みの検査和、ルール、シード、探索ノード上限も照合する。
-各ファイルは `generated-<シード>.bin` という名前で保存され、対応する来歴ファイルも必要である。
-生成に使う固定コミットには来歴の出力機能を含める。
-
-進捗は各シードのログ `data/<実験名>/generate-<シード>.log` で確認できる。
-
-```bash
-tail -f data/<実験名>/generate-<シード>.log
-```
-
-1ファイルだけ実行したい場合は、設定内のシードを指定する。
-
-```bash
-uv run --project tools/train pst-workflow generate --run-dir data/<実験名> --seed <シード>
-```
-
-再度 `generate` を実行すると、検査済みの完成ファイルは検査和を照合して再利用する。
-これはファイル単位の再開であり、中断した対局列の途中から再開する機能ではない。
-完成記録のない出力が残っていれば停止するため、その出力をログとともに別の場所へ退避してからやり直す。
-途中のデータを完成品と扱ったり、完成記録を手で作ったりしない。
-
+生成器は`generated-<シード>.bin`と来歴ファイル`generated-<シード>.bin.provenance.json`を書く。
+`inspect`の出力で、ヘッダの生成コミット、重みの検査和、規則、シード、探索ノード上限が意図どおりであることを確かめる。
 生成終了後は、保存局面数と手数上限による破棄数をログで確認し、理由別の除外率、勝敗数、探索値の分布、および重複率も確かめる。
+途中で止まったファイルは完成品として扱わず、ログとともに別の場所へ退避してから同じシードで生成し直す。
 目標の局面数に足りず生成条件を追加する場合は、別の実験として入力とシードを決め直す。
 
 ## 4. PSTを学習する
 
-すべての生成ファイルが完成したら、学習前に`taper-report`で訓練集合の駒数分布と端点の識別性を集計する。
-`--data`には`run.data`と生成ファイルをすべて渡す。
-`--model`は必須であり、設定ファイルの`train.model`と同じモデルを指定する。
+すべての生成ファイルが完成したら、次のコマンドでPSTを学習する。
+例は、採用PSTの候補L（[PSTのエポック数の延長](../plans/pst-longer-training.md)）の条件である。
 
 ```bash
-uv run --project tools/train taper-report \
-  --data <run.dataのファイル...> data/<実験名>/generated-*.bin \
-  --model mirrored --pst data/<実験名>/pst-base.bin \
-  --output-dir data/<実験名>/identifiability
+minase-trainer pst train \
+  --data <既存データ...> data/<実験名>/generated-*.bin \
+  --init data/<実験名>/pst-base.bin \
+  --output-dir data/<実験名>/training \
+  --lr 0.03 --epochs 200 --patience 5 --batch 16384 --seed 1 \
+  --removal-penalty 1000 --removal-reference init \
+  --lookahead-gamma 0.9 --lookahead-plies 40 \
+  2>&1 | tee data/<実験名>/train.log
 ```
 
-識別できない特徴の判定基準は[PSTの序中盤と終盤の補間](../plans/tapered-pst.md)が定め、出力の各ファイルはREADMEの「学習と診断の記録」が説明する。
+学習器は、`--init`のPSTを初期値として、左右の鏡映対で重みを共有する2端点（序中盤用と終盤用）のPSTを学習する。
+出力用K、探索用駒価値、規則セット名は`--init`から引き継ぐ。
+`--lambda-override`を省略すると、教師値で探索値と対局結果を混ぜる比λとして、各来歴ファイルに記録された値を使う。
+`--removal-reference`は、駒を1枚除いたときの評価の変化が同じ向きになることを求める補助損失の参照であり、`init`は`--init`の整数PST、`v0`はv0の駒価値を参照にする。
+エポック数の上限は200である。
 
-診断を記録したら、GPUを利用できるホスト側で次を実行する。
-
-```bash
-uv run --project tools/train pst-workflow train --run-dir data/<実験名>
-```
-
-スクリプトは既存データと生成データを検証し、教師の分類ごとの教師尺度Kを訓練集合から推定して、採用済みの `pst-base.bin` から学習を始める。
-結果は `training/pst.bin` に保存され、`training/`には学習条件、環境、尺度、および量子化前の重みも残る。
-`device = "cuda"` でCUDAが使えない場合は停止し、CPUへ切り替えない。
-
-最良の重みは、学習したエポック（1以上）の中から、追加損失を混ぜない検証集合の二値交差エントロピーで選ぶ。
+最良の重みは、学習したエポック（1以上）の中から、補助損失を混ぜない検証集合の二値交差エントロピーで選ぶ。
 学習前の重みの検証損失もエポック0として記録されるが、出力の候補にはならない。
-学習が初期値より検証損失を悪くしたかどうかは、最良エポックの値とエポック0の値を比べて実行者が判断する。
+`--patience`のエポック数だけ続けて最良値が更新されなければ打ち切る。
 選択と打ち切りの定義は一般的な早期終了と同じであり、典拠と採用の経緯は[PST追加学習の設計書](../plans/pst-longer-training.md)の「早期終了」にある。
 
-学習曲線は `train.log` で確認する。
-教師値の損失、追加損失、全体と分類別の検証損失、最良エポック、および特徴の観測回数を読み、更新回数の不足や過学習がないか点検する。
-本学習後の診断が失敗した場合は、測定へ進まずに原因の調査へ戻る。
-診断に合わせて係数や別のエポックを選び直すことはしない。
+結果は`--output-dir`に保存される。
+`pst.bin`はMNPT版2の重み、`pst-float.npz`は量子化前の重み、`training.jsonl`は各エポックの損失の記録、`summary.json`は停止理由、最良エポック、量子化誤差の検査の結果の記録である。
+学習曲線は`training.jsonl`で確認し、教師値の損失、補助損失、検証損失、最良エポックを読み、更新回数の不足や過学習がないか点検する。
+保存時には重みを1/8センチポーン単位へ量子化し、検証標本で浮動小数点評価との平均絶対誤差が2センチポーン以下であることを確かめる。
+基準を超えた場合は、出力済みのファイルを残したまま`summary.json`に失敗を記録し、終了コード1で終える。
 
-保存時には重みを1/8センチポーン単位へ量子化し、検証標本で浮動小数点評価との平均絶対誤差が2センチポーン以下であることを確認する。
-合格して正常終了した重みだけに `training/complete.json` が作られる。
-既存の `training` は上書きしない。
-中断後の再開機能はないため、コードと条件を変えない再試行では失敗した `training` を退避し、同じ初期値から実行し直す。
-学習器を変更する再試行では、前述のとおり新しい実行ディレクトリで準備し直す。
+中断した学習は、`--resume data/<実験名>/training`を加えて同じ引数で再開できる。
+再開では、学習の結果に影響する設定と入力が記録と一致しなければ拒否され、`--epochs`、`--patience`、`--threads`だけを変えられる。
+既存の`--output-dir`は上書きしないので、条件を変えた再試行は新しいディレクトリへ書く。
 
-## 5. 重みを診断する
+## 5. PSTを診断する
 
-正常終了した重みを、次のコマンドで基準PSTと比較する。
+学習した重みを、次のコマンドで基準PSTと比較する。
 
 ```bash
-uv run --project tools/train pst-workflow diagnose --run-dir data/<実験名>
+minase-trainer diag pst-compare \
+  --data <既存データ...> data/<実験名>/generated-*.bin \
+  --lookahead-gamma 0.9 --lookahead-plies 40 \
+  --base data/<実験名>/pst-base.bin \
+  --candidate data/<実験名>/training/pst.bin \
+  --candidate-float data/<実験名>/training/pst-float.npz \
+  --output-dir data/<実験名>/diagnostics --sample-size 10000 --seed 1
 ```
 
-結果は `diagnostics/report.json` に保存され、各欄の意味はREADMEの「学習と診断の記録」にある。
-診断は、主に次の場合に停止する。
+教師の設定（`--lambda-override`と先読み）は学習と同じにする。
+結果は`diagnostics/report.json`に保存され、各欄の意味はREADMEの「学習と診断の記録」にある。
+診断は、主に次の場合に失敗する。
 
-- `probe`のコミット、作業ツリー、またはバイナリの検査和が準備時と一致しない。
 - 量子化誤差の平均絶対誤差が2センチポーンを超える。
-- 標本局面、成り手の着手後局面、または駒除去局面で、RustとPythonの評価値が一致しない。
+- 標本局面、成り手の着手後局面、または駒除去局面で、独立に計算した整数のPST評価とエンジンの評価が一致しない。
 - PST部分の駒除去差分に、厳密な符号反転が1件でもある。
-- 元局面または成り後の局面を復元できない。
 - 候補の探索用駒価値が基準と異なる。
 
-停止しなかった場合も、基準と候補の`derived_piece_values`を見て、駒損を有利と評価するなどの異常がないかを確認する。
+失敗しなかった場合も、基準と候補の`derived_piece_values`を見て、駒損を有利と評価するなどの異常がないかを確認する。
 検証損失、教師誤差、および対局結果への交差エントロピーの改善だけを、棋力が向上した根拠にはしない。
 採否は自己対局の測定で決める。
+本学習後の診断が失敗した場合は、測定へ進まずに原因の調査へ戻り、診断に合わせて係数や別のエポックを選び直すことはしない。
 
-診断は既存の `diagnostics` を上書きしない。
-失敗した場合は原因を確認し、そのディレクトリを退避してから再実行する。
-検証局面の不足など、入力の変更が必要な場合は新しい実験として準備し直す。
+## 6. FMの補正を学習する
 
-## 6. 候補を作って採否を測定する
+FMの補正は、PSTを固定してFMだけを学習する`fm train`か、PSTとFMを同時に学習する`joint train`で学習する。
+例は、現行の重みに至った手順であり、候補Fa（[補正1/4のFMの再学習](../plans/fm-quarter-current-pst.md)）を`fm train`で学び、その補正を`fm quarter`で1/4にした重みと、学習したPSTとFMの実数の重みを初期値にして、J75（[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)）を`joint train`で学んだ。
 
-診断を確認した後、基準コミットから候補ブランチを作り、`training/pst.bin` を候補の `crates/minase/nets/pst.bin` へコピーする。
-対局時の動作の変更はPSTに限定し、ほかの探索改良は混ぜない。
+```bash
+minase-trainer fm train \
+  --data <既存データ...> data/<実験名>/generated-*.bin --init data/<実験名>/training/pst.bin \
+  --output-dir data/<実験名>/fm \
+  --epochs 200 --patience 3 --lambda-override 1.0 \
+  --lookahead-gamma 0.9 --lookahead-plies 40
 
-`crates/minase/src/eval/pst/tests.rs` の `embedded_pst_matches_python_initial_position_evaluation` は、初期局面の評価を固定値で検査している。
+minase-trainer fm quarter --input data/<実験名>/fm/fm.bin --output data/<実験名>/fm-quarter.bin
+
+minase-trainer joint train \
+  --data <既存データ...> data/<実験名>/generated-*.bin --base data/<実験名>/fm-quarter.bin \
+  --pst-init data/<実験名>/training/pst-float.npz --fm-init data/<実験名>/fm/fm-float.npz \
+  --fm-reference data/<実験名>/fm/fm.bin \
+  --output-dir data/<実験名>/joint --lambda-override 0.75 \
+  --lookahead-gamma 0.9 --lookahead-plies 40
+```
+
+`fm train`の出力は、`fm.bin`（MNPT版3。PSTの部分は`--init`と同一）と`fm-float.npz`（キー`V`、`a`、`mask`）である。
+FMの成分の数は、エンジンの重みファイルの読み込み処理に合わせて32に固定されている。
+`fm quarter`は、FMの補正を1/4にした重みと、`.quarter.json`で終わる報告を書く。
+`joint train`は、学習の開始時に、`--pst-init`を量子化すると`--base`のPSTに、`--fm-init`を量子化すると`--fm-reference`のFMに一致することを検査する。
+出力は`pst.bin`（MNPT版3）と`pst-float.npz`（キー`middlegame`、`endgame`、`V`、`a`、`mask`）である。
+
+補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整する。
+得た倍率は、次のコマンドで重みファイルへ焼き込んでから段階ゲート（棋力測定）にかける。
+
+```bash
+minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実験名>/joint/pst-float.npz \
+  --fm-scale <倍率×1024> --output data/<実験名>/pst-scaled.bin --data <既存データ...> data/<実験名>/generated-*.bin
+```
+
+`--fm-scale 0`はFMを除いた版2の重みを書き、`--data`を与えると検証標本での整数化の誤差を`.scale.json`の報告に加える。
+現行の`crates/minase/nets/pst.bin`は、J75の出力に`--fm-scale 611`を適用したものである。
+
+## 7. 候補を作って採否を測定する
+
+診断を確認した後、基準コミットから候補ブランチを作り、学習した重みを候補の `crates/minase/nets/pst.bin` へコピーする。
+対局時の動作の変更は重みに限定し、ほかの探索改良は混ぜない。
+
+`crates/minase/src/eval/pst/tests.rs` の `embedded_pst_matches_python_initial_position_evaluation` は、初期局面の評価を固定値で検査しているので、重みを替えると失敗する。
 その期待値を、新しい重みでの初期局面の評価へ更新する。
-更新する値は、Python診断の `representatives` にある初期配置の候補評価と、学習ログの値の2つで独立に確かめる。
+更新する値は、診断の`report.json`の`representatives`にある初期配置の候補評価と、学習の`summary.json`の`initial_position_score`の2つで独立に確かめる。
 候補で `cargo test --locked` を実行し、重みと参照値の更新をコミットする。
 ほかのテストが失敗した場合は、期待値を一括変更せず原因を調べる。
 
 棋力測定は、[sprt.md](sprt.md#機能採否の段階ゲートstcとltc) の段階ゲートで、候補コミットを新、基準コミットを旧として行う。
 採否の条件と判定保留の扱いも同書に従い、検証損失による代替は行わない。
-学習スクリプトはコミット、採否判定、開発ブランチへの取り込みを自動実行しない。
 固定ノード対局とbenchは診断用途とし、生成や学習と同時に時間制御の対局を走らせない。
 
 ## 保存物と完了時の記録
@@ -244,26 +202,21 @@ uv run --project tools/train pst-workflow diagnose --run-dir data/<実験名>
 
 | 保存物 | 用途 |
 |---|---|
-| `config.toml`、`settings.json`、`prepared.json` | 準備時の設定、生成基準と診断器のコミット、入力とツールの検査和を保持する。 |
 | `pst-base.bin` | 学習の初期重みを保持する。 |
-| `commands.jsonl`、各 `.log` | 実行引数、作業ディレクトリ、終了コード、所要時間、出力を保持する。 |
-| `generated-*.bin`、`generated-*.bin.provenance.json`、`generated-*.json` | 生成データと検査済みの検査和を保持する。 |
-| `training/` | 学習条件、環境、尺度、重み、量子化前の重み、正常終了の記録を保持する。 |
-| `diagnostics/` | 基準との比較結果、帯ごとの診断用標本、標本と代表局面のMNSDファイルを保持する。 |
+| `generated-*.bin`、`generated-*.bin.provenance.json`、`generate-*.log`、`inspect-*.log` | 生成データ、来歴、生成と検査のログを保持する。 |
+| `training/`、`fm/`、`joint/` | 学習の条件と入力の検査和（`config.json`）、各エポックの記録、重み、量子化前の重み、チェックポイント、停止理由と検査の結果を保持する。 |
+| `diagnostics/` | 基準との比較結果、教師の分類と盤上総駒数の帯ごとの診断用標本、標本と代表局面のMNSDファイルを保持する。 |
 
 生成と学習の結果を `docs/measurements/<実験名>-training.md` にまとめ、設計書からリンクする。
+記録には、学習器のコミット、実行したコマンドライン全体、入力と重みのSHA-256を書く。
 対局測定はSTCとLTCを別の測定名で記録し、`sprt.md` の記録項目を満たす。
 採用または不採用が決まったら、設計書とROADMAPの状態を更新する。
 採用した場合は、[評価関数の設計書](../plans/evaluation.md#教師値と損失)にある採用PSTの来歴も更新する。
-次世代の教師には、採用が確定したコミットと重みを使う。
 
-実験を終了して生成用と診断用のworktreeを片付ける際は、診断と必要な記録の保存を済ませてから次を実行する。
+実験を終了して生成用のworktreeを片付ける際は、診断と必要な記録の保存を済ませてから次を実行する。
 
 ```bash
 git worktree remove data/<実験名>/generator
-git worktree remove data/<実験名>/probe
 ```
 
 実験ディレクトリを先に削除するとworktreeの登録が残るため、必ずこの順序で片付ける。
-削除を拒否された場合はworktree内の変更を確認し、必要なものを保存する。
-残るデータと学習記録は保管し、完了前の実験を同じパスへ上書きしない。

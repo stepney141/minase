@@ -1,13 +1,62 @@
 //! 固定次元のFactorization Machineの整数累算と2駒関係補正。
 
-use super::Error;
 use super::features::{FEATURE_COUNT, active_features_for};
+use super::{Error, PIECE_STATE_COUNT, Pst};
 use minase_core::{Color, Position};
 
 /// 埋め込むFMの潜在次元。MNPTの次元もこの値と一致する必要がある。
 pub const FM_RANK: usize = 32;
 /// MNPT本体のFM節のバイト数。
 pub(super) const ENCODED_LENGTH: usize = 8 + FM_RANK + FEATURE_COUNT * FM_RANK * 2;
+
+/// MNPT版3に保存するFM配列の借用。潜在次元は32に固定する。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FmWeights<'a> {
+    /// 特徴番号順の13,680行の量子化埋め込み。
+    pub embeddings: &'a [[i16; FM_RANK]],
+    /// 各潜在次元の符号。+1または−1。
+    pub signs: &'a [i8; FM_RANK],
+    /// 量子化尺度の2進指数。0以上30以下。
+    pub exponent: u32,
+}
+
+impl Pst {
+    /// 学習済みのPST、駒価値、K、規則名とFM配列を検査し、MNPT版3を作る。
+    ///
+    /// PST側は`from_weights`と同じ検査を行い、FMの行数、符号、指数は読み手の
+    /// 契約で検査する。埋め込みはi16の全範囲を受け入れ、自己項と検査和を再計算する。
+    pub fn from_weights_with_fm(
+        weights: &[[i16; 2]],
+        piece_values: [i32; PIECE_STATE_COUNT],
+        k: f32,
+        rule_set: &str,
+        fm: FmWeights<'_>,
+    ) -> Result<Self, Error> {
+        if fm.embeddings.len() != FEATURE_COUNT {
+            return Err(Error::UnexpectedFeatureCount {
+                actual: fm.embeddings.len() as u32,
+            });
+        }
+        let mut candidate = Self::from_weights(weights, piece_values, k, rule_set)?;
+        candidate.fm = Some(Fm {
+            embeddings: fm.embeddings.into(),
+            // 自己項は保存しない。復号時に検査済みの整数表から求める。
+            self_terms: Box::default(),
+            signs: *fm.signs,
+            exponent: fm.exponent,
+        });
+        Self::decode(&candidate.encode())
+    }
+
+    /// 保存されたFMの埋め込み、符号と指数を返す。MNPT版2ではNone。
+    pub fn fm_weights(&self) -> Option<FmWeights<'_>> {
+        self.fm.as_ref().map(|fm| FmWeights {
+            embeddings: &fm.embeddings,
+            signs: &fm.signs,
+            exponent: fm.exponent,
+        })
+    }
+}
 
 /// 量子化埋め込みと、その整数値から導出した自己相互作用項。
 pub(super) struct Fm {

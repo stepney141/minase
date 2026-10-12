@@ -4,7 +4,7 @@ pub(crate) mod accumulator;
 mod features;
 mod fm;
 mod format;
-pub use fm::FM_RANK;
+pub use fm::{FM_RANK, FmWeights};
 #[cfg(test)]
 mod tests;
 
@@ -50,6 +50,18 @@ pub struct Pst {
 }
 
 impl Pst {
+    /// 特徴番号順の序中盤・終盤重みを、1/8センチポーン単位で返す。
+    pub fn weights(&self) -> &[[i16; 2]; FEATURE_COUNT] {
+        &self.weights
+    }
+
+    /// MNPTに格納された規則セット名を、末尾のNUL埋めを除いて返す。
+    pub fn rule_set(&self) -> &str {
+        std::str::from_utf8(&self.rule_set)
+            .expect("validated rule set")
+            .trim_end_matches('\0')
+    }
+
     /// `docs/plans/move-ordering.md`「候補5」の同点破りに使う、手番側視点のPST差分。
     /// FMは含めず、補間後の除算前の分子を返す。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
@@ -205,6 +217,24 @@ pub fn evaluate_pst(pst: &Pst, position: &Position) -> i32 {
         pst.add_feature(&mut sums, feature, 1);
     });
     interpolate(sums, position.occupied().popcount())
+}
+
+/// 検査済みの手番側特徴と盤上総駒数から、FMを含まない整数PSTを評価する。
+/// 特徴は鏡映後の升番号でもよく、埋め草は渡さない。
+///
+/// # Panics
+///
+/// 特徴番号が13,680以上の場合にパニックする。
+pub fn evaluate_pst_features(
+    pst: &Pst,
+    features: impl IntoIterator<Item = usize>,
+    piece_count: u32,
+) -> i32 {
+    let mut sums = [0_i32; 2];
+    for feature in features {
+        pst.add_feature(&mut sums, feature, 1);
+    }
+    interpolate(sums, piece_count)
 }
 
 /// PSTとFMを64ビットで合算し、静的評価の範囲へ切り詰める。

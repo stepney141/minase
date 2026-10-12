@@ -312,7 +312,7 @@ load-dynamicならビルド時の負担は純Rustの依存の追加だけであ�
 ### 学習器はPyTorchで書く
 
 学習器はPyTorchで書き、学習したネットをONNXへ出力する。
-minaseの学習系はすでにPyTorch 2.13とCUDA 13を`tools/train/.venv`で使っており、dlshogiと技巧もPyTorchからONNXまたはTensorRTへ出力する経路を実運用している。
+作業機では、2026年10月に撤去したPythonの学習器（[Python学習器の撤去](python-trainer-retirement.md)）がPyTorch 2.13とCUDA 13で動いた実績があり、dlshogiと技巧もPyTorchからONNXまたはTensorRTへ出力する経路を実運用している。
 lczero-trainingはTensorFlowでlc0固有の形式に結びついており、JAXは参照した将棋系の実装に採用例がない。
 
 ### 共存の構造

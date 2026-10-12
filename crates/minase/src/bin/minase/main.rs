@@ -13,9 +13,7 @@ mod io_log;
 mod lishogi_import;
 mod match_report;
 mod match_runner;
-mod nnue_probe;
 mod perft;
-mod pst_probe;
 mod random_play;
 mod selfplay_gen;
 mod spsa_runner;
@@ -111,10 +109,6 @@ enum DevCommand {
     Perft(perft::Arguments),
     /// ランダム対局で不変条件を検証する。
     RandomPlay(random_play::Arguments),
-    /// 評価関数の診断結果を出力する。
-    PstProbe(pst_probe::Arguments),
-    /// MNUEの整数評価と合法手による評価変化を診断する。
-    NnueProbe(nnue_probe::Arguments),
     /// 校正用のランダム着手エンジンを起動する。
     UsiRandom,
 }
@@ -150,8 +144,6 @@ fn main() -> ExitCode {
         Some(Command::Dev(DevCommand::Bench(arguments))) => bench::main(arguments),
         Some(Command::Dev(DevCommand::Perft(arguments))) => perft::main(arguments),
         Some(Command::Dev(DevCommand::RandomPlay(arguments))) => random_play::main(arguments),
-        Some(Command::Dev(DevCommand::PstProbe(arguments))) => return pst_probe::main(arguments),
-        Some(Command::Dev(DevCommand::NnueProbe(arguments))) => return nnue_probe::main(arguments),
         Some(Command::Dev(DevCommand::UsiRandom)) => return usi_random::main().report(),
     }
     ExitCode::SUCCESS
@@ -186,22 +178,6 @@ mod tests {
             vec!["dev", "bench"],
             vec!["dev", "perft", "1", "--rules", "engine-default"],
             vec!["dev", "random-play", "--rules", "engine-default"],
-            vec![
-                "dev",
-                "pst-probe",
-                "--pst",
-                "pst.bin",
-                "--positions",
-                "positions.mnsd",
-            ],
-            vec![
-                "dev",
-                "nnue-probe",
-                "--net",
-                "nnue.bin",
-                "--positions",
-                "positions.mnsd",
-            ],
             vec!["dev", "usi-random"],
         ] {
             let parsed = Arguments::try_parse_from(std::iter::once("minase").chain(args));

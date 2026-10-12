@@ -539,16 +539,7 @@ impl Record {
 
     /// レコードから局面を復元し、不変条件と先獅子状態を検査する。
     pub fn to_position(&self) -> Result<Position, Error> {
-        let mut builder = PositionBuilder::new(self.side_to_move);
-        for square in Square::all() {
-            let value = self.board[square.dense_index()];
-            if value != 0 {
-                builder.put(square, decode_piece(square, value)?)?;
-            }
-        }
-        let mut position = builder.finish()?;
-        position.set_lion_capture(self.lion_square)?;
-        position.validate()?;
+        let position = self.position_with_side(self.side_to_move)?;
         let restored_flag = position
             .lion_taken_by_non_lion()
             .is_some_and(|trigger| trigger.by_kirin_promotion);
@@ -558,6 +549,38 @@ impl Record {
                 restored: restored_flag,
             });
         }
+        Ok(position)
+    }
+
+    /// 数値診断用の配置と、記録された手番に対応する評価視点を返す。
+    ///
+    /// 盤面と先獅子の升を保持し、記録された麒麟成りフラグとの一致は要求しない。
+    /// 先獅子の升に手番側の駒がある数値診断用の記録では、配置の内部手番を反転して
+    /// `Position`の不変条件を保つ。評価には必ず戻り値の視点を明示的に指定すること。
+    /// 駒除去で先獅子の升が空になった場合も、その升の特徴は保持する。
+    /// 対局の再開と合法手生成には`to_position`を使うこと。
+    pub fn to_position_for_evaluation(&self) -> Result<(Position, Color), Error> {
+        let mut side = self.side_to_move;
+        if let Some(square) = self.lion_square {
+            let value = self.board[square.dense_index()];
+            if value != 0 && decode_piece(square, value)?.color() == Some(side) {
+                side = side.opposite();
+            }
+        }
+        Ok((self.position_with_side(side)?, self.side_to_move))
+    }
+
+    fn position_with_side(&self, side: Color) -> Result<Position, Error> {
+        let mut builder = PositionBuilder::new(side);
+        for square in Square::all() {
+            let value = self.board[square.dense_index()];
+            if value != 0 {
+                builder.put(square, decode_piece(square, value)?)?;
+            }
+        }
+        let mut position = builder.finish()?;
+        position.set_lion_capture(self.lion_square)?;
+        position.validate()?;
         Ok(position)
     }
 }
