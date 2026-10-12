@@ -314,7 +314,7 @@ fn nested_null_move_restores_outer_repetition_scope() {
 #[test]
 fn interrupted_null_move_restores_repetition_scope() {
     let root = null_repetition_fixture();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     for nested in [false, true] {
         let external_stop = AtomicBool::new(false);
         let shared = SharedSearch {
@@ -331,7 +331,7 @@ fn interrupted_null_move_restores_repetition_scope() {
             Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
         let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
         let mut searcher = new_searcher(
-            &pst,
+            &nnue,
             &root,
             engine_rules(),
             &[],
@@ -348,7 +348,7 @@ fn interrupted_null_move_restores_repetition_scope() {
         let boundary = searcher.null_move_boundary;
         let mut current = root.clone();
         // 静的評価付近の窓で枝刈りを避け、実着手を1手積んだ後にノード上限で中断する。
-        let beta = evaluate(&pst, &root);
+        let beta = evaluate(&nnue, &root);
         assert_eq!(
             searcher.search_null_move(&mut current, 2, beta, if nested { 2 } else { 0 }),
             None
@@ -367,6 +367,8 @@ fn interrupted_null_move_restores_repetition_scope() {
 fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
     let (board, capture, killers) = super::ordering::losing_capture_fixture();
     let killer = killers[0].unwrap();
+    let mut killer_child = board.clone();
+    killer_child.make_move_unchecked(killer, engine_rules());
     // 深さは要求値。4はIIR後に3となり対象、5は4となり対象外である。
     for (depth, width, tt_move, expected) in [
         (1, 1, None, killer),
@@ -379,10 +381,19 @@ fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
     ] {
         with_root_searcher(&board, &[], |searcher| {
             searcher.killers[0] = killers;
-            // 静的評価付近の窓で枝刈りを避け、実着手による打ち切りだけを検査する。
+            // null moveを無効にし、実着手による打ち切りだけを検査する。
             searcher.null_move_ply = Some(0);
-            let alpha = evaluate(searcher.pst, &board);
+            let static_eval = evaluate(searcher.nnue, &board);
+            // 親ではrazoring、深さ1のkillerの子ではstand-patによる打ち切りを避ける。
+            // 子の評価を親の手番へ戻し、子の静止探索が置換表を読む窓にする。
+            let alpha = static_eval.min(-evaluate(searcher.nnue, &killer_child)) - 1;
             let beta = alpha + width;
+            assert!(
+                static_eval
+                    - super::super::pruning::reverse_futility_margin(searcher.nnue.pawn_value())
+                    < beta,
+                "親のreverse futilityが働かない窓で検査する"
+            );
             if let Some(mv) = tt_move {
                 searcher
                     .tt

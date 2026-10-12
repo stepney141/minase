@@ -7,7 +7,7 @@ use crate::search::alphabeta::capture_history::CaptureHistory;
 #[test]
 fn staged_picker_breaks_quiet_history_ties_by_pst_delta() {
     let position = Position::initial();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let generator = MoveGenerator::new(engine_rules());
     let capture_history = CaptureHistory::new();
     let mut history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
@@ -21,7 +21,7 @@ fn staged_picker_breaks_quiet_history_ties_by_pst_delta() {
     });
     let pick_quiets = |history: &HistoryTable| {
         let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
-        std::iter::from_fn(|| picker.next(&position, &pst, &generator, history, &capture_history))
+        std::iter::from_fn(|| picker.next(&position, &nnue, &generator, history, &capture_history))
             .filter_map(|(mv, capture)| (!capture).then_some(mv))
             .collect::<Vec<_>>()
     };
@@ -29,8 +29,8 @@ fn staged_picker_breaks_quiet_history_ties_by_pst_delta() {
         let mut saw_tie = false;
         let mut saw_decrease = false;
         for pair in moves.windows(2) {
-            let first = pst.quiet_move_pst_delta(&position, pair[0]);
-            let second = pst.quiet_move_pst_delta(&position, pair[1]);
+            let first = nnue.quiet_move_pst_delta(&position, pair[0]);
+            let second = nnue.quiet_move_pst_delta(&position, pair[1]);
             assert!(first >= second);
             if first == second {
                 saw_tie = true;
@@ -84,7 +84,7 @@ fn staged_picker_breaks_quiet_history_ties_by_pst_delta() {
 #[test]
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let position = staged_picker_fixture();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let capture_history = CaptureHistory::new();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
@@ -107,7 +107,7 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
         assert!(generator.is_legal_move(&position, tt_move, &mut Vec::new(), &mut Vec::new()));
         let mut picker = MovePicker::new(Some(tt_move), [Some(quiet), Some(other_quiet)]);
         let picked = picker
-            .next(&position, &pst, &generator, &history, &capture_history)
+            .next(&position, &nnue, &generator, &history, &capture_history)
             .unwrap();
         assert_eq!(picked, (tt_move, expected_capture));
     }
@@ -146,7 +146,7 @@ impl ReferenceMovePicker {
     fn next(
         &mut self,
         position: &Position,
-        pst: &Pst,
+        nnue: &Nnue,
         generator: &MoveGenerator,
         history: &HistoryTable,
     ) -> Option<(Move, bool)> {
@@ -164,7 +164,7 @@ impl ReferenceMovePicker {
                             moves.contains(&tt_move)
                         }
                     {
-                        return Some((tt_move, move_order_key(position, pst, tt_move).is_some()));
+                        return Some((tt_move, move_order_key(position, nnue, tt_move).is_some()));
                     }
                 }
                 MovePickerStage::Captures => {
@@ -176,7 +176,7 @@ impl ReferenceMovePicker {
                                 .into_iter()
                                 .filter(|&mv| Some(mv) != self.tt_move)
                                 .map(|mv| {
-                                    let key = move_order_key(position, pst, mv)
+                                    let key = move_order_key(position, nnue, mv)
                                         .expect("capture generator must not return a quiet move");
                                     (mv, key)
                                 }),
@@ -221,7 +221,7 @@ impl ReferenceMovePicker {
                     self.quiets.sort_by_cached_key(|&mv| {
                         (
                             Reverse(history[color][mv.from.dense_index()][mv.to.dense_index()]),
-                            Reverse(pst.quiet_move_pst_delta(position, mv)),
+                            Reverse(nnue.quiet_move_pst_delta(position, mv)),
                         )
                     });
                     self.stage = MovePickerStage::Done;
@@ -241,7 +241,7 @@ impl ReferenceMovePicker {
 /// 「段階6」（movegen-speedup-2.md）の全出力列を同点・重複・履歴更新込みで照合する。
 #[test]
 fn staged_picker_matches_reference_sequence_with_changing_history() {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let capture_history = CaptureHistory::new();
     let mut picker = MovePicker::new(None, [None; KILLER_COUNT]);
     for rules in minase_core::test_util::capture_test_rules() {
@@ -257,7 +257,7 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
             let quiets: Vec<_> = all
                 .iter()
                 .copied()
-                .filter(|&mv| move_order_key(&position, &pst, mv).is_none())
+                .filter(|&mv| move_order_key(&position, &nnue, mv).is_none())
                 .collect();
             let first = quiets.first().copied();
             let last = quiets.last().copied();
@@ -279,9 +279,9 @@ fn staged_picker_matches_reference_sequence_with_changing_history() {
                 picker.reset(tt, killers, false);
                 let mut ordinal = 0;
                 loop {
-                    let expected = reference.next(&position, &pst, &generator, &history);
+                    let expected = reference.next(&position, &nnue, &generator, &history);
                     let actual =
-                        picker.next(&position, &pst, &generator, &history, &capture_history);
+                        picker.next(&position, &nnue, &generator, &history, &capture_history);
                     assert_eq!(actual, expected, "ordinal={ordinal}, rules={rules:?}");
                     let Some((mv, _)) = expected else {
                         break;
@@ -333,19 +333,19 @@ fn reference_sequence(
     tt_move: Option<Move>,
     killers: [Option<Move>; KILLER_COUNT],
 ) -> Vec<(Move, bool)> {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut reference = ReferenceMovePicker::new(tt_move, killers);
-    std::iter::from_fn(|| reference.next(board, &pst, &generator, &history)).collect()
+    std::iter::from_fn(|| reference.next(board, &nnue, &generator, &history)).collect()
 }
 
 fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool)> {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let generator = MoveGenerator::new(engine_rules());
     let history = Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let capture_history = CaptureHistory::new();
-    std::iter::from_fn(|| picker.next(board, &pst, &generator, &history, &capture_history))
+    std::iter::from_fn(|| picker.next(board, &nnue, &generator, &history, &capture_history))
         .collect()
 }
 
@@ -404,7 +404,7 @@ fn early_killers_preserve_capture_order_and_return_every_legal_move_once() {
 /// 非負の先頭捕獲と捕獲手のないノードでは、前置を要求しても順序を変えない。
 #[test]
 fn early_killers_leave_non_losing_or_absent_captures_in_reference_order() {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     for board in [
         staged_picker_fixture(),
         position(
@@ -417,12 +417,12 @@ fn early_killers_leave_non_losing_or_absent_captures_in_reference_order() {
     ] {
         let quiets: Vec<_> = legal_moves(&board)
             .into_iter()
-            .filter(|&mv| move_order_key(&board, &pst, mv).is_none())
+            .filter(|&mv| move_order_key(&board, &nnue, mv).is_none())
             .collect();
         let killers = [quiets.first().copied(), quiets.last().copied()];
         let expected = reference_sequence(&board, None, killers);
         if expected[0].1 {
-            assert!(!see_prunes(&board, engine_rules(), &pst, expected[0].0, 0));
+            assert!(!see_prunes(&board, engine_rules(), &nnue, expected[0].0, 0));
         }
         let mut picker = MovePicker::new(None, killers);
         picker.reset(None, killers, true);

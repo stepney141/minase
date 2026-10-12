@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
-use crate::eval::pst;
+use crate::eval::nnue;
 use crate::search::{
     self, ClockLimits, SearchEvent, SearchHandle, SearchLimits, SearchSnapshot, StopReason,
     TranspositionTable,
@@ -260,8 +260,8 @@ impl UsiProtocol {
         };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
-        let pst = match crate::eval::weights() {
-            Ok(pst) => pst,
+        let nnue = match crate::eval::weights() {
+            Ok(nnue) => nnue,
             Err(error) => {
                 write_error(output, &error.to_string())?;
                 return Ok(None);
@@ -279,7 +279,7 @@ impl UsiProtocol {
         };
         let infinite = config.is_infinite();
         let handle = search::start_search(
-            pst,
+            nnue,
             snapshot,
             config,
             search_id,
@@ -1744,27 +1744,18 @@ fn diagnostic_position(engine: &Engine) -> Result<Vec<String>, String> {
 /// 手番側の全計算評価と各特徴の寄与をセンチポーン単位で表示する。
 fn diagnostic_evaluation(position: &Position) -> Result<Vec<String>, String> {
     position.validate().map_err(|error| error.to_string())?;
-    let weights = pst::weights().map_err(|error| error.to_string())?;
-    let detail = pst::breakdown(&weights, position);
+    let weights = nnue::weights().map_err(|error| error.to_string())?;
+    let detail = nnue::breakdown(&weights, position);
     let mut lines = vec![
         format!("evaluation {}", detail.score),
         format!("q {}", detail.q),
     ];
     lines.extend(diagnostic_grid(7, |square| {
-        format!(
-            "{:.1}",
-            detail.board[square.dense_index()] as f64 / pst::INTERPOLATION_DIVISOR as f64
-        )
+        format!("{:.1}", detail.board[square.dense_index()] as f64 / 720.0)
     }));
-    lines.push(format!(
-        "lion {:.1}",
-        detail.lion as f64 / pst::INTERPOLATION_DIVISOR as f64
-    ));
-    if let Some(correction) = detail.fm {
-        lines.push(format!("fm {correction}"));
-        lines.push("note FM correction is added to the clamped PST evaluation; the result is clamped to +/-28999 cp".to_owned());
-    }
-    lines.push("note contributions are rounded to 0.1 cp; evaluation divides the total numerator by 720 once (integer truncation) and clamps to +/-28999 cp".to_owned());
+    lines.push(format!("lion {:.1}", detail.lion as f64 / 720.0));
+    lines.push(format!("nonlinear {}", detail.nonlinear));
+    lines.push("note linear contributions are rounded to 0.1 cp; linear evaluation uses integer truncation by 720; the sum with nonlinear output is clamped to +/-28999 cp".to_owned());
     Ok(lines)
 }
 
@@ -3667,7 +3658,7 @@ mod tests {
     /// debugging-tools.md「eval」: 表示評価は全計算と一致し、盤面の各行と注記を表示する。
     #[test]
     fn diagnostic_evaluation_matches_full_evaluation_and_formats_rows() {
-        let weights = pst::weights().unwrap();
+        let weights = nnue::weights().unwrap();
         let mut engine = Engine::new(parse_rule_set("L0,P0,R1,E2").unwrap()).unwrap();
         let mut protocol = UsiProtocol::new(&engine);
         let output = run(
@@ -3675,7 +3666,7 @@ mod tests {
             &mut engine,
             &format!("position sfen {INITIAL_BOARD} - 1\neval\n"),
         );
-        let score = pst::evaluate(&weights, engine.game().position());
+        let score = nnue::evaluate(&weights, engine.game().position());
         assert!(
             output.contains(&format!("info string evaluation {score}\n")),
             "{output}"

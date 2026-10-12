@@ -114,11 +114,11 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
             hit_ns: &AtomicU64::new(0),
         }),
     };
-    let pst = crate::eval::weights().unwrap();
+    let nnue = crate::eval::weights().unwrap();
     let tt = small_tt();
 
     let outcome = run_main_worker(
-        &pst,
+        &nnue,
         &position,
         engine_rules(),
         &root_moves,
@@ -340,7 +340,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
         ],
     );
     let root_moves = legal_moves(&position);
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 10_030))).unwrap();
     let budget = time_budget(&limits).unwrap();
     for ponder in [false, true] {
@@ -359,7 +359,7 @@ fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search(
             }),
         };
         let outcome = run_main_worker(
-            &pst,
+            &nnue,
             &position,
             engine_rules(),
             &root_moves,

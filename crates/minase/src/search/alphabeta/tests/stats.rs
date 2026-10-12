@@ -191,7 +191,7 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
 #[test]
 fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
     let position = quiet_position();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let mut scored: Vec<_> = legal_moves(&position)
         .into_iter()
         .map(|mv| {
@@ -202,7 +202,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
                     .iter()
                     .all(|&reply| child.captured_squares(reply).iter().all(Option::is_none))
             );
-            (mv, -evaluate(&pst, &child))
+            (mv, -evaluate(&nnue, &child))
         })
         .collect();
     scored.sort_by_key(|&(_, score)| score);

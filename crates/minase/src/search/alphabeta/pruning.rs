@@ -2,7 +2,7 @@
 
 use std::sync::OnceLock;
 
-use crate::eval::Pst;
+use crate::eval::Nnue;
 use crate::search::MAX_PLY;
 use minase_core::mv::Move;
 use minase_core::position::Position;
@@ -125,8 +125,8 @@ pub(super) fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
 pub(super) fn capture_is_pruned_by_see(
     position: &Position,
     rules: MoveRules,
-    pst: &Pst,
+    nnue: &Nnue,
     mv: Move,
 ) -> bool {
-    see_prunes(position, rules, pst, mv, 0)
+    see_prunes(position, rules, nnue, mv, 0)
 }

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
-use minase::eval::Pst;
+use minase::eval::pst::Pst;
 use minase::eval::pst::evaluate_for_diagnostics;
 use minase::training::records::{Outcome, Reader, Record};
 use minase_core::notation::usi;

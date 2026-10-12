@@ -20,7 +20,7 @@ from pathlib import Path
 
 from minase_train.checksum import sha256_file
 from minase_train.data.lookahead import validate_lookahead
-from minase_train.data.mnpt import PIECE_VALUE_BYTES, RULE_SET
+from minase_train.data.mnpt import RULE_SET
 from minase_train.data.mnsd import Dataset, provenance_path, read_header, validate_lambda_override
 
 
@@ -227,7 +227,7 @@ def prepare(config_path: Path) -> None:
         generator = run / "generator"
         run_command(run, "worktree", ["git", "worktree", "add", "--detach", str(generator), base], ROOT)
         shutil.copyfile(generator / "crates/minase/nets/pst.bin", run / "pst-base.bin")
-        read_mnpt(run / "pst-base.bin")
+        _, _, piece_values, _ = read_mnpt(run / "pst-base.bin")
         run_command(run, "build", ["cargo", "build", "--release", "--locked", "--target-dir",
                     str(generator / "target"), "--bin", "minase"], generator)
         probe = run / "probe"
@@ -240,7 +240,7 @@ def prepare(config_path: Path) -> None:
             "rescores": rescores, "sources": source_hashes(),
             "base_sha256": sha256_file(run / "pst-base.bin").hex(),
             "base_piece_values_sha256": hashlib.sha256(
-                (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]).hexdigest(),
+                piece_values.astype("<i4").tobytes()).hexdigest(),
             "generator_sha256": sha256_file(generator / "target/release/minase").hex(),
             "probe_commit": probe_commit,
             "probe_sha256": sha256_file(probe / "target/release/minase").hex(),
@@ -427,9 +427,12 @@ def train(run: Path) -> None:
         command += ["--lookahead-gamma", str(config["lookahead"]["gamma"]),
                     "--lookahead-plies", str(config["lookahead"]["plies"])]
     run_command(run, "train", command, ROOT)
-    read_mnpt(destination / "pst.bin")
-    if (destination / "pst.bin").read_bytes()[-PIECE_VALUE_BYTES:] != (run / "pst-base.bin").read_bytes()[-PIECE_VALUE_BYTES:]:
-        raise ValueError("trained weights changed the fixed piece values")
+    _, _, piece_values, output_k = read_mnpt(destination / "pst.bin")
+    _, _, base_piece_values, base_k = read_mnpt(run / "pst-base.bin")
+    if not (piece_values == base_piece_values).all():
+        raise ValueError(f"{destination / 'pst.bin'}: trained weights changed the fixed piece values")
+    if output_k != base_k:
+        raise ValueError(f"{destination / 'pst.bin'}: trained weights changed the fixed K")
     write_json(destination / "complete.json", {
         "sha256": sha256_file(destination / "pst.bin").hex(),
         "float_sha256": sha256_file(float_weights_path(destination / "pst.bin")).hex(),

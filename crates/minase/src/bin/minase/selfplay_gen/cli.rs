@@ -39,9 +39,9 @@ pub(super) struct RescoreArguments {
     /// 新規作成または再開するMNRS。
     #[arg(long)]
     pub(super) output: PathBuf,
-    /// 教師のMNPT。省略時は埋め込み重み。
+    /// 教師のMNUE。省略時は埋め込み重み。
     #[arg(long)]
-    pub(super) pst: Option<PathBuf>,
+    pub(super) nnue: Option<PathBuf>,
     /// 各局面のノード上限。
     #[arg(long, value_parser = parse_positive_u32)]
     pub(super) nodes: u32,

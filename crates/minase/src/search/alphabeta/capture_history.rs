@@ -2,7 +2,7 @@
 //! 更新と添字はstrength-stage12.md「項目3」に従い、上限65,536をi32で保持する。
 //! 静かな手のβカット時の減点はdocs/plans/move-ordering.md「候補1」に従う。
 
-use crate::eval::Pst;
+use crate::eval::Nnue;
 use minase_core::board::BOARD_SQUARE_COUNT;
 use minase_core::mv::Move;
 use minase_core::piece::{COLOR_COUNT, PIECE_KIND_COUNT};
@@ -43,14 +43,14 @@ impl CaptureHistory {
     }
 
     /// 捕獲手の履歴値を返す。
-    pub(super) fn read(&self, position: &Position, pst: &Pst, mv: Move) -> i32 {
-        self.values[index(position, pst, mv)]
+    pub(super) fn read(&self, position: &Position, nnue: &Nnue, mv: Move) -> i32 {
+        self.values[index(position, nnue, mv)]
     }
 
     /// 履歴値を歩兵価値で換算する。整数除算は0方向へ丸める。
-    pub(super) fn adjustment(&self, position: &Position, pst: &Pst, mv: Move) -> i32 {
-        let scale = i64::from(pst.pawn_value()) * i64::from(params::capture_history_scale()) / 100;
-        (i64::from(self.read(position, pst, mv)) * scale
+    pub(super) fn adjustment(&self, position: &Position, nnue: &Nnue, mv: Move) -> i32 {
+        let scale = i64::from(nnue.pawn_value()) * i64::from(params::capture_history_scale()) / 100;
+        (i64::from(self.read(position, nnue, mv)) * scale
             / i64::from(params::capture_history_limit())) as i32
     }
 
@@ -58,7 +58,7 @@ impl CaptureHistory {
     pub(super) fn record_cutoff(
         &mut self,
         position: &Position,
-        pst: &Pst,
+        nnue: &Nnue,
         mv: Move,
         earlier: &[Move],
         depth: u32,
@@ -68,7 +68,7 @@ impl CaptureHistory {
         for (mv, bonus) in
             core::iter::once((mv, bonus)).chain(earlier.iter().map(|&mv| (mv, -bonus)))
         {
-            update(&mut self.values[index(position, pst, mv)], bonus, limit);
+            update(&mut self.values[index(position, nnue, mv)], bonus, limit);
         }
     }
 
@@ -76,19 +76,19 @@ impl CaptureHistory {
     pub(super) fn record_quiet_cutoff(
         &mut self,
         position: &Position,
-        pst: &Pst,
+        nnue: &Nnue,
         earlier: &[Move],
         depth: u32,
     ) {
         let limit = params::capture_history_limit();
         let bonus = (depth * depth).min(limit as u32) as i32;
         for &mv in earlier {
-            update(&mut self.values[index(position, pst, mv)], -bonus, limit);
+            update(&mut self.values[index(position, nnue, mv)], -bonus, limit);
         }
     }
 }
 
-fn index(position: &Position, pst: &Pst, mv: Move) -> usize {
+fn index(position: &Position, nnue: &Nnue, mv: Move) -> usize {
     let mover = piece_at_for_ordering(position, mv.from);
     let victim = position
         .captured_squares(mv)
@@ -96,7 +96,7 @@ fn index(position: &Position, pst: &Pst, mv: Move) -> usize {
         .flatten()
         .map(|square| piece_at_for_ordering(position, square))
         // 同値なら後の捕獲升を選ぶ。2枚取りでは経由升より到達升を優先する。
-        .max_by_key(|&piece| pst.piece_value(piece))
+        .max_by_key(|&piece| nnue.piece_value(piece))
         .expect("capture history requires a capture");
     let code = mover.color().expect("mover color").index() * PIECE_KIND_COUNT
         + mover.kind().expect("mover kind").index();

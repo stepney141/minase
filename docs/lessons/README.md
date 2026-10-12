@@ -57,3 +57,6 @@
 - [リリース設定は使い捨てのクローンで本番を実行して確かめる](rehearse-release-config-in-a-clone.md) — release.tomlを変更したら、リモートを外したクローンで`cargo release --execute`を走らせ、件名、タグ、変更履歴を確かめてから採用する。
 - [明示的SIMDの前に自動ベクトル化の機械語を確かめる](check-autovectorization-before-explicit-simd.md) — SIMDライブラリの導入を検討する前に、対象の核を`#[inline(never)]`にした診断用ビルドの機械語で命令名ごとの出現数を数え、候補のライブラリで同じ核を書いた検証用のcrateの出現数と比べ、命令数が減るかコンパイラが出さない命令を使う核に限って試作する。
 - [通信の余裕は遅れの分布の裾から決める](derive-network-margin-from-latency-tail.md) — 通信を挟む時計の余裕は運用ログで測った遅れの分布の裾から決め、1局で上限まで考える手数を掛けた時間切れの確率で分位点を選ぶ。
+- [GPUカーネルの内側のループで倍精度を使わない](no-f64-in-gpu-kernel-inner-loops.md) — GeForceでは倍精度が単精度の1/64なので、局面数×発火数×幅で回る積和は単精度で書き、倍精度は局面方向で相殺する和に限り、ステップごとの定数はホストで計算して渡す。
+- [縮約の順序はGPU側で固定の木として定義する](define-reduction-order-on-the-gpu.md) — GPUとCPU参照を同じ加算順で一致させるときは、GPUで速い固定の木を順序の定義にしてCPU参照がそれを真似る。CPUの順をGPUが真似ると直列化して遅くなる。
+- [再開の設定ハッシュに予算を含めない](resume-hash-excludes-budgets.md) — 再開の照合は軌跡を変える設定だけで行い、エポック数、patience、時間の上限、ワーカー数は含めない。

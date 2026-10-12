@@ -157,7 +157,7 @@ impl Searcher<'_> {
         prev: Option<i32>,
     ) -> Option<(Move, i32)> {
         let mut window =
-            AspirationWindow::initial(depth, prev, aspiration_delta(self.pst.pawn_value()));
+            AspirationWindow::initial(depth, prev, aspiration_delta(self.nnue.pawn_value()));
         loop {
             let Some((best_move, score)) =
                 self.search_root(position, root_moves, depth, window.alpha, window.beta)

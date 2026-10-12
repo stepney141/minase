@@ -86,7 +86,7 @@ pub struct RescoreHeader {
     pub targets_sha256: [u8; 32],
     /// 対象の記録数。
     pub target_count: u64,
-    /// MNPTの重み本体の検査和。
+    /// MNUEの重み本体の検査和。
     pub network_checksum: [u8; 32],
     /// 探索のノード上限。
     pub nodes: u32,

@@ -49,7 +49,7 @@ from minase_train.pst.model import (
     make_model,
     model_logits,
 )
-from minase_train.pst.removal import REMOVAL_MARGIN_CP, make_removal_reference, removal_loss
+from minase_train.pst.removal import REMOVAL_MARGIN_CP, make_removal_reference, pst_removal_deltas, removal_loss
 from minase_train.pst.teacher import (
     _selected_indices,
     build_targets,
@@ -243,7 +243,8 @@ def train_epoch(
         if removal_penalty > 0.0:
             device_counts = torch.as_tensor(piece_counts(records["board"]), device=device)
             penalty = removal_loss(
-                model(device_features), device_features, removal_reference, device_counts, k
+                pst_removal_deltas(model(device_features), device_counts),
+                device_features, removal_reference, device_counts, k
             )
             loss = bce + removal_penalty * penalty
         else:

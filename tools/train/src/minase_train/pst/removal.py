@@ -40,36 +40,45 @@ def make_removal_reference(
     return reference
 
 
+def _numerators(weights: Tensor, counts: Tensor) -> tuple[Tensor, Tensor]:
+    """除去前後の駒数で補間した分子を返す。"""
+    q = (counts - 2).clamp(0, PHASE_DIVISOR)
+    after_q = (counts - 3).clamp(0, PHASE_DIVISOR)
+    sums = weights.sum(dim=1)
+    before = q * sums[:, 0] + (PHASE_DIVISOR - q) * sums[:, 1]
+    remaining = sums[:, None, :] - weights[:, :144, :]
+    after = (after_q[:, None] * remaining[:, :, 0]
+             + (PHASE_DIVISOR - after_q[:, None]) * remaining[:, :, 1])
+    return before, after
+
+
+def pst_removal_deltas(feature_weights: Tensor, counts: Tensor) -> Tensor:
+    """2端点PSTから、補間率の変化を含む144升の除去差分を倍精度で返す。"""
+    if feature_weights.ndim != 3 or feature_weights.shape[1:] != (145, 2):
+        raise ValueError("removal weights must have shape (B, 145, 2)")
+    before, after = _numerators(feature_weights.to(torch.float64), counts)
+    return (after - before[:, None]) / PHASE_DIVISOR
+
+
 def removal_loss(
-    feature_weights: Tensor, features: Tensor, reference: Tensor, counts: Tensor, k: float
+    candidate_deltas: Tensor, features: Tensor, reference: Tensor, counts: Tensor, k: float
 ) -> Tensor:
     """元局面等重み・対象除去等重みで、基準符号と悪化上限の片側絶対値損失を返す。"""
     if not math.isfinite(k) or k <= 0.0:
         raise ValueError("K must be finite and positive")
     if features.ndim != 2 or features.shape[1] != 145 or features.shape[0] == 0:
         raise ValueError("removal features must have shape (B, 145) with B > 0")
-    if feature_weights.shape != (*features.shape, 2):
-        raise ValueError("removal weights must have shape (B, 145, 2)")
+    if candidate_deltas.shape != (features.shape[0], 144):
+        raise ValueError("removal deltas must have shape (B, 144)")
     if reference.shape != (FEATURE_COUNT + 1, 2) or reference.dtype != torch.int64:
         raise ValueError("removal reference must be an i64 table of shape (13681, 2)")
     if counts.shape != (features.shape[0],) or counts.dtype != torch.int64:
         raise ValueError("removal counts must be an i64 vector with one value per position")
-    if not bool(torch.isfinite(feature_weights).all()):
-        raise ValueError("removal weights contain a non-finite value")
-
-    q = (counts - 2).clamp(0, PHASE_DIVISOR)
-    after_q = (counts - 3).clamp(0, PHASE_DIVISOR)
-
-    def numerators(weights: Tensor) -> tuple[Tensor, Tensor]:
-        sums = weights.sum(dim=1)
-        before = q * sums[:, 0] + (PHASE_DIVISOR - q) * sums[:, 1]
-        remaining = sums[:, None, :] - weights[:, :144, :]
-        after = (after_q[:, None] * remaining[:, :, 0]
-                 + (PHASE_DIVISOR - after_q[:, None]) * remaining[:, :, 1])
-        return before, after
+    if not bool(torch.isfinite(candidate_deltas).all()):
+        raise ValueError("removal deltas contain a non-finite value")
 
     # 先獅子と王駒も端点和に残す。基準はi16整数、候補は倍精度で差分を求める。
-    base_before, base_after = numerators(reference[features.long()])
+    base_before, base_after = _numerators(reference[features.long()], counts)
     divisor = PHASE_DIVISOR * 8
     integer_before = (base_before.sign() * (base_before.abs() // divisor)).clamp(
         -EVALUATION_LIMIT, EVALUATION_LIMIT
@@ -79,8 +88,7 @@ def removal_loss(
     )
     base_sign = (integer_after - integer_before[:, None]).sign()
     base_delta = (base_after - base_before[:, None]).to(torch.float64) / divisor
-    before, after = numerators(feature_weights.to(torch.float64))
-    signed_delta = base_sign * ((after - before[:, None]) / PHASE_DIVISOR)
+    signed_delta = base_sign * candidate_deltas
 
     board_features = features[:, :144]
     states = (board_features // 144) % PIECE_STATE_COUNT

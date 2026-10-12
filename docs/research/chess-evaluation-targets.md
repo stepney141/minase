@@ -69,7 +69,7 @@ Stockfishの混合比は固定の75:25ではなく、採用ネットごとに設
 | 採用時点 | 公開された設定 | 読み取れる範囲 |
 |---|---|---|
 | 2021年6月3日 | `--lambda=1.0` | 当該学習は評価値だけを教師にする。[採用記録](https://github.com/official-stockfish/Stockfish/commit/d53071eff4e75bc77dc86f65c52358d8014cb71c) |
-| 2022年7月1日 | `--start-lambda=1.0 --end-lambda=0.75` | 学習開始時と終了時の比率を指定する。[採用記録](https://github.com/official-stockfish/Stockfish/commit/85f8ee6199f8578fbc082fc0f37e1985813e637a) |
+| 2022年7月4日 | `--start-lambda=1.0 --end-lambda=0.75` | 学習開始時と終了側の比率を指定する。作成日は7月1日で、取り込まれた日は7月4日である。[採用記録](https://github.com/official-stockfish/Stockfish/commit/85f8ee6199f8578fbc082fc0f37e1985813e637a) |
 | 2023年6月7日 | 最終の再学習で `--start-lambda 1.0 --end-lambda 0.7` | 終了時の設定を結果30%とする。ただし、採用されたのは800エポック予定の619エポック目である。[採用記録](https://github.com/official-stockfish/Stockfish/commit/932f5a2d657c846c282adcf2051faef7ca17ae15) |
 | 2026年9月13日 | `start-lambda: 1.0`、`end-lambda: 1.0`、`lambda-cycle-delta: -0.3` | 余弦曲線による変化と小さな乱数変動を加える。[採用された設定](https://github.com/vondele/nettest/blob/75f28ef20995d22507e5094e0ac1721eea5ad285/threats.yaml#L93-L104) |
 

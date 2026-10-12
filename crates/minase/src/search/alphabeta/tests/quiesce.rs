@@ -273,7 +273,7 @@ fn quiescence_max_ply_leaf_does_not_probe_or_store() {
 // 全捕獲が消える場合は、既存の置換表の値にかかわらず静的評価を返す。
 #[test]
 fn quiescence_empty_candidates_do_not_probe_or_store() {
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let capture_position = position(
         Color::Black,
         &[
@@ -283,18 +283,18 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
             (fs(3, 4), Color::White, PieceKind::Pawn),
         ],
     );
-    let stand_pat = evaluate(&pst, &capture_position);
+    let stand_pat = evaluate(&nnue, &capture_position);
     for (position, alpha) in [
         (Position::initial(), -INFINITY),
         (
             capture_position,
             stand_pat
-                + pst.pawn_value()
-                + pst.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100,
+                + nnue.pawn_value()
+                + nnue.pawn_value() * crate::search::alphabeta::params::delta_margin() / 100,
         ),
     ] {
         let key = search_key(&position);
-        let stand_pat = evaluate(&pst, &position);
+        let stand_pat = evaluate(&nnue, &position);
         let table = small_tt();
         let (score, nodes) = run_quiesce(&position, alpha, INFINITY, 0, &table);
         assert_eq!((score, nodes), (stand_pat, 0));
@@ -321,18 +321,18 @@ fn quiescence_see_pruned_candidates_still_store() {
             (fs(3, 1), Color::White, PieceKind::Rook),
         ],
     );
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let mut captures = Vec::new();
     MoveGenerator::standard().generate_captures(&position, &mut captures);
     assert!(!captures.is_empty());
     assert!(captures.iter().all(|&mv| capture_is_pruned_by_see(
         &position,
         engine_rules(),
-        &pst,
+        &nnue,
         mv
     )));
     let table = small_tt();
-    let stand_pat = evaluate(&pst, &position);
+    let stand_pat = evaluate(&nnue, &position);
     let (score, nodes) = run_quiesce(&position, -INFINITY, INFINITY, 0, &table);
     assert_eq!((score, nodes), (stand_pat, 0));
     let hit = table.probe(search_key(&position), 0).unwrap();
@@ -374,17 +374,17 @@ fn history_ordering_position() -> (Position, [Move; 6]) {
 
 fn captures_with_history(
     board: &Position,
-    pst: &Pst,
+    nnue: &Nnue,
     history: &CaptureHistory,
     tt_move: Option<Move>,
 ) -> Vec<Move> {
     let generator = MoveGenerator::standard();
-    let ranks = CaptureRanks::new(pst);
+    let ranks = CaptureRanks::new(nnue);
     let mut buffers = QsearchBuffers::default();
     buffers.reset(board);
-    assert!(buffers.initialize(board, &generator, pst, &ranks, -1));
+    assert!(buffers.initialize(board, &generator, nnue, &ranks, -1));
     buffers.set_tt_move(board, &generator, tt_move);
-    std::iter::from_fn(|| buffers.next(board, &generator, pst, &ranks, history))
+    std::iter::from_fn(|| buffers.next(board, &generator, nnue, &ranks, history))
         .map(|candidate| candidate.capture.mv)
         .collect()
 }
@@ -393,20 +393,20 @@ fn captures_with_history(
 #[test]
 fn quiescence_capture_history_orders_within_group_using_raw_values() {
     let (board, moves) = history_ordering_position();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let mut history = CaptureHistory::new();
     assert_eq!(
-        captures_with_history(&board, &pst, &history, None),
+        captures_with_history(&board, &nnue, &history, None),
         [moves[5], moves[0], moves[1], moves[2], moves[3], moves[4]]
     );
-    history.record_cutoff(&board, &pst, moves[4], &[moves[0]], 1);
-    assert_eq!(history.read(&board, &pst, moves[4]), 1);
-    assert_eq!(history.read(&board, &pst, moves[0]), -1);
+    history.record_cutoff(&board, &nnue, moves[4], &[moves[0]], 1);
+    assert_eq!(history.read(&board, &nnue, moves[4]), 1);
+    assert_eq!(history.read(&board, &nnue, moves[0]), -1);
     // 歩兵価値への換算では両方0になる小さな値でも順序が変わる。
-    assert_eq!(history.adjustment(&board, &pst, moves[4]), 0);
-    assert_eq!(history.adjustment(&board, &pst, moves[0]), 0);
+    assert_eq!(history.adjustment(&board, &nnue, moves[4]), 0);
+    assert_eq!(history.adjustment(&board, &nnue, moves[0]), 0);
     assert_eq!(
-        captures_with_history(&board, &pst, &history, None),
+        captures_with_history(&board, &nnue, &history, None),
         [moves[5], moves[4], moves[1], moves[2], moves[3], moves[0]]
     );
 }
@@ -415,13 +415,13 @@ fn quiescence_capture_history_orders_within_group_using_raw_values() {
 #[test]
 fn quiescence_capture_history_preserves_group_boundaries() {
     let (board, moves) = history_ordering_position();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, &pst, moves[4], &[moves[5]], 256);
-    assert!(history.read(&board, &pst, moves[4]) > 0);
-    assert!(history.read(&board, &pst, moves[5]) < 0);
+    history.record_cutoff(&board, &nnue, moves[4], &[moves[5]], 256);
+    assert!(history.read(&board, &nnue, moves[4]) > 0);
+    assert!(history.read(&board, &nnue, moves[5]) < 0);
     assert_eq!(
-        captures_with_history(&board, &pst, &history, None),
+        captures_with_history(&board, &nnue, &history, None),
         [moves[5], moves[4], moves[0], moves[1], moves[2], moves[3]]
     );
 }
@@ -430,11 +430,11 @@ fn quiescence_capture_history_preserves_group_boundaries() {
 #[test]
 fn quiescence_capture_history_keeps_tt_capture_first() {
     let (board, moves) = history_ordering_position();
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let mut history = CaptureHistory::new();
-    history.record_cutoff(&board, &pst, moves[4], &[moves[0]], 256);
+    history.record_cutoff(&board, &nnue, moves[4], &[moves[0]], 256);
     assert_eq!(
-        captures_with_history(&board, &pst, &history, Some(moves[0])),
+        captures_with_history(&board, &nnue, &history, Some(moves[0])),
         [moves[0], moves[5], moves[4], moves[1], moves[2], moves[3]]
     );
 }
@@ -456,18 +456,18 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
             (sq(8, 6), Color::White, PieceKind::Pawn),
         ],
     );
-    let pst = weights().unwrap();
+    let nnue = weights().unwrap();
     let mut public = Vec::new();
     MoveGenerator::standard().generate_captures(&board, &mut public);
     let mut reference: Vec<_> = public
         .into_iter()
-        .map(|mv| (mv, move_order_key(&board, &pst, mv).unwrap()))
+        .map(|mv| (mv, move_order_key(&board, &nnue, mv).unwrap()))
         .collect();
     order_captures(&mut reference);
     let reference: Vec<_> = reference.into_iter().map(|(mv, _)| mv).collect();
     let history = CaptureHistory::new();
     assert_eq!(
-        captures_with_history(&board, &pst, &history, None),
+        captures_with_history(&board, &nnue, &history, None),
         reference
     );
     let lion_moves: Vec<_> = reference
@@ -488,9 +488,9 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
     for reward_special in [true, false] {
         let mut history = CaptureHistory::new();
         if reward_special {
-            history.record_cutoff(&board, &pst, lion_moves[0], &ordinary, 1);
+            history.record_cutoff(&board, &nnue, lion_moves[0], &ordinary, 1);
         } else {
-            history.record_cutoff(&board, &pst, ordinary[1], &[lion_moves[0]], 1);
+            history.record_cutoff(&board, &nnue, ordinary[1], &[lion_moves[0]], 1);
         }
         let expected: Vec<_> = if reward_special {
             lion_moves.iter().chain(&ordinary).copied().collect()
@@ -501,7 +501,7 @@ fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
                 .collect()
         };
         assert_eq!(
-            captures_with_history(&board, &pst, &history, None),
+            captures_with_history(&board, &nnue, &history, None),
             expected
         );
     }

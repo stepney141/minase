@@ -86,7 +86,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
         let output = create(&common.output)?;
         created.push(common.output.clone());
         let (mut text_output, mut writer) = if let Some((seed, _)) = generation {
-            let pst = minase::eval::weights().map_err(data_error)?;
+            let nnue = minase::eval::weights().map_err(data_error)?;
             // MNSDの規則セット名は selfplay_gen と同じく規則コードの列挙で書く。
             let header = Header::new(
                 minase_core::Rules::from_codes(
@@ -95,7 +95,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                 .map_err(data_error)?
                 .to_string(),
                 commit.clone(),
-                *pst.checksum(),
+                *nnue.checksum(),
                 common.nodes.get(),
                 seed.get(),
                 0,

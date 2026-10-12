@@ -224,8 +224,8 @@ impl CecpProtocol {
         };
         let search_id = self.next_search_id;
         self.next_search_id = self.next_search_id.wrapping_add(1);
-        let pst = match crate::eval::weights() {
-            Ok(pst) => pst,
+        let nnue = match crate::eval::weights() {
+            Ok(nnue) => nnue,
             Err(error) => {
                 writeln!(output, "tellusererror {error}")?;
                 return Ok(None);
@@ -242,7 +242,7 @@ impl CecpProtocol {
             },
         };
         let handle = search::start_search(
-            pst,
+            nnue,
             snapshot,
             limits,
             search_id,

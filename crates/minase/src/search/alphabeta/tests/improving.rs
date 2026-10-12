@@ -23,19 +23,19 @@ fn improving_compares_static_evaluations_from_the_current_side() {
             ],
         );
         with_root_searcher(&bare, &[], |searcher| {
-            let bare_acc = searcher.pst.refresh_accumulator(&bare);
-            let richer_acc = searcher.pst.refresh_accumulator(&richer);
-            assert!(evaluate(searcher.pst, &richer) > evaluate(searcher.pst, &bare));
+            let bare_acc = searcher.nnue.refresh_accumulator(&bare);
+            let richer_acc = searcher.nnue.refresh_accumulator(&richer);
+            assert!(evaluate(searcher.nnue, &richer) > evaluate(searcher.nnue, &bare));
             for (previous, current, expected) in [
-                (bare_acc, richer_acc, true),
-                (bare_acc, bare_acc, false),
-                (richer_acc, bare_acc, false),
+                (&bare_acc, &richer_acc, true),
+                (&bare_acc, &bare_acc, false),
+                (&richer_acc, &bare_acc, false),
             ] {
                 let ply = 4;
-                searcher.accumulators[2] = previous;
-                searcher.accumulators[3] = current;
-                searcher.accumulators[4] = current;
-                let static_eval = searcher.pst.evaluate_accumulator(&current, side);
+                searcher.accumulators[2] = previous.clone();
+                searcher.accumulators[3] = current.clone();
+                searcher.accumulators[4] = current.clone();
+                let static_eval = searcher.nnue.evaluate_accumulator(current, side);
                 assert_eq!(searcher.improving(static_eval, side, ply), expected);
             }
         });
@@ -47,7 +47,7 @@ fn improving_compares_static_evaluations_from_the_current_side() {
 fn improving_preserves_margins_without_two_real_plies() {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
     with_root_searcher(&board, &[], |searcher| {
-        let static_eval = evaluate(searcher.pst, &board);
+        let static_eval = evaluate(searcher.nnue, &board);
         for ply in [0, 1] {
             assert!(searcher.improving(static_eval, board.side_to_move(), ply));
         }
@@ -76,14 +76,14 @@ fn futility_prunes_quiets_only_when_not_improving() {
     let moves = legal_moves(&board);
     for improving in [false, true] {
         with_root_searcher(&board, &[], |searcher| {
-            let static_eval = evaluate(searcher.pst, &board);
-            let margin = searcher.pst.pawn_value() * params::futility_margin1() / 100;
+            let static_eval = evaluate(searcher.nnue, &board);
+            let margin = searcher.nnue.pawn_value() * params::futility_margin1() / 100;
             let reduced = margin * params::non_improving_futility1() / 100;
             assert!(reduced < margin);
             let alpha = static_eval + reduced;
             if improving {
-                assert!(evaluate(searcher.pst, &worse) < static_eval);
-                searcher.accumulators[0] = searcher.pst.refresh_accumulator(&worse);
+                assert!(evaluate(searcher.nnue, &worse) < static_eval);
+                searcher.accumulators[0] = searcher.nnue.refresh_accumulator(&worse);
             }
             assert_eq!(
                 searcher.improving(static_eval, board.side_to_move(), 2),
@@ -91,10 +91,10 @@ fn futility_prunes_quiets_only_when_not_improving() {
             );
             assert!(!royal_under_attack(&board));
             for &mv in &moves {
-                assert!(!mv.promote && move_order_key(&board, searcher.pst, mv).is_none());
+                assert!(!mv.promote && move_order_key(&board, searcher.nnue, mv).is_none());
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
-                assert!(-evaluate(searcher.pst, &child) < alpha, "全手が窓を下回る");
+                assert!(-evaluate(searcher.nnue, &child) < alpha, "全手が窓を下回る");
             }
             let score = searcher
                 .negamax(&mut board.clone(), 1, alpha, alpha + 1, 2)
@@ -118,9 +118,9 @@ fn improving_uses_raw_evaluation_before_correction() {
         searcher.correction.update(side, key, 100, 8);
         let correction = searcher.correction.read(side, key);
         assert!(correction > 0);
-        let alpha = evaluate(searcher.pst, &board)
+        let alpha = evaluate(searcher.nnue, &board)
             + correction
-            + searcher.pst.pawn_value() * params::futility_margin1() / 100
+            + searcher.nnue.pawn_value() * params::futility_margin1() / 100
                 * params::non_improving_futility1()
                 / 100;
         let score = searcher

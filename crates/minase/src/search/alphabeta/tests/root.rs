@@ -133,7 +133,7 @@ fn interrupted_root_iteration_discards_only_current_counts() {
         let completed = searcher.completed_root_nodes.clone();
         // 最初のfail-high窓を完了し、読み直しの途中で止める。
         searcher.interrupt_at = Some((searcher.nodes + 2, StopReason::NodeLimit));
-        let delta = aspiration_delta(searcher.pst.pawn_value());
+        let delta = aspiration_delta(searcher.nnue.pawn_value());
         assert!(
             searcher
                 .search_iteration(&position, &moves, 5, Some(-delta))
@@ -354,7 +354,7 @@ fn aspiration_interruption_preserves_the_last_completed_iteration() {
         }
         completed_pv.clone_from(&searcher.pv[0]);
         let (_, prev) = completed.unwrap();
-        let delta = searcher.pst.pawn_value() / 2;
+        let delta = searcher.nnue.pawn_value() / 2;
         let (_, score) = searcher
             .search_root(&position, &moves, 5, prev - delta, prev + delta)
             .unwrap();

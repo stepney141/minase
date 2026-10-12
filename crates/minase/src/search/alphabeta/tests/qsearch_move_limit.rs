@@ -64,10 +64,10 @@ fn captures_over_limit() -> (Position, Vec<Move>) {
     (board, captures)
 }
 
-fn capture_leaf_score(board: &Position, pst: &Pst, mv: Move) -> i32 {
+fn capture_leaf_score(board: &Position, nnue: &Nnue, mv: Move) -> i32 {
     let mut child = board.clone();
     child.make_move_unchecked(mv, engine_rules());
-    -evaluate(pst, &child)
+    -evaluate(nnue, &child)
 }
 
 // 複雑な捕獲の例外は上限1を明示し、必ず上限到達後の経路を通す。
@@ -112,18 +112,18 @@ fn qsearch_limit_counts_tt_capture_and_skips_later_ordinary_capture() {
         ordered.pop();
         ordered.insert(0, tt_capture);
         let searched = &ordered[..params::qsearch_move_limit() as usize];
-        let mut expected = evaluate(searcher.pst, &board);
+        let mut expected = evaluate(searcher.nnue, &board);
         let mut best_move = None;
         for &mv in searched {
             assert!(!capture_is_pruned_by_see(
                 &board,
                 engine_rules(),
-                searcher.pst,
+                searcher.nnue,
                 mv
             ));
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
-            let score = -evaluate(searcher.pst, &child);
+            let score = -evaluate(searcher.nnue, &child);
             if score > expected {
                 expected = score;
                 best_move = Some(mv);
@@ -219,26 +219,26 @@ fn qsearch_limit_reads_double_lion_capture_after_tt_capture() {
             .map(|&mv| {
                 let mut child = board.clone();
                 child.make_move_unchecked(mv, engine_rules());
-                -evaluate(searcher.pst, &child)
+                -evaluate(searcher.nnue, &child)
             })
             .max()
             .unwrap();
         // 二重捕獲がαを上げた後も、もう一方をdelta pruningで切らない。
-        let stand_pat = evaluate(searcher.pst, &board);
-        let first_score = capture_leaf_score(&board, searcher.pst, first_capture());
+        let stand_pat = evaluate(searcher.nnue, &board);
+        let first_score = capture_leaf_score(&board, searcher.nnue, first_capture());
         assert!(expected > stand_pat.max(first_score));
         for &mv in &doubles {
             assert!(!capture_is_pruned_by_see(
                 &board,
                 engine_rules(),
-                searcher.pst,
+                searcher.nnue,
                 mv
             ));
             let captured_value: i32 = board
                 .captured_squares(mv)
                 .into_iter()
                 .flatten()
-                .map(|square| searcher.pst.piece_value(board.piece_at(square).unwrap()))
+                .map(|square| searcher.nnue.piece_value(board.piece_at(square).unwrap()))
                 .sum();
             assert!(stand_pat + captured_value + searcher.delta_margin > expected);
         }
@@ -344,7 +344,7 @@ fn check_lion_recapture(igui: bool, quiescence_parent: bool) {
         );
         let mut after = child.clone();
         after.make_move_unchecked(recapture, engine_rules());
-        assert_eq!(hit.score, -evaluate(searcher.pst, &after));
+        assert_eq!(hit.score, -evaluate(searcher.nnue, &after));
         assert_eq!(
             searcher.nodes, 3,
             "親の捕獲、子の置換表の捕獲、取り返しを読む"
@@ -419,7 +419,7 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
         assert!(capture_is_pruned_by_see(
             &board,
             engine_rules(),
-            searcher.pst,
+            searcher.nnue,
             captures[0]
         ));
         let expected = captures[1..]
@@ -428,14 +428,14 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
                 assert!(!capture_is_pruned_by_see(
                     &board,
                     engine_rules(),
-                    searcher.pst,
+                    searcher.nnue,
                     mv
                 ));
-                capture_leaf_score(&board, searcher.pst, mv)
+                capture_leaf_score(&board, searcher.nnue, mv)
             })
             .max()
             .unwrap()
-            .max(evaluate(searcher.pst, &board));
+            .max(evaluate(searcher.nnue, &board));
         assert_eq!(
             searcher.quiesce(&mut board.clone(), -INFINITY, INFINITY, ply),
             Some(expected)
@@ -448,14 +448,15 @@ fn qsearch_limit_does_not_count_see_pruned_capture() {
             .best_move
             .unwrap();
         assert!(captures[1..].contains(&best));
-        assert_eq!(capture_leaf_score(&board, searcher.pst, best), expected);
+        assert_eq!(capture_leaf_score(&board, searcher.nnue, best), expected);
     });
 }
 
 #[test]
 fn qsearch_limit_does_not_count_delta_pruned_capture() {
     let (board, captures) = captures_over_limit();
-    // 盲虎は歩兵より捕獲価値が高く、この配置では捕獲による評価増分が駒価値とdelta_marginの和に収まる。
+    let nnue = epoch_zero_nnue();
+    // 盲虎は歩兵より捕獲価値が高く、エポック0では評価増分が駒価値とdelta_marginの和に収まる。
     // 先頭の歩兵捕獲だけを枝刈りし、残りの捕獲でαが上がらない局面にする。
     let pieces: Vec<_> = Square::all()
         .filter_map(|square| {
@@ -472,20 +473,20 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
         })
         .collect();
     let board = position_from_codes(Color::Black, &pieces);
-    with_root_searcher(&board, &[], |searcher| {
+    with_nnue_root_searcher(&nnue, &board, &[], |searcher| {
         let ply = MAX_PLY - 1;
         seed_first(searcher, &board, captures[0], ply);
-        let alpha = evaluate(searcher.pst, &board)
+        let alpha = evaluate(searcher.nnue, &board)
             + searcher.delta_margin
             + searcher
-                .pst
+                .nnue
                 .piece_value(board.piece_at(captures[1].to).unwrap())
             - 1;
         for &mv in &captures[1..] {
             let mut child = board.clone();
             child.make_move_unchecked(mv, engine_rules());
             assert!(
-                -evaluate(searcher.pst, &child) <= alpha,
+                -evaluate(searcher.nnue, &child) <= alpha,
                 "捕獲後もdeltaの閾値は変わらない: {mv:?}"
             );
         }
@@ -495,14 +496,14 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
                 assert!(!capture_is_pruned_by_see(
                     &board,
                     engine_rules(),
-                    searcher.pst,
+                    searcher.nnue,
                     mv
                 ));
-                capture_leaf_score(&board, searcher.pst, mv)
+                capture_leaf_score(&board, searcher.nnue, mv)
             })
             .max()
             .unwrap()
-            .max(evaluate(searcher.pst, &board));
+            .max(evaluate(searcher.nnue, &board));
         assert_eq!(
             searcher.quiesce(&mut board.clone(), alpha, INFINITY, ply),
             Some(expected)
@@ -515,7 +516,7 @@ fn qsearch_limit_does_not_count_delta_pruned_capture() {
             .best_move
             .unwrap();
         assert!(captures[1..].contains(&best));
-        assert_eq!(capture_leaf_score(&board, searcher.pst, best), expected);
+        assert_eq!(capture_leaf_score(&board, searcher.nnue, best), expected);
     });
 }
 
@@ -557,7 +558,7 @@ fn qsearch_limit_null_move_clears_previous_capture() {
     let mut after_null = board.clone();
     after_null.make_null_move();
     with_root_searcher(&board, &[], |searcher| {
-        let expected = -evaluate(searcher.pst, &after_null);
+        let expected = -evaluate(searcher.nnue, &after_null);
         searcher.previous_capture[1] = Some(sq(5, 3));
         assert_eq!(
             searcher.negamax(&mut board.clone(), 4, expected - 1, expected, 0),

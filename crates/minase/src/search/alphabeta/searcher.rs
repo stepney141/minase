@@ -3,8 +3,8 @@
 use std::sync::atomic::Ordering as AtomicOrdering;
 use std::time::Duration;
 
-use crate::eval::Pst;
-use crate::eval::pst::accumulator::PstAccumulator;
+use crate::eval::Nnue;
+use crate::eval::nnue::accumulator::NnueAccumulator;
 use crate::search::events::StopReason;
 use crate::search::snapshot::search_key;
 use crate::search::{MAX_PLY, TranspositionTable};
@@ -36,7 +36,7 @@ type KillerTable = [[Option<Move>; KILLER_COUNT]; MAX_PLY as usize + 1];
 /// ワーカー固有の探索状態を構築する。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn new_searcher<'a>(
-    pst: &'a Pst,
+    nnue: &'a Nnue,
     position: &Position,
     rules: MoveRules,
     history_keys: &'a [u64],
@@ -45,7 +45,7 @@ pub(super) fn new_searcher<'a>(
     history: &'a mut HistoryTable,
     capture_history: &'a mut CaptureHistory,
 ) -> Searcher<'a> {
-    let root_accumulator = pst.refresh_accumulator(position);
+    let root_accumulator = nnue.refresh_accumulator(position);
     Searcher {
         root_results: None,
         completed_root_nodes: Vec::new(),
@@ -54,7 +54,7 @@ pub(super) fn new_searcher<'a>(
         interrupt_at: None,
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
-        pst,
+        nnue,
         rules,
         generator: MoveGenerator::new(rules),
         history_keys,
@@ -69,15 +69,15 @@ pub(super) fn new_searcher<'a>(
         pv: (0..=MAX_PLY)
             .map(|ply| Vec::with_capacity((MAX_PLY - ply) as usize))
             .collect(),
-        capture_ranks: CaptureRanks::new(pst),
+        capture_ranks: CaptureRanks::new(nnue),
         move_pickers: (0..=MAX_PLY)
             .map(|_| MovePicker::new(None, [None; KILLER_COUNT]))
             .collect(),
         qsearch: (0..=MAX_PLY).map(|_| QsearchBuffers::default()).collect(),
-        accumulators: [root_accumulator; MAX_PLY as usize + 1],
+        accumulators: vec![root_accumulator; MAX_PLY as usize + 1],
         material_keys: [material_key(position); MAX_PLY as usize + 1],
-        correction: CorrectionTable::new(pst.pawn_value()),
-        delta_margin: pst.pawn_value() * params::delta_margin() / 100,
+        correction: CorrectionTable::new(nnue.pawn_value()),
+        delta_margin: nnue.pawn_value() * params::delta_margin() / 100,
         history,
         capture_history,
         killers: [[None; KILLER_COUNT]; MAX_PLY as usize + 1],
@@ -107,8 +107,8 @@ pub(super) struct Searcher<'a> {
     /// このワーカーだけが更新する探索統計。
     #[cfg(feature = "search-stats")]
     pub(super) stats: crate::search::SearchStats,
-    /// 探索中に使う検証済み学習PST。
-    pub(super) pst: &'a Pst,
+    /// 探索中に使う検証済み学習NNUE。
+    pub(super) nnue: &'a Nnue,
     /// 探索内の着手適用に使う規則。
     pub(super) rules: MoveRules,
     /// 探索ノードでの合法手生成器。
@@ -141,8 +141,8 @@ pub(super) struct Searcher<'a> {
     pub(super) move_pickers: Vec<MovePicker>,
     /// ワーカー内で共有する捕獲価値の順位。
     pub(super) capture_ranks: CaptureRanks,
-    /// plyごとのPST生重み和。
-    pub(super) accumulators: [PstAccumulator; MAX_PLY as usize + 1],
+    /// plyごとのNNUE累算値。
+    pub(super) accumulators: Vec<NnueAccumulator>,
     /// plyごとの駒種別枚数のハッシュ。null moveでは変化しない。
     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
     /// 反復深化の間で共有する、このワーカー専用の補正表。

@@ -194,6 +194,7 @@ class FormatTest(unittest.TestCase):
             self.assertEqual(original[offset + 8:offset + 10], b'\x01\xff')
             self.assertEqual(struct.unpack_from("<hh", original, offset + 10), (12, -13))
             cases = [("magic", 0, b"NOPE"), ("version", 4, struct.pack("<I", 2)),
+                     ("unsupported version", 4, struct.pack("<I", 4)),
                      ("features", 8, struct.pack("<I", 42)), ("rules", 16, b"X"),
                      ("K zero", 12, struct.pack("<f", 0)), ("K nan", 12, struct.pack("<f", float("nan"))),
                      ("K inf", 12, struct.pack("<f", float("inf"))), ("K negative", 12, struct.pack("<f", -1)),
@@ -208,12 +209,14 @@ class FormatTest(unittest.TestCase):
                 changed[start:start + len(value)] = value
                 changed[48:80] = hashlib.sha256(changed[80:]).digest()
                 path.write_bytes(changed)
-                with self.subTest(name=name), self.assertRaises(ValueError):
-                    fm.read_mnpt_v3(path)
+                for reader in (read_mnpt, fm.read_mnpt_v3):
+                    with self.subTest(name=name, reader=reader.__name__), self.assertRaises(ValueError):
+                        reader(path)
             for changed in (original[:79], original[:-1], original + b"x", original[:48] + b"x" * 32 + original[80:]):
                 path.write_bytes(changed)
-                with self.assertRaises(ValueError):
-                    fm.read_mnpt_v3(path)
+                for reader in (read_mnpt, fm.read_mnpt_v3):
+                    with self.subTest(reader=reader.__name__), self.assertRaises(ValueError):
+                        reader(path)
 
     def test_writer_rejects_values_before_narrowing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -236,6 +239,22 @@ class TrainingTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         torch.set_num_threads(cls.threads)
+
+    def test_v3_initialization_preserves_pst_values_and_k(self) -> None:
+        """版3のPST部分を固定し、指定した階数のFMを新たに学習する。"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data, base = fixture(root)
+            expected = read_mnpt(base)
+            mnpt.write_mnpt_v3(base, *expected, np.ones((FEATURE_COUNT, 1), dtype=np.int16),
+                               np.array([-1]), 5)
+            output = root / "fm.bin"
+            with redirect_stdout(StringIO()):
+                fm.main(train_arguments(data, base, output))
+            decoded = mnpt.read_mnpt_v3(output)
+            for actual, value in zip(decoded[:4], expected):
+                np.testing.assert_array_equal(actual, value)
+            self.assertEqual(decoded[4].shape, (FEATURE_COUNT, 2))
 
     def test_seed_reproduces_training_and_mask_includes_all_mirrors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -32,14 +32,16 @@ uv run --project tools/train python -m unittest discover -s tools/train/tests
 
 ## コマンド
 
-`pyproject.toml` は次の7つのコマンドを定義する。
+`pyproject.toml` は次の9つのコマンドを定義する。
 いずれも `uv run --project tools/train <コマンド> --help` で引数を確認できる。
 
 | コマンド | 用途 |
 |---|---|
 | `pst-workflow` | 学習の準備、自己対局の生成、学習、診断の4工程を、入力と出力の検査和を記録しながら順に実行する。通常の学習はこのコマンドだけを使う |
 | `train-fm` | 固定PSTへのFMの学習、学習後の補正1/4への変換、および補正の倍率の重みファイルへの焼き込みを行う |
+| `train-nnue` | 線形PSTとNNUEを同時に学習し、MNUE版5へ保存する。照合用のランダムネットも生成する |
 | `fm-diagnostics` | FMの整数参照評価とRustの評価を照合する |
+| `nnue-diagnostics` | `compare` でRustとの整数評価照合、`distribution` で評価分布と順位相関、`moves` で着手前後の評価差、`removal` で駒除去差分を診断する |
 | `train-pst` | 学習器を直接呼ぶ。初期重みの作成（`init`）、教師値の尺度Kの推定（`estimate-k`）、学習（`train`）を持つ |
 | `pst-diagnostics` | 基準のPSTと候補のPSTを、局面帯別の損失、駒の除去、および成りで比較する |
 | `taper-report` | 教師データの駒数分布と、序中盤と終盤の2つの重み（端点）を区別して学習できるかどうかを報告する |
@@ -78,6 +80,28 @@ uv run --project tools/train lookahead-diag \
 基本の教師に合わせて来歴のλも0.75を要求し、標本のファイル検査和、行番号、訓練分割への所属を照合する。
 空の分布と分散0の相関は`null`とし、理由を記録する。
 
+## NNUEの学習
+
+`train-nnue train`と`train-nnue random`では、入力特徴集合を`--feature-set P`または`--feature-set HalfKP-hm-b8`で指定する。
+P型は第1層と出力部の重みを左右で共有し、HalfKP-hm-b8は王駒の位置から求めた文脈で特徴を正規化する。
+HalfKP-hm-b8の学習では特徴ごとの行に基底特徴の仮想行を加え、保存時に両者を畳み込む。
+どちらもMNUE版5として保存され、`nnue-diagnostics`はファイルに記録された入力特徴集合を使う。
+
+学習には、教師データの`--data`、線形経路の初期値の`--init-pst`、探索用駒価値と出力用Kを持つ`--base`、隠れ層の幅の`--width`、出力先の`--output`、および`--device cpu`または`--device cuda`を指定する。
+AdamWの3つのパラメータ群は、次の引数で個別に設定できる。
+
+| 群 | 学習率の引数と既定値 | 重み減衰の引数と既定値 |
+|---|---|---|
+| 線形の重み | `--lr-linear 0.03` | `--weight-decay-linear 0` |
+| 第1層の特徴行と仮想行 | `--lr-ft 0.001` | `--weight-decay-ft 0.0001` |
+| 第1層のバイアスと出力部 | `--lr-head 0.001` | `--weight-decay-head 0.0001` |
+
+`<出力名>.training.json`には入力特徴集合、観測済み行数と未観測行数、各群の設定と勾配を保存する。
+行数には埋め草を含めず、P型では鏡映対を共有する正準行を数える。
+各エポックには検証の符号一致率、検証時間、学習時間、学習局面数/秒、およびCUDAの最大割当メモリをバイト単位で記録する。
+符号一致率は、引き分けを除いた対局結果に対し、ロジットが正なら勝ち、0以下なら負けと予測した的中率であり、対象が0件なら`null`とする。
+CPUの最大CUDAメモリと、学習を行わないエポック0の学習時間と速度も`null`とし、エポック0の検証時間は記録する。
+
 ## 固定PSTへのFMの学習
 
 `train-fm`は、採用PSTを固定したまま、2駒の位置関係を表すFactorization Machine（FM）の補正だけを学習する。
@@ -86,7 +110,8 @@ FMは生成工程もPSTの学習条件も必要としないため、起動には
 
 先読みなしの候補は、リポジトリのルートで次のように学習する。
 入力MNSDには来歴ファイルが必要であり、教師Kは訓練集合だけから分類順に推定する。
-出力Kは`--init`のMNPT v2から読み込み、PSTの両端点と探索用駒価値とともに固定する。
+出力Kは`--init`のMNPT v2またはv3から読み込み、PSTの両端点と探索用駒価値とともに固定する。
+v3の入力もFM部分まで検証し、PST部分を使って新しいFMを学習する。
 
 ```bash
 uv run --project tools/train train-fm train \

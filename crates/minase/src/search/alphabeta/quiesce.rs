@@ -2,8 +2,8 @@
 
 use core::cmp::Reverse;
 
-use crate::eval::Pst;
-use crate::eval::pst::{PIECE_STATE_COUNT, piece_state_of};
+use crate::eval::Nnue;
+use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
 use crate::search::snapshot::search_key;
 use crate::search::{MATE, MAX_PLY};
 use minase_core::MoveGenerator;
@@ -42,10 +42,10 @@ impl Searcher<'_> {
 
         if ply >= MAX_PLY {
             #[cfg(feature = "invariants")]
-            self.pst
+            self.nnue
                 .assert_accumulator(position, &self.accumulators[ply as usize], ply);
             return Some(
-                self.pst.evaluate_accumulator(
+                self.nnue.evaluate_accumulator(
                     &self.accumulators[ply as usize],
                     position.side_to_move(),
                 ),
@@ -53,10 +53,10 @@ impl Searcher<'_> {
         }
 
         #[cfg(feature = "invariants")]
-        self.pst
+        self.nnue
             .assert_accumulator(position, &self.accumulators[ply as usize], ply);
         let stand_pat = self
-            .pst
+            .nnue
             .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move());
         if stand_pat >= beta {
             return Some(stand_pat);
@@ -70,7 +70,7 @@ impl Searcher<'_> {
         if !buffers.initialize(
             position,
             &self.generator,
-            self.pst,
+            self.nnue,
             &self.capture_ranks,
             threshold,
         ) {
@@ -110,7 +110,7 @@ impl Searcher<'_> {
         while let Some(candidate) = self.qsearch[ply as usize].next(
             position,
             &self.generator,
-            self.pst,
+            self.nnue,
             &self.capture_ranks,
             self.capture_history,
         ) {
@@ -127,7 +127,7 @@ impl Searcher<'_> {
                 continue;
             }
             if !is_last_royal_capture
-                && capture_is_pruned_by_see(position, self.rules, self.pst, mv)
+                && capture_is_pruned_by_see(position, self.rules, self.nnue, mv)
             {
                 continue;
             }
@@ -155,7 +155,7 @@ impl Searcher<'_> {
                     candidate.capture.captured,
                 );
                 let (parents, children) = self.accumulators.split_at_mut((ply + 1) as usize);
-                self.pst.update_accumulator_after_move(
+                self.nnue.update_accumulator_after_move(
                     &parents[ply as usize],
                     &mut children[0],
                     position,
@@ -204,12 +204,12 @@ pub(super) struct QsearchCapture {
 }
 
 impl QsearchCapture {
-    fn new(pst: &Pst, capture: CaptureCandidate, captured_value: i32, history: i32) -> Self {
+    fn new(nnue: &Nnue, capture: CaptureCandidate, captured_value: i32, history: i32) -> Self {
         let piece = capture.piece;
         Self {
             captured_value,
             history,
-            attacker_value: pst.piece_value(piece),
+            attacker_value: nnue.piece_value(piece),
             origin_key: (
                 piece.kind().expect("capture origin has a kind").index() as u8,
                 capture.mv.from.raw(),
@@ -228,16 +228,16 @@ pub(super) struct CaptureRanks {
 }
 
 impl CaptureRanks {
-    pub(super) fn new(pst: &Pst) -> Self {
+    pub(super) fn new(nnue: &Nnue) -> Self {
         let mut states: [_; PIECE_STATE_COUNT] = core::array::from_fn(|state| state);
-        states.sort_unstable_by_key(|&state| Reverse(pst.piece_value_of_state(state)));
+        states.sort_unstable_by_key(|&state| Reverse(nnue.piece_value_of_state(state)));
         let mut ranks = Self {
             rank_of_state: [0; PIECE_STATE_COUNT],
             ranks_of_kind: [[0; 2]; PIECE_KIND_COUNT],
             values: Vec::with_capacity(PIECE_STATE_COUNT),
         };
         for state in states {
-            let value = pst.piece_value_of_state(state);
+            let value = nnue.piece_value_of_state(state);
             if ranks.values.last() != Some(&value) {
                 ranks.values.push(value);
             }
@@ -330,7 +330,7 @@ impl QsearchBuffers {
         &mut self,
         position: &Position,
         generator: &MoveGenerator,
-        pst: &Pst,
+        nnue: &Nnue,
         ranks: &CaptureRanks,
         threshold: i32,
     ) -> bool {
@@ -345,14 +345,14 @@ impl QsearchBuffers {
                 .captured
                 .into_iter()
                 .flatten()
-                .map(|square| pst.piece_value(piece_at_for_ordering(position, square)))
+                .map(|square| nnue.piece_value(piece_at_for_ordering(position, square)))
                 .sum();
             if captured_value <= threshold
                 && !captures_all_royals(royals, royal_count, capture.captured)
             {
                 return;
             }
-            let mut candidate = QsearchCapture::new(pst, capture, captured_value, 0);
+            let mut candidate = QsearchCapture::new(nnue, capture, captured_value, 0);
             candidate.seq = self.special.len() as u16;
             self.special.push(candidate);
         });
@@ -387,7 +387,7 @@ impl QsearchBuffers {
             || self.capturers.iter().any(|capturer| {
                 let mut present = false;
                 generator.emit_ordinary_captures(position, &[*capturer], allowed, &mut |capture| {
-                    let value = pst.piece_value(piece_at_for_ordering(position, capture.mv.to));
+                    let value = nnue.piece_value(piece_at_for_ordering(position, capture.mv.to));
                     present |= value > threshold
                         || captures_all_royals(royals, royal_count, capture.captured);
                 });
@@ -415,7 +415,7 @@ impl QsearchBuffers {
         &mut self,
         position: &Position,
         generator: &MoveGenerator,
-        pst: &Pst,
+        nnue: &Nnue,
         ranks: &CaptureRanks,
         capture_history: &CaptureHistory,
     ) -> Option<()> {
@@ -443,8 +443,8 @@ impl QsearchBuffers {
         self.group.clear();
         self.cursor = 0;
         generator.emit_ordinary_captures(position, &self.capturers, targets, &mut |capture| {
-            let history = capture_history.read(position, pst, capture.mv);
-            let mut candidate = QsearchCapture::new(pst, capture, value, history);
+            let history = capture_history.read(position, nnue, capture.mv);
+            let mut candidate = QsearchCapture::new(nnue, capture, value, history);
             candidate.seq = self.group.len() as u16;
             self.group.push(candidate);
         });
@@ -455,7 +455,7 @@ impl QsearchBuffers {
             self.group
                 .extend(self.special[special_start..self.special_cursor].iter().map(
                     |&candidate| QsearchCapture {
-                        history: capture_history.read(position, pst, candidate.capture.mv),
+                        history: capture_history.read(position, nnue, candidate.capture.mv),
                         ..candidate
                     },
                 ));
@@ -473,7 +473,7 @@ impl QsearchBuffers {
         &mut self,
         position: &Position,
         generator: &MoveGenerator,
-        pst: &Pst,
+        nnue: &Nnue,
         ranks: &CaptureRanks,
         capture_history: &CaptureHistory,
     ) -> Option<QsearchCapture> {
@@ -484,10 +484,10 @@ impl QsearchBuffers {
             let captured_value = captured
                 .into_iter()
                 .flatten()
-                .map(|s| pst.piece_value(piece_at_for_ordering(position, s)))
+                .map(|s| nnue.piece_value(piece_at_for_ordering(position, s)))
                 .sum();
             return Some(QsearchCapture::new(
-                pst,
+                nnue,
                 CaptureCandidate {
                     mv,
                     piece: piece_at_for_ordering(position, mv.from),
@@ -504,7 +504,7 @@ impl QsearchBuffers {
                     return Some(candidate);
                 }
             }
-            self.generate_group(position, generator, pst, ranks, capture_history)?;
+            self.generate_group(position, generator, nnue, ranks, capture_history)?;
         }
     }
 }

@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use crate::eval::Pst;
+use crate::eval::Nnue;
 use crate::search::TranspositionTable;
 use crate::search::events::{SearchEvent, SearchResult, StopReason};
 use minase_core::mv::Move;
@@ -29,7 +29,7 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
 /// 主ワーカーの反復深化を実行し、深さ完了ごとに進捗イベントを送る。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
-    pst: &Pst,
+    nnue: &Nnue,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -45,7 +45,7 @@ pub(super) fn run_main_worker(
     adopt_partial: bool,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(
-        pst,
+        nnue,
         position,
         rules,
         history_keys,
@@ -56,12 +56,12 @@ pub(super) fn run_main_worker(
     );
     searcher.root_results = adopt_partial.then(RootResults::default);
     #[cfg(feature = "invariants")]
-    pst.assert_accumulator(position, &searcher.accumulators[0], 0);
+    nnue.assert_accumulator(position, &searcher.accumulators[0], 0);
     let mut result = SearchResult {
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
+        score: nnue.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
@@ -184,7 +184,7 @@ pub(super) fn main_worker_outcome(
 /// 補助ワーカーの反復深化を実行し、最後まで完了した反復を返す。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_auxiliary_worker(
-    pst: &Pst,
+    nnue: &Nnue,
     position: &Position,
     rules: MoveRules,
     root_moves: &[Move],
@@ -197,7 +197,7 @@ pub(super) fn run_auxiliary_worker(
     capture_history: &mut CaptureHistory,
 ) -> WorkerOutcome {
     let mut searcher = new_searcher(
-        pst,
+        nnue,
         position,
         rules,
         history_keys,
@@ -207,12 +207,12 @@ pub(super) fn run_auxiliary_worker(
         capture_history,
     );
     #[cfg(feature = "invariants")]
-    pst.assert_accumulator(position, &searcher.accumulators[0], 0);
+    nnue.assert_accumulator(position, &searcher.accumulators[0], 0);
     let mut result = SearchResult {
         #[cfg(feature = "search-stats")]
         stats: crate::search::SearchStats::default(),
         best_move: root_moves[0],
-        score: pst.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
+        score: nnue.evaluate_accumulator(&searcher.accumulators[0], position.side_to_move()),
         depth: 0,
         nodes: 0,
     };
