@@ -2,13 +2,13 @@ use super::{
     Adam, Args, Batch, Checkpoint, EpochRecord, Error, Model, Progress, RemovalReference,
     RemovalReferenceKind, Result, StopReason, Summary,
     base::{self, Base},
-    compute, export, pipeline,
+    compute, export,
     record::{append_epoch, configuration, reconcile_log, write_json},
-    replay, workers,
+    replay,
 };
 use crate::{
     data::{Dataset, build_targets_from_arrays, epoch_permutation, replay::Replay},
-    nn::{atomic_write, patience_reached, update_best},
+    nn::{atomic_write, patience_reached, pipeline, update_best, workers},
 };
 use serde_json::{Value, json};
 use std::{
@@ -211,7 +211,7 @@ impl Session {
             .validation_indices()
             .chunks(self.args.batch)
             .collect();
-        pipeline::ordered(
+        pipeline::ordered::<_, Error>(
             chunks.len(),
             self.workers,
             |index| {
@@ -240,7 +240,7 @@ impl Session {
         });
         let dataset = &self.dataset;
         let ks = &self.ks;
-        pipeline::ordered(
+        pipeline::ordered::<_, Error>(
             steps,
             self.workers,
             |index| {

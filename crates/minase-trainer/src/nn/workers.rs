@@ -1,8 +1,10 @@
+//! 明示したスレッド数またはCPUトポロジーから並列度を解決する。
+
 use super::{Error, Result};
 use std::collections::HashSet;
 
 /// 指定された並列度、または物理コア数−2を使う。最小値は1。
-pub(super) fn workers(threads: Option<usize>) -> Result<usize> {
+pub fn workers(threads: Option<usize>) -> Result<usize> {
     if let Some(threads) = threads {
         return if threads == 0 {
             Err(Error::Invalid("--threads must be positive"))

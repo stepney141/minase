@@ -84,12 +84,14 @@ pub struct ZeroCorrectionReport {
 }
 
 /// 零行を除いて全特徴対を調べる。総和と上界はi128で求める。
+/// 指数31は、指数30の学習結果を1/4にした補正の検査に限って計算できる。
 pub fn zero_correction_report(
     u: &[[i16; FM_RANK]],
     signs: &[i8; FM_RANK],
     exponent: u32,
 ) -> Result<ZeroCorrectionReport> {
-    if u.len() > FEATURE_COUNT || exponent > 30 || signs.iter().any(|&d| !matches!(d, -1 | 1)) {
+    // 指数31は書き出せないが、学習器は指数30の補正を1/4にした上界も検査する。
+    if u.len() > FEATURE_COUNT || exponent > 31 || signs.iter().any(|&d| !matches!(d, -1 | 1)) {
         return Err("invalid integer FM weights or exponent".into());
     }
     let rows: Vec<_> = u.iter().filter(|row| row.iter().any(|&x| x != 0)).collect();

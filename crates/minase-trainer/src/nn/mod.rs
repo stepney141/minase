@@ -5,7 +5,9 @@ mod io;
 mod loss;
 pub mod npz;
 pub mod parallel;
+pub mod pipeline;
 mod stopping;
+pub mod workers;
 
 pub use adam::{AdamCoefficients, AdamWGroup};
 pub use io::atomic_write;

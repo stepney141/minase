@@ -219,6 +219,24 @@ pub fn evaluate_pst(pst: &Pst, position: &Position) -> i32 {
     interpolate(sums, position.occupied().popcount())
 }
 
+/// 検査済みの手番側特徴と盤上総駒数から、FMを含まない整数PSTを評価する。
+/// 特徴は鏡映後の升番号でもよく、埋め草は渡さない。
+///
+/// # Panics
+///
+/// 特徴番号が13,680以上の場合にパニックする。
+pub fn evaluate_pst_features(
+    pst: &Pst,
+    features: impl IntoIterator<Item = usize>,
+    piece_count: u32,
+) -> i32 {
+    let mut sums = [0_i32; 2];
+    for feature in features {
+        pst.add_feature(&mut sums, feature, 1);
+    }
+    interpolate(sums, piece_count)
+}
+
 /// PSTとFMを64ビットで合算し、静的評価の範囲へ切り詰める。
 fn add_correction(baseline: i32, correction: i64) -> i32 {
     (i64::from(baseline) + correction)

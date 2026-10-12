@@ -306,3 +306,185 @@ FMの学習器は、NNUEとPSTから独立した専用のパイプライン（`c
 検証標本の報告の照合では、Pythonが`numpy.random.default_rng(1).choice`で選んだ1万局面の番号を昇順に並べて、一時的な引数`--replay-sample`でRustへ渡した。
 実数の差は、昇順に並べ替えたことによる加算の順序の違いから生じる。
 この報告の作成には、10ファイル（約2,900万局面）の前処理を含めて245秒かかった。
+
+### FMの学習器の照合
+
+`minase-trainer fm train`は、固定した整数PSTの上でFMの補正だけを学ぶ。
+照合の条件は、候補Faの条件を世代3の1ファイル（`data/gen3/generated-1500000.bin`、訓練2,814,063局面）に短縮したものである。
+固定する初期値は候補Lの`data/pst-longer-training/training/pst.bin`（SHA-256 `b2d2cd1b…`。Faの学習記録の`init`と同じ）、λは1.0を明示し、先読み教師γ=0.9・n=40、ランク32、バッチ4,096、学習率10⁻³、重み減衰10⁻⁴、正則化の係数10⁻⁴、シード1である。
+Pythonの学習器（`minase_train.fm.train`、GPU）には、PSTと同じ方式の一時的な改変を加え、初期値（観測マスクを適用した後のV、a、mask）、各エポックの訓練局面の順序、および各局面の左右鏡映の有無を書き出させた。
+FMでは鏡映の有無が乱数で決まるので、Rustは再生ファイルの鏡映ビットをそのまま使う。
+初期値のVは正規乱数で作られるので、Rustは`initial.npz`の値をそのまま使い、`mask`が自分で数えた観測マスクと完全に一致することと、未観測の行が0であることだけを検査する。
+
+| 照合 | 結果 |
+|---|---|
+| (1) 3回の更新の後の損失、V、a、AdamWの1次と2次のモーメント | すべて許容誤差内で一致。二値交差エントロピーの最大相対差4.8×10⁻⁸、Vの最大絶対差3.0×10⁻⁸ |
+| (2) 4エポック（patience 3）の短縮学習の各エポックの検証損失 | エポック0から4まで差は0.9〜1.5×10⁻⁸。最良エポック2と停止エポック4が一致 |
+| (3) 書き出した整数の重み | 埋め込み437,760個のうち91個が±1単位で異なり、残りは一致。指数（10）、符号、PSTの部分、駒価値、Kは一致。`fm-float.npz`のV、a、maskは許容誤差内で一致 |
+| 連続2エポックと、1エポックで止めて`--resume`で再開した学習 | `fm.bin`、`fm-float.npz`、各エポックの損失がビット単位で一致 |
+| 量子化誤差の検査（検証1万局面） | 補正をそのまま使う場合の平均0.49センチポーン、1/4にした場合の平均0.49センチポーン（基準は平均2センチポーン以下） |
+
+1エポックの時間は、同じ1ファイルで、PythonのGPUが検証を含めて16.1〜16.2秒、RustのCPU（18スレッド）が訓練6.0秒と検証0.05秒（約46万局面/秒）だった。
+Rustが約2.6倍速いので、FMの学習器にもGPUのカーネルは加えない。
+乱数によらない検査点として、候補Faの10ファイル全体（訓練27,745,843局面）で`fm train`を1エポック実行し、Rustが数えた観測マスクが、当時のPythonの`data/fm-quarter-current-pst-fa/fm-float.npz`の`mask`と完全に一致することを確かめた（観測済み9,522特徴、未観測4,158特徴）。
+学習前の検証損失は、Faの学習記録の0.4323040461に対してRustが0.4323039845であり、許容誤差内で一致した。
+この条件の1エポックの訓練は60秒（約46万局面/秒）、前処理と書き出しを含む全体は357秒だった。
+バッチの構築を更新と重ねるワーカーの部品は、評価関数に依存しないので汎用の部品（`src/nn/`）へ移し、PSTとFMの両方から使う。
+移した後も、PSTの学習の結果はビット単位で変わらなかった。
+
+照合に使ったPython側の改変（`tools/train/src/minase_train/fm/train.py`に対する差分）は次のとおりである。
+
+```diff
+--- tools/train/src/minase_train/fm/train.py
++++ target/py-replay/tools/train/src/minase_train/fm/train.py
+@@ -370,6 +370,62 @@
+     return output.with_suffix(".training.json")
+ 
+ 
++class ReplayDump:
++    """一度きりのRust照合用に、乱数を消費せず初期値と更新状態を保存する。"""
++
++    def __init__(self, directory, dataset, model, batch, steps):
++        self.directory = Path(directory)
++        self.directory.mkdir(parents=True, exist_ok=True)
++        if any(self.directory.iterdir()):
++            raise ValueError("--replay-dump directory must be empty")
++        if len(dataset.paths) > 2**32 or np.any(np.diff(dataset.offsets) > 2**32):
++            raise ValueError("replay file and record indices must fit u32")
++        self.steps, self.losses, self.mirrors = steps, [], []
++        self.metadata = {"format": "minase-replay-1", "trainer": "fm", "batch": batch, "epochs": 0,
++                         "files": [{"path": str(Path(path).resolve()), "sha256": sha256_file(path).hex()}
++                                   for path in dataset.paths]}
++        np.savez(self.directory / "initial.npz",
++                 V=model.embedding.weight[:FEATURE_COUNT].detach().cpu().numpy(),
++                 a=model.a.detach().cpu().numpy(), mask=model.observed[:FEATURE_COUNT].cpu().numpy())
++        self.write_metadata()
++
++    def write_metadata(self):
++        (self.directory / "replay.json").write_text(json.dumps(self.metadata, indent=2) + "\n")
++
++    def order(self, dataset, indices):
++        files = np.searchsorted(dataset.offsets[1:], indices, side="right")
++        positions = np.column_stack((files, indices - dataset.offsets[files])).astype("<u4")
++        self.metadata["epochs"] += 1
++        epoch = self.metadata["epochs"]
++        positions.tofile(self.directory / f"epoch-{epoch:03}.positions")
++        self.mirrors = []
++        self.write_metadata()
++
++    def mirror(self, selected):
++        self.mirrors.append(selected.astype(np.uint8, copy=True))
++
++    def finish_epoch(self):
++        epoch = self.metadata["epochs"]
++        np.concatenate(self.mirrors).tofile(self.directory / f"epoch-{epoch:03}.mirror")
++
++    def record(self, bce, reg, total):
++        if self.steps is not None:
++            self.losses.append([bce.item(), reg.item(), total.item()])
++
++    def finish(self, model, optimizer):
++        if self.steps is None or len(self.losses) != self.steps:
++            return False
++        self.finish_epoch()
++        arrays = dict(zip(("loss_bce", "loss_reg", "loss_total"), np.asarray(self.losses, dtype=np.float64).T))
++        for prefix, field in (("", None), ("exp_avg_", "exp_avg"), ("exp_avg_sq_", "exp_avg_sq")):
++            for name, parameter in (("V", model.embedding.weight), ("a", model.a)):
++                value = parameter if field is None else optimizer.state[parameter][field]
++                arrays[prefix + name] = value.detach().cpu().numpy()[:FEATURE_COUNT] if name == "V" else value.detach().cpu().numpy()
++        arrays["step"] = np.asarray(int(optimizer.state[model.a]["step"].item()), dtype=np.int64)
++        np.savez(self.directory / "python-steps.npz", **arrays)
++        return True
++
++
+ def command_train(args: argparse.Namespace) -> None:
+     """対局単位の分割でFMだけを学習し、最良エポックの保存物を出力する。"""
+     for name in ("rank", "epochs", "patience", "batch", "validation_sample"):
+@@ -379,6 +435,8 @@
+         value = getattr(args, name)
+         if not math.isfinite(value) or value < 0 or (name == "lr" and value == 0):
+             raise ValueError(f"invalid --{name.replace('_', '-')}")
++    if args.replay_steps is not None and (args.replay_dump is None or args.replay_steps <= 0):
++        raise ValueError("--replay-steps must be positive and requires --replay-dump")
+     validate_lambda_override(args.lambda_override)
+     device = torch.device(args.device)
+     if device.type == "cuda" and not torch.cuda.is_available():
+@@ -388,6 +446,8 @@
+                       lookahead=lookahead_options(args.lookahead_gamma, args.lookahead_plies))
+     if not dataset.training_indices.size or not dataset.validation_indices.size:
+         raise ValueError("training and validation sets must both be nonempty")
++    if args.replay_steps is not None and args.replay_steps > math.ceil(dataset.training_indices.size / args.batch) * args.epochs:
++        raise ValueError("--replay-steps exceeds available updates")
+     teacher_ks, teacher_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
+     output = Path(args.output)
+     report_path = training_report_path(output)
+@@ -399,6 +459,8 @@
+         torch.cuda.manual_seed_all(args.seed)
+     counts = feature_observations(dataset, args.batch)
+     model = FM(args.rank, counts > 0, device)
++    replay = (ReplayDump(args.replay_dump, dataset, model, args.batch, args.replay_steps)
++              if args.replay_dump is not None else None)
+     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+     generator = torch.Generator(device=device).manual_seed(args.seed)
+     steps = (dataset.training_indices.size + args.batch - 1) // args.batch
+@@ -439,6 +501,8 @@
+         print(f"epoch 0: validation_loss={initial_loss:.9f}", flush=True)
+         for epoch in range(1, args.epochs + 1):
+             order = torch.randperm(dataset.training_indices.size, generator=generator, device=device)
++            if replay is not None:
++                replay.order(dataset, dataset.training_indices[order.cpu().numpy()])
+             total = bce_total = 0.0
+             for start in range(0, len(order), args.batch):
+                 indices = dataset.training_indices[order[start:start + args.batch].cpu().numpy()]
+@@ -447,13 +511,18 @@
+                 board, lion = mirror(records["board"], records["lion"])
+                 reflected = feature_indices(board, records["stm"], lion)
+                 selected = (torch.rand(len(indices), generator=generator, device=device) < 0.5).cpu().numpy()
++                if replay is not None:
++                    replay.mirror(selected)
+                 features[selected] = reflected[selected]
+                 targets = build_targets(records, teacher_ks, dataset.generations(indices), dataset.teacher_lambdas,
+                                         scores=dataset.teacher_scores(indices))
+                 optimizer.zero_grad(set_to_none=True)
+                 logits, phi = batch_logits(model, mg, eg, k, features, phase_numerators(records["board"]), device)
+                 bce = F.binary_cross_entropy_with_logits(logits, torch.as_tensor(targets, device=device))
+-                loss = bce + args.lambda_res * phi.square().mean()
++                reg = args.lambda_res * phi.square().mean()
++                loss = bce + reg
++                if replay is not None:
++                    replay.record(bce, reg, loss)
+                 if not torch.isfinite(loss):
+                     raise ValueError("non-finite training loss")
+                 loss.backward()
+@@ -470,6 +539,12 @@
+                 report["total_steps"] += 1
+                 total += float(loss.detach()) * len(indices)
+                 bce_total += float(bce.detach()) * len(indices)
++                if replay is not None and replay.finish(model, optimizer):
++                    report.update(status="replay_steps")
++                    save_report()
++                    return
++            if replay is not None:
++                replay.finish_epoch()
+             loss, distribution = validation_loss(model, dataset, mg, eg, k, teacher_ks, args.batch, device)
+             report["epochs"].append({"epoch": epoch, "train_loss": bce_total / dataset.training_indices.size,
+                                      "total_loss": total / dataset.training_indices.size,
+@@ -482,6 +557,8 @@
+             save_report()
+             if should_stop_early(epoch, best_epoch, args.patience):
+                 break
++        if args.replay_steps is not None:
++            raise ValueError("training stopped before --replay-steps updates")
+         assert best is not None
+         model.load_state_dict(best)
+         v = model.embedding.weight[:FEATURE_COUNT].detach().cpu().numpy()
+@@ -542,6 +619,8 @@
+     train.add_argument("--lookahead-gamma", type=float)
+     train.add_argument("--lookahead-plies", type=int)
+     train.add_argument("--device", choices=("cpu", "cuda"), required=True)
++    train.add_argument("--replay-dump", type=Path, help="一時的なRust照合用の再生ディレクトリ")
++    train.add_argument("--replay-steps", type=int, help="最初のN更新の状態を書き出して終了する")
+     train.set_defaults(handler=command_train)
+     quarter = commands.add_parser("quarter", help="学習後のMNPT v3の補正を1/4にする")
+     quarter.add_argument("--input", required=True, type=Path)
+```

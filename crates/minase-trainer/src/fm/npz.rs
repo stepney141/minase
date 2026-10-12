@@ -3,6 +3,35 @@ use crate::nn::npz;
 use minase::eval::{features::FEATURE_COUNT, pst::FM_RANK};
 use std::collections::BTreeMap;
 
+pub(super) fn floats(values: &[f32], shape: &[usize]) -> npz::Array {
+    npz::Array {
+        dtype: "<f4".into(),
+        shape: shape.to_vec(),
+        data: values.iter().flat_map(|v| v.to_le_bytes()).collect(),
+    }
+}
+
+pub(super) fn encode_model(model: &super::Model) -> Result<Vec<u8>> {
+    Ok(npz::encode(&[
+        (
+            "V",
+            floats(
+                &model.weights[..FEATURE_COUNT * FM_RANK],
+                &[FEATURE_COUNT, FM_RANK],
+            ),
+        ),
+        ("a", floats(model.a(), &[FM_RANK])),
+        (
+            "mask",
+            npz::Array {
+                dtype: "|b1".into(),
+                shape: vec![FEATURE_COUNT],
+                data: model.mask().iter().map(|&v| u8::from(v)).collect(),
+            },
+        ),
+    ])?)
+}
+
 pub(super) struct FloatWeights {
     pub endpoints: Vec<[f64; 2]>,
     pub v: Vec<[f64; FM_RANK]>,

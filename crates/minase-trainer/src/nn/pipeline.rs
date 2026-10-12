@@ -1,16 +1,17 @@
 //! バッチ番号で担当を固定する、容量制限付きの先行構築。
 
-use super::{Error, Result};
+use super::Error;
 use std::{sync::mpsc::sync_channel, thread};
 
 // producerはバッチ構築、または構築と検証を行う。consumerは番号順に更新・集計する。
 // 各ワーカーが保持するのは送信済みの1件と構築中の1件まで。
-pub(super) fn ordered<T: Send>(
+/// 順序を保ち、各ワーカーが最大2バッチを先行構築する。
+pub fn ordered<T: Send, E: Send + From<Error>>(
     batches: usize,
     workers: usize,
-    producer: impl Fn(usize) -> Result<T> + Sync,
-    mut consumer: impl FnMut(usize, T) -> Result<()>,
-) -> Result<()> {
+    producer: impl Fn(usize) -> std::result::Result<T, E> + Sync,
+    mut consumer: impl FnMut(usize, T) -> std::result::Result<(), E>,
+) -> std::result::Result<(), E> {
     crate::nn::parallel::check_threads(workers)?;
     let workers = workers.min(batches);
     thread::scope(|scope| {
@@ -34,7 +35,7 @@ pub(super) fn ordered<T: Send>(
                     receivers.push(receiver);
                 }
                 Err(error) => {
-                    result = Err(error.into());
+                    result = Err(Error::Io(error).into());
                     break;
                 }
             }
@@ -43,7 +44,7 @@ pub(super) fn ordered<T: Send>(
             result = (|| {
                 for index in 0..batches {
                     let item = receivers[index % workers].recv().map_err(|_| {
-                        Error::Invalid("PST batch worker stopped before sending a result")
+                        Error::Invalid("batch worker stopped before sending a result")
                     })??;
                     consumer(index, item)?;
                 }
@@ -54,7 +55,7 @@ pub(super) fn ordered<T: Send>(
         drop(receivers);
         for handle in handles {
             if handle.join().is_err() && result.is_ok() {
-                result = Err(Error::Invalid("PST batch worker panicked"));
+                result = Err(Error::Invalid("batch worker panicked").into());
             }
         }
         result
@@ -88,7 +89,7 @@ mod tests {
         let live = AtomicUsize::new(0);
         let peak = AtomicUsize::new(0);
         let mut consumed = Vec::new();
-        ordered(
+        ordered::<_, Error>(
             19,
             workers,
             |index| {
@@ -187,13 +188,13 @@ mod tests {
     fn empty_input_and_worker_counts_larger_than_the_batch_count_finish() {
         for (batches, workers) in [(0, 3), (1, 5), (5, 1)] {
             let mut result = Vec::new();
-            ordered(batches, workers, Ok, |_, index| {
+            ordered::<_, Error>(batches, workers, Ok, |_, index| {
                 result.push(index);
                 Ok(())
             })
             .unwrap();
             assert_eq!(result, (0..batches).collect::<Vec<_>>());
         }
-        assert!(ordered(1, 0, Ok, |_, _: usize| Ok(())).is_err());
+        assert!(ordered::<_, Error>(1, 0, Ok, |_, _: usize| Ok(())).is_err());
     }
 }

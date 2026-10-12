@@ -10,12 +10,10 @@ pub mod export;
 mod linear;
 mod model;
 mod npz;
-mod pipeline;
 mod record;
 mod removal;
 mod replay;
 mod train;
-mod workers;
 
 pub use args::{Args, RemovalReferenceKind};
 pub use batch::Batch;

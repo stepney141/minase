@@ -15,9 +15,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// 学習を伴わないFM重みの変換。
+/// FMの学習と学習済み重みの変換。
 #[derive(Subcommand)]
 pub enum Command {
+    /// 固定した整数PSTへ加えるランク32のFMをCPUで学習する。
+    Train(super::Args),
     /// 指数だけを1増やし、補正を1/4にする。
     Quarter(QuarterArgs),
     /// 実数の出力係数へ倍率を掛けて量子化し直す。
@@ -257,6 +259,7 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
 /// コマンドを実行し、保存した報告と同じ内容を標準出力へ1行で出す。
 pub fn run(command: Command) -> Result<()> {
     let report = match command {
+        Command::Train(args) => serde_json::to_string(&super::train(args)?)?,
         Command::Quarter(args) => serde_json::to_string(&quarter(&args)?)?,
         Command::Scale(args) => serde_json::to_string(&scale(&args)?)?,
     };

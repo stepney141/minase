@@ -21,7 +21,7 @@ enum Command {
     /// 鏡映共有PSTを学習する。
     #[command(subcommand)]
     Pst(PstCommand),
-    /// FM補正を縮小し、倍率を重みへ焼き込む。
+    /// 固定PSTのFM補正を学習し、縮小と倍率の焼き込みを行う。
     #[command(subcommand)]
     Fm(minase_trainer::fm::Command),
     /// 評価分布、駒除去、合法手の評価差を診断する。
@@ -63,7 +63,9 @@ enum NnueCommand {
 fn main() -> std::process::ExitCode {
     let result = match Cli::parse().command {
         Command::Nnue(command) => run_nnue(command),
-        Command::Fm(command) => minase_trainer::fm::run(command),
+        Command::Fm(command) => {
+            minase_trainer::fm::run(command).map_err(|e| e as Box<dyn std::error::Error>)
+        }
         Command::Pst(PstCommand::Train(args)) => minase_trainer::pst::run(args)
             .map(|summary| {
                 if summary.stopped_by == minase_trainer::pst::StopReason::ReplaySteps {

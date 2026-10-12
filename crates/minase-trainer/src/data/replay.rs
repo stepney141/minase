@@ -152,6 +152,17 @@ impl Replay {
 
     /// 1から数えるエポックを読み、欠落、重複、集合外の局面と不正な鏡映ビットを拒否する。
     pub fn read_epoch(&self, dataset: &Dataset, epoch: u64) -> Result<Epoch> {
+        self.read_epoch_prefix(dataset, epoch, dataset.training_indices().len())
+    }
+
+    /// 局面列全体を検査し、鏡映は指定した接頭辞以上、全局面数以下を要求する。
+    /// 一時的なFMの`--replay-steps`専用で、通常学習では全件を要求する。
+    pub fn read_epoch_prefix(
+        &self,
+        dataset: &Dataset,
+        epoch: u64,
+        mirror_count: usize,
+    ) -> Result<Epoch> {
         let path = self.directory.join(format!("epoch-{epoch:03}.positions"));
         if epoch == 0 || epoch > self.epochs {
             return Err(invalid(&path, "replay epoch outside manifest"));
@@ -189,7 +200,12 @@ impl Replay {
         }
         let path = self.directory.join(format!("epoch-{epoch:03}.mirror"));
         let mirror = std::fs::read(&path)?;
-        if mirror.len() != indices.len() || mirror.iter().any(|&value| value > 1) {
+        if mirror_count == 0
+            || mirror_count > indices.len()
+            || mirror.len() < mirror_count
+            || mirror.len() > indices.len()
+            || mirror.iter().any(|&value| value > 1)
+        {
             return Err(invalid(&path, "replay mirror length or bit value mismatch"));
         }
         Ok(Epoch { indices, mirror })
