@@ -60,3 +60,4 @@
 - [GPUカーネルの内側のループで倍精度を使わない](no-f64-in-gpu-kernel-inner-loops.md) — GeForceでは倍精度が単精度の1/64なので、局面数×発火数×幅で回る積和は単精度で書き、倍精度は局面方向で相殺する和に限り、ステップごとの定数はホストで計算して渡す。
 - [縮約の順序はGPU側で固定の木として定義する](define-reduction-order-on-the-gpu.md) — GPUとCPU参照を同じ加算順で一致させるときは、GPUで速い固定の木を順序の定義にしてCPU参照がそれを真似る。CPUの順をGPUが真似ると直列化して遅くなる。
 - [再開の設定ハッシュに予算を含めない](resume-hash-excludes-budgets.md) — 再開の照合は軌跡を変える設定だけで行い、エポック数、patience、時間の上限、ワーカー数は含めない。
+- [インライン展開されたSHA-256はSSEとAVXの混在の罰で遅くなる](sse-avx-transition-penalty-in-inlined-sha.md) — SSE形式しかない命令（SHA-NIなど）で計算するクレートの処理は`#[inline(never)]`の薄い関数に閉じ込め、検査和が遅いときは`assists.sse_avx_mix`を数えて`vzeroupper`の有無を機械語で確かめる。
