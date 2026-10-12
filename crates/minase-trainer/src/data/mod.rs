@@ -5,6 +5,7 @@
 
 mod error;
 mod mnsd;
+pub mod replay;
 mod shuffle;
 mod teacher;
 

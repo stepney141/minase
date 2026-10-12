@@ -4,10 +4,10 @@ use super::{
     base::{self, Base},
     compute, export, pipeline,
     record::{append_epoch, configuration, reconcile_log, write_json},
-    workers,
+    replay, workers,
 };
 use crate::{
-    data::{Dataset, build_targets_from_arrays, epoch_permutation},
+    data::{Dataset, build_targets_from_arrays, epoch_permutation, replay::Replay},
     nn::{atomic_write, patience_reached, update_best},
 };
 use serde_json::{Value, json};
@@ -16,7 +16,6 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-// 再生ファイルを接続するときは、ここで整数MNPT由来の初期値を実数配列に置き換える。
 fn initial_model(base: &Base) -> Result<Model> {
     let initial: Vec<_> = base
         .linear
@@ -24,11 +23,6 @@ fn initial_model(base: &Base) -> Result<Model> {
         .map(|row| row.map(|v| f32::from(v) / 8.0))
         .collect();
     Model::initialize(&initial, base.k)
-}
-
-// エポック本体は順列の出所に依存せず、外部から渡された列をバッチへ分割する。
-fn training_order(dataset: &Dataset, seed: u64, epoch: u64) -> Vec<u64> {
-    epoch_permutation(dataset.training_indices(), seed, epoch)
 }
 
 struct Session {
@@ -42,6 +36,8 @@ struct Session {
     started: Instant,
     previous_elapsed: f64,
     initial_validation_loss: f64,
+    replay: Option<Replay>,
+    replay_steps: Option<replay::Steps>,
 }
 
 impl Session {
@@ -50,7 +46,7 @@ impl Session {
         args.validate()?;
         let workers = workers::workers(args.threads)?;
         let base = base::read(&args.init)?;
-        let model = initial_model(&base)?;
+        let mut model = initial_model(&base)?;
         let reference = if args.removal_penalty == 0.0 {
             None
         } else {
@@ -74,8 +70,28 @@ impl Session {
         {
             return Err(Error::Invalid("MNSD rule set differs from initial MNPT"));
         }
+        let replay = args
+            .replay
+            .as_ref()
+            .map(|directory| Replay::open(directory, "pst", &dataset, args.batch, args.epochs))
+            .transpose()?;
+        if let Some(replay) = &replay {
+            model = replay::initial(replay, &model)?;
+            // 指定された全エポックを、更新や出力の前に検査する。保持する列は1本だけ。
+            for epoch in 1..=args.epochs {
+                replay::order(replay, &dataset, epoch)?;
+            }
+        }
+        if args.replay_steps.is_some_and(|steps| {
+            u128::from(steps)
+                > dataset.training_indices().len().div_ceil(args.batch) as u128
+                    * u128::from(args.epochs)
+        }) {
+            return Err(Error::Invalid("--replay-steps exceeds available updates"));
+        }
+        let replay_steps = args.replay_steps.map(|_| replay::Steps::default());
         let ks = dataset.estimate_teacher_ks()?;
-        let mut config = configuration(&args, workers, &dataset, &ks, base.k)?;
+        let mut config = configuration(&args, workers, &dataset, &ks, base.k, replay.as_ref())?;
         let mut checkpoint = Checkpoint {
             optimizer: Adam::new(args.lr)?,
             model,
@@ -161,6 +177,8 @@ impl Session {
             started,
             previous_elapsed,
             initial_validation_loss: 0.0,
+            replay,
+            replay_steps,
         };
         if let Some(loss) = initial_loss {
             session.initial_validation_loss = loss;
@@ -217,10 +235,13 @@ impl Session {
         let started = Instant::now();
         let mut training = Training::default();
         let chunks: Vec<_> = indices.chunks(self.args.batch).collect();
+        let steps = self.args.replay_steps.map_or(chunks.len(), |limit| {
+            (limit - self.checkpoint.optimizer.step()).min(chunks.len() as u64) as usize
+        });
         let dataset = &self.dataset;
         let ks = &self.ks;
         pipeline::ordered(
-            chunks.len(),
+            steps,
             self.workers,
             |index| {
                 let batch = Batch::from_indices(dataset, chunks[index])?;
@@ -237,6 +258,9 @@ impl Session {
                     self.args.removal_penalty,
                     self.workers,
                 )?;
+                if let Some(steps) = &mut self.replay_steps {
+                    steps.record(gradients.losses, self.args.removal_penalty);
+                }
                 self.checkpoint
                     .optimizer
                     .update(&mut self.checkpoint.model, &gradients.weights)?;
@@ -263,8 +287,14 @@ impl Session {
             return Ok(false);
         }
         let epoch = self.checkpoint.progress.epoch + 1;
-        let indices = training_order(&self.dataset, self.args.seed, epoch);
+        let indices = match &self.replay {
+            Some(replay) => replay::order(replay, &self.dataset, epoch)?,
+            None => epoch_permutation(self.dataset.training_indices(), self.args.seed, epoch),
+        };
         let training = self.train_epoch(&indices)?;
+        if self.args.replay_steps == Some(self.checkpoint.optimizer.step()) {
+            return Ok(false);
+        }
         let started = Instant::now();
         let loss = self.validate()?;
         let seconds = started.elapsed().as_secs_f64();
@@ -318,6 +348,36 @@ impl Session {
     }
 
     fn finish(mut self) -> Result<Summary> {
+        if let Some(steps) = &self.replay_steps {
+            if self.args.replay_steps != Some(self.checkpoint.optimizer.step()) {
+                return Err(Error::Invalid(
+                    "training stopped before --replay-steps updates",
+                ));
+            }
+            steps.write(
+                &self.args.output_dir,
+                &self.checkpoint.model,
+                &self.checkpoint.optimizer,
+            )?;
+            let best = self.checkpoint.progress.best;
+            let summary = Summary {
+                status: "replay_steps",
+                reason: None,
+                stopped_by: StopReason::ReplaySteps,
+                convergence: None,
+                last_epoch: self.checkpoint.progress.epoch,
+                best_epoch: best.map(|best| best.epoch),
+                best_validation_loss: best.map(|best| best.validation_loss),
+                initial_validation_loss: Some(self.initial_validation_loss),
+                improved_over_epoch_zero: best
+                    .map(|best| best.validation_loss < self.initial_validation_loss),
+                total_steps: self.checkpoint.optimizer.step(),
+                elapsed_seconds: self.elapsed(),
+                quantization: None,
+            };
+            write_json(&self.args.output_dir.join("summary.json"), &summary)?;
+            return Ok(summary);
+        }
         let stopped_by = epoch_stop_reason(
             &self.checkpoint.progress,
             self.args.epochs,

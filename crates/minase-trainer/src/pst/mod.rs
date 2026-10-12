@@ -13,6 +13,7 @@ mod npz;
 mod pipeline;
 mod record;
 mod removal;
+mod replay;
 mod train;
 mod workers;
 

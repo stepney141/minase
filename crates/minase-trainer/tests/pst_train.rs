@@ -1,5 +1,7 @@
 //! pst trainの引数、端数バッチ、再開と成果物を合成MNSDで検証する。
 mod common;
+#[path = "pst_train/replay.rs"]
+mod replay;
 use clap::Parser;
 use minase::eval::{
     features::FEATURE_COUNT,
@@ -136,10 +138,11 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
         "--epochs",
         "--resume",
         "--validation-sample",
+        "--replay",
+        "--replay-steps",
     ] {
         assert!(help.contains(flag));
     }
-    assert!(!help.contains("--replay"));
 }
 
 static NEXT: AtomicU64 = AtomicU64::new(0);

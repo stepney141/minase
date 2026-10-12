@@ -1,5 +1,8 @@
 use super::{Args, Error, Result, export::QuantizationReport};
-use crate::{data::Dataset, nn::atomic_write};
+use crate::{
+    data::{Dataset, replay::Replay},
+    nn::atomic_write,
+};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -48,6 +51,7 @@ pub(super) fn configuration(
     dataset: &Dataset,
     ks: &[f64],
     k: f32,
+    replay: Option<&Replay>,
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
     let object = settings
@@ -62,10 +66,18 @@ pub(super) fn configuration(
         "epochs",
         "patience",
         "threads",
+        "replay_steps",
     ] {
         object.remove(key);
     }
     object.insert("model".into(), json!("mirrored_pst"));
+    object.insert(
+        "replay".into(),
+        replay.map_or(
+            Value::Null,
+            |replay| json!({"path": replay.directory(), "replay_json_sha256": replay.sha256()}),
+        ),
+    );
     object.insert(
         "optimizer".into(),
         json!({"lr":args.lr, "weight_decay":0.0, "betas":[0.9,0.999], "epsilon":1e-8}),
@@ -184,6 +196,8 @@ pub(crate) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
+    /// 一時的な照合用に指定した更新回数へ到達した。
+    ReplaySteps,
     /// 指定されたエポック数を完了した。
     MaxEpochs,
     /// 指定された連続エポック数にわたって改善しなかった。
@@ -193,7 +207,7 @@ pub enum StopReason {
 /// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
 #[derive(Debug, Serialize)]
 pub struct Summary {
-    /// candidate、quantization_error、またはerror。
+    /// candidate、replay_steps、quantization_error、またはerror。
     pub status: &'static str,
     /// 検査失敗または学習未完了の理由。
     pub reason: Option<String>,

@@ -62,6 +62,10 @@ fn main() -> std::process::ExitCode {
         Command::Nnue(command) => run_nnue(command),
         Command::Pst(PstCommand::Train(args)) => minase_trainer::pst::run(args)
             .map(|summary| {
+                if summary.stopped_by == minase_trainer::pst::StopReason::ReplaySteps {
+                    println!("saved rust-steps.npz after {} updates", summary.total_steps);
+                    return;
+                }
                 println!(
                     "best epoch: {}; stopped_by: {:?}; status: {}",
                     summary.best_epoch.expect("completed training"),
