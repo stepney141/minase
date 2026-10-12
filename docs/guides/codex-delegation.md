@@ -39,3 +39,7 @@ Agentツールの`isolation: "worktree"`でcodexのサブエージェントを�
 worktreeで委任するときは、worktreeを自分で作り、そのディレクトリから委任する。
 Claude Codeのサブエージェント`codex:codex-rescue`は、起動したセッションの作業ディレクトリにしか書き込めないので、別のworktreeへの委任には使えない。
 代わりに、codexプラグインの補助スクリプトを`node <プラグインの場所>/scripts/codex-companion.mjs task --cwd <worktreeのパス> --write --prompt-file <指示書のパス>`の形で直接起動する。
+補助スクリプトはジョブの状態を`--cwd`ごとに別の場所へ記録するので、`status`と`result`は起動したときと同じディレクトリで実行する。
+別のディレクトリで実行すると「No job found」となり、完了を待つループが終わらない。
+codexが判断を求めて止まった場合は、同じディレクトリで`task --resume-last --write --cwd <同じパス> "<回答>"`と実行すると、同じセッションのまま続けられる。
+指示書に「質問で止まらず、判断が要る点は方針に沿って決め、報告に書くこと」と書いておくと、止まらずに最後まで実行する。

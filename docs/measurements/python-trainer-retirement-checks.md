@@ -726,7 +726,7 @@ Pythonの学習ツール（`tools/train/`の`minase_train`、テスト、`uv.loc
 | `diag nnue-moves`の報告 | フェーズ1と同じ2万局面 |
 | `fm quarter`と`fm scale --fm-scale 611`の出力 | 候補Faの`fm-quarter.bin`と、現行の`crates/minase/nets/pst.bin` |
 
-検査は、`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`（1,092件通過）、GPUのテスト（30件通過）である。
+検査は、`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`（最終コミットで1,094件通過）、GPUのテスト（撤去のコミット`1893b74`で30件通過。その後の変更はGPUの経路に触れていない）である。
 
 書き直した[PSTとFMの学習手順](../guides/pst-training.md)に従い、短縮した条件で最初から最後まで実行した。
 基準コミットのworktreeでの生成（16局、1手2,000ノード）と検査、世代3の1ファイルを加えた`pst train`（2エポック）、`diag pst-compare`（各分類と帯で最大1,000局面）、`fm train`、`fm quarter`、`joint train`、`fm scale`がすべて正常に終了した。

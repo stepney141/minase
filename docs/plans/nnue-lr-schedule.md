@@ -68,13 +68,13 @@
 ## 依存関係
 
 学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`minase-trainer nnue train`である。
-学習率はホストが群ごとに保持し、更新のたびにバイアス補正の係数とともに倍精度でカーネルへ渡している（`src/gpu/optimizer.rs`の`Optimizer::update`、CPU参照は`src/reference/optimizer.rs`の`Coefficients::new`）。
+学習率はホストが群ごとに保持し、更新のたびにバイアス補正の係数とともに倍精度でカーネルへ渡している（`src/nnue/gpu/optimizer.rs`の`Optimizer::update`、CPU参照は汎用部品`src/nn/adam.rs`の`AdamCoefficients::new`）。
 したがって倍率を掛けるのはホスト側の変更で済み、CUDAカーネルは変えない。
 重み減衰はAdamWの分離型で`p ← p·(1 − lr·wd)`として掛かるので、倍率を掛けると減衰も同じ割合で小さくなる。
 チェックポイント（MNTRCKPT版2）は完了した更新回数、エポック、AdamWの状態を保存しており、再開時は`更新回数 = エポック × ceil(訓練局面数 / バッチ)`を検査する。
 チェックポイントには実測の累積時間とそれを含む検査和も入るので、連続実行と再開実行のファイル全体は一致しない。
-再開の設定ハッシュは引数から出力先、データ、`--epochs`、`--patience`、時間の上限、`--threads`を除いて作る（`src/train/record.rs`）。
-再開時は、`training.jsonl`の各行をエポックの記録として読み、エポック番号が1ずつ増えることを検査する（`src/train/record.rs`の`reconcile_log`）。
+再開の設定ハッシュは引数から出力先、データ、`--epochs`、`--patience`、時間の上限、`--threads`を除いて作る（`src/nnue/train/record.rs`）。
+再開時は、`training.jsonl`の各行をエポックの記録として読み、エポック番号が1ずつ増えることを検査する（`src/nnue/train/record.rs`の`reconcile_log`）。
 教師用Kの推定と観測マスクは訓練集合から作り、第1層の初期化は観測された行だけで乱数を消費する。
 
 入力特徴集合と幅、および比較の基準となる一定の学習率のネットは、[NNUEの完全代替](nnue-replacement.md)が最後に段階ゲートへ出したものとする。

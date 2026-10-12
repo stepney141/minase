@@ -76,9 +76,9 @@ SCReLUが入力の二乗を作るので、非線形部分全体は第1層の重�
 [NNUEの完全代替](nnue-replacement.md)の「重みファイルの形式」は、出力部を追加するときは`head=`の名前と区画の形を出力部の定義として加えると定めており、本書は版5のまま出力部を追加する。
 評価関数の値はキャッシュされず、静止探索の各節点を含めて評価のたびに出力部を全計算する。
 
-学習器の出力部は、パラメータの種類を6つに固定した配列（`src/model/mod.rs`の`Parameter`）、CPU参照の`head`と`output_backward`（`src/reference/mod.rs`）、CUDAの`output_backward`、`validation_head`、`gradient_partials`、`optimizer_head`（`kernels/`）からなる。
-書き出し時の量子化誤差の検査（`src/export.rs`）は、エンジンの整数推論を呼んで浮動小数点の参照と比べる。
-駒除去差分の補助損失は`src/reference/removal.rs`と`kernels/removal.cu`にあり、チェックポイント（MNTRCKPT版2）は補助損失の係数を保存している。
+学習器の出力部は、パラメータの種類を6つに固定した配列（`src/nnue/model/mod.rs`の`Parameter`）、CPU参照の`head`と`output_backward`（`src/nnue/reference/mod.rs`）、CUDAの`output_backward`、`validation_head`、`gradient_partials`、`optimizer_head`（`kernels/`）からなる。
+書き出し時の量子化誤差の検査（`src/nnue/export.rs`）は、エンジンの整数推論を呼んで浮動小数点の参照と比べる。
+駒除去差分の補助損失は`src/nnue/reference/removal.rs`と`kernels/removal.cu`にあり、チェックポイント（MNTRCKPT版2）は補助損失の係数を保存している。
 P型は第1層の重みと出力重みを幅の前半と後半で共有し、左右鏡映に対する不変性を課している。
 HalfKP-hm-b8の文脈は、基準の王駒が1枚もない場合は鏡映なしとし、複数ある場合は升番号の最小のものを選ぶ（`feature_set.rs`の`HalfKpHmB8::context`）。
 
