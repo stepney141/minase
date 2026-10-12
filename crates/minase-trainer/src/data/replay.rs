@@ -46,6 +46,45 @@ fn invalid(path: &Path, reason: &'static str) -> Error {
     }
 }
 
+/// 昇順little-endian i64の標本番号を読み、件数、範囲、重複と検証集合を検査する。
+/// Pythonとの照合用の一時的な読み手であり、フェーズ6で削除する。
+pub fn read_sample(
+    path: &Path,
+    dataset: &Dataset,
+    sample: usize,
+    validation: bool,
+) -> Result<Vec<u64>> {
+    let bytes = std::fs::read(path)?;
+    if bytes.len() % 8 != 0 || bytes.len() / 8 != sample {
+        return Err(invalid(
+            path,
+            "replay sample count does not match requested sample (expected little-endian i64)",
+        ));
+    }
+    let mut indices = Vec::with_capacity(sample);
+    for chunk in bytes.as_chunks::<8>().0 {
+        let index = i64::from_le_bytes(*chunk);
+        if index < 0 || index as u64 >= dataset.record_count() {
+            return Err(invalid(path, "replay sample index is out of range"));
+        }
+        let index = index as u64;
+        if indices.last().is_some_and(|&previous| previous >= index) {
+            return Err(invalid(
+                path,
+                "replay sample indices must be strictly ascending without duplicates",
+            ));
+        }
+        if validation && dataset.validation_indices().binary_search(&index).is_err() {
+            return Err(invalid(
+                path,
+                "replay sample index is outside the validation split",
+            ));
+        }
+        indices.push(index);
+    }
+    Ok(indices)
+}
+
 impl Replay {
     /// 一時的な再生入力の版、学習器、入力順、SHA-256、バッチとエポック数を検査する。
     /// 局面列と鏡映ビットは`read_epoch`で検査する。

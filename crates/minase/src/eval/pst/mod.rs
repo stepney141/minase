@@ -4,7 +4,7 @@ pub(crate) mod accumulator;
 mod features;
 mod fm;
 mod format;
-pub use fm::FM_RANK;
+pub use fm::{FM_RANK, FmWeights};
 #[cfg(test)]
 mod tests;
 

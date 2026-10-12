@@ -39,13 +39,27 @@ pub struct QuantizationReport {
 
 /// f32をf64で8倍して偶数へ丸める。範囲外と非有限値は拒否する。
 pub fn quantize(model: &Model) -> Result<Vec<[i16; 2]>> {
-    model
-        .expanded()
-        .into_iter()
+    quantize_weights(
+        &model
+            .expanded()
+            .into_iter()
+            .map(|row| row.map(f64::from))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// 特徴番号順の実数2端点を8倍し、偶数へ丸める。鏡映共有や値の平均は行わない。
+/// 配列長、有限性と丸めた値のi16範囲を検査する。
+pub fn quantize_weights(weights: &[[f64; 2]]) -> Result<Vec<[i16; 2]>> {
+    if weights.len() != minase::eval::features::FEATURE_COUNT {
+        return Err(Error::Invalid("PST quantization requires [13680, 2]"));
+    }
+    weights
+        .iter()
         .map(|row| {
             let mut integers = [0; 2];
-            for (e, value) in row.into_iter().enumerate() {
-                let quantized = (f64::from(value) * 8.0).round_ties_even();
+            for (e, &value) in row.iter().enumerate() {
+                let quantized = (value * 8.0).round_ties_even();
                 if !quantized.is_finite()
                     || !(f64::from(i16::MIN)..=f64::from(i16::MAX)).contains(&quantized)
                 {

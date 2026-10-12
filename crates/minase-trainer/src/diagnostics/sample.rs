@@ -48,35 +48,12 @@ impl SampleArgs {
             .into());
         }
         if let Some(path) = &self.replay_sample {
-            let bytes = std::fs::read(path)?;
-            if bytes.len() % 8 != 0 || bytes.len() / 8 != self.sample {
-                return Err(
-                    "replay sample count does not match --sample (expected little-endian i64)"
-                        .into(),
-                );
-            }
-            let mut indices = Vec::with_capacity(self.sample);
-            for chunk in bytes.as_chunks::<8>().0 {
-                let index = i64::from_le_bytes(*chunk);
-                if index < 0 || index as u64 >= dataset.record_count() {
-                    return Err(format!("replay sample index {index} is out of range").into());
-                }
-                let index = index as u64;
-                if indices.last().is_some_and(|&previous| previous >= index) {
-                    return Err(
-                        "replay sample indices must be strictly ascending without duplicates"
-                            .into(),
-                    );
-                }
-                if validation && dataset.validation_indices().binary_search(&index).is_err() {
-                    return Err(format!(
-                        "replay sample index {index} is outside the validation split"
-                    )
-                    .into());
-                }
-                indices.push(index);
-            }
-            return Ok(indices);
+            return Ok(crate::data::replay::read_sample(
+                path,
+                dataset,
+                self.sample,
+                validation,
+            )?);
         }
         let mut indices = if validation {
             epoch_permutation(dataset.validation_indices(), self.seed, 0)

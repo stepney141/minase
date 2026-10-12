@@ -2,6 +2,7 @@
 
 pub mod data;
 pub mod diagnostics;
+pub mod fm;
 pub mod nn;
 pub mod nnue;
 pub mod pst;
