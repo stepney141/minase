@@ -59,7 +59,7 @@ fn search_apis_use_the_supplied_nnue() {
             (fs(6, 1), Color::White, PieceKind::King),
         ],
     );
-    // 同じエポック0のネットの出力バイアスだけを変え、注入した重みを区別する。
+    // 埋め込みネットの出力バイアスだけを変え、注入した重みを区別する。
     use sha2::{Digest, Sha256};
     let mut bytes = include_bytes!("../../../../nets/nnue.bin").to_vec();
     let end = bytes.len();

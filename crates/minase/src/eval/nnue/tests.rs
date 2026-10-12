@@ -1,13 +1,16 @@
 //! 共通土台の形式、整数推論、差分更新および鏡映不変性の契約を検査する。
 
 use super::accumulator::Accumulator;
-use super::feature_set::{HalfKpContext, HalfKpHmB8, Mirror};
+use super::feature_set::{HalfKpContext, HalfKpHmB8, Mirror, P};
 use super::format::HEADER_LENGTH;
 use super::*;
 use crate::eval::features::mirror_feature;
 use minase_core::test_util::{position_from_codes, sq};
 use minase_core::{Move, MoveGenerator, MoveRules};
 use sha2::{Digest, Sha256};
+
+/// 学習前のP型・幅64を固定し、埋め込みネットの更新から独立させる。
+const EPOCH_ZERO: &[u8] = include_bytes!("../../../nets/nnue-epoch0.bin");
 
 /// 同じ仕様の検査を両入力特徴集合へ具体化する。
 macro_rules! both_feature_sets {
@@ -83,7 +86,7 @@ fn random_bytes<F: FeatureSet>(width: usize) -> Vec<u8> {
             *value = (next(&mut state) % 25) as i16 - 12;
         }
     }
-    let mut bytes = EMBEDDED[..HEADER_LENGTH].to_vec();
+    let mut bytes = EPOCH_ZERO[..HEADER_LENGTH].to_vec();
     set_architecture::<F>(&mut bytes, width);
     bytes[104..108].copy_from_slice(&(width as u32).to_le_bytes());
     for pair in linear {
@@ -92,7 +95,7 @@ fn random_bytes<F: FeatureSet>(width: usize) -> Vec<u8> {
         }
     }
     bytes.extend_from_slice(
-        &EMBEDDED[HEADER_LENGTH + FEATURE_COUNT * 4
+        &EPOCH_ZERO[HEADER_LENGTH + FEATURE_COUNT * 4
             ..HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4],
     );
     for value in hidden {
@@ -129,7 +132,7 @@ fn random_bytes<F: FeatureSet>(width: usize) -> Vec<u8> {
 
 fn networks<F: FeatureSet>() -> [Network<F, DirectScrelu>; 2] {
     [
-        Network::decode(&copy_p_rows::<F>(EMBEDDED)).unwrap(),
+        Network::decode(&copy_p_rows::<F>(EPOCH_ZERO)).unwrap(),
         Network::decode(&random_bytes::<F>(4)).unwrap(),
     ]
 }
@@ -489,7 +492,11 @@ fn random_games_preserve_accumulators_symmetry_and_epoch_zero_evaluation<F: Feat
 
 #[test]
 fn embedded_metadata_and_search_values_match_baseline() {
-    let nnue = Nnue::decode(EMBEDDED).unwrap();
+    let nnue = weights().unwrap();
+    assert_eq!(
+        nnue.width(),
+        u32::from_le_bytes(EMBEDDED[104..108].try_into().unwrap()) as usize
+    );
     let pst = crate::eval::pst::Pst::decode(include_bytes!("../../../nets/pst.bin")).unwrap();
     assert_eq!(nnue.pawn_value(), pst.pawn_value());
     assert_eq!(nnue.max_promotion_gain(), pst.max_promotion_gain());
@@ -531,7 +538,10 @@ fn encoding_input<F: FeatureSet>(net: &Network<F, DirectScrelu>) -> EncodeInput<
 #[test]
 fn embedded_encode_round_trip_is_byte_identical() {
     let net = Nnue::decode(EMBEDDED).unwrap();
-    assert_eq!(encode::<P>(&encoding_input(&net)).unwrap(), EMBEDDED);
+    assert_eq!(
+        encode::<ActiveFeatureSet>(&encoding_input(&net)).unwrap(),
+        EMBEDDED
+    );
 }
 
 both_feature_sets!(encode_round_trip_preserves_random_parameters);
@@ -561,7 +571,7 @@ fn encode_round_trip_preserves_random_parameters<F: FeatureSet>() {
 /// MNUE版5のヘッダで定めた幅とKの境界を検査する。
 #[test]
 fn encode_validates_width_and_k() {
-    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
     let input = encoding_input(&net);
     for width in [0, 1, 3, 513, 514, u32::MAX] {
         assert_eq!(
@@ -585,7 +595,13 @@ fn encode_validates_width_and_k() {
     }
     for k in [f32::from_bits(1), f32::MIN_POSITIVE, 100_000.0] {
         let bytes = encode::<P>(&EncodeInput { k, ..input }).unwrap();
-        assert_eq!(Nnue::decode(&bytes).unwrap().k().to_bits(), k.to_bits());
+        assert_eq!(
+            Network::<P, DirectScrelu>::decode(&bytes)
+                .unwrap()
+                .k()
+                .to_bits(),
+            k.to_bits()
+        );
     }
     let weights = vec![0; FEATURE_COUNT * 512];
     let bytes = encode::<P>(&EncodeInput {
@@ -596,7 +612,10 @@ fn encode_validates_width_and_k() {
         ..input
     })
     .unwrap();
-    assert_eq!(Nnue::decode(&bytes).unwrap().width(), 512);
+    assert_eq!(
+        Network::<P, DirectScrelu>::decode(&bytes).unwrap().width(),
+        512
+    );
 }
 
 both_feature_sets!(encode_rejects_invalid_parameter_lengths);
@@ -814,7 +833,7 @@ fn encode_validates_mirror_sharing<F: FeatureSet>() {
 /// 規則セット名の上限は文字数ではなくUTF-8のバイト数である。
 #[test]
 fn encode_validates_rule_set_names() {
-    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
     let input = encoding_input(&net);
     for rule_set in [
         String::new(),
@@ -826,7 +845,12 @@ fn encode_validates_rule_set_names() {
             ..input
         })
         .unwrap();
-        assert_eq!(Nnue::decode(&bytes).unwrap().rule_set(), rule_set);
+        assert_eq!(
+            Network::<P, DirectScrelu>::decode(&bytes)
+                .unwrap()
+                .rule_set(),
+            rule_set
+        );
     }
     for rule_set in [
         "x".repeat(33),
@@ -891,7 +915,7 @@ fn encode_validates_feature_set_metadata() {
     format_feature_set!(OversizedDimensions, "large", usize::MAX);
     format_feature_set!(ShortDimensions, "small", 0);
 
-    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
     let input = encoding_input(&net);
     let bytes = encode::<FullName>(&input).unwrap();
     assert_eq!(architecture(&bytes).unwrap().len(), 96);
@@ -920,7 +944,7 @@ fn encode_validates_feature_set_metadata() {
 /// 探索用駒価値も復号と同じ契約で検査する。
 #[test]
 fn encode_rejects_invalid_piece_values() {
-    let net = Nnue::decode(&random_bytes::<P>(2)).unwrap();
+    let net = Network::<P, DirectScrelu>::decode(&random_bytes::<P>(2)).unwrap();
     let input = encoding_input(&net);
     for value in [-1, 29_000, i32::MAX] {
         let mut piece_values = *input.piece_values;
@@ -1618,7 +1642,7 @@ fn architecture_must_match_type_and_header_width<F: FeatureSet>() {
         ));
     } else {
         assert!(matches!(
-            Nnue::decode(&bytes),
+            Network::<P, DirectScrelu>::decode(&bytes),
             Err(Error::UnexpectedArchitecture { .. })
         ));
     }

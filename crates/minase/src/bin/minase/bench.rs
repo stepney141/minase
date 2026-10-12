@@ -527,9 +527,14 @@ mod tests {
         assert_eq!(first, second, "total node counts must be deterministic");
     }
 
-    /// フェーズ4診断: P型の再計算は局面・ワーカーごとの根1回だけで、反復へ持ち越さない。
+    /// フェーズ4診断: 全ワーカーの根の再計算を数え、集計を次の実行へ持ち越さない。
     #[test]
     fn accumulator_counts_include_all_workers_and_exclude_previous_runs() {
+        use minase::eval::nnue::{
+            ActiveFeatureSet,
+            feature_set::{FeatureSet, Mirror},
+        };
+
         let nnue = Nnue::decode(include_bytes!("../../../nets/nnue.bin")).unwrap();
         let codes = parse_rule_set("engine-default").unwrap();
         let rules = Rules::from_codes(&codes).unwrap();
@@ -539,10 +544,13 @@ mod tests {
             let threads = NonZeroUsize::new(count).unwrap();
             for _ in 0..2 {
                 let run = run_bench(&nnue, rules, &limits, threads, &mut table, false);
-                assert_eq!(
-                    run.accumulators.refreshes,
-                    (BENCH_POSITIONS.len() * count) as u64
-                );
+                let roots = (BENCH_POSITIONS.len() * count) as u64;
+                // P型では根だけを再計算し、HalfKP型では文脈の変更時にも再計算する。
+                if ActiveFeatureSet::MIRROR == Mirror::Shared {
+                    assert_eq!(run.accumulators.refreshes, roots);
+                } else {
+                    assert!(run.accumulators.refreshes >= roots);
+                }
                 assert!(run.accumulators.incremental_updates > 0);
                 assert_eq!(nnue.take_accumulator_stats(), AccumulatorStats::default());
             }

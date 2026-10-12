@@ -74,6 +74,7 @@ fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
 // 同「適用するノード」。PV、詰み帯、王駒への利きがある場合は静かな手を省かない。
 #[test]
 fn late_move_pruning_exclusions_search_all_quiets() {
+    let nnue = epoch_zero_nnue();
     for (width, mate_window, attacked) in [(2, false, false), (1, true, false), (1, false, true)] {
         let board = if attacked {
             // 金将1枚を8筋8段に置き、飛車の王手を保ったまま静的評価を正にして引き分けで窓を打ち切らせない。
@@ -84,7 +85,7 @@ fn late_move_pruning_exclusions_search_all_quiets() {
         assert_eq!(royal_under_attack(&board), attacked);
         let moves = legal_moves(&board);
         let history = repeated_root_children(&board, &moves);
-        with_root_searcher(&board, &history, |searcher| {
+        with_nnue_root_searcher(&nnue, &board, &history, |searcher| {
             let alpha = if mate_window {
                 MATE_THRESHOLD - 1
             } else {

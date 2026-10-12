@@ -5,6 +5,7 @@ use std::fs::File;
 use std::path::Path;
 use std::process::Command;
 
+use minase::eval::nnue::{Network, evaluate, feature_set::P, head::DirectScrelu};
 use minase::training::records::{Header, Outcome, Record, Writer};
 use minase_core::notation::usi;
 use minase_core::rules::parse_rule_set;
@@ -53,9 +54,9 @@ fn probe(positions: &Path, weights: &str, flags: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
-/// 埋め込みP型の各行を8区分へ複写し、同じ評価を返すHalfKP型を作る。
+/// エポック0のP型の各行を8区分へ複写し、同じ評価を返すHalfKP型を作る。
 fn half_kp_weights() -> Vec<u8> {
-    let source = include_bytes!("../nets/nnue.bin");
+    let source = include_bytes!("../nets/nnue-epoch0.bin");
     let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
     let hidden = 192 + 13_680 * 4 + 47 * 4;
     let end = hidden + 13_680 * width * 2;
@@ -92,7 +93,8 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
     writer.finish().unwrap();
     let half_kp_path = path.with_extension("mnue");
     std::fs::write(&half_kp_path, half_kp_weights()).unwrap();
-    let nnue = minase::eval::weights().unwrap();
+    let nnue =
+        Network::<P, DirectScrelu>::decode(include_bytes!("../nets/nnue-epoch0.bin")).unwrap();
     let rules = Rules::from_codes(&parse_rule_set("engine-default").unwrap()).unwrap();
     let generator = MoveGenerator::new(rules.moves);
     for flags in [
@@ -103,7 +105,7 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
     ] {
         let result = probe(
             &path,
-            concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue.bin"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/nets/nnue-epoch0.bin"),
             &flags,
         );
         assert_eq!(result, probe(&path, half_kp_path.to_str().unwrap(), &flags));
@@ -111,7 +113,7 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
         for (index, position) in positions.iter().enumerate() {
             let entry = &result[index];
             assert_eq!(entry["index"], index);
-            let before = minase::eval::evaluate(&nnue, position);
+            let before = evaluate(&nnue, position);
             assert_eq!(entry["eval"], before);
             assert!(entry.get("eval_pst").is_none());
             assert_eq!(
@@ -129,7 +131,7 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
                 .map(|mv| {
                     let mut after = game.clone();
                     after.play(mv).unwrap();
-                    let delta = -minase::eval::evaluate(&nnue, after.position()) - before;
+                    let delta = -evaluate(&nnue, after.position()) - before;
                     (
                         usi::text(position, mv, &generator).unwrap(),
                         (mv.promote, delta),
@@ -176,7 +178,7 @@ fn flags_preserve_json_fields_and_side_relative_deltas() {
                         after.position(),
                         position.side_to_move(),
                     );
-                    let opposite = minase::eval::evaluate(&nnue, after.position());
+                    let opposite = evaluate(&nnue, after.position());
                     assert_eq!(row["after_same"], same);
                     assert_eq!(row["after_opposite"], opposite);
                     assert_eq!(row["placement"], same - before);
@@ -260,7 +262,7 @@ fn skip_invalid_preserves_indices_and_malformed_network_fails() {
         "features=P;ft=64;linear=tapered2;head=unknown",
         "features=HalfKP-hm-b8;ft=64;linear=tapered2;head=unknown",
     ] {
-        let mut bytes = include_bytes!("../nets/nnue.bin").to_vec();
+        let mut bytes = include_bytes!("../nets/nnue-epoch0.bin").to_vec();
         bytes[8..104].fill(0);
         bytes[8..8 + architecture.len()].copy_from_slice(architecture.as_bytes());
         std::fs::write(&invalid_net, bytes).unwrap();

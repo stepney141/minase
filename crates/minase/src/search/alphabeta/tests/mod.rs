@@ -158,8 +158,44 @@ fn small_tt() -> TranspositionTable {
     TranspositionTable::new(1).unwrap()
 }
 
+/// 評価値に依存する局面用に、エポック0のP型の行を探索の特徴集合へ複写する。
+fn epoch_zero_nnue() -> Nnue {
+    use crate::eval::features::FEATURE_COUNT;
+    use crate::eval::nnue::{ActiveFeatureSet, feature_set::FeatureSet};
+    use sha2::{Digest, Sha256};
+
+    let source = include_bytes!("../../../../nets/nnue-epoch0.bin");
+    let width = u32::from_le_bytes(source[104..108].try_into().unwrap()) as usize;
+    let hidden = 192 + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+    let end = hidden + FEATURE_COUNT * width * 2;
+    let mut bytes = source[..hidden].to_vec();
+    let architecture = format!(
+        "features={};ft={width};linear=tapered2;head=direct-screlu",
+        ActiveFeatureSet::NAME
+    );
+    bytes[8..104].fill(0);
+    bytes[8..8 + architecture.len()].copy_from_slice(architecture.as_bytes());
+    for _ in 0..ActiveFeatureSet::DIMENSIONS / FEATURE_COUNT {
+        bytes.extend_from_slice(&source[hidden..end]);
+    }
+    bytes.extend_from_slice(&source[end..]);
+    let checksum = Sha256::digest(&bytes[192..]);
+    bytes[144..176].copy_from_slice(&checksum);
+    Nnue::decode(&bytes).unwrap()
+}
+
 /// 時間制限のない単一ワーカーで根の窓と置換表を検査する。
 fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&mut Searcher<'_>)) {
+    with_nnue_root_searcher(&weights().unwrap(), position, history, test);
+}
+
+/// 明示した重みを使い、時間制限のない単一ワーカーで根を検査する。
+fn with_nnue_root_searcher(
+    nnue: &Nnue,
+    position: &Position,
+    history: &[u64],
+    test: impl FnOnce(&mut Searcher<'_>),
+) {
     let external_stop = AtomicBool::new(false);
     let shared = SharedSearch {
         external_stop: &external_stop,
@@ -170,13 +206,12 @@ fn with_root_searcher(position: &Position, history: &[u64], test: impl FnOnce(&m
         started: Instant::now(),
         hard_limit: None,
     };
-    let nnue = weights().unwrap();
     let table = small_tt();
     let mut butterfly_history =
         Box::new([[[0; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT]);
     let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();
     let mut searcher = new_searcher(
-        &nnue,
+        nnue,
         position,
         engine_rules(),
         history,
