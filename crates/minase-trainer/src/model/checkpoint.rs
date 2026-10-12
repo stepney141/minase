@@ -70,17 +70,7 @@ impl Checkpoint {
                 return Err(Error::Invalid("negative AdamW variance"));
             }
         }
-        if !self.progress.elapsed_seconds.is_finite() || self.progress.elapsed_seconds < 0.0 {
-            return Err(Error::Invalid("elapsed time"));
-        }
-        if let Some(best) = self.progress.best
-            && (best.epoch == 0
-                || best.epoch > self.progress.epoch
-                || !best.validation_loss.is_finite()
-                || best.validation_loss < 0.0)
-        {
-            return Err(Error::Invalid("best epoch"));
-        }
+        self.progress.validate()?;
         let model = &self.model;
         if model
             .initial_linear
@@ -116,30 +106,11 @@ impl Checkpoint {
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.validate()?;
         let s = self.model.shape();
-        let mut bytes = MAGIC.to_vec();
-        bytes.extend(VERSION.to_le_bytes());
-        let arch = s.architecture();
-        bytes.extend(arch.as_bytes());
-        bytes.resize(12 + 96, 0);
+        let mut bytes = envelope(&s.architecture());
         bytes.extend((s.width() as u32).to_le_bytes());
         bytes.extend(s.k().to_le_bytes());
-        for value in [
-            self.optimizer.step,
-            self.progress.epoch,
-            self.progress.best.map_or(0, |v| v.epoch),
-        ] {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend(
-            self.progress
-                .best
-                .map_or(f64::INFINITY, |v| v.validation_loss)
-                .to_le_bytes(),
-        );
-        bytes.extend(self.progress.elapsed_seconds.to_le_bytes());
-        bytes.extend(self.progress.seed.to_le_bytes());
-        bytes.extend(self.progress.config_hash);
-        bytes.extend(self.progress.input_hash);
+        bytes.extend(self.optimizer.step.to_le_bytes());
+        self.progress.encode_into(&mut bytes);
         for group in [
             self.optimizer.config.linear,
             self.optimizer.config.ft,
@@ -164,22 +135,11 @@ impl Checkpoint {
         }
         floats(&mut bytes, &self.model.initial_linear);
         floats(&mut bytes, &self.model.initial_virtual);
-        bytes.extend_from_slice(&Sha256::digest(&bytes));
-        Ok(bytes)
+        Ok(seal(bytes))
     }
     /// 保存形式、配列長、有限性、マスクと検査和を検査して復号する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let end = bytes
-            .len()
-            .checked_sub(32)
-            .ok_or(Error::Format("checkpoint length"))?;
-        if Sha256::digest(&bytes[..end])[..] != bytes[end..] {
-            return Err(Error::Format("checkpoint SHA-256"));
-        }
-        let mut r = Reader::new(&bytes[..end]);
-        if r.take(8)? != MAGIC || r.u32()? != VERSION {
-            return Err(Error::Format("checkpoint magic or version"));
-        }
+        let mut r = open(bytes)?;
         let arch = r.take(96)?;
         let width = r.u32()? as usize;
         let k = r.f32()?;
@@ -194,24 +154,7 @@ impl Checkpoint {
         }
         let shape = shape.ok_or(Error::Format("checkpoint architecture"))?;
         let step = r.u64()?;
-        let epoch = r.u64()?;
-        let best_epoch = r.u64()?;
-        let validation_loss = r.f64()?;
-        let best = if best_epoch == 0 {
-            if validation_loss != f64::INFINITY {
-                return Err(Error::Format("missing best loss"));
-            }
-            None
-        } else {
-            Some(BestEpoch {
-                epoch: best_epoch,
-                validation_loss,
-            })
-        };
-        let elapsed_seconds = r.f64()?;
-        let seed = r.u64()?;
-        let config_hash = r.take(32)?.try_into().expect("checked length");
-        let input_hash = r.take(32)?.try_into().expect("checked length");
+        let progress = Progress::decode_from(&mut r)?;
         let mut group = || -> Result<_> {
             Ok(AdamWGroup {
                 lr: r.f64()?,
@@ -286,14 +229,7 @@ impl Checkpoint {
             optimizer: AdamW { m, v, step, config },
             removal_penalty,
             lambda_override,
-            progress: Progress {
-                epoch,
-                best,
-                elapsed_seconds,
-                seed,
-                config_hash,
-                input_hash,
-            },
+            progress,
         };
         result.validate()?;
         Ok(result)
@@ -309,16 +245,112 @@ impl Checkpoint {
     }
     /// 再開前に実行設定と入力のハッシュを照合する。
     pub fn check_hashes(&self, config: &[u8; 32], input: &[u8; 32]) -> Result<()> {
-        if config != &self.progress.config_hash || input != &self.progress.input_hash {
+        self.progress.check_hashes(config, input)
+    }
+}
+pub(super) fn floats(bytes: &mut Vec<u8>, values: &[f32]) {
+    for &v in values {
+        bytes.extend(v.to_le_bytes());
+    }
+}
+
+// モデル固有の配列の前後を囲む識別子、版、構造名、検査和は全学習器で共有する。
+pub(super) fn envelope(architecture: &str) -> Vec<u8> {
+    let mut bytes = MAGIC.to_vec();
+    bytes.extend(VERSION.to_le_bytes());
+    bytes.extend(architecture.as_bytes());
+    bytes.resize(12 + 96, 0);
+    bytes
+}
+
+pub(super) fn seal(mut bytes: Vec<u8>) -> Vec<u8> {
+    bytes.extend_from_slice(&Sha256::digest(&bytes));
+    bytes
+}
+
+pub(super) fn open(bytes: &[u8]) -> Result<Reader<'_>> {
+    let end = bytes
+        .len()
+        .checked_sub(32)
+        .ok_or(Error::Format("checkpoint length"))?;
+    if Sha256::digest(&bytes[..end])[..] != bytes[end..] {
+        return Err(Error::Format("checkpoint SHA-256"));
+    }
+    let mut reader = Reader::new(&bytes[..end]);
+    if reader.take(8)? != MAGIC || reader.u32()? != VERSION {
+        return Err(Error::Format("checkpoint magic or version"));
+    }
+    Ok(reader)
+}
+
+impl Progress {
+    pub(super) fn validate(&self) -> Result<()> {
+        if !self.elapsed_seconds.is_finite() || self.elapsed_seconds < 0.0 {
+            return Err(Error::Invalid("elapsed time"));
+        }
+        if let Some(best) = self.best
+            && (best.epoch == 0
+                || best.epoch > self.epoch
+                || !best.validation_loss.is_finite()
+                || best.validation_loss < 0.0)
+        {
+            return Err(Error::Invalid("best epoch"));
+        }
+        Ok(())
+    }
+
+    pub(super) fn encode_into(&self, bytes: &mut Vec<u8>) {
+        bytes.extend(self.epoch.to_le_bytes());
+        bytes.extend(self.best.map_or(0, |v| v.epoch).to_le_bytes());
+        bytes.extend(
+            self.best
+                .map_or(f64::INFINITY, |v| v.validation_loss)
+                .to_le_bytes(),
+        );
+        bytes.extend(self.elapsed_seconds.to_le_bytes());
+        bytes.extend(self.seed.to_le_bytes());
+        bytes.extend(self.config_hash);
+        bytes.extend(self.input_hash);
+    }
+
+    pub(super) fn decode_from(r: &mut Reader<'_>) -> Result<Self> {
+        let epoch = r.u64()?;
+        let best_epoch = r.u64()?;
+        let validation_loss = r.f64()?;
+        let best = if best_epoch == 0 {
+            if validation_loss != f64::INFINITY {
+                return Err(Error::Format("missing best loss"));
+            }
+            None
+        } else {
+            Some(BestEpoch {
+                epoch: best_epoch,
+                validation_loss,
+            })
+        };
+        let elapsed_seconds = r.f64()?;
+        let seed = r.u64()?;
+        let config_hash = r.take(32)?.try_into().expect("checked length");
+        let input_hash = r.take(32)?.try_into().expect("checked length");
+        let progress = Self {
+            epoch,
+            best,
+            elapsed_seconds,
+            seed,
+            config_hash,
+            input_hash,
+        };
+        progress.validate()?;
+        Ok(progress)
+    }
+
+    /// 再開前に、軌跡を変える設定と入力のハッシュを照合する。
+    pub fn check_hashes(&self, config: &[u8; 32], input: &[u8; 32]) -> Result<()> {
+        if config != &self.config_hash || input != &self.input_hash {
             return Err(Error::Invalid(
                 "checkpoint configuration or input hash mismatch",
             ));
         }
         Ok(())
-    }
-}
-fn floats(bytes: &mut Vec<u8>, values: &[f32]) {
-    for &v in values {
-        bytes.extend(v.to_le_bytes());
     }
 }

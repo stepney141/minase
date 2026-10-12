@@ -44,7 +44,7 @@ impl InputFeatureSet {
     }
 }
 
-pub(super) fn canonical_row(base: u32) -> u32 {
+pub(crate) fn canonical_row(base: u32) -> u32 {
     let square = base % 144;
     let file = square % 12;
     base / 144 * 72 + square / 12 * 6 + file.min(11 - file)

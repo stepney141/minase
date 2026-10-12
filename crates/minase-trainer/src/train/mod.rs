@@ -2,9 +2,9 @@
 
 mod args;
 mod backend;
-mod base;
+pub(crate) mod base;
 mod pipeline;
-mod record;
+pub(crate) mod record;
 #[cfg(test)]
 mod tests;
 
@@ -92,7 +92,11 @@ pub struct Summary {
     pub quantization: Option<QuantizationReport>,
 }
 
-fn update_best(progress: &mut Progress, epoch: u64, validation_loss: f64) -> Result<bool> {
+pub(crate) fn update_best(
+    progress: &mut Progress,
+    epoch: u64,
+    validation_loss: f64,
+) -> Result<bool> {
     if !validation_loss.is_finite() || validation_loss < 0.0 {
         return Err(Error::Invalid("non-finite or negative validation loss").into());
     }
@@ -118,12 +122,22 @@ fn update_best(progress: &mut Progress, epoch: u64, validation_loss: f64) -> Res
 fn stop_reason(progress: &Progress, args: &Args) -> Option<StopReason> {
     if progress.elapsed_seconds >= args.time_limit_hours * 3600.0 {
         Some(StopReason::TimeLimit)
-    } else if progress
+    } else {
+        epoch_stop_reason(progress, args.epochs, args.patience)
+    }
+}
+
+pub(crate) fn epoch_stop_reason(
+    progress: &Progress,
+    epochs: u64,
+    patience: u64,
+) -> Option<StopReason> {
+    if progress
         .best
-        .is_some_and(|best| progress.epoch - best.epoch >= args.patience)
+        .is_some_and(|best| progress.epoch - best.epoch >= patience)
     {
         Some(StopReason::EarlyStopping)
-    } else if progress.epoch >= args.epochs {
+    } else if progress.epoch >= epochs {
         Some(StopReason::MaxEpochs)
     } else {
         None

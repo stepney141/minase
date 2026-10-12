@@ -2,6 +2,64 @@ use super::{Error, Result, validate_initial};
 use minase::eval::features::FEATURE_COUNT;
 use std::path::Path;
 
+/// 2端点のf32配列をmiddlegame、endgameの順に、圧縮なしのNPZへ符号化する。
+pub fn encode_pst_npz(initial: &[[f32; 2]]) -> Result<Vec<u8>> {
+    validate_initial(initial)?;
+    let mut zip = Vec::new();
+    let mut central = Vec::new();
+    for (endpoint, name) in ["middlegame.npy", "endgame.npy"].iter().enumerate() {
+        let mut header = "{'descr': '<f4', 'fortran_order': False, 'shape': (13680,), }".to_owned();
+        while !(10 + header.len() + 1).is_multiple_of(64) {
+            header.push(' ');
+        }
+        header.push('\n');
+        let mut array = b"\x93NUMPY\x01\x00".to_vec();
+        array.extend((header.len() as u16).to_le_bytes());
+        array.extend(header.as_bytes());
+        for row in initial {
+            array.extend(row[endpoint].to_le_bytes());
+        }
+        let offset = zip.len() as u32;
+        let size = array.len() as u32;
+        let checksum = crc32(&array);
+        zip.extend(b"PK\x03\x04");
+        for value in [20_u16, 0, 0, 0, 33] {
+            zip.extend(value.to_le_bytes());
+        }
+        for value in [checksum, size, size] {
+            zip.extend(value.to_le_bytes());
+        }
+        zip.extend((name.len() as u16).to_le_bytes());
+        zip.extend(0_u16.to_le_bytes());
+        zip.extend(name.as_bytes());
+        zip.extend(array);
+        central.extend(b"PK\x01\x02");
+        for value in [20_u16, 20, 0, 0, 0, 33] {
+            central.extend(value.to_le_bytes());
+        }
+        for value in [checksum, size, size] {
+            central.extend(value.to_le_bytes());
+        }
+        for value in [name.len() as u16, 0, 0, 0, 0] {
+            central.extend(value.to_le_bytes());
+        }
+        central.extend(0_u32.to_le_bytes());
+        central.extend(offset.to_le_bytes());
+        central.extend(name.as_bytes());
+    }
+    let offset = zip.len() as u32;
+    let size = central.len() as u32;
+    zip.extend(central);
+    zip.extend(b"PK\x05\x06");
+    for value in [0_u16, 0, 2, 2] {
+        zip.extend(value.to_le_bytes());
+    }
+    zip.extend(size.to_le_bytes());
+    zip.extend(offset.to_le_bytes());
+    zip.extend(0_u16.to_le_bytes());
+    Ok(zip)
+}
+
 /// 圧縮なしnpzのmiddlegame.npyとendgame.npyを読む。NPY 1.0の<f4[13680]専用で、他のメンバーは読み飛ばす。
 ///
 /// NumPyが小さいファイルにも使うZIP64ローカルサイズを扱う。暗号化、データ

@@ -3,7 +3,11 @@
 //! 配列は局面、視点、ユニットの順で行優先。Bは局面数、Hは展開後の幅。
 //! 除去後の文脈と先獅子は変えない。線形除去差分はPython同様にf64で計算する。
 
+pub(crate) mod linear;
 mod optimizer;
+pub mod pst;
+use linear::feature_sum;
+pub(crate) use linear::phase;
 mod parallel;
 mod removal;
 mod validation;
@@ -106,11 +110,6 @@ pub fn screlu_derivative(x: f32) -> f32 {
         0.0
     }
 }
-pub(crate) fn phase(count: u8, removed: bool) -> [f32; 2] {
-    let phi = f32::from(count.saturating_sub(if removed { 3 } else { 2 }).min(90)) / 90.0;
-    [phi, 1.0 - phi]
-}
-
 /// HalfKPのC=W+V[base]を作る。P型では回転前の正準行を返す。埋め草を含む。
 pub fn fold(model: &Model) -> Result<Vec<f32>> {
     check_parameters(model.parameters(), model.shape())?;
@@ -136,16 +135,9 @@ pub(crate) fn row_value(model: &Model, weights: &[f32], feature: u32, j: usize) 
     weights[row * s.width() + unit]
 }
 pub(crate) fn linear_row(model: &Model, feature: u32) -> [f32; 2] {
-    if feature == SENTINEL {
-        [0.0; 2]
-    } else {
-        let i = 2 * feature as usize;
-        [
-            model.parameters()[Parameter::Linear][i],
-            model.parameters()[Parameter::Linear][i + 1],
-        ]
-    }
+    linear::row(&model.parameters()[Parameter::Linear], feature)
 }
+
 fn check_parameters(parameters: &Parameters, shape: Shape) -> Result<()> {
     if parameters.shape() != shape
         || Parameter::ALL
@@ -185,17 +177,6 @@ fn check_weights(model: &Model, weights: &[f32]) -> Result<()> {
         return Err(Error::Invalid("reference folded weights shape"));
     }
     Ok(())
-}
-
-// Python _feature_sumと同じく左右の升を先に対にする。鏡映時も同じ加算順になる。
-fn feature_sum(mut value: impl FnMut(usize) -> f32) -> f32 {
-    let mut result = 0.0;
-    for rank in 0..12 {
-        for file in 0..6 {
-            result += value(rank * 12 + file) + value(rank * 12 + 11 - file);
-        }
-    }
-    result + value(144)
 }
 
 /// カーネル1。145列のgather-sumと線形の端点和を求める。
@@ -262,11 +243,10 @@ pub(crate) fn head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32
 }
 pub(crate) fn logit(model: &Model, batch: &BatchSlot, f: &Forward, b: usize) -> f32 {
     let h = model.shape().width();
-    let u = phase(batch.piece_counts()[b], false);
     let nonlinear = head(model, 0, |j| f.acc[b * 2 * h + j])
         + head(model, 1, |j| f.acc[(b * 2 + 1) * h + j])
         + model.parameters()[Parameter::OutputBias][0];
-    (u[0] * f.lin[b][0] + u[1] * f.lin[b][1]) / model.shape().k() + nonlinear
+    linear::blend(f.lin[b], batch.piece_counts()[b]) / model.shape().k() + nonlinear
 }
 /// 浮動小数点の評価をセンチポーンで返す。学習と同じf32の前進を使う。
 pub fn evaluate(model: &Model, batch: &BatchSlot) -> Result<Vec<f32>> {

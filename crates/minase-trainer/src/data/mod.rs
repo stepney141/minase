@@ -18,6 +18,7 @@ pub use batch::{
     ROTATION_SHIFT, ReverseIndex, build_batches,
 };
 pub use error::Error;
+pub(crate) use features::canonical_row;
 pub use features::{CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, SENTINEL, decode_p_feature};
 pub use mnsd::{Dataset, RecordLocation, TeacherClass};
 pub use observations::Observations;

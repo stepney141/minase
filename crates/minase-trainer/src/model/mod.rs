@@ -3,11 +3,15 @@
 //! 配列は行優先。`Parameter`の順序はチェックポイントの保存順を定める。
 
 mod checkpoint;
+mod linear_checkpoint;
+pub use linear_checkpoint::LinearCheckpoint;
+pub(crate) mod linear;
+pub use linear::{LinearAdam, LinearModel};
 mod npz;
 mod quantize;
 
 pub use checkpoint::{BestEpoch, Checkpoint, Progress};
-pub use npz::load_initial;
+pub use npz::{encode_pst_npz, load_initial};
 pub use quantize::{Quantized, quantize};
 
 use crate::data::{CANONICAL_ROWS, InputFeatureSet, Observations};
@@ -418,9 +422,7 @@ impl Model {
     pub fn constrain(&mut self) -> Result<()> {
         self.parameters.validate()?;
         let s = self.shape();
-        for value in &mut self.parameters[Parameter::Linear] {
-            *value = value.clamp(-4096.0, 4095.875);
-        }
+        linear::constrain_linear(&mut self.parameters[Parameter::Linear])?;
         for value in &mut self.parameters[Parameter::Virtual] {
             *value = value.clamp(-8.0, 8.0);
         }
@@ -500,7 +502,7 @@ fn validate_initial(initial: &[[f32; 2]]) -> Result<()> {
 }
 
 pub(crate) fn canonical(base: usize) -> usize {
-    base / 144 * 72 + base % 144 / 12 * 6 + (base % 12).min(11 - base % 12)
+    crate::data::canonical_row(base as u32) as usize
 }
 pub(crate) fn rotated_unit(rotated: bool, j: usize, width: usize) -> usize {
     (j + usize::from(rotated) * (width / 2)) % width

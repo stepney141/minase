@@ -1,12 +1,10 @@
 //! 基準MNPTから初期値の照合用PSTと書き出し用の固定値を読む。
 
-use minase::eval::{
-    features::{FEATURE_COUNT, PIECE_STATE_COUNT},
-    pst::Pst,
-};
+use minase::eval::{features::PIECE_STATE_COUNT, pst::Pst};
 use std::{error::Error, path::Path};
 
-const HEADER_BYTES: usize = 80;
+#[cfg(test)]
+use minase::eval::features::FEATURE_COUNT;
 
 /// 基準Mが保持する線形重みと探索用の固定値。
 #[derive(Debug)]
@@ -28,29 +26,11 @@ pub fn read(path: &Path) -> Result<Base, Box<dyn Error>> {
 
 fn decode(bytes: &[u8]) -> Result<Base, Box<dyn Error>> {
     let pst = Pst::decode(bytes)?;
-    // Pst::decodeがヘッダ、固定長、FM節、検査和を検証済み。
-    // 公開APIに線形重みと規則名のgetterがないため、その2項目だけを読む。
-    let middle_end = HEADER_BYTES + FEATURE_COUNT * 2;
-    let end_end = middle_end + FEATURE_COUNT * 2;
-    let linear = bytes[HEADER_BYTES..middle_end]
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .zip(bytes[middle_end..end_end].as_chunks::<2>().0)
-        .map(|(middle, end)| {
-            [
-                i16::from_le_bytes([middle[0], middle[1]]),
-                i16::from_le_bytes([end[0], end[1]]),
-            ]
-        })
-        .collect();
     Ok(Base {
-        linear,
+        linear: pst.weights().to_vec(),
         piece_values: std::array::from_fn(|state| pst.piece_value_of_state(state)),
         k: pst.k(),
-        rule_set: std::str::from_utf8(&bytes[16..48])?
-            .trim_end_matches('\0')
-            .to_owned(),
+        rule_set: pst.rule_set().to_owned(),
     })
 }
 

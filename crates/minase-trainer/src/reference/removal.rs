@@ -1,5 +1,5 @@
 use super::{
-    Forward, check_batch, check_batch_arrays, check_weights, linear_row, parallel, phase,
+    Forward, check_batch, check_batch_arrays, check_weights, linear, linear_row, parallel, phase,
     row_value, screlu, screlu_derivative,
 };
 use crate::{
@@ -245,30 +245,17 @@ pub(super) fn removal_forward_parallel(
             for (col, &reference) in refs.iter().enumerate() {
                 let i = local * 144 + col;
                 let row = batch.linear_features()[b * FEATURE_COLUMNS + col];
-                let state = row as usize / 72 % 47;
                 result.ref_r[i] = reference;
                 result.s_r[i] = reference.signum() as f32;
-                result.eligible[i] = row != SENTINEL
-                    && (row as usize) < 94 * 72
-                    && ![11, 21].contains(&state)
-                    && reference != 0;
-                result.wrong_r[i] = (row < 47 * 72 && reference > 0)
-                    || ((47 * 72..94 * 72).contains(&row) && reference < 0);
+                result.eligible[i] = linear::eligible(row, reference);
+                result.wrong_r[i] = linear::wrong_direction(row, reference);
                 count += usize::from(result.eligible[i]);
             }
             let scale = removal_penalty / (n * count.max(1)) as f64;
-            let mut sums = [0.0_f64; 2];
-            for col in 0..FEATURE_COLUMNS {
-                for (sum, w) in sums.iter_mut().zip(linear_row(
-                    model,
-                    batch.linear_features()[b * FEATURE_COLUMNS + col],
-                )) {
-                    *sum += f64::from(w);
-                }
-            }
-            let q = f64::from(batch.piece_counts()[b].saturating_sub(2).min(90));
-            let after_q = f64::from(batch.piece_counts()[b].saturating_sub(3).min(90));
-            let before_linear = q * sums[0] + (90.0 - q) * sums[1];
+            let sums = linear::sum_f64(
+                &model.parameters()[Parameter::Linear],
+                &batch.linear_features()[b * FEATURE_COLUMNS..(b + 1) * FEATURE_COLUMNS],
+            );
             let before_head: [f32; 2] = std::array::from_fn(|v| {
                 removal_head(model, v, |j| forward.acc[(b * 2 + v) * h + j])
             });
@@ -290,8 +277,7 @@ pub(super) fn removal_forward_parallel(
                 }
                 let w = linear_row(model, batch.linear_features()[b * FEATURE_COLUMNS + col])
                     .map(f64::from);
-                let after_linear = after_q * (sums[0] - w[0]) + (90.0 - after_q) * (sums[1] - w[1]);
-                let mut delta = (after_linear - before_linear) / 90.0;
+                let mut delta = linear::removal_delta(sums, w, batch.piece_counts()[b]);
                 for (v, &before) in before_head.iter().enumerate() {
                     let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
                     let after = removal_head(model, v, |j| {
@@ -301,24 +287,15 @@ pub(super) fn removal_forward_parallel(
                 }
                 result.delta_r[i] = delta;
                 result.e_r[i] = before_e + delta;
-                let sign = f64::from(result.s_r[i]);
-                let signed = sign * delta;
-                let lower = magnitude.min(0.25);
-                let penalty = (lower - signed).max(0.0)
-                    + if result.wrong_r[i] {
-                        (signed - magnitude).max(0.0)
-                    } else {
-                        0.0
-                    };
+                let (penalty, derivative) = linear::penalty(
+                    delta,
+                    result.ref_r[i].signum(),
+                    magnitude,
+                    result.wrong_r[i],
+                );
                 result.pen_r[i] = penalty;
                 result.loss[local] += removal_penalty * penalty / count.max(1) as f64 / k;
-                let derivative = if signed < lower {
-                    -sign
-                } else if result.wrong_r[i] && signed > magnitude {
-                    sign
-                } else {
-                    0.0
-                };
+                let derivative = f64::from(derivative);
                 let d = (scale * derivative) as f32;
                 result.d_r[i] = d;
                 s += f64::from(d);

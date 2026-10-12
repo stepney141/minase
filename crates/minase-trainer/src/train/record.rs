@@ -125,14 +125,14 @@ pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn digest(bytes: &[u8]) -> [u8; 32] {
+pub(crate) fn digest(bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(bytes).into()
 }
-pub(super) fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|v| format!("{v:02x}")).collect()
 }
 
-fn file_record(path: &Path) -> Result<Value> {
+pub(crate) fn file_record(path: &Path) -> Result<Value> {
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 65536];
@@ -146,7 +146,7 @@ fn file_record(path: &Path) -> Result<Value> {
     Ok(json!({"path": path.canonicalize()?, "sha256": hex(&hasher.finalize())}))
 }
 
-fn hash_u64(values: &[u64]) -> String {
+pub(crate) fn hash_u64(values: &[u64]) -> String {
     let mut hash = Sha256::new();
     for v in values {
         hash.update(v.to_le_bytes());
@@ -154,7 +154,7 @@ fn hash_u64(values: &[u64]) -> String {
     hex(&hash.finalize())
 }
 
-pub(super) struct Configuration {
+pub(crate) struct Configuration {
     pub document: Value,
     pub config_hash: [u8; 32],
     pub input_hash: [u8; 32],
@@ -270,7 +270,7 @@ pub(super) fn append_resume(
     write_json(path, config)
 }
 
-pub(super) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut temporary = path.as_os_str().to_owned();
     temporary.push(".tmp");
     let mut file = File::create(&temporary)?;
@@ -283,13 +283,13 @@ pub(super) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
+pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
     atomic_write(path, &bytes)
 }
 
-pub(super) fn append_epoch(path: &Path, record: &EpochRecord) -> Result<()> {
+pub(crate) fn append_epoch(path: &Path, record: &impl Serialize) -> Result<()> {
     let mut bytes = serde_json::to_vec(record)?;
     bytes.push(b'\n');
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
@@ -298,8 +298,14 @@ pub(super) fn append_epoch(path: &Path, record: &EpochRecord) -> Result<()> {
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+struct LogProgress {
+    epoch: u64,
+    validation_loss: f64,
+}
+
 // チェックポイントを永続化する前に中断したログの末尾は再実行する。
-pub(super) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
+pub(crate) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
     let bytes = std::fs::read(path)?;
     let mut keep = 0;
     let mut expected = 0;
@@ -308,7 +314,7 @@ pub(super) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
         if expected > epoch || line.last() != Some(&b'\n') {
             break;
         }
-        let record: EpochRecord = serde_json::from_slice(line)?;
+        let record: LogProgress = serde_json::from_slice(line)?;
         if record.epoch != expected || !record.validation_loss.is_finite() {
             return Err(Error::Invalid("training log does not match checkpoint epochs").into());
         }

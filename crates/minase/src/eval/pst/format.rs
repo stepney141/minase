@@ -15,6 +15,39 @@ pub(super) const HEADER_LENGTH: usize = 80;
 const FORMAT_VERSION: u32 = 3;
 
 impl Pst {
+    /// 学習済みの2端点と探索用駒価値から、FM補正を持たないMNPT版2を作る。
+    ///
+    /// 重みは特徴番号順、各行は序中盤・終盤の順で、単位は1/8センチポーン。
+    /// 配列長、駒価値、正の有限なK、32バイト以内でNULを含まない規則名を検査する。
+    /// 鏡映対称性は要求しない。検査和と探索用の派生値は復号時と同じ方法で求める。
+    pub fn from_weights(
+        weights: &[[i16; 2]],
+        piece_values: [i32; PIECE_STATE_COUNT],
+        k: f32,
+        rule_set: &str,
+    ) -> Result<Self, Error> {
+        let weights = weights
+            .try_into()
+            .map_err(|_| Error::UnexpectedFeatureCount {
+                actual: weights.len() as u32,
+            })?;
+        if rule_set.len() > 32 || rule_set.as_bytes().contains(&0) {
+            return Err(Error::InvalidRuleSet);
+        }
+        let mut rules = [0; 32];
+        rules[..rule_set.len()].copy_from_slice(rule_set.as_bytes());
+        let candidate = Self {
+            weights,
+            fm: None,
+            rule_set: rules,
+            piece_values,
+            max_promotion_gain: 0,
+            k,
+            checksum: [0; 32],
+        };
+        Self::decode(&candidate.encode())
+    }
+
     /// 復号時の版と規則セットを保ち、MNPTバイト列へ符号化する。
     pub fn encode(&self) -> Vec<u8> {
         let mut bytes = Vec::new();

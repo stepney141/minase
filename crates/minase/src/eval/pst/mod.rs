@@ -50,6 +50,18 @@ pub struct Pst {
 }
 
 impl Pst {
+    /// 特徴番号順の序中盤・終盤重みを、1/8センチポーン単位で返す。
+    pub fn weights(&self) -> &[[i16; 2]; FEATURE_COUNT] {
+        &self.weights
+    }
+
+    /// MNPTに格納された規則セット名を、末尾のNUL埋めを除いて返す。
+    pub fn rule_set(&self) -> &str {
+        std::str::from_utf8(&self.rule_set)
+            .expect("validated rule set")
+            .trim_end_matches('\0')
+    }
+
     /// `docs/plans/move-ordering.md`「候補5」の同点破りに使う、手番側視点のPST差分。
     /// FMは含めず、補間後の除算前の分子を返す。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {

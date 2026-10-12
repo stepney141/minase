@@ -184,7 +184,10 @@ impl AdamW {
                             continue;
                         }
                         let (lower, upper) = match p {
-                            Parameter::Linear => (-4096.0, 4095.875),
+                            Parameter::Linear => (
+                                crate::model::linear::LINEAR_MIN,
+                                crate::model::linear::LINEAR_MAX,
+                            ),
                             Parameter::OutputWeights => (-1.98, 1.98),
                             Parameter::FirstLayer
                                 if shape.feature_set() == InputFeatureSet::HalfKpHmB8 =>

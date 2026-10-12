@@ -105,7 +105,7 @@ pub struct QuantizationReport {
     pub mean_absolute_error_cp: f64,
     /// 最大絶対誤差、センチポーン。
     pub max_absolute_error_cp: f64,
-    /// 平均絶対誤差に許す上限K/40、センチポーン。
+    /// 平均絶対誤差の上限、センチポーン。NNUEはK/40、PSTは2。
     pub limit_cp: f64,
     /// 平均絶対誤差が上限以下なら真。
     pub passed: bool,
