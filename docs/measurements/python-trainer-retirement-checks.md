@@ -290,3 +290,19 @@ PST専用のバッチを、ワーカーごとに容量1のチャネルを持つ�
      return parser
  
 ```
+
+## フェーズ3　FMの学習器、縮小、倍率の焼き込み
+
+FMの学習器は、NNUEとPSTから独立した専用のパイプライン（`crates/minase-trainer/src/fm/`）として実装した。
+乱数を含まない変換（FMの量子化、MNPT版3の書き出し、`fm quarter`、`fm scale`）を先に実装し、既存の成果物とのバイト一致を確かめた。
+
+| 検査 | 入力 | 結果 |
+|---|---|---|
+| `fm quarter` | 候補Faの`data/fm-quarter-current-pst-fa/fm.bin` | 出力が`fm-quarter.bin`と、報告が`fm-quarter.quarter.json`とバイト単位で一致 |
+| `fm scale --fm-scale 611` | J75の`data/pst-fm-joint-training/j75/pst.bin`と`pst-float.npz` | 出力が現行の`crates/minase/nets/pst.bin`（SHA-256 `efe2c145…`）とバイト単位で一致 |
+| `fm scale --fm-scale 0` | 同上 | 出力が、FMを除いた版2の`data/fm-scale-spsa/pst-j75-pst-only.bin`（`8f45a144…`）とバイト単位で一致 |
+| `fm scale`の検証標本の報告 | 同上と、同時学習と同じ10ファイル | 当時の`data/fm-scale-spsa/pst-611.scale.json`と、整数7件が一致し、実数6件の最大差は1.1×10⁻¹⁶ |
+
+検証標本の報告の照合では、Pythonが`numpy.random.default_rng(1).choice`で選んだ1万局面の番号を昇順に並べて、一時的な引数`--replay-sample`でRustへ渡した。
+実数の差は、昇順に並べ替えたことによる加算の順序の違いから生じる。
+この報告の作成には、10ファイル（約2,900万局面）の前処理を含めて245秒かかった。
