@@ -283,8 +283,19 @@ pub fn evaluate(model: &Model, batch: &BatchSlot) -> Result<Vec<f32>> {
 /// Pythonのfloat_evaluateと同じく、保存用に単精度で畳み込んだ第1層を使い、
 /// 両半幅の活性化を個別に倍精度で重み付けする。結果の単位はセンチポーン。
 pub fn evaluate_f64(model: &Model, batch: &BatchSlot) -> Result<Vec<f64>> {
-    check_batch(model, batch)?;
     let weights = fold(model)?;
+    evaluate_f64_with_weights(model, batch, &weights, f64::from(model.shape().k()))
+}
+
+// 診断では畳み込みを共有し、Pythonと同じく比較する整数ネットのKを使う。
+pub(crate) fn evaluate_f64_with_weights(
+    model: &Model,
+    batch: &BatchSlot,
+    weights: &[f32],
+    k: f64,
+) -> Result<Vec<f64>> {
+    check_batch(model, batch)?;
+    check_weights(model, weights)?;
     let h = model.shape().width();
     let biases = model.expanded_biases();
     let output = model.expanded_output_weights();
@@ -307,7 +318,7 @@ pub fn evaluate_f64(model: &Model, batch: &BatchSlot) -> Result<Vec<f64>> {
                 for col in 0..FEATURE_COLUMNS {
                     hidden += f64::from(row_value(
                         model,
-                        &weights,
+                        weights,
                         batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col],
                         j,
                     ));
@@ -317,7 +328,7 @@ pub fn evaluate_f64(model: &Model, batch: &BatchSlot) -> Result<Vec<f64>> {
             }
             nonlinear += head;
         }
-        values.push(cp + f64::from(model.shape().k()) * nonlinear);
+        values.push(cp + k * nonlinear);
     }
     Ok(values)
 }

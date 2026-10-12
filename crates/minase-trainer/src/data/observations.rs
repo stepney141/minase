@@ -17,7 +17,7 @@ impl Observations {
         let mut input_counts = vec![0; feature_set.dimensions()];
         for &index in dataset.training_indices() {
             let position = dataset.record(index)?.to_position()?;
-            let bases = base_features(&position);
+            let bases = base_features(&position, position.side_to_move());
             for &base in &bases[0] {
                 if base != SENTINEL {
                     // 元の特徴とその鏡映の片方だけが左半分に入る。
@@ -25,7 +25,7 @@ impl Observations {
                     canonical_counts[canonical_row(base) as usize] += 1;
                 }
             }
-            let inputs = input_features(&position, &bases, feature_set);
+            let inputs = input_features(&position, &bases, feature_set, position.side_to_move());
             for (&base, &input) in bases.iter().flatten().zip(inputs.iter().flatten()) {
                 if base != SENTINEL {
                     let feature = match feature_set {

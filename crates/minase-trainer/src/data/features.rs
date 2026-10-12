@@ -2,7 +2,7 @@ use minase::{
     eval::features::{FEATURE_COUNT, feature_index, lion_feature_index},
     eval::nnue::feature_set::{FeatureSet, HalfKpHmB8},
 };
-use minase_core::{Position, Square};
+use minase_core::{Color, Position, Square};
 use serde::Serialize;
 
 use super::{Error, Result};
@@ -68,10 +68,15 @@ pub fn decode_p_feature(value: u32) -> Result<u32> {
     Ok(row / 72 * 144 + row % 72 / 6 * 12 + file)
 }
 
-pub(super) fn base_features(position: &Position) -> [[u32; FEATURE_COLUMNS]; 2] {
+pub(super) fn base_features(
+    position: &Position,
+    perspective: Color,
+) -> [[u32; FEATURE_COLUMNS]; 2] {
     let mut result = [[SENTINEL; FEATURE_COLUMNS]; 2];
-    let stm = position.side_to_move();
-    for (view, side) in [stm, stm.opposite()].into_iter().enumerate() {
+    for (view, side) in [perspective, perspective.opposite()]
+        .into_iter()
+        .enumerate()
+    {
         for square in Square::all() {
             if let Some(piece) = position.piece_at(square) {
                 result[view][square.dense_index()] = feature_index(side, piece, square) as u32;
@@ -88,10 +93,13 @@ pub(super) fn input_features(
     position: &Position,
     bases: &[[u32; FEATURE_COLUMNS]; 2],
     feature_set: InputFeatureSet,
+    perspective: Color,
 ) -> [[u32; FEATURE_COLUMNS]; 2] {
     let mut result = [[SENTINEL; FEATURE_COLUMNS]; 2];
-    let stm = position.side_to_move();
-    for (view, side) in [stm, stm.opposite()].into_iter().enumerate() {
+    for (view, side) in [perspective, perspective.opposite()]
+        .into_iter()
+        .enumerate()
+    {
         let context = HalfKpHmB8::context(position, side);
         for (column, &base) in bases[view].iter().enumerate() {
             if base != SENTINEL {

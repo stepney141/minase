@@ -1,6 +1,7 @@
 //! minaseのNNUE学習器のデータ経路、モデル、およびCPU参照計算。
 
 pub mod data;
+pub mod diagnostics;
 pub mod export;
 pub mod gpu;
 pub mod model;

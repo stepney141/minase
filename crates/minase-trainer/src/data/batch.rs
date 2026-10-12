@@ -1,9 +1,18 @@
-use minase::training::records::Record;
+use minase::training::records::{Outcome, Record};
+use minase_core::{Color, Position};
 use serde::Serialize;
 
 use super::features::{base_features, canonical_row, input_features};
 use super::mnsd::outcome_code;
 use super::{CANONICAL_ROWS, Dataset, Error, FEATURE_COLUMNS, InputFeatureSet, Result, SENTINEL};
+
+struct Sample {
+    position: Position,
+    perspective: Color,
+    score: f32,
+    class: u32,
+    outcome: Outcome,
+}
 
 /// 回転欄のビット幅。
 pub const ROTATION_BITS: u32 = 1;
@@ -292,6 +301,49 @@ impl BatchSlot {
         indices: &[u64],
         samples: impl Iterator<Item = Result<(Record, f32, u32)>>,
     ) -> Result<Self> {
+        Self::assemble_positions(
+            feature_set,
+            indices,
+            samples.map(|sample| {
+                let (record, score, class) = sample?;
+                Ok(Sample {
+                    position: record.to_position()?,
+                    perspective: record.side_to_move(),
+                    score,
+                    class,
+                    outcome: record.outcome(),
+                })
+            }),
+        )
+    }
+
+    // 数値診断では配置の内部手番とは独立に評価視点を指定する。特徴抽出と逆索引は学習と共有する。
+    pub(crate) fn from_evaluation_positions(
+        feature_set: InputFeatureSet,
+        positions: &[Position],
+        perspective: Color,
+    ) -> Result<Self> {
+        let indices: Vec<_> = (0..positions.len() as u64).collect();
+        Self::assemble_positions(
+            feature_set,
+            &indices,
+            positions.iter().map(|position| {
+                Ok(Sample {
+                    position: position.clone(),
+                    perspective,
+                    score: 0.0,
+                    class: 0,
+                    outcome: Outcome::Draw,
+                })
+            }),
+        )
+    }
+
+    fn assemble_positions(
+        feature_set: InputFeatureSet,
+        indices: &[u64],
+        samples: impl Iterator<Item = Result<Sample>>,
+    ) -> Result<Self> {
         if indices.is_empty() || indices.len() > MAX_BATCH_SIZE {
             return Err(Error::BatchSize {
                 size: indices.len(),
@@ -304,10 +356,9 @@ impl BatchSlot {
         let mut teacher_classes = Vec::with_capacity(indices.len());
         let mut outcomes = Vec::with_capacity(indices.len());
         for sample in samples {
-            let (record, score, class) = sample?;
-            let position = record.to_position()?;
-            let bases = base_features(&position);
-            let inputs = input_features(&position, &bases, feature_set);
+            let sample = sample?;
+            let bases = base_features(&sample.position, sample.perspective);
+            let inputs = input_features(&sample.position, &bases, feature_set, sample.perspective);
             features.extend(inputs.into_iter().flatten());
             linear_features.extend(bases[0].iter().map(|&base| {
                 if base == SENTINEL {
@@ -322,9 +373,9 @@ impl BatchSlot {
                     .filter(|&&base| base != SENTINEL)
                     .count() as u8,
             );
-            teacher_scores.push(score);
-            teacher_classes.push(class);
-            outcomes.push(outcome_code(record.outcome()));
+            teacher_scores.push(sample.score);
+            teacher_classes.push(sample.class);
+            outcomes.push(outcome_code(sample.outcome));
         }
         let first_layer_inverse = ReverseIndex::build(
             &features,

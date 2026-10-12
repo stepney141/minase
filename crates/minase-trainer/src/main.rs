@@ -20,6 +20,9 @@ enum Command {
     /// NNUEの学習と検証を行う。
     #[command(subcommand)]
     Nnue(NnueCommand),
+    /// 評価分布、駒除去、合法手の評価差を診断する。
+    #[command(subcommand)]
+    Diag(minase_trainer::diagnostics::Command),
 }
 
 #[derive(Subcommand)]
@@ -50,8 +53,21 @@ enum NnueCommand {
 }
 
 fn main() -> std::process::ExitCode {
-    let Command::Nnue(command) = Cli::parse().command;
-    let result: Result<(), Box<dyn std::error::Error>> = match command {
+    let result = match Cli::parse().command {
+        Command::Nnue(command) => run_nnue(command),
+        Command::Diag(command) => minase_trainer::diagnostics::run(command),
+    };
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("minase-trainer: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
         NnueCommand::Train(args) => minase_trainer::train::run(args).map(|summary| {
             println!("best epoch: {}; stopped_by: {:?}; status: {}",
                 summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
@@ -75,12 +91,5 @@ fn main() -> std::process::ExitCode {
                     println!("{profile}");
                 }
             }),
-    };
-    match result {
-        Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("minase-trainer: {error}");
-            std::process::ExitCode::FAILURE
-        }
     }
 }
