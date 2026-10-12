@@ -1,6 +1,5 @@
 use minase::training::records::{Outcome, Record};
 use minase_core::{Color, Position};
-use serde::Serialize;
 
 use super::features::{base_features, canonical_row, input_features};
 use super::mnsd::outcome_code;
@@ -95,7 +94,7 @@ impl PackedOccurrence {
 }
 
 /// 計数ソートで構築した行ごとの逆索引。埋め草・番兵の要素は含まない。
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ReverseIndex {
     starts: Vec<u32>,
     entries: Vec<u32>,

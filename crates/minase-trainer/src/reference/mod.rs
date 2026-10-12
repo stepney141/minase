@@ -73,7 +73,7 @@ impl Output {
     }
 }
 /// カーネル4で得たバッチ平均の損失。
-#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[derive(Clone, Copy, Debug)]
 pub struct Losses {
     /// 二値交差エントロピー。
     pub bce: f64,

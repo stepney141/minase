@@ -1,6 +1,6 @@
 //! f32パラメータ、鏡映共有、初期化、保存範囲への射影、および保存形式。
 //!
-//! 配列は行優先。`Parameter`の順序はチェックポイントと照合出力の契約でもある。
+//! 配列は行優先。`Parameter`の順序はチェックポイントの保存順を定める。
 
 mod checkpoint;
 mod npz;
@@ -90,7 +90,7 @@ impl Parameter {
         Self::OutputWeights,
         Self::OutputBias,
     ];
-    /// PyTorchのnamed_parametersと同じ名前。
+    /// 検査メッセージに使うパラメータ名。
     pub fn name(self) -> &'static str {
         match self {
             Self::Linear => "linear.weight",

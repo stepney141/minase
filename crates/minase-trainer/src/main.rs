@@ -1,7 +1,5 @@
 //! minaseの評価関数の学習器の開発用コマンド。
-//! NNUEの学習と検証はnnueサブコマンドの下に置き、nnue dump-batchはCPUだけで動く。
-
-mod dump;
+//! NNUEの学習と検証はnnueサブコマンドの下に置く。
 
 use clap::{Parser, Subcommand};
 
@@ -29,8 +27,6 @@ enum Command {
 enum NnueCommand {
     /// CUDAまたはCPUで学習し、各エポックの検証、チェックポイントの保存、最良モデルの書き出しを行う。
     Train(minase_trainer::train::Args),
-    /// Pythonとの照合に使うバッチの局面番号と教師評価値を書き出す。
-    DumpBatch(dump::Args),
     /// GPUの前進計算、全勾配、更新、検証をCPU参照と照合する。
     CheckEquivalence {
         #[command(flatten)]
@@ -72,7 +68,6 @@ fn run_nnue(command: NnueCommand) -> Result<(), Box<dyn std::error::Error>> {
             println!("best epoch: {}; stopped_by: {:?}; status: {}",
                 summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
         }),
-        NnueCommand::DumpBatch(args) => dump::run(args),
         NnueCommand::CheckEquivalence { feature_set, width, batch, seed, training } => {
             minase_trainer::gpu::equivalence::run(feature_set, width, batch, seed, training)
                 .map(|r| println!("一致: {feature_set:?}, 幅{width}, バッチ{batch}, GPU={}, 比較数={}, 最大絶対誤差={:.3e}, 最大相対誤差={:.3e}, 許容誤差=1e-6+1e-5×|CPU|, 全勾配、1更新と連続3更新の全状態、反復ビット一致", r.device_name, r.comparisons, r.max_absolute_error, r.max_relative_error))

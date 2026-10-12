@@ -1,8 +1,8 @@
 このクレートはminaseの評価関数の学習器であり、現時点ではNNUEの学習を`nnue`サブコマンドの下に持つ。
 NNUEの浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
 GPU側では第1層の前進、駒除去差分の補助損失、全パラメータの勾配、部分和の縮約、AdamWによる更新と切り詰め、検証を実行できる。
-学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)と`tools/train/src/minase_train`に従う。
-`minase-trainer nnue dump-batch`の更新処理は照合資料の生成用であり、エポックを進める学習ループは持たない。
+学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)に従う。
+移植時にはPythonの学習器と1更新の勾配と重みが一致することを[設計書](../../docs/plans/nnue-trainer-rust.md)の条件で一度確かめ、結果を[検査の記録](../../docs/measurements/nnue-trainer-rust-checks.md)にまとめた。
 
 `minase-trainer nnue train`は前処理、指定したデバイスでの更新、全検証集合の評価、チェックポイントの保存、最良重みの書き出しを行う。
 線形重みは`--init-pst`の圧縮なしNPZから初期化し、左右の鏡映対が一致することと、再量子化が`--base`のMNPTのPST部分と一致することを検査する。
@@ -22,7 +22,7 @@ CPUの1更新では`std::thread::scope`を使い、前進、駒除去、出力�
 各要素の縮約順と精度を単一スレッド参照にそろえ、`--threads`を変更しても数値計算のビット列を保つ。
 `--threads`の既定値は物理コア数−2で、最小1である。
 
-学習、`minase-trainer nnue dump-batch`、`minase-trainer nnue check-equivalence`、`minase-trainer nnue bench-step`では、次の係数を共通の引数で指定できる。
+学習、`minase-trainer nnue check-equivalence`、`minase-trainer nnue bench-step`では、次の係数を共通の引数で指定できる。
 すべて有限かつ非負とし、学習率は0を認めない。
 λは0以上1以下に制限する。
 
@@ -62,8 +62,8 @@ GPUメモリ使用量は、学習と検証の配列確保後にCUDAが報告し�
 `config.json`と`training.jsonl`に`device`を記録し、CPU実行のGPUメモリ欄は`null`とする。
 符号一致率とエポック0からの改善は診断に記録する。
 量子化検査には固定シードで選んだ検証局面を最大`--validation-sample`件使い、CPUの浮動小数点参照とminaseの整数推論の平均絶対誤差と最大誤差をセンチポーンで記録する。
-浮動小数点参照はPythonの`nnue/model.py`と同じく、線形和、累算器、活性化、非線形出力をf64で計算する。
-標本の抽出にはSplitMix64を使うため、Pythonと同じシードでも選ばれる局面は異なる。
+浮動小数点参照は線形和、累算器、活性化、非線形出力をf64で計算する。
+標本の抽出にはSplitMix64を使う。
 平均絶対誤差がK/40を超えた場合は、保存物を残して`quantization_error`と終了コード1を返す。
 
 再開する場合は`--resume <output-dir>`を指定する。
@@ -102,37 +102,36 @@ CPUとGPUのテストは320局面の合成MNSDで幅8の両型を2エポック�
 cargo test --release --offline -j 2 -p minase-trainer -- --ignored gpu_ --test-threads=1
 ```
 
-公開APIとPython実装の対応を次に示す。
+公開APIを次に示す。
 配列は行優先で、パラメータの値はf32、幅は2以上512以下の偶数である。
 
-| ファイル | 公開型と関数 | Python側の対応 |
-|---|---|---|
-| `src/model/mod.rs` | `Error`、`Result`、`Parameter`、`Shape`、`Parameters`、`Masks`、`Model`を定義する。 | `pst.model.MirroredEmbedding`と`nnue.model`の線形、共有型、分解型、出力部、制約に対応する。 |
-| `src/model/npz.rs` | `model::load_initial`が圧縮なしnpzを読む。 | `nnue.model.load_initial`に対応し、線形の鏡映対の平均は`pst.model.MirroredEmbedding`に合わせる。 |
-| `src/model/quantize.rs` | `model::Quantized`、`model::quantize`、`Quantized::encode`を提供する。 | `nnue.train.quantized_weights`と`nnue.format`に対応する。MNUE版5の符号化は`minase::eval::nnue::encode`を使う。 |
-| `src/model/checkpoint.rs` | `model::BestEpoch`、`model::Progress`、`model::Checkpoint`を提供する。 | 学習器固有の保存形式であり、PyTorchへの移植は照合スクリプトが担当する。 |
-| `src/reference/mod.rs` | `Forward`、`Output`、`Losses`、`Gradients`と、`forward`、`output_backward`、`reduce_partials`、`first_layer_backward`、`linear_backward`、`reduce_virtual`、`fold`を提供する。 | `NNUE.components`、`DirectHead`とPyTorchの自動微分に対応する。 |
-| `src/reference/mod.rs` | `evaluate`、`screlu`、`screlu_derivative`、`loss_and_gradients`と`loss_and_gradients_parallel`も公開する。 | 浮動小数点の前進、SCReLU、`nnue.train.train_epoch`の1バッチに対応する。 |
-| `src/data/teacher.rs` | `data::build_targets`が分類ごとの教師値を構築する。 | `pst.teacher.build_targets`のλと教師用Kによる混合に対応する。 |
-| `src/reference/removal.rs` | `reference::Removal`、`reference::RemovalReference`、`reference::removal_forward`、`reference::v0_piece_values`を提供する。 | `NNUE.removal_deltas`、`pst.removal`の整数参照、罰則、`data.mnpt.initial_weights`に対応する。v0の値は`minase::eval::handcrafted::piece_value`から取る。 |
-| `src/reference/optimizer.rs` | `reference::AdamWGroup`、`reference::AdamWConfig`、`reference::AdamW`、`reference::adamw`を提供する。 | `nnue.train.make_optimizer`の3群と`torch.optim.AdamW`に対応する。 |
-| `src/dump.rs`と`src/lib.rs` | コマンドを拡張し、`model`と`reference`を公開する。 | `tools/train/scripts/crosscheck_reference.py`が保存物を読み、PyTorchで3更新する。 |
+| ファイル | 公開型と関数 |
+|---|---|
+| `src/model/mod.rs` | `Error`、`Result`、`Parameter`、`Shape`、`Parameters`、`Masks`、`Model`を定義する。 |
+| `src/model/npz.rs` | `model::load_initial`が圧縮なしnpzを読む。 |
+| `src/model/quantize.rs` | `model::Quantized`、`model::quantize`、`Quantized::encode`を提供する。MNUE版5の符号化は`minase::eval::nnue::encode`を使う。 |
+| `src/model/checkpoint.rs` | `model::BestEpoch`、`model::Progress`、`model::Checkpoint`を提供する。 |
+| `src/reference/mod.rs` | `Forward`、`Output`、`Losses`、`Gradients`と、`forward`、`output_backward`、`reduce_partials`、`first_layer_backward`、`linear_backward`、`reduce_virtual`、`fold`を提供する。 |
+| `src/reference/mod.rs` | `evaluate`、`screlu`、`screlu_derivative`、`loss_and_gradients`と`loss_and_gradients_parallel`も公開する。 |
+| `src/data/teacher.rs` | `data::build_targets`が分類ごとの教師値を構築する。 |
+| `src/reference/removal.rs` | `reference::Removal`、`reference::RemovalReference`、`reference::removal_forward`、`reference::v0_piece_values`を提供する。v0の値は`minase::eval::handcrafted::piece_value`から取る。 |
+| `src/reference/optimizer.rs` | `reference::AdamWGroup`、`reference::AdamWConfig`、`reference::AdamW`、`reference::adamw`を提供する。 |
 
 `Shape`は`new`で幅とKを検査し、`feature_set`、`width`、`k`、`units`、`rows`、`len`、`architecture`で配置を返す。
 `Parameters::zeros`はその配置で確保し、`shape`と`validate`で形と有限性を検査できる。
-`Parameter::ALL`が保存順、`Parameter::name`がPyTorchの名前を定め、添字による読み書きは配列長を保つ。
+`Parameter::ALL`が保存順、`Parameter::name`が検査メッセージに使う名前を定め、添字による読み書きは配列長を保つ。
 `Masks`は`new`または`from_observations`で作り、`canonical`、`first_layer`、`virtual_rows`で3種のマスクを返す。
 CPU参照の公開計算関数は入口で入力配列の長さを検査し、不正な長さには`Err`を返す。
 
 `Model::initialize`は全基底特徴の線形2端点、観測マスク、シード、第1層の初期化標準偏差を受け取る。
 初期値の左右の鏡映対には完全一致を要求する。
-標準偏差は有限かつ非負とし、`minase-trainer nnue dump-batch --init-std`の既定値は0.05である。
+標準偏差は有限かつ非負とする。
 `shape`、`parameters`、`parameter_mut`、`masks`、`initial_linear`、`initial_virtual`が値を公開する。
 `expanded_biases`、`expanded_output_weights`、`expanded_linear`、`expanded_first_layer`が共有パラメータを展開し、最後の関数はHalfKP-hm-b8の特徴分解も畳み込む。
 `constrain`は有限性を検査してから切り詰め、`fix_unobserved`で未観測行と埋め草を復元する。
 
 `RemovalReference::v0`は訓練用の参照を作り、`new`は検査用の任意の鏡映対称な整数PSTを受け取り、`deltas`は整数参照差分と切り捨て前の差分の大きさを返す。
-Pythonと同じく、罰則の符号には整数評価の差を、上限には切り捨て前の差の絶対値を使う。
+罰則の符号には整数評価の差を、上限には切り捨て前の差の絶対値を使う。
 除去後の評価は、線形番号が番兵でなく、王駒でもなく、整数参照差分が0でない列だけ計算する。
 不適格な列では診断用の`e_r`と`delta_r`も0とし、`pen_r`と`d_r`も0にする。
 `ref_r`、`s_r`、`eligible`、`wrong_r`はこの省略によって変わらない。
@@ -168,8 +167,6 @@ HalfKP-hm-b8では仮想行の更新と切り詰めを先に行い、その値�
 
 最良エポックがまだない場合は、番号を0、検証損失を正の無限大とする。
 P型の仮想行の配列とマスクは長さ0である。
-`gradients-N.f32`はヘッダを持たず、同じ`Parameter::ALL`順の勾配だけを保存する。
-照合スクリプトはチェックポイントの形から勾配ファイルの長さを検査する。
 
 テストの期待値は、設計書の式、Pythonの指定された例、整数推論API、および次の不変条件から定めた。
 `tests/common/mod.rs`が合成局面を`Record::from_position`でMNSDへ変換し、圧縮なしnpzの試料も作る。
@@ -196,48 +193,13 @@ P型の仮想行の配列とマスクは長さ0である。
 | `model_rejects_invalid_width_k_initial_and_mask_shapes` | 幅、K、初期値、観測マスク、最適化器の形の違反を検査する。 |
 | `stored_npz_and_numpy_zip64_load_endpoints_and_reject_bad_archives` | NumPyが使うZIP64サイズと通常のstored ZIP、破損、圧縮指定、切断を検査する。 |
 | `model::npz::tests::npy_rejects_dtype_order_shape_version_and_truncation` | NPYの型、配列順、形、版、切断を検査する。 |
-| `dump_reference_writes_warmed_checkpoint_three_batches_gradients_and_states` | 両型について、先読み付きの事前3更新と、続く3更新の保存物を検査する。 |
 
 v0の駒価値はすべて正なので、所有者に反する方向だけに掛かる上限制約は通常のv0参照では発火しない。
 この区分の有限差分試験には、歩の参照値を反転した鏡映対称の整数PSTを明示的に使う。
-実際の照合は常に`make_removal_reference(v0, v0)`を使う。
 
 テストの検出力は、SCReLUの端点1の除外、第1層の後退での逆回転の削除、AdamWの1次モーメントのバイアス補正の削除を一時的に適用して確認した。
 3つとも対応するテストのアサーションが失敗し、変更を戻した。
 この範囲で検出されずに残った変更はない。
-
-委任元での照合は、P型とHalfKP-hm-b8のそれぞれについて次の順で実行する。
-`DATA`と`PST`を実在する入力へ置き換え、`OUTPUT_K`には基準MのMNPTに保存されたKを指定する。
-通し番号はMNSDファイル列全体で0から数える。
-以下の9局面は例なので、除去罰則が発火する局面を含むよう、必要に応じて番号を選ぶ。
-
-```sh
-DATA=/absolute/path/to/generated-1500000.bin
-PST=/absolute/path/to/J75/pst-float.npz
-OUTPUT_K=1072.6529541015625
-
-for FEATURE_SET in P HalfKP-hm-b8; do
-  DUMP_DIR="/tmp/nnue-reference-${FEATURE_SET}"
-  CARGO_NET_OFFLINE=true nice -n 19 cargo run -j 2 -p minase-trainer -- nnue dump-batch \
-    --feature-set "$FEATURE_SET" --data "$DATA" --indices 0,1,2 \
-    --init-pst "$PST" --width 4 --k "$OUTPUT_K" --seed 71 --steps 3 \
-    --lookahead-gamma 0.9 --lookahead-plies 40 \
-    --reference-batch 0,1,2 --reference-batch 3,4,5 --reference-batch 6,7,8 \
-    --output "$DUMP_DIR"
-  PYTHONPATH=tools/train/src python tools/train/scripts/crosscheck_reference.py \
-    --data "$DATA" --dump "$DUMP_DIR/reference.json"
-done
-```
-
-`--steps N`は`--indices`のバッチでN回更新し、その直後を`checkpoint.bin`へ保存する。
-続く3更新は`--reference-batch`の指定順に行い、損失を`reference.json`、勾配を`gradients-N.f32`、更新後の全状態を`after-N.bin`へ保存する。
-Pythonは教師用Kと先読み教師を独立に計算し、特徴番号、損失、全パラメータ群の勾配、切り詰め後の重み、AdamWの両状態を照合する。
-浮動小数点数は`numpy.isclose`の`rtol=1e-4, atol=1e-5`で検査し、不一致の場所と差を表示して終了コード1を返す。
-Pythonとの3更新の実照合は委任元で行うため、Rustの単体テストの成功とは別に記録する。
-
-補助損失が発火する資料を照合する場合は、`minase-trainer nnue dump-batch`に`--init-std 0.2`などを指定し、Pythonの照合に`--require-auxiliary`を付ける。
-このフラグは`reference.json`の3更新のうち少なくとも1更新の補助損失が正であることを要求する。
-標準偏差だけでは発火を保証しないため、全更新が0ならスクリプトは明示的なエラーで終了する。
 
 GPUの実装は次のファイルに置く。
 各CUDAソースは`include_str!`で埋め込み、改行で連結してNVRTCで実行時にコンパイルする。
@@ -356,7 +318,7 @@ P型では単位数をH/2とし、両半幅の活性化を足してから共有�
 未使用レーンの部分和は0とし、除去前の`before_head`も同じ関数で求める。
 CPU参照は32本の部分和と同じ木をループで再現し、`e_r`の基準となる除去前評価もその結果から求める。
 
-非線形の除去差分はPython参照と同じく、各視点の`after − before`をf32で求め、f64へ変換してからKを掛ける。
+非線形の除去差分は各視点の`after − before`をf32で求め、f64へ変換してからKを掛ける。
 直接差分の和は実数上では同値だが、丸めの違いが罰則の勾配分岐に影響し得るため、この式を保つ。
 前後の値を引く際の桁落ちは残るが、縮約順の相違によるCPUとGPUの差をK倍することは避けられる。
 
@@ -420,7 +382,7 @@ GPU処理の`unsafe`はすべて`gpu`モジュールにある。
 各起動の前にRust側で配列長を検査し、各ブロックの直前に前提条件を書く。
 ファイルのmmapは`data`モジュール内で行い、`Dataset::open`は`unsafe fn`とする。
 呼び手は返された`Dataset`の生存中に、渡したファイルを外部プロセスも含めて変更も切り詰めもしないことを保証する。
-`minase-trainer nnue train`、`minase-trainer nnue dump-batch`、`minase-trainer nnue bench-step`の入力ファイルは、コマンドが終了するまで変更しない。
+`minase-trainer nnue train`、`minase-trainer nnue bench-step`の入力ファイルは、コマンドが終了するまで変更しない。
 各呼び出し箇所のSAFETYコメントに、この契約を満たす根拠を記す。
 
 | 所在 | 前提条件 |
@@ -449,7 +411,7 @@ GPUを要するテストには`#[ignore]`を付け、名前はすべて`gpu_`で
 等価性検査の合成記録は、回転と番兵、先獅子、補間率の境界、空の逆索引範囲、3分類の教師値を含む。
 幅2、6、8、128、130と両特徴集合について、バッチ64、4,096、100、1、129を同じ評価器へ順に渡し、面の再利用も検査する。
 幅130は、128スレッドを超える幅と、32レーンで割り切れない単位数を検査する。
-CPUとの判定は既存のPython照合と同じ許容誤差の形式で、`|GPU-CPU| ≤ 1e-6 + 1e-5 |CPU|`とする。
+CPUとの一致は`|GPU-CPU| ≤ 1e-6 + 1e-5 |CPU|`で判定する。
 CPU参照の除去寄与、後退勾配、検証統計に使うf64の積と累算は維持し、GPUのf32演算との差をこの式で照合する。
 非有限値は拒否し、全中間値と縮約値を同一入力で2回実行してビット単位でも比較する。
 検証専用の起動も2回実行し、出力部の後退を伴う場合の検証値とビット一致を要求する。
@@ -530,18 +492,6 @@ CPUでは転送量と転送時間を0とし、GPUメモリは測定しない。
 `--profile`はCUDAのカーネル計測に限るため、CPUと組み合わせるとエラーになる。
 
 CPUの1ファイル試走では、前述の`minase-trainer nnue train`に`--device cpu --threads 2`を加え、別の空の出力先を指定する。
-係数変更を含むPython照合は、前述の`minase-trainer nnue dump-batch`に次の引数を加えて生成した`reference.json`を`crosscheck_reference.py`へ渡す。
-
-```sh
---lambda-override 0.75 --lr-linear 0.012 --weight-decay-linear 0.00005 \
---lr-ft 0.002 --weight-decay-ft 0.0003 \
---lr-head 0.0015 --weight-decay-head 0.0002 --removal-penalty 137.5
-```
-
-`reference.json`の版2は、全係数とλ、分類ごとのλと教師用Kを含む。
-照合スクリプトはチェックポイント版2の係数との一致を検査し、PyTorchの最適化器、補助損失、教師値へ適用する。
-教師用KはPythonで再推定して照合するため、λ=0の分類では両側のKが未設定であることを確認する。
-
 
 CPU参照とPyTorchの比較では、駒除去勾配の相殺に伴う既存の精度差が残る。
 CPU参照は除去後の寄与をf32へ丸めた後、同じ自己行の寄与をf64の積として引くため、理論上0の勾配に残差が生じる場合がある。
