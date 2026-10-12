@@ -79,7 +79,7 @@
 | PSTとFMの同時学習 | [plans/pst-fm-joint-training.md](plans/pst-fm-joint-training.md) | 完了（不採用） | 2026年10月8日 |
 | FMの補正の倍率のSPSAによる調整 | [plans/fm-scale-spsa.md](plans/fm-scale-spsa.md) | 完了（採用） | 2026年10月8日 |
 | 秒読みつき時計での持ち時間と秒読みの活用 | [plans/byoyomi-time-usage.md](plans/byoyomi-time-usage.md) | 進行中 | |
-| NNUEの共通土台と初代のネットによるPST＋FMの完全代替 | [plans/nnue-replacement.md](plans/nnue-replacement.md) | 進行中 | |
+| NNUEの共通土台と初代のネットによるPST＋FMの完全代替 | [plans/nnue-replacement.md](plans/nnue-replacement.md) | 完了（採用） | 2026年10月12日 |
 | 手の順序付けの改善 | [plans/move-ordering.md](plans/move-ordering.md) | 完了（採用） | 2026年10月10日 |
 | Rust製NNUE学習器（GPU） | [plans/nnue-trainer-rust.md](plans/nnue-trainer-rust.md) | 完了（採用） | 2026年10月12日 |
 | NNUE学習器の学習率スケジュール | [plans/nnue-lr-schedule.md](plans/nnue-lr-schedule.md) | 起案 | |
@@ -90,9 +90,9 @@
 
 ### 直近の完了
 
+- [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](plans/nnue-replacement.md)は2026年10月12日に、採用で完了した。現行PSTを線形経路として内包する幅128のP型NNUEを、既存の約2,920万局面と新規の約5,100万局面（1局面2万ノード）から[Rust製NNUE学習器](plans/nnue-trainer-rust.md)で学び、基準M（PST＋FM）に対する段階ゲートでSTC `H1`（[0, 0, 24, 0, 80]）、LTC `H1`（[0, 0, 17, 0, 87]、異常0件）となった（[STC](measurements/nnue-replacement-stc.md)、[LTC](measurements/nnue-replacement-ltc.md)）。同じデータのHalfKP-hm-b8はP型に対するSTCで`H0`だった。探索が使う既定の評価関数はNNUEになり、masterへのマージは利用者の許可待ちである。
 - [Rust製NNUE学習器（GPU）](plans/nnue-trainer-rust.md)は2026年10月12日に、採用で完了した。将棋のNNUE学習器tataraの速さがRustではなく疎なgather、逆索引の後退、融合した最適化器、非同期の供給というGPUカーネルとデータ経路の設計に由来することを一次情報で確かめ（[調査](research/nnue-trainer-speed.md)）、ホストをRust、カーネルをCUDA C++（NVRTC）で書いた学習器`crates/nnue-trainer`を作った。GPUカーネルはCPU参照と一致し、1更新の勾配と重みはPythonの学習器と一致する。全30ファイルの1エポックは145〜155秒で、Pythonの学習器の約20分の1である（[記録](measurements/nnue-trainer-rust-checks.md)）。
 - [手の順序付けの改善](plans/move-ordering.md)は2026年10月10日に、採用で完了した。βカットした手より前に読んだ手の部分木ノード数（先行費用W）を測る[診断](measurements/move-ordering-diag.md)で8候補の進退を決め、候補6を除く7候補（捕獲履歴の減点の拡張、SEE負の先頭捕獲の前のkiller手、静止探索の群内の捕獲履歴、捕獲履歴の持ち越し、静かな手のPST差分による同点破り、根の手の前回反復の部分木ノード数による整列、history malus）を積み上げた構成は、利用者の決定による1回の採否測定で[STC](measurements/move-ordering-all-stc.md)（得点率58.7%）と[LTC](measurements/move-ordering-all-ltc.md)（566ペア、得点率54.5%、Elo換算で約+31）がともに`H1`となった。固定200ペアでは[+26.5 Elo](measurements/move-ordering-elo200.md)である。候補ごとの寄与は分からない。
-- [FMの補正の倍率のSPSAによる調整](plans/fm-scale-spsa.md)は2026年10月8日に、採用で完了した。同時学習の候補J75の重みを固定し、FMの補正に掛ける倍率だけを自己対局のSPSA（3,000ペア）で調整して611/1024（約0.60）を得た。倍率を整数化前の出力係数に焼き込んだ候補は、[STC](measurements/fm-scale-spsa-stc.md)（得点率65.9%）と[LTC](measurements/fm-scale-spsa-ltc.md)（163ペア、得点率66.6%、Elo換算で約+120）でともに`H1`となった。補正の大きさは168センチポーンで従来の68センチポーンの約2.5倍、深さ9までのノード数は25%多い（[候補の検査](measurements/fm-scale-spsa-candidate.md)）。
 
 ### 次の候補
 
@@ -103,7 +103,6 @@
 - 評価関数の後続3計画（[静止探索の出力](plans/qsearch-output-training.md)、[順位の損失](plans/rank-loss-training.md)、[関係補正項](plans/relational-correction.md)）は、いずれも採用候補なしで完了した。順位の損失を関係を表すモデルと組み合わせる方式は、関係補正項の計画が補正項を選ばなかったので、起案するかは利用者の判断による。[評価関数を改善する3つの観点](research/evaluation-improvement-strategy.md)が挙げた、候補の誤りへの教師予算の重点配分、教師の判定が不安定な根の追加診断、および教師が必要な差を識別できない場合の代替教師の検討は、3計画には含めず、担当計画は未定である。
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2026年10月8日に2.2.0へ、10月9日に2.3.0へ更新済みで、配備後の秒読みつきの対局20局の記録が残っている。
-- [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](plans/nnue-replacement.md)は、入力特徴集合と出力部を差し替えられるNNUEの共通の土台をRustの推論とPythonの学習器に作り、王の位置で条件付けないP型と、自玉の位置を8区分に分けて条件付けるHalfKP型（HalfKP-hm-b8）の2つを実装する。どちらも現行PSTを線形経路として内包し、既存データに現行PST＋FMが1局面2万ノードで生成する約5,100万局面を加えて学ぶ。型を幅128の自己対局で選び、勝った型の幅128を段階ゲートに出して採否を決める（棄却された場合に限り幅64を試す）。採用したネットで教師を生成し直す世代反復の初代であり、反復の基盤と運用は後続の設計書で起案する。2026年10月11日に、教師データの集計（太子は1.77%の対局にしか現れず、自玉の升は強く偏る）を受けた利用者の決定で、P型だけの構成から共通土台を持つ構成へ設計を改め、学習器はtataraの設計を借りてPythonで作り直すことにした。その後の2026年10月12日の利用者の決定で学習器を[Rust製NNUE学習器（GPU）](plans/nnue-trainer-rust.md)に替え、同日に20ファイルの生成が完走し、両方の型の幅128を学習した（どちらも最良エポックは1）。型の比較のSTCは114有効ペアで`H0`（ペンタノミアル[80, 0, 30, 0, 4]）となりP型を採った（[記録](measurements/nnue-replacement-features-stc.md)）。次はP型の`90280a0`を基準M `8d0e382`に対する段階ゲートへ出すフェーズ6である。
 - [NNUE学習器の学習率スケジュール](plans/nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたものを扱う。前者は、NNUEの検証損失が最初の訓練エポックの直後で頭打ちになる症状を受けて、更新ごとの学習率の倍率を加え、5つの設定のどれかで改善するかを確かめる。後者は、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。どちらも学習は[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](plans/nnue-replacement.md)のフェーズ6の後に行い、後者の学習は前者の結論を待つ。
 - [Python学習器のRustへの移植と撤去](plans/python-trainer-retirement.md)は、PST、FM、同時学習の学習器と使用中の診断をRustの学習器へ移し、Pythonと同じ結果になることを一度だけ照合してから、Pythonの学習ツールを削除する。最初のフェーズで学習器のクレートを`minase-trainer`へ改名し、上の2計画の実装はその後に行う。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
