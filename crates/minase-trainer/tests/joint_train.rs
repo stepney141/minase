@@ -1,8 +1,6 @@
 //! 指示書の損失、初期値照合、再現性、保存物と再生の拒否契約を検証する。
 #[path = "joint_train/algebra.rs"]
 mod algebra;
-#[path = "joint_train/replay.rs"]
-mod replay;
 #[path = "joint_train/fixture.rs"]
 mod support;
 use clap::Parser;
@@ -161,7 +159,6 @@ fn cli_defaults_and_invalid_arguments() {
         ("--removal-penalty", "-1"),
         ("--validation-sample", "0"),
         ("--lambda-override", "1.1"),
-        ("--replay-steps", "0"),
     ] {
         let mut v: Vec<_> = argv().into_iter().map(str::to_owned).collect();
         v.push(format!("{flag}={value}"));

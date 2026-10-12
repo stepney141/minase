@@ -1,10 +1,10 @@
 use super::{Args, Distribution, GradientNorm, QuantizationReport, Result};
 use crate::{
-    data::{Dataset, replay::Replay},
+    data::Dataset,
     fm::record::{Configuration, digest, file_record, hash_u64, hex},
 };
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::path::Path;
 
 /// 同時学習の1エポックの記録。学習前の損失と速度はnull。
@@ -50,7 +50,6 @@ pub(super) fn configuration(
     dataset: &Dataset,
     ks: &[f64],
     k: f32,
-    replay: Option<&Replay>,
     observations: (&[u64], usize),
 ) -> Result<Configuration> {
     let (counts, mask_mismatches) = observations;
@@ -70,24 +69,10 @@ pub(super) fn configuration(
         "epochs",
         "patience",
         "threads",
-        "replay_steps",
     ] {
         object.remove(key);
     }
     object.insert("model".into(), json!("joint_mirrored_pst_fm_rank32"));
-    object.insert(
-        "replay".into(),
-        replay.map_or(
-            Value::Null,
-            |replay| json!({"path": replay.directory(), "replay_json_sha256": replay.sha256()}),
-        ),
-    );
-    if let Some(replay) = replay {
-        object.insert(
-            "replay_initial".into(),
-            file_record(&replay.directory().join("initial.npz"))?,
-        );
-    }
     object.insert(
         "optimizer".into(),
         json!({"pst_lr":args.pst_lr, "pst_weight_decay":0, "fm_lr":args.fm_lr, "fm_weight_decay":args.fm_weight_decay, "betas":[0.9,0.999], "epsilon":1e-8}),
@@ -118,8 +103,6 @@ pub(super) fn configuration(
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
-    /// 一時的な照合用に指定した更新回数へ到達した。
-    ReplaySteps,
     /// 指定されたエポック数を完了した。
     MaxEpochs,
     /// 指定された連続エポック数にわたって改善しなかった。
@@ -129,7 +112,7 @@ pub enum StopReason {
 /// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
 #[derive(Debug, Serialize)]
 pub struct Summary {
-    /// candidate、replay_steps、quantization_error、またはerror。
+    /// candidate、quantization_error、またはerror。
     pub status: &'static str,
     /// 検査失敗または学習未完了の理由。
     pub reason: Option<String>,

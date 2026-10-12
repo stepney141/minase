@@ -64,6 +64,7 @@ pub(super) struct Exported {
     pub zero: ZeroCorrectionReport,
     pub quantization: QuantizationReport,
     pub correction: CorrectionDistribution,
+    pub initial_position_score: i32,
 }
 
 pub(super) fn write_best(
@@ -144,6 +145,12 @@ pub(super) fn write_best(
         }
     }
     let mean = errors.map(|v| v / indices.len() as f64);
+    let initial = minase_core::Position::initial();
+    let mut features = Vec::new();
+    active_features(&initial, |feature| features.push(feature));
+    let initial_position_score = (i64::from(pst::evaluate_pst(&written, &initial))
+        + correction(written.fm_weights().expect("exported version 3"), &features))
+    .clamp(-28999, 28999) as i32;
     Ok(Exported {
         status: if zero.identically_zero {
             "excluded_zero_correction"
@@ -171,5 +178,6 @@ pub(super) fn write_best(
             std_before_quarter: std(&corrections[0]),
             std_after_quarter: std(&corrections[1]),
         },
+        initial_position_score,
     })
 }

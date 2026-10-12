@@ -2,10 +2,7 @@ use super::{
     Args, Distribution, GradientNorm, Result, ZeroCorrectionReport,
     export::{CorrectionDistribution, QuantizationReport},
 };
-use crate::{
-    data::{Dataset, replay::Replay},
-    nn::atomic_write,
-};
+use crate::{data::Dataset, nn::atomic_write};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -56,7 +53,6 @@ pub(super) fn configuration(
     dataset: &Dataset,
     ks: &[f64],
     k: f32,
-    replay: Option<&Replay>,
     counts: &[u64],
 ) -> Result<Configuration> {
     let mut settings = serde_json::to_value(args)?;
@@ -72,24 +68,10 @@ pub(super) fn configuration(
         "epochs",
         "patience",
         "threads",
-        "replay_steps",
     ] {
         object.remove(key);
     }
     object.insert("model".into(), json!("fm_rank32"));
-    object.insert(
-        "replay".into(),
-        replay.map_or(
-            Value::Null,
-            |replay| json!({"path": replay.directory(), "replay_json_sha256": replay.sha256()}),
-        ),
-    );
-    if let Some(replay) = replay {
-        object.insert(
-            "replay_initial".into(),
-            file_record(&replay.directory().join("initial.npz"))?,
-        );
-    }
     object.insert(
         "optimizer".into(),
         json!({"lr":args.lr, "weight_decay":args.weight_decay, "betas":[0.9,0.999], "epsilon":1e-8}),
@@ -206,8 +188,6 @@ pub(crate) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
-    /// 一時的な照合用に指定した更新回数へ到達した。
-    ReplaySteps,
     /// 指定されたエポック数を完了した。
     MaxEpochs,
     /// 指定された連続エポック数にわたって改善しなかった。
@@ -217,7 +197,7 @@ pub enum StopReason {
 /// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
 #[derive(Debug, Serialize)]
 pub struct Summary {
-    /// candidate、excluded_zero_correction、replay_steps、quantization_error、またはerror。
+    /// candidate、excluded_zero_correction、quantization_error、またはerror。
     pub status: &'static str,
     /// 検査失敗または学習未完了の理由。
     pub reason: Option<String>,
@@ -249,4 +229,6 @@ pub struct Summary {
     pub phi: Option<Distribution>,
     /// 量子化誤差の検査結果。
     pub quantization: Option<QuantizationReport>,
+    /// 書き出した重みによる初期局面の整数評価。手番側視点、センチポーン。
+    pub initial_position_score: Option<i32>,
 }

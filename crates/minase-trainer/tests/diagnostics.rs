@@ -171,19 +171,6 @@ impl Fixture {
         path
     }
 
-    fn replay(&self, indices: &[i64]) -> PathBuf {
-        let path = self.path("sample.i64");
-        fs::write(
-            &path,
-            indices
-                .iter()
-                .flat_map(|index| index.to_le_bytes())
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
-        path
-    }
-
     fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
             .current_dir(&self.root)
@@ -307,16 +294,14 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
     ] {
         f.network(name, &model(set, &pawn_linear(100.0), 1016.0));
     }
-    // 連結後の通し番号を再生し、両ファイルから12局面ずつ使う。
-    let indices: Vec<_> = (0..12).chain(36..48).collect();
-    f.replay(&indices);
+    // 全局面を標本にして、各位相帯と評価帯の既知の分布を検査する。
     let args = [
         "nnue-distribution",
         "--data",
         "a.mnsd",
         "b.mnsd",
         "--sample",
-        "24",
+        "48",
         "--seed",
         "7",
         "--pair",
@@ -327,8 +312,6 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         "p",
         "base.bin",
         "p.bin",
-        "--replay-sample",
-        "sample.i64",
         "--output",
         "report.json",
     ];
@@ -351,14 +334,14 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
             "pairs"
         ]
     );
-    assert_eq!(report["sample_count"], 24);
+    assert_eq!(report["sample_count"], 48);
     assert_eq!(report["population_count"], 48);
-    assert_eq!(report["sampling"], "replayed from sample.i64");
+    assert!(report["sampling"].as_str().unwrap().contains("SplitMix64"));
     assert_eq!(
         report["sample_indices_sha256_le_i64"],
         format!(
             "{:x}",
-            Sha256::digest(fs::read(f.path("sample.i64")).unwrap())
+            Sha256::digest((0_i64..48).flat_map(i64::to_le_bytes).collect::<Vec<_>>())
         )
     );
     for (i, name) in ["a.mnsd", "b.mnsd"].iter().enumerate() {
@@ -384,11 +367,11 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         assert_close(&pair["regression_residual_std_cp"], 0.0, 1e-12);
         assert_eq!(pair["verdict"], "散らばりの尺度を変えた");
         for interval in pair["by_phase_q"].as_array().unwrap() {
-            assert_eq!(interval["sample_count"], 8);
+            assert_eq!(interval["sample_count"], 16);
         }
-        // 再生した基準値は各絶対値帯に2種類ずつ、計6件。
+        // 基準値は各絶対値帯に2種類ずつ、2ファイルで計12件。
         for interval in pair["by_baseline_absolute_cp"].as_array().unwrap() {
-            assert_eq!(interval["sample_count"], 6);
+            assert_eq!(interval["sample_count"], 12);
         }
     }
     let saved = fs::read(f.path("report.json")).unwrap();
@@ -444,55 +427,6 @@ fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() 
     constant[10] = "constant.bin";
     assert_eq!(f.run(&constant).status.code(), Some(1));
     assert!(!f.path("report.json").exists());
-}
-
-#[test]
-fn both_sampled_commands_reject_invalid_replay_indices() {
-    let f = Fixture::new();
-    let positions = distribution_positions();
-    let mut games = [4; 24];
-    games[1] = 1; // seed=11の対局1は訓練集合。
-    f.data("data.mnsd", &positions, 11, &games, "engine-default");
-    for command in ["nnue-distribution", "nnue-removal"] {
-        let mut args = vec![
-            command,
-            "--data",
-            "data.mnsd",
-            "--sample",
-            "2",
-            "--seed",
-            "1",
-            "--replay-sample",
-            "sample.i64",
-            "--output",
-            "report.json",
-        ];
-        if command == "nnue-distribution" {
-            args.extend(["--pair", "test", "missing-base", "missing-net"]);
-        } else {
-            args.extend(["--float", "missing-float", "--net", "missing-net"]);
-        }
-        for (indices, reason) in [
-            (vec![-1, 2], "out of range"),
-            (vec![0, 24], "out of range"),
-            (vec![0, 0], "strictly ascending"),
-            (vec![2, 0], "strictly ascending"),
-            (vec![0], "count"),
-            (vec![0, 2, 3], "count"),
-        ] {
-            f.replay(&indices);
-            let output = f.run(&args);
-            assert_eq!(output.status.code(), Some(1));
-            assert!(String::from_utf8_lossy(&output.stderr).contains(reason));
-            assert!(!f.path("report.json").exists());
-        }
-        fs::write(f.path("sample.i64"), [0; 17]).unwrap();
-        assert!(String::from_utf8_lossy(&f.run(&args).stderr).contains("count"));
-        if command == "nnue-removal" {
-            f.replay(&[0, 1]);
-            assert!(String::from_utf8_lossy(&f.run(&args).stderr).contains("validation split"));
-        }
-    }
 }
 
 fn removal_args(sample: &str) -> Vec<&str> {
@@ -563,9 +497,7 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
         let m = model(set, &linear, 1016.0);
         f.network("net.bin", &m);
         f.checkpoint(m);
-        f.replay(&[0]);
-        let mut args = removal_args("1");
-        args.extend(["--replay-sample", "sample.i64"]);
+        let args = removal_args("1");
         let report = f.success(&args, "report.json");
         assert_eq!(
             root_keys(&f, "report.json"),

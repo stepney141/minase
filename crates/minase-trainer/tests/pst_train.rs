@@ -1,7 +1,5 @@
 //! pst trainの引数、端数バッチ、再開と成果物を合成MNSDで検証する。
 mod common;
-#[path = "pst_train/replay.rs"]
-mod replay;
 use clap::Parser;
 use minase::eval::{
     features::FEATURE_COUNT,
@@ -138,8 +136,6 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
         "--epochs",
         "--resume",
         "--validation-sample",
-        "--replay",
-        "--replay-steps",
     ] {
         assert!(help.contains(flag));
     }
@@ -348,6 +344,14 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
         );
         assert_eq!(config["resumes"][0]["workers"], 3);
         let written = Pst::decode(&fs::read(args.output_dir.join("pst.bin")).unwrap()).unwrap();
+        // 初期局面の記録は、書き出した整数重みを手番側から評価した値とする。
+        let initial_score =
+            minase::eval::pst::evaluate(&written, &minase_core::Position::initial());
+        assert_eq!(summary.initial_position_score, Some(initial_score));
+        assert_eq!(
+            document(args.output_dir.join("summary.json"))["initial_position_score"],
+            initial_score
+        );
         assert_eq!(written.k(), 317.25);
         assert_eq!(written.rule_set(), "L0,P0,R1,E0");
         for (state, value) in v0_piece_values().into_iter().enumerate() {
@@ -492,6 +496,8 @@ fn quantization_failure_keeps_outputs_and_records_failure_with_exit_code_one() {
     let summary = document(args.output_dir.join("summary.json"));
     assert_eq!(summary["status"], "quantization_error");
     assert_eq!(summary["quantization"]["passed"], false);
+    // 92枚に各4000 cpの初期値を与えたため、学習後も整数評価は上限に達する。
+    assert_eq!(summary["initial_position_score"], 28999);
     assert!(
         summary["quantization"]["mean_absolute_error_cp"]
             .as_f64()

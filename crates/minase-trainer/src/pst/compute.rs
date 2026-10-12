@@ -35,7 +35,7 @@ fn check(model: &Model, batch: &Batch, targets: &[f32]) -> Result<()> {
     Ok(())
 }
 
-/// 固定順の倍精度和をf32へ戻し、Python model_logitsと同じ2端点を補間する。
+/// 固定順の倍精度和をf32へ戻し、序中盤と終盤の2端点を補間する。
 pub fn evaluate(model: &Model, batch: &Batch) -> Result<Vec<f32>> {
     model.validate()?;
     let result: Vec<_> = (0..batch.len())

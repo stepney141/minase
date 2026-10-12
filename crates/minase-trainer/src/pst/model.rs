@@ -35,7 +35,7 @@ pub struct Model {
 impl Model {
     /// 全特徴の実数初期値を受け取り、鏡映対の平均を共有する。
     ///
-    /// PythonのMirroredEmbeddingと同じく、非対称な初期値も平均して受け入れる。
+    /// 左右の鏡映対を平均し、非対称な初期値も受け入れる。
     pub fn initialize(initial: &[[f32; 2]], k: f32) -> Result<Self> {
         if !k.is_finite() || k <= 0.0 {
             return Err(Error::Invalid("PST K must be finite and positive"));

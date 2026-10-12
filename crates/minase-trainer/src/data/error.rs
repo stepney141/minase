@@ -11,13 +11,6 @@ pub enum Error {
     Mnsd(records::Error),
     /// 来歴JSONの検証に失敗した。
     Provenance(provenance::Error),
-    /// 一時的な照合用再生ファイルが契約に違反した。
-    Replay {
-        /// 問題の再生ファイル。
-        path: PathBuf,
-        /// 違反した契約。
-        reason: &'static str,
-    },
     /// ファイルの内容またはファイル群の組合せが契約に違反した。
     Dataset {
         /// 問題のファイル。ファイル群が空の場合だけ空のパス。
@@ -60,7 +53,7 @@ impl fmt::Display for Error {
             Self::Io(error) => error.fmt(f),
             Self::Mnsd(error) => error.fmt(f),
             Self::Provenance(error) => error.fmt(f),
-            Self::Dataset { path, reason } | Self::Replay { path, reason } => write!(f, "{}: {reason}", path.display()),
+            Self::Dataset { path, reason } => write!(f, "{}: {reason}", path.display()),
             Self::RecordIndex { index, count } => {
                 write!(f, "record index {index} is outside 0..{count}")
             }

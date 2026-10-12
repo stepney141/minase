@@ -1,11 +1,11 @@
-//! 教師分類・位相帯ごとの検証標本と、照合用NPYの入出力。
+//! 教師分類と位相帯ごとの検証標本の抽出とNPYへの書き出し。
 
 use super::{Result, pst_reference::Features};
 use crate::{
     data::Dataset,
     nn::npz::{self, Array},
 };
-use std::{fs, path::Path};
+use std::path::Path;
 
 pub(super) const BANDS: usize = 5;
 pub(super) fn band(q: u8) -> usize {
@@ -37,12 +37,7 @@ impl SplitMix64 {
     }
 }
 
-pub(super) fn select(
-    dataset: &Dataset,
-    size: usize,
-    seed: u64,
-    replay: Option<&Path>,
-) -> Result<Sampling> {
+pub(super) fn select(dataset: &Dataset, size: usize, seed: u64) -> Result<Sampling> {
     if size == 0 {
         return Err("diagnostic sample size must be positive".into());
     }
@@ -69,59 +64,16 @@ pub(super) fn select(
         for (band, pool) in pools.iter_mut().enumerate() {
             samples.validation[generation][band] = pool.len();
             let count = size.min(pool.len());
-            if let Some(directory) = replay {
-                let path = directory.join(filename(generation, band));
-                let chosen = read_indices(&path)?;
-                validate_replay(&chosen, pool, count)
-                    .map_err(|error| format!("{}: {error}", path.display()))?;
-                *pool = chosen;
-            } else {
-                // 分類、帯の順に1本の乱数列で非復元抽出する。
-                for start in 0..count {
-                    let selected = start + rng.below((pool.len() - start) as u64) as usize;
-                    pool.swap(start, selected);
-                }
-                pool.truncate(count);
-                pool.sort_unstable();
+            // 分類、帯の順に1本の乱数列で非復元抽出する。
+            for start in 0..count {
+                let selected = start + rng.below((pool.len() - start) as u64) as usize;
+                pool.swap(start, selected);
             }
+            pool.truncate(count);
+            pool.sort_unstable();
         }
     }
     Ok(samples)
-}
-
-fn read_indices(path: &Path) -> Result<Vec<u64>> {
-    let array = npz::decode_npy(&fs::read(path)?)?;
-    if array.dtype != "<i8" || array.shape.len() != 1 {
-        return Err("replay sample must be a one-dimensional little-endian i64 NPY array".into());
-    }
-    array
-        .data
-        .as_chunks::<8>()
-        .0
-        .iter()
-        .map(|&bytes| {
-            u64::try_from(i64::from_le_bytes(bytes))
-                .map_err(|_| "negative replay sample index".into())
-        })
-        .collect()
-}
-
-fn validate_replay(chosen: &[u64], pool: &[u64], count: usize) -> Result<()> {
-    if chosen.len() != count {
-        return Err("replay sample count differs from min(sample-size, band population)".into());
-    }
-    if chosen.windows(2).any(|w| w[0] >= w[1]) {
-        return Err("replay sample indices must be sorted and unique".into());
-    }
-    if chosen
-        .iter()
-        .any(|index| pool.binary_search(index).is_err())
-    {
-        return Err(
-            "replay sample index is outside its validation teacher class and phase band".into(),
-        );
-    }
-    Ok(())
 }
 
 pub(super) fn write_indices(path: &Path, indices: &[u64]) -> Result<()> {
@@ -142,14 +94,6 @@ pub(super) fn write_indices(path: &Path, indices: &[u64]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn replay_requires_the_prescribed_count_and_unique_membership() {
-        assert!(validate_replay(&[2, 4], &[2, 4, 8], 2).is_ok());
-        assert!(validate_replay(&[], &[], 0).is_ok());
-        for chosen in [&[2, 2][..], &[4, 2], &[2, 9], &[2], &[]] {
-            assert!(validate_replay(chosen, &[2, 4, 8], 2).is_err());
-        }
-    }
     #[test]
     fn phase_intervals_include_only_the_final_right_endpoint() {
         for (q, expected) in [

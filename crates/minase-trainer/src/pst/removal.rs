@@ -32,7 +32,7 @@ pub struct RemovalReference {
     rows: Vec<[i64; 2]>,
 }
 impl RemovalReference {
-    /// Python make_removal_reference(v0,v0)と同じ表。
+    /// v0の駒価値から作る整数参照表。
     pub fn v0() -> Self {
         let values = v0_piece_values();
         let mut rows = vec![[0; 2]; CANONICAL_ROWS];

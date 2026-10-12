@@ -10,7 +10,6 @@ pub(crate) mod model;
 pub(crate) mod npz;
 mod quantize;
 pub(crate) mod record;
-mod replay;
 pub(crate) mod report;
 mod train;
 

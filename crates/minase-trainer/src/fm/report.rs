@@ -1,5 +1,5 @@
 use super::{Result, ScaleArgs, npz::FloatWeights};
-use crate::data::{Dataset, epoch_permutation, replay::read_sample};
+use crate::data::{Dataset, epoch_permutation};
 use minase::eval::{
     features::active_features,
     pst::{self, FM_RANK, FmWeights, Pst},
@@ -50,7 +50,7 @@ pub fn tuning_correction(numerator: i64, fm_scale: i32, exponent: u32) -> Result
     Ok((i128::from(numerator) * i128::from(fm_scale) / (1024_i128 << (2 * exponent + 1))) as i64)
 }
 
-// Pythonのfm_accumulatorsと同じAとC。特徴は検査済み局面からの最大145個。
+// FMの埋め込み和Aと、符号を掛けた自己内積和C。特徴は検査済み局面からの最大145個。
 fn accumulators(fm: FmWeights<'_>, features: &[usize]) -> ([i64; FM_RANK], i64) {
     let mut sums = [0_i64; FM_RANK];
     let mut self_sum = 0_i64;
@@ -143,14 +143,9 @@ pub(super) fn scale_report(
     if count == 0 {
         return Err("validation set must be nonempty".into());
     }
-    let indices = if let Some(path) = &args.replay_sample {
-        read_sample(path, &dataset, count, true)?
-    } else {
-        let mut indices = epoch_permutation(dataset.validation_indices(), args.seed, 0);
-        indices.truncate(count);
-        indices.sort_unstable();
-        indices
-    };
+    let mut indices = epoch_permutation(dataset.validation_indices(), args.seed, 0);
+    indices.truncate(count);
+    indices.sort_unstable();
     let source_fm = source.fm_weights().expect("validated MNPT version 3");
     let mut errors = Vec::with_capacity(count);
     let mut differences = Vec::with_capacity(count);

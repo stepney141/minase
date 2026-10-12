@@ -68,7 +68,7 @@ fn move_rows<const N: usize>(
     for mv in game.legal_moves() {
         let text = usi::text(position, mv, &generator)?;
         let mut after = game.clone();
-        // 終局する手もGameに適用し、プローブ同様に着手後局面の静的評価を使う。
+        // 終局する手もGameに適用し、着手後局面の静的評価を使う。
         after.play(mv)?;
         let same = evaluate(after.position(), side);
         let opposite = evaluate(after.position(), side.opposite());

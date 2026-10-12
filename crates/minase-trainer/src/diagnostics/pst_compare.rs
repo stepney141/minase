@@ -49,9 +49,6 @@ pub struct PstCompareArgs {
     /// SplitMix64による標本抽出のシード。
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
-    /// Pythonの帯別NPYを読む照合用ディレクトリ。一時的な引数で、フェーズ6で削除する。
-    #[arg(long)]
-    pub replay_sample: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -133,7 +130,7 @@ struct Derived {
     candidate_endgame: Vec<i32>,
 }
 
-// 構造体のフィールド順でPythonのJSONのキー順を保持する。
+// 構造体のフィールド順でJSONのキー順を定める。
 #[derive(Serialize)]
 struct Report {
     sample_size: usize,
@@ -165,12 +162,29 @@ struct Report {
     rust_promotion_agreement: Option<Models<usize>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     derived_piece_values: Option<Derived>,
-    // Pythonは例外時のreportを保存しない。失敗時だけ理由を加え、保存を保証する。
+    // 失敗時だけ理由を加え、報告の保存を保証する。
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
 pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
+    // 版3だけは報告先の作成前に拒否し、読み込みエラーは診断報告へ保存する。
+    let models = Models {
+        base: Weights::read(&args.base),
+        candidate: Weights::read(&args.candidate),
+    };
+    for (name, model) in models.each() {
+        if let Ok(weights) = model
+            && weights.engine.fm_weights().is_some()
+        {
+            return Err(format!(
+                "--{name}: PST comparison diagnostics require PST-only weights (MNPT version 2); \
+                 MNPT version 3 includes FM. Convert it to version 2 with \
+                 `minase-trainer fm scale --fm-scale 0` before comparing."
+            )
+            .into());
+        }
+    }
     fs::create_dir(&args.output_dir)?;
     let mut report = Report {
         sample_size: args.sample_size,
@@ -195,7 +209,7 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
         derived_piece_values: None,
         error: None,
     };
-    let result = diagnose(args, &mut report);
+    let result = diagnose(args, models, &mut report);
     if let Err(error) = &result {
         report.error = Some(error.to_string());
     }
@@ -207,7 +221,11 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     result
 }
 
-fn diagnose(args: &PstCompareArgs, report: &mut Report) -> Result<()> {
+fn diagnose(
+    args: &PstCompareArgs,
+    models: Models<Result<Weights>>,
+    report: &mut Report,
+) -> Result<()> {
     if args.sample_size == 0 {
         return Err("diagnostic sample size must be positive".into());
     }
@@ -217,8 +235,8 @@ fn diagnose(args: &PstCompareArgs, report: &mut Report) -> Result<()> {
         _ => return Err("both lookahead-gamma and lookahead-plies are required".into()),
     };
     let models = Models {
-        base: Weights::read(&args.base)?,
-        candidate: Weights::read(&args.candidate)?,
+        base: models.base?,
+        candidate: models.candidate?,
     };
     report.piece_values = (0..47)
         .map(|s| models.base.engine.piece_value_of_state(s))
@@ -253,12 +271,7 @@ fn diagnose(args: &PstCompareArgs, report: &mut Report) -> Result<()> {
         .map(|&k| k.is_finite().then_some(k))
         .collect();
     eprintln!("selecting phase-band samples and computing validation statistics");
-    let sampling = pst_sample::select(
-        &dataset,
-        args.sample_size,
-        args.seed,
-        args.replay_sample.as_deref(),
-    )?;
+    let sampling = pst_sample::select(&dataset, args.sample_size, args.seed)?;
     let validation = pst_statistics::validation(&dataset, &models, &teacher_scores, &teacher_ks)?;
     report.outcome_metrics = Some(validation.outcomes);
     report.teacher_comparison_excluded = sampling

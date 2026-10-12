@@ -61,7 +61,7 @@ mod tests {
     use minase::eval::pst::FM_RANK;
     use sha2::{Digest, Sha256};
 
-    /// tools/train/src/minase_train/data/mnpt.pyの版3の配置で作る。
+    /// MNPT版3の配置で作る。
     /// 両端点、規則名、Kは基準の埋め込み値と異なる既知の値を使う。
     fn fixture() -> Vec<u8> {
         let mut bytes = Vec::new();

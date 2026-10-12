@@ -100,7 +100,7 @@ pub(super) fn write_best(
     directory: &Path,
     base: &Base,
     sample: usize,
-) -> Result<QuantizationReport> {
+) -> Result<(QuantizationReport, i32)> {
     if checkpoint
         .progress
         .best
@@ -159,7 +159,7 @@ pub(super) fn write_best(
         }
     }
     let mean = total / indices.len() as f64;
-    Ok(QuantizationReport {
+    let report = QuantizationReport {
         samples: indices.len(),
         seed,
         split: "validation",
@@ -168,7 +168,11 @@ pub(super) fn write_best(
         max_absolute_error_cp: maximum,
         limit_cp: 2.0,
         passed: mean <= 2.0,
-    })
+    };
+    Ok((
+        report,
+        evaluate_pst(&written, &minase_core::Position::initial()),
+    ))
 }
 
 #[cfg(test)]

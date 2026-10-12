@@ -1,6 +1,6 @@
 use super::{
     Adam, Args, Batch, Checkpoint, Distribution, EpochRecord, GradientNorm, Progress, Result,
-    StopReason, Summary, compute, export, initialize, record::configuration, replay,
+    StopReason, Summary, compute, export, initialize, record::configuration,
 };
 use crate::{
     data::{Dataset, epoch_permutation},
@@ -28,8 +28,6 @@ struct Session {
     previous_elapsed: f64,
     initial_validation_loss: f64,
     initial_quantization: Option<super::QuantizationReport>,
-    replay: Option<crate::data::replay::Replay>,
-    replay_steps: Option<replay::Steps>,
 }
 
 impl Session {
@@ -51,39 +49,12 @@ impl Session {
         {
             return Err("MNSD rule set differs from initial MNPT".into());
         }
-        if args.replay_steps.is_some_and(|steps| {
-            u128::from(steps)
-                > dataset.training_indices().len().div_ceil(args.batch) as u128
-                    * u128::from(args.epochs)
-        }) {
-            return Err("--replay-steps exceeds available updates".into());
-        }
         let counts = feature_observations(&dataset)?;
         let mask: Vec<_> = counts.iter().map(|&n| n > 0).collect();
         let reference = Pst::decode(&std::fs::read(&args.fm_reference)?)?;
         let (model, mask_mismatches) =
             initialize(&base, &args.pst_init, &args.fm_init, &reference, mask)?;
         let initial_model = model.clone();
-        let replay = args
-            .replay
-            .as_ref()
-            .map(|directory| {
-                crate::data::replay::Replay::open(
-                    directory,
-                    "joint",
-                    &dataset,
-                    args.batch,
-                    replay::epochs(&args, dataset.training_indices().len()),
-                )
-            })
-            .transpose()?;
-        if let Some(replay) = &replay {
-            replay::initial(replay, &model)?;
-            for epoch in 1..=replay::epochs(&args, dataset.training_indices().len()) {
-                replay::order(replay, &dataset, &args, epoch)?;
-            }
-        }
-        let replay_steps = args.replay_steps.map(|_| replay::Steps::default());
         let ks = dataset.estimate_teacher_ks()?;
         let mut config = configuration(
             &args,
@@ -91,7 +62,6 @@ impl Session {
             &dataset,
             &ks,
             base.k(),
-            replay.as_ref(),
             (&counts, mask_mismatches),
         )?;
         let mut checkpoint = Checkpoint {
@@ -175,8 +145,6 @@ impl Session {
             previous_elapsed,
             initial_validation_loss: 0.0,
             initial_quantization: None,
-            replay,
-            replay_steps,
         };
         let initial_report = export::quantization_report(
             &session.dataset,
@@ -285,14 +253,11 @@ impl Session {
         let started = Instant::now();
         let mut training = Training::default();
         let chunks: Vec<_> = indices.chunks(self.args.batch).collect();
-        let steps = self.args.replay_steps.map_or(chunks.len(), |limit| {
-            (limit - self.checkpoint.optimizer.step()).min(chunks.len() as u64) as usize
-        });
         let dataset = &self.dataset;
         let ks = &self.ks;
         let batch_size = self.args.batch;
         pipeline::ordered::<_, Box<dyn std::error::Error + Send + Sync>>(
-            steps,
+            chunks.len(),
             self.workers,
             |index| {
                 let start = index * batch_size;
@@ -312,9 +277,6 @@ impl Session {
                     self.args.removal_penalty,
                     self.workers,
                 )?;
-                if let Some(steps) = &mut self.replay_steps {
-                    steps.record(gradients.losses);
-                }
                 if self.checkpoint.optimizer.step() < 5 {
                     self.checkpoint.gradients.push(GradientNorm::new(
                         self.checkpoint.optimizer.step() + 1,
@@ -365,22 +327,12 @@ impl Session {
             return Ok(false);
         }
         let epoch = self.checkpoint.progress.epoch + 1;
-        let order = match &self.replay {
-            Some(replay) => replay::order(replay, &self.dataset, &self.args, epoch)?,
-            None => {
-                let indices =
-                    epoch_permutation(self.dataset.training_indices(), self.args.seed, epoch);
-                let mirror = indices
-                    .iter()
-                    .map(|&index| mirror_bit(self.args.seed, epoch, index))
-                    .collect();
-                crate::data::replay::Epoch { indices, mirror }
-            }
-        };
-        let training = self.train_epoch(&order.indices, &order.mirror)?;
-        if self.args.replay_steps == Some(self.checkpoint.optimizer.step()) {
-            return Ok(false);
-        }
+        let indices = epoch_permutation(self.dataset.training_indices(), self.args.seed, epoch);
+        let mirrors: Vec<_> = indices
+            .iter()
+            .map(|&index| mirror_bit(self.args.seed, epoch, index))
+            .collect();
+        let training = self.train_epoch(&indices, &mirrors)?;
         let started = Instant::now();
         let (loss, phi) = self.validate()?;
         let seconds = started.elapsed().as_secs_f64();
@@ -436,38 +388,6 @@ impl Session {
     }
 
     fn finish(mut self) -> Result<Summary> {
-        if let Some(steps) = &self.replay_steps {
-            if self.args.replay_steps != Some(self.checkpoint.optimizer.step()) {
-                return Err("training stopped before --replay-steps updates".into());
-            }
-            steps.write(
-                &self.args.output_dir,
-                &self.checkpoint.model,
-                &self.checkpoint.optimizer,
-            )?;
-            let best = self.checkpoint.progress.best;
-            let summary = Summary {
-                status: "replay_steps",
-                reason: None,
-                stopped_by: StopReason::ReplaySteps,
-                convergence: None,
-                last_epoch: self.checkpoint.progress.epoch,
-                best_epoch: best.map(|best| best.epoch),
-                best_validation_loss: best.map(|best| best.validation_loss),
-                initial_validation_loss: Some(self.initial_validation_loss),
-                improved_over_epoch_zero: best
-                    .map(|best| best.validation_loss < self.initial_validation_loss),
-                total_steps: self.checkpoint.optimizer.step(),
-                elapsed_seconds: self.elapsed(),
-                gradients: self.checkpoint.gradients.clone(),
-                initial_quantization: self.initial_quantization.clone(),
-                initial_position_score: None,
-                phi: None,
-                quantization: None,
-            };
-            write_json(&self.args.output_dir.join("summary.json"), &summary)?;
-            return Ok(summary);
-        }
         let stopped_by = epoch_stop_reason(
             &self.checkpoint.progress,
             self.args.epochs,

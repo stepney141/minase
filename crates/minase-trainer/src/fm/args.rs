@@ -57,12 +57,6 @@ pub struct Args {
     /// 指定ディレクトリのlatest.binから再開する。
     #[arg(long)]
     pub resume: Option<PathBuf>,
-    /// Pythonとの一度きりの照合用の再生ディレクトリ。一時的な引数で、照合後に削除する。
-    #[arg(long)]
-    pub replay: Option<PathBuf>,
-    /// 最初のN更新をrust-steps.npzへ保存して終了する、一時的な照合用引数。
-    #[arg(long, requires = "replay", conflicts_with = "resume")]
-    pub replay_steps: Option<u64>,
 }
 
 impl Args {
@@ -76,14 +70,6 @@ impl Args {
         validate_lambda_override(self.lambda_override)?;
         if self.data.is_empty() {
             return Err("--data requires at least one file".into());
-        }
-        if let Some(steps) = self.replay_steps {
-            if steps == 0 || steps > i64::MAX as u64 {
-                return Err("--replay-steps must be in 1..=int64::MAX".into());
-            }
-            if self.replay.is_none() || self.resume.is_some() {
-                return Err("--replay-steps requires --replay and a fresh run".into());
-            }
         }
         if !(1..=200).contains(&self.epochs) {
             return Err("--epochs must be in 1..200".into());

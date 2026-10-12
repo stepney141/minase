@@ -236,7 +236,6 @@ impl Fixture {
             batch: 4096,
             validation_sample: 10000,
             seed: 1,
-            replay_sample: None,
         }
     }
     fn quarter(&self) -> QuarterArgs {
@@ -516,15 +515,6 @@ impl Fixture {
 fn scale_validation_matches_hand_computed_values_and_cli_stdout() {
     let f = Fixture::new();
     let data = f.validation_data();
-    let replay = f.path("sample.i64");
-    fs::write(
-        &replay,
-        [1_i64, 2]
-            .into_iter()
-            .flat_map(i64::to_le_bytes)
-            .collect::<Vec<_>>(),
-    )
-    .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
         .args(["fm", "scale", "--input"])
         .arg(f.path("input.bin"))
@@ -534,8 +524,6 @@ fn scale_validation_matches_hand_computed_values_and_cli_stdout() {
         .arg(f.path("output.bin"))
         .arg("--data")
         .arg(&data)
-        .arg("--replay-sample")
-        .arg(&replay)
         .args(["--batch", "1"])
         .output()
         .unwrap();
@@ -577,34 +565,7 @@ fn scale_validation_matches_hand_computed_values_and_cli_stdout() {
 }
 
 #[test]
-fn invalid_replay_fails_before_writing_and_cli_rejects_scale_range() {
-    let f = Fixture::new();
-    let mut args = f.scale(768);
-    args.data = vec![f.validation_data()];
-    args.replay_sample = Some(f.path("sample.i64"));
-    for (indices, reason) in [
-        (vec![-1_i64, 2], "out of range"),
-        (vec![1, 3], "out of range"),
-        (vec![1, 1], "strictly ascending"),
-        (vec![2, 1], "strictly ascending"),
-        (vec![0, 1], "validation split"),
-        (vec![1], "count"),
-        (vec![0, 1, 2], "count"),
-    ] {
-        fs::write(
-            f.path("sample.i64"),
-            indices
-                .into_iter()
-                .flat_map(i64::to_le_bytes)
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
-        assert!(fm::scale(&args).unwrap_err().to_string().contains(reason));
-        assert!(!f.path("output.bin").exists());
-        assert!(!f.path("output.scale.json").exists());
-    }
-    fs::write(f.path("sample.i64"), [0; 17]).unwrap();
-    assert!(fm::scale(&args).unwrap_err().to_string().contains("count"));
+fn cli_rejects_scale_range() {
     for scale in ["--fm-scale=-1", "--fm-scale=1025"] {
         let output = Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
             .args([

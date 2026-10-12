@@ -1,13 +1,10 @@
-//! comparison.pyの出力契約と明示された失敗条件を、合成MNSDで検査する。
+//! PST比較診断の出力契約と明示された失敗条件を、合成MNSDで検査する。
 use minase::{
     eval::{features::FEATURE_COUNT, pst::Pst},
     training::records::{Header, Outcome, Record},
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
-use minase_trainer::{
-    diagnostics::{self, Command, PstCompareArgs},
-    nn::npz::{self, Array},
-};
+use minase_trainer::diagnostics::{self, Command, PstCompareArgs};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -131,7 +128,6 @@ impl Fixture {
             output_dir: self.root.join(name),
             sample_size: 10_000,
             seed: 1,
-            replay_sample: None,
         }
     }
     fn run(&self, name: &str) -> Value {
@@ -164,21 +160,8 @@ fn sparse() -> Position {
 fn read_report(directory: &Path) -> Value {
     serde_json::from_slice(&fs::read(directory.join("report.json")).unwrap()).unwrap()
 }
-fn write_indices(path: &Path, indices: &[i64]) {
-    fs::write(
-        path,
-        npz::encode_npy(&Array {
-            dtype: "<i8".into(),
-            shape: vec![indices.len()],
-            data: indices.iter().flat_map(|v| v.to_le_bytes()).collect(),
-        })
-        .unwrap(),
-    )
-    .unwrap();
-}
-
 #[test]
-fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_replay() {
+fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output() {
     let fixture = Fixture::new();
     let report = fixture.run("first");
     assert_eq!(report["bands"].as_array().unwrap().len(), 10);
@@ -224,65 +207,16 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_replay() {
     assert_eq!(&initial[136 + 146..136 + 160], &[0; 14]);
     assert_eq!(report["representatives"][1]["index"], 3);
     assert_eq!(report["representatives"][2]["index"], 5);
-    let mut args = fixture.args("replayed");
-    args.replay_sample = Some(first.clone());
-    diagnostics::run(Command::PstCompare(args)).unwrap();
+    diagnostics::run(Command::PstCompare(fixture.args("repeated"))).unwrap();
     for entry in fs::read_dir(&first).unwrap() {
         let entry = entry.unwrap();
         assert_eq!(
             fs::read(entry.path()).unwrap(),
-            fs::read(fixture.root.join("replayed").join(entry.file_name())).unwrap()
+            fs::read(fixture.root.join("repeated").join(entry.file_name())).unwrap()
         );
     }
     // 新規ディレクトリの契約。既存成果物を上書きしない。
     assert!(diagnostics::run(Command::PstCompare(fixture.args("first"))).is_err());
-}
-
-#[test]
-fn replay_rejects_bad_membership_duplicates_sizes_shapes_and_negative_indices() {
-    let fixture = Fixture::new();
-    fixture.run("source");
-    let path = fixture
-        .root
-        .join("source/diagnostic-indices-generation0-band0.npy");
-    for (name, indices) in [
-        ("duplicate", vec![3, 3]),
-        ("outside", vec![3, 1000]),
-        ("training", vec![0, 3]),
-        ("wrong-class", vec![3, 9]),
-        ("wrong-band", vec![3, 5]),
-        ("negative", vec![-1, 3]),
-        ("count", vec![3]),
-        ("unsorted", vec![4, 3]),
-    ] {
-        write_indices(&path, &indices);
-        let mut args = fixture.args(name);
-        args.replay_sample = Some(fixture.root.join("source"));
-        assert!(
-            diagnostics::run(Command::PstCompare(args)).is_err(),
-            "{name}"
-        );
-        assert!(read_report(&fixture.root.join(name))["error"].is_string());
-    }
-    for (name, dtype, shape) in [("dtype", "<f8", vec![2]), ("shape", "<i8", vec![1, 2])] {
-        fs::write(
-            &path,
-            npz::encode_npy(&Array {
-                dtype: dtype.into(),
-                shape,
-                data: vec![0; 16],
-            })
-            .unwrap(),
-        )
-        .unwrap();
-        let mut args = fixture.args(name);
-        args.replay_sample = Some(fixture.root.join("source"));
-        assert!(diagnostics::run(Command::PstCompare(args)).is_err());
-    }
-    fs::remove_file(path).unwrap();
-    let mut args = fixture.args("missing");
-    args.replay_sample = Some(fixture.root.join("source"));
-    assert!(diagnostics::run(Command::PstCompare(args)).is_err());
 }
 
 #[test]
@@ -431,33 +365,94 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
 }
 
 #[test]
-fn independent_integer_reference_detects_an_engine_only_fm_correction() {
+fn mnpt_v3_base_is_rejected_before_data_loading_without_creating_reports() {
+    assert_mnpt_v3_is_rejected("base");
+}
+
+#[test]
+fn mnpt_v3_candidate_is_rejected_before_data_loading_without_creating_reports() {
+    assert_mnpt_v3_is_rejected("candidate");
+}
+
+fn assert_mnpt_v3_is_rejected(name: &str) {
     use minase::eval::pst::{FM_RANK, FmWeights};
     let fixture = Fixture::new();
-    // 全ての特徴対に正のFM補正を加える。独立PST参照は変わらず、エンジン側だけ変わる。
-    let u = vec![[2; FM_RANK]; FEATURE_COUNT];
     let signs = [1; FM_RANK];
-    let model = Pst::from_weights_with_fm(
-        &fixture.weights,
-        piece_values(),
-        100.0,
-        "L0,P0,R1,E0",
-        FmWeights {
-            embeddings: &u,
-            signs: &signs,
-            exponent: 1,
-        },
-    )
-    .unwrap();
-    fs::write(fixture.root.join("candidate.bin"), model.encode()).unwrap();
-    assert!(diagnostics::run(Command::PstCompare(fixture.args("mismatch"))).is_err());
-    let report = read_report(&fixture.root.join("mismatch"));
-    assert!(
-        report["error"]
-            .as_str()
-            .unwrap()
-            .contains("independent integer reference")
-    );
+    // FM補正が0でも、版3であれば拒否する。
+    for embedding in [2, 0] {
+        let u = vec![[embedding; FM_RANK]; FEATURE_COUNT];
+        let model = Pst::from_weights_with_fm(
+            &fixture.weights,
+            piece_values(),
+            100.0,
+            "L0,P0,R1,E0",
+            FmWeights {
+                embeddings: &u,
+                signs: &signs,
+                exponent: 1,
+            },
+        )
+        .unwrap();
+        fs::write(fixture.root.join(format!("{name}.bin")), model.encode()).unwrap();
+        for missing_data in [false, true] {
+            let data = if missing_data {
+                vec![fixture.root.join("missing-data.bin")]
+            } else {
+                fixture.data.clone()
+            };
+            let output_dir = fixture
+                .root
+                .join(format!("rejected-{embedding}-{missing_data}"));
+            let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+                .args(["diag", "pst-compare", "--data"])
+                .args(&data)
+                .arg("--base")
+                .arg(fixture.root.join("base.bin"))
+                .arg("--candidate")
+                .arg(fixture.root.join("candidate.bin"))
+                .arg("--candidate-float")
+                .arg(fixture.root.join("float.npz"))
+                .arg("--output-dir")
+                .arg(&output_dir)
+                .output()
+                .unwrap();
+            let error = String::from_utf8(output.stderr).unwrap();
+            assert_eq!(output.status.code(), Some(1), "{error}");
+            assert!(error.contains(&format!("--{name}")), "{error}");
+            for expected in [
+                "PST-only weights",
+                "MNPT version 2",
+                "MNPT version 3",
+                "FM",
+                "minase-trainer fm scale --fm-scale 0",
+            ] {
+                assert!(error.contains(expected), "{error}");
+            }
+            assert!(!error.contains("loading diagnostic data"), "{error}");
+            assert!(output.stdout.is_empty());
+            assert!(!output_dir.exists());
+        }
+    }
+}
+
+#[test]
+fn unreadable_or_invalid_mnpt_inputs_still_save_error_reports() {
+    for name in ["base", "candidate"] {
+        let fixture = Fixture::new();
+        let path = fixture.root.join(format!("{name}.bin"));
+        for failure in ["invalid", "missing"] {
+            if failure == "invalid" {
+                fs::write(&path, b"MNPT").unwrap();
+            } else {
+                fs::remove_file(&path).unwrap();
+            }
+            let error = diagnostics::run(Command::PstCompare(fixture.args(failure)))
+                .unwrap_err()
+                .to_string();
+            let report = read_report(&fixture.root.join(failure));
+            assert_eq!(report["error"], error);
+        }
+    }
 }
 
 #[test]

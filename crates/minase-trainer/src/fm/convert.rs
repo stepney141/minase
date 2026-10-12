@@ -64,12 +64,9 @@ pub struct ScaleArgs {
     /// SplitMix64の標本抽出用シード。
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
-    /// 照合用の昇順little-endian i64標本番号。一時的な引数で、フェーズ6で削除する。
-    #[arg(long, requires = "data")]
-    pub replay_sample: Option<PathBuf>,
 }
 
-/// Pythonのquarter報告と同じ項目と順序。
+/// 補正1/4への変換で保存する検査和、指数、補正0の検査結果。
 #[derive(Debug, Serialize)]
 pub struct QuarterReport {
     /// 入力ファイル全体のSHA-256。
@@ -84,7 +81,7 @@ pub struct QuarterReport {
     pub zero_check: ZeroCorrectionReport,
 }
 
-/// Pythonのscale報告と同じ項目と順序。検証なしではvalidationを省略する。
+/// 倍率の焼き込みの記録。検証なしではvalidationを省略する。
 #[derive(Debug, Serialize)]
 pub struct ScaleReport {
     /// 入力MNPT全体のSHA-256。
@@ -204,9 +201,6 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     }
     if args.batch == 0 || args.validation_sample == 0 {
         return Err("batch and validation sample size must be positive".into());
-    }
-    if args.replay_sample.is_some() && args.data.is_empty() {
-        return Err("--replay-sample requires --data".into());
     }
     let report_path = report_path(&args.output, "scale.json")?;
     let input = fs::read(&args.input)?;

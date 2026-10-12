@@ -6,7 +6,7 @@ fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-/// Pythonの`data.mnsd.hash64`と同じ、ファイルのseedと対局番号のハッシュ。
+/// ファイルのseedと対局番号から、対局単位の分割を固定するハッシュ。
 pub fn hash64(seed: u64, game: u32) -> u64 {
     mix64(seed ^ u64::from(game).wrapping_mul(STEP))
 }
@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn hash64_matches_python_vectors() {
-        // tools/train/tests/test_mnsd.pyの既知値。加算を伴う通常のSplitMix64とは異なる。
+        // 撤去前のPythonの学習器のテストの既知値。加算を伴う通常のSplitMix64とは異なる。
         for (seed, game, expected) in [
             (0, 0, 0),
             (1, 0, 0x5692_161D_100B_05E5),
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn validation_split_matches_python_games() {
-        // 同じPythonテストが固定した、0..80の検証用対局番号。
+        // 撤去前のPythonの学習器のテストが固定した、0..80の検証用対局番号。
         for (seed, expected) in [
             (11, vec![4, 15, 22, 41, 48, 59, 70]),
             (22, vec![6, 8, 35, 44, 58, 63, 74]),

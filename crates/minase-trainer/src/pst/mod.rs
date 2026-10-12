@@ -12,7 +12,6 @@ pub(crate) mod model;
 mod npz;
 mod record;
 mod removal;
-mod replay;
 mod train;
 
 pub use args::{Args, RemovalReferenceKind};

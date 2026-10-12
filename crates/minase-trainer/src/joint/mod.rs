@@ -6,7 +6,6 @@ mod compute;
 mod export;
 mod model;
 mod record;
-mod replay;
 mod train;
 
 pub use args::Args;

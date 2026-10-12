@@ -22,9 +22,6 @@ pub(super) struct SampleArgs {
     /// SplitMix64の標本抽出用シード。
     #[arg(long)]
     pub(super) seed: u64,
-    /// 照合用の昇順little-endian i64標本番号。一時的な引数で、フェーズ6で削除する。
-    #[arg(long)]
-    pub(super) replay_sample: Option<PathBuf>,
 }
 
 impl SampleArgs {
@@ -47,14 +44,6 @@ impl SampleArgs {
             )
             .into());
         }
-        if let Some(path) = &self.replay_sample {
-            return Ok(crate::data::replay::read_sample(
-                path,
-                dataset,
-                self.sample,
-                validation,
-            )?);
-        }
         let mut indices = if validation {
             epoch_permutation(dataset.validation_indices(), self.seed, 0)
         } else {
@@ -67,12 +56,7 @@ impl SampleArgs {
     }
 
     pub(super) fn sampling(&self) -> String {
-        match &self.replay_sample {
-            Some(path) => format!("replayed from {}", path.display()),
-            None => {
-                "sorted SplitMix64 Fisher-Yates permutation(total, seed, epoch=0)[:sample]".into()
-            }
-        }
+        "sorted SplitMix64 Fisher-Yates permutation(total, seed, epoch=0)[:sample]".into()
     }
 }
 

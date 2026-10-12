@@ -121,7 +121,6 @@ Started with `--protocol` and `--rules`, it runs the engine; the development and
 | `minase dev bench` | Benchmarks search and move generation |
 | `minase dev perft` | Verifies and times legal-move generation |
 | `minase dev random-play` | Checks invariants with random play |
-| `minase dev pst-probe` | Diagnostics for PST training (cross-checks position evaluations from a weight file) |
 | `minase dev usi-random` | Random-move engine for calibrating the harness |
 
 ## License

@@ -77,7 +77,7 @@ impl Lookahead {
     }
 }
 
-/// Pythonの`data.lookahead.compute_lookahead`と同じ値をf64で求める。
+/// `docs/plans/lookahead-teacher.md`の先読み値をf64で求める。
 ///
 /// 窓内の最小の手数差を`d1`として、`gamma^(d-d1)`を昇順に足す。
 /// 奇数の手数差では符号を反転し、窓が空なら元の探索値を保持する。
@@ -140,7 +140,7 @@ fn binary_cross_entropy_sum(scores: &[f64], results: &[u8], k: f64) -> f64 {
         .sum()
 }
 
-/// Pythonの`pst.teacher.estimate_k`の黄金分割探索を64回行う。
+/// 教師Kの推定に黄金分割探索を64回使う。
 ///
 /// `[50, 4000]`で、探索値から終局結果を予測する二値交差エントロピーを最小化する。
 /// `results`は手番側の負け0、引き分け1、勝ち2。計算はすべてf64で行う。
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn lookahead_matches_python_example() {
-        // tools/train/tests/test_lookahead.pyの手計算例。
+        // 撤去前のPythonの学習器のテストの既知値。
         let scores = [7.0, 2.0, 1.0, 99.0, 10.0, -5.0];
         let actual = compute_lookahead(
             &[1, 1, 1, 1, 2, 2],

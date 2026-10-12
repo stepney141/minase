@@ -57,7 +57,7 @@ pub(super) fn read_mask(arrays: &mut BTreeMap<String, npz::Array>) -> Result<Vec
     Ok(array.data.iter().map(|&b| b != 0).collect())
 }
 
-/// Python verify-initと同じ量子化照合の後、鏡映平均と訓練集合のマスクを適用する。
+/// 初期値の再量子化を照合した後、鏡映平均と訓練集合のマスクを適用する。
 /// 戻り値の件数は、入力npzのmaskと数え直したマスクの不一致数。
 pub fn initialize(
     base: &Pst,

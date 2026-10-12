@@ -1,6 +1,4 @@
 //! 指示書フェーズ3bの数式、固定PST、再現性、出力と拒否条件を検証する。
-#[path = "fm_train/replay.rs"]
-mod replay;
 #[path = "fm_train/fixture.rs"]
 mod support;
 use clap::Parser;
@@ -168,7 +166,6 @@ fn cli_enforces_required_budgets_and_ranges() {
         ("--lambda-res", "inf"),
         ("--lambda-override", "1.1"),
         ("--validation-sample", "0"),
-        ("--replay-steps", "0"),
     ] {
         let mut v: Vec<String> = argv().into_iter().map(str::to_owned).collect();
         if let Some(i) = v.iter().position(|v| v == flag) {
@@ -186,7 +183,6 @@ fn cli_enforces_required_budgets_and_ranges() {
         vec!["--rank", "16"],
         vec!["--lookahead-gamma", "0.9"],
         vec!["--lookahead-plies", "40"],
-        vec!["--replay-steps", "3"],
     ] {
         let mut v = argv();
         v.extend(extra);
@@ -198,13 +194,7 @@ fn cli_enforces_required_budgets_and_ranges() {
         .unwrap();
     assert!(output.status.success());
     let help = String::from_utf8(output.stdout).unwrap();
-    for flag in [
-        "--resume",
-        "--replay",
-        "--lambda-res",
-        "--weight-decay",
-        "--threads",
-    ] {
+    for flag in ["--resume", "--lambda-res", "--weight-decay", "--threads"] {
         assert!(help.contains(flag));
     }
 }
@@ -473,6 +463,13 @@ fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
         }
         let init = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
         let output = Pst::decode(&fs::read(args.output_dir.join("fm.bin")).unwrap()).unwrap();
+        // 初期局面の記録には、保存したPSTとFMの両方を含める。
+        let initial_score = pst::evaluate(&output, &Position::initial());
+        assert_eq!(summary.initial_position_score, Some(initial_score));
+        assert_eq!(
+            document(args.output_dir.join("summary.json"))["initial_position_score"],
+            initial_score
+        );
         assert!(output.fm_weights().is_some());
         assert_eq!(init.weights(), output.weights());
         assert_eq!(init.k().to_bits(), output.k().to_bits());
@@ -557,6 +554,15 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
 #[test]
 fn equal_losses_keep_epoch_one_and_stop_at_patience_with_zero_output_exclusion() {
     let (_fixture, mut args) = Fixture::new(false, false);
+    let initial = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
+    let baseline = Pst::from_weights(
+        &vec![[8; 2]; FEATURE_COUNT],
+        std::array::from_fn(|state| initial.piece_value_of_state(state)),
+        initial.k(),
+        initial.rule_set(),
+    )
+    .unwrap();
+    fs::write(&args.init, baseline.encode()).unwrap();
     args.epochs = 10;
     args.patience = 1;
     args.batch = 1000;
@@ -567,6 +573,12 @@ fn equal_losses_keep_epoch_one_and_stop_at_patience_with_zero_output_exclusion()
     assert_eq!(summary.stopped_by, fm::StopReason::EarlyStopping);
     assert_eq!(summary.improved_over_epoch_zero, Some(false));
     assert_eq!(summary.status, "excluded_zero_correction");
+    // 1枚1 cpのPSTと補正0のFMなので、初期局面の92枚の評価は92 cpとなる。
+    assert_eq!(summary.initial_position_score, Some(92));
+    assert_eq!(
+        document(args.output_dir.join("summary.json"))["initial_position_score"],
+        92
+    );
     let output = Pst::decode(&fs::read(args.output_dir.join("fm.bin")).unwrap()).unwrap();
     let fm = output.fm_weights().unwrap();
     assert_eq!(fm.exponent, 0);
@@ -601,6 +613,67 @@ fn five_zero_embedding_gradients_fail_and_preserve_their_record() {
             .all(|g| g["embedding"] == 0.0)
     );
     assert!(!args.output_dir.join("fm.bin").exists());
+}
+
+#[test]
+fn quantization_failure_keeps_both_exports_and_cli_returns_one() {
+    let (_fixture, mut args) = Fixture::new(true, false);
+    args.epochs = 1;
+    fm::train(args.clone()).unwrap();
+    // 有効なチェックポイントに正のFM補正を置く。PSTは既に評価上限に達しているため、
+    // 実数の合計と切り詰めた整数評価の誤差は2 cpを超える。
+    let mut checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let mask = checkpoint.model.mask().to_vec();
+    let v = mask
+        .iter()
+        .map(|&observed| [if observed { 0.5 } else { 0.0 }; FM_RANK])
+        .collect::<Vec<_>>();
+    checkpoint.model = Model::from_weights(&v, [0.5; FM_RANK], mask, checkpoint.model.k()).unwrap();
+    for name in ["latest.bin", "best.bin"] {
+        fs::write(args.output_dir.join(name), checkpoint.encode().unwrap()).unwrap();
+    }
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+        .args(["fm", "train", "--data"])
+        .args(&args.data)
+        .arg("--init")
+        .arg(&args.init)
+        .arg("--output-dir")
+        .arg(&args.output_dir)
+        .arg("--resume")
+        .arg(&args.output_dir)
+        .args([
+            "--batch",
+            "16",
+            "--epochs",
+            "1",
+            "--patience",
+            "5",
+            "--validation-sample",
+            "7",
+            "--threads",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for file in ["fm.bin", "fm-float.npz", "latest.bin", "best.bin"] {
+        assert!(args.output_dir.join(file).exists(), "{file}");
+    }
+    let summary = document(args.output_dir.join("summary.json"));
+    assert_eq!(summary["status"], "quantization_error");
+    assert_eq!(summary["quantization"]["passed"], false);
+    assert!(
+        summary["quantization"]["mean_absolute_error_cp"]
+            .as_f64()
+            .unwrap()
+            > 2.0
+    );
+    assert_eq!(summary["initial_position_score"], 28999);
 }
 
 #[test]
@@ -671,8 +744,6 @@ fn phase4_preserves_existing_trainer_weights_and_adam_states() {
         validation_sample: 7,
         threads: Some(1),
         resume: None,
-        replay: None,
-        replay_steps: None,
     })
     .unwrap();
     let checkpoint = minase_trainer::pst::Checkpoint::read(output.join("latest.bin")).unwrap();

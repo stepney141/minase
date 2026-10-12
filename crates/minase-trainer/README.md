@@ -1,8 +1,8 @@
-このクレートはminaseの評価関数の学習器であり、NNUEを`nnue`、PSTを`pst`サブコマンドで学習する。
-NNUEの浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
+このクレートはminaseの評価関数を学習し、学習済み重みを変換、診断する。
+駒位置テーブル（PST）は`pst train`、駒の組の相互作用を表すFactorization Machine（FM）は`fm train`、両者の同時学習は`joint train`、差分更新可能なニューラルネットワーク（NNUE）は`nnue train`を使う。
+NNUEでは浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
 GPU側では第1層の前進、駒除去差分の補助損失、全パラメータの勾配、部分和の縮約、AdamWによる更新と切り詰め、検証を実行できる。
 学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)に従う。
-移植時にはPythonの学習器と1更新の勾配と重みが一致することを[設計書](../../docs/plans/nnue-trainer-rust.md)の条件で一度確かめ、結果を[検査の記録](../../docs/measurements/nnue-trainer-rust-checks.md)にまとめた。
 
 評価関数ごとに独立した学習パイプラインを持ち、評価関数の知識を要しないデータ処理と機械学習の部品だけを共有する。
 `src/`の配置は次のとおりである。
@@ -13,7 +13,330 @@ GPU側では第1層の前進、駒除去差分の補助損失、全パラメー�
 | `nn/` | Adamの要素更新、並列処理、配列の入出力、停止判定などの汎用部品を提供する。 |
 | `nnue/` | NNUEの特徴構築、モデル、CPU参照計算、GPU処理と学習を担う。 |
 | `pst/` | PST専用のバッチ構築、計算、モデルと学習を担う。 |
+| `fm/` | FMの学習、量子化、補正の縮小と倍率の焼き込みを担う。 |
+| `joint/` | PSTとFMの同時学習と初期値の検査を担う。 |
 | `diagnostics/` | 評価関数を診断する。 |
+
+## 学習データと教師値
+
+### MNSDと来歴ファイル
+
+学習データは、局面、探索値、終局結果を持つMNSD版1である。
+`minase data selfplay generate`または`minase data lishogi`で作り、`--data`へ複数ファイルを入力順に指定する。
+136バイトのヘッダは規則セット、生成コミット、教師ネットの検査和、探索ノード上限、生成シード、記録数を持つ。
+各記録は160バイトで、盤面、手番、先獅子状態、手番側の探索値と終局結果、対局番号、手数を保存する。
+形式の定義は[評価関数の設計書](../../docs/plans/evaluation.md)、読み手は`src/data/mnsd.rs`と本体の`minase::training::records`にある。
+
+各入力には、ファイル名の末尾へ`.provenance.json`を付けた来歴ファイルが必要である。
+来歴には`format = "minase-provenance"`、`version = 1`、MNSD全体のSHA-256である`mnsd_sha256`、`teacher`、`result_origin`、`start_origin`、`lambda`、`games`を記す。
+読み込み時にはファイル長、検査和、ヘッダと`teacher`の一致を検査し、欠落、不一致、入力パスや内容の重複を拒否する。
+乱数開始の自己対局ではファイル間の生成シードも重複させない。
+入力はメモリに写像するため、コマンドの実行中は変更も切り詰めもしない。
+
+### 教師の分類と混合比
+
+教師用Kを共有する分類は、`teacher`内の`generation_commit`、`network_checksum`、`nodes`、`rule_set`、`search_condition`と、`result_origin`、`start_origin`の7項目で定まる。
+`search_condition`は`"in-game"`または`"standalone"`、`result_origin`は`"selfplay"`または`"human"`、`start_origin`は`"random"`または`"human-game"`である。
+入力順に初めて現れた分類から0始まりの番号を付け、先読みの条件と適用した混合比の上書きも分類に含める。
+
+探索値を`score`、手番側の結果を負け0、引き分け1、勝ち2の`result`とすると、教師確率は`λ·σ(score/K_teacher) + (1−λ)·result/2`である。
+ここで`σ(x) = 1/(1+exp(−x))`とし、来歴の`lambda`には0以上1以下の有限値を記す。
+`--lambda-override`は自己対局の分類にだけ適用し、人間対局の分類では来歴の値を使う。
+PST、FM、同時学習とPST比較診断では上書きの省略時に来歴を使い、NNUE学習では既定値1.0を適用する。
+同じ分類に異なる実効λが指定された入力は拒否する。
+
+### 検証分割
+
+約5%の対局を検証集合へ固定し、同じ対局の局面を訓練と検証に分けない。
+乱数開始の自己対局では`games`を`null`とし、`hash64(seed, game) % 20 == 0`で検証への所属を決める。
+それ以外の由来では`games`を`{"game": 1, "id": "棋譜ID"}`形式の配列とし、人間の棋譜から開始する場合は開始手数`ply`も記す。
+入力に現れる全対局番号の対応が必要である。
+棋譜IDのUTF-8表現をSHA-256へ変換し、先頭8バイトをリトルエンディアン整数として20で割った余りが0なら検証集合へ入れる。
+同じ棋譜とその棋譜から始めた自己対局は、ファイルが異なっても同じ集合に属する。
+
+### 先読み教師と教師用K
+
+`--lookahead-gamma`と`--lookahead-plies`を併用すると、同じ対局の将来の探索値を手数差の偶奇で現在の手番側へそろえ、幾何加重平均する。
+割引率は`0 < gamma < 1`、窓幅は1〜4,096手とし、窓が空の局面は元の探索値を使う。
+対局番号は非減少順、同一対局内の手数は厳密増加順を要求する。
+計算式と欠測時の正規化は[先読み教師値の設計書](../../docs/plans/lookahead-teacher.md)に従い、結果はMNSDへ書き戻さない。
+
+教師用Kは分類ごとに訓練集合の探索値と終局結果だけで推定し、混合後の教師確率は推定に使わない。
+`[50, 4000]`の区間で終局結果への二値交差エントロピーを最小化し、黄金分割探索を64回行う。
+λ=0の分類では推定を省略し、記録の`teacher_ks`を`null`にする。
+先読み指定時は先読み値を校正、学習、検証に共通して使う。
+学習では先読み値をf32で保持し、PST比較診断では元の記録からf64で再計算する。
+モデルの出力用Kは初期MNPTから引き継ぐ固定値であり、この教師用Kとは別である。
+
+## PST、FM、同時学習の記録
+
+`pst train`は鏡映対で重みを共有するPSTを学び、`fm train`は`--init`の整数PSTを固定してランク32のFMを学ぶ。
+`joint train`はPSTとFMを2群のAdamWで更新する。
+PSTの補間は[PSTの序中盤と終盤の補間](../../docs/plans/tapered-pst.md)、除去損失は[評価関数の設計書](../../docs/plans/evaluation.md)、同時学習は[PSTとFMの同時学習](../../docs/plans/pst-fm-joint-training.md)に従う。
+出力用K、47個の探索用駒価値、規則セット名は初期MNPTから引き継ぐ。
+
+3コマンドともCPUで実行し、新規実行では空の`--output-dir`を使う。
+`--resume`には同じ出力ディレクトリを指定し、完了したエポックの境界から再開する。
+再開時は総エポック数、`patience`、スレッド数を変更できるが、学習の軌跡を変える条件と入力は照合する。
+各エポックの順列にはSplitMix64を使い、FMと同時学習の鏡映はシード、エポック番号、局面番号から決める。
+このため再開とスレッド数の変更で局面の順序や鏡映は変わらない。
+
+### 出力ファイル
+
+最良エポックは1以降から選び、全検証局面の平均損失が厳密に改善しないエポックが`patience`回続くと停止する。
+エポック0より損失が高いという理由だけでは候補を除外しない。
+各コマンドが保存するファイルは次のとおりである。
+
+| ファイル | 内容 |
+|---|---|
+| `config.json` | 引数、再開時に照合する設定、入力の検査和、前処理の結果、再開履歴を保存する。 |
+| `training.jsonl` | 学習前のエポック0と、検証を完了した各エポックを1行ずつ保存する。 |
+| `latest.bin` | 最後に検証を完了したモデル、最適化器の状態、進捗、累積時間、照合用ハッシュを保存する。 |
+| `best.bin` | 最良エポックのモデルと、その時点の最適化器の状態を保存する。 |
+| `summary.json` | 停止理由、最良エポック、量子化検査、書き出した重みの初期局面評価を保存する。 |
+| `pst.bin`、`pst-float.npz` | `pst train`がMNPT版2と実数のPSTを保存し、`joint train`がMNPT版3と実数のPSTとFMを保存する。 |
+| `fm.bin`、`fm-float.npz` | `fm train`が縮小前のFMを含むMNPT版3と実数のFMを保存する。 |
+
+NPZは圧縮なしで、PSTの`middlegame`と`endgame`は各13,680要素のf32配列をセンチポーン単位で持つ。
+FMの`V`は形`[13680, 32]`、`a`は形`[32]`のf32配列であり、`mask`は13,680要素の真偽値配列である。
+`joint train`の`pst-float.npz`にはこの5配列をまとめ、`fm train`の`fm-float.npz`には`V`、`a`、`mask`だけを保存する。
+
+### 設定と前処理
+
+`config.json`の各欄は、条件の記録と再開時の照合に使う。
+
+| 欄 | 定義 |
+|---|---|
+| `device`、`resolved_threads` | 実行デバイス`"cpu"`と実効ワーカー数を記録する。 |
+| `arguments` | 新規実行時の引数を保存する。 |
+| `settings` | モデル名、最適化器の係数、教師条件など、再開で変更できない設定を保存する。 |
+| `inputs.files` | MNSDと来歴の正規化したパスとSHA-256、およびヘッダの`header_sha256`を入力順に保存する。 |
+| `inputs.init` | PSTとFMの学習で、初期MNPTのパスとSHA-256を保存する。 |
+| `inputs.base`、`inputs.pst_init`、`inputs.fm_init`、`inputs.fm_reference` | 同時学習で、基準MNPT、実数PST、実数FM、照合用の縮小前FMのパスとSHA-256を保存する。 |
+| `preprocessing.teacher_classes` | 教師の7項目、`lookahead`、適用した`lambda_override`を分類順に保存する。検査和は32バイトの配列、先読みは`{gamma, plies}`または`null`である。 |
+| `preprocessing.teacher_ks`、`teacher_lambdas` | 分類順の教師用Kと実効λを保存する。 |
+| `preprocessing.teacher_k_source`、`output_k` | 推定元`"training"`と、固定した出力用Kを記録する。 |
+| `preprocessing.training_positions`、`validation_positions` | 訓練と検証の局面数を保存する。 |
+| `preprocessing.training_indices_sha256`、`validation_indices_sha256` | 入力を連結した0始まりの通算番号を、リトルエンディアンu64列にしたSHA-256を保存する。 |
+| `preprocessing.feature_observations`、`unobserved_features` | FMと同時学習で、訓練集合とその全鏡映による全13,680特徴の観測回数と未観測特徴数を保存する。 |
+| `preprocessing.mask_mismatches`、`removal_reference` | 同時学習で、読み込んだマスクと数え直したマスクの不一致数、および除去参照`"v0"`を保存する。 |
+| `config_sha256`、`input_sha256` | それぞれ`settings`と、`inputs`および`preprocessing`をまとめた内容のSHA-256を保存する。 |
+| `preprocessing_seconds` | 新規実行で設定を書き出すまでの秒数を記録する。 |
+| `resumes` | 再開ごとに`resumed_at_unix_seconds`、`epochs`、`patience`、`workers`、完了済みの`epoch`を追記する。 |
+
+同時学習では、実数PSTの再量子化が`--base`のPSTと一致し、実数FMの再量子化が`--fm-reference`のFMと一致することを開始時に検査する。
+観測マスクは今回の訓練集合で作り直し、未観測のFM行を0にする。
+
+### エポックごとの記録
+
+`training.jsonl`の`device`は`"cpu"`、`epoch`は完了したエポック番号、`samples`は全検証集合の局面数である。
+損失は局面数で重み付けした平均であり、端数バッチも含める。
+
+| 欄 | 定義 |
+|---|---|
+| `train_loss` | 教師確率に対する訓練集合の二値交差エントロピーである。 |
+| `removal_loss` | PSTと同時学習の、係数を掛ける前の駒除去損失である。 |
+| `regularization_loss` | FMの`lambda_res·mean(Φ²)`であり、係数を含む。 |
+| `phi_squared_mean` | 同時学習で、係数を掛ける前の`mean(Φ²)`を記録する。 |
+| `total_loss` | PSTでは`train_loss + removal_penalty·removal_loss`、FMでは`train_loss + regularization_loss`、同時学習では`train_loss + lambda_res·phi_squared_mean + removal_penalty·removal_loss`である。 |
+| `validation_loss` | 全検証集合の二値交差エントロピーであり、除去損失と正則化項を含めない。 |
+| `phi` | FMと同時学習で、全検証局面のFM補正Φの`mean`、母標準偏差`std`、`max_absolute`、`samples`を記録する。Φはロジット単位であり、同時学習では`unit = "logit"`と`std_cp = K·std`も持つ。 |
+| `training_seconds`、`validation_seconds` | そのエポックの訓練と検証にかかった秒数である。 |
+| `training_positions_per_second` | 訓練局面数を訓練秒数で割った速度である。 |
+| `update_seconds` | 1更新あたりの平均計算秒数である。 |
+| `elapsed_seconds` | 前処理と再開前の時間を含む累積秒数である。 |
+| `steps`、`total_steps` | そのエポックと、実行開始からの累積の更新回数である。 |
+
+エポック0では訓練損失、訓練時間、速度、更新時間を`null`、更新回数を0とし、検証値を記録する。
+PSTと同時学習の除去係数が0なら除去計算を省略し、学習後の`removal_loss`は0となる。
+
+### 終了時の記録と量子化検査
+
+`summary.json`の`status`は`candidate`、`quantization_error`、`error`のいずれかであり、FMには`excluded_zero_correction`もある。
+`stopped_by`は`max_epochs`または`early_stopping`、`reason`は失敗や除外の理由、`convergence`は`null`である。
+`last_epoch`、`best_epoch`、`best_validation_loss`、`initial_validation_loss`、`improved_over_epoch_zero`、`total_steps`、`elapsed_seconds`に最終進捗を記録する。
+処理途中で失敗した場合は、判明している進捗と`reason`だけを持つ短い報告になることがある。
+
+`initial_position_score`は、書き出した整数重みで初期局面を評価した値であり、手番側の視点のセンチポーンである。
+FMと同時学習ではPSTにFM補正を加え、静的評価の範囲±28,999へ切り詰める。
+重みを書き出せなかった場合は`null`または未記録となる。
+量子化の平均絶対誤差が上限を超えた場合も、書き出した重みと評価値の記録は残す。
+
+`quantization`は検証集合から最大`--validation-sample`件を選んだ検査であり、`samples`、`seed`、`split = "validation"`、抽出順の`indices_sha256`を持つ。
+`mean_absolute_error_cp`と`max_absolute_error_cp`は実数評価と整数評価の絶対誤差である。
+FMでは1/4補正の`quarter_mean_absolute_error_cp`と`quarter_max_absolute_error_cp`も持ち、FMと同時学習では量子化の`exponent`も記録する。
+`limit_cp = 2.0`と`passed`で判定を保存し、FMは縮小前後の両方でこの上限を満たす必要がある。
+同時学習では学習前にも同じ検査を行って`initial_quantization`に保存し、各量子化報告の`correction_cp_std`には整数FM補正の母標準偏差を記録する。
+不合格なら保存物を残して終了コード1を返す。
+
+FMと同時学習の`gradients`は、最初の最大5更新の`step`と勾配のユークリッドノルムを持つ。
+FMでは`embedding`と`a`、同時学習ではさらに`pst`を記録し、再開時にも引き継ぐ。
+終了時の`phi`は最良モデルの全検証集合の分布である。
+FMの`correction_cp`は量子化検査と同じ標本の`std_before_quarter`と`std_after_quarter`をセンチポーンで記録し、`samples`、`seed`、`split`も保存する。
+
+FMの`quarter_zero_check`は、1/4補正が常に0になる十分条件を検査する。
+`all_pair_corrections_zero`は各特徴対を単独で評価すると整数補正が0であること、`identically_zero`は最大145特徴の和でも0であることを示す。
+`max_absolute_pair_numerator`は異なる特徴対の符号付き内積の最大絶対値、`absolute_sum_bound`は全対の絶対値和と最大内積×最大対数の小さい方、`pair_denominator`は1対の分母`2^(2e)`である。
+`identically_zero`が真なら`status = "excluded_zero_correction"`とする。
+各対が0でも和は非0になり得るため、対の検査だけでは除外しない。
+
+## FMの変換の記録
+
+`fm quarter`はMNPT版3の指数だけを1増やし、補正を1/4にする。
+`--output out.bin`なら`out.bin`と`out.quarter.json`を作り、入力、出力のSHA-256である`input_sha256`、`output_sha256`、変換前後の`exponent_before`、`exponent_after`、および上記と同じ定義の`zero_check`を報告する。
+指数30の入力は拒否する。
+
+`fm scale`は実数の出力係数`a`へ`--fm-scale / 1024`を掛け、FMを再量子化する。
+倍率は0〜1,024の整数であり、0ではFMを含まないMNPT版2、1,024では入力と同じ重みを書き出す。
+`--float`にはPSTの2端点と`V`、`a`を持つNPZが必要であり、同時学習の`pst-float.npz`を使える。
+保存前にPSTとFMの再量子化が入力MNPTと一致することを検査し、PST、出力用K、探索用駒価値を保持する。
+式の根拠は[FMの倍率のSPSA調整](../../docs/plans/fm-scale-spsa.md)にある。
+
+`--output out.bin`なら、重みと`out.scale.json`に次の欄を保存する。
+両変換とも、重みか報告の出力先が既存なら拒否する。
+
+| 欄 | 定義 |
+|---|---|
+| `input_sha256`、`float_sha256`、`output_sha256` | 入力MNPT、実数NPZ、出力MNPT全体のSHA-256である。 |
+| `fm_scale`、`format_version` | 指定した整数倍率と出力MNPTの版を記録する。 |
+| `exponent_before`、`exponent_after`、`max_absolute_embedding` | 入力と出力の指数、出力埋め込みの最大絶対値を記録する。出力が版2なら後2項目は`null`となる。 |
+| `validation.samples`、`seed`、`split` | 検証標本数、抽出シード、`"validation"`を記録する。 |
+| `validation.float_vs_integer` | 実数評価と出力の整数評価の`mean_absolute_cp`と`max_absolute_cp`を記録する。 |
+| `validation.tuning_vs_baked` | 調整時の補正と焼き込んだ補正の絶対差を、同じ2欄で記録する。 |
+| `validation.correction_cp` | 焼き込んだ補正の母標準偏差`output_std`と、調整時の補正の`tuning_std`をセンチポーンで記録する。 |
+
+`validation`は`--data`を指定した場合だけ保存し、SplitMix64で検証集合から最大`--validation-sample`件を非復元抽出して昇順に並べる。
+調整時の補正は、入力FMの分子Nと指数eから`trunc(N·fm_scale / (1024·2^(2e+1)))`として0方向へ切り捨てる。
+この変換は誤差を記録するが、誤差の大きさによる合否判定は行わない。
+
+## NNUEの診断の記録
+
+`diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves`はCPUで実行し、`--output`の新規JSONファイルへ報告する。
+重みと入力の同一性は正規化した`path`と`sha256`で記録し、数式と診断の目的は[NNUEの完全代替](../../docs/plans/nnue-replacement.md)に従う。
+
+### 評価値の分布
+
+`diag nnue-distribution`は`--pair NAME BASELINE CANDIDATE`でMNPT版3とMNUE版5を指定し、複数の組を同じ標本で比較する。
+`--data`の全局面を母集団とし、SplitMix64で`--sample`件を非復元抽出して通算番号の昇順に並べる。
+`sample_count`、`seed`、`sample_indices_sha256_le_i64`、`input_files`、`population_count`、`sampling`に抽出条件を保存する。
+標本のハッシュはリトルエンディアンi64列を対象とし、`input_files`は入力順のパス、SHA-256、`record_count`を持つ。
+
+`evaluation_perspective = "side_to_move"`、`standard_deviation_ddof = 0`、`percentile_method = "linear"`、`spearman_tie_method = "average"`に統計の定義を記録する。
+`regression_equation`は回帰式を記録する。
+`pairs`の各要素は比較名`name`、重みの`baseline`と`candidate`、`sample_count`、次の統計を持つ。
+
+| 欄 | 定義 |
+|---|---|
+| `baseline_statistics`、`candidate_statistics` | `mean_cp`、母標準偏差`std_cp`、`mean_absolute_cp`、絶対値の5、25、50、75、95百分位点`absolute_percentiles_cp`を持つ。 |
+| `std_ratio_candidate_over_baseline` | 候補の標準偏差を基準の標準偏差で割った比である。 |
+| `regression_slope`、`regression_intercept_cp` | `candidate = intercept + slope * baseline`の最小二乗回帰の傾きと切片である。 |
+| `pearson_correlation`、`spearman_correlation` | 評価値の相関係数と、同順位に平均順位を与えた順位相関係数である。 |
+| `regression_residual_std_cp`、`difference_std_cp` | 回帰残差と候補−基準の差の母標準偏差である。 |
+| `absolute_difference_percentiles_cp`、`absolute_difference_over_100_cp_fraction` | 絶対差の50、90、99百分位点と、100 cpを厳密に超える割合である。 |
+| `verdict` | 標準偏差比が閉区間`[0.9, 1.1]`内かどうかで、散らばりの尺度を判定する。区間は`unchanged_scale_interval_inclusive`にも保存する。 |
+| `by_phase_q`、`by_baseline_absolute_cp` | 同じ統計を、位相分子qの0〜29、30〜59、60〜90、および基準の絶対評価0〜99、100〜299、300〜999、1,000 cp以上に分ける。各帯は両端の値と標本数を持つ。 |
+
+qは盤上総駒数から2を引いて0〜90に制限した値である。
+全体またはいずれかの帯の標本が2件未満、あるいは基準か候補の分散が0なら報告の生成を拒否する。
+
+### 駒除去差分
+
+`diag nnue-removal`は`--float`の`nnue-float.bin`と`--net`のMNUE版5を検査する。
+`--data`の検証集合から`--sample`件を抽出し、王将と太子以外の駒を1枚ずつ除いたときの差分を測る。
+標本の同一性は分布診断と同じ欄に記録し、`split = "validation"`、検証集合の`population_count`、重みの`float`と`net`、除去件数`removal_count`を加える。
+
+`float_batch_vs_recomputed`は、累算器からの行の減算と局面を作り直したf64再計算の最大差`max_absolute_cp`を、`limit_cp = 1e-6`で検査して`passed`を記録する。
+実数の再計算には整数ネットのKを使う。
+`float_vs_integer_recomputed`は実数と整数の除去差分の`mean_absolute_cp`と`max_absolute_cp`である。
+
+`reference`は両端点にv0の駒価値を使うことを示し、`reversals`はその参照と整数ネットの差分の厳密な符号反転を集計する。
+`count`は反転件数、`total`は参照差分が非0の件数、`fraction`はその比、`mean_absolute_cp`と`max_absolute_cp`は反転した差分の絶対値の統計である。
+分母や対象が空の場合の統計は`null`とし、同じ集計を駒状態番号ごとの`by_piece_state`にも保存する。
+実数の2経路の差が上限を超えた場合は`error`付きの報告を保存して終了コード1を返す。
+
+### 合法手の評価差
+
+`diag nnue-moves`は`--positions`の全局面の合法手を、`--net`のNNUEと`--base`のPST＋FMで比較する。
+入力MNSDに来歴ファイルは不要で、規則セットはエンジンの既定規則とする。
+`net`、`base`、`positions`にファイルの同一性、`position_count`に局面数、`evaluation_perspective = "side_to_move_before_move"`に視点を記録する。
+`standard_deviation_ddof = 0`は母標準偏差を使うことを示す。
+
+着手前をB、着手後をB′、着手前の手番側をtとすると、差分は`−F_opp(B′)−F_t(B)`である。
+`by_position`は入力順の`index`、合法手の`matched_count`、片側にしかない`candidate_only_count`と`baseline_only_count`を持つ。
+`candidate`と`baseline`は各モデルの着手差分、`candidate_minus_baseline`と`candidate_minus_baseline_pst`は共通の合法手で測った候補と基準全体、候補と基準PSTだけの差を表す。
+各統計は`count`、`mean_cp`、母標準偏差`std_cp`、`mean_absolute_cp`、`max_absolute_cp`を持ち、空の集合では件数以外を`null`とする。
+片側だけの手数は最上位にも合計し、非0なら`error`付き報告を保存して終了コード1を返す。
+
+## PSTの比較診断の記録
+
+`diag pst-compare`は`--base`と`--candidate`の整数PST、`--candidate-float`の実数PSTを比較する。
+教師の分類、先読み、λの上書き、対局単位の分割を学習と共有し、両モデルの固定した探索用駒価値が一致することを要求する。
+診断の構成は[Pythonの学習器の撤去の設計書](../../docs/plans/python-trainer-retirement.md)に従う。
+
+### 保存するファイル
+
+`--output-dir`には新規ディレクトリを指定する。
+診断で不合格となった場合も、その時点までの`report.json`と作成済みの資料を残し、終了コード1を返す。
+
+| ファイル | 内容 |
+|---|---|
+| `report.json` | 基準と候補の比較結果を保存し、失敗時だけ`error`を加える。 |
+| `diagnostic-indices-generationN-bandB.npy` | 教師分類Nと位相帯Bの検証標本の通算番号を、昇順のリトルエンディアンi64配列として保存する。空の帯も長さ0の配列を持つ。 |
+| `diagnostic-samples.bin` | 全帯の標本を通算番号の昇順に並べたMNSDを保存する。 |
+| `representatives.bin` | 初期局面と、各位相帯で最小の通算番号を持つ代表局面をMNSDで保存する。 |
+| `removals.bin` | 代表局面から非王駒を1枚ずつ除いた記録を、代表局面順、升順に保存する。 |
+
+### 教師分類と位相帯の比較
+
+`report.json`は`sample_size`、`seed`、`teacher_classes`、`lookahead`、`lambda_override`で条件を記録する。
+この診断の`teacher_classes`は7項目に`lookahead_gamma`、`lookahead_plies`、適用した`lambda_override`、実効`lambda`を加えた形であり、検査和は16進文字列である。
+`teacher_ks`は分類順の教師用K、`generation_checksums`は分類順の教師ネットの検査和、`k`は基準と候補の出力用K、`piece_values`は固定した47個の探索用駒価値を持つ。
+`generation`という欄名も教師の分類番号を表す。
+`rescore_exclusions`の`mate_band`、`tactical`、`depth_incomplete`、`total`は、このコマンドではすべて0である。
+
+`bands`は補間係数φを5等分した帯と教師の分類の組ごとに比較する。
+φは盤上総駒数から2を引き、0〜90に制限した値を90で割ったものである。
+各要素は`generation`、`band`、区間表記`range`、`training_records`、`validation_records`、標本数`samples`、標本ファイル名`indices_file`を持つ。
+`validation_loss.base`と`validation_loss.candidate`は、その分類と帯の全検証局面の平均損失であり、空の帯では`null`と理由`reason`を記録する。
+
+各帯から最大`sample_size`件をSplitMix64で非復元抽出し、`base`と`candidate`に教師探索値との標本比較を記録する。
+`mae_raw_cp`は生の教師探索値との平均絶対誤差、`mae_scaled_cp`は教師値を`候補の出力用K / 教師用K`倍した後の平均絶対誤差である。
+この換算比は基準との比較にも使う。
+`correlation`はPearson相関係数であり、定義できない場合は`null`と`correlation_reason`を記録する。
+λ=0の分類は教師探索値との比較だけから除き、最上位の`teacher_comparison_excluded`には該当する全検証局面数、各帯の同名欄には該当する標本数を記録する。
+検証損失、量子化検査、整数評価の照合にはその分類も含める。
+
+`quantization`は全帯の標本における`mean_absolute_error_cp`、`max_absolute_error_cp`、`samples`、`limit_cp = 2.0`を持つ。
+`rust_agreement`は独立した整数PST参照とエンジンの評価が全件一致した件数を`base`と`candidate`ごとに記録する。
+平均量子化誤差が2 cpを超えた場合や整数評価が一致しない場合は診断を停止する。
+
+### 終局結果と局面操作
+
+`outcome_metrics`は教師の混合比に依存せず、全検証局面を各モデルの出力用Kで確率へ変換して終局結果と比較する。
+`records`、`games`、`output_k`とともに、局面平均の`bce_position_mean`、対局内平均を対局間で等しく平均した`bce_game_mean`を記録する。
+対局の識別子は分割と同じ規則を使い、複数ファイルに現れる同一棋譜IDも1対局として集計する。
+`sign_agreement`は引き分けと評価0を除いた符号一致率であり、`sign_records`と`sign_matches`を分母と一致件数とする。
+`sign_excluded`は除外総数、`draw_records`と`zero_score_records`は重複を含む理由別件数であり、対象がなければ平均と率を`null`にする。
+
+`representatives`は`label`、通算番号`index`、`piece_count`、`phase_numerator`と、基準と候補の評価を持つ。
+初期局面の`label`は`"initial"`、`index`は`null`である。
+`evaluations`と各除去の`delta_cp`はPST部分、`total_evaluations`と`total_delta_cp`はエンジンの評価全体を表す。
+除去の各要素には`square`の升番号、`piece_byte`のMNSD駒コード、手番側0と相手側1の`relative_color`、駒状態番号`state`も記録する。
+除去で位相も変わるため、差分をその駒固有の価値と同一視しない。
+
+`pst_removal_sign_reversals`は基準と候補のPST除去差分の厳密な符号反転件数であり、非0なら不合格となる。
+`rust_removal_agreement`はモデルごとの一致件数`checked`と復元不能件数`skipped`を記録する。
+復元不能な除去記録も`removals.bin`へ残し、該当要素の`skipped.base`と`skipped.candidate`に理由、`total_delta_cp`に`null`を保存する。
+
+`promotions`は代表局面の合法な成り手を実際に適用した結果であり、`move`、`capture`、`promote`、`terminal`と評価差をモデル別に持つ。
+着手前の評価をbefore、着手後を着手前の側から評価した値を`after_same`、反対側からの値を`after_opposite`とすると、`delta = −after_opposite−before`、`placement = after_same−before`、`turn = −(after_opposite+after_same)`である。
+各欄の`_pst`版はPSTだけの値、`after`は着手後の`board`、`stm`、`lion`、`eval`、`eval_pst`を持つ。
+成り手がない局面は`promotion_reason`に理由を記録し、独立参照との照合件数を`rust_promotion_agreement`へ集計する。
+
+`derived_piece_values`は対象の駒状態`states`、固定した探索用駒価値`fixed`、基準と候補それぞれの`middlegame`と`endgame`の全升平均から導出した値を並べる。
+欄名は`base_middlegame`、`base_endgame`、`candidate_middlegame`、`candidate_endgame`であり、端点ごとの静的な駒価値と固定値との差を確認できる。
+
+## NNUEの学習と実装
 
 `minase-trainer nnue train`は前処理、指定したデバイスでの更新、全検証集合の評価、チェックポイントの保存、最良重みの書き出しを行う。
 線形重みは`--init-pst`の圧縮なしNPZから初期化し、左右の鏡映対が一致することと、再量子化が`--base`のMNPTのPST部分と一致することを検査する。
@@ -179,7 +502,7 @@ HalfKP-hm-b8では仮想行の更新と切り詰めを先に行い、その値�
 最良エポックがまだない場合は、番号を0、検証損失を正の無限大とする。
 P型の仮想行の配列とマスクは長さ0である。
 
-テストの期待値は、設計書の式、Pythonの指定された例、整数推論API、および次の不変条件から定めた。
+テストの期待値は、設計書の式、固定した数値例、整数推論API、および次の不変条件から定めた。
 `tests/common/mod.rs`が合成局面を`Record::from_position`でMNSDへ変換し、圧縮なしnpzの試料も作る。
 有限差分の計算は、逆索引や後退の中間値を使わず、各行を取り除いたネットをf64で再評価する。
 
@@ -196,9 +519,9 @@ P型の仮想行の配列とマスクは長さ0である。
 | `integer_reference_handles_phase_boundaries_negative_truncation_and_evaluation_limit` | 駒数1、2、3、91、92、93、負数の除算、評価上限を検査する。 |
 | `initialization_is_seeded_and_consumes_only_observed_canonical_rows` | 対称な初期値の保持、乱数の決定性、観測行の昇順、標準偏差0.05を検査する。 |
 | `initialization_requires_exact_mirror_symmetry_in_both_endpoints` | 両端点の鏡映対を検査し、未観測行を含む非対称な初期値を拒否する。 |
-| `constraints_restore_unobserved_rows_and_bound_folded_weights` | Pythonの極値の例に合わせ、切り詰めと初期値への復元を検査する。 |
+| `constraints_restore_unobserved_rows_and_bound_folded_weights` | 設計書の重み制約に従い、切り詰めと初期値への復元を検査する。 |
 | `halfkp_unobserved_feature_inherits_updated_virtual_row` | 特徴行が未観測でも、更新済み仮想行が合成値へ反映されることを検査する。 |
-| `quantization_ties_even_rotation_and_overflow_match_python_examples` | Pythonの偶数丸めの例、P型の回転、上限超過、非有限値の拒否を検査する。 |
+| `quantization_ties_even_rotation_and_overflow_match_python_examples` | 偶数丸めの境界、P型の回転、上限超過、非有限値の拒否を検査する。 |
 | `quantized_mnue_v5_round_trip_has_small_mean_integer_evaluation_error` | 両型のMNUE版5をminaseで復号し、小さい乱数モデルの平均絶対誤差が1 cp未満であることを検査する。 |
 | `checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mismatch` | 全状態の往復、次の更新のビット一致、破損とハッシュ不一致の拒否を検査する。 |
 | `model_rejects_invalid_width_k_initial_and_mask_shapes` | 幅、K、初期値、観測マスク、最適化器の形の違反を検査する。 |
@@ -503,9 +826,3 @@ CPUでは転送量と転送時間を0とし、GPUメモリは測定しない。
 `--profile`はCUDAのカーネル計測に限るため、CPUと組み合わせるとエラーになる。
 
 CPUの1ファイル試走では、前述の`minase-trainer nnue train`に`--device cpu --threads 2`を加え、別の空の出力先を指定する。
-
-CPU参照とPyTorchの比較では、駒除去勾配の相殺に伴う既存の精度差が残る。
-CPU参照は除去後の寄与をf32へ丸めた後、同じ自己行の寄与をf64の積として引くため、理論上0の勾配に残差が生じる場合がある。
-P型の幅6、初期線形重み0、λ=0.75、補助係数137.5の合成入力では、Pythonの勾配0に対してCPU参照は約−1.19e−9となり、AdamWのε=1e−8によって更新後の重み差が約6.55e−5まで増幅された。
-同じ開始状態を変更前の参照実装と係数1000で計算してもこの差が再現し、新旧Rustの全勾配と更新後の重みはビット一致した。
-係数の受け渡しとは独立した制約であり、既定設定のビット不変性と現在の等価性判定式を維持するため、ここでは計算式も許容誤差も変更していない。
