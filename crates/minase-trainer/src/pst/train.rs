@@ -1,15 +1,14 @@
-use super::{Args, EpochRecord, RemovalReferenceKind, export, record::configuration};
+use super::{
+    Adam, Args, Batch, Checkpoint, EpochRecord, Error, Model, Progress, RemovalReference,
+    RemovalReferenceKind, Result, StopReason, Summary,
+    base::{self, Base},
+    compute, export, pipeline,
+    record::{append_epoch, configuration, reconcile_log, write_json},
+    workers,
+};
 use crate::{
-    data::{Dataset, InputFeatureSet, build_batches, build_targets, epoch_permutation},
-    model::{LinearAdam, LinearCheckpoint, LinearModel, Progress},
-    reference::{RemovalReference, pst},
-    train::{
-        Error, Result, Summary,
-        base::{self, Base},
-        epoch_stop_reason,
-        record::{append_epoch, atomic_write, reconcile_log, write_json},
-        update_best,
-    },
+    data::{Dataset, build_targets_from_arrays, epoch_permutation},
+    nn::{atomic_write, patience_reached, update_best},
 };
 use serde_json::{Value, json};
 use std::{
@@ -18,13 +17,13 @@ use std::{
 };
 
 // 再生ファイルを接続するときは、ここで整数MNPT由来の初期値を実数配列に置き換える。
-fn initial_model(base: &Base) -> Result<LinearModel> {
+fn initial_model(base: &Base) -> Result<Model> {
     let initial: Vec<_> = base
         .linear
         .iter()
         .map(|row| row.map(|v| f32::from(v) / 8.0))
         .collect();
-    Ok(LinearModel::initialize(&initial, base.k)?)
+    Model::initialize(&initial, base.k)
 }
 
 // エポック本体は順列の出所に依存せず、外部から渡された列をバッチへ分割する。
@@ -39,7 +38,7 @@ struct Session {
     base: Base,
     ks: Vec<f64>,
     reference: Option<RemovalReference>,
-    checkpoint: LinearCheckpoint,
+    checkpoint: Checkpoint,
     started: Instant,
     previous_elapsed: f64,
     initial_validation_loss: f64,
@@ -49,7 +48,7 @@ impl Session {
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
         args.validate()?;
-        let workers = crate::options::workers(args.threads)?;
+        let workers = workers::workers(args.threads)?;
         let base = base::read(&args.init)?;
         let model = initial_model(&base)?;
         let reference = if args.removal_penalty == 0.0 {
@@ -65,20 +64,20 @@ impl Session {
         let dataset =
             unsafe { Dataset::open(&args.data, args.lookahead()?, args.lambda_override)? };
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
-            return Err(
-                Error::Invalid("training and validation sets must both be nonempty").into(),
-            );
+            return Err(Error::Invalid(
+                "training and validation sets must both be nonempty",
+            ));
         }
         if dataset
             .headers()
             .any(|header| header.rule_set() != base.rule_set)
         {
-            return Err(Error::Invalid("MNSD rule set differs from initial MNPT").into());
+            return Err(Error::Invalid("MNSD rule set differs from initial MNPT"));
         }
         let ks = dataset.estimate_teacher_ks()?;
         let mut config = configuration(&args, workers, &dataset, &ks, base.k)?;
-        let mut checkpoint = LinearCheckpoint {
-            optimizer: LinearAdam::new(args.lr)?,
+        let mut checkpoint = Checkpoint {
+            optimizer: Adam::new(args.lr)?,
             model,
             progress: Progress {
                 epoch: 0,
@@ -94,8 +93,7 @@ impl Session {
             if resume.canonicalize()? != args.output_dir.canonicalize()? {
                 return Err(Error::Invalid(
                     "--resume and --output-dir must identify the same directory",
-                )
-                .into());
+                ));
             }
             let mut saved: Value =
                 serde_json::from_slice(&std::fs::read(resume.join("config.json"))?)?;
@@ -108,12 +106,12 @@ impl Session {
                 "input_sha256",
             ] {
                 if saved.get(field) != comparable.get(field) {
-                    return Err(
-                        Error::Invalid("resume configuration or input hash mismatch").into(),
-                    );
+                    return Err(Error::Invalid(
+                        "resume configuration or input hash mismatch",
+                    ));
                 }
             }
-            let restored = LinearCheckpoint::read(resume.join("latest.bin"))?;
+            let restored = Checkpoint::read(resume.join("latest.bin"))?;
             restored
                 .progress
                 .check_hashes(&config.config_hash, &config.input_hash)?;
@@ -127,8 +125,7 @@ impl Session {
             {
                 return Err(Error::Invalid(
                     "checkpoint state differs from configuration or progress",
-                )
-                .into());
+                ));
             }
             checkpoint = restored;
             if checkpoint.progress.best.is_some() {
@@ -146,8 +143,7 @@ impl Session {
             if args.output_dir.exists() && std::fs::read_dir(&args.output_dir)?.next().is_some() {
                 return Err(Error::Invalid(
                     "output directory is not empty; use --resume to continue a run",
-                )
-                .into());
+                ));
             }
             std::fs::create_dir_all(&args.output_dir)?;
             config.document["preprocessing_seconds"] = json!(started.elapsed().as_secs_f64());
@@ -184,22 +180,35 @@ impl Session {
         self.previous_elapsed + self.started.elapsed().as_secs_f64()
     }
     fn save_latest(&self) -> Result<()> {
-        atomic_write(
+        Ok(atomic_write(
             &self.args.output_dir.join("latest.bin"),
             &self.checkpoint.encode()?,
-        )
+        )?)
     }
 
     fn validate(&self) -> Result<f64> {
         let mut total = 0.0;
-        for indices in self.dataset.validation_indices().chunks(self.args.batch) {
-            let batch = build_batches(&self.dataset, InputFeatureSet::P, &[indices])?.remove(0);
-            let targets = build_targets(&batch, &self.ks, self.dataset.teacher_lambdas())?;
-            total += pst::validation_sum(&self.checkpoint.model, &batch, &targets)?;
-        }
+        let chunks: Vec<_> = self
+            .dataset
+            .validation_indices()
+            .chunks(self.args.batch)
+            .collect();
+        pipeline::ordered(
+            chunks.len(),
+            self.workers,
+            |index| {
+                let batch = Batch::from_indices(&self.dataset, chunks[index])?;
+                let targets = targets(&batch, &self.ks, self.dataset.teacher_lambdas())?;
+                compute::validation_sum(&self.checkpoint.model, &batch, &targets)
+            },
+            |_, loss| {
+                total += loss;
+                Ok(())
+            },
+        )?;
         let loss = total / self.dataset.validation_indices().len() as f64;
         if !loss.is_finite() || loss < 0.0 {
-            return Err(Error::Invalid("non-finite or negative validation loss").into());
+            return Err(Error::Invalid("non-finite or negative validation loss"));
         }
         Ok(loss)
     }
@@ -207,27 +216,38 @@ impl Session {
     fn train_epoch(&mut self, indices: &[u64]) -> Result<Training> {
         let started = Instant::now();
         let mut training = Training::default();
-        for indices in indices.chunks(self.args.batch) {
-            let batch = build_batches(&self.dataset, InputFeatureSet::P, &[indices])?.remove(0);
-            let targets = build_targets(&batch, &self.ks, self.dataset.teacher_lambdas())?;
-            let update = Instant::now();
-            let gradients = pst::gradients(
-                &self.checkpoint.model,
-                &batch,
-                &targets,
-                self.reference.as_ref(),
-                self.args.removal_penalty,
-                self.workers,
-            )?;
-            self.checkpoint
-                .optimizer
-                .update(&mut self.checkpoint.model, &gradients.weights)?;
-            training.update_seconds += update.elapsed().as_secs_f64();
-            training.bce += gradients.losses.bce * batch.len() as f64;
-            training.removal += gradients.losses.removal * batch.len() as f64;
-            training.positions += batch.len();
-            training.steps += 1;
-        }
+        let chunks: Vec<_> = indices.chunks(self.args.batch).collect();
+        let dataset = &self.dataset;
+        let ks = &self.ks;
+        pipeline::ordered(
+            chunks.len(),
+            self.workers,
+            |index| {
+                let batch = Batch::from_indices(dataset, chunks[index])?;
+                let targets = targets(&batch, ks, dataset.teacher_lambdas())?;
+                Ok((batch, targets))
+            },
+            |_, (batch, targets)| {
+                let update = Instant::now();
+                let gradients = compute::gradients(
+                    &self.checkpoint.model,
+                    &batch,
+                    &targets,
+                    self.reference.as_ref(),
+                    self.args.removal_penalty,
+                    self.workers,
+                )?;
+                self.checkpoint
+                    .optimizer
+                    .update(&mut self.checkpoint.model, &gradients.weights)?;
+                training.update_seconds += update.elapsed().as_secs_f64();
+                training.bce += gradients.losses.bce * batch.len() as f64;
+                training.removal += gradients.losses.removal * batch.len() as f64;
+                training.positions += batch.len();
+                training.steps += 1;
+                Ok(())
+            },
+        )?;
         training.seconds = started.elapsed().as_secs_f64();
         Ok(training)
     }
@@ -248,11 +268,12 @@ impl Session {
         let started = Instant::now();
         let loss = self.validate()?;
         let seconds = started.elapsed().as_secs_f64();
-        let improved = update_best(&mut self.checkpoint.progress, epoch, loss)?;
+        let improved = update_best(&mut self.checkpoint.progress.best, epoch, loss)?;
+        self.checkpoint.progress.epoch = epoch;
         self.checkpoint.progress.elapsed_seconds = self.elapsed();
         let record = self.epoch_record(loss, Some(&training), seconds);
         append_epoch(&self.args.output_dir.join("training.jsonl"), &record)?;
-        // NNUEと同じくlatestをコミット点にし、best公開直前の中断は再開時に復旧する。
+        // latestを永続化した後、best公開直前の中断は再開時に復旧する。
         self.save_latest()?;
         if improved {
             atomic_write(
@@ -358,7 +379,7 @@ impl Session {
         }
         write_json(&self.args.output_dir.join("summary.json"), &summary)?;
         if !passed {
-            return Err(failure.into());
+            return Err(failure);
         }
         Ok(summary)
     }
@@ -374,8 +395,8 @@ struct Training {
     update_seconds: f64,
 }
 
-fn read_best(directory: &Path, latest: &LinearCheckpoint) -> Result<LinearCheckpoint> {
-    let saved = LinearCheckpoint::read(directory.join("best.bin"))?;
+fn read_best(directory: &Path, latest: &Checkpoint) -> Result<Checkpoint> {
+    let saved = Checkpoint::read(directory.join("best.bin"))?;
     saved
         .progress
         .check_hashes(&latest.progress.config_hash, &latest.progress.input_hash)?;
@@ -385,19 +406,21 @@ fn read_best(directory: &Path, latest: &LinearCheckpoint) -> Result<LinearCheckp
             .best
             .is_none_or(|best| best.epoch != saved.progress.epoch)
     {
-        return Err(Error::Invalid("best checkpoint disagrees with latest checkpoint").into());
+        return Err(Error::Invalid(
+            "best checkpoint disagrees with latest checkpoint",
+        ));
     }
     Ok(saved)
 }
 
-fn recover_best(directory: &Path, latest: &LinearCheckpoint) -> Result<()> {
+fn recover_best(directory: &Path, latest: &Checkpoint) -> Result<()> {
     let best = latest
         .progress
         .best
         .ok_or(Error::Invalid("checkpoint has no best epoch"))?;
     let path = directory.join("best.bin");
     if path.exists() {
-        let saved = LinearCheckpoint::read(&path)?;
+        let saved = Checkpoint::read(&path)?;
         saved
             .progress
             .check_hashes(&latest.progress.config_hash, &latest.progress.input_hash)?;
@@ -405,13 +428,15 @@ fn recover_best(directory: &Path, latest: &LinearCheckpoint) -> Result<()> {
             return Ok(());
         }
         if saved.progress.epoch >= best.epoch {
-            return Err(Error::Invalid("best checkpoint disagrees with latest checkpoint").into());
+            return Err(Error::Invalid(
+                "best checkpoint disagrees with latest checkpoint",
+            ));
         }
     }
     if latest.progress.epoch != best.epoch {
-        return Err(Error::Invalid("best checkpoint is missing or inconsistent").into());
+        return Err(Error::Invalid("best checkpoint is missing or inconsistent"));
     }
-    atomic_write(&path, &latest.encode()?)
+    Ok(atomic_write(&path, &latest.encode()?)?)
 }
 
 /// 初期検証、CPU学習、チェックポイント保存、最良PSTの書き出しを行う。
@@ -431,4 +456,24 @@ pub fn run(args: Args) -> Result<Summary> {
         }
     }
     session.finish()
+}
+
+fn targets(batch: &Batch, ks: &[f64], lambdas: &[f64]) -> Result<Vec<f32>> {
+    Ok(build_targets_from_arrays(
+        batch.teacher_scores(),
+        batch.teacher_classes(),
+        batch.outcomes(),
+        ks,
+        lambdas,
+    )?)
+}
+
+fn epoch_stop_reason(progress: &Progress, epochs: u64, patience: u64) -> Option<StopReason> {
+    if patience_reached(progress.best, progress.epoch, patience) {
+        Some(StopReason::EarlyStopping)
+    } else if progress.epoch >= epochs {
+        Some(StopReason::MaxEpochs)
+    } else {
+        None
+    }
 }

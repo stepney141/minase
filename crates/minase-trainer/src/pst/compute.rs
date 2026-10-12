@@ -1,10 +1,12 @@
 //! PSTのCPU前進と後退。局面ごとの計算を並列化し、局面順にf64で縮約する。
 
-use super::{RemovalReference, check_batch_arrays, linear, parallel};
-use crate::{
-    data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, SENTINEL},
-    model::{Error, LinearModel, Result},
+use super::{
+    Batch, Error, Model, RemovalReference, Result,
+    batch::{FEATURE_COLUMNS, SENTINEL},
+    linear,
+    model::CANONICAL_ROWS,
 };
+use crate::nn::{bce_with_logits, bce_with_logits_gradient, parallel};
 use std::collections::BTreeMap;
 
 /// 係数を掛ける前の除去損失と二値交差エントロピーのバッチ平均。
@@ -24,9 +26,8 @@ pub struct Gradients {
     pub weights: Vec<f32>,
 }
 
-fn check(model: &LinearModel, batch: &BatchSlot, targets: &[f32]) -> Result<()> {
+fn check(model: &Model, batch: &Batch, targets: &[f32]) -> Result<()> {
     model.validate()?;
-    check_batch_arrays(batch)?;
     if targets.len() != batch.len()
         || targets
             .iter()
@@ -37,23 +38,14 @@ fn check(model: &LinearModel, batch: &BatchSlot, targets: &[f32]) -> Result<()> 
     Ok(())
 }
 
-fn bce(logit: f64, target: f32) -> f64 {
-    logit.max(0.0) - logit * f64::from(target) + (-logit.abs()).exp().ln_1p()
-}
-
-fn columns(batch: &BatchSlot, b: usize) -> &[u32] {
-    &batch.linear_features()[b * FEATURE_COLUMNS..(b + 1) * FEATURE_COLUMNS]
-}
-
 /// 固定順の倍精度和をf32へ戻し、Python model_logitsと同じ2端点を補間する。
-pub fn evaluate(model: &LinearModel, batch: &BatchSlot) -> Result<Vec<f32>> {
+pub fn evaluate(model: &Model, batch: &Batch) -> Result<Vec<f32>> {
     model.validate()?;
-    check_batch_arrays(batch)?;
     let result: Vec<_> = (0..batch.len())
         .map(|b| {
             linear::blend(
-                linear::sum_mirrored_f64(model.weights(), columns(batch, b)).map(|v| v as f32),
-                batch.piece_counts()[b],
+                linear::sum_mirrored_f64(model.weights(), batch.columns_at(b)).map(|v| v as f32),
+                batch.phase_numerators()[b][0],
             )
         })
         .collect();
@@ -64,19 +56,19 @@ pub fn evaluate(model: &LinearModel, batch: &BatchSlot) -> Result<Vec<f32>> {
 }
 
 /// 全検証局面の損失の和。呼び手が局面数で割り、除去損失は含めない。
-pub fn validation_sum(model: &LinearModel, batch: &BatchSlot, targets: &[f32]) -> Result<f64> {
+pub fn validation_sum(model: &Model, batch: &Batch, targets: &[f32]) -> Result<f64> {
     check(model, batch, targets)?;
     Ok(evaluate(model, batch)?
         .into_iter()
         .zip(targets)
-        .map(|(cp, &target)| bce(f64::from(cp / model.k()), target))
+        .map(|(cp, &target)| bce_with_logits(f64::from(cp / model.k()), f64::from(target)))
         .sum())
 }
 
 /// 固定した局面順で勾配を合算する。threadsは結果のビット列を変えない。
 pub fn gradients(
-    model: &LinearModel,
-    batch: &BatchSlot,
+    model: &Model,
+    batch: &Batch,
     targets: &[f32],
     reference: Option<&RemovalReference>,
     removal_penalty: f64,
@@ -120,23 +112,23 @@ pub fn gradients(
 type PositionGradient = (Losses, Vec<(u32, [f64; 2])>);
 
 fn position_gradient(
-    model: &LinearModel,
-    batch: &BatchSlot,
+    model: &Model,
+    batch: &Batch,
     b: usize,
     target: f32,
     reference: Option<&RemovalReference>,
     coefficient: f64,
 ) -> Result<PositionGradient> {
-    let columns = columns(batch, b);
-    let count = batch.piece_counts()[b];
+    let columns = batch.columns_at(b);
+    let numerators = batch.phase_numerators()[b];
     let sums = linear::sum_mirrored_f64(model.weights(), columns);
-    let logit = f64::from(linear::blend(sums.map(|v| v as f32), count) / model.k());
+    let logit = f64::from(linear::blend(sums.map(|v| v as f32), numerators[0]) / model.k());
     let k = f64::from(model.k());
     let n = batch.len() as f64;
-    let g = (1.0 / (1.0 + (-logit).exp()) - f64::from(target)) / n / k;
-    let u = linear::phase(count, false).map(f64::from);
+    let g = bce_with_logits_gradient(logit, f64::from(target)) / n / k;
+    let u = linear::phase(numerators[0]).map(f64::from);
     let mut losses = Losses {
-        bce: bce(logit, target),
+        bce: bce_with_logits(logit, f64::from(target)),
         removal: 0.0,
     };
     let mut derivatives = [0_i32; FEATURE_COLUMNS];
@@ -151,7 +143,7 @@ fn position_gradient(
             let delta = linear::removal_delta(
                 sums,
                 linear::row(model.weights(), columns[col]).map(f64::from),
-                count,
+                numerators,
             );
             let (penalty, derivative) = linear::penalty(
                 delta,
@@ -164,8 +156,7 @@ fn position_gradient(
         }
         losses.removal /= eligible_count.max(1) as f64 * k;
     }
-    let q = i32::from(linear::phase_numerator(count, false));
-    let after_q = i32::from(linear::phase_numerator(count, true));
+    let [q, after_q] = numerators.map(i32::from);
     let derivative_sum: i32 = derivatives.iter().sum();
     let common = (after_q - q) * derivative_sum;
     // 各除去で、自身は(-q, -(90-q))、残存行は(q'-q, q-q')。

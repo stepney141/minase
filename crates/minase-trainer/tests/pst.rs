@@ -10,25 +10,17 @@ use minase::{
     training::records::{Outcome, Record},
 };
 use minase_core::{Color, PieceKind, Position, Square};
-use minase_trainer::{
-    data::{BatchSlot, InputFeatureSet},
-    model::{LinearAdam, LinearCheckpoint, LinearModel, Progress, encode_pst_npz, load_initial},
-    pst::export::quantize,
-    reference::{RemovalReference, pst, v0_piece_values},
+use minase_trainer::pst::{
+    self, Adam, Batch, Checkpoint, Model, Progress, RemovalReference, encode_pst_npz,
+    export::quantize, load_initial, v0_piece_values,
 };
 
-fn batch(positions: &[Position]) -> BatchSlot {
+fn batch(positions: &[Position]) -> Batch {
     let records: Vec<_> = positions
         .iter()
         .map(|p| Record::from_position(p, 0, Outcome::Draw, 1, 0))
         .collect();
-    BatchSlot::from_records(
-        InputFeatureSet::P,
-        &records,
-        &vec![0.0; records.len()],
-        &vec![0; records.len()],
-    )
-    .unwrap()
+    Batch::from_records(&records, &vec![0.0; records.len()], &vec![0; records.len()]).unwrap()
 }
 
 fn endpoints() -> Vec<[i16; 2]> {
@@ -54,7 +46,7 @@ fn close(a: f64, b: f64, tolerance: f64) {
 
 // 仕様の損失を独立に定義する。各除去で全特徴を再評価し、共有係数や差分関数は使わない。
 fn oracle(
-    model: &LinearModel,
+    model: &Model,
     positions: &[Position],
     targets: &[f32],
     reference: &[[i16; 2]],
@@ -167,7 +159,7 @@ fn pst_gradients_match_independent_differences_at_both_penalties_phase_edges_and
                 *row = [1.2, -0.7];
             }
         }
-        let mut model = LinearModel::initialize(&initial, 317.25).unwrap();
+        let mut model = Model::initialize(&initial, 317.25).unwrap();
         for p in &cases {
             let input = batch(std::slice::from_ref(p));
             let targets = [0.3];
@@ -178,7 +170,7 @@ fn pst_gradients_match_independent_differences_at_both_penalties_phase_edges_and
             saw_upper |= upper > 0;
             close(g.losses.bce + 73.0 * g.losses.removal, loss, 2e-5);
             let mut rows: Vec<_> = input
-                .linear_features()
+                .columns()
                 .iter()
                 .copied()
                 .filter(|&r| r != u32::MAX)
@@ -217,7 +209,7 @@ fn mirror_initialization_averages_pairs_and_mirrored_positions_evaluate_identica
     let initial: Vec<_> = (0..FEATURE_COUNT)
         .map(|f| [(f % 144) as f32 / 8.0, -((f % 97) as f32) / 16.0])
         .collect();
-    let model = LinearModel::initialize(&initial, 400.0).unwrap();
+    let model = Model::initialize(&initial, 400.0).unwrap();
     let expanded = model.expanded();
     for f in 0..FEATURE_COUNT {
         for e in 0..2 {
@@ -253,8 +245,8 @@ fn threads_preserve_losses_gradients_weights_and_both_adam_moments() {
         cases[2].clone(),
     ]);
     let reference = RemovalReference::v0();
-    let mut model = LinearModel::initialize(&vec![[0.02, -0.03]; FEATURE_COUNT], 700.0).unwrap();
-    let mut optimizer = LinearAdam::new(0.03).unwrap();
+    let mut model = Model::initialize(&vec![[0.02, -0.03]; FEATURE_COUNT], 700.0).unwrap();
+    let mut optimizer = Adam::new(0.03).unwrap();
     for _ in 0..3 {
         let expected =
             pst::gradients(&model, &input, &[0.3; 5], Some(&reference), 1000.0, 1).unwrap();
@@ -297,7 +289,7 @@ fn removal_cancellation_is_exact_before_adam_and_reference_zero_is_excluded() {
         Some((5, 5)),
     );
     let input = batch(&[p]);
-    let mut model = LinearModel::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 1000.0).unwrap();
+    let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 1000.0).unwrap();
     let g = pst::gradients(
         &model,
         &input,
@@ -308,11 +300,11 @@ fn removal_cancellation_is_exact_before_adam_and_reference_zero_is_excluded() {
     )
     .unwrap();
     for col in [4, 139, 144] {
-        let row = input.linear_features()[col] as usize;
+        let row = input.columns()[col] as usize;
         assert_eq!(&g.weights[row * 2..row * 2 + 2], &[0.0, 0.0]);
     }
-    let lion = input.linear_features()[144] as usize;
-    let mut opt = LinearAdam::new(0.03).unwrap();
+    let lion = input.columns()[144] as usize;
+    let mut opt = Adam::new(0.03).unwrap();
     opt.update(&mut model, &g.weights).unwrap();
     assert_eq!(&model.weights()[lion * 2..lion * 2 + 2], &[0.0, 0.0]);
     let zero = RemovalReference::new(&vec![[0; 2]; FEATURE_COUNT]).unwrap();
@@ -322,8 +314,8 @@ fn removal_cancellation_is_exact_before_adam_and_reference_zero_is_excluded() {
 
 #[test]
 fn adam_matches_bias_corrected_formula_updates_absent_rows_and_clamps() {
-    let mut model = LinearModel::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 500.0).unwrap();
-    let mut opt = LinearAdam::new(0.03).unwrap();
+    let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 500.0).unwrap();
+    let mut opt = Adam::new(0.03).unwrap();
     let mut gradient = vec![0.0; model.weights().len()];
     let mut m = 0.0_f64;
     let mut v = 0.0_f64;
@@ -352,7 +344,7 @@ fn adam_matches_bias_corrected_formula_updates_absent_rows_and_clamps() {
 #[test]
 fn ties_to_even_mnpt_v2_and_npz_preserve_endpoints_and_metadata() {
     let fixture = Fixture::new(&positions());
-    let mut model = LinearModel::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
+    let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
     let values = [
         0.0625, 0.1875, 0.3125, -0.0625, -0.1875, -0.3125, -4096.0, 4095.875,
     ];
@@ -393,9 +385,9 @@ fn ties_to_even_mnpt_v2_and_npz_preserve_endpoints_and_metadata() {
 
 #[test]
 fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
-    let model = LinearModel::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 400.0).unwrap();
-    let mut ck = LinearCheckpoint {
-        optimizer: LinearAdam::new(0.03).unwrap(),
+    let model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 400.0).unwrap();
+    let mut ck = Checkpoint {
+        optimizer: Adam::new(0.03).unwrap(),
         model,
         progress: Progress {
             epoch: 0,
@@ -416,13 +408,13 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
         )
         .unwrap();
     let bytes = ck.encode().unwrap();
-    assert_eq!(LinearCheckpoint::decode(&bytes).unwrap(), ck);
+    assert_eq!(Checkpoint::decode(&bytes).unwrap(), ck);
     assert!(minase_trainer::model::Checkpoint::decode(&bytes).is_err());
     for cut in [0, 8, 100, bytes.len() - 1] {
-        assert!(LinearCheckpoint::decode(&bytes[..cut]).is_err());
+        assert!(Checkpoint::decode(&bytes[..cut]).is_err());
     }
     let mut corrupt = bytes;
     corrupt[160] ^= 1;
-    assert!(LinearCheckpoint::decode(&corrupt).is_err());
+    assert!(Checkpoint::decode(&corrupt).is_err());
     assert!(ck.progress.check_hashes(&[3; 32], &[2; 32]).is_err());
 }

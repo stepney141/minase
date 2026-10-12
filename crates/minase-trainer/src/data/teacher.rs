@@ -19,25 +19,46 @@ pub fn build_targets(
     teacher_ks: &[f64],
     teacher_lambdas: &[f64],
 ) -> Result<Vec<f32>> {
-    if teacher_ks.len() != teacher_lambdas.len() {
+    build_targets_from_arrays(
+        batch.teacher_scores(),
+        batch.teacher_classes(),
+        batch.outcomes(),
+        teacher_ks,
+        teacher_lambdas,
+    )
+}
+
+/// 探索値、分類番号、結果の配列から教師値を構築する。すべて局面順で同じ長さを要求する。
+/// 混合と丸めの演算順はバッチを受け取る関数と同じ。
+pub fn build_targets_from_arrays(
+    scores: &[f32],
+    classes: &[u32],
+    outcomes: &[u8],
+    teacher_ks: &[f64],
+    teacher_lambdas: &[f64],
+) -> Result<Vec<f32>> {
+    if teacher_ks.len() != teacher_lambdas.len()
+        || scores.len() != classes.len()
+        || scores.len() != outcomes.len()
+        || outcomes.iter().any(|&outcome| outcome > 2)
+    {
         return Err(Error::TeacherTargets);
     }
     for &mix in teacher_lambdas {
         validate_lambda_override(Some(mix))?;
     }
-    batch
-        .teacher_classes()
+    classes
         .iter()
         .enumerate()
         .map(|(position, &class)| {
             let class = class as usize;
             let mix = *teacher_lambdas.get(class).ok_or(Error::TeacherTargets)?;
-            let result = f64::from(batch.outcomes()[position]) / 2.0;
+            let result = f64::from(outcomes[position]) / 2.0;
             if mix == 0.0 {
                 return Ok(result as f32);
             }
             let k = teacher_ks[class];
-            let score = f64::from(batch.teacher_scores()[position]);
+            let score = f64::from(scores[position]);
             if !k.is_finite() || k <= 0.0 || !score.is_finite() {
                 return Err(Error::TeacherTargets);
             }
@@ -175,6 +196,33 @@ pub fn estimate_k(scores: &[f64], results: &[u8]) -> Result<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn teacher_arrays_preserve_mixing_and_ignore_inactive_scores_and_k() {
+        let targets = build_targets_from_arrays(
+            &[f32::NAN, 0.0, 1000.0],
+            &[0, 1, 1],
+            &[2, 0, 1],
+            &[f64::NAN, 1000.0],
+            &[0.0, 0.75],
+        )
+        .unwrap();
+        assert_eq!(targets[0], 1.0);
+        assert_eq!(targets[1], 0.375);
+        let expected = 0.75 / (1.0 + (-1.0_f64).exp()) + 0.125;
+        assert_eq!(targets[2].to_bits(), (expected as f32).to_bits());
+        for (scores, classes, outcomes) in [
+            (vec![0.0], vec![], vec![1]),
+            (vec![0.0], vec![0], vec![]),
+            (vec![0.0], vec![2], vec![1]),
+            (vec![0.0], vec![0], vec![3]),
+            (vec![f32::NAN], vec![0], vec![1]),
+        ] {
+            assert!(
+                build_targets_from_arrays(&scores, &classes, &outcomes, &[1.0], &[1.0]).is_err()
+            );
+        }
+    }
 
     #[test]
     fn lookahead_matches_python_example() {

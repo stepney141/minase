@@ -60,14 +60,16 @@ enum NnueCommand {
 fn main() -> std::process::ExitCode {
     let result = match Cli::parse().command {
         Command::Nnue(command) => run_nnue(command),
-        Command::Pst(PstCommand::Train(args)) => minase_trainer::pst::run(args).map(|summary| {
-            println!(
-                "best epoch: {}; stopped_by: {:?}; status: {}",
-                summary.best_epoch.expect("completed training"),
-                summary.stopped_by,
-                summary.status
-            );
-        }),
+        Command::Pst(PstCommand::Train(args)) => minase_trainer::pst::run(args)
+            .map(|summary| {
+                println!(
+                    "best epoch: {}; stopped_by: {:?}; status: {}",
+                    summary.best_epoch.expect("completed training"),
+                    summary.stopped_by,
+                    summary.status
+                );
+            })
+            .map_err(Into::into),
         Command::Diag(command) => minase_trainer::diagnostics::run(command),
     };
     match result {

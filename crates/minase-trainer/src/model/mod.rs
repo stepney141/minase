@@ -3,10 +3,7 @@
 //! 配列は行優先。`Parameter`の順序はチェックポイントの保存順を定める。
 
 mod checkpoint;
-mod linear_checkpoint;
-pub use linear_checkpoint::LinearCheckpoint;
 pub(crate) mod linear;
-pub use linear::{LinearAdam, LinearModel};
 mod npz;
 mod quantize;
 

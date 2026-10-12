@@ -5,7 +5,6 @@
 
 pub(crate) mod linear;
 mod optimizer;
-pub mod pst;
 use linear::feature_sum;
 pub(crate) use linear::phase;
 mod parallel;

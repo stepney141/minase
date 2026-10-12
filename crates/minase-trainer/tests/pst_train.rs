@@ -11,10 +11,11 @@ use minase::training::{
 };
 use minase_core::{Color, PieceKind};
 use minase_trainer::{
-    data::{Dataset, InputFeatureSet, build_batches, build_targets, epoch_permutation},
-    model::{LinearAdam, LinearCheckpoint, LinearModel},
-    pst::{self, Args, RemovalReferenceKind},
-    reference::{self, RemovalReference, v0_piece_values},
+    data::{Dataset, build_targets_from_arrays, epoch_permutation},
+    pst::{
+        self, Adam, Args, Batch, Checkpoint, Model, RemovalReference, RemovalReferenceKind,
+        v0_piece_values,
+    },
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -63,6 +64,11 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
     );
     assert_eq!(args.lambda_override, None);
     assert_eq!(args.threads, None);
+    let mut large = args.clone();
+    large.batch = 1 << 24;
+    large.validate().unwrap();
+    large.batch = usize::MAX;
+    assert!(large.validate().is_err());
     for flag in [
         "--data",
         "--init",
@@ -263,8 +269,8 @@ fn document(path: impl AsRef<Path>) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
 fn compare_checkpoints(left: &Path, right: &Path) {
-    let mut left = LinearCheckpoint::read(left).unwrap();
-    let mut right = LinearCheckpoint::read(right).unwrap();
+    let mut left = Checkpoint::read(left).unwrap();
+    let mut right = Checkpoint::read(right).unwrap();
     left.progress.elapsed_seconds = 0.0;
     right.progress.elapsed_seconds = 0.0;
     assert_eq!(left.encode().unwrap(), right.encode().unwrap());
@@ -304,7 +310,7 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
                 fs::read(split.output_dir.join(file)).unwrap()
             );
         }
-        let ck = LinearCheckpoint::read(args.output_dir.join("latest.bin")).unwrap();
+        let ck = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
         assert_eq!(ck.optimizer.step(), 14); // 111訓練局面、16件×6バッチ＋15件の端数、2エポック。
         let rows = logs(&args.output_dir);
         let resumed = logs(&split.output_dir);
@@ -363,18 +369,23 @@ fn training_log_weights_the_tail_by_positions_and_validation_has_no_removal_term
         .unwrap()
     };
     let ks = dataset.estimate_teacher_ks().unwrap();
-    let mut model = LinearModel::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
-    let mut opt = LinearAdam::new(0.03).unwrap();
+    let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
+    let mut opt = Adam::new(0.03).unwrap();
     let order = epoch_permutation(dataset.training_indices(), args.seed, 1);
     assert_eq!(order.len() % args.batch, 15);
     let mut bce = 0.0;
     let mut removal = 0.0;
     for indices in order.chunks(args.batch) {
-        let batch = build_batches(&dataset, InputFeatureSet::P, &[indices])
-            .unwrap()
-            .remove(0);
-        let targets = build_targets(&batch, &ks, dataset.teacher_lambdas()).unwrap();
-        let g = reference::pst::gradients(
+        let batch = Batch::from_indices(&dataset, indices).unwrap();
+        let targets = build_targets_from_arrays(
+            batch.teacher_scores(),
+            batch.teacher_classes(),
+            batch.outcomes(),
+            &ks,
+            dataset.teacher_lambdas(),
+        )
+        .unwrap();
+        let g = pst::gradients(
             &model,
             &batch,
             &targets,
@@ -394,7 +405,7 @@ fn training_log_weights_the_tail_by_positions_and_validation_has_no_removal_term
         (rows[1]["removal_loss"].as_f64().unwrap() - removal / order.len() as f64).abs() < 1e-14
     );
     assert!((rows[0]["validation_loss"].as_f64().unwrap() - 2.0_f64.ln()).abs() < 1e-14);
-    let ck = LinearCheckpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let ck = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
     assert_eq!(ck.model, model);
     assert_eq!(ck.optimizer, opt);
 }
@@ -507,7 +518,7 @@ fn asymmetric_init_is_averaged_except_when_positive_init_reference_requires_symm
     );
     args.removal_penalty = 0.0;
     pst::run(args.clone()).unwrap();
-    let ck = LinearCheckpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let ck = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
     assert_eq!(&ck.model.weights()[..2], &[0.5, 1.0]);
     args.output_dir = fixture.root.join("v0");
     args.removal_penalty = 1000.0;
@@ -525,9 +536,96 @@ fn epoch_zero_is_not_a_candidate_and_equal_losses_stop_at_patience() {
     let summary = pst::run(args).unwrap();
     assert_eq!(summary.best_epoch, Some(1));
     assert_eq!(summary.last_epoch, 2);
-    assert_eq!(
-        summary.stopped_by,
-        minase_trainer::train::StopReason::EarlyStopping
-    );
+    assert_eq!(summary.stopped_by, pst::StopReason::EarlyStopping);
     assert_eq!(summary.improved_over_epoch_zero, Some(false));
+}
+
+fn compatibility_fixture() -> (Fixture, Args) {
+    let (fixture, mut args) = Fixture::new(false, false);
+    args.batch = 7;
+    args.patience = 10;
+    // Distinct mirrored endpoints exercise interpolation and nonzero init references.
+    let weights: Vec<[i16; 2]> = (0..FEATURE_COUNT)
+        .map(|f| {
+            let f = f.min(minase::eval::features::mirror_feature(f));
+            [(f % 43) as i16 - 21, (f % 59) as i16 - 29]
+        })
+        .collect();
+    fs::write(
+        &args.init,
+        Pst::from_weights(&weights, v0_piece_values(), 317.25, "L0,P0,R1,E0")
+            .unwrap()
+            .encode(),
+    )
+    .unwrap();
+    (fixture, args)
+}
+fn array_hash(values: &[f32]) -> String {
+    let mut hash = Sha256::new();
+    for value in values {
+        hash.update(value.to_bits().to_le_bytes());
+    }
+    format!("{:x}", hash.finalize())
+}
+fn snapshot(directory: &Path) -> Value {
+    let mut states = serde_json::Map::new();
+    for file in ["latest.bin", "best.bin"] {
+        let mut ck = Checkpoint::read(directory.join(file)).unwrap();
+        ck.progress.elapsed_seconds = 0.0;
+        ck.progress.config_hash = [0; 32];
+        ck.progress.input_hash = [0; 32];
+        let encoded = format!("{:x}", Sha256::digest(ck.encode().unwrap()));
+        let best = ck.progress.best.unwrap();
+        states.insert(file.into(), serde_json::json!({
+            "encoded":encoded, "weights":array_hash(ck.model.weights()), "m":array_hash(ck.optimizer.m()),
+            "v":array_hash(ck.optimizer.v()), "step":ck.optimizer.step(), "epoch":ck.progress.epoch,
+            "best_epoch":best.epoch, "best_loss":best.validation_loss.to_bits()
+        }));
+    }
+    let losses: Vec<_> = logs(directory)
+        .iter()
+        .map(|row| {
+            [
+                "train_loss",
+                "removal_loss",
+                "total_loss",
+                "validation_loss",
+            ]
+            .map(|key| row[key].as_f64().map(f64::to_bits))
+        })
+        .collect();
+    serde_json::json!({"states":states, "losses":losses,
+        "pst":format!("{:x}",Sha256::digest(fs::read(directory.join("pst.bin")).unwrap())),
+        "npz":format!("{:x}",Sha256::digest(fs::read(directory.join("pst-float.npz")).unwrap()))})
+}
+
+#[test]
+fn phase_2a_weights_adam_losses_and_outputs_match_b0a245b_bit_for_bit() {
+    // Expected values were captured by executing commit b0a245b, unpacked with
+    // git archive, with compatibility_fixture() and epochs=1,2,3, threads=1.
+    // Command: cargo test --offline -p minase-trainer --test pst_train
+    // capture_b0a245b_compatibility -- --nocapture (temporary capture test).
+    // Array hashes include every f32 bit in little-endian order, including padding.
+    // Losses are the f64 bits read from training.jsonl; elapsed times and paths are excluded.
+    // Checkpoint hashes set elapsed time and both path-dependent hashes to zero before encoding.
+    let expected: Value = serde_json::from_str(include_str!("fixtures/pst-b0a245b.json")).unwrap();
+    for kind in [RemovalReferenceKind::V0, RemovalReferenceKind::Init] {
+        let (fixture, mut args) = compatibility_fixture();
+        args.removal_reference = kind;
+        for threads in [1, 3, 8] {
+            args.threads = Some(threads);
+            for epoch in 1..=3 {
+                args.epochs = epoch;
+                args.output_dir = fixture
+                    .root
+                    .join(format!("epoch-{epoch}-threads-{threads}"));
+                pst::run(args.clone()).unwrap();
+                assert_eq!(
+                    snapshot(&args.output_dir),
+                    expected[format!("{kind:?}")][epoch as usize - 1],
+                    "reference={kind:?}, epoch={epoch}, threads={threads}"
+                );
+            }
+        }
+    }
 }

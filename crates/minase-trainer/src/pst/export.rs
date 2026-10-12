@@ -1,20 +1,44 @@
 //! 最良PSTの量子化、MNPT版2とNPZの保存、エンジンとの誤差検査。
 
+use super::{
+    Batch, Checkpoint, Error, Model, Result,
+    base::Base,
+    batch::{FEATURE_COLUMNS, SENTINEL},
+    linear,
+    npz::encode_pst_npz,
+    record::hash_u64,
+};
 use crate::{
-    data::{Dataset, FEATURE_COLUMNS, InputFeatureSet, SENTINEL, build_batches, epoch_permutation},
-    export::QuantizationReport,
-    model::{LinearCheckpoint, LinearModel, encode_pst_npz},
-    train::{
-        Error, Result,
-        base::Base,
-        record::{atomic_write, hash_u64},
-    },
+    data::{Dataset, epoch_permutation},
+    nn::atomic_write,
 };
 use minase::eval::pst::{Pst, evaluate_pst};
+use serde::Serialize;
 use std::path::Path;
 
+/// 書き出したPSTの量子化誤差と合否。
+#[derive(Debug, Serialize)]
+pub struct QuantizationReport {
+    /// 実際の検証標本数。
+    pub samples: usize,
+    /// 標本抽出のシード。
+    pub seed: u64,
+    /// 標本の集合。常にvalidation。
+    pub split: &'static str,
+    /// 選択順の通し番号をリトルエンディアンで連結したSHA-256。
+    pub indices_sha256: String,
+    /// 平均絶対誤差、センチポーン。
+    pub mean_absolute_error_cp: f64,
+    /// 最大絶対誤差、センチポーン。
+    pub max_absolute_error_cp: f64,
+    /// 平均絶対誤差の上限、センチポーン。
+    pub limit_cp: f64,
+    /// 平均絶対誤差が上限以下なら真。
+    pub passed: bool,
+}
+
 /// f32をf64で8倍して偶数へ丸める。範囲外と非有限値は拒否する。
-pub fn quantize(model: &LinearModel) -> Result<Vec<[i16; 2]>> {
+pub fn quantize(model: &Model) -> Result<Vec<[i16; 2]>> {
     model
         .expanded()
         .into_iter()
@@ -25,7 +49,7 @@ pub fn quantize(model: &LinearModel) -> Result<Vec<[i16; 2]>> {
                 if !quantized.is_finite()
                     || !(f64::from(i16::MIN)..=f64::from(i16::MAX)).contains(&quantized)
                 {
-                    return Err(Error::Invalid("PST quantization exceeds i16 range").into());
+                    return Err(Error::Invalid("PST quantization exceeds i16 range"));
                 }
                 integers[e] = quantized as i16;
             }
@@ -58,7 +82,7 @@ fn numpy_sum(values: &[f32]) -> f32 {
 
 pub(super) fn write_best(
     dataset: &Dataset,
-    checkpoint: &LinearCheckpoint,
+    checkpoint: &Checkpoint,
     directory: &Path,
     base: &Base,
     sample: usize,
@@ -68,7 +92,7 @@ pub(super) fn write_best(
         .best
         .is_none_or(|best| best.epoch == 0 || best.epoch != checkpoint.progress.epoch)
     {
-        return Err(Error::Invalid("checkpoint is not a completed best epoch").into());
+        return Err(Error::Invalid("checkpoint is not a completed best epoch"));
     }
     let quantized = quantize(&checkpoint.model)?;
     let pst = Pst::from_weights(&quantized, base.piece_values, base.k, &base.rule_set)?;
@@ -84,24 +108,24 @@ pub(super) fn write_best(
         || (0..base.piece_values.len())
             .any(|state| written.piece_value_of_state(state) != base.piece_values[state])
     {
-        return Err(
-            Error::Invalid("written MNPT differs from quantized PST or initial metadata").into(),
-        );
+        return Err(Error::Invalid(
+            "written MNPT differs from quantized PST or initial metadata",
+        ));
     }
     let seed = checkpoint.progress.seed;
     let mut indices = epoch_permutation(dataset.validation_indices(), seed, 0);
     indices.truncate(sample);
     if indices.is_empty() {
-        return Err(Error::Invalid("empty quantization sample").into());
+        return Err(Error::Invalid("empty quantization sample"));
     }
     let mut total = 0.0;
     let mut maximum = 0.0_f64;
     for chunk in indices.chunks(256) {
-        let batch = build_batches(dataset, InputFeatureSet::P, &[chunk])?.remove(0);
+        let batch = Batch::from_indices(dataset, chunk)?;
         for (b, &index) in chunk.iter().enumerate() {
             let sums = std::array::from_fn(|e| {
                 let values: [f32; FEATURE_COLUMNS] = std::array::from_fn(|col| {
-                    let row = batch.linear_features()[b * FEATURE_COLUMNS + col];
+                    let row = batch.columns()[b * FEATURE_COLUMNS + col];
                     if row == SENTINEL {
                         0.0
                     } else {
@@ -110,11 +134,11 @@ pub(super) fn write_best(
                 });
                 numpy_sum(&values)
             });
-            let float = crate::reference::linear::blend(sums, batch.piece_counts()[b]);
+            let float = linear::blend(sums, batch.phase_numerators()[b][0]);
             let integer = evaluate_pst(&written, &dataset.record(index)?.to_position()?);
             let error = (f64::from(float) - f64::from(integer)).abs();
             if !error.is_finite() {
-                return Err(Error::Invalid("non-finite PST quantization error").into());
+                return Err(Error::Invalid("non-finite PST quantization error"));
             }
             total += error;
             maximum = maximum.max(error);

@@ -1,7 +1,7 @@
+use super::{Error, Result, batch::check_size};
 use crate::{
-    data::{Lookahead, MAX_BATCH_SIZE, validate_lambda_override},
-    reference::AdamWGroup,
-    train::{Error, Result},
+    data::{Lookahead, validate_lambda_override},
+    nn::AdamWGroup,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -79,26 +79,24 @@ impl Args {
         .validate()?;
         validate_lambda_override(self.lambda_override)?;
         if self.data.is_empty() {
-            return Err(Error::Invalid("--data requires at least one file").into());
+            return Err(Error::Invalid("--data requires at least one file"));
         }
         if !(1..=200).contains(&self.epochs) {
-            return Err(Error::Invalid("--epochs must be in 1..200").into());
+            return Err(Error::Invalid("--epochs must be in 1..200"));
         }
         if self.patience == 0 {
-            return Err(Error::Invalid("--patience must be positive").into());
+            return Err(Error::Invalid("--patience must be positive"));
         }
-        if !(1..=MAX_BATCH_SIZE).contains(&self.batch) {
-            return Err(
-                Error::Invalid("--batch exceeds the reverse-index capacity or is zero").into(),
-            );
-        }
+        check_size(self.batch)?;
         if self.validation_sample == 0 || self.threads == Some(0) {
-            return Err(
-                Error::Invalid("--validation-sample and --threads must be positive").into(),
-            );
+            return Err(Error::Invalid(
+                "--validation-sample and --threads must be positive",
+            ));
         }
         if !self.removal_penalty.is_finite() || self.removal_penalty < 0.0 {
-            return Err(Error::Invalid("--removal-penalty must be finite and nonnegative").into());
+            return Err(Error::Invalid(
+                "--removal-penalty must be finite and nonnegative",
+            ));
         }
         self.lookahead()?;
         Ok(())
@@ -110,8 +108,7 @@ impl Args {
             (Some(gamma), Some(plies)) => Ok(Some(Lookahead::new(gamma, plies)?)),
             _ => Err(Error::Invalid(
                 "lookahead requires both --lookahead-gamma and --lookahead-plies",
-            )
-            .into()),
+            )),
         }
     }
 }

@@ -24,7 +24,8 @@ pub use mnsd::{Dataset, RecordLocation, TeacherClass};
 pub use observations::Observations;
 pub use shuffle::{epoch_permutation, hash64, is_validation};
 pub use teacher::{
-    Lookahead, build_targets, compute_lookahead, estimate_k, validate_lambda_override,
+    Lookahead, build_targets, build_targets_from_arrays, compute_lookahead, estimate_k,
+    validate_lambda_override,
 };
 
 /// データの読み込み、検証またはバッチ構築の結果。

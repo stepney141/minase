@@ -5,6 +5,7 @@ pub mod diagnostics;
 pub mod export;
 pub mod gpu;
 pub mod model;
+pub mod nn;
 pub mod options;
 pub mod pst;
 pub mod reference;

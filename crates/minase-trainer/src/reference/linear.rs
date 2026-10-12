@@ -44,12 +44,6 @@ where
     result + value(144)
 }
 
-pub(crate) fn sum_mirrored_f64(weights: &[f32], columns: &[u32]) -> [f64; 2] {
-    std::array::from_fn(|endpoint| {
-        feature_sum(|col| f64::from(row(weights, columns[col])[endpoint]))
-    })
-}
-
 pub(crate) fn blend(sums: [f32; 2], count: u8) -> f32 {
     let u = phase(count, false);
     u[0] * sums[0] + u[1] * sums[1]

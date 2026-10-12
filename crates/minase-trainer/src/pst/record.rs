@@ -1,14 +1,13 @@
-use super::Args;
-use crate::{
-    data::Dataset,
-    train::{
-        Error, Result,
-        record::{Configuration, digest, file_record, hash_u64, hex},
-    },
-};
+use super::{Args, Error, Result, export::QuantizationReport};
+use crate::{data::Dataset, nn::atomic_write};
 use serde::Serialize;
-use serde_json::json;
-use std::path::Path;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{
+    fs::{File, OpenOptions},
+    io::{Read, Write},
+    path::Path,
+};
 
 /// PSTの1エポックの記録。学習前の損失と速度はnull。
 #[derive(Debug, Serialize)]
@@ -91,4 +90,131 @@ pub(super) fn configuration(
         document: json!({"device":"cpu", "arguments":args, "resolved_threads":workers, "settings":settings,
             "inputs":inputs, "preprocessing":preprocessing, "resumes":[], "config_sha256":hex(&config_hash), "input_sha256":hex(&input_hash)}),
     })
+}
+
+pub(crate) fn digest(bytes: &[u8]) -> [u8; 32] {
+    Sha256::digest(bytes).into()
+}
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|v| format!("{v:02x}")).collect()
+}
+
+pub(crate) fn file_record(path: &Path) -> Result<Value> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 65536];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(json!({"path": path.canonicalize()?, "sha256": hex(&hasher.finalize())}))
+}
+
+pub(crate) fn hash_u64(values: &[u64]) -> String {
+    let mut hash = Sha256::new();
+    for v in values {
+        hash.update(v.to_le_bytes());
+    }
+    hex(&hash.finalize())
+}
+
+pub(crate) struct Configuration {
+    pub document: Value,
+    pub config_hash: [u8; 32],
+    pub input_hash: [u8; 32],
+}
+
+pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
+    let mut bytes = serde_json::to_vec_pretty(value)?;
+    bytes.push(b'\n');
+    Ok(atomic_write(path, &bytes)?)
+}
+
+pub(crate) fn append_epoch(path: &Path, record: &impl Serialize) -> Result<()> {
+    let mut bytes = serde_json::to_vec(record)?;
+    bytes.push(b'\n');
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    file.write_all(&bytes)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+struct LogProgress {
+    epoch: u64,
+    validation_loss: f64,
+}
+
+// チェックポイントを永続化する前に中断したログの末尾は再実行する。
+pub(crate) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
+    let bytes = std::fs::read(path)?;
+    let mut keep = 0;
+    let mut expected = 0;
+    let mut initial = None;
+    for line in bytes.split_inclusive(|&b| b == b'\n') {
+        if expected > epoch || line.last() != Some(&b'\n') {
+            break;
+        }
+        let record: LogProgress = serde_json::from_slice(line)?;
+        if record.epoch != expected || !record.validation_loss.is_finite() {
+            return Err(Error::Invalid(
+                "training log does not match checkpoint epochs",
+            ));
+        }
+        if record.epoch == 0 {
+            initial = Some(record.validation_loss);
+        }
+        keep += line.len();
+        expected += 1;
+    }
+    if expected != epoch + 1 {
+        return Err(Error::Invalid("training log is missing a completed epoch"));
+    }
+    if keep != bytes.len() {
+        eprintln!("discarding training log entries after checkpoint epoch {epoch}");
+        atomic_write(path, &bytes[..keep])?;
+    }
+    initial.ok_or(Error::Invalid("training log has no epoch zero"))
+}
+
+/// 学習を停止した理由。診断値だけでは停止しない。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopReason {
+    /// 指定されたエポック数を完了した。
+    MaxEpochs,
+    /// 指定された連続エポック数にわたって改善しなかった。
+    EarlyStopping,
+}
+
+/// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
+#[derive(Debug, Serialize)]
+pub struct Summary {
+    /// candidate、quantization_error、またはerror。
+    pub status: &'static str,
+    /// 検査失敗または学習未完了の理由。
+    pub reason: Option<String>,
+    /// 学習の停止理由。
+    pub stopped_by: StopReason,
+    /// 収束に関する注記。PSTではnull。
+    pub convergence: Option<&'static str>,
+    /// 検証を終えた最終エポック。
+    pub last_epoch: u64,
+    /// 1以上の最良エポック。未完了ならnull。
+    pub best_epoch: Option<u64>,
+    /// 最良エポックの検証損失。
+    pub best_validation_loss: Option<f64>,
+    /// 初期モデルの検証損失。
+    pub initial_validation_loss: Option<f64>,
+    /// 最良損失が初期損失を下回るか。採否には使わない。
+    pub improved_over_epoch_zero: Option<bool>,
+    /// 永続化した更新回数。
+    pub total_steps: u64,
+    /// 再開前を含む学習実行の秒数。
+    pub elapsed_seconds: f64,
+    /// 量子化誤差の検査結果。
+    pub quantization: Option<QuantizationReport>,
 }
