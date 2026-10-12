@@ -50,22 +50,7 @@ fn forward(
         |range| -> Result<Vec<_>> {
             range
                 .map(|b| {
-                    let mut sums = [0.0; FM_RANK];
-                    let mut squares = [0.0; FM_RANK];
-                    for &feature in &batch.columns[b] {
-                        let start = feature as usize * FM_RANK;
-                        for f in 0..FM_RANK {
-                            let v = f64::from(model.weights[start + f]);
-                            sums[f] += v;
-                            squares[f] += v * v;
-                        }
-                    }
-                    let pairs = std::array::from_fn(|f| 0.5 * (sums[f] * sums[f] - squares[f]));
-                    let phi: f64 = pairs
-                        .iter()
-                        .zip(model.a())
-                        .map(|(&pair, &a)| pair * f64::from(a))
-                        .sum();
+                    let (sums, pairs, phi) = statistics(model, &batch.columns[b]);
                     let logit = f64::from(batch.baseline[b] as f32 / model.k()) + phi;
                     let target = f64::from(batch.targets[b]);
                     let bce = bce_with_logits(logit, target);
@@ -185,4 +170,24 @@ impl GradientNorm {
             embedding: norm(&gradient[..V_LEN]),
         }
     }
+}
+
+pub(crate) fn statistics(model: &Model, columns: &[u32]) -> ([f64; FM_RANK], [f64; FM_RANK], f64) {
+    let mut sums = [0.0; FM_RANK];
+    let mut squares = [0.0; FM_RANK];
+    for &feature in columns {
+        let start = feature as usize * FM_RANK;
+        for f in 0..FM_RANK {
+            let v = f64::from(model.weights[start + f]);
+            sums[f] += v;
+            squares[f] += v * v;
+        }
+    }
+    let pairs = std::array::from_fn(|f| 0.5 * (sums[f] * sums[f] - squares[f]));
+    let phi: f64 = pairs
+        .iter()
+        .zip(model.a())
+        .map(|(&pair, &a)| pair * f64::from(a))
+        .sum();
+    (sums, pairs, phi)
 }

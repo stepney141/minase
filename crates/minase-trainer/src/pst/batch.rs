@@ -139,7 +139,17 @@ impl Batch {
     pub fn outcomes(&self) -> &[u8] {
         &self.outcomes
     }
-    pub(super) fn columns_at(&self, index: usize) -> &[u32] {
+    // Canonical weights are mirror shared; only the board-column order changes.
+    pub(crate) fn reflect(&mut self, mirrors: &[u8]) {
+        for (columns, &mirror) in self.columns.chunks_mut(FEATURE_COLUMNS).zip(mirrors) {
+            if mirror != 0 {
+                for rank in columns[..144].chunks_mut(12) {
+                    rank.reverse();
+                }
+            }
+        }
+    }
+    pub(crate) fn columns_at(&self, index: usize) -> &[u32] {
         &self.columns[index * FEATURE_COLUMNS..(index + 1) * FEATURE_COLUMNS]
     }
 }

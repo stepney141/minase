@@ -73,11 +73,11 @@ fn numerator(fm: FmWeights<'_>, features: &[usize]) -> i64 {
         - self_sum
 }
 
-pub(super) fn correction(fm: FmWeights<'_>, features: &[usize]) -> i64 {
+pub(crate) fn correction(fm: FmWeights<'_>, features: &[usize]) -> i64 {
     numerator(fm, features) / (1_i64 << (2 * fm.exponent + 1))
 }
 
-pub(super) fn phi(v: &[[f64; FM_RANK]], a: &[f64; FM_RANK], features: &[usize]) -> f64 {
+pub(crate) fn phi(v: &[[f64; FM_RANK]], a: &[f64; FM_RANK], features: &[usize]) -> f64 {
     let mut sums = [0.0; FM_RANK];
     let mut squares = [0.0; FM_RANK];
     for &feature in features {
@@ -119,7 +119,7 @@ fn difference(values: &[f64]) -> DifferenceReport {
     }
 }
 
-pub(super) fn std(values: &[f64]) -> f64 {
+pub(crate) fn std(values: &[f64]) -> f64 {
     let mean = numpy_sum(values) / values.len() as f64;
     let squares: Vec<_> = values
         .iter()

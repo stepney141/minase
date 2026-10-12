@@ -629,3 +629,65 @@ fn checkpoint_rejects_corruption_and_output_directory_must_be_empty() {
     fs::create_dir(&args.output_dir).unwrap();
     fm::train(args).unwrap();
 }
+
+// Phase 4 may expose components, but the existing trainers must retain their bit patterns.
+#[test]
+fn phase4_preserves_existing_trainer_weights_and_adam_states() {
+    let (_fixture, mut args) = Fixture::new(false, true);
+    args.epochs = 1;
+    fm::train(args.clone()).unwrap();
+    let checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let mut hash = Sha256::new();
+    for value in checkpoint
+        .model
+        .v()
+        .iter()
+        .flatten()
+        .chain(checkpoint.model.a())
+        .chain(checkpoint.optimizer.m())
+        .chain(checkpoint.optimizer.v())
+    {
+        hash.update(value.to_le_bytes());
+    }
+    assert_eq!(
+        format!("{:x}", hash.finalize()),
+        "d26cc3c6ffcf10b8e873ce7aba9c582e86e344d53da8424df0160a098057bca9"
+    );
+    let output = args.output_dir.with_file_name("pst");
+    minase_trainer::pst::run(minase_trainer::pst::Args {
+        data: args.data,
+        init: args.init,
+        output_dir: output.clone(),
+        lr: 0.03,
+        epochs: 1,
+        patience: 5,
+        batch: 16,
+        seed: 1,
+        removal_penalty: 1000.0,
+        removal_reference: minase_trainer::pst::RemovalReferenceKind::V0,
+        lambda_override: None,
+        lookahead_gamma: None,
+        lookahead_plies: None,
+        validation_sample: 7,
+        threads: Some(1),
+        resume: None,
+        replay: None,
+        replay_steps: None,
+    })
+    .unwrap();
+    let checkpoint = minase_trainer::pst::Checkpoint::read(output.join("latest.bin")).unwrap();
+    let mut hash = Sha256::new();
+    for value in checkpoint
+        .model
+        .weights()
+        .iter()
+        .chain(checkpoint.optimizer.m())
+        .chain(checkpoint.optimizer.v())
+    {
+        hash.update(value.to_le_bytes());
+    }
+    assert_eq!(
+        format!("{:x}", hash.finalize()),
+        "45f03c5a8cc011690326d3501e6281d9efdcb67091f871eefdc1b3dcb83ce8f9"
+    );
+}

@@ -488,3 +488,203 @@ Rustが約2.6倍速いので、FMの学習器にもGPUのカーネルは加え�
      quarter = commands.add_parser("quarter", help="学習後のMNPT v3の補正を1/4にする")
      quarter.add_argument("--input", required=True, type=Path)
 ```
+
+## フェーズ4　同時学習器
+
+`minase-trainer joint train`は、PSTとFMの部品を組み合わせた同時学習の専用のパイプライン（`crates/minase-trainer/src/joint/`）である。
+学習の開始時に、Pythonの`verify-init`と同じ初期値の検査（`--pst-init`を量子化すると`--base`のPSTに、`--fm-init`を`--base`のKで量子化すると`--fm-reference`のFMに一致すること）を行う。
+Pythonの同時学習器はブランチ`pst-fm-joint-training`のコミット`b43ff45`にだけあるので、`git archive`でリポジトリの外（gitに無視される`target/`の下）へ展開し、本体の仮想環境で実行した。
+
+照合の条件は、J75の条件を世代3の1ファイル（`data/gen3/generated-1500000.bin`）に短縮したものである。
+`--base`は候補Faの`data/fm-quarter-current-pst-fa/fm-quarter.bin`（SHA-256 `85e4e455…`。J75の学習記録の`base`と同じ）、`--pst-init`は候補Lの`data/pst-longer-training/training/pst-float.npz`、`--fm-init`は候補Faの`fm-float.npz`、`--fm-reference`は候補Faの`fm.bin`、λは0.75を明示し、先読み教師γ=0.9・n=40、バッチ16,384、その他は既定値である。
+再生の方式はFMと同じであり、Rustは、`initial.npz`のPSTが`--pst-init`から作った値と、VとaがRustの初期値とビット単位で一致し、`mask`が数え直したマスクと一致することを検査してから使う。
+
+| 照合 | 結果 |
+|---|---|
+| (1) 3回の更新の後の損失、PST、V、a、AdamWの状態 | 全17配列が許容誤差内で一致。駒除去差分の損失（v0の参照、毎回発火）の最大相対差1.9×10⁻⁸、二値交差エントロピーの最大相対差7.8×10⁻⁸ |
+| (2) 3エポックの短縮学習の各エポックの検証損失 | エポック0から3まで差は0.8〜1.5×10⁻⁸。最良エポック2と停止エポック3が一致 |
+| (3) 書き出した整数の重み | PSTの2端点は整数の差0。FMの埋め込みは437,760個のうち33個が±1単位で異なり、指数（9）と符号は一致。`pst-float.npz`の5配列は許容誤差内で一致 |
+| 連続2エポックと、1エポックで止めて`--resume`で再開した学習 | `pst.bin`と`pst-float.npz`がビット単位で一致 |
+| 量子化誤差の検査（検証1万局面） | 学習前0.81センチポーン、書き出した重み0.83センチポーン（Pythonは0.81と0.82）。基準は平均2センチポーン以下 |
+| J75の`pst-float.npz`の量子化し直し（`fm scale --fm-scale 1024`、倍率1は量子化し直しだけを行う） | J75の`pst.bin`とバイト単位で一致 |
+
+訓練集合から数え直した観測マスクと`--fm-init`のマスクの不一致は584特徴であり、PythonとRustで同じだった（1ファイルに短縮したため、10ファイルで数えたFaのマスクと異なる）。
+1エポックの時間は、PythonのGPUが検証を含めて約29秒、RustのCPUが訓練6.9秒（約41万局面/秒）であり、Rustが約4倍速いので、同時学習器にもGPUのカーネルは加えない。
+同時学習器を加えた後も、PSTとFMの学習の結果はビット単位で変わらなかった。
+
+照合に使ったPython側の改変（`b43ff45`の`tools/train/src/minase_train/joint/train.py`に対する差分）は次のとおりである。
+
+```diff
+--- a/tools/train/src/minase_train/joint/train.py
++++ b/tools/train/src/minase_train/joint/train.py
+@@ -177,12 +177,74 @@
+                 raise ValueError(f"{name} loss gradient stayed zero for {GRADIENT_STEPS} steps")
+ 
+ 
++class ReplayDump:
++    """一度きりのRust照合用に、追加の乱数を使わず学習入力と状態を保存する。"""
++
++    def __init__(self, directory, dataset, model, batch, steps):
++        self.directory = Path(directory)
++        self.directory.mkdir(parents=True, exist_ok=True)
++        if any(self.directory.iterdir()):
++            raise ValueError("--replay-dump directory must be empty")
++        if len(dataset.paths) > 2**32 or np.any(np.diff(dataset.offsets) > 2**32):
++            raise ValueError("replay file and record indices must fit u32")
++        self.steps, self.losses, self.mirrors = steps, [], []
++        self.metadata = {"format": "minase-replay-1", "trainer": "joint", "batch": batch, "epochs": 0,
++                         "files": [file_record(path) for path in dataset.paths]}
++        np.savez(self.directory / "initial.npz", **model.floating_weights())
++        self.write_metadata()
++
++    def write_metadata(self):
++        write_report(self.directory / "replay.json", self.metadata)
++
++    def order(self, dataset, indices):
++        files = np.searchsorted(dataset.offsets[1:], indices, side="right")
++        positions = np.column_stack((files, indices - dataset.offsets[files])).astype("<u4")
++        self.metadata["epochs"] += 1
++        epoch = self.metadata["epochs"]
++        positions.tofile(self.directory / f"epoch-{epoch:03}.positions")
++        self.mirrors = []
++        self.write_metadata()
++
++    def mirror(self, selected):
++        self.mirrors.append(selected.astype(np.uint8, copy=True))
++
++    def finish_epoch(self):
++        epoch = self.metadata["epochs"]
++        np.concatenate(self.mirrors).tofile(self.directory / f"epoch-{epoch:03}.mirror")
++
++    def record(self, bce, removal, reg, total):
++        if self.steps is not None:
++            self.losses.append([value.item() for value in (bce, removal, reg, total)])
++
++    def finish(self, model, optimizer):
++        if self.steps is None or len(self.losses) != self.steps:
++            return False
++        self.finish_epoch()
++        arrays = dict(zip(("loss_bce", "loss_removal", "loss_reg", "loss_total"),
++                          np.asarray(self.losses, dtype=np.float64).T))
++        for prefix, field in (("", None), ("exp_avg_", "exp_avg"), ("exp_avg_sq_", "exp_avg_sq")):
++            parameter = model.pst.weight
++            value = parameter if field is None else optimizer.state[parameter][field]
++            endpoints = value[model.pst.canonical_indices[:FEATURE_COUNT]].detach().cpu().numpy()
++            arrays[prefix + "middlegame"], arrays[prefix + "endgame"] = endpoints.T
++            for name, parameter in (("V", model.fm.embedding.weight), ("a", model.fm.a)):
++                value = parameter if field is None else optimizer.state[parameter][field]
++                value = value.detach().cpu().numpy()
++                arrays[prefix + name] = value[:FEATURE_COUNT] if name == "V" else value
++        arrays["step"] = np.asarray(int(optimizer.state[model.fm.a]["step"].item()), dtype=np.int64)
++        np.savez(self.directory / "python-steps.npz", **arrays)
++        return True
++
++
+ def train_epoch(model: JointModel, dataset: Dataset, teacher_ks: np.ndarray, reference: Tensor,
+                 optimizer: torch.optim.Optimizer, generator: torch.Generator,
+-                args: argparse.Namespace, report: dict, epoch: int, started: float) -> dict:
++                args: argparse.Namespace, report: dict, epoch: int, started: float,
++                replay: ReplayDump | None = None) -> dict | None:
+     """訓練局面を並べ替え、確率0.5の鏡映で1エポック更新する。"""
+     device = model.pst.weight.device
+     order = torch.randperm(dataset.training_indices.size, generator=generator, device=device)
++    if replay is not None:
++        replay.order(dataset, dataset.training_indices[order.cpu().numpy()])
+     totals = dict.fromkeys(("train_loss", "removal_loss", "phi_squared_mean", "total_loss"), 0.0)
+     for start in range(0, len(order), args.batch):
+         indices = dataset.training_indices[order[start:start + args.batch].cpu().numpy()]
+@@ -191,6 +253,8 @@
+         board, lion = mirror(records["board"], records["lion"])
+         reflected = feature_indices(board, records["stm"], lion)
+         selected = (torch.rand(len(indices), generator=generator, device=device) < 0.5).cpu().numpy()
++        if replay is not None:
++            replay.mirror(selected)
+         features[selected] = reflected[selected]
+         features = torch.as_tensor(features, device=device)
+         ratios = torch.as_tensor(phase_ratios(records["board"]), dtype=torch.float32, device=device)
+@@ -205,6 +269,8 @@
+         loss = bce + args.lambda_res * residual + args.removal_penalty * penalty
+         if not bool(torch.isfinite(loss)):
+             raise ValueError("non-finite training loss")
++        if replay is not None:
++            replay.record(bce, penalty, args.lambda_res * residual, loss)
+         loss.backward()
+         record_gradients(model, report)
+         optimizer.step()
+@@ -214,6 +280,8 @@
+             model.pst.weight.clamp_(-4096, 4095.875)
+             model.fm.fix_unobserved()
+         report["total_steps"] += 1
++        if replay is not None and replay.finish(model, optimizer):
++            return None
+         for name, value in zip(totals, (bce, penalty, residual, loss)):
+             totals[name] += float(value.detach()) * len(indices)
+         if report["total_steps"] % 500 == 0:
+@@ -223,6 +291,8 @@
+                       if device.type == "cuda" else "")
+             print(f"epoch={epoch} updates={report['total_steps']} elapsed_seconds={elapsed:.3f} "
+                   f"positions_per_second={positions / elapsed:.1f}{memory}", flush=True)
++    if replay is not None:
++        replay.finish_epoch()
+     return {name: value / dataset.training_indices.size for name, value in totals.items()}
+ 
+ 
+@@ -257,6 +327,8 @@
+                 raise ValueError(f"invalid --{name.replace('_', '-')}")
+         if args.seed < 0:
+             raise ValueError("seed must be nonnegative")
++        if args.replay_steps is not None and (args.replay_dump is None or args.replay_steps <= 0):
++            raise ValueError("--replay-steps must be positive and requires --replay-dump")
+         validate_lambda_override(args.lambda_override)
+         if device.type == "cuda":
+             if not torch.cuda.is_available():
+@@ -268,6 +340,8 @@
+                           lookahead=lookahead_options(args.lookahead_gamma, args.lookahead_plies))
+         if not dataset.training_indices.size or not dataset.validation_indices.size:
+             raise ValueError("training and validation sets must both be nonempty")
++        if args.replay_steps is not None and args.replay_steps > math.ceil(dataset.training_indices.size / args.batch) * args.epochs:
++            raise ValueError("--replay-steps exceeds available updates")
+         teacher_ks, teacher_counts = estimate_generation_ks(dataset, indices=dataset.training_indices)
+         torch.manual_seed(args.seed)
+         observations = feature_observations(dataset, args.batch)
+@@ -277,6 +351,8 @@
+             {"params": model.pst.parameters(), "lr": args.pst_lr, "weight_decay": 0},
+             {"params": model.fm.parameters(), "lr": args.fm_lr, "weight_decay": args.fm_weight_decay},
+         ])
++        replay = (ReplayDump(args.replay_dump, dataset, model, args.batch, args.replay_steps)
++                  if args.replay_dump is not None else None)
+         generator = torch.Generator(device=device).manual_seed(args.seed)
+         v0 = initial_weights()
+         reference = make_removal_reference(v0, v0, device)
+@@ -317,7 +393,11 @@
+         print(f"epoch 0: validation_loss={initial_loss:.9f}", flush=True)
+         for epoch in range(1, args.epochs + 1):
+             training = train_epoch(model, dataset, teacher_ks, reference, optimizer, generator,
+-                                   args, report, epoch, started)
++                                   args, report, epoch, started, replay)
++            if training is None:
++                report.update(status="replay_steps")
++                save_report()
++                return
+             loss, distribution = validation_loss(model, dataset, teacher_ks, args.batch, device)
+             previous = report["epochs"][-1]
+             overfitting = (previous["train_loss"] is not None and training["train_loss"] < previous["train_loss"]
+@@ -335,6 +415,8 @@
+                   f"validation_loss={loss:.9f}", flush=True)
+             if should_stop_early(epoch, best_epoch, args.patience):
+                 break
++        if args.replay_steps is not None:
++            raise ValueError("training stopped before --replay-steps updates")
+         model.load_state_dict(best)
+         weights = model.floating_weights()
+         report["improved_over_epoch_zero"] = best_loss < initial_loss
+@@ -378,6 +460,8 @@
+     train.add_argument("--lookahead-gamma", type=float)
+     train.add_argument("--lookahead-plies", type=int)
+     train.add_argument("--device", choices=("cpu", "cuda"), required=True)
++    train.add_argument("--replay-dump")
++    train.add_argument("--replay-steps", type=int)
+     train.set_defaults(handler=command_train)
+     verify = commands.add_parser("verify-init")
+     for name in ("base", "pst-init", "fm-init", "fm-reference", "output"):
+```

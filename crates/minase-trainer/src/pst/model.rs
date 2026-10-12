@@ -17,9 +17,9 @@ fn constrain_linear(weights: &mut [f32]) -> Result<()> {
     Ok(())
 }
 
-pub(super) const CANONICAL_ROWS: usize = FEATURE_COUNT / 2 + 1;
+pub(crate) const CANONICAL_ROWS: usize = FEATURE_COUNT / 2 + 1;
 
-pub(super) fn canonical(base: usize) -> usize {
+pub(crate) fn canonical(base: usize) -> usize {
     let square = base % 144;
     let file = square % 12;
     base / 144 * 72 + square / 12 * 6 + file.min(11 - file)
@@ -50,6 +50,19 @@ impl Model {
                 "initial PST must be finite [13680, 2] in -4096..4095.875",
             ));
         }
+        Self::from_endpoints(initial, k)
+    }
+
+    // Joint initialization verifies quantized endpoints before mirror averaging;
+    // values just outside the clamp bounds can still round to valid i16 weights.
+    pub(crate) fn from_endpoints(initial: &[[f32; 2]], k: f32) -> Result<Self> {
+        if initial.len() != FEATURE_COUNT
+            || initial.iter().flatten().any(|v| !v.is_finite())
+            || !k.is_finite()
+            || k <= 0.0
+        {
+            return Err(Error::Invalid("PST endpoint shape, finite values or K"));
+        }
         let mut weights = vec![0.0; CANONICAL_ROWS * 2];
         for base in (0..FEATURE_COUNT).filter(|base| base % 12 < 6) {
             for endpoint in 0..2 {
@@ -57,7 +70,9 @@ impl Model {
                     (initial[base][endpoint] + initial[mirror_feature(base)][endpoint]) / 2.0;
             }
         }
-        Ok(Self { weights, k })
+        let model = Self { weights, k };
+        model.validate()?;
+        Ok(model)
     }
 
     /// 正準行順の重みを返す。各行は序中盤、終盤の順。
@@ -168,6 +183,16 @@ impl Adam {
 
     /// バッチにない行もモーメントで更新し、直後に切り詰める。
     pub fn update(&mut self, model: &mut Model, gradient: &[f32]) -> Result<()> {
+        self.update_parallel(model, gradient, 1)
+    }
+
+    pub(crate) fn update_parallel(
+        &mut self,
+        model: &mut Model,
+        gradient: &[f32],
+        threads: usize,
+    ) -> Result<()> {
+        crate::nn::parallel::check_threads(threads)?;
         model.validate()?;
         self.validate()?;
         if gradient.len() != self.m.len() || gradient[FEATURE_COUNT..].iter().any(|&v| v != 0.0) {
@@ -187,9 +212,20 @@ impl Adam {
                 weight_decay: 0.0,
             },
         )?;
-        for (i, &g) in gradient.iter().enumerate() {
-            coefficients.update(&mut model.weights[i], g, &mut self.m[i], &mut self.v[i]);
-        }
+        let chunk = gradient.len().div_ceil(threads.min(gradient.len()));
+        let pieces: Vec<_> = model
+            .weights
+            .chunks_mut(chunk)
+            .zip(self.m.chunks_mut(chunk))
+            .zip(self.v.chunks_mut(chunk))
+            .zip(gradient.chunks(chunk))
+            .collect();
+        crate::nn::parallel::map(pieces, |(((weights, m), v), gradients)| -> Result<()> {
+            for (((p, m), v), &g) in weights.iter_mut().zip(m).zip(v).zip(gradients) {
+                coefficients.update(p, g, m, v);
+            }
+            Ok(())
+        })?;
         model.constrain()?;
         self.validate()?;
         self.step = step;

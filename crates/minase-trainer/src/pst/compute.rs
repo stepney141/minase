@@ -1,13 +1,10 @@
 //! PSTのCPU前進と後退。局面ごとの計算を並列化し、局面順にf64で縮約する。
 
 use super::{
-    Batch, Error, Model, RemovalReference, Result,
-    batch::{FEATURE_COLUMNS, SENTINEL},
-    linear,
+    Batch, Error, Model, RemovalReference, Result, batch::FEATURE_COLUMNS, linear,
     model::CANONICAL_ROWS,
 };
 use crate::nn::{bce_with_logits, bce_with_logits_gradient, parallel};
-use std::collections::BTreeMap;
 
 /// 係数を掛ける前の除去損失と二値交差エントロピーのバッチ平均。
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -156,34 +153,7 @@ fn position_gradient(
         }
         losses.removal /= eligible_count.max(1) as f64 * k;
     }
-    let [q, after_q] = numerators.map(i32::from);
-    let derivative_sum: i32 = derivatives.iter().sum();
-    let common = (after_q - q) * derivative_sum;
-    // 各除去で、自身は(-q, -(90-q))、残存行は(q'-q, q-q')。
-    // 全行に残存係数を足して自身から(q',90-q')を引くと同じ整数係数になる。
-    // 鏡映対が同じ行へ写る場合も整数で合算してから倍率を掛け、f32差分で相殺しない。
-    let mut rows = BTreeMap::<u32, [i32; 3]>::new();
-    for (col, &row) in columns.iter().enumerate() {
-        if row == SENTINEL {
-            continue;
-        }
-        let entry = rows.entry(row).or_default();
-        entry[0] += 1;
-        entry[1] += common - after_q * derivatives[col];
-        entry[2] += -common - (90 - after_q) * derivatives[col];
-    }
     let scale = coefficient / n / eligible_count.max(1) as f64 / k / 90.0;
-    let gradient = rows
-        .into_iter()
-        .map(|(row, counts)| {
-            (
-                row,
-                [
-                    f64::from(counts[0]) * g * u[0] + f64::from(counts[1]) * scale,
-                    f64::from(counts[0]) * g * u[1] + f64::from(counts[2]) * scale,
-                ],
-            )
-        })
-        .collect();
+    let gradient = linear::gradient_rows(columns, numerators, &derivatives, g, u, scale);
     Ok((losses, gradient))
 }

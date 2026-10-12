@@ -3,7 +3,7 @@ use crate::nn::npz;
 use minase::eval::{features::FEATURE_COUNT, pst::FM_RANK};
 use std::collections::BTreeMap;
 
-pub(super) fn floats(values: &[f32], shape: &[usize]) -> npz::Array {
+pub(crate) fn floats(values: &[f32], shape: &[usize]) -> npz::Array {
     npz::Array {
         dtype: "<f4".into(),
         shape: shape.to_vec(),
@@ -38,7 +38,7 @@ pub(super) struct FloatWeights {
     pub a: [f64; FM_RANK],
 }
 
-fn array(
+pub(crate) fn array(
     arrays: &mut BTreeMap<String, npz::Array>,
     key: &str,
     shape: &[usize],

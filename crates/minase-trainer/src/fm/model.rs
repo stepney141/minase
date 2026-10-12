@@ -4,15 +4,15 @@ use super::{Result, batch::mix64};
 use crate::nn::{AdamCoefficients, AdamWGroup, parallel};
 use minase::eval::{features::FEATURE_COUNT, pst::FM_RANK};
 
-pub(super) const V_LEN: usize = (FEATURE_COUNT + 1) * FM_RANK;
-pub(super) const PARAMETERS: usize = V_LEN + FM_RANK;
+pub(crate) const V_LEN: usize = (FEATURE_COUNT + 1) * FM_RANK;
+pub(crate) const PARAMETERS: usize = V_LEN + FM_RANK;
 
 /// 全特徴の埋め込みV、埋め草、出力係数aと観測マスク。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Model {
-    pub(super) weights: Vec<f32>,
-    pub(super) mask: Vec<bool>,
-    pub(super) k: f32,
+    pub(crate) weights: Vec<f32>,
+    pub(crate) mask: Vec<bool>,
+    pub(crate) k: f32,
 }
 impl Model {
     /// 観測行だけをN(0,1/55)で初期化し、aと未観測行を0にする。
@@ -97,7 +97,7 @@ impl Model {
             }
         }
     }
-    pub(super) fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         if self.weights.len() != PARAMETERS
             || self.mask.len() != FEATURE_COUNT
             || !self.k.is_finite()
@@ -123,10 +123,10 @@ impl Model {
 /// Vとaを1群で扱うAdamW。埋め草の状態も保持する。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Adam {
-    pub(super) m: Vec<f32>,
-    pub(super) v: Vec<f32>,
-    pub(super) step: u64,
-    pub(super) group: AdamWGroup,
+    pub(crate) m: Vec<f32>,
+    pub(crate) v: Vec<f32>,
+    pub(crate) step: u64,
+    pub(crate) group: AdamWGroup,
 }
 impl Adam {
     /// PyTorchと同じ固定β、εと、指定された学習率・重み減衰を使う。
@@ -181,7 +181,7 @@ impl Adam {
     pub fn v(&self) -> &[f32] {
         &self.v
     }
-    pub(super) fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         self.group.validate()?;
         if self.m.len() != PARAMETERS
             || self.v.len() != PARAMETERS

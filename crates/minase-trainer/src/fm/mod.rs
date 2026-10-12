@@ -3,15 +3,15 @@
 mod args;
 pub mod batch;
 mod checkpoint;
-mod compute;
+pub(crate) mod compute;
 mod convert;
 mod export;
-mod model;
-mod npz;
+pub(crate) mod model;
+pub(crate) mod npz;
 mod quantize;
-mod record;
+pub(crate) mod record;
 mod replay;
-mod report;
+pub(crate) mod report;
 mod train;
 
 pub use args::Args;

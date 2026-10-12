@@ -24,9 +24,18 @@ enum Command {
     /// 固定PSTのFM補正を学習し、縮小と倍率の焼き込みを行う。
     #[command(subcommand)]
     Fm(minase_trainer::fm::Command),
+    /// PSTとFMを同時学習する。
+    #[command(subcommand)]
+    Joint(JointCommand),
     /// 評価分布、駒除去、合法手の評価差を診断する。
     #[command(subcommand)]
     Diag(minase_trainer::diagnostics::Command),
+}
+
+#[derive(Subcommand)]
+enum JointCommand {
+    /// 鏡映共有PSTとFMを2群のAdamWで学習する。
+    Train(minase_trainer::joint::Args),
 }
 
 #[derive(Subcommand)]
@@ -62,6 +71,14 @@ enum NnueCommand {
 
 fn main() -> std::process::ExitCode {
     let result = match Cli::parse().command {
+        Command::Joint(JointCommand::Train(args)) => minase_trainer::joint::train(args)
+            .map(|summary| {
+                println!(
+                    "status: {}; updates: {}; best epoch: {:?}",
+                    summary.status, summary.total_steps, summary.best_epoch
+                )
+            })
+            .map_err(|e| e as Box<dyn std::error::Error>),
         Command::Nnue(command) => run_nnue(command),
         Command::Fm(command) => {
             minase_trainer::fm::run(command).map_err(|e| e as Box<dyn std::error::Error>)

@@ -16,7 +16,7 @@ pub const FEATURE_COLUMNS: usize = 145;
 /// 空升および先獅子がない列の埋め草。
 pub const PADDING: u32 = FEATURE_COUNT as u32;
 
-pub(super) fn check_size(size: usize) -> Result<()> {
+pub(crate) fn check_size(size: usize) -> Result<()> {
     if size == 0
         || size
             .checked_mul(FEATURE_COLUMNS * size_of::<u32>())
@@ -27,7 +27,7 @@ pub(super) fn check_size(size: usize) -> Result<()> {
     Ok(())
 }
 
-fn features(record: &Record, mirror: bool) -> Result<([u32; FEATURE_COLUMNS], u32)> {
+pub(crate) fn features(record: &Record, mirror: bool) -> Result<([u32; FEATURE_COLUMNS], u32)> {
     let position = record.to_position()?;
     let side = position.side_to_move();
     let mut columns = [PADDING; FEATURE_COLUMNS];
