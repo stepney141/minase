@@ -17,9 +17,9 @@ Rustの実装は `crates/minase/src/eval/pst/` にあり、学習器はPythonで
 局面 $`p`$ に対する最終的な評価値 $`E(p)`$ は、次の式で計算する。
 
 ```math
-E(p) = \operatorname{clip}\bigl(E_{\mathrm{PST}}(p) + E_{\mathrm{FM}}(p)\bigr),
+E(p) = \mathrm{clip}\bigl(E_{\mathrm{PST}}(p) + E_{\mathrm{FM}}(p)\bigr),
 \qquad
-\operatorname{clip}(y) = \max\bigl(-28999,\ \min(28999,\ y)\bigr).
+\mathrm{clip}(y) = \max\bigl(-28999,\ \min(28999,\ y)\bigr).
 ```
 
 $`E_{\mathrm{PST}}`$ はそれ自体も同じ範囲へ切り詰めた整数であり、FMの補正を足した後にもう一度切り詰める。
@@ -91,16 +91,16 @@ q(p) = \min\bigl(90,\ \max(0,\ N(p) - 2)\bigr),
 P(p) = \phi(p)\, S_{\mathrm{mg}}(p) + \bigl(1 - \phi(p)\bigr)\, S_{\mathrm{eg}}(p).
 ```
 
-重みファイルには、各重みを8倍して最も近い整数へ丸めた16ビット整数 $`W_i = \operatorname{round}(8 w_i)`$ を保存し、ちょうど中間の値は偶数の側へ丸める。
+重みファイルには、各重みを8倍して最も近い整数へ丸めた16ビット整数 $`W_i = \mathrm{round}(8 w_i)`$ を保存し、ちょうど中間の値は偶数の側へ丸める。
 すなわち重みの単位は1/8 cpであり、1特徴あたりの丸め誤差は1/16 cp以下である。
 16ビット整数に収まるように、学習中の重みは各更新の後で $`[-4096,\ 4095.875]`$ cpへ切り詰める。
 Rustの実装は、整数の重み和を補間してから最後に1回だけ整数除算する。
 
 ```math
-E_{\mathrm{PST}}(p) = \operatorname{clip}\left( \operatorname{trunc}\left( \frac{ q(p) \sum_{i \in \mathcal{A}(p)} W_i^{\mathrm{mg}} + \bigl(90 - q(p)\bigr) \sum_{i \in \mathcal{A}(p)} W_i^{\mathrm{eg}} }{720} \right) \right).
+E_{\mathrm{PST}}(p) = \mathrm{clip}\left( \mathrm{trunc}\left( \frac{ q(p) \sum_{i \in \mathcal{A}(p)} W_i^{\mathrm{mg}} + \bigl(90 - q(p)\bigr) \sum_{i \in \mathcal{A}(p)} W_i^{\mathrm{eg}} }{720} \right) \right).
 ```
 
-ここで $`\operatorname{trunc}`$ は0の方向への切り捨てであり、負の値でも床関数とは異なり0の側へ丸める。
+ここで $`\mathrm{trunc}`$ は0の方向への切り捨てであり、負の値でも床関数とは異なり0の側へ丸める。
 除数720は、補間の分母90と量子化の倍率8の積である。
 探索中は、着手で変わった特徴の重みだけを足し引きして2つの和を差分更新し、評価のたびに144升を走査し直すことはしない（`crates/minase/src/eval/pst/accumulator.rs`）。
 
@@ -146,7 +146,7 @@ FMの設計は[FMの設計書](../plans/factorization-machine.md)が定める。
 Rustの実装は、浮動小数点の $`\mathbf{v}_i`$ と $`a_f`$ の代わりに、出力係数の絶対値と後述の出力尺度 $`K = 1072.6529541015625`$ をベクトルへ吸収して量子化した16ビット整数 $`u_{if}`$、符号 $`d_f`$、および指数 $`e`$ を保存する。
 
 ```math
-u_{if} = \operatorname{round}\Bigl( 2^{e} \sqrt{K\, |a_f|}\; v_{if} \Bigr),
+u_{if} = \mathrm{round}\Bigl( 2^{e} \sqrt{K\, |a_f|}\; v_{if} \Bigr),
 \qquad
 d_f =
 \begin{cases}
@@ -176,7 +176,7 @@ T(p) = \sum_{f=1}^{r} d_f A_f(p)^{2} - C(p)
 近似が入るのは $`u_{if}`$ を整数へ丸める段階だけである。
 
 ```math
-E_{\mathrm{FM}}(p) = \operatorname{trunc}\left( \frac{T(p)}{2^{2e+1}} \right) \approx K\, \Phi(p).
+E_{\mathrm{FM}}(p) = \mathrm{trunc}\left( \frac{T(p)}{2^{2e+1}} \right) \approx K\, \Phi(p).
 ```
 
 $`K`$ はこの量子化の段階でベクトルへ吸収されるので、推論は $`K`$ を参照しない。
@@ -200,7 +200,7 @@ a_f^{\mathrm{deploy}} = b\, a_f.
 倍率を調整する間は、焼き込む前の重みの分子 $`T`$ と指数 $`e`$ を使い、整数化の前に倍率を掛ける調整用の式で補正を計算した。
 
 ```math
-E_{\mathrm{FM}}^{\mathrm{tuning}}(p) = \operatorname{trunc}\left( \frac{\mathrm{FmScale} \cdot T(p)}{1024 \cdot 2^{2e+1}} \right),
+E_{\mathrm{FM}}^{\mathrm{tuning}}(p) = \mathrm{trunc}\left( \frac{\mathrm{FmScale} \cdot T(p)}{1024 \cdot 2^{2e+1}} \right),
 \qquad
 \mathrm{FmScale} \in \{0, 1, \dots, 1024\}.
 ```
@@ -215,7 +215,7 @@ E_{\mathrm{FM}}^{\mathrm{tuning}}(p) = \operatorname{trunc}\left( \frac{\mathrm{
 王駒以外の値は、あるPSTの保存重み $`W`$ から、駒状態 $`d`$ ごとに手番側の駒と相手の駒の144升平均の差を取って求めた。
 
 ```math
-\mathrm{value}(d) = \operatorname{round}\left( \frac{ \overline{W}_{\mathrm{own}, d} - \overline{W}_{\mathrm{enemy}, d} }{16} \right).
+\mathrm{value}(d) = \mathrm{round}\left( \frac{ \overline{W}_{\mathrm{own}, d} - \overline{W}_{\mathrm{enemy}, d} }{16} \right).
 ```
 
 ここで $`\overline{W}_{\mathrm{own}, d}`$ と $`\overline{W}_{\mathrm{enemy}, d}`$ は、手番側と相手の駒状態 $`d`$ の重みの144升平均であり、除数16は2つの平均の中間を取る2と量子化の倍率8の積である。
@@ -297,7 +297,7 @@ y_t = \lambda\, \sigma\!\left( \frac{\hat{v}_t}{K_c} \right) + (1 - \lambda)\, \
 $`K_c`$ は、分類 $`c`$ の訓練局面 $`\mathcal{T}_c`$ だけを使い、先読み値から最終結果を予測するロジスティックモデルの対数尤度を最大にする値として推定する。
 
 ```math
-K_c = \operatorname*{arg\,min}_{50 \le k \le 4000} \sum_{t \in \mathcal{T}_c} \left[ \log\left(1 + e^{\hat{v}_t / k}\right) - \rho_t\, \frac{\hat{v}_t}{k} \right].
+K_c = \underset{50 \le k \le 4000}{\mathrm{arg\,min}} \sum_{t \in \mathcal{T}_c} \left[ \log\left(1 + e^{\hat{v}_t / k}\right) - \rho_t\, \frac{\hat{v}_t}{k} \right].
 ```
 
 括弧の中は、予測 $`\sigma(\hat{v}_t / k)`$ と結果 $`\rho_t`$ の二値交差エントロピーから $`k`$ によらない項を除いたものであり、引き分けは $`\rho = \tfrac{1}{2}`$ として扱う。
@@ -353,11 +353,11 @@ PSTは鏡映で重なる特徴の重みを共有するので鏡映の影響を�
 FMの項は、除いた特徴と残りの特徴との組の寄与を取り除いたものである。
 
 比較の基準には、駒得だけの評価表、すなわちエンジンの最初の手書き評価関数v0の駒価値を全升と両端点に同じ値で置いた表を使う（`tools/train/src/minase_train/data/mnpt.py` の `initial_weights`）。
-この基準の補間値を $`P_0`$ とし、整数化して切り詰めた評価を $`E_0 = \operatorname{clip}(\operatorname{trunc}(P_0))`$ とする。
+この基準の補間値を $`P_0`$ とし、整数化して切り詰めた評価を $`E_0 = \mathrm{clip}(\mathrm{trunc}(P_0))`$ とする。
 基準については、向きを決める差分と大きさを決める差分を分けて求める。
 
 ```math
-s_0(p, m) = \operatorname{sgn}\bigl( E_0(p \setminus m) - E_0(p) \bigr),
+s_0(p, m) = \mathrm{sgn}\bigl( E_0(p \setminus m) - E_0(p) \bigr),
 \qquad
 \Delta_0(p, m) = P_0(p \setminus m) - P_0(p).
 ```
