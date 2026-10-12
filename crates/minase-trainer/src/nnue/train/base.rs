@@ -57,9 +57,9 @@ fn decode(bytes: &[u8]) -> Result<Base, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nn::sha256;
     use crate::nnue::reference::v0_piece_values;
     use minase::eval::pst::FM_RANK;
-    use sha2::{Digest, Sha256};
 
     /// MNPT版3の配置で作る。
     /// 両端点、規則名、Kは基準の埋め込み値と異なる既知の値を使う。
@@ -88,7 +88,7 @@ mod tests {
     }
 
     fn rehash(bytes: &mut [u8]) {
-        let checksum = Sha256::digest(&bytes[80..]);
+        let checksum = sha256(&bytes[80..]);
         bytes[48..80].copy_from_slice(&checksum);
     }
 

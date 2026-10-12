@@ -1,5 +1,5 @@
 use super::{Args, Error, Result};
-use crate::nn::atomic_write;
+use crate::nn::{Sha256Hasher, atomic_write, hex, sha256};
 use crate::{
     data::Dataset,
     nnue::{
@@ -11,7 +11,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -129,16 +128,9 @@ pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn digest(bytes: &[u8]) -> [u8; 32] {
-    Sha256::digest(bytes).into()
-}
-pub(super) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|v| format!("{v:02x}")).collect()
-}
-
 fn file_record(path: &Path) -> Result<Value> {
     let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
+    let mut hasher = Sha256Hasher::default();
     let mut buffer = [0_u8; 65536];
     loop {
         let n = file.read(&mut buffer)?;
@@ -151,9 +143,9 @@ fn file_record(path: &Path) -> Result<Value> {
 }
 
 fn hash_u64(values: &[u64]) -> String {
-    let mut hash = Sha256::new();
+    let mut hash = Sha256Hasher::default();
     for v in values {
-        hash.update(v.to_le_bytes());
+        hash.update(&v.to_le_bytes());
     }
     hex(&hash.finalize())
 }
@@ -206,7 +198,7 @@ pub(super) fn configuration(
             sidecar.push(".provenance.json");
             Ok(
                 json!({"data": file_record(path)?, "provenance": file_record(Path::new(&sidecar))?,
-            "header_sha256": hex(&digest(&header.encode()))}),
+            "header_sha256": hex(&sha256(&header.encode()))}),
             )
         })
         .collect::<Result<Vec<_>>>()?;
@@ -234,8 +226,8 @@ pub(super) fn configuration(
         "canonical_counts_sha256": hash_u64(observations.canonical_counts()),
         "input_counts_sha256": hash_u64(observations.input_counts()),
     });
-    let config_hash = digest(&serde_json::to_vec(&settings)?);
-    let input_hash = digest(&serde_json::to_vec(
+    let config_hash = sha256(&serde_json::to_vec(&settings)?);
+    let input_hash = sha256(&serde_json::to_vec(
         &json!({"inputs": inputs, "preprocessing": preprocessing}),
     )?);
     Ok(Configuration {

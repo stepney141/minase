@@ -6,10 +6,12 @@ use std::{
 
 use clap::Args;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
 use super::Result;
-use crate::data::{Dataset, epoch_permutation};
+use crate::{
+    data::{Dataset, epoch_permutation},
+    nn::{Sha256Hasher, hex},
+};
 
 #[derive(Args)]
 pub(super) struct SampleArgs {
@@ -69,7 +71,7 @@ pub(super) struct FileIdentity {
 pub(super) fn file_identity(path: &Path) -> Result<FileIdentity> {
     let path = path.canonicalize()?;
     let mut file = File::open(&path)?;
-    let mut hash = Sha256::new();
+    let mut hash = Sha256Hasher::default();
     let mut buffer = [0; 64 * 1024];
     loop {
         let n = file.read(&mut buffer)?;
@@ -80,7 +82,7 @@ pub(super) fn file_identity(path: &Path) -> Result<FileIdentity> {
     }
     Ok(FileIdentity {
         path,
-        sha256: format!("{:x}", hash.finalize()),
+        sha256: hex(&hash.finalize()),
     })
 }
 
@@ -104,9 +106,9 @@ pub(super) fn sample_identity(
     indices: &[u64],
     seed: u64,
 ) -> Result<SampleIdentity> {
-    let mut hash = Sha256::new();
+    let mut hash = Sha256Hasher::default();
     for &index in indices {
-        hash.update(i64::try_from(index)?.to_le_bytes());
+        hash.update(&i64::try_from(index)?.to_le_bytes());
     }
     let input_files = dataset
         .paths()
@@ -121,7 +123,7 @@ pub(super) fn sample_identity(
     Ok(SampleIdentity {
         sample_count: indices.len(),
         seed,
-        sample_indices_sha256_le_i64: format!("{:x}", hash.finalize()),
+        sample_indices_sha256_le_i64: hex(&hash.finalize()),
         input_files,
     })
 }

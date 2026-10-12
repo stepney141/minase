@@ -10,12 +10,12 @@ use minase::training::{
     records::{self, HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use super::{
     Error, Lookahead, Result, compute_lookahead, estimate_k, is_validation,
     validate_lambda_override,
 };
+use crate::nn::{hex, sha256};
 
 /// 教師用Kを共有する分類。ファイル順で最初に現れた分類から番号を付ける。
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -152,7 +152,7 @@ impl InputProvenance {
             games
                 .iter()
                 .map(|game| {
-                    let digest = Sha256::digest(game.id.as_bytes());
+                    let digest = sha256(game.id.as_bytes());
                     let prefix = u64::from_le_bytes(digest[..8].try_into().unwrap());
                     (game.game, prefix.is_multiple_of(20))
                 })
@@ -194,7 +194,7 @@ impl MappedFile {
         let mut sidecar = path.as_os_str().to_os_string();
         sidecar.push(".provenance.json");
         let provenance = InputProvenance::read(Path::new(&sidecar))?;
-        let checksum = format!("{:x}", Sha256::digest(&map));
+        let checksum = hex(&sha256(&map));
         if !provenance.mnsd_sha256.eq_ignore_ascii_case(&checksum) {
             return Err(invalid(path, "provenance MNSD SHA-256 mismatch"));
         }

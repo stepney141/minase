@@ -1,10 +1,9 @@
 use super::{Error, Masks, Model, Parameter, Parameters, Result, Shape};
-use crate::nn::{AdamWGroup, BestEpoch};
+use crate::nn::{AdamWGroup, BestEpoch, sha256};
 use crate::nnue::{
     data::InputFeatureSet,
     reference::{AdamW, AdamWConfig},
 };
-use sha2::{Digest, Sha256};
 use std::path::Path;
 
 const MAGIC: &[u8; 8] = b"MNTRCKPT";
@@ -157,7 +156,7 @@ impl Checkpoint {
         }
         floats(&mut bytes, &self.model.initial_linear);
         floats(&mut bytes, &self.model.initial_virtual);
-        bytes.extend_from_slice(&Sha256::digest(&bytes));
+        bytes.extend_from_slice(&sha256(&bytes));
         Ok(bytes)
     }
     /// 保存形式、配列長、有限性、マスクと検査和を検査して復号する。
@@ -166,7 +165,7 @@ impl Checkpoint {
             .len()
             .checked_sub(32)
             .ok_or(Error::Format("checkpoint length"))?;
-        if Sha256::digest(&bytes[..end])[..] != bytes[end..] {
+        if sha256(&bytes[..end])[..] != bytes[end..] {
             return Err(Error::Format("checkpoint SHA-256"));
         }
         let mut r = Reader::new(&bytes[..end]);

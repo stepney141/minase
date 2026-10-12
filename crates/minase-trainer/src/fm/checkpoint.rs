@@ -1,7 +1,6 @@
 use super::{Adam, GradientNorm, Model, Result, model::PARAMETERS};
-use crate::nn::{AdamWGroup, BestEpoch};
+use crate::nn::{AdamWGroup, BestEpoch, sha256};
 use minase::eval::{features::FEATURE_COUNT, pst::FM_RANK};
-use sha2::{Digest, Sha256};
 use std::path::Path;
 
 const MAGIC: &[u8; 8] = b"MNFMCKPT";
@@ -240,13 +239,13 @@ pub(super) fn envelope(architecture: &str) -> Vec<u8> {
 }
 
 pub(super) fn seal(mut bytes: Vec<u8>) -> Vec<u8> {
-    bytes.extend_from_slice(&Sha256::digest(&bytes));
+    bytes.extend_from_slice(&sha256(&bytes));
     bytes
 }
 
 pub(super) fn open(bytes: &[u8]) -> Result<Reader<'_>> {
     let end = bytes.len().checked_sub(32).ok_or("checkpoint length")?;
-    if Sha256::digest(&bytes[..end])[..] != bytes[end..] {
+    if sha256(&bytes[..end])[..] != bytes[end..] {
         return Err("checkpoint SHA-256".into());
     }
     let mut reader = Reader::new(&bytes[..end]);

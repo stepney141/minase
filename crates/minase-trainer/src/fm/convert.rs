@@ -5,10 +5,10 @@ use super::{
     report::{ValidationReport, scale_report},
     zero_correction_report,
 };
+use crate::nn::{hex, sha256};
 use clap::{Args, Subcommand};
 use minase::eval::pst::{FmWeights, Pst};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::Write,
@@ -106,7 +106,7 @@ pub struct ScaleReport {
 }
 
 fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex(&sha256(bytes))
 }
 
 fn require_new(path: &Path) -> Result<()> {

@@ -2,8 +2,7 @@ use super::{
     Adam, Error, Model, Result,
     model::{CANONICAL_ROWS, LINEAR_MAX, LINEAR_MIN},
 };
-use crate::nn::BestEpoch;
-use sha2::{Digest, Sha256};
+use crate::nn::{BestEpoch, sha256};
 use std::path::Path;
 
 const MAGIC: &[u8; 8] = b"MNTRCKPT";
@@ -198,7 +197,7 @@ pub(super) fn envelope(architecture: &str) -> Vec<u8> {
 }
 
 pub(super) fn seal(mut bytes: Vec<u8>) -> Vec<u8> {
-    bytes.extend_from_slice(&Sha256::digest(&bytes));
+    bytes.extend_from_slice(&sha256(&bytes));
     bytes
 }
 
@@ -207,7 +206,7 @@ pub(super) fn open(bytes: &[u8]) -> Result<Reader<'_>> {
         .len()
         .checked_sub(32)
         .ok_or(Error::Format("checkpoint length"))?;
-    if Sha256::digest(&bytes[..end])[..] != bytes[end..] {
+    if sha256(&bytes[..end])[..] != bytes[end..] {
         return Err(Error::Format("checkpoint SHA-256"));
     }
     let mut reader = Reader::new(&bytes[..end]);

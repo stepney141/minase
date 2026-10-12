@@ -1,5 +1,5 @@
 use super::*;
-use crate::nn::BestEpoch;
+use crate::nn::{BestEpoch, hex, sha256};
 use crate::{
     data::{Dataset, epoch_permutation},
     nnue::{
@@ -13,7 +13,6 @@ use minase::training::{
     records::{HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
 };
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
-use sha2::{Digest, Sha256};
 use std::{
     cell::Cell,
     fs::{self, File},
@@ -283,7 +282,7 @@ impl Fixture {
         Provenance {
             format: "minase-provenance".into(),
             version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
+            mnsd_sha256: hex(&sha256(&bytes)),
             teacher: Teacher {
                 generation_commit: "1".repeat(40),
                 network_checksum: "02".repeat(32),
@@ -510,7 +509,7 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
     let mut bytes = fs::read(&args.base).unwrap();
     let last = bytes.len() - 1;
     bytes[last] ^= 1;
-    let checksum = Sha256::digest(&bytes[80..]);
+    let checksum = sha256(&bytes[80..]);
     bytes[48..80].copy_from_slice(&checksum);
     fs::write(&args.base, bytes).unwrap();
     base::read(&args.base).unwrap();
@@ -666,7 +665,7 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
                 let mut bytes = fs::read(&args.base).unwrap();
                 let last = bytes.len() - 1;
                 bytes[last] ^= 1;
-                let checksum = Sha256::digest(&bytes[80..]);
+                let checksum = sha256(&bytes[80..]);
                 bytes[48..80].copy_from_slice(&checksum);
                 fs::write(&args.base, bytes).unwrap();
             }
@@ -685,7 +684,7 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
                 fs::write(&args.data[0], &bytes).unwrap();
                 let path = fixture.0.join("records.bin.provenance.json");
                 let mut provenance = Provenance::read(File::open(&path).unwrap()).unwrap();
-                provenance.mnsd_sha256 = format!("{:x}", Sha256::digest(&bytes));
+                provenance.mnsd_sha256 = hex(&sha256(&bytes));
                 provenance.write(File::create(path).unwrap()).unwrap();
             }
             "provenance" => {

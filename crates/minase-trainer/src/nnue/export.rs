@@ -11,10 +11,10 @@ use minase::eval::{
     },
 };
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
 use crate::{
     data::{Dataset, epoch_permutation},
+    nn::{Sha256Hasher, hex},
     nnue::{
         data::{self, InputFeatureSet, build_batches},
         model::{self, Checkpoint, quantize},
@@ -171,7 +171,7 @@ fn measure<F: FeatureSet>(
     let network = Network::<F, DirectScrelu>::decode(written).map_err(Error::Mnue)?;
     let mut sum = 0.0;
     let mut maximum = 0.0_f64;
-    let mut checksum = Sha256::new();
+    let mut checksum = Sha256Hasher::default();
     for batch_indices in indices.chunks(REFERENCE_BATCH) {
         let batch = build_batches(
             dataset,
@@ -193,7 +193,7 @@ fn measure<F: FeatureSet>(
             }
             sum += error;
             maximum = maximum.max(error);
-            checksum.update(index.to_le_bytes());
+            checksum.update(&index.to_le_bytes());
         }
     }
     let mean = sum / indices.len() as f64;
@@ -202,7 +202,7 @@ fn measure<F: FeatureSet>(
         samples: indices.len(),
         seed: checkpoint.progress.seed,
         split: "validation",
-        indices_sha256: format!("{:x}", checksum.finalize()),
+        indices_sha256: hex(&checksum.finalize()),
         mean_absolute_error_cp: mean,
         max_absolute_error_cp: maximum,
         limit_cp: limit,

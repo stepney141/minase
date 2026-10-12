@@ -2,10 +2,12 @@ use super::{
     Args, Distribution, GradientNorm, Result, ZeroCorrectionReport,
     export::{CorrectionDistribution, QuantizationReport},
 };
-use crate::{data::Dataset, nn::atomic_write};
+use crate::{
+    data::Dataset,
+    nn::{Sha256Hasher, atomic_write, hex, sha256},
+};
 use serde::Serialize;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -79,15 +81,15 @@ pub(super) fn configuration(
     let files = dataset.paths().zip(dataset.headers()).map(|(path, header)| {
         let mut sidecar = path.as_os_str().to_owned();
         sidecar.push(".provenance.json");
-        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&digest(&header.encode()))}))
+        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&sha256(&header.encode()))}))
     }).collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
     let preprocessing = json!({"feature_observations":counts, "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
-    let config_hash = digest(&serde_json::to_vec(&settings)?);
-    let input_hash = digest(&serde_json::to_vec(
+    let config_hash = sha256(&serde_json::to_vec(&settings)?);
+    let input_hash = sha256(&serde_json::to_vec(
         &json!({"inputs":inputs,"preprocessing":preprocessing}),
     )?);
     Ok(Configuration {
@@ -98,16 +100,9 @@ pub(super) fn configuration(
     })
 }
 
-pub(crate) fn digest(bytes: &[u8]) -> [u8; 32] {
-    Sha256::digest(bytes).into()
-}
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|v| format!("{v:02x}")).collect()
-}
-
 pub(crate) fn file_record(path: &Path) -> Result<Value> {
     let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
+    let mut hasher = Sha256Hasher::default();
     let mut buffer = [0_u8; 65536];
     loop {
         let n = file.read(&mut buffer)?;
@@ -120,9 +115,9 @@ pub(crate) fn file_record(path: &Path) -> Result<Value> {
 }
 
 pub(crate) fn hash_u64(values: &[u64]) -> String {
-    let mut hash = Sha256::new();
+    let mut hash = Sha256Hasher::default();
     for v in values {
-        hash.update(v.to_le_bytes());
+        hash.update(&v.to_le_bytes());
     }
     hex(&hash.finalize())
 }

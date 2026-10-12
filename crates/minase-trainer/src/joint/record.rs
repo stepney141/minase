@@ -1,7 +1,8 @@
 use super::{Args, Distribution, GradientNorm, QuantizationReport, Result};
 use crate::{
     data::Dataset,
-    fm::record::{Configuration, digest, file_record, hash_u64, hex},
+    fm::record::{Configuration, file_record, hash_u64},
+    nn::{hex, sha256},
 };
 use serde::Serialize;
 use serde_json::json;
@@ -80,15 +81,15 @@ pub(super) fn configuration(
     let files = dataset.paths().zip(dataset.headers()).map(|(path, header)| {
         let mut sidecar = path.as_os_str().to_owned();
         sidecar.push(".provenance.json");
-        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&digest(&header.encode()))}))
+        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&sha256(&header.encode()))}))
     }).collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "base":file_record(&args.base)?, "pst_init":file_record(&args.pst_init)?, "fm_init":file_record(&args.fm_init)?, "fm_reference":file_record(&args.fm_reference)?});
     let preprocessing = json!({"feature_observations":counts, "mask_mismatches":mask_mismatches, "removal_reference":"v0", "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
-    let config_hash = digest(&serde_json::to_vec(&settings)?);
-    let input_hash = digest(&serde_json::to_vec(
+    let config_hash = sha256(&serde_json::to_vec(&settings)?);
+    let input_hash = sha256(&serde_json::to_vec(
         &json!({"inputs":inputs,"preprocessing":preprocessing}),
     )?);
     Ok(Configuration {
