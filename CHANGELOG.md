@@ -1,3 +1,15 @@
+## v2.4.0 (2026-10-12)
+
+### Features
+
+- **search:** Penalize searched captures when a quiet move cuts off
+- **search:** Try killer moves before a losing first capture in shallow zero-window nodes
+- **search:** Order quiescence capture groups by capture history
+- **search:** Carry the capture history across root searches
+- **search:** Break quiet move history ties by the PST delta
+- **search:** Order root moves by the subtree sizes of the previous iteration
+- **search:** Add a history malus with separate bonus and malus scales
+
 ## v2.3.0 (2026-10-08)
 
 ### Features
