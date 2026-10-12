@@ -240,6 +240,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
             .fold(0, i32::max);
         let scale = (f64::from(k) * 65_536.0 / (127.0 * 4_096.0)).round_ties_even() as i64;
         Ok(Self {
+            accumulator_stats: Default::default(),
             linear,
             weights,
             biases,

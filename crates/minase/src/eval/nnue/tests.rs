@@ -1488,6 +1488,41 @@ fn royal_context_changes_preserve_incremental_evaluation<F: FeatureSet>() {
     }
 }
 
+both_feature_sets!(accumulator_counts_include_roots_moves_and_nulls);
+/// フェーズ4診断: 根と文脈変更を再計算、null moveを差分更新として数える。
+fn accumulator_counts_include_roots_moves_and_nulls<F: FeatureSet>() {
+    let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(4)).unwrap();
+    let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();
+    let enemy = PieceCode::new(Color::White, PieceKind::King).unwrap();
+    // 通常の王移動と、両視点の文脈を同時に変える王の捕獲を検査する。
+    for enemy_square in [sq(11, 11), sq(7, 0)] {
+        let mut position =
+            position_from_codes(Color::Black, &[(sq(6, 0), king), (enemy_square, enemy)]);
+        let before = net.refresh_accumulator(&position);
+        #[cfg(feature = "invariants")]
+        net.assert_accumulator(&position, &before, 0);
+        let undo = position.make_move_unchecked(
+            Move {
+                from: sq(6, 0),
+                to: sq(7, 0),
+                mid: None,
+                promote: false,
+            },
+            MoveRules::standard(),
+        );
+        let mut after = Accumulator::new(net.width());
+        net.update_accumulator_after_move(&before, &mut after, &position, &undo);
+        #[cfg(feature = "invariants")]
+        net.assert_accumulator(&position, &after, 1);
+        let mut after_null = Accumulator::new(net.width());
+        net.update_accumulator_after_null(&after, &mut after_null, None);
+        let counts = net.take_accumulator_stats();
+        assert_eq!(counts.updates(), 3);
+        assert_eq!(counts.refreshes, if F::NAME == "P" { 1 } else { 2 });
+        assert_eq!(net.take_accumulator_stats(), AccumulatorStats::default());
+    }
+}
+
 /// 区分へのP型の行の複写は、鏡映のユニット交換も含めて整数出力を保存する。
 #[test]
 fn copied_p_rows_produce_identical_half_kp_evaluations() {

@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use minase::eval::Nnue;
+use minase::eval::nnue::AccumulatorStats;
 use minase::search::{
     DEFAULT_THREADS, MAX_PLY, SearchLimits, SearchSnapshot, TranspositionTable, search,
 };
@@ -150,6 +151,8 @@ fn parse_repetitions(text: &str) -> Result<NonZeroUsize, String> {
 
 /// bench 1回分の集計。
 struct BenchRun {
+    /// 全探索ワーカーの累算器更新・再計算の回数。
+    accumulators: AccumulatorStats,
     /// 計測した全局面の探索統計。
     #[cfg(feature = "search-stats")]
     stats: minase::search::SearchStats,
@@ -159,6 +162,22 @@ struct BenchRun {
     nodes: u64,
     /// 各局面の探索時間の合計。
     elapsed: f64,
+}
+
+/// 全更新を分母とし、根の初期化も含む再計算率を出力する。
+fn print_accumulator_stats(stats: AccumulatorStats) {
+    let updates = stats.updates();
+    print!(
+        "accumulators: accumulator_updates={updates} accumulator_refreshes={}",
+        stats.refreshes
+    );
+    if updates != 0 {
+        print!(
+            " refresh_fraction={:.6}",
+            stats.refreshes as f64 / updates as f64
+        );
+    }
+    println!();
 }
 
 /// 回数と、分母が正の項目の比だけを1行に整形する。
@@ -251,6 +270,9 @@ fn run_bench(
     let mut reached_depth = u32::MAX;
     let mut total_nodes = 0_u64;
     let mut total_elapsed = 0.0_f64;
+    let mut accumulators = AccumulatorStats::default();
+    // 前の探索や診断の計数を計測へ持ち込まない。
+    nnue.take_accumulator_stats();
     #[cfg(feature = "search-stats")]
     let mut stats = minase::search::SearchStats::default();
 
@@ -271,6 +293,8 @@ fn run_bench(
         )
         .expect("bench search input must be valid");
         let elapsed = position_start.elapsed();
+        // searchは全補助ワーカーをjoinして戻る。主ワーカー分も計測外で回収する。
+        accumulators += nnue.take_accumulator_stats();
         #[cfg(feature = "search-stats")]
         {
             stats += result.stats;
@@ -303,6 +327,7 @@ fn run_bench(
     }
 
     BenchRun {
+        accumulators,
         #[cfg(feature = "search-stats")]
         stats,
         depth: reached_depth,
@@ -343,6 +368,7 @@ pub(super) fn main(arguments: Arguments) {
             result.elapsed,
             result.nps()
         );
+        print_accumulator_stats(result.accumulators);
         #[cfg(feature = "search-stats")]
         println!("{}", format_stats(&result.stats));
         return;
@@ -373,6 +399,7 @@ pub(super) fn main(arguments: Arguments) {
             result.elapsed,
             result.nps()
         );
+        print_accumulator_stats(result.accumulators);
         #[cfg(feature = "search-stats")]
         println!("{}", format_stats(&result.stats));
         runs.push(result);
@@ -388,6 +415,12 @@ pub(super) fn main(arguments: Arguments) {
         median_f64(&mut elapsed),
         median_f64(&mut nps)
     );
+    // 中央値ではなく、ウォームアップを除く計測反復の合計を使う。
+    let mut accumulators = AccumulatorStats::default();
+    for run in &runs {
+        accumulators += run.accumulators;
+    }
+    print_accumulator_stats(accumulators);
     #[cfg(feature = "search-stats")]
     {
         let mut stats = minase::search::SearchStats::default();
@@ -492,5 +525,27 @@ mod tests {
         let second = run();
         assert!(first > 0, "the bench search must count nodes");
         assert_eq!(first, second, "total node counts must be deterministic");
+    }
+
+    /// フェーズ4診断: P型の再計算は局面・ワーカーごとの根1回だけで、反復へ持ち越さない。
+    #[test]
+    fn accumulator_counts_include_all_workers_and_exclude_previous_runs() {
+        let nnue = Nnue::decode(include_bytes!("../../../nets/nnue.bin")).unwrap();
+        let codes = parse_rule_set("engine-default").unwrap();
+        let rules = Rules::from_codes(&codes).unwrap();
+        let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
+        let mut table = TranspositionTable::new(1).unwrap();
+        for count in [1, 2] {
+            let threads = NonZeroUsize::new(count).unwrap();
+            for _ in 0..2 {
+                let run = run_bench(&nnue, rules, &limits, threads, &mut table, false);
+                assert_eq!(
+                    run.accumulators.refreshes,
+                    (BENCH_POSITIONS.len() * count) as u64
+                );
+                assert!(run.accumulators.incremental_updates > 0);
+                assert_eq!(nnue.take_accumulator_stats(), AccumulatorStats::default());
+            }
+        }
     }
 }

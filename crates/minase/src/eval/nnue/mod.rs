@@ -4,6 +4,7 @@ pub(crate) mod accumulator;
 pub mod feature_set;
 mod format;
 pub mod head;
+mod stats;
 #[cfg(test)]
 mod tests;
 
@@ -12,6 +13,7 @@ use feature_set::{FeatureSet, P};
 pub use format::{EncodeInput, Error, architecture, encode};
 use head::{DirectScrelu, Head};
 use minase_core::{Color, Move, PieceCode, PieceKind, Position};
+pub use stats::AccumulatorStats;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
 
@@ -19,6 +21,7 @@ const EVALUATION_LIMIT: i32 = 28_999;
 
 /// 検証済みのMNUE整数重みと探索用駒価値。
 pub struct Network<F: FeatureSet, H: Head> {
+    accumulator_stats: stats::SharedStats,
     linear: Box<[[i16; 2]]>,
     weights: Box<[i16]>,
     biases: Box<[i32]>,

@@ -2,7 +2,7 @@
 
 use super::feature_set::FeatureSet;
 use super::head::Head;
-use super::{ActiveFeatureSet, EVALUATION_LIMIT, Network};
+use super::{ActiveFeatureSet, EVALUATION_LIMIT, Network, stats};
 use crate::eval::features::{active_features_for, feature_index, lion_feature_index};
 use minase_core::position::Undo;
 use minase_core::{Color, Position, Square};
@@ -78,6 +78,13 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
 
     /// 両視点の累算値を完全再計算する。
     pub(crate) fn refresh_accumulator(&self, position: &Position) -> Accumulator<F> {
+        stats::attach(&self.accumulator_stats);
+        stats::record(true);
+        self.recompute_accumulator(position)
+    }
+
+    /// 整合性検査からも使う、計数を伴わない再計算。
+    fn recompute_accumulator(&self, position: &Position) -> Accumulator<F> {
         let mut accumulator = Accumulator::new(self.width);
         accumulator.piece_count = position.occupied().popcount();
         for perspective in Color::ALL {
@@ -103,6 +110,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
             .expect("move destination contains moved piece");
         after.copy_from(before);
         after.piece_count -= undo.captured.iter().flatten().count() as u32;
+        let mut refreshed = false;
         for perspective in Color::ALL {
             let index = perspective.index();
             after.contexts[index] =
@@ -150,12 +158,14 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
                 );
             }
             if !same_context {
+                refreshed = true;
                 after.hidden[index].copy_from_slice(&self.biases);
                 active_features_for(perspective, position_after, |feature| {
                     self.add_hidden(after, perspective, feature, 1);
                 });
             }
         }
+        stats::record(refreshed);
     }
 
     /// 親の累算値を子へ複写し、null moveで消える先獅子特徴を除く。
@@ -165,6 +175,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         after: &mut Accumulator<F>,
         lion_before: Option<Square>,
     ) {
+        stats::record(false);
         after.copy_from(before);
         if let Some(square) = lion_before {
             for perspective in Color::ALL {
@@ -214,7 +225,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         use minase_core::notation::sfen::{SetupPosition, to_extended_sfen};
         use std::fmt::Write;
 
-        let recomputed = self.refresh_accumulator(position);
+        let recomputed = self.recompute_accumulator(position);
         if *incremental == recomputed {
             return;
         }
