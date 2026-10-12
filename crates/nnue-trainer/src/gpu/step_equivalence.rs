@@ -2,9 +2,10 @@
 
 use super::{Device, Error, HostRing, Result, Step, StepResult, equivalence::Report};
 use crate::{
-    data::{BatchSlot, CANONICAL_ROWS, InputFeatureSet},
+    data::{BatchSlot, CANONICAL_ROWS, InputFeatureSet, build_targets},
     model::{Masks, Model, Parameter, Parameters, Shape},
-    reference::{self, AdamW, AdamWConfig, AdamWGroup, Losses, RemovalReference},
+    options::TrainingOptions,
+    reference::{self, AdamW, AdamWConfig, Losses, RemovalReference},
 };
 use minase::eval::features::{FEATURE_COUNT, mirror_feature};
 
@@ -23,16 +24,32 @@ struct Fixture {
 }
 
 /// CLIとGPUテストで同じ全更新の検査を使う。
-pub(super) fn run(device: Device, shape: Shape, batch: &BatchSlot, seed: u64) -> Result<Report> {
-    let fixture = fixture(shape, batch, seed)?;
-    let targets = reference::targets(batch, &[500.0, 1000.0, 1500.0])?;
-    let mut report = check(device.clone(), &fixture, batch, &targets)?;
+pub(super) fn run(
+    device: Device,
+    shape: Shape,
+    batch: &BatchSlot,
+    seed: u64,
+    training: &TrainingOptions,
+) -> Result<Report> {
+    let fixture = fixture(shape, batch, seed, training.optimizer())?;
+    let targets = build_targets(
+        batch,
+        &[500.0, 1000.0, 1500.0],
+        &[training.lambda_override; 3],
+    )?;
+    let mut report = check(
+        device.clone(),
+        &fixture,
+        batch,
+        &targets,
+        training.removal_penalty,
+    )?;
     drop(fixture);
-    report.merge(check_clipping(device, shape, seed)?);
+    report.merge(check_clipping(device, shape, seed, training)?);
     Ok(report)
 }
 
-fn fixture(shape: Shape, batch: &BatchSlot, seed: u64) -> Result<Fixture> {
+fn fixture(shape: Shape, batch: &BatchSlot, seed: u64, config: AdamWConfig) -> Result<Fixture> {
     let mut random = Random(seed ^ 0x4b31_79de_725f_c608);
     let first_present: Vec<_> = batch
         .first_layer_inverse()
@@ -110,16 +127,7 @@ fn fixture(shape: Shape, batch: &BatchSlot, seed: u64) -> Result<Fixture> {
     model.parameter_mut(Parameter::OutputBias)[0] = random.centered() * 0.1;
     model.fix_unobserved();
 
-    let mut optimizer = AdamW::new(
-        shape,
-        AdamWConfig {
-            linear: AdamWGroup {
-                lr: 0.03,
-                weight_decay: 0.02,
-            },
-            ..AdamWConfig::default()
-        },
-    )?;
+    let mut optimizer = AdamW::new(shape, config)?;
     optimizer.step = 7;
     for parameter in Parameter::ALL {
         for value in &mut optimizer.m[parameter] {
@@ -172,7 +180,13 @@ fn fixture(shape: Shape, batch: &BatchSlot, seed: u64) -> Result<Fixture> {
     })
 }
 
-fn check(device: Device, fixture: &Fixture, batch: &BatchSlot, targets: &[f32]) -> Result<Report> {
+fn check(
+    device: Device,
+    fixture: &Fixture,
+    batch: &BatchSlot,
+    targets: &[f32],
+    removal_penalty: f64,
+) -> Result<Report> {
     let initial = &fixture.model;
     let shape = initial.shape();
     let removal = RemovalReference::v0();
@@ -184,6 +198,7 @@ fn check(device: Device, fixture: &Fixture, batch: &BatchSlot, targets: &[f32]) 
         &fixture.optimizer,
         &removal,
         batch.len(),
+        removal_penalty,
     )?;
     let mut repeated = Step::new(
         device.clone(),
@@ -191,6 +206,7 @@ fn check(device: Device, fixture: &Fixture, batch: &BatchSlot, targets: &[f32]) 
         &fixture.optimizer,
         &removal,
         batch.len(),
+        removal_penalty,
     )?;
     let mut first_ring = HostRing::new(&device, shape.feature_set(), batch.len())?;
     let mut repeated_ring = HostRing::new(&device, shape.feature_set(), batch.len())?;
@@ -202,7 +218,7 @@ fn check(device: Device, fixture: &Fixture, batch: &BatchSlot, targets: &[f32]) 
     };
     let mut pending = None;
     for update in 0..3 {
-        let gradients = cpu_gradients(&cpu, batch, targets, &removal)?;
+        let gradients = cpu_gradients(&cpu, batch, targets, &removal, removal_penalty)?;
         cpu_optimizer.update(&mut cpu, &gradients.parameters)?;
         let first_ticket = first_ring.upload(batch)?;
         let first_result = first.enqueue(&mut first_ring, &first_ticket, targets)?;
@@ -239,10 +255,18 @@ fn cpu_gradients(
     batch: &BatchSlot,
     targets: &[f32],
     removal_reference: &RemovalReference,
+    removal_penalty: f64,
 ) -> Result<reference::Gradients> {
     let weights = reference::fold(model)?;
     let forward = reference::forward(model, batch, &weights)?;
-    let removal = reference::removal_forward(model, batch, &weights, &forward, removal_reference)?;
+    let removal = reference::removal_forward(
+        model,
+        batch,
+        &weights,
+        &forward,
+        removal_reference,
+        removal_penalty,
+    )?;
     let output = reference::output_backward(model, batch, &forward, &removal, targets)?;
     let mut parameters = Parameters::zeros(model.shape());
     let losses = reference::reduce_partials(model, &output, &removal, &mut parameters)?;
@@ -260,8 +284,14 @@ fn cpu_gradients(
     Ok(reference::Gradients { losses, parameters })
 }
 
-fn clipping_fixture(shape: Shape, batch: &BatchSlot, seed: u64, sign: f32) -> Result<Fixture> {
-    let mut fixture = fixture(shape, batch, seed)?;
+fn clipping_fixture(
+    shape: Shape,
+    batch: &BatchSlot,
+    seed: u64,
+    sign: f32,
+    config: AdamWConfig,
+) -> Result<Fixture> {
+    let mut fixture = fixture(shape, batch, seed, config)?;
     fixture.idle.clear();
     let model = &mut fixture.model;
     let unused = |mask: &[bool], starts: &[u32]| {
@@ -339,14 +369,35 @@ fn clipping_fixture(shape: Shape, batch: &BatchSlot, seed: u64, sign: f32) -> Re
     Ok(fixture)
 }
 
-fn check_clipping(device: Device, shape: Shape, seed: u64) -> Result<Report> {
+fn check_clipping(
+    device: Device,
+    shape: Shape,
+    seed: u64,
+    training: &TrainingOptions,
+) -> Result<Report> {
     let batch = super::equivalence::synthetic_batch(shape.feature_set(), 3, seed)?;
-    let targets = reference::targets(&batch, &[500.0, 1000.0, 1500.0])?;
-    let positive = clipping_fixture(shape, &batch, seed, 1.0)?;
-    let mut report = check(device.clone(), &positive, &batch, &targets)?;
+    let targets = build_targets(
+        &batch,
+        &[500.0, 1000.0, 1500.0],
+        &[training.lambda_override; 3],
+    )?;
+    let positive = clipping_fixture(shape, &batch, seed, 1.0, training.optimizer())?;
+    let mut report = check(
+        device.clone(),
+        &positive,
+        &batch,
+        &targets,
+        training.removal_penalty,
+    )?;
     drop(positive);
-    let negative = clipping_fixture(shape, &batch, seed, -1.0)?;
-    report.merge(check(device, &negative, &batch, &targets)?);
+    let negative = clipping_fixture(shape, &batch, seed, -1.0, training.optimizer())?;
+    report.merge(check(
+        device,
+        &negative,
+        &batch,
+        &targets,
+        training.removal_penalty,
+    )?);
     Ok(report)
 }
 
@@ -519,9 +570,9 @@ fn idle_rows(
                 "idle fixture has a nonzero gradient".into(),
             ));
         }
-        if parameters[p][i] >= fixture.model.parameters()[p][i] {
+        if parameters[p][i] > fixture.model.parameters()[p][i] {
             return Err(Error::Equivalence(format!(
-                "zero-gradient {} did not update",
+                "zero-gradient {} increased against positive momentum and decay",
                 p.name()
             )));
         }
@@ -536,6 +587,14 @@ fn idle_rows(
 mod tests {
     use super::*;
     use crate::gpu::equivalence::synthetic_batch;
+
+    fn fixture_config() -> AdamWConfig {
+        TrainingOptions {
+            weight_decay_linear: 0.02,
+            ..TrainingOptions::default()
+        }
+        .optimizer()
+    }
 
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
@@ -566,7 +625,8 @@ mod tests {
             }
             model.parameter_mut(Parameter::OutputBias)[0] = -100.0;
             let optimizer = AdamW::new(shape, AdamWConfig::default()).unwrap();
-            let mut step = Step::new(device.clone(), &model, &optimizer, &removal, 1).unwrap();
+            let mut step =
+                Step::new(device.clone(), &model, &optimizer, &removal, 1, 1000.0).unwrap();
             let mut ring = HostRing::new(&device, set, 1).unwrap();
             let ticket = ring.upload(&batch).unwrap();
             let result = step.enqueue(&mut ring, &ticket, &[1.0]).unwrap();
@@ -586,11 +646,11 @@ mod tests {
         let shape = Shape::new(set, width, 1000.0).unwrap();
         for batch_size in [1, 64, 129, 4096] {
             let batch = synthetic_batch(set, batch_size, 137 + batch_size as u64).unwrap();
-            let fixture = fixture(shape, &batch, 293).unwrap();
-            let targets = reference::targets(&batch, &[500.0, 1000.0, 1500.0]).unwrap();
-            check(device.clone(), &fixture, &batch, &targets).unwrap();
+            let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
+            let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
+            check(device.clone(), &fixture, &batch, &targets, 1000.0).unwrap();
         }
-        check_clipping(device, shape, 293).unwrap();
+        check_clipping(device, shape, 293, &TrainingOptions::default()).unwrap();
     }
 
     #[test]
@@ -598,10 +658,16 @@ mod tests {
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape = Shape::new(set, 6, 1000.0).unwrap();
             let batch = synthetic_batch(set, 129, 71).unwrap();
-            let fixture = fixture(shape, &batch, 293).unwrap();
-            let targets = reference::targets(&batch, &[500.0, 1000.0, 1500.0]).unwrap();
-            let gradients =
-                cpu_gradients(&fixture.model, &batch, &targets, &RemovalReference::v0()).unwrap();
+            let fixture = fixture(shape, &batch, 293, fixture_config()).unwrap();
+            let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
+            let gradients = cpu_gradients(
+                &fixture.model,
+                &batch,
+                &targets,
+                &RemovalReference::v0(),
+                1000.0,
+            )
+            .unwrap();
             assert!(gradients.losses.auxiliary > 0.0);
             assert!(
                 gradients.parameters[Parameter::FirstLayer]
@@ -625,6 +691,12 @@ mod tests {
                 &optimizer,
             )
             .unwrap();
+            for probe in &fixture.idle {
+                assert!(
+                    updated.parameters()[probe.parameter][probe.index]
+                        < fixture.model.parameters()[probe.parameter][probe.index]
+                );
+            }
             frozen_rows(&fixture, updated.parameters(), &optimizer).unwrap();
             for (parameter, mask, width) in [
                 (Parameter::Linear, fixture.model.masks().canonical(), 2),
@@ -649,6 +721,90 @@ mod tests {
 
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_step_matches_parallel_cpu_with_mixed_targets_and_custom_coefficients() {
+        // 指示書: CPU実行の並列1更新とCUDA更新を同じ教師値と設定で比較する。
+        let device = Device::new(0).unwrap();
+        let training = TrainingOptions {
+            lr_linear: 0.02,
+            weight_decay_linear: 0.003,
+            lr_ft: 0.0007,
+            weight_decay_ft: 0.0002,
+            lr_head: 0.0004,
+            weight_decay_head: 0.0003,
+            removal_penalty: 137.5,
+            lambda_override: 0.75,
+        };
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            let shape = Shape::new(set, 6, 1000.0).unwrap();
+            let batch = synthetic_batch(set, 5, 71).unwrap();
+            let fixture = fixture(shape, &batch, 293, training.optimizer()).unwrap();
+            let targets = build_targets(
+                &batch,
+                &[500.0, 1000.0, 1500.0],
+                &[training.lambda_override; 3],
+            )
+            .unwrap();
+            let removal = RemovalReference::v0();
+            // 0もruntime引数として通し、補助損失を無効にした境界を保護する。
+            for penalty in [0.0, training.removal_penalty] {
+                let mut cpu = fixture.model.clone();
+                let mut cpu_optimizer = fixture.optimizer.clone();
+                let gradients = reference::loss_and_gradients_parallel(
+                    &cpu, &batch, &targets, &removal, penalty, 5,
+                )
+                .unwrap();
+                cpu_optimizer
+                    .update_parallel(&mut cpu, &gradients.parameters, 5)
+                    .unwrap();
+                let mut step = Step::new(
+                    device.clone(),
+                    &fixture.model,
+                    &fixture.optimizer,
+                    &removal,
+                    batch.len(),
+                    penalty,
+                )
+                .unwrap();
+                let mut ring = HostRing::new(&device, set, batch.len()).unwrap();
+                let ticket = ring.upload(&batch).unwrap();
+                let metrics = step
+                    .enqueue(&mut ring, &ticket, &targets)
+                    .unwrap()
+                    .collect()
+                    .unwrap();
+                let (parameters, optimizer) = step.snapshot().unwrap();
+                let mut report = Report {
+                    device_name: device.name().into(),
+                    comparisons: 0,
+                    max_absolute_error: 0.0,
+                    max_relative_error: 0.0,
+                };
+                report
+                    .number(
+                        "parallel CPU BCE",
+                        0,
+                        gradients.losses.bce,
+                        metrics.losses.bce,
+                    )
+                    .unwrap();
+                report
+                    .number(
+                        "parallel CPU auxiliary",
+                        0,
+                        gradients.losses.auxiliary,
+                        metrics.losses.auxiliary,
+                    )
+                    .unwrap();
+                compare_state(&mut report, &cpu, &cpu_optimizer, &parameters, &optimizer).unwrap();
+                if penalty == 0.0 {
+                    assert_eq!(metrics.losses.auxiliary, 0.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_step_queues_distinct_targets_and_preserves_uncollected_losses() {
         let device = Device::new(0).unwrap();
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
@@ -662,13 +818,13 @@ mod tests {
                 .zip([0.1, 0.9, 0.35])
                 .map(|(batch, value)| vec![value; batch.len()])
                 .collect();
-            let fixture = fixture(shape, &batches[0], 293).unwrap();
+            let fixture = fixture(shape, &batches[0], 293, fixture_config()).unwrap();
             let removal = RemovalReference::v0();
             let mut cpu = fixture.model.clone();
             let mut cpu_optimizer = fixture.optimizer.clone();
             let mut expected = Vec::new();
             for (batch, targets) in batches.iter().zip(&targets) {
-                let gradient = cpu_gradients(&cpu, batch, targets, &removal).unwrap();
+                let gradient = cpu_gradients(&cpu, batch, targets, &removal, 1000.0).unwrap();
                 cpu_optimizer
                     .update(&mut cpu, &gradient.parameters)
                     .unwrap();
@@ -680,6 +836,7 @@ mod tests {
                 &fixture.optimizer,
                 &removal,
                 129,
+                1000.0,
             )
             .unwrap();
             let mut ring = HostRing::new(&device, set, 129).unwrap();

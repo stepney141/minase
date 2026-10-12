@@ -2,8 +2,11 @@
 
 use super::{Device, Error, Evaluation, Evaluator, Result};
 use crate::{
-    data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE},
+    data::{
+        BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE, build_targets,
+    },
     model::{Masks, Model, Parameter, Parameters, Shape},
+    options::TrainingOptions,
     reference::{self, RemovalReference},
 };
 use minase::{
@@ -86,7 +89,14 @@ impl Report {
 
 /// 指定条件の合成入力を作り、GPUで2回実行してCPU参照と照合する。
 /// 前進、補助損失、全勾配、検証、1・3更新後の全状態と反復のビット一致を検査する。
-pub fn run(set: InputFeatureSet, width: usize, batch: usize, seed: u64) -> Result<Report> {
+pub fn run(
+    set: InputFeatureSet,
+    width: usize,
+    batch: usize,
+    seed: u64,
+    training: TrainingOptions,
+) -> Result<Report> {
+    training.validate()?;
     let shape = Shape::new(set, width, 1000.0)?;
     if !(1..=MAX_BATCH_SIZE).contains(&batch) {
         return Err(Error::Invalid("equivalence batch size"));
@@ -95,19 +105,37 @@ pub fn run(set: InputFeatureSet, width: usize, batch: usize, seed: u64) -> Resul
     let device = Device::new(0)?;
     let model = random_model(shape, seed)?;
     let removal_reference = RemovalReference::v0();
-    let mut evaluator = Evaluator::new(device.clone(), &model, &removal_reference, batch)?;
+    let mut evaluator = Evaluator::new(
+        device.clone(),
+        &model,
+        &removal_reference,
+        batch,
+        training.removal_penalty,
+    )?;
     let input = synthetic_batch(set, batch, seed)?;
     let mut report = check(
         &mut evaluator,
         &model,
         &removal_reference,
         &input,
-        &reference::targets(&input, &[500.0, 1000.0, 1500.0])?,
+        &build_targets(
+            &input,
+            &[500.0, 1000.0, 1500.0],
+            &[training.lambda_override; 3],
+        )?,
+        training.removal_penalty,
     )?;
     drop(evaluator);
     drop(model);
-    report.merge(check_removal_partitions(device.clone(), shape, seed)?);
-    report.merge(super::step_equivalence::run(device, shape, &input, seed)?);
+    report.merge(check_removal_partitions(
+        device.clone(),
+        shape,
+        seed,
+        &training,
+    )?);
+    report.merge(super::step_equivalence::run(
+        device, shape, &input, seed, &training,
+    )?);
     Ok(report)
 }
 
@@ -118,10 +146,18 @@ pub fn check(
     removal_reference: &RemovalReference,
     batch: &BatchSlot,
     targets: &[f32],
+    removal_penalty: f64,
 ) -> Result<Report> {
     let weights = reference::fold(model)?;
     let f = reference::forward(model, batch, &weights)?;
-    let removal = reference::removal_forward(model, batch, &weights, &f, removal_reference)?;
+    let removal = reference::removal_forward(
+        model,
+        batch,
+        &weights,
+        &f,
+        removal_reference,
+        removal_penalty,
+    )?;
     let output = reference::output_backward(model, batch, &f, &removal, targets)?;
     let mut gradients = Parameters::zeros(model.shape());
     let losses = reference::reduce_partials(model, &output, &removal, &mut gradients)?;
@@ -443,15 +479,31 @@ fn removal_partitions(shape: Shape, seed: u64) -> Result<(Model, BatchSlot, Remo
     Ok((model, batch, removal_reference))
 }
 
-fn check_removal_partitions(device: Device, shape: Shape, seed: u64) -> Result<Report> {
+fn check_removal_partitions(
+    device: Device,
+    shape: Shape,
+    seed: u64,
+    training: &TrainingOptions,
+) -> Result<Report> {
     let (model, batch, removal_reference) = removal_partitions(shape, seed)?;
-    let mut evaluator = Evaluator::new(device, &model, &removal_reference, batch.len())?;
+    let mut evaluator = Evaluator::new(
+        device,
+        &model,
+        &removal_reference,
+        batch.len(),
+        training.removal_penalty,
+    )?;
     check(
         &mut evaluator,
         &model,
         &removal_reference,
         &batch,
-        &reference::targets(&batch, &[500.0, 1000.0, 1500.0])?,
+        &build_targets(
+            &batch,
+            &[500.0, 1000.0, 1500.0],
+            &[training.lambda_override; 3],
+        )?,
+        training.removal_penalty,
     )
 }
 
@@ -560,7 +612,7 @@ mod tests {
                 }));
             }
             let shape = Shape::new(set, 6, 1000.0).unwrap();
-            let targets = reference::targets(&batch, &[500.0, 1000.0, 1500.0]).unwrap();
+            let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
             assert!(super::super::engine::validate_inputs(shape, 100, &batch, &targets).is_ok());
             assert!(super::super::engine::validate_inputs(shape, 99, &batch, &targets).is_err());
             assert!(
@@ -606,6 +658,7 @@ mod tests {
                     &weights,
                     &forward,
                     &removal_reference,
+                    1000.0,
                 )
                 .unwrap();
                 for (b, &column) in REMOVAL_COLUMNS.iter().enumerate() {
@@ -670,16 +723,44 @@ mod tests {
         let model = random_model(shape, 71).unwrap();
         let removal_reference = RemovalReference::v0();
         let mut evaluator =
-            Evaluator::new(device.clone(), &model, &removal_reference, 4096).unwrap();
+            Evaluator::new(device.clone(), &model, &removal_reference, 4096, 1000.0).unwrap();
         for n in [64, 4096, 100, 1, 129] {
             let batch = synthetic_batch(set, n, 43 + n as u64).unwrap();
-            let targets = reference::targets(&batch, &[500.0, 1000.0, 1500.0]).unwrap();
-            check(&mut evaluator, &model, &removal_reference, &batch, &targets).unwrap();
+            let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
+            check(
+                &mut evaluator,
+                &model,
+                &removal_reference,
+                &batch,
+                &targets,
+                1000.0,
+            )
+            .unwrap();
         }
         drop(evaluator);
         drop(model);
-        check_removal_partitions(device, shape, 71).unwrap();
+        check_removal_partitions(device, shape, 71, &TrainingOptions::default()).unwrap();
     }
+
+    #[test]
+    #[ignore = "requires a CUDA GPU and NVRTC"]
+    fn gpu_mixed_targets_and_custom_coefficients_match_reference_and_repeat() {
+        // 指示書: λ<1と全群の変更を含めても合成許容誤差とGPU反復のビット一致を保つ。
+        let training = TrainingOptions {
+            lr_linear: 0.02,
+            weight_decay_linear: 0.003,
+            lr_ft: 0.0007,
+            weight_decay_ft: 0.0002,
+            lr_head: 0.0004,
+            weight_decay_head: 0.0003,
+            removal_penalty: 137.5,
+            lambda_override: 0.75,
+        };
+        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+            run(set, 6, 5, 293, training).unwrap();
+        }
+    }
+
     macro_rules! gpu_case {
         ($name:ident, $set:expr, $width:expr) => {
             #[test]

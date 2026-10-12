@@ -330,6 +330,7 @@ pub struct Step {
     readbacks: [Arc<Readback>; 2],
     next_readback: usize,
     capacity: usize,
+    removal_penalty: f64,
     failed: Arc<AtomicBool>,
     profile: bool,
 }
@@ -341,9 +342,15 @@ impl Step {
         optimizer: &AdamW,
         reference: &RemovalReference,
         capacity: usize,
+        removal_penalty: f64,
     ) -> Result<Self> {
         if !(1..=MAX_BATCH_SIZE).contains(&capacity) {
             return Err(Error::Invalid("step capacity"));
+        }
+        if !removal_penalty.is_finite() || removal_penalty < 0.0 {
+            return Err(Error::Invalid(
+                "removal penalty must be finite and nonnegative",
+            ));
         }
         let optimizer = Optimizer::new(&device, model, optimizer)?;
         let kernels = Kernels::compile(&device)?;
@@ -368,6 +375,7 @@ impl Step {
             readbacks,
             next_readback: 0,
             capacity,
+            removal_penalty,
             failed: Arc::new(AtomicBool::new(false)),
             profile: false,
         })
@@ -451,6 +459,7 @@ impl Step {
                 &self.model,
                 input,
                 &mut self.buffers,
+                self.removal_penalty,
                 profile.as_mut(),
             )?;
             engine::output_backward(

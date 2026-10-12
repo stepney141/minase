@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 const MAGIC: &[u8; 8] = b"MNTRCKPT";
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 /// 完了したエポックのうち最良だったもの。エポック0は候補にしない。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -40,11 +40,22 @@ pub struct Checkpoint {
     pub model: Model,
     /// AdamWの全状態。
     pub optimizer: AdamW,
+    /// 駒除去差分の補助損失係数。
+    pub removal_penalty: f64,
+    /// 自己対局の教師混合比の上書き値。
+    pub lambda_override: f64,
     /// 学習の進捗とハッシュ。
     pub progress: Progress,
 }
 impl Checkpoint {
     fn validate(&self) -> Result<()> {
+        if !self.removal_penalty.is_finite()
+            || self.removal_penalty < 0.0
+            || !self.lambda_override.is_finite()
+            || !(0.0..=1.0).contains(&self.lambda_override)
+        {
+            return Err(Error::Invalid("checkpoint loss coefficients"));
+        }
         if self.model.shape() != self.optimizer.m.shape()
             || self.model.shape() != self.optimizer.v.shape()
         {
@@ -137,6 +148,8 @@ impl Checkpoint {
             bytes.extend(group.lr.to_le_bytes());
             bytes.extend(group.weight_decay.to_le_bytes());
         }
+        bytes.extend(self.removal_penalty.to_le_bytes());
+        bytes.extend(self.lambda_override.to_le_bytes());
         for params in [&self.model.parameters, &self.optimizer.m, &self.optimizer.v] {
             for p in Parameter::ALL {
                 floats(&mut bytes, &params[p]);
@@ -210,6 +223,8 @@ impl Checkpoint {
             ft: group()?,
             head: group()?,
         };
+        let removal_penalty = r.f64()?;
+        let lambda_override = r.f64()?;
         // 最大幅でも形から長さを確定できる。切断された入力では大配列を確保しない。
         let parameter_count: usize = Parameter::ALL.iter().map(|&p| shape.len(p)).sum();
         let virtual_rows = shape.len(Parameter::Virtual) / width;
@@ -269,6 +284,8 @@ impl Checkpoint {
                 initial_virtual,
             },
             optimizer: AdamW { m, v, step, config },
+            removal_penalty,
+            lambda_override,
             progress: Progress {
                 epoch,
                 best,

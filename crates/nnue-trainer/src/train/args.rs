@@ -2,13 +2,21 @@ use super::{Error, Result};
 use crate::{
     data::{InputFeatureSet, Lookahead, MAX_BATCH_SIZE},
     model::Shape,
+    options::{DeviceKind, TrainingOptions},
 };
 use serde::Serialize;
-use std::{collections::HashSet, path::PathBuf};
+use std::path::PathBuf;
 
-/// GPU学習の入力と実行条件。最適化器の係数は固定する。
+/// 学習の入力、係数と実行条件。
 #[derive(Clone, Debug, clap::Args, Serialize)]
 pub struct Args {
+    /// 実行デバイスを明示する。CUDAが使えない場合はエラーにする。
+    #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
+    pub device: DeviceKind,
+    /// 学習率、重み減衰、補助損失係数と教師の混合比。
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub training: TrainingOptions,
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     pub feature_set: InputFeatureSet,
@@ -51,7 +59,7 @@ pub struct Args {
     /// 量子化誤差の検査に使う検証局面数の上限を指定する。
     #[arg(long, default_value_t = 10_000)]
     pub validation_sample: usize,
-    /// バッチ供給のワーカー数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
+    /// バッチ供給とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     pub threads: Option<usize>,
     /// 指定ディレクトリの最新チェックポイントから再開する。--output-dirと同じ場所を指定する。
@@ -62,6 +70,7 @@ pub struct Args {
 impl Args {
     /// ファイルやGPUに触れる前に値と引数の組合せを検査する。
     pub fn validate(&self) -> Result<()> {
+        self.training.validate()?;
         Shape::new(self.feature_set, self.width, 1.0)?;
         if self.data.is_empty() {
             return Err(Error::Invalid("--data requires at least one file").into());
@@ -101,33 +110,6 @@ impl Args {
     }
 
     pub(super) fn workers(&self) -> Result<usize> {
-        if let Some(n) = self.threads {
-            return Ok(n);
-        }
-        let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")?;
-        physical_workers(&cpuinfo)
+        crate::options::workers(self.threads)
     }
-}
-
-fn physical_workers(cpuinfo: &str) -> Result<usize> {
-    let mut cores = HashSet::new();
-    for processor in cpuinfo.split("\n\n").filter(|s| !s.trim().is_empty()) {
-        let field = |key: &str| {
-            processor.lines().find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                (name.trim() == key).then_some(value.trim())
-            })
-        };
-        let package = field("physical id").ok_or(Error::Invalid(
-            "CPU topology has no physical id; set --threads explicitly",
-        ))?;
-        let core = field("core id").ok_or(Error::Invalid(
-            "CPU topology has no core id; set --threads explicitly",
-        ))?;
-        cores.insert((package, core));
-    }
-    if cores.is_empty() {
-        return Err(Error::Invalid("CPU topology is empty; set --threads explicitly").into());
-    }
-    Ok(cores.len().saturating_sub(2).max(1))
 }

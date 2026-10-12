@@ -64,7 +64,8 @@ extern "C" __global__ void removal_forward(
     double* e_r, double* delta_r, int* ref_r, float* s_r,
     unsigned char* eligible, unsigned char* wrong_r, double* pen_r, float* d_r,
     float* S, float* removal_acc, float* removal_output, float* removal_linear,
-    double* removal_loss, unsigned B, unsigned H, unsigned p, float K) {
+    double* removal_loss, unsigned B, unsigned H, unsigned p, float K,
+    double removal_penalty) {
     unsigned b = blockIdx.x;
     if (b >= B) return;
     unsigned lane = threadIdx.x % 32;
@@ -199,7 +200,7 @@ extern "C" __global__ void removal_forward(
     __syncthreads();
     unsigned denominator = max(shared.count_partials[0] + shared.count_partials[1]
         + shared.count_partials[2] + shared.count_partials[3], 1u);
-    double scale = 1000.0 / (double)((unsigned long long)B * denominator);
+    double scale = removal_penalty / (double)((unsigned long long)B * denominator);
     double sum = 0;
     double loss = 0;
     for (unsigned col = threadIdx.x; col < 144; col += blockDim.x) {
@@ -208,7 +209,7 @@ extern "C" __global__ void removal_forward(
         d_r[columns_offset + col] = d;
         if (shared.active[col]) {
             sum += (double)d;
-            loss += 1000.0 * shared.penalty[col] / (double)denominator / (double)K;
+            loss += removal_penalty * shared.penalty[col] / (double)denominator / (double)K;
         }
     }
     // Fixed shuffle trees first combine lanes, then the four warp partials.

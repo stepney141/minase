@@ -1,4 +1,4 @@
-//! 実データの供給、面の環を通る転送、およびGPUの1更新を別々に測る。
+//! 実データの供給、転送、および指定したデバイスの1更新を別々に測る。
 
 use super::{
     Device, Error, HostRing, Result, Step, StepResult, ring::TransferTiming, step::KernelTiming,
@@ -6,15 +6,15 @@ use super::{
 use crate::{
     data::{
         BatchSlot, CANONICAL_ROWS, Dataset, InputFeatureSet, MAX_BATCH_SIZE, build_batches,
-        epoch_permutation,
+        build_targets, epoch_permutation,
     },
     model::{Masks, Model, Parameter, Shape},
-    reference::{AdamW, AdamWConfig, Losses, RemovalReference, targets, v0_piece_values},
+    options::{self, DeviceKind, TrainingOptions},
+    reference::{self, AdamW, Losses, RemovalReference, v0_piece_values},
 };
 use cudarc::driver::LaunchConfig;
 use minase::eval::features::FEATURE_COUNT;
 use std::{
-    collections::HashSet,
     fmt::Write,
     path::PathBuf,
     sync::mpsc::{Receiver, SyncSender, sync_channel},
@@ -33,7 +33,7 @@ pub struct Args {
     /// 測定する1バッチの局面数を指定する。
     #[arg(long)]
     batch: usize,
-    /// 測定する更新回数を2以上で指定する。別に1回の更新でGPUをウォームアップする。
+    /// 測定する更新回数を2以上で指定する。別に1回の更新でウォームアップする。
     #[arg(long)]
     steps: usize,
     /// CUDAイベントでカーネルごとに計時し、起動時の次元と配列の推定バイト数を報告する。
@@ -45,20 +45,25 @@ pub struct Args {
     /// モデル初期化とエポック内の局面順列に使うシードを指定する。
     #[arg(long, default_value_t = 71)]
     seed: u64,
-    /// バッチ構築のワーカー数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
+    /// バッチ構築とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引く。
     #[arg(long)]
-    workers: Option<usize>,
-    /// CUDAデバイスの番号を指定する。
-    #[arg(long, default_value_t = 0)]
-    device: usize,
+    threads: Option<usize>,
+    /// 更新を実行するデバイスを指定する。
+    #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
+    device: DeviceKind,
     /// この測定で固定する出力用Kと教師用Kの共通値を指定する。
     #[arg(long, default_value_t = 1000.0)]
     k: f32,
+    /// 学習率、重み減衰、補助損失の係数、および教師値の混合比。
+    #[command(flatten)]
+    training: TrainingOptions,
 }
 
 /// ウォームアップを除いた実測値。
 pub struct Report {
-    /// CUDAが報告したデバイス名。
+    /// 更新を実行したデバイスの種類。
+    pub device: DeviceKind,
+    /// デバイス名。CPUでは`CPU`。
     pub device_name: String,
     /// 入力特徴集合。
     pub feature_set: InputFeatureSet,
@@ -68,13 +73,15 @@ pub struct Report {
     pub seed: u64,
     /// 並列に構築するバッチ数。最終の群だけは少なくなることがある。
     pub workers: usize,
+    /// 指定された並列度。CPU更新でも同じ値を使う。
+    pub threads: usize,
     /// 測定した更新数。
     pub steps: usize,
     /// 1更新の局面数。
     pub batch: usize,
     /// 出力と全教師分類に共通のK。
     pub k: f32,
-    /// 計算ストリームのイベントから得た1更新の平均ミリ秒。
+    /// 1更新の平均ミリ秒。CUDAではイベント、CPUではホストの経過時間を使う。
     pub compute_ms: f64,
     /// 転送ストリームのイベントから得た1バッチの平均ミリ秒。
     pub transfer_ms: f64,
@@ -84,12 +91,12 @@ pub struct Report {
     pub worker_positions_per_second: f64,
     /// 最初のバッチの構築開始から最後の損失回収までの秒数。
     pub elapsed_seconds: f64,
-    /// CUDAが報告した測定時のGPUメモリ使用量。他のプロセスも含む。
-    pub gpu_used_bytes: usize,
-    /// CUDAが報告したGPUメモリ総量。
-    pub gpu_total_bytes: usize,
-    /// GPU入力面と更新器の確保前後でのメモリ使用量の差。
-    pub gpu_allocation_bytes: i128,
+    /// CUDAが報告した測定時のGPUメモリ使用量。他のプロセスも含む。CPUではNone。
+    pub gpu_used_bytes: Option<usize>,
+    /// CUDAが報告したGPUメモリ総量。CPUではNone。
+    pub gpu_total_bytes: Option<usize>,
+    /// GPU入力面と更新器の確保前後でのメモリ使用量の差。CPUではNone。
+    pub gpu_allocation_bytes: Option<i128>,
     /// 測定した更新の平均損失。
     pub losses: Losses,
     /// `--profile`指定時だけ作る、ウォームアップを除いたカーネル別の計測表。
@@ -248,43 +255,47 @@ impl ProfileMeasurements {
 
 /// 準備と1回のウォームアップの後、実データで指定回数の更新を測定する。
 /// 全行を観測済みとして初期化し、教師Kの推定や学習の検証は行わない。
-pub fn run(args: Args) -> Result<Report> {
+pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>> {
+    args.training.validate()?;
     let shape = Shape::new(args.feature_set, args.width, args.k)?;
     if !(1..=MAX_BATCH_SIZE).contains(&args.batch) {
-        return Err(Error::Invalid("--batch must be in 1..=MAX_BATCH_SIZE"));
+        return Err(Error::Invalid("--batch must be in 1..=MAX_BATCH_SIZE").into());
     }
     if args.steps < 2 {
-        return Err(Error::Invalid("--steps must be at least 2"));
+        return Err(Error::Invalid("--steps must be at least 2").into());
+    }
+    if args.device == DeviceKind::Cpu && args.profile {
+        return Err(Error::Invalid("--profile requires --device cuda").into());
     }
     let required = args
         .steps
         .checked_add(1)
         .and_then(|steps| steps.checked_mul(args.batch))
         .ok_or(Error::Invalid("benchmark position count overflow"))?;
-    let workers = match args.workers {
-        Some(0) => return Err(Error::Invalid("--workers must be positive")),
-        Some(n) => n,
-        None => physical_workers()?,
-    }
-    .min(args.steps);
+    let threads = options::workers(args.threads)?;
+    let workers = threads.min(args.steps);
     // SAFETY: 入力は生成完了済みのMNSDに限り、Datasetの生存中は外部プロセスも含めて
     // 変更・切り詰めしない運用契約とする。この処理も入力ファイルを書き換えない。
-    let dataset = unsafe { Dataset::open(&args.data, None)? };
+    let dataset = unsafe { Dataset::open(&args.data, None, Some(args.training.lambda_override))? };
     if dataset.training_indices().len() < required {
         return Err(Error::Invalid(
             "not enough training positions for (steps + 1) * batch, including warmup",
-        ));
+        )
+        .into());
     }
     let mut indices = epoch_permutation(dataset.training_indices(), args.seed, 0);
     indices.truncate(required);
     let teacher_ks = vec![f64::from(args.k); dataset.teacher_classes().len()];
+    let model = benchmark_model(shape, args.seed)?;
+    if args.device == DeviceKind::Cpu {
+        return Ok(run_cpu(&args, &dataset, &indices, threads, model)?);
+    }
     let warmup = build_batches(&dataset, args.feature_set, &[&indices[..args.batch]])?
         .pop()
         .ok_or(Error::Invalid("warmup worker returned no batch"))?;
-    let warmup_targets = targets(&warmup, &teacher_ks)?;
-    let model = benchmark_model(shape, args.seed)?;
-    let optimizer = AdamW::new(shape, AdamWConfig::default())?;
-    let device = Device::new(args.device)?;
+    let warmup_targets = build_targets(&warmup, &teacher_ks, dataset.teacher_lambdas())?;
+    let optimizer = AdamW::new(shape, args.training.optimizer())?;
+    let device = Device::new(0)?;
     let (free_before, _) = device.memory_info()?;
     let mut ring = HostRing::new(&device, args.feature_set, args.batch)?;
     let mut step = Step::new(
@@ -293,6 +304,7 @@ pub fn run(args: Args) -> Result<Report> {
         &optimizer,
         &RemovalReference::v0(),
         args.batch,
+        args.training.removal_penalty,
     )?;
     if args.profile {
         step.enable_profiling();
@@ -327,14 +339,16 @@ pub fn run(args: Args) -> Result<Report> {
     })?;
     let steps = args.steps as f64;
     if supply.build_time.is_zero() {
-        return Err(Error::Invalid("worker timing resolution"));
+        return Err(Error::Invalid("worker timing resolution").into());
     }
     Ok(Report {
+        device: args.device,
         device_name: device.name().to_owned(),
         feature_set: args.feature_set,
         width: args.width,
         seed: args.seed,
         workers,
+        threads,
         steps: args.steps,
         batch: args.batch,
         k: args.k,
@@ -343,9 +357,9 @@ pub fn run(args: Args) -> Result<Report> {
         transfer_bytes,
         worker_positions_per_second: supply.positions as f64 / supply.build_time.as_secs_f64(),
         elapsed_seconds,
-        gpu_used_bytes: total - free_after,
-        gpu_total_bytes: total,
-        gpu_allocation_bytes: free_before as i128 - free_after as i128,
+        gpu_used_bytes: Some(total - free_after),
+        gpu_total_bytes: Some(total),
+        gpu_allocation_bytes: Some(free_before as i128 - free_after as i128),
         losses: Losses {
             bce: measurements.binary_cross_entropy / steps,
             auxiliary: measurements.auxiliary / steps,
@@ -375,7 +389,7 @@ fn supply_batches(
         let prepared = batches
             .into_iter()
             .map(|batch| {
-                let targets = targets(&batch, teacher_ks)?;
+                let targets = build_targets(&batch, teacher_ks, dataset.teacher_lambdas())?;
                 Ok(PreparedBatch { batch, targets })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -417,6 +431,105 @@ fn consume_batches(
     Ok(measurements)
 }
 
+fn run_cpu(
+    args: &Args,
+    dataset: &Dataset,
+    indices: &[u64],
+    threads: usize,
+    mut model: Model,
+) -> Result<Report> {
+    let mut optimizer = AdamW::new(model.shape(), args.training.optimizer())?;
+    let removal = RemovalReference::v0();
+    let teacher_ks = vec![f64::from(args.k); dataset.teacher_classes().len()];
+    let workers = threads.min(args.steps);
+    let mut update = |prepared: &PreparedBatch| -> Result<Losses> {
+        let gradients = reference::loss_and_gradients_parallel(
+            &model,
+            &prepared.batch,
+            &prepared.targets,
+            &removal,
+            args.training.removal_penalty,
+            threads,
+        )?;
+        optimizer.update_parallel(&mut model, &gradients.parameters, threads)?;
+        Ok(gradients.losses)
+    };
+    let warmup = build_batches(dataset, args.feature_set, &[&indices[..args.batch]])?
+        .pop()
+        .ok_or(Error::Invalid("warmup worker returned no batch"))?;
+    let warmup_targets = build_targets(&warmup, &teacher_ks, dataset.teacher_lambdas())?;
+    update(&PreparedBatch {
+        batch: warmup,
+        targets: warmup_targets,
+    })?;
+
+    let (measurements, supply, elapsed_seconds) = std::thread::scope(|scope| {
+        let (sender, receiver) = sync_channel(3);
+        let started = Instant::now();
+        let producer = std::thread::Builder::new()
+            .name("nnue-bench-supply".into())
+            .spawn_scoped(scope, || {
+                supply_batches(
+                    dataset,
+                    args,
+                    &indices[args.batch..],
+                    &teacher_ks,
+                    workers,
+                    sender,
+                )
+            })
+            .map_err(crate::data::Error::Io)?;
+        let measurements = (|| -> Result<Measurements> {
+            let mut measurements = Measurements::default();
+            for _ in 0..args.steps {
+                let prepared = receiver
+                    .recv()
+                    .map_err(|_| Error::Invalid("batch worker stopped early"))?;
+                let compute_started = Instant::now();
+                let losses = update(&prepared)?;
+                measurements.compute_ms += compute_started.elapsed().as_secs_f64() * 1000.0;
+                measurements.binary_cross_entropy += losses.bce;
+                measurements.auxiliary += losses.auxiliary;
+            }
+            Ok(measurements)
+        })();
+        drop(receiver);
+        let supply = producer
+            .join()
+            .map_err(|_| crate::data::Error::WorkerPanicked)??;
+        Ok::<_, Error>((measurements?, supply, started.elapsed().as_secs_f64()))
+    })?;
+    if supply.build_time.is_zero() {
+        return Err(Error::Invalid("worker timing resolution"));
+    }
+    let steps = args.steps as f64;
+    Ok(Report {
+        device: args.device,
+        device_name: "CPU".into(),
+        feature_set: args.feature_set,
+        width: args.width,
+        seed: args.seed,
+        workers,
+        threads,
+        steps: args.steps,
+        batch: args.batch,
+        k: args.k,
+        compute_ms: measurements.compute_ms / steps,
+        transfer_ms: 0.0,
+        transfer_bytes: 0,
+        worker_positions_per_second: supply.positions as f64 / supply.build_time.as_secs_f64(),
+        elapsed_seconds,
+        gpu_used_bytes: None,
+        gpu_total_bytes: None,
+        gpu_allocation_bytes: None,
+        losses: Losses {
+            bce: measurements.binary_cross_entropy / steps,
+            auxiliary: measurements.auxiliary / steps,
+        },
+        profile: None,
+    })
+}
+
 fn benchmark_model(shape: Shape, seed: u64) -> Result<Model> {
     let mut canonical = vec![true; CANONICAL_ROWS];
     canonical[CANONICAL_ROWS - 1] = false;
@@ -446,32 +559,6 @@ fn benchmark_model(shape: Shape, seed: u64) -> Result<Model> {
     }
     model.constrain()?;
     Ok(model)
-}
-
-fn physical_workers() -> Result<usize> {
-    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").map_err(crate::data::Error::Io)?;
-    let mut cores = HashSet::new();
-    for processor in cpuinfo.split("\n\n").filter(|s| !s.trim().is_empty()) {
-        let field = |key: &str| {
-            processor.lines().find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                (name.trim() == key).then_some(value.trim())
-            })
-        };
-        let package = field("physical id").ok_or(Error::Invalid(
-            "CPU topology has no physical id; set --workers explicitly",
-        ))?;
-        let core = field("core id").ok_or(Error::Invalid(
-            "CPU topology has no core id; set --workers explicitly",
-        ))?;
-        cores.insert((package, core));
-    }
-    if cores.is_empty() {
-        return Err(Error::Invalid(
-            "CPU topology is empty; set --workers explicitly",
-        ));
-    }
-    Ok(cores.len().saturating_sub(2).max(1))
 }
 
 #[cfg(test)]

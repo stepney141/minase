@@ -2,7 +2,8 @@ use super::{Args, Error, Result};
 use crate::{
     data::{Dataset, Observations},
     model::{Model, Parameter},
-    reference::{AdamWConfig, Validation},
+    options::DeviceKind,
+    reference::Validation,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -23,11 +24,13 @@ pub(super) struct Movement {
 /// 完了した1エポックの記録。学習前のエポック0では訓練の欄はnull。
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EpochRecord {
+    /// 学習を実行したデバイス。
+    pub device: DeviceKind,
     /// 完了したエポック番号。0は学習前の検証。
     pub epoch: u64,
     /// 訓練集合の局面数で重み付けしたBCE。
     pub train_loss: Option<f64>,
-    /// 係数1000を含む補助損失の局面平均。
+    /// 指定された係数を含む補助損失の局面平均。
     pub removal_loss: Option<f64>,
     /// BCEと補助損失の和。
     pub total_loss: Option<f64>,
@@ -51,12 +54,12 @@ pub struct EpochRecord {
     pub validation_seconds: f64,
     /// 訓練集合の局面数を学習秒数で割った値。
     pub training_positions_per_second: Option<f64>,
-    /// CUDAイベントによる1更新の平均秒数。
+    /// 1更新の平均秒数。CUDAではイベント、CPUではホストの経過時間を用いる。
     pub update_seconds: Option<f64>,
     /// 学習・検証の配列確保後に測ったGPU全体の最大使用量、バイト。
-    pub gpu_memory_used_bytes: usize,
+    pub gpu_memory_used_bytes: Option<usize>,
     /// GPUの総メモリ、バイト。
-    pub gpu_memory_total_bytes: usize,
+    pub gpu_memory_total_bytes: Option<usize>,
     /// 再開前を含む累積秒数。
     pub elapsed_seconds: f64,
     /// このエポックの更新回数。
@@ -188,10 +191,9 @@ pub(super) fn configuration(
     let resolved_threads = workers;
     object.insert(
         "optimizer".into(),
-        serde_json::to_value(AdamWConfig::default())?,
+        serde_json::to_value(args.training.optimizer())?,
     );
     object.insert("initial_standard_deviation".into(), json!(0.05));
-    object.insert("removal_penalty".into(), json!(1000));
     let files = dataset
         .paths()
         .zip(dataset.headers())
@@ -217,6 +219,7 @@ pub(super) fn configuration(
     };
     let preprocessing = json!({
         "teacher_classes": dataset.teacher_classes(), "teacher_ks": teacher_ks,
+        "teacher_lambdas": dataset.teacher_lambdas(),
         "teacher_k_source": "training", "output_k": model.shape().k(),
         "training_positions": dataset.training_indices().len(),
         "validation_positions": dataset.validation_indices().len(),
@@ -232,7 +235,7 @@ pub(super) fn configuration(
         &json!({"inputs": inputs, "preprocessing": preprocessing}),
     )?);
     Ok(Configuration {
-        document: json!({"arguments": args, "resolved_threads": resolved_threads, "settings": settings,
+        document: json!({"device": args.device, "arguments": args, "resolved_threads": resolved_threads, "settings": settings,
         "inputs": inputs, "preprocessing": preprocessing,
         "resumes": [],
         "config_sha256": hex(&config_hash), "input_sha256": hex(&input_hash)}),

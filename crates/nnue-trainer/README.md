@@ -1,15 +1,40 @@
-NNUEの浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびGPU学習を提供する。
+NNUEの浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
 GPU側では第1層の前進、駒除去差分の補助損失、全パラメータの勾配、部分和の縮約、AdamWによる更新と切り詰め、検証を実行できる。
 学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)と`tools/train/src/minase_train`に従う。
 `dump-batch`の更新処理は照合資料の生成用であり、エポックを進める学習ループは持たない。
 
-`train`は前処理、GPUでの更新、全検証集合の評価、チェックポイントの保存、最良重みの書き出しを行う。
+`train`は前処理、指定したデバイスでの更新、全検証集合の評価、チェックポイントの保存、最良重みの書き出しを行う。
 線形重みは`--init-pst`の圧縮なしNPZから初期化し、左右の鏡映対が一致することと、再量子化が`--base`のMNPTのPST部分と一致することを検査する。
 非対称な初期値は拒否する。
 出力用K、探索用駒価値、規則セット名はMNPTから引き継ぐ。
-教師用Kは教師の分類ごとに訓練集合だけから推定する。
-ワーカーは順列の順にバッチを作り、3面のページ固定メモリへ書く。
+教師値は`λ·σ(score/K_teacher) + (1−λ)·result/2`であり、resultは手番側の負け0、引き分け1、勝ち2である。
+`--lambda-override`は自己対局の分類のλだけを上書きし、人間対局では来歴ファイルのλを使う。
+教師用Kは分類ごとに訓練集合の探索値と終局結果から推定し、混合した教師値は推定に使わない。
+λ=0では推定を省略し、教師用KをJSONの`null`で記録する。
+CUDA実行ではワーカーが順列の順にバッチを作り、3面のページ固定メモリへ書く。
 転送と計算を重ね、損失と非有限値の検査結果を次の更新の投入後に回収する。
+
+`--device`の既定値は`cuda`であり、GPUがなければ明示的なエラーで終了する。
+`--device cpu`ではGPUを初期化せず、同じ学習ループからCPU参照関数を呼ぶ。
+`train::backend::Backend`が更新、検証、状態の回収、入力面の管理をまとめ、デバイスの違いを学習ループから隠す。
+CPUの1更新では`std::thread::scope`を使い、前進、駒除去、出力部の後退を局面方向、特徴勾配、仮想行の縮約、AdamWを行または要素方向に分割する。
+各要素の縮約順と精度を単一スレッド参照にそろえ、`--threads`を変更しても数値計算のビット列を保つ。
+`--threads`の既定値は物理コア数−2で、最小1である。
+
+学習、`dump-batch`、`check-equivalence`、`bench-step`では、次の係数を共通の引数で指定できる。
+すべて有限かつ非負とし、学習率は0を認めない。
+λは0以上1以下に制限する。
+
+| 引数 | 既定値 |
+|---|---:|
+| `--lr-linear` | 0.03 |
+| `--weight-decay-linear` | 0 |
+| `--lr-ft` | 1e-3 |
+| `--weight-decay-ft` | 1e-4 |
+| `--lr-head` | 1e-3 |
+| `--weight-decay-head` | 1e-4 |
+| `--removal-penalty` | 1000 |
+| `--lambda-override` | 1.0 |
 
 学習の上限は`--epochs`で指定する50エポック以内と、`--time-limit-hours`で指定する24時間以内の早い方である。
 時間には前処理と検証を含め、再開前の累積時間も引き継ぐ。
@@ -23,7 +48,7 @@ GPU側では第1層の前進、駒除去差分の補助損失、全パラメー�
 
 | ファイル | 内容 |
 |---|---|
-| `config.json` | 引数、実効ワーカー数、固定した最適化器の係数、入力ファイルと来歴のSHA-256、教師用K、分割と観測の件数とハッシュ、デバイス名、再開履歴を保存する。 |
+| `config.json` | 引数、実効ワーカー数、最適化器と補助損失の係数、λ、入力ファイルと来歴のSHA-256、教師用K、分割と観測の件数とハッシュ、デバイス名、再開履歴を保存する。 |
 | `training.jsonl` | エポック0の検証と、検証を終えた各エポックを1行ずつ保存する。損失、符号一致率、非線形出力の標準偏差、飽和率、線形重みの移動量、速度、時間、GPUメモリ使用量を含む。 |
 | `latest.bin` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間と照合用ハッシュを保存する。 |
 | `best.bin` | 最良エポックのモデルと、その時点のAdamWの状態を保存する。 |
@@ -31,8 +56,9 @@ GPU側では第1層の前進、駒除去差分の補助損失、全パラメー�
 | `nnue-float.bin` | 最良モデルをチェックポイント形式で保存する。 |
 | `summary.json` | 停止理由、最良エポック、量子化誤差と検査結果を保存する。 |
 
-`train_loss`は二値交差エントロピー、`removal_loss`は係数1000を含む補助損失、`total_loss`はその和であり、いずれも局面数で重み付けした平均である。
+`train_loss`は二値交差エントロピー、`removal_loss`は指定係数を含む補助損失、`total_loss`はその和であり、いずれも局面数で重み付けした平均である。
 GPUメモリ使用量は、学習と検証の配列確保後にCUDAが報告したGPU全体の使用量の最大値であり、他プロセスの確保も含む。
+`config.json`と`training.jsonl`に`device`を記録し、CPU実行のGPUメモリ欄は`null`とする。
 符号一致率とエポック0からの改善は診断に記録する。
 量子化検査には固定シードで選んだ検証局面を最大`--validation-sample`件使い、CPUの浮動小数点参照とminaseの整数推論の平均絶対誤差と最大誤差をセンチポーンで記録する。
 浮動小数点参照はPythonの`nnue/model.py`と同じく、線形和、累算器、活性化、非線形出力をf64で計算する。
@@ -67,7 +93,7 @@ done
 ```
 
 CPUテストは引数、停止規則、順列と端数バッチ、記録形式、入力変更時の再開拒否、保存中断からの復元、MNUEの復号と量子化誤差の境界を検査する。
-GPUテストは320局面の合成MNSDで幅8の両型を2エポック走らせ、連続実行と1エポック境界で中断した実行を比較する。
+CPUとGPUのテストは320局面の合成MNSDで幅8の両型を2エポック走らせ、連続実行と1エポック境界で中断した実行を比較する。
 比較対象は重み、AdamWの全状態、進捗とハッシュであり、実測の累積秒数だけを除いてチェックポイントのバイト一致を検査する。
 これらのGPUテストは通常のテスト実行では無視されるため、学習機で次を実行する。
 
@@ -85,7 +111,8 @@ cargo test --release --offline -j 2 -p nnue-trainer -- --ignored gpu_ --test-thr
 | `src/model/quantize.rs` | `model::Quantized`、`model::quantize`、`Quantized::encode`を提供する。 | `nnue.train.quantized_weights`と`nnue.format`に対応する。MNUE版5の符号化は`minase::eval::nnue::encode`を使う。 |
 | `src/model/checkpoint.rs` | `model::BestEpoch`、`model::Progress`、`model::Checkpoint`を提供する。 | 学習器固有の保存形式であり、PyTorchへの移植は照合スクリプトが担当する。 |
 | `src/reference/mod.rs` | `Forward`、`Output`、`Losses`、`Gradients`と、`forward`、`output_backward`、`reduce_partials`、`first_layer_backward`、`linear_backward`、`reduce_virtual`、`fold`を提供する。 | `NNUE.components`、`DirectHead`とPyTorchの自動微分に対応する。 |
-| `src/reference/mod.rs` | `evaluate`、`targets`、`screlu`、`screlu_derivative`、`loss_and_gradients`も公開する。 | 浮動小数点の前進、`pst.teacher.build_targets`のλ=1、SCReLU、`nnue.train.train_epoch`の1バッチに対応する。 |
+| `src/reference/mod.rs` | `evaluate`、`screlu`、`screlu_derivative`、`loss_and_gradients`と`loss_and_gradients_parallel`も公開する。 | 浮動小数点の前進、SCReLU、`nnue.train.train_epoch`の1バッチに対応する。 |
+| `src/data/teacher.rs` | `data::build_targets`が分類ごとの教師値を構築する。 | `pst.teacher.build_targets`のλと教師用Kによる混合に対応する。 |
 | `src/reference/removal.rs` | `reference::Removal`、`reference::RemovalReference`、`reference::removal_forward`、`reference::v0_piece_values`を提供する。 | `NNUE.removal_deltas`、`pst.removal`の整数参照、罰則、`data.mnpt.initial_weights`に対応する。v0の値は`minase::eval::handcrafted::piece_value`から取る。 |
 | `src/reference/optimizer.rs` | `reference::AdamWGroup`、`reference::AdamWConfig`、`reference::AdamW`、`reference::adamw`を提供する。 | `nnue.train.make_optimizer`の3群と`torch.optim.AdamW`に対応する。 |
 | `src/dump.rs`と`src/lib.rs` | コマンドを拡張し、`model`と`reference`を公開する。 | `tools/train/scripts/crosscheck_reference.py`が保存物を読み、PyTorchで3更新する。 |
@@ -109,7 +136,7 @@ Pythonと同じく、罰則の符号には整数評価の差を、上限には�
 不適格な列では診断用の`e_r`と`delta_r`も0とし、`pen_r`と`d_r`も0にする。
 `ref_r`、`s_r`、`eligible`、`wrong_r`はこの省略によって変わらない。
 線形の除去差分はf64で計算し、非線形差分はf32で集約してからf64に広げる。
-`Losses::auxiliary`は係数1000を含み、`Losses::total`が二値交差エントロピーとの和を返す。
+`Losses::auxiliary`は指定係数を含み、`Losses::total`が二値交差エントロピーとの和を返す。
 
 `AdamW::new`は状態を0で作り、`m`、`v`、`step`、`config`で再開に必要な状態を公開する。
 `AdamW::update`は観測行の全要素を更新し、各群の保存範囲へ切り詰める。
@@ -124,7 +151,7 @@ HalfKP-hm-b8では仮想行の更新と切り詰めを先に行い、その値�
 | オフセット | 内容 |
 |---:|---|
 | 0 | 8バイトの識別子`MNTRCKPT`を置く。 |
-| 8 | u32の版番号1を置く。 |
+| 8 | u32の版番号2を置く。 |
 | 12 | MNUEと同じ構造記述文字列を96バイトにNUL埋めして置く。 |
 | 108 | 幅のu32と出力用Kのf32を置く。 |
 | 116 | 更新回数、エポック番号、最良エポック番号をu64で置く。 |
@@ -132,7 +159,8 @@ HalfKP-hm-b8では仮想行の更新と切り詰めを先に行い、その値�
 | 156 | 乱数のシードをu64で置く。 |
 | 164 | 設定と入力のSHA-256をそれぞれ32バイトで置く。 |
 | 228 | 線形、第1層、出力部の順に、学習率と重み減衰をf64で置く。 |
-| 276 | 全パラメータ、1次モーメント、2次モーメントを順に置く。それぞれが`Parameter::ALL`順のf32配列である。 |
+| 276 | 補助損失係数とλの上書き値をf64で置く。 |
+| 292 | 全パラメータ、1次モーメント、2次モーメントを順に置く。それぞれが`Parameter::ALL`順のf32配列である。 |
 | 可変 | 正準、第1層、仮想行の順に、観測マスクを1要素1バイトで置く。 |
 | 可変 | 線形の初期値と仮想行の初期値をf32配列で置く。 |
 | 末尾32バイト | それより前の全内容のSHA-256を置く。 |
@@ -236,12 +264,12 @@ GPUの実装は次のファイルに置く。
 | `tests/validation.rs` | 勝敗の符号、引き分け、飽和の端点、標準偏差の単位をGPUなしで検査する。 |
 
 `BatchSlot::from_records`は記録と教師配列から合成バッチを作り、既存のデータ経路と同じ特徴番号と逆索引を構築する。
-`Evaluator::new(device, model, removal_reference, capacity)`は整数参照PSTをデバイスへ一度転送し、評価器が生存する間保持する。
+`Evaluator::new(device, model, removal_reference, capacity, removal_penalty)`は整数参照PSTをデバイスへ一度転送し、評価器が生存する間保持する。
 通常の参照には`RemovalReference::v0()`を渡す。
 `Evaluator::evaluate`はカーネル1〜7と検証を実行し、`Evaluator::validate`は前進と検証のカーネルだけを起動する。
 結果のホストへの同期回収は等価性検査用であり、エポックを進める処理とGPU上のパラメータ更新は含めない。
 
-`Step::new(device, model, optimizer, removal_reference, capacity)`は更新に必要なモデル、最適化器、作業配列をデバイスへ確保する。
+`Step::new(device, model, optimizer, removal_reference, capacity, removal_penalty)`は更新に必要なモデル、最適化器、作業配列をデバイスへ確保する。
 `Step::enqueue(ring, ticket, targets)`は前進、補助損失、出力部、縮約、第1層後退、線形後退、仮想行縮約、AdamW群の順で計算ストリームへ投入する。
 全行の勾配は後退または縮約が書くため、更新後のゼロ化は行わない。
 損失は2面のページ固定メモリへ非同期にコピーし、次の更新を投入してから`StepResult::collect`で回収する。
@@ -267,7 +295,7 @@ Rは第1層の行数で、P型は6,841、HalfKP-hm-b8は埋め草を含め109,44
 |---|---|---|
 | `forward_acc` | `features, weights, bias, acc, B, H, p`を受ける。 | 格子は`ceil(2B ceil(H/4)/128)`である。 |
 | `forward_linear` | `features, weights, lin, B`を受ける。 | 格子は`ceil(2B/128)`である。 |
-| `removal_forward` | `features, linear_features, counts, weights, linear, output, bias, acc, lin, reference, e_r, delta_r, ref_r, s_r, eligible, wrong_r, pen_r, d_r, S, removal_acc, removal_output, removal_linear, removal_loss, B, H, p, K`を受ける。 | 格子はB、静的共有構造体は2,008バイトである。 |
+| `removal_forward` | `features, linear_features, counts, weights, linear, output, bias, acc, lin, reference, e_r, delta_r, ref_r, s_r, eligible, wrong_r, pen_r, d_r, S, removal_acc, removal_output, removal_linear, removal_loss, B, H, p, K, removal_penalty`を受ける。 | 格子はB、静的共有構造体は2,008バイトである。 |
 | `output_backward` | `acc, lin, counts, output, bias, targets, S, removal_acc, removal_output, removal_linear, removal_loss, f, h, logits, loss, g, d_acc, d_output, c, loss_partials, B, H, p, K`を受ける。 | 格子はW、共有メモリは64バイトである。 |
 | `gradient_partials` | `d_acc, d_output, g, partials, B, H, units, chunk`を受ける。 | 格子はG、`units=U`、`chunk=128`である。 |
 | `first_layer_backward_partials` | `first_segment_offsets, first_entries, features, weights, acc, output, d_r, d_acc, first_partials, H, p`を受ける。 | 格子はS_fで、区分数0なら起動しない。 |
@@ -293,7 +321,7 @@ Rは第1層の行数で、P型は6,841、HalfKP-hm-b8は埋め草を含め109,44
 | 除去の`reference, linear_features, linear` | 順に`i64[6841,2]`、`u32[B,145]`、`f32[6841,2]`である。参照は1/8センチポーン単位の整数である。 |
 | `e_r, delta_r, pen_r` | いずれも`f64[B,144]`で、評価、除去差分、罰則をセンチポーン単位で保持する。 |
 | `ref_r, s_r, eligible, wrong_r, d_r` | 順に`i32[B,144]`、`f32[B,144]`、`u8[B,144]`、`u8[B,144]`、`f32[B,144]`である。真偽値は0か1である。 |
-| `removal_loss` | `f64[B]`で、適格な除去の平均に係数1000を掛けてKで割った値を保持する。 |
+| `removal_loss` | `f64[B]`で、適格な除去の平均に指定係数を掛けてKで割った値を保持する。 |
 | `first_segment_starts, first_segment_offsets, first_entries` | u32配列で、長さは順にP型で6,842個またはHalfKPで109,441個、S_f+1個、実際の発火数である。 |
 | `linear_segment_starts, linear_segment_offsets, linear_entries` | u32配列で、長さは順に6,842個、S_l+1個、手番側の発火数である。 |
 | `first_partials, linear_partials` | 順に`f64[S_f,H]`、`f64[S_l,2]`であり、区分内のf32部分和を格納して区分間をf64で縮約する。 |
@@ -468,7 +496,7 @@ DATA=/absolute/path/to/generated-1500000.bin
 for FEATURE_SET in P HalfKP-hm-b8; do
   CARGO_NET_OFFLINE=true nice -n 19 cargo run --release -j 2 -p nnue-trainer -- bench-step \
     --feature-set "$FEATURE_SET" --width 128 --batch 16384 --steps 20 \
-    --workers 6 --profile --data "$DATA"
+    --threads 6 --profile --data "$DATA"
 done
 ```
 
@@ -477,8 +505,9 @@ done
 格子は各バッチの区分数から求め、部分和の読み書きも主要配列の理論バイト数に含める。
 性能の採否は実GPUの測定で判断し、CUDAコンパイルやGPUなしのテスト結果から速度を推定しない。
 シード71で訓練局面を並べ替え、ウォームアップを含む`(steps+1)×batch`局面を重複なく使う。
-`--seed`、`--device`、`--workers`で条件を指定でき、ワーカー数の既定値はLinuxが報告する物理コア数から2を引いた数で、最小1、最大は測定更新数とする。
-CPUの構成を取得できない場合は`--workers`を明示する。
+`--seed`、`--device {cuda,cpu}`、`--threads`で条件を指定できる。
+並列度の既定値はLinuxが報告する物理コア数から2を引いた数で最小1とし、供給ワーカー数の上限は測定更新数とする。
+CPUの構成を取得できない場合は`--threads`を明示する。
 
 供給側は既存の`build_batches`でワーカー数以下のバッチを並列に構築し、順列の順に投入する。
 ワーカーの供給速度は、復号、特徴抽出、逆索引構築、教師値変換、スレッドの起動と回収を含む構築時間から求め、GPU待ちによる送信の停止時間を除く。
@@ -489,7 +518,32 @@ CPUの構成を取得できない場合は`--workers`を明示する。
 全体の経過時間には供給、固定メモリへのコピー、投入、損失回収を含めるため、供給と転送を重ねた実効速度も確認できる。
 
 測定用モデルでは、埋め草以外の全行を観測済みとし、線形をv0の駒価値、第1層を標準偏差0.05の乱数で初期化する。
-バイアスは0.25、出力重みは±0.01を交互に置き、AdamWは既定の係数を使う。
+バイアスは0.25、出力重みは±0.01を交互に置き、AdamWは引数で指定した係数を使う。
 出力と全教師分類に共通のKを使い、既定値1000は`--k`で変更できる。
 これは学習を始める前の速度測定であり、教師Kの推定、観測マスクの全訓練集合からの作成、保存、検証は行わない。
 GPUメモリはデバイス全体の使用量と、入力面と更新器を確保する前後の差をバイト単位で出力するため、他のプロセスによる変動も含む。
+
+
+`bench-step --device cpu`も1回のウォームアップ後に指定回数を測り、更新の時間にはホストの経過時間を用いる。
+CPUでは転送量と転送時間を0とし、GPUメモリは測定しない。
+`--profile`はCUDAのカーネル計測に限るため、CPUと組み合わせるとエラーになる。
+
+CPUの1ファイル試走では、前述の`train`に`--device cpu --threads 2`を加え、別の空の出力先を指定する。
+係数変更を含むPython照合は、前述の`dump-batch`に次の引数を加えて生成した`reference.json`を`crosscheck_reference.py`へ渡す。
+
+```sh
+--lambda-override 0.75 --lr-linear 0.012 --weight-decay-linear 0.00005 \
+--lr-ft 0.002 --weight-decay-ft 0.0003 \
+--lr-head 0.0015 --weight-decay-head 0.0002 --removal-penalty 137.5
+```
+
+`reference.json`の版2は、全係数とλ、分類ごとのλと教師用Kを含む。
+照合スクリプトはチェックポイント版2の係数との一致を検査し、PyTorchの最適化器、補助損失、教師値へ適用する。
+教師用KはPythonで再推定して照合するため、λ=0の分類では両側のKが未設定であることを確認する。
+
+
+CPU参照とPyTorchの比較では、駒除去勾配の相殺に伴う既存の精度差が残る。
+CPU参照は除去後の寄与をf32へ丸めた後、同じ自己行の寄与をf64の積として引くため、理論上0の勾配に残差が生じる場合がある。
+P型の幅6、初期線形重み0、λ=0.75、補助係数137.5の合成入力では、Pythonの勾配0に対してCPU参照は約−1.19e−9となり、AdamWのε=1e−8によって更新後の重み差が約6.55e−5まで増幅された。
+同じ開始状態を変更前の参照実装と係数1000で計算してもこの差が再現し、新旧Rustの全勾配と更新後の重みはビット一致した。
+係数の受け渡しとは独立した制約であり、既定設定のビット不変性と現在の等価性判定式を維持するため、ここでは計算式も許容誤差も変更していない。

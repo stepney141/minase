@@ -6,18 +6,21 @@ use std::{
 
 use nnue_trainer::data::{
     BatchSlot, Dataset, FEATURE_COLUMNS, InputFeatureSet, Lookahead, ReverseIndex, SENTINEL,
-    build_batches, decode_p_feature,
+    build_batches, build_targets, decode_p_feature,
 };
 use nnue_trainer::{
     data::Observations,
     model::{Checkpoint, Masks, Model, Parameter, Parameters, Progress, Shape, load_initial},
-    reference::{AdamW, AdamWConfig, Losses, RemovalReference, loss_and_gradients},
+    options::TrainingOptions,
+    reference::{AdamW, Losses, RemovalReference, loss_and_gradients},
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 #[derive(clap::Args)]
 pub(crate) struct Args {
+    #[command(flatten)]
+    training: TrainingOptions,
     /// 入力の特徴集合を指定する。
     #[arg(long, value_enum)]
     feature_set: InputFeatureSet,
@@ -149,6 +152,7 @@ fn payload<'a>(
 }
 
 pub(crate) fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    args.training.validate()?;
     let lookahead = match (args.lookahead_gamma, args.lookahead_plies) {
         (Some(gamma), Some(plies)) => Some(Lookahead::new(gamma, plies)?),
         (None, None) => None,
@@ -156,7 +160,8 @@ pub(crate) fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     };
     // SAFETY: 入力は生成完了済みのMNSDに限り、Datasetの生存中は外部プロセスも含めて
     // 変更・切り詰めしない運用契約とする。この処理も入力ファイルを書き換えない。
-    let dataset = unsafe { Dataset::open(&args.data, lookahead)? };
+    let dataset =
+        unsafe { Dataset::open(&args.data, lookahead, Some(args.training.lambda_override))? };
     let slots = build_batches(&dataset, args.feature_set, &[&args.indices])?;
     let dump = payload(&dataset, &slots[0], lookahead)?;
     fs::create_dir_all(&args.output)?;
@@ -186,6 +191,8 @@ struct ReferenceDump {
     version: u32,
     checkpoint: &'static str,
     teacher_ks: Vec<f64>,
+    teacher_lambdas: Vec<f64>,
+    training: TrainingOptions,
     steps: Vec<ReferenceStep>,
 }
 
@@ -231,7 +238,7 @@ fn dump_reference(
         seed,
         args.init_std,
     )?;
-    let optimizer = AdamW::new(shape, AdamWConfig::default())?;
+    let optimizer = AdamW::new(shape, args.training.optimizer())?;
     let teacher_ks = dataset.estimate_teacher_ks()?;
     let mut input_hash = Sha256::new();
     for header in dataset.headers() {
@@ -251,10 +258,13 @@ fn dump_reference(
         lookahead,
         args.init_std,
         args.init_pst_scale,
-        optimizer.config(),
+        args.training,
         &teacher_ks,
+        dataset.teacher_lambdas(),
     ))?;
     let mut checkpoint = Checkpoint {
+        removal_penalty: args.training.removal_penalty,
+        lambda_override: args.training.lambda_override,
         model,
         optimizer,
         progress: Progress {
@@ -268,8 +278,15 @@ fn dump_reference(
     };
     let reference = RemovalReference::v0();
     let started = std::time::Instant::now();
+    let targets = build_targets(warmup, &teacher_ks, dataset.teacher_lambdas())?;
     for _ in 0..steps {
-        let result = loss_and_gradients(&checkpoint.model, warmup, &teacher_ks, &reference)?;
+        let result = loss_and_gradients(
+            &checkpoint.model,
+            warmup,
+            &targets,
+            &reference,
+            args.training.removal_penalty,
+        )?;
         checkpoint
             .optimizer
             .update(&mut checkpoint.model, &result.parameters)?;
@@ -285,7 +302,14 @@ fn dump_reference(
             &args.output.join(&batch_name),
             &payload(dataset, batch, lookahead)?,
         )?;
-        let result = loss_and_gradients(&checkpoint.model, batch, &teacher_ks, &reference)?;
+        let targets = build_targets(batch, &teacher_ks, dataset.teacher_lambdas())?;
+        let result = loss_and_gradients(
+            &checkpoint.model,
+            batch,
+            &targets,
+            &reference,
+            args.training.removal_penalty,
+        )?;
         write_gradients(&args.output.join(&gradients), &result.parameters)?;
         checkpoint
             .optimizer
@@ -304,9 +328,11 @@ fn dump_reference(
         &path,
         &ReferenceDump {
             format: "minase-nnue-reference",
-            version: 1,
+            version: 2,
             checkpoint: "checkpoint.bin",
             teacher_ks,
+            teacher_lambdas: dataset.teacher_lambdas().to_vec(),
+            training: args.training,
             steps: records,
         },
     )?;

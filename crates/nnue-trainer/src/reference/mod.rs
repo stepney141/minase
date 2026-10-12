@@ -4,9 +4,11 @@
 //! 除去後の文脈と先獅子は変えない。線形除去差分はPython同様にf64で計算する。
 
 mod optimizer;
+mod parallel;
 mod removal;
 mod validation;
 pub use optimizer::{AdamW, AdamWConfig, AdamWGroup, adamw};
+use removal::removal_forward_parallel;
 pub use removal::{Removal, RemovalReference, removal_forward, v0_piece_values};
 pub use validation::{Validation, validation_forward};
 
@@ -75,7 +77,7 @@ impl Output {
 pub struct Losses {
     /// 二値交差エントロピー。
     pub bce: f64,
-    /// 係数1000を掛けた補助損失。
+    /// 指定した係数を掛けた補助損失。
     pub auxiliary: f64,
 }
 impl Losses {
@@ -198,32 +200,52 @@ fn feature_sum(mut value: impl FnMut(usize) -> f32) -> f32 {
 
 /// カーネル1。145列のgather-sumと線形の端点和を求める。
 pub fn forward(model: &Model, batch: &BatchSlot, weights: &[f32]) -> Result<Forward> {
+    forward_parallel(model, batch, weights, 1)
+}
+
+fn forward_parallel(
+    model: &Model,
+    batch: &BatchSlot,
+    weights: &[f32],
+    threads: usize,
+) -> Result<Forward> {
     check_batch(model, batch)?;
     check_weights(model, weights)?;
     let h = model.shape().width();
     let bias = model.expanded_biases();
-    let mut acc = vec![0.0; batch.len() * 2 * h];
-    let mut lin = vec![[0.0; 2]; batch.len()];
-    for (b, linear) in lin.iter_mut().enumerate() {
-        for (endpoint, value) in linear.iter_mut().enumerate() {
-            *value = feature_sum(|col| {
-                linear_row(model, batch.linear_features()[b * FEATURE_COLUMNS + col])[endpoint]
-            });
-        }
-        for v in 0..2 {
-            for j in 0..h {
-                acc[(b * 2 + v) * h + j] = feature_sum(|col| {
-                    row_value(
-                        model,
-                        weights,
-                        batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col],
-                        j,
-                    )
-                }) + bias[j];
+    let chunks = parallel::map(parallel::ranges(batch.len(), threads)?, |range| {
+        let mut acc = vec![0.0; range.len() * 2 * h];
+        let mut lin = vec![[0.0; 2]; range.len()];
+        for (local, b) in range.enumerate() {
+            for (endpoint, value) in lin[local].iter_mut().enumerate() {
+                *value = feature_sum(|col| {
+                    linear_row(model, batch.linear_features()[b * FEATURE_COLUMNS + col])[endpoint]
+                });
+            }
+            for v in 0..2 {
+                for j in 0..h {
+                    acc[(local * 2 + v) * h + j] = feature_sum(|col| {
+                        row_value(
+                            model,
+                            weights,
+                            batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col],
+                            j,
+                        )
+                    }) + bias[j];
+                }
             }
         }
+        Ok(Forward { acc, lin })
+    })?;
+    let mut result = Forward {
+        acc: Vec::with_capacity(batch.len() * 2 * h),
+        lin: Vec::with_capacity(batch.len()),
+    };
+    for chunk in chunks {
+        result.acc.extend(chunk.acc);
+        result.lin.extend(chunk.lin);
     }
-    Ok(Forward { acc, lin })
+    Ok(result)
 }
 
 pub(crate) fn head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32) -> f32 {
@@ -300,32 +322,6 @@ pub fn evaluate_f64(model: &Model, batch: &BatchSlot) -> Result<Vec<f64>> {
     Ok(values)
 }
 
-/// 分類ごとの教師用Kを使う。λ=1で、勝敗は混ぜない。
-pub fn targets(batch: &BatchSlot, teacher_ks: &[f64]) -> Result<Vec<f32>> {
-    check_batch_arrays(batch)?;
-    if batch
-        .teacher_classes()
-        .iter()
-        .any(|&class| class as usize >= teacher_ks.len())
-        || teacher_ks.iter().any(|&k| !k.is_finite() || k <= 0.0)
-        || batch
-            .teacher_scores()
-            .iter()
-            .any(|score| !score.is_finite())
-    {
-        return Err(Error::Invalid("teacher class, K or score"));
-    }
-    batch
-        .teacher_scores()
-        .iter()
-        .zip(batch.teacher_classes())
-        .map(|(&score, &class)| {
-            let k = teacher_ks[class as usize];
-            Ok((1.0 / (1.0 + (-f64::from(score) / k).exp())) as f32)
-        })
-        .collect()
-}
-
 /// カーネル3。出力、BCE、g、A_v、および線形係数cを計算する。
 pub fn output_backward(
     model: &Model,
@@ -333,6 +329,17 @@ pub fn output_backward(
     forward: &Forward,
     removal: &Removal,
     targets: &[f32],
+) -> Result<Output> {
+    output_backward_parallel(model, batch, forward, removal, targets, 1)
+}
+
+fn output_backward_parallel(
+    model: &Model,
+    batch: &BatchSlot,
+    forward: &Forward,
+    removal: &Removal,
+    targets: &[f32],
+    threads: usize,
 ) -> Result<Output> {
     check_batch(model, batch)?;
     let h = model.shape().width();
@@ -347,35 +354,68 @@ pub fn output_backward(
         return Err(Error::Invalid("targets"));
     }
     let o = model.expanded_output_weights();
+    let chunks = parallel::map(parallel::ranges(n, threads)?, |range| {
+        let length = range.len();
+        let begin = range.start * 2 * h;
+        let end = range.end * 2 * h;
+        let mut result = Output {
+            f: forward.acc[begin..end].iter().map(|&x| screlu(x)).collect(),
+            h: forward.acc[begin..end]
+                .iter()
+                .map(|&x| screlu_derivative(x))
+                .collect(),
+            logits: vec![0.0; length],
+            loss: vec![0.0; length],
+            g: vec![0.0; length],
+            d_acc: vec![0.0; length * 2 * h],
+            d_output: vec![0.0; length * 2 * h],
+            c: vec![[0.0; 2]; length],
+        };
+        for (local, b) in range.enumerate() {
+            let target = targets[b];
+            let x = logit(model, batch, forward, b);
+            let g = (1.0 / (1.0 + (-x).exp()) - target) / n as f32;
+            result.logits[local] = x;
+            result.g[local] = g;
+            result.loss[local] = x.max(0.0) - x * target + (-x.abs()).exp().ln_1p();
+            let u = phase(batch.piece_counts()[b], false);
+            for (e, &u_e) in u.iter().enumerate() {
+                result.c[local][e] = g * u_e / model.shape().k() + removal.linear[b][e];
+            }
+            for (vj, &o_vj) in o.iter().enumerate() {
+                let i = b * 2 * h + vj;
+                result.d_acc[local * 2 * h + vj] = ((f64::from(g) - f64::from(removal.s[b]))
+                    * f64::from(o_vj)
+                    * f64::from(result.h[local * 2 * h + vj])
+                    + f64::from(removal.d_acc_removal[i]))
+                    as f32;
+                result.d_output[local * 2 * h + vj] = ((f64::from(g) - f64::from(removal.s[b]))
+                    * f64::from(result.f[local * 2 * h + vj])
+                    + f64::from(removal.d_output[i]))
+                    as f32;
+            }
+        }
+        Ok(result)
+    })?;
     let mut result = Output {
-        f: forward.acc.iter().map(|&x| screlu(x)).collect(),
-        h: forward.acc.iter().map(|&x| screlu_derivative(x)).collect(),
-        logits: vec![0.0; n],
-        loss: vec![0.0; n],
-        g: vec![0.0; n],
-        d_acc: vec![0.0; n * 2 * h],
-        d_output: vec![0.0; n * 2 * h],
-        c: vec![[0.0; 2]; n],
+        f: Vec::with_capacity(n * 2 * h),
+        h: Vec::with_capacity(n * 2 * h),
+        logits: Vec::with_capacity(n),
+        loss: Vec::with_capacity(n),
+        g: Vec::with_capacity(n),
+        d_acc: Vec::with_capacity(n * 2 * h),
+        d_output: Vec::with_capacity(n * 2 * h),
+        c: Vec::with_capacity(n),
     };
-    for (b, &target) in targets.iter().enumerate() {
-        let x = logit(model, batch, forward, b);
-        let g = (1.0 / (1.0 + (-x).exp()) - target) / n as f32;
-        result.logits[b] = x;
-        result.g[b] = g;
-        result.loss[b] = x.max(0.0) - x * target + (-x.abs()).exp().ln_1p();
-        let u = phase(batch.piece_counts()[b], false);
-        for (e, &u_e) in u.iter().enumerate() {
-            result.c[b][e] = g * u_e / model.shape().k() + removal.linear[b][e];
-        }
-        for (vj, &o_vj) in o.iter().enumerate() {
-            let i = b * 2 * h + vj;
-            result.d_acc[i] = ((f64::from(g) - f64::from(removal.s[b]))
-                * f64::from(o_vj)
-                * f64::from(result.h[i])
-                + f64::from(removal.d_acc_removal[i])) as f32;
-            result.d_output[i] = ((f64::from(g) - f64::from(removal.s[b])) * f64::from(result.f[i])
-                + f64::from(removal.d_output[i])) as f32;
-        }
+    for chunk in chunks {
+        result.f.extend(chunk.f);
+        result.h.extend(chunk.h);
+        result.logits.extend(chunk.logits);
+        result.loss.extend(chunk.loss);
+        result.g.extend(chunk.g);
+        result.d_acc.extend(chunk.d_acc);
+        result.d_output.extend(chunk.d_output);
+        result.c.extend(chunk.c);
     }
     Ok(result)
 }
@@ -427,6 +467,20 @@ pub fn first_layer_backward(
     output: &Output,
     gradient: &mut Parameters,
 ) -> Result<()> {
+    first_layer_backward_parallel(model, batch, weights, forward, removal, output, gradient, 1)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn first_layer_backward_parallel(
+    model: &Model,
+    batch: &BatchSlot,
+    weights: &[f32],
+    forward: &Forward,
+    removal: &Removal,
+    output: &Output,
+    gradient: &mut Parameters,
+    threads: usize,
+) -> Result<()> {
     check_batch(model, batch)?;
     check_weights(model, weights)?;
     check_parameters(gradient, model.shape())?;
@@ -437,34 +491,43 @@ pub fn first_layer_backward(
     let o = model.expanded_output_weights();
     let inverse = batch.first_layer_inverse();
     gradient[Parameter::FirstLayer].fill(0.0);
-    for row in 0..inverse.starts().len() - 1 {
-        for j in 0..h {
-            let mut sum = 0.0_f64;
-            for &word in &inverse.entries()
-                [inverse.starts()[row] as usize..inverse.starts()[row + 1] as usize]
-            {
-                let entry = PackedOccurrence::from_word(word).expect("validated reverse index");
-                let b = entry.position();
-                let v = entry.perspective() as usize;
-                let col = entry.column() as usize;
-                let unit = rotated_unit(entry.rotated(), j, h);
-                let i = (b * 2 + v) * h + unit;
-                let d = if col < 144 {
-                    removal.d_r[b * 144 + col]
-                } else {
-                    0.0
-                };
-                let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
-                sum += f64::from(output.d_acc[i])
-                    - f64::from(d)
-                        * f64::from(o[v * h + unit])
-                        * f64::from(screlu_derivative(
-                            forward.acc[i] - row_value(model, weights, feature, unit),
-                        ));
+    let rows = inverse.starts().len() - 1;
+    parallel::map(
+        parallel::rows_mut(&mut gradient[Parameter::FirstLayer][..rows * h], h, threads)?,
+        |(chunk, values)| {
+            for (local, row_values) in values.chunks_mut(h).enumerate() {
+                let row = chunk + local;
+                for (j, value) in row_values.iter_mut().enumerate() {
+                    let mut sum = 0.0_f64;
+                    for &word in &inverse.entries()
+                        [inverse.starts()[row] as usize..inverse.starts()[row + 1] as usize]
+                    {
+                        let entry =
+                            PackedOccurrence::from_word(word).expect("validated reverse index");
+                        let b = entry.position();
+                        let v = entry.perspective() as usize;
+                        let col = entry.column() as usize;
+                        let unit = rotated_unit(entry.rotated(), j, h);
+                        let i = (b * 2 + v) * h + unit;
+                        let d = if col < 144 {
+                            removal.d_r[b * 144 + col]
+                        } else {
+                            0.0
+                        };
+                        let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
+                        sum += f64::from(output.d_acc[i])
+                            - f64::from(d)
+                                * f64::from(o[v * h + unit])
+                                * f64::from(screlu_derivative(
+                                    forward.acc[i] - row_value(model, weights, feature, unit),
+                                ));
+                    }
+                    *value = sum as f32;
+                }
             }
-            gradient[Parameter::FirstLayer][row * h + j] = sum as f32;
-        }
-    }
+            Ok(())
+        },
+    )?;
     Ok(())
 }
 
@@ -476,54 +539,83 @@ pub fn linear_backward(
     output: &Output,
     gradient: &mut Parameters,
 ) -> Result<()> {
+    linear_backward_parallel(model, batch, removal, output, gradient, 1)
+}
+
+fn linear_backward_parallel(
+    model: &Model,
+    batch: &BatchSlot,
+    removal: &Removal,
+    output: &Output,
+    gradient: &mut Parameters,
+    threads: usize,
+) -> Result<()> {
     check_batch(model, batch)?;
     check_parameters(gradient, model.shape())?;
     removal.check_shape(batch.len(), model.shape().width())?;
     output.check_shape(batch.len(), model.shape().width())?;
     let inverse = batch.linear_inverse();
-    for row in 0..CANONICAL_ROWS {
-        for endpoint in 0..2 {
-            let mut sum = 0.0_f64;
-            for &word in &inverse.entries()
-                [inverse.starts()[row] as usize..inverse.starts()[row + 1] as usize]
-            {
-                let entry = PackedOccurrence::from_word(word).expect("validated reverse index");
-                let b = entry.position();
-                let col = entry.column() as usize;
-                let d = if col < 144 {
-                    removal.d_r[b * 144 + col]
-                } else {
-                    0.0
-                };
-                sum += f64::from(output.c[b][endpoint])
-                    - f64::from(d) * f64::from(phase(batch.piece_counts()[b], true)[endpoint])
-                        / f64::from(model.shape().k());
+    parallel::map(
+        parallel::rows_mut(&mut gradient[Parameter::Linear], 2, threads)?,
+        |(chunk, values)| {
+            for (local, row_values) in values.chunks_mut(2).enumerate() {
+                let row = chunk + local;
+                for (endpoint, value) in row_values.iter_mut().enumerate() {
+                    let mut sum = 0.0_f64;
+                    for &word in &inverse.entries()
+                        [inverse.starts()[row] as usize..inverse.starts()[row + 1] as usize]
+                    {
+                        let entry =
+                            PackedOccurrence::from_word(word).expect("validated reverse index");
+                        let b = entry.position();
+                        let col = entry.column() as usize;
+                        let d = if col < 144 {
+                            removal.d_r[b * 144 + col]
+                        } else {
+                            0.0
+                        };
+                        sum += f64::from(output.c[b][endpoint])
+                            - f64::from(d)
+                                * f64::from(phase(batch.piece_counts()[b], true)[endpoint])
+                                / f64::from(model.shape().k());
+                    }
+                    *value = sum as f32;
+                }
             }
-            gradient[Parameter::Linear][row * 2 + endpoint] = sum as f32;
-        }
-    }
+            Ok(())
+        },
+    )?;
     Ok(())
 }
 
 /// カーネル7。dV[p]=Σ_k dW[k*13680+p]を8区分の順で縮約する。
 pub fn reduce_virtual(gradient: &mut Parameters) -> Result<()> {
+    reduce_virtual_parallel(gradient, 1)
+}
+
+fn reduce_virtual_parallel(gradient: &mut Parameters, threads: usize) -> Result<()> {
     check_parameters(gradient, gradient.shape())?;
     if gradient.shape().feature_set() == InputFeatureSet::P {
         return Ok(());
     }
     let h = gradient.shape().width();
-    for base in 0..FEATURE_COUNT {
-        for j in 0..h {
-            let mut sum = 0.0_f64;
-            for bucket in 0..8 {
-                sum += f64::from(
-                    gradient[Parameter::FirstLayer][(bucket * FEATURE_COUNT + base) * h + j],
-                );
+    let mut virtual_gradient = vec![0.0; gradient.shape().len(Parameter::Virtual)];
+    parallel::map(
+        parallel::rows_mut(&mut virtual_gradient[..FEATURE_COUNT * h], h, threads)?,
+        |(chunk, values)| {
+            for (local, value) in values.iter_mut().enumerate() {
+                let i = chunk * h + local;
+                let mut sum = 0.0_f64;
+                for bucket in 0..8 {
+                    sum +=
+                        f64::from(gradient[Parameter::FirstLayer][bucket * FEATURE_COUNT * h + i]);
+                }
+                *value = sum as f32;
             }
-            gradient[Parameter::Virtual][base * h + j] = sum as f32;
-        }
-    }
-    gradient[Parameter::Virtual][FEATURE_COUNT * h..].fill(0.0);
+            Ok(())
+        },
+    )?;
+    gradient[Parameter::Virtual].copy_from_slice(&virtual_gradient);
     Ok(())
 }
 
@@ -531,19 +623,41 @@ pub fn reduce_virtual(gradient: &mut Parameters) -> Result<()> {
 pub fn loss_and_gradients(
     model: &Model,
     batch: &BatchSlot,
-    teacher_ks: &[f64],
+    targets: &[f32],
     reference: &RemovalReference,
+    removal_penalty: f64,
+) -> Result<Gradients> {
+    loss_and_gradients_parallel(model, batch, targets, reference, removal_penalty, 1)
+}
+
+/// 独立な局面と特徴行を分割し、各縮約は単スレッド参照と同じ順で計算する。
+/// threadsは正でなければならない。
+pub fn loss_and_gradients_parallel(
+    model: &Model,
+    batch: &BatchSlot,
+    targets: &[f32],
+    reference: &RemovalReference,
+    removal_penalty: f64,
+    threads: usize,
 ) -> Result<Gradients> {
     check_batch(model, batch)?;
-    let targets = targets(batch, teacher_ks)?;
+    parallel::check_threads(threads)?;
     model.parameters().validate()?;
     let weights = fold(model)?;
-    let forward = forward(model, batch, &weights)?;
-    let removal = removal_forward(model, batch, &weights, &forward, reference)?;
-    let output = output_backward(model, batch, &forward, &removal, &targets)?;
+    let forward = forward_parallel(model, batch, &weights, threads)?;
+    let removal = removal_forward_parallel(
+        model,
+        batch,
+        &weights,
+        &forward,
+        reference,
+        removal_penalty,
+        threads,
+    )?;
+    let output = output_backward_parallel(model, batch, &forward, &removal, targets, threads)?;
     let mut parameters = Parameters::zeros(model.shape());
     let losses = reduce_partials(model, &output, &removal, &mut parameters)?;
-    first_layer_backward(
+    first_layer_backward_parallel(
         model,
         batch,
         &weights,
@@ -551,9 +665,10 @@ pub fn loss_and_gradients(
         &removal,
         &output,
         &mut parameters,
+        threads,
     )?;
-    linear_backward(model, batch, &removal, &output, &mut parameters)?;
-    reduce_virtual(&mut parameters)?;
+    linear_backward_parallel(model, batch, &removal, &output, &mut parameters, threads)?;
+    reduce_virtual_parallel(&mut parameters, threads)?;
     parameters.validate()?;
     if !losses.total().is_finite() {
         return Err(Error::Invalid("non-finite loss"));

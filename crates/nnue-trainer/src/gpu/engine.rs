@@ -171,6 +171,7 @@ pub struct Evaluator {
     ring: HostRing,
     buffers: Buffers,
     capacity: usize,
+    removal_penalty: f64,
 }
 impl Evaluator {
     /// CPUのモデルをアップロードし、カーネルと3面・2面の環を用意する。
@@ -179,7 +180,13 @@ impl Evaluator {
         model: &Model,
         reference: &RemovalReference,
         capacity: usize,
+        removal_penalty: f64,
     ) -> Result<Self> {
+        if !removal_penalty.is_finite() || removal_penalty < 0.0 {
+            return Err(Error::Invalid(
+                "removal penalty must be finite and nonnegative",
+            ));
+        }
         let ring = HostRing::new(&device, model.shape().feature_set(), capacity)?;
         let kernels = Kernels::compile(&device)?;
         let buffers = Buffers::new(&device, model.shape(), capacity)?;
@@ -191,6 +198,7 @@ impl Evaluator {
             ring,
             buffers,
             capacity,
+            removal_penalty,
         })
     }
     /// 利用中のGPU文脈。
@@ -228,6 +236,7 @@ impl Evaluator {
             &self.model,
             input,
             &mut self.buffers,
+            self.removal_penalty,
             None,
         )?;
         output_backward(
@@ -470,6 +479,7 @@ pub(super) fn removal_forward(
     m: &DeviceModel,
     input: &DeviceInput,
     b: &mut Buffers,
+    removal_penalty: f64,
     profile: Option<&mut KernelProfile>,
 ) -> Result<()> {
     check_head(m, input, b)?;
@@ -531,9 +541,11 @@ pub(super) fn removal_forward(
         .arg(&n)
         .arg(&h)
         .arg(&p)
-        .arg(&scale);
+        .arg(&scale)
+        .arg(&removal_penalty);
     // SAFETY: 各配列の長さを検査済み。特徴番号と駒数はBatchSlotの不変条件で保証。
     // referenceは検査済みRemovalReferenceのi64端点で、CUDAのlong longと同じ表現。
+    // removal_penaltyは有限かつ非負のf64で、CUDAのdouble引数と一致する。
     // 1ブロックが1局面を担当し、共有配列の範囲は144列、幅はShapeで2〜512に制限。
     unsafe {
         launch_kernel(&mut args, cfg, Kernel::RemovalForward, profile)?;

@@ -1,6 +1,7 @@
-//! GPUの学習、全検証集合の評価、エポック境界の保存と再開。
+//! CUDAまたはCPUによる学習、全検証集合の評価、エポック境界の保存と再開。
 
 mod args;
+mod backend;
 mod base;
 mod pipeline;
 mod record;
@@ -8,13 +9,13 @@ mod record;
 mod tests;
 
 use crate::{
-    data::{Dataset, Observations, build_batches, epoch_permutation},
+    data::{Dataset, Observations, build_batches, build_targets, epoch_permutation},
     export::{self, QuantizationReport},
-    gpu::{Device, Evaluator, Step},
     model::{BestEpoch, Checkpoint, Masks, Model, Parameter, Progress, Shape, load_initial},
-    reference::{AdamW, AdamWConfig, RemovalReference, Validation, targets},
+    reference::{AdamW, RemovalReference, Validation},
 };
 pub use args::Args;
+use backend::Backend;
 pub use record::{EpochRecord, LinearMovement, Saturation};
 use record::{
     append_epoch, append_resume, atomic_write, configuration, linear_movement, reconcile_log,
@@ -136,13 +137,12 @@ struct Session {
     base: base::Base,
     teacher_ks: Vec<f64>,
     checkpoint: Checkpoint,
-    device: Device,
-    step: Option<Step>,
+    backend: Backend,
     started: Instant,
     previous_elapsed: f64,
     initial_validation_loss: Option<f64>,
-    gpu_used_bytes: usize,
-    gpu_total_bytes: usize,
+    gpu_used_bytes: Option<usize>,
+    gpu_total_bytes: Option<usize>,
 }
 
 impl Session {
@@ -155,7 +155,13 @@ impl Session {
         validate_initial(&initial, &base.linear)?;
         // SAFETY: --dataは実行中に変更・切り詰めない入力というコマンドの契約に従う。
         // このセッションもDatasetを破棄するまで入力ファイルへ書き込まない。
-        let dataset = unsafe { Dataset::open(&args.data, args.lookahead()?)? };
+        let dataset = unsafe {
+            Dataset::open(
+                &args.data,
+                args.lookahead()?,
+                Some(args.training.lambda_override),
+            )?
+        };
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err(
                 Error::Invalid("training and validation sets must both be nonempty").into(),
@@ -180,7 +186,9 @@ impl Session {
         let mut config =
             configuration(&args, workers, &dataset, &observations, &teacher_ks, &model)?;
         let mut checkpoint = Checkpoint {
-            optimizer: AdamW::new(model.shape(), AdamWConfig::default())?,
+            removal_penalty: args.training.removal_penalty,
+            lambda_override: args.training.lambda_override,
+            optimizer: AdamW::new(model.shape(), args.training.optimizer())?,
             model,
             progress: Progress {
                 epoch: 0,
@@ -221,7 +229,9 @@ impl Session {
                 || restored.model.masks() != checkpoint.model.masks()
                 || restored.model.initial_linear() != checkpoint.model.initial_linear()
                 || restored.model.initial_virtual() != checkpoint.model.initial_virtual()
-                || restored.optimizer.config() != AdamWConfig::default()
+                || restored.optimizer.config() != args.training.optimizer()
+                || restored.removal_penalty != args.training.removal_penalty
+                || restored.lambda_override != args.training.lambda_override
                 || restored.progress.seed != args.seed
                 || restored.progress.epoch > args.epochs
                 || restored.optimizer.step()
@@ -248,8 +258,16 @@ impl Session {
             }
             None
         };
-        let device = Device::new(0)?;
-        let name = device.name();
+        let backend = Backend::new(
+            args.device,
+            &checkpoint.model,
+            &checkpoint.optimizer,
+            &RemovalReference::v0(),
+            args.batch,
+            args.training.removal_penalty,
+            workers,
+        )?;
+        let name = backend.name();
         if let Some(saved) = &saved_config {
             if saved.get("device_name") != Some(&json!(name)) {
                 return Err(
@@ -259,11 +277,14 @@ impl Session {
         } else {
             std::fs::create_dir_all(&args.output_dir)?;
             config.document["device_name"] = json!(name);
+            let memory = backend.memory()?;
+            config.document["gpu_memory_used_bytes"] = json!(memory.map(|(used, _)| used));
+            config.document["gpu_memory_total_bytes"] = json!(memory.map(|(_, total)| total));
             config.document["preprocessing_seconds"] = json!(started.elapsed().as_secs_f64());
             write_json(&args.output_dir.join("config.json"), &config.document)?;
         }
         let previous_elapsed = checkpoint.progress.elapsed_seconds;
-        let (free, total) = device.memory_info()?;
+        let memory = backend.memory()?;
         let mut session = Self {
             args,
             workers,
@@ -271,13 +292,12 @@ impl Session {
             base,
             teacher_ks,
             checkpoint,
-            device,
-            step: None,
+            backend,
             started,
             previous_elapsed,
             initial_validation_loss,
-            gpu_used_bytes: total - free,
-            gpu_total_bytes: total,
+            gpu_used_bytes: memory.map(|(used, _)| used),
+            gpu_total_bytes: memory.map(|(_, total)| total),
         };
         if session.checkpoint.progress.best.is_some() {
             recover_best_checkpoint(&session.args.output_dir, &session.checkpoint)?;
@@ -331,9 +351,10 @@ impl Session {
         )
     }
     fn memory(&mut self) -> Result<()> {
-        let (free, total) = self.device.memory_info()?;
-        self.gpu_used_bytes = self.gpu_used_bytes.max(total - free);
-        self.gpu_total_bytes = total;
+        if let Some((used, total)) = self.backend.memory()? {
+            self.gpu_used_bytes = self.gpu_used_bytes.max(Some(used));
+            self.gpu_total_bytes = Some(total);
+        }
         Ok(())
     }
 
@@ -341,20 +362,18 @@ impl Session {
         if self.expired() {
             return Ok(None);
         }
-        let mut evaluator = Evaluator::new(
-            self.device.clone(),
-            model,
-            &RemovalReference::v0(),
-            self.args.batch,
-        )?;
+        let mut evaluator =
+            self.backend
+                .evaluator(model, self.args.batch, self.args.training.removal_penalty)?;
         self.memory()?;
         validate_batches(
             self.dataset.validation_indices().chunks(self.args.batch),
             |indices| {
                 let batch =
                     build_batches(&self.dataset, self.args.feature_set, &[indices])?.remove(0);
-                let values = targets(&batch, &self.teacher_ks)?;
-                Ok(evaluator.validate(&batch, &values)?)
+                let values =
+                    build_targets(&batch, &self.teacher_ks, self.dataset.teacher_lambdas())?;
+                evaluator.validate(&batch, &values)
             },
             || self.expired(),
         )
@@ -364,15 +383,6 @@ impl Session {
         self.checkpoint.progress.elapsed_seconds = self.elapsed();
         if stop_reason(&self.checkpoint.progress, &self.args).is_some() {
             return Ok(false);
-        }
-        if self.step.is_none() {
-            self.step = Some(Step::new(
-                self.device.clone(),
-                &self.checkpoint.model,
-                &self.checkpoint.optimizer,
-                &RemovalReference::v0(),
-                self.args.batch,
-            )?);
         }
         self.memory()?;
         let epoch = self.checkpoint.progress.epoch + 1;
@@ -389,9 +399,7 @@ impl Session {
                 workers: self.workers,
                 deadline,
             },
-            self.step
-                .as_mut()
-                .ok_or(Error::Invalid("missing GPU step"))?,
+            &mut self.backend,
         )?;
         let Some(training) = training else {
             return Ok(false);
@@ -399,11 +407,7 @@ impl Session {
         self.gpu_used_bytes = self.gpu_used_bytes.max(training.gpu_used_bytes);
         self.gpu_total_bytes = training.gpu_total_bytes;
         let training_seconds = training_started.elapsed().as_secs_f64();
-        let (parameters, optimizer) = self
-            .step
-            .as_ref()
-            .ok_or(Error::Invalid("missing GPU step"))?
-            .snapshot()?;
+        let (parameters, optimizer) = self.backend.snapshot()?;
         parameters.validate()?;
         let mut candidate = self.checkpoint.model.clone();
         for p in Parameter::ALL {
@@ -451,6 +455,7 @@ impl Session {
         let train_loss = training.map(|(t, _)| t.bce / t.positions as f64);
         let removal_loss = training.map(|(t, _)| t.auxiliary / t.positions as f64);
         EpochRecord {
+            device: self.args.device,
             epoch: self.checkpoint.progress.epoch,
             train_loss,
             removal_loss,
@@ -504,7 +509,6 @@ impl Session {
         if self.initial_validation_loss.is_some() {
             self.save_latest()?;
         }
-        self.step.take();
         let best = self.checkpoint.progress.best;
         let mut summary = Summary {
             status: "error",
@@ -646,7 +650,7 @@ fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> 
     atomic_write(&path, &latest.encode()?)
 }
 
-/// 初期検証、学習、保存、最良重みの書き出しを順に行う。CPUへの代替経路は持たない。
+/// 指定デバイスで初期検証、学習、保存、最良重みの書き出しを順に行う。
 pub fn run(args: Args) -> Result<Summary> {
     let mut session = Session::new(args)?;
     loop {

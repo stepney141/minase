@@ -1,3 +1,4 @@
+use super::parallel;
 use crate::{
     data::InputFeatureSet,
     model::{Error, Model, Parameter, Parameters, Result, Shape},
@@ -109,6 +110,18 @@ impl AdamW {
     /// バッチに現れなかった観測行もモーメントと減衰で動く。未観測行は
     /// パラメータと両モーメントを保ち、切り詰めも行わない。
     pub fn update(&mut self, model: &mut Model, gradient: &Parameters) -> Result<()> {
+        self.update_parallel(model, gradient, 1)
+    }
+
+    /// 各群の独立した要素を標準ライブラリのスレッドへ分けて更新する。
+    /// threadsは正でなければならず、更新順は単スレッド参照と同じ。
+    pub fn update_parallel(
+        &mut self,
+        model: &mut Model,
+        gradient: &Parameters,
+        threads: usize,
+    ) -> Result<()> {
+        parallel::check_threads(threads)?;
         if model.shape() != self.m.shape()
             || model.shape() != self.v.shape()
             || model.shape() != gradient.shape()
@@ -131,6 +144,7 @@ impl AdamW {
             .checked_add(1)
             .ok_or(Error::Invalid("AdamW step overflow"))?;
         let shape = model.shape();
+        let masks = model.masks().clone();
         // 特徴行の範囲は、今回更新して切り詰めた仮想行から求める。
         for p in [
             Parameter::Linear,
@@ -141,31 +155,52 @@ impl AdamW {
             Parameter::OutputBias,
         ] {
             let coefficients = Coefficients::new(step, self.config.group(p));
-            for i in 0..shape.len(p) {
-                let observed = match p {
-                    Parameter::Linear => model.masks().canonical()[i / 2],
-                    Parameter::FirstLayer => model.masks().first_layer()[i / shape.width()],
-                    Parameter::Virtual => model.masks().virtual_rows()[i / shape.width()],
-                    _ => true,
-                };
-                if !observed {
-                    continue;
-                }
-                let (lower, upper) = match p {
-                    Parameter::Linear => (-4096.0, 4095.875),
-                    Parameter::OutputWeights => (-1.98, 1.98),
-                    Parameter::FirstLayer if shape.feature_set() == InputFeatureSet::HalfKpHmB8 => {
-                        let base = i / shape.width() % FEATURE_COUNT;
-                        let v = model.parameters()[Parameter::Virtual]
-                            [base * shape.width() + i % shape.width()];
-                        (-8.0 - v, 8.0 - v)
+            // 第1層の切り詰めは、先に更新した仮想行を読みながら行う。
+            let virtual_rows = if p == Parameter::FirstLayer {
+                model.parameters()[Parameter::Virtual].to_vec()
+            } else {
+                Vec::new()
+            };
+            parallel::map(
+                parallel::rows_mut(model.parameter_mut(p), 1, threads)?
+                    .into_iter()
+                    .zip(parallel::rows_mut(&mut self.m[p], 1, threads)?)
+                    .zip(parallel::rows_mut(&mut self.v[p], 1, threads)?),
+                |(((start, values), (_, first_moments)), (_, second_moments))| {
+                    for (local, ((value, m), v)) in values
+                        .iter_mut()
+                        .zip(first_moments)
+                        .zip(second_moments)
+                        .enumerate()
+                    {
+                        let i = start + local;
+                        let observed = match p {
+                            Parameter::Linear => masks.canonical()[i / 2],
+                            Parameter::FirstLayer => masks.first_layer()[i / shape.width()],
+                            Parameter::Virtual => masks.virtual_rows()[i / shape.width()],
+                            _ => true,
+                        };
+                        if !observed {
+                            continue;
+                        }
+                        let (lower, upper) = match p {
+                            Parameter::Linear => (-4096.0, 4095.875),
+                            Parameter::OutputWeights => (-1.98, 1.98),
+                            Parameter::FirstLayer
+                                if shape.feature_set() == InputFeatureSet::HalfKpHmB8 =>
+                            {
+                                let base = i / shape.width() % FEATURE_COUNT;
+                                let v = virtual_rows[base * shape.width() + i % shape.width()];
+                                (-8.0 - v, 8.0 - v)
+                            }
+                            _ => (-8.0, 8.0),
+                        };
+                        coefficients.update(value, gradient[p][i], m, v);
+                        *value = value.clamp(lower, upper);
                     }
-                    _ => (-8.0, 8.0),
-                };
-                let value = &mut model.parameter_mut(p)[i];
-                coefficients.update(value, gradient[p][i], &mut self.m[p][i], &mut self.v[p][i]);
-                *value = value.clamp(lower, upper);
-            }
+                    Ok(())
+                },
+            )?;
         }
         self.step = step;
         model.parameters().validate()

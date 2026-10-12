@@ -72,7 +72,7 @@ impl Fixture {
             .unwrap();
         Self {
             // SAFETY: このfixture専用のファイルを作成し、Datasetの生存中は変更・切り詰めしない。
-            dataset: unsafe { Dataset::open(&[path], None).unwrap() },
+            dataset: unsafe { Dataset::open(&[path], None, Some(1.0)).unwrap() },
             root,
         }
     }

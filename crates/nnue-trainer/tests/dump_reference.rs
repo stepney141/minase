@@ -66,6 +66,14 @@ fn dump_reference_writes_warmed_checkpoint_three_batches_gradients_and_states() 
         let manifest: serde_json::Value =
             serde_json::from_slice(&std::fs::read(directory.join("reference.json")).unwrap())
                 .unwrap();
+        assert_eq!(manifest["version"], 2);
+        assert_eq!(
+            manifest["training"],
+            serde_json::to_value(nnue_trainer::options::TrainingOptions::default()).unwrap()
+        );
+        assert_eq!(manifest["teacher_lambdas"], serde_json::json!([1.0]));
+        assert_eq!(saved.lambda_override, 1.0);
+        assert_eq!(saved.removal_penalty, 1000.0);
         assert_eq!(manifest["steps"].as_array().unwrap().len(), 3);
         for (i, step) in manifest["steps"].as_array().unwrap().iter().enumerate() {
             let after = Checkpoint::read(directory.join(step["after"].as_str().unwrap())).unwrap();

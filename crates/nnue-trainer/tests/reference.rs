@@ -4,7 +4,7 @@ use common::*;
 use minase::eval::features::{FEATURE_COUNT, feature_index, mirror_feature};
 use minase_core::{Color, PieceKind, Square};
 use nnue_trainer::{
-    data::{BatchSlot, InputFeatureSet, SENTINEL, decode_p_feature},
+    data::{BatchSlot, InputFeatureSet, SENTINEL, build_targets, decode_p_feature},
     model::{Masks, Model, Parameter, Parameters},
     reference::{self, AdamW, AdamWConfig, AdamWGroup, RemovalReference, loss_and_gradients},
 };
@@ -107,7 +107,7 @@ fn dense_loss(model: &Model, batch: &BatchSlot, endpoints: &[[i16; 2]]) -> f64 {
         }
         ((numerator / 720).clamp(-28999, 28999), numerator)
     };
-    let targets = reference::targets(batch, &[700.0]).unwrap();
+    let targets = build_targets(batch, &[700.0], &[1.0]).unwrap();
     let mut loss = 0.0;
     for (b, &target) in targets.iter().enumerate() {
         let before = value(b, None);
@@ -172,7 +172,14 @@ fn finite_differences_cover_all_parameter_groups_and_penalty_regions() {
                 }
             }
             let reference = RemovalReference::new(&endpoints).unwrap();
-            let gradients = loss_and_gradients(&model, &batch, &[700.0], &reference).unwrap();
+            let gradients = loss_and_gradients(
+                &model,
+                &batch,
+                &build_targets(&batch, &[700.0], &[1.0]).unwrap(),
+                &reference,
+                1000.0,
+            )
+            .unwrap();
             close(
                 gradients.losses.total(),
                 dense_loss(&model, &batch, &endpoints),
@@ -181,7 +188,8 @@ fn finite_differences_cover_all_parameter_groups_and_penalty_regions() {
             let weights = reference::fold(&model).unwrap();
             let forward = reference::forward(&model, &batch, &weights).unwrap();
             let removal =
-                reference::removal_forward(&model, &batch, &weights, &forward, &reference).unwrap();
+                reference::removal_forward(&model, &batch, &weights, &forward, &reference, 1000.0)
+                    .unwrap();
             assert!(removal.eligible.iter().any(|&x| !x));
             assert!(removal.pen_r.iter().any(|&x| x > 0.0));
             if inverted {
@@ -266,6 +274,7 @@ fn removal_uses_lane_partials_then_descending_shuffle_distances() {
                     &weights,
                     &forward,
                     &RemovalReference::v0(),
+                    1000.0,
                 )
                 .unwrap();
                 let expected_e = f64::from(expected) * f64::from(model.shape().k());
@@ -300,9 +309,15 @@ fn removal_p_adds_both_activations_before_multiplying_the_shared_weight() {
         acc: vec![0.3, 0.7, 0.0, 0.0],
         lin: vec![[0.0; 2]],
     };
-    let removal =
-        reference::removal_forward(&model, &batch, &weights, &forward, &RemovalReference::v0())
-            .unwrap();
+    let removal = reference::removal_forward(
+        &model,
+        &batch,
+        &weights,
+        &forward,
+        &RemovalReference::v0(),
+        1000.0,
+    )
+    .unwrap();
     let paired = (0.3_f32 * 0.3 + 0.7_f32 * 0.7) * 0.11;
     let expected_e = f64::from(paired) * f64::from(model.shape().k());
     for ((&delta, &e), &eligible) in removal
@@ -340,7 +355,8 @@ fn ineligible_removals_zero_diagnostics_and_preserve_reference_fields() {
                 RemovalReference::v0()
             };
             let result =
-                reference::removal_forward(&model, &batch, &weights, &forward, &reference).unwrap();
+                reference::removal_forward(&model, &batch, &weights, &forward, &reference, 1000.0)
+                    .unwrap();
             for col in 0..144 {
                 let expected_reference = if zero_reference {
                     0
@@ -465,13 +481,17 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
         let mut forward = reference::forward(&model, &batch, &weights).unwrap();
         let reference = RemovalReference::v0();
         let mut removal =
-            reference::removal_forward(&model, &batch, &weights, &forward, &reference).unwrap();
+            reference::removal_forward(&model, &batch, &weights, &forward, &reference, 1000.0)
+                .unwrap();
         let mut output =
             reference::output_backward(&model, &batch, &forward, &removal, &[0.5]).unwrap();
         let mut gradient = Parameters::zeros(model.shape());
         let unchanged = gradient.clone();
         let mut check_forward = |bad: &reference::Forward| {
-            assert!(reference::removal_forward(&model, &batch, &weights, bad, &reference).is_err());
+            assert!(
+                reference::removal_forward(&model, &batch, &weights, bad, &reference, 1000.0)
+                    .is_err()
+            );
             assert!(reference::output_backward(&model, &batch, bad, &removal, &[0.5]).is_err());
             assert!(reference::validation_forward(&model, &batch, bad, &[0.5]).is_err());
             assert!(
@@ -559,7 +579,7 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
         let short_weights = &weights[..weights.len() - 1];
         assert!(reference::forward(&model, &batch, short_weights).is_err());
         assert!(
-            reference::removal_forward(&model, &batch, short_weights, &forward, &reference)
+            reference::removal_forward(&model, &batch, short_weights, &forward, &reference, 1000.0)
                 .is_err()
         );
         assert!(
@@ -580,7 +600,7 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
             );
             assert!(reference::validation_forward(&model, &batch, &forward, &targets).is_err());
         }
-        assert!(reference::targets(&batch, &[]).is_err());
+        assert!(build_targets(&batch, &[], &[1.0]).is_err());
         assert!(reference.deltas(&batch, batch.len()).is_err());
         let shape = nnue_trainer::model::Shape::new(set, 4, 1000.0).unwrap();
         let mut wrong_gradient = Parameters::zeros(shape);
@@ -625,7 +645,8 @@ fn p_mirror_preserves_evaluation_and_canonical_gradients() {
             let w = reference::fold(&model).unwrap();
             let f = reference::forward(&model, batch, &w).unwrap();
             let r =
-                reference::removal_forward(&model, batch, &w, &f, &RemovalReference::v0()).unwrap();
+                reference::removal_forward(&model, batch, &w, &f, &RemovalReference::v0(), 1000.0)
+                    .unwrap();
             let o = reference::output_backward(&model, batch, &f, &r, &[0.7]).unwrap();
             let mut g = nnue_trainer::model::Parameters::zeros(model.shape());
             reference::reduce_partials(&model, &o, &r, &mut g).unwrap();
@@ -878,7 +899,8 @@ fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
     let m = model(InputFeatureSet::P, 4);
     let w = reference::fold(&m).unwrap();
     let f = reference::forward(&m, &batch, &w).unwrap();
-    let r = reference::removal_forward(&m, &batch, &w, &f, &RemovalReference::v0()).unwrap();
+    let r =
+        reference::removal_forward(&m, &batch, &w, &f, &RemovalReference::v0(), 1000.0).unwrap();
     assert!(!r.eligible[0]);
     assert!(!r.eligible[1]);
     assert!(r.eligible[25]);
@@ -898,7 +920,14 @@ fn integer_reference_uses_phase_truncation_saturation_and_excludes_royals() {
     close(magnitudes[25], 97.0 / 720.0, 1e-15);
     let full = Fixture::new(&[common::position(&[], Color::Black, None)]); // 空局面の全除去は不適格。
     let empty = full.batch(InputFeatureSet::P, &[0]);
-    let g = loss_and_gradients(&m, &empty, &[700.0], &RemovalReference::v0()).unwrap();
+    let g = loss_and_gradients(
+        &m,
+        &empty,
+        &build_targets(&empty, &[700.0], &[1.0]).unwrap(),
+        &RemovalReference::v0(),
+        1000.0,
+    )
+    .unwrap();
     assert_eq!(g.losses.auxiliary, 0.0);
 }
 
@@ -946,5 +975,197 @@ fn integer_reference_handles_phase_boundaries_negative_truncation_and_evaluation
         let (deltas, magnitudes) = RemovalReference::v0().deltas(&batch, 0).unwrap();
         assert_eq!(deltas[0], expected);
         assert_eq!(magnitudes[0], 750.0);
+    }
+}
+
+fn assert_parameter_bits(actual: &Parameters, expected: &Parameters) {
+    assert_eq!(actual.shape(), expected.shape());
+    for parameter in Parameter::ALL {
+        for (index, (&actual, &expected)) in actual[parameter]
+            .iter()
+            .zip(&expected[parameter])
+            .enumerate()
+        {
+            assert_eq!(
+                actual.to_bits(),
+                expected.to_bits(),
+                "{parameter:?}[{index}]"
+            );
+        }
+    }
+}
+
+#[test]
+fn cpu_threads_preserve_every_loss_gradient_parameter_and_moment_bit_for_three_updates() {
+    // フェーズ3bの契約: 独立な処理の分割数を変えても縮約と3更新の軌跡は不変。
+    // 7局面を2本と5本に分け、余りのある分割と同じ行の反復出現を含める。
+    let fixture = Fixture::new(&positions());
+    let config = AdamWConfig {
+        linear: AdamWGroup {
+            lr: 0.017,
+            weight_decay: 0.021,
+        },
+        ft: AdamWGroup {
+            lr: 0.0007,
+            weight_decay: 0.004,
+        },
+        head: AdamWGroup {
+            lr: 0.0013,
+            weight_decay: 0.009,
+        },
+    };
+    let reference = RemovalReference::v0();
+    for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let mut serial = nonzero_model(set);
+        let mut serial_optimizer = AdamW::new(serial.shape(), config).unwrap();
+        let mut parallel: Vec<_> = [1, 2, 5]
+            .into_iter()
+            .map(|threads| (threads, serial.clone(), serial_optimizer.clone()))
+            .collect();
+        for indices in [
+            [0, 1, 2, 0, 1, 2, 1],
+            [2, 1, 0, 1, 2, 0, 2],
+            [1, 0, 2, 2, 1, 0, 0],
+        ] {
+            let batch = fixture.batch(set, &indices);
+            let targets = build_targets(&batch, &[700.0], &[0.75]).unwrap();
+            let expected =
+                loss_and_gradients(&serial, &batch, &targets, &reference, 317.0).unwrap();
+            serial_optimizer
+                .update(&mut serial, &expected.parameters)
+                .unwrap();
+            for (threads, model, optimizer) in &mut parallel {
+                let actual = reference::loss_and_gradients_parallel(
+                    model, &batch, &targets, &reference, 317.0, *threads,
+                )
+                .unwrap();
+                assert_eq!(actual.losses.bce.to_bits(), expected.losses.bce.to_bits());
+                assert_eq!(
+                    actual.losses.auxiliary.to_bits(),
+                    expected.losses.auxiliary.to_bits()
+                );
+                assert_parameter_bits(&actual.parameters, &expected.parameters);
+                optimizer
+                    .update_parallel(model, &actual.parameters, *threads)
+                    .unwrap();
+                assert_eq!(optimizer.step(), serial_optimizer.step());
+                assert_parameter_bits(model.parameters(), serial.parameters());
+                assert_parameter_bits(optimizer.m(), serial_optimizer.m());
+                assert_parameter_bits(optimizer.v(), serial_optimizer.v());
+            }
+        }
+    }
+}
+
+#[test]
+fn removal_penalty_scales_the_specified_loss_and_rejects_invalid_coefficients() {
+    // 参照と同じ向きの差分が0のとき、1枚の歩の罰則はmin(100,0.25)=0.25 cp。
+    let fixture = Fixture::new(&[position(
+        &[(1, 2, Color::Black, PieceKind::Pawn)],
+        Color::Black,
+        None,
+    )]);
+    let batch = fixture.batch(InputFeatureSet::P, &[0]);
+    let mut model = model(InputFeatureSet::P, 2);
+    for parameter in Parameter::ALL {
+        model.parameter_mut(parameter).fill(0.0);
+    }
+    let reference = RemovalReference::v0();
+    for penalty in [0.0, 173.0, 1000.0] {
+        let actual = loss_and_gradients(&model, &batch, &[0.5], &reference, penalty).unwrap();
+        close(actual.losses.bce, f64::from(2.0_f32.ln()), 0.0);
+        close(actual.losses.auxiliary, penalty * 0.25 / 1000.0, 1e-14);
+    }
+    for penalty in [-0.01, f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        assert!(loss_and_gradients(&model, &batch, &[0.5], &reference, penalty).is_err());
+    }
+    assert!(
+        reference::loss_and_gradients_parallel(&model, &batch, &[0.5], &reference, 1000.0, 0)
+            .is_err()
+    );
+    let mut optimizer = AdamW::new(model.shape(), AdamWConfig::default()).unwrap();
+    let unchanged = model.clone();
+    let before = optimizer.clone();
+    let gradient = Parameters::zeros(model.shape());
+    assert!(optimizer.update_parallel(&mut model, &gradient, 0).is_err());
+    assert_eq!(model, unchanged);
+    assert_eq!(optimizer, before);
+}
+
+#[test]
+fn lambda_one_preserves_default_score_only_losses_and_three_update_state_bits() {
+    // フェーズ3bの既定値互換契約。損失の固定値は変更前f9524ddの参照実装を
+    // 独立にコンパイルし、同じ初期モデルとバッチ列の3更新から採取した。
+    let expected_losses: [(InputFeatureSet, [[u64; 2]; 3]); 2] = [
+        (
+            InputFeatureSet::P,
+            [
+                [0x3fe62eef72492492, 0x3fc2cc476fcf3cf2],
+                [0x3fe62d04adb6db6e, 0x3fad629c16666667],
+                [0x3fe62b7c4db6db6e, 0x3fa093370bd5bd5b],
+            ],
+        ),
+        (
+            InputFeatureSet::HalfKpHmB8,
+            [
+                [0x3fe62eef72492492, 0x3fc2cc488d861861],
+                [0x3fe62d063b6db6db, 0x3fa56ec0fc831d88],
+                [0x3fe62b8052492492, 0x3f7d6ddda85d307e],
+            ],
+        ),
+    ];
+    let fixture = Fixture::new(&positions());
+    let reference = RemovalReference::v0();
+    for (set, expected_losses) in expected_losses {
+        let mut score_only = nonzero_model(set);
+        let mut mixed = score_only.clone();
+        let mut score_optimizer = AdamW::new(score_only.shape(), AdamWConfig::default()).unwrap();
+        let mut mixed_optimizer = score_optimizer.clone();
+        for (indices, expected_loss) in [
+            [0, 1, 2, 0, 1, 2, 1],
+            [2, 1, 0, 1, 2, 0, 2],
+            [1, 0, 2, 2, 1, 0, 0],
+        ]
+        .into_iter()
+        .zip(expected_losses)
+        {
+            let batch = fixture.batch(set, &indices);
+            let score_targets: Vec<_> = batch
+                .teacher_scores()
+                .iter()
+                .map(|&score| (1.0 / (1.0 + (-f64::from(score) / 700.0).exp())) as f32)
+                .collect();
+            let mixed_targets = build_targets(&batch, &[700.0], &[1.0]).unwrap();
+            let expected =
+                loss_and_gradients(&score_only, &batch, &score_targets, &reference, 1000.0)
+                    .unwrap();
+            let actual = reference::loss_and_gradients_parallel(
+                &mixed,
+                &batch,
+                &mixed_targets,
+                &reference,
+                1000.0,
+                5,
+            )
+            .unwrap();
+            for losses in [expected.losses, actual.losses] {
+                assert_eq!(
+                    [losses.bce.to_bits(), losses.auxiliary.to_bits()],
+                    expected_loss,
+                    "{set:?} step {}",
+                    score_optimizer.step() + 1,
+                );
+            }
+            assert_parameter_bits(&actual.parameters, &expected.parameters);
+            score_optimizer
+                .update(&mut score_only, &expected.parameters)
+                .unwrap();
+            mixed_optimizer
+                .update_parallel(&mut mixed, &actual.parameters, 5)
+                .unwrap();
+            assert_parameter_bits(mixed.parameters(), score_only.parameters());
+            assert_parameter_bits(mixed_optimizer.m(), score_optimizer.m());
+            assert_parameter_bits(mixed_optimizer.v(), score_optimizer.v());
+        }
     }
 }

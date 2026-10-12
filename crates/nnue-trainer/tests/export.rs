@@ -102,7 +102,7 @@ impl Fixture {
         .unwrap();
         Self {
             // SAFETY: この試験専用ファイルは、Datasetの生存中に変更も切り詰めもしない。
-            dataset: unsafe { Dataset::open(&[path], None) }.unwrap(),
+            dataset: unsafe { Dataset::open(&[path], None, Some(1.0)) }.unwrap(),
             root,
         }
     }
@@ -139,6 +139,8 @@ fn checkpoint(set: InputFeatureSet, k: f32, linear_value: f32) -> Checkpoint {
     model.parameter_mut(Parameter::Linear).fill(linear_value);
     model.constrain().unwrap();
     Checkpoint {
+        removal_penalty: 1000.0,
+        lambda_override: 1.0,
         model,
         optimizer: AdamW::new(shape, AdamWConfig::default()).unwrap(),
         progress: Progress {

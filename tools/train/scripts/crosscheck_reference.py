@@ -4,7 +4,7 @@
 PYTHONPATH=tools/train/src python tools/train/scripts/crosscheck_reference.py \
     --data /path/to/generated.bin --dump /tmp/nnue-reference/reference.json
 
-CPU専用。既存の学習器と同じ先読み教師、教師用K、除去損失係数1000を使う。
+CPU専用。reference.jsonの係数とλを適用し、同じ先読み条件で教師用Kも照合する。
 チェックポイントの配列順はcrates/nnue-trainer/README.mdを参照。
 """
 
@@ -62,7 +62,7 @@ def checkpoint(path: Path) -> dict:
     if len(raw) < 32 or hashlib.sha256(raw[:-32]).digest() != raw[-32:]:
         raise ValueError(f"{path}: invalid checkpoint SHA-256")
     r = Reader(raw[:-32])
-    if r.take(8) != b"MNTRCKPT" or r.unpack("I") != (1,):
+    if r.take(8) != b"MNTRCKPT" or r.unpack("I") != (2,):
         raise ValueError(f"{path}: unsupported checkpoint format/version")
     architecture = r.take(96)
     width, k = r.unpack("If")
@@ -80,6 +80,7 @@ def checkpoint(path: Path) -> dict:
     best_loss, elapsed, seed = r.unpack("ddQ")
     config_hash, input_hash = r.take(32), r.take(32)
     groups = [r.unpack("dd") for _ in range(3)]
+    removal_penalty, lambda_override = r.unpack("dd")
     shapes = ((6841, 2), (rows, width), (virtual_rows, width),
               (units,), (2, units), ())
     tensors = [{name: r.array(shape) for name, shape in zip(NAMES, shapes)} for _ in range(3)]
@@ -98,6 +99,7 @@ def checkpoint(path: Path) -> dict:
     return dict(feature_set=feature_set, width=width, k=k, step=step, epoch=epoch,
                 best_epoch=best_epoch, best_loss=best_loss, elapsed=elapsed, seed=seed,
                 config_hash=config_hash, input_hash=input_hash, groups=groups,
+                removal_penalty=removal_penalty, lambda_override=lambda_override,
                 shapes=shapes, parameters=tensors[0], m=tensors[1], v=tensors[2],
                 masks=[m.astype(bool) for m in masks], fixed_linear=fixed_linear,
                 fixed_virtual=fixed_virtual)
@@ -118,7 +120,7 @@ def compare(name: str, rust: object, python: object, *, exact: bool = False) -> 
     return False
 
 
-def restore(saved: dict) -> tuple[NNUE, torch.optim.AdamW]:
+def restore(saved: dict, training: dict) -> tuple[NNUE, torch.optim.AdamW]:
     spec = get_feature_set(saved["feature_set"])
     canonical = canonical_feature_indices(np.arange(FEATURE_COUNT))
     initial = saved["fixed_linear"][canonical]
@@ -134,9 +136,17 @@ def restore(saved: dict) -> tuple[NNUE, torch.optim.AdamW]:
             model.ft.initial_virtual.copy_(torch.from_numpy(saved["fixed_virtual"]))
             if not np.array_equal(model.ft.virtual_observed.numpy(), saved["masks"][2]):
                 raise ValueError("virtual observation masks disagree")
-    args = SimpleNamespace(**{f"{key}_{name}": group[index]
-                              for name, group in zip(("linear", "ft", "head"), saved["groups"])
-                              for index, key in enumerate(("lr", "weight_decay"))})
+    expected_groups = [(training[f"lr_{name}"], training[f"weight_decay_{name}"])
+                       for name in ("linear", "ft", "head")]
+    if saved["groups"] != expected_groups or any(
+            saved[name] != training[name] for name in ("removal_penalty", "lambda_override")):
+        raise ValueError("reference coefficients disagree with checkpoint")
+    for lr, decay in expected_groups:
+        if not np.isfinite(lr) or lr <= 0 or not np.isfinite(decay) or decay < 0:
+            raise ValueError("invalid optimizer coefficients")
+    if not np.isfinite(training["removal_penalty"]) or training["removal_penalty"] < 0:
+        raise ValueError("invalid removal penalty")
+    args = SimpleNamespace(**training)
     optimizer = make_optimizer(model, args)
     for name, parameter in model.named_parameters():
         optimizer.state[parameter] = {
@@ -176,7 +186,7 @@ def crosscheck(paths: list[Path], manifest_path: Path, require_auxiliary: bool =
     torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
     manifest = json.loads(manifest_path.read_text())
-    if manifest["format"] != "minase-nnue-reference" or manifest["version"] != 1 or len(manifest["steps"]) != 3:
+    if manifest["format"] != "minase-nnue-reference" or manifest["version"] != 2 or len(manifest["steps"]) != 3:
         raise ValueError("unsupported reference dump format or step count")
     if require_auxiliary and not any(step["losses"]["auxiliary"] > 0 for step in manifest["steps"]):
         raise ValueError("--require-auxiliary requires a positive auxiliary loss in at least one of the 3 recorded updates")
@@ -184,7 +194,7 @@ def crosscheck(paths: list[Path], manifest_path: Path, require_auxiliary: bool =
     saved = checkpoint(directory / manifest["checkpoint"])
     if saved["step"] == 0 or not np.any(saved["parameters"]["head.output_weights"]):
         raise ValueError("comparison requires nonzero output weights and AdamW state; use --steps 3 or more")
-    model, optimizer = restore(saved)
+    model, optimizer = restore(saved, manifest["training"])
     batches = [json.loads((directory / step["batch"]).read_text()) for step in manifest["steps"]]
     for batch in batches:
         if batch["format"] != "minase-nnue-batch-indices" or batch["version"] != 1:
@@ -193,9 +203,16 @@ def crosscheck(paths: list[Path], manifest_path: Path, require_auxiliary: bool =
             raise ValueError("--data must match the recorded file order")
         if batch["feature_set"] != saved["feature_set"] or batch["lookahead"] != batches[0]["lookahead"]:
             raise ValueError("inconsistent batch feature set or lookahead")
-    dataset = Dataset(paths, lookahead=batches[0]["lookahead"], lambda_override=1.0)
+    dataset = Dataset(paths, lookahead=batches[0]["lookahead"], lambda_override=manifest["training"]["lambda_override"])
     teacher_ks, _ = estimate_generation_ks(dataset, indices=dataset.training_indices)
-    valid = compare("teacher_ks", manifest["teacher_ks"], teacher_ks)
+    recorded_ks = np.asarray(manifest["teacher_ks"], dtype=np.float64)
+    valid = compare("teacher_lambdas", manifest["teacher_lambdas"], dataset.teacher_lambdas, exact=True)
+    active = dataset.teacher_lambdas != 0
+    if recorded_ks.shape != teacher_ks.shape:
+        raise ValueError("teacher K count differs from dataset")
+    valid &= compare("teacher_ks", recorded_ks[active], teacher_ks[active])
+    if not np.all(np.isnan(recorded_ks[~active])):
+        raise ValueError("lambda=0 requires a null teacher K")
     v0 = initial_weights()
     reference = make_removal_reference(v0, v0, torch.device("cpu"))
     for step_number, (step, batch) in enumerate(zip(manifest["steps"], batches), start=1):
@@ -207,7 +224,7 @@ def crosscheck(paths: list[Path], manifest_path: Path, require_auxiliary: bool =
                                 scores=dataset.teacher_scores(indices))
         optimizer.zero_grad(set_to_none=True)
         bce = F.binary_cross_entropy_with_logits(model(own, opposite, ratios), torch.from_numpy(targets))
-        auxiliary = 1000 * removal_loss(model.removal_deltas(own, opposite, torch.from_numpy(piece_counts(records["board"]))),
+        auxiliary = manifest["training"]["removal_penalty"] * removal_loss(model.removal_deltas(own, opposite, torch.from_numpy(piece_counts(records["board"]))),
                                         own[0], reference, torch.from_numpy(piece_counts(records["board"])), model.k)
         (bce + auxiliary).backward()
         valid &= compare(f"step {step_number} BCE", step["losses"]["bce"], float(bce.detach()))

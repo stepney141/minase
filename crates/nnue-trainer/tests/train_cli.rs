@@ -1,7 +1,11 @@
 //! 学習コマンドの引数契約を、ファイルやGPUを使わず検査する。
 
 use clap::Parser;
-use nnue_trainer::{data::InputFeatureSet, train::Args};
+use nnue_trainer::{
+    data::InputFeatureSet,
+    options::{DeviceKind, TrainingOptions},
+    train::Args,
+};
 
 #[derive(Parser)]
 struct TrainArguments {
@@ -31,6 +35,16 @@ fn argv() -> Vec<&'static str> {
 fn train_defaults_match_the_training_contract() {
     let args = TrainArguments::try_parse_from(argv()).unwrap().args;
     args.validate().unwrap();
+    assert_eq!(args.device, DeviceKind::Cuda);
+    assert_eq!(args.training, TrainingOptions::default());
+    assert_eq!(args.training.lr_linear, 0.03);
+    assert_eq!(args.training.weight_decay_linear, 0.0);
+    assert_eq!(args.training.lr_ft, 1e-3);
+    assert_eq!(args.training.weight_decay_ft, 1e-4);
+    assert_eq!(args.training.lr_head, 1e-3);
+    assert_eq!(args.training.weight_decay_head, 1e-4);
+    assert_eq!(args.training.removal_penalty, 1000.0);
+    assert_eq!(args.training.lambda_override, 1.0);
     assert_eq!(args.feature_set, InputFeatureSet::P);
     assert_eq!(args.width, 128);
     assert_eq!(args.batch, 16_384);
@@ -153,19 +167,68 @@ fn train_rejects_unpaired_or_invalid_lookahead() {
 }
 
 #[test]
-fn train_help_is_wired_and_learning_rates_are_fixed() {
+fn train_help_describes_devices_and_configurable_coefficients() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_nnue-trainer"))
         .args(["train", "--help"])
         .output()
         .unwrap();
     assert!(output.status.success());
     let help = String::from_utf8(output.stdout).unwrap();
-    for required in ["--init-pst", "--base", "--resume", "--validation-sample"] {
+    for required in [
+        "--init-pst",
+        "--base",
+        "--resume",
+        "--validation-sample",
+        "--device",
+        "--lr-linear",
+        "--weight-decay-linear",
+        "--lr-ft",
+        "--weight-decay-ft",
+        "--lr-head",
+        "--weight-decay-head",
+        "--removal-penalty",
+        "--lambda-override",
+    ] {
         assert!(help.contains(required), "missing help for {required}");
     }
-    for unsupported in ["--lr-linear", "--lr-nonlinear", "--weight-decay"] {
-        let mut values = argv();
-        values.extend([unsupported, "0.1"]);
-        assert!(TrainArguments::try_parse_from(values).is_err());
+}
+
+#[test]
+fn coefficient_ranges_are_checked_before_opening_inputs() {
+    for flag in [
+        "--lr-linear",
+        "--lr-ft",
+        "--lr-head",
+        "--weight-decay-linear",
+        "--weight-decay-ft",
+        "--weight-decay-head",
+        "--removal-penalty",
+        "--lambda-override",
+    ] {
+        for value in ["NaN", "inf", "-0.1", "0"] {
+            let mut values = argv().into_iter().map(str::to_owned).collect::<Vec<_>>();
+            values.push(format!("{flag}={value}"));
+            let args = TrainArguments::try_parse_from(values).unwrap().args;
+            let valid = value == "0" && !flag.starts_with("--lr-");
+            assert_eq!(args.validate().is_ok(), valid, "{flag}={value}");
+        }
     }
+    for device in ["cpu", "cuda"] {
+        let mut values = argv();
+        values.extend(["--device", device, "--lambda-override", "0.75"]);
+        TrainArguments::try_parse_from(values)
+            .unwrap()
+            .args
+            .validate()
+            .unwrap();
+    }
+    let mut values = argv();
+    values.extend(["--lambda-override", "1.001"]);
+    assert!(
+        TrainArguments::try_parse_from(values)
+            .unwrap()
+            .args
+            .validate()
+            .is_err()
+    );
 }

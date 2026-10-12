@@ -1,6 +1,50 @@
 use serde::Serialize;
 
-use super::{Error, Result};
+use super::{BatchSlot, Error, Result};
+
+/// 省略、または有限な0以上1以下の教師の混合比を許す。
+pub fn validate_lambda_override(value: Option<f64>) -> Result<()> {
+    if value.is_some_and(|mix| !mix.is_finite() || !(0.0..=1.0).contains(&mix)) {
+        return Err(Error::TeacherLambda);
+    }
+    Ok(())
+}
+
+/// Pythonの`pst.teacher.build_targets`と同じ教師値を構築する。
+///
+/// 分類ごとに`λ / (1 + exp(-score / K)) + (1 - λ) * result / 2`をf64で
+/// 計算してf32へ丸める。λが0の分類ではKと探索値を参照しない。
+pub fn build_targets(
+    batch: &BatchSlot,
+    teacher_ks: &[f64],
+    teacher_lambdas: &[f64],
+) -> Result<Vec<f32>> {
+    if teacher_ks.len() != teacher_lambdas.len() {
+        return Err(Error::TeacherTargets);
+    }
+    for &mix in teacher_lambdas {
+        validate_lambda_override(Some(mix))?;
+    }
+    batch
+        .teacher_classes()
+        .iter()
+        .enumerate()
+        .map(|(position, &class)| {
+            let class = class as usize;
+            let mix = *teacher_lambdas.get(class).ok_or(Error::TeacherTargets)?;
+            let result = f64::from(batch.outcomes()[position]) / 2.0;
+            if mix == 0.0 {
+                return Ok(result as f32);
+            }
+            let k = teacher_ks[class];
+            let score = f64::from(batch.teacher_scores()[position]);
+            if !k.is_finite() || k <= 0.0 || !score.is_finite() {
+                return Err(Error::TeacherTargets);
+            }
+            Ok((mix / (1.0 + (-score / k).exp()) + (1.0 - mix) * result) as f32)
+        })
+        .collect()
+}
 
 /// 検査済みの先読み条件。同じ対局の将来の探索値だけを使う。
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]

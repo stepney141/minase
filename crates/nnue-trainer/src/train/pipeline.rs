@@ -1,8 +1,10 @@
-use super::{Error, Result};
+use super::{
+    Error, Result,
+    backend::{Backend, Buffer, StepResult},
+};
 use crate::{
-    data::{Dataset, InputFeatureSet, build_batches},
-    gpu::{self, HostBuffer, HostRing, Step, StepResult},
-    reference::targets,
+    data::{Dataset, InputFeatureSet, build_batches, build_targets},
+    gpu,
 };
 use std::{
     collections::VecDeque,
@@ -11,7 +13,7 @@ use std::{
 };
 
 struct Prepared {
-    host: HostBuffer,
+    host: Buffer,
     targets: Vec<f32>,
     positions: usize,
 }
@@ -23,8 +25,8 @@ pub(super) struct Training {
     pub compute_seconds: f64,
     pub steps: u64,
     pub positions: usize,
-    pub gpu_used_bytes: usize,
-    pub gpu_total_bytes: usize,
+    pub gpu_used_bytes: Option<usize>,
+    pub gpu_total_bytes: Option<usize>,
 }
 
 impl Training {
@@ -54,8 +56,8 @@ pub(super) struct Supply<'a> {
 
 fn produce(
     supply: &Supply<'_>,
-    buffers: [HostBuffer; 3],
-    recycled: Receiver<HostBuffer>,
+    buffers: [Buffer; 3],
+    recycled: Receiver<Buffer>,
     sender: SyncSender<Prepared>,
 ) -> gpu::Result<()> {
     let mut buffers = VecDeque::from(buffers);
@@ -83,13 +85,15 @@ fn produce(
                     Err(_) => return Ok(()), // 計算側の終了で待機を解除する。
                 },
             };
-            let targets = targets(&batch, supply.teacher_ks)?;
-            host.fill(&batch)?;
+            let targets =
+                build_targets(&batch, supply.teacher_ks, supply.dataset.teacher_lambdas())?;
+            let positions = batch.len();
+            host.fill(batch)?;
             if sender
                 .send(Prepared {
                     host,
                     targets,
-                    positions: batch.len(),
+                    positions,
                 })
                 .is_err()
             {
@@ -100,10 +104,9 @@ fn produce(
     Ok(())
 }
 
-pub(super) fn train_epoch(supply: Supply<'_>, step: &mut Step) -> Result<Option<Training>> {
-    let mut ring = HostRing::new(step.device(), supply.feature_set, supply.batch)?;
-    let buffers = ring.take_host_buffers()?;
-    let (free, total) = step.device().memory_info()?;
+pub(super) fn train_epoch(supply: Supply<'_>, backend: &mut Backend) -> Result<Option<Training>> {
+    let (mut queue, buffers) = backend.queue(supply.feature_set, supply.batch)?;
+    let memory = backend.memory()?;
     let (sender, receiver) = sync_channel(3);
     let (recycle, recycled) = sync_channel(3);
     let total_batches = supply.indices.len().div_ceil(supply.batch);
@@ -113,8 +116,8 @@ pub(super) fn train_epoch(supply: Supply<'_>, step: &mut Step) -> Result<Option<
             .spawn_scoped(scope, || produce(&supply, buffers, recycled, sender))?;
         let consumed = (|| -> Result<Option<Training>> {
             let mut training = Training {
-                gpu_used_bytes: total - free,
-                gpu_total_bytes: total,
+                gpu_used_bytes: memory.map(|(used, _)| used),
+                gpu_total_bytes: memory.map(|(_, total)| total),
                 ..Training::default()
             };
             let mut pending: Option<(StepResult, usize)> = None;
@@ -126,8 +129,7 @@ pub(super) fn train_epoch(supply: Supply<'_>, step: &mut Step) -> Result<Option<
                 if Instant::now() >= supply.deadline {
                     break;
                 }
-                let ticket = ring.upload_prepared(&mut prepared.host)?;
-                let result = step.enqueue(&mut ring, &ticket, &prepared.targets)?;
+                let result = backend.enqueue(&mut queue, &mut prepared.host, &prepared.targets)?;
                 // 3面だけを循環させる。fillはその面の転送完了を待ってから書き込む。
                 let _ = recycle.send(prepared.host);
                 if let Some((previous, positions)) = pending.replace((result, prepared.positions)) {

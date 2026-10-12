@@ -20,6 +20,8 @@ use std::{
 
 fn args() -> Args {
     Args {
+        device: crate::options::DeviceKind::Cuda,
+        training: crate::options::TrainingOptions::default(),
         feature_set: crate::data::InputFeatureSet::P,
         width: 8,
         data: vec!["records.bin".into()],
@@ -382,7 +384,14 @@ fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let dataset = unsafe {
+        Dataset::open(
+            &args.data,
+            args.lookahead().unwrap(),
+            Some(args.training.lambda_override),
+        )
+        .unwrap()
+    };
     assert_eq!(dataset.record_count(), 320);
     assert_eq!(dataset.training_indices().len(), 296);
     assert_eq!(dataset.validation_indices().len(), 24);
@@ -416,7 +425,14 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let dataset = unsafe {
+        Dataset::open(
+            &args.data,
+            args.lookahead().unwrap(),
+            Some(args.training.lambda_override),
+        )
+        .unwrap()
+    };
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
@@ -446,6 +462,8 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
         );
     }
     let checkpoint = Checkpoint {
+        removal_penalty: args.training.removal_penalty,
+        lambda_override: args.training.lambda_override,
         optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
         model: model.clone(),
         progress: Progress {
@@ -504,7 +522,14 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     let fixture = Fixture::new();
     let mut args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let dataset = unsafe {
+        Dataset::open(
+            &args.data,
+            args.lookahead().unwrap(),
+            Some(args.training.lambda_override),
+        )
+        .unwrap()
+    };
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
@@ -552,12 +577,34 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
 
 #[test]
 fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
-    for change in ["settings", "npz", "base", "data", "provenance"] {
+    for change in [
+        "settings",
+        "device",
+        "lr_linear",
+        "weight_decay_linear",
+        "lr_ft",
+        "weight_decay_ft",
+        "lr_head",
+        "weight_decay_head",
+        "removal_penalty",
+        "lambda_override",
+        "npz",
+        "base",
+        "data",
+        "provenance",
+    ] {
         let fixture = Fixture::new();
         let mut args = fixture.training_args();
         {
             // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-            let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+            let dataset = unsafe {
+                Dataset::open(
+                    &args.data,
+                    args.lookahead().unwrap(),
+                    Some(args.training.lambda_override),
+                )
+                .unwrap()
+            };
             let (model, observations) = initialized(&args, &dataset);
             let teacher_ks = dataset.estimate_teacher_ks().unwrap();
             let configuration =
@@ -575,6 +622,8 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             )
             .unwrap();
             Checkpoint {
+                removal_penalty: args.training.removal_penalty,
+                lambda_override: args.training.lambda_override,
                 optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
                 model,
                 progress: Progress {
@@ -589,6 +638,15 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         args.resume = Some(args.output_dir.clone());
         match change {
             "settings" => args.seed += 1,
+            "device" => args.device = crate::options::DeviceKind::Cpu,
+            "lr_linear" => args.training.lr_linear *= 2.0,
+            "weight_decay_linear" => args.training.weight_decay_linear = 0.001,
+            "lr_ft" => args.training.lr_ft *= 2.0,
+            "weight_decay_ft" => args.training.weight_decay_ft *= 2.0,
+            "lr_head" => args.training.lr_head *= 2.0,
+            "weight_decay_head" => args.training.weight_decay_head *= 2.0,
+            "removal_penalty" => args.training.removal_penalty *= 2.0,
+            "lambda_override" => args.training.lambda_override = 0.75,
             "npz" => {
                 // 1/64cpは再量子化を変えず、鏡映する2行を同じだけ動かす。
                 let mut initial = crate::model::load_initial(&args.init_pst).unwrap();
@@ -648,6 +706,7 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
 
 fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
     EpochRecord {
+        device: crate::options::DeviceKind::Cuda,
         epoch,
         train_loss: (epoch > 0).then_some(0.5),
         removal_loss: (epoch > 0).then_some(0.1),
@@ -666,8 +725,8 @@ fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
         validation_seconds: 0.5,
         training_positions_per_second: (epoch > 0).then_some(296.0 / 3.0),
         update_seconds: (epoch > 0).then_some(0.1),
-        gpu_memory_used_bytes: 1024 * 1024,
-        gpu_memory_total_bytes: 8 * 1024 * 1024,
+        gpu_memory_used_bytes: Some(1024 * 1024),
+        gpu_memory_total_bytes: Some(8 * 1024 * 1024),
         elapsed_seconds: 3.5 * epoch as f64 + 0.5,
         steps: if epoch == 0 { 0 } else { 9 },
         total_steps: 9 * epoch,
@@ -679,7 +738,14 @@ fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let dataset = unsafe {
+        Dataset::open(
+            &args.data,
+            args.lookahead().unwrap(),
+            Some(args.training.lambda_override),
+        )
+        .unwrap()
+    };
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=1 {
@@ -725,7 +791,14 @@ fn resume_keeps_completed_log_epochs_and_discards_an_uncommitted_tail() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let dataset = unsafe {
+        Dataset::open(
+            &args.data,
+            args.lookahead().unwrap(),
+            Some(args.training.lambda_override),
+        )
+        .unwrap()
+    };
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
     for epoch in 0..=2 {
@@ -753,6 +826,8 @@ fn completed_checkpoint(model: &Model, epoch: u64, best: BestEpoch) -> Checkpoin
     optimizer.m[Parameter::OutputBias][0] = epoch as f32 / 32.0;
     optimizer.v[Parameter::OutputBias][0] = epoch as f32 / 64.0;
     Checkpoint {
+        removal_penalty: 1000.0,
+        lambda_override: 1.0,
         model,
         optimizer,
         progress: Progress {
@@ -769,7 +844,14 @@ fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let dataset = unsafe {
+        Dataset::open(
+            &args.data,
+            args.lookahead().unwrap(),
+            Some(args.training.lambda_override),
+        )
+        .unwrap()
+    };
     let (model, _) = initialized(&args, &dataset);
     let old = completed_checkpoint(
         &model,
@@ -802,7 +884,14 @@ fn resume_preserves_an_older_best_and_rejects_its_loss_or_corruption() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
-    let dataset = unsafe { Dataset::open(&args.data, args.lookahead().unwrap()).unwrap() };
+    let dataset = unsafe {
+        Dataset::open(
+            &args.data,
+            args.lookahead().unwrap(),
+            Some(args.training.lambda_override),
+        )
+        .unwrap()
+    };
     let (model, _) = initialized(&args, &dataset);
     let best_epoch = BestEpoch {
         epoch: 1,
@@ -855,6 +944,15 @@ fn compare_checkpoint(left: &Path, right: &Path) {
 #[test]
 #[ignore = "CUDAが必要。学習環境で明示的に実行する"]
 fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets() {
+    training_two_epochs_match_resume(crate::options::DeviceKind::Cuda);
+}
+
+#[test]
+fn cpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets() {
+    training_two_epochs_match_resume(crate::options::DeviceKind::Cpu);
+}
+
+fn training_two_epochs_match_resume(device: crate::options::DeviceKind) {
     for feature_set in [
         crate::data::InputFeatureSet::P,
         crate::data::InputFeatureSet::HalfKpHmB8,
@@ -862,6 +960,15 @@ fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
         let fixture = Fixture::new();
         let mut args = fixture.training_args();
         args.feature_set = feature_set;
+        args.device = device;
+        args.training.lambda_override = 0.75;
+        args.training.removal_penalty = 250.0;
+        args.training.lr_linear = 0.012;
+        args.training.weight_decay_linear = 1e-5;
+        args.training.lr_ft = 0.002;
+        args.training.weight_decay_ft = 0.0003;
+        args.training.lr_head = 0.0015;
+        args.training.weight_decay_head = 0.0002;
         run(args.clone()).unwrap();
 
         let mut split = args.clone();
@@ -873,6 +980,7 @@ fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
         assert_eq!(first.progress.epoch, 1);
         assert_eq!(first.optimizer.step(), 9);
         split.resume = Some(split.output_dir.clone());
+        split.threads = Some(5);
         run(split.clone()).unwrap();
         let configuration: Value =
             serde_json::from_slice(&fs::read(split.output_dir.join("config.json")).unwrap())
@@ -880,7 +988,13 @@ fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
         assert_eq!(configuration["resumes"].as_array().unwrap().len(), 1);
         assert_eq!(configuration["resumes"][0]["epoch"], 1);
         assert_eq!(configuration["resumes"][0]["epochs"], split.epochs);
-        assert_eq!(configuration["resumes"][0]["workers"], 2);
+        assert_eq!(configuration["resumes"][0]["workers"], 5);
+        assert_eq!(
+            configuration["device"],
+            serde_json::to_value(device).unwrap()
+        );
+        assert_eq!(configuration["settings"]["lambda_override"], 0.75);
+        assert_eq!(configuration["settings"]["removal_penalty"], 250.0);
 
         for file in ["latest.bin", "best.bin", "nnue-float.bin"] {
             compare_checkpoint(&args.output_dir.join(file), &split.output_dir.join(file));
@@ -904,6 +1018,13 @@ fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
         );
         assert_eq!(resumed.len(), continuous.len());
         for (left, right) in continuous.iter().zip(&resumed) {
+            for row in [left, right] {
+                assert_eq!(row["device"], serde_json::to_value(device).unwrap());
+                if device == crate::options::DeviceKind::Cpu {
+                    assert!(row["gpu_memory_used_bytes"].is_null());
+                    assert!(row["gpu_memory_total_bytes"].is_null());
+                }
+            }
             for key in [
                 "epoch",
                 "train_loss",
@@ -926,4 +1047,26 @@ fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
             }
         }
     }
+}
+
+#[test]
+fn cpu_result_only_training_records_null_teacher_k_and_resumes() {
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::options::DeviceKind::Cpu;
+    args.width = 2;
+    args.batch = 128;
+    args.epochs = 1;
+    args.training.lambda_override = 0.0;
+    run(args.clone()).unwrap();
+    let config: Value =
+        serde_json::from_slice(&fs::read(args.output_dir.join("config.json")).unwrap()).unwrap();
+    assert_eq!(config["preprocessing"]["teacher_ks"], json!([null]));
+    assert_eq!(config["preprocessing"]["teacher_lambdas"], json!([0.0]));
+    args.resume = Some(args.output_dir.clone());
+    args.epochs = 2;
+    run(args.clone()).unwrap();
+    let checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    assert_eq!(checkpoint.progress.epoch, 2);
+    assert_eq!(checkpoint.lambda_override, 0.0);
 }

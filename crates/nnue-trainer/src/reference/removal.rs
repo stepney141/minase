@@ -1,6 +1,6 @@
 use super::{
-    Forward, check_batch, check_batch_arrays, check_weights, linear_row, phase, row_value, screlu,
-    screlu_derivative,
+    Forward, check_batch, check_batch_arrays, check_weights, linear_row, parallel, phase,
+    row_value, screlu, screlu_derivative,
 };
 use crate::{
     data::{BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, SENTINEL},
@@ -14,8 +14,6 @@ use minase_core::{Color, PieceCode, PieceKind};
 
 const PHASE_DIVISOR: i64 = 90;
 const EVALUATION_LIMIT: i64 = 28_999;
-/// 補助損失の係数。Python train.pyのremoval_penaltyと同じ。
-pub const REMOVAL_PENALTY: f64 = 1000.0;
 
 /// mnpt.initial_piece_valuesと同じv0駒価値。公開APIから取り、定数を複製しない。
 pub fn v0_piece_values() -> [i32; PIECE_STATE_COUNT] {
@@ -131,7 +129,7 @@ pub struct Removal {
     pub d_output: Vec<f32>,
     /// 線形係数S(u_r-u)/K、[B,2]。
     pub linear: Vec<[f32; 2]>,
-    /// 局面ごとの補助損失。係数1000を含み、バッチ平均前。
+    /// 局面ごとの補助損失。指定した係数を含み、バッチ平均前。
     pub loss: Vec<f64>,
 }
 impl Removal {
@@ -190,7 +188,33 @@ pub fn removal_forward(
     weights: &[f32],
     forward: &Forward,
     reference: &RemovalReference,
+    removal_penalty: f64,
 ) -> Result<Removal> {
+    removal_forward_parallel(
+        model,
+        batch,
+        weights,
+        forward,
+        reference,
+        removal_penalty,
+        1,
+    )
+}
+
+pub(super) fn removal_forward_parallel(
+    model: &Model,
+    batch: &BatchSlot,
+    weights: &[f32],
+    forward: &Forward,
+    reference: &RemovalReference,
+    removal_penalty: f64,
+    threads: usize,
+) -> Result<Removal> {
+    if !removal_penalty.is_finite() || removal_penalty < 0.0 {
+        return Err(Error::Invalid(
+            "removal penalty must be finite and nonnegative",
+        ));
+    }
     check_batch(model, batch)?;
     check_weights(model, weights)?;
     let n = batch.len();
@@ -198,134 +222,170 @@ pub fn removal_forward(
     forward.check_shape(n, h)?;
     let k = f64::from(model.shape().k());
     let o = model.expanded_output_weights();
-    let mut result = Removal {
-        e_r: vec![0.0; n * 144],
-        delta_r: vec![0.0; n * 144],
-        ref_r: vec![0; n * 144],
-        s_r: vec![0.0; n * 144],
-        eligible: vec![false; n * 144],
-        wrong_r: vec![false; n * 144],
-        pen_r: vec![0.0; n * 144],
-        d_r: vec![0.0; n * 144],
-        s: vec![0.0; n],
-        d_acc_removal: vec![0.0; n * 2 * h],
-        d_output: vec![0.0; n * 2 * h],
-        linear: vec![[0.0; 2]; n],
-        loss: vec![0.0; n],
-    };
-    for b in 0..n {
-        let (refs, magnitudes) = reference.deltas(batch, b)?;
-        let mut count = 0;
-        for (col, &reference) in refs.iter().enumerate() {
-            let i = b * 144 + col;
-            let row = batch.linear_features()[b * FEATURE_COLUMNS + col];
-            let state = row as usize / 72 % 47;
-            result.ref_r[i] = reference;
-            result.s_r[i] = reference.signum() as f32;
-            result.eligible[i] = row != SENTINEL
-                && (row as usize) < 94 * 72
-                && ![11, 21].contains(&state)
-                && reference != 0;
-            result.wrong_r[i] = (row < 47 * 72 && reference > 0)
-                || ((47 * 72..94 * 72).contains(&row) && reference < 0);
-            count += usize::from(result.eligible[i]);
-        }
-        let scale = REMOVAL_PENALTY / (n * count.max(1)) as f64;
-        let mut sums = [0.0_f64; 2];
-        for col in 0..FEATURE_COLUMNS {
-            for (sum, w) in sums.iter_mut().zip(linear_row(
-                model,
-                batch.linear_features()[b * FEATURE_COLUMNS + col],
-            )) {
-                *sum += f64::from(w);
+    let chunks = parallel::map(parallel::ranges(n, threads)?, |range| {
+        let length = range.len();
+        let mut result = Removal {
+            e_r: vec![0.0; length * 144],
+            delta_r: vec![0.0; length * 144],
+            ref_r: vec![0; length * 144],
+            s_r: vec![0.0; length * 144],
+            eligible: vec![false; length * 144],
+            wrong_r: vec![false; length * 144],
+            pen_r: vec![0.0; length * 144],
+            d_r: vec![0.0; length * 144],
+            s: vec![0.0; length],
+            d_acc_removal: vec![0.0; length * 2 * h],
+            d_output: vec![0.0; length * 2 * h],
+            linear: vec![[0.0; 2]; length],
+            loss: vec![0.0; length],
+        };
+        for (local, b) in range.enumerate() {
+            let (refs, magnitudes) = reference.deltas(batch, b)?;
+            let mut count = 0;
+            for (col, &reference) in refs.iter().enumerate() {
+                let i = local * 144 + col;
+                let row = batch.linear_features()[b * FEATURE_COLUMNS + col];
+                let state = row as usize / 72 % 47;
+                result.ref_r[i] = reference;
+                result.s_r[i] = reference.signum() as f32;
+                result.eligible[i] = row != SENTINEL
+                    && (row as usize) < 94 * 72
+                    && ![11, 21].contains(&state)
+                    && reference != 0;
+                result.wrong_r[i] = (row < 47 * 72 && reference > 0)
+                    || ((47 * 72..94 * 72).contains(&row) && reference < 0);
+                count += usize::from(result.eligible[i]);
             }
-        }
-        let q = f64::from(batch.piece_counts()[b].saturating_sub(2).min(90));
-        let after_q = f64::from(batch.piece_counts()[b].saturating_sub(3).min(90));
-        let before_linear = q * sums[0] + (90.0 - q) * sums[1];
-        let before_head: [f32; 2] =
-            std::array::from_fn(|v| removal_head(model, v, |j| forward.acc[(b * 2 + v) * h + j]));
-        // E_rの基準となるEも、補助損失の縮約順で求める。
-        let u = phase(batch.piece_counts()[b], false);
-        let nonlinear =
-            before_head[0] + before_head[1] + model.parameters()[Parameter::OutputBias][0];
-        let before_e = f64::from(
-            (u[0] * forward.lin[b][0] + u[1] * forward.lin[b][1]) / model.shape().k() + nonlinear,
-        ) * k;
-        let mut d_acc = vec![0.0_f64; 2 * h];
-        let mut d_output = vec![0.0_f64; 2 * h];
-        let mut s = 0.0_f64;
-        for (col, &magnitude) in magnitudes.iter().enumerate() {
-            let i = b * 144 + col;
-            if !result.eligible[i] {
-                continue;
+            let scale = removal_penalty / (n * count.max(1)) as f64;
+            let mut sums = [0.0_f64; 2];
+            for col in 0..FEATURE_COLUMNS {
+                for (sum, w) in sums.iter_mut().zip(linear_row(
+                    model,
+                    batch.linear_features()[b * FEATURE_COLUMNS + col],
+                )) {
+                    *sum += f64::from(w);
+                }
             }
-            let w = linear_row(model, batch.linear_features()[b * FEATURE_COLUMNS + col])
-                .map(f64::from);
-            let after_linear = after_q * (sums[0] - w[0]) + (90.0 - after_q) * (sums[1] - w[1]);
-            let mut delta = (after_linear - before_linear) / 90.0;
-            for (v, &before) in before_head.iter().enumerate() {
-                let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
-                let after = removal_head(model, v, |j| {
-                    forward.acc[(b * 2 + v) * h + j] - row_value(model, weights, feature, j)
-                });
-                delta += k * f64::from(after - before);
-            }
-            result.delta_r[i] = delta;
-            result.e_r[i] = before_e + delta;
-            let sign = f64::from(result.s_r[i]);
-            let signed = sign * delta;
-            let lower = magnitude.min(0.25);
-            let penalty = (lower - signed).max(0.0)
-                + if result.wrong_r[i] {
-                    (signed - magnitude).max(0.0)
+            let q = f64::from(batch.piece_counts()[b].saturating_sub(2).min(90));
+            let after_q = f64::from(batch.piece_counts()[b].saturating_sub(3).min(90));
+            let before_linear = q * sums[0] + (90.0 - q) * sums[1];
+            let before_head: [f32; 2] = std::array::from_fn(|v| {
+                removal_head(model, v, |j| forward.acc[(b * 2 + v) * h + j])
+            });
+            // E_rの基準となるEも、補助損失の縮約順で求める。
+            let u = phase(batch.piece_counts()[b], false);
+            let nonlinear =
+                before_head[0] + before_head[1] + model.parameters()[Parameter::OutputBias][0];
+            let before_e = f64::from(
+                (u[0] * forward.lin[b][0] + u[1] * forward.lin[b][1]) / model.shape().k()
+                    + nonlinear,
+            ) * k;
+            let mut d_acc = vec![0.0_f64; 2 * h];
+            let mut d_output = vec![0.0_f64; 2 * h];
+            let mut s = 0.0_f64;
+            for (col, &magnitude) in magnitudes.iter().enumerate() {
+                let i = local * 144 + col;
+                if !result.eligible[i] {
+                    continue;
+                }
+                let w = linear_row(model, batch.linear_features()[b * FEATURE_COLUMNS + col])
+                    .map(f64::from);
+                let after_linear = after_q * (sums[0] - w[0]) + (90.0 - after_q) * (sums[1] - w[1]);
+                let mut delta = (after_linear - before_linear) / 90.0;
+                for (v, &before) in before_head.iter().enumerate() {
+                    let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
+                    let after = removal_head(model, v, |j| {
+                        forward.acc[(b * 2 + v) * h + j] - row_value(model, weights, feature, j)
+                    });
+                    delta += k * f64::from(after - before);
+                }
+                result.delta_r[i] = delta;
+                result.e_r[i] = before_e + delta;
+                let sign = f64::from(result.s_r[i]);
+                let signed = sign * delta;
+                let lower = magnitude.min(0.25);
+                let penalty = (lower - signed).max(0.0)
+                    + if result.wrong_r[i] {
+                        (signed - magnitude).max(0.0)
+                    } else {
+                        0.0
+                    };
+                result.pen_r[i] = penalty;
+                result.loss[local] += removal_penalty * penalty / count.max(1) as f64 / k;
+                let derivative = if signed < lower {
+                    -sign
+                } else if result.wrong_r[i] && signed > magnitude {
+                    sign
                 } else {
                     0.0
                 };
-            result.pen_r[i] = penalty;
-            result.loss[b] += REMOVAL_PENALTY * penalty / count.max(1) as f64 / k;
-            let derivative = if signed < lower {
-                -sign
-            } else if result.wrong_r[i] && signed > magnitude {
-                sign
-            } else {
-                0.0
-            };
-            let d = (scale * derivative) as f32;
-            result.d_r[i] = d;
-            s += f64::from(d);
-            if d == 0.0 {
-                continue;
-            }
-            for v in 0..2 {
-                let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
-                for j in 0..h {
-                    let after =
-                        forward.acc[(b * 2 + v) * h + j] - row_value(model, weights, feature, j);
-                    d_acc[v * h + j] += f64::from(d)
-                        * f64::from(o[v * h + j])
-                        * f64::from(screlu_derivative(after));
-                    d_output[v * h + j] += f64::from(d) * f64::from(screlu(after));
+                let d = (scale * derivative) as f32;
+                result.d_r[i] = d;
+                s += f64::from(d);
+                if d == 0.0 {
+                    continue;
+                }
+                for v in 0..2 {
+                    let feature = batch.features()[(b * 2 + v) * FEATURE_COLUMNS + col];
+                    for j in 0..h {
+                        let after = forward.acc[(b * 2 + v) * h + j]
+                            - row_value(model, weights, feature, j);
+                        d_acc[v * h + j] += f64::from(d)
+                            * f64::from(o[v * h + j])
+                            * f64::from(screlu_derivative(after));
+                        d_output[v * h + j] += f64::from(d) * f64::from(screlu(after));
+                    }
                 }
             }
+            result.s[local] = s as f32;
+            for j in 0..2 * h {
+                result.d_acc_removal[local * 2 * h + j] = d_acc[j] as f32;
+                result.d_output[local * 2 * h + j] = d_output[j] as f32;
+            }
+            let after_u = phase(batch.piece_counts()[b], true);
+            for e in 0..2 {
+                result.linear[local][e] = (s * f64::from(after_u[e] - u[e]) / k) as f32;
+            }
         }
-        result.s[b] = s as f32;
-        for j in 0..2 * h {
-            result.d_acc_removal[b * 2 * h + j] = d_acc[j] as f32;
-            result.d_output[b * 2 * h + j] = d_output[j] as f32;
+        if result
+            .delta_r
+            .iter()
+            .chain(&result.loss)
+            .any(|v| !v.is_finite())
+        {
+            return Err(Error::Invalid("non-finite removal values"));
         }
-        let after_u = phase(batch.piece_counts()[b], true);
-        for e in 0..2 {
-            result.linear[b][e] = (s * f64::from(after_u[e] - u[e]) / k) as f32;
-        }
-    }
-    if result
-        .delta_r
-        .iter()
-        .chain(&result.loss)
-        .any(|v| !v.is_finite())
-    {
-        return Err(Error::Invalid("non-finite removal values"));
+        Ok(result)
+    })?;
+    let mut result = Removal {
+        e_r: Vec::with_capacity(n * 144),
+        delta_r: Vec::with_capacity(n * 144),
+        ref_r: Vec::with_capacity(n * 144),
+        s_r: Vec::with_capacity(n * 144),
+        eligible: Vec::with_capacity(n * 144),
+        wrong_r: Vec::with_capacity(n * 144),
+        pen_r: Vec::with_capacity(n * 144),
+        d_r: Vec::with_capacity(n * 144),
+        s: Vec::with_capacity(n),
+        d_acc_removal: Vec::with_capacity(n * 2 * h),
+        d_output: Vec::with_capacity(n * 2 * h),
+        linear: Vec::with_capacity(n),
+        loss: Vec::with_capacity(n),
+    };
+    for chunk in chunks {
+        result.e_r.extend(chunk.e_r);
+        result.delta_r.extend(chunk.delta_r);
+        result.ref_r.extend(chunk.ref_r);
+        result.s_r.extend(chunk.s_r);
+        result.eligible.extend(chunk.eligible);
+        result.wrong_r.extend(chunk.wrong_r);
+        result.pen_r.extend(chunk.pen_r);
+        result.d_r.extend(chunk.d_r);
+        result.s.extend(chunk.s);
+        result.d_acc_removal.extend(chunk.d_acc_removal);
+        result.d_output.extend(chunk.d_output);
+        result.linear.extend(chunk.linear);
+        result.loss.extend(chunk.loss);
     }
     Ok(result)
 }
