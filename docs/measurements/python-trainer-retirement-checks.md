@@ -8,7 +8,7 @@
 ## 環境
 
 学習機はRTX 3060 Ti（8 GB、ドライバ615.71）、CPUはCore Ultra 7 265KF（20コア）、メモリ30 GB、Rust 1.98.0である。
-Pythonの照合は本体のチェックアウトの`tools/train/.venv`（torch 2.13.0、NumPy 2.5.2）で行った。
+Pythonの照合は本体の作業ツリー（worktreeではない側）の`tools/train/.venv`（torch 2.13.0、NumPy 2.5.2）で行った。
 検査の間、同じ機械でlishogiのBot（`minase`、1スレッド）が動いていた。
 
 ## 照合の基準
@@ -42,7 +42,7 @@ minase-trainer nnue train --feature-set P --width 128 \
 ## フェーズ1　NNUEの診断の移植
 
 Pythonの`nnue-diagnostics`の`distribution`、`removal`、`moves`を、`minase-trainer diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves`として移植した。
-照合には、[NNUEの完全代替](../plans/nnue-replacement.md)のフェーズ4で学んだ2つのネット（`data/nnue-replacement-train/P`と`data/nnue-replacement-train/HalfKP-hm-b8`）について、当時Pythonが書き出した報告を使った。
+照合には、[NNUEの完全代替](../plans/nnue-replacement.md)のフェーズ4で学習した2つのネット（`data/nnue-replacement-train/P`と`data/nnue-replacement-train/HalfKP-hm-b8`）について、当時Pythonが書き出した報告を使った。
 基準のPST＋FMは`crates/minase/nets/pst.bin`（SHA-256 `efe2c145…`）である。
 
 Pythonは標本の番号をNumPyの乱数（`numpy.random.default_rng(1).choice`）で選ぶ。
@@ -66,7 +66,7 @@ Rustの報告では、Pythonの報告にあったプローブのコマンドと�
 
 実行時間は、分布の診断が778秒、駒除去差分の診断が各772〜793秒、着手前後の評価差の診断が各約27秒だった。
 前2者の時間のほぼ全部は、30ファイルの全記録を単一スレッドで復号して検証分割を作る前処理（`Dataset::open`）である（`perf record`で確認）。
-この前処理は学習器の`nnue train`と共通であり、本マイルストーンでは速度を変えない。
+この前処理は学習器の`nnue train`と共通であり、本マイルストーンでは高速化の対象にしない。
 
 診断の移植で学習器のデータ経路（特徴の抽出）を共有の関数へ整理したので、フェーズ0と同じ1エポックの学習をP型とHalfKP-hm-b8で実行し、改名前のバイナリの`nnue.bin`とバイト単位で一致することを確かめた。
 
@@ -83,7 +83,7 @@ Rustの報告では、Pythonの報告にあったプローブのコマンドと�
 
 `minase-trainer pst train`は、NNUEの学習器と部品を共有しないPST専用のパイプライン（`crates/minase-trainer/src/pst/`）として実装した。
 NNUEと共有するのは、データの読み込み（`src/data/`）と汎用の機械学習の部品（`src/nn/`、Adamの要素ごとの更新、二値交差エントロピー、入力順を保つ並列の`map`など）だけである。
-当初はNNUEの線形経路の部品とバッチ供給の仕組みを流用したが、評価関数の異なる学習器のパイプラインを共通化しすぎるため、利用者の判断で分けた。
+当初はNNUEの線形経路の部品とバッチ供給の仕組みを流用したが、評価関数の異なる学習器のパイプラインを共通化しすぎないよう、利用者の判断で分けた。
 分けた前後で、PSTの学習の結果（重み、Adamの状態、各エポックの損失、`pst.bin`）と、NNUEの1エポック学習の`nnue.bin`（両方の特徴集合）、GPUのテスト、NNUEの診断の出力は、いずれもビット単位で変わらなかった。
 
 ### 照合の条件
@@ -112,8 +112,8 @@ Rustの学習器はCPUの18スレッドで、1エポックの訓練が1.69〜1.8
 5エポックの短縮学習の全体（前処理、検証、書き出しを含む）は、Pythonが68秒、Rustが33秒だった。
 
 最初の実装では1エポックの訓練に17.1秒かかっていた。
-`perf record`で調べると、更新の計算は合計1.6秒だけで、残りはバッチを1つずつ単一スレッドで作る構築と、PSTが使わないNNUE用の逆索引の構築だった。
-PST専用のバッチを、ワーカーごとに容量1のチャネルを持つ構築ワーカーで更新と重ねて作る形に改めて、現在の時間になった。
+`perf record`で調べると、更新の計算は合計1.6秒だけで、残りは、バッチを1つずつ単一スレッドで構築する処理と、PSTが使わないNNUE用の逆索引の構築だった。
+PST専用のバッチを、ワーカーごとに容量1のチャネルを持つ構築ワーカーで更新と重ねて作る形に改め、1エポックの訓練が上記の1.7〜1.8秒になった。
 
 ### Pythonに加えた一時的な改変
 
@@ -309,12 +309,12 @@ FMの学習器は、NNUEとPSTから独立した専用のパイプライン（`c
 
 ### FMの学習器の照合
 
-`minase-trainer fm train`は、固定した整数PSTの上でFMの補正だけを学ぶ。
+`minase-trainer fm train`は、固定した整数PSTの上でFMの補正だけを学習する。
 照合の条件は、候補Faの条件を世代3の1ファイル（`data/gen3/generated-1500000.bin`、訓練2,814,063局面）に短縮したものである。
 固定する初期値は候補Lの`data/pst-longer-training/training/pst.bin`（SHA-256 `b2d2cd1b…`。Faの学習記録の`init`と同じ）、λは1.0を明示し、先読み教師γ=0.9・n=40、ランク32、バッチ4,096、学習率10⁻³、重み減衰10⁻⁴、正則化の係数10⁻⁴、シード1である。
 Pythonの学習器（`minase_train.fm.train`、GPU）には、PSTと同じ方式の一時的な改変を加え、初期値（観測マスクを適用した後のV、a、mask）、各エポックの訓練局面の順序、および各局面の左右鏡映の有無を書き出させた。
 FMでは鏡映の有無が乱数で決まるので、Rustは再生ファイルの鏡映ビットをそのまま使う。
-初期値のVは正規乱数で作られるので、Rustは`initial.npz`の値をそのまま使い、`mask`が自分で数えた観測マスクと完全に一致することと、未観測の行が0であることだけを検査する。
+初期値のVは正規乱数で作られるので、Rustは`initial.npz`の値をそのまま使い、`mask`がRustの数えた観測マスクと完全に一致することと、未観測の行が0であることだけを検査する。
 
 | 照合 | 結果 |
 |---|---|
@@ -708,4 +708,30 @@ Pythonは標本をNumPyの乱数で選ぶので、Rustには、保存済みの�
 
 実行時間はRustが281秒、Pythonが71秒だった。
 Rustの時間の大半は、10ファイルの全記録を単一スレッドで復号して検証分割を作る前処理であり、フェーズ1のNNUEの診断と同じ原因である。
-診断は実験ごとに1回だけ走らせるので、本マイルストーンでは速度を変えない。
+診断は実験ごとに1回だけ走らせるので、本マイルストーンでは高速化の対象にしない。
+
+## フェーズ6　Pythonの撤去
+
+Pythonの学習ツール（`tools/train/`の`minase_train`、テスト、`uv.lock`、設定例）、照合のためだけに加えた一時的な引数（`--replay`、`--replay-steps`、`--replay-sample`）、および呼び出し元がなくなった`minase dev pst-probe`と`minase dev nnue-probe`を削除した。
+学習記録の各欄の定義は、学習器のREADME（`crates/minase-trainer/README.md`）へ移した。
+
+撤去の前後で、次の出力がバイト単位で同じであることを確かめた。
+
+| 対象 | 条件 |
+|---|---|
+| `pst train`の`pst.bin`と`pst-float.npz` | 世代3の1ファイル、候補Lの条件で2エポック |
+| `fm train`の`fm.bin`と`fm-float.npz` | 同じ1ファイル、候補Faの条件で2エポック |
+| `joint train`の`pst.bin`と`pst-float.npz` | 同じ1ファイル、J75の条件で2エポック |
+| `nnue train`の`nnue.bin` | 同じ1ファイル、P型とHalfKP-hm-b8、幅128で1エポック（フェーズ0の改名前と同一） |
+| `diag nnue-moves`の報告 | フェーズ1と同じ2万局面 |
+| `fm quarter`と`fm scale --fm-scale 611`の出力 | 候補Faの`fm-quarter.bin`と、現行の`crates/minase/nets/pst.bin` |
+
+検査は、`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`（1,092件通過）、GPUのテスト（30件通過）である。
+
+書き直した[PSTとFMの学習手順](../guides/pst-training.md)に従い、短縮した条件で最初から最後まで実行した。
+基準コミットのworktreeでの生成（16局、1手2,000ノード）と検査、世代3の1ファイルを加えた`pst train`（2エポック）、`diag pst-compare`（各分類と帯で最大1,000局面）、`fm train`、`fm quarter`、`joint train`、`fm scale`がすべて正常に終了した。
+候補の初期局面の評価は、診断の`representatives`と学習の`summary.json`の`initial_position_score`でともに36センチポーンだった。
+
+この通しで、`diag pst-compare`の基準にFMを含むMNPT版3（現行の`crates/minase/nets/pst.bin`）を与えると、エンジンの評価にFMの補正が加わって独立の整数参照と一致せず、診断が停止することが分かった。
+撤去前のPythonの診断も同じ入力で同じく停止したので、移植の誤りではなく、PSTの比較診断がPSTだけの重み（版2）を前提にしていることによる。
+`diag pst-compare`は版3の入力を開始時に明示的なエラーで拒否するように改め、手引きには、PSTの学習と診断の基点に版2の重み（現行の重みでは`data/fm-scale-spsa/pst-j75-pst-only.bin`）を使うことを書いた。
