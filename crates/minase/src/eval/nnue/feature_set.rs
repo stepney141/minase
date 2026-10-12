@@ -76,6 +76,18 @@ pub struct HalfKpContext {
     pub(super) mirrored: bool,
 }
 
+impl HalfKpContext {
+    /// 基準の王駒から定めた区分番号を0以上8未満で返す。
+    pub const fn bucket(&self) -> usize {
+        self.bucket
+    }
+
+    /// 特徴番号の計算に左右鏡映を適用するかどうかを返す。
+    pub const fn mirrored(&self) -> bool {
+        self.mirrored
+    }
+}
+
 impl FeatureSet for HalfKpHmB8 {
     const NAME: &'static str = "HalfKP-hm-b8";
     const DIMENSIONS: usize = 8 * FEATURE_COUNT;

@@ -37,3 +37,5 @@ codexがコミットできない場合は、変種ごとの差分を`target/*.pa
 Agentツールの`isolation: "worktree"`でcodexのサブエージェントを起動してはならない。
 転送役のサブエージェントが先に完了すると、未変更のworktreeが自動削除され、バックグラウンドで走るcodexの成果を回収できなくなる。
 worktreeで委任するときは、worktreeを自分で作り、そのディレクトリから委任する。
+Claude Codeのサブエージェント`codex:codex-rescue`は、起動したセッションの作業ディレクトリにしか書き込めないので、別のworktreeへの委任には使えない。
+代わりに、codexプラグインの補助スクリプトを`node <プラグインの場所>/scripts/codex-companion.mjs task --cwd <worktreeのパス> --write --prompt-file <指示書のパス>`の形で直接起動する。
