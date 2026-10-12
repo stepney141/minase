@@ -85,7 +85,7 @@
 | Rust製NNUE学習器（GPU） | [plans/nnue-trainer-rust.md](plans/nnue-trainer-rust.md) | 完了（採用） | 2026年10月12日 |
 | NNUE学習器の学習率スケジュール | [plans/nnue-lr-schedule.md](plans/nnue-lr-schedule.md) | 起案 | |
 | NNUEの隠れ層と位相補間の出力 | [plans/nnue-hidden-layer.md](plans/nnue-hidden-layer.md) | 起案 | |
-| Python学習器のRustへの移植と撤去 | [plans/python-trainer-retirement.md](plans/python-trainer-retirement.md) | 起案 | |
+| Python学習器のRustへの移植と撤去 | [plans/python-trainer-retirement.md](plans/python-trainer-retirement.md) | 進行中 | |
 
 ## 現在地
 
@@ -106,7 +106,7 @@
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2026年10月8日に2.2.0へ、10月9日に2.3.0へ更新済みで、配備後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - [NNUE学習器の学習率スケジュール](plans/nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたものを扱う。前者は、NNUEの検証損失が最初の訓練エポックの直後で頭打ちになる症状を受けて、更新ごとの学習率の倍率を加え、5つの設定のどれかで改善するかを確かめる。後者は、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。どちらも学習は[NNUEの共通土台と初代のネットによるPST＋FMの完全代替](plans/nnue-replacement.md)のフェーズ6の後に行い、後者の学習は前者の結論を待つ。
-- [Python学習器のRustへの移植と撤去](plans/python-trainer-retirement.md)は、PST、FM、同時学習の学習器と使用中の診断をRustの学習器へ移し、Pythonと同じ結果になることを一度だけ照合してから、Pythonの学習ツールを削除する。最初のフェーズで学習器のクレートを`minase-trainer`へ改名し、上の2計画の実装はその後に行う。
+- [Python学習器のRustへの移植と撤去](plans/python-trainer-retirement.md)は、PST、FM、同時学習の学習器と使用中の診断をRustの学習器へ移し、Pythonと同じ結果になることを一度だけ照合してから、Pythonの学習ツールを削除する。2026年10月13日に着手した。最初のフェーズで学習器のクレートを`minase-trainer`へ改名し、上の2計画の実装はその後に行う。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習を外部のレンタルGPUサーバ（総額2万円、強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。着手は利用者の許可を待ち、SPSAの調整セッションが完了しても許可があるまでは始めない。
 
