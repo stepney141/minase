@@ -101,21 +101,20 @@ AlphaZero型探索の計画（[設計書](alphazero.md)）は`tools/train/zero/`
 
 | サブコマンド | 引数（既定値） |
 |---|---|
-| `pst train` | `--data`（複数）、`--init`（MNPT。出力用Kと駒価値もここから引き継ぐ）、`--output`、`--lr`（0.03）、`--epochs`（必須、上限200）、`--patience`（必須）、`--batch`（16,384）、`--seed`（1）、`--removal-penalty`（1000）、`--removal-reference v0|init`（必須）、`--lambda-override`（省略時は来歴）、`--lookahead-gamma`と`--lookahead-plies`、`--validation-sample`（10,000）、`--threads` |
-| `fm train` | `--data`、`--init`（MNPT版2または版3。PSTの部分だけを使い、固定する）、`--output`、`--epochs`、`--patience`（ともに必須）、`--batch`（4,096）、`--seed`（1）、`--lr`（10⁻³）、`--weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--lambda-override`、先読みの2引数、`--validation-sample`、`--threads` |
+| `pst train` | `--data`（複数）、`--init`（MNPT。出力用Kと駒価値もここから引き継ぐ）、`--output-dir`、`--lr`（0.03）、`--epochs`（必須、上限200）、`--patience`（必須）、`--batch`（16,384）、`--seed`（1）、`--removal-penalty`（1000）、`--removal-reference v0|init`（必須）、`--lambda-override`（省略時は来歴）、`--lookahead-gamma`と`--lookahead-plies`、`--validation-sample`（10,000）、`--threads` |
+| `fm train` | `--data`、`--init`（MNPT版2または版3。PSTの部分だけを使い、固定する）、`--output-dir`、`--epochs`、`--patience`（ともに必須）、`--batch`（4,096）、`--seed`（1）、`--lr`（10⁻³）、`--weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--lambda-override`、先読みの2引数、`--validation-sample`、`--threads` |
 | `fm quarter` | `--input`、`--output` |
 | `fm scale` | `--input`、`--float`、`--fm-scale`（0は版2を書く）、`--output`、`--data` |
-| `joint train` | `--data`、`--base`（MNPT版3）、`--pst-init`、`--fm-init`、`--fm-reference`（縮小前のFMのMNPT版3。初期値の検査に使う）、`--output`、`--lambda-override`（省略時は来歴）、`--epochs`（200）、`--patience`（5）、`--batch`（16,384）、`--seed`（1）、`--pst-lr`（0.03）、`--fm-lr`（10⁻³）、`--fm-weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--removal-penalty`（1000）、先読みの2引数、`--validation-sample`、`--threads` |
+| `joint train` | `--data`、`--base`（MNPT版3）、`--pst-init`、`--fm-init`、`--fm-reference`（縮小前のFMのMNPT版3。初期値の検査に使う）、`--output-dir`、`--lambda-override`（省略時は来歴）、`--epochs`（200）、`--patience`（5）、`--batch`（16,384）、`--seed`（1）、`--pst-lr`（0.03）、`--fm-lr`（10⁻³）、`--fm-weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--removal-penalty`（1000）、先読みの2引数、`--validation-sample`、`--threads` |
 
 Pythonの`pst train`の必須引数`--k`（出力用K）は移植せず、`--init`のMNPTのKを使う。候補Lの学習は`--init`のMNPTと同じKを`--k`に指定していたので、この仕様でも同じ結果になり、照合で一致を確かめる。
 全学習器に共通の引数として、`--resume <出力ディレクトリ>`と`--threads`を持つ。
 `--device`は移植しない。
 計算の場所は「設計判断」のとおり実装で決まり、GPUのカーネルを加えた学習器だけが`--device`を持つ。
-`pst`、`fm`、`joint`の出力（MNPT、実数の重みのnpz、学習記録のJSON）のファイル名と中身の並びは、Pythonの学習器と同じにする。ファイル名は`--output`に与えたMNPTの名前から導き、`--output foo.bin`なら実数の重みは`foo-float.npz`、学習記録は`foo.training.json`である（本書の`pst-float.npz`などは`--output pst.bin`の場合の名前である）。`fm quarter`と`fm scale`は、それぞれ`.quarter.json`と`.scale.json`で終わる報告も書く。
+`pst train`、`fm train`、`joint train`は、`nnue train`と同じく新規の空の`--output-dir`へ書き出す。重みは、`pst train`と`joint train`が`pst.bin`と`pst-float.npz`、`fm train`が`fm.bin`と`fm-float.npz`に書き、MNPTとnpzの形式と配列の並びはPythonの学習器と同じにする。npzは、PSTの比較診断、`nnue train`の`--init-pst`、`joint train`の初期値、`fm scale`の`--float`が入力に使うからである。学習の記録とチェックポイントは`nnue train`と同じ形式（`config.json`、`training.jsonl`、`summary.json`、`latest.bin`、`best.bin`）とし、Pythonの`*.training.json`の形式は写さない。Pythonの学習記録を読むプログラムは、移植しない`pst-workflow`だけだからである。
+`fm quarter`と`fm scale`は学習を伴わない変換なので、`--input`と`--output`でファイルを受け、それぞれ`.quarter.json`と`.scale.json`で終わる報告を出力の隣に書く。
 FMの成分の数（ランク）は、エンジンの版3の読み手が32に固定しているので引数を設けず、32に固定する。
 `fm`と`joint`の`--lambda-override`の省略時に来歴のλを使うのは、Pythonの学習器（FMは既定1.0、同時学習は必須）からの意図した変更であり、候補Faの照合では1.0を、J75の照合では0.75を明示して渡す。
-後続の学習と診断が、これらのファイルを入力に使うからである。
-チェックポイントと再開は、`nnue`と同じ仕組みを`pst`、`fm`、`joint`にも使う。
 
 ## 所要時間の見積り
 
@@ -146,7 +145,7 @@ GPUのカーネルが要る学習器が出た場合は、その学習器ごと�
 
 ### フェーズ2　PSTの学習器
 
-線形経路だけのモデル、`--removal-reference`、`--lambda-override`の省略、エポックの上限200、MNPT版2と`pst-float.npz`と`pst.training.json`の書き出しを加え、`pst train`とする。
+線形経路だけのモデル、`--removal-reference`、`--lambda-override`の省略、エポックの上限200、MNPT版2と`pst-float.npz`の書き出し、`nnue train`と同じ形式の記録とチェックポイントを加え、`pst train`とする。
 一時的な`--replay`を加え、Python側の一時的な改変で書き出した再生ファイルを使って、候補Lの条件を1ファイルと数エポックに短縮した学習を両方で行い、「設計判断」の照合(1)から(3)を確かめる。
 1エポックの時間を測り、Pythonの時間と比べる。
 
