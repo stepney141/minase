@@ -1,7 +1,7 @@
 //! dump-batchのCPU経路が再開可能な状態と3更新の照合資料を出力することを確認する。
 mod common;
 use common::*;
-use nnue_trainer::{
+use minase_trainer::{
     data::InputFeatureSet,
     model::{Checkpoint, Parameter},
 };
@@ -16,8 +16,8 @@ fn dump_reference_writes_warmed_checkpoint_three_batches_gradients_and_states() 
         (InputFeatureSet::HalfKpHmB8, "HalfKP-hm-b8"),
     ] {
         let directory = fixture.root.join(name);
-        let output = std::process::Command::new(env!("CARGO_BIN_EXE_nnue-trainer"))
-            .args(["dump-batch", "--feature-set", name, "--data"])
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+            .args(["nnue", "dump-batch", "--feature-set", name, "--data"])
             .arg(fixture.root.join("records.bin"))
             .args(["--indices", "0,1,2", "--output"])
             .arg(&directory)
@@ -69,7 +69,7 @@ fn dump_reference_writes_warmed_checkpoint_three_batches_gradients_and_states() 
         assert_eq!(manifest["version"], 2);
         assert_eq!(
             manifest["training"],
-            serde_json::to_value(nnue_trainer::options::TrainingOptions::default()).unwrap()
+            serde_json::to_value(minase_trainer::options::TrainingOptions::default()).unwrap()
         );
         assert_eq!(manifest["teacher_lambdas"], serde_json::json!([1.0]));
         assert_eq!(saved.lambda_override, 1.0);
@@ -105,8 +105,8 @@ fn dump_init_std_changes_initial_weights_and_configuration_hash() {
     let mut saved = Vec::new();
     for std in ["0.05", "0.2"] {
         let directory = fixture.root.join(std);
-        let result = std::process::Command::new(env!("CARGO_BIN_EXE_nnue-trainer"))
-            .args(["dump-batch", "--feature-set", "P", "--data"])
+        let result = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+            .args(["nnue", "dump-batch", "--feature-set", "P", "--data"])
             .arg(fixture.root.join("records.bin"))
             .args(["--indices", "0,1,2", "--output"])
             .arg(&directory)

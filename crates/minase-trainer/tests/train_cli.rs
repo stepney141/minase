@@ -1,7 +1,7 @@
 //! 学習コマンドの引数契約を、ファイルやGPUを使わず検査する。
 
 use clap::Parser;
-use nnue_trainer::{
+use minase_trainer::{
     data::InputFeatureSet,
     options::{DeviceKind, TrainingOptions},
     train::Args,
@@ -15,7 +15,7 @@ struct TrainArguments {
 
 fn argv() -> Vec<&'static str> {
     vec![
-        "nnue-trainer",
+        "minase-trainer",
         "--feature-set",
         "P",
         "--width",
@@ -140,11 +140,11 @@ fn train_rejects_invalid_numeric_arguments_before_opening_inputs() {
 #[test]
 fn train_batch_bound_uses_the_packed_occurrence_limit() {
     let mut args = TrainArguments::try_parse_from(argv()).unwrap().args;
-    for batch in [32_769, nnue_trainer::data::MAX_BATCH_SIZE] {
+    for batch in [32_769, minase_trainer::data::MAX_BATCH_SIZE] {
         args.batch = batch;
         args.validate().unwrap();
     }
-    args.batch = nnue_trainer::data::MAX_BATCH_SIZE + 1;
+    args.batch = minase_trainer::data::MAX_BATCH_SIZE + 1;
     assert!(args.validate().is_err());
 }
 
@@ -168,8 +168,8 @@ fn train_rejects_unpaired_or_invalid_lookahead() {
 
 #[test]
 fn train_help_describes_devices_and_configurable_coefficients() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_nnue-trainer"))
-        .args(["train", "--help"])
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+        .args(["nnue", "train", "--help"])
         .output()
         .unwrap();
     assert!(output.status.success());

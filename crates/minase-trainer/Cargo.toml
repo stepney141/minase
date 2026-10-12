@@ -1,13 +1,13 @@
 [package]
-name = "nnue-trainer"
+name = "minase-trainer"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 publish = false
-description = "GPU trainer for minase's NNUE (development tool, not published)"
+description = "Trainer for minase's evaluation functions (development tool, not published)"
 
 [[bin]]
-name = "nnue-trainer"
+name = "minase-trainer"
 path = "src/main.rs"
 
 [dependencies]

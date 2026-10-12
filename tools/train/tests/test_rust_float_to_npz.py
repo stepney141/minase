@@ -21,7 +21,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "rust_float_to_npz.py
 
 
 def checkpoint_bytes(feature_set: str, width: int) -> bytes:
-    """nnue-trainer/README.mdの版2の配置を、Rustや変換側の読み手を使わず構築する。"""
+    """crates/minase-trainer/README.mdの版2の配置を、Rustや変換側の読み手を使わず構築する。"""
     shared = feature_set == "P"
     rows, virtual_rows = (6841, 0) if shared else (109441, 13681)
     units = width // 2 if shared else width

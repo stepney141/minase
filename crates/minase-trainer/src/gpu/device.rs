@@ -94,7 +94,7 @@ fn options(capability: (i32, i32)) -> CompileOptions {
         prec_div: Some(true),
         prec_sqrt: Some(true),
         ftz: Some(false),
-        name: Some("nnue-trainer.cu".into()),
+        name: Some("minase-trainer.cu".into()),
         ..Default::default()
     }
 }

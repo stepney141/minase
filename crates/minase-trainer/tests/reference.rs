@@ -3,7 +3,7 @@ mod common;
 use common::*;
 use minase::eval::features::{FEATURE_COUNT, feature_index, mirror_feature};
 use minase_core::{Color, PieceKind, Square};
-use nnue_trainer::{
+use minase_trainer::{
     data::{BatchSlot, InputFeatureSet, SENTINEL, build_targets, decode_p_feature},
     model::{Masks, Model, Parameter, Parameters},
     reference::{self, AdamW, AdamWConfig, AdamWGroup, RemovalReference, loss_and_gradients},
@@ -602,7 +602,7 @@ fn reference_entrypoints_reject_all_malformed_intermediate_array_lengths() {
         }
         assert!(build_targets(&batch, &[], &[1.0]).is_err());
         assert!(reference.deltas(&batch, batch.len()).is_err());
-        let shape = nnue_trainer::model::Shape::new(set, 4, 1000.0).unwrap();
+        let shape = minase_trainer::model::Shape::new(set, 4, 1000.0).unwrap();
         let mut wrong_gradient = Parameters::zeros(shape);
         assert!(
             reference::reduce_partials(&model, &output, &removal, &mut wrong_gradient).is_err()
@@ -648,7 +648,7 @@ fn p_mirror_preserves_evaluation_and_canonical_gradients() {
                 reference::removal_forward(&model, batch, &w, &f, &RemovalReference::v0(), 1000.0)
                     .unwrap();
             let o = reference::output_backward(&model, batch, &f, &r, &[0.7]).unwrap();
-            let mut g = nnue_trainer::model::Parameters::zeros(model.shape());
+            let mut g = minase_trainer::model::Parameters::zeros(model.shape());
             reference::reduce_partials(&model, &o, &r, &mut g).unwrap();
             reference::first_layer_backward(&model, batch, &w, &f, &r, &o, &mut g).unwrap();
             reference::linear_backward(&model, batch, &r, &o, &mut g).unwrap();
@@ -849,7 +849,7 @@ fn adamw_clips_all_groups_and_uses_updated_virtual_rows_for_the_fold() {
 #[test]
 fn adamw_fold_inherits_updated_virtual_rows_at_unobserved_features() {
     let set = InputFeatureSet::HalfKpHmB8;
-    let shape = nnue_trainer::model::Shape::new(set, 2, 1000.0).unwrap();
+    let shape = minase_trainer::model::Shape::new(set, 2, 1000.0).unwrap();
     let mut canonical = vec![false; 6841];
     canonical[0] = true;
     let mut input = vec![false; set.dimensions() + 1];

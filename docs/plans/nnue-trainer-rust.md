@@ -20,7 +20,7 @@ GPUの1更新は27〜32 msで、設計の見積り（10〜20 ms）には届い�
 利用者の決定（同日）により、`minase`と`minase-core`は`unsafe_code = "forbid"`を保ち、学習器のcrateだけ制約を外し、最初からGPUで学習する設計にした。その後の要望でPythonの学習器と同じ係数の引数と`--lambda-override`、および`--device cpu`を加えた。
 ブランチ`nnue-trainer-rust`は`nnue-replacement`から分岐し、同日に`nnue-replacement`へマージした（規約「設計書1枚につき`master`から1ブランチ」からの逸脱は、依存する共通土台が`master`にないためである）。
 この学習器で[NNUEの共通土台と初代のネットの設計書](nnue-replacement.md)のフェーズ4の学習を行い、フェーズ5の型の比較までを終えた。
-Pythonの学習器の撤去は[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)が扱い、学習率スケジュールと出力部の拡張は[NNUE学習器の学習率スケジュール](nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)が扱う。
+Pythonの学習器の撤去は[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)が扱い、そのフェーズ0でクレートを`crates/minase-trainer`（実行ファイル`minase-trainer`）へ改名し、本書の`nnue-trainer train`などのサブコマンドは`minase-trainer nnue train`などに移った。学習率スケジュールと出力部の拡張は[NNUE学習器の学習率スケジュール](nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)が扱う。
 本書で「利用者」とは、このプロジェクトの所有者であり方針を決定する人物をいう。
 
 ## 目的

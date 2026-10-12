@@ -1,9 +1,10 @@
+このクレートはminaseの評価関数の学習器であり、現時点ではNNUEの学習を`nnue`サブコマンドの下に持つ。
 NNUEの浮動小数点モデル、設計書のカーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
 GPU側では第1層の前進、駒除去差分の補助損失、全パラメータの勾配、部分和の縮約、AdamWによる更新と切り詰め、検証を実行できる。
 学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)と`tools/train/src/minase_train`に従う。
-`dump-batch`の更新処理は照合資料の生成用であり、エポックを進める学習ループは持たない。
+`minase-trainer nnue dump-batch`の更新処理は照合資料の生成用であり、エポックを進める学習ループは持たない。
 
-`train`は前処理、指定したデバイスでの更新、全検証集合の評価、チェックポイントの保存、最良重みの書き出しを行う。
+`minase-trainer nnue train`は前処理、指定したデバイスでの更新、全検証集合の評価、チェックポイントの保存、最良重みの書き出しを行う。
 線形重みは`--init-pst`の圧縮なしNPZから初期化し、左右の鏡映対が一致することと、再量子化が`--base`のMNPTのPST部分と一致することを検査する。
 非対称な初期値は拒否する。
 出力用K、探索用駒価値、規則セット名はMNPTから引き継ぐ。
@@ -21,7 +22,7 @@ CPUの1更新では`std::thread::scope`を使い、前進、駒除去、出力�
 各要素の縮約順と精度を単一スレッド参照にそろえ、`--threads`を変更しても数値計算のビット列を保つ。
 `--threads`の既定値は物理コア数−2で、最小1である。
 
-学習、`dump-batch`、`check-equivalence`、`bench-step`では、次の係数を共通の引数で指定できる。
+学習、`minase-trainer nnue dump-batch`、`minase-trainer nnue check-equivalence`、`minase-trainer nnue bench-step`では、次の係数を共通の引数で指定できる。
 すべて有限かつ非負とし、学習率は0を認めない。
 λは0以上1以下に制限する。
 
@@ -81,7 +82,7 @@ GPUメモリ使用量は、学習と検証の配列確保後にCUDAが報告し�
 ```sh
 TRAIN_DATA_ROOT=/home/stepney141/board-games/minase/data
 for FEATURE_SET in P HalfKP-hm-b8; do
-  cargo run --release --offline -j 2 -p nnue-trainer -- train \
+  cargo run --release --offline -j 2 -p minase-trainer -- nnue train \
     --feature-set "$FEATURE_SET" --width 128 \
     --data "$TRAIN_DATA_ROOT/gen3/generated-1500000.bin" \
     --init-pst "$TRAIN_DATA_ROOT/pst-fm-joint-training/j75/pst-float.npz" \
@@ -98,7 +99,7 @@ CPUとGPUのテストは320局面の合成MNSDで幅8の両型を2エポック�
 これらのGPUテストは通常のテスト実行では無視されるため、学習機で次を実行する。
 
 ```sh
-cargo test --release --offline -j 2 -p nnue-trainer -- --ignored gpu_ --test-threads=1
+cargo test --release --offline -j 2 -p minase-trainer -- --ignored gpu_ --test-threads=1
 ```
 
 公開APIとPython実装の対応を次に示す。
@@ -125,7 +126,7 @@ CPU参照の公開計算関数は入口で入力配列の長さを検査し、�
 
 `Model::initialize`は全基底特徴の線形2端点、観測マスク、シード、第1層の初期化標準偏差を受け取る。
 初期値の左右の鏡映対には完全一致を要求する。
-標準偏差は有限かつ非負とし、`dump-batch --init-std`の既定値は0.05である。
+標準偏差は有限かつ非負とし、`minase-trainer nnue dump-batch --init-std`の既定値は0.05である。
 `shape`、`parameters`、`parameter_mut`、`masks`、`initial_linear`、`initial_virtual`が値を公開する。
 `expanded_biases`、`expanded_output_weights`、`expanded_linear`、`expanded_first_layer`が共有パラメータを展開し、最後の関数はHalfKP-hm-b8の特徴分解も畳み込む。
 `constrain`は有限性を検査してから切り詰め、`fix_unobserved`で未観測行と埋め草を復元する。
@@ -217,7 +218,7 @@ OUTPUT_K=1072.6529541015625
 
 for FEATURE_SET in P HalfKP-hm-b8; do
   DUMP_DIR="/tmp/nnue-reference-${FEATURE_SET}"
-  CARGO_NET_OFFLINE=true nice -n 19 cargo run -j 2 -p nnue-trainer -- dump-batch \
+  CARGO_NET_OFFLINE=true nice -n 19 cargo run -j 2 -p minase-trainer -- nnue dump-batch \
     --feature-set "$FEATURE_SET" --data "$DATA" --indices 0,1,2 \
     --init-pst "$PST" --width 4 --k "$OUTPUT_K" --seed 71 --steps 3 \
     --lookahead-gamma 0.9 --lookahead-plies 40 \
@@ -234,7 +235,7 @@ Pythonは教師用Kと先読み教師を独立に計算し、特徴番号、損�
 浮動小数点数は`numpy.isclose`の`rtol=1e-4, atol=1e-5`で検査し、不一致の場所と差を表示して終了コード1を返す。
 Pythonとの3更新の実照合は委任元で行うため、Rustの単体テストの成功とは別に記録する。
 
-補助損失が発火する資料を照合する場合は、`dump-batch`に`--init-std 0.2`などを指定し、Pythonの照合に`--require-auxiliary`を付ける。
+補助損失が発火する資料を照合する場合は、`minase-trainer nnue dump-batch`に`--init-std 0.2`などを指定し、Pythonの照合に`--require-auxiliary`を付ける。
 このフラグは`reference.json`の3更新のうち少なくとも1更新の補助損失が正であることを要求する。
 標準偏差だけでは発火を保証しないため、全更新が0ならスクリプトは明示的なエラーで終了する。
 
@@ -251,7 +252,7 @@ GPUの実装は次のファイルに置く。
 | `src/gpu/engine.rs` | `Evaluator`がモデル、整数参照PST、作業配列を保持し、`Evaluation`へ前進、補助損失、全勾配、検証統計を回収する。 |
 | `src/gpu/optimizer.rs` | 全自由パラメータとAdamWの両モーメントをデバイスに保持し、群ごとに更新する。 |
 | `src/gpu/step.rs` | `Step`がカーネル1〜8を投入し、`StepResult`が損失と更新時間を遅れて回収する。 |
-| `src/gpu/bench.rs` | `bench-step`が実データの供給速度、入力転送時間、GPUの更新時間とメモリ使用量を測る。 |
+| `src/gpu/bench.rs` | `minase-trainer nnue bench-step`が実データの供給速度、入力転送時間、GPUの更新時間とメモリ使用量を測る。 |
 | `src/gpu/equivalence.rs` | `Report`、`run`、`check`が合成入力でCPUとの一致と反復実行のビット一致を検査する。 |
 | `src/gpu/step_equivalence.rs` | 非0のモデルと最適化器の状態から1更新と連続3更新をCPU参照と照合する。 |
 | `src/reference/validation.rs` | `reference::Validation`と`validation_forward`が検証統計のCPU参照を提供する。 |
@@ -419,7 +420,7 @@ GPU処理の`unsafe`はすべて`gpu`モジュールにある。
 各起動の前にRust側で配列長を検査し、各ブロックの直前に前提条件を書く。
 ファイルのmmapは`data`モジュール内で行い、`Dataset::open`は`unsafe fn`とする。
 呼び手は返された`Dataset`の生存中に、渡したファイルを外部プロセスも含めて変更も切り詰めもしないことを保証する。
-`train`、`dump-batch`、`bench-step`の入力ファイルは、コマンドが終了するまで変更しない。
+`minase-trainer nnue train`、`minase-trainer nnue dump-batch`、`minase-trainer nnue bench-step`の入力ファイルは、コマンドが終了するまで変更しない。
 各呼び出し箇所のSAFETYコメントに、この契約を満たす根拠を記す。
 
 | 所在 | 前提条件 |
@@ -471,18 +472,18 @@ GPUを使わない検査は次のコマンドで実行する。
 ```sh
 cargo fmt --all --check
 nice -n 19 cargo clippy -j 2 --workspace --all-targets -- -D warnings
-nice -n 19 cargo test -j 2 -p nnue-trainer
+nice -n 19 cargo test -j 2 -p minase-trainer
 ```
 
 GPUを使える環境では次のコマンドを実行する。
 カーネルのコンパイル成功と、実GPUでの値の一致は別々に確認する。
 
 ```sh
-nice -n 19 cargo test -j 2 -p nnue-trainer -- --ignored gpu_ --test-threads=1
+nice -n 19 cargo test -j 2 -p minase-trainer -- --ignored gpu_ --test-threads=1
 for FEATURE_SET in P HalfKP-hm-b8; do
-  nice -n 19 cargo run -j 2 -p nnue-trainer -- check-equivalence \
+  nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
     --feature-set "$FEATURE_SET" --width 6 --batch 100 --seed 71
-  nice -n 19 cargo run -j 2 -p nnue-trainer -- check-equivalence \
+  nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
     --feature-set "$FEATURE_SET" --width 128 --batch 4096 --seed 71
 done
 ```
@@ -494,13 +495,13 @@ done
 ```sh
 DATA=/absolute/path/to/generated-1500000.bin
 for FEATURE_SET in P HalfKP-hm-b8; do
-  CARGO_NET_OFFLINE=true nice -n 19 cargo run --release -j 2 -p nnue-trainer -- bench-step \
+  CARGO_NET_OFFLINE=true nice -n 19 cargo run --release -j 2 -p minase-trainer -- nnue bench-step \
     --feature-set "$FEATURE_SET" --width 128 --batch 16384 --steps 20 \
     --threads 6 --profile --data "$DATA"
 done
 ```
 
-`bench-step`はファイル検査、モデルの初期化、カーネルのコンパイル、GPU配列の確保を済ませ、1回のウォームアップの後で指定回数を測る。
+`minase-trainer nnue bench-step`はファイル検査、モデルの初期化、カーネルのコンパイル、GPU配列の確保を済ませ、1回のウォームアップの後で指定回数を測る。
 `--profile`の表には`first_layer_backward_partials`、`first_layer_backward_reduce`、`linear_backward_partials`、`linear_backward_reduce`を別々に表示する。
 格子は各バッチの区分数から求め、部分和の読み書きも主要配列の理論バイト数に含める。
 性能の採否は実GPUの測定で判断し、CUDAコンパイルやGPUなしのテスト結果から速度を推定しない。
@@ -524,12 +525,12 @@ CPUの構成を取得できない場合は`--threads`を明示する。
 GPUメモリはデバイス全体の使用量と、入力面と更新器を確保する前後の差をバイト単位で出力するため、他のプロセスによる変動も含む。
 
 
-`bench-step --device cpu`も1回のウォームアップ後に指定回数を測り、更新の時間にはホストの経過時間を用いる。
+`minase-trainer nnue bench-step --device cpu`も1回のウォームアップ後に指定回数を測り、更新の時間にはホストの経過時間を用いる。
 CPUでは転送量と転送時間を0とし、GPUメモリは測定しない。
 `--profile`はCUDAのカーネル計測に限るため、CPUと組み合わせるとエラーになる。
 
-CPUの1ファイル試走では、前述の`train`に`--device cpu --threads 2`を加え、別の空の出力先を指定する。
-係数変更を含むPython照合は、前述の`dump-batch`に次の引数を加えて生成した`reference.json`を`crosscheck_reference.py`へ渡す。
+CPUの1ファイル試走では、前述の`minase-trainer nnue train`に`--device cpu --threads 2`を加え、別の空の出力先を指定する。
+係数変更を含むPython照合は、前述の`minase-trainer nnue dump-batch`に次の引数を加えて生成した`reference.json`を`crosscheck_reference.py`へ渡す。
 
 ```sh
 --lambda-override 0.75 --lr-linear 0.012 --weight-decay-linear 0.00005 \

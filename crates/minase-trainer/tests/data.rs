@@ -17,7 +17,7 @@ use minase::{
     },
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
-use nnue_trainer::data::{
+use minase_trainer::data::{
     BatchSlot, CANONICAL_ROWS, Dataset, Error, FEATURE_COLUMNS, InputFeatureSet, Lookahead,
     Observations, PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL,
     build_batches, build_targets, decode_p_feature, validate_lambda_override,
@@ -31,7 +31,7 @@ struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
-            "nnue-trainer-data-{}-{}",
+            "minase-trainer-data-{}-{}",
             std::process::id(),
             NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
         ));
@@ -928,8 +928,8 @@ fn dump_batch_writes_complete_json_without_gpu() {
     );
     for set in ["P", "HalfKP-hm-b8"] {
         let output = fixture.0.join(set);
-        let status = std::process::Command::new(env!("CARGO_BIN_EXE_nnue-trainer"))
-            .args(["dump-batch", "--feature-set", set, "--data"])
+        let status = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+            .args(["nnue", "dump-batch", "--feature-set", set, "--data"])
             .arg(&path)
             .args([
                 "--indices",
@@ -966,8 +966,8 @@ fn dump_batch_writes_complete_json_without_gpu() {
         }
     }
     // 先読みは両引数を指定する契約。
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_nnue-trainer"))
-        .args(["dump-batch", "--feature-set", "P", "--data"])
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
+        .args(["nnue", "dump-batch", "--feature-set", "P", "--data"])
         .arg(&path)
         .args(["--indices", "0", "--lookahead-gamma", "0.9", "--output"])
         .arg(&fixture.0)

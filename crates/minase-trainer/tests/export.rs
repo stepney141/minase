@@ -24,7 +24,7 @@ use minase::{
     },
 };
 use minase_core::{Color, PieceKind, Position};
-use nnue_trainer::{
+use minase_trainer::{
     data::{Dataset, InputFeatureSet},
     export::{self, QuantizationReport, write_best},
     model::{BestEpoch, Checkpoint, Model, Parameter, Progress, Shape},

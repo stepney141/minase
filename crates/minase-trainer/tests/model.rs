@@ -6,7 +6,7 @@ use minase::eval::nnue::{
     feature_set::{HalfKpHmB8, P},
     head::DirectScrelu,
 };
-use nnue_trainer::{
+use minase_trainer::{
     data::{InputFeatureSet, Observations},
     model::{
         BestEpoch, Checkpoint, Masks, Model, Parameter, Parameters, Progress, Shape, quantize,
@@ -322,7 +322,7 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mi
             let g = reference::loss_and_gradients(
                 &state.model,
                 &batch,
-                &nnue_trainer::data::build_targets(&batch, &[700.0], &[0.75]).unwrap(),
+                &minase_trainer::data::build_targets(&batch, &[700.0], &[0.75]).unwrap(),
                 &reference::RemovalReference::v0(),
                 state.removal_penalty,
             )
@@ -343,7 +343,7 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mi
         let g = reference::loss_and_gradients(
             &state.model,
             &batch,
-            &nnue_trainer::data::build_targets(&batch, &[700.0], &[0.75]).unwrap(),
+            &minase_trainer::data::build_targets(&batch, &[700.0], &[0.75]).unwrap(),
             &reference::RemovalReference::v0(),
             state.removal_penalty,
         )
@@ -411,16 +411,16 @@ fn stored_npz_and_numpy_zip64_load_endpoints_and_reject_bad_archives() {
     for zip64 in [false, true] {
         let bytes = npz_bytes(&initial, zip64);
         std::fs::write(&path, &bytes).unwrap();
-        assert_eq!(nnue_trainer::model::load_initial(&path).unwrap(), initial);
+        assert_eq!(minase_trainer::model::load_initial(&path).unwrap(), initial);
         for change in [6, 8, 14, bytes.len() - 1] {
             let mut invalid = bytes.clone();
             invalid[change] ^= 1;
             std::fs::write(&path, invalid).unwrap();
-            assert!(nnue_trainer::model::load_initial(&path).is_err());
+            assert!(minase_trainer::model::load_initial(&path).is_err());
         }
         for cut in [0, 10, 100, bytes.len() - 1] {
             std::fs::write(&path, &bytes[..cut]).unwrap();
-            assert!(nnue_trainer::model::load_initial(&path).is_err());
+            assert!(minase_trainer::model::load_initial(&path).is_err());
         }
     }
 }
@@ -434,7 +434,7 @@ fn load_initial_rejects_asymmetric_endpoints() {
             let mut initial = vec![[0.0; 2]; 13680];
             initial[13679][endpoint] = 1.0;
             std::fs::write(&path, npz_bytes(&initial, zip64)).unwrap();
-            assert!(nnue_trainer::model::load_initial(&path).is_err());
+            assert!(minase_trainer::model::load_initial(&path).is_err());
         }
     }
 }

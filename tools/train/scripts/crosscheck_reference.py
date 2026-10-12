@@ -5,7 +5,7 @@ PYTHONPATH=tools/train/src python tools/train/scripts/crosscheck_reference.py \
     --data /path/to/generated.bin --dump /tmp/nnue-reference/reference.json
 
 CPU専用。reference.jsonの係数とλを適用し、同じ先読み条件で教師用Kも照合する。
-チェックポイントの配列順はcrates/nnue-trainer/README.mdを参照。
+チェックポイントの配列順はcrates/minase-trainer/README.mdを参照。
 """
 
 from __future__ import annotations

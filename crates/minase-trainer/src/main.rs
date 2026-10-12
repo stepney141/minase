@@ -1,11 +1,15 @@
-//! minaseのNNUE学習器の開発用コマンド。dump-batchはCPUだけで動く。
+//! minaseの評価関数の学習器の開発用コマンド。
+//! NNUEの学習と検証はnnueサブコマンドの下に置き、nnue dump-batchはCPUだけで動く。
 
 mod dump;
 
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "nnue-trainer", about = "minaseのNNUE学習器の開発用コマンド")]
+#[command(
+    name = "minase-trainer",
+    about = "minaseの評価関数の学習器の開発用コマンド"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -13,17 +17,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// NNUEの学習と検証を行う。
+    #[command(subcommand)]
+    Nnue(NnueCommand),
+}
+
+#[derive(Subcommand)]
+enum NnueCommand {
     /// CUDAまたはCPUで学習し、各エポックの検証、チェックポイントの保存、最良モデルの書き出しを行う。
-    Train(nnue_trainer::train::Args),
+    Train(minase_trainer::train::Args),
     /// Pythonとの照合に使うバッチの局面番号と教師評価値を書き出す。
     DumpBatch(dump::Args),
     /// GPUの前進計算、全勾配、更新、検証をCPU参照と照合する。
     CheckEquivalence {
         #[command(flatten)]
-        training: nnue_trainer::options::TrainingOptions,
+        training: minase_trainer::options::TrainingOptions,
         /// 入力の特徴集合を指定する。
         #[arg(long, value_enum)]
-        feature_set: nnue_trainer::data::InputFeatureSet,
+        feature_set: minase_trainer::data::InputFeatureSet,
         /// 隠れ層の幅を2以上512以下の偶数で指定する。
         #[arg(long)]
         width: usize,
@@ -35,22 +46,23 @@ enum Command {
         seed: u64,
     },
     /// 指定デバイスで更新と供給の時間を測り、CUDAでは転送とメモリも測る。
-    BenchStep(nnue_trainer::gpu::bench::Args),
+    BenchStep(minase_trainer::gpu::bench::Args),
 }
 
 fn main() -> std::process::ExitCode {
-    let result: Result<(), Box<dyn std::error::Error>> = match Cli::parse().command {
-        Command::Train(args) => nnue_trainer::train::run(args).map(|summary| {
+    let Command::Nnue(command) = Cli::parse().command;
+    let result: Result<(), Box<dyn std::error::Error>> = match command {
+        NnueCommand::Train(args) => minase_trainer::train::run(args).map(|summary| {
             println!("best epoch: {}; stopped_by: {:?}; status: {}",
                 summary.best_epoch.expect("successful training has a best epoch"), summary.stopped_by, summary.status);
         }),
-        Command::DumpBatch(args) => dump::run(args),
-        Command::CheckEquivalence { feature_set, width, batch, seed, training } => {
-            nnue_trainer::gpu::equivalence::run(feature_set, width, batch, seed, training)
+        NnueCommand::DumpBatch(args) => dump::run(args),
+        NnueCommand::CheckEquivalence { feature_set, width, batch, seed, training } => {
+            minase_trainer::gpu::equivalence::run(feature_set, width, batch, seed, training)
                 .map(|r| println!("一致: {feature_set:?}, 幅{width}, バッチ{batch}, GPU={}, 比較数={}, 最大絶対誤差={:.3e}, 最大相対誤差={:.3e}, 許容誤差=1e-6+1e-5×|CPU|, 全勾配、1更新と連続3更新の全状態、反復ビット一致", r.device_name, r.comparisons, r.max_absolute_error, r.max_relative_error))
                 .map_err(Into::into)
         }
-        Command::BenchStep(args) => nnue_trainer::gpu::bench::run(args)
+        NnueCommand::BenchStep(args) => minase_trainer::gpu::bench::run(args)
             .map(|r| {
                 println!("デバイス={}、{:?}、幅{}、シード{}、{}更新、{}局面/バッチ、{}スレッドで測定しました。", r.device_name, r.feature_set, r.width, r.seed, r.steps, r.batch, r.threads);
                 println!("1更新は平均 {:.3} ms、1バッチの転送は平均 {:.3} ms、入力転送量は {} bytes/バッチでした。", r.compute_ms, r.transfer_ms, r.transfer_bytes);
@@ -67,7 +79,7 @@ fn main() -> std::process::ExitCode {
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("nnue-trainer: {error}");
+            eprintln!("minase-trainer: {error}");
             std::process::ExitCode::FAILURE
         }
     }

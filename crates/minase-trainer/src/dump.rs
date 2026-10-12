@@ -4,11 +4,11 @@ use std::{
     path::PathBuf,
 };
 
-use nnue_trainer::data::{
+use minase_trainer::data::{
     BatchSlot, Dataset, FEATURE_COLUMNS, InputFeatureSet, Lookahead, ReverseIndex, SENTINEL,
     build_batches, build_targets, decode_p_feature,
 };
-use nnue_trainer::{
+use minase_trainer::{
     data::Observations,
     model::{Checkpoint, Masks, Model, Parameter, Parameters, Progress, Shape, load_initial},
     options::TrainingOptions,
@@ -90,7 +90,7 @@ fn payload<'a>(
     dataset: &Dataset,
     slot: &'a BatchSlot,
     lookahead: Option<Lookahead>,
-) -> Result<Dump<'a>, nnue_trainer::data::Error> {
+) -> Result<Dump<'a>, minase_trainer::data::Error> {
     let input_features: Vec<Vec<&[u32]>> = slot
         .features()
         .as_chunks::<{ 2 * FEATURE_COLUMNS }>()
@@ -118,9 +118,9 @@ fn payload<'a>(
                                 .map(|&feature| decode_p_feature(feature))
                                 .collect()
                         })
-                        .collect::<nnue_trainer::data::Result<Vec<_>>>()
+                        .collect::<minase_trainer::data::Result<Vec<_>>>()
                 })
-                .collect::<nnue_trainer::data::Result<Vec<_>>>()?,
+                .collect::<minase_trainer::data::Result<Vec<_>>>()?,
         )
     } else {
         None
@@ -156,7 +156,7 @@ pub(crate) fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let lookahead = match (args.lookahead_gamma, args.lookahead_plies) {
         (Some(gamma), Some(plies)) => Some(Lookahead::new(gamma, plies)?),
         (None, None) => None,
-        _ => return Err(nnue_trainer::data::Error::LookaheadParameters.into()),
+        _ => return Err(minase_trainer::data::Error::LookaheadParameters.into()),
     };
     // SAFETY: 入力は生成完了済みのMNSDに限り、Datasetの生存中は外部プロセスも含めて
     // 変更・切り詰めしない運用契約とする。この処理も入力ファイルを書き換えない。

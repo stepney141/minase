@@ -5,7 +5,7 @@ use minase::training::{
     records::{Header, Outcome, Record},
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
-use nnue_trainer::{
+use minase_trainer::{
     data::{BatchSlot, Dataset, InputFeatureSet, build_batches},
     model::{Masks, Model, Shape},
 };
