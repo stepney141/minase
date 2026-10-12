@@ -166,8 +166,8 @@ minaseの評価で成り立つ対称性は「段反転と陣営交換」だけ�
 表示される評価値は`pst::evaluate`の戻り値と一致する。
 升ごとの寄与は0.1センチポーン単位に丸めて表示されるので、寄与の和は評価値と丸めの分だけ異なり得る。
 
-重みの誤りは、`minase dev pst-probe`の出力をPythonの参照評価と照合して見つける。
-手順は[PSTの学習手順](pst-training.md)にある。
+重みの誤りは、`minase-trainer diag pst-compare`で、独立に計算した整数のPST評価とエンジンの評価を照合して見つける。
+手順は[PSTとFMの学習手順](pst-training.md)にある。
 学習した評価関数の駒価値の歪みは、検証損失からは分からないので、[教訓](../lessons/validation-loss-hides-material-distortion.md)の点検を行う。
 
 ### プロトコルと外部接続

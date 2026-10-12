@@ -30,8 +30,8 @@ PSTは序中盤用と終盤用の2組の表を持ち、盤上の総駒数に応�
 FMは、各特徴に長さ32のベクトルを持たせ、局面に現れた特徴の全ての対についてベクトルの重み付き内積を足すことで、2駒の位置関係を少ないパラメータで表す。
 重みは、自己対局で現れた局面に付けた勝率の目標値（教師値）を予測するように、学習で決める。
 学習した実数の重みは、整数へ丸めて（量子化して）重みファイル `crates/minase/nets/pst.bin` に保存し、エンジンは整数演算だけで評価する。
-推論のRust実装は `crates/minase/src/eval/pst/` にあり、学習器はPythonで `tools/train/` にある。
-ただし現行の重みを作った同時学習の学習器だけは、後述のとおり別のブランチにある。
+推論のRust実装は `crates/minase/src/eval/pst/` にあり、学習器は `crates/minase-trainer` の実行ファイル `minase-trainer` にある。
+現行の重みはPythonの学習器で作ったが、その学習器は2026年10月にRustへ移植して撤去した（[Python学習器の撤去](../plans/python-trainer-retirement.md)）。
 
 局面 $`p`$ に対する最終的な評価値 $`E(p)`$ は、後で定めるPSTの整数評価 $`E_{\mathrm{PST}}(p)`$ とFMの整数補正 $`E_{\mathrm{FM}}(p)`$ から、次の式で計算する。
 
@@ -83,7 +83,7 @@ i = (47c + d) \cdot 144 + 12\, r_{\mathrm{rel}} + f.
 一方で、手番だけを入れ替えた同じ駒配置の評価がちょうど符号反転するという制約は課していないので、手番を持つこと自体の有利さも評価に表れる。
 
 以下では、局面 $`p`$ で成り立つ特徴の番号の集合を $`\mathcal{A}(p)`$ と書く。
-符号化の実装は `crates/minase/src/eval/pst/features.rs` にあり、学習器の `tools/train/src/minase_train/data/features.py` と同じ番号を使う。
+符号化の実装は `crates/minase/src/eval/pst/features.rs` にあり、学習器も `minase` のライブラリの同じ関数で特徴を作る。
 
 ## PSTの補間
 
@@ -270,8 +270,9 @@ PSTの重みは升ごとに異なり、FMの寄与は他の駒にも依存する
 ここからは、現行の重みを作った学習の目的関数を説明する。
 学習とは、目的関数（損失）と呼ぶ1つの数値を定め、それが小さくなる方向へ重みを少しずつ動かすことを繰り返す計算である。
 現行の重みは、PSTとFMを1つの損失で同時に学習した候補J75（教師の混合比 $`\lambda = 0.75`$ で学習した候補）に、前述の倍率を焼き込んだものである（[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)、[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)）。
-同時学習の学習器（コマンド `train-joint`）はmasterに取り込まれておらず、ブランチ `pst-fm-joint-training` の `tools/train/src/minase_train/joint/train.py` にあり、`git show pst-fm-joint-training:tools/train/src/minase_train/joint/train.py` で読める。
-教師値の構成、教師尺度の推定、および駒除去差分の補助損失は、masterにあるPSTとFMの学習器と共通の部品（`tools/train/src/minase_train/pst/teacher.py`、`pst/removal.py`、`data/lookahead.py`）を使っている。
+J75はPythonの同時学習器（ブランチ `pst-fm-joint-training` にだけあった）で学んだ。
+その数式は、Rustへ移植した同時学習器 `minase-trainer joint train`（`crates/minase-trainer/src/joint/`）と同じであり、移植時に短縮した条件で同じ結果になることを確かめた（[照合の記録](../measurements/python-trainer-retirement-checks.md)）。
+教師値の構成、教師尺度の推定、および先読み教師は、すべての学習器が共有するデータ層（`crates/minase-trainer/src/data/`）にある。
 
 ### 勝率のモデル
 
@@ -415,7 +416,7 @@ PSTは鏡映で重なる特徴の重みを共有するので鏡映の影響を�
 FMの項は、除いた特徴と残りの特徴との組の寄与を取り除いたものである。
 
 向きの基準には、駒の価値だけの表を使う。
-この表は、学習を始める前の手書きの評価関数v0の駒価値（H. G. Muller作の中将棋エンジンHaChuの駒価値を、歩兵100へ換算した値）を、全升と両端点に同じ値で置いたものである（`tools/train/src/minase_train/data/mnpt.py` の `initial_weights`）。
+この表は、学習を始める前の手書きの評価関数v0の駒価値（H. G. Muller作の中将棋エンジンHaChuの駒価値を、歩兵100へ換算した値）を、全升と両端点に同じ値で置いたものである（学習器では `minase::eval::handcrafted::piece_value` から作る）。
 この基準の補間値を $`P_0`$ とし、整数化して切り詰めた評価を $`E_0 = \mathrm{clip}(\mathrm{trunc}(P_0))`$ とする。
 基準の除去差分の向き $`\varepsilon_0`$ は整数評価の差の符号 $`\mathrm{sgn}`$（正なら+1、負なら−1、0なら0）から、大きさ $`|\Delta_0|`$ は整数化しない差から取る。
 
@@ -523,19 +524,19 @@ STCで375回の更新（各8ペア、計3,000ペアの対局）を行い、$`\ma
 探索用駒価値は、前述のとおり2端点PSTの開始時点の重みから導いた値に固定している。
 評価関数の採否は、いずれの場合も検証損失ではなく段階ゲートの対局で決める。
 
-## masterの学習器との関係
+## PSTとFMだけの学習器との関係
 
-masterにある2つの学習器は、現行の重みの学習と同じ教師値と二値交差エントロピーを使い、学習するパラメータと追加の項だけが異なる。
+PSTだけとFMだけを学ぶ2つの学習器は、現行の重みの学習と同じ教師値と二値交差エントロピーを使い、学習するパラメータと追加の項だけが異なる。
 
-PSTの学習器 `train-pst`（`tools/train/src/minase_train/pst/train.py`）は、FMを持たないモデル $`z = P_\theta / K`$ を学び、損失は二値交差エントロピーに係数 $`\eta`$ の駒除去差分の補助損失を加えたものである。
-この学習器の補助損失の基準は、v0の表ではなく学習の初期値の重みファイルであり、通常は直前に採用したPSTがこれに当たる。
+PSTの学習器 `minase-trainer pst train`（`crates/minase-trainer/src/pst/`）は、FMを持たないモデル $`z = P_\theta / K`$ を学び、損失は二値交差エントロピーに係数 $`\eta`$ の駒除去差分の補助損失を加えたものである。
+この学習器の補助損失の基準は、`--removal-reference init` では学習の初期値の重みファイル（通常は直前に採用したPST）、`--removal-reference v0` ではv0の表である。
 候補の除去差分もPSTの部分だけで計算する。
 手順は[PSTの学習手順](pst-training.md)にある。
 
-FMの学習器 `train-fm`（`tools/train/src/minase_train/fm/train.py`）は、PSTを学習せずに固定し、その整数評価 $`E_{\mathrm{PST}}`$ を定数として $`z = E_{\mathrm{PST}} / K + \Phi_\theta`$ のFMの部分だけを学ぶ。
+FMの学習器 `minase-trainer fm train`（`crates/minase-trainer/src/fm/`）は、PSTを学習せずに固定し、その整数評価 $`E_{\mathrm{PST}}`$ を定数として $`z = E_{\mathrm{PST}} / K + \Phi_\theta`$ のFMの部分だけを学ぶ。
 同時学習のモデルがPSTに勾配を流すために浮動小数点の $`P_\theta`$ を使うのに対し、PSTを動かさないこの学習器は推論と同じ整数評価を使う。
 損失は二値交差エントロピーに正則化項 $`\mu \overline{\Phi_\theta^2}`$ を加えたものであり、駒除去差分の補助損失は持たない。
-この学習器は、補正の倍率を出力係数へ焼き込んで量子化し直すサブコマンド `train-fm scale` も持つ。
+補正の倍率を出力係数へ焼き込んで量子化し直すには、サブコマンド `minase-trainer fm scale` を使う。
 
 ## 参考資料
 

@@ -21,6 +21,7 @@ P型の幅128のNNUEを埋め込んだ`90280a0`が、基準M `8d0e382`（PST＋F
 学習は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)で行い（[学習の記録](../measurements/nnue-replacement-training.md)）、どちらの型も検証損失はエポック1で最良になり、その後は訓練損失が下がる一方で検証損失が悪化して早期終了した。この頭打ちは[NNUE学習器の学習率スケジュール](nnue-lr-schedule.md)が扱う。
 採用により、探索が使う既定の評価関数はPST＋FMからNNUEへ切り替わった。`eval/pst/`と`handcrafted.rs`は比較用に残っている。masterへのマージは利用者の許可を得てから行う。
 後続の世代反復（採用したネットで教師を生成し直す）は別の設計書で起案する。研究継続の条件（非劣性の測定）は候補が採用されたので適用しない。
+本書の学習と診断に使ったPythonの学習器と`nnue-diagnostics`は、[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)で撤去した。本書の本文の`minase_train`やPythonの診断への言及は当時の手順の記録であり、同じ診断は現在`minase-trainer diag nnue-removal`、`diag nnue-distribution`、`diag nnue-moves`で行う。
 
 ## 目的
 
