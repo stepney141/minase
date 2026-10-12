@@ -80,14 +80,14 @@ AlphaZero型探索の計画（[設計書](alphazero.md)）は`tools/train/zero/`
 | 項目 | 判断 |
 |---|---|
 | クレートの名前と構成 | `crates/nnue-trainer`を`crates/minase-trainer`へ改名し、実行ファイルを`minase-trainer`とする。サブコマンドは`nnue`（`train`、`check-equivalence`、`bench-step`）、`pst train`、`fm`（`train`、`quarter`、`scale`）、`joint train`、`diag`（`nnue-removal`、`nnue-distribution`、`nnue-moves`、`pst-compare`）とする。MNSDの読み込み、教師の構成、検証分割、最適化器、チェックポイント、量子化の検査はすべての学習器で共有する。PSTとFMの学習を別のクレートに分ける案は、これらの共有部品を二重に持つか、さらに共有のクレートを切り出すことになるので採らない。改名は、学習器を変える[学習率スケジュール](nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)の実装と差分が衝突するので、最初のフェーズで行う。 |
-| PSTの学習器の実現 | NNUEの学習器に、非線形経路を持たない「線形経路だけ」のモデルを加え、それを`pst train`とする。順伝播、損失、駒除去差分、切り詰め、教師、分割、停止規則は既存の部品をそのまま使う。PSTの学習器を別に書く案は、同じ式を二重に持つので採らない。 |
+| PSTの学習器の実現 | NNUEの学習器と同じクレートに、非線形経路を持たない線形経路だけのモデルの型を加え、それを`pst train`とする。現在のNNUEのモデル、後退、検証の統計、チェックポイントは第1層を前提に組まれているので、幅を0にする形では足さない。代わりに、線形和と盤上総駒数による補間、駒除去差分、切り詰めのような第1層の幅に依存しない計算と、教師、分割、最適化器、停止規則を共有の部品として切り出し、NNUEとPSTの両方から使う。チェックポイントは、外枠と学習の進捗を共有し、重みとAdamWの状態をモデルごとに持つ。PSTの学習器を別に書く案は、同じ式を二重に持つので採らない。 |
 | PSTの除去の参照 | `--removal-reference v0`と`--removal-reference init`を設ける。候補Lは`--init`のMNPT（Pc）を参照にし、J75とNNUEはv0を参照にしたので、現行の手順に両方が要る。 |
 | λとエポックの上限 | `pst`、`fm`、`joint`では`--lambda-override`を省略可能とし、省略時は来歴のλを使う（候補Lの動作）。`nnue`は現行どおり既定1.0とする。エポックの上限は、`nnue`は50のまま、`pst`、`fm`、`joint`は200とする。候補Lが200エポック目で最良だったので、50では再現できないからである。 |
 | FMと同時学習のモデル | FMの成分を、手番側の視点だけの13,680特徴に対する符号つき二乗の項として加える。`fm train`は整数PSTを固定してFMの成分だけを学び、`joint train`は線形経路とFMの成分を2群のAdamWで同時に学ぶ。訓練時の確率0.5の左右鏡映、全特徴の空間で数える観測マスク、`10⁻⁴·mean(Φ²)`の正則化はPythonと同じにする。NNUEの両視点の特徴や鏡映共有とは別の特徴の作り方になるが、FMとPSTは視点を1つしか持たないので、その違いを特徴の作り方の関数として分ける。 |
 | 計算の場所 | PST、FM、同時学習は、まずCPUの並列実装で動かす。型はNNUEの学習器のCPU参照と同じく、重み、勾配、AdamWの状態をf32とし、局面方向とバッチ方向の和と損失の集計は、加算の順序による結果の揺れを避けるため、f64で固定の順に行う。Pythonの学習器も重みと状態をf32で持つ。そのうえで、フェーズ2から4で1エポックの時間を測る。PSTの順伝播は1局面あたり発火した特徴（最大145個）の重みの行の和であり、除去損失は1局面あたり平均約61件の除去で行の差を取るだけである。FMは同じ特徴について32成分の和を取る。どちらも、NNUEの幅128の第1層と補助損失（CPUで約6,600局面/秒、[検査の記録](../measurements/nnue-trainer-rust-checks.md)）より1局面あたりの計算が桁違いに少ないので、CPUで足りる見込みがある。測った1エポックの時間が、Pythonの学習器のGPUでの時間（同じ局面数に換算した値）を超えた学習器に限り、GPUのカーネルを別のフェーズとして加える。測定なしにGPUのカーネルを書く案は採らない。 |
 | 一度きりの照合 | Pythonの学習器を、リポジトリにコミットしない一時的な改変で、照合用の再生ファイルを書き出すようにする。Rustの学習器には、それを読む一時的な引数`--replay <ディレクトリ>`を加える。再生ファイルは、入力ファイルの並びとSHA-256、エポックごとの訓練局面の列（各局面を（入力ファイルの番号、ファイル内の記録の番号）の組で表す）、各局面の鏡映の有無、学習前の実数の重み（PST、FMの埋め込みとa）、観測マスクを持つ。バッチは列をバッチの大きさで先頭から区切ったものとする。Rustは、ファイルの並びと検査和の不一致、列の不足、重複、訓練集合の外の局面、重みとマスクの形の不一致を拒否する。照合は次の3段で行う。(1) 最適化器の更新を3回行った後の損失、全パラメータ、AdamWの状態が、`|Rust − Python| ≤ 10⁻⁵ + 10⁻⁴·|Python|`で一致する。この許容誤差はNNUEの学習器をPyTorchと照合したときと同じ式である。(2) 再生ファイルで短縮した本学習を両方で行い、各エポックの検証損失が同じ式で一致し、最良エポックと停止エポックが一致する。(3) (2) で書き出した整数の重みの差がすべて±1単位以内で、FMの指数が一致する。`--replay`とPython側の改変は、照合の後に削除する。 |
 | 焼き込みと書き出しのバイト一致 | `fm scale --fm-scale 611`をJ75の出力に適用して、現行の`crates/minase/nets/pst.bin`がバイト単位で再生成されることを確かめる。J75の`pst-float.npz`を量子化し直すとJ75の`pst.bin`にバイト単位で一致することと、`fm quarter`がPythonの出力とバイト単位で一致することも確かめる。これらは固定した実数の重みからの書き出しであり、乱数を含まないので、照合(3)の±1単位ではなくバイト単位の一致を求める。 |
-| 診断の移植 | NNUEの`removal`、`distribution`、`moves`と、PSTの比較診断（世代と評価値の帯ごとの損失、整数評価の一致、量子化誤差、代表局面の除去差分の符号反転、成り手の照合、導出した駒価値）を、`minase`のライブラリを直接呼ぶRustのコマンドにする。Pythonの診断は`minase dev nnue-probe`と`minase dev pst-probe`を子プロセスとして呼んでいたが、Rustからはライブラリの評価関数を直接呼べるので、両コマンドは利用者がいなくなって削除する。移植の一致は、同じネットに対するPythonとRustの出力を比べて一度だけ確かめる。PythonはNumPyの乱数で診断の標本を選ぶので、照合のときだけPythonが選んだ標本の番号を一時的な引数`--replay-sample`でRustへ渡し、標本の番号の検査和が一致することを確かめてから値を比べる。整数の値は完全な一致、実数の値は照合(1)と同じ式で比べ、入力のパス、実行環境、実行時間の欄は比較から除く。`--replay-sample`は照合の後に削除する。 |
+| 診断の移植 | NNUEの`removal`、`distribution`、`moves`と、PSTの比較診断（教師の分類と盤上総駒数の5等分の帯ごとの損失、整数評価の一致、量子化誤差、代表局面の除去差分の符号反転、成り手の照合、導出した駒価値）を、`minase`のライブラリを直接呼ぶRustのコマンドにする。Pythonの診断のうちNNUEの`moves`とPSTの比較診断は`minase dev nnue-probe`と`minase dev pst-probe`を子プロセスとして呼んでいたが、Rustからはライブラリの評価関数を直接呼べるので、両コマンドは利用者がいなくなって削除する。移植の一致は、同じネットに対するPythonとRustの出力を比べて一度だけ確かめる。PythonはNumPyの乱数で診断の標本を選ぶので、照合のときだけPythonが選んだ標本の番号を一時的な引数`--replay-sample`でRustへ渡し、標本の番号の検査和が一致することを確かめてから値を比べる。整数の値は完全な一致、実数の値は照合(1)と同じ式で比べ、入力のパス、実行環境、実行時間の欄は比較から除く。`--replay-sample`は照合の後に削除する。 |
 | 削除の順序 | NNUEに関わるPythonのコード（学習器、整数参照、`nnue-diagnostics`、照合スクリプト、`rust_float_to_npz.py`）と`dump-batch`は、NNUEの診断をRustへ移して一致を確かめた直後に削除する。[NNUEの完全代替](nnue-replacement.md)のフェーズ4に残る診断（駒除去差分、分布、着手前後の差）は、移植したRustの診断で行う。PST、FM、同時学習のPythonは、それぞれの照合が済んだ後、最後のフェーズでまとめて削除する。 |
 | 量子化誤差の検査 | 量子化誤差を測る部品は共有するが、合格基準は学習器ごとにPythonの学習器と同じにする。`pst train`は書き出したPSTの平均絶対誤差が2センチポーン以下、`fm train`は補正をそのまま使う場合と1/4にした場合の両方で2センチポーン以下、`joint train`は学習前の初期値と書き出した重みの両方で2センチポーン以下、`nnue train`は現行どおり`K/40`以下とする。基準を満たさない場合は、書き出した物を残して失敗で終了する。 |
 | 再開と鏡映の乱数 | `pst`、`fm`、`joint`も`nnue`と同じく`--resume <出力ディレクトリ>`でエポック境界から再開でき、学習の軌跡を変える引数は設定ハッシュで照合する。訓練時の鏡映の有無は、状態を持つ乱数ではなく（シード、エポック、局面の番号）のSplitMix64のハッシュの1ビットで決める。こうすると、途中で止めて再開した学習でも、止めずに通した学習と同じ局面が同じ向きで鏡映される。 |
@@ -102,16 +102,18 @@ AlphaZero型探索の計画（[設計書](alphazero.md)）は`tools/train/zero/`
 | サブコマンド | 引数（既定値） |
 |---|---|
 | `pst train` | `--data`（複数）、`--init`（MNPT。出力用Kと駒価値もここから引き継ぐ）、`--output`、`--lr`（0.03）、`--epochs`（必須、上限200）、`--patience`（必須）、`--batch`（16,384）、`--seed`（1）、`--removal-penalty`（1000）、`--removal-reference v0|init`（必須）、`--lambda-override`（省略時は来歴）、`--lookahead-gamma`と`--lookahead-plies`、`--validation-sample`（10,000）、`--threads` |
-| `fm train` | `--data`、`--init`（MNPT版2、PSTを固定）、`--output`、`--epochs`、`--patience`（ともに必須）、`--rank`（32）、`--batch`（4,096）、`--seed`（1）、`--lr`（10⁻³）、`--weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--lambda-override`、先読みの2引数、`--validation-sample`、`--threads` |
+| `fm train` | `--data`、`--init`（MNPT版2または版3。PSTの部分だけを使い、固定する）、`--output`、`--epochs`、`--patience`（ともに必須）、`--batch`（4,096）、`--seed`（1）、`--lr`（10⁻³）、`--weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--lambda-override`、先読みの2引数、`--validation-sample`、`--threads` |
 | `fm quarter` | `--input`、`--output` |
 | `fm scale` | `--input`、`--float`、`--fm-scale`（0は版2を書く）、`--output`、`--data` |
-| `joint train` | `--data`、`--base`（MNPT版3）、`--pst-init`、`--fm-init`、`--fm-reference`（縮小前のFMのMNPT版3。初期値の検査に使う）、`--output`、`--lambda-override`（必須）、`--epochs`（200）、`--patience`（5）、`--batch`（16,384）、`--seed`（1）、`--pst-lr`（0.03）、`--fm-lr`（10⁻³）、`--fm-weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--removal-penalty`（1000）、先読みの2引数、`--validation-sample`、`--threads` |
+| `joint train` | `--data`、`--base`（MNPT版3）、`--pst-init`、`--fm-init`、`--fm-reference`（縮小前のFMのMNPT版3。初期値の検査に使う）、`--output`、`--lambda-override`（省略時は来歴）、`--epochs`（200）、`--patience`（5）、`--batch`（16,384）、`--seed`（1）、`--pst-lr`（0.03）、`--fm-lr`（10⁻³）、`--fm-weight-decay`（10⁻⁴）、`--lambda-res`（10⁻⁴）、`--removal-penalty`（1000）、先読みの2引数、`--validation-sample`、`--threads` |
 
 Pythonの`pst train`の必須引数`--k`（出力用K）は移植せず、`--init`のMNPTのKを使う。候補Lの学習は`--init`のMNPTと同じKを`--k`に指定していたので、この仕様でも同じ結果になり、照合で一致を確かめる。
 全学習器に共通の引数として、`--resume <出力ディレクトリ>`と`--threads`を持つ。
 `--device`は移植しない。
 計算の場所は「設計判断」のとおり実装で決まり、GPUのカーネルを加えた学習器だけが`--device`を持つ。
-`pst`、`fm`、`joint`の出力（MNPT、実数の重みのnpz、学習記録のJSON）のファイル名と中身の並びは、Pythonの学習器と同じにする。
+`pst`、`fm`、`joint`の出力（MNPT、実数の重みのnpz、学習記録のJSON）のファイル名と中身の並びは、Pythonの学習器と同じにする。ファイル名は`--output`に与えたMNPTの名前から導き、`--output foo.bin`なら実数の重みは`foo-float.npz`、学習記録は`foo.training.json`である（本書の`pst-float.npz`などは`--output pst.bin`の場合の名前である）。`fm quarter`と`fm scale`は、それぞれ`.quarter.json`と`.scale.json`で終わる報告も書く。
+FMの成分の数（ランク）は、エンジンの版3の読み手が32に固定しているので引数を設けず、32に固定する。
+`fm`と`joint`の`--lambda-override`の省略時に来歴のλを使うのは、Pythonの学習器（FMは既定1.0、同時学習は必須）からの意図した変更であり、候補Faの照合では1.0を、J75の照合では0.75を明示して渡す。
 後続の学習と診断が、これらのファイルを入力に使うからである。
 チェックポイントと再開は、`nnue`と同じ仕組みを`pst`、`fm`、`joint`にも使う。
 
