@@ -80,7 +80,7 @@ mod tests {
     use super::*;
     use minase_core::Rules;
 
-    /// D8-HARN-16: [`Arguments`]の既定値、必須引数、排他指定、および局番号の契約を検査する。
+    /// [`Arguments`]の既定値、必須引数、排他指定、および局番号の契約を検査する。
     #[test]
     fn cli_defaults_flags_and_conflicts_follow_the_design_document() {
         let defaults = Arguments::try_parse_from(["random_play", "--rules", "engine-default"])

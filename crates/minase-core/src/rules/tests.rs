@@ -86,7 +86,7 @@ fn article_33_4_from_codes_reports_duplicate_conflict_and_missing_in_contract_or
             second: RuleCode::P1,
         })
     );
-    // 第30条末尾・第33条9項(D1-030-05): P1とP2は排他である。
+    // 第30条末尾・第33条9項に従い、P1とP2は排他である。
     assert_eq!(
         Rules::from_codes(&[
             RuleCode::L0,
@@ -136,7 +136,7 @@ fn rule_set_parse_errors_preserve_the_failure_kind() {
     ));
     assert!(std::error::Error::source(&unknown).is_some());
 
-    // D6-CLI-02: プリセット名と規則コードの併記を拒否する。
+    // プリセット名と規則コードの併記を拒否する。
     assert_eq!(
         parse_rule_set("lishogi,R1"),
         Err(RuleSetParseError::PresetMustBeAlone { preset: "lishogi" })
@@ -166,7 +166,7 @@ fn rules_error_display_identifies_the_missing_group() {
 
 #[test]
 fn article_25_2_repetition_rule_is_mandatory_and_exclusive() {
-    // D3-025-01: 反復規則はR1・R2・R3のいずれか1つの明示が必須であり、
+    // 反復規則はR1・R2・R3のいずれか1つの明示が必須であり、
     // 未指定は明示的なエラー、2つ以上の同時指定は競合として拒否される。
     assert_eq!(
         Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::E0]),
@@ -187,7 +187,7 @@ fn article_25_2_repetition_rule_is_mandatory_and_exclusive() {
 
 #[test]
 fn article_33_9_e2_and_e3_conflict() {
-    // D3-032-09: E2とE3は同時に採用できず、有効な規則セットとして扱われない。
+    // E2とE3は同時に採用できず、有効な規則セットとして扱われない。
     assert!(matches!(
         Rules::from_codes(&[
             RuleCode::L0,

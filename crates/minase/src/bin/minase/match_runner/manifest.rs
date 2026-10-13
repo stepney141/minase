@@ -200,7 +200,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-27: [`default_concurrency`]と`docs/adr/derive-default-concurrency-from-physical-cores.md`に従う。
+    // [`default_concurrency`]と`docs/adr/derive-default-concurrency-from-physical-cores.md`に従う。
     #[test]
     fn ponder_concurrency_reserves_two_engines_per_game() {
         for (threads, on, off) in [(1, 7, 15), (2, 3, 7)] {

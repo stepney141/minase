@@ -56,11 +56,7 @@ fn panicking_worker_stops_and_joins_the_remaining_team_before_propagation() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// D7-SMP　探索チーム
-// ---------------------------------------------------------------------------
-
-// D7-SMP-01・07。時間と外部停止でFinishedを1回だけ送り、全join後に
+// 時間と外部停止でFinishedを1回だけ送り、全join後に
 // 世代が1回だけ進んだ置換表を返す。深さとノードの停止は専用テストで検査する。
 #[test]
 fn multi_worker_teams_finish_once_and_return_the_shared_table() {
@@ -99,7 +95,7 @@ fn multi_worker_teams_finish_once_and_return_the_shared_table() {
     }
 }
 
-// D7-SMP-02。ノード予約は探索チーム全体の
+// ノード予約は探索チーム全体の
 // AtomicU64に対して行い、ProgressとFinishedのノード数をN以下に保つ。
 #[test]
 fn four_worker_node_limit_never_exceeds_the_team_budget() {
@@ -130,11 +126,11 @@ fn four_worker_node_limit_never_exceeds_the_team_budget() {
     assert!(root_moves.contains(&finished.best_move));
 }
 
-// D7-SMP-04。Threads=1の固定ノード探索は、経過
+// Threads=1の固定ノード探索は、経過
 // 時間を除く結果、PV、Progress列、ノード数、停止理由が完全に一致する。
-// D7-SRCH-07のsearch_with_node_limit_is_deterministicが同じ観測を中盤局面で固定する。
+// search_with_node_limit_is_deterministicが同じ観測を中盤局面で固定する。
 
-// D7-SMP-05。ExternalStopはNodeLimitより
+// ExternalStopはNodeLimitより
 // 優先する。開始時点で両方が成立し得る構成を直接チーム経路へ与える。
 #[test]
 fn external_stop_takes_priority_over_the_node_limit() {
@@ -165,7 +161,7 @@ fn external_stop_takes_priority_over_the_node_limit() {
 }
 
 // 深さを飛ばす理由はdocs/adr/diversify-lazy-smp-workers-by-skipping-depths.md。
-// D7-SMP-06。補助ワーカーkは周期
+// 補助ワーカーkは周期
 // 2 + ((k - 1) % 4)に従う深さと深さ上限を昇順に探索する。
 #[test]
 fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
@@ -188,7 +184,7 @@ fn auxiliary_depth_sequences_follow_the_worker_period_and_include_the_limit() {
     }
 }
 
-// D7-SMP-08。途中結果がなければ最大完了深さ、同じ深さなら最小のワーカー番号で選ぶ。
+// 途中結果がなければ最大完了深さ、同じ深さなら最小のワーカー番号で選ぶ。
 // 深さ0は除き、全員0なら主ワーカーの初期結果を返す。
 #[test]
 fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
@@ -227,7 +223,7 @@ fn worker_outcome_selection_uses_depth_then_worker_index_and_excludes_zero() {
     assert_eq!(select_worker_outcome(&all_zero), &all_zero[1]);
 }
 
-// D7-SMP-09・10。主ワーカーが深さ上限を完了するとチームを停止し、全員の終了後に最深結果をFinishedへ載せる。
+// 主ワーカーが深さ上限を完了するとチームを停止し、全員の終了後に最深結果をFinishedへ載せる。
 // 補助ワーカーが上限を完了した場合は、そのワーカーだけが終了する。
 #[test]
 fn four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move() {

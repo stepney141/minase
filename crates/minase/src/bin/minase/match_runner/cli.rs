@@ -220,7 +220,7 @@ mod tests {
     use super::*;
     use minase_core::Rules;
 
-    // D8-HARN-08/D8-STAT-06(docs/guides/sprt.md): 文書化された既定値
+    // docs/guides/sprt.mdに従い、文書化された既定値
     // (--response-timeout 120秒、--max-ply 4096、--max-pairs 100,000)を
     // 文書の明文値リテラルで固定する。文書が変わらない限り実装定数の変更は
     // 逸脱である。
@@ -339,7 +339,7 @@ mod tests {
         assert!(Arguments::try_parse_from(["match_runner", "--resume", "old"]).is_ok());
     }
 
-    // D8-HARN-09(docs/guides/sprt.md測定の種類と標準コマンド節): `--each`がマッチ共通既定、
+    // docs/guides/sprt.md測定の種類と標準コマンド節に従い、`--each`がマッチ共通既定、
     // `--candidate-limit`・`--baseline-limit`が当該エンジンだけを上書きする。
     // 対等条件と完了基準ゲートの非対称条件を同じCLIで表現できる。
     #[test]
@@ -448,7 +448,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-21/27: [`Arguments::validate_ponder`]の先読み条件を検査する。
+    // [`Arguments::validate_ponder`]の先読み条件を検査する。
     #[test]
     fn ponder_arguments_require_two_usi_time_controls() {
         for extra in [

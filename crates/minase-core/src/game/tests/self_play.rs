@@ -5,7 +5,7 @@ use crate::rng::XorShift64;
 use crate::rules::{ExhaustionRule, RepetitionRule};
 use std::num::NonZeroU64;
 
-/// D3-PRP-02: 駒枯れと詰みが同一着手で同時に成立する場合、勝者はどちら
+/// 駒枯れと詰みが同一着手で同時に成立する場合、勝者はどちら
 /// でも余分な駒を持つ側で一致し、駒枯れを先に評価するため終局理由は
 /// 駒枯れとなる（[`adjudicate_after_move`](crate::game::adjudication::adjudicate_after_move)の裁定順序の契約）。
 #[test]
@@ -34,7 +34,7 @@ fn plan_referee_7_piece_exhaustion_evaluates_before_mate() {
     assert_eq!(bare_king.play(mv), win(Color::White, WinReason::BareKing));
 }
 
-// 終局理由が採用規則で発動し得る裁定かを検査する(D3-PRP-01)。
+// 終局理由が採用規則で発動し得る裁定かを検査する。
 fn assert_result_reason_allowed(rules: Rules, result: GameResult, name: &str) {
     let allowed = match result {
         GameResult::Win { reason, .. } => match reason {
@@ -57,7 +57,7 @@ fn assert_result_reason_allowed(rules: Rules, result: GameResult, name: &str) {
 
 #[test]
 fn representative_rule_sets_random_self_play_accepts_legal_moves_and_valid_results() {
-    // D3-PRP-01横断: 代表規則セット群の決定的シードのランダム自己対局で、
+    // 代表規則セット群の決定的シードのランダム自己対局で、
     // 対局合法手はすべて受理され、終局理由は発動し得る裁定に限られる。
     const PLY_CAP: u32 = 1_500;
     const RULE_SETS: [(&str, &[RuleCode], u64); 10] = [
@@ -196,8 +196,8 @@ fn representative_rule_sets_random_self_play_accepts_legal_moves_and_valid_resul
 
 #[test]
 fn deterministic_random_r2_self_play_never_forbids_captures_or_promotions() {
-    // D3-031-08性質: R2のランダム自己対局で拒否される着手は決して捕獲・
-    // 成りを含まない(補題)。D3-PRP-01: R2では反復を理由とする終局がない。
+    // R2のランダム自己対局で拒否される着手は決して捕獲・
+    // 成りを含まない(補題)。R2では反復を理由とする終局がない。
     const PLY_CAP: u32 = 1_500;
     // 拒否を実際に観測できる代表局を規則ごとに1局使う。
     for (seed, codes) in [

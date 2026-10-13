@@ -304,7 +304,7 @@ mod tests {
         assert_eq!(half_points(resignation_win_black, Color::Black), 2);
         assert_eq!(half_points(resignation_win_black, Color::White), 0);
 
-        // D8-HARN-06: 投了は異常に数えない（`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`）。
+        // 投了は異常に数えない（`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`）。
         let resigned = PlayedGame::Finished {
             plies: 12,
             outcome: resignation_win_black,

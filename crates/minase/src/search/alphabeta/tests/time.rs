@@ -2,11 +2,7 @@
 
 use super::*;
 
-// ---------------------------------------------------------------------------
-// D7-TIME　時間予算
-// ---------------------------------------------------------------------------
-
-// D7-TIME-01。時計の予算はsoft ≤ hardかつhard ≥ 1 msを満たす。
+// 時計の予算はsoft ≤ hardかつhard ≥ 1 msを満たす。
 // 残り時間と秒読みの合計が30 msを超えるとき、hardはその合計から30 msを引いた値以下になる。
 #[test]
 fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
@@ -36,7 +32,7 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
     }
 }
 
-// D7-TIME-02。時計なしの固定時間単独では、併用則
+// 時計なしの固定時間単独では、併用則
 // （softとhardのそれぞれで小さい方）の帰結として両リミットとも指定値になる。
 #[test]
 fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
@@ -45,7 +41,7 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
     assert_eq!(budget.hard, Duration::from_millis(500));
 }
 
-// D7-TIME-03。固定時間と時計の併用時の予算は、
+// 固定時間と時計の併用時の予算は、
 // softとhardのそれぞれで両者の小さい方を採る（一括minではない独立比較）。
 #[test]
 fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
@@ -84,7 +80,7 @@ fn stable_signal_requires_four_identical_recent_best_moves() {
     assert!(!stable_signal(&[]));
 }
 
-// D7-TIME-05。継続条件を満たさない主ワーカーは
+// 継続条件を満たさない主ワーカーは
 // 次の深さへ入らず、softリミットとして最後の完了反復の合法手を返す。
 #[test]
 fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
@@ -137,12 +133,12 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
 
     assert_eq!(shared.reason(), StopReason::SoftLimit);
     assert_eq!(outcome.result.depth, 1);
-    assert!(root_moves.contains(&outcome.result.best_move)); // INV-1
+    assert!(root_moves.contains(&outcome.result.best_move));
 }
 
-// D7-TIME-04。hardはノード周期の時計チェックで
+// hardはノード周期の時計チェックで
 // 適用される。上限の許容幅はテスト環境定数であり規範値ではない。
-// D7-TIME-05の継続判断との先着は実時間に依存するため停止理由は2値を許容する。
+// 次の反復を開始するかどうかの判断との先着は実時間に依存するため停止理由は2値を許容する。
 #[test]
 fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     let initial = Position::initial();
@@ -158,21 +154,21 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
 
     // 上限ガード: ノード周期チェックの遅延を見込んだ十分な許容幅。
     assert!(finished.elapsed <= Duration::from_millis(1_000));
-    // soft=hardのため停止理由は機構上の先着が不定（SPEC_UNCLEAR-04）。
+    // soft=hardのため、先に到達する検査点によって停止理由が変わる。
     assert!(matches!(
         finished.stop_reason,
         StopReason::SoftLimit | StopReason::HardLimit
     ));
-    assert!(legal_moves(&initial).contains(&finished.best_move)); // INV-1
+    assert!(legal_moves(&initial).contains(&finished.best_move));
 }
 
-// D7-API-03(3)(4)。時計による停止は反復境界でのsoft limitか、ノード周期でのhard limitである。
+// 時計による停止は反復境界でのsoft limitか、ノード周期でのhard limitである。
 // 実時間の検査では先に到達する検査点が一定でないため、どちらの停止理由も認める。
 #[test]
 fn clock_driven_searches_stop_with_a_time_limit_reason() {
     let initial = Position::initial();
 
-    // (3) 残り6000 ms、加算100 ms、ply=0ではsoft < hardとなり、反復境界で先に停止し得る。
+    // 残り6000 ms、加算100 ms、ply=0ではsoft < hardとなり、反復境界で先に停止し得る。
     let limits = SearchLimits::new(None, None, None, Some(clock(6_000, 100, 0))).unwrap();
     let handle = start(
         snapshot_for(&initial),
@@ -187,9 +183,9 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
         finished.stop_reason,
         StopReason::SoftLimit | StopReason::HardLimit
     ));
-    assert!(legal_moves(&initial).contains(&finished.best_move)); // INV-1
+    assert!(legal_moves(&initial).contains(&finished.best_move));
 
-    // (4) 時計の安全上限が効いてsoft=hard=70msとなる設定。
+    // 時計の安全上限が効いてsoft=hard=70 msとなる設定を検査する。
     let limits = SearchLimits::new(None, None, None, Some(clock(0, 0, 100))).unwrap();
     let budget = time_budget(&limits).expect("byoyomi must produce a time budget");
     assert_eq!(budget.soft, Duration::from_millis(70));

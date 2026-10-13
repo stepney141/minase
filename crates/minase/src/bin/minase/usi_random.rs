@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn seed_zero_is_rejected() {
-        // シード0の拒否は明文外の実装契約（SU-08）。XorShift64は非零シードを前提とする。
+        // XorShift64は非零シードを前提とするため、規範文書に明文がないシード0の拒否を実装契約とする。
         assert_eq!(
             run("setoption name Seed value 0\nquit\n"),
             "info string error: Seed must be a positive integer\n"
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn go_outside_an_active_game_returns_no_bestmove() {
-        // D6-USI-25と同型のライフサイクル契約を校正用エンジンにも適用する（実装契約）。
+        // 校正用エンジンにも主エンジンと同じライフサイクル契約を適用することを実装契約とする。
         let input = concat!(
             "go\n",
             "position sfen 12/12/12/12/12/12/12/12/12/12/12/12 b - 1\n",
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn ruleset_delegates_to_the_shared_usi_grammar() {
-        // [`minase_core::rules::parse_rule_set`]の値文法への接続を検査する（D6-CLI-05）。
+        // [`minase_core::rules::parse_rule_set`]の値文法への接続を検査する。
         // プリセット併記の専用エラーがUSI経路からそのまま返ることで委譲を観測する。
         let output = run(concat!(
             "setoption name RuleSet value lishogi,P1\n",

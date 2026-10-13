@@ -249,7 +249,7 @@ mod tests {
     use crate::harness::limit::parse_search_limit;
     use std::time::Duration;
 
-    // D8-HARN-01: [`parse_player_spec`]の4形式と起動引数の契約を検査する。
+    // [`parse_player_spec`]の4形式と起動引数の契約を検査する。
     #[test]
     fn engine_specs_cover_the_documented_four_forms() {
         let random = parse_player_spec("random").expect("the reserved spec must be accepted");
@@ -303,7 +303,7 @@ mod tests {
 
         // 4形式に含まれない入力は拒否される。旧`depth=N` specの削除は
         // [`parse_player_spec`]に従う。空リビジョンとcommit形式への
-        // 起動引数付与の拒否は[実装契約](SPEC_UNCLEAR-05関連)。
+        // 起動引数付与の拒否は、規範文書に明文がないため実装契約とする。
         for invalid in [
             "",
             "depth=1",
@@ -320,7 +320,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-01境界: [`crate::harness::engine::cecp::validate_cecp_limit`]で表現できない制限を拒否する。
+    // [`crate::harness::engine::cecp::validate_cecp_limit`]で表現できない制限を拒否する。
     #[test]
     fn cecp_resolution_rejects_unsupported_search_limits() {
         for limit in [
@@ -340,7 +340,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-01/20: [`crate::harness::engine::cecp::validate_cecp_limit`]が受理する3種類の制限を検査する。
+    // [`crate::harness::engine::cecp::validate_cecp_limit`]が受理する3種類の制限を検査する。
     #[test]
     fn cecp_resolution_accepts_supported_limits_and_marks_the_protocol() {
         let depth = resolve_player(

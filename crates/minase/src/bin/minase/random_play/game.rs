@@ -214,7 +214,7 @@ mod tests {
     use super::*;
     use minase_core::RuleCode;
 
-    /// D8-HARN-17性質/D8-HARN-18: [`run_game`]の再現性と打ち切りの契約を検査する。
+    /// [`run_game`]の再現性と打ち切りの契約を検査する。
     #[test]
     fn same_seed_and_game_number_reproduce_the_same_game() {
         let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0])

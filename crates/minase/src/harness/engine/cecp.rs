@@ -232,7 +232,7 @@ mod tests {
     use minase_core::Square;
     use std::sync::mpsc;
 
-    // D8-HARN-20: [`cecp_level_text`]の分、秒、および加算の表記を検査する。
+    // [`cecp_level_text`]の分、秒、および加算の表記を検査する。
     #[test]
     fn cecp_level_formats_minutes_seconds_and_increment() {
         assert_eq!(
@@ -286,7 +286,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-20: 本モジュールのじっとの解釈と`docs/research/protocols/hachu.md`第8節に従う。
+    // 本モジュールのじっとの解釈と`docs/research/protocols/hachu.md`第8節に従う。
     #[test]
     fn cecp_null_move_selects_the_lowest_origin_canonical_jitto() {
         let low = Move {
@@ -311,7 +311,7 @@ mod tests {
         assert_eq!(canonical_jitto(&[ordinary]), None);
     }
 
-    // D8-HARN-06/20: 本モジュールの応答分類を検査する。
+    // 本モジュールの応答分類を検査する。
     // 異常の裁定理由は`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`にある。
     #[test]
     fn cecp_response_lines_are_interpreted_through_pong() {
@@ -340,7 +340,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-20: 本モジュールの契約に従い、応答のないpongをクラッシュとする。
+    // 本モジュールの契約に従い、応答のないpongをクラッシュとする。
     #[test]
     fn cecp_pong_without_a_move_or_result_is_a_crash() {
         let (sender, lines) = mpsc::channel();

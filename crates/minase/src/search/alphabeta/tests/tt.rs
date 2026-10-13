@@ -37,11 +37,7 @@ fn invalid_table_sizes_are_reported_without_panicking() {
     assert_eq!(hit.best_move, Some(stored_move));
 }
 
-// ---------------------------------------------------------------------------
-// D7-TT　置換表
-// ---------------------------------------------------------------------------
-
-// D7-TT-01。bit 0–7がfrom、8–15がmid、16–23がto、
+// bit 0–7がfrom、8–15がmid、16–23がto、
 // 24がpromote。midなしは0xff、升の符号化は`Square::dense_index()`（0–143）。
 // 各fieldの符号境界を独立した既知符号値と照合する。
 #[test]
@@ -77,7 +73,7 @@ fn packed_moves_round_trip_across_field_boundaries() {
     assert_eq!(hit.score, 321);
 }
 
-// D7-TT-02。格納時は`score >= MATE−256`なら
+// 格納時は`score >= MATE−256`なら
 // `score + ply`、`score <= −(MATE−256)`なら`score − ply`、取り出し時に
 // 逆変換する。分岐境界はMATE−256=29744。
 #[test]
@@ -115,7 +111,7 @@ fn tt_scores_round_trip_between_root_and_node_relative_forms() {
 }
 
 // 同一キーを深さで保護する理由はdocs/adr/store-quiescence-results-at-depth-zero.md。
-// D7-TT-03。同一キーは世代を
+// 同一キーは世代を
 // 問わず既存以上の深さだけを書き込み、異なるキーは過去世代または既存より
 // 深い結果だけを書き込む。
 #[test]
@@ -265,7 +261,7 @@ fn illegal_transposition_table_move_is_ignored_at_the_root() {
     assert!(moves.contains(&actual.best_move));
 }
 
-// D7-TT-04。反復した局面は探索経路へ積む前に引き分けとして返し、その局面を置換表へ保存しない。
+// 反復した局面は探索経路へ積む前に引き分けとして返し、その局面を置換表へ保存しない。
 // 親はこの引き分け値を含む探索結果を保存し得る。ここでは反復した子の不保存を検査する。
 #[test]
 fn repetition_draw_values_are_not_stored_in_the_table() {
@@ -288,16 +284,16 @@ fn repetition_draw_values_are_not_stored_in_the_table() {
         &mut table,
     );
 
-    // 反復終端が実際に起きたことの確認（D7-SRCH-03と同じ裁定）。
+    // 反復終端が実際に起きたことの確認。
     assert_eq!(result.best_move, draw_move);
     assert_eq!(result.score, 0);
     // 反復で終端した子局面のキーはprobeしてもエントリが存在しない。
     assert!(table.probe(child_key, 0).is_none());
 }
 
-// D7-TT-05。規則セットの変更時と新規対局の開始時には
-// 置換表をクリアする。wire連動はD6の領域であり、ここではクリア契約だけを
-// 検証する。探索を開始した表はクリア後に記録を返さない。
+// 規則セットの変更時と新規対局の開始時には
+// 置換表をクリアする。プロトコルとの連動はプロトコルのテストで検証し、
+// ここではクリア契約だけを検証する。探索を開始した表はクリア後に記録を返さない。
 #[test]
 fn tt_clear_is_skipped_until_a_search_uses_the_table() {
     // 対局開始直後の`go`が消去の完了を待たされないよう、作成または消去の後に
@@ -327,11 +323,11 @@ fn tt_clear_is_skipped_until_a_search_uses_the_table() {
     assert!(table.probe(key, 0).is_none());
 }
 
-// D7-TT-06。サイズはMB単位で外部から設定でき、
+// サイズはMB単位で外部から設定でき、
 // サイズ変更は探索中でないときに限って適用する。探索中の適用は
 // `start_search`が置換表の所有権を奪う設計により静的に排除されるため、
-// ここではアイドル時のリサイズと以後の探索の正常完了だけを検証する
-// （SPEC_UNCLEAR-06。サイズの内部値はassertしない）。
+// ここではアイドル時のリサイズと以後の探索の正常完了だけを検証し、
+// サイズの内部値はassertしない。
 #[test]
 fn idle_resize_applies_and_later_searches_complete() {
     let midgame = quiet_midgame();
@@ -357,7 +353,7 @@ fn idle_resize_applies_and_later_searches_complete() {
 }
 
 // 原子値の2語に分ける理由はdocs/adr/use-atomic-two-word-transposition-entries.md。
-// D7-TT-08。手、評価値、深さ、boundを
+// 手、評価値、深さ、boundを
 // 格納すると、probeから同じ値が得られる。
 #[test]
 fn atomic_tt_fields_round_trip_through_probe() {
@@ -378,7 +374,7 @@ fn atomic_tt_fields_round_trip_through_probe() {
     assert_eq!(hit.bound, Bound::Upper);
 }
 
-// D7-TT-09。criticalの予約ビット、バウンド、
+// criticalの予約ビット、バウンド、
 // 検証キー、または指し手の復号が不正なら、probeはpanicせず未命中にする。
 #[test]
 fn malformed_atomic_tt_entries_are_probe_misses() {

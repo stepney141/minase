@@ -193,8 +193,8 @@ fn parse_search_depth(text: &str) -> Result<u32, String> {
 mod tests {
     use super::*;
 
-    // D8-HARN-09: [`parse_search_limit`]の思考制限の文法を検査する。
-    // depthとnodesの併記受理はSPEC_UNCLEAR-08につき[実装契約]。
+    // [`parse_search_limit`]の思考制限の文法を検査する。
+    // 規範文書に明文がないため、depthとnodesの併記を受理することを実装契約とする。
     #[test]
     fn search_limits_accept_the_documented_grammar() {
         assert_eq!(
@@ -237,7 +237,7 @@ mod tests {
         );
     }
 
-    // SPEC_UNCLEAR-08 [実装契約]: 文法に合致しない制限は拒否される。
+    // 規範文書に明文がないため、文法に合致しない制限を拒否することを実装契約とする。
     // エラー文言は契約ではない。
     #[test]
     fn search_limits_reject_malformed_inputs() {

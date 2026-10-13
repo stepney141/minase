@@ -3,7 +3,7 @@
 use super::*;
 use crate::search::alphabeta::capture_history::CaptureHistory;
 
-// D7-SRCH-08。深さ0ではstand-patと捕獲手を探索する。
+// 深さ0ではstand-patと捕獲手を探索する。
 // 守られた歩兵を飛車で取る損な交換は静止探索で見抜かれ、最善手にならない。
 #[test]
 fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
@@ -38,7 +38,7 @@ fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
     assert!(result.score.abs() < 29_000);
 }
 
-// D7-SRCH-09。捕獲手のない葉ではstand-patを返すため、
+// 捕獲手のない葉ではstand-patを返すため、
 // depth=1の根評価は各合法手の子局面に対する静的評価の最大値と一致する。
 #[test]
 fn quiescence_without_captures_matches_static_evaluation() {
@@ -100,7 +100,7 @@ fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
     }
 }
 
-// D7-SRCH-11。Exact、
+// Exact、
 // score >= betaのLower、score <= alphaのUpperは深さ条件なしで返す。
 #[test]
 fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
@@ -139,7 +139,7 @@ fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
     }
 }
 
-// D7-SRCH-12。静止探索の通常出口は深さ0で記録され、同じ入口局面を
+// 静止探索の通常出口は深さ0で記録され、同じ入口局面を
 // 再訪するとExactヒットで捕獲展開を省く。
 #[test]
 fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
@@ -177,7 +177,7 @@ fn quiescence_stores_depth_zero_and_reuses_it_on_revisit() {
     assert_eq!(second_nodes, 0);
 }
 
-// D7-SRCH-12。通常出口のUpper・Exactを深さ0で記録し、
+// 通常出口のUpper・Exactを深さ0で記録し、
 // stand-patが最善なら手なしとする。
 #[test]
 fn quiescence_records_bounds_and_no_move_by_exit_path() {
@@ -209,7 +209,7 @@ fn quiescence_records_bounds_and_no_move_by_exit_path() {
     }
 }
 
-// D7-SRCH-13。静止探索で最後の王駒を取ったMATE−(ply+1)は、現在plyを渡した
+// 静止探索で最後の王駒を取ったMATE−(ply+1)は、現在plyを渡した
 // 置換表の変換で往復する。捕獲を評価する最大plyでも詰み帯に収まる。
 #[test]
 fn quiescence_mate_score_round_trips_through_the_tt() {
@@ -247,7 +247,7 @@ fn quiescence_mate_score_round_trips_through_the_tt() {
     }
 }
 
-// D7-SRCH-13。最大ply葉は置換表照会より先に静的評価を返し、既存の
+// 最大ply葉は置換表照会より先に静的評価を返し、既存の
 // エントリを参照も更新もしない。
 #[test]
 fn quiescence_max_ply_leaf_does_not_probe_or_store() {
@@ -307,7 +307,7 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
     }
 }
 
-// D7-SRCH-10。stand-patは損な捕獲より優先される。
+// stand-patは損な捕獲より優先される。
 // 候補があり、SEEで全て捨てるノードは保存する。
 #[test]
 fn quiescence_see_pruned_candidates_still_store() {

@@ -511,7 +511,7 @@ mod tests {
         assert_eq!(median_f64(&mut even_floats), 5.0);
     }
 
-    // D8-BENCH-02: モジュールdocの再現性と[`BENCH_POSITIONS`]の固定局面を検査する。
+    // モジュールdocの再現性と[`BENCH_POSITIONS`]の固定局面を検査する。
     #[test]
     fn total_node_counts_are_reproducible_across_runs() {
         let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");

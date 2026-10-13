@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn articles_24_1_and_31_r1_f1_cycle_draws_at_ply_12() {
-    // D3-024-01/D3-031-01: F1(初期局面の仲人往復)は④⑧⑫の完了時に初期
+    // F1(初期局面の仲人往復)は④⑧⑫の完了時に初期
     // 局面の2〜4回目を生じさせ、全12手が非攻撃的なため⑫で引き分けになる。
     // 対局開始局面は履歴上の第1回として数える。
     let mut game = Game::new(Rules::ENGINE_DEFAULT);
@@ -28,7 +28,7 @@ fn articles_24_1_and_31_r1_f1_cycle_draws_at_ply_12() {
 
 #[test]
 fn article_24_1_b_side_to_move_distinguishes_identical_boards() {
-    // D3-024-02: 盤面が同じでも手番側が異なる2局面は同一局面ではない。
+    // 盤面が同じでも手番側が異なる2局面は同一局面ではない。
     // 黒金の往復2周(4手)と白王将の三角移動(3手)で、7手目に開始盤面が
     // 白手番として再現される。R2はこれを既出局面の再現として禁止しない。
     let mut game = game_with_codes(
@@ -59,7 +59,7 @@ fn article_24_1_b_side_to_move_distinguishes_identical_boards() {
 
 #[test]
 fn article_24_1_c_lion_trigger_state_distinguishes_positions() {
-    // D3-024-03: 先獅子による直後の捕獲禁止の有無が異なる2局面は同一局面
+    // 先獅子による直後の捕獲禁止の有無が異なる2局面は同一局面
     // ではない。先獅子あり局面の既出は、後日の先獅子なし同一盤面の再現を
     // 禁止しない。
     let mut game = game_with_codes(
@@ -100,7 +100,7 @@ fn article_24_1_c_lion_trigger_state_distinguishes_positions() {
 
 #[test]
 fn article_24_1_occurrences_accumulate_across_different_paths() {
-    // D3-024-05: 同一性は局面に基づき到達手順に依存しない。異なる経路
+    // 同一性は局面に基づき到達手順に依存しない。異なる経路
     // (黒金2枚を交互に往復)による出現も合算され、4回目で裁定される。
     let mut game = game_with_codes(
         position(
@@ -139,7 +139,7 @@ fn article_24_1_occurrences_accumulate_across_different_paths() {
     assert_eq!(game.play(cycle_a[3]), draw(DrawReason::Repetition));
 }
 
-/// D3-031-12: 不可逆手の前に可逆手を11手指していても、その後の可逆手が
+/// 不可逆手の前に可逆手を11手指していても、その後の可逆手が
 /// 12手になるまで裁定しない（RULES.md第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
 #[test]
 fn article_31_r1_requires_twelve_reversible_plies_after_an_irreversible_move() {
@@ -171,7 +171,7 @@ fn article_31_r1_requires_twelve_reversible_plies_after_an_irreversible_move() {
 
 #[test]
 fn article_31_r1_sole_continuous_checker_loses() {
-    // D3-031-02: 反復区間を通じて一方(黒)のすべての着手だけが攻撃的着手
+    // 反復区間を通じて一方(黒)のすべての着手だけが攻撃的着手
     // (連続王手)なら、4回目の同一局面の出現時に攻撃側の負けとなる。
     let mut game = game(position(
         Color::Black,
@@ -204,7 +204,7 @@ fn article_31_r1_sole_continuous_checker_loses() {
 
 #[test]
 fn article_31_r1_capture_threats_count_and_standing_threats_do_not() {
-    // D3-031-03: 攻撃的着手は王手に限らず、動かした駒が到達升から相手の
+    // 攻撃的着手は王手に限らず、動かした駒が到達升から相手の
     // いずれかの駒を直ちに捕獲できる状態にする着手を含む。一方、動かさな
     // かった駒による既存の捕獲脅威は含めない。
     // (i) 黒飛が両往復升から白歩を照準し続ける: 黒が継続攻撃側となり負け。
@@ -267,7 +267,7 @@ fn article_31_r1_capture_threats_count_and_standing_threats_do_not() {
 
 #[test]
 fn article_31_r1_mutual_perpetual_attacks_draw() {
-    // D3-031-04: 双方のすべての着手が攻撃的着手なら、4回目の同一局面の
+    // 双方のすべての着手が攻撃的着手なら、4回目の同一局面の
     // 出現時点で引き分けとなる。黒奔王は連続王手、白飛は黒歩の照準継続。
     let mut game = game(position(
         Color::Black,
@@ -296,8 +296,8 @@ fn article_31_r1_mutual_perpetual_attacks_draw() {
     assert_eq!(game.play(cycle[3]), draw(DrawReason::Repetition));
 }
 
-/// D3-031-07: 王手を受けている側にもR2の禁止は適用される(適用除外の
-/// 不採用)。D3-031-08: 捕獲を含む着手は既出局面を再現し得ず、決して
+/// 王手を受けている側にもR2の禁止は適用される(適用除外の
+/// 不採用)。捕獲を含む着手は既出局面を再現し得ず、決して
 /// 禁止されない（[`is_mate`](crate::game::adjudication::mate::is_mate)の捕獲と成りに関する補題）。
 #[test]
 fn article_31_r2_applies_to_the_checked_side_but_never_to_captures() {

@@ -1,6 +1,6 @@
 //! 横断性質のテスト。
 //!
-//! D1-009-24の先後の180度回転対称、D1-MC-01の正準形、およびD1-MC-02の適用と復元を検査する。
+//! 先後の180度回転対称、着手の正準形、および着手の適用と復元を検査する。
 //! 正準形は[`Move`]の経由升捕獲の不変条件と、[`MoveGenerator::generate_moves`]の
 //! 自駒への到達と重複に関する契約に基づく。
 //! 往復は[`Position`]の全フィールドと両Zobrist値が戻る契約に基づき、
@@ -42,8 +42,8 @@ fn single_piece(side_to_move: Color, square: Square, code: PieceCode) -> Positio
     builder.finish().unwrap()
 }
 
-// D1-009-24: 後手駒の到達升集合は、先手駒を180度回転した升に置いた集合の回転像と
-// 一致する（第9条、第3条3号）。成駒にも適用される（D1-010系の性質）。
+// 後手駒の到達升集合は、先手駒を180度回転した升に置いた集合の回転像と
+// 一致する（第9条、第3条3号）。成駒にも適用される。
 #[test]
 fn article_9_black_and_white_move_sets_are_180_degree_symmetric() {
     let promoted_only = [
@@ -253,14 +253,14 @@ fn capture_generation_matches_full_generation_for_special_and_promoting_captures
     assert_eq!(&appended[1..], captures);
 }
 
-/// 正準形の不変条件（D1-MC-01）と第6〜7条・第17〜18条の全域性質を1局面分検査する。
+/// 正準形の不変条件と第6〜7条・第17〜18条の全域性質を1局面分検査する。
 fn assert_canonical_invariants(position: &Position, moves: &[Move], ply: usize) {
     let side = position.side_to_move();
     let own = position.pieces_of(side);
     let enemy = position.pieces_of(side.opposite());
     let forward = forward_rank_delta(side);
     let move_set: HashSet<Move> = moves.iter().copied().collect();
-    // (4) 同一の (from, mid, to, 成り選択) は高々1回（D1-019-05の性質も兼ねる）。
+    // (4) 同一の (from, mid, to, 成り選択) は高々1回。
     assert_eq!(move_set.len(), moves.len(), "duplicate move at ply {ply}");
 
     for &m in moves {
@@ -284,7 +284,7 @@ fn assert_canonical_invariants(position: &Position, moves: &[Move], ply: usize) 
             // 同じ駒を2回取らない（第7条9項）。
             assert_ne!(mid, m.from, "ply={ply}, move={m:?}");
             assert_ne!(mid, m.to, "ply={ply}, move={m:?}");
-            // mid あり ⇒ 成り選択なし（第18条6項・7項、D1-018-08）。
+            // mid あり ⇒ 成り選択なし（第18条6項・7項）。
             assert!(!m.promote, "ply={ply}, move={m:?}");
             // (2) mid を持てるのは獅子・角鷹・飛鷲だけで、mid は駒種ごとの
             // 第1段階の隣接升に限る（第11条1項・2項、第12条）。
@@ -356,7 +356,7 @@ fn assert_application_effects(before: &Position, mv: Move, rules: MoveRules, ply
     if mv.to == mv.from && mv.mid.is_none() {
         assert!(same_board(before, &after), "ply={ply}, move={mv:?}");
     }
-    // 駒種の変化は成り対応18組の向きに限る（D1-009-23の性質、第17条3項）。
+    // 駒種の変化は成り対応18組の向きに限る（第17条3項）。
     let moved_before = before.piece_at(mv.from).unwrap();
     let moved_after = after.piece_at(mv.to).unwrap();
     if mv.promote {
@@ -375,7 +375,7 @@ fn assert_application_effects(before: &Position, mv: Move, rules: MoveRules, ply
     }
 }
 
-/// シード固定プレイアウトで正準形不変条件と適用効果を検査する（D1-MC-01）。
+/// シード固定プレイアウトで正準形不変条件と適用効果を検査する。
 fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
     let generator = MoveGenerator::new(rules);
     let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
@@ -392,7 +392,7 @@ fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
     }
 }
 
-/// D1-MC-01として、[`Move`]の正準形と[`MoveGenerator::generate_moves`]の契約を検査する。
+/// [`Move`]の正準形と[`MoveGenerator::generate_moves`]の契約を検査する。
 /// 併せてRULES.md第6条、第7条、第17条、第18条の性質を到達可能局面で検査する。
 #[test]
 fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
@@ -464,7 +464,7 @@ fn capture_generation_matches_full_generation_in_seeded_playouts() {
     }
 }
 
-/// シード固定プレイアウトで全生成手の適用・復元の往復を検査する（D1-MC-02）。
+/// シード固定プレイアウトで全生成手の適用・復元の往復を検査する。
 fn playout_round_trip(rules: MoveRules, seed: u64, plies: usize) {
     let generator = MoveGenerator::new(rules);
     let mut rng = XorShift64::new(NonZeroU64::new(seed).unwrap());
@@ -488,7 +488,7 @@ fn playout_round_trip(rules: MoveRules, seed: u64, plies: usize) {
     }
 }
 
-/// D1-MC-02として、[`Position::make_move_unchecked`]と[`Position::unmake_move`]の往復で
+/// [`Position::make_move_unchecked`]と[`Position::unmake_move`]の往復で
 /// [`Position`]の全フィールドと両Zobrist値が戻ることを検査する。
 #[test]
 fn mc_make_unmake_round_trips_every_generated_move() {

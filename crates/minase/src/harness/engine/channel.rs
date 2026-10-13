@@ -44,7 +44,7 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
-    // D8-HARN-06(2)(3)(docs/guides/sprt.md異常時の裁定節): プロセス終了・パイプ切断は
+    // docs/guides/sprt.md異常時の裁定節に従い、プロセス終了・パイプ切断は
     // クラッシュ、応答期限超過は応答タイムアウトとして分類する。
     #[test]
     fn response_channel_classifies_disconnect_and_timeout() {
@@ -62,7 +62,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-11: [`receive_until`]はbestmoveまで他の行を読み飛ばす。
+    // [`receive_until`]はbestmoveまで他の行を読み飛ばす。
     #[test]
     fn response_channel_waits_for_bestmove_ignoring_other_lines() {
         let (sender, lines) = mpsc::channel();

@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn article_22_1_bare_side_without_a_capture_loses_immediately() {
-    // D3-022-01: 条件成立時に裸側の手番でも、余分な駒を取れなければ
+    // 条件成立時に裸側の手番でも、余分な駒を取れなければ
     // 余分な駒を持つ側の勝ちとなる。
     let mut game = game_with_codes(
         position(
@@ -25,7 +25,7 @@ fn article_22_1_bare_side_without_a_capture_loses_immediately() {
     );
 }
 
-/// D3-022-09: 条件成立時に余分な駒を持つ側が手番なら、5項の猶予を
+/// 条件成立時に余分な駒を持つ側が手番なら、5項の猶予を
 /// 適用せず直ちに裁定する（[`piece_exhaustion_outcome`](crate::game::adjudication::exhaustion::piece_exhaustion_outcome)の猶予の契約）。
 #[test]
 fn plan_referee_5_extra_side_to_move_wins_without_grace() {
@@ -55,8 +55,8 @@ fn plan_referee_5_extra_side_to_move_wins_without_grace() {
     );
 }
 
-/// D3-022-02: 余分な駒が歩兵なら金将へ成るまで裁定せず対局を継続する。
-/// D3-022-10: 非捕獲の成りの時点では猶予を与えず直ちに勝ちとする
+/// 余分な駒が歩兵なら金将へ成るまで裁定せず対局を継続する。
+/// 非捕獲の成りの時点では猶予を与えず直ちに勝ちとする
 /// （[`piece_exhaustion_outcome`](crate::game::adjudication::exhaustion::piece_exhaustion_outcome)の非捕獲の成りの契約）。白王将が(3,10)から成歩を
 /// 取れる配置でも、成った時点で黒の勝ちが確定する。
 #[test]
@@ -85,7 +85,7 @@ fn article_22_2_pawn_extra_piece_waits_until_promotion() {
 
 #[test]
 fn article_22_2_repetition_still_adjudicates_during_the_wait() {
-    // D3-022-02境界: 歩兵の成り待機中も反復など他の裁定は通常どおり働く。
+    // 歩兵の成り待機中も反復など他の裁定は通常どおり働く。
     let mut game = game_with_codes(
         position(
             Color::Black,
@@ -116,7 +116,7 @@ fn article_22_2_repetition_still_adjudicates_during_the_wait() {
 
 #[test]
 fn article_22_3_go_between_extra_piece_waits_until_promotion() {
-    // D3-022-03: 余分な駒が仲人なら醉象へ成った時点で勝ちとなる。
+    // 余分な駒が仲人なら醉象へ成った時点で勝ちとなる。
     let mut game = game_with_codes(
         position(
             Color::White,
@@ -138,7 +138,7 @@ fn article_22_3_go_between_extra_piece_waits_until_promotion() {
 
 #[test]
 fn article_22_4_immobile_pawn_and_lance_are_not_winning_extras() {
-    // D3-022-04: 最奥段で移動不能となった歩兵・香車は勝利を成立させる
+    // 最奥段で移動不能となった歩兵・香車は勝利を成立させる
     // 余分な駒として数えず、裁定を行わず対局を継続する。
     for kind in [PieceKind::Pawn, PieceKind::Lance] {
         let mut game = game_with_codes(
@@ -163,7 +163,7 @@ fn article_22_4_immobile_pawn_and_lance_are_not_winning_extras() {
 
 #[test]
 fn articles_22_5_and_22_6_grace_capture_leads_to_a_draw() {
-    // D3-022-05/D3-022-06: 裸側が余分な駒を次の1手で取れる場合は裁定を
+    // 裸側が余分な駒を次の1手で取れる場合は裁定を
     // 保留し、取れば駒枯れ不成立。双方王駒のみとなり8項の引き分けになる。
     let (position, establishes_condition) = grace_predecessor();
     let mut game = game_with_codes(position, &[RuleCode::R1]);
@@ -177,7 +177,7 @@ fn articles_22_5_and_22_6_grace_capture_leads_to_a_draw() {
 
 #[test]
 fn article_22_7_declining_the_grace_loses_immediately() {
-    // D3-022-07: 猶予の1手で余分な駒を取らなければ、その着手の完了時に
+    // 猶予の1手で余分な駒を取らなければ、その着手の完了時に
     // 余分な駒を持つ側の勝ちとなる。保留は再付与されない。
     let (position, establishes_condition) = grace_predecessor();
     let mut game = game_with_codes(position, &[RuleCode::R1]);
@@ -191,7 +191,7 @@ fn article_22_7_declining_the_grace_loses_immediately() {
 
 #[test]
 fn article_22_8_bare_royals_draw_but_prince_pairs_continue() {
-    // D3-022-08: 双方に王駒1枚ずつだけが残れば自動的に引き分けとする。
+    // 双方に王駒1枚ずつだけが残れば自動的に引き分けとする。
     let mut kings = game_with_codes(
         position(
             Color::Black,
@@ -226,7 +226,7 @@ fn article_22_8_bare_royals_draw_but_prince_pairs_continue() {
     );
 }
 
-/// D3-022-11: 捕獲を伴う成りで初めて条件が成立した場合は待機局面が
+/// 捕獲を伴う成りで初めて条件が成立した場合は待機局面が
 /// 存在しないため、2項ではなく1項・5項の通常の流れで猶予を判定する
 /// （[`piece_exhaustion_outcome`](crate::game::adjudication::exhaustion::piece_exhaustion_outcome)の捕獲を伴う成りの契約）。
 #[test]
@@ -263,7 +263,7 @@ fn plan_referee_5_capturing_promotion_that_creates_the_condition_takes_the_grace
 
 #[test]
 fn articles_22_2_and_22_4_waiting_pawn_that_becomes_immobile_stops_counting() {
-    // D3-022-12: 待機中の歩兵が最奥段で移動不能になると余分な駒として
+    // 待機中の歩兵が最奥段で移動不能になると余分な駒として
     // 数えなくなり対局は継続する。その歩兵が取られれば双方王駒のみとなり
     // 8項の引き分けへ進む。
     let mut game = game_with_codes(

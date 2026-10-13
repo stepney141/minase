@@ -275,7 +275,7 @@ mod tests {
         }
     }
 
-    /// D5-USI-01: [`parse`]の升名の連結と駒打ち形式を認めない契約を検査する。
+    /// [`parse`]の升名の連結と駒打ち形式を認めない契約を検査する。
     #[test]
     fn move_strings_concatenate_square_names_without_separators() {
         let empty = Position::empty(Color::Black);
@@ -300,7 +300,7 @@ mod tests {
             })
         );
 
-        // 4升以上の連結、駒打ち形式、区切り文字、盤外の段・筋の拒否（D5-USI-01境界）。
+        // 4升以上の連結、駒打ち形式、区切り文字、盤外の段・筋の拒否。
         for invalid in [
             "7g7d7e7f", "P*3d", "7g 7d", "7g-7d", "7m7d", "13a1a", "0a1a", "", "resign", "@@@@",
             "7g7d#",
@@ -309,8 +309,8 @@ mod tests {
         }
     }
 
-    // D5-USI-02: 1歩停止も2升跳び直行も2升連結で書き、mid: Noneの移動に対応する
-    // （[USI]「指し手の文字列表記」第1項・第3項、[CANON]「新しいMove型」）。
+    // 1歩停止も2升跳び直行も2升連結で書き、mid: Noneの移動に対応する
+    // （docs/research/protocols/usi-lishogi.md「指し手の文字列表記」第1項・第3項、[`Move`]の正準形の契約）。
     #[test]
     fn two_square_form_maps_to_mid_none_and_rejects_zero_distance() {
         let empty = Position::empty(Color::Black);
@@ -332,12 +332,14 @@ mod tests {
         assert_eq!(text_generated(&empty, step), "6f5e");
         assert_eq!(text_generated(&empty, jump), "6f7d");
 
-        // 距離0の2升連結は不合法であり、じっとは必ず3升連結で表す（[USI]同節第4項）。
+        // 距離0の2升連結は不合法であり、じっとは必ず3升連結で表す
+        // （docs/research/protocols/usi-lishogi.md「指し手の文字列表記」第4項）。
         assert_eq!(parse(&empty, "6f6f"), Err(UsiError::InvalidJittoForm));
     }
 
-    // D5-USI-03: 3升連結の具体例（二段捕獲6f5e6d・居喰い6i5h6i・じっと6f6g6f）が
-    // 実際の合法手として存在する（[USI]「指し手の文字列表記」第3項、[RULES]第3条・第12条）。
+    // 3升連結の具体例（二段捕獲6f5e6d・居喰い6i5h6i・じっと6f6g6f）が
+    // 実際の合法手として存在する（docs/research/protocols/usi-lishogi.md「指し手の文字列表記」第3項、
+    // RULES.md第3条・第12条）。
     #[test]
     fn lishogi_documented_three_square_examples_are_legal_moves() {
         // 6fの獅子が5eの相手駒を取って6dへ達する二段捕獲。
@@ -361,7 +363,7 @@ mod tests {
         assert!(generated(&capture_position).contains(&capture));
         assert_eq!(text_generated(&capture_position, capture), "6f5e6d");
 
-        // 5hの相手駒を取って6iへ戻る居喰い（[RULES]第3条第14項・第12条第8項）。
+        // 5hの相手駒を取って6iへ戻る居喰い（RULES.md第3条第14項・第12条第8項）。
         let igui_position = position(
             Color::Black,
             &[
@@ -382,15 +384,15 @@ mod tests {
         assert!(generated(&igui_position).contains(&igui));
         assert_eq!(text_generated(&igui_position, igui), "6i5h6i");
 
-        // 空の中間升6gを経て元の升へ戻るじっと（[RULES]第3条第13項・第12条第9項）。
+        // 空の中間升6gを経て元の升へ戻るじっと（RULES.md第3条第13項・第12条第9項）。
         let jitto_position = single_piece_position(Color::Black, PieceKind::Lion, sq(6, 6));
         let jitto = parse(&jitto_position, "6f6g6f").unwrap();
         assert_eq!(jitto, canonical_jitto(sq(6, 6)));
         assert!(generated(&jitto_position).contains(&jitto));
     }
 
-    /// D5-USI-04: [`text_generated`]と[`parse`]の成り・不成の接尾辞の契約を検査する。
-    // `?`の用途の一次資料は未確認であり（SU-1）、shogiops互換の実装判断としての受理である。
+    /// [`text_generated`]と[`parse`]の成り・不成の接尾辞の契約を検査する。
+    // `?`の用途の一次資料は未確認のため、shogiops互換の受理を実装上の契約として固定する。
     #[test]
     fn promotion_suffix_writes_plus_and_reads_equals_and_question_as_non_promotion() {
         let empty = Position::empty(Color::Black);
@@ -422,7 +424,7 @@ mod tests {
         }
     }
 
-    /// D5-USI-05: [`parse`]の契約に従い、中間升の占有から[`Move`]の正準形へ変換する。
+    /// [`parse`]の契約に従い、中間升の占有から[`Move`]の正準形へ変換する。
     #[test]
     fn three_square_input_normalizes_by_intermediate_occupancy() {
         let from = sq(6, 6);
@@ -477,15 +479,15 @@ mod tests {
             })
         );
 
-        // 正規化の冪等性: 正準形の文字列化を再解析しても同じMoveになる（D5-USI-08の基礎）。
+        // 正準形を文字列化して再解析しても同じMoveになり、正規化は冪等である。
         let rendered = text_generated(&alone, direct);
         assert_eq!(rendered, "6f6d");
         assert_eq!(parse(&alone, &rendered), Ok(direct));
     }
 
-    /// D5-USI-06: [`text_generated`]がじっとに補う升の適格性と選択の決定性を検査する。
+    /// [`text_generated`]がじっとに補う升の適格性と選択の決定性を検査する。
     /// 方向はRULES.md第11条・第12条、選択順は[`Square::dense_index`]による。
-    /// 複数候補時の具体的な升はこのテストでは固定しない（SU-2）。
+    /// 複数候補時の具体的な升はこのテストでは固定しない。
     #[test]
     fn jitto_text_supplies_a_deterministic_legal_first_step_square() {
         // 獅子: 8方向の空隣接升のいずれかを代表升とし、同一局面では常に同じ文字列になる。
@@ -518,7 +520,7 @@ mod tests {
             "12l12k12l"
         );
 
-        // 角鷹の第1段階は前方1方向だけ（[RULES]第11条第1項・第7項）。先後で向きが変わる。
+        // 角鷹の第1段階は前方1方向だけ（RULES.md第11条第1項・第7項）。先後で向きが変わる。
         for (color, forward) in [(Color::Black, sq(5, 6)), (Color::White, sq(5, 4))] {
             let falcon = single_promoted_piece_position(color, PieceKind::HornedFalcon, sq(5, 5));
             let expected = format!(
@@ -531,7 +533,7 @@ mod tests {
         }
 
         // 飛鷲は前斜め2方向のうち片方だけが空なら、その方向が代表升になる
-        // （[RULES]第11条第2項・第8項。候補一意のため直値を断定できる）。
+        // （RULES.md第11条第2項・第8項。候補一意のため直値を断定できる）。
         let eagle_from = sq(5, 5);
         let blocked = position_from_codes(
             Color::Black,
@@ -631,7 +633,7 @@ mod tests {
                 ),
             ],
         );
-        // (d) 成りと不成が選択できる局面（[RULES]第18条）。
+        // (d) 成りと不成が選択できる局面（RULES.md第18条）。
         let promotion = position(Color::Black, &[(sq(4, 7), Color::Black, PieceKind::Pawn)]);
         // (a) 初期局面と、じっとを含む単駒局面群。
         let positions = [
@@ -659,7 +661,7 @@ mod tests {
             }
         }
 
-        // カバレッジ空振り防止（D5-PROP-02）: 類型(1)(2)を獅子・角鷹・飛鷲の各出自で確認する。
+        // 検査対象が空でないことを確かめるため、類型(1)(2)を獅子・角鷹・飛鷲の各出自で確認する。
         let special_moves = &generated_moves[1];
         for origin in [sq(5, 5), sq(1, 1), sq(9, 1)] {
             // (1) 経路捕獲つき2段階移動（mid: Some かつ to != from）。

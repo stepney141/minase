@@ -76,7 +76,7 @@ pub fn generate_opening(rules: Rules, pair_seed: NonZeroU64) -> Opening {
 mod tests {
     use super::*;
 
-    // D8-HARN-02(docs/guides/sprt.mdペア対局と再現性節): 開始局面は初期局面から8〜12手
+    // docs/guides/sprt.mdペア対局と再現性節に従い、開始局面は初期局面から8〜12手
     // だけランダムに進めて作り、ペアシードから決定的に再現される。
     #[test]
     fn openings_stay_within_8_to_12_plies_and_vary_between_pairs() {

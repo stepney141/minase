@@ -45,7 +45,7 @@ pub(super) fn reference_clock_budget(clock: ClockLimits, margin_ms: u64) -> Time
     }
 }
 
-/// D7-TIME-01。時間予算は[`reference_clock_budget`]の整数演算と同じ値を返す。
+/// 時間予算は[`reference_clock_budget`]の整数演算と同じ値を返す。
 /// 各除算、残り手数の下限、序盤係数の上限、安全余裕、飽和変換の境界を含む入力で照合する。
 #[test]
 fn tuning_default_clock_budget_matches_reference_grid() {

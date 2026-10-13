@@ -1,6 +1,6 @@
 //! 第17〜19条（成り）と第30条（成りに関するローカルルールP系）のテスト。
 //!
-//! 先手（Black）の敵陣はマトリクス段1〜4、相手側の最奥段は段1である（第3条6号）。
+//! [`msq`]の座標では先手（Black）の敵陣は段1〜4、相手側の最奥段は段1である（第3条6号）。
 
 use super::{MoveGenerator, PROMOTION_PAIRS, generated, generated_with, moves_from, msq, mv};
 use crate::mv::Move;
@@ -58,7 +58,7 @@ fn assert_promotion_forced(moves: &[Move], from: Square, to: Square) {
 // 第17条　成ることができる駒
 // ---------------------------------------------------------------------------
 
-// D1-009-23: 成り先対応18組（第9条の表、第17条2項）。
+// 成り先対応18組（第9条の表、第17条2項）。
 #[test]
 fn article_9_17_promotion_maps_the_eighteen_pairs() {
     for (kind, promoted_kind) in PROMOTION_PAIRS {
@@ -78,7 +78,7 @@ fn article_9_17_promotion_maps_the_eighteen_pairs() {
     }
 }
 
-// D1-017-01: 王将・玉将・獅子・奔王は成らない（第17条1項）。
+// 王将・玉将・獅子・奔王は成らない（第17条1項）。
 #[test]
 fn article_17_1_king_lion_and_free_king_never_promote() {
     for kind in [PieceKind::King, PieceKind::Lion, PieceKind::FreeKing] {
@@ -93,7 +93,7 @@ fn article_17_1_king_lion_and_free_king_never_promote() {
     }
 }
 
-// D1-017-03: 再成の禁止（第17条4項）。
+// 再成の禁止（第17条4項）。
 #[test]
 fn article_17_4_promoted_pieces_never_promote_again() {
     // 仲人の成駒の醉象は、敵陣内の捕獲でも太子へ成れない。
@@ -128,7 +128,7 @@ fn article_17_4_promoted_pieces_never_promote_again() {
 // 第18条　成ることができる着手
 // ---------------------------------------------------------------------------
 
-// D1-018-01: 敵陣入りの成り（第18条1項・5項）。
+// 敵陣入りの成り（第18条1項・5項）。
 #[test]
 fn article_18_1_entry_into_the_zone_offers_promotion_choice() {
     let board = position(
@@ -142,7 +142,7 @@ fn article_18_1_entry_into_the_zone_offers_promotion_choice() {
     assert_no_promotion(&moves, msq(7, 5), msq(6, 6));
 }
 
-// D1-018-02: 敵陣内の捕獲による再度の成り（第18条2項a）。
+// 敵陣内の捕獲による再度の成り（第18条2項a）。
 #[test]
 fn article_18_2a_capture_inside_the_zone_offers_promotion() {
     let board = position(
@@ -159,7 +159,7 @@ fn article_18_2a_capture_inside_the_zone_offers_promotion() {
     assert_no_promotion(&moves, msq(6, 3), msq(5, 2));
 }
 
-// D1-018-03: 敵陣から出る捕獲による成り（第18条2項b）。
+// 敵陣から出る捕獲による成り（第18条2項b）。
 #[test]
 fn article_18_2b_capture_leaving_the_zone_offers_promotion() {
     let board = position(
@@ -181,7 +181,7 @@ fn article_18_2b_capture_leaving_the_zone_offers_promotion() {
     );
 }
 
-// D1-018-04: 敵陣外へ出た後の再入による成り（第18条2項c・1項）。
+// 敵陣外へ出た後の再入による成り（第18条2項c・1項）。
 #[test]
 fn article_18_2c_reentry_offers_promotion_again() {
     let mut board = position(
@@ -208,7 +208,7 @@ fn article_18_2c_reentry_offers_promotion_again() {
 // 第19条　最奥段における成り
 // ---------------------------------------------------------------------------
 
-// D1-019-01: 歩兵の最奥段救済（第19条1項）。
+// 歩兵の最奥段救済（第19条1項）。
 #[test]
 fn article_19_1_pawn_reaching_last_rank_may_promote() {
     let board = position(Color::Black, &[(msq(6, 2), Color::Black, PieceKind::Pawn)]);
@@ -223,7 +223,7 @@ fn article_19_1_pawn_reaching_last_rank_may_promote() {
     );
 }
 
-// D1-019-02: 最奥段で不成の歩兵は移動不能（第19条2項）。
+// 最奥段で不成の歩兵は移動不能（第19条2項）。
 #[test]
 fn article_19_2_unpromoted_pawn_on_last_rank_is_immobile() {
     // 不成を選択した直後の局面を作る。
@@ -241,7 +241,7 @@ fn article_19_2_unpromoted_pawn_on_last_rank_is_immobile() {
     assert!(moves_from(&generated(&board), msq(6, 1)).is_empty());
 }
 
-// D1-019-03: 標準規則では香車の最奥段救済はない（第19条4項）。
+// 標準規則では香車の最奥段救済はない（第19条4項）。
 #[test]
 fn article_19_4_lance_gets_no_last_rank_relief() {
     // 敵陣内からの非捕獲の最奥段到達は不成の1手だけ（歩兵と異なり救済なし）。
@@ -264,7 +264,7 @@ fn article_19_4_lance_gets_no_last_rank_relief() {
     assert_both_choices(&generated(&capture), msq(6, 3), msq(6, 1));
 }
 
-/// D1-019-05として、RULES.md第19条第1項、第18条第1項、第2項、および第30条P3を検査する。
+/// RULES.md第19条第1項、第18条第1項、第2項、および第30条P3を検査する。
 /// 成りの機会が重なっても、[`Move`]の正準形では同じ物理的行動は1つの値になる。
 #[test]
 fn article_19_18_overlapping_promotion_chances_yield_two_moves() {
@@ -288,7 +288,7 @@ fn article_19_18_overlapping_promotion_chances_yield_two_moves() {
 // 第30条　成りに関するローカルルール
 // ---------------------------------------------------------------------------
 
-// D1-030-01: P1（Hodges式成り権回復）。不成後は敵陣内で1回待機し、次の敵陣内
+// P1（Hodges式成り権回復）。不成後は敵陣内で1回待機し、次の敵陣内
 // 非捕獲移動で成れる。再不成でトグルする。
 #[test]
 fn article_30_p1_promotion_right_recovers_after_one_wait_and_toggles() {
@@ -445,19 +445,19 @@ fn article_30_p2_capture_entry_also_creates_waiting() {
     assert_no_promotion(&generated_with(&generator, &board), msq(6, 4), msq(6, 3));
 }
 
-// D1-030-03: P3（香車の最奥段救済）。
+// P3（香車の最奥段救済）。
 #[test]
 fn article_30_p3_lance_gains_last_rank_relief() {
     let generator = MoveGenerator::new(modifier_rules(true, false, false, false));
     let board = position(Color::Black, &[(msq(6, 3), Color::Black, PieceKind::Lance)]);
     let moves = generated_with(&generator, &board);
-    // 非捕獲の最奥段到達に成り（白駒）と不成の2手が含まれる（D1-019-03 との差分）。
+    // 標準規則と異なり、非捕獲の最奥段到達に成り（白駒）と不成の2手が含まれる。
     assert_both_choices(&moves, msq(6, 3), msq(6, 1));
     // 最奥段以外への敵陣内非捕獲移動は P3 の下でも成れない。
     assert_no_promotion(&moves, msq(6, 3), msq(6, 2));
 }
 
-// D1-030-04: P4（仲人の最奥段救済）。
+// P4（仲人の最奥段救済）。
 #[test]
 fn article_30_p4_go_between_gains_last_rank_relief() {
     let board = position(

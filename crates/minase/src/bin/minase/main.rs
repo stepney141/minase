@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn cli_requires_explicit_protocol_and_rules() {
         // [`Arguments`]はエンジンの起動に--protocol usi|cecpと--rulesを必須とし、
-        // 既定値と自動判別を設けない（D6-CLI-01）。
+        // 既定値と自動判別を設けない。
         assert!(Arguments::try_parse_from(["minase"]).is_err());
         assert!(Arguments::try_parse_from(["minase", "--protocol", "usi"]).is_err());
         assert!(Arguments::try_parse_from(["minase", "--rules", "R1"]).is_err());
@@ -289,7 +289,6 @@ mod tests {
     fn rules_argument_shares_the_wire_value_grammar() {
         // --rulesはUSIの規則オプションと同じ文法を[`minase_core::rules::parse_rule_set`]で解析する。
         // RULES.md第33条第6項に従い、lishogi=L1+L2+P0+P3+R1+E1+E3で大小文字を区別しない。
-        // （D6-CLI-04、D6-CLI-05のminase側接続確認）。
         let parse = |value: &str| {
             Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", value])
                 .map(|arguments| arguments.rules.unwrap().0)

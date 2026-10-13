@@ -2,7 +2,7 @@
 
 use super::*;
 
-// D7-SRCH-12。深さ0のExact記録は通常探索の深さ1条件を満たさず、
+// 深さ0のExact記録は通常探索の深さ1条件を満たさず、
 // 通常探索の評価値カットオフには使われない。
 #[test]
 fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {

@@ -70,7 +70,7 @@ impl std::error::Error for EngineFailure {}
 mod tests {
     use super::*;
 
-    // D8-HARN-14（docs/guides/sprt.md「異常時の裁定」）: `engine_failures:`は不正着手・
+    // docs/guides/sprt.md「異常時の裁定」に従い、`engine_failures:`は不正着手・
     // クラッシュ・応答タイムアウト・時間切れ・着手拒否の理由別件数を報告する。
     // 理由別件数の合計は反則負けとして算入された局数と一致する(保存則)。
     #[test]

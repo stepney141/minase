@@ -21,7 +21,7 @@ fn r1_state(position: &Position) -> AdjudicationState {
     AdjudicationState::new(RepetitionRule::R1, position)
 }
 
-/// D3-031-13: 4回目の同一局面を生じさせる受けでも、仮想着手を含めて
+/// 4回目の同一局面を生じさせる受けでも、仮想着手を含めて
 /// 可逆手が11手なら即時勝利にならず詰みとなる
 /// （RULES.md第21条第3項c、第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
 #[test]
@@ -80,7 +80,7 @@ fn article_31_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
     assert_eq!(position, before);
 }
 
-/// D3-021-02: 3項b(相手王駒の先取り)が残れば詰みは成立しない。
+/// 3項b(相手王駒の先取り)が残れば詰みは成立しない。
 /// 仮想着手の評価後に局面は完全に復元される
 /// （[`is_mate`](crate::game::adjudication::mate::is_mate)の復元の契約、RULES.md第21条第3項b）。
 #[test]

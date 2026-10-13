@@ -12,7 +12,7 @@ use crate::piece::{Color, PieceCode, PieceKind};
 use crate::position::Position;
 use crate::test_util::{position, position_from_codes};
 
-/// マトリクスの単駒配置（先手駒を(6,6)へ）。
+/// 先手駒を1枚だけ置く升を(6,6)とする。
 const ORIGIN: (i16, i16) = (6, 6);
 
 /// 先手の未成駒1枚を (6,6) に置いた局面を作る。
@@ -37,115 +37,115 @@ fn assert_destinations(board: &Position, expected: BTreeSet<Square>) {
 }
 
 // ---------------------------------------------------------------------------
-// 第9条　初期駒21種の到達升集合（D1-009-01〜20。獅子はlion_moves.rs）
+// 第9条　初期駒21種の到達升集合（獅子はlion_moves.rs）
 // ---------------------------------------------------------------------------
 
-// D1-009-01: 王将・玉将は周囲8方向へ1升。
+// 王将・玉将は周囲8方向へ1升。
 #[test]
 fn article_9_king_steps_one_square_in_eight_directions() {
     let expected = step_squares(ORIGIN, &[F, B, L, R, FL, FR, BL, BR]);
     assert_destinations(&lone_piece(PieceKind::King), expected);
 }
 
-// D1-009-02: 金将は前・前斜め・左右・後へ1升。
+// 金将は前・前斜め・左右・後へ1升。
 #[test]
 fn article_9_gold_general_steps() {
     let expected = step_squares(ORIGIN, &[F, FL, FR, L, R, B]);
     assert_destinations(&lone_piece(PieceKind::GoldGeneral), expected);
 }
 
-// D1-009-03: 銀将は前および斜め4方向へ1升。
+// 銀将は前および斜め4方向へ1升。
 #[test]
 fn article_9_silver_general_steps() {
     let expected = step_squares(ORIGIN, &[F, FL, FR, BL, BR]);
     assert_destinations(&lone_piece(PieceKind::SilverGeneral), expected);
 }
 
-// D1-009-04: 銅将は前・前斜め・後へ1升。
+// 銅将は前・前斜め・後へ1升。
 #[test]
 fn article_9_copper_general_steps() {
     let expected = step_squares(ORIGIN, &[F, FL, FR, B]);
     assert_destinations(&lone_piece(PieceKind::CopperGeneral), expected);
 }
 
-// D1-009-05: 猛豹は前後および斜め4方向へ1升。
+// 猛豹は前後および斜め4方向へ1升。
 #[test]
 fn article_9_ferocious_leopard_steps() {
     let expected = step_squares(ORIGIN, &[F, B, FL, FR, BL, BR]);
     assert_destinations(&lone_piece(PieceKind::FerociousLeopard), expected);
 }
 
-// D1-009-06: 盲虎は前以外の7方向へ1升。
+// 盲虎は前以外の7方向へ1升。
 #[test]
 fn article_9_blind_tiger_steps() {
     let expected = step_squares(ORIGIN, &[B, L, R, FL, FR, BL, BR]);
     assert_destinations(&lone_piece(PieceKind::BlindTiger), expected);
 }
 
-// D1-009-07: 醉象は後以外の7方向へ1升。
+// 醉象は後以外の7方向へ1升。
 #[test]
 fn article_9_drunk_elephant_steps() {
     let expected = step_squares(ORIGIN, &[F, L, R, FL, FR, BL, BR]);
     assert_destinations(&lone_piece(PieceKind::DrunkElephant), expected);
 }
 
-// D1-009-08: 歩兵は前へ1升。
+// 歩兵は前へ1升。
 #[test]
 fn article_9_pawn_steps_forward_only() {
     let expected = step_squares(ORIGIN, &[F]);
     assert_destinations(&lone_piece(PieceKind::Pawn), expected);
 }
 
-// D1-009-09: 仲人は前後へ1升。
+// 仲人は前後へ1升。
 #[test]
 fn article_9_go_between_steps() {
     let expected = step_squares(ORIGIN, &[F, B]);
     assert_destinations(&lone_piece(PieceKind::GoBetween), expected);
 }
 
-// D1-009-10: 香車は前へ任意の升数。
+// 香車は前へ任意の升数。
 #[test]
 fn article_9_lance_slides_forward() {
     let expected = ray_squares(ORIGIN, &[F]);
     assert_destinations(&lone_piece(PieceKind::Lance), expected);
 }
 
-// D1-009-11: 反車は前後へ任意の升数。
+// 反車は前後へ任意の升数。
 #[test]
 fn article_9_reverse_chariot_slides() {
     let expected = ray_squares(ORIGIN, &[F, B]);
     assert_destinations(&lone_piece(PieceKind::ReverseChariot), expected);
 }
 
-// D1-009-12: 横行は左右へ任意の升数、前後へ1升。
+// 横行は左右へ任意の升数、前後へ1升。
 #[test]
 fn article_9_side_mover_moves() {
     let expected = union(ray_squares(ORIGIN, &[L, R]), step_squares(ORIGIN, &[F, B]));
     assert_destinations(&lone_piece(PieceKind::SideMover), expected);
 }
 
-// D1-009-13: 竪行は前後へ任意の升数、左右へ1升。
+// 竪行は前後へ任意の升数、左右へ1升。
 #[test]
 fn article_9_vertical_mover_moves() {
     let expected = union(ray_squares(ORIGIN, &[F, B]), step_squares(ORIGIN, &[L, R]));
     assert_destinations(&lone_piece(PieceKind::VerticalMover), expected);
 }
 
-// D1-009-14: 角行は斜めへ任意の升数。
+// 角行は斜めへ任意の升数。
 #[test]
 fn article_9_bishop_slides_diagonally() {
     let expected = ray_squares(ORIGIN, &[FL, FR, BL, BR]);
     assert_destinations(&lone_piece(PieceKind::Bishop), expected);
 }
 
-// D1-009-15: 飛車は縦横へ任意の升数。
+// 飛車は縦横へ任意の升数。
 #[test]
 fn article_9_rook_slides_orthogonally() {
     let expected = ray_squares(ORIGIN, &[F, B, L, R]);
     assert_destinations(&lone_piece(PieceKind::Rook), expected);
 }
 
-// D1-009-16: 龍馬は斜めへ任意の升数、縦横へ1升。
+// 龍馬は斜めへ任意の升数、縦横へ1升。
 #[test]
 fn article_9_dragon_horse_moves() {
     let expected = union(
@@ -155,7 +155,7 @@ fn article_9_dragon_horse_moves() {
     assert_destinations(&lone_piece(PieceKind::DragonHorse), expected);
 }
 
-// D1-009-17: 龍王は縦横へ任意の升数、斜めへ1升。
+// 龍王は縦横へ任意の升数、斜めへ1升。
 #[test]
 fn article_9_dragon_king_moves() {
     let expected = union(
@@ -165,7 +165,7 @@ fn article_9_dragon_king_moves() {
     assert_destinations(&lone_piece(PieceKind::DragonKing), expected);
 }
 
-// D1-009-18: 麒麟は斜めへ1升、縦横へ2升跳ぶ。
+// 麒麟は斜めへ1升、縦横へ2升跳ぶ。
 #[test]
 fn article_9_kirin_steps_and_jumps() {
     let expected = union(
@@ -175,7 +175,7 @@ fn article_9_kirin_steps_and_jumps() {
     assert_destinations(&lone_piece(PieceKind::Kirin), expected);
 }
 
-// D1-009-19: 鳳凰は縦横へ1升、斜めへ2升跳ぶ。
+// 鳳凰は縦横へ1升、斜めへ2升跳ぶ。
 #[test]
 fn article_9_phoenix_steps_and_jumps() {
     let expected = union(
@@ -185,14 +185,14 @@ fn article_9_phoenix_steps_and_jumps() {
     assert_destinations(&lone_piece(PieceKind::Phoenix), expected);
 }
 
-// D1-009-20: 奔王は8方向へ任意の升数。
+// 奔王は8方向へ任意の升数。
 #[test]
 fn article_9_free_king_slides_in_eight_directions() {
     let expected = ray_squares(ORIGIN, &[F, B, L, R, FL, FR, BL, BR]);
     assert_destinations(&lone_piece(PieceKind::FreeKing), expected);
 }
 
-// D1-009-22: 盤端による切り詰め（第9条、第7条1項）。
+// 盤端による切り詰め（第9条、第7条1項）。
 #[test]
 fn article_9_7_1_moves_are_truncated_at_the_board_edge() {
     // 先手側の隅 (1,12) の金将は盤内3升だけに到達する。
@@ -210,24 +210,24 @@ fn article_9_7_1_moves_are_truncated_at_the_board_edge() {
 }
 
 // ---------------------------------------------------------------------------
-// 第10条　成駒としてのみ現れる駒（D1-010-01〜09）
+// 第10条　成駒としてのみ現れる駒
 // ---------------------------------------------------------------------------
 
-// D1-010-01: 白駒は前・前斜め・後へ任意の升数（第10条1項）。
+// 白駒は前・前斜め・後へ任意の升数（第10条1項）。
 #[test]
 fn article_10_1_white_horse_slides() {
     let expected = ray_squares(ORIGIN, &[F, FL, FR, B]);
     assert_destinations(&lone_promoted(PieceKind::WhiteHorse), expected);
 }
 
-// D1-010-02: 鯨鯢は前・後・後斜めへ任意の升数（第10条2項）。
+// 鯨鯢は前・後・後斜めへ任意の升数（第10条2項）。
 #[test]
 fn article_10_2_whale_slides() {
     let expected = ray_squares(ORIGIN, &[F, B, BL, BR]);
     assert_destinations(&lone_promoted(PieceKind::Whale), expected);
 }
 
-// D1-010-03: 飛鹿は前後へ任意の升数、他の6方向へ1升（第10条3項）。
+// 飛鹿は前後へ任意の升数、他の6方向へ1升（第10条3項）。
 #[test]
 fn article_10_3_flying_stag_moves() {
     let expected = union(
@@ -237,28 +237,28 @@ fn article_10_3_flying_stag_moves() {
     assert_destinations(&lone_promoted(PieceKind::FlyingStag), expected);
 }
 
-// D1-010-04: 奔猪は左右・斜め4方向へ任意の升数（第10条4項）。
+// 奔猪は左右・斜め4方向へ任意の升数（第10条4項）。
 #[test]
 fn article_10_4_free_boar_slides() {
     let expected = ray_squares(ORIGIN, &[L, R, FL, FR, BL, BR]);
     assert_destinations(&lone_promoted(PieceKind::FreeBoar), expected);
 }
 
-// D1-010-05: 飛牛は前後・斜め4方向へ任意の升数（第10条5項）。
+// 飛牛は前後・斜め4方向へ任意の升数（第10条5項）。
 #[test]
 fn article_10_5_flying_ox_slides() {
     let expected = ray_squares(ORIGIN, &[F, B, FL, FR, BL, BR]);
     assert_destinations(&lone_promoted(PieceKind::FlyingOx), expected);
 }
 
-// D1-010-06: 太子は周囲8方向へ1升（第10条6項。王駒としての効果は領域D3）。
+// 太子は周囲8方向へ1升（第10条6項）。
 #[test]
 fn article_10_6_crown_prince_steps() {
     let expected = step_squares(ORIGIN, &[F, B, L, R, FL, FR, BL, BR]);
     assert_destinations(&lone_promoted(PieceKind::CrownPrince), expected);
 }
 
-// D1-010-07: 角鷹は前以外の7方向へ任意の升数、前方は第11条の2段階（第10条7項）。
+// 角鷹は前以外の7方向へ任意の升数、前方は第11条の2段階（第10条7項）。
 #[test]
 fn article_10_7_horned_falcon_moves() {
     let board = lone_promoted(PieceKind::HornedFalcon);
@@ -273,7 +273,7 @@ fn article_10_7_horned_falcon_moves() {
     assert!(moves.iter().all(|m| m.mid.is_none()));
 }
 
-// D1-010-08: 飛鷲は前後・左右・後斜めへ任意の升数、左右前斜めは2段階（第10条8項）。
+// 飛鷲は前後・左右・後斜めへ任意の升数、左右前斜めは2段階（第10条8項）。
 #[test]
 fn article_10_8_soaring_eagle_moves() {
     let board = lone_promoted(PieceKind::SoaringEagle);

@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn article_20_2_promoted_elephant_becomes_a_royal_prince() {
-    // D3-020-02/D3-020-04: 成った醉象は太子=王駒であり、王将を取られても
+    // 成った醉象は太子=王駒であり、王将を取られても
     // 太子が残る限り継続し、2枚目の王駒の捕獲で初めて終局する。
     let mut game = game(position(
         Color::Black,
@@ -58,7 +58,7 @@ fn article_20_2_promoted_elephant_becomes_a_royal_prince() {
 
 #[test]
 fn article_20_3_capturing_the_prince_alone_continues_the_game() {
-    // D3-020-03: 王将が残る側は太子を取られても敗北しない。太子喪失直後に
+    // 王将が残る側は太子を取られても敗北しない。太子喪失直後に
     // 王手がかかっていても、対局は継続し合法手も通常どおり生成される。
     let mut game = game(position(
         Color::White,
@@ -80,7 +80,7 @@ fn article_20_3_capturing_the_prince_alone_continues_the_game() {
     assert!(!game.legal_moves().is_empty());
 }
 
-/// D3-020-05: 任意局面からの構築では自動裁定せず、開始局面を履歴の
+/// 任意局面からの構築では自動裁定せず、開始局面を履歴の
 /// 第1回として記録する（[`Game::from_position`]の契約）。
 /// 直後の着手完了時からは通常の裁定が働く。
 #[test]

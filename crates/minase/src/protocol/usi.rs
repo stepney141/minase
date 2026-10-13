@@ -2155,10 +2155,10 @@ mod tests {
         }
     }
 
-    /// RULES.md第5条の初期配置に対応する2欄SFEN（盤面部と手番部、D6-USI-10）。
+    /// RULES.md第5条の初期配置に対応する2欄SFEN（盤面部と手番部）。
     const INITIAL_BOARD: &str = "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b";
 
-    /// 王駒捕獲1手前の局面。7g7dで先手が後手の最後の王駒を取る（D6-USI-28の代表局面）。
+    /// 王駒捕獲1手前の局面。7g7dで先手が後手の最後の王駒を取る。
     const ROYAL_SFEN: &str = "12/12/12/5k6/12/12/5R6/12/12/12/12/K11 b - 1";
 
     /// [`UsiProtocol::handle_state`]に従う、7g7d適用後のFinished局面のstate行。
@@ -2297,8 +2297,8 @@ mod tests {
 
     #[test]
     fn handshake_declares_ruleset_before_variant_and_ends_with_usiok() {
-        // [`UsiProtocol::write_handshake`]の固定宣言を検査する（D6-USI-01、D6-USI-03）。
-        // USI_Hashの宣言位置はSU-05により契約にせず、存在だけを確認する。
+        // [`UsiProtocol::write_handshake`]の固定宣言を検査する。
+        // USI_Hashの宣言位置は規範文書に明記されていないため、存在だけを確認する。
         let output = session(&[RuleCode::E2, RuleCode::R1, RuleCode::L1], "usi\nquit\n");
         let lines: Vec<_> = output.lines().collect();
 
@@ -2320,9 +2320,9 @@ mod tests {
                 .iter()
                 .any(|line| line.starts_with("option name USI_Hash"))
         );
-        // LS「プロトコル設定」: Threadsの宣言はdefaultを探索層の既定値から表示する（D6-USI-35）。
+        // [`UsiProtocol::write_handshake`]に従い、Threadsの宣言はdefaultを探索層の既定値から表示する。
         assert!(lines.contains(&"option name Threads type spin default 1 min 1 max 256"));
-        // [`UsiProtocol::write_handshake`]のResignValue宣言を検査する（D6-USI-47）。
+        // [`UsiProtocol::write_handshake`]のResignValue宣言を検査する。
         assert_eq!(
             lines
                 .iter()
@@ -2340,7 +2340,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["option name ByoyomiMargin type spin default 30 min 0 max 60000"]
         );
-        // [`UsiProtocol::write_handshake`]はUSI_Ponderを宣言しない（D6-USI-18）。
+        // [`UsiProtocol::write_handshake`]はUSI_Ponderを宣言しない。
         assert!(!output.contains("USI_Ponder"));
     }
 
@@ -2397,8 +2397,8 @@ mod tests {
 
     #[test]
     fn threads_accepts_boundaries_and_rejects_invalid_values() {
-        // LS「プロトコル設定」: Threadsは1..=256だけを受理し、不正値には固定エラーを返す
-        // （D6-USI-36）。正当値は無応答である。
+        // [`UsiProtocol::handle_setoption`]に従い、Threadsは1..=256だけを受理し、
+        // 不正値には固定エラーを返す。正当値は無応答である。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         // 探索開始へ渡す値を受信後に観測し、設定の無視や丸めを検出する。
@@ -2437,7 +2437,7 @@ mod tests {
     }
 
     /// 王将の逃げ先が奔王、竪行、飛車に覆われ、反車でも捕獲を防げない局面。
-    /// 投了判定と反復の照合に使う拡張SFEN（D6-USI-51）。
+    /// 投了判定と反復の照合に使う拡張SFEN。
     const RESIGN_MATE_SFEN: &str = "q10v/k11/12/12/12/6A5/12/12/12/12/12/r10K b - 1";
 
     /// 先手の王将と歩兵に対して後手が玉将と飛車を持つ通常の負評価局面。
@@ -2466,7 +2466,7 @@ mod tests {
         );
     }
 
-    // [`UsiProtocol::handle_setoption`]と[`UsiProtocol::should_resign`]の契約（D6-USI-48）。設定の保持は次の探索の応答で観測する。
+    // [`UsiProtocol::handle_setoption`]と[`UsiProtocol::should_resign`]の契約に従い、設定の保持は次の探索の応答で観測する。
     #[test]
     fn resignation_option_accepts_bounds_and_rejects_invalid_values_without_changing_it() {
         let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
@@ -2512,7 +2512,7 @@ mod tests {
         assert_eq!(bestmoves(&output), ["bestmove resign"], "{output}");
     }
 
-    // RS設計判断「判定の入力」（D6-USI-50）。深さ0の静的評価では投了しない。
+    // [`UsiProtocol::should_resign`]の契約に従い、深さ0の静的評価では投了しない。
     #[test]
     fn resignation_depth_zero_returns_a_legal_move_without_search_info() {
         let output = lishogi_session(&format!(
@@ -2527,7 +2527,7 @@ mod tests {
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
     }
 
-    // RS設計判断「既定値」「出力の形式」（D6-USI-51、D6-USI-58）。
+    // [`UsiProtocol::should_resign`]の既定閾値と投了の出力形式を検証する。
     #[test]
     fn resignation_default_emits_mate_info_then_stop_then_resign_once() {
         for threads in [1, 2] {
@@ -2563,8 +2563,8 @@ mod tests {
         }
     }
 
-    // RS設計判断「閾値の与え方」（D6-USI-52）。評価値の定数を写さず、
-    // 無効化した探索の公開出力を基準に等号と隣接値の関係を検証する。
+    // [`UsiProtocol::should_resign`]の閾値判定は、投了を無効化した探索の公開出力を基準に検証する。
+    // 評価値の定数を写さず、等号と隣接値の関係を確かめる。
     #[test]
     fn resignation_material_threshold_includes_equality() {
         let search = |threshold| {
@@ -2589,7 +2589,7 @@ mod tests {
         assert_legal_bestmove(&output, &moves_sets(&output)[0]);
     }
 
-    // RS設計判断「閾値の与え方」（D6-USI-51、D6-USI-53）。
+    // [`UsiProtocol::should_resign`]の閾値と評価値を符号付きで比較する契約を検証する。
     #[test]
     fn resignation_mate_thresholds_and_winning_scores_use_signed_comparison() {
         for threshold in [29998, 29999, 99999] {
@@ -2686,7 +2686,7 @@ mod tests {
         }
     }
 
-    // RS設計判断「判定の入力」「出力の形式」（D6-USI-52、D6-USI-55、D6-USI-58）。
+    // [`UsiProtocol::should_resign`]の判定対象と投了の出力形式を検証する。
     // 探索イベント境界へ規範値を入力し、進捗と採用値が異なる場合を決定的に検証する。
     #[test]
     fn resignation_uses_adopted_score_without_repeating_info() {
@@ -2772,7 +2772,7 @@ mod tests {
         }
     }
 
-    // [`UsiProtocol::should_resign`]の適用範囲（D6-USI-51、D6-USI-56、D6-USI-58）。
+    // [`UsiProtocol::should_resign`]の適用範囲を検査する。
     // Protocol::runの完了待ちもチャネル経路と同じ応答を返す。
     #[test]
     fn resignation_sequential_normal_and_ponderhit_return_resign() {
@@ -2796,7 +2796,7 @@ mod tests {
         }
     }
 
-    // [`UsiProtocol::should_resign`]と[`UsiProtocol::handle_state`]（D6-USI-59）。
+    // [`UsiProtocol::should_resign`]と[`UsiProtocol::handle_state`]の契約を検査する。
     #[test]
     fn resignation_preserves_position_moves_and_gameover_lifecycle() {
         let (mut engine, mut protocol) = resignation_engine(RESIGN_MATE_SFEN);
@@ -2842,7 +2842,7 @@ mod tests {
             .unwrap();
     }
 
-    // [`UsiProtocol::should_resign`]の適用範囲、[`write_bestmove`]の停止理由（D6-USI-54）。
+    // [`UsiProtocol::should_resign`]の適用範囲と[`write_bestmove`]の停止理由を検査する。
     // 完了イベントをまだ消費していないRunningからstopを処理する。
     #[test]
     fn resignation_running_stop_returns_resign_for_ponder_search() {
@@ -2875,7 +2875,7 @@ mod tests {
         assert_eq!(bestmoves(&output), ["bestmove resign"]);
     }
 
-    // [`UsiProtocol::should_resign`]の適用範囲、[`UsiProtocol::ponderhit`]の契約（D6-USI-56、D6-USI-58）。
+    // [`UsiProtocol::should_resign`]の適用範囲と[`UsiProtocol::ponderhit`]の契約を検査する。
     #[test]
     fn resignation_running_ponderhit_continues_until_the_adopted_result() {
         let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
@@ -2917,7 +2917,7 @@ mod tests {
         assert_eq!(bestmoves(&output), ["bestmove resign"]);
     }
 
-    // [`UsiProtocol::should_resign`]の入力と適用範囲（D6-USI-50、D6-USI-55、D6-USI-57）。
+    // [`UsiProtocol::should_resign`]の入力と適用範囲を検査する。
     // Finishedを先に処理して保留状態を確実に作り、実行中の経路と区別する。
     #[test]
     fn resignation_held_depth_zero_does_not_resign_on_stop_or_ponderhit() {
@@ -2958,7 +2958,7 @@ mod tests {
         }
     }
 
-    // [`UsiProtocol::handle_setoption`]と[`UsiProtocol::should_resign`]の契約（D6-USI-49）。待機列は現在のbestmoveより後に適用する。
+    // [`UsiProtocol::handle_setoption`]と[`UsiProtocol::should_resign`]の契約。待機列は現在のbestmoveより後に適用する。
     #[test]
     fn resignation_option_changes_wait_until_running_result_is_released() {
         let (mut engine, mut protocol) = resignation_engine(RESIGN_MATERIAL_SFEN);
@@ -3008,14 +3008,14 @@ mod tests {
         let output = run(&mut protocol, &mut engine, "isready\nstate\n");
         let lines: Vec<_> = output.lines().collect();
         assert_eq!(lines[0], "readyok");
-        // モジュールdocのコマンド表に従い、isreadyは対局状態を変えない（D6-USI-02）。
+        // モジュールdocのコマンド表に従い、isreadyは対局状態を変えない。
         assert_eq!(before.lines().collect::<Vec<_>>(), [lines[1]]);
         assert!(protocol.transposition_table.is_some());
     }
 
     #[test]
     fn ruleset_values_are_case_insensitive_and_duplicates_are_rejected() {
-        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: コンマ区切り・大小非区別・重複拒否（D6-USI-04）。
+        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: コンマ区切り・大小非区別・重複拒否。
         let output = session(
             &[RuleCode::R1],
             concat!(
@@ -3034,7 +3034,7 @@ mod tests {
 
     #[test]
     fn presets_expand_to_code_lists_and_standard_is_rejected() {
-        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約・RULES.md第33条第5・6項（D6-USI-05）。
+        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約、およびRULES.md第33条第5項と第6項に従う。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         let output = run(
@@ -3067,7 +3067,7 @@ mod tests {
 
     #[test]
     fn invalid_ruleset_values_are_rejected_on_receipt_and_pending_survives() {
-        // [`EngineCommand::SetRules`]の受信時検証とRULES.md第33条第5項に従う（D6-USI-06、D6-ENG-02）。
+        // [`EngineCommand::SetRules`]の受信時検証とRULES.md第33条第5項に従う。
         let output = session(
             &[RuleCode::R1],
             concat!(
@@ -3084,7 +3084,7 @@ mod tests {
 
     #[test]
     fn ruleset_changes_latch_until_the_next_game() {
-        // [`crate::protocol::engine`]の表に従い、対局中のSetPositionは現局の規則で再構成する（D6-USI-07）。
+        // [`crate::protocol::engine`]の表に従い、対局中のSetPositionは現局の規則で再構成する。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
 
@@ -3114,7 +3114,7 @@ mod tests {
 
     #[test]
     fn usi_variant_accepts_only_chushogi() {
-        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: USI_Variantは値chushogiだけを受理し、他はエラー通知（D6-USI-09）。
+        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: USI_Variantは値chushogiだけを受理し、他はエラー通知。
         let output = session(
             &[RuleCode::R1],
             concat!(
@@ -3135,7 +3135,7 @@ mod tests {
 
     #[test]
     fn startpos_is_read_as_the_chu_shogi_initial_position() {
-        // モジュールdocのstartposの解釈とRULES.md第5条に従う（D6-USI-10）。
+        // モジュールdocのstartposの解釈とRULES.md第5条に従う。
         let startpos = session(&[RuleCode::R1], "position startpos\nstate\nmoves\n");
         let sfen = session(
             &[RuleCode::R1],
@@ -3152,7 +3152,7 @@ mod tests {
 
     #[test]
     fn position_applies_atomically_or_not_at_all() {
-        // PLコマンドenum（commitの原子性）・「思考開始指示と終局裁定の通知」（D6-USI-11、D6-ENG-01/05）。
+        // [`EngineCommand::SetPosition`]の原子的な局面設定と、終局後の探索の拒否を検証する。
         let output = session(
             &[RuleCode::R1, RuleCode::E2],
             concat!(
@@ -3179,7 +3179,7 @@ mod tests {
 
     #[test]
     fn incremental_position_matches_full_replay_for_ongoing_and_finished_games() {
-        // [`UsiProtocol::handle_position`]の契約: 毎手の全着手列の再送は全列の再生と一致する（D6-USI-13）。
+        // [`UsiProtocol::handle_position`]の契約: 毎手の全着手列の再送は全列の再生と一致する。
         let moves = "3i3h 5a4b 8l9k 8b9b";
         let mut full_engine = make_engine(&[RuleCode::R1]);
         let mut full_protocol = UsiProtocol::new(&full_engine);
@@ -3236,7 +3236,7 @@ mod tests {
 
     #[test]
     fn repeated_and_replaced_positions_match_fresh_replay() {
-        // PLのposition契約: 再送、短縮、同数の別手順、開始局面だけの変更は、
+        // [`UsiProtocol::handle_position`]の契約に従い、再送、短縮、同数の別手順、開始局面だけの変更は、
         // それぞれ新しいpositionコマンドを単独で再生した結果に一致する。
         let changed_board = INITIAL_BOARD.replace("LFCSGKEGSCFL b", "LFCSGKEGSCF1 b");
         for command in [
@@ -3281,7 +3281,7 @@ mod tests {
 
     #[test]
     fn failed_position_blocks_go_until_a_valid_position_recovers() {
-        // [`UsiProtocol::start_go`]の同期の前提: 局面同期失敗状態では正当なposition受理までgoを拒否する（D6-USI-12）。
+        // [`UsiProtocol::start_go`]の同期の前提: 局面同期失敗状態では正当なposition受理までgoを拒否する。
         let output = session(
             &[RuleCode::R1],
             concat!(
@@ -3318,7 +3318,7 @@ mod tests {
 
     #[test]
     fn go_time_arguments_are_accepted_and_normalized_per_side() {
-        // [`parse_go_config`]の時間引数の受理と手番側の時計選択を検査する（D6-USI-14）。
+        // [`parse_go_config`]の時間引数の受理と手番側の時計選択を検査する。
         let go = "go btime 1000 wtime 2000 binc 10 winc 20 byoyomi 0 nodes 1";
         let black = session(&[RuleCode::R1], &format!("position startpos\n{go}\n"));
 
@@ -3367,7 +3367,7 @@ mod tests {
 
     #[test]
     fn bare_go_and_unknown_arguments_yield_errors_without_bestmove() {
-        // [`parse_go_config`]は引数なしのgoと未知引数を拒否する（D6-USI-15）。
+        // [`parse_go_config`]は引数なしのgoと未知引数を拒否する。
         let output = session(&[RuleCode::R1], "position startpos\ngo\ngo foobar 3\n");
 
         assert_eq!(error_lines(&output).len(), 2);
@@ -3377,7 +3377,6 @@ mod tests {
     #[test]
     fn go_depth_outside_one_through_256_is_rejected_without_bestmove() {
         // [`SearchLimits::new`]と[`parse_go_config`]の両方で深さ1〜256の範囲を検査する。
-        // spec-firstのD6登録簿SU-01に対応する。
         let output = session(
             &[RuleCode::R1],
             "position startpos\ngo depth 0\ngo depth 257\n",
@@ -3389,9 +3388,9 @@ mod tests {
 
     #[test]
     fn go_depth_returns_a_deterministic_legal_bestmove_without_applying_it() {
-        // [`crate::protocol::engine`]の表に従い、usinewgameなしのpositionとgoを受理する（D6-USI-13）。
+        // [`crate::protocol::engine`]の表に従い、usinewgameなしのpositionとgoを受理する。
         // 理由は`docs/adr/commit-pending-rules-on-first-position.md`にある。
-        // [`UsiProtocol::start_go`]は複製で探索し、Engineの対局へ適用しない（D6-USI-16、D6-USI-24）。
+        // [`UsiProtocol::start_go`]は複製で探索し、Engineの対局へ適用しない。
         // 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
         // 探索の具体的な着手は評価依存のため固定せず、合法手集合への所属で検証する。
         let output = session(
@@ -3418,7 +3417,7 @@ mod tests {
 
     #[test]
     fn go_mate_answers_checkmate_notimplemented() {
-        // モジュールdocのコマンド表に従い、go mateは引数によらず同じ応答を返す（D6-USI-17）。
+        // モジュールdocのコマンド表に従い、go mateは引数によらず同じ応答を返す。
         assert_eq!(
             session(&[RuleCode::R1], "position startpos\ngo mate 10\ngo mate\n"),
             "checkmate notimplemented\ncheckmate notimplemented\n"
@@ -3427,14 +3426,14 @@ mod tests {
 
     #[test]
     fn ponder_without_limits_and_idle_ponderhit_are_rejected() {
-        // [`parse_go_config`]とモジュールdocの探索中の入力の契約を検査する（D6-USI-18、D6-USI-44）。
+        // [`parse_go_config`]とモジュールdocの探索中の入力の契約を検査する。
         let output = session(&[RuleCode::R1], "position startpos\ngo ponder\nponderhit\n");
 
         assert_eq!(error_lines(&output).len(), 2);
         assert!(bestmoves(&output).is_empty());
     }
 
-    /// 出力行を1行ずつチャネルへ流す観測用ライター（D6-USI-19の対話的観測に使う）。
+    /// 出力行を1行ずつチャネルへ流す観測用ライター。
     struct LineWriter {
         sender: std::sync::mpsc::Sender<String>,
         bytes: Vec<u8>,
@@ -3461,7 +3460,7 @@ mod tests {
 
     #[test]
     fn go_infinite_withholds_bestmove_until_stop() {
-        // [`ActiveSearch`]に従い、go infiniteではstopまでbestmoveを保留する（D6-USI-19、D6-USI-20）。
+        // [`ActiveSearch`]に従い、go infiniteではstopまでbestmoveを保留する。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = UsiProtocol::new(&engine);
         let (command_sender, command_receiver) = std::sync::mpsc::channel();
@@ -3509,7 +3508,7 @@ mod tests {
 
     #[test]
     fn commands_arriving_during_search_apply_after_bestmove() {
-        // モジュールdocの探索中の入力に従い、待ち行列の入力をbestmoveの後に処理する（D6-USI-22）。
+        // モジュールdocの探索中の入力に従い、待ち行列の入力をbestmoveの後に処理する。
         let output = session(
             &[RuleCode::R1],
             concat!(
@@ -3541,7 +3540,7 @@ mod tests {
 
     #[test]
     fn multi_worker_search_places_info_immediately_before_one_bestmove() {
-        // D6-USI-38。補助ワーカーの採用深さは非決定的なので数値を固定せず、
+        // 補助ワーカーの採用深さは非決定的なので数値を固定せず、
         // 採用結果のinfoが必要な場合もbestmove直前の構造を保つことを確認する。
         let output = session(
             &[RuleCode::R1],
@@ -3556,7 +3555,7 @@ mod tests {
 
     #[test]
     fn go_outside_an_active_game_is_rejected_without_bestmove() {
-        // [`UsiProtocol::start_go`]の前提を満たさないgoは、bestmoveを返さずエラーだけを返す（D6-USI-25）。
+        // [`UsiProtocol::start_go`]の前提を満たさないgoは、bestmoveを返さずエラーだけを返す。
         // 理由は`docs/adr/keep-searched-moves-out-of-the-usi-game.md`にある。
         let awaiting = session(&[RuleCode::R1], "go depth 1\n");
         assert_eq!(error_lines(&awaiting).len(), 1);
@@ -3613,7 +3612,7 @@ mod tests {
 
     #[test]
     fn hash_rejects_invalid_sizes_and_resizes_without_changing_the_game() {
-        // ECの非探索中リサイズと、極大の外部設定値によるオーバーフローの回帰。
+        // [`UsiProtocol::handle_setoption`]による非探索中のリサイズと、極大の外部設定値によるオーバーフローの回帰を検証する。
         let output = session(
             &[RuleCode::R1],
             &format!(
@@ -3638,7 +3637,7 @@ mod tests {
 
     #[test]
     fn royal_capture_finishes_silently_and_state_reports_the_verdict() {
-        // モジュールdocの契約に従い、USIは自発的な終局裁定を出力しない（D6-USI-28、D6-USI-34、D6-ENG-04）。
+        // モジュールdocの契約に従い、USIは自発的な終局裁定を出力しない。
         let mut engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
         let mut protocol = UsiProtocol::new(&engine);
 
@@ -3651,7 +3650,7 @@ mod tests {
             ),
             ""
         );
-        // 裁定はrun終了後のGameStatusで検証する（PL検証の節が明示的に許す唯一の内部観測、D6-ENG-07）。
+        // USIには自発的な裁定通知がないため、裁定はrun終了後のGameStatusで検証する。
         assert_eq!(
             engine.status(),
             GameStatus::Finished(GameResult::Win {
@@ -3660,7 +3659,7 @@ mod tests {
             })
         );
 
-        // Finished局面への同一position全列の再送は終局通知や重複出力を生まない（D6-ENG-04）。
+        // Finished局面への同一position全列の再送は終局通知や重複出力を生まない。
         let output = run(
             &mut protocol,
             &mut engine,
@@ -3963,7 +3962,7 @@ mod tests {
 
     #[test]
     fn moves_returns_the_legal_move_set_as_one_line() {
-        // [`UsiProtocol::handle_moves`]の契約: Game::legal_moves()の全要素を既存USI表記で1行、順序は契約外（D6-USI-30）。
+        // [`UsiProtocol::handle_moves`]の契約: Game::legal_moves()の全要素を既存USI表記で1行、順序は契約外。
         let output = session(
             &[RuleCode::R1],
             "position startpos\nmoves\nstate\nmoves\nstate\n",
@@ -3971,7 +3970,7 @@ mod tests {
         let moves = moves_sets(&output);
         let states = state_lines(&output);
 
-        // 期待集合はBGが定義するとおりGame::legal_moves()のUSI表記から作る。
+        // [`UsiProtocol::handle_moves`]の契約に従い、期待集合はGame::legal_moves()のUSI表記から作る。
         let game = Game::new(Rules::ENGINE_DEFAULT);
         let expected: HashSet<String> = game
             .legal_moves()
@@ -3987,7 +3986,7 @@ mod tests {
 
     #[test]
     fn moves_requires_an_active_game() {
-        // [`UsiProtocol::handle_moves`]と[`UsiProtocol::handle_state`]の契約: AwaitingStartとFinishedのmovesは固定エラー行、stateはFinishedで応答する非対称（D6-USI-31）。
+        // [`UsiProtocol::handle_moves`]と[`UsiProtocol::handle_state`]の契約: AwaitingStartとFinishedのmovesは固定エラー行、stateはFinishedで応答する非対称。
         assert_eq!(
             session(&[RuleCode::R1], "moves\n"),
             format!("{MOVES_ERROR}\n")
@@ -4004,8 +4003,8 @@ mod tests {
 
     #[test]
     fn state_line_matches_the_exact_contract() {
-        // [`UsiProtocol::handle_state`]の契約: 単一行の完全一致契約（D6-USI-32）。
-        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: 規則コードはL,P,R,E順・同カテゴリ番号昇順で表示する（D6-USI-03）。
+        // [`UsiProtocol::handle_state`]の契約: 単一行の完全一致契約。
+        // [`UsiProtocol::handle_setoption`]と[`EngineCommand::SetRules`]の契約: 規則コードはL,P,R,E順・同カテゴリ番号昇順で表示する。
         assert_eq!(
             lishogi_session("position startpos\nstate\n"),
             format!("state rules L1,L2,P0,P3,R1,E1,E3 board {INITIAL_BOARD} status ongoing\n")
@@ -4014,7 +4013,7 @@ mod tests {
 
     #[test]
     fn state_status_vocabulary_matches_the_contract() {
-        // BGの公開status語彙表（D6-USI-32）。勝因の語彙と勝者の色を検査する。
+        // [`UsiProtocol::handle_state`]のstatus語彙に従い、勝因の語彙と勝者の色を検査する。
         let win_reasons = [
             (WinReason::RoyalCapture, "royal-capture"),
             (WinReason::Repetition, "repetition"),
@@ -4056,7 +4055,7 @@ mod tests {
 
     #[test]
     fn state_lifecycle_spans_finished_and_next_game_rules() {
-        // [`UsiProtocol::handle_moves`]と[`UsiProtocol::handle_state`]の契約: stateはInGameとFinishedで応答し、AwaitingStartではエラー。次局はactive規則を返す（D6-USI-33）。
+        // [`UsiProtocol::handle_moves`]と[`UsiProtocol::handle_state`]の契約: stateはInGameとFinishedで応答し、AwaitingStartではエラー。次局はactive規則を返す。
         assert_eq!(
             session(&[RuleCode::R1], "state\n"),
             format!("{STATE_ERROR}\n")
@@ -4085,7 +4084,7 @@ mod tests {
         assert_eq!(state_rules(state_lines(&output)[0]), "L0,P0,R2,E2");
     }
 
-    // [`parse_go_config`]と[`UsiProtocol::write_handshake`]の先読みの契約を検査する（D6-USI-18）。
+    // [`parse_go_config`]と[`UsiProtocol::write_handshake`]の先読みの契約を検査する。
     #[test]
     fn ponder_accepts_finite_limits_and_ignores_usi_ponder_option() {
         for args in [
@@ -4212,7 +4211,6 @@ mod tests {
     }
 
     // [`ActiveSearch`]の結果保留と[`write_bestmove`]の停止理由を検査する。
-    // （D6-USI-21、D6-USI-39、D6-USI-41、D6-USI-42）。
     #[test]
     fn ponder_channel_withholds_completed_result_until_hit() {
         ponder_dialogue(|commands, lines| {
@@ -4257,8 +4255,7 @@ mod tests {
     }
 
     // [`ActiveSearch`]とモジュールdocの探索中の入力の扱いを検査する。
-    // （D6-USI-41、D6-USI-42、D6-USI-43、D6-USI-44、D6-USI-45）。
-    // [`UsiProtocol::should_resign`]の適用範囲: 保留結果の破棄では投了も出力しない（D6-USI-60）。
+    // [`UsiProtocol::should_resign`]の適用範囲: 保留結果の破棄では投了も出力しない。
     // 完了イベントを明示的に消費して保留状態に入り、スケジューリングに依存せず全遷移を通す。
     #[test]
     fn ponder_held_results_release_once_or_are_discarded() {
@@ -4303,9 +4300,9 @@ mod tests {
         }
     }
 
-    // モジュールdocの探索中の入力の扱いを検査する（D6-USI-44、D6-USI-45）。
+    // モジュールdocの探索中の入力の扱いを検査する。
     // [`UsiProtocol::discard_search`]と[`UsiProtocol::should_resign`]に従う。
-    // 探索結果の破棄ではbestmoveも投了も出力しない（D6-USI-23、D6-USI-60）。
+    // 探索結果の破棄ではbestmoveも投了も出力しない。
     #[test]
     fn ponder_invalid_hits_and_discard_commands_preserve_lifecycle_contracts() {
         let output = session(
@@ -4332,7 +4329,7 @@ mod tests {
         }
     }
 
-    // [`Protocol::run`]の逐次経路の契約を検査する（D6-USI-46、D6-USI-45）。
+    // [`Protocol::run`]の逐次経路の契約を検査する。
     // 次の入力を読もうとする時点でbestmoveが既に出力済みであることを観測する。
     #[test]
     fn ponder_sequential_hit_finishes_before_reading_another_command() {
@@ -4400,7 +4397,7 @@ mod tests {
         assert!(bestmoves(&String::from_utf8(output).unwrap()).is_empty());
     }
 
-    // [`validated_ponder_move`]の出所と検査に従う（D6-USI-39、D6-USI-40）。
+    // [`validated_ponder_move`]の出所と検査に従う。
     // 理由は`docs/adr/take-ponder-move-from-the-pv.md`にある。
     #[test]
     fn ponder_prediction_uses_adopted_pv_and_rejects_illegal_or_finishing_moves() {
@@ -4494,7 +4491,7 @@ mod tests {
         assert_eq!(validated_ponder_move(&game, x, &[x, x]), None); // Yが不合法。
     }
 
-    // [`UsiProtocol::handle_position`]の末尾置換を検査する（D6-ENG-08、D6-USI-11、D6-ENG-05）。
+    // [`UsiProtocol::handle_position`]の末尾置換を検査する。
     // 理由は`docs/adr/apply-position-by-token-difference.md`にある。
     #[test]
     fn ponder_last_move_replacement_matches_replay_and_is_atomic() {
@@ -4587,7 +4584,7 @@ mod tests {
         (engine, protocol)
     }
 
-    // `docs/adr/apply-position-by-token-difference.md`の結果の節に従う固定費の確認（D6-USI-39、D6-USI-40、D6-ENG-08）。
+    // `docs/adr/apply-position-by-token-difference.md`の結果の節に従い、固定費を確認する。
     #[test]
     #[ignore = "releaseで4,000手の履歴に対する固定費を測る"]
     fn ponder_long_game_output_and_replacement_stay_within_three_ms() {

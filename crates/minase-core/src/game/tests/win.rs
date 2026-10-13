@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn article_21_2_mate_ends_the_game_at_move_completion() {
-    // D3-021-02: 3項a・b・cのいずれの合法手もない局面を作る着手の完了時に、
+    // 3項a・b・cのいずれの合法手もない局面を作る着手の完了時に、
     // 詰みを理由として終局する。
     let (position, mv) = mate_predecessor();
     let mut game = game(position);
@@ -14,7 +14,7 @@ fn article_21_2_mate_ends_the_game_at_move_completion() {
 
 #[test]
 fn article_21_3_a_any_escape_prevents_mate() {
-    // D3-021-03: 捕獲を回避する着手が1つでもあれば詰みは成立しない。
+    // 捕獲を回避する着手が1つでもあれば詰みは成立しない。
     // mate_predecessorから(0,11)の飛車を除くと(0,1)への逃げが残る。
     let mut game = game(position(
         Color::White,
@@ -34,9 +34,9 @@ fn article_21_3_a_any_escape_prevents_mate() {
 
 #[test]
 fn article_21_3_b_and_21_4_checked_side_may_capture_the_last_royal_first() {
-    // D3-021-04: 王手放置は合法(第8条)であり、相手の最後の王駒を先に取る
+    // 王手放置は合法(第8条)であり、相手の最後の王駒を先に取る
     // 着手が3項bの回避手段になるため詰みではない。
-    // D3-021-06: 王手を受けている側が先に取れば、その側の勝ちとなる。
+    // 王手を受けている側が先に取れば、その側の勝ちとなる。
     let mut game = game(position(
         Color::White,
         &[
@@ -56,7 +56,7 @@ fn article_21_3_b_and_21_4_checked_side_may_capture_the_last_royal_first() {
     );
 }
 
-/// D3-021-05/D3-031-05: 白飛の照準往復(全手が攻撃的着手)で反復履歴を
+/// 白飛の照準往復(全手が攻撃的着手)で反復履歴を
 /// 蓄積すると、黒の非攻撃的な候補手(3,10)→(3,9)だけが4回目の同一局面を
 /// 生じさせ、R1裁定(片側継続攻撃側=白の負け)を直ちに成立させる。この
 /// 候補手は3項cの回避手段に数えられるため詰みと判定されず、実際に指すと
@@ -121,7 +121,7 @@ fn article_21_3_c_and_31_r1_repetition_win_rescues_mate() {
 
 #[test]
 fn article_21_5_lion_double_capture_of_both_royals_wins() {
-    // D3-021-07: 獅子が1手の2段階移動で王将(玉将)と太子の両方を取ると、
+    // 獅子が1手の2段階移動で王将(玉将)と太子の両方を取ると、
     // その着手の終了時に勝利する(第12条4項)。
     let pieces = [
         (sq(0, 0), piece(Color::Black, PieceKind::King)),
@@ -151,7 +151,7 @@ fn article_21_5_lion_double_capture_of_both_royals_wins() {
 
 #[test]
 fn article_21_6_resignation_ends_the_game() {
-    // D3-021-08: 投了した側が敗者となる。盤面や履歴は裁定に関与しない。
+    // 投了した側が敗者となる。盤面や履歴は裁定に関与しない。
     let mut game = Game::with_default_rules();
     assert_eq!(
         game.resign(Color::Black),
@@ -161,7 +161,7 @@ fn article_21_6_resignation_ends_the_game() {
     assert_eq!(game.ply_count(), 0);
 }
 
-/// D3-021-10: 詰み判定の1手目(手番側の受け)にはR2禁止フィルタ後の
+/// 詰み判定の1手目(手番側の受け)にはR2禁止フィルタ後の
 /// 対局合法手を用いる。唯一の非捕獲の受けが既出局面の再現となる局面は、
 /// R1では継続だがR2では詰みになる（RULES.md第31条R2、[`is_mate`](crate::game::adjudication::mate::is_mate)の契約）。
 #[test]

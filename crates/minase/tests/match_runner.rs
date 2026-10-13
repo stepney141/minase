@@ -118,9 +118,9 @@ fn random_usi_match_output_is_independent_of_concurrency() {
     assert_eq!(unique.len(), 4);
 }
 
-// D8-HARN-20（sprt.md「エンジンの指定方法」、match-harness.md「CECPセッション
-// 管理」）: minase自身をCECP候補にした対局は異常なく完走し、同じ起動バイナリをUSI
-// 候補にした対局と同じ着手列・結果になる。spec原文の表示はD8-HARN-01の契約により
+// docs/guides/sprt.md「エンジンの指定方法」とdocs/plans/match-harness.md「CECPセッション管理」に従い、
+// minase自身をCECP候補にした対局は異常なく完走し、同じ起動バイナリをUSI
+// 候補にした対局と同じ着手列・結果になる。spec原文の表示は[`minase::harness::parse_player_spec`]の契約により
 // 必ず異なるため、両原文だけを同じ表示へ置換して経過時間以外の全出力を比較する。
 #[test]
 fn minase_cecp_match_is_failure_free_and_matches_usi() {
@@ -210,7 +210,7 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
     std::fs::remove_dir_all(run_dir).unwrap();
 }
 
-// D8-HARN-21（ponder.md「対局ハーネスの対局進行」）。条件違反はmkdirより前に拒否する。
+// docs/plans/ponder.md「対局ハーネスの対局進行」に従い、条件違反はmkdirより前に拒否する。
 #[test]
 fn ponder_invalid_conditions_do_not_create_run_directory() {
     let run_dir = run_directory();
@@ -228,7 +228,7 @@ fn ponder_invalid_conditions_do_not_create_run_directory() {
     assert!(!run_dir.exists());
 }
 
-// D8-HARN-21/26（ponder.md保存形式と再開）。再開集計は既存ペアを含む。
+// docs/plans/ponder.md「保存形式と再開」に従い、再開集計は既存ペアを含む。
 #[test]
 fn ponder_resume_replays_all_counts() {
     let run_dir = run_directory();

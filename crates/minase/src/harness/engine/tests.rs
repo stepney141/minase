@@ -110,7 +110,7 @@ fn seed() -> NonZeroU64 {
     NonZeroU64::new(1).unwrap()
 }
 
-// D8-HARN-22/23/25/26（[`super::ponder`]）。
+// [`super::ponder`]の契約を検査する。
 // 双方の台本がposition/go/ponderhit/stopの順序と、的中前のinfoの保持を検査する。
 #[test]
 fn both_engines_ponder_hit_and_stop_on_resignation() {
@@ -225,7 +225,7 @@ fn both_engines_ponder_hit_and_stop_on_resignation() {
     assert_eq!(off[0].starts + off[0].hits + off[1].starts + off[1].hits, 0);
 }
 
-// D8-HARN-23/24（[`super::ponder`]）。
+// [`super::ponder`]の契約を検査する。
 // 外れの読み捨て後にinfoが混ざらず、stopの遅れが時計と消費時間に入る。
 #[test]
 fn ponder_miss_discards_old_output_and_debits_stop_time() {
@@ -301,7 +301,7 @@ fn ponder_miss_discards_old_output_and_debits_stop_time() {
     }
 }
 
-// D8-HARN-24（[`super::ponder`]）。
+// [`super::ponder`]の契約を検査する。
 #[test]
 fn ponder_miss_uses_one_response_deadline() {
     let (m, moves) = line_of_play(2);
@@ -332,7 +332,7 @@ fn ponder_miss_uses_one_response_deadline() {
     ));
 }
 
-// D8-HARN-22/24（[`super::ponder`]）。
+// [`super::ponder`]の契約を検査する。
 #[test]
 fn ponder_hit_excludes_opponent_time_and_uses_updated_clock() {
     let (m, moves) = line_of_play(2);
@@ -372,7 +372,7 @@ fn ponder_hit_excludes_opponent_time_and_uses_updated_clock() {
     assert_eq!(result.evaluation.unwrap().score, EngineScore::Cp(7));
 }
 
-// D8-HARN-22/26（[`super::ponder`]）。
+// [`super::ponder`]の契約を検査する。
 #[test]
 fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
     let (m, _) = line_of_play(1);
@@ -443,7 +443,7 @@ fn absent_illegal_and_terminal_predictions_do_not_start_ponder() {
     assert!(process.pondering.is_none());
 }
 
-// D8-HARN-25（[`super::ponder`]）。
+// [`super::ponder`]の契約を検査する。
 #[test]
 fn ponder_cleanup_keeps_result_when_stop_times_out_and_drop_reaps() {
     let (m, moves) = line_of_play(2);
@@ -505,7 +505,7 @@ fn ponder_cleanup_keeps_result_when_stop_times_out_and_drop_reaps() {
     assert!(start.elapsed() >= Duration::from_millis(60));
 }
 
-// D8-HARN-22（[`super::ponder`]）: 送信失敗は次の手番で通常の異常とする。
+// [`super::ponder`]に従い、送信失敗は次の手番で通常の異常とする。
 #[test]
 fn ponder_start_send_failure_returns_to_idle() {
     let (m, moves) = line_of_play(2);
@@ -528,7 +528,7 @@ fn ponder_start_send_failure_returns_to_idle() {
     ));
 }
 
-// D8-HARN-25: [`EngineProcess::stop_ponder`]の終局時の停止を検査する。
+// [`EngineProcess::stop_ponder`]の終局時の停止を検査する。
 #[test]
 fn ponder_stops_before_resources_on_cutoff_and_opponent_failures() {
     let (m, _) = line_of_play(2);
@@ -604,7 +604,7 @@ fn ponder_stops_before_resources_on_cutoff_and_opponent_failures() {
     }
 }
 
-// D8-HARN-22/25/26（[`super::ponder`]）。
+// [`super::ponder`]の契約を検査する。
 #[test]
 fn ponder_stops_on_opponent_terminal_move_and_never_starts_after_terminal_move() {
     let board =
@@ -655,7 +655,7 @@ fn ponder_stops_on_opponent_terminal_move_and_never_starts_after_terminal_move()
     assert!(result.record.candidate_cpu_time_ns.unwrap() >= 60_000_000);
 }
 
-// D8-HARN-26: [`crate::harness::TurnRecord::ponder`]は--ponderを省いても予想手を保存する。
+// [`crate::harness::TurnRecord::ponder`]は--ponderを省いても予想手を保存する。
 #[test]
 fn predictions_are_saved_when_ponder_is_disabled() {
     let (m, _) = line_of_play(2);

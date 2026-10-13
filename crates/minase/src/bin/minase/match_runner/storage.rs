@@ -846,7 +846,7 @@ mod tests {
         fs::remove_dir_all(path).unwrap();
     }
 
-    // D8-HARN-21/26: [`RunManifest::ponder`]と[`minase::harness::TurnRecord::ponder`]の欄は省略できない。
+    // [`RunManifest::ponder`]と[`minase::harness::TurnRecord::ponder`]の欄は省略できない。
     #[test]
     fn ponder_manifest_and_prediction_fields_are_required() {
         let turn = game(StoredColor::Black).turns.remove(0);
@@ -858,7 +858,7 @@ mod tests {
         assert!(serde_json::from_value::<RunManifest>(value).is_err());
     }
 
-    // D8-HARN-26: [`FORMAT_VERSION`]に従い、新しい欄の有無を調べる前に旧版を拒否する。
+    // [`FORMAT_VERSION`]に従い、新しい欄の有無を調べる前に旧版を拒否する。
     #[test]
     fn resume_rejects_version_three_before_decoding_new_fields() {
         let path = temporary_directory("version-three");

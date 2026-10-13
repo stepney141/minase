@@ -201,7 +201,7 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
 mod tests {
     use super::*;
 
-    // SPEC_UNCLEAR-05 [実装契約]: 不明リビジョンの解決は対局実行前に失敗する。
+    // 規範文書に明文がないため、不明リビジョンの解決が対局実行前に失敗することを実装契約とする。
     // 診断文言は契約ではないため種別(Err)だけを検証する。
     #[test]
     fn unknown_commit_revision_fails_resolution() {

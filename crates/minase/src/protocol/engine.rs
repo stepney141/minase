@@ -503,7 +503,7 @@ mod tests {
     use minase_core::position::{Position, PositionBuilder};
     use minase_core::test_util::sq;
 
-    // 本モジュールの検査対象はEngineReply（公開境界）までとする（D6-ENG-07）。
+    // 本モジュールの検査対象はEngineReply（公開境界）までとする。
     // 状態の不変・遷移は後続コマンドへの応答差で観測し、内部フィールドへは触れない。
 
     fn setup(position: Position) -> SetupPosition {
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn failed_commit_is_atomic_and_keeps_active_pending_and_lifecycle() {
         // [`crate::protocol::engine`]のライフサイクル表: commitは複製上の全適用が成功した場合に限りactive規則・Game・
-        // ライフサイクルを同時に交換する原子的操作（D6-ENG-01）。
+        // ライフサイクルを同時に交換する原子的操作。
         let mut engine =
             Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
         assert!(matches!(
@@ -633,7 +633,7 @@ mod tests {
     #[test]
     fn lifecycle_reports_each_finishing_transition_once_and_rejects_invalid_moves() {
         // [`crate::protocol::engine`]のライフサイクル表: newly_finishedはOngoingからFinishedへ遷移した応答だけが持つ。
-        // 終局通知は状態遷移イベントであって状態述語ではない（D6-ENG-04）。
+        // 終局通知は状態遷移イベントであって状態述語ではない。
         let result = GameResult::Win {
             winner: Color::Black,
             reason: WinReason::RoyalCapture,
@@ -662,7 +662,7 @@ mod tests {
                 newly_finished: Some(result),
             }
         );
-        // 終局後の着手は成立しない（RULES.md第26条第12項、D6-ENG-05のGameAlreadyOver）。
+        // RULES.md第26条第12項により終局後の着手は成立せず、GameAlreadyOverを返す。
         assert_eq!(
             engine.handle(EngineCommand::ApplyMove(royal_capture())),
             EngineReply::Rejected(RejectReason::GameAlreadyOver)
@@ -815,7 +815,7 @@ mod tests {
     #[test]
     fn set_rules_validates_on_receipt_and_keeps_pending_on_failure() {
         // [`crate::protocol::engine`]のライフサイクル表: SetRulesの検証はfrom_codesで反復規則を含む各群の存在を検査し、
-        // commit時ではなく受信時に弾く（D6-ENG-02）。RULES.md第33条第5項（反復規則は常にいずれか1つ）・
+        // commit時ではなく受信時に弾く。RULES.md第33条第5項（反復規則は常にいずれか1つ）・
         // 第9項（矛盾する組合せは無効）。
         let mut engine =
             Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]).unwrap();
@@ -860,7 +860,7 @@ mod tests {
             })
         );
     }
-    // [`Engine::before_last_move`]と`docs/adr/apply-position-by-token-difference.md`（D6-ENG-08、D6-ENG-05）。
+    // [`Engine::before_last_move`]と`docs/adr/apply-position-by-token-difference.md`の契約を検査する。
     #[test]
     fn ponder_replacement_preserves_history_and_failed_extensions_are_atomic() {
         let mut engine =

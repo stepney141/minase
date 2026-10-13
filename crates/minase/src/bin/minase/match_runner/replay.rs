@@ -505,7 +505,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-26: [`TurnRecord::ponder`]は不合法な予想手も保存する。
+    // [`TurnRecord::ponder`]は不合法な予想手も保存する。
     #[test]
     fn saved_predictions_validate_tokens_and_protocol_without_requiring_legality() {
         let opening =

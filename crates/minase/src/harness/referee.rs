@@ -50,7 +50,7 @@ mod tests {
     use super::*;
     use minase_core::{MoveGenerator, Rules};
 
-    // D8-HARN-06(1)/D8-HARN-11: [`validate_bestmove`]の審判層との照合を検査する。
+    // [`validate_bestmove`]の審判層との照合を検査する。
     #[test]
     fn referee_rejects_bestmove_outside_the_legal_move_list() {
         let game = Game::new(Rules::ENGINE_DEFAULT);

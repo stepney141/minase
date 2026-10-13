@@ -1,4 +1,4 @@
-//! 挙動マトリクスD1「駒の動きと成り」に基づく合法手生成のテスト。
+//! 駒の動きと成りに関する合法手生成のテスト。
 //!
 //! 期待値の根拠はRULES.md第6条から第12条、第17条から第19条、第30条、および[`Move`]の正準形である。
 //! 獅子の捕獲制限（第13条から第16条、第29条）は`tests/lion_capture.rs`が検証する。
@@ -20,7 +20,7 @@ use crate::mv::Move;
 use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 
-/// マトリクスの升表記 (筋f, 段r)（各1〜12、段1=後手側最奥、段12=先手側最奥）を
+/// テストで用いる升表記 (筋f, 段r)（各1〜12、段1=後手側最奥、段12=先手側最奥）を
 /// 盤座標へ写す。先手の「前」は段が減る方向である（第3条3号）。
 pub(super) fn msq(file: u8, rank: u8) -> Square {
     assert!((1..=12).contains(&file) && (1..=12).contains(&rank));
@@ -85,7 +85,7 @@ pub(super) fn jitto_moves(moves: &[Move], origin: Square) -> Vec<Move> {
         .collect()
 }
 
-/// マトリクス座標の1升移動の期待到達升集合を作る。deltas は先手基準の
+/// [`msq`]と同じ座標で1升移動の期待到達升集合を作る。deltas は先手基準の
 /// 相対ベクトル (df, dr)（前=(0,−1)）で与える。盤外は切り詰める（第7条1項）。
 pub(super) fn step_squares(origin: (i16, i16), deltas: &[(i16, i16)]) -> BTreeSet<Square> {
     let mut result = BTreeSet::new();
@@ -98,7 +98,7 @@ pub(super) fn step_squares(origin: (i16, i16), deltas: &[(i16, i16)]) -> BTreeSe
     result
 }
 
-/// マトリクス座標の走りの期待到達升集合を作る（空盤の想定で盤端まで伸ばす）。
+/// [`msq`]と同じ座標で走りの期待到達升集合を作る（空盤の想定で盤端まで伸ばす）。
 pub(super) fn ray_squares(origin: (i16, i16), directions: &[(i16, i16)]) -> BTreeSet<Square> {
     let mut result = BTreeSet::new();
     for &(df, dr) in directions {
@@ -152,7 +152,7 @@ pub(super) const TWO_STAGE_KINDS: [PieceKind; 3] = [
     PieceKind::SoaringEagle,
 ];
 
-/// 先手基準の相対ベクトル（マトリクス座標。前=(0,−1)、後=(0,+1)）。
+/// [`msq`]と同じ座標で先手基準の相対ベクトルを定める（前=(0,−1)、後=(0,+1)）。
 pub(super) mod dir {
     pub(crate) const F: (i16, i16) = (0, -1);
     pub(crate) const B: (i16, i16) = (0, 1);

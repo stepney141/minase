@@ -5,7 +5,7 @@ use crate::piece::{COLOR_COUNT, Color, PIECE_KIND_COUNT, PieceCode, PieceKind};
 use crate::position::Position;
 use crate::test_util::{position_from_codes, sq};
 
-/// 第5条の配置図の機械可読な写し(D4-005-01の期待表)。
+/// 第5条の配置図の機械可読な写し。
 /// 行は段一〜十二、列は配置図の印字順(筋12→筋1)で、内部座標では
 /// 筋f・段rの升が(file=12−f, rank=12−r)にあたる。
 fn article_5_expected_table() -> [[Option<(Color, PieceKind)>; 12]; 12] {
@@ -122,7 +122,7 @@ fn article_5_expected_table() -> [[Option<(Color, PieceKind)>; 12]; 12] {
     ]
 }
 
-// 初期配置は第5条の配置図と全144升で完全に一致し、全駒が未成である(D4-005-01)。
+// 初期配置は第5条の配置図と全144升で完全に一致し、全駒が未成である。
 #[test]
 fn article_5_initial_position_matches_the_full_144_square_table() {
     let initial = Position::initial();
@@ -165,11 +165,11 @@ fn article_5_initial_position_matches_the_full_144_square_table() {
 }
 
 // 初期局面の王駒は先手が王将7十二、後手が玉将6一の各1枚で、太子は存在しない
-// (第5条・第20条1項、D4-005-02・D4-020-01)。王駒の判定は駒種だけで決まる(第3条4項)。
+// (第5条・第20条1項)。王駒の判定は駒種だけで決まる(第3条4項)。
 #[test]
 fn articles_5_and_20_1_each_side_starts_with_exactly_one_royal_king() {
     let initial = Position::initial();
-    // 7十二は内部(5,0)、6一は内部(6,11)にあたる(座標規約はD4マトリクス)。
+    // 7十二は内部(5,0)、6一は内部(6,11)にあたる。
     let expected = [(Color::Black, sq(5, 0)), (Color::White, sq(6, 11))];
     for (color, square) in expected {
         assert_eq!(

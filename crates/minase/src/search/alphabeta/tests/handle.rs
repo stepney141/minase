@@ -2,8 +2,8 @@
 
 use super::*;
 
-// D7-SRCH-07。Threads=1で深さまたはノード数だけを制限した探索は、同じ入力と初期状態で結果が再現する。
-// 経過時間の値を除く全観測を比較する（INV-2）。
+// Threads=1で深さまたはノード数だけを制限した探索は、同じ入力と初期状態で結果が再現する。
+// 経過時間の値を除く全観測を比較する。
 #[test]
 fn search_with_node_limit_is_deterministic() {
     #[allow(clippy::type_complexity)]
@@ -110,7 +110,7 @@ fn search_apis_use_the_supplied_nnue() {
     assert_eq!(asynchronous.score, expected);
 }
 
-// D7-LIM-03。ノード予約の合計が上限に達するとNodeLimitで停止し、根の合法手を返す。
+// ノード予約の合計が上限に達するとNodeLimitで停止し、根の合法手を返す。
 // ここでは上限への到達と合法手の返却を検査し、超過しないことはチームのテストで検査する。
 #[test]
 fn node_limit_stops_the_search_with_a_legal_best_move() {
@@ -130,9 +130,9 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
 
     assert_eq!(finished.stop_reason, StopReason::NodeLimit);
     assert!(finished.nodes >= 5_000);
-    assert!(root_moves.contains(&finished.best_move)); // INV-1
+    assert!(root_moves.contains(&finished.best_move));
 
-    // 境界: nodes=1の極小値でも合法な最善手が返る（D7-LIM-04と同根）。
+    // 境界: nodes=1の極小値でも合法な最善手が返る。
     let moves = legal_moves(&initial);
     let result = run_search(
         &initial,
@@ -146,7 +146,7 @@ fn node_limit_stops_the_search_with_a_legal_best_move() {
     assert!(moves.contains(&result.best_move));
 }
 
-// D7-LIM-04。初期結果は根の先頭の合法手とし、深さ1の完了前に停止しても合法な最善手を返す。
+// 初期結果は根の先頭の合法手とし、深さ1の完了前に停止しても合法な最善手を返す。
 // 停止までに探索が進む場合もあるので、ここでは返された手が根の合法手に含まれることを検査する。
 #[test]
 fn stop_before_depth_one_still_yields_a_legal_best_move() {
@@ -163,12 +163,12 @@ fn stop_before_depth_one_still_yields_a_legal_best_move() {
     let (_, finished) = event_reports(events);
     handle.join().expect("search thread must not panic");
     assert_eq!(finished.stop_reason, StopReason::ExternalStop);
-    assert!(root_moves.contains(&finished.best_move)); // INV-1
+    assert!(root_moves.contains(&finished.best_move));
 }
 
-// D7-LIM-05。無期限ではsoft/hardの両リミットを
+// 無期限ではsoft/hardの両リミットを
 // 無効化し、外部停止要求だけで停止する。予算生成、Progress、外部停止、
-// joinを検査し、D7-API-03(5)の外部停止要求も兼ねる。
+// joinを検査する。
 #[test]
 fn infinite_limits_stop_only_on_external_request() {
     let limits = infinite_limits();
@@ -188,11 +188,7 @@ fn infinite_limits_stop_only_on_external_request() {
     assert!(root_moves.contains(&finished.best_move));
 }
 
-// ---------------------------------------------------------------------------
-// D7-API　探索呼び出し境界
-// ---------------------------------------------------------------------------
-
-// D7-API-01。主ワーカーは深さ1から1ずつ深め、窓内で完了した反復ごとにProgressを1回送る。
+// 主ワーカーは深さ1から1ずつ深め、窓内で完了した反復ごとにProgressを1回送る。
 // ノード数と経過時間は累積値なので減少しない。
 #[test]
 fn progress_depths_start_at_one_and_increase_by_one() {
@@ -252,7 +248,7 @@ fn progress_depths_start_at_one_and_increase_by_one() {
     assert_eq!(depths, vec![1]);
 }
 
-// D7-API-05。joinは全ワーカーの終了後に置換表を返し、次の探索で再利用できる。
+// joinは全ワーカーの終了後に置換表を返し、次の探索で再利用できる。
 // この局面では同じ最善手と評価値を保ち、記録手と打ち切りによってノード数が増えない。
 #[test]
 fn join_returns_the_transposition_table_for_reuse() {

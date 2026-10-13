@@ -645,8 +645,8 @@ mod tests {
 
     const EMPTY_BOARD: &str = "12/12/12/12/12/12/12/12/12/12/12/12";
 
-    // lishogi正準4欄の初期局面SFEN（引き継ぎ資産。[USI]「SFENの全体構文」、盤面部は
-    // [CECP]第7章のHaChu内蔵FENと文字列一致）。
+    // lishogi正準4欄の初期局面SFENはdocs/research/protocols/usi-lishogi.md「SFENの全体構文」に従う。
+    // 盤面部はdocs/research/protocols/cecp.md第7章のHaChu内蔵FENと文字列が一致する。
     const LISHOGI_INITIAL_SFEN: &str = "lfcsgekgscfl/a1b1txot1b1a/mvrhdqndhrvm/pppppppppppp/3i4i3/12/12/3I4I3/PPPPPPPPPPPP/MVRHDNQDHRVM/A1B1TOXT1B1A/LFCSGKEGSCFL b - 1";
 
     fn board(rows: [&str; 12]) -> String {
@@ -659,11 +659,13 @@ mod tests {
         rows.join("/")
     }
 
-    // D5-SFEN-01: 升名は筋数字（1〜12）＋段英字（a〜l）。[USI]「座標系」の変換式に従う。
+    // 升名は筋数字1〜12と段英字a〜lを連結し、
+    // docs/research/protocols/usi-lishogi.md「座標系」の変換式に従う。
     #[test]
     fn square_names_follow_lishogi_coordinates_and_round_trip_all_144_squares() {
         for square in Square::all() {
-            // 筋番号 = 12 − 内部file、段英字 = 'a' + (11 − 内部rank)（[USI]「座標系」）。
+            // 筋番号 = 12 − 内部file、段英字 = 'a' + (11 − 内部rank)となる
+            // （docs/research/protocols/usi-lishogi.md「座標系」）。
             let expected = format!(
                 "{}{}",
                 BOARD_FILES - square.file(),
@@ -673,18 +675,20 @@ mod tests {
             assert_eq!(parse_square(&expected), Some(square));
         }
 
-        // 12aは先手から見て左上隅であり、2桁筋は1桁筋と混同されない（[USI]「座標系」）。
+        // 12aは先手から見て左上隅であり、2桁筋は1桁筋と混同されない
+        // （docs/research/protocols/usi-lishogi.md「座標系」）。
         assert_eq!(parse_square("12a"), Some(sq(0, 11)));
         assert_eq!(parse_square("1a"), Some(sq(11, 11)));
         assert_eq!(parse_square("10l"), Some(sq(2, 0)));
 
-        // 筋0・筋13以上・段m以降などは升名として不正（D5-SFEN-01境界）。
+        // 筋0・筋13以上・段m以降などは升名として不正。
         for invalid in ["0a", "13a", "7m", "a1", "7", "", "01a"] {
             assert_eq!(parse_square(invalid), None, "{invalid}");
         }
     }
 
-    // D5-SFEN-02: 基底駒21文字と先後の大小文字（[USI]「駒種の文字表記」、[HACHU]第11節）。
+    // 基底駒21文字と先後の大小文字を検査する
+    // （docs/research/protocols/usi-lishogi.md「駒種の文字表記」、docs/research/protocols/hachu.md第11節）。
     #[test]
     fn all_21_base_piece_letters_parse_and_round_trip_in_both_cases() {
         let letters = [
@@ -712,7 +716,7 @@ mod tests {
         ];
 
         for (letter, kind) in letters {
-            // 大文字が先手、小文字が後手（[USI]「駒種の文字表記」）。
+            // 大文字が先手、小文字が後手（docs/research/protocols/usi-lishogi.md「駒種の文字表記」）。
             for (text, color) in [
                 (letter.to_ascii_uppercase(), Color::Black),
                 (letter, Color::White),
@@ -728,7 +732,7 @@ mod tests {
             }
         }
 
-        // J・U・W・Y・Zは未割当であり拒否する（[HACHU]第11節）。
+        // J・U・W・Y・Zは未割当であり拒否する（docs/research/protocols/hachu.md第11節）。
         for letter in ['j', 'u', 'w', 'y', 'z', 'J', 'U', 'W', 'Y', 'Z'] {
             let sfen = format!("{} b", board_with_row(0, &format!("{letter}11")));
             assert!(
@@ -738,8 +742,8 @@ mod tests {
         }
     }
 
-    // D5-SFEN-03: 成駒18種の`+`前置と出自保存、成れない3種k・n・qへの`+`の拒否
-    // （[USI]「駒種の文字表記」、[RULES]第17条）。引き継ぎ資産の駒文字表。
+    // 成駒18種の`+`前置と出自保存、成れない3種k・n・qへの`+`の拒否
+    // （docs/research/protocols/usi-lishogi.md「駒種の文字表記」、RULES.md第17条）。引き継ぎ資産の駒文字表。
     #[test]
     fn promoted_prefix_covers_18_kinds_and_unpromotable_pieces_reject_it() {
         let promoted = [
@@ -779,7 +783,7 @@ mod tests {
             }
         }
 
-        // 成らない駒への`+`の拒否（[RULES]第17条第1項）。
+        // 成らない駒への`+`の拒否（RULES.md第17条第1項）。
         for letter in ['k', 'n', 'q', 'K', 'N', 'Q'] {
             let sfen = format!("{} b", board_with_row(0, &format!("+{letter}11")));
             assert!(
@@ -788,7 +792,7 @@ mod tests {
             );
         }
 
-        // `+`の直後に駒文字が続かない入力の拒否（D5-SFEN-03境界）。
+        // `+`の直後に駒文字が続かない入力の拒否。
         for row in ["11+", "+111", "++p10", "+"] {
             assert!(
                 parse_sfen(&format!("{} b", board_with_row(0, row))).is_err(),
@@ -797,8 +801,8 @@ mod tests {
         }
     }
 
-    // D5-SFEN-04: 盤面欄の走査順（段a→段l、12筋→1筋）と空升の10進圧縮
-    // （[USI]「SFENの全体構文」第1項・「to_sfenへの要求事項」）。
+    // 盤面欄の走査順（段a→段l、12筋→1筋）と空升の10進圧縮
+    // （docs/research/protocols/usi-lishogi.md「SFENの全体構文」第1項・「to_sfenへの要求事項」）。
     #[test]
     fn board_scan_order_and_empty_run_compression_follow_shogiops() {
         // 先頭行の左端は12a（内部file 0・rank 11）、最終行の右端は1l（内部file 11・rank 0）。
@@ -840,7 +844,7 @@ mod tests {
         );
         assert_eq!(to_sfen(&empty), format!("{EMPTY_BOARD} b"));
 
-        // 段数・升数の不一致、空升数0の拒否（D5-SFEN-04境界）。
+        // 段数・升数の不一致、空升数0の拒否。
         assert!(matches!(
             parse_sfen("12/12/12/12/12/12/12/12/12/12/12 b"),
             Err(SfenError::WrongRowCount { .. })
@@ -859,7 +863,7 @@ mod tests {
         ));
     }
 
-    // D5-SFEN-05: 手番欄はbが先手、wが後手（[USI]「SFENの全体構文」第2項）。
+    // 手番欄はbが先手、wが後手（docs/research/protocols/usi-lishogi.md「SFENの全体構文」第2項）。
     #[test]
     fn side_to_move_letter_maps_b_to_black_and_w_to_white() {
         assert_eq!(
@@ -886,8 +890,9 @@ mod tests {
         }
     }
 
-    // D5-SFEN-06: lishogi正準4欄構文と初期局面SFENの厳密一致（引き継ぎ資産。
-    // [USI]「SFENの全体構文」、[RULES]第5条、[CECP]第7章）。
+    // lishogi正準4欄構文と初期局面SFENの厳密一致を検査する
+    // （docs/research/protocols/usi-lishogi.md「SFENの全体構文」、RULES.md第5条、
+    // docs/research/protocols/cecp.md第7章）。
     #[test]
     fn lishogi_initial_four_field_sfen_matches_the_initial_position() {
         let setup = parse_extended_sfen(LISHOGI_INITIAL_SFEN, MoveRules::standard()).unwrap();
@@ -902,7 +907,7 @@ mod tests {
         );
     }
 
-    /// D5-SFEN-07: [`to_sfen`]と[`parse_sfen`]の2欄基本形の契約を検査する。
+    /// [`to_sfen`]と[`parse_sfen`]の2欄基本形の契約を検査する。
     #[test]
     fn basic_form_reads_and_writes_exactly_two_fields() {
         let position = Position::initial();
@@ -935,8 +940,8 @@ mod tests {
         );
     }
 
-    /// D5-SFEN-08: [`parse_sfen`]の契約に従い、不正入力をパニックせずに拒否する。
-    /// エラーの細分類は固定せず、拒否だけを検査する（SU-3）。
+    /// [`parse_sfen`]の契約に従い、不正入力をパニックせずに拒否する。
+    /// エラーの細分類は固定せず、拒否だけを検査する。
     #[test]
     fn malformed_inputs_are_rejected_without_panicking() {
         let inputs = [
@@ -967,7 +972,7 @@ mod tests {
         );
     }
 
-    /// D5-SFEN-09: [`parse_extended_sfen`]の獅子捕獲升の受理条件を検査する。
+    /// [`parse_extended_sfen`]の獅子捕獲升の受理条件を検査する。
     #[test]
     fn lion_capture_field_accepts_dash_empty_and_non_mover_squares_only() {
         let rules = MoveRules::standard();
@@ -1024,7 +1029,7 @@ mod tests {
         }
     }
 
-    /// D5-SFEN-11: [`parse_extended_sfen`]の手数欄の範囲と数字列の契約を検査する。
+    /// [`parse_extended_sfen`]の手数欄の範囲と数字列の契約を検査する。
     #[test]
     fn move_number_field_accepts_one_through_9999_and_round_trips() {
         let rules = MoveRules::standard();
@@ -1063,9 +1068,9 @@ mod tests {
         );
     }
 
-    /// D5-SFEN-12: [`parse_extended_sfen`]の保留升の順序と往復保存を検査する。
+    /// [`parse_extended_sfen`]の保留升の順序と往復保存を検査する。
     /// 内部密番号は[`Square::dense_index`]で定義する。このテストでは決定性と順序の
-    /// 単調性を検査し、特定の並びは固定しない（SU-2、RULES.md第30条）。
+    /// 単調性を検査し、特定の並びは固定しない（RULES.md第30条）。
     #[test]
     fn deferred_field_is_a_strictly_ordered_comma_list_that_round_trips() {
         let p1 = MoveRules {
@@ -1143,7 +1148,7 @@ mod tests {
         }
     }
 
-    /// D5-SFEN-14: [`parse_extended_sfen`]の契約に従い、保留升には成れる不成駒を要する。
+    /// [`parse_extended_sfen`]の契約に従い、保留升には成れる不成駒を要する。
     /// 成れる駒種はRULES.md第17条第1項による。
     #[test]
     fn deferred_squares_must_hold_an_unpromoted_promotable_piece() {
@@ -1172,7 +1177,7 @@ mod tests {
         }
     }
 
-    /// D5-SFEN-15: [`parse_extended_sfen`]の欄数と第5欄省略時の契約を検査する。
+    /// [`parse_extended_sfen`]の欄数と第5欄省略時の契約を検査する。
     #[test]
     fn extended_parser_accepts_only_four_or_five_fields() {
         let rules = MoveRules::standard();
@@ -1195,7 +1200,7 @@ mod tests {
         }
     }
 
-    /// D5-SFEN-16: [`to_extended_sfen`]は常に5欄を出力し、全欄の情報が往復で一致する。
+    /// [`to_extended_sfen`]は常に5欄を出力し、全欄の情報が往復で一致する。
     /// lishogi互換4欄は第5欄を落とした形である。
     #[test]
     fn extended_output_always_writes_five_fields_and_round_trips_all_state() {

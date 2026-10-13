@@ -13,7 +13,7 @@ use crate::test_util::position;
 // 第7条　移動と捕獲の一般則
 // ---------------------------------------------------------------------------
 
-// D1-007-03: 走り駒の遮蔽と先端捕獲（第7条4項・5項）。
+// 走り駒の遮蔽と先端捕獲（第7条4項・5項）。
 #[test]
 fn article_7_4_5_sliders_stop_at_first_piece_and_capture_enemies() {
     let board = position(
@@ -33,7 +33,7 @@ fn article_7_4_5_sliders_stop_at_first_piece_and_capture_enemies() {
     assert_eq!(destinations, expected);
 }
 
-// D1-007-04: 跳び越しと中間升の不捕獲（第7条6項・7項、第9条の麒麟・鳳凰）。
+// 跳び越しと中間升の不捕獲（第7条6項・7項、第9条の麒麟・鳳凰）。
 #[test]
 fn article_7_6_7_jumps_ignore_and_preserve_intermediate_pieces() {
     for middle_owner in [Color::Black, Color::White] {
@@ -63,7 +63,7 @@ fn article_7_6_7_jumps_ignore_and_preserve_intermediate_pieces() {
     );
     assert!(generated(&phoenix).contains(&mv(msq(6, 6), None, msq(4, 4), false)));
 
-    // 跳び先が自駒なら不可、相手駒なら捕獲（D1-007-01・第7条3項）。
+    // 跳び先が自駒なら不可、相手駒なら捕獲（第7条3項）。
     let own_target = position(
         Color::Black,
         &[
@@ -86,7 +86,7 @@ fn article_7_6_7_jumps_ignore_and_preserve_intermediate_pieces() {
 // 第8条　王手と擬似合法生成
 // ---------------------------------------------------------------------------
 
-// D1-008-01: 王駒を相手の利きへ移す着手も生成される（第8条3項・5項）。
+// 王駒を相手の利きへ移す着手も生成される（第8条3項・5項）。
 #[test]
 fn article_8_3_king_may_move_into_enemy_control() {
     let board = position(
@@ -100,7 +100,7 @@ fn article_8_3_king_may_move_into_enemy_control() {
     assert!(generated(&board).contains(&mv(msq(6, 6), None, msq(6, 5), false)));
 }
 
-// D1-008-02: 王手放置の着手も生成される（第8条1項・2項・4項・5項）。
+// 王手放置の着手も生成される（第8条1項・2項・4項・5項）。
 #[test]
 fn article_8_4_5_check_needs_no_declaration_and_may_be_ignored() {
     let board = position(

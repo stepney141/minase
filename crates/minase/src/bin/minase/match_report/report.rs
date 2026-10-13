@@ -848,7 +848,7 @@ mod tests {
         std::fs::remove_dir_all(run_dir).unwrap();
     }
 
-    // D8-HARN-26: [`report`]は版4と5だけを受理し、それ以外を版のエラーで拒否する。
+    // [`report`]は版4と5だけを受理し、それ以外を版のエラーで拒否する。
     #[test]
     fn report_rejects_version_three_before_decoding_new_fields() {
         let run_dir = std::env::temp_dir().join(format!("minase-report-v3-{}", std::process::id()));

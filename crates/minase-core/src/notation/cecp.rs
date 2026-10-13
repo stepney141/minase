@@ -216,7 +216,7 @@ mod tests {
         }
     }
 
-    /// D5-CECP-01: [`parse`]の升名の契約を全144升で検査する。
+    /// [`parse`]の升名の契約を全144升で検査する。
     #[test]
     fn cecp_squares_cover_all_144_squares_and_correspond_to_usi_names() {
         for square in Square::all() {
@@ -228,8 +228,9 @@ mod tests {
             assert!(rest.is_empty());
         }
 
-        // 引き継ぎ資産: USI 7g7d ＝ CECP f6f9（同一Moveの両表記。[CECP]第5章「筋aの左右の
-        // 向き」のHaChu内蔵FENとlishogi初期SFENの盤面文字列一致からの導出）。
+        // USI 7g7dとCECP f6f9は同じMoveを表す。
+        // docs/research/protocols/cecp.md第5章「筋aの左右の向き」にある
+        // HaChu内蔵FENとlishogi初期SFENの盤面文字列の一致から導く。
         let empty = Position::empty(Color::Black);
         let mv = Move {
             from: sq(5, 5),
@@ -260,7 +261,7 @@ mod tests {
         }
     }
 
-    /// D5-CECP-02: [`parse`]のレグ数と連続性の契約を検査する。
+    /// [`parse`]のレグ数と連続性の契約を検査する。
     #[test]
     fn comma_separated_legs_parse_with_continuity() {
         // d6とg7に相手駒を置き、2段階捕獲と居喰いを実経路で受ける。
@@ -292,7 +293,7 @@ mod tests {
                 promote: false,
             })
         );
-        // 居喰いの2レグ表記（[HACHU]第7節の実例）。
+        // 居喰いの2レグ表記（docs/research/protocols/hachu.md第7節の実例）。
         assert_eq!(
             parse(&board, "f6g7,g7f6"),
             Ok(Move {
@@ -305,8 +306,9 @@ mod tests {
 
         // レグ不連続の拒否。
         assert_eq!(parse(&board, "e6d6,c6b6"), Err(CecpError::LegDiscontinuity));
-        // 3レグ以上の拒否。関数契約は1〜2レグの解析だけを定め、中将棋では2レグで足りる
-        // （[CECP]第5章）。明文の拒否規定はなく実装契約である（SU-5）。
+        // docs/research/protocols/cecp.md第5章では中将棋は2レグで足り、
+        // 関数契約も1〜2レグの解析だけを定めるため、明文の拒否規定がない
+        // 3レグ以上の拒否は実装上の契約として固定する。
         assert_eq!(
             parse(&board, "e6d6,d6c6,c6b6"),
             Err(CecpError::InvalidLegCount { found: 3 })
@@ -317,7 +319,7 @@ mod tests {
         }
     }
 
-    /// D5-CECP-03: [`legs`]の行数、コンマ、じっとの出力契約を検査する。
+    /// [`legs`]の行数、コンマ、じっとの出力契約を検査する。
     #[test]
     fn legs_output_splits_two_stage_moves_and_writes_jitto_as_null_move() {
         assert_eq!(
@@ -350,11 +352,11 @@ mod tests {
             ["e6d6,", "d6e6"]
         );
         // 正準じっとは`@@@@`の1行であり、往復2レグ（e6f6,＋f6e6）にはならない
-        // （HaChuは往復2レグ表記を生成も受理もしない。[HACHU]第8節）。
+        // （HaChuは往復2レグ表記を生成も受理もしない。docs/research/protocols/hachu.md第8節）。
         assert_eq!(legs(canonical_jitto(sq(4, 5))), ["@@@@"]);
     }
 
-    /// D5-CECP-04: [`parse`]と[`legs`]の成り・不成の接尾辞の契約を検査する。
+    /// [`parse`]と[`legs`]の成り・不成の接尾辞の契約を検査する。
     #[test]
     fn promotion_suffix_attaches_to_the_final_leg_only() {
         let empty = Position::empty(Color::Black);
@@ -387,23 +389,23 @@ mod tests {
         assert_eq!(parse(&board, "e6d6,d6c6+"), Ok(two_leg));
 
         // 非最終レグへの`+`と、HaChu式の寛容判定（改行・`=`以外をすべて成り扱い）は
-        // 採用しない（[HACHU]第6節。`+`・`=`・無印以外の接尾辞は拒否する）。
+        // 採用しない（docs/research/protocols/hachu.md第6節。`+`・`=`・無印以外の接尾辞は拒否する）。
         for invalid in ["e6d6+,d6c6", "e6d6=,d6c6", "e6d6,d6c6++", "e6d6?", "e6d6q"] {
             assert!(parse(&board, invalid).is_err(), "{invalid}");
         }
     }
 
-    /// D5-CECP-05: [`parse`]の契約に従い、表記層では`@@@@`を拒否する。
+    /// [`parse`]の契約に従い、表記層では`@@@@`を拒否する。
     #[test]
     fn null_move_input_is_rejected_by_the_notation_layer() {
         let empty = Position::empty(Color::Black);
         assert_eq!(parse(&empty, "@@@@"), Err(CecpError::MalformedJittoInput));
         assert!(parse(&empty, "@@@@,f6e6").is_err());
-        // じっとに単一レグの綴りはない（HaChuも`@@@@`で符号化する。[HACHU]第8節）。
+        // じっとに単一レグの綴りはない（HaChuも`@@@@`で符号化する。docs/research/protocols/hachu.md第8節）。
         assert_eq!(parse(&empty, "e6e6"), Err(CecpError::InvalidJittoForm));
     }
 
-    /// D5-CECP-06: [`parse`]と[`usi::parse`]は同じ占有条件で[`Move`]の正準形へ変換する。
+    /// [`parse`]と[`usi::parse`]は同じ占有条件で[`Move`]の正準形へ変換する。
     #[test]
     fn intermediate_normalization_matches_the_usi_contract() {
         let from = sq(5, 5);
@@ -432,7 +434,7 @@ mod tests {
         );
 
         // 空升経由の往復2レグは正準じっとへ潰れる。HaChuが受理しない綴りをminaseは
-        // 受理して正準化する（表記差の吸収。[HACHU]第8節・第10章）。
+        // 受理して正準化する（表記差の吸収。docs/research/protocols/hachu.md第8節・第10章）。
         assert_eq!(parse(&empty, "f6g7,g7f6"), Ok(canonical_jitto(from)));
         // 相手駒経由の往復2レグは居喰いのままで、正準じっとにならない。
         assert_eq!(

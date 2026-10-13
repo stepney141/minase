@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn article_31_r1_irreversible_moves_are_promotions_captures_and_unpromoted_pawn_or_lance_steps()
     {
-        // D3-031-12: 成り・捕獲・不成の歩兵と香車の着手だけを不可逆手とする
+        // 成り・捕獲・不成の歩兵と香車の着手だけを不可逆手とする
         // (第31条R1、scalashogi variant/Chushogi.scala isIrreversible)。
         let rules = Rules::ENGINE_DEFAULT;
         let generator = MoveGenerator::new(rules.moves);

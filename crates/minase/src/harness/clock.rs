@@ -171,7 +171,7 @@ mod tests {
     use super::*;
     use crate::harness::limit::parse_search_limit;
 
-    // D8-HARN-10: [`Clock::update`]の時間切れ境界を検査する。
+    // [`Clock::update`]の時間切れ境界を検査する。
     #[test]
     fn time_forfeit_requires_exceeding_remaining_plus_byoyomi() {
         let mut clock = Clock::new(TimeControl {
@@ -190,7 +190,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-10: [`GameClocks::go_text`]の両時計と先後入替時の対応を検査する。
+    // [`GameClocks::go_text`]の両時計と先後入替時の対応を検査する。
     #[test]
     fn go_time_arguments_reflect_current_clocks_and_cross_colors() {
         let player_a = SearchLimit::Time(TimeControl {
@@ -242,7 +242,7 @@ mod tests {
             Some("depth 3 nodes 400".to_owned())
         );
 
-        // D8-HARN-20: [`crate::harness::engine::cecp`]と[`GameClocks::think_request`]の時計を検査する。
+        // [`crate::harness::engine::cecp`]と[`GameClocks::think_request`]の時計を検査する。
         let fixed = clocks.think_request(
             Color::Black,
             SearchLimit::Fixed {

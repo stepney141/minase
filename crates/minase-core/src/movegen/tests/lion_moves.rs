@@ -1,6 +1,6 @@
 //! 第11条（角鷹・飛鷲の2段階移動）・第12条（獅子の基本動作）のテスト。
 //!
-//! 獅子の捕獲制限（第13〜16条）は領域D2が検証する。本ファイルの局面には
+//! 獅子の捕獲制限（第13〜16条）は`lion_capture.rs`が検証する。本ファイルの局面には
 //! 取られる側の獅子を置かず、制限規則が発動しない構成だけを使う。
 
 use std::collections::BTreeSet;
@@ -36,7 +36,7 @@ fn with_promoted(
 // 第11条　角鷹・飛鷲の2段階移動
 // ---------------------------------------------------------------------------
 
-// D1-011-01: 角鷹の前方4動作（第11条1項a〜d）。
+// 角鷹の前方4動作（第11条1項a〜d）。
 #[test]
 fn article_11_1_falcon_has_four_forward_actions() {
     let mut board = with_promoted(
@@ -78,7 +78,7 @@ fn article_11_1_falcon_has_four_forward_actions() {
     assert!(forward.iter().all(|m| m.mid.is_none()));
 }
 
-// D1-011-02: 飛鷲の前斜め4動作（第11条2項）。
+// 飛鷲の前斜め4動作（第11条2項）。
 #[test]
 fn article_11_2_eagle_has_four_forward_diagonal_actions() {
     // 左前斜め（先手基準で (5,5)→(4,4) の筋）。
@@ -103,7 +103,7 @@ fn article_11_2_eagle_has_four_forward_diagonal_actions() {
     }
 }
 
-// D1-011-04: 角鷹・飛鷲は中間駒の所有者によらず跳べる（第11条4項）。
+// 角鷹・飛鷲は中間駒の所有者によらず跳べる（第11条4項）。
 #[test]
 fn article_11_4_direct_jump_ignores_intermediate_occupancy() {
     for (kind, middle, target) in [
@@ -124,7 +124,7 @@ fn article_11_4_direct_jump_ignores_intermediate_occupancy() {
             );
         }
 
-        // 跳び先が自駒なら生成されない（D1-007-01）。
+        // 跳び先が自駒なら生成されない。
         let blocked = with_promoted(
             Color::Black,
             (6, 6, kind),
@@ -137,7 +137,7 @@ fn article_11_4_direct_jump_ignores_intermediate_occupancy() {
     }
 }
 
-// D1-011-05: 角鷹の居喰い（第11条5項、第3条14号）。
+// 角鷹の居喰い（第11条5項、第3条14号）。
 #[test]
 fn article_11_5_falcon_igui_captures_and_returns() {
     let board = with_promoted(
@@ -149,7 +149,7 @@ fn article_11_5_falcon_igui_captures_and_returns() {
     let igui = mv(msq(6, 6), Some(msq(6, 5)), msq(6, 6), false);
     // 居喰いはちょうど1回現れる。
     assert_eq!(moves.iter().filter(|&&m| m == igui).count(), 1);
-    // 前方隣接升が空でないため、じっとは生成されない（D1-011-07）。
+    // 前方隣接升が空でないため、じっとは生成されない。
     assert!(jitto_moves(&moves, msq(6, 6)).is_empty());
 
     let mut after = board.clone();
@@ -162,7 +162,7 @@ fn article_11_5_falcon_igui_captures_and_returns() {
     assert_eq!(after.side_to_move(), Color::White);
 }
 
-// D1-011-06: じっとの成立と一意性（第11条6項）。
+// じっとの成立と一意性（第11条6項）。
 #[test]
 fn article_11_6_jitto_is_generated_exactly_once() {
     let falcon = with_promoted(Color::Black, (6, 6, PieceKind::HornedFalcon), &[]);
@@ -178,7 +178,7 @@ fn article_11_6_jitto_is_generated_exactly_once() {
     assert_eq!(jitto_moves(&generated(&eagle), msq(6, 6)).len(), 1);
 }
 
-// D1-011-07: 角鷹のじっと不能条件（第11条7項）。
+// 角鷹のじっと不能条件（第11条7項）。
 #[test]
 fn article_11_7_falcon_jitto_requires_empty_forward_square() {
     // 前方隣接升が自駒: じっと不可。
@@ -194,7 +194,7 @@ fn article_11_7_falcon_jitto_requires_empty_forward_square() {
     assert!(jitto_moves(&generated(&at_edge), msq(6, 1)).is_empty());
 }
 
-// D1-011-08: 飛鷲のじっと不能条件（第11条8項）。
+// 飛鷲のじっと不能条件（第11条8項）。
 #[test]
 fn article_11_8_eagle_jitto_requires_an_empty_forward_diagonal() {
     // 両前斜めが駒（所有者不問）: じっと不可。
@@ -229,7 +229,7 @@ fn article_11_8_eagle_jitto_requires_an_empty_forward_diagonal() {
     assert!(jitto_moves(&generated(&edge_rank), msq(6, 1)).is_empty());
 }
 
-// D1-011-09: 第1段階捕獲後の盤面で第2段階を判定（第11条9項）。
+// 第1段階捕獲後の盤面で第2段階を判定（第11条9項）。
 #[test]
 fn article_11_9_second_stage_uses_board_after_first_capture() {
     let board = with_promoted(
@@ -253,7 +253,7 @@ fn article_11_9_second_stage_uses_board_after_first_capture() {
 // 第12条　獅子の基本動作
 // ---------------------------------------------------------------------------
 
-// D1-012-03: 経路捕獲つき2段階移動と最大2枚取り（第12条4項・12項）。
+// 経路捕獲つき2段階移動と最大2枚取り（第12条4項・12項）。
 #[test]
 fn article_12_4_lion_path_capture_double_move() {
     let board = position(
@@ -293,7 +293,7 @@ fn article_12_4_lion_path_capture_double_move() {
     assert!(!moves.iter().any(|m| m.mid == Some(msq(5, 4))));
 }
 
-// D1-012-04: 跳び捕獲と経路捕獲は別の着手（第12条4項・7項）。
+// 跳び捕獲と経路捕獲は別の着手（第12条4項・7項）。
 #[test]
 fn article_12_4_7_jump_capture_and_path_capture_are_distinct_moves() {
     let board = position(
@@ -322,7 +322,7 @@ fn article_12_4_7_jump_capture_and_path_capture_are_distinct_moves() {
     assert!(captured.pieces_of(Color::White).is_empty());
 }
 
-// D1-012-05: 獅子の居喰い（第12条8項、第3条14号）。
+// 獅子の居喰い（第12条8項、第3条14号）。
 #[test]
 fn article_12_8_lion_igui() {
     let board = position(
@@ -359,7 +359,7 @@ fn article_12_8_lion_igui() {
     assert_eq!(iguis.len(), 2);
 }
 
-// D1-012-07: じっと不能条件（第12条10項・9項）。
+// じっと不能条件（第12条10項・9項）。
 #[test]
 fn article_12_10_lion_jitto_requires_an_empty_adjacent_square() {
     // 盤隅 (1,1) の獅子。隣接3升がすべて駒（所有者不問）で埋まっている。
@@ -379,7 +379,7 @@ fn article_12_10_lion_jitto_requires_an_empty_adjacent_square() {
     assert!(moves.contains(&mv(msq(1, 1), None, msq(1, 3), false)));
 }
 
-// D1-012-08: 逐次判定（第12条12項）。第1段階の除去後の盤面で第2段階を判定する。
+// 逐次判定（第12条12項）。第1段階の除去後の盤面で第2段階を判定する。
 #[test]
 fn article_12_12_second_stage_judged_sequentially() {
     let board = position(
@@ -399,7 +399,7 @@ fn article_12_12_second_stage_judged_sequentially() {
     assert!(moves.contains(&mv(msq(6, 6), Some(msq(6, 5)), msq(5, 4), false)));
 }
 
-/// D1-012-09 / D1-009-21として、RULES.md第12条第1項から第10項と[`Move`]の正準形を検査する。
+/// RULES.md第12条第1項から第10項と[`Move`]の正準形を検査する。
 /// 裸獅子の25手は、1升移動8手、2升跳び16手、およびじっと1手からなる。
 #[test]
 fn article_12_lone_lion_generates_25_canonical_moves() {

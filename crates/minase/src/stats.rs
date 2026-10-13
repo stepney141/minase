@@ -202,7 +202,7 @@ mod tests {
     use super::*;
     use minase_core::rng::XorShift64;
 
-    // D8-STAT-01(docs/guides/sprt.md統計的手続き節): fishtest本家LLRcalc.pyで事前計算した
+    // docs/guides/sprt.md統計的手続き節に従い、fishtest本家LLRcalc.pyで事前計算した
     // 参照値5件との1e-6以内の一致が外部契約である。この5組は旧テストから
     // 引き継ぐ再取得困難な資産であり、絶対に失ってはならない。
     #[test]
@@ -224,7 +224,7 @@ mod tests {
         }
     }
 
-    // D8-STAT-01(docs/guides/sprt.md統計的手続き節): fishtest本家のコミット
+    // docs/guides/sprt.md統計的手続き節に従い、fishtest本家のコミット
     // b8eecff220b562a0dc2c4e68d1fa02521e06d72cにあるserver/fishtest/stats/
     // LLRcalc.pyのLLR_logistic(0, 10, results)で事前計算した参照値5件と、
     // 公開関数が1e-6以内で一致することを検証する。
@@ -246,9 +246,8 @@ mod tests {
         }
     }
 
-    // D8-STAT-02: 判定は3値(H1/H0/継続)で網羅的・排他的。上側境界超過でH1、
-    // 下側境界超過でH0、境界内は継続。境界同値の比較演算はSPEC_UNCLEAR-01に
-    // つき検証しない。
+    // 判定は3値(H1/H0/継続)で網羅的・排他的。上側境界超過でH1、
+    // 下側境界超過でH0、境界内は継続。境界同値の比較演算は規範文書に明記されていないため検証しない。
     #[test]
     fn gsprt_decision_is_three_way_and_exhaustive() {
         // docs/guides/sprt.mdのα=β=0.05から求め、実装の境界定数を期待側に使わない。
@@ -279,7 +278,7 @@ mod tests {
         assert!((estimate.upper - 33.864_642_936_575).abs() < 1e-9);
     }
 
-    // D8-STAT-07/D8-STAT-03: 点推定はロジスティック写像の逆写像に一致する。
+    // 点推定はロジスティック写像の逆写像に一致する。
     // 平均正規化ペア得点0.75の度数に対し、elo = -400*log10(1/0.75-1)
     // = 400*log10(3) = 190.8485018879…(式から独立に導出)。
     #[test]
@@ -288,7 +287,7 @@ mod tests {
         assert!((estimate.elo - 190.848_501_887_864_98).abs() < 1e-9);
     }
 
-    // D8-STAT-07性質: 同一分布のスケーリング(度数の定数倍)で点推定は不変、
+    // 同一分布のスケーリング(度数の定数倍)で点推定は不変、
     // 信頼区間は狭くなる(観測単位はペアであり、ペア数増で分散推定が締まる)。
     #[test]
     fn frequency_reflection_and_scaling_preserve_elo_properties() {
@@ -301,9 +300,9 @@ mod tests {
         assert!(small.lower <= small.elo && small.elo <= small.upper);
     }
 
-    // D8-STAT-07境界(docs/guides/sprt.md進捗記録の固定局数Elo節): 全勝・全敗の標本では
-    // ロジスティックEloの点推定が無限大になる。出力表現の細部は
-    // SPEC_UNCLEAR-03につき、無限大の符号だけを契約とする。
+    // docs/guides/sprt.md進捗記録の固定局数Elo節に従い、全勝・全敗の標本では
+    // ロジスティックEloの点推定が無限大になる。出力表現の細部は規範文書に
+    // 明記されていないため、無限大の符号だけを実装契約とする。
     #[test]
     fn perfect_and_zero_scores_yield_infinite_estimates() {
         assert_eq!(estimate_elo(&[0, 0, 0, 0, 50]).elo, f64::INFINITY);
@@ -349,7 +348,7 @@ mod tests {
         decisions
     }
 
-    // D8-STAT-05: 合成結果のモンテカルロで検定の健全性を検査する。
+    // 合成結果のモンテカルロで検定の健全性を検査する。
     // 理由は`docs/adr/judge-adoption-by-pentanomial-gsprt.md`にある。
     // 既知の分布から得た合成結果で検定全体を3,000反復する。
     // 真のelo=0ではH1誤採用率8%以下、真のelo=10では検出率90%以上を要求する。
