@@ -219,11 +219,11 @@ struct Report {
     error: Option<String>,
 }
 
-/// MNPT版2のPSTを比較し、検査結果を報告先へ保存する。
+/// FMを持たないMNPT版3のPSTを比較し、検査結果を報告先へ保存する。
 ///
 /// [`super::run`]は`--output-dir`が既に存在すれば何も作らずに拒否する。
 /// 基準か候補がFMを含むMNPT版3なら、この関数も出力ディレクトリを作る前に拒否する。
-/// 版3は`minase-trainer fm scale --fm-scale 0`で版2へ変換できる。
+/// `minase-trainer fm scale --fm-scale 0`でFMを除いた重みを作れる。
 /// それ以外は`fs::create_dir`で出力先を作り、親ディレクトリは作らない。
 /// 作成後の診断エラーでは、その時点までの欄に失敗理由の`error`を加えた`report.json`を保存してから返す。
 /// 作成済みの`.npy`と`.bin`も残し、エラーを返すとコマンドは終了コード1で終わる。
@@ -240,7 +240,7 @@ struct Report {
 /// NPYの仕様は[`pst_sample::write_indices`]に従う。
 /// 教師分類、先読み、対局単位の検証分割は学習と同じ[`Dataset::open`]で決まり、λは[`Dataset::with_lambda`]で設定する。
 pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
-    // 版3だけは報告先の作成前に拒否し、読み込みエラーは診断報告へ保存する。
+    // FMを持つ重みは報告先の作成前に拒否し、読み込みエラーは診断報告へ保存する。
     let models = Models {
         base: Weights::read(&args.base),
         candidate: Weights::read(&args.candidate),
@@ -250,8 +250,8 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
             && weights.engine.fm_weights().is_some()
         {
             return Err(format!(
-                "--{name}: PST comparison diagnostics require PST-only weights (MNPT version 2); \
-                 MNPT version 3 includes FM. Convert it to version 2 with \
+                "--{name}: PST comparison diagnostics require PST-only weights (FM rank 0); \
+                 remove FM with \
                  `minase-trainer fm scale --fm-scale 0` before comparing."
             )
             .into());

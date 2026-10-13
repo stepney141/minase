@@ -534,10 +534,8 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
         record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    let mut original = configuration.document;
+    let original = configuration.document;
     assert_eq!(original["resumes"], json!([]));
-    // 初回の再開で配列を新設し、2回目以降も既存の履歴を保持する。
-    original.as_object_mut().unwrap().remove("resumes");
     let path = fixture.0.join("config.json");
     record::write_json(&path, &original).unwrap();
     let earliest = SystemTime::now()
@@ -571,7 +569,7 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
         assert_eq!(entry["time_limit_hours"], hours);
         assert_eq!(entry["workers"], workers);
     }
-    saved.as_object_mut().unwrap().remove("resumes");
+    saved["resumes"] = json!([]);
     assert_eq!(saved, original);
 }
 
@@ -579,6 +577,7 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
 fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
     for change in [
         "settings",
+        "resumes",
         "device",
         "lr_linear",
         "weight_decay_linear",
@@ -634,6 +633,18 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             .unwrap();
         }
         args.resume = Some(args.output_dir.clone());
+        if change == "resumes" {
+            let path = args.output_dir.join("config.json");
+            let mut saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            saved.as_object_mut().unwrap().remove("resumes");
+            record::write_json(&path, &saved).unwrap();
+            let error = match Session::new(args) {
+                Ok(_) => panic!("resume accepted missing resumes"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("resumes must be an array"));
+            continue;
+        }
         match change {
             "settings" => args.seed += 1,
             "device" => args.device = crate::nnue::options::DeviceKind::Cpu,
@@ -1048,4 +1059,20 @@ fn cpu_result_only_training_records_null_teacher_k_and_resumes() {
     let checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
     assert_eq!(checkpoint.progress.epoch, 2);
     assert_eq!(checkpoint.lambda, 0.0);
+}
+
+#[test]
+fn resume_requires_an_existing_array_without_changing_the_configuration() {
+    let fixture = Fixture::new();
+    let args = fixture.training_args();
+    let path = fixture.0.join("config.json");
+    for mut config in [json!({}), json!({"resumes": null}), json!({"resumes": {}})] {
+        let original = config.clone();
+        record::write_json(&path, &config).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let error = record::append_resume(&path, &mut config, &args, 1, 1).unwrap_err();
+        assert!(error.to_string().contains("resumes must be an array"));
+        assert_eq!(config, original);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
 }

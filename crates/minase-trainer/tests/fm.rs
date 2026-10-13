@@ -313,7 +313,7 @@ fn quarter_changes_only_exponent_and_checksum_and_writes_ordered_report() {
 }
 
 #[test]
-fn conversions_reject_existing_paths_exponent_limit_and_v2_inputs() {
+fn conversions_reject_existing_paths_exponent_limit_and_pst_only_inputs() {
     let f = Fixture::new();
     f.inputs(30);
     assert!(fm::quarter(&f.quarter()).is_err());
@@ -330,9 +330,9 @@ fn conversions_reject_existing_paths_exponent_limit_and_v2_inputs() {
         assert_eq!(fs::read(f.path(name)).unwrap(), b"preserve");
         fs::remove_file(f.path(name)).unwrap();
     }
-    let v2 =
+    let pst_only =
         Pst::from_weights(&vec![[0; 2]; FEATURE_COUNT], v0_piece_values(), 1.0, "test").unwrap();
-    fs::write(f.path("input.bin"), v2.encode()).unwrap();
+    fs::write(f.path("input.bin"), pst_only.encode()).unwrap();
     assert!(fm::quarter(&f.quarter()).is_err());
     assert!(fm::scale(&f.scale(1024)).is_err());
 }
@@ -376,11 +376,12 @@ fn scale_identity_zero_and_mismatch_rejections() {
     fs::remove_file(f.path("output.scale.json")).unwrap();
     let report = fm::scale(&f.scale(0)).unwrap();
     let bytes = fs::read(f.path("output.bin")).unwrap();
-    assert_eq!(&bytes[4..8], &2_u32.to_le_bytes());
+    assert_eq!(&bytes[4..8], &3_u32.to_le_bytes());
+    assert_eq!(&bytes[80 + 13_680 * 4 + 47 * 4..], &[0; 8]);
     let output = Pst::decode(&bytes).unwrap();
     assert!(output.fm_weights().is_none());
     assert_eq!(output.rule_set(), "test");
-    assert_eq!(report.format_version, 2);
+    assert_eq!(report.format_version, 3);
     assert_eq!(report.exponent_after, None);
     assert_eq!(report.max_absolute_embedding, None);
     assert!(report.validation.is_none());

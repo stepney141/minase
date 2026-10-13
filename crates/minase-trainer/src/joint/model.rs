@@ -63,7 +63,7 @@ pub(super) fn read_mask(arrays: &mut BTreeMap<String, npz::Array>) -> Result<Vec
 }
 
 /// MNPT版3の基準と実数の初期値を照合し、鏡映共有と訓練集合のマスクを適用する。
-/// `--base`と`--fm-reference`はともに版3を要求する。
+/// `--base`と`--fm-reference`はともに次元32のFMを要求する。
 /// `--pst-init`の量子化結果は基準のPSTに、`--fm-init`を基準のKで量子化した結果は参照FMに完全一致しなければならない。
 /// PSTの鏡映対は平均し、FMは数え直したマスクで未観測の行を0に戻す。
 /// 戻り値の件数は入力NPZのマスクとの不一致数である。
@@ -76,7 +76,7 @@ pub fn initialize(
     mask: Vec<bool>,
 ) -> Result<(Model, usize)> {
     if base.fm_weights().is_none() || reference.fm_weights().is_none() {
-        return Err("--base and --fm-reference must be MNPT version 3".into());
+        return Err("--base and --fm-reference must contain FM weights (rank 32)".into());
     }
     let mut arrays = npz::decode(&std::fs::read(pst_path)?)?;
     let mg = read_f32(&mut arrays, "middlegame", &[FEATURE_COUNT])?;

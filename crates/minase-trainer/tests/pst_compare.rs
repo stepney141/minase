@@ -369,20 +369,20 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
 }
 
 #[test]
-fn mnpt_v3_base_is_rejected_before_data_loading_without_creating_reports() {
-    assert_mnpt_v3_is_rejected("base");
+fn mnpt_with_fm_base_is_rejected_before_data_loading_without_creating_reports() {
+    assert_mnpt_with_fm_is_rejected("base");
 }
 
 #[test]
-fn mnpt_v3_candidate_is_rejected_before_data_loading_without_creating_reports() {
-    assert_mnpt_v3_is_rejected("candidate");
+fn mnpt_with_fm_candidate_is_rejected_before_data_loading_without_creating_reports() {
+    assert_mnpt_with_fm_is_rejected("candidate");
 }
 
-fn assert_mnpt_v3_is_rejected(name: &str) {
+fn assert_mnpt_with_fm_is_rejected(name: &str) {
     use minase::eval::pst::{FM_RANK, FmWeights};
     let fixture = Fixture::new();
     let signs = [1; FM_RANK];
-    // FM補正が0でも、版3であれば拒否する。
+    // FM補正が0でも、次元32のFMを持てば拒否する。
     for embedding in [2, 0] {
         let u = vec![[embedding; FM_RANK]; FEATURE_COUNT];
         let model = Pst::from_weights_with_fm(
@@ -425,8 +425,7 @@ fn assert_mnpt_v3_is_rejected(name: &str) {
             assert!(error.contains(&format!("--{name}")), "{error}");
             for expected in [
                 "PST-only weights",
-                "MNPT version 2",
-                "MNPT version 3",
+                "FM rank 0",
                 "FM",
                 "minase-trainer fm scale --fm-scale 0",
             ] {

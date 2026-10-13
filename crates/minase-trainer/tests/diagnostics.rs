@@ -12,7 +12,7 @@ use std::{
 use minase::{
     eval::{
         features::{FEATURE_COUNT, PIECE_STATE_COUNT},
-        pst::FM_RANK,
+        pst::{FM_RANK, Pst},
     },
     training::records::{Header, Outcome, Record},
 };
@@ -93,30 +93,26 @@ impl Fixture {
     }
 
     fn baseline(&self, name: &str, linear: &[[f32; 2]], fm: i16) -> PathBuf {
-        // MNPT版3の公開形式。FMの第1次元だけ全特徴をfmとし、補正はfm²*n*(n-1)/2。
-        let mut bytes = b"MNPT".to_vec();
-        bytes.extend(3_u32.to_le_bytes());
-        bytes.extend((FEATURE_COUNT as u32).to_le_bytes());
-        bytes.extend(1016.0_f32.to_le_bytes());
-        bytes.extend(b"engine-default");
-        bytes.resize(80, 0);
-        for e in 0..2 {
-            for row in linear {
-                bytes.extend(((row[e] * 8.0) as i16).to_le_bytes());
-            }
-        }
-        for value in v0_piece_values() {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend((FM_RANK as u32).to_le_bytes());
-        bytes.extend(0_u32.to_le_bytes());
-        bytes.extend([1; FM_RANK]);
-        for _ in 0..FEATURE_COUNT {
-            bytes.extend(fm.to_le_bytes());
-            bytes.extend([0; (FM_RANK - 1) * 2]);
-        }
-        let checksum = Sha256::digest(&bytes[80..]);
-        bytes[48..80].copy_from_slice(&checksum);
+        // FMの第1次元だけ全特徴をfmとし、補正はfm²*n*(n-1)/2。
+        let weights: Vec<_> = linear
+            .iter()
+            .map(|row| row.map(|value| (value * 8.0) as i16))
+            .collect();
+        let mut embedding = [0; FM_RANK];
+        embedding[0] = fm;
+        let bytes = Pst::from_weights_with_fm(
+            &weights,
+            v0_piece_values(),
+            1016.0,
+            "engine-default",
+            minase::eval::pst::FmWeights {
+                embeddings: &vec![embedding; FEATURE_COUNT],
+                signs: &[1; FM_RANK],
+                exponent: 0,
+            },
+        )
+        .unwrap()
+        .encode();
         let path = self.path(name);
         fs::write(&path, bytes).unwrap();
         path

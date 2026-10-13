@@ -341,14 +341,14 @@ fn accumulator_updates_match_full_refresh_across_move_shapes() {
     assert_eq!(before, pst.refresh_accumulator(&lion_capture));
 }
 
-/// 固定長と異なるMNPTが拒否されることを検査する。
+/// 次元0のMNPTの切り詰めと余分なバイトを拒否する。
 #[test]
 fn decode_rejects_invalid_length() {
-    for length in [0, 79, 54_987, 54_989] {
+    for length in [0, 79, 80, 54_987, 54_988, 54_991, 54_992, 54_995, 54_997] {
         let mut bytes = valid_bytes();
         bytes.resize(length, 0);
         assert!(
-            matches!(Pst::decode(&bytes), Err(Error::InvalidLength { expected: 54_988, actual }) if actual == length)
+            matches!(Pst::decode(&bytes), Err(Error::InvalidLength { actual, .. }) if actual == length)
         );
     }
 }
@@ -367,12 +367,14 @@ fn decode_rejects_invalid_magic() {
 /// 未対応のMNPT版が拒否されることを検査する。
 #[test]
 fn decode_rejects_unsupported_version() {
-    let mut bytes = valid_bytes();
-    bytes[4..8].copy_from_slice(&1_u32.to_le_bytes());
-    assert!(matches!(
-        Pst::decode(&bytes),
-        Err(Error::UnsupportedVersion { actual: 1 })
-    ));
+    for version in [1_u32, 2, 4, u32::MAX] {
+        let mut bytes = valid_bytes();
+        bytes[4..8].copy_from_slice(&version.to_le_bytes());
+        assert!(matches!(
+            Pst::decode(&bytes),
+            Err(Error::UnsupportedVersion { actual }) if actual == version
+        ));
+    }
 }
 
 /// MNPT特徴数の不一致が拒否されることを検査する。
@@ -518,7 +520,7 @@ fn decode_rejects_out_of_range_piece_values() {
 #[test]
 fn checksum_covers_both_endpoints_and_piece_values() {
     let bytes = valid_bytes();
-    assert_eq!(bytes.len(), 54_988);
+    assert_eq!(bytes.len(), 54_996);
     let pst = Pst::decode(&bytes).unwrap();
     let expected: [u8; 32] = Sha256::digest(&bytes[80..]).into();
     assert_eq!(pst.checksum(), &expected);
@@ -710,10 +712,10 @@ fn accumulator_invariants_report_mismatch() {
 
 mod fm_tests {
     use super::*;
-    /// v2の本体を保ち、補正0のFM節を加える。
+    /// PSTと駒価値を保ち、次元0のFM節を次元32の零補正へ置き換える。
     fn valid_fm_bytes() -> Vec<u8> {
         let mut bytes = valid_bytes();
-        bytes[4..8].copy_from_slice(&3_u32.to_le_bytes());
+        bytes.truncate(HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4);
         bytes.extend_from_slice(&(FM_RANK as u32).to_le_bytes());
         bytes.extend_from_slice(&0_u32.to_le_bytes());
         bytes.extend_from_slice(&[1; FM_RANK]);
@@ -744,7 +746,7 @@ mod fm_tests {
     #[test]
     fn decode_rejects_invalid_fm_parameters() {
         let offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
-        for rank in [0, 1, FM_RANK as u32 + 1, u32::MAX] {
+        for rank in [1, 31, FM_RANK as u32 + 1, u32::MAX] {
             let mut bytes = valid_fm_bytes();
             bytes[offset..offset + 4].copy_from_slice(&rank.to_le_bytes());
             refresh_checksum(&mut bytes);
@@ -778,8 +780,8 @@ mod fm_tests {
         let baseline = distinct_pst();
         let mut bytes = valid_fm_bytes();
         let baseline_bytes = baseline.encode();
-        bytes[HEADER_LENGTH..baseline_bytes.len()]
-            .copy_from_slice(&baseline_bytes[HEADER_LENGTH..]);
+        let fm_offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+        bytes[HEADER_LENGTH..fm_offset].copy_from_slice(&baseline_bytes[HEADER_LENGTH..fm_offset]);
         refresh_checksum(&mut bytes);
         let pst = Pst::decode(&bytes).unwrap();
         for count in [0, 1, 2, 3, 47, 92, 93, 144] {
@@ -1007,10 +1009,16 @@ mod fm_tests {
         assert_eq!(position.lion_taken_by_non_lion().unwrap().square, sq(5, 3));
     }
 
-    /// v2とv3のヘッダ、PST、駒価値、FM節を再符号化で保存する。
+    /// 次元0と32のヘッダ、PST、駒価値、FM節を再符号化で保存する。
     #[test]
-    fn mnpt_versions_round_trip_without_changing_bytes() {
-        for bytes in [valid_bytes(), valid_fm_bytes(), synthetic_fm_pst().encode()] {
+    fn mnpt_ranks_round_trip_without_changing_bytes() {
+        for bytes in [
+            valid_bytes(),
+            valid_fm_bytes(),
+            synthetic_fm_pst().encode(),
+            EMBEDDED.to_vec(),
+        ] {
+            assert_eq!(&bytes[4..8], &3_u32.to_le_bytes());
             assert_eq!(Pst::decode(&bytes).unwrap().encode(), bytes);
         }
     }
@@ -1037,5 +1045,32 @@ mod fm_tests {
             Pst::decode(&corrupt),
             Err(Error::ChecksumMismatch)
         ));
+    }
+}
+
+/// 次元0では指数0だけを受け付け、FM節も検査和の範囲に含める。
+#[test]
+fn zero_rank_requires_zero_exponent_and_checksums_the_fm_section() {
+    let offset = 80 + 13_680 * 4 + 47 * 4;
+    let bytes = valid_bytes();
+    assert_eq!(bytes.len(), offset + 8);
+    assert_eq!(&bytes[offset..], &[0; 8]);
+    let pst = Pst::decode(&bytes).unwrap();
+    assert!(pst.fm_weights().is_none());
+    let encoded = Pst::from_weights(pst.weights(), pst.piece_values, pst.k(), pst.rule_set())
+        .unwrap()
+        .encode();
+    assert_eq!(encoded, bytes);
+    for exponent in [1_u32, 30, 31, u32::MAX] {
+        let mut corrupt = bytes.clone();
+        corrupt[offset + 4..offset + 8].copy_from_slice(&exponent.to_le_bytes());
+        assert!(matches!(
+            Pst::decode(&corrupt),
+            Err(Error::ChecksumMismatch)
+        ));
+        refresh_checksum(&mut corrupt);
+        assert!(
+            matches!(Pst::decode(&corrupt), Err(Error::InvalidFmExponent { actual }) if actual == exponent)
+        );
     }
 }

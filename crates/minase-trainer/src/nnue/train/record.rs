@@ -256,6 +256,7 @@ pub(super) fn configuration(
 }
 
 /// 再開のたびに`config.json`の`resumes`へ1要素を追記して書き直す。
+/// `resumes`は配列として存在しなければならず、欠落や型の不一致は拒否する。
 /// 要素は整数のUnix秒`resumed_at_unix_seconds`、`epochs`、`patience`、`time_limit_hours`、
 /// 実効ワーカー数`workers`、再開時点の完了エポック番号`epoch`を持つ。
 pub(super) fn append_resume(
@@ -269,9 +270,8 @@ pub(super) fn append_resume(
     let resumes = config
         .as_object_mut()
         .ok_or(Error::Invalid("configuration must be an object"))?
-        .entry("resumes")
-        .or_insert_with(|| json!([]))
-        .as_array_mut()
+        .get_mut("resumes")
+        .and_then(Value::as_array_mut)
         .ok_or(Error::Invalid("configuration resumes must be an array"))?;
     resumes.push(json!({
         "resumed_at_unix_seconds": resumed_at,

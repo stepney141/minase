@@ -158,7 +158,7 @@ GPUメモリの出力はデバイス全体の使用量と確保の前後の差�
 
 ```sh
 minase-trainer diag nnue-distribution \
-  --pair <比較名> <基準のPST＋FM（MNPT版3）> <候補のNNUE（nnue.bin）> \
+  --pair <比較名> <基準のPST＋FM（FMを持つMNPT）> <候補のNNUE（nnue.bin）> \
   --data <データ...> --sample <標本数> --seed <シード> \
   --output <報告.json>
 ```
@@ -195,7 +195,7 @@ minase-trainer diag nnue-moves \
 ```
 
 `--positions`には診断が書き出す合成の由来のMNSDも与えられるが、ヘッダの規則セットがエンジンの既定の規則セット`engine-default`でなければ拒否される。
-`--base`には、PSTとFMの両方を持つMNPT版3を与える。
+`--base`には、PSTとFMの両方を持つMNPTを与える。
 片方のモデルにしかない合法手があった場合は、`error`を含む報告を保存して終了コード1で終わるので、規則か局面の復元の不一致として調べる。
 
 ## 9. 採否を測定して記録する

@@ -5,7 +5,6 @@
 //! 型を統合すると読み取れる記録の範囲が変わるため、読み取り用の型を分けておく。
 //!
 //! 現行の各ファイルの欄は書き手の[`crate::match_runner`]に定める。
-//! 版4だけは測定機を`invocations.json`からではなく`manifest.json`の`cpu`から読む。
 
 use serde::Deserialize;
 use std::{fs::File, io, path::Path};
@@ -77,14 +76,7 @@ impl std::fmt::Display for MachineError {
 impl std::error::Error for MachineError {}
 
 /// すべての起動で同じ測定機を使ったことを確認する。
-pub(super) fn measurement_machine(
-    run_dir: &Path,
-    manifest: &serde_json::Value,
-) -> io::Result<minase::harness::CpuRecord> {
-    if manifest["format_version"] == 4 {
-        return serde_json::from_value(manifest["cpu"].clone())
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error));
-    }
+pub(super) fn measurement_machine(run_dir: &Path) -> io::Result<minase::harness::CpuRecord> {
     #[derive(Deserialize)]
     struct Invocation {
         cpu: minase::harness::CpuRecord,

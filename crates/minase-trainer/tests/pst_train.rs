@@ -151,7 +151,7 @@ impl Drop for Fixture {
     }
 }
 impl Fixture {
-    fn new(large_evaluation: bool, version3: bool) -> (Self, Args) {
+    fn new(large_evaluation: bool, with_fm: bool) -> (Self, Args) {
         let root = std::env::temp_dir().join(format!(
             "pst-training-{}-{}",
             std::process::id(),
@@ -184,14 +184,20 @@ impl Fixture {
         )
         .unwrap()
         .encode();
-        if version3 {
-            initial[4..8].copy_from_slice(&3_u32.to_le_bytes());
-            initial.extend((FM_RANK as u32).to_le_bytes());
-            initial.extend(7_u32.to_le_bytes());
-            initial.extend([1_u8; FM_RANK]);
-            initial.extend(vec![3; FEATURE_COUNT * FM_RANK * 2]);
-            let checksum = Sha256::digest(&initial[80..]);
-            initial[48..80].copy_from_slice(&checksum);
+        if with_fm {
+            initial = Pst::from_weights_with_fm(
+                &weights,
+                v0_piece_values().map(|value| value * 2),
+                317.25,
+                "L0,P0,R1,E0",
+                minase::eval::pst::FmWeights {
+                    embeddings: &vec![[771; FM_RANK]; FEATURE_COUNT],
+                    signs: &[1; FM_RANK],
+                    exponent: 7,
+                },
+            )
+            .unwrap()
+            .encode();
         }
         fs::write(&args.init, initial).unwrap();
         let header =
@@ -593,13 +599,13 @@ fn snapshot(directory: &Path) -> Value {
 
 #[test]
 fn phase_2a_weights_adam_losses_and_outputs_match_b0a245b_bit_for_bit() {
-    // Expected values were captured by executing commit b0a245b, unpacked with
-    // git archive, with compatibility_fixture() and epochs=1,2,3, threads=1.
-    // Command: cargo test --offline -p minase-trainer --test pst_train
-    // capture_b0a245b_compatibility -- --nocapture (temporary capture test).
-    // Array hashes include every f32 bit in little-endian order, including padding.
-    // Losses are the f64 bits read from training.jsonl; elapsed times and paths are excluded.
-    // Checkpoint hashes set elapsed time and both path-dependent hashes to zero before encoding.
+    // 基準値はb0a245bをgit archiveで展開し、compatibility_fixture()で
+    // epochs=1,2,3、threads=1として実行した結果から採った。
+    // 配列はパディングを含む全f32ビット、損失はtraining.jsonlのf64ビットを比べる。
+    // チェックポイントは時間とパス依存のハッシュを0にして符号化する。
+    // MNPTのハッシュだけは次元0の版3へ更新した。使い捨ての検査で、版番号、
+    // 末尾の8バイト、検査和を変更前の配置へ戻した全バイトのSHA-256が旧基準に
+    // 一致し、ほかの基準値が変わらないことを全18条件で確認した。
     let expected: Value = serde_json::from_str(include_str!("fixtures/pst-b0a245b.json")).unwrap();
     for kind in [RemovalReferenceKind::V0, RemovalReferenceKind::Init] {
         let (fixture, mut args) = compatibility_fixture();

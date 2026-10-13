@@ -38,15 +38,15 @@ mkdir data/<実験名>
 git worktree add --detach data/<実験名>/generator <基準コミット>
 cargo build --release --locked --target-dir data/<実験名>/generator/target \
   --manifest-path data/<実験名>/generator/Cargo.toml --bin minase
-cp <基準のPST（MNPT版2）> data/<実験名>/pst-base.bin
+cp <基準のPST（FMを持たないMNPT）> data/<実験名>/pst-base.bin
 sha256sum data/<実験名>/pst-base.bin
 ```
 
-`pst-base.bin`には、重みファイルの形式MNPTの版2（PSTだけ）を使う。
-`pst train`と`fm train`は、PSTとFMを持つ版3のPSTの部分も読める。
-一方、5節のPSTの比較診断は、基準と候補が版2であることを前提に独立に計算した整数のPST評価とエンジンの評価を比べるので、版3を与えると開始時に拒否する。
-`crates/minase/nets/pst.bin`はFMを含む版3であり、そのPSTの部分を版2にした重みは`data/fm-scale-spsa/pst-j75-pst-only.bin`にある。
-倍率を焼き込む前の`joint train`の出力`pst.bin`と、同じ学習の量子化前の重み`pst-float.npz`の組があれば、`minase-trainer fm scale --fm-scale 0`で版3から版2を作れる。
+`pst-base.bin`には、重みファイルの形式MNPTのうち、FMを持たない（FM節の次元が0の）重みを使う。
+`pst train`と`fm train`は、FMを持つMNPTのPSTの部分も読める。
+一方、5節のPSTの比較診断は、基準と候補がFMを持たないことを前提に独立に計算した整数のPST評価とエンジンの評価を比べるので、FMを持つ重みを与えると開始時に拒否する。
+`crates/minase/nets/pst.bin`はFMを持つ重みであり、そのPSTの部分だけの重みは、倍率を焼き込む前の同時学習J75の出力`data/pst-fm-joint-training/j75/pst.bin`と`pst-float.npz`から作れる。
+一般に、倍率を焼き込む前の`joint train`の出力`pst.bin`と、同じ学習の量子化前の重み`pst-float.npz`の組があれば、`minase-trainer fm scale --fm-scale 0`でFMを持たない重みを作れる。
 倍率を焼き込んだ後の重みは量子化前の重みと一致しないので、この変換は拒否される。
 学習の記録（`config.json`）は、基準の重みをパスとヘッダの検査和で、学習データをパス、バイト長、およびヘッダの各欄で識別するだけなので、準備の時点で基準の重みのSHA-256を測定記録に書いておく。
 
@@ -118,7 +118,7 @@ minase-trainer pst train \
 選択と打ち切りの定義は一般的な早期終了と同じであり、典拠と採用の経緯は[PST追加学習の設計書](../plans/archived/pst-longer-training.md)の「早期終了」にある。
 
 結果は`--output-dir`に保存される。
-`pst.bin`はMNPT版2の重み、`pst-float.npz`は量子化前の重み、`training.jsonl`は各エポックの損失の記録、`summary.json`は停止理由、最良エポック、量子化誤差の検査の結果の記録である。
+`pst.bin`はFMを持たないMNPTの重み、`pst-float.npz`は量子化前の重み、`training.jsonl`は各エポックの損失の記録、`summary.json`は停止理由、最良エポック、量子化誤差の検査の結果の記録である。
 `config.json`は引数、入力の検査和、および再開の履歴を持ち、`latest.bin`と`best.bin`は再開用のチェックポイントである。
 学習曲線は`training.jsonl`で確認し、教師値の損失、補助損失、検証損失、最良エポックを読み、更新回数の不足や過学習がないか点検する。
 保存時には重みを1/8センチポーン単位へ量子化し、検証標本で浮動小数点評価との平均絶対誤差が2センチポーン以下であることを確かめる。
@@ -183,13 +183,13 @@ minase-trainer joint train \
   --lookahead-gamma 0.9 --lookahead-plies 40
 ```
 
-`fm train`の出力は、PSTの部分が`--init`と同一のMNPT版3の`fm.bin`と、キー`V`、`a`、`mask`を持つ`fm-float.npz`である。
+`fm train`の出力は、PSTの部分が`--init`と同一でFMを持つMNPTの`fm.bin`と、キー`V`、`a`、`mask`を持つ`fm-float.npz`である。
 FMの成分の数は、エンジンの重みファイルの読み込み処理に合わせて32に固定されている。
 `fm train`の`summary.json`の`status`が`excluded_zero_correction`の場合は、補正を1/4にすると整数の補正がすべての局面で0になるので、その重みを`fm quarter`へ進めない。
 `fm quarter`は、FMの補正を1/4にした重みと、`.quarter.json`で終わる報告を書く。
 指数が上限の30に達した重みは、`fm quarter`が拒否する。
 `joint train`は、学習の開始時に、`--pst-init`を量子化すると`--base`のPSTに、`--fm-init`を量子化すると`--fm-reference`のFMに一致することを検査する。
-出力は、MNPT版3の`pst.bin`と、キー`middlegame`、`endgame`、`V`、`a`、`mask`を持つ`pst-float.npz`である。
+出力は、FMを持つMNPTの`pst.bin`と、キー`middlegame`、`endgame`、`V`、`a`、`mask`を持つ`pst-float.npz`である。
 
 補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[SPSAの手引き](spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整する（先例は[FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)）。
 得た倍率は、次のコマンドで重みファイルへ焼き込んでから段階ゲート（棋力測定）にかける。
@@ -202,7 +202,7 @@ minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実
 `--float`には、PSTの2端点と`V`、`a`を持つNPZが必要であり、`joint train`の`pst-float.npz`を使える。
 `fm train`の`fm-float.npz`はPSTを持たないので使えない。
 `fm quarter`と`fm scale`は、出力の重みや報告のファイルが既にあると拒否する。
-`--fm-scale`には0から1,024までの整数を与え、`--fm-scale 0`ではFMを除いた版2の重みを書き出す。
+`--fm-scale`には0から1,024までの整数を与え、`--fm-scale 0`ではFMを持たない（FM節の次元が0の）重みを書き出す。
 `--data`を与えると、検証標本での整数化の誤差を`.scale.json`の報告に加える。
 現行の`crates/minase/nets/pst.bin`は、J75の出力に`--fm-scale 611`を適用したものである。
 

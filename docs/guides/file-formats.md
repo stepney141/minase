@@ -18,14 +18,14 @@
 教師データは、自己対局や実戦棋譜の局面に教師の探索値と対局結果を付けた学習用のデータである。
 重みは、エンジンの評価関数が読む整数の重みと、学習器が受け渡す浮動小数点の重みである。
 PSTは駒の種類と位置ごとの点数表、FMは2駒の組の関係を補う補正、NNUEは差分更新できるニューラルネットの評価関数である。
+MNPTは、FMを持たない重みをFM節の次元0で、FMを持つ重みを次元32で表す。
 NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コンテナとNPYの配置は`crates/minase-trainer/src/nn/npz.rs`にある。
 
 | 形式 | マジックと版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
 | MNSD（教師データ） | `MNSD`、版1 | `minase data selfplay generate`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、診断、`minase data selfplay inspect` | `crates/minase/src/training/records.rs` |
 | MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train` | エンジン、診断 | `crates/minase/src/eval/nnue/format.rs` |
-| MNPT版2（PSTだけの重み） | `MNPT`、版2 | `minase-trainer pst train`、`minase-trainer fm scale --fm-scale 0` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
-| MNPT版3（PSTとFMの重み） | `MNPT`、版3 | `minase-trainer fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
+| MNPT（PSTの重みとFMの補正） | `MNPT`、版3 | `minase-trainer pst train`、`fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `nnue train --init-pst`、`joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
 | FMの浮動小数点の重み`fm-float.npz`（3配列） | NPZ、版なし | `minase-trainer fm train` | `joint train --fm-init` | `crates/minase-trainer/src/fm/npz.rs` |
 | 同時学習の浮動小数点の重み`pst-float.npz`（5配列） | NPZ、版なし | `minase-trainer joint train` | `fm scale --float`、`nnue train --init-pst`、`joint train`、`diag pst-compare` | `crates/minase-trainer/src/joint/export.rs` |
@@ -80,7 +80,6 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 | 形式 | マジックと版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
 | 対局ハーネスの実行条件`manifest.json` | `format_version = 5` | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
-| 対局ハーネスの旧版の実行条件`manifest.json` | `format_version = 4` | なし | `minase match report` | `crates/minase/src/bin/minase/match_report/run_dir.rs` |
 | 対局ハーネスの起動の記録`invocations.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスの累計実行時間`summary.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/bin/minase/match_runner/storage.rs` |
 | 対局ハーネスのペアの記録`pairs/<番号>.json` | なし | `minase match run` | `minase match run --resume`、`minase match report` | `crates/minase/src/harness/records/mod.rs` |

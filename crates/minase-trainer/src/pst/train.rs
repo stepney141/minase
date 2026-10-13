@@ -15,7 +15,7 @@
 //! | `training.jsonl` | 学習前のエポック0と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ保存する。 |
 //! | `latest.bin` | 最後に検証を終えたモデル、Adamの状態、進捗、累積秒数、照合用ハッシュを`MNTRCKPT`版2で保存する。 |
 //! | `best.bin` | 最良エポックの同じ内容を保存する。 |
-//! | `pst.bin` | 最良モデルをMNPT版2で保存する。 |
+//! | `pst.bin` | 最良モデルをFMの次元0のMNPT版3で保存する。 |
 //! | `pst-float.npz` | 量子化前の実数PSTを[`super::npz::encode_pst_npz`]の形式で保存する。 |
 //! | `summary.json` | 停止理由、最良エポック、量子化検査、初期局面評価を[`Summary`]で保存する。 |
 //!

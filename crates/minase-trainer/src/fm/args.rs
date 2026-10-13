@@ -12,7 +12,7 @@ pub struct Args {
     /// MNSDを、学習中に変更しない入力として指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
-    /// 初期PST、探索用駒価値、K、規則名を持つMNPT版2または版3。
+    /// 初期PST、探索用駒価値、K、規則名を持つMNPT版3。
     #[arg(long)]
     pub init: PathBuf,
     /// 新規の空の出力ディレクトリ。再開時は--resumeと同じ場所。

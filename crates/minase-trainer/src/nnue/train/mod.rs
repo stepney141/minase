@@ -182,7 +182,7 @@ impl Session {
     /// 全MNSDの規則セット名は基準MNPTと一致し、訓練集合と検証集合はどちらも空であってはならない。
     /// 出力用K、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、Kを[`Shape`]へ渡す。
     /// 初期値の鏡映対称性は[`load_initial`]と[`Model::initialize`]で検査する。
-    /// 再開にはconfig.jsonのsettings、inputs、preprocessing、および2つのハッシュの一致を要求する。
+    /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessing、および2つのハッシュの一致を要求する。
     /// 設定ハッシュからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threadsを除く。
     /// 入力パスは正規化したパスと内容のSHA-256をinputsに記録するため、入力ハッシュには含まれる。
     /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
@@ -247,6 +247,9 @@ impl Session {
                 .into());
             }
             let saved: Value = serde_json::from_slice(&std::fs::read(resume.join("config.json"))?)?;
+            if saved.get("resumes").and_then(Value::as_array).is_none() {
+                return Err(Error::Invalid("configuration resumes must be an array").into());
+            }
             // 保存物と再計算値を同じJSON復号経路へ通し、f64の十進復号丸めによる誤拒否を避ける。
             let comparable: Value = serde_json::from_slice(&serde_json::to_vec(&config.document)?)?;
             for field in [

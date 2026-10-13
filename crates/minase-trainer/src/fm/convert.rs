@@ -50,7 +50,7 @@ pub struct ScaleArgs {
     /// `joint train`の`pst-float.npz`を使え、端点のない`fm train`の`fm-float.npz`は使えない。
     #[arg(long)]
     pub float: PathBuf,
-    /// 1024を等倍とする整数倍率。0ではMNPT版2を書く。
+    /// 1024を等倍とする整数倍率。0ではFMの次元0のMNPT版3を書く。
     #[arg(long, value_parser = clap::value_parser!(i32).range(0..=1024))]
     pub fm_scale: i32,
     /// 新規に書くMNPT。隣に.scale.jsonの報告も書く。
@@ -100,9 +100,9 @@ pub struct ScaleReport {
     pub format_version: u32,
     /// 入力FMの指数。
     pub exponent_before: u32,
-    /// 出力FMの指数。版2ではnull。
+    /// 出力FMの指数。FMを持たない場合はnull。
     pub exponent_after: Option<u32>,
-    /// 出力埋め込みの最大絶対値。版2ではnull。
+    /// 出力埋め込みの最大絶対値。FMを持たない場合はnull。
     pub max_absolute_embedding: Option<i32>,
     /// 検証標本での比較。MNSDを指定した場合だけ保存する。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -175,7 +175,9 @@ pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
     let report_path = report_path(&args.output, "quarter.json")?;
     let input = fs::read(&args.input)?;
     let source = Pst::decode(&input)?;
-    let before = source.fm_weights().ok_or("MNPT version 3 required")?;
+    let before = source
+        .fm_weights()
+        .ok_or("MNPT with FM weights (rank 32) required")?;
     if before.exponent == 30 {
         return Err("quarter correction exponent would exceed 30".into());
     }
@@ -198,7 +200,7 @@ pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
 
 /// 整数倍率`0 ≤ s ≤ 1,024`を`a′ = a * s / 1024`として焼き込み、Vを保って指数を探し直す。
 /// 開始前に実数NPZのPSTとFMを量子化し、それぞれ入力MNPTと完全一致することを要求する。
-/// `s = 0`ではMNPT版2、`s = 1024`では入力と同じ重みを出力し、PST、K、駒価値、規則名を保つ。
+/// `s = 0`ではFMの次元0のMNPT版3、`s = 1024`では入力と同じ重みを出力し、PST、K、駒価値、規則名を保つ。
 /// 倍率を推論時に掛けずに重みへ含めることで、エンジンの評価式を変えず重みファイルだけで評価が定まる。
 /// 検証標本の計算は保存前に完了し、書いたMNPTは読み直して検査する。
 /// 報告は`--output`の拡張子を`.scale.json`に替えたパスへ書く。
@@ -213,7 +215,9 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     let report_path = report_path(&args.output, "scale.json")?;
     let input = fs::read(&args.input)?;
     let source = Pst::decode(&input)?;
-    let before = source.fm_weights().ok_or("MNPT version 3 required")?;
+    let before = source
+        .fm_weights()
+        .ok_or("MNPT with FM weights (rank 32) required")?;
     let float_bytes = fs::read(&args.float)?;
     let weights = FloatWeights::decode(&float_bytes)?;
     if crate::pst::export::quantize_weights(&weights.endpoints)? != source.weights().as_slice() {
@@ -241,7 +245,7 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
         float: file_identity(&args.float)?,
         output: crate::identity::mnpt_output_identity(&args.output, &bytes)?,
         fm_scale: args.fm_scale,
-        format_version: if output_fm.is_some() { 3 } else { 2 },
+        format_version: 3,
         exponent_before: before.exponent,
         exponent_after: output_fm.as_ref().map(|fm| fm.exponent),
         max_absolute_embedding: output_fm.as_ref().map(|fm| {

@@ -439,8 +439,8 @@ fn gradients_and_all_adam_elements_are_bitwise_independent_of_threads() {
 
 #[test]
 fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
-    for version3 in [false, true] {
-        let (fixture, args) = Fixture::new(false, version3);
+    for with_fm in [false, true] {
+        let (fixture, args) = Fixture::new(false, with_fm);
         let summary = fm::train(args.clone()).unwrap();
         assert_eq!(summary.last_epoch, 2);
         assert_eq!(summary.gradients.len(), 5);

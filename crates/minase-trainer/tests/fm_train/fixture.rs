@@ -12,7 +12,7 @@ impl Drop for Fixture {
     }
 }
 impl Fixture {
-    pub(super) fn new(large_evaluation: bool, version3: bool) -> (Self, Args) {
+    pub(super) fn new(large_evaluation: bool, with_fm: bool) -> (Self, Args) {
         let root = std::env::temp_dir().join(format!(
             "fm-training-{}-{}",
             std::process::id(),
@@ -44,14 +44,20 @@ impl Fixture {
         )
         .unwrap()
         .encode();
-        if version3 {
-            initial[4..8].copy_from_slice(&3_u32.to_le_bytes());
-            initial.extend((FM_RANK as u32).to_le_bytes());
-            initial.extend(7_u32.to_le_bytes());
-            initial.extend([1_u8; FM_RANK]);
-            initial.extend(vec![3; FEATURE_COUNT * FM_RANK * 2]);
-            let checksum = Sha256::digest(&initial[80..]);
-            initial[48..80].copy_from_slice(&checksum);
+        if with_fm {
+            initial = Pst::from_weights_with_fm(
+                &weights,
+                v0_piece_values().map(|value| value * 2),
+                317.25,
+                "L0,P0,R1,E0",
+                minase::eval::pst::FmWeights {
+                    embeddings: &vec![[771; FM_RANK]; FEATURE_COUNT],
+                    signs: &[1; FM_RANK],
+                    exponent: 7,
+                },
+            )
+            .unwrap()
+            .encode();
         }
         fs::write(&args.init, initial).unwrap();
         let header =

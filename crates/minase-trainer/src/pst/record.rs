@@ -205,7 +205,7 @@ pub enum StopReason {
 /// 量子化検査が不合格でも出力した重みと報告を残し、`quantization`と`initial_position_score`を記録する。
 /// 最良重みの書き出しに失敗した場合は`reason`を加えた同じ形で保存し、この2欄は`null`になる。
 /// エポックの途中の失敗では、この型の代わりに`{status: "error", reason, last_epoch, elapsed_seconds}`だけを保存する。
-/// `initial_position_score`はFMを含まないMNPT版2を[`minase::eval::pst::evaluate_pst`]で評価した値で、手番側視点のセンチポーンである。
+/// `initial_position_score`はFMの次元0のMNPT版3を[`minase::eval::pst::evaluate_pst`]で評価した値で、手番側視点のセンチポーンである。
 /// この関数の評価は±28,999へ切り詰められ、報告時には追加の切り詰めを行わない。
 /// `convergence`は常に`null`である。
 #[derive(Debug, Serialize)]

@@ -1,14 +1,9 @@
 //! 基準MNPTから初期値の照合用PSTと書き出し用の固定値を読む。
 
-use minase::eval::{
-    features::{FEATURE_COUNT, PIECE_STATE_COUNT},
-    pst::Pst,
-};
+use minase::eval::{features::PIECE_STATE_COUNT, pst::Pst};
 use std::{error::Error, path::Path};
 
-const HEADER_BYTES: usize = 80;
-
-/// 基準Mが保持する線形重みと探索用の固定値。
+/// 基準MNPTが保持する線形重みと探索用の固定値。
 #[derive(Debug)]
 pub struct Base {
     /// 特徴番号順の序中盤・終盤重み。単位は1/8センチポーン。
@@ -28,29 +23,11 @@ pub fn read(path: &Path) -> Result<Base, Box<dyn Error>> {
 
 fn decode(bytes: &[u8]) -> Result<Base, Box<dyn Error>> {
     let pst = Pst::decode(bytes)?;
-    // Pst::decodeがヘッダ、固定長、FM節、検査和を検証済み。
-    // 公開APIに線形重みと規則名のgetterがないため、その2項目だけを読む。
-    let middle_end = HEADER_BYTES + FEATURE_COUNT * 2;
-    let end_end = middle_end + FEATURE_COUNT * 2;
-    let linear = bytes[HEADER_BYTES..middle_end]
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .zip(bytes[middle_end..end_end].as_chunks::<2>().0)
-        .map(|(middle, end)| {
-            [
-                i16::from_le_bytes([middle[0], middle[1]]),
-                i16::from_le_bytes([end[0], end[1]]),
-            ]
-        })
-        .collect();
     Ok(Base {
-        linear,
+        linear: pst.weights().to_vec(),
         piece_values: std::array::from_fn(|state| pst.piece_value_of_state(state)),
         k: pst.k(),
-        rule_set: std::str::from_utf8(&bytes[16..48])?
-            .trim_end_matches('\0')
-            .to_owned(),
+        rule_set: pst.rule_set().to_owned(),
     })
 }
 
@@ -59,32 +36,27 @@ mod tests {
     use super::*;
     use crate::nn::sha256;
     use crate::nnue::reference::v0_piece_values;
-    use minase::eval::pst::FM_RANK;
+    use minase::eval::{
+        features::FEATURE_COUNT,
+        pst::{FM_RANK, FmWeights},
+    };
 
     /// MNPT版3の配置で作る。
     /// 両端点、規則名、Kは基準の埋め込み値と異なる既知の値を使う。
     fn fixture() -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"MNPT");
-        bytes.extend_from_slice(&3_u32.to_le_bytes());
-        bytes.extend_from_slice(&(FEATURE_COUNT as u32).to_le_bytes());
-        bytes.extend_from_slice(&317.25_f32.to_le_bytes());
-        bytes.extend_from_slice(b"L1,P0,R1,E0");
-        bytes.resize(80, 0);
-        for endpoint in [123_i16, -456_i16] {
-            for _ in 0..FEATURE_COUNT {
-                bytes.extend_from_slice(&endpoint.to_le_bytes());
-            }
-        }
-        for value in v0_piece_values() {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        bytes.extend_from_slice(&(FM_RANK as u32).to_le_bytes());
-        bytes.extend_from_slice(&7_u32.to_le_bytes());
-        bytes.extend(std::iter::repeat_n(1_u8, FM_RANK));
-        bytes.resize(bytes.len() + FEATURE_COUNT * FM_RANK * 2, 0);
-        rehash(&mut bytes);
-        bytes
+        Pst::from_weights_with_fm(
+            &vec![[123, -456]; FEATURE_COUNT],
+            v0_piece_values(),
+            317.25,
+            "L1,P0,R1,E0",
+            FmWeights {
+                embeddings: &vec![[0; FM_RANK]; FEATURE_COUNT],
+                signs: &[1; FM_RANK],
+                exponent: 7,
+            },
+        )
+        .unwrap()
+        .encode()
     }
 
     fn rehash(bytes: &mut [u8]) {

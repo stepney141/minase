@@ -161,7 +161,10 @@ pub(super) fn write_best(
     let mut features = Vec::new();
     active_features(&initial, |feature| features.push(feature));
     let initial_position_score = (i64::from(pst::evaluate_pst(&written, &initial))
-        + correction(written.fm_weights().expect("exported version 3"), &features))
+        + correction(
+            written.fm_weights().expect("exported FM weights"),
+            &features,
+        ))
     .clamp(-28999, 28999) as i32;
     Ok(Exported {
         status: if zero.identically_zero {

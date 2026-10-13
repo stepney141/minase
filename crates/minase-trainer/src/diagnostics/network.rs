@@ -71,13 +71,38 @@ impl IntegerNetwork {
 }
 
 /// MNPTを復号し、PSTとFMの両方を持つ版3だけを受理する。
-/// オフセット4のu32の版番号が3であることを要求し、版2を拒否する。
+/// FMの次元が32であることを要求し、次元0を拒否する。
 pub(super) fn read_baseline(path: &Path) -> Result<Pst> {
     let bytes = std::fs::read(path)?;
     let pst = Pst::decode(&bytes)?;
-    // 復号済みなのでヘッダ長と版の位置は検査済み。
-    if bytes[4..8] != 3_u32.to_le_bytes() {
-        return Err(format!("{}: baseline must be MNPT version 3", path.display()).into());
+    if pst.fm_weights().is_none() {
+        return Err(format!(
+            "{}: baseline must contain FM weights (rank 32)",
+            path.display()
+        )
+        .into());
     }
     Ok(pst)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 版3でもFMの次元0なら、FMを要する診断の基準には使えない。
+    #[test]
+    fn baseline_requires_fm_weights() {
+        let nets = Path::new(env!("CARGO_MANIFEST_DIR")).join("../minase/nets");
+        let error = match read_baseline(&nets.join("pst-init.bin")) {
+            Ok(_) => panic!("PST-only baseline was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("must contain FM weights"));
+        assert!(
+            read_baseline(&nets.join("pst.bin"))
+                .unwrap()
+                .fm_weights()
+                .is_some()
+        );
+    }
 }

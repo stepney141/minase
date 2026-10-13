@@ -103,7 +103,7 @@ struct Removal {
 /// `piece_count`は盤上駒数、`phase_numerator`は位相分子q、`evaluations`は`{base, candidate}`の独立整数PST参照評価である。
 /// `removals`は[`Removal`]の配列である。
 /// `total_evaluations`はエンジン全体の評価との一致を確認した`evaluations`と同じ値である。
-/// 呼び手はMNPT版2だけを受理するため、全体評価にFMを含まない。
+/// 呼び手はFMを持たない重みだけを受理するため、全体評価にFMを含まない。
 /// `promotions`は`{base, candidate}`の各値に[`Promotion`]の配列を持ち、成り手がなければその値を`null`とする。
 /// `promotion_reason`は基準に合法な成り手がなければ`"no legal promotion"`、あれば`null`である。
 #[derive(Serialize)]
@@ -134,7 +134,7 @@ struct AfterPosition {
 /// `move`はUSI表記、`capture`は盤上駒数が減ったか、`promote`は常に真、`terminal`は着手後に終局したかである。
 /// `delta = −after_opposite − before`、`placement = after_same − before`、`turn = −(after_opposite + after_same)`を保存する。
 /// `after_same`と`after_opposite`も保存し、各評価と差分の`_pst`版はFMを除いたPSTだけの値である。
-/// MNPT版2では両系列の値は等しく、`after`に[`AfterPosition`]を持つ。
+/// FMを持たない重みでは両系列の値は等しく、`after`に[`AfterPosition`]を持つ。
 #[derive(Serialize)]
 struct Promotion {
     r#move: String,

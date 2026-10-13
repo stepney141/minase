@@ -351,7 +351,7 @@ fn adam_matches_bias_corrected_formula_updates_absent_rows_and_clamps() {
 }
 
 #[test]
-fn ties_to_even_mnpt_v2_and_npz_preserve_endpoints_and_metadata() {
+fn ties_to_even_mnpt_rank_zero_and_npz_preserve_endpoints_and_metadata() {
     let fixture = Fixture::new(&positions());
     let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
     let values = [
@@ -372,7 +372,8 @@ fn ties_to_even_mnpt_v2_and_npz_preserve_endpoints_and_metadata() {
     let values = v0_piece_values().map(|value| value * 2);
     let pst = Pst::from_weights(&quantized, values, 317.25, "L1,P0,R1,E0").unwrap();
     let bytes = pst.encode();
-    assert_eq!(&bytes[4..8], &2_u32.to_le_bytes());
+    assert_eq!(&bytes[4..8], &3_u32.to_le_bytes());
+    assert_eq!(&bytes[80 + 13_680 * 4 + 47 * 4..], &[0; 8]);
     let written = Pst::decode(&bytes).unwrap();
     assert_eq!(written.weights().as_slice(), quantized);
     assert_eq!(written.k(), 317.25);

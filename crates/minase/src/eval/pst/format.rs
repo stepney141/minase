@@ -1,11 +1,33 @@
-//! MNPT形式の学習PST重みを復号し、ヘッダと駒価値を検証する。
+//! MNPT版3のバイト配置と検証を定める。
+//! 多バイト数値はリトルエンディアンで、ヘッダは80バイトである。
+//! ヘッダの`0..4`は識別子`MNPT`、`4..8`は版u32の3、`8..12`は特徴数u32の13,680である。
+//! `12..16`は勝率尺度Kのf32で正の有限値、`16..48`はUTF-8の規則セット名である。
+//! 規則名はNULを含まない最大32バイトの文字列で、空文字列も認め、不足分を0で埋める。
+//! `48..80`はFM節を含む本体全体（オフセット80から末尾まで）のSHA-256の32バイトである。
+//!
+//! 本体は序中盤のPST重み`i16[13680]`、終盤のPST重み`i16[13680]`、
+//! 探索用駒価値`i32[47]`、FM節の順に並ぶ。
+//! 本体先頭からの位置は順に0、27,360、54,720、54,908であり、ファイル先頭からは80を足す。
+//! PST重みは特徴番号順、単位は1/8センチポーンで、i16の全範囲を受理する。
+//! 駒価値は駒状態番号順、単位はセンチポーンで、0〜28,999とする。
+//! 盤上に現れ得る非王駒の値は正で、王と太子の値は最大非王駒価値と歩価値の和に一致しなければならない。
+//!
+//! FM節の`0..4`は次元Dのu32で0または32、`4..8`は量子化尺度の2進指数のu32である。
+//! Dが0なら指数も0とし、FM節はこの8バイトだけで終わる。復号後のFMはNoneとなる。
+//! Dが32なら指数は0〜30とし、続けて各次元の符号`i8[32]`（+1または−1）、
+//! 特徴番号ごとに32個を連続して置く埋め込み`i16[13680][32]`を格納する。
+//! 埋め込みはi16の全範囲を受理し、自己相互作用項は復号時に導出する。
+//! FM節の長さは`8 + D + 13,680×D×2`バイトである。
+//! 読み手は次元の欄まで読めることを確認してからDを検査し、
+//! ファイル長が`80 + 13,680×4 + 47×4 + 8 + D + 13,680×D×2`と一致することを確かめる。
+//! 版3以外、未定義の次元・指数・符号、切り詰め、余分なバイト、検査和の不一致は拒否する。
 
 use core::fmt;
 
 use sha2::{Digest, Sha256};
 
 use super::features::{FEATURE_COUNT, piece_state};
-use super::fm::{ENCODED_LENGTH, FM_RANK, Fm};
+use super::fm::{FM_RANK, Fm};
 use super::{EVALUATION_LIMIT, PIECE_STATE_COUNT, Pst};
 use minase_core::{Color, PieceCode, PieceKind};
 
@@ -15,7 +37,7 @@ pub(super) const HEADER_LENGTH: usize = 80;
 const FORMAT_VERSION: u32 = 3;
 
 impl Pst {
-    /// 学習済みの2端点と探索用駒価値から、FM補正を持たないMNPT版2を作る。
+    /// 学習済みの2端点と探索用駒価値から、FM補正を持たないMNPT版3を作る。
     ///
     /// 重みは特徴番号順、各行は序中盤・終盤の順で、単位は1/8センチポーン。
     /// 配列長、駒価値、正の有限なK、32バイト以内でNULを含まない規則名を検査する。
@@ -48,12 +70,11 @@ impl Pst {
         Self::decode(&candidate.encode())
     }
 
-    /// 復号時の版と規則セットを保ち、MNPTバイト列へ符号化する。
+    /// 規則セットを保ち、MNPT版3へ符号化する。
     pub fn encode(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"MNPT");
-        bytes
-            .extend_from_slice(&(if self.fm.is_some() { FORMAT_VERSION } else { 2 }).to_le_bytes());
+        bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
         bytes.extend_from_slice(&(FEATURE_COUNT as u32).to_le_bytes());
         bytes.extend_from_slice(&self.k.to_le_bytes());
         bytes.extend_from_slice(&self.rule_set);
@@ -68,6 +89,8 @@ impl Pst {
         }
         if let Some(fm) = &self.fm {
             fm.encode_into(&mut bytes);
+        } else {
+            bytes.extend_from_slice(&[0; 8]);
         }
         let checksum = Sha256::digest(&bytes[HEADER_LENGTH..]);
         bytes[48..80].copy_from_slice(&checksum);
@@ -76,10 +99,10 @@ impl Pst {
 
     /// MNPTバイト列を検証し、学習PSTへ復号する。
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
-        let expected_length = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
+        let fm_offset = HEADER_LENGTH + FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4;
         if bytes.len() < HEADER_LENGTH {
             return Err(Error::InvalidLength {
-                expected: expected_length,
+                expected: HEADER_LENGTH,
                 actual: bytes.len(),
             });
         }
@@ -88,15 +111,20 @@ impl Pst {
             return Err(Error::InvalidMagic { actual: magic });
         }
         let version = read_u32(bytes, 4);
-        if !matches!(version, 2 | FORMAT_VERSION) {
+        if version != FORMAT_VERSION {
             return Err(Error::UnsupportedVersion { actual: version });
         }
-        let expected_length = expected_length
-            + if version == FORMAT_VERSION {
-                ENCODED_LENGTH
-            } else {
-                0
-            };
+        if bytes.len() < fm_offset + 4 {
+            return Err(Error::InvalidLength {
+                expected: fm_offset + 4,
+                actual: bytes.len(),
+            });
+        }
+        let rank = read_u32(bytes, fm_offset);
+        if rank != 0 && rank != FM_RANK as u32 {
+            return Err(Error::UnexpectedFmRank { actual: rank });
+        }
+        let expected_length = fm_offset + 8 + rank as usize * (1 + FEATURE_COUNT * 2);
         if bytes.len() != expected_length {
             return Err(Error::InvalidLength {
                 expected: expected_length,
@@ -158,11 +186,15 @@ impl Pst {
             })
             .fold(0, i32::max);
         Ok(Self {
-            fm: if version == FORMAT_VERSION {
+            fm: if rank != 0 {
                 Some(Fm::decode(
                     &body[FEATURE_COUNT * 4 + PIECE_STATE_COUNT * 4..],
                 )?)
             } else {
+                let exponent = read_u32(bytes, fm_offset + 4);
+                if exponent != 0 {
+                    return Err(Error::InvalidFmExponent { actual: exponent });
+                }
                 None
             },
             rule_set: rule_set.try_into().expect("validated rule-set length"),
@@ -178,7 +210,7 @@ impl Pst {
 /// MNPTバイト列の検証失敗。
 #[derive(Clone, PartialEq, Debug)]
 pub enum Error {
-    /// ファイル長がヘッダと重み本体の固定長に一致しない。
+    /// ファイル長がヘッダとFMの次元から導いた長さに一致しない。
     InvalidLength {
         /// 期待するファイル長。
         expected: usize,
@@ -200,12 +232,12 @@ pub enum Error {
         /// 読み取った特徴数。
         actual: u32,
     },
-    /// FMの潜在次元が埋め込み候補の次元と異なる。
+    /// FMの潜在次元が0でも32でもない。
     UnexpectedFmRank {
         /// 読み取った次元。
         actual: u32,
     },
-    /// FMの量子化指数が0から30の範囲外である。
+    /// FMの量子化指数が、次元0では0、次元32では0〜30という条件を満たさない。
     InvalidFmExponent {
         /// 読み取った指数。
         actual: u32,
@@ -273,7 +305,7 @@ impl fmt::Display for Error {
             ),
             Self::UnexpectedFmRank { actual } => write!(
                 formatter,
-                "invalid MNPT FM rank: expected {FM_RANK}, got {actual}"
+                "invalid MNPT FM rank: expected 0 or {FM_RANK}, got {actual}"
             ),
             Self::InvalidFmExponent { actual } => {
                 write!(formatter, "invalid MNPT FM exponent: {actual}")

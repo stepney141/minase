@@ -117,7 +117,7 @@ fn quantized(model: &Model, base: &Pst) -> Result<Pst> {
 }
 fn integer(network: &Pst, position: &Position, features: &[usize]) -> i32 {
     (i64::from(evaluate_pst(network, position))
-        + fm::report::correction(network.fm_weights().expect("joint version 3"), features))
+        + fm::report::correction(network.fm_weights().expect("joint FM weights"), features))
     .clamp(-28999, 28999) as i32
 }
 /// 実数の合算評価と整数の合算評価の絶対誤差を検証標本で測る。

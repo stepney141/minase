@@ -20,7 +20,7 @@ pub struct MovesArgs {
     /// 比較するMNUE版5。
     #[arg(long)]
     net: PathBuf,
-    /// 基準とするMNPT版3。
+    /// 基準とする、次元32のFMを持つMNPT版3。
     #[arg(long)]
     base: PathBuf,
     /// 全合法手を調べるMNSD局面。合成の由来も受理する。
