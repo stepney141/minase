@@ -22,4 +22,5 @@
 
 ## 結果
 
-ソースの配置を変えた4つの作業（[探索部と評価関数のモジュール再編](../plans/search-eval-layout.md)、[中核モジュールの再編](../plans/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/bin-harness-layout.md)、[学習ツールの再編](../plans/train-tools-layout.md)）は、設計書を持つが、状態表に行がない。
+ソースの配置を変えた4つの作業（[探索部と評価関数のモジュール再編](../plans/search-eval-layout.md)、[中核モジュールの再編](../plans/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/bin-harness-layout.md)、[学習ツールの再編](../plans/train-tools-layout.md)）は、それぞれ設計書を持つ作業として行われた。
+これらは2026年10月13日に、設計書を持つ作業はすべて状態表に載せるという方針で状態表へ加えたが、本決定との関係は整理されていない。

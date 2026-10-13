@@ -73,6 +73,10 @@
 | 補正1/4のFMの現行PSTへの再学習 | [plans/fm-quarter-current-pst.md](plans/fm-quarter-current-pst.md) | 完了（一部不採用） | 2026年10月7日 |
 | 採用PSTの追加学習のエポック数の延長 | [plans/pst-longer-training.md](plans/pst-longer-training.md) | 完了（採用） | 2026年10月6日 |
 | 世代3の教師データによるPSTの再学習とデータ半分割の診断 | [plans/pst-gen3.md](plans/pst-gen3.md) | 完了（採用） | 2026年10月3日 |
+| 探索部と評価関数のモジュール再編 | [plans/search-eval-layout.md](plans/search-eval-layout.md) | 完了（採用） | 2026年9月26日 |
+| 中核モジュールの再編 | [plans/core-layout.md](plans/core-layout.md) | 完了（採用） | 2026年9月27日 |
+| 実行ファイルと対局ハーネスのモジュール再編 | [plans/bin-harness-layout.md](plans/bin-harness-layout.md) | 完了（採用） | 2026年9月27日 |
+| 学習ツールの再編 | [plans/train-tools-layout.md](plans/train-tools-layout.md) | 完了（採用） | 2026年10月3日 |
 | ライブラリとエンジンのcrate分割 | [plans/crate-split.md](plans/crate-split.md) | 完了（採用） | 2026年10月4日 |
 | 補助ツールのサブコマンド化 | [plans/cli-subcommands.md](plans/cli-subcommands.md) | 完了（採用） | 2026年10月5日 |
 | 測定の再開条件の簡素化 | [plans/match-resume-simplification.md](plans/match-resume-simplification.md) | 完了（採用） | 2026年10月5日 |
