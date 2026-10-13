@@ -45,21 +45,23 @@ impl MoveRules {
             .any(|lion| is_tsukegui(position, mv, lion));
         if !move_is_tsukegui
             && let Some(trigger) = position.lion_taken_by_non_lion()
-            && captured_lions.into_iter().flatten().any(|lion| {
+            && captured_lions.into_iter().flatten().any(|lion_square| {
                 // L2採用時、麒麟が成った獅子への直後の取り返しは禁止しない(第29条L2)。
                 let l2_exemption = self.l2
                     && trigger.by_kirin_promotion
-                    && lion == trigger.square
-                    && position.piece_at(lion).is_some_and(PieceCode::is_promoted);
+                    && lion_square == trigger.square
+                    && position
+                        .piece_at(lion_square)
+                        .is_some_and(PieceCode::is_promoted);
                 // L1は足の有無にかかわらず非獅子による取り返しを禁じ、
-                // 標準規則(L0)は取った側に残る獅子に足がある場合だけ禁じる(第29条)。
+                // 標準規則(L0)は獅子のいた升への利きで足を判定し、足がある場合だけ禁じる(第13条・第15条)。
                 !l2_exemption
                     && match self.lion {
                         LionRule::L1 => moving_kind != Some(PieceKind::Lion),
                         LionRule::L0 { l4 } => {
                             // L4は禁止を非獅子の駒による捕獲に限定する(第29条L4)。
                             !(l4 && moving_kind == Some(PieceKind::Lion))
-                                && lion_has_foot_after_capture(self, position, mv, lion)
+                                && lion_has_foot_after_capture(self, position, mv, lion_square)
                         }
                     }
             })
@@ -116,6 +118,7 @@ fn is_tsukegui(position: &Position, mv: Move, lion_square: Square) -> bool {
 
 /// 獅子による相手獅子の捕獲が第14条・第16条を満たすかどうかを返す。隣接していれば
 /// 無条件に取れる。距離2では、付け喰いが成立するか、取られる獅子に足がない場合に限る。
+/// 足は獅子を取った段階の直後の仮想盤面で、その獅子のいた升への利きにより判定する（第13条）。
 fn lion_capture_is_legal(
     rules: MoveRules,
     position: &Position,
@@ -136,15 +139,19 @@ fn lion_capture_is_legal(
     }
 }
 
-/// 相手獅子を取った後の仮想盤面で、取られた側の駒が到達升へ疑似利きを持つかを調べる。
+/// 獅子を取った段階の直後の仮想盤面で、取られた側の駒が獅子のいた`lion_square`へ疑似利きを持つかを調べる。
+/// 居喰いや第1段階での捕獲でも、到達升ではなくこの升で判定する（RULES.md第13条第3項と第8項）。
 ///
 /// [`Position::attackers_to_by`]による疑似利きなので、取り返す手に獅子の捕獲制限を
 /// 再帰的に適用せず（RULES.md第13条第7項）、王駒や取られ得る駒も除かない
 /// （第13条第5項、第6項）。
 /// 取られた獅子を除いた盤面を使うので、裏足も通る（第13条第2項）。
+/// 獅子を取った駒を移動元から`lion_square`へ移し、その段階までに取られた駒を除く（第13条第4項と第9項）。
+/// 獅子を取った後の移動と捕獲は反映しない。
 ///
 /// L3を採用しない場合、到達升で獅子を取る手では、経由升で取った歩兵または仲人が
-/// 取られる前の升から到達升へ利いていたことも足とみなす（第16条第8項から第10項）。
+/// 取られる前の升から`lion_square`へ利いていたことも足とみなす（第16条第8項から第10項と第13項）。
+/// この場合は`mv.to`と`lion_square`が一致する。
 /// 占有を戻す方式を採らない理由は`docs/adr/judge-pawn-foot-by-control-before-capture.md`にある。
 fn lion_has_foot_after_capture(
     rules: MoveRules,
@@ -156,7 +163,11 @@ fn lion_has_foot_after_capture(
         .piece_at(lion_square)
         .and_then(|piece| piece.color())
         .expect("capture square must contain a lion");
-    let board = VirtualBoard::after_move(position, mv);
+    let board = if mv.mid == Some(lion_square) {
+        VirtualBoard::new(position, defending_color.opposite(), mv.from).move_to(lion_square)
+    } else {
+        VirtualBoard::after_move(position, mv)
+    };
 
     let captured_pawn_or_go_between_had_foot = if rules.l3 {
         false
@@ -169,15 +180,14 @@ fn lion_has_foot_after_capture(
                         return false;
                     };
                     piece_control_with_occupancy(board.occupied, defending_color, kind, mid)
-                        .contains(mv.to)
+                        .contains(lion_square)
                 })
             })
     };
 
-    debug_assert!(board.own.contains(mv.to));
-    debug_assert!(!board.enemy.contains(mv.to));
+    debug_assert!(!board.enemy.contains(lion_square));
+    // 逆引きは元の駒配置を参照するので、獅子を取った段階までに取られた駒を足の候補から除く。
     captured_pawn_or_go_between_had_foot
-        || !position
-            .attackers_to_by(defending_color, mv.to, board.occupied)
+        || !(position.attackers_to_by(defending_color, lion_square, board.occupied) & board.enemy)
             .is_empty()
 }

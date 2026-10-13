@@ -61,8 +61,9 @@ pub(crate) fn has_no_legal_move(
 
 /// 手番側が詰みかを返す。
 ///
-/// 王駒捕獲、R2またはR3で許される回避手、および第21条第3項cの即時勝利を
-/// 回避手として扱い、すべての仮想着手後に局面を復元する。
+/// 王駒捕獲、R2またはR3で許される捕獲回避手、および第21条第3項c・dの即時勝利・
+/// 引き分けを回避手として扱う。着手側の即時敗北は回避手としない。
+/// すべての仮想着手後に局面を復元する。
 ///
 /// 捕獲を含む手は駒数、成りを含む手は駒種が不可逆に変わるので既出局面を再現せず、
 /// R2とR3では禁じられない。
@@ -81,25 +82,24 @@ pub(crate) fn is_mate(position: &mut Position, context: &AdjudicationContext<'_>
         return false;
     }
 
-    let mut has_legal_move = false;
+    let mover = position.side_to_move();
     for mv in moves {
         if captures_last_royal(position, mv) {
             return false;
         }
 
         let undo = position.make_move_unchecked(mv, context.rules.moves);
-        has_legal_move = true;
-        if context.candidate_is_immediate_win(position, mv, &undo) {
-            position.unmake_move(undo);
-            return false;
-        }
-        let opponent_can_capture_last_royal = can_capture_last_royal(position, context.generator);
+        let escapes_mate = match context.candidate_immediate_result(position, mv, &undo) {
+            Some(GameResult::Win { winner, .. }) => winner == mover,
+            Some(GameResult::Draw { .. }) => true,
+            None => !can_capture_last_royal(position, context.generator),
+        };
         position.unmake_move(undo);
 
-        if !opponent_can_capture_last_royal {
+        if escapes_mate {
             return false;
         }
     }
 
-    has_legal_move
+    true
 }

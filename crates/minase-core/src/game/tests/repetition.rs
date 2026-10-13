@@ -203,6 +203,46 @@ fn article_31_r1_sole_continuous_checker_loses() {
 }
 
 #[test]
+fn article_31_r1_standing_threat_to_either_royal_counts_as_attacking() {
+    // R1は王将と太子の一方だけを取れる場合も攻撃的着手とする。
+    // 動かさない飛車が王駒に利き、往復する金将には捕獲手がない局面で判定する。
+    let king = piece(Color::White, PieceKind::King);
+    let prince = prince(Color::White);
+    for (threatened, remaining) in [(king, prince), (prince, king)] {
+        let mut game = game(position(
+            Color::Black,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(3, 3), piece(Color::Black, PieceKind::Rook)),
+                (sq(1, 5), piece(Color::Black, PieceKind::GoldGeneral)),
+                (sq(3, 10), threatened),
+                (sq(11, 11), remaining),
+                (sq(8, 8), piece(Color::White, PieceKind::GoldGeneral)),
+            ],
+        ));
+        let cycle = [
+            step(sq(1, 5), sq(1, 6)),
+            step(sq(8, 8), sq(8, 7)),
+            step(sq(1, 6), sq(1, 5)),
+            step(sq(8, 7), sq(8, 8)),
+        ];
+
+        for ply in 1..=11 {
+            assert_eq!(
+                game.play(cycle[(ply - 1) % cycle.len()]),
+                Ok(GameStatus::Ongoing),
+                "threatened: {threatened:?}, ply: {ply}"
+            );
+        }
+        assert_eq!(
+            game.play(cycle[3]),
+            win(Color::White, WinReason::Repetition),
+            "threatened: {threatened:?}"
+        );
+    }
+}
+
+#[test]
 fn article_31_r1_capture_threats_count_and_standing_threats_do_not() {
     // 攻撃的着手は王手に限らず、動かした駒が到達升から相手の
     // いずれかの駒を直ちに捕獲できる状態にする着手を含む。一方、動かさな

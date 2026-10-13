@@ -71,7 +71,7 @@ fn article_20_3_capturing_the_prince_alone_continues_the_game() {
         ],
     ));
 
-    // (11,0)の飛車が黒王将へ王手をかけたまま、太子だけを取る。
+    // (11,0)の飛車による黒王将への利きを保ったまま、太子だけを取る。
     assert_eq!(
         game.play(step(sq(5, 11), sq(5, 5))),
         Ok(GameStatus::Ongoing)

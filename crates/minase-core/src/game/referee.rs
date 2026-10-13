@@ -1,8 +1,6 @@
 //! 対局の進行管理。着手の受理と検証、終局裁定の呼出し、対局結果の保持を担う。
 
-use super::adjudication::{
-    AdjudicationContext, AdjudicationState, adjudicate_after_move, promoted_waiting_square,
-};
+use super::adjudication::{AdjudicationContext, AdjudicationState, adjudicate_after_move};
 use super::repetition::{
     RepetitionHistory, repetition_is_forbidden, retain_repetition_allowed_moves,
 };
@@ -66,7 +64,6 @@ impl Game {
                 cause: IllegalMoveCause::Repetition,
             });
         }
-        let promoted_waiting_piece = promoted_waiting_square(mv, &undo);
         let repetition_result =
             self.adjudication
                 .record_move(&self.position, &self.generator, mover, mv, &undo);
@@ -74,7 +71,6 @@ impl Game {
             &mut self.position,
             AdjudicationContext::new(self.rules, &self.adjudication, &self.generator),
             mover,
-            promoted_waiting_piece,
             repetition_result,
         );
         self.adjudication

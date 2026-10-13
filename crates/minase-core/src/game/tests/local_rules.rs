@@ -81,8 +81,8 @@ fn article_32_e2_disables_all_piece_exhaustion_adjudication() {
 
 #[test]
 fn article_32_e3_enough_effective_pieces_adjudicate_the_bare_king_loss() {
-    // (a)王駒1枚以上を含む価値ある駒2枚以上、(b)裸玉側の王手
-    // なし、(c)3枚以上または全て非隣接、がすべて成立すると裸玉側の負け。
+    // (a)王駒1枚以上を含む価値ある駒2枚以上、(b)裸玉側が相手のいずれの王駒も
+    // 取れない、(c)3枚以上または全て非隣接、がすべて成立すると裸玉側の負け。
     // 価値ある駒が3枚以上あれば隣接の有無は問わない。
     let mut adjacent_three = bare_king_game(position(
         Color::Black,
@@ -151,9 +151,9 @@ fn article_32_e3_two_pieces_with_adjacency_defer_the_loss() {
 }
 
 #[test]
-fn article_32_e3_bare_side_giving_check_defers_the_loss() {
-    // 裸玉側が相手王駒へ王手をかけている間は(b)が不成立となり
-    // 裁定を保留する。王手が解消された後の着手完了時に改めて判定する。
+fn article_32_e3_bare_side_threatening_a_royal_defers_the_loss() {
+    // 裸玉側が相手王駒を取れる間は(b)が不成立となり裁定を保留する。
+    // 捕獲できなくなった後の着手完了時に改めて判定する。
     let mut game = bare_king_game(position(
         Color::Black,
         &[
@@ -164,13 +164,44 @@ fn article_32_e3_bare_side_giving_check_defers_the_loss() {
         ],
     ));
 
-    // 黒王将が白玉将に隣接して王手をかけるため保留される。
+    // 黒王将が白玉将に隣接して捕獲できるため保留される。
     assert_eq!(game.play(step(sq(5, 4), sq(5, 5))), Ok(GameStatus::Ongoing));
-    // 白玉将が王手を外れた着手の完了時に裁定が成立する。
+    // 白玉将が捕獲を回避した着手の完了時に裁定が成立する。
     assert_eq!(
         game.play(step(sq(6, 6), sq(7, 7))),
         win(Color::White, WinReason::BareKing)
     );
+}
+
+#[test]
+fn article_32_e3_threatening_either_of_two_royals_defers_the_loss() {
+    // E3の条件(b)は王将と太子のいずれか1枚を取れるだけでも不成立となる。
+    // 相手の価値ある駒を3枚にして、隣接による条件(c)の保留と区別する。
+    for bare_color in Color::ALL {
+        let opponent = bare_color.opposite();
+        let king = piece(opponent, PieceKind::King);
+        let prince = prince(opponent);
+        for (threatened, remaining) in [(king, prince), (prince, king)] {
+            let mut game = bare_king_game(position(
+                bare_color,
+                &[
+                    (sq(5, 4), piece(bare_color, PieceKind::King)),
+                    (sq(6, 6), threatened),
+                    (sq(11, 11), remaining),
+                    (sq(0, 10), piece(opponent, PieceKind::Rook)),
+                ],
+            ));
+            assert_eq!(
+                game.play(step(sq(5, 4), sq(5, 5))),
+                Ok(GameStatus::Ongoing),
+                "bare side: {bare_color:?}, threatened: {threatened:?}"
+            );
+            assert_eq!(
+                game.play(step(sq(6, 6), sq(7, 7))),
+                win(opponent, WinReason::BareKing)
+            );
+        }
+    }
 }
 
 #[test]
@@ -211,10 +242,10 @@ fn article_32_e3_immobile_pawns_and_lances_are_excluded_from_counts() {
 }
 
 #[test]
-fn article_32_e3_double_bare_kings_draw_unless_checked() {
-    // 双方が裸玉(死に駒を除く)で、いずれの王駒にも王手が
-    // かかっていなければ引き分け。王手がかかっている間は裁定せず継続する。
-    let mut unchecked = bare_king_game(position(
+fn article_32_e3_double_bare_kings_draw_unless_a_royal_can_be_captured() {
+    // 双方が裸玉(死に駒を除く)で、いずれの王駒も相手の次の着手で取られなければ引き分け。
+    // 取られ得る王駒がある間は裁定せず継続する。
+    let mut safe = bare_king_game(position(
         Color::Black,
         &[
             (sq(5, 4), piece(Color::Black, PieceKind::King)),
@@ -224,11 +255,11 @@ fn article_32_e3_double_bare_kings_draw_unless_checked() {
         ],
     ));
     assert_eq!(
-        unchecked.play(step(sq(5, 4), sq(5, 5))),
+        safe.play(step(sq(5, 4), sq(5, 5))),
         draw(DrawReason::BareKing)
     );
 
-    let mut checked = bare_king_game(position(
+    let mut threatened = bare_king_game(position(
         Color::Black,
         &[
             (sq(5, 4), piece(Color::Black, PieceKind::King)),
@@ -236,7 +267,7 @@ fn article_32_e3_double_bare_kings_draw_unless_checked() {
         ],
     ));
     assert_eq!(
-        checked.play(step(sq(5, 4), sq(5, 5))),
+        threatened.play(step(sq(5, 4), sq(5, 5))),
         Ok(GameStatus::Ongoing)
     );
 }
