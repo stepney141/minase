@@ -9,7 +9,7 @@ mod stats;
 mod tests;
 
 use super::features::{FEATURE_COUNT, PIECE_STATE_COUNT, feature_index, piece_state};
-use feature_set::{FeatureSet, HalfKpHmB8};
+use feature_set::{FeatureSet, P};
 pub use format::{EncodeInput, Error, architecture, encode};
 use head::{DirectScrelu, Head};
 use minase_core::{Color, Move, PieceCode, PieceKind, Position};
@@ -41,7 +41,7 @@ pub struct Network<F: FeatureSet, H: Head> {
 }
 
 /// 探索が使う入力特徴集合。
-pub type ActiveFeatureSet = HalfKpHmB8;
+pub type ActiveFeatureSet = P;
 /// 探索が使う出力部。
 pub type ActiveHead = DirectScrelu;
 /// 探索が使う具体化済みのNNUE。
