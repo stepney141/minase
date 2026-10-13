@@ -5,7 +5,10 @@ use std::io;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
-/// USI出力を条件一致、切断、または期限切れまで受信する。
+/// 条件を満たす行、切断、または期限切れまで受信する。
+///
+/// ハーネスが着手を待つときは`bestmove`の行まで読み、`info`など他の行は読み飛ばす。
+/// `predicate`は読み飛ばす行の評価値なども観測できる。期限は受信処理全体に適用する。
 pub(super) fn receive_until(
     lines: &Receiver<io::Result<String>>,
     timeout: Duration,
@@ -41,7 +44,7 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
-    // D8-HARN-06(2)(3)(sprt.md異常時の裁定節): プロセス終了・パイプ切断は
+    // D8-HARN-06(2)(3)(docs/guides/sprt.md異常時の裁定節): プロセス終了・パイプ切断は
     // クラッシュ、応答期限超過は応答タイムアウトとして分類する。
     #[test]
     fn response_channel_classifies_disconnect_and_timeout() {
@@ -59,8 +62,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-11(match-harness.md USIセッション管理節): ハーネスは`bestmove`を
-    // 受けて着手を適用する。それ以外の行(infoなど)は応答待ちで読み飛ばす。
+    // D8-HARN-11: [`receive_until`]はbestmoveまで他の行を読み飛ばす。
     #[test]
     fn response_channel_waits_for_bestmove_ignoring_other_lines() {
         let (sender, lines) = mpsc::channel();

@@ -99,9 +99,13 @@ pub(super) fn zobrist_keys() -> &'static ZobristKeys {
     ZOBRIST_KEYS.get_or_init(ZobristKeys::build)
 }
 
-/// 通常Zobrist値と成り権保留Zobrist値をハッシュに用いる。衝突時の同一性は`Eq`が
-/// 確定し、反復判定や探索キーの契約とは無関係である
-/// (設計書predecessor-generator.md「Positionのハッシュ」)。
+/// 通常Zobrist値と成り権保留Zobrist値をハッシュへ渡し、衝突時の同一性は`Eq`で確定する。
+///
+/// 導出した`Eq`は派生値も比較するが、[`Position::validate`]は両Zobrist値と再計算値を照合し、
+/// 公開の構築経路も両値を整合させて更新する。
+/// このため、整合した局面の`Eq`は盤面、手番、および一時状態の一致と同値である。
+/// このハッシュは反復判定や探索の局面キーとは無関係であり、永続的な識別子、
+/// データ交換の形式、および局面の一致判定の代わりには使わない。
 impl Hash for Position {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.zobrist.hash(state);

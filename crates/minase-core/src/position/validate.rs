@@ -78,6 +78,9 @@ impl std::error::Error for PositionError {}
 
 impl Position {
     /// 盤面配列・ビットボード集計・両Zobrist値の整合など、内部不変条件を検査する。
+    ///
+    /// 通常Zobrist値を盤面、手番、および先獅子状態から再計算し、
+    /// 成り権保留Zobrist値を保留集合から再計算して、各増分値と一致することを確かめる。
     pub fn validate(&self) -> Result<(), PositionError> {
         let union = self.by_color[0] | self.by_color[1];
         if union != self.occupied {

@@ -11,7 +11,11 @@ pub(super) struct Comparison {
     evidence_per_cpu_ratio: f64,
 }
 
-/// 2条件の主指標を比較する。
+/// 比較条件とペア番号列が完全に一致する2実行の主指標を比較する。
+///
+/// どちらかの主指標が`null`、または基準側の主指標が0なら拒否する。
+/// `variance_time_reduction_percent`は`100 * (1 - 候補の分散時間積 / 基準の分散時間積)`である。
+/// `evidence_per_cpu_ratio`は候補のCPU秒あたりの証拠を基準の値で割った比である。
 pub(super) fn compare(candidate: &Report, current: &Report) -> io::Result<Comparison> {
     if candidate.comparison_manifest != current.comparison_manifest {
         return Err(io::Error::new(

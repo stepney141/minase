@@ -9,6 +9,9 @@ use crate::nnue::{
 use std::time::Instant;
 
 /// デバイス固有の状態を所有し、学習ループに共通の操作を提供する。
+/// CUDAは常にデバイス0を使い、利用できなくてもCPUへ切り替えない。
+/// CPUの検証は単一スレッドの前進と`validation_forward`で行い、CUDAの検証は前進と検証のカーネルだけを使う。
+/// 理由は`docs/adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md`にある。
 pub(super) enum Backend {
     Cuda(Box<gpu::Step>),
     Cpu(Box<Cpu>),

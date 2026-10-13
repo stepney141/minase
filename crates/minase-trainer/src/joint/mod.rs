@@ -1,4 +1,6 @@
-//! 鏡映共有PSTとFMを2群のAdamWで同時学習するCPU経路。
+//! 鏡映共有PSTとFMを2群のAdamWで同時学習する。
+//! CPUでの精度、加算順、並列度の契約は[`crate`]のdocコメントに従う。
+
 mod args;
 mod batch;
 mod checkpoint;

@@ -1,6 +1,6 @@
 //! 領域D2「獅子特殊規則とローカルルール」の挙動マトリクス
-//! (scratchpad/matrices/d2-lion-local-rules.md、挙動ID D2-*)に基づくテスト。
-//! 期待値の根拠はRULES.md第3条(9〜14号)・第13〜16条・第29条だけである。
+//! （docs/plans/spec-first-tests/matrices/d2-lion-local-rules.md、挙動ID D2-*）に対応するテスト。
+//! 期待値の根拠はRULES.md第13条から第16条、および第29条である。
 //! 座標はマトリクスの表記(筋1〜12、段a〜l)をmsqで盤座標へ変換して用いる。
 
 use crate::board::Square;

@@ -25,8 +25,13 @@ lto = true
 codegen-units = 1
 
 [features]
+# Enable core invariants and compare incremental NNUE accumulators with full recomputation
+# at every evaluation in search.
 invariants = ["minase-core/invariants"]
+# Disabled by default; count per-worker search statistics, printed only by `minase dev bench`.
+# See docs/adr/count-search-statistics-behind-a-feature.md.
 search-stats = []
+# Expose bounded Tune_ USI options for search and time-management coefficients.
 tuning = []
 
 [dependencies]
@@ -43,7 +48,7 @@ procfs = { version = "0.18.0", default-features = false }
 
 [dev-dependencies]
 flate2 = "1"
-# `cargo test`では整合検査を常に有効にする（docs/plans/debugging-tools.md「利用者の決定」の2）。
+# `cargo test`では整合検査を常に有効にする（docs/adr/enable-invariant-checks-in-tests-by-feature.md）。
 # Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
 # `cargo build`と`cargo run`のバイナリには検査が入らない。
 minase = { path = ".", features = ["invariants"] }

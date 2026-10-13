@@ -167,6 +167,9 @@ struct Report {
     error: Option<String>,
 }
 
+/// MNPT版2のPSTを比較し、検査結果を報告先へ保存する。
+/// 独立した整数PST参照はFMを評価しないため、版3は報告先を作る前に拒否する。
+/// その他の読み込みエラーは診断報告へ保存する。
 pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     // 版3だけは報告先の作成前に拒否し、読み込みエラーは診断報告へ保存する。
     let models = Models {

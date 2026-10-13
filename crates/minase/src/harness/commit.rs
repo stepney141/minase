@@ -39,9 +39,20 @@ fn normalize_commit(repository: &Path, revision: &str) -> io::Result<String> {
 
 /// コミットをビルドし、実行ファイル、完全ハッシュ、SHA-256を返す。
 ///
-/// `feature`が`None`なら完全ハッシュをキャッシュのキーに使う。
-/// 指定する場合は英数字、`_`、`-`からなる1つのfeature名を受け取り、
-/// `<完全ハッシュ>-<feature名>`をキーにして通常ビルドと分離する。
+/// カレントディレクトリをリポジトリとし、`git rev-parse --verify <rev>^{commit}`で
+/// リビジョンを完全ハッシュへ正規化する。本リポジトリでは40桁である。
+/// `feature`が`None`なら完全ハッシュをキーにする。
+/// 指定時はASCII英数字、`_`、`-`からなる空でない1つの名前を受け付け、
+/// `<完全ハッシュ>-<feature名>`をキーにする。
+///
+/// キャッシュは`target/match-cache/<キー>/minase`と`minase.sha256`である。
+/// 実行ファイル名にはOS固有の接尾辞を付け、検査和は拡張子を`sha256`に替えたパスへ置く。
+/// 実行ファイルのSHA-256が記録と一致するときだけ命中とし、欠損や不一致は再ビルドする。
+/// `git archive`の展開先で`cargo build --release --bin minase`を実行するため、
+/// 作業ツリーの未コミットの変更は含まない。指定されたfeatureはビルド時に有効にする。
+/// 同じキーのビルドは`.build.lock`の排他ロックで直列化する。
+/// 成果物と検査和を一時ファイルへ書いて同期し、改名した後にディレクトリも同期する。
+/// 理由は`docs/adr/compare-commits-as-separate-engine-processes.md`にある。
 pub fn resolve_commit(
     revision: &str,
     feature: Option<&str>,

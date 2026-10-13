@@ -69,7 +69,8 @@ pub struct PlayerConfig {
     pub hash_mb: Option<u64>,
     /// 起動引数と規則オプションへ渡す`--rules`入力原文。
     pub rules_source: String,
-    /// 握手後、isreadyより前に列順で送るUSIオプションの名前と値。
+    /// USIの握手後、`isready`より前に送るオプションの名前と値。
+    /// 同名の重複も含めて列順に送る。
     pub options: Vec<(String, String)>,
 }
 
@@ -80,7 +81,11 @@ impl PlayerConfig {
     }
 }
 
-/// 外部エンジン指定を解析する。空白区切りの2語目以降は起動引数として渡す。
+/// 外部エンジンの指定を4形式で解析する。
+///
+/// `random`、`commit:<リビジョン>`、USIの起動コマンド、`cecp:<起動コマンド>`を受理する。
+/// 起動コマンドは空白で区切り、2語目以降を引数として渡す。`commit:`は追加引数を受け付けない。
+/// 旧形式の`depth=N`指定は拒否し、思考制限は`--each`などで与える。
 pub fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
     if input == "random" {
         return Ok(PlayerSpec {
@@ -128,10 +133,13 @@ pub fn parse_player_spec(input: &str) -> Result<PlayerSpec, String> {
     })
 }
 
-/// specを起動コマンドと実効制限へ解決する。
+/// エンジン指定を起動コマンドと実効制限へ解決する。
 ///
-/// `options`はUSIの握手後、`isready`より前に列順で送る名前と値である。
-/// CECP指定で列が空でなければ入力エラーを返す。コミット指定は通常ビルドを使う。
+/// 追加のUSIオプションは[`PlayerConfig::options`]に従う。
+/// CECP指定で追加オプションがあれば、プロセスを起動する前に入力エラーを返す。
+/// コミット指定は通常ビルドを使う。
+/// `random`は`std::env::current_exe()`で得た実行中の実行ファイルを`dev usi-random`で起動し、
+/// その同一性の記録にはSHA-256を持たない。
 pub fn resolve_player(
     spec: PlayerSpec,
     limit: SearchLimit,
@@ -241,9 +249,7 @@ mod tests {
     use crate::harness::limit::parse_search_limit;
     use std::time::Duration;
 
-    // D8-HARN-01（sprt.md「エンジンの指定方法」、match-harness.md「エンジン指定と
-    // 解決」）: specは`commit:<hash>`・USI起動コマンド・`random`・CECP起動コマンドの
-    // 4形式であり、起動コマンドの2語目以降は引数になる。
+    // D8-HARN-01: [`parse_player_spec`]の4形式と起動引数の契約を検査する。
     #[test]
     fn engine_specs_cover_the_documented_four_forms() {
         let random = parse_player_spec("random").expect("the reserved spec must be accepted");
@@ -296,7 +302,7 @@ mod tests {
         );
 
         // 4形式に含まれない入力は拒否される。旧`depth=N` specの削除は
-        // match-harness.md適用範囲に明文がある。空リビジョンとcommit形式への
+        // [`parse_player_spec`]に従う。空リビジョンとcommit形式への
         // 起動引数付与の拒否は[実装契約](SPEC_UNCLEAR-05関連)。
         for invalid in [
             "",
@@ -314,9 +320,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-01境界（sprt.md「エンジンの指定方法」、match-harness.md「CECP
-    // セッション管理」）と1手固定時間の仕様: CECPに写せないnodes、固定時間以外の
-    // 秒読み、秒未満の時間単位は解決時にInvalidInputとして拒否する。
+    // D8-HARN-01境界: [`crate::harness::engine::cecp::validate_cecp_limit`]で表現できない制限を拒否する。
     #[test]
     fn cecp_resolution_rejects_unsupported_search_limits() {
         for limit in [
@@ -336,9 +340,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-01/20（sprt.md「エンジンの指定方法」、match-harness.md「CECP
-    // セッション管理」）と1手固定時間の仕様: 深さ固定、秒単位時間制御、
-    // 整数秒の秒読みだけを使う固定時間はCECP設定へ解決できる。
+    // D8-HARN-01/20: [`crate::harness::engine::cecp::validate_cecp_limit`]が受理する3種類の制限を検査する。
     #[test]
     fn cecp_resolution_accepts_supported_limits_and_marks_the_protocol() {
         let depth = resolve_player(
@@ -397,7 +399,7 @@ mod tests {
         }
     }
 
-    // phase2.md §4: CECPで追加のUSI設定があれば、プロセスを起動する前に拒否する。
+    // [`resolve_player`]の契約に従い、CECPのUSI設定は起動前に拒否する。
     #[test]
     fn cecp_resolution_rejects_nonempty_usi_options() {
         let result = resolve_player(

@@ -21,11 +21,11 @@ fn r1_state(position: &Position) -> AdjudicationState {
     AdjudicationState::new(RepetitionRule::R1, position)
 }
 
+/// D3-031-13: 4回目の同一局面を生じさせる受けでも、仮想着手を含めて
+/// 可逆手が11手なら即時勝利にならず詰みとなる
+/// （RULES.md第21条第3項c、第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
 #[test]
 fn article_31_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
-    // D3-031-13: 4回目の同一局面を生じさせる受けでも、仮想着手を含めて
-    // 可逆手が11手なら即時勝利にならず詰みとなる
-    // (lishogi-bot.md「反復裁定の整合」、第21条第3項c・第31条R1)。
     let start = position(
         Color::Black,
         &[
@@ -80,16 +80,15 @@ fn article_31_r1_candidate_at_eleven_reversible_plies_does_not_rescue_mate() {
     assert_eq!(position, before);
 }
 
+/// D3-021-02: 3項b(相手王駒の先取り)が残れば詰みは成立しない。
+/// 仮想着手の評価後に局面は完全に復元される
+/// （[`is_mate`](crate::game::adjudication::mate::is_mate)の復元の契約、RULES.md第21条第3項b）。
 #[test]
 fn article_21_3_b_royal_counter_capture_rescues_mate_and_restores_position() {
-    // D3-021-02: 3項b(相手王駒の先取り)が残れば詰みは成立しない。
-    // 仮想着手の評価後に局面は完全に復元される
-    // (adjudication-refactor.md「検証」)。
     let generator = MoveGenerator::standard();
 
     // 3項b境界: 先取りした王駒の升へ相手の取り返しの利き(飛車)が残っていても、
     // 最後の王駒を取った時点で勝ちが確定する(第21条4項)ため詰みではない。
-    // 変異検証(フェーズ4)で検出したオラクル欠落の補強。
     let mut counter_capture_with_retaliation = position(
         Color::Black,
         &[

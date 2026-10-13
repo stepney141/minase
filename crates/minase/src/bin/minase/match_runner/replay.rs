@@ -71,6 +71,9 @@ struct SavedGameConditions {
 }
 
 /// 保存済み1局を開始局面から再生し、集計可能な終局結果へ戻す。
+///
+/// 1手以上進んだ後に応答が途絶えた局は、最後の着手の次の手番側の反則負けとして再検証する。
+/// 時計、応答期限、手番、終局理由、および保存した着手との整合性を検査する。
 fn validate_saved_game(
     record: &GameRecord,
     opening: &Opening,
@@ -360,8 +363,7 @@ pub(super) fn completed_pair_from_record(
 mod tests {
     use super::*;
 
-    // match-harness-efficiency.md「実行記録と再開」: 1手以上進んだ後に応答が
-    // 途絶えた局は最終着手の次の手番側の反則負けとして再検証できる。
+    // [`validate_saved_game`]に従い、着手後に応答が途絶えた側の反則負けを再検証する。
     #[test]
     fn saved_timeout_after_a_move_is_valid_without_a_failure_turn() {
         let opening = generate_opening(Rules::ENGINE_DEFAULT, derive_seed(7, 1));
@@ -503,7 +505,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-26（ponder.md保存形式）: 不合法な予想手も記録としては有効である。
+    // D8-HARN-26: [`TurnRecord::ponder`]は不合法な予想手も保存する。
     #[test]
     fn saved_predictions_validate_tokens_and_protocol_without_requiring_legality() {
         let opening =

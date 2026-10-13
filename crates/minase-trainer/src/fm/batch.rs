@@ -27,6 +27,9 @@ pub(crate) fn check_size(size: usize) -> Result<()> {
     Ok(())
 }
 
+/// 盤の升順の144列と先獅子の列144へ特徴を置き、空き列を埋め草にする。
+/// 鏡映時は盤の列を`rank * 12 + 11 - file`へ、特徴を`mirror_feature`へ写す。
+/// PSTとは異なり、鏡映対の特徴は別の行を持つ。
 pub(crate) fn features(record: &Record, mirror: bool) -> Result<([u32; FEATURE_COLUMNS], u32)> {
     let position = record.to_position()?;
     let side = position.side_to_move();
@@ -56,7 +59,8 @@ pub(crate) fn features(record: &Record, mirror: bool) -> Result<([u32; FEATURE_C
     Ok((columns, count))
 }
 
-/// 鏡映後の特徴、固定した整数PSTの評価、教師値を局面順に保持する。
+/// 145列の特徴、固定した整数PSTの評価、教師値を局面ごとに持つ。
+/// PSTの値は鏡映後の特徴に`evaluate_pst_features`を適用して求める。
 #[derive(Debug, PartialEq)]
 pub struct Batch {
     pub(super) columns: Vec<[u32; FEATURE_COLUMNS]>,
@@ -141,7 +145,7 @@ impl Batch {
     pub fn is_empty(&self) -> bool {
         self.columns.is_empty()
     }
-    /// 盤面の升順で並ぶ[B,145]の全特徴番号。
+    /// 盤面の升順で並ぶ`[B,145]`の全特徴番号。
     pub fn columns(&self) -> &[[u32; FEATURE_COLUMNS]] {
         &self.columns
     }
@@ -151,7 +155,8 @@ impl Batch {
     }
 }
 
-/// 訓練集合とその全左右鏡映だけから全特徴の出現回数を数える。
+/// 訓練集合とその全鏡映で特徴を数える。
+/// 検証集合は数えず、出現回数が1以上の特徴を学習の観測マスクにする。
 pub fn feature_observations(dataset: &Dataset) -> Result<Vec<u64>> {
     let mut counts = vec![0; FEATURE_COUNT];
     for &index in dataset.training_indices() {
@@ -170,7 +175,9 @@ pub(super) fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-/// SplitMix64の混合を2段使い、シード、エポック、MNSD通し番号から鏡映の1ビットを得る。
+/// シード、エポック、局面番号をハッシュして訓練時の鏡映の向きを決める。
+/// 1なら鏡映し、再開やスレッド数の変更でも向きは変わらない。
+/// 検証と量子化検査ではこの鏡映を行わない。
 pub fn mirror_bit(seed: u64, epoch: u64, index: u64) -> u8 {
     (mix64(mix64(seed ^ epoch.wrapping_mul(0x9E37_79B9_7F4A_7C15)) ^ index) & 1) as u8
 }

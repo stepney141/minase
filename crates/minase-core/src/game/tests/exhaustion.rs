@@ -25,10 +25,10 @@ fn article_22_1_bare_side_without_a_capture_loses_immediately() {
     );
 }
 
+/// D3-022-09: 条件成立時に余分な駒を持つ側が手番なら、5項の猶予を
+/// 適用せず直ちに裁定する（[`piece_exhaustion_outcome`](crate::game::adjudication::exhaustion::piece_exhaustion_outcome)の猶予の契約）。
 #[test]
 fn plan_referee_5_extra_side_to_move_wins_without_grace() {
-    // D3-022-09: 条件成立時に余分な駒を持つ側が手番なら、5項の猶予を
-    // 適用せず第22条1項で直ちに裁定する(game-referee.md 5節「猶予の適用条件」)。
     let mut game = game_with_codes(
         position(
             Color::White,
@@ -55,12 +55,12 @@ fn plan_referee_5_extra_side_to_move_wins_without_grace() {
     );
 }
 
+/// D3-022-02: 余分な駒が歩兵なら金将へ成るまで裁定せず対局を継続する。
+/// D3-022-10: 非捕獲の成りの時点では猶予を与えず直ちに勝ちとする
+/// （[`piece_exhaustion_outcome`](crate::game::adjudication::exhaustion::piece_exhaustion_outcome)の非捕獲の成りの契約）。白王将が(3,10)から成歩を
+/// 取れる配置でも、成った時点で黒の勝ちが確定する。
 #[test]
 fn article_22_2_pawn_extra_piece_waits_until_promotion() {
-    // D3-022-02: 余分な駒が歩兵なら金将へ成るまで裁定せず対局を継続する。
-    // D3-022-10: 非捕獲の成りの時点では猶予を与えず直ちに勝ちとする
-    // (game-referee.md 5節「成りの時点の裁定」)。白王将が(3,10)から成歩を
-    // 取れる配置でも、成った時点で黒の勝ちが確定する。
     let mut game = game_with_codes(
         position(
             Color::White,
@@ -208,7 +208,7 @@ fn article_22_8_bare_royals_draw_but_prince_pairs_continue() {
     );
 
     // 境界: 王将と太子が併存する側がある間は第22条の条件自体が成立しない
-    // (game-referee.md 5節)。
+    // （[`piece_exhaustion_outcome`](crate::game::adjudication::exhaustion::piece_exhaustion_outcome)の王駒の枚数条件）。
     let mut with_prince = game_with_codes(
         position(
             Color::Black,
@@ -226,11 +226,11 @@ fn article_22_8_bare_royals_draw_but_prince_pairs_continue() {
     );
 }
 
+/// D3-022-11: 捕獲を伴う成りで初めて条件が成立した場合は待機局面が
+/// 存在しないため、2項ではなく1項・5項の通常の流れで猶予を判定する
+/// （[`piece_exhaustion_outcome`](crate::game::adjudication::exhaustion::piece_exhaustion_outcome)の捕獲を伴う成りの契約）。
 #[test]
 fn plan_referee_5_capturing_promotion_that_creates_the_condition_takes_the_grace_path() {
-    // D3-022-11: 捕獲を伴う成りで初めて条件が成立した場合は待機局面が
-    // 存在しないため、2項ではなく1項・5項の通常の流れで猶予を判定する
-    // (game-referee.md 5節但し書き、9節のS1レビュー境界)。
     let capturing_promotion = promoting(sq(5, 9), sq(5, 10));
     let condition_arises = |first_reply: Move| {
         let mut game = game_with_codes(

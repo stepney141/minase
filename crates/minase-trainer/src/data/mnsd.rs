@@ -67,8 +67,8 @@ struct MappedFile {
     game_ids: Option<HashMap<u32, String>>,
 }
 
-// 生成側のProvenanceはλを由来ごとの既定値に固定する。学習側はPythonと同じく
-// 0以上1以下のλを受け取り、未知の追加欄も許すため、読み込みの契約を分ける。
+/// 学習側の来歴は0以上1以下の任意のλと未知の追加欄を受け付ける。
+/// 生成側の`Provenance`がλを由来ごとの値に固定する契約とは独立である。
 #[derive(Deserialize)]
 struct InputProvenance {
     format: String,
@@ -254,14 +254,14 @@ pub struct Dataset {
 
 impl Dataset {
     /// ファイル長と来歴を検証し、全記録を復号して分割と教師探索値を作る。
-    ///
     /// 先読みを指定した場合はファイルごとに対局・手数の順序も検証する。
     /// λは来歴から読み、`lambda_override`を指定すると自己対局の分類だけ上書きする。
+    /// MNSDをmemmap2で写すため、呼び手に元ファイルの不変性を要求する。
+    /// 理由は`docs/adr/allow-unsafe-only-in-the-trainer-crate.md`にある。
     ///
     /// # Safety
     ///
-    /// 呼び手は、この呼び出し中、および返された`Dataset`の生存中に、渡したファイルを
-    /// 外部プロセスも含めて変更・切り詰めしないことを保証しなければならない。
+    /// 呼び手は、この呼び出し中と返された`Dataset`の生存中に、渡したファイルを外部プロセスも含めて変更も切り詰めもしないことを保証しなければならない。
     pub unsafe fn open(
         paths: &[PathBuf],
         lookahead: Option<Lookahead>,
@@ -496,9 +496,8 @@ impl Dataset {
     }
 
     /// 分類ごとに訓練集合だけを使って教師用Kを推定する。
-    ///
-    /// 保持したf32の教師探索値をf64へ昇格して校正する。標本は1分類ずつ確保する。
-    /// λが0の分類は探索値を使わず、Pythonと同じくNaNを返す。
+    /// 保持したf32の教師探索値をf64へ広げて校正し、標本は1分類ずつ確保する。
+    /// λが0の分類は探索値を使わないのでNaNを返し、JSONの記録ではnullになる。
     pub fn estimate_teacher_ks(&self) -> Result<Vec<f64>> {
         let mut values = Vec::with_capacity(self.classes.len());
         for class in 0..self.classes.len() {

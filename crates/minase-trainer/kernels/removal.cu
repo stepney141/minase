@@ -1,6 +1,8 @@
-// One 128-thread block owns one position, with one warp per removal column.
-// Scratch is 2,008 bytes, independent of H; accumulator components keep their
-// fixed-order sums in float registers.
+// 128スレッドの1ブロックが1局面を担当し、共有メモリは幅Hによらず2,008バイトである。
+// 最初にワープ0と1が各端点の整数参照和とf64の線形和を列順に求め、ワープ2と3が各視点の除去前の内積を求める。
+// 除去列colはcol mod 4のワープが担当し、レーン0が適格性を判定する。
+// 適格列数は各ワープの整数木の結果4個を足し、Sと損失はワープ内の木に続いて4ワープ分も木で足す。
+// 最後の累算値と出力重みへの寄与はf32の積をf64で列の昇順に累算し、d=0の列は飛ばす。
 struct RemovalScratch {
     long long reference_sum[2];
     double linear_sum[2];

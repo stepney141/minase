@@ -1,4 +1,9 @@
-//! 合成局面と非零のランダムモデルによる、GPUとCPU参照の等価性検査。
+//! 合成局面と非零モデルによるGPUとCPU参照の等価性検査。
+//! 浮動小数点は`|GPU−CPU| ≤ ATOL + RTOL×|CPU|`で比較し、ATOL=1e-6、RTOL=1e-5とする。
+//! 整数と真偽値は完全一致を要求し、非有限値を拒否する。
+//! 同じ入力を2回実行し、GPUの反復間のビット一致も検査する。
+//! テストでは幅2、6、8、128、130ごとに同じ評価器へ64、4,096、100、1、129局面を順に渡す。
+//! 回転、番兵、先獅子、補間率の境界、空の逆索引範囲、および3分類の教師値を含める。
 
 use super::{Device, Error, Evaluation, Evaluator, Result};
 use crate::nnue::{
@@ -745,7 +750,7 @@ mod tests {
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_mixed_targets_and_custom_coefficients_match_reference_and_repeat() {
-        // 指示書: λ<1と全群の変更を含めても合成許容誤差とGPU反復のビット一致を保つ。
+        // λ<1と全群の係数変更を含めても、絶対・相対許容誤差の和とGPU反復のビット一致の条件を満たす。
         let training = TrainingOptions {
             lr_linear: 0.02,
             weight_decay_linear: 0.003,

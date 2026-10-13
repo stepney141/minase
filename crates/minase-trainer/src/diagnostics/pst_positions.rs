@@ -179,7 +179,7 @@ pub(super) fn diagnose(
     selected: &[(usize, u64, Record)],
     directory: &Path,
 ) -> Result<PositionReport> {
-    // Pythonの初期レコードは盤面とlion以外が0。結果と対局番号もそのまま保存する。
+    // 初期局面の記録は盤面と先獅子以外の欄を0にし、結果と対局番号も0で保存する。
     let initial = Record::from_position(&Position::initial(), 0, Outcome::Loss, 0, 0);
     let records: Vec<_> = std::iter::once(initial)
         .chain(selected.iter().map(|(_, _, record)| record.clone()))

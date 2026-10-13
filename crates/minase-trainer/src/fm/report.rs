@@ -1,3 +1,7 @@
+//! FMの実数補正と整数補正を測定する。
+//! 倍率の焼き込みの比較は`--data`の指定時だけ行い、誤差を記録するが合否は判定しない。
+//! 整数の定義は[`correction`]、実数の集計順は[`phi`]と[`numpy_sum`]にある。
+
 use super::{Result, ScaleArgs, npz::FloatWeights};
 use crate::data::{Dataset, epoch_permutation};
 use minase::eval::{
@@ -64,6 +68,8 @@ fn accumulators(fm: FmWeights<'_>, features: &[usize]) -> ([i64; FM_RANK], i64) 
     (sums, self_sum)
 }
 
+/// `Σ_f d_f ((Σ_i u_if)^2 − Σ_i u_if^2)`をi64で求める。
+/// 特徴は`active_features`で得る最大145個の発火特徴である。
 fn numerator(fm: FmWeights<'_>, features: &[usize]) -> i64 {
     let (sums, self_sum) = accumulators(fm, features);
     sums.iter()
@@ -73,10 +79,15 @@ fn numerator(fm: FmWeights<'_>, features: &[usize]) -> i64 {
         - self_sum
 }
 
+/// エンジンの`Fm::correction`と同じ整数補正をセンチポーンで返す。
+/// [`numerator`]をi64で求め、`2^(2e+1)`で0方向へ切り捨てて割る。
+/// 検査と記録ではこの値を整数補正の定義として使う。
 pub(crate) fn correction(fm: FmWeights<'_>, features: &[usize]) -> i64 {
     numerator(fm, features) / (1_i64 << (2 * fm.exponent + 1))
 }
 
+/// `Φ = Σ_f a_f ((Σ_i v_if)^2 − Σ_i v_if^2) / 2`をf64で求める。
+/// 各因子の特徴の和は列順に取り、因子間の和は[`numpy_sum`]の順に取る。
 pub(crate) fn phi(v: &[[f64; FM_RANK]], a: &[f64; FM_RANK], features: &[usize]) -> f64 {
     let mut sums = [0.0; FM_RANK];
     let mut squares = [0.0; FM_RANK];
@@ -92,6 +103,11 @@ pub(crate) fn phi(v: &[[f64; FM_RANK]], a: &[f64; FM_RANK], features: &[usize]) 
 }
 
 // NumPyの連続f64配列のpairwise sum。標準偏差も平均との差の二乗を同じ順序で足す。
+/// 量子化検査と診断の集計用に固定した加算順で和を求める。
+/// 8要素未満は前から足し、128要素超では中央に近い8の倍数で分割して再帰する。
+/// それ以外は8本の部分和を`((s0+s1)+(s2+s3))+((s4+s5)+(s6+s7))`に畳み、端数を前から足す。
+/// 学習時の和とは別であり、学習器を移行した際の一度の照合で一致を確かめた順である。
+/// 理由は`docs/adr/retire-the-python-trainer-after-a-one-time-cross-check.md`にある。
 fn numpy_sum(values: &[f64]) -> f64 {
     if values.len() < 8 {
         return values.iter().fold(-0.0, |sum, value| sum + value);
@@ -128,6 +144,10 @@ pub(crate) fn std(values: &[f64]) -> f64 {
     (numpy_sum(&squares) / values.len() as f64).sqrt()
 }
 
+/// 倍率を焼き込んだ評価の誤差を検証標本で測り、合否を付けずに返す。
+/// 標本はSplitMix64のシードとエポック0の順列から最大`validation_sample`件を選び、局面番号の昇順に並べる。
+/// `float_vs_integer`は`abs(入力の整数PST + K * Φ(V, a′) − 出力のエンジン評価)`である。
+/// `tuning_vs_baked`は調整用の`trunc(N * s / (1024 * 2^(2e+1)))`と焼き込んだ整数補正の差である。
 pub(super) fn scale_report(
     source: &Pst,
     output: &Pst,

@@ -1,6 +1,12 @@
-//! CUDAの文脈、固定メモリの環、NVRTC、および前進・補助損失・後退の計算。
-//!
-//! GPUが使えない場合は明示的なエラーを返す。CPU参照への代替経路は持たない。
+//! CUDAによるNNUEの前進、補助損失、後退、およびAdamW更新。
+//! `kernels/forward.cu`が特徴の和、`head.cu`が出力と検証、`removal.cu`が駒除去差分、`backward.cu`が逆索引による後退を担う。
+//! `reduce.cu`は部分和の縮約、`optimizer.cu`はパラメータとモーメントの更新を担う。
+//! 計算と転送に別々のストリームを使い、全起動は1ブロック128スレッドとする。
+//! `atomicAdd`は使わず、`atomicOr`は異常フラグにだけ使う。
+//! 幅と特徴集合は起動引数で渡し、テンプレートやソース置換で変えない。
+//! GPUが使えなければエラーを返し、CPUへ切り替えない。
+//! GPUを要するテストは`gpu_`で始め、`#[ignore]`を付けて明示実行する。
+//! 理由は`docs/adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md`と`docs/adr/allow-unsafe-only-in-the-trainer-crate.md`にある。
 
 pub mod bench;
 mod device;

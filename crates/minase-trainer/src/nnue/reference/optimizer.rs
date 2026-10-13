@@ -8,7 +8,8 @@ use crate::nnue::{
 use minase::eval::features::FEATURE_COUNT;
 use serde::Serialize;
 
-/// Python make_optimizerと同じ線形、第1層、出力部の3群。
+/// 線形、第1層、出力部の3群の係数。
+/// 既定値は線形が学習率0.03と重み減衰0、第1層と出力部が学習率10⁻³と重み減衰10⁻⁴である。
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct AdamWConfig {
     /// 線形正準行。
@@ -87,10 +88,11 @@ impl AdamW {
     pub fn config(&self) -> AdamWConfig {
         self.config
     }
-    /// カーネル8。観測行の全要素を更新して切り詰める。
-    ///
-    /// バッチに現れなかった観測行もモーメントと減衰で動く。未観測行は
-    /// パラメータと両モーメントを保ち、切り詰めも行わない。
+    /// Linear、Virtual、FirstLayer、Biases、OutputWeights、OutputBiasの順に観測行を更新する。
+    /// 更新式は[`AdamCoefficients::update`]に従い、勾配0の観測行も更新する。
+    /// 線形は[−4096, 4095.875]、出力重みは±1.98、その他は±8に切り詰める。
+    /// HalfKPの第1層だけは今回更新した仮想行Vを使い、[−8−V, 8−V]に制限する。
+    /// 未観測行は更新も切り詰めもせず、パラメータと両モーメントを保持する。
     pub fn update(&mut self, model: &mut Model, gradient: &Parameters) -> Result<()> {
         self.update_parallel(model, gradient, 1)
     }

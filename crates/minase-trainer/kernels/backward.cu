@@ -1,6 +1,8 @@
-// Array layouts and launch contracts are documented in ../README.md.
-// Reverse-index words match data::PackedOccurrence: position:22, view:1,
-// column:8, rotation:1, from the most significant to least significant bit.
+// 逆索引の1語は上位から局面22、視点1、列8、回転1ビットであり、PackedOccurrenceと一致する。
+// 第1層は1ブロックが128要素以下の区分を担当し、隣接スレッドが隣接単位を計算する。
+// 区分内はf32、区分間は昇順にf64で足し、空行と埋め草には0を書く。
+// 線形は1ワープが1区分を担当し、回転せず正準行へ縮約する。
+// 特徴の番兵0xffffffffはfeature_weightが重み0として読む。
 extern "C" __global__ void first_layer_backward_partials(
     const unsigned* first_segment_offsets, const unsigned* first_entries,
     const unsigned* features, const float* weights, const float* acc,

@@ -1,4 +1,6 @@
-//! spsa-gain-calibration.mdの模擬比較。入力は測定記録の定数に固定する。
+//! SPSAの利得を合成目的関数で比較する。
+//! 入力定数と結果は`docs/measurements/spsa-gain-simulation.md`に記録する。
+//! 採用理由は`docs/adr/decay-spsa-gains-from-one-sixth-of-the-range.md`にある。
 
 use super::{
     model::{IterationRecord, Settings, rates, uniform},
@@ -258,7 +260,7 @@ fn tilted(lambda: f64) -> [f64; 5] {
     weights.map(|weight| weight / sum)
 }
 
-/// 期待得点の誤差が設計書の許容値に入るまで二分する。
+/// 期待得点の誤差が1e-12以下になるまで、最大100回の二分法で分布を求める。
 fn probabilities(delta: f64) -> [f64; 5] {
     assert!(delta.is_finite());
     let target = 1.0 / (1.0 + 10.0_f64.powf(-delta / 400.0));
@@ -495,7 +497,7 @@ fn prechecks(ranges: &[Parameter], scenarios: &[Scenario]) -> usize {
     let seeds = MIN_SEEDS.max((4.0 * max_sd / MARGIN).powi(2).ceil() as usize);
     println!("precheck3\ts_max={max_sd:.12}\tS={seeds}");
     if seeds > 1000 {
-        // 設計書は1,000本を超えるSを、所要時間を利用者へ報告してから使うと定める。
+        // シードが1,000本を超える場合は、所要時間を見積もってから実行する。
         println!("precheck3\tS={seeds} exceeds 1000; runtime scales linearly with S");
     }
     seeds
@@ -527,7 +529,7 @@ fn compare(
     let (mean_diff, sd) = mean_and_sd(&differences);
     let mean_loss = mean(runs.iter().map(|run| run.losses[estimator]));
     let current_loss = mean(current.iter().map(|run| run.losses[reference_estimator]));
-    // 設計書のゼロ損失の規約は、どちらかの平均が0なら比を1とする。
+    // どちらかの平均損失が0なら、その場面の比を1とする。
     let ratio = if mean_loss == 0.0 || current_loss == 0.0 {
         1.0
     } else {
@@ -679,7 +681,7 @@ fn print_selection(results: &Results, scenario_count: usize) {
     panic!("stage 1 must provide an eligible final estimator at 12000 pairs");
 }
 
-/// 設計書の事前検査、本実験、信号の較正、および構成の選定を順に出力する。
+/// `docs/measurements/spsa-gain-simulation.md`の事前検査、本実験、信号の較正、構成の選定を順に出力する。
 #[test]
 #[ignore]
 fn gain_simulation() {

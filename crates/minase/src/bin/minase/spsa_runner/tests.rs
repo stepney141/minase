@@ -1,4 +1,6 @@
-//! phase3.mdおよびspsa.mdの参照値、符号、丸め、再開契約の検証。
+//! 更新則の参照値、摂動の符号、確率的な丸め、および再開を検査する。
+//! 期待する契約は[`super::model::rates`]、[`super::model::issue`]、[`super::model::update`]、
+//! および[`super::storage::validate_chain`]に従う。
 
 use clap::Parser;
 
@@ -149,7 +151,7 @@ fn pair(number: u64, signs: [i8; 2]) -> CompletedPair {
 
 #[test]
 fn params_generate_calibrated_defaults() {
-    // spsa-gain-calibration.mdのC5: c_endは範囲の1/6、r_endは0.002。
+    // [`super::summary::parameter_line`]と`docs/adr/decay-spsa-gains-from-one-sixth-of-the-range.md`の終端利得に従う。
     for (min, max, default, expected) in [
         (100, 400, 250, "X, 250, 100, 400, 50, 0.002"),
         (-20, 55, 10, "X, 10, -20, 55, 12.5, 0.002"),
@@ -420,7 +422,7 @@ fn cli_requires_explicit_session_conditions_and_excludes_other_protocols() {
     assert!(Arguments::try_parse_from(both).is_err());
 }
 
-// phase3.md「再開の検査」: 保存の前後と、発行順が逆転した完了を再現する。
+// [`runner::run`]に従い、完了順の逆転、反復ファイルの書き込み途中、確定直後で再開しても更新の重複と欠落がないことを検査する。
 #[test]
 fn resume_reissues_only_missing_iterations_at_all_three_crash_boundaries() {
     for boundary in ["reversed", "temporary", "committed"] {
@@ -643,11 +645,13 @@ fn abnormal_games_keep_opening_and_think_times_without_normal_movelist() {
     assert!(value.get("games").is_none());
 }
 
-// phase3.md「合成目的関数の試験」。最適値は範囲の中央、開始値は中央＋20%。
+// 測定時の22係数の範囲を使い、開始値を中央から範囲幅の20%上に置く。
+// 目的関数は各係数の-60 * (正規化位置 - 0.5)^2の和で、11番目だけ0.1刻みにする。
+// 1,500反復×8ペアを20本のシードで回し、18本以上で最適値へ近づくことを要求する。
 #[test]
 #[ignore]
 fn synthetic_objective_improves_at_least_eighteen_of_twenty_seeds() {
-    // spsa.mdの合成試験は、測定時の22係数とその順序に固定する。
+    // 係数の範囲と順序は[`simulation::ranges`]で固定する。
     let mut parameters = simulation::ranges();
     for p in &mut parameters {
         p.start = f64::from(p.min) + 0.7 * f64::from(p.max - p.min);
@@ -914,7 +918,7 @@ fn worker_panics_cancel_other_workers_and_return_an_error() {
     assert!(result.is_err());
 }
 
-// phase3.mdの乱数の消費順を独立したPython計算の参照値で固定する。
+// [`issue`]の符号を先に引く消費順を、独立したPython計算の参照値で固定する。
 #[test]
 fn iteration_stream_draws_all_flips_before_per_pair_rounding() {
     let mut s = settings(1500, 2, 1);
@@ -944,7 +948,7 @@ fn iteration_stream_draws_all_flips_before_per_pair_rounding() {
     );
 }
 
-// spsa-apply.md「検証」: 保存記録は既存の構築手順で作り、エンジンを起動しない。
+// 保存記録はrunnerのテストと同じ構築手順で作り、エンジンを起動しない。
 const APPLY_TABLE: &str = "// outside X(x): 250, 100, 400;\nparameters! {\n    /// X の説明。250 は変更しない。\n    X(x): +250, 100, 400;\n    Y(y): -2, -10, 10;\n    Z(z): 9, 0, 20;\n}\n// end\n";
 
 fn apply_session(s: Settings, completed: u64, signs: [i8; 2]) -> Directory {
@@ -1314,7 +1318,7 @@ fn apply_cli_requires_both_paths_and_executes_without_engine_arguments() {
     );
 }
 
-// match-resume-simplification.md: applyはsettingsだけを読み取る。
+// [`super::apply`]は調整設定だけを読み、起動記録のない旧形式も反映する。
 #[test]
 fn apply_reads_only_settings_and_matches_old_manifest_results() {
     let directory = apply_session(settings(1, 1, 1), 1, [1, 1]);
@@ -1351,7 +1355,7 @@ fn apply_preserves_source_and_existing_temporary_file_on_write_failure() {
     assert_eq!(fs::read(temporary).unwrap(), b"existing temporary file");
 }
 
-// match-resume-simplification.md「検証」: 再開の入力元はmanifestだけである。
+// [`super::cli::Arguments::resume`]と`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`に従う。
 #[test]
 fn resume_cli_accepts_only_the_run_directory() {
     assert!(Arguments::try_parse_from(["spsa_runner", "--resume", "run"]).is_ok());

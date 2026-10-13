@@ -1,4 +1,4 @@
-//! フェーズ3aの数式、保存形式とCLIの契約を、手計算した値から検査する。
+//! FMの数式、保存形式とコマンドの契約を、手計算した値から検査する。
 
 use minase::eval::{
     features::FEATURE_COUNT,
@@ -57,7 +57,7 @@ fn quantization_selects_largest_exponent_and_rounds_ties_even() {
             .exponent,
         30
     );
-    // 吸収後が非零なら、丸めた全要素が0でもPythonは受け入れる。
+    // 量子化前の吸収済み重みが非零なら、丸めた全要素が0でも受け入れる。
     let tiny = fm::quantize(&v_with(&[2.0_f64.powi(-40)]), &a, 1.0).unwrap();
     assert_eq!(tiny.exponent, 30);
     assert!(tiny.embeddings.iter().flatten().all(|&u| u == 0));

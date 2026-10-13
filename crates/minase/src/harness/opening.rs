@@ -17,7 +17,13 @@ pub struct Opening {
     pub usi_moves: Vec<String>,
 }
 
-/// 終局しない8手から12手の開始手順を生成する。
+/// 同じペアの2局で共有する、終局しない8〜12手の開始手順を生成する。
+///
+/// 開始シードは`derive_seed(pair_seed, 0)`である。
+/// 手数は乱数の5に対する剰余に8を足して決める。
+/// 各手は合法手列の長さに対する乱数の剰余を添字として選ぶ。
+/// 添字は[`XorShift64::index`]で生成し、剰余による偏りを補正しない。
+/// 途中で終局したら`derive_seed(直前の開始シード, 0)`でシードを更新し、初形から作り直す。
 pub fn generate_opening(rules: Rules, pair_seed: NonZeroU64) -> Opening {
     let mut opening_seed = derive_seed(pair_seed.get(), 0);
     loop {
@@ -70,7 +76,7 @@ pub fn generate_opening(rules: Rules, pair_seed: NonZeroU64) -> Opening {
 mod tests {
     use super::*;
 
-    // D8-HARN-02(sprt.mdペア対局と再現性節): 開始局面は初期局面から8〜12手
+    // D8-HARN-02(docs/guides/sprt.mdペア対局と再現性節): 開始局面は初期局面から8〜12手
     // だけランダムに進めて作り、ペアシードから決定的に再現される。
     #[test]
     fn openings_stay_within_8_to_12_plies_and_vary_between_pairs() {

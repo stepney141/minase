@@ -132,6 +132,7 @@ fn validation_sample(dataset: &Dataset, requested: usize, seed: u64) -> Result<V
 /// `checkpoint`は1以上の最良エポックそのものを渡す。浮動小数点の出力には
 /// パラメータに加え、同じ時点の最適化器の状態と進捗も保存する。
 /// 書き出したMNUEをファイルから読み直し、`minase`の復号と整数推論で検査する。
+/// 標本は検証集合を`epoch_permutation(seed, 0)`で並べた先頭`--validation-sample`件で、既定は10,000件である。
 /// 平均絶対誤差がK/40を超えても両ファイルと測定値は保持し、`passed = false`を返す。
 /// 呼び手は測定値を記録して`quantization_error`、終了コード1として扱う。
 pub fn write_best(
@@ -162,6 +163,9 @@ pub fn write_best(
     }
 }
 
+/// 浮動小数点の`reference::evaluate_f64`と、復号したファイルの`nnue::evaluate`の平均絶対誤差と最大誤差を記録する。
+/// 閾値は書き出したMNUEヘッダのf32のKを使ったK/40であり、等しい場合は合格とする。
+/// K/40は旧NNUEから引き継いだ基準であり、棋力に対する安全性は確認されていない。
 fn measure<F: FeatureSet>(
     dataset: &Dataset,
     checkpoint: &Checkpoint,

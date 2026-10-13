@@ -264,8 +264,8 @@ fn article_19_4_lance_gets_no_last_rank_relief() {
     assert_both_choices(&generated(&capture), msq(6, 3), msq(6, 1));
 }
 
-// D1-019-05: 成りの機会のマージ（第19条1項、第18条1項・2項、第30条P3、
-// move-canonicalization.md の着手の同一性）。
+/// D1-019-05として、RULES.md第19条第1項、第18条第1項、第2項、および第30条P3を検査する。
+/// 成りの機会が重なっても、[`Move`]の正準形では同じ物理的行動は1つの値になる。
 #[test]
 fn article_19_18_overlapping_promotion_chances_yield_two_moves() {
     // 例1: 歩兵の最奥段捕獲（第18条2項aと第19条1項が重なる）でも2手だけ。

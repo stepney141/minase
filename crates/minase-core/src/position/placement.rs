@@ -18,7 +18,10 @@ impl Position {
         Ok(())
     }
 
-    /// 「段階6」（movegen-speedup-2.md）の復元用に、盤面と占有集合だけを更新する。
+    /// 復元用に駒を置き、盤面と占有集合だけを更新する。
+    ///
+    /// [`Self::unmake_move`]が駒を戻した後に[`super::Undo`]の着手前のZobrist値で
+    /// 上書きするので、復元途中のハッシュは更新しない。
     pub(super) fn put_piece_without_hash(
         &mut self,
         square: Square,
@@ -47,7 +50,7 @@ impl Position {
         piece
     }
 
-    /// 「段階6」（movegen-speedup-2.md）の復元用に、ハッシュを変更せず駒を除く。
+    /// 復元用に駒を除く。ハッシュを更新しない理由は[`Self::put_piece_without_hash`]に従う。
     pub(super) fn remove_piece_without_hash(&mut self, square: Square) -> PieceCode {
         let piece = self.board[square.raw_index()];
         debug_assert!(!piece.is_empty() && !piece.is_wall());

@@ -1,4 +1,9 @@
-//! MNUE版5の符号化・復号、差分更新および整数推論。
+//! MNUE版5の復号、差分更新、および線形と非線形の和による整数評価。
+//! 線形の経路は[`crate::eval::features`]の13,680個の基底特徴に載る序中盤用と終盤用のi16重みを、手番側視点で足す。
+//! 重みの単位は1/8センチポーンであり、王駒を含む盤上総駒数Nから`q = min(90, max(0, N − 2))`を求め、`(q×mg + (90−q)×eg)/720`で補間する。
+//! 非線形の経路は両視点の幅Hの第1層を、値を制限してから2乗する活性化関数SCReLUに通し、[`DirectScrelu`]で出力重みとの直接内積を取る。
+//! PST＋FMを置き換えた理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
+//! 構造の理由は`docs/adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md`、型引数を使う理由は`docs/adr/parameterize-the-nnue-by-feature-set-and-head-types.md`にある。
 
 pub(crate) mod accumulator;
 pub mod feature_set;
@@ -24,23 +29,32 @@ const EVALUATION_LIMIT: i32 = 28_999;
 /// 検証済みのMNUE整数重みと探索用駒価値。
 pub struct Network<F: FeatureSet, H: Head> {
     accumulator_stats: stats::SharedStats,
+    /// 基底特徴ごとの[序中盤, 終盤]。単位は1/8センチポーンである。
     linear: Box<[[i16; 2]]>,
+    /// 特徴ごとにH個が連続する第1層のi16重み。実数に対する尺度は127である。
     weights: Box<[i16]>,
+    /// 第1層のi32バイアス。実数に対する尺度は127である。
     biases: Box<[i32]>,
     head: H,
     feature_set: PhantomData<F>,
     width: usize,
+    /// `round_ties_even(f64(K)×65,536/(127×4,096))`で求めた出力換算係数。
     scale: i64,
+    /// 生成時の規則セット名。実行時の規則との一致は要求しない。
     rule_set: [u8; 32],
     /// 学習で更新しない固定の探索用駒価値。
     /// 盤上に現れる駒の値は[`Self::piece_value`]の不変条件を満たす。
     piece_values: [i32; PIECE_STATE_COUNT],
+    /// 全駒状態の固定駒価値の成り前後の差と0の最大値。
     max_promotion_gain: i32,
+    /// 出力をセンチポーンへ戻す勝率尺度K。
     k: f32,
+    /// 重み本体のSHA-256。
     checksum: [u8; 32],
 }
 
-/// 探索が使う入力特徴集合。
+/// 探索が使う、王の位置で条件付けないP型の入力特徴集合。
+/// 理由は`docs/adr/use-p-type-input-features-for-the-nnue.md`にある。
 pub type ActiveFeatureSet = P;
 /// 探索が使う出力部。
 pub type ActiveHead = DirectScrelu;
@@ -103,8 +117,11 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         self.width
     }
 
-    /// 静かな手の履歴値が同じ場合の同点破りに使う、手番側視点の線形経路の移動差分を返す。
-    /// 非線形経路は含めず、補間後の除算前の分子を返す。
+    /// 静かな手の履歴値が同じ場合の同点破りに使う、手番側視点の線形の移動差分。
+    /// 移動元の特徴を引き、移動先の特徴を足すときは成りも反映する。
+    /// 非線形の経路を含めず、`q×Δmg + (90−q)×Δeg`を720で割る前の分子として返す。
+    /// 線形の経路は王の位置で条件付けないため、入力特徴集合によらず成り立つ。
+    /// 理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`と`docs/adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md`にある。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
         let side = position.side_to_move();
         let piece = position.piece_at(mv.from).expect("quiet mover exists");
@@ -151,7 +168,10 @@ pub fn evaluate_for_diagnostics<F: FeatureSet, H: Head>(
 static EMBEDDED: &[u8] = include_bytes!("../../../nets/nnue.bin");
 static WEIGHTS: OnceLock<Result<Arc<Nnue>, Error>> = OnceLock::new();
 
-/// 検証済みの埋め込みNNUE重みを返す。
+/// 埋め込んだ`nets/nnue.bin`を初回呼び出しで1回だけ[`Nnue::decode`]で検証する。
+/// 以後は同じ結果を返し、成功時は同じネットを共有する`Arc`、失敗時は同じ`Error`の複製を返す。
+/// 呼び手は起動時の失敗を検出して停止する。
+/// 埋め込む理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
 pub fn weights() -> Result<Arc<Nnue>, Error> {
     match WEIGHTS.get_or_init(|| Nnue::decode(EMBEDDED).map(Arc::new)) {
         Ok(nnue) => Ok(Arc::clone(nnue)),
@@ -159,16 +179,21 @@ pub fn weights() -> Result<Arc<Nnue>, Error> {
     }
 }
 
-/// USI診断に使う線形の特徴別寄与と非線形出力。
+/// USIの評価の内訳表示に使う、線形の特徴別寄与と非線形の出力。
 pub(crate) struct Breakdown {
+    /// 線形と非線形の和を±28,999へ制限したセンチポーン評価。
     pub(crate) score: i32,
+    /// 盤上総駒数から求めた序中盤の補間係数。
     pub(crate) q: i64,
+    /// 升ごとの線形寄与`q×mg + (90−q)×eg`。720で割る前の分子である。
     pub(crate) board: [i64; 144],
+    /// 先獅子の線形寄与。単位は[`Self::board`]と同じである。
     pub(crate) lion: i64,
+    /// センチポーンへ換算した非線形の出力。
     pub(crate) nonlinear: i64,
 }
 
-/// 特徴の線形寄与は除算前の値として返す。
+/// 局面を全再計算し、手番側視点の[`Breakdown`]を返す。
 pub(crate) fn breakdown(nnue: &Nnue, position: &Position) -> Breakdown {
     use super::features::{feature_index, lion_feature_index};
     let side = position.side_to_move();

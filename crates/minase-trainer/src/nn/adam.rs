@@ -43,11 +43,16 @@ impl AdamCoefficients {
             correction2: 1.0 - 0.999_f64.powf(step as f64),
         })
     }
-    /// 有限な重み、勾配、両モーメントを1要素だけ更新する。分散は非負であること。
-    /// 更新対象の選択と更新後の値の制約は呼び出し側が担う。
+    /// 有限な重みp、勾配g、両モーメントmとvを1要素更新する。
+    /// `p ← p×f32(1−lr×wd)`、`m ← m+(g−m)×0.1`、`v ← 0.999v+0.001g²`をf32で計算する。
+    /// `m̂ = m/(1−0.9^t)`、`v̂ = v/(1−0.999^t)`をf64で求め、`p ← p−f32(lr×m̂/(sqrt(v̂)+1e−8))`とする。
+    /// tは1から数える更新回数で、各学習器のチェックポイントに保存し、再開後も継続する。
+    /// NNUE、PST、FM、同時学習で共用し、対象の選択と更新後の制約は呼び手が担う。
+    /// 分散vは非負でなければならない。
+    /// 理由は`docs/adr/use-pytorch-adamw-with-bias-correction.md`にある。
     pub fn update(&self, p: &mut f32, g: f32, m: &mut f32, v: &mut f32) {
         *p *= self.decay;
-        // torchのlerp_とmul_/addcmul_の単精度演算に合わせる。
+        // モーメントの更新は積と和ごとに単精度で丸める。
         *m += (g - *m) * 0.1;
         *v = *v * 0.999 + (g * g) * 0.001;
         let m_hat = f64::from(*m) / self.correction1;

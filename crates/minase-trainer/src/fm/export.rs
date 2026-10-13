@@ -67,6 +67,14 @@ pub(super) struct Exported {
     pub initial_position_score: i32,
 }
 
+/// 最良モデルをMNPT版3の`fm.bin`と実数の`fm-float.npz`へ書く。
+/// PST、K、47個の探索用駒価値、規則名を初期MNPTから保ち、書いた後に読み直して一致を検査する。
+/// 全特徴の`v * a`が0なら指数0、埋め込み全0のFMを書く。
+/// 1/4にした補正が恒等的に0と上界から判定できれば`excluded_zero_correction`とし、指数30でその判定ができなければ拒否する。
+/// 標本は検証集合の`epoch_permutation(seed, 0)`の先頭`validation_sample`件である。
+/// 誤差は`abs(PST + K * Φ / m − clamp(PST + trunc(N / 2^(2e+1)) / m, ±28,999))`で、整数側の`/ m`も0方向へ切り捨てる。
+/// `m = 1`と`m = 4`の両方で平均2センチポーン以下を合格とする。
+/// `m = 4`の整数補正は指数を1増やした補正に等しい。
 pub(super) fn write_best(
     dataset: &Dataset,
     model: &Model,

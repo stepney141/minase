@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn ruleset_delegates_to_the_shared_usi_grammar() {
-        // PL「規則オプション」の共通値文法（parse_rule_set）への接続確認（D6-CLI-05）。
+        // [`minase_core::rules::parse_rule_set`]の値文法への接続を検査する（D6-CLI-05）。
         // プリセット併記の専用エラーがUSI経路からそのまま返ることで委譲を観測する。
         let output = run(concat!(
             "setoption name RuleSet value lishogi,P1\n",

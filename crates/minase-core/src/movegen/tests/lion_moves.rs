@@ -68,7 +68,7 @@ fn article_11_1_falcon_has_four_forward_actions() {
     );
 
     // 前方2升が空なら、正準形では a の非捕獲版と d の跳びだけが前方に現れる
-    // （空升経由の2段階は跳びへ正準化される。move-canonicalization.md 決定1）。
+    // Moveの正準形では、空升を経由する2段階移動を跳びで表す。
     let empty_forward = with_promoted(Color::Black, (6, 6, PieceKind::HornedFalcon), &[]);
     let forward: Vec<_> = moves_from(&generated(&empty_forward), msq(6, 6))
         .into_iter()
@@ -399,9 +399,8 @@ fn article_12_12_second_stage_judged_sequentially() {
     assert!(moves.contains(&mv(msq(6, 6), Some(msq(6, 5)), msq(5, 4), false)));
 }
 
-// D1-012-09 / D1-009-21: 裸獅子の正準形25手（第12条1〜9項、
-// move-canonicalization.md）。内訳は1升移動8手＋2升跳び16手＋じっと1手。
-// 正準形の手数はimplementation contract（move-canonicalization.md 決定1）。
+/// D1-012-09 / D1-009-21として、RULES.md第12条第1項から第10項と[`Move`]の正準形を検査する。
+/// 裸獅子の25手は、1升移動8手、2升跳び16手、およびじっと1手からなる。
 #[test]
 fn article_12_lone_lion_generates_25_canonical_moves() {
     let board = position(Color::Black, &[(msq(6, 6), Color::Black, PieceKind::Lion)]);

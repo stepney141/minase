@@ -104,7 +104,8 @@ impl Checkpoint {
     }
     /// リトルエンディアン形式へ変換し、末尾に全内容のSHA-256を付ける。
     ///
-    /// 配置は`docs/plans/nnue-trainer-rust.md`の「チェックポイントの形式」に記載する。配列の長さは構造から導き、長さ欄を持たない。
+    /// 配置は`docs/reference/trainer/nnue-training.md`の「チェックポイントの形式」にある。
+    /// 配列の長さは構造から導き、長さ欄を持たない。
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.validate()?;
         let s = self.model.shape();

@@ -1,4 +1,30 @@
-//! Chess Engine Communication Protocolのアダプター。
+//! Chess Engine Communication Protocol（CECP、XBoard）のアダプター。
+//!
+//! CECPのWhiteは先手で内部の[`Color::Black`]、Blackは後手で[`Color::White`]に当たる。
+//! 手番文字と結果の符号の読み替えは本モジュールに閉じる。
+//! 待機中の入力は次の表に従う。
+//!
+//! | コマンド | 応答と処理 |
+//! | --- | --- |
+//! | `xboard`、`accepted` | 無応答で無視する。 |
+//! | `protover` | `CecpProtocol::write_features`の宣言列を返す。 |
+//! | `rejected` | `setboard`、`usermove`、`ping`なら`tellusererror minase requires the <feature> feature`を出して終了し、他は無視する。 |
+//! | `variant` | `chu`だけを受理し、他は`Error (unsupported variant): <名前>`を返して継続する。 |
+//! | `new` | `handle_new`で初期局面の対局を始める。 |
+//! | `force`、`go` | `PlayMode`の担当手番と応手状態を変える。 |
+//! | `setboard`、`usermove` | `handle_setboard`と`handle_usermove`で局面や着手を適用する。 |
+//! | `ping N` | `pong N`を返す。 |
+//! | `result` | 対局状態機械の`EndGame`で開始待ちへ戻り、裁定の食い違いに異議を唱えない。 |
+//! | `option`、`memory`、`cores` | `handle_option`、`handle_memory`、`handle_cores`で設定を検査する。 |
+//! | `time`、`otim`、`level`、`st`、`sd` | `TimeControl`の契約に従って探索制限を更新する。 |
+//! | `?` | 待機中は無応答で無視する。 |
+//! | `quit` | 無応答で終了する。 |
+//! | `easy`、`hard`、`post`、`nopost`、`random`、`computer`、`name`、`hint`、`draw` | 対応する機能を持たず、状態を変えずに無視する。 |
+//! | `undo`、`remove`、`analyze` | 無視すると盤面やモードが食い違うため、`Error (command not supported): <コマンド>`を返す。 |
+//! | それ以外 | `Error (unknown command): <第1語>`を返す。 |
+//!
+//! 先読み、引き分け提案、思考情報の出力、およびXBoardのhighlightによる対話入力は実装しない。
+//! 人間との対局は自作GUIが担う。
 
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};
@@ -32,7 +58,8 @@ pub struct CecpProtocol {
     play_mode: PlayMode,
     /// 探索間で引き継ぐ置換表。探索スレッドへ貸し出し中は`None`。
     transposition_table: Option<TranspositionTable>,
-    /// strength-stage12.md「項目5」のワーカー別history。探索中はNone。
+    /// 対局内で持ち越すワーカー別のhistory表。探索中は`None`である。
+    /// 理由は`docs/adr/carry-history-tables-within-a-game.md`にある。
     histories: Option<search::HistoryTables>,
     /// 次に開始する探索へ割り当てる識別子。
     next_search_id: u64,
@@ -42,7 +69,14 @@ pub struct CecpProtocol {
     time_control: TimeControl,
 }
 
-/// CECPの着手応答モード。
+/// 担当手番と、自動で応手するかどうかを表す状態。
+///
+/// `new`は担当を後手として`Playing`へ移る。
+/// `force`は`Force`へ移り、以後は両陣営の`usermove`を適用するだけで着手を出さない。
+/// `go`は対局中だけ受理し、現在手番を担当とする`Playing`へ移って探索を始める。
+/// 対局中以外の`go`は`Error (command not legal now): go`で拒否する。
+/// `usermove`の後は、`Playing`で対局が続き、手番が担当と一致するときだけ探索する。
+/// 探索の手が拒否された場合は`tellusererror engine move rejected: <理由>`を出して`Force`へ移る。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum PlayMode {
     /// 両陣営の着手を受信するだけで、エンジンは応手しない。
@@ -51,7 +85,16 @@ enum PlayMode {
     Playing { engine_side: Color },
 }
 
-/// CECPから受け取った探索制限の正規化値。
+/// CECPの時間と深さを、探索層の単位に正規化して保持する。
+///
+/// `time`と`otim`は1/100秒を10倍してミリ秒にする。
+/// `level MPS BASE INC`のBASEは分または`分:秒`で、秒は60未満とする。
+/// INCは秒として小数第3位までをミリ秒へ写し、第4位以下は切り捨てる。
+/// 両者の残り時間をBASE、加算をINCにする。
+/// MPSは区切り手数として構文だけ検査し、探索制限に残り手数の欄がないため使わない。
+/// `st`は小数を許す1手の固定秒数、`sd`は1〜256の深さ上限である。
+/// 不正な値は`Error (invalid command): <コマンド>`を返す。
+/// `otim`は保持するだけで予算には使わない。探索への変換は[`Self::search_limits`]に従う。
 #[derive(Default)]
 struct TimeControl {
     /// `time`が通知したエンジン側の残り時間(ms)。
@@ -348,7 +391,11 @@ impl CecpProtocol {
         Ok(())
     }
 
-    /// 探索中に届いた1コマンドを即時停止または後続処理に分類する。
+    /// 探索中の`?`で停止し、その時点の最善手を通常の着手処理へ渡す。
+    ///
+    /// `force`、`result`、`new`、`quit`は探索を止めて結果を捨て、`move`を出さずに通常の処理へ戻す。
+    /// 他のコマンドは`ping`も含めて待ち行列に積み、探索解放後に受信順で処理する。
+    /// 探索結果を着手として返す場合、探索中の`ping`への`pong`は`move`より後になる。
     fn handle_searching_line(
         &mut self,
         engine: &mut Engine,
@@ -493,7 +540,13 @@ impl CecpProtocol {
         Ok(())
     }
 
-    /// 探索が選んだ手を現局へ適用し、`move`と新規終局結果を順に出力する。
+    /// 探索の手を現局へ適用してから、着手、終局結果の順に出す。
+    ///
+    /// `ApplyMove`を受理した後、[`cecp::legs`]に従う`move <レグ>`を送る。
+    /// 2レグなら非最終レグの末尾にコンマを付け、じっとは`@@@@`、成りの`+`は最終レグだけに付ける。
+    /// `newly_finished`があれば最後に結果行を1回送る。
+    /// 審判層が確定したルート合法手から選ぶ契約なので、拒否は探索とプロトコルの契約違反である。
+    /// 拒否時の応答と状態遷移は[`PlayMode`]に従う。
     fn apply_engine_move(
         &mut self,
         engine: &mut Engine,
@@ -517,10 +570,28 @@ impl CecpProtocol {
         output.flush()
     }
 
-    /// `protover`への応答としてfeature宣言を出力する。
+    /// `protover`へ次の順でfeature宣言を返す。
     ///
-    /// setboard・usermove・pingは動作の前提であり、拒否された場合は
-    /// セッションを継続しない(handle_lineの`rejected`分岐)。
+    /// ```text
+    /// feature myname="minase <CARGO_PKG_VERSION>"
+    /// feature variants="chu"
+    /// feature setboard=1
+    /// feature usermove=1
+    /// feature ping=1
+    /// feature colors=0
+    /// feature sigint=0
+    /// feature sigterm=0
+    /// feature analyze=0
+    /// feature time=1
+    /// feature memory=1
+    /// feature draw=0
+    /// feature option="RuleSet -string <起動時の--rulesの正準表記>"
+    /// feature smp=1
+    /// feature done=1
+    /// ```
+    ///
+    /// 時間と容量のコマンドを受けるため`time=1`と`memory=1`を宣言し、引き分け提案を扱わないため`draw=0`とする。
+    /// 必須の`setboard`、`usermove`、`ping`が拒否された場合はセッションを続けない。
     fn write_features(&self, output: &mut dyn Write) -> io::Result<()> {
         writeln!(
             output,
@@ -547,7 +618,12 @@ impl CecpProtocol {
         writeln!(output, "feature done=1")
     }
 
-    /// `new`を処理し、初期局面から対局を開始する。
+    /// 次局の規則を確定し、初期局面から対局を開始する。
+    ///
+    /// `NewGame`に続けて初形の`SetPosition`を適用し、`InGame`へ入る。
+    /// CECPでは`new`の後に`setboard`なしで着手を受けるためである。
+    /// 担当手番を後手にし、置換表とhistory表を空にする。
+    /// 状態機械が拒否した場合は`Error (command not legal now): new`を返す。
     fn handle_new(&mut self, engine: &mut Engine, output: &mut dyn Write) -> io::Result<()> {
         if !matches!(
             engine.handle(EngineCommand::NewGame),
@@ -581,7 +657,17 @@ impl CecpProtocol {
         }
     }
 
-    /// `setboard`のFEN風局面を解析して対局を設定する。
+    /// 盤面とCECP手番の2欄を必須として局面を設定する。
+    ///
+    /// 盤面はSFENと同じパーサへ渡し、手番の`w`は先手、`b`は後手として読み替える。
+    /// XBoardのFENにはキャスリングなどの欄もあるため、第3欄以降は無視する。
+    /// `<盤面> <SFENの手番> - 1`として解析し、先獅子の状態と成り権の保留を持たず、
+    /// 次の手番号1、空の反復履歴から始める。CECPが運ばない状態の独自拡張はしない。
+    /// 制約は`docs/research/protocols/hachu.md`第12節にある。
+    ///
+    /// 解析や局面検証の失敗は`tellusererror Illegal position`で拒否する。
+    /// 解析できても終局後なら`Error (command not legal now): setboard`で拒否する。
+    /// 対局中は現局を置き換え、担当手番を変えない。
     fn handle_setboard(
         &self,
         engine: &mut Engine,
@@ -615,7 +701,13 @@ impl CecpProtocol {
         }
     }
 
-    /// `usermove`の指し手を適用し、終局すれば結果行を出力する。
+    /// 受信した着手を適用し、終局時だけ結果行を1回出す。
+    ///
+    /// 通常の着手は[`cecp::parse`]、`@@@@`は[`representative_jitto`]で解析する。
+    /// 解析失敗または動きの規則違反は`Illegal move: <表記>`、
+    /// 反復規則R2とR3の禁止は`Illegal move (repetition): <表記>`とする。
+    /// 解析できても開始前や終局後なら`Error (command not legal now): usermove <表記>`を返す。
+    /// 着手で終局したら探索を始めず、継続時の自動応手は[`PlayMode`]に従う。
     fn handle_usermove(
         &mut self,
         engine: &mut Engine,
@@ -676,7 +768,11 @@ impl CecpProtocol {
         }
     }
 
-    /// `option`のRuleSet設定を処理する。他のoption名は黙って無視する。
+    /// `option RuleSet=<値>`だけを処理し、他のオプション名は無視する。
+    ///
+    /// 値はUSIの規則オプションと同じ[`parse_rule_set`]の文法で読む。
+    /// 正当なら次局の規則だけを更新し、置換表とhistory表を空にする。
+    /// 不正なら`Error (invalid option value): <受信行>`を返す。
     fn handle_option(
         &mut self,
         engine: &mut Engine,
@@ -713,7 +809,11 @@ impl CecpProtocol {
         }
     }
 
-    /// `memory MB`を範囲内の容量として受理し、待機中の置換表を作り直す。
+    /// `memory MB`を1〜65,536 MiBとして受理し、置換表を確保または作り直す。
+    ///
+    /// 成功時はhistory表を空にする。
+    /// 不正な値は`Error (invalid command): memory`、確保失敗は`Error (cannot allocate memory): <MB>`とする。
+    /// このコマンドを受けていなければ、探索開始時に既定の256 MiBで確保する。
     fn handle_memory(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         let Some(size_mb) = tokens
             .first()
@@ -738,7 +838,9 @@ impl CecpProtocol {
         Ok(())
     }
 
-    /// `cores N`を1以上256以下のワーカー数として受理する。
+    /// `cores N`を1〜256の探索ワーカー数として受理する。
+    /// 変更時は置換表を空にし、history表をその数で作り直す。
+    /// 不正な値は`Error (invalid command): cores`で拒否する。
     fn handle_cores(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         let Some(threads) = tokens.first().and_then(|value| parse_cores(value)) else {
             return writeln!(output, "Error (invalid command): cores");
@@ -753,7 +855,7 @@ impl CecpProtocol {
         Ok(())
     }
 
-    /// `time`または`otim`の1/100秒値をミリ秒へ正規化する。
+    /// [`TimeControl`]の契約に従い、`time`または`otim`の1/100秒値をミリ秒へ正規化する。
     fn handle_centiseconds(
         &mut self,
         tokens: &[&str],
@@ -776,7 +878,7 @@ impl CecpProtocol {
         Ok(())
     }
 
-    /// `level`の基本持ち時間と加算秒をミリ秒へ正規化する。
+    /// [`TimeControl`]の`level`文法に従い、両時計と加算をミリ秒で更新する。
     fn handle_level(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         let parsed = (|| {
             let moves = tokens.first()?.parse::<u64>().ok()?;
@@ -793,7 +895,7 @@ impl CecpProtocol {
         Ok(())
     }
 
-    /// `st`の秒値を1手の固定時間(ms)へ正規化する。
+    /// [`TimeControl`]の`st`文法に従い、1手の固定時間をミリ秒で保持する。
     fn handle_st(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         let Some(milliseconds) = tokens
             .first()
@@ -805,7 +907,7 @@ impl CecpProtocol {
         Ok(())
     }
 
-    /// `sd`の正の整数を探索深さ上限として保持する。
+    /// [`SearchLimits::new`]と同じ1〜256の深さ上限を検査して保持する。
     fn handle_sd(&mut self, tokens: &[&str], output: &mut dyn Write) -> io::Result<()> {
         let Some(depth) = tokens
             .first()
@@ -820,7 +922,11 @@ impl CecpProtocol {
 }
 
 impl TimeControl {
-    /// 保持した正規化値を探索層の制限型へ写す。
+    /// 自分の残り時間、加算、秒読み0、および[`Engine::ply`]から探索の時計を作る。
+    ///
+    /// 残り時間がなければ時計は作らず、保持した`st`と`sd`を併せて制限にする。
+    /// `otim`は使わない。制限が1つもなければ`None`を返し、呼び出し側は
+    /// `tellusererror search limits are not set`を出して探索しない。
     fn search_limits(&self, ply: u32) -> Result<Option<SearchLimits>, search::SearchError> {
         let clock = self
             .engine_remaining_ms
@@ -926,7 +1032,12 @@ fn parse_seconds_milliseconds(input: &str) -> Option<u64> {
     whole_ms.checked_add(fraction_ms)
 }
 
-/// `@@@@`入力へ割り当てる正準じっとを、移動元の内部密番号が最小の合法手から選ぶ。
+/// `@@@@`へ割り当てる正準じっとを、移動元の内部密番号が最小の合法手から選ぶ。
+///
+/// 候補は`mid`なし、移動元と移動先が同じ、不成の手である。
+/// 居喰いは駒を取って局面を変えるため含めない。
+/// どの候補も同じ後続局面と反復キーを生むが、R1の攻撃的着手の判定は動かした駒の到達升を見るため、
+/// 代表の選び方が裁定に影響し得る。これは移動元と経由升を運ばないCECP表記に由来する、R1対局の既知の制限である。
 fn representative_jitto(engine: &Engine) -> Option<minase_core::Move> {
     engine
         .game()
@@ -936,7 +1047,12 @@ fn representative_jitto(engine: &Engine) -> Option<minase_core::Move> {
         .min_by_key(|mv| mv.from.dense_index())
 }
 
-/// 対局結果をCECPの結果行(`1-0 {reason}`など)として出力する。
+/// `<符号> {<理由>}`の1行で確定した結果を出力する。
+///
+/// 先手勝ちは`1-0`、後手勝ちは`0-1`、引き分けは`1/2-1/2`とする。
+/// 勝ちの理由は[`win_reason_text`]、引き分けは[`draw_reason_text`]で固定語へ写す。
+/// 呼び出し側は`EngineReply::Accepted`の`newly_finished`がある場合だけ送信し、
+/// 終局後の後続コマンドから結果を作り直さない。
 fn write_result(output: &mut dyn Write, result: GameResult) -> io::Result<()> {
     let (code, reason) = match result {
         GameResult::Win { winner, reason } => {
@@ -951,7 +1067,9 @@ fn write_result(output: &mut dyn Write, result: GameResult) -> io::Result<()> {
     writeln!(output, "{code} {{{reason}}}")
 }
 
-/// 勝利理由を結果行の注記へ変換する。
+/// 勝利理由を結果行の固定語へ1対1に写す。
+/// 王駒捕獲は`royal capture`、詰みは`checkmate`、合法手なしは`no legal moves`、
+/// 反復は`repetition`、駒枯れは`piece exhaustion`、裸玉は`bare king`、投了は`resignation`である。
 const fn win_reason_text(reason: WinReason) -> &'static str {
     match reason {
         WinReason::RoyalCapture => "royal capture",
@@ -964,7 +1082,8 @@ const fn win_reason_text(reason: WinReason) -> &'static str {
     }
 }
 
-/// 引き分け理由を結果行の注記へ変換する。
+/// 引き分け理由を結果行の固定語へ1対1に写す。
+/// 反復は`repetition`、駒枯れは`piece exhaustion`、裸玉は`bare kings`、合意は`agreement`である。
 const fn draw_reason_text(reason: DrawReason) -> &'static str {
     match reason {
         DrawReason::Repetition => "repetition",
@@ -1048,9 +1167,8 @@ mod tests {
 
     #[test]
     fn time_and_otim_normalize_centiseconds_to_milliseconds() {
-        // 変異検証(フェーズ4)補強・実装契約: time/otimの1/100秒→ミリ秒換算(×10、
-        // engine-connectivity.mdの単位規定)はwire出力に現れず時間管理へだけ流れる
-        // ため、ここに限り内部時計を直接観測して換算係数を固定する。
+        // [`TimeControl`]のtime/otimの1/100秒からミリ秒への換算は出力に現れないため、
+        // 内部時計を直接観測して係数10を検査する。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = CecpProtocol::new(&engine);
         let output = run(&mut protocol, &mut engine, "time 6000\notim 123\n");
@@ -1119,8 +1237,8 @@ mod tests {
 
     #[test]
     fn protover_declares_the_feature_set_with_done_last() {
-        // PL「CECPのfeature宣言」＋EC（time=1へ改定・memory=1追加。現行はECが正）（D6-CECP-01）。
-        // 宣言の行順は仕様が任意とするため（CE第4章）、done=1の終端以外は集合として検証する。
+        // [`CecpProtocol::write_features`]の宣言値を検査する（D6-CECP-01）。
+        // 宣言の行順は仕様が任意とするため（`docs/research/protocols/cecp.md`第4章）、done=1の終端以外は集合として検証する。
         let output = session(
             &[RuleCode::E2, RuleCode::R1, RuleCode::L1],
             "xboard\nprotover 2\nquit\n",
@@ -1146,13 +1264,13 @@ mod tests {
         ] {
             assert!(lines.contains(&expected), "missing: {expected}");
         }
-        // 文字列値は二重引用符で囲む（PL実施状況フェーズ5のレビュー修正）。
+        // 文字列値は二重引用符で囲む（[`CecpProtocol::write_features`]の契約）。
         assert!(
             lines
                 .iter()
                 .any(|line| line.starts_with("feature myname=\"minase ") && line.ends_with('"'))
         );
-        // debug・highlight・san・reuseは宣言しない（PL）。
+        // debug・highlight・san・reuseは宣言しない（[`CecpProtocol::write_features`]）。
         for absent in ["debug=", "highlight=", "san=", "reuse="] {
             assert!(!output.contains(absent), "unexpected: {absent}");
         }
@@ -1184,7 +1302,7 @@ mod tests {
 
     #[test]
     fn required_feature_rejections_terminate_the_session() {
-        // PL「プロトコル固有の制御コマンド」: 必須feature（setboard・usermove・ping）の拒否は
+        // モジュールdocのコマンド表: 必須feature（setboard・usermove・ping）の拒否は
         // tellusererrorを出して終了し、他の拒否は無視する（D6-CECP-02）。
         for feature in ["setboard", "usermove", "ping"] {
             let output = session(
@@ -1210,7 +1328,7 @@ mod tests {
 
     #[test]
     fn variant_accepts_only_exact_chu() {
-        // PL「プロトコル固有の制御コマンド」: variantはchuだけを受理する（D6-CECP-03）。
+        // モジュールdocのコマンド表: variantはchuだけを受理する（D6-CECP-03）。
         // エラー本文の完全形はSU-12により前方一致で検証する。
         let output = session(
             &[RuleCode::R1],
@@ -1227,7 +1345,7 @@ mod tests {
 
     #[test]
     fn cecp_white_matches_the_usi_first_player() {
-        // PL「内部正準と手番文字の変換責任」・「setboardの受理契約」（D6-CECP-04）。
+        // モジュールdocの色の読み替えと[`CecpProtocol::handle_setboard`]（D6-CECP-04）。
         // 同一盤面をCECPのwとUSIのbで設定すると、先手の同じ着手が双方で受理される。
         assert_eq!(
             session(
@@ -1262,8 +1380,8 @@ mod tests {
 
     #[test]
     fn result_lines_take_the_white_viewpoint_and_appear_once() {
-        // PL「内部正準…」（1-0は先手勝ち）・「思考開始指示と終局裁定の通知」の理由表・
-        // EC「着手と結果の順序」（usermove終局はnewly_finishedからRESULT1回）（D6-CECP-05、D6-CECP-16）。
+        // モジュールdocの色の読み替えと[`write_result`]の理由表、
+        // [`CecpProtocol::handle_usermove`]の結果通知順を検査する（D6-CECP-05、D6-CECP-16）。
         let output = session(
             &[RuleCode::R1, RuleCode::E2],
             &format!("setboard {ROYAL_BLACK_WINS} w\nusermove f6f9\nping 3\n"),
@@ -1293,7 +1411,7 @@ mod tests {
 
     #[test]
     fn usermove_legs_must_be_continuous() {
-        // PL「Move文字列表記2形式」: 受信はコンマ区切り単一文字列、第2レグの始点不一致は拒否（D6-CECP-07）。
+        // [`minase_core::notation::cecp::parse`]の契約: 受信はコンマ区切り単一文字列、第2レグの始点不一致は拒否（D6-CECP-07）。
         assert_eq!(
             session(
                 &[RuleCode::R1, RuleCode::E2],
@@ -1320,7 +1438,7 @@ mod tests {
 
     #[test]
     fn promotion_suffixes_are_interpreted_on_the_final_leg_only() {
-        // PL「CECP指し手表記の関数契約」: +は最終レグの末尾だけ、=は不成として受理（D6-CECP-08）。
+        // [`minase_core::notation::cecp::parse`]の契約: +は最終レグの末尾だけ、=は不成として受理（D6-CECP-08）。
         // 成りの成立は、成駒（歩兵→金将の動き、RULES.md第9条）の横移動の受理で観測する。
         assert_eq!(
             session(
@@ -1352,7 +1470,7 @@ mod tests {
 
     #[test]
     fn at_at_plays_a_canonical_jitto_or_is_rejected() {
-        // PL「Move文字列表記2形式」の@@@@契約（D6-CECP-09）。本領域は受理・拒否の外形のみを
+        // [`representative_jitto`]の契約（D6-CECP-09）。本領域は受理・拒否の外形のみを
         // 固定し、代表選択が局面遷移へ影響しないことの検証はD5表記領域が分担する。
         assert_eq!(
             session(
@@ -1373,7 +1491,7 @@ mod tests {
 
     #[test]
     fn engine_moves_are_emitted_as_move_lines_with_a_legal_payload() {
-        // EC「着手と結果の順序」・PL送信形式（D6-CECP-10）。探索の具体的な着手は評価依存の
+        // [`CecpProtocol::apply_engine_move`]と[`minase_core::notation::cecp::legs`]（D6-CECP-10）。探索の具体的な着手は評価依存の
         // ため固定せず、レグ連結をparseへ往復して合法手集合への所属だけを検証する。
         let output = session(&[RuleCode::R1], "sd 1\nnew\ngo\n");
         let lines = move_lines(&output);
@@ -1401,7 +1519,7 @@ mod tests {
 
     #[test]
     fn illegal_moves_use_the_two_canonical_forms() {
-        // PL「思考開始指示と終局裁定の通知」: Movementは省略形、Repetitionは注記付き
+        // [`CecpProtocol::handle_usermove`]の拒否形式: Movementは省略形、Repetitionは注記付き
         // （D6-CECP-11、D6-ENG-03）。RULES.md第27条第4項（R2の禁止手は不合法な着手）。
         let output = session(
             &[RuleCode::R1],
@@ -1422,8 +1540,8 @@ mod tests {
 
     #[test]
     fn usermove_triggers_exactly_one_automatic_reply() {
-        // EC「状態機械」: usermove後、¬force∧継続中∧手番=担当なら探索する（D6-CECP-12）。
-        // PL「newの意味論」: newは初期局面でInGameへ入り、エンジンは着手を自発しない（D6-CECP-06）。
+        // [`PlayMode`]とモジュールdocのコマンド表: usermove後、¬force∧継続中∧手番=担当なら探索する（D6-CECP-12）。
+        // [`CecpProtocol::handle_new`]の契約: newは初期局面でInGameへ入り、エンジンは着手を自発しない（D6-CECP-06）。
         let output = session(&[RuleCode::R1], "sd 1\nnew\nusermove g4g5\n");
 
         // new直後に自発着手はなく、usermoveへの応手だけが出る。
@@ -1435,7 +1553,7 @@ mod tests {
 
     #[test]
     fn force_applies_both_sides_without_replies() {
-        // EC「状態機械」: forceは着手を出さずusermoveを両陣営分適用する（D6-CECP-13）。
+        // [`PlayMode`]とモジュールdocのコマンド表: forceは着手を出さずusermoveを両陣営分適用する（D6-CECP-13）。
         // 不合法手への応答はillegal_moves_use_the_two_canonical_formsが、裁定（RESULT）の
         // 維持はresult_lines_take_the_white_viewpoint_and_appear_onceが検証する。
         assert_eq!(
@@ -1449,7 +1567,7 @@ mod tests {
 
     #[test]
     fn go_adopts_the_current_side_and_rejects_out_of_game_states() {
-        // EC「状態機械」: goは継続中に限りforceを解除し現在手番を担当して探索する（D6-CECP-14）。
+        // [`PlayMode`]とモジュールdocのコマンド表: goは継続中に限りforceを解除し現在手番を担当して探索する（D6-CECP-14）。
         let output = session(&[RuleCode::R1], "sd 1\nnew\nforce\nusermove g4g5\ngo\n");
         assert!(!output.is_empty());
         assert!(output.lines().all(|line| line.starts_with("move ")));
@@ -1464,7 +1582,7 @@ mod tests {
 
     #[test]
     fn go_without_search_limits_is_a_tellusererror() {
-        // EC実施状況フェーズ2の実装判断: 探索制限のないgoは暗黙の既定値でフォールバック
+        // [`TimeControl::search_limits`]の契約: 探索制限のないgoは暗黙の既定値でフォールバック
         // せずtellusererrorを返す（D6-CECP-15。絶対規則: 暗黙フォールバック禁止）。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = CecpProtocol::new(&engine);
@@ -1477,7 +1595,7 @@ mod tests {
 
     #[test]
     fn an_engine_finishing_move_emits_move_then_result_once() {
-        // EC「着手と結果の順序」: ApplyMove→move行→newly_finished時のみRESULT1回（D6-CECP-16、
+        // [`CecpProtocol::apply_engine_move`]の契約: ApplyMove→move行→newly_finished時のみRESULT1回（D6-CECP-16、
         // D6-ENG-04）。RESULT後のgoは拒否される（D6-CECP-14の(b)）。
         let output = session(
             &[RuleCode::R1, RuleCode::E2],
@@ -1513,7 +1631,7 @@ mod tests {
 
     #[test]
     fn result_is_accepted_as_the_external_verdict() {
-        // EC「状態機械」: resultは外部要因を含む確定通知であり、エンジンは異議を唱えず
+        // [`PlayMode`]とモジュールdocのコマンド表: resultは外部要因を含む確定通知であり、エンジンは異議を唱えず
         // AwaitingStartへ戻る（D6-CECP-17）。
         let mut engine = make_engine(&[RuleCode::R1]);
         let mut protocol = CecpProtocol::new(&engine);
@@ -1538,7 +1656,7 @@ mod tests {
 
     #[test]
     fn stop_class_commands_discard_the_running_search() {
-        // EC実施状況フェーズ2: 探索中のforce・result・new・quitは停止・破棄で、遅延した
+        // [`CecpProtocol::handle_searching_line`]の契約: 探索中のforce・result・new・quitは停止・破棄で、遅延した
         // move行が漏れない（D6-CECP-31、D6-CECP-17/06/29の探索中経路）。
         assert!(
             !queued_session(&[RuleCode::R1], "sd 256\nnew\ngo\nresult 1-0 {external}\n")
@@ -1595,7 +1713,7 @@ mod tests {
 
     #[test]
     fn time_commands_are_accepted_and_normalized_to_milliseconds() {
-        // EC「責務分担」・実施状況フェーズ2: time/otimは1/100秒、levelは分・分:秒・加算秒、
+        // [`TimeControl`]の単位: time/otimは1/100秒、levelは分・分:秒・加算秒、
         // stは秒、sdは深さで、正規化先はミリ秒のSearchLimits（D6-CECP-20〜22）。
         let output = session(
             &[RuleCode::R1],
@@ -1633,7 +1751,7 @@ mod tests {
 
     #[test]
     fn setboard_takes_two_fields_ignores_extras_and_fails_atomically() {
-        // PL「setboardの受理契約」: 2欄必須・3欄目以降は無視・解析失敗はtellusererror
+        // [`CecpProtocol::handle_setboard`]の契約: 2欄必須・3欄目以降は無視・解析失敗はtellusererror
         // Illegal positionで状態不変（D6-CECP-24、D6-ENG-01/05の外形）。
         let output = session(
             &[RuleCode::R1, RuleCode::E2],
@@ -1664,7 +1782,7 @@ mod tests {
 
     #[test]
     fn ruleset_option_latches_until_new_and_rejects_invalid_values() {
-        // PL「規則オプション」: option NAME=VALUEで検証し、正当ならpendingのみ更新、不正なら
+        // [`CecpProtocol::handle_option`]の契約: option NAME=VALUEで検証し、正当ならpendingのみ更新、不正なら
         // Error (invalid option value): <受信行>。commitはnew（D6-CECP-25、D6-ENG-02）。
         let mut engine = make_engine(&[RuleCode::R1, RuleCode::E2]);
         let mut protocol = CecpProtocol::new(&engine);
@@ -1701,7 +1819,7 @@ mod tests {
 
     #[test]
     fn ignored_commands_produce_no_output_or_state_change() {
-        // PL「コマンド対応の残余」の無視リストからECが処理へ昇格したものを除いた集合
+        // モジュールdocのコマンド表にある、状態を変えずに無視する集合
         // （easy・hard・post・nopost・random・computer・name・hint・draw）（D6-CECP-26）。
         assert_eq!(
             session(
@@ -1714,7 +1832,7 @@ mod tests {
 
     #[test]
     fn undo_remove_and_analyze_report_command_not_supported() {
-        // PL「コマンド対応の残余」: 無視すると不整合を生む3コマンドだけがエラーになる（D6-CECP-27）。
+        // モジュールdocのコマンド表: 無視すると不整合を生む3コマンドだけがエラーになる（D6-CECP-27）。
         assert_eq!(
             session(
                 &[RuleCode::R1],
@@ -1730,8 +1848,8 @@ mod tests {
 
     #[test]
     fn unknown_commands_echo_only_the_first_token() {
-        // PL「コマンド対応の残余」・CE第3章: 未知の行はError (unknown command): <第1トークン>
-        // （D6-CECP-28。未知行を無視するUSIとの意図的な差）。
+        // モジュールdocのコマンド表と`docs/research/protocols/cecp.md`第3章: 未知の行はError (unknown command): <第1トークン>
+        // （D6-CECP-28）。エラーには未知の行の先頭語を含める。
         assert_eq!(
             session(
                 &[RuleCode::R1],
@@ -1743,15 +1861,15 @@ mod tests {
 
     #[test]
     fn xboard_is_ignored_and_quit_ends_the_session_silently() {
-        // PL「プロトコル固有の制御コマンド」: xboardは無視、quitは無応答で終了（D6-CECP-29）。
+        // モジュールdocのコマンド表: xboardは無視、quitは無応答で終了（D6-CECP-29）。
         // quit後の入力は処理されない。
         assert_eq!(session(&[RuleCode::R1], "xboard\nquit\nping 1\n"), "");
     }
 
     #[test]
     fn result_reason_table_matches_the_documented_mapping() {
-        // PL「思考開始指示と終局裁定の通知」の理由文字列対応表と、BG「裁定理由enumの分割」
-        // によるBareKingの訳語（D6-CECP-05）。
+        // [`write_result`]と[`draw_reason_text`]の固定語に従い、
+        // 裸玉の引き分けはbare kingsと表す（D6-CECP-05）。
         let wins = [
             (WinReason::RoyalCapture, "royal capture"),
             (WinReason::Mate, "checkmate"),

@@ -56,15 +56,15 @@ fn article_21_3_b_and_21_4_checked_side_may_capture_the_last_royal_first() {
     );
 }
 
+/// D3-021-05/D3-031-05: 白飛の照準往復(全手が攻撃的着手)で反復履歴を
+/// 蓄積すると、黒の非攻撃的な候補手(3,10)→(3,9)だけが4回目の同一局面を
+/// 生じさせ、R1裁定(片側継続攻撃側=白の負け)を直ちに成立させる。この
+/// 候補手は3項cの回避手段に数えられるため詰みと判定されず、実際に指すと
+/// R1裁定で黒の勝ちになる。黒の攻撃連続数(1〜10手目のうち黒の5手は全て
+/// 攻撃的)は候補手の評価で0へ戻る必要があり、実着手と仮想着手の遷移の
+/// 一致を[`updated_attacking_counters`](crate::game::repetition::r1::updated_attacking_counters)の契約に従って検査する。
 #[test]
 fn article_21_3_c_and_31_r1_repetition_win_rescues_mate() {
-    // D3-021-05/D3-031-05: 白飛の照準往復(全手が攻撃的着手)で反復履歴を
-    // 蓄積すると、黒の非攻撃的な候補手(3,10)→(3,9)だけが4回目の同一局面を
-    // 生じさせ、R1裁定(片側継続攻撃側=白の負け)を直ちに成立させる。この
-    // 候補手は3項cの回避手段に数えられるため詰みと判定されず、実際に指すと
-    // R1裁定で黒の勝ちになる。黒の攻撃連続数(1〜10手目のうち黒の5手は全て
-    // 攻撃的)は候補手の評価で0へ戻る必要があり、実着手と仮想着手の遷移の
-    // 一致(adjudication-refactor.md「R1の攻撃連続数」)を回帰として固定する。
     let start = position(
         Color::White,
         &[
@@ -161,11 +161,11 @@ fn article_21_6_resignation_ends_the_game() {
     assert_eq!(game.ply_count(), 0);
 }
 
+/// D3-021-10: 詰み判定の1手目(手番側の受け)にはR2禁止フィルタ後の
+/// 対局合法手を用いる。唯一の非捕獲の受けが既出局面の再現となる局面は、
+/// R1では継続だがR2では詰みになる（RULES.md第31条R2、[`is_mate`](crate::game::adjudication::mate::is_mate)の契約）。
 #[test]
 fn article_21_10_r2_mate_judgement_uses_the_filtered_move_set() {
-    // D3-021-10: 詰み判定の1手目(手番側の受け)にはR2禁止フィルタ後の
-    // 対局合法手を用いる。唯一の非捕獲の受けが既出局面の再現となる局面は、
-    // R1では継続だがR2では詰みになる(game-referee.md 6節)。
     let pieces = [
         (sq(0, 1), piece(Color::Black, PieceKind::King)),
         (sq(11, 0), piece(Color::White, PieceKind::Rook)),

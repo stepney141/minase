@@ -1,4 +1,14 @@
-//! MNUE版5を符号化・復号し、配置、範囲、検査和および鏡映共有を検証する。
+//! MNUE版5のバイト配置と検証を定める。
+//! 多バイト数値はリトルエンディアンであり、ヘッダは192バイトである。
+//! オフセット0は識別子`MNUE`、4は版u32の5、8はASCIIの構造記述96バイトである。
+//! 104は幅Hのu32で2〜512の偶数、108は出力用Kのf32で正の有限値かつ100,000以下である。
+//! 112はUTF-8の規則セット名32バイト、144は本体のSHA-256の32バイト、176は0の予約16バイトである。
+//! 文字列の余りはNULで埋める。
+//!
+//! 本体は線形`i16[13680][2]`、探索用駒価値`i32[47]`、第1層`i16[D][H]`、バイアス`i32[H]`、出力重み`i16[2H]`、出力バイアスi32の順である。
+//! Dは入力特徴数であり、直接出力部のファイル長は`192 + 13,680×4 + 47×4 + D×2H + 4H + 4H + 4`となる。
+//! 長さはヘッダの幅と型の構造から導いて検査し、固定のファイルサイズとは比較しない。
+//! 版1〜4は受理しない。
 
 use super::feature_set::{FeatureSet, Mirror};
 use super::head::{DirectScrelu, Head};
@@ -37,6 +47,8 @@ pub struct EncodeInput<'a> {
 /// 入力特徴集合`F`と直接出力部の重みを検証し、MNUE版5へ符号化する。
 ///
 /// 構造記述文字列は`F`の名前と幅から組み立て、本体のSHA-256をヘッダへ格納する。
+/// 量子化済み整数を受け取り、復号と同じ範囲と鏡映共有を検査する。
+/// 実数への尺度の乗算と偶数丸めは学習器の`nnue::model::quantize`が行い、書き出し直後に復号して再検査する。
 ///
 /// # Errors
 /// 幅、K、文字列、配列長、駒価値、重みの範囲または鏡映共有が不正ならエラーを返す。
@@ -121,6 +133,8 @@ pub fn encode<F: FeatureSet>(input: &EncodeInput<'_>) -> Result<Vec<u8>, Error> 
     Ok(bytes)
 }
 
+/// `features=<入力特徴集合名>;ft=<H>;linear=tapered2;head=<出力部名>`を組み立てる。
+/// `linear=tapered2`は基底特徴上の2端点を盤上総駒数で補間する線形の経路を表す。
 fn architecture_text<F: FeatureSet, H: Head>(width: usize) -> String {
     format!(
         "features={};ft={width};linear=tapered2;head={}",
@@ -163,6 +177,11 @@ pub fn architecture(bytes: &[u8]) -> Result<&str, Error> {
 
 impl<F: FeatureSet, H: Head> Network<F, H> {
     /// MNUE版5を検証して復号する。
+    /// 識別子、版、幅、型から組み立てた構造記述との完全一致、K、予約域0、規則セット名、構造から導いた長さ、本体のSHA-256を検査する。
+    /// 第1層の重みとバイアスは絶対値1,016以下、直接出力部の重みは8,192以下、バイアスは4,161,536以下を要求する。
+    /// 全型で線形の鏡映対を検査し、[`Mirror::Shared`]では第1層、バイアス、出力重みの半幅の共有も検査する。
+    /// 駒価値には[`Self::piece_value`]の正値性と王駒の条件を課す。
+    /// 換算係数は`round_ties_even(f64(K)×65,536/(127×4,096))`で求める。
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
         let actual_architecture = architecture(bytes)?;
         let width = read_u32(bytes, 104);

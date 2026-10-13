@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn linear_percentiles_and_population_standard_deviation() {
-        // Pythonのlinear定義では[0,10,20,30]の5%位置は0.15、95%位置は2.85。
+        // 線形補間では[0,10,20,30]の5%位置は0.15、95%位置は2.85である。
         let s = summarize(&[0.0, -10.0, 20.0, -30.0]).unwrap();
         for (p, value) in [(5, 1.5), (25, 7.5), (50, 15.0), (75, 22.5), (95, 28.5)] {
             close(s.absolute_percentiles_cp[&p], value);

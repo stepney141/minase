@@ -1,4 +1,4 @@
-//! カーネル9の期待値は、BCEと統計量の定義から定める。
+//! validation_forwardの期待値は、二値交差エントロピーと統計量の定義から定める。
 mod common;
 use common::*;
 use minase::training::records::{Outcome, Record};

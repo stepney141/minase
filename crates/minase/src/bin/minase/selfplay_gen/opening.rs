@@ -118,7 +118,9 @@ pub(super) fn starting_game(
     }
 }
 
-/// 決定的な8手から16手のランダム序盤を作る。
+/// 同じ対局シードから決定的に、8〜16手を一様に選んでランダム序盤を作る。
+/// 同じ評価関数どうしが毎回同じ手順をたどり、同じ局面だけを記録することを避ける。
+/// 対局ハーネスの8〜12手より長い範囲を使い、開始局面の多様性を優先する。
 pub(super) fn generate_opening(rules: Rules, game_seed: NonZeroU64) -> io::Result<Game> {
     let mut opening_seed = derive_seed(game_seed.get(), 0);
     loop {
@@ -160,7 +162,7 @@ mod tests {
     };
     use std::fs;
 
-    // フェーズ5: 一覧を最初の探索へそのまま渡し、開始局面だけは記録しない。
+    // 一覧を最初の探索へそのまま渡し、開始局面だけは記録しない。
     #[test]
     fn human_opening_is_exact_and_records_start_after_its_original_ply() {
         use minase_core::notation::{

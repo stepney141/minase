@@ -256,8 +256,11 @@ impl ProfileMeasurements {
     }
 }
 
-/// 準備と1回のウォームアップの後、実データで指定回数の更新を測定する。
-/// 全行を観測済みとして初期化し、教師Kの推定や学習の検証は行わない。
+/// 1回のウォームアップ後に、2以上の`--steps`回の更新を実データで測る。
+/// シードの既定値71とエポック0の順列から`(steps+1)×batch`局面を重複なく使う。
+/// モデルは`benchmark_model`で作り、出力と全教師分類に同じKを使う。Kの既定値は1000である。
+/// CPUでは転送時間を0とし、`--profile`との併用を拒否する。
+/// 教師Kの推定や学習の検証は行わない。
 pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>> {
     args.training.validate()?;
     let shape = Shape::new(args.feature_set, args.width, args.k)?;
@@ -533,6 +536,8 @@ fn run_cpu(
     })
 }
 
+/// 埋め草以外の全行を観測済みとし、線形はv0、第1層は標準偏差0.05で初期化する。
+/// バイアスは0.25、出力重みは+0.01と−0.01を交互に置く。
 fn benchmark_model(shape: Shape, seed: u64) -> Result<Model> {
     let mut canonical = vec![true; CANONICAL_ROWS];
     canonical[CANONICAL_ROWS - 1] = false;

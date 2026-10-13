@@ -1,4 +1,10 @@
-//! 評価関数と静止探索を使って着手を選ぶ探索。
+//! 探索方式に依存しない入力、出力、および実行の境界。
+//!
+//! 直下に[`SearchLimits`]、[`SearchSnapshot`]、[`SearchEvent`]、[`SearchHandle`]と
+//! [`start_search`]および[`search()`]を置き、αβ探索に固有の処理は`alphabeta`へ閉じる。
+//! 実行境界は探索チームの`run_search_team`を呼び、置換表とワーカー別の[`HistoryTables`]を受け渡す。
+//! `team`と`tt`のモジュールは`pub(in crate::search)`で参照範囲を探索層に限定する。
+//! 履歴の型は本モジュールから公開し、履歴の操作と調整係数はプロトコルからも参照する。
 
 pub(crate) mod alphabeta;
 mod error;

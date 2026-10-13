@@ -1,4 +1,5 @@
-//! strength-stage12.md「項目5」「検証」のUSIライフサイクル。
+//! history表の対局内持ち越しとUSIライフサイクルの検査。
+//! 理由は`docs/adr/carry-history-tables-within-a-game.md`にある。
 
 use super::*;
 use crate::search::alphabeta::history_decay_for_test;

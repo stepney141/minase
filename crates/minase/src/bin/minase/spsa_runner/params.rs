@@ -7,14 +7,21 @@ use std::{
     num::{ParseFloatError, ParseIntError},
 };
 
+/// 係数ファイル1行の6欄。fishtestの入力形式に対応する。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Parameter {
+    /// `Tune_`を除いた係数名。エンジンの宣言と照合する。
     pub name: String,
+    /// 調整開始時のθ。係数の範囲内の有限値である。
     pub start: f64,
+    /// 係数の下限。整数化と更新時の切り詰めに使う。
     pub min: i32,
+    /// 係数の上限。整数化と更新時の切り詰めに使う。
     pub max: i32,
+    /// 最終反復の摂動幅。係数と同じ単位の有限の正値である。
     pub c_end: f64,
+    /// 最終反復の`a_k / c_k²`を定める有限の正値。
     pub r_end: f64,
 }
 
@@ -132,6 +139,12 @@ pub(super) fn declarations(lines: &[String]) -> Result<Vec<Declaration>, Paramet
     Ok(result)
 }
 
+/// `名前, 開始値, 最小, 最大, c_end, r_end`の6欄を解析する。
+///
+/// 空行と、前後の空白を除いて`#`で始まる行を無視する。
+/// 全係数がエンジンの`Tune_`宣言に存在し、範囲が宣言内に収まり、名前が重複しないことを検査する。
+/// minaseは未知のオプションを黙って無視するため、この検査で名前の誤りを対局前に拒否する。
+/// 各欄の意味は[`Parameter`]に従う。
 pub(super) fn parse_parameters(
     text: &str,
     declarations: &[Declaration],

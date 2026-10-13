@@ -1,4 +1,4 @@
-//! フェーズ2aの契約を、独立な損失の定義、鏡映、更新、保存の性質から検証する。
+//! PST学習の契約を、独立な損失の定義、鏡映、更新、保存の性質から検証する。
 mod common;
 
 use common::{Fixture, mirror, position, positions};

@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn hash64_matches_python_vectors() {
-        // 撤去前のPythonの学習器のテストの既知値。加算を伴う通常のSplitMix64とは異なる。
+        // hash64のビット演算から定まる既知値であり、通常のSplitMix64の状態加算は行わない。
         for (seed, game, expected) in [
             (0, 0, 0),
             (1, 0, 0x5692_161D_100B_05E5),
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn validation_split_matches_python_games() {
-        // 撤去前のPythonの学習器のテストが固定した、0..80の検証用対局番号。
+        // hash64(seed, game) % 20 == 0となる0..80の対局番号である。
         for (seed, expected) in [
             (11, vec![4, 15, 22, 41, 48, 59, 70]),
             (22, vec![6, 8, 35, 44, 58, 63, 74]),
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn epoch_permutation_is_fixed_and_preserves_indices() {
-        // 上記の初期化・棄却法を独立なPython整数演算で評価した固定列。
+        // epoch_permutationの初期化と棄却法を独立な整数演算で評価した固定列である。
         let indices: Vec<u64> = (0..12).collect();
         for (seed, epoch, expected) in [
             (7, 0, [3, 11, 1, 4, 6, 0, 10, 9, 5, 8, 2, 7]),

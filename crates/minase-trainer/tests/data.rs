@@ -355,7 +355,7 @@ fn teacher_class_lambda_conflicts_are_checked_after_override() {
     update_provenance(&paths[1], |value| {
         value["teacher"]["search_condition"] = "standalone".into()
     });
-    // PythonのTeacherClassでは探索条件の違いも別分類となる。
+    // TeacherClassでは探索条件の違いも別分類となる。
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
     let dataset = unsafe { Dataset::open(&paths, None, None) }.unwrap();
     assert_eq!(dataset.teacher_lambdas(), [0.75, 0.25]);
@@ -439,7 +439,7 @@ fn targets_match_lambda_three_quarters_hand_calculation_and_zero_lambda_results(
 #[test]
 fn lambda_one_preserves_previous_sigmoid_target_bits() {
     let scores = [-1000.0, -120.0, 0.0, 75.0, 900.0];
-    // λ=1で使ってきた教師式をPythonで計算しf32に丸めたビット列。
+    // λ=1の教師式σ(探索値/K)を独立に計算し、f32へ丸めたビット列である。
     let expected = [
         0x3d2e_0193,
         0x3ed0_b2f9,
@@ -600,7 +600,7 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
         // 白歩の手番視点は(29*144 + 10*12 + 8)=4304、正準行は2151。
-        // Pythonの鏡映込みの左半分の回数は2であり、4にはしない。
+        // 手番側の特徴だけを鏡映込みで数えた左半分の回数は2である。
         assert_eq!(observed.canonical_counts()[2151], 2);
         assert_eq!(observed.canonical_counts().iter().sum::<u64>(), 2);
         assert_eq!(observed.input_counts()[4304], 2);
@@ -745,7 +745,7 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
     );
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
     let dataset = unsafe { Dataset::open(&[path], None, None) }.unwrap();
-    // 指示書の128要素分割に対し、直前・一致・直後と複数区分を検査する。
+    // ReverseIndexの128要素の区分に対し、直前・一致・直後と複数区分を検査する。
     assert_eq!(REVERSE_INDEX_SEGMENT_LEN, 128);
     for count in [127, 128, 129, 256, 257] {
         let indices = vec![0; count];

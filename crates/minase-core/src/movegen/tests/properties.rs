@@ -1,9 +1,10 @@
 //! 横断性質のテスト。
 //!
-//! D1-009-24（先後の180度回転対称）と、move-canonicalization.md 由来の
-//! 正準形不変条件（D1-MC-01）・適用と復元の往復（D1-MC-02）を、シード固定の
-//! 決定的プレイアウトで検査する。正準形の符号化そのものは実装契約
-//! （implementation contract: move-canonicalization.md）である。
+//! D1-009-24の先後の180度回転対称、D1-MC-01の正準形、およびD1-MC-02の適用と復元を検査する。
+//! 正準形は[`Move`]の経由升捕獲の不変条件と、[`MoveGenerator::generate_moves`]の
+//! 自駒への到達と重複に関する契約に基づく。
+//! 往復は[`Position`]の全フィールドと両Zobrist値が戻る契約に基づき、
+//! シードを固定した決定的プレイアウトで検査する。
 
 use std::collections::{BTreeSet, HashSet};
 use std::num::{NonZeroU64, NonZeroUsize};
@@ -134,8 +135,8 @@ fn capture_extreme_position(from: Square, code: PieceCode, dense: bool) -> Posit
     builder.finish().unwrap()
 }
 
-// strength-stage1.md「捕獲専用生成」: 全駒種と代表升について、空升だけの局面では
-// 捕獲を生成せず、他の全升が相手駒の局面では全手列の捕獲部分列と一致する。
+/// [`MoveGenerator::generate_captures`]の契約を全駒種と代表升で検査する。
+/// 他が空升だけなら捕獲はなく、他の全升が相手駒なら全手列の捕獲部分列と一致する。
 #[test]
 fn capture_generation_matches_full_generation_for_every_kind_at_representative_squares() {
     let generator = MoveGenerator::standard();
@@ -186,8 +187,8 @@ fn capture_generation_matches_full_generation_for_every_kind_at_representative_s
     }
 }
 
-// strength-stage1.md「捕獲専用生成」: 獅子、角鷹、飛鷲の経由升捕獲、
-// 到達升捕獲、2枚取り、居喰い、および捕獲を伴う成りを同じ列で返す。
+/// [`MoveGenerator::generate_captures`]の契約に従い、経由升捕獲、到達升捕獲、
+/// 2枚取り、居喰い、および捕獲を伴う成りも、全手列の捕獲部分列と順序まで一致する。
 #[test]
 fn capture_generation_matches_full_generation_for_special_and_promoting_captures() {
     let mut builder = PositionBuilder::new(Color::Black);
@@ -391,8 +392,8 @@ fn playout_canonical(rules: MoveRules, seed: u64, plies: usize) {
     }
 }
 
-// D1-MC-01: 正準形の不変条件（move-canonicalization.md。implementation contract）。
-// 併せて第6〜7条・第17〜18条の全域性質を到達可能局面で検査する。
+/// D1-MC-01として、[`Move`]の正準形と[`MoveGenerator::generate_moves`]の契約を検査する。
+/// 併せてRULES.md第6条、第7条、第17条、第18条の性質を到達可能局面で検査する。
 #[test]
 fn mc_canonical_move_invariants_hold_in_seeded_playouts() {
     playout_canonical(MoveRules::standard(), 0x5255_4c45_5345_5401, 96);
@@ -434,8 +435,7 @@ fn playout_capture_generation(rules: MoveRules, seed: u64, plies: usize) {
     }
 }
 
-// strength-stage1.md「捕獲専用生成」: 到達可能局面でも、捕獲専用生成は
-// 全手列から規則上の捕獲だけを残した部分列と一致する。
+/// [`MoveGenerator::generate_captures`]の部分列の契約を到達可能局面でも検査する。
 #[test]
 fn capture_generation_matches_full_generation_in_seeded_playouts() {
     let rule_sets = [
@@ -488,8 +488,8 @@ fn playout_round_trip(rules: MoveRules, seed: u64, plies: usize) {
     }
 }
 
-// D1-MC-02: 着手の適用と復元の往復（move-canonicalization.md 検証戦略。
-// implementation contract。局面ハッシュ等の内部表現の検証は領域D4）。
+/// D1-MC-02として、[`Position::make_move_unchecked`]と[`Position::unmake_move`]の往復で
+/// [`Position`]の全フィールドと両Zobrist値が戻ることを検査する。
 #[test]
 fn mc_make_unmake_round_trips_every_generated_move() {
     playout_round_trip(MoveRules::standard(), 0x5255_4c45_5345_5403, 64);
@@ -505,7 +505,7 @@ fn mc_make_unmake_round_trips_every_generated_move() {
     );
 }
 
-/// 「段階6」（movegen-speedup-2.md）の非捕獲列は、全規則で全手列の部分列と一致する。
+/// [`MoveGenerator::generate_quiets`]の順序の契約を、規則の標本ごとに検査する。
 #[test]
 fn quiet_generation_preserves_order_for_special_moves_and_all_rules() {
     for rules in crate::test_util::capture_test_rules() {

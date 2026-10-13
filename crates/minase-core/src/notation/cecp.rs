@@ -64,9 +64,15 @@ impl std::error::Error for CecpError {}
 
 /// CECPの多段階指し手表記を指し手へ変換する。
 ///
-/// 2レグの中間升に相手駒がなければ、終点にかかわらず`mid: None`へ
-/// 正規化する。移動元と移動先が等しい2レグは正準じっとになる
-/// (第11条・第12条)。着手そのものの合法性は検査しない。
+/// 升名は筋英字`a..=l`と段数字`1..=12`を連結し、段数字の先行ゼロは認めない。
+/// 筋aは内部の筋0、段1は先手側最下段である。レグは移動元と到達升の連結であり、
+/// 1レグまたは連続する2レグをコンマで区切る。成りの`+`、不成の`=`は末尾だけに許し、
+/// 接尾辞なしも不成とする。同じ升を往復する単一レグと`@@@@`は拒否する。
+/// `@@@@`からのじっとの決定は、合法手集合を使うプロトコル層の責務である。
+///
+/// 2レグの中間升に相手駒がなければ、終点にかかわらず`mid: None`へ正規化する。
+/// その場合、移動元と到達升が等しければ正準じっとになる。
+/// [`Move`]の正準形へ変換するだけで、着手そのものの合法性は検査しない。
 pub fn parse(position: &Position, input: &str) -> Result<Move, CecpError> {
     if input.bytes().any(|byte| byte == b'@') {
         return Err(CecpError::MalformedJittoInput);
@@ -110,8 +116,10 @@ pub fn parse(position: &Position, input: &str) -> Result<Move, CecpError> {
 
 /// 指し手をCECPの`move`行の本文列へ変換する。
 ///
-/// 2段階移動は2レグに分け、正準じっとは`@@@@`で表す
-/// (第11条・第12条)。
+/// 経由升のない移動は1行、経由升のある移動は2行で表し、第1レグの末尾にコンマを付ける。
+/// 正準じっとは`@@@@`の1行で表す（RULES.md第11条・第12条）。
+/// 成りの`+`は最終レグの末尾だけに付け、不成には接尾辞を付けない。
+/// 升名の文法は[`parse`]を参照する。
 pub fn legs(mv: Move) -> Vec<String> {
     if mv.mid.is_none() && mv.to == mv.from {
         return vec!["@@@@".to_owned()];
@@ -208,9 +216,7 @@ mod tests {
         }
     }
 
-    // D5-CECP-01: CECP升名は筋英字a〜l＋段数字1〜12で、段1が先手側最下段
-    // （[CECP]第5章、[PL]「Move文字列表記2形式」）。10段盤の0始まり特例は12段の中将棋に
-    // 適用しない（[HACHU]第6節）。
+    /// D5-CECP-01: [`parse`]の升名の契約を全144升で検査する。
     #[test]
     fn cecp_squares_cover_all_144_squares_and_correspond_to_usi_names() {
         for square in Square::all() {
@@ -254,8 +260,7 @@ mod tests {
         }
     }
 
-    // D5-CECP-02: 受信はコンマ区切りの1レグまたは2レグで、第2レグは第1レグの終点から
-    // 始まる（[PL]「フェーズ5の確定設計」、[CECP]第5章「複数レグ指し手」）。
+    /// D5-CECP-02: [`parse`]のレグ数と連続性の契約を検査する。
     #[test]
     fn comma_separated_legs_parse_with_continuity() {
         // d6とg7に相手駒を置き、2段階捕獲と居喰いを実経路で受ける。
@@ -312,8 +317,7 @@ mod tests {
         }
     }
 
-    // D5-CECP-03: 送信はmid無しが1行、mid有りが2行（非最終レグ末尾コンマ）、正準じっとが
-    // `@@@@`の1行（[PL]「フェーズ5の確定設計」、[CECP]第5章、[HACHU]第8節。引き継ぎ資産）。
+    /// D5-CECP-03: [`legs`]の行数、コンマ、じっとの出力契約を検査する。
     #[test]
     fn legs_output_splits_two_stage_moves_and_writes_jitto_as_null_move() {
         assert_eq!(
@@ -350,9 +354,7 @@ mod tests {
         assert_eq!(legs(canonical_jitto(sq(4, 5))), ["@@@@"]);
     }
 
-    // D5-CECP-04: 成り接尾辞`+`は最終レグの末尾だけに認め、`=`は不成として受理する。
-    // 送信では不成は接尾辞なしで、`=`を出力しない（[PL]「フェーズ5の確定設計」、
-    // [CECP]第5章「将棋式の成りと不成」）。
+    /// D5-CECP-04: [`parse`]と[`legs`]の成り・不成の接尾辞の契約を検査する。
     #[test]
     fn promotion_suffix_attaches_to_the_final_leg_only() {
         let empty = Position::empty(Color::Black);
@@ -391,8 +393,7 @@ mod tests {
         }
     }
 
-    // D5-CECP-05: 表記層は`@@@@`を拒否する。合法手リストという局面文脈を要する解決は
-    // CECPプロトコルモジュール（D6の対象）の分担である（[PL]「フェーズ5の確定設計」）。
+    /// D5-CECP-05: [`parse`]の契約に従い、表記層では`@@@@`を拒否する。
     #[test]
     fn null_move_input_is_rejected_by_the_notation_layer() {
         let empty = Position::empty(Color::Black);
@@ -402,8 +403,7 @@ mod tests {
         assert_eq!(parse(&empty, "e6e6"), Err(CecpError::InvalidJittoForm));
     }
 
-    // D5-CECP-06: 中間升の扱いはUSI形式と同一契約であり、相手駒がなければmid: Noneへ
-    // 正規化し、始点＝終点は正準じっとへ潰す（[PL]「フェーズ5の確定設計」）。
+    /// D5-CECP-06: [`parse`]と[`usi::parse`]は同じ占有条件で[`Move`]の正準形へ変換する。
     #[test]
     fn intermediate_normalization_matches_the_usi_contract() {
         let from = sq(5, 5);

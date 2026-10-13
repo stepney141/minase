@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn gold_steps_and_captures_for_both_sides_and_corners() {
-    // 第7・9条、設計書「検証 > 固定テスト」: 金将の1升移動・捕獲・盤端を逆生成する。
+    // RULES.md第7条、第9条に基づき、金将の1升移動、捕獲、および盤端を逆生成する。
     for color in Color::ALL {
         for corner in [false, true] {
             let rank = if color == Color::Black { 4 } else { 7 };

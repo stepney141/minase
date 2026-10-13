@@ -19,7 +19,7 @@ pub enum DeviceKind {
     Cpu,
 }
 
-/// Pythonの学習器と同じ名前、既定値を持つ係数。
+/// 学習、照合、計測で共用する最適化と教師の係数。
 #[derive(Clone, Copy, Debug, PartialEq, clap::Args, Serialize)]
 pub struct TrainingOptions {
     /// 線形経路の学習率を正の有限値で指定する。
@@ -43,7 +43,10 @@ pub struct TrainingOptions {
     /// 駒除去差分の補助損失係数を非負の有限値で指定する。
     #[arg(long, default_value_t = 1000.0)]
     pub removal_penalty: f64,
-    /// 自己対局の来歴のλを0以上1以下で上書きする。人間対局には適用しない。
+    /// 自己対局の来歴のλを0以上1以下で上書きし、人間対局には適用しない。
+    /// 既定値1.0は探索値だけを教師とする。
+    /// PST、FM、同時学習は省略時に来歴のλを使うが、NNUEはこの既定値で上書きする。
+    /// 理由は`docs/adr/train-the-nnue-on-search-value-lookahead-teachers.md`にある。
     #[arg(long, default_value_t = 1.0)]
     pub lambda_override: f64,
 }

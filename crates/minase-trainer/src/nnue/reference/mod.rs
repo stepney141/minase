@@ -1,7 +1,13 @@
-//! 設計書のカーネル1〜8に対応するCPU参照計算。GPUや学習ループを持たない。
-//!
-//! 配列は局面、視点、ユニットの順で行優先。Bは局面数、Hは展開後の幅。
-//! 除去後の文脈と先獅子は変えない。線形除去差分はPython同様にf64で計算する。
+//! NNUEの前進、後退、および更新のCPU参照計算。
+//! 配列は局面、視点、ユニットの順で行優先とし、Bは局面数、Hは展開後の幅である。
+//! Uは共有後の幅で、P型ではH/2、それ以外ではHに等しい。
+//! BCEは二値交差エントロピーを表す。
+//! 処理番号は1が[`forward`]、2が[`removal_forward`]、3が[`output_backward`]、4が[`reduce_partials`]、5が[`first_layer_backward`]である。
+//! 続いて6が[`linear_backward`]、7が[`reduce_virtual`]、8が[`AdamW::update`]、9が[`validation_forward`]である。
+//! 前進と出力部はGPUと同じ加算順のf32で計算し、補助損失の累算と後退の縮約はf64で計算する。
+//! GPUとの照合は`|GPU−CPU| ≤ 1e-6 + 1e-5×|CPU|`を許容する。
+//! 駒除去の計算では文脈と先獅子を変えない。
+//! 理由は`docs/adr/backpropagate-the-first-layer-through-a-reverse-index.md`にある。
 
 mod optimizer;
 mod rows;
@@ -22,12 +28,12 @@ use crate::nnue::{
 };
 use minase::eval::features::FEATURE_COUNT;
 
-/// カーネル1の出力。
+/// [`forward`]の出力。
 #[derive(Clone, Debug)]
 pub struct Forward {
-    /// 累算器acc[B, 2, H]。
+    /// 累算器acc`[B, 2, H]`。
     pub acc: Vec<f32>,
-    /// 線形端点和lin[B, 2]。手番側視点。
+    /// 線形端点和lin`[B, 2]`。手番側視点。
     pub lin: Vec<[f32; 2]>,
 }
 impl Forward {
@@ -38,24 +44,24 @@ impl Forward {
         Ok(())
     }
 }
-/// カーネル3の出力。縮約前の寄与を局面順に保持する。
+/// [`output_backward`]の出力。縮約前の寄与を局面順に保持する。
 #[derive(Debug)]
 pub struct Output {
-    /// SCReLUの値f(acc)[B, 2, H]。
+    /// SCReLUの値f(acc)`[B, 2, H]`。
     pub f: Vec<f32>,
-    /// SCReLUの微分h(acc)[B, 2, H]。
+    /// SCReLUの微分h(acc)`[B, 2, H]`。
     pub h: Vec<f32>,
-    /// ロジット[B]。
+    /// ロジット`[B]`。
     pub logits: Vec<f32>,
-    /// 局面ごとの二値交差エントロピー[B]。バッチ平均前。
+    /// 局面ごとの二値交差エントロピー`[B]`。バッチ平均前。
     pub loss: Vec<f32>,
-    /// バッチ平均BCEのロジット微分g[B]。
+    /// バッチ平均BCEのロジット微分g`[B]`。
     pub g: Vec<f32>,
-    /// A_v = (g-S)o_v h(acc_v) + d_acc_removal、[B, 2, H]。
+    /// A_v = (g-S)o_v h(acc_v) + d_acc_removal、`[B, 2, H]`。
     pub d_acc: Vec<f32>,
-    /// 出力重みへの全幅の寄与[B, 2, H]。
+    /// 出力重みへの全幅の寄与`[B, 2, H]`。
     pub d_output: Vec<f32>,
-    /// 線形係数c[B, 2]。
+    /// 線形係数c`[B, 2]`。
     pub c: Vec<[f32; 2]>,
 }
 impl Output {
@@ -74,7 +80,7 @@ impl Output {
         Ok(())
     }
 }
-/// カーネル4で得たバッチ平均の損失。
+/// [`reduce_partials`]で得たバッチ平均の損失。
 #[derive(Clone, Copy, Debug)]
 pub struct Losses {
     /// 二値交差エントロピー。
@@ -100,7 +106,7 @@ pub struct Gradients {
 pub fn screlu(x: f32) -> f32 {
     x.clamp(0.0, 1.0).powi(2)
 }
-/// PyTorch clampと同じ端点を含む微分。x>1の飽和域は0。
+/// SCReLUの微分を、端点を含む0≤x≤1では2x、範囲外では0とする。
 pub fn screlu_derivative(x: f32) -> f32 {
     if (0.0..=1.0).contains(&x) {
         2.0 * x
@@ -108,12 +114,16 @@ pub fn screlu_derivative(x: f32) -> f32 {
         0.0
     }
 }
+/// 盤上総駒数Nから`φ = min(90, max(0, N−2))/90`、`u = (φ, 1−φ)`をf32で求める。
+/// 先獅子の列はNに含めず、除去後はN−3を使う。
+/// CUDAの`phase`と除去後の係数も同じ式と精度で計算する。
 pub(crate) fn phase(count: u8, removed: bool) -> [f32; 2] {
     let phi = f32::from(count.saturating_sub(if removed { 3 } else { 2 }).min(90)) / 90.0;
     [phi, 1.0 - phi]
 }
 
-/// HalfKPのC=W+V[base]を作る。P型では回転前の正準行を返す。埋め草を含む。
+/// HalfKPの合成重み`C = W + V[base]`を作る。
+/// P型では回転前の正準行を返し、どちらも埋め草を含む。
 pub fn fold(model: &Model) -> Result<Vec<f32>> {
     check_parameters(model.parameters(), model.shape())?;
     Ok(if model.shape().feature_set() == InputFeatureSet::P {
@@ -189,7 +199,9 @@ fn check_weights(model: &Model, weights: &[f32]) -> Result<()> {
     Ok(())
 }
 
-// Python _feature_sumと同じく左右の升を先に対にする。鏡映時も同じ加算順になる。
+/// 145列を、段0〜11、筋0〜5の順に左右の`value(左)+value(右)`を先に組んでf32で足す。
+/// 最後に先獅子の列144を加えるため、左右鏡映しても加算順が変わらない。
+/// GPUの`forward_acc`と`forward_linear`もこの順序を使う。
 fn feature_sum(mut value: impl FnMut(usize) -> f32) -> f32 {
     let mut result = 0.0;
     for rank in 0..12 {
@@ -200,7 +212,7 @@ fn feature_sum(mut value: impl FnMut(usize) -> f32) -> f32 {
     result + value(144)
 }
 
-/// カーネル1。145列のgather-sumと線形の端点和を求める。
+/// 145列の特徴行と線形の端点を、`feature_sum`の順序で足す。
 pub fn forward(model: &Model, batch: &BatchSlot, weights: &[f32]) -> Result<Forward> {
     forward_parallel(model, batch, weights, 1)
 }
@@ -252,6 +264,9 @@ fn forward_parallel(
     Ok(result)
 }
 
+/// 1視点の出力をj=0〜U−1の順にf32で足す。
+/// 各項は`f(acc_j)×o_j`で、P型では重みを掛ける前に`f(acc_(j+U))`も加える。
+/// GPUではレーン0が単位順に加算して同じ丸めを再現し、0付近のロジットの符号を保つ。
 pub(crate) fn head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32) -> f32 {
     let s = model.shape();
     let mut result = 0.0;
@@ -264,6 +279,8 @@ pub(crate) fn head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32
     }
     result
 }
+/// ロジットを`(u0×lin0 + u1×lin1)/K + ((head0 + head1) + bias)`で計算する。
+/// 出力部の加算順は[`head`]、補間係数は[`phase`]に従う。
 pub(crate) fn logit(model: &Model, batch: &BatchSlot, f: &Forward, b: usize) -> f32 {
     let h = model.shape().width();
     let u = phase(batch.piece_counts()[b], false);
@@ -282,16 +299,16 @@ pub fn evaluate(model: &Model, batch: &BatchSlot) -> Result<Vec<f32>> {
         .collect())
 }
 
-/// 量子化検査用に、線形和から非線形出力まで倍精度で評価する。
-///
-/// Pythonのfloat_evaluateと同じく、保存用に単精度で畳み込んだ第1層を使い、
-/// 両半幅の活性化を個別に倍精度で重み付けする。結果の単位はセンチポーン。
+/// 量子化検査用の浮動小数点評価をセンチポーンで返す。
+/// 第1層の畳み込みはf32で行い、その重みを用いた線形和、隠れ値、SCReLU、出力内積はf64で計算する。
+/// 特徴は列順に足し、両半幅の活性化を個別に重み付けし、非線形出力にKを掛ける。
+/// 整数推論の128で割る近似は使わない。
 pub fn evaluate_f64(model: &Model, batch: &BatchSlot) -> Result<Vec<f64>> {
     let weights = fold(model)?;
     evaluate_f64_with_weights(model, batch, &weights, f64::from(model.shape().k()))
 }
 
-// 診断では畳み込みを共有し、Pythonと同じく比較する整数ネットのKを使う。
+// 診断では畳み込みを共有し、比較する整数ネットのKを使う。
 pub(crate) fn evaluate_f64_with_weights(
     model: &Model,
     batch: &BatchSlot,
@@ -337,7 +354,12 @@ pub(crate) fn evaluate_f64_with_weights(
     Ok(values)
 }
 
-/// カーネル3。出力、BCE、g、A_v、および線形係数cを計算する。
+/// 出力と二値交差エントロピー、および後退の局面ごとの寄与を求める。
+/// ロジットxと教師値tに対し、`g = (σ(x)−t)/B`と`loss = max(x,0)−x×t+log1p(exp(−|x|))`をf32で計算する。
+/// 線形係数は`c = g×u/K + Removal::linear`である。
+/// 活性化fとその微分hを用い、`d_acc = (g−S)×o×h(acc) + d_acc_removal`と`d_output = (g−S)×f(acc) + removal.d_output`はf64で計算してf32へ丸める。
+/// Sは[`Removal::s`]であり、−Sは除去差分`Δ_r = E_r−E`の−Eを通る微分である。
+/// 教師値が有限かつ`[0,1]`でなければエラーを返す。
 pub fn output_backward(
     model: &Model,
     batch: &BatchSlot,
@@ -435,7 +457,10 @@ fn output_backward_parallel(
     Ok(result)
 }
 
-/// カーネル4。局面順で部分和を縮約し、P型は左右半幅の勾配を合算する。
+/// バイアスと出力重みの勾配を局面方向にf64で足してf32へ丸める。
+/// P型では単位jとj+Uの勾配を合算し、出力バイアスの勾配はΣgとする。
+/// 損失は`bce = Σloss/B`、`auxiliary = Σremoval.loss/B`である。
+/// GPUは`gradient_partials`で連続する128局面ごとの部分和を作り、`reduce_partials`でブロック番号順に足す。
 pub fn reduce_partials(
     model: &Model,
     output: &Output,
@@ -472,7 +497,13 @@ pub fn reduce_partials(
     })
 }
 
-/// カーネル5。逆索引を固定順で走査し、除去した行自身の寄与を引く。
+/// 第1層の勾配を逆索引の要素順で求める。
+/// 要素の局面b、視点v、列cに対する単位jの寄与は`A_v[u] − d_c×o_v[u]×h(acc_v[u] − W[f_c][u])`である。
+/// Aは[`Output::d_acc`]、hはSCReLUの微分、uはP型の回転ビットが立つ場合だけ`(j+H/2) mod H`とし、列144ではd=0とする。
+/// 第2項は除去した行自身が除去後の評価に現れないことを補正する。
+/// CPUは行全体をf64で足し、GPUは128要素以下の区分内をf32、区分間を昇順にf64で足す。
+/// アトミック加算は使わない。
+/// 理由は`docs/adr/backpropagate-the-first-layer-through-a-reverse-index.md`にある。
 pub fn first_layer_backward(
     model: &Model,
     batch: &BatchSlot,
@@ -546,7 +577,10 @@ fn first_layer_backward_parallel(
     Ok(())
 }
 
-/// カーネル6。線形逆索引からc-d_j u_j/Kを正準行へ足す。回転はしない。
+/// 手番側の線形逆索引を走査し、`dL[row][e] = Σ(c[b][e] − d_c×u_after[e]/K)`を正準行へ足す。
+/// 半幅回転はせず、CPUはf64で累算する。
+/// GPUは1ワープが1区分を処理し、レーンtが要素t, t+32, …をf32で足して距離16,8,4,2,1の木で縮約する。
+/// 区分間は昇順にf64で足す。
 pub fn linear_backward(
     model: &Model,
     batch: &BatchSlot,
@@ -603,7 +637,8 @@ fn linear_backward_parallel(
     Ok(())
 }
 
-/// カーネル7。dV[p]=Σ_k dW[k*13680+p]を8区分の順で縮約する。
+/// HalfKPの仮想行の勾配`dV[p] = Σ_(k=0..7) dW[k×13,680+p]`を区分番号順にf64で足す。
+/// 埋め草行13,680には0を書き、P型では何もしない。
 pub fn reduce_virtual(gradient: &mut Parameters) -> Result<()> {
     reduce_virtual_parallel(gradient, 1)
 }
@@ -634,7 +669,8 @@ fn reduce_virtual_parallel(gradient: &mut Parameters, threads: usize) -> Result<
     Ok(())
 }
 
-/// カーネル1〜7を1回実行する。更新はAdamW::updateで別に行う。
+/// 前進から仮想行の勾配縮約までを1回実行する。
+/// 更新は[`AdamW::update`]で別に行う。
 pub fn loss_and_gradients(
     model: &Model,
     batch: &BatchSlot,
@@ -645,8 +681,9 @@ pub fn loss_and_gradients(
     loss_and_gradients_parallel(model, batch, targets, reference, removal_penalty, 1)
 }
 
-/// 独立な局面と特徴行を分割し、各縮約は単スレッド参照と同じ順で計算する。
-/// threadsは正でなければならない。
+/// 局面方向の前進、除去、出力部と、行方向の第1層、線形、仮想行を[`parallel::ranges`]で分割する。
+/// 各要素の縮約順は単一スレッドと同じなので、正の`threads`の値によらずビット単位で同じ結果になる。
+/// パラメータ、勾配、および損失の有限性を検査する。
 pub fn loss_and_gradients_parallel(
     model: &Model,
     batch: &BatchSlot,

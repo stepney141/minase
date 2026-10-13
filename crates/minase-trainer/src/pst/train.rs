@@ -1,3 +1,12 @@
+//! PSTの学習、エポック境界での保存、再開を管理する。
+//! 新規実行は空の`--output-dir`を要求し、入力MNSDの規則名は初期MNPTと一致しなければならない。
+//! 再開時は`--resume`と出力先が同じ場所を指し、`config.json`の`settings`、`inputs`、`preprocessing`と両ハッシュが再計算値に一致することを要求する。
+//! `latest.bin`のK、学習率、シード、両ハッシュも一致し、保存エポックが`--epochs`以下でなければならない。
+//! 更新回数は`epoch * ceil(訓練局面数 / batch)`に等しいことを検査する。
+//! チェックポイントは`MNTRCKPT`版2である。
+//! 各エポックは`training.jsonl`、`latest.bin`、改善時の`best.bin`の順に保存する。
+//! 最良更新直後に中断した場合は、そのエポックを持つ`latest.bin`から`best.bin`を復旧する。
+
 use super::{
     Adam, Args, Batch, Checkpoint, EpochRecord, Error, Model, Progress, RemovalReference,
     RemovalReferenceKind, Result, StopReason, Summary,

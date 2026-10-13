@@ -5,11 +5,11 @@ use crate::rng::XorShift64;
 use crate::rules::{ExhaustionRule, RepetitionRule};
 use std::num::NonZeroU64;
 
+/// D3-PRP-02: 駒枯れと詰みが同一着手で同時に成立する場合、勝者はどちら
+/// でも余分な駒を持つ側で一致し、駒枯れを先に評価するため終局理由は
+/// 駒枯れとなる（[`adjudicate_after_move`](crate::game::adjudication::adjudicate_after_move)の裁定順序の契約）。
 #[test]
 fn plan_referee_7_piece_exhaustion_evaluates_before_mate() {
-    // D3-PRP-02: 駒枯れと詰みが同一着手で同時に成立する場合、勝者はどちら
-    // でも余分な駒を持つ側で一致し、駒枯れを先に評価するため終局理由は
-    // 駒枯れとなる(game-referee.md 7節)。
     let mut game = game_with_codes(
         position(
             Color::White,

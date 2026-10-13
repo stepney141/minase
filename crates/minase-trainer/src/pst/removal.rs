@@ -13,7 +13,7 @@ use minase_core::{Color, PieceCode, PieceKind};
 const PHASE_DIVISOR: i64 = 90;
 const EVALUATION_LIMIT: i64 = 28_999;
 
-/// mnpt.initial_piece_valuesと同じv0駒価値。公開APIから取り、定数を複製しない。
+/// v0の駒価値を[`handcrafted::piece_value`]から取り、駒状態ごとに並べる。
 pub fn v0_piece_values() -> [i32; PIECE_STATE_COUNT] {
     let mut values = [0; PIECE_STATE_COUNT];
     for kind in PieceKind::ALL {
@@ -32,7 +32,10 @@ pub struct RemovalReference {
     rows: Vec<[i64; 2]>,
 }
 impl RemovalReference {
-    /// v0の駒価値から作る整数参照表。
+    /// 自駒の行に+8×value、相手駒に−8×valueを両端点へ同じ値で置き、先獅子の行は0とする。
+    /// valueは[`v0_piece_values`]であり、表の単位は1/8センチポーンである。
+    /// 評価の±28,999への切り詰めがなければ、自駒の除去は評価を下げ、相手駒の除去は上げる。
+    /// 同時学習の参照にはこの表だけを使う。
     pub fn v0() -> Self {
         let values = v0_piece_values();
         let mut rows = vec![[0; 2]; CANONICAL_ROWS];
@@ -42,7 +45,8 @@ impl RemovalReference {
         }
         Self { rows }
     }
-    /// 独立な整数PSTを参照として使う。境界と上限制約の試験にも使える。
+    /// `--removal-reference init`に使う初期MNPTの整数PSTを受け取る。
+    /// 鏡映対の値が異なれば`removal reference mirror sharing`エラーにし、平均して補わない。
     pub fn new(endpoints: &[[i16; 2]]) -> Result<Self> {
         if endpoints.len() != FEATURE_COUNT {
             return Err(Error::Invalid("removal reference length"));
@@ -56,10 +60,10 @@ impl RemovalReference {
         }
         Ok(Self { rows })
     }
-    /// _numeratorsの整数演算による差分と、切り捨て前の差分の大きさ。
-    ///
-    /// Pythonは符号だけを切り捨て・評価上限適用後の差分から取り、罰則の大きさは
-    /// 切り捨て前から取る。v0でも評価上限で符号が0になる場合を区別する。
+    /// 参照表の1/8センチポーンの端点和Tから`X = q×T_mg + (90−q)×T_eg`と除去後のX′を求める。
+    /// 差分は`clamp(trunc(X′/720), ±28,999) − clamp(trunc(X/720), ±28,999)`とする。
+    /// 符号にはこの整数差分、大きさには切り捨て前の`|X′−X|/720`を使う。
+    /// 評価上限で差分0になる除去は対象外である。
     pub fn deltas(&self, batch: &Batch, b: usize) -> Result<(Vec<i32>, Vec<f64>)> {
         if b >= batch.len() || self.rows.len() != CANONICAL_ROWS {
             return Err(Error::Invalid("removal reference shape or position"));

@@ -58,7 +58,8 @@ const RULE_SET_PRESETS: &[(&str, Rules)] = &[
 /// 規則セット値を、プリセット名またはコンマ区切りの規則コード列として解析する。
 ///
 /// プリセット名は単独で指定し、規則コードとの併記は認めない(第33条第5項・第6項)。
-/// 重複および排他制約の検証は`Rules::from_codes`が担う。
+/// 規則コードとプリセット名はASCIIの大文字小文字を区別せず、要素の前後の空白は許さない。
+/// 重複および排他制約の検証は[`Rules::from_codes`]が担う。
 pub fn parse_rule_set(input: &str) -> Result<Vec<RuleCode>, RuleSetParseError> {
     if let Some((_, rules)) = RULE_SET_PRESETS
         .iter()

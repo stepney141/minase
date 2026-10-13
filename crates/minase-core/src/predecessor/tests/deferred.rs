@@ -3,9 +3,9 @@
 use super::*;
 
 /// 到達升で新設される保留を移動元へコピーしない。
+/// [`predecessor`](crate::predecessor)の集合Aの敵陣条件とRULES.md第30条P1により、敵陣へ入る直前には保留できない。
 #[test]
 fn p1_new_destination_bit_is_not_inherited() {
-    // 設計書「一時状態の逆生成」、第30条P1: 敵陣へ入る直前には保留できない。
     let rules = MoveRules {
         promotion: PromotionRule::P1,
         ..MoveRules::standard()
@@ -20,9 +20,9 @@ fn p1_new_destination_bit_is_not_inherited() {
 }
 
 /// P2は非移動駒を含む着手側の待機を高々1個だけ復元する。
+/// RULES.md第30条P2と[`candidates`](crate::predecessor::transient::candidates)のk+1通りの列挙により、新設と非移動駒の満了を検査する。
 #[test]
 fn p2_restores_expired_waiting_and_new_entry() {
-    // 設計書「一時状態の逆生成」、第30条P2: 新設と非移動駒の満了を同時に検査する。
     let rules = MoveRules {
         promotion: PromotionRule::P2,
         ..MoveRules::standard()
@@ -121,9 +121,9 @@ fn p5_deferred_pawn_promotion_at_last_rank_has_its_predecessor() {
 }
 
 /// P2で2枚を捕獲した直前局面として、どちらか1枚が待機していた局面を復元できる。
+/// [`predecessor`](crate::predecessor)の集合AのP2条件に従い、経由升と到達升のどちらか1駒に待機を復元する。
 #[test]
 fn p2_restores_waiting_on_either_of_two_captured_pieces() {
-    // 設計書「一時状態の逆生成」: 経由升と到達升のそれぞれに待機を復元する。
     let rules = MoveRules {
         promotion: PromotionRule::P2,
         ..MoveRules::standard()

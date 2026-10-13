@@ -1,6 +1,11 @@
-//! f32パラメータ、鏡映共有、初期化、保存範囲への射影、および保存形式。
-//!
-//! 配列は行優先。`Parameter`の順序はチェックポイントの保存順を定める。
+//! NNUEのf32パラメータ、鏡映共有、初期化、および保存範囲への制限。
+//! 配列は行優先で、[`Parameter`]の順序がチェックポイントの保存順を定める。
+//! Linearはセンチポーン単位の`[6841,2]`で、`canonical(base) = base/144×72 + (base%144)/12×6 + min(筋,11−筋)`へ写す。
+//! P型の第1層は`[6841,H]`で、筋6以上の特徴はH/2だけ回転して読む。
+//! HalfKPは第1層`[109441,H]`とVirtual`[13681,H]`を持ち、推論時は両者を足す。
+//! P型のバイアスと視点ごとの出力重みは半幅を共有する。
+//! 各配列の最後の埋め草行は常に0である。
+//! 理由は`docs/adr/share-p-type-mirror-weights-by-half-width-rotation.md`にある。
 
 mod checkpoint;
 mod npz;
@@ -76,17 +81,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(usize)]
 pub enum Parameter {
-    /// 線形正準行[6841, 2]、センチポーン。
+    /// 線形正準行`[6841, 2]`、センチポーン。
     Linear,
-    /// P型[6841, H]、HalfKP[109441, H]。
+    /// P型`[6841, H]`、HalfKP`[109441, H]`。
     FirstLayer,
-    /// HalfKPの仮想行[13681, H]。
+    /// HalfKPの仮想行`[13681, H]`。
     Virtual,
-    /// P型[H/2]、HalfKP[H]。
+    /// P型`[H/2]`、HalfKP`[H]`。
     Biases,
-    /// P型[2, H/2]、HalfKP[2, H]。
+    /// P型`[2, H/2]`、HalfKP`[2, H]`。
     OutputWeights,
-    /// ロジット単位の出力バイアス[1]。
+    /// ロジット単位の出力バイアス`[1]`。
     OutputBias,
 }
 impl Parameter {
@@ -240,7 +245,8 @@ pub struct Masks {
     virtual_rows: Vec<bool>,
 }
 impl Masks {
-    /// フェーズ1aの観測回数から作る。
+    /// 訓練集合の[`Observations`]から正準行と両視点の入力行のマスクを作る。
+    /// 鏡映込みの手番側の回数の左半分を正準マスクとし、両視点を鏡映なしで数えた入力マスクを[`Self::new`]へ渡す。
     pub fn from_observations(set: InputFeatureSet, observations: &Observations) -> Result<Self> {
         Self::new(
             set,
@@ -248,7 +254,7 @@ impl Masks {
             observations.input_mask(),
         )
     }
-    /// 正準行[6841]と入力特徴[D+1]から作り、仮想行は8区分の論理和にする。
+    /// 正準行`[6841]`と入力特徴`[D+1]`から作り、仮想行は8区分の論理和にする。
     pub fn new(set: InputFeatureSet, canonical: Vec<bool>, input: Vec<bool>) -> Result<Self> {
         if canonical.len() != CANONICAL_ROWS
             || canonical[CANONICAL_ROWS - 1]
@@ -296,8 +302,11 @@ pub struct Model {
     initial_virtual: Vec<f32>,
 }
 impl Model {
-    /// J75の全基底特徴の2端点に鏡映対称性を要求し、観測行を決定的に初期化する。
-    /// init_stdは第1層の正規分布の標準偏差で、有限かつ非負でなければならない。
+    /// 全基底特徴の2端点に鏡映対称性を要求し、観測済みの正準行だけを行番号順に初期化する。
+    /// SplitMix64の上位53ビットkを`(k+1)/(2^53+2)`へ写し、Box–Muller法でcos、sinの順に正規乱数を使う。
+    /// P型では第1層へ置き、HalfKPではVirtual`[base]`へ正準行を回転して置いて特徴行を0にするため、同じ初期値とシードでは両型の初期評価が一致する。
+    /// `init_std`は有限かつ非負の標準偏差で、学習時は0.05を使う。
+    /// 選び方は`docs/lessons/nnue-first-layer-init-saturation.md`にある。
     pub fn initialize(
         shape: Shape,
         initial: &[[f32; 2]],
@@ -367,7 +376,7 @@ impl Model {
     pub fn masks(&self) -> &Masks {
         &self.masks
     }
-    /// 未観測の線形を戻す値[6841, 2]。
+    /// 未観測の線形を戻す値`[6841, 2]`。
     pub fn initial_linear(&self) -> &[f32] {
         &self.initial_linear
     }
@@ -375,13 +384,13 @@ impl Model {
     pub fn initial_virtual(&self) -> &[f32] {
         &self.initial_virtual
     }
-    /// バイアスを[H]に展開する。
+    /// バイアスを`[H]`に展開する。
     pub fn expanded_biases(&self) -> Vec<f32> {
         (0..self.shape().width)
             .map(|j| self.parameters[Parameter::Biases][j % self.shape().units()])
             .collect()
     }
-    /// 出力重みを[2, H]に展開する。
+    /// 出力重みを`[2, H]`に展開する。
     pub fn expanded_output_weights(&self) -> Vec<f32> {
         let s = self.shape();
         (0..2 * s.width)
@@ -391,7 +400,7 @@ impl Model {
             })
             .collect()
     }
-    /// 全基底特徴の線形[13680, 2]を展開する。
+    /// 全基底特徴の線形`[13680, 2]`を展開する。
     pub fn expanded_linear(&self) -> Vec<[f32; 2]> {
         (0..FEATURE_COUNT)
             .map(|base| {
@@ -403,7 +412,7 @@ impl Model {
             })
             .collect()
     }
-    /// P型を回転付きで展開し、HalfKPはW+Vを畳み込む。埋め草を含む[D+1, H]。
+    /// P型を回転付きで展開し、HalfKPはW+Vを畳み込む。埋め草を含む`[D+1, H]`。
     pub fn expanded_first_layer(&self) -> Vec<f32> {
         let s = self.shape();
         let mut result = vec![0.0; (s.feature_set.dimensions() + 1) * s.width];
@@ -423,7 +432,10 @@ impl Model {
         }
         result
     }
-    /// Python NNUE.constrainと同じ順で切り詰めた後、未観測行を復元する。
+    /// 線形、仮想行、第1層、バイアス、出力重み、出力バイアスの順に保存範囲へ制限する。
+    /// 線形は[−4096,4095.875]、仮想行は±8、第1層はP型なら±8、HalfKPなら[−8−V,8−V]とする。
+    /// バイアスと出力バイアスは±8、出力重みは±1.98とし、最後に[`Self::fix_unobserved`]で未観測行を復元する。
+    /// ±8は第1層の量子化値を±1,016に収める範囲であり、線形成分には適用しない。
     pub fn constrain(&mut self) -> Result<()> {
         self.parameters.validate()?;
         let s = self.shape();

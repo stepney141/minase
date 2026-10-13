@@ -16,7 +16,7 @@ use std::hash::{BuildHasherDefault, DefaultHasher};
 
 #[test]
 fn equal_positions_have_equal_hashes() {
-    // 設計書predecessor-generator.md「Positionのハッシュ」
+    // impl Hash for Positionの契約に従い、等しい局面は等しいハッシュになり、衝突時はEqで区別する。
     let first = positions_with_distinct_temporary_states();
     let second = positions_with_distinct_temporary_states();
     let (first_capture, _) = position_after_non_lion_captures_lion();
@@ -37,7 +37,7 @@ fn equal_positions_have_equal_hashes() {
 
 #[test]
 fn hash_set_preserves_distinct_positions_under_collisions() {
-    // 設計書predecessor-generator.md「Positionのハッシュ」
+    // impl Hash for Positionの契約に従い、等しい局面は等しいハッシュになり、衝突時はEqで区別する。
     #[derive(Default)]
     struct ConstantHasher;
 

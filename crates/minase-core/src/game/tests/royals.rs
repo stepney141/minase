@@ -80,11 +80,11 @@ fn article_20_3_capturing_the_prince_alone_continues_the_game() {
     assert!(!game.legal_moves().is_empty());
 }
 
+/// D3-020-05: 任意局面からの構築では自動裁定せず、開始局面を履歴の
+/// 第1回として記録する（[`Game::from_position`]の契約）。
+/// 直後の着手完了時からは通常の裁定が働く。
 #[test]
 fn plan_referee_from_position_defers_adjudication_to_the_first_move() {
-    // D3-020-05: 任意局面からの構築では自動裁定せず、開始局面を履歴の
-    // 第1回として記録する(adjudication-refactor.md「任意局面と履歴」)。
-    // 直後の着手完了時からは通常の裁定が働く。
     let missing_royal = position(
         Color::Black,
         &[

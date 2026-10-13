@@ -91,7 +91,10 @@ impl Optimizer {
         self.step
     }
 
-    /// 全群の更新を同じ計算ストリームへ投入する。ホストへの転送は行わない。
+    /// 全群をLinear、P型ならFirstLayer、HalfKPならVirtual→FirstLayer、Biases、OutputWeights、OutputBiasの順に計算ストリームへ投入する。
+    /// 補正係数はCPUと同じ`powf`で`1/(1−0.9^t)`と`1/(1−0.999^t)`を求める。
+    /// 出力部は`gradient_sums`の位置0から出力重み、2Uからバイアス、3Uから出力バイアスをf32にして使う。
+    /// ホストへの転送は行わない。
     pub fn update(
         &mut self,
         d: &Device,

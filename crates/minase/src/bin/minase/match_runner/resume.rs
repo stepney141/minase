@@ -6,7 +6,8 @@ use minase::harness::*;
 use minase_core::{Rules, rules::parse_rule_set};
 use std::{io, time::Duration};
 
-/// 再開時に明示された仮説だけを保存済みの条件と照合する。
+/// 再開時の`gsprt --elo0`と`--elo1`を、指定された値だけ保存済み仮説と照合する。
+/// この指定で統計モードや仮説を変更することはできない。
 pub(super) fn verify_mode(requested: Option<&Mode>, recorded: &ManifestMode) -> Result<(), String> {
     let Some(Mode::Gsprt { elo0, elo1, .. }) = requested else {
         return Ok(());
@@ -26,6 +27,19 @@ pub(super) fn verify_mode(requested: Option<&Mode>, recorded: &ManifestMode) -> 
     Ok(())
 }
 
+/// 保存した`manifest.json`から規則と両エンジンを復元する。
+///
+/// 再開の統計モードと仮説、基本シード、手数上限、応答期限、先読みの有無、
+/// 置換表容量、および同時対局数も、呼び出し側が同じmanifestから読む。
+/// `commit:`は記録した完全ハッシュを再解決し、SHA-256を含む同一性の一致を要求する。
+/// 起動コマンドは記録したプログラム、引数、プロトコルを使い、
+/// 記録した作業ディレクトリと同じ場所からだけ復元する。
+/// 任意の起動コマンドの実体と`random`にはSHA-256の照合がない。
+/// `random`は現在の実行プログラム自身を`dev usi-random`で起動する。
+///
+/// 各エンジンを1回起動して読んだ`Threads`の既定値が記録と異なればエラーとする。
+/// 置換表容量は記録値と既定値が等しければ送らず、異なれば記録値を送る。
+/// 理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
 pub(super) fn restore(manifest: &RunManifest) -> io::Result<(Rules, PlayerConfig, PlayerConfig)> {
     let codes = parse_rule_set(&manifest.rules_source)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;

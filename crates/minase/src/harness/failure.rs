@@ -1,6 +1,11 @@
 //! エンジン異常の分類と件数。
 
-/// USIセッションの異常分類。
+/// 外部エンジンの異常を表す5分類。
+///
+/// いずれも起こした側の当該局の反則負けとなる。
+/// 手数上限に達した局を含まないペアは勝敗の統計へ入れ、異常の件数は破棄ペアでも記録する。
+/// 投了と手数上限は異常に含めない。
+/// 理由は`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`にある。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EngineFailure {
     /// `bestmove`が審判層の合法手にない。
@@ -65,7 +70,7 @@ impl std::error::Error for EngineFailure {}
 mod tests {
     use super::*;
 
-    // D8-HARN-14（sprt.md「異常時の裁定」）: `engine_failures:`は不正着手・
+    // D8-HARN-14（docs/guides/sprt.md「異常時の裁定」）: `engine_failures:`は不正着手・
     // クラッシュ・応答タイムアウト・時間切れ・着手拒否の理由別件数を報告する。
     // 理由別件数の合計は反則負けとして算入された局数と一致する(保存則)。
     #[test]

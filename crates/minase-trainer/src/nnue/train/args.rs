@@ -17,6 +17,7 @@ pub struct Args {
     #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
     pub device: DeviceKind,
     /// 学習率、重み減衰、補助損失係数と教師の混合比。
+    /// `--lambda-override`の適用範囲と既定値は[`TrainingOptions::lambda_override`]に従う。
     #[command(flatten)]
     #[serde(flatten)]
     pub training: TrainingOptions,

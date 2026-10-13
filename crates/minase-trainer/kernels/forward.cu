@@ -1,4 +1,8 @@
-// Array layouts and launch contracts are documented in ../README.md.
+// 特徴は[B,2,145]、累算値は[B,2,H]、線形特徴は[B,145]、線形和は[B,2]の行優先である。
+// forward_accは1スレッドが局面、視点、連続4単位の組を担当し、格子はceil(2B×ceil(H/4)/128)である。
+// forward_linearは1スレッドが局面と端点の組を担当し、格子はceil(2B/128)である。
+// 特徴の番兵0xffffffffは重み0として読む。
+// P型の特徴語は正準行×2と回転ビットであり、回転時は単位をH/2だけずらす。
 __device__ float feature_weight(const float* weights, unsigned feature,
                                unsigned j, unsigned H, unsigned p) {
     if (feature == 0xffffffffu) return 0.0f;

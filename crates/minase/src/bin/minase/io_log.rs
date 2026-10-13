@@ -1,4 +1,21 @@
-//! 実行ファイル内で入出力の行を時刻付きで記録する。
+//! `--io-log <パス>`でエンジンの入出力を時刻つきの行として記録する。
+//!
+//! ファイルは起動時に`create_new`で新規作成し、既存ならエラーで終了する。
+//! 同じパスでの再起動によって調査中の記録を消さないためである。
+//! 各行は`<起動からの経過ミリ秒> <向き> <入出力の1行>`の空白区切りとする。
+//! 向きは受信が`>`、送信が`<`である。
+//!
+//! 受信は入力スレッドが1行を読み終えた後に記録し、末尾の`\n`とその直前の`\r`だけを取り除く。
+//! チャネルへ渡す行は末尾の空白を除いた文字列である。
+//! 送信は標準出力が書き込みを受理した後に、改行まで揃った行だけを記録する。
+//! 未完の行は次の書き込みまで持ち越す。
+//! 時刻はログのロック取得後に測り、記録とフラッシュまで直列化して、記録順と時刻順を一致させる。
+//! したがって時刻は入出力の直後の記録時刻であり、ロック待ちの時間も含み得る。
+//!
+//! 毎行フラッシュし、書き込みかフラッシュの失敗は入力側ならチャネルのエラー、出力側なら`Write`のエラーで伝える。
+//! エンジンは終了コード1で終え、調査資料として不完全なログのまま続けない。
+//! `--io-log`を指定しなければ入出力のバイト列は変えない。
+//! 理由は`docs/adr/record-protocol-io-with-a-launch-argument.md`にある。
 
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex, mpsc};
@@ -136,7 +153,7 @@ mod tests {
         }
     }
 
-    /// debugging-tools.md「入出力のログの形式」: 入力側の記録失敗はチャネルのエラーとして伝える。
+    /// モジュールdocの記録形式: 入力側の記録失敗はチャネルのエラーとして伝える。
     #[test]
     fn input_propagates_log_write_and_flush_errors() {
         for fail_on_flush in [false, true] {
@@ -148,7 +165,7 @@ mod tests {
         }
     }
 
-    /// debugging-tools.md「入出力のログの形式」: 出力側の記録失敗はWriteのエラーとして伝える。
+    /// モジュールdocの記録形式: 出力側の記録失敗はWriteのエラーとして伝える。
     #[test]
     fn output_propagates_log_write_and_flush_errors() {
         for fail_on_flush in [false, true] {
@@ -159,7 +176,7 @@ mod tests {
         }
     }
 
-    /// debugging-tools.md「入出力のログの形式」: 分割書き込みと複数行を扱い、未完の行は記録しない。
+    /// モジュールdocの記録形式: 分割書き込みと複数行を扱い、未完の行は記録しない。
     #[test]
     fn output_records_only_complete_lines_and_flushes_each() {
         /// フラッシュ時点のバイト列を保持する書き込み先。
@@ -191,7 +208,7 @@ mod tests {
         assert_eq!(output.output, b"usiok\nreadyok\nunfinished");
     }
 
-    /// debugging-tools.md「入出力のログの形式」: 出力先が受理した行だけを記録する。
+    /// モジュールdocの記録形式: 出力先が受理した行だけを記録する。
     #[test]
     fn output_does_not_record_unwritten_bytes() {
         let log = Arc::new(IoLog::new(Instant::now(), Vec::new()));

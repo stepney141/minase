@@ -90,7 +90,11 @@ impl SearchLimit {
     }
 }
 
-/// 思考制限を解析する。
+/// `--each`などへ渡す思考制限を解析する。
+///
+/// 文法は`depth=N[,nodes=M]`、`nodes=M`、`time=B+I[,byoyomi=ms]`である。
+/// 深さは1〜[`MAX_PLY`]、ノード数は1以上、時間の各値は0以上の整数ミリ秒とする。
+/// `B`は基本時間、`I`は加算時間であり、省略した秒読みは0となる。
 pub fn parse_search_limit(input: &str) -> Result<SearchLimit, String> {
     let mut fields = input.split(',');
     let first = fields.next().expect("split always returns one field");
@@ -189,8 +193,7 @@ fn parse_search_depth(text: &str) -> Result<u32, String> {
 mod tests {
     use super::*;
 
-    // D8-HARN-09(sprt.md・search.md実施状況): 思考制限は
-    // `depth=N|nodes=M|time=<base_ms>+<inc_ms>[,byoyomi=<ms>]`。
+    // D8-HARN-09: [`parse_search_limit`]の思考制限の文法を検査する。
     // depthとnodesの併記受理はSPEC_UNCLEAR-08につき[実装契約]。
     #[test]
     fn search_limits_accept_the_documented_grammar() {

@@ -51,7 +51,12 @@ pub enum PlayedGame {
     },
 }
 
-/// 1局を既存の対局管理層で進行する。
+/// 1局を審判層の[`Game`]で進行する。
+///
+/// 開始手順を含む手数が`max_ply`へ達したら打ち切る。
+/// 対局を進める場合は両エンジンを局ごとに起動し直し、置換表などの状態を局間で持ち越さない。
+/// 起動や初期化の失敗はその側の反則負けとし、停止要求を検出した場合は`None`を返す。
+/// 理由は`docs/adr/compare-commits-as-separate-engine-processes.md`にある。
 #[allow(clippy::too_many_arguments)]
 pub fn play_game(
     mut game: Game,

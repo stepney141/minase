@@ -29,6 +29,9 @@ impl fmt::Display for PositionBuildError {
 impl std::error::Error for PositionBuildError {}
 
 /// 駒を1枚ずつ置いて局面を組み立てるビルダー。
+///
+/// 表現の不変条件を検査し、合法な対局で到達できるかは検査しない。
+/// 王駒が0枚の局面も構築できる。
 pub struct PositionBuilder {
     /// 構築中の局面。
     pub(super) position: Position,
@@ -59,6 +62,11 @@ impl PositionBuilder {
     }
 
     /// 両Zobrist値を含む不変条件を検査して局面を返す。
+    ///
+    /// [`Self::put`]は通常Zobrist値、[`Self::mark_promotion_deferred`]は成り権保留Zobrist値を
+    /// 増分更新する。
+    /// [`Position::validate`]で両値と再計算値の一致を検査し、そのまま返す。
+    /// 検査後に再計算値で上書きしないことで、増分更新の誤りを隠さず検出する。
     pub fn finish(self) -> Result<Position, PositionBuildError> {
         self.position
             .validate()

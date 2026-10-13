@@ -202,7 +202,7 @@ mod tests {
         assert_eq!(mode.decision(0.0), GsprtDecision::Continue);
     }
 
-    // D8-HARN-13(sprt.md測定の種類と標準コマンド節): 判定の表示語彙は
+    // D8-HARN-13(docs/guides/sprt.md測定の種類と標準コマンド節): 判定の表示語彙は
     // `decision: H1`(採用)・`decision: H0`(不採用)・`decision: pending`(保留)。
     #[test]
     fn decision_labels_match_the_sprt_md_vocabulary() {

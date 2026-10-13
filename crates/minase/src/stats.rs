@@ -1,8 +1,15 @@
-//! 自己対局結果の統計処理。
+//! 先後入替ペアを観測単位とする棋力測定の統計処理。
 //!
-//! LLRの計算はfishtestの`LLR_logistic`(statistic="expectation"のMLE法)と
-//! 同一アルゴリズムであり、fishtest本家の参照値との一致を単体テストで
-//! 固定している。統計的契約の全体はdocs/guides/sprt.mdを参照。
+//! 候補側の2局の合計得点0、0.5、1、1.5、2を度数の添字0〜4へ対応させる。
+//! 正規化したペア得点は`SCORES`の0、0.25、0.5、0.75、1である。
+//! ペア内の2局は相関するため、局単位の3分類ではなく5分類で尤度を計算する。
+//! 検定には一般化逐次確率比検定（GSPRT）を使う。
+//! 対数尤度比（LLR）は、fishtestの`LLR_logistic`の`statistic="expectation"`と同じ最尤法で求める。
+//! 度数0の分類には`REGULARIZATION = 1e-3`の擬似度数を与え、
+//! Eloと期待得点はロジスティック写像`s = 1 / (1 + 10^(-elo / 400))`で結ぶ。
+//! 呼び出し側はペア番号の順に度数を取り込み、1ペアごとに判定を再計算する。
+//! 理由は`docs/adr/judge-adoption-by-pentanomial-gsprt.md`にある。
+//! 測定手順は`docs/guides/sprt.md`を参照する。
 
 /// 度数0の分類へ与える擬似度数。
 const REGULARIZATION: f64 = 1e-3;
@@ -13,11 +20,17 @@ const SECULAR_TOLERANCE: f64 = 1e-14;
 /// ペンタノミアル5分類の正規化ペア得点。
 const SCORES: [f64; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
 
-/// GSPRTの下側判定境界。
+/// α = β = 0.05の下側境界`ln(β / (1 - α))`。約−2.944である。
+/// [`gsprt_decision`]はLLRがこの値以下なら[`GsprtDecision::AcceptH0`]を返す。
 pub const GSPRT_LOWER_BOUND: f64 = -2.944_438_979_166_440_3;
-/// GSPRTの上側判定境界。
+/// α = β = 0.05の上側境界`ln((1 - β) / α)`。約2.944である。
+/// [`gsprt_decision`]はLLRがこの値以上なら[`GsprtDecision::AcceptH1`]を返す。
 pub const GSPRT_UPPER_BOUND: f64 = 2.944_438_979_166_440_3;
-/// GSPRTの対立仮説H1のElo。
+/// 採否測定で固定する対立仮説H1のロジスティックElo。帰無仮説H0は0である。
+///
+/// 採否には10 Eloだけを使い、`match run`は実行時の値を`manifest.json`の`h1_elo`へ記録する。
+/// 段階ゲートを通った2候補の直接対局に限り、[`gsprt_llr_with_hypotheses`]へ対称な仮説を渡せる。
+/// 理由は`docs/adr/set-gsprt-h1-to-10-elo.md`にある。
 pub const GSPRT_H1_ELO: f64 = 10.0;
 
 /// (正規化ペア得点, 確率)の5分類分布。
@@ -100,7 +113,13 @@ fn results_to_pdf(results: &[u64; 5]) -> (f64, Pdf) {
     (count, pdf)
 }
 
-/// 指定したH0、H1によるペンタノミアルGSPRTのLLRを返す。
+/// 指定したH0とH1によるペンタノミアルGSPRTの対数尤度比を返す。
+///
+/// `results`は候補側のペア得点0、0.5、1、1.5、2の度数をこの順に持つ。
+/// `h0_elo`と`h1_elo`の単位はロジスティックEloである。
+/// 観測分布を各仮説の期待値に制約した最尤分布を、永年方程式の二分法で求める。
+/// 戻り値は、H1とH0の最尤分布の対数比を観測分布で重み付けした和に、
+/// 度数0の分類を正則化した総数を掛けた値である。
 pub fn gsprt_llr_with_hypotheses(results: &[u64; 5], h0_elo: f64, h1_elo: f64) -> f64 {
     let (count, observed) = results_to_pdf(results);
     let null_pdf = mle_expected(&observed, logistic_score(h0_elo));
@@ -115,7 +134,9 @@ pub fn gsprt_llr_with_hypotheses(results: &[u64; 5], h0_elo: f64, h1_elo: f64) -
             .sum::<f64>()
 }
 
-/// H0をelo=0、H1を[`GSPRT_H1_ELO`]とするペンタノミアルGSPRTのLLRを返す。
+/// H0を0 Elo、H1を[`GSPRT_H1_ELO`]とする対数尤度比を返す。
+///
+/// `results`の並びと計算法は[`gsprt_llr_with_hypotheses`]に従う。
 pub fn gsprt_llr(results: &[u64; 5]) -> f64 {
     gsprt_llr_with_hypotheses(results, 0.0, GSPRT_H1_ELO)
 }
@@ -142,7 +163,13 @@ fn score_to_elo(score: f64) -> f64 {
     }
 }
 
-/// ペンタノミアル度数からEloと95%信頼区間を推定する。
+/// ペンタノミアル度数からロジスティックEloと95%信頼区間を推定する。
+///
+/// 度数の並びは[`gsprt_llr_with_hypotheses`]と同じである。
+/// 正規化ペア得点の平均と母分散から`mean ± 1.96 * sqrt(var / n)`を求め、
+/// 両端を[0, 1]へ切り詰めてからEloへ写す。
+/// 全勝では点推定と区間の両端が正の無限大、全敗では負の無限大になる。
+/// ペア数0ではパニックするため、呼び出し側が1ペア以上を保証する。
 pub fn estimate_elo(results: &[u64; 5]) -> EloEstimate {
     let count = results.iter().sum::<u64>();
     assert!(count > 0, "Elo estimation requires at least one pair");
@@ -175,7 +202,7 @@ mod tests {
     use super::*;
     use minase_core::rng::XorShift64;
 
-    // D8-STAT-01(sprt.md統計的手続き節): fishtest本家LLRcalc.pyで事前計算した
+    // D8-STAT-01(docs/guides/sprt.md統計的手続き節): fishtest本家LLRcalc.pyで事前計算した
     // 参照値5件との1e-6以内の一致が外部契約である。この5組は旧テストから
     // 引き継ぐ再取得困難な資産であり、絶対に失ってはならない。
     #[test]
@@ -197,7 +224,7 @@ mod tests {
         }
     }
 
-    // D8-STAT-01(sprt.md統計的手続き節): fishtest本家のコミット
+    // D8-STAT-01(docs/guides/sprt.md統計的手続き節): fishtest本家のコミット
     // b8eecff220b562a0dc2c4e68d1fa02521e06d72cにあるserver/fishtest/stats/
     // LLRcalc.pyのLLR_logistic(0, 10, results)で事前計算した参照値5件と、
     // 公開関数が1e-6以内で一致することを検証する。
@@ -224,7 +251,7 @@ mod tests {
     // つき検証しない。
     #[test]
     fn gsprt_decision_is_three_way_and_exhaustive() {
-        // sprt.mdのα=β=0.05から求め、実装の境界定数を期待側に使わない。
+        // docs/guides/sprt.mdのα=β=0.05から求め、実装の境界定数を期待側に使わない。
         let upper = (0.95_f64 / 0.05).ln();
         let lower = (0.05_f64 / 0.95).ln();
         for (llr, expected) in [
@@ -238,10 +265,10 @@ mod tests {
         }
     }
 
-    // sprt.md固定局数Elo節: 95%信頼区間は、ペンタノミアル度数の平均と分散による
+    // docs/guides/sprt.md固定局数Elo節: 95%信頼区間は、ペンタノミアル度数の平均と分散による
     // 正規近似 mean ± 1.96·sqrt(var/n) をロジスティック写像でEloへ写した区間である。
     // 期待値は度数[10,25,45,25,10](n=115、平均0.5)から式で独立に導出した。
-    // 変異検証(フェーズ4)で検出したz値無検証の補強。
+    // 正規近似の係数1.96を独立の期待値で検査する。
     #[test]
     fn elo_confidence_interval_uses_the_95_percent_normal_margin() {
         let estimate = estimate_elo(&[10, 25, 45, 25, 10]);
@@ -274,7 +301,7 @@ mod tests {
         assert!(small.lower <= small.elo && small.elo <= small.upper);
     }
 
-    // D8-STAT-07境界(sprt.md進捗記録の固定局数Elo節): 全勝・全敗の標本では
+    // D8-STAT-07境界(docs/guides/sprt.md進捗記録の固定局数Elo節): 全勝・全敗の標本では
     // ロジスティックEloの点推定が無限大になる。出力表現の細部は
     // SPEC_UNCLEAR-03につき、無限大の符号だけを契約とする。
     #[test]
@@ -304,7 +331,7 @@ mod tests {
         for _ in 0..repetitions {
             let mut results = [0; 5];
             let mut decision = GsprtDecision::Continue;
-            // sprt.md: 1ペア取り込むごとにLLRを再計算し、境界交差で停止する
+            // docs/guides/sprt.md: 1ペア取り込むごとにLLRを再計算し、境界交差で停止する
             for _ in 0..max_pairs {
                 results[sample(pdf, &mut rng)] += 1;
                 decision = gsprt_decision(gsprt_llr(&results));
@@ -322,16 +349,18 @@ mod tests {
         decisions
     }
 
-    // D8-STAT-05(search.md測定基盤・実施状況): 既知の分布から合成した結果で
-    // 検定全体を3,000反復し、真のelo=0でH1誤採用率8%以下(名目α=0.05と整合)、
-    // 真のelo=10で検出率90%以上(名目1-β=0.95と整合)を確認する。
+    // D8-STAT-05: 合成結果のモンテカルロで検定の健全性を検査する。
+    // 理由は`docs/adr/judge-adoption-by-pentanomial-gsprt.md`にある。
+    // 既知の分布から得た合成結果で検定全体を3,000反復する。
+    // 真のelo=0ではH1誤採用率8%以下、真のelo=10では検出率90%以上を要求する。
+    // これらは名目α=0.05および1-β=0.95と整合する閾値である。
     // 固定シードにより決定的である。
     #[test]
     #[ignore = "run when the GSPRT formula, regularization, or stopping rule changes; see docs/guides/sprt.md"]
     fn gsprt_monte_carlo_error_rates_match_documented_thresholds() {
         const REPETITIONS: usize = 3000;
         // 得点0.5のセルから隣接セルへ移す確率質量。真のelo=10の分布は平均
-        // 正規化ペア得点がs(10)になるよう、sprt.mdの写像式
+        // 正規化ペア得点がs(10)になるよう、docs/guides/sprt.mdの写像式
         // s(10)=1/(1+10^(-10/400))=0.5143871841659987から独立に導出した
         // 4*(s(10)-0.5)=0.05754873666399485を0.75のセルへ移して構成する。
         const SHIFT: f64 = 0.057_548_736_663_994_85;

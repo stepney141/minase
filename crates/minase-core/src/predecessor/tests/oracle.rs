@@ -1,4 +1,4 @@
-//! 設計書「完全性の根拠」第3層。順方向辺だけから直前局面表を作る。
+//! 有限集合内の全順方向辺から直前局面表を作り、逆生成の結果を同じ有限集合に制限して完全一致を検査する。
 
 use super::*;
 use crate::{RuleCode::*, Rules};
@@ -15,7 +15,7 @@ fn admissible(rules: MoveRules, p: &Position) -> bool {
     if rules.promotion == PromotionRule::P0 && !rules.p5 && !p.promotion_deferred().is_empty() {
         return false;
     }
-    // 第15条と設計書「直前局面の定義」: 角鷹・飛鷲がないので空升記録は不可。
+    // [`predecessor`](crate::predecessor)の集合Aの先獅子条件により、角鷹と飛鷲がないこの有限集合では空升記録を認めない。
     // 麒麟由来の成獅子もないので、記録升は直前着手側の非獅子に限る。
     match p.lion_capture_square() {
         None => true,
@@ -26,7 +26,7 @@ fn admissible(rules: MoveRules, p: &Position) -> bool {
 }
 
 fn states(rules: MoveRules) -> HashSet<Position> {
-    // 6升の標準規則オラクルが30秒を超えたため、敵陣境界を含む4升へ縮小する。
+    // 敵陣境界を含む4升上の配置と一時状態を全列挙する。
     let squares: Vec<_> = (0..=1)
         .flat_map(|file| (7..=8).map(move |rank| sq(file, rank)))
         .collect();
@@ -138,30 +138,30 @@ fn compare_oracle(rules: MoveRules) {
     }
 }
 
+/// 標準規則で、逆生成を有限集合に制限した結果が全順方向辺による直前局面表と一致する。
 #[test]
 #[ignore = "標準規則の有限状態全列挙(約100秒、直前局面の集合が大きい)"]
 fn predecessor_oracle_standard() {
-    // 設計書「完全性の根拠」第3層: 標準規則の有限集合上で完全一致する。
     compare_oracle(MoveRules::standard());
 }
 
+/// P1の保留状態も全列挙し、有限集合上で直前局面表との完全一致を検査する。
 #[test]
 #[ignore = "ローカルルールの有限状態全列挙"]
 fn predecessor_oracle_p1() {
-    // 設計書「完全性の根拠」「一時状態の逆生成」: P1の保留状態も全列挙する。
     compare_oracle(Rules::from_codes(&[L0, P1, R1, E0]).unwrap().moves);
 }
 
+/// P2の待機状態も全列挙し、有限集合上で直前局面表との完全一致を検査する。
 #[test]
 #[ignore = "ローカルルールの有限状態全列挙"]
 fn predecessor_oracle_p2() {
-    // 設計書「完全性の根拠」「一時状態の逆生成」: P2の待機状態を全列挙する。
     compare_oracle(Rules::from_codes(&[L0, P2, R1, E0]).unwrap().moves);
 }
 
+/// P5の歩兵保留も全列挙し、有限集合上で直前局面表との完全一致を検査する。
 #[test]
 #[ignore = "ローカルルールの有限状態全列挙"]
 fn predecessor_oracle_p0_p5() {
-    // 設計書「完全性の根拠」「一時状態の逆生成」: P5の歩兵保留を全列挙する。
     compare_oracle(Rules::from_codes(&[L0, P0, P5, R1, E0]).unwrap().moves);
 }

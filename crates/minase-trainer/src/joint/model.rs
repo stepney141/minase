@@ -57,8 +57,12 @@ pub(super) fn read_mask(arrays: &mut BTreeMap<String, npz::Array>) -> Result<Vec
     Ok(array.data.iter().map(|&b| b != 0).collect())
 }
 
-/// 初期値の再量子化を照合した後、鏡映平均と訓練集合のマスクを適用する。
-/// 戻り値の件数は、入力npzのmaskと数え直したマスクの不一致数。
+/// MNPT版3の基準と実数の初期値を照合し、鏡映共有と訓練集合のマスクを適用する。
+/// `--base`と`--fm-reference`はともに版3を要求する。
+/// `--pst-init`の量子化結果は基準のPSTに、`--fm-init`を基準のKで量子化した結果は参照FMに完全一致しなければならない。
+/// PSTの鏡映対は平均し、FMは数え直したマスクで未観測の行を0に戻す。
+/// 戻り値の件数は入力NPZのマスクとの不一致数である。
+/// aを縮小せず、補正1/4の変換や推論時の倍率は加えない。
 pub fn initialize(
     base: &Pst,
     pst_path: &Path,
@@ -119,7 +123,10 @@ pub fn initialize(
     Ok((model, mismatches))
 }
 
-/// PST群とFM群のAdamW。各群は更新ごとに全要素を処理する。
+/// PST群とFM群のAdamWであり、両群の更新回数の一致を要求する。
+/// 既定のPST群は学習率0.03、重み減衰0で、更新後に保存範囲へ切り詰める。
+/// 既定のFM群は学習率0.001、重み減衰0.0001で、更新後に未観測の行を0へ戻す。
+/// 各群は更新ごとに全要素を処理する。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Adam {
     /// 重み減衰0のPST群。

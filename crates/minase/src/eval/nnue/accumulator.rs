@@ -7,12 +7,16 @@ use crate::eval::features::{active_features_for, feature_index, lion_feature_ind
 use minase_core::position::Undo;
 use minase_core::{Color, Position, Square};
 
-/// 両視点の線形2成分、非線形H成分および盤上総駒数。
+/// 両視点の線形2成分、非線形H成分、および王駒を含む盤上総駒数。
+/// 非線形成分はバイアスと発火した行の和であり、絶対値は`146×1,016 = 148,336`以下である。
+/// 線形成分は`145×32,768 = 4,751,360`以下であり、どちらもi32に収まる。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Accumulator<F: FeatureSet> {
+    /// 第1層の特徴番号を定める、視点ごとの文脈。
     pub(super) contexts: [F::Context; 2],
     pub(super) sums: [[i32; 2]; 2],
     hidden: [Box<[i32]>; 2],
+    /// 王駒を含む盤上総駒数。先獅子の特徴は含めない。
     pub(super) piece_count: u32,
 }
 
@@ -97,7 +101,10 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         accumulator
     }
 
-    /// 親の累算値を子へ複写し、着手、捕獲、成りおよび先獅子の差分を反映する。
+    /// 親の累算値を複写し、移動、1枚または2枚の捕獲、居喰い、じっと、成り、先獅子の発生と消滅を反映する。
+    /// 線形の経路は基底特徴上にあるため常に差分更新する。
+    /// 非線形の経路は文脈が変わった視点だけバイアスから全再計算する。
+    /// 少なくとも1視点を全再計算した着手は[`super::AccumulatorStats::refreshes`]に1回と数える。
     pub(crate) fn update_accumulator_after_move(
         &self,
         before: &Accumulator<F>,
@@ -190,7 +197,9 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         }
     }
 
-    /// SCReLUと両視点の直接内積で非線形成分をセンチポーンへ換算する。
+    /// 尺度127×4,096の非線形出力を`(out×scale + 32,768) >> 16`でセンチポーンへ換算する。
+    /// i64で計算し、最近接へ丸め、中間値は正の方向へ丸める。
+    /// 負数の右シフトは床方向に働く。
     pub(super) fn nonlinear_cp(&self, accumulator: &Accumulator<F>, side: Color) -> i64 {
         let out = self.head.output(
             &accumulator.hidden[side.index()],
@@ -199,7 +208,9 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         (i64::from(out) * self.scale + 32_768) >> 16
     }
 
-    /// 線形補間と非線形出力を合算し、最後に1回だけ静的評価の範囲へ制限する。
+    /// 線形の補間と[`Self::nonlinear_cp`]の出力を合算する。
+    /// 線形は`(q×mg + (90−q)×eg)/720`をi64で計算し、0方向へ切り捨てる。
+    /// 両者の和を最後に1回だけ±28,999センチポーンへ制限する。
     pub(crate) fn evaluate_accumulator(
         &self,
         accumulator: &Accumulator<F>,

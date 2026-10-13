@@ -38,6 +38,8 @@ struct Activation {
     bce: f64,
     derivative: f64,
 }
+/// ロジットを`z = f64(f32(固定整数PST)/K) + Φ`、損失を`BCE + λres×mean(Φ²)`とする。
+/// バッチ数nに対する上流微分は`δ_b = (σ(z_b)−t_b + 2λres×Φ_b)/n`である。
 fn forward(
     model: &Model,
     batch: &Batch,
@@ -74,7 +76,9 @@ fn forward(
     Ok(chunks.into_iter().flatten().collect())
 }
 
-/// Vとaの両方を微分する。各行は局面順でf64加算し、最後にf32へ丸める。
+/// FMのVとaを、`∂Φ/∂v_if = a_f(S_f−v_if)`、`∂Φ/∂a_f = P_f`で微分する。
+/// Vの勾配は観測された特徴だけに局面順にf64で累積し、最後にf32へ丸める。
+/// 未観測行と埋め草の勾配は0であり、上流微分は`forward`の損失から求める。
 pub fn gradients(
     model: &Model,
     batch: &Batch,
@@ -172,6 +176,8 @@ impl GradientNorm {
     }
 }
 
+/// 32成分の`S_f = Σ_i v_if`、`Q_f = Σ_i v_if²`、`P_f = (S_f²−Q_f)/2 = Σ_(i<j) v_if v_jf`を列順にf64で求める。
+/// `Φ = Σ_f a_f×P_f`はロジット単位であり、センチポーンの補正はK×Φである。
 pub(crate) fn statistics(model: &Model, columns: &[u32]) -> ([f64; FM_RANK], [f64; FM_RANK], f64) {
     let mut sums = [0.0; FM_RANK];
     let mut squares = [0.0; FM_RANK];

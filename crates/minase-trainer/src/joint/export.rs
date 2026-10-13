@@ -1,3 +1,7 @@
+//! 同時学習したPSTとFMを、補正の縮小を行わずMNPT版3へ保存する。
+//! PSTは1/8センチポーンへ偶数丸めし、FMは[`crate::fm::quantize`]で整数化する。
+//! 初期値と最良モデルの両方に平均量子化誤差2センチポーン以下を要求する。
+
 use super::{Model, Result};
 use crate::{
     data::{Dataset, epoch_permutation},
@@ -99,6 +103,10 @@ fn integer(network: &Pst, position: &Position, features: &[usize]) -> i32 {
         + fm::report::correction(network.fm_weights().expect("joint version 3"), features))
     .clamp(-28999, 28999) as i32
 }
+/// 実数の合算評価と整数の合算評価の絶対誤差を検証標本で測る。
+/// 誤差は`abs(φ * Σmg + (1−φ) * Σeg + K * Φ − clamp(PST + 整数補正, ±28,999))`である。
+/// 実数側はf64で求め、切り詰めない。
+/// 標本は検証集合のエポック0の順列から選び、平均2センチポーン以下を合格とする。
 fn report(
     dataset: &Dataset,
     model: &Model,
@@ -164,6 +172,10 @@ pub(super) fn quantization_report(
 ) -> Result<QuantizationReport> {
     report(dataset, model, &quantized(model, base)?, sample, seed)
 }
+/// MNPT版3の`pst.bin`と5配列の`pst-float.npz`を書き出す。
+/// NPZの配列は`middlegame`、`endgame`、`V`、`a`、`mask`である。
+/// MNPTを読み直し、重みとK、駒価値、規則名が出力モデルと基準に一致することを検査する。
+/// 量子化の合否は[`report`]で判定する。
 pub(super) fn write_best(
     dataset: &Dataset,
     model: &Model,

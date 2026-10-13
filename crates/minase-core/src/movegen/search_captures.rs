@@ -1,4 +1,12 @@
 //! 静止探索で必要な捕獲だけを直接出力する生成経路。
+//!
+//! 通常駒は[`MoveGenerator::collect_ordinary_capturers`]で利きをノードの初期化時に1回だけ求め、
+//! 取る駒の価値の群ごとに[`MoveGenerator::emit_ordinary_captures`]で対象升との積を出力する。
+//! この出力は、公開の[`MoveGenerator::generate_captures`]から通常駒による対象升への手を
+//! 抜き出した部分列と、要素、順序、および捕獲升まで一致する。
+//! 獅子、角鷹、飛鷲は経由升でも取るので、到達升だけで選別せず、
+//! [`MoveGenerator::generate_special_captures`]で全捕獲を別に生成する。
+//! 方式を採る理由は`docs/adr/generate-qsearch-captures-by-value-group-per-piece.md`にある。
 
 use super::MoveGenerator;
 use super::control::{piece_control_without_special, special_step_destinations};
@@ -32,14 +40,20 @@ pub struct OrdinaryCapturer {
     pub(crate) captures: Bitboard,
 }
 
-/// 設計書movegen-speedup-2.md「段階9」に従う、置換表の特殊捕獲の検証用領域。
+/// 置換表の特殊駒の捕獲手を検査するとき、1駒分の捕獲を溜める作業領域。
 #[derive(Default)]
 pub struct CaptureCache {
     captures: Vec<CaptureCandidate>,
 }
 
 impl MoveGenerator {
-    /// 設計書movegen-speedup-2.md「段階8」に従い、獅子が経由升で取って空升へ進む手を除く。
+    /// 静止探索の候補と置換表の手の検査から除く獅子の捕獲かを返す。
+    ///
+    /// 動かす駒が獅子で、経由升に相手駒があり、着手前の到達升が空升で、
+    /// 到達升が移動元と異なる場合に限り除く。
+    /// 居喰い、2枚取り、1升で止まる捕獲、および経由升のない直接跳びによる捕獲は残す。
+    /// 角鷹と飛鷲の同じ形の手は対象外であり、公開の生成と主探索の候補も変えない。
+    /// 理由は`docs/adr/check-tt-after-stand-pat-and-trim-lion-captures-in-qsearch.md`にある。
     pub fn is_excluded_lion_capture(position: &Position, mv: Move) -> bool {
         position
             .piece_at(mv.from)
@@ -54,6 +68,11 @@ impl MoveGenerator {
     }
 
     /// 特殊駒の全捕獲を公開生成と同じ相対順序で追加する。
+    ///
+    /// [`Self::generate_captures`]を獅子、角鷹、飛鷲の手に絞った部分列と、
+    /// 要素、順序、および捕獲升まで一致する。
+    /// 経由升の捕獲もあるので、通常駒のように到達升の集合で選別しない。
+    /// [`Self::is_excluded_lion_capture`]による静止探索用の除外は呼び出し側が行う。
     pub fn generate_special_captures(
         &self,
         position: &Position,
@@ -134,6 +153,10 @@ impl MoveGenerator {
     }
 
     /// 遮蔽なしの到達範囲で絞り、通常駒の捕獲可能升を1回だけ計算する。
+    ///
+    /// `allowed`には相手駒の升の部分集合を渡す。
+    /// [`Self::generate_moves`]と同じ駒種と移動元の順に`output`へ追加し、
+    /// 同じ局面の[`Self::emit_ordinary_captures`]で利きを再利用する。
     pub fn collect_ordinary_capturers(
         &self,
         position: &Position,
@@ -161,7 +184,11 @@ impl MoveGenerator {
     }
 
     /// 通常駒1枚について、対象升へ実際に届く利きを求める。
-    /// 設計書movegen-speedup-2.md「段階2」に従い、対象升と交わる利き線だけを調べる。
+    ///
+    /// 遮蔽なしの到達範囲が`allowed`と交わらなければ省き、固定利きと`allowed`の積を取る。
+    /// 走りは遮蔽なしの利き線が`allowed`と交わる方向だけ計算する。
+    /// 利き線は実際の到達升の上位集合なので、結果は
+    /// `piece_control_without_special(...) & allowed`と一致する。
     fn ordinary_capturer(
         &self,
         position: &Position,
@@ -193,6 +220,11 @@ impl MoveGenerator {
     }
 
     /// 保存済みの利きから、対象升への捕獲を公開生成と同じ相対順序で追加する。
+    ///
+    /// `capturers`は同じ局面の[`Self::collect_ordinary_capturers`]の出力順を保ち、
+    /// `targets`はそのときの`allowed`の部分集合とする。
+    /// 出力は[`Self::generate_captures`]を通常駒による`targets`への手に絞った部分列と、
+    /// 要素、順序、および捕獲升まで一致する。
     pub fn emit_ordinary_captures(
         &self,
         position: &Position,
@@ -225,7 +257,10 @@ impl MoveGenerator {
     }
 
     /// 1駒分の捕獲で置換表の手を検査する。
-    /// 設計書movegen-speedup-2.md「段階9」に従い、初期化への利きの引き継ぎは行わない。
+    ///
+    /// 判定は、[`Self::generate_captures`]の集合から[`Self::is_excluded_lion_capture`]の手を
+    /// 除いた集合への所属と一致する。
+    /// 探索での検査はノードの初期化の後に行うので、ここで求めた利きを初期化へ引き継がない。
     pub fn is_legal_capture(
         &self,
         position: &Position,
@@ -276,7 +311,8 @@ impl MoveGenerator {
     }
 
     /// 獅子捕獲のときだけ規則を検査し、成りを展開して直接出力する。
-    /// 設計書movegen-speedup-2.md「段階5」に従い、生成済みの駒コードと捕獲升を使う。
+    /// 生成済みの駒コードと捕獲升を使い、捕獲升に相手の獅子がある場合だけ捕獲制限を調べる。
+    /// 成駒と成れない駒では成りの判定を省く。
     fn push_capture(
         &self,
         position: &Position,

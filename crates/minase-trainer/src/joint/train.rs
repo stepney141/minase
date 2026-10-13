@@ -1,3 +1,9 @@
+//! PSTとFMを同時に学習し、`MNJTCKPT`版1で保存する。
+//! 新規出力先、入力規則名、再開ディレクトリ、設定とハッシュ、エポックと更新回数、保存順と最良モデルの復旧は[`crate::pst::train`]と同じ契約である。
+//! 規則名を照合する基準は`--base`であり、再開時はK、両群の学習率、FMの重み減衰、シード、観測マスクの一致を要求する。
+//! 開始時に初期値を量子化して検査し、平均誤差が2センチポーンを超えれば`quantization_error`を記録して停止する。
+//! 最初の5更新の勾配ノルムを記録し、PST、埋め込み、aのどれかが5回とも0なら停止する。
+
 use super::{
     Adam, Args, Batch, Checkpoint, Distribution, EpochRecord, GradientNorm, Progress, Result,
     StopReason, Summary, compute, export, initialize, record::configuration,

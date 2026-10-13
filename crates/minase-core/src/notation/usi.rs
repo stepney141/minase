@@ -74,8 +74,10 @@ pub fn text(
 
 /// 生成済み合法手をlishogi系拡張USI形式へ変換する。
 ///
+/// 移動元、経由升があれば経由升、到達升の順に升名を連結する。
+/// 成りには`+`を付け、不成には接尾辞を付けない。升名の文法は[`square_to_text`]による。
 /// 正準じっとは中間升を保持しないため、局面上で第1段階として使える
-/// 空升のうち内部密番号が最小の升を補う(第11条・第12条)。
+/// 空升のうち[`Square::dense_index`]が最小の升を補う（RULES.md第11条・第12条）。
 /// 正準じっとは、局面の合法手として生成された値であることを前提とする。
 pub fn text_generated(position: &Position, mv: Move) -> String {
     let mid = if mv.mid.is_none() && mv.to == mv.from {
@@ -97,10 +99,13 @@ pub fn text_generated(position: &Position, mv: Move) -> String {
 
 /// lishogi系拡張USI形式を指し手へ変換する。
 ///
-/// 3升連結で中間升に相手駒がなければ、終点にかかわらず`mid: None`へ
-/// 正規化する。移動元と移動先が等しい着手は正準じっと、異なる着手は
-/// 直接の二段移動になる(第11条・第12条)。
-/// 着手そのものの合法性は検査しない。
+/// [`square_to_text`]の升名2個または3個を区切りなしで連結したASCII文字列を受け取る。
+/// 末尾の`+`は成り、`=`と`?`および接尾辞なしは不成を表す。駒打ち形式は受理しない。
+/// 2升連結で移動元と到達升が等しい入力は拒否する。
+///
+/// 3升連結で中間升に相手駒がなければ、終点にかかわらず`mid: None`へ正規化する。
+/// その場合、移動元と到達升が等しければ正準じっと、異なれば直接の跳びを表す。
+/// [`Move`]の正準形へ変換するだけで、着手そのものの合法性は検査しない。
 pub fn parse(position: &Position, input: &str) -> Result<Move, UsiError> {
     if !input.is_ascii() {
         return Err(UsiError::NonAscii);
@@ -270,8 +275,7 @@ mod tests {
         }
     }
 
-    // D5-USI-01: 指し手は升名の無区切り連結で、駒打ち形式は存在しない
-    // （[USI]「指し手の文字列表記」、[PL]「Move文字列表記2形式」）。
+    /// D5-USI-01: [`parse`]の升名の連結と駒打ち形式を認めない契約を検査する。
     #[test]
     fn move_strings_concatenate_square_names_without_separators() {
         let empty = Position::empty(Color::Black);
@@ -385,8 +389,7 @@ mod tests {
         assert!(generated(&jitto_position).contains(&jitto));
     }
 
-    // D5-USI-04: 出力の成り記号は`+`だけであり、解析は`=`と`?`を不成として受理する
-    // （[USI]「指し手の文字列表記」第1項・第2項、[PL]「Move文字列表記2形式」）。
+    /// D5-USI-04: [`text_generated`]と[`parse`]の成り・不成の接尾辞の契約を検査する。
     // `?`の用途の一次資料は未確認であり（SU-1）、shogiops互換の実装判断としての受理である。
     #[test]
     fn promotion_suffix_writes_plus_and_reads_equals_and_question_as_non_promotion() {
@@ -419,9 +422,7 @@ mod tests {
         }
     }
 
-    // D5-USI-05: 3升連結は中間升に相手駒がなければ終点にかかわらずmid: Noneへ正規化する
-    // （[PL]「Move文字列表記2形式」の2026-08-10契約一般化。lishogi実対局の冗長経路
-    // SNjoPiHz第15手7j7i6h・2u7dwJf9第176手6c7c8cを受けた互換性契約）。
+    /// D5-USI-05: [`parse`]の契約に従い、中間升の占有から[`Move`]の正準形へ変換する。
     #[test]
     fn three_square_input_normalizes_by_intermediate_occupancy() {
         let from = sq(6, 6);
@@ -482,10 +483,9 @@ mod tests {
         assert_eq!(parse(&alone, &rendered), Ok(direct));
     }
 
-    // D5-USI-06: 正準じっとの文字列化は、第1段階として合法な空の隣接升を中間升に補った
-    // 3升連結になる（[PL]「Move文字列表記2形式」。方向制約は[RULES]第11条・第12条）。
-    // 代表升の選択キー「内部密番号」は文書定義が未補修のため（SU-2）、候補集合への所属・
-    // 空升であること・選択の決定性だけを断定し、複数候補時の直値は固定しない。
+    /// D5-USI-06: [`text_generated`]がじっとに補う升の適格性と選択の決定性を検査する。
+    /// 方向はRULES.md第11条・第12条、選択順は[`Square::dense_index`]による。
+    /// 複数候補時の具体的な升はこのテストでは固定しない（SU-2）。
     #[test]
     fn jitto_text_supplies_a_deterministic_legal_first_step_square() {
         // 獅子: 8方向の空隣接升のいずれかを代表升とし、同一局面では常に同じ文字列になる。
@@ -593,7 +593,7 @@ mod tests {
         );
     }
 
-    // [PL]「Move文字列表記2形式」: 同じ合法手をUSIとCECPで往復させる。
+    /// [`text_generated`]と[`cecp::legs`]の出力から同じ合法手を復元できる。
     // CECPのじっとは移動元を運ばないため、表記層での往復対象から除く。
     #[test]
     fn both_notations_round_trip_legal_moves_in_representative_positions() {

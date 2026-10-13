@@ -1,6 +1,8 @@
 //! 12×12盤の升の座標表現。
 //!
 //! 段0は先手側の最下段であり、段が増える向きが先手の前方にあたる。
+//! 内部の筋0はUSIの筋12に対応し、内部の筋が増えるとUSIの筋は減る。
+//! 番兵を除く内部密番号は[`Square::dense_index`]で定義する。
 
 use core::iter::FusedIterator;
 
@@ -78,7 +80,8 @@ impl Square {
         self.0 as usize
     }
 
-    /// 密インデックス(0..144)を返す。番兵を除いた配列の添字に使う。
+    /// 内部密番号`rank * 12 + file`（`0..144`）を返す。
+    /// 番兵を除いた配列の添字に使う。
     #[inline]
     pub const fn dense_index(self) -> usize {
         self.rank() as usize * BOARD_FILES as usize + self.file() as usize

@@ -211,7 +211,7 @@ fn write_training_data(
     Ok(())
 }
 
-/// 生成統計を設計書へ転記できる1項目1行の形式で表示する。
+/// 生成統計を測定記録へ転記できる1項目1行の形式で表示する。
 fn print_generation_summary(
     arguments: &GenerateArguments,
     rule_set: &str,

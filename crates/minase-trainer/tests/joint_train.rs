@@ -1,4 +1,4 @@
-//! 指示書の損失、初期値照合、再現性、保存物と再生の拒否契約を検証する。
+//! 同時学習の損失、初期値照合、再現性、保存物と再開の拒否条件を検証する。
 #[path = "joint_train/algebra.rs"]
 mod algebra;
 #[path = "joint_train/fixture.rs"]

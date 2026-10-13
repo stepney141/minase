@@ -33,7 +33,7 @@ pub struct Undo {
     pub(crate) previous_zobrist: u64,
     /// 着手前の成り権保留中の駒の集合。
     pub(crate) previous_promotion_deferred: Bitboard,
-    /// 着手前のP1成り権保留状態のzobristハッシュ。
+    /// 着手前の成り権保留状態（P1・P2・P5）のZobristハッシュ。
     pub(crate) previous_rights_zobrist: u64,
 }
 
@@ -104,14 +104,39 @@ impl Position {
     /// panicするか、zobristハッシュや先獅子トリガーを含めて局面を静かに
     /// 壊すことがある。合法性検査付きの適用には
     /// [`Position::try_make_move`]を使う。
+    /// 適用の手順は[`Self::make_move_with_captures_unchecked`]に従う。
     pub fn make_move_unchecked(&mut self, mv: Move, rules: MoveRules) -> Undo {
         self.make_move_with_captures_unchecked(mv, rules, self.captured_squares(mv))
     }
 
     /// 生成済みの捕獲升で合法手を適用する。
     ///
-    /// 設計書movegen-speedup-2.md「段階5」に従い、成り判定にも受け取った捕獲升を使う。
-    /// 呼び出し側は、この局面の合法手と、それが実際に取る升を渡す必要がある。
+    /// 着手の前提条件は[`Self::make_move_unchecked`]と同じである。
+    /// `capture_squares`は[`Self::captured_squares`]に`mv`を渡した結果と一致しなければならない。
+    /// 駒の除去と成りの判定の両方にこの値を使い、捕獲升の再計算を省く。
+    ///
+    /// 適用は次の順序で行う。
+    ///
+    /// 1. P0以外またはP5では、移動元と捕獲升の成り権保留ビットを消す。
+    ///    P2では着手側の待機ビットを満了させるが、P5の保留歩兵は残す。
+    /// 2. 移動元の駒を除き、経由升、到達升の順に相手駒を除く。
+    ///    第2段階は第1段階の捕獲後の盤面で行う（RULES.md第7条第8項）。
+    /// 3. `mv.promote`なら成った駒を到達升へ置く。
+    ///    成りは着手全体の終了時に適用する（第18条第6項）。
+    /// 4. 不成の着手について、P1では成れる着手で到達升が敵陣なら保留する。
+    ///    P2では成れる着手で敵陣外から敵陣へ入った場合に待機させる。
+    ///    P5では歩兵が既に保留中か、成れる着手だった場合に保留する。
+    /// 5. 手番を反転し、先獅子の状態を更新する。
+    ///
+    /// `rules`は成り権の追跡にだけ使い、先獅子の記録は規則に依存しない。
+    /// P0かつP5なしでは成り権を追跡せず、`promotion_choice_for`も呼ばない。
+    ///
+    /// 成る前の移動駒が獅子以外で、相手の獅子を取ったときに捕獲升を記録する。
+    /// 麒麟が同じ着手で成った場合もこの捕獲に含め、`by_kirin_promotion`を立てる（第15条第7項）。
+    /// 獅子による獅子の捕獲と、獅子を取らない着手では記録を消す（第15条第4項から第6項）。
+    /// 角鷹または飛鷲が1手で獅子を2枚取る場合は、後に取った到達升側の獅子の升を記録する。
+    /// 記録と足の判定を分ける理由は
+    /// `docs/adr/record-lion-trigger-on-move-and-judge-foot-in-movegen.md`にある。
     pub fn make_move_with_captures_unchecked(
         &mut self,
         mv: Move,
@@ -129,7 +154,6 @@ impl Position {
             .expect("move origin must contain a valid piece");
         let moving_color = self.side_to_move;
         let tracks_promotion_deferred = rules.promotion != PromotionRule::P0 || rules.p5;
-        // 「段階6」: 権利を追跡する規則でだけ成りの選択肢を調べる。
         let had_promotion_chance = tracks_promotion_deferred
             && rules.promotion_choice_for(
                 moving_color,
@@ -264,7 +288,11 @@ impl Position {
 
 #[cfg(feature = "invariants")]
 impl Position {
-    /// 着手後の全不変条件を検査し、失敗時は変換に依存しない診断を残す。
+    /// `invariants`フィーチャで着手、ヌルムーブ、および各取り消しの後に不変条件を検査する。
+    ///
+    /// [`Self::validate`]が失敗したら、操作名、着手、手番、両Zobrist値の増分値と再計算値、
+    /// および盤面の生の駒コードを含む診断でパニックする。
+    /// 拡張SFEN用の局面を構築できる場合は、その表記も加える。
     fn assert_invariants(&self, operation: &str, mv: Option<Move>) {
         use crate::notation::sfen::{SetupPosition, to_extended_sfen};
         use std::fmt::Write;

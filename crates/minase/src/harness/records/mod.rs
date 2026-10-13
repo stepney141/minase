@@ -174,7 +174,8 @@ pub struct TurnRecord {
     /// 最後に完了した反復の経過時間(ms)。報告がない場合は`None`。
     #[serde(deserialize_with = "deserialize_required_option")]
     pub completed_time_ms: Option<u64>,
-    /// 応答に付いた予想手。欄は必須で、予想手がなければnull。
+    /// 応答に付いた予想手の原文。欄は省略できず、予想手がなければ`null`である。
+    /// 合法性を保証する欄ではなく、不合法な予想手も監査記録として受理する。
     #[serde(deserialize_with = "deserialize_required_option")]
     pub ponder: Option<String>,
     /// エンジンの応答。

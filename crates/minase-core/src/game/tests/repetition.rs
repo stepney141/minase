@@ -139,10 +139,10 @@ fn article_24_1_occurrences_accumulate_across_different_paths() {
     assert_eq!(game.play(cycle_a[3]), draw(DrawReason::Repetition));
 }
 
+/// D3-031-12: 不可逆手の前に可逆手を11手指していても、その後の可逆手が
+/// 12手になるまで裁定しない（RULES.md第31条R1、[`R1_MIN_REVERSIBLE_PLIES`](crate::game::repetition::r1::R1_MIN_REVERSIBLE_PLIES)）。
 #[test]
 fn article_31_r1_requires_twelve_reversible_plies_after_an_irreversible_move() {
-    // D3-031-12: 不可逆手の前に可逆手を11手指していても、その後の可逆手が
-    // 12手になるまで裁定しない(lishogi-bot.md「反復裁定の整合」、第31条R1)。
     let start = position(
         Color::Black,
         &[
@@ -296,11 +296,11 @@ fn article_31_r1_mutual_perpetual_attacks_draw() {
     assert_eq!(game.play(cycle[3]), draw(DrawReason::Repetition));
 }
 
+/// D3-031-07: 王手を受けている側にもR2の禁止は適用される(適用除外の
+/// 不採用)。D3-031-08: 捕獲を含む着手は既出局面を再現し得ず、決して
+/// 禁止されない（[`is_mate`](crate::game::adjudication::mate::is_mate)の捕獲と成りに関する補題）。
 #[test]
 fn article_31_r2_applies_to_the_checked_side_but_never_to_captures() {
-    // D3-031-07: 王手を受けている側にもR2の禁止は適用される(適用除外の
-    // 不採用)。D3-031-08: 捕獲を含む着手は既出局面を再現し得ず、決して
-    // 禁止されない(game-referee.md 6節の補題)。
     let mut game = game_with_codes(
         position(
             Color::White,

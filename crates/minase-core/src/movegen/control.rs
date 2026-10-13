@@ -20,11 +20,14 @@ pub(crate) fn piece_control_with_occupancy(
 impl Position {
     /// 指定した占有状態で`square`へ疑似利きが届く`color`側の駒を返す。
     ///
-    /// 固定利き、走り、および特殊移動の到達範囲を逆引きする。結果は`occupied`に
-    /// 含まれる駒に限り、走りの遮蔽判定にも`occupied`を使う。これは規則上の合法性を
-    /// 判定する関数ではなく、静的交換評価で仮想的な取り合いを調べるための幾何的な
-    /// 利き集合である(`docs/plans/strength-stage3.md`「升への疑似利き集合」)。
+    /// 駒の升が結果に含まれることと、その駒が`color`側であり、その升が`occupied`に含まれ、
+    /// `square`が同じ占有状態の`piece_control_with_occupancy`に含まれることは同値である。
+    /// この疑似利きには固定利き、走り、および特殊移動の到達範囲を含む。
+    /// 走りの遮蔽にも`occupied`を使う。
+    /// 結果と`occupied`の積を取ることで、交換列の途中で除いた駒が
+    /// 固定利きや特殊移動の到達範囲から再び攻撃駒として現れることを防ぐ。
     /// 静的交換評価と王駒への利き判定は片側の色しか使わないため、反対側は計算しない。
+    /// 規則を考慮しない疑似利きなので、審判層の判定の代わりにはならない。
     pub fn attackers_to_by(&self, color: Color, square: Square, occupied: Bitboard) -> Bitboard {
         let tables = attack_tables();
         (ordinary_attackers_to(tables, self, color, square, occupied)
@@ -35,9 +38,9 @@ impl Position {
 
 /// 固定利きと走りを逆引きし、`square`へ届く`color`側の駒を返す。
 ///
-/// 固定利きは5×5近傍の自駒の固定利き表で判定する
-/// (`movegen-speedup-2.md`「段階4」)。走りは`square`から8方向の利き線を引き、
-/// 最初の遮蔽駒がその逆方向へ走るプロファイルを持つかだけを調べる。全プロファイルの
+/// 全固定移動が5×5近傍に収まるので、その範囲の指定側の駒について固定利き表が`square`を含むか調べる。
+/// 走りは`square`から8方向へ占有を考慮した利き線を引き、最初の遮蔽駒が指定側の駒であり、
+/// 逆方向へ走る動きの定義を持つ場合に加える。全プロファイルの
 /// 走りは距離無制限なので、この判定は駒種ごとの走り計算と同値である。
 fn ordinary_attackers_to(
     tables: &AttackTables,

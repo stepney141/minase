@@ -27,6 +27,10 @@ fn splitmix64(value: u64) -> u64 {
 }
 
 /// 基本シードと1起算の局番号から局シードを派生する。
+///
+/// 再現性の契約は`splitmix64(base_seed.wrapping_add(n))`であり、`n`は1起算の局番号である。
+/// 結果が0なら`0x9E37_79B9_7F4A_7C15`に置き換える。
+/// `minase_core::rng::derive_seed`と同じ式である。
 pub(super) fn game_seed(base_seed: u64, game_number: u64) -> NonZeroU64 {
     match splitmix64(base_seed.wrapping_add(game_number)) {
         0 => NonZeroU64::new(SPLITMIX_GAMMA).expect("splitmix gamma is non-zero"),
@@ -38,9 +42,8 @@ pub(super) fn game_seed(base_seed: u64, game_number: u64) -> NonZeroU64 {
 mod tests {
     use super::*;
 
-    // D8-HARN-17(random-play.mdシード派生節): 局シードは
-    // splitmix64(base_seed.wrapping_add(n))であり、式は仕様として固定されて
-    // いる。参照値は仕様式から独立に(実装を経由せずに)計算した。
+    // D8-HARN-17: [`game_seed`]の再現性の契約を検査する。
+    // 参照値はdocコメントの式から、実装を経由せずに計算した。
     #[test]
     fn game_seed_follows_the_documented_splitmix64_derivation() {
         // splitmix64(1 + 1) = splitmix64(2)

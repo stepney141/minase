@@ -4,16 +4,22 @@ use crate::eval::features::{FEATURE_COUNT, mirror_feature};
 use minase_core::position::Undo;
 use minase_core::{Color, PieceKind, Position};
 
-/// 左右鏡映に対する非線形経路の扱い。
+/// 左右鏡映に対する非線形の経路の扱い。
+/// 線形の経路はどちらの方式でも鏡映対で重みを共有する。
+/// 理由は`docs/adr/share-p-type-mirror-weights-by-half-width-rotation.md`にある。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mirror {
-    /// 対応する特徴のユニットを半幅だけ交換して重みを共有する。
+    /// 鏡映対の特徴はユニットjとj+H/2を交換して第1層の行を共有する。
+    /// バイアスと出力重みも半幅で共有するため、鏡映で累算値の両半分が入れ替わっても評価は変わらない。
     Shared,
-    /// 文脈で盤面を正規化する。
+    /// 文脈に応じて盤面を鏡映して番号を付け、非線形の重みには共有を課さない。
     Normalized,
 }
 
-/// 入力特徴集合の名前、文脈および基底特徴からの写像。
+/// 入力特徴集合の名前、文脈、および基底特徴から第1層の行への写像。
+/// 特徴番号は`文脈の区分番号×13,680 + 文脈に応じて写した基底特徴番号`とする。
+/// 1視点では144升の駒と先獅子1升の最大145個が発火する。
+/// [`Self::context_after_move`]で文脈が変わった視点は、第1層を差分更新せずバイアスから全再計算する。
 pub trait FeatureSet: Clone + PartialEq + Eq + std::fmt::Debug {
     /// 構造記述文字列での名前。
     const NAME: &'static str;
@@ -40,6 +46,8 @@ pub trait FeatureSet: Clone + PartialEq + Eq + std::fmt::Debug {
 }
 
 /// 王の位置で条件付けない入力特徴集合。
+/// 文脈は1種類、特徴番号は基底特徴の番号そのもので、特徴数は13,680、鏡映は[`Mirror::Shared`]である。
+/// 理由は`docs/adr/use-p-type-input-features-for-the-nnue.md`にある。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct P;
 
@@ -65,7 +73,16 @@ impl FeatureSet for P {
     }
 }
 
-/// 自玉の位置を8区分に分け、左右鏡映で正規化する入力特徴集合。
+/// 自陣の王駒の位置を8区分に分け、左右鏡映で正規化する109,440特徴の入力集合。
+/// 基準は自陣の王将、なければ太子であり、同種が複数なら`dense_index`が最小の升を選ぶ。
+/// 王駒がなければ区分0で鏡映しない。
+/// 視点から見た段rは先手なら元の段、後手なら`11 − 段`である。
+/// 基準の王駒の筋fが6未満なら、全駒と先獅子の筋を`11 − f`へ鏡映する。
+/// 鏡映後の王駒の筋f′に対し、r=0の区分は`11−f′`、r=1は6、r≥2は7とする。
+/// 最下段の区分0は端、5は中央寄りである。
+/// 両陣営で基準の王駒が一意の局面に限って、左右鏡映に対する評価の不変性を保証する。
+/// P型との比較では採用されなかったが、再比較のために残す。
+/// 理由は`docs/adr/use-p-type-input-features-for-the-nnue.md`にある。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct HalfKpHmB8;
 
@@ -94,6 +111,7 @@ impl FeatureSet for HalfKpHmB8 {
     const MIRROR: Mirror = Mirror::Normalized;
     type Context = HalfKpContext;
 
+    /// [`HalfKpHmB8`]の基準の王駒から区分と鏡映方向を求める。
     fn context(position: &Position, perspective: Color) -> Self::Context {
         let anchor = [PieceKind::King, PieceKind::CrownPrince]
             .into_iter()
@@ -127,6 +145,8 @@ impl FeatureSet for HalfKpHmB8 {
         HalfKpContext { bucket, mirrored }
     }
 
+    /// 王将または太子の移動、醉象の成り、王駒の捕獲だけで文脈を求め直す。
+    /// それ以外の着手では着手前の文脈を返す。
     fn context_after_move(
         before: Self::Context,
         position: &Position,

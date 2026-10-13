@@ -4,9 +4,9 @@ use super::*;
 use crate::LionRule;
 
 /// 非獅子の捕獲で先獅子記録が新設されても、以前の記録を復元できる。
+/// RULES.md第15条と[`Position::make_move_with_captures_unchecked`]の契約により、新しい記録升は以前の記録升に依存しない。
 #[test]
 fn lion_capture_restores_previous_records() {
-    // 設計書「一時状態の逆生成」、第15条: 新しい記録升と以前の記録升は独立。
     let from = sq(5, 5);
     let to = sq(5, 6);
     let base = position(
@@ -36,9 +36,9 @@ fn lion_capture_restores_previous_records() {
 }
 
 /// 空升の記録には相手の角鷹または飛鷲を必要とする。
+/// [`predecessor`](crate::predecessor)の集合Aの先獅子条件3に従い、空升記録には経由升捕獲の可能性を要求する。
 #[test]
 fn empty_record_requires_enemy_falcon_or_eagle() {
-    // 設計書「直前局面の定義」先獅子の局所条件3: 経由升捕獲の可能性を要求する。
     for kind in [
         PieceKind::Rook,
         PieceKind::HornedFalcon,

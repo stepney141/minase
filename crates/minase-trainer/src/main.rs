@@ -1,5 +1,5 @@
-//! minaseの評価関数の学習器の開発用コマンド。
-//! NNUEの学習と検証はnnueサブコマンドの下に置く。
+//! minaseの評価関数の学習器を呼び出す開発用コマンド。
+//! サブコマンドと学習器の対応、および共有範囲は[`minase_trainer`]に従う。
 
 use clap::{Parser, Subcommand};
 

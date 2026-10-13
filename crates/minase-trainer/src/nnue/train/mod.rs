@@ -1,4 +1,8 @@
-//! CUDAまたはCPUによる学習、全検証集合の評価、エポック境界の保存と再開。
+//! CUDAまたはCPUによるNNUEの学習と、全検証集合の評価、保存と再開。
+//! CUDAでは供給スレッドがワーカー数ぶんのバッチを並列に作り、順列の順に3面へ書く。
+//! 各更新の結果は次の更新を投入してから回収し、CPUでは単一スレッドとビット一致する並列参照計算を使う。
+//! 各エポックは`epoch_permutation(train, seed, epoch)`で始め、更新、snapshot、全検証、最良値更新、ログ、latest.bin、改善時のbest.binの順に進む。
+//! latest.binをエポックの保存確定点とし、時間切れで未完了のエポックは採用しない。
 
 use crate::nn::{atomic_write, patience_reached};
 mod args;
@@ -142,6 +146,14 @@ struct Session {
 }
 
 impl Session {
+    /// 初期値と前処理を再計算し、新規学習または保存済みエポックからの再開を準備する。
+    /// 再開にはconfig.jsonのsettings、inputs、preprocessing、および2つのハッシュの一致を要求する。
+    /// 設定ハッシュからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threadsを除く。
+    /// 入力パスは正規化したパスと内容のSHA-256をinputsに記録するため、入力ハッシュには含まれる。
+    /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
+    /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は`epoch×ceil(N_train/batch)`、epochは指定上限以下でなければならない。
+    /// 記録されたdevice_nameも一致を要求する。
+    /// best.binの書き込み前に中断した場合は、最新エポックが最良であるときだけlatest.binから復元できる。
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
         args.validate()?;
@@ -587,7 +599,7 @@ fn validate_batches<T>(
         } else {
             total = Some(statistics);
         }
-        // Pythonのvalidation_lossと同じく、最終バッチの後も期限を確認する。
+        // 最終バッチの後も期限を確認し、検証完了が期限を越えたエポックを採用しない。
         if expired() {
             return Ok(None);
         }

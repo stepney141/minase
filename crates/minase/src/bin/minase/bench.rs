@@ -1,4 +1,16 @@
-//! 固定局面の探索ベンチ。ノード数の決定性検証とNPS計測に使う。
+//! 固定局面の探索で決定性と毎秒ノード数（NPS）を測る。
+//!
+//! 規則は`engine-default`に固定し、深さは`--depth`で既定3、ワーカー数は`--threads`で指定する。
+//! `--repetitions 1`では各局面の`position=<名前> depth=... nodes=... best=... score=... elapsed=...`、
+//! `summary:`、および`accumulators:`の行を出す。
+//! 2回以上では計測外のウォームアップを1回行い、反復ごとの`run=`行と最後の`median:`行を出す。
+//! この場合も累算器の統計を反復ごとと全反復の合計について出す。
+//! `search-stats`が有効な場合だけ探索統計の`stats:`行を加える。
+//!
+//! 置換表は1つを使い回し、局面ごとに計測外で消去する。NPSは各局面の探索時間の和から求める。
+//! 同じビルドの`Threads=1`の固定深さでは、ノード数、最善手、および評価値は再実行間で一致する。
+//! 特定の総ノード数は固定しない。`scripts/bench_compare.py`は局面ごとの深さ、ノード数、最善手、評価値を比較する。
+//! 固定局面の共有は[`BENCH_POSITIONS`]に従う。
 
 use std::num::NonZeroUsize;
 use std::time::Instant;
@@ -39,7 +51,8 @@ struct BenchPosition {
     sfen: &'static str,
 }
 
-/// ベンチ対象の局面集。初期局面と、ランダム対局から採った中盤・終盤局面。
+/// 初期局面と中盤、終盤を含む固定15局面。
+/// `minase_core::test_util::BENCH_SFENS`は試験が共有する写しとして同じ15局面を同じ順で持つ。
 const BENCH_POSITIONS: &[BenchPosition] = &[
     BenchPosition {
         name: "initial",
@@ -436,7 +449,7 @@ pub(super) fn main(arguments: Arguments) {
 mod tests {
     use super::*;
 
-    /// debugging-tools.md「探索統計の項目」: 分母0では比を省き、回数を残す。
+    /// [`format_stats`]の契約に従い、分母0の比を省き、回数を残す。
     #[cfg(feature = "search-stats")]
     #[test]
     fn stats_omit_ratios_with_zero_denominators() {
@@ -498,16 +511,14 @@ mod tests {
         assert_eq!(median_f64(&mut even_floats), 5.0);
     }
 
-    // D8-BENCH-02(search.md検証節): benchの総ノード数は再実行間で完全に一致する。
-    // 特定の総ノード数(217,305など実施状況の値)は各時点の測定記録であり、
-    // テストで固定してはならない。契約は「再実行間の一致」だけである。
+    // D8-BENCH-02: モジュールdocの再現性と[`BENCH_POSITIONS`]の固定局面を検査する。
     #[test]
     fn total_node_counts_are_reproducible_across_runs() {
         let codes = parse_rule_set("engine-default").expect("engine-default preset must resolve");
         let rules = Rules::from_codes(&codes).expect("engine-default rules must be valid");
         let limits = SearchLimits::new(Some(1), None, None, None).unwrap();
         let nnue = minase::eval::weights().unwrap();
-        // docs/plans/search.md: 固定15局面を本番のbench経由で解析し探索する。
+        // [`BENCH_POSITIONS`]の15局面を本番のbenchで解析し探索する。
         assert_eq!(BENCH_POSITIONS.len(), 15);
         let mut transposition_table = TranspositionTable::new(1).unwrap();
         let mut run = || {
@@ -527,7 +538,7 @@ mod tests {
         assert_eq!(first, second, "total node counts must be deterministic");
     }
 
-    /// フェーズ4診断: 全ワーカーの根の再計算を数え、集計を次の実行へ持ち越さない。
+    /// 全ワーカーの根の再計算を数え、集計を次の実行へ持ち越さないことを検査する。
     #[test]
     fn accumulator_counts_include_all_workers_and_exclude_previous_runs() {
         use minase::eval::nnue::{

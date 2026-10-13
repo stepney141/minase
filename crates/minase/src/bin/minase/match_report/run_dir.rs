@@ -1,4 +1,8 @@
 //! 集計対象の実行ディレクトリの保存形式と読み出し。
+//!
+//! 型は`match_runner/storage.rs`の記録を読むための写しであり、未知の欄を受け入れる。
+//! runner側は`deny_unknown_fields`で未知の欄を拒否する。
+//! 型を統合すると読み取れる記録の範囲が変わるため、読み取り用の型を分けておく。
 
 use serde::Deserialize;
 use std::{fs::File, io, path::Path};

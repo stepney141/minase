@@ -21,7 +21,16 @@ use crate::mv::Move;
 use crate::position::Position;
 use crate::rules::MoveRules;
 
-/// 採用ルールの下で合法手を列挙する生成器。
+/// 局面合法手を列挙する生成器。
+///
+/// 駒の動き、捕獲、成り、獅子の捕獲制限（RULES.md第13条から第16条）、
+/// および[`MoveRules`]を満たす着手を生成する。
+/// 王駒の安全は合法性に含めないため、疑似合法手を適用して王の安全を確かめる段階はない
+/// （第8条第3項から第5項）。
+/// 反復規則R2とR3による禁止は[`Game::legal_moves`](crate::Game::legal_moves)が扱う。
+/// 履歴を分離する理由は`docs/adr/keep-game-history-out-of-position-and-movegen.md`にある。
+///
+/// 共有する`'static`の利き表と`Copy`の[`MoveRules`]だけを持ち、`Send + Sync`である。
 #[derive(Clone)]
 pub struct MoveGenerator {
     /// 利きの前計算テーブル。
@@ -45,6 +54,17 @@ impl MoveGenerator {
     }
 
     /// `position`の手番側の全合法手を`output`へ追加する。
+    ///
+    /// 駒種は[`PieceKind::ALL`](crate::PieceKind::ALL)の順、同じ駒種の駒は升の生値の昇順に走査する。
+    /// 各駒では、固定利き、走り、および特殊移動の第1段階で止まる手の到達升をまとめ、昇順に出す。
+    /// 次に獅子では、経由升で取る2段階移動を経由升、その中で到達升の昇順に出し、
+    /// 直接の跳びを到達升の昇順に出して、最後にじっとを1手だけ出す。
+    /// 角鷹と飛鷲では動きの定義にある許可方向の順に居喰い、跳び、2段階捕獲を出し、
+    /// 全方向の後にじっとを1手だけ出す。
+    /// 各着手は不成を先、成りを後に展開し、強制成りでは成りだけを出す。
+    ///
+    /// 出力は[`Move`]の正準形であり、移動元へ戻る場合を除いて到達升に自駒はなく、重複を含まない。
+    /// 捕獲生成と非捕獲生成は、この列から該当する手を抜き出した順序を保つ。
     pub fn generate_moves(&self, position: &Position, output: &mut Vec<Move>) {
         generate::generate_moves::<false, false>(self, position, &mut Vec::new(), output);
     }
@@ -60,7 +80,11 @@ impl MoveGenerator {
         self.generate_captures_with_scratch(position, &mut Vec::new(), output);
     }
 
-    /// 「段階6」（movegen-speedup-2.md）の捕獲生成用領域を再利用する。
+    /// [`Self::generate_captures`]と同じ列を、呼び出し側の作業領域を使って追加する。
+    ///
+    /// `base_moves`は各駒の生成開始時に消去する。
+    /// 手番側に駒がなければ触れないため、呼び出し後の内容を結果として使わない。
+    /// 十分な容量を確保して使い回すことで、ノードごとの作業領域の確保を省く。
     pub fn generate_captures_with_scratch(
         &self,
         position: &Position,
@@ -70,7 +94,12 @@ impl MoveGenerator {
         generate::generate_moves::<true, false>(self, position, base_moves, output);
     }
 
-    /// 「段階6」（movegen-speedup-2.md）の非捕獲だけを全手生成と同じ順で追加する。
+    /// [`Self::generate_moves`]の非捕獲手だけを、同じ順序で`output`へ追加する。
+    ///
+    /// 非捕獲手は、空升への1段階の移動、空升への直接の跳び、およびじっとである。
+    /// 跳び越す升の駒は取らず、経由升で取る手は居喰いを含めて除く。
+    /// `base_moves`は呼び出し側の作業領域であり、
+    /// 消去と再利用の契約は[`Self::generate_captures_with_scratch`]と同じである。
     pub fn generate_quiets(
         &self,
         position: &Position,

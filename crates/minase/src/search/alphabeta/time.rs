@@ -1,4 +1,6 @@
 //! 探索の時間予算と反復の開始判定。
+//!
+//! 予算式が係数表`params`を読み、反復の開始判定と先読みの的中処理が反復深化に結びつくため、αβ探索の側に置く。
 
 use std::time::Duration;
 
@@ -7,7 +9,13 @@ use minase_core::mv::Move;
 
 use super::params;
 
-/// 1手に使う時間の予算。
+/// 1手に使う時間の予算。softはhard以下、hardは1 ms以上である。
+///
+/// [`clock_budget_with_margin`]では残り時間と秒読みの和が余裕を超えるとき、
+/// hardはその和から余裕を引いた値以下となる。
+/// softは通常、反復の境界で照合し、hardは探索中の時計の検査点でも照合する。
+/// 先読みから続く反復では、的中後の最初の時計検査でも[`iteration_prediction_fits`]で予算を当て直す。
+/// 通常探索では探索開始から、先読みでは的中の時点から測る。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) struct TimeBudget {
     /// 完了イテレーションの境界で停止する目安時間。
@@ -40,6 +48,9 @@ pub(super) fn stable_signal(bests: &[Move]) -> bool {
 /// 通常は[`iteration_prediction_fits`]を満たし、さらに最善手が不安定なら的中後の経過時間がsoft未満であることを要求する。
 /// 安定時のsoft判定は同関数の完了時刻予測に含まれる。
 /// [`byoyomi_clock`]の対象で残り持ち時間が0の場合は予測と安定性を使わず、的中後の経過時間がhard未満かだけを判定する。
+///
+/// 固定倍の予測は`docs/adr/predict-next-iteration-by-fixed-ratio.md`に基づく。
+/// 的中までの時間を予算に足す扱いは[`iteration_prediction_fits`]に従う。
 pub(super) fn should_start_next_iteration(
     elapsed: Duration,
     hit: Duration,
@@ -58,6 +69,10 @@ pub(super) fn should_start_next_iteration(
 /// `started`と`hit`は探索開始からの累積時間である。
 /// `started × IterationRatio ≤ (hit + hard) × 100` を要求し、安定時はsoftにも同じ判定を行う。
 /// 交差積で比較して、百分率の除算による丸めを避ける。
+///
+/// 先読みで始めた反復も、的中後にこの式へ当て直す。
+/// 先読みでない探索は`hit = 0`なので、先読みなしの式と不等号まで一致する。
+/// 理由は`docs/adr/continue-search-and-measure-budget-from-ponderhit.md`にある。
 pub(super) fn iteration_prediction_fits(
     started: Duration,
     hit: Duration,
@@ -88,6 +103,13 @@ pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
 /// `safe_hard = max(1, R + B − m)` とし、減算は0で飽和させる。
 /// `hard = max(1, min(soft_raw × HardSoftRatio / 100, R × HardRemainingShare / 100 + B × 8 / 10, safe_hard))` とする。
 /// `soft = min(soft_raw, hard)` としてsoftがhardを超えないようにし、最終値は`u64`のミリ秒へ飽和変換する。
+///
+/// 秒読みが0なら序盤係数の項も0となり、時計の予算はこの係数に依存しない。
+/// 残り手数とsoftの上限の理由は`docs/adr/estimate-moves-to-go-from-ply.md`、
+/// 秒読みの項だけの序盤係数は`docs/adr/scale-only-the-byoyomi-term-in-the-opening.md`、
+/// 持ち時間を序盤から配る理由は`docs/adr/spend-main-time-from-the-opening.md`にある。
+/// 秒読みのない時計でhardを残り時間の割合でも抑え、途中結果を使わない理由は
+/// `docs/adr/reject-fair-share-budget-with-partial-results.md`にある。
 fn clock_budget_with_margin(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);

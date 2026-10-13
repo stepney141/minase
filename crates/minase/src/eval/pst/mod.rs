@@ -1,4 +1,6 @@
-//! 量子化した学習PSTの復号、埋め込みおよび整数評価。
+//! 量子化した学習PSTの復号と、PST単独またはPST＋FMの整数評価。
+//! 探索からは呼ばれず、学習した評価関数の比較に使う。
+//! 理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
 
 pub(crate) mod accumulator;
 mod features;
@@ -33,7 +35,8 @@ const EVALUATION_LIMIT: i32 = 28_999;
 
 /// 学習PSTの量子化重みと勝率尺度。
 pub struct Pst {
-    /// 「段階6」（movegen-speedup-2.md）に従い、特徴ごとに序中盤と終盤を隣接させる。
+    /// 特徴ごとの序中盤用と終盤用の重みを隣接させ、1回の読み込みで両端点を得る。
+    /// 整数和なので、この配置によって評価値は変わらない。
     weights: [[i16; 2]; FEATURE_COUNT],
     /// MNPT v3のFM量子化表。v2では補正を持たない。
     fm: Option<fm::Fm>,
@@ -41,7 +44,7 @@ pub struct Pst {
     rule_set: [u8; 32],
     /// 駒状態ごとのセンチポーン単位の駒価値。
     piece_values: [i32; PIECE_STATE_COUNT],
-    /// SEEの逆引き前の判定に使う全駒種の成り益の非負上限（同「段階6」）。
+    /// [`Self::max_promotion_gain`]が返す、使用中の駒価値表の成り益の非負上限。
     max_promotion_gain: i32,
     /// 学習時に使ったセンチポーンから勝率ロジットへの尺度。
     k: f32,
@@ -62,8 +65,9 @@ impl Pst {
             .trim_end_matches('\0')
     }
 
-    /// `docs/plans/move-ordering.md`「候補5」の同点破りに使う、手番側視点のPST差分。
+    /// 静かな手の履歴値が同じ場合の同点破りに使う、手番側視点のPST差分。
     /// FMは含めず、補間後の除算前の分子を返す。
+    /// 理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
         let side = position.side_to_move();
         let piece = position.piece_at(mv.from).expect("quiet mover exists");
@@ -107,7 +111,7 @@ impl Pst {
 
     /// 成っていない歩兵の駒価値をセンチポーンで返す。
     ///
-    /// `docs/plans/strength-stage4.md`の「採用した余裕値」節で使う単位`p`。
+    /// 探索の余裕値とaspiration windowの幅を百分率で換算する基準値である。
     #[inline]
     pub fn pawn_value(&self) -> i32 {
         let pawn = PieceCode::new(Color::Black, PieceKind::Pawn)
@@ -115,7 +119,9 @@ impl Pst {
         self.piece_value(pawn)
     }
 
-    /// 「段階6」（movegen-speedup-2.md）の取り返しで得られる成り益の上限を返す。
+    /// 使用中の駒価値表で、全駒状態の「成った後の価値 − 成る前の価値」と0の最大値を返す。
+    /// 静的交換評価の早期終了に使う成り益の上限である。
+    /// 探索ではNNUEの同名の値を用い、取り返す駒の成り益を最大に見積もっても損が余裕値以下なら、取り返しの逆引きを省く。
     pub(crate) const fn max_promotion_gain(&self) -> i32 {
         self.max_promotion_gain
     }
@@ -131,22 +137,26 @@ impl Pst {
     }
 }
 
-/// 補間係数の上限。
+/// 初期配置の92枚から双方に残す王駒1枚ずつを除いた、補間係数の上限90。
 const PHASE_MAX: i64 = 90;
-/// 量子化重みからセンチポーンへ換算する除数。
+/// 補間係数の上限90と、1/8センチポーンをセンチポーンへ戻す8の積720。
 pub(crate) const INTERPOLATION_DIVISOR: i64 = 720;
 
-/// 盤上総駒数から補間係数を求める。
+/// 王駒を含む盤上総駒数Nから`q = min(90, max(0, N − 2))`を求める。
+/// 2枚は双方の王駒を1枚ずつ残す基準であり、実際の王駒数を数えて引くのではない。
+/// 先獅子の特徴と盤外の番兵は数えず、92枚を超える入力でもqを90に制限する。
+/// 中将棋には駒打ちがないため、通常の対局でqは捕獲によってだけ減り、成りでは変わらない。
+/// 理由は`docs/adr/interpolate-the-linear-path-by-total-piece-count.md`にある。
 fn phase(piece_count: u32) -> i64 {
     i64::from(piece_count.saturating_sub(2)).min(PHASE_MAX)
 }
 
-/// 序中盤・終盤の重みを除算前の整数へ補間する。
+/// [`phase`]のqで、`q×序中盤の和 + (90 − q)×終盤の和`をi64で計算する。
 fn interpolation_numerator(sums: [i32; 2], q: i64) -> i64 {
     q * i64::from(sums[0]) + (PHASE_MAX - q) * i64::from(sums[1])
 }
 
-/// 分子を整数除算でセンチポーンへ換算し、静的評価の範囲に制限する。
+/// 分子を[`INTERPOLATION_DIVISOR`]で1回だけ割り、0方向へ切り捨てた後に±28,999センチポーンへ制限する。
 fn evaluation_from_numerator(numerator: i64) -> i32 {
     (numerator / INTERPOLATION_DIVISOR)
         .clamp(-i64::from(EVALUATION_LIMIT), i64::from(EVALUATION_LIMIT)) as i32
@@ -172,6 +182,7 @@ pub(crate) struct Breakdown {
 }
 
 /// 全計算と同じ特徴列挙と補間式で、表示用の内訳を得る。
+/// 升ごとの寄与と先獅子の寄与は手番側視点の補間分子であり、その和を720で割って上下限を適用するとPST評価になる。
 pub(crate) fn breakdown(pst: &Pst, position: &Position) -> Breakdown {
     let q = phase(position.occupied().popcount());
     let mut result = Breakdown {
@@ -272,12 +283,15 @@ pub fn evaluate_for_diagnostics(pst: &Pst, position: &Position, perspective: Col
     (score, baseline)
 }
 
-/// 実行バイナリへ埋め込むMNPTバイト列。
+/// 比較用のMNPTを実行バイナリへ埋め込んだバイト列。
+/// 検証と共有は[`weights()`]が行う。
 static EMBEDDED: &[u8] = include_bytes!("../../../nets/pst.bin");
 /// 埋め込み重みの復号結果を保持する領域。
 static WEIGHTS: OnceLock<Result<Arc<Pst>, Error>> = OnceLock::new();
 
-/// 検証済みの埋め込み学習PSTを返す。
+/// 埋め込んだMNPTを初回呼び出しで1回だけ復号して検証する。
+/// 成功時は同じ重みを共有し、失敗時は同じエラーを返す。
+/// 復号失敗から旧評価へ切り替えることはない。
 pub fn weights() -> Result<Arc<Pst>, Error> {
     match WEIGHTS.get_or_init(|| Pst::decode(EMBEDDED).map(Arc::new)) {
         Ok(pst) => Ok(Arc::clone(pst)),

@@ -5,10 +5,7 @@ use super::features::{base_features, canonical_row, input_features};
 use super::{CANONICAL_ROWS, Error, FEATURE_COLUMNS, InputFeatureSet, Result, SENTINEL};
 use crate::data::{Dataset, build_targets_from_arrays, outcome_code};
 
-/// Pythonの`pst.teacher.build_targets`と同じ教師値を構築する。
-///
-/// 分類ごとに`λ / (1 + exp(-score / K)) + (1 - λ) * result / 2`をf64で
-/// 計算してf32へ丸める。λが0の分類ではKと探索値を参照しない。
+/// バッチの教師値を[`build_targets_from_arrays`]の混合式で構築する。
 pub fn build_targets(
     batch: &BatchSlot,
     teacher_ks: &[f64],
@@ -53,7 +50,9 @@ pub const MAX_BATCH_SIZE: usize = 1 << POSITION_BITS;
 /// GPUの後退で1区分が処理する逆索引要素数の上限。
 pub const REVERSE_INDEX_SEGMENT_LEN: usize = 128;
 
-/// 各非空行の先頭区分は1要素、後続区分は追加の128要素を要する。
+/// r行e要素の逆索引の最大区分数`min(r,e) + floor((e−min(r,e))/128)`を返す。
+/// 各非空行の最初の区分には1要素、後続の区分には追加の128要素を要する。
+/// 最大バッチ数B_maxに対して、第1層のeは290×B_max、線形のeは145×B_maxである。
 pub(crate) fn max_segment_count(rows: usize, entries: usize) -> usize {
     let nonempty = rows.min(entries);
     nonempty + (entries - nonempty) / REVERSE_INDEX_SEGMENT_LEN
@@ -148,6 +147,10 @@ impl ReverseIndex {
         self.segment_offsets.len() - 1
     }
 
+    /// 安定な計数ソートで行番号順に並べ、行内は局面、視点、列の昇順を保つ。
+    /// 1行の中を[`REVERSE_INDEX_SEGMENT_LEN`]の128要素以下に区切り、空行には区分を作らない。
+    /// この固定順を後退の縮約順として使う。
+    /// 理由は`docs/adr/backpropagate-the-first-layer-through-a-reverse-index.md`にある。
     fn build(features: &[u32], rows: usize, perspectives: usize, p_encoded: bool) -> Result<Self> {
         let row_of = |feature: u32| {
             if p_encoded {
@@ -205,9 +208,9 @@ impl ReverseIndex {
 
 /// CPUで構築し、そのまま転送できる1バッチの面。配列はいずれも連続したVec。
 ///
-/// 局面数をBとすると、`features`は[B, 2, 145]、`linear_features`は[B, 145]。
+/// 局面数をBとすると、`features`は`[B, 2, 145]`、`linear_features`は`[B, 145]`。
 /// 局面、視点（手番側0、相手側1）、元の盤面のdense升の順で行優先に並ぶ。
-/// 列144は先獅子である。残る局面ごとの配列はすべて[B]。
+/// 列144は先獅子である。残る局面ごとの配列はすべて`[B]`。
 /// 第1層と線形の逆索引は各々[行数＋1]の開始位置と、発火数個のu32を持つ。
 /// 後退用の区分表もワーカーが構築し、行・逆索引要素とも昇順を保つ。
 #[derive(Debug, PartialEq)]
@@ -237,31 +240,31 @@ impl BatchSlot {
     pub fn is_empty(&self) -> bool {
         self.record_indices.is_empty()
     }
-    /// バッチ順の通し番号[B]を返す。
+    /// バッチ順の通し番号`[B]`を返す。
     pub fn record_indices(&self) -> &[u64] {
         &self.record_indices
     }
-    /// 両視点の特徴[B, 2, 145]。P型は正準行×2＋回転、HalfKPは入力特徴番号。
+    /// 両視点の特徴`[B, 2, 145]`。P型は正準行×2＋回転、HalfKPは入力特徴番号。
     pub fn features(&self) -> &[u32] {
         &self.features
     }
-    /// 手番側の線形経路の正準行番号[B, 145]を返す。
+    /// 手番側の線形経路の正準行番号`[B, 145]`を返す。
     pub fn linear_features(&self) -> &[u32] {
         &self.linear_features
     }
-    /// 先獅子の枠を含まない盤上総駒数[B]を返す。
+    /// 先獅子の枠を含まない盤上総駒数`[B]`を返す。
     pub fn piece_counts(&self) -> &[u8] {
         &self.piece_counts
     }
-    /// 先読み後の教師探索値[B]を返す。単位はセンチポーン。
+    /// 先読み後の教師探索値`[B]`を返す。単位はセンチポーン。
     pub fn teacher_scores(&self) -> &[f32] {
         &self.teacher_scores
     }
-    /// 教師用Kを引く分類番号[B]を返す。
+    /// 教師用Kを引く分類番号`[B]`を返す。
     pub fn teacher_classes(&self) -> &[u32] {
         &self.teacher_classes
     }
-    /// 手番側から見た結果[B]を返す。負け0、引き分け1、勝ち2。
+    /// 手番側から見た結果`[B]`を返す。負け0、引き分け1、勝ち2。
     pub fn outcomes(&self) -> &[u8] {
         &self.outcomes
     }

@@ -1,4 +1,4 @@
-//! 設計書の書き出し契約を、合成MNSDと独立に計算できる線形評価で検証する。
+//! NNUEの書き出し契約を、合成MNSDと独立に計算できる線形評価で検証する。
 
 use minase_trainer::nn::BestEpoch;
 mod common;
@@ -38,7 +38,7 @@ use sha2::{Digest, Sha256};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 const RULE_SET: &str = "L0,P0,R1,E0";
-// Pythonのhash64(seed=11, game)で固定した検証対局。dataの既知ベクトルと同じ。
+// hash64(seed=11, game) % 20 == 0となる0..80の対局番号である。
 const VALIDATION_GAMES: [u32; 7] = [4, 15, 22, 41, 48, 59, 70];
 
 struct Fixture {

@@ -87,6 +87,11 @@ impl RelativeDirection {
 }
 
 /// 走り1本分の指定。
+///
+/// 全プロファイルの走りは盤端まで距離無制限であり、歩数の上限を持たない。
+/// [`Position::attackers_to_by`](crate::Position::attackers_to_by)の逆引きと
+/// [`AttackTables::sliding_control`](super::AttackTables::sliding_control)はこの前提に依存する。
+/// 上限のある走りを加える場合は、両方の計算と`movegen/tests/attackers.rs`の契約テストを改める。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct SlideSpec {
     /// 走る方向。

@@ -1,3 +1,9 @@
+//! 固定したPSTに加えるFMを学習し、`MNFMCKPT`版1で保存する。
+//! 新規出力先、入力規則名、再開ディレクトリ、設定とハッシュ、エポックと更新回数、保存順と最良モデルの復旧は[`crate::pst::train`]と同じ契約である。
+//! 再開時はK、学習率、重み減衰、シードに加え、観測マスクの一致を要求する。
+//! 最初の5更新の勾配ノルムを記録し、埋め込みの勾配が5回とも0なら停止する。
+//! aを0で初期化するため、初回の埋め込みの勾配が0であることは許す。
+
 use super::{
     Adam, Args, Batch, Checkpoint, Distribution, EpochRecord, GradientNorm, Model, Progress,
     Result, StopReason, Summary, compute, export, feature_observations, mirror_bit,

@@ -266,7 +266,7 @@ impl From<PositionBuildError> for SfenError {
 
 /// 局面の盤面と手番を2欄基本形のSFENへ書き出す。
 ///
-/// 獅子捕獲升と手数を含む拡張形式はプロトコル層で扱う。
+/// 獅子捕獲升、手数、成り権保留を含む拡張形式は[`to_extended_sfen`]で扱う。
 pub fn to_sfen(position: &Position) -> String {
     let mut sfen = String::new();
 
@@ -358,6 +358,8 @@ pub(crate) fn piece_text(piece: PieceCode) -> String {
 }
 
 /// 対局開始局面を先獅子と成り権保留(P1・P2・P5)を含む5欄の拡張SFENへ書き出す。
+///
+/// 文法は[`parse_extended_sfen`]を参照する。常に5欄を出力する。
 pub fn to_extended_sfen(setup: &SetupPosition) -> String {
     let lion_capture = setup
         .lion_capture
@@ -381,9 +383,19 @@ pub fn to_extended_sfen(setup: &SetupPosition) -> String {
 
 /// 4欄または5欄の拡張SFENを解析する。
 ///
-/// 4欄入力では成り権保留欄(P1・P2・P5)を`-`とみなす。獅子捕獲升は検証して
-/// [`SetupPosition::lion_capture`]へ保持し、先獅子状態(第15条)の
-/// [`Position`]への注入は対局管理層へ委ねる。
+/// 各欄を空白で区切り、`盤面 手番 獅子捕獲升 次の手数 [成り権保留升]`の順に置く。
+/// 盤面と手番は[`parse_sfen`]の2欄基本形と同じである。
+/// 獅子捕獲升は`-`または[`square_to_text`]の升名1個であり、空升も受理するが、
+/// 手番側の駒がある升は拒否する。次の手数はASCII数字列で表した`1..=9999`である。
+/// 符号と小数点は認めない。
+///
+/// 成り権保留升は`-`または升名のコンマ区切り列であり、
+/// [`Square::dense_index`]の狭義昇順に並べる。4欄入力では第5欄を`-`とみなす。
+/// 空でない保留集合にはP1・P2・P5のいずれかを要し、各升には所有者の敵陣内に
+/// 成れる不成駒がなければならない。規則ごとの保留枚数や駒種の制限は検査しない。
+///
+/// 獅子捕獲升は検証して[`SetupPosition::lion_capture`]へ保持する。
+/// 先獅子状態の復元には[`SetupPosition::restore_position`]を使う（RULES.md第15条）。
 pub fn parse_extended_sfen(sfen: &str, rules: MoveRules) -> Result<SetupPosition, SfenError> {
     let fields: Vec<_> = sfen.split_whitespace().collect();
     if !matches!(fields.len(), 4 | 5) {
@@ -399,7 +411,7 @@ pub fn parse_extended_sfen(sfen: &str, rules: MoveRules) -> Result<SetupPosition
         Some(parse_square(fields[2]).ok_or(SfenError::InvalidLionCaptureSquare)?)
     };
     // 手数欄は数字列だけを受理する。u32のFromStrは先頭の`+`を受理するため、
-    // 拡張SFEN文法（protocol-layer.md）の整数表記に合わせて事前に検査する。
+    // この関数の文法が要求する符号なしの数字列かを事前に検査する。
     let next_move_number = Some(fields[3])
         .filter(|text| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()))
         .and_then(|text| text.parse::<u32>().ok())
@@ -412,7 +424,9 @@ pub fn parse_extended_sfen(sfen: &str, rules: MoveRules) -> Result<SetupPosition
     SetupPosition::new(position, lion_capture, next_move_number)
 }
 
-/// 升を筋数字と段英字の表記(例: `6f`)へ変換する。
+/// 升を筋数字`1..=12`と段英字`a..=l`の連結へ変換する（例: `6f`）。
+///
+/// 筋の先行ゼロは付けない。内部の筋0が筋12、段11が段aに対応する。
 pub fn square_to_text(square: Square) -> String {
     let file = BOARD_FILES - square.file();
     let rank = char::from(b'a' + (BOARD_RANKS - 1 - square.rank()));
@@ -452,7 +466,7 @@ fn parse_side_to_move(field: &str) -> Result<Color, SfenError> {
     }
 }
 
-/// 成り権保留欄(P1・P2・P5)を解析する。`-`は空を表し、升は内部密番号の狭義昇順を要求する。
+/// [`parse_extended_sfen`]の成り権保留欄を解析する。
 fn parse_promotion_deferred(field: &str, rules: MoveRules) -> Result<Vec<Square>, SfenError> {
     if field == "-" {
         return Ok(Vec::new());
@@ -485,6 +499,7 @@ fn parse_promotion_deferred(field: &str, rules: MoveRules) -> Result<Vec<Square>
 ///
 /// 構文と[`PositionBuilder`]の不変条件だけを検証する。王駒の存在や
 /// 駒種ごとの枚数上限など、規則上の局面合法性は呼出し側が検証する。
+/// 不正な入力はパニックせず、[`SfenError`]として返す。
 pub fn parse_sfen(sfen: &str) -> Result<Position, SfenError> {
     let mut fields = sfen.split_whitespace();
     let board = fields.next().ok_or(SfenError::MissingBoard)?;
@@ -887,8 +902,7 @@ mod tests {
         );
     }
 
-    // D5-SFEN-07: minase基本形式は「盤面部 手番部」の2欄だけを読み書きする
-    // （[USI]「to_sfenへの要求事項」、[PL]「拡張SFEN」）。
+    /// D5-SFEN-07: [`to_sfen`]と[`parse_sfen`]の2欄基本形の契約を検査する。
     #[test]
     fn basic_form_reads_and_writes_exactly_two_fields() {
         let position = Position::initial();
@@ -921,8 +935,8 @@ mod tests {
         );
     }
 
-    // D5-SFEN-08: 不正入力の非パニック拒否（[PL]「フェーズ2の確定設計」のエンジン境界の
-    // 厳格性）。エラー分類の粒度は規範文書に定めがないため（SU-3）、拒否だけを断定する。
+    /// D5-SFEN-08: [`parse_sfen`]の契約に従い、不正入力をパニックせずに拒否する。
+    /// エラーの細分類は固定せず、拒否だけを検査する（SU-3）。
     #[test]
     fn malformed_inputs_are_rejected_without_panicking() {
         let inputs = [
@@ -953,8 +967,7 @@ mod tests {
         );
     }
 
-    // D5-SFEN-09: 第3欄は`-`または升名1つ。空升は受理し、手番側の駒がある升は拒否する
-    // （[PL]「拡張SFEN」、[USI]「SFENの全体構文」第3項の経由升捕獲を含む訂正後条件）。
+    /// D5-SFEN-09: [`parse_extended_sfen`]の獅子捕獲升の受理条件を検査する。
     #[test]
     fn lion_capture_field_accepts_dash_empty_and_non_mover_squares_only() {
         let rules = MoveRules::standard();
@@ -984,7 +997,7 @@ mod tests {
             assert_eq!(setup.lion_capture(), Some(capture_square));
             assert_eq!(setup.position().piece_at(capture_square), expected);
         }
-        // 空升も受理する（飛鷲・角鷹の経由升捕獲では捕獲升が空になる。[PL]フェーズ3の契約訂正）。
+        // 飛鷲・角鷹の経由升で獅子を取るとその升が空になるため、空升も受理する。
         let empty = parse_extended_sfen(&format!("{EMPTY_BOARD} b 7f 1"), rules).unwrap();
         assert_eq!(empty.lion_capture, Some(capture_square));
 
@@ -1011,8 +1024,7 @@ mod tests {
         }
     }
 
-    // D5-SFEN-11: 第4欄は次の着手の手数で、1以上9999以下の整数だけを受理する
-    // （[PL]「拡張SFEN」、[USI]「SFENの全体構文」第4項）。
+    /// D5-SFEN-11: [`parse_extended_sfen`]の手数欄の範囲と数字列の契約を検査する。
     #[test]
     fn move_number_field_accepts_one_through_9999_and_round_trips() {
         let rules = MoveRules::standard();
@@ -1022,8 +1034,7 @@ mod tests {
             // 受理した手数は書き出しで保存される（往復一致）。
             assert!(to_extended_sfen(&setup).contains(&format!(" {valid} ")));
         }
-        // `+1`はu32のFromStrが受理するが、拡張SFEN文法の整数表記ではないため拒否する
-        // （spec-first再構築で検出した乖離の修正を固定）。
+        // `+1`はu32のFromStrが受理するが、この文法では符号を認めないため拒否する。
         for invalid in ["0", "10000", "-1", "+1", "1.5", "x"] {
             assert_eq!(
                 parse_extended_sfen(&format!("{EMPTY_BOARD} b - {invalid}"), rules),
@@ -1052,9 +1063,9 @@ mod tests {
         );
     }
 
-    // D5-SFEN-12: 第5欄は成り権保留升(P1・P2・P5)のコンマ区切り列（[PL]「拡張SFEN」、
-    // [RULES]第30条）。順序キー「内部密番号」の文書定義は未補修のため（SU-2）、決定性・往復保存・
-    // 順序の単調性だけを断定し、特定の並びの直値は固定しない。
+    /// D5-SFEN-12: [`parse_extended_sfen`]の保留升の順序と往復保存を検査する。
+    /// 内部密番号は[`Square::dense_index`]で定義する。このテストでは決定性と順序の
+    /// 単調性を検査し、特定の並びは固定しない（SU-2、RULES.md第30条）。
     #[test]
     fn deferred_field_is_a_strictly_ordered_comma_list_that_round_trips() {
         let p1 = MoveRules {
@@ -1132,8 +1143,8 @@ mod tests {
         }
     }
 
-    // D5-SFEN-14: 保留升には成り得る未成駒の存在を要求し、空升・成駒・成れない駒の升を
-    // 拒否する（[PL]「拡張SFEN」の不変条件4類型、[RULES]第17条第1項）。
+    /// D5-SFEN-14: [`parse_extended_sfen`]の契約に従い、保留升には成れる不成駒を要する。
+    /// 成れる駒種はRULES.md第17条第1項による。
     #[test]
     fn deferred_squares_must_hold_an_unpromoted_promotable_piece() {
         let p1 = MoveRules {
@@ -1161,7 +1172,7 @@ mod tests {
         }
     }
 
-    // D5-SFEN-15: 拡張形式は5欄と4欄（第5欄`-`扱い）だけを受理する（[PL]「拡張SFEN」）。
+    /// D5-SFEN-15: [`parse_extended_sfen`]の欄数と第5欄省略時の契約を検査する。
     #[test]
     fn extended_parser_accepts_only_four_or_five_fields() {
         let rules = MoveRules::standard();
@@ -1184,8 +1195,8 @@ mod tests {
         }
     }
 
-    // D5-SFEN-16: 書き出しは常に5欄で、lishogi互換4欄は第5欄を落とした導出形。
-    // 全5欄の情報が往復で一致する（[PL]「拡張SFEN」）。
+    /// D5-SFEN-16: [`to_extended_sfen`]は常に5欄を出力し、全欄の情報が往復で一致する。
+    /// lishogi互換4欄は第5欄を落とした形である。
     #[test]
     fn extended_output_always_writes_five_fields_and_round_trips_all_state() {
         // 盤面・手番・獅子捕獲升・手数・保留集合のすべてが往復で一致する。
