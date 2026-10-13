@@ -96,7 +96,7 @@ AlphaZero型探索の計画（[設計書](alphazero.md)）は`tools/train/zero/`
 | 量子化誤差の検査 | 量子化誤差の計算は評価関数ごとに持ち、合格基準は学習器ごとにPythonの学習器と同じにする。`pst train`は書き出したPSTの平均絶対誤差が2センチポーン以下、`fm train`は補正をそのまま使う場合と1/4にした場合の両方で2センチポーン以下、`joint train`は学習前の初期値と書き出した重みの両方で2センチポーン以下、`nnue train`は現行どおり`K/40`以下とする。基準を満たさない場合は、書き出した物を残して失敗で終了する。 |
 | 再開と鏡映の乱数 | `pst`、`fm`、`joint`も`nnue`と同じ使い方の`--resume <出力ディレクトリ>`でエポック境界から再開でき（チェックポイントの形式は評価関数ごとに持つ）、学習の軌跡を変える引数は設定ハッシュで照合する。訓練時の鏡映の有無は、状態を持つ乱数ではなく（シード、エポック、局面の番号）のSplitMix64のハッシュの1ビットで決める。こうすると、途中で止めて再開した学習でも、止めずに通した学習と同じ局面が同じ向きで鏡映される。 |
 | 同時学習器のソース | 同時学習器はブランチ`pst-fm-joint-training`にだけあり、masterにも本書を置くブランチ`nnue-replacement`にもない。照合では、そのコミットの`tools/train/`を`git archive`でリポジトリの外へ展開し、既存のPython環境で実行する。ブランチをマージして取り込む案は、削除するためのコードを一度取り込むことになるので採らない。 |
-| 文書 | `docs/guides/pst-training.md`は、`pst-workflow`の段取りをRustのコマンドの列に置き換えて書き直す。`tools/train/README.md`にある記録の項目の定義は`crates/minase-trainer/README.md`へ移す。[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の「Pythonとの等価性」の節は、移植時に一度確かめた照合の結果へのリンクに縮め、以後の正しさの契約をCPU参照、数値微分、GPUとCPU参照の等価性に書き換える。 |
+| 文書 | `docs/guides/pst-training.md`は、`pst-workflow`の段取りをRustのコマンドの列に置き換えて書き直す。`tools/train/README.md`にある記録の項目の定義は、学習器の参照文書（`docs/reference/trainer/`）へ移す。[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の「Pythonとの等価性」の節は、移植時に一度確かめた照合の結果へのリンクに縮め、以後の正しさの契約をCPU参照、数値微分、GPUとCPU参照の等価性に書き換える。 |
 
 ## 引数の対応
 
