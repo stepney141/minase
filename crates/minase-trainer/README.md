@@ -1,8 +1,9 @@
 このクレートはminaseの評価関数を学習し、学習済み重みを変換、診断する。
 駒位置テーブル（PST）は`pst train`、駒の組の相互作用を表すFactorization Machine（FM）は`fm train`、両者の同時学習は`joint train`、差分更新可能なニューラルネットワーク（NNUE）は`nnue train`を使う。
-NNUEでは浮動小数点モデル、[設計書](../../docs/plans/nnue-trainer-rust.md#カーネル)のカーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
+NNUEでは浮動小数点モデル、カーネル1〜9のCPU参照実装、およびCUDAとCPUでの学習を提供する。
+カーネルの番号と式は`src/nnue/reference/mod.rs`のdocコメントが定める。
 GPU側では第1層の前進、駒除去差分の補助損失、全パラメータの勾配、部分和の縮約、AdamWによる更新と切り詰め、検証を実行できる。
-学習の数学的な契約は[設計書](../../docs/plans/nnue-trainer-rust.md)に従う。
+学習の数学的な契約は各モジュールのdocコメントにあり、方式を選んだ理由は[ADRの索引](../../docs/adr/README.md)から引ける。
 
 評価関数ごとに独立した学習パイプラインを持ち、評価関数の知識を要しないデータ処理と機械学習の部品だけを共有する。
 `src/`の配置は次のとおりである。
@@ -28,8 +29,8 @@ GPU側では第1層の前進、駒除去差分の補助損失、全パラメー�
 | `fm train`、`fm quarter`、`fm scale` | 固定PSTへ加えるFM補正をCPUで学習し、補正の縮小と倍率の焼き込みを行う。 | [PST、FM、同時学習の記録](../../docs/reference/trainer/pst-fm-training-records.md) |
 | `joint train` | PSTとFMを同時学習する。 | [PST、FM、同時学習の記録](../../docs/reference/trainer/pst-fm-training-records.md) |
 | `nnue train` | NNUEをCUDAまたはCPUで学習する。 | [NNUEの学習](../../docs/reference/trainer/nnue-training.md) |
-| `nnue check-equivalence`、`nnue bench-step` | GPUの計算をCPU参照と照合し、1更新の時間を測る。 | [Rust製NNUE学習器の設計書](../../docs/plans/nnue-trainer-rust.md#テストの契約) |
+| `nnue check-equivalence`、`nnue bench-step` | GPUの計算をCPU参照と照合し、1更新の時間を測る。 | [NNUEの学習](../../docs/reference/trainer/nnue-training.md#gpuの検査と速度測定) |
 | `diag pst-compare` | 2つのPSTを教師分類と位相帯ごとに比較する。 | [PSTの比較診断の記録](../../docs/reference/trainer/pst-compare-records.md) |
 | `diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves` | NNUEの評価分布、駒除去差分、合法手の評価差を診断する。 | [NNUEの診断の記録](../../docs/reference/trainer/nnue-diagnostics-records.md) |
 
-NNUEの経路の公開API、チェックポイントの形式、GPUの実装、テストの契約は、[Rust製NNUE学習器の設計書](../../docs/plans/nnue-trainer-rust.md)の「学習ループの実行経路」から「1更新の速度測定」までの節にある。
+NNUEの経路の公開API、GPUの実装、およびテストの契約は`src/nnue/`の各モジュールとテストのdocコメントにあり、チェックポイントの形式は[NNUEの学習](../../docs/reference/trainer/nnue-training.md#チェックポイントの形式)にある。
