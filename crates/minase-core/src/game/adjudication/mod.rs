@@ -15,10 +15,7 @@ use crate::piece::Color;
 use crate::position::{Position, Undo};
 use crate::rules::{ExhaustionRule, RepetitionRule, Rules};
 use bare_king::bare_king_result;
-use exhaustion::{
-    PieceExhaustionOutcome, PieceExhaustionTransition, piece_exhaustion_outcome,
-    piece_exhaustion_transition,
-};
+use exhaustion::{PieceExhaustionTransition, piece_exhaustion_transition};
 use mate::{has_no_legal_move, is_mate, royal_capture_result};
 
 /// 対局裁定に必要な履歴依存状態。
@@ -135,17 +132,17 @@ impl<'a> AdjudicationContext<'a> {
         self
     }
 
-    /// 仮想着手が着手側の即時勝利(第21条第3項c)を成立させるかを返す。
+    /// 仮想着手の直後に成立する反復・駒枯れ（E3を含む）の裁定結果を返す。
     ///
-    /// R1の反復裁定と、裸玉または駒枯れによる勝利を即時勝利として調べる。
-    /// 第21条第3項cの「勝利」に引き分けは含めない。
+    /// 第21条第3項c・dの詰み回避では、着手側の勝利と引き分けを認め、敗北は認めない。
+    /// 王駒の先取り（同項b）は呼び出し側で判定し、ここでは履歴を変更しない。
     /// R1の仮想着手は実着手と同じ`updated_attacking_counters`で攻撃連続数を更新する。
-    fn candidate_is_immediate_win(
+    fn candidate_immediate_result(
         &self,
         position: &Position,
         candidate: Move,
         undo: &Undo,
-    ) -> bool {
+    ) -> Option<GameResult> {
         let mover = position.side_to_move().opposite();
         if let RepetitionHistory::R1(history) = self.state.repetition()
             && let Some(result) = history.candidate_result(
@@ -156,24 +153,26 @@ impl<'a> AdjudicationContext<'a> {
                 move_is_irreversible(candidate, undo),
             )
         {
-            return matches!(result, GameResult::Win { winner, .. } if winner == mover);
+            return Some(result);
         }
 
+        self.exhaustion_transition(position).result
+    }
+
+    /// 確定着手と仮想着手に共通する駒枯れ・裸玉の裁定を返す。
+    fn exhaustion_transition(&self, position: &Position) -> PieceExhaustionTransition {
         if self.rules.exhaustion == ExhaustionRule::E3 {
-            matches!(
-                bare_king_result(position, self.generator),
-                Some(GameResult::Win { winner, .. }) if winner == mover
-            )
+            PieceExhaustionTransition {
+                result: bare_king_result(position, self.generator),
+                next_grace: false,
+            }
         } else {
-            self.rules.exhaustion != ExhaustionRule::E2
-                && matches!(
-                    piece_exhaustion_outcome(
-                        position,
-                        self.generator,
-                        self.piece_exhaustion_grace,
-                    ),
-                    PieceExhaustionOutcome::Win(winner) if winner == mover
-                )
+            piece_exhaustion_transition(
+                position,
+                self.generator,
+                self.piece_exhaustion_grace,
+                self.rules.exhaustion == ExhaustionRule::E2,
+            )
         }
     }
 }
@@ -231,19 +230,7 @@ pub(crate) fn adjudicate_after_move(
         };
     }
 
-    let exhaustion = if context.rules.exhaustion == ExhaustionRule::E3 {
-        PieceExhaustionTransition {
-            result: bare_king_result(position, context.generator),
-            next_grace: false,
-        }
-    } else {
-        piece_exhaustion_transition(
-            position,
-            context.generator,
-            current_grace,
-            context.rules.exhaustion == ExhaustionRule::E2,
-        )
-    };
+    let exhaustion = context.exhaustion_transition(position);
     // 第22条第5項・第9項の捕獲は、相手の王将と太子が互いを守っていても認める。
     // 猶予の開始時には捕獲手があるため、合法手なしの裁定も必要ない。
     if exhaustion.result.is_some() || exhaustion.next_grace {

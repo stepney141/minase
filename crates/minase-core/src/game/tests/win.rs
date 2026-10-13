@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn article_21_2_mate_ends_the_game_at_move_completion() {
-    // 3項a・b・cのいずれの合法手もない局面を作る着手の完了時に、
+    // 3項aからdまでのいずれの合法手もない局面を作る着手の完了時に、
     // 詰みを理由として終局する。
     let (position, mv) = mate_predecessor();
     let mut game = game(position);
@@ -117,6 +117,59 @@ fn article_21_3_c_and_31_r1_repetition_win_rescues_mate() {
     );
     let mut fresh_game = game_with_codes(fresh, &[RuleCode::R1]);
     assert_eq!(fresh_game.play(w_back), win(Color::White, WinReason::Mate));
+}
+
+/// 王駒の捕獲を回避できなくても、4回目の同一局面で直ちに引き分けとなる手は
+/// 詰みの逃れとなる（第21条第3項d、第31条R1）。E1でも同じ着手で引き分ける。
+#[test]
+fn article_21_3_d_r1_repetition_draw_rescues_mate() {
+    let start = position(
+        Color::White,
+        &[
+            (sq(0, 0), piece(Color::Black, PieceKind::King)),
+            (sq(1, 8), piece(Color::Black, PieceKind::Rook)),
+            (sq(3, 9), piece(Color::Black, PieceKind::Rook)),
+            (sq(2, 9), piece(Color::Black, PieceKind::Pawn)),
+            (sq(0, 5), piece(Color::White, PieceKind::Rook)),
+            (sq(2, 1), piece(Color::White, PieceKind::GoldGeneral)),
+            (sq(1, 11), piece(Color::White, PieceKind::Pawn)),
+            (sq(7, 9), piece(Color::White, PieceKind::Pawn)),
+            (sq(7, 10), piece(Color::White, PieceKind::Pawn)),
+            (sq(11, 0), piece(Color::White, PieceKind::King)),
+        ],
+    );
+    let w_out = step(sq(0, 5), sq(2, 5));
+    let w_back = step(sq(2, 5), sq(0, 5));
+    let z_out = step(sq(1, 8), sq(1, 2));
+    let z_back = step(sq(1, 2), sq(1, 8));
+    let y_out = step(sq(3, 9), sq(3, 10));
+    let candidate = step(sq(3, 10), sq(3, 9));
+
+    for e1 in [false, true] {
+        let mut rules = Rules::ENGINE_DEFAULT;
+        rules.e1 = e1;
+        let mut game = Game::from_position(rules, start.clone());
+        // 初期局面・4手目・8手目と同じ局面へ12手目で戻る。
+        // 双方の全着手が攻撃的なので、R1は一方の負けではなく引き分けとする。
+        for mv in [
+            w_out, z_out, w_back, z_back, w_out, z_out, w_back, z_back, w_out, y_out,
+        ] {
+            assert_eq!(game.play(mv), Ok(GameStatus::Ongoing));
+        }
+
+        // 履歴がなければ同じ王手で詰む。E1は詰みによる終局を行わない。
+        let mut fresh = Game::from_position(rules, game.position().clone());
+        assert_eq!(
+            fresh.play(w_back),
+            if e1 {
+                Ok(GameStatus::Ongoing)
+            } else {
+                win(Color::White, WinReason::Mate)
+            }
+        );
+        assert_eq!(game.play(w_back), Ok(GameStatus::Ongoing));
+        assert_eq!(game.play(candidate), draw(DrawReason::Repetition));
+    }
 }
 
 #[test]
