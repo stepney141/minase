@@ -8,7 +8,7 @@ use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 
 /// 指定した占有状態での駒の利きを返す。
-/// 獅子を取った段階の直後の仮想盤面で足を判定する際に使う（RULES.md第13条第4項）。
+/// 獅子を取った段階の直後の仮想盤面で足を判定する際に使う（RULES.md第13条第4項と第9項）。
 pub(crate) fn piece_control_with_occupancy(
     occupied: Bitboard,
     color: Color,

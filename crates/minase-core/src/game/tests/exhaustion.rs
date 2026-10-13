@@ -179,31 +179,6 @@ fn article_22_2_and_3_uncapturable_non_capturing_promotion_wins_immediately() {
 }
 
 #[test]
-fn article_22_4_immobile_pawn_and_lance_are_not_winning_extras() {
-    // 最奥段で移動不能となった歩兵・香車は勝利を成立させる
-    // 余分な駒として数えず、裁定を行わず対局を継続する。
-    for kind in [PieceKind::Pawn, PieceKind::Lance] {
-        let mut game = game_with_codes(
-            position(
-                Color::White,
-                &[
-                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
-                    (sq(4, 11), piece(Color::Black, kind)),
-                    (sq(11, 11), piece(Color::White, PieceKind::King)),
-                ],
-            ),
-            &[RuleCode::R1],
-        );
-
-        assert_eq!(
-            game.play(step(sq(11, 11), sq(10, 11))),
-            Ok(GameStatus::Ongoing),
-            "{kind:?}"
-        );
-    }
-}
-
-#[test]
 fn article_22_5_and_6_grace_capture_leads_to_a_draw() {
     // 裸側が余分な駒を次の1手で取れる場合は裁定を
     // 保留し、取れば駒枯れ不成立。双方王駒のみとなり8項の引き分けになる。
@@ -283,6 +258,131 @@ fn article_22_8_one_royal_each_draws() {
             );
         }
     }
+}
+
+#[test]
+fn article_22_8_immobile_pawn_or_lance_does_not_prevent_draw() {
+    // 第4項の歩兵・香車を除いて王駒が1枚ずつなら、駒の所有者や手番によらず引き分け。
+    for (extra_color, last_rank) in [(Color::Black, 11), (Color::White, 0)] {
+        for kind in [PieceKind::Pawn, PieceKind::Lance] {
+            for (mover, mv) in [
+                (Color::Black, step(sq(0, 0), sq(0, 1))),
+                (Color::White, step(sq(11, 11), sq(10, 11))),
+            ] {
+                let mut game = game_with_codes(
+                    position(
+                        mover,
+                        &[
+                            (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                            (sq(4, last_rank), piece(extra_color, kind)),
+                            (sq(11, 11), piece(Color::White, PieceKind::King)),
+                        ],
+                    ),
+                    &[RuleCode::R1],
+                );
+                assert_eq!(
+                    game.play(mv),
+                    draw(DrawReason::PieceExhaustion),
+                    "extra: {extra_color:?} {kind:?}, mover: {mover:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn article_22_8_multiple_immobile_pieces_on_both_sides_draw() {
+    // 除外する駒の枚数は限定されず、双方に歩兵と香車が残っていても引き分け。
+    let mut game = game_with_codes(
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(3, 11), piece(Color::Black, PieceKind::Pawn)),
+                (sq(4, 11), piece(Color::Black, PieceKind::Lance)),
+                (sq(3, 0), piece(Color::White, PieceKind::Pawn)),
+                (sq(4, 0), piece(Color::White, PieceKind::Lance)),
+                (sq(11, 11), prince(Color::White)),
+            ],
+        ),
+        &[RuleCode::R1],
+    );
+    assert_eq!(
+        game.play(step(sq(0, 0), sq(0, 1))),
+        draw(DrawReason::PieceExhaustion)
+    );
+}
+
+#[test]
+fn article_22_8_mobile_pawn_prevents_draw() {
+    // 最奥段の1段手前にある歩兵は第4項で除外しない。第2項により成るまで勝ちにもならない。
+    for (extra_color, pawn_rank) in [(Color::Black, 10), (Color::White, 1)] {
+        let mut game = game_with_codes(
+            position(
+                Color::Black,
+                &[
+                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                    (sq(4, pawn_rank), piece(extra_color, PieceKind::Pawn)),
+                    (sq(11, 11), piece(Color::White, PieceKind::King)),
+                ],
+            ),
+            &[RuleCode::R1],
+        );
+        assert_eq!(
+            game.play(step(sq(0, 0), sq(0, 1))),
+            Ok(GameStatus::Ongoing),
+            "{extra_color:?}"
+        );
+    }
+}
+
+#[test]
+fn article_22_8_promoted_pawn_or_lance_on_last_rank_counts_as_material() {
+    // 成歩と成香は最奥段でも移動できるため除外せず、第1項の勝利を成立させる。
+    for (extra_color, last_rank) in [(Color::Black, 11), (Color::White, 0)] {
+        for kind in [PieceKind::GoldGeneral, PieceKind::WhiteHorse] {
+            let mut game = game_with_codes(
+                position(
+                    Color::Black,
+                    &[
+                        (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                        (
+                            sq(4, last_rank),
+                            PieceCode::new_promoted(extra_color, kind).unwrap(),
+                        ),
+                        (sq(11, 11), piece(Color::White, PieceKind::King)),
+                    ],
+                ),
+                &[RuleCode::R1],
+            );
+            assert_eq!(
+                game.play(step(sq(0, 0), sq(0, 1))),
+                win(extra_color, WinReason::PieceExhaustion),
+                "{extra_color:?} {kind:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn article_22_8_royal_pairs_prevent_draw_with_immobile_pieces() {
+    // 第9項により王将と太子の一方は王駒以外として数える。
+    // 双方にその1枚が残るため、移動不能の駒を除いても第8項は成立しない。
+    let mut game = game_with_codes(
+        position(
+            Color::Black,
+            &[
+                (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                (sq(2, 0), prince(Color::Black)),
+                (sq(4, 11), piece(Color::Black, PieceKind::Pawn)),
+                (sq(4, 0), piece(Color::White, PieceKind::Lance)),
+                (sq(9, 11), prince(Color::White)),
+                (sq(11, 11), piece(Color::White, PieceKind::King)),
+            ],
+        ),
+        &[RuleCode::R1],
+    );
+    assert_eq!(game.play(step(sq(0, 0), sq(0, 1))), Ok(GameStatus::Ongoing));
 }
 
 #[test]
@@ -452,10 +552,9 @@ fn article_22_2_capturing_promotion_that_creates_the_condition_takes_the_grace_p
 }
 
 #[test]
-fn article_22_2_and_4_waiting_pawn_that_becomes_immobile_stops_counting() {
-    // 待機中の歩兵が最奥段で移動不能になると余分な駒として
-    // 数えなくなり対局は継続する。その歩兵が取られれば双方王駒のみとなり
-    // 8項の引き分けへ進む。
+fn article_22_8_pawn_becoming_immobile_draws() {
+    // 成り待ちの歩兵が最奥段で移動不能になると、第4項により数えなくなる。
+    // その着手の完了時に第8項の引き分けとなる。
     let mut game = game_with_codes(
         position(
             Color::White,
@@ -469,9 +568,8 @@ fn article_22_2_and_4_waiting_pawn_that_becomes_immobile_stops_counting() {
     );
 
     // 白歩が段0(白の最奥段)へ不成のまま到達して移動不能になる。
-    assert_eq!(game.play(step(sq(8, 1), sq(8, 0))), Ok(GameStatus::Ongoing));
     assert_eq!(
-        game.play(step(sq(7, 1), sq(8, 0))),
+        game.play(step(sq(8, 1), sq(8, 0))),
         draw(DrawReason::PieceExhaustion)
     );
 }

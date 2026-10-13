@@ -1,7 +1,7 @@
 //! 駒枯れの裁定と1手猶予の状態遷移。
 
 use super::super::result::{DrawReason, GameResult, WinReason};
-use crate::board::{BOARD_RANKS, Square};
+use crate::board::{BOARD_RANKS, Bitboard, Square};
 use crate::movegen::MoveGenerator;
 use crate::piece::{Color, PieceKind};
 use crate::position::Position;
@@ -11,7 +11,7 @@ use crate::position::Position;
 pub(crate) enum PieceExhaustionOutcome {
     /// 駒枯れの条件(第22条第1項)が成立していない。
     ConditionNotMet,
-    /// 双方に王駒が1枚ずつだけ残る引き分け(第22条第8項)。
+    /// 最奥段の移動不能な歩兵・香車を除いて双方に王駒が1枚ずつだけ残る引き分け(第22条第8項)。
     Draw,
     /// 余分な駒を持つ側の勝ち(第22条第1項)。
     Win(Color),
@@ -33,8 +33,8 @@ pub(super) struct PieceExhaustionTransition {
 /// 双方に王駒を1枚ずつ残し、それ以外が片側に1枚だけある場合を対象とする
 /// （RULES.md第22条第1項・第9項）。王将と太子を併せ持つ側では一方を余分な駒と数え、
 /// どちらを取られても余分な駒を失ったと扱う。
-/// 唯一の余分な駒が最奥段で移動不能の不成の歩兵または香車なら、条件不成立とする（第4項）。
-/// 引き分けは、双方に王駒が1枚ずつだけ残る場合に限る（第8項）。
+/// 最奥段で移動不能の歩兵・香車（第4項）を除いて双方に王駒が1枚ずつだけ残る場合は、
+/// 第8項の引き分けとする。
 ///
 /// 余分な駒が不成の歩兵または仲人なら成るまで勝ちとせず、成った後は通常の猶予を適用する
 /// （第2項・第3項）。猶予は、王駒だけの側に手番があり、余分な駒または相手の最後の王駒を
@@ -51,10 +51,16 @@ pub(crate) fn piece_exhaustion_outcome(
         return PieceExhaustionOutcome::ConditionNotMet;
     }
 
+    // 第22条第8項・第9項: 移動不能の歩兵・香車を除いても王将と太子は2枚と数える。
+    if Color::ALL
+        .into_iter()
+        .all(|color| (position.pieces_of(color) & !dead_pieces(position, color)).popcount() == 1)
+    {
+        return PieceExhaustionOutcome::Draw;
+    }
+
     // 第22条第1項・第9項: 王駒を1枚ずつ除いた残りが片側に1枚だけなら対象となる。
-    // 王将と太子の併存も2枚と数え、双方1枚だけの場合は第8項の引き分けとする。
     let extra_color = match Color::ALL.map(|color| position.pieces_of(color).popcount()) {
-        [1, 1] => return PieceExhaustionOutcome::Draw,
         [2, 1] => Color::Black,
         [1, 2] => Color::White,
         _ => return PieceExhaustionOutcome::ConditionNotMet,
@@ -69,13 +75,6 @@ pub(crate) fn piece_exhaustion_outcome(
             .kind()
             .expect("the extra piece must have a kind");
 
-        // 第22条第4項: 最奥段で移動不能となった歩兵・香車は勝利を成立させない。
-        if !extra_piece.is_promoted()
-            && matches!(extra_kind, PieceKind::Pawn | PieceKind::Lance)
-            && is_last_rank(extra_color, extra_square)
-        {
-            return PieceExhaustionOutcome::ConditionNotMet;
-        }
         // 第22条第2項・第3項: 不成の歩兵・仲人なら、成るまで勝利は成立しない。
         if !extra_piece.is_promoted()
             && matches!(extra_kind, PieceKind::Pawn | PieceKind::GoBetween)
@@ -144,8 +143,18 @@ pub(super) fn piece_exhaustion_transition(
     }
 }
 
+/// 最奥段で移動不能となった歩兵・香車の集合を返す（第22条第4項、第32条E3）。
+pub(super) fn dead_pieces(position: &Position, color: Color) -> Bitboard {
+    Bitboard::from_squares(
+        (position.pieces_of_kind(color, PieceKind::Pawn)
+            | position.pieces_of_kind(color, PieceKind::Lance))
+        .into_iter()
+        .filter(|&square| is_last_rank(color, square)),
+    )
+}
+
 /// 指定升が指定対局者から見た相手側の最奥段にあるかを返す。
-pub(super) fn is_last_rank(color: Color, square: Square) -> bool {
+fn is_last_rank(color: Color, square: Square) -> bool {
     match color {
         Color::Black => square.rank() == BOARD_RANKS - 1,
         Color::White => square.rank() == 0,

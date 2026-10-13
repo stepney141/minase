@@ -1,7 +1,7 @@
 //! 裸玉の即時裁定と有効な駒の判定。
 
 use super::super::result::{DrawReason, GameResult, WinReason};
-use super::exhaustion::is_last_rank;
+use super::exhaustion::dead_pieces;
 use crate::board::{Bitboard, Square};
 use crate::movegen::MoveGenerator;
 use crate::piece::{Color, PieceKind};
@@ -21,11 +21,11 @@ pub(super) fn bare_king_result(
         let opponent = bare_color.opposite();
         let effective_pieces = effective_pieces(position, opponent);
         // 条件(a): 相手が王駒を持ち、価値ある駒を2枚以上持つ。
-        // 条件(b): 裸玉側が相手王駒へ王手をかけていない。
+        // 条件(b): 裸玉側の駒が相手のいずれの王駒も次の着手で取れない。
         // 条件(c): 価値ある駒が3枚以上か、いずれも裸玉に隣接していない。
         if !position.royal_pieces(opponent).is_empty()
             && effective_pieces.popcount() >= 2
-            && !pieces_give_check(position, generator, bare_color)
+            && !can_capture_any_royal(position, generator, bare_color)
             && (effective_pieces.popcount() >= 3
                 || effective_pieces
                     .into_iter()
@@ -38,11 +38,11 @@ pub(super) fn bare_king_result(
         }
     }
 
-    // 双方が裸玉で、いずれの王駒にも王手がかかっていなければ引き分けとする。
+    // 双方が裸玉で、いずれの王駒も相手の次の着手で取られ得なければ引き分けとする。
     if bare_kings.into_iter().all(|king| king.is_some())
         && Color::ALL
             .into_iter()
-            .all(|color| !pieces_give_check(position, generator, color))
+            .all(|color| !can_capture_any_royal(position, generator, color))
     {
         Some(GameResult::Draw {
             reason: DrawReason::BareKing,
@@ -69,18 +69,8 @@ fn effective_pieces(position: &Position, color: Color) -> Bitboard {
         & !dead_pieces(position, color)
 }
 
-/// 最奥段で移動不能となった歩兵・香車の集合を返す。
-fn dead_pieces(position: &Position, color: Color) -> Bitboard {
-    Bitboard::from_squares(
-        (position.pieces_of_kind(color, PieceKind::Pawn)
-            | position.pieces_of_kind(color, PieceKind::Lance))
-        .into_iter()
-        .filter(|&square| is_last_rank(color, square)),
-    )
-}
-
-/// 指定側の駒が相手のいずれかの王駒へ王手をかけているかを返す。
-fn pieces_give_check(position: &Position, generator: &MoveGenerator, attacker: Color) -> bool {
+/// 指定側の駒が相手のいずれかの王駒を次の着手で取れるかを返す（第32条E3）。
+fn can_capture_any_royal(position: &Position, generator: &MoveGenerator, attacker: Color) -> bool {
     let probe = position.clone_with_side_to_move(attacker);
     let opponent_royals = probe.royal_pieces(attacker.opposite());
     let mut moves = Vec::new();
