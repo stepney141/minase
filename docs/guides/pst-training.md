@@ -7,7 +7,7 @@ PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PS
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
 学習データの形式、来歴、教師の分類、および検証分割は [学習データと教師値](../reference/trainer/data-and-teachers.md) が、学習器が出力する記録の各欄は [PST、FM、同時学習の記録](../reference/trainer/pst-fm-training-records.md) と [PSTの比較診断の記録](../reference/trainer/pst-compare-records.md) が説明する。
-教師値、損失、量子化、および重みの範囲の式は [評価関数と学習の目的関数](evaluation-function.md) が説明し、学習器の実装の契約は`minase-trainer`の`pst`、`fm`、`joint`、`data`の各モジュールのdocコメントにある。
+教師値、損失、量子化、および重みの範囲の式は [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md) が説明し、学習器の実装の契約は`minase-trainer`の`pst`、`fm`、`joint`、`data`の各モジュールのdocコメントにある。
 学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement-checks.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md) に状態を登録する。

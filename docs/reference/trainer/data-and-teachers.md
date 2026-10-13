@@ -2,7 +2,7 @@
 
 本書は、`minase-trainer`の学習と診断のコマンドが共通して読む学習データ（MNSD）と来歴ファイルの形式、教師の分類、教師値の混合、検証分割、先読み教師、および教師用Kの推定を定める。
 PST、FM、同時学習、NNUEの各学習器とPSTの比較診断は、本書の処理を共有のデータ層（`crates/minase-trainer/src/data/`）で行う。
-教師値と損失の数式の意味は[評価関数と学習の目的関数](../../guides/evaluation-function.md#学習の目的関数)が説明する。
+教師値と損失の数式の意味は、PST、FM、および同時学習については[PSTとFMによる評価関数と学習の目的関数](../../guides/evaluation-pst-fm.md#学習の目的関数)が、NNUEについては[NNUEによる評価関数と学習の目的関数](../../guides/evaluation-nnue.md#学習の目的関数)が説明する。
 
 ## MNSDと来歴ファイル
 
