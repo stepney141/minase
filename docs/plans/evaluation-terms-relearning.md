@@ -16,8 +16,8 @@
 
 起案。2026年9月27日に起案した。
 着手の順序は、利用者の判断を待っている。
-本書は、評価関数の3計画（[静止探索の出力を学ぶPSTの学習](qsearch-output-training.md)、[浅い探索の手の順位を学ぶ損失](rank-loss-training.md)、[残存誤りに対応する関係補正項](relational-correction.md)）および[棋力向上段階12](strength-stage12.md)と測定機を共有する。
-次の一手は、着手が決まった時点のmasterから専用ブランチ `evaluation-terms-relearning` とworktreeを作り、フェーズ1の全計算の書き出しを移植することである。
+本書はPSTに評価項を加える前提で書かれており、2026年10月12日に既定の評価関数が[NNUE](nnue-replacement.md)へ置き換わった後の適用先は決まっていない。
+次の一手は、この前提を見直すかどうかを利用者が決めることである。
 
 ## 目的
 
