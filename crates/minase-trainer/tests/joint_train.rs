@@ -1,6 +1,9 @@
 //! 同時学習の損失、初期値照合、再現性、保存物と再開の拒否条件を検証する。
 #[path = "joint_train/algebra.rs"]
 mod algebra;
+#[path = "common/checkpoint.rs"]
+#[allow(dead_code)]
+mod checkpoint_contract;
 #[path = "joint_train/fixture.rs"]
 mod support;
 use clap::Parser;
@@ -270,7 +273,7 @@ fn continuous_and_resumed_training_match_all_weights_states_losses_and_outputs()
     split.output_dir = fixture.root.join("resumed");
     split.epochs = 1;
     joint::train(split.clone()).unwrap();
-    fs::remove_file(split.output_dir.join("best.bin")).unwrap();
+    fs::remove_file(split.output_dir.join("best.npz")).unwrap();
     use std::io::Write;
     fs::OpenOptions::new()
         .append(true)
@@ -283,7 +286,7 @@ fn continuous_and_resumed_training_match_all_weights_states_losses_and_outputs()
     split.threads = Some(3);
     split.resume = Some(split.output_dir.clone());
     joint::train(split.clone()).unwrap();
-    for name in ["latest.bin", "best.bin"] {
+    for name in ["latest.npz", "best.npz"] {
         compare_checkpoints(&args.output_dir.join(name), &split.output_dir.join(name));
     }
     for name in ["pst.bin", "pst-float.npz"] {
@@ -292,7 +295,11 @@ fn continuous_and_resumed_training_match_all_weights_states_losses_and_outputs()
             fs::read(split.output_dir.join(name)).unwrap()
         );
     }
-    for (a, b) in logs(&args.output_dir).iter().zip(logs(&split.output_dir)) {
+    let continuous = logs(&args.output_dir);
+    let resumed = logs(&split.output_dir);
+    assert_eq!(continuous.len(), 3);
+    assert_eq!(resumed.len(), continuous.len());
+    for (a, b) in continuous.iter().zip(resumed) {
         for key in [
             "epoch",
             "train_loss",
@@ -304,6 +311,13 @@ fn continuous_and_resumed_training_match_all_weights_states_losses_and_outputs()
             "total_steps",
         ] {
             assert_eq!(a[key], b[key], "{key}");
+            if key.ends_with("loss") || key == "phi_squared_mean" {
+                assert_eq!(
+                    a[key].as_f64().map(f64::to_bits),
+                    b[key].as_f64().map(f64::to_bits),
+                    "{key}"
+                );
+            }
         }
     }
     let base = Pst::decode(&fs::read(&args.base).unwrap()).unwrap();
@@ -346,8 +360,13 @@ fn resume_rejects_trajectory_changes_before_writing() {
     joint::train(args.clone()).unwrap();
     args.resume = Some(args.output_dir.clone());
     args.epochs = 2;
-    let original = fs::read(args.output_dir.join("latest.bin")).unwrap();
+    let original = fs::read(args.output_dir.join("latest.npz")).unwrap();
     let config = fs::read(args.output_dir.join("config.json")).unwrap();
+    checkpoint_contract::rejects_changed_meta(&args.output_dir, || {
+        joint::train(args.clone()).unwrap_err().to_string()
+    });
+    let bytes = fs::read(args.output_dir.join("latest.npz")).unwrap();
+    checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| Checkpoint::decode(bytes).is_ok());
     let changes: Vec<fn(&mut Args)> = vec![
         |a| a.pst_lr = 0.04,
         |a| a.fm_lr = 0.02,
@@ -370,12 +389,12 @@ fn resume_rejects_trajectory_changes_before_writing() {
             joint::train(changed)
                 .unwrap_err()
                 .to_string()
-                .contains("hash mismatch")
+                .contains("mismatch")
         );
     }
     assert_eq!(
         original,
-        fs::read(args.output_dir.join("latest.bin")).unwrap()
+        fs::read(args.output_dir.join("latest.npz")).unwrap()
     );
     assert_eq!(
         config,
@@ -451,7 +470,7 @@ fn exported_quantization_failure_keeps_weights_and_records_error() {
     let summary = document(args.output_dir.join("summary.json"));
     assert_eq!(summary["status"], "quantization_error", "{summary}");
     assert_eq!(summary["quantization"]["passed"], false);
-    for name in ["pst.bin", "pst-float.npz", "best.bin", "latest.bin"] {
+    for name in ["pst.bin", "pst-float.npz", "best.npz", "latest.npz"] {
         assert!(args.output_dir.join(name).exists(), "{name}");
     }
 }

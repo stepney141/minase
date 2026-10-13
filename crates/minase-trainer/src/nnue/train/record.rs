@@ -1,5 +1,5 @@
 use super::{Args, Error, Result};
-use crate::nn::{Sha256Hasher, atomic_write, hex, sha256};
+use crate::nn::{Sha256Hasher, atomic_write, hex};
 use crate::{
     data::Dataset,
     nnue::{
@@ -150,8 +150,6 @@ fn hash_u64(values: &[u64]) -> String {
 
 pub(super) struct Configuration {
     pub document: Value,
-    pub config_hash: [u8; 32],
-    pub input_hash: [u8; 32],
 }
 
 /// 整形JSONとして保存する`config.json`の設定、入力、前処理結果を作る。
@@ -173,11 +171,9 @@ pub(super) struct Configuration {
 /// `canonical_counts_sha256`と`input_counts_sha256`は、それぞれの行の観測回数をリトルエンディアンu64列にしたSHA-256である。
 ///
 /// `resumes`は再開履歴の配列で、新規実行では空とし、[`append_resume`]で追記する。
-/// `config_sha256`は`settings`のJSON、`input_sha256`は`{inputs, preprocessing}`のJSONのSHA-256である。
-/// ハッシュ対象のJSONはキーを辞書順に並べた空白なしの表現で、検査和は小文字16進で保存する。
 /// 新規実行時だけ、呼び手が`device_name`、`gpu_memory_used_bytes`、`gpu_memory_total_bytes`、`preprocessing_seconds`を加える。
 /// `device_name`はCUDAのデバイス名または`"CPU"`、メモリはバックエンド確保後の値でCPUでは`null`である。
-/// 再開時は`settings`、`inputs`、`preprocessing`、両ハッシュ、`device_name`の一致を要求する。
+/// 再開時は`settings`、`inputs`、`preprocessing`、`device_name`の一致を要求する。
 /// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`だけである。
 pub(super) fn configuration(
     args: &Args,
@@ -193,7 +189,7 @@ pub(super) fn configuration(
         .ok_or(Error::Invalid("arguments are not an object"))?;
     // 保存先と再開操作は数値計算の設定ではない。入力パスは別途正規化して照合する。
     // エポック数、改善なしの許容数、時間の上限、ワーカー数は予算と並列度であり、
-    // 学習の軌跡を変えないので、再開時に変えてよい（ハッシュに含めない）。
+    // 学習の軌跡を変えないので、再開時に変えてよい（比較に含めない）。
     for key in [
         "output_dir",
         "resume",
@@ -241,17 +237,10 @@ pub(super) fn configuration(
         "canonical_counts_sha256": hash_u64(observations.canonical_counts()),
         "input_counts_sha256": hash_u64(observations.input_counts()),
     });
-    let config_hash = sha256(&serde_json::to_vec(&settings)?);
-    let input_hash = sha256(&serde_json::to_vec(
-        &json!({"inputs": inputs, "preprocessing": preprocessing}),
-    )?);
     Ok(Configuration {
         document: json!({"device": args.device, "arguments": args, "resolved_threads": resolved_threads, "settings": settings,
         "inputs": inputs, "preprocessing": preprocessing,
-        "resumes": [],
-        "config_sha256": hex(&config_hash), "input_sha256": hex(&input_hash)}),
-        config_hash,
-        input_hash,
+        "resumes": []}),
     })
 }
 
@@ -299,8 +288,8 @@ pub(super) fn append_epoch(path: &Path, record: &EpochRecord) -> Result<()> {
     Ok(())
 }
 
-/// `latest.bin`で確定したエポックまでのログを検査し、未確定の末尾を切り捨てる。
-/// 各エポックは`training.jsonl`への追記、`latest.bin`、改善時の`best.bin`の順に保存し、`latest.bin`の確定を保存完了とする。
+/// `latest.npz`で確定したエポックまでのログを検査し、未確定の末尾を切り捨てる。
+/// 各エポックは`training.jsonl`への追記、`latest.npz`、改善時の`best.npz`の順に保存し、`latest.npz`の確定を保存完了とする。
 /// ログを先頭から読み、エポック0から`epoch`までが連番で揃い、検証損失が有限であることを要求する。
 /// その後の行と改行で終わらない末尾は切り捨て、未確定のエポックは再実行する。
 /// エポック0を含む必要な行が欠けていれば拒否し、成功時はエポック0の検証損失を返す。

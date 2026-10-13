@@ -132,7 +132,7 @@ impl Fixture {
     }
 
     fn checkpoint(&self, model: Model) -> PathBuf {
-        let path = self.path("nnue-float.bin");
+        let path = self.path("best.npz");
         Checkpoint {
             optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
             model,
@@ -143,8 +143,11 @@ impl Fixture {
                 best: None,
                 elapsed_seconds: 0.0,
                 seed: 1,
-                config_hash: [0; 32],
-                input_hash: [0; 32],
+                config: minase_trainer::nn::checkpoint::Configuration {
+                    settings: serde_json::json!({}),
+                    inputs: serde_json::json!({}),
+                    preprocessing: serde_json::json!({}),
+                },
             },
         }
         .write(&path)
@@ -422,7 +425,7 @@ fn removal_args(sample: &str) -> Vec<&str> {
     vec![
         "nnue-removal",
         "--float",
-        "nnue-float.bin",
+        "best.npz",
         "--net",
         "net.bin",
         "--data",

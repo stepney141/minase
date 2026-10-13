@@ -1,4 +1,4 @@
-//! 固定したPSTに加えるFMを学習し、`MNFMCKPT`版1で保存する。
+//! 固定したPSTに加えるFMを学習し、NPZで保存する。
 //! 新規出力先、入力規則名、再開ディレクトリ、設定とハッシュ、エポックと更新回数、保存順と最良モデルの復旧は[`pst::train`](../../pst/train/index.html)と同じ契約である。
 //! 再開時はK、学習率、重み減衰、シードに加え、観測マスクの一致を要求する。
 //! 最初の5更新の勾配ノルムを記録し、埋め込みの勾配が5回とも0なら停止する。
@@ -65,8 +65,7 @@ impl Session {
                 best: None,
                 elapsed_seconds: 0.0,
                 seed: args.seed,
-                config_hash: config.config_hash,
-                input_hash: config.input_hash,
+                config: crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             },
         };
         let mut initial_loss = None;
@@ -76,22 +75,13 @@ impl Session {
             }
             let mut saved: Value =
                 serde_json::from_slice(&std::fs::read(resume.join("config.json"))?)?;
-            let comparable: Value = serde_json::from_slice(&serde_json::to_vec(&config.document)?)?;
-            for field in [
-                "settings",
-                "inputs",
-                "preprocessing",
-                "config_sha256",
-                "input_sha256",
-            ] {
-                if saved.get(field) != comparable.get(field) {
-                    return Err("resume configuration or input hash mismatch".into());
-                }
-            }
-            let restored = Checkpoint::read(resume.join("latest.bin"))?;
-            restored
-                .progress
-                .check_hashes(&config.config_hash, &config.input_hash)?;
+            crate::nn::checkpoint::Configuration::from_document(&saved)?.check(
+                &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
+            )?;
+            let restored = Checkpoint::read(resume.join("latest.npz"))?;
+            restored.progress.check_config(
+                &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
+            )?;
             if restored.model.k().to_bits() != base.k().to_bits()
                 || restored.optimizer.group.lr != args.lr
                 || restored.optimizer.group.weight_decay != args.weight_decay
@@ -155,7 +145,7 @@ impl Session {
     }
     fn save_latest(&self) -> Result<()> {
         Ok(atomic_write(
-            &self.args.output_dir.join("latest.bin"),
+            &self.args.output_dir.join("latest.npz"),
             &self.checkpoint.encode()?,
         )?)
     }
@@ -299,7 +289,7 @@ impl Session {
         self.save_latest()?;
         if improved {
             atomic_write(
-                &self.args.output_dir.join("best.bin"),
+                &self.args.output_dir.join("best.npz"),
                 &self.checkpoint.encode()?,
             )?;
         }
@@ -434,10 +424,8 @@ struct Training {
 }
 
 fn read_best(directory: &Path, latest: &Checkpoint) -> Result<Checkpoint> {
-    let saved = Checkpoint::read(directory.join("best.bin"))?;
-    saved
-        .progress
-        .check_hashes(&latest.progress.config_hash, &latest.progress.input_hash)?;
+    let saved = Checkpoint::read(directory.join("best.npz"))?;
+    saved.progress.check_config(&latest.progress.config)?;
     if saved.progress.best != latest.progress.best
         || saved
             .progress
@@ -451,12 +439,10 @@ fn read_best(directory: &Path, latest: &Checkpoint) -> Result<Checkpoint> {
 
 fn recover_best(directory: &Path, latest: &Checkpoint) -> Result<()> {
     let best = latest.progress.best.ok_or("checkpoint has no best epoch")?;
-    let path = directory.join("best.bin");
+    let path = directory.join("best.npz");
     if path.exists() {
         let saved = Checkpoint::read(&path)?;
-        saved
-            .progress
-            .check_hashes(&latest.progress.config_hash, &latest.progress.input_hash)?;
+        saved.progress.check_config(&latest.progress.config)?;
         if saved.progress.best == Some(best) && saved.progress.epoch == best.epoch {
             return Ok(());
         }

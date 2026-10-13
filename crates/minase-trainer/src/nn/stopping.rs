@@ -7,7 +7,7 @@
 use super::{Error, Result};
 
 /// 学習を終えたエポックのうち、検証損失が最小のもの。
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BestEpoch {
     /// 1から始まるエポック番号。
     pub epoch: u64,

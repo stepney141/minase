@@ -1,30 +1,30 @@
 //! PSTの学習、エポック境界での保存、再開を管理する。
 //! 新規実行の`--output-dir`は存在しないか空でなければならず、入力MNSDの規則名は初期MNPTと一致しなければならない。
-//! 再開時は`--resume`と出力先が同じ場所を指し、`config.json`の`settings`、`inputs`、`preprocessing`と両ハッシュが再計算値に一致することを要求する。
-//! `latest.bin`のK、学習率、シード、両ハッシュも一致し、保存エポックが`--epochs`以下でなければならない。
+//! 再開時は`--resume`と出力先が同じ場所を指し、`config.json`の`settings`、`inputs`、`preprocessing`が再計算値に一致することを要求する。
+//! `latest.npz`のK、学習率、シード、設定も一致し、保存エポックが`--epochs`以下でなければならない。
 //! 更新回数は`epoch * ceil(訓練局面数 / batch)`に等しいことを検査する。
-//! チェックポイントは`MNTRCKPT`版2である。
-//! 各エポックは`training.jsonl`、`latest.bin`、改善時の`best.bin`の順に保存する。
-//! 最良更新直後に中断した場合は、そのエポックを持つ`latest.bin`から`best.bin`を復旧する。
+//! チェックポイントは[`Checkpoint`]のNPZ形式である。
+//! 各エポックは`training.jsonl`、`latest.npz`、改善時の`best.npz`の順に保存する。
+//! 最良更新直後に中断した場合は、そのエポックを持つ`latest.npz`から`best.npz`を復旧する。
 //!
 //! `--output-dir`には次のファイルを保存する。
 //!
 //! | ファイル | 内容 |
 //! | --- | --- |
-//! | `config.json` | 引数、再開時に照合する設定、入力の検査和、前処理結果、再開履歴を保存する。欄は[`configuration`]に定める。 |
+//! | `config.json` | 引数、再開時に照合する設定、入力の識別情報、前処理結果、再開履歴を保存する。欄は[`configuration`]に定める。 |
 //! | `training.jsonl` | 学習前のエポック0と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ保存する。 |
-//! | `latest.bin` | 最後に検証を終えたモデル、Adamの状態、進捗、累積秒数、照合用ハッシュを`MNTRCKPT`版2で保存する。 |
-//! | `best.bin` | 最良エポックの同じ内容を保存する。 |
+//! | `latest.npz` | 最後に検証を終えたモデル、Adamの状態、進捗、累積秒数、照合用設定をNPZで保存する。 |
+//! | `best.npz` | 最良エポックの同じ内容を保存する。 |
 //! | `pst.bin` | 最良モデルをFMの次元0のMNPT版3で保存する。 |
 //! | `pst-float.npz` | 量子化前の実数PSTを[`super::npz::encode_pst_npz`]の形式で保存する。 |
 //! | `summary.json` | 停止理由、最良エポック、量子化検査、初期局面評価を[`Summary`]で保存する。 |
 //!
 //! 再開で変更できる引数は`--epochs`、`--patience`、`--threads`だけである。
 //! `--output-dir`と`--resume`は同じディレクトリを指す。
-//! `--data`と`--init`は`settings`から外すが、正規化したパスとSHA-256を`inputs`で照合するため、入力ファイルを移動すると再開できない。
+//! `--data`と`--init`は`settings`から外すが、正規化したパスと識別情報を`inputs`で照合するため、入力ファイルを移動すると再開できない。
 //! `fm train`と`joint train`も同じファイル構成を使う。
 //! FM学習は重みを`fm.bin`と`fm-float.npz`へ、同時学習はMNPT版3の`pst.bin`と5配列の`pst-float.npz`へ保存する。
-//! ただしチェックポイントの形式は、FM学習が`MNFMCKPT`版1、同時学習が`MNJTCKPT`版1である。
+//! 各チェックポイントの配列は[`crate::fm::Checkpoint`]と[`crate::joint::Checkpoint`]に定める。
 
 use super::{
     Adam, Args, Batch, Checkpoint, EpochRecord, Error, Model, Progress, RemovalReference,
@@ -105,8 +105,7 @@ impl Session {
                 best: None,
                 elapsed_seconds: 0.0,
                 seed: args.seed,
-                config_hash: config.config_hash,
-                input_hash: config.input_hash,
+                config: crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             },
         };
         let mut initial_loss = None;
@@ -118,24 +117,13 @@ impl Session {
             }
             let mut saved: Value =
                 serde_json::from_slice(&std::fs::read(resume.join("config.json"))?)?;
-            let comparable: Value = serde_json::from_slice(&serde_json::to_vec(&config.document)?)?;
-            for field in [
-                "settings",
-                "inputs",
-                "preprocessing",
-                "config_sha256",
-                "input_sha256",
-            ] {
-                if saved.get(field) != comparable.get(field) {
-                    return Err(Error::Invalid(
-                        "resume configuration or input hash mismatch",
-                    ));
-                }
-            }
-            let restored = Checkpoint::read(resume.join("latest.bin"))?;
-            restored
-                .progress
-                .check_hashes(&config.config_hash, &config.input_hash)?;
+            crate::nn::checkpoint::Configuration::from_document(&saved)?.check(
+                &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
+            )?;
+            let restored = Checkpoint::read(resume.join("latest.npz"))?;
+            restored.progress.check_config(
+                &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
+            )?;
             if restored.model.k().to_bits() != base.k.to_bits()
                 || restored.optimizer.lr() != args.lr
                 || restored.progress.seed != args.seed
@@ -202,7 +190,7 @@ impl Session {
     }
     fn save_latest(&self) -> Result<()> {
         Ok(atomic_write(
-            &self.args.output_dir.join("latest.bin"),
+            &self.args.output_dir.join("latest.npz"),
             &self.checkpoint.encode()?,
         )?)
     }
@@ -298,7 +286,7 @@ impl Session {
         self.save_latest()?;
         if improved {
             atomic_write(
-                &self.args.output_dir.join("best.bin"),
+                &self.args.output_dir.join("best.npz"),
                 &self.checkpoint.encode()?,
             )?;
         }
@@ -419,10 +407,8 @@ struct Training {
 }
 
 fn read_best(directory: &Path, latest: &Checkpoint) -> Result<Checkpoint> {
-    let saved = Checkpoint::read(directory.join("best.bin"))?;
-    saved
-        .progress
-        .check_hashes(&latest.progress.config_hash, &latest.progress.input_hash)?;
+    let saved = Checkpoint::read(directory.join("best.npz"))?;
+    saved.progress.check_config(&latest.progress.config)?;
     if saved.progress.best != latest.progress.best
         || saved
             .progress
@@ -441,12 +427,10 @@ fn recover_best(directory: &Path, latest: &Checkpoint) -> Result<()> {
         .progress
         .best
         .ok_or(Error::Invalid("checkpoint has no best epoch"))?;
-    let path = directory.join("best.bin");
+    let path = directory.join("best.npz");
     if path.exists() {
         let saved = Checkpoint::read(&path)?;
-        saved
-            .progress
-            .check_hashes(&latest.progress.config_hash, &latest.progress.input_hash)?;
+        saved.progress.check_config(&latest.progress.config)?;
         if saved.progress.best == Some(best) && saved.progress.epoch == best.epoch {
             return Ok(());
         }

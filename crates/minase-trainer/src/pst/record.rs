@@ -1,7 +1,7 @@
 use super::{Args, Error, Result, export::QuantizationReport};
 use crate::{
     data::Dataset,
-    nn::{Sha256Hasher, atomic_write, hex, sha256},
+    nn::{Sha256Hasher, atomic_write, hex},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -49,8 +49,7 @@ pub struct EpochRecord {
 /// `config.json`に保存する引数、設定、入力、前処理結果を作る。
 ///
 /// 最上位の欄は`device = "cpu"`、新規実行時の[`Args`]を直列化した`arguments`、
-/// 実効ワーカー数`resolved_threads`、`settings`、`inputs`、`preprocessing`、`resumes`、
-/// `config_sha256`、`input_sha256`である。
+/// 実効ワーカー数`resolved_threads`、`settings`、`inputs`、`preprocessing`、`resumes`である。
 /// 新規実行では呼び手が、開始から設定を書き出すまでの秒数`preprocessing_seconds`を加える。
 /// `settings`は[`Args`]から`output_dir`、`resume`、`data`、`init`、`epochs`、`patience`、`threads`を除き、
 /// `model = "mirrored_pst"`と`optimizer = {lr, weight_decay: 0.0, betas: [0.9, 0.999], epsilon: 1e-8}`を加えた値で、再開で変更できない。
@@ -66,8 +65,6 @@ pub struct EpochRecord {
 /// `training_positions`と`validation_positions`は局面数、`training_indices_sha256`と
 /// `validation_indices_sha256`は入力を連結した0始まりの通算番号をリトルエンディアンu64列にしたSHA-256である。
 ///
-/// `config_sha256`は`settings`、`input_sha256`は`{"inputs": inputs, "preprocessing": preprocessing}`を、
-/// キーを辞書順に並べた空白なしのJSONにしたバイト列のSHA-256で、小文字16進文字列で保存する。
 /// `resumes`は新規実行では空で、再開のたびに`{resumed_at_unix_seconds, epochs, patience, workers, epoch}`を追記する。
 /// 時刻は整数のUnix秒、`workers`は実効ワーカー数、`epoch`は再開時点の完了済みエポック番号である。
 pub(super) fn configuration(
@@ -107,15 +104,9 @@ pub(super) fn configuration(
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
-    let config_hash = sha256(&serde_json::to_vec(&settings)?);
-    let input_hash = sha256(&serde_json::to_vec(
-        &json!({"inputs":inputs,"preprocessing":preprocessing}),
-    )?);
     Ok(Configuration {
-        config_hash,
-        input_hash,
         document: json!({"device":"cpu", "arguments":args, "resolved_threads":workers, "settings":settings,
-            "inputs":inputs, "preprocessing":preprocessing, "resumes":[], "config_sha256":hex(&config_hash), "input_sha256":hex(&input_hash)}),
+            "inputs":inputs, "preprocessing":preprocessing, "resumes":[]}),
     })
 }
 
@@ -133,8 +124,6 @@ pub(crate) fn hash_u64(values: &[u64]) -> String {
 
 pub(crate) struct Configuration {
     pub document: Value,
-    pub config_hash: [u8; 32],
-    pub input_hash: [u8; 32],
 }
 
 pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {

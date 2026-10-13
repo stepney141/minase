@@ -140,8 +140,11 @@ fn checkpoint(set: InputFeatureSet, k: f32, linear_value: f32) -> Checkpoint {
             }),
             elapsed_seconds: 1.5,
             seed: 71,
-            config_hash: [3; 32],
-            input_hash: [4; 32],
+            config: minase_trainer::nn::checkpoint::Configuration {
+                settings: serde_json::json!({}),
+                inputs: serde_json::json!({}),
+                preprocessing: serde_json::json!({}),
+            },
         },
     }
 }
@@ -158,7 +161,7 @@ fn check_network<F: FeatureSet>(bytes: &[u8], values: &[i32; PIECE_STATE_COUNT])
 }
 
 #[test]
-fn both_feature_sets_export_mnue5_and_the_exact_best_checkpoint() {
+fn both_feature_sets_export_mnue5_without_rewriting_the_best_checkpoint() {
     let fixture = Fixture::new(0..80, None);
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let checkpoint = checkpoint(set, 1000.0, 0.0);
@@ -169,10 +172,7 @@ fn both_feature_sets_export_mnue5_and_the_exact_best_checkpoint() {
         assert_eq!(report.limit_cp, 25.0);
         assert!(report.passed);
         let output = fixture.root.join("output");
-        assert_eq!(
-            Checkpoint::read(output.join("nnue-float.bin")).unwrap(),
-            checkpoint
-        );
+        assert!(!output.join("best.npz").exists());
         let bytes = fs::read(output.join("nnue.bin")).unwrap();
         assert_eq!(&bytes[..8], b"MNUE\x05\0\0\0");
         match set {
@@ -263,10 +263,7 @@ fn the_gate_accepts_k_over_40_exactly_and_reports_a_larger_mean() {
         assert_eq!(failed.mean_absolute_error_cp, 1.0 / 8.0);
         assert_eq!(failed.limit_cp, 1.0 / 10.0);
         assert!(!failed.passed);
-        assert_eq!(
-            Checkpoint::read(fixture.root.join("output/nnue-float.bin")).unwrap(),
-            failed_checkpoint
-        );
+        assert!(!fixture.root.join("output/best.npz").exists());
         assert!(fixture.root.join("output/nnue.bin").is_file());
     }
 }

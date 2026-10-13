@@ -36,14 +36,15 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 ## 学習器の保存物
 
 学習器`minase-trainer`は、`--output-dir`で指定したディレクトリに、設定、エポックごとの記録、終了報告、およびチェックポイントを書き出す。
-チェックポイントは、学習を中断して再開するために保存するモデルと最適化器の状態である。
+チェックポイントは、学習を中断して再開するために保存するモデルと最適化器の状態であり、状態の配列と、進捗と設定を記したJSONの配列`meta`をNPZに収める。
+再開時には、`meta`に収めた設定と現在の`config.json`を欄ごとに比べる。
 
 | 形式 | マジックと版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| NNUEのチェックポイント`latest.bin`、`best.bin`、`nnue-float.bin` | `MNTRCKPT`、版2 | `nnue train` | `nnue train --resume`、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/model/checkpoint.rs` |
-| PSTのチェックポイント`latest.bin`、`best.bin` | `MNTRCKPT`、版2 | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/checkpoint.rs` |
-| FMのチェックポイント`latest.bin`、`best.bin` | `MNFMCKPT`、版1 | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/checkpoint.rs` |
-| 同時学習のチェックポイント`latest.bin`、`best.bin` | `MNJTCKPT`、版1 | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/checkpoint.rs` |
+| NNUEのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "nnue"` | `nnue train` | `nnue train --resume`、`diag nnue-removal --float` | `crates/minase-trainer/src/nnue/model/checkpoint.rs` |
+| PSTのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "pst"` | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/checkpoint.rs` |
+| FMのチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "fm"` | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/checkpoint.rs` |
+| 同時学習のチェックポイント`latest.npz`、`best.npz` | NPZ、`meta`の`kind = "joint"` | `joint train` | `joint train --resume` | `crates/minase-trainer/src/joint/checkpoint.rs` |
 | NNUEの学習の設定`config.json` | なし | `nnue train` | `nnue train --resume` | `crates/minase-trainer/src/nnue/train/record.rs` |
 | PSTの学習の設定`config.json` | なし | `pst train` | `pst train --resume` | `crates/minase-trainer/src/pst/record.rs` |
 | FMの学習の設定`config.json` | なし | `fm train` | `fm train --resume` | `crates/minase-trainer/src/fm/record.rs` |
@@ -109,4 +110,4 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 - `summary.json`は、対局ハーネスでは累計実行時間と中断状態だけを持ち、学習器では学習の終了報告である。学習器の`summary.json`の欄は学習器ごとに異なる。
 - `config.json`と`training.jsonl`は4種の学習器がそれぞれ書き、欄は学習器ごとに異なる。
 - `pst-float.npz`は、PSTの学習器が書くと2つの配列、同時学習が書くと5つの配列を持つ。PSTの2つの配列だけを使う読み手は、5つの配列を持つファイルからも同じ名前の2つの配列を読む。
-- `latest.bin`と`best.bin`は4種の学習器がそれぞれ書き、NNUEとPSTは同じマジック`MNTRCKPT`の別の配置を使う。
+- `latest.npz`と`best.npz`は4種の学習器がそれぞれ書き、収める配列は学習器ごとに異なる。`meta`の`kind`で学習器を見分ける。

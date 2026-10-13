@@ -2,7 +2,6 @@ use super::{Args, Distribution, GradientNorm, QuantizationReport, Result};
 use crate::{
     data::Dataset,
     fm::record::{Configuration, file_record, hash_u64},
-    nn::{hex, sha256},
 };
 use serde::Serialize;
 use serde_json::json;
@@ -101,15 +100,9 @@ pub(super) fn configuration(
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
-    let config_hash = sha256(&serde_json::to_vec(&settings)?);
-    let input_hash = sha256(&serde_json::to_vec(
-        &json!({"inputs":inputs,"preprocessing":preprocessing}),
-    )?);
     Ok(Configuration {
-        config_hash,
-        input_hash,
         document: json!({"device":"cpu", "arguments":args, "resolved_threads":workers, "settings":settings,
-            "inputs":inputs, "preprocessing":preprocessing, "resumes":[], "config_sha256":hex(&config_hash), "input_sha256":hex(&input_hash)}),
+            "inputs":inputs, "preprocessing":preprocessing, "resumes":[]}),
     })
 }
 

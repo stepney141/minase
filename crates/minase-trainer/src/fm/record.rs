@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     data::Dataset,
-    nn::{Sha256Hasher, atomic_write, hex, sha256},
+    nn::{Sha256Hasher, atomic_write, hex},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -94,15 +94,9 @@ pub(super) fn configuration(
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
-    let config_hash = sha256(&serde_json::to_vec(&settings)?);
-    let input_hash = sha256(&serde_json::to_vec(
-        &json!({"inputs":inputs,"preprocessing":preprocessing}),
-    )?);
     Ok(Configuration {
-        config_hash,
-        input_hash,
         document: json!({"device":"cpu", "arguments":args, "resolved_threads":workers, "settings":settings,
-            "inputs":inputs, "preprocessing":preprocessing, "resumes":[], "config_sha256":hex(&config_hash), "input_sha256":hex(&input_hash)}),
+            "inputs":inputs, "preprocessing":preprocessing, "resumes":[]}),
     })
 }
 
@@ -120,8 +114,6 @@ pub(crate) fn hash_u64(values: &[u64]) -> String {
 
 pub(crate) struct Configuration {
     pub document: Value,
-    pub config_hash: [u8; 32],
-    pub input_hash: [u8; 32],
 }
 
 pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {

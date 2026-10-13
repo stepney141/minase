@@ -127,13 +127,12 @@ fn validation_sample(dataset: &Dataset, requested: usize, seed: u64) -> Result<V
     Ok(indices)
 }
 
-/// 最良モデルを`nnue.bin`と`nnue-float.bin`へ書き、検証標本の量子化誤差を求める。
+/// 最良モデルを`nnue.bin`へ書き、検証標本の量子化誤差を求める。
 ///
-/// `checkpoint`は1以上の最良エポックそのものを渡す。浮動小数点の出力には
-/// パラメータに加え、同じ時点の最適化器の状態と進捗も保存する。
+/// `checkpoint`は`best.npz`に保存した1以上の最良エポックそのものを渡す。
 /// 書き出したMNUEをファイルから読み直し、`minase`の復号と整数推論で検査する。
 /// 標本は検証集合を`epoch_permutation(seed, 0)`で並べた先頭`--validation-sample`件で、既定は10,000件である。
-/// 平均絶対誤差がK/40を超えても両ファイルと測定値は保持し、`passed = false`を返す。
+/// 平均絶対誤差がK/40を超えても重みと測定値は保持し、`passed = false`を返す。
 /// 呼び手は測定値を記録して`quantization_error`、終了コード1として扱う。
 pub fn write_best(
     dataset: &Dataset,
@@ -148,10 +147,8 @@ pub fn write_best(
         _ => return Err(Error::Invalid("checkpoint is not a completed best epoch")),
     }
     let indices = validation_sample(dataset, validation_sample_size, checkpoint.progress.seed)?;
-    let floating = checkpoint.encode()?;
     let quantized = quantize(&checkpoint.model)?.encode(piece_values, rule_set)?;
     fs::create_dir_all(output_dir)?;
-    fs::write(output_dir.join("nnue-float.bin"), floating)?;
     let path = output_dir.join("nnue.bin");
     fs::write(&path, quantized)?;
     let written = fs::read(path)?;

@@ -18,20 +18,18 @@
       "npz": "58038359819e97d556a93cffe0525f0f1fa4416b834cb668dc12cc4a780a8d80",
       "pst": "f48b143e4cac96c626c8193e21c8bae0027f73bb490fcc8097de8ab5f40d6e1f",
       "states": {
-        "best.bin": {
+        "best.npz": {
           "best_epoch": 1,
           "best_loss": 4604412950698723221,
-          "encoded": "cec3b6db60591418bfb92a7388d80dd5d4d93d4e97838c851e03c45c70aeda9c",
           "epoch": 1,
           "m": "aa17dfa47b8b3a2fd10810abaad108331a785d6396d1d16f75eecdeaec042c64",
           "step": 16,
           "v": "1460fdd52e2e35162e6c49cf3a7227bad55f957e7a0a77da807d34aacec4570c",
           "weights": "3e0f2acb6ce55686418d0770bdfa3eec2c3ffe651144f9ede48c55fdc756eb9c"
         },
-        "latest.bin": {
+        "latest.npz": {
           "best_epoch": 1,
           "best_loss": 4604412950698723221,
-          "encoded": "cec3b6db60591418bfb92a7388d80dd5d4d93d4e97838c851e03c45c70aeda9c",
           "epoch": 1,
           "m": "aa17dfa47b8b3a2fd10810abaad108331a785d6396d1d16f75eecdeaec042c64",
           "step": 16,
@@ -64,20 +62,18 @@
       "npz": "e3c50f93755fb253757ccbab25aa17ed980d9f8157f7312c1c41fccdf4940fbb",
       "pst": "9c5b5a2230b3c6b53bcacc58b4002c00dd6ebd6460c4965824db23f16e6e9f4f",
       "states": {
-        "best.bin": {
+        "best.npz": {
           "best_epoch": 2,
           "best_loss": 4604410453770315358,
-          "encoded": "91d8d16b8eb0cd105fa3de3120d53e35a6022cea5151cf4d2bc41e0aa8ad6509",
           "epoch": 2,
           "m": "0b256e538ae735a94a7890e95ede56205b31d9d1ed1e3938027600cf2aee206e",
           "step": 32,
           "v": "80cc17cac91021e88257c0283c6509da2a95ab2bd2d7bf31c26c35e94303c699",
           "weights": "3b30569406e399551d005930f7f53e5ad597229eb332dc55bf97baf8c139f473"
         },
-        "latest.bin": {
+        "latest.npz": {
           "best_epoch": 2,
           "best_loss": 4604410453770315358,
-          "encoded": "91d8d16b8eb0cd105fa3de3120d53e35a6022cea5151cf4d2bc41e0aa8ad6509",
           "epoch": 2,
           "m": "0b256e538ae735a94a7890e95ede56205b31d9d1ed1e3938027600cf2aee206e",
           "step": 32,
@@ -116,20 +112,18 @@
       "npz": "5414f82f345bb20a47e4471fa1488509335d709ded47ef6713587565e002d6d0",
       "pst": "9caf8ca45cfdd0e48f797af4700d414b6f503032c774d8a8edcdee921358b1e5",
       "states": {
-        "best.bin": {
+        "best.npz": {
           "best_epoch": 3,
           "best_loss": 4604409646958999291,
-          "encoded": "24c324f185a5439abbbd6de5b3648e615f592b4f5e2d13904a8a6edd49cf3239",
           "epoch": 3,
           "m": "c72a7ca093144236f5f794ce98af9298ae115e208d7b241ae5831e8c547b3009",
           "step": 48,
           "v": "92769d2ddcdc5d1956c92ba2f8ccf082ad75a0ef5eebaaeae426ad7f06f6bcaf",
           "weights": "5355d83ad15c55484f60fbb7ac69b91f44f97a2496d65b827864cbcdf866e8c4"
         },
-        "latest.bin": {
+        "latest.npz": {
           "best_epoch": 3,
           "best_loss": 4604409646958999291,
-          "encoded": "24c324f185a5439abbbd6de5b3648e615f592b4f5e2d13904a8a6edd49cf3239",
           "epoch": 3,
           "m": "c72a7ca093144236f5f794ce98af9298ae115e208d7b241ae5831e8c547b3009",
           "step": 48,
@@ -158,20 +152,18 @@
       "npz": "acbe7af4fbd67ddafc13bb3312a8d5ac97efac737ce664ca92d59ccdfbfdd460",
       "pst": "4299255ca3fd013e0e0c73d04d2488e8da97e5b92d3f6764eb79838e1204c8c2",
       "states": {
-        "best.bin": {
+        "best.npz": {
           "best_epoch": 1,
           "best_loss": 4604418524832487749,
-          "encoded": "d97c0475cee992bcdf05f8fd3856194b60507d873f941a9d6c973d1a5eb9d116",
           "epoch": 1,
           "m": "f76307894aef4b57b7aa1ac20b28e9d141cb688188b3f0a7110059d0df3486c1",
           "step": 16,
           "v": "62747e4e5e6cfe8a9cb6a2652c7ec5d8084213fecaf2bdb222afe4ebd8ddaf52",
           "weights": "fb907019c4c0e6f603ac1a18549d80d328a241b31b585ca382331e4f9e7226e7"
         },
-        "latest.bin": {
+        "latest.npz": {
           "best_epoch": 1,
           "best_loss": 4604418524832487749,
-          "encoded": "d97c0475cee992bcdf05f8fd3856194b60507d873f941a9d6c973d1a5eb9d116",
           "epoch": 1,
           "m": "f76307894aef4b57b7aa1ac20b28e9d141cb688188b3f0a7110059d0df3486c1",
           "step": 16,
@@ -204,20 +196,18 @@
       "npz": "acbe7af4fbd67ddafc13bb3312a8d5ac97efac737ce664ca92d59ccdfbfdd460",
       "pst": "4299255ca3fd013e0e0c73d04d2488e8da97e5b92d3f6764eb79838e1204c8c2",
       "states": {
-        "best.bin": {
+        "best.npz": {
           "best_epoch": 1,
           "best_loss": 4604418524832487749,
-          "encoded": "d97c0475cee992bcdf05f8fd3856194b60507d873f941a9d6c973d1a5eb9d116",
           "epoch": 1,
           "m": "f76307894aef4b57b7aa1ac20b28e9d141cb688188b3f0a7110059d0df3486c1",
           "step": 16,
           "v": "62747e4e5e6cfe8a9cb6a2652c7ec5d8084213fecaf2bdb222afe4ebd8ddaf52",
           "weights": "fb907019c4c0e6f603ac1a18549d80d328a241b31b585ca382331e4f9e7226e7"
         },
-        "latest.bin": {
+        "latest.npz": {
           "best_epoch": 1,
           "best_loss": 4604418524832487749,
-          "encoded": "73ad952c604e1e959a03359655a54eab34c1a65d892287bce6297b2f4e58307d",
           "epoch": 2,
           "m": "95f3d261441ce7420956ea8c7404acb18606b6e62f3ce710aee7c1bf47969e34",
           "step": 32,
@@ -256,20 +246,18 @@
       "npz": "acbe7af4fbd67ddafc13bb3312a8d5ac97efac737ce664ca92d59ccdfbfdd460",
       "pst": "4299255ca3fd013e0e0c73d04d2488e8da97e5b92d3f6764eb79838e1204c8c2",
       "states": {
-        "best.bin": {
+        "best.npz": {
           "best_epoch": 1,
           "best_loss": 4604418524832487749,
-          "encoded": "d97c0475cee992bcdf05f8fd3856194b60507d873f941a9d6c973d1a5eb9d116",
           "epoch": 1,
           "m": "f76307894aef4b57b7aa1ac20b28e9d141cb688188b3f0a7110059d0df3486c1",
           "step": 16,
           "v": "62747e4e5e6cfe8a9cb6a2652c7ec5d8084213fecaf2bdb222afe4ebd8ddaf52",
           "weights": "fb907019c4c0e6f603ac1a18549d80d328a241b31b585ca382331e4f9e7226e7"
         },
-        "latest.bin": {
+        "latest.npz": {
           "best_epoch": 1,
           "best_loss": 4604418524832487749,
-          "encoded": "f4e448118db90839cd69d87914f835ee696c96792f237db5df3bdde5d6da95f2",
           "epoch": 3,
           "m": "f5b969aebc9badd73920d16874c6e5beb3cad9d58dccd83edcbe50043db2875b",
           "step": 48,

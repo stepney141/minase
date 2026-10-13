@@ -1,32 +1,44 @@
+//! NNUE学習器の無圧縮NPZチェックポイント。
+//! `latest.npz`と`best.npz`は次の配列を持ち、余分・欠落・型や形状の違いを拒否する。
+//! Hは幅、Rは第1層の行数（P型6841、HalfKP型109441）、Vは仮想行数（P型0、HalfKP型13681）、
+//! Uは共有後の出力幅（P型H/2、HalfKP型H）である。
+//!
+//! | 名前 | dtype | 形状 | 内容 |
+//! | --- | --- | --- | --- |
+//! | `weights.linear.weight`, `m.linear.weight`, `v.linear.weight` | `<f4` | `[6841, 2]` | 線形重みと両モーメント。 |
+//! | `weights.ft.embedding.weight`, `m.ft.embedding.weight`, `v.ft.embedding.weight` | `<f4` | `[R, H]` | 第1層と両モーメント。 |
+//! | `weights.ft.virtual.weight`, `m.ft.virtual.weight`, `v.ft.virtual.weight` | `<f4` | `[V, H]` | 仮想行と両モーメント。 |
+//! | `weights.head.biases`, `m.head.biases`, `v.head.biases` | `<f4` | `[U]` | バイアスと両モーメント。 |
+//! | `weights.head.output_weights`, `m.head.output_weights`, `v.head.output_weights` | `<f4` | `[2, U]` | 出力重みと両モーメント。 |
+//! | `weights.head.output_bias`, `m.head.output_bias`, `v.head.output_bias` | `<f4` | `[1]` | 出力バイアスと両モーメント。 |
+//! | `canonical_mask`, `first_layer_mask`, `virtual_mask` | `\|b1` | `[6841]`, `[R]`, `[V]` | 観測マスク。 |
+//! | `initial_linear`, `initial_virtual` | `<f4` | `[6841, 2]`, `[V, H]` | 未観測行を固定する初期値。 |
+//! | `k` | `<f4` | `[]` | 出力用K。 |
+//! | `width`, `feature_set`, `step` | `<u8` | `[]` | 幅、特徴集合（P型0、HalfKP型1）、更新数。 |
+//! | `optimizer_groups` | `<f8` | `[3, 2]` | 線形、第1層、出力部の順の学習率と重み減衰。 |
+//! | `removal_penalty`, `lambda` | `<f8` | `[]` | 駒除去損失係数と教師混合比。 |
+//! | `meta` | `\|u1` | `[JSONのバイト長]` | UTF-8のJSON。 |
+//!
+//! 配列名の`m`は1次モーメント、`v`は2次モーメントを表す。
+//! `meta`は`kind = "nnue"`、`epoch`、`best`、`elapsed_seconds`、`seed`、`config`を持つ。
+//! `best`は`{epoch, validation_loss}`で更新前はnull。時間は秒である。
+//! `config`は`config.json`の`settings`、`inputs`、`preprocessing`をそのまま保持する。
+//! GPUの状態は学習バックエンドのスナップショットでホストへ集めてから保存する。
+
 use super::{Error, Masks, Model, Parameter, Parameters, Result, Shape};
-use crate::nn::{AdamWGroup, BestEpoch, sha256};
+pub use crate::nn::checkpoint::Progress;
+use crate::nn::{
+    AdamWGroup,
+    checkpoint::{Configuration, Reader, Writer},
+};
 use crate::nnue::{
     data::InputFeatureSet,
     reference::{AdamW, AdamWConfig},
 };
 use std::path::Path;
 
-const MAGIC: &[u8; 8] = b"MNTRCKPT";
-const VERSION: u32 = 2;
-
-/// 再開に必要な進捗と入力の同一性。
-#[derive(Clone, Debug, PartialEq)]
-pub struct Progress {
-    /// 最後に完了したエポック。
-    pub epoch: u64,
-    /// 最良エポック。更新前はNone。
-    pub best: Option<BestEpoch>,
-    /// 累積の学習時間、秒。
-    pub elapsed_seconds: f64,
-    /// 初期化とエポック順列のシード。
-    pub seed: u64,
-    /// 実行設定のSHA-256。
-    pub config_hash: [u8; 32],
-    /// 入力のSHA-256。
-    pub input_hash: [u8; 32],
-}
 /// パラメータ、固定行の初期値とマスク、AdamWの状態、進捗を保存する。
-/// `latest.bin`、`best.bin`、`nnue-float.bin`はこの形式であり、バイト配置は[`Self::encode`]に定める。
+/// 配列の配置はこのモジュールの表に定める。
 /// 復号時の受理条件は[`Self::decode`]に従う。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checkpoint {
@@ -38,7 +50,7 @@ pub struct Checkpoint {
     pub removal_penalty: f64,
     /// 自己対局の教師混合比。
     pub lambda: f64,
-    /// 学習の進捗とハッシュ。
+    /// 学習の進捗と再開条件。
     pub progress: Progress,
 }
 impl Checkpoint {
@@ -64,17 +76,7 @@ impl Checkpoint {
                 return Err(Error::Invalid("negative AdamW variance"));
             }
         }
-        if !self.progress.elapsed_seconds.is_finite() || self.progress.elapsed_seconds < 0.0 {
-            return Err(Error::Invalid("elapsed time"));
-        }
-        if let Some(best) = self.progress.best
-            && (best.epoch == 0
-                || best.epoch > self.progress.epoch
-                || !best.validation_loss.is_finite()
-                || best.validation_loss < 0.0)
-        {
-            return Err(Error::Invalid("best epoch"));
-        }
+        self.progress.validate()?;
         let model = &self.model;
         if model
             .initial_linear
@@ -104,211 +106,119 @@ impl Checkpoint {
         }
         Ok(())
     }
-    /// リトルエンディアン形式へ変換し、末尾にそれより前の全内容のSHA-256を付ける。
-    /// 整数と浮動小数点数はすべてリトルエンディアンである。
-    /// 配列の長さは構造記述文字列と幅Hから導き、長さ欄を持たない。
-    ///
-    /// | バイト位置 | 型と内容 |
-    /// | --- | --- |
-    /// | 0 | 8バイトの識別子`MNTRCKPT`。 |
-    /// | 8 | 版番号u32で、現行は2。 |
-    /// | 12 | MNUE版5と同じ[`Shape::architecture`]を96バイトに0埋め。例は`features=P;ft=128;linear=tapered2;head=direct-screlu`。 |
-    /// | 108 | 幅Hのu32。 |
-    /// | 112 | 出力用Kのf32。 |
-    /// | 116 | AdamWの更新回数u64。 |
-    /// | 124 | 完了したエポック番号u64。 |
-    /// | 132 | 最良エポック番号u64。最良がなければ0。 |
-    /// | 140 | 最良の検証損失f64。最良がなければ正の無限大。 |
-    /// | 148 | 再開前を含む累積秒数f64。 |
-    /// | 156 | 乱数のシードu64。 |
-    /// | 164 | 実行設定のSHA-256の32バイト。 |
-    /// | 196 | 入力のSHA-256の32バイト。 |
-    /// | 228 | 線形、第1層（仮想行を含む）、出力部の3群の順に、学習率と重み減衰を各f64で置く。計48バイト。 |
-    /// | 276 | 補助損失の係数f64。 |
-    /// | 284 | λの値f64。 |
-    ///
-    /// 292バイト目から、全パラメータ、AdamWの1次モーメント、2次モーメントの順に3組を置く。
-    /// 各組は[`Parameter::ALL`]の順、すなわちLinear、FirstLayer、Virtual、Biases、OutputWeights、OutputBiasのf32配列であり、要素数は[`Shape::len`]に従う。
-    /// 続く観測マスクは、正準行6,841バイト、第1層[`Shape::rows`]バイト、仮想行の順で、1要素を0または1の1バイトで表す。
-    /// 仮想行のマスクはHalfKPでは13,681バイト、P型では0バイトであり、P型の第1層マスクは正準行マスクと同一である。
-    /// その後に線形の初期値をf32で6,841×2要素、仮想行の初期値をf32で置く。
-    /// 仮想行の初期値はHalfKPでは13,681×H要素、P型では0要素である。
-    /// 末尾32バイトが検査和である。
+    /// 全状態を型と浮動小数点のビット列を保ってNPZへ保存する。
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.validate()?;
-        let s = self.model.shape();
-        let mut bytes = MAGIC.to_vec();
-        bytes.extend(VERSION.to_le_bytes());
-        let arch = s.architecture();
-        bytes.extend(arch.as_bytes());
-        bytes.resize(12 + 96, 0);
-        bytes.extend((s.width() as u32).to_le_bytes());
-        bytes.extend(s.k().to_le_bytes());
-        for value in [
-            self.optimizer.step,
-            self.progress.epoch,
-            self.progress.best.map_or(0, |v| v.epoch),
-        ] {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend(
-            self.progress
-                .best
-                .map_or(f64::INFINITY, |v| v.validation_loss)
-                .to_le_bytes(),
+        let shape = self.model.shape();
+        let mut w = Writer::new("nnue", &self.progress)?;
+        w.scalar("width", shape.width() as u64);
+        w.scalar(
+            "feature_set",
+            match shape.feature_set() {
+                InputFeatureSet::P => 0_u64,
+                InputFeatureSet::HalfKpHmB8 => 1,
+            },
         );
-        bytes.extend(self.progress.elapsed_seconds.to_le_bytes());
-        bytes.extend(self.progress.seed.to_le_bytes());
-        bytes.extend(self.progress.config_hash);
-        bytes.extend(self.progress.input_hash);
-        for group in [
+        w.scalar("k", shape.k());
+        w.scalar("step", self.optimizer.step);
+        w.scalar("removal_penalty", self.removal_penalty);
+        w.scalar("lambda", self.lambda);
+        let groups = [
             self.optimizer.config.linear,
             self.optimizer.config.ft,
             self.optimizer.config.head,
+        ];
+        w.values(
+            "optimizer_groups",
+            &[3, 2],
+            &groups
+                .iter()
+                .flat_map(|g| [g.lr, g.weight_decay])
+                .collect::<Vec<_>>(),
+        );
+        for (prefix, params) in [
+            ("weights", &self.model.parameters),
+            ("m", &self.optimizer.m),
+            ("v", &self.optimizer.v),
         ] {
-            bytes.extend(group.lr.to_le_bytes());
-            bytes.extend(group.weight_decay.to_le_bytes());
-        }
-        bytes.extend(self.removal_penalty.to_le_bytes());
-        bytes.extend(self.lambda.to_le_bytes());
-        for params in [&self.model.parameters, &self.optimizer.m, &self.optimizer.v] {
             for p in Parameter::ALL {
-                floats(&mut bytes, &params[p]);
+                w.values(
+                    &format!("{prefix}.{}", p.name()),
+                    &dimensions(shape, p),
+                    &params[p],
+                );
             }
         }
-        for mask in [
-            &self.model.masks.canonical,
-            &self.model.masks.first_layer,
-            &self.model.masks.virtual_rows,
-        ] {
-            bytes.extend(mask.iter().map(|&v| u8::from(v)));
-        }
-        floats(&mut bytes, &self.model.initial_linear);
-        floats(&mut bytes, &self.model.initial_virtual);
-        bytes.extend_from_slice(&sha256(&bytes));
-        Ok(bytes)
+        w.mask("canonical_mask", &self.model.masks.canonical);
+        w.mask("first_layer_mask", &self.model.masks.first_layer);
+        w.mask("virtual_mask", &self.model.masks.virtual_rows);
+        w.values(
+            "initial_linear",
+            &dimensions(shape, Parameter::Linear),
+            &self.model.initial_linear,
+        );
+        w.values(
+            "initial_virtual",
+            &dimensions(shape, Parameter::Virtual),
+            &self.model.initial_virtual,
+        );
+        Ok(w.encode()?)
     }
-    /// 保存形式とモデルの不変条件を検査して復号する。
-    ///
-    /// 末尾のSHA-256、識別子と版、構造記述文字列がP型またはHalfKP-hm-b8の幅Hのものと一致することを検査する。
-    /// 幅と出力用Kは[`Shape::new`]の値域に従い、残りの長さは[`Self::encode`]の配置から導いた長さと一致しなければならない。
-    /// マスクの各バイトは0か1で、埋め草のマスクはfalse、各マスク間の対応も一致しなければならない。
-    /// 最良エポック番号0は最良なしを表し、このとき最良損失は正の無限大だけを受理する。
-    ///
-    /// 最後に`validate`で、パラメータと両モーメントの有限性、形状の一致、AdamW係数の値域を検査する。
-    /// 補助損失係数と累積秒数は有限かつ非負、λは有限な0以上1以下、2次モーメントは非負でなければならない。
-    /// 最良エポックがあれば1以上かつ完了エポック以下で、最良損失は有限かつ非負である。
-    /// 線形初期値は[−4096, 4095.875]、仮想行初期値は±8以内であり、いずれも有限値でなければならない。
-    /// 初期値の埋め草行は0とし、現在のモデルも[`Model::fix_unobserved`]による固定後と一致することを要求する。
-    /// これにより未観測行は初期値のまま、埋め草行は0に保たれる。
+
+    /// 種別、配列の集合・型・形状、有限性、マスク、初期値と進捗を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let end = bytes
-            .len()
-            .checked_sub(32)
-            .ok_or(Error::Format("checkpoint length"))?;
-        if sha256(&bytes[..end])[..] != bytes[end..] {
-            return Err(Error::Format("checkpoint SHA-256"));
-        }
-        let mut r = Reader::new(&bytes[..end]);
-        if r.take(8)? != MAGIC || r.u32()? != VERSION {
-            return Err(Error::Format("checkpoint magic or version"));
-        }
-        let arch = r.take(96)?;
-        let width = r.u32()? as usize;
-        let k = r.f32()?;
-        let mut shape = None;
-        for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
-            let s = Shape::new(set, width, k)?;
-            let mut expected = s.architecture().into_bytes();
-            expected.resize(96, 0);
-            if arch == expected {
-                shape = Some(s);
-            }
-        }
-        let shape = shape.ok_or(Error::Format("checkpoint architecture"))?;
-        let step = r.u64()?;
-        let epoch = r.u64()?;
-        let best_epoch = r.u64()?;
-        let validation_loss = r.f64()?;
-        let best = if best_epoch == 0 {
-            if validation_loss != f64::INFINITY {
-                return Err(Error::Format("missing best loss"));
-            }
-            None
-        } else {
-            Some(BestEpoch {
-                epoch: best_epoch,
-                validation_loss,
-            })
+        let (mut r, progress) = Reader::new(bytes, "nnue")?;
+        let width = usize::try_from(r.scalar::<u64>("width")?)
+            .map_err(|_| Error::Format("checkpoint width"))?;
+        let set = match r.scalar::<u64>("feature_set")? {
+            0 => InputFeatureSet::P,
+            1 => InputFeatureSet::HalfKpHmB8,
+            _ => return Err(Error::Format("checkpoint feature set")),
         };
-        let elapsed_seconds = r.f64()?;
-        let seed = r.u64()?;
-        let config_hash = r.take(32)?.try_into().expect("checked length");
-        let input_hash = r.take(32)?.try_into().expect("checked length");
-        let mut group = || -> Result<_> {
-            Ok(AdamWGroup {
-                lr: r.f64()?,
-                weight_decay: r.f64()?,
-            })
+        let shape = Shape::new(set, width, r.scalar("k")?)?;
+        let step = r.scalar("step")?;
+        let removal_penalty = r.scalar("removal_penalty")?;
+        let lambda = r.scalar("lambda")?;
+        let groups = r.values::<f64>("optimizer_groups", &[3, 2])?;
+        let group = |i: usize| AdamWGroup {
+            lr: groups[2 * i],
+            weight_decay: groups[2 * i + 1],
         };
         let config = AdamWConfig {
-            linear: group()?,
-            ft: group()?,
-            head: group()?,
+            linear: group(0),
+            ft: group(1),
+            head: group(2),
         };
-        let removal_penalty = r.f64()?;
-        let lambda = r.f64()?;
-        // 最大幅でも形から長さを確定できる。切断された入力では大配列を確保しない。
-        let parameter_count: usize = Parameter::ALL.iter().map(|&p| shape.len(p)).sum();
-        let virtual_rows = shape.len(Parameter::Virtual) / width;
-        let expected = 3 * parameter_count * 4
-            + super::CANONICAL_ROWS
-            + shape.rows()
-            + virtual_rows
-            + 4 * (shape.len(Parameter::Linear) + shape.len(Parameter::Virtual));
-        if r.remaining().len() != expected {
-            return Err(Error::Format("checkpoint payload length"));
-        }
-        let mut read_params = || -> Result<_> {
-            let mut values = Parameters::zeros(shape);
-            for p in Parameter::ALL {
-                for value in &mut values[p] {
-                    *value = r.f32()?;
-                }
+        let mut params = |prefix| -> Result<Parameters> {
+            // 全配列の長さを確認してからパラメータを確保する。
+            let values = Parameter::ALL
+                .map(|p| r.values::<f32>(&format!("{prefix}.{}", p.name()), &dimensions(shape, p)))
+                .into_iter()
+                .collect::<crate::nn::Result<Vec<_>>>()?;
+            let mut params = Parameters::zeros(shape);
+            for (p, values) in Parameter::ALL.into_iter().zip(values) {
+                params[p].copy_from_slice(&values);
             }
-            Ok(values)
+            Ok(params)
         };
-        let parameters = read_params()?;
-        let m = read_params()?;
-        let v = read_params()?;
-        let mut mask = |count| -> Result<Vec<bool>> {
-            r.take(count)?
-                .iter()
-                .map(|&b| match b {
-                    0 => Ok(false),
-                    1 => Ok(true),
-                    _ => Err(Error::Format("mask byte")),
-                })
-                .collect()
-        };
-        let canonical = mask(super::CANONICAL_ROWS)?;
-        let first_layer = mask(shape.rows())?;
-        let virtual_mask = mask(virtual_rows)?;
-        let masks = if shape.feature_set() == InputFeatureSet::P {
-            Masks::new(
-                shape.feature_set(),
-                canonical,
-                vec![false; shape.feature_set().dimensions() + 1],
-            )?
+        let parameters = params("weights")?;
+        let m = params("m")?;
+        let v = params("v")?;
+        let canonical = r.mask("canonical_mask", super::CANONICAL_ROWS)?;
+        let first_layer = r.mask("first_layer_mask", shape.rows())?;
+        let virtual_mask = r.mask("virtual_mask", shape.len(Parameter::Virtual) / width)?;
+        let masks = if set == InputFeatureSet::P {
+            Masks::new(set, canonical, vec![false; set.dimensions() + 1])?
         } else {
-            Masks::new(shape.feature_set(), canonical, first_layer.clone())?
+            Masks::new(set, canonical, first_layer.clone())?
         };
         if masks.first_layer != first_layer || masks.virtual_rows != virtual_mask {
             return Err(Error::Format("inconsistent observation masks"));
         }
-        let mut values = |count| -> Result<Vec<f32>> { (0..count).map(|_| r.f32()).collect() };
-        let initial_linear = values(shape.len(Parameter::Linear))?;
-        let initial_virtual = values(shape.len(Parameter::Virtual))?;
+        let initial_linear = r.values("initial_linear", &dimensions(shape, Parameter::Linear))?;
+        let initial_virtual =
+            r.values("initial_virtual", &dimensions(shape, Parameter::Virtual))?;
+        r.finish()?;
         let result = Self {
             model: Model {
                 parameters,
@@ -319,75 +229,31 @@ impl Checkpoint {
             optimizer: AdamW { m, v, step, config },
             removal_penalty,
             lambda,
-            progress: Progress {
-                epoch,
-                best,
-                elapsed_seconds,
-                seed,
-                config_hash,
-                input_hash,
-            },
+            progress,
         };
         result.validate()?;
         Ok(result)
     }
-    /// ファイルへ書く。
+    /// 一時ファイルからの改名により原子的に保存する。
     pub fn write(&self, path: impl AsRef<Path>) -> Result<()> {
-        std::fs::write(path, self.encode()?)?;
-        Ok(())
+        Ok(crate::nn::atomic_write(path.as_ref(), &self.encode()?)?)
     }
-    /// ファイルを読む。
+    /// NPZチェックポイントを読む。
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
         Self::decode(&std::fs::read(path)?)
     }
-    /// 再開前に実行設定と入力のハッシュを照合する。
-    pub fn check_hashes(&self, config: &[u8; 32], input: &[u8; 32]) -> Result<()> {
-        if config != &self.progress.config_hash || input != &self.progress.input_hash {
-            return Err(Error::Invalid(
-                "checkpoint configuration or input hash mismatch",
-            ));
-        }
-        Ok(())
+    /// 再開前に設定、入力、前処理結果を照合する。
+    pub fn check_config(&self, config: &Configuration) -> Result<()> {
+        Ok(self.progress.check_config(config)?)
     }
 }
-fn floats(bytes: &mut Vec<u8>, values: &[f32]) {
-    for &v in values {
-        bytes.extend(v.to_le_bytes());
-    }
-}
-
-struct Reader<'a> {
-    bytes: &'a [u8],
-}
-impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes }
-    }
-    fn remaining(&self) -> &'a [u8] {
-        self.bytes
-    }
-    fn take(&mut self, len: usize) -> Result<&'a [u8]> {
-        if len > self.bytes.len() {
-            return Err(Error::Format("truncated input"));
-        }
-        let (value, rest) = self.bytes.split_at(len);
-        self.bytes = rest;
-        Ok(value)
-    }
-    fn u32(&mut self) -> Result<u32> {
-        Ok(u32::from_le_bytes(
-            self.take(4)?.try_into().expect("checked length"),
-        ))
-    }
-    fn u64(&mut self) -> Result<u64> {
-        Ok(u64::from_le_bytes(
-            self.take(8)?.try_into().expect("checked length"),
-        ))
-    }
-    fn f32(&mut self) -> Result<f32> {
-        Ok(f32::from_bits(self.u32()?))
-    }
-    fn f64(&mut self) -> Result<f64> {
-        Ok(f64::from_bits(self.u64()?))
+fn dimensions(shape: Shape, parameter: Parameter) -> Vec<usize> {
+    match parameter {
+        Parameter::Linear => vec![super::CANONICAL_ROWS, 2],
+        Parameter::FirstLayer => vec![shape.rows(), shape.width()],
+        Parameter::Virtual => vec![shape.len(parameter) / shape.width(), shape.width()],
+        Parameter::Biases => vec![shape.units()],
+        Parameter::OutputWeights => vec![2, shape.units()],
+        Parameter::OutputBias => vec![1],
     }
 }

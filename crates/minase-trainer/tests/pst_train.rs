@@ -1,4 +1,7 @@
 //! pst trainの引数、端数バッチ、再開と成果物を合成MNSDで検証する。
+#[path = "common/checkpoint.rs"]
+#[allow(dead_code)]
+mod checkpoint_contract;
 mod common;
 use clap::Parser;
 use minase::eval::{
@@ -276,7 +279,7 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
         split.epochs = 1;
         pst::run(split.clone()).unwrap();
         // 改善したlatestを公開した直後、bestの保存前に中断した場合も再開できる。
-        fs::remove_file(split.output_dir.join("best.bin")).unwrap();
+        fs::remove_file(split.output_dir.join("best.npz")).unwrap();
         use std::io::Write;
         fs::OpenOptions::new()
             .append(true)
@@ -289,7 +292,7 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
         split.patience = 7;
         split.threads = Some(3);
         pst::run(split.clone()).unwrap();
-        for file in ["latest.bin", "best.bin"] {
+        for file in ["latest.npz", "best.npz"] {
             compare_checkpoints(&args.output_dir.join(file), &split.output_dir.join(file));
         }
         for file in ["pst.bin", "pst-float.npz"] {
@@ -298,11 +301,12 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
                 fs::read(split.output_dir.join(file)).unwrap()
             );
         }
-        let ck = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+        let ck = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
         assert_eq!(ck.optimizer.step(), 14); // 111訓練局面、16件×6バッチ＋15件の端数、2エポック。
         let rows = logs(&args.output_dir);
         let resumed = logs(&split.output_dir);
         assert_eq!(rows.len(), 3);
+        assert_eq!(resumed.len(), rows.len());
         for (i, (left, right)) in rows.iter().zip(resumed).enumerate() {
             for field in [
                 "epoch",
@@ -314,6 +318,13 @@ fn continuous_two_epochs_equal_one_plus_resume_in_weights_moments_and_logs() {
                 "total_steps",
             ] {
                 assert_eq!(left[field], right[field], "{field}");
+                if field.ends_with("loss") {
+                    assert_eq!(
+                        left[field].as_f64().map(f64::to_bits),
+                        right[field].as_f64().map(f64::to_bits),
+                        "{field}"
+                    );
+                }
             }
             for absent in ["saturation", "nonlinear_std_cp", "gpu_memory_used_bytes"] {
                 assert!(left.get(absent).is_none());
@@ -401,7 +412,7 @@ fn training_log_weights_the_tail_by_positions_and_validation_has_no_removal_term
         (rows[1]["removal_loss"].as_f64().unwrap() - removal / order.len() as f64).abs() < 1e-14
     );
     assert!((rows[0]["validation_loss"].as_f64().unwrap() - 2.0_f64.ln()).abs() < 1e-14);
-    let ck = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let ck = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
     assert_eq!(ck.model, model);
     assert_eq!(ck.optimizer, opt);
 }
@@ -413,7 +424,10 @@ fn resume_rejects_changes_to_trajectory_settings_and_input_without_changing_save
     pst::run(args.clone()).unwrap();
     args.epochs = 2;
     args.resume = Some(args.output_dir.clone());
-    let before = fs::read(args.output_dir.join("latest.bin")).unwrap();
+    let before = fs::read(args.output_dir.join("latest.npz")).unwrap();
+    checkpoint_contract::rejects_changed_meta(&args.output_dir, || {
+        pst::run(args.clone()).unwrap_err().to_string()
+    });
     let changes: Vec<fn(&mut Args)> = vec![
         |a| a.lr = 0.02,
         |a| a.batch = 17,
@@ -429,7 +443,7 @@ fn resume_rejects_changes_to_trajectory_settings_and_input_without_changing_save
         let mut changed = args.clone();
         change(&mut changed);
         let error = pst::run(changed).unwrap_err().to_string();
-        assert!(error.contains("hash mismatch"), "{error}");
+        assert!(error.contains("mismatch"), "{error}");
     }
     let base = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
     let modified =
@@ -439,10 +453,10 @@ fn resume_rejects_changes_to_trajectory_settings_and_input_without_changing_save
         pst::run(args.clone())
             .unwrap_err()
             .to_string()
-            .contains("hash mismatch")
+            .contains("mismatch")
     );
     assert_eq!(
-        fs::read(args.output_dir.join("latest.bin")).unwrap(),
+        fs::read(args.output_dir.join("latest.npz")).unwrap(),
         before
     );
 }
@@ -479,7 +493,7 @@ fn quantization_failure_keeps_outputs_and_records_failure_with_exit_code_one() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    for file in ["pst.bin", "pst-float.npz", "latest.bin", "best.bin"] {
+    for file in ["pst.bin", "pst-float.npz", "latest.npz", "best.npz"] {
         assert!(args.output_dir.join(file).exists());
     }
     let summary = document(args.output_dir.join("summary.json"));
@@ -516,7 +530,7 @@ fn asymmetric_init_is_averaged_except_when_positive_init_reference_requires_symm
     );
     args.removal_penalty = 0.0;
     pst::run(args.clone()).unwrap();
-    let ck = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let ck = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
     assert_eq!(&ck.model.weights()[..2], &[0.5, 1.0]);
     args.output_dir = fixture.root.join("v0");
     args.removal_penalty = 1000.0;
@@ -567,15 +581,11 @@ fn array_hash(values: &[f32]) -> String {
 }
 fn snapshot(directory: &Path) -> Value {
     let mut states = serde_json::Map::new();
-    for file in ["latest.bin", "best.bin"] {
-        let mut ck = Checkpoint::read(directory.join(file)).unwrap();
-        ck.progress.elapsed_seconds = 0.0;
-        ck.progress.config_hash = [0; 32];
-        ck.progress.input_hash = [0; 32];
-        let encoded = format!("{:x}", Sha256::digest(ck.encode().unwrap()));
+    for file in ["latest.npz", "best.npz"] {
+        let ck = Checkpoint::read(directory.join(file)).unwrap();
         let best = ck.progress.best.unwrap();
         states.insert(file.into(), serde_json::json!({
-            "encoded":encoded, "weights":array_hash(ck.model.weights()), "m":array_hash(ck.optimizer.m()),
+            "weights":array_hash(ck.model.weights()), "m":array_hash(ck.optimizer.m()),
             "v":array_hash(ck.optimizer.v()), "step":ck.optimizer.step(), "epoch":ck.progress.epoch,
             "best_epoch":best.epoch, "best_loss":best.validation_loss.to_bits()
         }));
@@ -602,7 +612,7 @@ fn phase_2a_weights_adam_losses_and_outputs_match_b0a245b_bit_for_bit() {
     // 基準値はb0a245bをgit archiveで展開し、compatibility_fixture()で
     // epochs=1,2,3、threads=1として実行した結果から採った。
     // 配列はパディングを含む全f32ビット、損失はtraining.jsonlのf64ビットを比べる。
-    // チェックポイントは時間とパス依存のハッシュを0にして符号化する。
+    // 保存形式に依存しない重み、モーメント、進捗と損失を比較する。
     // MNPTのハッシュだけは次元0の版3へ更新した。使い捨ての検査で、版番号、
     // 末尾の8バイト、検査和を変更前の配置へ戻した全バイトのSHA-256が旧基準に
     // 一致し、ほかの基準値が変わらないことを全18条件で確認した。

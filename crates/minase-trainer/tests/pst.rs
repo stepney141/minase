@@ -1,4 +1,7 @@
 //! PST学習の契約を、独立な損失の定義、鏡映、更新、保存の性質から検証する。
+#[path = "common/checkpoint.rs"]
+#[allow(dead_code)]
+mod checkpoint_contract;
 mod common;
 
 use common::{Fixture, mirror, position, positions};
@@ -404,8 +407,11 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
             best: None,
             elapsed_seconds: 0.0,
             seed: 1,
-            config_hash: [1; 32],
-            input_hash: [2; 32],
+            config: minase_trainer::nn::checkpoint::Configuration {
+                settings: serde_json::json!({}),
+                inputs: serde_json::json!({}),
+                preprocessing: serde_json::json!({}),
+            },
         },
     };
     ck.optimizer
@@ -418,6 +424,7 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
         )
         .unwrap();
     let bytes = ck.encode().unwrap();
+    checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| Checkpoint::decode(bytes).is_ok());
     assert_eq!(Checkpoint::decode(&bytes).unwrap(), ck);
     assert!(minase_trainer::nnue::model::Checkpoint::decode(&bytes).is_err());
     for cut in [0, 8, 100, bytes.len() - 1] {
@@ -426,5 +433,7 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
     let mut corrupt = bytes;
     corrupt[160] ^= 1;
     assert!(Checkpoint::decode(&corrupt).is_err());
-    assert!(ck.progress.check_hashes(&[3; 32], &[2; 32]).is_err());
+    let mut changed = ck.progress.config.clone();
+    changed.settings = serde_json::json!({"seed": 2});
+    assert!(ck.progress.check_config(&changed).is_err());
 }

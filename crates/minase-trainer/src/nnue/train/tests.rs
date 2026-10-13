@@ -47,8 +47,11 @@ fn initial_progress() -> Progress {
         best: None,
         elapsed_seconds: 0.0,
         seed: 1,
-        config_hash: [1; 32],
-        input_hash: [2; 32],
+        config: crate::nn::checkpoint::Configuration {
+            settings: serde_json::json!({}),
+            inputs: serde_json::json!({}),
+            preprocessing: serde_json::json!({}),
+        },
     }
 }
 
@@ -412,7 +415,7 @@ fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
 }
 
 #[test]
-fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_changes() {
+fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_changes() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
@@ -469,14 +472,16 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
         optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
         model: model.clone(),
         progress: Progress {
-            config_hash: configuration.config_hash,
-            input_hash: configuration.input_hash,
+            config: crate::nn::checkpoint::Configuration::from_document(&configuration.document)
+                .unwrap(),
             ..initial_progress()
         },
     };
     let restored = Checkpoint::decode(&checkpoint.encode().unwrap()).unwrap();
     restored
-        .check_hashes(&configuration.config_hash, &configuration.input_hash)
+        .check_config(
+            &crate::nn::checkpoint::Configuration::from_document(&configuration.document).unwrap(),
+        )
         .unwrap();
     let mut resume = args.clone();
     resume.output_dir = fixture.0.join("resumed");
@@ -488,15 +493,20 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
     let same =
         record::configuration(&resume, 3, &dataset, &observations, &teacher_ks, &model).unwrap();
     restored
-        .check_hashes(&same.config_hash, &same.input_hash)
+        .check_config(&crate::nn::checkpoint::Configuration::from_document(&same.document).unwrap())
         .unwrap();
     resume.seed += 1;
     let changed =
         record::configuration(&resume, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    assert_ne!(changed.config_hash, configuration.config_hash);
+    assert_ne!(
+        changed.document["settings"],
+        configuration.document["settings"]
+    );
     assert!(
         restored
-            .check_hashes(&changed.config_hash, &changed.input_hash)
+            .check_config(
+                &crate::nn::checkpoint::Configuration::from_document(&changed.document).unwrap()
+            )
             .is_err()
     );
 
@@ -510,11 +520,16 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
     base::read(&args.base).unwrap();
     let changed =
         record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    assert_eq!(changed.config_hash, configuration.config_hash);
-    assert_ne!(changed.input_hash, configuration.input_hash);
+    assert_eq!(
+        changed.document["settings"],
+        configuration.document["settings"]
+    );
+    assert_ne!(changed.document["inputs"], configuration.document["inputs"]);
     assert!(
         restored
-            .check_hashes(&changed.config_hash, &changed.input_hash)
+            .check_config(
+                &crate::nn::checkpoint::Configuration::from_document(&changed.document).unwrap()
+            )
             .is_err()
     );
 }
@@ -624,12 +639,14 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
                 optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
                 model,
                 progress: Progress {
-                    config_hash: configuration.config_hash,
-                    input_hash: configuration.input_hash,
+                    config: crate::nn::checkpoint::Configuration::from_document(
+                        &configuration.document,
+                    )
+                    .unwrap(),
                     ..initial_progress()
                 },
             }
-            .write(args.output_dir.join("latest.bin"))
+            .write(args.output_dir.join("latest.npz"))
             .unwrap();
         }
         args.resume = Some(args.output_dir.clone());
@@ -688,12 +705,13 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             Err(error) => error,
         };
         assert!(
-            matches!(
-                error.downcast_ref::<Error>(),
-                Some(Error::Invalid(
-                    "resume configuration or input hash mismatch"
-                ))
-            ),
+            error.to_string().contains(if change == "origin" {
+                "preprocessing mismatch"
+            } else if matches!(change, "npz" | "base" | "data") {
+                "inputs mismatch"
+            } else {
+                "settings mismatch"
+            }),
             "{change} reached an unexpected error: {error}"
         );
     }
@@ -858,7 +876,7 @@ fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
             validation_loss: 0.4,
         },
     );
-    let path = fixture.0.join("best.bin");
+    let path = fixture.0.join("best.npz");
     old.write(&path).unwrap();
     recover_best_checkpoint(&fixture.0, &latest).unwrap();
     assert!(fs::read(&path).unwrap() == latest.encode().unwrap());
@@ -886,7 +904,7 @@ fn resume_preserves_an_older_best_and_rejects_its_loss_or_corruption() {
     };
     let best = completed_checkpoint(&model, 1, best_epoch);
     let latest = completed_checkpoint(&model, 2, best_epoch);
-    let path = fixture.0.join("best.bin");
+    let path = fixture.0.join("best.npz");
     best.write(&path).unwrap();
     let original = fs::read(&path).unwrap();
     recover_best_checkpoint(&fixture.0, &latest).unwrap();
@@ -966,7 +984,7 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
         let mut session = Session::new(split.clone()).unwrap();
         assert!(session.advance().unwrap());
         drop(session);
-        let first = Checkpoint::read(split.output_dir.join("latest.bin")).unwrap();
+        let first = Checkpoint::read(split.output_dir.join("latest.npz")).unwrap();
         assert_eq!(first.progress.epoch, 1);
         assert_eq!(first.optimizer.step(), 9);
         split.resume = Some(split.output_dir.clone());
@@ -986,14 +1004,14 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
         assert_eq!(configuration["settings"]["lambda"], 0.75);
         assert_eq!(configuration["settings"]["removal_penalty"], 250.0);
 
-        for file in ["latest.bin", "best.bin", "nnue-float.bin"] {
+        for file in ["latest.npz", "best.npz"] {
             compare_checkpoint(&args.output_dir.join(file), &split.output_dir.join(file));
         }
         assert_eq!(
             fs::read(args.output_dir.join("nnue.bin")).unwrap(),
             fs::read(split.output_dir.join("nnue.bin")).unwrap()
         );
-        let latest = Checkpoint::read(split.output_dir.join("latest.bin")).unwrap();
+        let latest = Checkpoint::read(split.output_dir.join("latest.npz")).unwrap();
         assert_eq!(latest.progress.epoch, 2);
         assert_eq!(latest.optimizer.step(), 18);
         assert!(latest.progress.best.unwrap().epoch >= 1);
@@ -1025,6 +1043,13 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
                 "total_steps",
             ] {
                 assert_eq!(left[key], right[key], "{feature_set:?}: {key}");
+                if key.ends_with("loss") {
+                    assert_eq!(
+                        left[key].as_f64().map(f64::to_bits),
+                        right[key].as_f64().map(f64::to_bits),
+                        "{feature_set:?}: {key}"
+                    );
+                }
             }
             assert!(left["validation_loss"].as_f64().unwrap().is_finite());
             if left["epoch"] != 0 {
@@ -1056,7 +1081,7 @@ fn cpu_result_only_training_records_null_teacher_k_and_resumes() {
     args.resume = Some(args.output_dir.clone());
     args.epochs = 2;
     run(args.clone()).unwrap();
-    let checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let checkpoint = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
     assert_eq!(checkpoint.progress.epoch, 2);
     assert_eq!(checkpoint.lambda, 0.0);
 }
@@ -1073,6 +1098,41 @@ fn resume_requires_an_existing_array_without_changing_the_configuration() {
         let error = record::append_resume(&path, &mut config, &args, 1, 1).unwrap_err();
         assert!(error.to_string().contains("resumes must be an array"));
         assert_eq!(config, original);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn cpu_resume_rejects_changed_checkpoint_meta_fields() {
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::nnue::options::DeviceKind::Cpu;
+    let session = Session::new(args.clone()).unwrap();
+    drop(session);
+    args.resume = Some(args.output_dir.clone());
+    let path = args.output_dir.join("latest.npz");
+    let original = fs::read(&path).unwrap();
+    let arrays = crate::nn::npz::decode(&original).unwrap();
+    for field in ["settings", "inputs", "preprocessing"] {
+        let mut changed = arrays.clone();
+        let meta = changed.get_mut("meta").unwrap();
+        let mut value: Value = serde_json::from_slice(&meta.data).unwrap();
+        value["config"][field] = serde_json::json!({"changed": true});
+        meta.data = serde_json::to_vec(&value).unwrap();
+        meta.shape = vec![meta.data.len()];
+        let bytes = crate::nn::npz::encode(
+            &changed
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.clone()))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let error = match Session::new(args.clone()) {
+            Ok(_) => panic!("accepted changed {field}"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains(field), "{error}");
         assert_eq!(fs::read(&path).unwrap(), bytes);
     }
 }

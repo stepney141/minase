@@ -64,7 +64,7 @@ pub struct Args {
     /// CPUのスレッド数。省略時は物理コア数−2、最小1。
     #[arg(long)]
     pub threads: Option<usize>,
-    /// 指定ディレクトリのlatest.binから再開する。
+    /// 指定ディレクトリのlatest.npzから再開する。
     #[arg(long)]
     pub resume: Option<PathBuf>,
 }

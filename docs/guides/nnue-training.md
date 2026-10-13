@@ -97,7 +97,8 @@ GPUのない機械やCPUの参照経路を試す場合は、上記の`minase-tra
 ## 5. 結果を確認する
 
 学習が終わったら、`--output-dir`の`summary.json`で停止理由、最良エポック、および量子化検査の結果を確かめる。
-エンジンが読む重みは`nnue.bin`であり、`nnue-float.bin`は量子化前の最良モデル、`latest.bin`と`best.bin`は再開用のチェックポイントである。
+エンジンが読む重みは`nnue.bin`であり、`latest.npz`と`best.npz`は再開用のチェックポイントである。
+`best.npz`は量子化前の最良モデルを兼ねる。
 各ファイルの欄は、`crates/minase-trainer/src/nnue/train/record.rs`の各記録のdocコメントに、チェックポイントの形式は`crates/minase-trainer/src/nnue/model/checkpoint.rs`の`Checkpoint`のdocコメントにある。
 
 引数、入力、または再開の条件が満たされない場合は、学習を始める前に終了コード1で終わる。
@@ -119,8 +120,8 @@ GPUメモリ使用量の欄はGPU全体の使用量であり、他のプロセ�
 `--resume`には`--output-dir`と同じディレクトリを指定する。
 再開時に変更できるのは`--epochs`、`--patience`、`--time-limit-hours`、および`--threads`だけである。
 `--epochs`は再開前を含む総エポック数、`--time-limit-hours`は再開前を含む累積時間に対する上限として指定する。
-それ以外の設定、入力ファイルの内容、前処理の結果、またはデバイスが記録と異なると、学習器は再開を拒否する。
-学習器は最後に確定したチェックポイント`latest.bin`から復元し、未確定のエポックの記録を捨てて、そのエポックをやり直す。
+それ以外の設定、入力ファイルの識別（パス、バイト長、ヘッダ）、前処理の結果、またはデバイスが記録と異なると、学習器は再開を拒否する。
+学習器は最後に確定したチェックポイント`latest.npz`から復元し、未確定のエポックの記録を捨てて、そのエポックをやり直す。
 再開の履歴は`config.json`の`resumes`に記録されるので、測定記録には再開の回数と変更した予算を書く。
 
 ## 7. GPUでの1更新の時間を測る
@@ -174,7 +175,7 @@ minase-trainer diag nnue-distribution \
 
 ```sh
 minase-trainer diag nnue-removal \
-  --float <出力ディレクトリ>/nnue-float.bin --net <出力ディレクトリ>/nnue.bin \
+  --float <出力ディレクトリ>/best.npz --net <出力ディレクトリ>/nnue.bin \
   --data <データ...> --sample <標本数> --seed <シード> \
   --output <報告.json>
 ```
