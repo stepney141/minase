@@ -15,8 +15,7 @@ LMRの追加減深は、[再診断](../measurements/strength-stage8-improving-be
 
 ## 決定
 
-良化していないノードでは、浅いノードのfutility pruningの余裕値に深さ別の縮小率を掛ける。
-比較には補正前の静的評価を使う。
+良化していないノードでは、浅いノードのfutility pruningの余裕値に深さ別の縮小率を掛け、良化の判定には補正前の静的評価を使う。
 2手前がない場合と、比較の区間にnull moveが入る場合は良化しているとみなし、余裕値を縮めない。
 LMRの減深量はimprovingによって変えない。
 
@@ -27,5 +26,5 @@ LMRの減深量はimprovingによって変えない。
 
 ## 結果
 
-縮小率は`crates/minase/src/search/alphabeta/params.rs`の`NonImprovingFutility1`から`NonImprovingFutility3`である。
+縮小率は`crates/minase/src/search/alphabeta/params.rs`の`NonImprovingFutility1`から`NonImprovingFutility3`であり、判定の詳細は`negamax.rs`の`improving`のdocコメントにある。
 現行のnull moveは手を指さずに`ply`を進めるので、比較の区間に仮想の着手が入る場合を除外する必要がある。

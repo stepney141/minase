@@ -18,10 +18,9 @@ LMR（late move reductions）は、順序付けの後方にある静かな手を
 
 ## 決定
 
-LMRの減深量は、残り深さ`d`と手番号`m`から`floor(ln(d)·ln(m)/c)`を前計算した表の値に、history値による補正`a`を加え、0以上`min(3, d − 2)`以下に切り詰めて求める。
-`a`は、history値が閾値`+H`以上なら−1、`−H`以下なら+1、それ以外は0とする。
-減深後の深さは1以上に保ち、静止探索へは落とさない。
-対象は、置換表の記録手、捕獲手、およびkiller手を除く静かな手である。
+LMRの減深量は、残り深さ`d`と手番号`m`から`floor(ln(d)·ln(m)/c)`を前計算した表の値に、history値が閾値`+H`以上なら−1、`−H`以下なら+1の補正を加え、0以上`min(3, d − 2)`以下に切り詰めて求める。
+この切り詰めにより減深後の深さは1以上に保たれ、静止探索へは落ちない。
+対象は、置換表の記録手、捕獲手、およびkiller手を除く非捕獲手であり、成る非捕獲手も含む。
 
 ## 検討した代案
 
@@ -31,6 +30,6 @@ history値に比例して減深量を連続的に増減する案（`r −= histo
 
 ## 結果
 
-式は`crates/minase/src/search/alphabeta/pruning.rs`の`lmr_reduction`と`lmr_table`にあり、除数`c`と閾値`H`の現行値は`params.rs`の`LmrDivisor`と`LmrHistoryThreshold`にある。
+式の詳細は`crates/minase/src/search/alphabeta/pruning.rs`の`lmr_reduction`と`lmr_table`のdocコメントにあり、除数`c`と閾値`H`の現行値は`params.rs`の`LmrDivisor`と`LmrHistoryThreshold`にある。
 根ではLMRを行わない。
 上限3と3段階の補正は、STCの到達深さが5〜6だった時期の判断なので、到達深さが大きく変わった場合は見直す余地がある。

@@ -16,10 +16,8 @@ Stockfishとやねうら王は、共有置換表への競合する読み書き�
 
 ## 決定
 
-1エントリを2個の`AtomicU64`からなる16バイトとする。
-1語目（critical）には検証キー32ビット、評価値16ビット、深さ8ビット、およびバウンド2ビットを置き、2語目（advisory）には記録手25ビットと世代8ビットを置く。
-書き込み側はadvisoryをRelaxedで書いた後にcriticalをReleaseで公開し、読み取り側はcriticalをAcquireで読んでからadvisoryを読む。
-置換の可否は既存値を読んでから判定し、競合を待たずに書き込む。
+1エントリを2個の`AtomicU64`からなる16バイトとし、評価値によるカットオフに要る検証キー、評価値、深さ、およびバウンドを1語目のcriticalに、記録手と世代を2語目のadvisoryに置く。
+書き込み側はadvisoryを書いた後にcriticalをReleaseで公開し、読み取り側はcriticalをAcquireで読んでからadvisoryを読み、置換の可否は既存値を読んでから判定して競合を待たずに書き込む。
 64ビットの原子値を使えないコンパイル対象は、コンパイル時に拒否する。
 
 ## 検討した代案
@@ -35,4 +33,4 @@ StockfishやC++版のやねうら王と同じく、競合を通常のメモリ�
 設計書は、原子型への置き換えの前後で`Threads=1`の探索結果とbenchの総ノード数が一致することを、次の段階へ進む条件とした。
 ThreadSanitizerによる競合試験は、Lazy SMPの完了時点では実施していない。
 1スロットに複数のエントリを置くクラスタ化は、[置換表を1スロット1エントリの直接マップのまま保つ](keep-transposition-table-direct-mapped.md)が扱う。
-実装は`crates/minase/src/search/alphabeta/tt.rs`にある。
+実装は`crates/minase/src/search/alphabeta/tt.rs`にあり、ビット配置とメモリ順序の詳細は`TranspositionTable`の`probe`と`store`のdocコメントにある。

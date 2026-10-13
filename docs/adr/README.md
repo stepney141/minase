@@ -69,6 +69,25 @@ ADRを導入する前に完了した設計書は、設計判断をその本文�
 移すのは、現在も有効な決定と、再提案を防ぐべき棄却の決定だけであり、すでに置き換えられた決定の連鎖は再現しない。
 たとえば既定の評価関数は11回置き換わったが、ADRには現行の方式を採った決定だけを書き、それ以前の経緯は「コンテキスト」の節から凍結した設計書へリンクする。
 
+## 用語
+
+ADRに繰り返し現れる用語を、ここで定義する。各ADRは、これらの語を説明なしに使う。
+
+採否の測定は、候補と基準の2つのコミットを自己対局で比べる逐次検定で行う。手順と判定の規則の正は[棋力測定の手引き](../guides/sprt.md)にある。
+GSPRTは、同じ開始局面で先後を入れ替えた2局を1ペアとし、ペアごとの得点で対数尤度比（LLR）を更新する逐次検定である。
+`H1`は候補が基準より強いと判定された結果、`H0`は10 Eloの改善があるとは言えないと判定された結果を指す。
+STCは持ち時間10秒と1手0.1秒の加算の短い時間制御、LTCは持ち時間60秒と1手0.2秒の加算の長い時間制御であり、採用はLTCの`H1`で決める。
+有効ペアは、手数の上限に達して破棄されたペアを除いた、統計に算入されたペアである。
+benchは、`minase dev bench`で決まった局面の集合を探索し、ノード数と時間を測る診断である。
+SPSAは、多数の係数を自己対局の結果から同時に調整する手法であり、手順は[SPSAの手引き](../guides/spsa.md)にある。
+
+探索の用語は次のとおりである。
+零窓とは、βがα＋1である探索窓をいい、零窓で探索するノードを非PVノードという。
+PVノードは、窓の幅が1より大きく、最善の応手列である主変化の候補を探すノードである。
+詰み帯とは、評価値の絶対値が`MATE_THRESHOLD`以上で、詰みまでの手数を表す値の範囲をいう。
+疑似利きとは、獅子の捕獲制限などの獅子の特殊規則を考慮せず、駒の動きだけで求めた利きをいう。
+歩兵価値とは、探索用駒価値における歩兵の値であり、探索の係数の多くはこれに対する百分率で表す。
+
 ## 索引
 
 決定日の古い順に並べる。
@@ -79,6 +98,7 @@ ADRを導入する前に完了した設計書は、設計判断をその本文�
 - 2026年8月22日 [`try_make_move`は全合法手との照合で検査する](check-try-make-move-against-all-legal-moves.md)
 - 2026年8月22日 [実行ファイルでmimallocを使う](use-mimalloc-in-executables.md)
 - 2026年8月22日 [探索木の中では規則の裁定を近似し、厳密な裁定をルートと審判層に委ねる](approximate-adjudication-inside-search-tree.md)
+- 2026年8月22日 [王手延長を実装しない](omit-check-extension.md)
 - 2026年8月23日 [探索ワーカー数の既定値を1にする](keep-default-threads-at-one.md)
 - 2026年8月23日 [置換表のエントリを2語の原子値にする](use-atomic-two-word-transposition-entries.md)
 - 2026年8月23日 [補助ワーカーは深さを飛ばし、最も深い反復を完了したワーカーの結果を採る](diversify-lazy-smp-workers-by-skipping-depths.md)
@@ -86,6 +106,7 @@ ADRを導入する前に完了した設計書は、設計判断をその本文�
 - 2026年9月5日 [SEEは獅子規則に依存する交換段階だけを判定不能とする](mark-only-lion-rule-dependent-exchanges-unknown-in-see.md)
 - 2026年9月5日 [静止探索に専用の深さ上限を置かない](omit-quiescence-depth-limit.md)
 - 2026年9月6日 [null moveのverification searchを実装しない](omit-null-move-verification-search.md)
+- 2026年9月6日 [浅いノードの前向き枝刈りは王駒に利きが届くノードでは行わない](skip-static-eval-pruning-when-a-royal-is-attacked.md)
 - 2026年9月7日 [LMRの減深量は対数表に3段階のhistory補正を加えて求める](reduce-lmr-by-log-table-with-stepped-history-adjustment.md)
 - 2026年9月7日 [静かな手のhistoryはbutterfly表だけで引く](keep-only-the-butterfly-history-table.md)
 - 2026年9月8日 [探索用駒価値は学習PSTから導いた値に固定する](derive-search-piece-values-from-the-learned-pst.md)
@@ -98,6 +119,7 @@ ADRを導入する前に完了した設計書は、設計判断をその本文�
 - 2026年9月19日 [ノード数は着手を適用する直前に1つずつ共有カウンタへ数える](count-nodes-per-move-on-shared-counter.md)
 - 2026年9月21日 [correction historyは駒種別の枚数を鍵にし、futilityの判定にだけ使う](key-correction-history-by-material.md)
 - 2026年9月21日 [浅い非PVノードでSEEの損が余裕値を超える捕獲手を展開しない](prune-losing-captures-by-see-at-shallow-nodes.md)
+- 2026年9月21日 [獅子の2段階の非捕獲移動だけを浅く読む減深を実装しない](omit-lion-two-step-quiet-move-reduction.md)
 - 2026年9月21日 [発動率の低い探索手法を実装しない](skip-low-activation-search-techniques.md)
 - 2026年9月28日 [null moveと置換表の打ち切りをPVノードでも行う](allow-null-move-and-tt-cutoff-at-pv-nodes.md)
 - 2026年9月28日 [反復の先読み（upcoming repetition detection）を採らない](reject-upcoming-repetition-detection.md)
@@ -108,7 +130,6 @@ ADRを導入する前に完了した設計書は、設計判断をその本文�
 - 2026年10月4日 [late move pruningは静かな手だけを数え、履歴の条件を付けない](count-only-quiet-moves-for-late-move-pruning.md)
 - 2026年10月4日 [単独で不採用だった探索の8項目を、SPSAで再調整して一括で採用する](adopt-revived-search-items-as-a-bundle.md)
 - 2026年10月4日 [静止探索は実際に読んだ捕獲手の数で打ち切る](limit-searched-captures-in-qsearch.md)
-- 2026年10月4日 [静的評価に基づく枝刈りは王駒に利きが届くノードでは行わない](skip-static-eval-pruning-when-a-royal-is-attacked.md)
 - 2026年10月10日 [butterfly historyと捕獲履歴を対局内で減衰させて持ち越す](carry-history-tables-within-a-game.md)
 - 2026年10月10日 [lishogiのBotの`ByoyomiMargin`を3,000 msにする](set-bot-byoyomi-margin-to-3000-ms.md)
 - 2026年10月10日 [先頭の捕獲手だけをSEEで判定し、損ならkiller手を先に返す](try-killers-before-a-losing-first-capture.md)

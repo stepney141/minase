@@ -19,7 +19,6 @@
 ## 決定
 
 探索内の反復検出は、対局の履歴キーと探索経路のキーの線形走査で行う。
-null moveの部分木では、直近のnull moveより後の経路だけを走査する。
 
 ## 検討した代案
 
@@ -28,6 +27,7 @@ null moveの部分木では、直近のnull moveより後の経路だけを走�
 
 ## 結果
 
-判定は`crates/minase/src/search/alphabeta/searcher.rs`の`is_repetition`にあり、局面キーの配列を共有するだけで追加の状態を持たない。
+判定は`crates/minase/src/search/alphabeta/searcher.rs`の`is_repetition`にあり、対局履歴と探索経路の局面キーの配列のほかに、反復検出のための専用のデータ構造を持たない。
+null moveの部分木で走査する範囲は、[null moveより後の局面だけで反復を検出する](detect-repetition-only-after-latest-null-move.md)が定める。
 2つの測定は、評価関数がNNUEへ置き換わる前のNPSに基づく。
 再提案するときは、現行の評価関数で、長い履歴を与えた対局条件の経過を測り直す必要がある。

@@ -6,7 +6,8 @@
 
 ## コンテキスト
 
-通常探索の手選択器は、置換表の手、捕獲手、killer手、残りの静かな手の順に手を返し、捕獲手はMVV-LVA順に並ぶ。
+通常探索の手選択器は、置換表の手、捕獲手、killer手、残りの静かな手の順に、種類ごとの区切りである段に分けて手を返す。
+捕獲手は、取る駒の価値の合計に捕獲履歴の換算値を加えた値の降順、次に動かす駒の価値の昇順に並ぶ（[ADR](bound-capture-history-and-use-it-in-qsearch.md)）。
 取り合いで損をする捕獲手を先に読むと、β打ち切りを起こしやすい静かな手の探索が遅れる。
 2026年9月28日に完了した[棋力向上段階12](../plans/strength-stage12.md)は、生成した全捕獲手にSEEを計算し、負と判定した手を静かな手の後ろの段へ回す方式を測った。
 [bench](../measurements/strength-stage12-bad-captures-bench.md)では深さ6のノード数が3.54%減った一方でNPSが約9.74%下がり、STCは430有効ペア、得点率45.7%の`H0`だった（[測定記録](../measurements/strength-stage12-bad-captures-stc.md)）。
@@ -14,7 +15,7 @@
 [手の順序付けの改善](../plans/move-ordering.md)は、費用をノードあたり最大1回のSEEに抑える狭い変種を立てた。
 [診断](../measurements/move-ordering-diag.md)では、置換表の記録手がある零窓ノードではSEEが負の先頭捕獲手の97〜99%が既にSEE pruningで枝刈りされていたので、対象を記録手のないノードに絞った。
 この対象では、回避できる見込みの費用が追加の費用を残り深さ1で1.4倍、2で2.3倍、3で4.8倍上回った。
-この変種を含む7候補の構成は、STCが298有効ペアで得点率58.7%、LTCが566有効ペアで得点率54.5%の`H1`となり、一括で採用した（[STC](../measurements/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering-all-ltc.md)）。
+この変種を含む[手の順序付けの改善の7候補](bound-capture-history-and-use-it-in-qsearch.md)の構成は、STCが298有効ペアで得点率58.7%、LTCが566有効ペアで得点率54.5%の`H1`となり、一括で採用した（[STC](../measurements/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering-all-ltc.md)）。
 
 ## 決定
 
