@@ -13,6 +13,7 @@ futility pruningだけをSTCとLTCがともに`H1`で採用し、reverse futilit
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月5日に起案して同日に着手し、2026年9月6日に完了した。
 futility pruningを採用し、reverse futility pruning、late move pruning、null move pruningの減深量の変更、およびrazoringは不採用、verification searchは見送った。
 futility pruningは段階開始版との[STC](../measurements/strength-stage4-futility-stc.md)と[LTC](../measurements/strength-stage4-futility-ltc.md)がともに`H1`かつ異常0件であり、不採用の4項目は[reverse futility](../measurements/strength-stage4-rfp-stc.md)、[late move pruning](../measurements/strength-stage4-lmp-stc.md)、[null move pruningの減深量](../measurements/strength-stage4-nmp-r-stc.md)、[razoring](../measurements/strength-stage4-razoring-stc.md)のSTCがいずれも`H0`であった。

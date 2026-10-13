@@ -12,6 +12,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月1日に起案して同日に着手し、2026年9月2日に完了した。
 捕獲専用生成、評価値の差分更新、および段階的な手選択を採用し、手配列の再利用と反復回数表は不採用とした。
 最終構成は[最終LTC](../measurements/strength-stage1-final-ltc.md)で`H1`かつ異常0件となり、[固定自己対局](../measurements/strength-stage1-elo200.md)と[HaChu戦](../measurements/strength-stage1-hachu-elo200.md)を進捗指標として記録した。

@@ -12,6 +12,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（採用）。2026年10月2日に起案と着手をし、10月3日に完了した。
 世代3の教師データを5ファイル生成し（[生成の記録](../measurements/pst-gen3-generation.md)）、世代2と世代3だけで学習し直した候補G23を採用した。
 G23は、S0に対するSTC（[記録](../measurements/pst-gen3-g23-stc.md)）、全世代で学習したG3との絞り込みのSTC（[記録](../measurements/pst-gen3-g23-vs-g3-stc.md)）、およびS0に対するLTC（[記録](../measurements/pst-gen3-g23-ltc.md)、得点率61.3%）でいずれも`H1`となった。

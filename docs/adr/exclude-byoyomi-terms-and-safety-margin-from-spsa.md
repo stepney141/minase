@@ -26,6 +26,6 @@ SPSAのセッションと採否の段階ゲートは、秒読みのないSTCとL
 ## 結果
 
 秒読みの項の係数を調整するには、秒読みつきの時間制御のセッションが別に要るが、実施は決まっていない。
-後に秒読みが正の時計では、30 msに代えてUSIオプション`ByoyomiMargin`の値を余裕に使う形になり、利用の場面ごとに値を与えている（[lishogiのBotの`ByoyomiMargin`のADR](set-bot-byoyomi-margin-to-3000-ms.md)）。
+後に秒読みのある時計では、30 msに代えてUSIオプション`ByoyomiMargin`の値を余裕に使う形になり、利用の場面ごとに値を与えている（[lishogiのBotの`ByoyomiMargin`のADR](set-bot-byoyomi-margin-to-3000-ms.md)）。
 時間予算を残り時間の割合で抑える係数`HardRemainingShare`は、[打ち切り上限の教訓](../lessons/cap-hard-limit-by-remaining-fraction.md)に従って式に残し、範囲の上限を50%として調整の対象にした。
 係数を表へ加える場合も、秒読みのない対局で勝敗に影響しない係数は、同じ理由で対象から外す。

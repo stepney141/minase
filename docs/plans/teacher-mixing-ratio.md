@@ -14,6 +14,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（不採用）。2026年9月26日に完了した。
 基点の採用PSTをλ=1.0の先読み教師で学習し直した候補は、学習後の診断を通過した（[teacher-mixing-ratio-training](../measurements/teacher-mixing-ratio-training.md)）。
 しかし、STCで`H0`となり（[teacher-mixing-ratio-100-stc](../measurements/teacher-mixing-ratio-100-stc.md)、123ペアで得点率28.0%）、振分け規則に従ってLTCへ進めずに不採用とした。

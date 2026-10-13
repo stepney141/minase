@@ -229,3 +229,4 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月13日 [PST、FM、および同時学習の学習器はCPUで動かし、測定なしにGPUのカーネルを書かない](train-pst-and-fm-on-the-cpu.md)
 - 2026年10月13日 [Pythonの学習器は一度だけ照合した後に撤去し、Rustの学習器だけを正とする](retire-the-python-trainer-after-a-one-time-cross-check.md)
 - 2026年10月13日 [学習器は評価関数ごとに独立したパイプラインを持ち、データの読み込みと汎用の部品だけを共有する](split-training-pipelines-by-evaluation-function.md)
+- 2026年10月13日 [設計書を持つ作業はすべてROADMAPの状態表に載せる](list-every-planned-work-in-the-roadmap.md)

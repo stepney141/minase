@@ -15,6 +15,7 @@ NNUEの学習が停滞していた主因は教師不足ではなく学習器の�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。2026年8月27日に起案し、同日に着手して、2026年8月29日に完了した。
 世代0と世代1を合わせた1,106万局面で再学習した学習PSTを採用し、同じデータで学習したP型NNUEは不採用とした。
 根拠は、再学習PSTの時間制御GSPRTの`H1`と、NNUEの固定ノードと時間制御の両方の`H0`であり、測定記録は [measurements/pst-gen1-tc.md](../measurements/pst-gen1-tc.md)、[measurements/pst-gen1-nodes100k.md](../measurements/pst-gen1-nodes100k.md)、[measurements/nnue-gen1-nodes100k.md](../measurements/nnue-gen1-nodes100k.md)、および [measurements/nnue-gen1-tc.md](../measurements/nnue-gen1-tc.md) にある。

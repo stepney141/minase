@@ -13,6 +13,7 @@ aspiration windowsは採否測定の条件で発動しないため本マイル�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。2026年8月10日に起案し、2026年8月11日に着手し、2026年8月22日に完了した。
 置換表、静止探索、killer手とhistory、null move pruning、late move reductions、および静止探索のdelta pruningは、いずれも同一ノード数の対等条件のGSPRTで採用した（[measurements/tt-nodes100k-gsprt.md](../measurements/tt-nodes100k-gsprt.md)、[measurements/qsearch-nodes100k-gsprt.md](../measurements/qsearch-nodes100k-gsprt.md)、[measurements/killer-history-nodes100k-gsprt.md](../measurements/killer-history-nodes100k-gsprt.md)、[measurements/null-move-nodes100k-gsprt.md](../measurements/null-move-nodes100k-gsprt.md)、[measurements/lmr-nodes100k-gsprt.md](../measurements/lmr-nodes100k-gsprt.md)、[measurements/delta-pruning-nodes100k-gsprt.md](../measurements/delta-pruning-nodes100k-gsprt.md)）。
 mimallocと合法手生成器のVec巻き上げはbenchの実測で両方採用した（[measurements/bench-mimalloc-vec-hoist.md](../measurements/bench-mimalloc-vec-hoist.md)）。

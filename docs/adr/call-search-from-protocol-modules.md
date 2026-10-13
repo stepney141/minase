@@ -29,5 +29,5 @@ USIでは`go infinite`と先読みの探索が`bestmove`を保留し、CECPで�
 
 CECPのGUIは着手を1手ずつ送り全着手列を再送しないので、CECPだけが探索の手を`EngineCommand::ApplyMove`で現局へ適用する。
 USIで探索の手を適用しない理由は、[USI経路では探索の手を対局へ適用せず、局面の同期に失敗した後は着手を返さない](keep-searched-moves-out-of-the-usi-game.md)にある。
-テストは同じ処理を逐次に進める`Protocol::run`を使うので、標準入力のスレッドと`run_channel`の経路は台本テストでは覆えない。
+テストは同じ処理を逐次に進める`Protocol::run`を使うので、標準入力のスレッドと`run_channel`の経路は台本テストでは検査できない。
 この経路を変えたときは、実バイナリで、時計つきの`go`と`stop`、`go infinite`と`stop`、および探索中の`quit`を確かめる必要がある。

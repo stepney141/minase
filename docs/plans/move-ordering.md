@@ -13,6 +13,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（採用）。2026年10月9日にcodexとの議論（[調査メモ](../research/move-ordering-discussion.md)）を経て起案し、同日に着手してフェーズ1の診断（[move-ordering-diag](../measurements/move-ordering-diag.md)）を完了した。2026年10月10日の利用者の決定により候補ごとの採否測定をやめ、候補6を除く7候補を1候補1コミットで積み上げた構成（コミット`ea0c75a`）を、段階開始版（master `b784fe5`）との[STC](../measurements/move-ordering-all-stc.md)（298ペア、得点率58.7%、`H1`）と[LTC](../measurements/move-ordering-all-ltc.md)（566ペア、得点率54.5%、`H1`）で判定し、2026年10月10日に採用して完了した。固定200ペアの進捗指標は[+26.5 Elo](../measurements/move-ordering-elo200.md)（95%信頼区間 −5.4〜+58.9）である。候補6（counter move historyとcontinuation history）は持ち越し状態の再診断を通過したので、表の寸法と初期化の費用を含む設計を別の設計書で起こす。候補4と候補8が加えた係数`CaptureHistoryDecay`、`HistoryBonusScale`、`HistoryMalusScale`は既定値のままであり、次のSPSAの調整セッションの対象とする。
 
 ## 目的

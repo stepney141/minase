@@ -14,6 +14,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。2026年9月15日に起案し、2026年9月16日に着手して2026年9月17日に完了した。
 探索木を変えない段階1、2、4、5、6を採用してNPSは基準比1.3854倍（[段階6のbench比較](../measurements/movegen-speedup-2-stage6-bench-depth5.md)）となり、第1期の採用版との[STC](../measurements/movegen-speedup-2-stage6-stc.md)と[LTC](../measurements/movegen-speedup-2-stage6-ltc.md)はいずれも`H1`かつ異常0件だった。
 探索木を変える段階7、8、9は[事前選別](../measurements/movegen-speedup-2-stage7-9-prescreen-depth5.md)を通過し、1コミットに固定した構成の段階6までの採用版との[STC](../measurements/movegen-speedup-2-stage7-9-stc.md)と[LTC](../measurements/movegen-speedup-2-stage7-9-ltc.md)がいずれも`H1`かつ異常0件で採用した。

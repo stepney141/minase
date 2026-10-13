@@ -16,6 +16,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月12日に起案・着手し、2026年9月14日にフェーズ6までを完了した。
 [鏡映共有](../measurements/strength-stage7-mirror-ltc.md)と[世代2の再学習重み](../measurements/strength-stage7-gen2-ltc.md)を採用し、生成器の手数上限を[4,000手](../measurements/strength-stage7-plycap-trial.md)に確定して、探索用駒価値は[固定値を維持](../measurements/strength-stage7-gen2-values-diag.md)した。
 [段階開始版](../measurements/strength-stage7-gen2-elo200.md)と[HaChu](../measurements/strength-stage7-hachu-elo200.md)に対する固定200ペアを完走し、HaChu側の異常2件は原因調査と反則負けの算入を記録した。

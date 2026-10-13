@@ -15,6 +15,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月6日に起案して同日に着手し、2026年9月7日に完了した。
 順序付けキーの重複計算の除去とLMRの減深量を採用し、駒種と到達升で引くhistoryとmalusは不採用、counter move historyとcontinuation historyは見送った。
 重複計算の除去は[bench](../measurements/strength-stage5-order-key-bench.md)で総ノード数が一致しNPSが低下しなかった。

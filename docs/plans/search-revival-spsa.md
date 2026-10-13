@@ -19,6 +19,7 @@ late move pruningだけは、元の実装が捕獲手も数えてkiller手まで
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（採用）。2026年10月2日に起案し、2026年10月3日に着手して、2026年10月4日に完了した。
 8項目を戻して29係数を[調整](../measurements/search-revival-t.md)した候補T\*（539bc27）は、Mに対して[STC](../measurements/search-revival-tstar-vs-m-stc.md)と[LTC](../measurements/search-revival-tstar-vs-m-ltc.md)でともに`H1`（得点率67.5%と67.4%）となり、8項目を取り除いたT\*′に対しても[STC](../measurements/search-revival-tstar-vs-tprime-stc.md)で`H1`（得点率62.7%）となったので、T\*を採用した。
 すべての測定で異常は0件だった。

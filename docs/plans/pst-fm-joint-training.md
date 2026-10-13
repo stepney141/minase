@@ -18,6 +18,7 @@ J75はSTCの1,245ペアで、J100は328ペアで、ともに`H0`（Elo換算で�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（不採用）。2026年10月7日に起案し、10月8日に着手して完了した。
 J75とJ100はどちらもMに対するSTCで`H0`となり、採用しなかった（[J75のSTC](../measurements/pst-fm-joint-training-j75-stc.md)、[J100のSTC](../measurements/pst-fm-joint-training-j100-stc.md)、[学習の記録](../measurements/pst-fm-joint-training-training.md)）。
 

@@ -13,6 +13,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。2026年9月22日に起案し、2026年9月23日に完了した。
 結論は採用である。項目1の候補は[事前の判定](../measurements/lookahead-teacher-shelter-training.md)で見送ったが、利用者の指示で学習PSTを先読み教師（γ=0.9、n=40）で学習し直した候補（項目1を含まない）を測り、[STC](../measurements/lookahead-teacher-pst-stc.md)はH1（有効325ペア、五分類[44, 10, 166, 14, 91]、LLR 2.96、異常0件）だった。
 LTC（`lookahead-teacher-pst-ltc`）の完了を待たずに採用したのは利用者の決定であり、[SPRTの手引き](../guides/sprt.md)が定める採用の手順（LTCのH1）からの逸脱として記す。LTCは記録のために走らせていたが、利用者の指示で104ペア（LLR +1.06、判定保留）の時点で[中止した](../measurements/lookahead-teacher-pst-ltc.md)。

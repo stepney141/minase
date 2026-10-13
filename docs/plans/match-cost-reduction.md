@@ -16,6 +16,7 @@ H1の変更は「検定が検出を保証する最小の改善」を5 Eloから1
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月3日に起案し、2026年9月4日に完了した。
 GSPRTの仮説H1を10 Elo、LTCの時間制御を`time=60000+200`とし、煙試験の記録は [match-cost-ltc-smoke](../measurements/match-cost-ltc-smoke.md) である。
 

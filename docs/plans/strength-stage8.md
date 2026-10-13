@@ -15,6 +15,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。2026年9月17日に起案し、2026年9月19日に着手して、2026年9月21日に完了した。段階開始版はmasterのコミット`dfdbe40`である。
 SEE pruningは[STC](../measurements/strength-stage8-see-capture-stc.md)と[LTC](../measurements/strength-stage8-see-capture-ltc.md)が、correction historyは[STC](../measurements/strength-stage8-correction-stc.md)と[LTC](../measurements/strength-stage8-correction-ltc.md)が、いずれも`H1`かつ異常0件となり採用した。
 improvingフラグは、利用者の決定で発動の指標を手の単位へ改めて実行したが、[STC](../measurements/strength-stage8-improving-stc.md)が`H0`となり不採用とし、実装をコードから外した。history pruningはフェーズ1の[診断](../measurements/strength-stage8-pruning-bench.md)で適格な候補がなく見送った。

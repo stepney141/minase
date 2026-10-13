@@ -14,6 +14,7 @@ J75のPSTとFMの重みは固定し、bだけを0から1の範囲で調整する
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（採用）。2026年10月8日に起案し、同日に着手して完了した。
 J75の重みを固定して`FmScale`だけを調整した[SPSA](../measurements/fm-scale-spsa.md)は611（b≈0.597）を与え、焼き込んだ[候補](../measurements/fm-scale-spsa-candidate.md)は[STC](../measurements/fm-scale-spsa-stc.md)と[LTC](../measurements/fm-scale-spsa-ltc.md)でともに`H1`（LTCの得点率66.6%、Elo換算で約+120）となり採用した。
 

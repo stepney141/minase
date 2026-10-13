@@ -9,13 +9,13 @@
 リポジトリのworkspaceは`[workspace.lints.rust]`で`unsafe_code = "forbid"`を定め、エンジン`minase`とライブラリ`minase-core`はこれを継承している。
 [Rust製NNUE学習器](../plans/nnue-trainer-rust.md)はGPUで学習するために、CUDAのドライバとNVRTCをcudarcから使う。
 cudarcのカーネル起動とページ固定メモリ（OSが移動しないと保証したホストメモリ）の確保は`unsafe`を要する。
-教師データのファイルをmemmap2でメモリに写す`map`も、ファイルが写している間に変更されないことを呼び手が保証する前提の`unsafe`な関数である。
+教師データのファイルをmemmap2でメモリへマップする`map`も、マップしている間にファイルが変更されないことを呼び手が保証する前提の`unsafe`な関数である。
 
 ## 決定
 
 学習器のクレート`crates/minase-trainer`だけはworkspaceのlintを継承せず、`unsafe`を許す。
 `minase`と`minase-core`は`unsafe_code = "forbid"`を保つ。
-学習器の中でも、`unsafe`はGPUの処理を置く`nnue::gpu`と、教師データを写す`data`モジュールの`unsafe fn`である`Dataset::open`と内部の`MappedFile::open`、およびそれらの呼び出し箇所に限り、各ブロックに前提条件を書く（詳細は`nnue::gpu`と`Dataset::open`のdocコメントにある）。
+学習器の中でも、`unsafe`はGPUの処理を置く`nnue::gpu`と、教師データをメモリへマップする`data`モジュールの`unsafe fn`である`Dataset::open`と内部の`MappedFile::open`、およびそれらの呼び出し箇所に限り、各ブロックに前提条件を書く（詳細は`nnue::gpu`と`Dataset::open`のdocコメントにある）。
 
 ## 検討した代案
 

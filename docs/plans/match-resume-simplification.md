@@ -13,6 +13,7 @@ fishtest、fastchess、cutechess-cli、およびやねうら王系のAyaneは、
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（採用）。
 2026年10月5日に起案し、同日に3つのフェーズを終えてmasterへ統合した。
 対局測定とSPSAの再開は実行条件を`manifest.json`から読み、runnerと測定機は起動ごとに`invocations.json`へ記録する。

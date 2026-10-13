@@ -15,6 +15,7 @@ QとQcは、その時点の重みで静止探索の値を決めた末端を区�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（不採用）。2026年9月27日に起案し、9月28日に着手して、9月30日に完了した。
 学習目標を静止探索の出力へ変えた候補Qは[Q対RのSTC](../measurements/qsearch-output-q-vs-r-stc.md)で`H0`となり、捕獲局面を加えた候補Qcは[Qc対QのSTC](../measurements/qsearch-output-qc-vs-q-stc.md)で上限3,000ペアに達した時点のLLRが負だったので、どちらもS0との採否測定へ進まず、採用候補なしとして完了した。
 QとQcは、[整合性の検査と採否前の診断](../measurements/qsearch-output-diagnostics.md)では除外されておらず、比較用のSTCで除外された。

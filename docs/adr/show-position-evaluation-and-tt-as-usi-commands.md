@@ -16,7 +16,7 @@ minaseのUSI層には、lishogiのBotブリッジ、開発用GUI、および対�
 ## 決定
 
 局面を表示する`d`、評価の内訳を表示する`eval`、および現局面と全子局面の置換表の項目を表示する`tt`を、`position`の後に受け付けるUSIの独自コマンドとし、置換表の照会は表を書き換えない。
-`eval`と`tt`の各行は`info string`で始めて`info string end`で終え、`d`だけは端末で読む表示として素の行で出力する。
+`eval`と`tt`の各行は`info string`で始めて`info string end`で終え、`d`だけは端末で読む表示として接頭辞のない行で出力する。
 USI層は未知のコマンドに`info string error: unknown command <先頭の語>`を返し、出力の細目は`UsiProtocol::handle_diagnostic`のdocコメントにある。
 
 ## 検討した代案

@@ -9,7 +9,7 @@
 [ライブラリとエンジンのcrate分割](../plans/crate-split.md)は、1つだったcrateをライブラリとエンジンに分け、それぞれに別のライセンスを与えた（[ライブラリをMIT、エンジンをGPL-3.0-or-laterで配布する](license-library-under-mit-and-engine-under-gpl.md)）。
 crateの配布物には、そのcrateのディレクトリより外のファイルを含められない。
 対局ハーネスの`commit:`指定と`scripts/bench_compare.py`は他のコミットを`target/`の下へ展開してビルドし、他のブランチのworktreeは`data/`と`.claude/`の下に置かれる。
-分割前のコミットのCargo.tomlは`[workspace]`を持たないので、Cargoは親ディレクトリのワークスペースを見つけると、それらのビルドを拒否する。
+分割前のコミットのCargo.tomlは`[workspace]`を持たないので、Cargoは親ディレクトリのワークスペースを見つけると、展開したパッケージがそのメンバーに含まれていないとしてビルドを拒否する。
 
 ## 決定
 

@@ -15,6 +15,7 @@ Minaseでは、置換表をデータ競合のない原子型の16バイトエン
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。2026年8月13日に起案し、2026年8月22日に着手して、2026年8月23日に完了した。
 結論は、静止探索の置換表利用と最深ワーカー採用・深さスキップを組み合わせた第2版が、時間制御で`Threads=2`が`Threads=1`に対してElo +62.1（95%信頼区間［+41.5, +83.0］）を示したため、GSPRTが上限500ペアで判定保留であった点を規定からの逸脱として明記したうえで採用したことである。
 根拠は [measurements/lazy-smp-v2-threads2-tc.md](../measurements/lazy-smp-v2-threads2-tc.md) にあり、単一ワーカーの静止探索の置換表は [measurements/qsearch-tt-nodes100k.md](../measurements/qsearch-tt-nodes100k.md) で採用した。

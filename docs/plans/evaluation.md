@@ -14,6 +14,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは完了である。
 2026年8月25日に起案し、2026年8月26日に着手して同日に完了した。
 最終採用は学習PSTであり、v0基準に対する時間制御GSPRTは`H1`（[measurements/pst-gen0-tc.md](../measurements/pst-gen0-tc.md)）、世代0の100万局面で学習したP型NNUEは学習PSTに対する固定ノードGSPRTで`H0`（[measurements/nnue-gen0-nodes100k.md](../measurements/nnue-gen0-nodes100k.md)）であった。

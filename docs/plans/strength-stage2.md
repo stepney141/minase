@@ -17,6 +17,7 @@ fail-low（反復の評価値が前回を大きく下回り、最善手が崩れ
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月2日に起案して同日に着手し、2026年9月4日に完了した。
 予算式、反復継続の判断、および`position`再生の差分適用を採用し、停止理由の記録を段階開始版として残した。
 予算式は[STC](../measurements/strength-stage2-budget-stc.md)と[LTC](../measurements/strength-stage2-budget-ltc.md)、反復継続の判断は[STC](../measurements/strength-stage2-iteration-stc.md)と[LTC](../measurements/strength-stage2-iteration-ltc.md)がいずれも`H1`であり、[秒読みの煙試験](../measurements/strength-stage2-byoyomi-smoke.md)は時間切れ0件、[固定自己対局](../measurements/strength-stage2-elo200.md)は+113.9 Elo、[HaChu戦](../measurements/strength-stage2-hachu-elo200.md)は+149.3 Eloを進捗指標として記録した。

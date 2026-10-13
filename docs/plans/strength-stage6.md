@@ -15,6 +15,7 @@ aspiration windows、internal iterative reduction、および最善手安定時�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月10日に起案して同日に着手し、2026年9月12日に完了した。
 aspiration windows（[STC](../measurements/strength-stage6-aspiration-stc.md)、[LTC](../measurements/strength-stage6-aspiration-ltc.md)）、internal iterative reduction（[STC](../measurements/strength-stage6-iir-stc.md)、[LTC](../measurements/strength-stage6-iir-ltc.md)。LTCは外部のOOMによる時間切れ11件を伴うが、利用者の決定により逸脱を記録して採用）、および最善手安定時の早期終了（[STC](../measurements/strength-stage6-stable-stc.md)、[LTC](../measurements/strength-stage6-stable-ltc.md)）を採用した。
 fail-lowによる延長（[STC](../measurements/strength-stage6-faillow-stc.md)）、最善手交替時の延長（[STC](../measurements/strength-stage6-bmchange-stc.md)）、および[係数の再導出](../measurements/strength-stage6-coefficients-diag.md)で唯一基準を超えた`MIN_MOVES = 130`（[STC](../measurements/strength-stage6-coefficients-stc.md)）は`H0`で不採用とし、実装を外した。

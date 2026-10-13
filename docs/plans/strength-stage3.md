@@ -16,6 +16,7 @@ SEEの前提として、ある升を取れる駒の集合を幾何だけで求�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 本マイルストーンは2026年9月5日に起案して同日に着手し、同日に完了した。
 駒価値の再調整と`attackers_to_by`とSEEを採用し、静止探索の深さ上限は発動しない改良として見送った。
 駒価値の再調整は[STC](../measurements/strength-stage3-values-stc.md)と[LTC](../measurements/strength-stage3-values-ltc.md)、SEEは[STC](../measurements/strength-stage3-see-stc.md)と[LTC](../measurements/strength-stage3-see-ltc.md)がいずれも`H1`かつ異常0件であり、深さ上限は[深さ分布のbench](../measurements/strength-stage3-qsearch-depth-bench.md)で深さ8以上が0.82%と基準を下回った。

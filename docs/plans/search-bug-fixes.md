@@ -14,6 +14,7 @@ null moveの件は探索の正しさの修正なので、利用者の決定に�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（一部不採用）。2026年9月28日に起案して着手し、2026年9月29日に完了した。
 null moveをまたぐ反復の修正は、非劣性のSTC（[search-bug-fixes-null-move-noninferiority-stc](../measurements/search-bug-fixes-null-move-noninferiority-stc.md)、masterの得点率45.7%）とLTC（[search-bug-fixes-null-move-noninferiority-ltc](../measurements/search-bug-fixes-null-move-noninferiority-ltc.md)、masterの得点率48.0%）でともに`H0`となり、採用してmasterへ統合した。
 delta pruningの件の修正は、診断のSTCで修正前の版がわずかに強い方向の結果（[search-bug-fixes-delta-promotion-diag-stc](../measurements/search-bug-fixes-delta-promotion-diag-stc.md)、判定なし）となり、利用者の決定により取り込まなかった。

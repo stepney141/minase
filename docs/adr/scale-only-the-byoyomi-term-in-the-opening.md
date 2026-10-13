@@ -30,7 +30,7 @@ Aperyのように序盤で秒読みの項を外す案は、項の有無を切り
 このため採否はGSPRTではなく、秒読みのない入力で予算値が変わらない単体テスト、固定深さのbench総ノード数の一致、および時計の診断で判定した。
 [時計の診断](../measurements/time-management-opening-coefficient-diag.md)では、issueの条件の初手は11,891 msから4,010 msになり、時間切れは0件だった。
 秒読みつきの参考測定では、有効290ペアの点推定が−1.2 Elo、95%信頼区間が−28.4〜+26.0 Eloだった（[記録](../measurements/time-management-opening-coefficient-elo.md)）。
-masterを候補にした非劣性のGSPRTは有効3,574ペアでLLR −2.989の`H0`であり、10 Elo規模の低下は検出されなかった（[記録](../measurements/time-management-opening-coefficient-noninferiority.md)）。
+masterを候補、変更を含む統合ブランチを基準にした非劣性のGSPRTは有効3,574ペアでLLR −2.989の`H0`であり、10 Elo規模の低下は検出されなかった（[記録](../measurements/time-management-opening-coefficient-noninferiority.md)）。
 始値0.1と長さ40 plyはAperyの値を借りた設計上の判断値であり、測定で調整した値ではない（[同じ調査](../research/time-management-byoyomi-survey.md)）。
 Lishogi-Botは各対局の最初の1手を`movetime 1000`で探索させるので、lishogiでは係数が2手目以降の長考を絞る（[USI原典仕様とlishogi系拡張の調査](../research/protocols/usi-lishogi.md)）。
 参考測定は評価関数がPSTとFMだった時期の構成で行ったので、係数の値を変える提案には現行の構成で秒読みつきの測定をやり直す必要がある。

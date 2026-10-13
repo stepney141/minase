@@ -23,6 +23,6 @@
 
 ## 結果
 
-公開パスが変わる移動は、互換性を壊す変更としてtypeの直後に`!`を付け、本文に`BREAKING CHANGE:`フッターを書いてコミットする（CONTRIBUTING.mdの「コミットとリリース」）。
+公開パスが変わる移動は、互換性を壊す変更としてConventional Commitsのtypeの直後に`!`を付け、本文に`BREAKING CHANGE:`フッターを書いてコミットする（CONTRIBUTING.mdの「コミットとリリース」）。
 crate分割では、エンジンの公開APIから`minase::Position`などが消えたので、エンジンの主版数を上げた（[crateごとに版数を付けてリリースする](release-each-crate-separately-and-publish-by-hand.md)）。
 外部の利用者が旧パスを使っていた場合は、移動のたびに書き換えが要る。

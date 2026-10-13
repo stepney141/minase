@@ -12,11 +12,11 @@ FMの補正は、入力の線形和を二乗する活性化を持つ隠れ層と
 [NNUEによるPST＋FMの完全代替](../plans/nnue-replacement.md)は、現行のPSTを線形の経路として内包する幅128のNNUEを学習した。
 このNNUEは、基準のPST＋FM（コミット`8d0e382`）に対する段階ゲートで、[STC](../measurements/nnue-replacement-stc.md)が104有効ペアのペンタノミアル度数[0, 0, 24, 0, 80]で`H1`となった。
 [LTC](../measurements/nnue-replacement-ltc.md)も104有効ペアの[0, 0, 17, 0, 87]で`H1`となり、異常は0件だった。
-PSTとFMのコードは、駒得評価v0と同じく、学習した評価関数を比べる基準としての役割を持っていた。
+PSTとFMのコードは、最初の手書きの駒得評価v0と同じく、学習した評価関数を比べる基準としての役割を持っていた。
 
 ## 決定
 
-探索が使う評価関数を、`crates/minase/nets/nnue.bin`を`include_bytes!`でバイナリに埋め込んだNNUEの1つにする。
+探索が使う評価関数を、`crates/minase/nets/nnue.bin`を`include_bytes!`でバイナリに埋め込んだNNUEだけにする。
 PST単独、PST＋FM、および駒得評価v0のコードは、`eval/pst/`と`handcrafted.rs`にテストごと残し、探索からは呼ばない。
 埋め込んだ重みファイルは起動時に1回だけ検証し、失敗すれば停止する（詳細は`nnue::weights`と`Network::decode`のdocコメントにある）。
 

@@ -10,7 +10,7 @@ aspiration windowsは、反復深化の各反復で、前回の評価値を中�
 [探索部](../plans/search.md)の時点では、深さ5以上の反復が採否測定の条件で常用されなかったので見送った。
 [棋力向上段階6](../plans/strength-stage6.md)では、段階5の保存記録でSTCの完了深さの最頻値が6、LTCが8になっていたので、深さ5以上を対象に実装した。
 STCは223有効ペアでLLR +2.979、LTCは180有効ペアでLLR +2.961の`H1`であり、異常は0件だった（[STC](../measurements/strength-stage6-aspiration-stc.md)、[LTC](../measurements/strength-stage6-aspiration-ltc.md)）。
-USIには窓外れを伝える`lowerbound`と`upperbound`の語彙がある。
+USIには窓外れを伝える`lowerbound`と`upperbound`のキーワードがある。
 しかし対局ハーネスは最後の`info`行の深さと経過時間を手の記録として保存するので、窓外れの行を出すと、読み直しの途中で探索時間の上限であるhard limitに達した手の記録が未完了の反復の値になる。
 2026年9月28日に完了した[棋力向上段階12](../plans/strength-stage12.md)では、連続したfail-highの回数だけ読み直しを浅くする変更を測った。
 この変更はStockfishとEtherealで効果が記録されていた（[未導入の棋力向上手法の調査](../research/unplanned-strength-techniques-survey.md#優先候補は既存機構の小改良に集まる)）。
@@ -26,7 +26,7 @@ USIには窓外れを伝える`lowerbound`と`upperbound`の語彙がある。
 
 外れなかった側の端を中点へ寄せる方式は、読み直しの回数を減らす一方で窓の意味を複雑にするので採らなかった。
 連続したfail-highの回数だけ読み直しを浅くする方式は、上記のとおりSTCで`H0`だったので採らなかった。
-窓外れを`lowerbound`または`upperbound`の`info`行で出力する方式は、上記のとおり保存記録の手の記録を未完了の反復の値にするので採らなかった。
+窓外れを`lowerbound`または`upperbound`の`info`行で出力する方式は、上記のとおり保存記録に残る手の深さと経過時間を未完了の反復の値にするので採らなかった。
 補助ワーカーに主ワーカーの評価値を使わせる方式は、`Threads`の既定値が1で採否測定も1スレッドで行うので、実装を共有する利点を優先して採らなかった。
 
 ## 結果

@@ -13,7 +13,7 @@ fishtestとOpenBenchは調整の管理をサーバーが行い、対局はチェ
 
 ## 決定
 
-SPSAの反復は`minase spsa`という別のコマンドで回し、`minase match run`にはSPSAのモードも、側ごとに`setoption`を送る引数も足さない。
+SPSAの反復は`minase spsa`という別のコマンドで実行し、`minase match run`にはSPSAのモードも、側ごとに`setoption`を送る引数も足さない。
 エンジンの起動と通信、1局と1ペアの進行、開始局面の生成、およびコミットのビルドは、公開APIとは扱わない`#[doc(hidden)]`のライブラリのモジュール`minase::harness`として両コマンドが共有する。
 `harness`のプレイヤー設定は`usiok`の後、`isready`の前に送る`setoption`の列を持ち、`match_runner`はこの列を常に空で使う。
 

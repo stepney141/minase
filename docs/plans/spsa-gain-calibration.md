@@ -16,6 +16,7 @@ SPSAは、全係数を正負へ少しずらした2つの設定θ+とθ−を対�
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。2026年9月25日に起案し、2026年9月26日に完了した。
 [模擬比較](../measurements/spsa-gain-simulation.md)の選定規則は一定の利得C2を選んだが、追加の診断を受けた利用者の決定により、終了時の摂動幅を範囲の1/6とし、fishtestの既定の指数で減衰させるC5を`spsa_runner`の既定値とした。
 C5による3,000ペアの[実セッション](../measurements/spsa-stage9-20260925-c5.md)で調整した22係数は、[STC](../measurements/spsa-stage9-20260925-c5-stc.md)と[LTC](../measurements/spsa-stage9-20260925-c5-ltc.md)でともに`H1`となり、異常0件で採用した。

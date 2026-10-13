@@ -18,6 +18,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了（一部不採用）。2026年10月3日に起案し、10月4日に着手して、10月5日に完了した。
 本体の検証は不採用である。現行の学習器はG23を再現し（[記録](../measurements/eval-coadaptation-trainer-reproduction.md)）、Pλは学習後の診断を通過した（[記録](../measurements/eval-coadaptation-lambda100-training.md)）。第0段のE0は−151.1 Elo（95%信頼区間 −177.5〜−125.1、[記録](../measurements/eval-coadaptation-before-stc400.md)）、29係数の調整は異常なく係数の移動は小さく（[記録](../measurements/eval-coadaptation-spsa.md)）、第1段の回復量Rは−10.8 Elo（95%信頼区間 −45.9〜+25.4）で「回復を示せない」だった（[記録](../measurements/eval-coadaptation-after-stc400.md)）。CλとCλ\*のコードはブランチ`eval-search-coadaptation`にだけ残し、評価関数の採否の手順は変えない。
 利用者の指示による追加診断では、Pλを含むλ=1.0の重みは評価値の散らばりの尺度を変えておらず、互角に近い局面の評価の並びを大きく入れ替えていた（[記録](../measurements/eval-coadaptation-distribution.md)）。G23の上へλ=0.75のまま同じ10エポックを重ねたCcは、固定400ペアでS0に+55.1 Eloで勝ち（[記録](../measurements/eval-coadaptation-lambda075-stc400.md)）、Pλの負けは混合比λ=1.0に結び付いた。

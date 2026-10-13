@@ -13,6 +13,7 @@
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。
 2026年9月7日に起案と着手、2026年9月8日に完了した。
 2端点PSTを採用する。根拠は[LTC](../measurements/pst-tapered-adoption-ltc.md)の`H1`（187有効ペア、ペンタノミアル[21, 2, 84, 0, 80]、LLR +2.970、異常0件）であり、[STC](../measurements/pst-tapered-adoption-stc.md)も`H1`であった。

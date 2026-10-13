@@ -16,6 +16,7 @@ SPSA中の対局結果は採用の根拠にしない。
 
 ## 状態
 
+本書は完了時点で凍結した記録であり、以後の変更を反映しない。現行の仕様はコードのdocコメントに、設計判断は[docs/adr/](../adr/README.md)にある。
 完了。基盤の実装と[調整手順](../guides/spsa.md)を整え、[最初の調整セッション](../measurements/spsa-stage9-20260923.md)で1,500反復×8ペアを実施した。
 [時間切れ事前確認](../measurements/spsa-stage9-20260923-safety.md)と[候補の事前対局](../measurements/spsa-stage9-20260923-smoke.md)では、時間切れとエンジン異常が0件だった。
 [STCの採否測定](../measurements/spsa-stage9-20260923-stc.md)と[LTCの採否測定](../measurements/spsa-stage9-20260923-ltc.md)は2026年9月25日にいずれも`H1`で終了し、エンジン異常、時間切れ、および拒否着手は0件だった。
