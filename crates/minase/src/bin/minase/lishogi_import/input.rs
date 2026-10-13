@@ -1,4 +1,30 @@
 //! lishogiのゲームNDJSONの型と持ち時間の解釈。
+//!
+//! # 入力NDJSON
+//!
+//! UTF-8の各行を独立したJSONオブジェクトとして読む。
+//! 見出し、空行、コメント行は認めず、未知のキーは読み飛ばす。
+//! マジックと版欄はない。
+//!
+//! | キー | 型 | 内容 |
+//! |---|---|---|
+//! | `id` | 文字列、必須 | 空白を含まない空でない棋譜IDを指定する。 |
+//! | `moves` | 文字列、必須 | 空白で区切ったUSI着手列を指定する。 |
+//! | `variant` | 文字列またはnull、省略可 | 対局の変種を示す。 |
+//! | `initialSfen` | 任意のJSON値、省略可 | 初期局面指定の有無を示し、nullでも欄があれば指定ありとして保持する。 |
+//! | `players` | オブジェクトまたはnull、省略可 | `sente`と`gote`に対局者を収める。 |
+//! | `rated` | 真偽値またはnull、省略可 | レーティング対局かを示す。 |
+//! | `speed` | 文字列またはnull、省略可 | 持ち時間の区分を示す。 |
+//! | `status` | 文字列またはnull、省略可 | 終局状態を示す。 |
+//! | `winner` | 文字列またはnull、省略可 | 勝者を示す。 |
+//! | `clock` | 任意のJSON値、省略可 | リアルタイム対局の時計情報を保持する。 |
+//! | `daysPerTurn` | 任意のJSON値、省略可 | 通信対局の持ち時間を保持する。 |
+//!
+//! `players.sente`と`players.gote`は省略可能なオブジェクトまたはnullである。
+//! 各対局者は`user`、`aiLevel`、`rating`、`provisional`を持ち、いずれも省略またはnullを許す。
+//! `user`は省略可能な文字列`title`を持つオブジェクト、`aiLevel`は任意のJSON値、
+//! `rating`はi32、`provisional`は真偽値である。
+//! 欄の復号後、採用する棋譜の条件は[`super::filter::metadata_exclusion`]で別に判定する。
 
 use serde::Deserialize;
 use serde_json::Value;

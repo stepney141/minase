@@ -1,4 +1,37 @@
 //! 対局実行条件と完了ペアの永続化。
+//!
+//! # 対局測定の実行ディレクトリ
+//!
+//! 全JSONはUTF-8で、各構造体のフィールド名をそのままキーにする。
+//! 任意値の欠測は`null`として書き、列挙型の名前は小文字のスネークケースとする。
+//!
+//! `manifest.json`は[`RunManifest`]を1個保存し、`format_version`は5である。
+//! `ponder`は先読みの真偽、`candidate`と`baseline`は`identity`と`limit`を持つエンジン設定である。
+//! `identity`は[`EngineIdentity`]の`kind`つきオブジェクトである。
+//! `limit`は`kind="fixed"`なら`depth`と`nodes`、`kind="time"`なら
+//! `base_ms`、`increment_ms`、`byoyomi_ms`を持ち、時間の単位はミリ秒である。
+//! `rules_source`は起動時の規則指定、`canonical_rules`は審判用の規則コードの文字列配列である。
+//! `mode`は`kind="elo"`、または`kind="gsprt"`と数値の`h0_elo`、`h1_elo`、`alpha`、`beta`である。
+//! `seed`はu64の基本シード、`max_ply`はu32の手数上限、`response_timeout_secs`はu64の応答待ち秒数である。
+//! `engine_threads`と`hash_mb`はそれぞれ`candidate`と`baseline`を持ち、探索ワーカー数と置換表容量MBを表す。
+//! `concurrency`は同時に実行するペア数である。
+//!
+//! `invocations.json`は[`Invocation`]の配列で、各要素は`runner`、`cpu`、`target_pairs`を持つ。
+//! `runner`の`version`はパッケージ版、`sha256`は実行ファイル全体の検査和の文字列である。
+//! `cpu`は機種名`model`、物理コア数`physical_cores`、論理コア数`logical_cores`、
+//! 実メモリ容量バイト数`physical_memory_bytes`を持ち、物理コア数とメモリ容量の欠測は`null`である。
+//! `target_pairs`はその起動の目標ペア数u64である。
+//!
+//! `summary.json`は[`RunSummary`]を1個保存する。
+//! `active_wall_time_ns`は完了ペアを待つ有効実行時間の累計u64で、単位はナノ秒である。
+//! `interrupted`は正常終了しなかった起動があるか、`invocation_active`は対局を進める起動が進行中かを表す真偽値である。
+//! 勝敗やEloの統計はこのファイルには含めない。
+//!
+//! `pairs/<20桁のペア番号>.json`は1起算の番号ごとに[`PairRecord`]を保存する。
+//! 欄と入れ子の構造は[`minase::harness::PairRecord`]に定める。
+//! `.manifest.json.tmp`、`.invocations.json.tmp`、`.summary.json.tmp`、
+//! `pairs/.<20桁のペア番号>.json.tmp`は確定前の一時ファイルである。
+//! ロックファイル`.match_runner.lock`と原子的保存は[`minase::harness::lock_run_directory`]に定める。
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};

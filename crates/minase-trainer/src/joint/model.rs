@@ -1,3 +1,8 @@
+//! 同時学習の初期NPZを読み、PSTとFMを復元する。
+//! `--pst-init`の端点配列は[`crate::pst::encode_pst_npz`]、`--fm-init`の3配列は[`crate::fm::npz`]に定める。
+//! [`super::export`]が書く5配列のNPZも、必要な配列を含む入力として使える。
+//! 端点は`<f4`、FMの`V`と`a`は`<f4`または`<f8`、`mask`は`|b1`の0または1だけを受け付ける。
+
 use super::{Gradients, Result};
 use crate::{fm, nn::npz, pst};
 use minase::eval::{

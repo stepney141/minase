@@ -1,4 +1,33 @@
 //! 実行条件と起動の保存、および適用順によるθの復元。
+//!
+//! # SPSAの実行ディレクトリ
+//!
+//! JSONにはマジックも版欄もなく、UTF-8で各構造体のフィールド名をキーとして保存する。
+//! `manifest.json`は[`Manifest`]を1個保存する。
+//! `engine`は[`EngineIdentity`]、`engine_sha256`は起動する実行ファイル全体のSHA-256文字列である。
+//! `settings`は`parameters`、`alpha`、`gamma`、`a`、`iterations`、`pairs_per_iteration`、`seed`、`concurrency`を持つ。
+//! `parameters`は係数順の配列で、各要素の`name`、`start`、`min`、`max`、`c_end`、`r_end`は[`super::params::Parameter`]に従う。
+//! `alpha`と`gamma`は利得の減衰指数、`a`は安定化定数、`iterations`は総反復数である。
+//! `pairs_per_iteration`は1反復のペア数、`seed`は基本シード、`concurrency`は同時対局ペア数である。
+//! `each`は探索制限の文字列、`rules_source`は規則指定、`canonical_rules`は規則コードの文字列配列である。
+//! `max_ply`は手数上限u32、`response_timeout_secs`は応答待ち秒数u64である。
+//!
+//! `invocations.json`は起動順の配列で、各要素は`runner`と`cpu`を持つ。
+//! `runner`は`version`と`sha256`、`cpu`は`model`、`physical_cores`、`logical_cores`、`physical_memory_bytes`を持つ。
+//! それぞれの意味と型は[`HarnessRecord`]と[`CpuRecord`]に従い、欠測の任意値は`null`である。
+//!
+//! `iterations/<20桁の反復番号>.json`は[`IterationRecord`]を1個保存する。
+//! `k`は1起算の反復番号u64、`application`は1起算の更新適用番号u64で、並列実行では順序が異なり得る。
+//! `flip`は係数順の−1または1の配列、`theta`は更新後の実数係数の配列、`d`は反復内の勝ち数と負け数の差i64である。
+//! `pairs`の各要素は`values`、`category`、`terminations`、`failures`、`abnormal_games`を持つ。
+//! `values`はペア通し番号u64の`number`と係数順のi32配列`plus`と`minus`を持つ。
+//! `category`は候補側であるθ+のペア分類0〜4か`null`、`terminations`は2局の終局理由である。
+//! `abnormal_games`は反則負けの局だけを収め、各要素の`opening`と`game`は[`minase::harness::PairRecord`]に従う。
+//! `failures`は反復全体と各ペアの両方にあり、`illegal_moves`、`crashes`、`timeouts`、`time_forfeits`、`rejected_moves`の件数をu64で持つ。
+//!
+//! `.manifest.json.tmp`、`.invocations.json.tmp`、`iterations/.<20桁の反復番号>.json.tmp`は確定前の一時ファイルである。
+//! `.match_runner.lock`とJSONの原子的保存は[`minase::harness::lock_run_directory`]に従う。
+//! θ専用ファイルや`summary.json`は作らず、反復の保存記録から最終値を再計算する。
 
 use super::model::{IterationRecord, Settings, flips, update};
 use minase::harness::{

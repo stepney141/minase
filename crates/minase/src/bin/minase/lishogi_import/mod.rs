@@ -1,4 +1,14 @@
 //! lishogiのゲームNDJSONを教師データまたは実戦開始の局面一覧へ変換する。
+//!
+//! # 開始局面一覧
+//!
+//! `data lishogi openings`はUTF-8で、各行を`<棋譜ID> <経過手数> <拡張SFEN>`としてLFで終える。
+//! 棋譜IDは空白を含まない空でない文字列、経過手数は0起算のu32で65,535未満とする。
+//! SFENは局面を文字列化した表記で、拡張SFENは[`minase_core::notation::sfen::to_extended_sfen`]に従い、
+//! 次の着手番号を経過手数+1として先獅子の状態も保存する。
+//! 見出し行、空行、コメント行は書かない。
+//! 読み手の`selfplay_gen/opening.rs`の`read_openings`は全行を検査し、
+//! 両側の王駒と合法手があり、成りを保留した駒がない局面だけを受け付ける。
 
 mod cli;
 mod error;

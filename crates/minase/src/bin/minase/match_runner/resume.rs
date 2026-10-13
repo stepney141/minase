@@ -1,4 +1,6 @@
 //! 保存した実行条件からの対局設定の復元。
+//!
+//! 読み込む実行条件と起動履歴の欄は書き手の[`super::storage`]に定める。
 
 use super::cli::Mode;
 use super::storage::{EngineRecord, ManifestMode, RunManifest, StoredSearchLimit};

@@ -1,3 +1,17 @@
+//! FMの実数重み`fm-float.npz`を符号化する。
+//! コンテナは[`crate::nn::npz`]の無圧縮NPZである。
+//!
+//! | 配列名 | dtype | 形状 | 内容 |
+//! |---|---|---|---|
+//! | `V` | `<f4` | `[13680, 32]` | 特徴番号順に32成分ずつ埋め込みを置く。 |
+//! | `a` | `<f4` | `[32]` | 各成分の出力係数を置く。 |
+//! | `mask` | `\|b1` | `[13680]` | 観測済みを1、未観測を0で表す。 |
+//!
+//! [`FloatWeights::decode`]が読む`fm scale --float`用の5配列の仕様は、
+//! 書き手の[`crate::joint`]にある。
+//! この読み手は`middlegame`、`endgame`、`V`、`a`について`<f4`と`<f8`の有限値を受け付け、
+//! それ以外のメンバーはZIPの検査和だけを検査する。
+
 use super::Result;
 use crate::nn::npz;
 use minase::eval::{features::FEATURE_COUNT, pst::FM_RANK};

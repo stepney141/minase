@@ -1,4 +1,38 @@
 //! 対局の実体、各応答、および終局結果の保存形式。
+//!
+//! # ペア記録のJSON
+//!
+//! `pairs/<20桁のペア番号>.json`は[`PairRecord`]のオブジェクトで、独立した版欄はない。
+//! `pair_number`は1起算のu64、`pair_seed`は派生したu64のシードである。
+//! `opening`は`seed`と初期局面からのUSI着手文字列配列`moves`を持つ。
+//! `games`は候補の先後を入れ替えた2要素の配列である。
+//! `category`は候補のペア得点0、0.5、1、1.5、2に対応する整数0〜4で、打ち切りを含むときは`null`である。
+//!
+//! 各局の欄は[`GameRecord`]、各思考の欄は[`TurnRecord`]に定める。
+//! `GameRecord`は`candidate_color`、`candidate_seed`、`baseline_seed`、`wall_time_ns`、
+//! `candidate_cpu_time_ns`、`baseline_cpu_time_ns`、`candidate_peak_rss_bytes`、
+//! `baseline_peak_rss_bytes`、`turns`、`termination`を持つ。
+//! 時刻の単位はナノ秒、メモリ容量はバイトで、取得不能なCPU時間とメモリ容量は`null`である。
+//! `turns`の各要素は`side`、`think_time_ns`、`evaluation`、`stop_reason`、
+//! `completed_time_ms`、`ponder`、`response`を持つ。
+//! `completed_time_ms`だけはミリ秒であり、評価、停止理由、完了時刻、予想手の欠測は`null`である。
+//! `stop_reason`は`depth`、`nodes`、`soft`、`hard`、`external`のいずれかである。
+//! `evaluation`は`perspective`、`depth`、`score`、`bound`を持つ。
+//! `score`は`kind="cp"`とi32の`value`、または`kind="mate_in"`か`"mated_in"`とu32か`null`の`moves`である。
+//! `bound`は`exact`、`lower`、`upper`のいずれかである。
+//! 手番の値はすべて`black`または`white`である。
+//!
+//! `response`は`kind="move"`と正規化した着手`usi`、`kind="resigned"`、
+//! または`kind="failure"`と異常分類`reason`である。
+//! `termination`は`kind="adjudicated_win"`と`winner`と`reason`、
+//! `kind="adjudicated_draw"`と`reason`、`kind="resigned"`と`loser`、
+//! `kind="forfeit"`と`loser`と`reason`、または`kind="cutoff"`である。
+//! 異常分類は`illegal_move`、`crash`、`timeout`、`time_forfeit`、`rejected_move`である。
+//! 審判による終局の`reason`は審判層の理由名を文字列として保存する。
+//!
+//! 実行条件で共有する[`EngineIdentity`]は`kind="random"`、`kind="commit"`と`hash`と`sha256`、
+//! または`kind="command"`と`program`、`args`、`protocol`、`working_directory`である。
+//! `protocol`は`usi`か`cecp`、パスは文字列、`args`は文字列配列である。
 
 pub(in crate::harness) mod convert;
 pub use convert::{RecordedGame, failure_from_stored, stored_color};

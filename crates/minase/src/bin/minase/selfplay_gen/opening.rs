@@ -1,4 +1,8 @@
 //! 実戦開始局面の読み込みとランダム序盤の生成。
+//!
+//! 開始局面一覧の行形式は書き手の[`crate::lishogi_import`]に定める。
+//! [`read_openings`]はUTF-8の全行を空白区切りで読み、空行やコメントを読み飛ばさない。
+//! 0行のファイルもエラーとし、拡張SFENの復元にはエンジン既定の移動規則を使う。
 
 use minase::datagen::{data_error, invalid_data};
 use minase::training::provenance::GameOrigin;

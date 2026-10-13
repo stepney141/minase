@@ -1,4 +1,6 @@
 //! 保存済み対局から時間制御校正の指標を集計する。
+//!
+//! 入力する実行ディレクトリの現行の欄は[`crate::match_runner`]に定める。
 
 use crate::match_report::run_dir::{
     FORMAT_VERSION, Manifest, Mode, RunSummary, SearchLimit, read_json,

@@ -1,3 +1,9 @@
+//! NNUE学習の線形初期値をNPZから読む。
+//! 入力の端点2配列の仕様は書き手の[`crate::pst::encode_pst_npz`]にあり、
+//! 同時学習の5配列を持つ[`crate::joint`]のNPZも受け付ける。
+//! `middlegame`と`endgame`以外はZIPの検査和だけを検査し、配列としては復号しない。
+//! NNUE学習器自身はNPZを書き出さず、浮動小数点モデルは`nnue-float.bin`に保存する。
+
 use super::{Error, Result, validate_initial};
 use crate::nn::npz;
 use minase::eval::features::FEATURE_COUNT;

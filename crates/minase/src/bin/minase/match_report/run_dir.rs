@@ -3,6 +3,9 @@
 //! 型は`match_runner/storage.rs`の記録を読むための写しであり、未知の欄を受け入れる。
 //! runner側は`deny_unknown_fields`で未知の欄を拒否する。
 //! 型を統合すると読み取れる記録の範囲が変わるため、読み取り用の型を分けておく。
+//!
+//! 現行の各ファイルの欄は書き手の[`crate::match_runner`]に定める。
+//! 版4だけは測定機を`invocations.json`からではなく`manifest.json`の`cpu`から読む。
 
 use serde::Deserialize;
 use std::{fs::File, io, path::Path};

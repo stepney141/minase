@@ -34,7 +34,7 @@ const DEFAULT_MAX_PLY: u16 = 4_000;
 const DEFAULT_HASH_MB: NonZeroUsize = NonZeroUsize::new(16).unwrap();
 
 /// 序盤終了手数pから注入を予定する半開区間`[p, p+80)`の幅80手。
-/// 注入回数と記録境界は[`play::plan_injections_with_rng`]に従う。
+/// 注入回数と記録境界は[`play`]の`plan_injections_with_rng`に従う。
 const INJECTION_WINDOW: usize = 80;
 
 /// コマンドを実行し、失敗時は説明を標準エラーへ出して非0終了する。
