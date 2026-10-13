@@ -69,8 +69,12 @@ fn effective_pieces(position: &Position, color: Color) -> Bitboard {
         & !dead_pieces(position, color)
 }
 
-/// 指定側の駒が相手のいずれかの王駒を次の着手で取れるかを返す（第32条E3）。
-fn can_capture_any_royal(position: &Position, generator: &MoveGenerator, attacker: Color) -> bool {
+/// 指定側の駒が相手のいずれかの王駒を次の着手で取れるかを返す（第22条第8項、第32条E3）。
+pub(super) fn can_capture_any_royal(
+    position: &Position,
+    generator: &MoveGenerator,
+    attacker: Color,
+) -> bool {
     let probe = position.clone_with_side_to_move(attacker);
     let opponent_royals = probe.royal_pieces(attacker.opposite());
     let mut moves = Vec::new();

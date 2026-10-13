@@ -1,6 +1,7 @@
 //! 駒枯れの裁定と1手猶予の状態遷移。
 
 use super::super::result::{DrawReason, GameResult, WinReason};
+use super::bare_king::can_capture_any_royal;
 use crate::board::{BOARD_RANKS, Bitboard, Square};
 use crate::movegen::MoveGenerator;
 use crate::piece::{Color, PieceKind};
@@ -9,9 +10,9 @@ use crate::position::Position;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// 駒枯れ条件の判定結果。
 pub(crate) enum PieceExhaustionOutcome {
-    /// 駒枯れの条件(第22条第1項)が成立していない。
+    /// 駒枯れによる勝利・引き分けと猶予のいずれも成立していない。
     ConditionNotMet,
-    /// 最奥段の移動不能な歩兵・香車を除いて双方に王駒が1枚ずつだけ残る引き分け(第22条第8項)。
+    /// 死に駒を除いて双方に王駒が1枚ずつだけ残り、いずれも取られ得ない引き分け(第22条第8項)。
     Draw,
     /// 余分な駒を持つ側の勝ち(第22条第1項)。
     Win(Color),
@@ -30,17 +31,19 @@ pub(super) struct PieceExhaustionTransition {
 
 /// 駒枯れ条件と1手猶予の適用結果を返す。
 ///
-/// 双方に王駒を1枚ずつ残し、それ以外が片側に1枚だけある場合を対象とする
+/// 最奥段で移動不能の歩兵・香車は、すべての判定で盤上にないものとして扱う
+/// （RULES.md第22条第4項）。双方に王駒を1枚ずつ残し、それ以外が片側に1枚だけある場合を対象とする
 /// （RULES.md第22条第1項・第9項）。王将と太子を併せ持つ側では一方を余分な駒と数え、
 /// どちらを取られても余分な駒を失ったと扱う。
-/// 最奥段で移動不能の歩兵・香車（第4項）を除いて双方に王駒が1枚ずつだけ残る場合は、
-/// 第8項の引き分けとする。
+/// 双方に王駒が1枚ずつだけ残り、いずれも相手の次の着手で取られ得なければ、第8項の引き分けとする。
+/// 取られ得る間は対局を継続し、以後の着手の完了時に改めて判定する。
 ///
 /// 余分な駒が不成の歩兵または仲人なら成るまで勝ちとせず、成った後は通常の猶予を適用する
 /// （第2項・第3項）。猶予は、王駒だけの側に手番があり、余分な駒または相手の最後の王駒を
 /// 次の1手で取れる場合に与える（第5項）。余分な駒を持つ側の手番なら直ちにその側の勝ちとなる。
-/// 猶予中の捕獲後に双方が王駒1枚ずつになれば引き分け、それ以外は余分な駒を持つ側の勝ちとなる
-/// （第6項から第8項）。最後の王駒の捕獲による勝利は、呼び出し側が先に裁定する（第21条第1項）。
+/// 猶予中に余分な駒を取れば駒枯れによる勝利は成立せず、第8項の条件を改めて判定する。
+/// 死に駒を取っても余分な駒は残るので、その所有者の勝ちとなる（第6項・第7項）。
+/// 最後の王駒の捕獲による勝利は、呼び出し側が先に裁定する（第21条第1項）。
 pub(crate) fn piece_exhaustion_outcome(
     position: &Position,
     generator: &MoveGenerator,
@@ -51,22 +54,27 @@ pub(crate) fn piece_exhaustion_outcome(
         return PieceExhaustionOutcome::ConditionNotMet;
     }
 
-    // 第22条第8項・第9項: 移動不能の歩兵・香車を除いても王将と太子は2枚と数える。
-    if Color::ALL
-        .into_iter()
-        .all(|color| (position.pieces_of(color) & !dead_pieces(position, color)).popcount() == 1)
+    // 第22条第4項: 枚数、余分な駒の特定、猶予の捕獲対象から死に駒を除く。
+    let remaining =
+        Color::ALL.map(|color| position.pieces_of(color) & !dead_pieces(position, color));
+
+    // 第22条第8項・第9項: 王将と太子は2枚と数え、双方が1枚でも王駒を取れる間は引き分けない。
+    if remaining.into_iter().all(|pieces| pieces.popcount() == 1)
+        && Color::ALL
+            .into_iter()
+            .all(|color| !can_capture_any_royal(position, generator, color))
     {
         return PieceExhaustionOutcome::Draw;
     }
 
     // 第22条第1項・第9項: 王駒を1枚ずつ除いた残りが片側に1枚だけなら対象となる。
-    let extra_color = match Color::ALL.map(|color| position.pieces_of(color).popcount()) {
+    let extra_color = match remaining.map(|pieces| pieces.popcount()) {
         [2, 1] => Color::Black,
         [1, 2] => Color::White,
         _ => return PieceExhaustionOutcome::ConditionNotMet,
     };
 
-    let non_royals = position.pieces_of(extra_color) & !royals[extra_color.index()];
+    let non_royals = remaining[extra_color.index()] & !royals[extra_color.index()];
     if let Some(extra_square) = non_royals.lsb() {
         let extra_piece = position
             .piece_at(extra_square)
@@ -88,15 +96,15 @@ pub(crate) fn piece_exhaustion_outcome(
         return PieceExhaustionOutcome::Win(extra_color);
     }
 
-    // 第22条第5項・第9項: 相手には王駒と余分な駒、または王将と太子だけが残る。
-    // どの相手駒を取っても猶予の条件を満たす。
+    // 第22条第4項・第5項・第9項: 死に駒を除く相手の王駒または余分な駒を取れる場合に限る。
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
     if moves.into_iter().any(|candidate| {
         position
             .captured_squares(candidate)
             .into_iter()
-            .any(|capture| capture.is_some())
+            .flatten()
+            .any(|square| remaining[extra_color.index()].contains(square))
     }) {
         PieceExhaustionOutcome::GraceStart
     } else {

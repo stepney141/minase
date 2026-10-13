@@ -179,9 +179,171 @@ fn article_22_2_and_3_uncapturable_non_capturing_promotion_wins_immediately() {
 }
 
 #[test]
+fn article_22_4_immobile_pieces_on_either_side_do_not_prevent_exhaustion() {
+    // 第4項は双方の駒数と余分な駒の特定に適用する。死に駒がどちらにあっても金将側の勝ち。
+    for extra_color in Color::ALL {
+        for (dead_color, last_rank) in [(Color::Black, 11), (Color::White, 0)] {
+            for kind in [PieceKind::Pawn, PieceKind::Lance] {
+                for (mover, mv) in [
+                    (Color::Black, step(sq(2, 2), sq(2, 3))),
+                    (Color::White, step(sq(9, 9), sq(9, 8))),
+                ] {
+                    let mut game = game_with_codes(
+                        position(
+                            mover,
+                            &[
+                                (sq(2, 2), piece(Color::Black, PieceKind::King)),
+                                (sq(9, 9), piece(Color::White, PieceKind::King)),
+                                (sq(5, 5), piece(extra_color, PieceKind::GoldGeneral)),
+                                (sq(0, last_rank), piece(dead_color, kind)),
+                            ],
+                        ),
+                        &[RuleCode::R1],
+                    );
+                    assert_eq!(
+                        game.play(mv),
+                        win(extra_color, WinReason::PieceExhaustion),
+                        "extra: {extra_color:?}, dead: {dead_color:?} {kind:?}, mover: {mover:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn article_22_4_immobile_pieces_do_not_prevent_royal_pair_exhaustion() {
+    // 第4項・第9項により、王将と太子の側が余分な駒を持つ。死に駒の所有者によらない。
+    for extra_color in Color::ALL {
+        for (dead_color, last_rank) in [(Color::Black, 11), (Color::White, 0)] {
+            for kind in [PieceKind::Pawn, PieceKind::Lance] {
+                let mut game = game_with_codes(
+                    position(
+                        extra_color,
+                        &[
+                            (sq(2, 2), piece(extra_color, PieceKind::King)),
+                            (sq(5, 5), prince(extra_color)),
+                            (sq(9, 9), piece(extra_color.opposite(), PieceKind::King)),
+                            (sq(0, last_rank), piece(dead_color, kind)),
+                        ],
+                    ),
+                    &[RuleCode::R1],
+                );
+                assert_eq!(
+                    game.play(step(sq(2, 2), sq(2, 3))),
+                    win(extra_color, WinReason::PieceExhaustion),
+                    "extra: {extra_color:?}, dead: {dead_color:?} {kind:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn article_22_4_dead_piece_capture_does_not_start_grace() {
+    // 死に駒だけを取れる場合は第5項の猶予を与えない。
+    for (extra_color, last_rank, adjacent_rank) in [(Color::Black, 11, 10), (Color::White, 0, 1)] {
+        for kind in [PieceKind::Pawn, PieceKind::Lance] {
+            let mut game = game_with_codes(
+                position(
+                    extra_color,
+                    &[
+                        (sq(0, 5), piece(extra_color, PieceKind::King)),
+                        (sq(8, 5), piece(extra_color, PieceKind::GoldGeneral)),
+                        (sq(4, last_rank), piece(extra_color, kind)),
+                        (
+                            sq(4, adjacent_rank),
+                            piece(extra_color.opposite(), PieceKind::King),
+                        ),
+                    ],
+                ),
+                &[RuleCode::R1],
+            );
+            assert_eq!(
+                game.play(step(sq(0, 5), sq(0, 6))),
+                win(extra_color, WinReason::PieceExhaustion)
+            );
+        }
+    }
+}
+
+#[test]
+fn article_22_4_capturing_dead_piece_does_not_satisfy_grace() {
+    // 死に駒が双方にあっても金将を取れる側には猶予がある。
+    // 第6項・第7項により、金将を取れば駒枯れの勝利を免れ、死に駒だけを取れば敗北する。
+    for (extra_color, last_rank, adjacent_rank, opposite_rank) in
+        [(Color::Black, 11, 10, 0), (Color::White, 0, 1, 11)]
+    {
+        for kind in [PieceKind::Pawn, PieceKind::Lance] {
+            let bare_color = extra_color.opposite();
+            let mut game = game_with_codes(
+                position(
+                    extra_color,
+                    &[
+                        (sq(0, 5), piece(extra_color, PieceKind::King)),
+                        (
+                            sq(5, adjacent_rank),
+                            piece(extra_color, PieceKind::GoldGeneral),
+                        ),
+                        (sq(4, last_rank), piece(extra_color, kind)),
+                        (sq(4, adjacent_rank), piece(bare_color, PieceKind::King)),
+                        (sq(8, opposite_rank), piece(bare_color, kind)),
+                    ],
+                ),
+                &[RuleCode::R1],
+            );
+            assert_eq!(game.play(step(sq(0, 5), sq(0, 6))), Ok(GameStatus::Ongoing));
+            let mut captures_dead_piece = game.clone();
+            assert_eq!(
+                game.play(step(sq(4, adjacent_rank), sq(5, adjacent_rank))),
+                draw(DrawReason::PieceExhaustion)
+            );
+            assert_eq!(
+                captures_dead_piece.play(step(sq(4, adjacent_rank), sq(4, last_rank))),
+                win(extra_color, WinReason::PieceExhaustion)
+            );
+        }
+    }
+}
+
+#[test]
+fn article_22_4_pawn_becoming_immobile_allows_royal_capture_grace() {
+    // 歩兵が死に駒になる着手でも第1項の条件は成立する。
+    // 第5項により最後の王駒を取れる側には猶予があり、捕獲すれば第21条第1項で勝つ。
+    for (extra_color, pawn_rank, last_rank) in [(Color::Black, 10, 11), (Color::White, 1, 0)] {
+        let bare_color = extra_color.opposite();
+        let mut game = game_with_codes(
+            position(
+                extra_color,
+                &[
+                    (sq(4, 4), piece(extra_color, PieceKind::King)),
+                    (sq(4, 5), piece(bare_color, PieceKind::King)),
+                    (sq(0, 5), piece(extra_color, PieceKind::GoldGeneral)),
+                    (sq(8, pawn_rank), piece(extra_color, PieceKind::Pawn)),
+                ],
+            ),
+            &[RuleCode::R1],
+        );
+        assert_eq!(
+            game.play(step(sq(8, pawn_rank), sq(8, last_rank))),
+            Ok(GameStatus::Ongoing)
+        );
+        let mut declined = game.clone();
+        assert_eq!(
+            game.play(step(sq(4, 5), sq(4, 4))),
+            win(bare_color, WinReason::RoyalCapture)
+        );
+        assert_eq!(
+            declined.play(step(sq(4, 5), sq(4, 6))),
+            win(extra_color, WinReason::PieceExhaustion)
+        );
+    }
+}
+
+#[test]
 fn article_22_5_and_6_grace_capture_leads_to_a_draw() {
-    // 裸側が余分な駒を次の1手で取れる場合は裁定を
-    // 保留し、取れば駒枯れ不成立。双方王駒のみとなり8項の引き分けになる。
+    // 裸側が余分な駒を次の1手で取れる場合は裁定を保留する。
+    // 捕獲後の王駒はいずれも取られ得ないので、第8項の引き分けになる。
     let (position, establishes_condition) = grace_predecessor();
     let mut game = game_with_codes(position, &[RuleCode::R1]);
 
@@ -241,8 +403,8 @@ fn article_22_5_capturing_the_last_royal_wins_during_grace() {
 }
 
 #[test]
-fn article_22_8_one_royal_each_draws() {
-    // 双方に王駒1枚ずつだけが残れば自動的に引き分けとする。
+fn article_22_8_uncapturable_royals_draw() {
+    // 双方に王駒1枚ずつだけが残り、いずれも次の着手で取られ得なければ引き分けとする。
     for black_royal in [piece(Color::Black, PieceKind::King), prince(Color::Black)] {
         for white_royal in [piece(Color::White, PieceKind::King), prince(Color::White)] {
             let mut game = game_with_codes(
@@ -261,8 +423,42 @@ fn article_22_8_one_royal_each_draws() {
 }
 
 #[test]
+fn article_22_8_adjacent_royals_continue_until_capture_or_separation() {
+    // 王駒を取れる間は引き分けず、以後の着手完了時に改めて判定する。
+    // 第4項の死に駒があっても同じ条件を適用する。
+    for (mover, last_rank, opposite_rank) in [(Color::Black, 11, 0), (Color::White, 0, 11)] {
+        for moving_royal in [piece(mover, PieceKind::King), prince(mover)] {
+            for opponent_royal in [
+                piece(mover.opposite(), PieceKind::King),
+                prince(mover.opposite()),
+            ] {
+                for dead_kind in [None, Some(PieceKind::Pawn), Some(PieceKind::Lance)] {
+                    let mut pieces = vec![(sq(4, 4), moving_royal), (sq(4, 6), opponent_royal)];
+                    if let Some(kind) = dead_kind {
+                        pieces.push((sq(0, last_rank), piece(mover, kind)));
+                        pieces.push((sq(0, opposite_rank), piece(mover.opposite(), kind)));
+                    }
+                    let mut game = game_with_codes(position(mover, &pieces), &[RuleCode::R1]);
+                    assert_eq!(game.play(step(sq(4, 4), sq(4, 5))), Ok(GameStatus::Ongoing));
+                    let mut captures_royal = game.clone();
+                    assert_eq!(
+                        captures_royal.play(step(sq(4, 6), sq(4, 5))),
+                        win(mover.opposite(), WinReason::RoyalCapture)
+                    );
+                    assert_eq!(game.play(step(sq(4, 6), sq(5, 6))), Ok(GameStatus::Ongoing));
+                    assert_eq!(
+                        game.play(step(sq(4, 5), sq(3, 4))),
+                        draw(DrawReason::PieceExhaustion)
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn article_22_8_immobile_pawn_or_lance_does_not_prevent_draw() {
-    // 第4項の歩兵・香車を除いて王駒が1枚ずつなら、駒の所有者や手番によらず引き分け。
+    // 第4項の歩兵・香車を除いて王駒が1枚ずつで、互いに取れなければ引き分け。
     for (extra_color, last_rank) in [(Color::Black, 11), (Color::White, 0)] {
         for kind in [PieceKind::Pawn, PieceKind::Lance] {
             for (mover, mv) in [
@@ -292,7 +488,7 @@ fn article_22_8_immobile_pawn_or_lance_does_not_prevent_draw() {
 
 #[test]
 fn article_22_8_multiple_immobile_pieces_on_both_sides_draw() {
-    // 除外する駒の枚数は限定されず、双方に歩兵と香車が残っていても引き分け。
+    // 除外する駒の枚数は限定されず、双方に死に駒が残っていても王駒が互いに取れなければ引き分け。
     let mut game = game_with_codes(
         position(
             Color::Black,
@@ -433,7 +629,7 @@ fn article_22_9_uncapturable_royal_pair_wins_immediately() {
 #[test]
 fn article_22_9_capturing_either_royal_during_grace_draws() {
     // 第9項では王将と太子のどちらを取っても余分な駒を取り除いたことになる。
-    // 第5項の猶予で取れば第6項・第8項の引き分け、見送れば第7項の勝ちとなる。
+    // 捕獲後の王駒が互いに取れなければ第8項の引き分け、捕獲を見送れば第7項の勝ちとなる。
     for extra_color in Color::ALL {
         let bare_color = extra_color.opposite();
         let king = piece(extra_color, PieceKind::King);
@@ -467,9 +663,9 @@ fn article_22_9_capturing_either_royal_during_grace_draws() {
 }
 
 #[test]
-fn article_22_9_grace_allows_capturing_a_defended_royal() {
+fn article_22_8_defended_royal_capture_during_grace_does_not_draw() {
     // 第5項・第9項の猶予は、王将と太子が互いを守っていても与える。
-    // 捕獲後は第8項で終局するため、残る王駒の利きによって猶予を詰みと裁定してはならない。
+    // 捕獲後も残る王駒に取られ得るため、第8項では引き分けず対局を継続する。
     let mut game = game_with_codes(
         position(
             Color::Black,
@@ -482,10 +678,15 @@ fn article_22_9_grace_allows_capturing_a_defended_royal() {
         &[RuleCode::R1],
     );
     assert_eq!(game.play(step(sq(2, 0), sq(1, 0))), Ok(GameStatus::Ongoing));
-    for captured in [sq(1, 0), sq(1, 1)] {
+    for (captured, remaining) in [(sq(1, 0), sq(1, 1)), (sq(1, 1), sq(1, 0))] {
+        let mut captures_royal = game.clone();
         assert_eq!(
-            game.clone().play(step(sq(0, 0), captured)),
-            draw(DrawReason::PieceExhaustion)
+            captures_royal.play(step(sq(0, 0), captured)),
+            Ok(GameStatus::Ongoing)
+        );
+        assert_eq!(
+            captures_royal.play(step(remaining, captured)),
+            win(Color::Black, WinReason::RoyalCapture)
         );
     }
     assert_eq!(
@@ -539,7 +740,7 @@ fn article_22_2_capturing_promotion_that_creates_the_condition_takes_the_grace_p
         game.play(first_reply)
     };
 
-    // 猶予の1手で成歩を取れば駒枯れ不成立、8項により引き分け。
+    // 成歩を取った後の王駒は互いに取れないため、第8項により引き分け。
     assert_eq!(
         condition_arises(step(sq(4, 11), sq(5, 10))),
         draw(DrawReason::PieceExhaustion)
