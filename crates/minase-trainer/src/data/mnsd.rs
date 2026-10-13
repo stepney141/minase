@@ -17,7 +17,16 @@ use super::{
 };
 use crate::nn::{hex, sha256};
 
-/// 教師用Kを共有する分類。ファイル順で最初に現れた分類から番号を付ける。
+/// 教師用Kを共有する分類。
+///
+/// 来歴の`teacher`の5項目と、`result_origin`、`start_origin`の計7項目で由来を区別する。
+/// 5項目は、小文字へ正規化した40桁16進の`generation_commit`、MNSDヘッダの32バイトの
+/// `network_checksum`、`nodes`、`rule_set`、および`search_condition`である。
+/// `search_condition`は`"in-game"`または`"standalone"`、`result_origin`は`"selfplay"`または`"human"`、
+/// `start_origin`は`"random"`または`"human-game"`である。
+/// 先読み条件`lookahead`と実際に適用した混合比の上書き`lambda_override`も分類に含める。
+/// `lambda_override`は自己対局の分類だけに適用し、人間対局では`None`とする。
+/// 入力順に初めて現れた分類から0始まりで番号を付け、記録数0のファイルは分類を作らない。
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct TeacherClass {
     pub(crate) generation_commit: String,
@@ -67,8 +76,22 @@ struct MappedFile {
     game_ids: Option<HashMap<u32, String>>,
 }
 
-/// 学習側の来歴は0以上1以下の任意のλと未知の追加欄を受け付ける。
-/// 生成側の`Provenance`がλを由来ごとの値に固定する契約とは独立である。
+/// 学習側が読む来歴JSON。
+///
+/// `format`は`"minase-provenance"`、`version`は1、`mnsd_sha256`はMNSD全体のSHA-256の64桁16進である。
+/// `teacher`は`generation_commit`（40桁16進）、`network_checksum`（64桁16進）、`nodes`（u32）、
+/// `rule_set`、`search_condition`の5欄を持つ。
+/// `rule_set`はUTF-8で1〜32バイト、NULを含まず、`search_condition`は`"in-game"`または`"standalone"`である。
+/// `result_origin`、`start_origin`、有限な0以上1以下の`lambda`、および`games`も必須である。
+/// 由来の文字列は[`TeacherClass`]の定義に従う。
+///
+/// `games`は乱数開始の自己対局では明示的な`null`、それ以外では`{"game": 対局番号, "id": "棋譜ID"}`の配列であり、省略を拒否する。
+/// 対局番号は1以上で重複せず、棋譜IDは空でない。
+/// `start_origin = "human-game"`では各要素に非負整数の開始手数`ply`を必須とする。
+/// それ以外の由来では`ply`の有無と値を検査しない。
+/// 学習側は未知の追加欄と任意の有効なλを受け付ける。
+/// 生成側の[`Provenance`](minase::training::provenance::Provenance)がλを由来ごとの値
+/// （自己対局0.75、実戦0.0）に固定する契約とは独立である。
 #[derive(Deserialize)]
 struct InputProvenance {
     format: String,
@@ -256,6 +279,24 @@ impl Dataset {
     /// ファイル長と来歴を検証し、全記録を復号して分割と教師探索値を作る。
     /// 先読みを指定した場合はファイルごとに対局・手数の順序も検証する。
     /// λは来歴から読み、`lambda_override`を指定すると自己対局の分類だけ上書きする。
+    /// `paths`は1つ以上必要で、入力順に記録を連結して0始まりの通し番号を付ける。
+    /// 各MNSDには、正規化したパスの末尾へ`.provenance.json`を付けた来歴ファイルが必要である。
+    /// ファイル長が136バイトと記録数×160バイトの和に一致することを検査する。
+    /// MNSD全体のSHA-256と来歴の`mnsd_sha256`、およびヘッダと来歴の`teacher`の
+    /// `network_checksum`、`generation_commit`、`nodes`、`rule_set`の一致も要求する。
+    /// 16進表現の比較では大文字と小文字を区別しない。
+    /// 正規化したパスの重複、MNSD内容のSHA-256の重複、および乱数開始の自己対局
+    /// （`result_origin = selfplay`かつ`start_origin = random`）のファイル間の生成シードの重複を拒否する。
+    ///
+    /// `lambda_override`は有限な0以上1以下とし、人間対局の分類では来歴のλを使う。
+    /// 同じ[`TeacherClass`]に異なる実効λを持つ入力は拒否する。
+    /// 来歴の`games`が`null`なら[`is_validation`]にヘッダのシードと対局番号を渡して検証集合を決める。
+    /// `games`が配列なら、対応する棋譜IDのUTF-8表現のSHA-256の先頭8バイトを
+    /// リトルエンディアンu64として読み、20で割った余りが0の対局を検証集合とする。
+    /// 同じ棋譜とその棋譜から始めた自己対局は、ファイルが異なっても同じ集合に属する。
+    /// 記録に現れる対局番号が`games`にない場合は拒否する。
+    /// 先読みを指定した場合は、ファイルごとに[`compute_lookahead`]で計算した値をf32で保持し、MNSDへは書き戻さない。
+    ///
     /// MNSDをmemmap2で写すため、呼び手に元ファイルの不変性を要求する。
     /// 理由は`docs/adr/allow-unsafe-only-in-the-trainer-crate.md`にある。
     ///
@@ -498,6 +539,9 @@ impl Dataset {
     /// 分類ごとに訓練集合だけを使って教師用Kを推定する。
     /// 保持したf32の教師探索値をf64へ広げて校正し、標本は1分類ずつ確保する。
     /// λが0の分類は探索値を使わないのでNaNを返し、JSONの記録ではnullになる。
+    /// 先読みを指定した場合は先読み値を使い、校正、学習、検証で同じ探索値を参照する。
+    /// 推定の目標は訓練集合の終局結果だけであり、混合後の教師確率は使わない。
+    /// λが0でない分類に訓練局面が1つもなければ[`Error::EmptyTeacherClass`]を返す。
     pub fn estimate_teacher_ks(&self) -> Result<Vec<f64>> {
         let mut values = Vec::with_capacity(self.classes.len());
         for class in 0..self.classes.len() {

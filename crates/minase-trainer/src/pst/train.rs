@@ -1,11 +1,30 @@
 //! PSTの学習、エポック境界での保存、再開を管理する。
-//! 新規実行は空の`--output-dir`を要求し、入力MNSDの規則名は初期MNPTと一致しなければならない。
+//! 新規実行の`--output-dir`は存在しないか空でなければならず、入力MNSDの規則名は初期MNPTと一致しなければならない。
 //! 再開時は`--resume`と出力先が同じ場所を指し、`config.json`の`settings`、`inputs`、`preprocessing`と両ハッシュが再計算値に一致することを要求する。
 //! `latest.bin`のK、学習率、シード、両ハッシュも一致し、保存エポックが`--epochs`以下でなければならない。
 //! 更新回数は`epoch * ceil(訓練局面数 / batch)`に等しいことを検査する。
 //! チェックポイントは`MNTRCKPT`版2である。
 //! 各エポックは`training.jsonl`、`latest.bin`、改善時の`best.bin`の順に保存する。
 //! 最良更新直後に中断した場合は、そのエポックを持つ`latest.bin`から`best.bin`を復旧する。
+//!
+//! `--output-dir`には次のファイルを保存する。
+//!
+//! | ファイル | 内容 |
+//! | --- | --- |
+//! | `config.json` | 引数、再開時に照合する設定、入力の検査和、前処理結果、再開履歴を保存する。欄は[`configuration`]に定める。 |
+//! | `training.jsonl` | 学習前のエポック0と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ保存する。 |
+//! | `latest.bin` | 最後に検証を終えたモデル、Adamの状態、進捗、累積秒数、照合用ハッシュを`MNTRCKPT`版2で保存する。 |
+//! | `best.bin` | 最良エポックの同じ内容を保存する。 |
+//! | `pst.bin` | 最良モデルをMNPT版2で保存する。 |
+//! | `pst-float.npz` | 量子化前の実数PSTを[`super::npz::encode_pst_npz`]の形式で保存する。 |
+//! | `summary.json` | 停止理由、最良エポック、量子化検査、初期局面評価を[`Summary`]で保存する。 |
+//!
+//! 再開で変更できる引数は`--epochs`、`--patience`、`--threads`だけである。
+//! `--output-dir`と`--resume`は同じディレクトリを指す。
+//! `--data`と`--init`は`settings`から外すが、正規化したパスとSHA-256を`inputs`で照合するため、入力ファイルを移動すると再開できない。
+//! `fm train`と`joint train`も同じファイル構成を使う。
+//! FM学習は重みを`fm.bin`と`fm-float.npz`へ、同時学習はMNPT版3の`pst.bin`と5配列の`pst-float.npz`へ保存する。
+//! ただしチェックポイントの形式は、FM学習が`MNFMCKPT`版1、同時学習が`MNJTCKPT`版1である。
 
 use super::{
     Adam, Args, Batch, Checkpoint, EpochRecord, Error, Model, Progress, RemovalReference,

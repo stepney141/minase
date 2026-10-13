@@ -46,7 +46,8 @@ pub struct ScaleArgs {
     /// 入力のMNPT版3。
     #[arg(long)]
     pub input: PathBuf,
-    /// 入力MNPTと同じ学習で保存した実数のNPZ。
+    /// `middlegame`と`endgame`が`[13680]`、`V`が`[13680, 32]`、`a`が`[32]`の、dtype `<f4`または`<f8`の有限値を持つNPZを指定する。
+    /// `joint train`の`pst-float.npz`を使え、端点のない`fm train`の`fm-float.npz`は使えない。
     #[arg(long)]
     pub float: PathBuf,
     /// 1024を等倍とする整数倍率。0ではMNPT版2を書く。
@@ -204,6 +205,8 @@ pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
 /// `s = 0`ではMNPT版2、`s = 1024`では入力と同じ重みを出力し、PST、K、駒価値、規則名を保つ。
 /// 倍率を推論時に掛けずに重みへ含めることで、エンジンの評価式を変えず重みファイルだけで評価が定まる。
 /// 検証標本の計算は保存前に完了し、書いたMNPTは読み直して検査する。
+/// 報告は`--output`の拡張子を`.scale.json`に替えたパスへ書く。
+/// 出力MNPTか報告のどちらかが既に存在すれば拒否する。
 pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     if !(0..=1024).contains(&args.fm_scale) {
         return Err("FM scale must be an integer in 0..1024".into());

@@ -6,12 +6,16 @@ fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-/// ファイルのseedと対局番号から、対局単位の分割を固定するハッシュ。
+/// ファイルのシードと対局番号から、対局単位の分割を固定するハッシュ。
+/// 式は`mix64(seed ^ game·0x9E3779B97F4A7C15)`で、乗算はu64の折り返し演算である。
+/// `mix64`はSplitMix64の出力混合関数であり、状態加算を行わない。
 pub fn hash64(seed: u64, game: u32) -> u64 {
     mix64(seed ^ u64::from(game).wrapping_mul(STEP))
 }
 
-/// 自己対局の記録を、対局単位で20分の1の検証集合へ割り当てる。
+/// [`hash64(seed, game)`](hash64)が20の倍数の対局を検証集合へ割り当てる。
+/// 来歴の`games`が`null`のファイル、すなわち乱数開始の自己対局だけに使う。
+/// 棋譜IDを持つファイルは[`Dataset::open`](super::Dataset::open)の棋譜IDの規則で分割する。
 pub fn is_validation(seed: u64, game: u32) -> bool {
     hash64(seed, game).is_multiple_of(20)
 }

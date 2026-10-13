@@ -1,4 +1,7 @@
-//! NNUEの分布・局面操作とPSTの比較をCPUで診断する。
+//! NNUEの分布と局面操作、およびPSTの比較をCPUで診断する。
+//! `diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves`はCPUだけで実行し、
+//! 報告を`--output`に指定したJSONファイル1つへ保存する。
+//! 既存出力の扱いと失敗時の保存条件は[`run`]に定める。
 
 mod network;
 mod nnue_distribution;
@@ -38,7 +41,16 @@ pub enum Command {
     NnueMoves(MovesArgs),
 }
 
-/// 診断報告を保存する。不合格の報告も保存してからエラーを返す。
+/// 出力の存在を検査して診断を実行し、報告を保存する。
+///
+/// NNUE診断では`--output`が既に存在すれば、何も計算せずにエラーを返す。
+/// 保存時も`create_new`で開くため、検査後に別プロセスが同じパスを作った場合に上書きしない。
+/// 親ディレクトリがなければ作り、`serde_json`の整形出力に改行1つを付けて保存する。
+/// `nnue-removal`と`nnue-moves`で報告に`error`欄があれば、保存後にそのエラー文を返す。
+/// 標本の範囲外、帯の標本不足、分散0、非有限値、入力形式の不一致など、
+/// 報告を組み立てる前のエラーでは報告ファイルを作らない。
+/// エラーを返すと`minase-trainer`は終了コード1で終わる。
+/// PST比較のディレクトリ作成と途中失敗の扱いは`pst_compare::run`に定める。
 pub fn run(command: Command) -> Result<()> {
     let path = match &command {
         Command::PstCompare(args) => &args.output_dir,

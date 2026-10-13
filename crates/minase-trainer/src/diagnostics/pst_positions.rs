@@ -1,4 +1,11 @@
 //! ライブラリでの評価、非王駒の除去、合法な成り手とMNSD成果物。
+//!
+//! 診断は次のMNSD版1ファイルをすべて新規作成し、ヘッダの固定値は[`write_mnsd`]に従う。
+//! `diagnostic-samples.bin`は全帯の標本の和集合を通算番号の昇順に並べた入力記録の複製で、ヘッダの検査和は基準MNPTの検査和である。
+//! `representatives.bin`は初期局面に続けて帯番号の昇順の代表局面を置き、同じく基準MNPTの検査和を使う。
+//! 初期局面の記録は手番0、先獅子なしの255、麒麟成りの印0、探索値0、結果0の負け、対局番号0、手数0である。
+//! `removals.bin`は代表局面の順、升番号の昇順に、王将と玉将の駒状態11、および太子の駒状態21を除く駒を1枚除いた記録を置く。
+//! 盤面以外の欄は元の記録を保ち、局面として復元できない記録も含め、ヘッダの検査和を全0とする。
 
 use super::{
     Result,
@@ -23,6 +30,9 @@ pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// 診断用のMNSD版1を新規作成する。
+/// ヘッダは規則セット名`"L0,P0,R1,E0"`、生成コミット`"0"`×40、ノード上限0、シード0、渡された記録数と検査和である。
+/// 各成果物の記録順と検査和の選択は[`pst_positions`](self)のモジュールdocコメントに従う。
 pub(super) fn write_mnsd(path: &Path, records: &[Record], checksum: [u8; 32]) -> Result<()> {
     let header = Header::new(
         "L0,P0,R1,E0".into(),
@@ -56,11 +66,15 @@ pub(super) fn check(weights: &Weights, records: &[Record], name: &str) -> Result
     Ok(records.len())
 }
 
+/// `report.json`の`rust_removal_agreement`のモデルごとの件数。
+/// `checked`はエンジン評価との一致を確かめた除去数、`skipped`は局面として復元できなかった除去数である。
 #[derive(Default, Serialize)]
 pub(super) struct Agreement {
     checked: usize,
     skipped: usize,
 }
+/// 除去局面を復元できない場合の理由。
+/// 失敗時だけ`base`と`candidate`に理由の文字列を保存し、復元できれば空のJSONオブジェクトとなる。
 #[derive(Default, Serialize)]
 struct Skipped {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -68,6 +82,12 @@ struct Skipped {
     #[serde(skip_serializing_if = "Option::is_none")]
     candidate: Option<String>,
 }
+/// 代表局面から駒を1枚除いた結果。
+/// `square`は升番号0〜143、`piece_byte`はMNSDの駒コード、`relative_color`は手番側0、相手側1、`state`は駒状態番号である。
+/// `delta_cp`は除去後から除去前を引いたPST参照の評価差を`{base, candidate}`で持つ。
+/// 除去で位相も変わるため、その駒固有の価値と同一視しない。
+/// `total_delta_cp`は局面を復元してエンジン全体の評価と参照の一致を検査した場合に、同じ差分をモデルごとに保存する。
+/// 復元できなければ両モデルの値は`null`となり、`skipped`に[`Skipped`]の理由を持つ。
 #[derive(Serialize)]
 struct Removal {
     square: usize,
@@ -78,6 +98,14 @@ struct Removal {
     total_delta_cp: Models<Option<i32>>,
     skipped: Skipped,
 }
+/// `report.json`の`representatives`の1要素。
+/// `label`は初期局面なら`"initial"`、それ以外は`"band{帯番号}"`、`index`は通算番号で初期局面では`null`である。
+/// `piece_count`は盤上駒数、`phase_numerator`は位相分子q、`evaluations`は`{base, candidate}`の独立整数PST参照評価である。
+/// `removals`は[`Removal`]の配列である。
+/// `total_evaluations`はエンジン全体の評価との一致を確認した`evaluations`と同じ値である。
+/// 呼び手はMNPT版2だけを受理するため、全体評価にFMを含まない。
+/// `promotions`は`{base, candidate}`の各値に[`Promotion`]の配列を持ち、成り手がなければその値を`null`とする。
+/// `promotion_reason`は基準に合法な成り手がなければ`"no legal promotion"`、あれば`null`である。
 #[derive(Serialize)]
 pub(super) struct Representative {
     label: String,
@@ -90,6 +118,9 @@ pub(super) struct Representative {
     promotions: Models<Option<Vec<Promotion>>>,
     promotion_reason: Option<&'static str>,
 }
+/// 成り手を適用した後の局面。
+/// `board`はMNSD駒コード144バイト、`stm`は先手0か後手1の着手後の手番、`lion`は先獅子の対象升番号で、対象升がなければ255である。
+/// `eval`は[`Promotion`]の`after_opposite`、`eval_pst`は`after_opposite_pst`である。
 #[derive(Serialize)]
 struct AfterPosition {
     board: Vec<u8>,
@@ -98,6 +129,12 @@ struct AfterPosition {
     eval: i32,
     eval_pst: i32,
 }
+/// 合法な成り手の評価差。単位はセンチポーンである。
+/// 着手前の手番側から見た評価を`before`、同じ側から見た着手後評価を`after_same`、反対側から見た着手後評価を`after_opposite`とする。
+/// `move`はUSI表記、`capture`は盤上駒数が減ったか、`promote`は常に真、`terminal`は着手後に終局したかである。
+/// `delta = −after_opposite − before`、`placement = after_same − before`、`turn = −(after_opposite + after_same)`を保存する。
+/// `after_same`と`after_opposite`も保存し、各評価と差分の`_pst`版はFMを除いたPSTだけの値である。
+/// MNPT版2では両系列の値は等しく、`after`に[`AfterPosition`]を持つ。
 #[derive(Serialize)]
 struct Promotion {
     r#move: String,
@@ -117,6 +154,9 @@ struct Promotion {
     after: AfterPosition,
 }
 
+/// 代表局面の合法な成り手をエンジン既定の`L0,P0,R1,E0`で実際に適用し、[`Promotion`]を作る。
+/// 着手後の独立整数PST参照が`after_opposite`と異なる場合、または参照から求めた差が`delta`と異なる場合は失敗する。
+/// モデルごとの照合した手の総数を、呼び手が`rust_promotion_agreement`に数える。
 fn promotions(model: &Weights, record: &Record) -> Result<Vec<Promotion>> {
     let position = record.to_position()?;
     let side = position.side_to_move();
@@ -174,6 +214,12 @@ pub(super) struct PositionReport {
     pub promotions: Models<usize>,
 }
 
+/// 初期局面と各帯の代表局面で、除去と成り手の評価を照合する。
+/// 呼び手は各帯の抽出済み標本を全教師分類で合わせ、その中で通算番号が最小の局面を選んで帯番号順に渡す。
+/// 代表局面と復元できた除去局面でエンジン評価と独立整数PST参照が1件でも異なれば失敗する。
+/// 基準と候補の除去差分の積が負の件数を数え、呼び手が`pst_removal_sign_reversals`として記録する。
+/// 除去局面を復元できない場合は[`Agreement`]と[`Skipped`]へ記録して続ける。
+/// MNSD成果物の内容は[`pst_positions`](self)のモジュールdocコメントに従う。
 pub(super) fn diagnose(
     models: &Models<Weights>,
     selected: &[(usize, u64, Record)],

@@ -48,7 +48,7 @@ pub struct Args {
     /// モデル初期化とエポック内の局面順列に使うシードを指定する。
     #[arg(long, default_value_t = 71)]
     seed: u64,
-    /// バッチ構築とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引く。
+    /// バッチ構築とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     threads: Option<usize>,
     /// 更新を実行するデバイスを指定する。
@@ -74,7 +74,8 @@ pub struct Report {
     pub width: usize,
     /// モデル初期化と局面順列のシード。
     pub seed: u64,
-    /// 並列に構築するバッチ数。最終の群だけは少なくなることがある。
+    /// 並列に構築するバッチ数で、実効`threads`と`steps`の小さい方。
+    /// 最終の群だけは少なくなることがある。
     pub workers: usize,
     /// 指定された並列度。CPU更新でも同じ値を使う。
     pub threads: usize,
@@ -88,7 +89,7 @@ pub struct Report {
     pub compute_ms: f64,
     /// 転送ストリームのイベントから得た1バッチの平均ミリ秒。
     pub transfer_ms: f64,
-    /// 1バッチの入力転送のバイト数。
+    /// 1バッチの入力転送のバイト数。`--device cpu`では0である。
     pub transfer_bytes: usize,
     /// ワーカーの構築時間から求めた毎秒の供給局面数。
     pub worker_positions_per_second: f64,

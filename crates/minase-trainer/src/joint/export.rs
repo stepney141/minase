@@ -21,6 +21,7 @@ use serde::Serialize;
 use std::path::Path;
 
 /// 同時学習の初期値または最良モデルの量子化誤差。
+/// `seed`は`--seed`の値で、標本は検証集合を[`epoch_permutation`]でシード`seed`、エポック0として並べた先頭`--validation-sample`件である。
 #[derive(Clone, Debug, Serialize)]
 pub struct QuantizationReport {
     /// 検証標本数。
@@ -29,7 +30,7 @@ pub struct QuantizationReport {
     pub seed: u64,
     /// 常にvalidation。
     pub split: &'static str,
-    /// 標本の通し番号のSHA-256。
+    /// 抽出順の検証局面の通算番号をリトルエンディアンu64で連結したバイト列のSHA-256（16進文字列）。
     pub indices_sha256: String,
     /// FMの指数。
     pub exponent: u32,
@@ -45,6 +46,7 @@ pub struct QuantizationReport {
     pub passed: bool,
 }
 
+/// [`write_best`]で保存する5配列を、鏡映対を展開したモデルから作る。
 pub(super) fn arrays(model: &Model) -> Vec<(&'static str, Array)> {
     let endpoints = model.pst.expanded();
     let mut arrays: Vec<_> = ["middlegame", "endgame"]
@@ -173,7 +175,10 @@ pub(super) fn quantization_report(
     report(dataset, model, &quantized(model, base)?, sample, seed)
 }
 /// MNPT版3の`pst.bin`と5配列の`pst-float.npz`を書き出す。
-/// NPZの配列は`middlegame`、`endgame`、`V`、`a`、`mask`である。
+/// NPZは圧縮せず、`middlegame`と`endgame`はdtype `<f4`、形`[13680]`のセンチポーン単位の実数PSTとする。
+/// 端点は鏡映対を展開した特徴番号順の値である。
+/// `V`は`<f4`の`[13680, 32]`、`a`は`<f4`の`[32]`、`mask`は`|b1`の`[13680]`である。
+/// この5配列は`fm scale --float`と`nnue train --init-pst`の入力に使える。
 /// MNPTを読み直し、重みとK、駒価値、規則名が出力モデルと基準に一致することを検査する。
 /// 量子化の合否は[`report`]で判定する。
 pub(super) fn write_best(

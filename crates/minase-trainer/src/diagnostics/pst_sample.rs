@@ -1,4 +1,6 @@
 //! 教師分類と位相帯ごとの検証標本の抽出とNPYへの書き出し。
+//! 位相帯は補間係数φを5等分した区間であり、境界は[`band`]に定める。
+//! 分類と帯ごとの件数と抽出は[`select`]、保存形式は[`write_indices`]に従う。
 
 use super::{Result, pst_reference::Features};
 use crate::{
@@ -8,9 +10,12 @@ use crate::{
 use std::path::Path;
 
 pub(super) const BANDS: usize = 5;
+/// [`Features`]の位相分子qから、φ = q/90を5等分した帯番号を返す。
+/// `band(q) = min(⌊q×5/90⌋, 4)`であり、帯0〜3は右端を含まず、帯4だけ右端φ=1を含む。
 pub(super) fn band(q: u8) -> usize {
     (usize::from(q) * BANDS / 90).min(BANDS - 1)
 }
+/// 分類と帯の標本ファイル名`diagnostic-indices-generation{分類番号}-band{帯番号}.npy`を返す。
 pub(super) fn filename(generation: usize, band: usize) -> String {
     format!("diagnostic-indices-generation{generation}-band{band}.npy")
 }
@@ -37,6 +42,11 @@ impl SplitMix64 {
     }
 }
 
+/// 訓練集合と検証集合の全局面を分類と帯で数え、検証集合から非復元抽出する。
+/// `size`は`--sample-size`の値で、0を拒否する。
+/// `seed`で初期化した1本のSplitMix64の乱数列を分類順、帯順に使い、各母集団から
+/// `min(size, 母集団の大きさ)`件を部分Fisher–Yatesで抽出する。
+/// `below`は棄却法で剰余の偏りを除き、抽出した通算番号は昇順に並べる。
 pub(super) fn select(dataset: &Dataset, size: usize, seed: u64) -> Result<Sampling> {
     if size == 0 {
         return Err("diagnostic sample size must be positive".into());
@@ -76,6 +86,9 @@ pub(super) fn select(dataset: &Dataset, size: usize, seed: u64) -> Result<Sampli
     Ok(samples)
 }
 
+/// 標本の通算番号をdtype `<i8`、形`[標本数]`のNPY 1.0として新規作成する。
+/// 番号は入力を連結した0始まりの番号をリトルエンディアンi64で保存し、空の帯にも長さ0の配列を書く。
+/// ファイル名は[`filename`]に従う。
 pub(super) fn write_indices(path: &Path, indices: &[u64]) -> Result<()> {
     let mut data = Vec::with_capacity(indices.len() * 8);
     for &index in indices {

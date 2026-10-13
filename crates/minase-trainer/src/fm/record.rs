@@ -14,7 +14,12 @@ use std::{
     path::Path,
 };
 
-/// FMの1エポックの記録。学習前の損失と速度はnull。
+/// FMの1エポックの記録。
+/// 損失は局面数で重み付けした平均で、端数バッチも含める。
+/// `validation_loss`は全検証集合の二値交差エントロピーで、正則化項を含めない。
+/// `regularization_loss = lambda_res * mean(Φ²)`は係数を含み、`total_loss = train_loss + regularization_loss`である。
+/// `phi`はロジット単位の[`Distribution`]である。
+/// エポック0では訓練の損失、訓練秒数、速度、更新秒数が`null`、`steps`が0である。
 #[derive(Debug, Serialize)]
 pub struct EpochRecord {
     /// CPUで実行したことを記録する。
@@ -49,6 +54,11 @@ pub struct EpochRecord {
     pub total_steps: u64,
 }
 
+/// FM学習の`config.json`を、[`pst::record::configuration`](../../pst/record/fn.configuration.html)と同じ構成で作る。
+/// `settings.model = "fm_rank32"`とし、`settings.optimizer`は
+/// `{lr, weight_decay, betas: [0.9, 0.999], epsilon: 1e-8}`で、`weight_decay`には`--weight-decay`を使う。
+/// `preprocessing`に、訓練集合とその全鏡映で数えた全13,680特徴の観測回数`feature_observations`を特徴番号順で加える。
+/// `unobserved_features`は観測回数0の特徴数である。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
@@ -189,7 +199,15 @@ pub enum StopReason {
     EarlyStopping,
 }
 
-/// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
+/// 終了理由、最良エポック、量子化検査を`summary.json`へ保存する。
+/// `status = "candidate"`なら終了コード0、`"quantization_error"`または`"error"`なら終了コード1である。
+/// 量子化検査に合格し、`quarter_zero_check.identically_zero`が真なら`"excluded_zero_correction"`で終了コード0となり、
+/// `reason = "integer quarter FM correction is identically zero"`を記録する。
+/// 量子化検査の合否にかかわらず、`fm.bin`、`fm-float.npz`、`quantization`、
+/// `quarter_zero_check`、`correction_cp`、`initial_position_score`を残す。
+/// エポック途中の失敗では`{status: "error", reason, last_epoch, gradients, total_steps, elapsed_seconds}`だけを保存する。
+/// `initial_position_score`は、書き出した`fm.bin`のPST評価に縮小前の整数FM補正を加え、±28,999へ切り詰めた手番側視点のセンチポーンである。
+/// `phi`は最良エポックのモデルで全検証集合を評価し直した分布である。
 #[derive(Debug, Serialize)]
 pub struct Summary {
     /// candidate、excluded_zero_correction、quantization_error、またはerror。

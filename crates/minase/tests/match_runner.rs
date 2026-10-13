@@ -103,9 +103,8 @@ fn random_usi_match_output_is_independent_of_concurrency() {
     assert!(sequential.contains("engine_failures: illegal_moves=0 crashes=0 timeouts=0"));
     assert_eq!(without_elapsed(&sequential), without_elapsed(&parallel));
 
-    // sprt.md「ペア対局と再現性」: 開始局面はペア番号ごとに決定的に派生したシードで
-    // 作る。全ペアが同一シードへ退化していないことをpair_seed=の相異で固定する
-    // (変異検証フェーズ4で検出した派生配線の無検証を補強)。
+    // docs/guides/sprt.md「ペア対局と再現性」に従い、開始局面のシードはペア番号から決定的に派生する。
+    // pair_seed=の相異により、全ペアへ同じシードを渡していないことを確かめる。
     let seeds: Vec<&str> = sequential
         .lines()
         .filter_map(|line| {
@@ -118,10 +117,9 @@ fn random_usi_match_output_is_independent_of_concurrency() {
     assert_eq!(unique.len(), 4);
 }
 
-// docs/guides/sprt.md「エンジンの指定方法」とdocs/plans/match-harness.md「CECPセッション管理」に従い、
-// minase自身をCECP候補にした対局は異常なく完走し、同じ起動バイナリをUSI
-// 候補にした対局と同じ着手列・結果になる。spec原文の表示は[`minase::harness::parse_player_spec`]の契約により
-// 必ず異なるため、両原文だけを同じ表示へ置換して経過時間以外の全出力を比較する。
+// docs/guides/sprt.md「エンジンの指定方法」に従い、同じminaseバイナリへ同じ局面と深さ制限を渡すと、
+// CECPでもUSIでも異常なく同じ着手列と結果を得る。
+// [`minase::harness::parse_player_spec`]は起動指定の原文を表示名に保つため、その表示と経過時間を正規化して比較する。
 #[test]
 fn minase_cecp_match_is_failure_free_and_matches_usi() {
     let minase = env!("CARGO_BIN_EXE_minase");
@@ -142,8 +140,8 @@ fn minase_cecp_match_is_failure_free_and_matches_usi() {
     );
 }
 
-// match-harness-efficiency.md「実行記録と再開」: 欠番より後の確定済み記録を
-// 変更せず、最小の欠番だけを再実行して番号順の統計を復元する。
+// docs/guides/sprt.md「実行ディレクトリと再開」に従い、確定済みペアを保ち、欠番だけを再実行する。
+// 欠番を補った結果はペア番号順に取り込み、連続実行と同じ統計を復元する。
 #[test]
 fn resume_fills_the_lowest_gap_and_preserves_later_records() {
     let run_dir = run_directory();
@@ -210,7 +208,8 @@ fn resume_fills_the_lowest_gap_and_preserves_later_records() {
     std::fs::remove_dir_all(run_dir).unwrap();
 }
 
-// docs/plans/ponder.md「対局ハーネスの対局進行」に従い、条件違反はmkdirより前に拒否する。
+// --ponderは両エンジンがUSIかつ時間制御の場合だけ受理する。
+// 深さ制限との併用は、実行ディレクトリを作る前に引数エラーにする。
 #[test]
 fn ponder_invalid_conditions_do_not_create_run_directory() {
     let run_dir = run_directory();
@@ -228,7 +227,7 @@ fn ponder_invalid_conditions_do_not_create_run_directory() {
     assert!(!run_dir.exists());
 }
 
-// docs/plans/ponder.md「保存形式と再開」に従い、再開集計は既存ペアを含む。
+// 再開時の先読み統計は、新規実行したペアと再開以前の確定済みペアを含む保存記録の全件から集計する。
 #[test]
 fn ponder_resume_replays_all_counts() {
     let run_dir = run_directory();
@@ -576,8 +575,8 @@ fn gsprt_resume_checks_only_explicit_hypotheses_without_changing_saved_condition
     std::fs::remove_dir_all(elo).unwrap();
 }
 
-// match-resume-simplification.md「起動の記録」: 表示だけでは履歴を変えず、
-// 実行する再開はrunnerと測定機が変わっても通知して記録する。
+// 結果の表示だけでは起動履歴を変えず、対局を実行する再開だけをinvocations.jsonへ追記する。
+// runnerと測定機の変更は再開を拒否する条件にせず、変更を通知して今回の起動情報を記録する。
 #[test]
 fn resume_records_only_invocations_that_execute_games() {
     let dir = run_directory();

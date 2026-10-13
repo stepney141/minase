@@ -11,7 +11,13 @@ use std::{
     path::Path,
 };
 
-/// PSTの1エポックの記録。学習前の損失と速度はnull。
+/// PSTの1エポックの記録。
+/// 損失はすべて局面数で重み付けした平均で、端数バッチも含める。
+/// `train_loss`の教師は混合後の教師確率、`validation_loss`は全検証集合の二値交差エントロピーで、除去損失を含めない。
+/// `removal_loss`は[`super::Losses::removal`]と同じロジット単位の値である。
+/// `--removal-penalty 0`では除去の参照を作らず、除去損失も計算しないため、訓練後の`removal_loss`は0になる。
+/// エポック0では`train_loss`、`removal_loss`、`total_loss`、`training_seconds`、
+/// `training_positions_per_second`、`update_seconds`が`null`、`steps`が0である。
 #[derive(Debug, Serialize)]
 pub struct EpochRecord {
     /// CPUで実行したことを記録する。
@@ -44,6 +50,32 @@ pub struct EpochRecord {
     pub total_steps: u64,
 }
 
+/// `config.json`に保存する引数、設定、入力、前処理結果を作る。
+///
+/// 最上位の欄は`device = "cpu"`、新規実行時の[`Args`]を直列化した`arguments`、
+/// 実効ワーカー数`resolved_threads`、`settings`、`inputs`、`preprocessing`、`resumes`、
+/// `config_sha256`、`input_sha256`である。
+/// 新規実行では呼び手が、開始から設定を書き出すまでの秒数`preprocessing_seconds`を加える。
+/// `settings`は[`Args`]から`output_dir`、`resume`、`data`、`init`、`epochs`、`patience`、`threads`を除き、
+/// `model = "mirrored_pst"`と`optimizer = {lr, weight_decay: 0.0, betas: [0.9, 0.999], epsilon: 1e-8}`を加えた値で、再開で変更できない。
+///
+/// `inputs.files`は入力順の配列で、各要素は`data`と`provenance`、および`header_sha256`を持つ。
+/// `data`と`provenance`は正規化した`path`とファイル全体の`sha256`、
+/// `header_sha256`はMNSDヘッダ136バイトのSHA-256である。
+/// `inputs.init`は初期MNPTの`path`と`sha256`である。
+///
+/// `preprocessing.teacher_classes`は分類順の[`crate::data::TeacherClass`]の配列である。
+/// 検査和は32個の数値の配列、`lookahead`は`{gamma, plies}`または`null`、
+/// `lambda_override`は実際に適用した値または`null`である。
+/// `teacher_ks`は分類順の教師用Kでλが0の分類は`null`、`teacher_lambdas`は分類順の実効λである。
+/// `teacher_k_source = "training"`、`output_k`は初期MNPTから引き継いだ出力用Kである。
+/// `training_positions`と`validation_positions`は局面数、`training_indices_sha256`と
+/// `validation_indices_sha256`は入力を連結した0始まりの通算番号をリトルエンディアンu64列にしたSHA-256である。
+///
+/// `config_sha256`は`settings`、`input_sha256`は`{"inputs": inputs, "preprocessing": preprocessing}`を、
+/// キーを辞書順に並べた空白なしのJSONにしたバイト列のSHA-256で、小文字16進文字列で保存する。
+/// `resumes`は新規実行では空で、再開のたびに`{resumed_at_unix_seconds, epochs, patience, workers, epoch}`を追記する。
+/// 時刻は整数のUnix秒、`workers`は実効ワーカー数、`epoch`は再開時点の完了済みエポック番号である。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
@@ -185,7 +217,14 @@ pub enum StopReason {
     EarlyStopping,
 }
 
-/// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
+/// 終了理由、最良エポック、量子化検査を`summary.json`へ保存する。
+/// `status = "candidate"`なら終了コード0、`"quantization_error"`または`"error"`なら終了コード1である。
+/// 量子化検査が不合格でも出力した重みと報告を残し、`quantization`と`initial_position_score`を記録する。
+/// 最良重みの書き出しに失敗した場合は`reason`を加えた同じ形で保存し、この2欄は`null`になる。
+/// エポックの途中の失敗では、この型の代わりに`{status: "error", reason, last_epoch, elapsed_seconds}`だけを保存する。
+/// `initial_position_score`はFMを含まないMNPT版2を[`minase::eval::pst::evaluate_pst`]で評価した値で、手番側視点のセンチポーンである。
+/// この関数の評価は±28,999へ切り詰められ、報告時には追加の切り詰めを行わない。
+/// `convergence`は常に`null`である。
 #[derive(Debug, Serialize)]
 pub struct Summary {
     /// candidate、quantization_error、またはerror。

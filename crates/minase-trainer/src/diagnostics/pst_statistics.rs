@@ -1,6 +1,6 @@
 //! PST比較の全検証集合の損失と標本誤差を集計する。
 //! 教師分類と補間係数の帯ごとの二値交差エントロピー、標本の平均絶対誤差と相関、対局ごとの平均損失を求める。
-//! 各出力欄の定義は`docs/reference/trainer/pst-compare-records.md`にある。
+//! 各出力欄の定義は、この集計を報告へ載せる[`teacher_ks`]、[`validation`]、[`OutcomeMetrics`]、[`ErrorSummary`]と、`pst_compare.rs`の`Report`および`Band`のdocコメントにある。
 
 use super::{
     Result,
@@ -14,6 +14,10 @@ use crate::{
 use serde::Serialize;
 use std::collections::HashMap;
 
+/// 教師分類ごとの教師用Kを訓練集合だけで推定する。
+/// 呼び手は[`Dataset::diagnostic_teacher_scores`]でf64として再計算した探索値を渡し、先読み指定時は先読み値を使う。
+/// 終局結果だけを目標に[`estimate_k`]で推定し、実効λが0の分類はNaNを返すため、報告では`null`になる。
+/// 訓練集合が空なら失敗し、λが0でない分類に訓練局面がなければ[`estimate_k`]が空標本を拒否する。
 pub(super) fn teacher_ks(dataset: &Dataset, scores: &[f64]) -> Result<Vec<f64>> {
     if dataset.training_indices().is_empty() {
         return Err("teacher calibration requires training records".into());
@@ -39,6 +43,18 @@ pub(super) fn teacher_ks(dataset: &Dataset, scores: &[f64]) -> Result<Vec<f64>> 
         .collect()
 }
 
+/// `report.json`の`outcome_metrics.base`と`.candidate`に保存する終局結果との比較。
+/// 教師の混合比に依存せず、全検証局面の評価値をそのモデルの出力用Kで確率へ変換する。
+/// `records`は検証局面数、`output_k`はモデルの出力用Kである。
+/// `games`は[`Dataset::game_key`]で識別する対局数で、人間の棋譜は棋譜ID、乱数開始の自己対局は生成シードと対局番号で区別する。
+/// 複数ファイルに現れる同じ棋譜IDは1対局と数える。
+///
+/// `bce_position_mean`は目標`result/2`への二値交差エントロピーの局面平均で、局面0件なら`null`である。
+/// `bce_game_mean`は対局ごとの局面平均を対局間で等しい重みで平均した値で、対局0件なら`null`である。
+/// `sign_records`は引き分けでも評価値0でもない局面数、`sign_matches`はその中で「評価値が正」と「勝ち」が一致した局面数である。
+/// `sign_agreement = sign_matches / sign_records`で、分母0なら`null`である。
+/// `sign_excluded`は引き分けまたは評価値0の局面数を和集合で数える。
+/// `draw_records`と`zero_score_records`は理由別の件数で、両方に該当する局面はそれぞれに数える。
 #[derive(Serialize)]
 pub(super) struct OutcomeMetrics {
     records: usize,
@@ -115,6 +131,13 @@ pub(super) struct Validation {
     pub outcomes: Models<OutcomeMetrics>,
 }
 
+/// 全検証局面の損失和を教師分類と位相帯ごとに集計し、モデルごとの[`OutcomeMetrics`]も求める。
+/// 教師確率は実効λが0なら`result/2`、それ以外は`λ·σ(score/K_teacher) + (1−λ)·result/2`である。
+/// `score`はf64の教師探索値、`result`は手番側の負け0、引き分け1、勝ち2、`σ(x) = 1/(1+exp(−x))`とする。
+/// 混合はf64で計算して一度f32へ丸め、損失の計算時にf64へ戻す。
+/// 混合後の丸めは学習と同じだが、この診断の探索値はf32へ丸める前の値である。
+/// 各モデルのロジットは独立した整数PST参照の評価値をそのモデルの出力用Kで割った値で、教師確率との二値交差エントロピーを求める。
+/// `Band.validation_loss`はこの和を分類と帯ごとの検証局面数で割った値である。
 pub(super) fn validation(
     dataset: &Dataset,
     models: &Models<Weights>,
@@ -163,6 +186,15 @@ pub(super) fn validation(
     })
 }
 
+/// `Band.base`と`Band.candidate`に保存する教師探索値との標本比較。
+/// `mae_scaled_cp`はモデル評価と`raw × 候補の出力用K / 教師用K`に換算した教師探索値との平均絶対誤差である。
+/// `mae_raw_cp`はモデル評価と生の教師探索値との平均絶対誤差で、いずれもセンチポーン単位である。
+/// `correlation`はモデル評価と換算後の教師探索値のPearson相関係数である。
+/// 中心化した積和を両者の平方和の平方根で割り、[−1, 1]へ切り詰める。
+/// 定義できなければ`null`とし、`correlation_reason`へ理由を優先順に1つ記録する。
+/// 標本2件未満は`"fewer than 2 samples"`、換算後の教師探索値がすべて等しい場合は
+/// `"constant teacher scores"`、モデル評価がすべて等しい場合は`"constant predicted scores"`である。
+/// 相関が定義できる場合の`correlation_reason`は`null`である。
 #[derive(Debug, Serialize)]
 pub(super) struct ErrorSummary {
     mae_scaled_cp: f64,
@@ -171,6 +203,8 @@ pub(super) struct ErrorSummary {
     correlation_reason: Option<&'static str>,
 }
 
+/// 空でなく同じ長さのモデル評価、換算後の教師値、生の教師値から[`ErrorSummary`]を作る。
+/// この長さの条件に違反すればパニックする。
 pub(super) fn error_summary(predicted: &[f64], scaled: &[f64], raw: &[f64]) -> ErrorSummary {
     assert!(
         !predicted.is_empty() && predicted.len() == scaled.len() && predicted.len() == raw.len()

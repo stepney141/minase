@@ -8,7 +8,14 @@ use serde::Serialize;
 use serde_json::json;
 use std::path::Path;
 
-/// 同時学習の1エポックの記録。学習前の損失と速度はnull。
+/// 同時学習の1エポックの記録。
+/// 損失は局面数で重み付けした平均で、端数バッチも含める。
+/// `removal_loss`は係数適用前の駒除去損失をKで割ったロジット単位の値で、参照は常にv0の駒価値である。
+/// `--removal-penalty 0`でも計算して記録し、損失全体と勾配へ掛ける係数だけが0になる。
+/// `phi_squared_mean`は係数適用前の`mean(Φ²)`である。
+/// `total_loss = train_loss + lambda_res * phi_squared_mean + removal_penalty * removal_loss`とする。
+/// `validation_loss`は全検証集合の二値交差エントロピーで、除去損失と正則化項を含めない。
+/// エポック0では訓練の損失、`phi_squared_mean`、訓練秒数、速度、更新秒数が`null`、`steps`が0である。
 #[derive(Debug, Serialize)]
 pub struct EpochRecord {
     /// CPUで実行したことを記録する。
@@ -45,6 +52,13 @@ pub struct EpochRecord {
     pub total_steps: u64,
 }
 
+/// 同時学習の`config.json`を、[`pst::record::configuration`](../../pst/record/fn.configuration.html)と同じ構成で作る。
+/// `settings`からは`init`に代えて`base`、`pst_init`、`fm_init`、`fm_reference`を除く。
+/// `settings.model = "joint_mirrored_pst_fm_rank32"`とし、`settings.optimizer`は
+/// `{pst_lr, pst_weight_decay: 0, fm_lr, fm_weight_decay, betas: [0.9, 0.999], epsilon: 1e-8}`である。
+/// `inputs`は`files`のほかに`base`、`pst_init`、`fm_init`、`fm_reference`の各`{path, sha256}`を持ち、`init`を持たない。
+/// `preprocessing`には[`fm::record::configuration`](../../fm/record/fn.configuration.html)と同じ`feature_observations`と`unobserved_features`を加える。
+/// 加えて、`--fm-init`のマスクと数え直したマスクの不一致数`mask_mismatches`、および`removal_reference = "v0"`を保存する。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
@@ -110,7 +124,15 @@ pub enum StopReason {
     EarlyStopping,
 }
 
-/// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
+/// 終了理由、最良エポック、量子化検査を`summary.json`へ保存する。
+/// `status = "candidate"`なら終了コード0、`"quantization_error"`または`"error"`なら終了コード1である。
+///
+/// 学習前の量子化検査が不合格なら学習せずに
+/// `{status: "quantization_error", reason: "initial quantization mean absolute error exceeds 2 cp", initial_quantization, total_steps}`を保存する。
+/// その検査自体が失敗した場合は`{status: "error", reason, total_steps}`を保存する。
+/// エポック途中の失敗では`{status: "error", reason, last_epoch, gradients, total_steps, elapsed_seconds}`を保存する。
+/// 最終の量子化検査が不合格でも重みと`initial_position_score`は残す。
+/// `initial_position_score`は、書き出したMNPT版3のPST評価に整数FM補正を加え、±28,999へ切り詰めた手番側視点のセンチポーンである。
 #[derive(Debug, Serialize)]
 pub struct Summary {
     /// candidate、quantization_error、またはerror。

@@ -136,7 +136,9 @@ pub fn gradients(
     Ok(Gradients { losses, weights })
 }
 
-/// 検証集合全体のFM補正の分布。単位はロジット。
+/// 検証集合全体のFM補正Φの分布。単位はロジットで、センチポーンへの換算はK倍である。
+/// `std`は母標準偏差であり、平均をμとして`sqrt(max(mean(Φ²) − μ², 0))`で計算する。
+/// 同時学習の[`crate::joint::Distribution`]は同じ量に`unit = "logit"`と`std_cp = K * std`を加える。
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Distribution {
     /// 平均。
