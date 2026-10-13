@@ -63,7 +63,7 @@ lishogiの対局条件も反復規則R1を使うので（RULES.md第33条第6項
 `SearchSnapshot::from_game`は、対局プロトコル（USIとCECP）のほかに、NNUEの教師局面を生成する自己対局（`crates/minase/src/bin/minase/selfplay_gen/play.rs`）からも呼ばれる。
 自己対局は対局履歴つきの`Game`を使うので、項目1を採用すると教師生成の着手も変わる。
 探索の改善を呼び出し元によって分ける理由はないので、選別は`from_game`に入れ、教師生成にも適用する。
-教師局面の再評価（`selfplay_gen/rescore.rs`）とlishogi棋譜への評価付与（`lishogi_import/label.rs`）は履歴を持たない`Game::from_position`から探索するので、項目1は発動しないが、探索経路の中で完結する周回には項目2が発動し得る。
+lishogi棋譜への評価付与（`lishogi_import/label.rs`）は履歴を持たない`Game::from_position`から探索するので、項目1は発動しないが、探索経路の中で完結する周回には項目2が発動し得る。
 教師生成と評価付与は、絶対値が`MATE_BAND_START`（29,000）以上の評価値の局面を詰みの帯として記録から除くので、項目2の専用の帯（絶対値29,487以上。設計判断の節）の値も同じく除かれる。
 本書の用語は次のとおりである。
 **根**は探索を開始する局面、すなわち実際の対局の現局面である。
