@@ -6,7 +6,7 @@
 動機は、[NNUEの完全代替](nnue-replacement.md)（以下、前計画）のフェーズ4で、2つの入力特徴集合（P型とHalfKP-hm-b8）のどちらも検証損失が最初の訓練エポックの直後で最良になり、以後は訓練損失だけが下がり続けたことである。
 この症状は、学習率が大きすぎて最良点を通り過ぎた場合にも、同じ対局の局面どうしの相関で実質の標本数が少なく過学習した場合にも生じるので、両者を見分ける手がかりを集める。
 学習器には、学習率に掛ける倍率を完了した更新回数の関数として与える3つの形（一定、指数減衰、cosine annealing）と、エポックの途中で検証損失を記録する機能を加える。
-前計画が最後に段階ゲートへ出した入力特徴集合と幅について、一定の1倍、1/3倍、1/10倍、指数減衰、cosineの5本を同じデータとシードで学び、エポック境界の最良の検証損失が最も低い1本を選ぶ。
+前計画が採用したP型の幅128について、一定の1倍、1/3倍、1/10倍、指数減衰、cosineの5本を同じデータとシードで学び、エポック境界の最良の検証損失が最も低い1本を選ぶ。
 選んだ1本が一定の1倍でなければ、そのネットを埋め込んだコミットを、一定の1倍のネットを埋め込んだコミットと段階ゲート（短時間STCで選別し長時間LTCで判定する時間制御のGSPRT、[測定の手引き](../guides/sprt.md)）で比べて採否を決める。
 一定の1倍が最良なら、試した設定では学習率による改善がないと結論し、訓練に使う対局の数を変えて相関の影響を調べる条件つきのフェーズへ進む。この場合は自己対局による棋力の測定を行わない。
 完了条件は、採否と、試した設定で改善したかどうかの結論が測定記録とともに確定していることである。
@@ -15,8 +15,8 @@
 
 起案。2026年10月12日に起案した。
 着手は利用者の指示を待つ。
-学習は、前計画のフェーズ6（段階ゲート）で入力特徴集合と幅が確定してから行う。
-実装は学習器の中で閉じるので、前計画の測定中にも進められるが、学習器の改名（[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)のフェーズ0）の後に行う。
+着手の前提はそろっている。前計画はP型の幅128を採用して完了し、学習器の改名を含む[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)もmasterへマージされた。
+実装は、現在の`crates/minase-trainer`に対して始められる。
 
 ## 目的
 
@@ -67,19 +67,17 @@
 
 ## 依存関係
 
-学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`minase-trainer nnue train`である。
+学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`minase-trainer nnue train`であり、引数、保存物、および再開の仕様は参照文書[NNUEの学習](../reference/trainer/nnue-training.md)が定める。
 学習率はホストが群ごとに保持し、更新のたびにバイアス補正の係数とともに倍精度でカーネルへ渡している（`src/nnue/gpu/optimizer.rs`の`Optimizer::update`、CPU参照は汎用部品`src/nn/adam.rs`の`AdamCoefficients::new`）。
 したがって倍率を掛けるのはホスト側の変更で済み、CUDAカーネルは変えない。
 重み減衰はAdamWの分離型で`p ← p·(1 − lr·wd)`として掛かるので、倍率を掛けると減衰も同じ割合で小さくなる。
 チェックポイント（MNTRCKPT版2）は完了した更新回数、エポック、AdamWの状態を保存しており、再開時は`更新回数 = エポック × ceil(訓練局面数 / バッチ)`を検査する。
 チェックポイントには実測の累積時間とそれを含む検査和も入るので、連続実行と再開実行のファイル全体は一致しない。
-再開の設定ハッシュは引数から出力先、データ、`--epochs`、`--patience`、時間の上限、`--threads`を除いて作る（`src/nnue/train/record.rs`）。
+再開の設定ハッシュは、引数から出力先、再開元、入力ファイル（データ、`--init-pst`、`--base`）、`--epochs`、`--patience`、時間の上限`--time-limit-hours`、`--threads`を除いて作る（`src/nnue/train/record.rs`）。入力ファイルは、正規化したパスと内容のSHA-256をまとめた別のハッシュで照合する。
 再開時は、`training.jsonl`の各行をエポックの記録として読み、エポック番号が1ずつ増えることを検査する（`src/nnue/train/record.rs`の`reconcile_log`）。
 教師用Kの推定と観測マスクは訓練集合から作り、第1層の初期化は観測された行だけで乱数を消費する。
 
-入力特徴集合と幅、および比較の基準となる一定の学習率のネットは、[NNUEの完全代替](nnue-replacement.md)が最後に段階ゲートへ出したものとする。
-前計画がNNUEを現行の評価関数PST＋FM（PSTに2駒の位置関係の補正FMを加えたもの）の代わりにエンジンへ採用したかどうかによらず、本書はそのネットと同じ型と幅のネットどうしを比べる。
-前計画がNNUEを採用しなかった場合、本書で採用したネットは、前計画が「後続への引き継ぎ」に定める「NNUEの研究を続けるかどうか」の判断に使う候補になる。
+入力特徴集合と幅は、[NNUEの完全代替](nnue-replacement.md)が採用してエンジンに埋め込んだP型の幅128とし、比較の基準となる一定の1倍のネットは、埋め込んだネットと同じ条件で学び直す。
 フェーズ4の学習条件（全30ファイル、現行PSTの元になった候補J75の実数の重み`pst-float.npz`による初期化、先読み教師γ=0.9・n=40、バッチ16,384、シード1、補助損失の係数1000）は本書でもそのまま使う。
 学習はGPUのある本環境（RTX 3060 Ti 8GB）で行い、段階ゲートの対局と同時には学習しない。
 学習のワーカーがCPUを使い、時間制御の対局の時計を乱すからである。
@@ -141,6 +139,7 @@ GPUの学習器は、更新の損失をGPUからホストへ1更新遅れて読�
 - `--validation-interval`を指定した学習をエポックの途中で中断して再開したとき、`validation-interval.jsonl`がチェックポイント以前の行だけを残し、再開後の学習の軌跡と`nnue.bin`が中断しない学習と一致する。
 - 再開時に`--lr-schedule`を変えると、設定ハッシュの不一致で拒否される。
 - `--validation-interval`を指定しても、学習の軌跡と`nnue.bin`が指定しない場合と同じである。
+- 加えた引数、`training.jsonl`の倍率の欄、および`validation-interval.jsonl`の仕様が、同じコミットで参照文書[NNUEの学習](../reference/trainer/nnue-training.md)に書かれている。
 
 ### フェーズ2　5本の学習
 
@@ -187,6 +186,7 @@ STCが`H1`、または上限に達してLLRが0以上なら、LTC（`time=60000+
 ## 参考資料
 
 - [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)
+- 学習器の参照文書[NNUEの学習](../reference/trainer/nnue-training.md)
 - [NNUEの学習の記録](../measurements/nnue-replacement-training.md)、[Rust製学習器の検査の記録](../measurements/nnue-trainer-rust-checks.md)
 - tatara（[SH11235/tatara](https://github.com/SH11235/tatara)、コミット`db08ed2`）: `crates/nnue-train/src/schedule.rs`（7種類の形、warmup）、`docs/decisions/2026-05-31-ckpt-lr-horizon.md`（総長のチェックポイント保存）、`bins/nnue_train/src/cli.rs`（既定値: 8.75×10⁻⁴、step、0.992、1 superbatch = 6,104更新）
 - やねうら王（コミット`15c1cc6a`の`source/learn/learner.cpp`）: newbob型の巻き戻しと減衰（既定では無効）
