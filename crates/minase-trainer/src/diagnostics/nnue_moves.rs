@@ -23,7 +23,7 @@ pub struct MovesArgs {
     /// 基準とするMNPT版3。
     #[arg(long)]
     base: PathBuf,
-    /// 全合法手を調べるMNSD局面。来歴ファイルは不要。
+    /// 全合法手を調べるMNSD局面。合成の由来も受理する。
     #[arg(long)]
     positions: PathBuf,
     /// 新規作成するJSON報告。
@@ -170,7 +170,7 @@ fn unmatched_error(candidate_only: usize, baseline_only: usize) -> Option<String
 }
 
 /// `--positions`の全局面の全合法手について、MNUE版5とMNPT版3の着手前後の評価差を比べる。
-/// MNSDの来歴ファイルは要しない。
+/// 合成の由来を含むMNSDも受理する。
 /// ヘッダの規則セットを解釈して`engine-default`との一致を要求し、不一致と記録数0を拒否する。
 /// 各記録を[`Record::to_position`](minase::training::records::Record::to_position)で復元して[`Game`]を作り、[`move_rows`]で各手を評価する。
 pub(super) fn run(args: &MovesArgs) -> Result<Report> {

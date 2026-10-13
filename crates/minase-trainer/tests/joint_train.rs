@@ -19,7 +19,6 @@ use minase_trainer::{
     nn::npz,
 };
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -34,6 +33,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "trainer",
+        "--lambda",
+        "0.75",
         "--data",
         "records.bin",
         "--base",
@@ -95,7 +96,12 @@ fn fm_npz(model: &fm::Model) -> Vec<u8> {
 }
 fn dataset(args: &Args) -> Dataset {
     // SAFETY: Each test owns these files, and leaves them unchanged while the Dataset is alive.
-    unsafe { Dataset::open(&args.data, None, args.lambda_override).unwrap() }
+    unsafe {
+        Dataset::open(&args.data, None)
+            .unwrap()
+            .with_lambda(args.lambda)
+            .unwrap()
+    }
 }
 fn initialize(args: &Args) -> (Model, usize) {
     let ds = dataset(args);
@@ -132,7 +138,7 @@ fn cli_defaults_and_invalid_arguments() {
         ),
         (0.03, 0.001, 0.0001, 0.0001, 1000.0)
     );
-    assert_eq!(args.lambda_override, None);
+    assert_eq!(args.lambda, 0.75);
     for flag in [
         "--base",
         "--pst-init",
@@ -158,7 +164,6 @@ fn cli_defaults_and_invalid_arguments() {
         ("--lambda-res", "inf"),
         ("--removal-penalty", "-1"),
         ("--validation-sample", "0"),
-        ("--lambda-override", "1.1"),
     ] {
         let mut v: Vec<_> = argv().into_iter().map(str::to_owned).collect();
         v.push(format!("{flag}={value}"));
@@ -351,7 +356,7 @@ fn resume_rejects_trajectory_changes_before_writing() {
         |a| a.removal_penalty = 0.0,
         |a| a.batch = 17,
         |a| a.seed = 2,
-        |a| a.lambda_override = Some(0.5),
+        |a| a.lambda = 0.5,
         |a| a.validation_sample = 8,
         |a| {
             a.lookahead_gamma = Some(0.9);
@@ -382,7 +387,7 @@ fn resume_rejects_trajectory_changes_before_writing() {
 fn initial_quantization_failure_is_recorded_and_exits_with_one() {
     let (_fixture, args) = Fixture::new(true);
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["joint", "train", "--data"])
+        .args(["joint", "train", "--lambda", "0.75", "--data"])
         .arg(&args.data[0])
         .arg("--base")
         .arg(&args.base)
@@ -425,14 +430,20 @@ fn exported_quantization_failure_keeps_weights_and_records_error() {
     let mut bytes = original[..136].to_vec();
     for game in 0..40 {
         for ply in 0..3 {
-            bytes.extend(Record::from_position(&p, 300, Outcome::Win, game, ply).encode());
+            bytes.extend(
+                Record::from_position(
+                    &p,
+                    300,
+                    Outcome::Win,
+                    game,
+                    ply,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
+                .encode(),
+            );
         }
     }
     fs::write(&args.data[0], &bytes).unwrap();
-    let path = args.data[0].with_file_name("records.bin.provenance.json");
-    let mut provenance = document(&path);
-    provenance["mnsd_sha256"] = json!(format!("{:x}", Sha256::digest(&bytes)));
-    fs::write(path, serde_json::to_vec(&provenance).unwrap()).unwrap();
     args.pst_lr = 4095.875;
     args.removal_penalty = 0.0;
     let result = joint::train(args.clone());

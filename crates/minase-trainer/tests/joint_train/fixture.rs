@@ -1,8 +1,5 @@
 use super::*;
-use minase::training::{
-    provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-    records::Header,
-};
+use minase::training::records::Header;
 use minase_trainer::pst::v0_piece_values;
 use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -125,30 +122,13 @@ impl Fixture {
                         },
                         game,
                         ply,
+                        minase::training::records::Origin::RandomSelfplay,
                     )
                     .encode(),
                 );
             }
         }
         fs::write(&args.data[0], &bytes).unwrap();
-        Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: "L0,P0,R1,E0".into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        }
-        .write(fs::File::create(fixture.root.join("records.bin.provenance.json")).unwrap())
-        .unwrap();
         (fixture, args)
     }
 }

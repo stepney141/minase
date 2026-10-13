@@ -5,14 +5,8 @@ use serde::Serialize;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::Path,
 };
-
-pub(super) fn sidecar(path: &Path, suffix: &str) -> PathBuf {
-    let mut path = path.as_os_str().to_owned();
-    path.push(suffix);
-    path.into()
-}
 
 pub(super) fn create(path: &Path) -> io::Result<File> {
     OpenOptions::new().write(true).create_new(true).open(path)

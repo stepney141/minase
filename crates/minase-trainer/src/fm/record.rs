@@ -8,11 +8,7 @@ use crate::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    path::Path,
-};
+use std::{fs::OpenOptions, io::Write, path::Path};
 
 /// FMの1エポックの記録。
 /// 損失は局面数で重み付けした平均で、端数バッチも含める。
@@ -55,6 +51,7 @@ pub struct EpochRecord {
 }
 
 /// FM学習の`config.json`を、[`pst::record::configuration`](../../pst/record/fn.configuration.html)と同じ構成で作る。
+/// 入力の識別は[`crate::identity`]に従い、`settings.lambda`に指定した混合比を保存する。
 /// `settings.model = "fm_rank32"`とし、`settings.optimizer`は
 /// `{lr, weight_decay, betas: [0.9, 0.999], epsilon: 1e-8}`で、`weight_decay`には`--weight-decay`を使う。
 /// `preprocessing`に、訓練集合とその全鏡映で数えた全13,680特徴の観測回数`feature_observations`を特徴番号順で加える。
@@ -88,11 +85,10 @@ pub(super) fn configuration(
         "optimizer".into(),
         json!({"lr":args.lr, "weight_decay":args.weight_decay, "betas":[0.9,0.999], "epsilon":1e-8}),
     );
-    let files = dataset.paths().zip(dataset.headers()).map(|(path, header)| {
-        let mut sidecar = path.as_os_str().to_owned();
-        sidecar.push(".provenance.json");
-        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&sha256(&header.encode()))}))
-    }).collect::<Result<Vec<_>>>()?;
+    let files = dataset
+        .paths()
+        .map(file_record)
+        .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
     let preprocessing = json!({"feature_observations":counts, "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
@@ -111,17 +107,7 @@ pub(super) fn configuration(
 }
 
 pub(crate) fn file_record(path: &Path) -> Result<Value> {
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256Hasher::default();
-    let mut buffer = [0_u8; 65536];
-    loop {
-        let n = file.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(json!({"path": path.canonicalize()?, "sha256": hex(&hasher.finalize())}))
+    Ok(serde_json::to_value(crate::identity::file_identity(path)?)?)
 }
 
 pub(crate) fn hash_u64(values: &[u64]) -> String {

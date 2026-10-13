@@ -12,8 +12,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
+    fs::OpenOptions,
+    io::Write,
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -137,17 +137,7 @@ pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
 }
 
 fn file_record(path: &Path) -> Result<Value> {
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256Hasher::default();
-    let mut buffer = [0_u8; 65536];
-    loop {
-        let n = file.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(json!({"path": path.canonicalize()?, "sha256": hex(&hasher.finalize())}))
+    Ok(serde_json::to_value(crate::identity::file_identity(path)?)?)
 }
 
 fn hash_u64(values: &[u64]) -> String {
@@ -172,8 +162,9 @@ pub(super) struct Configuration {
 /// `patience`、`time_limit_hours`、`threads`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
 /// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
 ///
-/// `inputs.files`は入力順の配列で、各要素は`data`と`provenance`の各`{path, sha256}`、およびMNSDヘッダの`header_sha256`を持つ。
-/// `inputs.init_pst`と`inputs.base`も`{path, sha256}`であり、パスはすべて正規化済みである。
+/// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
+/// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
+/// `inputs.init_pst`はNPZの`{path, byte_length}`、`inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。
 /// `preprocessing`は`teacher_classes`、`teacher_ks`、`teacher_lambdas`、`teacher_k_source = "training"`、
 /// `output_k`、`training_positions`、`validation_positions`を持つ。
 /// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師用Kは`null`である。
@@ -224,15 +215,7 @@ pub(super) fn configuration(
     object.insert("initial_standard_deviation".into(), json!(0.05));
     let files = dataset
         .paths()
-        .zip(dataset.headers())
-        .map(|(path, header)| {
-            let mut sidecar = path.as_os_str().to_owned();
-            sidecar.push(".provenance.json");
-            Ok(
-                json!({"data": file_record(path)?, "provenance": file_record(Path::new(&sidecar))?,
-            "header_sha256": hex(&sha256(&header.encode()))}),
-            )
-        })
+        .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files": files, "init_pst": file_record(&args.init_pst)?, "base": file_record(&args.base)?});
     let count = |mask: &[bool]| {

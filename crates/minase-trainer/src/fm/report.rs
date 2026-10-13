@@ -156,7 +156,7 @@ pub(super) fn scale_report(
     args: &ScaleArgs,
 ) -> Result<ValidationReport> {
     // SAFETY: ほかの学習器コマンドと同じく、実行中の入力MNSDを変更しない契約で開く。
-    let dataset = unsafe { Dataset::open(&args.data, None, None)? };
+    let dataset = unsafe { Dataset::open(&args.data, None)? };
     let count = args
         .validation_sample
         .min(dataset.validation_indices().len());

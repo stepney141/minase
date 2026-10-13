@@ -27,12 +27,9 @@ use label::{GameDetails, Job, process_job};
 use minase::{
     datagen::{self, data_error},
     search::TranspositionTable,
-    training::{
-        provenance::{GameOrigin, ResultOrigin, SearchCondition, StartOrigin},
-        records::{Header, Writer},
-    },
+    training::records::{Header, Writer},
 };
-use output::{create, sidecar, write_json};
+use output::{create, write_json};
 use replay::replay;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -154,30 +151,34 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                     }
                     report.retained_plies.insert(job.input.id.clone(), plies);
                 }
-                let stats = &result.completed.stats;
-                let players = job.input.players.as_ref();
-                details.insert(
-                    job.input.id.clone(),
-                    GameDetails {
-                        game: job.number,
-                        sente_rating: players
-                            .and_then(|p| p.sente.as_ref())
-                            .and_then(|p| p.rating),
-                        gote_rating: players.and_then(|p| p.gote.as_ref()).and_then(|p| p.rating),
-                        speed: time_control(&job.input),
-                        clock: job.input.clock.clone(),
-                        days_per_turn: job.input.days_per_turn.clone(),
-                        status: job.input.status.clone(),
-                        winner: job.input.winner.clone(),
-                        plies: job.input.moves.split_whitespace().count(),
-                        recorded_positions: result.completed.records.len(),
-                        excluded_positions: BTreeMap::from([
-                            ("mate_band", stats.excluded_mate_band),
-                            ("tactical", stats.excluded_tactical),
-                            ("repetition", stats.excluded_repetition),
-                        ]),
-                    },
-                );
+                if !openings {
+                    let stats = &result.completed.stats;
+                    let players = job.input.players.as_ref();
+                    details.insert(
+                        job.input.id.clone(),
+                        GameDetails {
+                            game: job.number,
+                            sente_rating: players
+                                .and_then(|p| p.sente.as_ref())
+                                .and_then(|p| p.rating),
+                            gote_rating: players
+                                .and_then(|p| p.gote.as_ref())
+                                .and_then(|p| p.rating),
+                            speed: time_control(&job.input),
+                            clock: job.input.clock.clone(),
+                            days_per_turn: job.input.days_per_turn.clone(),
+                            status: job.input.status.clone(),
+                            winner: job.input.winner.clone(),
+                            plies: job.input.moves.split_whitespace().count(),
+                            recorded_positions: result.completed.records.len(),
+                            excluded_positions: BTreeMap::from([
+                                ("mate_band", stats.excluded_mate_band),
+                                ("tactical", stats.excluded_tactical),
+                                ("repetition", stats.excluded_repetition),
+                            ]),
+                        },
+                    );
+                }
                 // バッチ内の統合番号だけを詰める。Recordの対局番号は受理順のまま。
                 result.completed.game_number =
                     u32::try_from(completed.len() + 1).map_err(data_error)?;
@@ -199,30 +200,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
             output.flush()?;
         }
         if !openings {
-            let path = sidecar(&common.output, ".games.json");
-            write_json(&path, &details)?;
-            created.push(path);
-            let path = sidecar(&common.output, ".provenance.json");
-            datagen::provenance::write_mapped_provenance(
-                &datagen::provenance::ProvenanceArguments {
-                    input: common.output.clone(),
-                    output: path.clone(),
-                    result_origin: ResultOrigin::Human,
-                    start_origin: StartOrigin::Random,
-                    lambda: 0.0,
-                    search_condition: SearchCondition::Standalone,
-                },
-                Some(
-                    jobs.iter()
-                        .map(|job| GameOrigin {
-                            game: job.number,
-                            id: job.input.id.clone(),
-                            ply: None,
-                        })
-                        .collect(),
-                ),
-            )?;
-            created.push(path);
+            report.games = Some(details);
         }
         write_json(&common.report, &report)?;
         println!("accepted: {}", report.accepted);

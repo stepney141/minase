@@ -84,6 +84,8 @@ pub(super) struct Excluded {
     ids: Vec<String>,
 }
 
+/// 取り込みの報告。`games`は実戦対局の取り込みでだけ出力し、棋譜IDから詳細への対応を持つ。
+/// 開始局面の取り込みでは棋譜ごとの詳細を収集せず、この欄を省略する。
 #[derive(Serialize)]
 pub(super) struct Report {
     pub(super) accepted: usize,
@@ -96,7 +98,8 @@ pub(super) struct Report {
     pub(super) retained_plies: BTreeMap<String, Vec<u32>>,
     pub(super) truncated_illegal: BTreeMap<String, u32>,
     nodes: u32,
-    start_origin_note: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) games: Option<BTreeMap<String, super::label::GameDetails>>,
 }
 
 impl Report {
@@ -115,7 +118,7 @@ impl Report {
             retained_plies: BTreeMap::new(),
             truncated_illegal: BTreeMap::new(),
             nodes,
-            start_origin_note: "Human games begin at the standard initial position; games provenance uses start_origin=random under the existing enum contract.",
+            games: None,
         }
     }
     pub(super) fn exclude(&mut self, reason: Exclusion, id: String) {

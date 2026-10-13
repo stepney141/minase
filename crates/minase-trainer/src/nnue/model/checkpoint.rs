@@ -36,8 +36,8 @@ pub struct Checkpoint {
     pub optimizer: AdamW,
     /// 駒除去差分の補助損失係数。
     pub removal_penalty: f64,
-    /// 自己対局の教師混合比の上書き値。
-    pub lambda_override: f64,
+    /// 自己対局の教師混合比。
+    pub lambda: f64,
     /// 学習の進捗とハッシュ。
     pub progress: Progress,
 }
@@ -45,8 +45,8 @@ impl Checkpoint {
     fn validate(&self) -> Result<()> {
         if !self.removal_penalty.is_finite()
             || self.removal_penalty < 0.0
-            || !self.lambda_override.is_finite()
-            || !(0.0..=1.0).contains(&self.lambda_override)
+            || !self.lambda.is_finite()
+            || !(0.0..=1.0).contains(&self.lambda)
         {
             return Err(Error::Invalid("checkpoint loss coefficients"));
         }
@@ -125,7 +125,7 @@ impl Checkpoint {
     /// | 196 | 入力のSHA-256の32バイト。 |
     /// | 228 | 線形、第1層（仮想行を含む）、出力部の3群の順に、学習率と重み減衰を各f64で置く。計48バイト。 |
     /// | 276 | 補助損失の係数f64。 |
-    /// | 284 | λの上書き値f64。 |
+    /// | 284 | λの値f64。 |
     ///
     /// 292バイト目から、全パラメータ、AdamWの1次モーメント、2次モーメントの順に3組を置く。
     /// 各組は[`Parameter::ALL`]の順、すなわちLinear、FirstLayer、Virtual、Biases、OutputWeights、OutputBiasのf32配列であり、要素数は[`Shape::len`]に従う。
@@ -170,7 +170,7 @@ impl Checkpoint {
             bytes.extend(group.weight_decay.to_le_bytes());
         }
         bytes.extend(self.removal_penalty.to_le_bytes());
-        bytes.extend(self.lambda_override.to_le_bytes());
+        bytes.extend(self.lambda.to_le_bytes());
         for params in [&self.model.parameters, &self.optimizer.m, &self.optimizer.v] {
             for p in Parameter::ALL {
                 floats(&mut bytes, &params[p]);
@@ -257,7 +257,7 @@ impl Checkpoint {
             head: group()?,
         };
         let removal_penalty = r.f64()?;
-        let lambda_override = r.f64()?;
+        let lambda = r.f64()?;
         // 最大幅でも形から長さを確定できる。切断された入力では大配列を確保しない。
         let parameter_count: usize = Parameter::ALL.iter().map(|&p| shape.len(p)).sum();
         let virtual_rows = shape.len(Parameter::Virtual) / width;
@@ -318,7 +318,7 @@ impl Checkpoint {
             },
             optimizer: AdamW { m, v, step, config },
             removal_penalty,
-            lambda_override,
+            lambda,
             progress: Progress {
                 epoch,
                 best,

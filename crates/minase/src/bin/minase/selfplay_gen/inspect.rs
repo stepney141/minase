@@ -1,7 +1,7 @@
 //! 学習データの検査と内容の表示。
 
 use super::cli::InspectArguments;
-use minase::datagen::{invalid_data, provenance::hex, training_error};
+use minase::datagen::{hex, invalid_data, training_error};
 use minase::training::records::{Outcome, Reader, Record};
 use minase_core::{Color, Position, to_sfen};
 use std::{collections::BTreeSet, fs::File, io};
@@ -9,6 +9,8 @@ use std::{collections::BTreeSet, fs::File, io};
 /// 学習データ検査時の集計。
 #[derive(Default)]
 struct InspectionSummary {
+    /// 由来コード順の記録数。
+    origins: [u64; 4],
     /// レコードに現れた対局番号。
     game_numbers: BTreeSet<u32>,
     /// 負け局面数。
@@ -33,6 +35,7 @@ impl InspectionSummary {
     /// 検証済みレコードを集計へ加える。
     fn record(&mut self, record: &Record) {
         self.game_numbers.insert(record.game_number());
+        self.origins[record.origin() as usize] += 1;
         match record.outcome() {
             Outcome::Loss => self.losses += 1,
             Outcome::Draw => self.draws += 1,
@@ -104,6 +107,9 @@ pub(super) fn inspect(arguments: &InspectArguments) -> io::Result<()> {
     println!("summary:");
     println!("records: {record_count}");
     println!("games: {}", summary.game_numbers.len());
+    for (code, count) in summary.origins.iter().enumerate() {
+        println!("origin_{}: {count}", code);
+    }
     println!("outcome_loss: {}", summary.losses);
     println!("outcome_draw: {}", summary.draws);
     println!("outcome_win: {}", summary.wins);
@@ -144,4 +150,5 @@ fn print_record(index: u64, record: &Record, position: &Position) {
     println!("outcome: {:?}", record.outcome());
     println!("game_number: {}", record.game_number());
     println!("ply: {}", record.ply());
+    println!("origin: {:?}", record.origin());
 }

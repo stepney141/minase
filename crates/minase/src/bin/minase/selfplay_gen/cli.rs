@@ -2,7 +2,6 @@
 
 use super::{DEFAULT_HASH_MB, DEFAULT_MAX_PLY, DEFAULT_NODES};
 use clap::{Parser, Subcommand};
-use minase::datagen::provenance::ProvenanceArguments;
 use std::{num::NonZeroUsize, path::PathBuf};
 
 /// 自己対局データ生成器のコマンドライン引数。
@@ -21,39 +20,6 @@ pub(super) enum Operation {
     Generate(GenerateArguments),
     /// 学習データの形式と全局面を検査する。
     Inspect(InspectArguments),
-    /// 保存済みの局面を探索し、MNRSへ付け直す。
-    Rescore(RescoreArguments),
-    /// 既存MNSDに明示的な来歴を付ける。
-    Provenance(ProvenanceArguments),
-}
-
-/// 付け直しの引数。探索の並列化は局面単位で行う。
-#[derive(clap::Args)]
-pub(super) struct RescoreArguments {
-    /// 読み取り専用で開く元のMNSD。
-    #[arg(long)]
-    pub(super) input: PathBuf,
-    /// 昇順で重複のない対象番号の一覧。
-    #[arg(long)]
-    pub(super) targets: PathBuf,
-    /// 新規作成または再開するMNRS。
-    #[arg(long)]
-    pub(super) output: PathBuf,
-    /// 教師のMNUE。省略時は埋め込み重み。
-    #[arg(long)]
-    pub(super) nnue: Option<PathBuf>,
-    /// 各局面のノード上限。
-    #[arg(long, value_parser = parse_positive_u32)]
-    pub(super) nodes: u32,
-    /// 各ワーカーの置換表容量(MB)。
-    #[arg(long, default_value_t = DEFAULT_HASH_MB, value_parser = parse_positive_usize)]
-    pub(super) hash_mb: NonZeroUsize,
-    /// 並行して探索する局面数。
-    #[arg(long, default_value = "1", value_parser = parse_positive_usize)]
-    pub(super) concurrency: NonZeroUsize,
-    /// 変更のある作業ツリーでの実行を許可する。
-    #[arg(long)]
-    pub(super) allow_dirty: bool,
 }
 
 /// `generate`サブコマンドの引数。

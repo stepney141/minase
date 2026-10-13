@@ -6,7 +6,7 @@ NNUEの計算式と学習の目的関数は[NNUEによる評価関数と学習�
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
 引数の既定値と値域、保存物の各欄、チェックポイントの形式、および検査の許容誤差は、`crates/minase-trainer/src/nnue/`と`crates/minase-trainer/src/diagnostics/`の各項目のdocコメントにあり、本書の各節で該当する項目を示す。
-学習データの形式、来歴、教師の分類、教師値、および検証集合の分け方は、駒の種類と位置に応じた評価表PSTと、2駒の組の関係を補う補正FMの学習器と共通であり、`crates/minase/src/training/`と`crates/minase-trainer/src/data/`のdocコメントにある。
+学習データの形式とレコードの由来、教師の分類、教師値、および検証集合の分け方は、駒の種類と位置に応じた評価表PSTと、2駒の組の関係を補う補正FMの学習器と共通であり、`crates/minase/src/training/`と`crates/minase-trainer/src/data/`のdocコメントにある。
 方式を選んだ理由は、ADRの[NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)、および[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md)に従って目的と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md)に状態を登録する。
@@ -32,9 +32,9 @@ GPUを載せた機械で次を実行し、すべて成功することを確認�
 nice -n 19 cargo test -j 2 -p minase-trainer -- --ignored gpu_ --test-threads=1
 for FEATURE_SET in P HalfKP-hm-b8; do
   nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
-    --feature-set "$FEATURE_SET" --width 6 --batch 100 --seed 71
+    --feature-set "$FEATURE_SET" --width 6 --batch 100 --seed 71 --lambda 1.0
   nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
-    --feature-set "$FEATURE_SET" --width 128 --batch 4096 --seed 71
+    --feature-set "$FEATURE_SET" --width 128 --batch 4096 --seed 71 --lambda 1.0
 done
 ```
 
@@ -42,8 +42,8 @@ done
 
 ## 2. 学習データと初期値を用意する
 
-学習データは、来歴ファイル（`<データ>.provenance.json`）を添えたMNSD形式のファイルである。
-自己対局データの生成と来歴ファイルの用意は、[PSTとFMの学習手順](pst-training.md)の2節と3節に従う。
+学習データは、MNSD形式のファイルである。
+自己対局データの生成は、[PSTとFMの学習手順](pst-training.md)の2節と3節に従う。
 `--data`には複数のファイルを入力順に指定でき、教師の分類の番号は入力順に初めて現れた順で付く。
 入力はメモリに写像して読むため、学習の実行中は入力ファイルを変更も切り詰めもしない。
 
@@ -53,8 +53,8 @@ done
 したがって、`--init-pst`と`--base`には同じ学習から得た組を与える。
 学習データの規則セットも、`--base`の規則セットと一致していなければならない。
 
-NNUEの学習では、`--lambda-override`の既定値が1.0であり、来歴ファイルのλは自己対局の分類には使われない。
-人間の対局結果を教師とする分類では、`--lambda-override`を指定しても来歴のλが使われる。
+教師値で探索値と対局結果を混ぜる比λは`--lambda`で必ず指定し、NNUEの学習では探索値だけを教師とする1.0を指定する。
+λは自己対局のデータにだけ適用され、実戦対局のデータでは常に0である。
 先読み教師を使う場合は、`--lookahead-gamma`と`--lookahead-plies`を同時に指定する。
 
 ## 3. 試走する
@@ -72,7 +72,7 @@ for FEATURE_SET in P HalfKP-hm-b8; do
     --data "$TRAIN_DATA_ROOT/gen3/generated-1500000.bin" \
     --init-pst "$TRAIN_DATA_ROOT/pst-fm-joint-training/j75/pst-float.npz" \
     --base crates/minase/nets/pst.bin \
-    --lookahead-gamma 0.9 --lookahead-plies 40 \
+    --lambda 1.0 --lookahead-gamma 0.9 --lookahead-plies 40 \
     --batch 16384 --epochs 1 --seed 1 \
     --output-dir "/tmp/nnue-rust-phase3-${FEATURE_SET}"
 done
@@ -126,7 +126,7 @@ GPUメモリ使用量の欄はGPU全体の使用量であり、他のプロセ�
 ## 7. GPUでの1更新の時間を測る
 
 学習器の速度に関わる変更は、`minase-trainer nnue bench-step`で、実データでの1更新の時間を、ワーカーによるバッチの供給、入力の転送、およびGPUの計算に分けて測る。
-最適化を有効にしたバイナリで、来歴ファイルを添えたMNSDを`--data`に指定して実行する。
+最適化を有効にしたバイナリで、MNSDを`--data`に、学習と同じλを`--lambda`に指定して実行する。
 次の例では訓練集合に少なくとも344,064局面が必要であり、検証集合は使わない。
 
 ```sh
@@ -134,7 +134,7 @@ DATA=/absolute/path/to/generated-1500000.bin
 for FEATURE_SET in P HalfKP-hm-b8; do
   CARGO_NET_OFFLINE=true nice -n 19 cargo run --release -j 2 -p minase-trainer -- nnue bench-step \
     --feature-set "$FEATURE_SET" --width 128 --batch 16384 --steps 20 \
-    --threads 6 --profile --data "$DATA"
+    --threads 6 --profile --lambda 1.0 --data "$DATA"
 done
 ```
 
@@ -163,7 +163,6 @@ minase-trainer diag nnue-distribution \
   --output <報告.json>
 ```
 
-`--data`の各ファイルには、学習と同じく来歴ファイルが必要である。
 標本は`--data`の全局面から抽出するので、`--sample`には2以上で全局面数以下の値を指定する。
 `--pair`は比較名を変えて複数回指定でき、すべての組が同じ標本で比較される。
 報告の`pairs`の各要素の`verdict`は、候補と基準の標準偏差の比が0.9以上1.1以下に収まるかを示すので、評価の目盛りが基準から変わっていないかをまず確かめる。
@@ -195,7 +194,7 @@ minase-trainer diag nnue-moves \
   --positions <局面のMNSD> --output <報告.json>
 ```
 
-`--positions`のMNSDには来歴ファイルは不要だが、ヘッダの規則セットがエンジンの既定の規則セット`engine-default`でなければ拒否される。
+`--positions`には診断が書き出す合成の由来のMNSDも与えられるが、ヘッダの規則セットがエンジンの既定の規則セット`engine-default`でなければ拒否される。
 `--base`には、PSTとFMの両方を持つMNPT版3を与える。
 片方のモデルにしかない合法手があった場合は、`error`を含む報告を保存して終了コード1で終わるので、規則か局面の復元の不一致として調べる。
 
@@ -203,4 +202,4 @@ minase-trainer diag nnue-moves \
 
 診断を確認した後、基準コミットから候補ブランチを作り、学習した`nnue.bin`を候補の`crates/minase/nets/nnue.bin`へコピーし、候補で`cargo test --locked`を実行してから、[段階ゲート](sprt.md#機能採否の段階ゲートstcとltc)で採否を決める。
 検証損失、符号一致率、および診断の値の改善だけを、棋力が向上した根拠にはしない。
-学習の結果は`docs/measurements/<実験名>-training.md`にまとめ、学習器のコミット、実行したコマンドライン全体、入力と重みのSHA-256、停止理由、および診断の要点を書く。
+学習の結果は`docs/measurements/<実験名>-training.md`にまとめ、学習器のコミット、実行したコマンドライン全体、入力の学習データのパスと記録数、重みのSHA-256、停止理由、および診断の要点を書く。

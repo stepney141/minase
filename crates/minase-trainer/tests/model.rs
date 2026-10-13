@@ -301,7 +301,7 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mi
         let optimizer = AdamW::new(model.shape(), AdamWConfig::default()).unwrap();
         let mut state = Checkpoint {
             removal_penalty: 250.0,
-            lambda_override: 0.75,
+            lambda: 0.75,
             model,
             optimizer,
             progress: Progress {

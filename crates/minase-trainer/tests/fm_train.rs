@@ -31,6 +31,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "trainer",
+        "--lambda",
+        "0.75",
         "--data",
         "records.bin",
         "--init",
@@ -105,7 +107,16 @@ fn small_batch() -> (Model, Batch) {
     let positions = small_positions();
     let records: Vec<_> = positions
         .iter()
-        .map(|p| Record::from_position(p, 200, Outcome::Win, 1, 0))
+        .map(|p| {
+            Record::from_position(
+                p,
+                200,
+                Outcome::Win,
+                1,
+                0,
+                minase::training::records::Origin::RandomSelfplay,
+            )
+        })
         .collect();
     let base = Pst::from_weights(
         &vec![[72, -91]; FEATURE_COUNT],
@@ -147,8 +158,15 @@ fn cli_enforces_required_budgets_and_ranges() {
         ),
         (4096, 1, 1e-3, 1e-4, 1e-4, 10000)
     );
-    assert_eq!(args.lambda_override, None);
-    for flag in ["--data", "--init", "--output-dir", "--epochs", "--patience"] {
+    assert_eq!(args.lambda, 0.75);
+    for flag in [
+        "--data",
+        "--init",
+        "--output-dir",
+        "--epochs",
+        "--patience",
+        "--lambda",
+    ] {
         let mut v = argv();
         let i = v.iter().position(|&v| v == flag).unwrap();
         v.drain(i..i + 2);
@@ -164,7 +182,6 @@ fn cli_enforces_required_budgets_and_ranges() {
         ("--lr", "NaN"),
         ("--weight-decay", "-1"),
         ("--lambda-res", "inf"),
-        ("--lambda-override", "1.1"),
         ("--validation-sample", "0"),
     ] {
         let mut v: Vec<String> = argv().into_iter().map(str::to_owned).collect();
@@ -213,7 +230,14 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
     .unwrap();
     for p in small_positions() {
         let reflected = mirror(&p);
-        let record = Record::from_position(&p, 0, Outcome::Draw, 1, 0);
+        let record = Record::from_position(
+            &p,
+            0,
+            Outcome::Draw,
+            1,
+            0,
+            minase::training::records::Origin::RandomSelfplay,
+        );
         let batch = Batch::from_records(&base, &[record], &[1], &[0.5]).unwrap();
         let mut expected = Vec::new();
         active_features(&reflected, |f| expected.push(f as u32));
@@ -234,7 +258,7 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
 fn observations_include_all_training_mirrors_and_exclude_validation_only_features() {
     let (_fixture, args) = Fixture::new(false, false);
     // SAFETY: fixture専用のファイルをDatasetの生存中は変更しない。
-    let dataset = unsafe { Dataset::open(&args.data, None, None).unwrap() };
+    let dataset = unsafe { Dataset::open(&args.data, None).unwrap() };
     let counts = fm::feature_observations(&dataset).unwrap();
     let mut expected = vec![0; FEATURE_COUNT];
     for &i in dataset.training_indices() {
@@ -511,7 +535,7 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
         |a| a.lambda_res = 0.0,
         |a| a.batch = 17,
         |a| a.seed = 2,
-        |a| a.lambda_override = Some(0.5),
+        |a| a.lambda = 0.5,
         |a| a.lookahead_gamma = Some(0.8),
         |a| a.lookahead_plies = Some(20),
         |a| a.validation_sample = 8,
@@ -633,7 +657,7 @@ fn quantization_failure_keeps_both_exports_and_cli_returns_one() {
         fs::write(args.output_dir.join(name), checkpoint.encode().unwrap()).unwrap();
     }
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["fm", "train", "--data"])
+        .args(["fm", "train", "--lambda", "0.75", "--data"])
         .args(&args.data)
         .arg("--init")
         .arg(&args.init)
@@ -738,7 +762,7 @@ fn phase4_preserves_existing_trainer_weights_and_adam_states() {
         seed: 1,
         removal_penalty: 1000.0,
         removal_reference: minase_trainer::pst::RemovalReferenceKind::V0,
-        lambda_override: None,
+        lambda: 0.75,
         lookahead_gamma: None,
         lookahead_plies: None,
         validation_sample: 7,

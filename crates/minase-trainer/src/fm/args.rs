@@ -1,6 +1,6 @@
 use super::{Result, batch::check_size};
 use crate::{
-    data::{Lookahead, validate_lambda_override},
+    data::{Lookahead, validate_lambda},
     nn::AdamWGroup,
 };
 use serde::Serialize;
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 /// 固定整数PSTへ加えるFMの学習条件と保存先。
 #[derive(Clone, Debug, clap::Args, Serialize)]
 pub struct Args {
-    /// 来歴付きMNSDを、学習中に変更しない入力として指定する。
+    /// MNSDを、学習中に変更しない入力として指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
     /// 初期PST、探索用駒価値、K、規則名を持つMNPT版2または版3。
@@ -39,9 +39,9 @@ pub struct Args {
     /// FM補正の二乗平均に掛ける正則化係数。
     #[arg(long, default_value_t = 1e-4)]
     pub lambda_res: f64,
-    /// 自己対局の分類のλを有限な0以上1以下の値で上書きし、人間対局には適用しない。省略時は来歴のλを使う。
-    #[arg(long)]
-    pub lambda_override: Option<f64>,
+    /// 自己対局の教師の混合比を有限な0以上1以下で指定する。実戦対局には0を適用する。
+    #[arg(long, value_parser = crate::data::parse_lambda)]
+    pub lambda: f64,
     /// 先読み割引率。0より大きく1より小さい有限値。
     #[arg(long, requires = "lookahead_plies")]
     pub lookahead_gamma: Option<f64>,
@@ -67,7 +67,7 @@ impl Args {
             weight_decay: self.weight_decay,
         }
         .validate()?;
-        validate_lambda_override(self.lambda_override)?;
+        validate_lambda(self.lambda)?;
         if self.data.is_empty() {
             return Err("--data requires at least one file".into());
         }

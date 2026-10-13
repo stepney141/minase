@@ -5,10 +5,7 @@ use minase::eval::{
     features::FEATURE_COUNT,
     pst::{FM_RANK, Pst},
 };
-use minase::training::{
-    provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-    records::{Header, Outcome, Record},
-};
+use minase::training::records::{Header, Outcome, Record};
 use minase_core::{Color, PieceKind};
 use minase_trainer::{
     data::{Dataset, build_targets_from_arrays, epoch_permutation},
@@ -33,6 +30,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "minase-trainer",
+        "--lambda",
+        "0.75",
         "--data",
         "records.bin",
         "--init",
@@ -62,7 +61,7 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
         ),
         (0.03, 16384, 1, 1000.0, 10000)
     );
-    assert_eq!(args.lambda_override, None);
+    assert_eq!(args.lambda, 0.75);
     assert_eq!(args.threads, None);
     let mut large = args.clone();
     large.batch = 1 << 24;
@@ -90,8 +89,6 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
         ("--lr", "NaN"),
         ("--removal-penalty", "inf"),
         ("--removal-penalty", "-1"),
-        ("--lambda-override", "1.1"),
-        ("--lambda-override", "NaN"),
         ("--batch", "0"),
         ("--threads", "0"),
         ("--validation-sample", "0"),
@@ -120,7 +117,10 @@ fn pst_cli_requires_explicit_budgets_and_reference_and_accepts_only_valid_values
     }
     let mut values = argv();
     values[8] = "200";
-    values.insert(3, "second.bin");
+    values.insert(
+        values.iter().position(|&arg| arg == "--data").unwrap() + 2,
+        "second.bin",
+    );
     values.extend(["--lookahead-gamma", "0.9", "--lookahead-plies", "40"]);
     let args = Arguments::try_parse_from(values).unwrap().args;
     args.validate().unwrap();
@@ -230,30 +230,13 @@ impl Fixture {
                         },
                         game,
                         ply,
+                        minase::training::records::Origin::RandomSelfplay,
                     )
                     .encode(),
                 );
             }
         }
         fs::write(&args.data[0], &bytes).unwrap();
-        Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: "L0,P0,R1,E0".into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        }
-        .write(fs::File::create(fixture.root.join("records.bin.provenance.json")).unwrap())
-        .unwrap();
         (fixture, args)
     }
 }
@@ -371,10 +354,10 @@ fn training_log_weights_the_tail_by_positions_and_validation_has_no_removal_term
         Dataset::open(
             &args.data,
             Some(minase_trainer::data::Lookahead::new(0.9, 40).unwrap()),
-            None,
         )
         .unwrap()
     };
+    let dataset = dataset.with_lambda(args.lambda).unwrap();
     let ks = dataset.estimate_teacher_ks().unwrap();
     let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
     let mut opt = Adam::new(0.03).unwrap();
@@ -431,7 +414,7 @@ fn resume_rejects_changes_to_trajectory_settings_and_input_without_changing_save
         |a| a.seed = 2,
         |a| a.removal_penalty = 0.0,
         |a| a.removal_reference = RemovalReferenceKind::V0,
-        |a| a.lambda_override = Some(0.5),
+        |a| a.lambda = 0.5,
         |a| a.lookahead_gamma = Some(0.8),
         |a| a.lookahead_plies = Some(20),
         |a| a.validation_sample = 8,
@@ -464,7 +447,7 @@ fn quantization_failure_keeps_outputs_and_records_failure_with_exit_code_one() {
     args.epochs = 1;
     args.removal_penalty = 0.0;
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["pst", "train", "--data"])
+        .args(["pst", "train", "--lambda", "0.75", "--data"])
         .arg(&args.data[0])
         .arg("--init")
         .arg(&args.init)

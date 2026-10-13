@@ -114,6 +114,7 @@ pub(super) fn process_job(
                     outcome,
                     job.number,
                     candidate.ply,
+                    minase::training::records::Origin::HumanGame,
                 ),
                 search_key: position.zobrist() ^ position.rights_zobrist(),
             });

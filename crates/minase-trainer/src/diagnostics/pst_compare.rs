@@ -9,22 +9,23 @@ use super::{
 };
 use crate::{
     data::{Dataset, Lookahead, TeacherClass},
+    identity::{FileIdentity, file_identity},
     pst::export::numpy_sum,
 };
 use clap::Args;
-use minase::training::provenance::{ResultOrigin, SearchCondition, StartOrigin};
+use minase::training::records::Origin;
 use serde::Serialize;
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 /// 教師分類・位相帯の損失、整数一致、量子化と局面操作を診断する引数。
 #[derive(Args)]
 pub struct PstCompareArgs {
-    /// 来歴を伴うMNSD。実行中は元ファイルを変更・切り詰めしないこと。
+    /// MNSD。実行中は元ファイルを変更・切り詰めしないこと。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
-    /// 自己対局の分類のλを有限な0以上1以下の値で上書きし、人間対局には適用しない。省略時は来歴のλを使う。
-    #[arg(long)]
-    pub lambda_override: Option<f64>,
+    /// 自己対局の教師の混合比を有限な0以上1以下で指定する。実戦対局には0を適用する。
+    #[arg(long, value_parser = crate::data::parse_lambda)]
+    pub lambda: f64,
     /// 教師探索値の先読みの減衰率。
     #[arg(long, requires = "lookahead_plies")]
     pub lookahead_gamma: Option<f64>,
@@ -52,25 +53,17 @@ pub struct PstCompareArgs {
 }
 
 /// `report.json`の`teacher_classes`の1要素。
-/// [`TeacherClass`]の由来7項目に、適用条件4項目を加えたものである。
-/// `generation_commit`は生成コミット、`network_checksum`は教師ネットの32バイトの検査和を小文字16進64文字で表した値、`nodes`はu32である。
-/// `rule_set`は規則名、`search_condition`は`"in-game"`または`"standalone"`、
-/// `result_origin`は`"selfplay"`または`"human"`、`start_origin`は`"random"`または`"human-game"`である。
-/// `lookahead_gamma`はf64または`null`、`lookahead_plies`はu16または`null`である。
-/// `lambda_override`はその分類に適用した上書き値で、人間対局の分類と上書きなしでは`null`、`lambda`は実効λである。
-/// 学習の`config.json`の`preprocessing.teacher_classes`は検査和を32個の数値の配列で保存するが、この報告は16進文字列を使う。
+/// ヘッダの教師情報、レコードの由来、先読み条件、適用したλを記録する。
+/// 重みの検査和は小文字の16進文字列で保存する。
 #[derive(Serialize)]
 struct ClassMetadata {
     generation_commit: String,
     network_checksum: String,
     nodes: u32,
     rule_set: String,
-    search_condition: SearchCondition,
-    result_origin: ResultOrigin,
-    start_origin: StartOrigin,
+    origin: Origin,
     lookahead_gamma: Option<f64>,
     lookahead_plies: Option<u16>,
-    lambda_override: Option<f64>,
     lambda: f64,
 }
 impl ClassMetadata {
@@ -84,27 +77,14 @@ impl ClassMetadata {
                 .collect(),
             nodes: class.nodes,
             rule_set: class.rule_set.clone(),
-            search_condition: class.search_condition,
-            result_origin: class.result_origin,
-            start_origin: class.start_origin,
+            origin: class.origin,
             lookahead_gamma: class.lookahead.map(Lookahead::gamma),
             lookahead_plies: class.lookahead.map(Lookahead::plies),
-            lambda_override: class.lambda_override,
             lambda,
         }
     }
 }
 
-/// `report.json`の`rescore_exclusions`。
-/// `mate_band`、`tactical`、`depth_incomplete`、`total`のusizeの4欄を持つ。
-/// この診断は再採点をしないため、すべて常に0である。
-#[derive(Default, Serialize)]
-struct Exclusions {
-    mate_band: usize,
-    tactical: usize,
-    depth_incomplete: usize,
-    total: usize,
-}
 /// `report.json`の`bands`の1要素で、教師分類と位相帯の組ごとの比較。
 /// `generation`は0始まりの教師分類番号、`band`は[`pst_sample::band`]による0〜4の帯番号である。
 /// `range`は帯Bのφの区間`[B/5, (B+1)/5)`を小数1桁で表し、帯4だけ右端を含む`"[0.8, 1.0]"`とする。
@@ -168,12 +148,24 @@ struct Derived {
     candidate_endgame: Vec<i32>,
 }
 
+/// 入力の識別情報。各形式の欄は[`crate::identity`]に従う。
+#[derive(Serialize)]
+struct Inputs {
+    files: Vec<FileIdentity>,
+    base: FileIdentity,
+    candidate: FileIdentity,
+    candidate_float: FileIdentity,
+}
+
 /// PST比較診断の`report.json`の最上位の欄。
 /// JSONのキー順は構造体の欄の順である。
 /// `skip_serializing_if`の欄は、値を計算する前に失敗した場合には出力しない。
 /// 教師分類の番号は欄名で`generation`とも呼ぶ。
 #[derive(Serialize)]
 struct Report {
+    /// 入力順のMNSDと比較する重みの識別情報。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    inputs: Option<Inputs>,
     /// `--sample-size`の値で、教師分類と位相帯ごとの最大標本数。
     sample_size: usize,
     /// `--seed`の値で、SplitMix64の抽出シード。
@@ -182,13 +174,11 @@ struct Report {
     teacher_classes: Vec<ClassMetadata>,
     /// 先読み条件`{gamma: f64, plies: u16}`。指定がなければ`null`。
     lookahead: Option<Lookahead>,
-    /// `--lambda-override`の値。省略時は`null`。
-    lambda_override: Option<f64>,
+    /// 必須の`--lambda`の値。
+    lambda: f64,
     /// 全検証集合の`{base: OutcomeMetrics, candidate: OutcomeMetrics}`。
     #[serde(skip_serializing_if = "Option::is_none")]
     outcome_metrics: Option<Models<OutcomeMetrics>>,
-    /// 再採点の除外件数。[`Exclusions`]の規約によりすべて0。
-    rescore_exclusions: Exclusions,
     /// 実効λが0の分類に属する全検証局面数。抽出標本数ではない。
     teacher_comparison_excluded: usize,
     /// 基準と候補のMNPTの出力用Kを持つ`{base: f64, candidate: f64}`。
@@ -248,7 +238,7 @@ struct Report {
 /// 保存物は[`Report`]の`report.json`、分類と帯ごとの`diagnostic-indices-generationN-bandB.npy`、
 /// および[`pst_positions`]に定める`diagnostic-samples.bin`、`representatives.bin`、`removals.bin`である。
 /// NPYの仕様は[`pst_sample::write_indices`]に従う。
-/// 教師分類、先読み、λの上書き、対局単位の検証分割は学習と同じ[`Dataset::open`]で決まる。
+/// 教師分類、先読み、対局単位の検証分割は学習と同じ[`Dataset::open`]で決まり、λは[`Dataset::with_lambda`]で設定する。
 pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     // 版3だけは報告先の作成前に拒否し、読み込みエラーは診断報告へ保存する。
     let models = Models {
@@ -269,13 +259,13 @@ pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     }
     fs::create_dir(&args.output_dir)?;
     let mut report = Report {
+        inputs: None,
         sample_size: args.sample_size,
         seed: args.seed,
         teacher_classes: Vec::new(),
         lookahead: None,
-        lambda_override: args.lambda_override,
+        lambda: args.lambda,
         outcome_metrics: None,
-        rescore_exclusions: Exclusions::default(),
         teacher_comparison_excluded: 0,
         k: None,
         teacher_ks: Vec::new(),
@@ -331,9 +321,19 @@ fn diagnose(
         candidate: models.candidate.k(),
     });
     let float = FloatWeights::read(&args.candidate_float)?;
+    report.inputs = Some(Inputs {
+        files: args
+            .data
+            .iter()
+            .map(|path| file_identity(path))
+            .collect::<std::io::Result<_>>()?,
+        base: file_identity(&args.base)?,
+        candidate: file_identity(&args.candidate)?,
+        candidate_float: file_identity(&args.candidate_float)?,
+    });
     eprintln!("loading diagnostic data");
     // SAFETY: --dataの実行中の不変性をCLI契約で要求する。この診断は入力を書き換えない。
-    let dataset = unsafe { Dataset::open(&args.data, report.lookahead, args.lambda_override)? };
+    let dataset = unsafe { Dataset::open(&args.data, report.lookahead)?.with_lambda(args.lambda)? };
     report.teacher_classes = dataset
         .teacher_classes()
         .iter()

@@ -43,16 +43,14 @@ pub struct TrainingOptions {
     /// 駒除去差分の補助損失係数を非負の有限値で指定する。
     #[arg(long, default_value_t = 1000.0)]
     pub removal_penalty: f64,
-    /// 自己対局の来歴のλを0以上1以下で上書きし、人間対局には適用しない。
-    /// 既定値1.0は探索値だけを教師とする。
-    /// PST、FM、同時学習は省略時に来歴のλを使うが、NNUEはこの既定値で上書きする。
-    /// 理由は`docs/adr/train-the-nnue-on-search-value-lookahead-teachers.md`にある。
-    #[arg(long, default_value_t = 1.0)]
-    pub lambda_override: f64,
+    /// 自己対局の教師の混合比を有限な0以上1以下の値で指定する。実戦対局では0を使う。
+    #[arg(long, value_parser = crate::data::parse_lambda)]
+    pub lambda: f64,
 }
 
-impl Default for TrainingOptions {
-    fn default() -> Self {
+impl TrainingOptions {
+    /// 教師の混合比を明示し、最適化器の初期係数を設定する。
+    pub fn new(lambda: f64) -> Self {
         let config = AdamWConfig::default();
         Self {
             lr_linear: config.linear.lr,
@@ -62,7 +60,7 @@ impl Default for TrainingOptions {
             lr_head: config.head.lr,
             weight_decay_head: config.head.weight_decay,
             removal_penalty: 1000.0,
-            lambda_override: 1.0,
+            lambda,
         }
     }
 }
@@ -76,10 +74,8 @@ impl TrainingOptions {
                 "--removal-penalty must be finite and nonnegative",
             ));
         }
-        if !self.lambda_override.is_finite() || !(0.0..=1.0).contains(&self.lambda_override) {
-            return Err(Error::Invalid(
-                "--lambda-override must be finite and in 0..1",
-            ));
+        if !self.lambda.is_finite() || !(0.0..=1.0).contains(&self.lambda) {
+            return Err(Error::Invalid("--lambda must be finite and in 0..1"));
         }
         Ok(())
     }

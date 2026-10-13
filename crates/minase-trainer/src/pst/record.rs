@@ -5,11 +5,7 @@ use crate::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    path::Path,
-};
+use std::{fs::OpenOptions, io::Write, path::Path};
 
 /// PSTの1エポックの記録。
 /// 損失はすべて局面数で重み付けした平均で、端数バッチも含める。
@@ -59,14 +55,12 @@ pub struct EpochRecord {
 /// `settings`は[`Args`]から`output_dir`、`resume`、`data`、`init`、`epochs`、`patience`、`threads`を除き、
 /// `model = "mirrored_pst"`と`optimizer = {lr, weight_decay: 0.0, betas: [0.9, 0.999], epsilon: 1e-8}`を加えた値で、再開で変更できない。
 ///
-/// `inputs.files`は入力順の配列で、各要素は`data`と`provenance`、および`header_sha256`を持つ。
-/// `data`と`provenance`は正規化した`path`とファイル全体の`sha256`、
-/// `header_sha256`はMNSDヘッダ136バイトのSHA-256である。
-/// `inputs.init`は初期MNPTの`path`と`sha256`である。
+/// `inputs.files`は入力順のMNSD識別情報で、各要素は正規化した`path`、`byte_length`、`header`を持つ。
+/// `header`の各欄は[`crate::identity`]に従う。`inputs.init`はMNPTの`path`とヘッダ内の`checksum`である。
 ///
 /// `preprocessing.teacher_classes`は分類順の[`crate::data::TeacherClass`]の配列である。
 /// 検査和は32個の数値の配列、`lookahead`は`{gamma, plies}`または`null`、
-/// `lambda_override`は実際に適用した値または`null`である。
+/// `lambda`は分類へ適用した値であり、実戦対局では0である。`settings.lambda`は利用者が指定した値である。
 /// `teacher_ks`は分類順の教師用Kでλが0の分類は`null`、`teacher_lambdas`は分類順の実効λである。
 /// `teacher_k_source = "training"`、`output_k`は初期MNPTから引き継いだ出力用Kである。
 /// `training_positions`と`validation_positions`は局面数、`training_indices_sha256`と
@@ -104,11 +98,10 @@ pub(super) fn configuration(
         "optimizer".into(),
         json!({"lr":args.lr, "weight_decay":0.0, "betas":[0.9,0.999], "epsilon":1e-8}),
     );
-    let files = dataset.paths().zip(dataset.headers()).map(|(path, header)| {
-        let mut sidecar = path.as_os_str().to_owned();
-        sidecar.push(".provenance.json");
-        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&sha256(&header.encode()))}))
-    }).collect::<Result<Vec<_>>>()?;
+    let files = dataset
+        .paths()
+        .map(file_record)
+        .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
     let preprocessing = json!({"teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
@@ -127,17 +120,7 @@ pub(super) fn configuration(
 }
 
 pub(crate) fn file_record(path: &Path) -> Result<Value> {
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256Hasher::default();
-    let mut buffer = [0_u8; 65536];
-    loop {
-        let n = file.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(json!({"path": path.canonicalize()?, "sha256": hex(&hasher.finalize())}))
+    Ok(serde_json::to_value(crate::identity::file_identity(path)?)?)
 }
 
 pub(crate) fn hash_u64(values: &[u64]) -> String {

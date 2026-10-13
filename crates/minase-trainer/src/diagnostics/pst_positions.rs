@@ -5,7 +5,7 @@
 //! `representatives.bin`は初期局面に続けて帯番号の昇順の代表局面を置き、同じく基準MNPTの検査和を使う。
 //! 初期局面の記録は手番0、先獅子なしの255、麒麟成りの印0、探索値0、結果0の負け、対局番号0、手数0である。
 //! `removals.bin`は代表局面の順、升番号の昇順に、王将と玉将の駒状態11、および太子の駒状態21を除く駒を1枚除いた記録を置く。
-//! 盤面以外の欄は元の記録を保ち、局面として復元できない記録も含め、ヘッダの検査和を全0とする。
+//! すべての成果物は由来を合成3とする。除去記録は盤面と由来以外の欄を元の記録に保ち、局面として復元できない記録も含め、ヘッダの検査和を全0とする。
 
 use super::{
     Result,
@@ -13,7 +13,7 @@ use super::{
 };
 use minase::{
     eval::pst::evaluate_for_diagnostics,
-    training::records::{Header, Outcome, Record},
+    training::records::{Header, Origin, Outcome, Record, Writer},
 };
 use minase_core::{Game, MoveGenerator, Position, Rules, notation::usi};
 use serde::Serialize;
@@ -42,12 +42,12 @@ pub(super) fn write_mnsd(path: &Path, records: &[Record], checksum: [u8; 32]) ->
         0,
         records.len() as u64,
     )?;
-    let mut file = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(path)?);
-    file.write_all(&header.encode())?;
+    let file = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(path)?);
+    let mut writer = Writer::new(file, header)?;
     for record in records {
-        file.write_all(&record.encode())?;
+        writer.write_record(&record.clone().with_origin(Origin::Synthetic))?;
     }
-    file.flush()?;
+    writer.finish()?.flush()?;
     Ok(())
 }
 
@@ -173,7 +173,14 @@ fn promotions(model: &Weights, record: &Record) -> Result<Vec<Promotion>> {
         after.play(mv)?;
         let same = evaluate_for_diagnostics(&model.engine, after.position(), side);
         let opposite = evaluate_for_diagnostics(&model.engine, after.position(), side.opposite());
-        let record = Record::from_position(after.position(), 0, Outcome::Draw, 1, 0);
+        let record = Record::from_position(
+            after.position(),
+            0,
+            Outcome::Draw,
+            1,
+            0,
+            minase::training::records::Origin::Synthetic,
+        );
         let bytes = record.encode();
         let reference = model.evaluate(&Features::new(&record));
         let delta = -opposite.0 - before.0;
@@ -226,7 +233,14 @@ pub(super) fn diagnose(
     directory: &Path,
 ) -> Result<PositionReport> {
     // 初期局面の記録は盤面と先獅子以外の欄を0にし、結果と対局番号も0で保存する。
-    let initial = Record::from_position(&Position::initial(), 0, Outcome::Loss, 0, 0);
+    let initial = Record::from_position(
+        &Position::initial(),
+        0,
+        Outcome::Loss,
+        0,
+        0,
+        minase::training::records::Origin::Synthetic,
+    );
     let records: Vec<_> = std::iter::once(initial)
         .chain(selected.iter().map(|(_, _, record)| record.clone()))
         .collect();

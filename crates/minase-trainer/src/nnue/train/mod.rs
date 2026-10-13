@@ -199,11 +199,7 @@ impl Session {
         // SAFETY: --dataは実行中に変更・切り詰めない入力というコマンドの契約に従う。
         // このセッションもDatasetを破棄するまで入力ファイルへ書き込まない。
         let dataset = unsafe {
-            Dataset::open(
-                &args.data,
-                args.lookahead()?,
-                Some(args.training.lambda_override),
-            )?
+            Dataset::open(&args.data, args.lookahead()?)?.with_lambda(args.training.lambda)?
         };
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err(
@@ -230,7 +226,7 @@ impl Session {
             configuration(&args, workers, &dataset, &observations, &teacher_ks, &model)?;
         let mut checkpoint = Checkpoint {
             removal_penalty: args.training.removal_penalty,
-            lambda_override: args.training.lambda_override,
+            lambda: args.training.lambda,
             optimizer: AdamW::new(model.shape(), args.training.optimizer())?,
             model,
             progress: Progress {
@@ -274,7 +270,7 @@ impl Session {
                 || restored.model.initial_virtual() != checkpoint.model.initial_virtual()
                 || restored.optimizer.config() != args.training.optimizer()
                 || restored.removal_penalty != args.training.removal_penalty
-                || restored.lambda_override != args.training.lambda_override
+                || restored.lambda != args.training.lambda
                 || restored.progress.seed != args.seed
                 || restored.progress.epoch > args.epochs
                 || restored.optimizer.step()

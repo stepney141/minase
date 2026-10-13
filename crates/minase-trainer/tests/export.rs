@@ -4,7 +4,7 @@ use minase_trainer::nn::BestEpoch;
 mod common;
 
 use std::{
-    fs::{self, File},
+    fs,
     ops::Range,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -19,10 +19,7 @@ use minase::{
             head::DirectScrelu,
         },
     },
-    training::{
-        provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-        records::{Header, Outcome, Record},
-    },
+    training::records::{Header, Outcome, Record},
 };
 use minase_core::{Color, PieceKind, Position};
 use minase_trainer::{
@@ -34,7 +31,6 @@ use minase_trainer::{
         reference::{AdamW, AdamWConfig, v0_piece_values},
     },
 };
-use sha2::{Digest, Sha256};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 const RULE_SET: &str = "L0,P0,R1,E0";
@@ -69,7 +65,14 @@ impl Fixture {
                 } else {
                     Position::initial()
                 };
-                Record::from_position(&position, 120, Outcome::Win, game, 0)
+                Record::from_position(
+                    &position,
+                    120,
+                    Outcome::Win,
+                    game,
+                    0,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
             })
             .collect();
         let header = Header::new(
@@ -86,27 +89,9 @@ impl Fixture {
             bytes.extend(record.encode());
         }
         fs::write(&path, &bytes).unwrap();
-        Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: RULE_SET.into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        }
-        .write(File::create(root.join("records.bin.provenance.json")).unwrap())
-        .unwrap();
         Self {
             // SAFETY: この試験専用ファイルは、Datasetの生存中に変更も切り詰めもしない。
-            dataset: unsafe { Dataset::open(&[path], None, Some(1.0)) }.unwrap(),
+            dataset: unsafe { Dataset::open(&[path], None).unwrap().with_lambda(1.0) }.unwrap(),
             root,
         }
     }
@@ -144,7 +129,7 @@ fn checkpoint(set: InputFeatureSet, k: f32, linear_value: f32) -> Checkpoint {
     model.constrain().unwrap();
     Checkpoint {
         removal_penalty: 1000.0,
-        lambda_override: 1.0,
+        lambda: 1.0,
         model,
         optimizer: AdamW::new(shape, AdamWConfig::default()).unwrap(),
         progress: Progress {

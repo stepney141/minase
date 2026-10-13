@@ -23,6 +23,7 @@ fn sample() -> (Model, Batch, Vec<Record>) {
                 Outcome::Draw,
                 1,
                 0,
+                minase::training::records::Origin::RandomSelfplay,
             )
         })
         .collect();
@@ -312,7 +313,14 @@ fn fm_removal_rounds_in_embedding_precision_before_adding_pst_delta() {
         Color::Black,
         None,
     );
-    let record = Record::from_position(&p, 0, Outcome::Win, 1, 0);
+    let record = Record::from_position(
+        &p,
+        0,
+        Outcome::Win,
+        1,
+        0,
+        minase::training::records::Origin::RandomSelfplay,
+    );
     let batch = Batch::from_records(&[record], &[0], &[0.5]).unwrap();
     let mut v = vec![[0.0; FM_RANK]; FEATURE_COUNT];
     let (x, y, a) = (0.1234567_f32, 0.2345678_f32, -0.3456789_f32);

@@ -17,7 +17,7 @@ pub struct Args {
     #[arg(long, value_enum, default_value_t = DeviceKind::Cuda)]
     pub device: DeviceKind,
     /// 学習率、重み減衰、補助損失係数と教師の混合比。
-    /// `--lambda-override`の適用範囲と既定値は[`TrainingOptions::lambda_override`]に従う。
+    /// 必須の`--lambda`の適用範囲は[`TrainingOptions::lambda`]に従う。
     #[command(flatten)]
     #[serde(flatten)]
     pub training: TrainingOptions,
@@ -27,7 +27,7 @@ pub struct Args {
     /// 隠れ層の幅を2以上512以下の偶数で指定する。
     #[arg(long)]
     pub width: usize,
-    /// 来歴ファイルを伴うMNSDファイルを、全体のレコード順に指定する。
+    /// MNSDファイルを、全体のレコード順に指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
     /// 浮動小数点の初期駒配置評価表（PST）を格納した無圧縮NPZファイルを指定する。

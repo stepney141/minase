@@ -14,10 +14,7 @@ use minase::{
         features::{FEATURE_COUNT, PIECE_STATE_COUNT},
         pst::FM_RANK,
     },
-    training::{
-        provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-        records::{Header, Outcome, Record},
-    },
+    training::records::{Header, Outcome, Record},
 };
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
 use minase_trainer::nnue::{
@@ -62,7 +59,14 @@ impl Fixture {
             .zip(games)
             .enumerate()
             .map(|(i, (position, &game))| {
-                Record::from_position(position, 0, Outcome::Draw, game, i as u16)
+                Record::from_position(
+                    position,
+                    0,
+                    Outcome::Draw,
+                    game,
+                    i as u16,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
             })
             .collect();
         self.records(name, &records, seed, rules)
@@ -85,25 +89,6 @@ impl Fixture {
             bytes.extend(record.encode());
         }
         fs::write(&path, &bytes).unwrap();
-        let provenance = Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: rules.into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        };
-        provenance
-            .write(fs::File::create(self.path(&format!("{name}.provenance.json"))).unwrap())
-            .unwrap();
         path
     }
 
@@ -156,7 +141,7 @@ impl Fixture {
             optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
             model,
             removal_penalty: 0.0,
-            lambda_override: 1.0,
+            lambda: 1.0,
             progress: Progress {
                 epoch: 0,
                 best: None,
@@ -278,7 +263,15 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         let records: Vec<_> = positions
             .iter()
             .map(|position| {
-                let mut bytes = Record::from_position(position, 0, Outcome::Draw, game, 0).encode();
+                let mut bytes = Record::from_position(
+                    position,
+                    0,
+                    Outcome::Draw,
+                    game,
+                    0,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
+                .encode();
                 bytes[145] = 0;
                 let record = Record::decode(&bytes).unwrap();
                 assert!(record.to_position().is_err());
@@ -351,8 +344,8 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         );
         assert_eq!(report["input_files"][i]["record_count"], 24);
         assert_eq!(
-            report["input_files"][i]["sha256"],
-            format!("{:x}", Sha256::digest(fs::read(f.path(name)).unwrap()))
+            report["input_files"][i]["byte_length"],
+            fs::metadata(f.path(name)).unwrap().len()
         );
     }
     assert_eq!(report["pairs"][0]["name"], "half");
@@ -472,7 +465,15 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
         }
         let mut position = builder.finish().unwrap();
         position.set_lion_capture(Square::from_dense(70)).unwrap();
-        let mut record = Record::from_position(&position, 0, Outcome::Draw, 4, 0).encode();
+        let mut record = Record::from_position(
+            &position,
+            0,
+            Outcome::Draw,
+            4,
+            0,
+            minase::training::records::Origin::RandomSelfplay,
+        )
+        .encode();
         assert_eq!(record[146], 1);
         // 数値診断の特徴に含めない麒麟成りフラグを、入力で意図的に不一致にする。
         record[146] = 0;
@@ -585,7 +586,15 @@ fn removal_uses_f64_recomputation_and_the_integer_network_k() {
 
         let position =
             common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-        let mut bytes = Record::from_position(&position, 0, Outcome::Draw, 4, 0).encode();
+        let mut bytes = Record::from_position(
+            &position,
+            0,
+            Outcome::Draw,
+            4,
+            0,
+            minase::training::records::Origin::RandomSelfplay,
+        )
+        .encode();
         bytes[145] = 50; // 手番側の歩と同じ升に先獅子を置く。
         let record = Record::decode(&bytes).unwrap();
         assert!(record.to_position().is_err());
@@ -760,7 +769,6 @@ fn moves_use_negamax_and_include_fm_while_empty_positions_have_null_statistics()
             Position::empty(Color::Black),
         ];
         f.data("data.mnsd", &positions, 11, &[1; 3], "L0,P0,R1,E0");
-        fs::remove_file(f.path("data.mnsd.provenance.json")).unwrap();
         f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 2);
         f.network("net.bin", &tempo_model(set));
         let report = f.success(&moves_args(), "report.json");

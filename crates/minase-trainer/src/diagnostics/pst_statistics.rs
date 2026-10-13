@@ -71,8 +71,8 @@ pub(super) struct OutcomeMetrics {
 }
 
 #[derive(Default)]
-struct Outcomes<'a> {
-    games: HashMap<GameKey<'a>, usize>,
+struct Outcomes {
+    games: HashMap<GameKey, usize>,
     totals: Vec<(f64, usize)>,
     loss_sum: f64,
     records: usize,
@@ -82,8 +82,8 @@ struct Outcomes<'a> {
     eligible: usize,
     matches: usize,
 }
-impl<'a> Outcomes<'a> {
-    fn add(&mut self, key: GameKey<'a>, score: i32, outcome: u8, k: f64) {
+impl Outcomes {
+    fn add(&mut self, key: GameKey, score: i32, outcome: u8, k: f64) {
         let loss = bce_with_logits(f64::from(score) / k, f64::from(outcome) / 2.0);
         self.records += 1;
         self.loss_sum += loss;
@@ -148,7 +148,7 @@ pub(super) fn validation(
         base: vec![[0.0; BANDS]; ks.len()],
         candidate: vec![[0.0; BANDS]; ks.len()],
     };
-    let mut outcomes = Models::<Outcomes<'_>>::default();
+    let mut outcomes = Models::<Outcomes>::default();
     for &index in dataset.validation_indices() {
         let record = dataset.record(index)?;
         let features = Features::new(&record);
@@ -282,9 +282,9 @@ mod tests {
         let mut outcomes = Outcomes::default();
         // Aは3局面すべてlog(2)、Bは1局面log(1+exp(1))。局面平均と対局平均は異なる。
         for _ in 0..3 {
-            outcomes.add(GameKey::Human("A"), 0, 1, 100.0);
+            outcomes.add(GameKey(0, 1), 0, 1, 100.0);
         }
-        outcomes.add(GameKey::Human("B"), 100, 0, 100.0);
+        outcomes.add(GameKey(0, 2), 100, 0, 100.0);
         let report = outcomes.finish(100.0);
         let a = 2.0_f64.ln();
         let b = 1.0_f64.exp().ln_1p();

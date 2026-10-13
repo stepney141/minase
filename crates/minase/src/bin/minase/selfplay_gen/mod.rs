@@ -5,8 +5,6 @@ mod generate;
 mod inspect;
 mod opening;
 mod play;
-mod provenance;
-mod rescore;
 mod statistics;
 
 pub(super) use cli::Arguments;
@@ -15,8 +13,6 @@ use generate::generate;
 use inspect::inspect;
 use minase::datagen::invalid_data;
 use minase_core::{Rules, rules::parse_rule_set};
-use provenance::write_provenance;
-use rescore::rescore;
 use std::{io, num::NonZeroUsize, process};
 
 /// 教師探索の既定ノード上限100,000。
@@ -54,8 +50,6 @@ fn run(arguments: Arguments) -> io::Result<()> {
     match arguments.command {
         Operation::Generate(arguments) => generate(&arguments),
         Operation::Inspect(arguments) => inspect(&arguments),
-        Operation::Rescore(arguments) => rescore(&arguments),
-        Operation::Provenance(arguments) => write_provenance(&arguments),
     }
 }
 
@@ -68,85 +62,7 @@ fn engine_default_rules() -> io::Result<Rules> {
 
 #[cfg(test)]
 mod test_support {
-    use crate::selfplay_gen::cli::RescoreArguments;
-    use minase::{
-        search::TranspositionTable,
-        training::records::{Header, Outcome, Record, Writer},
-    };
-    use minase_core::Position;
-    use std::{
-        fs::{self, File},
-        num::NonZeroUsize,
-        path::PathBuf,
-        process,
-        sync::atomic::{AtomicU64, Ordering},
-    };
-
-    /// 小さなMNSDを含む一時ディレクトリ。各テストの入出力を分離する。
-    pub(super) struct RescoreFixture {
-        pub(super) directory: PathBuf,
-        pub(super) arguments: RescoreArguments,
-    }
-
-    impl RescoreFixture {
-        pub(super) fn new() -> Self {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let directory = std::env::temp_dir().join(format!(
-                "minase-rescore-{}-{}",
-                process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            fs::create_dir(&directory).unwrap();
-            let input = directory.join("input.mnsd");
-            let targets = directory.join("targets.txt");
-            fs::write(&targets, b"0\n2\n4\n").unwrap();
-            let header = Header::new(
-                "engine-default".into(),
-                "a".repeat(40),
-                [7; 32],
-                100_000,
-                42,
-                0,
-            )
-            .unwrap();
-            let mut writer = Writer::new(File::create(&input).unwrap(), header).unwrap();
-            // 同じ局面を別の記録番号にも置き、以前の探索結果からの独立性を検証する。
-            for index in 0..5 {
-                writer
-                    .write_record(&Record::from_position(
-                        &Position::initial(),
-                        17,
-                        Outcome::Draw,
-                        1,
-                        index,
-                    ))
-                    .unwrap();
-            }
-            writer.finish().unwrap();
-            let arguments = RescoreArguments {
-                input,
-                targets,
-                output: directory.join("output.mnrs"),
-                nnue: None,
-                nodes: 200,
-                hash_mb: NonZeroUsize::new(1).unwrap(),
-                concurrency: NonZeroUsize::new(1).unwrap(),
-                allow_dirty: true,
-            };
-            Self {
-                directory,
-                arguments,
-            }
-        }
-    }
-
-    impl Drop for RescoreFixture {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.directory);
-        }
-    }
-
-    /// テスト用の小さい置換表を作る。
+    use minase::search::TranspositionTable;
     pub(super) fn test_table() -> TranspositionTable {
         TranspositionTable::new(1).expect("one MiB is a valid table size")
     }

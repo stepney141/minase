@@ -42,7 +42,7 @@ pub struct Args {
     /// CUDAイベントでカーネルごとに計時し、起動時の次元と配列の推定バイト数を報告する。
     #[arg(long)]
     profile: bool,
-    /// MNSDファイルを記録の通し番号順に指定する。対応する来歴ファイルも用意する。
+    /// MNSDファイルを記録の通し番号順に指定する。実行中は元ファイルを変更しない。
     #[arg(long, required = true, num_args = 1..)]
     data: Vec<PathBuf>,
     /// モデル初期化とエポック内の局面順列に使うシードを指定する。
@@ -283,7 +283,7 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
     let workers = threads.min(args.steps);
     // SAFETY: 入力は生成完了済みのMNSDに限り、Datasetの生存中は外部プロセスも含めて
     // 変更・切り詰めしない運用契約とする。この処理も入力ファイルを書き換えない。
-    let dataset = unsafe { Dataset::open(&args.data, None, Some(args.training.lambda_override))? };
+    let dataset = unsafe { Dataset::open(&args.data, None)?.with_lambda(args.training.lambda)? };
     if dataset.training_indices().len() < required {
         return Err(Error::Invalid(
             "not enough training positions for (steps + 1) * batch, including warmup",

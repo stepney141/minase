@@ -22,23 +22,16 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 
 | 形式 | マジックと版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
-| MNSD（教師データ） | `MNSD`、版1 | `minase data selfplay generate`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、診断、`minase data selfplay inspect`、`minase data selfplay rescore` | `crates/minase/src/training/records.rs` |
-| MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train` | エンジン、診断、`minase data selfplay rescore` | `crates/minase/src/eval/nnue/format.rs` |
+| MNSD（教師データ） | `MNSD`、版1 | `minase data selfplay generate`、`minase data lishogi games`、`minase-trainer diag pst-compare` | 学習器、診断、`minase data selfplay inspect` | `crates/minase/src/training/records.rs` |
+| MNUE（NNUEの重み） | `MNUE`、版5 | `minase-trainer nnue train` | エンジン、診断 | `crates/minase/src/eval/nnue/format.rs` |
 | MNPT版2（PSTだけの重み） | `MNPT`、版2 | `minase-trainer pst train`、`minase-trainer fm scale --fm-scale 0` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | MNPT版3（PSTとFMの重み） | `MNPT`、版3 | `minase-trainer fm train`、`joint train`、`fm quarter`、`fm scale` | エンジン、学習器、診断 | `crates/minase/src/eval/pst/format.rs` |
 | PSTの浮動小数点の重み`pst-float.npz`（2配列） | NPZ、版なし | `minase-trainer pst train` | `nnue train --init-pst`、`joint train --pst-init`、`diag pst-compare` | `crates/minase-trainer/src/pst/npz.rs` |
 | FMの浮動小数点の重み`fm-float.npz`（3配列） | NPZ、版なし | `minase-trainer fm train` | `joint train --fm-init` | `crates/minase-trainer/src/fm/npz.rs` |
 | 同時学習の浮動小数点の重み`pst-float.npz`（5配列） | NPZ、版なし | `minase-trainer joint train` | `fm scale --float`、`nnue train --init-pst`、`joint train`、`diag pst-compare` | `crates/minase-trainer/src/joint/export.rs` |
 
-## 教師データの付随ファイル
-
-| 形式 | マジックと版 | 書き手 | 読み手 | 仕様 |
-|---|---|---|---|---|
-| 来歴JSON`<MNSD>.provenance.json` | `format = "minase-provenance"`、`version = 1` | `minase data selfplay generate`、`data selfplay provenance`、`data lishogi games` | 学習器、診断 | `crates/minase/src/training/provenance.rs` |
-| 実戦棋譜の詳細`<MNSD>.games.json` | なし | `minase data lishogi games` | なし | `crates/minase/src/bin/minase/lishogi_import/label.rs`の`GameDetails` |
-| lishogiの取り込みの報告（`--report`） | なし | `minase data lishogi games`、`data lishogi openings` | なし | `crates/minase/src/bin/minase/lishogi_import/filter.rs`の`Report` |
-| MNRS（付け直した探索値） | `MNRS`、版1 | `minase data selfplay rescore` | 同じコマンドの再開 | `crates/minase/src/training/rescore.rs` |
-| 付け直す記録の通し番号の一覧 | なし | 利用者が用意する | `minase data selfplay rescore --targets` | `crates/minase/src/training/rescore.rs`の`read_targets` |
+教師データは付随ファイルを持たない。
+教師の分類と検証集合は、MNSDのヘッダとレコードの由来から決まる。
 
 ## 学習器の保存物
 
@@ -67,10 +60,11 @@ NPZはNumPyの配列を名前つきで収めた無圧縮のZIPであり、コン
 終了報告は、学習が途中で失敗した場合や、同時学習の開始時の量子化検査に通らなかった場合には、`status`と`reason`を中心とする少数の欄だけを持つ。
 欄の構成は同じ`Summary`のdocコメントにある。
 
-## 診断と重みの変換の報告
+## 取り込み、診断、および重みの変換の報告
 
 | 形式 | マジックと版 | 書き手 | 読み手 | 仕様 |
 |---|---|---|---|---|
+| lishogiの取り込みの報告（`--report`） | なし | `minase data lishogi games`、`data lishogi openings` | なし | `crates/minase/src/bin/minase/lishogi_import/filter.rs`の`Report` |
 | PSTの比較診断の報告`report.json` | なし | `minase-trainer diag pst-compare` | なし | `crates/minase-trainer/src/diagnostics/pst_compare.rs`の`Report` |
 | 診断の標本の通し番号`diagnostic-indices-*.npy` | NPY 1.0 | `minase-trainer diag pst-compare` | なし | `crates/minase-trainer/src/diagnostics/pst_sample.rs`の`write_indices` |
 | 評価値の分布の診断の報告（`--output`で指定） | なし | `minase-trainer diag nnue-distribution` | なし | `crates/minase-trainer/src/diagnostics/nnue_distribution.rs`の`Report` |

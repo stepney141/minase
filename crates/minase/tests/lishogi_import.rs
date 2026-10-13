@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use minase::training::provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin};
-use minase::training::records::{Outcome, Reader};
+use minase::training::records::{Origin, Outcome, Reader};
 use minase_core::notation::{sfen::parse_extended_sfen, usi};
 use minase_core::{Color, Game, Rules};
 use serde_json::{Value, json};
@@ -69,12 +68,12 @@ fn success(output: Output) {
 }
 
 #[test]
-fn games_filter_in_specified_order_and_preserve_provenance_and_records() {
+fn games_filter_in_specified_order_and_preserve_details_and_records() {
     let dir = Directory::new();
     fs::write(dir.path("input.ndjson"), CASES).unwrap();
     success(import(&dir, "games", "one.mnsd", "1"));
     success(import(&dir, "games", "two.mnsd", "2"));
-    for suffix in ["", ".provenance.json", ".games.json", ".report.json"] {
+    for suffix in ["", ".report.json"] {
         assert_eq!(
             fs::read(dir.path(&format!("one.mnsd{suffix}"))).unwrap(),
             fs::read(dir.path(&format!("two.mnsd{suffix}"))).unwrap()
@@ -107,33 +106,15 @@ fn games_filter_in_specified_order_and_preserve_provenance_and_records() {
         assert_eq!(entry["count"], ids.len(), "{reason}");
         assert_eq!(entry["ids"], json!(ids), "{reason}");
     }
-    let provenance =
-        Provenance::read(File::open(dir.path("one.mnsd.provenance.json")).unwrap()).unwrap();
-    assert_eq!(provenance.result_origin, ResultOrigin::Human);
-    assert_eq!(provenance.start_origin, StartOrigin::Random);
-    assert_eq!(
-        provenance.teacher.search_condition,
-        SearchCondition::Standalone
-    );
-    assert_eq!(provenance.lambda, 0.0);
-    let mappings = provenance.games.unwrap();
-    assert_eq!(
-        mappings
-            .iter()
-            .map(|g| (g.game, g.id.as_str(), g.ply))
-            .collect::<Vec<_>>(),
-        vec![
-            (1, "SNjoPiHz", None),
-            (2, "Lqyj1bLC", None),
-            (3, "gZ0HcfLK", None)
-        ]
-    );
+    // 入力1、MNSD2、報告2の5ファイルだけを作る。
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 5);
     let mut reader = Reader::new(File::open(dir.path("one.mnsd")).unwrap()).unwrap();
     assert_eq!(reader.header().rule_set(), "L0,P0,R1,E0");
     assert_eq!(reader.header().teacher_nodes(), 200);
     let mut counts = [0; 3];
     let mut last_game = 1;
     while let Some(record) = reader.read_record().unwrap() {
+        assert_eq!(record.origin(), Origin::HumanGame);
         let game = record.game_number();
         assert!(game >= last_game);
         last_game = game;
@@ -156,7 +137,7 @@ fn games_filter_in_specified_order_and_preserve_provenance_and_records() {
     for (count, bound) in counts.into_iter().zip([22, 81, 19]) {
         assert!(count > 0 && count <= bound);
     }
-    let details = json_file(&dir.path("one.mnsd.games.json"));
+    let details = &report["games"];
     assert_eq!(details["SNjoPiHz"]["sente_rating"], 1800);
     assert_eq!(details["SNjoPiHz"]["clock"]["byoyomi"], 30);
     for (index, id) in ["SNjoPiHz", "Lqyj1bLC", "gZ0HcfLK"].iter().enumerate() {
@@ -180,6 +161,7 @@ fn openings_keep_unrated_unfinished_games_and_stop_before_illegal_moves() {
     success(import(&dir, "openings", "openings.txt", "2"));
     let report = json_file(&dir.path("openings.txt.report.json"));
     assert_eq!(report["accepted"], 1);
+    assert!(report.get("games").is_none());
     assert_eq!(report["candidates"], 2);
     assert_eq!(report["retained"], 2);
     assert_eq!(report["truncated_illegal"]["opening-prefix-2u7dwJf9"], 61);
@@ -251,11 +233,11 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
                 "--seed",
                 "290502",
                 "--nodes",
-                "1",
+                "400",
                 "--hash-mb",
                 "1",
                 "--max-ply",
-                "65",
+                "4000",
                 "--allow-dirty",
             ])
             .output()
@@ -265,23 +247,12 @@ fn opening_generation_cli_requires_zero_random_moves_and_one_game_per_line() {
     assert_eq!(rejected.status.code(), Some(1));
     assert!(!dir.path("bad.mnsd").exists());
     success(command("0", "selfplay.mnsd"));
-    let provenance =
-        Provenance::read(File::open(dir.path("selfplay.mnsd.provenance.json")).unwrap()).unwrap();
-    assert_eq!(provenance.result_origin, ResultOrigin::Selfplay);
-    assert_eq!(provenance.start_origin, StartOrigin::HumanGame);
-    assert_eq!(provenance.lambda, 0.75);
-    assert_eq!(
-        provenance
-            .games
-            .unwrap()
-            .iter()
-            .map(|g| (g.game, g.id.as_str(), g.ply))
-            .collect::<Vec<_>>(),
-        vec![
-            (1, "opening-prefix-2u7dwJf9", Some(40)),
-            (2, "opening-prefix-2u7dwJf9", Some(60))
-        ]
-    );
+    let mut reader = Reader::new(File::open(dir.path("selfplay.mnsd")).unwrap()).unwrap();
+    assert!(reader.header().record_count() > 0);
+    while let Some(record) = reader.read_record().unwrap() {
+        assert_eq!(record.origin(), Origin::HumanOpeningSelfplay);
+    }
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 4);
 }
 
 #[test]
@@ -390,4 +361,34 @@ fn invalid_utf8_has_line_number_and_existing_outputs_are_preserved() {
         Some(1)
     );
     assert_eq!(fs::read(dir.path("existing.mnsd")).unwrap(), b"keep");
+}
+
+#[test]
+fn inspect_accepts_and_displays_synthetic_records() {
+    use minase::training::records::{Header, Record, Writer};
+    let dir = Directory::new();
+    let path = dir.path("synthetic.mnsd");
+    let header = Header::new("L0,P0,R1,E0".into(), "0".repeat(40), [0; 32], 0, 0, 0).unwrap();
+    let mut writer = Writer::new(File::create(&path).unwrap(), header).unwrap();
+    writer
+        .write_record(&Record::from_position(
+            &minase_core::Position::initial(),
+            0,
+            Outcome::Draw,
+            0,
+            0,
+            Origin::Synthetic,
+        ))
+        .unwrap();
+    writer.finish().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_minase"))
+        .args(["data", "selfplay", "inspect"])
+        .arg(path)
+        .args(["--dump", "1"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("origin: Synthetic"));
+    assert!(text.contains("origin_3: 1"));
 }

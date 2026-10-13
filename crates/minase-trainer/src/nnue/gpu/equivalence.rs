@@ -123,11 +123,7 @@ pub fn run(
         &model,
         &removal_reference,
         &input,
-        &build_targets(
-            &input,
-            &[500.0, 1000.0, 1500.0],
-            &[training.lambda_override; 3],
-        )?,
+        &build_targets(&input, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?,
         training.removal_penalty,
     )?;
     drop(evaluator);
@@ -470,6 +466,7 @@ fn removal_partitions(shape: Shape, seed: u64) -> Result<(Model, BatchSlot, Remo
             Outcome::Draw,
             0,
             b as u16,
+            minase::training::records::Origin::RandomSelfplay,
         ));
     }
     let batch = BatchSlot::from_records(shape.feature_set(), &records, &scores, &classes)?;
@@ -503,11 +500,7 @@ fn check_removal_partitions(
         &model,
         &removal_reference,
         &batch,
-        &build_targets(
-            &batch,
-            &[500.0, 1000.0, 1500.0],
-            &[training.lambda_override; 3],
-        )?,
+        &build_targets(&batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?,
         training.removal_penalty,
     )
 }
@@ -574,6 +567,7 @@ pub(super) fn synthetic_batch(set: InputFeatureSet, n: usize, seed: u64) -> Resu
             [Outcome::Loss, Outcome::Draw, Outcome::Win][b % 3],
             (b / 60000) as u32,
             (b % 60000) as u16,
+            minase::training::records::Origin::RandomSelfplay,
         ));
         scores.push(f32::from(score));
         classes.push((b % 3) as u32);
@@ -744,7 +738,7 @@ mod tests {
         }
         drop(evaluator);
         drop(model);
-        check_removal_partitions(device, shape, 71, &TrainingOptions::default()).unwrap();
+        check_removal_partitions(device, shape, 71, &TrainingOptions::new(1.0)).unwrap();
     }
 
     #[test]
@@ -759,7 +753,7 @@ mod tests {
             lr_head: 0.0004,
             weight_decay_head: 0.0003,
             removal_penalty: 137.5,
-            lambda_override: 0.75,
+            lambda: 0.75,
         };
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             run(set, 6, 5, 293, training).unwrap();

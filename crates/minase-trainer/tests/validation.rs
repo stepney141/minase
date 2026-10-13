@@ -14,7 +14,16 @@ fn validation_excludes_draws_and_counts_activation_endpoints() {
     let records: Vec<_> = positions
         .iter()
         .zip([Outcome::Loss, Outcome::Draw, Outcome::Win])
-        .map(|(p, outcome)| Record::from_position(p, 0, outcome, 1, 0))
+        .map(|(p, outcome)| {
+            Record::from_position(
+                p,
+                0,
+                outcome,
+                1,
+                0,
+                minase::training::records::Origin::RandomSelfplay,
+            )
+        })
         .collect();
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let batch = BatchSlot::from_records(set, &records, &[0.0; 3], &[0; 3]).unwrap();
@@ -36,7 +45,16 @@ fn validation_excludes_draws_and_counts_activation_endpoints() {
 #[test]
 fn validation_reports_population_standard_deviation_in_centipawns() {
     let position = &positions()[0];
-    let records = [0, 1].map(|i| Record::from_position(position, 0, Outcome::Draw, 1, i));
+    let records = [0, 1].map(|i| {
+        Record::from_position(
+            position,
+            0,
+            Outcome::Draw,
+            1,
+            i,
+            minase::training::records::Origin::RandomSelfplay,
+        )
+    });
     let batch =
         BatchSlot::from_records(InputFeatureSet::HalfKpHmB8, &records, &[0.0; 2], &[0; 2]).unwrap();
     let mut m = model(InputFeatureSet::HalfKpHmB8, 2);
@@ -56,7 +74,14 @@ fn validation_reports_population_standard_deviation_in_centipawns() {
 
 #[test]
 fn record_batches_reject_mismatched_teachers_and_nonfinite_scores() {
-    let record = Record::from_position(&positions()[0], 0, Outcome::Draw, 1, 0);
+    let record = Record::from_position(
+        &positions()[0],
+        0,
+        Outcome::Draw,
+        1,
+        0,
+        minase::training::records::Origin::RandomSelfplay,
+    );
     assert!(BatchSlot::from_records(InputFeatureSet::P, &[], &[], &[]).is_err());
     assert!(
         BatchSlot::from_records(InputFeatureSet::P, std::slice::from_ref(&record), &[], &[0])

@@ -6,7 +6,6 @@ use crate::{
 };
 use serde::Serialize;
 use serde_json::json;
-use std::path::Path;
 
 /// 同時学習の1エポックの記録。
 /// 損失は局面数で重み付けした平均で、端数バッチも含める。
@@ -56,7 +55,8 @@ pub struct EpochRecord {
 /// `settings`からは`init`に代えて`base`、`pst_init`、`fm_init`、`fm_reference`を除く。
 /// `settings.model = "joint_mirrored_pst_fm_rank32"`とし、`settings.optimizer`は
 /// `{pst_lr, pst_weight_decay: 0, fm_lr, fm_weight_decay, betas: [0.9, 0.999], epsilon: 1e-8}`である。
-/// `inputs`は`files`のほかに`base`、`pst_init`、`fm_init`、`fm_reference`の各`{path, sha256}`を持ち、`init`を持たない。
+/// `inputs`は`files`のほかに、MNPTの`base`と`fm_reference`を`{path, checksum}`で、NPZの`pst_init`と`fm_init`を`{path, byte_length}`で持つ。
+/// パスは正規化し、MNSDの欄は[`crate::identity`]に従う。`settings.lambda`は指定した混合比である。
 /// `preprocessing`には[`fm::record::configuration`](../../fm/record/fn.configuration.html)と同じ`feature_observations`と`unobserved_features`を加える。
 /// 加えて、`--fm-init`のマスクと数え直したマスクの不一致数`mask_mismatches`、および`removal_reference = "v0"`を保存する。
 pub(super) fn configuration(
@@ -92,11 +92,10 @@ pub(super) fn configuration(
         "optimizer".into(),
         json!({"pst_lr":args.pst_lr, "pst_weight_decay":0, "fm_lr":args.fm_lr, "fm_weight_decay":args.fm_weight_decay, "betas":[0.9,0.999], "epsilon":1e-8}),
     );
-    let files = dataset.paths().zip(dataset.headers()).map(|(path, header)| {
-        let mut sidecar = path.as_os_str().to_owned();
-        sidecar.push(".provenance.json");
-        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&sha256(&header.encode()))}))
-    }).collect::<Result<Vec<_>>>()?;
+    let files = dataset
+        .paths()
+        .map(file_record)
+        .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "base":file_record(&args.base)?, "pst_init":file_record(&args.pst_init)?, "fm_init":file_record(&args.fm_init)?, "fm_reference":file_record(&args.fm_reference)?});
     let preprocessing = json!({"feature_observations":counts, "mask_mismatches":mask_mismatches, "removal_reference":"v0", "unobserved_features":counts.iter().filter(|&&n| n == 0).count(), "teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,

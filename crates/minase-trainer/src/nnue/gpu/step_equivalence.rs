@@ -32,11 +32,7 @@ pub(super) fn run(
     training: &TrainingOptions,
 ) -> Result<Report> {
     let fixture = fixture(shape, batch, seed, training.optimizer())?;
-    let targets = build_targets(
-        batch,
-        &[500.0, 1000.0, 1500.0],
-        &[training.lambda_override; 3],
-    )?;
+    let targets = build_targets(batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?;
     let mut report = check(
         device.clone(),
         &fixture,
@@ -376,11 +372,7 @@ fn check_clipping(
     training: &TrainingOptions,
 ) -> Result<Report> {
     let batch = super::equivalence::synthetic_batch(shape.feature_set(), 3, seed)?;
-    let targets = build_targets(
-        &batch,
-        &[500.0, 1000.0, 1500.0],
-        &[training.lambda_override; 3],
-    )?;
+    let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3])?;
     let positive = clipping_fixture(shape, &batch, seed, 1.0, training.optimizer())?;
     let mut report = check(
         device.clone(),
@@ -591,7 +583,7 @@ mod tests {
     fn fixture_config() -> AdamWConfig {
         TrainingOptions {
             weight_decay_linear: 0.02,
-            ..TrainingOptions::default()
+            ..TrainingOptions::new(1.0)
         }
         .optimizer()
     }
@@ -650,7 +642,7 @@ mod tests {
             let targets = build_targets(&batch, &[500.0, 1000.0, 1500.0], &[1.0; 3]).unwrap();
             check(device.clone(), &fixture, &batch, &targets, 1000.0).unwrap();
         }
-        check_clipping(device, shape, 293, &TrainingOptions::default()).unwrap();
+        check_clipping(device, shape, 293, &TrainingOptions::new(1.0)).unwrap();
     }
 
     #[test]
@@ -732,18 +724,14 @@ mod tests {
             lr_head: 0.0004,
             weight_decay_head: 0.0003,
             removal_penalty: 137.5,
-            lambda_override: 0.75,
+            lambda: 0.75,
         };
         for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
             let shape = Shape::new(set, 6, 1000.0).unwrap();
             let batch = synthetic_batch(set, 5, 71).unwrap();
             let fixture = fixture(shape, &batch, 293, training.optimizer()).unwrap();
-            let targets = build_targets(
-                &batch,
-                &[500.0, 1000.0, 1500.0],
-                &[training.lambda_override; 3],
-            )
-            .unwrap();
+            let targets =
+                build_targets(&batch, &[500.0, 1000.0, 1500.0], &[training.lambda; 3]).unwrap();
             let removal = RemovalReference::v0();
             // 0もruntime引数として通し、補助損失を無効にした境界を保護する。
             for penalty in [0.0, training.removal_penalty] {

@@ -18,7 +18,16 @@ use minase_trainer::pst::{
 fn batch(positions: &[Position]) -> Batch {
     let records: Vec<_> = positions
         .iter()
-        .map(|p| Record::from_position(p, 0, Outcome::Draw, 1, 0))
+        .map(|p| {
+            Record::from_position(
+                p,
+                0,
+                Outcome::Draw,
+                1,
+                0,
+                minase::training::records::Origin::RandomSelfplay,
+            )
+        })
         .collect();
     Batch::from_records(&records, &vec![0.0; records.len()], &vec![0; records.len()]).unwrap()
 }

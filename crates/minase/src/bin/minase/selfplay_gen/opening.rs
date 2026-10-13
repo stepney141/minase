@@ -5,7 +5,6 @@
 //! 0行のファイルもエラーとし、拡張SFENの復元にはエンジン既定の移動規則を使う。
 
 use minase::datagen::{data_error, invalid_data};
-use minase::training::provenance::GameOrigin;
 use minase_core::rng::{XorShift64, derive_seed};
 use minase_core::{Color, Game, GameStatus, Position, Rules};
 use std::{
@@ -15,11 +14,15 @@ use std::{
     path::Path,
 };
 
+/// 開始局面を特定する元棋譜の手数。
+pub(super) struct GameOrigin {
+    pub(super) ply: u32,
+}
+
 /// 実戦開始の局面と、元棋譜での位置。
 pub(super) struct Opening {
     pub(super) origin: GameOrigin,
     position: Position,
-    pub(super) ply: u32,
 }
 
 /// 開始局面一覧または生成引数の不整合。
@@ -70,7 +73,7 @@ pub(super) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
         let parse = || -> Result<Opening, Box<dyn std::error::Error + Send + Sync>> {
             let line = line?;
             let mut fields = line.split_whitespace();
-            let id = fields.next().ok_or(OpeningError::InvalidFields)?;
+            let _id = fields.next().ok_or(OpeningError::InvalidFields)?;
             let ply: u32 = fields.next().ok_or(OpeningError::InvalidFields)?.parse()?;
             let sfen = fields.collect::<Vec<_>>().join(" ");
             let setup = parse_extended_sfen(&sfen, Rules::ENGINE_DEFAULT.moves)?;
@@ -87,14 +90,10 @@ pub(super) fn read_openings(path: &Path) -> io::Result<Vec<Opening>> {
             {
                 return Err(OpeningError::InvalidPosition.into());
             }
+            u32::try_from(index + 1)?;
             Ok(Opening {
-                origin: GameOrigin {
-                    game: u32::try_from(index + 1)?,
-                    id: id.to_owned(),
-                    ply: Some(ply),
-                },
+                origin: GameOrigin { ply },
                 position,
-                ply,
             })
         };
         openings.push(parse().map_err(|source| {
@@ -162,7 +161,7 @@ mod tests {
     use super::*;
     use crate::selfplay_gen::{
         play::{PlaySettings, play_game_from_opening},
-        test_support::{RescoreFixture, test_table},
+        test_support::test_table,
     };
     use std::fs;
 
@@ -173,7 +172,8 @@ mod tests {
             sfen::{SetupPosition, to_extended_sfen},
             usi,
         };
-        let fixture = RescoreFixture::new();
+        let directory = std::env::temp_dir().join(format!("minase-opening-{}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
         let input: serde_json::Value =
             include_str!("../../../../tests/fixtures/lishogi_import_cases.ndjson")
                 .lines()
@@ -192,7 +192,7 @@ mod tests {
             61,
         )
         .unwrap();
-        let path = fixture.directory.join("openings.txt");
+        let path = directory.join("openings.txt");
         fs::write(&path, format!("source 60 {}\n", to_extended_sfen(&setup))).unwrap();
         let openings = read_openings(&path).unwrap();
         let start = starting_game(
@@ -222,5 +222,13 @@ mod tests {
         assert_eq!(completed.stats.planned_injections, 0);
         assert!(!completed.records.is_empty());
         assert!(completed.records.iter().all(|r| r.record.ply() > 60));
+        assert!(
+            completed
+                .records
+                .iter()
+                .all(|r| r.record.origin()
+                    == minase::training::records::Origin::HumanOpeningSelfplay)
+        );
+        fs::remove_dir_all(directory).unwrap();
     }
 }

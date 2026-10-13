@@ -8,7 +8,7 @@ use super::{
     report::{ValidationReport, scale_report},
     zero_correction_report,
 };
-use crate::nn::{hex, sha256};
+use crate::identity::{FileIdentity, file_identity};
 use clap::{Args, Subcommand};
 use minase::eval::pst::{FmWeights, Pst};
 use serde::Serialize;
@@ -56,7 +56,7 @@ pub struct ScaleArgs {
     /// 新規に書くMNPT。隣に.scale.jsonの報告も書く。
     #[arg(long)]
     pub output: PathBuf,
-    /// 来歴ファイルを伴うMNSDを入力順に指定する。
+    /// MNSDを入力順に指定する。
     #[arg(long, num_args = 1..)]
     pub data: Vec<PathBuf>,
     /// 検証を処理するバッチの局面数。
@@ -73,10 +73,10 @@ pub struct ScaleArgs {
 /// 補正1/4への変換で保存する検査和、指数、補正0の検査結果。
 #[derive(Debug, Serialize)]
 pub struct QuarterReport {
-    /// 入力ファイル全体のSHA-256。
-    pub input_sha256: String,
-    /// 出力ファイル全体のSHA-256。
-    pub output_sha256: String,
+    /// 入力MNPTのパスとヘッダ内の検査和。
+    pub input: FileIdentity,
+    /// 出力MNPTのパスとヘッダ内の検査和。
+    pub output: FileIdentity,
     /// 縮小前の指数。
     pub exponent_before: u32,
     /// 縮小後の指数。
@@ -88,12 +88,12 @@ pub struct QuarterReport {
 /// 倍率の焼き込みの記録。検証なしではvalidationを省略する。
 #[derive(Debug, Serialize)]
 pub struct ScaleReport {
-    /// 入力MNPT全体のSHA-256。
-    pub input_sha256: String,
-    /// 入力NPZ全体のSHA-256。
-    pub float_sha256: String,
-    /// 出力MNPT全体のSHA-256。
-    pub output_sha256: String,
+    /// 入力MNPTのパスとヘッダ内の検査和。
+    pub input: FileIdentity,
+    /// 入力NPZのパスとバイト長。
+    pub float: FileIdentity,
+    /// 出力MNPTのパスとヘッダ内の検査和。
+    pub output: FileIdentity,
     /// 1024を等倍とする倍率。
     pub fm_scale: i32,
     /// 出力MNPTの版。
@@ -107,10 +107,6 @@ pub struct ScaleReport {
     /// 検証標本での比較。MNSDを指定した場合だけ保存する。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub validation: Option<ValidationReport>,
-}
-
-fn hash(bytes: &[u8]) -> String {
-    hex(&sha256(bytes))
 }
 
 fn require_new(path: &Path) -> Result<()> {
@@ -190,8 +186,8 @@ pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
     let zero_check = zero_correction_report(after.embeddings, after.signs, after.exponent)?;
     let bytes = with_fm(&source, Some(after))?.encode();
     let report = QuarterReport {
-        input_sha256: hash(&input),
-        output_sha256: hash(&bytes),
+        input: file_identity(&args.input)?,
+        output: crate::identity::mnpt_output_identity(&args.output, &bytes)?,
         exponent_before: before.exponent,
         exponent_after: after.exponent,
         zero_check,
@@ -241,9 +237,9 @@ pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     };
     let bytes = output.encode();
     let report = ScaleReport {
-        input_sha256: hash(&input),
-        float_sha256: hash(&float_bytes),
-        output_sha256: hash(&bytes),
+        input: file_identity(&args.input)?,
+        float: file_identity(&args.float)?,
+        output: crate::identity::mnpt_output_identity(&args.output, &bytes)?,
         fm_scale: args.fm_scale,
         format_version: if output_fm.is_some() { 3 } else { 2 },
         exponent_before: before.exponent,

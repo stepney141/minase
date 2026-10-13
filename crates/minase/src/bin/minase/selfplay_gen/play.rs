@@ -80,7 +80,7 @@ pub(super) fn play_game_from_opening(
 ) -> io::Result<CompletedGame> {
     let game_seed = derive_seed(settings.base_seed, u64::from(game_number));
     let mut game = starting_game(rules, game_seed, opening)?;
-    let ply_offset = opening.map_or(0, |opening| opening.ply);
+    let ply_offset = opening.map_or(0, |opening| opening.origin.ply);
     let opening_ply = game.ply_count();
     let (mut injection_plan, mut injection_rng) =
         plan_injections(game_seed, opening_ply, settings.random_moves);
@@ -211,6 +211,11 @@ pub(super) fn play_game_from_opening(
                             outcome,
                             game_number,
                             candidate.ply,
+                            if opening.is_some() {
+                                minase::training::records::Origin::HumanOpeningSelfplay
+                            } else {
+                                minase::training::records::Origin::RandomSelfplay
+                            },
                         ),
                         search_key: candidate.search_key,
                     }

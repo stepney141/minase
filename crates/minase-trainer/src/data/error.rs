@@ -1,16 +1,24 @@
 use std::{fmt, io, path::PathBuf};
 
-use minase::training::{provenance, records};
+use minase::training::records;
 
-/// データ経路の失敗。下位の復号・来歴・入出力エラーは原因を保持する。
+/// データ経路の失敗。下位の復号・入出力エラーは原因を保持する。
 #[derive(Debug)]
 pub enum Error {
     /// ファイル操作またはワーカーの起動に失敗した。
     Io(io::Error),
     /// MNSDの復号または局面復元に失敗した。
     Mnsd(records::Error),
-    /// 来歴JSONの検証に失敗した。
-    Provenance(provenance::Error),
+    /// 1ファイルに複数の由来が含まれる。
+    MixedOrigins {
+        /// 問題のファイル。
+        path: PathBuf,
+    },
+    /// 学習に使えない合成の記録が含まれる。
+    SyntheticOrigin {
+        /// 問題のファイル。
+        path: PathBuf,
+    },
     /// ファイルの内容またはファイル群の組合せが契約に違反した。
     Dataset {
         /// 問題のファイル。ファイル群が空の場合だけ空のパス。
@@ -52,7 +60,8 @@ impl fmt::Display for Error {
         match self {
             Self::Io(error) => error.fmt(f),
             Self::Mnsd(error) => error.fmt(f),
-            Self::Provenance(error) => error.fmt(f),
+            Self::MixedOrigins { path } => write!(f, "{}: mixed record origins", path.display()),
+            Self::SyntheticOrigin { path } => write!(f, "{}: synthetic records cannot be used as teacher data", path.display()),
             Self::Dataset { path, reason } => write!(f, "{}: {reason}", path.display()),
             Self::RecordIndex { index, count } => {
                 write!(f, "record index {index} is outside 0..{count}")
@@ -87,7 +96,6 @@ impl std::error::Error for Error {
         match self {
             Self::Io(error) => Some(error),
             Self::Mnsd(error) => Some(error),
-            Self::Provenance(error) => Some(error),
             _ => None,
         }
     }
@@ -102,11 +110,5 @@ impl From<io::Error> for Error {
 impl From<records::Error> for Error {
     fn from(error: records::Error) -> Self {
         Self::Mnsd(error)
-    }
-}
-
-impl From<provenance::Error> for Error {
-    fn from(error: provenance::Error) -> Self {
-        Self::Provenance(error)
     }
 }
