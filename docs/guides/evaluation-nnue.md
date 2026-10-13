@@ -27,11 +27,17 @@ NNUEは置き換え前のPSTと同じ式の線形の経路を持ち、その重�
 
 ## 全体の構成
 
-NNUEの評価値は、線形の経路と非線形の経路の和である。
+minaseのNNUEは、線形の経路と非線形の経路の和として評価値を出す。
 線形の経路は、駒の種類と升ごとの点数を足すPSTと同じ形の表であり、置き換え前のPSTを初期値として学習する。
 非線形の経路は、局面を2つの視点から幅 $`H`$ の第1層へ通し、SCReLU（0以上1以下に切り詰めてから2乗する活性化関数）に通した値と出力重みの内積を取る。
 探索が使うネットの幅は $`H = 128`$ である。
 この構造を選んだ理由は[NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](../adr/compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)にある。
+
+この和の形はNNUE自体の定義には含まれず、NNUEが指すのは第1層を差分で更新できる構造のことである。
+たとえば、やねうら王が採用した将棋用NNUEの代表的な構成であるHalfKP 256x2-32-32は、第1層の出力を2つの隠れ層に通して1つの値を出力し、線形の経路を持たない。[やねうら王の構成](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/eval/nnue/architectures/halfkp_256x2-32-32.h#L30-L37)
+一方でチェスのStockfishは、第1層と同じ入力から線形の出力も計算し、隠れ層を通した出力との和を評価値にしている。[2つの出力の和](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/evaluate.cpp#L50-L52)
+この線形の出力は、自玉の位置、駒、および升の組ごとの点数を、盤上の駒数で8区分した表から引いて足し合わせたものである。[線形の出力の計算](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/nnue/nnue_feature_transformer.h#L233-L236)
+minaseの構成はStockfishの方式に近いが、線形の経路の入力を王駒の位置で条件付けず、非線形の経路に隠れ層を置かない点が異なる。
 
 学習した実数の重みは、整数へ丸めて（量子化して）重みファイル `crates/minase/nets/nnue.bin` に保存し、エンジンは整数演算だけで評価する。
 重みファイルはバイナリへ埋め込まれ、エンジンは起動時に1回だけ検証して、失敗すれば停止する。
