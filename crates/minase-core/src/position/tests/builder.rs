@@ -6,7 +6,7 @@ use crate::position::{PositionBuildError, PositionBuilder, PositionError};
 
 #[test]
 fn builder_finish_preserves_consistent_incremental_zobrist_values() {
-    // 設計書predecessor-generator.md「実装フェーズ > フェーズ1」
+    // PositionBuilder::finishは増分更新した両Zobrist値を検査し、そのまま返す。
     for position in positions_with_distinct_temporary_states() {
         assert_eq!(position.validate(), Ok(()));
     }
@@ -14,7 +14,7 @@ fn builder_finish_preserves_consistent_incremental_zobrist_values() {
 
 #[test]
 fn builder_finish_rejects_corrupted_zobrist_values() {
-    // 設計書predecessor-generator.md「Positionの公開面」
+    // PositionBuilder::finishは誤った増分値を再計算で上書きせず、エラーにする。
     let mut builder = PositionBuilder::new(Color::Black);
     builder.position.zobrist ^= 1;
     assert_eq!(

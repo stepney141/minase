@@ -81,7 +81,7 @@ NineDayFeverの大会資料も、学習用対局の開始局面を生成する�
 
 末端だけへの適合では、探索全体への改善を保証できない。
 やねうら王の実装は静止探索の途中でも、現在の静的評価で探索を打ち切るstand pat判定に評価を使い、通常探索でも静的評価を枝刈りに使う。[静止探索の判定](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/engine/yaneuraou-engine/yaneuraou-search.cpp#L4691-L4837)、[通常探索の枝刈り](https://github.com/yaneurao/YaneuraOu/blob/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30/source/engine/yaneuraou-engine/yaneuraou-search.cpp#L3090-L3236)
-minaseの[探索中の局面を収集する教師生成実験](../plans/search-aware-evaluation.md)では静止探索中に静的評価を呼んだ局面を集めており、PV末端だけを集める方法とは学習対象の分布が異なる。
+minaseの[探索中の局面を収集する教師生成実験](../plans/archived/search-aware-evaluation.md)では静止探索中に静的評価を呼んだ局面を集めており、PV末端だけを集める方法とは学習対象の分布が異なる。
 
 ## 損失と学習中の探索
 

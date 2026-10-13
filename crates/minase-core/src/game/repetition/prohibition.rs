@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 /// R2とR3で同一局面を判定するキー。
 ///
-/// P1成り権保留状態を除外し、局面本体のZobrist値だけを保持する
+/// 成り権保留状態（P1・P2・P5）を除外し、局面本体のZobrist値だけを保持する
 /// (第24条第1項d)。値の衝突は実用上無視できるものとし、完全な局面署名とは
 /// 照合しない。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

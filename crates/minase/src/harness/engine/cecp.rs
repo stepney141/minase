@@ -1,4 +1,21 @@
-//! CECPの送信文と応答の解釈。
+//! CECP（XBoard）セッションの初期化、送信、および応答の解釈。
+//!
+//! 起動後に`xboard`と`protover 2`を送り、`feature done=1`を待つ。
+//! 続けて`memory`、`new`、`variant chu`、`easy`、`nopost`、`force`を送り、
+//! 深さ固定なら`sd`、秒読みだけの固定時間なら`st`、それ以外の時間制御なら`level`を送る。
+//! 表現できる制限は[`validate_cecp_limit`]が定める。
+//!
+//! エンジンが対局状態を持つため、毎手は前回の送信以降の着手だけを`usermove`で送る。
+//! エンジン自身の着手も送信済みに数える。
+//! 続けて`time`、`otim`、`go`、`ping <手数>`を送り、対応する`pong`まで読む。
+//! HaChuは先読みしないとき思考中の入力を読まないため、`pong`は着手と結果の行の後に届く。
+//! 着手を受けたら`force`を送る。2段階移動はコンマで終わる中間の`move`行と最後の`move`行を連結する。
+//! HaChuのじっと`@@@@`は、審判層の合法手から[`canonical_jitto`]が選ぶ代表手へ割り当てる。
+//!
+//! `pong`までに`Illegal move`があれば、着手行との前後を問わず拒否着手とする。
+//! 着手のない結果行だけの応答は投了、応答行のない`pong`はクラッシュとする。
+//! 同期方式はオリジナル版HaChuのコミット`df26f4a`で確認している。
+//! 調査記録は`docs/research/protocols/hachu.md`にある。
 
 use crate::harness::engine::channel::receive_until;
 use crate::harness::engine::process::EngineProcess;
@@ -55,6 +72,9 @@ impl EngineProcess {
 }
 
 /// 時間制御をCECPの`level`コマンドへ変換する。
+///
+/// 持ち時間が60秒の倍数なら分だけ、それ以外なら`分:秒`として秒を2桁で表す。
+/// 加算は秒で送る。整数秒の制約は[`validate_cecp_limit`]で検査する。
 pub(super) fn cecp_level_text(time: TimeControl) -> String {
     let total_seconds = time.base_ms / 1_000;
     let minutes = total_seconds / 60;
@@ -156,6 +176,11 @@ pub(super) fn cecp_memory_text(hash_mb: Option<u64>) -> String {
 }
 
 /// CECPで表現できる思考制限かどうかを検証する。
+///
+/// 深さ固定、整数秒の持ち時間と加算、および基本時間と加算が0で整数秒の秒読みだけを受理する。
+/// 最後の形式は1手固定時間として送る。
+/// `nodes`、基本時間か加算を伴う秒読み、および秒未満の値は、
+/// エンジンの解決時に[`io::ErrorKind::InvalidInput`]で拒否する。
 pub(in crate::harness) fn validate_cecp_limit(limit: SearchLimit) -> io::Result<()> {
     match limit {
         SearchLimit::Fixed { nodes: Some(_), .. } => Err(io::Error::new(
@@ -207,8 +232,7 @@ mod tests {
     use minase_core::Square;
     use std::sync::mpsc;
 
-    // D8-HARN-20（match-harness.md「CECPセッション管理」）: `level`の持ち時間は
-    // 60秒の倍数なら分だけ、それ以外は分:秒の2桁表記になり、加算は秒で送る。
+    // [`cecp_level_text`]の分、秒、および加算の表記を検査する。
     #[test]
     fn cecp_level_formats_minutes_seconds_and_increment() {
         assert_eq!(
@@ -262,8 +286,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-20（match-harness.md「CECPセッション管理」、hachu.md第8節）:
-    // `@@@@`は合法手中の正準じっとから移動元の内部升番号が最小の手へ一意に割り当てる。
+    // 本モジュールのじっとの解釈と`docs/research/protocols/hachu.md`第8節に従う。
     #[test]
     fn cecp_null_move_selects_the_lowest_origin_canonical_jitto() {
         let low = Move {
@@ -288,9 +311,8 @@ mod tests {
         assert_eq!(canonical_jitto(&[ordinary]), None);
     }
 
-    // D8-HARN-06/20（match-harness.md「CECPセッション管理」「異常時裁定」）:
-    // CECP応答はpongまで読み切り、分割レグを連結し、拒否を反則へ、結果行だけを投了へ
-    // 分類する。着手後の結果行はHaChuの王駒捕獲出力なので着手を優先する。
+    // 本モジュールの応答分類を検査する。
+    // 異常の裁定理由は`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`にある。
     #[test]
     fn cecp_response_lines_are_interpreted_through_pong() {
         fn receive(lines_to_send: &[&str]) -> Result<EngineResponse, EngineFailure> {
@@ -318,8 +340,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-20（match-harness.md「CECPセッション管理」）: 応答なしのpongは
-    // プロトコル違反であり、クラッシュ相当に分類する。
+    // 本モジュールの契約に従い、応答のないpongをクラッシュとする。
     #[test]
     fn cecp_pong_without_a_move_or_result_is_a_crash() {
         let (sender, lines) = mpsc::channel();

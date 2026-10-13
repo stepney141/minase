@@ -2,7 +2,7 @@
 
 ## 目的
 
-[関係補正項の計画](../plans/relational-correction.md)の利用者の判断による測定で、[STC](relational-correction-stc.md)が`H0`となった候補について、[相対2駒評価の計画](../plans/relative-pair-eval.md)の「診断」節の規定どおり、固定ノード数の200ペアのEloを測り、評価の質と速度の損失を切り分ける。
+[関係補正項の計画](../plans/archived/relational-correction.md)の利用者の判断による測定で、[STC](relational-correction-stc.md)が`H0`となった候補について、[相対2駒評価の計画](../plans/archived/relative-pair-eval.md)の「診断」節の規定どおり、固定ノード数の200ペアのEloを測り、評価の質と速度の損失を切り分ける。
 この測定は解釈のためであり、採否には使わない。
 
 ## コマンドライン

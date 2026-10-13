@@ -20,7 +20,14 @@ const fn stored_search_limit(limit: SearchLimit) -> StoredSearchLimit {
     }
 }
 
-/// 省略時の同時対局数を物理コア数と両エンジンのスレッド数から計算する。
+/// 同時対局数の既定値を物理コア数と両エンジンの`Threads`から求める。
+///
+/// 物理コア数から1を引き、両側の`Threads`の大きい方で整数除算する。
+/// 先読みを含む場合はさらに2で割る。
+/// コア数かいずれかの`Threads`が不明、`Threads`が0または`usize`に収まらない、
+/// あるいは商が1未満の場合は、`--concurrency`の明示を求めるエラーを返す。
+/// 解決値は`manifest.json`に保存し、再開でもその値を使う。
+/// 理由は`docs/adr/derive-default-concurrency-from-physical-cores.md`にある。
 fn default_concurrency(
     physical_cores: Option<usize>,
     candidate_threads: Option<u32>,
@@ -193,7 +200,7 @@ mod tests {
         }
     }
 
-    // D8-HARN-27（ponder.md設計判断「同時対局数」）。
+    // [`default_concurrency`]と`docs/adr/derive-default-concurrency-from-physical-cores.md`に従う。
     #[test]
     fn ponder_concurrency_reserves_two_engines_per_game() {
         for (threads, on, off) in [(1, 7, 15), (2, 3, 7)] {

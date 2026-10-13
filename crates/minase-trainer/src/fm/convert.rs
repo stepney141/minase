@@ -1,3 +1,6 @@
+//! 学習済みFMの補正を縮小し、重みファイルだけで評価を再現できる形に保存する。
+//! [`quarter`]は指数だけを変え、[`scale`]は実数の出力係数を変えて量子化し直す。
+
 use super::{
     Result, ZeroCorrectionReport,
     npz::FloatWeights,
@@ -43,7 +46,8 @@ pub struct ScaleArgs {
     /// 入力のMNPT版3。
     #[arg(long)]
     pub input: PathBuf,
-    /// 入力MNPTと同じ学習で保存した実数のNPZ。
+    /// `middlegame`と`endgame`が`[13680]`、`V`が`[13680, 32]`、`a`が`[32]`の、dtype `<f4`または`<f8`の有限値を持つNPZを指定する。
+    /// `joint train`の`pst-float.npz`を使え、端点のない`fm train`の`fm-float.npz`は使えない。
     #[arg(long)]
     pub float: PathBuf,
     /// 1024を等倍とする整数倍率。0ではMNPT版2を書く。
@@ -167,7 +171,10 @@ fn write_output(
     Ok(())
 }
 
-/// 指数以外の学習済み配列とメタデータを保ち、1/4の補正と報告を書き出す。
+/// 指数を`e + 1`にし、補正を`trunc(N / 2^(2e+3))`へ縮小する。
+/// 埋め込み、符号、PST、K、駒価値、規則名は変えない。
+/// 指数30の入力と、出力または拡張子を`.quarter.json`に替えた報告先が既存の場合は拒否する。
+/// 書いた後に読み直し、バイト列と再符号化した結果が一致することを検査する。
 pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
     let report_path = report_path(&args.output, "quarter.json")?;
     let input = fs::read(&args.input)?;
@@ -193,8 +200,13 @@ pub fn quarter(args: &QuarterArgs) -> Result<QuarterReport> {
     Ok(report)
 }
 
-/// PSTとFMの再量子化が入力に完全一致することを確認し、倍率を焼き込む。
-/// 検証標本の計算は保存前に完了し、書いたMNPTはエンジンの読み手で検査する。
+/// 整数倍率`0 ≤ s ≤ 1,024`を`a′ = a * s / 1024`として焼き込み、Vを保って指数を探し直す。
+/// 開始前に実数NPZのPSTとFMを量子化し、それぞれ入力MNPTと完全一致することを要求する。
+/// `s = 0`ではMNPT版2、`s = 1024`では入力と同じ重みを出力し、PST、K、駒価値、規則名を保つ。
+/// 倍率を推論時に掛けずに重みへ含めることで、エンジンの評価式を変えず重みファイルだけで評価が定まる。
+/// 検証標本の計算は保存前に完了し、書いたMNPTは読み直して検査する。
+/// 報告は`--output`の拡張子を`.scale.json`に替えたパスへ書く。
+/// 出力MNPTか報告のどちらかが既に存在すれば拒否する。
 pub fn scale(args: &ScaleArgs) -> Result<ScaleReport> {
     if !(0..=1024).contains(&args.fm_scale) {
         return Err("FM scale must be an integer in 0..1024".into());

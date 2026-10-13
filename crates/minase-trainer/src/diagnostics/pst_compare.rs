@@ -22,7 +22,7 @@ pub struct PstCompareArgs {
     /// 来歴を伴うMNSD。実行中は元ファイルを変更・切り詰めしないこと。
     #[arg(long, required = true, num_args = 1..)]
     pub data: Vec<PathBuf>,
-    /// 自己対局の教師の混合比λを上書きする。省略時は来歴を使う。
+    /// 自己対局の分類のλを有限な0以上1以下の値で上書きし、人間対局には適用しない。省略時は来歴のλを使う。
     #[arg(long)]
     pub lambda_override: Option<f64>,
     /// 教師探索値の先読みの減衰率。
@@ -51,6 +51,14 @@ pub struct PstCompareArgs {
     pub seed: u64,
 }
 
+/// `report.json`の`teacher_classes`の1要素。
+/// [`TeacherClass`]の由来7項目に、適用条件4項目を加えたものである。
+/// `generation_commit`は生成コミット、`network_checksum`は教師ネットの32バイトの検査和を小文字16進64文字で表した値、`nodes`はu32である。
+/// `rule_set`は規則名、`search_condition`は`"in-game"`または`"standalone"`、
+/// `result_origin`は`"selfplay"`または`"human"`、`start_origin`は`"random"`または`"human-game"`である。
+/// `lookahead_gamma`はf64または`null`、`lookahead_plies`はu16または`null`である。
+/// `lambda_override`はその分類に適用した上書き値で、人間対局の分類と上書きなしでは`null`、`lambda`は実効λである。
+/// 学習の`config.json`の`preprocessing.teacher_classes`は検査和を32個の数値の配列で保存するが、この報告は16進文字列を使う。
 #[derive(Serialize)]
 struct ClassMetadata {
     generation_commit: String,
@@ -87,6 +95,9 @@ impl ClassMetadata {
     }
 }
 
+/// `report.json`の`rescore_exclusions`。
+/// `mate_band`、`tactical`、`depth_incomplete`、`total`のusizeの4欄を持つ。
+/// この診断は再採点をしないため、すべて常に0である。
 #[derive(Default, Serialize)]
 struct Exclusions {
     mate_band: usize,
@@ -94,6 +105,22 @@ struct Exclusions {
     depth_incomplete: usize,
     total: usize,
 }
+/// `report.json`の`bands`の1要素で、教師分類と位相帯の組ごとの比較。
+/// `generation`は0始まりの教師分類番号、`band`は[`pst_sample::band`]による0〜4の帯番号である。
+/// `range`は帯Bのφの区間`[B/5, (B+1)/5)`を小数1桁で表し、帯4だけ右端を含む`"[0.8, 1.0]"`とする。
+/// `training_records`と`validation_records`は分類と帯ごとの全局面数、
+/// `samples = min(sample_size, validation_records)`、`indices_file`は標本の通算番号を保存したNPYのファイル名である。
+/// `validation_loss`は`{base, candidate}`で、それぞれ全検証局面の平均二値交差エントロピーを持つ。
+/// 計算は[`pst_statistics::validation`]に従い、検証局面0件なら両モデルの値を`null`にする。
+///
+/// 標本が空の帯だけ`reason = "empty band"`を持つ。
+/// 標本が空でない帯だけ`teacher_comparison_excluded`を持ち、実効λが0なら標本数、それ以外は0である。
+/// 標本が空でなくλが0の帯だけ`teacher_comparison_reason = "lambda is zero"`も持つ。
+/// `base`と`candidate`は教師探索値との[`ErrorSummary`]で、空の帯とλが0の分類では`null`とする。
+/// 標本の教師探索値を`raw`とし、先読み指定時はf64で再計算した先読み値を使う。
+/// 換算値は`raw × (候補の出力用K / その分類の教師用K)`で、基準の比較にも候補のKを使う。
+/// モデル評価は独立した整数PST参照による手番側視点のセンチポーンである。
+/// 検証損失、量子化検査、整数評価の照合にはλが0の分類も含める。
 #[derive(Serialize)]
 struct Band {
     generation: usize,
@@ -113,6 +140,13 @@ struct Band {
     base: Option<ErrorSummary>,
     candidate: Option<ErrorSummary>,
 }
+/// `report.json`の`quantization`で、候補の実数PSTと候補の整数PSTの評価差を記録する。
+/// 標本は全帯の標本の和集合で、実効λが0の分類も含み、`samples`に局面数を保存する。
+/// `mean_absolute_error_cp`はf32の絶対誤差を[`numpy_sum`]の順で足し、局面数で割ってからf64へ広げた平均である。
+/// `max_absolute_error_cp`は絶対誤差の最大、`limit_cp = 2.0`は上限である。
+/// 平均が2.0を超えるか非有限なら診断は失敗する。
+/// 実数評価は[`FloatWeights::evaluate`]のf32の2端点和を`linear::blend`でφ補間した値、
+/// 整数評価は[`Weights::evaluate`]の独立参照である。
 #[derive(Serialize)]
 struct Quantization {
     samples: usize,
@@ -120,6 +154,10 @@ struct Quantization {
     max_absolute_error_cp: f64,
     limit_cp: f64,
 }
+/// `report.json`の`derived_piece_values`で、端点ごとの静的な駒価値を固定の探索用駒価値と比べる。
+/// `states`は[`pst_reference::STATES`]の35状態、`fixed`は基準MNPTの各状態の探索用駒価値である。
+/// `base_middlegame`、`base_endgame`、`candidate_middlegame`、`candidate_endgame`は
+/// 各モデルの序中盤端点0と終盤端点1から[`pst_reference::derived`]で導く値である。
 #[derive(Serialize)]
 struct Derived {
     states: Vec<usize>,
@@ -130,43 +168,87 @@ struct Derived {
     candidate_endgame: Vec<i32>,
 }
 
-// 構造体のフィールド順でJSONのキー順を定める。
+/// PST比較診断の`report.json`の最上位の欄。
+/// JSONのキー順は構造体の欄の順である。
+/// `skip_serializing_if`の欄は、値を計算する前に失敗した場合には出力しない。
+/// 教師分類の番号は欄名で`generation`とも呼ぶ。
 #[derive(Serialize)]
 struct Report {
+    /// `--sample-size`の値で、教師分類と位相帯ごとの最大標本数。
     sample_size: usize,
+    /// `--seed`の値で、SplitMix64の抽出シード。
     seed: u64,
+    /// 入力順に初めて現れた順の教師分類。各要素の欄は[`ClassMetadata`]に従う。
     teacher_classes: Vec<ClassMetadata>,
+    /// 先読み条件`{gamma: f64, plies: u16}`。指定がなければ`null`。
     lookahead: Option<Lookahead>,
+    /// `--lambda-override`の値。省略時は`null`。
     lambda_override: Option<f64>,
+    /// 全検証集合の`{base: OutcomeMetrics, candidate: OutcomeMetrics}`。
     #[serde(skip_serializing_if = "Option::is_none")]
     outcome_metrics: Option<Models<OutcomeMetrics>>,
+    /// 再採点の除外件数。[`Exclusions`]の規約によりすべて0。
     rescore_exclusions: Exclusions,
+    /// 実効λが0の分類に属する全検証局面数。抽出標本数ではない。
     teacher_comparison_excluded: usize,
+    /// 基準と候補のMNPTの出力用Kを持つ`{base: f64, candidate: f64}`。
     #[serde(skip_serializing_if = "Option::is_none")]
     k: Option<Models<f64>>,
+    /// 分類順の教師用K。λが0の分類は`null`。
     teacher_ks: Vec<Option<f64>>,
+    /// 分類順の教師ネットの検査和。各分類の`network_checksum`と同じ小文字16進文字列。
     generation_checksums: Vec<String>,
+    /// 基準MNPTの駒状態0〜46の探索用駒価値47個。成功時は候補との全件一致を検査済み。
     piece_values: Vec<i32>,
+    /// 分類順、各分類内では帯0〜4の順の[`Band`]の配列。
     bands: Vec<Band>,
+    /// 全帯の標本の和集合で、エンジン評価と独立整数PST参照が一致した件数の`{base, candidate}`。
+    /// 1件でも不一致なら失敗するため、記録される値は各モデルとも標本局面数に等しい。
     #[serde(skip_serializing_if = "Option::is_none")]
     rust_agreement: Option<Models<usize>>,
+    /// 候補の実数と整数の評価差を測る[`Quantization`]。
     #[serde(skip_serializing_if = "Option::is_none")]
     quantization: Option<Quantization>,
+    /// 代表局面の全除去で基準と候補のPST除去差分の積が負となった件数。非0なら不合格。
     #[serde(skip_serializing_if = "Option::is_none")]
     pst_removal_sign_reversals: Option<usize>,
+    /// 除去局面の整数評価の照合件数を持つ`{base: Agreement, candidate: Agreement}`。
     #[serde(skip_serializing_if = "Option::is_none")]
     rust_removal_agreement: Option<Models<Agreement>>,
+    /// 初期局面、次に帯番号の昇順に並べた[`Representative`]の配列。
     #[serde(skip_serializing_if = "Option::is_none")]
     representatives: Option<Vec<Representative>>,
+    /// 代表局面の成り手で、エンジン評価と独立参照の一致を確かめた手の総数の`{base, candidate}`。
     #[serde(skip_serializing_if = "Option::is_none")]
     rust_promotion_agreement: Option<Models<usize>>,
+    /// 端点から導いた静的な駒価値と固定の探索用駒価値を持つ[`Derived`]。
     #[serde(skip_serializing_if = "Option::is_none")]
     derived_piece_values: Option<Derived>,
-    // 失敗時だけ理由を加え、報告の保存を保証する。
+    /// 失敗時だけ加える失敗理由の文字列。
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
+/// MNPT版2のPSTを比較し、検査結果を報告先へ保存する。
+///
+/// [`super::run`]は`--output-dir`が既に存在すれば何も作らずに拒否する。
+/// 基準か候補がFMを含むMNPT版3なら、この関数も出力ディレクトリを作る前に拒否する。
+/// 版3は`minase-trainer fm scale --fm-scale 0`で版2へ変換できる。
+/// それ以外は`fs::create_dir`で出力先を作り、親ディレクトリは作らない。
+/// 作成後の診断エラーでは、その時点までの欄に失敗理由の`error`を加えた`report.json`を保存してから返す。
+/// 作成済みの`.npy`と`.bin`も残し、エラーを返すとコマンドは終了コード1で終わる。
+/// 報告自体の入出力エラーでは保存に失敗することがある。
+///
+/// `--sample-size = 0`、先読み条件の片方だけの指定、重みと実数PSTの読み込み失敗、
+/// 基準と候補の47個の探索用駒価値の不一致、データ読み込みと教師用K推定の失敗を拒否する。
+/// 全帯の標本が空の場合も停止する。
+/// 標本、代表局面、復元できる除去局面、成り手について、エンジンと独立した整数PST参照が不一致なら失敗する。
+/// 量子化の平均絶対誤差が2 cpを超えるか非有限の場合、またはPST除去差分の厳密な符号反転が1件以上の場合も不合格である。
+///
+/// 保存物は[`Report`]の`report.json`、分類と帯ごとの`diagnostic-indices-generationN-bandB.npy`、
+/// および[`pst_positions`]に定める`diagnostic-samples.bin`、`representatives.bin`、`removals.bin`である。
+/// NPYの仕様は[`pst_sample::write_indices`]に従う。
+/// 教師分類、先読み、λの上書き、対局単位の検証分割は学習と同じ[`Dataset::open`]で決まる。
 pub(super) fn run(args: &PstCompareArgs) -> Result<()> {
     // 版3だけは報告先の作成前に拒否し、読み込みエラーは診断報告へ保存する。
     let models = Models {

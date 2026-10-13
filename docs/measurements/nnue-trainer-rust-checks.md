@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Rust製NNUE学習器（GPU）の設計書](../plans/nnue-trainer-rust.md)の各フェーズの完了条件に対する検査結果と、学習の試走の速度を記録する。
+[Rust製NNUE学習器（GPU）の設計書](../plans/archived/nnue-trainer-rust.md)の各フェーズの完了条件に対する検査結果と、学習の試走の速度を記録する。
 棋力測定ではないので、ペンタノミアル度数やLLRは持たない。
 
 ## 環境

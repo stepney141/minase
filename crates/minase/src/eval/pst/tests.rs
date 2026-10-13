@@ -557,14 +557,14 @@ fn stored_piece_values_are_validated_independently_of_weights() {
     }
 }
 
-/// 埋め込み重みが復号でき、初期局面評価がPython学習器と一致することを検査する。
+/// 埋め込み重みが復号でき、初期局面評価が固定した参照値と一致することを検査する。
 #[test]
 fn embedded_pst_matches_python_initial_position_evaluation() {
     // fm-scale-spsa-candidate の、J75のFMの補正に倍率611/1024を焼き込んだ候補を学習器の整数参照評価で評価した値。
     assert_eq!(evaluate(&weights().unwrap(), &Position::initial()), 53);
 }
 
-/// debugging-tools.md「eval」: 特徴別の分子和、全計算評価、720での除算と上下限制限が一致する。
+/// `breakdown`の契約に従い、特徴別の分子和、全計算評価、720での除算と上下限制限が一致する。
 #[test]
 fn diagnostic_numerators_match_independent_feature_sum_and_clamping() {
     for endpoints in [[8_i16, -24_i16], [i16::MAX; 2], [i16::MIN; 2]] {
@@ -610,7 +610,7 @@ fn diagnostic_numerators_match_independent_feature_sum_and_clamping() {
     }
 }
 
-/// debugging-tools.md「eval」: 升ごとの寄与は手番視点の特徴に対応し、先獅子と区別する。
+/// `breakdown`の契約に従い、升ごとの寄与は手番視点の特徴に対応し、先獅子と区別する。
 #[test]
 fn diagnostic_contributions_use_the_correct_square_and_perspective() {
     let pst = distinct_pst();
@@ -643,7 +643,7 @@ fn diagnostic_contributions_use_the_correct_square_and_perspective() {
     }
 }
 
-/// debugging-tools.md「適用範囲」「棄却した代案」: 段反転と陣営交換は手番側評価を保存する。
+/// `evaluate_for_diagnostics`の視点変換に従い、 段反転と陣営交換は手番側評価を保存する。
 #[test]
 fn random_legal_positions_preserve_evaluation_under_rank_and_color_reflection() {
     use minase_core::MoveGenerator;
@@ -686,7 +686,7 @@ fn random_legal_positions_preserve_evaluation_under_rank_and_color_reflection() 
     }
 }
 
-/// debugging-tools.md「整合検査の内容」: 1項の不一致を検出し、局面と両累算値を診断する。
+/// `Pst::assert_accumulator`の契約に従い、 1項の不一致を検出し、局面と両累算値を診断する。
 #[cfg(feature = "invariants")]
 #[test]
 fn accumulator_invariants_report_mismatch() {

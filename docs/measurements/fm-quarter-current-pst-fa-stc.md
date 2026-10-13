@@ -2,7 +2,7 @@
 
 ## 目的
 
-[補正1/4のFMの再学習](../plans/fm-quarter-current-pst.md)のフェーズ3として、候補Fa（先読みつきの教師）の採否を、段階ゲートのSTCで測る。
+[補正1/4のFMの再学習](../plans/archived/fm-quarter-current-pst.md)のフェーズ3として、候補Fa（先読みつきの教師）の採否を、段階ゲートのSTCで測る。
 
 ## コマンドライン
 
@@ -14,7 +14,7 @@ data/pst-longer-training-runner/minase match run \
   --each time=10000+100 --concurrency 16 gsprt --max-pairs 3000
 ```
 
-runnerは、[エポック数の延長](../plans/pst-longer-training.md)の測定に使った`minase`（SHA-256 `238cdf95…`）を流用した。そのビルド元の`aee6b87`とM（`86d8a89`）の間で、対局ハーネスのコードは変わっていない。
+runnerは、[エポック数の延長](../plans/archived/pst-longer-training.md)の測定に使った`minase`（SHA-256 `238cdf95…`）を流用した。そのビルド元の`aee6b87`とM（`86d8a89`）の間で、対局ハーネスのコードは変わっていない。
 
 ## エンジン
 

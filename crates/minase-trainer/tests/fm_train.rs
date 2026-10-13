@@ -1,4 +1,4 @@
-//! 指示書フェーズ3bの数式、固定PST、再現性、出力と拒否条件を検証する。
+//! FM学習の数式、固定PST、再現性、出力と拒否条件を検証する。
 #[path = "fm_train/fixture.rs"]
 mod support;
 use clap::Parser;
@@ -278,7 +278,7 @@ fn mirror_hash_is_stateless_and_uses_full_epoch_and_position_numbers() {
     for (&i, &bit) in indices.iter().zip(&bits).rev() {
         assert_eq!(bit, fm::mirror_bit(7, 3, i));
     }
-    // Independent Python integer evaluation of the documented SplitMix64 composition.
+    // mirror_bitのSplitMix64の合成を独立な整数演算で求めた固定値である。
     assert_eq!(bits, vec![1, 1, 0, 0, 1, 1]);
     for (seed, epoch) in [(8, 3), (7, 4)] {
         assert!((0..100).any(|i| fm::mirror_bit(7, 3, i) != fm::mirror_bit(seed, epoch, i)));

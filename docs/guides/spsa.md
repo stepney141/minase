@@ -3,7 +3,7 @@
 本書は、探索と時間管理の係数を自己対局で調整する標準手順を定める。
 調整にはSPSA（simultaneous perturbation stochastic approximation、同時摂動確率近似）を使い、コマンドは `minase spsa` である。
 本書は実行者（人間およびエージェント）向けの手順だけを記す。
-設計判断、更新則、および対象の係数の選定理由は [plans/spsa.md](../plans/spsa.md) にある。
+更新則、乱数、および保存記録の仕様は`crates/minase/src/bin/minase/spsa_runner/`のdocコメントにあり、方式と対象の係数を選んだ理由は[ADR](../adr/README.md)にある。
 調整で得た値の採否は [SPRTによる棋力測定の手引き](sprt.md) の段階ゲートで判定し、SPSAの対局結果を採用の根拠にしない。
 
 ## 用語
@@ -32,10 +32,10 @@ target/release/minase spsa params \
 1行は `名前, 開始値, 最小, 最大, c_end, r_end` の6欄であり、fishtestの入力形式と同じである。
 `c_end` は最後の反復での摂動幅であり、既定は範囲の1/6である。
 `r_end` は最後の反復での学習率を `c_end²` に対する比で表した値であり、既定は0.002である。
-摂動幅と学習率は反復とともに縮み、最後の反復でこの値になる（既定値の選定は [plans/spsa-gain-calibration.md](../plans/spsa-gain-calibration.md)）。
+摂動幅と学習率は反復とともに縮み、最後の反復でこの値になる（既定値を選んだ理由は[利得のADR](../adr/decay-spsa-gains-from-one-sixth-of-the-range.md)にある）。
 空行と `#` で始まる行は無視される。
 ファイルから行を削除した係数は調整されず、エンジンの既定値のまま動く。
-秒読みを使わない時間制御では、秒読みに関わる係数は勝敗に影響しないので調整の対象にしない（理由は設計書の「対象の係数」）。
+秒読みを使わない時間制御では、秒読みに関わる係数は勝敗に影響しないので調整の対象にしない（理由は[秒読みの項の係数のADR](../adr/exclude-byoyomi-terms-and-safety-margin-from-spsa.md)にある）。
 
 `minase spsa` は開始時に、ファイルの全係数がエンジンの宣言にあること、範囲が宣言の範囲に収まること、および名前に重複がないことを検査する。
 通常ビルドを `--engine` に渡した場合は、宣言が見つからないのでエラーで終了する。
@@ -61,7 +61,8 @@ target/release/minase spsa \
 θ+とθ−は同じバイナリを同じ思考制限で動かし、`Threads` と `USI_Hash` はエンジンの既定値を使う。
 総ペア数は `--iterations` と `--pairs-per-iteration` の積であり、開始時に固定する。
 総反復数は摂動幅と学習率の計算式に使われるので、セッションの途中で変更できない。
-標準の規模と所要時間の見積もりは設計書の「調整セッションの規模と所要時間」が定める。
+標準の規模は上のコマンドの375反復×8ペア（3,000ペア）であり、この規模を選んだ理由は[利得のADR](../adr/decay-spsa-gains-from-one-sixth-of-the-range.md)にある。
+同じ規模で同時対局数16の[セッション](../measurements/spsa-stage9-20260925-c5.md)は、27,138秒を要した。
 
 各ペアは `minase match run` と同じ構造であり、同一の開始局面で先後を入れ替えて2局を指す。
 対局のシードは基本シードとペアの通し番号から派生するので、基本シードはほかの測定の基本シードから総ペア数以上離す（[隣接する基本シードは1局ずれた同じ対局列を生む](../lessons/derive-seed-adjacent-collision.md)）。
@@ -82,12 +83,12 @@ target/release/minase spsa --resume data/spsa/<セッション名>
 
 実行ディレクトリは、実行条件の `manifest.json`、起動ごとのrunnerと測定機の `invocations.json`、および完了した反復を1反復1ファイルで置く `iterations/` からなる。
 θの現在値は、適用番号が最大の反復のファイルに記録された更新後のθである。
-再開時の検査と、未完了の反復を発行し直す規則は、設計書の「設計判断」にある表の「保存と再開」の行に書かれている。
+再開時の検査と、未完了の反復を発行し直す規則は、`spsa_runner`の`storage`モジュールの`validate_chain`と、`runner`モジュールの`run`のdocコメントにある。
 再開と監査には実行ディレクトリ全体が必要なので、個別のJSONを編集しない。
 
 再開時に照合するのは調整対象のエンジンであり、runnerのSHA-256は照合しない。
 起動コマンドで指定したエンジンは、作業ディレクトリが記録と異なると再開できない。
-runnerの版とSHA-256、および測定機は起動ごとに `invocations.json` へ記録され、前回の起動と異なる場合は標準エラーへ1行の通知が出る（[plans/match-resume-simplification.md](../plans/match-resume-simplification.md)）。
+runnerの版とSHA-256、および測定機は起動ごとに `invocations.json` へ記録され、前回の起動と異なる場合は標準エラーへ1行の通知が出る（理由は[再開のADR](../adr/resume-from-the-manifest-without-checking-the-runner.md)にある）。
 このため、セッションの途中で作業ツリーの `minase` を再ビルドしても再開できる。
 起動の記録に複数のrunnerが現れたセッションは、そのことをセッションの記録に書く。
 `invocations.json` を持たない以前の形式の実行ディレクトリは、変更後の`minase`では再開できない。
@@ -107,7 +108,7 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 1. 調整対象のコミットからブランチを切り、`apply` サブコマンドで最終値を `crates/minase/src/search/alphabeta/params.rs` の表の既定値へ書き込む。
    `apply` は実行ディレクトリから最終値を復元し、`f64::round` で丸めた整数で表の既定値だけを書き換える。
    `invocations.json` を持たない以前の形式のセッションも反映できる。
-   検査と書き換えの規則は [plans/spsa-apply.md](../plans/spsa-apply.md) にある。
+   検査と書き換えの規則は`spsa_runner`の`apply`モジュールのdocコメントにあり、この方式を選んだ理由は[反映のADR](../adr/apply-spsa-results-by-rewriting-default-literals.md)にある。
 
    ```console
    git switch -c <候補ブランチ> <調整対象コミット>
@@ -138,4 +139,4 @@ runnerの版とSHA-256、および測定機は起動ごとに `invocations.json`
 候補は全係数の値を1組として扱う。
 不採用のときに一部の係数だけを選び直して再測定することはしない。
 これは、[sprt.md](sprt.md#機能採否の段階ゲートstcとltc) が禁止する「LTCの結果を見てから同じ主張へ追加すること」に当たる。
-採用した場合は、係数を定めている各設計書の値を現行の値へ改訂する。
+採用した場合も、係数の現行の値の正は`params.rs`の表の既定値であり、凍結した設計書の値は改訂しない。

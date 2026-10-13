@@ -1,4 +1,9 @@
-//! 探索と時間管理の調整係数。単位と演算順序は`docs/plans/spsa.md`に従う。
+//! 探索と時間管理で使う整数の調整係数。
+//!
+//! SPSA（同時摂動確率近似）で調整した値を既定値とし、未調整の係数は各項目で区別する。
+//! 百分率は対象の量に係数を掛けてから100で割り、整数除算は0方向へ丸める。
+//! 通常ビルドでは定数関数、`tuning`ビルドでは範囲を検査して変更できる原子値として扱う。
+//! 深さと手数は、特記しない限り片側の1着手を1手と数える。
 
 #[cfg(feature = "tuning")]
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -51,84 +56,125 @@ macro_rules! parameters {
 }
 
 parameters! {
-    /// LMRの除数の百分率。`docs/plans/strength-stage5.md`「採用した係数」。
+    /// 後順位の静かな手の減深（LMR）に使う対数積の除数を百分率で表す。
+    /// 値はSPSAで調整した。
     LmrDivisor(lmr_divisor): 156, 100, 400;
-    /// LMRのhistory閾値。`docs/plans/strength-stage5.md`「採用した係数」。
+    /// LMRの減深量を1増減するbutterfly historyの閾値。単位は履歴点である。
+    /// 値はSPSAで調整した。
     LmrHistoryThreshold(lmr_history_threshold): 146, 0, 512;
-    /// 深さ1の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
+    /// 残り深さ1で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
+    /// 良化していないノードでは[`non_improving_futility1()`]の倍率で縮める。
+    /// 値はSPSAで調整した。
     FutilityMargin1(futility_margin1): 165, 0, 400;
-    /// 深さ2の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
+    /// 残り深さ2で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
+    /// 良化していないノードでは[`non_improving_futility2()`]の倍率で縮める。
+    /// 値はSPSAで調整した。
     FutilityMargin2(futility_margin2): 239, 0, 400;
-    /// 深さ3の歩兵価値に対する百分率。`docs/plans/strength-stage4.md`「採用した余裕値」。
+    /// 残り深さ3で補正後の静的評価に加えるfutility余裕値。単位は歩兵価値に対する百分率である。
+    /// 良化していないノードでは[`non_improving_futility3()`]の倍率で縮める。
+    /// 値はSPSAで調整した。
     FutilityMargin3(futility_margin3): 283, 0, 400;
-    /// 良化していない深さ1のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 良化していない残り深さ1のノードでfutility余裕値に掛ける倍率。単位は百分率である。
+    /// 値はSPSAで調整した。
     NonImprovingFutility1(non_improving_futility1): 71, 0, 100;
-    /// 良化していない深さ2のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 良化していない残り深さ2のノードでfutility余裕値に掛ける倍率。単位は百分率である。
+    /// 値はSPSAで調整した。
     NonImprovingFutility2(non_improving_futility2): 72, 0, 100;
-    /// 良化していない深さ3のfutility余裕値の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 良化していない残り深さ3のノードでfutility余裕値に掛ける倍率。単位は百分率である。
+    /// 値はSPSAで調整した。
     NonImprovingFutility3(non_improving_futility3): 86, 0, 100;
-    /// 静かな手の上限の基数を100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
+    /// late move pruningで数える静かな手の上限の切片。単位は1/100手である。
+    /// 値はSPSAで調整した。
     LmpBase(lmp_base): 382, 0, 8600;
-    /// 残り深さの2乗に掛ける傾きを100分率で表す。`docs/plans/search-revival-spsa.md`「late move pruningの定義の変更」。
+    /// late move pruningの上限に残り深さの2乗を掛けて加える傾き。単位は残り深さの2乗あたり1/100手である。
+    /// 値はSPSAで調整した。
     LmpSlope(lmp_slope): 133, 0, 3600;
-    /// 深さ1〜3共通の逆futility余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 深さ1〜3共通のreverse futility余裕値。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     ReverseFutilityMargin(reverse_futility_margin): 428, 0, 1938;
-    /// 深さ1のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 残り深さ1で静的評価に加えるrazoring余裕値。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     RazoringMargin1(razoring_margin1): 1606, 0, 2668;
-    /// 深さ2のrazoring余裕値を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 残り深さ2で静的評価に加えるrazoring余裕値。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     RazoringMargin2(razoring_margin2): 2015, 0, 2885;
-    /// 深さ1のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
+    /// 残り深さ1の静的交換評価（SEE）で許容する損の余裕値。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     SeeMargin1(see_margin1): 10, 0, 400;
-    /// 深さ2のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
+    /// 残り深さ2の静的交換評価（SEE）で許容する損の余裕値。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     SeeMargin2(see_margin2): 192, 0, 400;
-    /// 深さ3のSEE余裕値の百分率。`docs/plans/strength-stage8.md`「採用した閾値」。
+    /// 残り深さ3の静的交換評価（SEE）で許容する損の余裕値。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     SeeMargin3(see_margin3): 13, 0, 400;
-    /// 初期窓幅の百分率。`docs/plans/strength-stage6.md`「窓の適用条件と拡大」。
+    /// aspiration windowの初期半幅。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     AspirationDelta(aspiration_delta): 55, 10, 200;
-    /// 窓幅の拡大率の百分率。`docs/plans/strength-stage6.md`「窓の適用条件と拡大」。
+    /// aspiration windowが次に外れた際の拡大量に掛ける倍率。単位は百分率である。
+    /// 値はSPSAで調整した。
     AspirationGrowth(aspiration_growth): 190, 125, 400;
-    /// null moveの減深量の切片を1,200分率で表す。
+    /// null moveの基本減深量 `(切片 + 深さ × 傾き) / 1200` の切片。単位は1/1200手である。
+    /// 値はSPSAで調整した。
     NullMoveBase(null_move_base): 3617, 1200, 4800;
-    /// null moveの減深量の傾きを1,200分率で表す。
+    /// null moveの基本減深量の傾き。単位は残り深さ1手あたり1/1200手である。
+    /// 値はSPSAで調整した。
     NullMoveSlope(null_move_slope): 257, 100, 400;
-    /// 静的評価の余裕によるnull moveの減深加算の尺度を百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 静的評価とβの差から求めるnull moveの追加減深の倍率。単位は百分率である。
+    /// 値はSPSAで調整した。
     NullMoveEvalScale(null_move_eval_scale): 56, 0, 400;
-    /// History値の絶対値の上限。
+    /// butterfly historyの絶対値の上限。単位は履歴点であり、重力式の除数にも使う。
+    /// 値はSPSAで調整した。
     HistoryLimit(history_limit): 17408, 4096, 65536;
-    /// βカットを起こした静かな手への加点の尺度（百分率）。`docs/plans/move-ordering.md`「候補8」。
+    /// βカットを起こした静かな手へ深さ²に比例して加点する尺度。単位は百分率である。
+    /// SPSAの調整対象であり、この係数としての値は未調整である。
     HistoryBonusScale(history_bonus_scale): 100, 0, 400;
-    /// 同じノードで先に探索した静かな手への減点の尺度（百分率）。同。
+    /// 同じノードで先に探索した静かな手を深さ²に比例して減点する尺度。単位は百分率である。
+    /// SPSAの調整対象であり、この係数としての値は未調整である。
     HistoryMalusScale(history_malus_scale): 100, 0, 400;
-    /// 探索間に残す履歴の百分率。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 新しい根の探索へ持ち越すbutterfly historyの割合。単位は百分率である。
+    /// 値はSPSAで調整した。
     HistoryDecay(history_decay): 23, 0, 100;
-    /// 探索間に残す捕獲履歴の百分率。`docs/plans/move-ordering.md`「候補4」。
+    /// 新しい根の探索へ持ち越す捕獲履歴の割合。単位は百分率である。
+    /// SPSAの調整対象であり、この係数としての値は未調整である。
     CaptureHistoryDecay(capture_history_decay): 23, 0, 100;
-    /// 捕獲履歴の上限。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 捕獲履歴の絶対値の上限。単位は履歴点であり、重力式と駒価値への換算の除数にも使う。
+    /// 値はSPSAで調整した。
     CaptureHistoryLimit(capture_history_limit): 16950, 4096, 65536;
-    /// 捕獲履歴の尺度を歩兵価値に対する百分率で表す。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 整列キーへ加える捕獲履歴の換算値の絶対値の上限。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     CaptureHistoryScale(capture_history_scale): 49, 0, 400;
-    /// 補正値の上限の百分率。`docs/plans/strength-stage8.md`「静的評価の補正」。
+    /// correction historyの補正値の絶対値の上限。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     CorrectionCap(correction_cap): 220, 50, 400;
-    /// 補正更新の重みを1,024分率で表す。`docs/plans/strength-stage8.md`「静的評価の補正」。
+    /// correction historyの更新重み `min(深さ, 8) × 係数 / 1024` の係数。単位は1/1024である。
+    /// 値はSPSAで調整した。
     CorrectionWeight(correction_weight): 37, 8, 128;
-    /// delta pruningの余裕値を歩兵価値に対する百分率で表す。
+    /// 静止探索のdelta pruningの余裕値。単位は歩兵価値に対する百分率である。
+    /// 値はSPSAで調整した。
     DeltaMargin(delta_margin): 355, 50, 500;
-    /// 静止探索で読む捕獲手数の上限。`docs/plans/search-revival-spsa.md`「戻す8項目」。
+    /// 静止探索で通常読む捕獲手数の上限。単位は手であり、例外は[`super::searcher::Searcher::quiesce`]に従う。
+    /// 値はSPSAで調整した。
     QsearchMoveLimit(qsearch_move_limit): 4, 1, 7;
-    /// 1局の開始から終局までに見込む手数。
+    /// 1局の開始から終局までに見込む両側の合計着手数。単位は手である。
+    /// 値はSPSAで調整した。
     ExpectedPlies(expected_plies): 432, 250, 700;
-    /// 1局面で見込む残り手数の下限。
+    /// 時計の配分で見込む手番側の残り着手数の下限。単位は手である。
+    /// 値はSPSAで調整した。
     MinMoves(min_moves): 88, 40, 200;
-    /// 加算時間の使用率。`docs/plans/time-management-efficiency.md`「採用した方式」。
+    /// 1手のsoft limitへ配分する加算時間の割合。単位は百分率である。
+    /// 値はSPSAで調整した。
     IncrementShare(increment_share): 76, 30, 100;
-    /// hardとsoftの比の百分率。`docs/plans/time-management-efficiency.md`「採用した方式」。
+    /// hard limitをsoft limitの基礎値の何倍までとするかを表す。単位は百分率である。
+    /// 値はSPSAで調整した。
     HardSoftRatio(hard_soft_ratio): 451, 150, 800;
-    /// hardに使える残り時間の百分率。`docs/plans/time-management-efficiency.md`「採用した方式」。
+    /// hard limitへ配分できる残り持ち時間の割合。単位は百分率である。
+    /// 値はSPSAで調整した。
     HardRemainingShare(hard_remaining_share): 27, 10, 50;
-    /// 次の反復の予測時間比の百分率。`docs/plans/strength-stage6.md`「最善手安定時の早期終了」。
-    /// 初期値2.5は、段階1の候補で測定した深さ5以上の累積時間比の中央値に基づく。
+    /// 次の反復の完了時刻を予測する、直前の反復の累積経過時間に対する倍率。単位は百分率である。
+    /// 値はSPSAで調整した。
     IterationRatio(iteration_ratio): 263, 150, 400;
-    /// FMの補正に掛ける倍率を1,024分率で表す。調整用ビルドの`Fm::correction`だけが参照する。`docs/plans/fm-scale-spsa.md`「設計判断」。
+    /// 因子分解機（FM）の評価補正に掛ける倍率。単位は1/1024であり、調整用ビルドの`Fm::correction`だけが参照する。
+    /// 倍率はSPSAで調整して重みに反映するため、係数の既定値は補正を等倍に保つ。
     #[cfg_attr(not(feature = "tuning"), allow(dead_code))]
     FmScale(fm_scale): 1024, 0, 1024;
 }

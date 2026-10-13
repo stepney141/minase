@@ -271,7 +271,7 @@ fn threads_do_not_change_any_gradient_weight_or_adam_bit() {
             assert_eq!(bits(a), bits(b));
         }
     }
-    // A zero gradient still updates moments and absent rows, as in dense PyTorch AdamW.
+    // 勾配が0でもモーメントを更新し、バッチに現れない行を含む全要素を更新する。
     let mut zero = g;
     zero.pst.fill(0.0);
     zero.fm.fill(0.0);

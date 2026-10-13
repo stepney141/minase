@@ -19,15 +19,11 @@
 ## 状態
 
 進行中。2026年10月6日に起案し、同日に着手した。
-段階Aは、短い条件（[byoyomi-a-short-c10](../measurements/byoyomi-a-short-c10.md)、有効129ペア）と長い条件（[byoyomi-a-long-c10](../measurements/byoyomi-a-long-c10.md)、有効154ペア）でともに`H1`となり、異常は0件で、採用した。
-段階Bは不採用とした。B1は短い条件の選別で`H0`だった（[byoyomi-b1-short-r2](../measurements/byoyomi-b1-short-r2.md)、得点率約48.8%）。B0は得点率約47%、LLR −2.23で推移した時点で、利用者の判断により選別を止めた（[byoyomi-b0-short-r2](../measurements/byoyomi-b0-short-r2.md)）。B2は、煙試験（[byoyomi-b-smoke](../measurements/byoyomi-b-smoke.md)）で大きく負け、B0とB1も段階Aを上回らなかったことから、利用者の判断により選別を行わなかった。
-段階Bの3候補はブランチ`byoyomi-b0`、`byoyomi-b1`、`byoyomi-b2`に残し、採用するブランチからは段階Bの土台（難しさの信号の計算）を取り除いた。
-フェーズ0からフェーズ4までは完了し、[探索部](search.md)の「時間管理」節とREADMEの`ByoyomiMargin`の説明を更新した。
-2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0としてcrates.ioへ公開した。この版は、採用PSTの候補LとFM補正の候補Faも含む。lishogiのBotは、2026年10月8日に2.2.0へ更新して`ByoyomiMargin`を600 msに設定し、2026年10月9日に2.3.0へ更新した（配備リポジトリ`minase-lishogi-bot`の`config.yml`と`Dockerfile`）。
-600 msでは余裕が足りなかった。2026年10月8日から10日までに秒読み60秒の上限（59.4秒）まで考えた213手のうち10手が時間切れになり、10局を落とした。うち1局は評価値+4356の勝勢だった。
-フェーズ0の余裕mは、Bot側の処理時間の最大値に通信の見込み500 msを加えた推定であり、通信の遅れを測っていなかった。Botのログ全体の25,799手で`bestmove`から着手の`POST`の応答までの時間を測ると、0.6秒を超えた手が796手（3.1%）、2秒超が57手、3秒超が10手あった。0.6秒超の割合は、上限まで考えた手の時間切れの割合（4.7%）とおおむね一致する。
-この実測から、2026年10月10日にBotの`ByoyomiMargin`を3,000 msへ上げた。秒読み60秒の対局で使えなくなる時間は5%である。
-残るのは、余裕を3,000 msにした後の秒読みつきの対局20局の記録であり、時間切れが0件であることを確かめた時点で完了（一部不採用）とする。
+段階A（秒読み期の締切と途中結果の採用）は、短い条件（[byoyomi-a-short-c10](../measurements/byoyomi-a-short-c10.md)、有効129ペア）と長い条件（[byoyomi-a-long-c10](../measurements/byoyomi-a-long-c10.md)、有効154ペア）でともに`H1`、異常0件となり、採用した。
+段階B（難しさで重み付けした持ち時間の配分）の3候補は、いずれも段階Aを上回らず不採用とした（[byoyomi-b1-short-r2](../measurements/byoyomi-b1-short-r2.md)、[byoyomi-b0-short-r2](../measurements/byoyomi-b0-short-r2.md)、[byoyomi-b-smoke](../measurements/byoyomi-b-smoke.md)）。候補はブランチ`byoyomi-b0`、`byoyomi-b1`、`byoyomi-b2`に残る。
+段階Aはminase 2.2.0以降に含まれ、lishogiのBotは2.4.0で動いている。
+Botの`ByoyomiMargin`は3,000 msであり、この値を選んだ理由は[ADR](../adr/set-bot-byoyomi-margin-to-3000-ms.md)にある。
+残るのは、3,000 msの下での秒読みつきの対局20局の記録であり、時間切れが0件であることを確かめた時点で完了（一部不採用）とする。
 
 ## 目的
 
@@ -56,9 +52,9 @@
 
 ## 依存関係
 
-- [持ち時間の効率的な使用](time-management-efficiency.md)が現行の予算式、序盤の係数、および9月の再構成の棄却理由の正である。
-- [探索部](search.md)の「時間管理」節と[棋力向上段階6](strength-stage6.md)の「最善手安定時の早期終了」が、反復の開始判定の正である。
-- [Lazy SMP](lazy-smp.md)がワーカー間の結果の選択の正である。
+- [持ち時間の効率的な使用](archived/time-management-efficiency.md)が現行の予算式、序盤の係数、および9月の再構成の棄却理由の正である。
+- [探索部](archived/search.md)の「時間管理」節と[棋力向上段階6](archived/strength-stage6.md)の「最善手安定時の早期終了」が、反復の開始判定の正である。
+- [Lazy SMP](archived/lazy-smp.md)がワーカー間の結果の選択の正である。
 - [lishogi Bot接続](lishogi-bot.md)とLishogi-Botの設定が、Botの時計の換算の正である。
 - 採否測定は[棋力測定の手引き](../guides/sprt.md)のGSPRTの統計契約に従う。時間制御だけを本書で定める。
 
@@ -272,7 +268,7 @@ GSPRTは1ペアごとに対数尤度比（LLR）を更新し、LLRが上の境�
 
 採用した構成をmasterへ統合し、Lishogi-Botの`usi_options`に`ByoyomiMargin`（600 ms）を設定して配備する。利用者向けの説明に、先読みを使う環境では`ByoyomiMargin`を通信と負荷の遅れに合わせて設定することを書き加える。
 配備後の秒読みつきの対局20局のログで、秒読み期の思考時間/Bの中央値と時間切れの件数を記録する。
-[探索部](search.md)の「時間管理」節と`clock_budget`のrustdocを更新する。
+[探索部](archived/search.md)の「時間管理」節と`clock_budget`のrustdocを更新する。
 完了条件は、配備後の記録と文書の更新である。
 
 ## 検証
@@ -293,7 +289,7 @@ GSPRTは1ペアごとに対数尤度比（LLR）を更新し、LLRが上の境�
 - [lishogi実戦における持ち時間と秒読みの使い方](../research/lishogi-byoyomi-time-usage.md)
 - [秒読みつき時間制御における既存エンジンの持ち時間配分](../research/time-management-byoyomi-survey.md)
 - [lishogi対局WPgmFqSaの時間配分](../research/lishogi-game-WPgmFqSa-time-management.md)
-- [持ち時間の効率的な使用](time-management-efficiency.md)
+- [持ち時間の効率的な使用](archived/time-management-efficiency.md)
 - Stockfish `src/search.cpp`（反復深化の`totalTime`、根の手の安定な整列）と`src/timeman.cpp`、コミット17a6c8f1、2026年10月6日参照
 - YaneuraOu `source/timeman.cpp`（`round_up`、`NetworkDelay`、`NetworkDelay2`、`isFinalPush`）と`source/engine/yaneuraou-engine/yaneuraou-search.cpp`、コミットc1b80eaa、2026年10月6日参照
 - KataGo `cpp/search/timecontrols.cpp`の`divideTimeEvenlyForGame`

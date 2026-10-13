@@ -2,7 +2,7 @@
 
 ## 目的
 
-[共適応の検証](../plans/eval-search-coadaptation.md)の追加診断で、固定400ペアでS0に約55 Elo勝った対照Cc（G23の上へλ=0.75のまま10エポックを重ねたPST）の採否を、段階ゲートのSTCで測る。
+[共適応の検証](../plans/archived/eval-search-coadaptation.md)の追加診断で、固定400ペアでS0に約55 Elo勝った対照Cc（G23の上へλ=0.75のまま10エポックを重ねたPST）の採否を、段階ゲートのSTCで測る。
 
 ## コマンドライン
 

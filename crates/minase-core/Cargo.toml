@@ -19,13 +19,17 @@ pre-release-commit-message = "chore(release): minase-core-v{{version}}"
 workspace = true
 
 [features]
+# Run the expensive Position::validate check after each move and undo, and panic on failure.
+# Disabled in production builds.
 invariants = []
+# Expose the test_util fixtures to engine tests.
 test-util = []
 
 [dev-dependencies]
 flate2 = "1"
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
-# `cargo test`では整合検査を常に有効にする（docs/plans/debugging-tools.md「利用者の決定」の2）。
+# `cargo test`では整合検査を常に有効にする。
+# 理由は docs/adr/enable-invariant-checks-in-tests-by-feature.md にある。
 # Cargoは開発依存のフィーチャをテストなど開発依存を使うビルドにだけ統合するので、
 # `cargo build`と`cargo run`のバイナリには検査が入らない。
 minase-core = { path = ".", features = ["invariants"] }

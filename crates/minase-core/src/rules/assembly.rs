@@ -49,6 +49,16 @@ impl std::error::Error for RulesError {}
 
 impl Rules {
     /// コード列を意味検証して規則集合を作る(第33条第4項・第9項)。
+    ///
+    /// 検査とエラーの優先順位は次のとおりである。
+    ///
+    /// 1. 入力順に走査し、最初の重複を[`RulesError::Duplicate`]で返す。
+    /// 2. [`RuleCode::ALL`]の順に採用コードを排他群へ割り当てる。
+    ///    群が埋まっていれば、既存のコードを`first`、新しいコードを`second`とする
+    ///    [`RulesError::Conflicting`]を返す。
+    ///    L4は群を埋めない独立のフラグであり、L1の後にL4へ達した場合は
+    ///    `Conflicting { first: L1, second: L4 }`を返す。
+    /// 3. 群が空なら、獅子、成り、反復、駒枯れの順で最初の群を[`RulesError::Missing`]で返す。
     pub fn from_codes(codes: &[RuleCode]) -> Result<Self, RulesError> {
         for (index, &code) in codes.iter().enumerate() {
             if codes[..index].contains(&code) {

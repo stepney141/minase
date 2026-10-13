@@ -1,9 +1,15 @@
-//! 到達升での駒の取り合いを見積もる静的交換評価。
+//! 到達升での駒の取り合いを見積もる静的交換評価（SEE）。
 //!
 //! 経由升を持つ着手と、獅子を獅子または成れる麒麟が取る段階を
 //! 含む交換列は、捕獲規則に依存するため判定不能とする。非獅子が獅子を
 //! 取る手、獅子が非獅子を取る手、および角鷹と飛鷲が到達升だけで取る手は
 //! 通常の交換として評価する。
+//! 判定不能とする範囲の理由は`docs/adr/mark-only-lion-rule-dependent-exchanges-unknown-in-see.md`にある。
+//!
+//! 取り返す駒の成りは[`MoveRules::promotion_choice_for`]で判定し、成り規則を複製しない。
+//! 任意成りは成り前後の高い方の価値を使い、正の差額だけを利得に加える。
+//! 強制成りは成り後の価値を使い、負も含む差額を加える。
+//! 到達升以外での2段階移動による2枚目の捕獲益は見積もらず、王駒による取り返しにも特別な停止規則を置かない。
 
 use crate::eval::Nnue;
 use minase_core::board::Bitboard;
@@ -18,9 +24,10 @@ const MAX_GAINS: usize = 93;
 
 /// 捕獲の交換評価が`-margin`未満で、規則依存による判定不能でもない場合に枝刈りする。
 ///
+/// `margin`は駒価値と同じ単位の非負の余裕値であり、等号では枝刈りしない。
+/// 呼び出し側は合法な捕獲手だけを渡し、相手の最後の王駒を取る手は除く。
+/// 交換列を最後まで逆算した値が得られる場合と同じ閾値判定を返し、規則依存で判定不能なら偽を返す。
 /// 最初の取り返しで損が余裕値以下と確定したら、残る逆引きと逆算を省く。
-/// 正確な評価値との契約は`docs/plans/movegen-speedup.md`「SEEの不要な反復を省く」。
-/// 余裕値は`docs/plans/strength-stage8.md`「SEEの余裕値」に従う。
 pub(super) fn see_prunes(
     position: &Position,
     rules: MoveRules,
@@ -50,7 +57,7 @@ pub(super) fn see_prunes(
     let mut gains = [0_i32; MAX_GAINS];
     gains[0] = nnue.piece_value(captured_piece) + nnue.piece_value(piece_after_move)
         - nnue.piece_value(moving_piece);
-    // 同「段階6」: 成り益の上限でも損が余裕値以下なら取り返しを省く。
+    // 相手の成り益を最大に見積もっても損が余裕値以下なら、取り返しの列挙を省く。
     if gains[0] >= -margin
         && nnue.piece_value(moving_piece) - nnue.piece_value(captured_piece)
             + nnue.max_promotion_gain()
@@ -116,7 +123,6 @@ pub(super) fn see_prunes(
                 piece_value = promoted_value;
             }
         }
-        // movegen-speedup.md「SEEの不要な反復を省く」:
         // 逆算結果は min(g0, max(-g1, X))。g0 >= -marginかつg1 <= marginなら
         // -margin以上である。成り益を含むg1で判定する。
         // 後続が獅子規則に依存しても枝刈りしないので、この終了は安全である。
@@ -142,8 +148,8 @@ pub(super) fn see_prunes(
 /// 経由升を持つ着手、麒麟が獅子を取って成る着手、および到達升の
 /// 獅子を獅子または成れる麒麟が取る段階を含む場合は`None`を返す。
 /// これらは第14条、第15条第7項、および第16条の獅子捕獲規則に依存する。
-/// その他の捕獲は、`docs/plans/strength-stage3.md`「静的交換評価」に従い、
-/// 規則に依存しない通常の交換列として評価する。
+/// その他の捕獲は最も安い攻撃駒で交互に取り返す利得列を作り、末尾から取り返さない選択肢と比較して逆算する。
+/// 初手と取り返しの成り益はモジュールの契約に従って利得へ加える。
 #[cfg(test)]
 fn see_reference(position: &Position, rules: MoveRules, nnue: &Nnue, mv: Move) -> Option<i32> {
     if mv.mid.is_some() {
@@ -352,7 +358,7 @@ mod tests {
         (zero_margin_lookups, reference_lookups)
     }
 
-    // movegen-speedup.md「SEEの不要な反復を省く」: 全捕獲の枝刈り判断を
+    // 全捕獲の枝刈り判断を
     // benchの15局面と各規則32局面の固定シード対局で参照値と照合する。
     #[test]
     fn see_prunes_matches_reference_on_bench_and_random_captures() {
@@ -382,7 +388,7 @@ mod tests {
         }
     }
 
-    // strength-stage8.md「SEEの余裕値」。飛車で角行を取り、歩兵に
+    // 飛車で角行を取り、歩兵に
     // 取り返される損失の直前、等号、直後で厳密な境界を検査する。
     #[test]
     fn see_prunes_respects_margin_and_strict_boundary() {
@@ -414,7 +420,7 @@ mod tests {
         }
     }
 
-    /// 「段階6」（movegen-speedup-2.md）の上限の両側と等号で逆引きの省略を検査する。
+    /// 捕獲価値と成り益の上限から交換の符号が確定するときだけ、攻撃駒の逆引きを省く。
     #[test]
     fn see_prunes_skips_lookup_at_the_promotion_gain_bound() {
         use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
@@ -471,7 +477,7 @@ mod tests {
         }
     }
 
-    // movegen-speedup.md「SEEの不要な反復を省く」: 値0を枝刈りせず、
+    // 値0を枝刈りせず、
     // 最初の取り返し後の逆引きを実際に省く。
     #[test]
     fn see_prunes_stops_at_zero_and_skips_remaining_lookups() {
@@ -494,7 +500,7 @@ mod tests {
         assert_eq!(counts, (1, 2));
     }
 
-    // movegen-speedup.md「SEEの不要な反復を省く」: 相手の正の成り益を
+    // 相手の正の成り益を
     // 加えてから判定する。同価値の捕獲でも成り益分の損を枝刈りする。
     #[test]
     fn see_prunes_includes_recapture_promotion_before_early_exit() {
@@ -528,14 +534,14 @@ mod tests {
         }
     }
 
-    // movegen-speedup.md「SEEの不要な反復を省く」: P6の強制成りで
+    // P6の強制成りで
     // 価値が下がる初手もg0へ反映する。取り返しの有無を両方検査する。
     #[test]
     fn see_prunes_accounts_for_value_loss_on_forced_initial_promotion() {
         use crate::eval::piece_state_of;
         use sha2::{Digest, Sha256};
 
-        // nnue-replacement.mdのMNUE形式に従い、成香の価値だけを1へ下げる。
+        // 検証用の重みでは成香の価値だけを1へ下げ、強制成りの負の差額を作る。
         let mut bytes = include_bytes!("../../../nets/nnue.bin").to_vec();
         let promoted_lance = promoted(Color::Black, PieceKind::WhiteHorse);
         let offset = 192 + 13_680 * 4 + piece_state_of(promoted_lance) * 4;
@@ -584,7 +590,7 @@ mod tests {
         }
     }
 
-    // movegen-speedup.md「SEEの不要な反復を省く」: 後続で判定不能に
+    // 後続で判定不能に
     // なる列も枝刈りしない。負の中間利得による早期枝刈りは禁止する。
     #[test]
     fn see_prunes_preserves_late_rule_dependence_with_and_without_early_exit() {
@@ -643,8 +649,8 @@ mod tests {
         nnue.piece_value(piece)
     }
 
-    // movegen-speedup.md「SEEの不要な反復を省く」: 初手から判定不能なら枝刈りしない。
-    // strength-stage3.md「静的交換評価」: 2段階移動と、麒麟が
+    // 初手から判定不能なら枝刈りしない。
+    // 2段階移動と、麒麟が
     // 獅子を取って成る初手は規則依存なので判定不能とする。
     #[test]
     fn see_returns_none_for_rule_dependent_initial_moves() {
@@ -702,7 +708,7 @@ mod tests {
         );
     }
 
-    // strength-stage3.md「静的交換評価」: 到達升の獅子を、獅子または
+    // 到達升の獅子を、獅子または
     // 成れる麒麟が取る段階を含む交換列は判定不能とする。
     #[test]
     fn see_returns_none_for_rule_dependent_recaptures() {
@@ -757,7 +763,7 @@ mod tests {
         }
     }
 
-    // strength-stage3.md「静的交換評価」: 守りなし、損な高価駒の捕獲、x-ray、
+    // 守りなし、損な高価駒の捕獲、x-ray、
     // および王駒による取り返しを手計算した交換列と照合する。
     #[test]
     fn see_values_match_hand_calculated_exchange_sequences() {
@@ -958,7 +964,7 @@ mod tests {
         }
     }
 
-    // strength-stage3.md「静的交換評価」: 初手の成駒が失われる価値と、取り返す
+    // 初手の成駒が失われる価値と、取り返す
     // 駒の任意成りによる正の差額を交換列へ含める。
     #[test]
     fn see_accounts_for_promotions_in_initial_and_recapture_moves() {
@@ -1011,7 +1017,7 @@ mod tests {
         );
     }
 
-    // RULES.md第30条P5: 成りを保留した歩兵は、最奥段以外で取り返す場合に
+    // 第32条のP5: 成りを保留した歩兵は、最奥段以外で取り返す場合に
     // 成れないため、交換列へ成りの差額を加えない。
     #[test]
     fn see_respects_p5_deferred_pawn_on_recapture() {

@@ -1,3 +1,8 @@
+//! 実数PSTとFMを組み合わせ、両者に同じ損失から勾配を戻す。
+//! ロジットは`z = blend(PST) / K + Φ`、損失は`BCE + λres * mean(Φ²) + penalty * removal`である。
+//! 駒除去差分の参照は常にv0とし、適格性、罰則、正規化は[`crate::pst::linear`]に従う。
+//! 除去係数が0でも除去損失を計算する。
+
 use super::{Batch, Model, Result};
 use crate::{
     fm,
@@ -31,7 +36,8 @@ pub struct Gradients {
     pub fm: Vec<f32>,
 }
 
-/// 正則化も鏡映も追加しない順伝播。戻り値は各局面のBCEとPhi。
+/// `z = blend(実数PST) / K + Φ`から、各局面のBCEとΦを返す。
+/// 正則化、駒除去損失、鏡映の追加は行わない。
 pub fn evaluate(model: &Model, batch: &Batch) -> Result<Vec<(f64, f64)>> {
     model.validate()?;
     let cp = pst::evaluate(&model.pst, &batch.pst)?;
@@ -54,7 +60,7 @@ struct Activation {
     sums: [f64; FM_RANK],
     pairs: [f64; FM_RANK],
     derivative: f64,
-    // The removal branch uses f32 embeddings and operations before its f64 conversion.
+    // 除去用の和はf32へ丸め、各因子の積もf32で求める。
     removal_sums: [f32; FM_RANK],
     removal_upstream: [f32; 145],
     weighted_removals: [f64; FM_RANK],
@@ -62,6 +68,10 @@ struct Activation {
     pst: Vec<(u32, [f64; 2])>,
 }
 
+/// 局面の損失と勾配に必要な和を計算する。
+/// 駒iの除去差分は`Δ_i = Δ_PST,i + K * ΔΦ_i`、`ΔΦ_i = −Σ_f a_f v_if (S_f − v_if)`である。
+/// 除去用の`S_f`と各積はf32、因子方向の和はf64で求め、和をf32へ丸めてからKを掛ける。
+/// 上流微分は`u_j = d_j * penalty / (バッチ局面数 * max(適格件数, 1))`をf32へ丸めた値である。
 fn position(
     model: &Model,
     batch: &Batch,
@@ -104,8 +114,7 @@ fn position(
         }
         eligible += 1;
         let row = &model.fm.v()[columns[col] as usize];
-        // a * V_j * (sum V - V_j) is evaluated in embedding precision,
-        // including the rank reduction, before converting Delta Phi to f64.
+        // 各積をf32で求めてf64で合計し、ΔΦをf32へ丸める。
         let delta_phi = -(0..FM_RANK)
             .map(|f| f64::from((model.fm.a()[f] * row[f]) * (result.removal_sums[f] - row[f])))
             .sum::<f64>() as f32;
@@ -148,7 +157,11 @@ fn position(
     Ok(result)
 }
 
-/// PST、V、aへBCE、正則化、駒除去の勾配を戻す。縮約順はthreadsによらない。
+/// PST、V、aへBCE、正則化、駒除去の勾配を戻す。
+/// 除去の上流微分uに対し、Vの勾配へ`−a_f (Σ_j u_j v_jf + u_i (S_f − 2v_if))`を加える。
+/// aの勾配へは`−Σ_j u_j (S_f − v_jf) v_jf`を加える。
+/// PSTには`linear::gradient_rows`でBCEの勾配/Kと、`penalty / (バッチ局面数 * max(適格件数, 1) * K * 90)`の倍率を適用する。
+/// 各行の和は局面順であり、縮約順は`threads`によらない。
 pub fn gradients(
     model: &Model,
     batch: &Batch,
@@ -190,8 +203,7 @@ pub fn gradients(
                         let v = model.fm.v()[row][f];
                         let coefficient = model.fm.a()[f];
                         *g += a.derivative * f64::from(coefficient) * (a.sums[f] - f64::from(v));
-                        // For removal j, every surviving feature gets -a*V_j.
-                        // Its own removal additionally gets -a*(sum V - 2*V_j).
+                        // 除去による追加分は−a_f (Σ_j u_j v_jf + u_i (S_f − 2v_if))である。
                         *g -= f64::from(coefficient)
                             * (a.weighted_removals[f]
                                 + f64::from(a.removal_upstream[col])

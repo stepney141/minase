@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索部の不具合修正](../plans/search-bug-fixes.md)の非劣性のSTC（[search-bug-fixes-noninferiority-stc](search-bug-fixes-noninferiority-stc.md)）が不合格となったので、原因の診断として、第3の修正（静止探索の逃げる手）のコミットがその親コミットより10 Elo規模で弱いかを、候補と基準を入れ替えたGSPRTで調べる。
+[探索部の不具合修正](../plans/archived/search-bug-fixes.md)の非劣性のSTC（[search-bug-fixes-noninferiority-stc](search-bug-fixes-noninferiority-stc.md)）が不合格となったので、原因の診断として、第3の修正（静止探索の逃げる手）のコミットがその親コミットより10 Elo規模で弱いかを、候補と基準を入れ替えたGSPRTで調べる。
 この測定は診断であり、採否を決めない。
 
 ## コマンドライン

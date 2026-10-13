@@ -2,7 +2,8 @@
 
 use super::*;
 
-// move-ordering.md「候補7」。完了反復だけを保存し、次の反復では先頭以外を整列する。
+// 部分木ノード数は完了反復だけを保存し、次の反復では先頭手を保って残りをノード数の降順に安定整列する。
+// 判断の理由は docs/adr/order-root-moves-by-previous-subtree-nodes.md にある。
 #[test]
 fn completed_root_subtrees_order_the_next_iteration() {
     let position = quiet_midgame();
@@ -144,7 +145,8 @@ fn interrupted_root_iteration_discards_only_current_counts() {
     });
 }
 
-// docs/plans/strength-stage6.md「窓の適用条件と拡大」「検証」。
+// 深さ5以上で直前の完了値が詰み帯の外ならその値±初期幅で始め、それ以外は全窓にする。
+// 判断の理由は docs/adr/widen-only-the-failed-side-of-aspiration-windows.md にある。
 #[test]
 fn aspiration_initial_window_uses_only_eligible_previous_scores() {
     for depth in 1..=4 {
@@ -236,7 +238,7 @@ fn aspiration_normalizes_initial_and_widened_mate_edges() {
     }
 }
 
-// 同「根の探索の窓化」。引き分け値0を境界に置き、等号とβ打ち切りを検査する。
+// 引き分け値0を境界に置き、等号とβ打ち切りを検査する。
 // 反復までに適用する着手は、全手探索なら合法手数、β打ち切りなら最初の1手となる。
 #[test]
 fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
@@ -263,7 +265,7 @@ fn root_window_classifies_bounds_and_cuts_off_remaining_moves() {
     }
 }
 
-// 同「aspiration windows」。s == α、s == βのどちらも再探索を要する。
+// s == α、s == βのどちらも再探索を要する。
 // 再探索では全合法手を適用するため、初回に適用した着手数へ合法手数を加える。
 #[test]
 fn aspiration_researches_scores_equal_to_either_edge() {
@@ -291,7 +293,7 @@ fn aspiration_researches_scores_equal_to_either_edge() {
     }
 }
 
-// 同「根の探索の窓化」。fail-lowでもαの更新と独立に最善手を保存し、
+// fail-lowでもαの更新と独立に最善手を保存し、
 // 読み直しではその記録手を先頭に使う。王駒捕獲は適用しないので0ノードとなる。
 #[test]
 fn root_fail_low_keeps_the_best_bound_move_for_research() {
@@ -332,7 +334,7 @@ fn root_fail_low_keeps_the_best_bound_move_for_research() {
     });
 }
 
-// 同「窓外れの報告」「検証」。深さ5の最初の窓外れを実測してノード予算を
+// 深さ5の最初の窓外れを実測してノード予算を
 // 決め、読み直しで1手を適用した後に中断させる。経過時間やスケジューリングに依存しない。
 #[test]
 fn aspiration_interruption_preserves_the_last_completed_iteration() {

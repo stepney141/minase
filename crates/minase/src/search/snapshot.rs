@@ -77,7 +77,11 @@ impl SearchSnapshot {
     }
 }
 
-/// 反復検出に使う探索局面キー(第24条第1項)を計算する。
+/// 反復検出と置換表に使う探索局面キーを計算する。
+///
+/// 第24条第1項dが区別する成り権の保留状態は、P1、P2、P5では駒配置だけで決まらず、次の合法手を変える。
+/// そのため駒配置と手番の[`Position::zobrist`]に[`Position::rights_zobrist`]を合成する。
+/// 先獅子の状態は`zobrist()`側に含まれる。
 pub(super) fn search_key(position: &Position) -> u64 {
     position.zobrist() ^ position.rights_zobrist()
 }

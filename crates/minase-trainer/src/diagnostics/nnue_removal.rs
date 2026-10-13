@@ -46,6 +46,18 @@ struct IntegerCheck {
     max_absolute_cp: f64,
 }
 
+/// `diag nnue-removal`が保存するJSON報告。
+/// [`SampleIdentity`]を最上位へ平坦化し、`split = "validation"`、`population_count`に検証局面数を保存する。
+/// `float`と`net`は各入力の[`FileIdentity`]、`removal_count`は測った除去の総数である。
+/// `reference = "v0 initial_weights at both endpoints"`は、参照の両端点にv0の駒価値を使うことを示す。
+///
+/// `float_batch_vs_recomputed`は、一括計算と除去後の局面を作り直したf64再計算の除去差分を比較する。
+/// その絶対差の最大`max_absolute_cp`、`limit_cp = 1e-6`、最大差が上限以下なら真の`passed`を持つ。
+/// `float_vs_integer_recomputed`は、整数ネットと実数再計算の除去差分の絶対差について、平均`mean_absolute_cp`と最大`max_absolute_cp`を持つ。
+/// `reversals`は全除去の整数差分dとv0参照差分rの[`Reversals`]である。
+/// `by_piece_state`は除いた駒の[`piece_state`]ごとの同じ集計で、JSONのキーは番号の文字列である。
+/// 一括計算と再計算の最大差が1e-6を超えた場合だけ、`error`に
+/// `"float batched removal differs from recomputation by {最大差} cp (limit 1e-6)"`を持ち、それ以外は欄ごと省略する。
 #[derive(Serialize)]
 pub(super) struct Report {
     #[serde(flatten)]
@@ -79,7 +91,18 @@ fn remove_piece(position: &Position, removed: Square) -> Result<Position> {
     Ok(after)
 }
 
-// 1局面の全駒を、両累算器からの行の減算で一括して除く。学習用f32経路は使わない。
+/// 1局面の全駒の除去差分を、局面を作り直さずに累算器からの行の減算で一括して求める。
+/// 渡されたf32の重みをf64へ広げて計算し、学習用のf32計算は使わない。
+///
+/// 線形の全特徴の和を端点ごとに`S_mg`、`S_eg`、盤上駒数をnとする。
+/// 除去前は`q·S_mg + (1−q)·S_eg`で、`q = min(max(n−2, 0), 90)/90`である。
+/// 駒の行rを除いた後は`q′·(S_mg−r_mg) + (1−q′)·(S_eg−r_eg)`で、
+/// `q′ = min(max(n−3, 0), 90)/90`とし、除去後から除去前を引く。
+///
+/// 非線形では2つの視点vごとに`h_j = Σ 行の値 + b_j`を作る。
+/// 活性化を`a(x) = clamp(x, 0, 1)²`、出力重みを`w_{v,j}`とし、各視点の
+/// `K·(Σ_j a(h_j − 除いた駒の行_j)·w_{v,j} − Σ_j a(h_j)·w_{v,j})`を線形差分へ加える。
+/// Kは整数ネットの出力用Kである。
 fn float_removal_deltas(model: &Model, weights: &[f32], batch: &BatchSlot, k: f64) -> Vec<f64> {
     let h = model.shape().width();
     let rows: Vec<_> = batch.linear_features()[..FEATURE_COLUMNS]
@@ -125,6 +148,17 @@ fn float_removal_deltas(model: &Model, weights: &[f32], batch: &BatchSlot, k: f6
     delta
 }
 
+/// 検証集合の標本について、王駒以外の各1枚の除去差分を比較する。
+/// `--float`のチェックポイントと`--net`のMNUE版5は入力特徴の型と幅が一致しなければならない。
+/// 各記録を[`Record::to_position_for_evaluation`](minase::training::records::Record::to_position_for_evaluation)で復元し、記録された手番側を視点とする。
+/// 王将と玉将の駒状態11、および太子の駒状態21を除く盤上の全駒を1枚ずつ除く。
+/// 除いた駒が先獅子の対象升にあっても、その対象升は残す。
+/// 除ける駒がない局面は飛ばし、標本全体で除去が0件なら報告を作らずにエラーにする。
+///
+/// 実数の差分は[`reference::evaluate_f64_with_weights`]による除去後の評価から除去前の評価を引く。
+/// 整数の差分も整数ネットの除去後から除去前を引き、実数計算の出力用Kには整数ネットのKを使う。
+/// 参照差分は[`RemovalReference::v0`]から得る。
+/// 除去差分の比較に非有限値が現れた場合は、報告を作らずにエラーにする。
 pub(super) fn run(args: &RemovalArgs) -> Result<Report> {
     let dataset = args.sample.open()?;
     let indices = args.sample.select(&dataset, true)?;

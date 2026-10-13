@@ -19,11 +19,19 @@ mod selfplay_gen;
 mod spsa_runner;
 mod usi_random;
 
-/// グローバルアロケータ。benchの実測（docs/plans/search.md 実施状況）に基づきmimallocを使う。
+/// グローバルアロケータ。1つの実行ファイルに1つだけ置け、エンジンとすべての補助ツールに適用する。
+/// mimallocを使う理由は`docs/adr/use-mimalloc-in-executables.md`にある。
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-/// 中将棋エンジンの起動と、補助ツールのサブコマンドの入口。
+/// エンジンの起動と補助ツールの呼び出しを排他的に解析する。
+///
+/// サブコマンドなしはエンジン起動であり、`--protocol`と`--rules`を必須とする。
+/// 両欄は`Option`だが`required = true`を付け、`subcommand_negates_reqs`で補助ツール時だけ必須を外す。
+/// `--protocol`、`--rules`、`--io-log`とサブコマンドの併用は`args_conflicts_with_subcommands`で拒否する。
+/// 引数なしの起動もエラーである。プロトコルは`usi`か`cecp`で、既定値も自動判別も持たない。
+/// 対局ハーネスの`commit:`は過去のコミットを`--protocol usi --rules <規則>`で起動するため、この形は互換性の対象である。
+/// 理由は`docs/adr/run-developer-tools-as-engine-subcommands.md`にある。
 #[derive(Parser)]
 #[command(
     name = "minase",
@@ -65,7 +73,12 @@ enum ProtocolKind {
     Cecp,
 }
 
-/// 目的別の補助ツール。
+/// 補助ツールを目的別に分けるサブコマンド。
+///
+/// `match`は対局測定、`data`は学習データ、`dev`は検証と診断をまとめる。
+/// 係数調整は1ツールなので群を作らず`spsa`とする。複数語の名前はケバブケースである。
+/// サブコマンドとその引数は`CONTRIBUTING.md`に従う開発者向けの操作であり、互換性の対象外である。
+/// 配置の理由は`docs/adr/run-developer-tools-as-engine-subcommands.md`にある。
 #[derive(Subcommand)]
 enum Command {
     /// 対局測定と集計。
@@ -113,7 +126,8 @@ enum DevCommand {
     UsiRandom,
 }
 
-/// 解析後の引数エラーにも完全な呼び出し名を付ける。
+/// 解析後の引数エラーにも最上位から辿ったサブコマンドの定義を使う。
+/// 使い方を`minase <群> <名前>`として表示し、clapの引数エラーは終了コード2で終える。
 fn subcommand_command(path: &[&str]) -> clap::Command {
     let mut command = Arguments::command();
     command.build();
@@ -155,7 +169,7 @@ mod tests {
 
     use super::*;
 
-    // cli-subcommands.md「設計判断」: 全ツールをエンジン引数なしで起動できる。
+    // [`Arguments`]の契約: 全ツールをエンジン引数なしで起動できる。
     #[test]
     fn subcommands_do_not_require_engine_arguments() {
         for args in [
@@ -185,7 +199,7 @@ mod tests {
         }
     }
 
-    // 同節: 最上位のエンジン引数と補助ツールの併用を拒む。
+    // [`Arguments`]の契約: 最上位のエンジン引数と補助ツールの併用を拒む。
     #[test]
     fn engine_arguments_conflict_with_subcommands() {
         for args in [
@@ -205,7 +219,7 @@ mod tests {
         }
     }
 
-    // 同節: SPSAのセッション・params・applyの3つの入口を保つ。
+    // [`Arguments`]の契約: SPSAのセッション・params・applyの3つの入口を保つ。
     #[test]
     fn spsa_session_and_nested_commands_parse_from_root() {
         for args in [
@@ -237,7 +251,7 @@ mod tests {
         }
     }
 
-    // 同節: 解析後の検査でも使い方に新しい呼び出し名を表示する。
+    // [`Arguments`]の契約: 解析後の検査でも使い方に新しい呼び出し名を表示する。
     #[test]
     fn validation_errors_use_full_subcommand_names() {
         for path in [["match", "run"], ["dev", "random-play"], ["dev", "perft"]] {
@@ -254,8 +268,8 @@ mod tests {
 
     #[test]
     fn cli_requires_explicit_protocol_and_rules() {
-        // PL「モジュールと名称」・完了条件: --protocol usi|cecpと--rulesの明示指定を必須とし、
-        // 既定値と自動判別を設けない（D6-CLI-01）。
+        // [`Arguments`]はエンジンの起動に--protocol usi|cecpと--rulesを必須とし、
+        // 既定値と自動判別を設けない。
         assert!(Arguments::try_parse_from(["minase"]).is_err());
         assert!(Arguments::try_parse_from(["minase", "--protocol", "usi"]).is_err());
         assert!(Arguments::try_parse_from(["minase", "--rules", "R1"]).is_err());
@@ -273,9 +287,8 @@ mod tests {
 
     #[test]
     fn rules_argument_shares_the_wire_value_grammar() {
-        // PL「規則オプション」（同じ値文法を--rulesにも適用、解析は共通関数parse_rule_set）・
-        // R33第6項（lishogi=L1+L2+P0+P3+R1+E1+E3、大小非区別）
-        // （D6-CLI-04、D6-CLI-05のminase側接続確認）。
+        // --rulesはUSIの規則オプションと同じ文法を[`minase_core::rules::parse_rule_set`]で解析する。
+        // RULES.md第33条第6項に従い、lishogi=L1+L2+P0+P3+R1+E1+E3で大小文字を区別しない。
         let parse = |value: &str| {
             Arguments::try_parse_from(["minase", "--protocol", "usi", "--rules", value])
                 .map(|arguments| arguments.rules.unwrap().0)

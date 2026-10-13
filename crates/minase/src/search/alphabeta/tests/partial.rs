@@ -1,4 +1,5 @@
-//! byoyomi-time-usage.md「途中結果の採用」の契約を検査する。
+//! 秒読みつき時計だけの探索がhard limitで中断した場合の途中結果を検査する。
+//! 直前の最善手を読み終えた窓から、開始時のαを上回る最大値と主変化を採用する。
 
 use super::*;
 use crate::search::alphabeta::deepening::main_worker_outcome;

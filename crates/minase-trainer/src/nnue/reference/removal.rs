@@ -1,3 +1,10 @@
+//! 駒を1枚除いた評価差の向きを参照表に合わせる補助損失。
+//! 行番号0以上47×72未満は手番側、47×72以上94×72未満は相手側の駒で、それ以上は先獅子の行である。
+//! 番兵、王将の状態11、太子の状態21、および整数参照差分0を除外する。
+//! 参照差分が自駒で正、相手駒で負なら`wrong_r`を真とする。
+//! v0の参照では逆向きが生じないため、その分岐の試験には歩の符号を反転した鏡映対称のPSTを使う。
+//! 理由は`docs/adr/penalize-wrong-signed-piece-removal-differences.md`にある。
+
 use super::{
     Forward, check_batch, check_batch_arrays, check_weights, linear_row, phase, row_value, screlu,
     screlu_derivative,
@@ -16,7 +23,7 @@ use minase_core::{Color, PieceCode, PieceKind};
 const PHASE_DIVISOR: i64 = 90;
 const EVALUATION_LIMIT: i64 = 28_999;
 
-/// mnpt.initial_piece_valuesと同じv0駒価値。公開APIから取り、定数を複製しない。
+/// v0の駒価値を[`handcrafted::piece_value`]から取り、駒状態ごとに並べる。
 pub fn v0_piece_values() -> [i32; PIECE_STATE_COUNT] {
     let mut values = [0; PIECE_STATE_COUNT];
     for kind in PieceKind::ALL {
@@ -40,7 +47,8 @@ impl RemovalReference {
         &self.rows
     }
 
-    /// Python make_removal_reference(v0,v0)と同じ表。
+    /// 手番側の行に+8×v、相手側に−8×vを両端点へ同じ値で置く。
+    /// vは[`v0_piece_values`]のセンチポーン値であり、表の単位は1/8センチポーン、先獅子の行は0である。
     pub fn v0() -> Self {
         let values = v0_piece_values();
         let mut rows = vec![[0; 2]; CANONICAL_ROWS];
@@ -64,10 +72,10 @@ impl RemovalReference {
         }
         Ok(Self { rows })
     }
-    /// _numeratorsの整数演算による差分と、切り捨て前の差分の大きさ。
-    ///
-    /// Pythonは符号だけを切り捨て・評価上限適用後の差分から取り、罰則の大きさは
-    /// 切り捨て前から取る。v0でも評価上限で符号が0になる場合を区別する。
+    /// 参照表の端点和から`before = q×Σmg + (90−q)×Σeg`と除去後のafterを求める。
+    /// 整数化は720で割って0方向へ切り捨て、±28,999へ制限する。
+    /// 符号用の差は`integer(after)−integer(before)`、大きさは切り捨て前の`|after−before|/720`である。
+    /// 評価上限によって整数差分が0になる除去も区別する。
     pub fn deltas(&self, batch: &BatchSlot, b: usize) -> Result<(Vec<i32>, Vec<f64>)> {
         check_batch_arrays(batch)?;
         if b >= batch.len() || self.rows.len() != CANONICAL_ROWS {
@@ -103,32 +111,32 @@ impl RemovalReference {
     }
 }
 
-/// カーネル2の中間値と部分和。除去列は元の盤面の144升に対応する。
+/// [`removal_forward`]の中間値と部分和。除去列は元の盤面の144升に対応する。
 #[derive(Debug)]
 pub struct Removal {
-    /// 除去後の評価E_r[B,144]、センチポーン。不適格な列は0。
+    /// 除去後の評価E_r`[B,144]`、センチポーン。不適格な列は0。
     pub e_r: Vec<f64>,
-    /// 除去差分Δ_r[B,144]、センチポーン。不適格な列は0。
+    /// 除去差分Δ_r`[B,144]`、センチポーン。不適格な列は0。
     pub delta_r: Vec<f64>,
-    /// 整数参照差分ref_r[B,144]。
+    /// 整数参照差分ref_r`[B,144]`。
     pub ref_r: Vec<i32>,
-    /// 参照差分の符号s_r[B,144]。
+    /// 参照差分の符号s_r`[B,144]`。
     pub s_r: Vec<f32>,
-    /// 番兵・王駒・参照符号0を除く適格性[B,144]。
+    /// 番兵・王駒・参照符号0を除く適格性`[B,144]`。
     pub eligible: Vec<bool>,
-    /// 参照の向きが駒の所有者から期待する向きと逆か[B,144]。
+    /// 参照の向きが駒の所有者から期待する向きと逆か`[B,144]`。
     pub wrong_r: Vec<bool>,
-    /// 適格な除去の罰則pen_r[B,144]、センチポーン。
+    /// 適格な除去の罰則pen_r`[B,144]`、センチポーン。
     pub pen_r: Vec<f64>,
-    /// K∂L_aux/∂Δ_r、[B,144]。
+    /// K∂L_aux/∂Δ_r、`[B,144]`。
     pub d_r: Vec<f32>,
-    /// S=Σ_r d_r、[B]。
+    /// S=Σ_r d_r、`[B]`。
     pub s: Vec<f32>,
-    /// Σ_r d_r o_v h(acc_v-W_r)、[B,2,H]。
+    /// Σ_r d_r o_v h(acc_v-W_r)、`[B,2,H]`。
     pub d_acc_removal: Vec<f32>,
-    /// Σ_r d_r f(acc_v-W_r)、[B,2,H]。
+    /// Σ_r d_r f(acc_v-W_r)、`[B,2,H]`。
     pub d_output: Vec<f32>,
-    /// 線形係数S(u_r-u)/K、[B,2]。
+    /// 線形係数S(u_r-u)/K、`[B,2]`。
     pub linear: Vec<[f32; 2]>,
     /// 局面ごとの補助損失。指定した係数を含み、バッチ平均前。
     pub loss: Vec<f64>,
@@ -159,8 +167,9 @@ impl Removal {
     }
 }
 
-// GPUのremoval_headと同じf32縮約。各レーンはlane, lane+32, ...の順に足し、
-// 距離16, 8, 4, 2, 1の木でレーン0へ集める。未使用レーンの部分和は0。
+/// レーンtごとに単位t, t+32, …をf32で足し、距離16,8,4,2,1の木で縮約する。
+/// 未使用レーンの部分和は0とし、P型は両半幅の活性化を足してから共有重みを掛ける。
+/// 除去前後で同じ丸めを使うため、基準の評価Eも逐次加算の`head`ではなくこの関数で求める。
 fn removal_head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32) -> f32 {
     let shape = model.shape();
     let units = shape.units();
@@ -182,7 +191,13 @@ fn removal_head(model: &Model, v: usize, mut hidden: impl FnMut(usize) -> f32) -
     partials[0]
 }
 
-/// カーネル2。両視点の同じ升を除き、罰則と後退用の部分和を計算する。
+/// 両視点の同じ升を除き、罰則と後退用の部分和を求める。
+/// 差分Δの線形部分は補間分子の`(after_lin−before_lin)/90`をf64で、非線形部分は各視点の`K×(after−before)`を加える。
+/// 非線形のafter−beforeはf32で求めてからf64へ広げる。
+/// 参照の符号sと大きさmagに対し、`pen = relu(min(mag,0.25)−s×Δ) + wrong×relu(s×Δ−mag)`とする。
+/// 適格列数を最小1のcountとし、`d_r = removal_penalty/(B×count)×傾き`で、傾きは下限未満なら−s、逆向きかつ上限超過なら+s、それ以外は0である。
+/// 局面損失は`removal_penalty×Σpen/count/K`、`S = Σd_r`、線形係数は`S×(u_after−u)/K`である。
+/// (B,144,H)の中間配列は作らない。
 pub fn removal_forward(
     model: &Model,
     batch: &BatchSlot,

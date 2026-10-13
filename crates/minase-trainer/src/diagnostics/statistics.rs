@@ -64,6 +64,11 @@ fn correlation(x: &[f64], y: &[f64]) -> f64 {
     (covariance / x.len() as f64 / std(x) / std(y)).clamp(-1.0, 1.0)
 }
 
+/// 評価値の分布をセンチポーン単位で要約する。
+/// `mean_cp`は平均、`std_cp`はnで割る母標準偏差（ddof=0）、`mean_absolute_cp`は絶対値の平均である。
+/// `absolute_percentiles_cp`は絶対値の5、25、50、75、95百分位点である。
+/// 百分位点はNumPyの`method="linear"`と同じく、昇順の絶対値列の位置`(n−1)·p/100`を挟む2点を線形補間する。
+/// JSONでは百分位の数値を文字列にした`"5"`、`"25"`などのキーを持つオブジェクトにする。
 #[derive(Debug, Serialize)]
 pub(super) struct Summary {
     mean_cp: f64,
@@ -72,6 +77,8 @@ pub(super) struct Summary {
     absolute_percentiles_cp: BTreeMap<u8, f64>,
 }
 
+/// 有限な評価値列から[`Summary`]を作る。
+/// 空の列と非有限値を含む列はエラーにする。
 pub(super) fn summarize(values: &[f64]) -> Result<Summary> {
     if values.is_empty() {
         return Err("cannot summarize an empty evaluation distribution".into());
@@ -87,6 +94,20 @@ pub(super) fn summarize(values: &[f64]) -> Result<Summary> {
     })
 }
 
+/// 同じ標本で対にした基準の評価bと候補の評価cを比較する。
+/// 報告では`nnue_distribution::Pair`と[`Interval`]へ平坦化する。
+///
+/// `std_ratio_candidate_over_baseline`は候補の母標準偏差を基準の母標準偏差で割った比である。
+/// `regression_slope`と`regression_intercept_cp`は切片つき最小二乗回帰
+/// `candidate = intercept + slope * baseline`の傾きと切片である。
+/// 傾きは`Σ(b−b̄)(c−c̄) / Σ(b−b̄)²`、切片は`c̄ − slope·b̄`である。
+/// `pearson_correlation`は母共分散を両者の母標準偏差で割り、[−1, 1]へ切り詰めた値である。
+/// `spearman_correlation`は、同順位に1始まりの平均順位を与えた順位列どうしの同じ相関係数である。
+///
+/// `regression_residual_std_cp`は回帰残差`(c−c̄) − slope·(b−b̄)`の母標準偏差、
+/// `difference_std_cp`は差`c−b`の母標準偏差である。
+/// `absolute_difference_percentiles_cp`は`|c−b|`の50、90、99百分位点で、補間とJSONのキーは[`Summary`]と同じ規則に従う。
+/// `absolute_difference_over_100_cp_fraction`は`|c−b|`が100 cpを厳密に超える対の割合である。
 #[derive(Debug, Serialize)]
 pub(super) struct Comparison {
     pub(super) std_ratio_candidate_over_baseline: f64,
@@ -100,6 +121,8 @@ pub(super) struct Comparison {
     absolute_difference_over_100_cp_fraction: f64,
 }
 
+/// 対にした評価列から[`Comparison`]を作る。
+/// 対が2件未満、長さの不一致、非有限値、または基準か候補の母標準偏差が0ならエラーにする。
 pub(super) fn compare_scores(baseline: &[f64], candidate: &[f64]) -> Result<Comparison> {
     if baseline.len() < 2 || baseline.len() != candidate.len() {
         return Err("comparison requires at least two paired evaluations".into());
@@ -138,6 +161,8 @@ pub(super) fn compare_scores(baseline: &[f64], candidate: &[f64]) -> Result<Comp
     })
 }
 
+/// 標準偏差比が閉区間[0.9, 1.1]内なら`"全体の尺度はほとんど変えていない"`、外なら`"散らばりの尺度を変えた"`を返す。
+/// 分布診断はこの文字列を`verdict`に、区間[0.9, 1.1]を`unchanged_scale_interval_inclusive`に保存する。
 pub(super) fn scale_verdict(ratio: f64) -> &'static str {
     if (0.9..=1.1).contains(&ratio) {
         "全体の尺度はほとんど変えていない"
@@ -146,6 +171,10 @@ pub(super) fn scale_verdict(ratio: f64) -> &'static str {
     }
 }
 
+/// 分類用の値で分けた1帯の比較。
+/// `lower_inclusive`は下端のi64、`upper_inclusive`は上端のi64で、上限のない帯は`null`とする。
+/// `sample_count`は帯の標本数、`baseline_statistics`と`candidate_statistics`は各評価の[`Summary`]である。
+/// [`Comparison`]の全欄を平坦化して持つ。
 #[derive(Serialize)]
 pub(super) struct Interval {
     lower_inclusive: i64,
@@ -157,6 +186,11 @@ pub(super) struct Interval {
     comparison: Comparison,
 }
 
+/// 分類用の値vが`lower ≤ v`かつ上端があれば`v ≤ upper`を満たす標本を各帯へ集める。
+/// 両端を含めて[`summarize`]と[`compare_scores`]を適用する。
+/// いずれかが失敗すると`interval [下端, 上端]: 理由`の形で報告全体を拒否する。
+/// 上限のない帯の上端は`None`と表記する。
+/// 標本が2件未満の帯や分散0の帯があれば、報告は作られない。
 pub(super) fn compare_intervals(
     baseline: &[f64],
     candidate: &[f64],
@@ -194,6 +228,9 @@ pub(super) fn compare_intervals(
         .collect()
 }
 
+/// 評価差の列の件数`count`と、センチポーン単位の要約。
+/// `mean_cp`は平均、`std_cp`は母標準偏差（ddof=0）、`mean_absolute_cp`は絶対値の平均、`max_absolute_cp`は絶対値の最大である。
+/// 空の列では`count = 0`とし、ほかの4欄は`null`にする。
 #[derive(Debug, Serialize)]
 pub(super) struct DeltaStatistics {
     pub(super) count: usize,
@@ -203,6 +240,7 @@ pub(super) struct DeltaStatistics {
     max_absolute_cp: Option<f64>,
 }
 
+/// 評価差の列から[`DeltaStatistics`]を作り、空の列はその空標本の規約に従う。
 pub(super) fn delta_statistics(values: &[f64]) -> DeltaStatistics {
     DeltaStatistics {
         count: values.len(),
@@ -214,6 +252,11 @@ pub(super) fn delta_statistics(values: &[f64]) -> DeltaStatistics {
     }
 }
 
+/// 整数の差分dと参照の差分rの対から集計した符号反転。
+/// `total`は`r ≠ 0`の対の件数、`count`はそのうち`d·sign(r) < 0`の件数で、`d = 0`は反転に数えない。
+/// `fraction`は`count / total`で、`total = 0`なら`null`である。
+/// `mean_absolute_cp`と`max_absolute_cp`は反転した対のdの絶対値の平均と最大で、単位はセンチポーンである。
+/// 反転が0件なら、この2欄は`null`にする。
 #[derive(Debug, Serialize)]
 pub(super) struct Reversals {
     count: usize,
@@ -223,6 +266,7 @@ pub(super) struct Reversals {
     max_absolute_cp: Option<f64>,
 }
 
+/// 差分と参照差分の対を[`Reversals`]の規則で集計する。
 pub(super) fn reversal_statistics(pairs: impl Iterator<Item = (i32, i32)>) -> Reversals {
     let mut total = 0;
     let mut wrong = Vec::new();
@@ -254,7 +298,7 @@ mod tests {
 
     #[test]
     fn linear_percentiles_and_population_standard_deviation() {
-        // Pythonのlinear定義では[0,10,20,30]の5%位置は0.15、95%位置は2.85。
+        // 線形補間では[0,10,20,30]の5%位置は0.15、95%位置は2.85である。
         let s = summarize(&[0.0, -10.0, 20.0, -30.0]).unwrap();
         for (p, value) in [(5, 1.5), (25, 7.5), (50, 15.0), (75, 22.5), (95, 28.5)] {
             close(s.absolute_percentiles_cp[&p], value);

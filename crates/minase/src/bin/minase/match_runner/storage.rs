@@ -11,7 +11,8 @@ use minase::harness::{
 };
 use serde::{Deserialize, Serialize};
 
-/// 現行の実行記録形式。
+/// 再開で受け付ける実行記録形式の版5。
+/// 旧版は、新しい欄を型として読み取る前に版番号で拒否する。
 pub(super) const FORMAT_VERSION: u32 = 5;
 
 const MANIFEST_FILE: &str = "manifest.json";
@@ -97,7 +98,7 @@ pub(super) enum ManifestMode {
 pub(super) struct RunManifest {
     /// 記録形式の版。
     pub(super) format_version: u32,
-    /// 両エンジンに適用する先読みの対局条件。
+    /// 両エンジンに適用する先読みの対局条件。欄は省略できない。
     pub(super) ponder: bool,
     /// 候補エンジンの設定。
     pub(super) candidate: EngineRecord,
@@ -171,6 +172,10 @@ pub(super) struct RunStore {
 
 impl RunStore {
     /// 存在しないパスへ新規実行ディレクトリを作る。
+    ///
+    /// `manifest.json`、`invocations.json`、`summary.json`、および`pairs/`を作る。
+    /// 3つのJSONはそれぞれ原子的に書き、実行条件の`manifest.json`は以後変更しない。
+    /// 初回の起動記録はここで作り、実行開始の状態は[`Self::begin_invocation`]で記録する。
     pub(super) fn create(
         path: &Path,
         manifest: RunManifest,
@@ -225,7 +230,12 @@ impl RunStore {
         })
     }
 
-    /// 既存実行ディレクトリを検証し、保存済みペアを読み込む。
+    /// 版5の実行ディレクトリを検証し、保存済みペアを読み込む。
+    ///
+    /// `requested_target`を指定する場合は直前の起動の目標より大きい値を要求し、
+    /// 省略時は直前の目標を使う。条件は保存済みの`manifest.json`から読む。
+    /// 未実行のペアがある場合だけ、呼び出し側が[`Self::begin_invocation`]へ進む。
+    /// 理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
     pub(super) fn resume(
         path: &Path,
         requested_target: Option<u64>,
@@ -320,7 +330,12 @@ impl RunStore {
         atomic_write_json(&self.pairs, &temporary_path, &final_path, record)
     }
 
-    /// 新しい対局実行の開始を記録する。
+    /// 未実行のペアがある起動について、対局実行の開始を記録する。
+    ///
+    /// 再開時は実行プログラムと測定機を調べ、前回と異なれば標準エラーへ1行通知する。
+    /// 続けて`invocations.json`へ起動記録と目標を原子的に追記し、
+    /// その後に`summary.json`へ実行中の状態を書く。
+    /// 対局の開始より先に起動記録を確定するので、ペアだけが記録済みの目標を超えて保存されることはない。
     pub(super) fn begin_invocation(&self) -> io::Result<()> {
         if self.resumed {
             let current = Invocation::current(self.target_pairs)?;
@@ -831,7 +846,7 @@ mod tests {
         fs::remove_dir_all(path).unwrap();
     }
 
-    // D8-HARN-21/26（ponder.md「対局ハーネスの対局進行」）。
+    // [`RunManifest::ponder`]と[`minase::harness::TurnRecord::ponder`]の欄は省略できない。
     #[test]
     fn ponder_manifest_and_prediction_fields_are_required() {
         let turn = game(StoredColor::Black).turns.remove(0);
@@ -843,7 +858,7 @@ mod tests {
         assert!(serde_json::from_value::<RunManifest>(value).is_err());
     }
 
-    // D8-HARN-26（ponder.md保存形式）: 旧版は新しい必須欄がなくても版で拒否する。
+    // [`FORMAT_VERSION`]に従い、新しい欄の有無を調べる前に旧版を拒否する。
     #[test]
     fn resume_rejects_version_three_before_decoding_new_fields() {
         let path = temporary_directory("version-three");

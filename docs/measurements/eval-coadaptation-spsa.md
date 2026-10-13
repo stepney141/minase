@@ -2,7 +2,7 @@
 
 ## 目的
 
-[共適応の検証](../plans/eval-search-coadaptation.md)のフェーズ3として、混合比λ=1.0のPSTを載せた候補Cλについて、探索係数29個をSPSAで調整し、候補Cλ\*の値を得る。
+[共適応の検証](../plans/archived/eval-search-coadaptation.md)のフェーズ3として、混合比λ=1.0のPSTを載せた候補Cλについて、探索係数29個をSPSAで調整し、候補Cλ\*の値を得る。
 SPSAの対局結果は採否の根拠にしない。
 
 ## コマンドライン

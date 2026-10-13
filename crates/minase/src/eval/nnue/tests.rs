@@ -1513,7 +1513,7 @@ fn royal_context_changes_preserve_incremental_evaluation<F: FeatureSet>() {
 }
 
 both_feature_sets!(accumulator_counts_include_roots_moves_and_nulls);
-/// フェーズ4診断: 根と文脈変更を再計算、null moveを差分更新として数える。
+/// 根と文脈変更を再計算、null moveを差分更新として数える。
 fn accumulator_counts_include_roots_moves_and_nulls<F: FeatureSet>() {
     let net = Network::<F, DirectScrelu>::decode(&random_bytes::<F>(4)).unwrap();
     let king = PieceCode::new(Color::Black, PieceKind::King).unwrap();

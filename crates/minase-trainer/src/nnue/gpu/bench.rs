@@ -48,7 +48,7 @@ pub struct Args {
     /// モデル初期化とエポック内の局面順列に使うシードを指定する。
     #[arg(long, default_value_t = 71)]
     seed: u64,
-    /// バッチ構築とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引く。
+    /// バッチ構築とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     threads: Option<usize>,
     /// 更新を実行するデバイスを指定する。
@@ -74,7 +74,8 @@ pub struct Report {
     pub width: usize,
     /// モデル初期化と局面順列のシード。
     pub seed: u64,
-    /// 並列に構築するバッチ数。最終の群だけは少なくなることがある。
+    /// 並列に構築するバッチ数で、実効`threads`と`steps`の小さい方。
+    /// 最終の群だけは少なくなることがある。
     pub workers: usize,
     /// 指定された並列度。CPU更新でも同じ値を使う。
     pub threads: usize,
@@ -88,7 +89,7 @@ pub struct Report {
     pub compute_ms: f64,
     /// 転送ストリームのイベントから得た1バッチの平均ミリ秒。
     pub transfer_ms: f64,
-    /// 1バッチの入力転送のバイト数。
+    /// 1バッチの入力転送のバイト数。`--device cpu`では0である。
     pub transfer_bytes: usize,
     /// ワーカーの構築時間から求めた毎秒の供給局面数。
     pub worker_positions_per_second: f64,
@@ -256,8 +257,11 @@ impl ProfileMeasurements {
     }
 }
 
-/// 準備と1回のウォームアップの後、実データで指定回数の更新を測定する。
-/// 全行を観測済みとして初期化し、教師Kの推定や学習の検証は行わない。
+/// 1回のウォームアップ後に、2以上の`--steps`回の更新を実データで測る。
+/// シードの既定値71とエポック0の順列から`(steps+1)×batch`局面を重複なく使う。
+/// モデルは`benchmark_model`で作り、出力と全教師分類に同じKを使う。Kの既定値は1000である。
+/// CPUでは転送時間を0とし、`--profile`との併用を拒否する。
+/// 教師Kの推定や学習の検証は行わない。
 pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>> {
     args.training.validate()?;
     let shape = Shape::new(args.feature_set, args.width, args.k)?;
@@ -533,6 +537,8 @@ fn run_cpu(
     })
 }
 
+/// 埋め草以外の全行を観測済みとし、線形はv0、第1層は標準偏差0.05で初期化する。
+/// バイアスは0.25、出力重みは+0.01と−0.01を交互に置く。
 fn benchmark_model(shape: Shape, seed: u64) -> Result<Model> {
     let mut canonical = vec![true; CANONICAL_ROWS];
     canonical[CANONICAL_ROWS - 1] = false;

@@ -5,7 +5,7 @@ use crate::rules::MoveRules;
 
 #[test]
 fn validate_rejects_corrupted_zobrist_values() {
-    // 設計書predecessor-generator.md「Positionの公開面」
+    // Position::validateの契約に従い、両Zobrist値と再計算値の不一致を拒否する。
     let position = Position::initial();
     assert_eq!(position.validate(), Ok(()));
     let mut corrupted = position.clone();
@@ -48,7 +48,7 @@ mod invariants {
         assert!(!message.contains("extended SFEN:"));
     }
 
-    /// debugging-tools.md「整合検査の内容」: 通常着手後に両キーの破損を詳細診断付きで検出する。
+    /// [`Position::assert_invariants`]の契約に従い、通常着手後に両キーの破損を詳細診断付きで検出する。
     #[test]
     fn move_invariants_report_corrupted_keys() {
         let generator = MoveGenerator::standard();
@@ -72,7 +72,7 @@ mod invariants {
         }
     }
 
-    /// debugging-tools.md「整合検査の内容」: ヌルムーブ後も両キーを検査し、ヌルムーブと明示する。
+    /// [`Position::assert_invariants`]の契約に従い、ヌルムーブ後も両キーを検査し、操作名を明示する。
     #[test]
     fn null_move_invariants_report_corrupted_keys() {
         for rights in [false, true] {
@@ -92,7 +92,7 @@ mod invariants {
         }
     }
 
-    /// debugging-tools.md「整合検査の内容」: 通常着手の取消し後も復元したキーを検査する。
+    /// [`Position::assert_invariants`]の契約に従い、通常着手の取り消し後も復元したキーを検査する。
     #[test]
     fn unmake_invariants_report_corrupted_restored_key() {
         let generator = MoveGenerator::standard();
@@ -107,7 +107,7 @@ mod invariants {
         assert_diagnostic(&position, panic, "unmake move", Some(mv), "ZobristMismatch");
     }
 
-    /// debugging-tools.md「整合検査の内容」: ヌルムーブの取消し後もキーの破損を検出する。
+    /// [`Position::assert_invariants`]の契約に従い、ヌルムーブの取り消し後もキーの破損を検出する。
     #[test]
     fn unmake_null_invariants_report_corrupted_key() {
         let mut position = Position::initial();

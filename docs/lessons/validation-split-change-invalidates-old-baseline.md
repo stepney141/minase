@@ -16,4 +16,4 @@
 
 ## 出典
 
-- [plans/evaluation-gen1.md](../plans/evaluation-gen1.md) の「学習器のストリーミング化」
+- [plans/evaluation-gen1.md](../plans/archived/evaluation-gen1.md) の「学習器のストリーミング化」

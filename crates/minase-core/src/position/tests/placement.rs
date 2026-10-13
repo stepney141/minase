@@ -6,7 +6,7 @@ use crate::position::zobrist::zobrist_keys;
 use crate::position::{Position, PositionBuildError, PositionBuilder};
 use crate::test_util::sq;
 
-// 実装契約(D4-IMP-01): 空盤への1枚配置と同じ升の除去は互いに逆操作であり、
+// 実装上の契約として、空盤への1枚配置と同じ升の除去は互いに逆操作であり、
 // 全144升×全盤上駒コード(未成21種＋成駒18種×両所有者)で空盤へ完全に戻る。
 #[test]
 fn placing_then_removing_any_piece_restores_the_empty_position() {

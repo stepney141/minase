@@ -75,6 +75,8 @@ pub(super) struct GenerateArguments {
     #[arg(long, default_value_t = DEFAULT_NODES, value_parser = parse_positive_u32)]
     pub(super) nodes: u32,
     /// 1局に注入するランダム着手の上限回数。
+    /// 採用する教師データの生成では常に0を指定する。
+    /// 理由は`docs/adr/skip-random-move-injection-in-teacher-games.md`にある。
     #[arg(long, required = true, value_parser = clap::value_parser!(u8).range(0..=80))]
     pub(super) random_moves: u8,
     /// 同時に走らせる自己対局数。

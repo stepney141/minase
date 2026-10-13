@@ -19,6 +19,12 @@ pub(super) struct FiniteSearchLimits {
 }
 
 /// 1回の探索に適用する検証済み制限。
+///
+/// 複数の制限を持つ有限探索は、最も早く満たされた条件で止まる。
+/// `movetime`と時計の併用時はsoftとhardのそれぞれで両者の小さい予算を採る。
+/// 無期限探索にはsoftもhardもなく、外部停止要求だけを停止条件とする。
+/// [`crate::search::start_search`]で先読みとして開始すると、的中の通知まで時間の制限を使わない。
+/// 深さの範囲は[`Self::new`]とプロトコル側の入力検査の両方で拒否する。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SearchLimits {
     kind: SearchLimitKind,
@@ -38,7 +44,7 @@ impl SearchLimits {
     ///
     /// # Errors
     ///
-    /// 制約が1つもない場合、深さが範囲外の場合、ノード数が0の場合、または
+    /// 制約が1つもない場合、深さが`1..=MAX_PLY`（1〜256）から外れる場合、ノード数が0の場合、または
     /// 固定時間が0 msの場合は[`SearchError`]を返す。
     pub fn new(
         depth: Option<u32>,
@@ -145,12 +151,12 @@ pub struct ClockLimits {
     pub(super) byoyomi_ms: u64,
     /// 秒読みつき時計の締切に残す余裕(ms)。
     pub(super) byoyomi_margin_ms: u64,
-    /// 開始局面から現局面までの手数。
+    /// [`ClockLimits::ply`]の契約に従う、初形を0とした絶対手数。
     pub(super) ply: u32,
 }
 
 impl ClockLimits {
-    /// `docs/plans/byoyomi-time-usage.md`「締切の余裕を絶対値のUSIオプションにする理由」の既定値(ms)。
+    /// 秒読みつき時計の安全上限から差し引く余裕の既定値。単位はmsである。
     pub const DEFAULT_BYOYOMI_MARGIN_MS: u64 = 30;
 
     /// 持ち時間制の制限を検証して構築する。
@@ -177,15 +183,14 @@ impl ClockLimits {
         })
     }
 
-    /// 秒読みつき時計の締切に残す余裕(ms)を設定する。
-    ///
-    /// `docs/plans/byoyomi-time-usage.md`の「締切の余裕を絶対値のUSIオプションにする理由」に従う。
+    /// 秒読みが正で、固定時間、深さ、ノード数を併用しない時計の締切に残す余裕をmsで設定する。
+    /// 残り時間と秒読みの合計から差し引き、余裕が合計以上でも締切は最低1 msとする。
     pub const fn with_byoyomi_margin_ms(mut self, milliseconds: u64) -> Self {
         self.byoyomi_margin_ms = milliseconds;
         self
     }
 
-    /// 同設計書の「締切の余裕を絶対値のUSIオプションにする理由」で定める余裕(ms)を返す。
+    /// [`Self::with_byoyomi_margin_ms`]で設定する締切の余裕をmsで返す。
     pub const fn byoyomi_margin_ms(self) -> u64 {
         self.byoyomi_margin_ms
     }
@@ -205,7 +210,13 @@ impl ClockLimits {
         self.byoyomi_ms
     }
 
-    /// 開始局面から現局面までの手数を返す。
+    /// 初形を0とした現局面の絶対手数を返す。
+    ///
+    /// プロトコルが[`crate::protocol::Engine::ply`]から渡す値であり、
+    /// SFENの次の手番号から1を引いた基底手数と適用済みの手数を足したものである。
+    /// 探索履歴の長さから推測せず、残り手数の見積りと序盤係数の入力に使う。
+    /// 理由は`docs/adr/estimate-moves-to-go-from-ply.md`と
+    /// `docs/adr/scale-only-the-byoyomi-term-in-the-opening.md`にある。
     pub const fn ply(self) -> u32 {
         self.ply
     }

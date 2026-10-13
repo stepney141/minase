@@ -17,5 +17,5 @@
 
 ## 出典
 
-- [棋力向上段階2](../plans/strength-stage2.md)の「現行の時間消費」節。
+- [棋力向上段階2](../plans/archived/strength-stage2.md)の「現行の時間消費」節。
 - [段階1の最終STC](../measurements/strength-stage1-final-stc.md)と[最終LTC](../measurements/strength-stage1-final-ltc.md)の保存記録。

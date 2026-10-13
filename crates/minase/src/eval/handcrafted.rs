@@ -1,6 +1,6 @@
 //! 駒割と最小限のPSTからなる手書きの評価関数v0。
-//!
-//! 学習評価関数との比較用に残す。
+//! 探索からは呼ばれず、学習した評価関数の比較用に残す。
+//! 理由は`docs/adr/use-nnue-as-the-only-search-evaluation.md`にある。
 
 use minase_core::board::{BOARD_FILES, BOARD_RANKS, BOARD_SQUARE_COUNT, Square};
 use minase_core::piece::{Color, PIECE_KIND_COUNT, PieceKind};
@@ -106,7 +106,9 @@ const fn build_central_pst() -> [i32; BOARD_SQUARE_COUNT] {
     table
 }
 
-/// 駒種の駒価値をセンチポーンで返す。
+/// 固定表`PIECE_VALUES`の駒価値をセンチポーンで返す。
+/// 学習器の`pst::removal::v0_piece_values`と`nnue::reference::removal`も駒除去差分の参照値に使うため、変更すると補助損失の参照が変わる。
+/// 理由は`docs/adr/penalize-wrong-signed-piece-removal-differences.md`にある。
 #[inline]
 pub const fn piece_value(kind: PieceKind) -> i32 {
     PIECE_VALUES[kind.index()]
@@ -161,17 +163,15 @@ fn positional_value(kind: PieceKind, color: Color, square: Square) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    // 領域D7-EVAL（評価関数v0）のspec-firstテスト。期待値の根拠は挙動
-    // マトリクスd7-search-eval.md、docs/plans/search.md「評価関数v0」節の
-    // 凍結駒価値表（2026年8月14日確定）、およびRULES.md第5条・第20条に
-    // 限る。PSTの個別値は固定しない（SPEC_UNCLEAR-01の方針）。
+    // 期待値の根拠は本ファイルのPIECE_VALUESとその出典のコメント、
+    // およびRULES.md第5条と第20条に限る。PSTの個別値は固定しない。
 
     use super::*;
     use minase_core::piece::PieceCode;
     use minase_core::test_util::{position_from_codes, sq};
 
-    // D7-EVAL-01。RULES.md第5条の初期配置は王将⇄玉将の対応を除き点対称で
-    // あり、negamax（search.md「設計判断」）が要求する手番対称性の下で
+    // RULES.md第5条の初期配置は王将⇄玉将の対応を除き点対称で
+    // あり、negamax（`crate::search`のdocコメント）が要求する手番対称性の下で
     // 自己対称局面の評価は0でなければならない。
     #[test]
     fn initial_position_evaluates_to_zero_for_either_side_to_move() {
@@ -186,9 +186,8 @@ mod tests {
         assert_eq!(evaluate(&white_to_move), 0);
     }
 
-    // D7-EVAL-02。search.md「評価関数v0」節の凍結駒価値表（HaChu
-    // chuPieces[]の2.5倍・切り上げ換算、獅子と王駒は例外規定）と29駒種
-    // すべてが一致する。表の変更は設計書改訂とSPRTを伴う規範値である。
+    // PIECE_VALUESとその出典のコメントが定める駒価値に29駒種すべてが一致する。
+    // 表は比較用の固定値として変えない。
     #[test]
     fn piece_values_match_the_frozen_table_for_all_29_kinds() {
         let frozen_table = [
@@ -234,8 +233,8 @@ mod tests {
         assert!(covered.iter().all(|&seen| seen));
     }
 
-    // D7-EVAL-04[実装契約]。search.md「設計判断」のfail-soft negamaxは静的
-    // 評価の手番対称性を要件とする。局面Pの先手視点評価と、Pを180度回転して
+    // 実装契約として、`crate::search`のdocコメントが定めるfail-soft negamaxは
+    // 静的評価の手番対称性を要件とする。局面Pの先手視点評価と、Pを180度回転して
     // 所有者を入れ替えた局面P'の後手視点評価は一致しなければならない。
     // PSTの個別値を固定せず、先後で異なるテーブル参照などの対称性の破れを
     // 検出する。

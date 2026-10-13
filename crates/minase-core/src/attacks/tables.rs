@@ -47,7 +47,7 @@ impl AttackTables {
                     slide_directions[color.index()][profile_id.index()] |=
                         1 << slide.direction.for_color(color).index();
                 }
-                // movegen-speedup-2.md「段階4」: 固定利きは5×5近傍に収まる。
+                // neighbourhoodによる逆引きの前提として、固定利きが5×5近傍に収まることを検査する。
                 for delta in profile.fixed_deltas {
                     let (file, rank) = delta.for_color(color);
                     assert!(file.abs() <= 2 && rank.abs() <= 2);
@@ -113,8 +113,8 @@ impl AttackTables {
             + from.raw_index()
     }
 
-    /// 走りの絶対方向を8ビットのマスクで返す。
-    /// `movegen-speedup-2.md`「段階4」の方向マスクの表引きに使う。
+    /// 対局者と動きの定義ごとの走りの絶対方向を8ビットのマスクで返す。
+    /// 利きの逆引きで、遮蔽駒が逆方向へ走れるかを表引きで判定するために使う。
     #[inline]
     pub(crate) fn slide_directions(&self, color: Color, profile: MovementProfileId) -> u8 {
         self.slide_directions[color.index()][profile.index()]
@@ -143,7 +143,7 @@ impl AttackTables {
     }
 
     /// 対象升を中心とする盤内の5×5近傍を返す。
-    /// `movegen-speedup-2.md`「段階4」の固定利きの逆引きに使う。
+    /// 全固定移動の移動量がこの範囲に収まることを利用し、固定利きの逆引きの走査範囲とする。
     #[inline]
     pub(crate) fn neighbourhood(&self, square: Square) -> Bitboard {
         self.neighbourhoods[square.raw_index()]
@@ -163,6 +163,14 @@ impl AttackTables {
 
     /// 遮る駒を考慮した走りの利きを返す。進行方向の最初の駒がある升までを含む
     /// (第7条第4項・第5項)。
+    ///
+    /// 升の生値が増える4方向では、利き線`ray`と占有の積`b`の3語を192ビット整数とみなし、
+    /// 借りを伝播させて1を引く。
+    /// `ray & (b ^ (b - 1))`で最初の遮蔽駒を含む升までを得る。
+    /// `b`が空なら差分の全ビットが立ち、利き線全体が残る。
+    /// 生値が減る4方向では、最上位の遮蔽駒を求め、その先の利き線を除く。
+    /// 減る方向を`leading_zeros`と番兵表で書き換えない理由は
+    /// `docs/adr/skip-low-yield-movegen-and-see-speedups.md`にある。
     pub(crate) fn sliding_control(
         &self,
         from: Square,
@@ -172,8 +180,6 @@ impl AttackTables {
         let candidates = self.ray(from, direction);
         let blockers = candidates & occupied;
         if direction.increases_raw_index() {
-            // movegen-speedup-2.md「段階4」: 3語を192ビット整数として1を引く。
-            // 遮蔽がない場合は全ビットが立ち、利き線全体が残る。
             let b = blockers.words();
             let (low, borrow) = b[0].overflowing_sub(1);
             let (middle, borrow) = b[1].overflowing_sub(u64::from(borrow));
@@ -219,7 +225,7 @@ mod tests {
             expected
         }
 
-        // 段階4: 全始点・全方向と単升遮蔽の全組合せで語境界も覆う。
+        // 全始点、全方向、および単升遮蔽の全組合せで語境界も覆う。
         // 空盤・全集合・対角線・擬似乱数集合で遮蔽なしと複数遮蔽を調べる。
         let diagonal =
             Bitboard::from_squares(Square::all().filter(|square| square.file() == square.rank()));

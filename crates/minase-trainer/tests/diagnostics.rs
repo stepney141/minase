@@ -1,4 +1,4 @@
-//! Python診断の出力契約を、手計算できる合成入力と実コマンドで検査する。
+//! 数値診断の出力契約を、手計算できる合成入力と実コマンドで検査する。
 
 mod common;
 
@@ -273,7 +273,7 @@ fn distribution_positions() -> Vec<Position> {
 fn distribution_preserves_python_schema_order_statistics_and_identities() {
     let f = Fixture::new();
     let positions = distribution_positions();
-    // Pythonの数値診断は、先獅子の升に手番側の駒がある記録も受理する。
+    // 数値診断は評価用の復元を使い、先獅子の升に手番側の駒がある記録も受理する。
     for (name, seed, game) in [("a.mnsd", 11, 4), ("b.mnsd", 22, 6)] {
         let records: Vec<_> = positions
             .iter()
@@ -418,7 +418,7 @@ fn distribution_sampling_is_deterministic_and_invalid_inputs_create_no_report() 
     duplicate.extend(["--pair", "same", "base.bin", "net.bin"]);
     assert_eq!(f.run(&duplicate).status.code(), Some(1));
     assert!(!f.path("report.json").exists());
-    // 空の帯や分散0はPythonと同じく報告を作成せずに拒否する。
+    // 空の帯や分散0は報告を作成せずに拒否する。
     f.network(
         "constant.bin",
         &model(InputFeatureSet::P, &vec![[0.0; 2]; FEATURE_COUNT], 1016.0),
@@ -474,7 +474,7 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
         position.set_lion_capture(Square::from_dense(70)).unwrap();
         let mut record = Record::from_position(&position, 0, Outcome::Draw, 4, 0).encode();
         assert_eq!(record[146], 1);
-        // Pythonの数値診断が無視する麒麟成りフラグを、入力でも意図的に不一致にする。
+        // 数値診断の特徴に含めない麒麟成りフラグを、入力で意図的に不一致にする。
         record[146] = 0;
         let record = Record::decode(&record).unwrap();
         assert!(record.to_position().is_err());

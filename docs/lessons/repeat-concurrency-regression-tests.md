@@ -16,5 +16,5 @@
 
 ## 出典
 
-- [plans/rust-design-audit-remediation.md](../plans/rust-design-audit-remediation.md) の設計判断「固定深さの完了通知」
+- [plans/rust-design-audit-remediation.md](../plans/archived/rust-design-audit-remediation.md) の設計判断「固定深さの完了通知」
 - `crates/minase/src/search/alphabeta/tests/team.rs` の `four_worker_fixed_depth_finishes_at_the_limit_with_a_legal_move`

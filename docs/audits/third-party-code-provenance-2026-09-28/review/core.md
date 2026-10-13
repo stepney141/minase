@@ -24,7 +24,7 @@
 - 対照側: debian_hachu@822d512:hachu.c 191行（LVAL 1000）と 194行から224行（chuPieces[]）。ddugovic 版 /home/stepney141/board-games/hachu-github@aa2c67f:variant.c 12行から43行も同じ値である。ライセンスは両ファイルとも冒頭に "released in the public domain"（manifest.tsv: LicenseRef-public-domain）。
 - 実装固有の一致: 王駒2種を除く27駒種の値が、HaChu の値を2.5倍して0.5を切り上げた値と全て一致する（例: 醉象 201→503、盲虎 152→380、金将 151→378、麒麟 154→385、鳳凰 153→383、獅子 LVAL 1000→2500）。201、152、151、154、153 のような端数は HaChu が同値の駒を区別するために与えた調整値であり、独立に同じ組が出ることはない。
 - 反証: 王将・玉将と太子は HaChu の 280/270 を採らず 2600 とし、コメントで理由を述べている。PST（前進・王駒・中央性）は HaChu の評価と異なる minase 独自の式である。
-- 導入時の設計書: 93b4bd4:docs/plans/search.md 27行が「HaChu（variant.cのchuPieces[]、歩兵=40基準）の駒価値を2.5倍して歩兵=100へ換算した駒割」と明記し、130行が「駒価値の推定値まで無効になるわけではない」と採用理由を述べる。a05478a:src/eval/handcrafted.rs 189行から191行のテストも、この凍結表を規範値として参照する。
+- 導入時の設計書: 93b4bd4:docs/plans/archived/search.md 27行が「HaChu（variant.cのchuPieces[]、歩兵=40基準）の駒価値を2.5倍して歩兵=100へ換算した駒割」と明記し、130行が「駒価値の推定値まで無効になるわけではない」と採用理由を述べる。a05478a:src/eval/handcrafted.rs 189行から191行のテストも、この凍結表を規範値として参照する。
 - 判定: 1（複製を支持する証拠あり。ただし出典明記済みで、対照はパブリックドメイン）。数値表の転記であり、ライセンス上の制約は生じない。
 
 ## 判定C: 盤表現・升・方向（src/core/board/）

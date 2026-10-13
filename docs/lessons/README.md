@@ -62,3 +62,7 @@
 - [縮約の順序はGPU側で固定の木として定義する](define-reduction-order-on-the-gpu.md) — GPUとCPU参照を同じ加算順で一致させるときは、GPUで速い固定の木を順序の定義にしてCPU参照がそれを真似る。CPUの順をGPUが真似ると直列化して遅くなる。
 - [再開の設定ハッシュに予算を含めない](resume-hash-excludes-budgets.md) — 再開の照合は軌跡を変える設定だけで行い、エポック数、patience、時間の上限、ワーカー数は含めない。
 - [インライン展開されたSHA-256はSSEとAVXの混在の罰で遅くなる](sse-avx-transition-penalty-in-inlined-sha.md) — SSE形式しかない命令（SHA-NIなど）で計算するクレートの処理は`#[inline(never)]`の薄い関数に閉じ込め、検査和が遅いときは`assists.sse_avx_mix`を数えて`vzeroupper`の有無を機械語で確かめる。
+- [不採用の比較候補はマージの前に戻し、採用候補との差分を確かめる](revert-rejected-candidates-before-merge.md) — 既定値を切り替える比較の候補は採用の候補から切った別のブランチで作り、同じブランチに積んだら`H0`の時点で戻し、マージの前に採用の候補との差分と重みファイルのSHA-256の一致を確かめる。
+- [移動だけの再編は出力と試験名の一致で確かめる](verify-move-only-reorganization.md) — 処理を変えない移動の再編は、経過時間の欄を除くbench出力（または固定シードの出力）の全行一致と試験名の末尾の集合の一致で確かめ、NPSが揺れを外れたら`nm --size-sort`で生成コードを比べる。
+- [文書の引用には版を固定した出所と元のライセンスを書く](cite-quotes-with-pinned-source-and-license.md) — 調査メモや設計書に第三者のコードや文章を逐語または訳して引用するときは、版を固定したURL、版、および元のライセンスを明示し、出所を示せない引用は要旨に改める。
+- [探索木を変えない高速化は親との交互測定5回で選別する](alternate-speed-rounds-against-parent.md) — 段階ごとの速度による選別では`bench_compare.py`で局面別の一致を確かめ、候補と親を`--rounds 5`で交互に測って増分が親の幅を超える段階だけを残し、まとめた版を段階ゲートにかける。

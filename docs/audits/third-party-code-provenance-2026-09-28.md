@@ -33,12 +33,12 @@ AGPL-3.0の実装（Reckless、viridithas）との一致も検出されなかっ
 | F6 | `src/eval/handcrafted.rs` 12〜49行（駒価値） | HaChu `chuPieces[]`、パブリックドメイン | 証拠あり | ― | ある |
 
 F5とF6は、ライセンス上の制約を生まない。
-F5は、MITの帰属表示が要るほどの複製かどうかが論点になるだけである。設計書`docs/plans/spsa.md`は、akimboとHobbesを手本としたことをすでに明記している。
+F5は、MITの帰属表示が要るほどの複製かどうかが論点になるだけである。設計書`docs/plans/archived/spsa.md`は、akimboとHobbesを手本としたことをすでに明記している。
 F6は、HaChuの値を2.5倍して丸めたことをコードのコメントが明記しており、HaChuはパブリックドメインである。
 
 ### F1　`src/stats.rs`とfishtest
 
-`src/stats.rs`は、fishtestの`LLR_logistic`（statistic="expectation"の最尤推定）と同じ値を出すことを目的とし、そのことをモジュールのコメントと設計書`docs/plans/search.md`に明記している。
+`src/stats.rs`は、fishtestの`LLR_logistic`（statistic="expectation"の最尤推定）と同じ値を出すことを目的とし、そのことをモジュールのコメントと設計書`docs/plans/archived/search.md`に明記している。
 同じ値を出すための数式、つまりVan den Berghの論文の式(1.2)、θの方程式(1.3)、根の区間は、証拠として数えていない。
 度数0を1e-3に置き換える正則化も、fishtestの参照値に1e-6以内で一致させるという要求から決まるため、数えていない。
 
@@ -79,7 +79,7 @@ xorshift64*の乗数`0x2545F4914F6CDD1D`と、乱数3つの論理積で疎な候
 ### F3　履歴上の時間配分の係数
 
 コミット`6d30d76`（2026年9月17日）の件名は「Scale the time budget by Stockfish's position-adaptive coefficients」である。
-設計書`docs/plans/time-management-efficiency.md`も、4つの係数にStockfishの現行の定数をそのまま使うと書いている。
+設計書`docs/plans/archived/time-management-efficiency.md`も、4つの係数にStockfishの現行の定数をそのまま使うと書いている。
 実装は、Stockfishの`fallingEval`、`timeReduction`、`reduction`、`bestMoveInstability`、`nodesEffort`の式と、調整済みの定数22個（例えば11.48、2.229、75,800、104,510）を、Rustへ翻案している。
 4要素の評価値の環状履歴、最善手の交替回数の半減、手をまたぐ前回値の持ち越し、停止条件`elapsed > min(total, hard)`も一致する。
 2人の担当がどちらも「証拠あり」と判定した。

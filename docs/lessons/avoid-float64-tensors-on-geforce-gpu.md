@@ -19,4 +19,4 @@ GPUで学習する損失の中間配列は、埋め込みと同じ単精度で�
 
 ## 出典
 
-- [plans/pst-fm-joint-training.md](../plans/pst-fm-joint-training.md) と [measurements/pst-fm-joint-training-training.md](../measurements/pst-fm-joint-training-training.md) の「環境」
+- [plans/pst-fm-joint-training.md](../plans/archived/pst-fm-joint-training.md) と [measurements/pst-fm-joint-training-training.md](../measurements/pst-fm-joint-training-training.md) の「環境」

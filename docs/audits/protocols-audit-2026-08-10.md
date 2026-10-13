@@ -66,7 +66,7 @@ HaChuが`new`で直ちに初期化すること自体は仕様乖離ではなく�
 `docs/research/protocols/cecp.md:186`は、探索部がない段階では`go`に`Error`を返す方針を示している。
 
 しかし、同文書21行目の`Error (unknown command)`は未知コマンド用であり、`go`は既知コマンドである。
-USIについても、`docs/plans/protocol-layer.md:40`はエラー応答を決定済みとする一方、同文書96行目は独自エラーではUSIの契約を満たさないため再設計が必要だとしている。
+USIについても、`docs/plans/archived/protocol-layer.md:40`はエラー応答を決定済みとする一方、同文書96行目は独自エラーではUSIの契約を満たさないため再設計が必要だとしている。
 
 通常の`go`を接続可能な機能から除外するのか、探索を伴わない有効な`bestmove`応答を用意するのかを、実装前に一意に定める必要がある。
 重大度は中で、確信度は高い。
@@ -147,7 +147,7 @@ HaChu、shogiops、scalashogi、Lishogi-Botはコミットが固定されてい�
 
 現行minaseの`to_sfen`が盤面部と手番部だけを出力すること、および`parse_sfen`が同じ2欄基本形式だけを受理することも、コードと文書187行目で一致する。
 
-CECPとlishogi系SFENの手番文字は極性が異なるが、`docs/plans/protocol-layer.md:92`は内部正準を先手`b`とし、CECPアダプタで反転する方針を明記している。
+CECPとlishogi系SFENの手番文字は極性が異なるが、`docs/plans/archived/protocol-layer.md:92`は内部正準を先手`b`とし、CECPアダプタで反転する方針を明記している。
 
 ## 検証範囲
 

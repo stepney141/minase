@@ -1,4 +1,4 @@
-//! 設計書movegen-speedup.md「捕獲対象を生成前に除外する」の契約テスト。
+//! [`search_captures`](crate::movegen::search_captures)の探索専用生成の契約を検査する。
 use super::*;
 use crate::Bitboard;
 use crate::movegen::{CaptureCache, CaptureCandidate};
@@ -43,7 +43,7 @@ fn split_captures_preserve_public_order_and_captured_squares() {
     }
 }
 
-// 同節: 通常駒の部分生成は、全捕獲の到達升による抽出と順序まで一致する。
+/// [`MoveGenerator::emit_ordinary_captures`]の部分列の契約を検査する。
 #[test]
 fn ordinary_targets_select_exactly_the_public_subsequence() {
     let mut state = 0x6275_6666_6572_u64;
@@ -91,8 +91,8 @@ fn ordinary_targets_select_exactly_the_public_subsequence() {
     }
 }
 
-// 単位B2「置換表の手の検査を捕獲生成だけで行う」: 合法性の正は公開生成。
-// 全合法手に加え、成り・経由升を変えた候補と、空升・相手駒からの候補を照合する。
+/// [`MoveGenerator::is_legal_capture`]の契約に従い、合法性の正を公開生成に置く。
+/// 全合法手、成りと経由升を変えた候補、および空升と相手駒からの候補を照合する。
 #[test]
 fn tt_capture_validation_matches_filtered_public_captures() {
     for rules in capture_test_rules() {
@@ -131,7 +131,7 @@ fn tt_capture_validation_matches_filtered_public_captures() {
     }
 }
 
-// 設計書movegen-speedup-2.md「段階8」: 除外条件の各境界と対象外の特殊駒を固定する。
+/// [`MoveGenerator::is_excluded_lion_capture`]の条件の各境界と対象外の特殊駒を検査する。
 #[test]
 fn lion_capture_exclusion_keeps_igui_double_stop_and_jump() {
     use crate::test_util::{position_from_codes, sq};

@@ -18,6 +18,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+/// 線形重みの1端点について、現在値と初期値の差の絶対値をセンチポーンで集計する。
+/// 埋め草を除く正準行6,840行の平均が`mean_absolute_cp`、最大が`max_absolute_cp`である。
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct Movement {
     mean_absolute_cp: f64,
@@ -59,9 +61,14 @@ pub struct EpochRecord {
     pub training_positions_per_second: Option<f64>,
     /// 1更新の平均秒数。CUDAではイベント、CPUではホストの経過時間を用いる。
     pub update_seconds: Option<f64>,
-    /// 学習・検証の配列確保後に測ったGPU全体の最大使用量、バイト。
+    /// CUDAが報告するデバイス全体の使用量（総量−空き容量）の、このプロセス内での最大値。単位はバイト。
+    /// 他のプロセスの確保も含む。
+    /// バックエンド確保直後、各検証の評価器確保後、各エポックの訓練開始前と入力面確保後に測る。
+    /// `--device cpu`では`null`である。
     pub gpu_memory_used_bytes: Option<usize>,
-    /// GPUの総メモリ、バイト。
+    /// CUDAが報告するデバイス全体の総メモリ、バイト。
+    /// 測定時点は[`Self::gpu_memory_used_bytes`]と同じで、直近の総量を保存する。
+    /// `--device cpu`では`null`である。
     pub gpu_memory_total_bytes: Option<usize>,
     /// 再開前を含む累積秒数。
     pub elapsed_seconds: f64,
@@ -80,7 +87,8 @@ pub struct Saturation {
     pub acc_ge_one: f64,
 }
 
-/// 線形重みの2端点についての移動量。
+/// [`EpochRecord::linear_movement`]へ保存する線形重みの移動量。
+/// `middlegame`と`endgame`は2端点の集計で、各欄は`Movement`の平均と最大の定義に従う。
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LinearMovement {
     middlegame: Movement,
@@ -156,6 +164,30 @@ pub(super) struct Configuration {
     pub input_hash: [u8; 32],
 }
 
+/// 整形JSONとして保存する`config.json`の設定、入力、前処理結果を作る。
+///
+/// 最上位の`device`は`"cuda"`または`"cpu"`、`arguments`は新規実行時の全引数[`Args`]、
+/// `resolved_threads`は実効ワーカー数である。
+/// `settings`は引数から`output_dir`、`resume`、`data`、`init_pst`、`base`、`epochs`、
+/// `patience`、`time_limit_hours`、`threads`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
+/// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
+///
+/// `inputs.files`は入力順の配列で、各要素は`data`と`provenance`の各`{path, sha256}`、およびMNSDヘッダの`header_sha256`を持つ。
+/// `inputs.init_pst`と`inputs.base`も`{path, sha256}`であり、パスはすべて正規化済みである。
+/// `preprocessing`は`teacher_classes`、`teacher_ks`、`teacher_lambdas`、`teacher_k_source = "training"`、
+/// `output_k`、`training_positions`、`validation_positions`を持つ。
+/// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師用Kは`null`である。
+/// `training_indices_sha256`と`validation_indices_sha256`は通算番号をリトルエンディアンu64列にしたSHA-256である。
+/// `observations`は`linear_rows`、`feature_rows`、`virtual_rows`の各`{observed, unobserved}`を持ち、埋め草行を除く。
+/// `canonical_counts_sha256`と`input_counts_sha256`は、それぞれの行の観測回数をリトルエンディアンu64列にしたSHA-256である。
+///
+/// `resumes`は再開履歴の配列で、新規実行では空とし、[`append_resume`]で追記する。
+/// `config_sha256`は`settings`のJSON、`input_sha256`は`{inputs, preprocessing}`のJSONのSHA-256である。
+/// ハッシュ対象のJSONはキーを辞書順に並べた空白なしの表現で、検査和は小文字16進で保存する。
+/// 新規実行時だけ、呼び手が`device_name`、`gpu_memory_used_bytes`、`gpu_memory_total_bytes`、`preprocessing_seconds`を加える。
+/// `device_name`はCUDAのデバイス名または`"CPU"`、メモリはバックエンド確保後の値でCPUでは`null`である。
+/// 再開時は`settings`、`inputs`、`preprocessing`、両ハッシュ、`device_name`の一致を要求する。
+/// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`だけである。
 pub(super) fn configuration(
     args: &Args,
     workers: usize,
@@ -240,6 +272,9 @@ pub(super) fn configuration(
     })
 }
 
+/// 再開のたびに`config.json`の`resumes`へ1要素を追記して書き直す。
+/// 要素は整数のUnix秒`resumed_at_unix_seconds`、`epochs`、`patience`、`time_limit_hours`、
+/// 実効ワーカー数`workers`、再開時点の完了エポック番号`epoch`を持つ。
 pub(super) fn append_resume(
     path: &Path,
     config: &mut Value,
@@ -281,7 +316,12 @@ pub(super) fn append_epoch(path: &Path, record: &EpochRecord) -> Result<()> {
     Ok(())
 }
 
-// チェックポイントを永続化する前に中断したログの末尾は再実行する。
+/// `latest.bin`で確定したエポックまでのログを検査し、未確定の末尾を切り捨てる。
+/// 各エポックは`training.jsonl`への追記、`latest.bin`、改善時の`best.bin`の順に保存し、`latest.bin`の確定を保存完了とする。
+/// ログを先頭から読み、エポック0から`epoch`までが連番で揃い、検証損失が有限であることを要求する。
+/// その後の行と改行で終わらない末尾は切り捨て、未確定のエポックは再実行する。
+/// エポック0を含む必要な行が欠けていれば拒否し、成功時はエポック0の検証損失を返す。
+/// 最良チェックポイントの復旧は[`super::recover_best_checkpoint`]に従う。
 pub(super) fn reconcile_log(path: &Path, epoch: u64) -> Result<f64> {
     let bytes = std::fs::read(path)?;
     let mut keep = 0;

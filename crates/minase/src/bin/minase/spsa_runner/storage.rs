@@ -14,6 +14,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// 新規作成時に固定する実行条件。再開の条件はこの`manifest.json`だけから読む。
+/// 調整対象のエンジンは、任意の起動コマンドも含めて`engine_sha256`と照合する。
+/// 理由は`docs/adr/resume-from-the-manifest-without-checking-the-runner.md`にある。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Manifest {
@@ -27,7 +30,8 @@ pub(super) struct Manifest {
     pub response_timeout_secs: u64,
 }
 
-/// 実際に反復を進めた起動の記録。
+/// 実行プログラムと測定機の起動記録。
+/// 初回は作成時に保存し、再開時は未完了の反復がある起動でだけ追記する。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Invocation {
@@ -44,6 +48,13 @@ impl Invocation {
     }
 }
 
+/// 排他ロックを保持し、実行条件と反復記録を保存する。
+///
+/// ディレクトリは`manifest.json`、`invocations.json`、および1反復1ファイルの`iterations/`からなる。
+/// 反復のファイルは一時ファイルからの改名で原子的に確定する。
+/// θの現在値は別ファイルに持たず、反復記録だけを正として[`validate_chain`]で復元するため、
+/// 2ファイル間で記録とθが食い違うことはない。
+/// 書きかけの一時ファイルを削除するのは再開時だけである。
 #[derive(Debug)]
 pub(super) struct Store {
     pub manifest: Manifest,
@@ -154,7 +165,12 @@ impl Store {
     }
 }
 
-/// 適用番号の連続性、摂動の再現性、および保存θの更新連鎖を検査する。
+/// 適用順に更新を再計算し、記録と一致する最後のθを返す。
+///
+/// 適用番号の連続性、反復番号の範囲と重複、摂動の符号の再現、
+/// 各ペアの番号と係数の次元および範囲、手数上限と分類の対応を検査する。
+/// 終局理由から数えた異常件数と異常局の記録、反復内の集計値も照合する。
+/// 保存θと再計算θは、全成分でビット単位に一致しなければならない。
 pub(super) fn validate_chain(
     settings: &Settings,
     records: &BTreeMap<u64, IterationRecord>,

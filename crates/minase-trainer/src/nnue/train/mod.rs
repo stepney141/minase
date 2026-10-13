@@ -1,4 +1,27 @@
-//! CUDAまたはCPUによる学習、全検証集合の評価、エポック境界の保存と再開。
+//! CUDAまたはCPUによるNNUEの学習と、全検証集合の評価、保存と再開。
+//! CUDAでは供給スレッドがワーカー数ぶんのバッチを並列に作り、順列の順に3面へ書く。
+//! 各更新の結果は次の更新を投入してから回収し、CPUでは単一スレッドとビット一致する並列参照計算を使う。
+//! 各エポックは`epoch_permutation(train, seed, epoch)`で始め、更新、snapshot、全検証、最良値更新、ログ、latest.bin、改善時のbest.binの順に進む。
+//! `latest.bin`をエポックの保存確定点とし、時間切れで未完了のエポックは採用しない。
+//!
+//! `--output-dir`には次の7ファイルを保存する。
+//!
+//! | ファイル | 内容 |
+//! | --- | --- |
+//! | `config.json` | 引数、実効ワーカー数、照合用の設定と入力、前処理の結果、デバイス名、再開履歴を保存する。欄は`record::configuration`に定める。 |
+//! | `training.jsonl` | エポック0の検証と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ追記する。 |
+//! | `latest.bin` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間、照合用ハッシュを[`Checkpoint`]で保存する。 |
+//! | `best.bin` | 最良エポックのモデルとその時点のAdamWの状態を[`Checkpoint`]で保存する。 |
+//! | `nnue.bin` | 最良モデルを量子化したMNUE版5を保存する。 |
+//! | `nnue-float.bin` | 最良モデルの[`Checkpoint`]を保存する。 |
+//! | `summary.json` | 停止理由、最良エポック、量子化検査を[`Summary`]で保存する。 |
+//!
+//! 新規実行の出力ディレクトリは存在しないか空でなければならず、空でなければ`--resume`の使用を求めるエラーで終了する。
+//! 停止条件はエポック開始前と終了時に、累積時間、改善のないエポック数、完了エポック数の順に判定する。
+//! 累積時間には前処理、エポック0の検証、各エポックの学習と検証、再開前の実行を含む。
+//! 訓練中はバッチ投入前に期限を判定し、期限を過ぎたエポックの更新は採用しない。
+//! 検証では各バッチの前後に期限を判定し、期限を過ぎたエポックの最良値更新、ログ追記、チェックポイント保存を行わない。
+//! 最良エポックは1以上から選び、[`crate::nn::update_best`]に従って検証損失が厳密に小さい場合だけ更新する。
 
 use crate::nn::{atomic_write, patience_reached};
 mod args;
@@ -67,7 +90,15 @@ pub enum StopReason {
     TimeLimit,
 }
 
-/// 終了理由、最良エポック、量子化検査をsummary.jsonへ保存する。
+/// 終了理由、最良エポック、量子化検査を`summary.json`へ保存する。
+///
+/// `status = "candidate"`は量子化検査の合格で、コマンドの終了コードは0である。
+/// 平均絶対誤差がK/40を超えると`"quantization_error"`となり、`nnue.bin`と`nnue-float.bin`を残して終了コード1を返す。
+/// このとき`reason`は`"quantization_error: mean absolute error exceeds K/40"`である。
+/// 1エポックも検証を終えず時間切れになった場合と、最良重みの書き出しに失敗した場合は`"error"`で終了コード1となる。
+/// 前者の`reason`は`"time limit reached with 0 completed training epochs; 予算の上限で終了し、収束は未確認"`である。
+/// `stopped_by = "time_limit"`なら`convergence`は`"予算の上限で終了し、収束は未確認"`、それ以外は`null`である。
+/// 学習ループ中のエラーで保存する簡略な報告は[`run`]に定める。
 #[derive(Debug, Serialize)]
 pub struct Summary {
     /// candidate、quantization_error、またはerror。
@@ -114,6 +145,9 @@ fn update_best(progress: &mut Progress, epoch: u64, validation_loss: f64) -> Res
     )?)
 }
 
+/// エポック開始前と終了時の停止理由を優先順に決める。
+/// 累積秒数が`time_limit_hours × 3600`以上なら`time_limit`、最良エポックから
+/// `patience`エポック以上経過したら`early_stopping`、完了エポック数が`epochs`以上なら`max_epochs`を返す。
 fn stop_reason(progress: &Progress, args: &Args) -> Option<StopReason> {
     if progress.elapsed_seconds >= args.time_limit_hours * 3600.0 {
         Some(StopReason::TimeLimit)
@@ -142,6 +176,19 @@ struct Session {
 }
 
 impl Session {
+    /// 初期値と前処理を再計算し、新規学習または保存済みエポックからの再開を準備する。
+    /// `--init-pst`の2端点を[`validate_initial`]で`--base`のMNPTと照合し、初期化したモデルの
+    /// [`Model::expanded_linear`]も同じ検査に通す。不一致なら学習を始めない。
+    /// 全MNSDの規則セット名は基準MNPTと一致し、訓練集合と検証集合はどちらも空であってはならない。
+    /// 出力用K、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、Kを[`Shape`]へ渡す。
+    /// 初期値の鏡映対称性は[`load_initial`]と[`Model::initialize`]で検査する。
+    /// 再開にはconfig.jsonのsettings、inputs、preprocessing、および2つのハッシュの一致を要求する。
+    /// 設定ハッシュからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threadsを除く。
+    /// 入力パスは正規化したパスと内容のSHA-256をinputsに記録するため、入力ハッシュには含まれる。
+    /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
+    /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は`epoch×ceil(N_train/batch)`、epochは指定上限以下でなければならない。
+    /// 記録されたdevice_nameも一致を要求する。
+    /// best.binの書き込み前に中断した場合は、最新エポックが最良であるときだけlatest.binから復元できる。
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
         args.validate()?;
@@ -562,6 +609,9 @@ impl Session {
     }
 }
 
+/// 全検証バッチを集計し、各バッチの前後に期限を検査する。
+/// 最終バッチの後も検査し、期限を過ぎたら`None`を返す。
+/// 呼び手はそのエポックの最良値更新、ログ追記、チェックポイント保存を行わない。
 fn validate_batches<T>(
     batches: impl IntoIterator<Item = T>,
     mut evaluate: impl FnMut(T) -> Result<Validation>,
@@ -587,7 +637,7 @@ fn validate_batches<T>(
         } else {
             total = Some(statistics);
         }
-        // Pythonのvalidation_lossと同じく、最終バッチの後も期限を確認する。
+        // 最終バッチの後も期限を確認し、検証完了が期限を越えたエポックを採用しない。
         if expired() {
             return Ok(None);
         }
@@ -597,6 +647,10 @@ fn validate_batches<T>(
     Ok(Some(total))
 }
 
+/// 実数PSTの全13,680特徴×2端点が基準MNPTへ再量子化できることを検査する。
+/// `--init-pst`の`middlegame`と`endgame`の各値vについて、`round_ties_even(v × 8)`が
+/// 対応するMNPTのi16値と一致しなければならない。MNPTの単位は1/8センチポーンである。
+/// 配列長の不一致と非有限値も拒否し、初期化後の[`Model::expanded_linear`]にも同じ検査を行う。
 fn validate_initial(initial: &[[f32; 2]], baseline: &[[i16; 2]]) -> Result<()> {
     if initial.len() != baseline.len()
         || initial
@@ -615,6 +669,11 @@ fn validate_initial(initial: &[[f32; 2]], baseline: &[[i16; 2]]) -> Result<()> {
     Ok(())
 }
 
+/// 確定済みの`latest.bin`に対応する`best.bin`を復旧する。
+/// 保存順は[`reconcile_log`]の契約に従う。
+/// `best.bin`が最良エポックと一致しなければ、最新の完了エポックが最良であり、
+/// `best.bin`がないか、その完了エポックが最良より古いときだけ`latest.bin`から書き直す。
+/// 既存の`best.bin`の復号失敗、ハッシュ不一致、最良以上のエポックの不整合は復旧せず拒否する。
 fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> Result<()> {
     let best = latest
         .progress
@@ -647,6 +706,13 @@ fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> 
 }
 
 /// 指定デバイスで初期検証、学習、保存、最良重みの書き出しを順に行う。
+///
+/// 成功時と最終検査の失敗時の報告、および終了コードは[`Summary`]に従う。
+/// 学習ループ中のエラーでは、この型の代わりに`status = "error"`、`reason`、`last_epoch`、
+/// `elapsed_seconds`の4欄だけを`summary.json`へ書き、コマンドは終了コード1で終わる。
+/// 終了時は時間切れで未完了のエポックを採用せず、初期検証を完了していれば費やした時間を`latest.bin`へ保存する。
+/// 最良エポックがあれば`best.bin`から`nnue.bin`と`nnue-float.bin`を書き出す。
+/// 再開後も同じシードとエポック番号から[`epoch_permutation`]で順列を再生成する。
 pub fn run(args: Args) -> Result<Summary> {
     let mut session = Session::new(args)?;
     loop {

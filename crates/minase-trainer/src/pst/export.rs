@@ -72,8 +72,11 @@ pub fn quantize_weights(weights: &[[f64; 2]]) -> Result<Vec<[i16; 2]>> {
         .collect()
 }
 
-// NumPyの連続したf32配列のpairwise sum。float_evaluateは学習のf64和とは別に、
-// 145列をf32で加算してからf32のφで補間する。
+/// 量子化検査用のf32の加算順を定める。
+/// 8要素未満は前から足し、128要素を超えたら8の倍数の位置で半分に分けて再帰する。
+/// それ以外は8本の部分和を`((s0+s1)+(s2+s3))+((s4+s5)+(s6+s7))`に畳み、端数を前から足す。
+/// 学習のf64和とは別に、量子化検査と診断の集計で使う。
+/// PyTorchとの一度の照合で一致した順を固定する理由は`docs/adr/retire-the-python-trainer-after-a-one-time-cross-check.md`にある。
 pub(crate) fn numpy_sum(values: &[f32]) -> f32 {
     if values.len() < 8 {
         return values.iter().fold(-0.0, |sum, value| sum + value);
@@ -94,6 +97,11 @@ pub(crate) fn numpy_sum(values: &[f32]) -> f32 {
     values[stop..].iter().fold(sum, |sum, value| sum + value)
 }
 
+/// 1以上の最良エポックの重みを1/8センチポーンへ偶数丸めし、MNPT版2のpst.binと実数のpst-float.npzを書く。
+/// K、47個の探索用駒価値、規則名は`--init`から引き継ぎ、書いたファイルを読み直して検査する。
+/// 標本は検証集合を`epoch_permutation(seed,0)`で並べた先頭`--validation-sample`件である。
+/// 実数側は[`numpy_sum`]のf32和とf32のφで評価し、エンジンの`evaluate_pst`との差の平均が2センチポーン以下なら合格とする。
+/// 不合格でも出力は残し、呼び手が`quantization_error`を記録して終了コード1にする。
 pub(super) fn write_best(
     dataset: &Dataset,
     checkpoint: &Checkpoint,

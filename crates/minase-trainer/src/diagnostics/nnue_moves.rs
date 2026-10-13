@@ -31,6 +31,10 @@ pub struct MovesArgs {
     pub(super) output: PathBuf,
 }
 
+/// 着手前Bと着手後B′の整数評価から作る、センチポーン単位の差分。
+/// 着手前の手番側をtとし、`before = F_t(B)`、`same = F_t(B′)`、`opposite = F_{t̄}(B′)`とする。
+/// `delta = −opposite − before`、`placement = same − before`、`turn = −(opposite + same)`であり、
+/// `delta = placement + turn`が成り立つ。報告の差分統計には`delta`を使う。
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Components {
     delta: i32,
@@ -55,6 +59,10 @@ impl Components {
 
 type MoveRows<const N: usize> = BTreeMap<String, [Components; N]>;
 
+/// 全合法手を実際に適用し、USI表記をキーとして[`Components`]を記録する。
+/// 終局する着手も[`Game`]へ適用し、着手後局面の静的評価を使う。
+/// 同じUSI表記が2回現れた場合はエラーにする。
+/// 基準のPSTとFMを合わせた評価とPSTだけの評価は、2系列として同時に記録する。
 fn move_rows<const N: usize>(
     game: &Game,
     rules: Rules,
@@ -80,6 +88,11 @@ fn move_rows<const N: usize>(
     Ok(rows)
 }
 
+/// 入力順の0始まりの番号`index`で特定する局面ごとの報告。
+/// `matched_count`は両方にあるUSI表記の合法手数、`candidate_only_count`と`baseline_only_count`は片側だけの合法手数である。
+/// `candidate`はNNUEの全合法手の`delta`、`baseline`はPSTとFMを合わせた全合法手の`delta`の[`DeltaStatistics`]である。
+/// `candidate_minus_baseline`は共通の手の「NNUEの`delta` − PSTとFMを合わせた`delta`」、
+/// `candidate_minus_baseline_pst`は共通の手の「NNUEの`delta` − PSTだけの`delta`」の同じ集計である。
 #[derive(Serialize)]
 struct PositionReport {
     index: usize,
@@ -92,6 +105,7 @@ struct PositionReport {
     candidate_minus_baseline_pst: DeltaStatistics,
 }
 
+/// USI表記で共通する手と片側だけの手を数え、[`PositionReport`]の規則で差分を集計する。
 fn position_report(
     index: usize,
     candidate: &MoveRows<1>,
@@ -127,6 +141,13 @@ fn position_report(
     }
 }
 
+/// `diag nnue-moves`の全局面の全合法手についてのJSON報告。
+/// `net`、`base`、`positions`は各入力の[`FileIdentity`]、`position_count`は局面数である。
+/// `evaluation_perspective = "side_to_move_before_move"`、`standard_deviation_ddof = 0`を保存する。
+/// `candidate_only_count`と`baseline_only_count`は片側だけの合法手の全局面での合計、
+/// `by_position`は入力順の[`PositionReport`]の配列である。
+/// 片側だけの合法手がどちらか1件以上あれば、`error`に
+/// `"unmatched moves: candidate_only={件数}, baseline_only={件数}"`を持ち、それ以外は欄ごと省略する。
 #[derive(Serialize)]
 pub(super) struct Report {
     net: FileIdentity,
@@ -148,6 +169,10 @@ fn unmatched_error(candidate_only: usize, baseline_only: usize) -> Option<String
     })
 }
 
+/// `--positions`の全局面の全合法手について、MNUE版5とMNPT版3の着手前後の評価差を比べる。
+/// MNSDの来歴ファイルは要しない。
+/// ヘッダの規則セットを解釈して`engine-default`との一致を要求し、不一致と記録数0を拒否する。
+/// 各記録を[`Record::to_position`](minase::training::records::Record::to_position)で復元して[`Game`]を作り、[`move_rows`]で各手を評価する。
 pub(super) fn run(args: &MovesArgs) -> Result<Report> {
     let net = IntegerNetwork::read(&args.net)?;
     let baseline = read_baseline(&args.base)?;

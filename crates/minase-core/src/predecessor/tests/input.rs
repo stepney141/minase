@@ -1,8 +1,8 @@
 use super::*;
 
+/// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第5条により、歩兵12枚を超える入力を拒否する。
 #[test]
 fn material_overflow_reports_origin_and_owner() {
-    // 設計書「駒在庫」、第4・5条: 歩兵12枚を超える入力は拒否する。
     for color in Color::ALL {
         let pawns: Vec<_> = (0..13)
             .map(|i| (sq(i % 12, i / 12), color, PieceKind::Pawn))
@@ -20,9 +20,9 @@ fn material_overflow_reports_origin_and_owner() {
     }
 }
 
+/// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第9条により、成獅子は麒麟、成金は歩兵の在庫を使う。
 #[test]
 fn promoted_material_has_its_own_origin() {
-    // 設計書「駒在庫」、第9条: 成獅子は麒麟、成金は歩兵の在庫を使う。
     let target = position_from_codes(
         Color::Black,
         &[
@@ -69,9 +69,9 @@ fn promoted_material_has_its_own_origin() {
     );
 }
 
+/// [`predecessor`](crate::predecessor)の集合Aの保留条件を検査する。P2で各側高々1個とする待機からはP5の歩兵を除く。
 #[test]
 fn deferred_state_must_match_promotion_rules() {
-    // 設計書「直前局面の定義」、第30条: P0は保留なし、P0+P5は歩兵のみ、P2は各側高々1個。
     for color in Color::ALL {
         let rank = if color == Color::Black { 9 } else { 2 };
         let squares = [sq(4, rank), sq(5, rank)];
@@ -129,9 +129,9 @@ fn deferred_state_must_match_promotion_rules() {
     }
 }
 
+/// [`predecessor`](crate::predecessor)の集合Aの先獅子条件に従い、記録升の駒、手番側の欠損、および空升での獅子力を検査する。
 #[test]
 fn lion_record_rejects_unpromoted_lion_full_stock_and_unexplained_empty_square() {
-    // 設計書「直前局面の定義」: 記録升の駒、手番側の欠損、空升での獅子力を検査する。
     let fixtures = [
         vec![(sq(5, 5), Color::Black, PieceKind::Lion)],
         vec![
@@ -152,9 +152,9 @@ fn lion_record_rejects_unpromoted_lion_full_stock_and_unexplained_empty_square()
     }
 }
 
+/// [`predecessor`](crate::predecessor)の集合Aの先獅子条件に従い、麒麟由来の成獅子と角鷹や飛鷲の経由升捕獲は記録を持てる。
 #[test]
 fn lion_record_accepts_empty_square_with_falcon_and_promoted_lion() {
-    // 設計書「直前局面の定義」: 麒麟由来の成獅子と角鷹の経由升捕獲は記録を持てる。
     for kind in [
         PieceKind::HornedFalcon,
         PieceKind::SoaringEagle,

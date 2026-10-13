@@ -1,7 +1,7 @@
 # エンジン開発のデバッグ手法の調査
 
 本書は、Chess Programming Wiki（以下CPW）の「Debugging」頁とその関連頁および引用投稿、ならびにStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースを調べ、エンジン開発で使われるデバッグ手法を整理した調査メモである。
-[デバッグ機能の整備](../plans/debugging-tools.md)の設計書が方式の根拠として参照し、[デバッグの手引き](../guides/debugging.md)が手法の出典として参照する。
+[デバッグ機能の整備](../plans/archived/debugging-tools.md)の設計書が方式の根拠として参照し、[デバッグの手引き](../guides/debugging.md)が手法の出典として参照する。
 調査日は2026年9月27日である。
 
 ## 結論
@@ -148,7 +148,7 @@ Fairy-Stockfishの`tests/regression.sh`は、新旧2つのバイナリのbench�
 依存ライブラリ（グローバルアロケータのmimallocなど）はこの宣言の対象外である。
 共有置換表とLazy SMPは原子操作だけで状態を共有するので、自作のコードのデータ競合は言語が排除しており、残る論理的な競合はサニタイザでは見つからない。
 
-第2に、minaseはperftの数値をテストの正しさの基準にしない方針をとり、perftは`bin/perft`の計測とデバッグの道具として残している（[movegen.md](../plans/movegen.md)の9節）。
+第2に、minaseはperftの数値をテストの正しさの基準にしない方針をとり、perftは`bin/perft`の計測とデバッグの道具として残している（[movegen.md](../plans/archived/movegen.md)の9節）。
 perftの既知値照合は適用せず、divideによる絞り込みだけが使える。
 
 第3に、minaseの評価で成り立つ対称性は「段反転と陣営交換」だけであり、この性質は`crates/minase/src/eval/pst/tests.rs`と`crates/minase/src/eval/pst/features.rs`のテストが、手で置いた局面と初期局面について検査している。

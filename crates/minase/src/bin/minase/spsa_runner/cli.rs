@@ -15,6 +15,7 @@ pub(crate) struct Arguments {
     #[arg(long)]
     pub(super) run_dir: Option<PathBuf>,
     /// 同じ実行条件で再開するディレクトリ。
+    /// 再開ではディレクトリだけを受け付け、条件は`manifest.json`から読む。
     #[arg(long)]
     pub(super) resume: Option<PathBuf>,
     /// 全対局と摂動の基本シード。

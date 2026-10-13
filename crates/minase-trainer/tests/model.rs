@@ -72,7 +72,7 @@ fn initialization_is_seeded_and_consumes_only_observed_canonical_rows() {
 
 #[test]
 fn initialization_requires_exact_mirror_symmetry_in_both_endpoints() {
-    // Pythonのload_initialと同じく、未観測行も含む全特徴の左右一致を要求する。
+    // Model::initializeは未観測行も含む全特徴の左右一致を要求する。
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let shape = Shape::new(set, 2, 1000.0).unwrap();
         let masks = Masks::new(set, vec![false; 6841], vec![false; set.dimensions() + 1]).unwrap();

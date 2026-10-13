@@ -1,4 +1,24 @@
-//! プロトコル非依存の対局状態機械。
+//! 通信方式に依存しない対局状態機械。
+//!
+//! [`Engine`]は現局用の規則と次局用の規則を分け、次の表に従って遷移する。
+//!
+//! | コマンド | 受理条件と変更 | 受理後の状態 |
+//! | --- | --- | --- |
+//! | `NewGame` | 全状態で次局の規則を確定し、初期局面の新しい対局を作る。 | `AwaitingStart`になる。 |
+//! | `SetPosition` | `AwaitingStart`なら次局の規則を確定し、`InGame`なら現局の規則で再構成する。`Finished`では`GameAlreadyOver`で拒否する。 | 終局していれば`Finished`、それ以外は`InGame`になる。 |
+//! | `ExtendPosition`、`ReplaceLastMove`、`ApplyMove` | `InGame`だけで受理する。`AwaitingStart`では`GameNotStarted`、`Finished`では`GameAlreadyOver`で拒否する。 | 着手で終局した場合だけ`Finished`へ移る。 |
+//! | `EndGame` | 全状態で対局を保持し、基底手数と末尾置換用の直前の対局を消す。 | `AwaitingStart`へ戻る。 |
+//! | `SetRules` | 全状態で検証済みの次局の規則だけを置き換える。 | 状態を保つ。 |
+//! | `Quit` | 状態を変えず受理し、セッションの終了をアダプターに任せる。 | 状態を保つ。 |
+//!
+//! 拒否したコマンドは規則、対局、およびライフサイクルを一切変えない。
+//! 着手列の設定と差分の適用は複製上で全手を試し、成功時だけ交換する。
+//! 1手の適用も[`Game::play`]の拒否時に対局を保つ。
+//! `newly_finished`は、局面設定または着手で初めて終局した応答だけに裁定結果を持つ。
+//!
+//! `usinewgame`を送らないLishogi-Botにも対応するため、
+//! `AwaitingStart`で最初に受理した`SetPosition`でも次局の規則を確定する。
+//! 理由は`docs/adr/commit-pending-rules-on-first-position.md`にある。
 
 use core::fmt;
 
@@ -8,7 +28,7 @@ use minase_core::notation::sfen::SetupPosition;
 use minase_core::position::PositionError;
 use minase_core::rules::{RuleCode, Rules, RulesError};
 
-/// 対局セッションのライフサイクル。
+/// 対局セッションのライフサイクル。遷移と拒否条件は[`crate::protocol::engine`]の表に従う。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EngineLifecycle {
     /// 規則は確定しているが、対局開始局面はまだ受信していない。
@@ -19,11 +39,18 @@ pub enum EngineLifecycle {
     Finished,
 }
 
-/// プロトコルから対局状態機械へ渡すコマンド。
+/// 対局状態の変更とセッション終了を伝えるコマンド。
+///
+/// 探索の開始、停止、結果、および`moves`、`state`、`d`などの読み取り専用照会は含めない。
+/// 照会はアダプターが[`Engine::game`]などを直接読む。
+/// 理由は`docs/adr/call-search-from-protocol-modules.md`にある。
 #[allow(clippy::large_enum_variant)] // 確定設計の値型境界を保ち、未要求の間接化を避ける。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EngineCommand {
-    /// 次局に適用する規則コード列を検証してpendingへ保存する。
+    /// 受信時に[`Rules::from_codes`]で検証し、次局に適用する規則を置き換える。
+    /// 同じコードの重複、同じ排他群の複数指定、および獅子、成り、反復、駒枯れの群の欠落を拒否する。
+    /// 不正なら次局の規則を保ったまま[`RejectReason::InvalidRules`]を返す。
+    /// 保持するコード列はL、P、R、Eの順、同じ群では番号順へ正準化する。
     SetRules(Vec<RuleCode>),
     /// pending規則をcommitし、開始局面の待機状態へ戻す。
     NewGame,
@@ -39,7 +66,15 @@ pub enum EngineCommand {
         /// 現局から追加する着手列。
         moves: Vec<Move>,
     },
-    /// 最後に受理した1手を原子的に置き換える。
+    /// 最後の着手列の末尾1手だけを原子的に置き換える。
+    ///
+    /// 受理した`SetPosition`または空でない`ExtendPosition`の最後の1手を適用する直前の対局を使う。
+    /// 空の`ExtendPosition`はこの保存を保ち、`ApplyMove`、`NewGame`、`EndGame`は消す。
+    /// 保存した対局の複製へ新しい1手だけを適用し、成功時に現局と交換する。
+    /// 保存した起点は残すため、外れが続いても同じ起点から置き換えられる。
+    /// 起点がなければ[`RejectReason::NoPreviousMove`]で拒否する。
+    /// 先読みが外れ、末尾1手だけが異なる`position`を受けた際の全手再生を省くための操作である。
+    /// 理由は`docs/adr/apply-position-by-token-difference.md`にある。
     ReplaceLastMove(Move),
     /// 現局へ1手を適用する。
     ApplyMove(Move),
@@ -124,9 +159,9 @@ struct RuleSelection {
 pub struct Engine {
     /// 現在保持している対局。
     game: Game,
-    /// 最後の着手を適用する直前の対局。
+    /// [`EngineCommand::ReplaceLastMove`]用に保存する、着手列の末尾を適用する直前の対局。
     before_last_move: Option<Game>,
-    /// 現在の対局を再構成した基底局面までの絶対手数。
+    /// [`Self::ply`]の基底手数。`SetPosition`で受けたSFENの次の手番号から1を引いた値。
     base_ply: u32,
     /// 現局に適用中の規則。
     active: RuleSelection,
@@ -155,11 +190,7 @@ impl Engine {
     }
 
     /// コマンドを1個処理する。
-    ///
-    /// `ApplyMove`は`InGame`だけで受理する。`AwaitingStart`では開始局面がなく、
-    /// `Finished`では終局済みなので拒否する。`SetPosition`は`AwaitingStart`なら
-    /// pending規則をcommitし、`InGame`ならactive規則で現局を原子的に再構成する。
-    /// `ExtendPosition`は`InGame`だけで受理し、現局へ着手列を原子的に追加する。
+    /// 受理条件、規則の確定、および拒否時の原子性は[`crate::protocol::engine`]のライフサイクル表に従う。
     pub fn handle(&mut self, command: EngineCommand) -> EngineReply {
         match command {
             EngineCommand::SetRules(codes) => match validate_rules(codes) {
@@ -203,12 +234,18 @@ impl Engine {
     }
 
     #[inline]
-    /// 末尾1手の置き換えの解析に使う直前の対局を返す。
+    /// [`EngineCommand::ReplaceLastMove`]の解析に使う直前の対局を返す。
+    /// 保存と消去の条件は同コマンドの契約に従う。
     pub(crate) fn before_last_move(&self) -> Option<&Game> {
         self.before_last_move.as_ref()
     }
 
-    /// 開始局面から現局面までの絶対手数を返す。
+    /// 初形を0とする絶対手数を`base_ply + Game::ply_count()`で返す。
+    ///
+    /// `base_ply`は`SetPosition`のSFENの次の手番号から1を引いた値である。
+    /// `ExtendPosition`と`ReplaceLastMove`は基底手数を保ち、`NewGame`と`EndGame`は基底手数を0に戻す。
+    /// USIとCECPはこの値を[`crate::search::ClockLimits`]へ渡し、探索履歴の長さから推測しない。
+    /// 理由は`docs/adr/estimate-moves-to-go-from-ply.md`にある。
     pub const fn ply(&self) -> u32 {
         self.base_ply + self.game.ply_count()
     }
@@ -466,7 +503,7 @@ mod tests {
     use minase_core::position::{Position, PositionBuilder};
     use minase_core::test_util::sq;
 
-    // 本モジュールの検査対象はEngineReply（公開境界）までとする（D6-ENG-07）。
+    // 本モジュールの検査対象はEngineReply（公開境界）までとする。
     // 状態の不変・遷移は後続コマンドへの応答差で観測し、内部フィールドへは触れない。
 
     fn setup(position: Position) -> SetupPosition {
@@ -535,8 +572,8 @@ mod tests {
 
     #[test]
     fn failed_commit_is_atomic_and_keeps_active_pending_and_lifecycle() {
-        // PL「コマンドenum…」: commitは複製上の全適用が成功した場合に限りactive規則・Game・
-        // ライフサイクルを同時に交換する原子的操作（D6-ENG-01）。
+        // [`crate::protocol::engine`]のライフサイクル表: commitは複製上の全適用が成功した場合に限りactive規則・Game・
+        // ライフサイクルを同時に交換する原子的操作。
         let mut engine =
             Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E2]).unwrap();
         assert!(matches!(
@@ -595,8 +632,8 @@ mod tests {
 
     #[test]
     fn lifecycle_reports_each_finishing_transition_once_and_rejects_invalid_moves() {
-        // PL「コマンドenum…」: newly_finishedはOngoingからFinishedへ遷移した応答だけが持つ。
-        // 終局通知は状態遷移イベントであって状態述語ではない（D6-ENG-04）。
+        // [`crate::protocol::engine`]のライフサイクル表: newly_finishedはOngoingからFinishedへ遷移した応答だけが持つ。
+        // 終局通知は状態遷移イベントであって状態述語ではない。
         let result = GameResult::Win {
             winner: Color::Black,
             reason: WinReason::RoyalCapture,
@@ -625,7 +662,7 @@ mod tests {
                 newly_finished: Some(result),
             }
         );
-        // 終局後の着手は成立しない（RULES.md第26条第12項、D6-ENG-05のGameAlreadyOver）。
+        // RULES.md第26条第12項により終局後の着手は成立せず、GameAlreadyOverを返す。
         assert_eq!(
             engine.handle(EngineCommand::ApplyMove(royal_capture())),
             EngineReply::Rejected(RejectReason::GameAlreadyOver)
@@ -777,8 +814,8 @@ mod tests {
 
     #[test]
     fn set_rules_validates_on_receipt_and_keeps_pending_on_failure() {
-        // PL「コマンドenum…」: SetRulesの検証はfrom_codesの成功に加えて反復規則の存在を含み、
-        // commit時ではなく受信時に弾く（D6-ENG-02）。R33第5項（反復規則は常にいずれか1つ）・
+        // [`crate::protocol::engine`]のライフサイクル表: SetRulesの検証はfrom_codesで反復規則を含む各群の存在を検査し、
+        // commit時ではなく受信時に弾く。RULES.md第33条第5項（反復規則は常にいずれか1つ）・
         // 第9項（矛盾する組合せは無効）。
         let mut engine =
             Engine::new(vec![RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0]).unwrap();
@@ -823,7 +860,7 @@ mod tests {
             })
         );
     }
-    // ponder.md設計判断「外れからの復帰」（D6-ENG-08、D6-ENG-05）。
+    // [`Engine::before_last_move`]と`docs/adr/apply-position-by-token-difference.md`の契約を検査する。
     #[test]
     fn ponder_replacement_preserves_history_and_failed_extensions_are_atomic() {
         let mut engine =

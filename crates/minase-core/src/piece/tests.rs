@@ -3,7 +3,7 @@
 use super::*;
 
 /// 初期配置で使用する21種の駒種(第4条・第5条)。王将・玉将は性能同一の
-/// 1種として数える(第5条、SPEC_UNCLEAR SU-D4-3)。
+/// 1種として数える(第5条)。
 const INITIAL_KINDS: [PieceKind; 21] = [
     PieceKind::Pawn,
     PieceKind::GoBetween,
@@ -40,7 +40,7 @@ const PROMOTED_ONLY_KINDS: [PieceKind; 8] = [
     PieceKind::SoaringEagle,
 ];
 
-// 駒種は初期21種＋成駒のみ8種の29種である(第4条3項・第10条、D4-004-03)。
+// 駒種は初期21種＋成駒のみ8種の29種である(第4条3項・第10条)。
 #[test]
 fn article_4_3_piece_kinds_are_21_initial_plus_8_promoted_only() {
     assert_eq!(INITIAL_KINDS.len() + PROMOTED_ONLY_KINDS.len(), 29);
@@ -63,7 +63,7 @@ fn article_4_3_piece_kinds_are_21_initial_plus_8_promoted_only() {
     }
 }
 
-// 実装契約(D4-IMP-06): 成り対応は第9条の表とちょうど一致し、成る→戻すが恒等である。
+// 実装上の契約として、成り対応は第9条の表とちょうど一致し、成る→戻すが恒等である。
 // 成れない駒種(第17条1項)と成駒の再成り禁止(第17条4項)も表から確定する。
 #[test]
 fn promotion_pairs_match_article_9_table_and_demotion_is_inverse() {
@@ -131,7 +131,7 @@ fn promotion_pairs_match_article_9_table_and_demotion_is_inverse() {
     }
 }
 
-// 実装契約(D4-IMP-05): 駒コードの符号化は(所有者, 駒種, 成否)の上で単射で、
+// 実装上の契約として、駒コードの符号化は(所有者, 駒種, 成否)の上で単射で、
 // 復号との往復は恒等である。空升・番兵はどの駒コードとも区別される。
 // 生の金将と歩兵の成駒のような動き同一の対も、成否によって区別される(第24条1項a)。
 #[test]

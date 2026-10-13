@@ -4,7 +4,9 @@ use super::{Error, Result};
 use crate::nn::{AdamCoefficients, AdamWGroup};
 use minase::eval::features::{FEATURE_COUNT, mirror_feature};
 
+/// 1/8センチポーンへ量子化したi16の下限に対応する−4096センチポーン。
 pub(super) const LINEAR_MIN: f32 = -4096.0;
+/// 1/8センチポーンへ量子化したi16の上限に対応する4095.875センチポーン。
 pub(super) const LINEAR_MAX: f32 = 4095.875;
 
 fn constrain_linear(weights: &mut [f32]) -> Result<()> {
@@ -17,15 +19,17 @@ fn constrain_linear(weights: &mut [f32]) -> Result<()> {
     Ok(())
 }
 
+/// 13,680特徴を鏡映共有する6,840行と、常に0の埋め草行6,840の計6,841行。
 pub(crate) const CANONICAL_ROWS: usize = FEATURE_COUNT / 2 + 1;
 
+/// `square = base mod 144`、`rank = square/12`、`file = square mod 12`として、`floor(base/144)×72 + rank×6 + min(file,11−file)`へ写す。
 pub(crate) fn canonical(base: usize) -> usize {
     let square = base % 144;
     let file = square % 12;
     base / 144 * 72 + square / 12 * 6 + file.min(11 - file)
 }
 
-/// センチポーン単位の正準行[6841, 2]と出力用K。末尾はゼロの埋め草。
+/// センチポーン単位の正準行`[6841, 2]`と出力用K。末尾はゼロの埋め草。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Model {
     pub(crate) weights: Vec<f32>,
@@ -33,9 +37,8 @@ pub struct Model {
 }
 
 impl Model {
-    /// 全特徴の実数初期値を受け取り、鏡映対の平均を共有する。
-    ///
-    /// 左右の鏡映対を平均し、非対称な初期値も受け入れる。
+    /// 特徴番号順の実数2端点を受け取り、左右の鏡映対の平均を共有行に置く。
+    /// Kは正の有限値、入力は有限かつ[−4096,4095.875]センチポーンを要求する。
     pub fn initialize(initial: &[[f32; 2]], k: f32) -> Result<Self> {
         if !k.is_finite() || k <= 0.0 {
             return Err(Error::Invalid("PST K must be finite and positive"));
@@ -53,8 +56,8 @@ impl Model {
         Self::from_endpoints(initial, k)
     }
 
-    // Joint initialization verifies quantized endpoints before mirror averaging;
-    // values just outside the clamp bounds can still round to valid i16 weights.
+    /// 同時学習用に、有限な2端点を鏡映対で平均し、保存範囲への事前制限は課さない。
+    /// 範囲を少し超えるNPZの値でもi16へ丸めると基準と一致し得るため、呼び手が平均の前に量子化して照合する。
     pub(crate) fn from_endpoints(initial: &[[f32; 2]], k: f32) -> Result<Self> {
         if initial.len() != FEATURE_COUNT
             || initial.iter().flatten().any(|v| !v.is_finite())
@@ -100,7 +103,8 @@ impl Model {
             .collect()
     }
 
-    /// 有限性を検査してから、MNPTの保存範囲へ切り詰める。
+    /// 重みの有限性を検査し、[−4096,4095.875]センチポーンへ切り詰める。
+    /// Adamの各更新直後に呼び、非有限値はエラーにする。
     pub fn constrain(&mut self) -> Result<()> {
         constrain_linear(&mut self.weights)?;
         self.validate()
@@ -120,7 +124,9 @@ impl Model {
     }
 }
 
-/// PSTの重みに対応するAdamの両モーメントと更新回数。
+/// PSTの重みに対応する、重み減衰0のAdamWの両モーメントと更新回数。
+/// β₁=0.9、β₂=0.999、ε=10⁻⁸で、式は[`AdamCoefficients::update`]に従う。
+/// バッチに現れない行もモーメントで毎回更新する。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Adam {
     pub(crate) m: Vec<f32>,

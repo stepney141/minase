@@ -9,38 +9,72 @@ use minase::stats::estimate_elo;
 use serde::Serialize;
 use std::{fs::OpenOptions, io, path::Path};
 
-/// 主指標と監査用の補助指標。
+/// 時間制御の診断に使う主指標と監査用の補助指標。
+///
+/// CPU時間が1局でも欠測なら、CPU総時間、ペア平均時間、分散と時間の積、およびCPU秒あたりの証拠を`null`とする。
+/// メモリの欠測は最大常駐量、同時実行時の見積り、および物理メモリ比を`null`とする。
+/// `Threads`の欠測は最大ワーカー数と1コアを残せるかの判定だけを`null`とする。
+/// 欠測を0で埋めず、欠測局を除外した計算もしない。
 #[derive(Serialize)]
 pub(super) struct Report {
+    /// 候補側のペア得点0、0.5、1、1.5、2に対応する度数。単位はペアである。
     pub(super) pentanomial: [u64; 5],
+    /// 手数上限を含まず、5分類へ取り込んだペア数。
     pub(super) valid_pairs: u64,
+    /// いずれかの局が手数上限に達したため統計から除いたペア数。
     pub(super) discarded_pairs: u64,
+    /// 候補側のペア得点を2で割った正規化得点の平均。範囲は[0, 1]である。
     pub(super) normalized_mean_score: f64,
+    /// 正規化ペア得点の母分散。度数を有効ペア数で割って求める。
     pub(super) normalized_pair_variance: f64,
+    /// 平均の標準誤差。`sqrt(normalized_pair_variance / valid_pairs)`である。
     pub(super) standard_error: f64,
+    /// ロジスティックEloの点推定の文字列表現。無限大は`+inf`または`-inf`で表す。
     pub(super) elo: String,
+    /// [`minase::stats::estimate_elo`]による95%信頼区間の下端と上端。単位はEloである。
     pub(super) elo_ci95: [String; 2],
+    /// 破棄ペアを含む全局の両エンジンのCPU時間の和。単位はnsである。
     pub(super) total_cpu_time_ns: Option<u64>,
+    /// CPU総時間を有効ペア数で割った値。単位はns/ペアであり、破棄ペアの費用も含む。
     pub(super) average_cpu_time_per_valid_pair_ns: Option<f64>,
+    /// 正規化ペア得点の母分散と有効ペアあたり平均CPU時間の積。時間の単位はnsである。
     pub(super) variance_time_product: Option<f64>,
+    /// `z = (normalized_mean_score - 0.5) / standard_error`の二乗を総CPU秒で割った値。
     pub(super) evidence_per_cpu_second: Option<f64>,
+    /// 再開を含む、対局完了を待っていた累計実行時間。単位はnsである。
     pub(super) active_wall_time_ns: u64,
+    /// 有効ペア数を累計実行時間で割った処理率。単位はペア/時である。
     pub(super) valid_pairs_per_hour: f64,
+    /// 全局の実時間の中央値。偶数局なら中央2値の平均を整数へ切り捨てる。単位はnsである。
     pub(super) game_wall_time_median_ns: u64,
+    /// 全局の実時間の95パーセンタイル。最近傍順位で求め、単位はnsである。
     pub(super) game_wall_time_p95_ns: u64,
+    /// 手数上限に達した局数。破棄ペア数とは異なる。
     pub(super) cutoffs: u64,
+    /// 全局における反則負けの理由別件数。投了を含まない。
     pub(super) engine_failures: FailureCounts,
+    /// 全局におけるエンジン別のCPU時間と最大常駐量の欠測件数。
     pub(super) missing_resource_observations: MissingResourceCounts,
+    /// 1局の両エンジンの最大常駐量の和を全局で比較した最大値。単位はbyteである。
     pub(super) maximum_game_peak_rss_bytes: Option<u64>,
+    /// 1局の最大常駐量の最大値に同時対局数を掛けた保守的な見積り。単位はbyteである。
     pub(super) conservative_concurrent_peak_rss_bytes: Option<u64>,
+    /// 測定機の物理メモリ容量。単位はbyteである。
     pub(super) physical_memory_bytes: u64,
+    /// 同時実行時の保守的な常駐量を物理メモリ容量で割った比。
     pub(super) conservative_memory_fraction: Option<f64>,
+    /// 測定機の物理コア数。
     pub(super) physical_cores: usize,
+    /// 候補と基準の`Threads`が欠測かどうかを表す。
     pub(super) missing_engine_threads: MissingEngineThreads,
+    /// 候補と基準の`Threads`の大きい方。単位は探索ワーカーである。
     pub(super) maximum_engine_threads: Option<u32>,
+    /// 同時対局数と最大`Threads`の積が物理コア数未満なら真。先読みの倍数は掛けない。
     pub(super) leaves_one_physical_core: Option<bool>,
+    /// [`report`]で正規化した比較条件。出力JSONには含めない。
     #[serde(skip)]
     pub(super) comparison_manifest: serde_json::Value,
+    /// 保存した全ペアの番号を昇順に並べた列。出力JSONには含めない。
     #[serde(skip)]
     pub(super) pair_numbers: Vec<u64>,
 }
@@ -130,7 +164,20 @@ fn candidate_half_points(game: &GameRecord) -> Option<u8> {
     Some(u8::from(winner == Some(game.candidate_color)) * 2)
 }
 
-/// 1つの実行ディレクトリを校正指標へ集計する。
+/// 保存済み実行を時間制御の診断用に集計する。採否の判定には使わない。
+///
+/// 共有ロックが取れない実行中のディレクトリ、版4と5以外の形式、
+/// 起動ごとの測定機の不一致、固定ペア数Elo以外のモード、
+/// 両エンジンの時間制御の不一致または固定制限を拒否する。
+/// 強制終了または実行中の記録、累計実行時間0、有効ペア0、
+/// 欠測ではない総CPU時間0、およびペア得点の分散0も拒否する。
+/// 必要な欄や測定機の物理コア数とメモリ容量が欠ける場合、数値があふれる場合、
+/// ペア番号の不連続やファイル名との不一致、先後入替や得点と終局理由の矛盾もエラーとする。
+///
+/// 版4は`manifest.json`の`cpu`を全起動の測定機として読む。
+/// 比較条件はmanifestから思考制限、記録形式の版、およびrunnerを除き、検査済みの測定機を加えたものである。
+/// `random`の同一性に残る`sha256`も比較条件から除く。
+/// 資源の欠測の扱いと各指標の定義は[`Report`]に従う。
 pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
     let lock = OpenOptions::new()
         .read(true)
@@ -801,7 +848,7 @@ mod tests {
         std::fs::remove_dir_all(run_dir).unwrap();
     }
 
-    // D8-HARN-26（ponder.md保存形式）。旧版を互換解釈せず版の明示エラーにする。
+    // [`report`]は版4と5だけを受理し、それ以外を版のエラーで拒否する。
     #[test]
     fn report_rejects_version_three_before_decoding_new_fields() {
         let run_dir = std::env::temp_dir().join(format!("minase-report-v3-{}", std::process::id()));

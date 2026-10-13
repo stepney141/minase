@@ -11,7 +11,7 @@ minaseの通常探索の手の順序付けには改善の余地がある。βカ
 - history表（βカットを起こした静かな手の統計。静かな手とは相手の駒を取らない手）の値は、加点、半減、減衰の更新しか行われないので負にならない。したがってLMR（late move reductions、順序付けの後方の静かな手を浅く読む手法）の減深量を決める`pruning.rs`の`lmr_reduction`にある「history値が−146以下なら減深を1増やす」分岐は、現行では発動しない。
 - 候補は8件に絞り、実装費用が小さく新しい表や手生成を要しないものから、1主張1測定で順に検証する。費用の小さい候補を先にするのは、効果の有無を早く確かめ、大きな表を要する候補の設計をその結果の後に回すためである。各候補の順位は本書の「候補の順位」節に記す。
 
-具体的な設計は[手の順序付けの改善](../plans/move-ordering.md)で定める。
+具体的な設計は[手の順序付けの改善](../plans/archived/move-ordering.md)で定める。
 
 ## 調査した版
 
@@ -110,6 +110,6 @@ codexは追加の候補として、静かな手がβカットしたときにも�
 - Stockfish `src/movepick.cpp`、`src/search.cpp`、`src/history.h`（コミット17a6c8f1、GPL-3.0-or-later）: [movepick.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/movepick.cpp)、[search.cpp](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/search.cpp)、[history.h](https://github.com/official-stockfish/Stockfish/blob/17a6c8f1eb0da45c2ca405321919519bf4e211ba/src/history.h)。
 - Chess Programming Wiki「Move Ordering」: <https://www.chessprogramming.org/Move_Ordering>。初手βカット率の目安の出典である。
 - [最初の手でβカットが起きる割合の原因調査](../audits/beta-cutoff-first-move-2026-09-27.md)（2026年9月27日、コミットdb716df）。
-- [棋力向上段階5](../plans/strength-stage5.md)、[棋力向上段階12](../plans/strength-stage12.md)、[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)。
+- [棋力向上段階5](../plans/archived/strength-stage5.md)、[棋力向上段階12](../plans/archived/strength-stage12.md)、[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)。
 - 測定記録: [strength-stage5-malus-stc](../measurements/strength-stage5-malus-stc.md)、[strength-stage5-malus-bench](../measurements/strength-stage5-malus-bench.md)、[strength-stage5-piece-history-stc](../measurements/strength-stage5-piece-history-stc.md)、[strength-stage5-cmh-bench](../measurements/strength-stage5-cmh-bench.md)、[strength-stage5-continuation-bench](../measurements/strength-stage5-continuation-bench.md)、[strength-stage12-bad-captures-stc](../measurements/strength-stage12-bad-captures-stc.md)、[strength-stage12-bad-captures-bench](../measurements/strength-stage12-bad-captures-bench.md)、[strength-stage6-iteration-diag](../measurements/strength-stage6-iteration-diag.md)、[move-ordering-baseline-bench](../measurements/move-ordering-baseline-bench.md)。
 - 教訓: [不採用の枝刈りは数え方を点検し、係数を調整し直してから捨てる](../lessons/retune-rejected-pruning-before-discarding.md)、[失う良手の割合は深さの上限のない再帰での枝刈りの損失を抑えない](../lessons/recall-loss-does-not-bound-recursive-pruning.md)。

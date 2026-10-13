@@ -6,6 +6,11 @@ use minase_core::{RuleCode, rules::parse_rule_set};
 use super::DEFAULT_MAX_PLY;
 
 /// ランダム対局検証ハーネスのコマンドライン引数。
+///
+/// `--games`の既定は1、`--max-ply`の既定は4096である。
+/// `--seed`は省略時に時刻から作り、明示した場合も省略した場合も必ず表示する。
+/// `--rules`は必須であり、既定値を持たない。
+/// `--game`と`--games`の同時指定は認めず、局番号は1起算で0を拒否する。
 #[derive(Parser)]
 #[command(name = "random_play")]
 pub(crate) struct Arguments {
@@ -75,10 +80,7 @@ mod tests {
     use super::*;
     use minase_core::Rules;
 
-    // D8-HARN-16(random-play.mdコマンドライン引数節): `--games`既定1、
-    // `--max-ply`既定4096、`--seed`省略可、`--verify-all`・`--verbose`受理。
-    // `--rules`は明文で必須、`--game`と`--games`の同時指定はエラー、
-    // 局番号は1起算(0は不正)。
+    /// [`Arguments`]の既定値、必須引数、排他指定、および局番号の契約を検査する。
     #[test]
     fn cli_defaults_flags_and_conflicts_follow_the_design_document() {
         let defaults = Arguments::try_parse_from(["random_play", "--rules", "engine-default"])

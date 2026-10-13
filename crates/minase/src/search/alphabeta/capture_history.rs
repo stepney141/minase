@@ -1,6 +1,10 @@
-//! docs/plans/search-revival-spsa.md「戻す8項目」の捕獲履歴。
-//! 更新と添字はstrength-stage12.md「項目3」に従い、上限65,536をi32で保持する。
-//! 静かな手のβカット時の減点はdocs/plans/move-ordering.md「候補1」に従う。
+//! 捕獲手の順序付けに使うワーカー別の捕獲履歴（capture history）。
+//!
+//! βカットを起こした捕獲手へ加点し、打ち切り手の種別によらず先に探索済みの捕獲手を減点する。
+//! 加減点の絶対値は `min(深さ², CaptureHistoryLimit)` とし、重力式 `v += b − v × |b| / CaptureHistoryLimit` で更新する。
+//! 値は常に±`CaptureHistoryLimit`に収まり、通常探索では[`CaptureHistory::adjustment`]で駒価値へ換算する。
+//! 静止探索では生の履歴値で同じ捕獲価値の群内を並べる。
+//! 上限と適用範囲の理由は`docs/adr/bound-capture-history-and-use-it-in-qsearch.md`にある。
 
 use crate::eval::Nnue;
 use minase_core::board::BOARD_SQUARE_COUNT;
@@ -47,7 +51,11 @@ impl CaptureHistory {
         self.values[index(position, nnue, mv)]
     }
 
-    /// 履歴値を歩兵価値で換算する。整数除算は0方向へ丸める。
+    /// 履歴値を駒価値へ換算し、捕獲価値に加える値を返す。
+    ///
+    /// `尺度 = 歩兵価値 × CaptureHistoryScale / 100` を先に整数で求め、`履歴値 × 尺度 / CaptureHistoryLimit` を返す。
+    /// 整数除算は0方向へ丸め、換算値の絶対値は尺度以下に保つ。
+    /// 捕獲価値の差が大きい手の順序を履歴だけで覆さないための制限である。
     pub(super) fn adjustment(&self, position: &Position, nnue: &Nnue, mv: Move) -> i32 {
         let scale = i64::from(nnue.pawn_value()) * i64::from(params::capture_history_scale()) / 100;
         (i64::from(self.read(position, nnue, mv)) * scale
@@ -88,6 +96,8 @@ impl CaptureHistory {
     }
 }
 
+/// 着手前の所有者と駒種、到達升、被捕獲駒種の順で添字を構成する。
+/// 2枚取りでは価値の高い被捕獲駒を選び、同値なら捕獲升の列の後方、すなわち到達升を選ぶ。
 fn index(position: &Position, nnue: &Nnue, mv: Move) -> usize {
     let mover = piece_at_for_ordering(position, mv.from);
     let victim = position
@@ -114,7 +124,8 @@ fn update(value: &mut i32, bonus: i32, limit: i32) {
 mod tests {
     use super::*;
 
-    /// 設計書「検証」: Dの両端で全履歴値と境界の加減点を検査する。
+    /// 重力式は上限の許容範囲の両端でも履歴値を±上限以内に保つ。
+    /// 加減点が上限に等しい場合は、その符号側の上限へ達する。
     #[test]
     fn capture_history_gravity_stays_bounded_at_limit_extremes() {
         for limit in [4_096, 65_536] {

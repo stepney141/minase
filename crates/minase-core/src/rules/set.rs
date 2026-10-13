@@ -63,6 +63,11 @@ pub enum RuleGroup {
 }
 
 /// 着手生成と局面更新に用いる規則(第29条・第30条)。
+///
+/// [`Position`](crate::Position)、[`MoveGenerator`](crate::MoveGenerator)、探索、局面表記、
+/// および直前局面生成器が受け取る規則はこの型に限る。
+/// 反復規則、駒枯れ規則、およびE1は含めず、対局全体の規則は[`Rules`]で表す。
+/// 2層に分ける理由は`docs/adr/represent-rule-sets-as-algebraic-data-types.md`にある。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct MoveRules {
     /// 採用する獅子規則(第29条L0・L1・L4)。
@@ -100,6 +105,11 @@ impl MoveRules {
 }
 
 /// 対局で採用する規則の集合(第29条から第33条)。
+///
+/// 対局管理層、審判層、プロトコル層、および対局を回す補助コマンドが使う完全な規則集合である。
+/// 排他群は列挙型で表すので不正な組合せを構築できず、L4は[`LionRule::L0`]の中にだけ現れる。
+/// [`Self::from_codes`]、定数、または構造体リテラルで構築し、ビルダーは置かない。
+/// この表現を採る理由は`docs/adr/represent-rule-sets-as-algebraic-data-types.md`にある。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Rules {
     /// 着手生成と局面更新に用いる規則(第29条・第30条)。

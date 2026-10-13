@@ -107,7 +107,7 @@ TensorRTはスレッドごとに最適化プロファイルとCUDAストリー�
 AlphaZeroの将棋は移動元の升ごとに139種類の移動を並べた9×9×139平面、dlshogiは移動方向20種と駒打ち7種を移動先の81升に掛けた2,187ラベルである（`cppshogi.h` 46〜53行）。
 dlshogiの「方向だけ」の方式は、獅子、麒麟、鳳凰、角鷹、および飛鷲が距離2へ跳ぶので中将棋では単射にならない（推論）。
 HaChuは獅子の2歩手を「第1歩方向×第2歩方向」の64通りで符号化する（`hachu-debian/hachu.c` 1090〜1096行、1487〜1514行）。
-minaseの `Move { from, mid, to, promote }` は1つの結果に1つの表現を対応させており（[plans/move-canonicalization.md](../plans/move-canonicalization.md)）、方策のラベルを着手の値だけから単射に計算できる。
+minaseの `Move { from, mid, to, promote }` は1つの結果に1つの表現を対応させており（[plans/move-canonicalization.md](../plans/archived/move-canonicalization.md)）、方策のラベルを着手の値だけから単射に計算できる。
 
 移動元基準の平面で数えると、8方向×距離1〜11の直進88面、その成り88面、獅子の桂馬型の跳び8面、第1段で相手駒を取る2歩56面、居喰い8面、およびじっと1面の計249面になる。
 249面×144升＝35,856出力のうち、盤上で有効な要素は16,108である（調査用スクリプトで数え、手計算とも一致した）。

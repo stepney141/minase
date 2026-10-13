@@ -1,5 +1,8 @@
 [workspace]
 members = ["crates/minase", "crates/minase-core", "crates/minase-trainer"]
+# A virtual manifest cannot infer the resolver. Resolver 1 unifies dev-dependency features
+# with normal builds, which would enable `invariants` in `cargo build`.
+# See docs/adr/arrange-crates-under-a-virtual-workspace.md.
 resolver = "3"
 # Other commits are unpacked under target/ (match_runner commit: specs, bench_compare.py), and
 # other branches are checked out as worktrees under data/ and .claude/. Their Cargo projects

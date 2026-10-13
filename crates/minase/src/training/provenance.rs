@@ -1,4 +1,11 @@
-//! 段階9「教師の分類と来歴」のMNSD付随JSON。
+//! 各MNSDに必須の付随JSON `<MNSD>.provenance.json`を読み書きする。
+//! `format = "minase-provenance"`、版1とし、この生成側の形式では未知の欄を拒否する。
+//! 教師の分類は[`Teacher`]の5項目と`result_origin`、`start_origin`の組で定まり、混合比λは分類の属性である。
+//! 生成側のλは自己対局なら0.75、実戦なら0.0に固定する。
+//! `games`は乱数開始の自己対局ではnullであり、結果または開始局面が実戦由来なら対局番号と棋譜IDの対応表を必須とする。
+//! 対局番号は1以上で重複を認めず、`ply`は実戦の途中局面から始める場合にだけ持つ。
+//! 棋譜由来の局面を検証へ割り当てる単位は棋譜IDである。
+//! 理由は`docs/adr/classify-teacher-data-by-provenance-files.md`にある。
 
 use std::collections::HashSet;
 use std::fmt;

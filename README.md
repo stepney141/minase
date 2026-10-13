@@ -125,4 +125,4 @@ Started with `--protocol` and `--rules`, it runs the engine; the development and
 
 ## License
 
-`crates/minase-core` is licensed under the [MIT License](crates/minase-core/LICENSE-MIT), and `crates/minase` is licensed under the [GNU General Public License, version 3 or later](crates/minase/COPYING). The engine binaries link the library, and their combination is distributed under GPL-3.0-or-later. All other files in this repository, including `docs/`, `tools/`, and `scripts/`, are not licensed, and the copyright holder reserves all rights to them.
+`crates/minase-core` is licensed under the [MIT License](crates/minase-core/LICENSE-MIT), and `crates/minase` is licensed under the [GNU General Public License, version 3 or later](crates/minase/COPYING). The engine binaries link the library, and their combination is distributed under GPL-3.0-or-later. All other files in this repository, including `docs/` and `scripts/`, are not licensed, and the copyright holder reserves all rights to them.

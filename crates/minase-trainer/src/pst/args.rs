@@ -49,7 +49,7 @@ pub struct Args {
     /// 除去差分の参照を明示する。
     #[arg(long, value_enum)]
     pub removal_reference: RemovalReferenceKind,
-    /// 自己対局のλを上書きする。省略時は来歴のλを使う。
+    /// 自己対局の分類のλを有限な0以上1以下の値で上書きし、人間対局には適用しない。省略時は来歴のλを使う。
     #[arg(long)]
     pub lambda_override: Option<f64>,
     /// 先読み割引率。0より大きく1より小さい有限値。

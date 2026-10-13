@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Factorization Machineによる2駒関係評価](../plans/factorization-machine.md)の第1フェーズとして、現行の2端点PSTを固定し、既存の世代0と世代1のデータでFMの補正項を潜在次元16、32、64について学習して、候補を1つに絞れるかを確定する。
+[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)の第1フェーズとして、現行の2端点PSTを固定し、既存の世代0と世代1のデータでFMの補正項を潜在次元16、32、64について学習して、候補を1つに絞れるかを確定する。
 
 ## コマンドライン
 

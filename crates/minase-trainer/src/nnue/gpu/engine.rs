@@ -13,7 +13,7 @@ use crate::nnue::{
 use cudarc::driver::{CudaSlice, DeviceRepr, PinnedHostSlice, PushKernelArg, ValidAsZeroBits};
 use minase::eval::features::FEATURE_COUNT;
 
-/// カーネル1〜7の全出力と検証統計をホストへ回収した結果。
+/// 前進、補助損失、後退の全出力と検証統計をホストへ回収した結果。
 pub struct Evaluation {
     /// CPU参照と同じ配置の前進の出力。
     pub forward: Forward,
@@ -23,15 +23,15 @@ pub struct Evaluation {
     pub output: Output,
     /// バッチ平均の二値交差エントロピーと補助損失。
     pub losses: Losses,
-    /// 第1層の勾配[R,H]。埋め草行を含む。
+    /// 第1層の勾配`[R,H]`。埋め草行を含む。
     pub first_layer: Vec<f32>,
-    /// 線形経路の正準行の勾配[6841,2]。
+    /// 線形経路の正準行の勾配`[6841,2]`。
     pub linear: Vec<f32>,
-    /// 仮想行の勾配[13681,H]。P型では空。
+    /// 仮想行の勾配`[13681,H]`。P型では空。
     pub virtual_rows: Vec<f32>,
     /// 鏡映共有を合算した出力重みの勾配[2, units]。
     pub output_weights: Vec<f32>,
-    /// 鏡映共有を合算したバイアスの勾配[units]。
+    /// 鏡映共有を合算したバイアスの勾配`[units]`。
     pub biases: Vec<f32>,
     /// 出力バイアスの勾配。
     pub output_bias: f32,
@@ -218,7 +218,8 @@ impl Evaluator {
         self.ring.upload(batch)
     }
 
-    /// カーネル1〜7と検証を実行し、全出力を回収する。モデルの更新は行わない。
+    /// 前進、補助損失、後退と検証を実行し、全出力を回収する。
+    /// モデルの更新は行わない。
     pub fn evaluate(&mut self, batch: &BatchSlot, targets: &[f32]) -> Result<Evaluation> {
         let ticket = self.prepare(batch, targets)?;
         let input = self.ring.input(&ticket)?;
@@ -274,7 +275,8 @@ impl Evaluator {
         self.read_evaluation(batch.len())
     }
 
-    /// カーネル1・9だけで検証する。出力部の後退と勾配縮約は起動しない。
+    /// 前進と検証だけを実行する。
+    /// 出力部の後退と勾配縮約は起動しない。
     pub fn validate(&mut self, batch: &BatchSlot, targets: &[f32]) -> Result<Validation> {
         let ticket = self.prepare(batch, targets)?;
         let input = self.ring.input(&ticket)?;

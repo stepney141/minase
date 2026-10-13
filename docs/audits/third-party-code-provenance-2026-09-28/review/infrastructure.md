@@ -4,7 +4,7 @@
 
 ## 判定1　置換表（src/search/alphabeta/tt.rs）
 
-- minase: a05478a:src/search/alphabeta/tt.rs:41-83（エントリ配置）、:242-275（store）、:395-416（詰み値の補正）。導入は 090839d（2026-08-12、単一エントリの初版）であり、原子型の2語配置は 49f6b8f（2026-08-22、Lazy SMPのフェーズ1）、置換規則と「手なし」符号は c817f79（2026-08-22）で入った。設計書 docs/plans/lazy-smp.md:330-336 は、Stockfish 5062aee の tt.cpp と YaneuraOu 33ccf1f の tt.h を「構造の参照先」「差を確認する参照先」として挙げる。
+- minase: a05478a:src/search/alphabeta/tt.rs:41-83（エントリ配置）、:242-275（store）、:395-416（詰み値の補正）。導入は 090839d（2026-08-12、単一エントリの初版）であり、原子型の2語配置は 49f6b8f（2026-08-22、Lazy SMPのフェーズ1）、置換規則と「手なし」符号は c817f79（2026-08-22）で入った。設計書 docs/plans/archived/lazy-smp.md:330-336 は、Stockfish 5062aee の tt.cpp と YaneuraOu 33ccf1f の tt.h を「構造の参照先」「差を確認する参照先」として挙げる。
 - 対照:
   - Stockfish@5062aee:src/tt.cpp:55-108。10バイトのエントリ（key16、depth8、genBound8、move16、value16、eval16）を3個束ねたクラスタ、世代5ビット、置換値は `depth8 - 8*relative_age`、書込み条件は `d - DEPTH_NONE + 2*pv > depth8 - 4`。GPL-3.0-or-later。
   - YaneuraOu@33ccf1f:source/tt.h:80-133、source/tt.cpp:156-177、:435-441。Stockfish と同じ置換式に、ClusterSize の切替と key の型の切替を加えたもの。GPL-3.0-only。

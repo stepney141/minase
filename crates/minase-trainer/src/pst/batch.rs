@@ -26,7 +26,7 @@ pub(super) fn check_size(size: usize) -> Result<()> {
     Ok(())
 }
 
-/// 手番側の正準行[B,145]、除去前後の位相分子[B,2]と教師値。
+/// 手番側の正準行`[B,145]`、除去前後の位相分子`[B,2]`と教師値。
 #[derive(Debug, PartialEq)]
 pub struct Batch {
     columns: Vec<u32>,
@@ -119,11 +119,12 @@ impl Batch {
     pub fn is_empty(&self) -> bool {
         self.outcomes.is_empty()
     }
-    /// 元の升順に並ぶ手番側の正準行[B,145]。
+    /// 元の升順に並ぶ手番側の正準行`[B,145]`。
     pub fn columns(&self) -> &[u32] {
         &self.columns
     }
-    /// 除去前後の補間分子[B,2]。分母はいずれも90。
+    /// 王駒を含む盤上総駒数nから、除去前の`q = min(max(n−2,0),90)`と除去後の`q′ = min(max(n−3,0),90)`を返す。
+    /// 先獅子は数えず、両分子の分母は90である。
     pub fn phase_numerators(&self) -> &[[u8; 2]] {
         &self.phase_numerators
     }
@@ -139,7 +140,7 @@ impl Batch {
     pub fn outcomes(&self) -> &[u8] {
         &self.outcomes
     }
-    // Canonical weights are mirror shared; only the board-column order changes.
+    /// 重みは鏡映対で共有するため、各段の列順だけを反転し、先獅子の列144は動かさない。
     pub(crate) fn reflect(&mut self, mirrors: &[u8]) {
         for (columns, &mirror) in self.columns.chunks_mut(FEATURE_COLUMNS).zip(mirrors) {
             if mirror != 0 {

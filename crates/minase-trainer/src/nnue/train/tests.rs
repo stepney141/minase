@@ -157,7 +157,7 @@ fn validation_statistics() -> Validation {
 
 #[test]
 fn validation_deadline_includes_the_final_batch() {
-    // Pythonのvalidation_lossと同じく、最終バッチの完了時刻も期限未満でなければならない。
+    // 最終バッチの完了時刻も期限未満でなければならない。
     for final_time in [9, 10, 11] {
         let now = Cell::new(0);
         let evaluated = Cell::new(0);
@@ -959,6 +959,9 @@ fn cpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
     training_two_epochs_match_resume(crate::nnue::options::DeviceKind::Cpu);
 }
 
+/// 320局面の合成MNSDで両特徴集合を2エポック学習し、連続実行とエポック境界での再開を比べる。
+/// 累積秒数を除いたチェックポイントのバイト列と整数ネットが一致することを検査する。
+/// CUDA版の呼び出し元には`#[ignore]`を付ける。
 fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
     for feature_set in [
         crate::nnue::data::InputFeatureSet::P,

@@ -15,13 +15,14 @@ const R1_MIN_REVERSIBLE_PLIES: u32 = 12;
 
 /// R1で同一局面を判定するキー。
 ///
-/// 局面本体とP1成り権保留状態のZobrist値を別成分として保持する。
+/// 局面本体と成り権保留状態（P1・P2・P5）のZobrist値を別成分として保持する。
+/// 成り権保留状態はRULES.md第24条第1項dに対応する。
 /// 各値の衝突は実用上無視できるものとし、完全な局面署名とは照合しない。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct R1Key {
     /// 盤面・手番・先獅子状態のZobrist値。
     position_zobrist: u64,
-    /// P1成り権保留状態のZobrist値。
+    /// 成り権保留状態（P1・P2・P5）のZobrist値。
     rights_zobrist: u64,
 }
 
@@ -147,7 +148,9 @@ impl R1History {
 
 /// 4回目以降の同一局面出現に対するR1の裁定結果を返す(第31条R1)。
 ///
-/// 最初の出現から裁定時までの自分の全着手が攻撃的着手であった対局者が
+/// 最初の同一局面の出現より後の着手から裁定時までを判定区間とし、
+/// 最初の出現を生じさせた着手は含めない。
+/// この区間の自分の全着手が攻撃的着手であった対局者が
 /// 一方だけならその側の負け、それ以外は引き分けとする。
 pub(crate) fn r1_repetition_result(
     ply: u32,
@@ -155,7 +158,7 @@ pub(crate) fn r1_repetition_result(
     consecutive_attacking_moves: [u32; 2],
 ) -> GameResult {
     let attackers = Color::ALL.map(|color| {
-        // 最初の出現以降にその対局者が指した手数を、攻撃連続数が覆うかで判定する。
+        // 最初の出現より後にその対局者が指した手数を、攻撃連続数が覆うかで判定する。
         let distance =
             moves_by_color_through(ply, color) - moves_by_color_through(first_ply, color);
         consecutive_attacking_moves[color.index()] >= distance
@@ -177,6 +180,7 @@ pub(crate) fn r1_repetition_result(
 }
 
 /// 着手側の攻撃連続数を、攻撃的着手なら1増やし、そうでなければ0へ戻す。
+/// 実着手と仮想着手が同じ遷移を使い、相手側の値は保つ。
 pub(crate) fn updated_attacking_counters(
     mut counters: [u32; 2],
     mover: Color,
@@ -212,6 +216,10 @@ pub(crate) fn move_is_irreversible(mv: Move, undo: &Undo) -> bool {
 }
 
 /// 着手後の局面で、着手側の攻撃が継続しているかを返す。
+///
+/// 着手側に相手王駒を取る局面合法手があるか、動かした駒に捕獲の局面合法手があれば攻撃的である。
+/// じっとも、元の升にいる駒が相手駒を取れる状態なら攻撃的着手に数える。
+/// この真偽値を用いる判定区間は[`r1_repetition_result`]に従う。
 pub(crate) fn move_was_attacking(
     position: &Position,
     generator: &MoveGenerator,
@@ -259,7 +267,7 @@ mod tests {
     #[test]
     fn article_31_r1_irreversible_moves_are_promotions_captures_and_unpromoted_pawn_or_lance_steps()
     {
-        // D3-031-12: 成り・捕獲・不成の歩兵と香車の着手だけを不可逆手とする
+        // 成り・捕獲・不成の歩兵と香車の着手だけを不可逆手とする
         // (第31条R1、scalashogi variant/Chushogi.scala isIrreversible)。
         let rules = Rules::ENGINE_DEFAULT;
         let generator = MoveGenerator::new(rules.moves);

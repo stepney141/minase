@@ -6,9 +6,9 @@ use minase_core::position::Position;
 
 /// 手番側のいずれかの王駒に相手駒の疑似利きが届くかを返す。
 ///
-/// `docs/plans/strength-stage4.md`の「設計判断」の王駒への利きの判定に従う。
-/// 王駒の捕獲を禁じる規則はなく、王手放置も合法（RULES.md第8条）なので、
-/// 王駒の升では疑似利きと実際の捕獲可能性が一致する。
+/// 第8条では王手放置も合法であり、王駒の捕獲を禁じる規則もないため、王駒の升では疑似利きと捕獲可能性が一致する。
+/// 王将または玉将と太子の両方がある場合も、どちらか1枚に利きが届けば真とする。
+/// 枝刈りから除く範囲の理由は`docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md`にある。
 pub(super) fn royal_under_attack(position: &Position) -> bool {
     let side = position.side_to_move();
     position.royal_pieces(side).into_iter().any(|square| {
@@ -33,7 +33,8 @@ pub(super) fn captured_last_royal(
     captures_all_royals(royals, royals.popcount(), captured)
 }
 
-/// 設計書movegen-speedup-2.md「段階5」に従い、ノードで求めた王駒集合を使う。
+/// ノードで求めた相手の王駒集合と枚数を使い、捕獲升が残存王駒をすべて含むかを返す。
+/// 王駒が0枚なら偽とし、2枚残る場合は両方の捕獲を要求する。
 pub(super) fn captures_all_royals(
     royals: Bitboard,
     royal_count: u32,

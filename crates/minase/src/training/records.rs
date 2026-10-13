@@ -1,4 +1,24 @@
-//! 自己対局から生成する評価関数学習データの二進形式。
+//! 自己対局などから生成する学習データMNSD版1の二進形式。
+//! 多バイト数値はリトルエンディアンで、ヘッダは136バイト、1記録は160バイトである。
+//! バイト配置の正は本モジュールのdocコメント、[`Header`]、[`Record`]、および`encode_piece`である。
+//! 以下の範囲は各区画の先頭からのバイト位置で、上端を含まない。
+//! ファイル長は`136 + 記録数 × 160`バイトと一致しなければならず、この計算のu64のオーバーフローも拒否する。
+//!
+//! ヘッダの`0..4`は識別子`MNSD`、`4..8`は版u32の1、`8..12`は記録長u32の160である。
+//! `12..44`はUTF-8の規則セット名であり、最大32バイト、NULを含まず、不足分を0で埋める。
+//! この形式では規則セット名の空文字列も受理する。
+//! `44..84`は40文字のASCII 16進数字による生成コミットで、大文字と小文字の両方を受理する。
+//! `84..116`は生成時に使った評価関数の重みの検査和32バイトで、駒得評価v0で生成した場合は全0である。
+//! `116..120`は教師探索のノード上限u32、`120..128`は生成の基本シードu64、`128..136`は記録数u64である。
+//!
+//! 記録の`0..144`は[`Square::dense_index`]順の盤面で、駒コードは`encode_piece`に従う。
+//! 144は手番で、先手0、後手1である。
+//! 145は先獅子の対象升の[`Square::dense_index`]で、0〜143、なければ255である。
+//! 146は獅子を取った麒麟が同じ着手で成ったかの印で、0または1とし、対象升が255なら0でなければならない。
+//! `147..149`は手番側視点の探索値i16で、単位はセンチポーンである。
+//! 149は手番側から見た終局結果で、負け0、引き分け1、勝ち2である。
+//! `150..154`は生成時に1から付ける対局番号u32で、形式上は0も受理する。
+//! `154..156`は記録時点の手数u16、`156..160`は予約域であり、復号時に0以外を拒否する。
 
 use core::fmt;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -13,9 +33,11 @@ use minase_core::{
 pub const MAGIC: [u8; 4] = *b"MNSD";
 /// 学習データ形式の版。
 pub const FORMAT_VERSION: u32 = 1;
-/// 学習データヘッダのバイト数。
+/// MNSD版1のリトルエンディアンのヘッダ長136バイト。
+/// 各欄の配置は[`records`](self)のモジュールdocコメントに従う。
 pub const HEADER_LEN: usize = 136;
-/// 学習データレコードのバイト数。
+/// MNSD版1の記録長160バイト。
+/// 各欄の意味と単位は[`Record`]に、バイト配置は[`records`](self)のモジュールdocコメントにある。
 pub const RECORD_LEN: usize = 160;
 
 /// 規則セット名欄のバイト数。
@@ -211,14 +233,15 @@ impl From<PositionError> for Error {
     }
 }
 
-/// 学習データファイルの来歴とレコード配置を表すヘッダ。
+/// 生成時の規則、コミット、重みの検査和、ノード上限、シード、および記録数を持つヘッダ。
+/// 駒得評価v0で生成したデータは、重みの検査和を全0とする。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Header {
     /// 採用した規則セットの表示文字列。
     rule_set: String,
     /// 生成元コミットの完全ハッシュ。
     generation_commit: String,
-    /// 生成時に使ったネットの検査和。
+    /// 生成時に使った重みの検査和32バイト。駒得評価v0の場合は全0である。
     network_checksum: [u8; CHECKSUM_LEN],
     /// 教師探索のノード上限。
     teacher_nodes: u32,
@@ -387,24 +410,26 @@ impl Outcome {
     }
 }
 
-/// 1探索局面とその教師値を表す固定長レコード。
+/// 記録局面と教師情報を持つ160バイトのレコード。
+/// 自己対局の生成器は探索値の絶対値29,000以上を除外するため、その出力は詰み帯を含まない。
+/// この型の構築と復号自体はi16全域の探索値と対局番号0も受理し、生成器の除外条件を再検査しない。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Record {
-    /// dense index順の盤面コード。
+    /// 升の`dense_index`順の144駒コード。空升0、先手1〜58、後手65〜122である。
     board: [u8; BOARD_SQUARE_COUNT],
-    /// 記録局面の手番側。
+    /// 記録局面の手番側。永続形式では先手0、後手1である。
     side_to_move: Color,
-    /// 先獅子の対象升。
+    /// 先獅子の対象升。永続形式では0〜143、なければ255である。
     lion_square: Option<Square>,
-    /// 獅子を取った麒麟が同じ着手で成ったかどうか。
+    /// 獅子を取った麒麟が同じ着手で成ったかを示す0または1の印。対象升がなければ0である。
     lion_by_kirin_promotion: bool,
-    /// 手番側視点の探索値。
+    /// 手番側視点の探索値。単位はセンチポーン、格納範囲はi16全域である。
     score: i16,
-    /// 手番側から見た終局結果。
+    /// 記録局面の手番側から見た終局結果。永続形式では負け0、引き分け1、勝ち2である。
     outcome: Outcome,
-    /// 1から始まる対局番号。
+    /// 生成時に1から付ける対局番号。検証分割を対局単位で行うために持つ。
     game_number: u32,
-    /// 記録時点の手数。
+    /// 記録時点までの着手数。1着手を1手と数え、格納範囲は0〜65,535手である。
     ply: u16,
 }
 
@@ -751,7 +776,11 @@ fn validate_generation_commit(commit: &str) -> Result<(), Error> {
     }
 }
 
-/// 内部駒コードを安定した永続形式へ符号化する。
+/// 内部駒コードを`1 + 駒種番号(0〜28) + 29×成りビット + 64×陣営`へ写す。
+/// 駒種番号は[`PieceKind::index`]、成りビットは成駒なら1、それ以外は0である。
+/// 陣営は先手0、後手1であり、空升には別途0を置く。
+/// 先手1〜58と後手65〜122は58<64なので重ならず、陣営と駒を一意に復号できる。
+/// 内部の[`PieceCode`]のビット配置は変わり得るため、生値を永続形式には使わない。
 fn encode_piece(piece: PieceCode) -> u8 {
     let kind = piece.kind().expect("a board piece must have a kind");
     let color = piece.color().expect("a board piece must have a color");
@@ -760,7 +789,11 @@ fn encode_piece(piece: PieceCode) -> u8 {
         + 64 * color as u8
 }
 
-/// 永続形式の駒コードを内部駒コードへ復号する。
+/// [`encode_piece`]の永続形式を復号する。
+/// 先手1〜58と後手65〜122だけを受理し、59〜64と123〜255を拒否する。
+/// 0は空升として呼び手が扱い、この関数では受理しない。
+/// 範囲内でも[`PieceCode::new`]または[`PieceCode::new_promoted`]で構築できない駒種と成りの組を拒否する。
+/// 成れない駒種の成りも、この検査で拒否する。
 fn decode_piece(square: Square, value: u8) -> Result<PieceCode, Error> {
     let (color, payload) = match value {
         1..=58 => (Color::Black, value - 1),
@@ -843,7 +876,7 @@ mod tests {
         );
     }
 
-    // evaluation.md 203〜215行。盤面、手番、成り状態およびzobristを固定長形式が保存する。
+    // `Record`の契約とMNSDの配置表に従い、盤面、手番、成り状態およびzobristを固定長形式が保存する。
     #[test]
     fn positions_round_trip_with_initial_promoted_and_white_to_move_states() {
         let initial = Position::initial();
@@ -874,7 +907,7 @@ mod tests {
         assert_eq!(round_trip(&white_to_move), white_to_move);
     }
 
-    // evaluation.md 207〜208行。先獅子の対象升と麒麟成り原因を盤面から復元する。
+    // `Record`の先獅子の契約に従い、先獅子の対象升と麒麟成り原因を盤面から復元する。
     #[test]
     fn lion_trigger_round_trips_with_and_without_kirin_promotion() {
         let mut ordinary = position(Color::Black, &[(sq(4, 4), Color::White, PieceKind::Bishop)]);
@@ -902,7 +935,7 @@ mod tests {
         );
     }
 
-    // evaluation.md 205行。陣営の間の空き領域と上限外の値は駒に復号できない。
+    // `encode_piece`の番号割り当てに従い、陣営の間の空き領域と上限外の値は駒に復号できない。
     #[test]
     fn persistent_piece_codes_use_disjoint_color_ranges_and_reject_gaps() {
         for color in Color::ALL {
@@ -943,7 +976,7 @@ mod tests {
         }
     }
 
-    // evaluation.md 200〜201行。識別子、版、レコード長および物理長を受理条件にする。
+    // `Header`とモジュールのdocコメントのMNSDの配置に従い、識別子、版、レコード長および物理長を受理条件にする。
     #[test]
     fn header_and_file_length_mismatches_are_rejected() {
         let valid = header(0).encode();
@@ -960,7 +993,7 @@ mod tests {
         ));
     }
 
-    // evaluation.md 210行。結果コードは手番側の勝敗と引き分けの3値である。
+    // `Record`の終局結果の契約に従い、結果コードは手番側の勝敗と引き分けの3値である。
     #[test]
     fn game_results_map_to_side_relative_outcomes() {
         let black_win = GameResult::Win {

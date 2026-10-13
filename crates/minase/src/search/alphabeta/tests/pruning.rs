@@ -3,8 +3,8 @@
 use super::*;
 use crate::search::alphabeta::params;
 
-// docs/plans/strength-stage5.md「LMRの減深量」「検証」とフェーズ6指示書。
-// LmrDivisorによる生成規則と、履歴補正後の切り詰めを個別に固定する。
+// LMR表は `floor(ln(深さ) × ln(手番号) / (LmrDivisor / 100))` とし、0番の行と列は0にする。
+// 式の理由は docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md にある。
 #[test]
 fn lmr_table_follows_logarithmic_rule() {
     let table = lmr_table();
@@ -96,8 +96,8 @@ fn lmr_large_move_indices_use_last_column() {
     }
 }
 
-// docs/plans/strength-stage4.md「futility pruning」「検証」。
-// 静かな合法手だけの局面では零窓の探索量が減り、少なくとも1手を探索して詰みを捏造しない。
+// futilityは補正後の静的評価と余裕値の和がα以下なら後続の静かな手を飛ばす。
+// 最善値が負の詰み帯にある間は少なくとも1手を読み、合法手なしの詰みと誤認しない。
 #[test]
 fn futility_reduces_quiet_nodes_without_false_mate() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -141,7 +141,7 @@ fn futility_reduces_quiet_nodes_without_false_mate() {
     }
 }
 
-// 同「展開しない手の範囲」「検証」。先頭の記録手が王駒を失っても、
+// 先頭の記録手が王駒を失っても、
 // 後続の安全な静かな手を読み、返り値にも置換表にも誤った詰み値を残さない。
 #[test]
 fn futility_searches_safe_quiets_after_losing_tt_move() {
@@ -192,7 +192,7 @@ fn futility_searches_safe_quiets_after_losing_tt_move() {
     assert_ne!(hit.best_move, Some(losing_move));
 }
 
-// 同「展開しない手の範囲」。静かな記録手を先に探索して条件を成立させても、
+// 静かな記録手を先に探索して条件を成立させても、
 // 後続の捕獲手と非捕獲の成る手は展開し、記録手だけの場合より探索ノードが増える。
 #[test]
 fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
@@ -230,8 +230,9 @@ fn futility_searches_captures_and_promotions_after_quiet_tt_move() {
     }
 }
 
-// docs/plans/strength-stage8.md「検証」。王駒とそれを囲む歩兵は動けず、
-// 仲人の合法手は歩兵を取って取り返される2手だけである。
+// SEEが負の捕獲しかなくても先頭手は読み、全手の枝刈りによる偽の詰みを防ぐ。
+// この局面は王駒と周囲の歩兵が動けず、仲人が歩兵を取って取り返される2手だけが合法である。
+// 判断の理由は docs/adr/prune-losing-captures-by-see-at-shallow-nodes.md にある。
 #[test]
 fn see_pruning_searches_first_capture_without_false_mate() {
     let board = position(
@@ -273,7 +274,7 @@ fn see_pruning_searches_first_capture_without_false_mate() {
     assert_eq!(hit.bound, Bound::Upper);
 }
 
-// 同「適用するノード」「検証」。奔王が飛車の筋を開ける記録手は負けるが、
+// 奔王が飛車の筋を開ける記録手は負けるが、
 // 飛車を取る手は交換で損をしても王将を守るので、負の詰み帯の後にも読む。
 #[test]
 fn see_pruning_searches_safe_capture_after_losing_tt_move() {
@@ -337,7 +338,7 @@ fn see_pruning_searches_safe_capture_after_losing_tt_move() {
     assert_eq!(hit.bound, Bound::Upper);
 }
 
-// 同「SEEによる捕獲手の枝刈り」。深さ2以上では、展開した捕獲の子局面に
+// 深さ2以上では、展開した捕獲の子局面に
 // 通常探索の値が保存される。先頭の静かな記録手で負の詰み帯を脱した後を検査する。
 #[test]
 fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
@@ -400,7 +401,7 @@ fn see_pruning_skips_losing_capture_only_at_eligible_nodes() {
     }
 }
 
-// 同「SEEの余裕値」。経由升を持つ獅子の捕獲は規則依存なので展開する。
+// 経由升を持つ獅子の捕獲は規則依存なので展開する。
 #[test]
 fn see_pruning_searches_rule_dependent_capture() {
     let board = position(
@@ -454,7 +455,7 @@ fn see_pruning_searches_rule_dependent_capture() {
     assert_eq!(search_key(&child), search_key(&target));
 }
 
-// 同「SEEによる捕獲手の枝刈り」。最後の王駒の捕獲は詰みとして返し、保存する。
+// 最後の王駒の捕獲は詰みとして返し、保存する。
 #[test]
 fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
     let board = position(
@@ -491,8 +492,8 @@ fn see_pruning_searches_last_royal_capture_after_quiet_tt_move() {
     assert_eq!(hit.best_move, Some(capture));
 }
 
-// docs/plans/strength-stage4.md「採用した余裕値」「検証」。
-// 深さ1〜3で差がちょうど係数から求めた余裕値なら静的評価を返し、置換表には保存しない。
+// 深さ1〜3の零窓で、王駒に利きがなく、静的評価とβの差が余裕値に等しければ静的評価を返し、置換表には保存しない。
+// 王駒への利きを除外する理由は docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
 #[test]
 fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
@@ -513,7 +514,7 @@ fn reverse_futility_returns_static_eval_at_margin_without_storing() {
     }
 }
 
-// 同「設計判断」「検証」。各除外条件と余裕値の境界では子を探索する。
+// 各除外条件と余裕値の境界では子を探索する。
 #[test]
 fn reverse_futility_exclusions_search_children() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -543,7 +544,7 @@ fn reverse_futility_exclusions_search_children() {
     }
 }
 
-// 同「設計判断」。置換表の打ち切りをreverse futilityより先に適用する。
+// 置換表の打ち切りをreverse futilityより先に適用する。
 #[test]
 fn reverse_futility_preserves_tt_cutoff_priority() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
@@ -557,7 +558,7 @@ fn reverse_futility_preserves_tt_cutoff_priority() {
     assert_eq!(nodes, 0);
 }
 
-// 同「検証」。相手飛車を1筋へ移し、王駒だけへの利きを加えると枝刈りを控える。
+// 相手飛車を1筋へ移し、王駒だけへの利きを加えると枝刈りを控える。
 #[test]
 fn reverse_futility_does_not_prune_when_royal_is_attacked() {
     for (rook_rank, attacked) in [("10r1", false), ("11r", true)] {
@@ -579,8 +580,8 @@ fn reverse_futility_does_not_prune_when_royal_is_attacked() {
     }
 }
 
-// docs/plans/strength-stage4.md「razoring」「採用した余裕値」。
-// 捕獲のない局面では静止探索が静的評価を返し、係数から求めた余裕値の境界から通常探索を省く。
+// razoringは深さ1〜2で「静的評価 + 余裕値 ≤ α」なら静止探索を試し、その値もα以下なら通常探索を省く。
+// 捕獲候補のない局面では静的評価を返し、置換表へ保存しない。
 #[test]
 fn razoring_returns_quiescence_at_the_margin_boundary() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -614,7 +615,7 @@ fn razoring_returns_quiescence_at_the_margin_boundary() {
     }
 }
 
-// 同「razoring」とsearch.md「静止探索」。静止探索の上界がαと等しい場合も打ち切る。
+// 静止探索の上界がαと等しい場合も打ち切る。
 #[test]
 fn razoring_accepts_quiescence_equal_to_alpha() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
@@ -634,7 +635,7 @@ fn razoring_accepts_quiescence_equal_to_alpha() {
     }
 }
 
-// 同「適用するノード」「razoring」。PV窓、詰み帯、深さ3では通常探索を行う。
+// PV窓、詰み帯、深さ3では通常探索を行う。
 #[test]
 fn razoring_excludes_pv_mate_windows_and_depth_three() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -671,7 +672,7 @@ fn razoring_excludes_pv_mate_windows_and_depth_three() {
     }
 }
 
-// 同「王駒への利きの判定」。王駒への疑似利きがあれば、静的評価の条件が成立しても探索する。
+// 王駒への疑似利きがあれば、静的評価の条件が成立しても探索する。
 #[test]
 fn razoring_excludes_attacked_royals() {
     let nnue = weights().unwrap();
@@ -703,7 +704,7 @@ fn razoring_excludes_attacked_royals() {
     }
 }
 
-// 同「razoring」。捕獲でαを上回れば通常探索へ進み、PV窓の探索と同じ値を返す。
+// 捕獲でαを上回れば通常探索へ進み、PV窓の探索と同じ値を返す。
 #[test]
 fn razoring_continues_normal_search_after_recovering_capture() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/5q6/5R6/12/12/11K b").unwrap();
@@ -723,8 +724,8 @@ fn razoring_continues_normal_search_after_recovering_capture() {
     assert!(hit.best_move.is_some());
 }
 
-// docs/plans/strength-stage4.md「null move pruningの減深量」「検証」。
-// 尺度を考慮した各境界の直前・一致を検査し、加算を0〜3に制限する。
+// null moveの追加減深は `(静的評価 − β) × NullMoveEvalScale / 100 / (2 × 歩兵価値)` を0〜3に制限する。
+// 各整数境界の直前と一致で段階が変わり、深さによる基本量へ加算する。
 #[test]
 fn null_move_reduction_scales_with_eval_surplus_and_depth() {
     let beta = 137;
@@ -757,8 +758,8 @@ fn null_move_reduction_scales_with_eval_surplus_and_depth() {
     }
 }
 
-// docs/plans/search-revival-spsa.md「戻す8項目」。
-// 深さ7は記録手がなければ6へ減深され、基本量4に加算するとnull move後が1から0になる。
+// 記録手なしの要求深さ7は6へ減深され、静的評価の余裕による追加減深でnull move後の探索が静止探索まで縮む。
+// 通常探索の実着手を省くためノード数も減る。
 #[test]
 fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5G6/11K b").unwrap();
@@ -780,7 +781,7 @@ fn null_move_reduction_reduces_nodes_with_large_eval_surplus() {
     );
 }
 
-// フェーズ1-B指示書。段階4で使った補正前の静的評価を維持する。
+// reverse futilityとrazoringはcorrection historyを加えず、補正前の静的評価を使う。
 #[test]
 fn revived_pruning_uses_uncorrected_static_evaluation() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();

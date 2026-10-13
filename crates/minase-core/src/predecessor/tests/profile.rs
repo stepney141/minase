@@ -1,4 +1,10 @@
-//! 設計書「検証 > 性能測定」の固定コーパス。
+//! 直前局面生成器の固定コーパスによる測定。
+//!
+//! 初期局面付近、1枚捕獲後、2枚捕獲後、成り直後、先獅子あり、P1保留、P2待機、
+//! P5保留歩兵、および駒の少ない局面を含む。
+//! 候補構成数、再適用の検証へ渡す組数、採用数、ならびに21回の所要時間の中央値と
+//! 95パーセンタイルを記録する。
+//! 測定記録は`docs/measurements/predecessor-generator-profile.md`にある。
 
 use super::*;
 use crate::notation::sfen::{SetupPosition, parse_extended_sfen, to_extended_sfen};
@@ -89,7 +95,7 @@ fn documented_move(p: &Position, text: &str, forward: &MoveGenerator) -> Move {
 }
 
 fn assert_documented_transitions() {
-    // 設計書「性能測定」: 捕獲・成り・一時状態の分類と、実戦相当の在庫を保つ。
+    // モジュールdocの分類と、駒の少ない局面を除く実戦相当の在庫を検査する。
     let bench = bench_positions();
     for fixture in CORPUS {
         let (rules, expected) = parse(fixture);
@@ -207,7 +213,7 @@ fn assert_documented_transitions() {
 #[ignore = "releaseビルドで固定コーパスを21回測定する"]
 fn predecessor_profile() {
     assert_documented_transitions();
-    // 設計書「性能測定」: 候補数・再適用数・採用数と21回の中央値・p95を記録する。
+    // モジュールdocの件数と所要時間を記録する。replaysは合法性検査の前に数える。
     println!("position\trules\tcandidates\treplays\taccepted\tratio\tmedian_ms\tp95_ms");
     for fixture in CORPUS {
         let (rules, target) = parse(fixture);

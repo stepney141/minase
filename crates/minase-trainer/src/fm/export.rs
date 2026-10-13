@@ -20,6 +20,7 @@ use serde::Serialize;
 use std::path::Path;
 
 /// 同じ検証標本における、元の補正と1/4補正の整数化誤差。
+/// `seed`は`--seed`の値で、標本は検証集合を[`epoch_permutation`]でシード`seed`、エポック0として並べた先頭`--validation-sample`件である。
 #[derive(Debug, Serialize)]
 pub struct QuantizationReport {
     /// FMの整数指数。
@@ -30,7 +31,7 @@ pub struct QuantizationReport {
     pub seed: u64,
     /// 常にvalidation。
     pub split: &'static str,
-    /// 抽出順の通し番号のSHA-256。
+    /// 抽出順の検証局面の通算番号をリトルエンディアンu64で連結したバイト列のSHA-256（16進文字列）。
     pub indices_sha256: String,
     /// 元の補正の平均絶対誤差、センチポーン。
     pub mean_absolute_error_cp: f64,
@@ -45,7 +46,10 @@ pub struct QuantizationReport {
     /// 両方の平均絶対誤差が2cp以下。
     pub passed: bool,
 }
-/// 整数FM補正の母標準偏差、センチポーン。
+/// 整数FM補正の母標準偏差をセンチポーンで記録する。
+/// 標本と`seed`は[`QuantizationReport`]と同じである。
+/// `std_before_quarter`は整数補正`trunc(N / 2^(2e+1))`の母標準偏差、
+/// `std_after_quarter`はそれをさらに4で0方向へ切り捨てた値の母標準偏差である。
 #[derive(Debug, Serialize)]
 pub struct CorrectionDistribution {
     /// 検証標本数。
@@ -67,6 +71,14 @@ pub(super) struct Exported {
     pub initial_position_score: i32,
 }
 
+/// 最良モデルをMNPT版3の`fm.bin`と実数の`fm-float.npz`へ書く。
+/// PST、K、47個の探索用駒価値、規則名を初期MNPTから保ち、書いた後に読み直して一致を検査する。
+/// 全特徴の`v * a`が0なら指数0、埋め込み全0のFMを書く。
+/// 1/4にした補正が恒等的に0と上界から判定できれば`excluded_zero_correction`とし、指数30でその判定ができなければ拒否する。
+/// 標本は検証集合の`epoch_permutation(seed, 0)`の先頭`validation_sample`件である。
+/// 誤差は`abs(PST + K * Φ / m − clamp(PST + trunc(N / 2^(2e+1)) / m, ±28,999))`で、整数側の`/ m`も0方向へ切り捨てる。
+/// `m = 1`と`m = 4`の両方で平均2センチポーン以下を合格とする。
+/// `m = 4`の整数補正は指数を1増やした補正に等しい。
 pub(super) fn write_best(
     dataset: &Dataset,
     model: &Model,

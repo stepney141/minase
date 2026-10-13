@@ -1,7 +1,8 @@
-// Keep the f32 moment operations separate, as in the CPU reference. NVRTC is
-// compiled with --fmad=false; the bias-corrected quotient uses f64.
-// Only error bits use atomics. Bitwise OR is order-independent and does not
-// change any numerical reduction or introduce a host synchronization.
+// モーメントの各演算はf32で行い、積和を融合せず、バイアス補正した商はf64で求める。
+// 補正係数はホストがf64の逆数で渡す。
+// 非有限フラグの値1は勾配の非有限で、未観測行の勾配も検査する。
+// 値2は更新後の値、モーメント、または合成重みCの非有限であり、フラグだけをビットORで集める。
+// HalfKPの埋め草行109,440ではCに0を書き、optimizer_virtualを別の起動としてoptimizer_firstより先に完了させる。
 __device__ void check_gradient(float gradient, unsigned* nonfinite) {
     if (!isfinite(gradient)) atomicOr(nonfinite, 1u);
 }

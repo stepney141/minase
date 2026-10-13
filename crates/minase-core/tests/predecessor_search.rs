@@ -1,4 +1,4 @@
-//! 設計書predecessor-generator.md「検証」の公開APIによる逆方向探索。
+//! 公開APIと拡張SFENだけを使い、初期局面から2手進めた局面を2手逆にたどって初期局面を見つける。
 
 use std::collections::HashSet;
 
@@ -30,7 +30,7 @@ fn round_trip(position: &Position, rules: MoveRules, next: u32) -> Position {
 
 #[test]
 fn predecessor_search_depth_two_from_extended_sfen() {
-    // 設計書「検証」: 外部利用者と同じ入出力経路から初期局面まで2手逆行する。
+    // 拡張SFENを各段で往復し、公開APIだけで初期局面まで2手逆行する。
     let rules = MoveRules::standard();
     let forward = MoveGenerator::standard();
     let reverse = PredecessorGenerator::standard();

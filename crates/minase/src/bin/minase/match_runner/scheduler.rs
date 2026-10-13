@@ -34,7 +34,10 @@ pub(super) fn accept_completed_pair(
     pending_jobs.pop_front()
 }
 
-/// GSPRTの判定に応じて実験を続けるかを返し、停止時は全ワーカーへ通知する。
+/// GSPRTの境界に達したら停止を全ワーカーへ通知し、継続しないことを返す。
+///
+/// 呼び出し側は新しいペアを投入せず、停止ペア番号より後の結果は保存しても統計へ入れない。
+/// 番号順の取り込みは[`accept_completed_pair`]に従う。
 pub(super) fn continue_after_decision(
     use_gsprt: bool,
     decision: GsprtDecision,
@@ -123,9 +126,7 @@ mod tests {
         }
     }
 
-    // match-harness-efficiency.md「並列枠の維持」: ペア1が遅れても、後続結果を
-    // 1件受信するたびに空いた枠へ次のペアを1件だけ補充する。統計への取り込みは
-    // ペア番号順を維持する。
+    // [`accept_completed_pair`]は遅い先頭ペアを待つ間も、完了1件につき並列枠を1件補充する。
     #[test]
     fn out_of_order_completions_replenish_one_slot_each() {
         let mut completed = BTreeMap::new();
@@ -175,8 +176,7 @@ mod tests {
         assert!(completed.is_empty());
     }
 
-    // match-harness-efficiency.md「並列枠の維持」: GSPRT境界は停止フラグを
-    // 設定し、実行中のワーカーが打ち切った未完了ペアを結果へ送らない。
+    // [`continue_after_decision`]は境界で停止し、ワーカーは未完了ペアを結果へ送らない。
     #[test]
     fn decision_stop_discards_an_unfinished_worker_result() {
         let stop = Arc::new(AtomicBool::new(false));
@@ -223,8 +223,8 @@ mod tests {
         });
     }
 
-    // match-harness-efficiency.md「並列枠の維持」: 番号順の取り込みでGSPRT境界へ
-    // 到達した場合は、同じ受信によって空いた枠へ新しいペアを投入しない。
+    // [`accept_completed_pair`]は番号順で境界を判定し、境界到達後は補充しない。
+    // 理由は`docs/adr/judge-adoption-by-pentanomial-gsprt.md`にある。
     #[test]
     fn decision_boundary_prevents_replenishment() {
         let mut completed = BTreeMap::new();

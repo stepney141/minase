@@ -1,4 +1,7 @@
-//! 設計式を独立なf64の密な評価で検証する。実装の分岐を期待値に写さない。
+//! NNUEの数式を、独立なf64の密な評価と有限差分で検証する。
+//! 逆索引や後退の中間値を使わず、行を1本ずつ消したネット全体を再評価する。
+//! 歩の符号を反転したPSTも用い、罰則の下限、上限、および不適格の各区分を検査する。
+
 use minase_trainer::nn::AdamWGroup;
 mod common;
 use common::*;
@@ -731,7 +734,7 @@ fn adamw_bias_correction_decay_and_zero_gradient_momentum_match_hand_calculation
 
 #[test]
 fn adamw_preserves_unobserved_parameters_and_moments_without_clipping() {
-    // カーネル8の契約: 訓練集合で未観測の行はp,m,vを保持する一方、
+    // AdamW::updateは訓練集合で未観測の行のp,m,vを保持する一方、
     // 今回だけ勾配0の観測行は過去のモーメントと減衰で動く。
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let mut warm = model(set, 2);
@@ -998,7 +1001,7 @@ fn assert_parameter_bits(actual: &Parameters, expected: &Parameters) {
 
 #[test]
 fn cpu_threads_preserve_every_loss_gradient_parameter_and_moment_bit_for_three_updates() {
-    // フェーズ3bの契約: 独立な処理の分割数を変えても縮約と3更新の軌跡は不変。
+    // loss_and_gradients_parallelでは、処理の分割数を変えても縮約と3更新の軌跡は変わらない。
     // 7局面を2本と5本に分け、余りのある分割と同じ行の反復出現を含める。
     let fixture = Fixture::new(&positions());
     let config = AdamWConfig {
@@ -1095,8 +1098,8 @@ fn removal_penalty_scales_the_specified_loss_and_rejects_invalid_coefficients() 
 
 #[test]
 fn lambda_one_preserves_default_score_only_losses_and_three_update_state_bits() {
-    // フェーズ3bの既定値互換契約。損失の固定値は変更前f9524ddの参照実装を
-    // 独立にコンパイルし、同じ初期モデルとバッチ列の3更新から採取した。
+    // λ=1は探索値だけを教師とする。
+    // 損失の固定値はコミットf9524ddの参照実装を独立にコンパイルし、同じ初期モデルとバッチ列の3更新から採取した。
     let expected_losses: [(InputFeatureSet, [[u64; 2]; 3]); 2] = [
         (
             InputFeatureSet::P,

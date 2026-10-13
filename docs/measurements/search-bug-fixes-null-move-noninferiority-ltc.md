@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索部の不具合修正](../plans/search-bug-fixes.md)のnull moveをまたぐ反復の修正が、masterより10 Elo規模で弱くなっていないことを、候補と基準を入れ替えたGSPRTで長時間条件（LTC）について判定する。
+[探索部の不具合修正](../plans/archived/search-bug-fixes.md)のnull moveをまたぐ反復の修正が、masterより10 Elo規模で弱くなっていないことを、候補と基準を入れ替えたGSPRTで長時間条件（LTC）について判定する。
 候補をmaster、基準を修正のコミットとし、`H0`（masterが10 Elo強いとは言えない）なら採用、`H1`（masterが有意に強い）なら不合格とする。
 
 ## コマンドライン

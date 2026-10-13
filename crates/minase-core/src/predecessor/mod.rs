@@ -1,6 +1,29 @@
 //! 局面合法手を逆にたどり、直前局面を列挙する。
 //!
-//! 設計書predecessor-generator.md「直前局面の定義」の集合Aを入力と候補に適用する。
+//! 規則`R`での局面合法手の集合を`Moves_R(p)`、着手適用後の局面を`Next_R(p, m)`とする。
+//! 対象局面`q`に対し、返す集合は`{p ∈ A | ∃m ∈ Moves_R(p), Next_R(p, m) = q}`である。
+//! 局面の一致は[`Position`]の全フィールドの一致で判定する。
+//!
+//! 集合Aは、次の3群の条件をすべて満たす局面の集合である。
+//!
+//! 1. [`Position::validate`]を満たし、両Zobrist値が再計算値と一致する。
+//! 2. 各対局者の由来別の駒数が初期配置の枚数を超えない。
+//!    由来は、不成駒ではその駒種、成駒では[`PieceKind::unpromoted`]が返す駒種である。
+//! 3. 成り権保留と先獅子の一時状態が、以下の局所条件を満たす。
+//!
+//! 成り権保留ビットの升には、所有者の敵陣内に成れる不成駒がある。
+//! P0でP5なしなら保留集合は空、P0とP5なら歩兵の升だけとする。
+//! P2では、各対局者についてP5の歩兵を除く待機ビットが高々1個である。
+//!
+//! 先獅子の記録升がある場合は、次の3条件をすべて満たす。
+//!
+//! 1. 記録升は空升か、直前の着手側の非獅子駒または麒麟由来の成獅子の升である。
+//! 2. 手番側の獅子由来または麒麟由来の駒が、初期在庫から1枚以上欠けている。
+//! 3. 記録升が空升なら、直前の着手側に角鷹または飛鷲がある。
+//!
+//! 完全性は集合Aに対する相対的な保証であり、初期局面からの到達可能性は判定しない。
+//! 順方向生成器で候補を検証する理由は
+//! `docs/adr/verify-predecessor-candidates-with-forward-movegen.md`にある。
 
 mod material;
 mod reverse;
@@ -17,6 +40,8 @@ use crate::rules::{MoveRules, PromotionRule};
 /// 規則集合に従う直前局面の生成器。
 ///
 /// 呼び出しをまたぐ可変状態を持たず、複数スレッドから共有できる。
+/// 受け取る規則は[`MoveRules`]だけである。
+/// 反復規則と駒枯れ規則は局面合法手を変えないので受け取らない。
 #[derive(Clone)]
 pub struct PredecessorGenerator {
     /// 候補着手の合法性と再適用を検証する順方向生成器。
@@ -40,11 +65,13 @@ impl PredecessorGenerator {
     ///
     /// 返却順序は保証しない。入力は変更しない。
     /// 獅子力を含む全移動形式、最大2枚の捕獲、および一時状態を復元する。
+    /// 異なる駒のじっとなど、同じ直前局面から複数の着手で対象局面へ至る場合も1回だけ返す。
+    /// 正常な入力で直前局面がない場合に限り`Ok(Vec::new())`を返す。
     ///
-    /// # Errors
+    /// # エラー
     ///
-    /// 設計書predecessor-generator.md「直前局面の定義」の集合Aに
-    /// 対象局面が属さない場合、違反の種類を返す。
+    /// 対象局面にも[`predecessor`](crate::predecessor)の集合Aの全条件を課し、
+    /// 違反の種類を[`PredecessorError`]で返す。
     pub fn generate_predecessors(
         &self,
         target: &Position,
@@ -57,12 +84,12 @@ impl PredecessorGenerator {
 /// 直前局面生成器の入力が満たさない条件。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PredecessorError {
-    /// 盤面または派生状態が局面の不変条件を満たさない。
+    /// 盤面の不変条件や両Zobrist値の一致など、[`Position::validate`]の検査に失敗した。
     InvalidPosition(
         /// 局面の検査が検出した原因。
         PositionError,
     ),
-    /// 設計書predecessor-generator.md「駒在庫」の初期在庫を超えている。
+    /// 対局者ごとの由来別の駒数が初期在庫を超えている。
     MaterialExceedsInitial {
         /// 在庫を超えた対局者。
         color: Color,
@@ -74,8 +101,15 @@ pub enum PredecessorError {
         maximum: u8,
     },
     /// 成り権保留集合が採用規則と整合しない(第30条P0・P1・P2・P5)。
+    ///
+    /// P0でP5なしの非空集合、P0とP5での歩兵以外のビット、または
+    /// P2でP5の歩兵を除く待機ビットが2個以上ある対局者を検出した。
+    /// 構築経路と拡張SFENが受理した局面にも、この生成器の追加検査を適用する。
     RuleStateMismatch,
     /// 先獅子の記録升が局所条件を満たさない(第15条)。
+    ///
+    /// [`predecessor`](crate::predecessor)で定める先獅子の3条件のいずれかに違反した。
+    /// 構築経路と拡張SFENが受理した局面にも、この生成器の追加検査を適用する。
     InvalidLionState,
 }
 
@@ -109,7 +143,7 @@ impl std::error::Error for PredecessorError {
     }
 }
 
-/// 設計書predecessor-generator.md「直前局面の定義」の集合Aへの所属を検査する。
+/// [`predecessor`](crate::predecessor)で定める集合Aへの所属を検査する。
 fn membership(rules: MoveRules, position: &Position) -> Result<(), PredecessorError> {
     let found = base_membership(rules, position)?;
     lion_membership(position, lion_missing(&found, position.side_to_move()))
@@ -169,8 +203,7 @@ fn lion_missing(found: &material::Inventory, side: Color) -> bool {
     })
 }
 
-/// 設計書predecessor-generator.md「直前局面の定義」の局所条件を満たす
-/// 先獅子の記録升の集合を返す。
+/// [`predecessor`](crate::predecessor)の局所条件を満たす先獅子の記録升の集合を返す。
 ///
 /// 記録升は、直前着手側(`side_to_move().opposite()`)の非獅子駒または麒麟由来の
 /// 成獅子がある升か、直前着手側に角鷹または飛鷲がある場合の空升である(第15条)。

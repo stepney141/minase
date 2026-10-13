@@ -110,7 +110,11 @@ fn open_rescore_output(
     }
 }
 
-/// 履歴を復元せず、置換表を消去して1局面を探索する。
+/// [`Record::to_position`]で局面を復元し、その局面だけを履歴の最初として探索する。
+/// 元の対局履歴は復元しないが、探索経路内の反復は検出する。
+/// 毎回置換表を消去し、1スレッドで探索する。
+/// ノード上限で中断した場合は最後に完了した深さの値を用い、実際のノード数と完了深さを保存する。
+/// 深さ1も完了しなければ未完了の記録とする。
 fn rescore_record(
     record: &Record,
     nnue: &Nnue,
@@ -147,7 +151,7 @@ fn rescore_record(
 
 /// 局面単位で並列化し、最大ワーカー数件の記録を番号順に書く。
 ///
-/// 段階9「付け直しの探索の条件」。ワーカーは各自の表を使い回す。
+/// 各局面は[`rescore_record`]の条件で探索し、ワーカー間で置換表を共有しない。
 /// 入力、未出力の結果ともに全件をメモリへ載せない。
 fn write_rescore_records(
     reader: &mut Reader<BufReader<File>>,
@@ -314,7 +318,7 @@ mod tests {
     use minase_core::{Color, Position};
     use std::{io::Cursor, num::NonZeroUsize};
 
-    // 指示書D: 同じ条件、局面ごとの独立性、並列数によらない記録順、入力の不変性。
+    // 同じ条件、局面ごとの独立性、並列数によらない記録順、入力の不変性。
     #[test]
     fn rescore_is_reproducible_parallel_and_preserves_source() {
         let mut fixture = RescoreFixture::new();
@@ -357,7 +361,7 @@ mod tests {
         assert_eq!(entries[3].encode(), [0; 16]);
     }
 
-    // 指示書D: 記録境界で中断した場合だけ再開し、無中断の出力に一致する。
+    // 記録境界で中断した場合だけ再開し、無中断の出力に一致する。
     #[test]
     fn rescore_resumes_exactly_and_rejects_condition_changes_and_torn_entries() {
         let mut fixture = RescoreFixture::new();

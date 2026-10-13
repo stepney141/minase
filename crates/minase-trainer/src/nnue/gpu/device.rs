@@ -72,6 +72,8 @@ pub(super) fn pinned_zeros<T: DeviceRepr + ValidAsZeroBits>(
     Ok(result)
 }
 
+/// forward、head、removal、backward、reduce、optimizerの順にCUDAソースを連結する。
+/// 後のファイルが前の`feature_weight`、`screlu`、`phase`、`logit_value`を参照するため、この順序を保つ。
 pub(super) fn source() -> String {
     [
         include_str!("../../../kernels/forward.cu"),
@@ -83,6 +85,8 @@ pub(super) fn source() -> String {
     ]
     .join("\n")
 }
+/// NVRTCへ`--gpu-architecture=sm_{主}{副}`とfmad=false、prec_div=true、prec_sqrt=true、ftz=falseを渡す。
+/// 積和の融合を禁じ、CPU参照と同じ演算単位で丸める。
 fn options(capability: (i32, i32)) -> CompileOptions {
     CompileOptions {
         // archフィールドは&'static strなので、動的な指定にはoptionsを使う。

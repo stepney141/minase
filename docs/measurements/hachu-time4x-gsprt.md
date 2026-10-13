@@ -3,7 +3,7 @@
 ## 目的
 
 HaChuに現行のminase（v2.2.0、コミット`203ba2a`）の4倍の持ち時間を与えた条件で、minaseが有意に強いかをGSPRTで判定する。
-持ち時間の比は、[条件格子測定](../plans/hachu-condition-grid.md)の慣例に従い、HaChuを従来の比較条件60秒＋1手1秒加算に固定し、minaseをその1/4の15秒＋0.25秒加算とした。
+持ち時間の比は、[条件格子測定](../plans/archived/hachu-condition-grid.md)の慣例に従い、HaChuを従来の比較条件60秒＋1手1秒加算に固定し、minaseをその1/4の15秒＋0.25秒加算とした。
 この比は条件格子の[time1of4](hachu-grid-time1of4.md)セル（2026年9月、コミット`156816d`で−26.1 Elo）と同じである。
 採否の測定ではなく、現行版の強さの確認である。
 

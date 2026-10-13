@@ -16,6 +16,6 @@
 
 ## 出典
 
-- [plans/rust-design-audit-remediation.md](../plans/rust-design-audit-remediation.md)
+- [plans/rust-design-audit-remediation.md](../plans/archived/rust-design-audit-remediation.md)
 - [rust-design-audit-2026-08-26.md](../audits/rust-design-audit-2026-08-26.md) の「SearchHandle破棄後の探索スレッド」「探索ワーカーのパニック伝播」
 - コミット 8b48929

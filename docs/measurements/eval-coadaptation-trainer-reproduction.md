@@ -2,7 +2,7 @@
 
 ## 目的
 
-[共適応の検証](../plans/eval-search-coadaptation.md)のフェーズ1として、候補Pλの学習に使う現行の学習器が、採用PSTであるG23を学習した条件で、G23の重みをバイト単位で再現するかを確かめる。
+[共適応の検証](../plans/archived/eval-search-coadaptation.md)のフェーズ1として、候補Pλの学習に使う現行の学習器が、採用PSTであるG23を学習した条件で、G23の重みをバイト単位で再現するかを確かめる。
 G23は、学習器を `tools/train/pst/` に持つブランチ`pst-gen3`のコミット`bbb3b3c`で学習したものであり、その後のmasterでは学習器がパッケージ`tools/train/src/minase_train/`へ再編された。
 
 ## コマンドライン

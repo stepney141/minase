@@ -1,7 +1,7 @@
 //! `Position::attackers_to_by`の契約テスト。
 //!
-//! 期待値は`docs/plans/strength-stage3.md`「升への疑似利き集合」が定める、
-//! 既存の駒別利きとの同値関係から導く。
+//! 期待値は[`Position::attackers_to_by`]の契約である、
+//! [`piece_control_with_occupancy`]による駒別利きとの同値関係から導く。
 
 use crate::board::Bitboard;
 use crate::board::Square;
@@ -39,9 +39,8 @@ fn assert_attackers_match_piece_controls(position: &Position, occupied: Bitboard
     }
 }
 
-// strength-stage3.md「升への疑似利き集合」: 初期局面、benchの14局面、および
-// 一様ランダム対局の数十局面で、各色の逆引き集合とその色の駒別利きの同値を
-// 全升で固定する。反対側の駒は集合に現れない。
+/// [`Position::attackers_to_by`]の契約に従い、初期局面を含むbenchの15局面と
+/// ランダム対局の標本で、各色の逆引き集合と駒別利きの同値を全升で検査する。
 #[test]
 fn attackers_to_by_matches_piece_control_on_reference_positions() {
     let positions = bench_positions()
@@ -68,8 +67,8 @@ fn attackers_to_by_matches_piece_control_on_reference_positions() {
     }
 }
 
-// strength-stage3.md「升への疑似利き集合」: 仮想盤面から除いた駒は攻撃駒として
-// 再出現せず、走り駒の後ろの利きは遮蔽物の除去によって開通する。
+/// [`Position::attackers_to_by`]の占有の契約に従い、除いた駒は攻撃駒として再出現せず、
+/// 遮蔽駒の除去で走りの利きが開通する。
 #[test]
 fn attackers_to_by_respects_removed_pieces_and_opens_xrays() {
     let rook = sq(2, 2);

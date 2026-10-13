@@ -2,7 +2,7 @@
 
 USIとCECPは対局プログラムの通信方式、SFENは局面の文字列表現を指す。
 
-根拠は [docs/research/protocols/usi-lishogi.md](../../research/protocols/usi-lishogi.md)、[docs/research/protocols/cecp.md](../../research/protocols/cecp.md)、[docs/research/protocols/hachu.md](../../research/protocols/hachu.md)、[docs/plans/protocol-layer.md](../../plans/protocol-layer.md)、D5・D6の挙動マトリクスと追跡台帳、および後発の [docs/plans/engine-connectivity.md](../../plans/engine-connectivity.md)、[docs/plans/strength-stage2.md](../../plans/strength-stage2.md)、[docs/plans/lazy-smp.md](../../plans/lazy-smp.md) とした。マトリクスの1項目につき1テストという分割は、保持理由にしていない。
+根拠は [docs/research/protocols/usi-lishogi.md](../../research/protocols/usi-lishogi.md)、[docs/research/protocols/cecp.md](../../research/protocols/cecp.md)、[docs/research/protocols/hachu.md](../../research/protocols/hachu.md)、[docs/plans/archived/protocol-layer.md](../../plans/archived/protocol-layer.md)、D5・D6の挙動マトリクスと追跡台帳、および後発の [docs/plans/archived/engine-connectivity.md](../../plans/archived/engine-connectivity.md)、[docs/plans/archived/strength-stage2.md](../../plans/archived/strength-stage2.md)、[docs/plans/archived/lazy-smp.md](../../plans/archived/lazy-smp.md) とした。マトリクスの1項目につき1テストという分割は、保持理由にしていない。
 
 以下は、重複する探索を減らす候補である。
 
@@ -80,7 +80,7 @@ P10では、増分適用判定のprivate helper分岐表は、外部挙動へ引
 - ただし無条件削除は勧めない。現状このhelperテストだけが明瞭に分けている「長さは同じで既存の着手prefixが違う」「同じ手順の再送」「開始局面だけが異なる」を、`shorter_moves_and_different_setup_use_full_replay`（1795）と `incremental_position_matches_full_replay_for_ongoing_and_finished_games`（1737）へ外部入出力として引き継ぐ。
 - 現在のdifferent_setupケースは開始局面を変えると同時に着手列も短くしている。これではsetup比較だけの破損が隠れるため、同数または長い手順で開始局面だけを変える比較が必要である。
 - 現実的な見逃しは「異なる棋譜を前の棋譜の続きと誤認して盤面を破損する」ことであり、この条件付き統合なら残る。AwaitingStart/Finishedでの誤再利用は既存ライフサイクル台本で確認する。
-- 差分適用の性能保証は別に残す。`docs/plans/strength-stage2.md:56,167` は2,860手で約65 msかかった既知の時間切れを根拠とし、2,000手以上の処理時間測定を要求する。外部出力同値だけで、全再生への性能退行を保証できるとは主張しない。
+- 差分適用の性能保証は別に残す。`docs/plans/archived/strength-stage2.md:56,167` は2,860手で約65 msかかった既知の時間切れを根拠とし、2,000手以上の処理時間測定を要求する。外部出力同値だけで、全再生への性能退行を保証できるとは主張しない。
 
 P11では、不正な差分positionのprivate同期assertを、実際のgo拒否へ統合する。
 
@@ -107,7 +107,7 @@ P13では、USI statusの到達不能な防御分岐を固定しない。
 P14では、CECPのsmp宣言をdoneの直前に固定するassertを削除する。
 
 - 対象は [src/protocol/cecp.rs:1088](../../../src/protocol/cecp.rs:1088) の `protover_declares_the_feature_set_with_done_last`、1116〜1120行の `smp + 1 == lines.len() - 1` である。
-- 無条件削除候補である。[docs/research/protocols/cecp.md](../../research/protocols/cecp.md) はfeatureの行分割・順序を任意とする。[docs/plans/lazy-smp.md:187](../../plans/lazy-smp.md:187) は `feature smp=1` の宣言を要求するが、doneと隣接させる要求は書いていない。
+- 無条件削除候補である。[docs/research/protocols/cecp.md](../../research/protocols/cecp.md) はfeatureの行分割・順序を任意とする。[docs/plans/archived/lazy-smp.md:187](../../plans/lazy-smp.md:187) は `feature smp=1` の宣言を要求するが、doneと隣接させる要求は書いていない。
 - D6マトリクスの D6-CECP-01 が「smp=1の次がdone=1」を追加しているため、こちらは根拠文書より強くなった期待値として 規範文書に根拠がない期待 とする。テストを残して実装順を固定する理由にはしない。
 - 同テストにあるsmp宣言の存在、全featureの集合、done=1が最後という保証はそのまま残る。将来featureを1つ間へ追加しただけで壊れる修正負担を取り除ける。
 

@@ -11,7 +11,8 @@ use crate::nn::{bce_with_logits, bce_with_logits_gradient, parallel};
 pub struct Losses {
     /// 二値交差エントロピー。
     pub bce: f64,
-    /// 元局面等重み、対象除去等重みでKで割った補助損失。
+    /// 各局面の適格な除去の罰則を平均し、Kで割ってロジット単位にしてからバッチで平均した値。
+    /// 対象0件の局面は0であり、除去係数はまだ掛けていない。
     pub removal: f64,
 }
 
@@ -19,7 +20,7 @@ pub struct Losses {
 pub struct Gradients {
     /// 係数適用前の損失。
     pub losses: Losses,
-    /// 埋め草を含む[6841, 2]の勾配。
+    /// 埋め草を含む`[6841, 2]`の勾配。
     pub weights: Vec<f32>,
 }
 
@@ -62,7 +63,9 @@ pub fn validation_sum(model: &Model, batch: &Batch, targets: &[f32]) -> Result<f
         .sum())
 }
 
-/// 固定した局面順で勾配を合算する。threadsは結果のビット列を変えない。
+/// 損失`BCE(E/K) + removal_penalty×removal`の勾配を、局面順を固定して合算する。
+/// 除去係数が正であることと参照の指定は同値でなければエラーにし、係数0なら除去計算を省く。
+/// `threads`は結果のビット列を変えない。
 pub fn gradients(
     model: &Model,
     batch: &Batch,
@@ -108,6 +111,8 @@ pub fn gradients(
 
 type PositionGradient = (Losses, Vec<(u32, [f64; 2])>);
 
+/// 1局面の二値交差エントロピーと[`Losses::removal`]を求め、バッチ平均に対応する勾配を返す。
+/// 除去の対象数が0なら除去損失を0とする。
 fn position_gradient(
     model: &Model,
     batch: &Batch,

@@ -6,6 +6,14 @@ use crate::board::Square;
 use crate::piece::PieceKind;
 
 /// 先獅子の発動原因となった直前の獅子捕獲。
+///
+/// `square`が空升なら、角鷹または飛鷲が経由升で獅子を取った状態を表す。
+/// 2枚の獅子を取った場合の記録升は[`Position::make_move_with_captures_unchecked`]に従う。
+///
+/// `by_kirin_promotion`が真であることと、記録升に直前の着手側の成獅子があることは同値である。
+/// 成獅子は麒麟の成りでだけ生じ、成りは着手終了時に行うため、
+/// [`Position::set_lion_capture`]は盤面からこのフラグを導出できる。
+/// Zobrist値は記録の有無、升、およびフラグを区別する（RULES.md第24条第1項c）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LionTrigger {
     /// 獅子が取られた升。

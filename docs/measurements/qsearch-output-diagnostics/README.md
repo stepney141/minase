@@ -1,6 +1,6 @@
 # 採否前の診断器
 
-[学習の設計書](../../plans/qsearch-output-training.md)のフェーズ3で、候補集合内の選択損失と通常の根の静的評価誤差を測る。
+[学習の設計書](../../plans/archived/qsearch-output-training.md)のフェーズ3で、候補集合内の選択損失と通常の根の静的評価誤差を測る。
 `diagnose.py`は、重みを埋め込んだ各エンジンへUniversal Shogi Interface（USI）のコマンドを送り、探索ごとに新しいプロセスを起動する。
 すべての起動で`ResignValue`の宣言を確認し、最初の`isready`より前に`setoption name ResignValue value 99999`を送って投了を無効にする。
 このオプションがないエンジンは診断対象にできないため、探索前に停止する。

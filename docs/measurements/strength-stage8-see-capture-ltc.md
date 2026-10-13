@@ -2,7 +2,7 @@
 
 ## 目的
 
-[棋力向上段階8](../plans/strength-stage8.md)のフェーズ2として、SEEが余裕値を下回る捕獲手を浅い非PVノードで展開しない構成（コミット`c1c7227`）が、直前のコミット（`1e62031`、探索は段階開始版`dfdbe40`と同一）より長時間条件で有意に強いかをGSPRTで判定し、採否を決める。[STC](strength-stage8-see-capture-stc.md)は`H1`であった。
+[棋力向上段階8](../plans/archived/strength-stage8.md)のフェーズ2として、SEEが余裕値を下回る捕獲手を浅い非PVノードで展開しない構成（コミット`c1c7227`）が、直前のコミット（`1e62031`、探索は段階開始版`dfdbe40`と同一）より長時間条件で有意に強いかをGSPRTで判定し、採否を決める。[STC](strength-stage8-see-capture-stc.md)は`H1`であった。
 
 ## コマンドライン
 

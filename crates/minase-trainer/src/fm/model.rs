@@ -15,7 +15,10 @@ pub struct Model {
     pub(crate) k: f32,
 }
 impl Model {
-    /// 観測行だけをN(0,1/55)で初期化し、aと未観測行を0にする。
+    /// 観測行だけを正規分布N(0,1/55)で初期化し、aと未観測行を0にする。
+    /// シードから始めるSplitMix64の一様乱数をBox–Muller法で変換する。
+    /// 分散1/55は1局面の平均発火特徴数54.9に基づき、初期の特徴和S_fの分散をおよそ1にする。
+    /// a=0なのでエポック0の評価は固定PSTと一致する。
     pub fn initialize(mask: Vec<bool>, k: f32, seed: u64) -> Result<Self> {
         if mask.len() != FEATURE_COUNT {
             return Err("FM observation mask shape".into());
@@ -67,7 +70,7 @@ impl Model {
         model.validate()?;
         Ok(model)
     }
-    /// 埋め草を除く[13680,32]のV。
+    /// 埋め草を除く`[13680,32]`のV。
     pub fn v(&self) -> &[[f32; FM_RANK]] {
         self.weights[..FEATURE_COUNT * FM_RANK]
             .as_chunks::<FM_RANK>()
@@ -85,6 +88,8 @@ impl Model {
     pub fn k(&self) -> f32 {
         self.k
     }
+    /// 未観測行と特徴番号13,680の埋め草行を0に戻す。
+    /// 観測マスクは[`super::feature_observations`]で訓練集合とその鏡映から作り、検証集合は数えない。
     pub(super) fn fix_unobserved(&mut self) {
         for (i, row) in self.weights[..V_LEN]
             .as_chunks_mut::<FM_RANK>()
@@ -129,7 +134,8 @@ pub struct Adam {
     pub(crate) group: AdamWGroup,
 }
 impl Adam {
-    /// PyTorchと同じ固定β、εと、指定された学習率・重み減衰を使う。
+    /// [`AdamCoefficients::update`]のβ₁=0.9、β₂=0.999、ε=10⁻⁸と、指定した学習率と重み減衰を使う。
+    /// 学習コマンドの既定値は学習率10⁻³、重み減衰10⁻⁴である。
     pub fn new(lr: f64, weight_decay: f64) -> Result<Self> {
         let group = AdamWGroup { lr, weight_decay };
         group.validate()?;
@@ -140,7 +146,8 @@ impl Adam {
             group,
         })
     }
-    /// バッチに現れない行も毎回更新する。各要素の演算はスレッド数によらない。
+    /// バッチに現れない行も含む全要素をAdamWで毎回更新し、その後に未観測行と埋め草を0へ戻す。
+    /// 各要素の演算はスレッド数によらない。
     pub fn update(&mut self, model: &mut Model, gradients: &[f32], threads: usize) -> Result<()> {
         model.validate()?;
         self.validate()?;

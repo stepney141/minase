@@ -2,7 +2,7 @@
 
 ## 目的
 
-[棋力向上段階7](../plans/strength-stage7.md)のフェーズ5として、[世代2のLTC](strength-stage7-gen2-ltc.md)で採用した最終重みから探索用駒価値を導き、固定値との差を確認する。
+[棋力向上段階7](../plans/archived/strength-stage7.md)のフェーズ5として、[世代2のLTC](strength-stage7-gen2-ltc.md)で採用した最終重みから探索用駒価値を導き、固定値との差を確認する。
 到達可能な37状態のいずれかで相対差が厳密に20%を超える場合だけ、駒価値を変更する候補の対局測定へ進む。
 [旧採用重みの診断](strength-stage7-values-diag.md)は保持し、今回の判断は世代2の重みから独立に求めた値に基づく。
 

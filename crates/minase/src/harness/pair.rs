@@ -57,6 +57,10 @@ fn move_text(mv: Move) -> String {
 }
 
 /// 1局の結果を候補Aから見た半点単位の得点へ変換する。
+///
+/// 勝ちは2、引き分けは1、負けは0である。反則負けと投了は相手の勝ちとする。
+/// 投了は異常の件数に数えない。
+/// 理由は`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`にある。
 pub fn half_points(outcome: GameOutcome, player_a_color: Color) -> u8 {
     let winner = match outcome {
         GameOutcome::Adjudicated(GameResult::Win { winner, .. })
@@ -105,7 +109,14 @@ pub fn record_game_failure(game: PlayedGame, counts: &mut FailureCounts) {
     }
 }
 
-/// 1ペアを実行し、表示内容とペンタノミアル分類を返す。
+/// 先後を入れ替えた1ペアを実行し、表示、監査記録、および5分類の得点を返す。
+///
+/// ペアシードは`derive_seed(base_seed, pair_number)`とし、開始局面は[`generate_opening`]で共有する。
+/// 各エンジンのシードは`derive_seed(pair_seed, 1〜4)`であり、
+/// 第1局の候補と基準、第2局の候補と基準の順に割り当てる。
+/// 候補は第1局で先手、第2局で後手を持つ。停止要求を検出した場合は`None`を返す。
+/// どちらかの局が開始手順を含む手数上限に達したペアは分類を`None`にし、統計から除く。
+/// 得点と異常の扱いは[`half_points`]に従う。
 #[allow(clippy::too_many_arguments)]
 pub fn run_pair(
     rules: Rules,
@@ -264,8 +275,7 @@ mod tests {
     use crate::harness::failure::EngineFailure;
     use minase_core::{DrawReason, WinReason};
 
-    // sprt.md: 各局の勝敗を候補側の得点へ変換し、反則負けも敗北として扱う。
-    // match-harness.md: 投了を異常件数へ算入しない。
+    // [`half_points`]と`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`に従う。
     #[test]
     fn game_outcomes_map_to_candidate_scores_and_resignation_is_not_failure() {
         let win_black = GameOutcome::Adjudicated(GameResult::Win {
@@ -294,8 +304,7 @@ mod tests {
         assert_eq!(half_points(resignation_win_black, Color::Black), 2);
         assert_eq!(half_points(resignation_win_black, Color::White), 0);
 
-        // D8-HARN-06（match-harness.md「異常時裁定」）: 投了は通常の敗北であり、
-        // engine_failuresには算入しない。
+        // 投了は異常に数えない（`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`）。
         let resigned = PlayedGame::Finished {
             plies: 12,
             outcome: resignation_win_black,

@@ -35,6 +35,7 @@ pub(crate) fn captures_last_royal(position: &Position, mv: Move) -> bool {
 }
 
 /// 手番側が相手の残存王駒をすべて取れるかを返す。
+/// 捕獲手は既出局面を再現しないので、[`is_mate`]の補題により反復のフィルタを掛けない。
 pub(crate) fn can_capture_last_royal(position: &Position, generator: &MoveGenerator) -> bool {
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
@@ -62,6 +63,11 @@ pub(crate) fn has_no_legal_move(
 ///
 /// 王駒捕獲、R2またはR3で許される回避手、および第21条第3項cの即時勝利を
 /// 回避手として扱い、すべての仮想着手後に局面を復元する。
+///
+/// 捕獲を含む手は駒数、成りを含む手は駒種が不可逆に変わるので既出局面を再現せず、
+/// R2とR3では禁じられない。
+/// このため、受けの側の着手にはR2とR3のフィルタを掛けるが、
+/// 相手が最後の王駒を取る応手には掛けない。
 pub(crate) fn is_mate(position: &mut Position, context: &AdjudicationContext<'_>) -> bool {
     let mut moves = Vec::new();
     context.generator.generate_moves(position, &mut moves);

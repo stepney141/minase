@@ -61,7 +61,9 @@ fn parse_usi_evaluation(line: &str) -> Result<Option<EngineEvaluation>, EngineFa
     }))
 }
 
-/// 有効な評価行だけで監査値を更新し、通信結果には影響させない。
+/// `bestmove`より前の最後の有効な評価値つき`info`を保持する。
+///
+/// 後続の評価値のない行や解析できない評価行では現在値を消さず、通信結果にも影響させない。
 pub(super) fn observe_usi_evaluation(current: &mut Option<EngineEvaluation>, line: &str) {
     if let Ok(Some(parsed)) = parse_usi_evaluation(line) {
         *current = Some(parsed);
@@ -194,8 +196,7 @@ mod tests {
         );
     }
 
-    // match-harness-efficiency.md「実行記録と再開」「早期投了の検証」:
-    // bestmove前の最後のscore付きinfoを保存し、後続の非評価infoでは消去しない。
+    // [`observe_usi_evaluation`]は最後の有効な評価値を保持する。
     #[test]
     fn usi_evaluation_uses_the_last_score_bearing_info_line() {
         assert_eq!(

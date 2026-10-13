@@ -4,7 +4,8 @@ use crate::nnue::{
     model::{Error, Model, Result},
 };
 
-/// カーネル9で集める統計量。非線形出力はセンチポーン単位。
+/// [`validation_forward`]で集める統計量。
+/// 非線形出力はセンチポーン単位である。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Validation {
     /// 局面ごとのBCEの和。
@@ -75,7 +76,8 @@ impl Validation {
     }
 }
 
-/// カーネル9のCPU参照。符号0は勝ち予測に含めず、引き分けを分母から除く。
+/// 検証用の二値交差エントロピー、勝敗一致数、非線形出力と飽和数を集める。
+/// 符号0は勝ち予測に含めず、引き分けを一致率の分母から除く。
 pub fn validation_forward(
     model: &Model,
     batch: &BatchSlot,

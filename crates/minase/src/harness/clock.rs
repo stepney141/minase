@@ -28,6 +28,11 @@ impl Clock {
     }
 
     /// 実測思考時間を反映し、時間切れかどうかを返す。
+    ///
+    /// `elapsed > 残り時間 + 秒読み`のときだけ時間切れとし、等しい場合は受理する。
+    /// 時間内なら残り時間から思考時間を0で飽和させて引き、その後に加算時間を足す。
+    /// 秒読みは毎手同じ値を使い、残り時間へ積み上げない。
+    /// 思考時間は`go`、的中時の`ponderhit`、または外れ時の`stop`の送信から応答受信までの実測である。
     pub fn update(&mut self, elapsed: Duration) -> Result<(), EngineFailure> {
         if elapsed > self.remaining + self.byoyomi {
             return Err(EngineFailure::TimeForfeit);
@@ -103,7 +108,10 @@ impl GameClocks {
         }
     }
 
-    /// 現在の両時計から時間制御用のUSI `go`引数を返す。
+    /// 時間制御側へ送るUSIの時間引数を現在の両時計から作る。
+    ///
+    /// `btime`、`wtime`、`binc`、`winc`は両者の残り時間と加算時間をミリ秒で表す。
+    /// 時計を持たない固定制限の相手は0とし、`byoyomi`には手番側の秒読みを送る。
     fn go_text(&self, side_to_move: Color) -> String {
         let black = self.black.unwrap_or_else(zero_clock);
         let white = self.white.unwrap_or_else(zero_clock);
@@ -121,6 +129,11 @@ impl GameClocks {
     }
 
     /// 現在の制限と両時計からプロトコル共通の思考要求を作る。
+    ///
+    /// 時間制御のUSI引数は[`Self::go_text`]に従う。
+    /// CECPでは、時間制御側の残り時間と秒読みの和を10 ms単位へ切り捨て、センチ秒で送る。
+    /// 相手が固定制限で時計を持たなければ、相手の値は0である。
+    /// 手番側が固定制限の場合は、両者の値を[`CECP_FIXED_TIME_CS`]とする。
     pub(super) fn think_request(&self, side_to_move: Color, limit: SearchLimit) -> ThinkRequest {
         match limit {
             SearchLimit::Fixed { .. } => ThinkRequest {
@@ -158,8 +171,7 @@ mod tests {
     use super::*;
     use crate::harness::limit::parse_search_limit;
 
-    // D8-HARN-10(search.md実施状況): 実測思考時間が`残り時間 + byoyomi`を
-    // 「超えた」場合だけ時間切れ失権となる。同値は超過ではない。
+    // [`Clock::update`]の時間切れ境界を検査する。
     #[test]
     fn time_forfeit_requires_exceeding_remaining_plus_byoyomi() {
         let mut clock = Clock::new(TimeControl {
@@ -178,9 +190,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-10(search.md実施状況＋sprt.mdペア対局): 毎手のgoは両者の時計の
-    // 現在値をbtime/wtime/binc/winc/byoyomiで送る。ペア内の先後入替で同一
-    // エンジンの時計がbtime側とwtime側を交差する。
+    // [`GameClocks::go_text`]の両時計と先後入替時の対応を検査する。
     #[test]
     fn go_time_arguments_reflect_current_clocks_and_cross_colors() {
         let player_a = SearchLimit::Time(TimeControl {
@@ -222,7 +232,7 @@ mod tests {
             "btime 850 wtime 1000 binc 100 winc 100 byoyomi 0"
         );
 
-        // 固定制限側のgo引数(sprt.mdの`--each depth=4`等に対応)
+        // 固定制限側のgo引数(docs/guides/sprt.mdの`--each depth=4`等に対応)
         assert_eq!(
             SearchLimit::Fixed {
                 depth: Some(3),
@@ -232,8 +242,7 @@ mod tests {
             Some("depth 3 nodes 400".to_owned())
         );
 
-        // D8-HARN-20（match-harness.md「CECPセッション管理」）: CECPへは固定制限で
-        // 十分大きい固定時計を、時間制御で現在値を10 ms単位へ切り捨てて送る。
+        // [`crate::harness::engine::cecp`]と[`GameClocks::think_request`]の時計を検査する。
         let fixed = clocks.think_request(
             Color::Black,
             SearchLimit::Fixed {

@@ -2,11 +2,7 @@
 
 use super::*;
 
-// ---------------------------------------------------------------------------
-// D7-LIM　SearchLimits
-// ---------------------------------------------------------------------------
-
-// D7-LIM-01。search.md「時間管理」節: 深さ制約は1以上、最大探索ply（256）
+// 深さ制約は1以上、最大探索ply（256）
 // 以下だけを受理し、範囲外は`SearchLimits`の検証で拒否する。
 #[test]
 fn depth_limit_accepts_the_1_to_256_range_only() {
@@ -22,9 +18,7 @@ fn depth_limit_accepts_the_1_to_256_range_only() {
     ));
 }
 
-// D7-LIM-02[実装契約]。search.md「時間管理」節の制約列挙からの導出:
-// 無期限が明示の制約値として存在するため、全制約の欠落は指定漏れとして
-// 拒否する。無期限の明示（D7-LIM-05）とは峻別される。
+// 制約を1つも指定しない探索は拒否し、無期限の探索は明示的な指定だけを受理する。
 #[test]
 fn limits_without_any_constraint_are_rejected_but_explicit_infinite_is_accepted() {
     assert!(matches!(

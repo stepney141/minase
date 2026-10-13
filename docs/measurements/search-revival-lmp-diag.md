@@ -2,7 +2,7 @@
 
 ## 目的
 
-段階4で不採用となったlate move pruning（コミット2643294）が、late move pruningの条件だけで展開しなかった手の内訳を`bench`で数え、[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)で定義を改めるかを判断する。
+段階4で不採用となったlate move pruning（コミット2643294）が、late move pruningの条件だけで展開しなかった手の内訳を`bench`で数え、[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)で定義を改めるかを判断する。
 
 ## コマンドライン
 

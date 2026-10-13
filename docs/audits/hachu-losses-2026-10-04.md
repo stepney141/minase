@@ -1,6 +1,6 @@
 # HaChu戦の敗局の原因調査（探索改良の再調整の採用後）
 
-本書は、[探索改良の再調整](../plans/search-revival-spsa.md)を採用した時点のmaster（コミット`9027662`）がHaChuとの固定200ペア（[search-revival-hachu-elo200](../measurements/search-revival-hachu-elo200.md)）で負けた4局について、負けに至った経過と原因を切り分けた調査報告である。
+本書は、[探索改良の再調整](../plans/archived/search-revival-spsa.md)を採用した時点のmaster（コミット`9027662`）がHaChuとの固定200ペア（[search-revival-hachu-elo200](../measurements/search-revival-hachu-elo200.md)）で負けた4局について、負けに至った経過と原因を切り分けた調査報告である。
 対局、局面の再生、および再探索は、いずれも`9027662`のminase（対局ハーネスがビルドしてキャッシュしたバイナリ）で行った。
 規則は測定と同じ`L1,L3,P0,P5,P6,R2,E1,E2`である。
 調査日は2026年10月4日である。

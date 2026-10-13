@@ -83,6 +83,9 @@ impl Drop for SearchHandle {
 /// 開始する。`ponder`が真なら時間制限は的中の通知まで無効とする。
 /// `histories`は`threads`と同じワーカー数で作成する。
 ///
+/// 探索を置き換える呼び出し側は、旧ハンドルへ停止を要求して[`SearchHandle::join`]で全ワーカーを回収した後に、新しいスナップショットを渡す。
+/// 旧探索から遅れて届いた通知は、[`SearchEvent::search_id`]と現在の探索IDの不一致で破棄する。
+///
 /// 探索ワーカーがパニックした場合は残るワーカーへ停止を通知する。その後、
 /// [`SearchHandle::join`]がパニックのペイロードを返し、
 /// [`SearchEvent::Finished`]は送信されない。

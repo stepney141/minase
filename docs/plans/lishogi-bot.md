@@ -5,7 +5,7 @@
 本マイルストーンは、minaseをオンライン対局サイトlishogiへBotアカウントとして接続し、人間および他のBotと中将棋を公開対局できるようにする。
 接続には、lishogiのBot API（lichess由来の、Botアカウントが対局イベントを受け取り着手を送るためのHTTPインターフェース）とUSIエンジンを仲介するPython製ブリッジLishogi-Botをそのまま使い、minase側にはブリッジ専用のコードを書かない。
 配備は、固定した版のLishogi-Botとminaseのmasterの最新コミットを1つのDockerイメージにまとめ、運用機ではそのイメージを認証トークンだけを与えて起動する形にし、その一式は別リポジトリ`minase-lishogi-bot`に置いてminase本体にlishogi接続の知識を持ち込まない。
-minaseは[外部対局接続](engine-connectivity.md)でLishogi-Botの送信系列に対応済みなので、本マイルストーンの主な作業は、実接続で初めて問題になる3点の解消である。
+minaseは[外部対局接続](archived/engine-connectivity.md)でLishogi-Botの送信系列に対応済みなので、本マイルストーンの主な作業は、実接続で初めて問題になる3点の解消である。
 第1に、lishogiの反復裁定（同一局面の繰り返しによる終局の判定、RULES.md第24条と第31条）は「対局開始または直前の不可逆手の直後から、可逆手が12手以上続いている」ことを前提条件にする。不可逆手とは、元の局面へ戻れなくなる着手であり、中将棋では捕獲、成り、歩兵または香車の着手を指す。それ以外の着手を可逆手という。同じ局面が4回現れた時点で裁定する現行のminaseは、この前提条件を持たないためlishogiより先に対局を終局と判断し、次に届く`position`を拒否して着手不能になり得る。この差を規則R1の定義と実装の訂正で解消する。
 第2に、Lishogi-Botは自分の残り時間から固定の余裕、受信からの経過時間、加算、および秒読みを引いた値を`btime`または`wtime`として送り、秒読みの回数は送らない。この換算の下でminaseの時間管理が安全側に働くことと、着手がサーバへ届くまでの遅延を含めて時間切れが起きないことを確かめる。
 第3に、Botアカウントの作成、認証トークンの管理、公開の範囲（非レート対局から始めてレート対局へ広げる順序）を運用手順として定める。
@@ -15,10 +15,10 @@ minaseは[外部対局接続](engine-connectivity.md)でLishogi-Botの送信系�
 
 進行中。
 2026年9月4日に起案し、2026年9月12日に着手した。
-実lishogiサーバへの接続は、未完成のエンジンを公開の場へ出さない方針から[外部対局接続](engine-connectivity.md)の対象外としていたが、[棋力向上段階2](strength-stage2.md)の完了時点でHaChuに対して+149 Eloに達したことを受けて、利用者が2026年9月4日に公開へ進むと決めた。
-規則R1へlishogiの前提条件を取り込む仕様変更と、その変更をSPRTの対象外とする扱いは、利用者が着手を指示した2026年9月12日に確定した。
-フェーズ1（反復裁定の整合）とフェーズ2のうち配備物の作成（別リポジトリ`minase-lishogi-bot`のDockerイメージ、設定ファイル、起動手順）は完了し、イメージのビルドとminaseの起動、および認証エラーがサーバから返ることまでを本環境で確認した。
-次の一手は、利用者がBotアカウントを作成して昇格し、運用機でイメージを起動して挑戦の待受に入り、途中局面からの挑戦の可否を確かめることである。
+フェーズ1（反復裁定の整合）とフェーズ2の配備物の作成は完了し、Botは公開運用中である。
+配備は、別リポジトリ`minase-lishogi-bot`のDockerfileがcrates.ioのminase 2.4.0を固定してビルドしており、本書の本文にある「masterの最新コミットをイメージ内でビルドする」方式とは異なる。
+完了条件のうち、対局20局の事後照合、途中局面からの挑戦の確認、および調査メモへの追記がどこまで済んでいるかは、本書に記録がない。
+次の一手は、これらの完了条件の達成状況を確かめ、本文の配備方式の記述を実態に合わせることである。
 
 ## 目的
 
@@ -38,21 +38,21 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 
 次の項目は対象外とする。
 
-- ponder。導入と有効化は[USI先読み](ponder.md)が扱い、2026年9月21日に有効にした。
+- ponder。導入と有効化は[USI先読み](archived/ponder.md)が扱い、2026年9月21日に有効にした。
 - 通信対局（correspondence）。Lishogi-Botの設定で受け付けない。
 - 自前のブリッジの実装、Lishogi-Botの改変、およびminaseへのBot API対応の組み込み。
 - 探索、評価、時間管理の予算式の変更。時間管理に欠陥が見つかった場合は、本マイルストーンを待機中にして段階計画側で修正する。
 - 定跡と引き分け提案。
 - チャットへの応答機能の拡張。Lishogi-Botの既定の挨拶文を設定するにとどめる。
 
-評価値による任意投了のUSI層の契約と、`bestmove resign`を対局APIの投了へ写すブリッジの改修は、[USI投了](usi-resignation.md)が定める。
+評価値による任意投了のUSI層の契約と、`bestmove resign`を対局APIの投了へ写すブリッジの改修は、[USI投了](archived/usi-resignation.md)が定める。
 
 ## 依存関係
 
-- [外部対局接続](engine-connectivity.md)は完了済みであり、Lishogi-Botの送信系列への対応、`--rules lishogi`の前提、および`position`失敗後の探索禁止をそのまま使う。
-- [プロトコル層](protocol-layer.md)の拡張SFEN、指し手表記、規則セット名`lishogi`、およびリプレイ照合`crates/minase-core/tests/lishogi_replay.rs`をそのまま使う。
-- [棋力向上段階2](strength-stage2.md)の時間管理（秒読みを含む予算式）を前提とする。本マイルストーンはこれを変更しない。
-- [ローカルルール13コードの実装](local-rules.md)が所有するR1の実装を、本マイルストーンのフェーズ1で改める。改めた後のR1の正は本設計書ではなくRULES.md第31条である。
+- [外部対局接続](archived/engine-connectivity.md)は完了済みであり、Lishogi-Botの送信系列への対応、`--rules lishogi`の前提、および`position`失敗後の探索禁止をそのまま使う。
+- [プロトコル層](archived/protocol-layer.md)の拡張SFEN、指し手表記、規則セット名`lishogi`、およびリプレイ照合`crates/minase-core/tests/lishogi_replay.rs`をそのまま使う。
+- [棋力向上段階2](archived/strength-stage2.md)の時間管理（秒読みを含む予算式）を前提とする。本マイルストーンはこれを変更しない。
+- [ローカルルール13コードの実装](archived/local-rules.md)が所有するR1の実装を、本マイルストーンのフェーズ1で改める。改めた後のR1の正は本設計書ではなくRULES.md第31条である。
 - 棋力向上の段階計画とは独立に進められる。運用に使うエンジンはビルド時点のmasterのバイナリであり、段階計画の進行による差し替えは運用上の更新であって本設計書の変更を要しない。
 
 ## 設計判断
@@ -68,7 +68,7 @@ minaseを、lishogiのBotアカウントとして人間および他のBotと対�
 | 公開の順序 | 非レート対局だけを受け付ける段階を先に置き、異常0件を確認してからレート対局を有効にする。Lishogi-Botには挑戦者を限定する設定がないため、非レート段階でも不特定の相手と対局する。 |
 | 認証トークン | 環境変数`LISHOGI_BOT_TOKEN`で渡し、設定ファイルにもリポジトリにも書かない。 |
 | 同時対局数 | 1とする。複数対局は探索スレッドと置換表を対局間で奪い合い、時間切れの原因になるためである。 |
-| ponder | 有効にする。minaseはponder（相手の手番中に先読みする機能）を実装しており、`bestmove`に予想手を付け、`go ponder`と`ponderhit`に対応する。`USI_Ponder`は宣言せず、Lishogi-Botも送らない。ブリッジは、中将棋の先読みの局面と的中の判定、および秒読みの消化中の`go ponder`の時計引数を直したフォークstepney141/lishogi-botを固定して使う。先読みの間も`Threads`の数だけCPUを使うので、コンテナのCPU数は「`Threads`×同時対局数」を下回らないようにする。固定コミット、minase、または設定を変えたときは、`minase-lishogi-bot`の`ponder_check.py`をイメージの中で実行して通信を確かめる。設計と測定は[USI先読み](ponder.md)が所有する。 |
+| ponder | 有効にする。minaseはponder（相手の手番中に先読みする機能）を実装しており、`bestmove`に予想手を付け、`go ponder`と`ponderhit`に対応する。`USI_Ponder`は宣言せず、Lishogi-Botも送らない。ブリッジは、中将棋の先読みの局面と的中の判定、および秒読みの消化中の`go ponder`の時計引数を直したフォークstepney141/lishogi-botを固定して使う。先読みの間も`Threads`の数だけCPUを使うので、コンテナのCPU数は「`Threads`×同時対局数」を下回らないようにする。固定コミット、minase、または設定を変えたときは、`minase-lishogi-bot`の`ponder_check.py`をイメージの中で実行して通信を確かめる。設計と測定は[USI先読み](archived/ponder.md)が所有する。 |
 | 秒読みの回数 | 秒読みつきの対局を受け付け、minaseは秒読みを1回として扱う。Lishogi-Botは秒読みの回数を挑戦の受諾判定にもUSIにも使わないため、minaseは回数を知り得ない。回数が実際には複数あっても、1回と仮定した予算は実際の上限を超えないので、安全側に働く。 |
 | 時間制御の受付範囲 | 超早指し（ultraBullet、bullet）と通信対局は受け付けない。持ち時間が短い対局では、Lishogi-Botが引く固定の余裕と通信遅延が1手あたりの思考時間を上回り、実力と無関係な時間切れが増えるためである。受け付ける下限と秒読みの上限は運用パラメータであり、設定ファイルで変える。 |
 
@@ -93,7 +93,7 @@ lishogiの全棋譜との照合（2026年8月26日、GitHub issue #5）で現存
 したがってlishogiの裁定条件を満たす局面は必ずminaseの裁定条件も満たし、lishogiが裁定する局面ではminaseも同じ手か、それ以前の手で必ず裁定している。
 逆に、lishogiが裁定しないままminaseだけが先に裁定する場合があり、この場合だけが問題になる。
 minaseが先に終局と判断すると、`Engine`は`Finished`になり、lishogiが対局を続けて次に送る`position`は終局後の着手を含むため拒否される。
-拒否後の`go`は[外部対局接続](engine-connectivity.md)の契約どおり`bestmove`を返さず、Lishogi-Botは`bestmove`を待ち続けて時間切れになる。
+拒否後の`go`は[外部対局接続](archived/engine-connectivity.md)の契約どおり`bestmove`を返さず、Lishogi-Botは`bestmove`を待ち続けて時間切れになる。
 
 ### 取り込み方
 
@@ -229,4 +229,4 @@ RULES.md第31条のR1へ前提条件を追記し、`crates/minase-core/src/game/
 - WandererXII/scalashogi（lishogiサーバの規則ライブラリ、コミット9a1c2c3、2026年3月18日）。反復裁定の前提条件`History.scala`の`isRepetition`、履歴の更新`Situation.scala`、および不可逆手の定義`variant/Chushogi.scala`の`isIrreversible`を参照した。<https://github.com/WandererXII/scalashogi>
 - GitHub issue #5。lishogiの全棋譜をminaseで再生して差異を確認した記録。反復裁定の前提条件の差と実例3局はここで判明した。
 - [docs/research/protocols/usi-lishogi.md](../research/protocols/usi-lishogi.md)。USIの仕様、lishogi系の表記、およびLishogi-Botの接続経路の調査記録。
-- [外部対局接続](engine-connectivity.md)。Lishogi-Bot経路の対局進行の契約。
+- [外部対局接続](archived/engine-connectivity.md)。Lishogi-Bot経路の対局進行の契約。

@@ -38,4 +38,4 @@ HaChuのプロトコル拒否（`rejected_moves`）は0であり、規則の不�
 
 ## 結論
 
-v0のHaChu戦（docs/plans/match-harness.md、等時間で−252 Elo）と信頼区間が重なり、自己対局で得た+87 EloはHaChu戦の成績には表れていない。
+v0のHaChu戦（docs/plans/archived/match-harness.md、等時間で−252 Elo）と信頼区間が重なり、自己対局で得た+87 EloはHaChu戦の成績には表れていない。

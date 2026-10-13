@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Python学習器のRustへの移植と撤去の設計書](../plans/python-trainer-retirement.md)の各フェーズについて、Rustへ移植した学習器と診断がPythonの学習器と同じ結果を出すことを一度だけ確かめた結果と、完了条件の検査結果を記録する。
+[Python学習器のRustへの移植と撤去の設計書](../plans/archived/python-trainer-retirement.md)の各フェーズについて、Rustへ移植した学習器と診断がPythonの学習器と同じ結果を出すことを一度だけ確かめた結果と、完了条件の検査結果を記録する。
 棋力測定ではないので、ペンタノミアル度数やLLRは持たない。
 
 ## 環境
@@ -15,7 +15,7 @@ Pythonの照合は本体の作業ツリー（worktreeではない側）の`tools
 
 整数の値は完全な一致を求める。
 実数の値は、Pythonの値をP、Rustの値をRとして、`|R − P| ≤ 10⁻⁵ + 10⁻⁴·|P|`を求める。
-この許容誤差は、[Rust製NNUE学習器](../plans/nnue-trainer-rust.md)をPyTorchと照合したときと同じ式である。
+この許容誤差は、[Rust製NNUE学習器](../plans/archived/nnue-trainer-rust.md)をPyTorchと照合したときと同じ式である。
 入力のパス、実行環境、実行時間の欄は比較から除く。
 
 ## フェーズ0　クレートの改名
@@ -42,7 +42,7 @@ minase-trainer nnue train --feature-set P --width 128 \
 ## フェーズ1　NNUEの診断の移植
 
 Pythonの`nnue-diagnostics`の`distribution`、`removal`、`moves`を、`minase-trainer diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves`として移植した。
-照合には、[NNUEの完全代替](../plans/nnue-replacement.md)のフェーズ4で学習した2つのネット（`data/nnue-replacement-train/P`と`data/nnue-replacement-train/HalfKP-hm-b8`）について、当時Pythonが書き出した報告を使った。
+照合には、[NNUEの完全代替](../plans/archived/nnue-replacement.md)のフェーズ4で学習した2つのネット（`data/nnue-replacement-train/P`と`data/nnue-replacement-train/HalfKP-hm-b8`）について、当時Pythonが書き出した報告を使った。
 基準のPST＋FMは`crates/minase/nets/pst.bin`（SHA-256 `efe2c145…`）である。
 
 Pythonは標本の番号をNumPyの乱数（`numpy.random.default_rng(1).choice`）で選ぶ。

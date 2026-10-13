@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn article_23_1_no_move_at_all_loses_even_without_check() {
-    // D3-023-01: 手番側に着手が1つも存在しなければ手番側の負けとなる。
+    // 手番側に着手が1つも存在しなければ手番側の負けとなる。
     // F3では王手がかかっていない構成でも成立する(詰みとは独立の敗北条件)。
     let mut game = game(f3_no_move_position());
 
@@ -16,7 +16,7 @@ fn article_23_1_no_move_at_all_loses_even_without_check() {
 
 #[test]
 fn article_23_2_unsafe_moves_still_count_as_legal_moves() {
-    // D3-023-02: 王駒を相手の利きへ移す着手や王手を解消しない着手も
+    // 王駒を相手の利きへ移す着手や王手を解消しない着手も
     // 合法手であり、これらが存在すれば第23条は適用されない。
     // 変形a: 香車の前方の駒を後手駒に差し替えると捕獲の着手が残る。
     let mut capture_variant = game(position(
@@ -53,8 +53,8 @@ fn article_23_2_unsafe_moves_still_count_as_legal_moves() {
 
 #[test]
 fn article_23_3_r2_filtered_out_moves_cause_a_stalemate_loss() {
-    // D3-023-03: 局面合法手がすべてR2で禁止されると対局合法手が空になり、
-    // 第23条1項により手番側の負けとなる。E1併用でも同じ(D3-032-02)。
+    // 局面合法手がすべてR2で禁止されると対局合法手が空になり、
+    // 第23条1項により手番側の負けとなる。E1併用でも同じ。
     let mut pieces = vec![
         (sq(0, 0), piece(Color::Black, PieceKind::GoBetween)),
         (sq(11, 11), piece(Color::Black, PieceKind::King)),

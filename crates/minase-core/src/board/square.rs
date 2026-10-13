@@ -1,6 +1,8 @@
 //! 12×12盤の升の座標表現。
 //!
 //! 段0は先手側の最下段であり、段が増える向きが先手の前方にあたる。
+//! 内部の筋0はUSIの筋12に対応し、内部の筋が増えるとUSIの筋は減る。
+//! 番兵を除く内部密番号は[`Square::dense_index`]で定義する。
 
 use core::iter::FusedIterator;
 
@@ -78,7 +80,8 @@ impl Square {
         self.0 as usize
     }
 
-    /// 密インデックス(0..144)を返す。番兵を除いた配列の添字に使う。
+    /// 内部密番号`rank * 12 + file`（`0..144`）を返す。
+    /// 番兵を除いた配列の添字に使う。
     #[inline]
     pub const fn dense_index(self) -> usize {
         self.rank() as usize * BOARD_FILES as usize + self.file() as usize
@@ -133,7 +136,7 @@ impl FusedIterator for SquareRange {}
 mod tests {
     use super::*;
 
-    // 盤は縦12升・横12升の144升である(第4条、D4-004-01)。
+    // 盤は縦12升・横12升の144升である(第4条)。
     // 升の列挙は重複なく網羅的で、有効な筋・段の組からだけ升を構築できる。
     #[test]
     fn article_4_1_board_enumerates_all_144_squares_exactly_once() {
@@ -170,7 +173,7 @@ mod tests {
         assert!(Square::new(0, u8::MAX).is_none());
     }
 
-    // 実装契約(D4-IMP-05): 升の符号往復は恒等で、相異なる升は相異なる符号を持ち、
+    // 実装上の契約として、升の符号往復は恒等で、相異なる升は相異なる符号を持ち、
     // 復号は符号化の像に一致する値の上でだけ成功する。具体的なビット割当は仮定しない。
     #[test]
     fn square_encodings_round_trip_and_reject_out_of_domain_values() {
@@ -205,7 +208,7 @@ mod tests {
         }
     }
 
-    // 実装契約(D4-IMP-07): 変位の適用は、移動後の筋・段がともに盤内に収まるとき、
+    // 実装上の契約として、変位の適用は、移動後の筋・段がともに盤内に収まるとき、
     // そのときに限り成功し、反対側の筋・段への回り込みは決して起こらない。
     // 変位は駒の動きに現れる全種(8方向の1升・2升、桂馬型の跳び。第9条・第12条)を覆う。
     #[test]

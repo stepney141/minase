@@ -69,6 +69,17 @@ fn fail(failure: Failure<'_>) -> ! {
 }
 
 /// 指定局番号のランダム対局を実行して不変条件を検査する。
+///
+/// 継続中の局では[`Game::legal_moves`]が空でなく、選んだ合法手を[`Game::play`]が受理し、
+/// 着手後の局面が`validate`を通ることを確かめる。
+/// `verify_all`では全合法手をそれぞれ複製した対局へ適用し、すべて受理されることを検査する。
+/// 終局後には合法手が空であり、追加の着手が[`GameError::GameAlreadyOver`]を返すことを確かめる。
+///
+/// 違反時は規則、基本シード、局番号、手数、問題の着手、検査対象の操作前のSFEN、
+/// および適用済みの全手順を標準エラー出力へ出して終了コード1で終える。
+/// 同じ`--rules`、`--seed`、`--game`、`--max-ply`なら着手列は完全に再現される。
+/// `--verify-all`は複製だけに適用するので、対局の着手列を変えない。
+/// 手数上限への到達は異常ではなく[`Outcome::Cutoff`]として返す。
 pub(super) fn run_game(
     rules: Rules,
     rules_text: &str,
@@ -203,15 +214,13 @@ mod tests {
     use super::*;
     use minase_core::RuleCode;
 
-    // D8-HARN-17性質/D8-HARN-18(random-play.md): 同一の(--rules, --seed,
-    // --game, --max-ply)で着手列が完全に再現される。手数上限への到達は
-    // 異常ではなく打ち切りである。
+    /// [`run_game`]の再現性と打ち切りの契約を検査する。
     #[test]
     fn same_seed_and_game_number_reproduce_the_same_game() {
         let rules = Rules::from_codes(&[RuleCode::L0, RuleCode::P0, RuleCode::R1, RuleCode::E0])
             .expect("the complete engine-default rule set must be valid");
         let first = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, false);
-        // random-play.md: 全合法手の適用検査を有効にしても同じ対局になる。
+        // run_gameの契約により、全合法手の適用検査を有効にしても同じ対局になる。
         let second = run_game(rules, "L0,P0,R1,E0", 20_260_814, 1, 16, true);
         assert_eq!(first.moves, second.moves);
         assert_eq!(first.plies, second.plies);

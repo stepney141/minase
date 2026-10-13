@@ -2,7 +2,7 @@
 
 ## 目的
 
-直前局面生成器`PredecessorGenerator`について、固定コーパスの各局面で候補構成数、順方向検証の回数、採用局面数、および経過時間を測り、設計書 [plans/predecessor-generator.md](../plans/predecessor-generator.md)「性能測定」の3つの改善案を導入するかどうかを判定する。合否の閾値は設けない。
+直前局面生成器`PredecessorGenerator`について、固定コーパスの各局面で候補構成数、順方向検証の回数、採用局面数、および経過時間を測り、設計書 [plans/predecessor-generator.md](../plans/archived/predecessor-generator.md)「性能測定」の3つの改善案を導入するかどうかを判定する。合否の閾値は設けない。
 
 ## コマンドライン
 

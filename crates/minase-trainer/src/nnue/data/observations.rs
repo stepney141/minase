@@ -12,7 +12,8 @@ pub struct Observations {
 }
 
 impl Observations {
-    /// Pythonの`feature_observations`と`input_feature_observations`を1回の走査で求める。
+    /// 訓練集合だけを1回走査し、手番側の正準行と両視点の入力特徴の出現回数を求める。
+    /// 正準行は鏡映込みの回数の左半分に相当し、入力特徴は鏡映を追加せず数える。
     pub fn compute(dataset: &Dataset, feature_set: InputFeatureSet) -> Result<Self> {
         let mut canonical_counts = vec![0; CANONICAL_ROWS];
         let mut input_counts = vec![0; feature_set.dimensions()];
@@ -22,7 +23,7 @@ impl Observations {
             for &base in &bases[0] {
                 if base != SENTINEL {
                     // 元の特徴とその鏡映の片方だけが左半分に入る。
-                    // Pythonの鏡映込みの回数から左半分を選ぶ操作と同じであり、2倍しない。
+                    // 鏡映込みの回数の左半分に相当するため、1特徴を2回数えない。
                     canonical_counts[canonical_row(base) as usize] += 1;
                 }
             }

@@ -16,5 +16,5 @@
 
 ## 出典
 
-- [plans/evaluation.md](../plans/evaluation.md)（「世代0の学習結果と診断」）
+- [plans/evaluation.md](../plans/archived/evaluation.md)（「世代0の学習結果と診断」）
 - [measurements/nnue-gen0-nodes100k.md](../measurements/nnue-gen0-nodes100k.md)

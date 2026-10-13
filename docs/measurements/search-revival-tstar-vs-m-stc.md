@@ -2,7 +2,7 @@
 
 ## 目的
 
-[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)の段階2として、調整値を書き込んだ候補T\*とMを標準STCのGSPRTで比較し、次の段階へ進めるかを判定する。
+[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)の段階2として、調整値を書き込んだ候補T\*とMを標準STCのGSPRTで比較し、次の段階へ進めるかを判定する。
 
 ## コマンドライン
 

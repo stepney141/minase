@@ -17,7 +17,7 @@ fn bare_king_game(position: Position) -> Game {
 
 #[test]
 fn article_32_e1_defers_the_win_to_actual_royal_capture() {
-    // D3-032-01: E1採用時は詰み局面でも終局せず、王手放置を含む合法手を
+    // E1採用時は詰み局面でも終局せず、王手放置を含む合法手を
     // 指し続けられる。実際に最後の王駒が取られた着手の完了時に第21条1項で
     // 終局する。
     let (position, mv) = mate_predecessor();
@@ -34,7 +34,7 @@ fn article_32_e1_defers_the_win_to_actual_royal_capture() {
 
 #[test]
 fn article_32_e1_leaves_other_adjudications_active() {
-    // D3-032-02: E1が無効化するのは詰み裁定だけであり、駒枯れと合法手なし
+    // E1が無効化するのは詰み裁定だけであり、駒枯れと合法手なし
     // の裁定はE1採用下でも通常どおり働く。
     let mut exhaustion = game_with_codes(
         position(
@@ -61,7 +61,7 @@ fn article_32_e1_leaves_other_adjudications_active() {
 
 #[test]
 fn article_32_e2_disables_all_piece_exhaustion_adjudication() {
-    // D3-032-03: E2採用時は第22条の裁定を一切行わず対局を継続する。
+    // E2採用時は第22条の裁定を一切行わず対局を継続する。
     let e2_game = |position| game_with_codes(position, &[RuleCode::R1, RuleCode::E2]);
 
     // 即時勝ちになるはずの局面(第22条1項)でも裁定しない。
@@ -81,7 +81,7 @@ fn article_32_e2_disables_all_piece_exhaustion_adjudication() {
 
 #[test]
 fn article_32_e3_enough_effective_pieces_adjudicate_the_bare_king_loss() {
-    // D3-032-04: (a)王駒1枚以上を含む価値ある駒2枚以上、(b)裸玉側の王手
+    // (a)王駒1枚以上を含む価値ある駒2枚以上、(b)裸玉側の王手
     // なし、(c)3枚以上または全て非隣接、がすべて成立すると裸玉側の負け。
     // 価値ある駒が3枚以上あれば隣接の有無は問わない。
     let mut adjacent_three = bare_king_game(position(
@@ -98,7 +98,7 @@ fn article_32_e3_enough_effective_pieces_adjudicate_the_bare_king_loss() {
         win(Color::White, WinReason::BareKing)
     );
 
-    // 2枚でも裸玉に隣接していなければ(c)が成立して負けになる(D3-032-05境界)。
+    // 2枚でも裸玉に隣接していなければ(c)が成立して負けになる。
     let mut distant_two = bare_king_game(position(
         Color::Black,
         &[
@@ -130,7 +130,7 @@ fn article_32_e3_enough_effective_pieces_adjudicate_the_bare_king_loss() {
 
 #[test]
 fn article_32_e3_two_pieces_with_adjacency_defer_the_loss() {
-    // D3-032-05: 価値ある駒が2枚でその一方が裸玉に隣接していれば(c)が
+    // 価値ある駒が2枚でその一方が裸玉に隣接していれば(c)が
     // 不成立となり裁定を保留する。以後の着手完了時に隣接が解消されれば
     // 改めて成立する。
     let mut game = bare_king_game(position(
@@ -152,7 +152,7 @@ fn article_32_e3_two_pieces_with_adjacency_defer_the_loss() {
 
 #[test]
 fn article_32_e3_bare_side_giving_check_defers_the_loss() {
-    // D3-032-06: 裸玉側が相手王駒へ王手をかけている間は(b)が不成立となり
+    // 裸玉側が相手王駒へ王手をかけている間は(b)が不成立となり
     // 裁定を保留する。王手が解消された後の着手完了時に改めて判定する。
     let mut game = bare_king_game(position(
         Color::Black,
@@ -175,7 +175,7 @@ fn article_32_e3_bare_side_giving_check_defers_the_loss() {
 
 #[test]
 fn article_32_e3_immobile_pawns_and_lances_are_excluded_from_counts() {
-    // D3-032-07: 最奥段で移動不能となった歩兵・香車は、裸玉側の判定からも
+    // 最奥段で移動不能となった歩兵・香車は、裸玉側の判定からも
     // 相手側の価値ある駒の数えからも除外する。
     let mut bare_side_dead_pieces = bare_king_game(position(
         Color::Black,
@@ -212,7 +212,7 @@ fn article_32_e3_immobile_pawns_and_lances_are_excluded_from_counts() {
 
 #[test]
 fn article_32_e3_double_bare_kings_draw_unless_checked() {
-    // D3-032-08: 双方が裸玉(死に駒を除く)で、いずれの王駒にも王手が
+    // 双方が裸玉(死に駒を除く)で、いずれの王駒にも王手が
     // かかっていなければ引き分け。王手がかかっている間は裁定せず継続する。
     let mut unchecked = bare_king_game(position(
         Color::Black,

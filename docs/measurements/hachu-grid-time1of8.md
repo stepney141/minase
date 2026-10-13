@@ -2,7 +2,7 @@
 
 ## 目的
 
-HaChu対minaseの条件格子測定（[設計書](../plans/hachu-condition-grid.md)）の時間比セルとして、HaChuを60秒＋1秒加算、minaseをその1/8の7.5秒＋0.125秒加算にしたときの強さを固定200ペアのEloで記録する。
+HaChu対minaseの条件格子測定（[設計書](../plans/archived/hachu-condition-grid.md)）の時間比セルとして、HaChuを60秒＋1秒加算、minaseをその1/8の7.5秒＋0.125秒加算にしたときの強さを固定200ペアのEloで記録する。
 採否の判定には使わない。
 
 ## コマンドライン

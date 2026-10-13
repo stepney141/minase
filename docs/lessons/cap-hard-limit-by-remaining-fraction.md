@@ -2,7 +2,7 @@
 
 ## 症状
 
-時間管理の候補（[持ち時間の効率的な使用](../plans/time-management-efficiency.md)の最終コミット）は、加算つきのSTC（10秒＋0.1秒）で1,330局中2局を時間切れで落とした。
+時間管理の候補（[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の最終コミット）は、加算つきのSTC（10秒＋0.1秒）で1,330局中2局を時間切れで落とした。
 どちらも候補側で、着手前の残り時間が120〜130 ms、hardが安全上限（残り時間−30 ms）の91〜96 msに拘束された局面であり、エンジン自身の経過時間は91〜97 msでhardどおりに止まっていたが、ハーネスの計測は127〜133 msで、探索の外の遅れが36 msに達していた。
 静かな測定機での固定費の確認は最大13 msで通っていた。
 
@@ -19,5 +19,5 @@
 
 ## 出典
 
-- [持ち時間の効率的な使用](../plans/time-management-efficiency.md)の「棄却した再構成の各段階」の「途中結果の採用と予算の再定義（第1段階）」「局面適応の係数（第3段階）」。
+- [持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の「棄却した再構成の各段階」の「途中結果の採用と予算の再定義（第1段階）」「局面適応の係数（第3段階）」。
 - [time-management-efficiency-stc](../measurements/time-management-efficiency-stc.md)。

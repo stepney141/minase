@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Factorization Machineによる2駒関係評価](../plans/factorization-machine.md)の第1フェーズと第2フェーズの診断として、最終候補（潜在次元32、λ=1.0、λres=1e-4、シード1）を開始版の2端点PSTと比較し、Rust評価とPython参照評価の一致、量子化誤差、局面帯別の誤差、駒の除去、および着手差を記録する。
+[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)の第1フェーズと第2フェーズの診断として、最終候補（潜在次元32、λ=1.0、λres=1e-4、シード1）を開始版の2端点PSTと比較し、Rust評価とPython参照評価の一致、量子化誤差、局面帯別の誤差、駒の除去、および着手差を記録する。
 
 ## コマンドライン
 

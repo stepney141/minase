@@ -63,7 +63,13 @@ pub(super) fn play_game(
     play_game_from_opening(nnue, rules, game_number, settings, table, None)
 }
 
-/// 実戦の開始局面では乱数手を入れず、次の局面から記録する。
+/// 1局を終局まで進め、探索で着手した局面のうち記録条件を満たすものを返す。
+/// 記録は序盤ランダム化の後から始め、注入を予定した場合は最後の予定注入の次の手から始める。
+/// 探索値の絶対値が[`MATE_BAND_START`]以上、合法な最善手が捕獲または成り、現局面の再出現の順に除外し、最初に該当した理由だけを数える。
+/// 手数上限で終局しなかった対局は全候補を破棄し、終局した対局の結果は記録局面の手番側から見た値にする。
+/// 実戦の開始局面では呼び手が注入回数0を指定し、乱数手を入れず次の局面から記録する。
+/// 注入の予定と乱数列は[`plan_injections`]に従う。
+/// 理由は`docs/adr/exclude-mate-tactical-and-repeated-positions-from-teacher-data.md`にある。
 pub(super) fn play_game_from_opening(
     nnue: &Nnue,
     rules: Rules,
@@ -227,7 +233,10 @@ pub(super) fn play_game_from_opening(
     })
 }
 
-/// 対局シードからランダム着手の予定と記録開始手数を決める。
+/// 対局シードから派生させた専用の乱数列で、注入予定と注入手の選択を行う。
+/// ワーカーの乱数状態を使わないため、結果は並列度に依存しない。
+/// 注入の手番では教師探索をせず、この乱数列で合法手から一様に選んで指す。
+/// 予定の範囲と記録開始位置は[`plan_injections_with_rng`]に従う。
 fn plan_injections(
     game_seed: NonZeroU64,
     opening_ply: u32,
@@ -238,7 +247,8 @@ fn plan_injections(
     (plan, rng)
 }
 
-/// 指定乱数列を進め、ランダム着手の予定と記録開始手数を決める。
+/// 注入回数を0〜上限から一様に選び、序盤終了手数pから`[p, p+80)`の範囲で注入手数を重複なく選ぶ。
+/// 記録は最後に予定した注入の次の手から始め、注入回数0ならpから始める。
 fn plan_injections_with_rng(rng: &mut XorShift64, opening_ply: u32, maximum: u8) -> InjectionPlan {
     let planned = rng.index(
         NonZeroUsize::new(usize::from(maximum) + 1)
@@ -437,7 +447,7 @@ mod tests {
         assert_eq!(plan.record_from, opening_ply);
     }
 
-    /// 段階7の試行生成で選んだ4,000手を、省略時の手数上限とする。
+    /// `docs/adr/cap-teacher-games-at-4000-plies.md`で選んだ4,000手を既定の上限とする。
     #[test]
     fn omitted_max_ply_uses_measured_generation_cap() {
         let arguments = Arguments::try_parse_from([

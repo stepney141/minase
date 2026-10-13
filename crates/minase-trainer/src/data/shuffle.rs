@@ -6,12 +6,16 @@ fn mix64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-/// ファイルのseedと対局番号から、対局単位の分割を固定するハッシュ。
+/// ファイルのシードと対局番号から、対局単位の分割を固定するハッシュ。
+/// 式は`mix64(seed ^ game·0x9E3779B97F4A7C15)`で、乗算はu64の折り返し演算である。
+/// `mix64`はSplitMix64の出力混合関数であり、状態加算を行わない。
 pub fn hash64(seed: u64, game: u32) -> u64 {
     mix64(seed ^ u64::from(game).wrapping_mul(STEP))
 }
 
-/// 自己対局の記録を、対局単位で20分の1の検証集合へ割り当てる。
+/// [`hash64(seed, game)`](hash64)が20の倍数の対局を検証集合へ割り当てる。
+/// 来歴の`games`が`null`のファイル、すなわち乱数開始の自己対局だけに使う。
+/// 棋譜IDを持つファイルは[`Dataset::open`](super::Dataset::open)の棋譜IDの規則で分割する。
 pub fn is_validation(seed: u64, game: u32) -> bool {
     hash64(seed, game).is_multiple_of(20)
 }
@@ -45,7 +49,7 @@ mod tests {
 
     #[test]
     fn hash64_matches_python_vectors() {
-        // 撤去前のPythonの学習器のテストの既知値。加算を伴う通常のSplitMix64とは異なる。
+        // hash64のビット演算から定まる既知値であり、通常のSplitMix64の状態加算は行わない。
         for (seed, game, expected) in [
             (0, 0, 0),
             (1, 0, 0x5692_161D_100B_05E5),
@@ -58,7 +62,7 @@ mod tests {
 
     #[test]
     fn validation_split_matches_python_games() {
-        // 撤去前のPythonの学習器のテストが固定した、0..80の検証用対局番号。
+        // hash64(seed, game) % 20 == 0となる0..80の対局番号である。
         for (seed, expected) in [
             (11, vec![4, 15, 22, 41, 48, 59, 70]),
             (22, vec![6, 8, 35, 44, 58, 63, 74]),
@@ -70,7 +74,7 @@ mod tests {
 
     #[test]
     fn epoch_permutation_is_fixed_and_preserves_indices() {
-        // 上記の初期化・棄却法を独立なPython整数演算で評価した固定列。
+        // epoch_permutationの初期化と棄却法を独立な整数演算で評価した固定列である。
         let indices: Vec<u64> = (0..12).collect();
         for (seed, epoch, expected) in [
             (7, 0, [3, 11, 1, 4, 6, 0, 10, 9, 5, 8, 2, 7]),

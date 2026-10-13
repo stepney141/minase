@@ -39,7 +39,7 @@
 
 | 対象 | 問題 | 扱い |
 |---|---|---|
-| src/bin/spsa_runner/tests.rs:701 と tests/simulation.rs の `ranges()`（:747、:770が使う） | `#[ignore]` のテストが params.rs の係数表を読んで `len()==22` を表明するが、係数は35個に増えたので即座にpanicする。docs/plans/spsa.md:289 の完了条件と docs/measurements/spsa-gain-simulation.md:49 の再現コマンドが現在実行できない。 | T01。22係数の範囲をテスト内の定数に固定して直す。 |
+| src/bin/spsa_runner/tests.rs:701 と tests/simulation.rs の `ranges()`（:747、:770が使う） | `#[ignore]` のテストが params.rs の係数表を読んで `len()==22` を表明するが、係数は35個に増えたので即座にpanicする。docs/plans/archived/spsa.md:289 の完了条件と docs/measurements/spsa-gain-simulation.md:49 の再現コマンドが現在実行できない。 | T01。22係数の範囲をテスト内の定数に固定して直す。 |
 | src/search/alphabeta/tests/ponder.rs:276 | 負荷下でモジュール15回中7回、単独10回中4回失敗した。停止理由が期待したSoftLimitでなくHardLimitになる。 | S10。deepening.rs:80 の配線の唯一の検査なので、削除せず許容幅を緩める。 |
 | src/protocol/usi.rs:4034 | 50,000ノードの探索がstopの処理より先に終わると失敗する作りで、結果がスケジューリングに依存する。負荷下の10回の再実行では失敗しなかった。 | P01。決定的な3テストが同じ保証を持つので削除する。 |
 | src/core/board/bitboard.rs:17 `FILE_MASKS` | 唯一の利用者が e80cbf4 で削除された未使用の定数で、テスト（:282）だけが参照している。 | C12。テストと定数、再エクスポートを削除する。 |
@@ -84,7 +84,7 @@ src/protocol/usi.rs:4233 は、共有置換表のカットオフでThreads=2のP
 削除する場合は、検証コマンドと保存物一覧の5箇所を、テストが残るコミットへの参照に書き換える。
 
 第2に、設計書や台帳が名指ししている候補は、原則として適用し文書を書き換えることを推奨する。
-直前局面の固定テスト表（docs/plans/predecessor-generator.md）、投了の件数とD6-USI-47〜60、段階5の検証（docs/plans/movegen-speedup-2.md:254、:366）、spec-firstの台帳の各行がこれに当たる。
+直前局面の固定テスト表（docs/plans/archived/predecessor-generator.md）、投了の件数とD6-USI-47〜60、段階5の検証（docs/plans/archived/movegen-speedup-2.md:254、:366）、spec-firstの台帳の各行がこれに当たる。
 いずれも同じ分岐を通る重複か、完了した段階の一度きりの検証である。
 例外として、次のテストは保持を推奨する。
 
@@ -101,7 +101,7 @@ src/protocol/usi.rs:4233 は、共有置換表のカットオフでThreads=2のP
 Rust側に書き出し処理がなく、CLAUDE.md が禁じる未使用コードの温存に当たる。
 評価特徴の再学習の計画（docs/plans/evaluation-terms-relearning.md）で書き出しを戻すときに、git履歴から復元すればよい。
 一方、test_lookahead_teacher.py の2件は保持を推奨する。
-docs/plans/train-tools-layout.md が lookahead_diag.py を名指しで残しており、既存の標本に対しては実行できるからである。
+docs/plans/archived/train-tools-layout.md が lookahead_diag.py を名指しで残しており、既存の標本に対しては実行できるからである。
 
 第4に、src/eval/pst/tests.rs:604 の初期局面の評価値は保持を推奨する。
 期待値は6回書き換えたが、docs/guides/pst-training.md:355 が採用時にPythonの診断値と照合して更新する手順を定めている。

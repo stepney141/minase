@@ -2,7 +2,7 @@
 
 ## 目的
 
-[FMの補正の倍率をSPSAで調整する設計書](../plans/fm-scale-spsa.md)のフェーズ3として、J75のFMの補正に倍率611/1024を焼き込んだ[候補](fm-scale-spsa-candidate.md)が、master（M）より有意に強いかをSTCのGSPRTで判定する。
+[FMの補正の倍率をSPSAで調整する設計書](../plans/archived/fm-scale-spsa.md)のフェーズ3として、J75のFMの補正に倍率611/1024を焼き込んだ[候補](fm-scale-spsa-candidate.md)が、master（M）より有意に強いかをSTCのGSPRTで判定する。
 
 ## コマンドライン
 

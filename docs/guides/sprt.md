@@ -2,10 +2,9 @@
 
 本書は、Minaseのエンジン変更の効果を自己対局で測定する標準手順を定める。
 本書は、測定の実行者（人間およびエージェント）向けの運用規約と手順だけを記す。
-仕組みの詳細は設計書に書かれている。
-測定基盤の成立過程と対局の進め方は [plans/match-harness.md](../plans/match-harness.md) にある。
-保存、再開、および集計の基盤は [plans/match-harness-efficiency.md](../plans/match-harness-efficiency.md) と [plans/match-resume-simplification.md](../plans/match-resume-simplification.md) にある。
-統計方式は [plans/search.md](../plans/search.md) の測定基盤の節に、機能採否の段階ゲートの設計判断は [plans/match-staged-gate.md](../plans/match-staged-gate.md) にある。
+対局ハーネスと統計の仕様は、`crates/minase/src/harness/`、`crates/minase/src/bin/minase/match_runner/`、`crates/minase/src/bin/minase/match_report/`、および`crates/minase/src/stats.rs`のdocコメントにある。
+方式を選んだ理由と棄却した代案は[ADR](../adr/README.md)にある。
+本書の手順に関わる主なADRは、[コミット対コミットの測定](../adr/compare-commits-as-separate-engine-processes.md)、[ペンタノミアルGSPRT](../adr/judge-adoption-by-pentanomial-gsprt.md)、[段階ゲート](../adr/screen-at-stc-and-decide-at-ltc.md)、[H1の値](../adr/set-gsprt-h1-to-10-elo.md)、および[再開](../adr/resume-from-the-manifest-without-checking-the-runner.md)である。
 
 ## 原則
 
@@ -21,7 +20,7 @@
 短時間条件`time=10000+100`を**STC**（short time control）と呼ぶ。
 長時間条件`time=60000+200`を**LTC**（long time control）と呼ぶ。
 どちらも秒読みは使わない。
-STCはfishtestの標準値と同じであり、LTCの加算0.2秒は片側の総思考時間をfishtestのLTCと同程度にする値である（選定理由は [plans/match-cost-reduction.md](../plans/match-cost-reduction.md)）。
+STCはfishtestの標準値と同じであり、LTCの加算0.2秒は片側の総思考時間をfishtestのLTCと同程度にする値である（選定理由は[LTCの加算のADR](../adr/set-ltc-increment-to-200-ms.md)）。
 思考制限は`--each`で両エンジンに同一条件を与える。
 固定深さと固定ノード数は、探索速度を除いた診断に限定し、採否の根拠には使わない。
 STCとLTCは別の測定として扱い、測定名と実行ディレクトリを接尾辞`-stc`と`-ltc`で分ける。
@@ -74,7 +73,7 @@ LTCの`decision: pending`は、同じ実行ディレクトリを`--resume`で再
 ### 完了基準ゲート
 
 探索部マイルストーンの完了基準は、凍結ベースラインへの有意な勝ち越しである。
-凍結ベースラインは**コミット0045833のバイナリにdepth=1を指定したもの**に固定されている（確定の経緯は [plans/match-harness.md](../plans/match-harness.md)）。
+凍結ベースラインは**コミット0045833のバイナリにdepth=1を指定したもの**に固定されている（確定の経緯は [plans/match-harness.md](../plans/archived/match-harness.md)）。
 
 ```console
 cargo run --release --bin minase -- match run \
@@ -124,7 +123,7 @@ cargo run --release --bin minase -- match run \
 ### 先読みを対局条件に含める測定（`--ponder`）
 
 `--ponder`は、USIの先読み（ponder）を対局進行に含める対局条件である。
-ハーネスは予想手を返したエンジンにだけ相手の手番中の先読みをさせ、候補と基準に同じ手順を適用するので、`--ponder`は時間制御と同じ対局条件であり、機能比較のスイッチではない（送受信の手順は [plans/ponder.md](../plans/ponder.md) の「対局ハーネスの対局進行」）。
+ハーネスは予想手を返したエンジンにだけ相手の手番中の先読みをさせ、候補と基準に同じ手順を適用するので、`--ponder`は時間制御と同じ対局条件であり、機能比較のスイッチではない（送受信の手順は`crates/minase/src/harness/engine/ponder.rs`のdocコメントにある）。
 `--ponder`は両エンジンが時間制御（`time=`）の場合にだけ指定でき、`depth`または`nodes`の制限、および`cecp:`のエンジンとの併用はエラーになる。
 外れた先読みを止める時間は、先読みをした側の消費時間に含まれる。
 不合法な予想手は反則負けにせず、先読みをさせずに件数だけを数える。
@@ -145,7 +144,8 @@ cargo run --release --bin minase -- match run \
 再開と監査には実行ディレクトリ全体が必要なので、個別のJSONを編集しない。
 
 中断した測定は、`--resume`に実行ディレクトリを指定して再開する。
-実行条件はすべて`manifest.json`から読むので指定し直さず、`--resume`と条件の引数を同時に指定すると引数のエラーで終了する。
+実行条件はすべて`manifest.json`から読むので指定し直さない。
+`--resume`と同時に指定できるのは、`--target-pairs`と、記録された仮説との照合だけに使う`gsprt`の`--elo0`と`--elo1`であり、それ以外の条件の引数を同時に指定すると引数のエラーで終了する。
 
 ```console
 cargo run --release --bin minase -- match run \
@@ -156,7 +156,8 @@ cargo run --release --bin minase -- match run \
 GSPRTのペア数上限または固定局数Eloのペア数を増やして対局列を延長する場合は、`--target-pairs <N>`を加える。
 `N`は直前の起動の目標より大きくなければならない。
 
-再開時には対局するエンジンの同一性を照合し、記録と異なれば明示的なエラーで終了する（照合の項目は [plans/match-resume-simplification.md](../plans/match-resume-simplification.md)）。
+再開時には対局するエンジンの同一性を照合し、記録と異なれば明示的なエラーで終了する。
+照合の項目は`crates/minase/src/bin/minase/match_runner/resume.rs`のdocコメントにある。
 runnerと測定機は照合しないので、作業ツリーの`minase`を再ビルドした後でも再開できる。
 起動の記録に複数のrunnerが現れた測定は、そのことを測定記録に書く。
 記録形式の版が`minase`と異なる実行ディレクトリは再開できない。
@@ -170,7 +171,7 @@ runnerと測定機は照合しないので、作業ツリーの`minase`を再ビ
 `minase match report`は、同一時間制御の固定局数Eloで完了した実行ディレクトリから、Elo、95%信頼区間、異常件数、CPU時間、局時間、最大常駐メモリ、および校正用の2主指標をJSONで再計算する。
 GSPRT、候補と基準で時間制御が異なる測定、実行中の測定、強制終了を含む測定、および起動ごとの測定機が異なる測定は集計対象外であり、条件を満たさなければエラーで終了する。
 記録形式の版4の実行ディレクトリも読み取れる。
-エンジン異常などで資源を取得できない局があっても得点と異常件数は再集計され、欠測した資源に依存する指標だけが`null`になる（欠測の扱いの詳細は [plans/match-harness-efficiency.md](../plans/match-harness-efficiency.md) の「保存記録の集計」）。
+エンジン異常などで資源を取得できない局があっても得点と異常件数は再集計され、欠測した資源に依存する指標だけが`null`になる（欠測の扱いの詳細は`crates/minase/src/bin/minase/match_report/report.rs`の`Report`のdocコメントにある）。
 集計を読む側も、欠測を0で補完したり、欠測局を除外して最大値または校正指標を計算したりしてはならない。
 校正測定はLinux上で行い、両エンジンの`Threads`、各局のCPU時間と最大常駐メモリ、物理コア数、および実メモリ容量が保存されていることを前提とする。
 
@@ -196,7 +197,7 @@ cargo run --release --bin minase -- match report \
 
 標準の測定では、`commit:<hash>`の形式でコミットを指定する。
 ハーネスは当該コミットを`git archive`で展開して`cargo build --release --bin minase`を実行し、成果物を`target/match-cache/`へキャッシュする。
-キャッシュの検証と再ビルドの規則は、[plans/match-harness-efficiency.md](../plans/match-harness-efficiency.md) の「履歴バイナリのキャッシュ」にある。
+キャッシュの検証と再ビルドの規則は、`crates/minase/src/harness/commit.rs`の`resolve_commit`のdocコメントにある。
 作業ツリーにある未コミットの変更は、この形式のビルドには含まれない。
 起動引数`--protocol usi --rules <マッチ規則>`は自動で付与される。
 `--rules`の値は入力原文のまま両エンジンへ渡され、各コミットのバイナリがそれぞれの版の規則コードとして解釈する。
@@ -213,26 +214,26 @@ minase本体は`--protocol`と`--rules`の指定が必須なので、この形�
 HaChuのようにUSIに対応していない外部エンジンとの比較には、`cecp:<起動コマンド>`の形式を使う。
 この形式は、CECP（XBoardプロトコル）で対局するエンジンを起動する。
 指定例は`"cecp:../hachu-debian/hachu"`である。
-接続時のハンドシェイクと毎手の同期の手順は、[plans/match-harness.md](../plans/match-harness.md) の「CECPセッション管理」にある。
+接続時のハンドシェイクと毎手の同期の手順は、`crates/minase/src/harness/engine/cecp.rs`のモジュールのdocコメントにある。
 指定できる思考制限は、`depth`、秒単位の時間制御、および1手固定時間の3種類である。
 1手固定時間は、基本時間と加算が0で秒読みが整数秒の時間制御として指定する。
 `nodes`、基本時間や加算を伴う秒読み、および秒未満の値は指定できない。
 HaChuは1手固定時間を指定すると、指定値より短い時間で着手する。
-測定の詳細は[HaChu対minaseの条件格子測定](../plans/hachu-condition-grid.md)にある。
+測定の詳細は[1手固定時間の測定記録](../measurements/hachu-grid-fixed1-2.md)にある。
 規則はエンジン側の設定に委ねられるため、`--rules`にはそのエンジンが実装する規則を指定する。
 
 置換表容量は`--candidate-hash`と`--baseline-hash`にMB単位で指定し、USIエンジンには`setoption name USI_Hash`、CECPエンジンには`memory`で伝える。
 省略時はエンジンの既定値（minaseは`USI_Hash`の既定256 MB、CECPエンジンは`memory 256`）で走り、解決後の容量は`manifest.json`の`hash_mb`に記録され、再開時にはこの値で対局する。
 HaChuは受けた容量を2の冪へ丸めるため、CECPエンジンには2の冪だけを指定できる。
 
-ハーネスは、USIエンジンの起動時に`setoption name ResignValue value 99999`を候補と基準の両方へ無条件に送り、エンジンの投了を無効にして対局を規則上の終局まで指させる（理由は [USI投了](../plans/usi-resignation.md)）。
+ハーネスは、USIエンジンの起動時に`setoption name ResignValue value 99999`を候補と基準の両方へ無条件に送り、エンジンの投了を無効にして対局を規則上の終局まで指させる（理由は[投了の無効化のADR](../adr/disable-resignation-in-strength-measurements.md)）。
 このオプションを持たないコミットは、USIの慣例どおり未知のオプション名を無視する。
 
 ## 統計的手続き
 
 判定はペンタノミアルGSPRTによる。
 同一開始局面で先後を入れ替えたペア対局は2局間に相関があるため、局単位ではなく候補側のペア得点合計（0、0.5、1、1.5、2）の5分類度数で対数尤度比（LLR）を計算する。
-LLRの計算方式と、fishtestの参照値による単体テストは、[plans/search.md](../plans/search.md) の「GSPRTと固定局数Elo」が定める。
+LLRの計算方式は`crates/minase/src/stats.rs`のdocコメントが定め、fishtestの参照値による単体テストも同じファイルにある。
 
 仮説と誤り率は次のとおり固定する。
 Eloの写像はロジスティック（`s = 1/(1+10^(-elo/400))`）、H0はelo=0、H1はelo=10、α=β=0.05である。
@@ -244,13 +245,13 @@ H1を採用する境界は`log((1-β)/α) ≈ +2.944`、H0を採用する境界�
 ハーネスは1ペア取り込むごとにLLRを再計算する。
 停止は原則としてLLRの境界交差によって起こる。ペア数上限（`--max-pairs`、既定100,000）はfishtestと同様の暴走保険であり、到達時は判定保留として報告する。
 ただしSTCで指定する上限3,000ペアは暴走保険ではなく段階ゲートの振分け規則であり、到達時の判定保留は停止時点のLLRの符号によってLTCへ進むかどうかを決める。
-H1を5 Eloとしていた時期の測定は、`manifest.json`の`h1_elo`で識別できる（変更の経緯は [棋力測定の所要時間削減](../plans/match-cost-reduction.md)）。
+H1を5 Eloとしていた時期の測定は、`manifest.json`の`h1_elo`で識別できる（変更の経緯は [棋力測定の所要時間削減](../plans/archived/match-cost-reduction.md)）。
 H1=10は恒久の値ではなく、新境界のLTCで`H0`となった候補が連続して3件出た時点、または段階計画が完了した時点で再検討する。
 
 必要標本数の目安は次のとおりである。
 判定までの期待ペア数は、実測のペア得点分散をσ²=0.10に固定したWald近似では、真のElo差がH0とH1の中間（5 Elo）にある場合に約4,200ペア、H1と同じ10 Eloの場合に約2,600ペア、20 Eloの場合に約950ペア、40 Eloの場合に約410ペアとなる。
 一方、置換表や静止探索のような数十Elo以上の効果は数十〜数百ペアで決着する。
-計算方法と効果量別の表は[棋力測定の所要時間削減](../plans/match-cost-reduction.md#仮説h1を10-eloへ広げる)が定める。
+計算方法と効果量別の表は、H1を決めた時点の試算として[棋力測定の所要時間削減](../plans/archived/match-cost-reduction.md#仮説h1を10-eloへ広げる)に残っている。
 
 検定全体の健全性は、合成結果によるモンテカルロ検証で確認する。
 固定シードで各仮説を3,000回反復し、elo=0での誤採用率が8%以下、elo=10での検出率が90%以上であることを検査する。
@@ -293,7 +294,7 @@ cargo test --lib stats::tests::gsprt_monte_carlo_error_rates_match_documented_th
 
 時間切れが測定機の外部要因（カーネルのOOM killer、他プロセスのクラッシュなど）で生じた疑いがある場合は、`journalctl`とペアの保存時刻で原因を確かめる。
 測定記録には、思考時間とエンジンが報告した完了時刻の乖離、候補側と基準側の時間切れの件数、および該当ペアを除いて計算し直したLLR（`minase::stats::gsprt_llr`）を書く。
-外部要因が両側に対称に及び、該当ペアを除いてもLLRが判定境界を越えている場合は、測定をやり直さずに採用してよいかをプロジェクトとして判断し、その結論を設計書に記録する。
+外部要因が両側に対称に及び、該当ペアを除いてもLLRが判定境界を越えている場合は、測定をやり直さずに採用してよいかをプロジェクトとして判断し、その結論をADRに記録する。
 判断を待つ間は、暫定の基準として後続の測定を進めてよい。
 先例は [棋力向上段階6のIIRのLTC](../measurements/strength-stage6-iir-ltc.md) であり、約33秒の停止で時間切れが11件（候補6件、基準5件）出たが、該当ペアを除いてもLLRは+3.11で判定境界を越えていたため、採用した。
 

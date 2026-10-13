@@ -1,7 +1,7 @@
 # ヒューリスティック評価の係数学習に関する原因調査
 
 2026年9月27日時点の調査を、基準コミット `ba099b7` の実装と保存済み学習成果物に基づいて報告する。
-対象は、[棋力向上段階9](../plans/strength-stage9.md)の項目1「王の遮蔽と開いた筋」の係数学習である。
+対象は、[棋力向上段階9](../plans/archived/strength-stage9.md)の項目1「王の遮蔽と開いた筋」の係数学習である。
 駒升表を固定した対照実験、Claude Fable 5.1による追加調査、および別実装による主要数値の検算を統合した。
 本報告は原因の切り分けを扱い、新しい係数の採用や棋力向上を判定するものではない。
 
@@ -194,7 +194,7 @@ $w_1$ と $w_0$ を、それぞれλ=1とλ=0の教師に対する最適係数�
 
 ## 根拠と再現資料
 
-元の特徴定義は[段階9の設計](../plans/strength-stage9.md)、当時の学習条件は[項目1の学習記録](../measurements/strength-stage9-shelter-training.md)と[先読み教師の測定記録](../measurements/lookahead-teacher-shelter-training.md)にある。
+元の特徴定義は[段階9の設計](../plans/archived/strength-stage9.md)、当時の学習条件は[項目1の学習記録](../measurements/strength-stage9-shelter-training.md)と[先読み教師の測定記録](../measurements/lookahead-teacher-shelter-training.md)にある。
 元の特徴に遮蔽が含まれないことと、実際の利きを別項目が受け持つことは、設計書に明記されている。
 したがって、今回確認した制約は、その定義どおりに実装された特徴の適用範囲に関するものである。
 

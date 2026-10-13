@@ -2,7 +2,7 @@
 
 ## 目的
 
-[共適応の検証](../plans/eval-search-coadaptation.md)の「追加診断」の「追加学習の対照」として、G23の上へλ=0.75のまま10エポックを重ねた対照Pcを載せたCcを、[Cλ対S0](eval-coadaptation-before-stc400.md)と同じ開始局面の組でS0と400ペア対局させる。
+[共適応の検証](../plans/archived/eval-search-coadaptation.md)の「追加診断」の「追加学習の対照」として、G23の上へλ=0.75のまま10エポックを重ねた対照Pcを載せたCcを、[Cλ対S0](eval-coadaptation-before-stc400.md)と同じ開始局面の組でS0と400ペア対局させる。
 Pλの負けを、混合比λ=1.0の効果と10エポックの追加学習の効果に分けることが目的であり、採否の根拠にはしない。
 
 ## コマンドライン

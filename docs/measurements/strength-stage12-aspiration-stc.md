@@ -2,7 +2,7 @@
 
 ## 目的
 
-[棋力向上段階12](../plans/strength-stage12.md)の項目1（aspiration windowsのfail-high時の減深）の実装を段階開始版と短時間条件で対局させ、LTCへ進めるかを判定する。
+[棋力向上段階12](../plans/archived/strength-stage12.md)の項目1（aspiration windowsのfail-high時の減深）の実装を段階開始版と短時間条件で対局させ、LTCへ進めるかを判定する。
 
 ## コマンドライン
 

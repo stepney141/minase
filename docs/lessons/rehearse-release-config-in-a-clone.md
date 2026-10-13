@@ -18,4 +18,4 @@ release.toml または`[package.metadata.release]`を変更したら、リポジ
 
 ## 出典
 
-- [plans/crate-split.md](../plans/crate-split.md) の「リリース手順と変更履歴」
+- [plans/crate-split.md](../plans/archived/crate-split.md) の「リリース手順と変更履歴」

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[NNUEの共通土台と初代のネットの設計書](../plans/nnue-replacement.md)のフェーズ5として、同じデータと設定で学習したHalfKP-hm-b8（候補）とP型（基準）の幅128のネットを、対称仮説のSTCで直接対局させ、段階ゲートに出す型を決める。
+[NNUEの共通土台と初代のネットの設計書](../plans/archived/nnue-replacement.md)のフェーズ5として、同じデータと設定で学習したHalfKP-hm-b8（候補）とP型（基準）の幅128のネットを、対称仮説のSTCで直接対局させ、段階ゲートに出す型を決める。
 
 ## コマンドライン
 
@@ -19,7 +19,7 @@ cargo run --release --bin minase -- match run \
 
 - 候補: `3dc5e9e`（`ActiveFeatureSet`をHalfKP-hm-b8に切り替え、同型の学習済みネットを`nets/nnue.bin`に埋め込んだコミット。バイナリのSHA-256 `3707afa6…`）。
 - 基準: `90280a0`（P型の学習済みネットを`nets/nnue.bin`に埋め込んだコミット。SHA-256 `02f25af1…`）。
-- 両者は`ActiveFeatureSet`と`nets/nnue.bin`だけが異なる。ネットはどちらも[Rust製NNUE学習器](../plans/nnue-trainer-rust.md)で全30ファイルから学んだ最良エポック（エポック1）のものである（[学習の記録](nnue-replacement-training.md)の「フェーズ4の学習」）。
+- 両者は`ActiveFeatureSet`と`nets/nnue.bin`だけが異なる。ネットはどちらも[Rust製NNUE学習器](../plans/archived/nnue-trainer-rust.md)で全30ファイルから学んだ最良エポック（エポック1）のものである（[学習の記録](nnue-replacement-training.md)の「フェーズ4の学習」）。
 - 規則セットは`L0,P0,R1,E0`、`USI_Hash`は両者256 MB、`Threads`は1。
 
 ## 環境

@@ -24,7 +24,10 @@ fn validate(initial: &[[f32; 2]]) -> Result<()> {
     Ok(())
 }
 
-/// 2端点をmiddlegame、endgameのf32配列として保存する。鏡映共有と保存範囲を検査する。
+/// 鏡映対を展開した実数PSTの2端点を圧縮なしNPZへ保存する。
+/// キーは`middlegame`と`endgame`で、各配列はdtype `<f4`、形`[13680]`の特徴番号順の値である。
+/// 単位はセンチポーン、範囲は−4096以上4095.875以下である。
+/// 有限性、要素数、鏡映共有と保存範囲を検査する。
 pub fn encode_pst_npz(initial: &[[f32; 2]]) -> Result<Vec<u8>> {
     validate(initial)?;
     let arrays = ["middlegame", "endgame"].map(|name| {

@@ -37,7 +37,7 @@ Rustのソースに定数を残したまま、調整後の転記を自動化す�
 
 ## 既存計画書で参照したRust実装との違い
 
-minaseの[SPSA計画書](../plans/spsa.md)は、調整中の係数の公開方式としてHobbes、akimbo、Reckless、およびViridithasを比較している。
+minaseの[SPSA計画書](../plans/archived/spsa.md)は、調整中の係数の公開方式としてHobbes、akimbo、Reckless、およびViridithasを比較している。
 その参照箇所で確認できる機能は次のとおりであり、ソースへの最終値の書き込みとは区別する必要がある。
 
 | 実装 | 参照箇所で確認できる機能 |
@@ -66,7 +66,7 @@ minaseの[SPSA計画書](../plans/spsa.md)は、調整中の係数の公開方�
 
 自動反映を持つやねうら王、fishutils、およびapeironの3例は、いずれもソース中の定数の行を独自の規則で探して数値を置き換える。
 データファイルを係数の正にする実装は、参照した範囲では見つからなかった。
-この結果は、[SPSAの調整結果をソースへ反映するコマンドの設計書](../plans/spsa-apply.md)がRustの表を正のまま保つ判断の根拠である。
+この結果は、[SPSAの調整結果をソースへ反映するコマンドの設計書](../plans/archived/spsa-apply.md)がRustの表を正のまま保つ判断の根拠である。
 
 ## rustfmtの扱い
 
@@ -92,7 +92,7 @@ minaseの現行手引きは、最終値を四捨五入して`crates/minase/src/s
 
 既存計画書が棄却したのは、調整用ビルドを作るために探索ソースへ一時パッチを当てる方式である。
 マクロとfeatureで調整用ビルドを作る判断は、保存された結果から通常ビルドの既定値を更新するコマンドを設けるかどうかとは別の判断になる。
-実際、同計画書が参照したやねうら王のツール自体が、最終値を反映する`apply`を提供している。[計画書の方式比較](../plans/spsa.md)、[やねうら王のコマンド分岐](https://github.com/yaneurao/YaneuraOu-ScriptCollection/blob/a52094eb0c1f9a4932f825a67bbb6c1d2f13d173/SPSA/tune.py#L635-L639)。
+実際、同計画書が参照したやねうら王のツール自体が、最終値を反映する`apply`を提供している。[計画書の方式比較](../plans/archived/spsa.md)、[やねうら王のコマンド分岐](https://github.com/yaneurao/YaneuraOu-ScriptCollection/blob/a52094eb0c1f9a4932f825a67bbb6c1d2f13d173/SPSA/tune.py#L635-L639)。
 現行計画は、最終値を定数へ反映して検定する手順を定めているが、その転記を自動化する手段までは設計していない。
 
 以上から、minaseでは保存記録を検証して最終値を取り出し、`crates/minase/src/search/alphabeta/params.rs`の既定値だけを更新する独立した`apply`コマンドを追加する方針が考えられる。

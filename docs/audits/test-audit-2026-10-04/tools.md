@@ -11,7 +11,7 @@ Python側の範囲は `tools/train/tests/*.py`、[scripts/test_fetch_lishogi_gam
 学習ツールのPython 132件は23.1秒で、その約半分は実学習の子プロセスを起動する4件が占める。
 したがって以下の候補の根拠は実行時間ではなく、同じ分岐の重複、外部ライブラリが保証する事項の再確認、および期待値や import の書き換え負担である。
 
-判断の根拠は [docs/guides/sprt.md](../../guides/sprt.md)、[docs/guides/pst-training.md](../../guides/pst-training.md)、[docs/plans/spsa.md](../../plans/spsa.md)、[docs/plans/spsa-apply.md](../../plans/spsa-apply.md)、[docs/plans/spsa-gain-calibration.md](../../plans/spsa-gain-calibration.md)、[docs/plans/ponder.md](../../plans/ponder.md)、[docs/plans/train-tools-layout.md](../../plans/train-tools-layout.md)、[docs/plans/bin-harness-layout.md](../../plans/bin-harness-layout.md)、[docs/plans/spec-first-tests/matrices/d8-stats-harness.md](../../plans/spec-first-tests/matrices/d8-stats-harness.md) と [ledgers/d8.md](../../plans/spec-first-tests/ledgers/d8.md)、および2026-09-12の監査の [tools.md](../test-audit-2026-09-12/tools.md) である。
+判断の根拠は [docs/guides/sprt.md](../../guides/sprt.md)、[docs/guides/pst-training.md](../../guides/pst-training.md)、[docs/plans/archived/spsa.md](../../plans/archived/spsa.md)、[docs/plans/archived/spsa-apply.md](../../plans/archived/spsa-apply.md)、[docs/plans/archived/spsa-gain-calibration.md](../../plans/archived/spsa-gain-calibration.md)、[docs/plans/archived/ponder.md](../../plans/archived/ponder.md)、[docs/plans/archived/train-tools-layout.md](../../plans/archived/train-tools-layout.md)、[docs/plans/archived/bin-harness-layout.md](../../plans/archived/bin-harness-layout.md)、[docs/plans/archived/spec-first-tests/matrices/d8-stats-harness.md](../../plans/archived/spec-first-tests/matrices/d8-stats-harness.md) と [ledgers/d8.md](../../plans/archived/spec-first-tests/ledgers/d8.md)、および2026-09-12の監査の [tools.md](../test-audit-2026-09-12/tools.md) である。
 2026-09-12の監査が保持と決めたものは、その後に重複先が追加されるなど状況が変わった場合を除いて再提案していない。
 
 以下は、壊れているか製品を観測しないため、優先して整理できる候補である。
@@ -24,7 +24,7 @@ T01では、合成目的関数と利得較正の模擬比較が、係数の件�
 係数表は2659bfbで26個、c3ca7c0で30個、a2e35d7で35個に増えたため、単独で実行すると `left: 35, right: 22` で即座にpanicする。
 さらに、階段状の係数として扱う添字10は、22個の表では NullMoveBase を指していたが、現在は ReverseFutilityMargin を指しており、表の並びにも依存している。
 
-この結果、[spsa.md](../../plans/spsa.md) の完了条件（289行、合成目的関数の試験を通すこと）と、[spsa-gain-simulation.md](../../measurements/spsa-gain-simulation.md) の再現コマンド（49行、143行）は、どちらも満たせない状態にある。
+この結果、[spsa.md](../../plans/archived/spsa.md) の完了条件（289行、合成目的関数の試験を通すこと）と、[spsa-gain-simulation.md](../../measurements/spsa-gain-simulation.md) の再現コマンド（49行、143行）は、どちらも満たせない状態にある。
 これは削除ではなく修理の候補である。
 係数表の読み込みと件数・名前の照合を削り、22個の (名前, 最小, 最大) をテスト内の定数として持たせる。
 その表は simulation.rs の20〜43行の `MEASURED` に既にあり、spsa.md:278 も「係数は22個、うち1個は階段状」と事前に定めている。
@@ -36,7 +36,7 @@ T02では、利得較正の所要時間を測るだけの試験が残ってい�
 
 削除対象は [src/bin/spsa_runner/tests/simulation.rs:711](../../../src/bin/spsa_runner/tests/simulation.rs:711) `gain_simulation_timing`（ignored）である。
 20シードの所要時間を測って本実験の時間を外挿して表示するだけで、assertは `runs.len() == 20` しかない。
-[spsa-gain-calibration.md](../../plans/spsa-gain-calibration.md) の94行はこれを本実験の前段の一度きりの手順と位置づけており、計画は2026-09-26に完了している。
+[spsa-gain-calibration.md](../../plans/archived/spsa-gain-calibration.md) の94行はこれを本実験の前段の一度きりの手順と位置づけており、計画は2026-09-26に完了している。
 現状はT01の `ranges()` で失敗する。
 失う現実的な検出力はない。
 
@@ -62,7 +62,7 @@ T03では、完了した計画の測定スクリプトに同梱されたPython�
 `test_phase3.py` の対象モジュールは存在しない `mnpt_v3` を import し（train-tools-layout.md:266 もこれを認めている）、`test_prep.py` は存在しない `data/relational-correction/fm-eval-tools/...` を import する。
 `test_phase0.py` は、学習ツールの環境にも `uv.lock` にもない pytest を使い、309〜317行では壁時計で2秒未満を表明する。
 
-対象の2計画、[qsearch-output-training.md](../../plans/qsearch-output-training.md) と [relational-correction.md](../../plans/relational-correction.md) は、どちらも不採用で完了している。
+対象の2計画、[qsearch-output-training.md](../../plans/archived/qsearch-output-training.md) と [relational-correction.md](../../plans/archived/relational-correction.md) は、どちらも不採用で完了している。
 結論はスクリプトの正しさに依存せず、現行の計画もこれらのスクリプトを再利用しない。
 各テストは `subprocess.Popen` を模擬した状態で測定スクリプトだけを動かし、`src/` を観測しない。
 一方で、学習ツールの再編（edfe6cc）ではこのうち3ファイルの import を書き換える作業が生じており、残せば今後のツール変更のたびに同じ作業が要る。
@@ -217,7 +217,7 @@ tests.rs:976 に固有なのは `c_end = f64::MIN_POSITIVE` だけで、これ�
 このケースを1件統合先へ足せばよい。
 
 tests.rs:1118 の4ケースは、`parse_parameters` 経由で同じ `validate_parameters`（params.rs:187）を検査済みである（tests.rs:354、365、373、376）。
-[spsa-apply.md](../../plans/spsa-apply.md) の179行が要求するのは pairs=0 と最小最大の逆転の2件だけで、`validate_parameters` を経由する配線は min=401 と空の係数表のケースで残る。
+[spsa-apply.md](../../plans/archived/spsa-apply.md) の179行が要求するのは pairs=0 と最小最大の逆転の2件だけで、`validate_parameters` を経由する配線は min=401 と空の係数表のケースで残る。
 
 tests.rs:1292 の実装は `value.round()`（apply.rs:247）なので、0から遠い側への丸めはstdが保証する。
 spsa-apply.md:184 の「小数部0.5の値と負の値」という要求は、2.5→3、−2.5→−3、−2.25→−2 の3ケースで満たせる。

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[棋力向上段階8](../plans/strength-stage8.md)のフェーズ3として、SEEによる捕獲手の枝刈りを採用した構成のbench深さ6で、improvingでないノードのfutility余裕値の倍率、LMRの追加減深の損失、および手の単位の発動率を、設計書の規則で決め直す。
+[棋力向上段階8](../plans/archived/strength-stage8.md)のフェーズ3として、SEEによる捕獲手の枝刈りを採用した構成のbench深さ6で、improvingでないノードのfutility余裕値の倍率、LMRの追加減深の損失、および手の単位の発動率を、設計書の規則で決め直す。
 
 ## コマンドライン
 

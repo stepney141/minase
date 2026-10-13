@@ -49,6 +49,10 @@ pub enum RuleCode {
 
 impl RuleCode {
     /// 全ローカルルールコード。
+    ///
+    /// 群ごとにまとめたL0からE3までの順であり、[`Rules::from_codes`](super::Rules::from_codes)の
+    /// 矛盾の報告順、`Display for Rules`、および`From<Rules> for Vec<RuleCode>`の並びを決める。
+    /// 並べ替えると報告と表示の順序が変わる。
     pub const ALL: [Self; 19] = [
         Self::L0,
         Self::L1,

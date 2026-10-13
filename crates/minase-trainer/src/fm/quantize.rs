@@ -1,3 +1,6 @@
+//! 実数のFM補正を整数の埋め込み、符号、指数へ変換する。
+//! 量子化の式と範囲は[`quantize`]、補正の整数演算は[`super::report::correction`]で定める。
+
 use super::Result;
 use minase::eval::{
     features::FEATURE_COUNT,
@@ -27,8 +30,12 @@ impl Quantized {
     }
 }
 
-/// sqrt(K)·V·sqrt(|a|)の順にf64で計算し、偶数丸め後の絶対値が16,383以下となる
-/// 最大の指数を30から0まで探す。形状、有限性、正のKと吸収後の非零性を検査する。
+/// `u_if = round_ties_even(2^e * sqrt(K) * v_if * sqrt(abs(a_f)))`をi16へ写す。
+/// 符号は`a_f < 0`なら−1、それ以外なら+1である。
+/// 指数を30から0へ下げ、全要素の絶対値が16,383以下になる最大の指数を選ぶ。
+/// この上限はi16の範囲に2倍の余裕を取り、丸めと負側に1広い整数範囲による逸脱を防ぐ。
+/// 指数30はエンジンの読み手の上限であり、非有限値、全0の吸収済み重み、収まる指数のない入力は拒否する。
+/// `N = Σ_f d_f ((Σ_i u_if)^2 − Σ_i u_if^2)`に対する`trunc(N / 2^(2e+1))`が、センチポーン単位の`K * Φ`に対応する。
 pub fn quantize(v: &[[f64; FM_RANK]], a: &[f64; FM_RANK], k: f64) -> Result<Quantized> {
     if v.len() != FEATURE_COUNT
         || !k.is_finite()

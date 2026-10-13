@@ -19,6 +19,11 @@ use super::team::{SharedSearch, WorkerOutcome};
 use super::time::{TimeBudget, should_start_next_iteration, stable_signal};
 
 /// 補助ワーカーが探索する深さを昇順に返す。
+///
+/// 1始まりのワーカー番号kに対し、周期 `2 + ((k − 1) % 4)` ごとに深さ1から反復する。
+/// 周期を2〜5の4種類で循環させ、多数のワーカーを使っても深さ1しか読まない割当てを避ける。
+/// 深さ上限は周期にかかわらず必ず含める。k=1、上限6なら1、3、5、6である。
+/// 判断の理由は`docs/adr/diversify-lazy-smp-workers-by-skipping-depths.md`にある。
 pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl Iterator<Item = u32> {
     assert!(worker_index > 0, "auxiliary worker index must be positive");
     let period = 2 + ((worker_index - 1) % 4) as u32;
@@ -26,7 +31,8 @@ pub(super) fn auxiliary_depths(worker_index: usize, depth_limit: u32) -> impl It
         .filter(move |&depth| depth == 1 || (depth - 1) % period == 0 || depth == depth_limit)
 }
 
-/// 主ワーカーの反復深化を実行し、深さ完了ごとに進捗イベントを送る。
+/// 主ワーカーの反復深化を実行し、窓内で深さを完了するごとに進捗イベントを送る。
+/// aspiration windowの窓外れは[`Searcher::search_iteration`]内で読み直し、進捗として通知しない。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_main_worker(
     nnue: &Nnue,
@@ -152,7 +158,8 @@ pub(super) fn run_main_worker(
     main_worker_outcome(&searcher, result, completed_pv)
 }
 
-/// 「途中結果の採用」（byoyomi-time-usage.md）に従い、完了深さと評価値を保って着手を選ぶ。
+/// [`RootResults::partial_result`]の途中結果があれば、その着手と主変化を採る。
+/// 完了反復の深さと評価値は保ち、途中結果の値は`partial_score`として別に返す。
 pub(super) fn main_worker_outcome(
     searcher: &Searcher<'_>,
     mut result: SearchResult,
@@ -182,6 +189,10 @@ pub(super) fn main_worker_outcome(
 }
 
 /// 補助ワーカーの反復深化を実行し、最後まで完了した反復を返す。
+///
+/// 進捗を通知せずsoft limitも評価しないが、各ノードでチーム共通の停止条件を検査する。
+/// 窓の初期化には自分の直前の完了値を使い、窓外れは読み直してから同じ反復の最善手、評価値、深さ、主変化を1組で保持する。
+/// 深さ上限を完了すると自分の処理を終え、他ワーカーへ深さ完了の停止を通知しない。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_auxiliary_worker(
     nnue: &Nnue,

@@ -29,9 +29,9 @@ fn restored_capture(target: &Position, restored: PieceCode) -> Position {
     builder.finish().unwrap()
 }
 
+/// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第5条、第9条により、歩兵12枚が残ると歩兵も成金も復元できない。
 #[test]
 fn full_pawn_stock_prevents_restoring_pawn_origin() {
-    // 設計書「駒在庫」、第4・5・9条: 歩兵12枚が残ると歩兵も成金も復元できない。
     let target = pawn_stock_target(12);
     let result = checked(MoveRules::standard(), &target);
     let native_gold = PieceCode::new(Color::White, PieceKind::GoldGeneral).unwrap();
@@ -44,9 +44,9 @@ fn full_pawn_stock_prevents_restoring_pawn_origin() {
     );
 }
 
+/// [`predecessor`](crate::predecessor)の由来別在庫の条件とRULES.md第9条により、不足する1枚の歩兵は不成と成金の両方を取り得る。
 #[test]
 fn missing_pawn_restores_both_unpromoted_and_promoted_forms() {
-    // 設計書「捕獲駒の復元」、第9条: 不足する1枚の歩兵は不成と成金の両方を取り得る。
     let target = pawn_stock_target(11);
     let result = checked(MoveRules::standard(), &target);
     for restored in [
@@ -70,9 +70,9 @@ fn missing_pawn_restores_both_unpromoted_and_promoted_forms() {
 }
 
 /// 同一由来の2枚復元は、不成と成駒の組でも不足在庫の範囲に限る。
+/// [`predecessor`](crate::predecessor)の由来別在庫の条件により、歩兵と成金は同じ歩兵在庫から2枚引く。
 #[test]
 fn double_capture_respects_shared_origin_stock() {
-    // 設計書「捕獲駒の復元」「駒在庫」: 歩兵と成金は同じ歩兵在庫から2枚引く。
     let from = sq(5, 5);
     let mid = sq(6, 5);
     let to = sq(7, 5);

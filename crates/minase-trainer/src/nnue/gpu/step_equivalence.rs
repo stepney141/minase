@@ -1,4 +1,4 @@
-//! カーネル8の契約を、CPU参照の1更新と3更新、固定行、切り詰めで検査する。
+//! AdamWの更新を、CPU参照の1更新と3更新、固定行、切り詰めで検査する。
 
 use super::{Device, Error, HostRing, Result, Step, StepResult, equivalence::Report};
 use crate::nnue::{
@@ -640,7 +640,7 @@ mod tests {
         }
     }
 
-    // 指示書の幅と、縮約ブロックに満たない/またがるバッチで同じ契約を検査する。
+    // 複数の幅と、縮約ブロックに満たないバッチや複数ブロックにまたがるバッチで同じ契約を検査する。
     fn matrix(set: InputFeatureSet, width: usize) {
         let device = Device::new(0).unwrap();
         let shape = Shape::new(set, width, 1000.0).unwrap();
@@ -722,7 +722,7 @@ mod tests {
     #[test]
     #[ignore = "requires a CUDA GPU and NVRTC"]
     fn gpu_step_matches_parallel_cpu_with_mixed_targets_and_custom_coefficients() {
-        // 指示書: CPU実行の並列1更新とCUDA更新を同じ教師値と設定で比較する。
+        // CPU実行の並列1更新とCUDA更新を同じ教師値と設定で比較する。
         let device = Device::new(0).unwrap();
         let training = TrainingOptions {
             lr_linear: 0.02,

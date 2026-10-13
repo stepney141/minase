@@ -16,7 +16,7 @@ use std::hash::{BuildHasherDefault, DefaultHasher};
 
 #[test]
 fn equal_positions_have_equal_hashes() {
-    // 設計書predecessor-generator.md「Positionのハッシュ」
+    // impl Hash for Positionの契約に従い、等しい局面は等しいハッシュになり、衝突時はEqで区別する。
     let first = positions_with_distinct_temporary_states();
     let second = positions_with_distinct_temporary_states();
     let (first_capture, _) = position_after_non_lion_captures_lion();
@@ -37,7 +37,7 @@ fn equal_positions_have_equal_hashes() {
 
 #[test]
 fn hash_set_preserves_distinct_positions_under_collisions() {
-    // 設計書predecessor-generator.md「Positionのハッシュ」
+    // impl Hash for Positionの契約に従い、等しい局面は等しいハッシュになり、衝突時はEqで区別する。
     #[derive(Default)]
     struct ConstantHasher;
 
@@ -60,7 +60,7 @@ fn hash_set_preserves_distinct_positions_under_collisions() {
     }
 }
 
-// 局面キーは全駒の位置・種類・所有者・成否を区別する(第24条1項a・2項、D4-024-01)。
+// 局面キーは全駒の位置・種類・所有者・成否を区別する(第24条1項a・2項)。
 // 成否の区別は動きが同一の対(生の金将と歩兵の成駒など、第17条4項)にも及ぶ。
 #[test]
 fn article_24_1_a_key_distinguishes_placement_kind_owner_and_promotion() {
@@ -120,7 +120,7 @@ fn article_24_1_a_key_distinguishes_placement_kind_owner_and_promotion() {
     }
 }
 
-// 局面キーは手番側を区別し、その寄与はどの盤面でも現れる(第24条1項b、D4-024-02)。
+// 局面キーは手番側を区別し、その寄与はどの盤面でも現れる(第24条1項b)。
 #[test]
 fn article_24_1_b_key_distinguishes_side_to_move_on_any_board() {
     assert_ne!(
@@ -144,7 +144,7 @@ fn article_24_1_b_key_distinguishes_side_to_move_on_any_board() {
     assert_ne!(initial.zobrist(), flipped.zobrist());
 }
 
-// 局面キーは先獅子による直後の捕獲禁止の有無を反映する(第24条1項c、D4-024-03)。
+// 局面キーは先獅子による直後の捕獲禁止の有無を反映する(第24条1項c)。
 #[test]
 fn article_24_1_c_key_reflects_lion_recapture_state() {
     let generator = MoveGenerator::standard();
@@ -223,7 +223,7 @@ fn article_24_1_c_key_reflects_lion_recapture_state() {
 }
 
 // 盤上に獅子が複数ある局面では、禁止の対象升が異なればキーも異なる
-// (第24条1項c、D4-024-03境界)。
+// (第24条1項c)。
 #[test]
 fn article_24_1_c_key_distinguishes_the_prohibition_target_square() {
     let base = position_from_codes(
@@ -264,8 +264,8 @@ fn article_24_1_c_key_distinguishes_the_prohibition_target_square() {
     assert_eq!(rejected, base);
 }
 
-// 構成要素d(成り権保留(P1・P2・P5))は盤面キー(a〜c)と分離して保持される(第24条1項d、
-// D4-024-04)。R2・R3の同一局面判定はa〜cのみ、R1はd込みで行う(第31条)ため、
+// 構成要素d(成り権保留(P1・P2・P5))は盤面キー(a〜c)と分離して保持される(第24条1項d)。
+// R2・R3の同一局面判定はa〜cのみ、R1はd込みで行う(第31条)ため、
 // dだけが異なる2局面は盤面キーが一致し権利キーだけが異なる。
 #[test]
 fn article_24_1_d_promotion_rights_key_is_separate_from_the_board_key() {
@@ -303,7 +303,7 @@ fn article_24_1_d_promotion_rights_key_is_separate_from_the_board_key() {
     assert_eq!(builder.mark_promotion_deferred(square), invalid(square));
 }
 
-// 局面キーは到達手順・手数・盤外情報に依存しない(第24条3項、D4-024-05)。
+// 局面キーは到達手順・手数・盤外情報に依存しない(第24条3項)。
 #[test]
 fn article_24_3_key_depends_on_the_position_not_on_the_path() {
     let generator = MoveGenerator::standard();
@@ -361,7 +361,7 @@ fn article_24_3_key_depends_on_the_position_not_on_the_path() {
     assert_eq!(path_long, path_a);
 }
 
-// 実装契約(D4-IMP-02): キーは局面状態の純関数であり、同一の目標局面は
+// 実装上の契約として、キーは局面状態の純関数であり、同一の目標局面は
 // 構築経路(配置順序・指し手適用)によらず同一キーになる。
 #[test]
 fn equal_configurations_share_one_key_regardless_of_construction_path() {

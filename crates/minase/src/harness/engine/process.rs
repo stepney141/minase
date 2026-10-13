@@ -81,7 +81,17 @@ impl EngineProcess {
         })
     }
 
-    /// プロセスを起動し、プロトコル初期化列を完了する。
+    /// 局ごとのプロセスを起動し、プロトコルの初期化を完了する。
+    ///
+    /// USIでは`usi`の応答から既定値を読み、`RuleSet`へ`--rules`の入力原文を送る。
+    /// `USI_Hash`は明示された場合だけ送るが、`random`には送らない。
+    /// 続けて両側へ無条件に`ResignValue 99999`を送り、`random`には局ごとの`Seed`を送る。
+    /// [`PlayerConfig::options`]を列順に送ってから`isready`の`readyok`を待ち、`usinewgame`を送る。
+    ///
+    /// `ResignValue 99999`は投了を無効にして規則上の終局まで指させる測定条件である。
+    /// このオプションを持たないエンジンは未知のオプションとして無視する。
+    /// 理由は`docs/adr/disable-resignation-in-strength-measurements.md`にある。
+    /// CECPの初期化列は[`super::cecp`]に従う。
     pub(in crate::harness) fn start(
         config: &PlayerConfig,
         seed: u64,
@@ -100,8 +110,6 @@ impl EngineProcess {
                 {
                     process.send(&format!("setoption name USI_Hash value {hash_mb}"))?;
                 }
-                // 測定の対局は規則上の終局まで指させる（docs/plans/usi-resignation.md
-                // 「棋力測定での無効化」）。オプションを持たないエンジンはこの行を無視する。
                 process.send("setoption name ResignValue value 99999")?;
                 if config.is_random {
                     process.send(&format!("setoption name Seed value {seed}"))?;

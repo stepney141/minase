@@ -29,10 +29,11 @@ const DEFAULT_RESPONSE_TIMEOUT_SECONDS: u64 = 120;
     )
 )]
 pub(crate) struct Arguments {
-    /// 新しい実験を作成する、まだ存在しない実行ディレクトリ。
+    /// 新規実行を作る、まだ存在しないディレクトリ。
+    /// `--run-dir`と[`Self::resume`]のどちらか一方が必須であり、記録を残さない実行経路はない。
     #[arg(long)]
     pub(super) run_dir: Option<PathBuf>,
-    /// 保存済みの実験を再開する実行ディレクトリ。
+    /// 保存済み実験を再開するディレクトリ。新規作成との排他指定は[`Self::run_dir`]に従う。
     #[arg(long, conflicts_with_all = ["seed", "rules", "max_ply", "candidate", "baseline", "each", "candidate_limit", "baseline_limit", "candidate_hash", "baseline_hash", "response_timeout", "concurrency", "ponder"])]
     pub(super) resume: Option<PathBuf>,
     /// 再開時の目標ペア数。直前の目標より大きい値を指定する。
@@ -91,7 +92,8 @@ pub(crate) struct Arguments {
 }
 
 impl Arguments {
-    /// 先読みを利用できない対局条件を、プロセス起動前に拒否する。
+    /// `--ponder`を両エンジンがUSIかつ時間制御の場合だけ受理する。
+    /// 満たさない条件はプロセスの起動前に拒否する。
     pub(super) fn validate_ponder(&self) -> Result<(), String> {
         if self.ponder {
             if !matches!(
@@ -218,7 +220,7 @@ mod tests {
     use super::*;
     use minase_core::Rules;
 
-    // D8-HARN-08/D8-STAT-06(sprt.md): 文書化された既定値
+    // docs/guides/sprt.mdに従い、文書化された既定値
     // (--response-timeout 120秒、--max-ply 4096、--max-pairs 100,000)を
     // 文書の明文値リテラルで固定する。文書が変わらない限り実装定数の変更は
     // 逸脱である。
@@ -319,8 +321,7 @@ mod tests {
         );
     }
 
-    // match-harness-efficiency.md「実行記録と再開」: 記録なし実行を許さず、
-    // 新規作成と再開を同時に指定させない。
+    // [`Arguments::run_dir`]と[`Arguments::resume`]は、記録の新規作成と再開を排他的に要求する。
     #[test]
     fn run_directory_operation_is_required_and_exclusive() {
         assert!(Arguments::try_parse_from(["match_runner", "gsprt"]).is_err());
@@ -338,7 +339,7 @@ mod tests {
         assert!(Arguments::try_parse_from(["match_runner", "--resume", "old"]).is_ok());
     }
 
-    // D8-HARN-09(sprt.md測定の種類と標準コマンド節): `--each`がマッチ共通既定、
+    // docs/guides/sprt.md測定の種類と標準コマンド節に従い、`--each`がマッチ共通既定、
     // `--candidate-limit`・`--baseline-limit`が当該エンジンだけを上書きする。
     // 対等条件と完了基準ゲートの非対称条件を同じCLIで表現できる。
     #[test]
@@ -412,7 +413,7 @@ mod tests {
     }
 
     // RULES.md第33条: 共通parserへの接続と指定原文の保持を検査する。
-    // sprt.md: --rules省略時にはengine-defaultを使う。
+    // docs/guides/sprt.md: --rules省略時にはengine-defaultを使う。
     #[test]
     fn rules_presets_resolve_per_article_33() {
         let default = Arguments::try_parse_from(["match_runner", "--run-dir", "run", "gsprt"])
@@ -447,7 +448,7 @@ mod tests {
         );
     }
 
-    // D8-HARN-21/27（ponder.md「対局ハーネスの対局進行」「同時対局数」）。
+    // [`Arguments::validate_ponder`]の先読み条件を検査する。
     #[test]
     fn ponder_arguments_require_two_usi_time_controls() {
         for extra in [

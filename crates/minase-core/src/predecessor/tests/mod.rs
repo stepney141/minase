@@ -1,4 +1,4 @@
-//! 設計書predecessor-generator.md「検証」の固定テストと順方向辺の逆包含。
+//! [`predecessor`](crate::predecessor)の集合Aと返却集合の契約を、固定局面と順方向辺の逆包含で検査する。
 
 mod completeness;
 mod deferred;
@@ -29,7 +29,7 @@ fn mv(from: Square, to: Square, promote: bool) -> Move {
     }
 }
 
-/// 設計書「検証」の健全性・一意性・入力不変性を順方向生成器で検査する。
+/// [`PredecessorGenerator::generate_predecessors`]の健全性、一意性、および入力不変性を順方向生成器で検査する。
 fn checked(rules: MoveRules, target: &Position) -> Vec<Position> {
     let saved = target.clone();
     let result = PredecessorGenerator::new(rules)
@@ -144,7 +144,7 @@ fn piece(color: Color, kind: PieceKind) -> PieceCode {
     }
 }
 
-/// 設計書「直前局面の定義」の集合Aを製品の所属検査から独立に確認する。
+/// [`predecessor`](crate::predecessor)の集合Aを、製品の所属検査から独立に確認する。
 fn assert_admissible(rules: MoveRules, p: &Position) {
     let mut origins = std::collections::HashMap::new();
     for square in p.occupied().iter() {

@@ -29,6 +29,16 @@ pub struct DistributionArgs {
     pub(super) output: PathBuf,
 }
 
+/// `Report.pairs`の1要素で、同じ標本における基準と候補の比較。
+/// `name`は比較名、`baseline`と`candidate`は重みの[`FileIdentity`]、`sample_count`は標本数である。
+/// `baseline_statistics`と`candidate_statistics`は全標本の[`Summary`]で、[`Comparison`]の全欄も平坦化して持つ。
+/// `verdict`は[`scale_verdict`]の文字列である。
+///
+/// `by_phase_q`は位相分子`q = min(max(盤上総駒数−2, 0), 90)`で分けた
+/// [0, 29]、[30, 59]、[60, 90]の3帯の[`Interval`]を持つ。
+/// `by_baseline_absolute_cp`は基準評価の絶対値を0方向へ切り捨てた整数で分けた
+/// [0, 99]、[100, 299]、[300, 999]、[1000, 上限なし]の4帯を持つ。
+/// 全体または計7帯のいずれかで標本が2件未満、あるいは基準か候補の分散が0なら、報告を作らずに失敗する。
 #[derive(Serialize)]
 struct Pair {
     name: String,
@@ -44,6 +54,13 @@ struct Pair {
     by_baseline_absolute_cp: Vec<Interval>,
 }
 
+/// `diag nnue-distribution`が保存するJSON報告。
+/// [`SampleIdentity`]の4欄を最上位へ平坦化し、`population_count`に全局面数、
+/// `sampling`に[`SampleArgs::sampling`]の文字列、`pairs`に指定順の[`Pair`]の配列を持つ。
+/// `evaluation_perspective = "side_to_move"`、`standard_deviation_ddof = 0`、
+/// `percentile_method = "linear"`、`spearman_tie_method = "average"`、
+/// `regression_equation = "candidate = intercept + slope * baseline"`、
+/// `unchanged_scale_interval_inclusive = [0.9, 1.1]`を固定値として保存する。
 #[derive(Serialize)]
 pub(super) struct Report {
     #[serde(flatten)]
@@ -59,6 +76,11 @@ pub(super) struct Report {
     pairs: Vec<Pair>,
 }
 
+/// `--pair NAME BASELINE CANDIDATE`の各組を同じ標本で比較する。
+/// 引数は1組以上を要求し、NAMEは組の間で一意でなければならない。
+/// BASELINEはMNPT版3、CANDIDATEはMNUE版5である。
+/// 各局面は[`Record::to_position_for_evaluation`](minase::training::records::Record::to_position_for_evaluation)で復元し、記録された手番側の視点から評価する。
+/// 基準は[`pst::evaluate_for_diagnostics`]のPSTとFMを合わせた整数評価、候補は[`IntegerNetwork::evaluate`]の整数評価であり、単位はセンチポーンである。
 pub(super) fn run(args: &DistributionArgs) -> Result<Report> {
     let mut names = HashSet::new();
     for pair in args.pair.as_chunks::<3>().0 {

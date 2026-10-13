@@ -17,8 +17,11 @@ use super::result::{DrawReason, GameResult, GameStatus, WinReason};
 
 /// 1対局の進行を管理する対局管理層。
 ///
-/// 着手の合法性検査、反復履歴の更新、終局裁定の呼出しをまとめ、
-/// 終局後の着手を拒否する。
+/// 局面、完全な規則集合、生成器、審判状態、探索局面キーの履歴、および対局結果を所有する。
+/// 履歴に依存する合法性（R2とR3）と終局の裁定を扱い、終局後の着手を拒否する。
+/// [`Position`]と[`MoveGenerator`]は履歴を知らない。
+/// 探索木の各節点では[`Self::play`]を呼ばず、最善手を決めた後に対局管理側が1回だけ呼ぶ。
+/// この分担を採る理由は`docs/adr/keep-game-history-out-of-position-and-movegen.md`にある。
 #[derive(Clone)]
 pub struct Game {
     /// 現在の局面。
@@ -47,6 +50,10 @@ impl Game {
     }
 
     /// 着手を検証して適用し、王駒捕獲、反復、駒枯れ、合法手なし、詰みの順で裁定する。
+    ///
+    /// 終局後、局面合法手でない場合、およびR2かR3で禁止される場合はエラーを返し、
+    /// 局面、反復履歴、手数、および駒枯れの猶予を変えない。
+    /// R2とR3の禁止は着手を1回適用して判定し、禁止なら取り消す。
     pub fn play(&mut self, mv: Move) -> Result<GameStatus, GameError> {
         self.ensure_ongoing()?;
 
@@ -82,6 +89,7 @@ impl Game {
     }
 
     /// 指定した対局者の投了(第21条第6項)で対局を終了する。
+    /// 手番を問わず受け付け、終局後は[`GameError::GameAlreadyOver`]を返す。
     pub fn resign(&mut self, color: Color) -> Result<GameStatus, GameError> {
         self.ensure_ongoing()?;
         Ok(self.finish(GameResult::Win {
@@ -91,6 +99,7 @@ impl Game {
     }
 
     /// 双方の合意(第21条第7項)による引き分けで対局を終了する。
+    /// 手番を問わず受け付け、終局後は[`GameError::GameAlreadyOver`]を返す。
     pub fn agree_draw(&mut self) -> Result<GameStatus, GameError> {
         self.ensure_ongoing()?;
         Ok(self.finish(GameResult::Draw {
@@ -122,8 +131,8 @@ impl Game {
     /// 対局開始から現局面までの探索局面キーを返す。
     ///
     /// 探索局面キーは、盤面・手番・先獅子状態のzobristハッシュと
-    /// P1成り権保留状態のzobristハッシュをXORで合成した値である
-    /// (第24条第1項)。
+    /// 成り権保留状態（P1・P2・P5）のZobristハッシュをXORで合成した値である。
+    /// 成り権保留状態はRULES.md第24条第1項dに対応する。
     #[inline]
     pub fn search_key_history(&self) -> &[u64] {
         &self.search_key_history
@@ -170,7 +179,10 @@ impl Game {
     /// [`parse_sfen`](crate::parse_sfen)などで得た任意局面から対局を構築する。
     ///
     /// 王駒の存在や駒種ごとの枚数上限など、規則上の局面合法性は検証しない。
-    /// 渡された局面は反復履歴上の第1回として記録する。
+    /// 渡された局面を手数0の第1回の出現として記録し、それより前の履歴は推定しない。
+    /// 履歴を注入するAPIはなく、プロトコルから受け取った着手列も基点局面から
+    /// [`Self::play`]で再生して履歴を作る。
+    /// 王駒がない局面や駒枯れ条件を満たす局面でも、構築時には裁定しない。
     pub fn from_position(rules: Rules, position: Position) -> Self {
         let adjudication = AdjudicationState::new(rules.repetition, &position);
         let search_key = position.zobrist() ^ position.rights_zobrist();

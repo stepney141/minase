@@ -18,7 +18,7 @@ pub(crate) struct PstAccumulator {
 }
 
 impl Pst {
-    /// 同「段階6」の隣接した端点重みを読み、両方の累算値へ加える。
+    /// 特徴ごとに隣接する両端点の重みを読み、序中盤と終盤の累算値へ加える。
     pub(super) fn add_feature(&self, sums: &mut [i32; 2], feature: usize, sign: i32) {
         let pair = self.weights[feature];
         sums[0] += sign * i32::from(pair[0]);
@@ -146,7 +146,8 @@ impl Pst {
 
 #[cfg(feature = "invariants")]
 impl Pst {
-    /// 探索の差分累算値を両視点とも全再計算と照合する。
+    /// 差分累算値を両視点とも全再計算と照合する。
+    /// 1項でも異なれば、局面のハッシュ、手数、両累算値、および復元可能なら拡張SFENを添えてパニックする。
     pub(crate) fn assert_accumulator(
         &self,
         position: &Position,

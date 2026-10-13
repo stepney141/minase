@@ -12,6 +12,8 @@ use crate::piece::{Color, PieceKind};
 use crate::position::Position;
 
 /// 手番側の全駒について合法手を生成する。
+/// 走査と出力の順序は[`MoveGenerator::generate_moves`]に従い、
+/// 捕獲限定と非捕獲限定でも該当する手の相対順序を保つ。
 pub(super) fn generate_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
     generator: &MoveGenerator,
     position: &Position,
@@ -29,6 +31,7 @@ pub(super) fn generate_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>
 }
 
 /// 指定した1枚の駒について合法手を生成する。
+/// [`MoveGenerator::generate_moves`]の駒ごとの順序で基本の着手を作り、成りを展開する。
 pub(super) fn generate_piece_moves<const CAPTURES_ONLY: bool, const QUIETS_ONLY: bool>(
     generator: &MoveGenerator,
     position: &Position,

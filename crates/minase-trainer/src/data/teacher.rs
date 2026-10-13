@@ -77,10 +77,14 @@ impl Lookahead {
     }
 }
 
-/// `docs/plans/lookahead-teacher.md`の先読み値をf64で求める。
-///
-/// 窓内の最小の手数差を`d1`として、`gamma^(d-d1)`を昇順に足す。
-/// 奇数の手数差では符号を反転し、窓が空なら元の探索値を保持する。
+/// 同じ対局の将来の探索値から先読み値をf64で求める。
+/// 局面tからの手数差δが1〜nの記録だけを使い、`Σ γ^(δ−δ₁)×(−1)^δ×v / Σ γ^(δ−δ₁)`を手数順に計算する。
+/// δ₁は窓内の最小の手数差であり、通常の重み`γ^(δ−1)`から共通因子を除いても正規化後の値は同じである。
+/// 奇数差の符号反転で局面tの手番側へ視点をそろえ、局面t自身と記録されていない手数は和に含めない。
+/// 窓が空なら元の探索値を保つ。
+/// 入力は対局番号の非減少順と同一対局内の手数の厳密増加順を要求し、違反は`RecordOrder`エラーにする。
+/// 採用する教師の条件はγ=0.9、n=40である。
+/// 理由は`docs/adr/use-lookahead-teacher-values.md`にある。
 pub fn compute_lookahead(
     games: &[u32],
     plies: &[u16],
@@ -209,7 +213,7 @@ mod tests {
 
     #[test]
     fn lookahead_matches_python_example() {
-        // 撤去前のPythonの学習器のテストの既知値。
+        // compute_lookaheadの式にγ=0.5、窓幅3を代入した期待値である。
         let scores = [7.0, 2.0, 1.0, 99.0, 10.0, -5.0];
         let actual = compute_lookahead(
             &[1, 1, 1, 1, 2, 2],
@@ -277,8 +281,8 @@ mod tests {
 
     #[test]
     fn teacher_k_matches_python_reference() {
-        // Pythonのestimate_kを同じ標本に実行した参照値。
-        // 最初の例は解析解1000/ln(3)も持つ。平坦な最小点での丸めだけを許す。
+        // 同じ標本の二値交差エントロピーを独立に最小化した参照値である。
+        // 最初の例は解析解1000/ln(3)も持ち、平坦な最小点での丸めだけを許す。
         let actual = estimate_k(&[1000.0; 4], &[2, 2, 2, 0]).unwrap();
         assert!((actual - 910.2392016071356).abs() < 1e-4, "{actual}");
         assert!((actual - 1000.0 / 3.0_f64.ln()).abs() < 1e-4);

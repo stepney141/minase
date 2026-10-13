@@ -10,6 +10,12 @@ use crate::promotion::in_promotion_zone;
 use crate::rules::{MoveRules, PromotionRule};
 
 /// 盤面を復元し、捕獲駒の保留と着手側の保留・待機を列挙する。
+///
+/// 到達升のビットは直前の着手で新設された可能性があるので、対象局面から引き継がない。
+/// P1とP5では、移動元と捕獲升のうち保留可能な駒に、保留ありとなしを独立に割り当てる。
+/// P2の着手側では待機なしの1通りと、敵陣内の成れる不成駒のうち
+/// P5の歩兵を除く`k`個から1駒だけを待機させる`k`通りを列挙する。
+/// 計`k + 1`通りとし、2駒以上の待機は[`predecessor`](crate::predecessor)の集合Aに反するので作らない。
 pub(super) fn candidates(
     rules: MoveRules,
     target: &Position,
@@ -59,7 +65,6 @@ pub(super) fn candidates(
                 deferred.set(square);
             }
         }
-        // P2の着手側は待機なし、または適格な1駒だけのk+1通りに限る。
         for wait in std::iter::once(None).chain(waiting.iter().copied().map(Some)) {
             let mut deferred = deferred;
             if let Some(square) = wait {
@@ -84,9 +89,9 @@ pub(super) fn candidates(
 
 /// 検査済み基底のクローンへ、局所条件を満たす先獅子の記録升を設定して渡す。
 ///
-/// 記録升の候補は[`lion_record_squares`]で先に絞る。計測記録
-/// predecessor-generator-profile.mdのとおり、全144升へ設定してから検査する方式では
-/// 構成した候補の大半が記録升の条件で棄却され、そのクローンが処理時間を支配した。
+/// 記録升の候補は[`lion_record_squares`]で先に絞る。
+/// 全144升へ設定してから検査する方式を採らない理由は
+/// `docs/adr/verify-predecessor-candidates-with-forward-movegen.md`にある。
 /// 戻り値は構成した候補数(基底を含む)。
 pub(super) fn lion_records(
     base: &Position,

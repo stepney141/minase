@@ -11,7 +11,7 @@ use crate::rules::{MoveRules, PromotionRule};
 use crate::test_util::{position as position_with_pieces, position_from_codes, sq};
 use core::num::NonZeroU64;
 
-// 先手から着手し、1手ごとに手番が相手へ移る(第6条1項、D4-006-01)。
+// 先手から着手し、1手ごとに手番が相手へ移る(第6条1項)。
 // 獅子の2段階移動もじっとも全体で1手であり、手番移動は1回だけである
 // (第3条7項・13項、第6条4項、第12条11項)。
 #[test]
@@ -68,7 +68,7 @@ fn article_6_1_black_moves_first_and_the_turn_passes_once_per_move() {
 }
 
 // 取った駒は盤上から除かれ再使用されず、持ち駒に相当する観測状態は存在しない
-// (第4条4項・5項、D4-004-04)。2段階移動の2枚捕獲では総駒数が2減る(第12条4項)。
+// (第4条4項・5項)。2段階移動の2枚捕獲では総駒数が2減る(第12条4項)。
 #[test]
 fn article_4_4_captured_pieces_are_removed_and_never_reused() {
     let generator = MoveGenerator::standard();
@@ -131,8 +131,7 @@ fn article_4_4_captured_pieces_are_removed_and_never_reused() {
 }
 
 /// 増分更新とundoの検査に使う代表シナリオ(局面・規則・着手列)を返す。
-/// 2枚捕獲・居喰い・じっと・成り・王駒捕獲・成駒の捕獲・先獅子・P1保留を覆う
-/// (D4-IMP-03・D4-IMP-04の境界事例)。
+/// 2枚捕獲・居喰い・じっと・成り・王駒捕獲・成駒の捕獲・先獅子・P1保留を覆う。
 fn make_unmake_scenarios() -> Vec<(Position, MoveRules, Vec<Move>)> {
     let mv = |from, mid, to, promote| Move {
         from,
@@ -263,7 +262,7 @@ fn make_unmake_scenarios() -> Vec<(Position, MoveRules, Vec<Move>)> {
     ]
 }
 
-// 実装契約(D4-IMP-03・04): 着手を取り消すと全観測可能状態
+// 実装上の契約として、着手を取り消すと全観測可能状態
 // (盤面・手番・キー・先獅子状態・成り権保留)が完全一致で復元される。
 #[test]
 fn unmake_restores_every_observable_component() {
@@ -282,7 +281,7 @@ fn unmake_restores_every_observable_component() {
     }
 }
 
-// D4-IMP-10[実装契約] 手番パスは先獅子の一時状態を消滅させ、
+// 実装上の契約として、手番パスは先獅子の一時状態を消滅させ、
 // 禁止なしで手番だけを反転した同一配置のキーへ移る。
 #[test]
 fn d4_imp_10_null_move_clears_lion_trigger_and_round_trips() {
@@ -305,7 +304,7 @@ fn d4_imp_10_null_move_clears_lion_trigger_and_round_trips() {
     assert_eq!(position, before);
 }
 
-// D4-IMP-10[実装契約] 成り権保留と権利キーは手番パスで変化せず、
+// 実装上の契約として、成り権保留と権利キーは手番パスで変化せず、
 // 巻き戻すと局面全体が復元される。
 #[test]
 fn d4_imp_10_null_move_preserves_promotion_rights() {
@@ -330,7 +329,7 @@ fn d4_imp_10_null_move_preserves_promotion_rights() {
     assert_eq!(position, before);
 }
 
-// 実装契約(D4-IMP-09): 固定シードの一様ランダムプレイアウトで、毎手、
+// 実装上の契約として、固定シードの一様ランダムプレイアウトで、毎手、
 // 総駒数=92−累計捕獲枚数と手番の交替則(第6条1項)を検証する。
 // 終了後は全undoで初期局面へ完全復帰する。
 #[test]

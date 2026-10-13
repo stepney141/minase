@@ -3,7 +3,7 @@
 2026年9月25日に、[一定の利得による調整セッション](spsa-stage9-20260925.md)に先立って時間管理係数の端点を確認した。
 調整対象は`9bc6898d8c428a1f208a9ab4c2b2f67de0c67cc4`（段階9の構成に最初のSPSAセッションの値を採用したmaster）、runnerは`bd45b0a`であり、調整用エンジンのSHA-256は`54cf3dc2219ce059ff5e51f87aa3874012e353dea1e0dbe31c5a891ca4e78f4f`、runnerのSHA-256は`aaf990ac93128ec67c7826b7c63c37450275bf7e5a06e5e28ca2ce2088fae9df`である。
 規則は`engine-default`、時間制御は`time=10000+100`、同時対局数は16、基本シードは`78000000`とした。
-利得は[利得の較正](../plans/spsa-gain-calibration.md)で選んだ一定の利得（α = γ = 0、`c_end`は範囲の1/6）である。
+利得は[利得の較正](../plans/archived/spsa-gain-calibration.md)で選んだ一定の利得（α = γ = 0、`c_end`は範囲の1/6）である。
 
 ```console
 data/worktrees/spsa-stage9-20260925-runner/target/release/spsa_runner \

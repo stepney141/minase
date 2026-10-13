@@ -7,7 +7,9 @@ use crate::{
 use serde::Serialize;
 use std::path::PathBuf;
 
-/// PSTとFMの同時学習の学習条件と保存先。
+/// PSTとFMの同時学習の条件と保存先。
+/// 既定値はバッチ16,384局面、FM補正の正則化係数0.0001、駒除去損失の係数1000、上限200エポック、patience 5である。
+/// 最適化器の群ごとの既定値は[`super::Adam`]にある。
 #[derive(Clone, Debug, clap::Args, Serialize)]
 pub struct Args {
     /// 来歴付きMNSDを、学習中に変更しない入力として指定する。
@@ -55,7 +57,7 @@ pub struct Args {
     /// FM補正の二乗平均に掛ける正則化係数。
     #[arg(long, default_value_t = 1e-4)]
     pub lambda_res: f64,
-    /// 自己対局のλを上書きする。省略時は来歴のλを使う。
+    /// 自己対局の分類のλを有限な0以上1以下の値で上書きし、人間対局には適用しない。省略時は来歴のλを使う。
     #[arg(long)]
     pub lambda_override: Option<f64>,
     /// 先読み割引率。0より大きく1より小さい有限値。

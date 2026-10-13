@@ -14,7 +14,7 @@
 ## 項目1　src/stats.rs 対 fishtest LLRcalc.py
 
 - minase側: a05478a:src/stats.rs:7-121（`REGULARIZATION`〜`gsprt_decision`）。導入はb5c1e91（2026-08-11「探索部フェーズ1の自己対局ハーネスとペンタノミアルGSPRTを実装」、codexへ委任）。導入時点で既に同じ構造であり、以後の変更はH1の値の変更（17cdd68）と`midpoint`化、文書コメントの追加だけである。
-- 設計書: b5c1e91:docs/plans/search.md:19 は「fishtestの`LLR_logistic`（statistic="expectation"のMLE法）と同一のアルゴリズム」「fishtest本家LLRcalc.pyから事前計算した参照値5件と1e-6以内で一致」と記す。ファイル冒頭のdocコメントも同じ趣旨を述べる。
+- 設計書: b5c1e91:docs/plans/archived/search.md:19 は「fishtestの`LLR_logistic`（statistic="expectation"のMLE法）と同一のアルゴリズム」「fishtest本家LLRcalc.pyから事前計算した参照値5件と1e-6以内で一致」と記す。ファイル冒頭のdocコメントも同じ趣旨を述べる。
 - 対照側: official-stockfish/fishtest の server/fishtest/stats/LLRcalc.py。minase導入日（2026-08-11）に、コミット日時順で直前にあたるmasterの先端はb571c90（2026-08-02）である。作成日2026-07-20の93fe81e（「Fix for issue 2571」）はb571c90の祖先ではなく、その後にmasterへ入った。b8eecff（2026-08-22）のLLRcalc.pyは93fe81eと同一である。b571c90と93fe81eの差は`stats`のepsilonと`LLR_drift_variance`系だけであり、`secular`、`MLE_expected`、`regularize`、`results_to_pdf`、`LLR_logistic`は3版とも同一である。行: 24-46（secular）、54-71（MLE_expected）、130-149（LLRjumps/LLR）、212-240（L_、regularize、results_to_pdf、LLR_logistic）。ライセンス: manifestでは none（LICENSEなし、ファイルヘッダなし）。
 - 数式が強制する部分（必須の一致、証拠にしない）: Van den Bergh "The generalized likelihood ratio for the expectation value of a multinomial distribution"（cantate.be/Fishtest/support_MLE_multinomial.pdf、fishtestが参照）の命題1.1は、式(1.2) p_i = p̂_i / (1 + θ(a_i − s))、式(1.3) Σ p̂_i (a_i − s)/(1 + θ(a_i − s)) = 0、および根の区間 [−1/(a_N − s), 1/(s − a_1)] を与える。したがって、区間端の式、MLE分布の式、LLR = N·Σ p̂_i (ln p1_i − ln p0_i)、ロジスティックの`1/(1+10^(-elo/400))`、5分類の得点0, 0.25, 0.5, 0.75, 1は数式から決まる。論文は p̂_i ≠ 0 を仮定するので度数0の補正は必要だが、その値1e-3はfishtestの選択である。ただしminaseの契約はfishtestの参照値との一致なので、度数0を含む参照値を再現するには1e-3が必要であり、必須の一致に数える（fastchessも1e-3を使う）。GSPRT境界±2.944もα=β=0.05から決まる。
 - 実装固有の一致:
@@ -31,7 +31,7 @@
 ## 項目2　params.rs／pruning.rs 対 akimbo・Hobbes
 
 - minase側: a05478a:src/search/alphabeta/params.rs:6-99（マクロと係数表）、a05478a:src/search/alphabeta/pruning.rs:21-38（LMR表と`lmr_base`）。導入は5464779（2026-09-22「Add the tunable search parameter table behind the tuning feature」、当時src/search/params.rs）。LMR表自体は73578d4（2026-09-06）で`const LMR_DIVISOR: f64 = 2.0`として導入され、5464779で百分率の整数係数に変わった。
-- 設計書: 5464779:docs/plans/spsa.md:94 は「Rust製チェスエンジンのHobbesとakimboがこの形を採る」「Recklessは`static mut`を使うので採らない」と記し、311-312行でHobbesの`tunable_params!`（コミット1f3e466）、akimboの`util.rs`（f7dd767）、Reckless、Viridithasを参照先に挙げる。
+- 設計書: 5464779:docs/plans/archived/spsa.md:94 は「Rust製チェスエンジンのHobbesとakimboがこの形を採る」「Recklessは`static mut`を使うので採らない」と記し、311-312行でHobbesの`tunable_params!`（コミット1f3e466）、akimboの`util.rs`（f7dd767）、Reckless、Viridithasを参照先に挙げる。
 - 対照側: jw1912/akimbo@f7dd767 src/util.rs:37-103、src/search.rs:27-28, 509-510（MIT）。kelseyde/hobbes-chess-engine@1f3e466 src/tools/utils.rs:3-73（MIT）。codedeliveryservice/Reckless@31d9cd6 src/parameters.rs:1-33（AGPL-3.0-only）。cosmobobak/viridithas@13a3fe1 src/search/parameters.rs（AGPL-3.0-only、構造体とパーサ生成マクロで別方式）。
 - 実装固有の一致: (a) cargo feature名`tuning`、(b) 調整版を`static AtomicI32`の`load(Ordering::Relaxed)`で読む、(c) 非調整版を`#[cfg(not(feature = "tuning"))] #[inline]`の既定値リテラル関数とする、(d) 入れ子のモジュールに静的変数を置く、(e) `match name { stringify!($name) => ... }`で設定する、(f) LMRの除数を百分率の整数係数`lmr_divisor`とし、`f64::from(...) / 100.0`で割る（akimbo search.rs:510）。
 - 必須または慣用に寄る点: `unsafe_code = "forbid"`の下で可変な大域係数を持つなら`AtomicI32`はほぼ唯一の選択である。`stringify!`による名前照合と非調整版の定数関数はRecklessも同じである。整数SPSAでは係数を百分率にするのが通例であり、`f64::from`はclippyの推奨形である。ln(depth)·ln(move)/Cの式は公知である。
@@ -41,7 +41,7 @@
 ## 項目3　6d30d76:src/search/time_management.rs 対 Stockfish
 
 - minase側: 6d30d76:src/search/time_management.rs:1-183（とくに89-91の`interpolate`、115-179の`complete_iteration`）。コミット6d30d76（2026-09-17「Scale the time budget by Stockfish's position-adaptive coefficients」）。同日のマージ9b1c3ac（第1親2945d7e）でファイルは消えたが、6d30d76はa05478aとorigin/masterの祖先であり、公開済みの履歴に残る。
-- 設計書: 6d30d76:docs/plans/time-management-efficiency.md:72 は「Stockfishの`totalTime`に倣う」「定数はStockfishの現行値をそのまま使う」と記し、式と定数を全て書き出す。189行でStockfish `src/search.cpp`（2026年9月16日参照）を参照先に挙げる。コミット本文も`fallingEval * reduction * bestMoveInstability * highBestMoveEffort`を名指しする。
+- 設計書: 6d30d76:docs/plans/archived/time-management-efficiency.md:72 は「Stockfishの`totalTime`に倣う」「定数はStockfishの現行値をそのまま使う」と記し、式と定数を全て書き出す。189行でStockfish `src/search.cpp`（2026年9月16日参照）を参照先に挙げる。コミット本文も`fallingEval * reduction * bestMoveInstability * highBestMoveEffort`を名指しする。
 - 対照側: official-stockfish/Stockfish@5062aee（2026-08-10）src/search.cpp:584-636、src/misc.h:486-489（`interpolate`）。e7b67b9（2026-09-18）とHEAD 17a6c8f（2026-09-19）の同じ箇所（search.cpp:584-602）は定数と式が同一である。sf_17（search.cpp:431-443）は定数が異なる（1067、223、0.580、1.667、recapture項）ので、minaseの定数は2026年時点の版に一致する。ライセンス: GPL-3.0-or-later。
 - 実装固有の一致:
   1. 調整済み定数の組: fallingEvalの11.48、2.30、1.1、/100、clamp 0.576〜1.728。timeReductionの補間4.96、18.79、0.639、1.712とclamp 0.629〜1.544。reductionの1.468と2.284。bestMoveInstabilityの1.077と2.229。highBestMoveEffortの補間75,800、104,510、0.969、0.714とclamp 0.693〜0.838。nodesEffortの100,000倍。22個の定数がすべて一致する。いずれもSPSAなどで調整された値であり、独立に同じ値に至ることはない。

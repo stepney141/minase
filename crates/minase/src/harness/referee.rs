@@ -6,7 +6,11 @@ use crate::harness::player::Protocol;
 use minase_core::notation::{cecp, usi};
 use minase_core::{Game, GameStatus, Move};
 
-/// エンジンの着手表記を解析し、審判の合法手集合と照合する。
+/// エンジンの着手表記を解析し、審判層の合法手集合と照合する。
+///
+/// 対局進行の正は[`Game`]であり、解析できない着手や合法手集合にない着手は
+/// [`EngineFailure::IllegalMove`]として起こした側の負けにする。
+/// 理由は`docs/adr/score-engine-faults-as-losses-and-discard-max-ply-pairs.md`にある。
 pub fn validate_bestmove(
     game: &Game,
     text: &str,
@@ -46,8 +50,7 @@ mod tests {
     use super::*;
     use minase_core::{MoveGenerator, Rules};
 
-    // D8-HARN-06(1)/D8-HARN-11(sprt.md異常時の裁定節・match-harness.md): 審判層が
-    // 対局進行の正であり、合法手リストにない`bestmove`は不正着手として分類する。
+    // [`validate_bestmove`]の審判層との照合を検査する。
     #[test]
     fn referee_rejects_bestmove_outside_the_legal_move_list() {
         let game = Game::new(Rules::ENGINE_DEFAULT);

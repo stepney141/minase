@@ -21,7 +21,7 @@ pub(super) fn generate(forward: &MoveGenerator, target: &Position) -> Vec<Positi
 
 /// 集合Aの検査を通った着手と候補局面の組を列挙する。
 /// 基底での検査と記録升の検査の順序を保ち、組をコールバックへ逐次渡す。
-/// 全候補を保持せず、計測時も従来と同じ作業領域で再適用する。
+/// 全候補を保持せず、計測時も生成時と同じ作業領域で再適用する。
 /// 戻り値は集合Aの検査で棄却した局面も含む候補構成数。
 pub(super) fn enumerate_candidates(
     forward: &MoveGenerator,
@@ -75,8 +75,8 @@ pub(super) fn enumerate_candidates(
 /// 合法性は、動かす駒の合法手だけを生成する[`MoveGenerator::is_legal_move`]で判定する。
 /// 全合法手の生成と同じ駒別の生成関数を使うので、判定結果は
 /// [`Position::try_make_move`]と一致する。再適用は候補局面をその場で進めて巻き戻し、
-/// 局面の複製を作らない。採用した局面は重複排除の集合へ移し、最後に集合から返却する
-/// (計測記録predecessor-generator-profile.md)。
+/// 局面の複製を作らない。採用した局面は重複排除の集合へ移し、最後に集合から返却する。
+/// 方式を採る理由は`docs/adr/verify-predecessor-candidates-with-forward-movegen.md`にある。
 pub(super) fn verify_candidates(
     forward: &MoveGenerator,
     target: &Position,

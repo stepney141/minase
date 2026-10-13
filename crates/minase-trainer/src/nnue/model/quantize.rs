@@ -12,13 +12,13 @@ use minase::eval::{
 #[derive(Debug)]
 pub struct Quantized {
     shape: Shape,
-    /// 線形重み[13680, 2]。尺度8。
+    /// 線形重み`[13680, 2]`。尺度8。
     pub linear: Vec<[i16; 2]>,
-    /// 展開・畳み込み済みの第1層[D, H]。尺度127。
+    /// 展開・畳み込み済みの第1層`[D, H]`。尺度127。
     pub weights: Vec<i16>,
-    /// バイアス[H]。尺度127。
+    /// バイアス`[H]`。尺度127。
     pub biases: Vec<i32>,
-    /// 出力重み[2, H]。尺度4096。
+    /// 出力重み`[2, H]`。尺度4096。
     pub output_weights: Vec<i16>,
     /// 出力バイアス。尺度127×4096。
     pub output_bias: i32,
@@ -55,7 +55,10 @@ fn rounded(value: f32, scale: f64, low: i32, high: i32, parameter: Parameter) ->
     }
     Ok(value as i32)
 }
-/// f32をf64へ広げて尺度を掛け、偶数丸めを行う。範囲外の値は切らずに拒否する。
+/// f32をf64へ広げて尺度を掛け、`round_ties_even`で偶数丸めする。
+/// 線形は×8でi16、第1層とバイアスは×127で±1,016、出力重みは×4,096で±8,192、出力バイアスは×127×4,096で±4,161,536に収める。
+/// 第1層は畳み込み済みの重みを使い、埋め草を除く。
+/// 範囲外は切り詰めず[`Error::Quantization`]を返す。
 pub fn quantize(model: &Model) -> Result<Quantized> {
     model.parameters().validate()?;
     let shape = model.shape();

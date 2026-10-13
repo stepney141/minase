@@ -11,6 +11,10 @@ pub(crate) fn floats(values: &[f32], shape: &[usize]) -> npz::Array {
     }
 }
 
+/// `fm-float.npz`として保存する圧縮なしNPZを作る。
+/// `V`はdtype `<f4`、形`[13680, 32]`の特徴番号順の埋め込み、`a`は`<f4`の`[32]`の出力係数、
+/// `mask`はdtype `|b1`、形`[13680]`の観測マスクである。
+/// PSTの端点を持たないため、`fm scale --float`には使えない。
 pub(super) fn encode_model(model: &super::Model) -> Result<Vec<u8>> {
     Ok(npz::encode(&[
         (

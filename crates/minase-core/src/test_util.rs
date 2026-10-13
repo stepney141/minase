@@ -1,4 +1,8 @@
 //! ライブラリとエンジンの試験で共有する局面と規則の標本。
+//!
+//! `cfg(test)`またはフィーチャ`test-util`の下でだけコンパイルする。
+//! エンジンの試験は開発依存で`test-util`を有効にする。
+//! 標本を複製せず共有する理由は`docs/adr/split-rules-library-from-engine.md`にある。
 
 use core::num::NonZeroU64;
 

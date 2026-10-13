@@ -86,6 +86,12 @@ lishogiでの実戦と外部エンジンとの対局棋譜から、minaseの弱�
 
 - [エンジン開発のデバッグ手法の調査](engine-debugging-survey.md)は、Chess Programming Wikiの「Debugging」頁と関連投稿、およびStockfish、YaneuraOu、Fairy-Stockfish、HaChuのソースから、デバッグ手法を照合、表示、統計、記録の4種類に整理し、minaseへの適用の可否を示す。
 
+## 競技規則
+
+RULES.mdの条文と実装上の規則解釈を、規則書の典拠と照合した調査である。
+
+- [RULES.mdに書かれていない実装上の規則解釈と先行文献の照合](rules-unwritten-interpretations.md)は、minase-coreが実装しながら条文にない解釈13点を典拠と照合し、駒枯れで歩兵・仲人が非捕獲で成った直後の即時勝ちと、相手の最後の王駒を取れる場合に猶予を与えない点が英語資料と食い違うことを示す。
+
 ## 通信プロトコルと外部エンジン
 
 USI、CECP、およびHaChuの仕様調査は[protocols/](protocols/)にまとめ、[protocols/README.md](protocols/README.md)を索引とする。

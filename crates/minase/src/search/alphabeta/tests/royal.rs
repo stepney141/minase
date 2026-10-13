@@ -2,7 +2,7 @@
 
 use super::*;
 
-// 同「検証」。王将が安全でも太子が攻撃されていれば真になる。
+// 王将が安全でも太子が攻撃されていれば真になる。
 #[test]
 fn royal_under_attack_includes_crown_prince_alone() {
     for (last_rank, attacked) in [("11K", false), ("5+E5K", true)] {

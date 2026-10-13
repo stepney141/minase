@@ -1,4 +1,11 @@
-//! 相手番の先読みと停止。
+//! 相手番の先読みの開始、的中、外れ、および終局時の停止。
+//!
+//! 返された予想手が審判層で合法かつ終局しない場合だけ、着手列に予想手を加えて`go ponder`を送る。
+//! 送信失敗はこの場で勝敗へ反映せず、次の手番の通信で通常の異常として扱う。
+//! 的中したら`ponderhit`を送り、先読み中の探索情報を同じ探索の情報として読む。
+//! 外れたら`stop`の応答を捨て、実際の着手列と更新した時計で通常の`go`を送る。
+//! 外れの停止から通常探索の応答までを1つの時計と応答期限で測る。
+//! 終局時の処理は[`EngineProcess::stop_ponder`]に従う。
 
 use crate::harness::engine::ThinkRequest;
 use crate::harness::engine::channel::receive_until_deadline;
@@ -45,7 +52,10 @@ impl EngineProcess {
         .map(|_| ())
     }
 
-    /// 終局時の停止は結果を変更せず、資源を読む前に同期する。
+    /// 終局時に先読みを停止し、結果を変えずに資源計測の前に同期する。
+    ///
+    /// `stop`後の`bestmove`と探索情報を捨てる。
+    /// 送信失敗や応答期限切れは、すでに確定した終局結果や異常件数へ反映しない。
     pub(in crate::harness) fn stop_ponder(&mut self) {
         if self.pondering.take().is_some() {
             let start = Instant::now();

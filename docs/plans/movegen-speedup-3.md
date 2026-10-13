@@ -2,7 +2,7 @@
 
 ## 先に読む要約
 
-本マイルストーンは、[第2期](movegen-speedup-2.md)の最終の採用版を新しい基準とし、同じ時間でより深く読めるようにして棋力を上げることを目的とする。
+本マイルストーンは、[第2期](archived/movegen-speedup-2.md)の最終の採用版を新しい基準とし、同じ時間でより深く読めるようにして棋力を上げることを目的とする。
 第2期と同じく、変更は探索木（探索が訪れる局面の集合）を変えないもの（段階1から段階4）と変えるもの（段階5）に分ける。
 探索木を変えない段階は、固定局面を固定深さで探索する測定プログラム`bench`のNPS（1秒あたりに処理する局面数）で採否を決め、まとめて1回の自己対局の逐次確率比検定（SPRT）にかける。
 NPSは基準比1.15倍以上を目標とし、1.08倍以上を最低受入条件とする。第2期の1.3倍より低いのは、残存負荷が5項目に分散し、1項目あたりの削減余地が1割前後だからである。
@@ -17,8 +17,8 @@ NPSは基準比1.15倍以上を目標とし、1.08倍以上を最低受入条件
 ## 状態
 
 起案。2026年9月17日に起案した。
-着手前に確定を要する判断は、第2期のブランチ（`movegen-speedup-2`、master未統合）をmasterへ取り込んでから本マイルストーンのブランチをmasterから切ることの1点である。
-次の一手は、この判断の確定と段階1の着手である。
+着手前の判断としていた第2期の成果のmasterへの取り込みは、すでに済んでいる。
+次の一手は、masterから本マイルストーンのブランチを切り、段階1に着手することである。
 
 ## 目的
 
@@ -49,7 +49,7 @@ PGOと`unsafe`を要する先読みは利用者の決定により再提案しな
 
 ## 依存関係
 
-利き逆引きの契約は[棋力向上段階3](strength-stage3.md)が、捕獲専用生成の契約は[棋力向上段階1](strength-stage1.md)が、探索専用生成の残存手順（段階8の除外条件を適用した参照列）とSEEの判定契約は[第1期](movegen-speedup.md)と[第2期](movegen-speedup-2.md)の設計書が定める。
+利き逆引きの契約は[棋力向上段階3](archived/strength-stage3.md)が、捕獲専用生成の契約は[棋力向上段階1](archived/strength-stage1.md)が、探索専用生成の残存手順（段階8の除外条件を適用した参照列）とSEEの判定契約は[第1期](archived/movegen-speedup.md)と[第2期](archived/movegen-speedup-2.md)の設計書が定める。
 本マイルストーンはこれらの契約を変えず、契約テスト（`crates/minase-core/src/movegen/tests/`、`crates/minase/src/search/alphabeta/tests/captures.rs`、`crates/minase/src/search/alphabeta/see.rs`のテスト）を各段階の検証に使う。
 計測基盤は第2期で整備した`scripts/bench_compare.py`（`--reference`、`--baseline`、`--parent`）をそのまま使い、照合参照コミットと速度の基準はいずれも第2期の最終の採用版とする。第2期の段階7から段階9で探索木が変わったので、第1期の照合参照コミットは使えない。
 計測区間は[大容量メモリの確保を速度指標に含めない方針](../lessons/bench-allocation-outside-timing.md)に、診断の件数は[独立した参照値と照合する規則](../lessons/compare-diagnostics-with-independent-reference.md)に、プロファイルの読み方は[ハイブリッドCPUの正規化](../lessons/perf-hybrid-cpu-normalize-search-samples.md)に従う。
@@ -205,7 +205,7 @@ SPRTは測定名`movegen-speedup-3-<段階名>-stc`および`-ltc`で`docs/measu
 
 ## 参考資料
 
-- [第2期の設計書](movegen-speedup-2.md)は、基準の由来、探索木を変える段階の判定方式、および状態を追加する項目の扱いを定める。
+- [第2期の設計書](archived/movegen-speedup-2.md)は、基準の由来、探索木を変える段階の判定方式、および状態を追加する項目の扱いを定める。
 - [起案時の診断](../measurements/movegen-speedup-3-diagnostics-depth5.md)は、本書の段階の選定と見込みの根拠である。
 - [第2期の最終の残存負荷](../measurements/movegen-speedup-2-final-profile-depth5.md)は、関数別の自己時間の内訳である。
 - [SPRTによる棋力測定の手引き](../guides/sprt.md)は、段階ゲートの手順と禁止事項を定める。
