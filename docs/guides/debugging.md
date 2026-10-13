@@ -65,6 +65,20 @@ cargo run --release --bin minase -- dev random-play --rules engine-default --see
 cargo run --release --features invariants --bin minase -- dev random-play --rules engine-default --seed 1 --games 1000
 ```
 
+規則セットを横断して確かめるときは、[ランダム対局の設計書](../plans/random-play.md)が完了の検証に使った代表9規則セットで各300局を走らせる。
+反復規則の3系統には`L0,P0,R1,E0`、`L0,P0,R2,E0`、および`L0,P0,R3,E0`を使う。
+獅子、成り、および終局の規則の裁定の処理を通すには、`lishogi`、`L0,L3,P0,R1,E0`、`L0,P1,R1,E0`、`L0,P2,R1,E0`、`L0,P0,P4,R1,E0`、および`L0,P0,R1,E2`を使う。
+
+```console
+for rules in L0,P0,R1,E0 L0,P0,R2,E0 L0,P0,R3,E0 lishogi L0,L3,P0,R1,E0 \
+    L0,P1,R1,E0 L0,P2,R1,E0 L0,P0,P4,R1,E0 L0,P0,R1,E2; do
+  cargo run --release --bin minase -- dev random-play --rules "$rules" --seed 1 --games 300 || break
+done
+```
+
+この9セットは、設計書の完了後にRULES.md第13版で追加されたL4、P5、およびP6を含まない。
+これらの規則を疑うときは、HaChuの既定設定に対応する`L1,L3,P0,P5,P6,R2,E1,E2`のように、該当するコードを含む組を加える。
+
 **自己対局の測定**：`minase match run`の実行ディレクトリの`pairs/NNN.json`は、各局の開始局面の着手列と全着手を保存している。
 両エンジンが`Threads=1`で、思考制限が`depth`または`nodes`の対局は完全に再現できる（[sprt.md](sprt.md)の「ペア対局と再現性」）。
 時間制御の対局は着手時間の実測に依存するので、同じ対局は再現できない。
@@ -194,11 +208,28 @@ GUI、lishogiのBotブリッジ、または対局ハーネスとの間でだけ�
 ログのファイルは新規に作られ、同じパスのファイルが既にあると起動はエラーになるので、起動ごとに別のパスを与える。
 対局ハーネスは局ごとにエンジンを起動し直すので、起動コマンドに固定のパスを書くと2局目の起動が失敗する。
 ハーネスの対局で起きた不具合は、保存された着手列から問題の局面を作り、エンジンを手で起動して`--io-log`付きで再現する。
+
+CECPの接続を実際のGUIとの対局で確かめるときは、xboardでminase同士の時間制御対局を1局指させる。
+Xディスプレイのない環境では、Xvfbなどの仮想Xディスプレイの上でxboardを起動する。
+
+```console
+xboard -variant chu \
+  -fcp "target/release/minase --protocol cecp --rules engine-default" \
+  -scp "target/release/minase --protocol cecp --rules engine-default" \
+  -tc 1 -inc 1 -mg 1 -autoCallFlag true -testLegality false \
+  -saveGameFile mm.pgn -debugMode true -nameOfDebugFile mm.debug
+```
+
+`-tc 1 -inc 1`は持ち時間1分と1手ごとの加算1秒、`-mg 1`は対局数1を表す。
+時間切れの検出には`-autoCallFlag true`を書き、`-autoflag`の後に`true`などの値を書かない（[xboardの教訓](../lessons/xboard-autoflag-argtrue.md)）。
+対局が終局まで進み、時間切れと`Illegal move`がともに0件であり、両エンジンの`RESULT`行と`mm.pgn`の結果が一致することを確かめる。
+xboardとエンジンの送受信は`mm.debug`に記録される。
+外部エンジンとの接続試験は、後手のエンジンを指定する`-scp`をそのエンジンの起動コマンドに替えて同じ条件で行う。
+
 外部との接続の不具合は、次の教訓の手順で切り分ける。
 
 - 外部エンジンを`cecp:`で接続する前の検証は、[外部エンジンの検証の教訓](../lessons/verify-external-engine-before-cecp-match.md)に従う。
 - lishogiのBotブリッジからの起動は、[ブリッジ経由の起動の教訓](../lessons/verify-bridge-launch-path.md)に従って配備と同じ環境で確かめる。
-- xboardの時間切れ検出の引数は、[xboardの教訓](../lessons/xboard-autoflag-argtrue.md)に従う。
 
 ### 時間切れと時間管理
 
