@@ -7,7 +7,7 @@ docs/ 直下に置くファイルは、本書と [ROADMAP.md](ROADMAP.md) の2�
 | ディレクトリ | 置く文書 | 書き方 |
 |---|---|---|
 | [rules/](rules/) | 本プロジェクトが実装する中将棋の競技規則とローカルルールの規則書 [RULES.md](rules/RULES.md)。標準規則と規則コードの定義、および典拠の一覧を含む。 | 条文の番号と規則コードを他の文書と実装が参照するので、改版時は版数と変更点を本文に記す。 |
-| [plans/](plans/) | マイルストーンの作業を進めるための一時的な計画書。仕様の正ではなく、完了時に有効な内容をコードのdocコメントとADRへ移して凍結する。 | [plans/README.md](plans/README.md) の型に従う。 |
+| [plans/](plans/) | マイルストーンの作業を進めるための一時的な計画書。仕様の正ではなく、完了時に有効な内容をコードのdocコメントとADRへ移して凍結し、[plans/archived/](plans/archived/)へ移す。直下には起案中、進行中、および待機中の設計書だけを置く。 | [plans/README.md](plans/README.md) の型に従う。 |
 | [adr/](adr/) | 設計判断の記録（ADR）。採った方式、棄却した代案、およびその根拠を1決定1ファイルで置き、[adr/README.md](adr/README.md) を索引とする。 | adr/README.md のテンプレートに従う。承認後は本文を書き換えず、決定を変えるときは新しいADRで置き換える。 |
 | [measurements/](measurements/) | 棋力測定の記録。1測定1ファイルで、ファイル名は `minase match run` の `--run-dir` の名前と一致させる。 | plans/README.md の「測定記録」節に従う。 |
 | [lessons/](lessons/) | 作業で詰まった箇所から得た汎用的な教訓。1教訓1ファイルで、[lessons/README.md](lessons/README.md) を索引とする。 | plans/README.md の「教訓」節に従う。 |

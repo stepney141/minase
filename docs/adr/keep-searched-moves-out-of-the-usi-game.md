@@ -11,7 +11,7 @@ Lishogi-Botは毎手、初期局面と全着手列を`position`で送り、続�
 着手が対局に反映されるかどうかと終局の裁定は、lishogiのサーバが決める。
 USIの原典は、`go`に対して必ず`bestmove`を返すことを求める。
 一方、規則の差や壊れた棋譜のために`position`を受理できなかった後に、保持している古い局面から着手を返すと、サーバから見て不正な手を黙って送ることになる。
-この扱いは[外部対局接続](../plans/engine-connectivity.md)で決めた。
+この扱いは[外部対局接続](../plans/archived/engine-connectivity.md)で決めた。
 
 ## 決定
 

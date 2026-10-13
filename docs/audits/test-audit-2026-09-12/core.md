@@ -1,6 +1,6 @@
 対象は `src/core/**/*.rs` の249テストと [tests/lishogi_replay.rs](../../../tests/lishogi_replay.rs) の1テスト、計250テストである。全テスト本文と補助関数を確認した。本番コードとテストは変更していない。実行結果は[全体の報告](../test-audit-2026-09-12.md)に記載した。行番号は監査時点のものである。時間削減の数値は計算量・呼び出し回数であり、実測時間ではない。
 
-根拠は RULES.md 第14版、[docs/plans/spec-first-tests/matrices/d1-movement-promotion.md](../../plans/spec-first-tests/matrices/d1-movement-promotion.md)、[d2-lion-local-rules.md](../../plans/spec-first-tests/matrices/d2-lion-local-rules.md)、[d3-game-adjudication.md](../../plans/spec-first-tests/matrices/d3-game-adjudication.md)、[d4-position-foundations.md](../../plans/spec-first-tests/matrices/d4-position-foundations.md) と各領域台帳、[rules-type.md](../../plans/rules-type.md)、[game-referee.md](../../plans/game-referee.md)、[adjudication-refactor.md](../../plans/adjudication-refactor.md)、[move-canonicalization.md](../../plans/move-canonicalization.md) である。マトリクスの行数や過去のテスト件数は保持理由にしない。「削除」は現在の他テストを残せば実行でき、「統合」は記載した観測の移植を先に要する。
+根拠は RULES.md 第14版、[docs/plans/archived/spec-first-tests/matrices/d1-movement-promotion.md](../../plans/archived/spec-first-tests/matrices/d1-movement-promotion.md)、[d2-lion-local-rules.md](../../plans/archived/spec-first-tests/matrices/d2-lion-local-rules.md)、[d3-game-adjudication.md](../../plans/archived/spec-first-tests/matrices/d3-game-adjudication.md)、[d4-position-foundations.md](../../plans/archived/spec-first-tests/matrices/d4-position-foundations.md) と各領域台帳、[rules-type.md](../../plans/archived/rules-type.md)、[game-referee.md](../../plans/archived/game-referee.md)、[adjudication-refactor.md](../../plans/archived/adjudication-refactor.md)、[move-canonicalization.md](../../plans/archived/move-canonicalization.md) である。マトリクスの行数や過去のテスト件数は保持理由にしない。「削除」は現在の他テストを残せば実行でき、「統合」は記載した観測の移植を先に要する。
 
 以下は、重複や実装依存が大きく、優先して整理できる候補である。
 
@@ -266,7 +266,7 @@ C35では、規則エラー・文字列の小さな重複を除く。
 - [src/core/rules.rs:2211](../../../src/core/rules.rs:2211) `article_33_5_and_33_6_presets_expand_from_rule_constants` の各3表記は通常表記と大小混在の2表記へ減らせる。大小混在は大文字を含み、大小を無視する契約の検査には十分である。小文字・大文字・混在の3区分を別々に処理する仕様はない。
 - 同テストの `lishogi,R1` を単にis_errで見るassertは:2228 `rule_set_parse_errors_preserve_the_failure_kind` が同じ入力を正確な `PresetMustBeAlone` で確認するので削る。`engine-default,lishogi` の2preset混在は別の入力分類なので残す。
 - [rules.rs:2144](../../../src/core/rules.rs:2144) `article_33_4_from_codes_reports_duplicate_conflict_and_missing_in_contract_order` の `from_codes(&[R1]) -> Missing(Lion)` は、`[]` と `[L4,P0,R1,E0]` の同群欠落検査に比べ独立の保証がない。L4を基底群と誤認する境界、重複優先、衝突優先は残す。
-- [rules.rs:2249](../../../src/core/rules.rs:2249) `rules_error_display_is_stable` は4群の全文固定を1代表例へ減らす候補。エラー種別・群は型付き比較で既に固定される。[rules-type.md](../../plans/rules-type.md) は群名の表示を要求するため全削除より、1代表文面と必要な群の含有確認への縮小が適切である。未定義の句読点などへ広げない。
+- [rules.rs:2249](../../../src/core/rules.rs:2249) `rules_error_display_is_stable` は4群の全文固定を1代表例へ減らす候補。エラー種別・群は型付き比較で既に固定される。[rules-type.md](../../plans/archived/rules-type.md) は群名の表示を要求するため全削除より、1代表文面と必要な群の含有確認への縮小が適切である。未定義の句読点などへ広げない。
 
 C36では、外部棋譜再生の件数とプリセット自己照合を外す。
 

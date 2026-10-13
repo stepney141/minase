@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[Python学習器のRustへの移植と撤去](../plans/python-trainer-retirement.md)は、Rustで書いたNNUEの学習器に加えて、PST、FM、およびPSTとFMの同時学習の学習器と、学習の前後に使う診断をRustへ移した。
+[Python学習器のRustへの移植と撤去](../plans/archived/python-trainer-retirement.md)は、Rustで書いたNNUEの学習器に加えて、PST、FM、およびPSTとFMの同時学習の学習器と、学習の前後に使う診断をRustへ移した。
 NNUEの線形の経路は、鏡映を共有して盤上総駒数で2端点を補間するPSTそのものであり、PSTの学習器と順伝播、二値交差エントロピー、駒除去差分の補助損失（駒を1枚除いたときの評価の変化を参照と同じ向きにする損失）、および切り詰めの範囲が同じ式である。
 そこで当初は、NNUEの学習器に線形の経路だけを学ぶモデルを加え、PSTの学習器をNNUEの部品とバッチの供給に相乗りさせる設計を採った。
 しかし、NNUE、PST、およびFMは構造のまったく異なる評価関数である。

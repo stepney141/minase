@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索局面を用いた評価関数の学習](../plans/search-aware-evaluation.md)のフェーズ4として、[学習した](search-aware-pst-training.md)AとBの重みを棋力測定へ出せるかを、事前に固定した規則で判定する。
+[探索局面を用いた評価関数の学習](../plans/archived/search-aware-evaluation.md)のフェーズ4として、[学習した](search-aware-pst-training.md)AとBの重みを棋力測定へ出せるかを、事前に固定した規則で判定する。
 あわせて、最終診断用の根で着手の損失と静的評価の誤差を測り、実戦用ビルドの速度を記録する。
 最終診断と速度は機序を調べるための記録であり、採否には使わない。
 

@@ -3,7 +3,7 @@
 本書は、将棋のNNUE学習器tatara（SH11235/tatara、コミット`db08ed2`、MITライセンス）がなぜ高速に学習できるのかをソースコードと設計記録から解明し、minaseの現行のPython学習器（`tools/train`の`train-nnue`）がなぜ遅いのかをプロファイラで測った結果をまとめる。
 調査は2026年10月12日に、Claudeのサブエージェント2本とcodexがそれぞれ独立に行い、結論は一致した。
 相違は1点だけで、codexが「特徴分解を`simple`構成に適用しないとする設計記録（`docs/decisions/2026-06-12-ft-factorizer.md`）は現状と異なり、現行コードでは`simple`でも既定で有効である（`bins/nnue_train/src/training.rs`2271行）」と指摘した。
-本書の結論は、[Rust製NNUE学習器の設計書](../plans/nnue-trainer-rust.md)の根拠として使う。
+本書の結論は、[Rust製NNUE学習器の設計書](../plans/archived/nnue-trainer-rust.md)の根拠として使う。
 
 ## 結論
 

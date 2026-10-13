@@ -1,7 +1,7 @@
 # デバッグの手引き
 
 本書は、minaseの不具合を調べる開発者（人間とエージェント）が、症状を再現し、原因の局面と処理まで絞り込み、修正を確かめるまでの標準手順を定める。
-各手順が使う道具の出典と、他のエンジンとの比較は[エンジン開発のデバッグ手法の調査](../research/engine-debugging-survey.md)にあり、道具を追加する計画は[デバッグ機能の整備](../plans/debugging-tools.md)にある。
+各手順が使う道具の出典と、他のエンジンとの比較は[エンジン開発のデバッグ手法の調査](../research/engine-debugging-survey.md)にあり、道具を追加する計画は[デバッグ機能の整備](../plans/archived/debugging-tools.md)にある。
 本書は、リポジトリに実装済みの道具だけを記す。
 
 ## 原則
@@ -65,7 +65,7 @@ cargo run --release --bin minase -- dev random-play --rules engine-default --see
 cargo run --release --features invariants --bin minase -- dev random-play --rules engine-default --seed 1 --games 1000
 ```
 
-規則セットを横断して確かめるときは、[ランダム対局の設計書](../plans/random-play.md)が完了の検証に使った代表9規則セットで各300局を走らせる。
+規則セットを横断して確かめるときは、[ランダム対局の設計書](../plans/archived/random-play.md)が完了の検証に使った代表9規則セットで各300局を走らせる。
 反復規則の3系統には`L0,P0,R1,E0`、`L0,P0,R2,E0`、および`L0,P0,R3,E0`を使う。
 獅子、成り、および終局の規則の裁定の処理を通すには、`lishogi`、`L0,L3,P0,R1,E0`、`L0,P1,R1,E0`、`L0,P2,R1,E0`、`L0,P0,P4,R1,E0`、および`L0,P0,R1,E2`を使う。
 

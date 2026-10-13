@@ -35,7 +35,7 @@ v2.0.0のBotの同じ1,104局面で比べると、静的評価で1位の手が�
 
 PST（piece-square table、駒位置表）は、駒の種類と成り可否、手番側から見た升の組ごとに評価値を持つ線形の表である。
 序中盤と終盤の2つの値を盤上の駒数で補間し、左右対称の升で値を共有する。
-FMは、2つの特徴の組ごとの関係を低ランクの内積で表す補正項であり、PSTの評価値に足される（[FM補正1/4の再学習](../plans/fm-quarter-current-pst.md)）。
+FMは、2つの特徴の組ごとの関係を低ランクの内積で表す補正項であり、PSTの評価値に足される（[FM補正1/4の再学習](../plans/archived/fm-quarter-current-pst.md)）。
 cpはセンチポーンであり、歩兵1枚を100とする評価値の単位である。
 
 本書の「段」は、手番側の自陣の最下段を0、敵陣の最奥段を11とする位置である。
@@ -56,7 +56,7 @@ Botが使っていた版は、Botのログに残るエンジンの名乗り（`i
 
 ### 教師データでの特徴の分布
 
-[feature_profile.py](forward-play-diagnosis/feature_profile.py)は、現行PST（[PSTの長期学習](../plans/pst-longer-training.md)の候補L）の学習に使った世代2と世代3の教師データ10ファイル、計29,208,818局面を読み、手番側から見た自駒の特徴ごとに次の3つを集計する。
+[feature_profile.py](forward-play-diagnosis/feature_profile.py)は、現行PST（[PSTの長期学習](../plans/archived/pst-longer-training.md)の候補L）の学習に使った世代2と世代3の教師データ10ファイル、計29,208,818局面を読み、手番側から見た自駒の特徴ごとに次の3つを集計する。
 
 - 出現回数
 - 学習による重みの変化

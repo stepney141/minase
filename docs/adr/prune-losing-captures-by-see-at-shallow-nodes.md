@@ -6,8 +6,8 @@
 
 ## コンテキスト
 
-[棋力向上段階4](../plans/strength-stage4.md)で入れたfutility pruningは、駒の増減がない手にだけ静的評価を上界として使えるので、捕獲手を対象にできなかった。
-[棋力向上段階8](../plans/strength-stage8.md)の[起案時の発動率診断](../measurements/strength-stage8-activation-diag.md)では、浅い非PVノードで検査する捕獲手の39.8%が、獅子の規則によって判定不能になることなくSEE（到達升での駒の取り合いを見積もる静的交換評価）で負と判定された。
+[棋力向上段階4](../plans/archived/strength-stage4.md)で入れたfutility pruningは、駒の増減がない手にだけ静的評価を上界として使えるので、捕獲手を対象にできなかった。
+[棋力向上段階8](../plans/archived/strength-stage8.md)の[起案時の発動率診断](../measurements/strength-stage8-activation-diag.md)では、浅い非PVノードで検査する捕獲手の39.8%が、獅子の規則によって判定不能になることなくSEE（到達升での駒の取り合いを見積もる静的交換評価）で負と判定された。
 余裕値は、チェスや本将棋の値を流用せず、深さごとに「失う良い結果の割合が10%以下の候補のうち枝刈りが最も多いもの」として[診断](../measurements/strength-stage8-pruning-bench.md)から選んだ。
 残り深さ2では余裕値0、50、100の失う割合が10%を超えたので、歩兵2枚分の200を選んだ。
 STCは470有効ペアでLLR +2.9685の`H1`、LTCは791有効ペアでLLR +2.9905の`H1`であり、異常は0件だった（[STC](../measurements/strength-stage8-see-capture-stc.md)、[LTC](../measurements/strength-stage8-see-capture-ltc.md)）。

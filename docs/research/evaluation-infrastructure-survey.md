@@ -3,7 +3,7 @@
 ## 結論
 
 [評価項目の調査](evaluation-terms-survey.md)が順位づけた10段階の評価項目について、先行エンジンがその項目をどのデータ構造の上で、どの時点の費用として得ているかを調べ、minaseの現状と照合した。
-調査の動機は、[棋力向上段階9](../plans/strength-stage9.md)が王の周囲の攻撃域と守備駒を升ごとの利きの逆引きで実装し、毎秒の探索ノード数が82.2%下がったことである（[費用の測定](../measurements/strength-stage9-cost-bench.md)）。
+調査の動機は、[棋力向上段階9](../plans/archived/strength-stage9.md)が王の周囲の攻撃域と守備駒を升ごとの利きの逆引きで実装し、毎秒の探索ノード数が82.2%下がったことである（[費用の測定](../measurements/strength-stage9-cost-bench.md)）。
 
 結論は4点ある。
 
@@ -214,4 +214,4 @@ minaseで土台Bを使うには、評価値の保存や、王の近傍へ届き�
 - [やねうら王](https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30)
 - [HaChu（Debian収録版）](https://salsa.debian.org/debian/hachu/-/tree/822d512180b7d94bb85a55f871445b30393f7f8a)
 - [評価項目の調査](evaluation-terms-survey.md)
-- [棋力向上段階9の設計書](../plans/strength-stage9.md)
+- [棋力向上段階9の設計書](../plans/archived/strength-stage9.md)

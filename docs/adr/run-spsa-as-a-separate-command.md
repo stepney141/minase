@@ -9,7 +9,7 @@
 `minase match run`は、採否の測定を行う計器である（[コミット対コミットの測定](compare-commits-as-separate-engine-processes.md)）。
 SPSAは、同じ調整用ビルドのエンジンに、θ+とθ−の係数を`setoption`で側ごとに与えて対局させる必要がある（[調整用ビルドのADR](expose-tunable-coefficients-only-in-tuning-builds.md)）。
 対局の進行、異常の裁定、開始局面の生成、およびコミットのビルドは、`match_runner`が既に持っていた。
-fishtestとOpenBenchは調整の管理をサーバーが行い、対局はチェス用の対局ツールで実行する（[SPSAの設計書の参考資料](../plans/spsa.md#参考資料)）。
+fishtestとOpenBenchは調整の管理をサーバーが行い、対局はチェス用の対局ツールで実行する（[SPSAの設計書の参考資料](../plans/archived/spsa.md#参考資料)）。
 
 ## 決定
 

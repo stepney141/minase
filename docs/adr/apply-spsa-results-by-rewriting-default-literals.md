@@ -8,7 +8,7 @@
 
 SPSAの係数は`crates/minase/src/search/alphabeta/params.rs`の`parameters!`の表に1行1係数で並び、通常ビルドはその既定値を定数として使う（[調整用ビルドのADR](expose-tunable-coefficients-only-in-tuning-builds.md)）。
 当初の手引きは、セッションの最終値を人手で四捨五入して表へ書き写すことにしていた。
-この転記には、書き写しの誤り、丸め規則の揺れ、途中で止まったセッションや事前確認のセッションの値の誤用、および開始時と異なる表への適用の余地があった（[SPSAの結果を反映するコマンド](../plans/spsa-apply.md)）。
+この転記には、書き写しの誤り、丸め規則の揺れ、途中で止まったセッションや事前確認のセッションの値の誤用、および開始時と異なる表への適用の余地があった（[SPSAの結果を反映するコマンド](../plans/archived/spsa-apply.md)）。
 やねうら王の`tune.py`、fishutils、およびapeironも同種の自動反映を持ち、いずれもソース中の定数の行を独自の規則で探して数値を置き換える（[反映の先行例の調査](../research/spsa-parameter-application.md)）。
 同じ調査で、Hobbes、akimbo、Reckless、Viridithas、およびapeironは、いずれも係数の定義をRustのソースに置いていた（[反映の先行例の調査](../research/spsa-parameter-application.md)）。
 

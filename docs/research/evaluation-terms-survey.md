@@ -69,7 +69,7 @@ Stockfish 11、Ethereal、GPS将棋、Bonanza、技巧などの記憶による�
 成り権の保留状態は保存されないため、段階5で履歴に依存する成りの合法性を特徴にする場合は、データ形式の拡張が必要になる。
 
 過去の不採用実績も前提になる。
-2駒関係を学習するFactorization Machineは、検証損失を改善しながらSTCで得点率19.6%となり不採用だった（[設計書](../plans/factorization-machine.md)）。
+2駒関係を学習するFactorization Machineは、検証損失を改善しながらSTCで得点率19.6%となり不採用だった（[設計書](../plans/archived/factorization-machine.md)）。
 探索値を教師にした関係項が戦術上の期待を静的評価へ取り込み、探索と二重に計上した可能性が指摘されている。
 この実績は、学習で関係を表す方式より、意味の明確な少数の特徴を1つずつ測る方式を先に試す理由になる。
 
@@ -325,7 +325,7 @@ NNUEの入力特徴であるHalfKPとHalfKPE9は、段階10の先行例として
 
 範囲外にした理由は、Minaseでの2回の実測にある。
 世代0の100万局面で学習したP型NNUEは、固定ノードのGSPRTで学習PSTに `H0` となった。
-世代1では1,106万局面へ増やし、第1層の初期化がclipped ReLUを94.5%飽和させていた欠陥も直したが、再学習PSTに対する検証損失の改善は0.00018にとどまった（[設計書](../plans/evaluation-gen1.md)）。
+世代1では1,106万局面へ増やし、第1層の初期化がclipped ReLUを94.5%飽和させていた欠陥も直したが、再学習PSTに対する検証損失の改善は0.00018にとどまった（[設計書](../plans/archived/evaluation-gen1.md)）。
 対局の得点率は固定ノードで46.1%、時間制御で29.6%であり、どちらも `H0` だった（[nnue-gen1-nodes100k](../measurements/nnue-gen1-nodes100k.md)、[nnue-gen1-tc](../measurements/nnue-gen1-tc.md)）。
 benchの毎秒の探索ノード数は、採用PSTより18.5%低かった。
 

@@ -7,12 +7,12 @@
 ## コンテキスト
 
 minaseの探索では、静止探索のノードが全ノードの大半を占める。
-[棋力向上段階12](../plans/strength-stage12.md)は、delta pruningとSEEの枝刈りを通過して実際に読んだ捕獲手が`N`手に達した後の捕獲手を、例外を除いて読まない手数制限を測った。
+[棋力向上段階12](../plans/archived/strength-stage12.md)は、delta pruningとSEEの枝刈りを通過して実際に読んだ捕獲手が`N`手に達した後の捕獲手を、例外を除いて読まない手数制限を測った。
 `N`は、枝刈りによって良い結果を失う割合が10%以下の候補のうち最小のものとして[診断](../measurements/strength-stage12-activation-diag.md)から選び、`N=1`で失う割合は4.83%だった。
 `N=1`の実装は深さ6の総ノード数を21.03%、探索時間を15.9%減らした（[bench](../measurements/strength-stage12-qsearch-limit-bench.md)）。
 しかしSTCは147有効ペアで得点率27.0%、ロジスティック換算で約−173 Eloの`H0`だった（[測定記録](../measurements/strength-stage12-qsearch-limit-stc.md)）。
 静止探索は深さの上限なく再帰するので、1ノードで失う良い結果の割合が小さくても損失が積み重なる（[教訓](../lessons/recall-loss-does-not-bound-recursive-pruning.md)）。
-[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)は、上限を範囲1〜7の整数の係数としてSPSAで調整し、上限4で採用した（[調整の記録](../measurements/search-revival-t.md)、[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
+[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)は、上限を範囲1〜7の整数の係数としてSPSAで調整し、上限4で採用した（[調整の記録](../measurements/search-revival-t.md)、[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
 
 ## 決定
 
@@ -23,7 +23,7 @@ minaseの探索では、静止探索のノードが全ノードの大半を占�
 ## 検討した代案
 
 失う良い結果の割合で選んだ`N=1`は、上記のとおり大敗したので採らなかった。
-Stockfishのように生成した全捕獲手を数えて`N=2`とする方式は、未測定の候補として残した（[段階12の設計書の参考資料](../plans/strength-stage12.md#参考資料)）。
+Stockfishのように生成した全捕獲手を数えて`N=2`とする方式は、未測定の候補として残した（[段階12の設計書の参考資料](../plans/archived/strength-stage12.md#参考資料)）。
 
 ## 結果
 

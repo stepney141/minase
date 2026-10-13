@@ -8,9 +8,9 @@
 
 別プロセスのエンジン同士の対局では、不正着手、クラッシュ、応答の停止、および時間切れが起こり得る（[コミット対コミットの測定](compare-commits-as-separate-engine-processes.md)）。
 CECPのエンジンは、審判層が合法とした相手の着手を`Illegal move`で拒否することもある。
-fastchessとfishtestは、こうした異常を起こしたエンジンの負けとして数える（[対局ハーネスのバイナリ対戦化](../plans/match-harness.md#fishtestとの構造対応)）。
+fastchessとfishtestは、こうした異常を起こしたエンジンの負けとして数える（[対局ハーネスのバイナリ対戦化](../plans/archived/match-harness.md#fishtestとの構造対応)）。
 一方、1局の手数には上限があり、上限に達した局は規則上の決着を持たない。
-[探索部](../plans/search.md)は、上限に達した局を引き分けとして数えるとバイアスの源になると判断した。
+[探索部](../plans/archived/search.md)は、上限に達した局を引き分けとして数えるとバイアスの源になると判断した。
 GSPRTの観測単位はペアなので、片方の局に決着がなければ、そのペアは得点の分類を持たない。
 
 ## 決定

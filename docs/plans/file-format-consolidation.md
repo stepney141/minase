@@ -26,7 +26,7 @@ minaseのコードがディスクに読み書きするファイル形式は36あ
 実戦棋譜の取り込みは残すことにした。[AlphaZero型探索の設計書](alphazero.md)が、自己対局の開始局面の半数をlishogiの実戦棋譜から取ると定めており、その実装が取り込みの開始局面一覧を読むからである。
 
 形式が多いと、変更のたびに書き手、読み手、検査、文書の4か所をそろえる必要がある。そろっていない箇所は、不具合や古い記述として残る。
-現に[評価関数の設計書](evaluation.md)には、実装と合わない記述が3か所ある。MNUEのヘッダを版2の96バイトとして説明している箇所（現行のコード`crates/minase/src/eval/nnue/format.rs`は版5の192バイト）、MNSDの`network_checksum`を`pst.bin`の検査和と説明している箇所（現行はNNUEの重みの検査和）、学習器がMNRSの値を使うと書いている箇所（現行の学習器は読まない）である。
+現に[評価関数の設計書](archived/evaluation.md)には、実装と合わない記述が3か所ある。MNUEのヘッダを版2の96バイトとして説明している箇所（現行のコード`crates/minase/src/eval/nnue/format.rs`は版5の192バイト）、MNSDの`network_checksum`を`pst.bin`の検査和と説明している箇所（現行はNNUEの重みの検査和）、学習器がMNRSの値を使うと書いている箇所（現行の学習器は読まない）である。
 
 本書で使う語を次のように定める。
 教師データは、自己対局または実戦棋譜の局面に、教師の探索値と対局結果を付けた学習用のデータであり、MNSDはその形式である。
@@ -56,14 +56,14 @@ NPZは、NumPyの配列を収めたZIP形式のファイルであり、学習器
 次のものは変えない。
 
 - MNUEとMNPTの形式。重み本体の検査和は、教師データのヘッダに写して、教師データを生成した重みを区別する識別子として使っており、照合のためのものではない。
-- 対局ハーネスとSPSAの実行ディレクトリ、および`target/match-cache/`のバイナリの検査和。再開時に対局するエンジンの同一性を照合する契約（[測定の再開条件の簡素化](match-resume-simplification.md)）の一部であり、教師データとは別の問題である。SPSAの`manifest.json`が版番号を持たないことは、その仕様のdocコメントに書くにとどめる。
+- 対局ハーネスとSPSAの実行ディレクトリ、および`target/match-cache/`のバイナリの検査和。再開時に対局するエンジンの同一性を照合する契約（[測定の再開条件の簡素化](archived/match-resume-simplification.md)）の一部であり、教師データとは別の問題である。SPSAの`manifest.json`が版番号を持たないことは、その仕様のdocコメントに書くにとどめる。
 - 学習器と診断が出力するだけで読み返さない報告のJSON（`summary.json`、診断の`--output`など）。
 - 同じファイル名で中身が違うJSON（対局ハーネスとSPSAの`manifest.json`と`invocations.json`、対局ハーネスと学習器の`summary.json`）。名前を変えると既存の実行ディレクトリが読めなくなるので、形式の一覧の手引きで区別して書く。
 - 撤去済みのPythonの手順が`data/`に残した`generated-N.json`、`commands.jsonl`、`config.toml`。現行コードに読み手も書き手もない。
 
 ## 依存関係
 
-前提となる完了済みの設計書は、[評価関数](evaluation.md)（MNSDの定義）、[棋力向上段階9](strength-stage9.md)（来歴JSONと付け直し）、[Python学習器の撤去](python-trainer-retirement.md)（現行の学習器の構成）である。
+前提となる完了済みの設計書は、[評価関数](archived/evaluation.md)（MNSDの定義）、[棋力向上段階9](archived/strength-stage9.md)（来歴JSONと付け直し）、[Python学習器の撤去](archived/python-trainer-retirement.md)（現行の学習器の構成）である。
 
 AlphaZero型探索の実装は、masterへ統合する前のブランチ`alphazero-phase1`にある。このブランチは、自己対局の生成処理から開始局面一覧の読み込み（`selfplay_gen/opening.rs`の`read_openings`）を呼び出しており、MNSDの符号化関数の可視性も変えている。
 本書は開始局面一覧の形式と`read_openings`を変えないので、統合時の衝突は、可視性の変更とMNSDの読み書きの箇所に限られる。
@@ -145,7 +145,7 @@ AlphaZero型探索の実装は、masterへ統合する前のブランチ`alphaze
 
 手引き`docs/guides/file-formats.md`には、全形式の一覧（名前、マジックと版、書き手、読み手、仕様を書いたモジュール）と、同じファイル名で中身が違うJSONの区別だけを書く。
 学習器の記録（`config.json`、`training.jsonl`など）の欄も、書き出すモジュールのdocコメントに書く。
-凍結した設計書（[評価関数](evaluation.md)、[段階9](strength-stage9.md)、[NNUEの完全代替](nnue-replacement.md)、[Rust製NNUE学習器](nnue-trainer-rust.md)など）のバイト配置の記述は、凍結の規則に従って書き換えない。
+凍結した設計書（[評価関数](archived/evaluation.md)、[段階9](archived/strength-stage9.md)、[NNUEの完全代替](archived/nnue-replacement.md)、[Rust製NNUE学習器](archived/nnue-trainer-rust.md)など）のバイト配置の記述は、凍結の規則に従って書き換えない。
 
 ## 実装フェーズ
 

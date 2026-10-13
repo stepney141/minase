@@ -27,7 +27,7 @@ python3 format_report.py <out>
 
 再生にはminase-core（master、コミット8d0e382時点）の`Game::play`を使った。
 lishogiの棋譜（`data/lishogi/games.ndjson`、2026年9月22日取得、23,567局）は`Rules::LISHOGI`（L1、L2、P0、P3、R1、E1、E3）で再生し、同じ着手列を`e1: false`にした双子対局にも与えて、盤上に詰みが成立した手数を記録した。
-自己対局は[手の順序付けの改善](../plans/move-ordering.md)の[LTC](move-ordering-all-ltc.md)（599ペア）と[STC](move-ordering-all-stc.md)（309ペア）の全1,816局であり、候補ea0c75a対基準cd081f4、規則L0、P0、R1、E0である。
+自己対局は[手の順序付けの改善](../plans/archived/move-ordering.md)の[LTC](move-ordering-all-ltc.md)（599ペア）と[STC](move-ordering-all-stc.md)（309ペア）の全1,816局であり、候補ea0c75a対基準cd081f4、規則L0、P0、R1、E0である。
 自己対局は全記録からの無作為標本ではなく、直近2測定の全局である。
 王駒の枚数は`Position::royal_pieces(color).popcount()`、太子の有無は`pieces_of_kind(color, PieceKind::CrownPrince)`で数えた。
 

@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Factorization Machineによる2駒関係評価](../plans/factorization-machine.md)の採否測定として、FM候補（潜在次元32、λ=1.0、λres=1e-4）を開始版と短時間条件のGSPRTで対局させ、長時間条件へ進めるかを判定する。
+[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)の採否測定として、FM候補（潜在次元32、λ=1.0、λres=1e-4）を開始版と短時間条件のGSPRTで対局させ、長時間条件へ進めるかを判定する。
 
 ## コマンドライン
 

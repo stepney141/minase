@@ -7,7 +7,7 @@
 ## コンテキスト
 
 対局ハーネス`minase match run`は、`bestmove resign`を当該局の負けとして数える。
-[USI投了](../plans/usi-resignation.md)により、minaseは既定で詰まされる読みが出た局面で投了するようになった。
+[USI投了](../plans/archived/usi-resignation.md)により、minaseは既定で詰まされる読みが出た局面で投了するようになった。
 投了は、規則上の終局より前に対局を終わらせる。
 
 ## 決定

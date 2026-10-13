@@ -7,9 +7,9 @@
 ## コンテキスト
 
 通常探索の静かな手は、butterfly historyの値の降順に並ぶ。
-[棋力向上段階5](../plans/strength-stage5.md)のmalusは、β打ち切りを起こした静かな手に加点し、同じノードで先に探索した静かな手を同じ大きさで減点したが、STCが上限3,000ペアでLLR −1.578の判定保留となり不採用だった（[測定記録](../measurements/strength-stage5-malus-stc.md)）。
+[棋力向上段階5](../plans/archived/strength-stage5.md)のmalusは、β打ち切りを起こした静かな手に加点し、同じノードで先に探索した静かな手を同じ大きさで減点したが、STCが上限3,000ペアでLLR −1.578の判定保留となり不採用だった（[測定記録](../measurements/strength-stage5-malus-stc.md)）。
 当時のLMRはhistory値を参照していなかった。
-[手の順序付けの改善](../plans/move-ordering.md)は、malusを加点と減点の別の尺度で再導入した。
+[手の順序付けの改善](../plans/archived/move-ordering.md)は、malusを加点と減点の別の尺度で再導入した。
 [診断](../measurements/move-ordering-root-diag.md)は、本番の順序を変えずに減点つきの更新だけを並行して行う比較用の表（影の表）を使った。
 この影の表で静かな手の順序が変わるノードは深さ6で92.3%あり、負のhistory値でLMRの減深が1増える経路に入る手は3.9〜20.0%だった。
 同じ設計書は、history値が同じ手の同点を、駒の移動による評価の線形部分の差で破る候補を立てた。
@@ -31,7 +31,7 @@ history値が同じ静かな手は、評価関数の線形経路で引いた移�
 ## 結果
 
 同点破りの差分は、設計の時点ではPSTとFMからなる評価関数のPSTで引いていた。
-2026年10月12日に既定の評価関数が[NNUE](../plans/nnue-replacement.md)へ置き換わった後は、NNUEが内包する線形経路で引く。
+2026年10月12日に既定の評価関数が[NNUE](../plans/archived/nnue-replacement.md)へ置き換わった後は、NNUEが内包する線形経路で引く。
 成る手を成った後の駒で引くことを含む差分の詳細は、`crates/minase/src/eval/nnue/mod.rs`の`quiet_move_pst_delta`のdocコメントにある。
 NNUEの線形経路は旧PSTを初期値として学習し直した値なので、同点破りの効果を現行の評価関数で測り直してはいない。
 加点と減点の尺度は既定値のままであり、次のSPSAの調整の対象である。

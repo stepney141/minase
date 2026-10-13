@@ -15,4 +15,4 @@ xboardで時間切れ検出を有効にするときは、ArgBoolean型の`-autoC
 
 ## 出典
 
-- [plans/engine-connectivity.md](../plans/engine-connectivity.md) の「検証」節にある端到端検証の手順。
+- [plans/engine-connectivity.md](../plans/archived/engine-connectivity.md) の「検証」節にある端到端検証の手順。

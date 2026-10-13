@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[ライブラリとエンジンのcrate分割](../plans/crate-split.md)は、1つだったcrateをライブラリとエンジンに分け、それぞれに別のライセンスを与えた（[ライブラリをMIT、エンジンをGPL-3.0-or-laterで配布する](license-library-under-mit-and-engine-under-gpl.md)）。
+[ライブラリとエンジンのcrate分割](../plans/archived/crate-split.md)は、1つだったcrateをライブラリとエンジンに分け、それぞれに別のライセンスを与えた（[ライブラリをMIT、エンジンをGPL-3.0-or-laterで配布する](license-library-under-mit-and-engine-under-gpl.md)）。
 crateの配布物には、そのcrateのディレクトリより外のファイルを含められない。
 対局ハーネスの`commit:`指定と`scripts/bench_compare.py`は他のコミットを`target/`の下へ展開してビルドし、他のブランチのworktreeは`data/`と`.claude/`の下に置かれる。
 分割前のコミットのCargo.tomlは`[workspace]`を持たないので、Cargoは親ディレクトリのワークスペースを見つけると、展開したパッケージがそのメンバーに含まれていないとしてビルドを拒否する。
@@ -20,7 +20,7 @@ crateの配布物には、そのcrateのディレクトリより外のファイ�
 
 エンジンをルートのパッケージとし、ライブラリだけを`crates/minase-core/`に置く案は採らなかった。
 この案では、エンジンのパッケージのディレクトリがライブラリと`docs/`を内側に含むので、MITのディレクトリがGPLのパッケージの中に入れ子になり、配布物の範囲も除外の列挙に頼ることになる。
-rshogiも、crateを`crates/`の下に並べる仮想マニフェストをとる（[crate分割の参考資料](../plans/crate-split.md#参考資料)）。
+rshogiも、crateを`crates/`の下に並べる仮想マニフェストをとる（[crate分割の参考資料](../plans/archived/crate-split.md#参考資料)）。
 
 ## 結果
 

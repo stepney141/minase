@@ -6,9 +6,9 @@
 
 ## コンテキスト
 
-[ライブラリとエンジンのcrate分割](../plans/crate-split.md)の後、リポジトリはライブラリ`minase-core`とエンジン`minase`の2つのcrateを持つ。
+[ライブラリとエンジンのcrate分割](../plans/archived/crate-split.md)の後、リポジトリはライブラリ`minase-core`とエンジン`minase`の2つのcrateを持つ。
 分割の前のエンジンは`vX.Y.Z`のタグの系列でリリースしてきた。
-ライブラリの公開パスは、2026年9月27日の[中核モジュールの再編](../plans/core-layout.md)で変わったばかりだった。
+ライブラリの公開パスは、2026年9月27日の[中核モジュールの再編](../plans/archived/core-layout.md)で変わったばかりだった。
 リリースに使うcargo-releaseは、ルート以外に置いたcrateのタグに`<crate名>-`の接頭辞を既定で付け、複数のcrateのリリースを既定で1つのコミットにまとめる。
 crates.ioへの公開は取り消せない。
 
@@ -23,7 +23,7 @@ cargo-releaseはpushとcrates.ioへの公開を行わず、公開はタグとpus
 cargo-releaseに公開まで任せる案は、取り消せない操作を自動化することになるので採らなかった。
 これは、cargo-releaseにpushをさせず手作業に残している従来の方針と同じ理由である。
 複数のcrateのリリースを1つのコミットにまとめるcargo-releaseの既定は、コミットの件名に版数を使えず、crateごとの件名の設定も効かないので採らなかった。
-rshogiも、エンジン全体の`vX.Y.Z`のタグとは別に、ライブラリを0.x系の別系列で公開する（[crate分割の参考資料](../plans/crate-split.md#参考資料)）。
+rshogiも、エンジン全体の`vX.Y.Z`のタグとは別に、ライブラリを0.x系の別系列で公開する（[crate分割の参考資料](../plans/archived/crate-split.md#参考資料)）。
 
 ## 結果
 

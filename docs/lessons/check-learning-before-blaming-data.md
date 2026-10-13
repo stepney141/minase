@@ -18,6 +18,6 @@
 
 ## 出典
 
-- [plans/evaluation.md](../plans/evaluation.md) の世代0の判定と [measurements/nnue-gen0-nodes100k.md](../measurements/nnue-gen0-nodes100k.md)。
-- [plans/evaluation-gen1.md](../plans/evaluation-gen1.md) の「教師不足の判定の検証結果と次期候補」節。
+- [plans/evaluation.md](../plans/archived/evaluation.md) の世代0の判定と [measurements/nnue-gen0-nodes100k.md](../measurements/nnue-gen0-nodes100k.md)。
+- [plans/evaluation-gen1.md](../plans/archived/evaluation-gen1.md) の「教師不足の判定の検証結果と次期候補」節。
 - [nnue-first-layer-init-saturation.md](nnue-first-layer-init-saturation.md)。

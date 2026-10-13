@@ -8,7 +8,7 @@
 
 Stockfishは、null move pruningと置換表の値による打ち切りを、最善応手列の候補を読むPVノードでは行わない（[未導入の棋力向上手法の調査](../research/unplanned-strength-techniques-survey.md)）。
 minaseは、どちらもノードの種別を問わずに行う。
-[棋力向上段階12](../plans/strength-stage12.md)は、欠けていたこれら2つの前提条件をそれぞれ加える変更を、2つの項目として測った。
+[棋力向上段階12](../plans/archived/strength-stage12.md)は、欠けていたこれら2つの前提条件をそれぞれ加える変更を、2つの項目として測った。
 1つ目は、null moveを試す条件に、非PVノードであることと、補正後の静的評価がβ以上であることを加える変更である。
 [発動率の診断](../measurements/strength-stage12-activation-diag.md)では、この変更によって、null moveを試していたノードの37.00%で試さなくなり、その大半は静的評価がβ未満のノードだった。
 STCは上限の3,000ペアで2,853有効ペア、得点率50.0%、LLR −2.807の判定保留となり、停止時点のLLRが負なので採らなかった（[測定記録](../measurements/strength-stage12-null-move-stc.md)）。

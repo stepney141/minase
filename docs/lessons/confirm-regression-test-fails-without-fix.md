@@ -15,4 +15,4 @@
 
 ## 出典
 
-- [plans/rust-design-audit-remediation.md](../plans/rust-design-audit-remediation.md) の検証契約
+- [plans/rust-design-audit-remediation.md](../plans/archived/rust-design-audit-remediation.md) の検証契約

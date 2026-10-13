@@ -6,7 +6,7 @@
 
 ## 発端
 
-[デバッグ機能の整備](../plans/debugging-tools.md)で追加した探索統計（フィーチャ`search-stats`）を初めて動かしたところ、深さ5の`bench`で初手βカット率が59%だった。
+[デバッグ機能の整備](../plans/archived/debugging-tools.md)で追加した探索統計（フィーチャ`search-stats`）を初めて動かしたところ、深さ5の`bench`で初手βカット率が59%だった。
 Chess Programming Wikiの「Move Ordering」頁は、βカットが起きるノードの90%を超える割合で最初の手がβカットを起こすことを、手の順序付けの目安に挙げている。
 
 ## 観測事実
@@ -67,7 +67,7 @@ Chess Programming Wikiの「Move Ordering」頁は、βカットが起きるノ�
 
 ## 棋力への影響についての既存の測定
 
-悪い捕獲を静かな手の後へ回す変更は、[棋力向上段階12](../plans/strength-stage12.md)の項目2として既に測られている。
+悪い捕獲を静かな手の後へ回す変更は、[棋力向上段階12](../plans/archived/strength-stage12.md)の項目2として既に測られている。
 全捕獲手のSEEを生成時に計算する実装では、深さ6の総ノード数が3.5%減った一方でNPSが約9.7%下がり、STCで得点率45.7%の`H0`となった。
 これらの測定記録は、本書の時点ではブランチ`strength-stage12`にだけあり、`docs/measurements/strength-stage12-bad-captures-bench.md`（除外件数とbench、コミット3bb38b6）と`docs/measurements/strength-stage12-bad-captures-stc.md`（STC、コミットf670aed）である。
 したがって、初手βカット率を上げること自体は棋力の改善を保証せず、順序の改善で減るノード数と、そのために払う計算の費用の差で決まる。

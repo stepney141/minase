@@ -18,7 +18,7 @@ Rustから受け取る成りの情報は着手と評価差に限られ、参照�
 
 ## 出典
 
-起点は[棋力向上段階7](../plans/strength-stage7.md)の成り診断である。
+起点は[棋力向上段階7](../plans/archived/strength-stage7.md)の成り診断である。
 修正後のPythonの比較診断（`comparison.py`）は着手後局面から評価差を再計算し、その回帰テストは着手前の評価を保ったまま成りの評価差だけを変えた入力を拒否することを確認していた。
-Pythonの学習ツールは2026年10月にRustへ移植して撤去した（[Python学習器の撤去](../plans/python-trainer-retirement.md)）。
+Pythonの学習ツールは2026年10月にRustへ移植して撤去した（[Python学習器の撤去](../plans/archived/python-trainer-retirement.md)）。
 移植した`minase-trainer diag pst-compare`（`crates/minase-trainer/src/diagnostics/pst_positions.rs`）も、成り手の着手後の評価と評価差を独立に計算した整数のPST評価で計算し直し、エンジンの値と一致しなければ失敗する。

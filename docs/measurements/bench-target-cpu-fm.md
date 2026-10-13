@@ -32,7 +32,7 @@ taskset -c 3 perf stat -x, -e instructions:u,cycles:u <構成のminase> dev benc
 ## エンジン
 
 2構成とも`bc0617a`であり、違いは`target-cpu`だけである。
-規則はbench既定の`engine-default`、評価重みは埋め込みの`nets/pst.bin`（採用済みの候補LのPSTと候補Faの補正1/4のFM、[設計書](../plans/fm-quarter-current-pst.md)）を使った。
+規則はbench既定の`engine-default`、評価重みは埋め込みの`nets/pst.bin`（採用済みの候補LのPSTと候補Faの補正1/4のFM、[設計書](../plans/archived/fm-quarter-current-pst.md)）を使った。
 検証用のcrateはfearless_simd 1.1.0とfearless_simd_macros 0.1.0に依存する。
 
 ## 環境

@@ -16,5 +16,5 @@
 
 ## 出典
 
-- [plans/strength-stage4.md](../plans/strength-stage4.md) の「余裕値と手数の決め方」行と「診断による余裕値の決定」節
+- [plans/strength-stage4.md](../plans/archived/strength-stage4.md) の「余裕値と手数の決め方」行と「診断による余裕値の決定」節
 - [measurements/strength-stage4-pruning-bench.md](../measurements/strength-stage4-pruning-bench.md)

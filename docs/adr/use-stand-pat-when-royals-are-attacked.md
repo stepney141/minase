@@ -12,7 +12,7 @@ stand-patは、静止探索で何も指さずに現局面の評価値を採る�
 監査の再現例では、深さ1の探索は詰みを見落とし、深さ2の探索で見つけた。
 チェスのエンジンが王手中のstand-patを禁じるのは、応手が少なく評価値を保てる手がないことが多いからであり、王手放置が合法かどうかとは関係がない。
 中将棋は王手放置が合法であり（RULES.md第8条）、王手を受けても逃げ方が多い。
-[探索部の不具合修正](../plans/search-bug-fixes.md)は当初、王駒がすべて狙われた静止探索の局面でstand-patを使わず全合法手を読む修正を含めていた。
+[探索部の不具合修正](../plans/archived/search-bug-fixes.md)は当初、王駒がすべて狙われた静止探索の局面でstand-patを使わず全合法手を読む修正を含めていた。
 この修正を含む3件の組の[非劣性のSTC](../measurements/search-bug-fixes-noninferiority-stc.md)は不合格となった。
 診断のSTCでは、修正の親コミットの得点率が67.0%、LLRが2.963で`H1`となり、修正は約120 Elo弱かった（[測定記録](../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)）。
 benchの深さ9では、この修正によって総ノード数が83.3%、所要時間が39%増えた（[測定記録](../measurements/search-bug-fixes-bench.md)）。

@@ -7,7 +7,7 @@
 ## コンテキスト
 
 internal iterative reduction（IIR）は、置換表に記録手がないノードを浅く読み、次の反復で記録手を得てから本来の深さで読む手法である。
-[棋力向上段階6](../plans/strength-stage6.md)の[置換表と記録手の診断bench](../measurements/strength-stage6-tt-bench.md)では、深さ6の残り深さ3以上のノードのうち7.7%に記録手がなかった。
+[棋力向上段階6](../plans/archived/strength-stage6.md)の[置換表と記録手の診断bench](../measurements/strength-stage6-tt-bench.md)では、深さ6の残り深さ3以上のノードのうち7.7%に記録手がなかった。
 記録手は置換表の助言的な情報であり、それまでは順序付けにだけ使っていた。
 IIRは、その有無を残り深さの決定にも使う点で、置換表の契約を広げる変更である。
 STCは1,419有効ペアでLLR +2.965の`H1`だった（[測定記録](../measurements/strength-stage6-iir-stc.md)）。

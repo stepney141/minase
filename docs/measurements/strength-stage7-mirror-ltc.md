@@ -2,7 +2,7 @@
 
 ## 目的
 
-[短時間測定](strength-stage7-mirror-stc.md)を通過した鏡映重み共有候補を段階開始版と長時間条件（LTC）で比較し、[棋力向上段階7](../plans/strength-stage7.md)での採否を確定する。
+[短時間測定](strength-stage7-mirror-stc.md)を通過した鏡映重み共有候補を段階開始版と長時間条件（LTC）で比較し、[棋力向上段階7](../plans/archived/strength-stage7.md)での採否を確定する。
 
 ## コマンドライン
 

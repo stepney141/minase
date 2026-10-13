@@ -23,5 +23,5 @@
 ## 出典
 
 - [measurements/movegen-speedup-2-stage2-bench-depth5.md](../measurements/movegen-speedup-2-stage2-bench-depth5.md) の「コマンドライン」節。
-- [plans/movegen-speedup.md](../plans/movegen-speedup.md) の「探索木を変えない変更は局面別一致と速度で採否を決める」節。
-- [plans/movegen-speedup-2.md](../plans/movegen-speedup-2.md) と [plans/movegen-speedup-3.md](../plans/movegen-speedup-3.md) の「探索木を変えない段階の採否」節。
+- [plans/movegen-speedup.md](../plans/archived/movegen-speedup.md) の「探索木を変えない変更は局面別一致と速度で採否を決める」節。
+- [plans/movegen-speedup-2.md](../plans/archived/movegen-speedup-2.md) と [plans/movegen-speedup-3.md](../plans/movegen-speedup-3.md) の「探索木を変えない段階の採否」節。

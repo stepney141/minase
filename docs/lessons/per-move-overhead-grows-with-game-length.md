@@ -18,5 +18,5 @@
 
 ## 出典
 
-- [棋力向上段階2](../plans/strength-stage2.md)の`position`再生の差分適用の設計判断。
+- [棋力向上段階2](../plans/archived/strength-stage2.md)の`position`再生の差分適用の設計判断。
 - [反復継続の判断のSTC](../measurements/strength-stage2-iteration-stc.md)の時間切れの分析。

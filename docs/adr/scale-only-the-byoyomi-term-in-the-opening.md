@@ -7,7 +7,7 @@
 ## コンテキスト
 
 GitHub issue #7は、持ち時間5分と秒読み10秒の対局で、minaseが最初の数手に各10秒以上を使い、持ち時間をすぐ使い切ると報告した。
-[持ち時間の効率的な使用](../plans/time-management-efficiency.md)の[初形の実測](../measurements/time-management-efficiency-probe.md)では、この条件の初手の標準予算softは9,333 msであり、秒読みだけの局面のsoftは8,000 msだった。
+[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)の[初形の実測](../measurements/time-management-efficiency-probe.md)では、この条件の初手の標準予算softは9,333 msであり、秒読みだけの局面のsoftは8,000 msだった。
 つまり、初手の予算の大半は秒読みの項`0.8·byoyomi`から来ていた。
 既存エンジンの調査では、Apery、技巧、およびdlshogiが序盤の消費を手数に応じた係数または除数で絞り、Aperyは20手目まで秒読みの項を加えない（[秒読みつき時間制御における既存エンジンの持ち時間配分](../research/time-management-byoyomi-survey.md)）。
 エンジンの開発者は、人間との対局のためのこの変更で棋力を落とさないことを条件にした。

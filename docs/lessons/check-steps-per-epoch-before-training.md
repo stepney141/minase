@@ -16,4 +16,4 @@
 
 ## 出典
 
-- [plans/evaluation.md](../plans/evaluation.md) の「世代0の学習結果と診断」
+- [plans/evaluation.md](../plans/archived/evaluation.md) の「世代0の学習結果と診断」

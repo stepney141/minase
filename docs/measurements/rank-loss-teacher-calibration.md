@@ -2,7 +2,7 @@
 
 ## 目的
 
-[浅い探索の手の順位を学ぶ損失](../plans/rank-loss-training.md)の安定した組の判定と損失の尺度に使う差mを、[探索局面の計画](../plans/search-aware-evaluation.md)と同じ手順で、現在のS0で測り直す。
+[浅い探索の手の順位を学ぶ損失](../plans/archived/rank-loss-training.md)の安定した組の判定と損失の尺度に使う差mを、[探索局面の計画](../plans/archived/search-aware-evaluation.md)と同じ手順で、現在のS0で測り直す。
 S0の探索は、同計画がmを校正した基点`5563d75`から変わっているからである。
 棋力測定ではなく、対局の勝敗を使わない。
 

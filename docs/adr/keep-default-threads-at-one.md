@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[Lazy SMP](../plans/lazy-smp.md)によって、USIの`Threads`とCECPの`cores`で探索ワーカー数を設定できるようになった。
+[Lazy SMP](../plans/archived/lazy-smp.md)によって、USIの`Threads`とCECPの`cores`で探索ワーカー数を設定できるようになった。
 `Threads`は主ワーカーを含む探索ワーカーの総数である。
 ワーカー数が2以上の場合は共有置換表へのアクセス順が実行時のスケジューリングに依存するので、固定深さや固定ノード数でも探索結果が再現しない。
 [棋力測定の手引き](../guides/sprt.md)の完全再現の契約は、このため`Threads=1`に限られる。

@@ -11,7 +11,7 @@ GUI、lishogiのBotブリッジ、または対局ハーネスとの間でだけ�
 StockfishはUCIのオプションでログのファイルを指定し、標準入出力を複写する（[調査メモ](../research/engine-debugging-survey.md)）。
 minaseを起動する側の対局ハーネス、Botブリッジ、および開発用GUIは、いずれも起動引数を指定できる。
 時間切れの調査では、エンジンが`go`を受けてから`bestmove`を返すまでの時間を、エンジン側の記録から読みたい。
-この判断は[デバッグ機能の整備](../plans/debugging-tools.md)で下した。
+この判断は[デバッグ機能の整備](../plans/archived/debugging-tools.md)で下した。
 
 ## 決定
 

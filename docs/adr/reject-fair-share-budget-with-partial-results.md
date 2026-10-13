@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[持ち時間の効率的な使用](../plans/time-management-efficiency.md)は、issue #7への対策として、StockfishとYaneuraOuに倣った時間管理の再構成を試みた（両エンジンの該当箇所は[設計書の参考資料](../plans/time-management-efficiency.md#参考資料)にある）。
+[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)は、issue #7への対策として、StockfishとYaneuraOuに倣った時間管理の再構成を試みた（両エンジンの該当箇所は[設計書の参考資料](../plans/archived/time-management-efficiency.md#参考資料)にある）。
 再構成は4段階に分け、1段階を1コミットとして順に積み重ねた。
 第0段階は根の各手の探索結果を保持する表である。
 第1段階は、打ち切りの上限hardで中断した反復でも、その反復で探索を終えた手の中の最善手を指す途中結果の採用と、標準予算softとhardを、持ち時間の1手あたりの分担そのものにする予算の再定義である。

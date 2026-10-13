@@ -8,7 +8,7 @@
 
 根では、先頭に置換表の記録手を置き、2手目以降を零窓で読み、値が窓に入れば全窓で読み直す。
 最善手が交替する反復で新しい最善手を早く見つけられれば、αが早く上がり、残りの零窓探索のノード数が減る。
-[手の順序付けの改善](../plans/move-ordering.md)の[根の診断](../measurements/move-ordering-root-diag.md)では、最善手が交替した反復のノード数が全反復のノード数に占める割合が、STCで53.6%、LTCで53.8%だった。
+[手の順序付けの改善](../plans/archived/move-ordering.md)の[根の診断](../measurements/move-ordering-root-diag.md)では、最善手が交替した反復のノード数が全反復のノード数に占める割合が、STCで53.6%、LTCで53.8%だった。
 新しい最善手の順位の平均は、通常の順序付けのキーではSTCで24.8、前回反復の各手の部分木ノード数の降順に並べると18.7だった。
 ただし反復ごとに数えると、部分木ノード数で並べた方が後になる反復がやや多く、改善は大きく前へ動く少数の反復に偏っていた。
 この候補を含む[手の順序付けの改善の7候補](bound-capture-history-and-use-it-in-qsearch.md)の構成は、STCとLTCの`H1`で一括して採用した（[STC](../measurements/move-ordering-all-stc.md)、[LTC](../measurements/move-ordering-all-ltc.md)）。

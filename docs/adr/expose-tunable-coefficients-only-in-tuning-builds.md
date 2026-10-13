@@ -7,11 +7,11 @@
 ## コンテキスト
 
 SPSAは、同じエンジンに係数の異なる2つの設定を与えて対局させるので、エンジンは対局ごとに係数の値を受け取れなければならない。
-[SPSAによる探索係数と時間管理係数の調整](../plans/spsa.md)の起案時、探索と時間管理の係数はソースの各所に散らばった定数だった。
+[SPSAによる探索係数と時間管理係数の調整](../plans/archived/spsa.md)の起案時、探索と時間管理の係数はソースの各所に散らばった定数だった。
 先行するエンジンの公開方式は、次のとおり分かれていた。
-やねうら王の`tune.py`は、調整の開始時にC++のソースの定数を変数とUSIオプションへ書き換え、終了時に書き戻す（[SPSAの設計書の参考資料](../plans/spsa.md#参考資料)）。
-dlshogiは探索係数を常にUSIオプションとして公開し、Viridithasは実行時の構造体に係数を常に持つ（[SPSAの設計書の参考資料](../plans/spsa.md#参考資料)）。
-HobbesとakimboはRustのマクロで係数ごとに定数版と調整版の関数を生成し、Recklessは調整版で`static mut`を使う（[SPSAの設計書の参考資料](../plans/spsa.md#参考資料)）。
+やねうら王の`tune.py`は、調整の開始時にC++のソースの定数を変数とUSIオプションへ書き換え、終了時に書き戻す（[SPSAの設計書の参考資料](../plans/archived/spsa.md#参考資料)）。
+dlshogiは探索係数を常にUSIオプションとして公開し、Viridithasは実行時の構造体に係数を常に持つ（[SPSAの設計書の参考資料](../plans/archived/spsa.md#参考資料)）。
+HobbesとakimboはRustのマクロで係数ごとに定数版と調整版の関数を生成し、Recklessは調整版で`static mut`を使う（[SPSAの設計書の参考資料](../plans/archived/spsa.md#参考資料)）。
 ワークスペースの`Cargo.toml`は`unsafe_code = "forbid"`を指定している。
 
 ## 決定

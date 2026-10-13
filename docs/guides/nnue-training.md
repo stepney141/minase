@@ -150,7 +150,7 @@ GPUメモリの出力はデバイス全体の使用量と確保の前後の差�
 `--output`が既にあると何も計算せずに終了する。
 入力や統計が条件を満たさない場合は、報告を書かずに終了コード1で終わり、理由を標準エラー出力に表示する。
 報告の各欄の定義は、`crates/minase-trainer/src/diagnostics/`の`nnue_distribution.rs`、`nnue_removal.rs`、および`nnue_moves.rs`のdocコメントにある。
-これらの診断を設けた経緯は[NNUEの完全代替](../plans/nnue-replacement.md)にある。
+これらの診断を設けた経緯は[NNUEの完全代替](../plans/archived/nnue-replacement.md)にある。
 
 ### 評価値の分布
 

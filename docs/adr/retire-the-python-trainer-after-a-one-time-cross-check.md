@@ -7,7 +7,7 @@
 ## コンテキスト
 
 評価関数の学習は、Pythonの学習ツール（パッケージ`minase_train`）で行ってきた。
-[Rust製NNUE学習器](../plans/nnue-trainer-rust.md)は、NNUEの学習器をRustで書き直し、PyTorchの学習器と1更新の勾配と重みが一致することを確かめたうえで、Pythonの整数参照推論や診断を独立した照合役として残す予定だった。
+[Rust製NNUE学習器](../plans/archived/nnue-trainer-rust.md)は、NNUEの学習器をRustで書き直し、PyTorchの学習器と1更新の勾配と重みが一致することを確かめたうえで、Pythonの整数参照推論や診断を独立した照合役として残す予定だった。
 Pythonの学習器を残すと、学習の式を2つの言語で保守し続けることになり、Rustの学習器へ機能を足すたびにPython側との照合を求める圧力が生じる。
 現行の重みに至る手順は、PSTの学習、FMの学習と補正の縮小、同時学習、およびFMの倍率の焼き込みの4つからなっていた。
 

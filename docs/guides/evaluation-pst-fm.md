@@ -38,7 +38,7 @@ FMは、各特徴に長さ32のベクトルを持たせ、局面に現れた特�
 学習した実数の重みは、整数へ丸めて（量子化して）重みファイル `crates/minase/nets/pst.bin` に保存し、エンジンは整数演算だけで評価する。
 推論のRust実装は `crates/minase/src/eval/pst/` にあり、学習器は `crates/minase-trainer` の実行ファイル `minase-trainer` にある。
 `pst.bin` は置き換えの直前に採用されていた重みをそのまま保存しており、本書で「採用時の重み」と呼ぶのはこのファイルの重みである。
-採用時の重みはPythonの学習器で作ったが、その学習器は2026年10月にRustへ移植して撤去した（[Python学習器の撤去](../plans/python-trainer-retirement.md)）。
+採用時の重みはPythonの学習器で作ったが、その学習器は2026年10月にRustへ移植して撤去した（[Python学習器の撤去](../plans/archived/python-trainer-retirement.md)）。
 
 局面 $`p`$ に対する最終的な評価値 $`E(p)`$ は、後で定めるPSTの整数評価 $`E_{\mathrm{PST}}(p)`$ とFMの整数補正 $`E_{\mathrm{FM}}(p)`$ から、次の式で計算する。
 
@@ -141,7 +141,7 @@ $`\mathrm{trunc}`$ は負の値でも0の側へ切り捨てるので、より小
 学習器は、盤を左右に裏返す（鏡映する）と互いに重なる2つの特徴に、同じ重みを持たせる。
 筋 $`f`$ の特徴を、陣営、駒状態、段を保ったまま筋 $`\min(f, 11 - f)`$ の特徴と同一視するので、12筋が6筋に畳まれ、学習する特徴は13,680個の半分の6,840個（先獅子の特徴も含む）になる。
 保存時には6,840個の重みを元の13,680特徴へ複製して展開するので、Rust側の評価は鏡映の共有を意識しない。
-補間の式を選んだ理由は[線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)にあり、比較の経緯は[PSTの序中盤と終盤の補間](../plans/tapered-pst.md)にある。
+補間の式を選んだ理由は[線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)にあり、比較の経緯は[PSTの序中盤と終盤の補間](../plans/archived/tapered-pst.md)にある。
 NNUEの線形の経路は、この補間の式、量子化、および鏡映の共有をそのまま引き継いでいる。
 
 ## FMの補正
@@ -156,7 +156,7 @@ FMは、特徴 $`i`$ ごとに長さ32のベクトル $`\mathbf{v}_i = (v_{i1}, 
 $`\Phi`$ はcpではなく、後述する勝率のロジットの単位で表し、cpへは出力尺度 $`K`$（「勝率のモデル」の節で定める定数1072.65）を掛けて換算する。
 先獅子の特徴も同じ集合に入るので、FMが扱う組には、2駒の関係だけでなく先獅子の対象升と駒の関係も含まれる。
 FMには序中盤用と終盤用の区別がなく、補間係数も掛けない。
-最初の導入では補間しない形で効果を確かめ、補間するかは結果を見て判断することにしたためである（[FMの設計書](../plans/factorization-machine.md)）。
+最初の導入では補間しない形で効果を確かめ、補間するかは結果を見て判断することにしたためである（[FMの設計書](../plans/archived/factorization-machine.md)）。
 
 2駒の組ごとに独立な係数を置くと約 $`13680^2 / 2 \approx 9.4 \times 10^7`$ 個の係数が要るが、FMは組の係数を $`\sum_h a_h v_{ih} v_{jh}`$ の形に限るので、パラメータはベクトルの $`13680 \times 32`$ 個と出力係数の32個で済む。
 この制限により、学習データにまれにしか現れない組の係数も、他の組から学んだベクトルを通じて推定される。
@@ -176,7 +176,7 @@ $`a_h`$ は負にもなり得るので、組の係数は正にも負にもなる
 ```
 
 この形では、32個の和 $`\sum_i v_{ih}`$ と、各特徴の成分の2乗の和を差分更新するだけで済む。
-FMの推論の実装は`crates/minase/src/eval/pst/fm.rs`のdocコメントにあり、方式を選んだ経緯は[FMの設計書](../plans/factorization-machine.md)にある。
+FMの推論の実装は`crates/minase/src/eval/pst/fm.rs`のdocコメントにあり、方式を選んだ経緯は[FMの設計書](../plans/archived/factorization-machine.md)にある。
 
 ### 整数による計算
 
@@ -280,7 +280,7 @@ NNUEへの置き換えでは、この47個の値を `pst.bin` からNNUEの重�
 
 ここからは、採用時の重みを作った学習の目的関数を説明する。
 学習とは、目的関数（損失）と呼ぶ1つの数値を定め、それが小さくなる方向へ重みを少しずつ動かすことを繰り返す計算である。
-採用時の重みは、PSTとFMを1つの損失で同時に学習した候補J75（教師の混合比 $`\lambda = 0.75`$ で学習した候補）に、前述の倍率を焼き込んだものである（[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)、[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)）。
+採用時の重みは、PSTとFMを1つの損失で同時に学習した候補J75（教師の混合比 $`\lambda = 0.75`$ で学習した候補）に、前述の倍率を焼き込んだものである（[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)、[FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)）。
 J75はPythonの同時学習器（ブランチ `pst-fm-joint-training` にだけあった）で学んだ。
 その数式は、Rustへ移植した同時学習器 `minase-trainer joint train`（`crates/minase-trainer/src/joint/`）と同じであり、移植時に短縮した条件で同じ結果になることを確かめた（[照合の記録](../measurements/python-trainer-retirement-checks.md)）。
 教師値の構成、教師尺度の推定、および先読み教師は、すべての学習器が共有するデータ層（`crates/minase-trainer/src/data/`）にある。
@@ -303,7 +303,7 @@ $`P_\theta`$ は前述のPSTの実数評価（cp）であり、予測する勝�
 
 cp単位の評価値は $`K z_\theta`$ に当たる。
 出力尺度は $`K = 1072.6529541015625`$ であり、評価値100 cpが勝率約52%、500 cpが約61%、1,073 cpが約73%に対応する。
-この値は[棋力向上段階7](../plans/strength-stage7.md)の時点の重みファイルに記録されていた値であり、同段階以降は学習のたびに推定し直さずに固定している。
+この値は[棋力向上段階7](../plans/archived/strength-stage7.md)の時点の重みファイルに記録されていた値であり、同段階以降は学習のたびに推定し直さずに固定している。
 教師の世代やデータを変えても、評価値の目盛りが変わらないようにするためである。
 学習中は、重みを動かす向きを微分（勾配）で求めるために浮動小数点のPSTとFMを使い、推論時の整数への丸めと切り詰めは適用しない。
 
@@ -352,7 +352,7 @@ s_t, & \mathcal{L}_t = \varnothing,
 
 探索値は雑音が少ないが読みの範囲しか見ておらず、最終結果は対局全体の帰結を含むが1局ごとの偶然に左右されるので、両者を混ぜて補い合う。
 採用時の重みの学習では、先読み値の成分を75%、最終結果を25%とした。
-$`\lambda = 1.0`$（探索値だけ）で同時学習した候補は、当時のmasterに対する対局の成績が $`\lambda = 0.75`$ の候補より悪かった（[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)）。
+$`\lambda = 1.0`$（探索値だけ）で同時学習した候補は、当時のmasterに対する対局の成績が $`\lambda = 0.75`$ の候補より悪かった（[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)）。
 
 教師の分類とは、教師を作った探索のコミットと重み、探索の局面数、規則セット、先読みの設定などの組であり、学習データに付けた来歴ファイル（データの出どころを記録したJSONファイル）に記録されている。
 採用時の重みの学習データは、評価関数の世代2と世代3で生成した自己対局データであり、それぞれが1つの分類をなす。
@@ -399,8 +399,8 @@ J_{\mathcal{B}}(\theta) = \frac{1}{|\mathcal{B}|} \sum_{p \in \mathcal{B}} \ell\
 教師値 $`\tau`$ を固定して $`z`$ を動かすと、$`\ell`$ は予測した勝率 $`\sigma(z)`$ が $`\tau`$ に一致するときに最小になるので、この項は予測を教師値へ近づける。
 第2項は、各局面のFMの補正（ロジット単位）を2乗して平均したものであり、PSTで説明できる部分までFMが受け持つことを抑える。
 第3項は次の節で定める。
-係数 $`\mu`$ は、FMを単独で学習したときに $`10^{-2}`$、$`10^{-3}`$、$`10^{-4}`$ を検証損失で比べて選んだ値であり、$`\eta`$ は棋力を段階的に高める計画の第7段階（[棋力向上段階7](../plans/strength-stage7.md)）で、PSTの学習のために訓練集合内の予備比較で選んだ値である。
-同時学習ではこれらを選び直さず、それまでの学習の値を引き継いだ（[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)の設計判断）。
+係数 $`\mu`$ は、FMを単独で学習したときに $`10^{-2}`$、$`10^{-3}`$、$`10^{-4}`$ を検証損失で比べて選んだ値であり、$`\eta`$ は棋力を段階的に高める計画の第7段階（[棋力向上段階7](../plans/archived/strength-stage7.md)）で、PSTの学習のために訓練集合内の予備比較で選んだ値である。
+同時学習ではこれらを選び直さず、それまでの学習の値を引き継いだ（[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)の設計判断）。
 
 学習中は各局面を左右どちらも同じ確率0.5で鏡映してから特徴を作る。
 PSTは鏡映で重なる特徴の重みを共有するので鏡映の影響を受けないが、FMは鏡映で対応する特徴のベクトルを共有しないので、この鏡映によるデータ拡張で左右の対称性を学ばせる。
@@ -474,7 +474,7 @@ R_{\mathcal{B}}(\theta) = \frac{1}{K} \cdot \frac{1}{|\mathcal{B}|} \sum_{p \in 
 この損失は基準の駒価値そのものを再現させる2乗誤差ではなく、向きと最小の幅だけに課す片側の罰則であり、駒の価値の大きさは教師値から学ぶ。
 係数1000は有限なので、学習後や倍率の焼き込み後の整数評価で、全ての除去が望ましい向きになるとは限らない。
 補助損失を選んだ理由は[駒除去差分の符号を守らせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)にあり、実装の契約は`minase-trainer`の`pst::removal`と`nnue::reference::removal_forward`のdocコメントにある。
-同時学習でFMの寄与を補助損失に含めた経緯は、[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)の設計判断にある。
+同時学習でFMの寄与を補助損失に含めた経緯は、[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)の設計判断にある。
 
 ### 最適化と制約
 
@@ -484,7 +484,7 @@ R_{\mathcal{B}}(\theta) = \frac{1}{K} \cdot \frac{1}{|\mathcal{B}|} \sum_{p \in 
 PSTは学習率0.03、重み減衰なしであり、前述のとおり各更新の後で重みを $`[-4096, 4095.875]`$ cpへ切り詰める。
 FMはベクトルと出力係数に学習率 $`10^{-3}`$、重み減衰 $`10^{-4}`$ を与える。
 この重み減衰は、損失の第2項の補正の2乗平均とは別の正則化である。
-これらの値は、それぞれPSTとFMを別々に学習したときの値を引き継いだ（[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)の設計判断）。
+これらの値は、それぞれPSTとFMを別々に学習したときの値を引き継いだ（[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)の設計判断）。
 訓練集合とその鏡映に一度も現れない特徴のFMのベクトルは、学習で値が決まらないので0に固定し、各更新の後に0へ戻す。
 採用時の重みの学習では、この固定の対象は13,680特徴のうち4,158特徴だった。
 
@@ -525,7 +525,7 @@ STCで375回の更新（各8ペア、計3,000ペアの対局）を行い、$`\ma
 学習の損失と対局の強さは、異なる倍率を支持した。
 同じ教師で、整数の評価から検証集合の二値交差エントロピーを測ると、倍率1（焼き込む前のJ75）が0.429550、611/1024を焼き込んだ候補が0.429709であり、損失の上では補正を縮めない方が良い（[焼き込んだ候補の記録](../measurements/fm-scale-spsa-candidate.md)）。
 一方、倍率1のJ75は、当時のmaster（候補LのPSTに、候補Faの補正を1/4に縮めて足した評価）にSTCで約8 Elo負けた（95%信頼区間 −21〜+5）。
-611/1024を焼き込んだ候補は、当時のmasterにLTCで得点率66.6%、約120 Elo勝ち、採用された（[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)）。
+611/1024を焼き込んだ候補は、当時のmasterにLTCで得点率66.6%、約120 Elo勝ち、採用された（[FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)）。
 この1件では、損失を基準にすると対局で強い倍率が選ばれなかったことになる。
 なおJ75の−8 Eloは信頼区間が0を含み、masterより弱いとまでは言えない。
 同時学習の出発点（候補LのPSTに、縮めないFaの補正を足した評価）も当時のmasterにSTCで約67 Elo負けていたので、設計書は、補正が大きすぎたことを不採用の有力な原因と考えた。
@@ -554,12 +554,12 @@ FMの学習器 `minase-trainer fm train`（`crates/minase-trainer/src/fm/`）は
 
 - [NNUEによる評価関数と学習の目的関数](evaluation-nnue.md)
 - [探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)
-- [評価関数の設計書](../plans/evaluation.md)
-- [PSTの序中盤と終盤の補間](../plans/tapered-pst.md)
-- [FMの設計書](../plans/factorization-machine.md)
-- [先読み教師](../plans/lookahead-teacher.md)
-- [PSTとFMの同時学習](../plans/pst-fm-joint-training.md)
-- [FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)
+- [評価関数の設計書](../plans/archived/evaluation.md)
+- [PSTの序中盤と終盤の補間](../plans/archived/tapered-pst.md)
+- [FMの設計書](../plans/archived/factorization-machine.md)
+- [先読み教師](../plans/archived/lookahead-teacher.md)
+- [PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)
+- [FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)
 - [PSTとFMの同時学習の学習記録](../measurements/pst-fm-joint-training-training.md)
 - [焼き込んだ候補の記録](../measurements/fm-scale-spsa-candidate.md)
 - [PSTの学習手順](pst-training.md)

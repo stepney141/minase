@@ -36,7 +36,7 @@ minase 側がテストでコーパス側がテストでない候補は、テス�
 
 新規1件は、minase の `the working tree is dirty; commit changes or pass --allow-dirty` と tatara の `working tree is dirty; commit changes or pass --allow-dirty (the report records dirty=true)` の一致である。
 minase 側の導入は 6bc33e1（2026-08-26、`src/bin/selfplay_gen.rs`）であり、tatara 側は ce8ba9c（2026-07-19）が先行する。
-導入時点で同時に変更した設計書 `docs/plans/evaluation.md` は tatara を挙げておらず、tatara への言及は後の `docs/plans/strength-stage9.md` と `docs/plans/relative-pair-eval.md` に設計の参考として現れるだけである。
+導入時点で同時に変更した設計書 `docs/plans/archived/evaluation.md` は tatara を挙げておらず、tatara への言及は後の `docs/plans/archived/strength-stage9.md` と `docs/plans/archived/relative-pair-eval.md` に設計の参考として現れるだけである。
 一致は1文だけで、フラグ名 `--allow-dirty` は cargo の慣行でもあり、両ファイルの他のコードには M4 でも一致がない。
 したがって判定は「2 標準的な方式で説明可能」とし、tatara は MIT なので仮に由来があっても表示義務は1文の範囲にとどまる。
 

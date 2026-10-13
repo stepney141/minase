@@ -7,7 +7,7 @@
 ## コンテキスト
 
 2026年9月26日から10月4日にかけての4つの作業は、多くの型と関数を別のモジュールやcrateへ移した。
-[探索部と評価関数のモジュール再編](../plans/search-eval-layout.md)、[中核モジュールの再編](../plans/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/bin-harness-layout.md)、および[ライブラリとエンジンのcrate分割](../plans/crate-split.md)である。
+[探索部と評価関数のモジュール再編](../plans/archived/search-eval-layout.md)、[中核モジュールの再編](../plans/archived/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/archived/bin-harness-layout.md)、および[ライブラリとエンジンのcrate分割](../plans/archived/crate-split.md)である。
 移した項目の利用者は、このリポジトリの中の実行ファイルと試験だけだった。
 兄弟リポジトリの開発用GUI`minase-gui`とlishogiのBotの配備`minase-lishogi-bot`は、minaseのライブラリを参照せず、実行ファイルだけを使う。
 

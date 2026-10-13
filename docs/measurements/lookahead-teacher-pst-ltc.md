@@ -2,7 +2,7 @@
 
 ## 目的
 
-[先読み教師値](../plans/lookahead-teacher.md)の候補を、[STC](lookahead-teacher-pst-stc.md)のH1を受けて段階開始版と長時間の時間制御GSPRTで測る予定であった。
+[先読み教師値](../plans/archived/lookahead-teacher.md)の候補を、[STC](lookahead-teacher-pst-stc.md)のH1を受けて段階開始版と長時間の時間制御GSPRTで測る予定であった。
 
 ## コマンドライン
 

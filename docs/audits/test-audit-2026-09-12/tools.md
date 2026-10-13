@@ -6,7 +6,7 @@
 USIは対局プログラムの通信方式、SFENは局面の文字列表現を指す。
 CLIはコマンドラインからの操作系、PSTは駒種と升目による評価表、SPRTは逐次確率比検定を指す。
 
-判断の根拠は [docs/guides/sprt.md](../../guides/sprt.md)、[docs/guides/pst-training.md](../../guides/pst-training.md)、[docs/plans/spec-first-tests/matrices/d8-stats-harness.md](../../plans/spec-first-tests/matrices/d8-stats-harness.md) と同ledgers/d8、[docs/plans/match-harness-efficiency.md](../../plans/match-harness-efficiency.md)、[docs/plans/random-play.md](../../plans/random-play.md)、[docs/plans/evaluation-gen1.md](../../plans/evaluation-gen1.md)、[docs/plans/tapered-pst.md](../../plans/tapered-pst.md)、教訓索引である。
+判断の根拠は [docs/guides/sprt.md](../../guides/sprt.md)、[docs/guides/pst-training.md](../../guides/pst-training.md)、[docs/plans/archived/spec-first-tests/matrices/d8-stats-harness.md](../../plans/archived/spec-first-tests/matrices/d8-stats-harness.md) と同ledgers/d8、[docs/plans/archived/match-harness-efficiency.md](../../plans/archived/match-harness-efficiency.md)、[docs/plans/archived/random-play.md](../../plans/archived/random-play.md)、[docs/plans/archived/evaluation-gen1.md](../../plans/archived/evaluation-gen1.md)、[docs/plans/archived/tapered-pst.md](../../plans/archived/tapered-pst.md)、教訓索引である。
 D8マトリクスは古いH1=5やキャッシュ方式の記述も含むため、現行sprt.mdと完成済み設計書を優先した。
 以下は削除・統合候補であり、テストも本番コードも変更していない。
 

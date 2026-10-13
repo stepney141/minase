@@ -10,7 +10,7 @@
 `cargo install minase`はcrateの実行ファイルをすべて導入するので、エンジンだけを使いたい環境にも開発者向けのツールが入っていた。
 補助ツールが使う対局ハーネス、学習データの共有コード、および学習の記録形式は、すでにエンジンのcrateのライブラリ部にあった。
 対局ハーネスの`commit:`指定は、指定したコミットを`cargo build --release --bin minase`でビルドし、`--protocol usi --rules <規則>`を付けて起動する（`crates/minase/src/harness/commit.rs`と`player.rs`）。
-この判断は[補助ツールのサブコマンド化](../plans/cli-subcommands.md)で下した。
+この判断は[補助ツールのサブコマンド化](../plans/archived/cli-subcommands.md)で下した。
 
 ## 決定
 

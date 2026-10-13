@@ -17,6 +17,6 @@ lintはCargoの`[lints]`ではなくcrateルート属性で指定していたた
 
 ## 出典
 
-- [plans/rust-design-audit-remediation.md](../plans/rust-design-audit-remediation.md)
+- [plans/rust-design-audit-remediation.md](../plans/archived/rust-design-audit-remediation.md)
 - [rust-design-audit-2026-08-26.md](../audits/rust-design-audit-2026-08-26.md) の「Rustバージョンとパッケージ契約」「lint方針の適用範囲」
 - コミット 8b48929

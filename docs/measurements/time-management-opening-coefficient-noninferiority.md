@@ -2,7 +2,7 @@
 
 ## 目的
 
-[持ち時間の効率的な使用](../plans/time-management-efficiency.md)で採用した秒読みの項の序盤の係数と置換表の2修正について、利用者の求めにより、秒読みつきの時間制御で統合ブランチがmasterより有意に弱くなっていないことを確かめる非劣性の測定である。
+[持ち時間の効率的な使用](../plans/archived/time-management-efficiency.md)で採用した秒読みの項の序盤の係数と置換表の2修正について、利用者の求めにより、秒読みつきの時間制御で統合ブランチがmasterより有意に弱くなっていないことを確かめる非劣性の測定である。
 候補と基準を入れ替え、masterを候補、統合ブランチの先頭を基準にしたGSPRTで、`H0`なら「masterが有意に強いとは言えない」、すなわちH1の10 Elo規模の低下が検出されないと判定する。
 秒読みのない時間制御では式が現行と一致し、固定深さのbench総ノード数もmasterと一致するので、棋力が変わり得るのは秒読みつきの対局だけである。
 採否の根拠は時計の診断（[time-management-opening-coefficient-diag](time-management-opening-coefficient-diag.md)）のままであり、本測定は採否を変える判定には使わない。

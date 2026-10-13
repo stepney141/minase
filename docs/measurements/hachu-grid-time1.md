@@ -2,7 +2,7 @@
 
 ## 目的
 
-HaChu対minaseの条件格子測定（[設計書](../plans/hachu-condition-grid.md)）の基準セルとして、両者に同じ持ち時間60秒＋1秒加算と置換表256 MBを与えた対等条件の強さを固定200ペアのEloで記録する。
+HaChu対minaseの条件格子測定（[設計書](../plans/archived/hachu-condition-grid.md)）の基準セルとして、両者に同じ持ち時間60秒＋1秒加算と置換表256 MBを与えた対等条件の強さを固定200ペアのEloで記録する。
 採否の判定には使わない。
 
 ## コマンドライン

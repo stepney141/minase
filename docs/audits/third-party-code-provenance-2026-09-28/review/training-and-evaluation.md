@@ -16,7 +16,7 @@
 
 - minase 側: e0b8314:src/eval/nnue.rs:1-497（本体）、d67dc92:tools/train/nnue_net.py:1-317、82aa0e6:tools/train/train_nnue.py:1-590。導入は 05362b1（2026-08-26）、ツリーからの削除は 9dd535f（2026-08-26）で、その後 nnue-gen1 ブランチで改修された。
 - 対照: official-stockfish/nnue-pytorch@cd6192a:model.py（2021年1月版、L1=256、L2=32、L3=32）、同 HEAD aa2fff2:model/quantize.py:60-120、同 docs/nnue.md:981, 2171-2235（GPL-3.0-only）。Stockfish の nnue/ と YaneuraOu の eval/nnue は構成の比較にとどめた（GPL-3.0）。
-- 設計書: 導入時点の docs/plans/evaluation.md は nnue-pytorch wiki、Stockfish wiki、Fairy-Stockfish「About NNUE」、やねうら王 wiki「評価関数の学習」、Leorik のリリースを参考資料に挙げる。
+- 設計書: 導入時点の docs/plans/archived/evaluation.md は nnue-pytorch wiki、Stockfish wiki、Fairy-Stockfish「About NNUE」、やねうら王 wiki「評価関数の学習」、Leorik のリリースを参考資料に挙げる。
 
 一致点と、その性質は次のとおりである。
 

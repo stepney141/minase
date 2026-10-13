@@ -14,7 +14,7 @@
 
 独立したリファクタリングは、単独のマイルストーンにしない。
 構造変更は、それを必要とする機能のマイルストーンの中で行う。
-ただし、[審判ロジック再編とR0撤去](../plans/adjudication-refactor.md)は、反復規則のコードR0（日本中将棋連盟式の千日手、RULES.md第31条）の撤去と確認済みの規則の不具合の修正に必要な構造変更であるため、この決定の対象外とした。
+ただし、[審判ロジック再編とR0撤去](../plans/archived/adjudication-refactor.md)は、反復規則のコードR0（日本中将棋連盟式の千日手、RULES.md第31条）の撤去と確認済みの規則の不具合の修正に必要な構造変更であるため、この決定の対象外とした。
 
 ## 検討した代案
 
@@ -22,4 +22,4 @@
 
 ## 結果
 
-ソースの配置を変えた4つの作業（[探索部と評価関数のモジュール再編](../plans/search-eval-layout.md)、[中核モジュールの再編](../plans/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/bin-harness-layout.md)、[学習ツールの再編](../plans/train-tools-layout.md)）は、それぞれ設計書を持つ作業として行われた。
+ソースの配置を変えた4つの作業（[探索部と評価関数のモジュール再編](../plans/archived/search-eval-layout.md)、[中核モジュールの再編](../plans/archived/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/archived/bin-harness-layout.md)、[学習ツールの再編](../plans/archived/train-tools-layout.md)）は、それぞれ設計書を持つ作業として行われた。

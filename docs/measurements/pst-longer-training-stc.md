@@ -2,7 +2,7 @@
 
 ## 目的
 
-[採用PSTの追加学習のエポック数の延長](../plans/pst-longer-training.md)のフェーズ4として、[候補L](pst-longer-training-training.md)を載せたCLの採否を、段階ゲートのSTCで測る。
+[採用PSTの追加学習のエポック数の延長](../plans/archived/pst-longer-training.md)のフェーズ4として、[候補L](pst-longer-training-training.md)を載せたCLの採否を、段階ゲートのSTCで測る。
 
 ## コマンドライン
 

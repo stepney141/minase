@@ -2,7 +2,7 @@
 
 ## 目的
 
-[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)のフェーズ3として、λ=0.75で同時学習した候補J75の採否を、段階ゲートのSTCで測る。
+[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)のフェーズ3として、λ=0.75で同時学習した候補J75の採否を、段階ゲートのSTCで測る。
 
 ## コマンドライン
 

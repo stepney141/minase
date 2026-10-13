@@ -9,7 +9,7 @@ PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PS
 学習データの形式と来歴は`crates/minase/src/training/`の`records.rs`と`provenance.rs`、教師の分類、教師値、先読み教師、および検証分割は`crates/minase-trainer/src/data/`のdocコメントにある。
 学習器が書き出すファイルの各欄は`crates/minase-trainer/src/`の`pst/record.rs`、`fm/record.rs`、`fm/report.rs`、および`joint/record.rs`に、PSTの比較診断の報告の各欄は`crates/minase-trainer/src/diagnostics/pst_compare.rs`の`Report`と`pst_statistics.rs`の各項目のdocコメントにある。
 教師値、損失、量子化、および重みの範囲の式は [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md) が説明し、学習器の実装の契約は`minase-trainer`の`pst`、`fm`、`joint`、`data`の各モジュールのdocコメントにある。
-学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement-checks.md)にある。
+学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/archived/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement-checks.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md) に状態を登録する。
 学習後の採否は [棋力測定の標準手順](sprt.md) に従う。
@@ -98,7 +98,7 @@ cd -
 ## 4. PSTを学習する
 
 すべての生成ファイルが完成したら、次のコマンドでPSTを学習する。
-例は、採用PSTの候補L（[PSTのエポック数の延長](../plans/pst-longer-training.md)）の条件である。
+例は、採用PSTの候補L（[PSTのエポック数の延長](../plans/archived/pst-longer-training.md)）の条件である。
 
 ```bash
 minase-trainer pst train \
@@ -122,7 +122,7 @@ minase-trainer pst train \
 最良の重みは、学習したエポック（1以上）の中から、補助損失を混ぜない検証集合の二値交差エントロピーが最小のものを選ぶ。
 学習前の重みの検証損失もエポック0として記録されるが、出力の候補にはならない。
 `--patience`のエポック数だけ続けて最良値が更新されなければ打ち切る。
-選択と打ち切りの定義は一般的な早期終了と同じであり、典拠と採用の経緯は[PST追加学習の設計書](../plans/pst-longer-training.md)の「早期終了」にある。
+選択と打ち切りの定義は一般的な早期終了と同じであり、典拠と採用の経緯は[PST追加学習の設計書](../plans/archived/pst-longer-training.md)の「早期終了」にある。
 
 結果は`--output-dir`に保存される。
 `pst.bin`はMNPT版2の重み、`pst-float.npz`は量子化前の重み、`training.jsonl`は各エポックの損失の記録、`summary.json`は停止理由、最良エポック、量子化誤差の検査の結果の記録である。
@@ -170,8 +170,8 @@ minase-trainer diag pst-compare \
 
 FMの補正は、PSTを固定してFMだけを学習する`fm train`か、PSTとFMを同時に学習する`joint train`で学習する。
 次の例は、現行の重みに至った手順である。
-まず[補正1/4のFMの再学習](../plans/fm-quarter-current-pst.md)の候補Faを`fm train`で学習し、その補正を`fm quarter`で1/4にした。
-次に、その重みと、学習したPSTとFMの実数の重みを初期値にして、[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)のJ75を`joint train`で学習した。
+まず[補正1/4のFMの再学習](../plans/archived/fm-quarter-current-pst.md)の候補Faを`fm train`で学習し、その補正を`fm quarter`で1/4にした。
+次に、その重みと、学習したPSTとFMの実数の重みを初期値にして、[PSTとFMの同時学習](../plans/archived/pst-fm-joint-training.md)のJ75を`joint train`で学習した。
 
 ```bash
 minase-trainer fm train \
@@ -198,7 +198,7 @@ FMの成分の数は、エンジンの重みファイルの読み込み処理に
 `joint train`は、学習の開始時に、`--pst-init`を量子化すると`--base`のPSTに、`--fm-init`を量子化すると`--fm-reference`のFMに一致することを検査する。
 出力は、MNPT版3の`pst.bin`と、キー`middlegame`、`endgame`、`V`、`a`、`mask`を持つ`pst-float.npz`である。
 
-補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[SPSAの手引き](spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整する（先例は[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)）。
+補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[SPSAの手引き](spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整する（先例は[FMの補正の倍率のSPSAによる調整](../plans/archived/fm-scale-spsa.md)）。
 得た倍率は、次のコマンドで重みファイルへ焼き込んでから段階ゲート（棋力測定）にかける。
 
 ```bash

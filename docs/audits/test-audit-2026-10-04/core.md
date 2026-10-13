@@ -1,6 +1,6 @@
 対象は、合法手生成（`src/core/movegen`、`src/core/attacks`、`src/core/board`、`src/core/piece`）の148テスト、対局進行・局面・規則セット・SFEN（`src/core/game`、`src/core/position`、`src/core/rules`、[src/notation/sfen.rs](../../../src/notation/sfen.rs)、[tests/lishogi_import.rs](../../../tests/lishogi_import.rs)、[tests/lishogi_replay.rs](../../../tests/lishogi_replay.rs)）の122テスト、直前局面の生成（`src/core/predecessor`、[tests/predecessor_search.rs](../../../tests/predecessor_search.rs)）の58テストで、計328テストである。全テスト本文と補助関数、対応する実装を確認した。本番コードとテストは変更していない。実行結果は[全体の報告](../test-audit-2026-10-04.md)に記載した。行番号は監査時点（master 9027662）のものである。
 
-根拠は RULES.md 第15版、[d1-movement-promotion.md](../../plans/spec-first-tests/matrices/d1-movement-promotion.md)、[d2-lion-local-rules.md](../../plans/spec-first-tests/matrices/d2-lion-local-rules.md)、[d3-game-adjudication.md](../../plans/spec-first-tests/matrices/d3-game-adjudication.md)、[d4-position-foundations.md](../../plans/spec-first-tests/matrices/d4-position-foundations.md) と各領域台帳、[predecessor-generator.md](../../plans/predecessor-generator.md)、[movegen-speedup-2.md](../../plans/movegen-speedup-2.md)、[debugging-tools.md](../../plans/debugging-tools.md)、および前回の[テスト監査](../test-audit-2026-09-12.md)である。前回の監査が保持と決めたものは、その後に状況が変わった場合を除いて再提案しない。規則に関するテストは、各ケースを RULES.md の条文と規則コードへ対応付け、同じ条文を同じ規則コードで検査する2ケースだけを過剰と判断した。
+根拠は RULES.md 第15版、[d1-movement-promotion.md](../../plans/archived/spec-first-tests/matrices/d1-movement-promotion.md)、[d2-lion-local-rules.md](../../plans/archived/spec-first-tests/matrices/d2-lion-local-rules.md)、[d3-game-adjudication.md](../../plans/archived/spec-first-tests/matrices/d3-game-adjudication.md)、[d4-position-foundations.md](../../plans/archived/spec-first-tests/matrices/d4-position-foundations.md) と各領域台帳、[predecessor-generator.md](../../plans/archived/predecessor-generator.md)、[movegen-speedup-2.md](../../plans/archived/movegen-speedup-2.md)、[debugging-tools.md](../../plans/archived/debugging-tools.md)、および前回の[テスト監査](../test-audit-2026-09-12.md)である。前回の監査が保持と決めたものは、その後に状況が変わった場合を除いて再提案しない。規則に関するテストは、各ケースを RULES.md の条文と規則コードへ対応付け、同じ条文を同じ規則コードで検査する2ケースだけを過剰と判断した。
 
 この領域の実行時間は合計で約6秒であり、最長は直前局面の生成の1.68秒である。したがって候補の根拠は実行時間ではなく、重複、自己参照、および期待値の保守負担である。
 
@@ -24,7 +24,7 @@ C02では、隠れた走り駒の足（第13条2項）を、より強い第13条
 
 自獅子の背後にある走り駒は、着手前の盤面でも獅子の升を利きに含む。このため、着手前の占有で足を判定する誤実装でもこのテストは通る。保持先の [:390](../../../src/core/movegen/tests/lion_capture.rs:390)（第13条4項）はその誤実装で失敗し、線外の対照（:404-417）も同じ形で持つ。条文は別なので過剰なケース分けではなく、検出できる不具合が包含される重複である。
 
-失う現実的な検出力はない。削除に伴い、[ledgers/d2.md](../../plans/spec-first-tests/ledgers/d2.md) の19行目（D2-013-02・D2-014-04）の担い手を :390 へ書き換える。
+失う現実的な検出力はない。削除に伴い、[ledgers/d2.md](../../plans/archived/spec-first-tests/ledgers/d2.md) の19行目（D2-013-02・D2-014-04）の担い手を :390 へ書き換える。
 
 推奨: 適用する。
 
@@ -92,7 +92,7 @@ C09では、自駒の升を到達先にしないこと、および非捕獲の�
 
 削除対象は [src/core/movegen/tests/movement.rs:18](../../../src/core/movegen/tests/movement.rs:18) `article_7_2_own_occupied_square_is_not_a_destination` である。一部削除の対象は [properties.rs:510](../../../src/core/movegen/tests/properties.rs:510) `quiet_generation_preserves_order_for_special_moves_and_all_rules` の580-588行（`sampled_random_positions` のループ）である。
 
-[properties.rs:274](../../../src/core/movegen/tests/properties.rs:274) は、全駒が自駒に塞がれた初期局面から、生成した全手が自駒の升に到達しないことを検査する。残りの方向が存在することは pieces.rs の空盤の集合が確認する。非捕獲の列が全手から捕獲を除いた列と一致することは [properties.rs:418](../../../src/core/movegen/tests/properties.rs:418) が5規則×128手で検査している。規則集合の5番目は異なるが、L3とL4は獅子の捕獲だけに作用するので非捕獲の列に影響しない。[movegen-speedup-2.md:268](../../plans/movegen-speedup-2.md) が求める特殊手を含む局面の契約（:515-579）は残す。
+[properties.rs:274](../../../src/core/movegen/tests/properties.rs:274) は、全駒が自駒に塞がれた初期局面から、生成した全手が自駒の升に到達しないことを検査する。残りの方向が存在することは pieces.rs の空盤の集合が確認する。非捕獲の列が全手から捕獲を除いた列と一致することは [properties.rs:418](../../../src/core/movegen/tests/properties.rs:418) が5規則×128手で検査している。規則集合の5番目は異なるが、L3とL4は獅子の捕獲だけに作用するので非捕獲の列に影響しない。[movegen-speedup-2.md:268](../../plans/archived/movegen-speedup-2.md) が求める特殊手を含む局面の契約（:515-579）は残す。
 
 失う現実的な検出力はない。
 
@@ -164,7 +164,7 @@ C16では、R1の連続攻撃カウンタを private関数への配列リテラ�
 
 削除対象は [src/core/game/repetition/r1.rs:345](../../../src/core/game/repetition/r1.rs:345) `article_31_r1_attacking_moves_extend_the_run_and_others_reset_it` である。
 
-[ledgers/d3.md](../../plans/spec-first-tests/ledgers/d3.md) の82行目は、このテストをD3-031-05の担い手として新設したと記録している。しかしD3-031-05は、候補手の評価で0へ戻ることを観測する [win.rs:60](../../../src/core/game/tests/win.rs:60) `article_21_3_c_and_31_r1_repetition_win_rescues_mate` も担っている。加算漏れや相手側の誤更新は [repetition.rs:202](../../../src/core/game/tests/repetition.rs:202) `sole_continuous_checker_loses` が、双方の攻撃継続は [repetition.rs:298](../../../src/core/game/tests/repetition.rs:298) `mutual_perpetual_attacks_draw` が、据え置きの脅威を数えないことは [repetition.rs:235](../../../src/core/game/tests/repetition.rs:235) が、それぞれ対局結果として検出する。
+[ledgers/d3.md](../../plans/archived/spec-first-tests/ledgers/d3.md) の82行目は、このテストをD3-031-05の担い手として新設したと記録している。しかしD3-031-05は、候補手の評価で0へ戻ることを観測する [win.rs:60](../../../src/core/game/tests/win.rs:60) `article_21_3_c_and_31_r1_repetition_win_rescues_mate` も担っている。加算漏れや相手側の誤更新は [repetition.rs:202](../../../src/core/game/tests/repetition.rs:202) `sole_continuous_checker_loses` が、双方の攻撃継続は [repetition.rs:298](../../../src/core/game/tests/repetition.rs:298) `mutual_perpetual_attacks_draw` が、据え置きの脅威を数えないことは [repetition.rs:235](../../../src/core/game/tests/repetition.rs:235) が、それぞれ対局結果として検出する。
 
 失う現実的な検出力はない。削除に伴い、ledgers/d3.md の82行目にある担い手の記述を win.rs:60 と repetition.rs:202 へ書き換える。
 
@@ -230,7 +230,7 @@ C22では、`finish()` が `validate()` を呼ぶ配線を、壊したZobrist値
 
 対象は [src/core/position/tests/builder.rs:30](../../../src/core/position/tests/builder.rs:30) `builder_finish_rejects_corrupted_zobrist_values` である。
 
-2種の不一致エラーそのものは、同じ壊し方の [validate.rs:8](../../../src/core/position/tests/validate.rs:8) `validate_rejects_corrupted_zobrist_values` が検査している。一方、`finish()` の中身は `validate().map_err(InvalidPosition)` の1行（builder.rs:62-66）であり、この配線を直接観測するテストはほかにない。SFENの `PositionBuild(_)` エラーは `mark_promotion_deferred` から来るので代わりにならない。[predecessor-generator.md](../../plans/predecessor-generator.md) の188行目と265行目もこの配線を記述している。
+2種の不一致エラーそのものは、同じ壊し方の [validate.rs:8](../../../src/core/position/tests/validate.rs:8) `validate_rejects_corrupted_zobrist_values` が検査している。一方、`finish()` の中身は `validate().map_err(InvalidPosition)` の1行（builder.rs:62-66）であり、この配線を直接観測するテストはほかにない。SFENの `PositionBuild(_)` エラーは `mark_promotion_deferred` から来るので代わりにならない。[predecessor-generator.md](../../plans/archived/predecessor-generator.md) の188行目と265行目もこの配線を記述している。
 
 削除すると、`finish()` が `validate()` を呼ばなくなる回帰を見逃す。公開APIだけでは不整合な局面を作れないため、実害が出るのは `put` 側の不具合と重なった場合に限られるが、唯一の観測点を残す価値がある。
 
@@ -240,7 +240,7 @@ C23では、`invariants` の診断メッセージの書式を、実装と同じ�
 
 一部削除の対象は、[src/core/position/tests/validate.rs:82](../../../src/core/position/tests/validate.rs:82) `move_invariants_report_corrupted_keys` ほか :106、:126、:141 の4テストが共有する補助関数 `assert_diagnostic` のうち、53-62行（Zobrist行の書式の再現）と63-75行（盤面行の書式の再現）である。
 
-:53-62 は make_move.rs:276 と同じ書式文字列で期待値を作る。:69-73 は make_move.rs:286 と同じ `format!("{:?}", &board[rank*16..rank*16+12])` で期待値を作る。いずれも実装のコピーである。[debugging-tools.md](../../plans/debugging-tools.md) の244行目が求める診断項目の存在は、`contains("zobrist: incremental=")` のような項目名の確認と、既存の理由・操作・手・手番の確認で足りる。4テストはそれぞれ4つの呼出し箇所（同書240行目）の存在を担うので、テスト自体は残す。
+:53-62 は make_move.rs:276 と同じ書式文字列で期待値を作る。:69-73 は make_move.rs:286 と同じ `format!("{:?}", &board[rank*16..rank*16+12])` で期待値を作る。いずれも実装のコピーである。[debugging-tools.md](../../plans/archived/debugging-tools.md) の244行目が求める診断項目の存在は、`contains("zobrist: incremental=")` のような項目名の確認と、既存の理由・操作・手・手番の確認で足りる。4テストはそれぞれ4つの呼出し箇所（同書240行目）の存在を担うので、テスト自体は残す。
 
 失う現実的な検出力はない。
 
@@ -270,7 +270,7 @@ C26では、ハッシュ集合の区別と保留指定の拒否を、より厳�
 
 削除対象は [src/core/position/tests/zobrist.rs:39](../../../src/core/position/tests/zobrist.rs:39) `hash_set_distinguishes_side_and_temporary_states` である。一部削除の対象は [zobrist.rs:285](../../../src/core/position/tests/zobrist.rs:285) `article_24_1_d_promotion_rights_key_is_separate_from_the_board_key` の309-326行のうち、空升・王将・成駒への保留指定の拒否の3ケースである。
 
-同値な局面のハッシュが一致することは [zobrist.rs:18](../../../src/core/position/tests/zobrist.rs:18) `equal_positions_have_equal_hashes` が明示的に比較している。8局面の区別と再挿入の拒否は、[zobrist.rs:53](../../../src/core/position/tests/zobrist.rs:53) `hash_set_preserves_distinct_positions_under_collisions` が、すべてのハッシュが衝突するより厳しい条件で同じ8局面に対して検査する。[predecessor-generator.md](../../plans/predecessor-generator.md) の475行目が求める `Hash` の契約2点は、残る2テストが1点ずつ担う。空升・王将・成駒への保留の拒否は、[sfen.rs:1138](../../../src/notation/sfen.rs:1138) `deferred_squares_must_hold_an_unpromoted_promotable_piece` が同じ `promotion_deferred_is_valid` を通して検査している。敵陣外の銀（:327-330）のケースはSFEN側にないので残す。前回の監査が保持を決めたのはキーを区別する部分であり、ここで対象にするのは拒否の検査だけである。
+同値な局面のハッシュが一致することは [zobrist.rs:18](../../../src/core/position/tests/zobrist.rs:18) `equal_positions_have_equal_hashes` が明示的に比較している。8局面の区別と再挿入の拒否は、[zobrist.rs:53](../../../src/core/position/tests/zobrist.rs:53) `hash_set_preserves_distinct_positions_under_collisions` が、すべてのハッシュが衝突するより厳しい条件で同じ8局面に対して検査する。[predecessor-generator.md](../../plans/archived/predecessor-generator.md) の475行目が求める `Hash` の契約2点は、残る2テストが1点ずつ担う。空升・王将・成駒への保留の拒否は、[sfen.rs:1138](../../../src/notation/sfen.rs:1138) `deferred_squares_must_hold_an_unpromoted_promotable_piece` が同じ `promotion_deferred_is_valid` を通して検査している。敵陣外の銀（:327-330）のケースはSFEN側にないので残す。前回の監査が保持を決めたのはキーを区別する部分であり、ここで対象にするのは拒否の検査だけである。
 
 失う現実的な検出力はない。
 
@@ -282,7 +282,7 @@ C27では、`captured_squares` を旧実装の参照と比べる段階5の検証
 
 参照実装（:426-438）は、現行（position/mod.rs:88-100）と同じ「経由升と到達升のうち相手駒がある升を、移動元と同じ到達升を除いて返す」を別の書き方にしただけである。通常の適用は make_move.rs:107-109 で `make_move_with_captures_unchecked(mv, rules, self.captured_squares(mv))` へ委譲しているので、前半のassertが通れば後半の同値は自明に成り立つ。捕獲升の誤りは、[make_move.rs:73](../../../src/core/position/tests/make_move.rs:73)（単独捕獲と2枚取りの駒数）と、:269 の居喰い・2枚取りのシナリオが観測する。
 
-失う現実的な検出力はない。削除に伴い、[movegen-speedup-2.md](../../plans/movegen-speedup-2.md) の254行目と366行目にある段階5の検証の記述を、検証済みである旨へ書き換える。
+失う現実的な検出力はない。削除に伴い、[movegen-speedup-2.md](../../plans/archived/movegen-speedup-2.md) の254行目と366行目にある段階5の検証の記述を、検証済みである旨へ書き換える。
 
 推奨: 適用する。
 
@@ -363,7 +363,7 @@ C34では、設計書の固定テスト表が求める事例のうち、肯定�
 
 規則が順方向の生成器へ渡ることは、獅子の規則について [lion_state.rs:127](../../../src/core/predecessor/tests/lion_state.rs:127) `l2_allows_recapture_of_just_promoted_kirin`、P6について promotion.rs:91 が1件ずつ確かめるので、これらを残せばL1、L3、L4の規則別テストは追加の検出力を持たない。
 
-失う現実的な検出力はない。将来、規則に依存する枝刈り（設計書「性能測定」で不採用とした第2案）を逆生成へ入れる場合は、そのときに規則別の事例を追加する。削除に伴い、[predecessor-generator.md](../../plans/predecessor-generator.md) の「固定テスト」節（500行目以降）の分類表のうち、成り、走り、じっと、先獅子（L1、L3、L4）、成り権保留（P2とP6の併用）の各行を、`checked()` による健全性検査と合法手生成側のテストで担保する旨へ書き換える。
+失う現実的な検出力はない。将来、規則に依存する枝刈り（設計書「性能測定」で不採用とした第2案）を逆生成へ入れる場合は、そのときに規則別の事例を追加する。削除に伴い、[predecessor-generator.md](../../plans/archived/predecessor-generator.md) の「固定テスト」節（500行目以降）の分類表のうち、成り、走り、じっと、先獅子（L1、L3、L4）、成り権保留（P2とP6の併用）の各行を、`checked()` による健全性検査と合法手生成側のテストで担保する旨へ書き換える。
 
 推奨: 適用する。
 

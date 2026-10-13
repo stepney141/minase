@@ -1,6 +1,6 @@
 対象は [src/protocol/usi.rs](../../../src/protocol/usi.rs) の77テスト、[src/protocol/usi/tests/history.rs](../../../src/protocol/usi/tests/history.rs) の4テスト、[src/protocol/cecp.rs](../../../src/protocol/cecp.rs) の29テスト、[src/protocol/engine.rs](../../../src/protocol/engine.rs) の6テスト、[src/notation/usi.rs](../../../src/notation/usi.rs) の9テスト、[src/notation/cecp.rs](../../../src/notation/cecp.rs) の6テスト、[tests/debugging_tools.rs](../../../tests/debugging_tools.rs) の3テスト、[tests/io_log.rs](../../../tests/io_log.rs) の5テスト、[src/bin/minase/](../../../src/bin/minase/) の7テスト、[src/bin/usi_random.rs](../../../src/bin/usi_random.rs) の5テスト、計151テストである。全テスト本文と、対応する実装を確認した。本番コードとテストは変更していない。実行結果は[全体の報告](../test-audit-2026-10-04.md)に記載した。行番号は監査時点（master 9027662）のものである。この範囲で時間を計測できた142件の合計は8.92秒、最長は0.65秒であり、候補は実行時間ではなく重複と保守負担を根拠にした。1秒未満の費用の多くは、新しいセッションの`go`または`isready`が256 MiBの既定置換表を確保することから生じる。これは削除ではなく試験側の置換表容量の指定で下げられるので、候補には含めていない。
 
-根拠は RULES.md 第15版、[docs/plans/protocol-layer.md](../../plans/protocol-layer.md)、[ponder.md](../../plans/ponder.md)、[usi-resignation.md](../../plans/usi-resignation.md)、[debugging-tools.md](../../plans/debugging-tools.md)、[time-management-efficiency.md](../../plans/time-management-efficiency.md)、[docs/plans/spec-first-tests/matrices/d5-notation.md](../../plans/spec-first-tests/matrices/d5-notation.md)、[d6-protocol.md](../../plans/spec-first-tests/matrices/d6-protocol.md) と台帳 [d5.md](../../plans/spec-first-tests/ledgers/d5.md)、[d6.md](../../plans/spec-first-tests/ledgers/d6.md) である。マトリクスの行数や過去のテスト件数は保持理由にしない。「削除」は現在の他テストを残せば実行でき、「統合」は記載した観測の移植を先に要する。
+根拠は RULES.md 第15版、[docs/plans/archived/protocol-layer.md](../../plans/archived/protocol-layer.md)、[ponder.md](../../plans/archived/ponder.md)、[usi-resignation.md](../../plans/archived/usi-resignation.md)、[debugging-tools.md](../../plans/archived/debugging-tools.md)、[time-management-efficiency.md](../../plans/archived/time-management-efficiency.md)、[docs/plans/archived/spec-first-tests/matrices/d5-notation.md](../../plans/archived/spec-first-tests/matrices/d5-notation.md)、[d6-protocol.md](../../plans/archived/spec-first-tests/matrices/d6-protocol.md) と台帳 [d5.md](../../plans/archived/spec-first-tests/ledgers/d5.md)、[d6.md](../../plans/archived/spec-first-tests/ledgers/d6.md) である。マトリクスの行数や過去のテスト件数は保持理由にしない。「削除」は現在の他テストを残せば実行でき、「統合」は記載した観測の移植を先に要する。
 
 USIとCECPの各テストが [protocol/engine.rs](../../../src/protocol/engine.rs) の共通処理を二重に検査していないかも照合した。重なっていたのはP06と、P16のCECP規則テストの解析エラー2件だけである。engine.rs のライフサイクル、局面延長の原子性、規則設定、末尾の手の置換の各テストはコマンドの境界を見ており、プロトコル側は通信上の経路選択を見ているので、両方を残す。表記の2ファイル（N）は前回監査の適用後で十分に絞られており、候補はない。
 
@@ -78,7 +78,7 @@ P08では、先読みの保留と破棄のテストに、同じ分岐を通る�
 - [src/protocol/usi.rs:3985](../../../src/protocol/usi.rs:3985) `ponder_channel_withholds_completed_result_until_hit_or_stop` のtriggerを`ponderhit`の1周にし、末尾の待機中ponderhitのエラーも削る。
 - [src/protocol/usi.rs:4125](../../../src/protocol/usi.rs:4125) `ponder_invalid_hits_and_discard_commands_preserve_lifecycle_contracts` の末尾の「go ponder中のposition、stop、state」のブロック。4138-4147行の破棄の周回はP03とP04の保持先なので残す。
 
-`go ponder`だけの拒否は [usi.rs:3184](../../../src/protocol/usi.rs:3184) `ponder_without_limits_and_idle_ponderhit_are_rejected` と同じであり、2つのinfinite併用ケースは同じ分岐（usi.rs:1260-1264付近）を通る。未知オプションの無視は usi.rs:851-853 付近、宣言しないことは usi.rs:1988 付近、bestmoveへの予想手の付与は usi.rs:4013 付近が固定している。保留中のstopとponderhitはどちらも`finish_search`の停止待ち分岐へ進み、停止要求を見ない（usi.rs:574-576、605-619付近）。両triggerは [usi.rs:4081](../../../src/protocol/usi.rs:4081) `ponder_held_results_release_once_or_are_discarded` が決定的に検査する。探索中のpositionは種類によらず待機列へ積まれ、遅延適用は [usi.rs:3286](../../../src/protocol/usi.rs:3286) が同じ観測で固定している。[ponder.md](../../plans/ponder.md) の「検証」が求める1行ずつの観測は1周で保たれる。失う現実的な検出力はない。
+`go ponder`だけの拒否は [usi.rs:3184](../../../src/protocol/usi.rs:3184) `ponder_without_limits_and_idle_ponderhit_are_rejected` と同じであり、2つのinfinite併用ケースは同じ分岐（usi.rs:1260-1264付近）を通る。未知オプションの無視は usi.rs:851-853 付近、宣言しないことは usi.rs:1988 付近、bestmoveへの予想手の付与は usi.rs:4013 付近が固定している。保留中のstopとponderhitはどちらも`finish_search`の停止待ち分岐へ進み、停止要求を見ない（usi.rs:574-576、605-619付近）。両triggerは [usi.rs:4081](../../../src/protocol/usi.rs:4081) `ponder_held_results_release_once_or_are_discarded` が決定的に検査する。探索中のpositionは種類によらず待機列へ積まれ、遅延適用は [usi.rs:3286](../../../src/protocol/usi.rs:3286) が同じ観測で固定している。[ponder.md](../../plans/archived/ponder.md) の「検証」が求める1行ずつの観測は1周で保たれる。失う現実的な検出力はない。
 
 推奨: 適用する。
 
@@ -97,7 +97,7 @@ P09では、同じ出力を観測する2つのテストが並んでいる。
 
 P10では、投了の判定を同じ比較と同じ分岐で重ねて検査している。
 
-投了の判定`should_resign`（usi.rs:692-694付近）は整数比較1つで、詰み帯の分岐を持たない。`finish_search`の実行中分岐と停止待ち分岐は、探索の種類（通常、無限、先読み）で分かれない。次の候補は、[usi-resignation.md](../../plans/usi-resignation.md) の145行付近とD6-USI-47〜60がケースを名指ししている。
+投了の判定`should_resign`（usi.rs:692-694付近）は整数比較1つで、詰み帯の分岐を持たない。`finish_search`の実行中分岐と停止待ち分岐は、探索の種類（通常、無限、先読み）で分かれない。次の候補は、[usi-resignation.md](../../plans/archived/usi-resignation.md) の145行付近とD6-USI-47〜60がケースを名指ししている。
 
 - 削除: [src/protocol/usi.rs:2325](../../../src/protocol/usi.rs:2325) `resignation_infinite_completed_result_waits_for_stop`。停止待ち分岐は無限か先読みかを区別しない。保留中のstopによる投了は usi.rs:2233 と usi.rs:2516 が、無限探索がbestmoveを保留することは [usi.rs:3218](../../../src/protocol/usi.rs:3218) `go_infinite_withholds_bestmove_until_stop` が見る。台帳はD6-USI-55である。
 - 一部削除: [src/protocol/usi.rs:2078](../../../src/protocol/usi.rs:2078) `resignation_option_accepts_bounds_and_rejects_invalid_values_without_changing_it` の`value`、`nope`、`-1`、`1.5`、`1e3`、`１２`のケースと、不正値ごとの`go depth 1`を最後の1回へ。値の欠落は空文字列と同じ分岐を、非数字はすべて`is_ascii_digit`の検査（usi.rs:840-845付近）を通る。`i32::parse`が受理してしまう`+1`、0、100000、桁あふれは残す。台帳はD6-USI-48である。
@@ -115,7 +115,7 @@ P11では、規則セットの値の拒否を、core側の文法テストと同�
 
 一部削除の対象は次のとおりである。
 
-- [src/protocol/usi.rs:2732](../../../src/protocol/usi.rs:2732) `presets_expand_to_code_lists_and_reject_any_combination` の2本目のセッションの`lishogi,P1`と`lishogi,engine-default`。併記拒否の文法は [src/core/rules/tests.rs](../../../src/core/rules/tests.rs) の111行付近と127行付近が固定し、拒否後も保留が残ることは usi.rs:2767 が見る。`standard`の拒否は [protocol-layer.md](../../plans/protocol-layer.md) の167行付近とD6-USI-05が要求し、core側にテストがないので残す。
+- [src/protocol/usi.rs:2732](../../../src/protocol/usi.rs:2732) `presets_expand_to_code_lists_and_reject_any_combination` の2本目のセッションの`lishogi,P1`と`lishogi,engine-default`。併記拒否の文法は [src/core/rules/tests.rs](../../../src/core/rules/tests.rs) の111行付近と127行付近が固定し、拒否後も保留が残ることは usi.rs:2767 が見る。`standard`の拒否は [protocol-layer.md](../../plans/archived/protocol-layer.md) の167行付近とD6-USI-05が要求し、core側にテストがないので残す。
 - [src/protocol/usi.rs:2767](../../../src/protocol/usi.rs:2767) `invalid_ruleset_values_are_rejected_on_receipt_and_pending_survives` の`R0`のケース。`R0`は`XX9`と同じ未知コードの分岐を通り、R0が非提供であることは src/core/rules/tests.rs の13行付近が固定している。
 - [src/protocol/cecp.rs:1670](../../../src/protocol/cecp.rs:1670) `ruleset_option_latches_until_new_and_rejects_invalid_values` の`lishogi,P1`のケースと、末尾のLISHOGIとengine-defaultの2セッション。`XX9`と`lishogi,P1`はCECPでは同じ解析エラーの分岐を通り、プリセットの文法は src/core/rules/tests.rs の100行付近が固定している。
 
@@ -151,7 +151,7 @@ P15では、プロトコルに依存しない処理を、規則セットやプ�
 
 一部削除の対象は次のとおりである。
 
-- [tests/debugging_tools.rs:11](../../../tests/debugging_tools.rs:11) `perft_accepts_d_output_with_lion_and_deferred_promotion` の3規則セットを`L1,L2,P1,R1,E2`の1つへ。[debugging-tools.md](../../plans/debugging-tools.md) の220行付近が求めるのは、成り権の保留と先獅子を含む1局面だけである。P1、P2、P5ごとの保留欄の受理は [src/notation/sfen.rs](../../../src/notation/sfen.rs) の規則別テストが、dのSFEN往復は [usi.rs:3554](../../../src/protocol/usi.rs:3554) `diagnostic_sfen_round_trips_all_position_state` が見る。
+- [tests/debugging_tools.rs:11](../../../tests/debugging_tools.rs:11) `perft_accepts_d_output_with_lion_and_deferred_promotion` の3規則セットを`L1,L2,P1,R1,E2`の1つへ。[debugging-tools.md](../../plans/archived/debugging-tools.md) の220行付近が求めるのは、成り権の保留と先獅子を含む1局面だけである。P1、P2、P5ごとの保留欄の受理は [src/notation/sfen.rs](../../../src/notation/sfen.rs) の規則別テストが、dのSFEN往復は [usi.rs:3554](../../../src/protocol/usi.rs:3554) `diagnostic_sfen_round_trips_all_position_state` が見る。
 - [tests/io_log.rs:171](../../../tests/io_log.rs:171) `existing_log_is_preserved_and_startup_fails` のcecpの周回。ログはプロトコルを分岐する前に開く（main.rs:79-88付近）。
 - [tests/io_log.rs:198](../../../tests/io_log.rs:198) `cecp_session_records_both_directions` の、ログなし実行との比較`run("cecp", None, input)`。ログ出力はプロトコルに依存せず、標準出力のバイト一致は [tests/io_log.rs:186](../../../tests/io_log.rs:186) `logging_preserves_stdout_byte_for_byte` が見る。CECP分岐の配線（main.rs:113-116付近）の確認には、記録の比較だけで足りる。
 
@@ -162,8 +162,8 @@ P15では、プロトコルに依存しない処理を、規則セットやプ�
 ## 保持と判断した主なテスト
 
 - [usi.rs:3530](../../../src/protocol/usi.rs:3530) `diagnostics_queued_during_search_follow_bestmove` は残す。探索後のttコマンドは、置換表が探索から返却されたことを観測できる唯一の手段である。返却されないと`start_go`が黙って新しい表を確保するため、他のテストでは検出できない。
-- [usi.rs:2671](../../../src/protocol/usi.rs:2671) `isready_allocates_the_default_transposition_table_before_the_first_go` は内部状態を参照するが残す。[time-management-efficiency.md](../../plans/time-management-efficiency.md) がこの挙動を要求しており、所要時間以外に外から観測する方法がない。
-- 先読みの保留解放と破棄（[usi.rs:4081](../../../src/protocol/usi.rs:4081)）、逐次経路（[usi.rs:4166](../../../src/protocol/usi.rs:4166) `ponder_sequential_hit_finishes_before_reading_another_command`）、末尾の手の置換（[usi.rs:4330](../../../src/protocol/usi.rs:4330) `ponder_last_move_replacement_matches_replay_and_is_atomic`）、4,000手の固定費を測る`#[ignore]`の [usi.rs:4422](../../../src/protocol/usi.rs:4422) `ponder_long_game_output_and_replacement_stay_within_three_ms` は残す。いずれも [ponder.md](../../plans/ponder.md) の「検証」が要求しており、P01、P02、P08の削減後もこれらの要求は満たされる。
+- [usi.rs:2671](../../../src/protocol/usi.rs:2671) `isready_allocates_the_default_transposition_table_before_the_first_go` は内部状態を参照するが残す。[time-management-efficiency.md](../../plans/archived/time-management-efficiency.md) がこの挙動を要求しており、所要時間以外に外から観測する方法がない。
+- 先読みの保留解放と破棄（[usi.rs:4081](../../../src/protocol/usi.rs:4081)）、逐次経路（[usi.rs:4166](../../../src/protocol/usi.rs:4166) `ponder_sequential_hit_finishes_before_reading_another_command`）、末尾の手の置換（[usi.rs:4330](../../../src/protocol/usi.rs:4330) `ponder_last_move_replacement_matches_replay_and_is_atomic`）、4,000手の固定費を測る`#[ignore]`の [usi.rs:4422](../../../src/protocol/usi.rs:4422) `ponder_long_game_output_and_replacement_stay_within_three_ms` は残す。いずれも [ponder.md](../../plans/archived/ponder.md) の「検証」が要求しており、P01、P02、P08の削減後もこれらの要求は満たされる。
 - 投了のうち、実際の探索値による等号境界（[usi.rs:2182](../../../src/protocol/usi.rs:2182) `resignation_material_threshold_includes_equality`）、Threads 1と2の出力順（usi.rs:2145）、深さ0（usi.rs:2130）、的中後も実行中が続くことの決定的な確認（usi.rs:2473）、`Protocol::run`の逐次経路（[usi.rs:2367](../../../src/protocol/usi.rs:2367) `resignation_sequential_normal_and_ponderhit_return_resign`）は、それぞれ固有の経路または境界を持つので残す。
 - 履歴表の設定拒否時の保存と新規対局での消去を見る [history.rs](../../../src/protocol/usi/tests/history.rs) の2件は内部状態に依存するが、履歴の消去を外から決定的に観測する方法がないので残す。
 - 前回監査で保持と決めたもの（CECPのstop系、`go_infinite_withholds_bestmove_until_stop`、`clock_stop_reasons_have_distinct_protocol_words`、Hashとmemoryの桁あふれ、Threadsとcoresの境界、CECPの理由表）は、状況が変わっていないので再提案していない。

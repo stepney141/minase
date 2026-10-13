@@ -10,7 +10,7 @@ minaseは、規則セットを起動引数`--rules`のほか、USIの`setoption 
 受け取った規則を直ちに現局へ適用すると、1つの対局の局面と反復の履歴を、途中から別の規則で裁定することになる。
 そこで、受け取った規則を次の対局の開始時に確定する仕組みが必要になった。
 USIの原典では、GUIが新しい対局の開始を`usinewgame`で知らせる。
-しかし[プロトコル層](../plans/protocol-layer.md)の調査では、lishogiとエンジンを仲介するLishogi-Botが`usinewgame`を送らず、対局ごとに`setoption`、`position`、`go`の順で送ることをソースで確かめた（[USI原典仕様とlishogi系拡張の調査](../research/protocols/usi-lishogi.md)）。
+しかし[プロトコル層](../plans/archived/protocol-layer.md)の調査では、lishogiとエンジンを仲介するLishogi-Botが`usinewgame`を送らず、対局ごとに`setoption`、`position`、`go`の順で送ることをソースで確かめた（[USI原典仕様とlishogi系拡張の調査](../research/protocols/usi-lishogi.md)）。
 
 ## 決定
 

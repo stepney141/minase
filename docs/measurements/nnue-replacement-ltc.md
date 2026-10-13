@@ -2,7 +2,7 @@
 
 ## 目的
 
-[NNUEの共通土台と初代のネットの設計書](../plans/nnue-replacement.md)のフェーズ6として、[STC](nnue-replacement-stc.md)で`H1`となったP型の幅128のNNUEを埋め込んだコミットの採否を、基準M（PST＋FM）に対する長時間条件（LTC）で判定する。
+[NNUEの共通土台と初代のネットの設計書](../plans/archived/nnue-replacement.md)のフェーズ6として、[STC](nnue-replacement-stc.md)で`H1`となったP型の幅128のNNUEを埋め込んだコミットの採否を、基準M（PST＋FM）に対する長時間条件（LTC）で判定する。
 
 ## コマンドライン
 

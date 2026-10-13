@@ -13,10 +13,10 @@
 指摘1の測定については、[測定記録](../../measurements/search-bug-fixes-delta-promotion-diag-stc.md#結果)が上限3,000ペアで判定`pending`、修正前の得点率51.0%と記録している。
 この結果と修正を採用しなかった事実は確認できるが、「棋力を改善しないことが確定した」とは扱えない。
 
-指摘2の意図は、基準コミットの[Rust設計監査対応の設計判断](../../plans/rust-design-audit-remediation.md#設計判断)の「固定深さの完了通知」に記録されている。
+指摘2の意図は、基準コミットの[Rust設計監査対応の設計判断](../../plans/archived/rust-design-audit-remediation.md#設計判断)の「固定深さの完了通知」に記録されている。
 レビューが挙げた13行は過去の版の行番号であり、基準コミットでは63行に相当する。
 コミット`8b48929bd9c26821083f45a711c9c490273cf3ac`の`src/search/mod.rs`でも、`run_auxiliary_worker`から`shared.stop(StopReason::DepthCompleted)`が削除されている。
-一方、[並列探索の設計](../../plans/lazy-smp.md#探索チーム)は補助を含むいずれかのワーカーによる停止を定めているので、文書の不一致は残る。
+一方、[並列探索の設計](../../plans/archived/lazy-smp.md#探索チーム)は補助を含むいずれかのワーカーによる停止を定めているので、文書の不一致は残る。
 
 指摘3の待ち時間については、停止条件を持つことと、実時間の厳密な上限があることを区別する必要がある。
 [探索中の時間検査](../../../src/search/alphabeta/searcher.rs#L148)は4,096ノードごとの確認点で行われ、上限時刻ちょうどでの停止を保証しない。

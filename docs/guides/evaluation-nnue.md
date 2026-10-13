@@ -403,7 +403,7 @@ v0の表では各駒の寄与が100 cp以上の正の値なので、$`\omega`$ �
 | 第1層の重み | $`10^{-3}`$ | $`10^{-4}`$ |
 | 第1層のバイアス、出力重み、出力バイアス | $`10^{-3}`$ | $`10^{-4}`$ |
 
-線形の経路の値はPSTの学習器の設定を、他の2群の値はFMの学習器の設定を引き継いだものであり、NNUEの構成で最適だと確かめた値ではない（[NNUEによるPST＋FMの完全代替](../plans/nnue-replacement.md)の「最適化と停止」）。
+線形の経路の値はPSTの学習器の設定を、他の2群の値はFMの学習器の設定を引き継いだものであり、NNUEの構成で最適だと確かめた値ではない（[NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)の「最適化と停止」）。
 学習率は学習の全体を通じて一定である。
 AdamWの係数は $`\beta_1 = 0.9`$、$`\beta_2 = 0.999`$、$`\epsilon = 10^{-8}`$ であり、PyTorchと同じバイアス補正つきの式を使う（[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)）。
 
@@ -472,7 +472,7 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)
 - [駒除去差分の符号を保たせる片側絶対値の補助損失を学習に加える](../adr/penalize-wrong-signed-piece-removal-differences.md)
 - [線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)
-- [NNUEによるPST＋FMの完全代替](../plans/nnue-replacement.md)
+- [NNUEによるPST＋FMの完全代替](../plans/archived/nnue-replacement.md)
 - [NNUEの初代のネットの学習と診断](../measurements/nnue-replacement-training.md)
 - [NNUEの学習と診断の手順](nnue-training.md)
 - [棋力測定の手引き](sprt.md)

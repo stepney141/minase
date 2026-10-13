@@ -16,4 +16,4 @@ GPUを要する学習は、codexには学習器のコードだけを委任し、
 
 ## 出典
 
-- [plans/evaluation.md](../plans/evaluation.md) の「段階1の学習PST」
+- [plans/evaluation.md](../plans/archived/evaluation.md) の「段階1の学習PST」

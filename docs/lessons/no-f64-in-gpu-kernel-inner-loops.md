@@ -14,4 +14,4 @@ GPUカーネルの内側のループ（局面数×発火数×幅の桁で回る�
 
 ## 出典
 
-[Rust製NNUE学習器（GPU）](../plans/nnue-trainer-rust.md)、[検査と試走の記録](../measurements/nnue-trainer-rust-checks.md)のフェーズ2fの節。
+[Rust製NNUE学習器（GPU）](../plans/archived/nnue-trainer-rust.md)、[検査と試走の記録](../measurements/nnue-trainer-rust-checks.md)のフェーズ2fの節。

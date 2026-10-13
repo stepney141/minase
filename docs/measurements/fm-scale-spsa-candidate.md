@@ -2,7 +2,7 @@
 
 ## 目的
 
-[FMの補正の倍率をSPSAで調整する設計書](../plans/fm-scale-spsa.md)のフェーズ3として、[SPSAのセッション](fm-scale-spsa.md)で得た`FmScale`=611（倍率b≈0.597）を候補J75の重みへ焼き込み、候補の正しさの検査、補正の大きさ、着手差のFM分、および探索速度を、master（M）とJ75と並べて記録する。
+[FMの補正の倍率をSPSAで調整する設計書](../plans/archived/fm-scale-spsa.md)のフェーズ3として、[SPSAのセッション](fm-scale-spsa.md)で得た`FmScale`=611（倍率b≈0.597）を候補J75の重みへ焼き込み、候補の正しさの検査、補正の大きさ、着手差のFM分、および探索速度を、master（M）とJ75と並べて記録する。
 いずれの値も採否の条件にせず、採否は[STC](fm-scale-spsa-stc.md)の段階ゲートで決める。
 
 ## コマンドライン

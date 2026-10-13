@@ -18,5 +18,5 @@ aspiration windowsは深さ5以上の反復で発動する設計であった。
 
 ## 出典
 
-- [plans/search.md](../plans/search.md) の「第2層の探索改良」節
+- [plans/search.md](../plans/archived/search.md) の「第2層の探索改良」節
 - [measurements/delta-pruning-nodes100k-gsprt.md](../measurements/delta-pruning-nodes100k-gsprt.md)（同じ条件で発動した改良の測定例）

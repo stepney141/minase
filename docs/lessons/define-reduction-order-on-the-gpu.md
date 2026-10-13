@@ -14,4 +14,4 @@ GPUとCPU参照を同じ加算順で一致させたいときは、順序をGPU�
 
 ## 出典
 
-[Rust製NNUE学習器（GPU）](../plans/nnue-trainer-rust.md)、[検査と試走の記録](../measurements/nnue-trainer-rust-checks.md)のフェーズ2dと2eの節。
+[Rust製NNUE学習器（GPU）](../plans/archived/nnue-trainer-rust.md)、[検査と試走の記録](../measurements/nnue-trainer-rust-checks.md)のフェーズ2dと2eの節。

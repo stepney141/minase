@@ -14,4 +14,4 @@ Rust製NNUE学習器で、1エポックで止めた学習を`--epochs 2`で再�
 
 ## 出典
 
-[Rust製NNUE学習器（GPU）](../plans/nnue-trainer-rust.md)、[検査と試走の記録](../measurements/nnue-trainer-rust-checks.md)のフェーズ3の節。
+[Rust製NNUE学習器（GPU）](../plans/archived/nnue-trainer-rust.md)、[検査と試走の記録](../measurements/nnue-trainer-rust-checks.md)のフェーズ3の節。

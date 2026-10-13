@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[浅い探索の手の順位を学ぶ損失](../plans/rank-loss-training.md)は、深い探索が安定して支持する手を浅い探索でも上位に評価させる順位の損失（rank loss）を、PSTの学習に加えた。
+[浅い探索の手の順位を学ぶ損失](../plans/archived/rank-loss-training.md)は、深い探索が安定して支持する手を浅い探索でも上位に評価させる順位の損失（rank loss）を、PSTの学習に加えた。
 この損失は、[一次資料の調査](../research/evaluation-learning-primary-sources-2026-09.md)が扱うBonanzaのMinimax Tree Optimization（MMTO）の原理を、人間の棋譜の手から深い探索の手へ置き換えたものである。
 浅い探索には、根の各候補手を指した子局面から静止探索を行う深さ1の探索を使った。
 教師には、候補手の子局面を1,000,000ノードと10,000,000ノードの2通りの予算で探索し、両方で同じ手を判定の差117.7センチポーン以上で支持した手の組だけを使った（[較正の記録](../measurements/rank-loss-teacher-calibration.md)）。

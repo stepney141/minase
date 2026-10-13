@@ -18,6 +18,6 @@ stand-patは「現局面の評価値を下回らない手がある」とみな�
 
 ## 出典
 
-- [plans/search-bug-fixes.md](../plans/search-bug-fixes.md) の設計判断「不具合の判定基準」
+- [plans/search-bug-fixes.md](../plans/archived/search-bug-fixes.md) の設計判断「不具合の判定基準」
 - [measurements/search-bug-fixes-qsearch-evasion-diag-stc.md](../measurements/search-bug-fixes-qsearch-evasion-diag-stc.md)
 - [audits/search-bugs-2026-09-28.md](../audits/search-bugs-2026-09-28.md) の「不具合2」節

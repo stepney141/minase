@@ -17,4 +17,4 @@
 ## 出典
 
 - [measurements/calibration-negative-current.md](../measurements/calibration-negative-current.md)
-- [plans/match-staged-gate.md](../plans/match-staged-gate.md) の「校正方式の廃止と既存記録による事後検証」節。
+- [plans/match-staged-gate.md](../plans/archived/match-staged-gate.md) の「校正方式の廃止と既存記録による事後検証」節。

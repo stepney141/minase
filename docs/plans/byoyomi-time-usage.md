@@ -52,9 +52,9 @@ Botの`ByoyomiMargin`は3,000 msであり、この値を選んだ理由は[ADR](
 
 ## 依存関係
 
-- [持ち時間の効率的な使用](time-management-efficiency.md)が現行の予算式、序盤の係数、および9月の再構成の棄却理由の正である。
-- [探索部](search.md)の「時間管理」節と[棋力向上段階6](strength-stage6.md)の「最善手安定時の早期終了」が、反復の開始判定の正である。
-- [Lazy SMP](lazy-smp.md)がワーカー間の結果の選択の正である。
+- [持ち時間の効率的な使用](archived/time-management-efficiency.md)が現行の予算式、序盤の係数、および9月の再構成の棄却理由の正である。
+- [探索部](archived/search.md)の「時間管理」節と[棋力向上段階6](archived/strength-stage6.md)の「最善手安定時の早期終了」が、反復の開始判定の正である。
+- [Lazy SMP](archived/lazy-smp.md)がワーカー間の結果の選択の正である。
 - [lishogi Bot接続](lishogi-bot.md)とLishogi-Botの設定が、Botの時計の換算の正である。
 - 採否測定は[棋力測定の手引き](../guides/sprt.md)のGSPRTの統計契約に従う。時間制御だけを本書で定める。
 
@@ -268,7 +268,7 @@ GSPRTは1ペアごとに対数尤度比（LLR）を更新し、LLRが上の境�
 
 採用した構成をmasterへ統合し、Lishogi-Botの`usi_options`に`ByoyomiMargin`（600 ms）を設定して配備する。利用者向けの説明に、先読みを使う環境では`ByoyomiMargin`を通信と負荷の遅れに合わせて設定することを書き加える。
 配備後の秒読みつきの対局20局のログで、秒読み期の思考時間/Bの中央値と時間切れの件数を記録する。
-[探索部](search.md)の「時間管理」節と`clock_budget`のrustdocを更新する。
+[探索部](archived/search.md)の「時間管理」節と`clock_budget`のrustdocを更新する。
 完了条件は、配備後の記録と文書の更新である。
 
 ## 検証
@@ -289,7 +289,7 @@ GSPRTは1ペアごとに対数尤度比（LLR）を更新し、LLRが上の境�
 - [lishogi実戦における持ち時間と秒読みの使い方](../research/lishogi-byoyomi-time-usage.md)
 - [秒読みつき時間制御における既存エンジンの持ち時間配分](../research/time-management-byoyomi-survey.md)
 - [lishogi対局WPgmFqSaの時間配分](../research/lishogi-game-WPgmFqSa-time-management.md)
-- [持ち時間の効率的な使用](time-management-efficiency.md)
+- [持ち時間の効率的な使用](archived/time-management-efficiency.md)
 - Stockfish `src/search.cpp`（反復深化の`totalTime`、根の手の安定な整列）と`src/timeman.cpp`、コミット17a6c8f1、2026年10月6日参照
 - YaneuraOu `source/timeman.cpp`（`round_up`、`NetworkDelay`、`NetworkDelay2`、`isFinalPush`）と`source/engine/yaneuraou-engine/yaneuraou-search.cpp`、コミットc1b80eaa、2026年10月6日参照
 - KataGo `cpp/search/timecontrols.cpp`の`divideTimeEvenlyForGame`

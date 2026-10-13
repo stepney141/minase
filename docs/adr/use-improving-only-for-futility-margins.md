@@ -7,10 +7,10 @@
 ## コンテキスト
 
 improvingは、現局面の静的評価が同じ手番の2手前より高いかを表すフラグであり、チェスのエンジンは良化していないノードで枝刈りと減深を強める。
-[棋力向上段階8](../plans/strength-stage8.md)は、良化していないノードでfutility pruningの余裕値を縮める変更と、後方の静かな手のLMRの減深量を1増やす変更を1項目として設計した。
+[棋力向上段階8](../plans/archived/strength-stage8.md)は、良化していないノードでfutility pruningの余裕値を縮める変更と、後方の静かな手のLMRの減深量を1増やす変更を1項目として設計した。
 LMRの追加減深は、[再診断](../measurements/strength-stage8-improving-bench.md)で失う割合が15.0%から30.0%へ15.0ポイント増え、基準の10ポイントを超えたので外した。
 余裕値の変更だけの版は、STCが694有効ペアでLLR −2.9907の`H0`だった（[測定記録](../measurements/strength-stage8-improving-stc.md)）。
-[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)は、この項目を含む8項目を戻し、深さごとの縮小率を既存の係数とまとめてSPSAで調整した。
+[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)は、この項目を含む8項目を戻し、深さごとの縮小率を既存の係数とまとめてSPSAで調整した。
 調整した版は、現行のmasterに対してSTCとLTCで`H1`となり、8項目を除いた版に対してもSTCで`H1`となったので、improvingを含めて採用した（[採用のADR](adopt-revived-search-items-as-a-bundle.md)）。
 
 ## 決定

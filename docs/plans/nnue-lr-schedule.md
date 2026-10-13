@@ -3,7 +3,7 @@
 ## 先に読む要約
 
 本マイルストーンは、中将棋エンジンminaseの評価関数であるNNUEのRust製学習器（`crates/minase-trainer`）に、更新ごとに学習率を変える学習率スケジュール（learning-rate schedule）を加え、学習率の与え方を変えると検証損失（学習に使わない対局の局面での損失）が下がるか、下がったネットが強いかを確かめる。
-動機は、[NNUEの完全代替](nnue-replacement.md)（以下、前計画）のフェーズ4で、2つの入力特徴集合（P型とHalfKP-hm-b8）のどちらも検証損失が最初の訓練エポックの直後で最良になり、以後は訓練損失だけが下がり続けたことである。
+動機は、[NNUEの完全代替](archived/nnue-replacement.md)（以下、前計画）のフェーズ4で、2つの入力特徴集合（P型とHalfKP-hm-b8）のどちらも検証損失が最初の訓練エポックの直後で最良になり、以後は訓練損失だけが下がり続けたことである。
 この症状は、学習率が大きすぎて最良点を通り過ぎた場合にも、同じ対局の局面どうしの相関で実質の標本数が少なく過学習した場合にも生じるので、両者を見分ける手がかりを集める。
 学習器には、学習率に掛ける倍率を完了した更新回数の関数として与える3つの形（一定、指数減衰、cosine annealing）と、エポックの途中で検証損失を記録する機能を加える。
 前計画が採用したP型の幅128について、一定の1倍、1/3倍、1/10倍、指数減衰、cosineの5本を同じデータとシードで学び、エポック境界の最良の検証損失が最も低い1本を選ぶ。
@@ -15,7 +15,7 @@
 
 起案。2026年10月12日に起案した。
 着手は利用者の指示を待つ。
-着手の前提はそろっている。前計画はP型の幅128を採用して完了し、学習器の改名を含む[Python学習器のRustへの移植と撤去](python-trainer-retirement.md)もmasterへマージされた。
+着手の前提はそろっている。前計画はP型の幅128を採用して完了し、学習器の改名を含む[Python学習器のRustへの移植と撤去](archived/python-trainer-retirement.md)もmasterへマージされた。
 実装は、現在の`crates/minase-trainer`に対して始められる。
 
 ## 目的
@@ -67,7 +67,7 @@
 
 ## 依存関係
 
-学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`minase-trainer nnue train`であり、引数、保存物、および再開の仕様は学習器のコード（`crates/minase-trainer/src/nnue/`）のdocコメントが定め、使い方は手引き[NNUEの学習](../guides/nnue-training.md)にある。
+学習器は[Rust製NNUE学習器（GPU）](archived/nnue-trainer-rust.md)の`minase-trainer nnue train`であり、引数、保存物、および再開の仕様は学習器のコード（`crates/minase-trainer/src/nnue/`）のdocコメントが定め、使い方は手引き[NNUEの学習](../guides/nnue-training.md)にある。
 学習率はホストが群ごとに保持し、更新のたびにバイアス補正の係数とともに倍精度でカーネルへ渡している（`src/nnue/gpu/optimizer.rs`の`Optimizer::update`、CPU参照は汎用部品`src/nn/adam.rs`の`AdamCoefficients::new`）。
 したがって倍率を掛けるのはホスト側の変更で済み、CUDAカーネルは変えない。
 重み減衰はAdamWの分離型で`p ← p·(1 − lr·wd)`として掛かるので、倍率を掛けると減衰も同じ割合で小さくなる。
@@ -77,7 +77,7 @@
 再開時は、`training.jsonl`の各行をエポックの記録として読み、エポック番号が1ずつ増えることを検査する（`src/nnue/train/record.rs`の`reconcile_log`）。
 教師用Kの推定と観測マスクは訓練集合から作り、第1層の初期化は観測された行だけで乱数を消費する。
 
-入力特徴集合と幅は、[NNUEの完全代替](nnue-replacement.md)が採用してエンジンに埋め込んだP型の幅128とし、比較の基準となる一定の1倍のネットは、埋め込んだネットと同じ条件で学び直す。
+入力特徴集合と幅は、[NNUEの完全代替](archived/nnue-replacement.md)が採用してエンジンに埋め込んだP型の幅128とし、比較の基準となる一定の1倍のネットは、埋め込んだネットと同じ条件で学び直す。
 フェーズ4の学習条件（全30ファイル、現行PSTの元になった候補J75の実数の重み`pst-float.npz`による初期化、先読み教師γ=0.9・n=40、バッチ16,384、シード1、補助損失の係数1000）は本書でもそのまま使う。
 学習はGPUのある本環境（RTX 3060 Ti 8GB）で行い、段階ゲートの対局と同時には学習しない。
 学習のワーカーがCPUを使い、時間制御の対局の時計を乱すからである。
@@ -185,7 +185,7 @@ STCが`H1`、または上限に達してLLRが0以上なら、LTC（`time=60000+
 
 ## 参考資料
 
-- [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)
+- [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](archived/nnue-replacement.md)、[Rust製NNUE学習器（GPU）](archived/nnue-trainer-rust.md)、[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)
 - 手引き[NNUEの学習](../guides/nnue-training.md)
 - [NNUEの学習の記録](../measurements/nnue-replacement-training.md)、[Rust製学習器の検査の記録](../measurements/nnue-trainer-rust-checks.md)
 - tatara（[SH11235/tatara](https://github.com/SH11235/tatara)、コミット`db08ed2`）: `crates/nnue-train/src/schedule.rs`（7種類の形、warmup）、`docs/decisions/2026-05-31-ckpt-lr-horizon.md`（総長のチェックポイント保存）、`bins/nnue_train/src/cli.rs`（既定値: 8.75×10⁻⁴、step、0.992、1 superbatch = 6,104更新）

@@ -2,7 +2,7 @@
 
 ## 目的
 
-HaChu対minaseの条件格子測定（[設計書](../plans/hachu-condition-grid.md)）の1手固定時間セルとして、minaseを1手1秒の秒読み、HaChuを1手1秒の固定時間（`st 1`）で対局させ、1手固定時間という方式そのものがminaseに不利かどうかを、時間比と切り離して固定200ペアのEloで見る。
+HaChu対minaseの条件格子測定（[設計書](../plans/archived/hachu-condition-grid.md)）の1手固定時間セルとして、minaseを1手1秒の秒読み、HaChuを1手1秒の固定時間（`st 1`）で対局させ、1手固定時間という方式そのものがminaseに不利かどうかを、時間比と切り離して固定200ペアのEloで見る。
 採否の判定には使わない。
 
 ## コマンドライン

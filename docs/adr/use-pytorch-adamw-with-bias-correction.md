@@ -8,7 +8,7 @@
 
 minaseの評価関数の学習器は、PythonとPyTorchの`torch.optim.AdamW`で学んできた。
 NNUEの学習率と重み減衰（線形の経路は学習率0.03と重み減衰0、第1層と出力部は学習率10⁻³と重み減衰10⁻⁴）は、PSTとFMの学習器がPyTorchのAdamWで使った値を引き継いだものである。
-[Rust製NNUE学習器](../plans/nnue-trainer-rust.md)は、これをRustで書き直すにあたり、最適化器の更新式を決める必要があった。
+[Rust製NNUE学習器](../plans/archived/nnue-trainer-rust.md)は、これをRustで書き直すにあたり、最適化器の更新式を決める必要があった。
 tataraとbulletのAdamWはモーメントのバイアス補正を持たず、PyTorchとは更新式が異なる（[学習器の速度の調査](../research/nnue-trainer-speed.md)）。
 
 ## 決定

@@ -15,6 +15,6 @@
 
 ## 出典
 
-- [plans/rust-design-audit-remediation.md](../plans/rust-design-audit-remediation.md)
+- [plans/rust-design-audit-remediation.md](../plans/archived/rust-design-audit-remediation.md)
 - [rust-design-audit-2026-08-26.md](../audits/rust-design-audit-2026-08-26.md) の「文字列へ失われるエラー情報」
 - コミット 8b48929

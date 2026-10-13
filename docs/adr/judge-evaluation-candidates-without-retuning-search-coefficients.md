@@ -9,7 +9,7 @@
 評価関数の計画では、教師データへの当てはまりを改善した候補が対局で大きく負ける例が続いていた。
 探索係数は、futility pruningの余裕値やaspiration windowsの窓幅など、探索がどこまで読むかを決める29個の数値であり、当時の評価関数に合わせてSPSAで調整されていた。
 評価値の分布を変えた候補は、この係数の下では本来の力を出せないという仮説があった。
-[評価関数の候補と探索係数の共適応の検証](../plans/eval-search-coadaptation.md)は、[混合比λ=1.0での再学習](keep-the-mixing-ratio-at-0-75-for-pst-retraining.md)と同じ作り方を当時の採用PSTに当て直した候補を、採用中のエンジンS0と固定400ペアのSTCで比べた。
+[評価関数の候補と探索係数の共適応の検証](../plans/archived/eval-search-coadaptation.md)は、[混合比λ=1.0での再学習](keep-the-mixing-ratio-at-0-75-for-pst-retraining.md)と同じ作り方を当時の採用PSTに当て直した候補を、採用中のエンジンS0と固定400ペアのSTCで比べた。
 探索係数を調整し直す前の候補は、[記録](../measurements/eval-coadaptation-before-stc400.md)のとおり−151.1 Elo（95%信頼区間 −177.5〜−125.1）だった。
 候補の29係数をSPSAで調整し直した版でも、調整前からのEloの変化は[記録](../measurements/eval-coadaptation-after-stc400.md)のとおり−10.8 Elo（95%信頼区間 −45.9〜+25.4）で、回復を示せなかった。
 追加の診断では、候補は評価値の散らばりの尺度を変えておらず、互角に近い局面の評価の並びを大きく入れ替えていた（[記録](../measurements/eval-coadaptation-distribution.md)）。

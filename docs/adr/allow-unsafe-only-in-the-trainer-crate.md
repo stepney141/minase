@@ -7,7 +7,7 @@
 ## コンテキスト
 
 リポジトリのworkspaceは`[workspace.lints.rust]`で`unsafe_code = "forbid"`を定め、エンジン`minase`とライブラリ`minase-core`はこれを継承している。
-[Rust製NNUE学習器](../plans/nnue-trainer-rust.md)はGPUで学習するために、CUDAのドライバとNVRTCをcudarcから使う。
+[Rust製NNUE学習器](../plans/archived/nnue-trainer-rust.md)はGPUで学習するために、CUDAのドライバとNVRTCをcudarcから使う。
 cudarcのカーネル起動とページ固定メモリ（OSが移動しないと保証したホストメモリ）の確保は`unsafe`を要する。
 教師データのファイルをmemmap2でメモリへマップする`map`も、マップしている間にファイルが変更されないことを呼び手が保証する前提の`unsafe`な関数である。
 

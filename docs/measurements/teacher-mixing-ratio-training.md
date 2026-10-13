@@ -2,7 +2,7 @@
 
 ## 目的
 
-[教師の混合比λ=1.0](../plans/teacher-mixing-ratio.md)のフェーズ2として、基点の採用PSTを、自己対局の分類のλを1.0へ上書きした先読み教師で学習し直し、学習後の診断を通して採否測定の候補を作る。
+[教師の混合比λ=1.0](../plans/archived/teacher-mixing-ratio.md)のフェーズ2として、基点の採用PSTを、自己対局の分類のλを1.0へ上書きした先読み教師で学習し直し、学習後の診断を通して採否測定の候補を作る。
 
 ## コマンドライン
 
@@ -21,7 +21,7 @@ tools/train/.venv/bin/python tools/train/pst/pst_workflow.py diagnose --run-dir 
 候補の重みは、ブランチ `teacher-mixing-ratio-100-candidate` の `16a2257`（`622a879` に `nets/pst.bin` の差し替えだけを加えたコミット）に置いた。
 重みのSHA-256は `c6d6ef46a78d9a00547d1235da79b19ed686e9ea6af92cdec8bb5dc794683abc` である。
 重みに依存する2件の単体テスト（初期局面の評価値、深さ5の窓外れ）は、候補コミットでは失敗する。
-[先読み教師値](../plans/lookahead-teacher.md)の前例に従い、候補コミットの差分を重みファイルだけに保つため、これらのテストは採用時に更新する。
+[先読み教師値](../plans/archived/lookahead-teacher.md)の前例に従い、候補コミットの差分を重みファイルだけに保つため、これらのテストは採用時に更新する。
 
 ## 環境
 

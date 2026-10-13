@@ -2,7 +2,7 @@
 
 ## 目的
 
-[Factorization Machineによる2駒関係評価](../plans/factorization-machine.md)の第3フェーズとして、FM機構の純粋な費用（埋め込みをすべて0にしたFMと開始版のNPS差）が設計書の目安5%を超えたことを受け、評価結果を保ったまま累算更新と評価の実装を改善し、改善前後の純粋な費用と候補のNPSを記録する。
+[Factorization Machineによる2駒関係評価](../plans/archived/factorization-machine.md)の第3フェーズとして、FM機構の純粋な費用（埋め込みをすべて0にしたFMと開始版のNPS差）が設計書の目安5%を超えたことを受け、評価結果を保ったまま累算更新と評価の実装を改善し、改善前後の純粋な費用と候補のNPSを記録する。
 
 ## コマンドライン
 
@@ -146,7 +146,7 @@ Bの差は中央値で+0.04%にとどまり、1回ごとの優劣も一致しな
 ## 変更ファイル
 
 実装とテストを変更したファイルは`src/eval/fm.rs`、`src/eval/pst.rs`、`src/search/mod.rs`である。
-`docs/plans/factorization-machine.md`と`docs/ROADMAP.md`の現状を更新し、本記録`docs/measurements/fm-phase3-speed.md`と生データ`docs/measurements/fm-phase3-speed.json`を追加した。
+`docs/plans/archived/factorization-machine.md`と`docs/ROADMAP.md`の現状を更新し、本記録`docs/measurements/fm-phase3-speed.md`と生データ`docs/measurements/fm-phase3-speed.json`を追加した。
 作業途中に現れた`docs/measurements/bench-fm-depth5.md`は別作業のファイルとして変更していない。
 
 ## 結論

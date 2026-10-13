@@ -2,7 +2,7 @@
 
 ## 目的
 
-[探索改良の再調整](../plans/search-revival-spsa.md)を採用した時点のmaster（コミット`9027662`）をHaChuと固定200ペアで比較し、進捗指標として記録する。
+[探索改良の再調整](../plans/archived/search-revival-spsa.md)を採用した時点のmaster（コミット`9027662`）をHaChuと固定200ペアで比較し、進捗指標として記録する。
 前回の[SPSA採用後の版の記録](strength-stage12-hachu-elo200.md)（コミット`df0c75e`）以降、masterには探索部の不具合修正（null moveの反復の修正）、世代3の局面によるPSTの再学習、および探索改良の再調整が統合されている。
 採否には使わない。
 

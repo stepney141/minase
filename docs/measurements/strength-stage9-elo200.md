@@ -2,7 +2,7 @@
 
 ## 目的
 
-[棋力向上段階9](../plans/strength-stage9.md)のフェーズ8として、段階9の完了処理後の最終構成を段階開始版と固定200ペアで比較し、進捗指標として記録する。採否には使わない。
+[棋力向上段階9](../plans/archived/strength-stage9.md)のフェーズ8として、段階9の完了処理後の最終構成を段階開始版と固定200ペアで比較し、進捗指標として記録する。採否には使わない。
 
 ## コマンドライン
 
@@ -22,7 +22,7 @@ target/release/match_report --run-dir data/matches/strength-stage9-elo200
 
 ## エンジン
 
-候補は `4f946d4`（masterの先頭 `a620286` とエンジンの内容が同じで、差は文書だけ）であり、段階開始版に対して、SPSAの調整結果の適用（[spsa-apply](../plans/spsa-apply.md)）、[先読み教師](../plans/lookahead-teacher.md)で再学習した学習PST、および評価の償却を含む。
+候補は `4f946d4`（masterの先頭 `a620286` とエンジンの内容が同じで、差は文書だけ）であり、段階開始版に対して、SPSAの調整結果の適用（[spsa-apply](../plans/archived/spsa-apply.md)）、[先読み教師](../plans/archived/lookahead-teacher.md)で再学習した学習PST、および評価の償却を含む。
 基準は段階開始版 `6c5c559` である。規則は `engine-default`、両エンジンとも `Threads=1`、`USI_Hash` 256 MB。
 
 ## 環境

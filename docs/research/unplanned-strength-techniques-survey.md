@@ -18,7 +18,7 @@ minaseの採否判定は検出すべき差を10 Eloに置くので、成熟し�
 minaseの採否判定には一般化逐次確率比検定（GSPRT）を使う。
 帰無仮説H0を0 Elo、対立仮説H1を10 Eloに置くので、真の差が5 Eloなら判定まで約4,200ペアを要する（[測定の手引き](../guides/sprt.md)）。
 このため、Stockfishの成熟した木で+1〜2 Eloの改良よりも、Reckless、Alexandria、Obsidian、Caissaのような若いエンジンで+5 Elo以上を示した改良を上位に置いた。
-加えて、minaseの到達深さは標準の時間制御でSTCが4〜6、LTCが6〜7と浅く（[棋力向上段階4](../plans/strength-stage4.md)）、深さで発動が決まる手法は既に何度も発動率の不足で見送られている。
+加えて、minaseの到達深さは標準の時間制御でSTCが4〜6、LTCが6〜7と浅く（[棋力向上段階4](../plans/archived/strength-stage4.md)）、深さで発動が決まる手法は既に何度も発動率の不足で見送られている。
 深さに依存しない順序付けと再探索の改良を上位に、深さ依存の延長を中位に置いたのはこの理由による。
 
 本書では、各エンジンの短時間条件をSTC、長時間条件をLTCと呼ぶ。
@@ -57,18 +57,18 @@ Stockfishの値に付けた「≈」は、コミット文の勝敗数から算�
 `src/`に実装済みの手法、設計書が採用、`H0`で棄却、見送り、辞退、または予定した手法は、一覧から除いた。
 除外した主な手法は、王手延長、ProbCut、mate distance pruning、置換表のクラスタ化、静的評価の置換表保存、counter move history、continuation history、history pruning、および獅子の2段階の非捕獲移動の減深であり、いずれも段階4から段階8で見送られた（[棋力向上の段階計画](../plans/strength-stages.md)）。
 reverse futility pruning、late move pruning、razoring、improvingフラグ、駒種と到達升のhistory、およびmalusは、GSPRTの`H0`またはSTCの振分けで不採用となった。
-詰み専用探索と定跡は探索部の設計書が辞退し、補助ワーカーの投票は、複数スレッドが置換表だけを共有して同じ根を探索するLazy SMPの[設計書](../plans/lazy-smp.md)が辞退した。
-先読み中の目標時間の25%増しは[USI先読みの設計書](../plans/ponder.md)が本方式には当てはまらないと判断し、相手番局面の先読みは同書が見送った。
-秒単位の切り上げは[時間効率の設計書](../plans/time-management-efficiency.md)が不要と判断し、Stockfishの動的な時間係数は同書で束ごと`H0`となった。
+詰み専用探索と定跡は探索部の設計書が辞退し、補助ワーカーの投票は、複数スレッドが置換表だけを共有して同じ根を探索するLazy SMPの[設計書](../plans/archived/lazy-smp.md)が辞退した。
+先読み中の目標時間の25%増しは[USI先読みの設計書](../plans/archived/ponder.md)が本方式には当てはまらないと判断し、相手番局面の先読みは同書が見送った。
+秒単位の切り上げは[時間効率の設計書](../plans/archived/time-management-efficiency.md)が不要と判断し、Stockfishの動的な時間係数は同書で束ごと`H0`となった。
 Texel tuningは探索部の設計書が評価関数の次期マイルストーンへ送り、その後に導入した学習済みの駒升表（PST、piece-square table）が同じ役割を果たした。
 反復の結果と置換表の干渉は[反復負け回避の設計書](../plans/search-repetition.md)が扱い、NNUE（差分更新型のニューラルネット評価関数）の第1層拡幅、出力バケット、および相対王駒特徴は段階10の予定に入っている。
 調整と測定の領域では候補が残らなかった。
-同時摂動確率近似（SPSA）による係数調整とGSPRTの段階ゲートは実装済みであり、LTCでの調整は[SPSAの設計書](../plans/spsa.md)が最初のセッションの採否を見てから判断すると定めているからである。
+同時摂動確率近似（SPSA）による係数調整とGSPRTの段階ゲートは実装済みであり、LTCでの調整は[SPSAの設計書](../plans/archived/spsa.md)が最初のセッションの採否を見てから判断すると定めているからである。
 
 改良形の扱いには判断を要した。
 実装済みまたは棄却済みの手法の改良は、改良の内容そのものがどの設計書にも現れない場合に限って残し、一覧の最終列に基礎の手法と相違点を書いた。
-捕獲履歴とhistory表の持ち越しは、[棋力向上段階5](../plans/strength-stage5.md)が「本書の対象外」と明記したものの、採否も見送りも判断していない。
-補正表の対局内の持ち越しも、[棋力向上段階8](../plans/strength-stage8.md)が「別の主張なので扱わない」と記しただけである。
+捕獲履歴とhistory表の持ち越しは、[棋力向上段階5](../plans/archived/strength-stage5.md)が「本書の対象外」と明記したものの、採否も見送りも判断していない。
+補正表の対局内の持ち越しも、[棋力向上段階8](../plans/archived/strength-stage8.md)が「別の主張なので扱わない」と記しただけである。
 本書はこれらを未計画として残し、該当する行にその旨を記した。
 設計書がなく`docs/research/`の調査メモだけに現れる手法は、「調査メモで言及済み、計画なし」として残し、ファイルを示した。
 次節は、残った50件を領域ごとに示す。
@@ -129,7 +129,7 @@ minaseの手選択は置換表の手、MVV-LVA（取られる駒の価値の降�
 | 根の手の並べ替え（root move ordering） | 根の手を前回の反復の値や探索量で並べ直す。 | Stockfish、Obsidian、Koivisto | Obsidianは+18.7±16.0 Eloと+10.39±6.25 Eloを記録した（[88d2214](https://github.com/gab8192/Obsidian/commit/88d2214)、[ae1ca23](https://github.com/gab8192/Obsidian/commit/ae1ca23)）。ただしコミット文は仕組みを詳述しない。 | 現行の根は各反復で置換表の手と通常の順序付けで並ぶ（[探索実装](../../crates/minase/src/search/alphabeta/root.rs)）。 |
 | 静的評価の変化による履歴（static-eval-difference history） | 直前の手が引き起こした静的評価の変化の符号で、その手のhistoryを更新する。 | Stockfish、YaneuraOu、PlentyChess | 導入はSTCで≈+1.06、LTCで≈+1.39 Elo（[be7a03a9](https://github.com/official-stockfish/Stockfish/commit/be7a03a9)）。非対称化はSTCで≈+7.80、LTCで≈+3.08 Elo（[3cfaef74](https://github.com/official-stockfish/Stockfish/commit/3cfaef74)）。Stockfish 17の注記で約9 Elo。 | 実装済みbutterfly historyの改良である。静的評価の計算費用は処理時間の0.24%と小さい。 |
 | 脅威を添字にした履歴（threat-indexed history） | 移動元と移動先が相手の利きの下にあるかをhistoryの添字に加える。 | Berserk、Ethereal、Caissa、PlentyChess、Koivisto | Berserkは10+0.1秒で+8.82±5.94、60+0.6秒で+4.72±3.44 Elo（[6df0179](https://github.com/jhonnold/berserk/commit/6df0179)）。Etherealは10+0.1秒で+2.33±1.86、60+0.6秒で+2.88±1.93 Elo（[341c43f](https://github.com/AndyGrant/Ethereal/commit/341c43f)）。Caissaは+5.9±4.9 Elo（[ecba3d3](https://github.com/Witek902/Caissa/commit/ecba3d3)）。 | 相手の利き集合を毎ノード要する。YaneuraOuは将棋で費用過大として無効化し、minaseの利き数の表は毎秒探索局面数（NPS）が0.816倍に落ちて不採用になった。利き情報の土台ができるまで優先度は低い。 |
-| 脅威を避ける手の順序補正（threat-aware move ordering） | 価値の低い駒に攻められている駒を逃がす静かな手を順序で上げ、そうした升へ駒を移す手を下げる。 | Stockfish、YaneuraOu（無効化） | STCで≈+1.47、LTCで≈+1.15 Elo（[65ece7d9](https://github.com/official-stockfish/Stockfish/commit/65ece7d9)）。 | 脅威を添字にした履歴と同じく利き集合を要する。[棋力向上段階9](../plans/strength-stage9.md)の脅威特徴は評価関数用であり、順序付けには使っていない。獅子の2段階移動の移動先と、王駒が2枚あり得る場合の例外を定め、利き情報の計算費用を先に測る。 |
+| 脅威を避ける手の順序補正（threat-aware move ordering） | 価値の低い駒に攻められている駒を逃がす静かな手を順序で上げ、そうした升へ駒を移す手を下げる。 | Stockfish、YaneuraOu（無効化） | STCで≈+1.47、LTCで≈+1.15 Elo（[65ece7d9](https://github.com/official-stockfish/Stockfish/commit/65ece7d9)）。 | 脅威を添字にした履歴と同じく利き集合を要する。[棋力向上段階9](../plans/archived/strength-stage9.md)の脅威特徴は評価関数用であり、順序付けには使っていない。獅子の2段階移動の移動先と、王駒が2枚あり得る場合の例外を定め、利き情報の計算費用を先に測る。 |
 | 補正表の鍵の追加（multi-key correction history） | 駒配置の部分集合や直前の手順を鍵にした補正表を複数持ち、補正値を加重和する。 | Stockfish、Alexandria、Obsidian、Berserk、Caissa、YaneuraOu | 主要駒、小駒、非歩兵の鍵はSTCで≈+4.41、LTCで≈+8.70 Elo（[60351b9d](https://github.com/official-stockfish/Stockfish/commit/60351b9d)）。非歩兵の鍵はAlexandriaで+6.98±3.56と+12.28±4.75 Elo（[1f26efc](https://github.com/PGG106/Alexandria/commit/1f26efc)）。Obsidianでは+9.96±3.88 Elo（[fe0637c](https://github.com/gab8192/Obsidian/commit/fe0637c)）。手順の補正はSTCで≈+0.82、LTCで≈+1.59 Elo（[6592b13d](https://github.com/official-stockfish/Stockfish/commit/6592b13d)）。 | 調査メモで言及済み、計画なし（[forward-pruning-prior-art.md](forward-pruning-prior-art.md)）。段階8は王駒の升、駒種別の枚数、およびその組合せだけを診断した。Stockfishは材料の鍵を導入後に中立として外した（[7f386d10](https://github.com/official-stockfish/Stockfish/commit/7f386d10)）。 |
 | history表の重力更新（history gravity） | 加点と減点の双方で`v += b − v·abs(b)/D`と更新し、値を上限の内側へ滑らかに保つ。 | Stockfish、Viridithas、Stormphrax | 原型の導入に数値はない（[7f300a76](https://github.com/official-stockfish/Stockfish/commit/7f300a76)）。Viridithasの集計値による重力は40+0.4秒で+2.84±2.00 Elo（[#370](https://github.com/cosmobobak/viridithas/pull/370)）。 | 実装済みbutterfly historyの改良である。現行は上限超過時に表全体を半減する。malusはSTCの振分けで進まなかったので、再挑戦するなら減点の形も併せて変える別の主張になる。 |
 | fail-low時の直前手への加点（prior-move bonus） | ノードがfail-lowしたとき、相手の直前の静かな手を良い手として加点する。 | Stockfish | STCで≈+1.15、LTCで≈+1.38 Elo（[7395d568](https://github.com/official-stockfish/Stockfish/commit/7395d568)）。主historyへの加点はSTCで≈+0.70、LTCで≈+3.33 Elo（[d97a02ea](https://github.com/official-stockfish/Stockfish/commit/d97a02ea)）。 | 自分の失敗手を減点するmalusとは向きも対象も異なる。 |

@@ -22,7 +22,7 @@ minase の探索は、各機能を中将棋向けの独自の設計書の決定�
 
 ### 2. null move pruning
 
-- minase: `negamax.rs:78-115`、`pruning.rs:62-65`。導入 06f7fd6（2026-08-22）で `reduction = 2 + depth / 6`、5464779（2026-09-22）で `(切片 + depth × 傾き) / 1200` に書き換え（切片2,400、傾き200で旧式と厳密一致、`docs/plans/spsa.md` 98行と174行）、SPSAで 3529/238。
+- minase: `negamax.rs:78-115`、`pruning.rs:62-65`。導入 06f7fd6（2026-08-22）で `reduction = 2 + depth / 6`、5464779（2026-09-22）で `(切片 + depth × 傾き) / 1200` に書き換え（切片2,400、傾き200で旧式と厳密一致、`docs/plans/archived/spsa.md` 98行と174行）、SPSAで 3529/238。
 - 対照: Stockfish sf_10 `search.cpp:788`（`(823 + 67 * depth) / 256 + min((eval - beta) / 200, 3)`）、17a6c8f `search.cpp:1035`（`7 + depth / 3 + max((staticEval - beta) / 256, 0)`）、YaneuraOu c1b80eaa `yaneuraou-search.cpp:3252`（`7 + depth / 3`）、Ethereal `search.c:518`（`4 + depth / 5 + MIN(3, (eval - beta) / 191)`）。
 - 実装固有の一致: なし。分母1,200は minase が `depth / 6` を整数で厳密に表すために選んだ値であり、Stockfish sf_10 の256とは由来が異なる。
 - 反証: 詰み値の結果を β へ置き換える（YaneuraOu と Stockfish の現行版は `!is_win(nullValue)` で返却自体を避け、検証探索を持つ）。連続null禁止は `null_move_ply` の記録で実装し、王駒以外の駒の有無を条件にする中将棋固有の判定を持つ。
@@ -39,7 +39,7 @@ minase の探索は、各機能を中将棋向けの独自の設計書の決定�
 
 ### 4. LMR（減深量表と history による増減）
 
-- minase: `pruning.rs:14-38`（表）、`:67-82`（`lmr_reduction`）、`negamax.rs:185-194`。導入 38bef0a（2026-08-22、固定1）、73578d4（2026-09-06、`floor(ln d · ln m / 2.0)`、上限 `min(3, d − 2)`、history閾値128で ±1）。設計書 `docs/plans/strength-stage5.md` は Stockfish の `r ≈ 0.47 · ln d · ln m` を係数の探索範囲の中心としてだけ挙げ、係数は自前の診断benchで決めたと記す。
+- minase: `pruning.rs:14-38`（表）、`:67-82`（`lmr_reduction`）、`negamax.rs:185-194`。導入 38bef0a（2026-08-22、固定1）、73578d4（2026-09-06、`floor(ln d · ln m / 2.0)`、上限 `min(3, d − 2)`、history閾値128で ±1）。設計書 `docs/plans/archived/strength-stage5.md` は Stockfish の `r ≈ 0.47 · ln d · ln m` を係数の探索範囲の中心としてだけ挙げ、係数は自前の診断benchで決めたと記す。
 - 対照: Stockfish 17a6c8f `search.cpp:725`（`reductions[i] = int(2872 / 128.0 * log(i))`、1,024分率の連続補正）、sf_10 `Reductions[2][2][64][64]`、Ethereal `search.c:155`（`0.7844 + log(depth) * log(played) / 2.4696`）、akimbo `search.rs:509-510, 607`（`lmr_base + ln(depth) / (lmr_divisor / 100) · ln(legal)`）。
 - 実装固有の一致: 除数を百分率の整数 `lmr_divisor` で持ち `f64::from(divisor) / 100.0` で割る表現が akimbo と同じである（params の項で扱う）。
 - 反証: minase の表は定数項を持たず `floor` で丸め、`[MAX_PLY + 1][256]` の `OnceLock` 表に保持する。history 補正は閾値による ±1 の3値で、Stockfish や Ethereal の連続的な `history / K` を設計書が明示的に不採用としている。
@@ -102,7 +102,7 @@ minase の探索は、各機能を中将棋向けの独自の設計書の決定�
 
 - minase: `params.rs:7-51`（マクロ）、`:53-99`（係数表）、`pruning.rs:35-38`（`lmr_base`）。導入 5464779（2026-09-22）。
 - 対照: akimbo f7dd767 `src/util.rs:37-105`（`tunable_params!`）、`src/search.rs:18-28, 509-510`、Hobbes 1f3e466 `src/tools/utils.rs:3-73`、Reckless 31d9cd6 `src/parameters.rs:1-35`、viridithas 13a3fe1 `src/search/parameters.rs`。
-- 設計書: `docs/plans/spsa.md` 94行が「Rust製チェスエンジンのHobbesとakimboがこの形を採る」と記して採用し、Reckless の `static mut` を不採用とする。302行と303行が akimbo `util.rs`、Hobbes、Reckless、viridithas をコミット付きで挙げる。
+- 設計書: `docs/plans/archived/spsa.md` 94行が「Rust製チェスエンジンのHobbesとakimboがこの形を採る」と記して採用し、Reckless の `static mut` を不採用とする。302行と303行が akimbo `util.rs`、Hobbes、Reckless、viridithas をコミット付きで挙げる。
 - 実装固有の一致:
   - cargo feature 名が `tuning` である（akimbo と Hobbes も `tuning`。Reckless は `spsa`）。
   - 1つのマクロが係数ごとに `cfg(not(feature = "tuning"))` の既定値関数と `cfg(feature = "tuning")` の `AtomicI32` 読み出し関数の2通りを生成し、両方に `#[inline]` を付け、`Ordering::Relaxed` で読み書きする。
@@ -127,7 +127,7 @@ minase の探索は、各機能を中将棋向けの独自の設計書の決定�
 ### 14. YaneuraOu の日本語コメントとの対応
 
 - YaneuraOu c1b80eaa の null move 節（3238-3300行）、IIR 節（3309-3342行）、補正の更新（4417行）のコメントを、minase の `negamax.rs` と `quiesce.rs` のコメントと照合した。
-- minase のコメントは設計書の節名を参照する形式（「docs/plans/strength-stage6.md『internal iterative reduction』節」など）であり、YaneuraOu の「証明されていないmate scoreやTB scoreはreturnで返さない」などの訳注と対応する文はない。
+- minase のコメントは設計書の節名を参照する形式（「docs/plans/archived/strength-stage6.md『internal iterative reduction』節」など）であり、YaneuraOu の「証明されていないmate scoreやTB scoreはreturnで返さない」などの訳注と対応する文はない。
 - 判定: 2。
 
 ## モジュールごとの判定

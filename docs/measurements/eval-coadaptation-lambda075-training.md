@@ -2,7 +2,7 @@
 
 ## 目的
 
-[共適応の検証](../plans/eval-search-coadaptation.md)の「追加診断」の「追加学習の対照」として、[Pλ](eval-coadaptation-lambda100-training.md)と同じ設定から混合比の置き換えだけを除き、採用PSTであるG23の上へλ=0.75のまま10エポックを重ねた対照Pcを学習し、学習後の診断を通す。
+[共適応の検証](../plans/archived/eval-search-coadaptation.md)の「追加診断」の「追加学習の対照」として、[Pλ](eval-coadaptation-lambda100-training.md)と同じ設定から混合比の置き換えだけを除き、採用PSTであるG23の上へλ=0.75のまま10エポックを重ねた対照Pcを学習し、学習後の診断を通す。
 
 ## コマンドライン
 

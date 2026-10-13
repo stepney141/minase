@@ -23,7 +23,7 @@ benchの出力の照合には`scripts/bench_compare.py`を使える（[デバッ
 
 ## 出典
 
-- [plans/core-layout.md](../plans/core-layout.md) の「状態」節と「検証」節。
-- [plans/search-eval-layout.md](../plans/search-eval-layout.md) の「状態」節と「検証」節。
-- [plans/bin-harness-layout.md](../plans/bin-harness-layout.md) の「状態」節と「検証」節。
-- [plans/train-tools-layout.md](../plans/train-tools-layout.md) の「検証」節（ソース行の多重集合の比較）。
+- [plans/core-layout.md](../plans/archived/core-layout.md) の「状態」節と「検証」節。
+- [plans/search-eval-layout.md](../plans/archived/search-eval-layout.md) の「状態」節と「検証」節。
+- [plans/bin-harness-layout.md](../plans/archived/bin-harness-layout.md) の「状態」節と「検証」節。
+- [plans/train-tools-layout.md](../plans/archived/train-tools-layout.md) の「検証」節（ソース行の多重集合の比較）。

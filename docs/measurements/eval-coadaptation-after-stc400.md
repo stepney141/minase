@@ -2,7 +2,7 @@
 
 ## 目的
 
-[共適応の検証](../plans/eval-search-coadaptation.md)のフェーズ4として、探索係数をCλに合わせて[SPSAで調整](eval-coadaptation-spsa.md)した候補Cλ\*を、[調整前の測定](eval-coadaptation-before-stc400.md)と同じ開始局面の組でS0と400ペア対局させ、負けがどれだけ縮むかを測る。
+[共適応の検証](../plans/archived/eval-search-coadaptation.md)のフェーズ4として、探索係数をCλに合わせて[SPSAで調整](eval-coadaptation-spsa.md)した候補Cλ\*を、[調整前の測定](eval-coadaptation-before-stc400.md)と同じ開始局面の組でS0と400ペア対局させ、負けがどれだけ縮むかを測る。
 この測定は第1段の判定に使い、採否の根拠にはしない。
 
 ## コマンドライン

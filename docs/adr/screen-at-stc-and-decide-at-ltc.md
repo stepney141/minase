@@ -7,7 +7,7 @@
 ## コンテキスト
 
 それまでの機能採否は、秒読みを含む1つの時間制御のGSPRTで行っていた。
-[棋力測定の段階ゲート](../plans/match-staged-gate.md)の旧案は、真の効果が既知のエンジンの組（比較カード）で候補の時間制御の効率を校正してから標準を決める方式だった。
+[棋力測定の段階ゲート](../plans/archived/match-staged-gate.md)の旧案は、真の効果が既知のエンジンの組（比較カード）で候補の時間制御の効率を校正してから標準を決める方式だった。
 初回の校正では、負例の比較カードで候補が400局全敗してペア得点の分散が0になり、指標を算出できなかった（[負例の記録](../measurements/calibration-negative-current.md)）。
 正例の比較カードは200ペアでEloの95%信頼区間が40.43〜108.02と粗く（[正例の記録](../measurements/calibration-positive-current.md)）、閾値の判定には本測定より大きい標本が要った。
 一方、固定ノード数の条件と時間制御の条件が同じ優劣の向きを示した組は3つあり（[PST世代0](../measurements/pst-gen0-tc.md)、[PST世代1](../measurements/pst-gen1-tc.md)、[P型NNUE世代1](../measurements/nnue-gen1-tc.md)）、向きが反転した例は記録になかった。
@@ -15,7 +15,7 @@
 
 ## 決定
 
-機能採否は、fishtestの標準（[段階ゲートの参考資料](../plans/match-staged-gate.md#参考資料)）に倣って秒読みのないSTCのGSPRTで選別し、通過した候補だけをLTCのGSPRTにかけ、採用はLTCの`H1`だけで決める。
+機能採否は、fishtestの標準（[段階ゲートの参考資料](../plans/archived/match-staged-gate.md#参考資料)）に倣って秒読みのないSTCのGSPRTで選別し、通過した候補だけをLTCのGSPRTにかけ、採用はLTCの`H1`だけで決める。
 STCは3,000ペアで打ち切り、上限に達した判定保留は停止時点のLLRが0以上ならLTCへ進め、負なら進めない。
 短時間条件では効果が原理的に現れない変更は、その理由を測定開始前に設計書へ記録した場合に限り、STCを省いてLTCから始めてよい。
 

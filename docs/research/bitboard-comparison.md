@@ -83,7 +83,7 @@ minaseの[`sliding_control`](../../crates/minase-core/src/attacks/tables.rs)は�
 反転によって減る方向を増える方向へ変えるので、1回の減算で両方向を処理できる。
 角は、SIMD（1命令で複数の値を処理する命令群）の256ビット型で4方向をまとめて計算する。
 minaseの減る方向は、最上位ビットの探索と2回目の表引きに依存する。
-第2期の高速化の段階4では、減る方向を`leading_zeros`と番兵表で書き直す案を試したが、親比1.0039倍で採用しなかった（[第2期の設計書](../plans/movegen-speedup-2.md)、[段階4の測定](../measurements/movegen-speedup-2-stage4-bench-depth5.md)）。
+第2期の高速化の段階4では、減る方向を`leading_zeros`と番兵表で書き直す案を試したが、親比1.0039倍で採用しなかった（[第2期の設計書](../plans/archived/movegen-speedup-2.md)、[段階4の測定](../measurements/movegen-speedup-2-stage4-bench-depth5.md)）。
 バイト反転による案は試しておらず、効果は測定していない。
 
 計算の単位も異なる。

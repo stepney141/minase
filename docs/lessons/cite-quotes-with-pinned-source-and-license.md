@@ -22,5 +22,5 @@
 
 ## 出典
 
-- [plans/crate-split.md](../plans/crate-split.md) の「文書にある第三者のコードと文章」節（利用者の決定）。
+- [plans/crate-split.md](../plans/archived/crate-split.md) の「文書にある第三者のコードと文章」節（利用者の決定）。
 - [audits/third-party-code-provenance-2026-09-28.md](../audits/third-party-code-provenance-2026-09-28.md) の所見F4。

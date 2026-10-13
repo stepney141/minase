@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-[デバッグ機能の整備](../plans/debugging-tools.md)は、先行エンジンが持ちminaseに欠けている調査の道具を洗い出した（[調査メモ](../research/engine-debugging-survey.md)）。
+[デバッグ機能の整備](../plans/archived/debugging-tools.md)は、先行エンジンが持ちminaseに欠けている調査の道具を洗い出した（[調査メモ](../research/engine-debugging-survey.md)）。
 StockfishのCIは、ThreadSanitizer、UndefinedBehaviorSanitizer、およびvalgrindで試験を実行する（同じ[調査メモ](../research/engine-debugging-survey.md)）。
 AddressSanitizer、valgrind、およびMiriが主に検出するのは、unsafeなコードによるメモリの誤用である。
 ライブラリ`minase-core`とエンジン`minase`は、ワークスペースのlintで`unsafe_code = "forbid"`を宣言している。

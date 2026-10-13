@@ -16,5 +16,5 @@ HaChuのddugovic派生版は`usermove`で受けた着手の照合に欠陥があ
 
 ## 出典
 
-- [plans/match-harness.md](../plans/match-harness.md) の「HaChuとの比較」
+- [plans/match-harness.md](../plans/archived/match-harness.md) の「HaChuとの比較」
 - [protocols/hachu.md](../research/protocols/hachu.md) 第11章

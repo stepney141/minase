@@ -12,7 +12,7 @@ null move pruningは、手番を仮に相手へ渡して浅く読み、それで
 null moveは実際の対局に現れないので、この引き分けは実在しない。
 監査によれば、benchを深さ9で探索すると、null moveをまたぐ反復が1,986件あった。
 Stockfishは反復の検出を直前のnull moveまでに限り、ElephantEyeも遡りをnull moveで止める（[反復の先行実装の調査](../research/search-repetition-prior-art.md)）。
-[探索部の不具合修正](../plans/search-bug-fixes.md)は、この修正を探索値の正しさの回復と位置づけ、+10 Eloの向上ではなく非劣性で採否を判定した。
+[探索部の不具合修正](../plans/archived/search-bug-fixes.md)は、この修正を探索値の正しさの回復と位置づけ、+10 Eloの向上ではなく非劣性で採否を判定した。
 masterを候補、修正を基準にしたGSPRTは、[STC](../measurements/search-bug-fixes-null-move-noninferiority-stc.md)でmasterの得点率45.7%、[LTC](../measurements/search-bug-fixes-null-move-noninferiority-ltc.md)で48.0%となり、いずれも`H0`であった。
 修正によって、benchの深さ9の総ノード数は8.0%減った（[測定記録](../measurements/search-bug-fixes-bench.md)）。
 

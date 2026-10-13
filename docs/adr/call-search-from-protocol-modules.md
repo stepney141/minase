@@ -6,11 +6,11 @@
 
 ## コンテキスト
 
-[プロトコル層](../plans/protocol-layer.md)は、エンジン本体を標準入出力から切り離し、プロトコルに依存しない状態機械`Engine`に、コマンド`EngineCommand`と応答`EngineReply`だけを扱わせる構造を採った。
-この構造は、Rust製のチェスエンジンRusticの通信設計に倣ったものである（[プロトコル層の参考資料](../plans/protocol-layer.md#参考資料)）。
+[プロトコル層](../plans/archived/protocol-layer.md)は、エンジン本体を標準入出力から切り離し、プロトコルに依存しない状態機械`Engine`に、コマンド`EngineCommand`と応答`EngineReply`だけを扱わせる構造を採った。
+この構造は、Rust製のチェスエンジンRusticの通信設計に倣ったものである（[プロトコル層の参考資料](../plans/archived/protocol-layer.md#参考資料)）。
 プロトコル層の時点では探索がなかったので、入出力は受信順に1行ずつ処理する同期の実装とした。
-[ブラウザGUI向けUSI照会](../plans/browser-gui.md)は、読み取り専用の照会`moves`と`state`のために列挙子を加えず、USIのモジュールが`Engine`を直接読む整理を採った。
-[外部対局接続](../plans/engine-connectivity.md)では、探索の起動、停止、および結果の受領をどこに置くかを決める必要が生じた。
+[ブラウザGUI向けUSI照会](../plans/archived/browser-gui.md)は、読み取り専用の照会`moves`と`state`のために列挙子を加えず、USIのモジュールが`Engine`を直接読む整理を採った。
+[外部対局接続](../plans/archived/engine-connectivity.md)では、探索の起動、停止、および結果の受領をどこに置くかを決める必要が生じた。
 探索が返した手の扱いは、USIとCECPで異なる。
 USIでは`go infinite`と先読みの探索が`bestmove`を保留し、CECPでは探索の手をエンジン自身が対局へ適用して`move`行で送る。
 

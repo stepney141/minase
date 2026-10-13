@@ -14,4 +14,4 @@
 
 ## 出典
 
-[合法手生成と利き計算の高速化](../plans/movegen-speedup.md)の単位D、[PGOの測定記録](../measurements/movegen-speedup-pgo-bench-depth5.md)。
+[合法手生成と利き計算の高速化](../plans/archived/movegen-speedup.md)の単位D、[PGOの測定記録](../measurements/movegen-speedup-pgo-bench-depth5.md)。

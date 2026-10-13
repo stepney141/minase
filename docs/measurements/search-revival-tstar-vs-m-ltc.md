@@ -2,7 +2,7 @@
 
 ## 目的
 
-[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)の段階4として、候補T\*とMを標準LTCのGSPRTで比較し、T\*の採否を決める。
+[不採用だった探索部の改良の再調整](../plans/archived/search-revival-spsa.md)の段階4として、候補T\*とMを標準LTCのGSPRTで比較し、T\*の採否を決める。
 
 ## コマンドライン
 
