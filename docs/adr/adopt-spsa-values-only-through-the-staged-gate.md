@@ -30,3 +30,4 @@ LTCで調整する案は、調整に数倍の時間を要するので最初の�
 この手順で、[最初のセッション](../measurements/spsa-stage9-20260923.md)の値は[STC](../measurements/spsa-stage9-20260923-stc.md)と[LTC](../measurements/spsa-stage9-20260923-ltc.md)でともに`H1`となって採用された。
 採否の前に、STCの条件の短い対局で時間切れとエンジン異常がないことを確かめ、総思考時間の比などを解釈のために記録する手順は[SPSAの手引き](../guides/spsa.md)にある。
 係数を足すときも、範囲の端で時間切れが起きないかの事前確認と、全係数を1組とする採否の手順は変わらない。
+後の[探索の8項目の一括採用](adopt-revived-search-items-as-a-bundle.md)は、機能の追加と係数の調整を1つの候補にまとめ、現行のmasterより強いかを問うために、調整対象ではなく機能を足す前のmasterを基準とした（[再調整の設計書](../plans/search-revival-spsa.md)）。

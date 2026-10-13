@@ -13,12 +13,13 @@
 fishtest、fastchess、cutechess-cli、およびAyaneは、いずれも再開時にrunner自身のハッシュを照合しない（[再開条件の簡素化の参考資料](../plans/match-resume-simplification.md#参考資料)）。
 fastchessは、中断時に保存した設定ファイルだけを読んで再開する（[再開条件の簡素化の参考資料](../plans/match-resume-simplification.md#参考資料)）。
 審判層、開始局面の生成、および時計の裁定の意味の変化は、審判層の試験、perft、および固定シードの出力の一致で検証している。
+実行ディレクトリの記録形式は版で区別され、この決定より前の版4は起動ごとの記録`invocations.json`を持たない。
 
 ## 決定
 
 `--resume`は実行条件をすべて`manifest.json`から読み、再開時に条件を変える引数はペア数の目標を引き上げる`--target-pairs`だけとする。
 runnerの版とSHA-256、および測定機は照合せずに起動ごとに`invocations.json`へ記録し、対局するエンジンの実行ファイルのSHA-256は引き続き照合する。
-`random`はSHA-256を照合せずに指定の種類だけで同一とみなし、記録形式の版4の実行ディレクトリは読み取りだけを受け付け、手順の詳細は`RunStore::resume`と`match_runner`の`resume`モジュールのdocコメントに従う。
+`random`はSHA-256を照合せずに指定の種類だけで同一とみなし、版4の実行ディレクトリは集計などの読み取りでだけ受け付けて再開を拒み、手順の詳細は`RunStore::resume`と`match_runner`の`resume`モジュールのdocコメントに従う。
 
 ## 検討した代案
 

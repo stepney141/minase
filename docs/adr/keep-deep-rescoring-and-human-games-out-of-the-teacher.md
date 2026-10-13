@@ -13,8 +13,8 @@
 追加Bは、lishogiの人間どうしの棋譜の局面を、対局結果だけを教師値とする分類として加えるものである。
 追加Cは、棋譜の途中局面から始めた自己対局の局面を加えるものである。
 [教師の構成の記録](../measurements/strength-stage9-teacher-composition.md)のとおり、3つとも基準を満たさなかった。
-[診断A](../measurements/strength-stage9-depth-sensitivity.md)の層別の差の差は−5.6センチポーンで、片側95%上端+18.4が基準の−30以下に届かなかった。
-[診断B](../measurements/strength-stage9-human-signal.md)と[診断C](../measurements/strength-stage9-human-start-signal.md)の対数損失の差は、片側95%下限がいずれも0を超えなかった。
+追加Aの[診断](../measurements/strength-stage9-depth-sensitivity.md)では、層別の差の差は−5.6センチポーンで、片側95%上端+18.4が基準の−30以下に届かなかった。
+追加Bの[診断](../measurements/strength-stage9-human-signal.md)と追加Cの[診断](../measurements/strength-stage9-human-start-signal.md)では、対数損失の差の片側95%下限がいずれも0を超えなかった。
 
 ## 決定
 
@@ -24,7 +24,7 @@
 
 3つの追加をそれぞれ加える案は、事前の基準を満たさなかったので採らなかった。
 基準に届かなかった追加について、区間、範囲、または標本を変えた変種を測り直す案は、結果を見てから変種を足すことになるので採らなかった。
-全局面の教師探索のノード数を引き上げる案は、10倍で1世代に約1週間を要し、敗局の局面では探索を数倍深くしても危険が見えなかったので採らなかった。
+全局面の教師探索のノード数を引き上げる案は、段階9の設計書の見積もりで10倍なら1世代に約1週間を要し、敗局の局面では探索を数倍深くしても危険が見えなかったので採らなかった。
 
 ## 結果
 

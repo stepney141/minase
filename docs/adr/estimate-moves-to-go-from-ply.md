@@ -11,7 +11,7 @@
 また、この予算式では、残り時間が少ない局面でsoftがhardを超えることがあった。
 [棋力向上段階2](../plans/strength-stage2.md)は、段階1の保存記録から各手の時計を再構成し、中盤以降の大半の手がhardで打ち切られていると診断した。
 打ち切られた反復の計算は、置換表に残る分を除いて捨てられる。
-停止理由を記録した[段階開始版の煙試験](../measurements/strength-stage2-phase1-smoke.md)では、100〜150手の帯で79%、400手以降で92%の手がhardで打ち切られていた。
+停止理由を記録した[段階2の開始時の版の煙試験](../measurements/strength-stage2-phase1-smoke.md)では、100〜150手の帯で79%、400手以降で92%の手がhardで打ち切られていた。
 
 ## 決定
 
@@ -28,7 +28,7 @@ softがhardを超えない性質だけを単独の項目として測る案は、
 
 ## 結果
 
-予算式は、段階開始版を基準に、STCが有効444ペアでLLR +2.948、LTCが有効519ペアでLLR +2.963の`H1`だった（[STC](../measurements/strength-stage2-budget-stc.md)、[LTC](../measurements/strength-stage2-budget-ltc.md)）。
+予算式は、段階2の開始時の版を基準に、STCが有効444ペアでLLR +2.948、LTCが有効519ペアでLLR +2.963の`H1`だった（[STC](../measurements/strength-stage2-budget-stc.md)、[LTC](../measurements/strength-stage2-budget-ltc.md)）。
 2定数の当初値は`ExpectedPlies`が450、`MinMoves`が100であり、現行値は後にSPSAで調整した値である。
 plyは`Engine`がSFENの手数欄から求める絶対手数であり、探索履歴の長さから推測しない。
 300手目以降は長く続いた対局ほど期待される残り手数が増えるが、そこでは加算の項が予算の大半を占めるので、見積りは下限で一定とした。

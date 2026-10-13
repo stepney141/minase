@@ -30,3 +30,4 @@ fail-highによる延長は、fail-highが評価値の上がる兆候であり�
 反復数4を選んだ理由は、`crates/minase/src/search/alphabeta/time.rs`の`STABLE_ITERATIONS`のdocコメントにある。
 継続判断の関数は延長の真偽値を受け取らない。
 延長を再び提案する場合は、別の信号として段階ゲートにかける必要がある。
+この規則は持ち時間の期間に限る。秒読みの期間では、予測と最善手の安定性を使わず、経過時間がhard未満であるかだけで次の反復を始めるかを決める（`should_start_next_iteration`）。

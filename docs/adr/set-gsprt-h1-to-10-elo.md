@@ -7,6 +7,7 @@
 ## コンテキスト
 
 それまでのGSPRTはH1を5 Eloとしていた。
+当時は、探索と時間管理の改良を段階ごとに積む棋力向上の段階計画が進行中であり、各段階が複数の項目を採否測定にかけていた。
 GSPRTの期待ペア数はH0とH1の得点差の二乗に反比例し、真の効果がH0とH1の中間にあるときに最大になる。
 [棋力測定の所要時間削減](../plans/match-cost-reduction.md)の試算では、H1が5 Eloのままだと、効果が10 Elo以下の変更は1回の採否に2〜4日を要した。
 一方、段階ゲートで測った2件のLTCの効果は大きく、200〜400ペアで決着していた（[段階1の最終構成](../measurements/strength-stage1-final-ltc.md)、[段階1の段階的な手生成](../measurements/strength-stage1-staged-picker-ltc.md)）。

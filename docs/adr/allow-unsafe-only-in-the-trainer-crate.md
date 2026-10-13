@@ -15,7 +15,7 @@ cudarcのカーネル起動とページ固定メモリ（OSが移動しないと
 
 学習器のクレート`crates/minase-trainer`だけはworkspaceのlintを継承せず、`unsafe`を許す。
 `minase`と`minase-core`は`unsafe_code = "forbid"`を保つ。
-学習器の中でも、`unsafe`はGPUの処理を置く`nnue::gpu`と、教師データを写す`unsafe fn`の`data::Dataset::open`とその呼び出し箇所に限り、各ブロックに前提条件を書く（詳細は`nnue::gpu`と`Dataset::open`のdocコメントにある）。
+学習器の中でも、`unsafe`はGPUの処理を置く`nnue::gpu`と、教師データを写す`data`モジュールの`unsafe fn`である`Dataset::open`と内部の`MappedFile::open`、およびそれらの呼び出し箇所に限り、各ブロックに前提条件を書く（詳細は`nnue::gpu`と`Dataset::open`のdocコメントにある）。
 
 ## 検討した代案
 

@@ -16,8 +16,7 @@ LTCは187有効ペア、ペンタノミアル度数[21, 2, 84, 0, 80]、LLR +2.9
 
 ## 決定
 
-王駒を含む盤上総駒数Nから補間係数q = min(90, max(0, N − 2))を求め、序中盤用の和にq、終盤用の和に90 − qを掛けて足し、最後に1回だけ整数で割る。
-NNUEの線形の経路も同じ式で補間する（詳細は`pst::phase`と`Network::evaluate_accumulator`のdocコメントにある）。
+王駒を含む盤上総駒数Nから補間係数q = min(90, max(0, N − 2))を求め、序中盤用の和にq、終盤用の和に90 − qを掛けて足し、最後に1回だけ整数で割る（詳細は`pst::phase`と`Network::evaluate_accumulator`のdocコメントにある）。
 
 ## 検討した代案
 
@@ -32,4 +31,4 @@ NNUEの線形の経路も同じ式で補間する（詳細は`pst::phase`と`Net
 補間係数は盤上の密度の近似であり、王の危険度や終局までの距離を表さない。
 補間係数が小さい局面だけに現れる特徴の終盤側の重みは、少数の局面で決まりやすい。
 探索用駒価値は補間せず1組の固定値を使うので、評価関数が端点ごとに学ぶ駒の価値とは離れ得る（[探索用駒価値は学習PSTから導いた値に固定する](derive-search-piece-values-from-the-learned-pst.md)）。
-NNUEの出力で駒数による不連続を避ける判断は、[NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)が扱う。
+NNUEの線形の経路も同じ式で補間しており、その経路を置いて駒数による出力の不連続を避けた判断は、[NNUEの出力を、PSTを移した線形の経路と隠れ層のない直接内積の和にする](compose-the-nnue-of-a-pst-path-and-a-direct-screlu-head.md)が扱う。

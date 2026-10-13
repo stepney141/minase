@@ -9,7 +9,7 @@
 不具合の調査では、現局面、評価値の内訳、および置換表の項目を表示する手段が要る。
 置換表は、探索が終わった後もUSI層の`UsiProtocol`が保持し、次の探索へ引き継ぐ。
 置換表を照会し、探索の後に手を進めながら木を辿ると、ある手が捨てられた理由と反駁手を調べられる（[調査メモ](../research/engine-debugging-survey.md)）。
-StockfishとYaneuraOuも、局面の表示`d`と評価の表示`eval`をプロトコルのコマンドとして持つ（[調査メモ](../research/engine-debugging-survey.md)）。
+StockfishとYaneuraOuも、局面の表示`d`と評価の表示をプロトコルのコマンドとして持ち、YaneuraOuの現行版では評価値だけを出す`e`がその役を担う（[調査メモ](../research/engine-debugging-survey.md)）。
 minaseのUSI層には、lishogiのBotブリッジ、開発用GUI、および対局ハーネスが接続する。
 この判断は[デバッグ機能の整備](../plans/debugging-tools.md)で下した。
 
