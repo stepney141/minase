@@ -1,6 +1,6 @@
 //! 入力は正規化したパスと、形式に応じたヘッダまたはバイト長で識別する。
 //! MNSDは`byte_length`と`header`（規則、生成コミット、重みの検査和、ノード上限、シード、記録数）を持つ。
-//! MNPTとMNUEはヘッダに記録済みの`checksum`、NPZと学習チェックポイントは`byte_length`を持つ。
+//! MNPTとMNUEはヘッダに記録済みの`checksum`、NPZ（学習器のチェックポイントを含む）は`byte_length`を持つ。
 
 use crate::nn::hex;
 use minase::training::records::{HEADER_LEN, Header};
@@ -46,7 +46,7 @@ pub fn file_identity(path: &Path) -> io::Result<FileIdentity> {
             file.read_exact(&mut bytes[4..])?;
             json!({"checksum": hex(&bytes[end-32..])})
         }
-        b"PK\x03\x04" | b"MNTR" => json!({"byte_length": length}),
+        b"PK\x03\x04" => json!({"byte_length": length}),
         _ => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,

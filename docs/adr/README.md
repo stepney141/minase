@@ -230,3 +230,6 @@ PSTは駒の種類と升ごとの値の表による評価、FMはFactorization M
 - 2026年10月13日 [Pythonの学習器は一度だけ照合した後に撤去し、Rustの学習器だけを正とする](retire-the-python-trainer-after-a-one-time-cross-check.md)
 - 2026年10月13日 [学習器は評価関数ごとに独立したパイプラインを持ち、データの読み込みと汎用の部品だけを共有する](split-training-pipelines-by-evaluation-function.md)
 - 2026年10月13日 [設計書を持つ作業はすべてROADMAPの状態表に載せる](list-every-planned-work-in-the-roadmap.md)
+- 2026年10月13日 [教師データの由来をMNSDのレコードに置き、来歴ファイルと全体の検査和をやめる](record-the-origin-in-mnsd-records.md)
+- 2026年10月13日 [各ファイル形式の版を1つにし、過去のファイルを読み続けない](keep-one-version-per-file-format.md)
+- 2026年10月13日 [学習器のチェックポイントをNPZに置き、設定そのものを収めて比べる](store-trainer-checkpoints-as-npz.md)
