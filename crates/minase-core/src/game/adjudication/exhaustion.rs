@@ -3,20 +3,19 @@
 use super::super::result::{DrawReason, GameResult, WinReason};
 use crate::board::{BOARD_RANKS, Square};
 use crate::movegen::MoveGenerator;
-use crate::mv::Move;
 use crate::piece::{Color, PieceKind};
-use crate::position::{Position, Undo};
+use crate::position::Position;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// 駒枯れ条件の判定結果。
 pub(crate) enum PieceExhaustionOutcome {
     /// 駒枯れの条件(第22条第1項)が成立していない。
     ConditionNotMet,
-    /// 双方が王駒だけとなる引き分け(第22条第8項)。
+    /// 双方に王駒が1枚ずつだけ残る引き分け(第22条第8項)。
     Draw,
     /// 余分な駒を持つ側の勝ち(第22条第1項)。
     Win(Color),
-    /// 余分な駒を取れる側への1手猶予の開始(第22条第5項)。
+    /// 余分な駒または相手の最後の王駒を取れる側への1手猶予の開始(第22条第5項)。
     GraceStart,
 }
 
@@ -31,82 +30,74 @@ pub(super) struct PieceExhaustionTransition {
 
 /// 駒枯れ条件と1手猶予の適用結果を返す。
 ///
-/// 双方の王駒が1枚ずつの場合に限り、盤上に唯一残った王駒以外の駒を余分な駒とする。
-/// 最奥段で移動不能の不成の歩兵と香車は余分な駒として数えず、条件不成立とする
-/// （RULES.md第22条第4項）。
-/// 王駒以外の駒がない場合の引き分けも、双方の王駒が1枚ずつの場合に限る（第22条第8項）。
+/// 双方に王駒を1枚ずつ残し、それ以外が片側に1枚だけある場合を対象とする
+/// （RULES.md第22条第1項・第9項）。王将と太子を併せ持つ側では一方を余分な駒と数え、
+/// どちらを取られても余分な駒を失ったと扱う。
+/// 唯一の余分な駒が最奥段で移動不能の不成の歩兵または香車なら、条件不成立とする（第4項）。
+/// 引き分けは、双方に王駒が1枚ずつだけ残る場合に限る（第8項）。
 ///
-/// 猶予は、条件成立時に王駒だけの側が手番を持ち、余分な駒を次の1手で取れる場合に限る。
-/// 余分な駒を持つ側の手番なら直ちにその側の勝ちとする。
-/// 猶予は王駒だけの側の次の1手で解消する。
-/// 歩兵または仲人が非捕獲の手で成った直後には猶予を与えず、直ちに勝ちとする。
-/// 捕獲を伴う成りにはこの即時裁定を適用せず、通常の条件で猶予を判定する。
+/// 余分な駒が不成の歩兵または仲人なら成るまで勝ちとせず、成った後は通常の猶予を適用する
+/// （第2項・第3項）。猶予は、王駒だけの側に手番があり、余分な駒または相手の最後の王駒を
+/// 次の1手で取れる場合に与える（第5項）。余分な駒を持つ側の手番なら直ちにその側の勝ちとなる。
+/// 猶予中の捕獲後に双方が王駒1枚ずつになれば引き分け、それ以外は余分な駒を持つ側の勝ちとなる
+/// （第6項から第8項）。最後の王駒の捕獲による勝利は、呼び出し側が先に裁定する（第21条第1項）。
 pub(crate) fn piece_exhaustion_outcome(
     position: &Position,
     generator: &MoveGenerator,
-    promoted_waiting_piece: Option<Square>,
     grace_pending: bool,
 ) -> PieceExhaustionOutcome {
-    // 第22条第8項: 双方に王駒以外の駒がなければ引き分け。ただし王駒が
-    // 1枚ずつでなければ(太子併存など)駒枯れの対象外として対局を続ける。
     let royals = Color::ALL.map(|color| position.royal_pieces(color));
-    let non_royals = position.occupied() & !(royals[0] | royals[1]);
-    if non_royals.is_empty() {
-        return if royals.into_iter().all(|royal| royal.popcount() == 1) {
-            PieceExhaustionOutcome::Draw
-        } else {
-            PieceExhaustionOutcome::ConditionNotMet
-        };
-    }
-    // 第22条第1項: 双方に王駒が1枚ずつ残り、王駒以外の駒が一方に1枚だけ。
-    if royals.into_iter().any(|royal| royal.popcount() != 1) || non_royals.popcount() != 1 {
+    if royals.into_iter().any(|royal| royal.is_empty()) {
         return PieceExhaustionOutcome::ConditionNotMet;
     }
 
-    let extra_square = non_royals
-        .lsb()
-        .expect("one non-royal piece must have a square");
-    let extra_piece = position
-        .piece_at(extra_square)
-        .expect("the non-royal square must contain a piece");
-    let extra_color = extra_piece
-        .color()
-        .expect("the extra piece must have an owner");
-    let extra_kind = extra_piece
-        .kind()
-        .expect("the extra piece must have a kind");
+    // 第22条第1項・第9項: 王駒を1枚ずつ除いた残りが片側に1枚だけなら対象となる。
+    // 王将と太子の併存も2枚と数え、双方1枚だけの場合は第8項の引き分けとする。
+    let extra_color = match Color::ALL.map(|color| position.pieces_of(color).popcount()) {
+        [1, 1] => return PieceExhaustionOutcome::Draw,
+        [2, 1] => Color::Black,
+        [1, 2] => Color::White,
+        _ => return PieceExhaustionOutcome::ConditionNotMet,
+    };
 
-    // 第22条第4項: 最奥段で移動不能となった歩兵・香車は余分な駒として数えない。
-    if !extra_piece.is_promoted()
-        && matches!(extra_kind, PieceKind::Pawn | PieceKind::Lance)
-        && is_last_rank(extra_color, extra_square)
-    {
-        return PieceExhaustionOutcome::ConditionNotMet;
-    }
-    // 第22条第2項・第3項: 余分な駒が不成の歩兵・仲人なら、成るまで勝利は成立しない。
-    if !extra_piece.is_promoted() && matches!(extra_kind, PieceKind::Pawn | PieceKind::GoBetween) {
-        return PieceExhaustionOutcome::ConditionNotMet;
+    let non_royals = position.pieces_of(extra_color) & !royals[extra_color.index()];
+    if let Some(extra_square) = non_royals.lsb() {
+        let extra_piece = position
+            .piece_at(extra_square)
+            .expect("the non-royal square must contain a piece");
+        let extra_kind = extra_piece
+            .kind()
+            .expect("the extra piece must have a kind");
+
+        // 第22条第4項: 最奥段で移動不能となった歩兵・香車は勝利を成立させない。
+        if !extra_piece.is_promoted()
+            && matches!(extra_kind, PieceKind::Pawn | PieceKind::Lance)
+            && is_last_rank(extra_color, extra_square)
+        {
+            return PieceExhaustionOutcome::ConditionNotMet;
+        }
+        // 第22条第2項・第3項: 不成の歩兵・仲人なら、成るまで勝利は成立しない。
+        if !extra_piece.is_promoted()
+            && matches!(extra_kind, PieceKind::Pawn | PieceKind::GoBetween)
+        {
+            return PieceExhaustionOutcome::ConditionNotMet;
+        }
     }
 
-    // 非捕獲で成った直後、猶予消化後、または余分な駒を持つ側の手番なら、
-    // 相手に取り返す機会はなく勝利が確定する(第22条第1項・第7項)。
-    if promoted_waiting_piece == Some(extra_square)
-        || grace_pending
-        || position.side_to_move() == extra_color
-    {
+    // 猶予消化後、または余分な駒を持つ側の手番なら勝利が確定する(第22条第1項・第7項)。
+    if grace_pending || position.side_to_move() == extra_color {
         return PieceExhaustionOutcome::Win(extra_color);
     }
 
-    // 第22条第5項: 王駒だけとなった側が余分な駒を次の着手で取れる場合に限り、
-    // その着手のための猶予を与える。
+    // 第22条第5項・第9項: 相手には王駒と余分な駒、または王将と太子だけが残る。
+    // どの相手駒を取っても猶予の条件を満たす。
     let mut moves = Vec::new();
     generator.generate_moves(position, &mut moves);
     if moves.into_iter().any(|candidate| {
         position
             .captured_squares(candidate)
             .into_iter()
-            .flatten()
-            .any(|capture| capture == extra_square)
+            .any(|capture| capture.is_some())
     }) {
         PieceExhaustionOutcome::GraceStart
     } else {
@@ -118,7 +109,6 @@ pub(crate) fn piece_exhaustion_outcome(
 pub(super) fn piece_exhaustion_transition(
     position: &Position,
     generator: &MoveGenerator,
-    promoted_waiting_piece: Option<Square>,
     grace_pending: bool,
     disabled: bool,
 ) -> PieceExhaustionTransition {
@@ -129,7 +119,7 @@ pub(super) fn piece_exhaustion_transition(
         };
     }
 
-    match piece_exhaustion_outcome(position, generator, promoted_waiting_piece, grace_pending) {
+    match piece_exhaustion_outcome(position, generator, grace_pending) {
         PieceExhaustionOutcome::ConditionNotMet => PieceExhaustionTransition {
             result: None,
             next_grace: false,
@@ -152,17 +142,6 @@ pub(super) fn piece_exhaustion_transition(
             next_grace: true,
         },
     }
-}
-
-/// 非捕獲で歩または仲人が成った場合に、駒枯れの即時勝利候補升を返す。
-pub(crate) fn promoted_waiting_square(mv: Move, undo: &Undo) -> Option<Square> {
-    (mv.promote
-        && undo.captured.iter().all(Option::is_none)
-        && matches!(
-            undo.moved_piece_before.kind(),
-            Some(PieceKind::Pawn | PieceKind::GoBetween)
-        ))
-    .then_some(mv.to)
 }
 
 /// 指定升が指定対局者から見た相手側の最奥段にあるかを返す。

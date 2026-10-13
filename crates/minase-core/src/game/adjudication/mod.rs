@@ -9,14 +9,12 @@ mod tests;
 
 use super::repetition::{RepetitionHistory, move_is_irreversible, move_was_attacking};
 use super::result::{GameResult, WinReason};
-use crate::board::Square;
 use crate::movegen::MoveGenerator;
 use crate::mv::Move;
 use crate::piece::Color;
 use crate::position::{Position, Undo};
 use crate::rules::{ExhaustionRule, RepetitionRule, Rules};
 use bare_king::bare_king_result;
-pub(crate) use exhaustion::promoted_waiting_square;
 use exhaustion::{
     PieceExhaustionOutcome, PieceExhaustionTransition, piece_exhaustion_outcome,
     piece_exhaustion_transition,
@@ -172,7 +170,6 @@ impl<'a> AdjudicationContext<'a> {
                     piece_exhaustion_outcome(
                         position,
                         self.generator,
-                        promoted_waiting_square(candidate, undo),
                         self.piece_exhaustion_grace,
                     ),
                     PieceExhaustionOutcome::Win(winner) if winner == mover
@@ -205,10 +202,12 @@ impl PostMoveAdjudication {
 /// 確定した着手後の局面を、王駒捕獲、R1、駒枯れ（E3を含む）、合法手なし、詰みの順で裁定する。
 ///
 /// 仮想着手による局面変更は呼出し前の状態へ復元し、履歴依存状態は変更しない。
-/// 初期局面から進める対局では、駒枯れの猶予は捕獲直後にだけ始まる。
-/// 捕獲後は駒数が減って初出の局面となるため、猶予が解消するまでの高々1手では
+/// 初期局面から進める対局では、駒枯れの猶予は捕獲または成りの直後に始まる
+/// （第22条第2項・第3項・第5項）。駒数または駒種が不可逆に変わって初出の局面となるため、
+/// 猶予が解消するまでの高々1手では
 /// 同一局面の4回目の出現に達せず、R1との順序で結果は変わらない。
-/// 駒枯れと合法手なしまたは詰みが同時に成立する場合も、勝者は余分な駒を持つ側で一致し、
+/// 第22条第5項の猶予が始まった場合は、相手駒の捕獲を認めるため詰みを裁定しない。
+/// 駒枯れによる勝利と合法手なしまたは詰みが同時に成立する場合も、勝者は余分な駒を持つ側で一致し、
 /// 優先順位が変えるのは[`WinReason`]だけである。
 /// E3は駒枯れの位置で裸玉を裁定し、R2とR3は裁定の位置を持たず着手の受理で働く。
 /// E1は詰みの裁定だけを止める。
@@ -216,7 +215,6 @@ pub(crate) fn adjudicate_after_move(
     position: &mut Position,
     context: AdjudicationContext<'_>,
     mover: Color,
-    promoted_waiting_piece: Option<Square>,
     repetition_result: Option<GameResult>,
 ) -> PostMoveAdjudication {
     let current_grace = context.state.piece_exhaustion_grace();
@@ -242,12 +240,13 @@ pub(crate) fn adjudicate_after_move(
         piece_exhaustion_transition(
             position,
             context.generator,
-            promoted_waiting_piece,
             current_grace,
             context.rules.exhaustion == ExhaustionRule::E2,
         )
     };
-    if exhaustion.result.is_some() {
+    // 第22条第5項・第9項の捕獲は、相手の王将と太子が互いを守っていても認める。
+    // 猶予の開始時には捕獲手があるため、合法手なしの裁定も必要ない。
+    if exhaustion.result.is_some() || exhaustion.next_grace {
         return PostMoveAdjudication {
             result: exhaustion.result,
             piece_exhaustion_grace: exhaustion.next_grace,

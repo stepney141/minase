@@ -1,6 +1,7 @@
-//! 反復による即時勝利と王駒の先取りによる詰み回避の試験。
+//! 反復・駒枯れによる即時勝利と王駒の先取りによる詰み回避の試験。
 
 use super::*;
+use crate::board::Square;
 use crate::piece::{PieceCode, PieceKind};
 use crate::test_util::{position_from_codes as position, sq};
 
@@ -19,6 +20,46 @@ fn step(from: Square, to: Square) -> Move {
 
 fn r1_state(position: &Position) -> AdjudicationState {
     AdjudicationState::new(RepetitionRule::R1, position)
+}
+
+/// 第22条第2項・第3項・第5項・第9項により、成駒または王駒を取れる相手には猶予がある。
+/// その成りは第21条第3項cの即時勝利にはならない。
+#[test]
+fn article_22_promotions_are_immediate_wins_only_without_a_grace_reply() {
+    for kind in [
+        PieceKind::Pawn,
+        PieceKind::GoBetween,
+        PieceKind::DrunkElephant,
+    ] {
+        for (bare_square, immediate_win) in
+            [(sq(3, 8), false), (sq(0, 1), false), (sq(11, 11), true)]
+        {
+            let mut position = position(
+                Color::Black,
+                &[
+                    (sq(0, 0), piece(Color::Black, PieceKind::King)),
+                    (sq(4, 7), piece(Color::Black, kind)),
+                    (bare_square, piece(Color::White, PieceKind::King)),
+                ],
+            );
+            let rules = Rules::ENGINE_DEFAULT;
+            let generator = MoveGenerator::new(rules.moves);
+            let state = r1_state(&position);
+            let candidate = Move {
+                promote: true,
+                ..step(sq(4, 7), sq(4, 8))
+            };
+            let undo = position
+                .try_make_move_with_undo(candidate, &generator)
+                .unwrap();
+            let context = AdjudicationContext::new(rules, &state, &generator);
+            assert_eq!(
+                context.candidate_is_immediate_win(&position, candidate, &undo),
+                immediate_win,
+                "{kind:?}, {bare_square:?}"
+            );
+        }
+    }
 }
 
 /// 4回目の同一局面を生じさせる受けでも、仮想着手を含めて
