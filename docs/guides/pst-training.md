@@ -2,12 +2,12 @@
 
 本書は、PST（駒の種類と位置に応じた評価表）と、PSTに加える2駒関係の補正FM（Factorization Machine）を学習する手順を定める。
 学習には、学習器のクレート`crates/minase-trainer`の実行ファイル`minase-trainer`のサブコマンドを使う。
-エンジンが探索に使う既定の評価関数は、2026年10月12日から[NNUE](../plans/nnue-replacement.md)である。
+エンジンが探索に使う既定の評価関数は、2026年10月12日からNNUEである（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)）。
 PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PSTを土台にした研究の計画で使う。
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
 学習データの形式、来歴、教師の分類、および検証分割は [学習データと教師値](../reference/trainer/data-and-teachers.md) が、学習器が出力する記録の各欄は [PST、FM、同時学習の記録](../reference/trainer/pst-fm-training-records.md) と [PSTの比較診断の記録](../reference/trainer/pst-compare-records.md) が説明する。
-教師値、損失、量子化、および重みの範囲の定義は [評価関数の設計書](../plans/evaluation.md) と [PSTの序中盤と終盤の補間](../plans/tapered-pst.md) が定める。
+教師値、損失、量子化、および重みの範囲の式は [評価関数と学習の目的関数](evaluation-function.md) が説明し、学習器の実装の契約は`minase-trainer`の`pst`、`fm`、`joint`、`data`の各モジュールのdocコメントにある。
 学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement-checks.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md) に従って目標局面数と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md) に状態を登録する。
@@ -169,7 +169,7 @@ FMの成分の数は、エンジンの重みファイルの読み込み処理に
 `joint train`は、学習の開始時に、`--pst-init`を量子化すると`--base`のPSTに、`--fm-init`を量子化すると`--fm-reference`のFMに一致することを検査する。
 出力は`pst.bin`（MNPT版3）と`pst-float.npz`（キー`middlegame`、`endgame`、`V`、`a`、`mask`）である。
 
-補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整する。
+補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[SPSAの手引き](spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整する（先例は[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)）。
 得た倍率は、次のコマンドで重みファイルへ焼き込んでから段階ゲート（棋力測定）にかける。
 
 ```bash
@@ -211,7 +211,7 @@ minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実
 記録には、学習器のコミット、実行したコマンドライン全体、入力と重みのSHA-256を書く。
 対局測定はSTCとLTCを別の測定名で記録し、`sprt.md` の記録項目を満たす。
 採用または不採用が決まったら、設計書とROADMAPの状態を更新する。
-採用した場合は、[評価関数の設計書](../plans/evaluation.md#教師値と損失)にある採用PSTの来歴も更新する。
+採用した場合は、完了した設計書を凍結する前に、採った方式と棄却した代案を[ADR](../adr/README.md)に記録する。
 
 実験を終了して生成用のworktreeを片付ける際は、診断と必要な記録の保存を済ませてから次を実行する。
 

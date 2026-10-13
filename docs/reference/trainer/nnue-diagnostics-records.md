@@ -6,7 +6,8 @@
 ## 共通の事項
 
 `diag nnue-distribution`、`diag nnue-removal`、`diag nnue-moves`はCPUで実行し、`--output`の新規JSONファイルへ報告する。
-重みと入力の同一性は正規化した`path`と`sha256`で記録し、数式と診断の目的は[NNUEの完全代替](../../plans/nnue-replacement.md)に従う。
+重みと入力の同一性は正規化した`path`と`sha256`で記録し、各診断の式は以下の節に定める。
+これらの診断を設けた経緯は[NNUEの完全代替](../../plans/nnue-replacement.md)にある。
 
 ## 評価値の分布
 

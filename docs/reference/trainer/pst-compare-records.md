@@ -7,7 +7,7 @@
 
 `diag pst-compare`は`--base`と`--candidate`の整数PST、`--candidate-float`の実数PSTを比較する。
 教師の分類、先読み、λの上書き、対局単位の分割を学習と共有し（[学習データと教師値](data-and-teachers.md)）、両モデルの固定した探索用駒価値が一致することを要求する。
-診断の構成は[Pythonの学習器の撤去の設計書](../../plans/python-trainer-retirement.md)に従う。
+各診断の実装は`crates/minase-trainer/src/diagnostics/`にあり、診断をPythonから移植した経緯は[Pythonの学習器の撤去の設計書](../../plans/python-trainer-retirement.md)にある。
 
 ## 保存するファイル
 

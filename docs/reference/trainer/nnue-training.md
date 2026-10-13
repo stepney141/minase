@@ -1,7 +1,8 @@
 # NNUEの学習
 
 本書は、NNUE（差分更新可能なニューラルネットワーク）の重みを学習する`minase-trainer nnue train`の挙動、引数、停止規則、保存物、および中断した学習の再開を定める。
-学習の数学的な内容と、GPUおよびCPUでの実装は[Rust製NNUE学習器の設計書](../../plans/nnue-trainer-rust.md)にある。
+学習の数学的な内容と、GPUおよびCPUでの実装の契約は、`crates/minase-trainer/src/nnue/`の各モジュールのdocコメントにある。
+方式を選んだ理由は、ADRの[NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](../../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](../../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../../adr/use-pytorch-adamw-with-bias-correction.md)、および[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](../../adr/train-the-nnue-on-search-value-lookahead-teachers.md)にある。
 入力の学習データ、教師値、検証分割は、PSTとFMの学習器と共通であり、[学習データと教師値](data-and-teachers.md)が定める。
 
 ## 実行の流れ
@@ -54,7 +55,7 @@
 | `latest.bin` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間と照合用ハッシュを保存する。 |
 | `best.bin` | 最良エポックのモデルと、その時点のAdamWの状態を保存する。 |
 | `nnue.bin` | 最良モデルを量子化したMNUE版5を保存し、minaseの読み手で再検証する。 |
-| `nnue-float.bin` | 最良モデルを[チェックポイント形式](../../plans/nnue-trainer-rust.md#チェックポイントの形式)で保存する。 |
+| `nnue-float.bin` | 最良モデルを後述の[チェックポイントの形式](#チェックポイントの形式)で保存する。 |
 | `summary.json` | 停止理由、最良エポック、量子化誤差と検査結果を保存する。 |
 
 `train_loss`は二値交差エントロピー、`removal_loss`は指定係数を含む補助損失、`total_loss`はその和であり、いずれも局面数で重み付けした平均である。
@@ -77,6 +78,76 @@ GPUメモリ使用量は、学習と検証の配列確保後にCUDAが報告し�
 各エポックではログ、最新チェックポイント、最良チェックポイントの順に保存し、最新チェックポイントの確定を保存完了の基準にする。
 その後の最良チェックポイントの保存で中断した場合は、確定済みの最新チェックポイントから復元する。
 未確定のログ末尾は切り捨て、同じエポック番号とシードから順列を再生成する。
+
+## チェックポイントの形式
+
+`latest.bin`、`best.bin`、および`nnue-float.bin`は、次の形式のチェックポイントである。
+整数と浮動小数点数はすべてリトルエンディアンであり、配列の長さは構造記述文字列と幅から導くので、長さの欄を持たない。
+読み書きは`nnue::model::Checkpoint`の`encode`と`decode`が行い、再開の前に`check_hashes`で実行設定と入力の一致を確かめる。
+
+| オフセット | 内容 |
+|---:|---|
+| 0 | 8バイトの識別子`MNTRCKPT` |
+| 8 | 版番号（u32、2） |
+| 12 | MNUE版5と同じ構造記述文字列（96バイト、不足分は0） |
+| 108 | 幅（u32）と出力用K（f32） |
+| 116 | 更新回数、エポック番号、最良エポック番号（各u64） |
+| 140 | 最良の検証損失と累積秒数（各f64） |
+| 156 | 乱数のシード（u64） |
+| 164 | 実行設定のSHA-256と入力のSHA-256（各32バイト） |
+| 228 | 線形の群、第1層の群、出力部の群の順に、学習率と重み減衰（各f64） |
+| 276 | 補助損失の係数とλの上書き値（各f64） |
+| 292 | 全パラメータ、AdamWの1次モーメント、2次モーメントの順の3組。各組は`Parameter::ALL`の順（線形、第1層、仮想行、バイアス、出力重み、出力バイアス）のf32配列である。 |
+| 可変 | 正準行、第1層、仮想行の順の観測マスク（1要素1バイト） |
+| 可変 | 線形の初期値と仮想行の初期値（f32配列） |
+| 末尾32バイト | それより前の全内容のSHA-256 |
+
+最良エポックがまだない場合は、番号を0、検証損失を正の無限大とする。
+P型の仮想行の配列とマスクは長さ0である。
+
+## GPUの検査と速度測定
+
+GPUのカーネルがCPU参照実装と一致することは、名前が`gpu_`で始まる`#[ignore]`のテストと`minase-trainer nnue check-equivalence`で確かめる。
+一致は`|GPU−CPU| ≤ 10⁻⁶ + 10⁻⁵·|CPU|`で判定し、整数と真偽値には完全な一致を、同じ入力の2回の実行にはビット単位の一致を求める。
+GPUを使わない検査とGPUを使う検査は、それぞれ次のコマンドで実行する。
+
+```sh
+cargo fmt --all --check
+nice -n 19 cargo clippy -j 2 --workspace --all-targets -- -D warnings
+nice -n 19 cargo test -j 2 -p minase-trainer
+```
+
+```sh
+nice -n 19 cargo test -j 2 -p minase-trainer -- --ignored gpu_ --test-threads=1
+for FEATURE_SET in P HalfKP-hm-b8; do
+  nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
+    --feature-set "$FEATURE_SET" --width 6 --batch 100 --seed 71
+  nice -n 19 cargo run -j 2 -p minase-trainer -- nnue check-equivalence \
+    --feature-set "$FEATURE_SET" --width 128 --batch 4096 --seed 71
+done
+```
+
+`minase-trainer nnue bench-step`は、実データでの1更新の時間を、ワーカーの供給速度、入力の転送時間、およびGPUの計算時間に分けて測る。
+最適化を有効にしたバイナリで、来歴ファイルを添えたMNSDを`--data`に指定して実行する。
+次の例では訓練集合に少なくとも344,064局面が必要であり、検証集合は使わない。
+
+```sh
+DATA=/absolute/path/to/generated-1500000.bin
+for FEATURE_SET in P HalfKP-hm-b8; do
+  CARGO_NET_OFFLINE=true nice -n 19 cargo run --release -j 2 -p minase-trainer -- nnue bench-step \
+    --feature-set "$FEATURE_SET" --width 128 --batch 16384 --steps 20 \
+    --threads 6 --profile --data "$DATA"
+done
+```
+
+ファイルの検査、モデルの初期化、カーネルのコンパイル、およびGPUの配列の確保を済ませ、1回のウォームアップの後で`--steps`回を測る。
+シード（既定71）で並べ替えた訓練局面から、ウォームアップを含む`(steps+1)×batch`局面を重複なく使う。
+測定用のモデルは、埋め草以外の全行を観測済みとし、線形をv0の駒価値、第1層を標準偏差0.05の乱数、バイアスを0.25、出力重みを±0.01の交互で初期化し、出力と全教師分類に共通のK（既定1000、`--k`で変更）を使う。
+したがって教師用Kの推定、観測マスクの作成、保存、および検証は行わない。
+`--profile`はCUDAのカーネルごとの時間を表示し、`--device cpu`と組み合わせるとエラーになる。
+`--device cpu`では更新の時間にホストの経過時間を使い、転送量と転送時間を0とし、GPUメモリは測らない。
+GPUメモリはデバイス全体の使用量と確保前後の差を出力するので、他のプロセスによる変動も含む。
+性能の採否は実GPUでの測定で判断し、CUDAのコンパイルやGPUなしのテスト結果から速度を推定しない。
 
 ## 試走
 

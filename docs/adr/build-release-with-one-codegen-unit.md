@@ -1,0 +1,29 @@
+# releaseビルドのコード生成単位を1つにし、パニックは巻き戻しのままにする
+
+## ステータス
+
+承認済み。決定日は2026年9月17日。
+
+## コンテキスト
+
+`Cargo.toml`のreleaseプロファイルは、リンク時最適化（`lto = true`）を有効にしている。
+rustcは既定でcrateを複数のコード生成単位に分けて並列にコンパイルし、単位をまたぐインライン化と最適化の機会を一部失う。
+[合法手生成と利き計算の高速化（第2期）](../plans/movegen-speedup-2.md)の段階1で、探索結果を変えないビルド設定の変更を比べた。
+[起案時の診断](../measurements/movegen-speedup-2-diagnostics-depth5.md)では、`codegen-units = 1`のNPS比は1.014倍から1.025倍であり、そこへ`panic = "abort"`を加えても追加の差はなかった。
+[段階1のbench比較](../measurements/movegen-speedup-2-stage1-bench-depth5.md)では、`codegen-units = 1`は15局面の探索結果を保ったまま、NPSを親コミットの1.0296倍にし、増分は親の測定の幅0.45%を超えた。
+
+## 決定
+
+releaseプロファイルに`codegen-units = 1`を指定する。
+`panic = "abort"`は指定せず、パニック時は既定の巻き戻し（unwind）を保つ。
+
+## 検討した代案
+
+`panic = "abort"`は速度の差がなかったうえ、探索ワーカーのパニックを`catch_unwind`で捕らえる探索部の契約に反するので採らなかった。
+巻き戻しを止めると、ワーカーのパニックがプロセス全体を終了させる。
+
+## 結果
+
+releaseビルドのコンパイル時間は延びるが、速度の測定と対局はすべて単一のコード生成単位のバイナリで行う。
+ワーカーのパニックは`crates/minase/src/search/alphabeta/team.rs`の`catch_unwind`が捕らえる。
+測定は評価関数がNNUEへ置き換わる前のものであり、設定を戻す提案には現行の評価関数での測り直しが要る。

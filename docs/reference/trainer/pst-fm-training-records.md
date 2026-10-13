@@ -7,7 +7,8 @@
 
 `pst train`は鏡映対で重みを共有するPSTを学び、`fm train`は`--init`の整数PSTを固定してランク32のFMを学ぶ。
 `joint train`はPSTとFMを2群のAdamWで更新する。
-PSTの補間は[PSTの序中盤と終盤の補間](../../plans/tapered-pst.md)、除去損失は[評価関数の設計書](../../plans/evaluation.md)、同時学習は[PSTとFMの同時学習](../../plans/pst-fm-joint-training.md)に従う。
+PSTの補間と除去損失の式は[評価関数と学習の目的関数](../../guides/evaluation-function.md)にあり、方式を選んだ理由は[線形の評価の2組の重みを盤上総駒数で補間する](../../adr/interpolate-the-linear-path-by-total-piece-count.md)と[駒除去差分の符号を守らせる片側絶対値の補助損失を学習に加える](../../adr/penalize-wrong-signed-piece-removal-differences.md)にある。
+同時学習の損失と2群のAdamWの実装は、`crates/minase-trainer/src/joint/`のdocコメントにある。
 出力用K、47個の探索用駒価値、規則セット名は初期MNPTから引き継ぐ。
 
 3コマンドともCPUで実行し、新規実行では空の`--output-dir`を使う。

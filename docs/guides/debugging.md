@@ -18,7 +18,8 @@ minaseの道具の多くは、この照合の形をとる（差分更新と全�
 ## 調査用の道具
 
 minaseは、通常の対局と測定には使わない調査用の道具を、USIの独自コマンド、起動引数、およびCargoフィーチャとして持つ。
-各道具の契約は[デバッグ機能の整備](../plans/debugging-tools.md)が定める。
+各道具の契約は、独自コマンドが`crates/minase/src/protocol/usi.rs`の`UsiProtocol::handle_diagnostic`のdocコメントに、`--io-log`が`crates/minase/src/bin/minase/io_log.rs`のdocコメントに、探索統計の項目が`SearchStats`のdocコメントにある。
+道具の方式を選んだ理由は、[局面、評価、置換表の表示をUSIの独自コマンドにする](../adr/show-position-evaluation-and-tt-as-usi-commands.md)、[入出力の記録を起動引数で有効にする](../adr/record-protocol-io-with-a-launch-argument.md)、[整合検査をフィーチャ`invariants`に置く](../adr/enable-invariant-checks-in-tests-by-feature.md)、および[探索統計をフィーチャ`search-stats`で数える](../adr/count-search-statistics-behind-a-feature.md)の各ADRにある。
 
 | 道具 | 使い方 | 用途 |
 |---|---|---|
@@ -70,7 +71,7 @@ cargo run --release --features invariants --bin minase -- dev random-play --rule
 その場合は、保存された着手列を`position ... moves ...`へ与えて問題の局面を作り、局面単位で調べる。
 
 **lishogiの対局**：lishogiの対局は、棋譜の着手列を`position ... moves ...`へ与えて再現する。
-途中の局面から始まる対局の開始局面は、lishogi APIの`initialSfen`欄にある（[lishogi Bot接続](../plans/lishogi-bot.md)）。
+途中の局面から始まる対局の開始局面は、lishogi APIの`initialSfen`欄にある（[USIとlishogi系拡張の調査](../research/protocols/usi-lishogi.md#lishogi-botブリッジ)）。
 規則の裁定がlishogiと食い違う対局は、`scripts/fetch_lishogi_replays.py`の対局一覧へ加えて固定データを作り直すと、`crates/minase-core/tests/lishogi_replay.rs`が合法性と終局の裁定を照合する回帰テストになる。
 
 **並列探索**：`Threads`が2以上の探索は、共有置換表へのアクセス順がスケジューリングに依存するので、固定深さでも再現しない。
@@ -94,7 +95,7 @@ cargo run --release --bin minase -- dev perft 3 --rules engine-default --sfen "<
 
 `--rules`は必須であり、不具合が出た対局と同じ規則セットを与える。
 `--sfen`には、USIの独自コマンド`d`が表示する拡張SFENをそのまま与えられ、先獅子の状態と成り権の保留も復元される。
-perftの数値は、テストの正しさの基準にしない（[movegen.md](../plans/movegen.md)の9節）。
+perftの数値は、テストの正しさの基準にしない（[ADR](../adr/verify-movegen-without-perft-counts.md)）。
 perftはdivideによる絞り込みと速度の計測に使う。
 
 HaChuの規則との食い違いは、`scripts/hachu_replay.py`でHaChuの自己対局の棋譜をminaseへ再生して照合する。
@@ -182,7 +183,7 @@ printf 'usi\nisready\nposition startpos\nmoves\nstate\ngo depth 4\n' \
 探索中に`quit`を受けると、minaseは探索の結果を捨てて終了する。
 探索の結果を読むときは、上の例のように`quit`を送らずに入力を閉じるか、`bestmove`を受け取ってから`quit`を送る。
 
-独自コマンド`moves`は現局面の全合法手を返し、`state`は規則、局面、対局の状態を返す（[ブラウザGUI向けUSI照会](../plans/browser-gui.md)）。
+独自コマンド`moves`は現局面の全合法手を返し、`state`は規則、局面、対局の状態を返す（[USIとlishogi系拡張の調査](../research/protocols/usi-lishogi.md#minase固有のusi拡張)の「minase固有のUSI拡張」）。
 エラーは`info string error:`で始まる行で返り、探索の停止理由は`info string stop`の行で返る。
 未知のコマンドには`info string error: unknown command <語>`が返る。
 ただしUSI原典の`debug`と`register`は応答なしで無視される。
