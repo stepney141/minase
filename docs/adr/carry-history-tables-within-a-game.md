@@ -7,7 +7,7 @@
 ## コンテキスト
 
 minaseは当初、手の成績の表を`go`のたびに0から始めていた。
-Stockfishは手の成績の表を対局の間は消さずに持ち越し、主historyだけを新しい根のたびに縮めている。
+Stockfishは手の成績の表を対局の間は消さずに持ち越し、主historyだけを新しい根のたびに縮めている（[段階12の設計書の参考資料](../plans/strength-stage12.md#参考資料)）。
 [棋力向上段階12](../plans/strength-stage12.md)は、butterfly history（手番、移動元、移動先ごとの静かな手の成績）、補正表、および捕獲履歴の持ち越しを、保存済みの対局の着手列に沿った再生で[診断](../measurements/strength-stage12-activation-diag.md)した。
 butterfly historyが静かな手の段の順序を変えたノードは、STC相当で96.35%、LTC相当で99.43%だった。
 ここで段とは、手選択器が置換表の手、捕獲手、killer手、および残りの静かな手を種類ごとにまとめて返す区切りをいう。

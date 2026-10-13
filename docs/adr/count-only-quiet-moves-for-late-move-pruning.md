@@ -24,7 +24,7 @@ late move pruningは、浅いノードで順序付けの後方にある静かな
 ## 検討した代案
 
 捕獲手も数える手番号で切る段階4の方式は、上記のとおり静かな手の枠が捕獲手で埋まり、STCで`H0`だったので採らなかった。
-StockfishとYaneuraOuは捕獲手と置換表の手も数え、killer手も切るが、同じ理由で採らなかった。
+捕獲手と置換表の手も数え、killer手も枝刈りの対象にする数え方は、同じ理由で採らなかった。
 深さごとに独立した3つの上限は、単調でない値が選ばれ得るので、深さの単調な式に改めた。
 履歴値の低い手だけを切るhistory pruningは、上記の診断で適格な候補がなかったので見送った。
 
@@ -32,5 +32,5 @@ StockfishとYaneuraOuは捕獲手と置換表の手も数え、killer手も切�
 
 基数と傾きは`crates/minase/src/search/alphabeta/params.rs`の`LmpBase`と`LmpSlope`であり、数え方の詳細は`pruning.rs`の`late_move_limit`と`negamax.rs`の`negamax`のdocコメントにある。
 killer手は数える対象にならないので、枝刈りもされない。
-StockfishとYaneuraOuの上限式にあるimprovingの項は、improvingを別の項目として戻したので含めていない。
+StockfishとYaneuraOuの上限式にあるimprovingの項は、improvingを別の項目として戻したので含めていない（[既存実装の調査](../research/forward-pruning-prior-art.md)）。
 全深さへ適用を広げる変更は、未測定の候補として残る。

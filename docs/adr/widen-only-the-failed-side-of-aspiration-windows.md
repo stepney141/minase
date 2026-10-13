@@ -13,7 +13,8 @@ STCは223有効ペアでLLR +2.979、LTCは180有効ペアでLLR +2.961の`H1`�
 USIには窓外れを伝える`lowerbound`と`upperbound`の語彙がある。
 しかし対局ハーネスは最後の`info`行の深さと経過時間を手の記録として保存するので、窓外れの行を出すと、読み直しの途中で探索時間の上限であるhard limitに達した手の記録が未完了の反復の値になる。
 2026年9月28日に完了した[棋力向上段階12](../plans/strength-stage12.md)では、連続したfail-highの回数だけ読み直しを浅くする変更を測った。
-この変更はStockfishとEtherealで効果が記録されていたが、minaseではSTCが1,360有効ペア、得点率49.1%の`H0`だった（[測定記録](../measurements/strength-stage12-aspiration-stc.md)）。
+この変更はStockfishとEtherealで効果が記録されていた（[未導入の棋力向上手法の調査](../research/unplanned-strength-techniques-survey.md#優先候補は既存機構の小改良に集まる)）。
+しかしminaseでは、STCが1,360有効ペア、得点率49.1%の`H0`だった（[測定記録](../measurements/strength-stage12-aspiration-stc.md)）。
 
 ## 決定
 
@@ -23,7 +24,7 @@ USIには窓外れを伝える`lowerbound`と`upperbound`の語彙がある。
 
 ## 検討した代案
 
-Stockfishのように外れなかった側の端を中点へ寄せる方式は、読み直しの回数を減らす一方で窓の意味を複雑にするので採らなかった。
+外れなかった側の端を中点へ寄せる方式は、読み直しの回数を減らす一方で窓の意味を複雑にするので採らなかった。
 連続したfail-highの回数だけ読み直しを浅くする方式は、上記のとおりSTCで`H0`だったので採らなかった。
 窓外れを`lowerbound`または`upperbound`の`info`行で出力する方式は、上記のとおり保存記録の手の記録を未完了の反復の値にするので採らなかった。
 補助ワーカーに主ワーカーの評価値を使わせる方式は、`Threads`の既定値が1で採否測定も1スレッドで行うので、実装を共有する利点を優先して採らなかった。

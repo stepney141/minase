@@ -22,4 +22,4 @@
 
 ## 結果
 
-ソースの配置を変えた4つの作業（[探索部と評価関数のモジュール再編](../plans/search-eval-layout.md)、[中核モジュールの再編](../plans/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/bin-harness-layout.md)、[学習ツールの再編](../plans/train-tools-layout.md)）は、設計書を持つが、マイルストーンとしては扱われておらず、状態表に行がない。
+ソースの配置を変えた4つの作業（[探索部と評価関数のモジュール再編](../plans/search-eval-layout.md)、[中核モジュールの再編](../plans/core-layout.md)、[実行ファイルと対局ハーネスのモジュール再編](../plans/bin-harness-layout.md)、[学習ツールの再編](../plans/train-tools-layout.md)）は、設計書を持つが、状態表に行がない。

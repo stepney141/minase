@@ -10,7 +10,7 @@ correction historyは、探索値と静的評価のずれを局面の特徴ご�
 [棋力向上段階8](../plans/strength-stage8.md)は、鍵と更新の条件の候補を、探索の進行に沿って表を更新しながら次の観測の予測誤差で比べた（[再診断](../measurements/strength-stage8-correction-bench.md)）。
 観測点の78.3%は最善手が捕獲手のノードであり、全観測点で更新する変種Aの改善率は−4.84%から1.99%にとどまった。
 最善手が捕獲手でなく、手番側の王駒に相手の利きが届かないノードでだけ更新する変種Bでは、駒種別の枚数の組を鍵にした改善率が15.41%、非ゼロ補正の参照率が66.9%だった。
-捕獲手による駒得は評価の偏りではないので、StockfishとYaneuraOuも最善手が捕獲手のノードでは補正を更新しない。
+捕獲手による駒得は評価の偏りではないので、StockfishとYaneuraOuも最善手が捕獲手のノードでは補正を更新しない（[既存実装の調査](../research/forward-pruning-prior-art.md)）。
 STCは398有効ペアでLLR +2.9903、LTCは679有効ペアでLLR +2.9846の`H1`であり、異常は0件だった（[STC](../measurements/strength-stage8-correction-stc.md)、[LTC](../measurements/strength-stage8-correction-ltc.md)）。
 2026年9月28日に完了した[棋力向上段階12](../plans/strength-stage12.md)は、[診断](../measurements/strength-stage12-activation-diag.md)で鍵の追加と表の持ち越しを調べた。
 歩兵と仲人の配置、および先手と後手の歩兵と仲人以外の駒の配置を鍵にした表を加えると、平均絶対誤差は0.20〜7.77%悪化した。
