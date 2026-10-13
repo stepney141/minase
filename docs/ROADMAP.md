@@ -91,7 +91,7 @@
 | NNUE学習器の学習率スケジュール | [plans/nnue-lr-schedule.md](plans/nnue-lr-schedule.md) | 起案 | |
 | NNUEの隠れ層と位相補間の出力 | [plans/nnue-hidden-layer.md](plans/nnue-hidden-layer.md) | 起案 | |
 | Python学習器のRustへの移植と撤去 | [plans/archived/python-trainer-retirement.md](plans/archived/python-trainer-retirement.md) | 完了（採用） | 2026年10月13日 |
-| ファイル形式の整理と形式の仕様の整備 | [plans/file-format-consolidation.md](plans/file-format-consolidation.md) | 起案 | |
+| ファイル形式の整理と形式の仕様の整備 | [plans/file-format-consolidation.md](plans/file-format-consolidation.md) | 進行中 | |
 
 ## 現在地
 
@@ -111,6 +111,6 @@
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
 - [NNUE学習器の学習率スケジュール](plans/nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたものを扱う。前者は、NNUEの検証損失が最初の訓練エポックの直後で頭打ちになる症状を受けて、更新ごとの学習率の倍率を加え、5つの設定のどれかで改善するかを確かめる。後者は、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。後者の学習は前者の結論を待つ。
-- [ファイル形式の整理と形式の仕様の整備](plans/file-format-consolidation.md)は、各形式の版を1つにし、過去のファイルを読み続けない原則で形式を整理する。教師データの来歴JSONと付け直し（MNRS）を撤去し、学習器のチェックポイントをNPZに置き換えて、`MN`の独自形式を7から3へ減らし、残った形式の仕様を、その形式を読み書きするモジュールのdocコメントに書く。学習器のコードを変えるので、NNUE学習器の2計画との着手の順序は利用者が決める。
+- [ファイル形式の整理と形式の仕様の整備](plans/file-format-consolidation.md)は、2026年10月13日に着手した。各形式の版を1つにし、過去のファイルを読み続けない原則で形式を整理する。教師データの来歴JSONと付け直し（MNRS）を撤去し、学習器のチェックポイントをNPZに置き換えて、`MN`の独自形式を7から3へ減らし、残った形式の仕様を、その形式を読み書きするモジュールのdocコメントに書く。学習器のコードを変えるので、完了するまでNNUE学習器の2計画には着手しない。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習を外部のレンタルGPUサーバ（総額2万円、強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。着手は利用者の許可を待ち、SPSAの調整セッションが完了しても許可があるまでは始めない。
