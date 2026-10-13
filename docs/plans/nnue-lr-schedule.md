@@ -67,7 +67,7 @@
 
 ## 依存関係
 
-学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`minase-trainer nnue train`であり、引数、保存物、および再開の仕様は参照文書[NNUEの学習](../reference/trainer/nnue-training.md)が定める。
+学習器は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の`minase-trainer nnue train`であり、引数、保存物、および再開の仕様は学習器のコード（`crates/minase-trainer/src/nnue/`）のdocコメントが定め、使い方は手引き[NNUEの学習](../guides/nnue-training.md)にある。
 学習率はホストが群ごとに保持し、更新のたびにバイアス補正の係数とともに倍精度でカーネルへ渡している（`src/nnue/gpu/optimizer.rs`の`Optimizer::update`、CPU参照は汎用部品`src/nn/adam.rs`の`AdamCoefficients::new`）。
 したがって倍率を掛けるのはホスト側の変更で済み、CUDAカーネルは変えない。
 重み減衰はAdamWの分離型で`p ← p·(1 − lr·wd)`として掛かるので、倍率を掛けると減衰も同じ割合で小さくなる。
@@ -139,7 +139,7 @@ GPUの学習器は、更新の損失をGPUからホストへ1更新遅れて読�
 - `--validation-interval`を指定した学習をエポックの途中で中断して再開したとき、`validation-interval.jsonl`がチェックポイント以前の行だけを残し、再開後の学習の軌跡と`nnue.bin`が中断しない学習と一致する。
 - 再開時に`--lr-schedule`を変えると、設定ハッシュの不一致で拒否される。
 - `--validation-interval`を指定しても、学習の軌跡と`nnue.bin`が指定しない場合と同じである。
-- 加えた引数、`training.jsonl`の倍率の欄、および`validation-interval.jsonl`の仕様が、同じコミットで参照文書[NNUEの学習](../reference/trainer/nnue-training.md)に書かれている。
+- 加えた引数、`training.jsonl`の倍率の欄、および`validation-interval.jsonl`の仕様が、同じコミットで、それらを読み書きする項目のdocコメントに書かれ、使い方が手引き[NNUEの学習](../guides/nnue-training.md)に反映されている。
 
 ### フェーズ2　5本の学習
 
@@ -186,7 +186,7 @@ STCが`H1`、または上限に達してLLRが0以上なら、LTC（`time=60000+
 ## 参考資料
 
 - [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[NNUEの隠れ層と位相補間の出力](nnue-hidden-layer.md)
-- 学習器の参照文書[NNUEの学習](../reference/trainer/nnue-training.md)
+- 手引き[NNUEの学習](../guides/nnue-training.md)
 - [NNUEの学習の記録](../measurements/nnue-replacement-training.md)、[Rust製学習器の検査の記録](../measurements/nnue-trainer-rust-checks.md)
 - tatara（[SH11235/tatara](https://github.com/SH11235/tatara)、コミット`db08ed2`）: `crates/nnue-train/src/schedule.rs`（7種類の形、warmup）、`docs/decisions/2026-05-31-ckpt-lr-horizon.md`（総長のチェックポイント保存）、`bins/nnue_train/src/cli.rs`（既定値: 8.75×10⁻⁴、step、0.992、1 superbatch = 6,104更新）
 - やねうら王（コミット`15c1cc6a`の`source/learn/learner.cpp`）: newbob型の巻き戻しと減衰（既定では無効）

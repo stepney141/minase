@@ -267,8 +267,8 @@ O_{vj} = O_{v,\, (j + H/2) \bmod H}.
 ここからは、NNUEの重みを学習する目的関数を説明する。
 学習とは、目的関数（損失）と呼ぶ1つの数値を定め、それが小さくなる方向へ重みを少しずつ動かすことを繰り返す計算である。
 学習器は浮動小数点の重みを使い、推論時の整数への丸めと切り詰めは適用しない。
-学習器の実装の契約は `crates/minase-trainer/src/nnue/` の各モジュールのdocコメントにあり、引数、停止規則、および保存物は[NNUEの学習](../reference/trainer/nnue-training.md)が定める。
-学習データ、教師値の構成、および検証集合の分け方は、全ての学習器が共有するデータ層にあり、[学習データと教師値](../reference/trainer/data-and-teachers.md)が定める。
+学習器の実装の契約、引数、停止規則、および保存物は `crates/minase-trainer/src/nnue/` の各モジュールのdocコメントにあり、学習を実行する手順は[NNUEの学習と診断の手順](nnue-training.md)にある。
+学習データ、教師値の構成、および検証集合の分け方は、全ての学習器が共有するデータ層にあり、`crates/minase/src/training/records.rs`と`crates/minase-trainer/src/data/`のdocコメントが定める。
 
 ### 勝率のモデル
 
@@ -458,8 +458,8 @@ STCは持ち時間10秒と1手ごとの加算0.1秒、LTCは持ち時間60秒と
 学習は `minase-trainer nnue train` で行い、標準ではGPU（CUDA）を使う。
 入力には、来歴ファイルを添えたminase独自形式MNSDの学習データ、線形の経路の初期値となる浮動小数点のPST（圧縮しないNPZ形式）、および $`K`$、探索用駒価値、規則セット名を引き継ぐ基準の重みファイル `pst.bin` を指定する。
 先読み教師を使うには、`--lookahead-gamma 0.9 --lookahead-plies 40` を指定する。
-引数の一覧、保存物、中断した学習の再開、GPUとCPUの実装の一致の検査、および試走のコマンドは[NNUEの学習](../reference/trainer/nnue-training.md)にある。
-学習した重みの評価値の分布、駒除去差分、および着手前後の評価差を調べる診断は[NNUEの診断の記録](../reference/trainer/nnue-diagnostics-records.md)にある。
+試走と本番の学習のコマンド、中断した学習の再開、およびGPUとCPUの実装の一致の検査は[NNUEの学習と診断の手順](nnue-training.md)にある。
+学習した重みの評価値の分布、駒除去差分、および着手前後の評価差を調べる診断の手順は[同書の「学習した重みを診断する」](nnue-training.md#8-学習した重みを診断する)にある。
 GPUの学習器を設計した理由は、[NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)と[NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)にある。
 
 ## 参考資料
@@ -474,6 +474,5 @@ GPUの学習器を設計した理由は、[NNUEの学習器をRustのホスト�
 - [線形の評価の2組の重みを盤上総駒数で補間する](../adr/interpolate-the-linear-path-by-total-piece-count.md)
 - [NNUEによるPST＋FMの完全代替](../plans/nnue-replacement.md)
 - [NNUEの初代のネットの学習と診断](../measurements/nnue-replacement-training.md)
-- [NNUEの学習](../reference/trainer/nnue-training.md)
-- [学習データと教師値](../reference/trainer/data-and-teachers.md)
+- [NNUEの学習と診断の手順](nnue-training.md)
 - [棋力測定の手引き](sprt.md)

@@ -79,7 +79,7 @@ SCReLUが入力の二乗を作るので、非線形部分全体は第1層の重�
 学習器の出力部は、パラメータの種類を6つに固定した配列（`src/nnue/model/mod.rs`の`Parameter`）、CPU参照の`head`と`output_backward`（`src/nnue/reference/mod.rs`）、CUDAの`output_backward`、`validation_head`、`gradient_partials`、`optimizer_head`（`kernels/`）からなる。
 書き出し時の量子化誤差の検査（`src/nnue/export.rs`）は、エンジンの整数推論を呼んで浮動小数点の参照と比べる。
 駒除去差分の補助損失は`src/nnue/reference/removal.rs`と`kernels/removal.cu`にあり、チェックポイント（MNTRCKPT版2）は補助損失の係数を保存している。
-チェックポイントの形式は[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の「チェックポイントの形式」の節が、学習器の引数と保存物の各欄は参照文書[NNUEの学習](../reference/trainer/nnue-training.md)が定める。
+チェックポイントの形式は`crates/minase-trainer/src/nnue/model/checkpoint.rs`の`Checkpoint`のdocコメントが、学習器の引数と保存物の各欄はそれらを読み書きする項目のdocコメントが定める。
 P型は第1層の重みと出力重みを幅の前半と後半で共有し、左右鏡映に対する不変性を課している。
 HalfKP-hm-b8の文脈は、基準の王駒が1枚もない場合は鏡映なしとし、複数ある場合は升番号の最小のものを選ぶ（`feature_set.rs`の`HalfKpHmB8::context`）。
 
@@ -169,7 +169,7 @@ NNUEの学習のチェックポイントは補助損失の係数を持たない�
 - `cargo test -p minase-trainer`と`gpu_`で始まるGPUのテストが通り、GPUとCPU参照の等価性、数値微分、再開の一致の各テストが補助損失なしで成り立つ。
 - 世代3の1ファイルの1エポック学習で、両型の1更新の時間と、ワーカー数6と12での1秒あたりの学習局面数を測り、[検査の記録](../measurements/nnue-trainer-rust-checks.md)に書く。
 - 比較の起点のネットについて、符号反転の検査の値を記録する。
-- 削除した`--removal-penalty`、`training.jsonl`の`removal_loss`と`total_loss`の欄、`config.json`の補助損失の係数、および加えた符号反転の検査の欄が、同じコミットで参照文書[NNUEの学習](../reference/trainer/nnue-training.md)に反映され、版を上げたチェックポイントの形式が[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の「チェックポイントの形式」の節に書かれている。
+- 削除した`--removal-penalty`、`training.jsonl`の`removal_loss`と`total_loss`の欄、`config.json`の補助損失の係数、および加えた符号反転の検査の欄が、同じコミットで、それらを読み書きする項目のdocコメントと手引き[NNUEの学習](../guides/nnue-training.md)に反映され、版を上げたチェックポイントの形式が`Checkpoint`のdocコメントに書かれている。
 
 ### フェーズ1　基準D0の学習
 
@@ -208,7 +208,7 @@ GPUの縮約は、現在と同じく固定の順序で行い、2回の実行が�
 - エポック0の4つの出力部の検証損失が一致する。
 - 「設計判断」の整数参照が、乱数重みの各出力部について、エンジンの評価と全局面で一致する。
 - 各出力部の1更新の時間と1秒あたりの学習局面数を記録する。
-- `--head`と出力部ごとのパラメータの並びが、同じコミットで参照文書[NNUEの学習](../reference/trainer/nnue-training.md)と[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)の「チェックポイントの形式」の節に書かれている。
+- `--head`と出力部ごとのパラメータの並びが、同じコミットで`Checkpoint`のdocコメントと手引き[NNUEの学習](../guides/nnue-training.md)に書かれている。
 
 ### フェーズ4　候補の学習と選択
 
@@ -249,7 +249,7 @@ LTCの`pending`は`--resume`で延長する（[測定の手引き](../guides/spr
 - [NNUEの共通土台と初代のネットによるPST＋FMの完全代替](nnue-replacement.md)、[Rust製NNUE学習器（GPU）](nnue-trainer-rust.md)、[学習率スケジュール](nnue-lr-schedule.md)
 - [NNUEの再挑戦に向けたアーキテクチャの考察](../research/nnue-architecture-discussion.md)、[fearless_simdの適用可能性](../research/fearless-simd-feasibility.md)
 - [NNUEの学習の記録](../measurements/nnue-replacement-training.md)、[Rust製学習器の検査の記録](../measurements/nnue-trainer-rust-checks.md)
-- 学習器の参照文書[NNUEの学習](../reference/trainer/nnue-training.md)
+- 手引き[NNUEの学習](../guides/nnue-training.md)
 - Stockfish（コミット`17a6c8f1`）: `src/nnue/nnue_architecture.h`（L1=1024、L2=32、L3=32、8組のlayer stack、skip）、`src/nnue/network.cpp`153〜157行（バケット`(N−1)/4`）、`src/nnue/layers/`（i8の重み、i32のバイアス、clipped ReLUとsquared clipped ReLU）
 - やねうら王（コミット`c1b80eaa`）: `source/eval/nnue/architectures/sfnn-1536.h`（FT=1536、H1=15＋skip、H2=32、9組）、`source/eval/nnue/evaluate_nnue.cpp`（玉の段と進行度によるバケット）
 - tatara（[SH11235/tatara](https://github.com/SH11235/tatara)、コミット`db08ed2`）: `bins/nnue_train/src/arch.rs`（既定FT=1536、L1=16、L2=32、9バケット、±127/64の切り詰め）、`crates/nnue-format/src/layerstack_weights.rs`（QA=127、QB=64）、`crates/shogi-features/src/progress_kpabs.rs`（進行度のバケット）

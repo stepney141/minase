@@ -32,4 +32,4 @@ MNSDの形式を改めて来歴の欄を足す案は、段階9が教師データ
 λが0の分類では教師用Kを推定せず、仮の値でも埋めない。
 来歴ファイルや付け直しファイルだけを差し替えると教師値と検証の分割が変わるので、学習の記録はそれらの検査和を固定して照合する。
 後の[先読み教師](use-lookahead-teacher-values.md)と混合比の上書きも、分類の属性として扱われる。
-形式と検査の細目は[学習データと教師値](../reference/trainer/data-and-teachers.md)にある。
+形式と検査の細目は、`crates/minase/src/training/provenance.rs`の`Provenance`と、`crates/minase-trainer/src/data/mnsd.rs`の`InputProvenance`と`Dataset::open`のdocコメントにある。

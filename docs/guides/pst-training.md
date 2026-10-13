@@ -1,12 +1,13 @@
 # PSTとFMの学習手順
 
-本書は、PST（駒の種類と位置に応じた評価表）と、PSTに加える2駒関係の補正FM（Factorization Machine）を学習する手順を定める。
+本書は、駒の種類と位置に応じた評価表であるPSTと、PSTに加える2駒関係の補正FM（Factorization Machine）を学習する手順を定める。
 学習には、学習器のクレート`crates/minase-trainer`の実行ファイル`minase-trainer`のサブコマンドを使う。
 エンジンが探索に使う既定の評価関数は、2026年10月12日からNNUEである（[探索が使う評価関数をNNUEの1つにし、PSTとFMのコードは比較用に残す](../adr/use-nnue-as-the-only-search-evaluation.md)）。
 PSTとFMの学習器は、NNUEの線形経路の初期値を作る場合や、PSTを土台にした研究の計画で使う。
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
-学習データの形式、来歴、教師の分類、および検証分割は [学習データと教師値](../reference/trainer/data-and-teachers.md) が、学習器が出力する記録の各欄は [PST、FM、同時学習の記録](../reference/trainer/pst-fm-training-records.md) と [PSTの比較診断の記録](../reference/trainer/pst-compare-records.md) が説明する。
+学習データの形式と来歴は`crates/minase/src/training/`の`records.rs`と`provenance.rs`、教師の分類、教師値、先読み教師、および検証分割は`crates/minase-trainer/src/data/`のdocコメントにある。
+学習器が書き出すファイルの各欄は`crates/minase-trainer/src/`の`pst/record.rs`、`fm/record.rs`、`fm/report.rs`、および`joint/record.rs`に、PSTの比較診断の報告の各欄は`crates/minase-trainer/src/diagnostics/pst_compare.rs`の`Report`と`pst_statistics.rs`の各項目のdocコメントにある。
 教師値、損失、量子化、および重みの範囲の式は [PSTとFMによる評価関数と学習の目的関数](evaluation-pst-fm.md) が説明し、学習器の実装の契約は`minase-trainer`の`pst`、`fm`、`joint`、`data`の各モジュールのdocコメントにある。
 学習器をPythonからRustへ移した経緯と、移植時にPythonの学習器と同じ結果になることを確かめた記録は、[Python学習器の撤去の設計書](../plans/python-trainer-retirement.md)と[照合の記録](../measurements/python-trainer-retirement-checks.md)にある。
 
@@ -42,15 +43,33 @@ sha256sum data/<実験名>/pst-base.bin
 ```
 
 `pst-base.bin`には、重みファイルの形式MNPTの版2（PSTだけ）を使う。
-`pst train`と`fm train`は版3（PSTとFM）のPSTの部分も読めるが、PSTの比較診断（5節）は基準と候補が版2であることを前提に、独立に計算した整数のPST評価とエンジンの評価を比べるので、版3を与えると開始時に拒否する。
+`pst train`と`fm train`は、PSTとFMを持つ版3のPSTの部分も読める。
+一方、5節のPSTの比較診断は、基準と候補が版2であることを前提に独立に計算した整数のPST評価とエンジンの評価を比べるので、版3を与えると開始時に拒否する。
 `crates/minase/nets/pst.bin`はFMを含む版3であり、そのPSTの部分を版2にした重みは`data/fm-scale-spsa/pst-j75-pst-only.bin`にある。
-同じ学習の量子化前の重み（`pst-float.npz`）があれば、`minase-trainer fm scale --fm-scale 0`で版3から版2を作れる。
+倍率を焼き込む前の`joint train`の出力`pst.bin`と、同じ学習の量子化前の重み`pst-float.npz`の組があれば、`minase-trainer fm scale --fm-scale 0`で版3から版2を作れる。
+倍率を焼き込んだ後の重みは量子化前の重みと一致しないので、この変換は拒否される。
 基準の重みと入力ファイルのSHA-256は、学習の記録（`config.json`）にも残るが、準備の時点の値を測定記録に書いておく。
 
-学習データ（MNSD形式）には、来歴ファイル（`<データ>.provenance.json`）が必須である。
-来歴ファイルの形式はREADMEの「来歴と教師の分類」が説明する。
+MNSD形式の学習データには、来歴ファイル`<データ>.provenance.json`が必須である。
 欠落や検査和の不一致があれば学習器が停止するので、既存データにも明示的に用意する。
+3節の自己対局の生成器と、lishogiの棋譜を取り込む`minase data lishogi games`は、MNSDと同時に来歴ファイルを書き出す。
+来歴ファイルのない乱数開始の自己対局データには、次のコマンドで来歴を付ける。
+`--lambda`は、教師値で探索値と対局結果を混ぜる比λであり、来歴の生成側は自己対局のλを0.75に固定しているので、0.75を指定する。
+学習時に別のλを使う場合は、来歴を書き換えずに学習と診断のコマンドの`--lambda-override`で指定する。
+
+```bash
+cargo run --release --bin minase -- data selfplay provenance \
+  --input <データ> --output <データ>.provenance.json \
+  --result-origin selfplay --start-origin random --lambda 0.75
+```
+
 `gen0b.bin` は既存の対局と重複するため、入力へ加えない。
+
+学習と診断のコマンドは、`--data`に並べた複数のファイルを入力順に読む。
+教師の分類の番号は入力順に初めて現れた順で付くので、学習の記録と診断の報告を突き合わせるときは、両方で同じ順序に並べる。
+入力はメモリに写像して読むため、コマンドの実行中は入力ファイルを変更も切り詰めもしない。
+乱数開始の自己対局のファイルは、ファイルの間で生成シードが重ならないものだけを組み合わせる。
+MNSDの形式は`crates/minase/src/training/records.rs`、来歴ファイルの欄は`crates/minase/src/training/provenance.rs`の`Provenance`、教師の分類、教師値、および検証集合の分け方は`crates/minase-trainer/src/data/`のdocコメントにある。
 
 ## 3. 自己対局データを生成する
 
@@ -93,18 +112,21 @@ minase-trainer pst train \
 ```
 
 学習器は、`--init`のPSTを初期値として、左右の鏡映対で重みを共有する2端点（序中盤用と終盤用）のPSTを学習する。
-出力用K、探索用駒価値、規則セット名は`--init`から引き継ぐ。
+評価値を勝率へ変換する尺度である出力用K、探索用駒価値、および規則セット名は`--init`から引き継ぐ。
 `--lambda-override`を省略すると、教師値で探索値と対局結果を混ぜる比λとして、各来歴ファイルに記録された値を使う。
-`--removal-reference`は、駒を1枚除いたときの評価の変化が同じ向きになることを求める補助損失の参照であり、`init`は`--init`の整数PST、`v0`はv0の駒価値を参照にする。
+`--lambda-override`で指定した値は自己対局の結果を教師とする分類にだけ適用され、人間の対局結果を教師とする分類では来歴の値が使われる。
+`--lookahead-gamma`と`--lookahead-plies`は、同じ対局の将来の探索値を割り引いて平均した先読み教師を使う指定であり、両方を同時に与える。
+`--removal-reference`は、駒を1枚除いたときの評価の変化が同じ向きになることを求める補助損失の参照であり、`init`は`--init`の整数PST、`v0`は学習を始める前の手書きの評価関数v0の駒価値を参照にする。
 エポック数の上限は200である。
 
-最良の重みは、学習したエポック（1以上）の中から、補助損失を混ぜない検証集合の二値交差エントロピーで選ぶ。
+最良の重みは、学習したエポック（1以上）の中から、補助損失を混ぜない検証集合の二値交差エントロピーが最小のものを選ぶ。
 学習前の重みの検証損失もエポック0として記録されるが、出力の候補にはならない。
 `--patience`のエポック数だけ続けて最良値が更新されなければ打ち切る。
 選択と打ち切りの定義は一般的な早期終了と同じであり、典拠と採用の経緯は[PST追加学習の設計書](../plans/pst-longer-training.md)の「早期終了」にある。
 
 結果は`--output-dir`に保存される。
 `pst.bin`はMNPT版2の重み、`pst-float.npz`は量子化前の重み、`training.jsonl`は各エポックの損失の記録、`summary.json`は停止理由、最良エポック、量子化誤差の検査の結果の記録である。
+`config.json`は引数、入力の検査和、および再開の履歴を持ち、`latest.bin`と`best.bin`は再開用のチェックポイントである。
 学習曲線は`training.jsonl`で確認し、教師値の損失、補助損失、検証損失、最良エポックを読み、更新回数の不足や過学習がないか点検する。
 保存時には重みを1/8センチポーン単位へ量子化し、検証標本で浮動小数点評価との平均絶対誤差が2センチポーン以下であることを確かめる。
 基準を超えた場合は、出力済みのファイルを残したまま`summary.json`に失敗を記録し、終了コード1で終える。
@@ -128,7 +150,9 @@ minase-trainer diag pst-compare \
 ```
 
 教師の設定（`--lambda-override`と先読み）は学習と同じにする。
-結果は`diagnostics/report.json`に保存され、各欄の意味はREADMEの「学習と診断の記録」にある。
+`--output-dir`には存在しないディレクトリを指定する。
+結果は`diagnostics/report.json`に保存され、各欄の意味は`crates/minase-trainer/src/diagnostics/pst_compare.rs`の`Report`のdocコメントにある。
+教師の分類と盤上総駒数の帯の組ごとの比較は`bands`に、全検証局面での終局結果への交差エントロピーと符号一致率は`outcome_metrics`に記録される。
 診断は、主に次の場合に失敗する。
 
 - 量子化誤差の平均絶対誤差が2センチポーンを超える。
@@ -136,6 +160,7 @@ minase-trainer diag pst-compare \
 - PST部分の駒除去差分に、厳密な符号反転が1件でもある。
 - 候補の探索用駒価値が基準と異なる。
 
+出力ディレクトリを作った後に失敗した場合も、その時点までの`report.json`と作成済みの資料は残り、`report.json`の`error`に理由が記録され、終了コードは1になる。
 失敗しなかった場合も、基準と候補の`derived_piece_values`を見て、駒損を有利と評価するなどの異常がないかを確認する。
 検証損失、教師誤差、および対局結果への交差エントロピーの改善だけを、棋力が向上した根拠にはしない。
 採否は自己対局の測定で決める。
@@ -144,7 +169,9 @@ minase-trainer diag pst-compare \
 ## 6. FMの補正を学習する
 
 FMの補正は、PSTを固定してFMだけを学習する`fm train`か、PSTとFMを同時に学習する`joint train`で学習する。
-例は、現行の重みに至った手順であり、候補Fa（[補正1/4のFMの再学習](../plans/fm-quarter-current-pst.md)）を`fm train`で学び、その補正を`fm quarter`で1/4にした重みと、学習したPSTとFMの実数の重みを初期値にして、J75（[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)）を`joint train`で学んだ。
+次の例は、現行の重みに至った手順である。
+まず[補正1/4のFMの再学習](../plans/fm-quarter-current-pst.md)の候補Faを`fm train`で学習し、その補正を`fm quarter`で1/4にした。
+次に、その重みと、学習したPSTとFMの実数の重みを初期値にして、[PSTとFMの同時学習](../plans/pst-fm-joint-training.md)のJ75を`joint train`で学習した。
 
 ```bash
 minase-trainer fm train \
@@ -163,11 +190,13 @@ minase-trainer joint train \
   --lookahead-gamma 0.9 --lookahead-plies 40
 ```
 
-`fm train`の出力は、`fm.bin`（MNPT版3。PSTの部分は`--init`と同一）と`fm-float.npz`（キー`V`、`a`、`mask`）である。
+`fm train`の出力は、PSTの部分が`--init`と同一のMNPT版3の`fm.bin`と、キー`V`、`a`、`mask`を持つ`fm-float.npz`である。
 FMの成分の数は、エンジンの重みファイルの読み込み処理に合わせて32に固定されている。
+`fm train`の`summary.json`の`status`が`excluded_zero_correction`の場合は、補正を1/4にすると整数の補正がすべての局面で0になるので、その重みを`fm quarter`へ進めない。
 `fm quarter`は、FMの補正を1/4にした重みと、`.quarter.json`で終わる報告を書く。
+指数が上限の30に達した重みは、`fm quarter`が拒否する。
 `joint train`は、学習の開始時に、`--pst-init`を量子化すると`--base`のPSTに、`--fm-init`を量子化すると`--fm-reference`のFMに一致することを検査する。
-出力は`pst.bin`（MNPT版3）と`pst-float.npz`（キー`middlegame`、`endgame`、`V`、`a`、`mask`）である。
+出力は、MNPT版3の`pst.bin`と、キー`middlegame`、`endgame`、`V`、`a`、`mask`を持つ`pst-float.npz`である。
 
 補正に掛ける倍率は学習の損失では決まらないので、PSTまたはFMを学び直したら、[SPSAの手引き](spsa.md)の手順で、重みを固定した調整用ビルドの係数`FmScale`だけをSPSAで調整する（先例は[FMの補正の倍率のSPSAによる調整](../plans/fm-scale-spsa.md)）。
 得た倍率は、次のコマンドで重みファイルへ焼き込んでから段階ゲート（棋力測定）にかける。
@@ -177,7 +206,11 @@ minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実
   --fm-scale <倍率×1024> --output data/<実験名>/pst-scaled.bin --data <既存データ...> data/<実験名>/generated-*.bin
 ```
 
-`--fm-scale 0`はFMを除いた版2の重みを書き、`--data`を与えると検証標本での整数化の誤差を`.scale.json`の報告に加える。
+`--float`には、PSTの2端点と`V`、`a`を持つNPZが必要であり、`joint train`の`pst-float.npz`を使える。
+`fm train`の`fm-float.npz`はPSTを持たないので使えない。
+`fm quarter`と`fm scale`は、出力の重みや報告のファイルが既にあると拒否する。
+`--fm-scale`には0から1,024までの整数を与え、`--fm-scale 0`ではFMを除いた版2の重みを書き出す。
+`--data`を与えると、検証標本での整数化の誤差を`.scale.json`の報告に加える。
 現行の`crates/minase/nets/pst.bin`は、J75の出力に`--fm-scale 611`を適用したものである。
 
 ## 7. 候補を作って採否を測定する
@@ -209,7 +242,7 @@ minase-trainer fm scale --input data/<実験名>/joint/pst.bin --float data/<実
 
 生成と学習の結果を `docs/measurements/<実験名>-training.md` にまとめ、設計書からリンクする。
 記録には、学習器のコミット、実行したコマンドライン全体、入力と重みのSHA-256を書く。
-対局測定はSTCとLTCを別の測定名で記録し、`sprt.md` の記録項目を満たす。
+対局測定は、短時間条件のSTCと長時間条件のLTCを別の測定名で記録し、`sprt.md` の記録項目を満たす。
 採用または不採用が決まったら、設計書とROADMAPの状態を更新する。
 採用した場合は、完了した設計書を凍結する前に、採った方式と棄却した代案を[ADR](../adr/README.md)に記録する。
 
