@@ -27,7 +27,7 @@ use label::{GameDetails, Job, process_job};
 use minase::{
     datagen::{self, data_error},
     search::TranspositionTable,
-    training::records::{Header, Writer},
+    training::records_v2::{Header, TeacherKind, Writer},
 };
 use output::{create, write_json};
 use replay::replay;
@@ -103,9 +103,9 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                 .to_string(),
                 commit.clone(),
                 *nnue.checksum(),
-                common.nodes.get(),
+                TeacherKind::AlphaBeta,
+                u64::from(common.nodes.get()),
                 seed.get(),
-                0,
             )
             .map_err(data_error)?;
             (None, Some(Writer::new(output, header).map_err(data_error)?))
@@ -179,7 +179,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                         },
                     );
                 }
-                // バッチ内の統合番号だけを詰める。Recordの対局番号は受理順のまま。
+                // バッチ内の統合番号だけを詰める。GameRecordの対局番号は受理順のまま。
                 result.completed.game_number =
                     u32::try_from(completed.len() + 1).map_err(data_error)?;
                 completed.push(Ok(result.completed));

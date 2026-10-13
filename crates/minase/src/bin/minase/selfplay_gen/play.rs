@@ -6,10 +6,12 @@ use super::{
 };
 use minase::datagen::game::{CompletedGame, CompletedRecord};
 use minase::datagen::statistics::Statistics;
-use minase::datagen::{MATE_BAND_START, current_position_is_repeated, invalid_data};
+use minase::datagen::{
+    MATE_BAND_START, best_move_is_tactical, current_position_is_repeated, data_error, invalid_data,
+};
 use minase::eval::Nnue;
 use minase::search::{DEFAULT_THREADS, SearchLimits, SearchSnapshot, TranspositionTable, search};
-use minase::training::records::{Outcome, Record, best_move_is_tactical};
+use minase::training::records_v2::{Entry, Exclusion, GameRecord, Origin, Outcome, Policy, Value};
 use minase_core::rng::{XorShift64, derive_seed};
 use minase_core::{MoveGenerator, Position, Rules};
 use std::{
@@ -30,19 +32,6 @@ pub(super) struct PlaySettings {
     pub(super) max_ply: u16,
 }
 
-/// 終局後に結果を付ける記録候補。
-#[derive(Clone, PartialEq, Eq, Debug)]
-struct Candidate {
-    /// 記録時点の局面。
-    position: Position,
-    /// 手番側視点の探索値。
-    score: i16,
-    /// 記録時点の手数。
-    ply: u16,
-    /// 記録時点の探索キー。
-    search_key: u64,
-}
-
 /// 1局のランダム着手予定と記録開始手数。
 #[derive(Clone, PartialEq, Eq, Debug)]
 struct InjectionPlan {
@@ -52,7 +41,7 @@ struct InjectionPlan {
     record_from: u32,
 }
 
-/// 1局をランダム序盤から終局まで進め、採用レコードを返す。
+/// 1局をランダム序盤から終局まで進め、対局記録と採用局面の統計を返す。
 pub(super) fn play_game(
     nnue: &Nnue,
     rules: Rules,
@@ -63,11 +52,11 @@ pub(super) fn play_game(
     play_game_from_opening(nnue, rules, game_number, settings, table, None)
 }
 
-/// 1局を終局まで進め、探索で着手した局面のうち記録条件を満たすものを返す。
-/// 記録は序盤ランダム化の後から始め、注入を予定した場合は最後の予定注入の次の手から始める。
+/// 1局を終局まで進め、全局面の着手と教師情報を返す。
+/// 価値の記録は序盤ランダム化の後から始め、注入を予定した場合は最後の予定注入の次の手から始める。
 /// 探索値の絶対値が[`MATE_BAND_START`]以上、合法な最善手が捕獲または成り、現局面の再出現の順に除外し、最初に該当した理由だけを数える。
-/// 手数上限で終局しなかった対局は全候補を破棄し、終局した対局の結果は記録局面の手番側から見た値にする。
-/// 実戦の開始局面では呼び手が注入回数0を指定し、乱数手を入れず次の局面から記録する。
+/// 手数上限で終局しなかった対局は書かず、終局した対局には結果と終局理由を付ける。
+/// 実戦の開始局面では呼び手が注入回数0を指定し、乱数手を入れず次の局面から価値を記録する。
 /// 注入の予定と乱数列は[`plan_injections`]に従う。
 /// 理由は`docs/adr/exclude-mate-tactical-and-repeated-positions-from-teacher-data.md`にある。
 pub(super) fn play_game_from_opening(
@@ -79,8 +68,21 @@ pub(super) fn play_game_from_opening(
     opening: Option<&Opening>,
 ) -> io::Result<CompletedGame> {
     let game_seed = derive_seed(settings.base_seed, u64::from(game_number));
-    let mut game = starting_game(rules, game_seed, opening)?;
+    let (mut game, opening_moves) = starting_game(rules, game_seed, opening)?;
+    let start_position = if opening.is_some() {
+        game.position().clone()
+    } else {
+        Position::initial()
+    };
+    let mut entries = opening_moves
+        .into_iter()
+        .map(|mv| {
+            Entry::new(Some(mv), Value::None, Exclusion::None, Policy::None, None)
+                .map_err(data_error)
+        })
+        .collect::<io::Result<Vec<_>>>()?;
     let ply_offset = opening.map_or(0, |opening| opening.origin.ply);
+    let start_ply = u16::try_from(ply_offset).map_err(data_error)?;
     let opening_ply = game.ply_count();
     let (mut injection_plan, mut injection_rng) =
         plan_injections(game_seed, opening_ply, settings.random_moves);
@@ -112,6 +114,16 @@ pub(super) fn play_game_from_opening(
                 ))
             })?;
             let selected = legal_moves[injection_rng.index(move_count)];
+            entries.push(
+                Entry::new(
+                    Some(selected),
+                    Value::None,
+                    Exclusion::None,
+                    Policy::None,
+                    None,
+                )
+                .map_err(data_error)?,
+            );
             game.play(selected).map_err(|error| {
                 invalid_data(format!(
                     "game {game_number} rejected random injection move: {error}"
@@ -145,6 +157,16 @@ pub(super) fn play_game_from_opening(
             .ok_or_else(|| invalid_data("searched node count overflow"))?;
 
         if game.ply_count() < injection_plan.record_from {
+            entries.push(
+                Entry::new(
+                    Some(search_result.best_move),
+                    Value::None,
+                    Exclusion::None,
+                    Policy::PlayedMove,
+                    None,
+                )
+                .map_err(data_error)?,
+            );
             game.play(search_result.best_move).map_err(|error| {
                 invalid_data(format!("game {game_number} rejected best move: {error}"))
             })?;
@@ -153,8 +175,10 @@ pub(super) fn play_game_from_opening(
         }
         stats.recordable_positions += 1;
 
-        if search_result.score.unsigned_abs() >= MATE_BAND_START {
+        let score = i16::try_from(search_result.score).map_err(data_error)?;
+        let exclusion = if search_result.score.unsigned_abs() >= MATE_BAND_START {
             stats.excluded_mate_band += 1;
+            Exclusion::MateBand
         } else if best_move_is_tactical(game.position(), &generator, search_result.best_move)
             .map_err(|error| {
                 invalid_data(format!(
@@ -163,31 +187,30 @@ pub(super) fn play_game_from_opening(
             })?
         {
             stats.excluded_tactical += 1;
+            Exclusion::Tactical
         } else if current_position_is_repeated(&game) {
             stats.excluded_repetition += 1;
+            Exclusion::Repetition
         } else {
-            let score = i16::try_from(search_result.score).map_err(|_| {
-                invalid_data(format!(
-                    "game {game_number} score {} does not fit in i16",
-                    search_result.score
-                ))
-            })?;
-            let ply = u16::try_from(game.ply_count() + ply_offset).map_err(|_| {
-                invalid_data(format!(
-                    "game {game_number} ply {} does not fit in u16",
-                    game.ply_count()
-                ))
-            })?;
-            candidates.push(Candidate {
-                position: game.position().clone(),
+            candidates.push(CompletedRecord {
                 score,
-                ply,
                 search_key: *game
                     .search_key_history()
                     .last()
                     .expect("every game has an initial search key"),
             });
-        }
+            Exclusion::None
+        };
+        entries.push(
+            Entry::new(
+                Some(search_result.best_move),
+                Value::AlphaBeta(score),
+                exclusion,
+                Policy::PlayedMove,
+                None,
+            )
+            .map_err(data_error)?,
+        );
 
         game.play(search_result.best_move).map_err(|error| {
             invalid_data(format!("game {game_number} rejected best move: {error}"))
@@ -196,44 +219,41 @@ pub(super) fn play_game_from_opening(
     }
 
     stats.total_plies = u64::from(game.ply_count() + ply_offset);
-    let records = match game.result() {
+    let record = match game.result() {
         Some(result) => {
             stats.record_result(result);
-            let records = candidates
-                .into_iter()
-                .map(|candidate| {
-                    let outcome =
-                        Outcome::from_game_result(result, candidate.position.side_to_move());
-                    CompletedRecord {
-                        record: Record::from_position(
-                            &candidate.position,
-                            candidate.score,
-                            outcome,
-                            game_number,
-                            candidate.ply,
-                            if opening.is_some() {
-                                minase::training::records::Origin::HumanOpeningSelfplay
-                            } else {
-                                minase::training::records::Origin::RandomSelfplay
-                            },
-                        ),
-                        search_key: candidate.search_key,
-                    }
-                })
-                .collect::<Vec<_>>();
-            stats.recorded_positions =
-                u64::try_from(records.len()).map_err(|error| invalid_data(error.to_string()))?;
-            records
+            entries.push(
+                Entry::new(None, Value::None, Exclusion::None, Policy::None, None)
+                    .map_err(data_error)?,
+            );
+            stats.recorded_positions = candidates.len() as u64;
+            Some(
+                GameRecord::new(
+                    game_number,
+                    if opening.is_some() {
+                        Origin::HumanOpeningSelfplay
+                    } else {
+                        Origin::RandomSelfplay
+                    },
+                    Outcome::Game(result),
+                    start_ply,
+                    start_position,
+                    entries,
+                )
+                .map_err(data_error)?,
+            )
         }
         None => {
             stats.discarded_games = 1;
-            Vec::new()
+            candidates.clear();
+            None
         }
     };
 
     Ok(CompletedGame {
         game_number,
-        records,
+        record,
+        records: candidates,
         stats,
     })
 }
@@ -313,7 +333,7 @@ mod tests {
         maximum: u8,
     ) -> (u32, InjectionPlan) {
         let game_seed = derive_seed(base_seed, u64::from(game_number));
-        let game = generate_opening(rules, game_seed).expect("the fixed opening is valid");
+        let (game, _) = generate_opening(rules, game_seed).expect("the fixed opening is valid");
         let opening_ply = game.ply_count();
         let (plan, _) = plan_injections(game_seed, opening_ply, maximum);
         (opening_ply, plan)
@@ -335,13 +355,43 @@ mod tests {
 
         assert!(!first.records.is_empty());
         assert_eq!(first, second);
-        let (_, plan) = opening_and_plan(rules, 7, 1, 4);
-        assert!(
-            first
-                .records
-                .iter()
-                .all(|completed| u32::from(completed.record.ply()) >= plan.record_from)
-        );
+        let (opening_ply, plan) = opening_and_plan(rules, 7, 1, 4);
+        assert!(!plan.plies.is_empty());
+        assert!(plan.plies[0] > opening_ply);
+        let decoded = crate::selfplay_gen::test_support::round_trip(first.record.as_ref().unwrap());
+        let record = decoded.record();
+        assert_eq!(record.start_position(), &Position::initial());
+        assert_eq!(record.start_ply(), 0);
+        assert_eq!(record.entries().len() as u64, first.stats.total_plies + 1);
+        let mut eligible = 0;
+        for (ply, entry) in record.entries().iter().enumerate() {
+            let ply = ply as u32;
+            if u64::from(ply) == first.stats.total_plies {
+                assert_eq!(entry.played_move(), None);
+                assert_eq!(entry.value(), Value::None);
+                assert_eq!(entry.policy(), &Policy::None);
+                assert_eq!(entry.exclusion(), Exclusion::None);
+                continue;
+            }
+            assert!(entry.played_move().is_some());
+            if ply < opening_ply || plan.plies.contains(&ply) {
+                assert_eq!(entry.value(), Value::None);
+                assert_eq!(entry.policy(), &Policy::None);
+                assert_eq!(entry.exclusion(), Exclusion::None);
+            } else {
+                assert_eq!(entry.policy(), &Policy::PlayedMove);
+                if ply < plan.record_from {
+                    assert_eq!(entry.value(), Value::None);
+                    assert_eq!(entry.exclusion(), Exclusion::None);
+                } else {
+                    assert!(matches!(entry.value(), Value::AlphaBeta(_)));
+                    if entry.exclusion() == Exclusion::None {
+                        eligible += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(eligible, first.stats.recorded_positions);
         assert_eq!(
             first.stats.recordable_positions,
             first
@@ -387,6 +437,7 @@ mod tests {
         assert_eq!(completed.stats.total_plies, 32);
         assert!(u64::from(plan.record_from) > completed.stats.total_plies);
         assert!(completed.records.is_empty());
+        assert!(completed.record.is_none());
         assert_eq!(
             completed
                 .stats

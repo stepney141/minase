@@ -64,7 +64,7 @@ pub(super) struct GenerateArguments {
 pub(super) struct InspectArguments {
     /// 検査する学習データファイル。
     pub(super) path: PathBuf,
-    /// 内容を表示する先頭レコード数。
+    /// 全項目を表示する先頭対局数。
     #[arg(long, default_value_t = 0)]
     pub(super) dump: u64,
 }

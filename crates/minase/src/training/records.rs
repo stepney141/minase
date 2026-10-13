@@ -27,8 +27,8 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 
 use minase_core::piece::PIECE_KIND_COUNT;
 use minase_core::{
-    BOARD_SQUARE_COUNT, Color, GameResult, IllegalMove, Move, MoveGenerator, PieceCode, PieceKind,
-    Position, PositionBuildError, PositionBuilder, PositionError, Square,
+    BOARD_SQUARE_COUNT, Color, GameResult, PieceCode, PieceKind, Position, PositionBuildError,
+    PositionBuilder, PositionError, Square,
 };
 
 /// 学習データファイルの識別子。
@@ -664,26 +664,6 @@ impl Record {
     }
 }
 
-/// 合法な最善手が捕獲または成りなら`true`を返す。
-///
-/// `best_move`が指定局面の合法手でなければ`IllegalMove`を返し、局面は変更しない。
-pub fn best_move_is_tactical(
-    position: &Position,
-    generator: &MoveGenerator,
-    best_move: Move,
-) -> Result<bool, IllegalMove> {
-    let mut legal_moves = Vec::new();
-    generator.generate_moves(position, &mut legal_moves);
-    if !legal_moves.contains(&best_move) {
-        return Err(IllegalMove(best_move));
-    }
-    Ok(best_move.promote
-        || position
-            .captured_squares(best_move)
-            .into_iter()
-            .any(|square| square.is_some()))
-}
-
 /// ヘッダを検証し、レコードを逐次復号する読み込み器。
 pub struct Reader<R> {
     /// 読み込み元。
@@ -958,23 +938,6 @@ mod tests {
                 Err(Error::NonzeroReservedBytes)
             ));
         }
-    }
-
-    // 公開境界は未検証の着手をパニックせず型付きエラーとして拒否する。
-    #[test]
-    fn tactical_move_classification_rejects_a_move_without_an_origin_piece() {
-        let position = Position::empty(Color::Black);
-        let invalid = Move {
-            from: sq(0, 0),
-            mid: None,
-            to: sq(0, 1),
-            promote: false,
-        };
-
-        assert_eq!(
-            best_move_is_tactical(&position, &MoveGenerator::standard(), invalid),
-            Err(IllegalMove(invalid))
-        );
     }
 
     // `Record`の契約とMNSDの配置表に従い、盤面、手番、成り状態およびzobristを固定長形式が保存する。

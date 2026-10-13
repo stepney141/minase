@@ -3,16 +3,16 @@
 use std::collections::BTreeMap;
 use std::io::{self, Seek, Write};
 
-use crate::training::records::{Record, Writer};
+use crate::training::records_v2::{GameRecord, Writer};
 
 use super::statistics::{RecordedStatistics, Statistics};
-use super::{invalid_data, training_error};
+use super::{data_error, invalid_data};
 
-/// 探索キーを伴う書き出し対象レコード。
+/// 採用局面の探索値と、統計に使う探索キー。
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CompletedRecord {
-    /// 固定長形式へ書き出すレコード。
-    pub record: Record,
+    /// 採用局面の探索値。
+    pub score: i16,
     /// 対局間の局面重複を判定する探索キー。
     pub search_key: u64,
 }
@@ -22,7 +22,9 @@ pub struct CompletedRecord {
 pub struct CompletedGame {
     /// 1から始まる対局番号。
     pub game_number: u32,
-    /// 終局対局から採用したレコード。
+    /// 保存する対局。手数上限で破棄した場合はなし。
+    pub record: Option<GameRecord>,
+    /// 終局対局から採用した局面の統計用データ。
     pub records: Vec<CompletedRecord>,
     /// 打ち切り対局を含む生成統計。
     pub stats: Statistics,
@@ -52,10 +54,11 @@ where
         let completed = message?;
         pending.insert(completed.game_number, completed);
         while let Some(completed) = pending.remove(&(next_to_write as u32)) {
+            if let Some(game) = &completed.record {
+                writer.write_game(game).map_err(data_error)?;
+                recorded.record_exclusions(game);
+            }
             for record in &completed.records {
-                writer
-                    .write_record(&record.record)
-                    .map_err(training_error)?;
                 recorded.record(record);
             }
             total.merge(&completed.stats);

@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use minase_core::{Color, DrawReason, GameResult, WinReason};
 
 use super::game::CompletedRecord;
+use crate::training::records_v2::{Exclusion, GameRecord};
 
 /// 注入オフセットのヒストグラム区間数。
 pub const INJECTION_HISTOGRAM_BINS: usize = 8;
@@ -141,6 +142,8 @@ impl Statistics {
 
 /// 書き出したレコードから対局横断で求める統計。
 pub struct RecordedStatistics {
+    /// 保存した対局の除外理由別の項目数。添字は除外理由のコード。
+    pub exclusions: [u64; 4],
     /// i16の全探索値に対応する度数表。
     pub score_frequencies: Vec<u64>,
     /// 既出局面の探索キー。
@@ -153,6 +156,7 @@ impl Default for RecordedStatistics {
     fn default() -> Self {
         Self {
             score_frequencies: vec![0; SCORE_VALUE_COUNT],
+            exclusions: [0; 4],
             search_keys: HashSet::new(),
             duplicate_positions: 0,
         }
@@ -160,9 +164,18 @@ impl Default for RecordedStatistics {
 }
 
 impl RecordedStatistics {
+    /// 保存した対局だけの除外理由を集計する。
+    pub(super) fn record_exclusions(&mut self, game: &GameRecord) {
+        for entry in game.entries() {
+            if entry.exclusion() != Exclusion::None {
+                self.exclusions[entry.exclusion() as usize] += 1;
+            }
+        }
+    }
+
     /// 対局番号順に書き出す1レコードを集計する。
     pub(super) fn record(&mut self, completed: &CompletedRecord) {
-        self.score_frequencies[score_index(completed.record.score())] += 1;
+        self.score_frequencies[score_index(completed.score)] += 1;
         if !self.search_keys.insert(completed.search_key) {
             self.duplicate_positions += 1;
         }
