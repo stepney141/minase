@@ -11,12 +11,14 @@
 
 mod error;
 mod mnsd;
+mod sample;
 mod shuffle;
 mod teacher;
 
 pub use error::Error;
-pub use mnsd::{Dataset, RecordLocation, TeacherClass};
+pub use mnsd::{Dataset, TeacherClass};
 pub(crate) use mnsd::{GameKey, outcome_code};
+pub use sample::{Outcome, Sample};
 pub use shuffle::{epoch_permutation, hash64, is_validation};
 pub use teacher::{
     Lookahead, build_targets_from_arrays, compute_lookahead, estimate_k, parse_lambda,

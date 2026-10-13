@@ -26,8 +26,7 @@ impl SampleArgs {
     /// 学習と同じ[`Dataset::open`]で、先読みなしでMNSDを開く。
     /// 対局単位の検証分割も学習と同じ規則に従う。
     pub(super) fn open(&self) -> Result<Dataset> {
-        // SAFETY: 他の学習器コマンドと同じく、実行中の入力MNSDを変更しない契約で読み込む。
-        Ok(unsafe { Dataset::open(&self.data, None)? })
+        Ok(Dataset::open(&self.data, None)?)
     }
 
     /// 母集団の通算番号から非復元抽出し、昇順に並べて返す。
@@ -81,7 +80,7 @@ struct InputFile {
 /// 診断報告の最上位へ平坦化して保存する標本の情報。
 /// `sample_count`は抽出局面数、`seed`は`--seed`の値である。
 /// `sample_indices_sha256_le_i64`は、昇順に並べた通算番号をそれぞれリトルエンディアンi64の8バイトにして連結した列のSHA-256を小文字16進で表す。
-/// `input_files`は入力順の配列で、各要素は[`FileIdentity`]のパス、バイト長、ヘッダに、MNSDヘッダの記録数`record_count`を加えた情報を持つ。
+/// `input_files`は入力順の配列で、各要素は[`FileIdentity`]のパス、バイト長、ヘッダに、適格な局面数`record_count`を加えた情報を持つ。
 #[derive(Serialize)]
 pub(super) struct SampleIdentity {
     sample_count: usize,
@@ -103,11 +102,11 @@ pub(super) fn sample_identity(
     }
     let input_files = dataset
         .paths()
-        .zip(dataset.headers())
-        .map(|(path, header)| {
+        .zip(dataset.file_sample_counts())
+        .map(|(path, count)| {
             Ok(InputFile {
                 identity: file_identity(path)?,
-                record_count: header.record_count(),
+                record_count: count,
             })
         })
         .collect::<Result<_>>()?;

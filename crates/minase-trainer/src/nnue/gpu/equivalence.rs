@@ -6,6 +6,7 @@
 //! 回転、番兵、先獅子、補間率の境界、空の逆索引範囲、および3分類の教師値を含める。
 
 use super::{Device, Error, Evaluation, Evaluator, Result};
+use crate::data::{Outcome, Sample};
 use crate::nnue::{
     data::{
         BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, MAX_BATCH_SIZE, build_targets,
@@ -14,10 +15,7 @@ use crate::nnue::{
     options::TrainingOptions,
     reference::{self, RemovalReference},
 };
-use minase::{
-    eval::features::{FEATURE_COUNT, feature_index},
-    training::records::{Outcome, Record},
-};
+use minase::eval::features::{FEATURE_COUNT, feature_index};
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
 
 /// CPUとの比較に使う相対許容誤差。
@@ -460,13 +458,13 @@ fn removal_partitions(shape: Shape, seed: u64) -> Result<(Model, BatchSlot, Remo
                 Square::from_dense(143).ok_or(Error::Invalid("partition lion square"))?,
             ))
             .map_err(|_| Error::Invalid("partition lion capture"))?;
-        records.push(Record::from_position(
+        records.push(Sample::from_position(
             &position,
             scores[b] as i16,
             Outcome::Draw,
             0,
             b as u16,
-            minase::training::records::Origin::RandomSelfplay,
+            minase::training::records_v2::Origin::RandomSelfplay,
         ));
     }
     let batch = BatchSlot::from_records(shape.feature_set(), &records, &scores, &classes)?;
@@ -561,13 +559,13 @@ pub(super) fn synthetic_batch(set: InputFeatureSet, n: usize, seed: u64) -> Resu
                 .map_err(|_| Error::Invalid("synthetic lion capture"))?;
         }
         let score = (random.centered() * 2000.0) as i16;
-        records.push(Record::from_position(
+        records.push(Sample::from_position(
             &position,
             score,
             [Outcome::Loss, Outcome::Draw, Outcome::Win][b % 3],
             (b / 60000) as u32,
             (b % 60000) as u16,
-            minase::training::records::Origin::RandomSelfplay,
+            minase::training::records_v2::Origin::RandomSelfplay,
         ));
         scores.push(f32::from(score));
         classes.push((b % 3) as u32);

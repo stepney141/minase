@@ -1,4 +1,5 @@
 //! 同時学習の損失、初期値照合、再現性、保存物と再開の拒否条件を検証する。
+use minase_trainer::data::{Outcome, Sample};
 #[path = "joint_train/algebra.rs"]
 mod algebra;
 #[path = "common/checkpoint.rs"]
@@ -7,12 +8,9 @@ mod checkpoint_contract;
 #[path = "joint_train/fixture.rs"]
 mod support;
 use clap::Parser;
-use minase::{
-    eval::{
-        features::FEATURE_COUNT,
-        pst::{self, FM_RANK, Pst},
-    },
-    training::records::{Outcome, Record},
+use minase::eval::{
+    features::FEATURE_COUNT,
+    pst::{self, FM_RANK, Pst},
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
@@ -98,13 +96,10 @@ fn fm_npz(model: &fm::Model) -> Vec<u8> {
     .unwrap()
 }
 fn dataset(args: &Args) -> Dataset {
-    // SAFETY: Each test owns these files, and leaves them unchanged while the Dataset is alive.
-    unsafe {
-        Dataset::open(&args.data, None)
-            .unwrap()
-            .with_lambda(args.lambda)
-            .unwrap()
-    }
+    Dataset::open(&args.data, None)
+        .unwrap()
+        .with_lambda(args.lambda)
+        .unwrap()
 }
 fn initialize(args: &Args) -> (Model, usize) {
     let ds = dataset(args);
@@ -446,23 +441,24 @@ fn exported_quantization_failure_keeps_weights_and_records_error() {
     }
     let p = position(&pieces, Color::Black, None);
     let original = fs::read(&args.data[0]).unwrap();
-    let mut bytes = original[..136].to_vec();
+    let header = minase::training::records_v2::Reader::new(original.as_slice())
+        .unwrap()
+        .header()
+        .clone();
+    let mut samples = Vec::new();
     for game in 0..40 {
         for ply in 0..3 {
-            bytes.extend(
-                Record::from_position(
-                    &p,
-                    300,
-                    Outcome::Win,
-                    game,
-                    ply,
-                    minase::training::records::Origin::RandomSelfplay,
-                )
-                .encode(),
-            );
+            samples.push(Sample::from_position(
+                &p,
+                300,
+                Outcome::Win,
+                game,
+                ply,
+                minase::training::records_v2::Origin::RandomSelfplay,
+            ));
         }
     }
-    fs::write(&args.data[0], &bytes).unwrap();
+    fs::write(&args.data[0], mnsd::independent(header, &samples)).unwrap();
     args.pst_lr = 4095.875;
     args.removal_penalty = 0.0;
     let result = joint::train(args.clone());

@@ -1,5 +1,7 @@
 //! NNUEの書き出し契約を、合成MNSDと独立に計算できる線形評価で検証する。
 
+use common::mnsd;
+use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::nn::BestEpoch;
 mod common;
 
@@ -19,7 +21,7 @@ use minase::{
             head::DirectScrelu,
         },
     },
-    training::records::{Header, Outcome, Record},
+    training::records_v2::Header,
 };
 use minase_core::{Color, PieceKind, Position};
 use minase_trainer::{
@@ -65,13 +67,13 @@ impl Fixture {
                 } else {
                     Position::initial()
                 };
-                Record::from_position(
+                Sample::from_position(
                     &position,
                     120,
                     Outcome::Win,
                     game,
                     0,
-                    minase::training::records::Origin::RandomSelfplay,
+                    minase::training::records_v2::Origin::RandomSelfplay,
                 )
             })
             .collect();
@@ -79,19 +81,21 @@ impl Fixture {
             RULE_SET.into(),
             "1".repeat(40),
             [2; 32],
+            minase::training::records_v2::TeacherKind::AlphaBeta,
             200,
             11,
-            records.len() as u64,
         )
         .unwrap();
-        let mut bytes = header.encode().to_vec();
+        let mut samples = Vec::new();
         for record in records {
-            bytes.extend(record.encode());
+            samples.push(record.clone());
         }
-        fs::write(&path, &bytes).unwrap();
+        fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         Self {
-            // SAFETY: この試験専用ファイルは、Datasetの生存中に変更も切り詰めもしない。
-            dataset: unsafe { Dataset::open(&[path], None).unwrap().with_lambda(1.0) }.unwrap(),
+            dataset: Dataset::open(&[path], None)
+                .unwrap()
+                .with_lambda(1.0)
+                .unwrap(),
             root,
         }
     }

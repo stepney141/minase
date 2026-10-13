@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
-use minase::training::records::{Header, Outcome, Record};
+#[path = "mnsd.rs"]
+pub mod mnsd;
+use minase::training::records_v2::Header;
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
+use minase_trainer::data::{Outcome, Sample};
 use minase_trainer::{
     data::Dataset,
     nnue::{
@@ -33,32 +36,29 @@ impl Fixture {
             "L0,P0,R1,E0".into(),
             "1".repeat(40),
             [2; 32],
+            minase::training::records_v2::TeacherKind::AlphaBeta,
             200,
             11,
-            positions.len() as u64,
         )
         .unwrap();
-        let mut bytes = header.encode().to_vec();
+        let mut samples = Vec::new();
         for (i, position) in positions.iter().enumerate() {
-            let record = Record::from_position(
+            let record = Sample::from_position(
                 position,
                 [120, -80, 30][i % 3],
                 [Outcome::Win, Outcome::Loss, Outcome::Draw][i % 3],
                 1,
                 i as u16,
-                minase::training::records::Origin::RandomSelfplay,
+                minase::training::records_v2::Origin::RandomSelfplay,
             );
-            bytes.extend(record.encode());
+            samples.push(record.clone());
         }
-        fs::write(&path, &bytes).unwrap();
+        fs::write(&path, mnsd::independent(header, &samples)).unwrap();
         Self {
-            // SAFETY: このfixture専用のファイルを作成し、Datasetの生存中は変更・切り詰めしない。
-            dataset: unsafe {
-                Dataset::open(&[path], None)
-                    .unwrap()
-                    .with_lambda(1.0)
-                    .unwrap()
-            },
+            dataset: Dataset::open(&[path], None)
+                .unwrap()
+                .with_lambda(1.0)
+                .unwrap(),
             root,
         }
     }

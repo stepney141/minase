@@ -281,9 +281,8 @@ pub fn run(args: Args) -> std::result::Result<Report, Box<dyn std::error::Error>
         .ok_or(Error::Invalid("benchmark position count overflow"))?;
     let threads = options::workers(args.threads)?;
     let workers = threads.min(args.steps);
-    // SAFETY: 入力は生成完了済みのMNSDに限り、Datasetの生存中は外部プロセスも含めて
-    // 変更・切り詰めしない運用契約とする。この処理も入力ファイルを書き換えない。
-    let dataset = unsafe { Dataset::open(&args.data, None)?.with_lambda(args.training.lambda)? };
+
+    let dataset = Dataset::open(&args.data, None)?.with_lambda(args.training.lambda)?;
     if dataset.training_indices().len() < required {
         return Err(Error::Invalid(
             "not enough training positions for (steps + 1) * batch, including warmup",

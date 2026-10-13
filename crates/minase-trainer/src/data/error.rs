@@ -1,6 +1,6 @@
 use std::{fmt, io, path::PathBuf};
 
-use minase::training::records;
+use minase::training::records_v2;
 
 /// データ経路の失敗。下位の復号・入出力エラーは原因を保持する。
 #[derive(Debug)]
@@ -8,7 +8,23 @@ pub enum Error {
     /// ファイル操作またはワーカーの起動に失敗した。
     Io(io::Error),
     /// MNSDの復号または局面復元に失敗した。
-    Mnsd(records::Error),
+    Mnsd(records_v2::Error),
+    /// MCTSの教師値には対応していない。
+    MctsTeacher {
+        /// 問題のファイル。
+        path: PathBuf,
+    },
+    /// 局面の組み立てに失敗した。
+    PositionBuild(minase_core::PositionBuildError),
+    /// 復元局面の不変条件に違反した。
+    Position(minase_core::PositionError),
+    /// 記録された麒麟成りの印が復元結果と異なる。
+    LionPromotionMismatch {
+        /// 記録された値。
+        recorded: bool,
+        /// 復元した値。
+        restored: bool,
+    },
     /// 1ファイルに複数の由来が含まれる。
     MixedOrigins {
         /// 問題のファイル。
@@ -58,6 +74,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MctsTeacher { path } => write!(f, "{}: MCTS teacher data is not supported", path.display()),
+            Self::PositionBuild(error) => write!(f, "cannot restore position: {error}"),
+            Self::Position(error) => write!(f, "restored position is invalid: {error}"),
+            Self::LionPromotionMismatch { recorded, restored } => write!(f, "lion-promotion flag mismatch: recorded {recorded}, restored {restored}"),
             Self::Io(error) => error.fmt(f),
             Self::Mnsd(error) => error.fmt(f),
             Self::MixedOrigins { path } => write!(f, "{}: mixed record origins", path.display()),
@@ -94,6 +114,8 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::PositionBuild(error) => Some(error),
+            Self::Position(error) => Some(error),
             Self::Io(error) => Some(error),
             Self::Mnsd(error) => Some(error),
             _ => None,
@@ -107,8 +129,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<records::Error> for Error {
-    fn from(error: records::Error) -> Self {
+impl From<records_v2::Error> for Error {
+    fn from(error: records_v2::Error) -> Self {
         Self::Mnsd(error)
     }
 }

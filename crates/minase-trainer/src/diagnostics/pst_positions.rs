@@ -1,19 +1,23 @@
 //! ライブラリでの評価、非王駒の除去、合法な成り手とMNSD成果物。
 //!
-//! 診断は次のMNSD版1ファイルをすべて新規作成し、ヘッダの固定値は[`write_mnsd`]に従う。
-//! `diagnostic-samples.bin`は全帯の標本の和集合を通算番号の昇順に並べた入力記録の複製で、ヘッダの検査和は基準MNPTの検査和である。
-//! `representatives.bin`は初期局面に続けて帯番号の昇順の代表局面を置き、同じく基準MNPTの検査和を使う。
-//! 初期局面の記録は手番0、先獅子なしの255、麒麟成りの印0、探索値0、結果0の負け、対局番号0、手数0である。
-//! `removals.bin`は代表局面の順、升番号の昇順に、王将と玉将の駒状態11、および太子の駒状態21を除く駒を1枚除いた記録を置く。
-//! すべての成果物は由来を合成3とする。除去記録は盤面と由来以外の欄を元の記録に保ち、局面として復元できない記録も含め、ヘッダの検査和を全0とする。
+//! 標本、代表局面、駒を除いた局面を、1局面1対局の合成MNSD版2として保存する。
+//! `diagnostic-samples.bin`は全帯の標本を通算番号順に、`representatives.bin`は初期局面と帯番号順の代表局面を保存する。
+//! この2ファイルの検査和は基準MNPTから取り、`removals.bin`の検査和は全0とする。
+//! 除去局面は代表局面の順、升番号の順に並べる。
+//! 対局番号は各ファイル内で1から増加し、価値と方策は持たない。
+//! 除去局面が検証を通らない場合も診断計算では数えるが、ファイルには書かない。
 
 use super::{
     Result,
     pst_reference::{Features, Models, Weights, piece},
 };
+use crate::data::{Outcome, Sample};
 use minase::{
     eval::pst::evaluate_for_diagnostics,
-    training::records::{Header, Origin, Outcome, Record, Writer},
+    training::records_v2::{
+        Entry, Exclusion, GameRecord, Header, Origin, Outcome as GameOutcome, Policy, TeacherKind,
+        Value, Writer,
+    },
 };
 use minase_core::{Game, MoveGenerator, Position, Rules, notation::usi};
 use serde::Serialize;
@@ -30,28 +34,45 @@ pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// 診断用のMNSD版1を新規作成する。
-/// ヘッダは規則セット名`"L0,P0,R1,E0"`、生成コミット`"0"`×40、ノード上限0、シード0、渡された記録数と検査和である。
+/// 診断用のMNSD版2を新規作成する。
+/// ヘッダは規則セット名`"L0,P0,R1,E0"`、生成コミット`"0"`×40、ノード上限0、シード0、αβ教師、渡された検査和である。
 /// 各成果物の記録順と検査和の選択は[`pst_positions`](self)のモジュールdocコメントに従う。
-pub(super) fn write_mnsd(path: &Path, records: &[Record], checksum: [u8; 32]) -> Result<()> {
+pub(super) fn write_mnsd(path: &Path, records: &[Sample], checksum: [u8; 32]) -> Result<()> {
     let header = Header::new(
         "L0,P0,R1,E0".into(),
         "0".repeat(40),
         checksum,
+        TeacherKind::AlphaBeta,
         0,
         0,
-        records.len() as u64,
     )?;
     let file = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(path)?);
     let mut writer = Writer::new(file, header)?;
-    for record in records {
-        writer.write_record(&record.clone().with_origin(Origin::Synthetic))?;
+    for (index, record) in records.iter().enumerate() {
+        let number = u32::try_from(index)
+            .ok()
+            .and_then(|n| n.checked_add(1))
+            .ok_or(minase::training::records_v2::Error::CountOverflow)?;
+        writer.write_game(&GameRecord::new(
+            number,
+            Origin::Synthetic,
+            GameOutcome::NotFromGame,
+            record.ply(),
+            record.to_position()?,
+            vec![Entry::new(
+                None,
+                Value::None,
+                Exclusion::None,
+                Policy::None,
+                None,
+            )?],
+        )?)?;
     }
     writer.finish()?.flush()?;
     Ok(())
 }
 
-pub(super) fn check(weights: &Weights, records: &[Record], name: &str) -> Result<usize> {
+pub(super) fn check(weights: &Weights, records: &[Sample], name: &str) -> Result<usize> {
     for (index, record) in records.iter().enumerate() {
         let position = record
             .to_position()
@@ -157,7 +178,7 @@ struct Promotion {
 /// 代表局面の合法な成り手をエンジン既定の`L0,P0,R1,E0`で実際に適用し、[`Promotion`]を作る。
 /// 着手後の独立整数PST参照が`after_opposite`と異なる場合、または参照から求めた差が`delta`と異なる場合は失敗する。
 /// モデルごとの照合した手の総数を、呼び手が`rust_promotion_agreement`に数える。
-fn promotions(model: &Weights, record: &Record) -> Result<Vec<Promotion>> {
+fn promotions(model: &Weights, record: &Sample) -> Result<Vec<Promotion>> {
     let position = record.to_position()?;
     let side = position.side_to_move();
     let before = evaluate_for_diagnostics(&model.engine, &position, side);
@@ -173,15 +194,15 @@ fn promotions(model: &Weights, record: &Record) -> Result<Vec<Promotion>> {
         after.play(mv)?;
         let same = evaluate_for_diagnostics(&model.engine, after.position(), side);
         let opposite = evaluate_for_diagnostics(&model.engine, after.position(), side.opposite());
-        let record = Record::from_position(
+        let record = Sample::from_position(
             after.position(),
             0,
             Outcome::Draw,
             1,
             0,
-            minase::training::records::Origin::Synthetic,
+            minase::training::records_v2::Origin::Synthetic,
         );
-        let bytes = record.encode();
+        let bytes = record.board_codes();
         let reference = model.evaluate(&Features::new(&record));
         let delta = -opposite.0 - before.0;
         if reference != opposite.0 || -reference - before.0 != delta {
@@ -203,9 +224,9 @@ fn promotions(model: &Weights, record: &Record) -> Result<Vec<Promotion>> {
             turn: -(opposite.0 + same.0),
             turn_pst: -(opposite.1 + same.1),
             after: AfterPosition {
-                board: bytes[..144].to_vec(),
-                stm: bytes[144],
-                lion: bytes[145],
+                board: bytes.iter().map(|code| code & 127).collect(),
+                stm: record.side_to_move() as u8,
+                lion: record.lion_square().map_or(255, |s| s.dense_index() as u8),
                 eval: opposite.0,
                 eval_pst: opposite.1,
             },
@@ -229,17 +250,17 @@ pub(super) struct PositionReport {
 /// MNSD成果物の内容は[`pst_positions`](self)のモジュールdocコメントに従う。
 pub(super) fn diagnose(
     models: &Models<Weights>,
-    selected: &[(usize, u64, Record)],
+    selected: &[(usize, u64, Sample)],
     directory: &Path,
 ) -> Result<PositionReport> {
-    // 初期局面の記録は盤面と先獅子以外の欄を0にし、結果と対局番号も0で保存する。
-    let initial = Record::from_position(
+    // 初期局面は手数0とし、書き出す際に合成対局の番号と結果を付ける。
+    let initial = Sample::from_position(
         &Position::initial(),
         0,
         Outcome::Loss,
         0,
         0,
-        minase::training::records::Origin::Synthetic,
+        minase::training::records_v2::Origin::Synthetic,
     );
     let records: Vec<_> = std::iter::once(initial)
         .chain(selected.iter().map(|(_, _, record)| record.clone()))
@@ -266,18 +287,16 @@ pub(super) fn diagnose(
             candidate: models.candidate.evaluate(&features),
         };
         let mut removals = Vec::new();
-        let bytes = record.encode();
+        let bytes = record.board_codes();
         for (square, &byte) in bytes[..144].iter().enumerate() {
             if byte == 0 {
                 continue;
             }
-            let (state, color) = piece(byte);
+            let (state, color) = piece(byte & 127);
             if [11, 21].contains(&state) {
                 continue;
             }
-            let mut removed = bytes;
-            removed[square] = 0;
-            let variant = Record::decode(&removed)?;
+            let variant = record.without_piece(square);
             let removed_features = Features::new(&variant);
             let scores = Models {
                 base: models.base.evaluate(&removed_features),
@@ -300,6 +319,7 @@ pub(super) fn diagnose(
                     report.removals.candidate.skipped += 1;
                 }
                 Ok(position) => {
+                    variants.push(variant.clone());
                     for (name, model, expected) in [
                         ("base", &models.base, scores.base),
                         ("candidate", &models.candidate, scores.candidate),
@@ -322,11 +342,10 @@ pub(super) fn diagnose(
                     report.removals.candidate.checked += 1;
                 }
             }
-            variants.push(variant);
             removals.push(Removal {
                 square,
-                piece_byte: byte,
-                relative_color: u8::from(color != bytes[144]),
+                piece_byte: byte & 127,
+                relative_color: u8::from(color != record.side_to_move() as u8),
                 state,
                 delta_cp: delta,
                 total_delta_cp: total,

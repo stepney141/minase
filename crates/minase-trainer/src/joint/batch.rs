@@ -1,9 +1,9 @@
 use super::Result;
+use crate::data::Sample;
 use crate::{
     data::{Dataset, build_targets_from_arrays},
     fm, pst,
 };
-use minase::training::records::Record;
 
 /// 同じ鏡映後の局面を、全特徴のFMと鏡映共有のPSTで表すバッチ。
 #[derive(Debug)]
@@ -43,14 +43,14 @@ impl Batch {
         Self::assemble(pst, &records, mirrors, &targets)
     }
     /// 読み込み済み局面から両モデルに共通の特徴と教師値を作る。
-    pub fn from_records(records: &[Record], mirrors: &[u8], targets: &[f32]) -> Result<Self> {
+    pub fn from_records(records: &[Sample], mirrors: &[u8], targets: &[f32]) -> Result<Self> {
         let pst =
             pst::Batch::from_records(records, &vec![0.0; records.len()], &vec![0; records.len()])?;
         Self::assemble(pst, records, mirrors, targets)
     }
     fn assemble(
         mut pst: pst::Batch,
-        records: &[Record],
+        records: &[Sample],
         mirrors: &[u8],
         targets: &[f32],
     ) -> Result<Self> {

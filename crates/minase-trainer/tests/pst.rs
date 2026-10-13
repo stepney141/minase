@@ -1,16 +1,14 @@
 //! PST学習の契約を、独立な損失の定義、鏡映、更新、保存の性質から検証する。
+use minase_trainer::data::{Outcome, Sample};
 #[path = "common/checkpoint.rs"]
 #[allow(dead_code)]
 mod checkpoint_contract;
 mod common;
 
 use common::{Fixture, mirror, position, positions};
-use minase::{
-    eval::{
-        features::{FEATURE_COUNT, feature_index, lion_feature_index, mirror_feature},
-        pst::Pst,
-    },
-    training::records::{Outcome, Record},
+use minase::eval::{
+    features::{FEATURE_COUNT, feature_index, lion_feature_index, mirror_feature},
+    pst::Pst,
 };
 use minase_core::{Color, PieceKind, Position, Square};
 use minase_trainer::pst::{
@@ -22,13 +20,13 @@ fn batch(positions: &[Position]) -> Batch {
     let records: Vec<_> = positions
         .iter()
         .map(|p| {
-            Record::from_position(
+            Sample::from_position(
                 p,
                 0,
                 Outcome::Draw,
                 1,
                 0,
-                minase::training::records::Origin::RandomSelfplay,
+                minase::training::records_v2::Origin::RandomSelfplay,
             )
         })
         .collect();

@@ -79,7 +79,7 @@ pub(super) struct Report {
 /// `--pair NAME BASELINE CANDIDATE`の各組を同じ標本で比較する。
 /// 引数は1組以上を要求し、NAMEは組の間で一意でなければならない。
 /// BASELINEは次元32のFMを持つMNPT版3、CANDIDATEはMNUE版5である。
-/// 各局面は[`Record::to_position_for_evaluation`](minase::training::records::Record::to_position_for_evaluation)で復元し、記録された手番側の視点から評価する。
+/// 各局面は[`Sample::to_position`](crate::data::Sample::to_position)で復元し、記録された手番側の視点から評価する。
 /// 基準は[`pst::evaluate_for_diagnostics`]のPSTとFMを合わせた整数評価、候補は[`IntegerNetwork::evaluate`]の整数評価であり、単位はセンチポーンである。
 pub(super) fn run(args: &DistributionArgs) -> Result<Report> {
     let mut names = HashSet::new();
@@ -99,7 +99,9 @@ pub(super) fn run(args: &DistributionArgs) -> Result<Report> {
         let mut candidate_scores = Vec::with_capacity(indices.len());
         let mut phases = Vec::with_capacity(indices.len());
         for &index in &indices {
-            let (position, perspective) = dataset.record(index)?.to_position_for_evaluation()?;
+            let sample = dataset.record(index)?;
+            let position = sample.to_position()?;
+            let perspective = sample.side_to_move();
             base_scores.push(f64::from(
                 pst::evaluate_for_diagnostics(&baseline, &position, perspective).0,
             ));

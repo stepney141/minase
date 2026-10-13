@@ -17,8 +17,6 @@ pub enum Error {
     Json(serde_json::Error),
     /// MNPTの処理に失敗した。
     Mnpt(minase::eval::pst::Error),
-    /// 記録からの局面復元に失敗した。
-    Record(minase::training::records::Error),
     /// 実行時刻の取得に失敗した。
     Time(std::time::SystemTimeError),
 }
@@ -31,7 +29,6 @@ impl fmt::Display for Error {
             Self::Nn(e) => e.fmt(f),
             Self::Json(e) => e.fmt(f),
             Self::Mnpt(e) => e.fmt(f),
-            Self::Record(e) => e.fmt(f),
             Self::Time(e) => e.fmt(f),
         }
     }
@@ -45,7 +42,6 @@ impl std::error::Error for Error {
             Self::Nn(e) => Some(e),
             Self::Json(e) => Some(e),
             Self::Mnpt(e) => Some(e),
-            Self::Record(e) => Some(e),
             Self::Time(e) => Some(e),
         }
     }
@@ -64,7 +60,6 @@ from_error!(crate::data::Error, Data);
 from_error!(crate::nn::Error, Nn);
 from_error!(serde_json::Error, Json);
 from_error!(minase::eval::pst::Error, Mnpt);
-from_error!(minase::training::records::Error, Record);
 from_error!(std::time::SystemTimeError, Time);
 
 /// PSTパイプラインの処理結果。

@@ -3,9 +3,10 @@
 //! 実数PSTの入力配列は書き手の[`crate::pst::encode_pst_npz`]に定める。
 //! この診断の読み手は端点のdtypeとして`<f4`と`<f8`を受け付け、f32へ変換する。
 
+use crate::data::Sample;
 use std::path::Path;
 
-use minase::{eval::pst::Pst, training::records::Record};
+use minase::eval::pst::Pst;
 use serde::Serialize;
 
 use super::Result;
@@ -67,7 +68,7 @@ impl Weights {
 }
 
 pub(super) fn piece(byte: u8) -> (usize, u8) {
-    // 呼び手はRecord::decodeでMNSDコードを検査済み。
+    // Sampleは局面から構築した駒コードだけを保持する。
     let color = u8::from(byte >= 65);
     let payload = byte - (1 + color * 64);
     let kind = usize::from(payload % 29);
@@ -96,12 +97,12 @@ pub(super) struct Features {
     pub q: u8,
 }
 impl Features {
-    pub fn new(record: &Record) -> Self {
-        let bytes = record.encode();
+    pub fn new(record: &Sample) -> Self {
+        let bytes = record.board_codes();
         let mut columns = [FEATURE_COUNT; 145];
         let mut count = 0_usize;
         let square_from_side = |square: usize| {
-            if bytes[144] == 0 {
+            if record.side_to_move() as u8 == 0 {
                 square
             } else {
                 (11 - square / 12) * 12 + square % 12
@@ -109,14 +110,15 @@ impl Features {
         };
         for (square, &byte) in bytes[..144].iter().enumerate() {
             if byte != 0 {
-                let (state, color) = piece(byte);
-                columns[square] = (usize::from(color != bytes[144]) * 47 + state) * 144
+                let (state, color) = piece(byte & 127);
+                columns[square] = (usize::from(color != record.side_to_move() as u8) * 47 + state)
+                    * 144
                     + square_from_side(square);
                 count += 1;
             }
         }
-        if bytes[145] != 255 {
-            columns[144] = 94 * 144 + square_from_side(usize::from(bytes[145]));
+        if let Some(lion) = record.lion_square() {
+            columns[144] = 94 * 144 + square_from_side(lion.dense_index());
         }
         Self {
             columns,
@@ -207,16 +209,43 @@ mod tests {
         values
     }
 
-    use minase::training::records::RECORD_LEN;
-
-    fn record(board: &[(usize, u8)], side: u8, lion: u8) -> Record {
-        let mut bytes = [0; RECORD_LEN];
-        for &(square, piece) in board {
-            bytes[square] = piece;
+    fn record(board: &[(usize, u8)], side: u8, lion: u8) -> Sample {
+        use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
+        let mut builder = PositionBuilder::new(if side == 0 {
+            Color::Black
+        } else {
+            Color::White
+        });
+        for &(square, code) in board {
+            let color = if code >= 65 {
+                Color::White
+            } else {
+                Color::Black
+            };
+            let payload = code - 1 - 64 * color as u8;
+            let kind = PieceKind::from_index(payload % 29).unwrap();
+            let piece = if payload >= 29 {
+                PieceCode::new_promoted(color, kind)
+            } else {
+                PieceCode::new(color, kind)
+            }
+            .unwrap();
+            builder
+                .put(Square::from_dense(square).unwrap(), piece)
+                .unwrap();
         }
-        bytes[144] = side;
-        bytes[145] = lion;
-        Record::decode(&bytes).unwrap()
+        let mut position = builder.finish().unwrap();
+        position
+            .set_lion_capture(Square::from_dense(lion as usize))
+            .unwrap();
+        Sample::from_position(
+            &position,
+            0,
+            crate::data::Outcome::Draw,
+            0,
+            0,
+            minase::training::records_v2::Origin::Synthetic,
+        )
     }
 
     #[test]

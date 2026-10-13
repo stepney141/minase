@@ -80,10 +80,8 @@ impl Session {
                 RemovalReferenceKind::Init => RemovalReference::new(&base.linear)?,
             })
         };
-        // SAFETY: --dataは実行中に変更・切り詰めないというCLIの契約に従う。
         // このセッションもDatasetを破棄するまで入力を書き換えない。
-        let dataset =
-            unsafe { Dataset::open(&args.data, args.lookahead()?)?.with_lambda(args.lambda)? };
+        let dataset = Dataset::open(&args.data, args.lookahead()?)?.with_lambda(args.lambda)?;
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err(Error::Invalid(
                 "training and validation sets must both be nonempty",

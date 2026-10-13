@@ -2,12 +2,10 @@
 
 use super::Result;
 use crate::data::{Dataset, build_targets_from_arrays};
-use minase::{
-    eval::{
-        features::{FEATURE_COUNT, feature_index, lion_feature_index, mirror_feature},
-        pst::{Pst, evaluate_pst_features},
-    },
-    training::records::{Outcome, Record},
+use crate::data::{Outcome, Sample};
+use minase::eval::{
+    features::{FEATURE_COUNT, feature_index, lion_feature_index, mirror_feature},
+    pst::{Pst, evaluate_pst_features},
 };
 use minase_core::Square;
 
@@ -30,7 +28,7 @@ pub(crate) fn check_size(size: usize) -> Result<()> {
 /// 盤の升順の144列と先獅子の列144へ特徴を置き、空き列を埋め草にする。
 /// 鏡映時は盤の列を`rank * 12 + 11 - file`へ、特徴を`mirror_feature`へ写す。
 /// PSTとは異なり、鏡映対の特徴は別の行を持つ。
-pub(crate) fn features(record: &Record, mirror: bool) -> Result<([u32; FEATURE_COLUMNS], u32)> {
+pub(crate) fn features(record: &Sample, mirror: bool) -> Result<([u32; FEATURE_COLUMNS], u32)> {
     let position = record.to_position()?;
     let side = position.side_to_move();
     let mut columns = [PADDING; FEATURE_COLUMNS];
@@ -104,7 +102,7 @@ impl Batch {
     /// 読み込み済み局面と教師値を使い、鏡映後の特徴から整数PSTも計算する。
     pub fn from_records(
         base: &Pst,
-        records: &[Record],
+        records: &[Sample],
         mirror: &[u8],
         targets: &[f32],
     ) -> Result<Self> {

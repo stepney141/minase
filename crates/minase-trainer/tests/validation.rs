@@ -1,7 +1,8 @@
 //! validation_forwardの期待値は、二値交差エントロピーと統計量の定義から定める。
+use minase_trainer::data::{Outcome, Sample};
 mod common;
 use common::*;
-use minase::training::records::{Outcome, Record};
+
 use minase_trainer::nnue::{
     data::{BatchSlot, InputFeatureSet},
     model::Parameter,
@@ -15,13 +16,13 @@ fn validation_excludes_draws_and_counts_activation_endpoints() {
         .iter()
         .zip([Outcome::Loss, Outcome::Draw, Outcome::Win])
         .map(|(p, outcome)| {
-            Record::from_position(
+            Sample::from_position(
                 p,
                 0,
                 outcome,
                 1,
                 0,
-                minase::training::records::Origin::RandomSelfplay,
+                minase::training::records_v2::Origin::RandomSelfplay,
             )
         })
         .collect();
@@ -46,13 +47,13 @@ fn validation_excludes_draws_and_counts_activation_endpoints() {
 fn validation_reports_population_standard_deviation_in_centipawns() {
     let position = &positions()[0];
     let records = [0, 1].map(|i| {
-        Record::from_position(
+        Sample::from_position(
             position,
             0,
             Outcome::Draw,
             1,
             i,
-            minase::training::records::Origin::RandomSelfplay,
+            minase::training::records_v2::Origin::RandomSelfplay,
         )
     });
     let batch =
@@ -74,13 +75,13 @@ fn validation_reports_population_standard_deviation_in_centipawns() {
 
 #[test]
 fn record_batches_reject_mismatched_teachers_and_nonfinite_scores() {
-    let record = Record::from_position(
+    let record = Sample::from_position(
         &positions()[0],
         0,
         Outcome::Draw,
         1,
         0,
-        minase::training::records::Origin::RandomSelfplay,
+        minase::training::records_v2::Origin::RandomSelfplay,
     );
     assert!(BatchSlot::from_records(InputFeatureSet::P, &[], &[], &[]).is_err());
     assert!(
