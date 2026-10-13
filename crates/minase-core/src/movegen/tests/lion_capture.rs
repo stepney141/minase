@@ -263,6 +263,42 @@ fn f19() -> Position {
     )
 }
 
+/// 後手飛車9aで先手成獅子9fを取り、残る後手獅子6cを先手が取り返す直前の局面。
+fn senjishi_reply_position(
+    capturer: PieceCode,
+    from: Square,
+    defenders: &[(Square, PieceCode)],
+) -> Position {
+    let mut pieces = vec![
+        (msq(6, 'c'), piece(Color::White, PieceKind::Lion)),
+        (msq(9, 'a'), piece(Color::White, PieceKind::Rook)),
+        (msq(9, 'f'), promoted_lion(Color::Black)),
+        (from, capturer),
+    ];
+    pieces.extend_from_slice(defenders);
+    let mut position = fixture(Color::White, &pieces);
+    play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
+    position
+}
+
+/// 先手が6cの獅子を第1段階で取り、別の升へ進む獅子・角鷹・飛鷲の着手。
+fn first_stage_lion_captures() -> [(PieceCode, Move); 3] {
+    [
+        (
+            piece(Color::Black, PieceKind::Lion),
+            mv2(msq(6, 'd'), msq(6, 'c'), msq(6, 'b')),
+        ),
+        (
+            PieceCode::new_promoted(Color::Black, PieceKind::HornedFalcon).unwrap(),
+            mv2(msq(6, 'd'), msq(6, 'c'), msq(6, 'b')),
+        ),
+        (
+            PieceCode::new_promoted(Color::Black, PieceKind::SoaringEagle).unwrap(),
+            mv2(msq(5, 'd'), msq(6, 'c'), msq(7, 'b')),
+        ),
+    ]
+}
+
 // ---------- 第13条 足の判定 ----------
 
 #[test]
@@ -281,8 +317,8 @@ fn article_13_1_a_footed_lion_cannot_be_captured_by_a_lion_at_distance_two() {
 }
 
 #[test]
-fn article_13_3_a_piece_that_cannot_reach_the_capture_square_is_not_a_foot() {
-    // 第13条3項に従い、基準は隣接ではなく「駒本来の動きで捕獲後の升へ
+fn article_13_3_a_piece_that_cannot_reach_the_lion_square_is_not_a_foot() {
+    // 第13条3項に従い、基準は隣接ではなく「駒本来の動きで獅子のいた升へ
     // 移動できるか」である。歩7fは6fの隣だが前(7e)へしか動けず足でない。
     let f3 = fixture(
         Color::White,
@@ -335,6 +371,55 @@ fn article_13_4_the_foot_is_judged_on_the_board_just_after_the_capture() {
         &off_line,
         mv(msq(6, 'd'), msq(6, 'f'))
     ));
+}
+
+#[test]
+fn article_13_4_the_capturers_second_stage_move_does_not_block_a_sliding_foot() {
+    // 第13条3・4項に従い、第1段階で獅子を取った直後の盤面で6cへの利きを調べる。
+    // 第2段階で6bへ進んで飛車6aの利きを遮っても、7cへ進んでも、6cへの足は残る。
+    // したがって、いずれの取り返しも第15条1項の先獅子によって禁止される。
+    let position = senjishi_reply_position(
+        piece(Color::Black, PieceKind::Lion),
+        msq(6, 'd'),
+        &[(msq(6, 'a'), piece(Color::White, PieceKind::Rook))],
+    );
+
+    assert!(!is_generated(
+        base(),
+        &position,
+        mv2(msq(6, 'd'), msq(6, 'c'), msq(6, 'b'))
+    ));
+    assert!(!is_generated(
+        base(),
+        &position,
+        mv2(msq(6, 'd'), msq(6, 'c'), msq(7, 'c'))
+    ));
+}
+
+#[test]
+fn article_13_4_a_defender_captured_after_the_lion_still_counts_as_a_foot() {
+    // 第13条4項に従い、第1段階で獅子を取った直後には6bの駒が6cの足として残る。
+    // 第2段階でその駒を取っても足は消えず、第15条1項の先獅子によって取り返しは禁止される。
+    // 第16条8〜10項は第1段階で歩兵・仲人を取る場合の特例なので適用しない。
+    for kind in [
+        PieceKind::Pawn,
+        PieceKind::GoBetween,
+        PieceKind::GoldGeneral,
+    ] {
+        let position = senjishi_reply_position(
+            piece(Color::Black, PieceKind::Lion),
+            msq(6, 'd'),
+            &[(msq(6, 'b'), piece(Color::White, kind))],
+        );
+        assert!(
+            !is_generated(
+                base(),
+                &position,
+                mv2(msq(6, 'd'), msq(6, 'c'), msq(6, 'b'))
+            ),
+            "captured defender: {kind:?}"
+        );
+    }
 }
 
 #[test]
@@ -506,6 +591,51 @@ fn articles_14_5_and_15_1_an_eagle_may_capture_two_lions_and_triggers_senjishi()
 // ---------- 第15条 先獅子 ----------
 
 #[test]
+fn article_15_1_and_2_igui_depends_on_the_lion_square_foot() {
+    // 第13条3項、第15条1・2・9項に従い、獅子・角鷹・飛鷲の居喰いも6cで判定する。
+    // 銅5bは獅子の升6cへ利き、居喰いの到達升6d・5dには利かない。銅5cはその逆である。
+    for (capturer, capture) in first_stage_lion_captures() {
+        for (defender, legal) in [
+            (Some(msq(5, 'b')), false),
+            (Some(msq(5, 'c')), true),
+            (None, true),
+        ] {
+            let defenders =
+                defender.map(|square| (square, piece(Color::White, PieceKind::CopperGeneral)));
+            let position = senjishi_reply_position(capturer, capture.from, defenders.as_slice());
+            let reply = igui(capture.from, msq(6, 'c'));
+            assert_eq!(
+                is_generated(base(), &position, reply),
+                legal,
+                "capturer: {capturer:?}, defender: {defender:?}, reply: {reply:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn article_15_1_and_2_first_stage_capture_depends_on_the_lion_square_foot() {
+    // 第13条3項、第15条1・2・9項に従い、第1段階で取った獅子の升6cで判定する。
+    // 銅5bは獅子の升6cへ利き、第2段階の到達升6b・7bには利かない。銅6aはその逆である。
+    for (capturer, reply) in first_stage_lion_captures() {
+        for (defender, legal) in [
+            (Some(msq(5, 'b')), false),
+            (Some(msq(6, 'a')), true),
+            (None, true),
+        ] {
+            let defenders =
+                defender.map(|square| (square, piece(Color::White, PieceKind::CopperGeneral)));
+            let position = senjishi_reply_position(capturer, reply.from, defenders.as_slice());
+            assert_eq!(
+                is_generated(base(), &position, reply),
+                legal,
+                "capturer: {capturer:?}, defender: {defender:?}, reply: {reply:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn article_15_2_without_a_foot_the_lion_can_be_recaptured_immediately() {
     // 第15条2項(岡崎方式)に従い、残る獅子6cに足がなければ先獅子は
     // 成立せず、直後の取り返しが含まれる(非獅子の捕獲は第14条5項で無条件)。
@@ -605,8 +735,8 @@ fn articles_15_5_and_3_13_jitto_is_a_move_that_expires_senjishi() {
 }
 
 #[test]
-fn articles_15_1_and_14_1_senjishi_blocks_even_an_adjacent_lion_recapture() {
-    // 第15条解説・第14条1項: 標準規則の先獅子は獅子による取り返しにも及び、
+fn article_15_9_senjishi_blocks_even_an_adjacent_lion_recapture() {
+    // 第15条9項・第14条1項により、標準規則の先獅子は獅子による取り返しにも及び、
     // 隣接獅子を獅子で取る着手も直後の1手では認めない。
     let mut position = f17();
     play(base(), &mut position, mv(msq(9, 'a'), msq(9, 'f')));
@@ -615,11 +745,9 @@ fn articles_15_1_and_14_1_senjishi_blocks_even_an_adjacent_lion_recapture() {
         &position,
         mv(msq(6, 'd'), msq(6, 'c'))
     ));
-    // 境界として、居喰い形「6d→6c(捕獲)→6d」は合法となる。
-    // 第13条3項は取り返す駒が「獅子捕獲後の升」へ移動できることを足の要件と
-    // するため、着手ごとの判定では到達升6dに銅5bの利きが届かず足が成立しない。
-    // 先獅子の禁止(第15条1項)は足条件付きであり、この着手には及ばない。
-    assert!(is_generated(
+    // 第13条3項により、居喰いも獅子のいた6cで判定する。
+    // 銅5bが6cへ利くので、「6d→6c(捕獲)→6d」も先獅子によって禁止される。
+    assert!(!is_generated(
         base(),
         &position,
         igui(msq(6, 'd'), msq(6, 'c'))
@@ -627,10 +755,9 @@ fn articles_15_1_and_14_1_senjishi_blocks_even_an_adjacent_lion_recapture() {
 }
 
 #[test]
-fn article_15_1_each_remaining_footed_lion_is_protected_independently() {
-    // 第15条1項は「取った側に残る獅子」が複数ある場合を明文で定めていないため、
-    // 足のある残存獅子をそれぞれ独立に保護し、新しい成獅子6cと既存の獅子9fの双方を
-    // 保護することを実装上の契約として固定する。
+fn article_15_10_each_remaining_footed_lion_is_protected_independently() {
+    // 第15条10項に従い、残る獅子ごとに足の有無を判定する。
+    // 足のある新しい成獅子6cと既存の獅子9fの双方を保護する。
     let mut position = f11a(true);
     play(base(), &mut position, mvp(msq(6, 'e'), msq(6, 'c')));
     assert!(!is_generated(
