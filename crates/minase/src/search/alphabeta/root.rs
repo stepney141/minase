@@ -12,7 +12,9 @@ use super::{INFINITY, params};
 
 /// 反復探索の窓と、次に外れた側を広げる幅。
 ///
-/// `docs/plans/strength-stage6.md`の「窓の適用条件と拡大」節に従う。
+/// 前の反復の値の周囲から探索を始めるaspiration windowである。
+/// `delta`は静的評価と同じ単位で、初期値は歩兵価値×`AspirationDelta`%とする。
+/// 外れた側だけを広げる理由は`docs/adr/widen-only-the-failed-side-of-aspiration-windows.md`にある。
 pub(super) struct AspirationWindow {
     pub(super) alpha: i32,
     pub(super) beta: i32,
@@ -20,7 +22,8 @@ pub(super) struct AspirationWindow {
 }
 
 impl AspirationWindow {
-    /// 同じワーカーの直前の完了値から窓を作り、詰み帯に掛かる端を正規化する。
+    /// 深さ5以上で同じワーカーの直前の完了値が詰み帯の外なら、その値±`delta`を初期窓にする。
+    /// それ以外は全窓とし、詰み帯に達した端は無限へ置き換える。
     pub(super) fn initial(depth: u32, prev: Option<i32>, delta: i32) -> Self {
         let (alpha, beta) = match prev {
             Some(score) if depth >= 5 && score.abs() < MATE_THRESHOLD => {
@@ -73,13 +76,14 @@ pub(super) fn grow_aspiration_delta(delta: i32) -> i32 {
     i32::try_from(grown).unwrap_or(i32::MAX)
 }
 
-/// 「途中結果の採用」（byoyomi-time-usage.md）で使う窓内の最大値と主変化。
+/// 中断時の着手選択に使う、探索窓のαを上回った最大値とその主変化。
 pub(super) struct PartialResult {
     pub(super) score: i32,
     pub(super) pv: Vec<Move>,
 }
 
-/// 「途中結果の採用」（byoyomi-time-usage.md）に必要な主ワーカーの記録。
+/// 秒読みつき時計だけで探索する主ワーカーが保持する、途中結果の採用材料。
+/// 適用対象は[`super::time::byoyomi_clock`]、採用条件は[`Self::partial_result`]に従う。
 #[derive(Default)]
 pub(super) struct RootResults {
     pub(super) previous_best: Option<Move>,
@@ -89,14 +93,14 @@ pub(super) struct RootResults {
 }
 
 impl RootResults {
-    /// 「途中結果の採用」に従い、読み直す窓へ前の窓の結果を持ち越さない。
+    /// 読み直しの窓を開始し、前の窓の結果と直前の最善手の完了記録を消す。
     pub(super) fn begin_window(&mut self, alpha: i32) {
         self.previous_completed = false;
         self.original_alpha = alpha;
         self.best = None;
     }
 
-    /// 「途中結果の採用」に従い、完了した手のうち上界でない最大値だけを保持する。
+    /// 完了した手のうち探索時のαを上回る最大値と主変化を保持し、直前の最善手の完了も記録する。
     pub(super) fn record(&mut self, mv: Move, score: i32, alpha: i32, pv: &[Move]) {
         self.previous_completed |= self.previous_best == Some(mv);
         if score > alpha && self.best.as_ref().is_none_or(|best| score > best.score) {
@@ -107,7 +111,8 @@ impl RootResults {
         }
     }
 
-    /// 「途中結果の採用」に従い、hardで中断し直前の最善手が完了した窓だけを採る。
+    /// hard limitで中断し、直前の最善手の探索が完了した窓から、開始時のαを上回る途中結果を返す。
+    /// 窓全体の完了は要しないが、上界しか得られなかった手と他の停止理由は採用しない。
     pub(super) fn partial_result(&self, reason: Option<StopReason>) -> Option<&PartialResult> {
         if reason != Some(StopReason::HardLimit) || !self.previous_completed {
             return None;
@@ -119,7 +124,11 @@ impl RootResults {
 }
 
 impl Searcher<'_> {
-    /// 現行の先頭手を保ち、残りを前回完了反復の部分木ノード数の降順に安定整列する。
+    /// 先頭手を保ち、残りを前回完了反復の部分木ノード数の降順に安定整列する。
+    ///
+    /// 先頭手は通常の整列で優先した置換表の手であり、`root_results`に直前の最善手があればそちらを優先する。
+    /// どちらもなければ[`Self::order_moves`]の先頭を保ち、前回ノード数がなければその整列順のままとする。
+    /// 評価値で整列しない理由は`docs/adr/order-root-moves-by-previous-subtree-nodes.md`にある。
     pub(super) fn order_root_moves(&self, position: &Position, moves: &mut [Move]) {
         let tt_move = self
             .tt
@@ -147,8 +156,10 @@ impl Searcher<'_> {
 
     /// 窓を広げながら同じ深さを読み直し、窓内で完了した結果だけを返す。
     ///
-    /// `docs/plans/strength-stage6.md`の「aspiration windows」節に従い、
-    /// 主・補助ワーカーが共有する。読み直し中の中断も`None`を返す。
+    /// 主ワーカーと補助ワーカーが共有し、直前の完了値は各ワーカー自身のものを使う。
+    /// 値がα以下なら下側だけ、β以上なら上側だけを広げ、同じ深さで再探索する。
+    /// 等号も窓外れとし、fail-lowの最善手は置換表の助言としてだけ残して、完了結果や進捗へは採らない。
+    /// 読み直し中の中断も`None`を返す。
     pub(super) fn search_iteration(
         &mut self,
         position: &Position,
@@ -181,8 +192,9 @@ impl Searcher<'_> {
 
     /// ルート局面を指定深さで探索し、最善手と評価値を返す。
     ///
-    /// `docs/plans/strength-stage6.md`の「根の探索の窓化」節に従い、
-    /// β以上で打ち切り、入力時の窓に対する上界・下界・正確な値を記録する。
+    /// β以上で打ち切って下界、入力時のα以下なら上界、それ以外は正確な値として置換表に記録する。
+    /// 根は常に主変化（PV）ノードとして扱い、前向き枝刈りを行わない。
+    /// [`Self::search_move`]へ減深量0を渡すので根の各手にはLMRを適用しないが、子ノードの枝刈りは通常どおり行う。
     /// 中断された場合は`None`を返し、停止条件を記録する。
     pub(super) fn search_root(
         &mut self,

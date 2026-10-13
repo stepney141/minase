@@ -24,9 +24,27 @@ use super::tt::Bound;
 impl Searcher<'_> {
     /// stand-patと捕獲手だけを使う静止探索で局面を評価する。
     ///
-    /// 設計書movegen-speedup-2.md「段階7」に従い、静的評価で打ち切るときは置換表に触れない。
-    /// 静止探索内の手は主変化へ含めず、反復検出は行わない。
-    /// 中断された場合は`None`を返す。
+    /// 王駒がすべて狙われていてもstand-patを使い、非捕獲の王手と成りは展開しない。
+    /// この近似の理由は`docs/adr/use-stand-pat-when-royals-are-attacked.md`にある。
+    /// 捕獲ごとに盤上の駒が減って同一局面へ戻らないため、反復は検出しない。
+    /// 静止探索内の手は主変化へ含めず、中断された場合は`None`を返す。
+    ///
+    /// 最大ply、stand-patのβ以上、入口での候補なしの順に判定し、該当すれば置換表を照会も保存もせず返す。
+    /// その後の置換表ヒットによる打ち切りと中断も保存しない。
+    /// 通常出口は深さ0で保存し、最善値がβ以上なら下界、入力時のα以下なら上界、それ以外は正確な値とする。
+    /// stand-patを上回る捕獲手がなければ記録手は持たない。
+    /// 深さ0の記録は通常探索の深さ条件を満たさず、カットオフに使われない。
+    /// 保存の理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
+    ///
+    /// 捕獲候補は最後の王駒の捕獲を先に判定し、それなら枝刈りせず`MATE - (ply + 1)`を使う。
+    /// それ以外は[`Self::delta_margin`]のdelta pruning、負のSEEによる枝刈り、手数制限の順に判定する。
+    /// delta pruningは成り益を加えず、置換表の捕獲手もSEEの例外にしない。
+    /// 成り益を除く理由は`docs/adr/keep-delta-pruning-without-promotion-gain.md`にある。
+    ///
+    /// 手数制限は、置換表の手も含めて実際に読んだ捕獲手が`QsearchMoveLimit`手に達した後に働く。
+    /// 最後の王駒を取る手、直前の相手の捕獲手の到達升で取り返す手、獅子が2枚を取る手は、この制限だけの例外とする。
+    /// 例外として読んだ手も手数に含めるが、枝刈りした候補は含めない。
+    /// 数え方の理由は`docs/adr/limit-searched-captures-in-qsearch.md`にある。
     pub(super) fn quiesce(
         &mut self,
         position: &mut Position,
@@ -188,12 +206,14 @@ impl Searcher<'_> {
     }
 }
 
-/// 静止探索の捕獲価値と、同順位で生成順を保つ連番。
-/// 設計書movegen-speedup-2.md「段階5」に従い、順序キーを圧縮する。
+/// 静止探索の捕獲価値、履歴値、および生成順を復元する整列キー。
+/// 各フィールドの範囲に合わせて生成元と連番を小さい整数で保持する。
 #[derive(Clone, Copy)]
 pub(super) struct QsearchCapture {
     pub(super) capture: CaptureCandidate,
     pub(super) captured_value: i32,
+    /// 群の生成時に候補ごとに1回引く捕獲履歴の生値。整列中に表を引き直さない。
+    /// 群の順序を使わず先に返す置換表の手では0とする。
     history: i32,
     attacker_value: i32,
     // 駒種の添字は0..29、升の生値は最大187（16×11+11）なのでu8に収まる。
@@ -312,7 +332,7 @@ impl QsearchBuffers {
         self.cursor = 0;
     }
 
-    /// 設計書movegen-speedup-2.md「段階9」に従い、初期化後に置換表の手を設定する。
+    /// 初期化後に置換表の記録手を検証し、探索用の合法捕獲手なら先頭候補にする。
     pub(super) fn set_tt_move(
         &mut self,
         position: &Position,
@@ -324,8 +344,9 @@ impl QsearchBuffers {
         self.tt_pending = self.tt_move.is_some();
     }
 
-    /// 入口で残す対象と価値グループを決め、通常駒の利きを保存する。
-    /// 設計書movegen-speedup-2.md「段階9」に従い、入口の枝刈り後に合法な候補があるかを返す。
+    /// 入口のdelta pruning後に残る対象と捕獲価値の群を決め、通常駒の利きを保存する。
+    /// 合計捕獲価値が`threshold`を超える合法捕獲か、最後の王駒を取る合法捕獲がある場合だけ真を返す。
+    /// 獅子が経由升で取り、移動元と異なる空升へ進む手は探索候補から除く。
     pub(super) fn initialize(
         &mut self,
         position: &Position,
@@ -395,7 +416,7 @@ impl QsearchBuffers {
             })
     }
 
-    /// 設計書movegen-speedup-2.md「段階5」に従い、同価値の対象升を集合のまま登録する。
+    /// 同じ捕獲価値の対象升を順位別の集合へ加え、存在する順位と全対象升の集合を更新する。
     fn add_targets(&mut self, targets: Bitboard, rank: u8, allowed: &mut Bitboard) {
         if targets.is_empty() {
             return;
@@ -410,7 +431,11 @@ impl QsearchBuffers {
         *allowed |= targets;
     }
 
-    /// 価値順の2列から次の値を選び、その通常捕獲と特殊捕獲を生成順でマージする。
+    /// 通常捕獲と特殊捕獲の残りから最大の捕獲価値を選び、同価値の候補を1群にまとめる。
+    ///
+    /// 群内は捕獲履歴の生値の降順、攻撃駒の価値の昇順、全手生成での生成順に並べる。
+    /// 履歴の表引きは群へ加える候補ごとに1回だけ行い、整列中は保存した値を使う。
+    /// 通常駒と特殊駒が混在する場合は、生成元の駒種と升、各列の連番で生成順を復元する。
     fn generate_group(
         &mut self,
         position: &Position,

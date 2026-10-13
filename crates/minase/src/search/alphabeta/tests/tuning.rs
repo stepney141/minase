@@ -12,7 +12,8 @@ use crate::search::alphabeta::{
     root::grow_aspiration_delta,
 };
 
-/// `byoyomi-time-usage.md`「設計判断」の予算式を独立に計算する。
+/// 持ち時間の分担、加算の割合、序盤係数つきの秒読みを足し、hardをsoftの倍率、残り時間の割合、安全余裕で抑える。
+/// 各項の整数除算を済ませてから合算し、最後に`u64`のミリ秒へ飽和させる。
 pub(super) fn reference_clock_budget(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);
@@ -44,8 +45,8 @@ pub(super) fn reference_clock_budget(clock: ClockLimits, margin_ms: u64) -> Time
     }
 }
 
-/// D7-TIME-01。docs/plans/search.md「時間管理」、time-management-efficiency.md
-/// 「予算値」、spsa.md「整数表現」の時間予算式と丸めを係数から照合する。
+/// D7-TIME-01。時間予算は[`reference_clock_budget`]の整数演算と同じ値を返す。
+/// 各除算、残り手数の下限、序盤係数の上限、安全余裕、飽和変換の境界を含む入力で照合する。
 #[test]
 fn tuning_default_clock_budget_matches_reference_grid() {
     let expected_plies = params::expected_plies() as u32;
@@ -590,7 +591,7 @@ fn tuning_parameters_and_usi_contract_in_isolated_process() {
     params::set("DeltaMargin", default_delta).unwrap();
 }
 
-// フェーズ1-B指示書。実際の探索で各係数の境界をまたぎ、係数の読み出し忘れを検出する。
+// 各係数の変更は枝刈りの境界へ反映される。実際の探索で境界をまたぎ、読み出し忘れを検出する。
 #[cfg(feature = "tuning")]
 fn reverse_futility_parameter_changes_search() {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/5P6/11K b").unwrap();
@@ -691,7 +692,7 @@ fn zero_null_move_eval_scale_matches_base_reduction_search() {
     assert!(table.probe(search_key(&board), 0).is_none());
 }
 
-// フェーズ1-C指示書。子を反復引き分けに固定し、親の枝刈りだけを観測する。
+// 子が反復で引き分けになる局面では、親の枝刈りの条件だけで展開数が決まる。
 #[cfg(feature = "tuning")]
 fn non_improving_parameter_changes_search(depth: u32, name: &str) {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();

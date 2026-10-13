@@ -1,4 +1,4 @@
-//! debugging-tools.md「探索統計の項目」の加算条件を検査する。
+//! 探索の呼び出し、置換表の照会、βカット、および最善手の順位の加算条件を検査する。
 
 use super::*;
 use crate::search::SearchStats;
@@ -35,7 +35,7 @@ fn assert_relations(stats: SearchStats) {
     assert!(ranks(stats).iter().sum::<u64>() <= stats.normal_nodes);
 }
 
-/// debugging-tools.md「探索統計の項目」: 深さ0の移行は静止探索だけに数える。
+/// 深さ0の移行は静止探索だけに数える。
 /// 捕獲なし、stand-pat、最大plyで返る呼び出しも数え、照会は実行時だけ数える。
 #[test]
 fn depth_zero_and_early_quiesce_returns_count_only_quiesce_calls() {
@@ -61,7 +61,7 @@ fn depth_zero_and_early_quiesce_returns_count_only_quiesce_calls() {
     });
 }
 
-/// debugging-tools.md「探索統計の項目」: 同じ表の2回目の通常探索は一致と打ち切りを各1回数える。
+/// 同じ表の2回目の通常探索は一致と打ち切りを各1回数える。
 /// 置換表による打ち切りを着手のβカットや順位に混ぜない。
 #[test]
 fn normal_tt_repeat_counts_probe_hit_and_cutoff() {
@@ -94,7 +94,7 @@ fn normal_tt_repeat_counts_probe_hit_and_cutoff() {
     });
 }
 
-/// debugging-tools.md「探索統計の項目」: 深さ不足の一致は照会と一致だけに数える。
+/// 深さ不足の一致は照会と一致だけに数える。
 #[test]
 fn insufficient_tt_depth_is_a_hit_without_a_cutoff() {
     let position = quiet_position();
@@ -112,7 +112,7 @@ fn insufficient_tt_depth_is_a_hit_without_a_cutoff() {
     });
 }
 
-/// debugging-tools.md「探索統計の項目」: 捕獲を探索した後の再照会は静止探索の3項目に数える。
+/// 捕獲を探索した後の再照会は静止探索の3項目に数える。
 #[test]
 fn quiesce_tt_repeat_counts_probe_hit_and_cutoff_separately() {
     let position = position(
@@ -151,7 +151,7 @@ fn quiesce_tt_repeat_counts_probe_hit_and_cutoff_separately() {
     });
 }
 
-/// debugging-tools.md「探索統計の項目」: 全評価値より低いβなら最初の手で切り、順位に含めない。
+/// 全評価値より低いβなら最初の手で切り、順位に含めない。
 #[test]
 fn first_searched_move_beta_cutoff_is_counted() {
     let position = quiet_position();
@@ -166,7 +166,7 @@ fn first_searched_move_beta_cutoff_is_counted() {
     });
 }
 
-/// debugging-tools.md「探索統計の項目」: ヌルムーブの呼び出しは数えるが、手のβカットに含めない。
+/// ヌルムーブの呼び出しは数えるが、手のβカットに含めない。
 #[test]
 fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
     let position = quiet_position();
@@ -186,7 +186,7 @@ fn null_move_cutoff_counts_its_quiesce_call_without_a_move_cutoff() {
     });
 }
 
-/// debugging-tools.md「探索統計の項目」: 全手走査で最後にαを更新した手を4区分に数える。
+/// 全手走査で最後にαを更新した手を4区分に数える。
 /// 捕獲のない深さ1では子の静的評価から最善手を決め、探索順だけをhistoryで指定する。
 #[test]
 fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
@@ -258,7 +258,7 @@ fn best_move_rank_histogram_counts_each_bucket_and_research_calls() {
     }
 }
 
-/// debugging-tools.md「探索統計の項目」: 下限更新なしや中断した走査は順位に含めない。
+/// 下限更新なしや中断した走査は順位に含めない。
 #[test]
 fn fail_low_and_interrupted_nodes_do_not_enter_rank_histogram() {
     let position = quiet_position();
@@ -281,7 +281,7 @@ fn fail_low_and_interrupted_nodes_do_not_enter_rank_histogram() {
     });
 }
 
-/// debugging-tools.md「探索統計の項目」: Threads=2の実探索で全ワーカー終了後の値を合算する。
+/// Threads=2の実探索で全ワーカー終了後の値を合算する。
 /// AddAssignを期待値の計算に使わず、各項目を独立に足して照合する。
 #[test]
 fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
@@ -327,7 +327,7 @@ fn two_worker_search_stats_equal_the_sum_of_worker_counts() {
     assert_relations(outcome.result.stats);
 }
 
-/// debugging-tools.md「探索統計の項目」: Threads=1の同じ固定深さ探索で全項目が一致する。
+/// Threads=1の同じ固定深さ探索で全項目が一致する。
 #[test]
 fn single_worker_fixed_depth_stats_are_reproducible() {
     let snapshot = snapshot_for(&Position::initial());

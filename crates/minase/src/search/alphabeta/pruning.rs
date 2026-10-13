@@ -11,10 +11,13 @@ use minase_core::rules::MoveRules;
 use super::params;
 use super::see::see_prunes;
 
-/// LMRの減深量の上限。
+/// LMRの減深量の上限。単位は手である。
+/// 減深後の深さが1になる頻度を抑えるため3に制限する。
+/// 判断の根拠は`docs/adr/reduce-lmr-by-log-table-with-stepped-history-adjustment.md`にある。
 const LMR_MAX_REDUCTION: u32 = 3;
 
 /// LMRの減深量表に保持する手番号の列数。
+/// 256手を超える局面は稀で、後方の減深量は上限で抑えるため、それ以降は最終列を使う。
 const LMR_MOVE_COUNT: usize = 256;
 
 /// 残り深さと手番号から引く、切り詰め前のLMR減深量表を1回だけ生成する。
@@ -59,7 +62,12 @@ pub(super) fn futility_margin(pawn: i32, depth: u32, improving: bool) -> i32 {
     margin * scale / 100
 }
 
-/// 深さ1〜3で数える静かな手の上限。`docs/plans/search-revival-spsa.md`に従う。
+/// 深さ1〜3で数える静かな手の数の上限を整数除算で求める。
+///
+/// 式は `(LmpBase + LmpSlope × 深さ²) / 100` であり、端数は切り捨てる。
+/// 手番号ではなく、現在の手より前に返った非捕獲手のうち、置換表の手、成る手、killer手を除いた数と比べる。
+/// 枝刈りで展開しなかった手もこの数に含める。
+/// 捕獲手に静かな手の枠を消費させない理由は`docs/adr/count-only-quiet-moves-for-late-move-pruning.md`にある。
 pub(super) fn late_move_limit(depth: u32) -> i32 {
     let depth = depth as i32;
     (params::lmp_base() + params::lmp_slope() * depth * depth) / 100
@@ -93,8 +101,10 @@ pub(super) fn razoring_margin(pawn: i32, depth: u32) -> i32 {
 
 /// 深さと静的評価のβに対する余裕からnull moveの減深量を求める。
 ///
-/// `docs/plans/search-revival-spsa.md`「戻す8項目」に従い、尺度を掛けてから
-/// 100と歩兵価値の2倍で順に割り、加算を0〜3に制限する。尺度0では基本量と一致する。
+/// 基本量は `(NullMoveBase + 深さ × NullMoveSlope) / 1200` 手である。
+/// `(静的評価 − β) × NullMoveEvalScale` を100、歩兵価値の2倍で順に整数除算し、0〜3手に制限して加える。
+/// 縮めた深さが0になり静止探索だけで打ち切りを判定する頻度を抑えるため、加算に上限を設ける。
+/// 尺度0では基本量と一致する。
 pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn: i32) -> u32 {
     let extra = (((i64::from(static_eval) - i64::from(beta))
         * i64::from(params::null_move_eval_scale())
@@ -104,9 +114,13 @@ pub(super) fn null_move_reduction(depth: u32, static_eval: i32, beta: i32, pawn:
     (params::null_move_base() as u32 + depth * params::null_move_slope() as u32) / 1200 + extra
 }
 
-/// history値で補正し、減深後の深さを1以上に保つLMR減深量を求める。
+/// butterfly historyの値で対数表を補正し、LMRの減深量を手数で返す。
 ///
-/// 深さ2未満では減深せず、手番号が表の列数以上なら最後の列を使う。
+/// 手番号は0始まりで、0の表要素は0とし、列数以上なら最後の列を使う。
+/// historyが閾値以上なら表の値から1を引き、その条件に当てはまらず負の閾値以下なら1を加える。
+/// それ以外は変えず、結果を `0..=min(3, 深さ − 2)` に収めるため、残り深さ2以下では減深しない。
+/// 深さ3以上では着手による1手の消費も含めて、減深後の深さを1以上に保つ。
+/// 呼び出し側は置換表の記録手、捕獲手、killer手を対象から除く。
 pub(super) fn lmr_reduction(depth: u32, index: usize, history: i32) -> u32 {
     let base = i32::from(lmr_table()[depth as usize][index.min(LMR_MOVE_COUNT - 1)]);
     let threshold = params::lmr_history_threshold();

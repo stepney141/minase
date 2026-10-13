@@ -1,6 +1,7 @@
 //! 駒種別の枚数を鍵にした、探索ワーカー内の静的評価の補正（correction history）。
 //!
-//! 設計は`docs/plans/strength-stage8.md`「静的評価の補正（correction history）」に従う。
+//! 手番側ごとに駒種別枚数のハッシュで表を引き、補正値をfutility pruningの判定にだけ加える。
+//! 鍵と適用範囲を選んだ理由は`docs/adr/key-correction-history-by-material.md`にある。
 
 use super::params;
 use crate::eval::{PIECE_STATE_COUNT, piece_state_of};
@@ -18,6 +19,8 @@ pub(super) struct CorrectionTable {
 }
 
 impl CorrectionTable {
+    /// 歩兵価値と`CorrectionCap`の百分率から補正上限を求め、全要素を0にする。
+    /// 各ワーカーの探索開始時に作り、反復深化の間だけ保持する。
     pub(super) fn new(pawn: i32) -> Self {
         Self {
             values: Box::new([[0; ENTRY_COUNT]; COLOR_COUNT]),
@@ -25,11 +28,18 @@ impl CorrectionTable {
         }
     }
 
+    /// 手番側と鍵の下位12ビットで表を引き、静的評価と同じ単位の補正値を返す。
+    /// 1024倍の固定小数点値を0方向へ整数除算し、歩兵価値×`CorrectionCap`%の正負の範囲へ収める。
     pub(super) fn read(&self, side: Color, key: u64) -> i32 {
         (self.values[side.index()][key as usize & (ENTRY_COUNT - 1)] / SCALE)
             .clamp(-self.cap, self.cap) as i32
     }
 
+    /// 探索値と補正前の静的評価の差を、同じ添字の指数移動平均へ取り込む。
+    ///
+    /// 固定小数点値をF、差をDとすると `F += (D × 1024 − F) × min(depth, 8) × CorrectionWeight / 1024` で更新する。
+    /// 重みは `min(depth, 8) × CorrectionWeight / 1024` であり、積の後の整数除算は0方向へ丸める。
+    /// 更新後のFは、歩兵価値×`CorrectionCap`%の1024倍を正負の上限として切り詰める。
     pub(super) fn update(&mut self, side: Color, key: u64, difference: i32, depth: u32) {
         let fixed = &mut self.values[side.index()][key as usize & (ENTRY_COUNT - 1)];
         *fixed += (i64::from(difference) * SCALE - *fixed)

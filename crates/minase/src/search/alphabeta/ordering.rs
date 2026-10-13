@@ -48,7 +48,12 @@ impl Searcher<'_> {
         }
     }
 
-    /// βカットを起こした非捕獲手を記録し、先に探索した非捕獲手を減点する。
+    /// βカットを起こした非捕獲手をkiller表へ記録し、butterfly historyへ加減点する。
+    ///
+    /// 加点量は `min(深さ² × HistoryBonusScale / 100, HistoryLimit)`、先に探索した非捕獲手への減点量は同じ式で`HistoryMalusScale`を使う。
+    /// 符号つきの更新量をbとして、重力式 `v += b − v × |b| / HistoryLimit` を用いる。
+    /// 整数除算は0方向へ丸め、初期値が範囲内なら値は常に±`HistoryLimit`以内に収まる。
+    /// 方式の理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
     pub(super) fn record_quiet_beta_cutoff(
         &mut self,
         position: &Position,
@@ -70,7 +75,7 @@ impl Searcher<'_> {
             (depth_squared * i64::from(params::history_bonus_scale()) / 100).min(limit) as i32;
         let malus =
             (depth_squared * i64::from(params::history_malus_scale()) / 100).min(limit) as i32;
-        // docs/plans/move-ordering.md「候補8」。重力項も符号付きのまま0方向へ丸める。
+        // 負の履歴値にも同じ重力式を適用する。
         let mut update = |mv: Move, delta: i32| {
             let value = &mut self.history[color][mv.from.dense_index()][mv.to.dense_index()];
             let old = i64::from(*value);
@@ -95,7 +100,8 @@ pub(super) fn order_captures(captures: &mut [(Move, MoveOrderKey)]) {
 enum OrderedMoveKey {
     /// 捕獲価値の降順、攻撃駒価値の昇順で並べる捕獲手。
     Capture {
-        /// 取る駒の駒価値の合計。
+        /// 根の[`Searcher::order_moves`]で使う、取る駒の価値の合計の降順キー。
+        /// 捕獲履歴は加えない。内部ノードでの加算は[`MoveOrderKey::captured_value`]に従う。
         captured_value: Reverse<i32>,
         /// 動かす駒の駒価値。
         attacker_value: i32,
@@ -119,8 +125,12 @@ pub(super) enum MovePickerStage {
     Done,
 }
 
-/// TT手、捕獲手、killer手、静かな手の順に合法手を1回ずつ返す。
-/// 対象ノードで先頭捕獲がSEE負なら、killer手を捕獲列の前へ移す。
+/// 置換表の手、捕獲手、killer手、残りの静かな手の順に合法手を1回ずつ返す。
+///
+/// [`Self::reset`]で指定したノードでは、整列後の先頭捕獲手だけを静的交換評価（SEE）で判定する。
+/// 最後の王駒を取る手は判定せず、損と判定した場合は合法なkiller手を捕獲列より先に返す。
+/// 追加のSEEは1ノードに最大1回で、元の捕獲列もその後に返す。
+/// 方式の理由は`docs/adr/try-killers-before-a-losing-first-capture.md`にある。
 pub(super) struct MovePicker {
     stage: MovePickerStage,
     tt_move: Option<Move>,
@@ -132,6 +142,9 @@ pub(super) struct MovePicker {
     quiets: Vec<Move>,
     quiet_index: usize,
     base_moves: Vec<Move>,
+    /// butterfly historyの降順、線形経路の移動差分の降順、生成順の整列キー。
+    /// 差分は[`Nnue::quiet_move_pst_delta`]で求め、成る手は到達升を成り後の駒で引く。
+    /// 同点破りの理由は`docs/adr/order-quiets-with-malus-and-pst-tiebreak.md`にある。
     quiet_order: Vec<(Reverse<i32>, Reverse<i64>, usize)>,
     used_quiets: [Option<usize>; KILLER_COUNT],
     quiets_generated: bool,
@@ -157,7 +170,8 @@ impl MovePicker {
         }
     }
 
-    /// 「段階6」（movegen-speedup-2.md）に従い、確保した領域を保って次のノードへ進む。
+    /// 確保した領域を保って候補と整列状態を消し、次のノードへ進む。
+    /// `killers_before_losing_capture`は、置換表の記録手がなく、零窓で、残り深さ3以下の場合だけ真にする。
     pub(super) fn reset(
         &mut self,
         tt_move: Option<Move>,
@@ -274,6 +288,7 @@ impl MovePicker {
                         return Some((self.quiets[index], false));
                     }
                 }
+                // killer手を除き、quiet_orderの3つのキーで順序を確定する。
                 MovePickerStage::Quiets => {
                     let color = position.side_to_move().index();
                     self.quiet_order.extend(
@@ -309,13 +324,19 @@ impl MovePicker {
 /// 捕獲手の整列キー。
 #[derive(Clone, Copy)]
 pub(super) struct MoveOrderKey {
-    /// 取る駒の駒価値の合計。
+    /// 取る駒の価値の合計を基礎とする整列値。
+    /// [`move_order_key`]の返却時点と根の[`Searcher::order_moves`]では合計だけである。
+    /// [`MovePicker`]の捕獲段では[`CaptureHistory::adjustment`]の換算値を加えてから整列する。
     pub(super) captured_value: i32,
     /// 動かす駒の駒価値。
     pub(super) attacker_value: i32,
 }
 
-/// 捕獲手なら整列キーを返す。非捕獲手は`None`を返す。
+/// 捕獲手なら駒価値だけの整列キーを返し、非捕獲手なら`None`を返す。
+///
+/// 捕獲価値の合計が正であることを判定に使うので、この同値は[`Nnue::piece_value`]の正値性に依存する。
+/// [`MovePicker::next`]が捕獲手かどうかを分類するためにこの関数を使うのは置換表の記録手だけである。
+/// 捕獲段では捕獲専用生成が分類を保証し、この関数は整列キーの取得に使う。
 pub(super) fn move_order_key(position: &Position, nnue: &Nnue, mv: Move) -> Option<MoveOrderKey> {
     let captured_value: i32 = position
         .captured_squares(mv)

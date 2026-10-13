@@ -1,4 +1,7 @@
 //! 探索チームの共有状態とワーカーの実行。
+//!
+//! `Threads=1`では同じ入力、表の初期状態、固定深さまたは固定ノード数に対する結果が決定的である。
+//! `Threads>1`では共有置換表への書き込み順が変わるため、固定深さや固定ノード数でも再現性を保証しない。
 
 use core::cmp::Reverse;
 use core::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
@@ -56,8 +59,9 @@ pub(super) struct WorkerOutcome {
 /// 探索チームで共有する停止状態と探索予算。
 pub(super) struct SharedSearch<'a> {
     /// 呼び出し側からの停止要求。
+    /// 他ワーカーの内部停止を`ExternalStop`と誤認しないよう、[`Self::team_stop`]とは別の原子値にする。
     pub(super) external_stop: &'a AtomicBool,
-    /// 探索チーム内部の停止要求。
+    /// 探索チーム内部の停止要求。外部停止との区別は[`Self::external_stop`]に従う。
     pub(super) team_stop: AtomicBool,
     /// 優先順位を反映した停止理由。
     pub(super) stop_reason: AtomicU8,
@@ -128,7 +132,8 @@ impl SharedSearch<'_> {
     }
 }
 
-/// 停止理由の優先順位を原子値へ写す。
+/// 外部停止、hard limit、ノード上限、soft limit、深さ完了の順に高い優先度を与える。
+/// 近接して成立した条件を同じ規則で合成し、実行順による停止理由の表示の揺れを抑える。
 const fn stop_reason_priority(reason: StopReason) -> u8 {
     match reason {
         StopReason::DepthCompleted => 1,
@@ -151,7 +156,11 @@ const fn stop_reason_from_priority(priority: u8) -> Option<StopReason> {
     }
 }
 
-/// 調整役として補助ワーカーを生成し、主ワーカー探索と全joinを実行する。
+/// 調整役として補助ワーカーを生成し、主ワーカーの探索と全ワーカーのjoinを実行する。
+///
+/// 置換表の世代はワーカー生成前に探索ごとに1回だけ進める。
+/// 全ワーカーの終了後に[`select_worker_outcome`]で結果を選び、ノード数をチーム全体の合計へ置き換える。
+/// scopeを抜けた後に外部停止を再確認せず、自然完了後の停止要求で記録済みの理由を上書きしない。
 #[allow(clippy::too_many_arguments)]
 pub(in crate::search) fn run_search_team(
     nnue: &Nnue,
@@ -338,8 +347,8 @@ fn run_worker_guarded<T>(
     outcome
 }
 
-/// 「途中結果の採用」（byoyomi-time-usage.md）に従い、完了深さ、途中結果の有無、
-/// 番号の小ささの順に選ぶ。対象外の探索と補助ワーカーには途中結果がない。
+/// 完了深さが大きい結果を選び、同深さなら途中結果を持つ結果、次に番号が小さいワーカーを優先する。
+/// [`byoyomi_clock`]の対象外の探索と補助ワーカーには途中結果がない。
 ///
 /// 深さ0は採用候補から除き、全ワーカーが深さ0なら主ワーカーの既定結果を
 /// 返す。

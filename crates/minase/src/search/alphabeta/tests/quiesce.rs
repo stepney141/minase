@@ -3,7 +3,7 @@
 use super::*;
 use crate::search::alphabeta::capture_history::CaptureHistory;
 
-// D7-SRCH-08。search.md「静止探索」: 深さ0ではstand-patと捕獲手を探索する。
+// D7-SRCH-08。深さ0ではstand-patと捕獲手を探索する。
 // 守られた歩兵を飛車で取る損な交換は静止探索で見抜かれ、最善手にならない。
 #[test]
 fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
@@ -38,7 +38,7 @@ fn quiescence_avoids_a_losing_rook_for_pawn_capture() {
     assert!(result.score.abs() < 29_000);
 }
 
-// D7-SRCH-09。search.md「静止探索」: 捕獲手のない葉ではstand-patを返すため、
+// D7-SRCH-09。捕獲手のない葉ではstand-patを返すため、
 // depth=1の根評価は各合法手の子局面に対する静的評価の最大値と一致する。
 #[test]
 fn quiescence_without_captures_matches_static_evaluation() {
@@ -78,7 +78,7 @@ fn quiescence_without_captures_matches_static_evaluation() {
     assert_eq!(result.nodes, moves.len() as u64);
 }
 
-// 設計書movegen-speedup-2.md「段階7」: β以上の静的評価は置換表を照合も保存もしない。
+// β以上の静的評価は置換表を照合も保存もしない。
 #[test]
 fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
     let position = Position::initial();
@@ -100,7 +100,7 @@ fn quiescence_stand_pat_cutoff_does_not_probe_or_store() {
     }
 }
 
-// D7-SRCH-11。search.md「静止探索」節の2026年8月22日改訂: Exact、
+// D7-SRCH-11。Exact、
 // score >= betaのLower、score <= alphaのUpperは深さ条件なしで返す。
 #[test]
 fn quiescence_tt_cuts_off_all_three_bounds_at_inclusive_edges() {
@@ -269,7 +269,7 @@ fn quiescence_max_ply_leaf_does_not_probe_or_store() {
     assert_eq!(table.raw_entry(key), raw_before);
 }
 
-// 設計書movegen-speedup-2.md「段階9」: 合法な捕獲がない場合と、入口の閾値で
+// 合法な捕獲がない場合と、入口の閾値で
 // 全捕獲が消える場合は、既存の置換表の値にかかわらず静的評価を返す。
 #[test]
 fn quiescence_empty_candidates_do_not_probe_or_store() {
@@ -307,8 +307,8 @@ fn quiescence_empty_candidates_do_not_probe_or_store() {
     }
 }
 
-// D7-SRCH-10。search.md「静止探索」: stand-patは損な捕獲より優先される。
-// movegen-speedup-2.md「段階9」: 候補があり、SEEで全て捨てるノードは保存する。
+// D7-SRCH-10。stand-patは損な捕獲より優先される。
+// 候補があり、SEEで全て捨てるノードは保存する。
 #[test]
 fn quiescence_see_pruned_candidates_still_store() {
     let position = position(
@@ -389,7 +389,8 @@ fn captures_with_history(
         .collect()
 }
 
-// move-ordering.md「候補3」: 生の履歴を優先し、同点なら攻撃駒価値と生成順を保つ。
+// 生の履歴を優先し、同点なら攻撃駒価値と生成順を保つ。
+// 採用理由はdocs/adr/bound-capture-history-and-use-it-in-qsearch.md。
 #[test]
 fn quiescence_capture_history_orders_within_group_using_raw_values() {
     let (board, moves) = history_ordering_position();
@@ -411,7 +412,7 @@ fn quiescence_capture_history_orders_within_group_using_raw_values() {
     );
 }
 
-// move-ordering.md「候補3」: 正負の履歴があっても捕獲価値の群を越えない。
+// 正負の履歴があっても捕獲価値の群を越えない。
 #[test]
 fn quiescence_capture_history_preserves_group_boundaries() {
     let (board, moves) = history_ordering_position();
@@ -426,7 +427,7 @@ fn quiescence_capture_history_preserves_group_boundaries() {
     );
 }
 
-// move-ordering.md「候補3」: 置換表の記録手は群と履歴に優先し、重複しない。
+// 置換表の記録手は群と履歴に優先し、重複しない。
 #[test]
 fn quiescence_capture_history_keeps_tt_capture_first() {
     let (board, moves) = history_ordering_position();
@@ -439,7 +440,7 @@ fn quiescence_capture_history_keeps_tt_capture_first() {
     );
 }
 
-// move-ordering.md「候補3」: 特殊駒も履歴順で通常駒と合流し、同点は公開生成順を保つ。
+// 特殊駒も履歴順で通常駒と合流し、同点は公開生成順を保つ。
 #[test]
 fn quiescence_capture_history_orders_special_and_ordinary_captures_together() {
     let board = position(

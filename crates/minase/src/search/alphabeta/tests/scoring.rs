@@ -6,7 +6,7 @@ use super::*;
 // D7-SRCH　探索本体
 // ---------------------------------------------------------------------------
 
-// D7-SRCH-01。search.md「探索内の終局と規則処理」: 相手の最後の王駒を取る
+// D7-SRCH-01。相手の最後の王駒を取る
 // 着手はMATE−(ply+1)。根ply=0のためMATE−1=29999。RULES.md第21条第1項。
 #[test]
 fn depth_one_capture_of_the_last_royal_scores_mate() {
@@ -39,7 +39,7 @@ fn depth_one_capture_of_the_last_royal_scores_mate() {
     assert_eq!(result.score, MATE - 1);
 }
 
-// D7-SRCH-02。search.md「探索内の終局と規則処理」: 王駒を2枚持つ側の
+// D7-SRCH-02。王駒を2枚持つ側の
 // 1枚目の王駒は駒割上の損得。RULES.md第20条第3〜5項。
 #[test]
 fn capture_of_the_first_of_two_royals_scores_as_material_gain() {
@@ -94,8 +94,8 @@ fn without_history_the_repetition_fixture_scores_a_mate_band_loss() {
     assert_eq!(result.score, -(MATE - 2));
 }
 
-// D7-SRCH-04。search.md「評価関数v0」（獅子=2500）とMVV-LVA。RULES.md
-// 第14条第5項により非獅子は足の有無にかかわらず獅子を取れる。
+// D7-SRCH-04。第14条第5項により非獅子は足の有無にかかわらず獅子を取れる。
+// 獅子の只取りは駒得として評価し、王駒の捕獲による詰み値とは区別する。
 #[test]
 fn free_lion_capture_is_preferred_without_entering_the_mate_band() {
     // 先手: 飛車3十、王将6十二。後手: 獅子3四（只取り）、玉将6一。先手番。
@@ -122,12 +122,12 @@ fn free_lion_capture_is_preferred_without_entering_the_mate_band() {
 
     assert_eq!(result.best_move.from, fs(3, 10));
     assert_eq!(result.best_move.to, fs(3, 4));
-    // 獅子2500は高価だが王駒ではないため、詰み帯に入らない（INV-3）。
+    // 獅子は王駒ではないため、只取りの評価は詰み帯に入らない（INV-3）。
     assert!(result.score > 0);
     assert!(result.score < 29_000);
 }
 
-// D7-SRCH-05。search.md「探索内の終局と規則処理」: 獅子の2枚取りは両王駒が
+// D7-SRCH-05。獅子の2枚取りは両王駒が
 // 消えた時点の判定として自然に扱える。RULES.md第21条第5項、第12条第4項。
 #[test]
 fn lion_double_capture_of_both_royals_scores_mate() {
@@ -166,7 +166,7 @@ fn lion_double_capture_of_both_royals_scores_mate() {
     assert_eq!(result.score, MATE - 1);
 }
 
-// D7-SRCH-06。search.md「探索内の終局と規則処理」: 合法手が1つもない場合は
+// D7-SRCH-06。合法手が1つもない場合は
 // 第23条により−MATE+ply。先手のどの着手でも後手は合法手ゼロとなるため、
 // 根の評価はMATE−1。RULES.md第23条第2〜3項（利きの除外ではなく物理的に
 // 手が尽きる場合だけが対象）。

@@ -24,7 +24,8 @@ use super::root::RootResults;
 use super::team::SharedSearch;
 use super::time::{TimeBudget, iteration_prediction_fits};
 
-/// 停止要求と時間切れを検査するノード数間隔。
+/// 時計を検査するワーカーごとのノード数間隔。
+/// 外部停止とチーム停止は[`Searcher::enter_node`]を呼ぶたびに読み、4096ノードごとなのは時計の確認だけである。
 pub(super) const STOP_CHECK_INTERVAL: u64 = 4096;
 
 /// 1つのplyに記録するkiller手の数。
@@ -125,7 +126,7 @@ pub(super) struct Searcher<'a> {
     /// 直近のnull move直後の局面キーが探索経路に占める位置。
     /// 部分木内の反復判定はこの境界以降だけを参照する。
     pub(super) null_move_boundary: Option<usize>,
-    /// 実際の着手を盤面へ適用した回数。
+    /// このワーカーが[`Self::enter_node`]で数えた実着手の適用回数。
     pub(super) nodes: u64,
     /// 探索チームで共有する停止状態と予算。
     pub(super) shared: &'a SharedSearch<'a>,
@@ -137,7 +138,7 @@ pub(super) struct Searcher<'a> {
     pub(super) pv: Vec<Vec<Move>>,
     /// 静止探索の捕獲生成・整列用バッファをplyごとに再利用する。
     pub(super) qsearch: Vec<QsearchBuffers>,
-    /// 「段階6」（movegen-speedup-2.md）の主探索用領域を深さごとに再利用する。
+    /// 通常探索の候補と整列領域をplyごとに再利用する。
     pub(super) move_pickers: Vec<MovePicker>,
     /// ワーカー内で共有する捕獲価値の順位。
     pub(super) capture_ranks: CaptureRanks,
@@ -147,7 +148,8 @@ pub(super) struct Searcher<'a> {
     pub(super) material_keys: [u64; MAX_PLY as usize + 1],
     /// 反復深化の間で共有する、このワーカー専用の補正表。
     pub(super) correction: CorrectionTable,
-    /// 静止探索で小さな捕獲を残すための余裕値。
+    /// 歩兵価値×`DeltaMargin`%で求める、静的評価と同じ単位のdelta pruning余裕値。
+    /// `stand_pat + 取る駒の価値 + 余裕値 ≤ α` の捕獲手を飛ばすために使う。
     pub(super) delta_margin: i32,
     /// βカットを起こした非捕獲手の手番側・移動元・移動先別スコア。
     pub(super) history: &'a mut HistoryTable,
@@ -161,6 +163,9 @@ pub(super) struct Searcher<'a> {
 
 impl Searcher<'_> {
     /// null moveの部分木では境界以降だけ、それ以外では対局履歴と全経路を照合する。
+    ///
+    /// 呼び出しの時点、反復時の返り値、置換表への保存範囲は[`Self::search_move`]に従う。
+    /// null moveをまたぐ反復を除く理由は`docs/adr/detect-repetition-only-after-latest-null-move.md`にある。
     pub(super) fn is_repetition(&self, key: u64) -> bool {
         match self.null_move_boundary {
             Some(boundary) => self.path_keys[boundary..].contains(&key),
@@ -168,7 +173,12 @@ impl Searcher<'_> {
         }
     }
 
-    /// 実着手の適用直前に停止条件を検査し、続行可能なら適用回数を数える。
+    /// 実着手の適用直前に停止条件を検査し、続行可能なら共有カウンタと局所カウンタに1ノードを数える。
+    ///
+    /// [`Self::search_move`]と[`Self::quiesce`]の着手適用直前だけで呼ぶ。
+    /// 数える対象と例外は[`crate::search::SearchResult::nodes`]に従う。
+    /// 読み直しで同じ子局面の探索関数を呼ぶだけでは加算しない。
+    /// 定義の理由は`docs/adr/count-nodes-per-move-on-shared-counter.md`にある。
     pub(super) fn enter_node(&mut self) -> bool {
         #[cfg(test)]
         if let Some((nodes, reason)) = self.interrupt_at
@@ -203,9 +213,11 @@ impl Searcher<'_> {
         true
     }
 
-    /// hを先に読み、hardを当て直しより先に検査する。
-    /// 対象の探索の秒読み期では当て直しを行わない
-    /// （`docs/plans/byoyomi-time-usage.md`の「秒読み期の締切」）。
+    /// 先読みの的中時刻を先に読み、hard limitを反復の完了時刻予測より先に検査する。
+    ///
+    /// 的中前は時間で止めず、的中後は的中からの経過時間でhard limitを判定する。
+    /// 先読みから続く主ワーカーの反復は、最初の時計検査で[`iteration_prediction_fits`]を当て直す。
+    /// 秒読み期ではこの当て直しを行わず、hard limitだけで中断する。
     pub(super) fn check_time(&mut self) -> bool {
         let Some(limit) = self.shared.hard_limit else {
             return true;

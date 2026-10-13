@@ -6,8 +6,8 @@ use super::*;
 // D7-TIME　時間予算
 // ---------------------------------------------------------------------------
 
-// D7-TIME-01。search.md「時間管理」節が規定する予算の不変条件を、代表値の
-// 直積で検査する。期待値は公開された式から導出し、探索実装の状態には依存しない。
+// D7-TIME-01。時計の予算はsoft ≤ hardかつhard ≥ 1 msを満たす。
+// 残り時間と秒読みの合計が30 msを超えるとき、hardはその合計から30 msを引いた値以下になる。
 #[test]
 fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
     let remaining_values = [0, 20, 31, 200, 10_000, 60_000, u64::MAX];
@@ -36,7 +36,7 @@ fn clock_budget_preserves_bounds_over_a_deterministic_grid() {
     }
 }
 
-// D7-TIME-02。search.md「時間管理」節: 時計なしの固定時間単独では、併用則
+// D7-TIME-02。時計なしの固定時間単独では、併用則
 // （softとhardのそれぞれで小さい方）の帰結として両リミットとも指定値になる。
 #[test]
 fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
@@ -45,7 +45,7 @@ fn movetime_alone_sets_both_soft_and_hard_to_the_given_value() {
     assert_eq!(budget.hard, Duration::from_millis(500));
 }
 
-// D7-TIME-03。search.md「時間管理」節: 固定時間と時計の併用時の予算は、
+// D7-TIME-03。固定時間と時計の併用時の予算は、
 // softとhardのそれぞれで両者の小さい方を採る（一括minではない独立比較）。
 #[test]
 fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
@@ -70,7 +70,8 @@ fn movetime_and_clock_combine_per_limit_by_taking_the_smaller() {
     assert_eq!(budget.hard, Duration::from_millis(4_676));
 }
 
-// 同「最善手安定時の早期終了」。直近4反復の最善手が同じときだけ安定とする。
+// 直近4反復の最善手が同じときだけ安定とする。
+// 採用理由はdocs/adr/stop-early-on-stable-best-move-without-extensions.md。
 #[test]
 fn stable_signal_requires_four_identical_recent_best_moves() {
     let moves = legal_moves(&Position::initial());
@@ -83,7 +84,7 @@ fn stable_signal_requires_four_identical_recent_best_moves() {
     assert!(!stable_signal(&[]));
 }
 
-// D7-TIME-05。search.md「時間管理」節: 継続条件を満たさない主ワーカーは
+// D7-TIME-05。継続条件を満たさない主ワーカーは
 // 次の深さへ入らず、softリミットとして最後の完了反復の合法手を返す。
 #[test]
 fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
@@ -139,7 +140,7 @@ fn next_iteration_gate_stops_main_worker_with_a_legal_best_move() {
     assert!(root_moves.contains(&outcome.result.best_move)); // INV-1
 }
 
-// D7-TIME-04。search.md「時間管理」節: hardはノード周期の時計チェックで
+// D7-TIME-04。hardはノード周期の時計チェックで
 // 適用される。上限の許容幅はテスト環境定数であり規範値ではない。
 // D7-TIME-05の継続判断との先着は実時間に依存するため停止理由は2値を許容する。
 #[test]
@@ -165,15 +166,13 @@ fn movetime_search_respects_the_hard_limit_and_returns_a_legal_move() {
     assert!(legal_moves(&initial).contains(&finished.best_move)); // INV-1
 }
 
-// D7-API-03(3)(4)。search.md「スレッド構成」節の停止理由のうちsoftリミットと
-// hardリミット。イテレーション境界の先着に依存するため、いずれも2値で
-// assertする（SPEC_UNCLEAR-04・09。複数制限の同着は扱わない）。
+// D7-API-03(3)(4)。時計による停止は反復境界でのsoft limitか、ノード周期でのhard limitである。
+// 実時間の検査では先に到達する検査点が一定でないため、どちらの停止理由も認める。
 #[test]
 fn clock_driven_searches_stop_with_a_time_limit_reason() {
     let initial = Position::initial();
 
-    // (3) soft≪hardの時計設定（残り6000ms・加算100ms・ply=0 → soft=96ms、
-    //     hard=384ms）。原則はsoftリミットで停止する。
+    // (3) 残り6000 ms、加算100 ms、ply=0ではsoft < hardとなり、反復境界で先に停止し得る。
     let limits = SearchLimits::new(None, None, None, Some(clock(6_000, 100, 0))).unwrap();
     let handle = start(
         snapshot_for(&initial),
@@ -197,7 +196,7 @@ fn clock_driven_searches_stop_with_a_time_limit_reason() {
     assert_eq!(budget.hard, Duration::from_millis(70));
 }
 
-// byoyomi-time-usage.md「設計判断」の対象外の定義と、変更を秒読みが正の時計に限る理由。
+// 秒読みが0、または深さ・ノード数・固定時間を併用した探索は、通常の時計予算と反復開始判定を使う。
 #[test]
 fn excluded_clocks_preserve_reference_budgets_and_iteration_gates() {
     let ms = Duration::from_millis;
@@ -236,7 +235,7 @@ fn excluded_clocks_preserve_reference_budgets_and_iteration_gates() {
                             hit + expected.hard,
                         ] {
                             for stable in [false, true] {
-                                // strength-stage6.mdとponder.mdの予測式と未満境界。
+                                // 予測完了時刻は予算以下、的中からの経過時間はsoft未満の場合だけ次を始める。
                                 let predicted = elapsed.as_nanos()
                                     * crate::search::alphabeta::params::iteration_ratio() as u128;
                                 let fits = predicted <= (hit + expected.hard).as_nanos() * 100
@@ -258,7 +257,7 @@ fn excluded_clocks_preserve_reference_budgets_and_iteration_gates() {
     }
 }
 
-// byoyomi-time-usage.md「秒読み期の締切」。加算、手数、安定性によらずb未満だけで始める。
+// 秒読み期は加算、手数、最善手の安定性によらず、経過時間が締切max(1 ms, 秒読み−余裕)未満なら次を始める。
 #[test]
 fn byoyomi_period_budget_and_gate_use_only_the_deadline() {
     let ms = Duration::from_millis;
@@ -298,7 +297,7 @@ fn byoyomi_period_budget_and_gate_use_only_the_deadline() {
     }
 }
 
-// byoyomi-time-usage.md「締切の余裕を絶対値のUSIオプションにする理由」。
+// 残り時間が正の秒読みつき時計では、指定した余裕を安全上限から引き、予算の下限は1 msとする。
 #[test]
 fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
     for remaining in [1, 30, 1000, 60_000, u64::MAX] {
@@ -329,7 +328,7 @@ fn byoyomi_with_remaining_time_changes_only_the_safety_margin() {
     }
 }
 
-// byoyomi-time-usage.md「秒読み期の締切」。反復前と完了後の両方の配線を検査する。
+// 秒読み期は反復の開始前と完了後に締切を検査し、先読み中は的中まで時計による判定を行わない。
 #[test]
 fn byoyomi_period_starts_iterations_before_deadline_in_normal_and_ponder_search() {
     let position = position(

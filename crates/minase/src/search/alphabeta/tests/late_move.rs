@@ -33,7 +33,8 @@ pub(super) fn search_quiet_board(board: &Position) -> (i32, u64) {
     run_negamax(board, 1, alpha, alpha + 1, 0, &small_tt())
 }
 
-// docs/plans/search-revival-spsa.md「late move pruningの定義の変更」。
+// 静かな手の上限は `(LmpBase + LmpSlope × 深さ²) / 100` を整数除算した値である。
+// 数える手の範囲を選んだ理由は docs/adr/count-only-quiet-moves-for-late-move-pruning.md にある。
 #[test]
 fn late_move_limits_follow_quadratic_depth_rule() {
     assert_eq!(
@@ -42,7 +43,7 @@ fn late_move_limits_follow_quadratic_depth_rule() {
     );
 }
 
-// docs/plans/strength-stage4.md「検証」の第1局面。上限を超えた静かな手を切っても詰みにしない。
+// 静かな手の上限を超えた手を飛ばしても、探索済みの非詰み値を保ち、合法手なしの詰みにはしない。
 #[test]
 fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
     let board = quiet_board();
@@ -71,7 +72,7 @@ fn late_move_pruning_reduces_quiet_nodes_without_false_mate() {
     );
 }
 
-// 同「適用するノード」。PV、詰み帯、王駒への利きがある場合は静かな手を省かない。
+// PV、詰み帯、王駒への利きがある場合は静かな手を省かない。
 #[test]
 fn late_move_pruning_exclusions_search_all_quiets() {
     let nnue = epoch_zero_nnue();
@@ -172,7 +173,7 @@ pub(super) fn check_late_move_protected_moves(limit: u64) {
     }
 }
 
-// docs/plans/strength-stage4.md「検証」の第2局面。先頭の王駒を失う手の後も安全な手を探す。
+// 先頭手の評価が負の詰み帯にあれば、静かな手の数が上限に達しても安全な手を探し続ける。
 #[test]
 pub(super) fn late_move_pruning_searches_safe_quiets_after_losing_tt_move() {
     let board =

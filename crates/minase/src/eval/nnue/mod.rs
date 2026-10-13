@@ -17,6 +17,8 @@ pub use stats::AccumulatorStats;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
 
+/// 静的評価の絶対値の上限。単位はセンチポーンである。
+/// [`crate::search::MATE_THRESHOLD`]未満に保ち、詰み帯と区別するとともに置換表の`i16`へ収まる範囲に制限する。
 const EVALUATION_LIMIT: i32 = 28_999;
 
 /// 検証済みのMNUE整数重みと探索用駒価値。
@@ -30,6 +32,8 @@ pub struct Network<F: FeatureSet, H: Head> {
     width: usize,
     scale: i64,
     rule_set: [u8; 32],
+    /// 学習で更新しない固定の探索用駒価値。
+    /// 盤上に現れる駒の値は[`Self::piece_value`]の不変条件を満たす。
     piece_values: [i32; PIECE_STATE_COUNT],
     max_promotion_gain: i32,
     k: f32,
@@ -46,7 +50,10 @@ pub type Nnue = Network<ActiveFeatureSet, ActiveHead>;
 impl<F: FeatureSet, H: Head> Network<F, H> {
     /// 盤上の駒コードに対応する駒価値をセンチポーンで返す。
     ///
-    /// 値はMNUE本体に格納した探索用駒価値を使う。
+    /// MNUE重みファイルに格納した固定の探索用駒価値を使い、NNUEの学習では更新しない。
+    /// 盤上に現れ得る非王駒はすべて正値であり、王駒は非王駒の最大値に成っていない歩兵価値を加えた値とする。
+    /// この正値性は、静的交換評価（SEE）の最も安い駒の選択、歩兵価値からの余裕値の計算、捕獲価値の合計による捕獲手の判別の前提である。
+    /// 固定値を使う理由は`docs/adr/derive-search-piece-values-from-the-learned-pst.md`にある。
     ///
     /// # Panics
     ///
@@ -68,7 +75,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
 
     /// 成っていない歩兵の駒価値をセンチポーンで返す。
     ///
-    /// `docs/plans/strength-stage4.md`の「採用した余裕値」節で使う単位`p`。
+    /// 探索の余裕値とaspiration windowの幅を百分率で換算する基準値である。
     #[inline]
     pub fn pawn_value(&self) -> i32 {
         let pawn = PieceCode::new(Color::Black, PieceKind::Pawn)
@@ -76,7 +83,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         self.piece_value(pawn)
     }
 
-    /// 「段階6」（movegen-speedup-2.md）の取り返しで得られる成り益の上限を返す。
+    /// SEEの取り返しで得られる成り益の上限を、固定の探索用駒価値の差として返す。
     pub(crate) const fn max_promotion_gain(&self) -> i32 {
         self.max_promotion_gain
     }
@@ -96,7 +103,7 @@ impl<F: FeatureSet, H: Head> Network<F, H> {
         self.width
     }
 
-    /// `docs/plans/move-ordering.md`「候補5」の同点破りに使う、手番側視点の線形経路（PST）の差分。
+    /// 静かな手の履歴値が同じ場合の同点破りに使う、手番側視点の線形経路の移動差分を返す。
     /// 非線形経路は含めず、補間後の除算前の分子を返す。
     pub(crate) fn quiet_move_pst_delta(&self, position: &Position, mv: Move) -> i64 {
         let side = position.side_to_move();

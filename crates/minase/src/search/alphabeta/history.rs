@@ -10,8 +10,13 @@ use super::capture_history::CaptureHistory;
 /// 手番側・移動元・移動先で参照するhistory表。
 pub(crate) type HistoryTable = [[[i32; BOARD_SQUARE_COUNT]; BOARD_SQUARE_COUNT]; COLOR_COUNT];
 
-/// 各ワーカーが次の根の探索へ持ち越す表。
-/// `docs/plans/strength-stage12.md`「項目5」と`docs/plans/move-ordering.md`「候補4」に従う。
+/// 各ワーカーが対局内で次の根の探索へ持ち越すbutterfly historyと捕獲履歴。
+///
+/// 探索チームは根の探索ごとに、両表をそれぞれ`HistoryDecay`%と`CaptureHistoryDecay`%へ減衰させる。
+/// USI層は新規対局、受理した規則または`USI_Hash`の変更、ワーカー数の変更で初期化する。
+/// 拒否した変更と同じワーカー数の再指定では保持する。
+/// killer手とcorrection historyの補正表は持ち越さない。
+/// 寿命の判断は`docs/adr/carry-history-tables-within-a-game.md`にある。
 pub struct HistoryTables {
     pub(crate) workers: Vec<Box<HistoryTable>>,
     pub(crate) capture: Vec<CaptureHistory>,

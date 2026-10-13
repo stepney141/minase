@@ -1,4 +1,5 @@
-//! 設計書strength-stage12.md「項目4」の手数制限と適用除外。
+//! 静止探索は実際に読んだ捕獲手を制限し、最後の王駒の捕獲、取り返し、獅子の2枚取りを除外する。
+//! 例外の手も手数には含める。採用理由はdocs/adr/limit-searched-captures-in-qsearch.md。
 
 use super::*;
 use crate::search::alphabeta::params;

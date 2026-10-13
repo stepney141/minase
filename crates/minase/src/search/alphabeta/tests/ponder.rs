@@ -2,8 +2,8 @@
 
 use super::*;
 
-// search.md「時間管理」、ponder.md「反復開始の判定」「的中の時点で進行中の反復」
-// （D7-TIME-05、D7-TIME-07、D7-TIME-08）。予測比から等号境界を求める。
+// D7-TIME-05・07・08。予測完了時刻は探索開始からの累積時間に比例し、的中までの時間を引いて予算と比べる。
+// 予測の等号は継続を認め、soft limitの経過時間の等号は停止する。
 #[test]
 fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     let ms = Duration::from_millis;
@@ -121,7 +121,7 @@ fn ponder_iteration_predictions_obey_hit_offset_and_exact_boundaries() {
     }
 }
 
-// ponder.md設計判断「探索中の打ち切り」（D7-TIME-06）。70msのhardを
+// D7-TIME-06。70 msのhard limitを
 // 超えても先読みは続き、深さとノード数の上限は的中前から働く。
 #[test]
 fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
@@ -162,7 +162,7 @@ fn ponder_ignores_time_until_hit_but_obeys_depth_and_nodes() {
     }
 }
 
-// ponder.md設計判断「時間予算の起点」「検査の手順」（D7-TIME-07、D7-TIME-08）。
+// D7-TIME-07・08。先読みの時間予算は的中から計測する。
 // 実時間の統合経路は負荷による検査遅延を許容し、厳密なsoft/hardの区別は下の検査点で固定する。
 #[test]
 fn ponder_hit_finishes_within_the_post_hit_budget_tolerance() {
@@ -182,7 +182,7 @@ fn ponder_hit_finishes_within_the_post_hit_budget_tolerance() {
     handle.join().unwrap();
 }
 
-// ponder.md設計判断「起点と共有状態の所有者」（D7-API-06）。
+// D7-API-06。的中時刻はスレッド生成前から共有し、最初の通知だけを記録する。
 // 生成前の的中は共有起点を持つハンドルをスレッドなしで構成して厳密に検査する。
 #[test]
 fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
@@ -215,7 +215,7 @@ fn ponderhit_records_only_the_first_notification_even_before_worker_start() {
     handle.join().unwrap();
 }
 
-// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08）。
+// D7-TIME-08。的中前に始まった反復は、主ワーカーが最初の時計検査点で開始判定を1回だけ当て直す。
 // 既存のノード検査点へ時刻を注入し、負荷に依存せず当て直しの停止、継続、
 // hard優先、的中後の開始、1回性を検査する。反復の状態は仕様で明示された境界。
 #[test]
@@ -285,7 +285,7 @@ fn ponder_rechecks_pre_hit_iterations_once_and_checks_hard_first() {
     }
 }
 
-// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08）。
+// D7-TIME-08。的中前に始まった反復は、主ワーカーが最初の時計検査点で開始判定を1回だけ当て直す。
 // aspirationの再探索を発生させても反復の開始時刻と安定性を変えない。
 #[test]
 fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
@@ -318,7 +318,7 @@ fn ponder_aspiration_research_preserves_iteration_start_and_stability() {
     });
 }
 
-// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08）。
+// D7-TIME-08。的中前に始まった反復は、主ワーカーが最初の時計検査点で開始判定を1回だけ当て直す。
 // 長い反復の開始直後に的中させ、hardまで走り切らずsoftで止まる配線を固定する。
 #[test]
 fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
@@ -373,7 +373,7 @@ fn ponder_long_iteration_stops_on_hit_without_spending_hard_budget() {
     }
 }
 
-// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08、D7-SMP-08）。
+// D7-TIME-08・D7-SMP-08。開始判定の当て直しによる中断では、ワーカーの完了済み反復から結果を選ぶ。
 // 補助ワーカーを完了させた後で主ワーカーの検査点に的中を通知し、実際の
 // チーム回収と採用処理が、当て直しで中断した反復を選ばないことを固定する。
 #[test]
@@ -480,7 +480,7 @@ fn ponder_team_adopts_completed_auxiliary_result_after_main_recheck() {
     }
 }
 
-// ponder.md設計判断「的中の時点で進行中の反復」（D7-TIME-08、D7-API-06、D7-LIM-04）。
+// D7-TIME-08・D7-API-06・D7-LIM-04。的中後に始める反復は開始時に通常の時間判定を行う。
 // スレッド生成前の的中も通常の開始判定を通し、完了済みの反復がなければ根の先頭を返す。
 #[test]
 fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
@@ -510,7 +510,7 @@ fn ponder_hit_before_worker_start_obeys_the_iteration_start_budget() {
     assert_eq!(outcome.result.best_move, snapshot.root_moves[0]);
 }
 
-// byoyomi-time-usage.md「秒読み期の締切」。実際の制限から得た予算で当て直しとhardを検査する。
+// 秒読み期は的中時の開始判定の当て直しを行わず、的中からhard limitに達するまで探索を続ける。
 #[test]
 fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
     let ms = Duration::from_millis;
@@ -580,8 +580,8 @@ fn byoyomi_period_skips_ponder_recheck_but_keeps_hard_limit() {
     }
 }
 
-// byoyomi-time-usage.md「フェーズ1　段階Aの実装」。4ワーカーと先読み的中を
-// 組み合わせ、着手・予想手の合法性と、的中からの締切を検査する。
+// 4ワーカーの秒読み探索でも最善手と予想手は合法であり、時間は先読み的中から測る。
+// 実時間の検査では負荷による締切検出の遅延を許容する。
 #[test]
 fn four_worker_byoyomi_search_and_ponderhit_return_legal_pv_within_deadline() {
     for ponder in [false, true] {

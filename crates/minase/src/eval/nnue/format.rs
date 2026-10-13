@@ -513,7 +513,9 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// 格納された駒価値を検査する。
+/// 格納された固定の探索用駒価値が[`Network::piece_value`]の不変条件を満たすかを検査する。
+/// 全要素を0以上[`EVALUATION_LIMIT`]以下に制限し、盤上に現れ得る非王駒の正値性と王駒価値の式を確かめる。
+/// 盤上に現れない未使用の駒状態には0を許す。
 fn validate_piece_values(values: &[i32; PIECE_STATE_COUNT]) -> Result<(), Error> {
     for (state, &value) in values.iter().enumerate() {
         if !(0..=EVALUATION_LIMIT).contains(&value) {

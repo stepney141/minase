@@ -50,6 +50,12 @@ impl MoveGenerator {
     }
 
     /// `position`の手番側の捕獲を伴う合法手を`output`へ追加する。
+    ///
+    /// 追加する列は、[`Self::generate_moves`]の出力を[`Position::captured_squares`]が1升以上を返す手に絞った列と、要素、重複、順序まで一致する。
+    /// 正準形では`mid`を持つ手は経由升で捕獲するので、居喰いを含めて候補に残す。
+    /// `mid`のない跳びと移動は到達升に相手駒がある場合だけ残し、捕獲のないじっとは除く。
+    /// 獅子捕獲規則による合法性検査と成りの展開は全手生成と共通である。
+    /// 同じ整列値の手は安定ソートで生成順を保つため、生成順の違いで探索の総ノード数が変わり得る。
     pub fn generate_captures(&self, position: &Position, output: &mut Vec<Move>) {
         self.generate_captures_with_scratch(position, &mut Vec::new(), output);
     }

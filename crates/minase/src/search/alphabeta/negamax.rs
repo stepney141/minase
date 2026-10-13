@@ -33,8 +33,17 @@ impl Searcher<'_> {
 
     /// ネガマックス形式のアルファベータ探索で局面を評価する。
     ///
-    /// 深さ0では静止探索へ移り、合法手のない局面は詰みとして
-    /// `-MATE + ply`を返す。中断された場合は`None`を返す。
+    /// 深さ0では[`Self::quiesce`]へ移り、合法手のない局面は第23条により`-MATE + ply`を返す。
+    /// 中断された場合は`None`を返す。
+    ///
+    /// 置換表で打ち切れず、要求深さ3以上で記録手がなければ、内部反復減深（IIR）として1だけ浅く読む。
+    /// stand-patだけの記録も「記録手なし」に含める。
+    /// 判断の理由は`docs/adr/reduce-depth-by-one-without-tt-move.md`にある。
+    ///
+    /// 前向き枝刈りはreverse futility、razoring、null move、futility、late move pruning、SEE、LMRの順で判定する。
+    /// このうちreverse futility、razoring、futility、late move pruning、SEEは、IIR後の残り深さ3以下、零窓、αとβが詰み帯の外という共通条件を持つ。
+    /// さらに手番側のどの王駒にも相手の疑似利きが届かない場合に限り、razoringは残り深さ2以下に限る。
+    /// null moveとLMRの条件はそれぞれの判定箇所と[`super::pruning::lmr_reduction`]に従う。
     pub(super) fn negamax(
         &mut self,
         position: &mut Position,
@@ -84,17 +93,15 @@ impl Searcher<'_> {
             }
         }
 
-        // docs/plans/strength-stage6.md「internal iterative reduction」節。
-        // 即時打ち切りを要求深さで判定した後、記録手がなければ1だけ浅く読む。
+        // 置換表の打ち切りは要求深さで判定し、その後にIIRを適用する。
         let depth = if depth >= 3 && tt_move.is_none() {
             depth - 1
         } else {
             depth
         };
 
-        // docs/plans/strength-stage4.md「適用するノード」「静的評価の取得」。
-        // 元の3項目はevaluate_accumulatorの補正前の値を使っていたので、
-        // 同じ累算評価を使う。futilityと補正履歴の更新にも再利用する。
+        // 浅い枝刈りの共通条件を判定し、累算値から補正前の静的評価を1回だけ求める。
+        // 王駒への利きは個々の枝刈りが発動し得る場合に調べる。
         let pruning_node = depth <= 3
             && beta - alpha == 1
             && alpha.abs() < MATE_THRESHOLD
@@ -107,7 +114,10 @@ impl Searcher<'_> {
                 .evaluate_accumulator(&self.accumulators[ply as usize], position.side_to_move())
         });
         let mut royal_attacked = None;
-        // 王駒への利きは他の条件が成立してから調べ、返す静的評価は置換表に保存しない。
+        // reverse futilityは「静的評価 − 余裕値 ≥ β」で静的評価を返し、置換表へ保存しない。
+        // razoringは深さ2以下で「静的評価 + 余裕値 ≤ α」なら静止探索へ移り、その値もα以下なら返す。
+        // 両者とも王駒に疑似利きが届くノードを除く理由は
+        // docs/adr/skip-static-eval-pruning-when-a-royal-is-attacked.md にある。
         if let Some(value) = static_eval {
             if value - reverse_futility_margin(self.nnue.pawn_value()) >= beta
                 && !*royal_attacked.get_or_insert_with(|| royal_under_attack(position))
@@ -128,6 +138,9 @@ impl Searcher<'_> {
         let side = position.side_to_move();
         let has_non_royal_piece =
             !(position.pieces_of(side) & !position.royal_pieces(side)).is_empty();
+        // 深さ3以上、直前がnull moveでない、βが詰み帯の外、王駒以外の自駒がある場合に試す。
+        // 王駒への利き、零窓、静的評価がβ以上という条件は加えない。
+        // null_move_reductionで求めた減深量と着手相当の1手を引き、深さ0で飽和させる。
         if depth >= 3
             && self.null_move_ply != Some(ply)
             && beta.abs() < MATE_THRESHOLD
@@ -152,7 +165,7 @@ impl Searcher<'_> {
             }
         }
 
-        // futilityだけは現行どおり履歴補正を加え、余裕値との和を1回だけ求める。
+        // futilityだけにcorrection historyの補正を加え、余裕値との和を1回だけ求める。
         let futility_bound = pruning_node.then(|| {
             let value = static_eval.expect("eligible pruning node has a static evaluation");
             value
@@ -164,6 +177,7 @@ impl Searcher<'_> {
                 )
         });
         let late_move_limit = pruning_node.then(|| late_move_limit(depth));
+        // 損な先頭捕獲よりkiller手を先に返す条件はMovePicker::resetの契約に従う。
         self.move_pickers[ply as usize].reset(
             tt_move,
             self.killers[ply as usize],
@@ -189,8 +203,8 @@ impl Searcher<'_> {
             self.history,
             self.capture_history,
         ) {
-            // docs/plans/search-revival-spsa.md「late move pruningの定義の変更」。
-            // 枝刈りした手も数え、判定には現在の手より前の数を使う。
+            // late_move_limitが定める静かな手だけを数え、現在の手より前の数で判定する。
+            // killer手はこの制限から除くが、futilityの対象にはなり得る。
             let counted_quiet = Some(mv) != tt_move
                 && !capture
                 && !mv.promote
@@ -198,9 +212,11 @@ impl Searcher<'_> {
             let late_move_pruned =
                 counted_quiet && late_move_limit.is_some_and(|limit| counted_quiets >= limit);
             counted_quiets += i32::from(counted_quiet);
-            // docs/plans/strength-stage4.md「展開しない手の範囲」。
-            // 負の詰み帯を脱するまでは安全な手を探す。
-            // 王駒への利きは他の条件が揃ったときにだけ調べ、ノード内で再利用する。
+            // 置換表の記録手、捕獲手、成る手はfutilityとlate move pruningで飛ばさない。
+            // 成る手は、麒麟が獅子に成るように非捕獲でも評価が大きく動くため保護する。
+            // 最善値が負の詰み帯にある間は探索を続け、全手の枝刈りを合法手なしの詰みと誤認することと、
+            // 安全な手を読まずに負の詰み値を上界として保存することを防ぐ。
+            // 飛ばした手もindexを進めるがsearched_quietsには加えず、減点とkiller更新の対象にしない。
             if best_score > -MATE_THRESHOLD
                 && (futility_bound.is_some_and(|bound| bound <= alpha) || late_move_pruned)
                 && Some(mv) != tt_move
@@ -211,8 +227,10 @@ impl Searcher<'_> {
                 index += 1;
                 continue;
             }
-            // docs/plans/strength-stage8.md「SEEによる捕獲手の枝刈り」節。
-            // futilityと対象ノードおよび王駒への利きの遅延評価を共有する。
+            // SEEの損が深さ別の余裕値を超える捕獲手を飛ばす。
+            // 共通条件に加え、負の詰み帯を脱した後に限り、置換表の記録手と最後の王駒の捕獲を除く。
+            // 規則依存で判定不能な交換は展開する。理由は
+            // docs/adr/prune-losing-captures-by-see-at-shallow-nodes.md にある。
             if futility_bound.is_some()
                 && best_score > -MATE_THRESHOLD
                 && capture
@@ -305,7 +323,10 @@ impl Searcher<'_> {
         } else {
             Bound::Exact
         };
-        // 段階8の変種B。補正前の評価と保存値が補正の向きを確定するときだけ学習する。
+        // 詰み帯の外で、最善手が非捕獲手、かつ王駒に疑似利きが届かないノードだけを学習する。
+        // 正確な値、静的評価より低い上界、静的評価より高い下界なら補正の向きが確定する。
+        // 捕獲による駒得は静的評価の偏りではないため除外する。理由は
+        // docs/adr/key-correction-history-by-material.md にある。
         if best_score.abs() < MATE_THRESHOLD && !best_capture {
             let static_eval = *static_eval.get_or_insert_with(|| {
                 #[cfg(feature = "invariants")]
@@ -369,7 +390,8 @@ impl Searcher<'_> {
     /// 1手を適用して子局面を探索し、この局面から見た評価値を返す。
     ///
     /// 王駒をすべて取る手は子局面での終局値`MATE - (ply + 1)`を返す。
-    /// 対局履歴または探索経路との反復は引き分け値とする。
+    /// [`Self::is_repetition`]で反復を認めた子局面は、`path_keys`へ積む前に引き分け値を返す。
+    /// その子局面自体は置換表へ保存しないが、引き分け値を含めて求めた親の値は保存する。
     /// null moveの部分木では、直近のnull move直後以降の経路だけを参照する。
     /// 2手目以降は零窓で探索する。減深した探索がαを超えた場合は通常深さの零窓、
     /// さらに窓内なら全窓で再探索する。

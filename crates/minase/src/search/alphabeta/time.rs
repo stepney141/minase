@@ -20,15 +20,13 @@ pub(super) struct TimeBudget {
 
 /// 最善手の安定を判定する直近の完了反復数。
 ///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従う。
-/// 「反復深化の診断」の時間条件を含む模擬で、失う良い結果の割合が10%以下に
-/// なる最小の反復数がk = 4だったことに基づく。
+/// この数の連続した完了反復がすべて同じ最善手を返せば安定とする。
+/// 4反復を使う判断の理由は`docs/adr/stop-early-on-stable-best-move-without-extensions.md`にある。
 const STABLE_ITERATIONS: usize = 4;
 
 /// 完了反復の最善手列から、予測完了時刻をsoftで抑えるかを返す。
 ///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従い、
-/// 直近4反復の最善手がすべて同じ場合だけ真を返す。
+/// [`STABLE_ITERATIONS`]個の最善手が揃い、すべて同じ場合だけ真を返す。
 /// `bests`は完了順に並び、末尾が最新の反復の最善手である。
 pub(super) fn stable_signal(bests: &[Move]) -> bool {
     bests.len() >= STABLE_ITERATIONS
@@ -39,12 +37,9 @@ pub(super) fn stable_signal(bests: &[Move]) -> bool {
 
 /// 時間予算内で次の反復を開始できるかを返す。
 ///
-/// `docs/plans/strength-stage6.md`の「最善手安定時の早期終了」節に従い、
-/// `stable`が真なら経過時間に固定比を掛けた予測完了時刻がsoft以下であることを、
-/// 偽なら経過時間がsoft未満であることを要求し、hardの予測による上限は常に守る。
-/// 比の既定値は`params`の表に定める。
-/// `docs/plans/byoyomi-time-usage.md`の「秒読み期の締切」に従い、
-/// 対象の探索の秒読み期では的中後の経過時間だけを締切と比べる。
+/// 通常は[`iteration_prediction_fits`]を満たし、さらに最善手が不安定なら的中後の経過時間がsoft未満であることを要求する。
+/// 安定時のsoft判定は同関数の完了時刻予測に含まれる。
+/// [`byoyomi_clock`]の対象で残り持ち時間が0の場合は予測と安定性を使わず、的中後の経過時間がhard未満かだけを判定する。
 pub(super) fn should_start_next_iteration(
     elapsed: Duration,
     hit: Duration,
@@ -58,7 +53,11 @@ pub(super) fn should_start_next_iteration(
         && (stable || elapsed.saturating_sub(hit) < budget.soft)
 }
 
-/// 的中から予測した完了時刻が、開始時の安定性に応じた予算に収まるか。
+/// 反復の予測完了時刻が、的中時刻から測った予算に収まるかを返す。
+///
+/// `started`と`hit`は探索開始からの累積時間である。
+/// `started × IterationRatio ≤ (hit + hard) × 100` を要求し、安定時はsoftにも同じ判定を行う。
+/// 交差積で比較して、百分率の除算による丸めを避ける。
 pub(super) fn iteration_prediction_fits(
     started: Duration,
     hit: Duration,
@@ -76,28 +75,19 @@ pub(super) fn moves_to_go(ply: u32) -> u128 {
         .max((params::expected_plies() as u128).saturating_sub(u128::from(ply)) / 2)
 }
 
-/// 持ち時間制の予算式を1箇所に集約する。
-///
-/// 既定係数では、以下の式と一致する。
-/// `moves_to_go = max(88, 432.saturating_sub(ply) / 2)`、
-/// `soft_raw = remaining / moves_to_go + 0.76 * increment + 0.8 * byoyomi * w`、
-/// `safe_hard = max(1ms, (remaining + byoyomi).saturating_sub(30ms))`、
-/// `hard = max(1ms, min(4.51 * soft_raw, 0.27 * remaining + 0.8 * byoyomi, safe_hard))`、
-/// `soft = min(soft_raw, hard)`とする。
-/// `w = min(1, (ply + 4) / 40)`は序盤の係数で、残り時間が正の手の秒読みの項にだけ掛け、
-/// 対局開始直後の数手が秒読み相当の長考を使うことを防ぐ
-/// （`docs/plans/time-management-efficiency.md`の「採用した方式」）。
-/// 秒読みのない時計では序盤の係数が掛かる項は0になる。
-/// 秒読みが正の時計では、`time_budget`が`safe_hard`の30 msに代えてUSIオプション`ByoyomiMargin`の値を
-/// [`clock_budget_with_margin`]へ渡し、持ち時間が尽きた手では秒読みから同じ余裕を引いた締切をsoftとhardの両方にする。
-/// 係数を変更する場合は自己対局で採否を判定する。
+/// [`clock_budget_with_margin`]を安全余裕30 msで適用する。
+/// 秒読みだけの特別な締切や、指定された秒読み余裕の適用は[`time_budget`]で選ぶ。
 pub(super) fn clock_budget(clock: ClockLimits) -> TimeBudget {
     clock_budget_with_margin(clock, 30)
 }
 
-/// 「締切の余裕を絶対値のUSIオプションにする理由」に従い安全上限の余裕を適用する。
+/// 残り時間R、加算I、秒読みB、余裕mをミリ秒で受け、softとhardを求める。
 ///
-/// 式は`docs/plans/byoyomi-time-usage.md`の「設計判断」に従う。
+/// 残り着手数Mは[`moves_to_go`]で求め、序盤係数の分子wはRが正なら`min(ply + 4, 40)`、0なら40とする。
+/// `soft_raw = R / M + I × IncrementShare / 100 + B × 8 × w / 400` を各項ごとの整数除算で求める。
+/// `safe_hard = max(1, R + B − m)` とし、減算は0で飽和させる。
+/// `hard = max(1, min(soft_raw × HardSoftRatio / 100, R × HardRemainingShare / 100 + B × 8 / 10, safe_hard))` とする。
+/// `soft = min(soft_raw, hard)` としてsoftがhardを超えないようにし、最終値は`u64`のミリ秒へ飽和変換する。
 fn clock_budget_with_margin(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
     let remaining = u128::from(clock.remaining_ms);
     let increment = u128::from(clock.increment_ms);
@@ -126,10 +116,8 @@ fn clock_budget_with_margin(clock: ClockLimits, margin_ms: u64) -> TimeBudget {
     }
 }
 
-/// 秒読みの変更対象となる時計を返す。
-///
-/// `docs/plans/byoyomi-time-usage.md`の「設計判断」の対象の探索の定義に従い、
-/// 秒読みが正で、固定時間・深さ・ノード数の制限を併用しない時計だけを選ぶ。
+/// 秒読み用の時間配分と途中結果の採用を適用する時計を返す。
+/// 秒読みが正で、固定時間、深さ、ノード数の制限を併用しない有限探索だけを選ぶ。
 pub(super) fn byoyomi_clock(limits: &SearchLimits) -> Option<ClockLimits> {
     let limits = limits.finite()?;
     limits.clock.filter(|clock| {
@@ -140,7 +128,11 @@ pub(super) fn byoyomi_clock(limits: &SearchLimits) -> Option<ClockLimits> {
     })
 }
 
-/// 探索制限から時間予算を求める。`movetime`と時計の併用時は小さい方を採る。
+/// 探索制限から時間予算を求める。
+///
+/// [`byoyomi_clock`]の対象では指定の秒読み余裕を使い、残り持ち時間が0なら`max(1 ms, 秒読み − 余裕)`をsoftとhardの両方にする。
+/// 持ち時間があれば[`clock_budget_with_margin`]を使う。
+/// 対象外では[`clock_budget`]を使い、`movetime`と時計の併用時はsoftとhardのそれぞれで小さい方を採る。
 pub(super) fn time_budget(limits: &SearchLimits) -> Option<TimeBudget> {
     if let Some(clock) = byoyomi_clock(limits) {
         if clock.remaining_ms == 0 {

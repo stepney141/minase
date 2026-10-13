@@ -150,7 +150,7 @@ pub struct ClockLimits {
 }
 
 impl ClockLimits {
-    /// `docs/plans/byoyomi-time-usage.md`「締切の余裕を絶対値のUSIオプションにする理由」の既定値(ms)。
+    /// 秒読みつき時計の安全上限から差し引く余裕の既定値。単位はmsである。
     pub const DEFAULT_BYOYOMI_MARGIN_MS: u64 = 30;
 
     /// 持ち時間制の制限を検証して構築する。
@@ -177,15 +177,14 @@ impl ClockLimits {
         })
     }
 
-    /// 秒読みつき時計の締切に残す余裕(ms)を設定する。
-    ///
-    /// `docs/plans/byoyomi-time-usage.md`の「締切の余裕を絶対値のUSIオプションにする理由」に従う。
+    /// 秒読みが正で、固定時間、深さ、ノード数を併用しない時計の締切に残す余裕をmsで設定する。
+    /// 残り時間と秒読みの合計から差し引き、余裕が合計以上でも締切は最低1 msとする。
     pub const fn with_byoyomi_margin_ms(mut self, milliseconds: u64) -> Self {
         self.byoyomi_margin_ms = milliseconds;
         self
     }
 
-    /// 同設計書の「締切の余裕を絶対値のUSIオプションにする理由」で定める余裕(ms)を返す。
+    /// [`Self::with_byoyomi_margin_ms`]で設定する締切の余裕をmsで返す。
     pub const fn byoyomi_margin_ms(self) -> u64 {
         self.byoyomi_margin_ms
     }

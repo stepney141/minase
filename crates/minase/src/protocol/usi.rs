@@ -1506,7 +1506,11 @@ fn write_final_info_if_deeper(
 }
 
 /// 評価値を`info score`用の文字列へ変換する。
-/// 詰み帯は終局までの手数から2を引いて0以上にし、0にも勝敗の符号を付ける。
+///
+/// 詰み帯では`MATE − |score|`が王駒の捕獲までの手数を表す。
+/// 中将棋では詰んだ後も詰まされた側の1手と王駒を取る1手が続くため、2を引いて0以上に切り詰める。
+/// 0手にも勝敗の符号を付ける`mate +0`と`mate -0`は、やねうら王とShogiGUIの慣行に倣う。
+/// 詰み帯の外は内部の評価値を換算せず`cp`として出力する。
 fn score_text(score: i32) -> String {
     if score >= search::MATE_THRESHOLD {
         let moves = (search::MATE - score - 2).max(0);

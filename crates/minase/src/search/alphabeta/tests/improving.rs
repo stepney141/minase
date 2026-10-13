@@ -3,7 +3,8 @@
 use super::*;
 use crate::search::alphabeta::params;
 
-// docs/plans/strength-stage8.md「improvingの定義」。両手番から見て上昇だけを真とし、同値と下降は偽とする。
+// 同じ手番の2手前の静的評価と比べ、上昇だけを真とし、同値と下降は偽とする。
+// 適用範囲の理由は docs/adr/use-improving-only-for-futility-margins.md にある。
 #[test]
 fn improving_compares_static_evaluations_from_the_current_side() {
     for side in [Color::Black, Color::White] {
@@ -68,7 +69,7 @@ fn improving_preserves_margins_without_two_real_plies() {
     });
 }
 
-// 同「improvingフラグ」。縮めた余裕値の境界で、上昇していないノードだけ後続手を刈る。
+// 縮めたfutility余裕値の境界では、良化していないノードだけ後続の静かな手を刈る。
 #[test]
 fn futility_prunes_quiets_only_when_not_improving() {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -108,7 +109,7 @@ fn futility_prunes_quiets_only_when_not_improving() {
     }
 }
 
-// docs/plans/strength-stage8.md「improvingの定義」。履歴補正は良化判定に含めない。
+// 良化判定にはcorrection historyの補正を含めず、補正前の静的評価を比べる。
 #[test]
 fn improving_uses_raw_evaluation_before_correction() {
     let board = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();

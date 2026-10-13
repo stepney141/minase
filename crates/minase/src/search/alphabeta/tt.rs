@@ -120,7 +120,7 @@ struct CriticalFields {
 pub(crate) struct Hit {
     /// 手順序付けに使う助言手。
     ///
-    /// 記録手の有無は減深判断にも使う（strength-stage6.md「internal iterative reduction」節）。
+    /// 記録手の有無は[`super::searcher::Searcher::negamax`]の内部反復減深の判断にも使う。
     /// 並行書込み時は検証キーおよび評価値と同じ格納操作に由来する保証がない。
     /// 生成済み合法手との一致を確認せず、着手や枝刈りに使ってはならない。
     pub(crate) best_move: Option<Move>,
@@ -237,8 +237,15 @@ impl TranspositionTable {
 
     /// 探索結果をエントリへ書き込む。
     ///
-    /// 同一局面は既存以上の深さ、異なる局面は過去世代または既存より深い
-    /// 結果だけが既存エントリを置き換える。
+    /// 空スロットには常に書き、同一検証キーでは世代を問わず既存以上の深さだけを書き込む。
+    /// 浅い結果を拒否したときは世代も変えず、同深さならバウンドを問わず後の書き込みを採る。
+    /// 異なる検証キーでは、過去世代または既存より深い結果だけが置き換える。
+    /// 同一キーの深さ制限は、静止探索の深さ0の記録が通常探索の深い記録を消すことを防ぐ。
+    /// 理由は`docs/adr/store-quiescence-results-at-depth-zero.md`にある。
+    ///
+    /// 2ワーカーが同じ既存値から書き込み可と判断すると、浅い結果が後から公開されることも許容する。
+    /// 比較交換で再判定せず、助言語をRelaxedで書いた後に評価値の語をReleaseで公開する。
+    /// この競合の扱いは`docs/adr/use-atomic-two-word-transposition-entries.md`に従う。
     pub(super) fn store(
         &self,
         key: u64,
@@ -424,7 +431,7 @@ mod diagnostic_tests {
     use minase_core::notation::sfen::parse_extended_sfen;
     use minase_core::{MoveGenerator, Rules};
 
-    /// debugging-tools.md「tt」: 同じ照合関数で有無、全欄、手数0・1の詰み補正を読み、表を変更しない。
+    /// 同じ照合関数で有無、全欄、手数0・1の詰み補正を読み、表を変更しない。
     #[test]
     fn diagnostic_probe_preserves_entries_and_corrects_mate_distance() {
         let rules =

@@ -1,4 +1,5 @@
-//! 段階8の補正表について、通常探索との接続と更新条件を検査する。
+//! correction historyはfutilityの判定だけに加え、詰み帯の外で最善手が非捕獲のときに更新する。
+//! 採用理由はdocs/adr/key-correction-history-by-material.md。
 
 use super::*;
 use crate::eval::{evaluate, weights};

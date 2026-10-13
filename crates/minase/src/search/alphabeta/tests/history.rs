@@ -1,4 +1,5 @@
-//! strength-stage12.md「項目5」「検証」の持ち越し契約。
+//! butterfly履歴と捕獲履歴は対局内で持ち越し、根の探索前に減衰させる。
+//! 採用理由はdocs/adr/carry-history-tables-within-a-game.md。
 
 use super::*;
 use crate::search::HistoryTables;
@@ -205,7 +206,7 @@ fn history_carry_workers_update_their_own_table() {
     }
 }
 
-/// search-revival-spsa.md「フェーズ1」: 連続する探索の間で全履歴が消える。
+/// 両方の履歴の残存率を0%にすると、次の根の探索前に全要素が0になる。
 #[cfg(feature = "tuning")]
 pub(super) fn zero_decay_clears_history_between_searches() {
     let snapshot = snapshot_for(&quiet_midgame());

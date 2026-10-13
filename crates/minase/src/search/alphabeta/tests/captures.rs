@@ -1,4 +1,4 @@
-//! movegen-speedup.md「静止探索の捕獲を段階的に生成する」の残存手順契約。
+//! 静止探索の候補を捕獲価値の降順に群へ分け、同じ整列キーの手は生成順を保つ。
 
 use super::*;
 use crate::search::alphabeta::capture_history::CaptureHistory;
@@ -23,7 +23,7 @@ fn public_reference(
     captures
 }
 
-// 設計書movegen-speedup-2.md「段階8」: 静止探索だけに除外条件を適用する。
+// 静止探索だけに除外条件を適用する。
 fn reference(
     position: &Position,
     generator: &MoveGenerator,
@@ -300,7 +300,7 @@ fn reset_discards_targets_from_partially_consumed_node() {
     }
 }
 
-// 設計書movegen-speedup-2.md「段階8」: 除外した手が置換表にあっても復活せず、
+// 除外した手が置換表にあっても復活せず、
 // 居喰いを含む残存候補は参照列の順序で返る。
 #[test]
 fn lion_capture_filter_preserves_remaining_tt_variants() {
@@ -366,7 +366,7 @@ fn lion_capture_filter_preserves_remaining_tt_variants() {
     }
 }
 
-// 設計書movegen-speedup-2.md「段階5」: 駒種別の成否2通りの順位が、
+// 駒種別の成否2通りの順位が、
 // 全ての有効な駒コードについて従来の47状態の順位に一致する。
 #[test]
 fn kind_capture_ranks_match_all_piece_codes() {
@@ -390,7 +390,7 @@ fn kind_capture_ranks_match_all_piece_codes() {
     }
 }
 
-// 設計書movegen-speedup-2.md「段階5」: 主探索のキー前計算は、同点時の
+// 主探索のキー前計算は、同点時の
 // 安定性と置換表の手の扱いを含めて、公開捕獲列の安定整列と一致する。
 #[test]
 fn main_picker_captures_match_stable_reference_for_all_rules() {
@@ -422,7 +422,7 @@ fn main_picker_captures_match_stable_reference_for_all_rules() {
     }
 }
 
-// 設計書movegen-speedup-2.md「段階9」: 候補の有無は、合法な捕獲の参照列に
+// 候補の有無は、合法な捕獲の参照列に
 // 入口の閾値と最後の王駒の例外を適用した結果と一致する。
 #[test]
 fn initialized_candidate_presence_matches_filtered_reference() {
@@ -452,7 +452,7 @@ fn initialized_candidate_presence_matches_filtered_reference() {
     }
 }
 
-/// search-revival-spsa.md「戻す8項目」: 尺度0は基準版の安定順序と一致する。
+/// 捕獲履歴の尺度が0なら、捕獲価値の降順、攻撃駒価値の昇順、生成順に整列する。
 #[cfg(feature = "tuning")]
 pub(super) fn zero_capture_scale_preserves_reference_order() {
     let mut capture_history = crate::search::alphabeta::capture_history::CaptureHistory::new();

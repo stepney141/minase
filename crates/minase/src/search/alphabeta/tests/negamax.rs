@@ -27,8 +27,8 @@ fn depth_zero_tt_score_does_not_cut_off_depth_one_negamax() {
     assert_eq!(table.probe(key, 0).unwrap().depth, 1);
 }
 
-// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
-// 深さ不足の記録でも記録手があれば、要求された深さ3を保つ。
+// 深さ不足の記録でも記録手があれば、内部反復減深を行わず要求深さ3を保つ。
+// 判断の理由は docs/adr/reduce-depth-by-one-without-tt-move.md にある。
 #[test]
 fn iir_preserves_depth_when_tt_has_a_move() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -44,8 +44,7 @@ fn iir_preserves_depth_when_tt_has_a_move() {
     assert_eq!(table.probe(key, 0).unwrap().depth, 3);
 }
 
-// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
-// 記録手がなくても残り深さ2以下では減深しない。
+// 内部反復減深は要求深さ3以上に限り、記録手がなくても残り深さ2以下では減深しない。
 #[test]
 fn iir_preserves_depth_below_three() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -59,8 +58,7 @@ fn iir_preserves_depth_below_three() {
     }
 }
 
-// docs/plans/strength-stage6.md「internal iterative reduction」「検証」。
-// stand-patに相当する記録手なしのエントリも減深の対象になる。
+// stand-patに相当する記録手なしのエントリも内部反復減深の対象となり、要求深さ3を2へ減らす。
 #[test]
 fn iir_reduces_depth_when_tt_entry_has_no_move() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -94,8 +92,7 @@ fn null_move_cutoff_without_captures_counts_no_nodes() {
     assert_eq!((score, nodes), (expected, 0));
 }
 
-// docs/plans/strength-stage6.md「設計判断」のinternal iterative reduction。
-// 即時打ち切りは減深前の要求深さで判定し、深さが足りる場合は減深より先に返す。
+// 置換表の打ち切りは減深前の要求深さで判定し、深さが足りる場合は内部反復減深より先に返す。
 #[test]
 fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
     let position = minase_core::parse_sfen("k11/12/12/12/12/12/12/12/12/12/12/11K b").unwrap();
@@ -116,8 +113,9 @@ fn iir_tt_cutoff_uses_requested_depth_before_reduction() {
     }
 }
 
-// docs/plans/search-bug-fixes.md「フェーズ1」。双方の獅子は2手では接触せず、
-// 先手だけが奔王を持つため、反復がなければ後手のじっとは不利な評価を保つ。
+// null moveより前との一致は反復とせず、直近のnull move直後以降の一致だけを引き分けにする。
+// この局面では獅子が2手で接触せず、先手だけが奔王を持つので、反復でなければ後手のじっとは不利な値を保つ。
+// 判定範囲の理由は docs/adr/detect-repetition-only-after-latest-null-move.md にある。
 fn null_repetition_fixture() -> Position {
     position(
         Color::Black,
@@ -362,7 +360,8 @@ fn interrupted_null_move_restores_repetition_scope() {
     }
 }
 
-/// move-ordering.md「候補2」: 対象ノードだけkillerを先に読み、捕獲の部分木を省く。
+/// 置換表の手がない零窓の深さ3以下で、先頭捕獲がSEE負ならkiller手を先に読み、そこで打ち切れば捕獲の部分木を読まない。
+/// 判断の理由は`docs/adr/try-killers-before-a-losing-first-capture.md`にある。
 #[test]
 fn early_killer_cutoff_skips_losing_capture_only_in_eligible_nodes() {
     let (board, capture, killers) = super::ordering::losing_capture_fixture();

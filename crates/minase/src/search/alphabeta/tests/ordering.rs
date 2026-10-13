@@ -80,7 +80,7 @@ fn staged_picker_breaks_quiet_history_ties_by_pst_delta() {
     assert_eq!(&updated[1..], remaining);
 }
 
-/// 段階5「手の分類」: 捕獲・非捕獲のTT手が正しく分類されて先頭に出る。
+/// 捕獲手と非捕獲手のどちらも、置換表の記録手は正しく分類されて先頭に出る。
 #[test]
 fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     let position = staged_picker_fixture();
@@ -113,7 +113,8 @@ fn staged_picker_classifies_capture_and_quiet_tt_moves() {
     }
 }
 
-// movegen-speedup-2.md「段階6」の参照列に、move-ordering.md「候補5」の同点破りを適用する。
+// 静かな手はhistory値の降順、線形経路の差分の降順、生成順に並べる。
+// 採用理由はdocs/adr/order-quiets-with-malus-and-pst-tiebreak.md。
 struct ReferenceMovePicker {
     stage: MovePickerStage,
     tt_move: Option<Move>,
@@ -238,7 +239,7 @@ impl ReferenceMovePicker {
     }
 }
 
-/// 「段階6」（movegen-speedup-2.md）の全出力列を同点・重複・履歴更新込みで照合する。
+/// 静かな手の整列は同点時の生成順を保ち、履歴を更新しても重複した手を返さない。
 #[test]
 fn staged_picker_matches_reference_sequence_with_changing_history() {
     let nnue = weights().unwrap();
@@ -349,7 +350,8 @@ fn picker_sequence(picker: &mut MovePicker, board: &Position) -> Vec<(Move, bool
         .collect()
 }
 
-/// move-ordering.md「候補2」: 合法なkillerだけを前置し、元の捕獲列を保つ。
+/// 合法なkillerだけを前置し、元の捕獲列を保つ。
+/// 採用理由はdocs/adr/try-killers-before-a-losing-first-capture.md。
 #[test]
 fn early_killers_preserve_capture_order_and_return_every_legal_move_once() {
     let (board, capture, killers) = losing_capture_fixture();
@@ -444,7 +446,7 @@ fn early_killers_leave_ineligible_nodes_and_tt_duplicates_in_reference_order() {
     }
 }
 
-/// move-ordering.md「規則依存の除外」: 最後の王駒の捕獲は後回しにしない。
+/// 最後の王駒の捕獲は後回しにしない。
 #[test]
 fn early_killers_do_not_precede_last_royal_capture() {
     let board = position(

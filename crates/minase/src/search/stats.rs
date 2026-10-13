@@ -5,7 +5,8 @@ macro_rules! search_stats {
     ($(#[doc = $doc:literal] $field:ident),+ $(,)?) => {
         /// 探索の呼び出しと打ち切りの回数。
         ///
-        /// 定義は設計書debugging-tools.md「探索統計の項目」に従う。
+        /// null moveと再探索も呼び出しごとに数える。
+        /// 着手の適用を数える[`SearchResult::nodes`](super::SearchResult::nodes)とは定義が異なる。
         /// 通常探索は内部ノードのnegamaxを指し、根の手の走査は含めない。
         /// 中断した反復も含め、実際に発生した事象を数える。
         #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
