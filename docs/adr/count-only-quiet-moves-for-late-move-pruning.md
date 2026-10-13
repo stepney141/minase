@@ -8,7 +8,7 @@
 
 late move pruningは、浅いノードで順序付けの後方にある静かな手を読まずに済ませる手法である。
 [棋力向上段階4](../plans/strength-stage4.md)の方式は、捕獲手も含めた手番号が深さ1、2、3で12、23、13に達した後の静かな手を切り、STCが114有効ペアでLLR −2.947の`H0`だった（[測定記録](../measurements/strength-stage4-lmp-stc.md)）。
-[棋力向上段階8](../plans/strength-stage8.md)は、履歴値の低い手だけを切るhistory pruningを診断したが、21組の候補のどれも失う割合が10%以下にならなかった（[診断](../measurements/strength-stage8-pruning-bench.md)）。
+[棋力向上段階8](../plans/strength-stage8.md)は、履歴値の低い手だけを切るhistory pruningを診断したが、21組の候補のどれも、良い結果を失う割合が10%以下にならなかった（[診断](../measurements/strength-stage8-pruning-bench.md)）。
 [不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)は、元の実装を[診断](../measurements/search-revival-lmp-diag.md)した。
 残り深さ1では、手を切るまでに探索した手が平均で捕獲手8.1手、静かな手4.5手であり、上限の枠の約3分の2を捕獲手が占めた。
 残り深さ1で手を切ったノードの約36%は、静かな手を1手も探索しないうちに切り始めており、killer手もノードあたり平均0.56手が切られていた。

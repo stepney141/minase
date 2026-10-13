@@ -8,7 +8,7 @@
 
 minaseの探索では、静止探索のノードが全ノードの大半を占める。
 [棋力向上段階12](../plans/strength-stage12.md)は、delta pruningとSEEの枝刈りを通過して実際に読んだ捕獲手が`N`手に達した後の捕獲手を、例外を除いて読まない手数制限を測った。
-`N`は、失う良い結果の割合が10%以下の候補のうち最小のものとして[診断](../measurements/strength-stage12-activation-diag.md)から選び、`N=1`で失う割合は4.83%だった。
+`N`は、枝刈りによって良い結果を失う割合が10%以下の候補のうち最小のものとして[診断](../measurements/strength-stage12-activation-diag.md)から選び、`N=1`で失う割合は4.83%だった。
 `N=1`の実装は深さ6の総ノード数を21.03%、探索時間を15.9%減らした（[bench](../measurements/strength-stage12-qsearch-limit-bench.md)）。
 しかしSTCは147有効ペアで得点率27.0%、ロジスティック換算で約−173 Eloの`H0`だった（[測定記録](../measurements/strength-stage12-qsearch-limit-stc.md)）。
 静止探索は深さの上限なく再帰するので、1ノードで失う良い結果の割合が小さくても損失が積み重なる（[教訓](../lessons/recall-loss-does-not-bound-recursive-pruning.md)）。

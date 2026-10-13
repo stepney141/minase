@@ -26,5 +26,5 @@ ProbCutとmate distance pruningを実装しない。
 ## 結果
 
 ProbCutは、同じ最終構成の診断で深さ6から深さ8の間に対象ノードが約2倍に増えたので、到達深さがさらに伸びた段階で測り直す価値がある。
-mate distance pruningの発動は詰みの値が探索経路上にある場合に限られるので、[詰み探索](../plans/mate-search.md)の導入などで詰みの値の出方が変われば測り直す。
+mate distance pruningの発動は詰みの値が探索経路上にある場合に限られるので、[詰み探索](../plans/mate-search.md)の導入などで詰みの値が現れる頻度が変われば測り直す。
 同じ段階8で見送った王手延長と獅子の2段階の非捕獲移動の減深は、発動率以外の理由によるので、[王手延長を実装しない](omit-check-extension.md)と[獅子の2段階の非捕獲移動だけを浅く読む減深を実装しない](omit-lion-two-step-quiet-move-reduction.md)が扱う。

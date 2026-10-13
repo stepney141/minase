@@ -22,7 +22,7 @@ reverse futility pruning、futility pruning、およびrazoringは静的評価�
 ## 決定
 
 浅いノードの前向き枝刈り（reverse futility pruning、futility pruning、late move pruning、razoring、およびSEEによる捕獲手の枝刈り）は、残り深さ3以下の零窓のノードで、αとβがいずれも詰み帯の外にあり、手番側のいずれの王駒にも相手の疑似利きが届かない場合に限って行う。
-手を展開しないfutility pruning、late move pruning、およびSEEによる捕獲手の枝刈りは、さらにそのノードで探索済みの最善値が負の詰み帯の外にあることを要求し、razoringは残り深さ2以下に限る。
+着手の展開を省くfutility pruning、late move pruning、およびSEEによる捕獲手の枝刈りは、さらにそのノードで探索済みの最善値が負の詰み帯の外にあることを要求し、razoringは残り深さ2以下に限る。
 reverse futility pruningは条件を満たしたノードで静的評価をそのまま返して置換表に保存せず、null move pruningには王駒への利きの判定を加えない。
 
 ## 検討した代案
@@ -32,7 +32,7 @@ reverse futility pruningの返り値をβへ丸める案は、境界としては
 
 ## 結果
 
-診断で確かめたのは境界判定の一致だけなので、reverse futility pruningが返す値は、null move pruningやLMRの返り値と同じくfail-softの近似として扱う。
+診断で確かめたのはβ以上かどうかの判定が正しいことだけであり、返す値の正しさは確かめていないので、reverse futility pruningが返す値は、null move pruningやLMRの返り値と同じくfail-softの近似として扱う。
 探索済みの最善値の条件により、各ノードで少なくとも1手は探索されるので、全手を枝刈りしたノードを合法手のない負けと取り違えない。
 条件の判定は`crates/minase/src/search/alphabeta/negamax.rs`の`negamax`にあり、王駒への利きは他の条件が成立したときだけ`royal_under_attack`で調べてノード内で再利用する。
 各枝刈りが対象にしない手の範囲などの詳細は、`negamax`と`royal_under_attack`のdocコメントにある。

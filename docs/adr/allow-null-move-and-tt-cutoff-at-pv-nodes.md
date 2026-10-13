@@ -8,9 +8,9 @@
 
 StockfishとYaneuraOuは、null move pruningと置換表の値による打ち切りを、最善応手列の候補を読むPVノードでは行わない。
 minaseは、どちらもノードの種別を問わずに行う。
-[棋力向上段階12](../plans/strength-stage12.md)は、これらの前提条件の欠落を2項目として測った。
+[棋力向上段階12](../plans/strength-stage12.md)は、欠けていたこれら2つの前提条件をそれぞれ加える変更を、2つの項目として測った。
 1つ目は、null moveを試す条件に、非PVノードであることと、補正後の静的評価がβ以上であることを加える変更である。
-この変更は、[発動率の診断](../measurements/strength-stage12-activation-diag.md)でnull moveを試すノードの37.00%を試さなくし、その内訳の大半は静的評価がβ未満であることだった。
+この変更は、[発動率の診断](../measurements/strength-stage12-activation-diag.md)で、null moveを試していたノードの37.00%で試さなくなり、その大半は静的評価がβ未満のノードだった。
 STCは上限の3,000ペアで2,853有効ペア、得点率50.0%、LLR −2.807の判定保留となり、停止時点のLLRが負なので採らなかった（[測定記録](../measurements/strength-stage12-null-move-stc.md)）。
 2つ目は、PVノードでは置換表の値で打ち切らず、記録手を順序付けにだけ使う変更である。
 動機は、対局履歴や探索経路にある局面へ戻る手を引き分けとするので、探索値が経路に依存することだった。

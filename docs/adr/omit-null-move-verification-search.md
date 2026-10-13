@@ -26,6 +26,6 @@ null moveの縮めた探索がβ以上を返せば、そのまま打ち切る。
 ## 結果
 
 null move pruningの実装は`crates/minase/src/search/alphabeta/negamax.rs`にあり、検証の探索を持たない。
-[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)も、verification searchは係数ではなく発動の低さで見送った改良なので、対象から外した。
+[不採用だった探索部の改良の再調整](../plans/search-revival-spsa.md)も、verification searchは係数ではなく発動率の低さで見送った改良なので、対象から外した。
 診断は、null moveの減深量がSPSAで調整される前で、評価関数がNNUEへ置き換わる前の構成で行った。
 減深量が大きくなるほど縮めた探索は浅くなるので、再提案するときは現行の構成で矛盾率を測り直す必要がある。
