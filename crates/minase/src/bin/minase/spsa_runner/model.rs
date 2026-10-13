@@ -4,6 +4,8 @@
 //! 安定化定数Aはセッション開始時の総反復数の0.1倍とする。
 //! 係数ファイルの既定の終端利得は[`super::summary::parameter_line`]で生成する。
 //! 理由は`docs/adr/decay-spsa-gains-from-one-sixth-of-the-range.md`にある。
+//!
+//! 反復の保存ファイルと各欄は書き手の[`super::storage`]に定める。
 
 use super::params::Parameter;
 use minase::harness::{CompletedPair, FailureCounts, GameRecord, OpeningRecord, TerminationRecord};

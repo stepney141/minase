@@ -1,4 +1,6 @@
 //! 保存済み対局の再生と再開時の記録検証。
+//!
+//! 読み込むペア記録の欄は保存する型[`minase::harness::PairRecord`]に定める。
 
 use crate::match_runner::storage::RunStore;
 use minase::harness::*;

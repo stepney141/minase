@@ -1,8 +1,8 @@
 //! 合成RecordだけでMNSDの境界とバッチの外部契約を検証する。
 
 use std::{
-    fs::{self, File},
-    path::{Path, PathBuf},
+    fs,
+    path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -11,21 +11,17 @@ use minase::{
         features::{FEATURE_COUNT, feature_index, lion_feature_index},
         nnue::feature_set::{FeatureSet, HalfKpHmB8},
     },
-    training::{
-        provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-        records::{HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
-    },
+    training::records::{HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
 };
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
-    data::{Dataset, Error, Lookahead, validate_lambda_override},
+    data::{Dataset, Error, Lookahead, validate_lambda},
     nnue::data::{
         BatchSlot, CANONICAL_ROWS, FEATURE_COLUMNS, InputFeatureSet, Observations,
         PackedOccurrence, REVERSE_INDEX_SEGMENT_LEN, ReverseIndex, SENTINEL, build_batches,
         build_targets, decode_p_feature,
     },
 };
-use sha2::{Digest, Sha256};
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
@@ -65,25 +61,6 @@ impl Fixture {
             bytes.extend(record.encode());
         }
         fs::write(&path, &bytes).unwrap();
-        let provenance = Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: format!("{checksum:02x}").repeat(32),
-                nodes,
-                rule_set: "L0,P0,R1,E0".into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        };
-        provenance
-            .write(File::create(sidecar(&path)).unwrap())
-            .unwrap();
         path
     }
 }
@@ -92,24 +69,6 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.0).unwrap();
     }
-}
-
-fn sidecar(path: &Path) -> PathBuf {
-    let mut name = path.as_os_str().to_os_string();
-    name.push(".provenance.json");
-    name.into()
-}
-
-fn update_provenance(path: &Path, update: impl FnOnce(&mut serde_json::Value)) {
-    let mut value: serde_json::Value =
-        serde_json::from_slice(&fs::read(sidecar(path)).unwrap()).unwrap();
-    update(&mut value);
-    fs::write(sidecar(path), serde_json::to_vec(&value).unwrap()).unwrap();
-}
-
-fn refresh_checksum(path: &Path) {
-    let checksum = format!("{:x}", Sha256::digest(fs::read(path).unwrap()));
-    update_provenance(path, |value| value["mnsd_sha256"] = checksum.into());
 }
 
 fn sq(file: u8, rank: u8) -> Square {
@@ -132,7 +91,14 @@ fn single_pawn(lion: bool) -> Position {
 }
 
 fn sample(position: &Position, game: u32, ply: u16, score: i16, outcome: Outcome) -> Record {
-    Record::from_position(position, score, outcome, game, ply)
+    Record::from_position(
+        position,
+        score,
+        outcome,
+        game,
+        ply,
+        minase::training::records::Origin::RandomSelfplay,
+    )
 }
 
 #[test]
@@ -147,7 +113,7 @@ fn mmap_reads_multiple_files_and_checks_global_bounds() {
     let last_record = sample(&Position::initial(), 2, 0, 30, Outcome::Draw);
     let last = fixture.write("last.bin", 22, 2, 200, std::slice::from_ref(&last_record));
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[first, empty, last], None, None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[first, empty, last], None) }.unwrap();
     assert_eq!(dataset.record_count(), 3);
     assert_eq!(dataset.headers().count(), 3);
     for (index, file, offset, expected) in [
@@ -171,7 +137,7 @@ fn mmap_reads_multiple_files_and_checks_global_bounds() {
     assert_eq!(dataset.teacher_class(0).unwrap(), 0);
     assert_eq!(dataset.teacher_class(2).unwrap(), 1);
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(&[], None, None) }.is_err());
+    assert!(unsafe { Dataset::open(&[], None) }.is_err());
 }
 
 #[test]
@@ -195,174 +161,126 @@ fn mmap_rejects_invalid_headers_lengths_and_records() {
     for bytes in cases {
         fs::write(&path, bytes).unwrap();
         // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None, None) }.is_err());
+        assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None) }.is_err());
     }
-    // 正しいSHAを持っていてもRecord::decodeが予約欄の違反を拒否する。
+    // Record::decodeが予約欄の違反を拒否する。
     let mut reserved = original;
     reserved[HEADER_LEN + 159] = 1;
     fs::write(&path, reserved).unwrap();
-    refresh_checksum(&path);
     assert!(matches!(
         // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        unsafe { Dataset::open(&[path], None, None) },
+        unsafe { Dataset::open(&[path], None) },
         Err(Error::Mnsd(
             minase::training::records::Error::NonzeroReservedBytes
         ))
     ));
 }
 
+// フェーズ2aの契約: パスと乱数開始のシードだけで重複を検査する。
 #[test]
-fn mmap_requires_valid_provenance_and_unique_seeds() {
+fn mmap_rejects_duplicate_paths_and_random_seeds() {
     let fixture = Fixture::new();
     let records = [sample(&Position::initial(), 1, 0, 1, Outcome::Win)];
-    let path = fixture.write("data.bin", 11, 1, 200, &records);
-    let provenance = fs::read(sidecar(&path)).unwrap();
-    fs::remove_file(sidecar(&path)).unwrap();
-    assert!(matches!(
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        unsafe { Dataset::open(std::slice::from_ref(&path), None, None) },
-        Err(Error::Io(_))
-    ));
-    fs::write(sidecar(&path), b"{}").unwrap();
-    assert!(matches!(
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        unsafe { Dataset::open(std::slice::from_ref(&path), None, None) },
-        Err(Error::Provenance(_))
-    ));
-    fs::write(sidecar(&path), &provenance).unwrap();
-    update_provenance(&path, |value| value["mnsd_sha256"] = "0".repeat(64).into());
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None, None) }.is_err());
-    fs::write(sidecar(&path), &provenance).unwrap();
-    update_provenance(&path, |value| value["teacher"]["nodes"] = 300.into());
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None, None) }.is_err());
-    fs::write(sidecar(&path), &provenance).unwrap();
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(&[path.clone(), path.clone()], None, None) }.is_err());
-    let other = fixture.write("other.bin", 11, 2, 200, &records);
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(&[path, other], None, None) }.is_err());
+    let first = fixture.write("a.bin", 11, 1, 200, &records);
+    let second = fixture.write("b.bin", 11, 2, 200, &records);
+    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
+    assert!(unsafe { Dataset::open(&[first.clone(), first.clone()], None) }.is_err());
+    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
+    assert!(unsafe { Dataset::open(&[first, second], None) }.is_err());
 }
 
 #[test]
-fn human_game_ids_determine_split_and_only_selfplay_lambdas_are_overridden() {
+fn origins_determine_lambda_and_all_splits_use_seed_and_game() {
+    use minase::training::records::Origin;
     let fixture = Fixture::new();
     let mut paths = Vec::new();
-    for human_result in [false, true] {
+    for (i, origin) in [
+        Origin::RandomSelfplay,
+        Origin::HumanOpeningSelfplay,
+        Origin::HumanGame,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let records: Vec<_> = [1, 4]
+            .into_iter()
+            .map(|game| {
+                sample(&Position::initial(), game, 0, 100, Outcome::Win).with_origin(origin)
+            })
+            .collect();
+        paths.push(fixture.write(&format!("{i}.bin"), 11, 1, 200, &records));
+    }
+    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
+    let dataset = unsafe { Dataset::open(&paths, None) }
+        .unwrap()
+        .with_lambda(0.5)
+        .unwrap();
+    assert_eq!(dataset.teacher_lambdas(), [0.5, 0.5, 0.0]);
+    assert_eq!(dataset.training_indices(), [0, 2, 4]);
+    assert_eq!(dataset.validation_indices(), [1, 3, 5]);
+    assert_eq!(dataset.teacher_classes().len(), 3);
+    assert!(dataset.estimate_teacher_ks().unwrap()[2].is_nan());
+    // 実戦入力は内容が同一の別ファイルも受理し、分類を共有する。
+    let copy = fixture.0.join("copy.bin");
+    fs::copy(&paths[2], &copy).unwrap();
+    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
+    let copied = unsafe { Dataset::open(&[paths[2].clone(), copy], None) }.unwrap();
+    assert_eq!(copied.record_count(), 4);
+    assert_eq!(copied.teacher_classes().len(), 1);
+}
+
+#[test]
+fn mmap_rejects_mixed_and_synthetic_origins_with_path() {
+    use minase::training::records::Origin;
+    let fixture = Fixture::new();
+    let record = sample(&Position::initial(), 1, 0, 1, Outcome::Win);
+    for origin in [
+        Origin::HumanOpeningSelfplay,
+        Origin::HumanGame,
+        Origin::Synthetic,
+    ] {
         let path = fixture.write(
-            if human_result {
-                "human.bin"
-            } else {
-                "selfplay.bin"
-            },
+            "invalid.bin",
             11,
             1,
             200,
-            &[
-                sample(&Position::initial(), 1, 0, 1, Outcome::Win),
-                sample(
-                    &Position::initial(),
-                    2,
-                    u16::from(human_result),
-                    2,
-                    Outcome::Loss,
-                ),
-            ],
+            &[record.clone(), record.clone().with_origin(origin)],
         );
-        update_provenance(&path, |value| {
-            value["start_origin"] = "human-game".into();
-            // hashlib.sha256の先頭8バイトをlittle-endian整数にした剰余は5と0。
-            value["games"] = serde_json::json!([
-                {"game": 1, "id": "fixture-game", "ply": 0},
-                {"game": 2, "id": "game-18", "ply": 12}
-            ]);
-            if human_result {
-                value["result_origin"] = "human".into();
-                value["lambda"] = 0.25.into();
+        // SAFETY: テスト専用の入力は写像の生存中に変更しない。
+        let error = match unsafe { Dataset::open(std::slice::from_ref(&path), None) } {
+            Err(error) => error,
+            Ok(_) => panic!("invalid origin accepted"),
+        };
+        match (origin, error) {
+            (Origin::Synthetic, Error::SyntheticOrigin { path: actual }) => {
+                assert_eq!(actual, path)
             }
-        });
-        paths.push(path);
+            (_, Error::MixedOrigins { path: actual }) => assert_eq!(actual, path),
+            (_, error) => panic!("unexpected error: {error}"),
+        }
     }
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&paths, None, Some(0.5)) }.unwrap();
-    assert_eq!(dataset.teacher_lambdas(), [0.5, 0.25]);
-    assert_eq!(dataset.training_indices(), [0, 2]);
-    assert_eq!(dataset.validation_indices(), [1, 3]);
-    assert_eq!(dataset.teacher_class(0).unwrap(), 0);
-    assert_eq!(dataset.teacher_class(2).unwrap(), 1);
-    drop(dataset);
-    update_provenance(&paths[0], |value| value["games"] = serde_json::json!([]));
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(&paths, None, Some(0.5)) }.is_err());
-}
-
-#[test]
-fn provenance_lambda_accepts_python_range_and_rejects_invalid_values() {
-    let fixture = Fixture::new();
     let path = fixture.write(
-        "data.bin",
+        "synthetic.bin",
         11,
         1,
         200,
-        &[sample(&Position::initial(), 1, 0, 100, Outcome::Win)],
+        &[record.with_origin(Origin::Synthetic)],
     );
-    for mix in [0.0, 0.25, 0.75, 1.0] {
-        update_provenance(&path, |value| value["lambda"] = mix.into());
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        let dataset = unsafe { Dataset::open(std::slice::from_ref(&path), None, None) }.unwrap();
-        assert_eq!(dataset.teacher_lambdas(), [mix]);
-    }
-    for value in [
-        serde_json::json!(-0.1),
-        serde_json::json!(1.1),
-        serde_json::json!(null),
-        serde_json::json!(true),
-        serde_json::json!("0.75"),
-    ] {
-        update_provenance(&path, |provenance| provenance["lambda"] = value);
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None, None) }.is_err());
-    }
-    for value in [-0.1, 1.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        assert!(validate_lambda_override(Some(value)).is_err());
-        // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        assert!(unsafe { Dataset::open(std::slice::from_ref(&path), None, Some(value)) }.is_err());
-    }
-    for value in [None, Some(0.0), Some(0.75), Some(1.0)] {
-        validate_lambda_override(value).unwrap();
-    }
+    // SAFETY: テスト専用の入力は写像の生存中に変更しない。
+    assert!(matches!(
+        unsafe { Dataset::open(&[path], None) },
+        Err(Error::SyntheticOrigin { .. })
+    ));
 }
 
 #[test]
-fn teacher_class_lambda_conflicts_are_checked_after_override() {
-    let fixture = Fixture::new();
-    let records = [sample(&Position::initial(), 1, 0, 100, Outcome::Win)];
-    let first = fixture.write("first.bin", 11, 1, 200, &records);
-    let second = fixture.write("second.bin", 22, 1, 200, &records);
-    update_provenance(&second, |value| value["lambda"] = 0.25.into());
-    let paths = [first, second];
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    assert!(unsafe { Dataset::open(&paths, None, None) }.is_err());
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&paths, None, Some(1.0)) }.unwrap();
-    assert_eq!(dataset.teacher_lambdas(), [1.0]);
-    assert_eq!(
-        dataset.teacher_class(0).unwrap(),
-        dataset.teacher_class(1).unwrap()
-    );
-    drop(dataset);
-    update_provenance(&paths[1], |value| {
-        value["teacher"]["search_condition"] = "standalone".into()
-    });
-    // TeacherClassでは探索条件の違いも別分類となる。
-    // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&paths, None, None) }.unwrap();
-    assert_eq!(dataset.teacher_lambdas(), [0.75, 0.25]);
-    assert_ne!(
-        dataset.teacher_class(0).unwrap(),
-        dataset.teacher_class(1).unwrap()
-    );
+fn lambda_is_explicit_finite_and_in_unit_interval() {
+    for value in [-0.1, 1.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(validate_lambda(value).is_err());
+    }
+    for value in [0.0, 0.25, 0.75, 1.0] {
+        validate_lambda(value).unwrap();
+    }
 }
 
 #[test]
@@ -384,8 +302,12 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
     let mut estimates = Vec::new();
     for mix in [1.0, 0.75, 0.125] {
         // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        let dataset =
-            unsafe { Dataset::open(std::slice::from_ref(&path), None, Some(mix)) }.unwrap();
+        let dataset = unsafe {
+            Dataset::open(std::slice::from_ref(&path), None)
+                .unwrap()
+                .with_lambda(mix)
+        }
+        .unwrap();
         estimates.push(dataset.estimate_teacher_ks().unwrap()[0]);
     }
     assert!((estimates[0] - 1000.0 / 3.0_f64.ln()).abs() < 1e-4);
@@ -395,7 +317,7 @@ fn teacher_k_is_unchanged_by_positive_lambda_and_absent_for_zero_lambda() {
             .all(|value| value.to_bits() == estimates[0].to_bits())
     );
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None, Some(0.0)) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[path], None).unwrap().with_lambda(0.0) }.unwrap();
     assert!(dataset.estimate_teacher_ks().unwrap()[0].is_nan());
 }
 
@@ -487,7 +409,7 @@ fn lookahead_is_file_local_and_validates_record_order() {
     );
     let options = Lookahead::new(0.5, 3).unwrap();
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[first, second], Some(options), None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[first, second], Some(options)) }.unwrap();
     let scores: Vec<_> = (0..4).map(|i| dataset.teacher_score(i).unwrap()).collect();
     assert_eq!(scores, [-1.8_f32, 1.0, 1.0, 999.0]);
     assert_eq!(dataset.record(0).unwrap().score(), 7);
@@ -505,7 +427,7 @@ fn lookahead_is_file_local_and_validates_record_order() {
         );
         assert!(matches!(
             // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-            unsafe { Dataset::open(&[path], Some(options), None) },
+            unsafe { Dataset::open(&[path], Some(options)) },
             Err(Error::RecordOrder { index: 1 })
         ));
     }
@@ -549,19 +471,19 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
     );
     let paths = [first, second, third, fourth];
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&paths, None, None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&paths, None) }.unwrap();
     assert_eq!(dataset.teacher_classes().len(), 3);
     assert_eq!(dataset.teacher_class(2).unwrap(), 0);
     assert_eq!(dataset.teacher_class(3).unwrap(), 1);
     assert_eq!(dataset.teacher_class(4).unwrap(), 2);
     assert_eq!(dataset.validation_indices(), [1]);
+    let dataset = dataset.with_lambda(0.75).unwrap();
     let ks = dataset.estimate_teacher_ks().unwrap();
     assert!((ks[0] - 50.0).abs() < 1e-8);
     assert!((ks[1] - 4000.0).abs() < 1e-8);
     assert!((ks[2] - 4000.0).abs() < 1e-8);
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let future =
-        unsafe { Dataset::open(&paths, Some(Lookahead::new(0.9, 40).unwrap()), None) }.unwrap();
+    let future = unsafe { Dataset::open(&paths, Some(Lookahead::new(0.9, 40).unwrap())) }.unwrap();
     assert_ne!(dataset.teacher_classes(), future.teacher_classes());
     let only_validation = fixture.write(
         "validation.bin",
@@ -572,7 +494,9 @@ fn teacher_classes_use_header_keys_and_k_uses_only_training() {
     );
     assert!(matches!(
         // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        unsafe { Dataset::open(&[only_validation], None, None) }
+        unsafe { Dataset::open(&[only_validation], None) }
+            .unwrap()
+            .with_lambda(0.75)
             .unwrap()
             .estimate_teacher_ks(),
         Err(Error::EmptyTeacherClass { class: 0 })
@@ -595,7 +519,7 @@ fn observation_counts_match_python_canonical_half_without_doubling() {
         ],
     );
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None, None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let observed = Observations::compute(&dataset, set).unwrap();
         assert_eq!(observed.canonical_counts().len(), 6841);
@@ -648,7 +572,7 @@ fn halfkp_virtual_observations_are_the_union_of_buckets() {
     let path = fixture.write("data.bin", 11, 1, 200, &records);
     let observed = Observations::compute(
         // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-        &unsafe { Dataset::open(&[path], None, None) }.unwrap(),
+        &unsafe { Dataset::open(&[path], None) }.unwrap(),
         InputFeatureSet::HalfKpHmB8,
     )
     .unwrap();
@@ -744,7 +668,7 @@ fn inverse_segments_preserve_hot_rows_across_fixed_length_boundaries() {
         &[sample(&single_pawn(false), 1, 0, 1, Outcome::Win)],
     );
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None, None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     // ReverseIndexの128要素の区分に対し、直前・一致・直後と複数区分を検査する。
     assert_eq!(REVERSE_INDEX_SEGMENT_LEN, 128);
     for count in [127, 128, 129, 256, 257] {
@@ -776,7 +700,7 @@ fn batches_preserve_order_metadata_and_inverse_occurrences() {
     ];
     let path = fixture.write("data.bin", 11, 1, 200, &records);
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None, None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     let batches: &[&[u64]] = &[&[2, 0, 1, 0], &[1, 0], &[2]];
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let slots = build_batches(&dataset, set, batches).unwrap();
@@ -826,7 +750,7 @@ fn p_batch_columns_match_known_python_numbers_and_lion_slot() {
         &[sample(&single_pawn(true), 1, 0, 1, Outcome::Win)],
     );
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None, None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     let slots = build_batches(&dataset, InputFeatureSet::P, &[&[0]]).unwrap();
     let slot = &slots[0];
     assert_eq!(slot.features()[20], 4303);
@@ -889,7 +813,7 @@ fn halfkp_batch_indices_match_feature_set_for_both_perspectives() {
         .collect();
     let path = fixture.write("data.bin", 11, 1, 200, &records);
     // SAFETY: このテスト専用のファイルは、呼び出し中とDatasetの生存中に変更・切り詰めしない。
-    let dataset = unsafe { Dataset::open(&[path], None, None) }.unwrap();
+    let dataset = unsafe { Dataset::open(&[path], None) }.unwrap();
     let indices: Vec<_> = (0..positions.len() as u64).collect();
     let slots = build_batches(&dataset, InputFeatureSet::HalfKpHmB8, &[&indices]).unwrap();
     for (batch, position) in positions.iter().enumerate() {
@@ -916,4 +840,47 @@ fn halfkp_batch_indices_match_feature_set_for_both_perspectives() {
         }
     }
     verify_inverse(&slots[0], slots[0].first_layer_inverse(), false);
+}
+
+#[test]
+fn teacher_classes_normalize_commit_case_and_record_applied_lambda() {
+    let fixture = Fixture::new();
+    let record = sample(&Position::initial(), 1, 0, 10, Outcome::Win);
+    let mut paths = Vec::new();
+    for (seed, commit) in [(11, "A"), (22, "a"), (33, "b")] {
+        let path = fixture.write(
+            &format!("{seed}.bin"),
+            seed,
+            1,
+            200,
+            std::slice::from_ref(&record),
+        );
+        let mut bytes = fs::read(&path).unwrap();
+        bytes[44..84].copy_from_slice(commit.repeat(40).as_bytes());
+        fs::write(&path, bytes).unwrap();
+        paths.push(path);
+    }
+    // SAFETY: 専用入力をDatasetの生存中に変更しない。
+    let dataset = unsafe { Dataset::open(&paths, None) }
+        .unwrap()
+        .with_lambda(0.75)
+        .unwrap();
+    assert_eq!(dataset.teacher_classes().len(), 2);
+    assert_eq!(
+        dataset.teacher_class(0).unwrap(),
+        dataset.teacher_class(1).unwrap()
+    );
+    assert_ne!(
+        dataset.teacher_class(0).unwrap(),
+        dataset.teacher_class(2).unwrap()
+    );
+    let classes = serde_json::to_value(dataset.teacher_classes()).unwrap();
+    assert_eq!(classes[0]["generation_commit"], "a".repeat(40));
+    assert_eq!(classes[0]["lambda"], 0.75);
+    // SAFETY: 専用入力をDatasetの生存中に変更しない。
+    let other = unsafe { Dataset::open(&paths, None) }
+        .unwrap()
+        .with_lambda(0.5)
+        .unwrap();
+    assert_ne!(dataset.teacher_classes(), other.teacher_classes());
 }

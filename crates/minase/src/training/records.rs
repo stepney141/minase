@@ -18,7 +18,9 @@
 //! `147..149`は手番側視点の探索値i16で、単位はセンチポーンである。
 //! 149は手番側から見た終局結果で、負け0、引き分け1、勝ち2である。
 //! `150..154`は生成時に1から付ける対局番号u32で、形式上は0も受理する。
-//! `154..156`は記録時点の手数u16、`156..160`は予約域であり、復号時に0以外を拒否する。
+//! `154..156`は記録時点の手数u16、156は由来である。
+//! 由来は乱数開始の自己対局0、実戦開始の自己対局1、実戦対局2、合成3とし、それ以外を拒否する。
+//! `157..160`は予約域であり、復号時に0以外を拒否する。
 
 use core::fmt;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -121,6 +123,11 @@ pub enum Error {
         /// 読み取った値。
         value: u8,
     },
+    /// 由来が0〜3の範囲外にある。
+    InvalidOrigin {
+        /// 読み取った値。
+        value: u8,
+    },
     /// 予約欄に0以外の値がある。
     NonzeroReservedBytes,
     /// 局面の組み立てに失敗した。
@@ -186,6 +193,7 @@ impl fmt::Display for Error {
                 formatter.write_str("lion-promotion flag requires a lion-capture square")
             }
             Self::InvalidOutcome { value } => write!(formatter, "invalid outcome code: {value}"),
+            Self::InvalidOrigin { value } => write!(formatter, "invalid origin code: {value}"),
             Self::NonzeroReservedBytes => {
                 formatter.write_str("record reserved bytes must all be zero")
             }
@@ -369,6 +377,34 @@ impl Header {
     }
 }
 
+/// 教師データの局面を作った経路。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[repr(u8)]
+pub enum Origin {
+    /// 初期局面から乱数で選んだ数手を指して始めた自己対局。
+    RandomSelfplay = 0,
+    /// 実戦棋譜の途中局面から始めた自己対局。
+    HumanOpeningSelfplay = 1,
+    /// 実戦棋譜そのものの局面。
+    HumanGame = 2,
+    /// 対局に由来しない診断用の局面など。
+    Synthetic = 3,
+}
+
+impl Origin {
+    /// 永続形式の由来コードを検証して復号する。
+    pub const fn from_code(value: u8) -> Result<Self, Error> {
+        match value {
+            0 => Ok(Self::RandomSelfplay),
+            1 => Ok(Self::HumanOpeningSelfplay),
+            2 => Ok(Self::HumanGame),
+            3 => Ok(Self::Synthetic),
+            _ => Err(Error::InvalidOrigin { value }),
+        }
+    }
+}
+
 /// 手番側から見た終局結果。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Outcome {
@@ -431,6 +467,8 @@ pub struct Record {
     game_number: u32,
     /// 記録時点までの着手数。1着手を1手と数え、格納範囲は0〜65,535手である。
     ply: u16,
+    /// 局面を作った経路。
+    origin: Origin,
 }
 
 impl Record {
@@ -441,6 +479,7 @@ impl Record {
         outcome: Outcome,
         game_number: u32,
         ply: u16,
+        origin: Origin,
     ) -> Self {
         let mut board = [0_u8; BOARD_SQUARE_COUNT];
         for square in Square::all() {
@@ -458,7 +497,19 @@ impl Record {
             outcome,
             game_number,
             ply,
+            origin,
         }
+    }
+
+    /// 局面を作った経路を返す。
+    pub const fn origin(&self) -> Origin {
+        self.origin
+    }
+
+    /// 指定した由来の記録を返す。
+    pub fn with_origin(mut self, origin: Origin) -> Self {
+        self.origin = origin;
+        self
     }
 
     /// 記録局面の手番側を返す。
@@ -509,6 +560,7 @@ impl Record {
         bytes[149] = self.outcome.code();
         bytes[150..154].copy_from_slice(&self.game_number.to_le_bytes());
         bytes[154..156].copy_from_slice(&self.ply.to_le_bytes());
+        bytes[156] = self.origin as u8;
         bytes
     }
 
@@ -547,7 +599,8 @@ impl Record {
             return Err(Error::LionPromotionWithoutSquare);
         }
         let outcome = Outcome::from_code(bytes[149])?;
-        if bytes[156..160].iter().any(|&byte| byte != 0) {
+        let origin = Origin::from_code(bytes[156])?;
+        if bytes[157..160].iter().any(|&byte| byte != 0) {
             return Err(Error::NonzeroReservedBytes);
         }
         Ok(Self {
@@ -557,6 +610,7 @@ impl Record {
             lion_by_kirin_promotion,
             score: i16::from_le_bytes(bytes[147..149].try_into().expect("slice length is fixed")),
             outcome,
+            origin,
             game_number: read_u32(bytes, 150),
             ply: u16::from_le_bytes(bytes[154..156].try_into().expect("slice length is fixed")),
         })
@@ -852,11 +906,58 @@ mod tests {
 
     /// 局面をレコードの符号化と復号を経て往復させる。
     fn round_trip(position: &Position) -> Position {
-        let record = Record::from_position(position, -123, Outcome::Draw, 4, 57);
+        let record = Record::from_position(
+            position,
+            -123,
+            Outcome::Draw,
+            4,
+            57,
+            crate::training::records::Origin::RandomSelfplay,
+        );
         Record::decode(&record.encode())
             .unwrap()
             .to_position()
             .unwrap()
+    }
+
+    #[test]
+    fn origin_codes_and_reserved_bytes_follow_the_record_layout() {
+        for (code, origin) in [
+            (0, Origin::RandomSelfplay),
+            (1, Origin::HumanOpeningSelfplay),
+            (2, Origin::HumanGame),
+            (3, Origin::Synthetic),
+        ] {
+            let record =
+                Record::from_position(&Position::initial(), 0, Outcome::Draw, 1, 0, origin);
+            let encoded = record.encode();
+            assert_eq!(encoded[156], code);
+            assert_eq!(&encoded[157..160], &[0; 3]);
+            assert_eq!(Record::decode(&encoded).unwrap(), record);
+        }
+        let record = Record::from_position(
+            &Position::initial(),
+            0,
+            Outcome::Draw,
+            1,
+            0,
+            Origin::RandomSelfplay,
+        );
+        for value in 4..=255 {
+            let mut bytes = record.encode();
+            bytes[156] = value;
+            assert!(
+                matches!(Record::decode(&bytes), Err(Error::InvalidOrigin { value: actual }) if actual == value)
+            );
+        }
+        for offset in 157..160 {
+            let mut bytes = record.encode();
+            bytes[offset] = 1;
+            assert!(matches!(
+                Record::decode(&bytes),
+                Err(Error::NonzeroReservedBytes)
+            ));
+        }
     }
 
     // 公開境界は未検証の着手をパニックせず型付きエラーとして拒否する。
@@ -948,9 +1049,15 @@ mod tests {
                 if let Some(piece) = PieceCode::new(color, kind) {
                     assert_eq!(decode_piece(sq(0, 0), unpromoted_code).unwrap(), piece);
                 } else {
-                    let mut encoded =
-                        Record::from_position(&Position::initial(), 0, Outcome::Draw, 1, 0)
-                            .encode();
+                    let mut encoded = Record::from_position(
+                        &Position::initial(),
+                        0,
+                        Outcome::Draw,
+                        1,
+                        0,
+                        crate::training::records::Origin::RandomSelfplay,
+                    )
+                    .encode();
                     encoded[0] = unpromoted_code;
                     assert!(matches!(
                         Record::decode(&encoded),
@@ -966,8 +1073,15 @@ mod tests {
         }
 
         for value in (59..=64).chain(123..=u8::MAX) {
-            let mut encoded =
-                Record::from_position(&Position::initial(), 0, Outcome::Draw, 1, 0).encode();
+            let mut encoded = Record::from_position(
+                &Position::initial(),
+                0,
+                Outcome::Draw,
+                1,
+                0,
+                crate::training::records::Origin::RandomSelfplay,
+            )
+            .encode();
             encoded[0] = value;
             assert!(matches!(
                 Record::decode(&encoded),

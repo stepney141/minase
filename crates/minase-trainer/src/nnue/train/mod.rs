@@ -1,19 +1,18 @@
 //! CUDAまたはCPUによるNNUEの学習と、全検証集合の評価、保存と再開。
 //! CUDAでは供給スレッドがワーカー数ぶんのバッチを並列に作り、順列の順に3面へ書く。
 //! 各更新の結果は次の更新を投入してから回収し、CPUでは単一スレッドとビット一致する並列参照計算を使う。
-//! 各エポックは`epoch_permutation(train, seed, epoch)`で始め、更新、snapshot、全検証、最良値更新、ログ、latest.bin、改善時のbest.binの順に進む。
-//! `latest.bin`をエポックの保存確定点とし、時間切れで未完了のエポックは採用しない。
+//! 各エポックは`epoch_permutation(train, seed, epoch)`で始め、更新、snapshot、全検証、最良値更新、ログ、latest.npz、改善時のbest.npzの順に進む。
+//! `latest.npz`をエポックの保存確定点とし、時間切れで未完了のエポックは採用しない。
 //!
-//! `--output-dir`には次の7ファイルを保存する。
+//! `--output-dir`には次の6ファイルを保存する。
 //!
 //! | ファイル | 内容 |
 //! | --- | --- |
 //! | `config.json` | 引数、実効ワーカー数、照合用の設定と入力、前処理の結果、デバイス名、再開履歴を保存する。欄は`record::configuration`に定める。 |
 //! | `training.jsonl` | エポック0の検証と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ追記する。 |
-//! | `latest.bin` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間、照合用ハッシュを[`Checkpoint`]で保存する。 |
-//! | `best.bin` | 最良エポックのモデルとその時点のAdamWの状態を[`Checkpoint`]で保存する。 |
+//! | `latest.npz` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間、照合用設定を[`Checkpoint`]で保存する。 |
+//! | `best.npz` | 最良エポックのモデルとその時点のAdamWの状態を[`Checkpoint`]で保存する。 |
 //! | `nnue.bin` | 最良モデルを量子化したMNUE版5を保存する。 |
-//! | `nnue-float.bin` | 最良モデルの[`Checkpoint`]を保存する。 |
 //! | `summary.json` | 停止理由、最良エポック、量子化検査を[`Summary`]で保存する。 |
 //!
 //! 新規実行の出力ディレクトリは存在しないか空でなければならず、空でなければ`--resume`の使用を求めるエラーで終了する。
@@ -93,7 +92,7 @@ pub enum StopReason {
 /// 終了理由、最良エポック、量子化検査を`summary.json`へ保存する。
 ///
 /// `status = "candidate"`は量子化検査の合格で、コマンドの終了コードは0である。
-/// 平均絶対誤差がK/40を超えると`"quantization_error"`となり、`nnue.bin`と`nnue-float.bin`を残して終了コード1を返す。
+/// 平均絶対誤差がK/40を超えると`"quantization_error"`となり、`nnue.bin`と`best.npz`を残して終了コード1を返す。
 /// このとき`reason`は`"quantization_error: mean absolute error exceeds K/40"`である。
 /// 1エポックも検証を終えず時間切れになった場合と、最良重みの書き出しに失敗した場合は`"error"`で終了コード1となる。
 /// 前者の`reason`は`"time limit reached with 0 completed training epochs; 予算の上限で終了し、収束は未確認"`である。
@@ -182,13 +181,13 @@ impl Session {
     /// 全MNSDの規則セット名は基準MNPTと一致し、訓練集合と検証集合はどちらも空であってはならない。
     /// 出力用K、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、Kを[`Shape`]へ渡す。
     /// 初期値の鏡映対称性は[`load_initial`]と[`Model::initialize`]で検査する。
-    /// 再開にはconfig.jsonのsettings、inputs、preprocessing、および2つのハッシュの一致を要求する。
-    /// 設定ハッシュからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threadsを除く。
-    /// 入力パスは正規化したパスと内容のSHA-256をinputsに記録するため、入力ハッシュには含まれる。
+    /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
+    /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threadsを除く。
+    /// 入力の識別情報は正規化したパスとともにinputsへ記録し、欄ごとに照合する。
     /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
     /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は`epoch×ceil(N_train/batch)`、epochは指定上限以下でなければならない。
     /// 記録されたdevice_nameも一致を要求する。
-    /// best.binの書き込み前に中断した場合は、最新エポックが最良であるときだけlatest.binから復元できる。
+    /// best.npzの書き込み前に中断した場合は、最新エポックが最良であるときだけlatest.npzから復元できる。
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
         args.validate()?;
@@ -199,11 +198,7 @@ impl Session {
         // SAFETY: --dataは実行中に変更・切り詰めない入力というコマンドの契約に従う。
         // このセッションもDatasetを破棄するまで入力ファイルへ書き込まない。
         let dataset = unsafe {
-            Dataset::open(
-                &args.data,
-                args.lookahead()?,
-                Some(args.training.lambda_override),
-            )?
+            Dataset::open(&args.data, args.lookahead()?)?.with_lambda(args.training.lambda)?
         };
         if dataset.training_indices().is_empty() || dataset.validation_indices().is_empty() {
             return Err(
@@ -230,7 +225,7 @@ impl Session {
             configuration(&args, workers, &dataset, &observations, &teacher_ks, &model)?;
         let mut checkpoint = Checkpoint {
             removal_penalty: args.training.removal_penalty,
-            lambda_override: args.training.lambda_override,
+            lambda: args.training.lambda,
             optimizer: AdamW::new(model.shape(), args.training.optimizer())?,
             model,
             progress: Progress {
@@ -238,8 +233,7 @@ impl Session {
                 best: None,
                 elapsed_seconds: 0.0,
                 seed: args.seed,
-                config_hash: config.config_hash,
-                input_hash: config.input_hash,
+                config: crate::nn::checkpoint::Configuration::from_document(&config.document)?,
             },
         };
         let mut initial_validation_loss = None;
@@ -251,30 +245,23 @@ impl Session {
                 .into());
             }
             let saved: Value = serde_json::from_slice(&std::fs::read(resume.join("config.json"))?)?;
-            // 保存物と再計算値を同じJSON復号経路へ通し、f64の十進復号丸めによる誤拒否を避ける。
-            let comparable: Value = serde_json::from_slice(&serde_json::to_vec(&config.document)?)?;
-            for field in [
-                "settings",
-                "inputs",
-                "preprocessing",
-                "config_sha256",
-                "input_sha256",
-            ] {
-                if saved.get(field) != comparable.get(field) {
-                    return Err(
-                        Error::Invalid("resume configuration or input hash mismatch").into(),
-                    );
-                }
+            if saved.get("resumes").and_then(Value::as_array).is_none() {
+                return Err(Error::Invalid("configuration resumes must be an array").into());
             }
-            let restored = Checkpoint::read(resume.join("latest.bin"))?;
-            restored.check_hashes(&config.config_hash, &config.input_hash)?;
+            crate::nn::checkpoint::Configuration::from_document(&saved)?.check(
+                &crate::nn::checkpoint::Configuration::from_document(&config.document)?,
+            )?;
+            let restored = Checkpoint::read(resume.join("latest.npz"))?;
+            restored.check_config(&crate::nn::checkpoint::Configuration::from_document(
+                &config.document,
+            )?)?;
             if restored.model.shape() != checkpoint.model.shape()
                 || restored.model.masks() != checkpoint.model.masks()
                 || restored.model.initial_linear() != checkpoint.model.initial_linear()
                 || restored.model.initial_virtual() != checkpoint.model.initial_virtual()
                 || restored.optimizer.config() != args.training.optimizer()
                 || restored.removal_penalty != args.training.removal_penalty
-                || restored.lambda_override != args.training.lambda_override
+                || restored.lambda != args.training.lambda
                 || restored.progress.seed != args.seed
                 || restored.progress.epoch > args.epochs
                 || restored.optimizer.step()
@@ -389,7 +376,7 @@ impl Session {
     }
     fn save_latest(&self) -> Result<()> {
         Ok(atomic_write(
-            &self.args.output_dir.join("latest.bin"),
+            &self.args.output_dir.join("latest.npz"),
             &self.checkpoint.encode()?,
         )?)
     }
@@ -475,7 +462,7 @@ impl Session {
         self.save_latest()?;
         if improved {
             atomic_write(
-                &self.args.output_dir.join("best.bin"),
+                &self.args.output_dir.join("best.npz"),
                 &self.checkpoint.encode()?,
             )?;
         }
@@ -527,11 +514,8 @@ impl Session {
     }
 
     fn best_checkpoint(&self) -> Result<Checkpoint> {
-        let best = Checkpoint::read(self.args.output_dir.join("best.bin"))?;
-        best.check_hashes(
-            &self.checkpoint.progress.config_hash,
-            &self.checkpoint.progress.input_hash,
-        )?;
+        let best = Checkpoint::read(self.args.output_dir.join("best.npz"))?;
+        best.check_config(&self.checkpoint.progress.config)?;
         if best.progress.best != self.checkpoint.progress.best
             || best
                 .progress
@@ -669,24 +653,24 @@ fn validate_initial(initial: &[[f32; 2]], baseline: &[[i16; 2]]) -> Result<()> {
     Ok(())
 }
 
-/// 確定済みの`latest.bin`に対応する`best.bin`を復旧する。
+/// 確定済みの`latest.npz`に対応する`best.npz`を復旧する。
 /// 保存順は[`reconcile_log`]の契約に従う。
-/// `best.bin`が最良エポックと一致しなければ、最新の完了エポックが最良であり、
-/// `best.bin`がないか、その完了エポックが最良より古いときだけ`latest.bin`から書き直す。
-/// 既存の`best.bin`の復号失敗、ハッシュ不一致、最良以上のエポックの不整合は復旧せず拒否する。
+/// `best.npz`が最良エポックと一致しなければ、最新の完了エポックが最良であり、
+/// `best.npz`がないか、その完了エポックが最良より古いときだけ`latest.npz`から書き直す。
+/// 既存の`best.npz`の復号失敗、設定の不一致、最良以上のエポックの不整合は復旧せず拒否する。
 fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> Result<()> {
     let best = latest
         .progress
         .best
         .ok_or(Error::Invalid("checkpoint has no best epoch"))?;
-    let path = directory.join("best.bin");
+    let path = directory.join("best.npz");
     let saved = if path.exists() {
         Some(Checkpoint::read(&path)?)
     } else {
         None
     };
     if let Some(saved) = &saved {
-        saved.check_hashes(&latest.progress.config_hash, &latest.progress.input_hash)?;
+        saved.check_config(&latest.progress.config)?;
         if saved.progress.best == Some(best) && saved.progress.epoch == best.epoch {
             return Ok(());
         }
@@ -710,8 +694,8 @@ fn recover_best_checkpoint(directory: &std::path::Path, latest: &Checkpoint) -> 
 /// 成功時と最終検査の失敗時の報告、および終了コードは[`Summary`]に従う。
 /// 学習ループ中のエラーでは、この型の代わりに`status = "error"`、`reason`、`last_epoch`、
 /// `elapsed_seconds`の4欄だけを`summary.json`へ書き、コマンドは終了コード1で終わる。
-/// 終了時は時間切れで未完了のエポックを採用せず、初期検証を完了していれば費やした時間を`latest.bin`へ保存する。
-/// 最良エポックがあれば`best.bin`から`nnue.bin`と`nnue-float.bin`を書き出す。
+/// 終了時は時間切れで未完了のエポックを採用せず、初期検証を完了していれば費やした時間を`latest.npz`へ保存する。
+/// 最良エポックがあれば`best.npz`から`nnue.bin`を書き出す。
 /// 再開後も同じシードとエポック番号から[`epoch_permutation`]で順列を再生成する。
 pub fn run(args: Args) -> Result<Summary> {
     let mut session = Session::new(args)?;

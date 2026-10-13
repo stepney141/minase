@@ -1,9 +1,6 @@
 #![allow(dead_code)]
 
-use minase::training::{
-    provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-    records::{Header, Outcome, Record},
-};
+use minase::training::records::{Header, Outcome, Record};
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::{
     data::Dataset,
@@ -12,9 +9,8 @@ use minase_trainer::{
         model::{Masks, Model, Shape},
     },
 };
-use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File},
+    fs,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -50,32 +46,19 @@ impl Fixture {
                 [Outcome::Win, Outcome::Loss, Outcome::Draw][i % 3],
                 1,
                 i as u16,
+                minase::training::records::Origin::RandomSelfplay,
             );
             bytes.extend(record.encode());
         }
         fs::write(&path, &bytes).unwrap();
-        let provenance = Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: "L0,P0,R1,E0".into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        };
-        provenance
-            .write(File::create(root.join("records.bin.provenance.json")).unwrap())
-            .unwrap();
         Self {
             // SAFETY: このfixture専用のファイルを作成し、Datasetの生存中は変更・切り詰めしない。
-            dataset: unsafe { Dataset::open(&[path], None, Some(1.0)).unwrap() },
+            dataset: unsafe {
+                Dataset::open(&[path], None)
+                    .unwrap()
+                    .with_lambda(1.0)
+                    .unwrap()
+            },
             root,
         }
     }

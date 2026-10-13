@@ -7,7 +7,6 @@ use minase_core::Game;
 
 pub mod game;
 pub mod git;
-pub mod provenance;
 pub mod statistics;
 
 /// 教師から除外する探索値の絶対値下限29,000。
@@ -41,4 +40,9 @@ pub fn training_error(error: TrainingDataError) -> io::Error {
 /// 説明を`InvalidData`の入出力エラーへ変換する。
 pub fn invalid_data(error: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.into())
+}
+
+/// バイト列を小文字の16進文字列へ変換する。
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

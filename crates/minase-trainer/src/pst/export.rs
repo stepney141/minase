@@ -1,4 +1,4 @@
-//! 最良PSTの量子化、MNPT版2とNPZの保存、エンジンとの誤差検査。
+//! 最良PSTの量子化、FMの次元0のMNPT版3とNPZの保存、エンジンとの誤差検査。
 
 use super::{
     Batch, Checkpoint, Error, Model, Result,
@@ -97,7 +97,7 @@ pub(crate) fn numpy_sum(values: &[f32]) -> f32 {
     values[stop..].iter().fold(sum, |sum, value| sum + value)
 }
 
-/// 1以上の最良エポックの重みを1/8センチポーンへ偶数丸めし、MNPT版2のpst.binと実数のpst-float.npzを書く。
+/// 1以上の最良エポックの重みを1/8センチポーンへ偶数丸めし、FMの次元0のMNPT版3のpst.binと実数のpst-float.npzを書く。
 /// K、47個の探索用駒価値、規則名は`--init`から引き継ぎ、書いたファイルを読み直して検査する。
 /// 標本は検証集合を`epoch_permutation(seed,0)`で並べた先頭`--validation-sample`件である。
 /// 実数側は[`numpy_sum`]のf32和とf32のφで評価し、エンジンの`evaluate_pst`との差の平均が2センチポーン以下なら合格とする。

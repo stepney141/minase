@@ -1,5 +1,5 @@
 use super::*;
-use crate::nn::{BestEpoch, hex, sha256};
+use crate::nn::{BestEpoch, sha256};
 use crate::{
     data::{Dataset, epoch_permutation},
     nnue::{
@@ -8,14 +8,11 @@ use crate::{
         reference::{AdamW, AdamWConfig},
     },
 };
-use minase::training::{
-    provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-    records::{HEADER_LEN, Header, Outcome, RECORD_LEN, Record},
-};
+use minase::training::records::{HEADER_LEN, Header, Outcome, RECORD_LEN, Record};
 use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
 use std::{
     cell::Cell,
-    fs::{self, File},
+    fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -24,7 +21,7 @@ use std::{
 fn args() -> Args {
     Args {
         device: crate::nnue::options::DeviceKind::Cuda,
-        training: crate::nnue::options::TrainingOptions::default(),
+        training: crate::nnue::options::TrainingOptions::new(1.0),
         feature_set: crate::nnue::data::InputFeatureSet::P,
         width: 8,
         data: vec!["records.bin".into()],
@@ -50,8 +47,11 @@ fn initial_progress() -> Progress {
         best: None,
         elapsed_seconds: 0.0,
         seed: 1,
-        config_hash: [1; 32],
-        input_hash: [2; 32],
+        config: crate::nn::checkpoint::Configuration {
+            settings: serde_json::json!({}),
+            inputs: serde_json::json!({}),
+            preprocessing: serde_json::json!({}),
+        },
     }
 }
 
@@ -273,30 +273,19 @@ impl Fixture {
                     _ => Outcome::Loss,
                 };
                 bytes.extend(
-                    Record::from_position(&builder.finish().unwrap(), score, outcome, game, ply)
-                        .encode(),
+                    Record::from_position(
+                        &builder.finish().unwrap(),
+                        score,
+                        outcome,
+                        game,
+                        ply,
+                        minase::training::records::Origin::RandomSelfplay,
+                    )
+                    .encode(),
                 );
             }
         }
         fs::write(&args.data[0], &bytes).unwrap();
-        Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: hex(&sha256(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: "L0,P0,R1,E0".into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        }
-        .write(File::create(self.0.join("records.bin.provenance.json")).unwrap())
-        .unwrap();
         args
     }
 }
@@ -392,12 +381,10 @@ fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
     let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            args.lookahead().unwrap(),
-            Some(args.training.lambda_override),
-        )
-        .unwrap()
+        Dataset::open(&args.data, args.lookahead().unwrap())
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap()
     };
     assert_eq!(dataset.record_count(), 320);
     assert_eq!(dataset.training_indices().len(), 296);
@@ -428,17 +415,15 @@ fn epoch_batches_preserve_the_permutation_and_include_the_partial_tail() {
 }
 
 #[test]
-fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_changes() {
+fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_changes() {
     let fixture = Fixture::new();
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
     let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            args.lookahead().unwrap(),
-            Some(args.training.lambda_override),
-        )
-        .unwrap()
+        Dataset::open(&args.data, args.lookahead().unwrap())
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap()
     };
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
@@ -459,29 +444,44 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
             .len(),
         1
     );
-    for key in ["base", "init_pst"] {
-        assert_eq!(
-            configuration.document["inputs"][key]["sha256"]
-                .as_str()
-                .unwrap()
-                .len(),
-            64
-        );
-    }
+    assert_eq!(
+        configuration.document["inputs"]["base"]["checksum"]
+            .as_str()
+            .unwrap()
+            .len(),
+        64
+    );
+    assert_eq!(
+        configuration.document["inputs"]["init_pst"]["byte_length"],
+        fs::metadata(&args.init_pst).unwrap().len()
+    );
+    let input = &configuration.document["inputs"]["files"][0];
+    assert_eq!(
+        input["path"],
+        args.data[0].canonicalize().unwrap().to_str().unwrap()
+    );
+    assert_eq!(
+        input["byte_length"],
+        fs::metadata(&args.data[0]).unwrap().len()
+    );
+    assert_eq!(input["header"]["record_count"], 320);
+    assert_eq!(configuration.document["settings"]["lambda"], 1.0);
     let checkpoint = Checkpoint {
         removal_penalty: args.training.removal_penalty,
-        lambda_override: args.training.lambda_override,
+        lambda: args.training.lambda,
         optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
         model: model.clone(),
         progress: Progress {
-            config_hash: configuration.config_hash,
-            input_hash: configuration.input_hash,
+            config: crate::nn::checkpoint::Configuration::from_document(&configuration.document)
+                .unwrap(),
             ..initial_progress()
         },
     };
     let restored = Checkpoint::decode(&checkpoint.encode().unwrap()).unwrap();
     restored
-        .check_hashes(&configuration.config_hash, &configuration.input_hash)
+        .check_config(
+            &crate::nn::checkpoint::Configuration::from_document(&configuration.document).unwrap(),
+        )
         .unwrap();
     let mut resume = args.clone();
     resume.output_dir = fixture.0.join("resumed");
@@ -493,15 +493,20 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
     let same =
         record::configuration(&resume, 3, &dataset, &observations, &teacher_ks, &model).unwrap();
     restored
-        .check_hashes(&same.config_hash, &same.input_hash)
+        .check_config(&crate::nn::checkpoint::Configuration::from_document(&same.document).unwrap())
         .unwrap();
     resume.seed += 1;
     let changed =
         record::configuration(&resume, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    assert_ne!(changed.config_hash, configuration.config_hash);
+    assert_ne!(
+        changed.document["settings"],
+        configuration.document["settings"]
+    );
     assert!(
         restored
-            .check_hashes(&changed.config_hash, &changed.input_hash)
+            .check_config(
+                &crate::nn::checkpoint::Configuration::from_document(&changed.document).unwrap()
+            )
             .is_err()
     );
 
@@ -515,11 +520,16 @@ fn resume_hashes_bind_training_settings_and_inputs_but_allow_budget_and_worker_c
     base::read(&args.base).unwrap();
     let changed =
         record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    assert_eq!(changed.config_hash, configuration.config_hash);
-    assert_ne!(changed.input_hash, configuration.input_hash);
+    assert_eq!(
+        changed.document["settings"],
+        configuration.document["settings"]
+    );
+    assert_ne!(changed.document["inputs"], configuration.document["inputs"]);
     assert!(
         restored
-            .check_hashes(&changed.config_hash, &changed.input_hash)
+            .check_config(
+                &crate::nn::checkpoint::Configuration::from_document(&changed.document).unwrap()
+            )
             .is_err()
     );
 }
@@ -530,21 +540,17 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
     let mut args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
     let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            args.lookahead().unwrap(),
-            Some(args.training.lambda_override),
-        )
-        .unwrap()
+        Dataset::open(&args.data, args.lookahead().unwrap())
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap()
     };
     let (model, observations) = initialized(&args, &dataset);
     let teacher_ks = dataset.estimate_teacher_ks().unwrap();
     let configuration =
         record::configuration(&args, 2, &dataset, &observations, &teacher_ks, &model).unwrap();
-    let mut original = configuration.document;
+    let original = configuration.document;
     assert_eq!(original["resumes"], json!([]));
-    // 初回の再開で配列を新設し、2回目以降も既存の履歴を保持する。
-    original.as_object_mut().unwrap().remove("resumes");
     let path = fixture.0.join("config.json");
     record::write_json(&path, &original).unwrap();
     let earliest = SystemTime::now()
@@ -578,7 +584,7 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
         assert_eq!(entry["time_limit_hours"], hours);
         assert_eq!(entry["workers"], workers);
     }
-    saved.as_object_mut().unwrap().remove("resumes");
+    saved["resumes"] = json!([]);
     assert_eq!(saved, original);
 }
 
@@ -586,6 +592,7 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
 fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
     for change in [
         "settings",
+        "resumes",
         "device",
         "lr_linear",
         "weight_decay_linear",
@@ -594,23 +601,21 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
         "lr_head",
         "weight_decay_head",
         "removal_penalty",
-        "lambda_override",
+        "lambda",
         "npz",
         "base",
         "data",
-        "provenance",
+        "origin",
     ] {
         let fixture = Fixture::new();
         let mut args = fixture.training_args();
         {
             // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
             let dataset = unsafe {
-                Dataset::open(
-                    &args.data,
-                    args.lookahead().unwrap(),
-                    Some(args.training.lambda_override),
-                )
-                .unwrap()
+                Dataset::open(&args.data, args.lookahead().unwrap())
+                    .unwrap()
+                    .with_lambda(args.training.lambda)
+                    .unwrap()
             };
             let (model, observations) = initialized(&args, &dataset);
             let teacher_ks = dataset.estimate_teacher_ks().unwrap();
@@ -630,19 +635,33 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             .unwrap();
             Checkpoint {
                 removal_penalty: args.training.removal_penalty,
-                lambda_override: args.training.lambda_override,
+                lambda: args.training.lambda,
                 optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
                 model,
                 progress: Progress {
-                    config_hash: configuration.config_hash,
-                    input_hash: configuration.input_hash,
+                    config: crate::nn::checkpoint::Configuration::from_document(
+                        &configuration.document,
+                    )
+                    .unwrap(),
                     ..initial_progress()
                 },
             }
-            .write(args.output_dir.join("latest.bin"))
+            .write(args.output_dir.join("latest.npz"))
             .unwrap();
         }
         args.resume = Some(args.output_dir.clone());
+        if change == "resumes" {
+            let path = args.output_dir.join("config.json");
+            let mut saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            saved.as_object_mut().unwrap().remove("resumes");
+            record::write_json(&path, &saved).unwrap();
+            let error = match Session::new(args) {
+                Ok(_) => panic!("resume accepted missing resumes"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("resumes must be an array"));
+            continue;
+        }
         match change {
             "settings" => args.seed += 1,
             "device" => args.device = crate::nnue::options::DeviceKind::Cpu,
@@ -653,13 +672,11 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             "lr_head" => args.training.lr_head *= 2.0,
             "weight_decay_head" => args.training.weight_decay_head *= 2.0,
             "removal_penalty" => args.training.removal_penalty *= 2.0,
-            "lambda_override" => args.training.lambda_override = 0.75,
+            "lambda" => args.training.lambda = 0.75,
             "npz" => {
-                // 1/64cpは再量子化を変えず、鏡映する2行を同じだけ動かす。
-                let mut initial = crate::nnue::model::load_initial(&args.init_pst).unwrap();
-                initial[0][0] += 1.0 / 64.0;
-                initial[11][0] += 1.0 / 64.0;
-                fs::write(&args.init_pst, stored_npz(&initial)).unwrap();
+                let replacement = fixture.0.join("other.npz");
+                fs::copy(&args.init_pst, &replacement).unwrap();
+                args.init_pst = replacement;
             }
             "base" => {
                 let mut bytes = fs::read(&args.base).unwrap();
@@ -670,28 +687,16 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
                 fs::write(&args.base, bytes).unwrap();
             }
             "data" => {
-                // ヘッダを保ち、先読みで参照されない対局先頭の探索値だけを変える。
                 let mut bytes = fs::read(&args.data[0]).unwrap();
-                let first = Record::decode(&bytes[HEADER_LEN..HEADER_LEN + RECORD_LEN]).unwrap();
-                let changed = Record::from_position(
-                    &first.to_position().unwrap(),
-                    first.score() + 1,
-                    first.outcome(),
-                    first.game_number(),
-                    first.ply(),
-                );
-                bytes[HEADER_LEN..HEADER_LEN + RECORD_LEN].copy_from_slice(&changed.encode());
-                fs::write(&args.data[0], &bytes).unwrap();
-                let path = fixture.0.join("records.bin.provenance.json");
-                let mut provenance = Provenance::read(File::open(&path).unwrap()).unwrap();
-                provenance.mnsd_sha256 = hex(&sha256(&bytes));
-                provenance.write(File::create(path).unwrap()).unwrap();
+                bytes[116..120].copy_from_slice(&201_u32.to_le_bytes());
+                fs::write(&args.data[0], bytes).unwrap();
             }
-            "provenance" => {
-                let path = fixture.0.join("records.bin.provenance.json");
-                let mut provenance = Provenance::read(File::open(&path).unwrap()).unwrap();
-                provenance.teacher.search_condition = SearchCondition::Standalone;
-                provenance.write(File::create(path).unwrap()).unwrap();
+            "origin" => {
+                let mut bytes = fs::read(&args.data[0]).unwrap();
+                for record in bytes[HEADER_LEN..].as_chunks_mut::<RECORD_LEN>().0 {
+                    record[156] = 1;
+                }
+                fs::write(&args.data[0], bytes).unwrap();
             }
             _ => unreachable!(),
         }
@@ -700,12 +705,13 @@ fn resume_rejects_each_changed_input_or_setting_before_loading_cuda() {
             Err(error) => error,
         };
         assert!(
-            matches!(
-                error.downcast_ref::<Error>(),
-                Some(Error::Invalid(
-                    "resume configuration or input hash mismatch"
-                ))
-            ),
+            error.to_string().contains(if change == "origin" {
+                "preprocessing mismatch"
+            } else if matches!(change, "npz" | "base" | "data") {
+                "inputs mismatch"
+            } else {
+                "settings mismatch"
+            }),
             "{change} reached an unexpected error: {error}"
         );
     }
@@ -746,12 +752,10 @@ fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
     let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            args.lookahead().unwrap(),
-            Some(args.training.lambda_override),
-        )
-        .unwrap()
+        Dataset::open(&args.data, args.lookahead().unwrap())
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap()
     };
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
@@ -799,12 +803,10 @@ fn resume_keeps_completed_log_epochs_and_discards_an_uncommitted_tail() {
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
     let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            args.lookahead().unwrap(),
-            Some(args.training.lambda_override),
-        )
-        .unwrap()
+        Dataset::open(&args.data, args.lookahead().unwrap())
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap()
     };
     let (model, _) = initialized(&args, &dataset);
     let path = fixture.0.join("training.jsonl");
@@ -834,7 +836,7 @@ fn completed_checkpoint(model: &Model, epoch: u64, best: BestEpoch) -> Checkpoin
     optimizer.v[Parameter::OutputBias][0] = epoch as f32 / 64.0;
     Checkpoint {
         removal_penalty: 1000.0,
-        lambda_override: 1.0,
+        lambda: 1.0,
         model,
         optimizer,
         progress: Progress {
@@ -852,12 +854,10 @@ fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
     let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            args.lookahead().unwrap(),
-            Some(args.training.lambda_override),
-        )
-        .unwrap()
+        Dataset::open(&args.data, args.lookahead().unwrap())
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap()
     };
     let (model, _) = initialized(&args, &dataset);
     let old = completed_checkpoint(
@@ -876,7 +876,7 @@ fn committed_latest_recovers_an_interrupted_best_checkpoint_save() {
             validation_loss: 0.4,
         },
     );
-    let path = fixture.0.join("best.bin");
+    let path = fixture.0.join("best.npz");
     old.write(&path).unwrap();
     recover_best_checkpoint(&fixture.0, &latest).unwrap();
     assert!(fs::read(&path).unwrap() == latest.encode().unwrap());
@@ -892,12 +892,10 @@ fn resume_preserves_an_older_best_and_rejects_its_loss_or_corruption() {
     let args = fixture.training_args();
     // SAFETY: 専用の一時ファイルはDatasetの破棄まで変更・切り詰めない。
     let dataset = unsafe {
-        Dataset::open(
-            &args.data,
-            args.lookahead().unwrap(),
-            Some(args.training.lambda_override),
-        )
-        .unwrap()
+        Dataset::open(&args.data, args.lookahead().unwrap())
+            .unwrap()
+            .with_lambda(args.training.lambda)
+            .unwrap()
     };
     let (model, _) = initialized(&args, &dataset);
     let best_epoch = BestEpoch {
@@ -906,7 +904,7 @@ fn resume_preserves_an_older_best_and_rejects_its_loss_or_corruption() {
     };
     let best = completed_checkpoint(&model, 1, best_epoch);
     let latest = completed_checkpoint(&model, 2, best_epoch);
-    let path = fixture.0.join("best.bin");
+    let path = fixture.0.join("best.npz");
     best.write(&path).unwrap();
     let original = fs::read(&path).unwrap();
     recover_best_checkpoint(&fixture.0, &latest).unwrap();
@@ -971,7 +969,7 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
         let mut args = fixture.training_args();
         args.feature_set = feature_set;
         args.device = device;
-        args.training.lambda_override = 0.75;
+        args.training.lambda = 0.75;
         args.training.removal_penalty = 250.0;
         args.training.lr_linear = 0.012;
         args.training.weight_decay_linear = 1e-5;
@@ -986,7 +984,7 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
         let mut session = Session::new(split.clone()).unwrap();
         assert!(session.advance().unwrap());
         drop(session);
-        let first = Checkpoint::read(split.output_dir.join("latest.bin")).unwrap();
+        let first = Checkpoint::read(split.output_dir.join("latest.npz")).unwrap();
         assert_eq!(first.progress.epoch, 1);
         assert_eq!(first.optimizer.step(), 9);
         split.resume = Some(split.output_dir.clone());
@@ -1003,17 +1001,17 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
             configuration["device"],
             serde_json::to_value(device).unwrap()
         );
-        assert_eq!(configuration["settings"]["lambda_override"], 0.75);
+        assert_eq!(configuration["settings"]["lambda"], 0.75);
         assert_eq!(configuration["settings"]["removal_penalty"], 250.0);
 
-        for file in ["latest.bin", "best.bin", "nnue-float.bin"] {
+        for file in ["latest.npz", "best.npz"] {
             compare_checkpoint(&args.output_dir.join(file), &split.output_dir.join(file));
         }
         assert_eq!(
             fs::read(args.output_dir.join("nnue.bin")).unwrap(),
             fs::read(split.output_dir.join("nnue.bin")).unwrap()
         );
-        let latest = Checkpoint::read(split.output_dir.join("latest.bin")).unwrap();
+        let latest = Checkpoint::read(split.output_dir.join("latest.npz")).unwrap();
         assert_eq!(latest.progress.epoch, 2);
         assert_eq!(latest.optimizer.step(), 18);
         assert!(latest.progress.best.unwrap().epoch >= 1);
@@ -1045,6 +1043,13 @@ fn training_two_epochs_match_resume(device: crate::nnue::options::DeviceKind) {
                 "total_steps",
             ] {
                 assert_eq!(left[key], right[key], "{feature_set:?}: {key}");
+                if key.ends_with("loss") {
+                    assert_eq!(
+                        left[key].as_f64().map(f64::to_bits),
+                        right[key].as_f64().map(f64::to_bits),
+                        "{feature_set:?}: {key}"
+                    );
+                }
             }
             assert!(left["validation_loss"].as_f64().unwrap().is_finite());
             if left["epoch"] != 0 {
@@ -1067,7 +1072,7 @@ fn cpu_result_only_training_records_null_teacher_k_and_resumes() {
     args.width = 2;
     args.batch = 128;
     args.epochs = 1;
-    args.training.lambda_override = 0.0;
+    args.training.lambda = 0.0;
     run(args.clone()).unwrap();
     let config: Value =
         serde_json::from_slice(&fs::read(args.output_dir.join("config.json")).unwrap()).unwrap();
@@ -1076,7 +1081,58 @@ fn cpu_result_only_training_records_null_teacher_k_and_resumes() {
     args.resume = Some(args.output_dir.clone());
     args.epochs = 2;
     run(args.clone()).unwrap();
-    let checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let checkpoint = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
     assert_eq!(checkpoint.progress.epoch, 2);
-    assert_eq!(checkpoint.lambda_override, 0.0);
+    assert_eq!(checkpoint.lambda, 0.0);
+}
+
+#[test]
+fn resume_requires_an_existing_array_without_changing_the_configuration() {
+    let fixture = Fixture::new();
+    let args = fixture.training_args();
+    let path = fixture.0.join("config.json");
+    for mut config in [json!({}), json!({"resumes": null}), json!({"resumes": {}})] {
+        let original = config.clone();
+        record::write_json(&path, &config).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let error = record::append_resume(&path, &mut config, &args, 1, 1).unwrap_err();
+        assert!(error.to_string().contains("resumes must be an array"));
+        assert_eq!(config, original);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn cpu_resume_rejects_changed_checkpoint_meta_fields() {
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::nnue::options::DeviceKind::Cpu;
+    let session = Session::new(args.clone()).unwrap();
+    drop(session);
+    args.resume = Some(args.output_dir.clone());
+    let path = args.output_dir.join("latest.npz");
+    let original = fs::read(&path).unwrap();
+    let arrays = crate::nn::npz::decode(&original).unwrap();
+    for field in ["settings", "inputs", "preprocessing"] {
+        let mut changed = arrays.clone();
+        let meta = changed.get_mut("meta").unwrap();
+        let mut value: Value = serde_json::from_slice(&meta.data).unwrap();
+        value["config"][field] = serde_json::json!({"changed": true});
+        meta.data = serde_json::to_vec(&value).unwrap();
+        meta.shape = vec![meta.data.len()];
+        let bytes = crate::nn::npz::encode(
+            &changed
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.clone()))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let error = match Session::new(args.clone()) {
+            Ok(_) => panic!("accepted changed {field}"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains(field), "{error}");
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
 }

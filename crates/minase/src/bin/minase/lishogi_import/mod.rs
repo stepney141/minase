@@ -1,4 +1,14 @@
 //! lishogiのゲームNDJSONを教師データまたは実戦開始の局面一覧へ変換する。
+//!
+//! # 開始局面一覧
+//!
+//! `data lishogi openings`はUTF-8で、各行を`<棋譜ID> <経過手数> <拡張SFEN>`としてLFで終える。
+//! 棋譜IDは空白を含まない空でない文字列、経過手数は0起算のu32で65,535未満とする。
+//! SFENは局面を文字列化した表記で、拡張SFENは[`minase_core::notation::sfen::to_extended_sfen`]に従い、
+//! 次の着手番号を経過手数+1として先獅子の状態も保存する。
+//! 見出し行、空行、コメント行は書かない。
+//! 読み手の`selfplay_gen/opening.rs`の`read_openings`は全行を検査し、
+//! 両側の王駒と合法手があり、成りを保留した駒がない局面だけを受け付ける。
 
 mod cli;
 mod error;
@@ -17,12 +27,9 @@ use label::{GameDetails, Job, process_job};
 use minase::{
     datagen::{self, data_error},
     search::TranspositionTable,
-    training::{
-        provenance::{GameOrigin, ResultOrigin, SearchCondition, StartOrigin},
-        records::{Header, Writer},
-    },
+    training::records::{Header, Writer},
 };
-use output::{create, sidecar, write_json};
+use output::{create, write_json};
 use replay::replay;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -144,30 +151,34 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
                     }
                     report.retained_plies.insert(job.input.id.clone(), plies);
                 }
-                let stats = &result.completed.stats;
-                let players = job.input.players.as_ref();
-                details.insert(
-                    job.input.id.clone(),
-                    GameDetails {
-                        game: job.number,
-                        sente_rating: players
-                            .and_then(|p| p.sente.as_ref())
-                            .and_then(|p| p.rating),
-                        gote_rating: players.and_then(|p| p.gote.as_ref()).and_then(|p| p.rating),
-                        speed: time_control(&job.input),
-                        clock: job.input.clock.clone(),
-                        days_per_turn: job.input.days_per_turn.clone(),
-                        status: job.input.status.clone(),
-                        winner: job.input.winner.clone(),
-                        plies: job.input.moves.split_whitespace().count(),
-                        recorded_positions: result.completed.records.len(),
-                        excluded_positions: BTreeMap::from([
-                            ("mate_band", stats.excluded_mate_band),
-                            ("tactical", stats.excluded_tactical),
-                            ("repetition", stats.excluded_repetition),
-                        ]),
-                    },
-                );
+                if !openings {
+                    let stats = &result.completed.stats;
+                    let players = job.input.players.as_ref();
+                    details.insert(
+                        job.input.id.clone(),
+                        GameDetails {
+                            game: job.number,
+                            sente_rating: players
+                                .and_then(|p| p.sente.as_ref())
+                                .and_then(|p| p.rating),
+                            gote_rating: players
+                                .and_then(|p| p.gote.as_ref())
+                                .and_then(|p| p.rating),
+                            speed: time_control(&job.input),
+                            clock: job.input.clock.clone(),
+                            days_per_turn: job.input.days_per_turn.clone(),
+                            status: job.input.status.clone(),
+                            winner: job.input.winner.clone(),
+                            plies: job.input.moves.split_whitespace().count(),
+                            recorded_positions: result.completed.records.len(),
+                            excluded_positions: BTreeMap::from([
+                                ("mate_band", stats.excluded_mate_band),
+                                ("tactical", stats.excluded_tactical),
+                                ("repetition", stats.excluded_repetition),
+                            ]),
+                        },
+                    );
+                }
                 // バッチ内の統合番号だけを詰める。Recordの対局番号は受理順のまま。
                 result.completed.game_number =
                     u32::try_from(completed.len() + 1).map_err(data_error)?;
@@ -189,30 +200,7 @@ fn run(common: &Common, generation: Option<(NonZeroU64, bool)>) -> io::Result<()
             output.flush()?;
         }
         if !openings {
-            let path = sidecar(&common.output, ".games.json");
-            write_json(&path, &details)?;
-            created.push(path);
-            let path = sidecar(&common.output, ".provenance.json");
-            datagen::provenance::write_mapped_provenance(
-                &datagen::provenance::ProvenanceArguments {
-                    input: common.output.clone(),
-                    output: path.clone(),
-                    result_origin: ResultOrigin::Human,
-                    start_origin: StartOrigin::Random,
-                    lambda: 0.0,
-                    search_condition: SearchCondition::Standalone,
-                },
-                Some(
-                    jobs.iter()
-                        .map(|job| GameOrigin {
-                            game: job.number,
-                            id: job.input.id.clone(),
-                            ply: None,
-                        })
-                        .collect(),
-                ),
-            )?;
-            created.push(path);
+            report.games = Some(details);
         }
         write_json(&common.report, &report)?;
         println!("accepted: {}", report.accepted);

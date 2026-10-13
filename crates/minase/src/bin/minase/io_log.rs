@@ -16,6 +16,11 @@
 //! エンジンは終了コード1で終え、調査資料として不完全なログのまま続けない。
 //! `--io-log`を指定しなければ入出力のバイト列は変えない。
 //! 理由は`docs/adr/record-protocol-io-with-a-launch-argument.md`にある。
+//!
+//! 経過ミリ秒は非負整数の10進表記で、区切りはそれぞれASCII空白1個、行末はLFとする。
+//! 本文はエスケープせず保存し、入力はUTF-8、出力は受理したバイト列をそのまま記録する。
+//! 出力のLF直前のCRは残り、入力のCRLFからCRを除く処理とは異なる。
+//! マジック、版欄、見出しはない。
 
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex, mpsc};

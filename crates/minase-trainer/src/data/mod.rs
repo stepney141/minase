@@ -19,7 +19,8 @@ pub use mnsd::{Dataset, RecordLocation, TeacherClass};
 pub(crate) use mnsd::{GameKey, outcome_code};
 pub use shuffle::{epoch_permutation, hash64, is_validation};
 pub use teacher::{
-    Lookahead, build_targets_from_arrays, compute_lookahead, estimate_k, validate_lambda_override,
+    Lookahead, build_targets_from_arrays, compute_lookahead, estimate_k, parse_lambda,
+    validate_lambda,
 };
 
 /// 共有データの読み込み、検証または教師値の構築結果。

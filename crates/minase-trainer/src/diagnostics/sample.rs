@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use clap::Args;
 use serde::Serialize;
@@ -15,7 +11,7 @@ use crate::{
 
 #[derive(Args)]
 pub(super) struct SampleArgs {
-    /// 来歴ファイルを伴うMNSDを入力順に指定する。
+    /// MNSDを入力順に指定する。
     #[arg(long, required = true, num_args = 1..)]
     pub(super) data: Vec<PathBuf>,
     /// 抽出する局面数。
@@ -27,11 +23,11 @@ pub(super) struct SampleArgs {
 }
 
 impl SampleArgs {
-    /// 学習と同じ[`Dataset::open`]で、先読みなし、λの上書きなしでMNSDを開く。
-    /// 各MNSDに来歴ファイルが必要であり、対局単位の検証分割も学習と同じ規則に従う。
+    /// 学習と同じ[`Dataset::open`]で、先読みなしでMNSDを開く。
+    /// 対局単位の検証分割も学習と同じ規則に従う。
     pub(super) fn open(&self) -> Result<Dataset> {
         // SAFETY: 他の学習器コマンドと同じく、実行中の入力MNSDを変更しない契約で読み込む。
-        Ok(unsafe { Dataset::open(&self.data, None, None)? })
+        Ok(unsafe { Dataset::open(&self.data, None)? })
     }
 
     /// 母集団の通算番号から非復元抽出し、昇順に並べて返す。
@@ -73,32 +69,7 @@ impl SampleArgs {
     }
 }
 
-/// 入力ファイルを特定する2欄。
-/// `path`は`canonicalize`した絶対パス、`sha256`はファイル全体のSHA-256を小文字16進64桁で表した値である。
-#[derive(Serialize)]
-pub(super) struct FileIdentity {
-    path: PathBuf,
-    sha256: String,
-}
-
-/// パスを正規化し、ファイル全体を読んで[`FileIdentity`]を作る。
-pub(super) fn file_identity(path: &Path) -> Result<FileIdentity> {
-    let path = path.canonicalize()?;
-    let mut file = File::open(&path)?;
-    let mut hash = Sha256Hasher::default();
-    let mut buffer = [0; 64 * 1024];
-    loop {
-        let n = file.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        hash.update(&buffer[..n]);
-    }
-    Ok(FileIdentity {
-        path,
-        sha256: hex(&hash.finalize()),
-    })
-}
+pub(super) use crate::identity::{FileIdentity, file_identity};
 
 #[derive(Serialize)]
 struct InputFile {
@@ -110,7 +81,7 @@ struct InputFile {
 /// 診断報告の最上位へ平坦化して保存する標本の情報。
 /// `sample_count`は抽出局面数、`seed`は`--seed`の値である。
 /// `sample_indices_sha256_le_i64`は、昇順に並べた通算番号をそれぞれリトルエンディアンi64の8バイトにして連結した列のSHA-256を小文字16進で表す。
-/// `input_files`は入力順の配列で、各要素は[`FileIdentity`]の`path`と`sha256`に、MNSDヘッダの記録数`record_count`を加えた3欄を持つ。
+/// `input_files`は入力順の配列で、各要素は[`FileIdentity`]のパス、バイト長、ヘッダに、MNSDヘッダの記録数`record_count`を加えた情報を持つ。
 #[derive(Serialize)]
 pub(super) struct SampleIdentity {
     sample_count: usize,

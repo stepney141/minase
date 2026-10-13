@@ -1,15 +1,11 @@
 use super::{Args, Error, Result, export::QuantizationReport};
 use crate::{
     data::Dataset,
-    nn::{Sha256Hasher, atomic_write, hex, sha256},
+    nn::{Sha256Hasher, atomic_write, hex},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    path::Path,
-};
+use std::{fs::OpenOptions, io::Write, path::Path};
 
 /// PSTの1エポックの記録。
 /// 損失はすべて局面数で重み付けした平均で、端数バッチも含める。
@@ -53,27 +49,22 @@ pub struct EpochRecord {
 /// `config.json`に保存する引数、設定、入力、前処理結果を作る。
 ///
 /// 最上位の欄は`device = "cpu"`、新規実行時の[`Args`]を直列化した`arguments`、
-/// 実効ワーカー数`resolved_threads`、`settings`、`inputs`、`preprocessing`、`resumes`、
-/// `config_sha256`、`input_sha256`である。
+/// 実効ワーカー数`resolved_threads`、`settings`、`inputs`、`preprocessing`、`resumes`である。
 /// 新規実行では呼び手が、開始から設定を書き出すまでの秒数`preprocessing_seconds`を加える。
 /// `settings`は[`Args`]から`output_dir`、`resume`、`data`、`init`、`epochs`、`patience`、`threads`を除き、
 /// `model = "mirrored_pst"`と`optimizer = {lr, weight_decay: 0.0, betas: [0.9, 0.999], epsilon: 1e-8}`を加えた値で、再開で変更できない。
 ///
-/// `inputs.files`は入力順の配列で、各要素は`data`と`provenance`、および`header_sha256`を持つ。
-/// `data`と`provenance`は正規化した`path`とファイル全体の`sha256`、
-/// `header_sha256`はMNSDヘッダ136バイトのSHA-256である。
-/// `inputs.init`は初期MNPTの`path`と`sha256`である。
+/// `inputs.files`は入力順のMNSD識別情報で、各要素は正規化した`path`、`byte_length`、`header`を持つ。
+/// `header`の各欄は[`crate::identity`]に従う。`inputs.init`はMNPTの`path`とヘッダ内の`checksum`である。
 ///
 /// `preprocessing.teacher_classes`は分類順の[`crate::data::TeacherClass`]の配列である。
 /// 検査和は32個の数値の配列、`lookahead`は`{gamma, plies}`または`null`、
-/// `lambda_override`は実際に適用した値または`null`である。
+/// `lambda`は分類へ適用した値であり、実戦対局では0である。`settings.lambda`は利用者が指定した値である。
 /// `teacher_ks`は分類順の教師用Kでλが0の分類は`null`、`teacher_lambdas`は分類順の実効λである。
 /// `teacher_k_source = "training"`、`output_k`は初期MNPTから引き継いだ出力用Kである。
 /// `training_positions`と`validation_positions`は局面数、`training_indices_sha256`と
 /// `validation_indices_sha256`は入力を連結した0始まりの通算番号をリトルエンディアンu64列にしたSHA-256である。
 ///
-/// `config_sha256`は`settings`、`input_sha256`は`{"inputs": inputs, "preprocessing": preprocessing}`を、
-/// キーを辞書順に並べた空白なしのJSONにしたバイト列のSHA-256で、小文字16進文字列で保存する。
 /// `resumes`は新規実行では空で、再開のたびに`{resumed_at_unix_seconds, epochs, patience, workers, epoch}`を追記する。
 /// 時刻は整数のUnix秒、`workers`は実効ワーカー数、`epoch`は再開時点の完了済みエポック番号である。
 pub(super) fn configuration(
@@ -104,40 +95,23 @@ pub(super) fn configuration(
         "optimizer".into(),
         json!({"lr":args.lr, "weight_decay":0.0, "betas":[0.9,0.999], "epsilon":1e-8}),
     );
-    let files = dataset.paths().zip(dataset.headers()).map(|(path, header)| {
-        let mut sidecar = path.as_os_str().to_owned();
-        sidecar.push(".provenance.json");
-        Ok(json!({"data":file_record(path)?, "provenance":file_record(Path::new(&sidecar))?, "header_sha256":hex(&sha256(&header.encode()))}))
-    }).collect::<Result<Vec<_>>>()?;
+    let files = dataset
+        .paths()
+        .map(file_record)
+        .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files":files, "init":file_record(&args.init)?});
     let preprocessing = json!({"teacher_classes":dataset.teacher_classes(), "teacher_ks":ks,
         "teacher_lambdas":dataset.teacher_lambdas(), "teacher_k_source":"training", "output_k":k,
         "training_positions":dataset.training_indices().len(), "validation_positions":dataset.validation_indices().len(),
         "training_indices_sha256":hash_u64(dataset.training_indices()), "validation_indices_sha256":hash_u64(dataset.validation_indices())});
-    let config_hash = sha256(&serde_json::to_vec(&settings)?);
-    let input_hash = sha256(&serde_json::to_vec(
-        &json!({"inputs":inputs,"preprocessing":preprocessing}),
-    )?);
     Ok(Configuration {
-        config_hash,
-        input_hash,
         document: json!({"device":"cpu", "arguments":args, "resolved_threads":workers, "settings":settings,
-            "inputs":inputs, "preprocessing":preprocessing, "resumes":[], "config_sha256":hex(&config_hash), "input_sha256":hex(&input_hash)}),
+            "inputs":inputs, "preprocessing":preprocessing, "resumes":[]}),
     })
 }
 
 pub(crate) fn file_record(path: &Path) -> Result<Value> {
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256Hasher::default();
-    let mut buffer = [0_u8; 65536];
-    loop {
-        let n = file.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(json!({"path": path.canonicalize()?, "sha256": hex(&hasher.finalize())}))
+    Ok(serde_json::to_value(crate::identity::file_identity(path)?)?)
 }
 
 pub(crate) fn hash_u64(values: &[u64]) -> String {
@@ -150,8 +124,6 @@ pub(crate) fn hash_u64(values: &[u64]) -> String {
 
 pub(crate) struct Configuration {
     pub document: Value,
-    pub config_hash: [u8; 32],
-    pub input_hash: [u8; 32],
 }
 
 pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
@@ -222,7 +194,7 @@ pub enum StopReason {
 /// 量子化検査が不合格でも出力した重みと報告を残し、`quantization`と`initial_position_score`を記録する。
 /// 最良重みの書き出しに失敗した場合は`reason`を加えた同じ形で保存し、この2欄は`null`になる。
 /// エポックの途中の失敗では、この型の代わりに`{status: "error", reason, last_epoch, elapsed_seconds}`だけを保存する。
-/// `initial_position_score`はFMを含まないMNPT版2を[`minase::eval::pst::evaluate_pst`]で評価した値で、手番側視点のセンチポーンである。
+/// `initial_position_score`はFMの次元0のMNPT版3を[`minase::eval::pst::evaluate_pst`]で評価した値で、手番側視点のセンチポーンである。
 /// この関数の評価は±28,999へ切り詰められ、報告時には追加の切り詰めを行わない。
 /// `convergence`は常に`null`である。
 #[derive(Debug, Serialize)]

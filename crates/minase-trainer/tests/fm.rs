@@ -290,16 +290,16 @@ fn quarter_changes_only_exponent_and_checksum_and_writes_ordered_report() {
     );
     assert_eq!(String::from_utf8(result.stdout).unwrap().lines().count(), 1);
     assert_eq!(
-        report["input_sha256"],
-        format!("{:x}", Sha256::digest(&input))
+        report["input"]["checksum"],
+        format!("{:x}", Sha256::digest(&input[80..]))
     );
     assert_eq!(
-        report["output_sha256"],
-        format!("{:x}", Sha256::digest(&output))
+        report["output"]["checksum"],
+        format!("{:x}", Sha256::digest(&output[80..]))
     );
     let keys = [
-        "input_sha256",
-        "output_sha256",
+        "input",
+        "output",
         "exponent_before",
         "exponent_after",
         "zero_check",
@@ -313,7 +313,7 @@ fn quarter_changes_only_exponent_and_checksum_and_writes_ordered_report() {
 }
 
 #[test]
-fn conversions_reject_existing_paths_exponent_limit_and_v2_inputs() {
+fn conversions_reject_existing_paths_exponent_limit_and_pst_only_inputs() {
     let f = Fixture::new();
     f.inputs(30);
     assert!(fm::quarter(&f.quarter()).is_err());
@@ -330,9 +330,9 @@ fn conversions_reject_existing_paths_exponent_limit_and_v2_inputs() {
         assert_eq!(fs::read(f.path(name)).unwrap(), b"preserve");
         fs::remove_file(f.path(name)).unwrap();
     }
-    let v2 =
+    let pst_only =
         Pst::from_weights(&vec![[0; 2]; FEATURE_COUNT], v0_piece_values(), 1.0, "test").unwrap();
-    fs::write(f.path("input.bin"), v2.encode()).unwrap();
+    fs::write(f.path("input.bin"), pst_only.encode()).unwrap();
     assert!(fm::quarter(&f.quarter()).is_err());
     assert!(fm::scale(&f.scale(1024)).is_err());
 }
@@ -376,20 +376,21 @@ fn scale_identity_zero_and_mismatch_rejections() {
     fs::remove_file(f.path("output.scale.json")).unwrap();
     let report = fm::scale(&f.scale(0)).unwrap();
     let bytes = fs::read(f.path("output.bin")).unwrap();
-    assert_eq!(&bytes[4..8], &2_u32.to_le_bytes());
+    assert_eq!(&bytes[4..8], &3_u32.to_le_bytes());
+    assert_eq!(&bytes[80 + 13_680 * 4 + 47 * 4..], &[0; 8]);
     let output = Pst::decode(&bytes).unwrap();
     assert!(output.fm_weights().is_none());
     assert_eq!(output.rule_set(), "test");
-    assert_eq!(report.format_version, 2);
+    assert_eq!(report.format_version, 3);
     assert_eq!(report.exponent_after, None);
     assert_eq!(report.max_absolute_embedding, None);
     assert!(report.validation.is_none());
     let json = fs::read_to_string(f.path("output.scale.json")).unwrap();
     assert!(!json.contains("validation"));
     let keys = [
-        "input_sha256",
-        "float_sha256",
-        "output_sha256",
+        "input",
+        "float",
+        "output",
         "fm_scale",
         "format_version",
         "exponent_before",
@@ -436,10 +437,7 @@ fn npz_rejects_wrong_shapes_types_missing_arrays_and_nonfinite_values() {
 
 impl Fixture {
     fn validation_data(&self) -> PathBuf {
-        use minase::training::{
-            provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-            records::{Header, Outcome, Record},
-        };
+        use minase::training::records::{Header, Outcome, Record};
         use minase_core::{Color, PieceCode, PieceKind, PositionBuilder, Square};
         let path = self.path("data.mnsd");
         let mut bytes = Header::new("test".into(), "1".repeat(40), [2; 32], 200, 11, 3)
@@ -463,29 +461,12 @@ impl Fixture {
                     Outcome::Draw,
                     game,
                     ply as u16,
+                    minase::training::records::Origin::RandomSelfplay,
                 )
                 .encode(),
             );
         }
         fs::write(&path, &bytes).unwrap();
-        Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: "test".into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        }
-        .write(fs::File::create(self.path("data.mnsd.provenance.json")).unwrap())
-        .unwrap();
         let mut u = vec![[0; FM_RANK]; FEATURE_COUNT];
         let mut v = v_with(&[]);
         // 先手歩兵の状態29、段0の3升。V=1とa=1の各対が1cpを与える。

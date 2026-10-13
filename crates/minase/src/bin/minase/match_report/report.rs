@@ -1,4 +1,6 @@
 //! 保存済み対局から時間制御校正の指標を集計する。
+//!
+//! 入力する実行ディレクトリの現行の欄は[`crate::match_runner`]に定める。
 
 use crate::match_report::run_dir::{
     FORMAT_VERSION, Manifest, Mode, RunSummary, SearchLimit, read_json,
@@ -166,7 +168,7 @@ fn candidate_half_points(game: &GameRecord) -> Option<u8> {
 
 /// 保存済み実行を時間制御の診断用に集計する。採否の判定には使わない。
 ///
-/// 共有ロックが取れない実行中のディレクトリ、版4と5以外の形式、
+/// 共有ロックが取れない実行中のディレクトリ、現行版以外の形式、
 /// 起動ごとの測定機の不一致、固定ペア数Elo以外のモード、
 /// 両エンジンの時間制御の不一致または固定制限を拒否する。
 /// 強制終了または実行中の記録、累計実行時間0、有効ペア0、
@@ -174,9 +176,7 @@ fn candidate_half_points(game: &GameRecord) -> Option<u8> {
 /// 必要な欄や測定機の物理コア数とメモリ容量が欠ける場合、数値があふれる場合、
 /// ペア番号の不連続やファイル名との不一致、先後入替や得点と終局理由の矛盾もエラーとする。
 ///
-/// 版4は`manifest.json`の`cpu`を全起動の測定機として読む。
-/// 比較条件はmanifestから思考制限、記録形式の版、およびrunnerを除き、検査済みの測定機を加えたものである。
-/// `random`の同一性に残る`sha256`も比較条件から除く。
+/// 比較条件はmanifestから思考制限と記録形式の版を除き、検査済みの測定機を加えたものである。
 /// 資源の欠測の扱いと各指標の定義は[`Report`]に従う。
 pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
     let lock = OpenOptions::new()
@@ -192,17 +192,17 @@ pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
     let mut comparison_manifest: serde_json::Value = read_json(&run_dir.join("manifest.json"))?;
     if comparison_manifest["format_version"]
         .as_u64()
-        .is_none_or(|version| version != 4 && version != u64::from(FORMAT_VERSION))
+        .is_none_or(|version| version != u64::from(FORMAT_VERSION))
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "match_report requires format version 4 or {FORMAT_VERSION}, found {}",
+                "match_report requires format version {FORMAT_VERSION}, found {}",
                 comparison_manifest["format_version"]
             ),
         ));
     }
-    let cpu = super::run_dir::measurement_machine(run_dir, &comparison_manifest)?;
+    let cpu = super::run_dir::measurement_machine(run_dir)?;
     let manifest: Manifest =
         serde_json::from_value(comparison_manifest.clone()).map_err(|error| {
             io::Error::new(
@@ -253,23 +253,15 @@ pub(super) fn report(run_dir: &Path) -> io::Result<Report> {
         .and_then(serde_json::Value::as_object_mut)
         .and_then(|baseline| baseline.remove("limit"))
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "baseline limit is missing"))?;
-    // 版とrunnerの来歴を除き、検査済みの測定機を共通の比較条件へ加える。
+    // 版を除き、検査済みの測定機を比較条件へ加える。
     let conditions = comparison_manifest
         .as_object_mut()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "manifest must be an object"))?;
     conditions.remove("format_version");
-    conditions.remove("runner");
     conditions.insert(
         "cpu".to_owned(),
         serde_json::to_value(&cpu).map_err(io::Error::other)?,
     );
-    for side in ["candidate", "baseline"] {
-        if comparison_manifest[side]["identity"]["kind"] == "random"
-            && let Some(identity) = comparison_manifest[side]["identity"].as_object_mut()
-        {
-            identity.remove("sha256");
-        }
-    }
     let summary: RunSummary = read_json(&run_dir.join("summary.json"))?;
     if summary.invocation_active || summary.interrupted {
         return Err(io::Error::new(
@@ -579,7 +571,7 @@ mod tests {
         std::fs::write(
             run_dir.join("manifest.json"),
             serde_json::to_vec(&serde_json::json!({
-                "format_version": 4,
+                "format_version": FORMAT_VERSION,
                 "candidate": {
                     "identity": {"kind": "commit", "hash": "a", "sha256": "b"},
                     "limit": {"kind": "time", "base_ms": 10_000, "increment_ms": 100, "byoyomi_ms": 0}
@@ -596,15 +588,19 @@ mod tests {
                 "response_timeout_secs": 120,
                 "concurrency": 8,
                 "engine_threads": {"candidate": 1, "baseline": 1},
-                "hash_mb": {"candidate": 256, "baseline": 256},
-                "cpu": {
-                    "model": "test",
-                    "physical_cores": 20,
-                    "logical_cores": 20,
-                    "physical_memory_bytes": 10_000
-                },
-                "runner": {"version": "0.1.0", "sha256": "e"}
+                "hash_mb": {"candidate": 256, "baseline": 256}
             }))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            run_dir.join("invocations.json"),
+            serde_json::to_vec(&serde_json::json!([{"cpu": {
+                "model": "test",
+                "physical_cores": 20,
+                "logical_cores": 20,
+                "physical_memory_bytes": 10_000
+            }}]))
             .unwrap(),
         )
         .unwrap();
@@ -658,39 +654,17 @@ mod tests {
     }
 
     #[test]
-    fn report_compares_version_four_and_five_and_rejects_mixed_machines() {
+    fn report_rejects_mixed_machines_across_invocations() {
         let dir = calibration_fixture();
-        let path = dir.join("manifest.json");
-        let mut manifest: serde_json::Value = read_json(&path).unwrap();
-        for side in ["candidate", "baseline"] {
-            manifest[side]["identity"] =
-                serde_json::json!({"kind": "random", "sha256": "old runner"});
-        }
+        let history = dir.join("invocations.json");
+        let mut invocations: serde_json::Value = read_json(&history).unwrap();
+        let invocation = invocations[0].clone();
+        invocations.as_array_mut().unwrap().push(invocation);
         let save = |path: &Path, value: &serde_json::Value| {
             std::fs::write(path, serde_json::to_vec(value).unwrap()).unwrap()
         };
-        save(&path, &manifest);
-        let old = report(&dir).unwrap();
-        let cpu = manifest.as_object_mut().unwrap().remove("cpu").unwrap();
-        manifest.as_object_mut().unwrap().remove("runner");
-        manifest["format_version"] = serde_json::json!(5);
-        for side in ["candidate", "baseline"] {
-            manifest[side]["identity"] = serde_json::json!({"kind": "random"});
-        }
-        save(&path, &manifest);
-        let mut invocations = serde_json::json!([
-            {"cpu": cpu, "runner": {"version": "1", "sha256": "first"}, "target_pairs": 5},
-            {"cpu": cpu, "runner": {"version": "2", "sha256": "second"}, "target_pairs": 10}
-        ]);
-        let history = dir.join("invocations.json");
         save(&history, &invocations);
-        let new = report(&dir).unwrap();
-        assert_eq!(
-            serde_json::to_value(&old).unwrap(),
-            serde_json::to_value(&new).unwrap()
-        );
-        assert!(compare(&new, &old).is_ok());
-        assert!(compare(&old, &new).is_ok());
+        let original = report(&dir).unwrap();
         for (field, value) in [
             ("model", serde_json::json!("different")),
             ("physical_cores", serde_json::json!(21)),
@@ -704,7 +678,7 @@ mod tests {
             changed[0]["cpu"][field] = value;
             save(&history, &changed);
             assert!(
-                compare(&report(&dir).unwrap(), &old).is_err(),
+                compare(&report(&dir).unwrap(), &original).is_err(),
                 "different {field}"
             );
         }
@@ -848,17 +822,17 @@ mod tests {
         std::fs::remove_dir_all(run_dir).unwrap();
     }
 
-    // [`report`]は版4と5だけを受理し、それ以外を版のエラーで拒否する。
+    // [`report`]は現行版だけを受理し、それ以外を版のエラーで拒否する。
     #[test]
-    fn report_rejects_version_three_before_decoding_new_fields() {
-        let run_dir = std::env::temp_dir().join(format!("minase-report-v3-{}", std::process::id()));
+    fn report_rejects_version_four_before_decoding_new_fields() {
+        let run_dir = std::env::temp_dir().join(format!("minase-report-v4-{}", std::process::id()));
         std::fs::create_dir(&run_dir).unwrap();
         File::create(run_dir.join(".match_runner.lock")).unwrap();
-        std::fs::write(run_dir.join("manifest.json"), br#"{"format_version":3}"#).unwrap();
+        std::fs::write(run_dir.join("manifest.json"), br#"{"format_version":4}"#).unwrap();
         let error = report(&run_dir).err().unwrap();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert!(error.to_string().contains(&format!(
-            "requires format version 4 or {FORMAT_VERSION}, found 3"
+            "requires format version {FORMAT_VERSION}, found 4"
         )));
         std::fs::remove_dir_all(run_dir).unwrap();
     }

@@ -156,7 +156,7 @@ pub(super) fn scale_report(
     args: &ScaleArgs,
 ) -> Result<ValidationReport> {
     // SAFETY: ほかの学習器コマンドと同じく、実行中の入力MNSDを変更しない契約で開く。
-    let dataset = unsafe { Dataset::open(&args.data, None, None)? };
+    let dataset = unsafe { Dataset::open(&args.data, None)? };
     let count = args
         .validation_sample
         .min(dataset.validation_indices().len());
@@ -166,7 +166,7 @@ pub(super) fn scale_report(
     let mut indices = epoch_permutation(dataset.validation_indices(), args.seed, 0);
     indices.truncate(count);
     indices.sort_unstable();
-    let source_fm = source.fm_weights().expect("validated MNPT version 3");
+    let source_fm = source.fm_weights().expect("validated FM weights");
     let mut errors = Vec::with_capacity(count);
     let mut differences = Vec::with_capacity(count);
     let mut baked_corrections = Vec::with_capacity(count);

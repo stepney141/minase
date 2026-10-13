@@ -1,5 +1,7 @@
 //! 鏡映共有PSTとFMを2群のAdamWで同時学習する。
 //! CPUでの精度、加算順、並列度の契約は[`crate`]のdocコメントに従う。
+//!
+//! 同時学習が書く`pst-float.npz`（5配列の無圧縮NPZ）の配列の一覧は、`joint/export.rs`のモジュールdocコメントにある。
 
 mod args;
 mod batch;

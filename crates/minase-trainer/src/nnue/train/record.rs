@@ -1,5 +1,5 @@
 use super::{Args, Error, Result};
-use crate::nn::{Sha256Hasher, atomic_write, hex, sha256};
+use crate::nn::{Sha256Hasher, atomic_write, hex};
 use crate::{
     data::Dataset,
     nnue::{
@@ -12,8 +12,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
+    fs::OpenOptions,
+    io::Write,
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -137,17 +137,7 @@ pub(super) fn validate_statistics(v: &Validation) -> Result<()> {
 }
 
 fn file_record(path: &Path) -> Result<Value> {
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256Hasher::default();
-    let mut buffer = [0_u8; 65536];
-    loop {
-        let n = file.read(&mut buffer)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(json!({"path": path.canonicalize()?, "sha256": hex(&hasher.finalize())}))
+    Ok(serde_json::to_value(crate::identity::file_identity(path)?)?)
 }
 
 fn hash_u64(values: &[u64]) -> String {
@@ -160,8 +150,6 @@ fn hash_u64(values: &[u64]) -> String {
 
 pub(super) struct Configuration {
     pub document: Value,
-    pub config_hash: [u8; 32],
-    pub input_hash: [u8; 32],
 }
 
 /// 整形JSONとして保存する`config.json`の設定、入力、前処理結果を作る。
@@ -172,8 +160,9 @@ pub(super) struct Configuration {
 /// `patience`、`time_limit_hours`、`threads`を除き、`optimizer`と`initial_standard_deviation = 0.05`を加える。
 /// `optimizer`は線形、第1層、出力部の3群の`lr`と`weight_decay`を持つ。
 ///
-/// `inputs.files`は入力順の配列で、各要素は`data`と`provenance`の各`{path, sha256}`、およびMNSDヘッダの`header_sha256`を持つ。
-/// `inputs.init_pst`と`inputs.base`も`{path, sha256}`であり、パスはすべて正規化済みである。
+/// `settings.lambda`は利用者が指定した混合比であり、実戦対局の実効λは0である。
+/// `inputs.files`は入力順のMNSDの`path`、`byte_length`、`header`であり、各欄は[`crate::identity`]に従う。
+/// `inputs.init_pst`はNPZの`{path, byte_length}`、`inputs.base`はMNPTの`{path, checksum}`であり、パスは正規化済みである。
 /// `preprocessing`は`teacher_classes`、`teacher_ks`、`teacher_lambdas`、`teacher_k_source = "training"`、
 /// `output_k`、`training_positions`、`validation_positions`を持つ。
 /// 分類の定義は[`crate::data::TeacherClass`]に従い、λが0の分類の教師用Kは`null`である。
@@ -182,11 +171,9 @@ pub(super) struct Configuration {
 /// `canonical_counts_sha256`と`input_counts_sha256`は、それぞれの行の観測回数をリトルエンディアンu64列にしたSHA-256である。
 ///
 /// `resumes`は再開履歴の配列で、新規実行では空とし、[`append_resume`]で追記する。
-/// `config_sha256`は`settings`のJSON、`input_sha256`は`{inputs, preprocessing}`のJSONのSHA-256である。
-/// ハッシュ対象のJSONはキーを辞書順に並べた空白なしの表現で、検査和は小文字16進で保存する。
 /// 新規実行時だけ、呼び手が`device_name`、`gpu_memory_used_bytes`、`gpu_memory_total_bytes`、`preprocessing_seconds`を加える。
 /// `device_name`はCUDAのデバイス名または`"CPU"`、メモリはバックエンド確保後の値でCPUでは`null`である。
-/// 再開時は`settings`、`inputs`、`preprocessing`、両ハッシュ、`device_name`の一致を要求する。
+/// 再開時は`settings`、`inputs`、`preprocessing`、`device_name`の一致を要求する。
 /// 変更できる予算と並列度は`epochs`、`patience`、`time_limit_hours`、`threads`だけである。
 pub(super) fn configuration(
     args: &Args,
@@ -202,7 +189,7 @@ pub(super) fn configuration(
         .ok_or(Error::Invalid("arguments are not an object"))?;
     // 保存先と再開操作は数値計算の設定ではない。入力パスは別途正規化して照合する。
     // エポック数、改善なしの許容数、時間の上限、ワーカー数は予算と並列度であり、
-    // 学習の軌跡を変えないので、再開時に変えてよい（ハッシュに含めない）。
+    // 学習の軌跡を変えないので、再開時に変えてよい（比較に含めない）。
     for key in [
         "output_dir",
         "resume",
@@ -224,15 +211,7 @@ pub(super) fn configuration(
     object.insert("initial_standard_deviation".into(), json!(0.05));
     let files = dataset
         .paths()
-        .zip(dataset.headers())
-        .map(|(path, header)| {
-            let mut sidecar = path.as_os_str().to_owned();
-            sidecar.push(".provenance.json");
-            Ok(
-                json!({"data": file_record(path)?, "provenance": file_record(Path::new(&sidecar))?,
-            "header_sha256": hex(&sha256(&header.encode()))}),
-            )
-        })
+        .map(file_record)
         .collect::<Result<Vec<_>>>()?;
     let inputs = json!({"files": files, "init_pst": file_record(&args.init_pst)?, "base": file_record(&args.base)?});
     let count = |mask: &[bool]| {
@@ -258,21 +237,15 @@ pub(super) fn configuration(
         "canonical_counts_sha256": hash_u64(observations.canonical_counts()),
         "input_counts_sha256": hash_u64(observations.input_counts()),
     });
-    let config_hash = sha256(&serde_json::to_vec(&settings)?);
-    let input_hash = sha256(&serde_json::to_vec(
-        &json!({"inputs": inputs, "preprocessing": preprocessing}),
-    )?);
     Ok(Configuration {
         document: json!({"device": args.device, "arguments": args, "resolved_threads": resolved_threads, "settings": settings,
         "inputs": inputs, "preprocessing": preprocessing,
-        "resumes": [],
-        "config_sha256": hex(&config_hash), "input_sha256": hex(&input_hash)}),
-        config_hash,
-        input_hash,
+        "resumes": []}),
     })
 }
 
 /// 再開のたびに`config.json`の`resumes`へ1要素を追記して書き直す。
+/// `resumes`は配列として存在しなければならず、欠落や型の不一致は拒否する。
 /// 要素は整数のUnix秒`resumed_at_unix_seconds`、`epochs`、`patience`、`time_limit_hours`、
 /// 実効ワーカー数`workers`、再開時点の完了エポック番号`epoch`を持つ。
 pub(super) fn append_resume(
@@ -286,9 +259,8 @@ pub(super) fn append_resume(
     let resumes = config
         .as_object_mut()
         .ok_or(Error::Invalid("configuration must be an object"))?
-        .entry("resumes")
-        .or_insert_with(|| json!([]))
-        .as_array_mut()
+        .get_mut("resumes")
+        .and_then(Value::as_array_mut)
         .ok_or(Error::Invalid("configuration resumes must be an array"))?;
     resumes.push(json!({
         "resumed_at_unix_seconds": resumed_at,
@@ -316,8 +288,8 @@ pub(super) fn append_epoch(path: &Path, record: &EpochRecord) -> Result<()> {
     Ok(())
 }
 
-/// `latest.bin`で確定したエポックまでのログを検査し、未確定の末尾を切り捨てる。
-/// 各エポックは`training.jsonl`への追記、`latest.bin`、改善時の`best.bin`の順に保存し、`latest.bin`の確定を保存完了とする。
+/// `latest.npz`で確定したエポックまでのログを検査し、未確定の末尾を切り捨てる。
+/// 各エポックは`training.jsonl`への追記、`latest.npz`、改善時の`best.npz`の順に保存し、`latest.npz`の確定を保存完了とする。
 /// ログを先頭から読み、エポック0から`epoch`までが連番で揃い、検証損失が有限であることを要求する。
 /// その後の行と改行で終わらない末尾は切り捨て、未確定のエポックは再実行する。
 /// エポック0を含む必要な行が欠けていれば拒否し、成功時はエポック0の検証損失を返す。

@@ -17,3 +17,5 @@ pub mod joint;
 pub mod nn;
 pub mod nnue;
 pub mod pst;
+
+pub mod identity;

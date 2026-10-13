@@ -14,9 +14,10 @@ minaseのコードがディスクに読み書きするファイル形式は36種
 
 ## 状態
 
-起案。2026年10月13日に起案した。
-着手は利用者の指示を待つ。
-本書の実装は学習器のコードに手を入れるので、[NNUE学習器の学習率スケジュール](nnue-lr-schedule.md)と[NNUEの隠れ層](nnue-hidden-layer.md)とは同時に進めず、着手の順序は利用者が決める。
+完了（採用）。2026年10月13日に起案と着手をし、同日に完了した。
+教師データの来歴JSON、付け直し（MNRS）、3種のチェックポイントのマジック、およびMNPTの版2を廃止して、`MN`の独自形式をMNSD、MNUE、MNPTの3つにし、残った全形式の仕様を書き手のdocコメントに、形式の一覧を[ファイル形式の一覧](../../guides/file-formats.md)に置いた。
+変更の前後で学習の局面数、教師用K、および損失がビット単位で一致し、チェックポイントの中断と再開も中断しない学習と一致することを[照合の記録](../../measurements/file-format-consolidation-equivalence.md)で確かめ、使えなくなった`data/`のファイル594件（約30 GB）を削除した。
+設計判断は[由来の欄](../../adr/record-the-origin-in-mnsd-records.md)、[版を1つにする原則](../../adr/keep-one-version-per-file-format.md)、および[NPZのチェックポイント](../../adr/store-trainer-checkpoints-as-npz.md)のADRへ移した。
 
 ## 目的
 
@@ -29,10 +30,10 @@ minaseのコードがディスクに読み書きするファイル形式は36種
 - 過去のファイルを読み続けられるように保つのは、過剰な互換性の維持である。
 
 そのうえで、付け直しの撤去、教師データの照合の廃止、PSTとFMの重みの1つの配置への統一、および使えなくなった古いデータの削除を決めた。
-中将棋も指せるオンライン対局サイトlishogiの実戦棋譜の取り込み（`data lishogi games`と`data lishogi openings`）は残す。[AlphaZero型探索の設計書](alphazero.md)が、自己対局の開始局面の半数をlishogiの実戦棋譜から取ると定めているからである。
+中将棋も指せるオンライン対局サイトlishogiの実戦棋譜の取り込み（`data lishogi games`と`data lishogi openings`）は残す。[AlphaZero型探索の設計書](../alphazero.md)が、自己対局の開始局面の半数をlishogiの実戦棋譜から取ると定めているからである。
 
 形式や版が多いと、変更のたびに書き手、読み手、検査、文書をそろえる手間が増え、そろわなかった箇所が不具合や古い記述として残る。
-現に[評価関数の設計書](archived/evaluation.md)には、実装と合わない記述が3か所ある。MNUEのヘッダを版2の96バイトとして説明している箇所（現行のコードは版5の192バイト）、MNSDの`network_checksum`を`pst.bin`の検査和と説明している箇所（現行はNNUEの重みの検査和）、学習器が付け直しの値を使うと書いている箇所（現行の学習器は読まない）である。
+現に[評価関数の設計書](evaluation.md)には、実装と合わない記述が3か所ある。MNUEのヘッダを版2の96バイトとして説明している箇所（現行のコードは版5の192バイト）、MNSDの`network_checksum`を`pst.bin`の検査和と説明している箇所（現行はNNUEの重みの検査和）、学習器が付け直しの値を使うと書いている箇所（現行の学習器は読まない）である。
 
 本書で使う語を次のように定める。
 MNSDは教師データの形式、MNUEはNNUE（評価関数のニューラルネット）の重みの形式、MNPTはPST（駒と升の組ごとの点数表）と、FM（2駒の位置関係を表す補正）の重みの形式である。
@@ -42,7 +43,7 @@ NPZは、NumPyの配列を名前つきで収めたZIP形式のファイルであ
 教師用Kは、探索値を勝率へ換算する尺度であり、教師データの分類ごとに訓練集合から推定する。
 混合比λは、教師値を作るときに、探索値から換算した勝率と対局結果を混ぜる比である（`λ·勝率 + (1−λ)·結果`）。
 検証分割は、約5%の対局を検証集合へ固定する割り当てであり、同じ対局の局面が訓練集合と検証集合にまたがらないよう、対局単位で割り当てる。
-先読み教師値は、同じ対局の将来の探索値を幾何加重平均した教師値であり、その条件は割引率と窓幅である（[先読み教師値の設計書](archived/lookahead-teacher.md)）。
+先読み教師値は、同じ対局の将来の探索値を幾何加重平均した教師値であり、その条件は割引率と窓幅である（[先読み教師値の設計書](lookahead-teacher.md)）。
 SPSAは、対局の勝敗から探索の係数を自動で調整する手法（同時摂動確率近似）であり、`minase spsa`が実装する。
 由来は、教師データの局面がどの経路で作られたかの区分であり、「MNSD」の節で定める。
 診断は、学習器`minase-trainer`の`diag`サブコマンドであり、学習の入力や重みを調べて報告を書き出す。
@@ -77,12 +78,12 @@ SPSAは、対局の勝敗から探索の係数を自動で調整する手法（�
 次のものは変えない。
 
 - MNUEの形式。読み手はすでに版5だけを受け付けている。重み本体の検査和は、教師データのヘッダに写して、教師データを生成した重みを区別する識別子として使っている。
-- 対局ハーネスとSPSAの実行ディレクトリの形式と、`target/match-cache/`のバイナリの検査和。再開時に、対局するエンジンが記録と同じであることを確かめる仕組み（[測定の再開条件の簡素化](archived/match-resume-simplification.md)）の一部であり、過去のファイルとの互換のためのものではない。
+- 対局ハーネスとSPSAの実行ディレクトリの形式と、`target/match-cache/`のバイナリの検査和。再開時に、対局するエンジンが記録と同じであることを確かめる仕組み（[測定の再開条件の簡素化](match-resume-simplification.md)）の一部であり、過去のファイルとの互換のためのものではない。
 - 学習器と診断が出力するだけで読み返さない報告のJSON（`summary.json`、診断の`--output`など）。
 
 ## 依存関係
 
-前提となる完了済みの設計書は、[評価関数](archived/evaluation.md)（MNSDとMNPTの定義）、[棋力向上段階9](archived/strength-stage9.md)（来歴JSONと付け直し）、[Python学習器の撤去](archived/python-trainer-retirement.md)（現行の学習器の構成）である。
+前提となる完了済みの設計書は、[評価関数](evaluation.md)（MNSDとMNPTの定義）、[棋力向上段階9](strength-stage9.md)（来歴JSONと付け直し）、[Python学習器の撤去](python-trainer-retirement.md)（現行の学習器の構成）である。
 
 AlphaZero型探索の実装は、masterへ統合する前のブランチ`alphazero-phase1`にある。
 このブランチは、自己対局の生成処理から開始局面一覧の読み込み（`selfplay_gen/opening.rs`の`read_openings`）を呼び出しており、MNSDの符号化関数の可視性も変えている。
@@ -155,7 +156,7 @@ NPZの読み書きは学習器の既存の`nn/npz.rs`を使う。
 
 手引き`docs/guides/file-formats.md`には、全形式の一覧（名前、マジックと版、書き手、読み手、仕様を書いたモジュール）と、同じファイル名で中身が違うJSON（対局ハーネスとSPSAの`manifest.json`と`invocations.json`、対局ハーネスと学習器の`summary.json`）の区別だけを書く。
 学習器の記録（`config.json`、`training.jsonl`など）の欄も、書き出すモジュールのdocコメントに書く。
-凍結した設計書（[評価関数](archived/evaluation.md)、[段階9](archived/strength-stage9.md)、[Factorization Machine](archived/factorization-machine.md)、[NNUEの完全代替](archived/nnue-replacement.md)、[Rust製NNUE学習器](archived/nnue-trainer-rust.md)など）のバイト配置の記述は、凍結の規則に従って書き換えない。
+凍結した設計書（[評価関数](evaluation.md)、[段階9](strength-stage9.md)、[Factorization Machine](factorization-machine.md)、[NNUEの完全代替](nnue-replacement.md)、[Rust製NNUE学習器](nnue-trainer-rust.md)など）のバイト配置の記述は、凍結の規則に従って書き換えない。
 
 ## 実装フェーズ
 
@@ -177,7 +178,7 @@ NPZの読み書きは学習器の既存の`nn/npz.rs`を使う。
 - MNPTを版3だけにし、PSTだけの重みを書くコマンドは次元0の版3を書く。`fm scale`の報告が書く版番号、FMを要する診断の検査（版3ならFMを持つという前提を、次元32の検査に改める）、および版2への変換を勧める診断のエラー文も直す。`crates/minase/nets/`のPSTだけの2ファイル（`pst-init.bin`と`nnue-epoch0-pst.bin`）は、使い捨ての手順で次元0の版3へ書き直す。
 - `minase match report`の版4の受け付けを削除する。
 - NNUEの学習器が再開時に`config.json`の`resumes`の欄がなければ空の配列で補う処理（`nnue/train/record.rs`）と、それを求めるテストを削除し、欄を必須にする。
-- MNSDと重みの仕様のdocコメント、[NNUEの学習手順](../guides/nnue-training.md)、[PSTとFMの学習手順](../guides/pst-training.md)、および[棋力測定の手引き](../guides/sprt.md)を同じコミットで直す。
+- MNSDと重みの仕様のdocコメント、[NNUEの学習手順](../../guides/nnue-training.md)、[PSTとFMの学習手順](../../guides/pst-training.md)、および[棋力測定の手引き](../../guides/sprt.md)を同じコミットで直す。
 
 完了条件は、`cargo test --workspace`が通り、`git grep -iE "rescore|provenance" -- crates`が何も返さず、検証の1から3が通ることである。
 

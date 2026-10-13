@@ -1,4 +1,7 @@
 //! 初期化、制約、保存形式、および整数推論との外部契約。
+#[path = "common/checkpoint.rs"]
+#[allow(dead_code)]
+mod checkpoint_contract;
 use minase_trainer::nn::BestEpoch;
 mod common;
 use common::*;
@@ -294,14 +297,14 @@ fn quantized_mnue_v5_round_trip_has_small_mean_integer_evaluation_error() {
 }
 
 #[test]
-fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mismatch() {
+fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_config_mismatch() {
     let fixture = Fixture::new(&positions());
     for set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
         let model = model(set, 4);
         let optimizer = AdamW::new(model.shape(), AdamWConfig::default()).unwrap();
         let mut state = Checkpoint {
             removal_penalty: 250.0,
-            lambda_override: 0.75,
+            lambda: 0.75,
             model,
             optimizer,
             progress: Progress {
@@ -312,8 +315,11 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mi
                 }),
                 elapsed_seconds: 123.5,
                 seed: 71,
-                config_hash: [1; 32],
-                input_hash: [2; 32],
+                config: minase_trainer::nn::checkpoint::Configuration {
+                    settings: serde_json::json!({}),
+                    inputs: serde_json::json!({}),
+                    preprocessing: serde_json::json!({}),
+                },
             },
         };
         let batch = fixture.batch(set, &[0, 1, 2]);
@@ -332,13 +338,18 @@ fn checkpoint_round_trip_restores_next_update_and_rejects_corruption_and_hash_mi
                 .unwrap();
         }
         let bytes = state.encode().unwrap();
+        checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| {
+            Checkpoint::decode(bytes).is_ok()
+        });
         let mut restored = Checkpoint::decode(&bytes).unwrap();
         assert_eq!(state, restored);
         let path = fixture.root.join("checkpoint.bin");
         state.write(&path).unwrap();
         assert_eq!(Checkpoint::read(&path).unwrap(), state);
-        restored.check_hashes(&[1; 32], &[2; 32]).unwrap();
-        assert!(restored.check_hashes(&[0; 32], &[2; 32]).is_err());
+        restored.check_config(&state.progress.config).unwrap();
+        let mut changed = state.progress.config.clone();
+        changed.settings = serde_json::json!({"seed": 2});
+        assert!(restored.check_config(&changed).is_err());
         let g = reference::loss_and_gradients(
             &state.model,
             &batch,

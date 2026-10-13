@@ -4,10 +4,8 @@ use super::features::{FEATURE_COUNT, active_features_for};
 use super::{Error, PIECE_STATE_COUNT, Pst};
 use minase_core::{Color, Position};
 
-/// 埋め込むFMの潜在次元。MNPTの次元もこの値と一致する必要がある。
+/// 埋め込むFMの潜在次元。FMを持つMNPTの次元はこの値と一致する。
 pub const FM_RANK: usize = 32;
-/// MNPT本体のFM節のバイト数。
-pub(super) const ENCODED_LENGTH: usize = 8 + FM_RANK + FEATURE_COUNT * FM_RANK * 2;
 
 /// MNPT版3に保存するFM配列の借用。潜在次元は32に固定する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +46,7 @@ impl Pst {
         Self::decode(&candidate.encode())
     }
 
-    /// 保存されたFMの埋め込み、符号と指数を返す。MNPT版2ではNone。
+    /// 保存されたFMの埋め込み、符号と指数を返す。FMの次元が0ならNone。
     pub fn fm_weights(&self) -> Option<FmWeights<'_>> {
         self.fm.as_ref().map(|fm| FmWeights {
             embeddings: &fm.embeddings,
@@ -217,7 +215,7 @@ mod tests {
         signs: [i8; FM_RANK],
         value: impl Fn(usize, usize) -> i16,
     ) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(ENCODED_LENGTH);
+        let mut bytes = Vec::new();
         bytes.extend_from_slice(&(FM_RANK as u32).to_le_bytes());
         bytes.extend_from_slice(&exponent.to_le_bytes());
         bytes.extend(signs.map(|d| d as u8));

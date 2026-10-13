@@ -28,6 +28,8 @@ fn argv() -> Vec<&'static str> {
         "pst.bin",
         "--output-dir",
         "output",
+        "--lambda",
+        "1.0",
     ]
 }
 
@@ -36,7 +38,7 @@ fn train_defaults_match_the_training_contract() {
     let args = TrainArguments::try_parse_from(argv()).unwrap().args;
     args.validate().unwrap();
     assert_eq!(args.device, DeviceKind::Cuda);
-    assert_eq!(args.training, TrainingOptions::default());
+    assert_eq!(args.training, TrainingOptions::new(1.0));
     assert_eq!(args.training.lr_linear, 0.03);
     assert_eq!(args.training.weight_decay_linear, 0.0);
     assert_eq!(args.training.lr_ft, 1e-3);
@@ -44,7 +46,7 @@ fn train_defaults_match_the_training_contract() {
     assert_eq!(args.training.lr_head, 1e-3);
     assert_eq!(args.training.weight_decay_head, 1e-4);
     assert_eq!(args.training.removal_penalty, 1000.0);
-    assert_eq!(args.training.lambda_override, 1.0);
+    assert_eq!(args.training.lambda, 1.0);
     assert_eq!(args.feature_set, InputFeatureSet::P);
     assert_eq!(args.width, 128);
     assert_eq!(args.batch, 16_384);
@@ -62,6 +64,7 @@ fn train_defaults_match_the_training_contract() {
 #[test]
 fn train_requires_the_model_inputs_and_output_directory() {
     for required in [
+        "--lambda",
         "--feature-set",
         "--width",
         "--data",
@@ -187,7 +190,7 @@ fn train_help_describes_devices_and_configurable_coefficients() {
         "--lr-head",
         "--weight-decay-head",
         "--removal-penalty",
-        "--lambda-override",
+        "--lambda",
     ] {
         assert!(help.contains(required), "missing help for {required}");
     }
@@ -203,7 +206,6 @@ fn coefficient_ranges_are_checked_before_opening_inputs() {
         "--weight-decay-ft",
         "--weight-decay-head",
         "--removal-penalty",
-        "--lambda-override",
     ] {
         for value in ["NaN", "inf", "-0.1", "0"] {
             let mut values = argv().into_iter().map(str::to_owned).collect::<Vec<_>>();
@@ -215,20 +217,25 @@ fn coefficient_ranges_are_checked_before_opening_inputs() {
     }
     for device in ["cpu", "cuda"] {
         let mut values = argv();
-        values.extend(["--device", device, "--lambda-override", "0.75"]);
+        values.extend(["--device", device]);
+        let i = values
+            .iter()
+            .position(|&value| value == "--lambda")
+            .unwrap();
+        values[i + 1] = "0.75";
         TrainArguments::try_parse_from(values)
             .unwrap()
             .args
             .validate()
             .unwrap();
     }
-    let mut values = argv();
-    values.extend(["--lambda-override", "1.001"]);
-    assert!(
-        TrainArguments::try_parse_from(values)
-            .unwrap()
-            .args
-            .validate()
-            .is_err()
-    );
+    for value in ["-0.1", "1.001", "NaN", "inf", "-inf"] {
+        let mut values = argv();
+        let i = values
+            .iter()
+            .position(|&value| value == "--lambda")
+            .unwrap();
+        values[i + 1] = value;
+        assert!(TrainArguments::try_parse_from(values).is_err());
+    }
 }

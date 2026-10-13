@@ -1,11 +1,36 @@
-use super::{Adam, GradientNorm, Model, Result, model::PARAMETERS};
-use crate::nn::{AdamWGroup, BestEpoch, sha256};
+//! FM学習器の無圧縮NPZチェックポイント。
+//! `latest.npz`と`best.npz`は次の配列を持ち、余分・欠落・型や形状の違いを拒否する。
+//!
+//! | 名前 | dtype | 形状 | 内容 |
+//! | --- | --- | --- | --- |
+//! | `k` | `<f4` | `[]` | 出力用K。 |
+//! | `step` | `<u8` | `[]` | 最適化器の更新数。 |
+//! | `fm_lr` | `<f8` | `[]` | FMの学習率。 |
+//! | `fm_weight_decay` | `<f8` | `[]` | FMの重み減衰。 |
+//! | `fm_weights_embedding` | `<f4` | `[FEATURE_COUNT + 1, FM_RANK]` | モデル重み。 |
+//! | `fm_weights_a` | `<f4` | `[FM_RANK]` | モデル重み。 |
+//! | `fm_m_embedding` | `<f4` | `[FEATURE_COUNT + 1, FM_RANK]` | AdamWのモーメント。 |
+//! | `fm_m_a` | `<f4` | `[FM_RANK]` | AdamWのモーメント。 |
+//! | `fm_v_embedding` | `<f4` | `[FEATURE_COUNT + 1, FM_RANK]` | AdamWのモーメント。 |
+//! | `fm_v_a` | `<f4` | `[FM_RANK]` | AdamWのモーメント。 |
+//! | `gradient_a` | `<f8` | `[min(step, 5)]` | 勾配ノルムの履歴。 |
+//! | `gradient_embedding` | `<f8` | `[min(step, 5)]` | 勾配ノルムの履歴。 |
+//! | `mask` | `\|b1` | `[FEATURE_COUNT]` | FMの観測マスク。 |
+//! | `meta` | `\|u1` | `[JSONのバイト長]` | UTF-8のJSON。 |
+//!
+//! `FEATURE_COUNT = 13680`、`FM_RANK = 32`である。
+//! 配列名の`m`は1次モーメント、`v`は2次モーメントを表す。
+//! `embedding`は埋め草行を含む埋め込み、`a`は出力係数であり、勾配履歴は更新1から順に並ぶ。
+//! `meta`は`kind = "fm"`、`epoch`、`best`、`elapsed_seconds`、`seed`、`config`を持つ。
+//! `best`は`{epoch, validation_loss}`で、更新前はnull。時間は秒である。
+//! `config`は`config.json`の`settings`、`inputs`、`preprocessing`をそのまま保持する。
+
+use super::{Adam, GradientNorm, Model, Result};
+use crate::nn::AdamWGroup;
+pub use crate::nn::checkpoint::Progress;
+use crate::nn::checkpoint::{Reader, Writer};
 use minase::eval::{features::FEATURE_COUNT, pst::FM_RANK};
 use std::path::Path;
-
-const MAGIC: &[u8; 8] = b"MNFMCKPT";
-const VERSION: u32 = 1;
-const ARCHITECTURE: &str = "features=P;rank=32;fixed=integer-PST;model=FM";
 
 /// FM専用のモデル、AdamW状態、進捗、最初の5更新の勾配ノルム。
 #[derive(Clone, Debug, PartialEq)]
@@ -59,69 +84,105 @@ impl Checkpoint {
         }
         Ok(())
     }
-    /// 識別子、版とSHA-256を付け、f32のビット列を保持する。
+    /// 全状態を型と浮動小数点のビット列を保ってNPZへ保存する。
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.validate()?;
-        let mut bytes = envelope(ARCHITECTURE);
-        bytes.extend(self.model.k.to_le_bytes());
-        bytes.extend(self.optimizer.step.to_le_bytes());
-        self.progress.encode_into(&mut bytes);
-        bytes.extend(self.optimizer.group.lr.to_le_bytes());
-        bytes.extend(self.optimizer.group.weight_decay.to_le_bytes());
-        for g in &self.gradients {
-            bytes.extend(g.a.to_le_bytes());
-            bytes.extend(g.embedding.to_le_bytes());
-        }
-        bytes.extend(self.model.mask.iter().map(|&v| u8::from(v)));
-        for values in [&self.model.weights, &self.optimizer.m, &self.optimizer.v] {
-            floats(&mut bytes, values);
-        }
-        Ok(seal(bytes))
+        let mut w = Writer::new("fm", &self.progress)?;
+        w.scalar("k", self.model.k);
+        w.scalar("step", self.optimizer.step);
+        w.scalar("fm_lr", self.optimizer.group.lr);
+        w.scalar("fm_weight_decay", self.optimizer.group.weight_decay);
+        w.values(
+            "fm_weights_embedding",
+            &[FEATURE_COUNT + 1, FM_RANK],
+            &self.model.weights[..(FEATURE_COUNT + 1) * FM_RANK],
+        );
+        w.values(
+            "fm_weights_a",
+            &[FM_RANK],
+            &self.model.weights[(FEATURE_COUNT + 1) * FM_RANK..],
+        );
+        w.values(
+            "fm_m_embedding",
+            &[FEATURE_COUNT + 1, FM_RANK],
+            &self.optimizer.m[..(FEATURE_COUNT + 1) * FM_RANK],
+        );
+        w.values(
+            "fm_m_a",
+            &[FM_RANK],
+            &self.optimizer.m[(FEATURE_COUNT + 1) * FM_RANK..],
+        );
+        w.values(
+            "fm_v_embedding",
+            &[FEATURE_COUNT + 1, FM_RANK],
+            &self.optimizer.v[..(FEATURE_COUNT + 1) * FM_RANK],
+        );
+        w.values(
+            "fm_v_a",
+            &[FM_RANK],
+            &self.optimizer.v[(FEATURE_COUNT + 1) * FM_RANK..],
+        );
+        w.values(
+            "gradient_a",
+            &[self.gradients.len()],
+            &self.gradients.iter().map(|g| g.a).collect::<Vec<_>>(),
+        );
+        w.values(
+            "gradient_embedding",
+            &[self.gradients.len()],
+            &self
+                .gradients
+                .iter()
+                .map(|g| g.embedding)
+                .collect::<Vec<_>>(),
+        );
+        w.mask("mask", &self.model.mask);
+        Ok(w.encode()?)
     }
-    /// 構造、検査和、有限性、マスク、埋め草と進捗を検査する。
+
+    /// 種別、配列の集合・型・形状とモデルの不変条件を検査する。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let mut r = open(bytes)?;
-        let mut architecture = ARCHITECTURE.as_bytes().to_vec();
-        architecture.resize(96, 0);
-        if r.take(96)? != architecture {
-            return Err("checkpoint architecture is not FM".into());
-        }
-        let k = r.f32()?;
-        let step = r.u64()?;
-        let progress = Progress::decode_from(&mut r)?;
+        let (mut r, progress) = Reader::new(bytes, "fm")?;
+        let k = r.scalar::<f32>("k")?;
+        let step = r.scalar::<u64>("step")?;
+        let fm_lr = r.scalar::<f64>("fm_lr")?;
+        let fm_weight_decay = r.scalar::<f64>("fm_weight_decay")?;
+        let fm_weights_embedding =
+            r.values::<f32>("fm_weights_embedding", &[FEATURE_COUNT + 1, FM_RANK])?;
+        let fm_weights_a = r.values::<f32>("fm_weights_a", &[FM_RANK])?;
+        let fm_m_embedding = r.values::<f32>("fm_m_embedding", &[FEATURE_COUNT + 1, FM_RANK])?;
+        let fm_m_a = r.values::<f32>("fm_m_a", &[FM_RANK])?;
+        let fm_v_embedding = r.values::<f32>("fm_v_embedding", &[FEATURE_COUNT + 1, FM_RANK])?;
+        let fm_v_a = r.values::<f32>("fm_v_a", &[FM_RANK])?;
+        let gradient_a = r.values::<f64>("gradient_a", &[step.min(5) as usize])?;
+        let gradient_embedding = r.values::<f64>("gradient_embedding", &[step.min(5) as usize])?;
+        let mask = r.mask("mask", FEATURE_COUNT)?;
+        let fm_weights = [fm_weights_embedding, fm_weights_a].concat();
+        let fm_m = [fm_m_embedding, fm_m_a].concat();
+        let fm_v = [fm_v_embedding, fm_v_a].concat();
         let group = AdamWGroup {
-            lr: r.f64()?,
-            weight_decay: r.f64()?,
+            lr: fm_lr,
+            weight_decay: fm_weight_decay,
         };
-        let gradients = (1..=step.min(5))
-            .map(|step| {
-                Ok(GradientNorm {
-                    step,
-                    a: r.f64()?,
-                    embedding: r.f64()?,
-                })
+        let gradients = (0..step.min(5) as usize)
+            .map(|i| GradientNorm {
+                step: i as u64 + 1,
+                a: gradient_a[i],
+                embedding: gradient_embedding[i],
             })
-            .collect::<Result<Vec<_>>>()?;
-        let mask = r.take(FEATURE_COUNT)?;
-        if mask.iter().any(|&v| v > 1) {
-            return Err("FM checkpoint mask must be bool".into());
-        }
-        let mask = mask.iter().map(|&v| v != 0).collect();
-        if r.remaining().len() != 3 * PARAMETERS * 4 {
-            return Err("FM checkpoint payload length".into());
-        }
-        let mut read = || (0..PARAMETERS).map(|_| r.f32()).collect::<Result<Vec<_>>>();
+            .collect();
         let model = Model {
-            weights: read()?,
+            weights: fm_weights,
             mask,
             k,
         };
         let optimizer = Adam {
-            m: read()?,
-            v: read()?,
+            m: fm_m,
+            v: fm_v,
             step,
             group,
         };
+        r.finish()?;
         let result = Self {
             model,
             optimizer,
@@ -131,162 +192,8 @@ impl Checkpoint {
         result.validate()?;
         Ok(result)
     }
-    /// FMチェックポイントを読み込む。
+    /// NPZチェックポイントを読み込む。
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
         Self::decode(&std::fs::read(path)?)
-    }
-}
-
-/// 再開に必要な進捗と入力の同一性。
-#[derive(Clone, Debug, PartialEq)]
-pub struct Progress {
-    /// 最後に完了したエポック。
-    pub epoch: u64,
-    /// 最良エポック。更新前はNone。
-    pub best: Option<BestEpoch>,
-    /// 累積の学習時間、秒。
-    pub elapsed_seconds: f64,
-    /// 初期化とエポック順列のシード。
-    pub seed: u64,
-    /// 実行設定のSHA-256。
-    pub config_hash: [u8; 32],
-    /// 入力のSHA-256。
-    pub input_hash: [u8; 32],
-}
-impl Progress {
-    pub(super) fn validate(&self) -> Result<()> {
-        if !self.elapsed_seconds.is_finite() || self.elapsed_seconds < 0.0 {
-            return Err("elapsed time".into());
-        }
-        if let Some(best) = self.best
-            && (best.epoch == 0
-                || best.epoch > self.epoch
-                || !best.validation_loss.is_finite()
-                || best.validation_loss < 0.0)
-        {
-            return Err("best epoch".into());
-        }
-        Ok(())
-    }
-
-    pub(super) fn encode_into(&self, bytes: &mut Vec<u8>) {
-        bytes.extend(self.epoch.to_le_bytes());
-        bytes.extend(self.best.map_or(0, |v| v.epoch).to_le_bytes());
-        bytes.extend(
-            self.best
-                .map_or(f64::INFINITY, |v| v.validation_loss)
-                .to_le_bytes(),
-        );
-        bytes.extend(self.elapsed_seconds.to_le_bytes());
-        bytes.extend(self.seed.to_le_bytes());
-        bytes.extend(self.config_hash);
-        bytes.extend(self.input_hash);
-    }
-
-    pub(super) fn decode_from(r: &mut Reader<'_>) -> Result<Self> {
-        let epoch = r.u64()?;
-        let best_epoch = r.u64()?;
-        let validation_loss = r.f64()?;
-        let best = if best_epoch == 0 {
-            if validation_loss != f64::INFINITY {
-                return Err("missing best loss".into());
-            }
-            None
-        } else {
-            Some(BestEpoch {
-                epoch: best_epoch,
-                validation_loss,
-            })
-        };
-        let elapsed_seconds = r.f64()?;
-        let seed = r.u64()?;
-        let config_hash = r.take(32)?.try_into().expect("checked length");
-        let input_hash = r.take(32)?.try_into().expect("checked length");
-        let progress = Self {
-            epoch,
-            best,
-            elapsed_seconds,
-            seed,
-            config_hash,
-            input_hash,
-        };
-        progress.validate()?;
-        Ok(progress)
-    }
-
-    /// 再開前に、軌跡を変える設定と入力のハッシュを照合する。
-    pub fn check_hashes(&self, config: &[u8; 32], input: &[u8; 32]) -> Result<()> {
-        if config != &self.config_hash || input != &self.input_hash {
-            return Err("checkpoint configuration or input hash mismatch".into());
-        }
-        Ok(())
-    }
-}
-
-pub(super) fn floats(bytes: &mut Vec<u8>, values: &[f32]) {
-    for &v in values {
-        bytes.extend(v.to_le_bytes());
-    }
-}
-
-// FMチェックポイントの識別子、版、構造名、検査和。
-pub(super) fn envelope(architecture: &str) -> Vec<u8> {
-    let mut bytes = MAGIC.to_vec();
-    bytes.extend(VERSION.to_le_bytes());
-    bytes.extend(architecture.as_bytes());
-    bytes.resize(12 + 96, 0);
-    bytes
-}
-
-pub(super) fn seal(mut bytes: Vec<u8>) -> Vec<u8> {
-    bytes.extend_from_slice(&sha256(&bytes));
-    bytes
-}
-
-pub(super) fn open(bytes: &[u8]) -> Result<Reader<'_>> {
-    let end = bytes.len().checked_sub(32).ok_or("checkpoint length")?;
-    if sha256(&bytes[..end])[..] != bytes[end..] {
-        return Err("checkpoint SHA-256".into());
-    }
-    let mut reader = Reader::new(&bytes[..end]);
-    if reader.take(8)? != MAGIC || reader.u32()? != VERSION {
-        return Err("checkpoint magic or version".into());
-    }
-    Ok(reader)
-}
-
-pub(super) struct Reader<'a> {
-    bytes: &'a [u8],
-}
-impl<'a> Reader<'a> {
-    pub(super) fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes }
-    }
-    pub(super) fn remaining(&self) -> &'a [u8] {
-        self.bytes
-    }
-    pub(super) fn take(&mut self, len: usize) -> Result<&'a [u8]> {
-        if len > self.bytes.len() {
-            return Err("truncated input".into());
-        }
-        let (value, rest) = self.bytes.split_at(len);
-        self.bytes = rest;
-        Ok(value)
-    }
-    pub(super) fn u32(&mut self) -> Result<u32> {
-        Ok(u32::from_le_bytes(
-            self.take(4)?.try_into().expect("checked length"),
-        ))
-    }
-    pub(super) fn u64(&mut self) -> Result<u64> {
-        Ok(u64::from_le_bytes(
-            self.take(8)?.try_into().expect("checked length"),
-        ))
-    }
-    pub(super) fn f32(&mut self) -> Result<f32> {
-        Ok(f32::from_bits(self.u32()?))
-    }
-    pub(super) fn f64(&mut self) -> Result<f64> {
-        Ok(f64::from_bits(self.u64()?))
     }
 }

@@ -1,4 +1,7 @@
 //! FM学習の数式、固定PST、再現性、出力と拒否条件を検証する。
+#[path = "common/checkpoint.rs"]
+#[allow(dead_code)]
+mod checkpoint_contract;
 #[path = "fm_train/fixture.rs"]
 mod support;
 use clap::Parser;
@@ -31,6 +34,8 @@ struct Arguments {
 fn argv() -> Vec<&'static str> {
     vec![
         "trainer",
+        "--lambda",
+        "0.75",
         "--data",
         "records.bin",
         "--init",
@@ -105,7 +110,16 @@ fn small_batch() -> (Model, Batch) {
     let positions = small_positions();
     let records: Vec<_> = positions
         .iter()
-        .map(|p| Record::from_position(p, 200, Outcome::Win, 1, 0))
+        .map(|p| {
+            Record::from_position(
+                p,
+                200,
+                Outcome::Win,
+                1,
+                0,
+                minase::training::records::Origin::RandomSelfplay,
+            )
+        })
         .collect();
     let base = Pst::from_weights(
         &vec![[72, -91]; FEATURE_COUNT],
@@ -147,8 +161,15 @@ fn cli_enforces_required_budgets_and_ranges() {
         ),
         (4096, 1, 1e-3, 1e-4, 1e-4, 10000)
     );
-    assert_eq!(args.lambda_override, None);
-    for flag in ["--data", "--init", "--output-dir", "--epochs", "--patience"] {
+    assert_eq!(args.lambda, 0.75);
+    for flag in [
+        "--data",
+        "--init",
+        "--output-dir",
+        "--epochs",
+        "--patience",
+        "--lambda",
+    ] {
         let mut v = argv();
         let i = v.iter().position(|&v| v == flag).unwrap();
         v.drain(i..i + 2);
@@ -164,7 +185,6 @@ fn cli_enforces_required_budgets_and_ranges() {
         ("--lr", "NaN"),
         ("--weight-decay", "-1"),
         ("--lambda-res", "inf"),
-        ("--lambda-override", "1.1"),
         ("--validation-sample", "0"),
     ] {
         let mut v: Vec<String> = argv().into_iter().map(str::to_owned).collect();
@@ -213,7 +233,14 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
     .unwrap();
     for p in small_positions() {
         let reflected = mirror(&p);
-        let record = Record::from_position(&p, 0, Outcome::Draw, 1, 0);
+        let record = Record::from_position(
+            &p,
+            0,
+            Outcome::Draw,
+            1,
+            0,
+            minase::training::records::Origin::RandomSelfplay,
+        );
         let batch = Batch::from_records(&base, &[record], &[1], &[0.5]).unwrap();
         let mut expected = Vec::new();
         active_features(&reflected, |f| expected.push(f as u32));
@@ -234,7 +261,7 @@ fn mirrored_features_and_integer_pst_match_a_physically_reflected_board() {
 fn observations_include_all_training_mirrors_and_exclude_validation_only_features() {
     let (_fixture, args) = Fixture::new(false, false);
     // SAFETY: fixture専用のファイルをDatasetの生存中は変更しない。
-    let dataset = unsafe { Dataset::open(&args.data, None, None).unwrap() };
+    let dataset = unsafe { Dataset::open(&args.data, None).unwrap() };
     let counts = fm::feature_observations(&dataset).unwrap();
     let mut expected = vec![0; FEATURE_COUNT];
     for &i in dataset.training_indices() {
@@ -415,8 +442,8 @@ fn gradients_and_all_adam_elements_are_bitwise_independent_of_threads() {
 
 #[test]
 fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
-    for version3 in [false, true] {
-        let (fixture, args) = Fixture::new(false, version3);
+    for with_fm in [false, true] {
+        let (fixture, args) = Fixture::new(false, with_fm);
         let summary = fm::train(args.clone()).unwrap();
         assert_eq!(summary.last_epoch, 2);
         assert_eq!(summary.gradients.len(), 5);
@@ -426,7 +453,7 @@ fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
         split.output_dir = fixture.root.join("resumed");
         split.epochs = 1;
         fm::train(split.clone()).unwrap();
-        fs::remove_file(split.output_dir.join("best.bin")).unwrap();
+        fs::remove_file(split.output_dir.join("best.npz")).unwrap();
         use std::io::Write;
         fs::OpenOptions::new()
             .append(true)
@@ -439,7 +466,7 @@ fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
         split.patience = 7;
         split.threads = Some(3);
         fm::train(split.clone()).unwrap();
-        for file in ["latest.bin", "best.bin"] {
+        for file in ["latest.npz", "best.npz"] {
             compare_checkpoints(&args.output_dir.join(file), &split.output_dir.join(file));
         }
         for file in ["fm.bin", "fm-float.npz"] {
@@ -448,10 +475,15 @@ fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
                 fs::read(split.output_dir.join(file)).unwrap()
             );
         }
-        for (a, b) in logs(&args.output_dir).iter().zip(logs(&split.output_dir)) {
+        let continuous = logs(&args.output_dir);
+        let resumed = logs(&split.output_dir);
+        assert_eq!(continuous.len(), 3);
+        assert_eq!(resumed.len(), continuous.len());
+        for (a, b) in continuous.iter().zip(resumed) {
             for key in [
                 "epoch",
                 "train_loss",
+                "regularization_loss",
                 "total_loss",
                 "validation_loss",
                 "phi",
@@ -459,6 +491,13 @@ fn continuous_and_resumed_training_match_weights_moments_losses_and_exports() {
                 "total_steps",
             ] {
                 assert_eq!(a[key], b[key], "{key}");
+                if key.ends_with("loss") || key == "phi_squared_mean" {
+                    assert_eq!(
+                        a[key].as_f64().map(f64::to_bits),
+                        b[key].as_f64().map(f64::to_bits),
+                        "{key}"
+                    );
+                }
             }
         }
         let init = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
@@ -501,17 +540,22 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
     args.lookahead_gamma = Some(0.9);
     args.lookahead_plies = Some(40);
     fm::train(args.clone()).unwrap();
-    let before = fs::read(args.output_dir.join("latest.bin")).unwrap();
+    let before = fs::read(args.output_dir.join("latest.npz")).unwrap();
     let config = fs::read(args.output_dir.join("config.json")).unwrap();
     args.resume = Some(args.output_dir.clone());
     args.epochs = 2;
+    checkpoint_contract::rejects_changed_meta(&args.output_dir, || {
+        fm::train(args.clone()).unwrap_err().to_string()
+    });
+    let bytes = fs::read(args.output_dir.join("latest.npz")).unwrap();
+    checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| Checkpoint::decode(bytes).is_ok());
     let changes: Vec<fn(&mut Args)> = vec![
         |a| a.lr = 0.02,
         |a| a.weight_decay = 0.0,
         |a| a.lambda_res = 0.0,
         |a| a.batch = 17,
         |a| a.seed = 2,
-        |a| a.lambda_override = Some(0.5),
+        |a| a.lambda = 0.5,
         |a| a.lookahead_gamma = Some(0.8),
         |a| a.lookahead_plies = Some(20),
         |a| a.validation_sample = 8,
@@ -520,7 +564,7 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
         let mut changed = args.clone();
         change(&mut changed);
         let error = fm::train(changed).unwrap_err().to_string();
-        assert!(error.contains("hash mismatch"), "{error}");
+        assert!(error.contains("mismatch"), "{error}");
     }
     let init = Pst::decode(&fs::read(&args.init).unwrap()).unwrap();
     fs::write(
@@ -539,11 +583,11 @@ fn resume_rejects_trajectory_changes_and_input_changes_before_writing() {
         fm::train(args.clone())
             .unwrap_err()
             .to_string()
-            .contains("hash mismatch")
+            .contains("mismatch")
     );
     assert_eq!(
         before,
-        fs::read(args.output_dir.join("latest.bin")).unwrap()
+        fs::read(args.output_dir.join("latest.npz")).unwrap()
     );
     assert_eq!(
         config,
@@ -622,18 +666,18 @@ fn quantization_failure_keeps_both_exports_and_cli_returns_one() {
     fm::train(args.clone()).unwrap();
     // 有効なチェックポイントに正のFM補正を置く。PSTは既に評価上限に達しているため、
     // 実数の合計と切り詰めた整数評価の誤差は2 cpを超える。
-    let mut checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let mut checkpoint = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
     let mask = checkpoint.model.mask().to_vec();
     let v = mask
         .iter()
         .map(|&observed| [if observed { 0.5 } else { 0.0 }; FM_RANK])
         .collect::<Vec<_>>();
     checkpoint.model = Model::from_weights(&v, [0.5; FM_RANK], mask, checkpoint.model.k()).unwrap();
-    for name in ["latest.bin", "best.bin"] {
+    for name in ["latest.npz", "best.npz"] {
         fs::write(args.output_dir.join(name), checkpoint.encode().unwrap()).unwrap();
     }
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["fm", "train", "--data"])
+        .args(["fm", "train", "--lambda", "0.75", "--data"])
         .args(&args.data)
         .arg("--init")
         .arg(&args.init)
@@ -661,7 +705,7 @@ fn quantization_failure_keeps_both_exports_and_cli_returns_one() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    for file in ["fm.bin", "fm-float.npz", "latest.bin", "best.bin"] {
+    for file in ["fm.bin", "fm-float.npz", "latest.npz", "best.npz"] {
         assert!(args.output_dir.join(file).exists(), "{file}");
     }
     let summary = document(args.output_dir.join("summary.json"));
@@ -681,9 +725,9 @@ fn checkpoint_rejects_corruption_and_output_directory_must_be_empty() {
     let (fixture, mut args) = Fixture::new(false, true);
     args.epochs = 1;
     fm::train(args.clone()).unwrap();
-    let bytes = fs::read(args.output_dir.join("latest.bin")).unwrap();
+    let bytes = fs::read(args.output_dir.join("latest.npz")).unwrap();
     assert_eq!(bytes, Checkpoint::decode(&bytes).unwrap().encode().unwrap());
-    for index in [0, 8, 12, bytes.len() / 2, bytes.len() - 1] {
+    for index in [0, 8, 14, bytes.len() / 2, bytes.len() - 1] {
         let mut changed = bytes.clone();
         changed[index] ^= 1;
         assert!(Checkpoint::decode(&changed).is_err());
@@ -709,7 +753,7 @@ fn phase4_preserves_existing_trainer_weights_and_adam_states() {
     let (_fixture, mut args) = Fixture::new(false, true);
     args.epochs = 1;
     fm::train(args.clone()).unwrap();
-    let checkpoint = Checkpoint::read(args.output_dir.join("latest.bin")).unwrap();
+    let checkpoint = Checkpoint::read(args.output_dir.join("latest.npz")).unwrap();
     let mut hash = Sha256::new();
     for value in checkpoint
         .model
@@ -738,7 +782,7 @@ fn phase4_preserves_existing_trainer_weights_and_adam_states() {
         seed: 1,
         removal_penalty: 1000.0,
         removal_reference: minase_trainer::pst::RemovalReferenceKind::V0,
-        lambda_override: None,
+        lambda: 0.75,
         lookahead_gamma: None,
         lookahead_plies: None,
         validation_sample: 7,
@@ -746,7 +790,7 @@ fn phase4_preserves_existing_trainer_weights_and_adam_states() {
         resume: None,
     })
     .unwrap();
-    let checkpoint = minase_trainer::pst::Checkpoint::read(output.join("latest.bin")).unwrap();
+    let checkpoint = minase_trainer::pst::Checkpoint::read(output.join("latest.npz")).unwrap();
     let mut hash = Sha256::new();
     for value in checkpoint
         .model

@@ -1,3 +1,14 @@
+//! PSTの実数重み`pst-float.npz`を読み書きする。
+//! コンテナは[`crate::nn::npz`]の無圧縮NPZである。
+//!
+//! | 配列名 | dtype | 形状 | 内容 |
+//! |---|---|---|---|
+//! | `middlegame` | `<f4` | `[13680]` | 特徴番号順の序中盤の重みをセンチポーンで表す。 |
+//! | `endgame` | `<f4` | `[13680]` | 特徴番号順の終盤の重みをセンチポーンで表す。 |
+//!
+//! 両配列は鏡映対を展開し、全要素を有限値かつ−4096以上4095.875以下とする。
+//! 読み手は追加配列もNPYとして検査するが、PSTの復元には使わない。
+
 use super::{Error, Result};
 use crate::nn::npz::{self, Array};
 use minase::eval::features::{FEATURE_COUNT, mirror_feature};

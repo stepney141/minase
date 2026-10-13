@@ -6,7 +6,6 @@ use minase::{
 use minase_core::{Color, PieceCode, PieceKind, Position, PositionBuilder, Square};
 use minase_trainer::diagnostics::{self, Command, PstCompareArgs};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -60,11 +59,11 @@ impl Fixture {
             data: Vec::new(),
             weights,
         };
-        fixture.input(11, 1, 0.75, None);
-        fixture.input(22, 2, 0.0, None);
+        fixture.input(11, 1, false);
+        fixture.input(22, 2, true);
         fixture
     }
-    fn input(&mut self, seed: u64, class: u8, mix: f64, human_id: Option<&str>) {
+    fn input(&mut self, seed: u64, class: u8, human: bool) {
         let path = self.root.join(format!("input-{seed}.bin"));
         let header = Header::new(
             "L0,P0,R1,E0".into(),
@@ -95,31 +94,22 @@ impl Fixture {
                     outcome,
                     game,
                     i as u16,
+                    if human {
+                        minase::training::records::Origin::HumanGame
+                    } else {
+                        minase::training::records::Origin::RandomSelfplay
+                    },
                 )
                 .encode(),
             );
         }
         fs::write(&path, &bytes).unwrap();
-        let games = human_id.map(|id| json!([{"game":1,"id":"training-id","ply":0}, {"game":validation_game,"id":id,"ply":0}]));
-        let metadata = json!({
-            "format":"minase-provenance", "version":1,
-            "mnsd_sha256":format!("{:x}",Sha256::digest(&bytes)),
-            "teacher":{"generation_commit":format!("{class:040x}"), "network_checksum":format!("{class:02x}").repeat(32), "nodes":100, "rule_set":"L0,P0,R1,E0", "search_condition":"in-game"},
-            "result_origin":if human_id.is_some() {"human"} else {"selfplay"},
-            "start_origin":if human_id.is_some() {"human-game"} else {"random"},
-            "lambda":mix, "games":games,
-        });
-        fs::write(
-            path.with_extension("bin.provenance.json"),
-            serde_json::to_vec(&metadata).unwrap(),
-        )
-        .unwrap();
         self.data.push(path);
     }
     fn args(&self, name: &str) -> PstCompareArgs {
         PstCompareArgs {
             data: self.data.clone(),
-            lambda_override: None,
+            lambda: 0.75,
             lookahead_gamma: Some(0.9),
             lookahead_plies: Some(40),
             base: self.root.join("base.bin"),
@@ -197,14 +187,34 @@ fn synthetic_mnsd_preserves_bands_artifacts_promotions_and_deterministic_output(
     let header = Header::decode(&bytes[..136]).unwrap();
     assert_eq!(header.rule_set(), "L0,P0,R1,E0");
     assert_eq!(header.record_count(), 6);
-    let expected: Vec<_> = fixture
+    let mut expected: Vec<_> = fixture
         .data
         .iter()
         .flat_map(|path| fs::read(path).unwrap()[136 + 3 * 160..].to_vec())
         .collect();
+    for record in expected.as_chunks_mut::<160>().0 {
+        record[156] = 3;
+    }
     assert_eq!(&bytes[136..], &expected);
+    for name in [
+        "diagnostic-samples.bin",
+        "representatives.bin",
+        "removals.bin",
+    ] {
+        let mut reader =
+            minase::training::records::Reader::new(fs::File::open(first.join(name)).unwrap())
+                .unwrap();
+        while let Some(record) = reader.read_record().unwrap() {
+            assert_eq!(
+                record.origin(),
+                minase::training::records::Origin::Synthetic
+            );
+        }
+    }
     let initial = fs::read(first.join("representatives.bin")).unwrap();
-    assert_eq!(&initial[136 + 146..136 + 160], &[0; 14]);
+    assert_eq!(&initial[136 + 146..136 + 156], &[0; 10]);
+    assert_eq!(initial[136 + 156], 3);
+    assert_eq!(&initial[136 + 157..136 + 160], &[0; 3]);
     assert_eq!(report["representatives"][1]["index"], 3);
     assert_eq!(report["representatives"][2]["index"], 5);
     diagnostics::run(Command::PstCompare(fixture.args("repeated"))).unwrap();
@@ -229,7 +239,7 @@ fn quantization_failure_writes_report_before_exit_code_one() {
     )
     .unwrap();
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-        .args(["diag", "pst-compare", "--data"])
+        .args(["diag", "pst-compare", "--lambda", "0.75", "--data"])
         .args(&fixture.data)
         .arg("--base")
         .arg(fixture.root.join("base.bin"))
@@ -275,26 +285,16 @@ fn removal_sign_reversal_is_a_saved_failure() {
 }
 
 #[test]
-fn human_game_ids_are_shared_across_files_and_random_seeds_are_distinct() {
+fn games_are_counted_by_file_and_game_number() {
     let mut fixture = Fixture::new();
-    let random = fixture.run("random");
-    assert_eq!(random["outcome_metrics"]["base"]["games"], 2);
-    // 検証集合への所属はIDのSHA-256先頭8バイトの20での剰余で定義される。
-    let id = (0..1000)
-        .map(|i| format!("human-{i}"))
-        .find(|id| {
-            let hash = Sha256::digest(id.as_bytes());
-            u64::from_le_bytes(hash[..8].try_into().unwrap()).is_multiple_of(20)
-        })
-        .unwrap();
-    let hash = Sha256::digest(b"training-id");
-    assert!(!u64::from_le_bytes(hash[..8].try_into().unwrap()).is_multiple_of(20));
     fixture.data.clear();
-    fixture.input(33, 3, 0.0, Some(&id));
-    fixture.input(44, 4, 0.0, Some(&id));
-    let human = fixture.run("human");
-    assert_eq!(human["outcome_metrics"]["base"]["games"], 1);
-    assert_eq!(human["outcome_metrics"]["base"]["records"], 6);
+    fixture.input(11, 1, true);
+    let duplicate = fixture.root.join("other.bin");
+    fs::copy(&fixture.data[0], &duplicate).unwrap();
+    fixture.data.push(duplicate);
+    let report = fixture.run("human");
+    assert_eq!(report["outcome_metrics"]["base"]["games"], 2);
+    assert_eq!(report["outcome_metrics"]["base"]["records"], 6);
 }
 
 #[test]
@@ -339,13 +339,16 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
     position.set_lion_capture(Some(square)).unwrap();
     let path = &fixture.data[0];
     let mut bytes = fs::read(path).unwrap();
-    let record = Record::from_position(&position, 400, Outcome::Win, 4, 3);
+    let record = Record::from_position(
+        &position,
+        400,
+        Outcome::Win,
+        4,
+        3,
+        minase::training::records::Origin::RandomSelfplay,
+    );
     bytes[136 + 3 * 160..136 + 4 * 160].copy_from_slice(&record.encode());
     fs::write(path, &bytes).unwrap();
-    let sidecar = path.with_extension("bin.provenance.json");
-    let mut metadata: Value = serde_json::from_slice(&fs::read(&sidecar).unwrap()).unwrap();
-    metadata["mnsd_sha256"] = json!(format!("{:x}", Sha256::digest(&bytes)));
-    fs::write(sidecar, serde_json::to_vec(&metadata).unwrap()).unwrap();
     let report = fixture.run("skipped");
     assert_eq!(report["rust_removal_agreement"]["base"]["skipped"], 1);
     let removal = &report["representatives"][1]["removals"][0];
@@ -354,6 +357,7 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
     assert!(removal["delta_cp"]["base"].is_i64());
     let mut removed = record.encode();
     removed[square.dense_index()] = 0;
+    removed[156] = 3;
     let reason = Record::decode(&removed)
         .unwrap()
         .to_position()
@@ -365,20 +369,20 @@ fn removing_the_promoted_kirin_trigger_keeps_its_restore_failure() {
 }
 
 #[test]
-fn mnpt_v3_base_is_rejected_before_data_loading_without_creating_reports() {
-    assert_mnpt_v3_is_rejected("base");
+fn mnpt_with_fm_base_is_rejected_before_data_loading_without_creating_reports() {
+    assert_mnpt_with_fm_is_rejected("base");
 }
 
 #[test]
-fn mnpt_v3_candidate_is_rejected_before_data_loading_without_creating_reports() {
-    assert_mnpt_v3_is_rejected("candidate");
+fn mnpt_with_fm_candidate_is_rejected_before_data_loading_without_creating_reports() {
+    assert_mnpt_with_fm_is_rejected("candidate");
 }
 
-fn assert_mnpt_v3_is_rejected(name: &str) {
+fn assert_mnpt_with_fm_is_rejected(name: &str) {
     use minase::eval::pst::{FM_RANK, FmWeights};
     let fixture = Fixture::new();
     let signs = [1; FM_RANK];
-    // FM補正が0でも、版3であれば拒否する。
+    // FM補正が0でも、次元32のFMを持てば拒否する。
     for embedding in [2, 0] {
         let u = vec![[embedding; FM_RANK]; FEATURE_COUNT];
         let model = Pst::from_weights_with_fm(
@@ -404,7 +408,7 @@ fn assert_mnpt_v3_is_rejected(name: &str) {
                 .root
                 .join(format!("rejected-{embedding}-{missing_data}"));
             let output = std::process::Command::new(env!("CARGO_BIN_EXE_minase-trainer"))
-                .args(["diag", "pst-compare", "--data"])
+                .args(["diag", "pst-compare", "--lambda", "0.75", "--data"])
                 .args(&data)
                 .arg("--base")
                 .arg(fixture.root.join("base.bin"))
@@ -421,8 +425,7 @@ fn assert_mnpt_v3_is_rejected(name: &str) {
             assert!(error.contains(&format!("--{name}")), "{error}");
             for expected in [
                 "PST-only weights",
-                "MNPT version 2",
-                "MNPT version 3",
+                "FM rank 0",
                 "FM",
                 "minase-trainer fm scale --fm-scale 0",
             ] {
@@ -465,6 +468,8 @@ fn cli_requires_float_weights_and_paired_lookahead_and_uses_documented_defaults(
     }
     let required = [
         "pst-compare",
+        "--lambda",
+        "0.75",
         "--data",
         "a.bin",
         "b.bin",
@@ -477,6 +482,19 @@ fn cli_requires_float_weights_and_paired_lookahead_and_uses_documented_defaults(
         "--output-dir",
         "new",
     ];
+    assert!(
+        Parsed::try_parse_from(
+            required
+                .into_iter()
+                .filter(|s| !["--lambda", "0.75"].contains(s))
+        )
+        .is_err()
+    );
+    for value in ["-0.1", "1.1", "NaN", "inf"] {
+        let mut invalid = required.to_vec();
+        invalid[2] = value;
+        assert!(Parsed::try_parse_from(invalid).is_err());
+    }
     let parsed = Parsed::try_parse_from(required).unwrap().args;
     assert_eq!((parsed.sample_size, parsed.seed), (10_000, 1));
     assert_eq!(parsed.data.len(), 2);
@@ -484,7 +502,6 @@ fn cli_requires_float_weights_and_paired_lookahead_and_uses_documented_defaults(
         &["--lookahead-gamma", "0.9"][..],
         &["--lookahead-plies", "40"],
         &["--probe", "minase"],
-        &["--rescore", "old.bin"],
     ] {
         assert!(Parsed::try_parse_from(required.into_iter().chain(extra.iter().copied())).is_err());
     }

@@ -1,6 +1,7 @@
 //! 評価関数に依存しない数値更新、損失、並列処理と配列の入出力。
 
 mod adam;
+pub mod checkpoint;
 mod hash;
 mod io;
 mod loss;

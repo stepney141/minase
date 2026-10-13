@@ -2,9 +2,9 @@ use serde::Serialize;
 
 use super::{Error, Result};
 
-/// 省略、または有限な0以上1以下の教師の混合比を許す。
-pub fn validate_lambda_override(value: Option<f64>) -> Result<()> {
-    if value.is_some_and(|mix| !mix.is_finite() || !(0.0..=1.0).contains(&mix)) {
+/// 有限な0以上1以下の教師の混合比を許す。
+pub fn validate_lambda(value: f64) -> Result<()> {
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
         return Err(Error::TeacherLambda);
     }
     Ok(())
@@ -28,7 +28,7 @@ pub fn build_targets_from_arrays(
         return Err(Error::TeacherTargets);
     }
     for &mix in teacher_lambdas {
-        validate_lambda_override(Some(mix))?;
+        validate_lambda(mix)?;
     }
     classes
         .iter()
@@ -178,6 +178,15 @@ pub fn estimate_k(scores: &[f64], results: &[u8]) -> Result<f64> {
         }
     }
     Ok((lower + upper) / 2.0)
+}
+
+/// コマンドラインのλを有限な0以上1以下に制限する。
+pub fn parse_lambda(text: &str) -> std::result::Result<f64, String> {
+    let value: f64 = text
+        .parse()
+        .map_err(|error| format!("invalid lambda: {error}"))?;
+    validate_lambda(value).map_err(|error| error.to_string())?;
+    Ok(value)
 }
 
 #[cfg(test)]

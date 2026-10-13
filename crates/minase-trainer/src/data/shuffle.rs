@@ -14,8 +14,7 @@ pub fn hash64(seed: u64, game: u32) -> u64 {
 }
 
 /// [`hash64(seed, game)`](hash64)が20の倍数の対局を検証集合へ割り当てる。
-/// 来歴の`games`が`null`のファイル、すなわち乱数開始の自己対局だけに使う。
-/// 棋譜IDを持つファイルは[`Dataset::open`](super::Dataset::open)の棋譜IDの規則で分割する。
+/// すべての由来で、MNSDヘッダのシードと記録の対局番号を使う。
 pub fn is_validation(seed: u64, game: u32) -> bool {
     hash64(seed, game).is_multiple_of(20)
 }

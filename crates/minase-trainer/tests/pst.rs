@@ -1,4 +1,7 @@
 //! PST学習の契約を、独立な損失の定義、鏡映、更新、保存の性質から検証する。
+#[path = "common/checkpoint.rs"]
+#[allow(dead_code)]
+mod checkpoint_contract;
 mod common;
 
 use common::{Fixture, mirror, position, positions};
@@ -18,7 +21,16 @@ use minase_trainer::pst::{
 fn batch(positions: &[Position]) -> Batch {
     let records: Vec<_> = positions
         .iter()
-        .map(|p| Record::from_position(p, 0, Outcome::Draw, 1, 0))
+        .map(|p| {
+            Record::from_position(
+                p,
+                0,
+                Outcome::Draw,
+                1,
+                0,
+                minase::training::records::Origin::RandomSelfplay,
+            )
+        })
         .collect();
     Batch::from_records(&records, &vec![0.0; records.len()], &vec![0; records.len()]).unwrap()
 }
@@ -342,7 +354,7 @@ fn adam_matches_bias_corrected_formula_updates_absent_rows_and_clamps() {
 }
 
 #[test]
-fn ties_to_even_mnpt_v2_and_npz_preserve_endpoints_and_metadata() {
+fn ties_to_even_mnpt_rank_zero_and_npz_preserve_endpoints_and_metadata() {
     let fixture = Fixture::new(&positions());
     let mut model = Model::initialize(&vec![[0.0; 2]; FEATURE_COUNT], 317.25).unwrap();
     let values = [
@@ -363,7 +375,8 @@ fn ties_to_even_mnpt_v2_and_npz_preserve_endpoints_and_metadata() {
     let values = v0_piece_values().map(|value| value * 2);
     let pst = Pst::from_weights(&quantized, values, 317.25, "L1,P0,R1,E0").unwrap();
     let bytes = pst.encode();
-    assert_eq!(&bytes[4..8], &2_u32.to_le_bytes());
+    assert_eq!(&bytes[4..8], &3_u32.to_le_bytes());
+    assert_eq!(&bytes[80 + 13_680 * 4 + 47 * 4..], &[0; 8]);
     let written = Pst::decode(&bytes).unwrap();
     assert_eq!(written.weights().as_slice(), quantized);
     assert_eq!(written.k(), 317.25);
@@ -394,8 +407,11 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
             best: None,
             elapsed_seconds: 0.0,
             seed: 1,
-            config_hash: [1; 32],
-            input_hash: [2; 32],
+            config: minase_trainer::nn::checkpoint::Configuration {
+                settings: serde_json::json!({}),
+                inputs: serde_json::json!({}),
+                preprocessing: serde_json::json!({}),
+            },
         },
     };
     ck.optimizer
@@ -408,6 +424,7 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
         )
         .unwrap();
     let bytes = ck.encode().unwrap();
+    checkpoint_contract::rejects_invalid_schema(&bytes, |bytes| Checkpoint::decode(bytes).is_ok());
     assert_eq!(Checkpoint::decode(&bytes).unwrap(), ck);
     assert!(minase_trainer::nnue::model::Checkpoint::decode(&bytes).is_err());
     for cut in [0, 8, 100, bytes.len() - 1] {
@@ -416,5 +433,7 @@ fn pst_checkpoint_roundtrip_validates_progress_padding_and_corruption() {
     let mut corrupt = bytes;
     corrupt[160] ^= 1;
     assert!(Checkpoint::decode(&corrupt).is_err());
-    assert!(ck.progress.check_hashes(&[3; 32], &[2; 32]).is_err());
+    let mut changed = ck.progress.config.clone();
+    changed.settings = serde_json::json!({"seed": 2});
+    assert!(ck.progress.check_config(&changed).is_err());
 }

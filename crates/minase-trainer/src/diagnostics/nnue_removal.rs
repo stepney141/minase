@@ -20,7 +20,7 @@ use crate::nnue::{
 /// 検証集合の駒除去診断の引数。
 #[derive(Args)]
 pub struct RemovalArgs {
-    /// 学習器が保存したnnue-float.binチェックポイント。
+    /// 学習器が保存したbest.npzチェックポイント。
     #[arg(long = "float")]
     float_path: PathBuf,
     /// 比較するMNUE版5。

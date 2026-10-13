@@ -1,8 +1,5 @@
 use super::*;
-use minase::training::{
-    provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-    records::Header,
-};
+use minase::training::records::Header;
 use minase_trainer::pst::v0_piece_values;
 use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -15,7 +12,7 @@ impl Drop for Fixture {
     }
 }
 impl Fixture {
-    pub(super) fn new(large_evaluation: bool, version3: bool) -> (Self, Args) {
+    pub(super) fn new(large_evaluation: bool, with_fm: bool) -> (Self, Args) {
         let root = std::env::temp_dir().join(format!(
             "fm-training-{}-{}",
             std::process::id(),
@@ -47,14 +44,20 @@ impl Fixture {
         )
         .unwrap()
         .encode();
-        if version3 {
-            initial[4..8].copy_from_slice(&3_u32.to_le_bytes());
-            initial.extend((FM_RANK as u32).to_le_bytes());
-            initial.extend(7_u32.to_le_bytes());
-            initial.extend([1_u8; FM_RANK]);
-            initial.extend(vec![3; FEATURE_COUNT * FM_RANK * 2]);
-            let checksum = Sha256::digest(&initial[80..]);
-            initial[48..80].copy_from_slice(&checksum);
+        if with_fm {
+            initial = Pst::from_weights_with_fm(
+                &weights,
+                v0_piece_values().map(|value| value * 2),
+                317.25,
+                "L0,P0,R1,E0",
+                minase::eval::pst::FmWeights {
+                    embeddings: &vec![[771; FM_RANK]; FEATURE_COUNT],
+                    signs: &[1; FM_RANK],
+                    exponent: 7,
+                },
+            )
+            .unwrap()
+            .encode();
         }
         fs::write(&args.init, initial).unwrap();
         let header =
@@ -96,30 +99,13 @@ impl Fixture {
                         },
                         game,
                         ply,
+                        minase::training::records::Origin::RandomSelfplay,
                     )
                     .encode(),
                 );
             }
         }
         fs::write(&args.data[0], &bytes).unwrap();
-        Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: "L0,P0,R1,E0".into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        }
-        .write(fs::File::create(fixture.root.join("records.bin.provenance.json")).unwrap())
-        .unwrap();
         (fixture, args)
     }
 }

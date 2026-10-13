@@ -12,12 +12,9 @@ use std::{
 use minase::{
     eval::{
         features::{FEATURE_COUNT, PIECE_STATE_COUNT},
-        pst::FM_RANK,
+        pst::{FM_RANK, Pst},
     },
-    training::{
-        provenance::{Provenance, ResultOrigin, SearchCondition, StartOrigin, Teacher},
-        records::{Header, Outcome, Record},
-    },
+    training::records::{Header, Outcome, Record},
 };
 use minase_core::{Color, Game, PieceCode, PieceKind, Position, PositionBuilder, Rules, Square};
 use minase_trainer::nnue::{
@@ -62,7 +59,14 @@ impl Fixture {
             .zip(games)
             .enumerate()
             .map(|(i, (position, &game))| {
-                Record::from_position(position, 0, Outcome::Draw, game, i as u16)
+                Record::from_position(
+                    position,
+                    0,
+                    Outcome::Draw,
+                    game,
+                    i as u16,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
             })
             .collect();
         self.records(name, &records, seed, rules)
@@ -85,53 +89,30 @@ impl Fixture {
             bytes.extend(record.encode());
         }
         fs::write(&path, &bytes).unwrap();
-        let provenance = Provenance {
-            format: "minase-provenance".into(),
-            version: 1,
-            mnsd_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            teacher: Teacher {
-                generation_commit: "1".repeat(40),
-                network_checksum: "02".repeat(32),
-                nodes: 200,
-                rule_set: rules.into(),
-                search_condition: SearchCondition::InGame,
-            },
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: StartOrigin::Random,
-            lambda: 0.75,
-            games: None,
-        };
-        provenance
-            .write(fs::File::create(self.path(&format!("{name}.provenance.json"))).unwrap())
-            .unwrap();
         path
     }
 
     fn baseline(&self, name: &str, linear: &[[f32; 2]], fm: i16) -> PathBuf {
-        // MNPT版3の公開形式。FMの第1次元だけ全特徴をfmとし、補正はfm²*n*(n-1)/2。
-        let mut bytes = b"MNPT".to_vec();
-        bytes.extend(3_u32.to_le_bytes());
-        bytes.extend((FEATURE_COUNT as u32).to_le_bytes());
-        bytes.extend(1016.0_f32.to_le_bytes());
-        bytes.extend(b"engine-default");
-        bytes.resize(80, 0);
-        for e in 0..2 {
-            for row in linear {
-                bytes.extend(((row[e] * 8.0) as i16).to_le_bytes());
-            }
-        }
-        for value in v0_piece_values() {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend((FM_RANK as u32).to_le_bytes());
-        bytes.extend(0_u32.to_le_bytes());
-        bytes.extend([1; FM_RANK]);
-        for _ in 0..FEATURE_COUNT {
-            bytes.extend(fm.to_le_bytes());
-            bytes.extend([0; (FM_RANK - 1) * 2]);
-        }
-        let checksum = Sha256::digest(&bytes[80..]);
-        bytes[48..80].copy_from_slice(&checksum);
+        // FMの第1次元だけ全特徴をfmとし、補正はfm²*n*(n-1)/2。
+        let weights: Vec<_> = linear
+            .iter()
+            .map(|row| row.map(|value| (value * 8.0) as i16))
+            .collect();
+        let mut embedding = [0; FM_RANK];
+        embedding[0] = fm;
+        let bytes = Pst::from_weights_with_fm(
+            &weights,
+            v0_piece_values(),
+            1016.0,
+            "engine-default",
+            minase::eval::pst::FmWeights {
+                embeddings: &vec![embedding; FEATURE_COUNT],
+                signs: &[1; FM_RANK],
+                exponent: 0,
+            },
+        )
+        .unwrap()
+        .encode();
         let path = self.path(name);
         fs::write(&path, bytes).unwrap();
         path
@@ -151,19 +132,22 @@ impl Fixture {
     }
 
     fn checkpoint(&self, model: Model) -> PathBuf {
-        let path = self.path("nnue-float.bin");
+        let path = self.path("best.npz");
         Checkpoint {
             optimizer: AdamW::new(model.shape(), AdamWConfig::default()).unwrap(),
             model,
             removal_penalty: 0.0,
-            lambda_override: 1.0,
+            lambda: 1.0,
             progress: Progress {
                 epoch: 0,
                 best: None,
                 elapsed_seconds: 0.0,
                 seed: 1,
-                config_hash: [0; 32],
-                input_hash: [0; 32],
+                config: minase_trainer::nn::checkpoint::Configuration {
+                    settings: serde_json::json!({}),
+                    inputs: serde_json::json!({}),
+                    preprocessing: serde_json::json!({}),
+                },
             },
         }
         .write(&path)
@@ -278,7 +262,15 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         let records: Vec<_> = positions
             .iter()
             .map(|position| {
-                let mut bytes = Record::from_position(position, 0, Outcome::Draw, game, 0).encode();
+                let mut bytes = Record::from_position(
+                    position,
+                    0,
+                    Outcome::Draw,
+                    game,
+                    0,
+                    minase::training::records::Origin::RandomSelfplay,
+                )
+                .encode();
                 bytes[145] = 0;
                 let record = Record::decode(&bytes).unwrap();
                 assert!(record.to_position().is_err());
@@ -351,8 +343,8 @@ fn distribution_preserves_python_schema_order_statistics_and_identities() {
         );
         assert_eq!(report["input_files"][i]["record_count"], 24);
         assert_eq!(
-            report["input_files"][i]["sha256"],
-            format!("{:x}", Sha256::digest(fs::read(f.path(name)).unwrap()))
+            report["input_files"][i]["byte_length"],
+            fs::metadata(f.path(name)).unwrap().len()
         );
     }
     assert_eq!(report["pairs"][0]["name"], "half");
@@ -433,7 +425,7 @@ fn removal_args(sample: &str) -> Vec<&str> {
     vec![
         "nnue-removal",
         "--float",
-        "nnue-float.bin",
+        "best.npz",
         "--net",
         "net.bin",
         "--data",
@@ -472,7 +464,15 @@ fn removal_reports_known_reversals_and_keeps_the_lion_square_when_its_piece_is_r
         }
         let mut position = builder.finish().unwrap();
         position.set_lion_capture(Square::from_dense(70)).unwrap();
-        let mut record = Record::from_position(&position, 0, Outcome::Draw, 4, 0).encode();
+        let mut record = Record::from_position(
+            &position,
+            0,
+            Outcome::Draw,
+            4,
+            0,
+            minase::training::records::Origin::RandomSelfplay,
+        )
+        .encode();
         assert_eq!(record[146], 1);
         // 数値診断の特徴に含めない麒麟成りフラグを、入力で意図的に不一致にする。
         record[146] = 0;
@@ -585,7 +585,15 @@ fn removal_uses_f64_recomputation_and_the_integer_network_k() {
 
         let position =
             common::position(&[(2, 4, Color::Black, PieceKind::Pawn)], Color::Black, None);
-        let mut bytes = Record::from_position(&position, 0, Outcome::Draw, 4, 0).encode();
+        let mut bytes = Record::from_position(
+            &position,
+            0,
+            Outcome::Draw,
+            4,
+            0,
+            minase::training::records::Origin::RandomSelfplay,
+        )
+        .encode();
         bytes[145] = 50; // 手番側の歩と同じ升に先獅子を置く。
         let record = Record::decode(&bytes).unwrap();
         assert!(record.to_position().is_err());
@@ -760,7 +768,6 @@ fn moves_use_negamax_and_include_fm_while_empty_positions_have_null_statistics()
             Position::empty(Color::Black),
         ];
         f.data("data.mnsd", &positions, 11, &[1; 3], "L0,P0,R1,E0");
-        fs::remove_file(f.path("data.mnsd.provenance.json")).unwrap();
         f.baseline("base.bin", &vec![[0.0; 2]; FEATURE_COUNT], 2);
         f.network("net.bin", &tempo_model(set));
         let report = f.success(&moves_args(), "report.json");

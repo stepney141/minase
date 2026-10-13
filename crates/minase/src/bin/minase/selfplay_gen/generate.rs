@@ -9,11 +9,9 @@ use super::{
 };
 use minase::datagen::game::{CompletedGame, merge_completed_games};
 use minase::datagen::git::{git_output, validate_commit_hash};
-use minase::datagen::provenance::{ProvenanceArguments, write_mapped_provenance};
 use minase::datagen::statistics::{RecordedStatistics, Statistics};
 use minase::datagen::{data_error, invalid_data, training_error};
 use minase::search::TranspositionTable;
-use minase::training::provenance::{ResultOrigin, SearchCondition, StartOrigin};
 use minase::training::records::{Header, Writer};
 use minase_core::Rules;
 use std::{
@@ -28,7 +26,7 @@ use std::{
     time::Instant,
 };
 
-/// 来歴を確定して出力ファイルを作り、生成が失敗すれば出力を削除する。
+/// 生成条件を確定して出力ファイルを作り、生成が失敗すれば出力を削除する。
 pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
     let openings = arguments
         .openings
@@ -78,24 +76,7 @@ pub(super) fn generate(arguments: &GenerateArguments) -> io::Result<()> {
             arguments.output.display()
         );
     }
-    result?;
-    let mut provenance_path = arguments.output.as_os_str().to_owned();
-    provenance_path.push(".provenance.json");
-    write_mapped_provenance(
-        &ProvenanceArguments {
-            input: arguments.output.clone(),
-            output: provenance_path.into(),
-            result_origin: ResultOrigin::Selfplay,
-            start_origin: if openings.is_some() {
-                StartOrigin::HumanGame
-            } else {
-                StartOrigin::Random
-            },
-            lambda: 0.75,
-            search_condition: SearchCondition::InGame,
-        },
-        openings.map(|openings| openings.into_iter().map(|opening| opening.origin).collect()),
-    )
+    result
 }
 
 /// 自己対局を並列実行し、対局番号順にレコードを書き出して要約を表示する。
@@ -333,50 +314,39 @@ fn print_generation_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::selfplay_gen::test_support::RescoreFixture;
-    use minase::datagen::{game::CompletedRecord, provenance::hex};
-    use minase::training::{
-        provenance::Provenance,
-        records::{Outcome, Reader, Record},
-        rescore,
-    };
+    use minase::datagen::game::CompletedRecord;
+    use minase::training::records::{Outcome, Reader, Record};
     use minase_core::Game;
     use std::{io::Cursor, num::NonZeroUsize};
 
     #[test]
-    fn generate_emits_provenance_after_completing_mnsd() {
-        let fixture = RescoreFixture::new();
+    fn generate_writes_random_origins_and_only_mnsd() {
+        let directory =
+            std::env::temp_dir().join(format!("minase-generate-{}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
         let arguments = GenerateArguments {
-            output: fixture.directory.join("generated.mnsd"),
+            output: directory.join("generated.mnsd"),
             games: Some(1),
             openings: None,
-            seed: 42,
-            nodes: 1,
+            seed: 7,
+            nodes: 100,
             random_moves: 0,
             concurrency: NonZeroUsize::new(1).unwrap(),
-            max_ply: 1,
+            max_ply: 1200,
             hash_mb: NonZeroUsize::new(1).unwrap(),
             allow_dirty: true,
         };
         generate(&arguments).unwrap();
-        let path = fixture.directory.join("generated.mnsd.provenance.json");
-        let provenance = Provenance::read(File::open(path).unwrap()).unwrap();
-        let reader = Reader::new(File::open(&arguments.output).unwrap()).unwrap();
-        assert_eq!(
-            provenance.teacher.generation_commit,
-            reader.header().generation_commit()
-        );
-        assert_eq!(
-            provenance.teacher.network_checksum,
-            hex(reader.header().network_checksum())
-        );
-        assert_eq!(
-            provenance.mnsd_sha256,
-            hex(&rescore::sha256(File::open(&arguments.output).unwrap()).unwrap())
-        );
-        assert_eq!(provenance.teacher.search_condition, SearchCondition::InGame);
-        assert_eq!(provenance.result_origin, ResultOrigin::Selfplay);
-        assert_eq!(provenance.start_origin, StartOrigin::Random);
+        let mut reader = Reader::new(File::open(&arguments.output).unwrap()).unwrap();
+        assert!(reader.header().record_count() > 0);
+        while let Some(record) = reader.read_record().unwrap() {
+            assert_eq!(
+                record.origin(),
+                minase::training::records::Origin::RandomSelfplay
+            );
+        }
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     /// テスト用の完了対局を1レコード付きで作る。
@@ -397,6 +367,7 @@ mod tests {
                     Outcome::Draw,
                     game_number,
                     game.ply_count().try_into().unwrap(),
+                    minase::training::records::Origin::RandomSelfplay,
                 ),
                 search_key,
             }],
