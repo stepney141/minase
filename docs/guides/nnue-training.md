@@ -6,7 +6,7 @@ NNUEの計算式と学習の目的関数は[NNUEによる評価関数と学習�
 
 本書は、実行者が従う手順、判断規則、および標準コマンドだけを記す。
 引数の既定値と値域、保存物の各欄、チェックポイントの形式、および検査の許容誤差は、`crates/minase-trainer/src/nnue/`と`crates/minase-trainer/src/diagnostics/`の各項目のdocコメントにあり、本書の各節で該当する項目を示す。
-学習データの形式とレコードの由来、教師の分類、教師値、および検証集合の分け方は、駒の種類と位置に応じた評価表PSTと、2駒の組の関係を補う補正FMの学習器と共通であり、`crates/minase/src/training/`と`crates/minase-trainer/src/data/`のdocコメントにある。
+学習データの形式と対局の由来、教師の分類、教師値、および検証集合の分け方は、駒の種類と位置に応じた評価表PSTと、2駒の組の関係を補う補正FMの学習器と共通であり、`crates/minase/src/training/`と`crates/minase-trainer/src/data/`のdocコメントにある。
 方式を選んだ理由は、ADRの[NNUEの学習器をRustのホストとNVRTCで実行時にコンパイルするCUDA C++のカーネルで書く](../adr/write-trainer-kernels-in-cuda-cpp-via-nvrtc.md)、[NNUEの学習器は第1層の勾配をホストで作る逆索引から固定の順で足し、アトミック加算を使わない](../adr/backpropagate-the-first-layer-through-a-reverse-index.md)、[学習器のAdamWはPyTorchと同じバイアス補正つきの式にする](../adr/use-pytorch-adamw-with-bias-correction.md)、および[NNUEは探索値だけの先読み教師と二値交差エントロピーで学ぶ](../adr/train-the-nnue-on-search-value-lookahead-teachers.md)にある。
 
 学習を始める際は、[設計書の型](../plans/README.md)に従って目的と比較する基準コミットを定め、[ROADMAP.md](../ROADMAP.md)に状態を登録する。
@@ -45,7 +45,8 @@ done
 学習データは、MNSD形式のファイルである。
 自己対局データの生成は、[PSTとFMの学習手順](pst-training.md)の2節と3節に従う。
 `--data`には複数のファイルを入力順に指定でき、教師の分類の番号は入力順に初めて現れた順で付く。
-入力はメモリに写像して読むため、学習の実行中は入力ファイルを変更も切り詰めもしない。
+学習器は開始時に全ファイルを読み、各対局の手順を再生して局面を復元する。
+読み込みはファイル単位で`--threads`のスレッドに分けて行い、その時間は`config.json`の`preprocessing_seconds`に含まれる。
 
 線形の経路の初期値には、PSTとFMの同時学習が書き出した圧縮なしのNPZ（`pst-float.npz`）を`--init-pst`に与える。
 評価値を勝率へ変換する尺度である出力用のK、探索用駒価値、および規則セット名は、`--base`に与えた重みファイル（MNPT形式）から引き継ぐ。
