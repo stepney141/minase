@@ -67,6 +67,9 @@ pub struct Args {
     /// 量子化誤差の検査に使う検証局面数の上限を指定する。
     #[arg(long, default_value_t = 10_000)]
     pub validation_sample: usize,
+    /// 指定した更新回数ごとに検証集合全体を評価して`validation-interval.jsonl`へ記録する。0は無効。
+    #[arg(long, default_value_t = 0)]
+    pub validation_interval: u64,
     /// バッチ供給とCPU更新のスレッド数を指定する。省略時は物理コア数から2を引き、最小値を1とする。
     #[arg(long)]
     pub threads: Option<usize>,

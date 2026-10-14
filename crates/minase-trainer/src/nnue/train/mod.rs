@@ -4,12 +4,13 @@
 //! 各エポックは`epoch_permutation(train, seed, epoch)`で始め、更新、snapshot、全検証、最良値更新、ログ、latest.npz、改善時のbest.npzの順に進む。
 //! `latest.npz`をエポックの保存確定点とし、時間切れで未完了のエポックは採用しない。
 //!
-//! `--output-dir`には次の6ファイルを保存する。
+//! `--output-dir`には次のファイルを保存する。
 //!
 //! | ファイル | 内容 |
 //! | --- | --- |
 //! | `config.json` | 引数、実効ワーカー数、照合用の設定と入力、前処理の結果、デバイス名、再開履歴を保存する。欄は`record::configuration`に定める。 |
 //! | `training.jsonl` | エポック0の検証と、検証を終えた各エポックの[`EpochRecord`]を1行ずつ追記する。 |
+//! | `validation-interval.jsonl` | `--validation-interval`が正のときだけ、エポック途中の全検証集合の評価を[`record::IntervalRecord`]として追記する。エポック境界は除く。 |
 //! | `latest.npz` | 最後に検証を終えたモデル、AdamWの状態、更新回数、最良エポック、累積時間、照合用設定を[`Checkpoint`]で保存する。 |
 //! | `best.npz` | 最良エポックのモデルとその時点のAdamWの状態を[`Checkpoint`]で保存する。 |
 //! | `nnue.bin` | 最良モデルを量子化したMNUE版5を保存する。 |
@@ -34,7 +35,7 @@ mod tests;
 use crate::{
     data::{Dataset, epoch_permutation},
     nnue::{
-        data::{Observations, build_batches, build_targets},
+        data::{InputFeatureSet, Observations, build_batches, build_targets},
         export::{self, QuantizationReport},
         model::{Checkpoint, Masks, Model, Parameter, Progress, Shape, load_initial},
         reference::{AdamW, RemovalReference, Validation},
@@ -44,8 +45,8 @@ pub use args::Args;
 use backend::Backend;
 pub use record::{EpochRecord, LinearMovement, Saturation};
 use record::{
-    append_epoch, append_resume, configuration, linear_movement, reconcile_log,
-    validate_statistics, write_json,
+    IntervalRecord, append_epoch, append_interval, append_resume, configuration, linear_movement,
+    reconcile_interval_log, reconcile_log, validate_statistics, write_json,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -182,12 +183,13 @@ impl Session {
     /// 出力用K、47個の探索用駒価値、規則セット名は[`base::Base`]としてMNPTから引き継ぎ、Kを[`Shape`]へ渡す。
     /// 初期値の鏡映対称性は[`load_initial`]と[`Model::initialize`]で検査する。
     /// 再開にはconfig.jsonのresumes配列の存在と、settings、inputs、preprocessingの一致を要求する。
-    /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threadsを除く。
+    /// settingsからは出力先、再開指定、入力パス、epochs、patience、time_limit_hours、threads、validation_intervalを除く。
     /// 入力の識別情報は正規化したパスとともにinputsへ記録し、欄ごとに照合する。
     /// 予算を除く理由は`docs/lessons/resume-hash-excludes-budgets.md`にある。
     /// 復元した形状、マスク、初期値、係数、シードは再計算値と一致し、更新回数は`epoch×ceil(N_train/batch)`、epochは指定上限以下でなければならない。
     /// 記録されたdevice_nameも一致を要求する。
     /// best.npzの書き込み前に中断した場合は、最新エポックが最良であるときだけlatest.npzから復元できる。
+    /// 途中検証のログは[`reconcile_interval_log`]で更新回数の増加を検査し、チェックポイントより後の行と未完の末尾を捨てる。
     fn new(args: Args) -> Result<Self> {
         let started = Instant::now();
         args.validate()?;
@@ -282,6 +284,10 @@ impl Session {
                 &resume.join("training.jsonl"),
                 checkpoint.progress.epoch,
             )?);
+            reconcile_interval_log(
+                &resume.join("validation-interval.jsonl"),
+                checkpoint.optimizer.step(),
+            )?;
             Some(saved)
         } else {
             if args.output_dir.exists() && std::fs::read_dir(&args.output_dir)?.next().is_some() {
@@ -393,23 +399,20 @@ impl Session {
     }
 
     fn validate(&mut self, model: &Model) -> Result<Option<Validation>> {
-        if self.expired() {
-            return Ok(None);
+        ValidationSet {
+            dataset: &self.dataset,
+            feature_set: self.args.feature_set,
+            indices: self.dataset.validation_indices(),
+            teacher_ks: &self.teacher_ks,
+            batch: self.args.batch,
+            removal_penalty: self.args.training.removal_penalty,
+            deadline: self.deadline(),
         }
-        let mut evaluator =
-            self.backend
-                .evaluator(model, self.args.batch, self.args.training.removal_penalty)?;
-        self.memory()?;
-        validate_batches(
-            self.dataset.validation_indices().chunks(self.args.batch),
-            |indices| {
-                let batch =
-                    build_batches(&self.dataset, self.args.feature_set, &[indices])?.remove(0);
-                let values =
-                    build_targets(&batch, &self.teacher_ks, self.dataset.teacher_lambdas())?;
-                evaluator.validate(&batch, &values)
-            },
-            || self.expired(),
+        .evaluate(
+            &self.backend,
+            model,
+            &mut self.gpu_used_bytes,
+            &mut self.gpu_total_bytes,
         )
     }
 
@@ -428,8 +431,11 @@ impl Session {
                 dataset: &self.dataset,
                 feature_set: self.args.feature_set,
                 indices: &indices,
+                validation_indices: self.dataset.validation_indices(),
                 teacher_ks: &self.teacher_ks,
                 batch: self.args.batch,
+                removal_penalty: self.args.training.removal_penalty,
+                validation_interval: self.args.validation_interval,
                 schedule: self.args.lr_schedule,
                 steps_per_epoch: self
                     .dataset
@@ -440,13 +446,55 @@ impl Session {
                 deadline,
             },
             &mut self.backend,
+            |supply, backend| {
+                let (parameters, _) = backend.snapshot()?;
+                parameters.validate()?;
+                let mut candidate = self.checkpoint.model.clone();
+                for p in Parameter::ALL {
+                    candidate.parameter_mut(p).copy_from_slice(&parameters[p]);
+                }
+                let Some(validation) = (ValidationSet {
+                    dataset: supply.dataset,
+                    feature_set: supply.feature_set,
+                    indices: supply.validation_indices,
+                    teacher_ks: supply.teacher_ks,
+                    batch: supply.batch,
+                    removal_penalty: supply.removal_penalty,
+                    deadline: supply.deadline,
+                })
+                .evaluate(
+                    backend,
+                    &candidate,
+                    &mut self.gpu_used_bytes,
+                    &mut self.gpu_total_bytes,
+                )?
+                else {
+                    return Ok(false);
+                };
+                let step = backend.step();
+                append_interval(
+                    &self.args.output_dir.join("validation-interval.jsonl"),
+                    &IntervalRecord {
+                        step,
+                        epoch,
+                        epoch_fraction: (step - (epoch - 1) * supply.steps_per_epoch) as f64
+                            / supply.steps_per_epoch as f64,
+                        validation_loss: validation.loss(),
+                        sign_accuracy: validation.sign_accuracy(),
+                        samples: validation.positions,
+                        decisive_samples: validation.decisive,
+                    },
+                )?;
+                Ok(true)
+            },
         )?;
         let Some(training) = training else {
             return Ok(false);
         };
         self.gpu_used_bytes = self.gpu_used_bytes.max(training.gpu_used_bytes);
         self.gpu_total_bytes = training.gpu_total_bytes;
-        let training_seconds = training_started.elapsed().as_secs_f64();
+        let training_seconds =
+            training_started.elapsed().as_secs_f64() - training.interval_validation_seconds;
         let (parameters, optimizer) = self.backend.snapshot()?;
         parameters.validate()?;
         let mut candidate = self.checkpoint.model.clone();
@@ -512,6 +560,8 @@ impl Session {
             linear_movement: linear_movement(&self.checkpoint.model),
             training_seconds: training.map(|(_, seconds)| seconds),
             validation_seconds,
+            interval_validation_seconds: training
+                .map_or(0.0, |(t, _)| t.interval_validation_seconds),
             training_positions_per_second: training
                 .map(|(t, seconds)| t.positions as f64 / seconds),
             update_seconds: training.map(|(t, _)| t.compute_seconds / t.steps as f64),
@@ -602,6 +652,48 @@ impl Session {
             return Err(Error::QuantizationError.into());
         }
         Ok(summary)
+    }
+}
+
+/// 通常の検証と途中検証が共有する、全検証集合への借用と評価条件。
+struct ValidationSet<'a> {
+    dataset: &'a Dataset,
+    feature_set: InputFeatureSet,
+    indices: &'a [u64],
+    teacher_ks: &'a [f64],
+    batch: usize,
+    removal_penalty: f64,
+    deadline: Instant,
+}
+
+impl ValidationSet<'_> {
+    /// 学習状態を共有借用して評価器を作り、各検証バッチの前後に同じ期限を検査する。
+    /// 時間切れなら`None`を返し、呼び手は検証結果を記録しない。
+    fn evaluate(
+        &self,
+        backend: &Backend,
+        model: &Model,
+        gpu_used_bytes: &mut Option<usize>,
+        gpu_total_bytes: &mut Option<usize>,
+    ) -> Result<Option<Validation>> {
+        if Instant::now() >= self.deadline {
+            return Ok(None);
+        }
+        let mut evaluator = backend.evaluator(model, self.batch, self.removal_penalty)?;
+        if let Some((used, total)) = backend.memory()? {
+            *gpu_used_bytes = (*gpu_used_bytes).max(Some(used));
+            *gpu_total_bytes = Some(total);
+        }
+        validate_batches(
+            self.indices.chunks(self.batch),
+            |indices| {
+                let batch = build_batches(self.dataset, self.feature_set, &[indices])?.remove(0);
+                let values =
+                    build_targets(&batch, self.teacher_ks, self.dataset.teacher_lambdas())?;
+                evaluator.validate(&batch, &values)
+            },
+            || Instant::now() >= self.deadline,
+        )
     }
 }
 

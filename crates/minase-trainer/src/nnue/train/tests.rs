@@ -41,6 +41,7 @@ fn args() -> Args {
         seed: 1,
         time_limit_hours: 24.0,
         validation_sample: 24,
+        validation_interval: 0,
         threads: Some(2),
         resume: None,
     }
@@ -483,6 +484,15 @@ fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_
     );
     assert_eq!(input["header"]["entry_count"], 320);
     assert_eq!(configuration.document["settings"]["lambda"], 1.0);
+    assert!(
+        configuration.document["settings"]
+            .get("validation_interval")
+            .is_none()
+    );
+    assert_eq!(
+        configuration.document["arguments"]["validation_interval"],
+        0
+    );
     for key in ["arguments", "settings"] {
         assert_eq!(
             configuration.document[key]["lr_schedule"],
@@ -513,6 +523,7 @@ fn resume_config_binds_training_settings_and_inputs_but_allow_budget_and_worker_
     resume.patience = 2;
     resume.time_limit_hours = 12.0;
     resume.threads = Some(3);
+    resume.validation_interval = 2;
     let same =
         record::configuration(&resume, 3, &dataset, &observations, &teacher_ks, &model).unwrap();
     restored
@@ -608,6 +619,7 @@ fn each_resume_persists_its_time_budget_workers_and_starting_epoch() {
         assert_eq!(entry["patience"], patience);
         assert_eq!(entry["time_limit_hours"], hours);
         assert_eq!(entry["workers"], workers);
+        assert_eq!(entry["validation_interval"], 0);
     }
     saved["resumes"] = json!([]);
     assert_eq!(saved, original);
@@ -765,6 +777,7 @@ fn epoch_record(model: &Model, epoch: u64) -> EpochRecord {
         linear_movement: record::linear_movement(model),
         training_seconds: (epoch > 0).then_some(3.0),
         validation_seconds: 0.5,
+        interval_validation_seconds: 0.0,
         training_positions_per_second: (epoch > 0).then_some(296.0 / 3.0),
         update_seconds: (epoch > 0).then_some(0.1),
         gpu_memory_used_bytes: Some(1024 * 1024),
@@ -814,6 +827,7 @@ fn epoch_log_uses_one_json_line_per_epoch_and_preserves_metrics() {
         ("nonlinear_std_cp", 3.5),
         ("training_seconds", 3.0),
         ("validation_seconds", 0.5),
+        ("interval_validation_seconds", 0.0),
         ("lr_multiplier_first", 1.0),
         ("lr_multiplier_last", 0.5),
     ] {
@@ -864,6 +878,72 @@ fn resume_keeps_completed_log_epochs_and_discards_an_uncommitted_tail() {
         [0, 1]
     );
     assert!(record::reconcile_log(&path, 2).is_err());
+}
+
+fn interval_record(step: u64) -> IntervalRecord {
+    IntervalRecord {
+        step,
+        epoch: 1,
+        epoch_fraction: step as f64 / 9.0,
+        validation_loss: 0.4,
+        sign_accuracy: None,
+        samples: 24,
+        decisive_samples: 0,
+    }
+}
+
+#[test]
+fn interval_log_reconciliation_keeps_the_checkpoint_step_and_discards_incomplete_tails() {
+    let fixture = Fixture::new();
+    let path = fixture.0.join("validation-interval.jsonl");
+    record::reconcile_interval_log(&path, 4).unwrap();
+    assert!(!path.exists());
+    for step in [2, 4] {
+        record::append_interval(&path, &interval_record(step)).unwrap();
+    }
+    let kept = fs::read(&path).unwrap();
+    let rows = logs(&path);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1]["sign_accuracy"], Value::Null);
+    assert_eq!(rows[1]["decisive_samples"], 0);
+    assert_eq!(kept.last(), Some(&b'\n'));
+
+    for future in [false, true] {
+        for tail in [
+            b"{\"step\":8".as_slice(),
+            serde_json::to_vec(&interval_record(8)).unwrap().as_slice(),
+        ] {
+            fs::write(&path, &kept).unwrap();
+            if future {
+                record::append_interval(&path, &interval_record(6)).unwrap();
+            }
+            let mut bytes = fs::read(&path).unwrap();
+            bytes.extend(tail);
+            fs::write(&path, bytes).unwrap();
+            record::reconcile_interval_log(&path, 4).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), kept);
+            record::reconcile_interval_log(&path, 4).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), kept);
+        }
+    }
+    record::reconcile_interval_log(&path, 0).unwrap();
+    assert!(fs::read(&path).unwrap().is_empty());
+}
+
+#[test]
+fn interval_log_reconciliation_rejects_non_increasing_steps_without_modifying_the_file() {
+    let fixture = Fixture::new();
+    let path = fixture.0.join("validation-interval.jsonl");
+    // 切り捨てる区間も含めて、重複と逆順を拒否する。
+    for steps in [&[4, 2][..], &[2, 2], &[2, 6, 5], &[2, 6, 6]] {
+        fs::write(&path, []).unwrap();
+        for &step in steps {
+            record::append_interval(&path, &interval_record(step)).unwrap();
+        }
+        let before = fs::read(&path).unwrap();
+        assert!(record::reconcile_interval_log(&path, 4).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
 }
 
 fn completed_checkpoint(model: &Model, epoch: u64, best: BestEpoch) -> Checkpoint {
@@ -998,6 +1078,193 @@ fn gpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets(
 #[test]
 fn cpu_training_two_epochs_match_an_epoch_boundary_resume_for_both_feature_sets() {
     training_two_epochs_match_resume(crate::nnue::options::DeviceKind::Cpu);
+}
+
+#[test]
+fn cpu_validation_interval_does_not_change_the_trajectory() {
+    validation_interval_does_not_change_the_trajectory(crate::nnue::options::DeviceKind::Cpu);
+}
+
+#[test]
+#[ignore = "CUDAが必要。学習環境で明示的に実行する"]
+fn gpu_validation_interval_does_not_change_the_trajectory() {
+    validation_interval_does_not_change_the_trajectory(crate::nnue::options::DeviceKind::Cuda);
+}
+
+fn validation_interval_does_not_change_the_trajectory(device: crate::nnue::options::DeviceKind) {
+    for feature_set in [InputFeatureSet::P, InputFeatureSet::HalfKpHmB8] {
+        let fixture = Fixture::new();
+        let mut args = fixture.training_args();
+        args.device = device;
+        args.feature_set = feature_set;
+        args.lr_schedule = "exponential:1:0.1".parse().unwrap();
+        args.training.lambda = 0.75;
+        args.training.removal_penalty = 250.0;
+        // 途中検証は量子化検査の標本数にかかわらず全24局面を使う。
+        args.validation_sample = 1;
+        run(args.clone()).unwrap();
+        assert!(!args.output_dir.join("validation-interval.jsonl").exists());
+
+        let mut diagnostic = args.clone();
+        diagnostic.output_dir = fixture.0.join("interval");
+        // 296局面を33件ずつ学習するのでU = 9。2は9の約数ではない。
+        diagnostic.validation_interval = 2;
+        run(diagnostic.clone()).unwrap();
+        assert_eq!(
+            fs::read(args.output_dir.join("nnue.bin")).unwrap(),
+            fs::read(diagnostic.output_dir.join("nnue.bin")).unwrap()
+        );
+        for file in ["latest.npz", "best.npz"] {
+            compare_checkpoint(
+                &args.output_dir.join(file),
+                &diagnostic.output_dir.join(file),
+            );
+        }
+        let baseline = logs(&args.output_dir.join("training.jsonl"));
+        let measured = logs(&diagnostic.output_dir.join("training.jsonl"));
+        assert_eq!(baseline.len(), 3);
+        assert_eq!(measured.len(), baseline.len());
+        for (epoch, (left, right)) in baseline.iter().zip(&measured).enumerate() {
+            for key in [
+                "train_loss",
+                "removal_loss",
+                "total_loss",
+                "validation_loss",
+            ] {
+                assert_eq!(
+                    left[key].as_f64().map(f64::to_bits),
+                    right[key].as_f64().map(f64::to_bits),
+                    "{feature_set:?}: {key} at epoch {epoch}"
+                );
+            }
+            for key in [
+                "steps",
+                "total_steps",
+                "lr_multiplier_first",
+                "lr_multiplier_last",
+            ] {
+                assert_eq!(left[key], right[key], "{feature_set:?}: {key}");
+            }
+            assert_eq!(left["interval_validation_seconds"], 0.0);
+            if epoch == 0 {
+                assert_eq!(right["interval_validation_seconds"], 0.0);
+            } else {
+                assert!(right["interval_validation_seconds"].as_f64().unwrap() > 0.0);
+                let seconds = right["training_seconds"].as_f64().unwrap();
+                assert!(seconds > 0.0);
+                assert_eq!(
+                    right["training_positions_per_second"].as_f64().unwrap(),
+                    296.0 / seconds
+                );
+            }
+        }
+        let rows = logs(&diagnostic.output_dir.join("validation-interval.jsonl"));
+        let expected = [
+            (2, 1, 2.0 / 9.0),
+            (4, 1, 4.0 / 9.0),
+            (6, 1, 6.0 / 9.0),
+            (8, 1, 8.0 / 9.0),
+            (10, 2, 1.0 / 9.0),
+            (12, 2, 3.0 / 9.0),
+            (14, 2, 5.0 / 9.0),
+            (16, 2, 7.0 / 9.0),
+        ];
+        assert_eq!(rows.len(), expected.len());
+        for (row, (step, epoch, fraction)) in rows.iter().zip(expected) {
+            assert_eq!(row["step"], step);
+            assert_eq!(row["epoch"], epoch);
+            assert_eq!(row["epoch_fraction"].as_f64().unwrap(), fraction);
+            assert!(row["validation_loss"].as_f64().unwrap().is_finite());
+            assert!((0.0..=1.0).contains(&row["sign_accuracy"].as_f64().unwrap()));
+            assert_eq!(row["samples"], 24);
+            assert_eq!(row["decisive_samples"], 16);
+        }
+    }
+}
+
+#[test]
+fn resume_truncates_interval_records_after_the_checkpoint() {
+    let fixture = Fixture::new();
+    let mut args = fixture.training_args();
+    args.device = crate::nnue::options::DeviceKind::Cpu;
+    args.validation_interval = 2;
+    run(args.clone()).unwrap();
+
+    let mut split = args.clone();
+    split.output_dir = fixture.0.join("resumed");
+    split.epochs = 1;
+    run(split.clone()).unwrap();
+    let checkpoint = Checkpoint::read(split.output_dir.join("latest.npz")).unwrap();
+    assert_eq!(checkpoint.optimizer.step(), 9);
+    let path = split.output_dir.join("validation-interval.jsonl");
+    let kept = fs::read(&path).unwrap();
+    record::append_interval(
+        &path,
+        &IntervalRecord {
+            step: 20,
+            epoch: 3,
+            epoch_fraction: 2.0 / 9.0,
+            ..interval_record(20)
+        },
+    )
+    .unwrap();
+    let mut bytes = fs::read(&path).unwrap();
+    bytes.extend(b"{\"step\":22");
+    fs::write(&path, bytes).unwrap();
+
+    split.resume = Some(split.output_dir.clone());
+    split.epochs = 2;
+    let mut session = Session::new(split.clone()).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), kept);
+    assert!(session.advance().unwrap());
+    assert!(!session.advance().unwrap());
+    session.finish().unwrap();
+    assert_eq!(
+        fs::read(args.output_dir.join("nnue.bin")).unwrap(),
+        fs::read(split.output_dir.join("nnue.bin")).unwrap()
+    );
+    for file in ["latest.npz", "best.npz"] {
+        compare_checkpoint(&args.output_dir.join(file), &split.output_dir.join(file));
+    }
+    assert_eq!(
+        logs(&path),
+        logs(&args.output_dir.join("validation-interval.jsonl"))
+    );
+}
+
+#[test]
+fn resume_allows_a_changed_validation_interval() {
+    for (first, second, expected_steps) in [
+        (0, 2, vec![10, 12, 14, 16]),
+        (2, 0, vec![2, 4, 6, 8]),
+        (2, 4, vec![2, 4, 6, 8, 12, 16]),
+    ] {
+        let fixture = Fixture::new();
+        let mut args = fixture.training_args();
+        args.device = crate::nnue::options::DeviceKind::Cpu;
+        args.epochs = 1;
+        args.validation_interval = first;
+        run(args.clone()).unwrap();
+        args.epochs = 2;
+        args.resume = Some(args.output_dir.clone());
+        args.validation_interval = second;
+        run(args.clone()).unwrap();
+        let config: Value =
+            serde_json::from_slice(&fs::read(args.output_dir.join("config.json")).unwrap())
+                .unwrap();
+        assert!(config["settings"].get("validation_interval").is_none());
+        assert_eq!(config["arguments"]["validation_interval"], first);
+        assert_eq!(config["resumes"].as_array().unwrap().len(), 1);
+        assert_eq!(config["resumes"][0]["validation_interval"], second);
+        assert_eq!(config["resumes"][0]["epoch"], 1);
+        let rows = logs(&args.output_dir.join("validation-interval.jsonl"));
+        assert_eq!(
+            rows.iter()
+                .map(|row| row["step"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            expected_steps
+        );
+    }
 }
 
 /// 320局面の合成MNSDで両特徴集合を2エポック学習し、連続実行とエポック境界での再開を比べる。
