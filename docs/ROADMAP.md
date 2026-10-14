@@ -88,7 +88,7 @@
 | 手の順序付けの改善 | [plans/archived/move-ordering.md](plans/archived/move-ordering.md) | 完了（採用） | 2026年10月10日 |
 | 詰み探索（df-pn） | [plans/mate-search.md](plans/mate-search.md) | 起案 | |
 | Rust製NNUE学習器（GPU） | [plans/archived/nnue-trainer-rust.md](plans/archived/nnue-trainer-rust.md) | 完了（採用） | 2026年10月12日 |
-| NNUE学習器の学習率スケジュール | [plans/nnue-lr-schedule.md](plans/nnue-lr-schedule.md) | 起案 | |
+| NNUE学習器の学習率スケジュール | [plans/nnue-lr-schedule.md](plans/nnue-lr-schedule.md) | 進行中 | |
 | NNUEの隠れ層と位相補間の出力 | [plans/nnue-hidden-layer.md](plans/nnue-hidden-layer.md) | 起案 | |
 | Python学習器のRustへの移植と撤去 | [plans/archived/python-trainer-retirement.md](plans/archived/python-trainer-retirement.md) | 完了（採用） | 2026年10月13日 |
 | ファイル形式の整理と形式の仕様の整備 | [plans/archived/file-format-consolidation.md](plans/archived/file-format-consolidation.md) | 完了（採用） | 2026年10月13日 |
@@ -115,7 +115,7 @@
 - [王の安全度と利きに基づく評価特徴の再学習](plans/evaluation-terms-relearning.md)は、[原因調査](audits/heuristic-learning-causes-2026-09-27.md)の結果を受けて、段階9で見送った7項目を採用中の教師で学び直し、新しい自己対局での予測損失で項目を選別してから、土台の費用ごとに段を分けて採否を測る。この計画もPSTに評価項を加える前提で書かれているので、着手の前に前提を見直すかどうかを決める必要がある。
 - [秒読みつき時計での持ち時間と秒読みの活用](plans/byoyomi-time-usage.md)は、段階A（秒読み期の締切と途中結果の採用）を秒読みつきの2条件のGSPRTでともに`H1`として採用し、段階B（難しさで重み付けした持ち時間の配分）は不採用とした。2026年10月7日にmasterへ統合し、2026年10月8日にminase 2.2.0として公開した。lishogiのBotは2.4.0で動いており、`ByoyomiMargin`を3,000 msにした後の秒読みつきの対局20局の記録が残っている。
 - [詰み探索（df-pn）](plans/mate-search.md)は、受け方の王駒が1枚の局面を対象に、攻め方の手を王手に限る標準df-pnの単独ソルバを`go mate`と`minase dev mate`から使えるようにし、証明手順を審判層で検証してから出力する。通常探索への組み込みは、採否の測定条件での発動率を測ってから別の設計書で起案する。着手は利用者の指示を待つ。
-- [NNUE学習器の学習率スケジュール](plans/nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたものを扱う。前者は、NNUEの検証損失が最初の訓練エポックの直後で頭打ちになる症状を受けて、更新ごとの学習率の倍率を加え、5つの設定のどれかで改善するかを確かめる。後者は、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。後者の学習は前者の結論を待つ。両計画が学習に使う約30ファイルの教師データは[教師データ形式の統一](plans/archived/unified-teacher-format.md)で削除したので、前者の学習の前に版2で生成し直す（約35時間）。
+- [NNUE学習器の学習率スケジュール](plans/nnue-lr-schedule.md)と[NNUEの隠れ層と位相補間の出力](plans/nnue-hidden-layer.md)は、tataraにあってminaseにない機能のうち利用者が取り込むと決めたものを扱う。前者は、NNUEの検証損失が最初の訓練エポックの直後で頭打ちになる症状を受けて、更新ごとの学習率の倍率を加え、5つの設定のどれかで改善するかを確かめる。後者は、学習器から駒除去差分の補助損失を外したうえで、出力部に幅16の隠れ層と、盤上総駒数で序盤用と終盤用の出力を補間する位相補間を加えた候補を比べる。後者の学習は前者の結論を待つ。両計画が学習に使う約30ファイルの教師データは[教師データ形式の統一](plans/archived/unified-teacher-format.md)で削除したので、前者の着手日である2026年10月14日に版2で30ファイルの生成を始めた（約35時間）。前者は、生成と並行して学習器の実装をブランチ`nnue-lr-schedule`で進めている。
 - [メモリより大きい教師データの一様シャッフル](plans/out-of-core-shuffle.md)は、教師データが測定機のメモリに収まらない規模でも、NNUEの学習で毎エポック全体を一様に並べ替えられるようにする。学習の開始時に版2を再生して局面を実行専用の一時ファイルへ書き、エポックごとに各局面へ無作為にbucketを振って、bucketごとに並べ替えて流す（Rao–Sandelius方式）。方式は[予備測定](measurements/shuffle-order-preliminary.md)で、混ぜる範囲が狭い並べ方ほど検証損失が悪くなる兆候を見て選んだ。着手は利用者の指示を待つ。
 - 評価関数の計画と探索部の計画は測定機を共有するので、着手の順序は利用者が決める。
 - [AlphaZero型探索と深層強化学習](plans/alphazero.md)は、GPUを使う学習を外部のレンタルGPUサーバ（総額2万円、強化学習は1か月が上限）で行い、教師生成と時間制御の測定を作業機で行う形で設計を確定した。2026年10月14日に、NNUEの採用、Python学習器の撤去、および教師データ形式の版2への統一を反映して改訂した。実装はまだなく、着手は利用者の許可を待ち、[NNUEに合わせたSPSAの調整セッション](plans/nnue-search-spsa.md)が完了しても許可が出るまでは始めない。
